@@ -1,0 +1,17 @@
+@import common/values.gm as values
+
+@label intro
+# はじめに
+
+Golem は[ruby: 組/版|くみ/はん]の結果を、同じ入力から常に同じバイト列として出力する[note: この性質を決定性と呼ぶ。]。
+本書は第[= values.version]版、価格は[= fixed(values.price, 2)]である。全[= doc.chapters.count]章。
+%%= 図を一枚入れる %%
+
+詳しくは第[ref-number design]章「[ref-title design]」で説明する。[strong: 重要]、[number-text 10]。
+
+= 決定性
+  同じ入力から同じ出力を得る性質。
+
+- 一
+- 二
+  + 入れ子

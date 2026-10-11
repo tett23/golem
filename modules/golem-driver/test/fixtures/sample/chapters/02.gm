@@ -1,0 +1,12 @@
+@label design
+# 設計
+
+## 節
+
+| 形式 | 用途 |
+|:---|---:|
+| PDF | 印刷 |
+
+```haskell
+main = pure ()
+```

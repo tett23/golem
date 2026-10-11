@@ -1,0 +1,18 @@
+chapters = ["front.gm", "chapters/01.gm", ["chapters/02.gm"]]
+
+[metadata]
+id = "urn:uuid:11111111-2222-4333-8444-555555555555"
+title = "Golem 入門"
+title-reading = "ゴーレムにゅうもん"
+language = "ja"
+date = 2026-10-11
+publisher = "テスト出版"
+
+[[metadata.creators]]
+name = "山田 太郎"
+reading = "やまだ たろう"
+role = "aut"
+
+[targets.html]
+[targets.epub]
+[targets.text]

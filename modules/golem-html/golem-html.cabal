@@ -1,0 +1,27 @@
+cabal-version:      3.0
+name:               golem-html
+version:            0.1.0.0
+synopsis:           XHTML and CSS output for Golem
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Text
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Golem.Html
+  build-depends:
+    , base          >=4.20 && <4.21
+    , containers    >=0.6  && <0.8
+    , filepath      >=1.4  && <1.6
+    , golem-doc
+    , golem-syntax
+    , skylighting   >=0.14 && <0.16
+    , text          >=2.0  && <2.2
+  default-language: GHC2021
