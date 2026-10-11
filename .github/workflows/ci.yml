@@ -94,5 +94,7 @@ jobs:
         with:
           path: ${{ steps.setup.outputs.cabal-store }}
           key: hlint-3.10-${{ runner.os }}-${{ runner.arch }}
-      - run: cabal install hlint-3.10 --installdir="$HOME/.local/bin" --overwrite-policy=always
+      - name: Install hlint outside the project (the freeze file must not constrain it)
+        working-directory: ${{ runner.temp }}
+        run: cabal install hlint-3.10 --installdir="$HOME/.local/bin" --overwrite-policy=always
       - run: '"$HOME/.local/bin/hlint" modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs"'
