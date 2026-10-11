@@ -1,0 +1,39 @@
+cabal-version:      3.0
+name:               golem-layout-spec
+version:            0.1.0.0
+synopsis:           page geometry for Golem
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Text
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Golem.LayoutSpec
+  build-depends:
+    , base          >=4.20 && <4.21
+    , containers    >=0.6  && <0.8
+    , golem-project
+    , golem-syntax
+    , text          >=2.0  && <2.2
+  default-language: GHC2021
+
+test-suite golem-layout-spec-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  build-depends:
+    , base
+    , containers
+    , golem-layout-spec
+    , golem-project
+    , tasty          >=1.4 && <1.6
+    , tasty-hunit    >=0.10 && <0.11
+  default-language: GHC2021
