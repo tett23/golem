@@ -1,0 +1,302 @@
+module Main (main) where
+
+import Codec.CBOR.Term (Term (..), encodeTerm)
+import Codec.CBOR.Write (toStrictByteString)
+import Control.Concurrent.Async
+  ( async,
+    cancel,
+    mapConcurrently,
+  )
+import Control.Exception (finally)
+import Control.Monad (void)
+import Data.ByteString (ByteString)
+import Data.ByteString qualified as BS
+import Data.ByteString.Lazy qualified as BL
+import Data.Default (def)
+import Data.Either (isLeft)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
+import Data.Map.Strict qualified as Map
+import Data.Text (Text)
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
+import Data.Text.IO qualified as TIO
+import Golem.Doc.Cbor (inlinesTerm)
+import Golem.Doc.IR
+import Golem.Eval.Value (Value (..))
+import Golem.Parser.AST qualified as A
+import Golem.Plugin
+import Golem.Plugin.Lock
+import Golem.Syntax
+import Network.Connection (TLSSettings (..))
+import Network.HTTP.Client (newManager)
+import Network.HTTP.Client.TLS (mkManagerSettings)
+import Network.HTTP.Types qualified as H
+import Network.Socket
+import Network.Wai qualified as W
+import Network.Wai.Handler.Warp qualified as Warp
+import Network.Wai.Handler.WarpTLS qualified as WT
+import System.Directory
+  ( doesFileExist,
+    findExecutable,
+    listDirectory,
+  )
+import System.IO.Temp (withSystemTempDirectory)
+import System.Process (readProcessWithExitCode)
+import Test.Tasty
+import Test.Tasty.HUnit
+import Text.Printf (printf)
+
+main :: IO ()
+main = defaultMain (testGroup "golem-plugin" [tests, lockTests, httpsTests])
+
+callSpan :: SrcSpan
+callSpan = mkSpan (FileId 1) 10 20
+
+wat :: FilePath -> IO Text
+wat name = TIO.readFile ("test/plugins/" <> name)
+
+compile :: Text -> IO ByteString
+compile src = either (assertFailure . T.unpack) pure (watToWasm src)
+
+escape :: ByteString -> Text
+escape = T.pack . concatMap (printf "\\%02x") . BS.unpack
+
+cbor :: Term -> ByteString
+cbor = toStrictByteString . encodeTerm
+
+-- | The fixed-response plugin with a response and an ABI version.
+fixed :: Int -> ByteString -> IO ByteString
+fixed abi response = do
+  src <- wat "fixed.wat"
+  let describe = cbor (TList [TList [TString "shout"], TList [TString "upper"]])
+      filled =
+        T.replace "{{ABI}}" (T.pack (show abi))
+          . T.replace "{{DESCRIBE}}" (escape describe)
+          . T.replace "{{DESCRIBE_LEN}}" (T.pack (show (BS.length describe)))
+          . T.replace "{{RESPONSE}}" (escape response)
+          . T.replace "{{RESPONSE_LEN}}" (T.pack (show (BS.length response)))
+          $ src
+  compile filled
+
+load :: ByteString -> IO Plugin
+load wasm = either (assertFailure . show) pure (loadPlugin wasm)
+
+-- | A response whose output is the given inlines.
+responseWith :: Term -> ByteString
+responseWith out = cbor (TList [out, TList []])
+
+shout :: Plugin -> Either PluginError ([Inline], [Diagnostic])
+shout p = callCommand p "shout" [VString "x"] [[Text callSpan "slot"]] callSpan
+
+-- | Replaces the first occurrence of a subterm.
+replaceTerm :: Term -> Term -> Term -> Term
+replaceTerm from to t
+  | t == from = to
+  | otherwise = case t of
+      TList xs -> TList (go xs)
+      other -> other
+  where
+    go [] = []
+    go (x : xs) =
+      let x' = replaceTerm from to x
+       in if x' /= x then x' : xs else x : go xs
+
+tests :: TestTree
+tests =
+  testGroup
+    "golem-plugin (ADR 0001)"
+    [ testCase "a valid plugin describes itself and answers" $ do
+        p <- load =<< fixed 1 (responseWith (inlinesTerm [Text callSpan "SLOT"]))
+        (pluginCommands p, pluginFilters p) @?= (["shout"], ["upper"])
+        fmap fst (shout p) @?= Right [Text callSpan "SLOT"],
+      testCase "a module that asks for imports is rejected when loading" $ do
+        w <- compile =<< wat "imports.wat"
+        void (loadPlugin w) @?= Left (HasImports ["env.now"]),
+      testCase "a different ABI version is rejected when loading" $ do
+        w <- fixed 2 (responseWith (TList []))
+        void (loadPlugin w) @?= Left (AbiMismatch 2),
+      testCase "an endless loop runs out of fuel, at the same place every time" $ do
+        w <- compile =<< wat "loop.wat"
+        p <- either (assertFailure . show) pure (loadPluginWith 100000 defaultMemoryLimit w)
+        let r1 = invokeRaw p "x"
+            r2 = invokeRaw p "x"
+        case r1 of
+          Left (OutOfFuel _) -> pure ()
+          other -> assertFailure (show other)
+        r1 @?= r2,
+      testCase "memory beyond the limit is an error" $ do
+        w <- compile =<< wat "memory.wat"
+        p <- either (assertFailure . show) pure (loadPluginWith defaultFuel (4 * 1024 * 1024) w)
+        case invokeRaw p "x" of
+          Left (Trapped _) -> pure ()
+          other -> assertFailure (show other),
+      testCase "NaN results are the same bytes on every run" $ do
+        w <- compile =<< wat "nan.wat"
+        p <- load w
+        let runs = [invokeRaw p "x" | _ <- [1 :: Int .. 5]]
+        assertBool "same" (all (== head' runs) runs)
+        fmap BS.length (head' runs) @?= Right 8,
+      testGroup
+        "output validation"
+        [ testCase "broken CBOR" $ do
+            p <- load =<< fixed 1 (BS.pack [0xff, 0x00])
+            assertBool "error" (isLeft (shout p)),
+          testCase "CBOR that does not match the schema" $ do
+            p <- load =<< fixed 1 (cbor (TList [TInt 1, TInt 2]))
+            assertBool "error" (isLeft (shout p)),
+          testCase "nested ruby" $ do
+            let inner = inlinesTerm [Ruby callSpan () [RubySegment [Text callSpan "漢"] (Just "かん")]]
+                textT = case inlinesTerm [Text callSpan "漢"] of
+                  TList [t] -> t
+                  t -> t
+                rubyT = case inner of
+                  TList [t] -> t
+                  t -> t
+                nested = replaceTerm textT rubyT inner
+            assertBool "the term changed" (nested /= inner)
+            p <- load =<< fixed 1 (responseWith nested)
+            assertBool "error" (isLeft (shout p)),
+          testCase "a DeferredExpr the request did not contain" $ do
+            let d = DeferredExpr (A.Located callSpan (A.EVar ["doc", "chapters", "count"]))
+            p <- load =<< fixed 1 (responseWith (inlinesTerm [Deferred callSpan d]))
+            case shout p of
+              Left (BadOutput _) -> pure ()
+              other -> assertFailure (show other),
+          testCase "a source position outside the request" $ do
+            p <- load =<< fixed 1 (responseWith (inlinesTerm [Text (mkSpan (FileId 1) 900 901) "x"]))
+            case shout p of
+              Left (BadOutput _) -> pure ()
+              other -> assertFailure (show other)
+        ],
+      testCase "parallel calls give the same results as sequential ones" $ do
+        p <- load =<< fixed 1 (responseWith (inlinesTerm [Text callSpan "SLOT"]))
+        let calls = replicate 16 ()
+        par <- mapConcurrently (\_ -> pure $! either (const 0) (length . fst) (shout p)) calls
+        par @?= map (\_ -> either (const 0) (length . fst) (shout p)) calls
+    ]
+  where
+    head' (x : _) = x
+    head' [] = Left (BadOutput "none")
+
+-- | A fake distribution server: URL → bytes, with a request log.
+fakeServer :: IORef (Map.Map Text ByteString) -> IORef Int -> Fetcher
+fakeServer files hits url = do
+  modifyIORef' hits (+ 1)
+  m <- readIORef files
+  pure (maybe (Left ("404: " <> url)) Right (Map.lookup url m))
+
+urlA, urlB :: Text
+urlA = "https://example.com/releases/a.wasm"
+urlB = "https://example.com/releases/b.wasm"
+
+lockTests :: TestTree
+lockTests =
+  testGroup
+    "distribution and lock (ADR 0002)"
+    [ testCase "lock writes hashes sorted by name and fills the cache" $ withSystemTempDirectory "cache" $ \cache -> do
+        files <- newIORef (Map.fromList [(urlA, "AAA"), (urlB, "BBB")])
+        hits <- newIORef 0
+        Right lock <- lockPlugins (fakeServer files hits) cache (Map.fromList [("zeta", urlB), ("alpha", urlA)])
+        renderLock lock
+          @?= T.unlines
+            [ "[plugins.alpha]",
+              "url = \"https://example.com/releases/a.wasm\"",
+              "sha256 = \"" <> hashHex "AAA" <> "\"",
+              "",
+              "[plugins.zeta]",
+              "url = \"https://example.com/releases/b.wasm\"",
+              "sha256 = \"" <> hashHex "BBB" <> "\""
+            ]
+        parseLock (FileId 0) (renderLock lock) @?= Right lock
+        listDirectory cache >>= (@?= 2) . length,
+      testCase "a plugin removed from the manifest leaves the lock" $ withSystemTempDirectory "cache" $ \cache -> do
+        files <- newIORef (Map.fromList [(urlA, "AAA"), (urlB, "BBB")])
+        hits <- newIORef 0
+        Right lock <- lockPlugins (fakeServer files hits) cache (Map.fromList [("alpha", urlA)])
+        Map.keys lock @?= ["alpha"],
+      testCase "with a cache, fetch needs no network; without, it downloads" $ withSystemTempDirectory "cache" $ \cache -> do
+        files <- newIORef (Map.fromList [(urlA, "AAA")])
+        hits <- newIORef 0
+        let lock = Map.fromList [("alpha", LockEntry urlA (hashHex "AAA"))]
+        readCached cache (lock Map.! "alpha") >>= (@?= Left NotCached)
+        fetchPlugins (fakeServer files hits) cache lock >>= (@?= Right ())
+        readIORef hits >>= (@?= 1)
+        fetchPlugins (fakeServer files hits) cache lock >>= (@?= Right ())
+        readIORef hits >>= (@?= 1)
+        readCached cache (lock Map.! "alpha") >>= (@?= Right "AAA"),
+      testCase "a replaced artifact fails fetch and never enters the cache" $ withSystemTempDirectory "cache" $ \cache -> do
+        files <- newIORef (Map.fromList [(urlA, "AAA")])
+        hits <- newIORef 0
+        let lock = Map.fromList [("alpha", LockEntry urlA (hashHex "AAA"))]
+        writeIORef files (Map.fromList [(urlA, "EVIL")])
+        r <- fetchPlugins (fakeServer files hits) cache lock
+        assertBool "error" (isLeft r)
+        exists <- doesFileExist (cachePath cache (hashHex "EVIL"))
+        exists @?= False
+        readCached cache (lock Map.! "alpha") >>= (@?= Left NotCached),
+      testCase "HTTP URLs and redirects to HTTP are errors" $ withSystemTempDirectory "cache" $ \cache -> do
+        files <- newIORef Map.empty
+        hits <- newIORef 0
+        r <- lockPlugins (fakeServer files hits) cache (Map.fromList [("x", "http://example.com/x.wasm")])
+        assertBool "http" (isLeft r)
+        readIORef hits >>= (@?= 0)
+        assertBool "to http" (isLeft (nextRedirect urlA (Just "http://evil.example/x.wasm")))
+        nextRedirect urlA (Just "https://objects.example/x.wasm") @?= Right "https://objects.example/x.wasm"
+        nextRedirect urlA (Just "/other.wasm") @?= Right "https://example.com/other.wasm"
+        fetcher <- httpsFetcher
+        r' <- fetcher "http://example.com/x.wasm"
+        assertBool "fetcher refuses http" (isLeft r')
+    ]
+
+{- | A local HTTPS server with a self-signed certificate (made with the
+openssl CLI), serving files from an IORef, plus redirects.
+-}
+withHttpsServer :: IORef (Map.Map Text ByteString) -> (Int -> Fetcher -> IO ()) -> IO ()
+withHttpsServer files k = do
+  openssl <- findExecutable "openssl"
+  case openssl of
+    Nothing -> pure ()
+    Just exe -> withSystemTempDirectory "golem-https" $ \dir -> do
+      let cert = dir <> "/cert.pem"
+          key = dir <> "/key.pem"
+      _ <- readProcessWithExitCode exe ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "1", "-subj", "/CN=localhost"] ""
+      sock <- socket AF_INET Stream defaultProtocol
+      bind sock (SockAddrInet 0 (tupleToHostAddress (127, 0, 0, 1)))
+      listen sock 16
+      port <- fromIntegral <$> socketPort sock
+      let base = "https://127.0.0.1:" <> T.pack (show port)
+          app req respond = do
+            m <- readIORef files
+            let path = TE.decodeUtf8 (W.rawPathInfo req)
+            respond $ case path of
+              "/redirect" -> W.responseLBS (H.mkStatus 302 "Found") [(H.hLocation, TE.encodeUtf8 (base <> "/a.wasm"))] ""
+              "/to-http" -> W.responseLBS (H.mkStatus 302 "Found") [(H.hLocation, TE.encodeUtf8 ("http://127.0.0.1:" <> T.pack (show port) <> "/a.wasm"))] ""
+              _ -> case Map.lookup path m of
+                Just b -> W.responseLBS H.status200 [] (BL.fromStrict b)
+                Nothing -> W.responseLBS H.status404 [] ""
+      server <- async (WT.runTLSSocket (WT.tlsSettings cert key) Warp.defaultSettings sock app)
+      manager <- newManager (mkManagerSettings (TLSSettingsSimple True False False def) Nothing)
+      k port (httpsFetcherWith manager) `finally` cancel server
+
+httpsTests :: TestTree
+httpsTests =
+  testGroup
+    "distribution over a local HTTPS server (ADR 0002)"
+    [ testCase "lock from the server; a replaced artifact fails fetch; redirects stay on HTTPS" $ do
+        files <- newIORef (Map.fromList [("/a.wasm", "PLUGIN-A")])
+        withHttpsServer files $ \port fetch -> withSystemTempDirectory "cache" $ \cache -> do
+          let base = "https://127.0.0.1:" <> T.pack (show port)
+          Right lock <- lockPlugins fetch cache (Map.fromList [("a", base <> "/a.wasm")])
+          renderLock lock @?= "[plugins.a]\nurl = \"" <> base <> "/a.wasm\"\nsha256 = \"" <> hashHex "PLUGIN-A" <> "\"\n"
+          -- through an HTTPS redirect
+          fetch (base <> "/redirect") >>= (@?= Right "PLUGIN-A")
+          -- a redirect to HTTP is refused
+          r <- fetch (base <> "/to-http")
+          assertBool (show r) (isLeft r)
+          -- the server replaces the artifact: fetch into an empty cache fails
+          writeIORef files (Map.fromList [("/a.wasm", "EVIL")])
+          withSystemTempDirectory "cache2" $ \cache2 -> do
+            f <- fetchPlugins fetch cache2 lock
+            assertBool "mismatch" (isLeft f)
+            readCached cache2 (lock Map.! "a") >>= (@?= Left NotCached)
+    ]
