@@ -1,0 +1,4 @@
+# hlint settings (docs/adr/0001). Every hint fails CI except these.
+# `loadProject root >>= check . codes` reads better in the tests than a
+# Kleisli composition.
+- ignore: {name: "Use >=>"}

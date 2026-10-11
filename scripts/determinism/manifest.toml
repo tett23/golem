@@ -1,0 +1,10 @@
+chapters = ["exprs.gm"]
+
+[metadata]
+id = "urn:uuid:00000000-0000-4000-8000-000000000000"
+title = "determinism"
+language = "ja"
+date = 2026-01-01
+
+[targets.text]
+variants = ["horizontal"]

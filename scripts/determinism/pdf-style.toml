@@ -1,0 +1,22 @@
+[page]
+size = "B6"
+binding = "right"
+writing-mode = "vertical"
+
+[page.grid]
+font-size = "13Q"
+characters = 42
+lines = 16
+line-pitch = "22H"
+columns = 1
+position = { top = "18mm", gutter = "20mm" }
+
+[headings.1]
+number = "第{n:kanji}章"
+
+[masters.body]
+folio = { position = "bottom-outside", format = "{n}" }
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
