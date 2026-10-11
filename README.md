@@ -2,15 +2,39 @@
 
 ## Overview
 
-TODO: プロジェクトの概要を記述してください。
+Golem は、コマンドラインと CI で動く組版システムである。
+原稿は `.gm` のテキストで書き、同じ入力から常に同じバイト列の PDF、EPUB、HTML、テキストを出力する。
+仕様は [docs/specifications.md](./docs/specifications.md) と [docs/markup.md](./docs/markup.md) にある。
 
 ## Installation
 
-TODO: インストール手順を記述してください。
+配布物はまだない。
+開発の節の手順でソースからビルドする。
 
 ## Usage
 
-TODO: 使い方を記述してください。
+```bash
+golem new mybook
+```
+
+| コマンド | 内容 |
+|---|---|
+| `golem new DIR` | プロジェクトを作る |
+| `golem plugin lock` | マニフェストのプラグインを取得し、ハッシュを `plugins.lock` に書く |
+| `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
+| `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod]` | 出力を `build/` に書く |
+| `golem check` | 出力を書かずに検査する |
+| `golem lint` | lint の規則を適用する |
+| `golem fmt [--check] [FILE...]` | 原稿を整形する |
+| `golem lsp` | 標準入出力で LSP を話す |
+| `golem inspect FILE --as cst\|ast\|ir` | 構文木と IR を表示する |
+
+PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
+PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には商用のプリフライト（Acrobat や pdfToolbox など）で確認する。
+フォントの OS/2 の `fsType` が埋め込みを禁じている場合はエラーになる。
+ビルドはプラグインをキャッシュからだけ読み、ネットワークに接続しない。
+診断は `--format json` で JSON にできる。
+終了コードは、成功が 0、エラーの診断があれば 1、使い方の誤りが 2 である。
 
 ## Development
 
@@ -40,8 +64,65 @@ ADR はコミット後に変更しない規約であり、変更が必要な場�
 | FreeType | 2.14.3 |
 | wasmtime | 49.0.2 |
 | zlib | 1.3.2 |
+| hyph-utf8（英語（米国）のハイフネーションのパターン） | コミット 5684c0f |
 
-TODO: ビルド・テスト・実行方法を記述してください。
+HarfBuzz と FreeType は、ソースを `modules/golem-font/cbits/` に同梱して静的にリンクする。
+zlib は Hackage の `zlib-clib` 1.3.2 を同梱版として使う（`cabal.project` で固定）。
+wasmtime はプラットフォームごとの C API の配布物を `scripts/fetch-wasmtime.sh` で取得する（SHA-256 を検証し、`third_party/wasmtime` に置く）。
+
+### ビルドとテスト
+
+GHC 9.10.3 と cabal-install 3.16.1.0 を ghcup で入れる。
+`mise.toml` は ghcup の `bin` を `PATH` に加える。
+C と C++ のコンパイラも必要である。
+
+最初に wasmtime を取得する。
+このスクリプトは、ライブラリの絶対パスを `cabal.project.local` に書き込む。
+
+```bash
+scripts/fetch-wasmtime.sh
+```
+
+```bash
+cabal build all
+```
+
+```bash
+cabal test all
+```
+
+依存の版は `cabal.project.freeze` で固定している。
+このファイルを消してビルドすると、依存の版が変わりうる。
+
+パーサーは `modules/golem-parser/grammar/Golem.peg` から生成し、生成物をコミットする。
+文法を変えたら生成し直す。
+
+```bash
+scripts/gen-parser.sh
+```
+
+テストのうち CDDL のスキーマへの適合の検査は、Rust の `cddl` クレートの CLI（0.10.7）を使う。
+`PATH` にあるか `GOLEM_CDDL` で指定した場合だけ実行され、CI では必ず実行する。
+
+```bash
+cargo install cddl --version 0.10.7 --locked
+```
+
+### 整形と検査
+
+Haskell のコードは fourmolu 0.21.0.0 で整形し（設定は `fourmolu.yaml`）、hlint 3.10 で検査する。
+どちらも CI の `format` ジョブで検査する。
+
+### CI
+
+`.github/workflows/ci.yml` に次のジョブがある。
+
+| ジョブ | 内容 |
+|---|---|
+| `adr` | コミット済みの ADR が変更されていないことを検査する |
+| `build` | x86-64 と aarch64 の Linux でビルドとテストを行い、生成したパーサーが文法と一致すること、EPUB が epubcheck を通ることを確かめる |
+| `determinism` | 決まった入力（`scripts/determinism.sh`）の出力のハッシュを、二つのアーキテクチャで比べる |
+| `format` | fourmolu と hlint で検査する |
 
 ## License
 
