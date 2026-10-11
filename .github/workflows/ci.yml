@@ -17,3 +17,84 @@ jobs:
         with:
           base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: setup
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: "9.10.3"
+          cabal-version: "3.16.1.0"
+      - uses: actions/cache@v6
+        with:
+          path: ${{ steps.setup.outputs.cabal-store }}
+          key: cabal-${{ matrix.runner }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}
+          restore-keys: cabal-${{ matrix.runner }}-
+      - name: wasmtime C API (golem-plugin ADR 0001)
+        run: scripts/fetch-wasmtime.sh
+      - name: qpdf and epubcheck (golem-pdf ADR 0001, golem-epub ADR 0001)
+        run: sudo apt-get update && sudo apt-get install -y qpdf epubcheck
+      - name: cddl CLI for the schema test (golem-doc ADR 0001)
+        run: cargo install cddl --version 0.10.7 --locked
+      - run: cabal build all
+      - run: cabal test all
+      - name: Generated parser matches the grammar
+        run: |
+          scripts/gen-parser.sh
+          git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs
+      - name: The EPUB passes epubcheck
+        working-directory: modules/golem-driver/test/fixtures/sample
+        run: |
+          "$(cabal list-bin -v0 golem)" build --target epub
+          epubcheck build/epub/book.epub
+      - name: Outputs for the determinism check
+        run: GOLEM="$(cabal list-bin -v0 golem)" scripts/determinism.sh > determinism-${{ matrix.runner }}.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: determinism-${{ matrix.runner }}
+          path: determinism-${{ matrix.runner }}.txt
+
+  determinism:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: determinism-*
+          merge-multiple: true
+      - name: Outputs are byte-identical on x86-64 and aarch64
+        run: diff determinism-ubuntu-24.04.txt determinism-ubuntu-24.04-arm.txt
+
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: haskell-actions/run-fourmolu@v13
+        with:
+          version: "0.21.0.0"
+          pattern: |
+            modules/**/*.hs
+            !modules/golem-parser/src/Golem/Parser/Generated.hs
+      - id: setup
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: "9.10.3"
+          cabal-version: "3.16.1.0"
+      - uses: actions/cache@v6
+        with:
+          path: ${{ steps.setup.outputs.cabal-store }}
+          key: hlint-3.10-${{ runner.os }}-${{ runner.arch }}
+      - name: Install hlint outside the project (the freeze file must not constrain it)
+        working-directory: ${{ runner.temp }}
+        run: cabal install hlint-3.10 --installdir="$HOME/.local/bin" --overwrite-policy=always
+      - run: '"$HOME/.local/bin/hlint" modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs"'

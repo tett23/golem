@@ -1,0 +1,167 @@
+{- | Plain-text output, vertical and horizontal variants
+(golem-text ADR 0001).
+-}
+module Golem.Text
+  ( TextVariant (..),
+    renderText,
+    renderNumber,
+  )
+where
+
+import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe, isJust)
+import Data.Text (Text)
+import Data.Text qualified as T
+import Golem.Doc.Assemble
+import Golem.Doc.IR
+import Golem.Doc.Numerals
+import Golem.Syntax.Span
+import System.FilePath (replaceExtension)
+
+data TextVariant = Vertical | Horizontal
+  deriving stock (Eq, Show)
+
+{- | Number notation: kanji in vertical text (tate-chu-yoko does not exist
+in plain text), arabic in horizontal text.
+-}
+renderNumber :: TextVariant -> Text -> Integer -> Maybe NumberStyle -> Text
+renderNumber Horizontal _ n _ = T.pack (show n)
+renderNumber Vertical def n st = case fromMaybe (styleOf def) st of
+  StyleKanjiDigits -> kanjiDigits n
+  _ -> kanji n
+  where
+    styleOf = \case
+      "kanji-digits" -> StyleKanjiDigits
+      "tcy" -> StyleTcy
+      _ -> StyleKanji
+
+data Ctx = Ctx
+  { cVariant :: TextVariant,
+    cNumberDefault :: Text,
+    cBook :: Book,
+    cProfileDev :: Bool
+  }
+
+{- | One text file per source file, named after the source with a .txt
+extension.
+-}
+renderText :: Text -> Bool -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
+renderText numberDefault dev variant ft book =
+  [ (replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "txt", file ctx d)
+  | d@(Document fid _) <- bookDocs book
+  ]
+  where
+    ctx = Ctx variant numberDefault book dev
+
+file :: Ctx -> Document -> Text
+file c (Document _ bs) =
+  let body = T.intercalate "\n\n" (filter (not . T.null) (map (block c 0) bs))
+      notes = [(n, xs) | Note _ n xs <- concatMap blockInlines bs]
+      noteMark n = (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
+      noteText = T.intercalate "\n" [noteMark n <> " " <> inlines c xs | (n, xs) <- notes]
+      full = if null notes then body else body <> "\n\n" <> noteText
+   in if T.null full then "" else full <> "\n"
+
+indentBy :: Int -> Text
+indentBy n = T.replicate n "　"
+
+block :: Ctx -> Int -> Block -> Text
+block c ind (Block sp _ body) = case body of
+  Paragraph is -> indentBy ind <> inlines c is <> sidenotes is
+  Heading _ _ is ->
+    let num = Map.lookup sp (bookHeadings (cBook c)) >>= hiNumberText
+     in maybe "" (<> "　") num <> inlines c is
+  BulletList items -> T.intercalate "\n" [indentBy ind <> "・" <> itemText (ind + 1) it | it <- items]
+  OrderedList items ->
+    T.intercalate "\n" [indentBy ind <> marker n <> itemText (ind + 1) it | (n, it) <- zip (itemNumbers items) items]
+  DefList gs ->
+    T.intercalate
+      "\n"
+      [ T.intercalate "\n" (map ((indentBy ind <>) . inlines c) ts <> [T.intercalate "\n" (map (block c (ind + 1)) d) | d <- ds])
+      | DefGroup ts ds <- gs
+      ]
+  Table _ h rows -> T.intercalate "\n" (map (T.intercalate "\t" . map (inlines c)) (h : rows))
+  CodeBlock _ t -> t
+  FigureBlock f ->
+    let num = fromMaybe "" (Map.lookup sp (bookFigures (cBook c)))
+        cap = T.intercalate "" [inlines c is | Block _ _ (Paragraph is) <- figCaption f]
+     in "［" <> T.strip (num <> "　" <> cap) <> "］"
+  ChannelOutput (TocOutput d) ->
+    T.intercalate "\n" [maybe "" (<> "　") (teNumber e) <> inlines c (teTitle e) | e <- bookToc (cBook c), teLevel e <= d]
+  ChannelOutput IndexOutput -> ""
+  ChannelOutput BibliographyOutput ->
+    T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> k | (k, n) <- bookCitations (cBook c)]
+  where
+    marker n = if cVariant c == Vertical then kanji n <> "、" else T.pack (show n) <> ". "
+    itemText i (ListItem _ bs) = case bs of
+      (Block _ _ (Paragraph is) : rest) -> T.intercalate "\n" (inlines c is : map (block c i) rest)
+      _ -> T.intercalate "\n" (map (block c i) bs)
+    sidenotes is =
+      T.concat ["\n※" <> T.pack (show n) <> " " <> inlines c xs | Sidenote _ n xs <- is]
+
+itemNumbers :: [ListItem] -> [Integer]
+itemNumbers = go 1
+  where
+    go _ [] = []
+    go next (ListItem n _ : rest) = let k = fromMaybe next n in k : go (k + 1) rest
+
+blockInlines :: Block -> [Inline]
+blockInlines (Block _ _ body) = case body of
+  Paragraph is -> deep is
+  Heading _ _ is -> deep is
+  BulletList items -> concatMap (concatMap blockInlines . itemBlocks) items
+  OrderedList items -> concatMap (concatMap blockInlines . itemBlocks) items
+  DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockInlines) ds) gs
+  Table _ h rows -> concatMap deep h <> concatMap (concatMap deep) rows
+  FigureBlock f -> concatMap blockInlines (figCaption f)
+  _ -> []
+  where
+    deep = concatMap (\i -> i : nested i)
+    nested = \case
+      Strong _ xs -> deep xs
+      Bold _ xs -> deep xs
+      Italic _ xs -> deep xs
+      Kenten _ _ xs -> deep xs
+      Color _ _ xs -> deep xs
+      CharStyle _ _ xs -> deep xs
+      _ -> []
+
+inlines :: Ctx -> [InlineF r] -> Text
+inlines c = T.concat . map (inline c)
+
+inline :: Ctx -> InlineF r -> Text
+inline c = \case
+  Text _ t -> t
+  Strong _ xs -> inlines c xs
+  Bold _ xs -> inlines c xs
+  Italic _ xs -> inlines c xs
+  Ruby _ _ segs -> ruby c segs
+  Kenten _ _ xs -> inlines c xs
+  Color _ _ xs -> inlines c xs
+  CharStyle _ _ xs -> inlines c xs
+  Tcy _ t -> t
+  Number _ n st -> renderNumber (cVariant c) (cNumberDefault c) n st
+  Ref _ RefPage l -> case Map.lookup l (bookLabels (cBook c)) of
+    Just t -> "「" <> inlines c (ltTitle t) <> "」"
+    Nothing -> ""
+  Ref {} -> ""
+  Deferred {} -> ""
+  Note _ n _ -> (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
+  Sidenote _ n _ -> "※" <> T.pack (show n)
+  IndexMark {} -> ""
+  Cite _ k -> case lookup k (bookCitations (cBook c)) of
+    Just n -> "[" <> T.pack (show n) <> "]"
+    Nothing -> ""
+  ProofComment _ t -> if cProfileDev c then "【校正：" <> t <> "】" else ""
+
+{- | Ruby as 「対象（読み）」. Consecutive segments with readings are joined;
+segments without a reading are written as they are.
+-}
+ruby :: Ctx -> [RubySegment] -> Text
+ruby c = go
+  where
+    go [] = ""
+    go segs@(RubySegment _ (Just _) : _) =
+      let (withR, rest) = span (\(RubySegment _ r) -> isJust r) segs
+       in T.concat [inlines c b | RubySegment b _ <- withR] <> "（" <> T.concat [r | RubySegment _ (Just r) <- withR] <> "）" <> go rest
+    go (RubySegment b Nothing : rest) = inlines c b <> go rest

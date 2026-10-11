@@ -1,0 +1,53 @@
+cabal-version:      3.0
+name:               golem-parser
+version:            0.1.0.0
+synopsis:           Golem parser: lossless CST, grammar and AST
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Text
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:
+    Golem.Parser
+    Golem.Parser.AST
+    Golem.Parser.CST
+    Golem.Parser.Convert
+    Golem.Parser.Lower
+    Golem.Parser.Generated
+    Golem.Parser.Read
+  build-depends:
+    , base          >=4.20 && <4.21
+    , bytestring    >=0.11 && <0.13
+    , containers    >=0.6  && <0.8
+    , golem-syntax
+    , peg-runtime   >=0.1  && <0.2
+    , text          >=2.0  && <2.2
+  default-language: GHC2021
+  -- The generated module is not ours to warn about.
+  ghc-options: -Wno-unused-matches -Wno-unused-local-binds -Wno-name-shadowing -Wno-unused-imports
+
+test-suite golem-parser-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    CSTSpec ParserSpec LowerSpec
+  build-depends:
+    , base
+    , bytestring
+    , golem-parser
+    , golem-syntax
+    , hedgehog       >=1.4 && <1.6
+    , tasty          >=1.4 && <1.6
+    , tasty-hedgehog >=1.4 && <1.5
+    , tasty-hunit    >=0.10 && <0.11
+    , text
+  default-language: GHC2021

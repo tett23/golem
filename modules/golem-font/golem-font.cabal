@@ -1,0 +1,86 @@
+cabal-version:      3.0
+name:               golem-font
+version:            0.1.0.0
+synopsis:           font loading, shaping and subsetting for Golem (HarfBuzz and FreeType)
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Text
+build-type:         Simple
+extra-source-files:
+  cbits/golem/*.h
+  cbits/harfbuzz/src/*.hh
+  cbits/harfbuzz/src/*.h
+  cbits/harfbuzz/src/*.cc
+  cbits/harfbuzz/src/**/*.hh
+  cbits/harfbuzz/src/**/*.cc
+  cbits/freetype/include/**/*.h
+  cbits/freetype/src/**/*.c
+  cbits/freetype/src/**/*.h
+extra-doc-files:
+  cbits/harfbuzz/COPYING
+  cbits/freetype/LICENSE.TXT
+  cbits/freetype/docs/FTL.TXT
+  test/fonts/OFL.txt
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Golem.Font
+  build-depends:
+    , base          >=4.20 && <4.21
+    , bytestring    >=0.11 && <0.13
+    , containers    >=0.6  && <0.8
+    , text          >=2.0  && <2.2
+  default-language: GHC2021
+  include-dirs:     cbits/golem cbits/freetype/include cbits/harfbuzz/src
+  -- HarfBuzz 14.6.0 and FreeType 2.14.3, statically linked; no fused
+  -- multiply-add, so results match across architectures (ADR 0001)
+  c-sources:
+    cbits/golem/golem_font.c
+    cbits/freetype/src/base/ftbase.c
+    cbits/freetype/src/base/ftinit.c
+    cbits/freetype/src/base/ftsystem.c
+    cbits/freetype/src/base/ftdebug.c
+    cbits/freetype/src/base/ftbbox.c
+    cbits/freetype/src/base/ftglyph.c
+    cbits/freetype/src/base/ftmm.c
+    cbits/freetype/src/base/ftfstype.c
+    cbits/freetype/src/base/ftbitmap.c
+    cbits/freetype/src/base/ftcid.c
+    cbits/freetype/src/truetype/truetype.c
+    cbits/freetype/src/cff/cff.c
+    cbits/freetype/src/sfnt/sfnt.c
+    cbits/freetype/src/psaux/psaux.c
+    cbits/freetype/src/psnames/psnames.c
+    cbits/freetype/src/pshinter/pshinter.c
+    cbits/freetype/src/smooth/smooth.c
+    cbits/freetype/src/gzip/ftgzip.c
+  cc-options:       -ffp-contract=off -DFT2_BUILD_LIBRARY -DFT_CONFIG_MODULES_H=<golem_ftmodule.h> -O2
+  cxx-sources:
+    cbits/harfbuzz/src/harfbuzz-world.cc
+  cxx-options:      -DHB_HAS_SUBSET -ffp-contract=off -std=c++11 -fno-exceptions -fno-rtti -fno-threadsafe-statics -O2
+  if os(darwin)
+    extra-libraries: c++
+  else
+    extra-libraries: stdc++
+
+test-suite golem-font-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  build-depends:
+    , base
+    , bytestring
+    , containers
+    , golem-font
+    , tasty          >=1.4 && <1.6
+    , tasty-golden   >=2.3 && <2.4
+    , tasty-hunit    >=0.10 && <0.11
+    , text
+  default-language: GHC2021

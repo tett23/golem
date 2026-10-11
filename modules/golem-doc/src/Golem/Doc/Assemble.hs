@@ -1,0 +1,336 @@
+{- | Document assembly, S1 (golem-doc ADR 0002): values that depend on the
+whole document. Page numbers (S2) remain as 'Ref' 'RefPage'.
+-}
+module Golem.Doc.Assemble
+  ( AssembleConfig (..),
+    DocValues (..),
+    Book (..),
+    HeadingInfo (..),
+    LabelTarget (..),
+    TocEntry (..),
+    IndexGroup (..),
+    assemble,
+    headingAnchor,
+    inlineText,
+  )
+where
+
+import Control.Monad.State.Strict
+import Data.Bifunctor (first)
+import Data.List (sortOn)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
+import Data.Set (Set)
+import Data.Set qualified as Set
+import Data.Text (Text)
+import Data.Text qualified as T
+import Golem.Doc.Collation
+import Golem.Doc.IR
+import Golem.Doc.Numerals
+import Golem.Syntax
+
+data AssembleConfig = AssembleConfig
+  { acHeadingFormats :: !(Map Int Text),
+    acFigureFormat :: !Text
+  }
+
+-- | The values of the @doc@ namespace.
+newtype DocValues = DocValues {dvChapterCount :: Integer}
+
+data HeadingInfo = HeadingInfo
+  { hiLevel :: !Int,
+    hiNumbers :: !(Maybe [Integer]),
+    hiNumberText :: !(Maybe Text),
+    hiTitle :: ![Inline],
+    hiAnchor :: !Text,
+    hiFile :: !FileId
+  }
+  deriving stock (Eq, Show)
+
+data LabelTarget = LabelTarget
+  { ltSpan :: !SrcSpan,
+    ltNumber :: !(Maybe Inline),
+    ltTitle :: ![Inline],
+    ltAnchor :: !Text,
+    ltFile :: !FileId
+  }
+  deriving stock (Eq, Show)
+
+data TocEntry = TocEntry
+  { teLevel :: !Int,
+    teNumber :: !(Maybe Text),
+    teTitle :: ![Inline],
+    teAnchor :: !Text,
+    teFile :: !FileId
+  }
+  deriving stock (Eq, Show)
+
+data IndexGroup = IndexGroup
+  { igTerms :: ![Text],
+    igReadings :: ![Text],
+    igLocations :: ![(FileId, SrcSpan)]
+  }
+  deriving stock (Eq, Show)
+
+data Book = Book
+  { bookDocs :: ![Document],
+    bookHeadings :: !(Map SrcSpan HeadingInfo),
+    bookFigures :: !(Map SrcSpan Text),
+    bookToc :: ![TocEntry],
+    bookTocDepth :: !(Maybe Int),
+    bookIndex :: ![IndexGroup],
+    bookCitations :: ![(Text, Int)],
+    bookLabels :: !(Map Text LabelTarget),
+    bookReferenced :: !(Set Text)
+  }
+
+headingAnchor :: Maybe Text -> SrcSpan -> Text
+headingAnchor (Just l) _ = l
+headingAnchor Nothing (SrcSpan (FileId f) s _) = "h-" <> T.pack (show f) <> "-" <> T.pack (show s)
+
+-- | The plain text of inlines (used for titles in plain contexts).
+inlineText :: InlineF r -> Text
+inlineText = \case
+  Text _ t -> t
+  Strong _ xs -> foldMap inlineText xs
+  Bold _ xs -> foldMap inlineText xs
+  Italic _ xs -> foldMap inlineText xs
+  Ruby _ _ segs -> foldMap (foldMap inlineText . rsBase) segs
+  Kenten _ _ xs -> foldMap inlineText xs
+  Color _ _ xs -> foldMap inlineText xs
+  CharStyle _ _ xs -> foldMap inlineText xs
+  Tcy _ t -> t
+  Number _ n _ -> T.pack (show n)
+  _ -> ""
+
+defaultHeadingFormat :: Int -> Text
+defaultHeadingFormat = \case
+  1 -> "{n}"
+  2 -> "{1}.{n}"
+  _ -> "{1}.{2}.{n}"
+
+-- ------------------------------------------------------------------ numbering
+
+data NumSt = NumSt
+  { nsCounters :: ![Integer], -- current numbers by level (1-based index)
+    nsChapter :: !(Maybe Integer),
+    nsFigure :: !Integer,
+    nsHeadings :: !(Map SrcSpan HeadingInfo),
+    nsFigures :: !(Map SrcSpan (Maybe Integer, Integer)),
+    nsDiags :: ![Diagnostic]
+  }
+
+numberDocs :: AssembleConfig -> [Document] -> NumSt
+numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.empty Map.empty [])
+  where
+    doc (Document fid bs) = mapM_ (blk fid) bs
+    blk fid (Block sp lbl b) = case b of
+      Heading l a is -> do
+        st <- get
+        let cs = nsCounters st
+            (cs', nums)
+              | haNoNumber a = (cs, Nothing)
+              | otherwise =
+                  let cur = cs !! (l - 1)
+                      n = fromMaybe (cur + 1) (haNumber a)
+                      upd = take (l - 1) cs <> [n] <> replicate (3 - l) 0
+                   in (upd, Just (take l upd))
+            fmt = fromMaybe (defaultHeadingFormat l) (Map.lookup l (acHeadingFormats cfg))
+            numText = (\ns -> formatNumber fmt ns (Just (head' ns))) <$> nums
+            chapter = if l == 1 then head' <$> nums else nsChapter st
+            figureReset = if l == 1 then 0 else nsFigure st
+            info = HeadingInfo l nums numText (fromMaybe is (haTocTitle a)) (headingAnchor lbl sp) fid
+        put st {nsCounters = cs', nsChapter = if l == 1 then chapter else nsChapter st, nsFigure = figureReset, nsHeadings = Map.insert sp info (nsHeadings st)}
+      FigureBlock f -> do
+        st <- get
+        let n = nsFigure st + 1
+        put st {nsFigure = n, nsFigures = Map.insert sp (nsChapter st, n) (nsFigures st)}
+        mapM_ (blk fid) (figCaption f)
+      BulletList items -> mapM_ (mapM_ (blk fid) . itemBlocks) items
+      OrderedList items -> mapM_ (mapM_ (blk fid) . itemBlocks) items
+      DefList gs -> mapM_ (mapM_ (mapM_ (blk fid)) . dgDefs) gs
+      _ -> pure ()
+    head' = \case
+      (x : _) -> x
+      [] -> 0
+
+-- ------------------------------------------------------------------ assembly
+
+assemble ::
+  AssembleConfig ->
+  (DocValues -> DeferredExpr -> Either Diagnostic Text) ->
+  [Document] ->
+  (Book, [Diagnostic])
+assemble cfg evalDeferred docs =
+  let ns = numberDocs cfg docs
+      figureText sp = case Map.lookup sp (nsFigures ns) of
+        Just (ch, n) -> Just (formatNumber (acFigureFormat cfg) [n] ch)
+        Nothing -> Nothing
+      figureErrors =
+        [ diagnostic "G0404" Error sp "最初の章より前の図版には、章番号を使う図番号を振れません"
+        | "{chapter}" `T.isInfixOf` acFigureFormat cfg,
+          (sp, (Nothing, _)) <- Map.toList (nsFigures ns)
+        ]
+      (labels, labelDiags) = collectLabels ns docs
+      chapterCount = toInteger (length [() | HeadingInfo {hiLevel = 1, hiNumbers = Just _} <- Map.elems (nsHeadings ns)])
+      dv = DocValues chapterCount
+      (docs', (refd, resolveDiags)) = runState (mapM (resolveDoc labels dv evalDeferred) docs) (Set.empty, [])
+      tocs = [(d, sp) | Document _ bs <- docs, Block sp _ (ChannelOutput (TocOutput d)) <- allBlocks bs]
+      tocDiags = case tocs of
+        (_ : (_, sp) : _) -> [diagnostic "G0402" Error sp "@toc は文書に一つだけ置けます"]
+        _ -> []
+      toc =
+        [ TocEntry (hiLevel h) (hiNumberText h) (hiTitle h) (hiAnchor h) (hiFile h)
+        | Document _ bs <- docs,
+          Block sp _ (Heading _ a _) <- allBlocks bs,
+          not (haNoToc a),
+          Just h <- [Map.lookup sp (nsHeadings ns)]
+        ]
+      citations = numberCitations docs
+   in ( Book
+          { bookDocs = docs',
+            bookHeadings = nsHeadings ns,
+            bookFigures = Map.mapMaybeWithKey (\sp _ -> figureText sp) (nsFigures ns),
+            bookToc = toc,
+            bookTocDepth = case tocs of
+              ((d, _) : _) -> Just d
+              [] -> Nothing,
+            bookIndex = indexGroups docs,
+            bookCitations = citations,
+            bookLabels = labels,
+            bookReferenced = refd
+          },
+        sortDiagnostics (nsDiags ns <> figureErrors <> labelDiags <> resolveDiags <> tocDiags)
+      )
+
+-- | Every block in document order, descending into containers.
+allBlocks :: [Block] -> [Block]
+allBlocks = concatMap go
+  where
+    go b@(Block _ _ body) =
+      b : case body of
+        BulletList items -> allBlocks (concatMap itemBlocks items)
+        OrderedList items -> allBlocks (concatMap itemBlocks items)
+        DefList gs -> allBlocks (concat (concatMap dgDefs gs))
+        FigureBlock f -> allBlocks (figCaption f)
+        _ -> []
+
+collectLabels :: NumSt -> [Document] -> (Map Text LabelTarget, [Diagnostic])
+collectLabels ns docs = foldl add (Map.empty, []) targets
+  where
+    targets =
+      [ (l, LabelTarget sp num title (headingAnchor (Just l) sp) fid)
+      | Document fid bs <- docs,
+        Block sp (Just l) body <- allBlocks bs,
+        let (num, title) = describe sp body
+      ]
+    describe sp = \case
+      Heading _ _ is -> case Map.lookup sp (nsHeadings ns) of
+        Just HeadingInfo {hiNumbers = Just [n], hiTitle = t} -> (Just (Number sp n Nothing), t)
+        Just HeadingInfo {hiNumbers = Just nums, hiTitle = t} -> (Just (Text sp (T.intercalate "." (map (T.pack . show) nums))), t)
+        Just h -> (Nothing, hiTitle h)
+        Nothing -> (Nothing, is)
+      FigureBlock f -> case Map.lookup sp (nsFigures ns) of
+        Just (ch, n) -> (Just (Text sp (maybe "" (\c -> T.pack (show c) <> "-") ch <> T.pack (show n))), [Text sp (figAlt f)])
+        Nothing -> (Nothing, [Text sp (figAlt f)])
+      _ -> (Nothing, [])
+    add (m, ds) (l, t) = case Map.lookup l m of
+      Just prev ->
+        ( m,
+          ds
+            <> [ (diagnostic "G0401" Error (ltSpan t) ("ラベルが重複しています: " <> l))
+                   { diagRelated = [(ltSpan prev, "最初の定義")]
+                   }
+               ]
+        )
+      Nothing -> (Map.insert l t m, ds)
+
+type R = State (Set Text, [Diagnostic])
+
+resolveDoc :: Map Text LabelTarget -> DocValues -> (DocValues -> DeferredExpr -> Either Diagnostic Text) -> Document -> R Document
+resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk bs
+  where
+    blk (Block sp l body) =
+      Block sp l <$> case body of
+        Paragraph is -> Paragraph <$> inls is
+        Heading lv a is -> pure (Heading lv a is)
+        BulletList items -> BulletList <$> mapM item items
+        OrderedList items -> OrderedList <$> mapM item items
+        DefList gs -> DefList <$> mapM (\(DefGroup ts ds) -> DefGroup <$> mapM inls ts <*> mapM (mapM blk) ds) gs
+        Table al h rows -> Table al <$> mapM inls h <*> mapM (mapM inls) rows
+        FigureBlock f -> (\c -> FigureBlock f {figCaption = c}) <$> mapM blk (figCaption f)
+        other -> pure other
+    item (ListItem n bs') = ListItem n <$> mapM blk bs'
+    inls is = concat <$> mapM inl is
+    inl :: Inline -> R [Inline]
+    inl = \case
+      Ref sp k l -> do
+        modify' (first (Set.insert l))
+        case (Map.lookup l labels, k) of
+          (Nothing, _) -> do
+            modify' (\(s, ds) -> (s, ds <> [diagnostic "G0403" Error sp ("存在しないラベルへの参照です: " <> l)]))
+            pure []
+          (Just t, RefNumber) -> case ltNumber t of
+            Just n -> pure [relocate sp n]
+            Nothing -> do
+              modify' (\(s, ds) -> (s, ds <> [diagnostic "G0405" Error sp ("番号を持たない要素への参照です: " <> l)]))
+              pure []
+          (Just t, RefTitle) -> pure (map (relocate sp) (ltTitle t))
+          (Just _, RefPage) -> pure [Ref sp k l]
+      Deferred sp e -> case evalDeferred dv e of
+        Left d -> modify' (\(s, ds) -> (s, ds <> [d])) >> pure []
+        Right t -> pure [Text sp t]
+      Strong sp xs -> pure . Strong sp <$> inls xs
+      Bold sp xs -> pure . Bold sp <$> inls xs
+      Italic sp xs -> pure . Italic sp <$> inls xs
+      Kenten sp s xs -> pure . Kenten sp s <$> inls xs
+      Color sp c xs -> pure . Color sp c <$> inls xs
+      CharStyle sp c xs -> pure . CharStyle sp c <$> inls xs
+      Note sp n xs -> pure . Note sp n <$> inls xs
+      Sidenote sp n xs -> pure . Sidenote sp n <$> inls xs
+      other -> pure [other]
+
+-- | Give copied inlines the span of the reference that produced them.
+relocate :: SrcSpan -> Inline -> Inline
+relocate sp = \case
+  Text _ t -> Text sp t
+  Number _ n s -> Number sp n s
+  other -> other
+
+numberCitations :: [Document] -> [(Text, Int)]
+numberCitations docs = zip (dedupe [k | Document _ bs <- docs, Block _ _ body <- allBlocks bs, Cite _ k <- bodyInlines body]) [1 ..]
+  where
+    dedupe = go Set.empty
+    go _ [] = []
+    go seen (x : xs)
+      | x `Set.member` seen = go seen xs
+      | otherwise = x : go (Set.insert x seen) xs
+
+indexGroups :: [Document] -> [IndexGroup]
+indexGroups docs =
+  let marks = [((ieTerms e, ieReadings e), (fid, sp)) | Document fid bs <- docs, Block _ _ body <- allBlocks bs, IndexMark sp e <- bodyInlines body]
+      grouped = Map.toList (Map.fromListWith (flip (<>)) [(k, [loc]) | (k, loc) <- marks])
+      sorted = sortOn (\((ts, rs), _) -> (map collationKey rs, map T.unpack ts)) grouped
+   in [IndexGroup ts rs locs | ((ts, rs), locs) <- sorted]
+
+-- | Inlines of a block body, descending into inline containers.
+bodyInlines :: BlockBody -> [Inline]
+bodyInlines body = concatMap flatten $ case body of
+  Paragraph is -> is
+  Heading _ _ is -> is
+  DefList gs -> concat (concatMap dgTerms gs)
+  Table _ h rows -> concat h <> concat (concat rows)
+  _ -> []
+  where
+    flatten i =
+      i : case i of
+        Strong _ xs -> concatMap flatten xs
+        Bold _ xs -> concatMap flatten xs
+        Italic _ xs -> concatMap flatten xs
+        Kenten _ _ xs -> concatMap flatten xs
+        Color _ _ xs -> concatMap flatten xs
+        CharStyle _ _ xs -> concatMap flatten xs
+        Note _ _ xs -> concatMap flatten xs
+        Sidenote _ _ xs -> concatMap flatten xs
+        _ -> []

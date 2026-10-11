@@ -1,0 +1,90 @@
+module Main (main) where
+
+import Data.Either (isLeft)
+import Data.Map.Strict qualified as Map
+import Golem.LayoutSpec
+import Golem.Project.Style
+import Test.Tasty
+import Test.Tasty.HUnit
+
+main :: IO ()
+main = defaultMain tests
+
+pt :: Integer -> Sp
+pt = (* 65536)
+
+-- A5 = 148mm × 210mm; 18mm and 20mm, rounded once from exact rationals.
+a5W, a5H, mm18, mm20 :: Sp
+a5W = 27494158
+a5H = 39011981
+mm18 = 3343884
+mm20 = 3715427
+
+grid :: Int -> Int -> Int -> Maybe Dim -> Grid
+grid chars ls cols gap = Grid (Abs (pt 10)) chars ls (Abs (pt 17)) cols gap (Abs mm18) (Abs mm20)
+
+styleWith :: Bool -> Bool -> Grid -> Style
+styleWith bindingRight vertical g = defaultStyle {stPage = Just (Page "A5" bindingRight vertical (Just g))}
+
+geom :: Style -> PageGeometry
+geom s = either (error . show) id (pageGeometry s)
+
+tests :: TestTree
+tests =
+  testGroup
+    "golem-layout-spec (ADR 0001)"
+    [ testCase "horizontal, one column, left binding" $ do
+        let g = geom (styleWith False False (grid 30 30 1 Nothing))
+        pgPageSize g @?= (a5W, a5H)
+        -- width 10pt × 30, height 17pt × 29 + 10pt
+        pgTypeArea g @?= Rect mm20 (a5H - mm18 - pt 503) (pt 300) (pt 503)
+        pgTypeAreaEven g @?= Rect (a5W - mm20 - pt 300) (a5H - mm18 - pt 503) (pt 300) (pt 503),
+      testCase "vertical, right binding: odd pages are left pages with the gutter on the right" $ do
+        let g = geom (styleWith True True (grid 40 20 1 Nothing))
+        -- height 10pt × 40, width 17pt × 19 + 10pt
+        pgTypeArea g @?= Rect (a5W - mm20 - pt 333) (a5H - mm18 - pt 400) (pt 333) (pt 400)
+        pgTypeAreaEven g @?= Rect mm20 (a5H - mm18 - pt 400) (pt 333) (pt 400)
+        gutterSide True 1 @?= SideRight
+        gutterSide True 2 @?= SideLeft
+        gutterSide False 1 @?= SideLeft
+        gutterSide False 2 @?= SideRight,
+      testCase "two columns with a gap" $ do
+        let g = geom (styleWith False False (grid 14 30 2 (Just (Zw 2))))
+            Rect x y _ h = pgTypeArea g
+        rectW (pgTypeArea g) @?= pt 300
+        pgColumns g @?= [Rect x y (pt 140) h, Rect (x + pt 160) y (pt 140) h]
+        let gv = geom (styleWith True True (grid 14 20 2 (Just (Zw 2))))
+            Rect vx vy vw vh = pgTypeArea gv
+        vh @?= pt 300
+        pgColumns gv @?= [Rect vx (vy + pt 160) vw (pt 140), Rect vx vy vw (pt 140)],
+      testCase "the line grid has one entry per line at the line pitch" $ do
+        let g = geom (styleWith False False (grid 30 30 1 Nothing))
+        length (pgLineGrid g) @?= 30
+        take 2 (pgLineGrid g) @?= [576717, 576717 + pt 17] -- 10pt × 0.88 = 576716.8sp
+        let gv = geom (styleWith True True (grid 40 20 1 Nothing))
+        take 2 (pgLineGrid gv) @?= [pt 5, pt 22],
+      testCase "a type area larger than the page is an error" $ do
+        assertBool "too wide" (isLeft (pageGeometry (styleWith False False (grid 40 30 1 Nothing))))
+        assertBool "too many lines" (isLeft (pageGeometry (styleWith False False (grid 30 60 1 Nothing)))),
+      testCase "sidenote column on the fore-edge side; errors when vertical or too wide" $ do
+        let sn w = SidenoteStyle (Abs (pt w)) (Abs (pt 10)) Nothing Nothing "{n}"
+            s = (styleWith False False (grid 25 30 1 Nothing)) {stSidenotes = Just (sn 60)}
+            g = geom s
+            Rect ox oy _ oh = pgTypeArea g
+            Rect ex _ _ _ = pgTypeAreaEven g
+        sidenoteAreaFor g 1 @?= Just (Rect (ox + pt 250 + pt 10) oy (pt 60) oh)
+        sidenoteAreaFor g 2 @?= Just (Rect (ex - pt 10 - pt 60) oy (pt 60) oh)
+        assertBool "too wide" (isLeft (pageGeometry s {stSidenotes = Just (sn 200)}))
+        assertBool "vertical" (isLeft (pageGeometry ((styleWith True True (grid 40 20 1 Nothing)) {stSidenotes = Just (sn 20)}))),
+      testCase "running heads and folios: outside is the fore-edge, swapped on even pages" $ do
+        let s = (styleWith False False (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just ("top-outside", "heading.1.short")) (Just ("bottom-center", "{n}")))]}
+            g = geom s
+            Rect ox oy ow oh = pgTypeArea g
+            Rect ex _ _ _ = pgTypeAreaEven g
+        case Map.lookup "body" (pgMasters g) of
+          Just (MasterGeometry (Just (_, ho, he)) (Just (_, fo, _))) -> do
+            ho @?= Anchor (ox + ow) ((oy + oh + a5H) `div` 2) AlignEnd
+            he @?= Anchor ex ((oy + oh + a5H) `div` 2) AlignStart
+            fo @?= Anchor (ox + ow `div` 2) (oy `div` 2) AlignCenter
+          other -> assertFailure (show other)
+    ]

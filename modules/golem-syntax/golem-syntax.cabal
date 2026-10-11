@@ -1,0 +1,48 @@
+cabal-version:      3.0
+name:               golem-syntax
+version:            0.1.0.0
+synopsis:           Source positions and diagnostics for Golem
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Text
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:
+    Golem.Syntax
+    Golem.Syntax.Span
+    Golem.Syntax.Position
+    Golem.Syntax.Diagnostic
+    Golem.Syntax.Render
+    Golem.Syntax.Sha256
+  build-depends:
+    , array         >=0.5  && <0.6
+    , base        >=4.20 && <4.21
+    , bytestring  >=0.11 && <0.13
+    , containers  >=0.6  && <0.8
+    , text        >=2.0  && <2.2
+  default-language: GHC2021
+
+test-suite golem-syntax-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  build-depends:
+    , base
+    , bytestring
+    , containers
+    , golem-syntax
+    , hedgehog       >=1.4 && <1.6
+    , tasty          >=1.4 && <1.6
+    , tasty-hedgehog >=1.4 && <1.5
+    , tasty-hunit    >=0.10 && <0.11
+    , text
+  default-language: GHC2021

@@ -1,0 +1,79 @@
+; The semantic IR of Golem (golem-doc ADR 0001). This file is canonical:
+; the Haskell types in Golem.Doc.IR mirror it. Sum types are arrays whose
+; first element is a fixed tag; tags are never reused.
+
+document = [abi-version: 1, file: uint, blocks: [* block]]
+
+span = [file: uint, start: uint, end: uint]
+
+block = [span, label: tstr / null, body: block-body]
+
+block-body =
+    [0, inlines]                                   ; paragraph
+  / [1, level: 1..3, heading-attrs, inlines]        ; heading
+  / [2, [* list-item]]                             ; bullet list
+  / [3, [* list-item]]                             ; ordered list
+  / [4, [* def-group]]                             ; definition list
+  / [5, [* alignment], [* inlines], [* [* inlines]]] ; table
+  / [6, lang: tstr / null, code: tstr]             ; code block
+  / [7, figure]                                    ; figure
+  / [8, channel]                                   ; channel output
+
+heading-attrs = [toc-title: inlines / null, number: int / null, nonumber: bool, notoc: bool]
+list-item = [number: int / null, [* block]]
+def-group = [terms: [+ inlines], defs: [+ [* block]]]
+alignment = 0..3                                   ; default, left, center, right
+figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block]]
+channel = [0, depth: uint] / [1] / [2]             ; toc, index, bibliography
+
+inlines = [* inline]
+inlines-no-ruby = [* inline-no-ruby]
+
+inline = ruby / inline-no-ruby
+ruby = [4, span, [+ ruby-segment]]
+ruby-segment = [base: inlines-no-ruby, reading: tstr / null]
+
+inline-no-ruby =
+    [0, span, tstr]                                ; text
+  / [1, span, inlines]                             ; strong
+  / [2, span, inlines]                             ; bold
+  / [3, span, inlines]                             ; italic
+  / [5, span, shape: tstr / null, inlines]         ; kenten
+  / [6, span, swatch: tstr, inlines]               ; color
+  / [7, span, style: tstr, inlines]                ; character style
+  / [8, span, tstr]                                ; tate-chu-yoko
+  / [9, span, int, number-style / null]            ; number
+  / [10, span, ref-kind, label: tstr]              ; reference
+  / [11, span, expr]                               ; deferred expression (S1)
+  / [12, span, uint, inlines]                      ; note
+  / [13, span, uint, inlines]                      ; sidenote
+  / [14, span, terms: [1*2 tstr], readings: [1*2 tstr]] ; index mark
+  / [15, span, key: tstr]                          ; citation
+  / [16, span, tstr]                               ; proofreading comment
+
+number-style = 0..2                                ; kanji, kanji-digits, tcy
+ref-kind = 0..2                                    ; number, title, page
+
+expr =
+    [0, span, int]
+  / [1, span, float]
+  / [2, span, tstr]
+  / [3, span, bool]
+  / [4, span]
+  / [5, span, [* expr]]
+  / [6, span, [* [tstr, expr]]]
+  / [7, span, [+ tstr]]
+  / [8, span, tstr, [* expr]]
+  / [9, span, expr]
+  / [10, span, 0..11, expr, expr]
+  / [11, span]
+
+; plugin requests and responses (golem-plugin ADR 0001)
+command-request = [0, name: tstr, args: [* argument], slots: [* inlines], span]
+filter-request = [1, name: tstr, document]
+argument = [0, value] / [1, key: tstr, value]
+value = int / float / tstr / bool / null / [* value]
+response = [output: inlines / document, diagnostics: [* plugin-diagnostic]]
+plugin-diagnostic = [code: tstr, severity: 0 / 1, span, message: tstr]
+; golem_describe: the names of the commands and filters a plugin provides
+description = [commands: [* tstr], filters: [* tstr]]

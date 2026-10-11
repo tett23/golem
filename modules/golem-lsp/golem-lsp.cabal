@@ -1,0 +1,63 @@
+cabal-version:      3.0
+name:               golem-lsp
+version:            0.1.0.0
+synopsis:           language server for Golem
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Text
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Golem.Lsp.Workspace
+                    Golem.Lsp.Features
+                    Golem.Lsp.Server
+  build-depends:
+    , base          >=4.20 && <4.21
+    , containers    >=0.6  && <0.8
+    , directory     >=1.3  && <1.4
+    , filepath      >=1.4  && <1.6
+    , golem-doc
+    , golem-driver
+    , golem-eval
+    , golem-fmt
+    , golem-lint
+    , golem-parser
+    , golem-project
+    , golem-syntax
+    , bytestring    >=0.11 && <0.13
+    , lsp           >=2.7  && <2.9
+    , lsp-types     >=2.3  && <2.5
+    , stm
+    , text          >=2.0  && <2.2
+  default-language: GHC2021
+
+test-suite golem-lsp-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  ghc-options:      -threaded
+  build-depends:
+    , base
+    , bytestring
+    , containers
+    , directory
+    , filepath
+    , golem-lsp
+    , golem-syntax
+    , lsp
+    , lsp-test       >=0.17 && <0.19
+    , lsp-types
+    , process
+    , tasty          >=1.4 && <1.6
+    , tasty-golden   >=2.3 && <2.4
+    , tasty-hunit    >=0.10 && <0.11
+    , text
+  default-language: GHC2021

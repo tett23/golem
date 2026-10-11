@@ -1,0 +1,8 @@
+@import common/values.gm as values
+
+@label intro
+# はじめに
+
+版は[= values.version]、合計は[= 1 + 2]。全[= doc.chapters.count]章。😀[ref-number second]
+
+## 節

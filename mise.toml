@@ -1,0 +1,6 @@
+# GHC and cabal-install come from ghcup (docs/adr/0001). The versions are
+# recorded here and in cabal.project.
+[env]
+_.path = ["{{env.HOME}}/.ghcup/bin"]
+GOLEM_GHC_VERSION = "9.10.3"
+GOLEM_CABAL_VERSION = "3.16.1.0"

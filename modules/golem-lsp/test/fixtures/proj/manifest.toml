@@ -1,0 +1,9 @@
+chapters = ["a.gm", "b.gm"]
+
+[metadata]
+id = "urn:uuid:11111111-2222-4333-8444-555555555555"
+title = "LSP"
+language = "ja"
+date = 2026-10-11
+
+[targets.html]
