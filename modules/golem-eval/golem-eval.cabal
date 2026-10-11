@@ -1,0 +1,51 @@
+cabal-version:      3.0
+name:               golem-eval
+version:            0.1.0.0
+synopsis:           Compile-time evaluation for Golem
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Text
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:
+    Golem.Eval.Expr
+    Golem.Eval.File
+    Golem.Eval.Number
+    Golem.Eval.Value
+  build-depends:
+    , base          >=4.20 && <4.21
+    , containers    >=0.6  && <0.8
+    , golem-doc
+    , golem-parser
+    , mtl           >=2.3  && <2.4
+    , golem-syntax
+    , text          >=2.0  && <2.2
+  default-language: GHC2021
+
+test-suite golem-eval-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    ExprSpec FileSpec
+  build-depends:
+    , base
+    , containers
+    , golem-doc
+    , golem-eval
+    , golem-parser
+    , golem-syntax
+    , hedgehog       >=1.4 && <1.6
+    , tasty          >=1.4 && <1.6
+    , tasty-hedgehog >=1.4 && <1.5
+    , tasty-hunit    >=0.10 && <0.11
+    , text
+  default-language: GHC2021

@@ -1,0 +1,570 @@
+# The Golem grammar (golem-parser ADR 0002, 0003, 0004).
+#
+# Only the lossless syntax tree is used: every rule has type () except the
+# few whose values feed semantic predicates. Rules whose names appear in
+# Golem.Parser.Convert become CST nodes; the others are flattened.
+
+%module Golem.Parser.Generated
+%syntax
+%language OverloadedStrings
+
+%token Text
+%token SlotText
+%token CellText
+%token Escape
+%token Ws
+%trivia Ws
+%token Nl
+%token Ind
+%trivia Ind
+%token Comment
+%trivia Comment
+%token ProofComment
+%token Ident
+%token Word
+%token Number
+%token StringLit
+%token Fence
+%token CodeLine
+%token Lang
+%token LBr
+%token RBr
+%token ExprOpen
+%token Colon
+%token Pipe
+%token Eq
+%token At
+%token HashMark
+%token BulletMark
+%token OrderedMark
+%token TermMark
+%token NewDefMark
+%token AddOp
+%token MulOp
+%token PowOp
+%token CmpOp
+%token NegOp
+%token ExprIdent
+%token SetIdent
+%token Comma
+%token LBrace
+%token RBrace
+%token LParen
+%token RParen
+%token Dot
+%token Splat
+%token Delim
+%token Keyword
+%token Rest
+%token SkippedArgs
+%token SkippedExpr
+
+%inline Sp
+%inline ES
+%inline EOL
+%inline BlankLine
+%inline Inline
+%inline SlotInline
+%inline CellInline
+%inline PosArg
+%inline ArgValue
+%inline Primary
+%inline ParaEnd
+%inline BlockStart
+%inline Blocks
+%inline BadIndent
+%inline OrphanDef
+%inline TooDeep
+%inline BadBracket
+%inline HeadInline
+%inline Block
+%inline ItemTail
+%inline TableBodyRow
+
+%recover block SkipBlock
+%recover indent SkipBlock
+%recover heading_level SkipBlock
+%recover def_orphan SkipBlock
+%recover table_delimiter SkipBlock
+%recover table_cells SkipLine
+%recover code_close SkipAll
+%recover close SkipParagraph
+%recover comment_close SkipParagraph
+%recover arg_order SkipArgs
+%recover expr SkipExpr
+%recover bracket SkipParagraph
+
+# ---------------------------------------------------------------- file
+
+File :: ()
+File <- BlankLines? Blocks(0)? BlankLines? { () }
+
+BlankLines :: ()
+BlankLines <- BlankLine+ { () }
+
+BlankLine :: ()
+BlankLine <- Ws? Nl { () }
+
+Blocks(ind :: Int) :: ()
+Blocks <- Block(ind) (BlankLines? &(Ind(ind) !BlankLine .) Block(ind))* { () }
+
+Block(ind :: Int) :: ()
+Block <- ( BadIndent(ind)
+         / OrphanDef(ind)
+         / BlockGroup(ind)
+         / Heading(ind)
+         / BulletList(ind)
+         / OrderedList(ind)
+         / DefList(ind)
+         / Table(ind)
+         / CodeBlock(ind)
+         / Paragraph(ind)
+         )^block { () }
+
+BadIndent(ind :: Int) :: ()
+BadIndent <- Ind(ind) [ \t] (&{ False })^indent { () }
+
+OrphanDef(ind :: Int) :: ()
+OrphanDef <- Ind(ind) '=:' (&{ False })^def_orphan { () }
+
+# ------------------------------------------------------------ basics
+
+Ind(n :: Int) :: ()
+Ind <- &{ n == 0 } { () }
+     / ' ' Ind(n - 1) { () }
+
+Ws :: ()
+Ws <- [ \t]+ { () }
+
+Sp :: ()
+Sp <- Ws? { () }
+
+Nl :: ()
+Nl <- '\n' { () }
+
+EOL :: ()
+EOL <- Sp (Nl / !.) { () }
+
+# A line that ends a paragraph: blank, or end of input.
+ParaEnd :: ()
+ParaEnd <- Nl (BlankLine / !.) { () }
+         / !. { () }
+
+# Characters that start a block at the beginning of a line.
+BlockStart :: ()
+BlockStart <- '#' { () }
+            / '-' [ \t] { () }
+            / '+' [ \t] { () }
+            / '=' [ \t:] { () }
+            / '|' { () }
+            / '```' { () }
+            / '@' [a-z] { () }
+
+# ------------------------------------------------------------ headings
+
+Heading(ind :: Int) :: ()
+Heading <- Ind(ind) HashMark (TooDeep / Ws HeadInline(ind)* EOL) { () }
+
+TooDeep :: ()
+TooDeep <- '#' (&{ False })^heading_level { () }
+
+HeadInline(ind :: Int) :: ()
+HeadInline <- Escape { () }
+            / ProofComment { () }
+            / Comment { () }
+            / ExprCtx { () }
+            / InlineCommand(ind) { () }
+            / BadBracket { () }
+            / Text { () }
+
+HashMark :: ()
+HashMark <- '###' { () } / '##' { () } / '#' { () }
+
+# ------------------------------------------------------------ paragraphs
+
+Paragraph(ind :: Int) :: ()
+Paragraph <- Ind(ind) !BlockStart Inline(ind)+ (Nl / !.) { () }
+
+LineContinuation(ind :: Int) :: ()
+LineContinuation <- Nl !BlankLine Ind(ind) !BlockStart { () }
+
+Inline(ind :: Int) :: ()
+Inline <- Escape { () }
+        / ProofComment { () }
+        / Comment { () }
+        / ExprCtx { () }
+        / InlineCommand(ind) { () }
+        / BadBracket { () }
+        / Text { () }
+        / LineContinuation(ind) { () }
+
+Text :: ()
+Text <- (![\[\\\n] !'%%' .)+ { () }
+
+Escape :: ()
+Escape <- '\\' ![\n] . { () }
+
+Comment :: ()
+Comment <- '%%' (!'%%' !ParaEnd .)* ('%%')^comment_close { () }
+
+ProofComment :: ()
+ProofComment <- '%%=' (!'%%' !ParaEnd .)* ('%%')^comment_close { () }
+
+# ------------------------------------------------------------ commands
+
+InlineCommand(ind :: Int) :: ()
+InlineCommand <- LBr Ident Arguments ProseSlots(ind)? (Sp RBr)^close { () }
+
+LBr :: ()
+LBr <- '[' { () }
+
+BadBracket :: ()
+BadBracket <- LBr (&{ False })^bracket { () }
+
+RBr :: ()
+RBr <- ']' { () }
+
+Ident :: ()
+Ident <- [a-z] [a-z0-9\-]* { () }
+
+Arguments :: ()
+Arguments <- (Sp PosArg)* (Sp KeywordArgument)* (!(Sp PosArg))^arg_order { () }
+
+PosArg :: ()
+PosArg <- !(Word Eq) SplatArgument { () }
+        / !(Word Eq) Argument { () }
+
+Argument :: ()
+Argument <- ArgValue { () }
+
+KeywordArgument :: ()
+KeywordArgument <- Word Eq ArgValue { () }
+
+SplatArgument :: ()
+SplatArgument <- Splat ExprBody (RBr)^close { () }
+
+Splat :: ()
+Splat <- '**[' { () } / '*[' { () }
+
+ArgValue :: ()
+ArgValue <- StringLit { () }
+          / ExprCtx { () }
+          / InlineCommand(0) { () }
+          / Word { () }
+
+Word :: ()
+Word <- (![ \t\n\]:|=\["\\] .)+ { () }
+
+Eq :: ()
+Eq <- '=' { () }
+
+StringLit :: ()
+StringLit <- '"' ('\\' . / !["\n] .)* '"' { () }
+
+ProseSlots(ind :: Int) :: ()
+ProseSlots <- Sp Colon Sp ProseSlot(ind) (Sp Pipe Sp ProseSlot(ind))* { () }
+
+Colon :: ()
+Colon <- ':' { () }
+
+Pipe :: ()
+Pipe <- '|' { () }
+
+ProseSlot(ind :: Int) :: ()
+ProseSlot <- SlotInline(ind)* { () }
+
+SlotInline(ind :: Int) :: ()
+SlotInline <- Escape { () }
+            / ProofComment { () }
+            / Comment { () }
+            / ExprCtx { () }
+            / InlineCommand(ind) { () }
+            / BadBracket { () }
+            / SlotText { () }
+            / LineContinuation(ind) { () }
+
+SlotText :: ()
+SlotText <- (![\[\\\n|\]] !'%%' .)+ { () }
+
+# ------------------------------------------------------------ expressions
+
+ExprCtx :: ()
+ExprCtx <- ExprOpen ExprBody (RBr)^close { () }
+
+ExprOpen :: ()
+ExprOpen <- '[=' { () }
+
+ExprBody :: ()
+ExprBody <- ES (Expr)^expr ES { () }
+
+ES :: ()
+ES <- Ws? { () }
+
+Expr :: ()
+Expr <- CompareExpr { () }
+
+CompareExpr :: ()
+CompareExpr <- AddExpr ES CmpOp ES AddExpr { () }
+             / AddExpr { () }
+
+CmpOp :: ()
+CmpOp <- '==' { () } / '!=' { () } / '<=' { () } / '>=' { () } / '<' { () } / '>' { () }
+
+AddExpr :: ()
+AddExpr <- AddExpr ES AddOp ES MulExpr { () }
+         / MulExpr { () }
+
+AddOp :: ()
+AddOp <- '+' { () } / '-' { () }
+
+MulExpr :: ()
+MulExpr <- MulExpr ES MulOp ES UnaryExpr { () }
+         / UnaryExpr { () }
+
+MulOp :: ()
+MulOp <- '*' !'*' { () } / '/' { () } / '%' !'%' { () }
+
+UnaryExpr :: ()
+UnaryExpr <- NegOp ES UnaryExpr { () }
+           / PowExpr { () }
+
+NegOp :: ()
+NegOp <- '-' { () }
+
+PowExpr :: ()
+PowExpr <- PostfixExpr ES PowOp ES UnaryExpr { () }
+         / PostfixExpr { () }
+
+PowOp :: ()
+PowOp <- '**' { () }
+
+PostfixExpr :: ()
+PostfixExpr <- CallExpr { () }
+             / Primary { () }
+
+CallExpr :: ()
+CallExpr <- ExprIdent LParen ES (Expr ES (Comma ES Expr ES)*)? RParen { () }
+
+Primary :: ()
+Primary <- NumberLiteral { () }
+         / StringLiteral { () }
+         / KeywordLiteral { () }
+         / ArrayExpr { () }
+         / HashExpr { () }
+         / ParenExpr { () }
+         / VarExpr { () }
+
+NumberLiteral :: ()
+NumberLiteral <- Number { () }
+
+Number :: ()
+Number <- [0-9]+ ('.' [0-9]+)? { () }
+
+StringLiteral :: ()
+StringLiteral <- StringLit { () }
+
+KeywordLiteral :: ()
+KeywordLiteral <- Keyword { () }
+
+Keyword :: ()
+Keyword <- ('true' / 'false' / 'nil') ![a-z0-9_] { () }
+
+VarExpr :: ()
+VarExpr <- !Keyword ExprIdent (Dot ExprIdent)* { () }
+
+ExprIdent :: ()
+ExprIdent <- [a-zA-Z_] [a-zA-Z0-9_]* { () }
+
+Dot :: ()
+Dot <- '.' { () }
+
+ArrayExpr :: ()
+ArrayExpr <- LBr ES (Expr ES (Comma ES Expr ES)*)? RBr { () }
+
+HashExpr :: ()
+HashExpr <- LBrace ES (HashEntry ES (Comma ES HashEntry ES)*)? RBrace { () }
+
+HashEntry :: ()
+HashEntry <- (ExprIdent / StringLit) ES Colon ES Expr { () }
+
+ParenExpr :: ()
+ParenExpr <- LParen ES Expr ES RParen { () }
+
+Comma :: ()
+Comma <- ',' { () }
+
+LBrace :: ()
+LBrace <- '{' { () }
+
+RBrace :: ()
+RBrace <- '}' { () }
+
+LParen :: ()
+LParen <- '(' { () }
+
+RParen :: ()
+RParen <- ')' { () }
+
+# ------------------------------------------------------------ block commands
+
+BlockGroup(ind :: Int) :: ()
+BlockGroup <- BlockCommand(ind)+ (&(Ind(ind) !BlockCommandStart ![ \t] !BlankLine) AttributedBlock(ind))? { () }
+
+BlockCommandStart :: ()
+BlockCommandStart <- '@' [a-z] { () }
+
+AttributedBlock(ind :: Int) :: ()
+AttributedBlock <- ( Heading(ind)
+                   / BulletList(ind)
+                   / OrderedList(ind)
+                   / DefList(ind)
+                   / Table(ind)
+                   / CodeBlock(ind)
+                   / Paragraph(ind)
+                   ) { () }
+
+BlockCommand(ind :: Int) :: ()
+BlockCommand <- Ind(ind) At SetIdent Ws SetName Sp Eq ExprBody (Nl / !.) { () }
+              / Ind(ind) At Ident Arguments Sp (Nl / !.) CommandBody(ind)? { () }
+
+At :: ()
+At <- '@' { () }
+
+SetIdent :: ()
+SetIdent <- 'set' ![a-z0-9\-] { () }
+
+SetName :: ()
+SetName <- ExprIdent { () }
+
+CommandBody(ind :: Int) :: ()
+CommandBody <- &(Ind(ind + 2) ![ \t] !BlankLine .) Blocks(ind + 2) { () }
+
+# ------------------------------------------------------------ lists
+
+BulletList(ind :: Int) :: ()
+BulletList <- ListItem(ind, 0) (BlankLines? ListItem(ind, 0))* { () }
+
+OrderedList(ind :: Int) :: ()
+OrderedList <- ListItem(ind, 1) (BlankLines? ListItem(ind, 1))* { () }
+
+ListItem(ind :: Int, ordered :: Int) :: ()
+ListItem <- Ind(ind) ListMark(ordered) Ws Inline(ind + 2)+ (Nl / !.) ItemTail(ind + 2) { () }
+
+ListMark(ordered :: Int) :: ()
+ListMark <- &{ ordered == 0 } BulletMark { () }
+          / &{ ordered == 1 } OrderedMark { () }
+
+BulletMark :: ()
+BulletMark <- '-' { () }
+
+OrderedMark :: ()
+OrderedMark <- '+' { () }
+
+ItemTail(ind :: Int) :: ()
+ItemTail <- (BlankLines? &(Ind(ind) ![ \t] !BlankLine .) Block(ind))* { () }
+
+# ------------------------------------------------------------ definition lists
+
+DefList(ind :: Int) :: ()
+DefList <- DefGroup(ind) (BlankLines? &(Ind(ind) '=' [ \t]) DefGroup(ind))* { () }
+
+DefGroup(ind :: Int) :: ()
+DefGroup <- DefTerm(ind)+ DefBody(ind) (BlankLines? DefNew(ind) DefBody(ind))* { () }
+
+DefTerm(ind :: Int) :: ()
+DefTerm <- Ind(ind) TermMark Ws HeadInline(ind + 2)+ (Nl / !.) { () }
+
+TermMark :: ()
+TermMark <- '=' { () }
+
+DefNew(ind :: Int) :: ()
+DefNew <- Ind(ind) NewDefMark Sp (Nl / !.) { () }
+
+NewDefMark :: ()
+NewDefMark <- '=:' { () }
+
+DefBody(ind :: Int) :: ()
+DefBody <- &(Ind(ind + 2) ![ \t] !BlankLine .) Block(ind + 2) (BlankLines? &(Ind(ind + 2) ![ \t] !BlankLine .) Block(ind + 2))* { () }
+
+# ------------------------------------------------------------ tables
+
+Table(ind :: Int) :: ()
+Table <- h:TableRow(ind) Nl (TableDelimiter(ind))^table_delimiter
+         TableBodyRow(ind, h)* (Nl / !.) { () }
+
+TableBodyRow(ind :: Int, h :: Int) :: ()
+TableBodyRow <- Nl r:TableRow(ind) (&{ r == h })^table_cells { () }
+
+TableRow(ind :: Int) :: Int
+TableRow <- Ind(ind) cs:TableCellAndPipe+ Pipe Sp { length cs }
+
+TableCellAndPipe :: ()
+TableCellAndPipe <- Pipe TableCell &(Pipe) { () }
+
+TableCell :: ()
+TableCell <- CellInline* { () }
+
+CellInline :: ()
+CellInline <- Escape { () }
+            / Comment { () }
+            / ExprCtx { () }
+            / InlineCommand(0) { () }
+            / BadBracket { () }
+            / CellText { () }
+
+CellText :: ()
+CellText <- (![\[\\\n|] !'%%' .)+ { () }
+
+TableDelimiter(ind :: Int) :: ()
+TableDelimiter <- Ind(ind) (Pipe Delim)+ Pipe Sp { () }
+
+Delim :: ()
+Delim <- Sp ':'? '-'+ ':'? Sp { () }
+
+# ------------------------------------------------------------ code blocks
+
+CodeBlock(ind :: Int) :: ()
+CodeBlock <- Ind(ind) Fence Lang? Sp Nl
+             (!CodeClose(ind) CodeLine)*
+             (CodeClose(ind))^code_close { () }
+
+Fence :: ()
+Fence <- '```' { () }
+
+Lang :: ()
+Lang <- [a-zA-Z0-9_+\-]+ { () }
+
+CodeLine :: ()
+CodeLine <- (![\n] .)* Nl { () }
+
+CodeClose(ind :: Int) :: ()
+CodeClose <- Ind(ind) Fence Sp (Nl / !.) { () }
+
+# ------------------------------------------------------------ recovery
+
+SkipBlock :: ()
+SkipBlock <- Rest { () }
+
+Rest :: ()
+Rest <- (!ParaEnd .)* { () }
+
+SkipParagraph :: ()
+SkipParagraph <- Rest { () }
+
+SkipLine :: ()
+SkipLine <- (![\n] .)* { () }
+
+SkipAll :: ()
+SkipAll <- .* { () }
+
+SkipArgs :: ()
+SkipArgs <- SkippedArgs { () }
+
+SkippedArgs :: ()
+SkippedArgs <- (Sp PosArg)+ { () }
+
+SkipExpr :: ()
+SkipExpr <- SkippedExpr { () }
+
+SkippedExpr :: ()
+SkippedExpr <- (!']' !ParaEnd .)* { () }
