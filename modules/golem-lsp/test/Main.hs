@@ -1,7 +1,10 @@
+{-# LANGUAGE GADTs #-}
+
 module Main (main) where
 
 import Control.Concurrent (forkIO)
 import Control.Monad (void)
+import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Map.Strict qualified as Map
@@ -10,13 +13,14 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Lsp.Features
-import Golem.Lsp.Server (serverDefinition)
+import Golem.Lsp.Server (rewriteInitializeResponse, runGolemLspWithHandles)
 import Golem.Lsp.Workspace
 import Golem.Syntax
+import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
-import Language.LSP.Server (runServerWithHandles)
 import Language.LSP.Test qualified as LT
 import System.Directory (makeAbsolute)
+import System.FilePath ((</>))
 import System.IO (hClose)
 import System.Process (createPipe)
 import Test.Tasty
@@ -113,41 +117,131 @@ tests =
         fromLineCol Utf8 li (LineCol l (lcColumn (toLineCol Utf8 li off))) @?= Just off
         fromLineCol Utf16 li (LineCol l (lcColumn (toLineCol Utf16 li off))) @?= Just off
         fromLineCol Utf16 li (LineCol l (lcColumn (toLineCol Utf16 li off) - 1)) @?= Nothing, -- inside the pair
-      goldenVsString "protocol: hover, definition, symbols, diagnostics" "test/golden/protocol.txt" protocol
+      testCase "the workspace keeps a line index per file and follows edits (ADR 0002)" $ do
+        ws0 <- openWorkspace root
+        lineCount (lineIndexOf ws0 "a.gm") @?= lineCount (mkLineIndex (textOf ws0 "a.gm"))
+        ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n\n[ref-title intro]\n"
+        lineCount (lineIndexOf ws "b.gm") @?= 6
+        offsetToUtf8LineCol (lineIndexOf ws "b.gm") (offsetIn (textOf ws "b.gm") "intro" 0) @?= LineCol 4 11
+        lineCount (lineIndexOf ws "nosuch.gm") @?= 1,
+      testCase "chooseEncoding prefers utf-8 and falls back to utf-16 (ADR 0002)" $ do
+        chooseEncoding Nothing @?= Utf16
+        chooseEncoding (Just []) @?= Utf16
+        chooseEncoding (Just [L.PositionEncodingKind_UTF16]) @?= Utf16
+        chooseEncoding (Just [L.PositionEncodingKind_UTF32]) @?= Utf16
+        chooseEncoding (Just [L.PositionEncodingKind_UTF8]) @?= Utf8
+        chooseEncoding (Just [L.PositionEncodingKind_UTF16, L.PositionEncodingKind_UTF8]) @?= Utf8
+        encodingKind Utf8 @?= L.PositionEncodingKind_UTF8
+        encodingKind Utf16 @?= L.PositionEncodingKind_UTF16,
+      testCase "rewriteInitializeResponse replaces only positionEncoding of the matching response (ADR 0002)" $ do
+        let resp = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\",\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
+            expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
+            decode = J.decode :: BL.ByteString -> Maybe J.Value
+        (decode =<< rewriteInitializeResponse (M.IdInt 1) Utf8 resp) @?= decode expected
+        rewriteInitializeResponse (M.IdInt 2) Utf8 resp @?= Nothing
+        rewriteInitializeResponse (M.IdInt 1) Utf8 "{\"jsonrpc\":\"2.0\",\"method\":\"window/logMessage\",\"params\":{\"type\":3,\"message\":\"m\"}}" @?= Nothing
+        rewriteInitializeResponse (M.IdInt 1) Utf8 "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32600,\"message\":\"m\"}}" @?= Nothing,
+      withResource (session utf16Session) (const (pure ())) $ \s16 ->
+        withResource (session utf8Session) (const (pure ())) $ \s8 ->
+          testGroup
+            "protocol"
+            [ goldenVsString "protocol: hover, definition, symbols, diagnostics" "test/golden/protocol.txt" (render <$> s16),
+              goldenVsString "protocol in utf-8 (ADR 0002)" "test/golden/protocol-utf8.txt" (render <$> s8),
+              testCase "utf-8 columns of a diagnostic exceed utf-16 by the emoji's 2 units (ADR 0002)" $ do
+                r16 <- s16
+                r8 <- s8
+                map (+ 2) (srMissingLabelColumns r16) @?= srMissingLabelColumns r8
+                assertBool "has a G0403" (not (null (srMissingLabelColumns r8))),
+              testCase "utf-8 hover inside a character returns null (ADR 0002)" $ do
+                r8 <- s8
+                srInsideHover r8 @?= Just Nothing
+            ]
     ]
 
+data SessionSpec = SessionSpec
+  { ssEncodings :: [L.PositionEncodingKind],
+    ssHover :: L.Position,
+    ssDefinition :: L.Position,
+    ssInside :: Maybe L.Position
+  }
+
+-- | Positions on a.gm line 5, which has Japanese and an emoji before them.
+utf16Session, utf8Session :: SessionSpec
+utf16Session = SessionSpec [L.PositionEncodingKind_UTF16] (L.Position 5 18) (L.Position 5 75) Nothing
+utf8Session = SessionSpec [L.PositionEncodingKind_UTF8, L.PositionEncodingKind_UTF16] (L.Position 5 22) (L.Position 5 97) (Just (L.Position 5 1))
+
+data SessionResult = SessionResult
+  { srLines :: [String],
+    srMissingLabelColumns :: [L.UInt],
+    srInsideHover :: Maybe (Maybe Text)
+  }
+
+render :: SessionResult -> BL.ByteString
+render r = BL.fromStrict (TE.encodeUtf8 (T.pack (unlines (srLines r))))
+
+withEncodings :: [L.PositionEncodingKind] -> L.ClientCapabilities -> L.ClientCapabilities
+withEncodings encs (L.ClientCapabilities w t n win gen ex) =
+  let L.GeneralClientCapabilities st re md _ = fromMaybe (L.GeneralClientCapabilities Nothing Nothing Nothing Nothing) gen
+   in L.ClientCapabilities w t n win (Just (L.GeneralClientCapabilities st re md (Just encs))) ex
+
 -- | A client session against the server over pipes.
-protocol :: IO BL.ByteString
-protocol = do
+session :: SessionSpec -> IO SessionResult
+session spec = do
   absRoot <- makeAbsolute root
   (serverIn, clientOut) <- createPipe
   (clientIn, serverOut) <- createPipe
-  def <- serverDefinition
-  void (forkIO (void (runServerWithHandles mempty mempty serverIn serverOut def)))
-  out <- LT.runSessionWithHandles clientOut clientIn LT.defaultConfig LT.fullLatestClientCaps absRoot $ do
+  void (forkIO (void (runGolemLspWithHandles serverIn serverOut)))
+  r <- LT.runSessionWithHandles clientOut clientIn LT.defaultConfig (withEncodings (ssEncodings spec) LT.fullLatestClientCaps) absRoot $ do
+    initResp <- LT.initializeResponse
     doc <- LT.openDoc "a.gm" "golem"
-    h <- LT.getHover doc (L.Position 5 18)
-    defs <- LT.getDefinitions doc (L.Position 5 75)
+    h <- LT.getHover doc (ssHover spec)
+    inside <- traverse (fmap (fmap hoverText) . LT.getHover doc) (ssInside spec)
+    defs <- LT.getDefinitions doc (ssDefinition spec)
     syms <- LT.getDocumentSymbols doc
+    refs <- LT.getReferences doc (L.Position 2 8) True
     LT.changeDoc doc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument "# 見出し\n\n😀[strong: 閉じない\n"))]
     diags <- LT.waitForDiagnosticsSource "golem"
+    LT.changeDoc doc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument "😀[ref-title nosuch]\n"))]
+    missing <- missingLabel (absRoot </> "a.gm")
     pure
-      [ "diagnostics: " <> show [(d ^. diagRange, d ^. diagCode) | d <- diags],
-        "hover: " <> show (fmap hoverText h),
-        "definition: " <> show (defTargets absRoot defs),
-        "symbols: " <> concat [T.unpack n <> "(" <> T.unpack (T.intercalate "," cs) <> ")" | (n, cs) <- symbolNames syms]
-      ]
+      SessionResult
+        { srLines =
+            [ "diagnostics: " <> show [(d ^. diagRange, d ^. diagCode) | d <- diags],
+              "hover: " <> show (fmap hoverText h),
+              "definition: " <> show (defTargets absRoot defs),
+              "symbols: " <> concat [T.unpack n <> "(" <> T.unpack (T.intercalate "," cs) <> ")" | (n, cs) <- symbolNames syms],
+              "positionEncoding: " <> show (positionEncoding initResp),
+              "references: " <> show [(fmap (drop (length absRoot + 1)) (L.uriToFilePath u), rng) | L.Location u rng <- refs],
+              "missing label: " <> show [(d ^. diagRange, d ^. diagCode) | d <- missing]
+            ]
+              <> maybe [] (\i -> ["hover inside a character: " <> show i]) inside,
+          srMissingLabelColumns = [c | d <- missing, let L.Range (L.Position _ c) _ = d ^. diagRange],
+          srInsideHover = inside
+        }
   hClose clientOut
-  pure (BL.fromStrict (TE.encodeUtf8 (T.pack (unlines out))))
+  pure r
   where
     (^.) x f = f x
-    diagRange (L.Diagnostic r _ _ _ _ _ _ _ _) = r
+    diagRange (L.Diagnostic rng _ _ _ _ _ _ _ _) = rng
     diagCode (L.Diagnostic _ _ c _ _ _ _ _ _) = c
     hoverText (L.Hover (L.InL (L.MarkupContent _ t)) _) = t
     hoverText _ = ""
+    positionEncoding (M.TResponseMessage _ _ res) = case res of
+      Right (L.InitializeResult (L.ServerCapabilities pe _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _) _) -> pe
+      Left _ -> Nothing
     defTargets absRoot = \case
-      L.InR (L.InL links) -> [(fmap (drop (length absRoot + 1)) (L.uriToFilePath u), r) | L.DefinitionLink (L.LocationLink _ u r _) <- links]
+      L.InR (L.InL links) -> [(fmap (drop (length absRoot + 1)) (L.uriToFilePath u), rng) | L.DefinitionLink (L.LocationLink _ u rng _) <- links]
       _ -> []
     symbolNames = \case
       Right ds -> [(n, [c | L.DocumentSymbol c _ _ _ _ _ _ _ <- fromMaybe [] kids]) | L.DocumentSymbol n _ _ _ _ _ _ kids <- ds]
       Left _ -> []
+    -- the G0403 diagnostics published for the given file
+    missingLabel :: FilePath -> LT.Session [L.Diagnostic]
+    missingLabel path = do
+      msg <- LT.anyMessage
+      case msg of
+        M.FromServerMess M.SMethod_TextDocumentPublishDiagnostics (M.TNotificationMessage _ _ (L.PublishDiagnosticsParams u _ ds))
+          | L.uriToFilePath u == Just path,
+            found@(_ : _) <- [d | d <- ds, diagCode d == Just (L.InR "G0403")] ->
+              pure found
+        _ -> missingLabel path
