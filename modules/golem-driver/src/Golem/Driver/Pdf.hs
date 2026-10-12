@@ -13,6 +13,7 @@ module Golem.Driver.Pdf
     noFontProvider,
     PdfInput (..),
     renderPdf,
+    flowLines,
     pdfFileName,
   )
 where
@@ -22,7 +23,7 @@ import Control.Exception (evaluate)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii)
-import Data.List (nub)
+import Data.List (intercalate, nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -90,7 +91,9 @@ pdfFileName bookId =
 data SetLine = SetLine
   { slLine :: !Line,
     slSize :: !Sp,
-    slNotes :: ![(Int, [Line])]
+    slNotes :: ![(Int, [Line])],
+    -- | where the line starts, from the start of the measure
+    slIndent :: !Sp
   }
 
 data Built = Built
@@ -116,6 +119,21 @@ renderPdf provider inp = case pageGeometry (piStyle inp) of
           Right (built, pages) -> do
             intent <- loadIntent inp
             pure (Right (writeDocument inp geom fonts built pages intent))
+
+{- | The flow and its lines as (line length, indent), in order, laid out
+with no page numbers assumed (for tests).
+-}
+flowLines :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ([Flow], [(Sp, Sp)]))
+flowLines provider inp = case pageGeometry (piStyle inp) of
+  Left ds -> pure (Left ds)
+  Right geom -> do
+    lf <- loadFonts provider (piRoot inp) (piStyle inp)
+    case lf of
+      Left ds -> pure (Left ds)
+      Right fonts -> do
+        figures <- loadFigures inp
+        built <- buildFlow inp geom fonts figures Map.empty
+        pure (Right (bFlow built, [(lineTarget (slLine sl), slIndent sl) | sl <- Map.elems (bLines built)]))
 
 fixpoint :: PageGeometry -> (Map Text Integer -> IO Built) -> IO (Either [Diagnostic] (Built, [PageOut]))
 fixpoint geom layoutWith = go (1 :: Int) Map.empty
@@ -171,10 +189,18 @@ data Unit = Unit
     uInlines :: [Inline]
   }
 
-data UnitKind = UPara | UHeading Int Text Bool | UTerm | UFigure Figure
+data UnitKind
+  = UPara
+  | UHeading Int Text Bool
+  | UTerm
+  | UFigure Figure
+  | -- | a line of verse: the indent and the hang in sp (docs/adr ADR 0003)
+    UVerseLine Sp Sp
+  | -- | grid lines between stanzas
+    UGap Int
 
 unitsOf :: Book -> PageGeometry -> Style -> [Unit]
-unitsOf book _ style = concatMap doc (bookDocs book)
+unitsOf book geom style = concatMap doc (bookDocs book)
   where
     sp0 = mkSpan (FileId 0) 0 0
     txt = Text sp0
@@ -192,6 +218,15 @@ unitsOf book _ style = concatMap doc (bookDocs book)
       Table _ h rows -> [Unit UPara lbl (cells r) | r <- h : rows]
       CodeBlock _ code -> [Unit UPara lbl [txt l] | l <- T.lines code]
       FigureBlock fig -> [Unit (UFigure fig) lbl []]
+      VerseBlock stanzas ->
+        let vs = stVerse style
+            fs = pgFontSize geom
+            kind = UVerseLine (dimToSp fs (vsIndent vs)) (dimToSp fs (vsHang vs))
+            stanzaUnits = [[Unit kind Nothing l | l <- st] | st <- stanzas]
+            labelled = case intercalate [Unit (UGap (vsStanzaGap vs)) Nothing []] stanzaUnits of
+              (u : us) -> u {uLabel = lbl} : us
+              [] -> []
+         in labelled
       ChannelOutput (TocOutput depth) -> [Unit UPara Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> teTitle e) | e <- bookToc book, teLevel e <= depth]
       ChannelOutput _ -> []
     cells r = concat [c <> [txt "　"] | c <- r]
@@ -207,14 +242,22 @@ buildFlow inp geom fonts figures assumed = do
         (c : _) -> if pgVertical geom then rectH c else rectW c
         [] -> 0
       units = unitsOf (piBook inp) geom style
-      breakOne is =
+      -- L*(i): verse lines are shortened by the indent, and their continuations also by the hang
+      widthOf = \case
+        UVerseLine ind hang -> \i -> if i == 0 then measure - ind else measure - ind - hang
+        _ -> const measure
+      indentOf = \case
+        UVerseLine ind hang -> \k -> if k == (0 :: Int) then ind else ind + hang
+        _ -> const 0
+      breakOne (UGap _) _ = ([], [], [], [])
+      breakOne kind is =
         let (items, anchors) = composeInlines env is
-            lines' = brLines (breakParagraph params (const measure) items)
+            lines' = brLines (breakParagraph params (widthOf kind) items)
             notes = [(n, brLines (breakParagraph params (const measure) (fst (composeInlines env body)))) | AnchorNote _ n body <- anchors]
          in (lines', notes, anchors, items)
       force (ls, ns, as, is) = evaluate (length (show (map lineRatio ls)) + length ns + length as + length is) >> pure (ls, ns, as, is)
       mapper = if piParallel inp then mapConcurrently else mapM
-  broken <- mapper (force . breakOne . uInlines) units
+  broken <- mapper (\u -> force (breakOne (uKind u) (uInlines u))) units
   -- number the lines in document order
   let step (nextId, flows, lineAcc, figAcc) (u, (ls, notes, anchors, items)) =
         let ids = [nextId .. nextId + length ls - 1]
@@ -222,11 +265,13 @@ buildFlow inp geom fonts figures assumed = do
             lineOfItem = lineIndexOfItems items ls
             noteLines = Map.fromListWith (<>) [(lineOfItem i, [(n, nls)]) | (AnchorNote i n _, (_, nls)) <- zip [a | a@AnchorNote {} <- anchors] notes]
             boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then maybe [] pure (uLabel u) else []) | (k, lid) <- zip [0 ..] ids]
-            set = Map.fromList [(lid, SetLine l (pgFontSize geom) (Map.findWithDefault [] k noteLines)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+            set = Map.fromList [(lid, SetLine l (pgFontSize geom) (Map.findWithDefault [] k noteLines) (indentOf (uKind u) k)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
             flowOf = case uKind u of
               UPara -> [FParagraph boxes]
               UHeading l short recto -> [FHeading l short recto boxes]
               UTerm -> [FDefTerm boxes]
+              UVerseLine _ _ -> [FParagraph boxes]
+              UGap n -> [FSpace n]
               UFigure fig -> case Map.lookup (figSource fig) figures of
                 Just (Just (_, _, h)) ->
                   let pitch = pgLinePitch geom
@@ -307,9 +352,11 @@ writeDocument inp geom fonts built pages intent =
       drawLine ta slot sl =
         let l = slLine sl
             size = slSize sl
-            origin off
+            origin off0
               | vertical = (rectX ta + rectW ta - gridAt slot, rectY ta + rectH ta - off)
               | otherwise = (rectX ta + off, rectY ta + rectH ta - gridAt slot)
+              where
+                off = off0 + slIndent sl
             advance sz t = sum [toSp sz a | (_, _, a, _) <- lfShape fonts (vertical && not (T.all ((== Western) . charClass) t)) t]
             -- a point beside the line at a distance across it: right of a
             -- vertical line, above a horizontal baseline
@@ -370,7 +417,7 @@ writeDocument inp geom fonts built pages intent =
             figMarks = [P.Image (P.ImageRef fid) (figureRect ta slot w h) | (slot, SFigure fid) <- poSlots p, Just (_, w, h) <- [Map.lookup fid (bFigures built)]]
             noteLines = concat [take cnt (drop from (concat [ls | sl <- Map.elems (bLines built), (nid', ls) <- slNotes sl, nid' == nid])) | (nid, from, cnt) <- poFootnotes p]
             bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
-            noteParts = [drawLine ta slot (SetLine l (pgFontSize geom) []) | (slot, l) <- zip bottomSlots noteLines]
+            noteParts = [drawLine ta slot (SetLine l (pgFontSize geom) [] 0) | (slot, l) <- zip bottomSlots noteLines]
             masterParts = if poBlank p then [] else masterMarks n (poRunningHead p)
             allParts = lineParts <> noteParts <> masterParts
          in (concatMap fst allParts <> figMarks, concatMap snd allParts)

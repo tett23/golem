@@ -38,6 +38,11 @@ tests =
       testCase "G0501 sees through indentation of continuation lines but not commands" $ do
         newlineCodes "- word\n  word\n" @?= ["G0501"]
         newlineCodes "[strong: a]\n[strong: b]\n" @?= [],
+      testCase "G0501 does not apply to the line breaks of verse (docs/adr ADR 0003)" $ do
+        newlineCodes "@verse\n  Full fathom five\n  Of his bones\n" @?= []
+        newlineCodes "Full fathom five\nOf his bones\n" @?= ["G0501"]
+        newlineCodes "@verse\n  [note: a\n  b] x\n" @?= ["G0501"]
+        newlineCodes "@figure a.png alt=x\n  Full fathom\n  five\n" @?= ["G0501"],
       testCase "G0502 unused variable, unless an importer uses it" $ do
         let defining = FileLint (FileId 1) "common.gm" (fst (parse (FileId 1) "")) usage {usageDefined = [("x", sp), ("y", sp)]}
             importing = FileLint (FileId 2) "ch.gm" (fst (parse (FileId 2) "")) usage {usageImports = [("c", "common.gm", sp)], usageNamespaceRefs = Map.fromList [("c", Set.fromList ["x"])]}

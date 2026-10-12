@@ -44,6 +44,10 @@ data Flow
     FFigure {ffId :: !Int, ffLines :: !Int, ffLabels :: ![Text]}
   | -- | a wrapped figure and the shortened lines set beside it (ADR 0004)
     FWrapped {fwId :: !Int, fwLines :: !Int, fwLabels :: ![Text], fwBeside :: [LineBox]}
+  | {- | empty grid lines, as between stanzas of verse (docs/adr ADR 0003);
+    nothing at the top of a page
+    -}
+    FSpace !Int
   deriving stock (Eq, Show)
 
 data Slotted = SLine !Int | SFigure !Int | SWrapped !Int
@@ -90,6 +94,7 @@ paginate capacity flows =
       (FHeading _ _ _ ls : _) -> length ls
       (FFigure _ n _ : _) -> min n capacity
       (FWrapped _ n _ ls : _) -> max n (length ls)
+      (FSpace _ : _) -> 0
       [] -> 0
     free st = capacity - sUsed st - sNoteLines st
     isEmpty st = sUsed st == 0 && null (sNotes st)
@@ -108,6 +113,9 @@ paginate capacity flows =
             st1 = if size <= free st || isEmpty st then st else newPage st
             st2 = putSlot st1 0 (SWrapped i) labels
          in (placeLines st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines st2 False beside))}
+      FSpace n
+        | sUsed st == 0 -> st
+        | otherwise -> st {sUsed = sUsed st + max 0 (min n (free st))}
     keep st n = if n > free st && not (isEmpty st) then newPage st else st
     rectoStart st =
       let st1 = if isEmpty st then st else newPage st

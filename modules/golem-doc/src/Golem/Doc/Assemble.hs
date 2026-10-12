@@ -260,6 +260,7 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
         DefList gs -> DefList <$> mapM (\(DefGroup ts ds) -> DefGroup <$> mapM inls ts <*> mapM (mapM blk) ds) gs
         Table al h rows -> Table al <$> mapM inls h <*> mapM (mapM inls) rows
         FigureBlock f -> (\c -> FigureBlock f {figCaption = c}) <$> mapM blk (figCaption f)
+        VerseBlock stanzas -> VerseBlock <$> mapM (mapM inls) stanzas
         other -> pure other
     item (ListItem n bs') = ListItem n <$> mapM blk bs'
     inls is = concat <$> mapM inl is
@@ -321,6 +322,7 @@ bodyInlines body = concatMap flatten $ case body of
   Heading _ _ is -> is
   DefList gs -> concat (concatMap dgTerms gs)
   Table _ h rows -> concat h <> concat (concat rows)
+  VerseBlock stanzas -> concat (concat stanzas)
   _ -> []
   where
     flatten i =

@@ -34,7 +34,7 @@ import Golem.Syntax.Span
 
 -- | The ABI version shared with plugins. Bump on any change to the IR.
 abiVersion :: Int
-abiVersion = 1
+abiVersion = 2
 
 data Document = Document
   { docFile :: !FileId,
@@ -59,6 +59,8 @@ data BlockBody
   | CodeBlock (Maybe Text) Text
   | FigureBlock Figure
   | ChannelOutput ChannelBlock
+  | -- | stanzas of lines of inlines (docs/adr ADR 0003); none is empty
+    VerseBlock [[[Inline]]]
   deriving stock (Eq, Show)
 
 data ListItem = ListItem

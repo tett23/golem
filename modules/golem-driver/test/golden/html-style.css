@@ -78,3 +78,8 @@ code span.vs { color: #4070a0; } /* VerbatimString */
 code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
 .sidenote { font-size: 0.85em; }
 @media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }
+.verse { margin-inline-start: 0em; }
+.verse p { margin: 0; text-indent: 0; }
+.verse p + p { margin-block-start: 1em; }
+.verse span { display: block; padding-inline-start: 2em; text-indent: -2em; }
+.verse br { display: none; }

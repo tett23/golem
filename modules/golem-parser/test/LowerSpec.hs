@@ -69,8 +69,24 @@ tests =
   testGroup
     "CST to AST (ADR 0005)"
     [ whitespaceTests,
-      testCase "newlines in a paragraph produce nothing" $
-        paraTexts "吾輩は猫である。\n名前はまだ無い。\n" @?= [[Text "吾輩は猫である。名前はまだ無い。"]],
+      testGroup
+        "newlines in a paragraph become SoftBreak (docs/adr ADR 0003)"
+        [ testCase "a paragraph" $
+            paraTexts "a\nb\n" @?= [[Text "a", SoftBreak, Text "b"]],
+          testCase "whitespace before the newline is dropped" $
+            paraTexts "a  \nb\n" @?= [[Text "a", SoftBreak, Text "b"]],
+          testCase "a prose slot" $ case paraTexts "[note: a\nb]\n" of
+            [[Command _ [] [slot]]] -> inl slot @?= [Text "a", SoftBreak, Text "b"]
+            other -> assertFailure (show other),
+          testCase "Japanese text is not joined by the parser" $
+            paraTexts "吾輩は猫である。\n名前はまだ無い。\n" @?= [[Text "吾輩は猫である。", SoftBreak, Text "名前はまだ無い。"]],
+          testCase "the body of @verse" $ case ast "@verse\n  A\n  B\n\n  C\n" of
+            [BlockCommand n [] [Located _ (Paragraph p1), Located _ (Paragraph p2)]] -> do
+              locValue n @?= "verse"
+              inl p1 @?= [Text "A", SoftBreak, Text "B"]
+              inl p2 @?= [Text "C"]
+            other -> assertFailure (show other)
+        ],
       testCase "escapes are resolved" $
         paraTexts "\\# 見出しではない \\[ x \\\\\n" @?= [[Text "# 見出しではない [ x \\"]],
       testCase "comments vanish, proofreading comments stay" $

@@ -138,7 +138,13 @@ tests =
         codes (parseStyle (FileId 0) "[emphasis]\nstrong = \"underline\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[color.swatches]\na = { cmyk = [0, 0, 0, 101] }\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[figures]\nnumber = \"{x}\"\n") @?= ["G0306"]
-        codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G0306"],
+      testCase "[verse] (docs/adr ADR 0003)" $ do
+        fmap stVerse (parseStyle (FileId 0) "") @?= Right (VerseStyle (Zw 0) (Zw 2) 1)
+        fmap stVerse (parseStyle (FileId 0) "[verse]\nindent = \"1zw\"\nhang = \"3zw\"\nstanza-gap = 2\n") @?= Right (VerseStyle (Zw 1) (Zw 3) 2)
+        fmap stVerse (parseStyle (FileId 0) "[verse]\nhang = \"10pt\"\n") @?= Right (VerseStyle (Zw 0) (Abs 655360) 1)
+        codes (parseStyle (FileId 0) "[verse]\nunknown = 1\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[verse]\nstanza-gap = -1\n") @?= ["G0306"]
     ]
 
 specStyle :: Text

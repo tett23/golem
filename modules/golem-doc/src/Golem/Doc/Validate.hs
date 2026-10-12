@@ -39,6 +39,7 @@ validateDocument fileSize allowed (Document _ bs) = concatMap blockErrors bs
       CodeBlock _ _ -> []
       FigureBlock f -> concatMap blockErrors (figCaption f)
       ChannelOutput _ -> []
+      VerseBlock stanzas -> concatMap (concatMap inl) stanzas
 
 spanErrors :: (FileId -> Maybe Int) -> SrcSpan -> [Text]
 spanErrors fileSize (SrcSpan f s e) = case fileSize f of
