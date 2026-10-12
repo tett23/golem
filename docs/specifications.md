@@ -1029,6 +1029,7 @@ PDF の経路は、ADR に定めた組版の機能のうち一部をまだ出力
 - **ハイフネーション**：明示のハイフン（lime-tree の `-`）の位置を行分割の候補にしていない。Knuth と Plass の行分割は、一回目の試行でハイフネーションの候補をすべて除き、TeX と違って明示のハイフンも一回目から使わない。
 - **文字スタイルと段落スタイルへの記法の統合**：v1 のリリースの前に、強調（`[strong: ...]`、`[bold: ...]`、`[italic: ...]`）のような見た目の記法を文字スタイルへ、韻文（[docs/adr/0003](adr/0003-verse-line-breaks.md) の `@verse`）のようなブロックの記法を段落スタイルへ統合する。段落スタイルはまだない。
 - **字下げ**：段落の字下げ（段落の先頭の字下げ、二行目以降の字下げ、ぶら下げ）を指定する方法がない。段落スタイルで指定できるようにする。
+- **ルビの配置の設定**：ルビの位置を調整する設定がない。今は `[ruby] position = "mono-center"` だけを持ち、モノルビを親文字の中央にそろえ、グループルビを親文字の全体に均等に配置する（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）。特にグループルビについて、ルビが親文字より短いときにルビの字間を空けて親文字の幅にそろえるか、ルビを詰めて中央に置くかを選べるようにする。ルビが親文字より長いときの、隣の文字へのかけ方と親文字の字間の空け方の設定も合わせて決める。
 - **PDF の Producer**：仕様では PDF の Producer に Golem の版を書くが、まだ書いていない。`golemVersion` を使えば足せるが、PDF の出力を変える変更なので別に扱う（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **`--no-fonts` で作ったプロジェクトのビルド**：`style.toml` が存在しないフォントのファイルを指すと、PDF だけでなくすべてのターゲットが G0306 になる。`golem new --no-fonts` で作ったプロジェクトは、フォントを置くまで HTML もビルドできない。フォントのファイルの検査を PDF のときだけにするかを決める（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
 - **配布物のライセンスの一覧**：配布物の `THIRD_PARTY_LICENSES` に、Linux の実行ファイルに静的にリンクする musl と libffi、libstdc++ と libgcc、`libwasmtime.a` に含まれる Rust のクレートのライセンスが入っていない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
