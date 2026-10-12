@@ -194,16 +194,29 @@ piecesOf env kenten = \case
   ProofComment {} -> []
 
 textPieces :: Bool -> Text -> [Piece]
-textPieces kenten t = go (T.unpack t)
+textPieces kenten t = go (zip cs latinish)
   where
-    go [] = []
-    go (c : rest)
-      | c == ' ' = PSpace : go (dropWhile (== ' ') rest)
-      | isLatinWordChar c =
-          let (w, rest') = span isLatinWordChar (c : rest)
-           in PWord (T.pack w) : go rest'
-      | otherwise = PChar c kenten : go rest
+    cs = T.unpack t
     isLatinWordChar c = charClass c == Western && not (isSpace c)
+    -- quotation marks, apostrophes and dashes join a Latin word when the
+    -- nearest letter on either side is Latin (I’ll, “Mercy”—“We”)
+    isJoiner c = c `elem` ("‘’“”—" :: String)
+    latinish =
+      [ isLatinWordChar c || (isJoiner c && (side (reverse before) || side after))
+      | (i, c) <- zip [0 :: Int ..] cs,
+        let before = take i cs
+            after = drop (i + 1) cs
+      ]
+    side rest = case dropWhile isJoiner rest of
+      (c : _) -> isLatinWordChar c
+      [] -> False
+    go [] = []
+    go ((c, l) : rest)
+      | c == ' ' = PSpace : go (dropWhile ((== ' ') . fst) rest)
+      | l =
+          let (w, rest') = span snd ((c, l) : rest)
+           in PWord (T.pack (map fst w)) : go rest'
+      | otherwise = PChar c kenten : go rest
 
 numberPieces :: ComposeEnv -> Integer -> Maybe NumberStyle -> [Piece]
 numberPieces env n style
