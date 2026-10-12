@@ -49,7 +49,28 @@ PDF/X-4 の適合を判定できる自由な検証ツールがないためであ
 Golem が扱う単位は**プロジェクト**である。
 プロジェクトは、本の構成を書く**マニフェスト**（`manifest.toml`。章の順、メタデータ、出力する形式）、スタイルとレイアウトを定義する `style.toml`、原稿のファイル（`.gm`）、図版、フォントから成る。
 
-原稿は、次の順に処理される。
+原稿は、次の図の順に処理される。
+
+```mermaid
+flowchart TD
+    src["原稿（.gm）"] -->|構文解析| cst["CST"]
+    cst -->|空白とコメントを除く| ast["AST"]
+    manifest["manifest.toml"] --> eval
+    ast --> eval["評価（S0）"]
+    plugin["プラグイン"] -.-> eval
+    eval -->|全ファイルを集める| assemble["文書構造の確定（S1）"]
+    assemble --> ir["意味論 IR"]
+    ir --> text["プレーンテキスト"]
+    ir --> html["HTML"]
+    html --> epub["EPUB"]
+    stylefile["style.toml"] --> layoutir["レイアウト IR"]
+    ir --> layout["行分割と改ページ（S2）"]
+    layoutir --> layout
+    font["フォント"] --> layout
+    layout --> pdf["PDF"]
+```
+
+各段階は、次のことを行う。
 
 1. 原稿を構文解析し、**CST**（具象構文木）を作る。CST は空白とコメントまで含めて原稿を失わずに保持し、整形と LSP が使う。
 2. CST から空白、コメント、エスケープを取り除き、意味だけを残した **AST**（抽象構文木）を作る。
@@ -114,33 +135,63 @@ EPUB と HTML はリフローであり、位置情報が意味論に混入した
 ## モジュール構成
 
 モジュールの依存の関係を次に示す。
+矢印は、元のモジュールが先のモジュールを使うことを表す。
+golem-syntax はすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
+ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
 プラグイン[^wasm]は wasm のモジュールとして配布し、取得した配布物のハッシュをロックファイルに記録する。
 
-```
-golem-syntax        -- 診断とソース位置（最下層）
-golem-parser        -- PEG パーサー
-golem-eval          -- コンパイル時式評価とプラグイン展開
-golem-doc           -- 意味論 IR。全バックエンドの分岐点。文書構造（S1）の集約も担う
-   │
-   ├─ [PDF 経路]
-   │   golem-layout-spec  -- レイアウト IR（フレーム、マスターページ、行の格子、書字方向）
-   │   golem-layout       -- 合成エンジン（行分割、禁則、改ページ）
-   │   golem-font         -- シェイピング、サブセット化、フォント埋め込み
-   │   golem-pdf          -- PDF/X-4 準拠の決定的直列化
-   │
-   ├─ [Web 経路]
-   │   golem-html         -- XHTML+CSS シリアライザ
-   │     └─ golem-epub    -- EPUB パッケージング層
-   │
-   └─ [テキスト経路]
-       golem-text         -- プレーンテキスト出力（縦書きと横書き）
-golem-project       -- マニフェストと style.toml の読み込み、ファイルの依存グラフ、import の解決
-golem-plugin        -- wasm ランタイム、プラグインの取得とロックファイル
-golem-driver / golem-cli  -- パイプラインの束ねと CLI
-golem-lint          -- lint の規則（ライブラリ。CLI と LSP が共有する）
-golem-fmt           -- CST の整形（ライブラリ。CLI と LSP が共有する）
-golem-lsp           -- LSP サーバー
+```mermaid
+flowchart TD
+    cli["golem-cli<br/>golem コマンド"]
+    lsp["golem-lsp<br/>LSP サーバー"]
+    driver["golem-driver<br/>パイプラインの束ね"]
+    lint["golem-lint<br/>lint の規則"]
+    fmt["golem-fmt<br/>CST の整形"]
+    plugin["golem-plugin<br/>wasm のランタイム、取得とロックファイル"]
+    project["golem-project<br/>マニフェスト、style.toml、import の解決"]
+    parser["golem-parser<br/>PEG パーサー"]
+    eval["golem-eval<br/>式の評価とプラグインの展開"]
+    doc["golem-doc<br/>意味論 IR と文書構造（S1）の集約"]
+    syntax["golem-syntax<br/>診断とソース位置（最下層）"]
+    subgraph pdfpath["PDF 経路"]
+        layoutspec["golem-layout-spec<br/>レイアウト IR"]
+        layout["golem-layout<br/>行分割、禁則、改ページ"]
+        font["golem-font<br/>シェイピング、サブセット化、埋め込み"]
+        pdf["golem-pdf<br/>PDF/X-4 の決定的な直列化"]
+    end
+    subgraph webpath["Web 経路"]
+        html["golem-html<br/>XHTML と CSS"]
+        epub["golem-epub<br/>EPUB のパッケージ"]
+    end
+    subgraph textpath["テキスト経路"]
+        text["golem-text<br/>プレーンテキスト（縦書きと横書き）"]
+    end
+    cli --> lsp
+    doc --> parser
+    driver --> epub
+    driver --> font
+    driver --> layout
+    driver --> lint
+    driver --> pdf
+    driver --> plugin
+    driver --> text
+    epub --> html
+    eval --> doc
+    fmt --> parser
+    html --> doc
+    layout --> doc
+    layout --> layoutspec
+    layoutspec --> project
+    lint --> eval
+    lsp --> driver
+    lsp --> fmt
+    pdf --> layoutspec
+    plugin --> eval
+    plugin --> project
+    project --> parser
+    text --> doc
+    parser --> syntax
 ```
 
 処理は `parse → eval → 意味論 IR → 各バックエンド` の順に流れ、分岐点は意味論 IR である（「処理の流れ」の節を参照）。
