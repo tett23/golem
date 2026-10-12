@@ -23,7 +23,7 @@ golem new mybook
 | `golem new DIR` | プロジェクトを作る |
 | `golem plugin lock` | マニフェストのプラグインを取得し、ハッシュを `plugins.lock` に書く |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
-| `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod]` | 出力を `build/` に書く |
+| `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る |
 | `golem check` | 出力を書かずに検査する |
 | `golem lint` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形する |
