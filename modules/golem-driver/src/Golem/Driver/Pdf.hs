@@ -24,10 +24,10 @@ import Control.Exception (evaluate)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii)
-import Data.List (nub)
+import Data.List (groupBy, nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -39,6 +39,7 @@ import Golem.Doc.Numerals (formatNumber)
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
+import Golem.Layout.Look
 import Golem.Layout.Paginate
 import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Rect (..), baselineRatio, pageGeometry, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
@@ -91,14 +92,60 @@ bodyRole style
   | Map.member "body" (stFonts style) = "body"
   | otherwise = maybe "body" fst (Map.lookupMin (stFonts style))
 
-{- | The font roles the PDF uses, body first, then the others by name
-(golem-driver ADR 0003).
+{- | The font roles the PDF uses, body first, then the others by name:
+headings (golem-driver ADR 0003), bold, italic and character styles
+(ADR 0004).
 -}
 usedRoles :: Style -> [Text]
 usedRoles style =
   let body = bodyRole style
-      others = Set.toAscList (Set.delete body (Set.fromList [f | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings style)]))
+      named =
+        [f | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings style)]
+          <> maybe [] pure (stBoldFont style)
+          <> maybe [] pure (stItalicFont style)
+          <> [f | CharStyleDef {csFont = Just f} <- Map.elems (stCharStyles style)]
+      others = Set.toAscList (Set.delete body (Set.fromList named))
    in body : others
+
+{- | The look inside an inline element (golem-driver ADR 0004): strong as
+bold or italic, bold and italic in their roles or synthetic, character
+styles' role and size, and colour. The inner setting wins; the rest is
+inherited.
+-}
+restyle :: Style -> Look -> Inline -> Look
+restyle style lk = \case
+  Strong {} -> if stStrongAs style == "italic" then italic else bold
+  Bold {} -> bold
+  Italic {} -> italic
+  CharStyle _ name _ -> case Map.lookup name (stCharStyles style) of
+    Just cs ->
+      let lk1 = maybe lk (\f -> lk {lkFace = f, lkLatinFace = f}) (csFont cs)
+       in maybe lk1 (\d -> lk1 {lkSize = dimToSp (lkSize lk) d}) (csSize cs)
+    Nothing -> lk
+  Color _ sw _ -> lk {lkColor = Just sw}
+  _ -> lk
+  where
+    bold = maybe lk {lkEmbolden = True} (\f -> lk {lkFace = f, lkLatinFace = f}) (stBoldFont style)
+    italic = case stItalicFont style of
+      Nothing -> lk {lkSlant = True}
+      Just f ->
+        let fr = Map.lookup f (stFonts style)
+            hasJa = isJust (fr >>= frJa)
+            hasLatin = isJust (fr >>= frLatin)
+         in lk
+              { lkFace = if hasJa then f else lkFace lk,
+                lkLatinFace = if hasLatin then f else lkLatinFace lk,
+                -- the side the role does not cover is slanted
+                lkSlant = lkSlant lk || not (hasJa && hasLatin)
+              }
+
+-- | The slant of synthetic italic: 1/5, about 11.3 degrees (golem-driver ADR 0004).
+syntheticSlant :: Rational
+syntheticSlant = 1 / 5
+
+-- | The outline stroke of synthetic bold: 1/40 of the size.
+syntheticStroke :: Sp -> Sp
+syntheticStroke size = size `div` 40
 
 -- | The role and size of the headings of a level (golem-driver ADR 0003).
 headingFace :: Style -> PageGeometry -> Int -> (Text, Sp)
@@ -119,8 +166,6 @@ pdfFileName bookId =
 data SetLine = SetLine
   { slLine :: !Line,
     slSize :: !Sp,
-    -- | the font role the line was set in
-    slFace :: !Text,
     slNotes :: ![(Int, [Line])]
   }
 
@@ -177,8 +222,10 @@ composeEnv :: Style -> PageGeometry -> LoadedFonts -> Map Text Integer -> Text -
 composeEnv style geom fonts assumed role fs =
   let comp = stComposition style
    in (defaultComposeEnv fs)
-        { ceAdvance = lfAdvance fonts role,
-          ceWordAdvance = lfWordAdvance fonts role,
+        { ceAdvance = \look c -> lfAdvance fonts (if charClass c == Western then lkLatinFace look else lkFace look) c,
+          ceWordAdvance = lfWordAdvance fonts . lkLatinFace,
+          ceLook = plainLook role fs,
+          ceRestyle = restyle style,
           ceVertical = pgVertical geom,
           ceKinsokuStrict = compKinsokuStrict comp,
           ceHanging = compHanging comp,
@@ -270,12 +317,12 @@ buildFlow inp geom fonts figures assumed = do
   -- number the lines in document order
   let step (nextId, flows, lineAcc, figAcc, headAcc, errs) (u, (ls, notes, anchors, items)) =
         let ids = [nextId .. nextId + length ls - 1]
-            (role, size) = faceOf u
+            (_, size) = faceOf u
             -- notes belong to the line containing their anchor
             lineOfItem = lineIndexOfItems items ls
             noteLines = Map.fromListWith (<>) [(lineOfItem i, [(n, nls)]) | (AnchorNote i n _, (_, nls)) <- zip [a | a@AnchorNote {} <- anchors] notes]
             boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then maybe [] pure (uLabel u) else []) | (k, lid) <- zip [0 ..] ids]
-            set = Map.fromList [(lid, SetLine l size role (Map.findWithDefault [] k noteLines)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+            set = Map.fromList [(lid, SetLine l size (Map.findWithDefault [] k noteLines)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
             hb = headingBlock fs pitch size (length ls)
             flowOf = case uKind u of
               UPara -> [FParagraph boxes]
@@ -350,31 +397,46 @@ writeDocument inp geom fonts built pages intent =
       -- font index × direction: even refs horizontal, odd refs vertical
       ref ix v = P.FontRef (2 * ix + (if v then 1 else 0))
       toSp size a = round (a * toRational size) :: Integer
-      body = bodyRole (piStyle inp)
-      -- glyph marks of a text in a font role starting at a point, and the glyphs used
-      runAt face v rotated size scale (x0, y0) txt =
-        let gs = lfShape fonts face (v && not rotated) txt
-            advs = scanl (+) 0 [toSp size a | (_, _, a, _) <- gs]
-            placed = [(ix, g, t, off) | ((ix, g, _, t), off) <- zip gs advs]
-            byFont = Map.fromListWith (flip (<>)) [(ix, [(g, t, off)]) | (ix, g, t, off) <- placed]
-            mark ix xs
+      style = piStyle inp
+      body = bodyRole style
+      isLatin = (== Western) . charClass
+      -- the role of a run of text in a look: Latin or Japanese (golem-driver ADR 0004)
+      runsOf look txt
+        | lkFace look == lkLatinFace look = [(lkFace look, txt)]
+        | otherwise = [(if isLatin (T.head r) then lkLatinFace look else lkFace look, r) | r <- T.groupBy (\a b -> isLatin a == isLatin b) txt, not (T.null r)]
+      -- synthetic slant applies where the italic role does not set the text
+      slantedIn look role = lkSlant look && Just role /= stItalicFont style
+      -- glyph marks of a text in a look starting at a point, and the glyphs used
+      runAt look v rotated scale (x0, y0) txt =
+        let size = lkSize look
+            gs = concat [[(ix, g, a, t, slantedIn look role) | (ix, g, a, t) <- lfShape fonts role (v && not rotated) r] | (role, r) <- runsOf look txt]
+            advs = scanl (+) 0 [toSp size a | (_, _, a, _, _) <- gs]
+            placed = [(ix, g, t, sl, off) | ((ix, g, _, t, sl), off) <- zip gs advs]
+            byFont = Map.fromListWith (flip (<>)) [((ix, sl), [(g, t, off)]) | (ix, g, t, sl, off) <- placed]
+            at off = if v then (x0, y0 - off) else (x0 + off, y0)
+            mark (ix, sl) xs
+              | sl || lkEmbolden look =
+                  let rs = P.RunStyle (if v then 1000 else 1000 + scale) (v && rotated) (if sl then syntheticSlant else 0) (if lkEmbolden look then syntheticStroke size else 0)
+                   in P.StyledGlyphRun rs (ref ix (v && not rotated)) size [(code ix g, x, y) | (g, _, off) <- xs, let (x, y) = at off]
               | v && rotated = P.RotatedGlyphRun (ref ix False) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
               | v = P.GlyphRun (ref ix True) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
               | scale /= 0 = P.ScaledGlyphRun (ref ix False) size (1000 + scale) [(code ix g, x0 + off, y0) | (g, _, off) <- xs]
               | otherwise = P.GlyphRun (ref ix False) size [(code ix g, x0 + off, y0) | (g, _, off) <- xs]
             code = lfCode fonts
-         in ([mark ix xs | (ix, xs) <- Map.toList byFont], [(ref ix (v && not rotated), g, t) | (ix, g, t, _) <- placed])
+         in ([mark k xs | (k, xs) <- Map.toList byFont], [(ref ix (v && not rotated), g, t) | (ix, g, t, _, _) <- placed])
+      -- the swatch of a look, when it names one (golem-driver ADR 0004)
+      swatchOf look = do
+        name <- lkColor look
+        Swatch (c, m, y, k) <- Map.lookup name (stSwatches style)
+        pure (P.Swatch c m y k)
       -- a line at a distance across the type area: the baseline from its
       -- top edge, or the centre line from its right edge
       drawLine ta cross sl =
         let l = slLine sl
-            size = slSize sl
-            face = slFace sl
-            runAt' = runAt face
             origin off
               | vertical = (rectX ta + rectW ta - cross, rectY ta + rectH ta - off)
               | otherwise = (rectX ta + off, rectY ta + rectH ta - cross)
-            advance sz t = sum [toSp sz a | (_, _, a, _) <- lfShape fonts face (vertical && not (T.all ((== Western) . charClass) t)) t]
+            advance look t = sum [toSp (lkSize look) a | (role, r) <- runsOf look t, (_, _, a, _) <- lfShape fonts role (vertical && not (T.all isLatin r)) r]
             -- a point beside the line at a distance across it: right of a
             -- vertical line, above a horizontal baseline
             beside (ox, oy) dist
@@ -382,51 +444,67 @@ writeDocument inp geom fonts built pages intent =
               | otherwise = (ox, oy + dist)
             placed = placeLine l
             lastIx = length placed - 1
+            -- the look of the last box before an item (a hyphen is drawn in it)
+            lookBefore i = case [bcLook c | (Box _ c, _) <- reverse (take i placed)] of
+              (lk : _) -> lk
+              [] -> plainLook body (slSize sl)
             boxRun (i, (it, off)) = case it of
-              Box w c -> case boxKind c of
-                KindRuby ->
-                  -- the base centred in the box, the reading at half size beside it
-                  let (base, reading) = T.breakOn "|" (bcText c)
-                      rt = T.drop 1 reading
-                      rsize = size `div` 2
-                      baseStart = off + (w - advance size base) `div` 2
-                      readStart = off + (w - advance rsize rt) `div` 2
-                      (bx, by) = origin baseStart
-                      (b1, u1) = runAt' vertical False size 0 (bx, by) base
-                      (b2, u2) = runAt' vertical False rsize 0 (beside (origin readStart) (if vertical then size `div` 2 + rsize `div` 2 else size)) rt
-                   in (b1 <> b2, u1 <> u2)
-                KindKenten ->
-                  -- the character, and a sesame dot centred beside it
-                  let dsize = size `div` 2
-                      (b1, u1) = runAt' vertical False size 0 (origin off) (bcText c)
-                      (b2, u2) = runAt' vertical False dsize 0 (beside (origin (off + (size - dsize) `div` 2)) (if vertical then size `div` 2 + dsize `div` 2 else size)) "﹅"
-                   in (b1 <> b2, u1 <> u2)
-                _ ->
-                  let pre = case T.unpack (bcText c) of
-                        [ch] | boxKind c == KindPunctuation -> toSp size (fst (punctSpace (charClass ch)))
-                        _ -> 0
-                      rotated = boxKind c == KindRotated
-                      (ox, oy) = origin (off - pre)
-                      -- vertical glyph origins sit on the centre line; rotated Latin sits on a baseline beside it
-                      pt
-                        | vertical && rotated = (ox - size * 3 `div` 10, oy)
-                        | otherwise = (ox, oy) -- Identity-V: the origin is the top centre of the em box
-                   in runAt' vertical rotated size (if bcExpandable c then lineExpansion l else 0) pt (bcText c)
+              Box w c ->
+                let look = bcLook c
+                    size = lkSize look
+                    half = look {lkSize = size `div` 2}
+                 in (,) (lkColor look) $ case boxKind c of
+                      KindRuby ->
+                        -- the base centred in the box, the reading at half size beside it
+                        let (base, reading) = T.breakOn "|" (bcText c)
+                            rt = T.drop 1 reading
+                            rsize = lkSize half
+                            baseStart = off + (w - advance look base) `div` 2
+                            readStart = off + (w - advance half rt) `div` 2
+                            (bx, by) = origin baseStart
+                            (b1, u1) = runAt look vertical False 0 (bx, by) base
+                            (b2, u2) = runAt half vertical False 0 (beside (origin readStart) (if vertical then size `div` 2 + rsize `div` 2 else size)) rt
+                         in (b1 <> b2, u1 <> u2)
+                      KindKenten ->
+                        -- the character, and a sesame dot centred beside it
+                        let dsize = lkSize half
+                            (b1, u1) = runAt look vertical False 0 (origin off) (bcText c)
+                            (b2, u2) = runAt half vertical False 0 (beside (origin (off + (size - dsize) `div` 2)) (if vertical then size `div` 2 + dsize `div` 2 else size)) "﹅"
+                         in (b1 <> b2, u1 <> u2)
+                      _ ->
+                        let pre = case T.unpack (bcText c) of
+                              [ch] | boxKind c == KindPunctuation -> toSp size (fst (punctSpace (charClass ch)))
+                              _ -> 0
+                            rotated = boxKind c == KindRotated
+                            (ox, oy) = origin (off - pre)
+                            -- vertical glyph origins sit on the centre line; rotated Latin sits on a baseline beside it
+                            pt
+                              | vertical && rotated = (ox - size * 3 `div` 10, oy)
+                              | otherwise = (ox, oy) -- Identity-V: the origin is the top centre of the em box
+                         in runAt look vertical rotated (if bcExpandable c then lineExpansion l else 0) pt (bcText c)
               -- a word broken at the line end gets its hyphen
               Penalty hw _ True
                 | i == lastIx && hw > 0 ->
                     let (ox, oy) = origin off
-                     in runAt' vertical vertical size 0 (if vertical then (ox - size * 3 `div` 10, oy) else (ox, oy)) "-"
-              _ -> ([], [])
-            parts = zipWith (curry boxRun) [0 ..] placed
-         in (concatMap fst parts, concatMap snd parts)
+                        look = lookBefore i
+                        size = lkSize look
+                     in (lkColor look, runAt look vertical vertical 0 (if vertical then (ox - size * 3 `div` 10, oy) else (ox, oy)) "-")
+              _ -> (Nothing, ([], []))
+            parts = filter (not . null . fst . snd) (zipWith (curry boxRun) [0 ..] placed)
+            -- boxes of the same swatch in a row share one saved colour
+            coloured = groupBy (\a b -> fst a == fst b) parts
+            marksOf grp = case grp of
+              ((Just name, _) : _)
+                | Just sw <- swatchOf (plainLook body 0) {lkColor = Just name} -> [P.Saved (P.SetColor sw : concatMap (fst . snd) grp)]
+              _ -> concatMap (fst . snd) grp
+         in (concatMap marksOf coloured, concatMap (snd . snd) parts)
       textAt anchor size txt =
         let w = sum [toSp size a | (_, _, a, _) <- lfShape fonts body False txt]
             x0 = case anAlign anchor of
               LS.AlignStart -> anX anchor
               LS.AlignCenter -> anX anchor - w `div` 2
               LS.AlignEnd -> anX anchor - w
-         in runAt body False False size 0 (x0, anY anchor) txt
+         in runAt (plainLook body size) False False 0 (x0, anY anchor) txt
       drawPage p =
         let n = poNumber p
             ta = typeAreaFor geom n
@@ -440,7 +518,7 @@ writeDocument inp geom fonts built pages intent =
             figMarks = [P.Image (P.ImageRef fid) (figureRect ta slot w h) | (slot, SFigure fid) <- poSlots p, Just (_, w, h) <- [Map.lookup fid (bFigures built)]]
             noteLines = concat [take cnt (drop from (concat [ls | sl <- Map.elems (bLines built), (nid', ls) <- slNotes sl, nid' == nid])) | (nid, from, cnt) <- poFootnotes p]
             bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
-            noteParts = [drawLine ta (gridAt slot) (SetLine l (pgFontSize geom) body []) | (slot, l) <- zip bottomSlots noteLines]
+            noteParts = [drawLine ta (gridAt slot) (SetLine l (pgFontSize geom) []) | (slot, l) <- zip bottomSlots noteLines]
             masterParts = if poBlank p then [] else masterMarks n (poRunningHead p)
             allParts = lineParts <> noteParts <> masterParts
          in (concatMap fst allParts <> figMarks, concatMap snd allParts)

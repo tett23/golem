@@ -33,6 +33,8 @@ data HtmlConfig = HtmlConfig
     hcSwatches :: !(Map Text (Int, Int, Int, Int)),
     hcCharStyles :: !(Map Text (Maybe Text)), -- style -> font role
     hcFonts :: !(Map Text (Maybe FilePath, Maybe FilePath)), -- role -> (ja, latin)
+    hcBoldFont :: !(Maybe Text), -- the font role of b (golem-driver ADR 0004)
+    hcItalicFont :: !(Maybe Text), -- the font role of i
     hcBibliography :: !(Map Text Text), -- key -> formatted entry
     hcDev :: !Bool
   }
@@ -359,7 +361,7 @@ shortClass = \case
 css :: HtmlConfig -> Text
 css cfg =
   T.unlines $
-    [ "@font-face { font-family: \"" <> family role kind <> "\"; src: url(\"" <> T.pack (fontOut p) <> "\"); }"
+    [ "@font-face { font-family: \"" <> family role kind <> "\"; src: url(\"" <> T.pack (fontOut p) <> "\");" <> (if Just role == hcItalicFont cfg then " font-style: italic;" else "") <> " }"
     | (role, (ja, la)) <- Map.toAscList (hcFonts cfg),
       (kind, Just p) <- [("latin" :: Text, la), ("ja", ja)]
     ]
@@ -388,8 +390,19 @@ css cfg =
       <> [ ".cs-" <> name <> " { font-family: " <> fontStack role <> "; }"
          | (name, Just role) <- Map.toAscList (hcCharStyles cfg)
          ]
+      -- the bold and italic roles: the role's font is already bold or italic,
+      -- so the browser does not synthesise it again (golem-driver ADR 0004)
+      <> [ sel <> " { font-family: " <> fontStack role <> "; font-weight: normal; }"
+         | Just role <- [hcBoldFont cfg],
+           sel <- ["b"] <> ["strong" | hcStrongAs cfg == "bold"]
+         ]
+      <> [ sel <> " { font-family: " <> T.intercalate ", " (families role <> [fontStack "body"]) <> "; font-style: italic; }"
+         | Just role <- [hcItalicFont cfg],
+           sel <- ["i"] <> ["strong" | hcStrongAs cfg == "italic"]
+         ]
   where
+    families role = case Map.lookup role (hcFonts cfg) of
+      Just (ja, la) -> ["\"" <> family role "latin" <> "\"" | Just _ <- [la]] <> ["\"" <> family role "ja" <> "\"" | Just _ <- [ja]]
+      Nothing -> []
     family role kind = "golem-" <> role <> "-" <> kind
-    fontStack role = case Map.lookup role (hcFonts cfg) of
-      Just (ja, la) -> T.intercalate ", " (["\"" <> family role "latin" <> "\"" | Just _ <- [la]] <> ["\"" <> family role "ja" <> "\"" | Just _ <- [ja]] <> ["serif"])
-      Nothing -> "serif"
+    fontStack role = T.intercalate ", " (families role <> ["serif"])

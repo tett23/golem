@@ -463,6 +463,7 @@ vertical = "kanji"
 
 [emphasis]
 strong = "bold"
+bold-font = "heading"
 
 [notes]
 placement = "page-foot"
@@ -499,6 +500,15 @@ folio = { position = "bottom-outside", format = "{n}" }
 綴りを誤った設定が黙って無視されると、その誤りは出力の見た目の劣化としてしか現れないためである。
 同じ理由で、見出しの `font` が `[fonts]` にない役割を指す場合もエラー（G0308）とする（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
 
+`[emphasis]` の `bold-font` と `italic-font` は、`[bold: ...]` と `[italic: ...]` を組むフォントの役割である（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
+`strong` が `bold` なら `[strong: ...]` は `[bold: ...]` と、`italic` なら `[italic: ...]` と同じ書体で組む。
+指定しない場合、PDF は本文の書体から合成の太字（輪郭を線で太らせる）と合成の斜体（字形を傾ける）で組む。
+`italic-font` の役割が和文と欧文の片方しか持たない場合は、持たない側の文字に合成の斜体をかける。
+和文の書体は一般に斜体を持たないので、和文の斜体は字形がゆがむが、強調が黙って消えることを避けるために傾ける。
+`bold-font`、`italic-font`、文字スタイルの `font` が `[fonts]` にない役割を指す場合も G0308 とする。
+文字スタイルの `size` は、PDF でその文字を組む大きさになり、`zw` は外側の文字の大きさを一字とする。
+HTML と EPUB では、`bold-font` と `italic-font` の書体を `b` と `i`（`strong` の表し方に応じて `strong` にも）に指定する。
+
 PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組む。
 `font` を省けば本文の役割、`size` を省けば版面の文字の大きさになる。
 本文より大きい見出しは、行の格子からずらさずに置く（行取り）。
@@ -520,6 +530,8 @@ CSS を書けると、媒体契約の外で見た目を変える抜け道にな�
 名前と CMYK 値の対応は、出力インテント（v1 では Japan Color 2001 Coated）に束縛して定義する。
 印刷を第一の媒体とし、色を変換する場合は CMYK から RGB の方向に限る。
 EPUB と HTML の色は、印刷用の色を RGB に近似したものになる。
+PDF の文字の色（`[color スウォッチ: ...]`）は、スウォッチの CMYK の値をそのまま DeviceCMYK のプロセスカラーとして書き、RGB への変換も特色の色空間も使わない（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
+色を指定しない文字は、色を設定せずに描く。
 
 写真などの画像は、この規則の例外とする。
 Golem は画像の色を変換せず、ICC プロファイルを付けたまま PDF に埋め込み、印刷用の色への変換は印刷所の RIP[^rip] に任せる。
@@ -539,7 +551,7 @@ OpenType の機能（縦書き用の字形、プロポーショナルな字詰�
 
 ライセンスで埋め込みが禁止されているフォントを使った場合は、エラーとする。
 
-PDF は、本文の役割と、見出しの `font` が指す役割のフォントだけを読み込む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
+PDF は、本文の役割と、見出しの `font`、`[emphasis]` の `bold-font` と `italic-font`、文字スタイルの `font` が指す役割のフォントだけを読み込む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 使わない役割のフォントのライセンスでビルドを止めないためである。
 二つの役割が同じバイト列のファイルを指す場合は、一つのフォントとして一度だけ埋め込む。
 バイト列が異なるのに PostScript 名が同じフォントを使う場合は、エラー（G0805）とする。
@@ -894,7 +906,6 @@ v1 の範囲から外した事項と、v1 の実装で次の段階以降に回�
 PDF の経路は、ADR に定めた組版の機能のうち一部をまだ出力に使っていない。
 組版のモジュール（golem-layout）には実装とテストがあり、残っているのは PDF のパイプラインへの接続である。
 
-- **強調、文字スタイル、色**：PDF では `[strong: ...]`、`[bold: ...]`、`[italic: ...]`、文字スタイル、スウォッチの色を区別せずに組んでいる。HTML と EPUB では区別して出力している。
 - **回り込みの図版**：回り込みの除外領域と行長 L*(i)[^line-length] は golem-layout にあるが、PDF のパイプラインはすべての図版を回り込ませずに置いている。
 - **傍注**：傍注欄での配置の計算は golem-layout にあるが、PDF には傍注を出力していない。
 - **索引と参考文献**：PDF に出力するチャネルは目次だけである。

@@ -247,6 +247,7 @@ tests =
             qpdfCheck a
         ],
       testGroup "PDF headings (ADR 0003)" headingTests,
+      testGroup "PDF emphasis, character styles and colour (ADR 0004)" emphasisTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup
         "public-domain books"
@@ -445,6 +446,108 @@ headingTests =
       pdf @?= Nothing
   ]
 
+-- | Every glyph drawn: the font resource, the size, the glyph, the text matrix and the origin.
+data Drawn = Drawn {dFont :: BS.ByteString, dSize :: BS.ByteString, dGlyph :: Int, dMatrix :: [BS.ByteString], dX :: BS.ByteString, dY :: BS.ByteString}
+  deriving stock (Eq, Ord, Show)
+
+drawnGlyphs :: BS.ByteString -> [Drawn]
+drawnGlyphs content = go ("", "") (BC.lines content)
+  where
+    go _ [] = []
+    go cur (l : rest) = case BC.words l of
+      ws
+        | Just (f, size) <- tf ws -> go (f, size) rest
+        | (hexg : "Tm" : y : x : m) <- drop 1 (reverse ws),
+          "Tj" `elem` take 1 (reverse ws),
+          length m >= 4 ->
+            uncurry Drawn cur (read ("0x" <> BC.unpack (BC.filter (`notElem` ("<>" :: String)) hexg))) (reverse (take 4 m)) x y : go cur rest
+        | otherwise -> go cur rest
+    tf ws = case dropWhile (\w -> not ("/F" `BS.isPrefixOf` w)) ws of
+      (f : size : "Tf" : _) -> Just (f, size)
+      _ -> Nothing
+
+-- | A body role for styles that name other roles, so that the body stays the body.
+fakeBody :: BS.ByteString
+fakeBody = "\n[fonts.body]\nja = \"fonts/b.otf\"\n"
+
+-- | The style of the PDF tests with fonts that the fake provider ignores but style.toml must find.
+fakeFontFiles :: [(FilePath, BS.ByteString)]
+fakeFontFiles = [("fonts/" <> f, "fake") | f <- ["b.otf", "w.otf", "h.otf"]]
+
+emphasisTests :: [TestTree]
+emphasisTests =
+  [ testCase "synthetic bold strokes the outline and keeps every glyph where it was" $ do
+      a <- miniPdf fakeProvider True horizontalStyle "前の[bold: 本文]後\n" [] >>= fmap BS.concat . inflateAll
+      b <- miniPdf fakeProvider True horizontalStyle "前の本文後\n" [] >>= fmap BS.concat . inflateAll
+      assertBool "2 Tr" ("2 Tr" `BS.isInfixOf` a)
+      sort [(dGlyph d, dX d, dY d) | d <- drawnGlyphs a] @?= sort [(dGlyph d, dX d, dY d) | d <- drawnGlyphs b],
+    testCase "strong as italic slants Latin and Japanese alike, upright vertical glyphs too" $ do
+      let slanted content = [(dGlyph d, dMatrix d) | d <- drawnGlyphs content, dGlyph d `elem` map fromEnum ("Gと組版" :: String)]
+      h <- miniPdf fakeProvider True (horizontalStyle <> "\n[emphasis]\nstrong = \"italic\"\n") "[strong: Golem と組版]\n" [] >>= fmap BS.concat . inflateAll
+      assertBool (show (slanted h)) (length (slanted h) == 4 && all ((== ["1", "0", "0.2", "1"]) . snd) (slanted h))
+      v <- miniPdf fakeProvider True (pdfStyle <> "\n[emphasis]\nstrong = \"italic\"\n") "[strong: Golem と組版]\n" [] >>= fmap BS.concat . inflateAll
+      let upright = [m | (g, m) <- slanted v, g /= fromEnum 'G']
+      assertBool (show (slanted v)) (length upright == 3 && all (== ["1", "0", "0.2", "1"]) upright)
+      assertBool "turned Latin" (any ((== ["0", "-1", "1", "-0.2"]) . snd) (slanted v)),
+    testCase "an italic role with only Latin sets Latin upright in it and slants the Japanese" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[emphasis]\nitalic-font = \"wide\"\n") "本[italic: Golem と組版]\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          latin = [d | d <- ds, dGlyph d == fromEnum 'G']
+          ja = [d | d <- ds, dGlyph d == fromEnum '組']
+          body = [d | d <- ds, dGlyph d == fromEnum '本']
+      map dMatrix latin @?= [["1", "0", "0", "1"]]
+      map dMatrix ja @?= [["1", "0", "0.2", "1"]]
+      assertBool "the Latin role's font" (map dFont latin /= map dFont body)
+      map dFont ja @?= map dFont body,
+    testCase "a bold role with wider metrics breaks into more lines" $ do
+      let source = "[bold: ab cd ef gh ij kl mn op]\n"
+          rows pdf = do
+            content <- BS.concat <$> inflateAll pdf
+            pure (length (nub [dY d | d <- drawnGlyphs content, dGlyph d `elem` map fromEnum ['a' .. 'p']]))
+      plain <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n") source fakeFontFiles >>= rows
+      wide <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[emphasis]\nbold-font = \"wide\"\n") source fakeFontFiles >>= rows
+      assertBool (show (plain, wide)) (wide > plain),
+    testCase "a bold role with its own font embeds it with the bold glyphs only" $ do
+      (sans, serif) <- realLatinFonts
+      pdf <- miniPdf realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.bold]\nlatin = \"fonts/serif.ttf\"\n\n[emphasis]\nbold-font = \"bold\"\n") "[bold: Zebra] quick\n" [("fonts/sans.otf", sans), ("fonts/serif.ttf", serif)]
+      cmaps <- filter ("beginbfchar" `BS.isInfixOf`) <$> inflateAll pdf
+      length cmaps @?= 2
+      assertBool "bold glyphs only in one font" (any (\c -> "<005a>" `BS.isInfixOf` c && not ("<0071>" `BS.isInfixOf` c)) cmaps)
+      qpdfCheck pdf,
+    testCase "colour is process CMYK, saved and restored, once per run of a swatch" $ do
+      pdf <- miniPdf fakeProvider True (horizontalStyle <> "\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n") "前[color accent: 赤い語]後\n" []
+      content <- BS.concat <$> inflateAll pdf
+      assertBool "fill" ("q\n0 0.8 1 0 k 0 0.8 1 0 K\n" `BS.isInfixOf` content)
+      length (occurrences "0 0.8 1 0 k" content) @?= 1
+      let (_, afterColour) = BS.breakSubstring "0 0.8 1 0 k" content
+      assertBool "restored" ("Q\n" `BS.isInfixOf` afterColour)
+      assertBool "process colour only" (not (any (`BS.isInfixOf` pdf) ["/DeviceRGB", "/Separation", "/DeviceN"])),
+    testCase "a character style sets its role and size" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n\n[character-styles.term]\nfont = \"heading\"\nsize = \"2zw\"\n") "本[style term: 語]\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+      assertBool "the heading role's font" ([dFont d | d <- ds, dGlyph d == fromEnum '語'] /= [dFont d | d <- ds, dGlyph d == fromEnum '本'])
+      [dSize d | d <- ds, dGlyph d == fromEnum '語'] @?= ["20"],
+    testCase "emphasis, styles and colour: parallel and sequential, and two builds, give the same bytes" $ do
+      let style = horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[emphasis]\nitalic-font = \"wide\"\n\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n"
+          source = "[strong: 強い] [bold: Bold] [italic: Golem と組版] [color accent: 赤 [bold: 太い]]。\n"
+      a <- miniPdf fakeProvider True style source fakeFontFiles
+      b <- miniPdf fakeProvider False style source fakeFontFiles
+      c <- miniPdf fakeProvider True style source fakeFontFiles
+      a @?= b
+      a @?= c
+      qpdfCheck a,
+    testCase "HTML: a bold role gives b its font and no synthetic weight" $ withSystemTempDirectory "golem-mini" $ \tmp -> do
+      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
+      BS.writeFile (tmp </> "style.toml") "[fonts.body]\nja = \"fonts/b.otf\"\n\n[fonts.gothic]\nja = \"fonts/h.otf\"\n\n[emphasis]\nbold-font = \"gothic\"\n"
+      BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "[bold: 太い]\n")
+      forM_ fakeFontFiles $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+      r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+      assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+      cssText <- TIO.readFile (tmp </> "build/html/style.css")
+      assertBool (T.unpack cssText) ("b { font-family: \"golem-gothic-ja\", serif; font-weight: normal; }" `T.isInfixOf` cssText)
+      assertBool "strong too" ("strong { font-family: \"golem-gothic-ja\", serif; font-weight: normal; }" `T.isInfixOf` cssText)
+  ]
+
 -- | The Latin test fonts of golem-font: a CFF sans and a TrueType serif.
 realLatinFonts :: IO (BS.ByteString, BS.ByteString)
 realLatinFonts = (,) <$> BS.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" <*> BS.readFile "../golem-font/test/fonts/SourceSerifVariable-Roman.ttf"
@@ -462,7 +565,8 @@ tfSizes :: BS.ByteString -> [BS.ByteString]
 tfSizes content = [size | l <- BC.lines content, (size, "Tf") <- zip (BC.words l) (drop 1 (BC.words l))]
 
 {- | Fixed-width stand-in fonts: full-width characters one em, others half;
-the role "wide" (face 2) sets everything one em wide.
+the role "wide" (face 2) sets everything one em wide; the role "heading"
+is face 4.
 -}
 fakeFonts :: LoadedFonts
 fakeFonts =
@@ -470,13 +574,17 @@ fakeFonts =
     { lfAdvance = advOf,
       lfWordAdvance = \role -> sum . map (advOf role) . T.unpack,
       lfCode = \_ g -> g,
-      lfShape = \role _ t -> [(if role == "wide" then 2 else 0, fromEnum c `mod` 65536, advOf role c, T.singleton c) | c <- T.unpack t],
+      lfShape = \role _ t -> [(faceOf role, fromEnum c `mod` 65536, advOf role c, T.singleton c) | c <- T.unpack t],
       lfEmbed = \_ vertical used ->
         Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used
     }
   where
     -- the role "wide" sets every character one em wide
     advOf role c = if role == "wide" then 1 else adv c
+    faceOf = \case
+      "wide" -> 2
+      "heading" -> 4
+      _ -> 0
     adv c = if fromEnum c < 0x2000 then 1 / 2 else 1
 
 qpdfCheck :: BS.ByteString -> IO ()

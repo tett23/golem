@@ -150,6 +150,10 @@ data Style = Style
     stComposition :: !Composition,
     stNumbersVertical :: !Text,
     stStrongAs :: !Text,
+    -- | the font role of [bold: ...] (golem-driver ADR 0004)
+    stBoldFont :: !(Maybe Text),
+    -- | the font role of [italic: ...]
+    stItalicFont :: !(Maybe Text),
     stNotesPlacement :: !Text,
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
@@ -173,6 +177,8 @@ defaultStyle =
       stComposition = defaultComposition,
       stNumbersVertical = "kanji",
       stStrongAs = "bold",
+      stBoldFont = Nothing,
+      stItalicFont = Nothing,
       stNotesPlacement = "page-foot",
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
@@ -336,10 +342,10 @@ newtype Numbers = Numbers (Maybe Text)
 instance FromValue Numbers where
   fromValue = parseTableFromValue (Numbers <$> enumKey "vertical" ["kanji", "kanji-digits", "tcy"])
 
-newtype Emphasis = Emphasis (Maybe Text)
+data Emphasis = Emphasis (Maybe Text) (Maybe Text) (Maybe Text)
 
 instance FromValue Emphasis where
-  fromValue = parseTableFromValue (Emphasis <$> enumKey "strong" ["bold", "italic"])
+  fromValue = parseTableFromValue (Emphasis <$> enumKey "strong" ["bold", "italic"] <*> optKey "bold-font" <*> optKey "italic-font")
 
 newtype Notes = Notes (Maybe Text)
 
@@ -364,7 +370,7 @@ instance FromValue Style where
     headings <- fromMaybe Map.empty <$> optKey "headings"
     comp <- fromMaybe defaultComposition <$> optKey "composition"
     Numbers nv <- fromMaybe (Numbers Nothing) <$> optKey "numbers"
-    Emphasis em <- fromMaybe (Emphasis Nothing) <$> optKey "emphasis"
+    Emphasis em bf itf <- fromMaybe (Emphasis Nothing Nothing Nothing) <$> optKey "emphasis"
     Notes np <- fromMaybe (Notes Nothing) <$> optKey "notes"
     side <- optKey "sidenotes"
     Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
@@ -381,6 +387,8 @@ instance FromValue Style where
           stComposition = comp,
           stNumbersVertical = fromMaybe (stNumbersVertical d) nv,
           stStrongAs = fromMaybe (stStrongAs d) em,
+          stBoldFont = bf,
+          stItalicFont = itf,
           stNotesPlacement = fromMaybe (stNotesPlacement d) np,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
@@ -419,10 +427,14 @@ parseStyle fid src = do
     [] -> Right s
     ds -> Left ds
   where
-    -- font roles named outside [fonts] must exist (golem-driver ADR 0003)
+    -- font roles named outside [fonts] must exist (golem-driver ADR 0003, 0004)
     roleChecks s =
       [ "style.toml にないフォントの役割です: " <> r
-      | r <- [f | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings s)],
+      | r <-
+          [f | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings s)]
+            <> maybe [] pure (stBoldFont s)
+            <> maybe [] pure (stItalicFont s)
+            <> [f | CharStyleDef {csFont = Just f} <- Map.elems (stCharStyles s)],
         Map.notMember r (stFonts s)
       ]
     checks s =

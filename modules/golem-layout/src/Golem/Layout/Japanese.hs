@@ -29,6 +29,7 @@ import Golem.Doc.IR
 import Golem.Doc.Numerals (kanji, kanjiDigits)
 import Golem.Layout.Hyphenation
 import Golem.Layout.KnuthPlass
+import Golem.Layout.Look
 import Golem.Syntax (Diagnostic, Severity (..), diagnostic)
 
 -- | JLReq character classes used by the rules (cl-01 … cl-27).
@@ -108,11 +109,13 @@ protrusionRatio = \case
   _ -> (0, 0)
 
 data ComposeEnv = ComposeEnv
-  { ceFontSize :: !Sp,
-    -- | advance of a character in em (1 for full-width characters)
-    ceAdvance :: Char -> Rational,
-    -- | advance of a Latin word in em, as shaped (kerning, ligatures)
-    ceWordAdvance :: Text -> Rational,
+  { {- | the size of the paragraph: the base of the inter-character
+    stretch and the quarter em between Japanese and Latin text
+    -} ceFontSize :: !Sp,
+    -- | advance of a character in a look, in em (1 for full-width characters)
+    ceAdvance :: Look -> Char -> Rational,
+    -- | advance of a Latin word in a look, in em, as shaped (kerning, ligatures)
+    ceWordAdvance :: Look -> Text -> Rational,
     ceVertical :: !Bool,
     ceKinsokuStrict :: !Bool,
     ceHanging :: !Bool,
@@ -122,12 +125,30 @@ data ComposeEnv = ComposeEnv
     ceVerticalNumbers :: !(Maybe NumberStyle),
     cePatterns :: !(Maybe Patterns),
     -- | page numbers of labels decided so far (S2); unknown labels take a one-digit stand-in
-    cePageOf :: Text -> Maybe Integer
+    cePageOf :: Text -> Maybe Integer,
+    -- | the look of the paragraph (golem-driver ADR 0004)
+    ceLook :: !Look,
+    -- | the look inside an inline element (strong, bold, italic, style, colour)
+    ceRestyle :: Look -> Inline -> Look
   }
 
 defaultComposeEnv :: Sp -> ComposeEnv
 defaultComposeEnv fs =
-  ComposeEnv fs defaultAdvance (sum . map defaultAdvance . T.unpack) False True False False fs Nothing Nothing (const Nothing)
+  ComposeEnv
+    { ceFontSize = fs,
+      ceAdvance = const defaultAdvance,
+      ceWordAdvance = const (sum . map defaultAdvance . T.unpack),
+      ceVertical = False,
+      ceKinsokuStrict = True,
+      ceHanging = False,
+      ceProtrusion = False,
+      ceRubyOverhang = fs,
+      ceVerticalNumbers = Nothing,
+      cePatterns = Nothing,
+      cePageOf = const Nothing,
+      ceLook = plainLook "body" fs,
+      ceRestyle = const
+    }
   where
     defaultAdvance c
       | charClass c == Western = if isSpace c then 1 / 4 else 1 / 2
@@ -150,12 +171,12 @@ boxKind = toEnum . bcTag
 
 -- ------------------------------------------------------------------ pieces
 
--- One unit of composition before items are generated.
+-- One unit of composition before items are generated, with its look.
 data Piece
-  = PChar !Char !Bool -- the character, kenten
-  | PWord !Text -- a Latin word (no spaces)
-  | PSpace -- an inter-word space
-  | PBox !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
+  = PChar !Look !Char !Bool -- the character, kenten
+  | PWord !Look !Text -- a Latin word (no spaces)
+  | PSpace !Look -- an inter-word space
+  | PBox !Look !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
   | PRubyBreak -- a break allowed between mono ruby bases
   | PAnchor (Int -> Anchor)
 
@@ -171,30 +192,34 @@ composeInlines env inls =
     finish its = its <> [Penalty 0 infPenalty False, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) False]
 
 piecesOf :: ComposeEnv -> Bool -> Inline -> [Piece]
-piecesOf env kenten = \case
-  Text _ t -> textPieces kenten t
-  Strong _ xs -> concatMap (piecesOf env kenten) xs
-  Bold _ xs -> concatMap (piecesOf env kenten) xs
-  Italic _ xs -> concatMap (piecesOf env kenten) xs
-  Color _ _ xs -> concatMap (piecesOf env kenten) xs
-  CharStyle _ _ xs -> concatMap (piecesOf env kenten) xs
+piecesOf env kenten inl = case inl of
+  Text _ t -> textPieces lk kenten t
+  Strong _ xs -> restyled xs
+  Bold _ xs -> restyled xs
+  Italic _ xs -> restyled xs
+  Color _ _ xs -> restyled xs
+  CharStyle _ _ xs -> restyled xs
   Kenten _ _ xs -> concatMap (piecesOf env True) xs
   Ruby _ _ segs -> rubyPieces env segs
-  Tcy _ t -> [PBox t KindTcy (ceFontSize env)]
+  Tcy _ t -> [PBox lk t KindTcy (lkSize lk)]
   Number _ n style -> numberPieces env n style
   Ref _ RefPage l ->
     let n = fromMaybe 1 (cePageOf env l)
-     in PAnchor (`AnchorPageRef` l) : textPieces False (T.pack (show n))
-  Ref _ _ l -> textPieces False l
+     in PAnchor (`AnchorPageRef` l) : textPieces lk False (T.pack (show n))
+  Ref _ _ l -> textPieces lk False l
   Deferred {} -> []
-  Note _ n body -> [PAnchor (\i -> AnchorNote i n body), PBox ("*" <> T.pack (show n)) KindText (ceFontSize env `div` 2)]
-  Sidenote _ n body -> [PAnchor (\i -> AnchorSidenote i n body), PBox (T.pack (show n)) KindText (ceFontSize env `div` 2)]
+  Note _ n body -> [PAnchor (\i -> AnchorNote i n body), PBox lk ("*" <> T.pack (show n)) KindText (lkSize lk `div` 2)]
+  Sidenote _ n body -> [PAnchor (\i -> AnchorSidenote i n body), PBox lk (T.pack (show n)) KindText (lkSize lk `div` 2)]
   IndexMark _ e -> [PAnchor (`AnchorIndex` e)]
-  Cite _ k -> textPieces False ("[" <> k <> "]")
+  Cite _ k -> textPieces lk False ("[" <> k <> "]")
   ProofComment {} -> []
+  where
+    lk = ceLook env
+    -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
+    restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl} kenten)
 
-textPieces :: Bool -> Text -> [Piece]
-textPieces kenten t = go (zip cs latinish)
+textPieces :: Look -> Bool -> Text -> [Piece]
+textPieces lk kenten t = go (zip cs latinish)
   where
     cs = T.unpack t
     isLatinWordChar c = charClass c == Western && not (isSpace c)
@@ -212,21 +237,22 @@ textPieces kenten t = go (zip cs latinish)
       [] -> False
     go [] = []
     go ((c, l) : rest)
-      | c == ' ' = PSpace : go (dropWhile ((== ' ') . fst) rest)
+      | c == ' ' = PSpace lk : go (dropWhile ((== ' ') . fst) rest)
       | l =
           let (w, rest') = span snd ((c, l) : rest)
-           in PWord (T.pack (map fst w)) : go rest'
-      | otherwise = PChar c kenten : go rest
+           in PWord lk (T.pack (map fst w)) : go rest'
+      | otherwise = PChar lk c kenten : go rest
 
 numberPieces :: ComposeEnv -> Integer -> Maybe NumberStyle -> [Piece]
 numberPieces env n style
-  | not (ceVertical env) = textPieces False (T.pack (show n))
+  | not (ceVertical env) = textPieces lk False (T.pack (show n))
   | otherwise = case style <|> ceVerticalNumbers env of
-      Just StyleKanji -> textPieces False (kanji n)
-      Just StyleKanjiDigits -> textPieces False (kanjiDigits n)
-      Just StyleTcy -> [PBox (T.pack (show n)) KindTcy (ceFontSize env)]
-      Nothing -> textPieces False (kanji n)
+      Just StyleKanji -> textPieces lk False (kanji n)
+      Just StyleKanjiDigits -> textPieces lk False (kanjiDigits n)
+      Just StyleTcy -> [PBox lk (T.pack (show n)) KindTcy (lkSize lk)]
+      Nothing -> textPieces lk False (kanji n)
   where
+    lk = ceLook env
     Nothing <|> b = b
     a <|> _ = a
 
@@ -237,15 +263,16 @@ widens the base. Mono ruby (several segments) may break between bases.
 rubyPieces :: ComposeEnv -> [RubySegment] -> [Piece]
 rubyPieces env segs = concat (zipWith piece [0 :: Int ..] segs)
   where
-    fs = ceFontSize env
+    lk = ceLook env
+    fs = lkSize lk
     piece i (RubySegment base reading) =
       let baseText = T.concat (map plain base)
-          baseW = sum [advance env c | c <- T.unpack baseText]
+          baseW = sum [advance env lk c | c <- T.unpack baseText]
           rubyW = maybe 0 (\r -> toInteger (T.length r) * fs `div` 2) reading
           excess = max 0 (rubyW - baseW)
           width = baseW + max 0 (excess - 2 * min (excess `div` 2) (ceRubyOverhang env))
           label = baseText <> maybe "" ("|" <>) reading
-       in [PRubyBreak | i > 0] <> [PBox label KindRuby width]
+       in [PRubyBreak | i > 0] <> [PBox lk label KindRuby width]
     plain = \case
       Text _ t -> t
       Strong _ xs -> T.concat (map plain xs)
@@ -258,8 +285,9 @@ rubyPieces env segs = concat (zipWith piece [0 :: Int ..] segs)
       Number _ n _ -> T.pack (show n)
       _ -> ""
 
-advance :: ComposeEnv -> Char -> Sp
-advance env c = round (ceAdvance env c * toRational (ceFontSize env))
+-- | The advance of a character in a look, in sp.
+advance :: ComposeEnv -> Look -> Char -> Sp
+advance env lk c = round (ceAdvance env lk c * toRational (lkSize lk))
 
 -- ------------------------------------------------------------------ items
 
@@ -277,38 +305,38 @@ punctSpace = \case
 
 itemsFor :: ComposeEnv -> Maybe Piece -> Piece -> Maybe Piece -> [Item]
 itemsFor env _ p _ = case p of
-  PChar c kenten ->
+  PChar lk c kenten ->
     let cls = charClass c
-        fs = ceFontSize env
+        fs = lkSize lk
         (pre, post) = punctSpace cls
-        w = advance env c - round ((pre + post) * toRational fs)
+        w = advance env lk c - round ((pre + post) * toRational fs)
         tag
           | kenten = KindKenten
           | ceVertical env && cls == Western = KindRotated
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
-     in [Box w (BoxContent (T.singleton c) False 0 hang (fromEnum tag))]
-  PWord word -> wordItems env word
-  PSpace ->
-    let sw = advance env ' '
+     in [Box w (BoxContent (T.singleton c) False 0 hang (fromEnum tag) lk)]
+  PWord lk word -> wordItems env lk word
+  PSpace lk ->
+    let sw = advance env lk ' '
      in [Glue sw (sw `div` 2) (sw `div` 3)]
-  PBox t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind))]
+  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk)]
   PRubyBreak -> [Penalty 0 0 False]
   PAnchor _ -> []
 
-wordItems :: ComposeEnv -> Text -> [Item]
-wordItems env word =
+wordItems :: ComposeEnv -> Look -> Text -> [Item]
+wordItems env lk word =
   let parts = maybe [word] (`hyphenate` word) (cePatterns env)
-      hyphenW = advance env '-'
+      hyphenW = advance env lk '-'
       rotated = ceVertical env
       tag = fromEnum (if rotated then KindRotated else KindText)
       box t =
-        let w = round (ceWordAdvance env t * toRational (ceFontSize env))
+        let w = round (ceWordAdvance env lk t * toRational (lkSize lk))
             (ps, _) = maybe (0, 0) (protrusionRatio . fst) (T.uncons t)
             (_, pe) = maybe (0, 0) (protrusionRatio . snd) (T.unsnoc t)
             prot r = if ceProtrusion env then min w (w * r `div` 1000) else 0
-         in Box w (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag)
+         in Box w (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk)
       prot' r t f = if T.null t then 0 else f r
    in concat [box part : [Penalty hyphenW 50 True | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]
 
@@ -326,11 +354,13 @@ normalize env = go Nothing
       (Just p, Box _ c) -> between p c <> [x] <> go (Just c) rest
       (_, Box _ c) -> leading c <> [x] <> go (Just c) rest
       _ -> x : go Nothing rest
+    -- punctuation spaces are in the size of their own box (golem-driver ADR 0004)
+    sizeOf c = toRational (lkSize (bcLook c))
     leading c = case textClass c of
-      Just cls | fst (punctSpace cls) > 0 -> [Glue (em (fst (punctSpace cls))) 0 (em (fst (punctSpace cls)))]
+      Just cls | fst (punctSpace cls) > 0 -> let w = round (fst (punctSpace cls) * sizeOf c) in [Glue w 0 w]
       _ -> []
-    trailingSpace c = maybe 0 (snd . punctSpace) (textClass c)
-    leadingSpace c = maybe 0 (fst . punctSpace) (textClass c)
+    trailingSpace c = maybe 0 (snd . punctSpace) (textClass c) * sizeOf c
+    leadingSpace c = maybe 0 (fst . punctSpace) (textClass c) * sizeOf c
     textClass c = case T.unsnoc (bcText c) of
       Just (_, ch) | boxKind c `elem` [KindText, KindPunctuation, KindKenten] && T.length (bcText c) == 1 -> Just (charClass ch)
       _ -> Nothing
@@ -355,7 +385,7 @@ normalize env = go Nothing
           notPunct = maybe True (\cl -> punctSpace cl == (0, 0))
           pen = ([Penalty 0 infPenalty False | noBreak])
        in if space > 0
-            then pen <> [Glue (em space) 0 (em space)]
+            then pen <> [Glue (round space) 0 (round space)]
             else
               if waou
                 then pen <> [Glue (em (1 / 4)) (em (1 / 4)) (em (1 / 8))]
@@ -369,11 +399,12 @@ normalize env = go Nothing
     bothJapanese pc cc = maybe False (/= Western) pc && maybe False (/= Western) cc
     interBox p c = not (bcExpandable p && bcExpandable c)
     -- JLReq: closing followed by opening keeps a half em; other adjacent
-    -- punctuation spaces collapse; middle dots keep their quarters
+    -- punctuation spaces collapse; middle dots keep their quarters. In sp,
+    -- unrounded: each space is in the size of its own box.
     combined post pre pc cc
       | post == 0 = pre
       | pre == 0 = if cc `elem` map Just [Closing, FullStop, Comma] then 0 else post
-      | pc `elem` map Just [Closing, FullStop, Comma] && cc == Just Opening = 1 / 2
+      | pc `elem` map Just [Closing, FullStop, Comma] && cc == Just Opening = max post pre
       | pc == Just MiddleDot || cc == Just MiddleDot = post + pre
       | otherwise = 0
 

@@ -332,6 +332,8 @@ writeTargets opts e book targets = do
             hcSwatches = Map.map (\(Swatch c) -> c) (stSwatches style),
             hcCharStyles = Map.map csFont (stCharStyles style),
             hcFonts = Map.map (\fr -> (frJa fr, frLatin fr)) (stFonts style),
+            hcBoldFont = stBoldFont style,
+            hcItalicFont = stItalicFont style,
             hcBibliography = bib,
             hcDev = dev
           }

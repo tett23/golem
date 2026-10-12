@@ -9,6 +9,7 @@ import Golem.Layout.Hyphenation
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
+import Golem.Layout.Look
 import Golem.Layout.Paginate
 import Golem.Layout.Sidenotes
 import Golem.Layout.Wrap
@@ -27,7 +28,11 @@ fs :: Sp
 fs = 10 * 65536
 
 box :: Sp -> Item
-box w = Box w (BoxContent "x" False 0 0 0)
+box w = Box w (BoxContent "x" False 0 0 0 look0)
+
+-- | The original look of 'defaultComposeEnv'.
+look0 :: Look
+look0 = ceLook (defaultComposeEnv fs)
 
 finish :: [Item]
 finish = [Penalty 0 infPenalty False, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) False]
@@ -242,12 +247,12 @@ tests =
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
             ws <- forAll (Gen.list (Range.linear 3 12) (Gen.integral (Range.linear 20 70)))
-            let items = [Box w (BoxContent "w" True 0 0 0) | w <- ws] `interleave` Glue 6 3 2 <> finish
+            let items = [Box w (BoxContent "w" True 0 0 0 look0) | w <- ws] `interleave` Glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
           testCase "expansion lowers the spread of adjustment ratios" $ do
             let ws = [23, 41, 37, 19, 52, 33, 28, 45, 31, 26, 39, 22, 48, 35, 29, 41]
-                items = [Box (w * 100) (BoxContent "w" True 0 0 0) | w <- ws] `interleave` Glue 600 300 200 <> finish
+                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0) | w <- ws] `interleave` Glue 600 300 200 <> finish
                 variance ps =
                   let rs = map glueRatio (init (brLines (breakParagraph ps (const 15000) items)))
                       m = sum rs / fromIntegral (length rs)
@@ -292,6 +297,40 @@ tests =
           testCase "references that never settle are an error" $ do
             let layout assumed = paginate 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"]]])
             resolvePageRefs layout @?= Left ["x"]
+        ],
+      testGroup
+        "looks: emphasis, character styles and colour (golem-driver ADR 0004)"
+        [ testCase "a bold role measures its characters in its own font" $ do
+            let env = lookEnv (\lk -> \case Bold {} -> lk {lkFace = "wide", lkLatinFace = "wide"}; _ -> lk)
+                boxes = [(w, lkFace (bcLook c)) | Box w c <- fst (composeInlines env [Bold sp [sp0 "AB"], sp0 "C"])]
+            case boxes of
+              [(ab, fab), (c, fc)] -> do
+                -- A and B are each twice as wide as C
+                ab @?= 4 * c
+                (fab, fc) @?= ("wide", "body")
+              other -> assertFailure (show other),
+          testCase "synthetic bold keeps the widths" $ do
+            let env = lookEnv (\lk -> \case Bold {} -> lk {lkEmbolden = True}; _ -> lk)
+                widths is = [w | Box w _ <- fst (composeInlines env is)]
+            widths [Bold sp [sp0 "AB"], sp0 "C"] @?= widths [sp0 "AB", sp0 "C"]
+            [lkEmbolden (bcLook c) | Box _ c <- fst (composeInlines env [Bold sp [sp0 "AB"], sp0 "C"])] @?= [True, False],
+          testCase "the space after a closing bracket follows the bracket's size" $ do
+            let env = lookEnv (\lk -> \case CharStyle {} -> lk {lkSize = 2 * lkSize lk}; _ -> lk)
+                items = fst (composeInlines env [CharStyle sp "big" [sp0 "」"], sp0 "あ"])
+            [w | Glue w _ _ <- items, w > 0, w < filStretch] @?= [fs],
+          testCase "a look boundary inside a Latin word is no break" $ do
+            let env = lookEnv (\lk -> \case Bold {} -> lk {lkEmbolden = True}; _ -> lk)
+                items = fst (composeInlines env [Bold sp [sp0 "Gol"], sp0 "em"])
+            [bcText c | Box _ c <- items] @?= ["Gol", "em"]
+            breakBeforeBox items 1 @?= False,
+          testCase "nested looks inherit what they do not set" $ do
+            let env = lookEnv $ \lk -> \case
+                  Bold {} -> lk {lkEmbolden = True}
+                  Italic {} -> lk {lkSlant = True}
+                  Color _ c _ -> lk {lkColor = Just c}
+                  _ -> lk
+            [bcLook c | Box _ c <- fst (composeInlines env [Color sp "accent" [Italic sp [Bold sp [sp0 "x"]]]])]
+              @?= [look0 {lkColor = Just "accent", lkSlant = True, lkEmbolden = True}]
         ],
       testGroup
         "heading blocks (golem-driver ADR 0003)"
@@ -356,6 +395,14 @@ tests =
         ]
     ]
   where
+    sp = mkSpan (FileId 0) 0 0
+    -- Latin characters: one em in the role "wide", half an em otherwise
+    lookEnv restyle =
+      let adv lk c
+            | charClass c /= Western = 1
+            | lkLatinFace lk == "wide" = 1
+            | otherwise = 1 / 2
+       in (defaultComposeEnv fs) {ceAdvance = adv, ceWordAdvance = \lk w -> sum (map (adv lk) (T.unpack w)), ceRestyle = restyle}
     minimum' [] = Nothing
     minimum' xs = Just (minimum xs)
     interleave xs g = concat [x : [g | i < length xs - 1] | (i, x) <- zip [0 :: Int ..] xs]

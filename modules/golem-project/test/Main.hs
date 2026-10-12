@@ -141,7 +141,15 @@ tests =
         codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G0306"],
       testCase "a heading font must name a font role (golem-driver ADR 0003)" $ do
         codes (parseStyle (FileId 0) "[headings.1]\nfont = \"nope\"\n") @?= ["G0308"]
-        codes (parseStyle (FileId 0) "[fonts.heading]\nlatin = \"h.otf\"\n\n[headings.1]\nfont = \"heading\"\n") @?= []
+        codes (parseStyle (FileId 0) "[fonts.heading]\nlatin = \"h.otf\"\n\n[headings.1]\nfont = \"heading\"\n") @?= [],
+      testCase "bold and italic fonts name font roles (golem-driver ADR 0004)" $ do
+        codes (parseStyle (FileId 0) "[emphasis]\nbold-font = \"gothic\"\n") @?= ["G0308"]
+        codes (parseStyle (FileId 0) "[emphasis]\nitalic-font = \"italic\"\n") @?= ["G0308"]
+        codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G0308"]
+        case parseStyle (FileId 0) "[fonts.gothic]\nja = \"g.otf\"\n\n[fonts.italic]\nlatin = \"i.otf\"\n\n[emphasis]\nbold-font = \"gothic\"\nitalic-font = \"italic\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> (stBoldFont s, stItalicFont s) @?= (Just "gothic", Just "italic")
+        fmap (\s -> (stBoldFont s, stItalicFont s)) (parseStyle (FileId 0) "[emphasis]\nstrong = \"italic\"\n") @?= Right (Nothing, Nothing)
     ]
 
 specStyle :: Text

@@ -21,6 +21,7 @@ library
                     Golem.Layout.Hyphenation
                     Golem.Layout.Hyphenation.EnUs
                     Golem.Layout.Japanese
+                    Golem.Layout.Look
                     Golem.Layout.Paginate
                     Golem.Layout.Sidenotes
                     Golem.Layout.Wrap
