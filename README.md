@@ -188,6 +188,7 @@ Golem の版の正本はリポジトリの根の `VERSION` である。
 
 Haskell のコードは fourmolu 0.21.0.0 で整形し（設定は `fourmolu.yaml`）、hlint 3.10 で検査する。
 どちらも CI の `format` ジョブで検査する。
+CI の hlint は、GHC でビルドせず、hlint のリリースの x86-64 Linux 向けの配布物を `scripts/ci/fetch-hlint.sh` で取得して使う（[docs/adr/0009](./docs/adr/0009-ci-speed.md)）。
 
 ### CI
 
@@ -196,10 +197,17 @@ Haskell のコードは fourmolu 0.21.0.0 で整形し（設定は `fourmolu.yam
 | ジョブ | 内容 |
 |---|---|
 | `adr` | コミット済みの ADR が変更されていないことを検査する |
-| `build` | x86-64 と aarch64 の Linux でビルドとテストを行い、生成したパーサーが文法と一致すること、EPUB が epubcheck を通ることを確かめる |
+| `changes` | `scripts/ci/` のスクリプトのテスト（`scripts/ci/test.sh`）を実行し、変更のパスからビルドが要るかを決める |
+| `build` | x86-64 と aarch64 の Linux でビルドとテストを行い、生成したパーサーが文法と一致することを確かめる。x86-64 では EPUB が epubcheck を通ることも確かめる |
 | `determinism` | 決まった入力（`scripts/determinism.sh`）の出力のハッシュを、二つのアーキテクチャで比べる |
 | `release-scripts` | `VERSION` と全パッケージの版の一致を検査し、`scripts/release/` のスクリプトのテスト（`scripts/release/test.sh`）を実行する |
 | `format` | fourmolu と hlint で検査する |
+
+変更が `docs/` の下のファイルとリポジトリの根の Markdown のファイルだけの場合、`build`、`determinism`、`format`、`release-scripts` は省かれる（[docs/adr/0009](./docs/adr/0009-ci-speed.md)）。
+判定は `scripts/ci/needs-build.sh` が行う。
+`adr` は、変更のパスにかかわらず常に走る。
+同じプルリクエストに新しいコミットを push すると、走っている前の実行は取り消される。
+CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timings.sh` で作る。
 
 `.github/workflows/release.yml` は、`v` で始まるタグの push と `workflow_dispatch` で動く（[docs/adr/0004](./docs/adr/0004-binary-distribution-and-release.md)）。
 `workflow_dispatch` では、配布物を作って検査するところまでを行い、リリースは作らない。
