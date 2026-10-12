@@ -6,7 +6,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
-import Data.List (isSuffixOf, nub)
+import Data.List (isSuffixOf, nub, sort)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -51,6 +51,12 @@ buildAndRead profile out = withSystemTempDirectory "golem-driver" $ \tmp -> do
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
   BL.fromStrict <$> BS.readFile (tmp </> out)
 
+-- | Replaces the [targets.*] tables of the copied fixture's manifest.
+setTargets :: FilePath -> T.Text -> IO ()
+setTargets root targets = do
+  m <- TIO.readFile (root </> "manifest.toml")
+  TIO.writeFile (root </> "manifest.toml") (fst (T.breakOn "[targets." m) <> targets)
+
 golden :: String -> FilePath -> TestTree
 golden name out = goldenVsString name ("test/golden/" <> name) (buildAndRead Dev out)
 
@@ -90,6 +96,31 @@ tests =
         exists <- doesDirectoryExist (tmp </> "build")
         exists @?= False
         T.length (T.pack "") @?= 0,
+      testGroup
+        "all targets when none is given (golem-cli ADR 0002)"
+        [ testCase "allTargets lists the four targets in order" $
+            allTargets @?= [TargetHtml, TargetEpub, TargetText, TargetPdf],
+          testCase "all targets are built whatever the manifest declares" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
+            copyTree fixture tmp
+            setTargets tmp "[targets.html]\n"
+            r <- build (defaultOptions tmp) {optTargets = Just allTargets}
+            -- the fixture has no [page] or fonts, so the PDF fails
+            assertBool "PDF error" (any isError (brDiagnostics r))
+            doesDirectoryExist (tmp </> "build/pdf") >>= assertBool "no PDF" . not
+            mapM_
+              (\d -> doesDirectoryExist (tmp </> d) >>= assertBool d)
+              ["build/html", "build/epub", "build/text/vertical", "build/text/horizontal"],
+          testCase "plain text without [targets.text] makes both variants" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
+            copyTree fixture tmp
+            setTargets tmp "[targets.html]\n"
+            _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            listDirectory (tmp </> "build/text") >>= (@?= ["horizontal", "vertical"]) . sort,
+          testCase "declared variants are kept" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
+            copyTree fixture tmp
+            setTargets tmp "[targets.text]\nvariants = [\"vertical\"]\n"
+            _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            listDirectory (tmp </> "build/text") >>= (@?= ["vertical"])
+        ],
       testGroup
         "PDF pipeline (ADR 0002)"
         [ testCase "a missing body font is reported" $ withSystemTempDirectory "golem-driver" $ \tmp -> do

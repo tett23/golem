@@ -16,7 +16,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 
 ## 原稿の記法
 
-- **プロジェクト**：マニフェスト（`manifest.toml`）を置いたディレクトリを根とする、原稿、スタイル、図版、フォントの集まり。章の順、メタデータ、出力するターゲットはマニフェストに書く（[仕様書](specifications.md)、[golem-project ADR 0001](golem-project/adr/0001-manifest-and-import-graph.md)）。
+- **プロジェクト**：マニフェスト（`manifest.toml`）を置いたディレクトリを根とする、原稿、スタイル、図版、フォントの集まり。章の順、メタデータ、ターゲットごとの設定はマニフェストに書く（[仕様書](specifications.md)、[golem-project ADR 0001](golem-project/adr/0001-manifest-and-import-graph.md)）。
 - **ブロック**：段落、見出し、リスト、定義リスト、表、コードブロック、ブロックコマンドのように、行を単位とする原稿の構成要素。種類は行頭の文字で決まる（[markup.md](markup.md)）。
 - **ブロックコマンド**：行頭の `@` で始まる命令。`@figure`、`@toc`、`@import` などがある。
 - **属性**：ブロックの直前の行に書くブロックコマンドで、次のブロックに付く指定。`@label`、`@nonumber`、`@notoc` などがある（[markup.md](markup.md)）。
@@ -61,7 +61,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 
 ## 出力
 
-- **ターゲット**：出力する形式。PDF、EPUB、HTML、プレーンテキストの四つがあり、マニフェストで選ぶ。
+- **ターゲット**：出力する形式。PDF、EPUB、HTML、プレーンテキストの四つがある。`golem build` は既定で四つすべてを生成し、`--target` で絞れる（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。
 - **PDF/X-4**：印刷用の PDF の規格（ISO 15930-7:2010）。出力インテント、フォントの埋め込み、XMP のメタデータなどを求める（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。
 - **出力インテント**：印刷の条件を表す ICC プロファイル。v1 では Japan Color 2001 Coated とし、色の名前と CMYK の値はこれに結び付けて定義する。
 - **スウォッチ**：名前を付けた色。`style.toml` に CMYK の値で定義し、原稿からは名前で指す。

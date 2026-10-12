@@ -7,7 +7,7 @@ if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum 
 GOLEM=${GOLEM:-golem}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 for project in "$ROOT/scripts/determinism" "$ROOT/modules/golem-driver/test/fixtures/sample"; do
-  (cd "$project" && rm -rf build && "$GOLEM" build >/dev/null)
+  (cd "$project" && rm -rf build && "$GOLEM" build --target html --target epub --target text >/dev/null)
   (cd "$project" && find build -type f | LC_ALL=C sort | while read -r f; do
     printf '%s  %s\n' "$($SHA "$f" | cut -d' ' -f1)" "$(basename "$project")/$f"
   done)

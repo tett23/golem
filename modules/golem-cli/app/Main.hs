@@ -80,7 +80,7 @@ run = \case
     targets <- traverse parseTarget ts
     case sequence targets of
       Nothing -> TIO.hPutStrLn stderr "unknown target" >> pure (ExitFailure 2)
-      Just tgs -> report fmt =<< build (defaultOptions ".") {optTargets = if null tgs then Nothing else Just tgs, optProfile = profile}
+      Just tgs -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile}
   Check profile fmt -> report fmt =<< build (defaultOptions ".") {optProfile = profile, optCheckOnly = True}
   PluginFetch -> pluginFetch
   PluginLock -> pluginLock
