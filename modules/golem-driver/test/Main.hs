@@ -8,13 +8,17 @@ import Data.ByteString.Lazy qualified as BL
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.List (isSuffixOf, nub, sort)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
+import Golem.Driver.New
+import Golem.LayoutSpec (pageGeometry)
 import Golem.Pdf (Font (..), FontProgram (..))
 import Golem.Plugin (watToWasm)
-import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
+import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
+import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
 import System.Environment (setEnv)
@@ -57,6 +61,21 @@ setTargets root targets = do
   m <- TIO.readFile (root </> "manifest.toml")
   TIO.writeFile (root </> "manifest.toml") (fst (T.breakOn "[targets." m) <> targets)
 
+uuid0 :: T.Text
+uuid0 = "00000000-0000-4000-8000-000000000000"
+
+templateText :: Language -> FilePath -> T.Text
+templateText lang file = fromMaybe "" (lookup file (templateFiles lang uuid0))
+
+templateFile :: Language -> FilePath -> IO BL.ByteString
+templateFile lang file = pure (BL.fromStrict (TE.encodeUtf8 (templateText lang file)))
+
+fakeFont :: BS.ByteString -> FontSource
+fakeFont bytes = FontSource "fonts/a.otf" "https://example.com/a.otf" (hashHex bytes)
+
+fakeFetch :: Either T.Text BS.ByteString -> T.Text -> IO (Either T.Text BS.ByteString)
+fakeFetch r _ = pure r
+
 golden :: String -> FilePath -> TestTree
 golden name out = goldenVsString name ("test/golden/" <> name) (buildAndRead Dev out)
 
@@ -96,6 +115,58 @@ tests =
         exists <- doesDirectoryExist (tmp </> "build")
         exists @?= False
         T.length (T.pack "") @?= 0,
+      testGroup
+        "golem new (golem-cli ADR 0003)"
+        ( [ goldenVsString ("new-" <> tag <> "-" <> name) ("test/golden/new-" <> tag <> "-" <> name) (templateFile lang file)
+          | (lang, tag) <- [(Japanese, "ja"), (English, "en")],
+            (name, file) <- [("manifest.toml", "manifest.toml"), ("style.toml", "style.toml"), ("01.gm", "chapters/01.gm")]
+          ]
+            <> [ testCase "the template lays out a page" $
+                   mapM_
+                     (\lang -> either (assertFailure . show) (const (pure ())) (parseStyle (FileId 0) (templateText lang "style.toml") >>= pageGeometry))
+                     [Japanese, English],
+                 testCase "fonts come from tagged releases with fixed hashes" $ do
+                   map fsPath (templateFonts Japanese) @?= ["fonts/NotoSerifJP-Regular.otf", "fonts/LICENSE-NotoSerifJP.txt"]
+                   map fsPath (templateFonts English) @?= ["fonts/SourceSerif4-Regular.otf", "fonts/LICENSE-SourceSerif4.md"]
+                   map fsSha256 (templateFonts Japanese)
+                     @?= [ "2c9a12dbd4f2408c4610c7ee84a108b62d7236c3775baed618c64d9cb44b2f04",
+                           "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+                         ]
+                   map fsSha256 (templateFonts English)
+                     @?= [ "edf160d0d584deee8a3bb2c3371b2a7624ca63580fbe02c57c1f4c91e84d8787",
+                           "75784a295293a8992f5a8d99210566e0064a012e6dab6731305e3787f15896c7"
+                         ]
+                   assertBool "HTTPS" (all (("https://raw.githubusercontent.com/" `T.isPrefixOf`) . fsUrl) (templateFonts Japanese <> templateFonts English)),
+                 testCase "fetched fonts are written next to the template" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+                   let dir = tmp </> "book"
+                   r <- createProject dir (templateFiles Japanese uuid0) (Just (fakeFetch (Right "FONT"), [fakeFont "FONT"]))
+                   r @?= Right ()
+                   BS.readFile (dir </> "fonts/a.otf") >>= (@?= "FONT")
+                   TIO.readFile (dir </> "style.toml") >>= (@?= templateText Japanese "style.toml")
+                   TIO.readFile (dir </> ".gitignore") >>= (@?= "build/\n"),
+                 testCase "a hash mismatch writes nothing" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+                   let dir = tmp </> "book"
+                   r <- createProject dir (templateFiles Japanese uuid0) (Just (fakeFetch (Right "OTHER"), [fakeFont "FONT"]))
+                   assertBool "error" (either (const True) (const False) r)
+                   doesDirectoryExist dir >>= assertBool "no directory" . not,
+                 testCase "a failed download writes nothing" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+                   let dir = tmp </> "book"
+                   r <- createProject dir (templateFiles English uuid0) (Just (fakeFetch (Left "offline"), [fakeFont "FONT"]))
+                   assertBool "error" (either (const True) (const False) r)
+                   doesDirectoryExist dir >>= assertBool "no directory" . not,
+                 testCase "without fonts nothing is fetched and the style still names them" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+                   let dir = tmp </> "book"
+                   r <- createProject dir (templateFiles English uuid0) Nothing
+                   r @?= Right ()
+                   doesDirectoryExist (dir </> "fonts") >>= assertBool "no fonts" . not
+                   TIO.readFile (dir </> "style.toml") >>= assertBool "font path" . T.isInfixOf "fonts/SourceSerif4-Regular.otf",
+                 testCase "a directory that is not empty is left alone" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+                   BS.writeFile (tmp </> "keep") "x"
+                   r <- createProject tmp (templateFiles Japanese uuid0) Nothing
+                   assertBool "error" (either (const True) (const False) r)
+                   listDirectory tmp >>= (@?= ["keep"])
+               ]
+        ),
       testGroup
         "all targets when none is given (golem-cli ADR 0002)"
         [ testCase "allTargets lists the four targets in order" $

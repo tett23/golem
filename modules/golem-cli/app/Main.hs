@@ -1,10 +1,9 @@
 -- | The golem command (golem-cli ADR 0001): a thin layer over the modules.
 module Main (main) where
 
-import Control.Monad (forM_, unless)
+import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
-import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
@@ -13,6 +12,7 @@ import Data.UUID.V4 qualified as UUID
 import Golem.Doc.Cbor (encodeDocument)
 import Golem.Driver
 import Golem.Driver.Lint (lintProject)
+import Golem.Driver.New
 import Golem.Eval.File (erDocument)
 import Golem.Fmt (FormatResult (..), format)
 import Golem.Lsp.Server (runGolemLsp)
@@ -23,7 +23,7 @@ import Golem.Project (Project (..), SourceFile (..), loadProject)
 import Golem.Project.Manifest (Manifest (..), PluginDecl (..), parseManifest)
 import Golem.Syntax
 import Options.Applicative
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
+import System.Directory (doesFileExist)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath ((</>))
 import System.IO (stderr)
@@ -32,7 +32,7 @@ import Text.Printf (printf)
 data Format = Human | Json
 
 data Command
-  = New FilePath
+  = New FilePath Language Bool
   | Build [String] Profile Format
   | Check Profile Format
   | PluginFetch
@@ -54,6 +54,12 @@ profileOpt =
     (eitherReader (\case "dev" -> Right Dev; "prod" -> Right Prod; s -> Left ("unknown profile: " <> s)))
     (long "profile" <> value Dev <> metavar "dev|prod" <> help "Build profile")
 
+languageOpt :: Parser Language
+languageOpt =
+  option
+    (eitherReader (\case "ja" -> Right Japanese; "en" -> Right English; s -> Left ("unknown language: " <> s)))
+    (long "language" <> value Japanese <> metavar "ja|en" <> help "Language of the template")
+
 formatOpt :: Parser Format
 formatOpt =
   option
@@ -63,7 +69,7 @@ formatOpt =
 commands :: Parser Command
 commands =
   hsubparser
-    ( command "new" (info (New <$> strArgument (metavar "DIR")) (progDesc "Create a project"))
+    ( command "new" (info (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "Do not download the fonts")) (progDesc "Create a project"))
         <> command "build" (info (Build <$> many (strOption (long "target" <> metavar "html|epub|text|pdf")) <*> profileOpt <*> formatOpt) (progDesc "Build the targets"))
         <> command "check" (info (Check <$> profileOpt <*> formatOpt) (progDesc "Check without writing output"))
         <> command "plugin" (info (hsubparser (command "fetch" (info (pure PluginFetch) mempty) <> command "lock" (info (pure PluginLock) mempty))) (progDesc "Manage plugins"))
@@ -75,7 +81,7 @@ commands =
 
 run :: Command -> IO ExitCode
 run = \case
-  New dir -> newProject dir
+  New dir lang noFonts -> newProject dir lang noFonts
   Build ts profile fmt -> do
     targets <- traverse parseTarget ts
     case sequence targets of
@@ -126,47 +132,20 @@ inspect path mode = do
       unless (null ds) $ TIO.hPutStr stderr (T.pack (show ds))
       pure ExitSuccess
 
-newProject :: FilePath -> IO ExitCode
-newProject dir = do
-  exists <- doesDirectoryExist dir
-  nonEmpty <- if exists then not . null <$> listDirectory dir else pure False
-  if nonEmpty
-    then TIO.hPutStrLn stderr "ディレクトリが空ではありません" >> pure (ExitFailure 1)
-    else do
-      uuid <- UUID.nextRandom
-      createDirectoryIfMissing True (dir </> "chapters")
-      TIO.writeFile (dir </> "manifest.toml") (manifestTemplate (UUID.toText uuid))
-      TIO.writeFile (dir </> "style.toml") styleTemplate
-      TIO.writeFile (dir </> "chapters" </> "01.gm") "# はじめに\n\n本文。\n"
-      TIO.writeFile (dir </> ".gitignore") "build/\n"
+-- | golem new (golem-cli ADR 0003).
+newProject :: FilePath -> Language -> Bool -> IO ExitCode
+newProject dir lang noFonts = do
+  uuid <- UUID.nextRandom
+  fetch <- httpsFetcher
+  let fonts = templateFonts lang
+  r <- createProject dir (templateFiles lang (UUID.toText uuid)) (if noFonts then Nothing else Just (fetch, fonts))
+  case r of
+    Left es -> mapM_ (TIO.hPutStrLn stderr) es >> pure (ExitFailure 1)
+    Right () -> do
+      when noFonts $ do
+        TIO.hPutStrLn stderr "フォントを取得しませんでした。次のファイルを置いてください。"
+        forM_ fonts $ \f -> TIO.hPutStrLn stderr ("  " <> T.pack (dir </> fsPath f) <> " (" <> fsUrl f <> ")")
       pure ExitSuccess
-
-manifestTemplate :: Text -> Text
-manifestTemplate uuid =
-  T.unlines
-    [ "chapters = [\"chapters/01.gm\"]",
-      "",
-      "[metadata]",
-      "id = \"urn:uuid:" <> uuid <> "\"",
-      "title = \"無題\"",
-      "language = \"ja\"",
-      "date = 2026-01-01",
-      "",
-      "[targets.html]",
-      "",
-      "[targets.text]",
-      "variants = [\"horizontal\"]"
-    ]
-
-styleTemplate :: Text
-styleTemplate =
-  T.unlines
-    [ "[headings.1]",
-      "number = \"第{n:kanji}章\"",
-      "",
-      "[emphasis]",
-      "strong = \"bold\""
-    ]
 
 -- | golem fmt (golem-fmt ADR 0001).
 formatFiles :: Bool -> [FilePath] -> IO ExitCode
