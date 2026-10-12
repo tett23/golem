@@ -10,6 +10,7 @@ module KnuthPlassReference
     readWords,
     parseWords,
     paragraphItems,
+    referenceLook,
     finish,
     parseTrace,
     parseScaled,
@@ -26,6 +27,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Data.Text.Read qualified as TR
 import Golem.Layout.KnuthPlass
+import Golem.Layout.Look (Look, plainLook)
 
 -- | What TeX measured, in sp.
 data Words = Words
@@ -95,12 +97,16 @@ parseWords t = do
 finish :: [Item]
 finish = [Penalty 0 infPenalty False, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) False]
 
+-- | The look of the boxes: the algorithm does not read it.
+referenceLook :: Look
+referenceLook = plainLook "body" 0
+
 -- | The indent, the words with interword glue between them, the paragraph end.
 paragraphItems :: Words -> [Item]
 paragraphItems ws =
   let (w, y, z) = wSpace ws
-      boxes = [Box n (BoxContent word False 0 0 0) | (word, n) <- wBoxes ws]
-   in Box (wParindent ws) (BoxContent "" False 0 0 0)
+      boxes = [Box n (BoxContent word False 0 0 0 referenceLook) | (word, n) <- wBoxes ws]
+   in Box (wParindent ws) (BoxContent "" False 0 0 0 referenceLook)
         : concat [b : [Glue w y z | i < length boxes - 1] | (i, b) <- zip [0 :: Int ..] boxes]
           <> finish
 

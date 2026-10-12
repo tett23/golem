@@ -8,6 +8,7 @@ module Golem.Pdf.Writer
     FontRef (..),
     ImageRef (..),
     Swatch (..),
+    RunStyle (..),
     Mark (..),
     Page (..),
     FontProgram (..),
@@ -60,6 +61,18 @@ newtype ImageRef = ImageRef Int
 data Swatch = Swatch !Int !Int !Int !Int
   deriving stock (Eq, Show)
 
+{- | How a styled glyph run is drawn (golem-driver ADR 0004): horizontal
+scaling in permille, turned for vertical writing, a slant (0 for none)
+and the width of the outline stroke of synthetic bold (0 for none).
+-}
+data RunStyle = RunStyle
+  { rsScale :: !Int,
+    rsRotated :: !Bool,
+    rsSlant :: !Rational,
+    rsEmbolden :: !Sp
+  }
+  deriving stock (Eq, Show)
+
 data Mark
   = -- | font, size, glyphs with their origins
     GlyphRun !FontRef !Sp ![(GlyphId, Sp, Sp)]
@@ -72,6 +85,10 @@ data Mark
   | Rule !Rect
   | Image !ImageRef !Rect
   | SetColor !Swatch
+  | -- | a glyph run slanted or emboldened (golem-driver ADR 0004)
+    StyledGlyphRun !RunStyle !FontRef !Sp ![(GlyphId, Sp, Sp)]
+  | -- | marks drawn inside q and Q, so the graphics state is restored
+    Saved ![Mark]
   deriving stock (Eq, Show)
 
 data Page = Page
@@ -176,6 +193,22 @@ contentStream fontNames imageNames marks = BL.toStrict (B.toLazyByteString (mcon
       SetColor (Swatch c m y k) ->
         let vs = mconcat [ratio (toInteger v % 100) <> sp | v <- [c, m, y, k]]
          in vs <> "k " <> vs <> "K" <> nl
+      StyledGlyphRun (RunStyle scale rotated slant stroke) f size gs ->
+        let matrix
+              | rotated = "0 -1 1 " <> ratio (negate slant) <> sp
+              | otherwise = "1 0 " <> ratio slant <> " 1 "
+         in "q BT "
+              <> fontName' f
+              <> sp
+              <> num size
+              <> " Tf"
+              <> (if scale /= 1000 then sp <> ratio (toInteger scale % 10) <> " Tz" else "")
+              <> (if stroke > 0 then " 2 Tr " <> num stroke <> " w" else "")
+              <> nl
+              <> mconcat [matrix <> num x <> sp <> num y <> " Tm <" <> hex4 g <> "> Tj" <> nl | (g, x, y) <- gs]
+              <> "ET Q"
+              <> nl
+      Saved ms -> "q" <> nl <> mconcat (map mark ms) <> "Q" <> nl
     hex4 g = B.string7 (printf "%04X" g)
 
 -- ------------------------------------------------------------------ serialization
@@ -245,7 +278,7 @@ writePdf doc =
             ]
           )
       infoObj = afterImages + length xObjs
-      imageObjCount i = case Map.lookup i (docImages doc) of
+      imageObjCount i = case withDefaultProfile <$> Map.lookup i (docImages doc) of
         Just img -> 1 + maybe 0 (const 1) (imgIcc img) + maybe 0 (const 1) (imgAlpha img)
         Nothing -> 1
       resources =
@@ -307,6 +340,8 @@ writePdf doc =
       GlyphRun f _ _ -> [f]
       ScaledGlyphRun f _ _ _ -> [f]
       RotatedGlyphRun f _ _ -> [f]
+      StyledGlyphRun _ f _ _ -> [f]
+      Saved ms -> concatMap fontsOf ms
       _ -> []
 
 fontObjects :: Int -> Font -> [Obj]
@@ -374,13 +409,19 @@ toUnicodeCMap entries =
           <> body
           <> "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n"
 
+{- | RGB without a profile gets sRGB (ADR 0001); colours are never
+converted. Both the object count and the objects use it, so that the
+profile has its own object number.
+-}
+withDefaultProfile :: ImageData -> ImageData
+withDefaultProfile img = case (imgIcc img, imgColor img) of
+  (Nothing, CsRgb) -> img {imgIcc = Just srgbProfile}
+  (Nothing, CsIndexed _) -> img {imgIcc = Just srgbProfile}
+  _ -> img
+
 imageObjects :: Int -> ImageData -> [Obj]
 imageObjects base img0 =
-  let -- RGB without a profile gets sRGB (ADR 0001); colours are never converted
-      img = case (imgIcc img0, imgColor img0) of
-        (Nothing, CsRgb) -> img0 {imgIcc = Just srgbProfile}
-        (Nothing, CsIndexed _) -> img0 {imgIcc = Just srgbProfile}
-        _ -> img0
+  let img = withDefaultProfile img0
       iccObj = OStream [("N", OInt (components img)), ("Filter", OName "FlateDecode")] . flate <$> imgIcc img
       iccRef = base + 1
       smaskRef = base + 1 + maybe 0 (const 1) (imgIcc img)

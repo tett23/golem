@@ -467,6 +467,10 @@ CMYK の値を直接書くことはできない。
 
 `[strong: ...]` は意味の上での強調であり、太字で表すか斜体で表すかは `style.toml` のスタイルで決まる。
 見た目を直接指定したいときに限り、`[bold: ...]` と `[italic: ...]` を使う。
+太字と斜体の書体は `style.toml` の `[emphasis]` の `bold-font` と `italic-font` で指定する。
+指定がなければ、PDF では本文の書体から合成の太字と斜体で組む。
+和文の文字も斜体を指定すれば傾く。
+`italic-font` の役割が和文のフォントを持たない場合は、和文の文字に合成の斜体をかけるので、字形がゆがむ（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 
 ### ルビ
 
@@ -534,6 +538,7 @@ CMYK の値を直接書くことはできない。
 番号はファイルごとに振られる。
 PDF では版面の外の傍注欄に置かれ、ほかの媒体では段落の直後などに置かれる。
 v1 では横組みでだけ使え、縦組みで使うとコンパイルエラーになる。
+PDF では、`style.toml` に `[sidenotes]` がない場合と、脚注の本文や図版のキャプションの中に置いた場合もコンパイルエラーになる（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。
 
 ### 索引
 

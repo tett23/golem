@@ -931,9 +931,54 @@ tests =
         let pdf = writePdf (documentWith [page [Image (ImageRef 2) (Rect 0 0 65536 65536)]]) {docImages = Map.fromList [(ImageRef 2, img)]}
         assertBool "ICCBased" ("/ICCBased" `BS.isInfixOf` pdf)
         assertBool "N 3" ("/N 3" `BS.isInfixOf` pdf),
+      testCase "an RGB image without a profile gets its own sRGB object; Info stays the Info" $ do
+        img <- either assertFailure pure (readImage tinyJpeg)
+        imgIcc img @?= Nothing
+        let pdf = writePdf (documentWith [page [Image (ImageRef 2) (Rect 0 0 65536 65536)]]) {docImages = Map.fromList [(ImageRef 2, img)]}
+            objectAt n = snd (BS.breakSubstring (BC.pack ("\n" <> show n <> " 0 obj\n")) pdf)
+            refAfter key = case BC.readInt (BS.drop (BS.length key) (snd (BS.breakSubstring key pdf))) of
+              Just (n, _) -> n
+              Nothing -> -1
+            icc = refAfter "/ICCBased "
+            info = refAfter "/Info "
+        assertBool "xref" (xrefConsistent pdf)
+        assertBool ("ICCBased points at a profile stream, object " <> show icc) ("/N 3" `BS.isInfixOf` BS.take 200 (objectAt icc))
+        assertBool ("Info points at the Info dictionary, object " <> show info) ("/CreationDate" `BS.isInfixOf` BS.take 300 (objectAt info)),
       testCase "content stream: glyph positions, colour, horizontal scaling" $ do
         let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [SetColor (Swatch 0 80 100 0), ScaledGlyphRun (FontRef 7) (10 * 65536) 985 [(2, 65536, -65536)]]
         cs @?= "0 0.8 1 0 k 0 0.8 1 0 K\nBT /F1 10 Tf 98.5 Tz\n1 0 0 1 1 -1 Tm <0002> Tj\nET\n",
+      testGroup
+        "styled glyph runs and saved state (golem-driver ADR 0004)"
+        [ testCase "a slanted, emboldened run sets its text matrix and stroke inside q and Q" $ do
+            let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [StyledGlyphRun (RunStyle 1000 False (1 / 5) (65536 `div` 4)) (FontRef 7) (10 * 65536) [(2, 65536, -65536)]]
+            assertBool (show cs) ("q BT /F1 10 Tf 2 Tr 0.25 w" `BS.isInfixOf` cs)
+            assertBool (show cs) ("1 0 0.2 1 1 -1 Tm <0002> Tj" `BS.isInfixOf` cs)
+            assertBool (show cs) ("ET Q" `BS.isInfixOf` cs)
+            assertBool "no scaling" (not ("Tz" `BS.isInfixOf` cs)),
+          testCase "a turned run is slanted before it is turned" $ do
+            let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [StyledGlyphRun (RunStyle 1000 True (1 / 5) 0) (FontRef 7) (10 * 65536) [(2, 65536, -65536)]]
+            assertBool (show cs) ("0 -1 1 -0.2 1 -1 Tm <0002> Tj" `BS.isInfixOf` cs)
+            assertBool "no stroke" (not ("Tr" `BS.isInfixOf` cs)),
+          testCase "horizontal scaling is written only when it is not 1000" $ do
+            let run sc = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [StyledGlyphRun (RunStyle sc False (1 / 5) 0) (FontRef 7) (10 * 65536) [(2, 0, 0)]]
+            assertBool "Tz" ("105 Tz" `BS.isInfixOf` run 1050)
+            assertBool "no Tz" (not ("Tz" `BS.isInfixOf` run 1000)),
+          testCase "saved marks restore the colour" $ do
+            let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [Saved [SetColor (Swatch 0 80 100 0), GlyphRun (FontRef 7) (10 * 65536) [(2, 0, 0)]]]
+            BS.take 2 cs @?= "q\n"
+            assertBool (show cs) ("Q\n" `BS.isSuffixOf` cs)
+            assertBool "fill" ("0 0.8 1 0 k" `BS.isInfixOf` cs)
+            assertBool "stroke" ("0 0.8 1 0 K" `BS.isInfixOf` cs),
+          testCase "fonts inside saved marks and styled runs are page resources" $ do
+            let doc =
+                  (documentWith [page [Saved [GlyphRun (FontRef 7) 65536 [(1, 0, 0)]], StyledGlyphRun (RunStyle 1000 False (1 / 5) 0) (FontRef 8) 65536 [(2, 0, 0)]]])
+                    { docFonts = Map.fromList [(FontRef 7, font), (FontRef 8, font)]
+                    }
+                pdf = writePdf doc
+            assertBool "F1" ("/F1 " `BS.isInfixOf` pdf)
+            assertBool "F2" ("/F2 " `BS.isInfixOf` pdf)
+            countOf "/Type /FontDescriptor" pdf @?= 2
+        ],
       testProperty "any page content is written deterministically with consistent xref" $ property $ do
         marks <- forAll (Gen.list (Range.linear 0 20) mark)
         let pdf = writePdf (documentWith [page marks])

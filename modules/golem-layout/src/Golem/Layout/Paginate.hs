@@ -14,8 +14,12 @@ module Golem.Layout.Paginate
     Flow (..),
     Slotted (..),
     PageOut (..),
+    TableSegment (..),
+    HeadingBlock (..),
+    headingBlock,
     paginate,
     labelPages,
+    markPages,
     resolvePageRefs,
     maxIterations,
   )
@@ -24,7 +28,10 @@ where
 import Control.Applicative ((<|>))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (listToMaybe)
+import Data.Ratio ((%))
 import Data.Text (Text)
+import Golem.Syntax (SrcSpan)
 
 data NoteBody = NoteBody {nbId :: !Int, nbLines :: !Int}
   deriving stock (Eq, Show)
@@ -32,26 +39,64 @@ data NoteBody = NoteBody {nbId :: !Int, nbLines :: !Int}
 data LineBox = LineBox
   { lbId :: !Int,
     lbNotes :: ![NoteBody],
-    lbLabels :: ![Text]
+    lbLabels :: ![Text],
+    -- | index marks on the line (golem-driver ADR 0007)
+    lbMarks :: ![SrcSpan]
   }
   deriving stock (Eq, Show)
 
 data Flow
   = FParagraph [LineBox]
-  | FHeading {fhLevel :: !Int, fhShort :: !Text, fhRecto :: !Bool, fhLines :: [LineBox]}
+  | -- | a heading, placed whole over 'fhSpan' grid lines (golem-driver ADR 0003)
+    FHeading {fhLevel :: !Int, fhShort :: !Text, fhRecto :: !Bool, fhSpan :: !Int, fhLines :: [LineBox]}
   | FDefTerm [LineBox]
   | -- | a figure with its caption, in grid lines
-    FFigure {ffId :: !Int, ffLines :: !Int, ffLabels :: ![Text]}
+    FFigure {ffId :: !Int, ffLines :: !Int, ffLabels :: ![Text], ffMarks :: ![SrcSpan]}
   | -- | a wrapped figure and the shortened lines set beside it (ADR 0004)
-    FWrapped {fwId :: !Int, fwLines :: !Int, fwLabels :: ![Text], fwBeside :: [LineBox]}
+    FWrapped {fwId :: !Int, fwLines :: !Int, fwLabels :: ![Text], fwMarks :: ![SrcSpan], fwBeside :: [LineBox]}
+  | {- | the rest of a paragraph whose first lines are beside a wrapped
+    figure: no orphan rule for its first line (golem-driver ADR 0005)
+    -}
+    FContinued [LineBox]
+  | -- | a table: its header row and body rows, in grid lines (golem-driver ADR 0008)
+    FTable {ftId :: !Int, ftHeader :: ![LineBox], ftRows :: ![[LineBox]]}
   | {- | empty grid lines, as between stanzas of verse (docs/adr ADR 0003);
     nothing at the top of a page
     -}
     FSpace !Int
   deriving stock (Eq, Show)
 
-data Slotted = SLine !Int | SFigure !Int | SWrapped !Int
+data Slotted
+  = SLine !Int
+  | SFigure !Int
+  | SWrapped !Int
+  | -- | a heading block: its first line and how many lines it has
+    SHeading !Int !Int
   deriving stock (Eq, Show)
+
+-- | How a heading sits on the line grid (golem-driver ADR 0003).
+data HeadingBlock = HeadingBlock
+  { -- | the line pitch of the heading
+    hbPitch :: !Integer,
+    -- | how many grid lines it takes
+    hbSpan :: !Int,
+    -- | from its first grid line to the top of its first line
+    hbOffset :: !Integer
+  }
+  deriving stock (Eq, Show)
+
+{- | The pitch, span and offset of a heading of size @s@ and @m@ lines on
+a grid of font size @fs@ and pitch @p@: the body's ratio of pitch to
+size is kept, the span is the fewest grid lines that hold it, and the
+heading is centred in them. Integer sp; one rounding.
+-}
+headingBlock :: Integer -> Integer -> Integer -> Int -> HeadingBlock
+headingBlock fs p s m =
+  let hp = round (p * s % fs)
+      extent = toInteger (max 1 m - 1) * hp + s
+      n = max 1 ((extent + p - fs + p - 1) `div` p)
+      area = (n - 1) * p + fs
+   in HeadingBlock hp (fromInteger n) ((area - extent) `div` 2)
 
 data PageOut = PageOut
   { poNumber :: !Int,
@@ -61,7 +106,21 @@ data PageOut = PageOut
     -- | note id, first line of the body shown here, number of lines
     poFootnotes :: ![(Int, Int, Int)],
     poRunningHead :: !(Maybe Text),
-    poLabels :: ![Text]
+    poLabels :: ![Text],
+    -- | the index marks placed on the page (golem-driver ADR 0007)
+    poMarks :: ![SrcSpan],
+    -- | the parts of tables on the page (golem-driver ADR 0008)
+    poTables :: ![TableSegment]
+  }
+  deriving stock (Eq, Show)
+
+-- | The part of a table on a page, in grid lines.
+data TableSegment = TableSegment
+  { tsTable :: !Int,
+    tsFirst :: !Int,
+    -- | the last grid line of the header row
+    tsHeaderEnd :: !Int,
+    tsLast :: !Int
   }
   deriving stock (Eq, Show)
 
@@ -72,6 +131,8 @@ data St = St
     sSlots :: ![(Int, Slotted)],
     sNotes :: ![(Int, Int, Int)],
     sLabels :: ![Text],
+    sMarks :: ![SrcSpan],
+    sTables :: ![TableSegment],
     sDone :: ![PageOut],
     sDeferred :: ![Flow],
     sPendingNotes :: ![(Int, Int, Int)], -- note id, next line, remaining
@@ -82,7 +143,7 @@ data St = St
 -- | Lays the flow out on pages of @capacity@ grid lines.
 paginate :: Int -> [Flow] -> [PageOut]
 paginate capacity flows =
-  let st0 = St 1 0 0 [] [] [] [] [] [] Nothing Nothing
+  let st0 = St 1 0 0 [] [] [] [] [] [] [] [] Nothing Nothing
       final = closePage (go st0 flows)
    in reverse (sDone final)
   where
@@ -90,28 +151,35 @@ paginate capacity flows =
     go st (f : rest) = go (place st f (nextNeed rest)) rest
     nextNeed = \case
       (FParagraph ls : _) -> min 2 (length ls)
+      (FContinued ls : _) -> min 2 (length ls)
+      (FTable _ h rows : _) -> length h + maybe 0 length (listToMaybe rows)
       (FDefTerm ls : _) -> length ls
-      (FHeading _ _ _ ls : _) -> length ls
-      (FFigure _ n _ : _) -> min n capacity
-      (FWrapped _ n _ ls : _) -> max n (length ls)
+      (FHeading _ _ _ n _ : _) -> n
+      (FFigure _ n _ _ : _) -> min n capacity
+      (FWrapped _ n _ _ ls : _) -> max n (length ls)
       (FSpace _ : _) -> 0
       [] -> 0
     free st = capacity - sUsed st - sNoteLines st
     isEmpty st = sUsed st == 0 && null (sNotes st)
     place st f need = case f of
       FParagraph ls -> placeLines st True ls
+      FContinued ls -> placeLines st False ls
+      FTable i h rows ->
+        let st1 = if length h + maybe 0 length (listToMaybe rows) > free st && not (isEmpty st) then newPage st else st
+         in placeTable st1 i h rows
       FDefTerm ls -> placeLines (keep st (length ls + need)) True ls
-      FHeading lvl short recto ls ->
-        let st1 = if recto then rectoStart st else keep st (length ls + need)
+      FHeading lvl short recto n ls ->
+        let st1 = if recto then rectoStart st else keep st (n + need)
             st2 = if lvl == 1 then st1 {sHead = Just short, sPageHead = sPageHead st1 <|> Just short} else st1
-         in placeLines st2 True ls
-      FFigure i n labels
-        | n <= free st || isEmpty st -> putSlot st n (SFigure i) labels
+            st3 = if n <= free st2 || isEmpty st2 then st2 else newPage st2
+         in putBlock st3 n ls
+      FFigure i n labels marks
+        | n <= free st || isEmpty st -> putSlot st n (SFigure i) labels marks
         | otherwise -> st {sDeferred = sDeferred st <> [f]}
-      FWrapped i n labels beside ->
+      FWrapped i n labels marks beside ->
         let size = max n (length beside)
             st1 = if size <= free st || isEmpty st then st else newPage st
-            st2 = putSlot st1 0 (SWrapped i) labels
+            st2 = putSlot st1 0 (SWrapped i) labels marks
          in (placeLines st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines st2 False beside))}
       FSpace n
         | sUsed st == 0 -> st
@@ -120,8 +188,8 @@ paginate capacity flows =
     rectoStart st =
       let st1 = if isEmpty st then st else newPage st
        in if even (sPage st1) then blankPage st1 else st1
-    blankPage st = st {sDone = PageOut (sPage st) True [] [] Nothing [] : sDone st, sPage = sPage st + 1}
-    putSlot st n s labels = st {sSlots = sSlots st <> [(sUsed st, s)], sUsed = sUsed st + n, sLabels = sLabels st <> labels}
+    blankPage st = st {sDone = PageOut (sPage st) True [] [] Nothing [] [] [] : sDone st, sPage = sPage st + 1}
+    putSlot st n s labels marks = st {sSlots = sSlots st <> [(sUsed st, s)], sUsed = sUsed st + n, sLabels = sLabels st <> labels, sMarks = sMarks st <> marks}
     -- lines of one paragraph; orphans and widows are moved
     placeLines st _ [] = st
     placeLines st isStart ls =
@@ -156,7 +224,40 @@ paginate capacity flows =
               sNoteLines = sNoteLines st + sep + sum [c | (_, _, c) <- shown],
               sNotes = sNotes st <> shown,
               sPendingNotes = sPendingNotes st <> pending,
-              sLabels = sLabels st <> lbLabels l
+              sLabels = sLabels st <> lbLabels l,
+              sMarks = sMarks st <> lbMarks l
+            }
+    -- a table: rows whole, a page break between rows repeats the header
+    -- without its labels, notes and marks (golem-driver ADR 0008)
+    placeTable st i h rows =
+      let start = sUsed st
+          st1 = foldl' putLine st h
+          go stc first [] = segment stc first
+          go stc first (r : rest)
+            | fitting stc r >= length r || sUsed stc == first + length h = go (foldl' putLine stc r) first rest
+            | otherwise =
+                let closed = segment stc first
+                    fresh = newPage closed
+                    repeated = foldl' putLine fresh [l {lbNotes = [], lbLabels = [], lbMarks = []} | l <- h]
+                 in go repeated (sUsed fresh) (r : rest)
+          segment stc first = stc {sTables = sTables stc <> [TableSegment i first (first + length h - 1) (sUsed stc - 1)]}
+       in go st1 start rows
+    -- a heading: one block of n grid lines; the notes of its lines as in putLine
+    putBlock st _ [] = st
+    putBlock st n ls@(l0 : _) =
+      let notes = concatMap lbNotes ls
+          noteLines = sum (map nbLines notes)
+          sep = if sNoteLines st == 0 && noteLines > 0 then 1 else 0
+          room = capacity - sUsed st - n - sNoteLines st - sep
+          (shown, pending) = splitNotes room notes
+       in st
+            { sSlots = sSlots st <> [(sUsed st, SHeading (lbId l0) (length ls))],
+              sUsed = sUsed st + n,
+              sNoteLines = sNoteLines st + (if null shown then 0 else sep) + sum [c | (_, _, c) <- shown],
+              sNotes = sNotes st <> shown,
+              sPendingNotes = sPendingNotes st <> pending,
+              sLabels = sLabels st <> concatMap lbLabels ls,
+              sMarks = sMarks st <> concatMap lbMarks ls
             }
     -- a note longer than the room continues on the next page
     splitNotes = go'
@@ -169,11 +270,11 @@ paginate capacity flows =
     closePage st =
       if null (sSlots st) && null (sNotes st) && not (null (sDone st))
         then st
-        else st {sDone = PageOut (sPage st) False (sSlots st) (sNotes st) (pageHead st) (sLabels st) : sDone st}
+        else st {sDone = PageOut (sPage st) False (sSlots st) (sNotes st) (pageHead st) (sLabels st) (sMarks st) (sTables st) : sDone st}
     pageHead st = sPageHead st <|> sHead st
     newPage st =
       let closed = closePage st
-          fresh = closed {sPage = sPage st + 1, sUsed = 0, sNoteLines = 0, sSlots = [], sNotes = [], sLabels = [], sPendingNotes = [], sPageHead = Nothing}
+          fresh = closed {sPage = sPage st + 1, sUsed = 0, sNoteLines = 0, sSlots = [], sNotes = [], sLabels = [], sMarks = [], sTables = [], sPendingNotes = [], sPageHead = Nothing}
           withNotes = foldl' carryNote fresh (sPendingNotes st)
        in placeDeferred withNotes {sDeferred = []} (sDeferred st)
     carryNote st (i, from, len) =
@@ -186,9 +287,9 @@ paginate capacity flows =
               sPendingNotes = sPendingNotes st <> [(i, from + shown, len - shown) | shown < len]
             }
     placeDeferred st [] = st
-    placeDeferred st (FFigure i n labels : rest)
-      | n <= free st || isEmpty st = placeDeferred (putSlot st n (SFigure i) labels) rest
-      | otherwise = st {sDeferred = FFigure i n labels : rest}
+    placeDeferred st (FFigure i n labels marks : rest)
+      | n <= free st || isEmpty st = placeDeferred (putSlot st n (SFigure i) labels marks) rest
+      | otherwise = st {sDeferred = FFigure i n labels marks : rest}
     placeDeferred st (_ : rest) = placeDeferred st rest
     flushDeferred st
       | null (sDeferred st) && null (sPendingNotes st) = st
@@ -197,6 +298,10 @@ paginate capacity flows =
 -- | The page of each label.
 labelPages :: [PageOut] -> Map Text Integer
 labelPages ps = Map.fromList [(l, toInteger (poNumber p)) | p <- ps, l <- poLabels p]
+
+-- | The page of each index mark (golem-driver ADR 0007).
+markPages :: [PageOut] -> Map SrcSpan Integer
+markPages ps = Map.fromList [(m, toInteger (poNumber p)) | p <- ps, m <- poMarks p]
 
 maxIterations :: Int
 maxIterations = 5

@@ -29,6 +29,7 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
+import Golem.Layout.Look (Look)
 
 type Sp = Integer
 
@@ -42,8 +43,10 @@ data BoxContent = BoxContent
     -- | how far the box may stick out at the start or end of a line (ADR 0005)
     bcProtrudeStart :: !Sp,
     bcProtrudeEnd :: !Sp,
-    -- | opaque data for later stages (font, size, ruby, rotation…)
-    bcTag :: !Int
+    -- | opaque data for later stages (ruby, rotation…)
+    bcTag :: !Int,
+    -- | the look of the box; the algorithm does not read it (golem-driver ADR 0004)
+    bcLook :: !Look
   }
   deriving stock (Eq, Show)
 
