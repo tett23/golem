@@ -3,3 +3,4 @@ build/
 third_party/
 cabal.project.local
 .claude/settings.local.json
+/dist/

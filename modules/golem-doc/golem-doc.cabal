@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               golem-doc
-version:            0.1.0.0
+version:            0.1.0
 synopsis:           The semantic IR of Golem
 license:            MIT
 author:             tett23

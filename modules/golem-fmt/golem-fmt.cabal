@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               golem-fmt
-version:            0.1.0.0
+version:            0.1.0
 synopsis:           formatter for Golem sources
 license:            MIT
 author:             tett23

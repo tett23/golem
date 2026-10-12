@@ -1,0 +1,217 @@
+# Builds, checks and publishes as a draft the release archives of golem
+# (docs/adr/0004-binary-distribution-and-release.md). A v* tag makes a
+# draft release; workflow_dispatch builds and checks the archives only.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Images by digest (docs/adr/0004). Fill in the digests of the multi-arch
+  # indexes before the first run; the "images" step stops the jobs until then.
+  ALPINE_IMAGE: alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+  DEBIAN_IMAGE: debian:stable-slim@sha256:eb593cf2c358cacef45ca0a424bbc7d30cfa3466265fc2662b9466a0ca6ba1c5
+  # the model that writes the release notes, fixed by name
+  CLAUDE_MODEL: claude-opus-5-5
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: check
+        name: VERSION, the tag, and the tag on main
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            sh scripts/release/check-version.sh "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+              echo "::error::the tag $GITHUB_REF_NAME is not on main"
+              exit 1
+            }
+          else
+            sh scripts/release/check-version.sh >> "$GITHUB_OUTPUT"
+            echo "tag=dev-${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x86_64-linux
+            runner: ubuntu-24.04
+          - platform: aarch64-linux
+            runner: ubuntu-24.04-arm
+          - platform: aarch64-macos
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+      - name: images
+        run: |
+          case "$ALPINE_IMAGE $DEBIAN_IMAGE" in
+            *TODO*) echo "::error::fill in the image digests in release.yml"; exit 1 ;;
+          esac
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: wasmtime C API built for musl (scripts/fetch-wasmtime.sh)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v6
+        with:
+          path: third_party/wasmtime
+          key: wasmtime-${{ matrix.platform }}-musl-${{ hashFiles('scripts/fetch-wasmtime.sh') }}
+      - name: Build in Alpine (musl, static)
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src \
+            -e COMMIT="$GITHUB_SHA" -e ALPINE_IMAGE -e ImageOS -e ImageVersion \
+            "$ALPINE_IMAGE" sh scripts/release/build-linux.sh "$TAG" "$PLATFORM"
+          sudo chown -R "$(id -u):$(id -g)" .
+      - id: setup
+        if: runner.os == 'macOS'
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: "9.10.3"
+          cabal-version: "3.16.1.0"
+      - name: Build (macOS 14 or later)
+        if: runner.os == 'macOS'
+        env:
+          COMMIT: ${{ github.sha }}
+        run: sh scripts/release/build-macos.sh "$TAG" "$PLATFORM"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: archive-${{ matrix.platform }}
+          path: |
+            dist/golem-*.tar.gz
+            dist/golem-*.tar.gz.sha256
+            dist/gmp-version-*.txt
+
+  smoke:
+    needs: [version, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x86_64-linux
+            runner: ubuntu-24.04
+          - platform: aarch64-linux
+            runner: ubuntu-24.04-arm
+          - platform: aarch64-macos
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    env:
+      ARCHIVE: dist/golem-${{ needs.version.outputs.tag }}-${{ matrix.platform }}.tar.gz
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: archive-${{ matrix.platform }}
+          path: dist
+      - name: On the runner
+        run: sh scripts/release/smoke.sh --deps --determinism "determinism-${{ matrix.platform }}.txt" "$ARCHIVE" "$VERSION"
+      - name: In alpine
+        if: runner.os == 'Linux'
+        run: docker run --rm -v "$PWD:/src:ro" -w /src "$ALPINE_IMAGE" sh scripts/release/smoke.sh "$ARCHIVE" "$VERSION"
+      - name: In debian:stable-slim with ca-certificates
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src "$DEBIAN_IMAGE" sh -c \
+            'apt-get update && apt-get install -y --no-install-recommends ca-certificates && sh scripts/release/smoke.sh "$1" "$2"' \
+            sh "$ARCHIVE" "$VERSION"
+      - name: In debian:stable-slim without ca-certificates
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -v /etc/ssl/certs/ca-certificates.crt:/certs/ca.pem:ro -w /src "$DEBIAN_IMAGE" \
+            sh scripts/release/smoke.sh --no-certs /certs/ca.pem "$ARCHIVE" "$VERSION"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: determinism-${{ matrix.platform }}
+          path: determinism-${{ matrix.platform }}.txt
+
+  determinism:
+    needs: [ci, smoke]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: determinism-*
+          merge-multiple: true
+      - name: The archives and CI give byte-identical outputs
+        run: |
+          for p in x86_64-linux aarch64-linux aarch64-macos; do
+            diff determinism-ubuntu-24.04.txt "determinism-$p.txt"
+          done
+
+  release:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: [version, ci, build, smoke, determinism]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: archive-*
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS and the source of GMP
+        run: |
+          cd dist
+          cat golem-*.tar.gz.sha256 > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          for v in $(cat gmp-version-*.txt | sort -u); do
+            sh ../scripts/release/fetch-gmp.sh "$v" .
+          done
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/golem-*.tar.gz
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Release notes
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: sh scripts/release/write-notes.sh "$TAG" notes.md
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          set -- --draft --verify-tag --title "$TAG" --notes-file notes.md
+          if [ "$PRERELEASE" = true ]; then set -- "$@" --prerelease; fi
+          gh release create "$TAG" "$@" dist/golem-*.tar.gz dist/SHA256SUMS dist/gmp-*.tar.xz

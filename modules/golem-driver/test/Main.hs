@@ -14,7 +14,8 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.New
-import Golem.Driver.Pdf (PdfInput (..), flowLines)
+import Golem.Driver.Pdf (PdfInput (..), flowLines, instanceIdInputs)
+import Golem.Driver.Version (golemVersion)
 import Golem.Layout.Paginate (Flow (..))
 import Golem.LayoutSpec (pageGeometry)
 import Golem.Pdf (Font (..), FontProgram (..))
@@ -85,7 +86,17 @@ tests :: TestTree
 tests =
   testGroup
     "golem-driver (ADR 0001)"
-    [ golden "text-horizontal-01.txt" "build/text/horizontal/chapters/01.txt",
+    [ testGroup
+        "version (docs/adr/0004)"
+        [ testCase "golemVersion is the content of VERSION" $ do
+            v <- T.strip <$> TIO.readFile "../../VERSION"
+            golemVersion @?= v,
+          testCase "the PDF instance ID is computed from golem- and the version, last" $ do
+            let inputs = instanceIdInputs ["input"] ["font program"]
+            inputs @?= ["input", "font program", TE.encodeUtf8 ("golem-" <> golemVersion)]
+            last inputs @?= TE.encodeUtf8 ("golem-" <> golemVersion)
+        ],
+      golden "text-horizontal-01.txt" "build/text/horizontal/chapters/01.txt",
       golden "text-vertical-01.txt" "build/text/vertical/chapters/01.txt",
       golden "html-01.xhtml" "build/html/chapters/01.xhtml",
       golden "html-front.xhtml" "build/html/front.xhtml",

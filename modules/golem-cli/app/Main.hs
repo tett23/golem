@@ -14,6 +14,7 @@ import Golem.Doc.Cbor (encodeDocument)
 import Golem.Driver
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
+import Golem.Driver.Version (golemVersion)
 import Golem.Eval.File (erDocument)
 import Golem.Fmt (FormatResult (..), format)
 import Golem.Lsp.Server (runGolemLsp)
@@ -50,7 +51,9 @@ data Command
 main :: IO ()
 main = do
   args <- getArgs
-  case execParserPure (prefs showHelpOnEmpty) cli args of
+  -- no backtracking: the options of golem (--version) are not options of
+  -- its commands, so golem build --version is a usage error (docs/adr/0004)
+  case execParserPure (prefs (showHelpOnEmpty <> noBacktrack)) cli args of
     Success cmd -> run cmd >>= exitWith
     Failure failure -> do
       let (msg, code) = renderFailure failure "golem"
@@ -62,10 +65,16 @@ main = do
 are in Japanese.
 -}
 cli :: ParserInfo Command
-cli = info (commands <**> helpOption) (fullDesc <> progDesc "Golem の組版システム" <> failureCode 2)
+cli = info (commands <**> helpOption <**> versionOption) (fullDesc <> progDesc "Golem の組版システム" <> failureCode 2)
 
 helpOption :: Parser (a -> a)
 helpOption = helperWith (long "help" <> short 'h' <> help "このヘルプを表示する")
+
+{- | golem --version prints @golem@ and the version (docs/adr/0004).
+simpleVersioner is not used because its help is in English.
+-}
+versionOption :: Parser (a -> a)
+versionOption = infoOption ("golem " <> T.unpack golemVersion) (long "version" <> hidden <> help "版を表示する")
 
 -- | Reads one of the given words.
 choice :: String -> [(String, a)] -> ReadM a
