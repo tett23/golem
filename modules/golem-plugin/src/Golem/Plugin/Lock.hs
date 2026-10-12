@@ -33,6 +33,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.X509.CertificateStore (listCertificates)
 import Golem.Project.Manifest (decodeStrict)
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
@@ -41,6 +42,7 @@ import Network.HTTP.Client.TLS (newTlsManager)
 import Network.HTTP.Types (hLocation, statusCode)
 import System.Directory (XdgDirectory (..), createDirectoryIfMissing, doesFileExist, getXdgDirectory)
 import System.FilePath ((</>))
+import System.X509 (getSystemCertificateStore)
 import Text.Printf (printf)
 import Toml.Schema
 
@@ -87,9 +89,22 @@ nextRedirect from = \case
     | "/" `T.isPrefixOf` loc -> Right (T.intercalate "/" (take 3 (T.splitOn "/" from)) <> loc)
     | otherwise -> Left ("不明なリダイレクト先です: " <> loc)
 
--- | HTTPS only; redirects are followed one by one and may not leave HTTPS.
+{- | HTTPS only; redirects are followed one by one and may not leave HTTPS.
+The root certificates come from the store of the OS (SSL_CERT_FILE and
+SSL_CERT_DIR take precedence). With no root certificates, every fetch fails
+before connecting and says how to fix it (docs/adr/0004): a minimal
+container has no ca-certificates, and the failure of TLS verification
+would not tell why.
+-}
 httpsFetcher :: IO Fetcher
-httpsFetcher = httpsFetcherWith <$> newTlsManager
+httpsFetcher = do
+  certificates <- listCertificates <$> getSystemCertificateStore
+  if null certificates
+    then pure (const (pure (Left noRootCertificates)))
+    else httpsFetcherWith <$> newTlsManager
+
+noRootCertificates :: Text
+noRootCertificates = "TLS のルート証明書が見つかりません。ca-certificates を入れるか、SSL_CERT_FILE で証明書のファイルを指定してください"
 
 {- | The same with a given connection manager (tests use one that trusts a
 local server's certificate).
