@@ -1030,6 +1030,11 @@ PDF の経路は、ADR に定めた組版の機能のうち一部をまだ出力
 - **文字スタイルと段落スタイルへの記法の統合**：v1 のリリースの前に、強調（`[strong: ...]`、`[bold: ...]`、`[italic: ...]`）のような見た目の記法を文字スタイルへ、韻文（[docs/adr/0003](adr/0003-verse-line-breaks.md) の `@verse`）のようなブロックの記法を段落スタイルへ統合する。段落スタイルはまだない。
 - **字下げ**：段落の字下げ（段落の先頭の字下げ、二行目以降の字下げ、ぶら下げ）を指定する方法がない。段落スタイルで指定できるようにする。
 - **PDF の Producer**：仕様では PDF の Producer に Golem の版を書くが、まだ書いていない。`golemVersion` を使えば足せるが、PDF の出力を変える変更なので別に扱う（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+- **`--no-fonts` で作ったプロジェクトのビルド**：`style.toml` が存在しないフォントのファイルを指すと、PDF だけでなくすべてのターゲットが G0306 になる。`golem new --no-fonts` で作ったプロジェクトは、フォントを置くまで HTML もビルドできない。フォントのファイルの検査を PDF のときだけにするかを決める（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
+- **配布物のライセンスの一覧**：配布物の `THIRD_PARTY_LICENSES` に、Linux の実行ファイルに静的にリンクする musl と libffi、libstdc++ と libgcc、`libwasmtime.a` に含まれる Rust のクレートのライセンスが入っていない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+- **合成の太字の太さ**：合成の太字の輪郭の線の幅（文字の大きさの 1/40）は、目で見ると太すぎる。値を見直す（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
+- **リリースの初回の検証**：リリースのワークフロー、Alpine での musl のビルド、コンテナの中での配布物の検査は、まだ一度も動かしていない。`v0.1.0-rc1` のタグで確かめる。AI にリリースノートを書かせるには、リポジトリの秘密情報 `ANTHROPIC_API_KEY` が要る（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+- **LSP の UTF-8 の手動の確認**：UTF-8 の位置の交渉を、実際のエディタ（Neovim）で確かめていない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)）。
 
 次の項目は、仕様や外部の制約のために残している。
 
