@@ -10,7 +10,7 @@ Golem は、コマンドラインと CI で動く組版システムである。
 ## Installation
 
 配布物はまだない。
-開発の節の手順でソースからビルドする。
+[CLI のビルド](#cli-のビルド)の手順で、ソースから `golem` コマンドをビルドする。
 
 ## Usage
 
@@ -110,6 +110,24 @@ scripts/gen-parser.sh
 ```bash
 cargo install cddl --version 0.10.7 --locked
 ```
+
+### CLI のビルド
+
+`golem` コマンドの実行ファイルは、`golem-cli` パッケージの `exe:golem` である。
+wasmtime を取得したあとで、次のコマンドを実行すると、実行ファイルを `~/.local/bin` に置く。
+
+```bash
+cabal install exe:golem --installdir="$HOME/.local/bin" --install-method=copy --overwrite-policy=always
+```
+
+`--installdir` を変えれば、ほかのディレクトリにも置ける。
+そのディレクトリを `PATH` に加えておけば、`golem` で呼び出せる。
+
+インストールせずに使う場合は、`cabal build exe:golem` でビルドし、`cabal list-bin golem` で実行ファイルのパスを調べる。
+`cabal run golem -- --help` のように、`cabal run` から呼び出してもよい。
+
+HarfBuzz、FreeType、wasmtime、zlib は静的にリンクする。
+macOS でビルドした実行ファイルは OS 標準のライブラリだけに依存するので、同じアーキテクチャの macOS であれば、実行ファイルだけをコピーして使える。
 
 ### 整形と検査
 
