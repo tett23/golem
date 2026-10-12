@@ -142,6 +142,18 @@ Tags with an identifier after the version, such as `v0.0.1-rc`, are pre-releases
 Release notes go in GitHub Releases, written in English.
 Group the changes under headings such as Added, Changed, Removed, and Fixed, and where possible add absolute links to the commit or pull request and the ADR for each change.
 
+A release goes as follows ([docs/adr/0004](./docs/adr/0004-binary-distribution-and-release.md)).
+
+1. Open a pull request that raises the version. Write the new version (for example `0.1.0-rc1`) into `VERSION` at the root of the repository, and its `X.Y.Z` without the identifier into the `version` of every package's cabal file. The `release-scripts` job of CI checks that the two agree.
+2. Merge the pull request into `main`.
+3. Tag the merge commit with `v` followed by the content of `VERSION` (for example `v0.1.0-rc1`) and push the tag. When the tag does not match `VERSION`, or its commit is not on `main`, the `version` job of the workflow fails and no release is made.
+4. `.github/workflows/release.yml` builds and checks the archives and makes a draft release. A pre-release tag makes a draft marked as a pre-release.
+5. Read the draft release notes. Fix by hand what the AI classified or summarized badly. When the AI or the check failed, the notes are the list of changes with a `## Unsorted` section; classify and rewrite them. The summary of the workflow says why it failed.
+6. Publish the draft on the GitHub Releases page. The workflow never publishes.
+
+To try the build and the checks without a release, run `gh workflow run release.yml --ref <branch>`, which starts the workflow through `workflow_dispatch`.
+It makes no release.
+
 ## Test material
 
 When adding outside text or fonts to fixtures, check the license and include the license text.
