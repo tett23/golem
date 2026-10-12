@@ -5,6 +5,7 @@
 Golem は、コマンドラインと CI で動く組版システムである。
 原稿は `.gm` のテキストで書き、同じ入力から常に同じバイト列の PDF、EPUB、HTML、テキストを出力する。
 仕様は [docs/specifications.md](./docs/specifications.md) と [docs/markup.md](./docs/markup.md) にある。
+用語は [docs/glossary.md](./docs/glossary.md) にまとめている。
 
 ## Installation
 
