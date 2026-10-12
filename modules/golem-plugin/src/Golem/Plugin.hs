@@ -96,7 +96,7 @@ describePluginError = \case
   HasImports is -> "プラグインが import を要求しています: " <> T.intercalate ", " is
   AbiMismatch v -> "プラグインの ABI の版が異なります: " <> T.pack (show v)
   MissingExport n -> "プラグインが関数を公開していません: " <> n
-  OutOfFuel _ -> "プラグインの実行が燃料の上限を超えました"
+  OutOfFuel _ -> "プラグインの実行が命令数の上限を超えました"
   Trapped m -> "プラグインの実行が失敗しました（メモリの上限を超えた場合を含む）: " <> m
   InstantiateFailed m -> "プラグインを起動できません: " <> m
   BadOutput m -> "プラグインの出力が不正です: " <> m
