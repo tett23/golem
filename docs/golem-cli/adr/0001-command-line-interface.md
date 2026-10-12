@@ -32,7 +32,7 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 
 ### 診断の出力
 
-- 既定は人が読む形とし、`--format json` で機械が読む形にする（golem-syntax ADR 0001）。
+- 既定は人が読む形とし、`--format json` で機械が読む形にする（[golem-syntax ADR 0001](../../golem-syntax/adr/0001-source-spans-and-diagnostics.md)）。
 - 診断は標準エラー出力に、それ以外の出力は標準出力に書く。
 
 ### 終了コード

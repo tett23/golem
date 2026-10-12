@@ -4,7 +4,7 @@
 
 ## 文脈
 
-ADR 0001 は、文書構造（S1）の後に HTML、EPUB、プレーンテキストを出力するパイプラインを定め、レイアウト（S2）と PDF の段階を後の ADR に回した。
+[ADR 0001](0001-build-pipeline.md) は、文書構造（S1）の後に HTML、EPUB、プレーンテキストを出力するパイプラインを定め、レイアウト（S2）と PDF の段階を後の ADR に回した。
 この ADR は、PDF のターゲットのための段階をパイプラインに加える。
 
 ## 実装すること
@@ -13,12 +13,12 @@ ADR 0001 は、文書構造（S1）の後に HTML、EPUB、プレーンテキス
 
 S1 の後、PDF のターゲットが指定されている場合に、次の段階を実行する。
 
-1. `style.toml` からページの幾何を計算する（golem-layout-spec ADR 0001）。
-2. フォントを読み込み、ライセンスを検査する（golem-font ADR 0001）。
-3. 段落ごとにシェイピングと行分割を行う（golem-layout ADR 0001、0002）。段落ごとに並列に実行してよい。
-4. ページに配置し、ページ番号への参照を収束するまで解決する（golem-layout ADR 0003）。
-5. 使ったグリフを集めてフォントをサブセット化する（golem-font ADR 0002）。
-6. PDF/X-4 の PDF を書く（golem-pdf ADR 0001、0002）。
+1. `style.toml` からページの幾何を計算する（[golem-layout-spec ADR 0001](../../golem-layout-spec/adr/0001-page-geometry.md)）。
+2. フォントを読み込み、ライセンスを検査する（[golem-font ADR 0001](../../golem-font/adr/0001-shaping-and-metrics.md)）。
+3. 段落ごとにシェイピングと行分割を行う（[golem-layout ADR 0001](../../golem-layout/adr/0001-knuth-plass-line-breaking.md)、[0002](../../golem-layout/adr/0002-japanese-composition.md)）。段落ごとに並列に実行してよい。
+4. ページに配置し、ページ番号への参照を収束するまで解決する（[golem-layout ADR 0003](../../golem-layout/adr/0003-pagination-and-s2.md)）。
+5. 使ったグリフを集めてフォントをサブセット化する（[golem-font ADR 0002](../../golem-font/adr/0002-subsetting-and-embedding.md)）。
+6. PDF/X-4 の PDF を書く（[golem-pdf ADR 0001](../../golem-pdf/adr/0001-deterministic-pdf-writer.md)、[0002](../../golem-pdf/adr/0002-pdf-x-4.md)）。
 
 ### 並列性
 

@@ -1,11 +1,11 @@
 # ADR 0001: ページの幾何
 
-ステータス: 採択→奇数ページのノドの向きは ADR 0002
+ステータス: 採択→奇数ページのノドの向きは [ADR 0002](0002-gutter-side-of-odd-pages.md)
 
 ## 文脈
 
 レイアウト IR は、意味論 IR と並ぶ第二の入力であり、PDF の経路だけが読む（specifications.md）。
-その値は `style.toml` に書かれ、golem-project ADR 0002 が単位を整数の sp に変換した `Style` として読み込む。
+その値は `style.toml` に書かれ、[golem-project ADR 0002](../../golem-project/adr/0002-style-toml.md) が単位を整数の sp に変換した `Style` として読み込む。
 この ADR は、`Style` からページの幾何（判型、版面、余白、マスターページの要素の位置）を計算し、レイアウトエンジンが使う形にする。
 
 版面は、日本語組版の流儀に従い、文字の大きさ、一行の字数、一ページの行数、行送り、段数で定義する。
@@ -67,7 +67,7 @@ pageGeometry :: Style -> Either [Diagnostic] PageGeometry
 
 ## 実装しないこと
 
-- フレーム（レベル 2 と 3）の幾何。`style.toml` に書かれた場合のエラーは golem-project ADR 0002 で行う。
+- フレーム（レベル 2 と 3）の幾何。`style.toml` に書かれた場合のエラーは [golem-project ADR 0002](../../golem-project/adr/0002-style-toml.md) で行う。
 - 字送りを文字の大きさと異なる値にする設定（字間を詰めた版面）。
 - 裁ち落とし（ブリード）の領域。PDF の出力で TrimBox と BleedBox を設定するときに、golem-pdf の ADR で扱う。
 
