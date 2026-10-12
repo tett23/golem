@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               golem-parser
-version:            0.1.0.0
+version:            0.1.0
 synopsis:           Golem parser: lossless CST, grammar and AST
 license:            MIT
 author:             tett23

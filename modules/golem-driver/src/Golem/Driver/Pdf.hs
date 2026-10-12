@@ -14,6 +14,7 @@ module Golem.Driver.Pdf
     PdfInput (..),
     renderPdf,
     pdfFileName,
+    instanceIdInputs,
   )
 where
 
@@ -32,6 +33,7 @@ import Data.Time.Calendar (toGregorian)
 import Golem.Doc.Assemble
 import Golem.Doc.IR
 import Golem.Doc.Numerals (formatNumber)
+import Golem.Driver.Version (golemVersion)
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
@@ -67,6 +69,13 @@ noFontProvider :: FontProvider
 noFontProvider =
   FontProvider $ \_ _ ->
     pure (Left [diagnostic "G0801" Error (mkSpan (FileId 0) 0 0) "フォントの処理（golem-font ADR 0001、0002）が未実装のため、PDF を出力できません"])
+
+{- | What the instance ID is computed from: the bytes of every input, the
+embedded font programs and, last, @golem-@ and the version of Golem
+(docs/adr/0004; the version is part of the input, docs/adr/0002).
+-}
+instanceIdInputs :: [ByteString] -> [ByteString] -> [ByteString]
+instanceIdInputs inputs programs = inputs <> programs <> [TE.encodeUtf8 ("golem-" <> golemVersion)]
 
 data PdfInput = PdfInput
   { piRoot :: !FilePath,
@@ -400,7 +409,7 @@ writeDocument inp geom fonts built pages intent =
             P.docTitle = mdTitle md,
             P.docDate = (y, mo, d),
             P.docId = P.documentId (mdId md),
-            P.docInstanceId = P.instanceId (piInputs inp <> programs <> [TE.encodeUtf8 "golem-0.1.0.0"]),
+            P.docInstanceId = P.instanceId (instanceIdInputs (piInputs inp) programs),
             P.docPdfX = intent
           }
    in P.writePdf doc

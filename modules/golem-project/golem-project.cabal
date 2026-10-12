@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               golem-project
-version:            0.1.0.0
+version:            0.1.0
 synopsis:           Golem projects: manifest, style.toml and the import graph
 license:            MIT
 author:             tett23

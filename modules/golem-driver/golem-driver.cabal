@@ -1,12 +1,16 @@
 cabal-version:      3.0
 name:               golem-driver
-version:            0.1.0.0
+version:            0.1.0
 synopsis:           The Golem build pipeline
 license:            MIT
 author:             tett23
 maintainer:         tett23@gmail.com
 category:           Text
 build-type:         Simple
+-- the version of Golem, embedded by Golem.Driver.Version (docs/adr/0004);
+-- a symbolic link to VERSION at the root of the repository
+extra-source-files:
+  VERSION
 
 common warnings
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
@@ -21,6 +25,7 @@ library
                     Golem.Driver.New
                     Golem.Driver.Pdf
                     Golem.Driver.Plugins
+                    Golem.Driver.Version
   build-depends:
     , aeson         >=2.1  && <2.3
     , async         >=2.2  && <2.3
@@ -43,6 +48,7 @@ library
     , golem-project
     , golem-syntax
     , golem-text
+    , template-haskell
     , text          >=2.0  && <2.2
     , time          >=1.12 && <1.15
     , vector        >=0.13 && <0.14

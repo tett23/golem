@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               golem-lint
-version:            0.1.0.0
+version:            0.1.0
 synopsis:           lint rules for Golem
 license:            MIT
 author:             tett23
