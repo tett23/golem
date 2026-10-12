@@ -5,7 +5,7 @@
 ## 文脈
 
 評価は三つの階層に分かれる（specifications.md）。
-ファイル内評価（S0）は、ソースファイルを一つずつ、そのファイルと import 先だけを見て評価し、意味論 IR（golem-doc ADR 0001）を作る段階である。
+ファイル内評価（S0）は、ソースファイルを一つずつ、そのファイルと import 先だけを見て評価し、意味論 IR（[golem-doc ADR 0001](../../golem-doc/adr/0001-semantic-ir-in-cddl.md)）を作る段階である。
 章ファイルの独立性（単独での検査、並列のビルド、LSP）は、S0 がファイルの外を見ないことに依拠する。
 
 S0 のうちに決まらない値が二種類ある。
@@ -41,14 +41,14 @@ evalFile
 - 見出しの中にこれらの値が現れた場合はコンパイルエラーとする。
 
 `DeferredExpr` は意味論 IR の CDDL に加える。
-プラグインは `DeferredExpr` を受け取って出力にそのまま含めることはできるが、新しく作ることはできない（golem-plugin ADR 0001）。
+プラグインは `DeferredExpr` を受け取って出力にそのまま含めることはできるが、新しく作ることはできない（[golem-plugin ADR 0001](../../golem-plugin/adr/0001-wasm-host-and-abi.md)）。
 
 ### コマンドの解決
 
 コマンドの名前は、上書きを宣言したプラグインのコマンド、組み込みのコマンド、プラグインのコマンドの順に探す。
 どれにもない名前はコンパイルエラーとする。
 
-プラグインは、マニフェストで宣言した場合に限り、組み込みのインラインのコマンドを上書きできる（golem-plugin ADR 0002）。
+プラグインは、マニフェストで宣言した場合に限り、組み込みのインラインのコマンドを上書きできる（[golem-plugin ADR 0002](../../golem-plugin/adr/0002-distribution-and-lock.md)）。
 上書きできるのは、表示だけに関わる次のコマンドである。
 
 - `strong`、`bold`、`italic`、`ruby`、`kenten`、`color`、`style`、`tcy`、`number-text`
@@ -106,9 +106,9 @@ prod のプロファイルでは、出力には含めず、警告の診断を作
 
 ## 実装しないこと
 
-- S1 の集約と、`DeferredExpr` と `DeferredRef` の解決。golem-doc ADR 0002 で扱う。
+- S1 の集約と、`DeferredExpr` と `DeferredRef` の解決。[golem-doc ADR 0002](../../golem-doc/adr/0002-document-assembly.md) で扱う。
 - lint の規則（使われていない変数など）。golem-lint の ADR で扱う。
-- プラグインの呼び出しの仕組み。golem-plugin ADR 0001 で扱う。
+- プラグインの呼び出しの仕組み。[golem-plugin ADR 0001](../../golem-plugin/adr/0001-wasm-host-and-abi.md) で扱う。
 
 ## テスト設計
 

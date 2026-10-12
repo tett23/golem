@@ -34,7 +34,7 @@ Golem はこの性質をプレーンテキストの上で実現する。
 - プレーンテキスト（縦書きと横書きの二変種。横書きはブログ等への転載用）
 
 PDF/X-4 への準拠は、Golem が生成しうる要素についての自前の検査と、qpdf による構造の検査で確かめる。
-PDF/X-4 の適合を判定できる自由な検証ツールがないためであり、入稿前の最終確認は利用者が商用のプリフライトで行う（golem-pdf ADR 0003）。
+PDF/X-4 の適合を判定できる自由な検証ツールがないためであり、入稿前の最終確認は利用者が商用のプリフライトで行う（[golem-pdf ADR 0003](golem-pdf/adr/0003-pdf-x-4-validator.md)）。
 
 これらは完全に同じ見た目にはならないし、それを目指さない。
 かわりに次の**媒体契約**を不変条件として固定する。
@@ -763,24 +763,24 @@ v1 の範囲から外した事項と、v1 の実装で次の段階以降に回�
 それぞれの理由は、対応する節と ADR に記載している。
 
 - **数式の組版**：PDF に数式の組版エンジンが必要になる。当面は、数式を画像にして図版として入れる。
-- **EPUB の決定性**：zip のエントリの時刻と順序の固定（ADR docs/adr/0002、golem-epub ADR 0001）。
-- **式の超越関数**：三角関数、指数関数、対数関数と、浮動小数点数の指数による累乗（golem-eval ADR 0001）。
-- **改ページの大域の最適化**：見開きの単位の最適化と、段組みの段の高さの調整を含む（golem-layout ADR 0003）。
+- **EPUB の決定性**：zip のエントリの時刻と順序の固定（[ADR docs/adr/0002](adr/0002-determinism.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
+- **式の超越関数**：三角関数、指数関数、対数関数と、浮動小数点数の指数による累乗（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
+- **改ページの大域の最適化**：見開きの単位の最適化と、段組みの段の高さの調整を含む（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 - **フレーム**：レベル 2 と 3 のフレーム。型は定義してあり、v1 では値を書くとエラーになる。
 - **SVG の図版**：PDF へ変換する処理が重いため、v1 では PDF、PNG、JPEG に限る。
 - **複数段落の注**：v1 の注は一つの段落に限る。
 - **章ごとの小目次**：v1 の `@toc` は文書に一つだけとする。
-- **縦組みの傍注**：v1 の傍注は横組みに限る（golem-layout ADR 0006）。
+- **縦組みの傍注**：v1 の傍注は横組みに限る（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
 - **索引の三段以上の階層と項目間の参照**：v1 は二段までとし、「〜を見よ」は扱わない。
 - **`style.toml` の分割**：ほかのファイルを取り込む機能。
-- **スポットカラー**：Separation と DeviceN の色空間（golem-pdf ADR 0002）。
-- **プラグインの配布機構**：レジストリと版の解決（golem-plugin ADR 0002）。
-- **バイナリの配布とリリースの自動化**：最初に配布できる機能が揃った段階で ADR を作成する（docs/adr/0001）。
+- **スポットカラー**：Separation と DeviceN の色空間（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。
+- **プラグインの配布機構**：レジストリと版の解決（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。
+- **バイナリの配布とリリースの自動化**：最初に配布できる機能が揃った段階で ADR を作成する（[docs/adr/0001](adr/0001-haskell-workspace-and-ci.md)）。
 
 ### v3 以降に回した事項
 
 - **GUI**：原稿とスタイルを編集し、組版の結果を確かめる画面。v2 までの Golem は CLI と CI で完結させる。ページ画像の差分を取る仕組みを自前で持つ場合も、GUI より後に扱う。
-- **HarfBuzz と FreeType の置き換え**：シェイピングとフォントの読み込みを Golem 自身の実装に置き換える。v2 までは、版を固定した HarfBuzz と FreeType を同梱して使う（golem-font ADR 0001）。
+- **HarfBuzz と FreeType の置き換え**：シェイピングとフォントの読み込みを Golem 自身の実装に置き換える。v2 までは、版を固定した HarfBuzz と FreeType を同梱して使う（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)）。
 
 ### v1 の実装で次の段階以降に回した項目
 

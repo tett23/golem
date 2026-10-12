@@ -52,7 +52,7 @@ HarfBuzz と FreeType は版を固定して Golem に同梱し、版を README �
 
 ### 検査
 
-ADR 0001 の `determinism` ジョブで、二つのアーキテクチャの出力のバイト列が一致することを検査する。
+[ADR 0001](0001-haskell-workspace-and-ci.md) の `determinism` ジョブで、二つのアーキテクチャの出力のバイト列が一致することを検査する。
 加えて、同じ環境で二回ビルドした出力が一致することも検査する。
 
 ### 範囲
