@@ -7,7 +7,7 @@ set -eu
 VERSION=3.10
 # The SHA-256 of hlint-3.10-x86_64-linux.tar.gz. GitHub records no digest
 # for the assets of this release, so it is taken from the archive itself.
-SHA=TODO
+SHA=ccabc8802a58154699a3583b8dddc5ea2e6d65753a62c45c0e80088ebb16b42b
 case "$(uname -s)-$(uname -m)" in
   Linux-x86_64) ;;
   *) echo "hlint $VERSION is released for x86-64 Linux only, not $(uname -s)-$(uname -m)" >&2; exit 1 ;;
