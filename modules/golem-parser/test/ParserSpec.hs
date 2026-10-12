@@ -1,8 +1,11 @@
 module ParserSpec (tests) where
 
+import Data.List (nub, sort)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.IO qualified as TIO
 import Golem.Parser
+import Golem.Parser.AST qualified
 import Golem.Parser.CST
 import Golem.Syntax
 import Hedgehog
@@ -20,6 +23,18 @@ parseOk src = do
   let (cst, ds) = parse fid src
   render cst @?= src
   assertEqual ("diagnostics for:\n" <> T.unpack src <> "\n" <> T.unpack (pretty cst)) [] (map diagCode ds)
+
+codes :: Text -> [DiagnosticCode]
+codes src = map diagCode (snd (parse fid src))
+
+astOf :: Text -> [Golem.Parser.AST.Located Golem.Parser.AST.Block]
+astOf src = let (f, _, _) = parseAst fid src in Golem.Parser.AST.fileBlocks f
+
+-- | The labels the grammar declares with @%recover@.
+grammarLabels :: IO [Text]
+grammarLabels = do
+  g <- TIO.readFile "grammar/Golem.peg"
+  pure [l | ("%recover" : l : _) <- map T.words (T.lines g)]
 
 kinds :: Node -> [SyntaxKind]
 kinds n = nodeKind n : concat [kinds m | ElemNode m <- nodeChildren n]
@@ -120,5 +135,34 @@ tests =
         map diagCode ds @?= [DiagnosticCode "G0115"],
       testCase "unclosed code block" $ do
         let (_, ds) = parse fid "```\nx\n"
-        map diagCode ds @?= [DiagnosticCode "G0116"]
+        map diagCode ds @?= [DiagnosticCode "G0116"],
+      -- golem-parser ADR 0007
+      testCase "empty and blank-only files are accepted" $
+        mapM_ parseOk ["", "\n", "\n\n", "  \n"],
+      testCase "a trailing whitespace-only line without a newline is blank" $ do
+        mapM_ parseOk ["a\n\n  ", "# h\n  ", "a\n\n\t"]
+        astOf "a\n\n  " @?= astOf "a\n"
+        astOf "# h\n  " @?= astOf "# h\n"
+        astOf "a\n\n\t" @?= astOf "a\n",
+      testCase "*[ always starts a splat" $ do
+        -- The splat and the command it is in both lack their ].
+        nub (codes "[f *[x y]]\n") @?= [DiagnosticCode "G0117"]
+        codes "[f *[= 1]]\n" @?= [DiagnosticCode "G0120"]
+        codes "[f **[= 1]]\n" @?= [DiagnosticCode "G0120"]
+        parseOk "[f * x]\n",
+      testCase "a line starting with | that is not a table row" $ do
+        codes "| a |\n|---|\n|abc\n" @?= [DiagnosticCode "G0123"]
+        let (cst, ds) = parse fid "| a |\n|---|\n|abc\n\n次の段落。\n"
+        map diagCode ds @?= [DiagnosticCode "G0123"]
+        length [() | ElemNode n <- nodeChildren cst, nodeKind n == NParagraph] @?= 1,
+      testCase "an empty item followed by a trailing blank line is an error" $ do
+        assertBool "- \\n is an error" (not (null (codes "- \n")))
+        codes "- \n  " @?= codes "- \n",
+      testCase "every grammar label has its own diagnostic code" $ do
+        ls <- grammarLabels
+        assertBool "table_row is a label" ("table_row" `elem` ls)
+        let cs = map (fst . labelCode . Just) ls
+        assertBool "no label falls back to G0129" ("G0129" `notElem` cs)
+        sort (nub cs) @?= sort cs
+        fst (labelCode (Just "table_row")) @?= "G0123"
     ]
