@@ -1,0 +1,5 @@
+未知のオプションです: --nope
+
+使い方: golem COMMAND
+
+  Golem の組版システム
