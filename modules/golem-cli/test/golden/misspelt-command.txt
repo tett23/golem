@@ -1,0 +1,8 @@
+未知の引数です: buld
+
+次のことですか？
+    build
+
+使い方: golem COMMAND
+
+  Golem の組版システム

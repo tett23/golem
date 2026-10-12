@@ -3,6 +3,7 @@ module Main (main) where
 
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
+import Data.List (intercalate, isPrefixOf, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -23,70 +24,140 @@ import Golem.Project (Project (..), SourceFile (..), loadProject)
 import Golem.Project.Manifest (Manifest (..), PluginDecl (..), parseManifest)
 import Golem.Syntax
 import Options.Applicative
+import Options.Applicative.Extra (helperWith)
 import System.Directory (doesFileExist)
+import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath ((</>))
-import System.IO (stderr)
+import System.IO (hPutStrLn, stderr, stdout)
 import Text.Printf (printf)
 
 data Format = Human | Json
 
+data InspectAs = AsCst | AsAst | AsIr
+
 data Command
   = New FilePath Language Bool
-  | Build [String] Profile Format
+  | Build [Target] Profile Format
   | Check Profile Format
   | PluginFetch
   | PluginLock
-  | Inspect FilePath String
+  | Inspect FilePath InspectAs
   | Lint Profile Format
   | Fmt Bool [FilePath]
   | Lsp
 
 main :: IO ()
 main = do
-  cmd <- customExecParser (prefs showHelpOnEmpty) (info (commands <**> helper) (fullDesc <> progDesc "Golem typesetting system"))
-  code <- run cmd
-  exitWith code
+  args <- getArgs
+  case execParserPure (prefs showHelpOnEmpty) cli args of
+    Success cmd -> run cmd >>= exitWith
+    Failure failure -> do
+      let (msg, code) = renderFailure failure "golem"
+      hPutStrLn (if code == ExitSuccess then stdout else stderr) (localize msg)
+      exitWith code
+    r@(CompletionInvoked _) -> handleParseResult r >>= run >>= exitWith
+
+{- | Usage errors exit with 2 (golem-cli ADR 0001, ADR 0004); the messages
+are in Japanese.
+-}
+cli :: ParserInfo Command
+cli = info (commands <**> helpOption) (fullDesc <> progDesc "Golem の組版システム" <> failureCode 2)
+
+helpOption :: Parser (a -> a)
+helpOption = helperWith (long "help" <> short 'h' <> help "このヘルプを表示する")
+
+-- | Reads one of the given words.
+choice :: String -> [(String, a)] -> ReadM a
+choice what values =
+  eitherReader $ \s -> maybe (Left ("未知の" <> what <> "です: " <> s <> "（" <> intercalate "、" (map fst values) <> " のいずれか）")) Right (lookup s values)
 
 profileOpt :: Parser Profile
 profileOpt =
   option
-    (eitherReader (\case "dev" -> Right Dev; "prod" -> Right Prod; s -> Left ("unknown profile: " <> s)))
-    (long "profile" <> value Dev <> metavar "dev|prod" <> help "Build profile")
+    (choice "プロファイル" [("dev", Dev), ("prod", Prod)])
+    (long "profile" <> value Dev <> metavar "dev|prod" <> help "ビルドのプロファイル（既定は dev）")
 
 languageOpt :: Parser Language
 languageOpt =
   option
-    (eitherReader (\case "ja" -> Right Japanese; "en" -> Right English; s -> Left ("unknown language: " <> s)))
-    (long "language" <> value Japanese <> metavar "ja|en" <> help "Language of the template")
+    (choice "言語" [("ja", Japanese), ("en", English)])
+    (long "language" <> value Japanese <> metavar "ja|en" <> help "雛形の言語（既定は ja）")
 
 formatOpt :: Parser Format
 formatOpt =
   option
-    (eitherReader (\case "human" -> Right Human; "json" -> Right Json; s -> Left ("unknown format: " <> s)))
-    (long "format" <> value Human <> metavar "human|json" <> help "Diagnostic format")
+    (choice "出力形式" [("human", Human), ("json", Json)])
+    (long "format" <> value Human <> metavar "human|json" <> help "診断の出力形式（既定は human）")
+
+targetOpt :: Parser Target
+targetOpt =
+  option
+    (choice "ターゲット" [("html", TargetHtml), ("epub", TargetEpub), ("text", TargetText), ("pdf", TargetPdf)])
+    (long "target" <> metavar "html|epub|text|pdf" <> help "作るターゲット（省くとすべて）")
+
+inspectAsOpt :: Parser InspectAs
+inspectAsOpt =
+  option
+    (choice "表示の種類" [("cst", AsCst), ("ast", AsAst), ("ir", AsIr)])
+    (long "as" <> value AsCst <> metavar "cst|ast|ir" <> help "表示するもの（既定は cst）")
 
 commands :: Parser Command
 commands =
-  hsubparser
-    ( command "new" (info (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "Do not download the fonts")) (progDesc "Create a project"))
-        <> command "build" (info (Build <$> many (strOption (long "target" <> metavar "html|epub|text|pdf")) <*> profileOpt <*> formatOpt) (progDesc "Build the targets"))
-        <> command "check" (info (Check <$> profileOpt <*> formatOpt) (progDesc "Check without writing output"))
-        <> command "plugin" (info (hsubparser (command "fetch" (info (pure PluginFetch) mempty) <> command "lock" (info (pure PluginLock) mempty))) (progDesc "Manage plugins"))
-        <> command "lint" (info (Lint <$> profileOpt <*> formatOpt) (progDesc "Apply the lint rules"))
-        <> command "fmt" (info (Fmt <$> switch (long "check" <> help "Only list unformatted files") <*> many (strArgument (metavar "FILE"))) (progDesc "Format the sources"))
-        <> command "lsp" (info (pure Lsp) (progDesc "Run the language server on standard input and output"))
-        <> command "inspect" (info (Inspect <$> strArgument (metavar "FILE") <*> strOption (long "as" <> value "cst" <> metavar "cst|ast|ir")) (progDesc "Show the CST, AST or IR of a file"))
+  subparser
+    ( commandGroup "コマンド:"
+        <> metavar "COMMAND"
+        <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない")) "プロジェクトを作る"
+        <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> formatOpt) "出力を build/ に書く"
+        <> cmd "check" (Check <$> profileOpt <*> formatOpt) "出力を書かずに検査する"
+        <> cmd
+          "plugin"
+          ( subparser
+              ( commandGroup "コマンド:"
+                  <> metavar "COMMAND"
+                  <> cmd "fetch" (pure PluginFetch) "plugins.lock のとおりにプラグインを取得する"
+                  <> cmd "lock" (pure PluginLock) "プラグインを取得し、ハッシュを plugins.lock に書く"
+              )
+          )
+          "プラグインを管理する"
+        <> cmd "lint" (Lint <$> profileOpt <*> formatOpt) "lint の規則を適用する"
+        <> cmd "fmt" (Fmt <$> switch (long "check" <> help "整形が必要なファイルを示すだけにする") <*> many (strArgument (metavar "FILE"))) "原稿を整形する"
+        <> cmd "lsp" (pure Lsp) "標準入出力で LSP サーバーを動かす"
+        <> cmd "inspect" (Inspect <$> strArgument (metavar "FILE") <*> inspectAsOpt) "ファイルの CST、AST、IR を表示する"
     )
+  where
+    cmd name p desc = command name (info (p <**> helpOption) (progDesc desc))
+
+{- | Puts into Japanese the phrases that optparse-applicative 0.19.0.0
+writes itself (golem-cli ADR 0004). The golden tests of golem-cli catch a
+phrase that a new version changes.
+-}
+localize :: String -> String
+localize = intercalate "\n" . go . lines
+  where
+    go = \case
+      [] -> []
+      l : ls
+        | Just rest <- stripPrefix "Usage: " l ->
+            -- 使い方 is one column wider than Usage, so continued lines move by one
+            let (cont, after) = span (" " `isPrefixOf`) ls
+             in ("使い方: " <> rest) : map (' ' :) cont <> go after
+        | otherwise -> line l : go ls
+    line l
+      | l == "Available options:" = "オプション:"
+      | l `elem` ["Did you mean this?", "Did you mean one of these?"] = "次のことですか？"
+      | Just x <- between "Invalid option `" "'" l = "未知のオプションです: " <> x
+      | Just x <- between "Invalid argument `" "'" l = "未知の引数です: " <> x
+      | Just x <- between "The option `" "` expects an argument." l = "オプション " <> x <> " には値が必要です"
+      | Just x <- stripPrefix "Missing: " l = "足りない引数があります: " <> x
+      | Just x <- stripPrefix "option " l = "オプション " <> x
+      | otherwise = l
+    between pre post l = stripPrefix pre l >>= \r -> reverse <$> stripPrefix (reverse post) (reverse r)
 
 run :: Command -> IO ExitCode
 run = \case
   New dir lang noFonts -> newProject dir lang noFonts
-  Build ts profile fmt -> do
-    targets <- traverse parseTarget ts
-    case sequence targets of
-      Nothing -> TIO.hPutStrLn stderr "unknown target" >> pure (ExitFailure 2)
-      Just tgs -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile}
+  Build tgs profile fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile}
   Check profile fmt -> report fmt =<< build (defaultOptions ".") {optProfile = profile, optCheckOnly = True}
   PluginFetch -> pluginFetch
   PluginLock -> pluginLock
@@ -96,13 +167,6 @@ run = \case
     report fmt (BuildResult ds infos [])
   Fmt check files -> formatFiles check files
   Lsp -> (\c -> if c == 0 then ExitSuccess else ExitFailure c) <$> runGolemLsp
-  where
-    parseTarget = \case
-      "html" -> pure (Just TargetHtml)
-      "epub" -> pure (Just TargetEpub)
-      "text" -> pure (Just TargetText)
-      "pdf" -> pure (Just TargetPdf)
-      _ -> pure Nothing
 
 report :: Format -> BuildResult -> IO ExitCode
 report fmt r = do
@@ -112,23 +176,22 @@ report fmt r = do
     Json -> TIO.hPutStr stderr (renderJson (brSources r) ds)
   pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
 
-inspect :: FilePath -> String -> IO ExitCode
+inspect :: FilePath -> InspectAs -> IO ExitCode
 inspect path mode = do
   bytes <- BS.readFile path
   case parseFile (FileId 0) bytes of
     Left ds -> TIO.hPutStr stderr (T.pack (show ds)) >> pure (ExitFailure 1)
     Right (cst, ds) -> do
       case mode of
-        "cst" -> TIO.putStr (pretty cst)
-        "ast" -> do
+        AsCst -> TIO.putStr (pretty cst)
+        AsAst -> do
           let (ast, _, _) = parseAst (FileId 0) (TE.decodeUtf8Lenient bytes)
           print ast
-        "ir" -> do
+        AsIr -> do
           ev <- evaluateProject Dev "."
           case ev of
             Left eds -> TIO.hPutStr stderr (T.pack (show eds))
             Right e -> forM_ (Map.elems (evResults e)) $ \res -> print (erDocument res) >> printf "CBOR: %d bytes\n" (BS.length (encodeDocument (erDocument res)))
-        _ -> TIO.hPutStrLn stderr "--as は cst、ast、ir のいずれかです"
       unless (null ds) $ TIO.hPutStr stderr (T.pack (show ds))
       pure ExitSuccess
 

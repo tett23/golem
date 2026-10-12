@@ -1,0 +1,16 @@
+使い方: golem COMMAND
+
+  Golem の組版システム
+
+オプション:
+  -h,--help                このヘルプを表示する
+
+コマンド:
+  new                      プロジェクトを作る
+  build                    出力を build/ に書く
+  check                    出力を書かずに検査する
+  plugin                   プラグインを管理する
+  lint                     lint の規則を適用する
+  fmt                      原稿を整形する
+  lsp                      標準入出力で LSP サーバーを動かす
+  inspect                  ファイルの CST、AST、IR を表示する
