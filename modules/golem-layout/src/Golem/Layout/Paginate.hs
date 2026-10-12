@@ -48,6 +48,10 @@ data Flow
     FFigure {ffId :: !Int, ffLines :: !Int, ffLabels :: ![Text]}
   | -- | a wrapped figure and the shortened lines set beside it (ADR 0004)
     FWrapped {fwId :: !Int, fwLines :: !Int, fwLabels :: ![Text], fwBeside :: [LineBox]}
+  | {- | the rest of a paragraph whose first lines are beside a wrapped
+    figure: no orphan rule for its first line (golem-driver ADR 0005)
+    -}
+    FContinued [LineBox]
   deriving stock (Eq, Show)
 
 data Slotted
@@ -119,6 +123,7 @@ paginate capacity flows =
     go st (f : rest) = go (place st f (nextNeed rest)) rest
     nextNeed = \case
       (FParagraph ls : _) -> min 2 (length ls)
+      (FContinued ls : _) -> min 2 (length ls)
       (FDefTerm ls : _) -> length ls
       (FHeading _ _ _ n _ : _) -> n
       (FFigure _ n _ : _) -> min n capacity
@@ -128,6 +133,7 @@ paginate capacity flows =
     isEmpty st = sUsed st == 0 && null (sNotes st)
     place st f need = case f of
       FParagraph ls -> placeLines st True ls
+      FContinued ls -> placeLines st False ls
       FDefTerm ls -> placeLines (keep st (length ls + need)) True ls
       FHeading lvl short recto n ls ->
         let st1 = if recto then rectoStart st else keep st (n + need)

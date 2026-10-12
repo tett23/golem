@@ -343,7 +343,7 @@ tests =
                       n = max 1 ((e + bp - bfs + bp - 1) `div` bp)
                    in HeadingBlock hp (fromInteger n) (((n - 1) * bp + bfs - e) `div` 2)
             headingBlock bfs bp s 1 @?= expect (1 :: Int)
-            headingBlock bfs bp s 2 @?= expect 2
+            headingBlock bfs bp s 2 @?= expect (2 :: Int)
             hbSpan (headingBlock bfs bp s 1) @?= 2
             hbSpan (headingBlock bfs bp s 2) @?= 3,
           testCase "a heading of the body size sits on the grid" $
@@ -373,6 +373,12 @@ tests =
             let ex = exclusion WrapStart 17 3 40 30
                 r = breakParagraph defaultParams (wrappedLineWidth 160 ex 0) (paragraph (replicate 14 30))
             map lineTarget (take 3 (brLines r)) @?= [117, 117, 160],
+          testCase "a continued paragraph has no first line to keep from being an orphan (golem-driver ADR 0005)" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 4), FContinued (lines' 10 3)]
+            slots ps @?= [[0, 1, 2, 3, 10], [11, 12]]
+            -- the last line alone would be a widow: break a line earlier
+            let qs = paginate 5 [FParagraph (lines' 0 2), FContinued (lines' 10 4)]
+            slots qs @?= [[0, 1, 10, 11], [12, 13]],
           testCase "a wrapped figure that does not fit the page goes to the next page" $ do
             let ps = paginate 5 [FParagraph (lines' 0 3), FWrapped 7 3 [] (lines' 50 3)]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SWrapped 7, SLine 50, SLine 51, SLine 52]]

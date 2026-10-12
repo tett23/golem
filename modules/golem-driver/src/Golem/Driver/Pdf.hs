@@ -14,6 +14,11 @@ module Golem.Driver.Pdf
     bodyRole,
     usedRoles,
     PdfInput (..),
+    SetLine (..),
+    PlacedFigure (..),
+    PdfLayout (..),
+    layoutPdf,
+    figureRect,
     renderPdf,
     pdfFileName,
   )
@@ -21,9 +26,11 @@ where
 
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Exception (evaluate)
+import Control.Monad (join)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii)
+import Data.Either (fromRight, isLeft)
 import Data.List (groupBy, nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -41,6 +48,7 @@ import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look
 import Golem.Layout.Paginate
+import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
 import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Rect (..), baselineRatio, pageGeometry, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Pdf qualified as P
@@ -162,20 +170,47 @@ pdfFileName bookId =
 
 -- ------------------------------------------------------------------ flow
 
--- One line of the flow, with what is needed to draw it.
+-- | One line of the flow, with what is needed to draw it.
 data SetLine = SetLine
   { slLine :: !Line,
     slSize :: !Sp,
+    -- | how far the line starts from the line start of the column (golem-driver ADR 0005)
+    slIndent :: !Sp,
     slNotes :: ![(Int, [Line])]
+  }
+  deriving stock (Show)
+
+-- | A figure as placed: the image, its size and its caption lines (golem-driver ADR 0005).
+data PlacedFigure = PlacedFigure
+  { pfImage :: !P.ImageData,
+    -- | along the lines
+    pfAlong :: !Sp,
+    -- | across the lines
+    pfAcross :: !Sp,
+    pfWrap :: !(Maybe Wrap),
+    -- | the grid lines the image takes (m)
+    pfImageLines :: !Int,
+    pfCaption :: ![Line],
+    -- | the exclusion area of a wrapped figure
+    pfExclusion :: !(Maybe Exclusion)
+  }
+
+-- | The result of the layout, read by the writer and the tests.
+data PdfLayout = PdfLayout
+  { plPages :: ![PageOut],
+    plLines :: !(Map Int SetLine),
+    plFigures :: !(Map Int PlacedFigure),
+    -- | heading blocks by their first line (golem-driver ADR 0003)
+    plHeadings :: !(Map Int HeadingBlock)
   }
 
 data Built = Built
   { bFlow :: [Flow],
     bLines :: Map Int SetLine,
-    bFigures :: Map Int (P.ImageData, Sp, Sp),
+    bFigures :: Map Int PlacedFigure,
     -- | heading blocks by their first line
     bHeadings :: Map Int HeadingBlock,
-    -- | errors found while building (G0724)
+    -- | errors found while building (G0722, G0723, G0724)
     bErrors :: [Diagnostic]
   }
 
@@ -187,15 +222,22 @@ renderPdf provider inp = case pageGeometry (piStyle inp) of
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> do
-        figures <- loadFigures inp
-        let layoutWith = buildFlow inp geom fonts figures
-        -- S2: compose with assumed page numbers until they settle
-        result <- fixpoint geom layoutWith
+        result <- layoutPdf inp geom fonts
         case result of
           Left ds -> pure (Left ds)
-          Right (built, pages) -> do
+          Right layout -> do
             intent <- loadIntent inp
-            pure (Right (writeDocument inp geom fonts built pages intent))
+            pure (Right (writeDocument inp geom fonts layout intent))
+
+-- | Composition, line breaking and pagination, with page references resolved (S2).
+layoutPdf :: PdfInput -> PageGeometry -> LoadedFonts -> IO (Either [Diagnostic] PdfLayout)
+layoutPdf inp geom fonts = do
+  figures <- loadFigures inp
+  -- S2: compose with assumed page numbers until they settle
+  result <- fixpoint geom (buildFlow inp geom fonts figures)
+  pure $ case result of
+    Left ds -> Left ds
+    Right (built, pages) -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built))
 
 fixpoint :: PageGeometry -> (Map Text Integer -> IO Built) -> IO (Either [Diagnostic] (Built, [PageOut]))
 fixpoint geom layoutWith = go (1 :: Int) Map.empty
@@ -287,63 +329,143 @@ unitsOf book _ style = concatMap doc (bookDocs book)
     prefixFirst p (Unit UPara l is s' : rest) = Unit UPara l (txt p : is) s' : rest
     prefixFirst _ us = us
 
-buildFlow :: PdfInput -> PageGeometry -> LoadedFonts -> Map Text (Maybe (P.ImageData, Sp, Sp)) -> Map Text Integer -> IO Built
-buildFlow inp geom fonts figures assumed = do
+-- | A unit composed and broken into lines.
+data Composed = Composed
+  { cLines :: [Line],
+    cNotes :: [(Int, [Line])],
+    cAnchors :: [Golem.Layout.Japanese.Anchor],
+    cItems :: [Item]
+  }
+
+buildFlow :: PdfInput -> PageGeometry -> LoadedFonts -> Map Text (Maybe P.ImageData) -> Map Text Integer -> IO Built
+buildFlow inp geom fonts images assumed = do
   let style = piStyle inp
       body = bodyRole style
       fs = pgFontSize geom
       pitch = pgLinePitch geom
       capacity = length (pgLineGrid geom)
+      vertical = pgVertical geom
       bodyEnv = composeEnv style geom fonts assumed body fs
       params = kpParams style geom
       measure = case pgColumns geom of
-        (c : _) -> if pgVertical geom then rectH c else rectW c
+        (c : _) -> if vertical then rectH c else rectW c
         [] -> 0
-      units = unitsOf (piBook inp) geom style
+      units = zip [0 :: Int ..] (unitsOf (piBook inp) geom style)
+      unitAt = Map.fromList units
       -- the role and size a unit is set in
       faceOf u = case uKind u of
         UHeading l _ _ -> headingFace style geom l
         _ -> (body, fs)
-      breakOne u =
+      compose lineWidth u =
         let (role, size) = faceOf u
             env = composeEnv style geom fonts assumed role size
             (items, anchors) = composeInlines env (uInlines u)
-            lines' = brLines (breakParagraph params (const measure) items)
+            lines' = brLines (breakParagraph params lineWidth items)
             notes = [(n, brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv nbody)))) | AnchorNote _ n nbody <- anchors]
-         in (lines', notes, anchors, items)
-      force (ls, ns, as, is) = evaluate (length (show (map lineRatio ls)) + length ns + length as + length is) >> pure (ls, ns, as, is)
+         in Composed lines' notes anchors items
+      force c = evaluate (length (show (map lineRatio (cLines c))) + length (cNotes c) + length (cAnchors c) + length (cItems c)) >> pure c
+      mapper :: (a -> IO b) -> [a] -> IO [b]
       mapper = if piParallel inp then mapConcurrently else mapM
-  broken <- mapper (force . breakOne) units
-  -- number the lines in document order
-  let step (nextId, flows, lineAcc, figAcc, headAcc, errs) (u, (ls, notes, anchors, items)) =
-        let ids = [nextId .. nextId + length ls - 1]
+      -- figures: the image, its size, its caption and its exclusion (golem-driver ADR 0005)
+      figureOf u fig = do
+        img <- join (Map.lookup (figSource fig) images)
+        pure (placeFigure u fig img)
+      placeFigure u fig img =
+        let along = case figWrap fig of
+              Nothing -> Right measure
+              Just _ -> maybe (Left ()) (Right . dimToSp fs) (figWidth fig >>= parseDim)
+            alongSp = fromRight measure along
+            (w, h) = (toInteger (P.imgWidth img), toInteger (P.imgHeight img))
+            across = if vertical then alongSp * w `div` max 1 h else alongSp * h `div` max 1 w
+            m = fromInteger ((across + pitch - 1) `div` pitch)
+            number = Map.lookup (uSpan u) (bookFigures (piBook inp))
+            captionInlines = maybe [] (\num -> [Text (uSpan u) (num <> "　")]) number <> concat [is | Block _ _ (Paragraph is) <- figCaption fig]
+            caption = if null captionInlines then [] else brLines (breakParagraph params (const alongSp) (fst (composeInlines bodyEnv captionInlines)))
+            n = length caption
+            depth = if n > 0 then toInteger (m + n - 1) * pitch + fs else across
+            gap = dimToSp fs (stWrapGap style)
+            ex = (\side -> exclusion side pitch gap alongSp depth) <$> figWrap fig
+            errs = case (figWrap fig, ex) of
+              (Just _, Just e)
+                | isLeft along || measure - exWidth e < 8 * fs ->
+                    [diagnostic "G0722" Error (uSpan u) ("回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
+                | exLines e > capacity -> [diagnostic "G0723" Error (uSpan u) ("回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
+              _ -> []
+         in (PlacedFigure img alongSp across (figWrap fig) m caption ex, errs)
+      figures = Map.fromList [(i, f) | (i, u@Unit {uKind = UFigure fig}) <- units, Just f <- [figureOf u fig]]
+      -- 1. a job per wrapped figure: the paragraphs right after it, in order, beside the exclusion
+      wrapJob i ex = go (i + 1) 0
+        where
+          go j offset
+            | offset >= exLines ex = pure []
+            | Just u@Unit {uKind = UPara} <- Map.lookup j unitAt = do
+                c <- force (compose (wrappedLineWidth measure ex offset) u)
+                ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c))
+            | otherwise = pure []
+      jobs = [(i, ex) | (i, (pf, [])) <- Map.toList figures, Just ex <- [pfExclusion pf]]
+  besides <- Map.fromList . concat <$> mapper (uncurry wrapJob) jobs
+  -- 2. every other unit on its own
+  let rest = [(i, u) | (i, u) <- units, Map.notMember i besides, not (isFigure u)]
+      isFigure u = case uKind u of
+        UFigure _ -> True
+        _ -> False
+  _ <- mapper (\(_, (pf, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
+  singles <- Map.fromList . zip (map fst rest) <$> mapper (force . compose (const measure) . snd) rest
+  -- 3. number the lines in document order
+  let label u = maybe [] pure (uLabel u)
+      -- the lines of a paragraph-like unit from an id; indent of line k
+      numbered nextId u c indentOf =
+        let ls = cLines c
+            ids = [nextId .. nextId + length ls - 1]
             (_, size) = faceOf u
             -- notes belong to the line containing their anchor
-            lineOfItem = lineIndexOfItems items ls
-            noteLines = Map.fromListWith (<>) [(lineOfItem i, [(n, nls)]) | (AnchorNote i n _, (_, nls)) <- zip [a | a@AnchorNote {} <- anchors] notes]
-            boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then maybe [] pure (uLabel u) else []) | (k, lid) <- zip [0 ..] ids]
-            set = Map.fromList [(lid, SetLine l size (Map.findWithDefault [] k noteLines)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
-            hb = headingBlock fs pitch size (length ls)
-            flowOf = case uKind u of
-              UPara -> [FParagraph boxes]
-              UHeading l short recto -> [FHeading l short recto (hbSpan hb) boxes]
-              UTerm -> [FDefTerm boxes]
-              UFigure fig -> case Map.lookup (figSource fig) figures of
-                Just (Just (_, _, h)) ->
-                  [FFigure nextId (fromInteger ((h + pitch - 1) `div` pitch)) (maybe [] pure (uLabel u))]
-                _ -> []
-            figAcc' = case uKind u of
-              UFigure fig | Just (Just f) <- Map.lookup (figSource fig) figures -> Map.insert nextId f figAcc
-              _ -> figAcc
-            (headAcc', errs') = case uKind u of
-              UHeading l short _ ->
-                ( Map.insert nextId hb headAcc,
-                  errs <> [diagnostic "G0724" Error (uSpan u) ("見出しが版面に入りません（" <> T.pack (show l) <> " の見出し: " <> short <> "）") | hbSpan hb > capacity]
-                )
-              _ -> (headAcc, errs)
-            used = max (length ls) (case uKind u of UFigure _ -> 1; _ -> 0)
-         in (nextId + used, flows <> flowOf, Map.union lineAcc set, figAcc', headAcc', errs')
-      (_, flow, lineMap, figMap, headMap, errors) = foldl step (0, [], Map.empty, Map.empty, Map.empty, []) (zip units broken)
+            lineOfItem = lineIndexOfItems (cItems c) ls
+            noteLines = Map.fromListWith (<>) [(lineOfItem i, [(n, nls)]) | (AnchorNote i n _, (_, nls)) <- zip [a | a@AnchorNote {} <- cAnchors c] (cNotes c)]
+            boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) | (k, lid) <- zip [0 ..] ids]
+            set = Map.fromList [(lid, SetLine l size (indentOf k) (Map.findWithDefault [] k noteLines)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+         in (boxes, set)
+      step st@(nextId, flows, lineAcc, figAcc, headAcc, errs) (i, u)
+        | Map.member i besides = st -- set beside its figure
+        | otherwise = case uKind u of
+            UFigure _ -> case Map.lookup i figures of
+              Nothing -> st
+              Just (pf, ferrs) -> case pfExclusion pf of
+                Just ex
+                  | null ferrs ->
+                      -- the figure and the lines beside it; the rest of a paragraph cut short continues
+                      let paras = [(j, c, off) | j <- takeWhile (`Map.member` besides) [i + 1 ..], let (c, off) = besides Map.! j]
+                          indentOf off k = if pfWrap pf == Just WrapStart && off + k < exLines ex then exWidth ex else 0
+                          go (nid, boxAcc, setAcc) (j, c, off) =
+                            let (bs, set) = numbered nid (unitAt Map.! j) c (indentOf off)
+                             in (nid + length (cLines c), boxAcc <> bs, Map.union setAcc set)
+                          (nextId', allBoxes, sets) = foldl go (nextId + 1, [], Map.empty) paras
+                          (beside, continued) = splitAt (exLines ex) allBoxes
+                       in ( nextId',
+                            flows <> [FWrapped nextId (exLines ex) (label u) beside] <> [FContinued continued | not (null continued)],
+                            Map.union lineAcc sets,
+                            Map.insert nextId pf figAcc,
+                            headAcc,
+                            errs
+                          )
+                _ -> (nextId + 1, flows <> [FFigure nextId (pfImageLines pf + length (pfCaption pf)) (label u)], lineAcc, Map.insert nextId pf figAcc, headAcc, errs <> ferrs)
+            _ ->
+              let c = singles Map.! i
+                  ls = cLines c
+                  (boxes, set) = numbered nextId u c (const 0)
+                  (_, size) = faceOf u
+                  hb = headingBlock fs pitch size (length ls)
+                  flowOf = case uKind u of
+                    UHeading l short recto -> [FHeading l short recto (hbSpan hb) boxes]
+                    UTerm -> [FDefTerm boxes]
+                    _ -> [FParagraph boxes]
+                  (headAcc', errs') = case uKind u of
+                    UHeading l short _ ->
+                      ( Map.insert nextId hb headAcc,
+                        errs <> [diagnostic "G0724" Error (uSpan u) ("見出しが版面に入りません（" <> T.pack (show l) <> " の見出し: " <> short <> "）") | hbSpan hb > capacity]
+                      )
+                    _ -> (headAcc, errs)
+               in (nextId + length ls, flows <> flowOf, Map.union lineAcc set, figAcc, headAcc', errs')
+      (_, flow, lineMap, figMap, headMap, errors) = foldl step (0, [], Map.empty, Map.empty, Map.empty, []) units
   pure (Built flow lineMap figMap headMap errors)
 
 -- | Which line (0-based) contains the item at an index.
@@ -352,23 +474,36 @@ lineIndexOfItems _ ls i =
   let counts = scanl1 (+) (map (length . lineItems) ls)
    in length (takeWhile (<= i) counts) `min` max 0 (length ls - 1)
 
-loadFigures :: PdfInput -> IO (Map Text (Maybe (P.ImageData, Sp, Sp)))
+-- | The images of the figures, read once; sizes are worked out per figure.
+loadFigures :: PdfInput -> IO (Map Text (Maybe P.ImageData))
 loadFigures inp = do
   let srcs = nub [figSource f | Document _ bs <- bookDocs (piBook inp), f <- figuresIn bs]
-      fs = maybe 0 (dimToSp 0 . gridFontSize) (stPage (piStyle inp) >>= pageGrid)
-      measure = maybe 0 (\g -> fs * toInteger (gridCharacters g)) (stPage (piStyle inp) >>= pageGrid)
-  pairs <- mapM (\s -> (s,) <$> loadOne measure s) srcs
+  pairs <- mapM (\s -> (s,) <$> loadOne s) srcs
   pure (Map.fromList pairs)
   where
     figuresIn = concatMap (\(Block _ _ b) -> case b of FigureBlock f -> [f]; _ -> [])
-    loadOne measure s = do
+    loadOne s = do
       bytes <- BS.readFile (piRoot inp <> "/" <> T.unpack s)
-      pure $ case P.readImage bytes of
-        Right img ->
-          let w = measure
-              h = w * toInteger (P.imgHeight img) `div` max 1 (toInteger (P.imgWidth img))
-           in Just (img, w, h)
-        Left _ -> Nothing
+      pure (either (const Nothing) Just (P.readImage bytes))
+
+{- | The rectangle of a figure's image from grid line @slot@ (golem-driver
+ADR 0005): its top (in vertical writing its right) edge at the top of the
+line at that grid line; at the line start, or at the line end for
+@wrap=end@.
+-}
+figureRect :: PageGeometry -> Rect -> Int -> PlacedFigure -> Rect
+figureRect geom ta slot pf =
+  let d = toInteger slot * pgLinePitch geom
+      atEnd = pfWrap pf == Just WrapEnd
+      along = pfAlong pf
+      across = pfAcross pf
+   in if pgVertical geom
+        then
+          let right = rectX ta + rectW ta - d
+           in Rect (right - across) (if atEnd then rectY ta else rectY ta + rectH ta - along) across along
+        else
+          let top = rectY ta + rectH ta - d
+           in Rect (if atEnd then rectX ta + rectW ta - along else rectX ta) (top - across) along across
 
 loadIntent :: PdfInput -> IO (Maybe P.PdfX)
 loadIntent inp = case stIntent (piStyle inp) of
@@ -381,8 +516,8 @@ loadIntent inp = case stIntent (piStyle inp) of
 
 -- ------------------------------------------------------------------ drawing
 
-writeDocument :: PdfInput -> PageGeometry -> LoadedFonts -> Built -> [PageOut] -> Maybe P.PdfX -> ByteString
-writeDocument inp geom fonts built pages intent =
+writeDocument :: PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> ByteString
+writeDocument inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
       pageRect = Rect 0 0 pw ph
@@ -417,7 +552,7 @@ writeDocument inp geom fonts built pages intent =
             mark (ix, sl) xs
               | sl || lkEmbolden look =
                   let rs = P.RunStyle (if v then 1000 else 1000 + scale) (v && rotated) (if sl then syntheticSlant else 0) (if lkEmbolden look then syntheticStroke size else 0)
-                   in P.StyledGlyphRun rs (ref ix (v && not rotated)) size [(code ix g, x, y) | (g, _, off) <- xs, let (x, y) = at off]
+                   in P.StyledGlyphRun rs (ref ix (v && not rotated)) size [(code ix g, gx, gy) | (g, _, off) <- xs, let (gx, gy) = at off]
               | v && rotated = P.RotatedGlyphRun (ref ix False) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
               | v = P.GlyphRun (ref ix True) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
               | scale /= 0 = P.ScaledGlyphRun (ref ix False) size (1000 + scale) [(code ix g, x0 + off, y0) | (g, _, off) <- xs]
@@ -427,15 +562,17 @@ writeDocument inp geom fonts built pages intent =
       -- the swatch of a look, when it names one (golem-driver ADR 0004)
       swatchOf look = do
         name <- lkColor look
-        Swatch (c, m, y, k) <- Map.lookup name (stSwatches style)
-        pure (P.Swatch c m y k)
+        Swatch (cc, cm, cy, ck) <- Map.lookup name (stSwatches style)
+        pure (P.Swatch cc cm cy ck)
       -- a line at a distance across the type area: the baseline from its
       -- top edge, or the centre line from its right edge
       drawLine ta cross sl =
         let l = slLine sl
-            origin off
+            origin off0
               | vertical = (rectX ta + rectW ta - cross, rectY ta + rectH ta - off)
               | otherwise = (rectX ta + off, rectY ta + rectH ta - cross)
+              where
+                off = off0 + slIndent sl
             advance look t = sum [toSp (lkSize look) a | (role, r) <- runsOf look t, (_, _, a, _) <- lfShape fonts role (vertical && not (T.all isLatin r)) r]
             -- a point beside the line at a distance across it: right of a
             -- vertical line, above a horizontal baseline
@@ -509,16 +646,21 @@ writeDocument inp geom fonts built pages intent =
         let n = poNumber p
             ta = typeAreaFor geom n
             lineParts =
-              [drawLine ta (gridAt slot) sl | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (bLines built)]]
+              [drawLine ta (gridAt slot) sl | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines layout)]]
                 <> [ drawLine ta (headingLineAt slot hb j sl) sl
                    | (slot, SHeading lid m) <- poSlots p,
-                     Just hb <- [Map.lookup lid (bHeadings built)],
-                     (j, Just sl) <- [(j, Map.lookup (lid + j) (bLines built)) | j <- [0 .. m - 1]]
+                     Just hb <- [Map.lookup lid (plHeadings layout)],
+                     (j, Just sl) <- [(j, Map.lookup (lid + j) (plLines layout)) | j <- [0 .. m - 1]]
                    ]
-            figMarks = [P.Image (P.ImageRef fid) (figureRect ta slot w h) | (slot, SFigure fid) <- poSlots p, Just (_, w, h) <- [Map.lookup fid (bFigures built)]]
-            noteLines = concat [take cnt (drop from (concat [ls | sl <- Map.elems (bLines built), (nid', ls) <- slNotes sl, nid' == nid])) | (nid, from, cnt) <- poFootnotes p]
+                <> [ drawLine ta (gridAt (slot + pfImageLines pf + j)) (SetLine l (pgFontSize geom) (captionIndent ta pf) [])
+                   | (slot, fid) <- placedFigures p,
+                     Just pf <- [Map.lookup fid (plFigures layout)],
+                     (j, l) <- zip [0 ..] (pfCaption pf)
+                   ]
+            figMarks = [P.Image (P.ImageRef fid) (figureRect geom ta slot pf) | (slot, fid) <- placedFigures p, Just pf <- [Map.lookup fid (plFigures layout)]]
+            noteLines = concat [take cnt (drop from (concat [ls | sl <- Map.elems (plLines layout), (nid', ls) <- slNotes sl, nid' == nid])) | (nid, from, cnt) <- poFootnotes p]
             bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
-            noteParts = [drawLine ta (gridAt slot) (SetLine l (pgFontSize geom) []) | (slot, l) <- zip bottomSlots noteLines]
+            noteParts = [drawLine ta (gridAt slot) (SetLine l (pgFontSize geom) 0 []) | (slot, l) <- zip bottomSlots noteLines]
             masterParts = if poBlank p then [] else masterMarks n (poRunningHead p)
             allParts = lineParts <> noteParts <> masterParts
          in (concatMap fst allParts <> figMarks, concatMap snd allParts)
@@ -527,9 +669,11 @@ writeDocument inp geom fonts built pages intent =
         let s = slSize sl
             top = toInteger k * pgLinePitch geom + hbOffset hb + toInteger j * hbPitch hb
          in top + (if vertical then s `div` 2 else round (toRational s * baselineRatio))
-      figureRect ta slot w h =
-        let top = rectY ta + rectH ta - gridAt slot + pgFontSize geom
-         in Rect (rectX ta) (top - h) w h
+      placedFigures p = [(slot, fid) | (slot, s) <- poSlots p, fid <- case s of SFigure f -> [f]; SWrapped f -> [f]; _ -> []]
+      -- caption lines start where the image starts (golem-driver ADR 0005)
+      captionIndent ta pf
+        | pfWrap pf == Just WrapEnd = (if vertical then rectH ta else rectW ta) - pfAlong pf
+        | otherwise = 0
       masterMarks n heading = case master of
         Nothing -> []
         Just m ->
@@ -538,7 +682,7 @@ writeDocument inp geom fonts built pages intent =
               folio = [textAt (pick f) size (formatNumber fmt [toInteger n] Nothing) | f@(fmt, _, _) <- maybe [] pure (mgFolio m)]
               runningHead = [textAt (pick r) size h | r <- maybe [] pure (mgRunningHead m), Just h <- [heading]]
            in runningHead <> folio
-      drawn = map drawPage pages
+      drawn = map drawPage (plPages layout)
       pdfPages = [P.Page pageRect pageRect pageRect marks | (marks, _) <- drawn]
       -- each glyph once per font, with the text of its first occurrence (golem-font ADR 0002)
       used = Map.map Map.toList (Map.fromListWith (Map.unionWith (\_ old -> old)) [(r, Map.singleton g t) | (_, us) <- reverse drawn, (r, g, t) <- reverse us])
@@ -549,7 +693,7 @@ writeDocument inp geom fonts built pages intent =
         P.Document
           { P.docPages = pdfPages,
             P.docFonts = fontsUsed,
-            P.docImages = Map.fromList [(P.ImageRef i, img) | (i, (img, _, _)) <- Map.toList (bFigures built)],
+            P.docImages = Map.fromList [(P.ImageRef i, pfImage pf) | (i, pf) <- Map.toList (plFigures layout)],
             P.docTitle = mdTitle md,
             P.docDate = (y, mo, d),
             P.docId = P.documentId (mdId md),

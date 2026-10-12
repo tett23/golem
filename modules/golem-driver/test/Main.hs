@@ -15,7 +15,11 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.New
-import Golem.LayoutSpec (pageGeometry)
+import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), figureRect, layoutPdf)
+import Golem.Layout.KnuthPlass (Line (..))
+import Golem.Layout.Paginate (PageOut (..), Slotted (..))
+import Golem.Layout.Wrap (Exclusion (..))
+import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, typeAreaFor)
 import Golem.Pdf (Font (..), FontProgram (..))
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
@@ -248,6 +252,7 @@ tests =
         ],
       testGroup "PDF headings (ADR 0003)" headingTests,
       testGroup "PDF emphasis, character styles and colour (ADR 0004)" emphasisTests,
+      testGroup "PDF wrapped figures (ADR 0005)" wrapTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup
         "public-domain books"
@@ -546,6 +551,176 @@ emphasisTests =
       cssText <- TIO.readFile (tmp </> "build/html/style.css")
       assertBool (T.unpack cssText) ("b { font-family: \"golem-gothic-ja\", serif; font-weight: normal; }" `T.isInfixOf` cssText)
       assertBool "strong too" ("strong { font-family: \"golem-gothic-ja\", serif; font-weight: normal; }" `T.isInfixOf` cssText)
+  ]
+
+{- | Lays out a one-chapter project with the fake fonts, as far as the
+pages; the geometry comes with it.
+-}
+layoutMini :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO (Either [Diagnostic] (PageGeometry, PdfLayout))
+layoutMini style source files = withSystemTempDirectory "golem-layout" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") miniManifest
+  BS.writeFile (tmp </> "style.toml") style
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  ev <- evaluateProject Dev tmp
+  case ev of
+    Left ds -> pure (Left ds)
+    Right e -> case (evBook e, pageGeometry (evStyle e)) of
+      _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> pure (Left errs)
+      (Just book, Right geom) -> fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False []) geom fakeFonts
+      (_, Left ds) -> pure (Left ds)
+      (Nothing, _) -> pure (Left (filter isError (evDiagnostics e)))
+
+-- | Lays out with no errors allowed.
+layoutOk :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO (PageGeometry, PdfLayout)
+layoutOk style source files = layoutMini style source files >>= either (assertFailure . show) pure
+
+pt :: Integer
+pt = 65536
+
+-- | horizontalStyle with 24 characters a line: 10pt, 15pt pitch, 30 lines, 240pt.
+horizontal24 :: BS.ByteString
+horizontal24 = figStyle (replaceIn "characters = 12" "characters = 24" horizontalStyle)
+
+-- | Replaces ASCII text in a style (the styles of these tests are byte strings, not UTF-8).
+replaceIn :: T.Text -> T.Text -> BS.ByteString -> BS.ByteString
+replaceIn from to = BC.pack . T.unpack . T.replace from to . T.pack . BC.unpack
+
+-- | Figure numbers without chapter numbers: the test sources have no chapter heading.
+figStyle :: BS.ByteString -> BS.ByteString
+figStyle st = st <> "\n[figures]\nnumber = \"F{n}\"\n"
+
+tinyImage :: IO [(FilePath, BS.ByteString)]
+tinyImage = (\b -> [("images/tiny.jpg", b)]) <$> BS.readFile "../golem-pdf/test/fixtures/tiny.jpg"
+
+wrapped :: T.Text -> T.Text -> T.Text
+wrapped side width = "@figure images/tiny.jpg alt=\"t\" wrap=" <> side <> " width=" <> width <> "\n  キャプション。\n\n"
+
+longPara :: Int -> T.Text
+longPara n = T.replicate n "あいうえおかきくけこ" <> "\n\n"
+
+-- | The only figure of a layout, the page it is on and its first grid line.
+theFigure :: PdfLayout -> IO (Int, PlacedFigure, PageOut, Int)
+theFigure pl = case [(fid, pf, p, slot) | (fid, pf) <- Map.toList (plFigures pl), p <- plPages pl, (slot, s) <- poSlots p, s `elem` [SWrapped fid, SFigure fid]] of
+  [x] -> pure x
+  other -> assertFailure (show [(f, n, sl) | (f, _, PageOut {poNumber = n}, sl) <- other])
+
+-- | The lines of a page from a grid line on, with their slots.
+linesFrom :: PdfLayout -> PageOut -> Int -> [(Int, SetLine)]
+linesFrom pl p from = [(slot, sl) | (slot, SLine lid) <- poSlots p, slot >= from, Just sl <- [Map.lookup lid (plLines pl)]]
+
+wrapTests :: [TestTree]
+wrapTests =
+  [ testCase "the exclusion of a wrapped figure covers its image and caption" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk horizontal24 (wrapped "end" "4zw" <> longPara 30) img
+      (_, pf, _, _) <- theFigure pl
+      let n = toInteger (length (pfCaption pf))
+      (pfAlong pf, pfAcross pf, pfImageLines pf) @?= (40 * pt, 60 * pt, 4)
+      assertBool "a caption" (n > 0)
+      fmap exLines (pfExclusion pf) @?= Just (fromInteger ((((4 + n - 1) * 15 + 10 + 10) + 14) `div` 15)),
+    testCase "lines beside the figure are shorter; the rest of the paragraph is full" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk horizontal24 (wrapped "end" "4zw" <> longPara 30) img
+      (_, pf, p, slot) <- theFigure pl
+      ex <- maybe (assertFailure "no exclusion") pure (pfExclusion pf)
+      let beside = [sl | (s, sl) <- linesFrom pl p slot, s < slot + exLines ex]
+          rest = [sl | (_, sl) <- linesFrom pl p (slot + exLines ex)]
+      length beside @?= exLines ex
+      map (lineTarget . slLine) beside @?= replicate (exLines ex) (190 * pt)
+      map slIndent beside @?= replicate (exLines ex) 0
+      assertBool "continued lines" (not (null rest))
+      assertBool "full lines" (all ((== 240 * pt) . lineTarget . slLine) rest),
+    testCase "wrap=start indents the lines beside it; the image sits at the line start or end" $ do
+      img <- tinyImage
+      (geom, pl) <- layoutOk horizontal24 (wrapped "start" "4zw" <> longPara 30) img
+      (_, pf, p, slot) <- theFigure pl
+      ex <- maybe (assertFailure "no exclusion") pure (pfExclusion pf)
+      let ta = typeAreaFor geom (poNumber p)
+      map (slIndent . snd) (take (exLines ex) (linesFrom pl p slot)) @?= replicate (exLines ex) (50 * pt)
+      rectX (figureRect geom ta slot pf) @?= rectX ta
+      (geom', pl') <- layoutOk horizontal24 (wrapped "end" "4zw" <> longPara 30) img
+      (_, pf', p', slot') <- theFigure pl'
+      let ta' = typeAreaFor geom' (poNumber p')
+          r = figureRect geom' ta' slot' pf'
+      rectX r + rectW r @?= rectX ta' + rectW ta',
+    testCase "a paragraph after a short one beside the figure starts short" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk horizontal24 (wrapped "end" "4zw" <> "短い段落。\n\n" <> longPara 30) img
+      (_, _, p, slot) <- theFigure pl
+      case linesFrom pl p slot of
+        (_ : (_, second) : _) -> lineTarget (slLine second) @?= 190 * pt
+        other -> assertFailure (show (length other)),
+    testCase "a heading after a wrapped figure starts below the exclusion" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk horizontal24 (wrapped "end" "4zw" <> "# 見出し\n\n本文。\n") img
+      (_, pf, p, slot) <- theFigure pl
+      ex <- maybe (assertFailure "no exclusion") pure (pfExclusion pf)
+      [s | (s, SHeading {}) <- poSlots p] @?= [slot + exLines ex],
+    testCase "a wrapped figure that does not fit goes to the next page with its lines" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk horizontal24 (longPara 60 <> wrapped "end" "4zw" <> longPara 30) img
+      (_, _, p, slot) <- theFigure pl
+      (poNumber p, slot) @?= (2, 0)
+      case plPages pl of
+        (first : _) -> assertBool (show (poSlots first)) (all ((< 26) . fst) (poSlots first))
+        [] -> assertFailure "no pages",
+    testCase "vertical: the image hangs from the top at its grid line; lines beside it are indented" $ do
+      img <- tinyImage
+      (geom, pl) <- layoutOk (figStyle pdfStyle) (wrapped "start" "4zw" <> longPara 30) img
+      (_, _, p, slot) <- theFigure pl
+      (_, pf, _, _) <- theFigure pl
+      let ta = typeAreaFor geom (poNumber p)
+          r = figureRect geom ta slot pf
+          fs = pgFontSize geom
+      rectY r + rectH r @?= rectY ta + rectH ta
+      rectX r + rectW r @?= rectX ta + rectW ta - toInteger slot * pgLinePitch geom
+      ex <- maybe (assertFailure "no exclusion") pure (pfExclusion pf)
+      map (slIndent . snd) (take (exLines ex) (linesFrom pl p slot)) @?= replicate (exLines ex) (5 * fs),
+    testCase "a width that is not a length, or leaves too short lines, is G0722" $ do
+      img <- tinyImage
+      a <- layoutMini horizontal24 (wrapped "end" "3em" <> longPara 3) img
+      either (map diagCode) (const []) a @?= [DiagnosticCode "G0722"]
+      b <- layoutMini horizontal24 (wrapped "end" "22zw" <> longPara 3) img
+      either (map diagCode) (const []) b @?= [DiagnosticCode "G0722"],
+    testCase "an exclusion longer than the page is G0723 at the figure" $ do
+      img <- tinyImage
+      let source = "前の段落。\n\n" <> wrapped "end" "10zw" <> longPara 3
+      r <- layoutMini (replaceIn "lines = 30" "lines = 10" horizontal24) source img
+      case r of
+        Left [d] -> do
+          diagCode d @?= DiagnosticCode "G0723"
+          spanStart (diagSpan d) @?= BS.length (fst (BS.breakSubstring "@figure" (TE.encodeUtf8 source)))
+        other -> assertFailure (show (either (map diagCode) (const []) other)),
+    testCase "a figure that does not wrap takes its image and caption lines; the caption is drawn" $ do
+      img <- tinyImage
+      let source = "@figure images/tiny.jpg alt=\"t\"\n  キャプション。\n\n後の段落。\n"
+      (_, pl) <- layoutOk horizontal24 source img
+      (_, pf, p, slot) <- theFigure pl
+      (pfImageLines pf, length (pfCaption pf)) @?= (24, 1)
+      [s | (s, SLine _) <- poSlots p, s > slot] @?= [slot + 25]
+      content <- miniPdf fakeProvider True horizontal24 source img >>= fmap BS.concat . inflateAll
+      assertBool "caption glyphs" (fromEnum 'キ' `elem` map dGlyph (drawnGlyphs content)),
+    testCase "vertical: a figure that does not wrap is inside the type area" $ do
+      img <- tinyImage
+      (geom, pl) <- layoutOk (figStyle (replaceIn "characters = 42" "characters = 20" pdfStyle)) "@figure images/tiny.jpg alt=\"t\"\n  キャプション。\n\n後の段落。\n" img
+      (_, pf, p, slot) <- theFigure pl
+      let ta = typeAreaFor geom (poNumber p)
+          r = figureRect geom ta slot pf
+      assertBool (show (r, ta)) (rectX r >= rectX ta && rectX r + rectW r <= rectX ta + rectW ta && rectY r >= rectY ta && rectY r + rectH r <= rectY ta + rectH ta),
+    testCase "a page reference beside a wrapped figure converges" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk horizontal24 (wrapped "end" "4zw" <> "参照は[ref-page later]ページ。" <> longPara 10 <> longPara 60 <> "@label later\n後の段落。\n") img
+      assertBool "pages" (length (plPages pl) >= 2),
+    testCase "wrapped figures: parallel and sequential, and two builds, give the same bytes" $ do
+      img <- tinyImage
+      let source = wrapped "start" "4zw" <> longPara 20 <> wrapped "end" "6zw" <> "短い。\n\n" <> longPara 20
+      a <- miniPdf fakeProvider True horizontal24 source img
+      b <- miniPdf fakeProvider False horizontal24 source img
+      c <- miniPdf fakeProvider True horizontal24 source img
+      a @?= b
+      a @?= c
+      qpdfCheck a
   ]
 
 -- | The Latin test fonts of golem-font: a CFF sans and a TrueType serif.
