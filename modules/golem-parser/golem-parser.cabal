@@ -56,3 +56,5 @@ test-suite golem-parser-test
   default-language: GHC2021
   -- StrippedGrammar is generated, like Golem.Parser.Generated
   ghc-options: -Wno-unused-matches -Wno-unused-local-binds -Wno-name-shadowing -Wno-unused-imports
+  -- tasty runs the parts of the label safety test in parallel (docs/adr/0009)
+  ghc-options: -threaded -rtsopts "-with-rtsopts=-N"
