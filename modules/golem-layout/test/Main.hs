@@ -4,6 +4,7 @@ import Data.List (subsequences)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.IO qualified as TIO
 import Golem.Doc.IR
 import Golem.Layout.Hyphenation
 import Golem.Layout.Hyphenation.EnUs (englishUS)
@@ -16,6 +17,7 @@ import Golem.Syntax (FileId (..), mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import KnuthPlassReference
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
@@ -29,12 +31,66 @@ fs = 10 * 65536
 box :: Sp -> Item
 box w = Box w (BoxContent "x" False 0 0 0)
 
-finish :: [Item]
-finish = [Penalty 0 infPenalty False, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) False]
-
 -- | Words of the given widths separated by interword glue.
 paragraph :: [Sp] -> [Item]
 paragraph ws = concat [box w : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
+
+refBox :: Text -> Sp -> Item
+refBox t w = Box w (BoxContent t False 0 0 0)
+
+knuthPlassWords, knuthPlassLog :: FilePath
+knuthPlassWords = "test/data/knuth-plass/frog-king.words"
+knuthPlassLog = "test/data/knuth-plass/frog-king.log"
+
+-- | The \hsize values of frog-king.tex, in points.
+referenceHsizes :: [Integer]
+referenceHsizes = [160, 200, 240, 300]
+
+{- | A hand-written trace: the first run fails the first pass and takes a
+detour (@@2 is not on the chosen path); the second ends in the first pass.
+-}
+sampleTrace :: Text
+sampleTrace =
+  T.unlines
+    [ "This is TeX",
+      "GOLEM-HSIZE=6553600",
+      "@firstpass",
+      "[]\\tenrm A bb ",
+      "@ via @@0 b=* p=0 d=*",
+      "@secondpass",
+      "[]\\tenrm A bb ",
+      "@ via @@0 b=10 p=0 d=400",
+      "@@1: line 1.1 t=400 -> @@0",
+      "cc-dd ",
+      "@ via @@0 b=20 p=0 d=900",
+      "@@2: line 1.1 t=900 -> @@0",
+      "eee. ",
+      "@\\par via @@1 b=0 p=-10000 d=100",
+      "@\\par via @@2 b=0 p=-10000 d=100",
+      "@@3: line 2.2- t=500 -> @@1",
+      "",
+      "> \\box1=",
+      "\\vbox(10.0+2.0)x100.0",
+      ".\\hbox(6.94444+1.94444)x100.0, glue set - 0.5",
+      "..\\tenrm A",
+      ".\\glue(\\baselineskip) 3.11111",
+      ".\\hbox(6.94444+1.94444)x100.0, glue set 0.33333",
+      "..\\tenrm e",
+      "",
+      "! OK.",
+      "GOLEM-HSIZE=13107200",
+      "@firstpass",
+      "[]\\tenrm A bb cc-dd eee. ",
+      "@\\par via @@0 b=0 p=-10000 d=100",
+      "@@1: line 1.2- t=100 -> @@0",
+      "",
+      "> \\box1=",
+      "\\vbox(10.0+2.0)x200.0",
+      ".\\hbox(6.94444+1.94444)x200.0, glue set 7.0fil",
+      "..\\tenrm A",
+      "",
+      "! OK."
+    ]
 
 noPretol :: Params
 noPretol = defaultParams {pPretolerance = -1, pTolerance = 10000}
@@ -164,6 +220,55 @@ tests =
               )
               (init (brLines r))
         ],
+      testGroup
+        "Knuth-Plass reference (ADR 0007)"
+        ( [ testCase "parseTrace reads the passes, the chosen path and the glue settings" $
+              parseTrace sampleTrace
+                @?= [ TexRun
+                        { trHsize = 100 * 65536,
+                          trPass = 2,
+                          trBreaks = [TexBreak 1 1 400, TexBreak 3 2 100],
+                          trTotalDemerits = 500,
+                          trGlueSet = [negate (32768 / 65536), 21845 / 65536]
+                        },
+                      TexRun
+                        { trHsize = 200 * 65536,
+                          trPass = 1,
+                          trBreaks = [TexBreak 3 2 100],
+                          trTotalDemerits = 100,
+                          trGlueSet = [7]
+                        }
+                    ],
+            testCase "glue settings go back to the scaled integers TeX printed" $ do
+              parseScaled "0.33333" @?= 21845
+              parseScaled "- 0.5" @?= -32768
+              parseScaled "1.0" @?= 65536
+              parseScaled "104.05528fil" @?= 104 * 65536 + 3623,
+            testCase "paragraphItems: indent, words, interword glue and the paragraph end" $
+              paragraphItems (Words (6, 3, 2) 20 0 [("a", 10), ("b", 12)])
+                @?= [refBox "" 20, refBox "a" 10, Glue 6 3 2, refBox "b" 12] <> finish,
+            testCase "the data has every \\hsize of frog-king.tex, from both passes" $ do
+              runs <- parseTrace <$> TIO.readFile knuthPlassLog
+              map trHsize runs @?= map (* 65536) referenceHsizes
+              assertBool "a run that ends in the first pass" (any ((== 1) . trPass) runs)
+              assertBool "a run that reaches the second pass" (any ((== 2) . trPass) runs),
+            testCase "the words add up to the paragraph TeX set in one box" $ do
+              ws <- readWords knuthPlassWords
+              let (sp, _, _) = wSpace ws
+                  n = toInteger (length (wBoxes ws))
+              sum (map snd (wBoxes ws)) + (n - 1) * sp @?= wWhole ws
+          ]
+            <> [ testCase ("\\hsize=" <> show h <> "pt agrees with TeX") $ do
+                   ws <- readWords knuthPlassWords
+                   runs <- parseTrace <$> TIO.readFile knuthPlassLog
+                   case filter ((== h * 65536) . trHsize) runs of
+                     [run] -> case compareRun ws run of
+                       [] -> pure ()
+                       ds -> assertFailure (unlines ds)
+                     rs -> assertFailure ("expected one run, found " <> show (length rs))
+               | h <- referenceHsizes
+               ]
+        ),
       testGroup
         "hyphenation (Liang)"
         [ testCase "the example from Liang's thesis" $ do

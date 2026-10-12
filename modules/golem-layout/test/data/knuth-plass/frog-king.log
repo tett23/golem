@@ -1,0 +1,3058 @@
+**frog-king.tex
+(./frog-king.tex
+\golemwords=\write0
+GOLEM-HSIZE=10485760
+@firstpass
+[]\tenrm In olden times when wishing still 
+@ via @@0 b=47 p=0 d=3249
+@@1: line 1.3 t=3249 -> @@0
+helped one, there lived a king whose 
+@ via @@1 b=0 p=0 d=100
+@@2: line 2.2 t=3349 -> @@1
+daughters were all beautiful; and the 
+@ via @@2 b=1 p=0 d=121
+@@3: line 3.2 t=3470 -> @@2
+@secondpass
+[]\tenrm In olden times when wish-ing still 
+@ via @@0 b=47 p=0 d=3249
+@@1: line 1.3 t=3249 -> @@0
+helped one, there lived a king whose 
+@ via @@1 b=0 p=0 d=100
+@@2: line 2.2 t=3349 -> @@1
+daugh-ters were all beau-ti-ful; and the 
+@ via @@2 b=1 p=0 d=121
+@@3: line 3.2 t=3470 -> @@2
+youngest was so beau-ti-ful that the 
+@ via @@3 b=125 p=0 d=28225
+@@4: line 4.0 t=31695 -> @@3
+sun it-self, which has seen so much, 
+@ via @@4 b=52 p=0 d=3844
+@@5: line 5.1 t=35539 -> @@4
+was as-ton-ished when-ever it shone in 
+@ via @@5 b=1 p=0 d=121
+@@6: line 6.2 t=35660 -> @@5
+her face. Close by the king's cas-tle 
+@ via @@6 b=66 p=0 d=5776
+@@7: line 7.1 t=41436 -> @@6
+lay 
+@ via @@6 b=86 p=0 d=9216
+@@8: line 7.3 t=44876 -> @@6
+a great dark for-est, and un-der 
+@ via @@7 b=175 p=0 d=34225
+@@9: line 8.0 t=75661 -> @@7
+an 
+@ via @@7 b=1 p=0 d=121
+@@10: line 8.2 t=41557 -> @@7
+old 
+@ via @@8 b=3 p=0 d=169
+@@11: line 8.2 t=45045 -> @@8
+lime-tree in the for-est was a 
+@ via @@9 b=22 p=0 d=1024
+@@12: line 9.1 t=76685 -> @@9
+well, 
+@ via @@10 b=2 p=0 d=144
+@@13: line 9.2 t=41701 -> @@10
+and 
+@ via @@11 b=25 p=0 d=1225
+@@14: line 9.3 t=46270 -> @@11
+when the day was very warm, 
+@ via @@13 b=104 p=0 d=22996
+@@15: line 10.0 t=64697 -> @@13
+the 
+@ via @@13 b=74 p=0 d=7056
+@ via @@14 b=189 p=0 d=49601
+@@16: line 10.3 t=48757 -> @@13
+king's child went out into the for-est 
+@ via @@16 b=5 p=0 d=225
+@@17: line 11.2 t=48982 -> @@16
+and sat down by the side of the cool 
+@ via @@17 b=0 p=0 d=100
+@@18: line 12.2 t=49082 -> @@17
+foun-tain; and when she was bored she 
+@ via @@18 b=84 p=0 d=8836
+@@19: line 13.3 t=57918 -> @@18
+took a golden ball, and threw it up 
+@ via @@19 b=14 p=0 d=10576
+@@20: line 14.1 t=68494 -> @@19
+on 
+@ via @@19 b=67 p=0 d=5929
+@@21: line 14.3 t=63847 -> @@19
+high and caught it; and this ball 
+@ via @@20 b=4 p=0 d=196
+@@22: line 15.2 t=68690 -> @@20
+was 
+@ via @@21 b=0 p=0 d=100
+@@23: line 15.2 t=63947 -> @@21
+her fa-vorite play-thing. 
+@\par via @@22 b=0 p=-10000 d=100
+@\par via @@23 b=0 p=-10000 d=100
+@@24: line 16.2- t=64047 -> @@23
+
+> \box1=
+\vbox(186.94444+1.94444)x160.0
+.\hbox(6.94444+1.94444)x160.0, glue set - 0.78004
+..\hbox(0.0+0.0)x20.0
+..\tenrm I
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm i
+..\tenrm m
+..\tenrm e
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm i
+..\tenrm s
+..\tenrm h
+..\discretionary
+...\tenrm -
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm t
+..\tenrm i
+..\tenrm l
+..\tenrm l
+..\glue(\rightskip) 0.0
+.\penalty 150
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set 0.10275
+..\tenrm h
+..\tenrm e
+..\tenrm l
+..\tenrm p
+..\kern0.27779
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm n
+..\tenrm e
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm i
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm o
+..\tenrm s
+..\tenrm e
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set - 0.22005
+..\tenrm d
+..\tenrm a
+..\tenrm u
+..\tenrm g
+..\discretionary replacing 2
+...\tenrm h
+...\tenrm -
+..\tenrm h
+..\kern-0.27779
+..\tenrm t
+..\tenrm e
+..\tenrm r
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm e
+..\tenrm a
+..\tenrm u
+..\discretionary
+...\tenrm -
+..\tenrm t
+..\tenrm i
+..\discretionary
+...\tenrm -
+..\tenrm f
+..\tenrm u
+..\tenrm l
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set 1.07997
+..\tenrm y
+..\kern-0.27779
+..\tenrm o
+..\tenrm u
+..\tenrm n
+..\tenrm g
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm e
+..\tenrm a
+..\tenrm u
+..\discretionary
+...\tenrm -
+..\tenrm t
+..\tenrm i
+..\discretionary
+...\tenrm -
+..\tenrm f
+..\tenrm u
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set 0.80554
+..\tenrm s
+..\tenrm u
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\discretionary
+...\tenrm -
+..\tenrm s
+..\tenrm e
+..\tenrm l
+..\tenrm f
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm i
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm e
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm m
+..\kern-0.27779
+..\tenrm u
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\tenrm ,
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+0.0)x160.0, glue set 0.20331
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm s
+..\discretionary
+...\tenrm -
+..\tenrm t
+..\tenrm o
+..\tenrm n
+..\discretionary
+...\tenrm -
+..\tenrm i
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\discretionary
+...\tenrm -
+..\tenrm e
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm o
+..\tenrm n
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 5.05556
+.\hbox(6.94444+1.94444)x160.0, glue set 0.86943
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm a
+..\tenrm c
+..\tenrm e
+..\tenrm .
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm C
+..\tenrm l
+..\tenrm o
+..\tenrm s
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm '
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm a
+..\tenrm s
+..\discretionary
+...\tenrm -
+..\tenrm t
+..\tenrm l
+..\tenrm e
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set - 0.23575
+..\tenrm l
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm g
+..\tenrm r
+..\tenrm e
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\tenrm r
+..\tenrm k
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\discretionary
+...\tenrm -
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm u
+..\tenrm n
+..\discretionary
+...\tenrm -
+..\tenrm d
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set - 0.27145
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm i
+..\tenrm m
+..\tenrm e
+..\tenrm -
+..\discretionary
+..\tenrm t
+..\tenrm r
+..\tenrm e
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\discretionary
+...\tenrm -
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm l
+..\tenrm l
+..\tenrm ,
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set - 0.90718
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm r
+..\tenrm m
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set 0.37497
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm '
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\tenrm i
+..\tenrm l
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm u
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\discretionary
+...\tenrm -
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set 0.05415
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm o
+..\kern-0.27779
+..\tenrm w
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm i
+..\tenrm d
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm f
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm o
+..\kern0.27779
+..\tenrm o
+..\tenrm l
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set - 0.94588
+..\tenrm f
+..\tenrm o
+..\tenrm u
+..\discretionary replacing 2
+...\tenrm n
+...\tenrm -
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\tenrm a
+..\tenrm i
+..\tenrm n
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set - 0.87816
+..\tenrm t
+..\tenrm o
+..\kern0.27779
+..\tenrm o
+..\tenrm k
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm g
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm r
+..\tenrm e
+..\tenrm w
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm u
+..\tenrm p
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm n
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set - 0.15718
+..\tenrm h
+..\tenrm i
+..\tenrm g
+..\tenrm h
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm a
+..\tenrm u
+..\tenrm g
+..\tenrm h
+..\kern-0.27779
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm i
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue(\rightskip) 0.0
+.\penalty 150
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x160.0, glue set 62.722fil
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\discretionary replacing 2
+...\tenrm a
+...\tenrm -
+..\tenrm a
+..\kern-0.27779
+..\tenrm v
+..\kern-0.27779
+..\tenrm o
+..\tenrm r
+..\tenrm i
+..\tenrm t
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm p
+..\tenrm l
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\discretionary
+...\tenrm -
+..\tenrm t
+..\tenrm h
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm .
+..\penalty 10000
+..\glue(\parfillskip) 0.0 plus 1.0fil
+..\glue(\rightskip) 0.0
+
+! OK.
+\golemset ...graphs =1 \frogking \par }\showbox 1 
+                                                  
+l.68 \golemset{160pt}
+                     
+
+GOLEM-HSIZE=13107200
+@firstpass
+[]\tenrm In olden times when wishing still helped 
+@ via @@0 b=5 p=0 d=225
+@@1: line 1.2 t=225 -> @@0
+one, there lived a king whose daughters were 
+@ via @@1 b=4 p=0 d=196
+@@2: line 2.2 t=421 -> @@1
+all beautiful; and the youngest was so beautiful 
+@ via @@2 b=95 p=0 d=11025
+@@3: line 3.3 t=11446 -> @@2
+that the sun itself, which has seen so much, 
+@ via @@3 b=32 p=0 d=11764
+@@4: line 4.1 t=23210 -> @@3
+was astonished whenever it shone in her face. 
+@ via @@4 b=0 p=0 d=100
+@@5: line 5.2 t=23310 -> @@4
+@secondpass
+[]\tenrm In olden times when wish-ing still helped 
+@ via @@0 b=5 p=0 d=225
+@@1: line 1.2 t=225 -> @@0
+one, there lived a king whose daugh-ters were 
+@ via @@1 b=4 p=0 d=196
+@@2: line 2.2 t=421 -> @@1
+all beau-ti-ful; and the youngest was so beau-ti-ful 
+@ via @@2 b=95 p=0 d=11025
+@@3: line 3.3 t=11446 -> @@2
+that the sun it-self, which has seen so much, 
+@ via @@3 b=32 p=0 d=11764
+@@4: line 4.1 t=23210 -> @@3
+was as-ton-ished when-ever it shone in her face. 
+@ via @@4 b=0 p=0 d=100
+@@5: line 5.2 t=23310 -> @@4
+Close by the king's cas-tle lay a great dark 
+@ via @@5 b=168 p=0 d=41684
+@@6: line 6.0 t=64994 -> @@5
+for-est, and un-der an old lime-tree in the for-est 
+@ via @@6 b=6 p=0 d=10256
+@@7: line 7.2 t=75250 -> @@6
+was a well, and when the day was very warm, 
+@ via @@7 b=0 p=0 d=100
+@@8: line 8.2 t=75350 -> @@7
+the king's child went out into the for-est and 
+@ via @@8 b=15 p=0 d=625
+@@9: line 9.1 t=75975 -> @@8
+sat 
+@ via @@8 b=74 p=0 d=7056
+@@10: line 9.3 t=82406 -> @@8
+down by the side of the cool foun-tain; and 
+@ via @@9 b=0 p=0 d=100
+@ via @@10 b=132 p=0 d=30164
+@@11: line 10.2 t=76075 -> @@9
+when she was bored she took a golden ball, 
+@ via @@11 b=46 p=0 d=3136
+@@12: line 11.1 t=79211 -> @@11
+and 
+@ via @@11 b=74 p=0 d=7056
+@@13: line 11.3 t=83131 -> @@11
+threw it up on high and caught it; and 
+@ via @@12 b=37 p=0 d=2209
+@@14: line 12.1 t=81420 -> @@12
+this 
+@ via @@12 b=48 p=0 d=13364
+@ via @@13 b=36 p=0 d=12116
+@@15: line 12.1 t=95247 -> @@13
+@@16: line 12.3 t=92575 -> @@12
+ball 
+@ via @@13 b=48 p=0 d=3364
+@@17: line 12.3 t=86495 -> @@13
+was her fa-vorite play-thing. 
+@\par via @@14 b=0 p=-10000 d=100
+@\par via @@15 b=0 p=-10000 d=100
+@\par via @@16 b=0 p=-10000 d=100
+@\par via @@17 b=0 p=-10000 d=100
+@@18: line 13.2- t=81520 -> @@14
+
+> \box1=
+\vbox(150.94444+1.94444)x200.0
+.\hbox(6.94444+1.94444)x200.0, glue set 0.3722
+..\hbox(0.0+0.0)x20.0
+..\tenrm I
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm i
+..\tenrm m
+..\tenrm e
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm i
+..\tenrm s
+..\tenrm h
+..\discretionary
+...\tenrm -
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm t
+..\tenrm i
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm e
+..\tenrm l
+..\tenrm p
+..\kern0.27779
+..\tenrm e
+..\tenrm d
+..\glue(\rightskip) 0.0
+.\penalty 150
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x200.0, glue set 0.34045
+..\tenrm o
+..\tenrm n
+..\tenrm e
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm i
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm o
+..\tenrm s
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\tenrm u
+..\tenrm g
+..\discretionary replacing 2
+...\tenrm h
+...\tenrm -
+..\tenrm h
+..\kern-0.27779
+..\tenrm t
+..\tenrm e
+..\tenrm r
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\tenrm e
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x200.0, glue set - 0.98576
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm e
+..\tenrm a
+..\tenrm u
+..\discretionary
+...\tenrm -
+..\tenrm t
+..\tenrm i
+..\discretionary
+...\tenrm -
+..\tenrm f
+..\tenrm u
+..\tenrm l
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm y
+..\kern-0.27779
+..\tenrm o
+..\tenrm u
+..\tenrm n
+..\tenrm g
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm e
+..\tenrm a
+..\tenrm u
+..\discretionary
+...\tenrm -
+..\tenrm t
+..\tenrm i
+..\discretionary
+...\tenrm -
+..\tenrm f
+..\tenrm u
+..\tenrm l
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x200.0, glue set 0.68748
+..\tenrm t
+..\tenrm h
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm u
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\discretionary
+...\tenrm -
+..\tenrm s
+..\tenrm e
+..\tenrm l
+..\tenrm f
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm i
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm e
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm m
+..\kern-0.27779
+..\tenrm u
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\tenrm ,
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+0.0)x200.0, glue set 0.11902
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm s
+..\discretionary
+...\tenrm -
+..\tenrm t
+..\tenrm o
+..\tenrm n
+..\discretionary
+...\tenrm -
+..\tenrm i
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\discretionary
+...\tenrm -
+..\tenrm e
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm o
+..\tenrm n
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm a
+..\tenrm c
+..\tenrm e
+..\tenrm .
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 5.05556
+.\hbox(6.94444+1.94444)x200.0, glue set 1.19165
+..\tenrm C
+..\tenrm l
+..\tenrm o
+..\tenrm s
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm '
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm a
+..\tenrm s
+..\discretionary
+...\tenrm -
+..\tenrm t
+..\tenrm l
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm g
+..\tenrm r
+..\tenrm e
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\tenrm r
+..\tenrm k
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x200.0, glue set - 0.40004
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\discretionary
+...\tenrm -
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm u
+..\tenrm n
+..\discretionary
+...\tenrm -
+..\tenrm d
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm i
+..\tenrm m
+..\tenrm e
+..\tenrm -
+..\discretionary
+..\tenrm t
+..\tenrm r
+..\tenrm e
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\discretionary
+...\tenrm -
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x200.0, glue set - 0.04446
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm l
+..\tenrm l
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm r
+..\tenrm m
+..\tenrm ,
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x200.0, glue set 0.53123
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm '
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\tenrm i
+..\tenrm l
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm u
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\discretionary
+...\tenrm -
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x200.0, glue set - 0.15004
+..\tenrm s
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm o
+..\kern-0.27779
+..\tenrm w
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm i
+..\tenrm d
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm f
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm o
+..\kern0.27779
+..\tenrm o
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm u
+..\discretionary replacing 2
+...\tenrm n
+...\tenrm -
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\tenrm a
+..\tenrm i
+..\tenrm n
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x200.0, glue set 0.77707
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm o
+..\kern0.27779
+..\tenrm o
+..\tenrm k
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm g
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\tenrm ,
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x200.0, glue set 0.72035
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm r
+..\tenrm e
+..\tenrm w
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm u
+..\tenrm p
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm i
+..\tenrm g
+..\tenrm h
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm a
+..\tenrm u
+..\tenrm g
+..\tenrm h
+..\kern-0.27779
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue(\rightskip) 0.0
+.\penalty 150
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x200.0, glue set 44.55525fil
+..\tenrm t
+..\tenrm h
+..\tenrm i
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\discretionary replacing 2
+...\tenrm a
+...\tenrm -
+..\tenrm a
+..\kern-0.27779
+..\tenrm v
+..\kern-0.27779
+..\tenrm o
+..\tenrm r
+..\tenrm i
+..\tenrm t
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm p
+..\tenrm l
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\discretionary
+...\tenrm -
+..\tenrm t
+..\tenrm h
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm .
+..\penalty 10000
+..\glue(\parfillskip) 0.0 plus 1.0fil
+..\glue(\rightskip) 0.0
+
+! OK.
+\golemset ...graphs =1 \frogking \par }\showbox 1 
+                                                  
+l.69 \golemset{200pt}
+                     
+
+GOLEM-HSIZE=15728640
+@firstpass
+[]\tenrm In olden times when wishing still helped one, there 
+@ via @@0 b=4 p=0 d=196
+@@1: line 1.2 t=196 -> @@0
+lived a king whose daughters were all beautiful; and 
+@ via @@1 b=78 p=0 d=7744
+@@2: line 2.1 t=7940 -> @@1
+the 
+@ via @@1 b=12 p=0 d=484
+@@3: line 2.2 t=680 -> @@1
+youngest was so beautiful that the sun itself, which 
+@ via @@2 b=1 p=0 d=121
+@@4: line 3.2 t=8061 -> @@2
+has 
+@ via @@3 b=2 p=0 d=144
+@@5: line 3.2 t=824 -> @@3
+seen so much, was astonished whenever it shone 
+@ via @@4 b=74 p=0 d=7056
+@@6: line 4.1 t=15117 -> @@4
+in 
+@ via @@4 b=0 p=0 d=100
+@@7: line 4.2 t=8161 -> @@4
+her 
+@ via @@5 b=0 p=0 d=100
+@@8: line 4.2 t=924 -> @@5
+face. Close by the king's castle lay a great dark 
+@ via @@6 b=1 p=0 d=121
+@ via @@7 b=81 p=0 d=8281
+@@9: line 5.1 t=16442 -> @@7
+@@10: line 5.2 t=15238 -> @@6
+forest, 
+@ via @@8 b=0 p=0 d=100
+@@11: line 5.2 t=1024 -> @@8
+and under an old lime-tree in the forest was a 
+@ via @@9 b=15 p=0 d=625
+@ via @@10 b=15 p=0 d=625
+@@12: line 6.1 t=15863 -> @@10
+well, 
+@ via @@11 b=91 p=0 d=10201
+@@13: line 6.1 t=11225 -> @@11
+and 
+@ via @@11 b=2 p=0 d=144
+@@14: line 6.2 t=1168 -> @@11
+when the day was very warm, the king's child 
+@ via @@12 b=2 p=0 d=144
+@@15: line 7.2 t=16007 -> @@12
+went 
+@ via @@13 b=4 p=0 d=196
+@@16: line 7.2 t=11421 -> @@13
+out 
+@ via @@14 b=1 p=0 d=121
+@@17: line 7.2 t=1289 -> @@14
+into the forest and sat down by the side of 
+@ via @@15 b=28 p=0 d=1444
+@@18: line 8.1 t=17451 -> @@15
+the 
+@ via @@15 b=6 p=0 d=256
+@@19: line 8.2 t=16263 -> @@15
+cool 
+@ via @@16 b=0 p=0 d=100
+@ via @@17 b=62 p=0 d=5184
+@@20: line 8.1 t=6473 -> @@17
+@@21: line 8.2 t=11521 -> @@16
+fountain; and when she was bored she took 
+@ via @@18 b=63 p=0 d=5329
+@@22: line 9.1 t=22780 -> @@18
+a 
+@ via @@18 b=2 p=0 d=144
+@@23: line 9.2 t=17595 -> @@18
+golden 
+@ via @@19 b=71 p=0 d=6561
+@ via @@20 b=38 p=0 d=2304
+@ via @@21 b=38 p=0 d=2304
+@@24: line 9.1 t=8777 -> @@20
+ball, and threw it up on high and caught it; 
+@ via @@22 b=8 p=0 d=324
+@ via @@23 b=94 p=0 d=10816
+@@25: line 10.1 t=28411 -> @@23
+@@26: line 10.2 t=23104 -> @@22
+and 
+@ via @@22 b=63 p=0 d=15329
+@ via @@23 b=2 p=0 d=144
+@@27: line 10.2 t=17739 -> @@23
+this 
+@ via @@24 b=12 p=0 d=484
+@@28: line 10.2 t=9261 -> @@24
+ball 
+@ via @@24 b=46 p=0 d=13136
+@@29: line 10.3 t=21913 -> @@24
+was her favorite plaything. 
+@\par via @@25 b=0 p=-10000 d=100
+@\par via @@26 b=0 p=-10000 d=100
+@\par via @@27 b=0 p=-10000 d=100
+@\par via @@28 b=0 p=-10000 d=100
+@\par via @@29 b=0 p=-10000 d=100
+@@30: line 11.2- t=9361 -> @@28
+
+> \box1=
+\vbox(126.94444+1.94444)x240.0
+.\hbox(6.94444+1.94444)x240.0, glue set - 0.33441
+..\hbox(0.0+0.0)x20.0
+..\tenrm I
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm i
+..\tenrm m
+..\tenrm e
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm i
+..\tenrm s
+..\tenrm h
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm t
+..\tenrm i
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm e
+..\tenrm l
+..\tenrm p
+..\kern0.27779
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm n
+..\tenrm e
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\tenrm e
+..\glue(\rightskip) 0.0
+.\penalty 150
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x240.0, glue set - 0.48894
+..\tenrm l
+..\tenrm i
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm o
+..\tenrm s
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\tenrm u
+..\tenrm g
+..\tenrm h
+..\kern-0.27779
+..\tenrm t
+..\tenrm e
+..\tenrm r
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm e
+..\tenrm a
+..\tenrm u
+..\tenrm t
+..\tenrm i
+..\tenrm f
+..\tenrm u
+..\tenrm l
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x240.0, glue set - 0.28337
+..\tenrm y
+..\kern-0.27779
+..\tenrm o
+..\tenrm u
+..\tenrm n
+..\tenrm g
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm e
+..\tenrm a
+..\tenrm u
+..\tenrm t
+..\tenrm i
+..\tenrm f
+..\tenrm u
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm u
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\tenrm s
+..\tenrm e
+..\tenrm l
+..\tenrm f
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm i
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm a
+..\tenrm s
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x240.0, glue set 0.06665
+..\tenrm s
+..\tenrm e
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm m
+..\kern-0.27779
+..\tenrm u
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm s
+..\tenrm t
+..\tenrm o
+..\tenrm n
+..\tenrm i
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\tenrm e
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm o
+..\tenrm n
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x240.0, glue set 0.14832
+..\tenrm f
+..\tenrm a
+..\tenrm c
+..\tenrm e
+..\tenrm .
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm C
+..\tenrm l
+..\tenrm o
+..\tenrm s
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm '
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm a
+..\tenrm s
+..\tenrm t
+..\tenrm l
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm g
+..\tenrm r
+..\tenrm e
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\tenrm r
+..\tenrm k
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\tenrm ,
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x240.0, glue set - 0.26595
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm u
+..\tenrm n
+..\tenrm d
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm i
+..\tenrm m
+..\tenrm e
+..\tenrm -
+..\discretionary
+..\tenrm t
+..\tenrm r
+..\tenrm e
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm l
+..\tenrm l
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x240.0, glue set - 0.19003
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm r
+..\tenrm m
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm '
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\tenrm i
+..\tenrm l
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm u
+..\tenrm t
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x240.0, glue set 0.85301
+..\tenrm i
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm o
+..\kern-0.27779
+..\tenrm w
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm i
+..\tenrm d
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm f
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm o
+..\kern0.27779
+..\tenrm o
+..\tenrm l
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x240.0, glue set 0.72775
+..\tenrm f
+..\tenrm o
+..\tenrm u
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\tenrm a
+..\tenrm i
+..\tenrm n
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm o
+..\kern0.27779
+..\tenrm o
+..\tenrm k
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm g
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\tenrm e
+..\tenrm n
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x240.0, glue set 0.49544
+..\tenrm b
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm r
+..\tenrm e
+..\tenrm w
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm u
+..\tenrm p
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm i
+..\tenrm g
+..\tenrm h
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm a
+..\tenrm u
+..\tenrm g
+..\tenrm h
+..\kern-0.27779
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm i
+..\tenrm s
+..\glue(\rightskip) 0.0
+.\penalty 150
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x240.0, glue set 104.05528fil
+..\tenrm b
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm a
+..\kern-0.27779
+..\tenrm v
+..\kern-0.27779
+..\tenrm o
+..\tenrm r
+..\tenrm i
+..\tenrm t
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm p
+..\tenrm l
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\tenrm t
+..\tenrm h
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm .
+..\penalty 10000
+..\glue(\parfillskip) 0.0 plus 1.0fil
+..\glue(\rightskip) 0.0
+
+! OK.
+\golemset ...graphs =1 \frogking \par }\showbox 1 
+                                                  
+l.70 \golemset{240pt}
+                     
+
+GOLEM-HSIZE=19660800
+@firstpass
+[]\tenrm In olden times when wishing still helped one, there lived a king 
+@ via @@0 b=0 p=0 d=100
+@@1: line 1.2 t=100 -> @@0
+whose daughters were all beautiful; and the youngest was so beautiful 
+@ via @@1 b=17 p=0 d=729
+@@2: line 2.3 t=829 -> @@1
+that the sun itself, which has seen so much, was astonished whenever 
+@ via @@2 b=1 p=0 d=121
+@@3: line 3.2 t=950 -> @@2
+it 
+@ via @@2 b=91 p=0 d=10201
+@@4: line 3.3 t=11030 -> @@2
+shone in her face. Close by the king's castle lay a great dark forest, 
+@ via @@3 b=2 p=0 d=144
+@ via @@4 b=2 p=0 d=144
+@@5: line 4.2 t=1094 -> @@3
+and 
+@ via @@4 b=69 p=0 d=6241
+@@6: line 4.3 t=17271 -> @@4
+under an old lime-tree in the forest was a well, and when the 
+@ via @@5 b=23 p=0 d=1089
+@@7: line 5.1 t=2183 -> @@5
+day 
+@ via @@5 b=4 p=0 d=196
+@ via @@6 b=27 p=0 d=11369
+@@8: line 5.2 t=1290 -> @@5
+was 
+@ via @@6 b=4 p=0 d=196
+@@9: line 5.2 t=17467 -> @@6
+very warm, the king's child went out into the forest and 
+@ via @@7 b=57 p=0 d=4489
+@@10: line 6.1 t=6672 -> @@7
+sat 
+@ via @@7 b=0 p=0 d=100
+@ via @@8 b=91 p=0 d=10201
+@@11: line 6.1 t=11491 -> @@8
+@@12: line 6.2 t=2283 -> @@7
+down 
+@ via @@8 b=11 p=0 d=441
+@ via @@9 b=23 p=0 d=1089
+@@13: line 6.2 t=1731 -> @@8
+by 
+@ via @@9 b=0 p=0 d=100
+@@14: line 6.2 t=17567 -> @@9
+the side of the cool fountain; and when she was bored 
+@ via @@10 b=5 p=0 d=225
+@@15: line 7.2 t=6897 -> @@10
+she 
+@ via @@10 b=22 p=0 d=11024
+@ via @@11 b=3 p=0 d=169
+@ via @@12 b=3 p=0 d=169
+@@16: line 7.2 t=2452 -> @@12
+took 
+@ via @@13 b=11 p=0 d=441
+@@17: line 7.2 t=2172 -> @@13
+a 
+@ via @@13 b=0 p=0 d=100
+@ via @@14 b=39 p=0 d=2401
+@@18: line 7.2 t=1831 -> @@13
+golden ball, and threw it up on high and caught it; and 
+@ via @@15 b=5 p=0 d=225
+@@19: line 8.2 t=7122 -> @@15
+this 
+@ via @@15 b=28 p=0 d=1444
+@ via @@16 b=2 p=0 d=144
+@@20: line 8.2 t=2596 -> @@16
+@@21: line 8.3 t=8341 -> @@15
+ball 
+@ via @@16 b=49 p=0 d=3481
+@ via @@17 b=7 p=0 d=289
+@ via @@18 b=57 p=0 d=4489
+@@22: line 8.1 t=6320 -> @@18
+@@23: line 8.2 t=2461 -> @@17
+@@24: line 8.3 t=5933 -> @@16
+was 
+@ via @@17 b=19 p=0 d=841
+@ via @@18 b=0 p=0 d=100
+@@25: line 8.2 t=1931 -> @@18
+@@26: line 8.3 t=3013 -> @@17
+her favorite plaything. 
+@\par via @@19 b=0 p=-10000 d=100
+@\par via @@20 b=0 p=-10000 d=100
+@\par via @@21 b=0 p=-10000 d=100
+@\par via @@22 b=0 p=-10000 d=100
+@\par via @@23 b=0 p=-10000 d=100
+@\par via @@24 b=0 p=-10000 d=100
+@\par via @@25 b=0 p=-10000 d=100
+@\par via @@26 b=0 p=-10000 d=100
+@@27: line 9.2- t=2031 -> @@25
+
+> \box1=
+\vbox(102.94444+1.94444)x300.0
+.\hbox(6.94444+1.94444)x300.0, glue set 0.15604
+..\hbox(0.0+0.0)x20.0
+..\tenrm I
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm i
+..\tenrm m
+..\tenrm e
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm i
+..\tenrm s
+..\tenrm h
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm t
+..\tenrm i
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm e
+..\tenrm l
+..\tenrm p
+..\kern0.27779
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm n
+..\tenrm e
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm i
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\glue(\rightskip) 0.0
+.\penalty 150
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x300.0, glue set - 0.55505
+..\tenrm w
+..\tenrm h
+..\tenrm o
+..\tenrm s
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\tenrm u
+..\tenrm g
+..\tenrm h
+..\kern-0.27779
+..\tenrm t
+..\tenrm e
+..\tenrm r
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm e
+..\tenrm a
+..\tenrm u
+..\tenrm t
+..\tenrm i
+..\tenrm f
+..\tenrm u
+..\tenrm l
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm y
+..\kern-0.27779
+..\tenrm o
+..\tenrm u
+..\tenrm n
+..\tenrm g
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm e
+..\tenrm a
+..\tenrm u
+..\tenrm t
+..\tenrm i
+..\tenrm f
+..\tenrm u
+..\tenrm l
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x300.0, glue set - 0.24321
+..\tenrm t
+..\tenrm h
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm u
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\tenrm s
+..\tenrm e
+..\tenrm l
+..\tenrm f
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm i
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm e
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm m
+..\kern-0.27779
+..\tenrm u
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm s
+..\tenrm t
+..\tenrm o
+..\tenrm n
+..\tenrm i
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\tenrm e
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x300.0, glue set - 0.27502
+..\tenrm i
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm o
+..\tenrm n
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm a
+..\tenrm c
+..\tenrm e
+..\tenrm .
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm C
+..\tenrm l
+..\tenrm o
+..\tenrm s
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm '
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm a
+..\tenrm s
+..\tenrm t
+..\tenrm l
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm g
+..\tenrm r
+..\tenrm e
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\tenrm r
+..\tenrm k
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\tenrm ,
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x300.0, glue set - 0.35182
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm u
+..\tenrm n
+..\tenrm d
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm i
+..\tenrm m
+..\tenrm e
+..\tenrm -
+..\discretionary
+..\tenrm t
+..\tenrm r
+..\tenrm e
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm l
+..\tenrm l
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x300.0, glue set - 0.48273
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm r
+..\tenrm m
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm '
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\tenrm i
+..\tenrm l
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm u
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm o
+..\kern-0.27779
+..\tenrm w
+..\tenrm n
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x300.0, glue set 0.0845
+..\tenrm b
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm i
+..\tenrm d
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm f
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm o
+..\kern0.27779
+..\tenrm o
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm u
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\tenrm a
+..\tenrm i
+..\tenrm n
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm o
+..\kern0.27779
+..\tenrm o
+..\tenrm k
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x300.0, glue set - 0.0804
+..\tenrm g
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm r
+..\tenrm e
+..\tenrm w
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm u
+..\tenrm p
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm i
+..\tenrm g
+..\tenrm h
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm a
+..\tenrm u
+..\tenrm g
+..\tenrm h
+..\kern-0.27779
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm i
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue(\rightskip) 0.0
+.\penalty 150
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x300.0, glue set 202.722fil
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm a
+..\kern-0.27779
+..\tenrm v
+..\kern-0.27779
+..\tenrm o
+..\tenrm r
+..\tenrm i
+..\tenrm t
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm p
+..\tenrm l
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\tenrm t
+..\tenrm h
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm .
+..\penalty 10000
+..\glue(\parfillskip) 0.0 plus 1.0fil
+..\glue(\rightskip) 0.0
+
+! OK.
+\golemset ...graphs =1 \frogking \par }\showbox 1 
+                                                  
+l.71 \golemset{300pt}
+                     
+
+ )
+No pages of output.
