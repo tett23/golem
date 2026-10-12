@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               golem-cli
-version:            0.1.0.0
+version:            0.1.0
 synopsis:           The golem command
 license:            MIT
 author:             tett23
@@ -45,6 +45,7 @@ test-suite golem-cli-test
     , bytestring
     , directory
     , filepath
+    , golem-driver
     , process
     , tasty          >=1.4 && <1.6
     , tasty-golden   >=2.3 && <2.4

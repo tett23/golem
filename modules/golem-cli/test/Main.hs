@@ -1,10 +1,14 @@
--- | The exit codes and the Japanese usage messages of golem (golem-cli ADR 0004).
+{- | The exit codes and the Japanese usage messages of golem (golem-cli ADR
+0004), and golem --version (docs/adr/0004).
+-}
 module Main (main) where
 
 import Data.ByteString.Lazy qualified as BL
 import Data.List (isInfixOf)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Text.IO qualified as TIO
+import Golem.Driver.Version (golemVersion)
 import System.Directory (doesDirectoryExist)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -49,6 +53,35 @@ english =
     "Diagnostic format"
   ]
 
+-- | Runs golem in an empty directory and keeps stdout and stderr apart.
+golemSplit :: [String] -> IO (ExitCode, String, String)
+golemSplit args = withSystemTempDirectory "golem-cli" $ \tmp ->
+  readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
+
+versionTests :: TestTree
+versionTests =
+  testGroup
+    "golem --version (docs/adr/0004)"
+    [ testCase "prints golem and the version on stdout and exits with 0" $ do
+        (code, out, err) <- golemSplit ["--version"]
+        code @?= ExitSuccess
+        out @?= T.unpack ("golem " <> golemVersion <> "\n")
+        err @?= "",
+      testCase "the version is the content of VERSION" $ do
+        v <- T.strip <$> TIO.readFile "../../VERSION"
+        (_, out, _) <- golemSplit ["--version"]
+        out @?= T.unpack ("golem " <> v <> "\n"),
+      testCase "no English in golem --version" $ do
+        (_, out, err) <- golemSplit ["--version"]
+        case filter (`isInfixOf` (out <> err)) english of
+          [] -> pure ()
+          found -> assertFailure (show found <> "\n" <> out <> err),
+      testCase "golem --help shows --version" $ do
+        (_, out) <- golem ["--help"]
+        assertBool out ("--version" `isInfixOf` out && "版を表示する" `isInfixOf` out),
+      exitsWith (ExitFailure 2) ["build", "--version"]
+    ]
+
 messages :: [(String, [String])]
 messages =
   [ ("help", ["--help"]),
@@ -92,5 +125,6 @@ tests =
                      found -> assertFailure (show found <> "\n" <> out)
                | (name, args) <- messages
                ]
-        )
+        ),
+      versionTests
     ]

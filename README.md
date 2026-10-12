@@ -9,8 +9,53 @@ Golem は、コマンドラインと CI で動く組版システムである。
 
 ## Installation
 
-配布物はまだない。
-[CLI のビルド](#cli-のビルド)の手順で、ソースから `golem` コマンドをビルドする。
+[GitHub Releases](https://github.com/tett23/golem/releases) から、プラットフォームに合うアーカイブを取得する。
+
+| アーカイブ | 対象 |
+|---|---|
+| `golem-<タグ>-x86_64-linux.tar.gz` | Linux の x86-64（musl で完全に静的にリンクしており、ディストリビューションを問わない） |
+| `golem-<タグ>-aarch64-linux.tar.gz` | Linux の aarch64（同上） |
+| `golem-<タグ>-aarch64-macos.tar.gz` | macOS 14 以降の Apple Silicon |
+
+Windows では、WSL2 の上で Linux のアーカイブを使う。
+x86-64 の macOS 向けの配布物はないので、[CLI のビルド](#cli-のビルド)の手順でソースからビルドする。
+
+アーカイブと `SHA256SUMS` を取得し、検証してから展開する。
+次の例は x86-64 の Linux の場合である。
+
+```bash
+TAG=v0.1.0
+curl -LO "https://github.com/tett23/golem/releases/download/$TAG/golem-$TAG-x86_64-linux.tar.gz"
+curl -LO "https://github.com/tett23/golem/releases/download/$TAG/SHA256SUMS"
+sha256sum --ignore-missing -c SHA256SUMS
+tar -xzf "golem-$TAG-x86_64-linux.tar.gz"
+```
+
+macOS では、`sha256sum` の代わりに `shasum -a 256 --ignore-missing -c SHA256SUMS` を使う。
+展開したディレクトリの `golem` を、`PATH` にあるディレクトリに置く。
+
+```bash
+install -m 755 "golem-$TAG-x86_64-linux/golem" "$HOME/.local/bin/golem"
+golem --version
+```
+
+ビルドの来歴は、GitHub CLI の `gh attestation verify golem-$TAG-x86_64-linux.tar.gz --repo tett23/golem` で検証できる。
+
+macOS の実行ファイルは公証を受けていない。
+ブラウザで取得したアーカイブから展開した `golem` には `com.apple.quarantine` の属性が付き、Gatekeeper が初回の起動を拒む。
+その場合は、属性を外してから起動する。
+
+```bash
+xattr -d com.apple.quarantine golem
+```
+
+`curl` で取得した場合は、この属性は付かない。
+
+`golem new` はフォントを HTTPS で取得し、ルート証明書を OS の証明書のストアから読む。
+ca-certificates の入っていない最小構成のコンテナでは、ca-certificates を入れるか、環境変数 `SSL_CERT_FILE` で証明書のファイルを指定する。
+
+アーカイブの中の `THIRD_PARTY_LICENSES/` に、実行ファイルに静的にリンクしたライブラリと同梱したデータのライセンスがある。
+`BUILDINFO` には、ビルドしたコミットと環境を記録している。
 
 ## Usage
 
@@ -29,6 +74,7 @@ golem new mybook
 | `golem fmt [--check] [FILE...]` | 原稿を整形する |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
 | `golem inspect FILE --as cst\|ast\|ir` | 構文木と IR を表示する |
+| `golem --version` | 版を表示する（例：`golem 0.1.0`） |
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には商用のプリフライト（Acrobat や pdfToolbox など）で確認する。
@@ -129,6 +175,9 @@ cabal install exe:golem --installdir="$HOME/.local/bin" --install-method=copy --
 HarfBuzz、FreeType、wasmtime、zlib は静的にリンクする。
 macOS でビルドした実行ファイルは OS 標準のライブラリだけに依存するので、同じアーキテクチャの macOS であれば、実行ファイルだけをコピーして使える。
 
+Golem の版の正本はリポジトリの根の `VERSION` である。
+版を変えるときは、`VERSION` と全パッケージの cabal ファイルの `version` を一緒に書き換える（手順は [CONTRIBUTING.md](./CONTRIBUTING.md) の「タグとリリース」）。
+
 ### 整形と検査
 
 Haskell のコードは fourmolu 0.21.0.0 で整形し（設定は `fourmolu.yaml`）、hlint 3.10 で検査する。
@@ -143,7 +192,22 @@ Haskell のコードは fourmolu 0.21.0.0 で整形し（設定は `fourmolu.yam
 | `adr` | コミット済みの ADR が変更されていないことを検査する |
 | `build` | x86-64 と aarch64 の Linux でビルドとテストを行い、生成したパーサーが文法と一致すること、EPUB が epubcheck を通ることを確かめる |
 | `determinism` | 決まった入力（`scripts/determinism.sh`）の出力のハッシュを、二つのアーキテクチャで比べる |
+| `release-scripts` | `VERSION` と全パッケージの版の一致を検査し、`scripts/release/` のスクリプトのテスト（`scripts/release/test.sh`）を実行する |
 | `format` | fourmolu と hlint で検査する |
+
+`.github/workflows/release.yml` は、`v` で始まるタグの push と `workflow_dispatch` で動く（[docs/adr/0004](./docs/adr/0004-binary-distribution-and-release.md)）。
+`workflow_dispatch` では、配布物を作って検査するところまでを行い、リリースは作らない。
+
+| ジョブ | 内容 |
+|---|---|
+| `ci` | `ci.yml` を再利用可能なワークフローとして呼ぶ |
+| `version` | `scripts/release/check-version.sh` で `VERSION` とタグを検査し、タグのコミットが `main` に含まれることを確かめる |
+| `build` | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクして、macOS では `macos-15` でビルドし、アーカイブを作る |
+| `smoke` | アーカイブを別のランナーと、`alpine` と `debian:stable-slim` のコンテナの中で展開して動かす |
+| `determinism` | 三つの配布物と CI のビルドの、`scripts/determinism.sh` の出力を比べる |
+| `release` | タグの push のときだけ、`SHA256SUMS`、来歴の証明、GMP のソース、AI が書いたリリースノートと共に下書きのリリースを作る |
+
+リリースノートを書く AI の API キーは、リポジトリの秘密情報 `ANTHROPIC_API_KEY` に置く。
 
 ## License
 

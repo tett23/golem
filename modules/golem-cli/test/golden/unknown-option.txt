@@ -1,5 +1,6 @@
 未知のオプションです: --nope
 
-使い方: golem COMMAND
+使い方: golem build [--target html|epub|text|pdf] [--profile dev|prod] 
+                    [--format human|json]
 
-  Golem の組版システム
+  出力を build/ に書く

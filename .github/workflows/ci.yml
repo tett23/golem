@@ -4,9 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
+  # release.yml runs the same build, tests and determinism check before a
+  # release (docs/adr/0004)
+  workflow_call:
 
 jobs:
   adr:
+    # pushes to main and pull requests only: called from release.yml (a tag
+    # or workflow_dispatch) there is no range of commits to check
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -72,6 +78,17 @@ jobs:
           merge-multiple: true
       - name: Outputs are byte-identical on x86-64 and aarch64
         run: diff determinism-ubuntu-24.04.txt determinism-ubuntu-24.04-arm.txt
+
+  release-scripts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: VERSION matches the version of every package (docs/adr/0004)
+        run: sh scripts/release/check-version.sh
+      - name: Tests of the release scripts (docs/adr/0004)
+        run: sh scripts/release/test.sh
 
   format:
     runs-on: ubuntu-24.04

@@ -16,6 +16,7 @@ import Data.Default (def)
 import Data.Either (isLeft)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -40,14 +41,16 @@ import System.Directory
     findExecutable,
     listDirectory,
   )
+import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
+import System.Timeout (timeout)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Printf (printf)
 
 main :: IO ()
-main = defaultMain (testGroup "golem-plugin" [tests, lockTests, httpsTests])
+main = defaultMain (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests])
 
 callSpan :: SrcSpan
 callSpan = mkSpan (FileId 1) 10 20
@@ -299,4 +302,35 @@ httpsTests =
             f <- fetchPlugins fetch cache2 lock
             assertBool "mismatch" (isLeft f)
             readCached cache2 (lock Map.! "a") >>= (@?= Left NotCached)
+    ]
+
+{- | With no root certificates, httpsFetcher fails before it connects and
+says how to fix it (docs/adr/0004).
+-}
+rootCertTests :: TestTree
+rootCertTests =
+  testGroup
+    "TLS root certificates (docs/adr/0004)"
+    [ testCase "an empty certificate store fails before connecting" $ withSystemTempDirectory "golem-certs" $ \dir -> do
+        let empty = dir <> "/empty.pem"
+        BS.writeFile empty ""
+        sock <- socket AF_INET Stream defaultProtocol
+        bind sock (SockAddrInet 0 (tupleToHostAddress (127, 0, 0, 1)))
+        listen sock 16
+        port <- socketPort sock
+        old <- lookupEnv "SSL_CERT_FILE"
+        r <-
+          ( do
+              setEnv "SSL_CERT_FILE" empty
+              fetch <- httpsFetcher
+              fetch ("https://127.0.0.1:" <> T.pack (show port) <> "/a.wasm")
+          )
+            `finally` maybe (unsetEnv "SSL_CERT_FILE") (setEnv "SSL_CERT_FILE") old
+        accepted <- timeout 200000 (accept sock)
+        mapM_ (close . fst) accepted
+        close sock
+        case r of
+          Left msg -> assertBool (T.unpack msg) ("SSL_CERT_FILE" `T.isInfixOf` msg && "ca-certificates" `T.isInfixOf` msg)
+          Right _ -> assertFailure "fetched with no root certificates"
+        assertBool "the server was never connected to" (isNothing accepted)
     ]
