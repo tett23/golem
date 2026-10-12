@@ -163,8 +163,15 @@ blockCommand p = Located (pspan p) ErrorBlock
 
 -- ------------------------------------------------------------------ inlines
 
+{- | A newline between the lines of a paragraph or a prose slot becomes
+'SoftBreak' (docs/adr ADR 0003); the newline that ends the inlines does not.
+-}
 inlines :: [P] -> [Located Inline]
-inlines = mergeText . concatMap inline . trimEnds
+inlines = mergeText . dropEdgeBreaks . concatMap inline . trimEnds
+  where
+    dropEdgeBreaks = reverse . dropWhile isBreak . reverse . dropWhile isBreak
+    isBreak (Located _ SoftBreak) = True
+    isBreak _ = False
 
 isSpaceTab :: Char -> Bool
 isSpaceTab c = c == ' ' || c == '\t'
@@ -208,7 +215,9 @@ inline = \case
   PT KEscape sp t -> [Located sp (Text (T.drop 1 t))]
   PT KProofComment sp t -> [Located sp (ProofComment (proofText t))]
   PT KError sp _ -> [Located sp ErrorInline]
+  PT KNewline sp _ -> [Located sp SoftBreak]
   PT {} -> []
+  PN NBlankLines _ _ -> []
   PN NExpr sp cs -> [Located sp (Expr (exprOf (filter isExprNode cs)))]
   p@(PN NInlineCommand _ _) -> [command p]
   PN NErrorNode sp _ -> [Located sp ErrorInline]

@@ -34,7 +34,11 @@ data HtmlConfig = HtmlConfig
     hcCharStyles :: !(Map Text (Maybe Text)), -- style -> font role
     hcFonts :: !(Map Text (Maybe FilePath, Maybe FilePath)), -- role -> (ja, latin)
     hcBibliography :: !(Map Text Text), -- key -> formatted entry
-    hcDev :: !Bool
+    hcDev :: !Bool,
+    -- | [verse] of style.toml as CSS lengths, and the stanza gap in lines (docs/adr ADR 0003)
+    hcVerseIndent :: !Text,
+    hcVerseHang :: !Text,
+    hcStanzaGap :: !Int
   }
 
 data XhtmlSite = XhtmlSite
@@ -170,6 +174,13 @@ block c (Block sp lbl body) = case body of
     let num = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</span>") (Map.lookup sp (bookFigures (cBook c)))
         cap = T.concat [inlines c is | Block _ _ (Paragraph is) <- figCaption f]
      in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> relLink (cHere c) (T.unpack (webSource f)) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
+  VerseBlock stanzas ->
+    "<div class=\"verse\""
+      <> idAttr lbl
+      <> ">\n"
+      <> T.concat ["<p>" <> T.intercalate "<br/>\n" ["<span>" <> inlines c l <> "</span>" | l <- st] <> "</p>\n" | st <- stanzas]
+      <> "</div>\n"
+      <> sidenotes c (concat (concat stanzas))
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c
   ChannelOutput BibliographyOutput ->
@@ -296,6 +307,7 @@ blockNotes (Block _ _ body) = case body of
   DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockNotes) ds) gs
   Table _ h rows -> concatMap deep h <> concatMap (concatMap deep) rows
   FigureBlock f -> concatMap blockNotes (figCaption f)
+  VerseBlock stanzas -> concatMap (concatMap deep) stanzas
   _ -> []
   where
     deep = concatMap (\i -> i : nested i)
@@ -379,7 +391,14 @@ css cfg =
            ".proof { background: #ffeb99; }",
            T.strip (T.pack (S.styleToCss S.pygments)),
            ".sidenote { font-size: 0.85em; }",
-           "@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }"
+           "@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }",
+           -- verse (docs/adr ADR 0003): lines hang; br is for readers without CSS
+           ".verse { margin-inline-start: " <> hcVerseIndent cfg <> "; }",
+           ".verse p { margin: 0; text-indent: 0; }"
+         ]
+      <> [".verse p + p { margin-block-start: 1em; }" | hcStanzaGap cfg > 0]
+      <> [ ".verse span { display: block; padding-inline-start: " <> hcVerseHang cfg <> "; text-indent: -" <> hcVerseHang cfg <> "; }",
+           ".verse br { display: none; }"
          ]
       <> [ ".swatch-" <> name <> " { color: rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> "); }"
          | (name, cmyk) <- Map.toAscList (hcSwatches cfg),

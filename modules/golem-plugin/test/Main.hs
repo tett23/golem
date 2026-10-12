@@ -106,15 +106,15 @@ tests =
   testGroup
     "golem-plugin (ADR 0001)"
     [ testCase "a valid plugin describes itself and answers" $ do
-        p <- load =<< fixed 1 (responseWith (inlinesTerm [Text callSpan "SLOT"]))
+        p <- load =<< fixed 2 (responseWith (inlinesTerm [Text callSpan "SLOT"]))
         (pluginCommands p, pluginFilters p) @?= (["shout"], ["upper"])
         fmap fst (shout p) @?= Right [Text callSpan "SLOT"],
       testCase "a module that asks for imports is rejected when loading" $ do
         w <- compile =<< wat "imports.wat"
         void (loadPlugin w) @?= Left (HasImports ["env.now"]),
       testCase "a different ABI version is rejected when loading" $ do
-        w <- fixed 2 (responseWith (TList []))
-        void (loadPlugin w) @?= Left (AbiMismatch 2),
+        w <- fixed 1 (responseWith (TList []))
+        void (loadPlugin w) @?= Left (AbiMismatch 1),
       testCase "an endless loop runs out of fuel, at the same place every time" $ do
         w <- compile =<< wat "loop.wat"
         p <- either (assertFailure . show) pure (loadPluginWith 100000 defaultMemoryLimit w)
@@ -139,10 +139,10 @@ tests =
       testGroup
         "output validation"
         [ testCase "broken CBOR" $ do
-            p <- load =<< fixed 1 (BS.pack [0xff, 0x00])
+            p <- load =<< fixed 2 (BS.pack [0xff, 0x00])
             assertBool "error" (isLeft (shout p)),
           testCase "CBOR that does not match the schema" $ do
-            p <- load =<< fixed 1 (cbor (TList [TInt 1, TInt 2]))
+            p <- load =<< fixed 2 (cbor (TList [TInt 1, TInt 2]))
             assertBool "error" (isLeft (shout p)),
           testCase "nested ruby" $ do
             let inner = inlinesTerm [Ruby callSpan () [RubySegment [Text callSpan "漢"] (Just "かん")]]
@@ -154,22 +154,22 @@ tests =
                   t -> t
                 nested = replaceTerm textT rubyT inner
             assertBool "the term changed" (nested /= inner)
-            p <- load =<< fixed 1 (responseWith nested)
+            p <- load =<< fixed 2 (responseWith nested)
             assertBool "error" (isLeft (shout p)),
           testCase "a DeferredExpr the request did not contain" $ do
             let d = DeferredExpr (A.Located callSpan (A.EVar ["doc", "chapters", "count"]))
-            p <- load =<< fixed 1 (responseWith (inlinesTerm [Deferred callSpan d]))
+            p <- load =<< fixed 2 (responseWith (inlinesTerm [Deferred callSpan d]))
             case shout p of
               Left (BadOutput _) -> pure ()
               other -> assertFailure (show other),
           testCase "a source position outside the request" $ do
-            p <- load =<< fixed 1 (responseWith (inlinesTerm [Text (mkSpan (FileId 1) 900 901) "x"]))
+            p <- load =<< fixed 2 (responseWith (inlinesTerm [Text (mkSpan (FileId 1) 900 901) "x"]))
             case shout p of
               Left (BadOutput _) -> pure ()
               other -> assertFailure (show other)
         ],
       testCase "parallel calls give the same results as sequential ones" $ do
-        p <- load =<< fixed 1 (responseWith (inlinesTerm [Text callSpan "SLOT"]))
+        p <- load =<< fixed 2 (responseWith (inlinesTerm [Text callSpan "SLOT"]))
         let calls = replicate 16 ()
         par <- mapConcurrently (\_ -> pure $! either (const 0) (length . fst) (shout p)) calls
         par @?= map (\_ -> either (const 0) (length . fst) (shout p)) calls

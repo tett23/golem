@@ -14,11 +14,13 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.New
+import Golem.Driver.Pdf (PdfInput (..), flowLines)
+import Golem.Layout.Paginate (Flow (..))
 import Golem.LayoutSpec (pageGeometry)
 import Golem.Pdf (Font (..), FontProgram (..))
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
-import Golem.Project.Style (parseStyle)
+import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
 import System.Environment (setEnv)
@@ -245,16 +247,19 @@ tests =
             a @?= b
             qpdfCheck a
         ],
+      testGroup "verse (docs/adr ADR 0003)" verseTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup
         "public-domain books"
         [ testCase "The Tempest builds horizontally to every target" $ do
-            (written, pdf) <- buildBook "tempest"
+            (written, pdf, texts) <- buildBook "tempest"
             assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
+            let horizontal = [t | (p, t) <- texts, "horizontal/tempest.txt" `isSuffixOf` p]
+            assertBool "verse lines" (any ("Full fathom five thy father lies;\nOf his bones are coral made;" `T.isInfixOf`) horizontal)
             assertBool "horizontal" (not ("/Identity-V" `BS.isInfixOf` pdf))
             qpdfCheck pdf,
           testCase "蟹工船 builds vertically to every target" $ do
-            (written, pdf) <- buildBook "kanikosen"
+            (written, pdf, _) <- buildBook "kanikosen"
             assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
             assertBool "vertical" ("/Identity-V" `BS.isInfixOf` pdf)
             qpdfCheck pdf
@@ -262,7 +267,7 @@ tests =
     ]
 
 -- | Builds a copy of a book fixture (fonts included); no errors allowed.
-buildBook :: FilePath -> IO ([FilePath], BS.ByteString)
+buildBook :: FilePath -> IO ([FilePath], BS.ByteString, [(FilePath, T.Text)])
 buildBook name = withSystemTempDirectory "golem-book" $ \tmp -> do
   copyTree ("test/fixtures" </> name) tmp
   r <- build (defaultOptions tmp)
@@ -270,7 +275,72 @@ buildBook name = withSystemTempDirectory "golem-book" $ \tmp -> do
   pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
     [p] -> BS.readFile p
     other -> assertFailure (show other)
-  pure (brWritten r, pdf)
+  texts <- mapM (\p -> (p,) <$> TIO.readFile p) (filter (".txt" `isSuffixOf`) (brWritten r))
+  pure (brWritten r, pdf, texts)
+
+-- | A project of one file with verse in it.
+withVerseProject :: BS.ByteString -> T.Text -> (FilePath -> IO a) -> IO a
+withVerseProject style src k = withSystemTempDirectory "golem-verse" $ \tmp -> do
+  manifest <- TIO.readFile (fixture </> "manifest.toml")
+  TIO.writeFile (tmp </> "manifest.toml") ("chapters = [\"v.gm\"]\n" <> T.dropWhile (/= '\n') manifest)
+  BS.writeFile (tmp </> "style.toml") style
+  TIO.writeFile (tmp </> "v.gm") src
+  k tmp
+
+verseSource :: T.Text
+verseSource = "@verse\n  Full fathom five thy father lies;\n  Of his bones are coral made;\n\n  Nothing of him that doth fade,\n"
+
+-- | The PDF flow of a verse project and its lines as (line length, indent).
+verseLines :: BS.ByteString -> T.Text -> IO ([Flow], [(Integer, Integer)])
+verseLines style src = withVerseProject style src $ \tmp -> do
+  ev <- evaluateProject Dev tmp
+  case ev of
+    Left ds -> assertFailure (show ds)
+    Right e -> case evBook e of
+      Nothing -> assertFailure (show (map diagCode (evDiagnostics e)))
+      Just book -> do
+        r <- flowLines (FontProvider (\_ _ -> pure (Right fakeFonts))) (PdfInput tmp (evProject e) (evStyle e) book False [])
+        either (assertFailure . show) pure r
+
+verseTests :: [TestTree]
+verseTests =
+  [ testCase "HTML: stanzas are p, lines are span and br; the CSS hangs the lines" $
+      withVerseProject "[verse]\nhang = \"3zw\"\n" verseSource $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool
+          "verse"
+          ( "<div class=\"verse\">\n<p><span>Full fathom five thy father lies;</span><br/>\n<span>Of his bones are coral made;</span></p>\n<p><span>Nothing of him that doth fade,</span></p>\n</div>\n"
+              `T.isInfixOf` page
+          )
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        assertBool "span rule" (".verse span { display: block; padding-inline-start: 3em; text-indent: -3em; }" `T.isInfixOf` css)
+        assertBool "stanza gap" (".verse p + p { margin-block-start: 1em; }" `T.isInfixOf` css),
+    testCase "HTML: no stanza gap rule when stanza-gap is 0" $
+      withVerseProject "[verse]\nstanza-gap = 0\nindent = \"10.5pt\"\n" verseSource $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        assertBool "no stanza gap" (not (".verse p + p" `T.isInfixOf` css))
+        assertBool "indent" (".verse { margin-inline-start: 10.5pt; }" `T.isInfixOf` css),
+    testCase "plain text: lines on lines, stanzas separated by a blank line" $
+      withVerseProject "" verseSource $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        t <- TIO.readFile (tmp </> "build/text/horizontal/v.txt")
+        t @?= "Full fathom five thy father lies;\nOf his bones are coral made;\n\nNothing of him that doth fade,\n",
+    testCase "PDF: a long line is broken and its continuation hangs" $ do
+      let style = "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 30\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n"
+          fs = 655360
+      (flow, ls) <- verseLines style ("@verse\n  " <> T.replicate 45 "あ" <> "\n\n  い\n")
+      ls @?= [(30 * fs, 0), (28 * fs, 2 * fs), (30 * fs, 0)]
+      [length bs | FParagraph bs <- flow] @?= [2, 1]
+      [n | FSpace n <- flow] @?= [1],
+    testCase "PDF: the hang in vertical writing, and the stanza gap from the style" $ do
+      let fs = maybe 0 (dimToSp 0) (parseDim "13Q")
+      (flow, ls) <- verseLines (pdfStyle <> "\n[verse]\nstanza-gap = 2\n") ("@verse\n  " <> T.replicate 60 "あ" <> "\n\n  い\n")
+      map snd ls @?= [0, 2 * fs, 0]
+      [n | FSpace n <- flow] @?= [2]
+  ]
 
 -- | A project with the identity plugin locked and cached.
 withPluginProject :: BS.ByteString -> (FilePath -> IO a) -> IO a

@@ -396,7 +396,16 @@ tests =
               Left ls -> assertFailure (show ls),
           testCase "references that never settle are an error" $ do
             let layout assumed = paginate 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"]]])
-            resolvePageRefs layout @?= Left ["x"]
+            resolvePageRefs layout @?= Left ["x"],
+          testCase "a space between stanzas takes grid lines (docs/adr ADR 0003)" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 4), FSpace 1, FParagraph (lines' 10 1)]
+            map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SLine 10)]]
+            let qs = paginate 5 [FParagraph (lines' 0 2), FSpace 2, FParagraph (lines' 10 1)]
+            map poSlots qs @?= [[(0, SLine 0), (1, SLine 1), (4, SLine 10)]],
+          testCase "a space at the top of a page takes nothing" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 5), FSpace 1, FParagraph (lines' 10 1)]
+            map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3), (4, SLine 4)], [(0, SLine 10)]]
+            map poSlots (paginate 5 [FSpace 3, FParagraph (lines' 0 1)]) @?= [[(0, SLine 0)]]
         ],
       testGroup
         "wrapped figures (ADR 0004)"

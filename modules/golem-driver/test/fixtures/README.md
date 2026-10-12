@@ -17,7 +17,10 @@ Do not edit them by hand.
   (1863) edited by W. G. Clark and W. A. Wright. The play is in the public
   domain. The converter drops the Project Gutenberg header and licence,
   the transcriber's note, the footnotes and the textual notes; the result
-  carries no Project Gutenberg trademark.
+  carries no Project Gutenberg trademark. Verse is set with `@verse`. The
+  source marks verse only by its line breaks, so the converter guesses it
+  and takes a few short prose speeches whose lines all start with capitals
+  for verse (two in Act I, Scene I).
 - 『蟹工船』: 青空文庫 図書カード No.1465（底本「蟹工船・党生活者」新潮文庫）。
   著作権の保護期間は満了している。入力者、校正者と底本の情報は、青空文庫の
   ファイルにあるとおり `kanikosen.gm` の末尾に残している。

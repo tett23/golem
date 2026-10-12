@@ -2,7 +2,7 @@
 ; the Haskell types in Golem.Doc.IR mirror it. Sum types are arrays whose
 ; first element is a fixed tag; tags are never reused.
 
-document = [abi-version: 1, file: uint, blocks: [* block]]
+document = [abi-version: 2, file: uint, blocks: [* block]]
 
 span = [file: uint, start: uint, end: uint]
 
@@ -18,6 +18,7 @@ block-body =
   / [6, lang: tstr / null, code: tstr]             ; code block
   / [7, figure]                                    ; figure
   / [8, channel]                                   ; channel output
+  / [9, verse]                                     ; verse
 
 heading-attrs = [toc-title: inlines / null, number: int / null, nonumber: bool, notoc: bool]
 list-item = [number: int / null, [* block]]
@@ -25,6 +26,9 @@ def-group = [terms: [+ inlines], defs: [+ [* block]]]
 alignment = 0..3                                   ; default, left, center, right
 figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block]]
 channel = [0, depth: uint] / [1] / [2]             ; toc, index, bibliography
+verse = [+ stanza]
+stanza = [+ verse-line]
+verse-line = [+ inline]
 
 inlines = [* inline]
 inlines-no-ruby = [* inline-no-ruby]

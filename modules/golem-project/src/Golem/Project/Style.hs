@@ -12,6 +12,8 @@ module Golem.Project.Style
     HeadingStyle (..),
     Composition (..),
     SidenoteStyle (..),
+    VerseStyle (..),
+    defaultVerseStyle,
     MasterDef (..),
     Swatch (..),
     defaultStyle,
@@ -133,6 +135,20 @@ data SidenoteStyle = SidenoteStyle
   }
   deriving stock (Eq, Show)
 
+-- | [verse] (docs/adr ADR 0003).
+data VerseStyle = VerseStyle
+  { -- | the start of every line
+    vsIndent :: !Dim,
+    -- | the continuation of a line broken at the measure, beyond the indent
+    vsHang :: !Dim,
+    -- | grid lines between stanzas
+    vsStanzaGap :: !Int
+  }
+  deriving stock (Eq, Show)
+
+defaultVerseStyle :: VerseStyle
+defaultVerseStyle = VerseStyle (Zw 0) (Zw 2) 1
+
 data MasterDef = MasterDef
   { mdRunningHead :: !(Maybe (Text, Text)), -- position, content
     mdFolio :: !(Maybe (Text, Text)) -- position, format
@@ -156,7 +172,8 @@ data Style = Style
     stWrapGap :: !Dim,
     stIntent :: !(Maybe FilePath),
     stSwatches :: !(Map Text Swatch),
-    stMasters :: !(Map Text MasterDef)
+    stMasters :: !(Map Text MasterDef),
+    stVerse :: !VerseStyle
   }
   deriving stock (Eq, Show)
 
@@ -179,7 +196,8 @@ defaultStyle =
       stWrapGap = Zw 1,
       stIntent = Nothing,
       stSwatches = Map.empty,
-      stMasters = Map.empty
+      stMasters = Map.empty,
+      stVerse = defaultVerseStyle
     }
 
 -- | JIS B series, A series and 四六判, in millimetres.
@@ -351,6 +369,15 @@ data Figures = Figures (Maybe Text) (Maybe Dim)
 instance FromValue Figures where
   fromValue = parseTableFromValue (Figures <$> optKey "number" <*> dimKey "wrap-gap")
 
+instance FromValue VerseStyle where
+  fromValue = parseTableFromValue $ do
+    i <- dimKey "indent"
+    h <- dimKey "hang"
+    g <- optKey "stanza-gap"
+    when (maybe False (< 0) g) $ fail "stanza-gap must be 0 or more"
+    let d = defaultVerseStyle
+    pure (VerseStyle (fromMaybe (vsIndent d) i) (fromMaybe (vsHang d) h) (fromMaybe (vsStanzaGap d) g))
+
 data ColorSec = ColorSec (Maybe Text) (Map Text Swatch)
 
 instance FromValue ColorSec where
@@ -370,6 +397,7 @@ instance FromValue Style where
     Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
     masters <- fromMaybe Map.empty <$> optKey "masters"
+    verse <- fromMaybe defaultVerseStyle <$> optKey "verse"
     hs <- traverse headingLevel (Map.toList (headings :: Map Text HeadingStyle))
     let d = defaultStyle
     pure
@@ -387,7 +415,8 @@ instance FromValue Style where
           stWrapGap = fromMaybe (stWrapGap d) fgap,
           stIntent = T.unpack <$> intent,
           stSwatches = swatches,
-          stMasters = masters
+          stMasters = masters,
+          stVerse = verse
         }
     where
       headingLevel (k, v) = case k of

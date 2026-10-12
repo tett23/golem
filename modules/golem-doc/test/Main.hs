@@ -62,7 +62,7 @@ cbor =
           Nothing -> pure ()
           Just exe -> withSystemTempDirectory "golem-doc" $ \dir -> do
             let path = dir </> "bad.cbor"
-            BS.writeFile path (BS.pack [0x83, 0x02, 0x00, 0x80])
+            BS.writeFile path (BS.pack [0x83, 0x01, 0x00, 0x80])
             (code, _, _) <- readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
             assertBool "rejected" (code /= ExitSuccess),
       testProperty "CBOR round trip" $ withTests 300 $ property $ do
@@ -88,6 +88,29 @@ cbor =
       testCase "wrong ABI version is rejected" $ do
         let bytes = toStrictByteString (encodeTerm (TList [TInt 99, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes)),
+      testCase "a document of ABI version 1 is rejected (docs/adr ADR 0003)" $ do
+        abiVersion @?= 2
+        let bytes = toStrictByteString (encodeTerm (TList [TInt 1, TInt 0, TList []]))
+        assertBool "rejected" (isLeft (decodeDocument bytes)),
+      testCase "verse: empty verse, stanzas and lines are rejected" $ do
+        let spT = TList [TInt 0, TInt 0, TInt 1]
+            text = TList [TInt 0, spT, TString "a"]
+            doc v = toStrictByteString (encodeTerm (TList [TInt 2, TInt 0, TList [TList [spT, TNull, TList [TInt 9, v]]]]))
+        assertBool "a line" (not (isLeft (decodeDocument (doc (TList [TList [TList [text]]])))))
+        assertBool "no stanzas" (isLeft (decodeDocument (doc (TList []))))
+        assertBool "an empty stanza" (isLeft (decodeDocument (doc (TList [TList []]))))
+        assertBool "an empty line" (isLeft (decodeDocument (doc (TList [TList [TList []]])))),
+      testCase "verse: ruby inside ruby in a line is rejected by the decoder" $ do
+        let spT = TList [TInt 0, TInt 0, TInt 1]
+            inner = TList [TInt 4, spT, TList [TList [TList [], TNull]]]
+            outer = TList [TInt 4, spT, TList [TList [TList [inner], TString "よみ"]]]
+            bytes = toStrictByteString (encodeTerm (TList [TInt 2, TInt 0, TList [TList [spT, TNull, TList [TInt 9, TList [TList [TList [outer]]]]]]]))
+        assertBool "rejected" (isLeft (decodeDocument bytes)),
+      testCase "verse: the inlines of lines are validated" $ do
+        let size (FileId 0) = Just 10
+            size _ = Nothing
+            doc = Document (FileId 0) [Block sp Nothing (VerseBlock [[[Text sp "a"], [Text (SrcSpan (FileId 0) 5 20) "b"]]])]
+        validateDocument size [] doc @?= ["ソース位置がファイルの範囲外です"],
       testCase "trailing bytes are rejected" $
         assertBool "rejected" (isLeft (decodeInlines (encodeInlines [] <> "\0"))),
       testCase "validation: spans, deferred expressions, index levels" $ do

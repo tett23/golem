@@ -42,6 +42,7 @@ block =
       (\items -> T.intercalate "\n" ["- " <> i | i <- items]) <$> Gen.list (Range.linear 1 3) line,
       (\s1 s2 -> "@toc" <> s1 <> "depth=2" <> s2) <$> Gen.element [" ", "   "] <*> spaces,
       (\s -> "@set" <> s <> "v = 1") <$> Gen.element [" ", "    "],
+      (\stanzas -> "@verse\n" <> T.intercalate "\n\n" [T.intercalate "\n" ["  " <> l | l <- ls] | ls <- stanzas]) <$> Gen.list (Range.linear 1 2) (Gen.list (Range.linear 1 3) line),
       pure "```\n  code  \n```",
       (\s1 s2 -> "|" <> s1 <> "a|b" <> s2 <> "|\n|---|---|\n|1" <> s2 <> "|" <> s1 <> "2|") <$> spaces <*> spaces
     ]
@@ -81,7 +82,8 @@ tests =
           golden "command-spacing" "[strong:   a] と [ruby   漢字  :かん|  じ]。[= 1 ]\n\n@toc    depth=2   \n\n@set   v = 1\n",
           golden "escapes" "\\a\\漢\\[\\]\\\\\\%と\\1\n\n\\1. 番号ではない\n",
           golden "trailing-whitespace" "@toc depth=2   \n\n- a  \n- b\t\n\n本文。  \n続き。 \n",
-          golden "table-spacing" "| a|b |\n|---|:-:|\n|1|  2|\n"
+          golden "table-spacing" "| a|b |\n|---|:-:|\n|1|  2|\n",
+          golden "verse" "@verse\n\tFull fathom five thy father lies;  \n\tOf his bones are coral made;\t\n\n\n  Nothing of him that doth fade,\n  But doth suffer a sea-change \n"
         ],
       testCase "BOM, CRLF and tab indentation are fixed" $
         formatted "\xFEFF- a\r\n\t- b\r\n" @?= "- a\n  - b\n",

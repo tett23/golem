@@ -13,6 +13,7 @@ where
 import Data.Char (isAlphaNum, ord)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (listToMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -53,14 +54,37 @@ isLatinScript c =
        )
 
 {- | G0501: a newline inside a paragraph between two Latin characters
-joins the words without a space.
+joins the words without a space. The newlines of the body of @verse break
+lines; only the prose slots inside it are checked (docs/adr ADR 0003).
 -}
 latinJoinedByNewline :: FileId -> Node -> [Diagnostic]
 latinJoinedByNewline fid = go 0
   where
     go start n
+      | isVerse n = verseBody start (nodeChildren n)
       | nodeKind n `elem` [NParagraph, NProseSlot, NListItem, NDefTerm] = scan start (nodeChildren n)
       | otherwise = descend start (nodeChildren n)
+    isVerse n = nodeKind n == NBlockCommand && listToMaybe [tokText t | ElemToken t <- nodeChildren n, tokKind t == KIdent] == Just "verse"
+    -- paragraphs of the body: only their prose slots
+    verseBody _ [] = []
+    verseBody s (e : es) =
+      ( case e of
+          ElemNode m
+            | nodeKind m == NCommandBody -> verseBody s (nodeChildren m)
+            | nodeKind m == NParagraph -> proseSlots s (nodeChildren m)
+            | otherwise -> go s m
+          _ -> []
+      )
+        <> verseBody (s + elementWidth e) es
+    proseSlots _ [] = []
+    proseSlots s (e : es) =
+      ( case e of
+          ElemNode m
+            | nodeKind m == NProseSlot -> go s m
+            | otherwise -> proseSlots s (nodeChildren m)
+          _ -> []
+      )
+        <> proseSlots (s + elementWidth e) es
     descend _ [] = []
     descend s (e : es) = (case e of ElemNode m -> go s m; _ -> []) <> descend (s + elementWidth e) es
     -- tokens of this node in order with their offsets, nested nodes searched separately

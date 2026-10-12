@@ -61,7 +61,7 @@ foreign import capi unsafe "golem_plugin.h golem_wat2wasm" c_wat2wasm :: CString
 
 -- | The ABI version of this host.
 abiVersion :: Word32
-abiVersion = 1
+abiVersion = 2
 
 -- | The fuel of one call: about this many wasm instructions.
 defaultFuel :: Word64
@@ -307,6 +307,7 @@ blockInlines b = case blockBody b of
   Heading _ _ is -> is
   DefList gs -> concat (concatMap dgTerms gs)
   Table _ h rows -> concat h <> concat (concat rows)
+  VerseBlock stanzas -> concat (concat stanzas)
   _ -> []
 
 documentSpans :: Document -> [SrcSpan]

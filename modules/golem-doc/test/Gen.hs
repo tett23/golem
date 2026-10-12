@@ -80,6 +80,7 @@ genBlock =
         Heading <$> Gen.int (Range.linear 1 3) <*> attrs <*> inl,
         CodeBlock <$> Gen.maybe genText <*> genText,
         ChannelOutput <$> Gen.element [TocOutput 2, IndexOutput, BibliographyOutput],
+        VerseBlock <$> Gen.list (Range.linear 1 3) (Gen.list (Range.linear 1 3) (Gen.list (Range.linear 1 3) genInline)),
         Table <$> Gen.list (Range.singleton 2) Gen.enumBounded <*> Gen.list (Range.singleton 2) inl <*> Gen.list (Range.linear 0 2) (Gen.list (Range.singleton 2) inl)
       ]
       [ BulletList <$> Gen.list (Range.linear 1 3) (ListItem <$> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.list (Range.linear 0 2) genBlock),
