@@ -1,0 +1,98 @@
+{
+  "jobs": [
+    {
+      "name": "build (ubuntu-24.04)",
+      "startedAt": "2026-10-12T22:57:15Z",
+      "completedAt": "2026-10-12T23:06:39Z",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-12T22:57:16Z",
+          "completedAt": "2026-10-12T22:57:17Z",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "number": 2,
+          "startedAt": "2026-10-12T22:57:17Z",
+          "completedAt": "2026-10-12T22:57:18Z",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run haskell-actions/setup@v2",
+          "number": 3,
+          "startedAt": "2026-10-12T22:57:18Z",
+          "completedAt": "2026-10-12T22:59:41Z",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run cabal build all",
+          "number": 8,
+          "startedAt": "2026-10-12T23:01:21Z",
+          "completedAt": "2026-10-12T23:05:11Z",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "adr",
+      "startedAt": "2026-10-12T22:57:15Z",
+      "completedAt": "2026-10-12T22:57:20Z",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-12T22:57:16Z",
+          "completedAt": "2026-10-12T22:57:16Z",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/checkout@v7",
+          "number": 2,
+          "startedAt": "2026-10-12T22:57:16Z",
+          "completedAt": "2026-10-12T22:57:18Z",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run tett23/adr-guard@v0.2.1",
+          "number": 3,
+          "startedAt": "2026-10-12T22:57:18Z",
+          "completedAt": "2026-10-12T22:57:18Z",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "name": "determinism",
+      "startedAt": "2026-10-12T23:06:41Z",
+      "completedAt": "2026-10-12T23:06:45Z",
+      "conclusion": "success",
+      "steps": [
+        {
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-10-12T23:06:42Z",
+          "completedAt": "2026-10-12T23:06:43Z",
+          "conclusion": "success"
+        },
+        {
+          "name": "Run actions/download-artifact@v8",
+          "number": 2,
+          "startedAt": "2026-10-12T23:06:43Z",
+          "completedAt": "2026-10-12T23:06:44Z",
+          "conclusion": "success"
+        },
+        {
+          "name": "Outputs are byte-identical on x86-64 and aarch64",
+          "number": 3,
+          "startedAt": "2026-10-12T23:06:44Z",
+          "completedAt": "2026-10-12T23:06:44Z",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ]
+}
