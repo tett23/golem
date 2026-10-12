@@ -103,6 +103,8 @@ Haskell のコードは fourmolu 0.21.0.0 で整形し、hlint 3.10 の指摘を
 生成したパーサー（`modules/golem-parser/src/Golem/Parser/Generated.hs`）は対象外である。
 
 文法（`modules/golem-parser/grammar/Golem.peg`）を変えたら、`scripts/gen-parser.sh` で生成し直して、生成物もコミットする。
+文法にラベルを足すときは、ラベルを外しても受理する言語が変わらないことを確かめ、理由のコメントを添えて `%safe` を書く。
+`scripts/gen-parser.sh` は peg-hs の警告を誤りとして扱うので、`%safe` のないラベルがあると生成が失敗する（[golem-parser ADR 0007](./docs/golem-parser/adr/0007-grammar-label-safety.md)）。
 
 ## ドキュメント
 

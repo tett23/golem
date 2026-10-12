@@ -86,6 +86,7 @@
 %recover heading_level SkipBlock
 %recover def_orphan SkipBlock
 %recover table_delimiter SkipBlock
+%recover table_row SkipBlock
 %recover table_cells SkipLine
 %recover code_close SkipAll
 %recover close SkipParagraph
@@ -94,16 +95,41 @@
 %recover expr SkipExpr
 %recover bracket SkipParagraph
 
+# Every label is safe (golem-parser ADR 0007): removing it does not change
+# the language. peg-hs's check cannot prove it for the following reasons.
+#
+# The checker treats the predicate of Ind(n) as succeeding on any character;
+# every alternative of Block starts with Ind(ind), and after it each needs a
+# mark that the failing input does not have (golem-parser ADR 0007).
+%safe block
+%safe indent
+%safe def_orphan
+%safe heading_level
+%safe table_delimiter
+%safe table_row
+%safe code_close
+# BadBracket's &{ False } looks like it may succeed to the checker.
+%safe bracket
+%safe arg_order
+# Telling %% from %, [= from [ and *[ from * needs the second character.
+%safe close
+%safe comment_close
+%safe expr
+# A row whose cell count differs is followed by the !(Nl Ind Pipe) check,
+# which fails on that very row.
+%safe table_cells
+
 # ---------------------------------------------------------------- file
 
 File :: ()
-File <- BlankLines? Blocks(0)? BlankLines? { () }
+File <- BlankLines? (&. Blocks(0) BlankLines?)? { () }
 
 BlankLines :: ()
 BlankLines <- BlankLine+ { () }
 
 BlankLine :: ()
 BlankLine <- Ws? Nl { () }
+           / Ws !. { () }
 
 Blocks(ind :: Int) :: ()
 Blocks <- Block(ind) (BlankLines? &(Ind(ind) !BlankLine .) Block(ind))* { () }
@@ -183,7 +209,7 @@ HashMark <- '###' { () } / '##' { () } / '#' { () }
 # ------------------------------------------------------------ paragraphs
 
 Paragraph(ind :: Int) :: ()
-Paragraph <- Ind(ind) !BlockStart Inline(ind)+ (Nl / !.) { () }
+Paragraph <- Ind(ind) ![ \t] !BlockStart Inline(ind)+ (Nl / !.) { () }
 
 LineContinuation(ind :: Int) :: ()
 LineContinuation <- Nl !BlankLine Ind(ind) !BlockStart { () }
@@ -232,7 +258,7 @@ Arguments <- (Sp PosArg)* (Sp KeywordArgument)* (!(Sp PosArg))^arg_order { () }
 
 PosArg :: ()
 PosArg <- !(Word Eq) SplatArgument { () }
-        / !(Word Eq) Argument { () }
+        / !(Word Eq) !Splat Argument { () }
 
 Argument :: ()
 Argument <- ArgValue { () }
@@ -490,7 +516,7 @@ DefBody <- &(Ind(ind + 2) ![ \t] !BlankLine .) Block(ind + 2) (BlankLines? &(Ind
 
 Table(ind :: Int) :: ()
 Table <- h:TableRow(ind) Nl (TableDelimiter(ind))^table_delimiter
-         TableBodyRow(ind, h)* (Nl / !.) { () }
+         TableBodyRow(ind, h)* (!(Nl Ind(ind) Pipe))^table_row (Nl / !.) { () }
 
 TableBodyRow(ind :: Int, h :: Int) :: ()
 TableBodyRow <- Nl r:TableRow(ind) (&{ r == h })^table_cells { () }
