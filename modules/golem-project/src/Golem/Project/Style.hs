@@ -191,6 +191,8 @@ pageSize = \case
   "B5" -> Just (182, 257)
   "B6" -> Just (128, 182)
   "四六判" -> Just (127, 188)
+  -- 4.25in x 6.875in (ADR 0003)
+  "mass-market" -> Just (17 / 4 * 254 / 10, 55 / 8 * 254 / 10)
   _ -> Nothing
 
 newtype DimV = DimV Dim

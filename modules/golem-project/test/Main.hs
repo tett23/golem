@@ -130,6 +130,9 @@ tests =
             Map.keys (stHeadings s) @?= [1, 2]
             fmap pageSizeName (stPage s) @?= Just "B6"
             Map.lookup "accent" (stSwatches s) @?= Just (Swatch (0, 80, 100, 0)),
+      testCase "mass-market paperback size (ADR 0003)" $ do
+        pageSize "mass-market" @?= Just (10795 / 100, 174625 / 1000)
+        pageSize "A6" @?= Just (105, 148),
       testCase "style.toml errors" $ do
         codes (parseStyle (FileId 0) "[page]\nsize = \"B6\"\nunknown = 1\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[emphasis]\nstrong = \"underline\"\n") @?= ["G0306"]
