@@ -22,8 +22,10 @@ library
                     Golem.Layout.Hyphenation
                     Golem.Layout.Hyphenation.EnUs
                     Golem.Layout.Japanese
+                    Golem.Layout.Look
                     Golem.Layout.Paginate
                     Golem.Layout.Sidenotes
+                    Golem.Layout.Table
                     Golem.Layout.Wrap
   build-depends:
     , base               >=4.20 && <4.21

@@ -144,7 +144,18 @@ tests =
         fmap stVerse (parseStyle (FileId 0) "[verse]\nindent = \"1zw\"\nhang = \"3zw\"\nstanza-gap = 2\n") @?= Right (VerseStyle (Zw 1) (Zw 3) 2)
         fmap stVerse (parseStyle (FileId 0) "[verse]\nhang = \"10pt\"\n") @?= Right (VerseStyle (Zw 0) (Abs 655360) 1)
         codes (parseStyle (FileId 0) "[verse]\nunknown = 1\n") @?= ["G0306"]
-        codes (parseStyle (FileId 0) "[verse]\nstanza-gap = -1\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[verse]\nstanza-gap = -1\n") @?= ["G0306"],
+      testCase "a heading font must name a font role (golem-driver ADR 0003)" $ do
+        codes (parseStyle (FileId 0) "[headings.1]\nfont = \"nope\"\n") @?= ["G0308"]
+        codes (parseStyle (FileId 0) "[fonts.heading]\nlatin = \"h.otf\"\n\n[headings.1]\nfont = \"heading\"\n") @?= [],
+      testCase "bold and italic fonts name font roles (golem-driver ADR 0004)" $ do
+        codes (parseStyle (FileId 0) "[emphasis]\nbold-font = \"gothic\"\n") @?= ["G0308"]
+        codes (parseStyle (FileId 0) "[emphasis]\nitalic-font = \"italic\"\n") @?= ["G0308"]
+        codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G0308"]
+        case parseStyle (FileId 0) "[fonts.gothic]\nja = \"g.otf\"\n\n[fonts.italic]\nlatin = \"i.otf\"\n\n[emphasis]\nbold-font = \"gothic\"\nitalic-font = \"italic\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> (stBoldFont s, stItalicFont s) @?= (Just "gothic", Just "italic")
+        fmap (\s -> (stBoldFont s, stItalicFont s)) (parseStyle (FileId 0) "[emphasis]\nstrong = \"italic\"\n") @?= Right (Nothing, Nothing)
     ]
 
 specStyle :: Text
@@ -168,6 +179,9 @@ specStyle =
       "ja = \"fonts/a.otf\"",
       "latin = \"fonts/b.otf\"",
       "features = [\"palt\"]",
+      "",
+      "[fonts.heading]",
+      "ja = \"fonts/c.otf\"",
       "",
       "[character-styles.term]",
       "font = \"heading\"",

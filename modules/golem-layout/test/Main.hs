@@ -10,8 +10,10 @@ import Golem.Layout.Hyphenation
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
+import Golem.Layout.Look
 import Golem.Layout.Paginate
 import Golem.Layout.Sidenotes
+import Golem.Layout.Table
 import Golem.Layout.Wrap
 import Golem.Syntax (FileId (..), mkSpan)
 import Hedgehog
@@ -29,14 +31,18 @@ fs :: Sp
 fs = 10 * 65536
 
 box :: Sp -> Item
-box w = Box w (BoxContent "x" False 0 0 0)
+box w = Box w (BoxContent "x" False 0 0 0 look0)
+
+-- | The original look of 'defaultComposeEnv'.
+look0 :: Look
+look0 = ceLook (defaultComposeEnv fs)
 
 -- | Words of the given widths separated by interword glue.
 paragraph :: [Sp] -> [Item]
 paragraph ws = concat [box w : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 refBox :: Text -> Sp -> Item
-refBox t w = Box w (BoxContent t False 0 0 0)
+refBox t w = Box w (BoxContent t False 0 0 0 referenceLook)
 
 knuthPlassWords, knuthPlassLog :: FilePath
 knuthPlassWords = "test/data/knuth-plass/frog-king.words"
@@ -254,9 +260,9 @@ tests =
               assertBool "a run that reaches the second pass" (any ((== 2) . trPass) runs),
             testCase "the words add up to the paragraph TeX set in one box" $ do
               ws <- readWords knuthPlassWords
-              let (sp, _, _) = wSpace ws
+              let (space, _, _) = wSpace ws
                   n = toInteger (length (wBoxes ws))
-              sum (map snd (wBoxes ws)) + (n - 1) * sp @?= wWhole ws
+              sum (map snd (wBoxes ws)) + (n - 1) * space @?= wWhole ws
           ]
             <> [ testCase ("\\hsize=" <> show h <> "pt agrees with TeX") $ do
                    ws <- readWords knuthPlassWords
@@ -347,12 +353,12 @@ tests =
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
             ws <- forAll (Gen.list (Range.linear 3 12) (Gen.integral (Range.linear 20 70)))
-            let items = [Box w (BoxContent "w" True 0 0 0) | w <- ws] `interleave` Glue 6 3 2 <> finish
+            let items = [Box w (BoxContent "w" True 0 0 0 look0) | w <- ws] `interleave` Glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
           testCase "expansion lowers the spread of adjustment ratios" $ do
             let ws = [23, 41, 37, 19, 52, 33, 28, 45, 31, 26, 39, 22, 48, 35, 29, 41]
-                items = [Box (w * 100) (BoxContent "w" True 0 0 0) | w <- ws] `interleave` Glue 600 300 200 <> finish
+                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0) | w <- ws] `interleave` Glue 600 300 200 <> finish
                 variance ps =
                   let rs = map glueRatio (init (brLines (breakParagraph ps (const 15000) items)))
                       m = sum rs / fromIntegral (length rs)
@@ -368,34 +374,43 @@ tests =
             let ps = paginate 5 [FParagraph (lines' 0 6)]
             slots ps @?= [[0, 1, 2, 3], [4, 5]],
           testCase "headings and definition terms stay with what follows" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 2 "節" False (lines' 20 1), FParagraph (lines' 30 3)]
+            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 2 "節" False 1 (lines' 20 1), FParagraph (lines' 30 3)]
             slots ps @?= [[0, 1, 2], [20, 30, 31, 32]]
             let qs = paginate 5 [FParagraph (lines' 0 4), FDefTerm (lines' 20 1), FParagraph (lines' 30 2)]
             slots qs @?= [[0, 1, 2, 3], [20, 30, 31]],
           testCase "a recto heading starts on an odd page after a blank page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 1 "章" True (lines' 20 1)]
+            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 1 "章" True 1 (lines' 20 1)]
             map poBlank ps @?= [False, True, False]
             map poNumber ps @?= [1, 2, 3]
             poRunningHead (last ps) @?= Just "章",
           testCase "a figure that does not fit goes to the next page; text moves up" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"], FParagraph (lines' 10 2)]
+            let ps = paginate 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 10), (4, SLine 11)], [(0, SFigure 99)]],
           testCase "footnotes sit on the page of their marker and continue when too long" $ do
-            let withNote i n = LineBox i [NoteBody (100 + i) n] []
-                ps = paginate 6 [FParagraph [LineBox 0 [] [], withNote 1 2, LineBox 2 [] [], withNote 3 1, LineBox 4 [] []]]
+            let withNote i n = LineBox i [NoteBody (100 + i) n] [] []
+                ps = paginate 6 [FParagraph [LineBox 0 [] [] [], withNote 1 2, LineBox 2 [] [] [], withNote 3 1, LineBox 4 [] [] []]]
             map poFootnotes ps @?= [[(101, 0, 2)], [(103, 0, 1)]]
-            let long = paginate 4 [FParagraph [withNote 0 5, LineBox 1 [] []]]
+            let long = paginate 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
             map poFootnotes long @?= [[(100, 0, 2)], [(100, 2, 2)], [(100, 4, 1)]],
+          testCase "index marks go to the page of their line (golem-driver ADR 0007)" $ do
+            let m = mkSpan (FileId 0) 10 20
+                ps = paginate 1 [FParagraph [LineBox 0 [] [] [], LineBox 1 [] [] [m], LineBox 2 [] [] []]]
+            map poNumber ps @?= [1, 2, 3]
+            markPages ps @?= Map.fromList [(m, 2)],
+          testCase "the marks of a figure go with it to the next page" $ do
+            let m = mkSpan (FileId 0) 10 20
+                ps = paginate 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [m], FParagraph (lines' 10 2)]
+            markPages ps @?= Map.fromList [(m, 2)],
           testCase "page references converge when the page count gains a digit" $ do
             -- the reference sits before the label; at three digits the reference line wraps
             let layout assumed =
                   let refWidthLines = if Map.findWithDefault 1 "end" assumed >= 100 then 2 else 1
-                   in paginate 5 (FParagraph (lines' 0 refWidthLines) : [FParagraph (lines' (1000 + i * 10) 2) | i <- [0 .. 196]] <> [FParagraph [LineBox 9999 [] ["end"]]])
+                   in paginate 5 (FParagraph (lines' 0 refWidthLines) : [FParagraph (lines' (1000 + i * 10) 2) | i <- [0 .. 196]] <> [FParagraph [LineBox 9999 [] ["end"] []]])
             case resolvePageRefs layout of
               Right ps -> Map.lookup "end" (labelPages ps) @?= Just (toInteger (poNumber (last ps)))
               Left ls -> assertFailure (show ls),
           testCase "references that never settle are an error" $ do
-            let layout assumed = paginate 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"]]])
+            let layout assumed = paginate 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"] []]])
             resolvePageRefs layout @?= Left ["x"],
           testCase "a space between stanzas takes grid lines (docs/adr ADR 0003)" $ do
             let ps = paginate 5 [FParagraph (lines' 0 4), FSpace 1, FParagraph (lines' 10 1)]
@@ -408,6 +423,134 @@ tests =
             map poSlots (paginate 5 [FSpace 3, FParagraph (lines' 0 1)]) @?= [[(0, SLine 0)]]
         ],
       testGroup
+        "looks: emphasis, character styles and colour (golem-driver ADR 0004)"
+        [ testCase "a bold role measures its characters in its own font" $ do
+            let env = lookEnv (\lk -> \case Bold {} -> lk {lkFace = "wide", lkLatinFace = "wide"}; _ -> lk)
+                boxes = [(w, lkFace (bcLook c)) | Box w c <- fst (composeInlines env [Bold sp [sp0 "AB"], sp0 "C"])]
+            case boxes of
+              [(ab, fab), (c, fc)] -> do
+                -- A and B are each twice as wide as C
+                ab @?= 4 * c
+                (fab, fc) @?= ("wide", "body")
+              other -> assertFailure (show other),
+          testCase "synthetic bold keeps the widths" $ do
+            let env = lookEnv (\lk -> \case Bold {} -> lk {lkEmbolden = True}; _ -> lk)
+                widths is = [w | Box w _ <- fst (composeInlines env is)]
+            widths [Bold sp [sp0 "AB"], sp0 "C"] @?= widths [sp0 "AB", sp0 "C"]
+            [lkEmbolden (bcLook c) | Box _ c <- fst (composeInlines env [Bold sp [sp0 "AB"], sp0 "C"])] @?= [True, False],
+          testCase "the space after a closing bracket follows the bracket's size" $ do
+            let env = lookEnv (\lk -> \case CharStyle {} -> lk {lkSize = 2 * lkSize lk}; _ -> lk)
+                items = fst (composeInlines env [CharStyle sp "big" [sp0 "」"], sp0 "あ"])
+            [w | Glue w _ _ <- items, w > 0, w < filStretch] @?= [fs],
+          testCase "a look boundary inside a Latin word is no break" $ do
+            let env = lookEnv (\lk -> \case Bold {} -> lk {lkEmbolden = True}; _ -> lk)
+                items = fst (composeInlines env [Bold sp [sp0 "Gol"], sp0 "em"])
+            [bcText c | Box _ c <- items] @?= ["Gol", "em"]
+            breakBeforeBox items 1 @?= False,
+          testCase "nested looks inherit what they do not set" $ do
+            let env = lookEnv $ \lk -> \case
+                  Bold {} -> lk {lkEmbolden = True}
+                  Italic {} -> lk {lkSlant = True}
+                  Color _ c _ -> lk {lkColor = Just c}
+                  _ -> lk
+            [bcLook c | Box _ c <- fst (composeInlines env [Color sp "accent" [Italic sp [Bold sp [sp0 "x"]]]])]
+              @?= [look0 {lkColor = Just "accent", lkSlant = True, lkEmbolden = True}]
+        ],
+      testGroup
+        "heading blocks (golem-driver ADR 0003)"
+        [ testCase "a 20Q heading on a 13Q, 22H grid takes two grid lines, three when it wraps" $ do
+            let q x = round (x / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Sp
+                (bfs, bp, s) = (q 13, q 22, q 20)
+                hp = round (toRational bp * toRational s / toRational bfs)
+                expect m =
+                  let e = toInteger (m - 1) * hp + s
+                      n = max 1 ((e + bp - bfs + bp - 1) `div` bp)
+                   in HeadingBlock hp (fromInteger n) (((n - 1) * bp + bfs - e) `div` 2)
+            headingBlock bfs bp s 1 @?= expect (1 :: Int)
+            headingBlock bfs bp s 2 @?= expect (2 :: Int)
+            hbSpan (headingBlock bfs bp s 1) @?= 2
+            hbSpan (headingBlock bfs bp s 2) @?= 3,
+          testCase "a heading of the body size sits on the grid" $
+            mapM_ (\m -> headingBlock fs (fs * 3 `div` 2) fs m @?= HeadingBlock (fs * 3 `div` 2) m 0) [1, 2, 3],
+          testCase "a heading block takes its span; the next paragraph starts after it" $ do
+            let ps = paginate 10 [FHeading 1 "章" False 3 (lines' 20 1), FParagraph (lines' 30 3)]
+            map poSlots ps @?= [[(0, SHeading 20 1), (3, SLine 30), (4, SLine 31), (5, SLine 32)]],
+          testCase "a heading block is not split; it goes whole to the next page" $ do
+            let ps = paginate 6 [FParagraph (lines' 0 4), FHeading 2 "節" False 3 (lines' 20 1), FParagraph (lines' 30 2)]
+            map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SHeading 20 1), (3, SLine 30), (4, SLine 31)]],
+          testCase "keeping a heading with the next paragraph counts its span and two lines" $ do
+            -- 2 used, 5 free: span 3 + 2 lines fit
+            let fits = paginate 7 [FParagraph (lines' 0 2), FHeading 2 "節" False 3 (lines' 20 1), FParagraph (lines' 30 4)]
+            take 1 (map (map snd . poSlots) fits) @?= [[SLine 0, SLine 1, SHeading 20 1, SLine 30, SLine 31]]
+            -- 3 used, 4 free: span 3 + 2 lines do not fit
+            let moves = paginate 7 [FParagraph (lines' 0 3), FHeading 2 "節" False 3 (lines' 20 1), FParagraph (lines' 30 4)]
+            map (map snd . poSlots) moves @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 31, SLine 32, SLine 33]]
+        ],
+      testGroup
+        "tables (golem-driver ADR 0008)"
+        [ testCase "cell extents: the widest unbreakable piece and the natural width" $ do
+            let env = defaultComposeEnv fs
+            cellExtent (compose env "PDF") @?= (fs * 3 `div` 2, fs * 3 `div` 2)
+            cellExtent (compose env "日本語") @?= (fs, 3 * fs)
+            let (mn, nat) = cellExtent (compose env "あ。")
+            mn @?= nat,
+          testCase "column widths: natural when they fit" $
+            columnWidths 100 [(10, 30), (20, 40)] @?= Right [30, 40],
+          testCase "column widths: the rest shared in proportion, the remainder from the first column" $
+            columnWidths 100 [(10, 60), (20, 80)] @?= Right [42, 58],
+          testCase "column widths: minimum widths that do not fit are an error" $
+            columnWidths 20 [(10, 30), (20, 40)] @?= Left (ColumnsTooWide 30 20),
+          testCase "a row is as high as its tallest cell" $ do
+            let env = defaultComposeEnv fs
+            case layoutTable defaultParams (5 * fs) fs [AlignDefault, AlignDefault] [compose env "見", compose env "出"] [[compose env "あいうえお", compose env "い"]] of
+              Right t -> do
+                stWidths t @?= [3 * fs, fs]
+                (stHeaderLines t, stRowLines t) @?= (1, [2])
+              Left e -> assertFailure (show e),
+          testCase "right and centre alignment shift a cell by the room it leaves" $ do
+            let env = defaultComposeEnv fs
+                table al = layoutTable defaultParams (10 * fs) fs [AlignLeft, al] [compose env "見出し", compose env "数"] [[compose env "あ", compose env "1"]]
+                offsetOf al = case table al of
+                  Right t -> [scOffset c | (_ : c : _) <- stRows t]
+                  Left e -> error (show e)
+            offsetOf AlignRight @?= [4 * fs + (fs - fs `div` 2)]
+            offsetOf AlignCenter @?= [4 * fs + (fs - fs `div` 2) `div` 2]
+            offsetOf AlignLeft @?= [4 * fs],
+          testCase "cells do not hang punctuation: no line is wider than its column" $ do
+            let env = (defaultComposeEnv fs) {ceHanging = False}
+            case layoutTable defaultParams {pProtrusion = True} (4 * fs) fs [AlignDefault, AlignDefault] [compose env "見", compose env "出"] [[compose env "あいうえおかきくけこ。", compose env "い"]] of
+              Right t ->
+                sequence_
+                  [ assertBool (show (end, w)) (end <= w)
+                  | (row : _) <- stRows t,
+                    (w : _) <- [stWidths t],
+                    l <- scLines row,
+                    let end = maybe 0 (\(Box bw _, x) -> x + bw) (lastBox (placeLine l))
+                  ]
+              Left e -> assertFailure (show e)
+        ],
+      testGroup
+        "table pagination (golem-driver ADR 0008)"
+        [ testCase "a table breaks between rows and repeats its header" $ do
+            let ps = paginate 4 [FTable 100 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
+            map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 11, SLine 12], [SLine 0, SLine 13, SLine 14]]
+            map poTables ps @?= [[TableSegment 100 0 0 3], [TableSegment 100 0 0 2]],
+          testCase "the header's label and note are counted once" $ do
+            let header = [LineBox 0 [NoteBody 900 1] ["tbl"] []]
+                ps = paginate 4 [FTable 100 header [lines' (10 + i) 1 | i <- [0 .. 4]]]
+            map poLabels ps @?= ["tbl"] : replicate (length ps - 1) []
+            [(poNumber p, n) | p <- ps, (n, _, _) <- poFootnotes p] @?= [(1, 900)],
+          testCase "a table that cannot start with its header and first row goes to the next page" $ do
+            let ps = paginate 4 [FParagraph (lines' 0 3), FTable 100 (lines' 20 1) [lines' 30 1]]
+            map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SLine 20, SLine 30]],
+          testCase "a row is never split across pages" $ do
+            let ps = paginate 4 [FTable 100 (lines' 0 1) [lines' 10 1, lines' 20 1, lines' 30 2]]
+            map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 20], [SLine 0, SLine 30, SLine 31]],
+          testCase "a heading before a table stays with its header and first row" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 1 "章" False 1 (lines' 20 1), FTable 100 (lines' 30 1) [lines' 40 2]]
+            map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 40, SLine 41]]
+        ],
+      testGroup
         "wrapped figures (ADR 0004)"
         [ testCase "the exclusion rounds up to grid lines and shortens only the lines beside it" $ do
             let ex = exclusion WrapEnd 17 3 40 50
@@ -418,8 +561,14 @@ tests =
             let ex = exclusion WrapStart 17 3 40 30
                 r = breakParagraph defaultParams (wrappedLineWidth 160 ex 0) (paragraph (replicate 14 30))
             map lineTarget (take 3 (brLines r)) @?= [117, 117, 160],
+          testCase "a continued paragraph has no first line to keep from being an orphan (golem-driver ADR 0005)" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 4), FContinued (lines' 10 3)]
+            slots ps @?= [[0, 1, 2, 3, 10], [11, 12]]
+            -- the last line alone would be a widow: break a line earlier
+            let qs = paginate 5 [FParagraph (lines' 0 2), FContinued (lines' 10 4)]
+            slots qs @?= [[0, 1, 10, 11], [12, 13]],
           testCase "a wrapped figure that does not fit the page goes to the next page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FWrapped 7 3 [] (lines' 50 3)]
+            let ps = paginate 5 [FParagraph (lines' 0 3), FWrapped 7 3 [] [] (lines' 50 3)]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SWrapped 7, SLine 50, SLine 51, SLine 52]]
         ],
       testGroup
@@ -434,17 +583,62 @@ tests =
             let sn = Sidenote (mkSpan (FileId 0) 3 9) 1 [sp0 "注"]
             length (verticalSidenotes (defaultComposeEnv fs) {ceVertical = True} [sp0 "本文", sn]) @?= 1
             verticalSidenotes (defaultComposeEnv fs) [sn] @?= [],
+          testCase "an anchor indexes its marker among the composed items, spacing included" $ do
+            let (items, anchors) = composeInlines (defaultComposeEnv fs) [sp0 "あいうえお", Note (mkSpan (FileId 0) 0 1) 1 [sp0 "注"], sp0 "かき"]
+            case anchors of
+              [AnchorNote i 1 _] -> case drop i items of
+                (Box _ c : _) -> bcText c @?= "*1"
+                other -> assertFailure (show (take 1 other))
+              other -> assertFailure (show other),
+          testCase "an index mark keeps its span and indexes the next item (golem-driver ADR 0007)" $ do
+            let m = mkSpan (FileId 0) 3 9
+                e = IndexEntry ["組版"] ["くみはん"]
+                (items, anchors) = composeInlines (defaultComposeEnv fs) [sp0 "前", IndexMark m e, sp0 "後"]
+            case anchors of
+              [AnchorIndex i m' e'] -> do
+                (m', e') @?= (m, e)
+                [bcText c | Box _ c <- take 1 (drop i items)] @?= ["後"]
+              other -> assertFailure (show other),
+          testCase "a citation shows its number when there is one" $ do
+            let cite = [Cite (mkSpan (FileId 0) 0 1) "knuth1981"]
+                texts env = [bcText c | Box _ c <- fst (composeInlines env cite)]
+            T.concat (texts (defaultComposeEnv fs) {ceCiteNumber = \k -> if k == "knuth1981" then Just 1 else Nothing}) @?= "[1]"
+            T.concat (texts (defaultComposeEnv fs)) @?= "[knuth1981]",
+          testCase "the sidenote marker in the text follows the style (golem-driver ADR 0006)" $ do
+            let snSpan = mkSpan (FileId 0) 3 9
+                sn = Sidenote snSpan 1 [sp0 "注"]
+                boxes m = [bcText c | Box _ c <- fst (composeInlines (defaultComposeEnv fs) {ceSidenoteMarker = m} [sp0 "本", sn])]
+            boxes MarkerNumber @?= ["本", "1"]
+            boxes MarkerSymbol @?= ["本", "※"]
+            boxes MarkerNone @?= ["本"]
+            -- the anchor indexes the marker box, after the spacing before it
+            snd (composeInlines (defaultComposeEnv fs) [sp0 "本", sn]) @?= [AnchorSidenote 2 1 snSpan [sp0 "注"]],
           testCase "too many notes, or one taller than the column, are errors" $ do
             placeSidenotes 30 2 [(0, 10), (0, 10), (0, 10)] @?= Left (DoesNotFit 2)
             placeSidenotes 30 2 [(0, 40)] @?= Left (TooTall 0)
         ]
     ]
   where
+    sp = mkSpan (FileId 0) 0 0
+    -- Latin characters: one em in the role "wide", half an em otherwise
+    lookEnv restyle =
+      let adv lk c
+            | charClass c /= Western = 1
+            | lkLatinFace lk == "wide" = 1
+            | otherwise = 1 / 2
+       in (defaultComposeEnv fs) {ceAdvance = adv, ceWordAdvance = \lk w -> sum (map (adv lk) (T.unpack w)), ceRestyle = restyle}
     minimum' [] = Nothing
     minimum' xs = Just (minimum xs)
     interleave xs g = concat [x : [g | i < length xs - 1] | (i, x) <- zip [0 :: Int ..] xs]
     head' (x : _) = x
     head' [] = ""
+    lastBox xs = case [x | x@(Box {}, _) <- xs] of
+      [] -> Nothing
+      bs -> Just (last bs)
     last' xs = if null xs then "" else last xs
-    lines' base n = [LineBox (base + i) [] [] | i <- [0 .. n - 1]]
-    slots = map (\p -> [i | (_, SLine i) <- poSlots p] <> [i | (_, SFigure i) <- poSlots p])
+    lines' base n = [LineBox (base + i) [] [] [] | i <- [0 .. n - 1]]
+    slots = map (\p -> [i | (_, s) <- poSlots p, i <- slotLines s] <> [i | (_, SFigure i) <- poSlots p])
+    slotLines = \case
+      SLine i -> [i]
+      SHeading i n -> [i .. i + n - 1]
+      _ -> []
