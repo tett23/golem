@@ -17,6 +17,8 @@ module Golem.Lsp.Features
     Encoding (..),
     toLineCol,
     fromLineCol,
+    chooseEncoding,
+    encodingKind,
   )
 where
 
@@ -24,7 +26,7 @@ import Data.ByteString qualified as BS
 import Data.Either (fromRight)
 import Data.List (nub, sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust, listToMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -38,6 +40,7 @@ import Golem.Parser.AST
 import Golem.Project
 import Golem.Project.Style (Style (..))
 import Golem.Syntax
+import Language.LSP.Protocol.Types (PositionEncodingKind (..))
 
 -- ------------------------------------------------------------------ positions
 
@@ -51,6 +54,19 @@ toLineCol Utf16 = offsetToUtf16LineCol
 fromLineCol :: Encoding -> LineIndex -> LineCol -> Maybe Int
 fromLineCol Utf8 = utf8LineColToOffset
 fromLineCol Utf16 = utf16LineColToOffset
+
+{- | The position encoding from the client's offer (ADR 0002): UTF-8 when
+offered, in whatever order; otherwise UTF-16, which every client supports.
+UTF-32 is never chosen.
+-}
+chooseEncoding :: Maybe [PositionEncodingKind] -> Encoding
+chooseEncoding offered
+  | PositionEncodingKind_UTF8 `elem` fromMaybe [] offered = Utf8
+  | otherwise = Utf16
+
+encodingKind :: Encoding -> PositionEncodingKind
+encodingKind Utf8 = PositionEncodingKind_UTF8
+encodingKind Utf16 = PositionEncodingKind_UTF16
 
 data Location = Location {locPath :: !FilePath, locStart :: !Int, locEnd :: !Int}
   deriving stock (Eq, Ord, Show)

@@ -30,6 +30,18 @@ genText =
 boundaries :: Text -> [Int]
 boundaries t = scanl (+) 0 [BS.length (TE.encodeUtf8 (T.singleton c)) | c <- T.unpack t]
 
+-- | A list-based line index measuring columns with the given function.
+naiveLineCol :: (BS.ByteString -> Int) -> Text -> Int -> LineCol
+naiveLineCol measure t off =
+  let bs = TE.encodeUtf8 t
+      starts = 0 : map (+ 1) (BS.elemIndices 10 bs)
+      l = length (takeWhile (<= off) starts) - 1
+      s = starts !! l
+   in LineCol l (measure (BS.take (off - s) (BS.drop s bs)))
+
+utf16Length :: BS.ByteString -> Int
+utf16Length = sum . map (\c -> if fromEnum c > 0xFFFF then 2 else 1) . T.unpack . TE.decodeUtf8
+
 tests :: TestTree
 tests =
   testGroup
@@ -44,6 +56,41 @@ tests =
         off <- forAll (Gen.element (boundaries t))
         let li = mkLineIndex t
         utf16LineColToOffset li (offsetToUtf16LineCol li off) === Just off,
+      testProperty "offset -> utf8 line/col -> offset (golem-lsp ADR 0002)" $ property $ do
+        t <- forAll genText
+        off <- forAll (Gen.element (boundaries t))
+        let li = mkLineIndex t
+        utf8LineColToOffset li (offsetToUtf8LineCol li off) === Just off,
+      testProperty "the line index agrees with a naive list-based index (golem-lsp ADR 0002)" $ property $ do
+        t <- forAll genText
+        off <- forAll (Gen.element (boundaries t))
+        let li = mkLineIndex t
+        offsetToLineCol li off === naiveLineCol (T.length . TE.decodeUtf8) t off
+        offsetToUtf16LineCol li off === naiveLineCol utf16Length t off
+        offsetToUtf8LineCol li off === naiveLineCol BS.length t off,
+      testCase "utf8 columns inside a character, at the line end and beyond (golem-lsp ADR 0002)" $ do
+        let li = mkLineIndex "漢字\nab"
+        utf8LineColToOffset li (LineCol 0 1) @?= Nothing
+        utf8LineColToOffset li (LineCol 0 2) @?= Nothing
+        utf8LineColToOffset li (LineCol 0 3) @?= Just 3
+        utf8LineColToOffset li (LineCol 0 6) @?= Just 6
+        utf8LineColToOffset li (LineCol 0 7) @?= Nothing
+        utf8LineColToOffset li (LineCol 1 2) @?= Just 9
+        utf8LineColToOffset li (LineCol 2 0) @?= Nothing,
+      localOption (mkTimeout 2000000) $
+        testCase "positions on 100000 lines round-trip quickly (golem-lsp ADR 0002)" $ do
+          let n = 100000 :: Int
+              t = T.replicate n "漢😀a\n" <> "漢😀a"
+              li = mkLineIndex t
+              starts = [k * 9 | k <- [0 .. n]]
+              lastOff = n * 9 + 8
+          lineCount li @?= n + 1
+          lineColToOffset li (offsetToLineCol li lastOff) @?= Just lastOff
+          utf16LineColToOffset li (offsetToUtf16LineCol li lastOff) @?= Just lastOff
+          utf8LineColToOffset li (offsetToUtf8LineCol li lastOff) @?= Just lastOff
+          offsetToUtf16LineCol li lastOff @?= LineCol n 4
+          all (\o -> utf8LineColToOffset li (offsetToUtf8LineCol li o) == Just o) starts @?= True
+          all (\o -> utf16LineColToOffset li (offsetToUtf16LineCol li o) == Just o) starts @?= True,
       testCase "columns count code points, utf16 counts surrogate pairs" $ do
         let t = "😀a\n漢b"
             li = mkLineIndex t

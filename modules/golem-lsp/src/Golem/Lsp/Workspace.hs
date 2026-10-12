@@ -10,6 +10,7 @@ module Golem.Lsp.Workspace
     updateFile,
     closeFile,
     sourceOf,
+    lineIndexOf,
     diagnosticsFor,
     Summary,
     summaryOf,
@@ -58,7 +59,9 @@ data Workspace = Workspace
     -- | how many times the whole project was evaluated
     wsFullEvaluations :: !Int,
     -- | every .gm file under the root, for @import completion
-    wsSourceFiles :: ![FilePath]
+    wsSourceFiles :: ![FilePath],
+    -- | the line index of every known file, for position conversion (ADR 0002)
+    wsLines :: !(Map FilePath LineIndex)
   }
 
 {- | What other files depend on: imports, exported variables, headings and
@@ -90,7 +93,7 @@ summaryOf ast res =
 openWorkspace :: FilePath -> IO Workspace
 openWorkspace root = do
   files <- listSources root
-  fullEvaluate (Workspace root Map.empty Nothing [] Map.empty 0 files)
+  fullEvaluate (Workspace root Map.empty Nothing [] Map.empty 0 files Map.empty)
 
 listSources :: FilePath -> IO [FilePath]
 listSources root = map (makeRelative root) <$> go root
@@ -112,9 +115,21 @@ fullEvaluate :: Workspace -> IO Workspace
 fullEvaluate ws = do
   r <- evaluateProjectWith (wsOverlay ws) Dev (wsRoot ws)
   let ws' = ws {wsFullEvaluations = wsFullEvaluations ws + 1}
-  pure $ case r of
+  pure . rebuildLines $ case r of
     Left ds -> refreshLoose ws' {wsEvaluated = Nothing, wsProjectErrors = ds}
     Right e -> refreshLoose ws' {wsEvaluated = Just e, wsProjectErrors = []}
+
+-- | Line indexes of the project's sources and of every edited file.
+rebuildLines :: Workspace -> Workspace
+rebuildLines ws =
+  let projectTexts = case wsEvaluated ws of
+        Just e -> Map.fromList [(sfPath sf, sfText sf) | sf <- Map.elems (projectSources (evProject e))]
+        Nothing -> Map.empty
+   in ws {wsLines = Map.map mkLineIndex (Map.union (wsOverlay ws) projectTexts)}
+
+-- | The line index of a file; an unknown file has the index of empty text.
+lineIndexOf :: Workspace -> FilePath -> LineIndex
+lineIndexOf ws path = Map.findWithDefault (mkLineIndex "") path (wsLines ws)
 
 projectPaths :: Workspace -> Set.Set FilePath
 projectPaths ws = case wsEvaluated ws of
@@ -139,7 +154,11 @@ evaluated again only when its summary changed.
 -}
 updateFile :: Workspace -> FilePath -> Text -> IO Workspace
 updateFile ws0 path text = do
-  let ws = ws0 {wsOverlay = Map.insert path text (wsOverlay ws0)}
+  let ws =
+        ws0
+          { wsOverlay = Map.insert path text (wsOverlay ws0),
+            wsLines = Map.insert path (mkLineIndex text) (wsLines ws0)
+          }
   case wsEvaluated ws of
     Just e
       | Just (fid, old) <- findSource e path ->
