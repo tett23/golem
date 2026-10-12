@@ -39,7 +39,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii)
 import Data.Either (fromRight, isLeft)
-import Data.List (groupBy, intercalate, nub, sortOn)
+import Data.List (groupBy, intercalate, nub, sortOn, zip4)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -57,6 +57,7 @@ import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look
 import Golem.Layout.Paginate
 import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
+import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutTable)
 import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
 import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
@@ -158,6 +159,14 @@ restyle style lk = \case
                 lkSlant = lkSlant lk || not (hasJa && hasLatin)
               }
 
+-- | The rules at the top and bottom of a table: 0.6pt (golem-driver ADR 0008).
+thickRule :: Sp
+thickRule = 39322
+
+-- | The rule below the header row of a table: 0.3pt.
+thinRule :: Sp
+thinRule = 19661
+
 -- | The slant of synthetic italic: 1/5, about 11.3 degrees (golem-driver ADR 0004).
 syntheticSlant :: Rational
 syntheticSlant = 1 / 5
@@ -225,7 +234,11 @@ data PdfLayout = PdfLayout
     -- | heading blocks by their first line (golem-driver ADR 0003)
     plHeadings :: !(Map Int HeadingBlock),
     -- | sidenotes by page number (golem-driver ADR 0006)
-    plSidenotes :: !(Map Int [PlacedSidenote])
+    plSidenotes :: !(Map Int [PlacedSidenote]),
+    -- | the cell lines on each grid line of a table, shifted to their columns (golem-driver ADR 0008)
+    plTableLines :: !(Map Int [SetLine]),
+    -- | the width of each table
+    plTables :: !(Map Int Sp)
   }
 
 data Built = Built
@@ -234,8 +247,10 @@ data Built = Built
     bFigures :: Map Int PlacedFigure,
     -- | heading blocks by their first line
     bHeadings :: Map Int HeadingBlock,
-    -- | errors found while building (G0722, G0723, G0724)
-    bErrors :: [Diagnostic]
+    -- | errors found while building (G0722, G0723, G0724, G0741, G0742)
+    bErrors :: [Diagnostic],
+    bTableLines :: Map Int [SetLine],
+    bTables :: Map Int Sp
   }
 
 renderPdf :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ByteString)
@@ -269,7 +284,7 @@ layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) of
         let (size, pitch) = sidenoteMetrics (piStyle inp) geom
             placed = [(poNumber p, placePageSidenotes geom pitch size (bLines built) p) | p <- pages]
          in case concat [ds | (_, Left ds) <- placed] of
-              [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]))
+              [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built))
               ds -> Left ds
 
 {- | The text of the lines of each page, as far as the layout goes
@@ -285,7 +300,9 @@ layoutPages provider inp = case pageGeometry (piStyle inp) of
       Right fonts -> fmap texts <$> layoutPdf inp geom fonts
   where
     texts layout =
-      [ [ T.concat [bcText c | Box _ c <- lineItems (slLine sl)]
+      [ [ case Map.lookup lid (plTableLines layout) of
+            Just cells -> T.intercalate " " (map setLineText cells)
+            Nothing -> setLineText sl
         | (_, s) <- poSlots p,
           lid <- case s of
             SLine l -> [l]
@@ -295,6 +312,7 @@ layoutPages provider inp = case pageGeometry (piStyle inp) of
         ]
       | p <- plPages layout
       ]
+    setLineText sl = T.concat [bcText c | Box _ c <- lineItems (slLine sl)]
 
 {- | The lines of the index (golem-driver ADR 0007): a main entry and its
 pages, sub-entries indented by a full-width space below their main entry
@@ -474,7 +492,7 @@ data Unit = Unit
     uSpan :: SrcSpan
   }
 
-data UnitKind = UPara | UHeading Int Text Bool | UTerm | UFigure Figure
+data UnitKind = UPara | UHeading Int Text Bool | UTerm | UFigure Figure | UTable [Alignment] [[Inline]] [[[Inline]]]
 
 unitsOf :: Book -> PageGeometry -> Style -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
 unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
@@ -492,14 +510,13 @@ unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
       BulletList items -> map const (concat [prefixFirst "・" (concatMap block (itemBlocks it)) | it <- items])
       OrderedList items -> map const (concat [prefixFirst (T.pack (show n) <> ". ") (concatMap block (itemBlocks it)) | (n, it) <- zip [1 :: Integer ..] items])
       DefList gs -> map const (concat [[Unit UTerm Nothing t sp | t <- dgTerms g] <> concatMap (concatMap block) (dgDefs g) | g <- gs])
-      Table _ h rows -> [Unit UPara lbl (cells r) | r <- h : rows]
+      Table aligns h rows -> [Unit (UTable aligns h rows) lbl []]
       CodeBlock _ code -> [Unit UPara lbl [txt l] | l <- T.lines code]
       FigureBlock fig -> [Unit (UFigure fig) lbl []]
       -- the index marks of a title are counted at the heading, not in the table of contents
       ChannelOutput (TocOutput depth) -> [Unit UPara Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) | e <- bookToc book, teLevel e <= depth]
       ChannelOutput IndexOutput -> [Unit UPara Nothing is | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
       ChannelOutput BibliographyOutput -> [Unit UPara Nothing is | is <- bibliographyLines bib (bookCitations book)]
-    cells r = concat [c <> [txt "　"] | c <- r]
     prefixFirst p (Unit UPara l is s' : rest) = Unit UPara l (txt p : is) s' : rest
     prefixFirst _ us = us
     isMark = \case
@@ -609,12 +626,38 @@ buildFlow inp geom fonts images assumed = do
       jobs = [(i, ex) | (i, (pf, [], _)) <- Map.toList figures, Just ex <- [pfExclusion pf]]
   besides <- Map.fromList . concat <$> mapper (uncurry wrapJob) jobs
   -- 2. every other unit on its own
-  let rest = [(i, u) | (i, u) <- units, Map.notMember i besides, not (isFigure u)]
+  let rest = [(i, u) | (i, u) <- units, Map.notMember i besides, not (isFigure u), not (isTable u)]
       isFigure u = case uKind u of
         UFigure _ -> True
         _ -> False
+      isTable u = case uKind u of
+        UTable {} -> True
+        _ -> False
+      -- the notes, sidenotes and index marks of composed inlines, by the line that holds them
+      attached items anchors ls =
+        let lineOf = lineIndexOfItems items ls
+            noteBody b = brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv b)))
+            marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines bodyEnv b)]
+         in ( Map.fromListWith (flip (<>)) [(lineOf i, [(n, noteBody b)]) | AnchorNote i n b <- anchors],
+              Map.fromListWith (flip (<>)) [(lineOf i, [(sp, sidenoteLines n b)]) | AnchorSidenote i n sp b <- anchors],
+              Map.fromListWith (flip (<>)) ([(lineOf i, [sp]) | AnchorIndex i sp _ <- anchors] <> [(lineOf i, sps) | AnchorNote i _ b <- anchors, let { sps = marksIn b }, not (null sps)] <> [(lineOf i, sps) | AnchorSidenote i _ _ b <- anchors, let sps = marksIn b, not (null sps)])
+            )
+      -- a table: every cell at the body size, no hanging punctuation (golem-driver ADR 0008)
+      composeTable aligns h rows =
+        let env = bodyEnv {ceHanging = False}
+            cellOf = composeInlines env
+            hCells = map cellOf h
+            rCells = map (map cellOf) rows
+            rowAttached cells setCells height =
+              let perCell = [attached items anchors (scLines sc) | ((items, anchors), sc) <- zip cells setCells]
+               in [(concat [Map.findWithDefault [] k ns | (ns, _, _) <- perCell], concat [Map.findWithDefault [] k sn | (_, sn, _) <- perCell], concat [Map.findWithDefault [] k ms | (_, _, ms) <- perCell]) | k <- [0 .. height - 1]]
+         in case layoutTable params measure fs aligns (map fst hCells) (map (map fst) rCells) of
+              Left e -> Left e
+              Right t -> Right (t, rowAttached hCells (stHeader t) (stHeaderLines t) : zipWith3 rowAttached rCells (stRows t) (stRowLines t))
+      tableUnits = [(i, aligns, h, rows) | (i, Unit {uKind = UTable aligns h rows}) <- units]
   _ <- mapper (\(_, (pf, _, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (force . compose (const measure) . snd) rest
+  tables <- Map.fromList <$> mapper (\(i, aligns, h, rows) -> let r = composeTable aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) tableUnits
   -- 3. number the lines in document order
   let label u = maybe [] pure (uLabel u)
       -- the lines of a paragraph-like unit from an id; indent of line k
@@ -630,7 +673,41 @@ buildFlow inp geom fonts images assumed = do
             boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) | (k, lid) <- zip [0 ..] ids]
             set = Map.fromList [(lid, SetLine l size (indentOf k) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
          in (boxes, set)
-      step st@(nextId, flows, lineAcc, figAcc, headAcc, errs) (i, u)
+      emptyLine = Line [] 0 0 0 (0, 0) False
+      mm sp = let tenths = round (toRational sp * 254 / (72 * 65536)) :: Integer in T.pack (show (tenths `div` 10) <> "." <> show (tenths `mod` 10))
+      step (nextId, flows, lineAcc, figAcc, headAcc, errs, tabAcc) (i, u) = case uKind u of
+        UTable {} -> case Map.lookup i tables of
+          Just (Left (ColumnsTooWide mn avail)) ->
+            (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G0741" Error (uSpan u) ("表の列の最小の幅の合計（" <> mm mn <> " mm）が使える幅（" <> mm avail <> " mm）に収まりません")], tabAcc)
+          Just (Right (t, atts))
+            | tall@(_ : _) <- [r | (r, h) <- zip [1 :: Int ..] (stRowLines t), stHeaderLines t + h > capacity] ->
+                (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G0742" Error (uSpan u) ("表の " <> T.pack (show r) <> " 行目が見出しの行とともに一ページに収まりません") | r <- tall], tabAcc)
+            | otherwise ->
+                let heights = stHeaderLines t : stRowLines t
+                    starts = scanl (+) nextId heights
+                    rowsOut =
+                      [ ( [LineBox lid [NoteBody n (length nls) | (n, nls) <- ns] (if lid == nextId then label u else []) ms | (lid, (ns, _, ms)) <- zip ids att],
+                          Map.fromList [(lid, SetLine emptyLine fs 0 ns sn) | (lid, (ns, sn, _)) <- zip ids att],
+                          Map.fromList [(lid, [SetLine l fs (scOffset c + sh) [] [] | c <- cells, (j, (l, sh)) <- zip [0 :: Int ..] (zip (scLines c) (scShifts c)), j == k]) | (k, lid) <- zip [0 ..] ids]
+                        )
+                      | (start, h, cells, att) <- zip4 starts heights (stHeader t : stRows t) atts,
+                        let ids = [start .. start + h - 1]
+                      ]
+                    (headerBoxes, rowBoxes) = case [bs | (bs, _, _) <- rowsOut] of
+                      (hb : rbs) -> (hb, rbs)
+                      [] -> ([], [])
+                    (tl, tw) = tabAcc
+                 in ( nextId + sum heights,
+                      flows <> [FTable nextId headerBoxes rowBoxes],
+                      Map.unions (lineAcc : [m | (_, m, _) <- rowsOut]),
+                      figAcc,
+                      headAcc,
+                      errs,
+                      (Map.unions (tl : [m | (_, _, m) <- rowsOut]), Map.insert nextId (stWidth t) tw)
+                    )
+          Nothing -> (nextId, flows, lineAcc, figAcc, headAcc, errs, tabAcc)
+        _ -> let (a, b, c', d, e, f) = step' (nextId, flows, lineAcc, figAcc, headAcc, errs) (i, u) in (a, b, c', d, e, f, tabAcc)
+      step' st@(nextId, flows, lineAcc, figAcc, headAcc, errs) (i, u)
         | Map.member i besides = st -- set beside its figure
         | otherwise = case uKind u of
             UFigure _ -> case Map.lookup i figures of
@@ -671,8 +748,8 @@ buildFlow inp geom fonts images assumed = do
                       )
                     _ -> (headAcc, errs)
                in (nextId + length ls, flows <> flowOf, Map.union lineAcc set, figAcc, headAcc', errs')
-      (_, flow, lineMap, figMap, headMap, errors) = foldl step (0, [], Map.empty, Map.empty, Map.empty, []) units
-  pure (Built flow lineMap figMap headMap errors)
+      (_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths)) = foldl step (0, [], Map.empty, Map.empty, Map.empty, [], (Map.empty, Map.empty)) units
+  pure (Built flow lineMap figMap headMap errors tableLines tableWidths)
 
 -- | Which line (0-based) contains the item at an index.
 lineIndexOfItems :: [Item] -> [Line] -> Int -> Int
@@ -857,6 +934,7 @@ writeDocument inp geom fonts layout intent =
             ta = typeAreaFor geom n
             lineParts =
               [drawLine ta (gridAt slot) sl | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines layout)]]
+                <> [drawLine ta (gridAt slot) cell | (slot, SLine lid) <- poSlots p, cell <- Map.findWithDefault [] lid (plTableLines layout)]
                 <> [ drawLine ta (headingLineAt slot hb j sl) sl
                    | (slot, SHeading lid m) <- poSlots p,
                      Just hb <- [Map.lookup lid (plHeadings layout)],
@@ -881,7 +959,19 @@ writeDocument inp geom fonts layout intent =
                 (j, l) <- zip [0 :: Int ..] (psLines ps)
               ]
             allParts = lineParts <> noteParts <> sidenoteParts <> masterParts
-         in (concatMap fst allParts <> figMarks, concatMap snd allParts)
+            ruleMarks = concat [tableRules ta seg w | seg <- poTables p, Just w <- [Map.lookup (tsTable seg) (plTables layout)]]
+         in (concatMap fst allParts <> figMarks <> ruleMarks, concatMap snd allParts)
+      -- the rules of a table on a page, centred in the space between grid lines (golem-driver ADR 0008)
+      tableRules ta seg w =
+        let p = pgLinePitch geom
+            fs = pgFontSize geom
+            half = (p - fs) `div` 2
+            before k = toInteger k * p - half
+            after k = toInteger k * p + fs + half
+            rule c t
+              | vertical = P.Rule (Rect (rectX ta + rectW ta - c - t `div` 2) (rectY ta + rectH ta - w) t w)
+              | otherwise = P.Rule (Rect (rectX ta) (rectY ta + rectH ta - c - t `div` 2) w t)
+         in [rule (before (tsFirst seg)) thickRule, rule (after (tsHeaderEnd seg)) thinRule, rule (after (tsLast seg)) thickRule]
       -- line j of a heading block from grid line k (golem-driver ADR 0003)
       headingLineAt k hb j sl =
         let s = slSize sl

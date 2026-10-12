@@ -12,6 +12,7 @@ import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
 import Golem.Layout.Paginate
 import Golem.Layout.Sidenotes
+import Golem.Layout.Table
 import Golem.Layout.Wrap
 import Golem.Syntax (FileId (..), mkSpan)
 import Hedgehog
@@ -372,6 +373,70 @@ tests =
             map (map snd . poSlots) moves @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 31, SLine 32, SLine 33]]
         ],
       testGroup
+        "tables (golem-driver ADR 0008)"
+        [ testCase "cell extents: the widest unbreakable piece and the natural width" $ do
+            let env = defaultComposeEnv fs
+            cellExtent (compose env "PDF") @?= (fs * 3 `div` 2, fs * 3 `div` 2)
+            cellExtent (compose env "日本語") @?= (fs, 3 * fs)
+            let (mn, nat) = cellExtent (compose env "あ。")
+            mn @?= nat,
+          testCase "column widths: natural when they fit" $
+            columnWidths 100 [(10, 30), (20, 40)] @?= Right [30, 40],
+          testCase "column widths: the rest shared in proportion, the remainder from the first column" $
+            columnWidths 100 [(10, 60), (20, 80)] @?= Right [42, 58],
+          testCase "column widths: minimum widths that do not fit are an error" $
+            columnWidths 20 [(10, 30), (20, 40)] @?= Left (ColumnsTooWide 30 20),
+          testCase "a row is as high as its tallest cell" $ do
+            let env = defaultComposeEnv fs
+            case layoutTable defaultParams (5 * fs) fs [AlignDefault, AlignDefault] [compose env "見", compose env "出"] [[compose env "あいうえお", compose env "い"]] of
+              Right t -> do
+                stWidths t @?= [3 * fs, fs]
+                (stHeaderLines t, stRowLines t) @?= (1, [2])
+              Left e -> assertFailure (show e),
+          testCase "right and centre alignment shift a cell by the room it leaves" $ do
+            let env = defaultComposeEnv fs
+                table al = layoutTable defaultParams (10 * fs) fs [AlignLeft, al] [compose env "見出し", compose env "数"] [[compose env "あ", compose env "1"]]
+                offsetOf al = case table al of
+                  Right t -> [scOffset c | (_ : c : _) <- stRows t]
+                  Left e -> error (show e)
+            offsetOf AlignRight @?= [4 * fs + (fs - fs `div` 2)]
+            offsetOf AlignCenter @?= [4 * fs + (fs - fs `div` 2) `div` 2]
+            offsetOf AlignLeft @?= [4 * fs],
+          testCase "cells do not hang punctuation: no line is wider than its column" $ do
+            let env = (defaultComposeEnv fs) {ceHanging = False}
+            case layoutTable defaultParams {pProtrusion = True} (4 * fs) fs [AlignDefault, AlignDefault] [compose env "見", compose env "出"] [[compose env "あいうえおかきくけこ。", compose env "い"]] of
+              Right t ->
+                sequence_
+                  [ assertBool (show (end, w)) (end <= w)
+                  | (row : _) <- stRows t,
+                    (w : _) <- [stWidths t],
+                    l <- scLines row,
+                    let end = maybe 0 (\(Box bw _, x) -> x + bw) (lastBox (placeLine l))
+                  ]
+              Left e -> assertFailure (show e)
+        ],
+      testGroup
+        "table pagination (golem-driver ADR 0008)"
+        [ testCase "a table breaks between rows and repeats its header" $ do
+            let ps = paginate 4 [FTable 100 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
+            map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 11, SLine 12], [SLine 0, SLine 13, SLine 14]]
+            map poTables ps @?= [[TableSegment 100 0 0 3], [TableSegment 100 0 0 2]],
+          testCase "the header's label and note are counted once" $ do
+            let header = [LineBox 0 [NoteBody 900 1] ["tbl"] []]
+                ps = paginate 4 [FTable 100 header [lines' (10 + i) 1 | i <- [0 .. 4]]]
+            map poLabels ps @?= ["tbl"] : replicate (length ps - 1) []
+            [(poNumber p, n) | p <- ps, (n, _, _) <- poFootnotes p] @?= [(1, 900)],
+          testCase "a table that cannot start with its header and first row goes to the next page" $ do
+            let ps = paginate 4 [FParagraph (lines' 0 3), FTable 100 (lines' 20 1) [lines' 30 1]]
+            map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SLine 20, SLine 30]],
+          testCase "a row is never split across pages" $ do
+            let ps = paginate 4 [FTable 100 (lines' 0 1) [lines' 10 1, lines' 20 1, lines' 30 2]]
+            map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 20], [SLine 0, SLine 30, SLine 31]],
+          testCase "a heading before a table stays with its header and first row" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 1 "章" False 1 (lines' 20 1), FTable 100 (lines' 30 1) [lines' 40 2]]
+            map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 40, SLine 41]]
+        ],
+      testGroup
         "wrapped figures (ADR 0004)"
         [ testCase "the exclusion rounds up to grid lines and shortens only the lines beside it" $ do
             let ex = exclusion WrapEnd 17 3 40 50
@@ -453,6 +518,9 @@ tests =
     interleave xs g = concat [x : [g | i < length xs - 1] | (i, x) <- zip [0 :: Int ..] xs]
     head' (x : _) = x
     head' [] = ""
+    lastBox xs = case [x | x@(Box {}, _) <- xs] of
+      [] -> Nothing
+      bs -> Just (last bs)
     last' xs = if null xs then "" else last xs
     lines' base n = [LineBox (base + i) [] [] [] | i <- [0 .. n - 1]]
     slots = map (\p -> [i | (_, s) <- poSlots p, i <- slotLines s] <> [i | (_, SFigure i) <- poSlots p])

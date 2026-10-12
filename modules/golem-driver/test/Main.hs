@@ -257,6 +257,7 @@ tests =
       testGroup "PDF wrapped figures (ADR 0005)" wrapTests,
       testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
       testGroup "PDF index and bibliography (ADR 0007)" indexTests,
+      testGroup "PDF tables (ADR 0008)" tableTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup
         "public-domain books"
@@ -940,6 +941,69 @@ indexTests =
       a <- build' True
       b <- build' False
       c <- build' True
+      a @?= b
+      a @?= c
+      qpdfCheck a
+  ]
+
+-- | The rules of a content stream: x, y, width, height as written.
+rulesIn :: BS.ByteString -> [[BS.ByteString]]
+rulesIn content = [take 4 ws | l <- BC.lines content, let ws = BC.words l, drop 4 ws == ["re", "f"]]
+
+-- | Content streams that draw (pages), each inflated.
+pageContents :: BS.ByteString -> IO [BS.ByteString]
+pageContents pdf = filter (\c -> " Tf" `BS.isInfixOf` c || " re f" `BS.isInfixOf` c) <$> inflateAll pdf
+
+smallTable :: T.Text
+smallTable = "| 項目 | 値 |\n|:---|---:|\n| 幅 | 10 |\n| 高さ | 20 |\n"
+
+ptToRational :: BS.ByteString -> Rational
+ptToRational t = case BC.split '.' t of
+  [i] -> fromInteger (read (BC.unpack i))
+  [i, f] ->
+    let sign = if "-" `BS.isPrefixOf` i then -1 else 1
+        whole = abs (read (BC.unpack i) :: Integer)
+     in sign * (fromInteger whole + fromInteger (read (BC.unpack f)) / 10 ^ BS.length f)
+  _ -> 0
+
+tableTests :: [TestTree]
+tableTests =
+  [ testCase "a table has three rules: top, below the header, bottom" $ do
+      content <- miniPdf fakeProvider True horizontalStyle ("前。\n\n" <> smallTable <> "\n後。\n") [] >>= fmap BS.concat . inflateAll
+      length (rulesIn content) @?= 3,
+    testCase "a table across two pages repeats its header and its rules" $ do
+      let rows = T.concat ["| 行" <> T.pack (show i) <> " | " <> T.pack (show i) <> " |\n" | i <- [1 .. 6 :: Int]]
+      pdf <- miniPdf fakeProvider True fiveLines ("| 項目 | 値 |\n|---|---|\n" <> rows) []
+      pages <- pageContents pdf
+      length (concatMap rulesIn pages) @?= 6
+      length [() | c <- pages, fromEnum '項' `elem` map dGlyph (drawnGlyphs c)] @?= 2,
+    testCase "vertical: rules run down the page and columns follow each other downwards" $ do
+      content <- miniPdf fakeProvider True pdfStyle "前。\n\n| 項目 | 値 |\n|---|---|\n| 幅 | 広い |\n" [] >>= fmap BS.concat . inflateAll
+      let rs = rulesIn content
+      length rs @?= 3
+      assertBool (show rs) (all (\case [_, _, w, h] -> ptToRational w < ptToRational h; _ -> False) rs)
+      let ds = drawnGlyphs content
+      case ([d | d <- ds, dGlyph d == fromEnum '幅'], [d | d <- ds, dGlyph d == fromEnum '広']) of
+        ([a], b : _) -> do
+          dX a @?= dX b
+          assertBool (show (dY a, dY b)) (ptToRational (dY b) < ptToRational (dY a))
+        other -> assertFailure (show other),
+    testCase "columns too wide for the measure, or a row taller than a page, are errors" $ do
+      let wide = "| " <> T.intercalate " | " (replicate 13 "字") <> " |\n|" <> T.replicate 13 "---|" <> "\n| " <> T.intercalate " | " (replicate 13 "字") <> " |\n"
+      (e1, p1) <- buildMini fakeProvider True horizontalStyle wide []
+      (e1, p1) @?= ([DiagnosticCode "G0741"], Nothing)
+      let tall = "| 項目 | 値 |\n|---|---|\n| " <> T.replicate 60 "あ" <> " | 1 |\n"
+      (e2, p2) <- buildMini fakeProvider True fiveLines tall []
+      (e2, p2) @?= ([DiagnosticCode "G0742"], Nothing),
+    testCase "a table from CSV is set the same way" $ do
+      content <- miniPdf fakeProvider True horizontalStyle "@table src=data.csv\n" [("data.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] >>= fmap BS.concat . inflateAll
+      length (rulesIn content) @?= 3
+      assertBool "cells" (fromEnum '幅' `elem` map dGlyph (drawnGlyphs content)),
+    testCase "tables: parallel and sequential, and two builds, give the same bytes" $ do
+      let source = "前。\n\n" <> smallTable <> "\n後。\n\n" <> smallTable
+      a <- miniPdf fakeProvider True horizontalStyle source []
+      b <- miniPdf fakeProvider False horizontalStyle source []
+      c <- miniPdf fakeProvider True horizontalStyle source []
       a @?= b
       a @?= c
       qpdfCheck a

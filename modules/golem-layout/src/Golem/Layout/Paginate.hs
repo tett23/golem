@@ -14,6 +14,7 @@ module Golem.Layout.Paginate
     Flow (..),
     Slotted (..),
     PageOut (..),
+    TableSegment (..),
     HeadingBlock (..),
     headingBlock,
     paginate,
@@ -27,6 +28,7 @@ where
 import Control.Applicative ((<|>))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (listToMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Golem.Syntax (SrcSpan)
@@ -56,6 +58,8 @@ data Flow
     figure: no orphan rule for its first line (golem-driver ADR 0005)
     -}
     FContinued [LineBox]
+  | -- | a table: its header row and body rows, in grid lines (golem-driver ADR 0008)
+    FTable {ftId :: !Int, ftHeader :: ![LineBox], ftRows :: ![[LineBox]]}
   deriving stock (Eq, Show)
 
 data Slotted
@@ -100,7 +104,19 @@ data PageOut = PageOut
     poRunningHead :: !(Maybe Text),
     poLabels :: ![Text],
     -- | the index marks placed on the page (golem-driver ADR 0007)
-    poMarks :: ![SrcSpan]
+    poMarks :: ![SrcSpan],
+    -- | the parts of tables on the page (golem-driver ADR 0008)
+    poTables :: ![TableSegment]
+  }
+  deriving stock (Eq, Show)
+
+-- | The part of a table on a page, in grid lines.
+data TableSegment = TableSegment
+  { tsTable :: !Int,
+    tsFirst :: !Int,
+    -- | the last grid line of the header row
+    tsHeaderEnd :: !Int,
+    tsLast :: !Int
   }
   deriving stock (Eq, Show)
 
@@ -112,6 +128,7 @@ data St = St
     sNotes :: ![(Int, Int, Int)],
     sLabels :: ![Text],
     sMarks :: ![SrcSpan],
+    sTables :: ![TableSegment],
     sDone :: ![PageOut],
     sDeferred :: ![Flow],
     sPendingNotes :: ![(Int, Int, Int)], -- note id, next line, remaining
@@ -122,7 +139,7 @@ data St = St
 -- | Lays the flow out on pages of @capacity@ grid lines.
 paginate :: Int -> [Flow] -> [PageOut]
 paginate capacity flows =
-  let st0 = St 1 0 0 [] [] [] [] [] [] [] Nothing Nothing
+  let st0 = St 1 0 0 [] [] [] [] [] [] [] [] Nothing Nothing
       final = closePage (go st0 flows)
    in reverse (sDone final)
   where
@@ -131,6 +148,7 @@ paginate capacity flows =
     nextNeed = \case
       (FParagraph ls : _) -> min 2 (length ls)
       (FContinued ls : _) -> min 2 (length ls)
+      (FTable _ h rows : _) -> length h + maybe 0 length (listToMaybe rows)
       (FDefTerm ls : _) -> length ls
       (FHeading _ _ _ n _ : _) -> n
       (FFigure _ n _ _ : _) -> min n capacity
@@ -141,6 +159,9 @@ paginate capacity flows =
     place st f need = case f of
       FParagraph ls -> placeLines st True ls
       FContinued ls -> placeLines st False ls
+      FTable i h rows ->
+        let st1 = if length h + maybe 0 length (listToMaybe rows) > free st && not (isEmpty st) then newPage st else st
+         in placeTable st1 i h rows
       FDefTerm ls -> placeLines (keep st (length ls + need)) True ls
       FHeading lvl short recto n ls ->
         let st1 = if recto then rectoStart st else keep st (n + need)
@@ -159,7 +180,7 @@ paginate capacity flows =
     rectoStart st =
       let st1 = if isEmpty st then st else newPage st
        in if even (sPage st1) then blankPage st1 else st1
-    blankPage st = st {sDone = PageOut (sPage st) True [] [] Nothing [] [] : sDone st, sPage = sPage st + 1}
+    blankPage st = st {sDone = PageOut (sPage st) True [] [] Nothing [] [] [] : sDone st, sPage = sPage st + 1}
     putSlot st n s labels marks = st {sSlots = sSlots st <> [(sUsed st, s)], sUsed = sUsed st + n, sLabels = sLabels st <> labels, sMarks = sMarks st <> marks}
     -- lines of one paragraph; orphans and widows are moved
     placeLines st _ [] = st
@@ -198,6 +219,21 @@ paginate capacity flows =
               sLabels = sLabels st <> lbLabels l,
               sMarks = sMarks st <> lbMarks l
             }
+    -- a table: rows whole, a page break between rows repeats the header
+    -- without its labels, notes and marks (golem-driver ADR 0008)
+    placeTable st i h rows =
+      let start = sUsed st
+          st1 = foldl' putLine st h
+          go stc first [] = segment stc first
+          go stc first (r : rest)
+            | fitting stc r >= length r || sUsed stc == first + length h = go (foldl' putLine stc r) first rest
+            | otherwise =
+                let closed = segment stc first
+                    fresh = newPage closed
+                    repeated = foldl' putLine fresh [l {lbNotes = [], lbLabels = [], lbMarks = []} | l <- h]
+                 in go repeated (sUsed fresh) (r : rest)
+          segment stc first = stc {sTables = sTables stc <> [TableSegment i first (first + length h - 1) (sUsed stc - 1)]}
+       in go st1 start rows
     -- a heading: one block of n grid lines; the notes of its lines as in putLine
     putBlock st _ [] = st
     putBlock st n ls@(l0 : _) =
@@ -226,11 +262,11 @@ paginate capacity flows =
     closePage st =
       if null (sSlots st) && null (sNotes st) && not (null (sDone st))
         then st
-        else st {sDone = PageOut (sPage st) False (sSlots st) (sNotes st) (pageHead st) (sLabels st) (sMarks st) : sDone st}
+        else st {sDone = PageOut (sPage st) False (sSlots st) (sNotes st) (pageHead st) (sLabels st) (sMarks st) (sTables st) : sDone st}
     pageHead st = sPageHead st <|> sHead st
     newPage st =
       let closed = closePage st
-          fresh = closed {sPage = sPage st + 1, sUsed = 0, sNoteLines = 0, sSlots = [], sNotes = [], sLabels = [], sMarks = [], sPendingNotes = [], sPageHead = Nothing}
+          fresh = closed {sPage = sPage st + 1, sUsed = 0, sNoteLines = 0, sSlots = [], sNotes = [], sLabels = [], sMarks = [], sTables = [], sPendingNotes = [], sPageHead = Nothing}
           withNotes = foldl' carryNote fresh (sPendingNotes st)
        in placeDeferred withNotes {sDeferred = []} (sDeferred st)
     carryNote st (i, from, len) =
