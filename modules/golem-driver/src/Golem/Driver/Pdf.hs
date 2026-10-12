@@ -310,21 +310,51 @@ writeDocument inp geom fonts built pages intent =
             origin off
               | vertical = (rectX ta + rectW ta - gridAt slot, rectY ta + rectH ta - off)
               | otherwise = (rectX ta + off, rectY ta + rectH ta - gridAt slot)
-            boxRun (Box _ c, off) =
-              let pre = case T.unpack (bcText c) of
-                    [ch] | boxKind c == KindPunctuation -> toSp size (fst (punctSpace (charClass ch)))
-                    _ -> 0
-                  txt = T.takeWhile (/= '|') (bcText c)
-                  rotated = boxKind c == KindRotated
-                  (ox, oy) = origin (off - pre)
-                  -- vertical glyph origins sit on the centre line; rotated Latin sits on a baseline beside it
-                  pt
-                    | vertical && rotated = (ox - size * 3 `div` 10, oy)
-                    | vertical = (ox, oy) -- Identity-V: the origin is the top centre of the em box
-                    | otherwise = (ox, oy)
-               in runAt vertical rotated size (if bcExpandable c then lineExpansion l else 0) pt txt
-            boxRun _ = ([], [])
-            parts = map boxRun (placeLine l)
+            advance sz t = sum [toSp sz a | (_, _, a, _) <- lfShape fonts (vertical && not (T.all ((== Western) . charClass) t)) t]
+            -- a point beside the line at a distance across it: right of a
+            -- vertical line, above a horizontal baseline
+            beside (ox, oy) dist
+              | vertical = (ox + dist, oy)
+              | otherwise = (ox, oy + dist)
+            placed = placeLine l
+            lastIx = length placed - 1
+            boxRun (i, (it, off)) = case it of
+              Box w c -> case boxKind c of
+                KindRuby ->
+                  -- the base centred in the box, the reading at half size beside it
+                  let (base, reading) = T.breakOn "|" (bcText c)
+                      rt = T.drop 1 reading
+                      rsize = size `div` 2
+                      baseStart = off + (w - advance size base) `div` 2
+                      readStart = off + (w - advance rsize rt) `div` 2
+                      (bx, by) = origin baseStart
+                      (b1, u1) = runAt vertical False size 0 (bx, by) base
+                      (b2, u2) = runAt vertical False rsize 0 (beside (origin readStart) (if vertical then size `div` 2 + rsize `div` 2 else size)) rt
+                   in (b1 <> b2, u1 <> u2)
+                KindKenten ->
+                  -- the character, and a sesame dot centred beside it
+                  let dsize = size `div` 2
+                      (b1, u1) = runAt vertical False size 0 (origin off) (bcText c)
+                      (b2, u2) = runAt vertical False dsize 0 (beside (origin (off + (size - dsize) `div` 2)) (if vertical then size `div` 2 + dsize `div` 2 else size)) "﹅"
+                   in (b1 <> b2, u1 <> u2)
+                _ ->
+                  let pre = case T.unpack (bcText c) of
+                        [ch] | boxKind c == KindPunctuation -> toSp size (fst (punctSpace (charClass ch)))
+                        _ -> 0
+                      rotated = boxKind c == KindRotated
+                      (ox, oy) = origin (off - pre)
+                      -- vertical glyph origins sit on the centre line; rotated Latin sits on a baseline beside it
+                      pt
+                        | vertical && rotated = (ox - size * 3 `div` 10, oy)
+                        | otherwise = (ox, oy) -- Identity-V: the origin is the top centre of the em box
+                   in runAt vertical rotated size (if bcExpandable c then lineExpansion l else 0) pt (bcText c)
+              -- a word broken at the line end gets its hyphen
+              Penalty hw _ True
+                | i == lastIx && hw > 0 ->
+                    let (ox, oy) = origin off
+                     in runAt vertical vertical size 0 (if vertical then (ox - size * 3 `div` 10, oy) else (ox, oy)) "-"
+              _ -> ([], [])
+            parts = zipWith (curry boxRun) [0 ..] placed
          in (concatMap fst parts, concatMap snd parts)
       textAt anchor size txt =
         let w = sum [toSp size a | (_, _, a, _) <- lfShape fonts False txt]
@@ -357,7 +387,8 @@ writeDocument inp geom fonts built pages intent =
            in runningHead <> folio
       drawn = map drawPage pages
       pdfPages = [P.Page pageRect pageRect pageRect marks | (marks, _) <- drawn]
-      used = Map.fromListWith (flip (<>)) [(r, [(g, t)]) | (_, us) <- drawn, (r, g, t) <- us]
+      -- each glyph once per font, with the text of its first occurrence (golem-font ADR 0002)
+      used = Map.map Map.toList (Map.fromListWith (Map.unionWith (\_ old -> old)) [(r, Map.singleton g t) | (_, us) <- reverse drawn, (r, g, t) <- reverse us])
       fontsUsed = Map.fromList [(r, lfEmbed fonts ix (odd k) gts) | (r@(P.FontRef k), gts) <- Map.toList used, let ix = k `div` 2]
       programs = [case P.fontProgram f of P.TrueTypeProgram b -> b; P.CffProgram b -> b; P.OpenTypeProgram b -> b | f <- Map.elems fontsUsed]
       (y, mo, d) = toGregorian (mdDate md)

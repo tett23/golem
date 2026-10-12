@@ -11,7 +11,6 @@ where
 import Control.Applicative ((<|>))
 import Data.ByteString qualified as BS
 import Data.IORef (atomicModifyIORef', newIORef, readIORef)
-import Data.List (nub)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe)
 import Data.Ratio ((%))
@@ -83,7 +82,7 @@ provide fonts latinIx features =
       let f = fontAt ix
           upem = toInteger (fontUnitsPerEm f)
           per1000 v = fromInteger (round (toInteger v * 1000 % upem))
-          gids = nub (map fst used)
+          gids = Map.keys (Map.fromList [(g, ()) | (g, _) <- used])
           cid = glyphCid f
           metrics = [(g, m) | g <- gids, Just m <- [glyphMetrics f g]]
           (asc, desc, cap) = fontExtents f
