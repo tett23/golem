@@ -13,11 +13,13 @@ import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Golem.Doc.Assemble (IndexGroup (..), inlineText)
+import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.New
-import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, layoutPdf)
+import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), bibliographyLines, figureRect, indexLines, layoutPages, layoutPdf)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Paginate (PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (PageOut (..), Slotted (..), markPages)
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.Pdf (Font (..), FontProgram (..), spToPt)
@@ -254,6 +256,7 @@ tests =
       testGroup "PDF emphasis, character styles and colour (ADR 0004)" emphasisTests,
       testGroup "PDF wrapped figures (ADR 0005)" wrapTests,
       testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
+      testGroup "PDF index and bibliography (ADR 0007)" indexTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup
         "public-domain books"
@@ -568,7 +571,7 @@ layoutMini style source files = withSystemTempDirectory "golem-layout" $ \tmp ->
     Left ds -> pure (Left ds)
     Right e -> case (evBook e, pageGeometry (evStyle e)) of
       _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> pure (Left errs)
-      (Just book, Right geom) -> fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False []) geom fakeFonts
+      (Just book, Right geom) -> fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty) geom fakeFonts
       (_, Left ds) -> pure (Left ds)
       (Nothing, _) -> pure (Left (filter isError (evDiagnostics e)))
 
@@ -826,6 +829,117 @@ sidenoteTests =
       a <- miniPdf fakeProvider True sidenoteStyle source []
       b <- miniPdf fakeProvider False sidenoteStyle source []
       c <- miniPdf fakeProvider True sidenoteStyle source []
+      a @?= b
+      a @?= c
+      qpdfCheck a
+  ]
+
+-- | The text of index or bibliography inlines, page numbers as numbers.
+rendered :: [Inline] -> T.Text
+rendered = T.concat . map (\case Number _ n _ -> T.pack (show n); i -> inlineText i)
+
+-- | The page numbers among inlines.
+numbersIn :: [Inline] -> [Integer]
+numbersIn is = [n | Number _ n _ <- is]
+
+{- | Lays out a one-chapter project (with extra manifest lines before
+[metadata]) and returns the text of the lines of each page.
+-}
+pagesMini :: T.Text -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> Map.Map T.Text T.Text -> IO (Either [Diagnostic] [[T.Text]])
+pagesMini manifestExtra style source files bib = withSystemTempDirectory "golem-pages" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 manifestExtra <> miniManifest)
+  BS.writeFile (tmp </> "style.toml") style
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  ev <- evaluateProject Dev tmp
+  case ev of
+    Left ds -> pure (Left ds)
+    Right e -> case (evBook e, filter isError (evDiagnostics e)) of
+      (Just book, []) -> layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] bib)
+      (_, ds) -> pure (Left ds)
+
+-- | horizontalStyle with five lines a page.
+fiveLines :: BS.ByteString
+fiveLines = replaceIn "lines = 30" "lines = 5" horizontalStyle
+
+refsJson :: BS.ByteString
+refsJson = "[{\"id\": \"knuth1981\", \"title\": \"Breaking Paragraphs into Lines\", \"author\": [{\"family\": \"Knuth\", \"given\": \"Donald\"}], \"issued\": {\"date-parts\": [[1981]]}}]"
+
+indexTests :: [TestTree]
+indexTests =
+  [ testCase "index lines: entries, sub-entries indented, pages once and in order" $ do
+      let sp i = mkSpan (FileId 0) i (i + 1)
+          pages = Map.fromList [(sp 1, 3), (sp 2, 3), (sp 3, 10), (sp 4, 12)]
+          groups =
+            [ IndexGroup ["組版"] ["くみはん"] [(FileId 0, sp 1), (FileId 0, sp 2)],
+              IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(FileId 0, sp 3)],
+              IndexGroup ["和文"] ["わぶん"] [(FileId 0, sp 4)]
+            ]
+      map rendered (indexLines False (`Map.lookup` pages) groups) @?= ["組版　3", "　和文組版　10", "和文　12"],
+    testCase "a sub-entry without its main entry gets a main line without pages" $ do
+      let sp i = mkSpan (FileId 0) i (i + 1)
+      map rendered (indexLines False (const (Just 5)) [IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(FileId 0, sp 1)]]) @?= ["組版", "　和文組版　5"],
+    testCase "two sub-entries share one main line" $ do
+      let sp i = mkSpan (FileId 0) i (i + 1)
+          groups =
+            [ IndexGroup ["組版", "欧文組版"] ["くみはん", "おうぶんくみはん"] [(FileId 0, sp 1)],
+              IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(FileId 0, sp 2)]
+            ]
+      map rendered (indexLines False (const (Just 5)) groups) @?= ["組版", "　欧文組版　5", "　和文組版　5"],
+    testCase "vertical index pages are numbers separated by 、" $ do
+      let sp i = mkSpan (FileId 0) i (i + 1)
+          pages = Map.fromList [(sp 1, 3), (sp 2, 12)]
+      case indexLines True (`Map.lookup` pages) [IndexGroup ["組版"] ["くみはん"] [(FileId 0, sp 2), (FileId 0, sp 1)]] of
+        [l] -> do
+          numbersIn l @?= [3, 12]
+          rendered l @?= "組版　3、12"
+        other -> assertFailure (show other),
+    testCase "bibliography lines: number and entry, or the key when it is unknown" $
+      map rendered (bibliographyLines (Map.fromList [("knuth1981", "Knuth Donald. Breaking.")]) [("knuth1981", 1), ("missing", 2)]) @?= ["[1] Knuth Donald. Breaking.", "[2] missing"],
+    testCase "the index of a book shows the pages of its marks" $ do
+      let source =
+            "# 一\n\n本文[index reading=くみはん: 組版]。\n\n"
+              <> fillers 3
+              <> "# 二\n\n"
+              <> fillers 4
+              <> "本文[index reading=わぶん: 和文]。\n\n@index\n"
+      r <- pagesMini "" fiveLines source [] Map.empty
+      pages <- either (assertFailure . show) pure r
+      let at t = [n | (n, ls) <- zip [1 :: Int ..] pages, any (t `T.isInfixOf`) ls]
+      take 1 (at "本文") @?= [1]
+      assertBool (show pages) (any ("組版　1" `elem`) pages)
+      assertBool (show pages) (any ("和文　3" `elem`) pages),
+    testCase "an index page that gains a digit converges" $ do
+      r <- pagesMini "" fiveLines (fillers 45 <> "本文[index reading=くみはん: 組版]。\n\n@index\n") [] Map.empty
+      pages <- either (assertFailure . show) pure r
+      assertBool (show (drop 9 pages)) (any ("組版　10" `elem`) pages),
+    testCase "citations show their number; the bibliography lists the entry" $ do
+      r <- pagesMini "bibliography = [\"refs.json\"]\n" horizontalStyle "本文[cite knuth1981]。\n\n@bibliography\n" [("refs.json", refsJson)] (Map.fromList [("knuth1981", "Knuth Donald. Breaking Paragraphs into Lines. 1981.")])
+      ls <- concat <$> either (assertFailure . show) pure r
+      assertBool (show ls) (any ("[1]" `T.isInfixOf`) ls)
+      assertBool (show ls) (not (any ("knuth1981" `T.isInfixOf`) ls))
+      assertBool (show ls) (any (\l -> "[1]" `T.isPrefixOf` l && "Knuth" `T.isInfixOf` l) ls),
+    testCase "every index mark has a page" $ do
+      img <- tinyImage
+      let source =
+            "# 見出し[index reading=み: 見]\n\n本文[index reading=ほ: 本]。[note: 注[index reading=ちゅう: 注]]\n\n= 用語[index reading=よう: 用]\n  定義。\n\n@figure images/tiny.jpg alt=\"t\"\n  キャプション[index reading=きゃ: 図]。\n\n@index\n"
+      (_, pl) <- layoutOk horizontal24 source img
+      sort (map spanStart (Map.keys (markPages (plPages pl)))) @?= offsetsIn "[index" source,
+    testCase "index and bibliography: parallel and sequential, and two builds, give the same bytes" $ do
+      let source = "# 一\n\n本文[index reading=くみはん: 組版][cite knuth1981]。\n\n" <> fillers 8 <> "@index\n\n@bibliography\n"
+          build' parallel = withSystemTempDirectory "golem-mini" $ \tmp -> do
+            BS.writeFile (tmp </> "manifest.toml") ("bibliography = [\"refs.json\"]\n" <> miniManifest)
+            BS.writeFile (tmp </> "style.toml") fiveLines
+            BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+            BS.writeFile (tmp </> "refs.json") refsJson
+            r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optParallel = parallel}
+            assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+            case filter (".pdf" `isSuffixOf`) (brWritten r) of
+              [p] -> BS.readFile p
+              other -> assertFailure (show other)
+      a <- build' True
+      b <- build' False
+      c <- build' True
       a @?= b
       a @?= c
       qpdfCheck a

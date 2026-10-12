@@ -21,12 +21,17 @@ module Golem.Driver.Pdf
     sidenoteDiagnostics,
     placePageSidenotes,
     layoutPdf,
+    layoutPages,
+    indexLines,
+    bibliographyLines,
+    Assumed (..),
     figureRect,
     renderPdf,
     pdfFileName,
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Exception (evaluate)
 import Control.Monad (join)
@@ -34,7 +39,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii)
 import Data.Either (fromRight, isLeft)
-import Data.List (groupBy, nub, sortOn)
+import Data.List (groupBy, intercalate, nub, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -95,7 +100,9 @@ data PdfInput = PdfInput
     piBook :: !Book,
     piParallel :: !Bool,
     -- | bytes of every input, for the instance ID
-    piInputs :: ![ByteString]
+    piInputs :: ![ByteString],
+    -- | the formatted entries of the bibliography by key (golem-driver ADR 0007)
+    piBibliography :: !(Map Text Text)
   }
 
 -- | The body font role: @body@, or the first role when there is none.
@@ -253,7 +260,8 @@ layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) of
   [] -> do
     figures <- loadFigures inp
     -- S2: compose with assumed page numbers until they settle
-    result <- fixpoint geom (buildFlow inp geom fonts figures)
+    let terms = Map.fromList [(sp, T.intercalate " / " (igTerms g)) | g <- bookIndex (piBook inp), (_, sp) <- igLocations g]
+    result <- fixpoint geom (\sp -> Map.findWithDefault "" sp terms) (buildFlow inp geom fonts figures)
     pure $ case result of
       Left ds -> Left ds
       Right (built, pages) ->
@@ -263,6 +271,55 @@ layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) of
          in case concat [ds | (_, Left ds) <- placed] of
               [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]))
               ds -> Left ds
+
+{- | The text of the lines of each page, as far as the layout goes
+(golem-driver ADR 0007): the boxes of a line joined.
+-}
+layoutPages :: FontProvider -> PdfInput -> IO (Either [Diagnostic] [[Text]])
+layoutPages provider inp = case pageGeometry (piStyle inp) of
+  Left ds -> pure (Left ds)
+  Right geom -> do
+    lf <- loadFonts provider (piRoot inp) (piStyle inp)
+    case lf of
+      Left ds -> pure (Left ds)
+      Right fonts -> fmap texts <$> layoutPdf inp geom fonts
+  where
+    texts layout =
+      [ [ T.concat [bcText c | Box _ c <- lineItems (slLine sl)]
+        | (_, s) <- poSlots p,
+          lid <- case s of
+            SLine l -> [l]
+            SHeading l m -> [l .. l + m - 1]
+            _ -> [],
+          Just sl <- [Map.lookup lid (plLines layout)]
+        ]
+      | p <- plPages layout
+      ]
+
+{- | The lines of the index (golem-driver ADR 0007): a main entry and its
+pages, sub-entries indented by a full-width space below their main entry
+(which is shown once, without pages when it has no mark of its own).
+Pages are numbers, in order, each once; a mark without a page is left
+out. The groups come sorted from S1.
+-}
+indexLines :: Bool -> (SrcSpan -> Maybe Integer) -> [IndexGroup] -> [[Inline]]
+indexLines vertical pageOf = go Nothing
+  where
+    sp0 = mkSpan (FileId 0) 0 0
+    txt = Text sp0
+    go _ [] = []
+    go prevMain (g : gs) = case (igTerms g, igReadings g) of
+      ([t], [r]) -> entry [] t (pagesOf g) : go (Just (t, r)) gs
+      ([t, sub], [r, _]) -> [[txt t] | prevMain /= Just (t, r)] <> [entry [txt "　"] sub (pagesOf g)] <> go (Just (t, r)) gs
+      _ -> go prevMain gs
+    pagesOf g = Set.toAscList (Set.fromList [n | (_, sp) <- igLocations g, Just n <- [pageOf sp]])
+    entry prefix term ps =
+      prefix <> [txt term] <> (if null ps then [] else txt "　" : intercalate [txt (if vertical then "、" else ", ")] [[Number sp0 n Nothing] | n <- ps])
+
+-- | The lines of the bibliography: @[n] @ and the entry, or the key when it has none.
+bibliographyLines :: Map Text Text -> [(Text, Int)] -> [[Inline]]
+bibliographyLines bib cites =
+  [[Text (mkSpan (FileId 0) 0 0) ("[" <> T.pack (show n) <> "] " <> fromMaybe k (Map.lookup k bib))] | (k, n) <- cites]
 
 -- | The size and line pitch of sidenotes: the body pitch scaled to the size.
 sidenoteMetrics :: Style -> PageGeometry -> (Sp, Sp)
@@ -340,14 +397,21 @@ placePageSidenotes geom pitch size lineMap p =
           Left (TooTall i) -> Left [diagnostic "G0733" Error (at i) "傍注が傍注欄より高く、収まりません"]
           Left (DoesNotFit i) -> Left [diagnostic "G0733" Error (at i) "このページの傍注が傍注欄に収まりません"]
 
-fixpoint :: PageGeometry -> (Map Text Integer -> IO Built) -> IO (Either [Diagnostic] (Built, [PageOut]))
-fixpoint geom layoutWith = go (1 :: Int) Map.empty
+-- | The page numbers assumed in a round of S2: of labels and of index marks (golem-driver ADR 0007).
+data Assumed = Assumed
+  { asLabels :: !(Map Text Integer),
+    asMarks :: !(Map SrcSpan Integer)
+  }
+  deriving stock (Eq, Show)
+
+fixpoint :: PageGeometry -> (SrcSpan -> Text) -> (Assumed -> IO Built) -> IO (Either [Diagnostic] (Built, [PageOut]))
+fixpoint geom termOf layoutWith = go (1 :: Int) (Assumed Map.empty Map.empty)
   where
     capacity = length (pgLineGrid geom)
     go i assumed = do
       built <- layoutWith assumed
       let pages = paginate capacity (bFlow built)
-          actual = labelPages pages
+          actual = Assumed (labelPages pages) (markPages pages)
       if not (null (bErrors built))
         then pure (Left (bErrors built))
         else
@@ -355,13 +419,16 @@ fixpoint geom layoutWith = go (1 :: Int) Map.empty
             then pure (Right (built, pages))
             else
               if i >= maxIterations
-                then pure (Left [diagnostic "G0721" Error (mkSpan (FileId 0) 0 0) ("ページ番号の参照が収束しません: " <> T.intercalate ", " (Map.keys (Map.filter id (Map.unionWith (/=) (Map.map (const True) actual) (Map.map (const False) assumed)))))])
+                then pure (Left [diagnostic "G0721" Error (mkSpan (FileId 0) 0 0) ("ページ番号の参照が収束しません: " <> T.intercalate ", " (moved actual asLabels id <> nub (moved actual asMarks termOf)))])
                 else go (i + 1) actual
+      where
+        moved :: (Ord k) => Assumed -> (Assumed -> Map k Integer) -> (k -> Text) -> [Text]
+        moved now field name = [name k | k <- Map.keys (Map.union (field now) (field assumed)), Map.lookup k (field now) /= Map.lookup k (field assumed)]
 
 {- | The composition environment of a unit set in a font role at a size
 (golem-driver ADR 0003).
 -}
-composeEnv :: Style -> PageGeometry -> LoadedFonts -> Map Text Integer -> Text -> Sp -> ComposeEnv
+composeEnv :: Style -> PageGeometry -> LoadedFonts -> Assumed -> Text -> Sp -> ComposeEnv
 composeEnv style geom fonts assumed role fs =
   let comp = stComposition style
    in (defaultComposeEnv fs)
@@ -378,7 +445,7 @@ composeEnv style geom fonts assumed role fs =
             "kanji-digits" -> Just StyleKanjiDigits
             "tcy" -> Just StyleTcy
             _ -> Just StyleKanji,
-          cePageOf = (`Map.lookup` assumed),
+          cePageOf = (`Map.lookup` asLabels assumed),
           ceSidenoteMarker = case snMarker <$> stSidenotes style of
             Just "symbol" -> MarkerSymbol
             Just "none" -> MarkerNone
@@ -409,8 +476,8 @@ data Unit = Unit
 
 data UnitKind = UPara | UHeading Int Text Bool | UTerm | UFigure Figure
 
-unitsOf :: Book -> PageGeometry -> Style -> [Unit]
-unitsOf book _ style = concatMap doc (bookDocs book)
+unitsOf :: Book -> PageGeometry -> Style -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
+unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
   where
     sp0 = mkSpan (FileId 0) 0 0
     txt = Text sp0
@@ -428,11 +495,16 @@ unitsOf book _ style = concatMap doc (bookDocs book)
       Table _ h rows -> [Unit UPara lbl (cells r) | r <- h : rows]
       CodeBlock _ code -> [Unit UPara lbl [txt l] | l <- T.lines code]
       FigureBlock fig -> [Unit (UFigure fig) lbl []]
-      ChannelOutput (TocOutput depth) -> [Unit UPara Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> teTitle e) | e <- bookToc book, teLevel e <= depth]
-      ChannelOutput _ -> []
+      -- the index marks of a title are counted at the heading, not in the table of contents
+      ChannelOutput (TocOutput depth) -> [Unit UPara Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) | e <- bookToc book, teLevel e <= depth]
+      ChannelOutput IndexOutput -> [Unit UPara Nothing is | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
+      ChannelOutput BibliographyOutput -> [Unit UPara Nothing is | is <- bibliographyLines bib (bookCitations book)]
     cells r = concat [c <> [txt "　"] | c <- r]
     prefixFirst p (Unit UPara l is s' : rest) = Unit UPara l (txt p : is) s' : rest
     prefixFirst _ us = us
+    isMark = \case
+      IndexMark {} -> True
+      _ -> False
 
 -- | A unit composed and broken into lines.
 data Composed = Composed
@@ -440,11 +512,13 @@ data Composed = Composed
     cNotes :: [(Int, [Line])],
     -- | sidenote bodies: the item index of the marker, the span and the lines
     cSidenotes :: [(Int, SrcSpan, [Line])],
+    -- | index marks: the item index they belong to (a note's marks go with the note) and the mark
+    cMarks :: [(Int, SrcSpan)],
     cAnchors :: [Golem.Layout.Japanese.Anchor],
     cItems :: [Item]
   }
 
-buildFlow :: PdfInput -> PageGeometry -> LoadedFonts -> Map Text (Maybe P.ImageData) -> Map Text Integer -> IO Built
+buildFlow :: PdfInput -> PageGeometry -> LoadedFonts -> Map Text (Maybe P.ImageData) -> Assumed -> IO Built
 buildFlow inp geom fonts images assumed = do
   let style = piStyle inp
       body = bodyRole style
@@ -452,12 +526,17 @@ buildFlow inp geom fonts images assumed = do
       pitch = pgLinePitch geom
       capacity = length (pgLineGrid geom)
       vertical = pgVertical geom
-      bodyEnv = composeEnv style geom fonts assumed body fs
+      cites = Map.fromList (bookCitations (piBook inp))
+      -- citations show their numbers (golem-driver ADR 0007)
+      envFor role size = (composeEnv style geom fonts assumed role size) {ceCiteNumber = (`Map.lookup` cites)}
+      bodyEnv = envFor body fs
       params = kpParams style geom
       measure = case pgColumns geom of
         (c : _) -> if vertical then rectH c else rectW c
         [] -> 0
-      units = zip [0 :: Int ..] (unitsOf (piBook inp) geom style)
+      -- a mark without an assumed page yet stands at page 1 in the first round
+      markPage sp = Map.lookup sp (asMarks assumed) <|> (if Map.null (asMarks assumed) then Just 1 else Nothing)
+      units = zip [0 :: Int ..] (unitsOf (piBook inp) geom style markPage (piBibliography inp))
       unitAt = Map.fromList units
       -- the role and size a unit is set in
       faceOf u = case uKind u of
@@ -465,15 +544,19 @@ buildFlow inp geom fonts images assumed = do
         _ -> (body, fs)
       compose lineWidth u =
         let (role, size) = faceOf u
-            env = composeEnv style geom fonts assumed role size
+            env = envFor role size
             (items, anchors) = composeInlines env (uInlines u)
             lines' = brLines (breakParagraph params lineWidth items)
             notes = [(n, brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv nbody)))) | AnchorNote _ n nbody <- anchors]
             sidenotes = [(i, sp, sidenoteLines n snBody) | AnchorSidenote i n sp snBody <- anchors]
-         in Composed lines' notes sidenotes anchors items
+            marks =
+              [(i, sp) | AnchorIndex i sp _ <- anchors]
+                <> [(i, sp) | AnchorNote i _ nbody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv nbody)]
+                <> [(i, sp) | AnchorSidenote i _ _ snBody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv snBody)]
+         in Composed lines' notes sidenotes marks anchors items
       -- sidenote bodies: their size, the column width, the marker first (golem-driver ADR 0006)
       (snSize', _) = sidenoteMetrics style geom
-      snEnv = composeEnv style geom fonts assumed body snSize'
+      snEnv = envFor body snSize'
       snParams = params {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition style))}
       snMeasure = maybe 0 (rectW . fst) (pgSidenotes geom)
       sidenoteLines n snBody =
@@ -499,7 +582,9 @@ buildFlow inp geom fonts images assumed = do
             m = fromInteger ((across + pitch - 1) `div` pitch)
             number = Map.lookup (uSpan u) (bookFigures (piBook inp))
             captionInlines = maybe [] (\num -> [Text (uSpan u) (num <> "　")]) number <> concat [is | Block _ _ (Paragraph is) <- figCaption fig]
-            caption = if null captionInlines then [] else brLines (breakParagraph params (const alongSp) (fst (composeInlines bodyEnv captionInlines)))
+            (captionItems, captionAnchors) = composeInlines bodyEnv captionInlines
+            caption = if null captionInlines then [] else brLines (breakParagraph params (const alongSp) captionItems)
+            captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
             n = length caption
             depth = if n > 0 then toInteger (m + n - 1) * pitch + fs else across
             gap = dimToSp fs (stWrapGap style)
@@ -510,7 +595,7 @@ buildFlow inp geom fonts images assumed = do
                     [diagnostic "G0722" Error (uSpan u) ("回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
                 | exLines e > capacity -> [diagnostic "G0723" Error (uSpan u) ("回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
               _ -> []
-         in (PlacedFigure img alongSp across (figWrap fig) m caption ex, errs)
+         in (PlacedFigure img alongSp across (figWrap fig) m caption ex, errs, captionMarks)
       figures = Map.fromList [(i, f) | (i, u@Unit {uKind = UFigure fig}) <- units, Just f <- [figureOf u fig]]
       -- 1. a job per wrapped figure: the paragraphs right after it, in order, beside the exclusion
       wrapJob i ex = go (i + 1) 0
@@ -521,14 +606,14 @@ buildFlow inp geom fonts images assumed = do
                 c <- force (compose (wrappedLineWidth measure ex offset) u)
                 ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c))
             | otherwise = pure []
-      jobs = [(i, ex) | (i, (pf, [])) <- Map.toList figures, Just ex <- [pfExclusion pf]]
+      jobs = [(i, ex) | (i, (pf, [], _)) <- Map.toList figures, Just ex <- [pfExclusion pf]]
   besides <- Map.fromList . concat <$> mapper (uncurry wrapJob) jobs
   -- 2. every other unit on its own
   let rest = [(i, u) | (i, u) <- units, Map.notMember i besides, not (isFigure u)]
       isFigure u = case uKind u of
         UFigure _ -> True
         _ -> False
-  _ <- mapper (\(_, (pf, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
+  _ <- mapper (\(_, (pf, _, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (force . compose (const measure) . snd) rest
   -- 3. number the lines in document order
   let label u = maybe [] pure (uLabel u)
@@ -541,7 +626,8 @@ buildFlow inp geom fonts images assumed = do
             lineOfItem = lineIndexOfItems (cItems c) ls
             noteLines = Map.fromListWith (<>) [(lineOfItem i, [(n, nls)]) | (AnchorNote i n _, (_, nls)) <- zip [a | a@AnchorNote {} <- cAnchors c] (cNotes c)]
             sidenoteLinesOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [(sp, sls)]) | (i, sp, sls) <- cSidenotes c]
-            boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) | (k, lid) <- zip [0 ..] ids]
+            marksOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [sp]) | (i, sp) <- cMarks c]
+            boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) | (k, lid) <- zip [0 ..] ids]
             set = Map.fromList [(lid, SetLine l size (indentOf k) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
          in (boxes, set)
       step st@(nextId, flows, lineAcc, figAcc, headAcc, errs) (i, u)
@@ -549,7 +635,7 @@ buildFlow inp geom fonts images assumed = do
         | otherwise = case uKind u of
             UFigure _ -> case Map.lookup i figures of
               Nothing -> st
-              Just (pf, ferrs) -> case pfExclusion pf of
+              Just (pf, ferrs, fmarks) -> case pfExclusion pf of
                 Just ex
                   | null ferrs ->
                       -- the figure and the lines beside it; the rest of a paragraph cut short continues
@@ -561,13 +647,13 @@ buildFlow inp geom fonts images assumed = do
                           (nextId', allBoxes, sets) = foldl go (nextId + 1, [], Map.empty) paras
                           (beside, continued) = splitAt (exLines ex) allBoxes
                        in ( nextId',
-                            flows <> [FWrapped nextId (exLines ex) (label u) beside] <> [FContinued continued | not (null continued)],
+                            flows <> [FWrapped nextId (exLines ex) (label u) fmarks beside] <> [FContinued continued | not (null continued)],
                             Map.union lineAcc sets,
                             Map.insert nextId pf figAcc,
                             headAcc,
                             errs
                           )
-                _ -> (nextId + 1, flows <> [FFigure nextId (pfImageLines pf + length (pfCaption pf)) (label u)], lineAcc, Map.insert nextId pf figAcc, headAcc, errs <> ferrs)
+                _ -> (nextId + 1, flows <> [FFigure nextId (pfImageLines pf + length (pfCaption pf)) (label u) fmarks], lineAcc, Map.insert nextId pf figAcc, headAcc, errs <> ferrs)
             _ ->
               let c = singles Map.! i
                   ls = cLines c

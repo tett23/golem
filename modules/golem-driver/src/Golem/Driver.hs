@@ -385,7 +385,7 @@ writeTargets opts e book targets = do
       let dir = root </> "build" </> "pdf"
           out = dir </> pdfFileName (mdId md)
           inputs = projectManifestText project : [sfText sf | sf <- Map.elems (projectSources project)]
-      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs))
+      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib)
       case r of
         Left ds -> pure ([], ds)
         Right bytes -> do

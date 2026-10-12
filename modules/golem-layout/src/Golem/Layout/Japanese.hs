@@ -132,7 +132,9 @@ data ComposeEnv = ComposeEnv
     -- | the look inside an inline element (strong, bold, italic, style, colour)
     ceRestyle :: Look -> Inline -> Look,
     -- | how a sidenote is marked in the text (golem-driver ADR 0006)
-    ceSidenoteMarker :: !SidenoteMarker
+    ceSidenoteMarker :: !SidenoteMarker,
+    -- | the number of a cited work (golem-driver ADR 0007)
+    ceCiteNumber :: Text -> Maybe Int
   }
 
 -- | The mark of a sidenote in the text: its number, ※ or nothing.
@@ -155,7 +157,8 @@ defaultComposeEnv fs =
       cePageOf = const Nothing,
       ceLook = plainLook "body" fs,
       ceRestyle = const,
-      ceSidenoteMarker = MarkerNumber
+      ceSidenoteMarker = MarkerNumber,
+      ceCiteNumber = const Nothing
     }
   where
     defaultAdvance c
@@ -167,7 +170,7 @@ data Anchor
   = AnchorNote !Int !Int [Inline] -- item index, note number, body
   | AnchorSidenote !Int !Int !SrcSpan [Inline] -- item index, sidenote number, span, body
   | AnchorPageRef !Int !Text
-  | AnchorIndex !Int IndexEntry
+  | AnchorIndex !Int !SrcSpan IndexEntry -- item index, the mark, the entry
   deriving stock (Eq, Show)
 
 -- | What a box shows (kept in 'bcTag').
@@ -245,8 +248,8 @@ piecesOf env kenten inl = case inl of
       MarkerNumber -> [PBox lk (T.pack (show n)) KindText (lkSize lk `div` 2)]
       MarkerSymbol -> [PBox lk "※" KindText (lkSize lk)]
       MarkerNone -> []
-  IndexMark _ e -> [PAnchor (`AnchorIndex` e)]
-  Cite _ k -> textPieces lk False ("[" <> k <> "]")
+  IndexMark sp e -> [PAnchor (\i -> AnchorIndex i sp e)]
+  Cite _ k -> textPieces lk False ("[" <> maybe k (T.pack . show) (ceCiteNumber env k) <> "]")
   ProofComment {} -> []
   where
     lk = ceLook env

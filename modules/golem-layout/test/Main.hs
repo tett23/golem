@@ -278,24 +278,33 @@ tests =
             map poNumber ps @?= [1, 2, 3]
             poRunningHead (last ps) @?= Just "章",
           testCase "a figure that does not fit goes to the next page; text moves up" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"], FParagraph (lines' 10 2)]
+            let ps = paginate 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 10), (4, SLine 11)], [(0, SFigure 99)]],
           testCase "footnotes sit on the page of their marker and continue when too long" $ do
-            let withNote i n = LineBox i [NoteBody (100 + i) n] []
-                ps = paginate 6 [FParagraph [LineBox 0 [] [], withNote 1 2, LineBox 2 [] [], withNote 3 1, LineBox 4 [] []]]
+            let withNote i n = LineBox i [NoteBody (100 + i) n] [] []
+                ps = paginate 6 [FParagraph [LineBox 0 [] [] [], withNote 1 2, LineBox 2 [] [] [], withNote 3 1, LineBox 4 [] [] []]]
             map poFootnotes ps @?= [[(101, 0, 2)], [(103, 0, 1)]]
-            let long = paginate 4 [FParagraph [withNote 0 5, LineBox 1 [] []]]
+            let long = paginate 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
             map poFootnotes long @?= [[(100, 0, 2)], [(100, 2, 2)], [(100, 4, 1)]],
+          testCase "index marks go to the page of their line (golem-driver ADR 0007)" $ do
+            let m = mkSpan (FileId 0) 10 20
+                ps = paginate 1 [FParagraph [LineBox 0 [] [] [], LineBox 1 [] [] [m], LineBox 2 [] [] []]]
+            map poNumber ps @?= [1, 2, 3]
+            markPages ps @?= Map.fromList [(m, 2)],
+          testCase "the marks of a figure go with it to the next page" $ do
+            let m = mkSpan (FileId 0) 10 20
+                ps = paginate 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [m], FParagraph (lines' 10 2)]
+            markPages ps @?= Map.fromList [(m, 2)],
           testCase "page references converge when the page count gains a digit" $ do
             -- the reference sits before the label; at three digits the reference line wraps
             let layout assumed =
                   let refWidthLines = if Map.findWithDefault 1 "end" assumed >= 100 then 2 else 1
-                   in paginate 5 (FParagraph (lines' 0 refWidthLines) : [FParagraph (lines' (1000 + i * 10) 2) | i <- [0 .. 196]] <> [FParagraph [LineBox 9999 [] ["end"]]])
+                   in paginate 5 (FParagraph (lines' 0 refWidthLines) : [FParagraph (lines' (1000 + i * 10) 2) | i <- [0 .. 196]] <> [FParagraph [LineBox 9999 [] ["end"] []]])
             case resolvePageRefs layout of
               Right ps -> Map.lookup "end" (labelPages ps) @?= Just (toInteger (poNumber (last ps)))
               Left ls -> assertFailure (show ls),
           testCase "references that never settle are an error" $ do
-            let layout assumed = paginate 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"]]])
+            let layout assumed = paginate 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"] []]])
             resolvePageRefs layout @?= Left ["x"]
         ],
       testGroup
@@ -380,7 +389,7 @@ tests =
             let qs = paginate 5 [FParagraph (lines' 0 2), FContinued (lines' 10 4)]
             slots qs @?= [[0, 1, 10, 11], [12, 13]],
           testCase "a wrapped figure that does not fit the page goes to the next page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FWrapped 7 3 [] (lines' 50 3)]
+            let ps = paginate 5 [FParagraph (lines' 0 3), FWrapped 7 3 [] [] (lines' 50 3)]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SWrapped 7, SLine 50, SLine 51, SLine 52]]
         ],
       testGroup
@@ -402,6 +411,20 @@ tests =
                 (Box _ c : _) -> bcText c @?= "*1"
                 other -> assertFailure (show (take 1 other))
               other -> assertFailure (show other),
+          testCase "an index mark keeps its span and indexes the next item (golem-driver ADR 0007)" $ do
+            let m = mkSpan (FileId 0) 3 9
+                e = IndexEntry ["組版"] ["くみはん"]
+                (items, anchors) = composeInlines (defaultComposeEnv fs) [sp0 "前", IndexMark m e, sp0 "後"]
+            case anchors of
+              [AnchorIndex i m' e'] -> do
+                (m', e') @?= (m, e)
+                [bcText c | Box _ c <- take 1 (drop i items)] @?= ["後"]
+              other -> assertFailure (show other),
+          testCase "a citation shows its number when there is one" $ do
+            let cite = [Cite (mkSpan (FileId 0) 0 1) "knuth1981"]
+                texts env = [bcText c | Box _ c <- fst (composeInlines env cite)]
+            T.concat (texts (defaultComposeEnv fs) {ceCiteNumber = \k -> if k == "knuth1981" then Just 1 else Nothing}) @?= "[1]"
+            T.concat (texts (defaultComposeEnv fs)) @?= "[knuth1981]",
           testCase "the sidenote marker in the text follows the style (golem-driver ADR 0006)" $ do
             let snSpan = mkSpan (FileId 0) 3 9
                 sn = Sidenote snSpan 1 [sp0 "注"]
@@ -431,7 +454,7 @@ tests =
     head' (x : _) = x
     head' [] = ""
     last' xs = if null xs then "" else last xs
-    lines' base n = [LineBox (base + i) [] [] | i <- [0 .. n - 1]]
+    lines' base n = [LineBox (base + i) [] [] [] | i <- [0 .. n - 1]]
     slots = map (\p -> [i | (_, s) <- poSlots p, i <- slotLines s] <> [i | (_, SFigure i) <- poSlots p])
     slotLines = \case
       SLine i -> [i]
