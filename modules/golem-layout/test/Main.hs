@@ -142,6 +142,18 @@ tests =
                 r = breakParagraph defaultParams {pEmergencyStretch = 20} (const 100) items
             brPass r @?= 4
             assertBool "overfull" (any lineOverfull (brLines r)),
+          testCase "a penalty inside a line takes no width; at the line end it does" $ do
+            let items = [box 30, Penalty 5 50 True, box 30, Glue 6 3 2, box 30, Penalty 5 50 True, box 30] <> finish
+                r = breakParagraph defaultParams (const 1000) items
+            case brLines r of
+              [l] -> [x | (Box {}, x) <- placeLine l] @?= [0, 30, 66, 96]
+              ls -> assertFailure (show (length ls))
+            let r2 = breakParagraph noPretol (const 70) ([box 30, Glue 6 3 2, box 30, Penalty 5 50 True, box 30] <> finish)
+            case brLines r2 of
+              (l : _) -> case reverse (lineItems l) of
+                (Penalty 5 _ True : _) -> pure ()
+                other -> assertFailure ("the break penalty should end the line: " <> show (take 1 other))
+              [] -> assertFailure "no lines",
           testCase "set lines fill the target exactly" $ do
             let items = paragraph (replicate 12 37)
                 r = breakParagraph defaultParams (const 150) items
@@ -191,6 +203,12 @@ tests =
             glues "」「" @?= [fs `div` 2]
             glues "）」" @?= []
             glues "あ。」" @?= [],
+          testCase "apostrophes inside Latin words belong to the word" $ do
+            [bcText c | Box _ c <- compose (defaultComposeEnv fs) "I’ll warrant the masters’ whistle"] @?= ["I’ll", "warrant", "the", "masters’", "whistle"],
+          testCase "quotation marks touching Latin text belong to the word" $ do
+            [bcText c | Box _ c <- compose (defaultComposeEnv fs) "“Mercy on us!”—“We split!”]"] @?= ["“Mercy", "on", "us!”—“We", "split!”]"]
+            -- in Japanese text they stay punctuation
+            [bcText c | Box _ c <- compose (defaultComposeEnv fs) "彼は“あ”と"] @?= ["彼", "は", "“", "あ", "”", "と"],
           testCase "a quarter em between Japanese and Latin text" $ do
             let items = compose (defaultComposeEnv fs) "日本Golem語"
             [w | Glue w _ _ <- items, w > 0, w < filStretch] @?= [fs `div` 4, fs `div` 4],

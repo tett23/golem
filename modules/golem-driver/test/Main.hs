@@ -3,10 +3,13 @@ module Main (main) where
 import Codec.Compression.Zlib qualified as Z
 import Control.Exception (SomeException, evaluate, try)
 import Data.ByteString qualified as BS
+import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
+import Data.List (isSuffixOf, nub)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Pdf (Font (..), FontProgram (..))
@@ -106,6 +109,23 @@ tests =
             -- 「は」(U+306F) and 「じ」(U+3058) of 「はじめに」 are mapped back to text
             assertBool "ToUnicode" (any (\st -> "<306f>" `BS.isInfixOf` st && "beginbfchar" `BS.isInfixOf` st) streams)
             qpdfCheck a,
+          testCase "ruby readings, emphasis dots and line-end hyphens are drawn" $ do
+            pdf <- withSystemTempDirectory "golem-driver" $ \tmp -> do
+              copyTree fixture tmp
+              BS.writeFile (tmp </> "style.toml") horizontalStyle
+              BS.appendFile (tmp </> "chapters/02.gm") $ TE.encodeUtf8 "\n[kenten: 強調]する。\n\nThe typesetting of hyphenation demonstrates the extraordinary flexibility of characteristically unbreakable paragraphs.\n"
+              r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = FontProvider (\_ _ -> pure (Right fakeFonts))}
+              assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+              case brWritten r of
+                [path] -> BS.readFile path
+                other -> assertFailure (show other)
+            streams <- inflateAll pdf
+            let content = BS.concat streams
+                sizes = nub (tfSizes content)
+            -- the folio and the text share a size; ruby and the dots are half of it
+            assertBool ("sizes: " <> show sizes) (length sizes >= 2)
+            assertBool "sesame dot" ("<FE45>" `BS.isInfixOf` content)
+            assertBool "hyphen" ("<002D>" `BS.isInfixOf` content),
           testCase "fonts and layout are not touched unless PDF is a target" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
             copyTree fixture tmp
             BS.writeFile (tmp </> "style.toml") pdfStyle
@@ -123,8 +143,32 @@ tests =
             a @?= b
             qpdfCheck a
         ],
-      testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests
+      testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
+      testGroup
+        "public-domain books"
+        [ testCase "The Tempest builds horizontally to every target" $ do
+            (written, pdf) <- buildBook "tempest"
+            assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
+            assertBool "horizontal" (not ("/Identity-V" `BS.isInfixOf` pdf))
+            qpdfCheck pdf,
+          testCase "蟹工船 builds vertically to every target" $ do
+            (written, pdf) <- buildBook "kanikosen"
+            assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
+            assertBool "vertical" ("/Identity-V" `BS.isInfixOf` pdf)
+            qpdfCheck pdf
+        ]
     ]
+
+-- | Builds a copy of a book fixture (fonts included); no errors allowed.
+buildBook :: FilePath -> IO ([FilePath], BS.ByteString)
+buildBook name = withSystemTempDirectory "golem-book" $ \tmp -> do
+  copyTree ("test/fixtures" </> name) tmp
+  r <- build (defaultOptions tmp)
+  assertEqual "no errors" [] [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
+  pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
+    [p] -> BS.readFile p
+    other -> assertFailure (show other)
+  pure (brWritten r, pdf)
 
 -- | A project with the identity plugin locked and cached.
 withPluginProject :: BS.ByteString -> (FilePath -> IO a) -> IO a
@@ -188,6 +232,15 @@ pdfStyle =
       "[page.grid]\nfont-size = \"13Q\"\ncharacters = 42\nlines = 16\nline-pitch = \"22H\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n",
       "[headings.1]\nnumber = \"第{n:kanji}章\"\n\n[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
     ]
+
+-- | A4, horizontal, narrow lines: words must be hyphenated.
+horizontalStyle :: BS.ByteString
+horizontalStyle =
+  "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 12\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n"
+
+-- | The size of every Tf operator in a content stream (the number before Tf).
+tfSizes :: BS.ByteString -> [BS.ByteString]
+tfSizes content = [size | l <- BC.lines content, (size, "Tf") <- zip (BC.words l) (drop 1 (BC.words l))]
 
 -- | Fixed-width stand-in fonts: full-width characters one em, others half.
 fakeFonts :: LoadedFonts

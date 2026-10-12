@@ -334,11 +334,13 @@ placeLine l =
       (protS, _) = lineProtrusion l
       ex = toRational (lineExpansion l) / 1000
       g = glueRatio l
-      width = \case
+      lastIx = length its - 1
+      -- a penalty's width (a hyphen) counts only where the line breaks
+      width (i, it) = case it of
         Box w c -> toRational w * (if bcExpandable c then 1 + ex else 1)
         Glue w y z -> toRational w + (if g >= 0 then toRational y else toRational z) * g
-        Penalty w _ _ -> toRational w
-      offsets = scanl (+) (negate (toRational protS)) (map width its)
+        Penalty w _ _ -> if i == lastIx then toRational w else 0
+      offsets = scanl (+) (negate (toRational protS)) (zipWith (curry width) [0 ..] its)
    in zip its (map round offsets)
 
 {- | The ratio by which the glue of a set line is stretched or shrunk,
@@ -349,7 +351,11 @@ glueRatio l =
   let its = lineItems l
       (protS, protE) = lineProtrusion l
       ex = toRational (lineExpansion l) / 1000
-      natural = toRational (sum (map itemWidth its) - protS - protE)
+      lastIx = length its - 1
+      natural = toRational (sum [itemWidth it | (i, it) <- zip [0 :: Int ..] its, not (isPenalty it) || i == lastIx] - protS - protE)
+      isPenalty = \case
+        Penalty {} -> True
+        _ -> False
       expandable = toRational (sum [w | Box w c <- its, bcExpandable c])
       rest = toRational (lineTarget l) - natural - expandable * ex
       ys = toRational (sum [y | Glue _ y _ <- its])

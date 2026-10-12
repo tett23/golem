@@ -1,0 +1,17 @@
+chapters = ["tempest.gm"]
+
+[metadata]
+id = "urn:uuid:7d6f3a52-2c1e-4b8e-9a51-3f0d6c2e1a01"
+title = "The Tempest"
+language = "en"
+date = 2026-10-12
+
+[[metadata.creators]]
+name = "William Shakespeare"
+role = "aut"
+
+[targets.html]
+[targets.epub]
+[targets.text]
+variants = ["horizontal"]
+[targets.pdf]
