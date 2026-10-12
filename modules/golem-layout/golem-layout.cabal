@@ -9,6 +9,7 @@ category:           Text
 build-type:         Simple
 extra-source-files:
   data/hyphenation/*.txt
+  test/data/knuth-plass/*
 
 common warnings
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
@@ -40,6 +41,7 @@ test-suite golem-layout-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    KnuthPlassReference
   build-depends:
     , base
     , containers

@@ -1,0 +1,73 @@
+% The example paragraph of Knuth and Plass, "Breaking Paragraphs into Lines"
+% (1981), set with plain TeX and cmr10 (golem-layout ADR 0007).
+%
+% Regenerate frog-king.words and frog-king.log with
+%   max_print_line=10000 tex -interaction=batchmode frog-king.tex
+% (see README.md).
+
+% ------------------------------------------------------------------ the text
+
+\def\frogking{In olden times when wishing still helped one, there lived a king
+whose daughters were all beautiful; and the youngest was so beautiful that the
+sun itself, which has seen so much, was astonished whenever it shone in her
+face. Close by the king's castle lay a great dark forest, and under an old
+lime-tree in the forest was a well, and when the day was very warm, the king's
+child went out into the forest and sat down by the side of the cool fountain;
+and when she was bored she took a golden ball, and threw it up on high and
+caught it; and this ball was her favorite plaything.}
+
+% ------------------------------------------------------------------ parameters
+
+\tenrm
+\frenchspacing
+\parindent=20pt
+\parfillskip=0pt plus 1fil
+\leftskip=0pt \rightskip=0pt
+\hyphenpenalty=10000 \exhyphenpenalty=10000
+\pretolerance=100 \tolerance=200 \emergencystretch=0pt
+\linepenalty=10 \adjdemerits=10000
+\doublehyphendemerits=10000 \finalhyphendemerits=0
+\looseness=0
+\showboxdepth=10000 \showboxbreadth=10000
+
+% ------------------------------------------------------------------ widths
+
+\newwrite\golemwords
+\immediate\openout\golemwords=\jobname.words
+
+\immediate\write\golemwords{space \number\fontdimen2\tenrm\space
+  \number\fontdimen3\tenrm\space \number\fontdimen4\tenrm}
+\immediate\write\golemwords{parindent \number\parindent}
+\setbox0=\hbox{\frogking}
+\immediate\write\golemwords{whole \number\wd0}
+
+% \golemmeasure takes one space-delimited word at a time and stops at \golemstop
+\def\golemstop{\golemstop}
+\def\golemmeasure#1 {%
+  \ifx\golemstop#1\else
+    \setbox0=\hbox{#1}%
+    \immediate\write\golemwords{box \number\wd0 \space #1}%
+    \expandafter\golemmeasure
+  \fi}
+\edef\next{\noexpand\golemmeasure\frogking\space\noexpand\golemstop\space}
+\next
+
+\immediate\closeout\golemwords
+
+% ------------------------------------------------------------------ breaking
+
+\def\golemset#1{%
+  \dimen0=#1\relax
+  \message{GOLEM-HSIZE=\number\dimen0}%
+  \setbox1=\vbox{\hsize=#1 \tracingparagraphs=1 \frogking\par}%
+  \showbox1 }
+
+% 180pt, one of the first candidates, has an overfull line and is left out
+% (README.md); 160pt and 200pt reach the second pass, 240pt and 300pt end in
+% the first.
+\golemset{160pt}
+\golemset{200pt}
+\golemset{240pt}
+\golemset{300pt}
+
+\end
