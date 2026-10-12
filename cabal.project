@@ -11,7 +11,7 @@ tests: True
 source-repository-package
   type: git
   location: https://github.com/tett23/peg-hs
-  tag: 35915bc3b1586cc8c69ddbdf41a183be4dcdff8b
+  tag: 437bcd8f5d11a19af9918ca13c19b4570c1c0cd5
   subdir: packages/peg-runtime
           packages/peg-grammar
           packages/peg-codegen
