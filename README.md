@@ -27,7 +27,7 @@ golem new mybook
 | `golem check` | 出力を書かずに検査する |
 | `golem lint` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形する |
-| `golem lsp` | 標準入出力で LSP を話す |
+| `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
 | `golem inspect FILE --as cst\|ast\|ir` | 構文木と IR を表示する |
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
