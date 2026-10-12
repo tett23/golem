@@ -14,6 +14,8 @@ module Golem.Layout.Paginate
     Flow (..),
     Slotted (..),
     PageOut (..),
+    HeadingBlock (..),
+    headingBlock,
     paginate,
     labelPages,
     resolvePageRefs,
@@ -24,6 +26,7 @@ where
 import Control.Applicative ((<|>))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Ratio ((%))
 import Data.Text (Text)
 
 data NoteBody = NoteBody {nbId :: !Int, nbLines :: !Int}
@@ -38,7 +41,8 @@ data LineBox = LineBox
 
 data Flow
   = FParagraph [LineBox]
-  | FHeading {fhLevel :: !Int, fhShort :: !Text, fhRecto :: !Bool, fhLines :: [LineBox]}
+  | -- | a heading, placed whole over 'fhSpan' grid lines (golem-driver ADR 0003)
+    FHeading {fhLevel :: !Int, fhShort :: !Text, fhRecto :: !Bool, fhSpan :: !Int, fhLines :: [LineBox]}
   | FDefTerm [LineBox]
   | -- | a figure with its caption, in grid lines
     FFigure {ffId :: !Int, ffLines :: !Int, ffLabels :: ![Text]}
@@ -46,8 +50,37 @@ data Flow
     FWrapped {fwId :: !Int, fwLines :: !Int, fwLabels :: ![Text], fwBeside :: [LineBox]}
   deriving stock (Eq, Show)
 
-data Slotted = SLine !Int | SFigure !Int | SWrapped !Int
+data Slotted
+  = SLine !Int
+  | SFigure !Int
+  | SWrapped !Int
+  | -- | a heading block: its first line and how many lines it has
+    SHeading !Int !Int
   deriving stock (Eq, Show)
+
+-- | How a heading sits on the line grid (golem-driver ADR 0003).
+data HeadingBlock = HeadingBlock
+  { -- | the line pitch of the heading
+    hbPitch :: !Integer,
+    -- | how many grid lines it takes
+    hbSpan :: !Int,
+    -- | from its first grid line to the top of its first line
+    hbOffset :: !Integer
+  }
+  deriving stock (Eq, Show)
+
+{- | The pitch, span and offset of a heading of size @s@ and @m@ lines on
+a grid of font size @fs@ and pitch @p@: the body's ratio of pitch to
+size is kept, the span is the fewest grid lines that hold it, and the
+heading is centred in them. Integer sp; one rounding.
+-}
+headingBlock :: Integer -> Integer -> Integer -> Int -> HeadingBlock
+headingBlock fs p s m =
+  let hp = round (p * s % fs)
+      extent = toInteger (max 1 m - 1) * hp + s
+      n = max 1 ((extent + p - fs + p - 1) `div` p)
+      area = (n - 1) * p + fs
+   in HeadingBlock hp (fromInteger n) ((area - extent) `div` 2)
 
 data PageOut = PageOut
   { poNumber :: !Int,
@@ -87,7 +120,7 @@ paginate capacity flows =
     nextNeed = \case
       (FParagraph ls : _) -> min 2 (length ls)
       (FDefTerm ls : _) -> length ls
-      (FHeading _ _ _ ls : _) -> length ls
+      (FHeading _ _ _ n _ : _) -> n
       (FFigure _ n _ : _) -> min n capacity
       (FWrapped _ n _ ls : _) -> max n (length ls)
       [] -> 0
@@ -96,10 +129,11 @@ paginate capacity flows =
     place st f need = case f of
       FParagraph ls -> placeLines st True ls
       FDefTerm ls -> placeLines (keep st (length ls + need)) True ls
-      FHeading lvl short recto ls ->
-        let st1 = if recto then rectoStart st else keep st (length ls + need)
+      FHeading lvl short recto n ls ->
+        let st1 = if recto then rectoStart st else keep st (n + need)
             st2 = if lvl == 1 then st1 {sHead = Just short, sPageHead = sPageHead st1 <|> Just short} else st1
-         in placeLines st2 True ls
+            st3 = if n <= free st2 || isEmpty st2 then st2 else newPage st2
+         in putBlock st3 n ls
       FFigure i n labels
         | n <= free st || isEmpty st -> putSlot st n (SFigure i) labels
         | otherwise -> st {sDeferred = sDeferred st <> [f]}
@@ -149,6 +183,22 @@ paginate capacity flows =
               sNotes = sNotes st <> shown,
               sPendingNotes = sPendingNotes st <> pending,
               sLabels = sLabels st <> lbLabels l
+            }
+    -- a heading: one block of n grid lines; the notes of its lines as in putLine
+    putBlock st _ [] = st
+    putBlock st n ls@(l0 : _) =
+      let notes = concatMap lbNotes ls
+          noteLines = sum (map nbLines notes)
+          sep = if sNoteLines st == 0 && noteLines > 0 then 1 else 0
+          room = capacity - sUsed st - n - sNoteLines st - sep
+          (shown, pending) = splitNotes room notes
+       in st
+            { sSlots = sSlots st <> [(sUsed st, SHeading (lbId l0) (length ls))],
+              sUsed = sUsed st + n,
+              sNoteLines = sNoteLines st + (if null shown then 0 else sep) + sum [c | (_, _, c) <- shown],
+              sNotes = sNotes st <> shown,
+              sPendingNotes = sPendingNotes st <> pending,
+              sLabels = sLabels st <> concatMap lbLabels ls
             }
     -- a note longer than the room continues on the next page
     splitNotes = go'

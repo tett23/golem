@@ -263,12 +263,12 @@ tests =
             let ps = paginate 5 [FParagraph (lines' 0 6)]
             slots ps @?= [[0, 1, 2, 3], [4, 5]],
           testCase "headings and definition terms stay with what follows" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 2 "節" False (lines' 20 1), FParagraph (lines' 30 3)]
+            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 2 "節" False 1 (lines' 20 1), FParagraph (lines' 30 3)]
             slots ps @?= [[0, 1, 2], [20, 30, 31, 32]]
             let qs = paginate 5 [FParagraph (lines' 0 4), FDefTerm (lines' 20 1), FParagraph (lines' 30 2)]
             slots qs @?= [[0, 1, 2, 3], [20, 30, 31]],
           testCase "a recto heading starts on an odd page after a blank page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 1 "章" True (lines' 20 1)]
+            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 1 "章" True 1 (lines' 20 1)]
             map poBlank ps @?= [False, True, False]
             map poNumber ps @?= [1, 2, 3]
             poRunningHead (last ps) @?= Just "章",
@@ -292,6 +292,36 @@ tests =
           testCase "references that never settle are an error" $ do
             let layout assumed = paginate 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"]]])
             resolvePageRefs layout @?= Left ["x"]
+        ],
+      testGroup
+        "heading blocks (golem-driver ADR 0003)"
+        [ testCase "a 20Q heading on a 13Q, 22H grid takes two grid lines, three when it wraps" $ do
+            let q x = round (x / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Sp
+                (bfs, bp, s) = (q 13, q 22, q 20)
+                hp = round (toRational bp * toRational s / toRational bfs)
+                expect m =
+                  let e = toInteger (m - 1) * hp + s
+                      n = max 1 ((e + bp - bfs + bp - 1) `div` bp)
+                   in HeadingBlock hp (fromInteger n) (((n - 1) * bp + bfs - e) `div` 2)
+            headingBlock bfs bp s 1 @?= expect (1 :: Int)
+            headingBlock bfs bp s 2 @?= expect 2
+            hbSpan (headingBlock bfs bp s 1) @?= 2
+            hbSpan (headingBlock bfs bp s 2) @?= 3,
+          testCase "a heading of the body size sits on the grid" $
+            mapM_ (\m -> headingBlock fs (fs * 3 `div` 2) fs m @?= HeadingBlock (fs * 3 `div` 2) m 0) [1, 2, 3],
+          testCase "a heading block takes its span; the next paragraph starts after it" $ do
+            let ps = paginate 10 [FHeading 1 "章" False 3 (lines' 20 1), FParagraph (lines' 30 3)]
+            map poSlots ps @?= [[(0, SHeading 20 1), (3, SLine 30), (4, SLine 31), (5, SLine 32)]],
+          testCase "a heading block is not split; it goes whole to the next page" $ do
+            let ps = paginate 6 [FParagraph (lines' 0 4), FHeading 2 "節" False 3 (lines' 20 1), FParagraph (lines' 30 2)]
+            map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SHeading 20 1), (3, SLine 30), (4, SLine 31)]],
+          testCase "keeping a heading with the next paragraph counts its span and two lines" $ do
+            -- 2 used, 5 free: span 3 + 2 lines fit
+            let fits = paginate 7 [FParagraph (lines' 0 2), FHeading 2 "節" False 3 (lines' 20 1), FParagraph (lines' 30 4)]
+            take 1 (map (map snd . poSlots) fits) @?= [[SLine 0, SLine 1, SHeading 20 1, SLine 30, SLine 31]]
+            -- 3 used, 4 free: span 3 + 2 lines do not fit
+            let moves = paginate 7 [FParagraph (lines' 0 3), FHeading 2 "節" False 3 (lines' 20 1), FParagraph (lines' 30 4)]
+            map (map snd . poSlots) moves @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 31, SLine 32, SLine 33]]
         ],
       testGroup
         "wrapped figures (ADR 0004)"
@@ -333,4 +363,8 @@ tests =
     head' [] = ""
     last' xs = if null xs then "" else last xs
     lines' base n = [LineBox (base + i) [] [] | i <- [0 .. n - 1]]
-    slots = map (\p -> [i | (_, SLine i) <- poSlots p] <> [i | (_, SFigure i) <- poSlots p])
+    slots = map (\p -> [i | (_, s) <- poSlots p, i <- slotLines s] <> [i | (_, SFigure i) <- poSlots p])
+    slotLines = \case
+      SLine i -> [i]
+      SHeading i n -> [i .. i + n - 1]
+      _ -> []

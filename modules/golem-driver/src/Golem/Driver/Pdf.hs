@@ -11,6 +11,8 @@ module Golem.Driver.Pdf
   ( FontProvider (..),
     LoadedFonts (..),
     noFontProvider,
+    bodyRole,
+    usedRoles,
     PdfInput (..),
     renderPdf,
     pdfFileName,
@@ -25,6 +27,8 @@ import Data.Char (isAlphaNum, isAscii)
 import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -36,7 +40,7 @@ import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Paginate
-import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Rect (..), pageGeometry, typeAreaFor)
+import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Rect (..), baselineRatio, pageGeometry, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Pdf qualified as P
 import Golem.Project
@@ -44,17 +48,20 @@ import Golem.Project.Style
 import Golem.Syntax
 import System.FilePath (takeBaseName)
 
--- | Fonts ready for layout and output. Advances are in em.
+{- | Fonts ready for layout and output. Advances are in em. The first
+argument of the measuring and shaping functions is the font role
+(golem-driver ADR 0003); a role that is not loaded is the body role.
+-}
 data LoadedFonts = LoadedFonts
-  { lfAdvance :: Char -> Rational,
+  { lfAdvance :: Text -> Char -> Rational,
     -- | a Latin word as shaped (kerning, ligatures)
-    lfWordAdvance :: Text -> Rational,
-    {- | shaping: for each glyph the font index, glyph id, advance in em
+    lfWordAdvance :: Text -> Text -> Rational,
+    {- | shaping: for each glyph the face number, glyph id, advance in em
     (downwards when vertical) and the text it stands for
-    -} lfShape :: Bool -> Text -> [(Int, Int, Rational, Text)],
+    -} lfShape :: Text -> Bool -> Text -> [(Int, Int, Rational, Text)],
     -- | the character code of a glyph in the PDF (its CID in a CID-keyed font)
     lfCode :: Int -> Int -> Int,
-    {- | the embedded (subset) font of a font index, for horizontal or
+    {- | the embedded (subset) font of a face number, for horizontal or
     vertical use, with the glyphs used and their text
     -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> P.Font
   }
@@ -78,6 +85,28 @@ data PdfInput = PdfInput
     piInputs :: ![ByteString]
   }
 
+-- | The body font role: @body@, or the first role when there is none.
+bodyRole :: Style -> Text
+bodyRole style
+  | Map.member "body" (stFonts style) = "body"
+  | otherwise = maybe "body" fst (Map.lookupMin (stFonts style))
+
+{- | The font roles the PDF uses, body first, then the others by name
+(golem-driver ADR 0003).
+-}
+usedRoles :: Style -> [Text]
+usedRoles style =
+  let body = bodyRole style
+      others = Set.toAscList (Set.delete body (Set.fromList [f | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings style)]))
+   in body : others
+
+-- | The role and size of the headings of a level (golem-driver ADR 0003).
+headingFace :: Style -> PageGeometry -> Int -> (Text, Sp)
+headingFace style geom level =
+  let hs = Map.lookup level (stHeadings style)
+      fs = pgFontSize geom
+   in (fromMaybe (bodyRole style) (hs >>= hsFont), maybe fs (dimToSp fs) (hs >>= hsSize))
+
 -- | The file name of the PDF, from the book's identifier.
 pdfFileName :: Text -> FilePath
 pdfFileName bookId =
@@ -90,13 +119,19 @@ pdfFileName bookId =
 data SetLine = SetLine
   { slLine :: !Line,
     slSize :: !Sp,
+    -- | the font role the line was set in
+    slFace :: !Text,
     slNotes :: ![(Int, [Line])]
   }
 
 data Built = Built
   { bFlow :: [Flow],
     bLines :: Map Int SetLine,
-    bFigures :: Map Int (P.ImageData, Sp, Sp)
+    bFigures :: Map Int (P.ImageData, Sp, Sp),
+    -- | heading blocks by their first line
+    bHeadings :: Map Int HeadingBlock,
+    -- | errors found while building (G0724)
+    bErrors :: [Diagnostic]
   }
 
 renderPdf :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ByteString)
@@ -125,20 +160,25 @@ fixpoint geom layoutWith = go (1 :: Int) Map.empty
       built <- layoutWith assumed
       let pages = paginate capacity (bFlow built)
           actual = labelPages pages
-      if actual == assumed
-        then pure (Right (built, pages))
+      if not (null (bErrors built))
+        then pure (Left (bErrors built))
         else
-          if i >= maxIterations
-            then pure (Left [diagnostic "G0721" Error (mkSpan (FileId 0) 0 0) ("ページ番号の参照が収束しません: " <> T.intercalate ", " (Map.keys (Map.filter id (Map.unionWith (/=) (Map.map (const True) actual) (Map.map (const False) assumed)))))])
-            else go (i + 1) actual
+          if actual == assumed
+            then pure (Right (built, pages))
+            else
+              if i >= maxIterations
+                then pure (Left [diagnostic "G0721" Error (mkSpan (FileId 0) 0 0) ("ページ番号の参照が収束しません: " <> T.intercalate ", " (Map.keys (Map.filter id (Map.unionWith (/=) (Map.map (const True) actual) (Map.map (const False) assumed)))))])
+                else go (i + 1) actual
 
-composeEnv :: Style -> PageGeometry -> LoadedFonts -> Map Text Integer -> ComposeEnv
-composeEnv style geom fonts assumed =
+{- | The composition environment of a unit set in a font role at a size
+(golem-driver ADR 0003).
+-}
+composeEnv :: Style -> PageGeometry -> LoadedFonts -> Map Text Integer -> Text -> Sp -> ComposeEnv
+composeEnv style geom fonts assumed role fs =
   let comp = stComposition style
-      fs = pgFontSize geom
    in (defaultComposeEnv fs)
-        { ceAdvance = lfAdvance fonts,
-          ceWordAdvance = lfWordAdvance fonts,
+        { ceAdvance = lfAdvance fonts role,
+          ceWordAdvance = lfWordAdvance fonts role,
           ceVertical = pgVertical geom,
           ceKinsokuStrict = compKinsokuStrict comp,
           ceHanging = compHanging comp,
@@ -168,7 +208,9 @@ kpParams style geom =
 data Unit = Unit
   { uKind :: UnitKind,
     uLabel :: Maybe Text,
-    uInlines :: [Inline]
+    uInlines :: [Inline],
+    -- | the block the unit comes from, for diagnostics
+    uSpan :: SrcSpan
   }
 
 data UnitKind = UPara | UHeading Int Text Bool | UTerm | UFigure Figure
@@ -179,66 +221,83 @@ unitsOf book _ style = concatMap doc (bookDocs book)
     sp0 = mkSpan (FileId 0) 0 0
     txt = Text sp0
     doc (Document _ bs) = concatMap block bs
-    block (Block sp lbl body) = case body of
+    block (Block sp lbl body) = map ($ sp) $ case body of
       Paragraph is -> [Unit UPara lbl is]
       Heading l attrs is ->
         let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
             title = maybe [] (\n -> [txt (n <> "　")]) (if haNoNumber attrs then Nothing else num) <> is
             recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
          in [Unit (UHeading l (T.concat (map inlineText is)) recto) lbl title]
-      BulletList items -> concat [prefixFirst "・" (concatMap block (itemBlocks it)) | it <- items]
-      OrderedList items -> concat [prefixFirst (T.pack (show n) <> ". ") (concatMap block (itemBlocks it)) | (n, it) <- zip [1 :: Integer ..] items]
-      DefList gs -> concat [[Unit UTerm Nothing t | t <- dgTerms g] <> concatMap (concatMap block) (dgDefs g) | g <- gs]
+      BulletList items -> map const (concat [prefixFirst "・" (concatMap block (itemBlocks it)) | it <- items])
+      OrderedList items -> map const (concat [prefixFirst (T.pack (show n) <> ". ") (concatMap block (itemBlocks it)) | (n, it) <- zip [1 :: Integer ..] items])
+      DefList gs -> map const (concat [[Unit UTerm Nothing t sp | t <- dgTerms g] <> concatMap (concatMap block) (dgDefs g) | g <- gs])
       Table _ h rows -> [Unit UPara lbl (cells r) | r <- h : rows]
       CodeBlock _ code -> [Unit UPara lbl [txt l] | l <- T.lines code]
       FigureBlock fig -> [Unit (UFigure fig) lbl []]
       ChannelOutput (TocOutput depth) -> [Unit UPara Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> teTitle e) | e <- bookToc book, teLevel e <= depth]
       ChannelOutput _ -> []
     cells r = concat [c <> [txt "　"] | c <- r]
-    prefixFirst p (Unit UPara l is : rest) = Unit UPara l (txt p : is) : rest
+    prefixFirst p (Unit UPara l is s' : rest) = Unit UPara l (txt p : is) s' : rest
     prefixFirst _ us = us
 
 buildFlow :: PdfInput -> PageGeometry -> LoadedFonts -> Map Text (Maybe (P.ImageData, Sp, Sp)) -> Map Text Integer -> IO Built
 buildFlow inp geom fonts figures assumed = do
   let style = piStyle inp
-      env = composeEnv style geom fonts assumed
+      body = bodyRole style
+      fs = pgFontSize geom
+      pitch = pgLinePitch geom
+      capacity = length (pgLineGrid geom)
+      bodyEnv = composeEnv style geom fonts assumed body fs
       params = kpParams style geom
       measure = case pgColumns geom of
         (c : _) -> if pgVertical geom then rectH c else rectW c
         [] -> 0
       units = unitsOf (piBook inp) geom style
-      breakOne is =
-        let (items, anchors) = composeInlines env is
+      -- the role and size a unit is set in
+      faceOf u = case uKind u of
+        UHeading l _ _ -> headingFace style geom l
+        _ -> (body, fs)
+      breakOne u =
+        let (role, size) = faceOf u
+            env = composeEnv style geom fonts assumed role size
+            (items, anchors) = composeInlines env (uInlines u)
             lines' = brLines (breakParagraph params (const measure) items)
-            notes = [(n, brLines (breakParagraph params (const measure) (fst (composeInlines env body)))) | AnchorNote _ n body <- anchors]
+            notes = [(n, brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv nbody)))) | AnchorNote _ n nbody <- anchors]
          in (lines', notes, anchors, items)
       force (ls, ns, as, is) = evaluate (length (show (map lineRatio ls)) + length ns + length as + length is) >> pure (ls, ns, as, is)
       mapper = if piParallel inp then mapConcurrently else mapM
-  broken <- mapper (force . breakOne . uInlines) units
+  broken <- mapper (force . breakOne) units
   -- number the lines in document order
-  let step (nextId, flows, lineAcc, figAcc) (u, (ls, notes, anchors, items)) =
+  let step (nextId, flows, lineAcc, figAcc, headAcc, errs) (u, (ls, notes, anchors, items)) =
         let ids = [nextId .. nextId + length ls - 1]
+            (role, size) = faceOf u
             -- notes belong to the line containing their anchor
             lineOfItem = lineIndexOfItems items ls
             noteLines = Map.fromListWith (<>) [(lineOfItem i, [(n, nls)]) | (AnchorNote i n _, (_, nls)) <- zip [a | a@AnchorNote {} <- anchors] notes]
             boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then maybe [] pure (uLabel u) else []) | (k, lid) <- zip [0 ..] ids]
-            set = Map.fromList [(lid, SetLine l (pgFontSize geom) (Map.findWithDefault [] k noteLines)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+            set = Map.fromList [(lid, SetLine l size role (Map.findWithDefault [] k noteLines)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+            hb = headingBlock fs pitch size (length ls)
             flowOf = case uKind u of
               UPara -> [FParagraph boxes]
-              UHeading l short recto -> [FHeading l short recto boxes]
+              UHeading l short recto -> [FHeading l short recto (hbSpan hb) boxes]
               UTerm -> [FDefTerm boxes]
               UFigure fig -> case Map.lookup (figSource fig) figures of
                 Just (Just (_, _, h)) ->
-                  let pitch = pgLinePitch geom
-                   in [FFigure nextId (fromInteger ((h + pitch - 1) `div` pitch)) (maybe [] pure (uLabel u))]
+                  [FFigure nextId (fromInteger ((h + pitch - 1) `div` pitch)) (maybe [] pure (uLabel u))]
                 _ -> []
             figAcc' = case uKind u of
               UFigure fig | Just (Just f) <- Map.lookup (figSource fig) figures -> Map.insert nextId f figAcc
               _ -> figAcc
+            (headAcc', errs') = case uKind u of
+              UHeading l short _ ->
+                ( Map.insert nextId hb headAcc,
+                  errs <> [diagnostic "G0724" Error (uSpan u) ("見出しが版面に入りません（" <> T.pack (show l) <> " の見出し: " <> short <> "）") | hbSpan hb > capacity]
+                )
+              _ -> (headAcc, errs)
             used = max (length ls) (case uKind u of UFigure _ -> 1; _ -> 0)
-         in (nextId + used, flows <> flowOf, Map.union lineAcc set, figAcc')
-      (_, flow, lineMap, figMap) = foldl step (0, [], Map.empty, Map.empty) (zip units broken)
-  pure (Built flow lineMap figMap)
+         in (nextId + used, flows <> flowOf, Map.union lineAcc set, figAcc', headAcc', errs')
+      (_, flow, lineMap, figMap, headMap, errors) = foldl step (0, [], Map.empty, Map.empty, Map.empty, []) (zip units broken)
+  pure (Built flow lineMap figMap headMap errors)
 
 -- | Which line (0-based) contains the item at an index.
 lineIndexOfItems :: [Item] -> [Line] -> Int -> Int
@@ -291,9 +350,10 @@ writeDocument inp geom fonts built pages intent =
       -- font index × direction: even refs horizontal, odd refs vertical
       ref ix v = P.FontRef (2 * ix + (if v then 1 else 0))
       toSp size a = round (a * toRational size) :: Integer
-      -- glyph marks of a text starting at a point, and the glyphs used
-      runAt v rotated size scale (x0, y0) txt =
-        let gs = lfShape fonts (v && not rotated) txt
+      body = bodyRole (piStyle inp)
+      -- glyph marks of a text in a font role starting at a point, and the glyphs used
+      runAt face v rotated size scale (x0, y0) txt =
+        let gs = lfShape fonts face (v && not rotated) txt
             advs = scanl (+) 0 [toSp size a | (_, _, a, _) <- gs]
             placed = [(ix, g, t, off) | ((ix, g, _, t), off) <- zip gs advs]
             byFont = Map.fromListWith (flip (<>)) [(ix, [(g, t, off)]) | (ix, g, t, off) <- placed]
@@ -304,13 +364,17 @@ writeDocument inp geom fonts built pages intent =
               | otherwise = P.GlyphRun (ref ix False) size [(code ix g, x0 + off, y0) | (g, _, off) <- xs]
             code = lfCode fonts
          in ([mark ix xs | (ix, xs) <- Map.toList byFont], [(ref ix (v && not rotated), g, t) | (ix, g, t, _) <- placed])
-      drawLine ta slot sl =
+      -- a line at a distance across the type area: the baseline from its
+      -- top edge, or the centre line from its right edge
+      drawLine ta cross sl =
         let l = slLine sl
             size = slSize sl
+            face = slFace sl
+            runAt' = runAt face
             origin off
-              | vertical = (rectX ta + rectW ta - gridAt slot, rectY ta + rectH ta - off)
-              | otherwise = (rectX ta + off, rectY ta + rectH ta - gridAt slot)
-            advance sz t = sum [toSp sz a | (_, _, a, _) <- lfShape fonts (vertical && not (T.all ((== Western) . charClass) t)) t]
+              | vertical = (rectX ta + rectW ta - cross, rectY ta + rectH ta - off)
+              | otherwise = (rectX ta + off, rectY ta + rectH ta - cross)
+            advance sz t = sum [toSp sz a | (_, _, a, _) <- lfShape fonts face (vertical && not (T.all ((== Western) . charClass) t)) t]
             -- a point beside the line at a distance across it: right of a
             -- vertical line, above a horizontal baseline
             beside (ox, oy) dist
@@ -328,14 +392,14 @@ writeDocument inp geom fonts built pages intent =
                       baseStart = off + (w - advance size base) `div` 2
                       readStart = off + (w - advance rsize rt) `div` 2
                       (bx, by) = origin baseStart
-                      (b1, u1) = runAt vertical False size 0 (bx, by) base
-                      (b2, u2) = runAt vertical False rsize 0 (beside (origin readStart) (if vertical then size `div` 2 + rsize `div` 2 else size)) rt
+                      (b1, u1) = runAt' vertical False size 0 (bx, by) base
+                      (b2, u2) = runAt' vertical False rsize 0 (beside (origin readStart) (if vertical then size `div` 2 + rsize `div` 2 else size)) rt
                    in (b1 <> b2, u1 <> u2)
                 KindKenten ->
                   -- the character, and a sesame dot centred beside it
                   let dsize = size `div` 2
-                      (b1, u1) = runAt vertical False size 0 (origin off) (bcText c)
-                      (b2, u2) = runAt vertical False dsize 0 (beside (origin (off + (size - dsize) `div` 2)) (if vertical then size `div` 2 + dsize `div` 2 else size)) "﹅"
+                      (b1, u1) = runAt' vertical False size 0 (origin off) (bcText c)
+                      (b2, u2) = runAt' vertical False dsize 0 (beside (origin (off + (size - dsize) `div` 2)) (if vertical then size `div` 2 + dsize `div` 2 else size)) "﹅"
                    in (b1 <> b2, u1 <> u2)
                 _ ->
                   let pre = case T.unpack (bcText c) of
@@ -347,33 +411,44 @@ writeDocument inp geom fonts built pages intent =
                       pt
                         | vertical && rotated = (ox - size * 3 `div` 10, oy)
                         | otherwise = (ox, oy) -- Identity-V: the origin is the top centre of the em box
-                   in runAt vertical rotated size (if bcExpandable c then lineExpansion l else 0) pt (bcText c)
+                   in runAt' vertical rotated size (if bcExpandable c then lineExpansion l else 0) pt (bcText c)
               -- a word broken at the line end gets its hyphen
               Penalty hw _ True
                 | i == lastIx && hw > 0 ->
                     let (ox, oy) = origin off
-                     in runAt vertical vertical size 0 (if vertical then (ox - size * 3 `div` 10, oy) else (ox, oy)) "-"
+                     in runAt' vertical vertical size 0 (if vertical then (ox - size * 3 `div` 10, oy) else (ox, oy)) "-"
               _ -> ([], [])
             parts = zipWith (curry boxRun) [0 ..] placed
          in (concatMap fst parts, concatMap snd parts)
       textAt anchor size txt =
-        let w = sum [toSp size a | (_, _, a, _) <- lfShape fonts False txt]
+        let w = sum [toSp size a | (_, _, a, _) <- lfShape fonts body False txt]
             x0 = case anAlign anchor of
               LS.AlignStart -> anX anchor
               LS.AlignCenter -> anX anchor - w `div` 2
               LS.AlignEnd -> anX anchor - w
-         in runAt False False size 0 (x0, anY anchor) txt
+         in runAt body False False size 0 (x0, anY anchor) txt
       drawPage p =
         let n = poNumber p
             ta = typeAreaFor geom n
-            lineParts = [drawLine ta slot sl | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (bLines built)]]
+            lineParts =
+              [drawLine ta (gridAt slot) sl | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (bLines built)]]
+                <> [ drawLine ta (headingLineAt slot hb j sl) sl
+                   | (slot, SHeading lid m) <- poSlots p,
+                     Just hb <- [Map.lookup lid (bHeadings built)],
+                     (j, Just sl) <- [(j, Map.lookup (lid + j) (bLines built)) | j <- [0 .. m - 1]]
+                   ]
             figMarks = [P.Image (P.ImageRef fid) (figureRect ta slot w h) | (slot, SFigure fid) <- poSlots p, Just (_, w, h) <- [Map.lookup fid (bFigures built)]]
             noteLines = concat [take cnt (drop from (concat [ls | sl <- Map.elems (bLines built), (nid', ls) <- slNotes sl, nid' == nid])) | (nid, from, cnt) <- poFootnotes p]
             bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
-            noteParts = [drawLine ta slot (SetLine l (pgFontSize geom) []) | (slot, l) <- zip bottomSlots noteLines]
+            noteParts = [drawLine ta (gridAt slot) (SetLine l (pgFontSize geom) body []) | (slot, l) <- zip bottomSlots noteLines]
             masterParts = if poBlank p then [] else masterMarks n (poRunningHead p)
             allParts = lineParts <> noteParts <> masterParts
          in (concatMap fst allParts <> figMarks, concatMap snd allParts)
+      -- line j of a heading block from grid line k (golem-driver ADR 0003)
+      headingLineAt k hb j sl =
+        let s = slSize sl
+            top = toInteger k * pgLinePitch geom + hbOffset hb + toInteger j * hbPitch hb
+         in top + (if vertical then s `div` 2 else round (toRational s * baselineRatio))
       figureRect ta slot w h =
         let top = rectY ta + rectH ta - gridAt slot + pgFontSize geom
          in Rect (rectX ta) (top - h) w h

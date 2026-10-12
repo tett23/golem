@@ -415,10 +415,16 @@ filesystem.
 parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
   s <- decodeStrict "G0306" fid src
-  case checks s of
+  case [diagnostic "G0306" Error (mkSpan fid 0 0) m | m <- checks s] <> [diagnostic "G0308" Error (mkSpan fid 0 0) m | m <- roleChecks s] of
     [] -> Right s
-    msgs -> Left [diagnostic "G0306" Error (mkSpan fid 0 0) m | m <- msgs]
+    ds -> Left ds
   where
+    -- font roles named outside [fonts] must exist (golem-driver ADR 0003)
+    roleChecks s =
+      [ "style.toml にないフォントの役割です: " <> r
+      | r <- [f | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings s)],
+        Map.notMember r (stFonts s)
+      ]
     checks s =
       [ "番号の書式が不正です: " <> f
       | f <- stFigureNumber s : [n | HeadingStyle {hsNumber = Just n} <- Map.elems (stHeadings s)],

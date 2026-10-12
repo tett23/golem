@@ -138,7 +138,10 @@ tests =
         codes (parseStyle (FileId 0) "[emphasis]\nstrong = \"underline\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[color.swatches]\na = { cmyk = [0, 0, 0, 101] }\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[figures]\nnumber = \"{x}\"\n") @?= ["G0306"]
-        codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G0306"],
+      testCase "a heading font must name a font role (golem-driver ADR 0003)" $ do
+        codes (parseStyle (FileId 0) "[headings.1]\nfont = \"nope\"\n") @?= ["G0308"]
+        codes (parseStyle (FileId 0) "[fonts.heading]\nlatin = \"h.otf\"\n\n[headings.1]\nfont = \"heading\"\n") @?= []
     ]
 
 specStyle :: Text
@@ -162,6 +165,9 @@ specStyle =
       "ja = \"fonts/a.otf\"",
       "latin = \"fonts/b.otf\"",
       "features = [\"palt\"]",
+      "",
+      "[fonts.heading]",
+      "ja = \"fonts/c.otf\"",
       "",
       "[character-styles.term]",
       "font = \"heading\"",

@@ -2,6 +2,7 @@ module Main (main) where
 
 import Codec.Compression.Zlib qualified as Z
 import Control.Exception (SomeException, evaluate, try)
+import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
@@ -23,7 +24,7 @@ import Golem.Syntax
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
 import System.Environment (setEnv)
 import System.Exit (ExitCode (..))
-import System.FilePath ((</>))
+import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
 import Test.Tasty
@@ -245,6 +246,7 @@ tests =
             a @?= b
             qpdfCheck a
         ],
+      testGroup "PDF headings (ADR 0003)" headingTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup
         "public-domain books"
@@ -340,22 +342,141 @@ horizontalStyle :: BS.ByteString
 horizontalStyle =
   "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 12\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n"
 
+-- | A one-chapter project for PDF tests.
+miniManifest :: BS.ByteString
+miniManifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.pdf]\n"
+
+{- | Builds a one-chapter project (style, source, extra files) to PDF and
+returns the errors and the PDF, if one was written.
+-}
+buildMini :: FontProvider -> Bool -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Maybe BS.ByteString)
+buildMini fonts parallel style source files = withSystemTempDirectory "golem-mini" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") miniManifest
+  BS.writeFile (tmp </> "style.toml") style
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fonts, optParallel = parallel}
+  pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
+    [p] -> Just <$> BS.readFile p
+    _ -> pure Nothing
+  pure (map diagCode (filter isError (brDiagnostics r)), pdf)
+
+-- | The golem-font provider that builds use by default.
+realProvider :: FontProvider
+realProvider = optFonts (defaultOptions "")
+
+fakeProvider :: FontProvider
+fakeProvider = FontProvider (\_ _ -> pure (Right fakeFonts))
+
+-- | Builds with no errors allowed and returns the PDF.
+miniPdf :: FontProvider -> Bool -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO BS.ByteString
+miniPdf fonts parallel style source files = do
+  (errs, pdf) <- buildMini fonts parallel style source files
+  assertEqual "no errors" [] errs
+  maybe (assertFailure "no PDF") pure pdf
+
+-- | Glyph runs of a content stream: the Tf size and each glyph id with its origin.
+glyphRuns :: BS.ByteString -> [(BS.ByteString, [(Int, BS.ByteString, BS.ByteString)])]
+glyphRuns content = go (BC.lines content)
+  where
+    go [] = []
+    go (l : rest)
+      | (_ : _ : size : "Tf" : _) <- BC.words l =
+          let (body, rest') = break ((== "ET") . BC.strip) rest
+           in (size, [g | b <- body, Just g <- [glyph b]]) : go rest'
+      | otherwise = go rest
+    glyph l = case reverse (BC.words l) of
+      ("Tj" : hexg : "Tm" : y : x : _) -> Just (read ("0x" <> BC.unpack (BC.filter (`notElem` ("<>" :: String)) hexg)), x, y)
+      _ -> Nothing
+
+headingTests :: [TestTree]
+headingTests =
+  [ testCase "a 20pt heading wraps in the measure and is drawn at 20pt" $ do
+      let source = "# あいうえおかきく\n\n本文。\n"
+          kana = [0x3042, 0x3044, 0x3046, 0x3048, 0x304A, 0x304B, 0x304D, 0x304F]
+          headingYs pdf = do
+            content <- BS.concat <$> inflateAll pdf
+            pure (nub [y | (_, gs) <- glyphRuns content, (g, _, y) <- gs, g `elem` kana], tfSizes content)
+      (big, sizes) <- miniPdf fakeProvider True (horizontalStyle <> "\n[headings.1]\nsize = \"20pt\"\n") source [] >>= headingYs
+      length big @?= 2
+      assertBool (show sizes) ("20" `elem` sizes)
+      (plain, _) <- miniPdf fakeProvider True horizontalStyle source [] >>= headingYs
+      length plain @?= 1,
+    testCase "a heading role with its own font embeds both fonts, each with its own glyphs" $ do
+      (sans, serif) <- realLatinFonts
+      pdf <- miniPdf realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.heading]\nlatin = \"fonts/serif.ttf\"\n\n[headings.1]\nfont = \"heading\"\n") "# Zebra\n\nquick\n" [("fonts/sans.otf", sans), ("fonts/serif.ttf", serif)]
+      streams <- inflateAll pdf
+      let cmaps = filter ("beginbfchar" `BS.isInfixOf`) streams
+      length cmaps @?= 2
+      assertBool "heading glyphs only in one font" (any (\c -> "<005a>" `BS.isInfixOf` c && not ("<0071>" `BS.isInfixOf` c)) cmaps)
+      assertBool "body glyphs only in the other" (any (\c -> "<0071>" `BS.isInfixOf` c && not ("<005a>" `BS.isInfixOf` c)) cmaps)
+      qpdfCheck pdf,
+    testCase "two roles on the same file embed one font program" $ do
+      (sans, _) <- realLatinFonts
+      pdf <- miniPdf realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.heading]\nlatin = \"fonts/sans.otf\"\n\n[headings.1]\nfont = \"heading\"\nsize = \"20pt\"\n") "# Zebra\n\nquick\n" [("fonts/sans.otf", sans)]
+      length (occurrences "/FontFile" pdf) @?= 1,
+    testCase "naming the body role and the body size changes nothing" $ do
+      (sans, _) <- realLatinFonts
+      let base = horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n"
+          files = [("fonts/sans.otf", sans)]
+      a <- miniPdf realProvider True base "# Zebra\n\nquick\n" files
+      b <- miniPdf realProvider True (base <> "\n[headings.1]\nfont = \"body\"\nsize = \"10pt\"\n") "# Zebra\n\nquick\n" files
+      a @?= b,
+    testCase "heading roles: parallel and sequential, and two builds, give the same bytes" $ do
+      (sans, serif) <- realLatinFonts
+      let style = horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.heading]\nlatin = \"fonts/serif.ttf\"\n\n[headings.1]\nfont = \"heading\"\nsize = \"20pt\"\n"
+          files = [("fonts/sans.otf", sans), ("fonts/serif.ttf", serif)]
+          source = "# Zebra crossing\n\nThe quick brown fox jumps over the lazy dog.\n\n# Second\n\nquick\n"
+      a <- miniPdf realProvider True style source files
+      b <- miniPdf realProvider False style source files
+      c <- miniPdf realProvider True style source files
+      a @?= b
+      a @?= c
+      qpdfCheck a,
+    testCase "different fonts with the same PostScript name are an error" $ do
+      (sans, _) <- realLatinFonts
+      (errs, pdf) <- buildMini realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.heading]\nlatin = \"fonts/sans2.otf\"\n\n[headings.1]\nfont = \"heading\"\n") "# Zebra\n\nquick\n" [("fonts/sans.otf", sans), ("fonts/sans2.otf", sans <> BS.replicate 4 0)]
+      errs @?= [DiagnosticCode "G0805"]
+      pdf @?= Nothing,
+    testCase "a heading taller than the page is an error" $ do
+      let style = BC.pack (T.unpack (T.replace "lines = 30" "lines = 3" (T.pack (BC.unpack horizontalStyle)))) <> "\n[headings.1]\nsize = \"60pt\"\n"
+      (errs, pdf) <- buildMini fakeProvider True style "# A\n\nx\n" []
+      errs @?= [DiagnosticCode "G0724"]
+      pdf @?= Nothing
+  ]
+
+-- | The Latin test fonts of golem-font: a CFF sans and a TrueType serif.
+realLatinFonts :: IO (BS.ByteString, BS.ByteString)
+realLatinFonts = (,) <$> BS.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" <*> BS.readFile "../golem-font/test/fonts/SourceSerifVariable-Roman.ttf"
+
+-- | How many times a pattern occurs.
+occurrences :: BS.ByteString -> BS.ByteString -> [Int]
+occurrences pat = go 0
+  where
+    go off s = case BS.breakSubstring pat s of
+      (_, rest) | BS.null rest -> []
+      (before, rest) -> (off + BS.length before) : go (off + BS.length before + 1) (BS.drop 1 rest)
+
 -- | The size of every Tf operator in a content stream (the number before Tf).
 tfSizes :: BS.ByteString -> [BS.ByteString]
 tfSizes content = [size | l <- BC.lines content, (size, "Tf") <- zip (BC.words l) (drop 1 (BC.words l))]
 
--- | Fixed-width stand-in fonts: full-width characters one em, others half.
+{- | Fixed-width stand-in fonts: full-width characters one em, others half;
+the role "wide" (face 2) sets everything one em wide.
+-}
 fakeFonts :: LoadedFonts
 fakeFonts =
   LoadedFonts
-    { lfAdvance = adv,
-      lfWordAdvance = sum . map adv . T.unpack,
+    { lfAdvance = advOf,
+      lfWordAdvance = \role -> sum . map (advOf role) . T.unpack,
       lfCode = \_ g -> g,
-      lfShape = \_ t -> [(0, fromEnum c `mod` 65536, adv c, T.singleton c) | c <- T.unpack t],
+      lfShape = \role _ t -> [(if role == "wide" then 2 else 0, fromEnum c `mod` 65536, advOf role c, T.singleton c) | c <- T.unpack t],
       lfEmbed = \_ vertical used ->
         Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used
     }
   where
+    -- the role "wide" sets every character one em wide
+    advOf role c = if role == "wide" then 1 else adv c
     adv c = if fromEnum c < 0x2000 then 1 / 2 else 1
 
 qpdfCheck :: BS.ByteString -> IO ()

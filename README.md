@@ -31,6 +31,8 @@ golem new mybook
 | `golem inspect FILE --as cst\|ast\|ir` | 構文木と IR を表示する |
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
+見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
+`font` が `[fonts]` にない役割を指す場合はエラーになる。
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には商用のプリフライト（Acrobat や pdfToolbox など）で確認する。
 フォントの OS/2 の `fsType` が埋め込みを禁じている場合はエラーになる。
 ビルドはプラグインをキャッシュからだけ読み、ネットワークに接続しない。
