@@ -103,6 +103,8 @@ The `format` job in CI checks both.
 The generated parser (`modules/golem-parser/src/Golem/Parser/Generated.hs`) is excluded.
 
 After changing the grammar (`modules/golem-parser/grammar/Golem.peg`), regenerate the parser with `scripts/gen-parser.sh` and commit the generated file.
+When adding a label to the grammar, make sure that removing it does not change the accepted language, and declare it with `%safe` and a comment giving the reason.
+`scripts/gen-parser.sh` treats peg-hs warnings as errors, so a label without `%safe` makes the generation fail ([golem-parser ADR 0007](./docs/golem-parser/adr/0007-grammar-label-safety.md)).
 
 ## Documentation
 
