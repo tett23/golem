@@ -15,12 +15,12 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.New
-import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), figureRect, layoutPdf)
-import Golem.Layout.KnuthPlass (Line (..))
+import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, layoutPdf)
+import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Layout.Wrap (Exclusion (..))
-import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, typeAreaFor)
-import Golem.Pdf (Font (..), FontProgram (..))
+import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, sidenoteAreaFor, typeAreaFor)
+import Golem.Pdf (Font (..), FontProgram (..), spToPt)
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
 import Golem.Project.Style (parseStyle)
@@ -253,6 +253,7 @@ tests =
       testGroup "PDF headings (ADR 0003)" headingTests,
       testGroup "PDF emphasis, character styles and colour (ADR 0004)" emphasisTests,
       testGroup "PDF wrapped figures (ADR 0005)" wrapTests,
+      testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup
         "public-domain books"
@@ -718,6 +719,113 @@ wrapTests =
       a <- miniPdf fakeProvider True horizontal24 source img
       b <- miniPdf fakeProvider False horizontal24 source img
       c <- miniPdf fakeProvider True horizontal24 source img
+      a @?= b
+      a @?= c
+      qpdfCheck a
+  ]
+
+-- | horizontalStyle with a sidenote column: 6zw wide, 1zw gap, 8pt; the sidenote pitch is 12pt.
+sidenoteStyle :: BS.ByteString
+sidenoteStyle = horizontalStyle <> "\n[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\nsize = \"8pt\"\n"
+
+-- | Every placed sidenote with its page number.
+sidenotesOf :: PdfLayout -> [(Int, PlacedSidenote)]
+sidenotesOf pl = [(n, ps) | (n, pss) <- Map.toList (plSidenotes pl), ps <- pss]
+
+-- | The grid line of the line that holds the n-th sidenote marker of a page.
+slotOfMarker :: PdfLayout -> Int -> Int -> Maybe Int
+slotOfMarker pl page k =
+  case [slot | p <- plPages pl, poNumber p == page, (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)], _ <- slSidenotes sl] of
+    xs | k < length xs -> Just (xs !! k)
+    _ -> Nothing
+
+-- | One-character paragraphs that fill grid lines.
+fillers :: Int -> T.Text
+fillers n = T.replicate n "あ\n\n"
+
+-- | Byte offsets of a pattern in a source.
+offsetsIn :: T.Text -> T.Text -> [Int]
+offsetsIn pat src = occurrences (TE.encodeUtf8 pat) (TE.encodeUtf8 src)
+
+twoLineNote :: T.Text
+twoLineNote = "[sidenote: あいうえおかきくけ]"
+
+sidenoteTests :: [TestTree]
+sidenoteTests =
+  [ testCase "a sidenote sits on the page of its marker, level with the marker line" $ do
+      (_, pl) <- layoutOk sidenoteStyle (fillers 3 <> "本文[sidenote: 注]。\n") []
+      case sidenotesOf pl of
+        [(page, ps)] -> do
+          page @?= 1
+          Just (psTop ps) @?= fmap (\k -> toInteger k * 15 * pt) (slotOfMarker pl 1 0)
+        other -> assertFailure (show (length other)),
+    testCase "notes on neighbouring lines are pushed down in order, half a pitch apart" $ do
+      (_, pl) <- layoutOk sidenoteStyle ("一" <> twoLineNote <> "\n\n二" <> twoLineNote <> "\n") []
+      case map snd (sidenotesOf pl) of
+        [a, b] -> do
+          length (psLines a) @?= 2
+          psTop b @?= psTop a + 20 * pt + 15 * pt `div` 2
+        other -> assertFailure (show (length other)),
+    testCase "notes at the foot of the page pull earlier ones up" $ do
+      (_, pl) <- layoutOk sidenoteStyle (fillers 28 <> "一" <> twoLineNote <> "\n\n二" <> twoLineNote <> "\n") []
+      case [ps | (1, ps) <- sidenotesOf pl] of
+        [a, b] -> do
+          psTop b + 20 * pt @?= 445 * pt
+          assertBool "pulled up" (psTop a < 28 * 15 * pt)
+        other -> assertFailure (show (length other)),
+    testCase "sidenotes that do not fit, or one taller than the column, are G0733" $ do
+      let crowded = T.concat (replicate 30 ("一[sidenote: " <> T.replicate 3 "あいうえおかき" <> "]\n\n"))
+      r <- layoutMini sidenoteStyle crowded []
+      case r of
+        Left [d] -> do
+          diagCode d @?= DiagnosticCode "G0733"
+          assertBool "at a sidenote" (spanStart (diagSpan d) `elem` offsetsIn "[sidenote" crowded)
+        other -> assertFailure (show (either (map diagCode) (const []) other))
+      r' <- layoutMini sidenoteStyle ("一[sidenote: " <> T.replicate 60 "あいうえおかき" <> "]\n") []
+      either (map diagCode) (const []) r' @?= [DiagnosticCode "G0733"],
+    testCase "the length of a sidenote does not change the pages" $ do
+      let source body = fillers 20 <> "本文[sidenote: " <> body <> "]。" <> longPara 20
+      (_, a) <- layoutOk sidenoteStyle (source "短い。") []
+      (_, b) <- layoutOk sidenoteStyle (source (T.replicate 4 "長い傍注の本文。")) []
+      plPages a @?= plPages b,
+    testCase "a sidenote follows its line to the next page" $ do
+      (_, pl) <- layoutOk sidenoteStyle (fillers 28 <> T.replicate 3 "あいうえおかきくけこさし" <> "あいう[sidenote: 注]え\n") []
+      map fst (sidenotesOf pl) @?= [2],
+    testCase "markers: a symbol in the text and the note; none leaves no box and no prefix" $ do
+      content <- miniPdf fakeProvider True (sidenoteStyle <> "marker = \"symbol\"\n") "本文[sidenote: 注]。\n" [] >>= fmap BS.concat . inflateAll
+      length (filter ((== 0x203B) . dGlyph) (drawnGlyphs content)) @?= 2
+      (_, none) <- layoutOk (sidenoteStyle <> "marker = \"none\"\n") "本文[sidenote: 注]。\n" []
+      (_, plain) <- layoutOk sidenoteStyle "本文。\n" []
+      let boxes pl = length [() | sl <- Map.elems (plLines pl), Box {} <- lineItems (slLine sl)]
+      boxes none @?= boxes plain
+      case map snd (sidenotesOf none) of
+        [ps] -> [bcText c | l <- take 1 (psLines ps), Box _ c <- take 1 (lineItems l)] @?= ["注"]
+        other -> assertFailure (show (length other)),
+    testCase "sidenotes need a horizontal page with a sidenote column, and the text flow" $ do
+      a <- layoutMini horizontalStyle "本文[sidenote: 注]。\n" []
+      either (map diagCode) (const []) a @?= [DiagnosticCode "G0734"]
+      b <- layoutMini pdfStyle "本文[sidenote: 注]。\n" []
+      either (map diagCode) (const []) b @?= [DiagnosticCode "G0732"]
+      c <- layoutMini sidenoteStyle "本文[note: 注の[sidenote: 傍注]本文]。\n" []
+      either (map diagCode) (const []) c @?= [DiagnosticCode "G0735"]
+      img <- tinyImage
+      d <- layoutMini (figStyle sidenoteStyle) "@figure images/tiny.jpg alt=\"t\"\n  キャプション[sidenote: 傍注]。\n" img
+      either (map diagCode) (const []) d @?= [DiagnosticCode "G0735"],
+    testCase "sidenote text is drawn in the sidenote column at its size" $ do
+      content <- miniPdf fakeProvider True sidenoteStyle "本文[sidenote: 注]。\n" [] >>= fmap BS.concat . inflateAll
+      geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 sidenoteStyle) >>= pageGeometry)
+      area <- maybe (assertFailure "no column") pure (sidenoteAreaFor geom 1)
+      let small = [d | d <- drawnGlyphs content, dSize d == "8"]
+      assertBool "8pt glyphs" (not (null small))
+      assertBool (show (map dX small)) (TE.encodeUtf8 (spToPt (rectX area)) `elem` map dX small),
+    testCase "a page reference in a sidenote converges" $ do
+      (_, pl) <- layoutOk sidenoteStyle ("本文[sidenote: [ref-page later]ページを参照。]。\n\n" <> longPara 60 <> "@label later\n後。\n") []
+      length (sidenotesOf pl) @?= 1,
+    testCase "sidenotes: parallel and sequential, and two builds, give the same bytes" $ do
+      let source = fillers 5 <> "一" <> twoLineNote <> "\n\n二" <> twoLineNote <> "\n\n" <> longPara 20
+      a <- miniPdf fakeProvider True sidenoteStyle source []
+      b <- miniPdf fakeProvider False sidenoteStyle source []
+      c <- miniPdf fakeProvider True sidenoteStyle source []
       a @?= b
       a @?= c
       qpdfCheck a

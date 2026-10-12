@@ -16,7 +16,10 @@ module Golem.Driver.Pdf
     PdfInput (..),
     SetLine (..),
     PlacedFigure (..),
+    PlacedSidenote (..),
     PdfLayout (..),
+    sidenoteDiagnostics,
+    placePageSidenotes,
     layoutPdf,
     figureRect,
     renderPdf,
@@ -31,7 +34,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii)
 import Data.Either (fromRight, isLeft)
-import Data.List (groupBy, nub)
+import Data.List (groupBy, nub, sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -48,8 +51,9 @@ import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look
 import Golem.Layout.Paginate
+import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
 import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
-import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Rect (..), baselineRatio, pageGeometry, typeAreaFor)
+import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Pdf qualified as P
 import Golem.Project
@@ -176,7 +180,18 @@ data SetLine = SetLine
     slSize :: !Sp,
     -- | how far the line starts from the line start of the column (golem-driver ADR 0005)
     slIndent :: !Sp,
-    slNotes :: ![(Int, [Line])]
+    slNotes :: ![(Int, [Line])],
+    -- | the sidenotes marked in the line, in order (golem-driver ADR 0006)
+    slSidenotes :: ![(SrcSpan, [Line])]
+  }
+  deriving stock (Show)
+
+-- | A sidenote placed in the sidenote column (golem-driver ADR 0006).
+data PlacedSidenote = PlacedSidenote
+  { psSpan :: !SrcSpan,
+    -- | from the top of the column
+    psTop :: !Sp,
+    psLines :: ![Line]
   }
   deriving stock (Show)
 
@@ -201,7 +216,9 @@ data PdfLayout = PdfLayout
     plLines :: !(Map Int SetLine),
     plFigures :: !(Map Int PlacedFigure),
     -- | heading blocks by their first line (golem-driver ADR 0003)
-    plHeadings :: !(Map Int HeadingBlock)
+    plHeadings :: !(Map Int HeadingBlock),
+    -- | sidenotes by page number (golem-driver ADR 0006)
+    plSidenotes :: !(Map Int [PlacedSidenote])
   }
 
 data Built = Built
@@ -231,13 +248,97 @@ renderPdf provider inp = case pageGeometry (piStyle inp) of
 
 -- | Composition, line breaking and pagination, with page references resolved (S2).
 layoutPdf :: PdfInput -> PageGeometry -> LoadedFonts -> IO (Either [Diagnostic] PdfLayout)
-layoutPdf inp geom fonts = do
-  figures <- loadFigures inp
-  -- S2: compose with assumed page numbers until they settle
-  result <- fixpoint geom (buildFlow inp geom fonts figures)
-  pure $ case result of
-    Left ds -> Left ds
-    Right (built, pages) -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built))
+layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) of
+  ds@(_ : _) -> pure (Left ds)
+  [] -> do
+    figures <- loadFigures inp
+    -- S2: compose with assumed page numbers until they settle
+    result <- fixpoint geom (buildFlow inp geom fonts figures)
+    pure $ case result of
+      Left ds -> Left ds
+      Right (built, pages) ->
+        -- sidenotes are placed once, on the settled pages (golem-driver ADR 0006)
+        let (size, pitch) = sidenoteMetrics (piStyle inp) geom
+            placed = [(poNumber p, placePageSidenotes geom pitch size (bLines built) p) | p <- pages]
+         in case concat [ds | (_, Left ds) <- placed] of
+              [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]))
+              ds -> Left ds
+
+-- | The size and line pitch of sidenotes: the body pitch scaled to the size.
+sidenoteMetrics :: Style -> PageGeometry -> (Sp, Sp)
+sidenoteMetrics style geom =
+  let fs = pgFontSize geom
+      size = maybe fs (dimToSp fs) (stSidenotes style >>= snSize)
+   in (size, pgLinePitch geom * size `div` fs)
+
+{- | Sidenotes the PDF cannot place (golem-driver ADR 0006): in vertical
+writing (G0732), without a sidenote column (G0734), or in a footnote or
+a caption (G0735).
+-}
+sidenoteDiagnostics :: PageGeometry -> Book -> [Diagnostic]
+sidenoteDiagnostics geom book
+  | pgVertical geom = concatMap (verticalSidenotes (defaultComposeEnv 0) {ceVertical = True}) inlineLists
+  | otherwise = case pgSidenotes geom of
+      Nothing -> [diagnostic "G0734" Error sp "傍注欄（style.toml の [sidenotes]）のない版面では傍注を使えません" | (sp, _) <- sites]
+      Just _ -> [diagnostic "G0735" Error sp "PDF では、脚注の本文と図版のキャプションの中に傍注を置けません" | (sp, False) <- sites]
+  where
+    blocks = concat [bs | Document _ bs <- bookDocs book]
+    -- every list of inlines of the book, captions included
+    inlineLists = concatMap blockInlines blocks
+    blockInlines (Block _ _ body) = case body of
+      Paragraph is -> [is]
+      Heading _ _ is -> [is]
+      BulletList items -> concatMap (concatMap blockInlines . itemBlocks) items
+      OrderedList items -> concatMap (concatMap blockInlines . itemBlocks) items
+      DefList gs -> concat [dgTerms g <> concatMap (concatMap blockInlines) (dgDefs g) | g <- gs]
+      Table _ h rows -> h <> concat rows
+      FigureBlock fig -> concatMap blockInlines (figCaption fig)
+      _ -> []
+    -- each sidenote, and whether it is in the text flow
+    sites = concatMap siteBlock blocks
+    siteBlock b@(Block _ _ body) = case body of
+      FigureBlock fig -> [(sp, False) | is <- concatMap blockInlines (figCaption fig), (sp, _) <- concatMap (inlineSites True) is]
+      _ -> [x | is <- blockInlines b, x <- concatMap (inlineSites True) is]
+    inlineSites flow = \case
+      Sidenote sp _ xs -> (sp, flow) : concatMap (inlineSites flow) xs
+      Note _ _ xs -> concatMap (inlineSites False) xs
+      Strong _ xs -> concatMap (inlineSites flow) xs
+      Bold _ xs -> concatMap (inlineSites flow) xs
+      Italic _ xs -> concatMap (inlineSites flow) xs
+      Kenten _ _ xs -> concatMap (inlineSites flow) xs
+      Color _ _ xs -> concatMap (inlineSites flow) xs
+      CharStyle _ _ xs -> concatMap (inlineSites flow) xs
+      _ -> []
+
+{- | Places the sidenotes of a page in its sidenote column (golem-driver
+ADR 0006): each wants the top of the line of its marker; they keep their
+order, half a body pitch apart. Takes the sidenote pitch and size.
+-}
+placePageSidenotes :: PageGeometry -> Sp -> Sp -> Map Int SetLine -> PageOut -> Either [Diagnostic] [PlacedSidenote]
+placePageSidenotes geom pitch size lineMap p =
+  let bodyPitch = pgLinePitch geom
+      lineIds = \case
+        SLine lid -> [lid]
+        SHeading lid m -> [lid .. lid + m - 1]
+        _ -> []
+      notes =
+        [ (sp, toInteger slot * bodyPitch, ls)
+        | (slot, s) <- sortOn fst (poSlots p),
+          lid <- lineIds s,
+          Just sl <- [Map.lookup lid lineMap],
+          (sp, ls) <- slSidenotes sl
+        ]
+      height ls = toInteger (max 1 (length ls) - 1) * pitch + size
+      columnH = maybe 0 rectH (sidenoteAreaFor geom (poNumber p))
+      at i = case drop i notes of
+        ((sp, _, _) : _) -> sp
+        [] -> mkSpan (FileId 0) 0 0
+   in if null notes
+        then Right []
+        else case placeSidenotes columnH (bodyPitch `div` 2) [(want, height ls) | (_, want, ls) <- notes] of
+          Right tops -> Right [PlacedSidenote sp t ls | ((sp, _, ls), t) <- zip notes tops]
+          Left (TooTall i) -> Left [diagnostic "G0733" Error (at i) "傍注が傍注欄より高く、収まりません"]
+          Left (DoesNotFit i) -> Left [diagnostic "G0733" Error (at i) "このページの傍注が傍注欄に収まりません"]
 
 fixpoint :: PageGeometry -> (Map Text Integer -> IO Built) -> IO (Either [Diagnostic] (Built, [PageOut]))
 fixpoint geom layoutWith = go (1 :: Int) Map.empty
@@ -278,6 +379,10 @@ composeEnv style geom fonts assumed role fs =
             "tcy" -> Just StyleTcy
             _ -> Just StyleKanji,
           cePageOf = (`Map.lookup` assumed),
+          ceSidenoteMarker = case snMarker <$> stSidenotes style of
+            Just "symbol" -> MarkerSymbol
+            Just "none" -> MarkerNone
+            _ -> MarkerNumber,
           -- Latin words: US English patterns (golem-layout ADR 0001)
           cePatterns = Just englishUS
         }
@@ -333,6 +438,8 @@ unitsOf book _ style = concatMap doc (bookDocs book)
 data Composed = Composed
   { cLines :: [Line],
     cNotes :: [(Int, [Line])],
+    -- | sidenote bodies: the item index of the marker, the span and the lines
+    cSidenotes :: [(Int, SrcSpan, [Line])],
     cAnchors :: [Golem.Layout.Japanese.Anchor],
     cItems :: [Item]
   }
@@ -362,8 +469,20 @@ buildFlow inp geom fonts images assumed = do
             (items, anchors) = composeInlines env (uInlines u)
             lines' = brLines (breakParagraph params lineWidth items)
             notes = [(n, brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv nbody)))) | AnchorNote _ n nbody <- anchors]
-         in Composed lines' notes anchors items
-      force c = evaluate (length (show (map lineRatio (cLines c))) + length (cNotes c) + length (cAnchors c) + length (cItems c)) >> pure c
+            sidenotes = [(i, sp, sidenoteLines n snBody) | AnchorSidenote i n sp snBody <- anchors]
+         in Composed lines' notes sidenotes anchors items
+      -- sidenote bodies: their size, the column width, the marker first (golem-driver ADR 0006)
+      (snSize', _) = sidenoteMetrics style geom
+      snEnv = composeEnv style geom fonts assumed body snSize'
+      snParams = params {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition style))}
+      snMeasure = maybe 0 (rectW . fst) (pgSidenotes geom)
+      sidenoteLines n snBody =
+        let prefix = case ceSidenoteMarker bodyEnv of
+              MarkerNumber -> [Text (mkSpan (FileId 0) 0 0) (T.pack (show n) <> " ")]
+              MarkerSymbol -> [Text (mkSpan (FileId 0) 0 0) "※ "]
+              MarkerNone -> []
+         in brLines (breakParagraph snParams (const snMeasure) (fst (composeInlines snEnv (prefix <> snBody))))
+      force c = evaluate (length (show (map lineRatio (cLines c))) + length (cNotes c) + length (show [map lineRatio ls | (_, _, ls) <- cSidenotes c]) + length (cAnchors c) + length (cItems c)) >> pure c
       mapper :: (a -> IO b) -> [a] -> IO [b]
       mapper = if piParallel inp then mapConcurrently else mapM
       -- figures: the image, its size, its caption and its exclusion (golem-driver ADR 0005)
@@ -421,8 +540,9 @@ buildFlow inp geom fonts images assumed = do
             -- notes belong to the line containing their anchor
             lineOfItem = lineIndexOfItems (cItems c) ls
             noteLines = Map.fromListWith (<>) [(lineOfItem i, [(n, nls)]) | (AnchorNote i n _, (_, nls)) <- zip [a | a@AnchorNote {} <- cAnchors c] (cNotes c)]
+            sidenoteLinesOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [(sp, sls)]) | (i, sp, sls) <- cSidenotes c]
             boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) | (k, lid) <- zip [0 ..] ids]
-            set = Map.fromList [(lid, SetLine l size (indentOf k) (Map.findWithDefault [] k noteLines)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+            set = Map.fromList [(lid, SetLine l size (indentOf k) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
          in (boxes, set)
       step st@(nextId, flows, lineAcc, figAcc, headAcc, errs) (i, u)
         | Map.member i besides = st -- set beside its figure
@@ -566,11 +686,15 @@ writeDocument inp geom fonts layout intent =
         pure (P.Swatch cc cm cy ck)
       -- a line at a distance across the type area: the baseline from its
       -- top edge, or the centre line from its right edge
-      drawLine ta cross sl =
+      drawLine ta cross sl
+        | vertical = drawLineAt (rectX ta + rectW ta - cross, rectY ta + rectH ta) sl
+        | otherwise = drawLineAt (rectX ta, rectY ta + rectH ta - cross) sl
+      -- a line from its start point: on the baseline, or on the centre line
+      drawLineAt (x0, y0) sl =
         let l = slLine sl
             origin off0
-              | vertical = (rectX ta + rectW ta - cross, rectY ta + rectH ta - off)
-              | otherwise = (rectX ta + off, rectY ta + rectH ta - cross)
+              | vertical = (x0, y0 - off)
+              | otherwise = (x0 + off, y0)
               where
                 off = off0 + slIndent sl
             advance look t = sum [toSp (lkSize look) a | (role, r) <- runsOf look t, (_, _, a, _) <- lfShape fonts role (vertical && not (T.all isLatin r)) r]
@@ -652,7 +776,7 @@ writeDocument inp geom fonts layout intent =
                      Just hb <- [Map.lookup lid (plHeadings layout)],
                      (j, Just sl) <- [(j, Map.lookup (lid + j) (plLines layout)) | j <- [0 .. m - 1]]
                    ]
-                <> [ drawLine ta (gridAt (slot + pfImageLines pf + j)) (SetLine l (pgFontSize geom) (captionIndent ta pf) [])
+                <> [ drawLine ta (gridAt (slot + pfImageLines pf + j)) (SetLine l (pgFontSize geom) (captionIndent ta pf) [] [])
                    | (slot, fid) <- placedFigures p,
                      Just pf <- [Map.lookup fid (plFigures layout)],
                      (j, l) <- zip [0 ..] (pfCaption pf)
@@ -660,9 +784,17 @@ writeDocument inp geom fonts layout intent =
             figMarks = [P.Image (P.ImageRef fid) (figureRect geom ta slot pf) | (slot, fid) <- placedFigures p, Just pf <- [Map.lookup fid (plFigures layout)]]
             noteLines = concat [take cnt (drop from (concat [ls | sl <- Map.elems (plLines layout), (nid', ls) <- slNotes sl, nid' == nid])) | (nid, from, cnt) <- poFootnotes p]
             bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
-            noteParts = [drawLine ta (gridAt slot) (SetLine l (pgFontSize geom) 0 []) | (slot, l) <- zip bottomSlots noteLines]
+            noteParts = [drawLine ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] []) | (slot, l) <- zip bottomSlots noteLines]
             masterParts = if poBlank p then [] else masterMarks n (poRunningHead p)
-            allParts = lineParts <> noteParts <> masterParts
+            -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
+            (snSize', snPitch) = sidenoteMetrics style geom
+            sidenoteParts =
+              [ drawLineAt (rectX area, rectY area + rectH area - (psTop ps + toInteger j * snPitch + round (toRational snSize' * baselineRatio))) (SetLine l snSize' 0 [] [])
+              | Just area <- [sidenoteAreaFor geom n],
+                ps <- Map.findWithDefault [] n (plSidenotes layout),
+                (j, l) <- zip [0 :: Int ..] (psLines ps)
+              ]
+            allParts = lineParts <> noteParts <> sidenoteParts <> masterParts
          in (concatMap fst allParts <> figMarks, concatMap snd allParts)
       -- line j of a heading block from grid line k (golem-driver ADR 0003)
       headingLineAt k hb j sl =

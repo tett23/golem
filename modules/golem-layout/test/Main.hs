@@ -395,6 +395,22 @@ tests =
             let sn = Sidenote (mkSpan (FileId 0) 3 9) 1 [sp0 "注"]
             length (verticalSidenotes (defaultComposeEnv fs) {ceVertical = True} [sp0 "本文", sn]) @?= 1
             verticalSidenotes (defaultComposeEnv fs) [sn] @?= [],
+          testCase "an anchor indexes its marker among the composed items, spacing included" $ do
+            let (items, anchors) = composeInlines (defaultComposeEnv fs) [sp0 "あいうえお", Note (mkSpan (FileId 0) 0 1) 1 [sp0 "注"], sp0 "かき"]
+            case anchors of
+              [AnchorNote i 1 _] -> case drop i items of
+                (Box _ c : _) -> bcText c @?= "*1"
+                other -> assertFailure (show (take 1 other))
+              other -> assertFailure (show other),
+          testCase "the sidenote marker in the text follows the style (golem-driver ADR 0006)" $ do
+            let snSpan = mkSpan (FileId 0) 3 9
+                sn = Sidenote snSpan 1 [sp0 "注"]
+                boxes m = [bcText c | Box _ c <- fst (composeInlines (defaultComposeEnv fs) {ceSidenoteMarker = m} [sp0 "本", sn])]
+            boxes MarkerNumber @?= ["本", "1"]
+            boxes MarkerSymbol @?= ["本", "※"]
+            boxes MarkerNone @?= ["本"]
+            -- the anchor indexes the marker box, after the spacing before it
+            snd (composeInlines (defaultComposeEnv fs) [sp0 "本", sn]) @?= [AnchorSidenote 2 1 snSpan [sp0 "注"]],
           testCase "too many notes, or one taller than the column, are errors" $ do
             placeSidenotes 30 2 [(0, 10), (0, 10), (0, 10)] @?= Left (DoesNotFit 2)
             placeSidenotes 30 2 [(0, 40)] @?= Left (TooTall 0)

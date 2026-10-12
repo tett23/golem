@@ -8,6 +8,7 @@ module Golem.Layout.Japanese
   ( CharClass (..),
     charClass,
     ComposeEnv (..),
+    SidenoteMarker (..),
     defaultComposeEnv,
     Anchor (..),
     BoxKind (..),
@@ -30,7 +31,7 @@ import Golem.Doc.Numerals (kanji, kanjiDigits)
 import Golem.Layout.Hyphenation
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
-import Golem.Syntax (Diagnostic, Severity (..), diagnostic)
+import Golem.Syntax (Diagnostic, Severity (..), SrcSpan, diagnostic)
 
 -- | JLReq character classes used by the rules (cl-01 … cl-27).
 data CharClass
@@ -129,8 +130,14 @@ data ComposeEnv = ComposeEnv
     -- | the look of the paragraph (golem-driver ADR 0004)
     ceLook :: !Look,
     -- | the look inside an inline element (strong, bold, italic, style, colour)
-    ceRestyle :: Look -> Inline -> Look
+    ceRestyle :: Look -> Inline -> Look,
+    -- | how a sidenote is marked in the text (golem-driver ADR 0006)
+    ceSidenoteMarker :: !SidenoteMarker
   }
+
+-- | The mark of a sidenote in the text: its number, ※ or nothing.
+data SidenoteMarker = MarkerNumber | MarkerSymbol | MarkerNone
+  deriving stock (Eq, Show)
 
 defaultComposeEnv :: Sp -> ComposeEnv
 defaultComposeEnv fs =
@@ -147,7 +154,8 @@ defaultComposeEnv fs =
       cePatterns = Nothing,
       cePageOf = const Nothing,
       ceLook = plainLook "body" fs,
-      ceRestyle = const
+      ceRestyle = const,
+      ceSidenoteMarker = MarkerNumber
     }
   where
     defaultAdvance c
@@ -157,7 +165,7 @@ defaultComposeEnv fs =
 -- | Things the pagination must know about, at an item index.
 data Anchor
   = AnchorNote !Int !Int [Inline] -- item index, note number, body
-  | AnchorSidenote !Int !Int [Inline]
+  | AnchorSidenote !Int !Int !SrcSpan [Inline] -- item index, sidenote number, span, body
   | AnchorPageRef !Int !Text
   | AnchorIndex !Int IndexEntry
   deriving stock (Eq, Show)
@@ -184,12 +192,35 @@ composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
 composeInlines env inls =
   let pieces = concatMap (piecesOf env False) inls
       (items, anchors) = foldl' emit ([], []) (zip [0 :: Int ..] pieces)
-      emit (acc, as) (_, PAnchor f) = (acc, f (length acc) : as)
+      emit (acc, as) (_, PAnchor f) = (acc, (length acc, f) : as)
       emit (acc, as) (i, p) = (acc <> itemsFor env (neighbour (i - 1)) p (neighbour (i + 1)), as)
       neighbour j = if j >= 0 && j < length pieces then Just (pieces !! j) else Nothing
-   in (finish (normalize env items), reverse anchors)
+      normalized = normalize env items
+      -- anchors index the normalized items: the spacing inserted before a box shifts it
+      positions = alignPositions items normalized
+      at i = fromMaybe (length normalized) (lookup i positions)
+   in (finish normalized, [f (at i) | (i, f) <- reverse anchors])
   where
     finish its = its <> [Penalty 0 infPenalty False, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) False]
+
+{- | Where each item ends up after 'normalize', which only inserts items
+before boxes: a box is the next box of the normalized items, anything
+else is the next item.
+-}
+alignPositions :: [Item] -> [Item] -> [(Int, Int)]
+alignPositions = go 0 0
+  where
+    go _ _ [] _ = []
+    go i j (x : xs) ys = case x of
+      Box {} -> case break isBox ys of
+        (skipped, _ : rest) -> let j' = j + length skipped in (i, j') : go (i + 1) (j' + 1) xs rest
+        (_, []) -> []
+      _ -> case ys of
+        (_ : rest) -> (i, j) : go (i + 1) (j + 1) xs rest
+        [] -> []
+    isBox = \case
+      Box {} -> True
+      _ -> False
 
 piecesOf :: ComposeEnv -> Bool -> Inline -> [Piece]
 piecesOf env kenten inl = case inl of
@@ -209,7 +240,11 @@ piecesOf env kenten inl = case inl of
   Ref _ _ l -> textPieces lk False l
   Deferred {} -> []
   Note _ n body -> [PAnchor (\i -> AnchorNote i n body), PBox lk ("*" <> T.pack (show n)) KindText (lkSize lk `div` 2)]
-  Sidenote _ n body -> [PAnchor (\i -> AnchorSidenote i n body), PBox lk (T.pack (show n)) KindText (lkSize lk `div` 2)]
+  Sidenote sp n body ->
+    PAnchor (\i -> AnchorSidenote i n sp body) : case ceSidenoteMarker env of
+      MarkerNumber -> [PBox lk (T.pack (show n)) KindText (lkSize lk `div` 2)]
+      MarkerSymbol -> [PBox lk "※" KindText (lkSize lk)]
+      MarkerNone -> []
   IndexMark _ e -> [PAnchor (`AnchorIndex` e)]
   Cite _ k -> textPieces lk False ("[" <> k <> "]")
   ProofComment {} -> []
