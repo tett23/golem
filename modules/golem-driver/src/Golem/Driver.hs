@@ -3,6 +3,7 @@
 -}
 module Golem.Driver
   ( Target (..),
+    allTargets,
     BuildOptions (..),
     defaultOptions,
     BuildResult (..),
@@ -55,6 +56,10 @@ import System.FilePath (takeDirectory, (</>))
 
 data Target = TargetHtml | TargetEpub | TargetText | TargetPdf
   deriving stock (Eq, Ord, Show)
+
+-- | Every target, in the order they are written (golem-cli ADR 0002).
+allTargets :: [Target]
+allTargets = [TargetHtml, TargetEpub, TargetText, TargetPdf]
 
 data BuildOptions = BuildOptions
   { optRoot :: !FilePath,
@@ -361,7 +366,10 @@ writeTargets opts e book targets = do
       pure ([out], [])
     TargetText -> do
       let dir = root </> "build" </> "text"
-          variants = tgText (manifestTargets manifest)
+          -- without [targets.text], both variants, as when variants is omitted (golem-cli ADR 0002)
+          variants = case tgText (manifestTargets manifest) of
+            [] -> [TextVertical, TextHorizontal]
+            vs -> vs
       clean dir
       files <- forM variants $ \v -> do
         let (sub, gv) = case v of
