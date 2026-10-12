@@ -1,4 +1,4 @@
-module ParserSpec (tests) where
+module ParserSpec (tests, fragments, fragment) where
 
 import Data.List (nub, sort)
 import Data.Text (Text)
@@ -40,38 +40,42 @@ kinds :: Node -> [SyntaxKind]
 kinds n = nodeKind n : concat [kinds m | ElemNode m <- nodeChildren n]
 
 -- Fragments that exercise every construct, combined at random.
+
+-- | Pieces of source that touch every construct of the grammar.
+fragments :: [Text]
+fragments =
+  [ "本文",
+    "[",
+    "]",
+    "[= 1 + 2]",
+    "[ruby: 東/京|とう/きょう]",
+    "\n",
+    "\n\n",
+    "# ",
+    "- ",
+    "+ ",
+    "= ",
+    "=:",
+    "| a | b |",
+    "|---|---|",
+    "```",
+    "@set x = 1",
+    "@label a",
+    "%%",
+    "%%=",
+    "\\[",
+    "  ",
+    "\t",
+    "[strong: x",
+    "[note id=a: y]",
+    "😀",
+    "{",
+    ":",
+    "*[x]"
+  ]
+
 fragment :: Gen Text
-fragment =
-  Gen.element
-    [ "本文",
-      "[",
-      "]",
-      "[= 1 + 2]",
-      "[ruby: 東/京|とう/きょう]",
-      "\n",
-      "\n\n",
-      "# ",
-      "- ",
-      "+ ",
-      "= ",
-      "=:",
-      "| a | b |",
-      "|---|---|",
-      "```",
-      "@set x = 1",
-      "@label a",
-      "%%",
-      "%%=",
-      "\\[",
-      "  ",
-      "\t",
-      "[strong: x",
-      "[note id=a: y]",
-      "😀",
-      "{",
-      ":",
-      "*[x]"
-    ]
+fragment = Gen.element fragments
 
 tests :: TestTree
 tests =

@@ -39,15 +39,20 @@ test-suite golem-parser-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    CSTSpec ParserSpec LowerSpec
+  other-modules:    CSTSpec ParserSpec LowerSpec LabelSafetySpec StrippedGrammar
   build-depends:
     , base
     , bytestring
+    , directory
+    , filepath
     , golem-parser
     , golem-syntax
     , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
     , tasty-hedgehog >=1.4 && <1.5
     , tasty-hunit    >=0.10 && <0.11
+    , peg-runtime
     , text
   default-language: GHC2021
+  -- StrippedGrammar is generated, like Golem.Parser.Generated
+  ghc-options: -Wno-unused-matches -Wno-unused-local-binds -Wno-name-shadowing -Wno-unused-imports

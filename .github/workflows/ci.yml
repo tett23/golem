@@ -55,7 +55,7 @@ jobs:
       - name: Generated parser matches the grammar
         run: |
           scripts/gen-parser.sh
-          git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs
+          git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs
       - name: The EPUB passes epubcheck
         working-directory: modules/golem-driver/test/fixtures/sample
         run: |
@@ -102,6 +102,7 @@ jobs:
           pattern: |
             modules/**/*.hs
             !modules/golem-parser/src/Golem/Parser/Generated.hs
+            !modules/golem-parser/test/StrippedGrammar.hs
       - id: setup
         uses: haskell-actions/setup@v2
         with:
@@ -114,4 +115,4 @@ jobs:
       - name: Install hlint outside the project (the freeze file must not constrain it)
         working-directory: ${{ runner.temp }}
         run: cabal install hlint-3.10 --installdir="$HOME/.local/bin" --overwrite-policy=always
-      - run: '"$HOME/.local/bin/hlint" modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs"'
+      - run: '"$HOME/.local/bin/hlint" modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs"'
