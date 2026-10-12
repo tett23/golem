@@ -18,6 +18,7 @@ library
   exposed-modules:  Golem.Driver
                     Golem.Driver.Fonts
                     Golem.Driver.Lint
+                    Golem.Driver.New
                     Golem.Driver.Pdf
                     Golem.Driver.Plugins
   build-depends:
@@ -59,8 +60,10 @@ test-suite golem-driver-test
     , directory
     , filepath
     , golem-driver
+    , golem-layout-spec
     , golem-pdf
     , golem-plugin
+    , golem-project
     , golem-syntax
     , process
     , zlib

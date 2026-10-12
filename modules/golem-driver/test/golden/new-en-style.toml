@@ -1,0 +1,25 @@
+[page]
+size = "mass-market"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "9.5pt"
+characters = 24
+lines = 33
+line-pitch = "12pt"
+columns = 1
+position = { top = "16mm", gutter = "15mm" }
+
+[masters.body]
+folio = { position = "bottom-outside", format = "{n}" }
+
+[fonts.body]
+# Source Serif 4 Regular (4.005R), SIL Open Font License 1.1
+latin = "fonts/SourceSerif4-Regular.otf"
+
+[headings.1]
+number = "Chapter {n}"
+
+[emphasis]
+strong = "bold"

@@ -1,0 +1,25 @@
+[page]
+size = "A6"
+binding = "right"
+writing-mode = "vertical"
+
+[page.grid]
+font-size = "12.5Q"
+characters = 38
+lines = 16
+line-pitch = "20H"
+columns = 1
+position = { top = "14mm", gutter = "14mm" }
+
+[masters.body]
+folio = { position = "bottom-outside", format = "{n}" }
+
+[fonts.body]
+# Noto Serif JP (Noto Serif CJK 2.003, Subset OTF), SIL Open Font License 1.1
+ja = "fonts/NotoSerifJP-Regular.otf"
+
+[headings.1]
+number = "第{n:kanji}章"
+
+[emphasis]
+strong = "bold"
