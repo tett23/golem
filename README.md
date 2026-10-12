@@ -39,6 +39,8 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 
 ## Development
 
+変更の進め方と約束ごとは [CONTRIBUTING.md](./CONTRIBUTING.md) にある。
+
 ### Git フックの有効化
 
 クローン直後に、リポジトリ同梱の Git フックを有効にする。
