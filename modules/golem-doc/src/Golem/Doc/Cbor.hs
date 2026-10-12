@@ -102,6 +102,7 @@ bodyT = \case
   CodeBlock lang t -> tagged 6 [opt text lang, text t]
   FigureBlock fig -> tagged 7 [figureT fig]
   ChannelOutput c -> tagged 8 [channelT c]
+  VerseBlock stanzas -> tagged 9 [list (list inlinesTerm) stanzas]
 
 attrsT :: HeadingAttrs -> Term
 attrsT (HeadingAttrs tt n nn nt) = TList [opt inlinesTerm tt, opt int n, TBool nn, TBool nt]
@@ -273,8 +274,16 @@ termBody t =
         6 | [l, x] <- fs -> CodeBlock <$> asOpt asText l <*> asText x
         7 | [fig] <- fs -> FigureBlock <$> termFigure fig
         8 | [c] <- fs -> ChannelOutput <$> termChannel c
+        9 | [v] <- fs -> VerseBlock <$> nonEmpty "韻文" (nonEmpty "連" (nonEmpty "韻文の行" (termInline (const (Right ()))))) v
         _ -> bad "ブロックの種類"
     [] -> bad "ブロックの種類"
+
+-- | A list that must not be empty (verse, stanzas and lines).
+nonEmpty :: Text -> (Term -> D a) -> Term -> D [a]
+nonEmpty what f t =
+  asList t >>= \case
+    [] -> bad ("空の" <> what)
+    xs -> traverse f xs
 
 termAttrs :: Term -> D HeadingAttrs
 termAttrs t =

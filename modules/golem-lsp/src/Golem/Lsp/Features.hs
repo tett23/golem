@@ -99,6 +99,7 @@ occurrences (File _ bs) = concatMap block bs
             _ -> concatMap argument args
         )
           <> concatMap (concatMap inline) slots
+      SoftBreak -> []
       _ -> []
     argument (Located _ a) = case a of
       Positional v -> value v
@@ -316,6 +317,7 @@ outline ws path = case sourceOf ws path of
     title src is = T.strip (T.concat (map (piece src) is))
     piece src (Located sp i) = case i of
       Text t -> t
+      SoftBreak -> ""
       _ -> TE.decodeUtf8Lenient (BS.take (spanLength sp) (BS.drop (spanStart sp) (TE.encodeUtf8 (srcText src))))
     nest [] = []
     nest (o : rest) =

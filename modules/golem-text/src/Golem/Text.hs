@@ -86,6 +86,10 @@ block c ind (Block sp _ body) = case body of
     let num = fromMaybe "" (Map.lookup sp (bookFigures (cBook c)))
         cap = T.intercalate "" [inlines c is | Block _ _ (Paragraph is) <- figCaption f]
      in "［" <> T.strip (num <> "　" <> cap) <> "］"
+  -- lines on lines, stanzas separated by a blank line; no hang without a measure (docs/adr ADR 0003)
+  VerseBlock stanzas ->
+    T.intercalate "\n\n" [T.intercalate "\n" [indentBy ind <> inlines c l | l <- st] | st <- stanzas]
+      <> sidenotes (concat (concat stanzas))
   ChannelOutput (TocOutput d) ->
     T.intercalate "\n" [maybe "" (<> "　") (teNumber e) <> inlines c (teTitle e) | e <- bookToc (cBook c), teLevel e <= d]
   ChannelOutput IndexOutput -> ""
@@ -114,6 +118,7 @@ blockInlines (Block _ _ body) = case body of
   DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockInlines) ds) gs
   Table _ h rows -> concatMap deep h <> concatMap (concatMap deep) rows
   FigureBlock f -> concatMap blockInlines (figCaption f)
+  VerseBlock stanzas -> concatMap (concatMap deep) stanzas
   _ -> []
   where
     deep = concatMap (\i -> i : nested i)

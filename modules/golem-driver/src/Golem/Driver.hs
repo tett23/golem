@@ -333,7 +333,10 @@ writeTargets opts e book targets = do
             hcCharStyles = Map.map csFont (stCharStyles style),
             hcFonts = Map.map (\fr -> (frJa fr, frLatin fr)) (stFonts style),
             hcBibliography = bib,
-            hcDev = dev
+            hcDev = dev,
+            hcVerseIndent = cssLength (vsIndent (stVerse style)),
+            hcVerseHang = cssLength (vsHang (stVerse style)),
+            hcStanzaGap = vsStanzaGap (stVerse style)
           }
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case
@@ -398,6 +401,21 @@ writeTargets opts e book targets = do
       when ex (removeDirectoryRecursive dir)
     writeText p t = createDirectoryIfMissing True (takeDirectory p) >> TIO.writeFile p t
     copy src dst = createDirectoryIfMissing True (takeDirectory dst) >> BS.readFile src >>= BS.writeFile dst
+
+{- | A length of style.toml in CSS: zw as em, other units as pt, with at
+most three decimals (docs/adr ADR 0003).
+-}
+cssLength :: Dim -> Text
+cssLength = \case
+  Zw r -> decimal3 r <> "em"
+  Abs sp -> decimal3 (toRational sp / 65536) <> "pt"
+  where
+    decimal3 r =
+      let thousandths = round (r * 1000) :: Integer
+          (i, f) = abs thousandths `divMod` 1000
+          sign = if thousandths < 0 then "-" else ""
+          frac = T.dropWhileEnd (== '0') (T.justifyRight 3 '0' (T.pack (show f)))
+       in sign <> T.pack (show i) <> (if T.null frac then "" else "." <> frac)
 
 -- | The table of contents page of the HTML target.
 indexPage :: HtmlConfig -> FileTable -> Book -> Text

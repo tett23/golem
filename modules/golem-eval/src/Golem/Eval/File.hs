@@ -12,6 +12,7 @@ module Golem.Eval.File
     builtinInlineCommands,
     overridableCommands,
     kentenShapes,
+    joinSoftBreaks,
   )
 where
 
@@ -111,8 +112,9 @@ reservedNames :: [Text]
 reservedNames = ["doc", "meta", "true", "false", "nil"]
 
 evalFile :: EvalContext -> A.File -> EvalResult
-evalFile ctx (A.File fid blocks) =
-  let st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 []
+evalFile ctx (A.File fid blocks0) =
+  let blocks = map normalizeBlock blocks0
+      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 []
       (bs, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
       doc0 = Document fid bs
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
@@ -124,6 +126,61 @@ evalFile ctx (A.File fid blocks) =
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
           erDiagnostics = stDiags st <> filterDiags
         }
+
+-- ------------------------------------------------------------------ newlines
+
+{- | 'A.SoftBreak' removed and the neighbouring 'A.Text' joined into one,
+whose span covers both (docs/adr ADR 0003). Inlines nested in commands
+are joined too.
+-}
+joinSoftBreaks :: [A.Located A.Inline] -> [A.Located A.Inline]
+joinSoftBreaks = mergeLocated . filter (not . isSoftBreak) . map nestedInline
+
+isSoftBreak :: A.Located A.Inline -> Bool
+isSoftBreak (A.Located _ A.SoftBreak) = True
+isSoftBreak _ = False
+
+mergeLocated :: [A.Located A.Inline] -> [A.Located A.Inline]
+mergeLocated (A.Located a (A.Text x) : A.Located b (A.Text y) : rest) =
+  mergeLocated (A.Located (mkSpan (spanFile a) (spanStart a) (spanEnd b)) (A.Text (x <> y)) : rest)
+mergeLocated (x : rest) = x : mergeLocated rest
+mergeLocated [] = []
+
+-- | The newlines inside an inline (its slots and arguments) are dropped.
+nestedInline :: A.Located A.Inline -> A.Located A.Inline
+nestedInline (A.Located sp i) = A.Located sp $ case i of
+  A.Command n args slots -> A.Command n (map normalizeArg args) (map joinSoftBreaks slots)
+  other -> other
+
+normalizeArg :: A.Located A.Argument -> A.Located A.Argument
+normalizeArg (A.Located sp a) = A.Located sp $ case a of
+  A.Positional v -> A.Positional (argV v)
+  A.Keyword k v -> A.Keyword k (argV v)
+  other -> other
+  where
+    argV = \case
+      A.CommandArg x -> A.CommandArg (nestedInline x)
+      v -> v
+
+{- | Every inline sequence of a block with its newlines dropped, except the
+lines of the body of @verse, which keep them at the top level.
+-}
+normalizeBlock :: A.Located A.Block -> A.Located A.Block
+normalizeBlock (A.Located sp b) = A.Located sp $ case b of
+  A.Paragraph is -> A.Paragraph (joinSoftBreaks is)
+  A.Heading l is -> A.Heading l (joinSoftBreaks is)
+  A.BulletList items -> A.BulletList (map (map normalizeBlock) items)
+  A.OrderedList items -> A.OrderedList (map (map normalizeBlock) items)
+  A.DefList gs -> A.DefList [A.DefGroup (map joinSoftBreaks ts) (map (map normalizeBlock) ds) | A.DefGroup ts ds <- gs]
+  A.Table al h rows -> A.Table al (map joinSoftBreaks h) (map (map joinSoftBreaks) rows)
+  A.BlockCommand n@(A.Located _ "verse") args body -> A.BlockCommand n (map normalizeArg args) (map verseBody body)
+  A.BlockCommand n args body -> A.BlockCommand n (map normalizeArg args) (map normalizeBlock body)
+  A.Attributed cs t -> A.Attributed (map normalizeBlock cs) (normalizeBlock <$> t)
+  other -> other
+  where
+    verseBody = \case
+      A.Located psp (A.Paragraph is) -> A.Located psp (A.Paragraph (map nestedInline is))
+      other -> normalizeBlock other
 
 -- ------------------------------------------------------------------ blocks
 
@@ -200,6 +257,7 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "figure" -> figure ctx sp args body
   "table" -> csvTable ctx sp args
   "listing" -> listing ctx sp args
+  "verse" -> verse ctx sp args body
   _
     | name `elem` attributeCommands -> err "G0210" sp ("@" <> name <> " の後にブロックがありません") >> pure []
     | otherwise -> err "G0209" nsp ("未知のブロックコマンドです: @" <> name) >> pure []
@@ -252,6 +310,51 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
 
 validLabel :: Text -> Bool
 validLabel l = not (T.null l) && T.all (\c -> c `elem` ("-_" :: String) || isAsciiLower c || isDigit c) l
+
+-- ------------------------------------------------------------------ verse
+
+{- | @verse (docs/adr ADR 0003): each paragraph of the body is a stanza and
+each of its lines a line of verse.
+-}
+verse :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+verse ctx sp args body = case (args, others) of
+  (A.Located asp _ : _, _) -> err "G0244" asp "@verse は引数を取りません" >> pure []
+  (_, _ : _) -> mapM_ (\osp -> err "G0245" osp "@verse の本体には段落だけを置けます。連は空行で区切ります") others >> pure []
+  _ -> do
+    stanzas <- mapM (fmap (filter (not . null)) . mapM (evalInlines ctx False . trimLine) . splitLines) paragraphs
+    case filter (not . null) stanzas of
+      [] -> err "G0246" sp "@verse の本体がありません。韻文の行を 2 つ深くインデントして書きます" >> pure []
+      ss -> pure [block sp (VerseBlock ss)]
+  where
+    paragraphs = [is | A.Located _ (A.Paragraph is) <- body]
+    others = [bsp | A.Located bsp b <- body, not (isParagraph b), not (isErrorBlock b)]
+    isParagraph = \case
+      A.Paragraph _ -> True
+      _ -> False
+    isErrorBlock = \case
+      A.ErrorBlock -> True
+      _ -> False
+    splitLines is = case break isSoftBreak is of
+      (l, []) -> [l]
+      (l, _ : rest) -> l : splitLines rest
+
+-- | Spaces and tabs at the start and the end of a line are not text.
+trimLine :: [A.Located A.Inline] -> [A.Located A.Inline]
+trimLine = trimEnd . trimStart
+  where
+    trimStart = \case
+      (A.Located tsp (A.Text t) : rest) ->
+        let t' = T.dropWhile isSpaceTab t
+            tsp' = mkSpan (spanFile tsp) (spanStart tsp + T.length t - T.length t') (spanEnd tsp)
+         in [A.Located tsp' (A.Text t') | not (T.null t')] <> rest
+      is -> is
+    trimEnd is = case reverse is of
+      (A.Located tsp (A.Text t) : rest) ->
+        let t' = T.dropWhileEnd isSpaceTab t
+            tsp' = mkSpan (spanFile tsp) (spanStart tsp) (spanEnd tsp - (T.length t - T.length t'))
+         in reverse rest <> [A.Located tsp' (A.Text t') | not (T.null t')]
+      _ -> is
+    isSpaceTab c = c == ' ' || c == '\t'
 
 -- ------------------------------------------------------------------ figures, tables, listings
 
@@ -389,6 +492,7 @@ substitute en le@(A.Located sp e) = case e of
 evalInline :: EvalContext -> Bool -> A.Located A.Inline -> M [Inline]
 evalInline ctx inHeading (A.Located sp i) = case i of
   A.Text t -> pure [Text sp t]
+  A.SoftBreak -> pure []
   A.ErrorInline -> pure []
   A.ProofComment t
     | ctxProfile ctx == Prod -> report (diagnostic "G0205" Warning sp "校正用のコメントが残っています") >> pure []

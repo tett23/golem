@@ -54,6 +54,7 @@ stripSpans = concatMap go
     go = \case
       Text _ t -> [t]
       Strong _ xs -> "<strong>" : stripSpans xs
+      Italic _ xs -> "<italic>" : stripSpans xs
       Note _ n xs -> ("<note " <> tshow n <> ">") : stripSpans xs
       Ruby _ _ segs -> ["<ruby " <> tshow (length segs) <> ">"]
       Number _ n st -> ["<number " <> tshow n <> " " <> tshow st <> ">"]
@@ -62,6 +63,11 @@ stripSpans = concatMap go
       other -> [tshow other]
     tshow :: (Show a) => a -> Text
     tshow = T.pack . show
+
+verseOf :: Text -> [[[Text]]]
+verseOf src = case body src of
+  [VerseBlock stanzas] -> map (map stripSpans) stanzas
+  other -> error (show other)
 
 paraOf :: Text -> [Text]
 paraOf src = case body src of
@@ -72,7 +78,8 @@ tests :: TestTree
 tests =
   testGroup
     "file evaluation, S0 (ADR 0002)"
-    [ testCase "variables, expressions and meta" $
+    [ verseTests,
+      testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
         errs "@set x = 1\n\n@set x = 2\n" @?= ["G0224"]
@@ -140,3 +147,34 @@ tests =
                 }
         fst (run ctx {ctxPlugins = hook} "[strong: x]\n") @?= [Paragraph [Text (mkSpan (FileId 1) 0 11) "PLUGIN"]]
     ]
+
+verseTests :: TestTree
+verseTests =
+  testGroup
+    "verse and newlines in paragraphs (docs/adr ADR 0003)"
+    [ testCase "newlines in a paragraph produce nothing" $
+        body "吾輩は猫である。\n名前はまだ無い。\n" @?= [Paragraph [Text (mkSpan (FileId 1) 0 49) "吾輩は猫である。名前はまだ無い。"]],
+      testCase "newlines are dropped before the tcy check" $
+        errs "[tcy: 1\n2]\n" @?= [],
+      testCase "lines and stanzas" $
+        verseOf "@verse\n  A\n  B\n\n  C\n" @?= [[["A"], ["B"]], [["C"]]],
+      testCase "whitespace at the start of a line is ignored, the ideographic space is not" $ do
+        verseOf "@verse\n  A\n    B\n" @?= [[["A"], ["B"]]]
+        verseOf "@verse\n  A\n  \x3000B\n" @?= [[["A"], ["\x3000B"]]],
+      testCase "newlines inside a command produce nothing" $
+        verseOf "@verse\n  [italic: a\n  b] c\n" @?= [[["<italic>", "ab", " c"]]],
+      testCase "lines of only comments are dropped" $
+        verseOf "@verse\n  A %% x %%\n  %% y %%\n  B\n" @?= [[["A"], ["B"]]],
+      testCase "errors" $ do
+        errs "@verse x\n  A\n" @?= ["G0244"]
+        errs "@verse\n  - a\n" @?= ["G0245"]
+        errs "@verse\n" @?= ["G0246"],
+      testCase "notes in verse are numbered with the paragraphs around it" $ do
+        let notes = [n | b <- body "a[note: 一]\n\n@verse\n  b[note: 二]\n  c\n\nd[note: 三]\n", n <- noteNumbers b]
+        notes @?= [1, 2, 3]
+    ]
+  where
+    noteNumbers = \case
+      Paragraph is -> [n | Note _ n _ <- is]
+      VerseBlock stanzas -> [n | st <- stanzas, l <- st, Note _ n _ <- l]
+      _ -> []
