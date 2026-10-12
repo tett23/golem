@@ -810,7 +810,7 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 
 | コマンド | 内容 |
 |---|---|
-| `golem new <dir>` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する |
+| `golem new <dir> [--language ja\|en] [--no-fonts]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する |
 | `golem build [--target ...] [--profile dev\|prod]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
 | `golem check` | 出力を作らず、構文、評価、文書構造（S1）までを検査する |
 | `golem lint` | lint を実行する |
@@ -821,6 +821,14 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | `golem inspect <file>` | CST、AST、プラグインとの CBOR を人が読める形で表示する |
 
 `golem new` での `id` の生成が、Golem が乱数を使う唯一の箇所である。
+
+`golem new` の雛形は、そのまま四つのターゲットをすべてビルドできる（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
+`--language` で日本語（既定）と英語を選び、言語に合わせて版面とフォントを決める。
+日本語は A6 判の縦組みで Noto Serif JP を、英語はマスマーケットのペーパーバック（4.25in × 6.875in、`mass-market`）の横組みで Source Serif 4 を使う。
+フォントとそのライセンスの文書は、配布元のタグで固定した版から取得し、Golem のソースに固定した SHA-256 で検査してから `fonts/` に置く。
+取得に失敗すると、プロジェクトのファイルを一つも書かない。
+ネットワークに接続するのは、この取得とプラグインの取得だけである。
+`--no-fonts` を付けると取得せず、置くべきファイルを表示する。
 
 診断は人が読む形で出力し、`--format json` を指定すると機械が読む形で出力する。
 終了コードは、成功が 0、診断によるエラーが 1、コマンドの使い方の誤りが 2 である。
