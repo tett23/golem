@@ -278,7 +278,7 @@ writePdf doc =
             ]
           )
       infoObj = afterImages + length xObjs
-      imageObjCount i = case Map.lookup i (docImages doc) of
+      imageObjCount i = case withDefaultProfile <$> Map.lookup i (docImages doc) of
         Just img -> 1 + maybe 0 (const 1) (imgIcc img) + maybe 0 (const 1) (imgAlpha img)
         Nothing -> 1
       resources =
@@ -409,13 +409,19 @@ toUnicodeCMap entries =
           <> body
           <> "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n"
 
+{- | RGB without a profile gets sRGB (ADR 0001); colours are never
+converted. Both the object count and the objects use it, so that the
+profile has its own object number.
+-}
+withDefaultProfile :: ImageData -> ImageData
+withDefaultProfile img = case (imgIcc img, imgColor img) of
+  (Nothing, CsRgb) -> img {imgIcc = Just srgbProfile}
+  (Nothing, CsIndexed _) -> img {imgIcc = Just srgbProfile}
+  _ -> img
+
 imageObjects :: Int -> ImageData -> [Obj]
 imageObjects base img0 =
-  let -- RGB without a profile gets sRGB (ADR 0001); colours are never converted
-      img = case (imgIcc img0, imgColor img0) of
-        (Nothing, CsRgb) -> img0 {imgIcc = Just srgbProfile}
-        (Nothing, CsIndexed _) -> img0 {imgIcc = Just srgbProfile}
-        _ -> img0
+  let img = withDefaultProfile img0
       iccObj = OStream [("N", OInt (components img)), ("Filter", OName "FlateDecode")] . flate <$> imgIcc img
       iccRef = base + 1
       smaskRef = base + 1 + maybe 0 (const 1) (imgIcc img)

@@ -931,6 +931,19 @@ tests =
         let pdf = writePdf (documentWith [page [Image (ImageRef 2) (Rect 0 0 65536 65536)]]) {docImages = Map.fromList [(ImageRef 2, img)]}
         assertBool "ICCBased" ("/ICCBased" `BS.isInfixOf` pdf)
         assertBool "N 3" ("/N 3" `BS.isInfixOf` pdf),
+      testCase "an RGB image without a profile gets its own sRGB object; Info stays the Info" $ do
+        img <- either assertFailure pure (readImage tinyJpeg)
+        imgIcc img @?= Nothing
+        let pdf = writePdf (documentWith [page [Image (ImageRef 2) (Rect 0 0 65536 65536)]]) {docImages = Map.fromList [(ImageRef 2, img)]}
+            objectAt n = snd (BS.breakSubstring (BC.pack ("\n" <> show n <> " 0 obj\n")) pdf)
+            refAfter key = case BC.readInt (BS.drop (BS.length key) (snd (BS.breakSubstring key pdf))) of
+              Just (n, _) -> n
+              Nothing -> -1
+            icc = refAfter "/ICCBased "
+            info = refAfter "/Info "
+        assertBool "xref" (xrefConsistent pdf)
+        assertBool ("ICCBased points at a profile stream, object " <> show icc) ("/N 3" `BS.isInfixOf` BS.take 200 (objectAt icc))
+        assertBool ("Info points at the Info dictionary, object " <> show info) ("/CreationDate" `BS.isInfixOf` BS.take 300 (objectAt info)),
       testCase "content stream: glyph positions, colour, horizontal scaling" $ do
         let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [SetColor (Swatch 0 80 100 0), ScaledGlyphRun (FontRef 7) (10 * 65536) 985 [(2, 65536, -65536)]]
         cs @?= "0 0.8 1 0 k 0 0.8 1 0 K\nBT /F1 10 Tf 98.5 Tz\n1 0 0 1 1 -1 Tm <0002> Tj\nET\n",
