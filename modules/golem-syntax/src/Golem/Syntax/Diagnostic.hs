@@ -60,7 +60,8 @@ error in prod.
 -}
 profileDependentCodes :: [DiagnosticCode]
 profileDependentCodes =
-  [ DiagnosticCode "G0504" -- unreferenced label
+  [ DiagnosticCode "G0504", -- unreferenced label
+    DiagnosticCode "G0310" -- a font missing from HTML and EPUB (golem-project ADR 0004)
   ]
 
 -- | The single place where the build profile changes severities.

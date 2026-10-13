@@ -19,6 +19,7 @@ module Golem.Project.Style
     defaultStyle,
     parseStyle,
     loadStyle,
+    fontFiles,
     pageSize,
     validNumberFormat,
   )
@@ -478,16 +479,12 @@ parseStyle fid src = do
            ]
 
 {- | Reads style.toml from the project root; a missing file means the
-defaults. File references (fonts, ICC profile) must exist.
+defaults. The files it names are not looked for here: each target checks
+the files it uses (golem-project ADR 0004).
 -}
-loadStyle :: (FilePath -> IO Bool) -> FileId -> Maybe Text -> IO (Either [Diagnostic] Style)
-loadStyle exists fid = \case
-  Nothing -> pure (Right defaultStyle)
-  Just src -> case parseStyle fid src of
-    Left ds -> pure (Left ds)
-    Right s -> do
-      let refs = [p | FontRole ja la _ <- Map.elems (stFonts s), Just p <- [ja, la]] <> maybe [] pure (stIntent s)
-      missing <- filter (not . snd) <$> traverse (\p -> (p,) <$> exists p) refs
-      pure $ case missing of
-        [] -> Right s
-        ms -> Left [diagnostic "G0306" Error (mkSpan fid 0 0) ("style.toml が指すファイルがありません: " <> T.pack p) | (p, _) <- ms]
+loadStyle :: FileId -> Maybe Text -> Either [Diagnostic] Style
+loadStyle fid = maybe (Right defaultStyle) (parseStyle fid)
+
+-- | Font files named by [fonts]: role, then Japanese before Latin, roles in name order.
+fontFiles :: Style -> [(Text, FilePath)]
+fontFiles s = [(r, p) | (r, FontRole ja la _) <- Map.toAscList (stFonts s), Just p <- [ja, la]]

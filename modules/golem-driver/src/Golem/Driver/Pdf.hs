@@ -13,6 +13,7 @@ module Golem.Driver.Pdf
     noFontProvider,
     bodyRole,
     usedRoles,
+    styleFileId,
     PdfInput (..),
     SetLine (..),
     PlacedFigure (..),
@@ -66,6 +67,7 @@ import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Re
 import Golem.LayoutSpec qualified as LS
 import Golem.Pdf qualified as P
 import Golem.Project
+import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Syntax
 import System.FilePath (takeBaseName)
@@ -271,12 +273,11 @@ renderPdf provider inp = case pageGeometry (piStyle inp) of
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> do
-        result <- layoutPdf inp geom fonts
-        case result of
+        -- a missing profile is reported before any time is spent on the layout (golem-project ADR 0004)
+        li <- loadIntent inp
+        case li of
           Left ds -> pure (Left ds)
-          Right layout -> do
-            intent <- loadIntent inp
-            pure (Right (writeDocument inp geom fonts layout intent))
+          Right intent -> fmap (\layout -> writeDocument inp geom fonts layout intent) <$> layoutPdf inp geom fonts
 
 {- | The flow and its lines as (line length, indent), in order, laid out
 with no page numbers assumed (for tests).
@@ -842,14 +843,27 @@ figureRect geom ta slot pf =
           let top = rectY ta + rectH ta - d
            in Rect (if atEnd then rectX ta + rectW ta - along else rectX ta) (top - across) along across
 
-loadIntent :: PdfInput -> IO (Maybe P.PdfX)
+-- | The FileId of style.toml: the one after the files of the project.
+styleFileId :: Project -> FileId
+styleFileId p = FileId (length (fileTableEntries (projectFiles p)))
+
+-- | The output intent; a profile that cannot be read is G0806 (golem-project ADR 0004).
+loadIntent :: PdfInput -> IO (Either [Diagnostic] (Maybe P.PdfX))
 loadIntent inp = case stIntent (piStyle inp) of
-  Nothing -> pure Nothing
+  Nothing -> pure (Right Nothing)
   Just path -> do
-    bytes <- BS.readFile (piRoot inp <> "/" <> path)
-    let md = manifestMetadata (projectManifest (piProject inp))
-        condition = if "JapanColor2001Coated" `T.isInfixOf` T.pack path then "JC200103" else T.pack (takeBaseName path)
-    pure (Just (P.PdfX bytes condition [crName c | c <- mdCreators md]))
+    r <- resolveInRoot (piRoot inp) path
+    case r of
+      Left e -> pure (Left [diagnostic "G0806" Error (mkSpan (styleFileId (piProject inp)) 0 0) (T.pack (intentMessage e <> ": " <> path))])
+      Right rel -> do
+        bytes <- BS.readFile (piRoot inp <> "/" <> rel)
+        let md = manifestMetadata (projectManifest (piProject inp))
+            condition = if "JapanColor2001Coated" `T.isInfixOf` T.pack path then "JC200103" else T.pack (takeBaseName path)
+        pure (Right (Just (P.PdfX bytes condition [crName c | c <- mdCreators md])))
+  where
+    intentMessage = \case
+      Missing -> "出力インテントの ICC プロファイルがありません"
+      e -> pathErrorMessage e
 
 -- ------------------------------------------------------------------ drawing
 

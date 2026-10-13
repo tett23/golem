@@ -65,7 +65,7 @@ golem new mybook
 
 | コマンド | 内容 |
 |---|---|
-| `golem new DIR [--language ja\|en] [--no-fonts]` | プロジェクトを作る。版面の設定と、配布元から取得したフォントを含む |
+| `golem new DIR [--language ja\|en] [--no-fonts]` | プロジェクトを作る。版面の設定と、配布元から取得したフォントを含む。`--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない） |
 | `golem plugin lock` | マニフェストのプラグインを取得し、ハッシュを `plugins.lock` に書く |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
 | `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る |

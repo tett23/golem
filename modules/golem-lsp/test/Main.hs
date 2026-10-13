@@ -8,7 +8,7 @@ import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -19,9 +19,10 @@ import Golem.Syntax
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
-import System.Directory (makeAbsolute)
-import System.FilePath ((</>))
+import System.Directory (copyFile, createDirectoryIfMissing, makeAbsolute)
+import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
+import System.IO.Temp (withSystemTempDirectory)
 import System.Process (createPipe)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
@@ -84,6 +85,16 @@ tests =
         assertBool "has errors" (any ((== Error) . diagSeverity) (fromMaybe [] (Map.lookup "b.gm" (diagnosticsFor ws))))
         map locPath (definition ws "b.gm" (offsetIn src "intro]" 1)) @?= ["a.gm"]
         assertBool "labels" ("intro" `elem` map cmpLabel (completions ws "b.gm" (offsetIn src "[ref-number " 12))),
+      testCase "a missing font leaves the manuscript diagnostics in place (golem-project ADR 0004)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        mapM_ (\f -> createDirectoryIfMissing True (takeDirectory (tmp </> f)) >> copyFile (root </> f) (tmp </> f)) ["manifest.toml", "style.toml", "a.gm", "b.gm", "common/values.gm"]
+        BS.appendFile (tmp </> "style.toml") "\n[fonts.body]\nja = \"fonts/missing.otf\"\n"
+        BS.appendFile (tmp </> "b.gm") (TE.encodeUtf8 "\n[strong: 閉じない\n")
+        ws <- openWorkspace tmp
+        assertBool "evaluated" (isJust (wsEvaluated ws))
+        let diags = diagnosticsFor ws
+        assertBool "syntax error in b.gm" (any ((== Error) . diagSeverity) (fromMaybe [] (Map.lookup "b.gm" diags)))
+        let codes = [c | d <- concat (Map.elems diags), let DiagnosticCode c = diagCode d]
+        assertBool (show codes) (all (`notElem` codes) ["G0306", "G0310", "G0802"]),
       testCase "only changes to headings, labels or exports re-evaluate the project" $ do
         ws0 <- openWorkspace root
         let n0 = wsFullEvaluations ws0

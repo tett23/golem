@@ -1,6 +1,6 @@
 # ADR 0002: style.toml の読み込み
 
-ステータス: 採択
+ステータス: 採択→フォントと ICC プロファイルのファイルの存在の検査は [ADR 0004](0004-font-file-check-per-target.md)
 
 ## 文脈
 

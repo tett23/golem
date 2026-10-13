@@ -3,6 +3,7 @@ module Golem.Project.Paths
   ( normalizeRelative,
     PathError (..),
     resolveInRoot,
+    pathErrorMessage,
   )
 where
 
@@ -16,6 +17,14 @@ data PathError
   | EscapesRoot
   | Missing
   deriving stock (Eq, Show)
+
+-- | The wording of a path error, shared by every diagnostic about a path.
+pathErrorMessage :: PathError -> String
+pathErrorMessage = \case
+  Absolute -> "絶対パスは使えません"
+  Url -> "URL は使えません"
+  EscapesRoot -> "プロジェクトルートの外を指しています"
+  Missing -> "ファイルがありません"
 
 {- | Resolves @.@ and @..@ lexically. Absolute paths, URLs and paths that
 climb out of the root are errors.

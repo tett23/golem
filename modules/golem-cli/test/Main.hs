@@ -9,7 +9,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver.Version (golemVersion)
-import System.Directory (doesDirectoryExist)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -126,5 +126,30 @@ tests =
                | (name, args) <- messages
                ]
         ),
-      versionTests
+      versionTests,
+      missingFontTests
+    ]
+
+-- | Runs golem in a project whose body font is missing (golem-project ADR 0004).
+inMissingProject :: [String] -> IO (ExitCode, String)
+inMissingProject args = withSystemTempDirectory "golem-cli" $ \tmp -> do
+  createDirectoryIfMissing True (tmp </> "chapters")
+  TIO.writeFile (tmp </> "manifest.toml") "chapters = [\"chapters/01.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
+  TIO.writeFile (tmp </> "style.toml") "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 12\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n[fonts.body]\nja = \"fonts/missing.otf\"\n"
+  TIO.writeFile (tmp </> "chapters/01.gm") "# はじめに\n\n本文。\n"
+  (code, _, err) <- readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
+  pure (code, err)
+
+missingFontTests :: TestTree
+missingFontTests =
+  testGroup
+    "files of style.toml per target (golem-project ADR 0004)"
+    [ testCase "golem check fails with G0802 and G0310" $ do
+        (code, err) <- inMissingProject ["check"]
+        assertEqual err (ExitFailure 1) code
+        assertBool err ("G0802" `isInfixOf` err && "G0310" `isInfixOf` err),
+      testCase "golem build --target html succeeds with G0310" $ do
+        (code, err) <- inMissingProject ["build", "--target", "html"]
+        assertEqual err ExitSuccess code
+        assertBool err ("G0310" `isInfixOf` err)
     ]

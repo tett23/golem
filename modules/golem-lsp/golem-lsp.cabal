@@ -63,5 +63,6 @@ test-suite golem-lsp-test
     , tasty          >=1.4 && <1.6
     , tasty-golden   >=2.3 && <2.4
     , tasty-hunit    >=0.10 && <0.11
+    , temporary
     , text
   default-language: GHC2021
