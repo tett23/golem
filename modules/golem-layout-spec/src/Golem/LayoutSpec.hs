@@ -75,9 +75,6 @@ ideographic em box of common Japanese fonts: ascent 880, descent 120).
 baselineRatio :: Rational
 baselineRatio = 88 / 100
 
-mmToSp :: Rational -> Sp
-mmToSp mm = round (mm * 72 * 65536 / 25.4)
-
 {- | Which side of the page the gutter is on. Pages of a right-bound book
 turn to the left, so an odd page is the left page of a spread and its
 binding edge is on its right; a left-bound book is the mirror image.
@@ -99,10 +96,9 @@ sidenoteAreaFor g p = (\(o, e) -> if odd p then o else e) <$> pgSidenotes g
 pageGeometry :: Style -> Either [Diagnostic] PageGeometry
 pageGeometry style = case stPage style of
   Nothing -> Left [err "style.toml に [page] がないため、版面を計算できません"]
-  Just page -> case (pageSize (pageSizeName page), pageGrid page) of
-    (Nothing, _) -> Left [err ("未知の判型です: " <> pageSizeName page)]
-    (_, Nothing) -> Left [err "style.toml に [page.grid] がないため、版面を計算できません"]
-    (Just (wmm, hmm), Just grid) -> geometry page grid (mmToSp wmm, mmToSp hmm)
+  Just page -> case pageGrid page of
+    Nothing -> Left [err "style.toml に [page.grid] がないため、版面を計算できません"]
+    Just grid -> geometry page grid (pageTrimSize page)
   where
     err = diagnostic "G0701" Error (mkSpan (FileId 0) 0 0)
     geometry page grid (pw, ph) = do

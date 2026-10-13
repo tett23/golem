@@ -26,6 +26,7 @@ import Golem.Parser.AST (File (..))
 import Golem.Parser.CST (Node)
 import Golem.Parser.Lower (lower)
 import Golem.Parser.Read (readSource)
+import Golem.Parser.SourceSettings (SourceSettings)
 import Golem.Project.Imports
 import Golem.Project.Manifest
 import Golem.Project.Paths
@@ -51,7 +52,10 @@ data Project = Project
     projectChapters :: ![(FileId, Maybe Text)], -- manifest order
     projectSources :: !(Map FileId SourceFile),
     projectImports :: !ImportGraph,
-    projectOrder :: ![FileId] -- evaluation order
+    -- | evaluation order
+    projectOrder :: ![FileId],
+    -- | how each source file is read (docs/adr ADR 0013)
+    projectSourceSettings :: !(Map FileId SourceSettings)
   }
 
 loadProject :: FilePath -> IO (Either [Diagnostic] Project)
@@ -73,7 +77,7 @@ loadProjectWith overlay root = do
           r <- loadSources overlay root mfid ft0 manifest
           pure $ case r of
             Left ds -> Left ds
-            Right (ft, chapters, sources, graph) ->
+            Right (ft, chapters, sources, graph, settings) ->
               let cycles = findCycles graph
                in if null cycles
                     then
@@ -87,7 +91,8 @@ loadProjectWith overlay root = do
                             projectChapters = chapters,
                             projectSources = sources,
                             projectImports = graph,
-                            projectOrder = topoOrder graph
+                            projectOrder = topoOrder graph,
+                            projectSourceSettings = settings
                           }
                     else Left (map (cycleDiagnostic ft) cycles)
 
@@ -101,25 +106,29 @@ cycleDiagnostic ft path = case path of
   where
     name (f, _) = maybe "?" T.pack (lookupPath f ft)
 
-type Loaded = (FileTable, [(FileId, Maybe Text)], Map FileId SourceFile, ImportGraph)
+type Loaded = (FileTable, [(FileId, Maybe Text)], Map FileId SourceFile, ImportGraph, Map FileId SourceSettings)
 
 loadSources :: Map FilePath Text -> FilePath -> FileId -> FileTable -> Manifest -> IO (Either [Diagnostic] Loaded)
 loadSources overlay root mfid ft0 manifest = do
   -- chapters first, in manifest order
-  r <- foldM addChapter (Right (ft0, [], Map.empty)) (chapterFiles (manifestChapters manifest))
+  r <- foldM addChapter (Right (ft0, [], Map.empty, Map.empty)) (chapterFiles (manifestChapters manifest))
   case r of
     Left ds -> pure (Left ds)
-    Right (ft1, chapters, lowerMap) -> do
+    Right (ft1, chapters, lowerMap, chapterSettings) -> do
       let queue = map fst chapters
       r2 <- crawl ft1 lowerMap Map.empty Map.empty queue
       pure $ case r2 of
         Left ds -> Left ds
-        Right (ft2, sources, edges) -> Right (ft2, chapters, sources, ImportGraph edges)
+        Right (ft2, sources, edges) ->
+          -- files reached only by @import take [source] (docs/adr ADR 0013)
+          let settings = Map.union chapterSettings (Map.map (const baseSettings) sources)
+           in Right (ft2, chapters, sources, ImportGraph edges, settings)
   where
     manifestSpan = mkSpan mfid 0 0
-    addChapter acc (p, master) = case acc of
+    baseSettings = manifestSource manifest
+    addChapter acc (p, master, edits) = case acc of
       Left ds -> pure (Left ds)
-      Right (ft, chs, lowers) -> do
+      Right (ft, chs, lowers, settings) -> do
         res <- resolveInRoot root p
         pure $ case res of
           Left e -> Left [pathDiagnostic manifestSpan p e]
@@ -127,7 +136,12 @@ loadSources overlay root mfid ft0 manifest = do
             Just other -> Left [diagnostic "G0304" Error manifestSpan (T.pack ("大文字と小文字だけが異なるパスです: " <> rel <> " と " <> other))]
             Nothing ->
               let (fid, ft') = registerFile rel ft
-               in Right (ft', chs <> [(fid, master)], Map.insert (map toLower rel) rel lowers)
+                  own = applyEdits edits baseSettings
+               in case Map.lookup fid settings of
+                    Just earlier
+                      | earlier /= own ->
+                          Left [diagnostic "G0301" Error manifestSpan (T.pack ("同じファイルを [source] の設定を変えて章に二度並べています: " <> rel))]
+                    _ -> Right (ft', chs <> [(fid, master)], Map.insert (map toLower rel) rel lowers, Map.insert fid own settings)
     collision lowers rel = case Map.lookup (map toLower rel) lowers of
       Just other | other /= rel -> Just other
       _ -> Nothing

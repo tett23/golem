@@ -16,7 +16,7 @@
 
 [style code: \[page\]] には、紙面そのものを書きます。
 
-- [style code: size]：判型[index reading=はんけい: 判型]です。[style code: "A4"]、[style code: "A5"]、[style code: "A6"]、[style code: "B5"]、[style code: "B6"]、[style code: "四六判"]、[style code: "mass-market"]（ペーパーバック）から選びます。寸法は[ref-number tables]「[ref-title tables]」に載せています。
+- [style code: size]：判型[index reading=はんけい: 判型]です。[style code: "A4"]、[style code: "A5"]、[style code: "A6"]、[style code: "B5"]、[style code: "B6"]、[style code: "四六判"]、[style code: "菊判"]、[style code: "新書判"]、[style code: "mass-market"]（ペーパーバック）から選びます。寸法は[ref-number tables]「[ref-title tables]」に載せています。表にない判型は、[style code: size = { width = "148mm", height = "210mm" }] のように幅と高さで書きます。
 - [style code: binding]：綴じる側です。縦組みの本は右綴じ（[style code: "right"]）、横組みの本は左綴じ（[style code: "left"]）が普通です。
 - [style code: writing-mode]：縦組み（[style code: "vertical"]）か横組み（[style code: "horizontal"]）かです。
 - [style code: bleed]：塗り足しの幅です（[ref-number print-pdf]「[ref-title print-pdf]」）。
