@@ -1628,6 +1628,66 @@ lines の範囲が不正です
 
 `@verse` を `@style verse` に書き換える。
 
+## G0258
+
+改ページのコマンドの引数が誤っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@page-break` か `@column-break` の引数か本体が誤っている。
+`@page-break` は位置引数を一つまで取り、それは `recto` か `verso` である。
+`@column-break` は引数を取らない。
+どちらもキーワード引数と本体を持たない。
+誤ったコマンドは捨て、改ページしない。
+
+- メッセージ: `@page-break の引数は recto か verso です`、`@column-break は引数を取りません`、`@page-break と @column-break は本体を持てません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0017](adr/0017-forced-page-breaks.md)
+
+### 主な原因
+
+- `@page-break page` のように、`recto` と `verso` のほかの語を書いた。
+- `@page-break recto verso` のように、引数を二つ以上書いた。
+- `@page-break x=1` のように、キーワード引数を書いた。
+- `@column-break recto` のように、`@column-break` に引数を書いた。
+- `@page-break` の次の行を字下げして、本体にした。
+
+### 直し方
+
+ただの改ページは `@page-break` とだけ書き、奇数ページから始めるなら `@page-break recto`、偶数ページから始めるなら `@page-break verso` と書く。
+`@page-break` の次の行を字下げしているなら、字下げをやめる。
+
+## G0259
+
+改ページのコマンドは文書の最上位にだけ置けます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@page-break` か `@column-break` を、リストの項目、定義リストの説明、ブロックコマンドの本体（`@figure` のキャプションなど）の中に置いた。
+改ページは本文の流れの中の一点を表すので、文書の最上位のブロックの間にだけ置ける。
+その位置のコマンドは捨て、改ページしない。
+フィルタのプラグインが最上位でない位置に改ページを置いた場合は、このコードではなく、プラグインの出力の誤りになる。
+
+- メッセージ: `@page-break と @column-break は文書の最上位にだけ置けます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0017](adr/0017-forced-page-breaks.md)
+
+### 主な原因
+
+- リストの項目や定義リストの説明の中に、字下げして `@page-break` を書いた。
+- `@figure` の次の行を字下げして `@page-break` を書き、キャプションの中に入れた。
+
+### 直し方
+
+字下げをやめて、リストや図版の前か後ろに、文書の最上位のブロックとして書く。
+本体の形の `@style` の中に書いた場合は、このコードではなく [G0245](#g0245) になる。
+
 ## G0301
 
 manifest.toml の誤りです
