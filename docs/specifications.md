@@ -525,6 +525,9 @@ folio = { position = "bottom-outside", format = "{n}" }
 文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic` である。
 `font` の役割は、役割が持つ側（和文か欧文）の文字だけをその役割で組み、持たない側の文字は外側の書体のまま組む。
 `synthetic-bold` が真なら、`font` の役割が持たない側の文字を合成の太字（輪郭を線で太らせる）にし、`font` がなければ両側を太らせる。
+PDF の合成の太字の線の幅は、和文で文字の大きさの 1/80、欧文で 1/60 とする（[golem-driver ADR 0012](golem-driver/adr/0012-synthetic-bold-weight.md)）。
+和文は画が多くすきまが狭いので、欧文と同じ幅ではふところが埋まるためである。
+太字らしい太さが要る場合は、`[character-styles.bold]` の `font` で太字の書体を指定する。
 `synthetic-italic` も同じ規則で合成の斜体（字形を傾ける）をかける。
 和文の書体は一般に斜体を持たないので、和文の斜体は字形がゆがむが、強調が黙って消えることを避けるために傾ける。
 文字スタイルの `size` は、PDF でその文字を組む大きさになり、`zw` は外側の文字の大きさを一字とする。
@@ -1116,7 +1119,6 @@ v1 のリリースまでに、次の項目を扱う。
 - **目次**：PDF の目次は番号と題だけを出し、ページ番号を出していない。[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md) で、ページ番号を項目の最後の行の終わりにそろえて置き、題とのあいだをリーダーで埋め、`[toc]` の `leader`（`"dots"` か `"none"`）で選べるようにすると決めた（未実装）。
 - **柱の内容**：マスターページの `running-head` の `content`（`"heading.1.short"` など）と、`[headings.<階層>]` の `running-head` を読み込むが、PDF では使っていない。柱には常に 1 の階層の見出しの短い題を出す（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。設定のとおりに柱の内容を決めるか、使わない欄をなくす。
 - **トンボと塗り足し**：入稿用の、トンボと塗り足しの領域を付けた PDF を出力できない。今の PDF は、MediaBox、TrimBox、BleedBox をすべて仕上がりの判型と同じ大きさにしている。[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md) で、`style.toml` の `[page]` に `bleed` を、`golem build` と `golem check` に `--marks japanese|western|none` を加え、日本式のトンボで塗り足しが 0 なら G0702 とすると決めた（未実装）。
-- **合成の太字の太さ**：合成の太字の輪郭の線の幅（文字の大きさの 1/40）は、目で見ると太すぎる（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。[golem-driver ADR 0012](golem-driver/adr/0012-synthetic-bold-weight.md) で、和文を文字の大きさの 1/80、欧文を 1/60 に細くすると決めた（未実装）。
 - **PDF の Producer**：仕様では PDF の Producer に Golem の版を書くが、まだ書いていない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md) で、文書情報辞書の `Producer` と XMP の `pdf:Producer` に `Golem <版>`（例：`Golem 0.1.0-rc1`）を書くと決めた（未実装）。
 
 #### 記法と設定

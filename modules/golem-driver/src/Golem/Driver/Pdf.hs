@@ -13,6 +13,9 @@ module Golem.Driver.Pdf
     noFontProvider,
     bodyRole,
     usedRoles,
+    syntheticStroke,
+    syntheticStrokeJa,
+    syntheticStrokeLatin,
     PdfInput (..),
     SetLine (..),
     PlacedFigure (..),
@@ -186,9 +189,17 @@ thinRule = 19661
 syntheticSlant :: Rational
 syntheticSlant = 1 / 5
 
--- | The outline stroke of synthetic bold: 1/40 of the size.
-syntheticStroke :: Sp -> Sp
-syntheticStroke size = size `div` 40
+-- | The outline stroke of synthetic bold for Japanese: 1/80 of the size (golem-driver ADR 0012).
+syntheticStrokeJa :: Rational
+syntheticStrokeJa = 1 / 80
+
+-- | The outline stroke of synthetic bold for Latin: 1/60 of the size.
+syntheticStrokeLatin :: Rational
+syntheticStrokeLatin = 1 / 60
+
+-- | The stroke of a size, rounded down to whole sp.
+syntheticStroke :: Rational -> Sp -> Sp
+syntheticStroke r size = floor (toRational size * r)
 
 -- | The role and size of the headings of a level (golem-driver ADR 0003).
 headingFace :: Style -> PageGeometry -> Int -> (Text, Sp)
@@ -938,21 +949,25 @@ writeDocument inp geom fonts layout intent =
       run; split into Latin and other runs where the two sides differ in
       role or in synthetic bold and slant (golem-driver ADR 0004, docs/adr ADR 0005) -}
       runsOf look txt
-        | lkFace look == lkLatinFace look && lkSynthetic look == lkLatinSynthetic look = [(lkFace look, txt, False)]
+        | lkFace look == lkLatinFace look && lkSynthetic look == lkLatinSynthetic look && not (synBold (lkSynthetic look) || synBold (lkLatinSynthetic look)) = [(lkFace look, txt, False)]
         | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isLatin a == isLatin b) txt, not (T.null r), let latin = isLatin (T.head r)]
       -- the synthetic bold and slant of a run
       syntheticOf look latin = if latin then lkLatinSynthetic look else lkSynthetic look
       -- glyph marks of a text in a look starting at a point, and the glyphs used
       runAt look v rotated scale (x0, y0) txt =
         let size = lkSize look
-            gs = concat [[(ix, g, a, t, (synSlant s, synBold s)) | (ix, g, a, t) <- lfShape fonts role (v && not rotated) r] | (role, r, latin) <- runsOf look txt, let s = syntheticOf look latin]
+            -- the stroke of synthetic bold of a side: Latin or Japanese (golem-driver ADR 0012)
+            strokeOf latin s
+              | synBold s = syntheticStroke (if latin then syntheticStrokeLatin else syntheticStrokeJa) size
+              | otherwise = 0
+            gs = concat [[(ix, g, a, t, (synSlant s, strokeOf latin s)) | (ix, g, a, t) <- lfShape fonts role (v && not rotated) r] | (role, r, latin) <- runsOf look txt, let s = syntheticOf look latin]
             advs = scanl (+) 0 [toSp size a | (_, _, a, _, _) <- gs]
             placed = [(ix, g, t, sb, off) | ((ix, g, _, t, sb), off) <- zip gs advs]
             byFont = Map.fromListWith (flip (<>)) [((ix, sb), [(g, t, off)]) | (ix, g, t, sb, off) <- placed]
             at off = if v then (x0, y0 - off) else (x0 + off, y0)
-            mark (ix, (sl, bold)) xs
-              | sl || bold =
-                  let rs = P.RunStyle (if v then 1000 else 1000 + scale) (v && rotated) (if sl then syntheticSlant else 0) (if bold then syntheticStroke size else 0)
+            mark (ix, (sl, stroke)) xs
+              | sl || stroke > 0 =
+                  let rs = P.RunStyle (if v then 1000 else 1000 + scale) (v && rotated) (if sl then syntheticSlant else 0) stroke
                    in P.StyledGlyphRun rs (ref ix (v && not rotated)) size [(code ix g, gx, gy) | (g, _, off) <- xs, let (gx, gy) = at off]
               | v && rotated = P.RotatedGlyphRun (ref ix False) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
               | v = P.GlyphRun (ref ix True) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]

@@ -17,7 +17,7 @@ import Golem.Doc.Assemble (IndexGroup (..), inlineText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.New
-import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, usedRoles)
+import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), Synthetic (..))
@@ -633,6 +633,31 @@ drawnGlyphs content = go ("", "") (BC.lines content)
       (f : size : "Tf" : _) -> Just (f, size)
       _ -> Nothing
 
+{- | The runs of glyphs of a content stream: the font resource, the stroke
+width of synthetic bold (when the run has one) and the glyphs (golem-driver ADR 0012).
+-}
+strokeRuns :: BS.ByteString -> [(BS.ByteString, Maybe BS.ByteString, [Int])]
+strokeRuns content = go (BC.lines content)
+  where
+    go [] = []
+    go (l : rest)
+      | ws@(_ : _) <- BC.words l,
+        "Tf" `elem` ws,
+        (f : _) <- dropWhile (not . ("/F" `BS.isPrefixOf`)) ws =
+          let (body, rest') = break (("ET" `BS.isPrefixOf`) . BC.strip) rest
+              width = case dropWhile (/= "Tr") ws of
+                (_ : w : "w" : _) -> Just w
+                _ -> Nothing
+           in (f, width, [g | b <- body, Just g <- [glyph b]]) : go rest'
+      | otherwise = go rest
+    glyph l = case reverse (BC.words l) of
+      ("Tj" : hexg : "Tm" : _) -> Just (read ("0x" <> BC.unpack (BC.filter (`notElem` ("<>" :: String)) hexg)))
+      _ -> Nothing
+
+-- | The stroke widths of the runs that draw a character.
+widthsOf :: Char -> [(BS.ByteString, Maybe BS.ByteString, [Int])] -> [Maybe BS.ByteString]
+widthsOf c runs = nub [w | (_, w, gs) <- runs, fromEnum c `elem` gs]
+
 -- | A body role for styles that name other roles, so that the body stays the body.
 fakeBody :: BS.ByteString
 fakeBody = "\n[fonts.body]\nja = \"fonts/b.otf\"\n"
@@ -714,6 +739,29 @@ emphasisTests =
       assertBool (T.unpack cssText) ("@font-face { font-family: \"golem-gothic-ja\"; src: url(\"fonts/h.otf\"); font-weight: bold; }" `T.isInfixOf` cssText)
       assertBool (T.unpack cssText) ("b { font-family: \"golem-gothic-ja\", \"golem-body-ja\", serif; font-weight: bold; }" `T.isInfixOf` cssText)
       assertBool "strong too" ("strong { font-family: \"golem-gothic-ja\", \"golem-body-ja\", serif; font-weight: bold; }" `T.isInfixOf` cssText),
+    testCase "the stroke of synthetic bold: 1/80 of the size for Japanese, 1/60 for Latin (golem-driver ADR 0012)" $ do
+      syntheticStroke syntheticStrokeJa 655360 @?= 8192
+      syntheticStroke syntheticStrokeLatin 655360 @?= 10922
+      ja <- miniPdf fakeProvider True horizontalStyle "前の[bold: 本文]後\n" [] >>= fmap (strokeRuns . BS.concat) . inflateAll
+      nub [w | (_, Just w, _) <- ja] @?= ["0.125"]
+      latin <- miniPdf fakeProvider True horizontalStyle "[bold: Golem]\n" [] >>= fmap (strokeRuns . BS.concat) . inflateAll
+      nub [w | (_, Just w, _) <- latin] @?= [TE.encodeUtf8 (spToPt 10922)],
+    testCase "Japanese and Latin in one bold run get their own strokes, and the glyphs stay" $ do
+      let style = horizontalStyle <> fakeBody
+      runs <- miniPdf fakeProvider True style "[bold: 本Golem]\n" fakeFontFiles >>= fmap (strokeRuns . BS.concat) . inflateAll
+      widthsOf '本' runs @?= [Just "0.125"]
+      widthsOf 'G' runs @?= [Just (TE.encodeUtf8 (spToPt 10922))]
+      a <- miniPdf fakeProvider True style "[bold: 本Golem]\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      b <- miniPdf fakeProvider True style "本Golem\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      sort [(dGlyph d, dX d, dY d) | d <- drawnGlyphs a] @?= sort [(dGlyph d, dX d, dY d) | d <- drawnGlyphs b],
+    testCase "the stroke follows the size" $ do
+      runs <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.big]\nsize = \"2zw\"\n") "[style big: [bold: 本]]\n" [] >>= fmap (strokeRuns . BS.concat) . inflateAll
+      widthsOf '本' runs @?= [Just "0.25"],
+    testCase "a bold role with Japanese only: Japanese in it without a stroke, Latin synthetic" $ do
+      runs <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n\n[character-styles.bold]\nfont = \"heading\"\n") "[bold: 本Golem]\n" fakeFontFiles >>= fmap (strokeRuns . BS.concat) . inflateAll
+      widthsOf '本' runs @?= [Nothing]
+      widthsOf 'G' runs @?= [Just (TE.encodeUtf8 (spToPt 10922))]
+      assertBool "different fonts" (nub [f | (f, _, gs) <- runs, fromEnum '本' `elem` gs] /= nub [f | (f, _, gs) <- runs, fromEnum 'G' `elem` gs]),
     testCase "a character style colours its text" $ do
       pdf <- miniPdf fakeProvider True (horizontalStyle <> "\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n\n[character-styles.term]\ncolor = \"accent\"\n") "前[style term: 語]後\n" []
       content <- BS.concat <$> inflateAll pdf
