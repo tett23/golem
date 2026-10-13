@@ -556,6 +556,59 @@ tests =
             map poSlots (paginate 5 [FSpace 3, FParagraph (lines' 0 1)]) @?= [[(0, SLine 0)]]
         ],
       testGroup
+        "forced breaks (docs/adr ADR 0017)"
+        [ testCase "a page break in the middle of page 1 starts page 2" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakPage, FParagraph (lines' 10 1)]
+            slots ps @?= [[0], [10]]
+            map poBlank ps @?= [False, False],
+          testCase "two page breaks in a row make a blank page" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakPage, FBreak BreakPage, FParagraph (lines' 10 1)]
+            map poBlank ps @?= [False, True, False]
+            slots ps @?= [[0], [], [10]],
+          testCase "a page break at the start of the book makes page 1 blank" $ do
+            let ps = paginate 5 [FBreak BreakPage, FParagraph (lines' 0 1)]
+            map poBlank ps @?= [True, False]
+            slots ps @?= [[], [0]],
+          testCase "a recto break goes to the next odd page" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakRecto, FParagraph (lines' 10 1)]
+            map poBlank ps @?= [False, True, False]
+            slots ps @?= [[0], [], [10]]
+            let qs = paginate 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakRecto, FParagraph (lines' 20 1)]
+            map poBlank qs @?= [False, False, False]
+            slots qs @?= [[0, 1, 2, 3, 4], [10], [20]],
+          testCase "a recto break on an empty odd page does nothing" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakPage, FBreak BreakPage, FBreak BreakRecto, FParagraph (lines' 10 1)]
+            map poBlank ps @?= [False, True, False]
+            slots ps @?= [[0], [], [10]],
+          testCase "a verso break goes to the next even page" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakVerso, FParagraph (lines' 10 1)]
+            map poBlank ps @?= [False, False]
+            slots ps @?= [[0], [10]]
+            let qs = paginate 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakVerso, FParagraph (lines' 20 1)]
+            map poBlank qs @?= [False, False, True, False]
+            slots qs @?= [[0, 1, 2, 3, 4], [10], [], [20]],
+          testCase "breaks at the end of the book add no page" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakPage]
+                qs = paginate 5 [FParagraph (lines' 0 1), FBreak BreakRecto]
+            map poBlank ps @?= [False]
+            map poBlank qs @?= [False],
+          testCase "a recto heading after a page break adds a blank page only on an even page" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakPage, FHeading 1 "章" True 1 (lines' 20 1)]
+            map poBlank ps @?= [False, True, False]
+            slots ps @?= [[0], [], [20]]
+            let qs = paginate 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakPage, FHeading 1 "章" True 1 (lines' 20 1)]
+            map poBlank qs @?= [False, False, False]
+            slots qs @?= [[0, 1, 2, 3, 4], [10], [20]],
+          testCase "a figure sent on goes to the top of the page after the break, not to a blank page" $ do
+            let ps = paginate 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FBreak BreakPage, FParagraph (lines' 10 1)]
+            map poBlank ps @?= [False, False]
+            map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2)], [(0, SFigure 99), (3, SLine 10)]],
+          testCase "a column break on one column is a page break" $ do
+            let flows k = [FParagraph (lines' 0 1), FBreak k, FBreak k, FParagraph (lines' 10 1)]
+            paginate 5 (flows BreakColumn) @?= paginate 5 (flows BreakPage)
+            paginate 5 [FBreak BreakColumn, FParagraph (lines' 0 1)] @?= paginate 5 [FBreak BreakPage, FParagraph (lines' 0 1)]
+        ],
+      testGroup
         "looks: emphasis, character styles and colour (golem-driver ADR 0004)"
         [ testCase "a bold role measures its characters in its own font" $ do
             let env = lookEnv (\lk -> \case CharStyle _ "bold" _ -> lk {lkFace = "wide", lkLatinFace = "wide"}; _ -> lk)
