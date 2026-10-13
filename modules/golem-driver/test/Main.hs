@@ -36,7 +36,7 @@ import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
 import Golem.Project (Project (..))
 import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), LocalStyles (..), ParaStyleDef (..), RunningContent (..), dimToSp, noLocalStyles, noParaDef, parseDim, parseStyle)
 import Golem.Syntax
-import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
+import System.Directory (copyFile, createDirectoryIfMissing, createFileLink, doesDirectoryExist, findExecutable, listDirectory)
 import System.Environment (setEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
@@ -100,6 +100,7 @@ tests =
   testGroup
     "golem-driver (ADR 0001)"
     [ explainTests,
+      evalDiagnosticTests,
       testGroup
         "version (docs/adr/0004)"
         [ testCase "golemVersion is the content of VERSION" $ do
@@ -2829,3 +2830,57 @@ breakTests =
       broken @?= plain
       plain @?= "a\n\nb\n"
   ]
+
+-- | The fixture copied to @root@ with @src@ after its chapter 02.
+withChapter :: FilePath -> BS.ByteString -> IO Int
+withChapter root src = do
+  copyTree fixture root
+  before <- BS.readFile (root </> "chapters/02.gm")
+  BS.writeFile (root </> "chapters/02.gm") (before <> "\n" <> src)
+  pure (BS.length before + 1)
+
+-- | The diagnostics of evaluation (G02xx) of a check of @root@.
+evalDiags :: FilePath -> IO [(T.Text, T.Text, Int, Int)]
+evalDiags root = do
+  r <- build (defaultOptions root) {optCheckOnly = True}
+  pure
+    [ (c, diagMessage d, spanStart (diagSpan d), spanEnd (diagSpan d))
+    | d <- brDiagnostics r,
+      let DiagnosticCode c = diagCode d,
+      "G02" `T.isPrefixOf` c
+    ]
+
+-- | golem-eval ADR 0003: the paths of assets and G0208 in S1.
+evalDiagnosticTests :: TestTree
+evalDiagnosticTests =
+  testGroup
+    "evaluation diagnostics (golem-eval ADR 0003)"
+    [ testCase "absolute paths, URLs and paths outside the root are G0260" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
+        let root = tmp </> "book"
+        at <- withChapter root "@figure /tmp/a.png alt=x\n\n@figure \"https://example.com/a.png\" alt=x\n\n@listing ../outside.txt\n"
+        ds <- evalDiags root
+        [(c, m) | (c, m, _, _) <- ds]
+          @?= [ ("G0260", "絶対パスは使えません: /tmp/a.png"),
+                ("G0260", "URL は使えません: https://example.com/a.png"),
+                ("G0260", "プロジェクトルートの外を指しています: ../outside.txt")
+              ]
+        [s | (_, _, s, _) <- take 1 ds] @?= [at],
+      testCase "a symbolic link out of the root is G0260" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
+        let root = tmp </> "book"
+        _ <- withChapter root "@listing link.txt\n"
+        BS.writeFile (tmp </> "outside.txt") "secret\n"
+        createFileLink (tmp </> "outside.txt") (root </> "link.txt")
+        ds <- evalDiags root
+        [(c, m) | (c, m, _, _) <- ds] @?= [("G0260", "プロジェクトルートの外を指しています: link.txt")],
+      testCase "a path both a figure and a listing refer to is read as text" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
+        _ <- withChapter tmp "@listing notes.txt\n\n@figure notes.txt alt=x\n"
+        BS.writeFile (tmp </> "notes.txt") "hello listing\n"
+        r <- build (defaultOptions tmp)
+        map diagCode (filter isError (brDiagnostics r)) @?= []
+        t <- BS.readFile (tmp </> "build/text/horizontal/chapters/02.txt")
+        assertBool "the listing" ("hello listing" `BS.isInfixOf` t),
+      testCase "G0208 in S1 is at the inline" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
+        at <- withChapter tmp "[= doc.chapters]\n"
+        ds <- evalDiags tmp
+        ds @?= [("G0208", "連想配列 は本文に埋め込めません", at, at + 16)]
+    ]

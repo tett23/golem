@@ -158,7 +158,8 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.
 
 assemble ::
   AssembleConfig ->
-  (DocValues -> DeferredExpr -> Either Diagnostic Text) ->
+  -- | evaluates a deferred expression of the inline at the span
+  (DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text) ->
   [Document] ->
   (Book, [Diagnostic])
 assemble cfg evalDeferred docs =
@@ -250,7 +251,7 @@ collectLabels ns docs = foldl add (Map.empty, []) targets
 
 type R = State (Set Text, [Diagnostic])
 
-resolveDoc :: Map Text LabelTarget -> DocValues -> (DocValues -> DeferredExpr -> Either Diagnostic Text) -> Document -> R Document
+resolveDoc :: Map Text LabelTarget -> DocValues -> (DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text) -> Document -> R Document
 resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk bs
   where
     blk (Block sp l body) =
@@ -284,7 +285,7 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
               pure []
             title -> pure (map (relocate sp) title)
           (Just _, RefPage) -> pure [Ref sp k l]
-      Deferred sp e -> case evalDeferred dv e of
+      Deferred sp e -> case evalDeferred dv sp e of
         Left d -> modify' (\(s, ds) -> (s, ds <> [d])) >> pure []
         Right t -> pure [Text sp t]
       Kenten sp s xs -> pure . Kenten sp s <$> inls xs

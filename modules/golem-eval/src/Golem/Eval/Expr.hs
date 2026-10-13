@@ -164,8 +164,8 @@ call le f args = case (f, args) of
   ("fixed", [v, VInt n]) | n >= 0 -> num v >>= \x -> pure (VString (renderDecimalFixed (roundHalfAway (fromInteger n) x)))
   ("abs", [VInt i]) -> pure (VInt (abs i))
   ("abs", [VFloat d]) -> mkFloat le (abs d)
-  ("min", vs@(_ : _)) -> extreme (<) vs
-  ("max", vs@(_ : _)) -> extreme (>) vs
+  ("min", v : vs) -> extreme (<) v vs
+  ("max", v : vs) -> extreme (>) v vs
   ("len", [VString s]) -> pure (VInt (toInteger (T.length s)))
   ("len", [VArray xs]) -> pure (VInt (toInteger (length xs)))
   ("div", [VInt _, VInt 0]) -> err "G0203" le "0 で割っています"
@@ -173,13 +173,13 @@ call le f args = case (f, args) of
   ("div", [_, _]) -> typeErr le "div は整数にだけ使えます"
   _
     | f `elem` builtinNames -> err "G0207" le (f <> " の引数が不正です")
-    | otherwise -> err "G0207" le ("未定義の関数 " <> f <> " です")
+    | otherwise -> err "G0261" le ("未定義の関数 " <> f <> " です")
   where
     num v = maybe (typeErr le (typeName v <> " は数ではありません")) pure (asDouble v)
-    extreme better (v : vs) = do
+    -- min and max with no argument are G0207 above
+    extreme better v vs = do
       traverse_ num (v : vs)
       pure (foldl (\a b -> if lessThan better b a then b else a) v vs)
-    extreme _ [] = err "G0207" le "引数がありません"
     lessThan better a b = case (asDouble a, asDouble b) of
       (Just x, Just y) -> better x y
       _ -> False
