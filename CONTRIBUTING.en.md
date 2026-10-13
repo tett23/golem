@@ -18,7 +18,7 @@ After cloning, enable the Git hooks first.
 git config core.hooksPath .githooks
 ```
 
-The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.8.0 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.0`).
+The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.8.1 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.1`).
 This setting is not stored in the repository, so run it in every clone.
 
 ## How a change proceeds
@@ -121,7 +121,7 @@ When introducing a new term, add it to [docs/glossary.md](./docs/glossary.md).
 
 Audit records and performance snapshots go under `docs/`, in a directory for each purpose.
 These are also not changed once committed.
-Records under `docs/audit/` and `docs/benchmarks/` are enforced: the hook and the `adr` job in CI reject changes, deletions, and moves of committed ones ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)).
+Records under `docs/audit/`, `docs/audits/`, `docs/benchmarks/`, and `docs/benchmark/` are enforced: the hook and the `adr` job in CI reject changes, deletions, and moves of committed ones ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md), [docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)).
 Records in directories with other names, such as `docs/ci-timings/`, are not checked and are kept by convention and review.
 
 Japanese prose puts each sentence on its own line.
