@@ -12,7 +12,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **広い型、狭い実装**：型は将来の表現力まで見越して設計し、実装は当面の用途に絞り、使わない機能は縮退させる方針（[仕様書](specifications.md)）。
 - **構文解釈の安定**：構文の解析がコマンドの定義に依存しない性質。プラグインを加えても、既存の原稿の解析結果は変わらない（[仕様書](specifications.md)、[markup.md](markup.md)）。
 - **ADR**：設計の決定を一件ずつ記録する文書（Architecture Decision Record）。連番のファイルとして `docs/adr/` と `docs/<モジュール>/adr/` に置き、コミットした後はステータスの行を除いて変更しない。
-- **adr-guard**：コミット済みの ADR の変更を拒む検査。Git の pre-commit フックと CI の `adr` ジョブで動く（[README](../README.md)）。
+- **adr-guard**：コミット済みの ADR と記録（`docs/audit/`、`docs/benchmarks/`）の変更を拒み、ADR がステータスの行をちょうど一つ持つことを確かめる検査。Git の pre-commit フックと CI の `adr` ジョブで動く（[README](../README.md)）。
 
 ## 原稿の記法
 

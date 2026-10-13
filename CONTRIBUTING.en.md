@@ -18,7 +18,7 @@ After cloning, enable the Git hooks first.
 git config core.hooksPath .githooks
 ```
 
-The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.5.0 or later, so install it beforehand.
+The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.8.0 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.0`).
 This setting is not stored in the repository, so run it in every clone.
 
 ## How a change proceeds
@@ -74,6 +74,7 @@ When a later ADR replaces part of one, the status names it, as in "採択→○�
 Once committed, an ADR cannot be changed except for its status line.
 `.githooks/pre-commit` and the `adr` job in CI reject edits, deletions, and renames.
 Changes to the status line (`--allow-status`) and changes that only add, remove, or retarget links of ADR references (`--allow-links`) are allowed ([docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md)).
+Every ADR must have exactly one status line starting with `ステータス:`; the hook and the `adr` job in CI reject ADRs with none or more than one, and `adr-guard check-status` lists them ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)).
 ADR references in documents must link to the ADR file; the `adr` job in CI rejects unlinked ones, and `adr-guard links --fix` fixes them.
 
 To change the specification, do not rewrite the old ADR; write a new one with the next number.
@@ -120,6 +121,8 @@ When introducing a new term, add it to [docs/glossary.md](./docs/glossary.md).
 
 Audit records and performance snapshots go under `docs/`, in a directory for each purpose.
 These are also not changed once committed.
+Records under `docs/audit/` and `docs/benchmarks/` are enforced: the hook and the `adr` job in CI reject changes, deletions, and moves of committed ones ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)).
+Records in directories with other names, such as `docs/ci-timings/`, are not checked and are kept by convention and review.
 
 Japanese prose puts each sentence on its own line.
 It does not use dashes (——) or the middle dot (・) for lists.

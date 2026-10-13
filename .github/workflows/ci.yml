@@ -33,8 +33,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       # status-line and link-only changes to committed ADRs are allowed;
-      # unlinked ADR references fail (docs/adr/0010)
-      - uses: tett23/adr-guard@v0.5.0
+      # unlinked ADR references, ADRs without exactly one status line, and
+      # changes to committed records (docs/audit/, docs/benchmarks/) fail
+      # (docs/adr/0010, docs/adr/0011)
+      - uses: tett23/adr-guard@v0.8.0
         with:
           allow-status: true
           allow-links: true

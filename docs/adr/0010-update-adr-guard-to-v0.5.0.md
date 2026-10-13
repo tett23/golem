@@ -1,6 +1,6 @@
 # ADR 0010: adr-guard を v0.5.0 に上げ、ステータスの行の変更を `--allow-status` で許可する
 
-ステータス: 採択
+ステータス: 採択→CI の action の版と、ステータスの行と記録の検査は [ADR 0011](0011-update-adr-guard-to-v0.8.0.md)
 
 ## 文脈
 
