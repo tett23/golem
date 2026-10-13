@@ -998,21 +998,32 @@ v1 の範囲から外した事項と、v1 の実装で次の段階以降に回�
 - **EPUB の決定性**：zip のエントリの時刻と順序の固定（[ADR docs/adr/0002](adr/0002-determinism.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
 - **式の超越関数**：三角関数、指数関数、対数関数と、浮動小数点数の指数による累乗（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
 - **改ページの大域の最適化**：見開きの単位の最適化と、段組みの段の高さの調整を含む（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
-- **フレーム**：レベル 2 と 3 のフレーム。型は定義してあり、v1 では値を書くとエラーになる。
+- **フレーム**：レベル 2 と 3 のフレーム。型は定義してあり、v1 では値を書くとエラーになる（[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)）。
+- **段組みの拡張**：段抜きの見出し、段組みの版面での回り込みと段をまたぐ除外領域（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。段組みそのものを v1 で扱うかは、次節の「段組み」で決める。
 - **SVG の図版**：PDF へ変換する処理が重いため、v1 では PDF、PNG、JPEG に限る。
+- **図版とキャプションの拡張**：版面より大きい図版を縮小する、複数のページに分ける、見開きに置くといった扱い（v1 は空のページにそのまま置く）、回り込ませない図版の幅の指定、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。
 - **複数段落の注**：v1 の注は一つの段落に限る。
-- **章ごとの小目次**：v1 の `@toc` は文書に一つだけとする。
+- **目次の拡張**：章ごとの小目次（v1 の `@toc` は文書に一つだけ）、`[toc]` の `font` と `size` による項目の書体と大きさ、階層ごとの書体の切り替え、字下げ、空き、リーダーの字の設定、折り返した題のぶら下げ、図目次と表目次（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
+- **ページ番号と柱の拡張**：ノンブルの書式を目次と索引のページ番号に使うこと、前付けのローマ数字のノンブルと、前付けと本文でのページ番号の振り直し、EPUB の `page-list`、柱とノンブルと目次の項目を見出しの書体で組むこと、柱、ノンブル、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
 - **縦組みの傍注**：v1 の傍注は横組みに限る（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
-- **索引の三段以上の階層と項目間の参照**：v1 は二段までとし、「〜を見よ」は扱わない。
-- **`style.toml` の分割**：ほかのファイルを取り込む機能。
-- **スポットカラー**：Separation と DeviceN の色空間（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。
-- **プラグインの配布機構**：レジストリと版の解決（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。
-- **配布の拡張**：Windows と x86-64 の macOS の実行ファイル、macOS の実行ファイルの署名（Developer ID）と公証、Homebrew の tap とインストール用のスクリプト（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
-- **見出しの行取りの指定**：「3 行取り」のように、見出しが占める行数と、行取りの中の位置を `style.toml` で指定する設定。v1 の PDF は、見出しの大きさから行数を自動で決め、領域の中央に置く。
-- **可変フォント**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。v1 は可変フォントを既定のインスタンスとして扱う。
-- **一ページに収まらない図版**：版面より大きい図版を縮小する、複数のページに分ける、見開きに置くといった扱い。v1 は空のページにそのまま置く。
-- **傍注の拡張**：段組みの版面での傍注欄、収まらない傍注を脚注に回すことと傍注のために本文の行を次のページに送ること、脚注の本文とキャプションの中の傍注の配置。
-- **表の拡張**：罫線の色と種類（縦の罫、本体の行のあいだの罫を含む）、表のための `style.toml` の設定（文字の大きさ、罫線の太さ、列の間隔、表の寄せ）、本文より小さい文字の表、列の幅の指定、セルの結合とセルの中のブロック、縦組みの本の中の横組みの表、表の行の途中での改ページ、表の番号とキャプション、表の続きを示す文言。
+- **索引と参考文献の拡張**：索引の三段以上の階層と「〜を見よ」のような項目間の参照（v1 は二段まで）、索引の見出し（「あ」「か」のような行の区切り）と段組み、ページ番号の範囲の圧縮、副項目の折り返した行の字下げ、縦組みの本の索引を横組みにして巻末から始めること、参考文献の書式の選択（著者名の順の一覧を含む）と書誌のぶら下げ字下げ（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。
+- **`style.toml` の分割**：ほかのファイルを取り込む機能（[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)）。
+- **段落スタイルの拡張**：行送り、段落の前後の空き、行揃え、次のスタイル、ドロップキャップと字取り、先頭文字スタイルと正規表現スタイル、`@style` の引数による段落ごとの上書き、行の終わりの側の字下げ、段落の先頭の始め括弧類の字下げの調整（JLReq）、見出し、リスト、表などへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。
+- **Web 経路のスタイル**：HTML と EPUB で、見出しの `font` と `size`、文字スタイルの `size`、`caption` と `sidenote` 以外の段落スタイルの `size` を使うこと、Web 経路のフォントのサブセット化（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。
+- **`golem fmt` の移行の段階を外すこと**：`@verse` を `@style verse` に書き換える移行の段階は v1 の間は残し、外すときに ADR を作成する（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+- **韻文の拡張**：行番号（5 行ごとの番号など）、連をページで分けない指定、段落一般の強制改行（行末の `\`）（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。
+- **ルビの拡張**：熟語の全体の読みが長い熟語ルビをグループルビとして配置し直すこと、片側だけのかけ、約物へのかけ、行頭と行末で親文字を行の端にそろえる配置、ルビの文字の大きさとルビを置く側の設定、ルビごとに配置を指定する記法、両側ルビ、ルビの中の圏点（[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)）。
+- **和文組版の拡張**：割注、傍線、添え字、縦組みの中の欧文を回転せずに一字ずつ組む方式、字送りを文字の大きさと異なる値にした（字間を詰めた）版面（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)、[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)）。
+- **行分割の拡張**：英語以外の欧文のハイフネーションのパターン、ソフトハイフン（U+00AD）と原稿で分割の位置を指定する記法、パターンによるハイフネーションを含む TeX との参照テスト（[golem-layout ADR 0001](golem-layout/adr/0001-knuth-plass-line-breaking.md)、[golem-layout ADR 0007](golem-layout/adr/0007-knuth-plass-reference-test.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。
+- **スポットカラー**：Separation と DeviceN の色空間（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。トンボをレジストレーションの色（Separation の `All`）で描くかも、このときに決める（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
+- **PDF のしおりとリンク**：アウトライン、文書の中のリンク、注釈（[golem-pdf ADR 0001](golem-pdf/adr/0001-deterministic-pdf-writer.md)）。
+- **プラグインの配布機構**：レジストリと版の解決、配布されたバイナリがどのソースから作られたかの検証、キャッシュの削除と整理のコマンド（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。
+- **配布の拡張**：Windows と x86-64 の macOS の実行ファイル、macOS の実行ファイルの署名（Developer ID）と公証、Homebrew の tap とインストール用のスクリプト、再現可能なビルド、`-split-sections` による実行ファイルの縮小（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+- **ビルドと LSP の速度**：インクリメンタルなビルドと結果のキャッシュ、ファイルの変更の監視、ページへの配置の並列化、LSP の差分の同期とインクリメンタルな再解析、コンパイルでの回復しない解析、プラグインの初期化済みのメモリの複製。いずれも速度が問題になってから ADR で検討する（[golem-driver ADR 0001](golem-driver/adr/0001-build-pipeline.md)、[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)、[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md)、[golem-parser ADR 0002](golem-parser/adr/0002-parser-on-peg-hs.md)、[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
+- **見出しの行取りの指定**：「3 行取り」のように、見出しが占める行数と、行取りの中の位置を `style.toml` で指定する設定。v1 の PDF は、見出しの大きさから行数を自動で決め、領域の中央に置く（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
+- **可変フォント**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。v1 は可変フォントを既定のインスタンスとして扱う（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
+- **傍注の拡張**：段組みの版面での傍注欄、収まらない傍注を脚注に回すことと傍注のために本文の行を次のページに送ること、脚注の本文とキャプションの中の傍注の配置（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。
+- **表の拡張**：罫線の色と種類（縦の罫、本体の行のあいだの罫を含む）、表のための `style.toml` の設定（文字の大きさ、罫線の太さ、列の間隔、表の寄せ）、本文より小さい文字の表、列の幅の指定、セルの結合とセルの中のブロック、縦組みの本の中の横組みの表、表の行の途中での改ページ、表の番号とキャプション、表の続きを示す文言（[golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)）。
 - **漢文の訓点**：漢文に返り点（レ点、一二点、上下点など）、送り仮名、句読点を付けて組む機能。縦組みでは、返り点を漢字の左下に、送り仮名を右下に小さく置く。記法、意味論 IR、各媒体での表現は、JLReq の漢文の扱いを参照して ADR で決める。
 
 ### v3 以降に回した事項
@@ -1024,25 +1035,44 @@ v1 の範囲から外した事項と、v1 の実装で次の段階以降に回�
 
 v1 のリリースまでに、次の項目を扱う。
 仕様や機能を変える項目は、着手するときに ADR を作成する。
+採択済みの ADR があり、まだ実装していない項目には「（未実装）」と書き、その ADR へリンクする。
 
-- **目次**：PDF の目次は番号と題だけを出し、ページ番号を出していない。
-- **キャプションの書体**：キャプションの書体と大きさ（本文より小さくすることを含む）を `style.toml` で指定する設定がない。PDF のキャプションは本文と同じ書体と大きさで組む。
-- **傍注の書体**：`[sidenotes]` の `font` を PDF で使っていない。傍注は本文の書体で、`size` の大きさで組む（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。
-- **トンボと塗り足し**：入稿用の、トンボと塗り足しの領域を付けた PDF を出力できない。今の PDF は、MediaBox、TrimBox、BleedBox をすべて仕上がりの判型と同じ大きさにしている。
-- **ハイフネーション**：明示のハイフン（lime-tree の `-`）の位置を行分割の候補にしていない。Knuth と Plass の行分割は、一回目の試行でハイフネーションの候補をすべて除き、TeX と違って明示のハイフンも一回目から使わない。
+#### 組版
+
+- **文字スタイルと段落スタイル**：段落の見た目に名前を付けて `style.toml` で定義し、原稿の段落に適用する仕組みがない。強調（`[strong: ...]`、`[bold: ...]`、`[italic: ...]`）のような見た目の記法と、韻文（[docs/adr/0003](adr/0003-verse-line-breaks.md) の `@verse`）のようなブロックの記法も、スタイルの仕組みの外にある。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で、`[paragraph-styles.<名前>]`（`based-on`、`font`、`size`、`line-breaks`、`space-between`）と `@style` を設け、強調を組み込みの文字スタイル `strong`、`bold`、`italic` を付ける `[style 名前: ...]` の別名にし、`@verse` を段落スタイル `verse` に置き換えて `golem fmt` で原稿を書き換えると決めた（未実装）。文字スタイルに `based-on`、`color`、`synthetic-bold`、`synthetic-italic` を加えること、属性のまとまりの最後に置いた `@style` や `@figure` を対象のブロックとして扱うこと（今は G0210）も、同じ ADR で決めた。
+- **字下げ**：段落の字下げ（段落の先頭の字下げ、二行目以降の字下げ、ぶら下げ）を指定する方法がない。[docs/adr/0006](adr/0006-paragraph-indent.md) で、段落スタイルに `indent` と `first-line-indent`（負ならぶら下げ）を加え、`[verse]` を廃止すると決めた（未実装）。
+- **リストの字下げ**：PDF のリストは、項目の先頭に印か番号を付けるだけで、項目の二行目以降と入れ子のリストを字下げしない。段落スタイルの字下げも、リストの項目の段落には効かせない（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
+- **ハイフネーション**：明示のハイフン（lime-tree の `-`）の位置を行分割の候補にしていない。Knuth と Plass の行分割は、一回目の試行でハイフネーションの候補をすべて除き、TeX と違って明示のハイフンも一回目から使わない。[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md) で、欧文の語の中のハイフンとダッシュの直後を候補にし（罰則は `[composition]` の `explicit-hyphen-penalty`、既定は 50）、罰点の等しい経路を TeX と同じ規則で選ぶと決めた（未実装）。
+- **ルビの配置の設定**：ルビの位置を調整する設定がない。今の `[composition]` の `ruby` は `position`（`"mono-center"` だけを取る）と `overhang` を持つが、`position` は配置を変えない。PDF は、読みを詰めて親文字の中央に置き、ルビが親文字より長いときは親文字の字間を空けずに両端を空ける。隣の文字へのかけは文字の種類を見ずに漢字や隣のルビにもかかり、行頭と行末でも戻さない。この挙動は [golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md) の記述とも一致していない。[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md) で、`position` をなくし、`[composition.ruby]` の `mono-align`（中付きか肩付きか）、`group-align`（グループルビが親文字より短いときの配置）、`base-spacing`（ルビが親文字より長いときの親文字の字間）、`overhang`（片側でかける量の上限）、`overhang-onto`（仮名にだけかけるか、かけないか）の欄で選べるようにすると決めた（未実装）。既定値は JLReq に合わせるので、ルビを含む PDF の出力は変わる。
 - **InDesign の文字の組版の機能**：InDesign が文字に対して持つ組版の機能を実装する。カーニングの方式（メトリクス、オプティカル、和文等幅、なし）を選べるようにし、既定はフォントのペアカーニングの情報を使うメトリクスとする。トラッキング、プロポーショナルメトリクス、文字の比率（水平比率と垂直比率）、ベースラインシフトなども含め、v1 で扱う範囲を ADR で決める。今は、フォントの役割ごとに OpenType の機能（`features`）を指定できるだけで、欧文のカーニングは HarfBuzz が既定で適用する機能に任せている。
-- **段落スタイル**：段落の見た目（書体、文字の大きさ、字下げ、行分けの扱いなど）に名前を付けて `style.toml` で定義し、原稿の段落に適用する仕組みがない。文字スタイル（`[character-styles.*]`）に対応する、段落の側の仕組みとして設ける。
-- **文字スタイルと段落スタイルへの記法の統合**：v1 のリリースの前に、強調（`[strong: ...]`、`[bold: ...]`、`[italic: ...]`）のような見た目の記法を文字スタイルへ、韻文（[docs/adr/0003](adr/0003-verse-line-breaks.md) の `@verse`）のようなブロックの記法を段落スタイルへ統合する。
-- **字下げ**：段落の字下げ（段落の先頭の字下げ、二行目以降の字下げ、ぶら下げ）を指定する方法がない。段落スタイルで指定できるようにする。
 - **アキの指定**：全角、二分、三分、四分、五分、六分、八分のような、和文組版で慣用のアキ（空き）の量を指定できるようにする。InDesign の文字組みアキ量設定のように、和欧間、括弧類や句読点の前後などの文字のクラスの組ごとに、空きの量と伸縮の範囲を `style.toml` で設定できるようにする。原稿の中の任意の位置に五分アキなどの空きを入れる記法も設ける。今は、和欧間を四分の空きとし、約物の空きを JLReq の規則で決めているが（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）、その量を変える設定はない。原稿の中で空きを入れるには全角の空白を使うしかなく、寸法の単位も `zw` の小数（五分は `0.2zw`）で書くしかない。
-- **ルビの配置の設定**：ルビの位置を調整する設定がない。今は `[ruby] position = "mono-center"` だけを持ち、モノルビを親文字の中央にそろえ、グループルビを親文字の全体に均等に配置する（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）。特にグループルビについて、ルビが親文字より短いときにルビの字間を空けて親文字の幅にそろえるか、ルビを詰めて中央に置くかを選べるようにする。ルビが親文字より長いときの、隣の文字へのかけ方と親文字の字間の空け方の設定も合わせて決める。
-- **PDF の Producer**：仕様では PDF の Producer に Golem の版を書くが、まだ書いていない。`golemVersion` を使えば足せるが、PDF の出力を変える変更なので別に扱う（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+- **段組み**：`[page.grid]` の `columns` に 2 以上を書けるが、PDF は最初の段の行長で組み、二段目以降に本文を流さない。段組みはフレームのレベル 2 に当たり v1 では扱わないとする ADR（[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）と、段組みの版面を前提にする ADR（[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）がある。v1 で段組みを組むか、v2 以降に送って 2 以上の値をエラーにするかを決める。
+
+#### PDF
+
+- **目次**：PDF の目次は番号と題だけを出し、ページ番号を出していない。[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md) で、ページ番号を項目の最後の行の終わりにそろえて置き、題とのあいだをリーダーで埋め、`[toc]` の `leader`（`"dots"` か `"none"`）で選べるようにすると決めた（未実装）。
+- **キャプションの書体**：キャプションの書体と大きさ（本文より小さくすることを含む）を `style.toml` で指定する設定がない。PDF のキャプションは本文と同じ書体と大きさで組む。[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md) で、組み込みの段落スタイル `caption` の `font` と `size` で組むと決めた（未実装）。
+- **傍注の書体**：`[sidenotes]` の `font` を PDF で使っていない。傍注は本文の書体で、`size` の大きさで組む（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md) で、組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` の `font` と `size` を廃止すると決めた（未実装）。
+- **柱の内容**：マスターページの `running-head` の `content`（`"heading.1.short"` など）と、`[headings.<階層>]` の `running-head` を読み込むが、PDF では使っていない。柱には常に 1 の階層の見出しの短い題を出す（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。設定のとおりに柱の内容を決めるか、使わない欄をなくす。
+- **トンボと塗り足し**：入稿用の、トンボと塗り足しの領域を付けた PDF を出力できない。今の PDF は、MediaBox、TrimBox、BleedBox をすべて仕上がりの判型と同じ大きさにしている。[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md) で、`style.toml` の `[page]` に `bleed` を、`golem build` と `golem check` に `--marks japanese|western|none` を加え、日本式のトンボで塗り足しが 0 なら G0702 とすると決めた（未実装）。
+- **合成の太字の太さ**：合成の太字の輪郭の線の幅（文字の大きさの 1/40）は、目で見ると太すぎる（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。[golem-driver ADR 0012](golem-driver/adr/0012-synthetic-bold-weight.md) で、和文を文字の大きさの 1/80、欧文を 1/60 に細くすると決めた（未実装）。
+- **PDF の Producer**：仕様では PDF の Producer に Golem の版を書くが、まだ書いていない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md) で、文書情報辞書の `Producer` と XMP の `pdf:Producer` に `Golem <版>`（例：`Golem 0.1.0-rc1`）を書くと決めた（未実装）。
+
+#### 記法と設定
+
+- **寸法による判型の指定**：[golem-project ADR 0002](golem-project/adr/0002-style-toml.md) は、表にない判型を寸法で書くと決めたが、実装していない。`style.toml` の読み込みは `x` を含む `size` を通すが、ページの幾何の計算は未知の判型としてエラーにする。書き方は [golem-project ADR 0003](golem-project/adr/0003-mass-market-paperback-size.md) が別の ADR に回している。
+- **裸の語の `*`**：`a*[x]` が `a*` と `[x]` の二つの引数として読まれるなど、`*` を含む裸の語の扱いに不整合がある（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md)）。
+
+#### CLI と LSP
+
+- **`--no-fonts` で作ったプロジェクトのビルド**：`style.toml` が存在しないフォントのファイルを指すと、PDF だけでなくすべてのターゲットが G0306 になる。`golem new --no-fonts` で作ったプロジェクトは、フォントを置くまで HTML もビルドできない（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md) で、ファイルの存在をそのファイルを使うターゲットについてだけ検査し、PDF の欠落はエラー（G0802、G0806）、HTML と EPUB のフォントの欠落は dev では警告、prod ではエラー（G0310）とすると決めた（未実装）。
 - **診断のコードの説明**：診断のコード（`G0701` など）が何を表しているかを、利用者が CLI で調べられるようにする。たとえば `golem explain G0701` のように、コードごとに意味、主な原因、直し方の例を表示する。今の診断は、コードと一行のメッセージを出すだけで、コードの一覧と説明はどこにもない。
-- **`--no-fonts` で作ったプロジェクトのビルド**：`style.toml` が存在しないフォントのファイルを指すと、PDF だけでなくすべてのターゲットが G0306 になる。`golem new --no-fonts` で作ったプロジェクトは、フォントを置くまで HTML もビルドできない。フォントのファイルの検査を PDF のときだけにするかを決める（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
-- **配布物のライセンスの一覧**：配布物の `THIRD_PARTY_LICENSES` に、Linux の実行ファイルに静的にリンクする musl と libffi、libstdc++ と libgcc、`libwasmtime.a` に含まれる Rust のクレートのライセンスが入っていない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
-- **合成の太字の太さ**：合成の太字の輪郭の線の幅（文字の大きさの 1/40）は、目で見ると太すぎる。値を見直す（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
-- **リリースの初回の検証**：リリースのワークフロー、Alpine での musl のビルド、コンテナの中での配布物の検査は、まだ一度も動かしていない。`v0.1.0-rc1` のタグで確かめる。AI にリリースノートを書かせるには、リポジトリの秘密情報 `ANTHROPIC_API_KEY` が要る（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
-- **LSP の UTF-8 の手動の確認**：UTF-8 の位置の交渉を、実際のエディタ（Neovim）で確かめていない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)）。
+- **LSP の位置の扱い**：UTF-8 の位置の交渉を、実際のエディタ（Neovim）で確かめていない。また、行の長さを超える列を、LSP 3.17 の定めのように行末に丸めず、結果を空にしている（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)）。
+
+#### 配布
+
+- **配布物のライセンスの一覧**：配布物の `THIRD_PARTY_LICENSES` に、Linux の実行ファイルに静的にリンクする musl と libffi、libstdc++ と libgcc、`libwasmtime.a` に含まれる Rust のクレートのライセンスが入っていない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。[docs/adr/0007](adr/0007-third-party-licenses.md) で、リンカーのリンクマップから入れるものを決め、wasmtime のクレートの文書をリポジトリに置いてリリースのたびに照合すると決めた（未実装）。
+- **リリースの初回の検証**：リリースのワークフロー、Alpine での musl のビルド、コンテナの中での配布物の検査は、まだ一度も動かしていない。AI にリリースノートを書かせるには、リポジトリの秘密情報 `ANTHROPIC_API_KEY` が要る（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。[docs/adr/0008](adr/0008-first-release-verification.md) で、`v0.1.0-rc1` のタグで確かめる手順と項目を決めた（未実施）。タグは [docs/adr/0007](adr/0007-third-party-licenses.md) の実装をマージしてから付ける。
 
 ## 未決事項
 
@@ -1050,6 +1080,8 @@ v1 の範囲で、次の事項が決まっていない。
 後回しにした事項は、前節の「今後の実装項目」にまとめている。
 
 - **CID の扱い**：PDF に埋め込むフォントでは、CID-keyed の CFF のフォントは FreeType が返す CID を、それ以外のフォントはグリフ ID を CID として書き、`CIDSystemInfo` は常に Adobe-Identity-0 としている（[golem-font ADR 0002](golem-font/adr/0002-subsetting-and-embedding.md)）。Adobe-Japan1 の文字集合を持つ和文フォントで `CIDSystemInfo` を Adobe-Japan1 にするか、それがプリフライトや出力機（RIP）でのフォントの扱いにどう影響するか、異体字の選択（IVS）をどう表すかが決まっていない。
+- **PDF/X-4 の要件と規格の本文の照合**：[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) は、規格の本文を参照せずに要件を書き、本文と照合して差分があれば新しい ADR を作るとしたが、照合の結果を記した ADR はない。文書情報辞書と XMP の値を一致させる要件も、本文では確かめていない（[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。v1 の PDF を PDF/X-4 として出すまでに、本文と照合するか、商用のプリフライトでの確認で代えるかが決まっていない。
+- **トンボのインキの総量**：トンボを CMYK の各 100% で描くので、インキの総量は 400% になり、プリフライトの設定によっては総量の警告が出ると考えられるが、確かめていない（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。警告が出る場合に、v1 の範囲（プロセスカラーだけ）を広げてレジストレーションの色を使うかが決まっていない。
 
 ## 仕様が不明瞭な場合
 
