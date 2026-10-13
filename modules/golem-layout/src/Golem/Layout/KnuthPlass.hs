@@ -1,11 +1,13 @@
 {- | Knuth–Plass line breaking (golem-layout ADR 0001) with the
 microtypography of ADR 0005. Integer arithmetic only: TeX's badness
-approximation, exact rational adjustment ratios, ties broken towards
-earlier breaks.
+approximation, exact rational adjustment ratios, ties broken as TeX
+breaks them (ADR 0008).
 -}
 module Golem.Layout.KnuthPlass
   ( Sp,
     Item (..),
+    Hyphen (..),
+    itemFlagged,
     BoxContent (..),
     Params (..),
     defaultParams,
@@ -24,9 +26,10 @@ module Golem.Layout.KnuthPlass
   )
 where
 
-import Data.List (sortOn)
+import Data.List (maximumBy, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
+import Data.Ord (comparing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Golem.Layout.Look (Look)
@@ -50,11 +53,27 @@ data BoxContent = BoxContent
   }
   deriving stock (Eq, Show)
 
+-- | What kind of break a penalty is (ADR 0008).
+data Hyphen
+  = -- | a prohibition, a break between mono ruby bases, the paragraph end
+    NoHyphen
+  | -- | a break found by Liang's patterns; the line ends with a hyphen drawn
+    PatternHyphen
+  | -- | the break after a hyphen or dash written in the word; nothing is added
+    ExplicitHyphen
+  deriving stock (Eq, Show)
+
 data Item
   = Box {itemWidth :: !Sp, itemContent :: !BoxContent}
   | Glue {itemWidth :: !Sp, itemStretch :: !Sp, itemShrink :: !Sp}
-  | Penalty {itemWidth :: !Sp, itemPenalty :: !Int, itemFlagged :: !Bool}
+  | Penalty {itemWidth :: !Sp, itemPenalty :: !Int, itemHyphen :: !Hyphen}
   deriving stock (Eq, Show)
+
+-- | A hyphen break, of either kind: consecutive ones cost 'pDoubleHyphenDemerits'.
+itemFlagged :: Item -> Bool
+itemFlagged = \case
+  Penalty _ _ h -> h /= NoHyphen
+  _ -> False
 
 infPenalty :: Int
 infPenalty = 10000
@@ -133,7 +152,9 @@ fitnessOf shrinking b
 
 lineDemerits :: Params -> Int -> Int -> Integer
 lineDemerits ps b p =
-  let base = toInteger (pLinePenalty ps + b) ^ (2 :: Int)
+  let l = toInteger (pLinePenalty ps + b)
+      -- TeX caps the line's part (ADR 0008)
+      base = if abs l >= 10000 then 100000000 else l * l
       pen = toInteger p
    in if p >= 0
         then base + pen * pen
@@ -174,10 +195,11 @@ breakParagraph ps lineWidth items =
             4 -> 10000
             _ -> pTolerance ps
           emergency = if pass >= 3 then pEmergencyStretch ps else 0
-          useFlagged = pass /= 1
+          -- the first pass, like TeX's, uses explicit hyphens but no pattern hyphens (ADR 0008)
+          usePatterns = pass /= 1
        in if pass == 3 && pEmergencyStretch ps <= 0
             then Nothing
-            else fmap (\r -> r {brPass = pass}) (run tol emergency useFlagged (pass == 4))
+            else fmap (\r -> r {brPass = pass}) (run tol emergency usePatterns (pass == 4))
     firstJust = listToMaybe . concatMap (maybe [] pure)
     arr = Map.fromList (zip [0 ..] items)
     n = length items
@@ -208,8 +230,8 @@ breakParagraph ps lineWidth items =
               Box {} -> j
               Penalty _ p _ | p <= negate infPenalty -> j
               _ -> skip (j + 1)
-    run tol emergency useFlagged allowOverfull =
-      let candidates = [i | i <- [0 .. n - 1], isBreak i, useFlagged || not (flaggedAt i)]
+    run tol emergency usePatterns allowOverfull =
+      let candidates = [i | i <- [0 .. n - 1], isBreak i, usePatterns || not (patternAt i)]
           start = Node (-1) 0 2 False 0 Nothing
           step actives b =
             let evals = [(a, evaluate tol emergency a b) | a <- actives]
@@ -224,8 +246,9 @@ breakParagraph ps lineWidth items =
                     foldl'
                       ( \m (a, fit, d) ->
                           let node' = Node b (nLine a + 1) fit (flaggedAt b) (nDem a + d) (Just a)
-                           in -- equal demerits keep the earlier predecessor
-                              Map.insertWith (\new old -> if nDem new < nDem old then new else old) (nLine a + 1, fit) node' m
+                           in -- equal demerits keep the later predecessor, as TeX does (ADR 0008):
+                              -- the actives are in the order of their positions, then fitness
+                              Map.insertWith (\new old -> if nDem new <= nDem old then new else old) (nLine a + 1, fit) node' m
                       )
                       Map.empty
                       feasible
@@ -238,9 +261,14 @@ breakParagraph ps lineWidth items =
           overflow b a = tW (sumsTo b) - tW (sumsTo (after (nPos a))) - lineWidth (nLine a)
           finalActives = foldl' step [start] candidates
           ends = [a | a <- finalActives, nPos a == n - 1]
-       in case sortOn nDem ends of
-            (best : _) -> Just (assemble best)
+          -- of the least demerits, the path whose (position, fitness) from the
+          -- end is greatest: the one TeX keeps, merging line counts (ADR 0008)
+          key a = [(nPos x, nFit x) | x <- walk a]
+       in case ends of
             [] -> Nothing
+            _ ->
+              let least = minimum (map nDem ends)
+               in Just (assemble (maximumBy (comparing key) [a | a <- ends, nDem a == least]))
     evaluate tol emergency a b =
       let s = after (nPos a)
           tw = sumsTo b
@@ -268,8 +296,9 @@ breakParagraph ps lineWidth items =
               + (if nFlagged a && flaggedAt b then toInteger (pDoubleHyphenDemerits ps) else 0)
               + (if abs (fit - nFit a) > 1 then toInteger (pAdjDemerits ps) else 0)
        in Eval bad fit d (not overfull && bad <= tol) (not overfull)
-    flaggedAt i = case at i of
-      Penalty _ _ f -> f
+    flaggedAt i = itemFlagged (at i)
+    patternAt i = case at i of
+      Penalty _ _ PatternHyphen -> True
       _ -> False
     protrusionOf s b
       | not (pProtrusion ps) = (0, 0)
@@ -280,11 +309,11 @@ breakParagraph ps lineWidth items =
     expansionOf e = case pExpansion ps of
       Just (limit, _) -> (e * toInteger limit `div` 1000, e * toInteger limit `div` 1000)
       Nothing -> (0, 0)
+    walk nd = case nPrev nd of
+      Nothing -> []
+      Just p -> nd : walk p
     assemble best =
       let chain = reverse (walk best)
-          walk nd = case nPrev nd of
-            Nothing -> []
-            Just p -> nd : walk p
           positions = map nPos chain
           starts = 0 : map after (init positions)
           ls = [mkLine i s b | (i, s, b) <- zip3 [0 ..] starts positions]

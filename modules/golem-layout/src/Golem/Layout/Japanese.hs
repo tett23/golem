@@ -56,7 +56,7 @@ charClass :: Char -> CharClass
 charClass c
   | c `elem` ("「『（［｛〈《【〔〘〖〝‘“｟«" :: String) = Opening
   | c `elem` ("」』）］｝〉》】〕〙〗〟’”｠»" :: String) = Closing
-  | c `elem` ("‐〜゠–" :: String) = Hyphen
+  | c `elem` ("‐‑〜゠–" :: String) = Hyphen
   | c `elem` ("？！‼⁇⁈⁉" :: String) = Dividing
   | c `elem` ("・：；" :: String) = MiddleDot
   | c `elem` ("。．" :: String) = FullStop
@@ -134,7 +134,10 @@ data ComposeEnv = ComposeEnv
     -- | how a sidenote is marked in the text (golem-driver ADR 0006)
     ceSidenoteMarker :: !SidenoteMarker,
     -- | the number of a cited work (golem-driver ADR 0007)
-    ceCiteNumber :: Text -> Maybe Int
+    ceCiteNumber :: Text -> Maybe Int,
+    {- | the penalty of a break after a hyphen or dash in a Latin word;
+    10000 or more means no such break (golem-layout ADR 0008)
+    -} ceExplicitHyphenPenalty :: !Int
   }
 
 -- | The mark of a sidenote in the text: its number, ※ or nothing.
@@ -158,7 +161,8 @@ defaultComposeEnv fs =
       ceLook = plainLook "body" fs,
       ceRestyle = const,
       ceSidenoteMarker = MarkerNumber,
-      ceCiteNumber = const Nothing
+      ceCiteNumber = const Nothing,
+      ceExplicitHyphenPenalty = 50
     }
   where
     defaultAdvance c
@@ -204,7 +208,7 @@ composeInlines env inls =
       at i = fromMaybe (length normalized) (lookup i positions)
    in (finish normalized, [f (at i) | (i, f) <- reverse anchors])
   where
-    finish its = its <> [Penalty 0 infPenalty False, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) False]
+    finish its = its <> [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
 
 {- | Where each item ends up after 'normalize', which only inserts items
 before boxes: a box is the next box of the normalized items, anything
@@ -261,9 +265,10 @@ textPieces lk kenten t = go (zip cs latinish)
   where
     cs = T.unpack t
     isLatinWordChar c = charClass c == Western && not (isSpace c)
-    -- quotation marks, apostrophes and dashes join a Latin word when the
-    -- nearest letter on either side is Latin (I’ll, “Mercy”—“We”)
-    isJoiner c = c `elem` ("‘’“”—" :: String)
+    -- quotation marks, apostrophes, hyphens and dashes join a Latin word when
+    -- the nearest letter on either side is Latin (I’ll, “Mercy”—“We”,
+    -- lime‐tree, 1990–2000; golem-layout ADR 0008)
+    isJoiner c = c `elem` ("‘’“”—‐‑–" :: String)
     latinish =
       [ isLatinWordChar c || (isJoiner c && (side (reverse before) || side after))
       | (i, c) <- zip [0 :: Int ..] cs,
@@ -360,13 +365,20 @@ itemsFor env _ p _ = case p of
     let sw = advance env lk ' '
      in [Glue sw (sw `div` 2) (sw `div` 3)]
   PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk)]
-  PRubyBreak -> [Penalty 0 0 False]
+  PRubyBreak -> [Penalty 0 0 NoHyphen]
   PAnchor _ -> []
 
+{- | A Latin word: broken after its explicit hyphens and dashes, or else
+where the patterns allow. A word with a hyphen or dash in it gets no
+pattern hyphens, as in TeX (golem-layout ADR 0008).
+-}
 wordItems :: ComposeEnv -> Look -> Text -> [Item]
 wordItems env lk word =
-  let parts = maybe [word] (`hyphenate` word) (cePatterns env)
-      hyphenW = advance env lk '-'
+  let explicitP = ceExplicitHyphenPenalty env
+      (parts, pen)
+        | T.any (`elem` ("-‐‑–—" :: String)) word =
+            (if explicitP >= infPenalty then [word] else explicitParts word, Penalty 0 explicitP ExplicitHyphen)
+        | otherwise = (maybe [word] (`hyphenate` word) (cePatterns env), Penalty (advance env lk '-') 50 PatternHyphen)
       rotated = ceVertical env
       tag = fromEnum (if rotated then KindRotated else KindText)
       box t =
@@ -376,7 +388,22 @@ wordItems env lk word =
             prot r = if ceProtrusion env then min w (w * r `div` 1000) else 0
          in Box w (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk)
       prot' r t f = if T.null t then 0 else f r
-   in concat [box part : [Penalty hyphenW 50 True | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]
+   in concat [box part : [pen | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]
+
+{- | A word cut after each run of hyphens and dashes that has a character
+before it and one after it (lime-|tree, a--|b; not -5 or pre-).
+-}
+explicitParts :: Text -> [Text]
+explicitParts word = go [] (zip [0 :: Int ..] groups)
+  where
+    isExplicit c = c `elem` ("-‐–—" :: String)
+    groups = T.groupBy (\a b -> isExplicit a == isExplicit b) word
+    lastIx = length groups - 1
+    cutAfter i g = i > 0 && i < lastIx && T.all isExplicit g
+    go acc [] = [T.concat (reverse acc) | not (null acc)]
+    go acc ((i, g) : rest)
+      | cutAfter i g = T.concat (reverse (g : acc)) : go [] rest
+      | otherwise = go (g : acc) rest
 
 {- | Inserts break opportunities and spacing between neighbouring items
 following JLReq: no break where a prohibition applies, punctuation
@@ -421,7 +448,7 @@ normalize env = go Nothing
           isJa k = (k /= Just Western)
           waou = (pc == Just Western && isJa cc && isJust cc && space == 0 && notPunct cc) || (cc == Just Western && isJa pc && isJust pc && space == 0 && notPunct pc)
           notPunct = maybe True (\cl -> punctSpace cl == (0, 0))
-          pen = ([Penalty 0 infPenalty False | noBreak])
+          pen = ([Penalty 0 infPenalty NoHyphen | noBreak])
        in if space > 0
             then pen <> [Glue (round space) 0 (round space)]
             else
@@ -433,7 +460,7 @@ normalize env = go Nothing
                     else
                       if bothJapanese pc cc
                         then [Glue 0 (fs `div` 10) 0] -- inter-character: adjusted last
-                        else [Penalty 0 0 False | interBox p c]
+                        else [Penalty 0 0 NoHyphen | interBox p c]
     bothJapanese pc cc = maybe False (/= Western) pc && maybe False (/= Western) cc
     interBox p c = not (bcExpandable p && bcExpandable c)
     -- JLReq: closing followed by opening keeps a half em; other adjacent

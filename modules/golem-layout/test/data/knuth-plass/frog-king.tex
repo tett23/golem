@@ -23,7 +23,10 @@ caught it; and this ball was her favorite plaything.}
 \parindent=20pt
 \parfillskip=0pt plus 1fil
 \leftskip=0pt \rightskip=0pt
-\hyphenpenalty=10000 \exhyphenpenalty=10000
+\hyphenpenalty=10000 \exhyphenpenalty=50
+% no hyphenation at all (\lefthyphenmin + \righthyphenmin > 63): a hyphen the
+% trace prints is then one in the text (ADR 0008)
+\lefthyphenmin=64
 \pretolerance=100 \tolerance=200 \emergencystretch=0pt
 \linepenalty=10 \adjdemerits=10000
 \doublehyphendemerits=10000 \finalhyphendemerits=0
@@ -41,12 +44,25 @@ caught it; and this ball was her favorite plaything.}
 \setbox0=\hbox{\frogking}
 \immediate\write\golemwords{whole \number\wd0}
 
-% \golemmeasure takes one space-delimited word at a time and stops at \golemstop
+% \golemmeasure takes one space-delimited word at a time and stops at \golemstop;
+% \golemparts measures a word in parts split after each -, writing exhyphen
+% between them (golem-layout ADR 0008)
 \def\golemstop{\golemstop}
+\def\golemend{\golemend}
+\def\golembox#1{%
+  \setbox0=\hbox{#1}%
+  \immediate\write\golemwords{box \number\wd0 \space #1}}
+\def\golemparts#1-#2\golemend{%
+  \ifx\golemend#2\golemend
+    \golembox{#1}%
+  \else
+    \golembox{#1-}%
+    \immediate\write\golemwords{exhyphen}%
+    \golemparts#2\golemend
+  \fi}
 \def\golemmeasure#1 {%
   \ifx\golemstop#1\else
-    \setbox0=\hbox{#1}%
-    \immediate\write\golemwords{box \number\wd0 \space #1}%
+    \golemparts#1-\golemend
     \expandafter\golemmeasure
   \fi}
 \edef\next{\noexpand\golemmeasure\frogking\space\noexpand\golemstop\space}
@@ -63,11 +79,12 @@ caught it; and this ball was her favorite plaything.}
   \showbox1 }
 
 % 180pt, one of the first candidates, has an overfull line and is left out
-% (README.md); 160pt and 200pt reach the second pass, 240pt and 300pt end in
-% the first.
+% (README.md); 160pt and 200pt reach the second pass, 240pt, 260pt and 300pt
+% end in the first. At 260pt the first pass breaks after lime- (ADR 0008).
 \golemset{160pt}
 \golemset{200pt}
 \golemset{240pt}
+\golemset{260pt}
 \golemset{300pt}
 
 \end

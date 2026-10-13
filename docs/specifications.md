@@ -459,6 +459,7 @@ kenten = "sesame"
 tolerance = 200
 protrusion = true
 expansion = { limit = 20, step = 5 }
+explicit-hyphen-penalty = 50
 
 [numbers]
 vertical = "kanji"
@@ -630,12 +631,35 @@ Golem は日本語の組版を主眼とし、日本語では行の折り返し�
 
 PDF 経路の段落は、Knuth と Plass の方式で行に分ける（[golem-layout ADR 0001](golem-layout/adr/0001-knuth-plass-line-breaking.md)）。
 不良度、罰点、適合度の分類、許容度による段階の切り替えは、TeX と同じ式にしている。
+行の罰点も TeX と同じく、`\linepenalty` に当たる値と不良度の和が 10000 以上になる行では、その二乗の代わりに 100000000 を使う（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。
+
+欧文の語に書かれたハイフンとダッシュの直後は、一回目の段階から分割の候補にする（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。
+対象は U+002D（ハイフンマイナス）、U+2010（ハイフン）、U+2013（en ダッシュ）、U+2014（em ダッシュ）であり、U+2011（改行しないハイフン）の後ろは候補にしない。
+候補を置くのは、語の中でこれらの文字の連なりの前と後ろに一文字以上ある場合だけである。
+`-5` の後ろや `pre-` の後ろには置かず、`a--b` では連なりの最後の文字の後ろにだけ置く。
+分けたときに新たなハイフンは足さず、行末には語に書かれたハイフンやダッシュがそのまま残る。
+罰則は `[composition]` の `explicit-hyphen-penalty` で決め、既定値は TeX の `\exhyphenpenalty` と同じ 50 とする。
+値は −9999 から 10000 までで、10000 にするとこの候補を置かない。
+明示のハイフンで分けた行が続くと、パターンによるハイフンと同じく連続するハイフンの罰点を加える。
+一回目の段階で除くのは、パターンによるハイフネーションの候補だけである。
+
+U+2010 と U+2013 は、引用符や em ダッシュと同じく、どちらかの側の最も近い文字が欧文の文字なら欧文の語に含める。
+そのため `lime‐tree` や `1990–2000` は一つの語として組み、和欧間の空きを入れない。
+和文に挟まれたハイフン類は、今までどおり行頭禁則の文字として一字ずつ組む。
+
+ハイフンやダッシュを含む語には、TeX と同じく Liang のパターンを当てない。
+`well-known` は `well-` の後ろでだけ分けられ、`self-evident` の後半は分けない。
+
+罰点の合計が最小の経路が複数あるときは、各経路の分割の位置と適合度の分類の組を段落の終わりから並べた列を辞書式に比べ、大きいほうを選ぶ（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。
+これは、行長が一定の段落で TeX の選ぶ経路と一致する。
+行長の変わる段落では、罰点の等しい経路について TeX と異なる経路を選ぶ場合がある。
 
 この一致は、TeX が組んだ段落を期待値にした参照のテストで確かめる（[golem-layout ADR 0007](golem-layout/adr/0007-knuth-plass-reference-test.md)）。
 段落は Knuth と Plass の論文の例の段落（グリム童話「蛙の王さま」の英訳の冒頭）で、plain TeX と cmr10 で複数の行長に組んだ。
 テストは、TeX が測った語の幅から段落を作り、分割の位置、段階、罰点の合計、各行の適合度と調整比が TeX と一致することを確かめる。
-ハイフネーションと明示のハイフンでの分割は止め、`\frenchspacing` で語間の空きを一つの値にした条件で比べる。
+ハイフネーションは止め、`\frenchspacing` で語間の空きを一つの値にした条件で比べる。
 TeX と Golem でハイフネーションのパターンが異なり、Golem はスペースファクターを持たないためである。
+明示のハイフンでの分割は止めず、`lime-tree` の `lime-` の後ろで分ける行長も比べる（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。
 期待値の生成の手順と出所は、テストのデータのディレクトリ（`modules/golem-layout/test/data/knuth-plass/`）の README に書いている。
 
 ## lint
@@ -1041,7 +1065,6 @@ v1 のリリースまでに、次の項目を扱う。
 - **文字スタイルと段落スタイル**：段落の見た目に名前を付けて `style.toml` で定義し、原稿の段落に適用する仕組みがない。強調（`[strong: ...]`、`[bold: ...]`、`[italic: ...]`）のような見た目の記法と、韻文（[docs/adr/0003](adr/0003-verse-line-breaks.md) の `@verse`）のようなブロックの記法も、スタイルの仕組みの外にある。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で、`[paragraph-styles.<名前>]`（`based-on`、`font`、`size`、`line-breaks`、`space-between`）と `@style` を設け、強調を組み込みの文字スタイル `strong`、`bold`、`italic` を付ける `[style 名前: ...]` の別名にし、`@verse` を段落スタイル `verse` に置き換えて `golem fmt` で原稿を書き換えると決めた（未実装）。文字スタイルに `based-on`、`color`、`synthetic-bold`、`synthetic-italic` を加えること、属性のまとまりの最後に置いた `@style` や `@figure` を対象のブロックとして扱うこと（今は G0210）も、同じ ADR で決めた。
 - **字下げ**：段落の字下げ（段落の先頭の字下げ、二行目以降の字下げ、ぶら下げ）を指定する方法がない。[docs/adr/0006](adr/0006-paragraph-indent.md) で、段落スタイルに `indent` と `first-line-indent`（負ならぶら下げ）を加え、`[verse]` を廃止すると決めた（未実装）。
 - **リストの字下げ**：PDF のリストは、項目の先頭に印か番号を付けるだけで、項目の二行目以降と入れ子のリストを字下げしない。段落スタイルの字下げも、リストの項目の段落には効かせない（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
-- **ハイフネーション**：明示のハイフン（lime-tree の `-`）の位置を行分割の候補にしていない。Knuth と Plass の行分割は、一回目の試行でハイフネーションの候補をすべて除き、TeX と違って明示のハイフンも一回目から使わない。[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md) で、欧文の語の中のハイフンとダッシュの直後を候補にし（罰則は `[composition]` の `explicit-hyphen-penalty`、既定は 50）、罰点の等しい経路を TeX と同じ規則で選ぶと決めた（未実装）。
 - **ルビの配置の設定**：ルビの位置を調整する設定がない。今の `[composition]` の `ruby` は `position`（`"mono-center"` だけを取る）と `overhang` を持つが、`position` は配置を変えない。PDF は、読みを詰めて親文字の中央に置き、ルビが親文字より長いときは親文字の字間を空けずに両端を空ける。隣の文字へのかけは文字の種類を見ずに漢字や隣のルビにもかかり、行頭と行末でも戻さない。この挙動は [golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md) の記述とも一致していない。[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md) で、`position` をなくし、`[composition.ruby]` の `mono-align`（中付きか肩付きか）、`group-align`（グループルビが親文字より短いときの配置）、`base-spacing`（ルビが親文字より長いときの親文字の字間）、`overhang`（片側でかける量の上限）、`overhang-onto`（仮名にだけかけるか、かけないか）の欄で選べるようにすると決めた（未実装）。既定値は JLReq に合わせるので、ルビを含む PDF の出力は変わる。
 - **InDesign の文字の組版の機能**：InDesign が文字に対して持つ組版の機能を実装する。カーニングの方式（メトリクス、オプティカル、和文等幅、なし）を選べるようにし、既定はフォントのペアカーニングの情報を使うメトリクスとする。トラッキング、プロポーショナルメトリクス、文字の比率（水平比率と垂直比率）、ベースラインシフトなども含め、v1 で扱う範囲を ADR で決める。今は、フォントの役割ごとに OpenType の機能（`features`）を指定できるだけで、欧文のカーニングは HarfBuzz が既定で適用する機能に任せている。
 - **アキの指定**：全角、二分、三分、四分、五分、六分、八分のような、和文組版で慣用のアキ（空き）の量を指定できるようにする。InDesign の文字組みアキ量設定のように、和欧間、括弧類や句読点の前後などの文字のクラスの組ごとに、空きの量と伸縮の範囲を `style.toml` で設定できるようにする。原稿の中の任意の位置に五分アキなどの空きを入れる記法も設ける。今は、和欧間を四分の空きとし、約物の空きを JLReq の規則で決めているが（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）、その量を変える設定はない。原稿の中で空きを入れるには全角の空白を使うしかなく、寸法の単位も `zw` の小数（五分は `0.2zw`）で書くしかない。

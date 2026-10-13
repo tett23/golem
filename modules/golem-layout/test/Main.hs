@@ -50,10 +50,11 @@ knuthPlassLog = "test/data/knuth-plass/frog-king.log"
 
 -- | The \hsize values of frog-king.tex, in points.
 referenceHsizes :: [Integer]
-referenceHsizes = [160, 200, 240, 300]
+referenceHsizes = [160, 200, 240, 260, 300]
 
 {- | A hand-written trace: the first run fails the first pass and takes a
 detour (@@2 is not on the chosen path); the second ends in the first pass.
+cc-dd counts as two words, cut after its hyphen (ADR 0008).
 -}
 sampleTrace :: Text
 sampleTrace =
@@ -128,7 +129,7 @@ bruteDemerits ps lw items brks = go 0 2 False (-1) brks 0
             | negate short > z = (10000, True, True)
             | otherwise = (badness (negate short) z, True, False)
           fit = fitnessOf shrinking bad
-          (pen, flag) = case at b of Penalty _ p f -> (p, f); _ -> (0, False)
+          (pen, flag) = case at b of Penalty _ p h -> (p, h /= NoHyphen); _ -> (0, False)
           d =
             lineDemerits ps bad pen
               + (if prevFlag && flag then toInteger (pDoubleHyphenDemerits ps) else 0)
@@ -152,6 +153,21 @@ sp0 = Text (mkSpan (FileId 0) 0 0)
 
 compose :: ComposeEnv -> Text -> [Item]
 compose env t = fst (composeInlines env [sp0 t])
+
+-- | The environment with the bundled US English patterns.
+enUS :: ComposeEnv
+enUS = (defaultComposeEnv fs) {cePatterns = Just englishUS}
+
+-- | The composed items without the paragraph end: box texts and penalties.
+shape :: [Item] -> [String]
+shape items =
+  [ s
+  | it <- take (length items - 3) items,
+    s <- case it of
+      Box _ c -> [T.unpack (bcText c)]
+      Penalty w p h -> ["pen " <> show w <> " " <> show p <> " " <> show h]
+      Glue {} -> ["glue"]
+  ]
 
 -- | Is there a legal break before the n-th box (counting from 0)?
 breakBeforeBox :: [Item] -> Int -> Bool
@@ -180,12 +196,15 @@ tests =
                 r = breakParagraph noPretol (const target) items
                 end = length items - 1
                 candidates = [s <> [end] | s <- subsequences (filter (/= end) (legal items))]
-                best = minimum' [d | c <- candidates, Just d <- [bruteDemerits noPretol (const target) items c]]
+                scored = [(d, c) | c <- candidates, Just d <- [bruteDemerits noPretol (const target) items c]]
+                best = minimum' (map fst scored)
             case best of
               Nothing -> brPass r === 4
               Just d -> do
                 brPass r === 2
-                brDemerits r === d,
+                brDemerits r === d
+                -- ties go to the sequence greatest from the end (ADR 0008)
+                brPositions r === reverse (maximum [reverse c | (d', c) <- scored, d' == d]),
           testCase "every line fits its own target length (L*(i))" $ do
             let items = paragraph (replicate 20 30)
                 lw :: Int -> Sp
@@ -194,26 +213,60 @@ tests =
             assertBool "not overfull" (not (any lineOverfull (brLines r)))
             mapM_ (\(i, l) -> lineTarget l @?= lw i) (zip [0 ..] (brLines r))
             assertBool "short lines first" (all (\l -> sum [w | Box w _ <- lineItems l] <= 100) (take 3 (brLines r))),
-          testCase "equal demerits: the earlier break wins" $ do
+          testCase "equal demerits: the later break wins, as in TeX (ADR 0008)" $ do
             -- A(10) | B(0) | C(10): breaking after A or after B both give two exact lines
-            let items = [box 10, Penalty 0 0 False, box 0, Penalty 0 0 False, box 10] <> finish
+            let items = [box 10, Penalty 0 0 NoHyphen, box 0, Penalty 0 0 NoHyphen, box 10] <> finish
                 r = breakParagraph defaultParams (const 10) items
-            brPositions r @?= [1, length items - 1],
+            brPositions r @?= [3, length items - 1]
+            brDemerits r @?= 200,
+          testCase "equal demerits: the path TeX keeps, here four lines over three (ADR 0008)" $ do
+            let fil = Glue 0 filStretch 0
+                items = [box 20, Penalty 0 0 NoHyphen, box 10, fil, Penalty 0 0 NoHyphen, box 10, fil, Penalty 0 0 NoHyphen, box 20] <> finish
+                r = breakParagraph defaultParams {pLinePenalty = 0, pAdjDemerits = 0} (const 20) items
+            length (brLines r) @?= 4
+            brDemerits r @?= 0,
+          testProperty "of the least-demerit break sequences, the one greatest from the end is chosen" $ property $ do
+            ws <- forAll (Gen.list (Range.linear 1 7) (Gen.integral (Range.linear 0 60)))
+            target <- forAll (Gen.integral (Range.linear 30 140))
+            let items = paragraph ws
+                r = breakParagraph noPretol (const target) items
+                end = length items - 1
+                scored = [(d, c) | s <- subsequences (filter (/= end) (legal items)), let c = s <> [end], Just d <- [bruteDemerits noPretol (const target) items c]]
+                best = minimum' (map fst scored)
+            case best of
+              Nothing -> brPass r === 4
+              Just d -> brPositions r === reverse (maximum [reverse c | (d', c) <- scored, d' == d]),
+          testCase "a line's demerits are capped as in TeX (ADR 0008)" $ do
+            lineDemerits defaultParams 9990 0 @?= 100000000
+            lineDemerits defaultParams 9989 0 @?= 99980001,
+          testCase "an explicit hyphen breaks in the first pass; a pattern hyphen does not (ADR 0008)" $ do
+            let items h = [box 30, Penalty 0 50 h, box 30] <> finish
+                r = breakParagraph defaultParams (const 30) (items ExplicitHyphen)
+            brPass r @?= 1
+            brPositions r @?= [1, length (items ExplicitHyphen) - 1]
+            assertBool "pattern hyphens wait for the second pass" (brPass (breakParagraph defaultParams (const 30) (items PatternHyphen)) /= 1)
+            case brLines r of
+              (l : _) -> do
+                [w | Penalty w _ _ <- lineItems l] @?= [w | Penalty w _ _ <- lineItems l, w == 0]
+                case reverse (placeLine l) of
+                  ((Box w _, x) : _) -> x + w @?= 30
+                  _ -> assertFailure "no box"
+              [] -> assertFailure "no lines",
           testCase "an unbreakable word reaches the fourth pass and is overfull" $ do
             let items = paragraph [50, 500, 50]
                 r = breakParagraph defaultParams {pEmergencyStretch = 20} (const 100) items
             brPass r @?= 4
             assertBool "overfull" (any lineOverfull (brLines r)),
           testCase "a penalty inside a line takes no width; at the line end it does" $ do
-            let items = [box 30, Penalty 5 50 True, box 30, Glue 6 3 2, box 30, Penalty 5 50 True, box 30] <> finish
+            let items = [box 30, Penalty 5 50 PatternHyphen, box 30, Glue 6 3 2, box 30, Penalty 5 50 PatternHyphen, box 30] <> finish
                 r = breakParagraph defaultParams (const 1000) items
             case brLines r of
               [l] -> [x | (Box {}, x) <- placeLine l] @?= [0, 30, 66, 96]
               ls -> assertFailure (show (length ls))
-            let r2 = breakParagraph noPretol (const 70) ([box 30, Glue 6 3 2, box 30, Penalty 5 50 True, box 30] <> finish)
+            let r2 = breakParagraph noPretol (const 70) ([box 30, Glue 6 3 2, box 30, Penalty 5 50 PatternHyphen, box 30] <> finish)
             case brLines r2 of
               (l : _) -> case reverse (lineItems l) of
-                (Penalty 5 _ True : _) -> pure ()
+                (Penalty 5 _ PatternHyphen : _) -> pure ()
                 other -> assertFailure ("the break penalty should end the line: " <> show (take 1 other))
               [] -> assertFailure "no lines",
           testCase "set lines fill the target exactly" $ do
@@ -233,14 +286,14 @@ tests =
                 @?= [ TexRun
                         { trHsize = 100 * 65536,
                           trPass = 2,
-                          trBreaks = [TexBreak 1 1 400, TexBreak 3 2 100],
+                          trBreaks = [TexBreak 1 1 400, TexBreak 4 2 100],
                           trTotalDemerits = 500,
                           trGlueSet = [negate (32768 / 65536), 21845 / 65536]
                         },
                       TexRun
                         { trHsize = 200 * 65536,
                           trPass = 1,
-                          trBreaks = [TexBreak 3 2 100],
+                          trBreaks = [TexBreak 4 2 100],
                           trTotalDemerits = 100,
                           trGlueSet = [7]
                         }
@@ -251,8 +304,26 @@ tests =
               parseScaled "1.0" @?= 65536
               parseScaled "104.05528fil" @?= 104 * 65536 + 3623,
             testCase "paragraphItems: indent, words, interword glue and the paragraph end" $
-              paragraphItems (Words (6, 3, 2) 20 0 [("a", 10), ("b", 12)])
+              paragraphItems (Words (6, 3, 2) 20 0 [WordBox "a" 10, WordBox "b" 12])
                 @?= [refBox "" 20, refBox "a" 10, Glue 6 3 2, refBox "b" 12] <> finish,
+            testCase "an exhyphen record becomes an explicit hyphen penalty (ADR 0008)" $ do
+              fmap wBoxes (parseWords "space 6 3 2\nparindent 20\nwhole 0\nbox 7 lime-\nexhyphen\nbox 5 tree\n")
+                @?= Right [WordBox "lime-" 7, WordExHyphen, WordBox "tree" 5]
+              paragraphItems (Words (6, 3, 2) 20 0 [WordBox "lime-" 7, WordExHyphen, WordBox "tree" 5])
+                @?= [refBox "" 20, refBox "lime-" 7, Penalty 0 50 ExplicitHyphen, refBox "tree" 5] <> finish,
+            testCase "printed words are split after a hyphen followed by more (ADR 0008)" $ do
+              length (wordsOf "lime-tree in") @?= 3
+              length (wordsOf "lime-") @?= 1,
+            testCase "at 260pt TeX breaks after lime- in the first pass (ADR 0008)" $ do
+              ws <- readWords knuthPlassWords
+              runs <- parseTrace <$> TIO.readFile knuthPlassLog
+              let limeIx = length (takeWhile (/= WordBox "lime-" 1419949) [b | b@WordBox {} <- wBoxes ws])
+              case filter ((== 260 * 65536) . trHsize) runs of
+                [run] -> do
+                  trPass run @?= 1
+                  assertBool "lime- ends a line" (limeIx `elem` map tbWordIndex (trBreaks run))
+                  compareRun ws run @?= []
+                rs -> assertFailure ("expected one run, found " <> show (length rs)),
             testCase "the data has every \\hsize of frog-king.tex, from both passes" $ do
               runs <- parseTrace <$> TIO.readFile knuthPlassLog
               map trHsize runs @?= map (* 65536) referenceHsizes
@@ -261,8 +332,10 @@ tests =
             testCase "the words add up to the paragraph TeX set in one box" $ do
               ws <- readWords knuthPlassWords
               let (space, _, _) = wSpace ws
-                  n = toInteger (length (wBoxes ws))
-              sum (map snd (wBoxes ws)) + (n - 1) * space @?= wWhole ws
+                  widths = [w | WordBox _ w <- wBoxes ws]
+                  n = toInteger (length widths)
+                  ex = toInteger (length [() | WordExHyphen <- wBoxes ws])
+              sum widths + (n - 1 - ex) * space @?= wWhole ws
           ]
             <> [ testCase ("\\hsize=" <> show h <> "pt agrees with TeX") $ do
                    ws <- readWords knuthPlassWords
@@ -293,7 +366,34 @@ tests =
             hyphenate englishUS "associates" @?= ["as", "so", "ciates"],
           testCase "composition offers flagged hyphen penalties inside words" $ do
             let env = (defaultComposeEnv fs) {cePatterns = Just englishUS}
-            length [() | Penalty _ 50 True <- compose env "hyphenation"] @?= 2
+            length [() | Penalty _ 50 PatternHyphen <- compose env "hyphenation"] @?= 2
+        ],
+      testGroup
+        "explicit hyphens (golem-layout ADR 0008)"
+        [ testCase "a hyphen in a word is a break with no added hyphen" $
+            shape (compose enUS "lime-tree") @?= ["lime-", "pen 0 50 ExplicitHyphen", "tree"],
+          testCase "words with an explicit hyphen get no pattern hyphens" $ do
+            shape (compose enUS "well-known") @?= ["well-", "pen 0 50 ExplicitHyphen", "known"]
+            shape (compose enUS "self-evident") @?= ["self-", "pen 0 50 ExplicitHyphen", "evident"],
+          testCase "explicit-hyphen-penalty 10000 keeps the word whole" $
+            shape (compose enUS {ceExplicitHyphenPenalty = 10000} "lime-tree") @?= ["lime-tree"],
+          testCase "no break after a leading or trailing hyphen; one after a run" $ do
+            shape (compose enUS "-5") @?= ["-5"]
+            shape (compose enUS "pre-") @?= ["pre-"]
+            shape (compose enUS "a--b") @?= ["a--", "pen 0 50 ExplicitHyphen", "b"],
+          testCase "an em dash between quotations is a break" $
+            shape (compose enUS "us!”—“We") @?= ["us!”—", "pen 0 50 ExplicitHyphen", "“We"],
+          testCase "U+2010 and U+2013 between Latin letters join the word" $ do
+            shape (compose enUS "lime‐tree") @?= ["lime‐", "pen 0 50 ExplicitHyphen", "tree"]
+            shape (compose enUS "1990–2000") @?= ["1990–", "pen 0 50 ExplicitHyphen", "2000"],
+          testCase "an en dash in Japanese text stays a character with no break before it" $ do
+            let items = compose enUS "東京–大阪"
+            [bcText c | Box _ c <- items] @?= ["東", "京", "–", "大", "阪"]
+            breakBeforeBox items 2 @?= False
+            [() | Penalty _ _ ExplicitHyphen <- items] @?= [],
+          testCase "a non-breaking hyphen (U+2011) is no break" $ do
+            shape (compose enUS "non‑breaking") @?= ["non‑breaking"]
+            charClass '‑' @?= Hyphen
         ],
       testGroup
         "Japanese composition (ADR 0002)"
@@ -317,7 +417,7 @@ tests =
           testCase "apostrophes inside Latin words belong to the word" $ do
             [bcText c | Box _ c <- compose (defaultComposeEnv fs) "I’ll warrant the masters’ whistle"] @?= ["I’ll", "warrant", "the", "masters’", "whistle"],
           testCase "quotation marks touching Latin text belong to the word" $ do
-            [bcText c | Box _ c <- compose (defaultComposeEnv fs) "“Mercy on us!”—“We split!”]"] @?= ["“Mercy", "on", "us!”—“We", "split!”]"]
+            [bcText c | Box _ c <- compose (defaultComposeEnv fs) "“Mercy on us!”—“We split!”]"] @?= ["“Mercy", "on", "us!”—", "“We", "split!”]"]
             -- in Japanese text they stay punctuation
             [bcText c | Box _ c <- compose (defaultComposeEnv fs) "彼は“あ”と"] @?= ["彼", "は", "“", "あ", "”", "と"],
           testCase "a quarter em between Japanese and Latin text" $ do

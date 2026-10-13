@@ -1,0 +1,98 @@
+**ties.tex
+(./ties.tex GOLEM-TIE=1
+@firstpass
+[]
+@\penalty via @@0 b=0 p=0 d=100
+@@1: line 1.2 t=100 -> @@0
+[]
+@\penalty via @@0 b=0 p=0 d=100
+@@2: line 1.2 t=100 -> @@0
+[] 
+@\par via @@1 b=0 p=-10000 d=100
+@\par via @@2 b=0 p=-10000 d=100
+@@3: line 2.2- t=200 -> @@2
+
+> \box1=
+\vbox(18.83331+0.0)x10.0
+.\hbox(6.83331+0.0)x10.0
+..\hbox(6.83331+0.0)x10.0, glue set 2.49998fil
+...\tenrm A
+...\glue 0.0 plus 1.0fil minus 1.0fil
+..\penalty 0
+..\hbox(0.0+0.0)x0.0
+..\penalty 0
+..\glue(\rightskip) 0.0
+.\penalty 300
+.\glue(\baselineskip) 5.16669
+.\hbox(6.83331+0.0)x10.0
+..\hbox(6.83331+0.0)x10.0, glue set 2.77777fil
+...\tenrm C
+...\glue 0.0 plus 1.0fil minus 1.0fil
+..\penalty 10000
+..\glue(\parfillskip) 0.0 plus 1.0fil
+..\glue(\rightskip) 0.0
+
+! OK.
+l.23 \showbox1
+              
+
+GOLEM-TIE=2
+@firstpass
+[]
+@\penalty via @@0 b=0 p=0 d=0
+@@1: line 1.2 t=0 -> @@0
+[] 
+@\penalty via @@1 b=0 p=0 d=0
+@@2: line 2.2 t=0 -> @@1
+[] 
+@ via @@1 b=0 p=0 d=0
+@@3: line 2.2 t=0 -> @@1
+@\penalty via @@1 b=0 p=0 d=0
+@\penalty via @@2 b=0 p=0 d=0
+@@4: line 3.2 t=0 -> @@2
+[] 
+@\par via @@3 b=0 p=-10000 d=0
+@\par via @@4 b=0 p=-10000 d=0
+@@5: line 4.2- t=0 -> @@4
+
+> \box1=
+\vbox(42.83331+0.0)x20.0
+.\hbox(6.83331+0.0)x20.0
+..\hbox(6.83331+0.0)x20.0, glue set 12.49998fil
+...\tenrm A
+...\glue 0.0 plus 1.0fil minus 1.0fil
+..\penalty 0
+..\glue(\rightskip) 0.0
+.\penalty 150
+.\glue(\baselineskip) 5.16669
+.\hbox(6.83331+0.0)x20.0, glue set 10.0fil
+..\hbox(6.83331+0.0)x10.0, glue set 2.91664fil
+...\tenrm B
+...\glue 0.0 plus 1.0fil minus 1.0fil
+..\glue 0.0 plus 1.0fil
+..\penalty 0
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 5.16669
+.\hbox(6.83331+0.0)x20.0, glue set 10.0fil
+..\hbox(6.83331+0.0)x10.0, glue set 2.77777fil
+...\tenrm C
+...\glue 0.0 plus 1.0fil minus 1.0fil
+..\glue 0.0 plus 1.0fil
+..\penalty 0
+..\glue(\rightskip) 0.0
+.\penalty 150
+.\glue(\baselineskip) 5.16669
+.\hbox(6.83331+0.0)x20.0
+..\hbox(6.83331+0.0)x20.0, glue set 12.3611fil
+...\tenrm D
+...\glue 0.0 plus 1.0fil minus 1.0fil
+..\penalty 10000
+..\glue(\parfillskip) 0.0 plus 1.0fil
+..\glue(\rightskip) 0.0
+
+! OK.
+l.34 \showbox1
+              
+
+ )
+No pages of output.
