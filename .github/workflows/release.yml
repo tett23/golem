@@ -106,6 +106,18 @@ jobs:
             dist/golem-*.tar.gz
             dist/golem-*.tar.gz.sha256
             dist/gmp-version-*.txt
+      # what THIRD_PARTY_LICENSES/ was made from, not in the archive
+      # (docs/adr/0007-third-party-licenses.md)
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linkmap-${{ matrix.platform }}
+          if-no-files-found: ignore
+          path: |
+            dist/golem.map
+            dist/wasmtime-nm.txt
+            dist/wasmtime-strings.txt
+            dist/wasmtime-ar.txt
 
   smoke:
     needs: [version, build]

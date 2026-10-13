@@ -9,6 +9,10 @@
 #
 # Environment: COMMIT (the commit of the build), ALPINE_IMAGE (the image
 # with its digest, for BUILDINFO), ImageOS and ImageVersion (the runner).
+#
+# The linker writes the link map to dist/golem.map, and nm, strings -a and
+# ar t of libwasmtime.a go to dist/wasmtime-{nm,strings,ar}.txt; licenses.sh
+# reads them to write THIRD_PARTY_LICENSES/ (docs/adr/0007).
 set -eu
 [ $# -eq 2 ] || {
   echo "usage: build-linux.sh TAG PLATFORM" >&2
@@ -39,9 +43,35 @@ ghcup install ghc 9.10.3 --set
 ghcup install cabal 3.16.1.0 --set
 
 sh scripts/fetch-wasmtime.sh
+# the link map of golem (docs/adr/0007), in cabal.project.local as
+# fetch-wasmtime.sh writes
+mkdir -p dist
+printf '\n-- written by scripts/release/build-linux.sh\npackage golem-cli\n  ghc-options: -optl-Wl,-Map=%s/dist/golem.map\n' "$ROOT" >>cabal.project.local
 cabal update
 cabal build exe:golem --enable-executable-static
 BINARY=$(cabal list-bin -v0 golem)
+
+# the license documents of the Alpine packages linked into golem; an
+# origin without a -doc package is left to licenses/alpine/ (docs/adr/0007)
+for origin in $(sh "$HERE/link-components.sh" dist/golem.map --apk | cut -f1 | sort -u || true); do
+  apk add --no-cache "$origin-doc" || echo "build-linux: no $origin-doc"
+done
+
+LIBWASMTIME=$ROOT/third_party/wasmtime/lib/libwasmtime.a
+# nm may not read every member (bitcode) and exit with 1; the symbols of
+# the other members are enough
+nm "$LIBWASMTIME" >dist/wasmtime-nm.txt 2>/dev/null || true
+grep -q ' _\{1,2\}R' dist/wasmtime-nm.txt || {
+  echo "build-linux: nm cannot read $LIBWASMTIME" >&2
+  exit 1
+}
+strings -a "$LIBWASMTIME" >dist/wasmtime-strings.txt
+ar t "$LIBWASMTIME" >dist/wasmtime-ar.txt
+LINK_MAP=$ROOT/dist/golem.map
+WASMTIME_NM=$ROOT/dist/wasmtime-nm.txt
+WASMTIME_STRINGS=$ROOT/dist/wasmtime-strings.txt
+WASMTIME_AR=$ROOT/dist/wasmtime-ar.txt
+export LINK_MAP WASMTIME_NM WASMTIME_STRINGS WASMTIME_AR
 
 GMP_VERSION=$(sh "$HERE/gmp-version.sh")
 export GMP_VERSION
