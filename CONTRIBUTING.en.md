@@ -122,6 +122,11 @@ Implementation details of a module go in `docs/<module>/specifications.md`.
 References to ADRs from the specification must link to the ADR file.
 When introducing a new term, add it to [docs/glossary.md](./docs/glossary.md).
 
+When the build or the tests start to read a document under `docs/`, add it to the list in `scripts/ci/needs-build.sh`.
+A document not in the list counts as documentation only, and changing it does not run the build.
+In the code, write the path of the document as one string (like `"../../docs/diagnostics.md"`).
+The `changes` job of CI picks up such strings and checks them against the list ([docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)).
+
 Audit records and performance snapshots go under `docs/`, in a directory for each purpose.
 These are also not changed once committed.
 Records under `docs/audit/`, `docs/audits/`, `docs/benchmarks/`, and `docs/benchmark/` are enforced: the hook and the `adr` job in CI reject changes, deletions, and moves of committed ones ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md), [docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)).
@@ -141,6 +146,8 @@ Keep each commit to one coherent change.
 
 Do not push to `main` directly; create a branch and open a pull request.
 Always merge with no-ff.
+`main` is protected: it rejects pushes that do not go through a pull request, and merges other than merge commits (squash and rebase).
+A merge needs two checks of CI to pass: `ci` (`ci.yml`) and `adr` (`docs.yml`) ([docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)).
 
 Rebasing or force-pushing `main` is forbidden.
 The only exception is when a secret such as an API key has been committed by mistake.

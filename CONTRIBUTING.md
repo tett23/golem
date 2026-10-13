@@ -122,6 +122,11 @@ ADR で仕様が変わったら、同じプルリクエストで [docs/specifica
 仕様書から ADR を参照するときは、ADR のファイルへのリンクを付ける。
 新しい用語を導入したら、[docs/glossary.md](./docs/glossary.md) にも加える。
 
+ビルドやテストが `docs/` の下の文書を読むようにしたときは、その文書を `scripts/ci/needs-build.sh` の一覧に加える。
+一覧にない文書は docs だけの変更として扱われ、変えてもビルドが走らない。
+コードの中では、文書のパスを一つの文字列（`"../../docs/diagnostics.md"` のような形）で書く。
+CI の `changes` ジョブは、そうした文字列を拾って一覧と照らし合わせる（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
+
 監査の記録や性能計測のスナップショットは、`docs/` の下に用途ごとのディレクトリを作って置く。
 これらもコミットしたあとは変更しない。
 `docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/` に置いた記録は、フックと CI の `adr` ジョブがコミット後の変更、削除、移動を拒否する（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)）。
@@ -141,6 +146,8 @@ ADR で仕様が変わったら、同じプルリクエストで [docs/specifica
 
 `main` に直接 push せず、ブランチを切ってプルリクエストを作る。
 マージは常に no-ff で行う。
+`main` には保護の規則があり、プルリクエストを経ない push と、マージコミット以外のマージ（squash と rebase）を拒否する。
+マージには、CI の `ci`（`ci.yml`）と `adr`（`docs.yml`）の二つの検査が通っている必要がある（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
 
 `main` の rebase と force push は禁止する。
 例外は、API キーのような秘密情報を誤ってコミットした場合だけである。

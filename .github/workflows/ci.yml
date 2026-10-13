@@ -21,29 +21,6 @@ env:
   CDDL_VERSION: "0.10.7"
 
 jobs:
-  adr:
-    # pushes to main and pull requests only: called from release.yml (a tag
-    # or workflow_dispatch) there is no range of commits to check. It runs
-    # whatever the change, docs only included (docs/adr/0009)
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      # status-line and link-only changes to committed ADRs are allowed;
-      # unlinked ADR references, ADRs without exactly one status line, and
-      # changes to committed records (docs/audit/, docs/audits/,
-      # docs/benchmarks/, docs/benchmark/) fail
-      # (docs/adr/0010, docs/adr/0011, docs/adr/0012)
-      - uses: tett23/adr-guard@v0.8.1
-        with:
-          allow-status: true
-          allow-links: true
-          base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-
   # Whether the change needs the build and the checks: not when it touches
   # only docs/ and the Markdown files at the root (docs/adr/0009)
   changes:
@@ -57,6 +34,8 @@ jobs:
           persist-credentials: false
       - name: Tests of the CI scripts (docs/adr/0009)
         run: sh scripts/ci/test.sh
+      - name: The documents that the build reads are listed (docs/adr/0021)
+        run: sh scripts/ci/docs-refs.sh
       - id: decide
         name: Paths of the change
         env:
@@ -65,17 +44,16 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           BEFORE: ${{ github.event.before }}
         run: |
-          # called from release.yml, github.event_name is the event of
-          # release.yml (a tag push or workflow_dispatch): build
-          BASE= HEAD=
-          if [ "$EVENT" = pull_request ]; then
-            BASE=$PR_BASE HEAD=$PR_HEAD
-          elif [ "$EVENT" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
-            case "$BEFORE" in
-              *[!0]*) BASE=$BEFORE HEAD=$GITHUB_SHA ;;
-            esac
-          fi
-          if [ -n "$BASE" ] && PATHS=$(git -c core.quotePath=false diff --name-only "$BASE" "$HEAD"); then
+          # a pull request from its merge base, a push to main from the
+          # commit before; called from release.yml (a tag push or
+          # workflow_dispatch) there is no range, and everything is built
+          # (docs/adr/0021)
+          case "$EVENT" in
+            pull_request) BASE=$PR_BASE HEAD=$PR_HEAD ;;
+            push) if [ "$GITHUB_REF" = refs/heads/main ]; then BASE=$BEFORE HEAD=$GITHUB_SHA; else BASE= HEAD=; fi ;;
+            *) BASE= HEAD= ;;
+          esac
+          if PATHS=$(sh scripts/ci/changed-paths.sh "$EVENT" "$BASE" "$HEAD"); then
             printf '%s\n' "$PATHS"
             BUILD=$(printf '%s\n' "$PATHS" | sh scripts/ci/needs-build.sh)
           else
@@ -240,3 +218,18 @@ jobs:
       - name: hlint 3.10
         run: sh scripts/ci/fetch-hlint.sh
       - run: '"$HOME/.local/bin/hlint" modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs"'
+
+  # The one check of ci.yml that the protection of main requires: every job
+  # succeeded, or was skipped for a change of documents only (docs/adr/0021)
+  ci:
+    needs: [changes, build, determinism, release-scripts, format]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Results of the jobs
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: printf '%s\n' "$NEEDS" | sh scripts/ci/gate.sh
