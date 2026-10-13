@@ -60,7 +60,7 @@ instance FromValue LockFile where
   fromValue = parseTableFromValue (LockFile . fromMaybe Map.empty <$> optKey "plugins")
 
 parseLock :: FileId -> Text -> Either [Diagnostic] Lock
-parseLock fid src = (\(LockFile m) -> m) <$> decodeStrict "G0602" fid src
+parseLock fid src = (\(LockFile m) -> m) <$> decodeStrict "G0611" fid src
 
 -- | Sorted by plugin name; written only by Golem.
 renderLock :: Lock -> Text
