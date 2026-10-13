@@ -14,9 +14,21 @@ module Golem.Project.Style
     ParaStyleDef (..),
     builtinCharStyles,
     builtinParaStyles,
+    noCharDef,
+    noParaDef,
     charStyle,
     paraStyle,
+    paraLineBreaks,
     validStyleName,
+    LocalStyles (..),
+    noLocalStyles,
+    StyleKind (..),
+    LocalValue (..),
+    localStyleDef,
+    withLocalStyles,
+    checkLocalStyles,
+    charStyleKeys,
+    paraStyleKeys,
     HeadingStyle (..),
     Composition (..),
     RubyStyleDef (..),
@@ -36,6 +48,7 @@ where
 import Control.Applicative ((<|>))
 import Control.Monad (when)
 import Data.Char (isAsciiLower, isDigit)
+import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
@@ -153,29 +166,31 @@ data ParaStyleDef = ParaStyleDef
   }
   deriving stock (Eq, Show)
 
-noChar :: CharStyleDef
-noChar = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing
+-- | A character style with no key written.
+noCharDef :: CharStyleDef
+noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing
 
-noPara :: ParaStyleDef
-noPara = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+-- | A paragraph style with no key written.
+noParaDef :: ParaStyleDef
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The built-in character styles: bold, italic and strong.
 builtinCharStyles :: Map Text CharStyleDef
 builtinCharStyles =
   Map.fromList
-    [ ("bold", noChar {csSyntheticBold = Just True}),
-      ("italic", noChar {csSyntheticItalic = Just True}),
-      ("strong", noChar {csBasedOn = Just "bold"})
+    [ ("bold", noCharDef {csSyntheticBold = Just True}),
+      ("italic", noCharDef {csSyntheticItalic = Just True}),
+      ("strong", noCharDef {csBasedOn = Just "bold"})
     ]
 
 -- | The built-in paragraph styles: body, verse, caption and sidenote.
 builtinParaStyles :: Map Text ParaStyleDef
 builtinParaStyles =
   Map.fromList
-    [ ("body", noPara {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0, psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0)}),
-      ("verse", noPara {psBasedOn = Just "body", psLineBreaks = Just KeepLines, psSpaceBetween = Just 1, psIndent = Just (Zw 2), psFirstLineIndent = Just (Zw (-2))}),
-      ("caption", noPara {psBasedOn = Just "body"}),
-      ("sidenote", noPara {psBasedOn = Just "body"})
+    [ ("body", noParaDef {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0, psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0)}),
+      ("verse", noParaDef {psBasedOn = Just "body", psLineBreaks = Just KeepLines, psSpaceBetween = Just 1, psIndent = Just (Zw 2), psFirstLineIndent = Just (Zw (-2))}),
+      ("caption", noParaDef {psBasedOn = Just "body"}),
+      ("sidenote", noParaDef {psBasedOn = Just "body"})
     ]
 
 -- | A user definition over a built-in one: the keys written win.
@@ -229,10 +244,15 @@ value; based-on is the style's parent.
 paraStyle :: Style -> Maybe Text -> Maybe ParaStyleDef
 paraStyle style mname =
   let name = fromMaybe "body" mname
-      defaults = noPara {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0, psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0)}
+      defaults = noParaDef {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0, psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0)}
    in case chainOf paraParent (stParaStyles style) name of
         [] -> Nothing
         chain@(d : _) -> Just (foldr overPara defaults chain) {psBasedOn = paraParent name d}
+
+-- | Whether each paragraph style keeps its lines, resolved (docs/adr ADR 0005).
+paraLineBreaks :: Style -> Map Text LineBreaks
+paraLineBreaks style =
+  Map.fromList [(n, fromMaybe JoinLines (psLineBreaks d)) | n <- Map.keys (stParaStyles style), Just d <- [paraStyle style (Just n)]]
 
 -- | Style names are used as HTML classes: [a-z][a-z0-9-]*.
 validStyleName :: Text -> Bool
@@ -647,25 +667,32 @@ filesystem.
 parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
   s <- decodeStrict "G0306" fid src
-  case [diagnostic "G0306" Error (mkSpan fid 0 0) m | m <- checks s]
-    <> [diagnostic "G0308" Error (mkSpan fid 0 0) m | m <- roleChecks s]
-    <> [diagnostic "G0313" Error (mkSpan fid 0 0) ("style.toml のスタイルの参照が不正です: " <> m) | m <- referenceChecks s]
-    <> [diagnostic "G0311" Error (mkSpan fid 0 0) ("段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks s]
-    <> [diagnostic "G0312" Error (mkSpan fid 0 0) ("段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | n <- indentChecks s] of
+  case nub [(code, m) | (code, _, m) <- styleChecks "style.toml の" s] of
     [] -> Right s
-    ds -> Left ds
+    ds -> Left [diagnostic code Error (mkSpan fid 0 0) m | (code, m) <- ds]
+
+{- | The checks of the styles of a 'Style' (docs/adr ADR 0005, 0006, 0014):
+the code, the name of the style it is about (empty when it is about no
+style) and the message. @owner@ starts the message of G0313: where the
+definitions were written.
+-}
+styleChecks :: Text -> Style -> [(Text, Text, Text)]
+styleChecks owner s =
+  [("G0306", "", m) | m <- numberChecks]
+    <> [("G0306", n, "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | n <- Map.keys (stCharStyles s) <> Map.keys (stParaStyles s), not (validStyleName n)]
+    <> [("G0306", "", m) | m <- checks]
+    <> [("G0308", n, "style.toml にないフォントの役割です: " <> r) | (n, r) <- roles, Map.notMember r (stFonts s)]
+    <> [("G0313", n, owner <> "スタイルの参照が不正です: " <> m) | (n, m) <- referenceChecks]
+    <> [("G0311", n, "段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks]
+    <> [("G0312", n, "段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | n <- indentChecks]
   where
     -- font roles named outside [fonts] must exist (golem-driver ADR 0003, 0004; docs/adr ADR 0005)
-    roleChecks s =
-      [ "style.toml にないフォントの役割です: " <> r
-      | r <-
-          [f | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings s)]
-            <> [f | CharStyleDef {csFont = Just f} <- Map.elems (stCharStyles s)]
-            <> [f | ParaStyleDef {psFont = Just f} <- Map.elems (stParaStyles s)],
-        Map.notMember r (stFonts s)
-      ]
+    roles =
+      [("", f) | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings s)]
+        <> [(n, f) | (n, CharStyleDef {csFont = Just f}) <- Map.toList (stCharStyles s)]
+        <> [(n, f) | (n, ParaStyleDef {psFont = Just f}) <- Map.toList (stParaStyles s)]
     -- based-on names an existing style without a cycle; body has none; colours exist (docs/adr ADR 0005)
-    referenceChecks s =
+    referenceChecks =
       let cs = stCharStyles s
           ps = stParaStyles s
           cyclic parent styles n = go [n] (Map.lookup n styles >>= parent n)
@@ -675,21 +702,23 @@ parseStyle fid src = do
                 Just m
                   | m `elem` seen -> True
                   | otherwise -> go (m : seen) (Map.lookup m styles >>= parent m)
-       in [ "文字スタイル " <> n <> " の based-on がありません: " <> b
+          charCycle = [n | n <- Map.keys cs, cyclic (const csBasedOn) cs n]
+          paraCycle = [n | n <- Map.keys ps, n /= "body", cyclic paraParent ps n]
+       in [ (n, "文字スタイル " <> n <> " の based-on がありません: " <> b)
           | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
             Map.notMember b cs
           ]
-            <> ["文字スタイルの based-on が循環しています: " <> T.intercalate ", " ns | let ns = [n | n <- Map.keys cs, cyclic (const csBasedOn) cs n], not (null ns)]
-            <> ["文字スタイル " <> n <> " の color のスウォッチがありません: " <> c | (n, CharStyleDef {csColor = Just c}) <- Map.toList cs, Map.notMember c (stSwatches s)]
-            <> ["段落スタイル body には based-on を書けません" | Just ParaStyleDef {psBasedOn = Just _} <- [Map.lookup "body" ps]]
-            <> [ "段落スタイル " <> n <> " の based-on がありません: " <> b
+            <> [(n, "文字スタイルの based-on が循環しています: " <> T.intercalate ", " charCycle) | n <- charCycle]
+            <> [(n, "文字スタイル " <> n <> " の color のスウォッチがありません: " <> c) | (n, CharStyleDef {csColor = Just c}) <- Map.toList cs, Map.notMember c (stSwatches s)]
+            <> [("body", "段落スタイル body には based-on を書けません") | Just ParaStyleDef {psBasedOn = Just _} <- [Map.lookup "body" ps]]
+            <> [ (n, "段落スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, ParaStyleDef {psBasedOn = Just b}) <- Map.toList ps,
                  n /= "body",
                  Map.notMember b ps
                ]
-            <> ["段落スタイルの based-on が循環しています: " <> T.intercalate ", " ns | let ns = [n | n <- Map.keys ps, n /= "body", cyclic paraParent ps n], not (null ns)]
+            <> [(n, "段落スタイルの based-on が循環しています: " <> T.intercalate ", " paraCycle) | n <- paraCycle]
     -- a paragraph style no larger than the grid (docs/adr ADR 0005)
-    sizeChecks s = case stPage s >>= pageGrid of
+    sizeChecks = case stPage s >>= pageGrid of
       Just Grid {gridFontSize = Abs fs} ->
         [ n
         | n <- Map.keys (stParaStyles s),
@@ -699,7 +728,7 @@ parseStyle fid src = do
       _ -> []
     {- the first line inside the type area: indent + first-line-indent >= 0
     (docs/adr ADR 0006); zw and absolute lengths together only with a grid -}
-    indentChecks s =
+    indentChecks =
       let gridSize = case stPage s >>= pageGrid of
             Just Grid {gridFontSize = Abs fs} -> Just fs
             _ -> Nothing
@@ -709,16 +738,16 @@ parseStyle fid src = do
             (Just a, Just b) | Just fs <- gridSize -> let size = maybe fs (dimToSp fs) (psSize d) in dimToSp size a + dimToSp size b < 0
             _ -> False
        in [n | n <- Map.keys (stParaStyles s), Just d <- [paraStyle s (Just n)], negative d]
-    checks s =
+    numberChecks =
       [ "番号の書式が不正です: " <> f
       | f <- stFigureNumber s : [n | HeadingStyle {hsNumber = Just n} <- Map.elems (stHeadings s)],
         not (validNumberFormat f)
       ]
-        <> ["スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n | n <- Map.keys (stCharStyles s) <> Map.keys (stParaStyles s), not (validStyleName n)]
-        <> [ "explicit-hyphen-penalty は -9999 から 10000 までです: " <> T.pack (show p)
-           | let p = compExplicitHyphenPenalty (stComposition s),
-             p < -9999 || p > 10000
-           ]
+    checks =
+      [ "explicit-hyphen-penalty は -9999 から 10000 までです: " <> T.pack (show p)
+      | let p = compExplicitHyphenPenalty (stComposition s),
+        p < -9999 || p > 10000
+      ]
         <> [ "ルビのかけの量は 0 以上です（[composition.ruby] の overhang）"
            | negativeDim (rdOverhang (compRuby (stComposition s)))
            ]
@@ -727,6 +756,87 @@ parseStyle fid src = do
              isNothing (pageSize (pageSizeName p)),
              not (T.any (== 'x') (pageSizeName p))
            ]
+
+-- ------------------------------------------------------------------ styles in a file
+
+{- | Styles defined in a file (docs/adr ADR 0014). A name of style.toml or
+a built-in style has only the keys written, laid over the definition of
+the same name by 'withLocalStyles'.
+-}
+data LocalStyles = LocalStyles
+  { lsCharStyles :: !(Map Text CharStyleDef),
+    lsParaStyles :: !(Map Text ParaStyleDef)
+  }
+  deriving stock (Eq, Show)
+
+noLocalStyles :: LocalStyles
+noLocalStyles = LocalStyles Map.empty Map.empty
+
+-- | The kind of a style @style-def defines.
+data StyleKind = CharacterKind | ParagraphKind
+  deriving stock (Eq, Show)
+
+-- | A value in the source: a word or a string.
+data LocalValue = LocalWord Text | LocalString Text
+  deriving stock (Eq, Show)
+
+-- | The keys @style-def takes, as style.toml's (for completion).
+charStyleKeys, paraStyleKeys :: [Text]
+charStyleKeys = ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic"]
+paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent"]
+
+{- | The keys of one @style-def as a TOML table, read with the 'FromValue'
+of style.toml: a string is a string, the words true and false are
+booleans, a word of digits (with a leading -) is an integer, any other
+word is a string. Errors are messages of G0306.
+-}
+localStyleDef :: StyleKind -> [(Text, LocalValue)] -> Either [Text] (Either CharStyleDef ParaStyleDef)
+localStyleDef kind kvs =
+  let tab = Table (table [(k, tomlValue v) | (k, v) <- kvs])
+   in case kind of
+        CharacterKind -> Left <$> run tab
+        ParagraphKind -> Right <$> run tab
+  where
+    run :: (FromValue a) => Value -> Either [Text] a
+    run v = case runMatcher (fromValue v) of
+      Failure es -> Left (map message es)
+      Success [] a -> Right a
+      Success ws _ -> Left (map message ws)
+    message (MatchMessage _ path msg) = T.pack (msg <> concatMap scope path)
+    scope = \case
+      ScopeKey k -> " (" <> T.unpack k <> ")"
+      ScopeIndex i -> " [" <> show i <> "]"
+    tomlValue = \case
+      LocalString t -> Text t
+      LocalWord "true" -> Bool True
+      LocalWord "false" -> Bool False
+      LocalWord w
+        | isInteger w -> Integer (read (T.unpack w))
+        | otherwise -> Text w
+    isInteger w =
+      let digits = fromMaybe w (T.stripPrefix "-" w)
+       in not (T.null digits) && T.all isDigit digits
+
+{- | The styles of style.toml with the definitions of a file over them:
+the same name by 'overChar' and 'overPara' (the keys written win), a new
+name added.
+-}
+withLocalStyles :: Style -> LocalStyles -> Style
+withLocalStyles s ls =
+  s
+    { stCharStyles = Map.unionWith overChar (lsCharStyles ls) (stCharStyles s),
+      stParaStyles = Map.unionWith overPara (lsParaStyles ls) (stParaStyles s)
+    }
+
+{- | The checks of style.toml on the styles of a file laid over it, less
+those style.toml has by itself: (code, the name of the style, message).
+-}
+checkLocalStyles :: Style -> LocalStyles -> [(Text, Text, Text)]
+checkLocalStyles s ls =
+  let base = styleChecks owner s
+   in nub [c | c <- styleChecks owner (withLocalStyles s ls), c `notElem` base]
+  where
+    owner = "@style-def の"
 
 {- | Reads style.toml from the project root; a missing file means the
 defaults. The files it names are not looked for here: each target checks

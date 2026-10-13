@@ -194,6 +194,7 @@ tests =
       testCase "character style fonts name font roles (golem-driver ADR 0004)" $
         codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G0308"],
       styleTests,
+      localStyleTests,
       testCase "[page] bleed (golem-pdf ADR 0004)" $ do
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"3mm\"\n") @?= Right (Just 557314)
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\n") @?= Right (Just 0)
@@ -390,3 +391,80 @@ specStyle =
       "running-head = { position = \"top-outside\", content = \"heading.1.short\" }",
       "folio = { position = \"bottom-outside\", format = \"{n}\" }"
     ]
+
+-- | Styles defined in a file (docs/adr ADR 0014).
+localStyleTests :: TestTree
+localStyleTests =
+  testGroup
+    "styles defined in a file (docs/adr ADR 0014)"
+    [ testCase "localStyleDef maps words and strings to TOML values" $ do
+        localStyleDef ParagraphKind [("based-on", LocalWord "body"), ("indent", LocalWord "2zw"), ("line-breaks", LocalWord "keep"), ("space-between", LocalWord "1")]
+          @?= Right (Right noParaDef {psBasedOn = Just "body", psIndent = Just (Zw 2), psLineBreaks = Just KeepLines, psSpaceBetween = Just 1})
+        localStyleDef CharacterKind [("synthetic-bold", LocalWord "true")] @?= Right (Left noCharDef {csSyntheticBold = Just True})
+        let bad k xs = assertBool (show xs) (isLeftE (localStyleDef k xs))
+        bad CharacterKind [("synthetic-bold", LocalString "true")]
+        bad ParagraphKind [("space-between", LocalString "1")]
+        bad CharacterKind [("colour", LocalWord "x")]
+        bad ParagraphKind [("line-breaks", LocalWord "x")]
+        bad ParagraphKind [("space-between", LocalWord "-1")],
+      testCase "every key of charStyleKeys and paraStyleKeys is known" $ do
+        let valueOf = \case
+              "synthetic-bold" -> "true"
+              "synthetic-italic" -> "true"
+              "line-breaks" -> "keep"
+              "space-between" -> "1"
+              "size" -> "1zw"
+              "indent" -> "1zw"
+              "first-line-indent" -> "1zw"
+              _ -> "x"
+            known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
+        assertBool "char" (all (known CharacterKind) charStyleKeys)
+        assertBool "para" (all (known ParagraphKind) paraStyleKeys)
+        assertBool "a made-up key is unknown" (not (known ParagraphKind "colour")),
+      testCase "a local style inherits a style.toml style through based-on" $ do
+        base <- styleOf "[paragraph-styles.quote]\nindent = \"3zw\"\nspace-between = 2\n"
+        let s = withLocalStyles base (localPara [("letter", noParaDef {psBasedOn = Just "quote"})])
+        fmap psIndent (paraStyle s (Just "letter")) @?= Just (Just (Zw 3))
+        fmap psSpaceBetween (paraStyle s (Just "letter")) @?= Just (Just 2),
+      testCase "checkLocalStyles reports the errors of style.toml's checks" $ do
+        base <- styleOf "[page]\nsize = \"A6\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 20\nlines = 10\nline-pitch = \"20H\"\nposition = { top = \"10mm\", gutter = \"10mm\" }\n\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n"
+        let chk ls = [(c, n) | (c, n, _) <- checkLocalStyles base ls]
+        chk (localPara [("Letter", noParaDef)]) @?= [("G0306", "Letter")]
+        chk (localPara [("a", noParaDef {psBasedOn = Just "nope"})]) @?= [("G0313", "a")]
+        assertBool "cycle" (("G0313", "a") `elem` chk (localPara [("a", noParaDef {psBasedOn = Just "b"}), ("b", noParaDef {psBasedOn = Just "a"})]))
+        chk (localChar [("t", noCharDef {csFont = Just "nope"})]) @?= [("G0308", "t")]
+        chk (localChar [("t", noCharDef {csColor = Just "nope"})]) @?= [("G0313", "t")]
+        chk (localChar [("t", noCharDef {csColor = Just "accent"})]) @?= []
+        chk (localPara [("a", noParaDef {psSize = Just (Zw 2)})]) @?= [("G0311", "a")]
+        chk (localPara [("a", noParaDef {psIndent = Just (Zw 1), psFirstLineIndent = Just (Zw (-2))})]) @?= [("G0312", "a")],
+      testCase "checkLocalStyles leaves out the errors style.toml has by itself" $ do
+        let base = defaultStyle {stParaStyles = Map.insert "q" noParaDef {psBasedOn = Just "nope"} (stParaStyles defaultStyle)}
+        [c | (c, _, _) <- checkLocalStyles base (localPara [("letter", noParaDef)])] @?= [],
+      testCase "an override changes only the keys it writes, in its file" $ do
+        base <- styleOf "[fonts.heading]\nlatin = \"h.otf\"\n\n[paragraph-styles.quote]\nfont = \"heading\"\n"
+        let s = withLocalStyles base (localPara [("quote", noParaDef {psIndent = Just (Zw 1)})])
+        fmap psFont (paraStyle s (Just "quote")) @?= Just (Just "heading")
+        fmap psIndent (paraStyle s (Just "quote")) @?= Just (Just (Zw 1))
+        fmap psIndent (paraStyle base (Just "quote")) @?= Just (Just (Zw 0)),
+      testCase "overriding body changes the styles based on it" $ do
+        base <- styleOf "[paragraph-styles.quote]\nspace-between = 1\n"
+        let s = withLocalStyles base (localPara [("body", noParaDef {psIndent = Just (Zw 1)})])
+        fmap psIndent (paraStyle s (Just "quote")) @?= Just (Just (Zw 1)),
+      testCase "based-on cycles through overrides are G0313" $ do
+        let chk b ls = [(c, n) | (c, n, _) <- checkLocalStyles b ls]
+        base <- styleOf "[paragraph-styles.quote]\nindent = \"1zw\"\n"
+        assertBool "self" (("G0313", "quote") `elem` chk base (localPara [("quote", noParaDef {psBasedOn = Just "quote"})]))
+        ab <- styleOf "[paragraph-styles.a]\nbased-on = \"b\"\n\n[paragraph-styles.b]\nindent = \"1zw\"\n"
+        assertBool "through style.toml" (("G0313", "b") `elem` chk ab (localPara [("b", noParaDef {psBasedOn = Just "a"})]))
+        assertBool "body" (("G0313", "body") `elem` chk base (localPara [("body", noParaDef {psBasedOn = Just "quote"})])),
+      testCase "an override of body can make a style.toml style hang out (G0312)" $ do
+        base <- styleOf "[paragraph-styles.quote]\nspace-between = 1\n"
+        assertBool "quote" (("G0312", "quote") `elem` [(c, n) | (c, n, _) <- checkLocalStyles base (localPara [("body", noParaDef {psFirstLineIndent = Just (Zw (-1))})])]),
+      testCase "a table written twice in style.toml is a TOML error (G0306)" $
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"1zw\"\n\n[paragraph-styles.quote]\nindent = \"2zw\"\n") @?= ["G0306"]
+    ]
+  where
+    styleOf t = either (\ds -> assertFailure (show ds) >> pure defaultStyle) pure (parseStyle (FileId 0) t)
+    localPara xs = noLocalStyles {lsParaStyles = Map.fromList xs}
+    localChar xs = noLocalStyles {lsCharStyles = Map.fromList xs}
+    isLeftE = either (const True) (const False)

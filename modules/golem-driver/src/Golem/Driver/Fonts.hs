@@ -28,13 +28,13 @@ import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 
 golemFontProvider :: FontProvider
-golemFontProvider = FontProvider $ \root style ->
+golemFontProvider = FontProvider $ \root style locals ->
   let body = bodyRole style
    in case Map.lookup body (stFonts style) of
         Nothing -> pure (Left [err "G0802" "style.toml に本文のフォント（[fonts.body]）がありません"])
         Just role | null (catMaybes [frJa role, frLatin role]) -> pure (Left [err "G0802" "[fonts.body] にフォントのファイルがありません"])
         Just _ -> do
-          let roles = [(r, fr) | r <- usedRoles style, Just fr <- [Map.lookup r (stFonts style)]]
+          let roles = [(r, fr) | r <- usedRoles style locals, Just fr <- [Map.lookup r (stFonts style)]]
           loaded <- mapM (\(r, fr) -> (r,fr,,) <$> traverse (load root) (frJa fr) <*> traverse (load root) (frLatin fr)) roles
           pure $ case [d | (_, _, ja, la) <- loaded, Left d <- catMaybes [ja, la]] of
             (d : _) -> Left [d]

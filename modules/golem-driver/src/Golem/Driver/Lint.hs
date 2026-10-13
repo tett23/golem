@@ -3,6 +3,7 @@ rules. Syntax and evaluation errors are reported as well.
 -}
 module Golem.Driver.Lint
   ( lintProject,
+    lintEvaluated,
   )
 where
 
@@ -21,22 +22,32 @@ lintProject profile root = do
   ev <- evaluateProject profile root
   pure $ case ev of
     Left ds -> (Map.empty, finish ds)
-    Right e ->
-      let project = evProject e
-          sources = Map.toList (projectSources project)
-          -- the paragraph styles that keep their lines (docs/adr ADR 0005)
-          keep = keepStyles (evStyle e)
-          files =
-            [ FileLint fid (sfPath sf) (sfCst sf) (erUsage r)
-            | (fid, sf) <- sources,
-              Just r <- [Map.lookup fid (evResults e)]
-            ]
-          lintDiags = case evBook e of
-            Just b -> lint (LintInput files (Map.map ltSpan (bookLabels b)) (bookReferenced b) keep)
-            -- evaluation stopped: only the rules that need no evaluation
-            Nothing
-              | null files -> concat [latinJoinedByNewline keep fid (sfCst sf) | (fid, sf) <- sources]
-              | otherwise -> lint (LintInput files Map.empty Set.empty keep)
-       in (sourceInfos project, finish (evDiagnostics e <> lintDiags))
+    Right e -> (sourceInfos (evProject e), finish (evDiagnostics e <> lintEvaluated e))
   where
     finish = sortDiagnostics . map (adjustForProfile profile)
+
+{- | The rules on an evaluated project. G0501 of a file that defines styles
+uses the paragraph styles that keep their lines in that file (docs/adr
+ADR 0005, 0014).
+-}
+lintEvaluated :: Evaluated -> [Diagnostic]
+lintEvaluated e =
+  let project = evProject e
+      sources = Map.toList (projectSources project)
+      keep = keepStyles (evStyle e)
+      locals = localStylesOf e
+      files =
+        [ FileLint fid (sfPath sf) (sfCst sf) (erUsage r)
+        | (fid, sf) <- sources,
+          Just r <- [Map.lookup fid (evResults e)]
+        ]
+      -- G0501 again for the files with styles of their own
+      perFile ds =
+        [d | d <- ds, not (diagCode d == DiagnosticCode "G0501" && Map.member (spanFile (diagSpan d)) locals)]
+          <> concat [latinJoinedByNewline (keepStyles (docStyles e fid)) fid (sfCst sf) | (fid, sf) <- sources, Map.member fid locals]
+   in case evBook e of
+        Just b -> perFile (lint (LintInput files (Map.map ltSpan (bookLabels b)) (bookReferenced b) keep))
+        -- evaluation stopped: only the rules that need no evaluation
+        Nothing
+          | null files -> concat [latinJoinedByNewline keep fid (sfCst sf) | (fid, sf) <- sources]
+          | otherwise -> perFile (lint (LintInput files Map.empty Set.empty keep))

@@ -24,16 +24,17 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Assemble (Book (..), LabelTarget (..))
 import Golem.Driver (Evaluated (..), builtinKeepStyles, evaluateProjectWith, keepStyles, paraLineBreaks)
+import Golem.Driver.Lint (lintEvaluated)
 import Golem.Eval.File
+import Golem.Eval.Settings (isSettingCommand)
 import Golem.Eval.Value (Value)
 import Golem.Lint
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.CST (Node)
 import Golem.Project
-import Golem.Project.Style (Style (..), defaultStyle)
+import Golem.Project.Style (Style (..), defaultStyle, withLocalStyles)
 import Golem.Syntax
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath (makeRelative, (</>))
@@ -80,7 +81,8 @@ summaryOf ast res =
     structure (A.File _ bs) = concatMap blk bs
     blk (A.Located _ b) = case b of
       A.Heading l is -> [show (l, is)]
-      A.Attributed cs t -> [show c | A.Located _ c <- cs] <> maybe [] blk t
+      -- the file settings change that file alone (docs/adr ADR 0014)
+      A.Attributed cs t -> [show c | x@(A.Located _ c) <- cs, not (isSettingCommand x)] <> maybe [] blk t
       A.BlockCommand _ _ body -> concatMap blk body
       A.BulletList items -> concatMap (concatMap blk) items
       A.OrderedList items -> concatMap (concatMap blk) items
@@ -147,7 +149,7 @@ loose path text =
   let fid = FileId 0
       (ast, cst, synDiags) = parseAst fid text
       -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
-      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins
+      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultStyle
       res = evalFile ctx ast
    in Source path fid text cst ast (Just res {erDiagnostics = synDiags <> erDiagnostics res}) False
 
@@ -212,16 +214,15 @@ diagnosticsFor :: Workspace -> Map FilePath [Diagnostic]
 diagnosticsFor ws =
   Map.unionWith (<>) projectDiags looseDiags
   where
-    looseDiags = Map.map (\s -> sortDiagnostics (maybe [] erDiagnostics (srcResult s) <> latinJoinedByNewline builtinKeepStyles (srcFile s) (srcCst s))) (wsLoose ws)
+    -- the styles a loose file defines count for its G0501 (docs/adr ADR 0014)
+    looseKeep s = maybe builtinKeepStyles (keepStyles . withLocalStyles defaultStyle . erStyles) (srcResult s)
+    looseDiags = Map.map (\s -> sortDiagnostics (maybe [] erDiagnostics (srcResult s) <> latinJoinedByNewline (looseKeep s) (srcFile s) (srcCst s))) (wsLoose ws)
     projectDiags = case wsEvaluated ws of
       Nothing -> Map.fromList [("manifest.toml", wsProjectErrors ws)]
       Just e ->
         let p = evProject e
             ft = projectFiles p
-            files = [FileLint fid (sfPath sf) (sfCst sf) (erUsage r) | (fid, sf) <- Map.toList (projectSources p), Just r <- [Map.lookup fid (evResults e)]]
-            lintDiags = case evBook e of
-              Just b -> lint (LintInput files (Map.map ltSpan (bookLabels b)) (bookReferenced b) (keepStyles (evStyle e)))
-              Nothing -> concat [latinJoinedByNewline (keepStyles (evStyle e)) fid (sfCst sf) | (fid, sf) <- Map.toList (projectSources p)]
+            lintDiags = lintEvaluated e
             all' = map (adjustForProfile Dev) (evDiagnostics e <> lintDiags)
             byFile = Map.fromListWith (flip (<>)) [(fromMaybe "manifest.toml" (lookupPath (spanFile (diagSpan d)) ft), [d]) | d <- all']
             empties = Map.fromList [(sfPath sf, []) | sf <- Map.elems (projectSources p)]

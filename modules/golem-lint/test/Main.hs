@@ -50,6 +50,8 @@ tests =
         newlineCodes "@style quote\n  Full fathom five\n  Of his bones\n" @?= ["G0501"]
         newlineCodes "@style quote\nFull fathom five\nOf his bones\n" @?= ["G0501"]
         newlineCodesWith (Set.fromList ["verse", "quote"]) "@style quote\n  Full fathom five\n  Of his bones\n" @?= []
+        -- a style a file defines (docs/adr ADR 0014)
+        newlineCodesWith (Set.fromList ["verse", "letter"]) "@style letter\n  Full fathom five\n  Of his bones\n" @?= []
         newlineCodes "@figure a.png alt=x\n  Full fathom\n  five\n" @?= ["G0501"],
       testCase "G0502 unused variable, unless an importer uses it" $ do
         let defining = FileLint (FileId 1) "common.gm" (fst (parse (FileId 1) "")) usage {usageDefined = [("x", sp), ("y", sp)]}

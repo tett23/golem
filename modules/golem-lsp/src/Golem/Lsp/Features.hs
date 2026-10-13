@@ -38,7 +38,7 @@ import Golem.Fmt (FormatResult (..), format)
 import Golem.Lsp.Workspace
 import Golem.Parser.AST
 import Golem.Project
-import Golem.Project.Style (Style (..))
+import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), charStyleKeys, defaultStyle, paraStyleKeys)
 import Golem.Syntax
 import Language.LSP.Protocol.Types (PositionEncodingKind (..))
 
@@ -81,6 +81,10 @@ data Occurrence
   | OccLabelRef Text
   | OccExpr (Located Expr)
   | OccPageRef Text
+  | -- | the name of @style-def (docs/adr ADR 0014)
+    OccStyleDef StyleKind Text
+  | -- | a style named by @style, [style ...] or based-on of @style-def
+    OccStyleRef StyleKind Text
   deriving stock (Show)
 
 labelCommands :: [Text]
@@ -105,6 +109,10 @@ occurrences (File _ bs) = concatMap block bs
       ("import", Located asp (Positional (Word p)) : _) -> [(asp, OccImport p)]
       ("import", Located asp (Positional (StringLit p)) : _) -> [(asp, OccImport p)]
       ("label", Located asp (Positional (Word l)) : _) -> [(asp, OccLabelDef l)]
+      ("style", [Located asp (Positional (Word n))]) -> [(asp, OccStyleRef ParagraphKind n)]
+      ("style-def", Located _ (Positional (Word k)) : Located nsp (Positional (Word n)) : rest)
+        | Just kind <- styleKindOf k ->
+            (nsp, OccStyleDef kind n) : [(bsp, OccStyleRef kind b) | Located bsp (Keyword (Located _ "based-on") (Word b)) <- rest]
       _ -> concatMap argument args
     inline (Located sp i) = case i of
       Expr e -> (sp, OccExpr e) : expr e
@@ -112,6 +120,7 @@ occurrences (File _ bs) = concatMap block bs
         ( case (name, args) of
             (n, Located asp (Positional (Word l)) : _)
               | n `elem` labelCommands -> [(asp, OccLabelRef l)] <> [(sp, OccPageRef l) | n == "ref-page"]
+            ("style", [Located asp (Positional (Word n))]) -> [(asp, OccStyleRef CharacterKind n)]
             _ -> concatMap argument args
         )
           <> concatMap (concatMap inline) slots
@@ -169,7 +178,19 @@ definition ws path off = case sourceOf ws path of
       ]
     Just (OccLabelRef l) -> labelDefs ws l
     Just (OccLabelDef l) -> labelDefs ws l
+    -- a style defined (or overridden) in the file; style.toml keeps no positions (docs/adr ADR 0014)
+    Just (OccStyleRef k n) -> styleDefs src k n
+    Just (OccStyleDef k n) -> styleDefs src k n
     _ -> []
+
+styleDefs :: Source -> StyleKind -> Text -> [Location]
+styleDefs src k n = take 1 [loc src sp | (sp, OccStyleDef k' n') <- occurrences (srcAst src), k' == k, n' == n]
+
+styleKindOf :: Text -> Maybe StyleKind
+styleKindOf = \case
+  "character" -> Just CharacterKind
+  "paragraph" -> Just ParagraphKind
+  _ -> Nothing
 
 labelDefs :: Workspace -> Text -> [Location]
 labelDefs ws l = [loc s sp | s <- allSources ws, (sp, OccLabelDef l') <- occurrences (srcAst s), l' == l]
@@ -227,7 +248,7 @@ renameLabel ws path off new = case sourceOf ws path >>= \s -> snd <$> occurrence
 
 -- ------------------------------------------------------------------ completion
 
-data CompletionKind = CkCommand | CkLabel | CkPath | CkSwatch | CkCharStyle | CkParaStyle
+data CompletionKind = CkCommand | CkLabel | CkPath | CkSwatch | CkCharStyle | CkParaStyle | CkSettingKey | CkSettingValue | CkStyleKind
   deriving stock (Eq, Show)
 
 data Completion = Completion {cmpLabel :: !Text, cmpKind :: !CompletionKind}
@@ -243,27 +264,69 @@ completions ws path off = case sourceOf ws path of
         lastOpen = T.takeWhileEnd (/= '[') lineBefore
         hasOpen = T.isInfixOf "[" lineBefore
         ws' = T.words lastOpen
-        style = evStyle <$> wsEvaluated ws
+        style = maybe defaultStyle evStyle (wsEvaluated ws)
+        {- the styles of the file (docs/adr ADR 0014): of its evaluation, and
+        of its @style-def lines while it does not evaluate -}
+        local = maybe (LocalStyles Map.empty Map.empty) erStyles (srcResult src)
+        defined k = [n | (_, OccStyleDef k' n) <- occurrences (srcAst src), k' == k]
+        paraNames = nub (Map.keys (stParaStyles style) <> Map.keys (lsParaStyles local) <> defined ParagraphKind)
+        charNames = nub (Map.keys (stCharStyles style) <> Map.keys (lsCharStyles local) <> defined CharacterKind)
         labels = nub [l | s <- allSources ws, (_, OccLabelDef l) <- occurrences (srcAst s)]
      in if "@import " `T.isPrefixOf` T.stripStart lineBefore
           then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
-          else
-            -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
-            if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
-              then [Completion n CkParaStyle | Just st <- [style], n <- Map.keys (stParaStyles st)]
-              else
-                if not hasOpen || T.isInfixOf "]" lastOpen
-                  then []
-                  else case ws' of
-                    [] -> commandNames
-                    [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
-                    (cmd : _)
-                      | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
-                      | cmd == "color" -> [Completion n CkSwatch | Just st <- [style], n <- Map.keys (stSwatches st)]
-                      | cmd == "style" -> [Completion n CkCharStyle | Just st <- [style], n <- Map.keys (stCharStyles st)]
-                    _ -> []
+          else case T.stripPrefix "@style-def " (T.stripStart lineBefore) of
+            Just rest -> styleDefCompletions style paraNames charNames rest
+            Nothing ->
+              -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
+              if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                then [Completion n CkParaStyle | n <- paraNames]
+                else
+                  if not hasOpen || T.isInfixOf "]" lastOpen
+                    then []
+                    else case ws' of
+                      [] -> commandNames
+                      [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
+                      (cmd : _)
+                        | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
+                        | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
+                        | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
+                      _ -> []
   where
     commandNames = [Completion c CkCommand | c <- builtinInlineCommands]
+
+{- | Completion after @style-def (docs/adr ADR 0014): the kinds, then the
+keys of the kind, then the values of a key. regex is left out until
+regular expression styles are implemented.
+-}
+styleDefCompletions :: Style -> [Text] -> [Text] -> Text -> [Completion]
+styleDefCompletions style paraNames charNames rest =
+  let ws' = T.words rest
+      trailing = T.null rest || T.isSuffixOf " " rest
+      kinds = [Completion k CkStyleKind | k <- ["character", "paragraph"]]
+   in case ws' of
+        [] -> kinds
+        [_] | not trailing -> kinds
+        (kind : _ : _)
+          | trailing -> [Completion (k <> "=") CkSettingKey | k <- keysOf kind]
+          | (key, value) <- T.breakOn "=" (last ws'),
+            not (T.null value),
+            length ws' >= 3 ->
+              valuesOf kind key
+        _ -> []
+  where
+    keysOf = \case
+      "character" -> charStyleKeys
+      "paragraph" -> paraStyleKeys
+      _ -> []
+    valuesOf kind = \case
+      "based-on" -> case kind of
+        "character" -> [Completion n CkCharStyle | n <- charNames]
+        "paragraph" -> [Completion n CkParaStyle | n <- paraNames]
+        _ -> []
+      "font" -> [Completion r CkSettingValue | r <- Map.keys (stFonts style :: Map.Map Text FontRole)]
+      "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
+      "line-breaks" | kind == "paragraph" -> [Completion v CkSettingValue | v <- ["join", "keep"]]
+      _ -> []
 
 -- ------------------------------------------------------------------ hover
 

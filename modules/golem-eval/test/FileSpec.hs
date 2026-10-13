@@ -8,7 +8,7 @@ import Golem.Doc.IR
 import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
-import Golem.Project.Style (LineBreaks (..))
+import Golem.Project.Style (LineBreaks (..), LocalStyles (..), Style (..), defaultStyle, paraLineBreaks, parseStyle)
 import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -33,7 +33,8 @@ ctx =
             ("data.csv", Just "a,b\n1,\"x,y\"\n"),
             ("src/Main.hs", Just "l1\nl2\nl3\n")
           ],
-      ctxPlugins = noPlugins
+      ctxPlugins = noPlugins,
+      ctxStyle = defaultStyle
     }
 
 run :: EvalContext -> Text -> ([BlockBody], [Text])
@@ -90,6 +91,7 @@ tests =
   testGroup
     "file evaluation, S0 (ADR 0002)"
     [ verseTests,
+      settingsTests,
       styleTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
@@ -242,3 +244,119 @@ styleTests =
       let (file, _, _) = parseAst (FileId 1) src
        in docBlocks (erDocument (evalFile ctx file))
     labels = map blockLabel . blocksOf
+
+-- | The style.toml of the tests of the file settings: a swatch and quote.
+settingsStyle :: Style
+settingsStyle =
+  either (error . show) id (parseStyle (FileId 9) "[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n\n[paragraph-styles.quote]\nindent = \"1zw\"\n")
+
+-- | A context whose styles are those of 'settingsStyle'.
+sctx :: EvalContext
+sctx =
+  ctx
+    { ctxStyle = settingsStyle,
+      ctxCharStyles = Map.keysSet (stCharStyles settingsStyle),
+      ctxParaStyles = paraLineBreaks settingsStyle
+    }
+
+runS :: EvalContext -> Text -> ([BlockBody], [Diagnostic], EvalResult)
+runS c src =
+  let (file, _, pds) = parseAst (FileId 1) src
+      r = evalFile c file
+   in (map blockBody (docBlocks (erDocument r)), pds <> erDiagnostics r, r)
+
+codesS :: Text -> [Text]
+codesS src = let (_, ds, _) = runS sctx src in [x | d <- ds, let DiagnosticCode x = diagCode d]
+
+-- | The file settings: @manifest and @style-def (docs/adr ADR 0014).
+settingsTests :: TestTree
+settingsTests =
+  testGroup
+    "file settings (docs/adr ADR 0014)"
+    [ testCase "@style-def paragraph defines a style for the file" $ do
+        let (bs, ds, r) = runS sctx "@style-def paragraph letter line-breaks=keep\n\n@style letter\na\nb\n"
+        map stripped bs @?= [(Just "letter", ["a", "<br>", "b"])]
+        ds @?= []
+        assertBool "erStyles" (Map.member "letter" (lsParaStyles (erStyles r))),
+      testCase "a local style inherits through based-on" $ do
+        let (bs, ds, _) = runS sctx "@style-def paragraph letter based-on=verse\n\n@style letter\na\nb\n"
+        map stripped bs @?= [(Just "letter", ["a", "<br>", "b"])]
+        ds @?= [],
+      testCase "@style-def character defines a character style for the file" $ do
+        let (bs, ds, _) = runS sctx "@style-def character term color=accent\n\n[style term: x]\n"
+        map stripped bs @?= [(Nothing, ["<term>", "x"])]
+        ds @?= []
+        let (_, ds', _) = runS sctx "[style term: x]\n"
+        map (\d -> let DiagnosticCode c = diagCode d in c) ds' @?= ["G0218"]
+        assertBool "message" (all (T.isInfixOf "定義されていない" . diagMessage) ds'),
+      testCase "the file settings may run into the next block without a blank line" $ do
+        let (bs, ds, _) = runS sctx "@style-def paragraph letter\n@style letter\na\n"
+        map stripped bs @?= [(Just "letter", ["a"])]
+        ds @?= []
+        let (bs', ds', _) = runS sctx "%% 設定 %%\n@style-def paragraph letter\n@label p\na\n"
+        map stripped bs' @?= [(Nothing, ["a"])]
+        ds' @?= [],
+      testCase "character and paragraph styles are separate name spaces" $
+        codesS "@style-def character note\n@style-def paragraph note\n\nx\n" @?= [],
+      testCase "a name defined twice in a file is G0253" $ do
+        codesS "@style-def paragraph a\n@style-def paragraph a\n" @?= ["G0253"]
+        codesS "@style-def paragraph quote\n@style-def paragraph quote indent=1zw\n" @?= ["G0253"],
+      testCase "a style of style.toml or a built-in style may be overridden" $ do
+        let ok src name = do
+              let (_, ds, r) = runS sctx src
+              ds @?= []
+              assertBool (T.unpack name) (Map.member name (lsParaStyles (erStyles r)) || Map.member name (lsCharStyles (erStyles r)))
+        ok "@style-def paragraph body indent=1zw\n\nx\n" "body"
+        ok "@style-def character strong synthetic-italic=true\n\n[strong: x]\n" "strong"
+        ok "@style-def paragraph quote indent=1zw\n\n@style quote\nx\n" "quote",
+      testCase "an override of verse changes how its newlines are read" $ do
+        let (bs, _, _) = runS sctx "@style-def paragraph verse line-breaks=join\n\n@style verse\na\nb\n"
+        map stripped bs @?= [(Just "verse", ["ab"])]
+        let (bs', _, _) = runS sctx "@style verse\na\nb\n"
+        map stripped bs' @?= [(Just "verse", ["a", "<br>", "b"])],
+      testCase "the arguments of @style-def and @manifest are G0252" $ do
+        mapM_
+          (\src -> (src, codesS src) @?= (src, ["G0252"]))
+          [ "@style-def\n",
+            "@style-def table a\n",
+            "@style-def paragraph\n",
+            "@style-def paragraph a b\n",
+            "@style-def paragraph a font=[= \"x\"]\n",
+            "@style-def paragraph a indent=1zw indent=2zw\n",
+            "@style-def paragraph a\n  x\n",
+            "@manifest line\n",
+            "@manifest\n",
+            "@manifest title=x title=x\n",
+            "@manifest title=[= \"x\"]\n",
+            "@manifest title=x\n  a\n"
+          ],
+      testCase "@manifest overrides only the keys of [source] (G0250)" $ do
+        codesS "@manifest title=x\n" @?= ["G0250"]
+        codesS "@manifest paragraph-separater=line\n" @?= ["G0250"]
+        let (bs, ds, _) = runS sctx "@manifest title=x\n@label p\na\n"
+        map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G0250"]
+        map stripped bs @?= [(Nothing, ["a"])],
+      testCase "regular expression styles are not implemented yet (G0254)" $
+        codesS "@style-def regex body pattern=\"[0-9]+\" style=strong\n" @?= ["G0254"],
+      testCase "an invalid definition is reported at its @style-def and dropped" $ do
+        let at src = let (_, ds, _) = runS sctx src in [(x, spanStart (diagSpan d)) | d <- ds, let DiagnosticCode x = diagCode d]
+        at "@style-def paragraph Letter\n" @?= [("G0306", 0)]
+        at "@style-def paragraph a line-breaks=x\n" @?= [("G0306", 0)]
+        at "@style-def paragraph a based-on=nope\n" @?= [("G0313", 0)]
+        codesS "@style-def paragraph a based-on=nope\n\n@style a\nx\n" @?= ["G0313", "G0247"],
+      testCase "@manifest and @style-def elsewhere are G0249" $ do
+        codesS "a\n\n@style-def paragraph letter\n" @?= ["G0249"]
+        codesS "@label x\n@style-def paragraph letter\na\n" @?= ["G0249"]
+        codesS "a\n\n@manifest paragraph-separator=line\n" @?= ["G0249"],
+      testCase "a filter may give the paragraph styles of the file" $ do
+        let hook = noPlugins {phApplyFilters = \_ (Document f bs) -> Right (Document f (bs <> [Block (mkSpan f 0 1) Nothing (Paragraph (Just "letter") [])]), [])}
+        codesS "x\n" @?= []
+        let (_, ds, _) = runS sctx {ctxPlugins = hook} "@style-def paragraph letter\n\nx\n"
+        ds @?= []
+        let (_, ds', _) = runS sctx {ctxPlugins = hook} "x\n"
+        map (\d -> let DiagnosticCode c = diagCode d in c) ds' @?= ["G0247"]
+    ]
+  where
+    stripped = \case
+      Paragraph st is -> (st, stripSpans is)
+      other -> error (show other)

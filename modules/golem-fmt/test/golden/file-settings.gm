@@ -1,0 +1,4 @@
+@manifest paragraph-separator=line
+@style-def paragraph letter indent=1zw
+
+本文。
