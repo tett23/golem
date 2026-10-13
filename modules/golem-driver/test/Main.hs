@@ -272,10 +272,7 @@ tests =
             let source = T.unwords (replicate 24 "well-known") <> "\n"
             pdf <- miniPdf fakeProvider False horizontalStyle source []
             contents <- pageContents pdf
-            let occurrences c = case BS.breakSubstring "<002D>" c of
-                  (_, rest) | BS.null rest -> 0 :: Int
-                  (_, rest) -> 1 + occurrences (BS.drop 6 rest)
-            sum (map occurrences contents) @?= T.count "-" source,
+            sum (map (length . occurrences "<002D>") contents) @?= T.count "-" source,
           testCase "fonts and layout are not touched unless PDF is a target" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
             copyTree fixture tmp
             BS.writeFile (tmp </> "style.toml") pdfStyle
