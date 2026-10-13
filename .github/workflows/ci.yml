@@ -109,6 +109,16 @@ jobs:
           ghc-version: ${{ env.GHC_VERSION }}
           cabal-version: "3.16.1.0"
           cabal-update: false
+      - name: GHC on the PATH (docs/adr/0009)
+        # On a cache hit of GHC, ghcup skips the install and does not link
+        # ghc-$GHC_VERSION into its bin directory, so cabal (with-compiler:
+        # ghc-9.10.3) finds it in the GHC directory itself
+        run: |
+          if [ ! -x "$GHC_DIR/bin/ghc-$GHC_VERSION" ]; then
+            test -x "$GHC_DIR/bin/ghc"
+            ln -s ghc "$GHC_DIR/bin/ghc-$GHC_VERSION"
+          fi
+          echo "$GHC_DIR/bin" >> "$GITHUB_PATH"
       - id: index
         name: Cache the Hackage index (docs/adr/0009)
         uses: actions/cache@v6
