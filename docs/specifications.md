@@ -10,7 +10,7 @@ Golem は CLI で動作する統合組版システムである。
 特定のモジュールに属さない横断的な決定は `docs/adr/` に置く。
 ADR はコミット後、ステータスの行を除いて変更しない。
 ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持つ（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)）。
-監査の記録（`docs/audit/`）と性能計測の記録（`docs/benchmarks/`）も、コミット後は変更しない（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)）。
+監査の記録（`docs/audit/`、`docs/audits/`）と性能計測の記録（`docs/benchmarks/`、`docs/benchmark/`）も、コミット後は変更しない（[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](adr/0012-update-adr-guard-to-v0.8.1.md)）。
 この文書には実装の詳細を書かない。
 
 ## 目的

@@ -18,7 +18,7 @@ Golem への変更は、どれも ADR（Architecture Decision Record）から始
 git config core.hooksPath .githooks
 ```
 
-フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.8.0 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.0`）。
+フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.8.1 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.1`）。
 この設定はリポジトリに保存されないため、クローンのたびに実行する。
 
 ## 変更の流れ
@@ -121,7 +121,7 @@ ADR で仕様が変わったら、同じプルリクエストで [docs/specifica
 
 監査の記録や性能計測のスナップショットは、`docs/` の下に用途ごとのディレクトリを作って置く。
 これらもコミットしたあとは変更しない。
-`docs/audit/` と `docs/benchmarks/` に置いた記録は、フックと CI の `adr` ジョブがコミット後の変更、削除、移動を拒否する（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)）。
+`docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/` に置いた記録は、フックと CI の `adr` ジョブがコミット後の変更、削除、移動を拒否する（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)）。
 `docs/ci-timings/` のようにほかの名前のディレクトリに置いた記録は検査されないので、約束とレビューで守る。
 
 日本語の文章は、一文ごとに改行する。
