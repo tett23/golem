@@ -100,14 +100,14 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 git config core.hooksPath .githooks
 ```
 
-フックは [adr-guard](https://github.com/tett23/adr-guard) を呼び出すので、あらかじめインストールしておく。
+フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.5.0 以降を呼び出すので、あらかじめインストールしておく（[docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md)）。
 `.githooks/pre-commit` は、コミット済みの ADR（`docs/adr/` と `docs/<モジュール>/adr/` の配下）への変更、削除、リネームを含むコミットを拒否する。
-例外は `ステータス:` で始まる行で、この行だけは変更できる。
+例外は `ステータス:` で始まる行で、この行だけは変更できる（`--allow-status`）。
 ADR の参照にリンクを付ける、外す、リンク先を変えるだけの変更も許す（`--allow-links`）。
 文書の中の ADR の参照（`ADR 0001` の形）には、ADR のファイルへのリンクを付ける。リンクのない参照は `adr-guard links` で一覧にでき、`adr-guard links --fix` で直せる。
 ADR はコミット後に変更しない規約であり、変更が必要な場合は新しい連番の ADR を作成する（詳細は [CLAUDE.md](./CLAUDE.md)）。
 `core.hooksPath` はクローンごとのローカル設定であり、リポジトリには保存されないため、クローンのたびに実行が必要になる。
-同じ検査は CI の `adr` ジョブでも行う。
+同じ検査は CI の `adr` ジョブでも、adr-guard の v0.5.0 の action に `allow-status: true` と `allow-links: true` を付けて行う。
 
 ### 固定しているネイティブライブラリ
 
@@ -198,7 +198,7 @@ CI の hlint は、GHC でビルドせず、hlint のリリースの x86-64 Linu
 
 | ジョブ | 内容 |
 |---|---|
-| `adr` | コミット済みの ADR が変更されていないことを検査する |
+| `adr` | コミット済みの ADR が変更されていないこと、文書の中の ADR の参照にリンクがあることを検査する |
 | `changes` | `scripts/ci/` のスクリプトのテスト（`scripts/ci/test.sh`）を実行し、変更のパスからビルドが要るかを決める |
 | `build` | x86-64 と aarch64 の Linux でビルドとテストを行い、生成したパーサーが文法と一致することを確かめる。x86-64 では EPUB が epubcheck を通ることも確かめる |
 | `determinism` | 決まった入力（`scripts/determinism.sh`）の出力のハッシュを、二つのアーキテクチャで比べる |
