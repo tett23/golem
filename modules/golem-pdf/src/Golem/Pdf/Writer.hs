@@ -17,6 +17,7 @@ module Golem.Pdf.Writer
     Obj (..),
     writePdf,
     contentStream,
+    pdfTextString,
     documentId,
     instanceId,
     pdfDate,
@@ -89,6 +90,8 @@ data Mark
     StyledGlyphRun !RunStyle !FontRef !Sp ![(GlyphId, Sp, Sp)]
   | -- | marks drawn inside q and Q, so the graphics state is restored
     Saved ![Mark]
+  | -- | marks drawn with the origin moved, inside q and Q (ADR 0004)
+    Translated !Sp !Sp ![Mark]
   deriving stock (Eq, Show)
 
 data Page = Page
@@ -133,6 +136,8 @@ data Document = Document
     docDate :: !(Integer, Int, Int),
     docId :: !ByteString,
     docInstanceId :: !ByteString,
+    -- | the Producer, such as @Golem 0.1.0@ (ADR 0005); written as given
+    docProducer :: !Text,
     -- | PDF/X-4 (golem-pdf ADR 0002)
     docPdfX :: !(Maybe PdfX)
   }
@@ -209,6 +214,7 @@ contentStream fontNames imageNames marks = BL.toStrict (B.toLazyByteString (mcon
               <> "ET Q"
               <> nl
       Saved ms -> "q" <> nl <> mconcat (map mark ms) <> "Q" <> nl
+      Translated x y ms -> "q 1 0 0 1 " <> num x <> sp <> num y <> " cm" <> nl <> mconcat (map mark ms) <> "Q" <> nl
     hex4 g = B.string7 (printf "%04X" g)
 
 -- ------------------------------------------------------------------ serialization
@@ -237,6 +243,14 @@ rectObj (Rect x y w h) = OArr (map (OReal . spToPt) [x, y, x + w, y + h])
 utf16Hex :: Text -> Obj
 utf16Hex t = OHex (BS.pack [0xFE, 0xFF] <> TE.encodeUtf16BE t)
 
+{- | A text string: printable ASCII as a literal string, otherwise UTF-16BE
+with the byte order mark, as the Title (ADR 0005).
+-}
+pdfTextString :: Text -> Obj
+pdfTextString t
+  | T.all (\c -> c >= ' ' && c <= '~') t = OStr (TE.encodeUtf8 t)
+  | otherwise = utf16Hex t
+
 {- | Writes the document. Objects are numbered: catalog, page tree, each
 page (with its content), fonts and images in order of first reference,
 then the document information.
@@ -245,7 +259,7 @@ writePdf :: Document -> ByteString
 writePdf doc =
   let pages = docPages doc
       fontOrder = nub [f | p <- pages, m <- pageContent p, f <- fontsOf m]
-      imageOrder = nub [i | p <- pages, Image i _ <- pageContent p]
+      imageOrder = nub [i | p <- pages, m <- pageContent p, i <- imagesOf m]
       fontNames = Map.fromList (zip fontOrder [1 ..])
       imageNames = Map.fromList (zip imageOrder [1 ..])
       nPages = length pages
@@ -262,7 +276,7 @@ writePdf doc =
         Nothing -> ([], [])
         Just px ->
           ( [ OStream [("N", OInt 4), ("Filter", OName "FlateDecode")] (flate (pxProfile px)),
-              OStream [("Type", OName "Metadata"), ("Subtype", OName "XML")] (xmpPacket px (docTitle doc) (docDate doc) (docId doc) (docInstanceId doc))
+              OStream [("Type", OName "Metadata"), ("Subtype", OName "XML")] (xmpPacket px (docTitle doc) (docProducer doc) (docDate doc) (docId doc) (docInstanceId doc))
             ],
             [ ( "OutputIntents",
                 OArr
@@ -309,7 +323,8 @@ writePdf doc =
         ODict
           [ ("Title", utf16Hex (docTitle doc)),
             ("CreationDate", OStr (pdfDate (docDate doc))),
-            ("ModDate", OStr (pdfDate (docDate doc)))
+            ("ModDate", OStr (pdfDate (docDate doc))),
+            ("Producer", pdfTextString (docProducer doc))
           ]
           `addInfo` [("Trapped", OName "False"), ("GTS_PDFXVersion", OStr "PDF/X-4")]
       addInfo (ODict kvs) extra = ODict (kvs <> (if isJust (docPdfX doc) then extra else []))
@@ -342,6 +357,12 @@ writePdf doc =
       RotatedGlyphRun f _ _ -> [f]
       StyledGlyphRun _ f _ _ -> [f]
       Saved ms -> concatMap fontsOf ms
+      Translated _ _ ms -> concatMap fontsOf ms
+      _ -> []
+    imagesOf = \case
+      Image i _ -> [i]
+      Saved ms -> concatMap imagesOf ms
+      Translated _ _ ms -> concatMap imagesOf ms
       _ -> []
 
 fontObjects :: Int -> Font -> [Obj]

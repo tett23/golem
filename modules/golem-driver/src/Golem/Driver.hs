@@ -4,6 +4,7 @@
 module Golem.Driver
   ( Target (..),
     allTargets,
+    CropMarks (..),
     BuildOptions (..),
     defaultOptions,
     BuildResult (..),
@@ -52,6 +53,7 @@ import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Html
 import Golem.Parser.AST qualified as A
+import Golem.Pdf qualified as P
 import Golem.Plugin.Lock (defaultCacheDir)
 import Golem.Project
 import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
@@ -68,6 +70,12 @@ data Target = TargetHtml | TargetEpub | TargetText | TargetPdf
 allTargets :: [Target]
 allTargets = [TargetHtml, TargetEpub, TargetText, TargetPdf]
 
+{- | The crop marks of the PDF (golem-pdf ADR 0004), chosen by golem build
+--marks. golem-cli does not depend on golem-pdf, so this is not its type.
+-}
+data CropMarks = NoMarks | JapaneseMarks | WesternMarks
+  deriving stock (Eq, Show)
+
 data BuildOptions = BuildOptions
   { optRoot :: !FilePath,
     optTargets :: !(Maybe [Target]),
@@ -75,12 +83,13 @@ data BuildOptions = BuildOptions
     optCheckOnly :: !Bool,
     -- | where fonts come from (golem-font; see Golem.Driver.Pdf)
     optFonts :: !FontProvider,
-    -- | break paragraphs in parallel (the PDF is the same either way)
-    optParallel :: !Bool
+    optParallel :: !Bool,
+    -- | the crop marks of the PDF (golem-pdf ADR 0004)
+    optMarks :: !CropMarks
   }
 
 defaultOptions :: FilePath -> BuildOptions
-defaultOptions root = BuildOptions root Nothing Dev False golemFontProvider True
+defaultOptions root = BuildOptions root Nothing Dev False golemFontProvider True NoMarks
 
 data BuildResult = BuildResult
   { brDiagnostics :: ![Diagnostic],
@@ -93,6 +102,8 @@ data Evaluated = Evaluated
     evStyle :: !Style,
     -- | the FileId of style.toml, where its diagnostics point
     evStyleFile :: !FileId,
+    -- | the text of style.toml, empty when there is none (an input of the instance ID)
+    evStyleText :: !Text,
     evResults :: !(Map FileId EvalResult),
     evBook :: !(Maybe Book),
     evDiagnostics :: ![Diagnostic],
@@ -129,7 +140,7 @@ evaluateProjectWith overlay profile root = do
           | hasErrors synDiags -> do
               assets <- loadAssets root project
               (citeKeys, _) <- loadBibliography root manifest0
-              pure (Right (Evaluated project style styleFid Map.empty Nothing synDiags (reeval profile project style assets citeKeys noPlugins Map.empty)))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) Map.empty Nothing synDiags (reeval profile project style assets citeKeys noPlugins Map.empty)))
           | otherwise -> do
               let manifest = manifest0
                   masterDiags =
@@ -149,10 +160,10 @@ evaluateProjectWith overlay profile root = do
                   pre = masterDiags <> pluginDiags <> s0Diags
                   again = reeval profile project style assets citeKeys hook results
               if hasErrors pre
-                then pure (Right (Evaluated project style styleFid results Nothing pre again))
+                then pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) results Nothing pre again))
                 else do
                   let (book, s1Diags) = assemble cfg evalDeferred chapterDocs
-                  pure (Right (Evaluated project style styleFid results (Just book) (pre <> s1Diags) again))
+                  pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) results (Just book) (pre <> s1Diags) again))
 
 readMaybeText :: FilePath -> IO (Maybe Text)
 readMaybeText p = do
@@ -321,20 +332,26 @@ build opts = do
     Left ds -> pure (BuildResult (finish ds) Map.empty [])
     Right e -> do
       let project = evProject e
-          -- the diagnostics of style.toml point at its start (golem-project ADR 0004)
-          infos = Map.insert (evStyleFile e) (SourceInfo "style.toml" (mkLineIndex "")) (sourceInfos project)
           targets = fromMaybe (targetsOf (projectManifest project)) (optTargets opts)
+      hasStyle <- doesFileExist (optRoot opts </> "style.toml")
+      let styleFid = evStyleFile e
+          -- style.toml is a source of diagnostics (golem-project ADR 0004, G0702) when it exists
+          infos =
+            (if hasStyle then Map.insert styleFid (SourceInfo "style.toml" (mkLineIndex (evStyleText e))) else id)
+              (sourceInfos project)
+          marksDiags = cropMarkDiagnostics opts e (if hasStyle then styleFid else projectManifestFile project) targets
       -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
       missing <- missingStyleFiles (optRoot opts) (evStyle e)
-      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics (evStyleFile e) (evStyle e) missing t)) | t <- targets]
+      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics styleFid (evStyle e) missing t)) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
-          writable = [t | (t, ds) <- perTarget, not (hasErrors ds)]
+          -- G0702 stops the PDF before it is laid out; the other targets are written
+          writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
       case evBook e of
         Just book
           | not (hasErrors (finish (evDiagnostics e))) && not (optCheckOnly opts) -> do
               (written, outDiags) <- writeTargets opts e book missing writable
-              pure (BuildResult (finish (evDiagnostics e <> fileDiags <> outDiags)) infos written)
-        _ -> pure (BuildResult (finish (evDiagnostics e <> fileDiags)) infos [])
+              pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags <> outDiags)) infos written)
+        _ -> pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags)) infos [])
   where
     finish = sortDiagnostics . map (adjustForProfile (optProfile opts))
 
@@ -366,6 +383,37 @@ targetFileDiagnostics fid style missing = \case
         Just err <- [Map.lookup p missing],
         let msg = if err == Missing then missingMsg else pathErrorMessage err
       ]
+
+{- | G0702 (golem-pdf ADR 0004): Japanese crop marks need bleed, because the
+trim line and the bleed line would be drawn on top of each other. Only when
+the PDF is a target; at the top of style.toml (or of the manifest without
+one), as Style keeps no positions.
+-}
+cropMarkDiagnostics :: BuildOptions -> Evaluated -> FileId -> [Target] -> [Diagnostic]
+cropMarkDiagnostics opts e fid targets =
+  [ diagnostic "G0702" Error (mkSpan fid 0 0) "日本式のトンボには塗り足しが要ります。style.toml の [page] に bleed を書いてください"
+  | optMarks opts == JapaneseMarks,
+    TargetPdf `elem` targets,
+    maybe 0 pageBleed (stPage (evStyle e)) == 0
+  ]
+
+-- | The crop marks of golem-pdf.
+markStyle :: CropMarks -> Maybe P.MarkStyle
+markStyle = \case
+  NoMarks -> Nothing
+  JapaneseMarks -> Just P.Japanese
+  WesternMarks -> Just P.Western
+
+{- | The options that change the output, as one input of the instance ID
+(golem-pdf ADR 0004), spelt as on the command line. --target and --format
+do not change the bytes of the PDF and are left out.
+-}
+optionsInput :: BuildOptions -> Text
+optionsInput opts =
+  "options marks="
+    <> (case optMarks opts of NoMarks -> "none"; JapaneseMarks -> "japanese"; WesternMarks -> "western")
+    <> " profile="
+    <> (case optProfile opts of Dev -> "dev"; Prod -> "prod")
 
 writeTargets :: BuildOptions -> Evaluated -> Book -> Map FilePath PathError -> [Target] -> IO ([FilePath], [Diagnostic])
 writeTargets opts e book missing targets = do
@@ -460,8 +508,9 @@ writeTargets opts e book missing targets = do
     TargetPdf -> do
       let dir = root </> "build" </> "pdf"
           out = dir </> pdfFileName (mdId md)
-          inputs = projectManifestText project : [sfText sf | sf <- Map.elems (projectSources project)]
-      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib)
+          -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
+          inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
+      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)))
       case r of
         Left ds -> pure ([], ds)
         Right bytes -> do

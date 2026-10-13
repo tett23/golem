@@ -323,7 +323,7 @@ isbn = "978-..."
 成果物に書き込む識別子は、乱数を使わずすべて導出する。
 
 - **文書 ID**（XMP の DocumentID と PDF のトレーラー `/ID` の第一要素）：マニフェストの `id` から名前ベースの UUID（v5）で導出する。文書 ID は同じ文書の版をまたいで変わらない値なので、本の識別子から作る。
-- **インスタンス ID**（XMP の InstanceID と `/ID` の第二要素）：入力全体のハッシュから導出する。入力全体とは、全ソースファイル、マニフェスト、`plugins.lock`、使ったフォントのバイト列、Golem の版である。Golem の版は `golem-` に `VERSION` の内容を続けた文字列とし、入力の末尾に加える（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+- **インスタンス ID**（XMP の InstanceID と `/ID` の第二要素）：入力全体のハッシュから導出する。入力全体とは、全ソースファイル、マニフェスト、`style.toml`、`plugins.lock`、使ったフォントのバイト列、出力を変える CLI のオプション（`--marks` と `--profile`）、Golem の版である。`style.toml` はマニフェストの直後に置き、ないときは空のバイト列とする。CLI のオプションは、ソースファイルの後に `options marks=<値> profile=<値>` の形の一つの要素として置き、既定の値も省かない（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。Golem の版は `golem-` に `VERSION` の内容を続けた文字列とし、入力の末尾に加える（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **EPUB の識別子**：電子版の ISBN があればそれを使い、なければマニフェストの `id` を使う。
 
 シェイピングとフォントの処理に使う HarfBuzz と FreeType、プラグインの実行に使う wasmtime、PDF の圧縮に使う zlib は版を固定する。
@@ -332,10 +332,16 @@ isbn = "978-..."
 
 式の評価、とくに浮動小数点数の計算は、x86-64 と aarch64 の両方の CI でテストし、結果が一致することを確かめる。
 
+出力は、ファイルの入力、Golem の版、出力を変える CLI のオプション（`--marks` と `--profile`）だけで決まる（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
+CLI のオプションは呼び出しに明示されるので、同じオプションで呼べば CI と手元で同じ出力が得られる。
+今後 CLI に出力を変えるオプションを加えるときは、インスタンス ID の入力に加える。
+
 v1 で決定性を保証するのは PDF、HTML、プレーンテキストである。
 EPUB はパッケージである zip の中に時刻や並び順の揺れを含みうるので、EPUB の決定性は v2 で扱う。
 
 PDF の Producer には Golem の版を書く。
+Producer は `Golem ` に `VERSION` の内容を続けた文字列（例：`Golem 0.1.0-rc1`）とし、文書情報辞書の `Producer` と XMP の `pdf:Producer` の両方に書く（[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。
+Git のコミットやビルドの環境は含めない。
 このため Golem を更新すると出力のバイト列は変わるが、処理系も入力の一部なので決定性には反しない。
 
 ### 本文からの参照
@@ -419,6 +425,7 @@ v1 では `@toc` は文書に一つだけとし、章ごとの小目次は扱わ
 size = "B6"
 binding = "right"
 writing-mode = "vertical"
+bleed = "3mm"
 
 [page.grid]
 font-size = "13Q"
@@ -513,6 +520,14 @@ folio = { position = "bottom-outside", format = "{n}" }
 字数と行数を整数で決めることで、行頭と行末が字送りの格子にそろう。
 
 寸法は `mm`、`pt`、`Q`（級）、`H`（歯）、`zw`（全角一字分）の単位を付けた文字列で書き、処理系の内部では整数の sp に変換する。
+
+`[page]` の `bleed` は塗り足し[^bleed]の幅であり、既定は `0mm` である（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
+塗り足しは文字の大きさに依存しない長さなので、`zw` で書くとエラー（G0306）とする。
+塗り足しがあれば、PDF の MediaBox と BleedBox は仕上がりの判型の外側に塗り足しの幅だけ広がり、TrimBox が仕上がりの判型になる。
+トンボ[^cropmarks]の有無と形は `style.toml` ではなく、`golem build` の `--marks` で選ぶ（CLI の節を参照）。
+塗り足しは `--marks none` でも効くので、トンボを付けずに塗り足しだけを含めた PDF も作れる。
+v1 には版面の外に描くものがないので、塗り足しの領域は空のままになる。
+EPUB と HTML は `bleed` を無視する。
 
 未知のキーはエラーとする。
 綴りを誤った設定が黙って無視されると、その誤りは出力の見た目の劣化としてしか現れないためである。
@@ -1010,8 +1025,8 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | コマンド | 内容 |
 |---|---|
 | `golem new <dir> [--language ja\|en] [--no-fonts]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する |
-| `golem build [--target ...] [--profile dev\|prod]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
-| `golem check` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)） |
+| `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
+| `golem check [--profile dev\|prod] [--marks japanese\|western\|none]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)） |
 | `golem lint` | lint を実行する |
 | `golem fmt [--check]` | 整形する |
 | `golem lsp` | LSP サーバーを起動する |
@@ -1021,6 +1036,19 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | `golem --version` | `golem` に版を続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
 `golem new` での `id` の生成が、Golem が乱数を使う唯一の箇所である。
+
+`--marks` は PDF に付けるトンボの形を選ぶ（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
+値は `japanese`（日本式の二重のトンボ）、`western`（欧文の一重のトンボ）、`none`（トンボなし）で、既定は `none` である。
+`--marks` は PDF にだけ効き、PDF を書かないビルドでは何も変えない。
+未知の値と値の欠けは使い方の誤りとし、終了コード 2 で終える。
+トンボは閲覧用と入稿用の PDF を同じ原稿から作り分けるための出力の設定なので、ファイルではなくオプションで選ぶ。
+トンボがあると、MediaBox は仕上がりの判型の外側に、トンボの始点の距離と 13mm を足した幅だけ広がり、ページの内容はその分だけ移して描く。
+トンボの線は太さ 0.25pt、長さ 10mm で、CMYK の各 100% で描く。
+日本式のトンボの始点は塗り足しの線、欧文のトンボの始点は塗り足しの線と仕上がりから 3mm のうち遠いほうである。
+日本式のトンボは仕上がりの線と塗り足しの線の間隔で塗り足しを示すので、塗り足しが 0 ならエラー（G0702）とし、PDF を出力しない。
+G0702 は PDF をターゲットに含むときにだけ出し、位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
+`golem check` も、マニフェストのターゲットに PDF があれば G0702 を検査する。
+`golem lint`、`golem fmt`、LSP は `--marks` を持たない。
 
 `golem new` の雛形は、そのまま四つのターゲットをすべてビルドできる（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
 `--language` で日本語（既定）と英語を選び、言語に合わせて版面とフォントを決める。
@@ -1154,8 +1182,6 @@ v1 のリリースまでに、次の項目を扱う。
 
 - **目次**：PDF の目次は番号と題だけを出し、ページ番号を出していない。[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md) で、ページ番号を項目の最後の行の終わりにそろえて置き、題とのあいだをリーダーで埋め、`[toc]` の `leader`（`"dots"` か `"none"`）で選べるようにすると決めた（未実装）。
 - **柱の内容**：マスターページの `running-head` の `content`（`"heading.1.short"` など）と、`[headings.<階層>]` の `running-head` を読み込むが、PDF では使っていない。柱には常に 1 の階層の見出しの短い題を出す（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。設定のとおりに柱の内容を決めるか、使わない欄をなくす。
-- **トンボと塗り足し**：入稿用の、トンボと塗り足しの領域を付けた PDF を出力できない。今の PDF は、MediaBox、TrimBox、BleedBox をすべて仕上がりの判型と同じ大きさにしている。[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md) で、`style.toml` の `[page]` に `bleed` を、`golem build` と `golem check` に `--marks japanese|western|none` を加え、日本式のトンボで塗り足しが 0 なら G0702 とすると決めた（未実装）。
-- **PDF の Producer**：仕様では PDF の Producer に Golem の版を書くが、まだ書いていない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md) で、文書情報辞書の `Producer` と XMP の `pdf:Producer` に `Golem <版>`（例：`Golem 0.1.0-rc1`）を書くと決めた（未実装）。
 
 #### 記法と設定
 
@@ -1233,3 +1259,5 @@ LLM は仕様が不明なとき、適宜 Pandoc の仕様を参照してよい�
 [^prose-slot]: **散文スロット**：命令文脈の `:` の後に書く本文の欄。`|` で区切って複数書ける（[markup.md](markup.md)）。
 [^fore-edge]: **小口**：ページの、綴じる側（ノド）と反対の端。
 [^line-length]: **L*(i)**：行分割で、i 番目の行に与える目標の行長。行ごとに変えられるので、回り込みの図版の脇の行だけを短くできる。
+[^bleed]: **塗り足し**：仕上がりの判型の外側に設ける、断裁のずれを吸収するための領域。ページの端まで届く絵や色は、この領域まで伸ばして描く。日本の印刷所では 3mm が多い。
+[^cropmarks]: **トンボ**：断裁の位置を示すために、仕上がりの判型の外側に描く線。日本式は仕上がりの線と塗り足しの線の二重、欧文は仕上がりの線だけの一重である。

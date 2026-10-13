@@ -135,7 +135,8 @@ tests =
         (code', _, _) <- readCreateProcessWithExitCode (proc "golem" ["fmt", "a.gm"]) {cwd = Just tmp} ""
         code' @?= ExitSuccess
         readFile (tmp </> "a.gm") >>= (@?= "@style verse\n  Full fathom five\n"),
-      missingFontTests
+      missingFontTests,
+      marksTests
     ]
 
 -- | Runs golem in a project whose body font is missing (golem-project ADR 0004).
@@ -160,4 +161,41 @@ missingFontTests =
         (code, err) <- inMissingProject ["build", "--target", "html"]
         assertEqual err ExitSuccess code
         assertBool err ("G0310" `isInfixOf` err)
+    ]
+
+-- | A project without bleed: a manifest with the HTML and PDF targets and one chapter.
+projectFiles :: [(FilePath, String)]
+projectFiles =
+  [ ( "manifest.toml",
+      "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n\n[targets.pdf]\n"
+    ),
+    ("a.gm", "本文。\n")
+  ]
+
+-- | Runs golem in a directory holding the project; the output is stderr.
+golemIn :: [(FilePath, String)] -> [String] -> IO (ExitCode, String)
+golemIn files args = withSystemTempDirectory "golem-cli" $ \tmp -> do
+  mapM_ (\(p, c) -> BL.writeFile (tmp </> p) (BL.fromStrict (TE.encodeUtf8 (T.pack c)))) files
+  (code, _, err) <- readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
+  pure (code, err)
+
+marksTests :: TestTree
+marksTests =
+  testGroup
+    "--marks (golem-pdf ADR 0004)"
+    [ testCase "golem build --marks nope is a usage error" $ do
+        (code, out) <- golem ["build", "--marks", "nope"]
+        assertEqual out (ExitFailure 2) code
+        assertBool out ("未知のトンボの形です: nope" `isInfixOf` out),
+      testCase "golem check --marks nope is a usage error" $ do
+        (code, out) <- golem ["check", "--marks", "nope"]
+        assertEqual out (ExitFailure 2) code
+        assertBool out ("未知のトンボの形です: nope" `isInfixOf` out),
+      exitsWith (ExitFailure 2) ["build", "--marks"],
+      testCase "Japanese marks without bleed: G0702 for PDF, nothing for HTML" $ do
+        (code, err) <- golemIn projectFiles ["build", "--target", "pdf", "--marks", "japanese"]
+        assertEqual err (ExitFailure 1) code
+        assertBool err ("G0702" `isInfixOf` err)
+        (code', err') <- golemIn projectFiles ["build", "--target", "html", "--marks", "japanese"]
+        assertEqual err' ExitSuccess code'
     ]
