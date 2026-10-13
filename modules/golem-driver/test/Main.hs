@@ -315,6 +315,7 @@ tests =
       testGroup "vertical glyphs turned without a vertical form (ADR 0015)" turnedTests,
       testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
+      testGroup "forced breaks (docs/adr ADR 0017)" breakTests,
       testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
       testGroup
         "public-domain books"
@@ -2481,4 +2482,58 @@ quotedCodes src =
     T.length code == 5,
     T.all isDigit (T.drop 1 code),
     T.take 1 (T.drop 6 rest) == "\""
+  ]
+
+breakTests :: [TestTree]
+breakTests =
+  [ testCase "PDF: a page break puts the second paragraph on the first line of page 2" $ do
+      r <- pagesMini "" fiveLines "あ\n\n@page-break\n\nい\n" [] Map.empty
+      pages <- either (assertFailure . show) pure r
+      length pages @?= 2
+      take 1 (pages !! 1) @?= ["い"],
+    testCase "PDF: a blank page has no running head and no folio" $ do
+      let style = fiveLines <> "\n[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
+      pdf <- miniPdf fakeProvider True style "あ\n\n@page-break\n\n@page-break\n\nい\n" []
+      length (occurrences "/Type /Page " pdf) @?= 3
+      streams <- inflateAll pdf
+      -- two pages draw their text and folio; the blank page draws nothing
+      length (filter (not . null . drawnGlyphs) streams) @?= 2
+      r <- pagesMini "" style "あ\n\n@page-break\n\n@page-break\n\nい\n" [] Map.empty
+      pages <- either (assertFailure . show) pure r
+      pages !! 1 @?= [],
+    testCase "HTML: a recto break marks the heading after it; only the rules used are written" $
+      withVerseProject "" "@page-break recto\n# h\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) ("data-break-before=\"recto\">" `T.isInfixOf` page && "<h1 " `T.isInfixOf` page)
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        assertBool "recto rule" ("[data-break-before=\"recto\"] { page-break-before: always; break-before: recto; }" `T.isInfixOf` css)
+        assertBool "no page rule" (not ("[data-break-before=\"page\"]" `T.isInfixOf` css))
+        assertBool "no verso rule" (not ("[data-break-before=\"verso\"]" `T.isInfixOf` css)),
+    testCase "HTML: a body paragraph after a page break has the attribute and no class" $
+      withVerseProject "" "a\n\n@page-break\n\nb\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) ("<p>a</p>\n<p data-break-before=\"page\">b</p>\n" `T.isInfixOf` page),
+    testCase "HTML: a break at the end of a file and a column break write nothing" $ do
+      withVerseProject "" "a\n\n@page-break\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) (not ("data-break-before" `T.isInfixOf` page))
+        assertBool (T.unpack page) ("<p>a</p>\n</body>" `T.isInfixOf` page)
+      withVerseProject "" "a\n\n@column-break\n\nb\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) ("<p>a</p>\n<p>b</p>\n" `T.isInfixOf` page)
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        assertBool "no rule" (not ("data-break-before" `T.isInfixOf` css)),
+    testCase "plain text: a page break writes nothing" $ do
+      let text src = withVerseProject "" src $ \tmp -> do
+            _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            TIO.readFile (tmp </> "build/text/horizontal/v.txt")
+      broken <- text "a\n\n@page-break\n\nb\n"
+      plain <- text "a\n\nb\n"
+      broken @?= plain
+      plain @?= "a\n\nb\n"
   ]

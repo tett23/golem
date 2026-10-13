@@ -724,6 +724,8 @@ data UnitKind
     UGap Int
   | -- | an entry of the table of contents: its level and its heading (golem-driver ADR 0009)
     UTocEntry Int SrcSpan
+  | -- | a forced break (docs/adr ADR 0017)
+    UBreak !BreakKind
 
 -- | The role, the size and the indent of a paragraph style (docs/adr ADR 0005, 0006).
 paraLook :: Style -> PageGeometry -> Maybe Text -> ((Text, Sp), Indent)
@@ -774,6 +776,7 @@ unitsOf book geom styleOf pageOf bib = concatMap doc (bookDocs book)
             ChannelOutput (TocOutput depth) -> [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) | e <- bookToc book, teLevel e <= depth]
             ChannelOutput IndexOutput -> [plainUnit (UPara noIndent) Nothing is | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
             ChannelOutput BibliographyOutput -> [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bookCitations book)]
+            ForcedBreak k -> [plainUnit (UBreak k) Nothing []]
     prefixFirst p (u@Unit {uKind = UPara _} : rest) = u {uInlines = txt p : uInlines u} : rest
     prefixFirst _ us = us
     splitBreaks is = case break isBreak is of
@@ -906,8 +909,10 @@ buildFlow inp geom fonts images assumed = do
   besides <- Map.fromList . concat <$> mapper (uncurry wrapJob) jobs
   -- 2. every other unit on its own
   let rest = [(i, u) | (i, u) <- units, Map.notMember i besides, not (isFigure u), not (isTable u), not (isGap u)]
+      -- gaps and breaks are not composed
       isGap u = case uKind u of
         UGap _ -> True
+        UBreak _ -> True
         _ -> False
       isFigure u = case uKind u of
         UFigure _ -> True
@@ -1033,6 +1038,7 @@ buildFlow inp geom fonts images assumed = do
                           )
                 _ -> (nextId + 1, flows <> [FFigure nextId (pfImageLines pf + pfCaptionSpan pf) (label u) fmarks], lineAcc, Map.insert nextId pf figAcc, headAcc, errs <> ferrs)
             UGap n -> (nextId, flows <> [FSpace n], lineAcc, figAcc, headAcc, errs)
+            UBreak k -> (nextId, flows <> [FBreak k], lineAcc, figAcc, headAcc, errs)
             _ ->
               let c = singles Map.! i
                   ls = cLines c

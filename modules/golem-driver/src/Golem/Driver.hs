@@ -487,7 +487,8 @@ writeTargets opts e book missing targets = do
             hcSidenoteFace = sidenoteFace style,
             hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
             hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
-            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby)
+            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
+            hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ (ForcedBreak k) <- bs]
           }
       present = mfilter (`Map.notMember` missing)
       changed a b = if a == b then Nothing else Just a

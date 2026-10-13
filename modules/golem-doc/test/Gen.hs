@@ -90,4 +90,12 @@ genBlock =
     attrs = HeadingAttrs <$> Gen.maybe inl <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool <*> Gen.bool
 
 genDocument :: Gen Document
-genDocument = Document (FileId 0) <$> Gen.list (Range.linear 0 5) genBlock
+genDocument = Document (FileId 0) <$> Gen.list (Range.linear 0 5) genTopBlock
+
+-- | A block at the top of a document, where a forced break may stand (docs/adr ADR 0017).
+genTopBlock :: Gen Block
+genTopBlock =
+  Gen.frequency
+    [ (5, genBlock),
+      (1, Block <$> genSpan <*> pure Nothing <*> (ForcedBreak <$> Gen.enumBounded))
+    ]
