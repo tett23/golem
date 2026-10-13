@@ -102,6 +102,7 @@ bodyT = \case
   CodeBlock lang t -> tagged 6 [opt text lang, text t]
   FigureBlock fig -> tagged 7 [figureT fig]
   ChannelOutput c -> tagged 8 [channelT c]
+  ForcedBreak k -> tagged 11 [int (fromEnum k)]
 
 attrsT :: HeadingAttrs -> Term
 attrsT (HeadingAttrs tt n nn nt) = TList [opt inlinesTerm tt, opt int n, TBool nn, TBool nt]
@@ -271,6 +272,7 @@ termBody t =
         6 | [l, x] <- fs -> CodeBlock <$> asOpt asText l <*> asText x
         7 | [fig] <- fs -> FigureBlock <$> termFigure fig
         8 | [c] <- fs -> ChannelOutput <$> termChannel c
+        11 | [k] <- fs -> ForcedBreak <$> asEnum k
         -- 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
         _ -> bad "ブロックの種類"
     [] -> bad "ブロックの種類"

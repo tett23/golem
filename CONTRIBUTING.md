@@ -197,6 +197,9 @@ CI の `changes` ジョブは、そうした文字列を拾って一覧と照ら
 フィクスチャに外部の文章やフォントを加えるときは、ライセンスを確かめて、ライセンスの文書を一緒に置く。
 出典は、そのフィクスチャの README に書く。
 取得するスクリプトでは、取得したファイルの SHA-256 を固定して検証する。
+取得した原文を Golem の原稿に変換する処理は、Python で書かない。
+`modules/golem-fixtures` の実行ファイル `golem-fixtures` に Haskell で書き、`scripts/fixtures/fetch-public-domain.sh` から `cabal run` で動かす（[docs/adr/0023](docs/adr/0023-fixture-converters-without-python.md)）。
+このパッケージはリリースの配布物に入れない。
 
 ## GitHub Actions
 

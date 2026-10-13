@@ -19,6 +19,7 @@ library
     Golem.Eval.Expr
     Golem.Eval.File
     Golem.Eval.Number
+    Golem.Eval.Settings
     Golem.Eval.Value
   build-depends:
     , base          >=4.20 && <4.21

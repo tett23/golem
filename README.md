@@ -95,6 +95,7 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 段落の字下げは段落スタイルの `indent` と `first-line-indent`（負ならぶら下げ）で指定し、既定は 0 である。
 PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
+一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ効く（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注欄の幅、版面との間隔、本文側の印だけを書く。
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
@@ -187,6 +188,14 @@ cabal test all
 
 ```bash
 scripts/gen-parser.sh
+```
+
+テストの fixture の『テンペスト』と『蟹工船』は、`scripts/fixtures/fetch-public-domain.sh` が原文を取得して作る。
+原文の変換は `modules/golem-fixtures` の実行ファイル `golem-fixtures` が行う。
+このパッケージはリリースの配布物に入らない（[docs/adr/0023](./docs/adr/0023-fixture-converters-without-python.md)）。
+
+```bash
+GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 ```
 
 テストのうち CDDL のスキーマへの適合の検査は、Rust の `cddl` クレートの CLI（0.10.7）を使う。

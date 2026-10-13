@@ -25,8 +25,9 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **命令文脈**：`[name ...]` の中。コマンドの名前、引数、散文スロットを書く（[markup.md](markup.md)）。
 - **段落の区切り方**：原稿の段落を何で区切るか。空行で区切り、段落の中の改行が文字を生まない空行の様式（既定）と、改行ひとつで区切る改行の様式の二つがある。マニフェストの `[source]` の `paragraph-separator` で選び、章の項目ごとにも変えられる（[markup.md](markup.md)、[docs/adr/0013](adr/0013-paragraph-separator.md)）。
 - **韻文**：組み込みの段落スタイル `verse` を `@style verse` で付けた段落。段落の中の改行が行の区切りになり、段落の一つが一つの連になる（[markup.md](markup.md)、[docs/adr/0003](adr/0003-verse-line-breaks.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
-- **文字スタイル**：文字の見た目（書体、大きさ、色、合成の太字と斜体）に名前を付けたもの。`style.toml` の `[character-styles.<名前>]` に定義し、原稿では `[style 名前: ...]` で付ける。`[strong: ...]`、`[bold: ...]`、`[italic: ...]` は組み込みの文字スタイルの別名である。`based-on` で別の文字スタイルを引き継ぐ（[markup.md](markup.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
-- **段落スタイル**：段落の見た目（書体、大きさ、改行の扱い、同じスタイルの段落の間の空き）に名前を付けたもの。`style.toml` の `[paragraph-styles.<名前>]` に定義し、原稿では `@style 名前` で付ける。段落スタイルを付けない段落は `body` で組む（[markup.md](markup.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+- **文字スタイル**：文字の見た目（書体、大きさ、色、合成の太字と斜体）に名前を付けたもの。`style.toml` の `[character-styles.<名前>]` に定義し、ファイルの先頭の `@style-def character` でもそのファイルにだけ効く文字スタイルを定義できる。原稿では `[style 名前: ...]` で付ける。`[strong: ...]`、`[bold: ...]`、`[italic: ...]` は組み込みの文字スタイルの別名である。`based-on` で別の文字スタイルを引き継ぐ（[markup.md](markup.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+- **段落スタイル**：段落の見た目（書体、大きさ、改行の扱い、同じスタイルの段落の間の空き）に名前を付けたもの。`style.toml` の `[paragraph-styles.<名前>]` に定義し、ファイルの先頭の `@style-def paragraph` でもそのファイルにだけ効く段落スタイルを定義できる。原稿では `@style 名前` で付ける。段落スタイルを付けない段落は `body` で組む（[markup.md](markup.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+- **ファイルの設定**：ファイルの先頭に並べた `@manifest` と `@style-def` の行。`@manifest` はマニフェストの `[source]` のキーを、`@style-def` は文字スタイルと段落スタイルを、そのファイルについてだけ上書きか定義する（[markup.md](markup.md)、[docs/adr/0014](adr/0014-in-file-settings.md)）。
 - **散文スロット**：命令文脈の `:` の後に書く本文の欄。`|` で区切って複数書ける。`[ruby: 漢字|かんじ]` の「漢字」と「かんじ」がそれぞれ散文スロットである。
 - **エスケープ**：特別な意味を持つ文字を本文の文字として書くための `\`。`\` が唯一のエスケープ文字である。
 - **校正用のコメント**：`%%=` で始まるコメント。dev のプロファイルでだけ出力に現れ、prod のプロファイルで残っていると警告になる（[仕様書](specifications.md)）。
@@ -60,9 +61,13 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **ルビ**：親文字の傍らに小さく添える読み。親文字一字ごとに振る**モノルビ**と、語の全体に振る**グループルビ**がある（[markup.md](markup.md)）。熟語の各字にモノルビとして振り、熟語の中では隣の親文字の空いている場所にかけることを許すものを**熟語ルビ**という。ルビが親文字より短いとき、ルビを親文字の中央に置くことを**中付き**、親文字の始まりの側（縦組みでは上、横組みでは左）にそろえて置くことを**肩付き**という。ルビが親文字より長いとき、はみ出す部分を隣の文字の上（縦組みでは右）に置くことを**ルビのかけ**という（[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)）。
 - **圏点**：強調のために親文字の傍らに打つ点。形（ゴマなど）は `style.toml` の既定か引数で決める。
 - **縦中横**：縦組みの中で、短い文字列を横向きのまま一字分の幅に組むこと。
+- **縦組みの向き（Vertical_Orientation）**：Unicode の UAX #50 が文字ごとに定める、縦組みでの文字の向き。正立（U）、回転（R）、縦書き用の字形があれば使い、なければ正立（Tu）、縦書き用の字形があれば使い、なければ回転（Tr）の四つの値がある。Golem の PDF は、縦書き用の字形がない R と Tr の文字を、横組みの字形を時計回りに 90 度回して描く（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 - **突き出し**と**伸縮（hz）**：行末のハイフンや句読点を版面の外へわずかに出すことと、欧文のグリフの幅をわずかに伸び縮みさせること。どちらも語間の空きのばらつきを減らす（[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md)）。
 - **回り込み**：図版の脇に本文を流し込むこと。図版の周りを除外領域とし、そこにかかる行の行長を短くする（[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。
 - **傍注**：版面の外の小口側に設けた傍注欄に置く注（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
+- **改ページ**：今のページを閉じ、次のページから続けること。原稿では `@page-break` で指定する（[markup.md](markup.md)、[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
+- **改丁**：次の奇数ページから始めること。原稿では `@page-break recto`、見出しでは `style.toml` の `page-break = "recto"` で指定する（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
+- **白ページ**：改ページや改丁で中身のないまま閉じたページ。柱もノンブルも描かない（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 
 ## 出力
 

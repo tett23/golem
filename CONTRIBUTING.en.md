@@ -197,6 +197,9 @@ Records are not changed once committed.
 When adding outside text or fonts to fixtures, check the license and include the license text.
 Record the source in that fixture's README.
 Scripts that download material pin and verify the SHA-256 of each file.
+Do not write the conversion of the downloaded texts into Golem source in Python.
+It is written in Haskell, in the `golem-fixtures` executable of `modules/golem-fixtures`, which `scripts/fixtures/fetch-public-domain.sh` runs with `cabal run` ([docs/adr/0023](docs/adr/0023-fixture-converters-without-python.md)).
+This package is not part of the release archives.
 
 ## GitHub Actions
 

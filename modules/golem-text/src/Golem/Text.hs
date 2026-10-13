@@ -114,6 +114,8 @@ block c ind (Block sp _ body) = case body of
   ChannelOutput (TocOutput d) ->
     T.intercalate "\n" [maybe "" (<> "　") (teNumber e) <> inlines c (teTitle e) | e <- bookToc (cBook c), teLevel e <= d]
   ChannelOutput IndexOutput -> ""
+  -- plain text has no pages (docs/adr ADR 0017)
+  ForcedBreak _ -> ""
   ChannelOutput BibliographyOutput ->
     T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> k | (k, n) <- bookCitations (cBook c)]
   where
