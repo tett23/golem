@@ -103,6 +103,17 @@ tests =
         assertBool "syntax error in b.gm" (any ((== Error) . diagSeverity) (fromMaybe [] (Map.lookup "b.gm" diags)))
         let codes = [c | d <- concat (Map.elems diags), let DiagnosticCode c = diagCode d]
         assertBool (show codes) (all (`notElem` codes) ["G0306", "G0310", "G0802"]),
+      testCase "G0501 is not reported for the newlines of the line style (docs/adr ADR 0013)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
+            g0501 ws = [c | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d, c == "G0501"]
+        BS.writeFile (tmp </> "a.gm") "Full fathom\nfive\n"
+        BS.writeFile (tmp </> "manifest.toml") manifest
+        ws0 <- openWorkspace tmp
+        g0501 ws0 @?= ["G0501"]
+        BS.writeFile (tmp </> "manifest.toml") (manifest <> "\n[source]\nparagraph-separator = \"line\"\n")
+        ws1 <- openWorkspace tmp
+        assertBool "evaluated" (isJust (wsEvaluated ws1))
+        g0501 ws1 @?= [],
       testCase "only changes to headings, labels or exports re-evaluate the project" $ do
         ws0 <- openWorkspace root
         let n0 = wsFullEvaluations ws0

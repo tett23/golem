@@ -44,6 +44,7 @@ test-suite golem-project-test
     , containers
     , directory
     , filepath
+    , golem-parser
     , golem-project
     , golem-syntax
     , tasty          >=1.4 && <1.6

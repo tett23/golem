@@ -13,6 +13,7 @@ module Golem.Eval.File
     overridableCommands,
     kentenShapes,
     joinSoftBreaks,
+    splitLines,
   )
 where
 
@@ -31,6 +32,7 @@ import Golem.Doc.IR
 import Golem.Eval.Expr
 import Golem.Eval.Value
 import Golem.Parser.AST qualified as A
+import Golem.Parser.SourceSettings
 import Golem.Project.Style (LineBreaks (..))
 import Golem.Syntax
 
@@ -60,7 +62,9 @@ data EvalContext = EvalContext
     ctxDefaultKenten :: !Text,
     ctxCiteKeys :: !(Set Text),
     ctxAssets :: !(Map FilePath (Maybe Text)), -- referenced files; Nothing = binary but present
-    ctxPlugins :: !PluginHook
+    ctxPlugins :: !PluginHook,
+    -- | how the file is read (docs/adr ADR 0013)
+    ctxSource :: !SourceSettings
   }
 
 data Usage = Usage
@@ -75,7 +79,9 @@ data EvalResult = EvalResult
   { erDocument :: !Document,
     erExports :: !(Map Text Value),
     erUsage :: !Usage,
-    erDiagnostics :: ![Diagnostic]
+    erDiagnostics :: ![Diagnostic],
+    -- | the settings that applied to the file (docs/adr ADR 0013)
+    erSource :: !SourceSettings
   }
 
 data St = St
@@ -117,7 +123,7 @@ reservedNames = ["doc", "meta", "true", "false", "nil"]
 
 evalFile :: EvalContext -> A.File -> EvalResult
 evalFile ctx (A.File fid blocks0) =
-  let blocks = map normalizeBlock blocks0
+  let blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) blocks0)
       st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 []
       (bs, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
       doc0 = Document fid bs
@@ -128,7 +134,8 @@ evalFile ctx (A.File fid blocks0) =
         { erDocument = doc,
           erExports = stVars st,
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
-          erDiagnostics = stDiags st <> filterDiags
+          erDiagnostics = stDiags st <> filterDiags,
+          erSource = ctxSource ctx
         }
 
 -- ------------------------------------------------------------------ newlines
@@ -194,6 +201,65 @@ isStyleCommand :: A.Located A.Block -> Bool
 isStyleCommand = \case
   A.Located _ (A.BlockCommand (A.Located _ "style") _ _) -> True
   _ -> False
+
+-- ------------------------------------------------------------------ the line style
+
+{- | The line style (docs/adr ADR 0013): a paragraph is split at its
+top-level 'A.SoftBreak' into paragraphs, one per line. An attribute goes
+to the first of them. The paragraphs of a style that keeps its lines are
+left alone, and so are headings, terms, tables and code. The blank-line
+style changes nothing.
+-}
+splitLines :: SourceSettings -> Map Text LineBreaks -> [A.Located A.Block] -> [A.Located A.Block]
+splitLines source paraStyles
+  | ssParagraphSeparator source == BlankLineSeparated = id
+  | otherwise = concatMap splitBlock
+  where
+    splitBlock lb@(A.Located sp b) = case b of
+      A.Paragraph is -> splitParagraph is
+      A.Attributed cmds (Just (A.Located _ (A.Paragraph is)))
+        | any keepsLines cmds -> [lb]
+        | otherwise -> case splitParagraph is of
+            first@(A.Located fsp _) : rest -> A.Located (mkSpan (spanFile sp) (spanStart sp) (spanEnd fsp)) (A.Attributed (map inside cmds) (Just first)) : rest
+            [] -> [A.Located sp (A.Attributed (map inside cmds) Nothing)]
+      _ -> [inside lb]
+    -- a block that is not split itself, with the blocks inside it split
+    inside lb@(A.Located sp b) = A.Located sp $ case b of
+      A.BulletList items -> A.BulletList (map (concatMap splitBlock) items)
+      A.OrderedList items -> A.OrderedList (map (concatMap splitBlock) items)
+      A.DefList gs -> A.DefList [A.DefGroup ts (map (concatMap splitBlock) ds) | A.DefGroup ts ds <- gs]
+      A.BlockCommand n args body
+        | keepsLines lb -> b
+        | otherwise -> A.BlockCommand n args (concatMap splitBlock body)
+      A.Attributed cmds t -> A.Attributed (map inside cmds) (inside <$> t)
+      other -> other
+    -- @style with the name of a style that keeps its lines
+    keepsLines = \case
+      A.Located _ (A.BlockCommand (A.Located _ "style") [A.Located _ (A.Positional (A.Word n))] _) -> Map.lookup n paraStyles == Just KeepLines
+      _ -> False
+
+{- | The lines of a paragraph as paragraphs: spaces and tabs at the start of
+each line are not text (the ideographic space is), and a line left empty
+is dropped.
+-}
+splitParagraph :: [A.Located A.Inline] -> [A.Located A.Block]
+splitParagraph = concatMap paragraph . chunks
+  where
+    chunks xs = case break isSoftBreak xs of
+      (l, []) -> [l]
+      (l, _ : rest) -> l : chunks rest
+    paragraph l = case trimStart l of
+      [] -> []
+      is@(A.Located first _ : _) ->
+        let A.Located lastSp _ = last is
+         in [A.Located (mkSpan (spanFile first) (spanStart first) (spanEnd lastSp)) (A.Paragraph is)]
+    trimStart = \case
+      (A.Located tsp (A.Text t) : rest) ->
+        let t' = T.dropWhile (\c -> c == ' ' || c == '\t') t
+            -- the characters dropped are one byte each
+            tsp' = mkSpan (spanFile tsp) (spanStart tsp + T.length t - T.length t') (spanEnd tsp)
+         in [A.Located tsp' (A.Text t') | not (T.null t')] <> rest
+      is -> is
 
 -- ------------------------------------------------------------------ blocks
 
@@ -395,7 +461,7 @@ styledParagraph ctx sp mname is = case mname of
     Nothing -> err "G0247" sp ("style.toml にない段落スタイルです: " <> name) >> joined Nothing
     Just JoinLines -> joined (styleOf name)
     Just KeepLines -> do
-      ls <- filter (not . null . snd) <$> mapM (\(bsp, l) -> (bsp,) <$> evalInlines ctx False (trimLine l)) (splitLines Nothing is)
+      ls <- filter (not . null . snd) <$> mapM (\(bsp, l) -> (bsp,) <$> evalInlines ctx False (trimLine l)) (linesOf Nothing is)
       pure $ case ls of
         [] -> []
         ((_, first) : rest) -> [block sp (Paragraph (styleOf name) (first <> concat [LineBreak bsp : l | (bsp, l) <- rest]))]
@@ -403,9 +469,9 @@ styledParagraph ctx sp mname is = case mname of
     styleOf n = if n == "body" then Nothing else Just n
     joined st = (\x -> [block sp (Paragraph st x)]) <$> evalInlines ctx False (joinSoftBreaks is)
     -- lines with the span of the newline before each (the first has none)
-    splitLines before xs = case break isSoftBreak xs of
+    linesOf before xs = case break isSoftBreak xs of
       (l, []) -> [(fromMaybe sp before, l)]
-      (l, A.Located bsp _ : rest) -> (fromMaybe sp before, l) : splitLines (Just bsp) rest
+      (l, A.Located bsp _ : rest) -> (fromMaybe sp before, l) : linesOf (Just bsp) rest
 
 -- | Paragraph styles a filter made up (docs/adr ADR 0005).
 unknownParaStyles :: EvalContext -> Document -> [Diagnostic]
