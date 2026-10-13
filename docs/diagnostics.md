@@ -1008,6 +1008,8 @@ number-text の引数が不正です
 
 コマンド名の綴りを確かめる。
 プラグインのコマンドなら、`manifest.toml` にプラグインを宣言する。
+プラグインの読み込みか検査が誤り（[G0602](#g0602) から [G0608](#g0608)、[G0610](#g0610)、[G0611](#g0611)）を出したときは、未知のコマンドを報告しない（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)）。
+プラグインの誤りを直した後のビルドで報告する。
 
 ## G0223
 
@@ -2350,16 +2352,18 @@ plugins.lock にないプラグインです
 
 ### 意味
 
-`manifest.toml` で宣言したプラグインが `plugins.lock` にないか、`plugins.lock` が読めない。
+`manifest.toml` で宣言したプラグインの名前が `plugins.lock` にないか、`plugins.lock` の項目の `url` が宣言の `url` と違う。
+`plugins.lock` がなければ、空の `plugins.lock` として扱う。
+位置は `manifest.toml` の先頭である。
 
-- メッセージ: `plugins.lock にないプラグインです。golem plugin lock を実行してください: <名前>`、または `plugins.lock` の TOML の誤りの文言
-- 段階とモジュール: プラグイン（golem-plugin の `Golem.Plugin.Lock`、golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- メッセージ: `plugins.lock にないプラグインです。golem plugin lock を実行してください: <名前>`、`plugins.lock の URL が manifest.toml と違います。golem plugin lock を実行してください: <名前>`
+- 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
 - `manifest.toml` にプラグインを足したが、`golem plugin lock` を実行していない。
-- `plugins.lock` が壊れていて読めない。
+- `manifest.toml` のプラグインの `url` を変えたが、`golem plugin lock` を実行していない。
 
 ### 直し方
 
@@ -2374,16 +2378,17 @@ plugins.lock にないプラグインです
 
 ### 意味
 
-プラグインの配布物がキャッシュにない。
+`plugins.lock` の項目のハッシュを名前とする配布物が、キャッシュにない。
 ビルドはネットワークに接続しないので、自分では取得しない。
+位置は `manifest.toml` の先頭である。
 
 - メッセージ: `キャッシュにないプラグインです。golem plugin fetch を実行してください: <名前>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
-- `golem plugin fetch` を実行していない。ビルドはネットワークに接続しないので、自分では取得しない。
+- `golem plugin fetch` を実行していない。
 
 ### 直し方
 
@@ -2398,11 +2403,12 @@ plugins.lock にないプラグインです
 
 ### 意味
 
-キャッシュにある配布物の SHA-256 が、`plugins.lock` の値と違う。
+キャッシュにある配布物の SHA-256 が、`plugins.lock` の項目のハッシュと一致しない。
+位置は `manifest.toml` の先頭である。
 
 - メッセージ: `キャッシュの配布物のハッシュが plugins.lock と一致しません: <名前>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -2422,11 +2428,15 @@ plugins.lock にないプラグインです
 
 ### 意味
 
-プラグインの wasm のモジュールを読み込めない。
+配布物を wasm のモジュールとして読み込めない。
+コンパイルの失敗、import の要求、ABI の版の違い、必要な関数の欠け、起動の失敗、`golem_describe` の不正な出力を含む。
+位置は `manifest.toml` の先頭である。
+理由の文言は次のいずれかで、[G0609](#g0609) と共有する。
+`プラグインを読み込めません: <詳細>`、`プラグインが import を要求しています: <import の一覧>`、`プラグインの ABI の版が異なります: <版>`、`プラグインが関数を公開していません: <関数>`、`プラグインの実行が命令数の上限を超えました`、`プラグインの実行が失敗しました（メモリの上限を超えた場合を含む）: <詳細>`、`プラグインを起動できません: <詳細>`、`プラグインの出力が不正です: <詳細>`
 
 - メッセージ: `<名前>: <理由>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -2446,10 +2456,12 @@ plugins.lock にないプラグインです
 ### 意味
 
 二つ以上のプラグインが、同じ名前のコマンドを提供している。
+コマンドの名前ごとに一つ出し、提供するプラグインを名前の順に並べる。
+位置は `manifest.toml` の先頭である。
 
-- メッセージ: `複数のプラグインが同じコマンドを提供しています: <コマンド>`
+- メッセージ: `複数のプラグインが同じコマンドを提供しています: <コマンド>（<プラグイン>、<プラグイン>）`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -2468,43 +2480,50 @@ plugins.lock にないプラグインです
 
 ### 意味
 
-プラグインのコマンドが組み込みのコマンドと同じ名前で、上書きを宣言していない。
+プラグインが組み込みのコマンドと同じ名前のコマンドを提供し、そのプラグインの `overrides` にその名前がない。
+組み込みのコマンドが上書きできるものなら一つ目の文言、上書きできないもの（`note` など）なら二つ目の文言になる。
+位置は `manifest.toml` の先頭である。
 
-- メッセージ: `組み込みのコマンドと衝突しています（overrides で宣言してください）: <プラグイン>.<コマンド>`
+- メッセージ: `組み込みのコマンドと衝突しています（overrides で宣言してください）: <プラグイン>.<コマンド>`、`上書きできない組み込みのコマンドと衝突しています: <プラグイン>.<コマンド>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
 - プラグインのコマンドが組み込みのコマンドと同じ名前で、上書きを宣言していない。
+- プラグインが、上書きできない組み込みのコマンドと同じ名前のコマンドを提供している。
 
 ### 直し方
 
-上書きするなら、`manifest.toml` のプラグインの `overrides` にコマンドを書く。
+上書きできるコマンドを上書きするなら、`manifest.toml` のプラグインの `overrides` にコマンドを書く。
+上書きできないコマンドと衝突するなら、そのプラグインを外す。
 
 ## G0608
 
-overrides に書けないコマンドです
+overrides に書けない名前です
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`overrides` に、そのプラグインが提供していないコマンドか、上書きできない組み込みのコマンドを書いた。
+プラグインの `overrides` に、そのプラグインが提供していないコマンドか、上書きできる組み込みのコマンドでない名前がある。
+`overrides` の一つの名前について、高々一つ出す。
+提供していなければ一つ目の文言、提供していても上書きできる組み込みのコマンドでなければ（組み込みでない名前か、上書きできない組み込みのコマンド）二つ目の文言になる。
+位置は `manifest.toml` の先頭である。
 
-- メッセージ: `プラグインが提供していないコマンドを overrides に書いています: <プラグイン>.<コマンド>`、`上書きできないコマンドです: <プラグイン>.<コマンド>`
+- メッセージ: `プラグインが提供していないコマンドを overrides に書いています: <プラグイン>.<コマンド>`、`上書きできる組み込みのコマンドではありません: <プラグイン>.<コマンド>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
 - `overrides` に、そのプラグインが提供していないコマンドを書いた。
-- `overrides` に、上書きできない組み込みのコマンドを書いた。
+- `overrides` に、組み込みでない名前か、上書きできない組み込みのコマンドを書いた。
 
 ### 直し方
 
-`overrides` からそのコマンドを外す。
+`overrides` からその名前を外す。
 
 ## G0609
 
@@ -2516,16 +2535,18 @@ overrides に書けないコマンドです
 ### 意味
 
 プラグインのコマンドかフィルタの実行が失敗した。
-命令数の上限に達した場合などである。
+命令数の上限、メモリの上限を含むトラップ、不正な出力を含む。
+位置は、コマンドならコマンドを呼んだ箇所、フィルタならフィルタを適用したファイルの先頭である。
+理由の文言は [G0605](#g0605) と同じである。
 
-- メッセージ: `<理由>`、`<プラグイン>.<フィルタ>: <理由>`
+- メッセージ: `<プラグイン>.<コマンド>: <理由>`、`<プラグイン>.<フィルタ>: <理由>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
-- プラグインのコマンドかフィルタが、命令数の上限に達した。
-- プラグインの中で誤りが起きた。
+- プラグインのコマンドかフィルタが、命令数の上限かメモリの上限に達した。
+- プラグインの中で誤りが起きたか、プラグインが不正な出力を返した。
 
 ### 直し方
 
@@ -2534,27 +2555,54 @@ overrides に書けないコマンドです
 
 ## G0610
 
-宣言されていないプラグインかフィルタです
+フィルタの設定が不正です
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`manifest.toml` のフィルタの設定が、宣言されていないプラグインか、プラグインが提供していないフィルタを指す。
+`[[filters]]` の項目が、宣言されていないプラグインか、宣言したプラグインが提供していないフィルタを指す。
+位置は `manifest.toml` の先頭である。
 
-- メッセージ: `宣言されていないプラグインかフィルタです: <名前>`
+- メッセージ: `宣言されていないプラグインです: <プラグイン>（フィルタ <プラグイン>.<フィルタ>）`、`プラグインが提供していないフィルタです: <プラグイン>.<フィルタ>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
-- `manifest.toml` のフィルタの設定が、宣言されていないプラグインを指す。
-- プラグインが提供していないフィルタを指す。
+- `[[filters]]` の項目が、宣言されていないプラグインを指す。
+- `[[filters]]` の項目が、プラグインが提供していないフィルタを指す。
 
 ### 直し方
 
-プラグインを宣言するか、フィルタの名前を直す。
+プラグインを宣言するか、`[[filters]]` の項目のプラグインとフィルタの名前を直す。
+
+## G0611
+
+plugins.lock を読めません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`plugins.lock` が TOML として読めないか、項目の形（`url` と `sha256` の文字列）に合わない。
+位置は、`plugins.lock` の中の誤りの位置である。
+
+- メッセージ: `plugins.lock` の TOML の誤りの文言
+- 段階とモジュール: プラグイン（golem-plugin の `Golem.Plugin.Lock`、golem-driver の `Golem.Driver.Plugins`、`golem plugin fetch`）
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
+
+### 主な原因
+
+- `plugins.lock` を手で編集した。
+- `plugins.lock` のマージで衝突が残った。
+
+### 直し方
+
+`plugins.lock` は処理系が書くファイルなので、手で直さない。
+`plugins.lock` を消して `golem plugin lock` を実行する。
 
 ## G0701
 

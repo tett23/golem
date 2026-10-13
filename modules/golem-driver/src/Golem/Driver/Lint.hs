@@ -22,7 +22,7 @@ lintProject profile root = do
   ev <- evaluateProject profile root
   pure $ case ev of
     Left ds -> (Map.empty, finish ds)
-    Right e -> (sourceInfos (evProject e), finish (evDiagnostics e <> lintEvaluated e))
+    Right e -> (withLockSource e (sourceInfos (evProject e)), finish (evDiagnostics e <> lintEvaluated e))
   where
     finish = sortDiagnostics . map (adjustForProfile profile)
 

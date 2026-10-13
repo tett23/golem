@@ -19,7 +19,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver.Pdf (FontProvider (..), LoadedFonts (..), bodyRole, usedRoles)
 import Golem.Font
-import Golem.Layout.Japanese (CharClass (..), charClass)
+import Golem.Layout.Japanese (CharClass (..), charClass, isVariationSelector)
 import Golem.Pdf qualified as P
 import Golem.Project.Paths (resolveInRoot)
 import Golem.Project.Style
@@ -95,7 +95,8 @@ provide fonts body roles =
     fontFor role c =
       let (ja, la, _) = roleOf role
        in fromMaybe 0 (if charClass c == Western then la <|> ja else ja <|> la)
-    runs role t = [(fontFor role (T.head r), r) | r <- T.groupBy (\a b -> fontFor role a == fontFor role b) t, not (T.null r)]
+    -- a variation selector stays with the character before it (golem-pdf ADR 0006)
+    runs role t = [(fontFor role (T.head r), r) | r <- T.groupBy (\a b -> isVariationSelector b || fontFor role a == fontFor role b) t, not (T.null r)]
     shapeText role vertical t =
       let (_, _, features) = roleOf role
        in concat
@@ -108,9 +109,11 @@ provide fonts body roles =
                   upem = fontUnitsPerEm f
                   req = (shapeRequest 1000 r) {srDirection = if vertical then Vertical else Horizontal, srFeatures = features}
             ]
+    -- the text of a glyph for ToUnicode: without variation selectors, so
+    -- that a variant is found by its base character (golem-pdf ADR 0006)
     clusterText r c =
       let bytes = TE.encodeUtf8 r
-       in maybe "" (T.singleton . fst) (T.uncons (TE.decodeUtf8Lenient (BS.drop c bytes)))
+       in T.filter (not . isVariationSelector) (maybe "" (T.singleton . fst) (T.uncons (TE.decodeUtf8Lenient (BS.drop c bytes))))
     embed ix vertical used =
       let f = fontAt ix
           upem = toInteger (fontUnitsPerEm f)
@@ -134,7 +137,8 @@ provide fonts body roles =
               P.fontStemV = 80,
               P.fontBBox = (per1000 bx0, per1000 by0, per1000 bx1, per1000 by1),
               P.fontItalicAngle = 0,
-              P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0])
+              P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0, not (T.null t)]),
+              P.fontCidSystemInfo = maybe ("Adobe", "Identity", 0) (\c -> (csiRegistry c, csiOrdering c, csiSupplement c)) (fontCidSystemInfo f)
             }
 
 -- | Advances are asked for again and again while composing; cache them.

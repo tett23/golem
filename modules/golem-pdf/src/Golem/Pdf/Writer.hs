@@ -128,7 +128,9 @@ data Font = Font
     fontStemV :: !Int,
     fontBBox :: !(Int, Int, Int, Int),
     fontItalicAngle :: !Int,
-    fontToUnicode :: ![(GlyphId, Text)]
+    fontToUnicode :: ![(GlyphId, Text)],
+    -- | Registry, Ordering and Supplement of the CIDFont (ADR 0006)
+    fontCidSystemInfo :: !(Text, Text, Int)
   }
   deriving stock (Eq, Show)
 
@@ -425,7 +427,7 @@ fontObjects base f =
           ( [ ("Type", OName "Font"),
               ("Subtype", OName (if isCff then "CIDFontType0" else "CIDFontType2")),
               ("BaseFont", OName (fontName f)),
-              ("CIDSystemInfo", ODict [("Registry", OStr "Adobe"), ("Ordering", OStr "Identity"), ("Supplement", OInt 0)]),
+              ("CIDSystemInfo", let (r, o, s) = fontCidSystemInfo f in ODict [("Registry", OStr (TE.encodeUtf8 r)), ("Ordering", OStr (TE.encodeUtf8 o)), ("Supplement", OInt (fromIntegral s))]),
               ("FontDescriptor", ORef (base + 2)),
               ("W", OArr (concat [[OInt (fromIntegral g), OArr [OInt (fromIntegral w)]] | (g, w) <- sortOn fst (fontWidths f)]))
             ]

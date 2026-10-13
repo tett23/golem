@@ -1,34 +1,35 @@
 {- | Plugins of a project (golem-plugin ADR 0001, 0002): read from the
 cache as plugins.lock names them, checked for name collisions, and
 turned into the evaluator's plugin hook. Builds never use the network.
+The codes, messages and spans of the diagnostics: golem-plugin ADR 0003.
 -}
 module Golem.Driver.Plugins
   ( loadPlugins,
   )
 where
 
-import Data.ByteString qualified as BS
 import Data.Either (rights)
-import Data.List (nub)
+import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
-import Data.Text.Encoding qualified as TE
+import Data.Text (Text)
+import Data.Text qualified as T
+import Golem.Doc.IR (Document (..))
 import Golem.Eval.File (PluginHook (..), builtinInlineCommands, noPlugins, overridableCommands)
 import Golem.Plugin
 import Golem.Plugin.Lock
 import Golem.Project.Manifest
 import Golem.Syntax
-import System.Directory (doesFileExist)
-import System.FilePath ((</>))
 
-loadPlugins :: FilePath -> FilePath -> FileId -> Manifest -> IO (Either [Diagnostic] PluginHook)
-loadPlugins root cacheDir mfid manifest
+{- | Given the cache, the FileId of manifest.toml, where most diagnostics
+point, and the FileId and text of plugins.lock (empty when there is
+none), where G0611 points.
+-}
+loadPlugins :: FilePath -> FileId -> FileId -> Text -> Manifest -> IO (Either [Diagnostic] PluginHook)
+loadPlugins cacheDir mfid lfid lockText manifest
   | Map.null (manifestPlugins manifest) && null (manifestFilters manifest) = pure (Right noPlugins)
-  | otherwise = do
-      let lockPath = root </> "plugins.lock"
-      exists <- doesFileExist lockPath
-      lockText <- if exists then TE.decodeUtf8Lenient <$> BS.readFile lockPath else pure ""
-      case parseLock mfid lockText of
+  | otherwise =
+      case parseLock lfid lockText of
         Left ds -> pure (Left ds)
         Right lock -> do
           loaded <- mapM (loadOne lock) (Map.toList (manifestPlugins manifest))
@@ -46,32 +47,39 @@ loadPlugins root cacheDir mfid manifest
           Right bytes -> case loadPlugin bytes of
             Left pe -> Left [err "G0605" (name <> ": " <> describePluginError pe)]
             Right p -> Right (name, decl, p)
-      _ -> pure (Left [err "G0602" ("plugins.lock にないプラグインです。golem plugin lock を実行してください: " <> name)])
+      Just _ -> pure (Left [err "G0602" ("plugins.lock の URL が manifest.toml と違います。golem plugin lock を実行してください: " <> name)])
+      Nothing -> pure (Left [err "G0602" ("plugins.lock にないプラグインです。golem plugin lock を実行してください: " <> name)])
     hook plugins =
       let provided = [(c, name) | (name, _, p) <- plugins, c <- pluginCommands p]
           overrides = [(o, name, p) | (name, decl, p) <- plugins, o <- pdOverrides decl]
-          collisions = [c | c <- nub (map fst provided), length [() | (c', _) <- provided, c' == c] > 1]
+          providers = Map.fromListWith (<>) [(c, [n]) | (c, n) <- provided]
+          collisions = [(c, sort ns) | (c, ns) <- Map.toList providers, length ns > 1]
           undeclared = [(c, n) | (c, n) <- provided, c `elem` builtinInlineCommands, c `notElem` [o | (o, n', _) <- overrides, n' == n]]
-          missing = [(o, n) | (o, n, p) <- overrides, o `notElem` pluginCommands p]
-          notOverridable = [(o, n) | (o, n, _) <- overrides, o `notElem` overridableCommands]
-          filterErrors =
-            [ fdPlugin f <> "." <> fdFilter f
-            | f <- manifestFilters manifest,
-              maybe True (\(_, _, p) -> fdFilter f `notElem` pluginFilters p) (lookupPlugin (fdPlugin f))
-            ]
+          badOverride (o, n, p)
+            | o `notElem` pluginCommands p = Just ("プラグインが提供していないコマンドを overrides に書いています: " <> n <> "." <> o)
+            | o `notElem` overridableCommands = Just ("上書きできる組み込みのコマンドではありません: " <> n <> "." <> o)
+            | otherwise = Nothing
+          filterError f = case lookupPlugin (fdPlugin f) of
+            Nothing -> Just ("宣言されていないプラグインです: " <> fdPlugin f <> "（フィルタ " <> fdPlugin f <> "." <> fdFilter f <> "）")
+            Just (_, _, p)
+              | fdFilter f `notElem` pluginFilters p -> Just ("プラグインが提供していないフィルタです: " <> fdPlugin f <> "." <> fdFilter f)
+              | otherwise -> Nothing
           lookupPlugin n = case [x | x@(n', _, _) <- plugins, n' == n] of
             (x : _) -> Just x
             [] -> Nothing
+          collisionMessage (c, n)
+            | c `elem` overridableCommands = "組み込みのコマンドと衝突しています（overrides で宣言してください）: " <> n <> "." <> c
+            | otherwise = "上書きできない組み込みのコマンドと衝突しています: " <> n <> "." <> c
           diags =
-            [err "G0606" ("複数のプラグインが同じコマンドを提供しています: " <> c) | c <- collisions]
-              <> [err "G0607" ("組み込みのコマンドと衝突しています（overrides で宣言してください）: " <> n <> "." <> c) | (c, n) <- undeclared]
-              <> [err "G0608" ("プラグインが提供していないコマンドを overrides に書いています: " <> n <> "." <> o) | (o, n) <- missing]
-              <> [err "G0608" ("上書きできないコマンドです: " <> n <> "." <> o) | (o, n) <- notOverridable]
-              <> [err "G0610" ("宣言されていないプラグインかフィルタです: " <> f) | f <- filterErrors]
-          commandOwner = Map.fromList [(c, p) | (name, _, p) <- plugins, c <- pluginCommands p, (c, name) `notElem` undeclared]
+            [err "G0606" ("複数のプラグインが同じコマンドを提供しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- collisions]
+              <> [err "G0607" (collisionMessage u) | u <- undeclared]
+              <> [err "G0608" m | Just m <- map badOverride overrides]
+              <> [err "G0610" m | Just m <- map filterError (manifestFilters manifest)]
+          commandOwner = Map.fromList [(c, (name, p)) | (name, _, p) <- plugins, c <- pluginCommands p, (c, name) `notElem` undeclared]
           call name vals slots sp = case Map.lookup name commandOwner of
             Nothing -> Left [diagnostic "G0222" Error sp ("未知のコマンドです: " <> name)]
-            Just p -> either (\pe -> Left [diagnostic "G0609" Error sp (describePluginError pe)]) Right (callCommand p name vals slots sp)
+            Just (pname, p) -> either (\pe -> Left [diagnostic "G0609" Error sp (qualified pname name pe)]) Right (callCommand p name vals slots sp)
+          -- a filter that fails points at the top of the file (golem-plugin ADR 0003)
           applyFilters path doc0 =
             foldl
               ( \acc f -> case acc of
@@ -80,7 +88,7 @@ loadPlugins root cacheDir mfid manifest
                     | path `elem` fdFiles f,
                       Just (_, _, p) <- lookupPlugin (fdPlugin f) ->
                         case applyFilter p (fdFilter f) doc of
-                          Left pe -> Left [err "G0609" (fdPlugin f <> "." <> fdFilter f <> ": " <> describePluginError pe)]
+                          Left pe -> Left [diagnostic "G0609" Error (mkSpan (docFile doc0) 0 0) (qualified (fdPlugin f) (fdFilter f) pe)]
                           Right (doc', ws') -> Right (doc', ws <> ws')
                     | otherwise -> Right (doc, ws)
               )
@@ -96,3 +104,7 @@ loadPlugins root cacheDir mfid manifest
                     phApplyFilters = applyFilters
                   }
             else Left diags
+
+-- | @plugin.name: reason@, the message of G0609.
+qualified :: Text -> Text -> PluginError -> Text
+qualified plugin name pe = plugin <> "." <> name <> ": " <> describePluginError pe

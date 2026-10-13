@@ -17,6 +17,7 @@ module Golem.Driver
     missingStyleFiles,
     targetFileDiagnostics,
     sourceInfos,
+    withLockSource,
     FontProvider (..),
     LoadedFonts (..),
     noFontProvider,
@@ -108,6 +109,8 @@ data Evaluated = Evaluated
     evStyleFile :: !FileId,
     -- | the text of style.toml, empty when there is none (an input of the instance ID)
     evStyleText :: !Text,
+    -- | the text of plugins.lock, when there is one (golem-plugin ADR 0003)
+    evLockText :: !(Maybe Text),
     evResults :: !(Map FileId EvalResult),
     evBook :: !(Maybe Book),
     evDiagnostics :: ![Diagnostic],
@@ -124,6 +127,16 @@ localStylesOf = Map.filter (/= noLocalStyles) . Map.map erStyles . evResults
 -- | The style of each document: style.toml with the styles its file defines over it.
 docStyles :: Evaluated -> FileId -> Style
 docStyles e fid = maybe (evStyle e) (withLocalStyles (evStyle e)) (Map.lookup fid (localStylesOf e))
+
+{- | The FileId of plugins.lock, where G0611 points (golem-plugin ADR 0003):
+the one after style.toml's.
+-}
+lockFileId :: Project -> FileId
+lockFileId p = let FileId n = styleFileId p in FileId (n + 1)
+
+-- | Adds plugins.lock, when there is one, to the files of diagnostics.
+withLockSource :: Evaluated -> Map FileId SourceInfo -> Map FileId SourceInfo
+withLockSource e = maybe id (Map.insert (lockFileId (evProject e)) . SourceInfo "plugins.lock" . mkLineIndex) (evLockText e)
 
 -- | Line indexes for rendering diagnostics.
 sourceInfos :: Project -> Map FileId SourceInfo
@@ -152,7 +165,7 @@ evaluateProjectWith overlay profile root = do
           | hasErrors synDiags -> do
               assets <- loadAssets root project
               (citeKeys, _) <- loadBibliography root manifest0
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) Map.empty Nothing synDiags (reeval profile project style assets citeKeys noPlugins Map.empty)))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) Nothing Map.empty Nothing synDiags (reeval profile project style assets citeKeys noPlugins Map.empty)))
           | otherwise -> do
               let manifest = manifest0
                   masterDiags =
@@ -161,21 +174,24 @@ evaluateProjectWith overlay profile root = do
                       not (Map.member m (stMasters style))
                     ]
               cacheDir <- defaultCacheDir
-              hookE <- loadPlugins root cacheDir (projectManifestFile project) manifest
+              lockText <- readMaybeText (root </> "plugins.lock")
+              hookE <- loadPlugins cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) manifest
               let (pluginDiags, hook) = either (,noPlugins) ([],) hookE
+                  -- no G0222 after the plugins failed to load (golem-plugin ADR 0003)
+                  quiet = if null pluginDiags then id else \r -> r {erDiagnostics = filter ((/= DiagnosticCode "G0222") . diagCode) (erDiagnostics r)}
               assets <- loadAssets root project
               (citeKeys, _) <- loadBibliography root manifest
-              let results = evalAll profile project style assets citeKeys hook
+              let results = Map.map quiet (evalAll profile project style assets citeKeys hook)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
                   chapterDocs = [erDocument r | (fid, _) <- projectChapters project, Just r <- [Map.lookup fid results]]
                   cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style)
                   pre = masterDiags <> pluginDiags <> s0Diags
-                  again = reeval profile project style assets citeKeys hook results
+                  again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
               if hasErrors pre
-                then pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) results Nothing pre again))
+                then pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results Nothing pre again))
                 else do
                   let (book, s1Diags) = assemble cfg evalDeferred chapterDocs
-                  pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) results (Just book) (pre <> s1Diags) again))
+                  pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results (Just book) (pre <> s1Diags) again))
 
 readMaybeText :: FilePath -> IO (Maybe Text)
 readMaybeText p = do
@@ -351,7 +367,7 @@ build opts = do
           -- style.toml is a source of diagnostics (golem-project ADR 0004, G0702) when it exists
           infos =
             (if hasStyle then Map.insert styleFid (SourceInfo "style.toml" (mkLineIndex (evStyleText e))) else id)
-              (sourceInfos project)
+              (withLockSource e (sourceInfos project))
           marksDiags = cropMarkDiagnostics opts e (if hasStyle then styleFid else projectManifestFile project) targets
       -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
       missing <- missingStyleFiles (optRoot opts) (evStyle e)
