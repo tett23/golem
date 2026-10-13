@@ -301,6 +301,7 @@ tests =
       testGroup "verse (docs/adr ADR 0003)" verseTests,
       testGroup "paragraph indents (docs/adr ADR 0006)" indentTests,
       testGroup "styles defined in a file (docs/adr ADR 0014)" inFileTests,
+      testGroup "regex styles (docs/adr ADR 0015)" regexStyleTests,
       testGroup "PDF headings (ADR 0003)" headingTests,
       testGroup "PDF emphasis, character styles and colour (ADR 0004)" emphasisTests,
       testGroup "PDF wrapped figures (ADR 0005)" wrapTests,
@@ -573,6 +574,46 @@ chapterLayout style chapters files = withChapters style chapters [] $ \tmp -> do
 -- | The rules of a style sheet that start with a selector.
 rulesOf :: T.Text -> T.Text -> [T.Text]
 rulesOf sel css = [l | l <- T.lines css, (sel <> " {") `T.isPrefixOf` l]
+
+-- | Regex styles (docs/adr ADR 0015).
+regexStyleTests :: [TestTree]
+regexStyleTests =
+  [ testCase "HTML: a match is a span of its character style" $ do
+      (page, _) <- htmlMini regexStyle "第12章\n"
+      assertBool (T.unpack page) ("第<span class=\"cs-n\">12</span>章" `T.isInfixOf` page),
+    testCase "plain text: the text is unchanged" $
+      withChapters regexStyle [("c1.gm", "第12章\n")] [] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        TIO.readFile (tmp </> "build/text/horizontal/c1.txt") >>= (@?= "第12章\n"),
+    testCase "PDF: the match is drawn in synthetic bold, the rest is not" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> "\n" <> regexStyle) "第12章\n" [] >>= fmap BS.concat . inflateAll
+      let runs = strokeRuns content
+      assertBool (show runs) (all isJust (widthsOf '1' runs) && not (null (widthsOf '1' runs)))
+      assertBool (show runs) (all isJust (widthsOf '2' runs))
+      widthsOf '第' runs @?= [Nothing]
+      widthsOf '章' runs @?= [Nothing],
+    testCase "HTML: the regex styles of a file hold in that file only" $
+      withChapters "" [("c1.gm", "@style-def character n synthetic-bold=true\n@style-def regex body pattern=\"[0-9]+\" style=n\n\n第12章\n"), ("c2.gm", "第12章\n")] [] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")
+        p2 <- TIO.readFile (tmp </> "build/html/c2.xhtml")
+        assertBool (T.unpack p1) ("第<span class=\"cs-n\">12</span>章" `T.isInfixOf` p1)
+        assertBool (T.unpack p2) ("第12章" `T.isInfixOf` p2),
+    testCase "PDF: vertical, a match inside a ruby base is set and the reading drawn" $ do
+      content <- miniPdf fakeProvider True (pdfStyle <> "\n" <> regexStyle) "[ruby: 東京12|とうきょう]へ\n" [] >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          sizesOf c = nub [dSize d | d <- ds, dGlyph d == fromEnum c]
+      assertBool "the reading" (not (null (sizesOf 'と')))
+      assertBool "the reading is smaller than the base" (sizesOf 'と' /= sizesOf '東')
+      -- a ruby whose whole base matches is wrapped as a whole and takes the look
+      whole <- miniPdf fakeProvider True (pdfStyle <> "\n" <> regexStyle) "[ruby: 12|じゅうに]へ\n" [] >>= fmap BS.concat . inflateAll
+      let runs = strokeRuns whole
+      assertBool (show runs) (not (null (widthsOf (toEnum 0x32) runs)) && all isJust (widthsOf (toEnum 0x32) runs))
+  ]
+  where
+    regexStyle = "[character-styles.n]\nsynthetic-bold = true\n\n[paragraph-styles.body]\nregex-styles = [{ pattern = '[0-9]+', style = \"n\" }]\n"
 
 inFileTests :: [TestTree]
 inFileTests =
