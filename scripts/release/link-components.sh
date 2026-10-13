@@ -88,6 +88,9 @@ case "$FIRST" in
     awk '
       /^Archive member included to satisfy reference by file \(symbol\)$/ { on = 1; next }
       /^(Allocating common symbols|Discarded input sections|Memory Configuration|As-needed library included|Linker script and memory map)/ { on = 0 }
+      # GNU ld on x86-64 also writes "Updated property ... to merge A and B"
+      # here; those lines name objects already listed as members
+      /^(Updated|Removed|Added) property / { next }
       on && /^[^ \t]/ {
         if (match($0, /\.a\(/)) {
           a = substr($0, 1, RSTART + 1)

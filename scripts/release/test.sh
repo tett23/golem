@@ -280,6 +280,18 @@ mkdir -p "$LC/elsewhere"
 gnu_map "$LC/elsewhere/libCffi.a(ffi.o)" >"$LC/gnu-cffi-elsewhere.map"
 run link_components "$LC/gnu-cffi-elsewhere.map"
 expect "link-components: libCffi.a outside GHC" 1
+# GNU ld on x86-64 writes lines on merging the properties of the objects
+# into the section of the archive members; they name archives but are not
+# members of their own
+{
+  gnu_map | sed -n '1,2p'
+  printf 'Updated property 0xc0010001 (0x839) to merge %s/crt1.o (0x839) and %s/rts-1.0.2/libHSrts-1.0.2_thr.a(RtsStartup.thr_o) (0x839)\n' "$SYS/usr/lib" "$GHCLIB"
+  printf 'Removed property 0xc0010002 to merge %s/crt1.o (not found) and %s/elsewhere/libunknown.a(x.o)\n' "$SYS/usr/lib" "$LC"
+  gnu_map | sed '1,2d'
+} >"$LC/gnu-property.map"
+run link_components "$LC/gnu-property.map"
+expect "link-components: lines on merging properties" 0
+if [ "$(cut -f1 "$WORK/out" | tr '\n' ' ')" = "haskell ghc apk:musl apk:libffi apk:gcc wasmtime " ]; then ok; else ng "link-components: lines on merging properties add no component"; fi
 run link_components "$LC/none.map"
 expect "link-components: no map" 1
 echo 'something else' >"$LC/other.map"
