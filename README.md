@@ -187,6 +187,14 @@ cabal test all
 scripts/gen-parser.sh
 ```
 
+テストの fixture の『テンペスト』と『蟹工船』は、`scripts/fixtures/fetch-public-domain.sh` が原文を取得して作る。
+原文の変換は `modules/golem-fixtures` の実行ファイル `golem-fixtures` が行う。
+このパッケージはリリースの配布物に入らない（[docs/adr/0023](./docs/adr/0023-fixture-converters-without-python.md)）。
+
+```bash
+GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
+```
+
 テストのうち CDDL のスキーマへの適合の検査は、Rust の `cddl` クレートの CLI（0.10.7）を使う。
 `PATH` にあるか `GOLEM_CDDL` で指定した場合だけ実行され、CI では必ず実行する。
 
