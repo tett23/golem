@@ -7,6 +7,7 @@ module Golem.Doc.IR
     Document (..),
     Block (..),
     BlockBody (..),
+    BreakKind (..),
     ListItem (..),
     DefGroup (..),
     Alignment (..),
@@ -34,7 +35,7 @@ import Golem.Syntax.Span
 
 -- | The ABI version shared with plugins. Bump on any change to the IR.
 abiVersion :: Int
-abiVersion = 3
+abiVersion = 4
 
 data Document = Document
   { docFile :: !FileId,
@@ -60,7 +61,13 @@ data BlockBody
   | CodeBlock (Maybe Text) Text
   | FigureBlock Figure
   | ChannelOutput ChannelBlock
+  | -- | a forced break before what follows (docs/adr ADR 0017)
+    ForcedBreak !BreakKind
   deriving stock (Eq, Show)
+
+-- | The kind of a forced break (docs/adr ADR 0017).
+data BreakKind = BreakPage | BreakRecto | BreakVerso | BreakColumn
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 data ListItem = ListItem
   { itemNumber :: !(Maybe Integer), -- explicit @number

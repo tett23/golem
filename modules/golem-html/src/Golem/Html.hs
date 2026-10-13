@@ -20,6 +20,8 @@ import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble
@@ -52,7 +54,9 @@ data HtmlConfig = HtmlConfig
     -- | [composition.ruby] as CSS ruby-align values (golem-layout ADR 0009)
     hcRubyMonoAlign :: !Text,
     hcRubyGroupAlign :: !Text,
-    hcRubyBaseSpacing :: !Text
+    hcRubyBaseSpacing :: !Text,
+    -- | the kinds of forced break the book uses (docs/adr ADR 0017)
+    hcBreakKinds :: !(Set BreakKind)
   }
 
 -- | A font role and a CSS font-size for an element (golem-driver ADR 0010).
@@ -172,7 +176,7 @@ page cfg ft book d@(Document fid bs) =
       c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg))
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
-      body = T.concat (map (block c) bs) <> notesSection c d
+      body = topBlocks c bs <> notesSection c d
       title = case [hiTitle h | Block sp _ (Heading 1 _ _) <- bs, Just h <- [Map.lookup sp (bookHeadings book)]] of
         (t : _) -> T.concat (map plain t)
         [] -> hcTitle cfg
@@ -198,6 +202,31 @@ plain = inlineText
 
 idAttr :: Maybe Text -> Text
 idAttr = maybe "" (\l -> " id=\"" <> escapeXml l <> "\"")
+
+{- | The blocks at the top of a document: the block after forced breaks
+carries the kind of the last of them on its outermost element; a break
+at the end writes nothing, and a column break nothing (docs/adr ADR 0017).
+-}
+topBlocks :: Ctx -> [Block] -> Text
+topBlocks c = go Nothing
+  where
+    go _ [] = ""
+    go _ (Block _ _ (ForcedBreak k) : rest) = go (Just k) rest
+    go pending (b : rest) = withBreak pending (block c b) <> go Nothing rest
+    -- the attribute goes at the end of the first start tag
+    withBreak pending html = case pending >>= breakName of
+      Nothing -> html
+      Just name ->
+        let (open, after) = T.breakOn ">" html
+         in if T.null after then html else open <> " data-break-before=\"" <> name <> "\"" <> after
+
+-- | The value of data-break-before; a column break has none.
+breakName :: BreakKind -> Maybe Text
+breakName = \case
+  BreakPage -> Just "page"
+  BreakRecto -> Just "recto"
+  BreakVerso -> Just "verso"
+  BreakColumn -> Nothing
 
 block :: Ctx -> Block -> Text
 block c (Block sp lbl body) = case body of
@@ -253,6 +282,7 @@ block c (Block sp lbl body) = case body of
         | (k, _) <- bookCitations (cBook c)
         ]
       <> "</ol>\n"
+  ForcedBreak _ -> ""
 
 item :: Ctx -> Maybe Integer -> ListItem -> Text
 item c value (ListItem _ bs) =
@@ -503,6 +533,11 @@ css cfg docs =
            let (r, g, b) = cmykToRgb cmyk
          ]
       <> [r | (name, cs) <- Map.toAscList (hcCharStyles cfg), name /= "strong", Just r <- [charRuleMaybe name cs]]
+      -- forced breaks, only the kinds the book uses (docs/adr ADR 0017)
+      <> [ "[data-break-before=\"" <> name <> "\"] { page-break-before: always; break-before: " <> name <> "; }"
+         | k <- Set.toAscList (hcBreakKinds cfg),
+           Just name <- [breakName k]
+         ]
       -- the styles of the files, last, under the class of their pages (docs/adr ADR 0014)
       <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
   where

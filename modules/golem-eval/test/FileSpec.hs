@@ -98,6 +98,7 @@ tests =
       styleTests,
       separatorTests,
       hardBreakTests,
+      breakTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
@@ -517,3 +518,67 @@ hardBreakTests =
         let (file, _, _) = parseAst (FileId 1) "a\\\nb\n"
         erSource (evalFile lineCtx file) @?= SourceSettings LineSeparated
     ]
+
+-- | Forced page breaks (docs/adr ADR 0017).
+breakTests :: TestTree
+breakTests =
+  testGroup
+    "forced breaks (docs/adr ADR 0017)"
+    [ testCase "each kind of break is a block" $ do
+        run ctx "@page-break\n\na\n" @?= ([ForcedBreak BreakPage, Paragraph Nothing [Text (mkSpan (FileId 1) 13 14) "a"]], [])
+        run ctx "@page-break recto\n" @?= ([ForcedBreak BreakRecto], [])
+        run ctx "@page-break verso\n" @?= ([ForcedBreak BreakVerso], [])
+        run ctx "@column-break\n" @?= ([ForcedBreak BreakColumn], []),
+      testCase "a break right before a block goes before it, without G0211" $ do
+        let (bs, es) = run ctx "@page-break recto\n# h\n"
+        es @?= []
+        map shape bs @?= ["break BreakRecto", "heading"],
+      testCase "a label skips the break and goes to the block, wherever the break stands" $ do
+        let check src = do
+              let (bs, es) = blocksOf src
+              es @?= []
+              [(blockLabel b, shape (blockBody b)) | b <- bs] @?= [(Nothing, "break BreakPage"), (Just "x", "heading")]
+        check "@page-break\n@label x\n# h\n"
+        check "@label x\n@page-break\n# h\n",
+      testCase "a label with only a break after it has no target" $
+        errs "@label x\n@page-break\n\na\n" @?= ["G0210"],
+      testCase "wrong arguments are G0258" $ do
+        mapM_
+          (\src -> assertEqual (T.unpack src) ["G0258"] (errs src))
+          [ "@page-break page\n",
+            "@page-break recto verso\n",
+            "@page-break x=1\n",
+            "@column-break recto\n",
+            "@page-break\n  a\n"
+          ],
+      testCase "a break not at the top of the document is G0259 and dropped" $ do
+        mapM_
+          ( \src -> do
+              let (bs, es) = blocksOf src
+              assertEqual (T.unpack src) ["G0259"] es
+              assertBool (T.unpack src) (not (any hasBreak bs))
+          )
+          [ "- a\n\n  @page-break\n",
+            "= t\n  @page-break\n",
+            "@figure images/a.png alt=a\n  @page-break\n"
+          ]
+        errs "@style quote\n  @page-break\n" @?= ["G0245"]
+    ]
+  where
+    blocksOf src =
+      let (file, _, pds) = parseAst (FileId 1) src
+          r = evalFile ctx file
+       in (docBlocks (erDocument r), [x | d <- pds <> erDiagnostics r, let DiagnosticCode x = diagCode d])
+    shape :: BlockBody -> Text
+    shape = \case
+      ForcedBreak k -> "break " <> T.pack (show k)
+      Heading {} -> "heading"
+      Paragraph {} -> "paragraph"
+      other -> T.pack (show other)
+    hasBreak (Block _ _ b) = case b of
+      ForcedBreak _ -> True
+      BulletList items -> any (any hasBreak . itemBlocks) items
+      OrderedList items -> any (any hasBreak . itemBlocks) items
+      DefList gs -> any (any (any hasBreak) . dgDefs) gs
+      FigureBlock f -> any hasBreak (figCaption f)
+      _ -> False

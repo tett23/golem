@@ -21,7 +21,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Doc.Cbor (inlinesTerm)
+import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
 import Golem.Eval.Value (Value (..))
 import Golem.Parser.AST qualified as A
@@ -67,13 +67,17 @@ escape = T.pack . concatMap (printf "\\%02x") . BS.unpack
 cbor :: Term -> ByteString
 cbor = toStrictByteString . encodeTerm
 
+-- | The ABI version of the host, as the fixed-response plugin's argument.
+abi :: Int
+abi = fromIntegral Golem.Plugin.abiVersion
+
 -- | The fixed-response plugin with a response and an ABI version.
 fixed :: Int -> ByteString -> IO ByteString
-fixed abi response = do
+fixed ver response = do
   src <- wat "fixed.wat"
   let describe = cbor (TList [TList [TString "shout"], TList [TString "upper"]])
       filled =
-        T.replace "{{ABI}}" (T.pack (show abi))
+        T.replace "{{ABI}}" (T.pack (show ver))
           . T.replace "{{DESCRIBE}}" (escape describe)
           . T.replace "{{DESCRIBE_LEN}}" (T.pack (show (BS.length describe)))
           . T.replace "{{RESPONSE}}" (escape response)
@@ -109,7 +113,7 @@ tests =
   testGroup
     "golem-plugin (ADR 0001)"
     [ testCase "a valid plugin describes itself and answers" $ do
-        p <- load =<< fixed 3 (responseWith (inlinesTerm [Text callSpan "SLOT"]))
+        p <- load =<< fixed abi (responseWith (inlinesTerm [Text callSpan "SLOT"]))
         (pluginCommands p, pluginFilters p) @?= (["shout"], ["upper"])
         fmap fst (shout p) @?= Right [Text callSpan "SLOT"],
       testCase "a module that asks for imports is rejected when loading" $ do
@@ -121,6 +125,22 @@ tests =
       testCase "a plugin of ABI version 2 is rejected (docs/adr ADR 0005)" $ do
         w <- fixed 2 (responseWith (TList []))
         void (loadPlugin w) @?= Left (AbiMismatch 2),
+      testCase "the ABI version is 4 and a plugin of version 3 is rejected (docs/adr ADR 0017)" $ do
+        (Golem.Plugin.abiVersion, Golem.Doc.IR.abiVersion) @?= (4, 4)
+        w <- fixed 3 (responseWith (TList []))
+        void (loadPlugin w) @?= Left (AbiMismatch 3),
+      testCase "a document with forced breaks survives a filter unchanged (docs/adr ADR 0017)" $ do
+        p <- load =<< compile =<< wat "identity.wat"
+        let blk k = Block callSpan Nothing (ForcedBreak k)
+            doc = Document (FileId 1) ([blk k | k <- [minBound .. maxBound]] <> [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])])
+        fmap fst (applyFilter p "same" doc) @?= Right doc,
+      testCase "a filter that puts a forced break below the top gives bad output (docs/adr ADR 0017)" $ do
+        let para = Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])
+            nested = Document (FileId 1) [Block callSpan Nothing (BulletList [ListItem Nothing [Block callSpan Nothing (ForcedBreak BreakPage)]])]
+        p <- load =<< fixed abi (responseWith (documentTerm nested))
+        case applyFilter p "upper" (Document (FileId 1) [para]) of
+          Left (BadOutput _) -> pure ()
+          other -> assertFailure (show other),
       testCase "an endless loop runs out of fuel, at the same place every time" $ do
         w <- compile =<< wat "loop.wat"
         p <- either (assertFailure . show) pure (loadPluginWith 100000 defaultMemoryLimit w)
@@ -145,10 +165,10 @@ tests =
       testGroup
         "output validation"
         [ testCase "broken CBOR" $ do
-            p <- load =<< fixed 3 (BS.pack [0xff, 0x00])
+            p <- load =<< fixed abi (BS.pack [0xff, 0x00])
             assertBool "error" (isLeft (shout p)),
           testCase "CBOR that does not match the schema" $ do
-            p <- load =<< fixed 3 (cbor (TList [TInt 1, TInt 2]))
+            p <- load =<< fixed abi (cbor (TList [TInt 1, TInt 2]))
             assertBool "error" (isLeft (shout p)),
           testCase "nested ruby" $ do
             let inner = inlinesTerm [Ruby callSpan () [RubySegment [Text callSpan "漢"] (Just "かん")]]
@@ -160,22 +180,22 @@ tests =
                   t -> t
                 nested = replaceTerm textT rubyT inner
             assertBool "the term changed" (nested /= inner)
-            p <- load =<< fixed 3 (responseWith nested)
+            p <- load =<< fixed abi (responseWith nested)
             assertBool "error" (isLeft (shout p)),
           testCase "a DeferredExpr the request did not contain" $ do
             let d = DeferredExpr (A.Located callSpan (A.EVar ["doc", "chapters", "count"]))
-            p <- load =<< fixed 3 (responseWith (inlinesTerm [Deferred callSpan d]))
+            p <- load =<< fixed abi (responseWith (inlinesTerm [Deferred callSpan d]))
             case shout p of
               Left (BadOutput _) -> pure ()
               other -> assertFailure (show other),
           testCase "a source position outside the request" $ do
-            p <- load =<< fixed 3 (responseWith (inlinesTerm [Text (mkSpan (FileId 1) 900 901) "x"]))
+            p <- load =<< fixed abi (responseWith (inlinesTerm [Text (mkSpan (FileId 1) 900 901) "x"]))
             case shout p of
               Left (BadOutput _) -> pure ()
               other -> assertFailure (show other)
         ],
       testCase "parallel calls give the same results as sequential ones" $ do
-        p <- load =<< fixed 3 (responseWith (inlinesTerm [Text callSpan "SLOT"]))
+        p <- load =<< fixed abi (responseWith (inlinesTerm [Text callSpan "SLOT"]))
         let calls = replicate 16 ()
         par <- mapConcurrently (\_ -> pure $! either (const 0) (length . fst) (shout p)) calls
         par @?= map (\_ -> either (const 0) (length . fst) (shout p)) calls

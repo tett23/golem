@@ -20,7 +20,7 @@ where
 import Control.Monad (forM, unless, when)
 import Control.Monad.State.Strict
 import Data.Char (isAsciiLower, isDigit)
-import Data.List (nub)
+import Data.List (nub, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
@@ -135,7 +135,8 @@ evalFile ctx0 (A.File fid blocks0) =
       ctx = (withFileStyles local ctx0) {ctxSource = source}
       blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
       st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags)
-      (bs, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
+      (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
+      (bs, breakDiags) = nestedBreaks bs0
       doc0 = Document fid bs
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
         Left ds -> (doc0, ds)
@@ -144,7 +145,7 @@ evalFile ctx0 (A.File fid blocks0) =
         { erDocument = doc,
           erExports = stVars st,
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
-          erDiagnostics = stDiags st <> filterDiags,
+          erDiagnostics = stDiags st <> breakDiags <> filterDiags,
           erSource = ctxSource ctx,
           erStyles = local
         }
@@ -372,6 +373,8 @@ standalone ctx sp (A.Located nsp name) args body = case name of
       _ -> err "G0225" sp "@toc の depth は 1 から 3 の整数です" >> pure []
   "index" -> pure [block sp (ChannelOutput IndexOutput)]
   "bibliography" -> pure [block sp (ChannelOutput BibliographyOutput)]
+  "page-break" -> forcedBreak sp name args body
+  "column-break" -> forcedBreak sp name args body
   "figure" -> figure ctx sp args body
   "table" -> csvTable ctx sp args
   "listing" -> listing ctx sp args
@@ -402,7 +405,24 @@ misplacedSetting :: SrcSpan -> M ()
 misplacedSetting sp = err "G0249" sp "@manifest と @style-def はファイルの最初に置きます"
 
 attributedWith :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
-attributedWith ctx sp cmds target = case target of
+attributedWith ctx sp cmds target
+  -- the breaks of the group go before its target; the attributes skip them (docs/adr ADR 0017)
+  | (breaks@(_ : _), rest) <- partition isBreakCommand cmds = do
+      bs <- concat <$> mapM (evalBlock ctx) breaks
+      others <- case (rest, target) of
+        ([], Just t) -> evalBlock ctx t
+        ([], Nothing) -> pure []
+        _ -> attributedWith ctx sp rest target
+      pure (bs <> others)
+  | otherwise = attributedGroup ctx sp cmds target
+
+isBreakCommand :: A.Located A.Block -> Bool
+isBreakCommand = \case
+  A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["page-break", "column-break"]
+  _ -> False
+
+attributedGroup :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
+attributedGroup ctx sp cmds target = case target of
   Nothing
     | (not . any isAttr) cmds -> concat <$> mapM (evalBlock ctx) cmds
     | (lastCmd : before) <- reverse cmds,
@@ -440,6 +460,43 @@ attributedWith ctx sp cmds target = case target of
     joinTarget = \case
       A.Located tsp (A.Paragraph is) -> A.Located tsp (A.Paragraph (joinSoftBreaks is))
       other -> other
+
+-- | @page-break and @column-break (docs/adr ADR 0017).
+forcedBreak :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+forcedBreak sp name args body
+  | not (null body) = err "G0258" sp "@page-break と @column-break は本体を持てません" >> pure []
+  | otherwise = case (name, map A.locValue args) of
+      ("page-break", []) -> ok BreakPage
+      ("page-break", [A.Positional (A.Word "recto")]) -> ok BreakRecto
+      ("page-break", [A.Positional (A.Word "verso")]) -> ok BreakVerso
+      ("column-break", []) -> ok BreakColumn
+      ("column-break", _) -> err "G0258" sp "@column-break は引数を取りません" >> pure []
+      _ -> err "G0258" sp "@page-break の引数は recto か verso です" >> pure []
+  where
+    ok k = pure [block sp (ForcedBreak k)]
+
+{- | Forced breaks below the top of the document are dropped with G0259
+(docs/adr ADR 0017).
+-}
+nestedBreaks :: [Block] -> ([Block], [Diagnostic])
+nestedBreaks bs = let (ds, bs') = concat <$> traverse top bs in (bs', ds)
+  where
+    top b = case blockBody b of
+      ForcedBreak _ -> ([], [b])
+      _ -> inner b
+    -- the diagnostics and what is left of a block below the top
+    inner :: Block -> ([Diagnostic], [Block])
+    inner b@(Block sp lbl body) = case body of
+      ForcedBreak _ -> ([diagnostic "G0259" Error sp "@page-break と @column-break は文書の最上位にだけ置けます"], [])
+      BulletList items -> rebuild BulletList <$> traverse item items
+      OrderedList items -> rebuild OrderedList <$> traverse item items
+      DefList gs -> rebuild DefList <$> traverse (\(DefGroup ts ds) -> DefGroup ts <$> traverse nested ds) gs
+      FigureBlock f -> rebuild (\c -> FigureBlock f {figCaption = c}) <$> nested (figCaption f)
+      _ -> ([], [b])
+      where
+        rebuild f x = [Block sp lbl (f x)]
+    item (ListItem n bs') = ListItem n <$> nested bs'
+    nested bs' = concat <$> traverse inner bs'
 
 applyAttr :: EvalContext -> (Maybe Text, BlockBody) -> A.Located A.Block -> M (Maybe Text, BlockBody)
 applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of

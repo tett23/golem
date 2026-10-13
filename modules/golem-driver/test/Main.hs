@@ -18,9 +18,10 @@ import Golem.Doc.Assemble (Book, IndexGroup (..), inlineText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescriptionUrl, explainHint, lookupExplanation, parseCatalog)
+import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
-import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
+import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), Synthetic (..), plainLook)
@@ -311,9 +312,11 @@ tests =
       testGroup "PDF table of contents (ADR 0009)" tocTests,
       testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
+      testGroup "vertical glyphs turned without a vertical form (ADR 0015)" turnedTests,
       testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
       testGroup "hard line breaks (docs/adr ADR 0016)" hardBreakTests,
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
+      testGroup "forced breaks (docs/adr ADR 0017)" breakTests,
       testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
       testGroup
         "public-domain books"
@@ -328,6 +331,9 @@ tests =
             (written, pdf, _) <- buildBook "kanikosen"
             assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
             assertBool "vertical" ("/Identity-V" `BS.isInfixOf` pdf)
+            -- 「——漁夫は」: the dashes (CID 722) turned (golem-driver ADR 0015)
+            content <- BS.concat <$> inflateAll pdf
+            assertBool "turned dashes" (any (\d -> dGlyph d == 722 && dMatrix d == ["0", "-1", "1", "0"]) (drawnGlyphs content))
             qpdfCheck pdf
         ]
     ]
@@ -343,7 +349,7 @@ variationTests :: [TestTree]
 variationTests =
   [ testCase "a base character and its variation selector are shaped together" $ do
       fonts <- notoFonts
-      [(g, t) | (_, g, _, t) <- lfShape fonts "body" False "葛\xE0100"] @?= [(16314, "葛")],
+      [(shGlyph g, shText g) | g <- lfShape fonts "body" False "葛\xE0100"] @?= [(16314, "葛")],
     testCase "the variant glyph is drawn and maps back to its base character" $ do
       noto <- BS.readFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
       let body = "\n[fonts.body]\nja = \"fonts/noto.otf\"\n"
@@ -2181,7 +2187,8 @@ fakeFonts =
     { lfAdvance = advOf,
       lfWordAdvance = \role -> sum . map (advOf role) . T.unpack,
       lfCode = \_ g -> g,
-      lfShape = \role _ t -> [(faceOf role, fromEnum c `mod` 65536, advOf role c, T.singleton c) | c <- T.unpack t],
+      lfShape = \role _ t -> [Shaped (faceOf role) (fromEnum c `mod` 65536) (advOf role c) (T.singleton c) False | c <- T.unpack t],
+      lfEmBoxCentral = const (38 / 100),
       lfEmbed = \_ vertical used ->
         Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used ("Adobe", "Identity", 0)
     }
@@ -2325,6 +2332,90 @@ styleFileTests =
        | (lang, tag) <- [(Japanese, "ja"), (English, "en")]
        ]
 
+notoBytes :: IO BS.ByteString
+notoBytes = BS.readFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
+
+{- | The font resources of a PDF: each name (such as @/F1@) with its Type0
+font dictionary and the inflated ToUnicode stream.
+-}
+fontResources :: BS.ByteString -> IO [(BS.ByteString, BS.ByteString, BS.ByteString)]
+fontResources pdf = do
+  let objectBody n = fst (BS.breakSubstring "\nendobj" (snd (BS.breakSubstring ("\n" <> BC.pack (show n) <> " 0 obj\n") pdf)))
+      refAfter key body = case BC.words (snd (BS.breakSubstring key body)) of
+        (_ : n : "0" : "R" : _) -> Just (read (BC.unpack n) :: Int)
+        _ -> Nothing
+      fontDict = fst (BS.breakSubstring ">>" (BS.drop (BS.length "/Font <<") (snd (BS.breakSubstring "/Font <<" pdf))))
+      names = [(name, read (BC.unpack n) :: Int) | (name, n, "0", "R") <- quads (BC.words fontDict), "/F" `BS.isPrefixOf` name]
+      quads (a : b : c : d : rest) = (a, b, c, d) : quads rest
+      quads _ = []
+  mapM
+    ( \(name, n) -> do
+        let dict = objectBody n
+        cmap <- case refAfter "/ToUnicode" dict of
+          Just m -> BS.concat <$> inflateAll (objectBody m <> "\nendobj")
+          Nothing -> pure ""
+        pure (name, dict, cmap)
+    )
+    names
+
+turnedTests :: [TestTree]
+turnedTests =
+  [ testCase "vertical shaping turns an em dash that has no vertical form" $ do
+      fonts <- notoFonts
+      case lfShape fonts "body" True "\x2014" of
+        [g] -> (shGlyph g, shAdvance g, shTurned g) @?= (466, 890 / 1000, True)
+        other -> assertFailure (show other),
+    testCase "characters with vertical forms stay upright" $ do
+      fonts <- notoFonts
+      let one c = case lfShape fonts "body" True (T.singleton c) of
+            [g] -> pure g
+            other -> assertFailure (show other)
+      gs <- mapM one "\x2015\x2026\x301C"
+      map shGlyph gs @?= [15282, 15280, 17592]
+      comma <- one '、'
+      horizontalComma <- case lfShape fonts "body" False "、" of
+        [g] -> pure g
+        other -> assertFailure (show other)
+      assertBool "vertical form of 、" (shGlyph comma /= shGlyph horizontalComma)
+      map shTurned (comma : gs) @?= replicate 4 False,
+    testCase "a variation selector stays in the cluster of a turned character (golem-pdf ADR 0006)" $ do
+      fonts <- notoFonts
+      let gs = lfShape fonts "body" True "\x2014\xFE00漢"
+          dash = [g | g <- gs, shText g == "\x2014"]
+      -- the selector is in the dash's cluster (HarfBuzz may give it a glyph of its own) and turns with it
+      map shGlyph (take 1 dash) @?= [466]
+      assertBool (show gs) (all shTurned dash && all (\g -> shText g `elem` ["\x2014", "漢"]) gs)
+      [shTurned g | g <- gs, shText g == "漢"] @?= [False],
+    testCase "ideographs are upright; horizontal shaping never turns" $ do
+      fonts <- notoFonts
+      map shTurned (lfShape fonts "body" True "漢") @?= [False]
+      assertBool "horizontal" (not (any shTurned (lfShape fonts "body" False "——漁夫は―…〜、漢「」ー")))
+      assertBool "horizontal Latin" (not (any shTurned (lfShape fonts "body" False "Golem --"))),
+    testCase "turned dashes are drawn with the horizontal font, centred on the line" $ do
+      noto <- notoBytes
+      fonts <- notoFonts
+      pdf <- miniPdf golemFontProvider False (pdfStyle <> "\n[fonts.body]\nja = \"fonts/noto.otf\"\n") "——漁夫は\n" [("fonts/noto.otf", noto)]
+      content <- BS.concat <$> inflateAll pdf
+      resources <- fontResources pdf
+      let encodingOf name = [enc | (n, dict, _) <- resources, n == name, enc <- ["Identity-V", "Identity-H"], ("/" <> enc) `BS.isInfixOf` dict]
+          drawn = drawnGlyphs content
+          dashes = [d | d <- drawn, dGlyph d == 722]
+          turned = [d | d <- dashes, dMatrix d == ["0", "-1", "1", "0"]]
+      length turned @?= 2
+      length dashes @?= 2
+      assertBool "the horizontal font" (all (\d -> encodingOf (dFont d) == ["Identity-H"]) turned)
+      assertBool "no dash in the vertical font" (null [d | d <- drawn, dGlyph d == 722, encodingOf (dFont d) == ["Identity-V"]])
+      assertBool "ToUnicode" (or [encodingOf n == ["Identity-H"] && "<02D2> <2014>" `BS.isInfixOf` cmap | (n, _, cmap) <- resources])
+      -- the upright 漁 sits on the centre line; the dashes lie left of it by the centre of the em box
+      case ([d | d <- drawn, encodingOf (dFont d) == ["Identity-V"], dMatrix d == ["1", "0", "0", "1"]], turned) of
+        (upright : _, dash : _) -> do
+          let size = ptToRational (dSize dash)
+              shift = ptToRational (dX upright) - ptToRational (dX dash)
+              expected = lfEmBoxCentral fonts 0 * size
+          assertBool (show (fromRational shift :: Double, fromRational expected :: Double)) (expected > 0 && abs (shift - expected) < 1 / 100)
+        other -> assertFailure (show other)
+  ]
+
 -- * golem explain (golem-cli ADR 0005)
 
 explainTests :: TestTree
@@ -2430,4 +2521,58 @@ quotedCodes src =
     T.length code == 5,
     T.all isDigit (T.drop 1 code),
     T.take 1 (T.drop 6 rest) == "\""
+  ]
+
+breakTests :: [TestTree]
+breakTests =
+  [ testCase "PDF: a page break puts the second paragraph on the first line of page 2" $ do
+      r <- pagesMini "" fiveLines "あ\n\n@page-break\n\nい\n" [] Map.empty
+      pages <- either (assertFailure . show) pure r
+      length pages @?= 2
+      take 1 (pages !! 1) @?= ["い"],
+    testCase "PDF: a blank page has no running head and no folio" $ do
+      let style = fiveLines <> "\n[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
+      pdf <- miniPdf fakeProvider True style "あ\n\n@page-break\n\n@page-break\n\nい\n" []
+      length (occurrences "/Type /Page " pdf) @?= 3
+      streams <- inflateAll pdf
+      -- two pages draw their text and folio; the blank page draws nothing
+      length (filter (not . null . drawnGlyphs) streams) @?= 2
+      r <- pagesMini "" style "あ\n\n@page-break\n\n@page-break\n\nい\n" [] Map.empty
+      pages <- either (assertFailure . show) pure r
+      pages !! 1 @?= [],
+    testCase "HTML: a recto break marks the heading after it; only the rules used are written" $
+      withVerseProject "" "@page-break recto\n# h\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) ("data-break-before=\"recto\">" `T.isInfixOf` page && "<h1 " `T.isInfixOf` page)
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        assertBool "recto rule" ("[data-break-before=\"recto\"] { page-break-before: always; break-before: recto; }" `T.isInfixOf` css)
+        assertBool "no page rule" (not ("[data-break-before=\"page\"]" `T.isInfixOf` css))
+        assertBool "no verso rule" (not ("[data-break-before=\"verso\"]" `T.isInfixOf` css)),
+    testCase "HTML: a body paragraph after a page break has the attribute and no class" $
+      withVerseProject "" "a\n\n@page-break\n\nb\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) ("<p>a</p>\n<p data-break-before=\"page\">b</p>\n" `T.isInfixOf` page),
+    testCase "HTML: a break at the end of a file and a column break write nothing" $ do
+      withVerseProject "" "a\n\n@page-break\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) (not ("data-break-before" `T.isInfixOf` page))
+        assertBool (T.unpack page) ("<p>a</p>\n</body>" `T.isInfixOf` page)
+      withVerseProject "" "a\n\n@column-break\n\nb\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) ("<p>a</p>\n<p>b</p>\n" `T.isInfixOf` page)
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        assertBool "no rule" (not ("data-break-before" `T.isInfixOf` css)),
+    testCase "plain text: a page break writes nothing" $ do
+      let text src = withVerseProject "" src $ \tmp -> do
+            _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            TIO.readFile (tmp </> "build/text/horizontal/v.txt")
+      broken <- text "a\n\n@page-break\n\nb\n"
+      plain <- text "a\n\nb\n"
+      broken @?= plain
+      plain @?= "a\n\nb\n"
   ]

@@ -10,6 +10,7 @@ implemented yet; 'noFontProvider' reports that.
 module Golem.Driver.Pdf
   ( FontProvider (..),
     LoadedFonts (..),
+    Shaped (..),
     noFontProvider,
     bodyRole,
     usedRoles,
@@ -90,15 +91,30 @@ data LoadedFonts = LoadedFonts
   { lfAdvance :: Text -> Char -> Rational,
     -- | a Latin word as shaped (kerning, ligatures)
     lfWordAdvance :: Text -> Text -> Rational,
-    {- | shaping: for each glyph the face number, glyph id, advance in em
-    (downwards when vertical) and the text it stands for
-    -} lfShape :: Text -> Bool -> Text -> [(Int, Int, Rational, Text)],
+    -- | shaping: the glyphs of a text in a role, horizontal or vertical
+    lfShape :: Text -> Bool -> Text -> [Shaped],
     -- | the character code of a glyph in the PDF (its CID in a CID-keyed font)
     lfCode :: Int -> Int -> Int,
     {- | the embedded (subset) font of a face number, for horizontal or
     vertical use, with the glyphs used and their text
-    -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> P.Font
+    -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> P.Font,
+    {- | the height of the centre of the ideographic em box above the
+    baseline of a face number, in em (golem-driver ADR 0015)
+    -} lfEmBoxCentral :: Int -> Rational
   }
+
+-- | A glyph from shaping.
+data Shaped = Shaped
+  { shFace :: !Int,
+    shGlyph :: !Int,
+    -- | the advance in em along the line
+    shAdvance :: !Rational,
+    -- | the text the glyph stands for
+    shText :: !Text,
+    -- | drawn turned 90° clockwise in vertical text (golem-driver ADR 0015)
+    shTurned :: !Bool
+  }
+  deriving stock (Eq, Show)
 
 newtype FontProvider = FontProvider
   { -- | the root, style.toml and the styles of the files (docs/adr ADR 0014)
@@ -708,6 +724,8 @@ data UnitKind
     UGap Int
   | -- | an entry of the table of contents: its level and its heading (golem-driver ADR 0009)
     UTocEntry Int SrcSpan
+  | -- | a forced break (docs/adr ADR 0017)
+    UBreak !BreakKind
 
 -- | The role, the size and the indent of a paragraph style (docs/adr ADR 0005, 0006).
 paraLook :: Style -> PageGeometry -> Maybe Text -> ((Text, Sp), Indent)
@@ -763,6 +781,7 @@ unitsOf book geom styleOf pageOf bib = concatMap doc (bookDocs book)
             ChannelOutput (TocOutput depth) -> [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) | e <- bookToc book, teLevel e <= depth]
             ChannelOutput IndexOutput -> [plainUnit (UPara noIndent) Nothing is | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
             ChannelOutput BibliographyOutput -> [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bookCitations book)]
+            ForcedBreak k -> [plainUnit (UBreak k) Nothing []]
     prefixFirst p (u@Unit {uKind = UPara _} : rest) = u {uInlines = txt p : uInlines u} : rest
     prefixFirst _ us = us
     splitBreaks is = case break isBreak is of
@@ -895,8 +914,10 @@ buildFlow inp geom fonts images assumed = do
   besides <- Map.fromList . concat <$> mapper (uncurry wrapJob) jobs
   -- 2. every other unit on its own
   let rest = [(i, u) | (i, u) <- units, Map.notMember i besides, not (isFigure u), not (isTable u), not (isGap u)]
+      -- gaps and breaks are not composed
       isGap u = case uKind u of
         UGap _ -> True
+        UBreak _ -> True
         _ -> False
       isFigure u = case uKind u of
         UFigure _ -> True
@@ -1022,6 +1043,7 @@ buildFlow inp geom fonts images assumed = do
                           )
                 _ -> (nextId + 1, flows <> [FFigure nextId (pfImageLines pf + pfCaptionSpan pf) (label u) fmarks], lineAcc, Map.insert nextId pf figAcc, headAcc, errs <> ferrs)
             UGap n -> (nextId, flows <> [FSpace n], lineAcc, figAcc, headAcc, errs)
+            UBreak k -> (nextId, flows <> [FBreak k], lineAcc, figAcc, headAcc, errs)
             _ ->
               let c = singles Map.! i
                   ls = cLines c
@@ -1147,21 +1169,26 @@ writeDocument inp geom fonts layout intent =
             strokeOf latin s
               | synBold s = syntheticStroke (if latin then syntheticStrokeLatin else syntheticStrokeJa) size
               | otherwise = 0
-            gs = concat [[(ix, g, a, t, (synSlant s, strokeOf latin s)) | (ix, g, a, t) <- lfShape fonts role (v && not rotated) r] | (role, r, latin) <- runsOf look txt, let s = syntheticOf look latin]
-            advs = scanl (+) 0 [toSp size a | (_, _, a, _, _) <- gs]
-            placed = [(ix, g, t, sb, off) | ((ix, g, _, t, sb), off) <- zip gs advs]
-            byFont = Map.fromListWith (flip (<>)) [((ix, sb), [(g, t, off)]) | (ix, g, t, sb, off) <- placed]
+            gs = concat [[(ix, g, a, t, (synSlant s, strokeOf latin s), tu) | Shaped ix g a t tu <- lfShape fonts role (v && not rotated) r] | (role, r, latin) <- runsOf look txt, let s = syntheticOf look latin]
+            advs = scanl (+) 0 [toSp size a | (_, _, a, _, _, _) <- gs]
+            -- a glyph turned in vertical text: drawn with the horizontal font (golem-driver ADR 0015)
+            placed = [(ix, g, t, sb, tu && v && not rotated, off) | ((ix, g, _, t, sb, tu), off) <- zip gs advs]
+            byFont = Map.fromListWith (flip (<>)) [((ix, sb, tu), [(g, t, off)]) | (ix, g, t, sb, tu, off) <- placed]
             at off = if v then (x0, y0 - off) else (x0 + off, y0)
-            mark (ix, (sl, stroke)) xs
+            -- the baseline of a turned glyph: left of the centre line by the centre of its em box
+            turnedAt ix off = (x0 - toSp size (lfEmBoxCentral fonts ix), y0 - off)
+            mark (ix, (sl, stroke), turned) xs
               | sl || stroke > 0 =
-                  let rs = P.RunStyle (if v then 1000 else 1000 + scale) (v && rotated) (if sl then syntheticSlant else 0) stroke
-                   in P.StyledGlyphRun rs (ref ix (v && not rotated)) size [(code ix g, gx, gy) | (g, _, off) <- xs, let (gx, gy) = at off]
+                  let rs = P.RunStyle (if v then 1000 else 1000 + scale) (v && (rotated || turned)) (if sl then syntheticSlant else 0) stroke
+                      pos off = if turned then turnedAt ix off else at off
+                   in P.StyledGlyphRun rs (ref ix (v && not rotated && not turned)) size [(code ix g, gx, gy) | (g, _, off) <- xs, let (gx, gy) = pos off]
+              | turned = P.RotatedGlyphRun (ref ix False) size [(code ix g, gx, gy) | (g, _, off) <- xs, let (gx, gy) = turnedAt ix off]
               | v && rotated = P.RotatedGlyphRun (ref ix False) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
               | v = P.GlyphRun (ref ix True) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
               | scale /= 0 = P.ScaledGlyphRun (ref ix False) size (1000 + scale) [(code ix g, x0 + off, y0) | (g, _, off) <- xs]
               | otherwise = P.GlyphRun (ref ix False) size [(code ix g, x0 + off, y0) | (g, _, off) <- xs]
             code = lfCode fonts
-         in ([mark k xs | (k, xs) <- Map.toList byFont], [(ref ix (v && not rotated), g, t) | (ix, g, t, _, _) <- placed])
+         in ([mark k xs | (k, xs) <- Map.toList byFont], [(ref ix (v && not rotated && not tu), g, t) | (ix, g, t, _, tu, _) <- placed])
       -- the swatch of a look, when it names one (golem-driver ADR 0004)
       swatchOf look = do
         name <- lkColor look
@@ -1246,7 +1273,7 @@ writeDocument inp geom fonts layout intent =
               _ -> concatMap (fst . snd) grp
          in (concatMap marksOf coloured, concatMap (snd . snd) parts)
       textAt anchor size txt =
-        let w = sum [toSp size a | (_, _, a, _) <- lfShape fonts body False txt]
+        let w = sum [toSp size (shAdvance g) | g <- lfShape fonts body False txt]
             x0 = case anAlign anchor of
               LS.AlignStart -> anX anchor
               LS.AlignCenter -> anX anchor - w `div` 2
