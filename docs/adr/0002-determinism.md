@@ -1,6 +1,6 @@
 # ADR 0002: 決定性の規則
 
-ステータス: 採択
+ステータス: 採択→入力に出力を変える CLI のオプションを加える点は[golem-pdf ADR 0004](../golem-pdf/adr/0004-crop-marks-and-bleed.md)
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 オプション --profile: 未知のプロファイルです: nope（dev、prod のいずれか）
 
 使い方: golem build [--target html|epub|text|pdf] [--profile dev|prod] 
-                    [--format human|json]
+                    [--marks japanese|western|none] [--format human|json]
 
   出力を build/ に書く

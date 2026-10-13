@@ -24,7 +24,7 @@ grid :: Int -> Int -> Int -> Maybe Dim -> Grid
 grid chars ls cols gap = Grid (Abs (pt 10)) chars ls (Abs (pt 17)) cols gap (Abs mm18) (Abs mm20)
 
 styleWith :: Bool -> Bool -> Grid -> Style
-styleWith bindingRight vertical g = defaultStyle {stPage = Just (Page "A5" bindingRight vertical (Just g))}
+styleWith bindingRight vertical g = defaultStyle {stPage = Just (Page "A5" bindingRight vertical (Just g) 0)}
 
 geom :: Style -> PageGeometry
 geom s = either (error . show) id (pageGeometry s)

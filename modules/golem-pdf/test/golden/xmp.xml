@@ -12,6 +12,7 @@
    <xmpMM:InstanceID>uuid:3b196fd4-907b-edf5-1c30-90e9835f2f7c</xmpMM:InstanceID>
    <xmpMM:VersionID>1</xmpMM:VersionID>
    <xmpMM:RenditionClass>default</xmpMM:RenditionClass>
+   <pdf:Producer>Golem 0.0.0-test</pdf:Producer>
    <pdf:Trapped>False</pdf:Trapped>
    <pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>
   </rdf:Description>

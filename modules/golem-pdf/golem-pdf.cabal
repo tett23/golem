@@ -17,6 +17,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Golem.Pdf
                     Golem.Pdf.Image
+                    Golem.Pdf.Marks
                     Golem.Pdf.Number
                     Golem.Pdf.Sha256
                     Golem.Pdf.Srgb
