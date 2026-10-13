@@ -96,27 +96,37 @@
 %recover bracket SkipParagraph
 
 # Every label is safe (golem-parser ADR 0007): removing it does not change
-# the language. peg-hs's check cannot prove it for the following reasons.
+# the language. The check of peg-hs 7114641, with the improvements of peg-hs
+# ADR 0038, still cannot prove it for the following reasons.
 #
-# The checker treats the predicate of Ind(n) as succeeding on any character;
-# every alternative of Block starts with Ind(ind), and after it each needs a
-# mark that the failing input does not have (golem-parser ADR 0007).
+# After a block nested in a block command fails, the checker takes the
+# BlockCommand(ind)+ of the outer BlockGroup to be able to go on at the same
+# place. Telling them apart needs Ind(ind) and Ind(ind + 2) to read
+# different numbers of spaces, and the checker does not compare the values
+# of arguments.
 %safe block
 %safe indent
 %safe def_orphan
 %safe heading_level
-%safe table_delimiter
-%safe table_row
 %safe code_close
-# BadBracket's &{ False } looks like it may succeed to the checker.
 %safe bracket
 %safe arg_order
-# Telling %% from %, [= from [ and *[ from * needs the second character.
+# The same, and for the close of SplatArgument: after *[ fails, the checker
+# takes (Sp KeywordArgument)* to be able to go on. It uses the known *[ only
+# against later alternatives, not after a repetition.
 %safe close
-%safe comment_close
+# The same as the close of SplatArgument.
 %safe expr
+# The same as block, and for ProofComment: on an unclosed %%=, Comment fails
+# at the same place, which needs the two loops to be compared.
+%safe comment_close
+# A table and a code block both start with Ind(ind). The checker does not
+# look into the TableRow that matched to see that its line starts with |.
+%safe table_delimiter
+%safe table_row
 # A row whose cell count differs is followed by the !(Nl Ind Pipe) check,
-# which fails on that very row.
+# which fails on that very row. The checker does not know the value of the
+# predicate r == h.
 %safe table_cells
 
 # ---------------------------------------------------------------- file
