@@ -48,6 +48,7 @@ import Data.Text.IO qualified as TIO
 import Data.Vector qualified as V
 import Golem.Doc.Assemble
 import Golem.Doc.IR
+import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Pdf
 import Golem.Driver.Plugins (loadPlugins)
@@ -378,7 +379,12 @@ build opts = do
       case evBook e of
         Just book
           | not (hasErrors (finish (evDiagnostics e))) && not (optCheckOnly opts) -> do
-              (written, outDiags) <- writeTargets opts e book missing writable
+              -- a list number its format cannot write stops every target (golem-driver ADR 0013)
+              let listDiags = listNumberDiagnostics (evStyle e) (maybe False pageVertical (stPage (evStyle e))) book
+              (written, outDiags) <-
+                if null listDiags || null writable
+                  then writeTargets opts e book missing writable
+                  else pure ([], listDiags)
               pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags <> outDiags)) infos written)
         _ -> pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags)) infos [])
   where
@@ -488,7 +494,12 @@ writeTargets opts e book missing targets = do
             hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
             hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
             hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
-            hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ (ForcedBreak k) <- bs]
+            hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ (ForcedBreak k) <- bs],
+            -- only a book with [lists] changes the markers (golem-driver ADR 0013)
+            hcLists =
+              if stLists style == defaultListStyle
+                then Nothing
+                else Just (HtmlLists (lsBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style)))
           }
       present = mfilter (`Map.notMember` missing)
       changed a b = if a == b then Nothing else Just a
@@ -536,7 +547,7 @@ writeTargets opts e book missing targets = do
               TextVertical -> ("vertical", GT.Vertical)
               TextHorizontal -> ("horizontal", GT.Horizontal)
         -- each document with the indents of its style (docs/adr ADR 0014)
-        let pages = concat [GT.renderText (stNumbersVertical style) dev (textFirstLine (docStyles e fid)) gv ft book {bookDocs = [d]} | d@(Document fid _) <- bookDocs book]
+        let pages = concat [GT.renderText (stNumbersVertical style) dev (textFirstLine (docStyles e fid)) (textLists style) gv ft book {bookDocs = [d]} | d@(Document fid _) <- bookDocs book]
         forM pages $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)
@@ -561,6 +572,17 @@ writeTargets opts e book missing targets = do
       when ex (removeDirectoryRecursive dir)
     writeText p t = createDirectoryIfMissing True (takeDirectory p) >> TIO.writeFile p t
     copy src dst = createDirectoryIfMissing True (takeDirectory dst) >> BS.readFile src >>= BS.writeFile dst
+
+{- | The markers of [lists] in plain text (golem-driver ADR 0013): a gap is
+written when [lists] gap is not 0, or by the last character without it.
+-}
+textLists :: Style -> GT.TextLists
+textLists style =
+  let l = stLists style
+      nonZero = \case
+        Abs x -> x /= 0
+        Zw r -> r /= 0
+   in GT.TextLists (lsBullets l) (lsNumbers l) (nonZero <$> lsGap l)
 
 -- | The character styles of a style, resolved for CSS (docs/adr ADR 0005).
 htmlCharStyles :: Style -> Map Text HtmlCharStyle
