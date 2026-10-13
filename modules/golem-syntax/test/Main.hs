@@ -7,6 +7,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Syntax
+import Golem.Syntax.Sha256 (sha256)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -46,7 +47,23 @@ tests :: TestTree
 tests =
   testGroup
     "golem-syntax"
-    [ testProperty "offset -> line/col -> offset" $ property $ do
+    [ testGroup
+        "sha256"
+        [ testCase "the empty string" $
+            hex (sha256 "") @?= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          testCase "abc" $
+            hex (sha256 "abc") @?= "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+          testCase "two blocks (FIPS 180-2)" $
+            hex (sha256 "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
+              @?= "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+          testCase "a million times a" $
+            hex (sha256 (BS.replicate 1000000 0x61)) @?= "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
+          -- the test suite runs with a heap limit of 64 MB (golem-syntax.cabal):
+          -- the state of the rounds must not build up across the blocks
+          testCase "16 MB in a bounded heap" $
+            hex (sha256 (BS.replicate (16 * 1024 * 1024) 0)) @?= "080acf35a507ac9849cfcba47dc2ad83e01b75663a516279c8b9d243b719643e"
+        ],
+      testProperty "offset -> line/col -> offset" $ property $ do
         t <- forAll genText
         off <- forAll (Gen.element (boundaries t))
         let li = mkLineIndex t
@@ -140,3 +157,8 @@ genDiag = do
   sev <- Gen.element [Error, Warning]
   msg <- Gen.element ["a", "b"]
   pure (diagnostic code sev (mkSpan (FileId f) s (s + l)) msg)
+
+hex :: BS.ByteString -> String
+hex = concatMap (\w -> [digits !! fromIntegral (w `div` 16), digits !! fromIntegral (w `mod` 16)]) . BS.unpack
+  where
+    digits = "0123456789abcdef"
