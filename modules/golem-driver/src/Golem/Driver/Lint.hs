@@ -37,6 +37,6 @@ lintProject profile root = do
             Nothing
               | null files -> concat [latinJoinedByNewline keep fid (sfCst sf) | (fid, sf) <- sources]
               | otherwise -> lint (LintInput files Map.empty Set.empty keep)
-       in (sourceInfos project, finish (evDiagnostics e <> lintDiags))
+       in (withLockSource e (sourceInfos project), finish (evDiagnostics e <> lintDiags))
   where
     finish = sortDiagnostics . map (adjustForProfile profile)
