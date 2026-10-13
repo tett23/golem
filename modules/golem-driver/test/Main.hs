@@ -324,6 +324,7 @@ tests =
       testGroup "vertical glyphs turned without a vertical form (ADR 0015)" turnedTests,
       testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
       testGroup "hard line breaks (docs/adr ADR 0016)" hardBreakTests,
+      testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
       testGroup "forced breaks (docs/adr ADR 0017)" breakTests,
       testGroup "columns (docs/adr ADR 0018)" columnTests,
@@ -396,6 +397,30 @@ separatorTests =
         assertBool (T.unpack l) ("<p>一行目。</p>\n<p>二行目。</p>\n<p>三行目。</p>" `T.isInfixOf` l)
         b <- TIO.readFile (tmp </> "build/html/b.xhtml")
         assertBool (T.unpack b) ("<p>前の行後の行</p>" `T.isInfixOf` b)
+  ]
+
+akiTests :: [TestTree]
+akiTests =
+  [ testCase "PDF: a paragraph is set with the aki set of its paragraph style" $ do
+      let wide = TE.encodeUtf8 "\n[aki-sets.wide]\nrules = [{ before = \"kana\", after = \"kana\", optimum = \"全角\" }]\n\n[paragraph-styles.quote]\naki-set = \"wide\"\n"
+          src = T.replicate 20 "あ" <> "\n\n@style quote\n  " <> T.replicate 20 "あ" <> "\n"
+      (_, plain) <- verseLines (horizontal30 "\n[paragraph-styles.quote]\nspace-between = 0\n") src
+      (_, styled) <- verseLines (horizontal30 wide) src
+      length plain @?= 2
+      length styled @?= 3
+      (_, body) <- verseLines (horizontal30 (wide <> "\n[paragraph-styles.body]\naki-set = \"wide\"\n")) src
+      length body @?= 4,
+    testCase "HTML: [aki] is an empty span with a margin, between word joiners" $
+      withVerseProject "" "a[aki 五分]b\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) ("<p>a&#x2060;<span class=\"aki\" style=\"margin-inline-start: 0.2em\"></span>&#x2060;b</p>" `T.isInfixOf` page),
+    testCase "plain text: [aki] is as many ideographic spaces as its whole zw" $ do
+      withVerseProject "" "a[aki 全角]b[aki 五分]c[aki 二分四分]d[aki 2zw]e[aki 3mm]f\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        t <- TIO.readFile (tmp </> "build/text/horizontal/v.txt")
+        t @?= "a\x3000\&bcd\x3000\x3000\&ef\n"
   ]
 
 hardBreakTests :: [TestTree]

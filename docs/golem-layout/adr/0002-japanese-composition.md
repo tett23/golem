@@ -1,6 +1,6 @@
 # ADR 0002: 日本語組版の規則
 
-ステータス: 採択→ルビの配置は[ADR 0009](0009-ruby-placement.md)、異体字セレクタの箱は [golem-pdf ADR 0006](../../golem-pdf/adr/0006-cid-system-info.md)、縦書き用の字形がない文字の回転は [golem-driver ADR 0015](../../golem-driver/adr/0015-vertical-dashes.md)
+ステータス: 採択→ルビの配置は[ADR 0009](0009-ruby-placement.md)、異体字セレクタの箱は [golem-pdf ADR 0006](../../golem-pdf/adr/0006-cid-system-info.md)、縦書き用の字形がない文字の回転は [golem-driver ADR 0015](../../golem-driver/adr/0015-vertical-dashes.md)、字間の空きの量は [docs/adr/0019](../../adr/0019-aki-settings.md)
 
 ## 文脈
 

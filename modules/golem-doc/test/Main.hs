@@ -116,10 +116,26 @@ cbor =
         validateDocument size [] (para Nothing [a, br, br, a]) @?= ["改行は段落の最上位のインラインの間にだけ置けます"]
         validateDocument size [] (para (Just "body") [a]) @?= ["段落スタイル body は null で表します"]
         validateInlines size [] [a, br, a] @?= ["改行は段落の最上位のインラインの間にだけ置けます"],
-      testCase "the ABI version is 4 and version 3 is rejected (docs/adr ADR 0017)" $ do
-        abiVersion @?= 4
-        let bytes = toStrictByteString (encodeTerm (TList [TInt 3, TInt 0, TList []]))
+      testCase "the ABI version is 5 and version 4 is rejected (docs/adr ADR 0019)" $ do
+        abiVersion @?= 5
+        let bytes = toStrictByteString (encodeTerm (TList [TInt 4, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes)),
+      testCase "aki survives the CBOR round trip as tag 18 (docs/adr ADR 0019)" $ do
+        let is = [Aki sp (AkiZw (1 / 5)), Aki sp (AkiZw 0), Aki sp (AkiAbs 185795)]
+        decodeInlines (encodeInlines is) @?= Right is
+        let spT = TList [TInt 0, TInt 0, TInt 1]
+            inl t = decodeInlines (toStrictByteString (encodeTerm (TList [t])))
+        inl (TList [TInt 18, spT, TList [TInt 1, TInt 5], TNull]) @?= Right [Aki sp (AkiZw (1 / 5))]
+        inl (TList [TInt 18, spT, TNull, TInt 65536]) @?= Right [Aki sp (AkiAbs 65536)]
+        assertBool "both" (isLeft (inl (TList [TInt 18, spT, TList [TInt 1, TInt 5], TInt 65536])))
+        assertBool "neither" (isLeft (inl (TList [TInt 18, spT, TNull, TNull])))
+        assertBool "zero denominator" (isLeft (inl (TList [TInt 18, spT, TList [TInt 1, TInt 0], TNull]))),
+      testCase "a negative aki is invalid (docs/adr ADR 0019)" $ do
+        let size (FileId 0) = Just 10
+            size _ = Nothing
+        validateInlines size [] [Aki sp (AkiZw (1 / 5)), Aki sp (AkiAbs 10)] @?= []
+        validateInlines size [] [Aki sp (AkiZw (-1))] @?= ["アキの量が負です"]
+        validateInlines size [] [Aki sp (AkiAbs (-1))] @?= ["アキの量が負です"],
       testCase "every kind of forced break survives the CBOR round trip (docs/adr ADR 0017)" $ do
         let d = Document (FileId 0) [Block sp Nothing (ForcedBreak k) | k <- [minBound .. maxBound]]
         decodeDocument (encodeDocument d) @?= Right d

@@ -5,7 +5,7 @@ evaluation of a file, so that every medium shows the same result.
 Each paragraph is matched alone. Its target is the text of its inlines:
 the characters of 'Text', the bases of 'Ruby' (not the readings), one
 replacement character (U+FFFC) for an element that cannot be split or
-whose text is not known yet ('Tcy', 'Number', 'Ref', 'Deferred', 'Cite')
+whose text is not known yet ('Tcy', 'Number', 'Ref', 'Deferred', 'Cite'), for 'Aki'
 and for 'Note' and 'Sidenote', a newline for 'LineBreak', and nothing for
 'IndexMark' and 'ProofComment'.
 -}
@@ -196,3 +196,4 @@ spanOf = \case
   Cite s _ -> s
   ProofComment s _ -> s
   LineBreak s -> s
+  Aki s _ -> s

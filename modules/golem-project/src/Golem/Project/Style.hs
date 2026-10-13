@@ -6,6 +6,12 @@ module Golem.Project.Style
     parseDim,
     parseSignedDim,
     dimToSp,
+    parseAki,
+    AkiRuleDef (..),
+    AkiSetDef (..),
+    builtinAkiSetNames,
+    defaultAkiSetName,
+    akiClassNames,
     Page (..),
     PageSize (..),
     pageTrimSize,
@@ -59,7 +65,7 @@ module Golem.Project.Style
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (when)
+import Control.Monad (unless, when)
 import Data.Bifunctor (bimap)
 import Data.Char (isAsciiLower, isDigit)
 import Data.List (nub)
@@ -190,7 +196,9 @@ data ParaStyleDef = ParaStyleDef
     -- | added to the indent on the first line; negative hangs
     psFirstLineIndent :: !(Maybe Dim),
     -- | the regex styles, in order (docs/adr ADR 0015); replaced as a whole through based-on
-    psRegexStyles :: !(Maybe [RegexStyleDef])
+    psRegexStyles :: !(Maybe [RegexStyleDef]),
+    -- | the aki set the paragraph is set with (docs/adr ADR 0019)
+    psAkiSet :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -207,7 +215,81 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+
+{- | An aki amount (docs/adr ADR 0019): a name (ベタ, 全角, 二分, 三分, 四分,
+五分, 六分, 八分, 二分四分), a decimal in zw, or a percentage of zw. The
+value is in zw; negative amounts are not written.
+-}
+parseAki :: Text -> Maybe Rational
+parseAki t = case T.strip t of
+  "ベタ" -> Just 0
+  "全角" -> Just 1
+  "二分" -> Just (1 % 2)
+  "三分" -> Just (1 % 3)
+  "四分" -> Just (1 % 4)
+  "五分" -> Just (1 % 5)
+  "六分" -> Just (1 % 6)
+  "八分" -> Just (1 % 8)
+  "二分四分" -> Just (3 % 4)
+  s -> case T.stripSuffix "%" s of
+    Just p -> (/ 100) <$> decimalOf p
+    Nothing -> case parseDim s of
+      Just (Zw r) | T.isSuffixOf "zw" s -> Just r
+      _ -> Nothing
+
+-- | A rule of an aki set: the classes before and after, and (minimum, optimum, maximum) in zw.
+data AkiRuleDef = AkiRuleDef
+  { arBefore :: ![Text],
+    arAfter :: ![Text],
+    arMinimum :: !Rational,
+    arOptimum :: !Rational,
+    arMaximum :: !Rational
+  }
+  deriving stock (Eq, Show)
+
+-- | [aki-sets.<name>]: the set it is based on and the rules added after the base's.
+data AkiSetDef = AkiSetDef
+  { asBasedOn :: !(Maybe Text),
+    asRules :: ![AkiRuleDef]
+  }
+  deriving stock (Eq, Show)
+
+-- | The built-in aki sets, which a user cannot define again.
+builtinAkiSetNames :: [Text]
+builtinAkiSetNames = ["gyomatsu-yakumono-hankaku", "gyomatsu-yakumono-zenkaku"]
+
+-- | The aki set of body, and the base of a set without based-on.
+defaultAkiSetName :: Text
+defaultAkiSetName = "gyomatsu-yakumono-hankaku"
+
+-- | The names of the character classes of the rules (JLReq; docs/adr ADR 0019).
+akiClassNames :: [Text]
+akiClassNames =
+  [ "opening",
+    "closing",
+    "hyphen",
+    "dividing",
+    "middle-dot",
+    "full-stop",
+    "comma",
+    "inseparable",
+    "iteration",
+    "prolonged-sound",
+    "small-kana",
+    "ideographic-space",
+    "kana",
+    "ideograph",
+    "western",
+    "japanese"
+  ]
+
+-- | A non-negative decimal: digits with an optional fraction.
+decimalOf :: Text -> Maybe Rational
+decimalOf s = case T.splitOn "." s of
+  [i] | not (T.null i), T.all isDigit i -> Just (fromInteger (read (T.unpack i)))
+  [i, f] | not (T.null i), not (T.null f), T.all isDigit (i <> f) -> Just (read (T.unpack (i <> f)) % (10 ^ T.length f))
+  _ -> Nothing
 
 -- | The built-in character styles: bold, italic and strong.
 builtinCharStyles :: Map Text CharStyleDef
@@ -222,7 +304,7 @@ builtinCharStyles =
 builtinParaStyles :: Map Text ParaStyleDef
 builtinParaStyles =
   Map.fromList
-    [ ("body", noParaDef {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0, psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0)}),
+    [ ("body", noParaDef {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0, psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0), psAkiSet = Just defaultAkiSetName}),
       ("verse", noParaDef {psBasedOn = Just "body", psLineBreaks = Just KeepLines, psSpaceBetween = Just 1, psIndent = Just (Zw 2), psFirstLineIndent = Just (Zw (-2))}),
       ("caption", noParaDef {psBasedOn = Just "body"}),
       ("sidenote", noParaDef {psBasedOn = Just "body"})
@@ -250,6 +332,7 @@ overPara u b =
     (psIndent u <|> psIndent b)
     (psFirstLineIndent u <|> psFirstLineIndent b)
     (psRegexStyles u <|> psRegexStyles b)
+    (psAkiSet u <|> psAkiSet b)
 
 -- | The parent of a paragraph style: body has none, the others are based on body by default.
 paraParent :: Text -> ParaStyleDef -> Maybe Text
@@ -280,7 +363,7 @@ value; based-on is the style's parent.
 paraStyle :: Style -> Maybe Text -> Maybe ParaStyleDef
 paraStyle style mname =
   let name = fromMaybe "body" mname
-      defaults = noParaDef {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0, psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0)}
+      defaults = noParaDef {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0, psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0), psAkiSet = Just defaultAkiSetName}
    in case chainOf paraParent (stParaStyles style) name of
         [] -> Nothing
         chain@(d : _) -> Just (foldr overPara defaults chain) {psBasedOn = paraParent name d}
@@ -438,7 +521,9 @@ data Style = Style
     -- | [toc] leader: "dots" or "none" (golem-driver ADR 0009)
     stTocLeader :: !Text,
     -- | [lists]: the markers of lists, for the whole book (golem-driver ADR 0013)
-    stLists :: !ListStyle
+    stLists :: !ListStyle,
+    -- | [aki-sets.<name>]: the user's aki sets, not the built-in ones (docs/adr ADR 0019)
+    stAkiSets :: !(Map Text AkiSetDef)
   }
   deriving stock (Eq, Show)
 
@@ -463,7 +548,8 @@ defaultStyle =
       stSwatches = Map.empty,
       stMasters = Map.empty,
       stTocLeader = "dots",
-      stLists = defaultListStyle
+      stLists = defaultListStyle,
+      stAkiSets = Map.empty
     }
 
 -- | JIS B series, A series, 四六判, 菊判, 新書判 and mass-market, in millimetres.
@@ -518,8 +604,58 @@ instance FromValue PageSize where
 newtype DimV = DimV Dim
 
 instance FromValue DimV where
-  fromValue (Text' _ t) = maybe (fail ("長さの書き方が不正です: " <> T.unpack t <> "（13Q や 20mm のように書きます）")) (pure . DimV) (parseDim t)
+  fromValue (Text' _ t) = case parseDim t of
+    Just d -> pure (DimV d)
+    Nothing
+      -- the names of aki amounts and percentages are only for aki (docs/adr ADR 0019): G0320
+      | Just _ <- parseAki t -> fail (T.unpack (akiError ("アキの量の名前と百分率は、アキの量を書く欄でだけ使えます。寸法は 0.5zw や 2mm のように書きます: " <> t)))
+      | otherwise -> fail ("長さの書き方が不正です: " <> T.unpack t <> "（13Q や 20mm のように書きます）")
   fromValue _ = fail "長さは文字列で書きます"
+
+-- | The message of G0320 (docs/adr ADR 0019).
+akiError :: Text -> Text
+akiError why = "アキの量の指定が正しくありません: " <> why
+
+-- | An aki amount of a rule.
+newtype AkiV = AkiV Rational
+
+instance FromValue AkiV where
+  fromValue (Text' _ t) = maybe (fail (T.unpack (akiError ("アキの量として読めません: " <> t)))) (pure . AkiV) (parseAki t)
+  fromValue _ = fail (T.unpack (akiError "アキの量は \"四分\" や \"25%\" のように文字列で書きます"))
+
+-- | The classes of one side of a rule: a name or an array of names.
+newtype ClassesV = ClassesV [Text]
+
+instance FromValue ClassesV where
+  fromValue (Text' _ t) = pure (ClassesV [t])
+  fromValue v@(List' _ _) = ClassesV <$> fromValue v
+  fromValue _ = fail (T.unpack (akiError "クラスは名前の文字列か、その配列で書きます"))
+
+instance FromValue AkiRuleDef where
+  fromValue = parseTableFromValue $ do
+    ClassesV before <- reqKey "before"
+    ClassesV after <- reqKey "after"
+    AkiV o <- reqKey "optimum"
+    n <- maybe o (\(AkiV x) -> x) <$> optKey "minimum"
+    m <- maybe o (\(AkiV x) -> x) <$> optKey "maximum"
+    let bad why = fail (T.unpack (akiError why))
+        known = (`elem` akiClassNames)
+    case [c | c <- before, not (known c || c `elem` ["line-start", "paragraph-start"])] of
+      (c : _)
+        | c == "line-end" -> bad "line-end は after にだけ書けます"
+        | otherwise -> bad ("未知のクラスの名前です: " <> c)
+      [] -> pure ()
+    case [c | c <- after, not (known c || c == "line-end")] of
+      (c : _)
+        | c `elem` ["line-start", "paragraph-start"] -> bad (c <> " は before にだけ書けます")
+        | otherwise -> bad ("未知のクラスの名前です: " <> c)
+      [] -> pure ()
+    when (null before || null after) $ bad "before と after には一つ以上のクラスを書きます"
+    unless (n <= o && o <= m) $ bad "minimum、optimum、maximum の順に小さくない値を書きます"
+    pure (AkiRuleDef before after n o m)
+
+instance FromValue AkiSetDef where
+  fromValue = parseTableFromValue (AkiSetDef <$> optKey "based-on" <*> (fromMaybe [] <$> optKey "rules"))
 
 unDim :: Maybe DimV -> Maybe Dim
 unDim = fmap (\(DimV d) -> d)
@@ -597,7 +733,8 @@ instance FromValue ParaStyleDef where
     fli <- optKey "first-line-indent"
     fli' <- traverse (\v -> maybe (fail ("長さの書き方が不正です: " <> T.unpack v <> "（1zw や -1zw のように書きます）")) pure (parseSignedDim v)) fli
     rs <- optKey "regex-styles"
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs)
+    aki <- optKey "aki-set"
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki)
 
 instance FromValue RegexStyleDef where
   fromValue = parseTableFromValue (RegexStyleDef <$> reqKey "pattern" <*> reqKey "style")
@@ -835,6 +972,11 @@ instance FromValue Style where
     (_ :: Maybe VerseV) <- optKey "verse"
     TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
     ListsSec lists <- fromMaybe (ListsSec defaultListStyle) <$> optKey "lists"
+    akiSets <- fromMaybe Map.empty <$> optKey "aki-sets"
+    -- the built-in sets cannot be defined again (docs/adr ADR 0019)
+    case filter (`elem` builtinAkiSetNames) (Map.keys akiSets) of
+      (n : _) -> liftMatcher (inKey "aki-sets" (inKey n (fail (T.unpack (akiError ("組み込みのアキ量のセットと同じ名前です。based-on で引き継いだ別の名前のセットを作ります: " <> n))))))
+      [] -> pure ()
     hs <- traverse headingLevel (Map.toList (headings :: Map Text HeadingStyle))
     let d = defaultStyle
     pure
@@ -854,7 +996,8 @@ instance FromValue Style where
           stSwatches = swatches,
           stMasters = masters,
           stTocLeader = fromMaybe (stTocLeader d) leader,
-          stLists = lists
+          stLists = lists,
+          stAkiSets = akiSets
         }
     where
       headingLevel (k, v) = case k of
@@ -886,16 +1029,22 @@ filesystem.
 -}
 parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
-  s <- decodeStrictBy "G0306" codeAt fid src
+  s <- either (Left . map akiCode) Right (decodeStrictBy "G0306" codeAt fid src)
   case nub [(code, m) | (code, _, m) <- styleChecks "style.toml の" s] of
     [] -> Right s
     ds -> Left [diagnostic code Error (mkSpan fid 0 0) m | (code, m) <- ds]
   where
+    -- an aki amount wrong in any key is G0320 (docs/adr ADR 0019)
+    akiCode d
+      | akiError "" `T.isPrefixOf` diagMessage d = d {diagCode = DiagnosticCode "G0320"}
+      | otherwise = d
     -- errors of the page size are G0317 (ADR 0005)
     codeAt = \case
       ScopeKey "page" : ScopeKey "size" : _ -> "G0317"
       -- errors of [lists] are G0322 (golem-driver ADR 0013)
       ScopeKey "lists" : _ -> "G0322"
+      -- errors of [aki-sets] are G0320 (docs/adr ADR 0019)
+      ScopeKey "aki-sets" : _ -> "G0320"
       -- the contents of a running head are G0314, the retired running-head of a heading G0319 (golem-driver ADR 0014)
       ScopeKey "masters" : _ : ScopeKey "running-head" : ScopeKey k : _ | k `elem` ["content", "even", "odd"] -> "G0314"
       -- an unknown position of a running head or a folio is G0318 (golem-driver ADR 0016)
@@ -937,6 +1086,8 @@ styleChecks owner s =
                   | otherwise -> go (m : seen) (Map.lookup m styles >>= parent m)
           charCycle = [n | n <- Map.keys cs, cyclic (const csBasedOn) cs n]
           paraCycle = [n | n <- Map.keys ps, n /= "body", cyclic paraParent ps n]
+          akiKnown n = n `elem` builtinAkiSetNames || Map.member n (stAkiSets s)
+          akiCycle = [n | n <- Map.keys (stAkiSets s), cyclic (const asBasedOn) (stAkiSets s) n]
        in [ (n, "文字スタイル " <> n <> " の based-on がありません: " <> b)
           | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
             Map.notMember b cs
@@ -950,6 +1101,16 @@ styleChecks owner s =
                  Map.notMember b ps
                ]
             <> [(n, "段落スタイルの based-on が循環しています: " <> T.intercalate ", " paraCycle) | n <- paraCycle]
+            -- aki sets: aki-set and based-on name a set, without a cycle (docs/adr ADR 0019)
+            <> [ (n, "段落スタイル " <> n <> " の aki-set のアキ量のセットがありません: " <> a)
+               | (n, ParaStyleDef {psAkiSet = Just a}) <- Map.toList ps,
+                 not (akiKnown a)
+               ]
+            <> [ ("", "アキ量のセット " <> n <> " の based-on がありません: " <> b)
+               | (n, AkiSetDef {asBasedOn = Just b}) <- Map.toList (stAkiSets s),
+                 not (akiKnown b)
+               ]
+            <> [("", "アキ量のセットの based-on が循環しています: " <> T.intercalate ", " akiCycle) | not (null akiCycle)]
     -- a paragraph style no larger than the grid (docs/adr ADR 0005)
     sizeChecks = case stPage s >>= pageGrid of
       Just Grid {gridFontSize = Abs fs} ->
@@ -1013,7 +1174,7 @@ data LocalValue = LocalWord Text | LocalString Text
 -- | The keys @style-def takes, as style.toml's (for completion).
 charStyleKeys, paraStyleKeys, regexStyleKeys :: [Text]
 charStyleKeys = ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic"]
-paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent"]
+paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent", "aki-set"]
 regexStyleKeys = ["pattern", "style"]
 
 {- | The keys of one @style-def as a TOML table, read with the 'FromValue'

@@ -395,6 +395,8 @@ inline c = \case
     Nothing -> ""
   ProofComment _ t -> if hcDev (cCfg c) then "<span class=\"proof\">" <> escapeXml t <> "</span>" else ""
   LineBreak _ -> "<br/>"
+  -- an empty span with a margin; word joiners keep the line from breaking around it (docs/adr ADR 0019)
+  Aki _ a -> "&#x2060;<span class=\"aki\" style=\"margin-inline-start: " <> akiLength a <> "\"></span>&#x2060;"
   where
     styleOf = \case
       "kanji-digits" -> StyleKanjiDigits
@@ -403,6 +405,19 @@ inline c = \case
 
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
+
+-- | The CSS length of an aki: zw in em, an absolute amount in pt.
+akiLength :: AkiAmount -> Text
+akiLength = \case
+  AkiZw r -> decimal r <> "em"
+  AkiAbs x -> decimal (toRational x / 65536) <> "pt"
+  where
+    -- at most four decimal places, rounded half to even, without trailing zeros
+    decimal r =
+      let n = round (r * 10000) :: Integer
+          (i, f) = abs n `quotRem` 10000
+          frac = T.dropWhileEnd (== '0') (T.justifyRight 4 '0' (tshow f))
+       in (if n < 0 then "-" else "") <> tshow i <> (if T.null frac then "" else "." <> frac)
 
 isLineBreak :: InlineF r -> Bool
 isLineBreak = \case

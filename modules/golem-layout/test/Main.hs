@@ -2,11 +2,14 @@ module Main (main) where
 
 import Data.List (isPrefixOf, maximumBy, subsequences)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isJust)
 import Data.Ord (Down (..), comparing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Doc.IR
+import Golem.Layout.Aki (AkiSet, akiPositions, builtinAkiSets, defaultAkiSet, withAkiRule)
+import Golem.Layout.Aki qualified as Aki
 import Golem.Layout.Hyphenation
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
@@ -219,6 +222,7 @@ tests =
   testGroup
     "golem-layout"
     [ testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
+      testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
       testGroup
         "Knuth-Plass (ADR 0001)"
         [ testCase "TeX badness" $ do
@@ -1050,3 +1054,147 @@ orientationTests =
       verticalOrientation '\x0378' @?= Rotated
       verticalOrientation '\x10FFFF' @?= Rotated
   ]
+
+-- ------------------------------------------------------------------ aki (docs/adr ADR 0019)
+
+-- | A character of each of the 15 classes.
+akiRepresentatives :: [Char]
+akiRepresentatives = "「」゠！・。、…々ーぁ\x3000あ漢A"
+
+{- | The spacing of the composition before docs/adr ADR 0019, as it was
+written in 'normalize', applied to the boxes of a composition and its
+paragraph end. The inter-character stretch is rounded, as the aki sets
+convert it.
+-}
+referenceNormalize :: ComposeEnv -> [Item] -> [Item]
+referenceNormalize env items = go Nothing [it | it@Box {} <- items] <> lineEndItems
+  where
+    lineEndItems = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+    fsz = ceFontSize env
+    em r = round (r * toRational fsz)
+    go _ [] = []
+    go prev (x : rest) = case (prev, x) of
+      (Just p, Box _ c) -> between p c <> [x] <> go (Just c) rest
+      (_, Box _ c) -> leading c <> [x] <> go (Just c) rest
+      _ -> x : go Nothing rest
+    sizeOf c = toRational (lkSize (bcLook c))
+    leading c = case textClass c of
+      Just cls | fst (punctSpace cls) > 0 -> let w = round (fst (punctSpace cls) * sizeOf c) in [Glue w 0 w]
+      _ -> []
+    trailingSpace c = maybe 0 (snd . punctSpace) (textClass c) * sizeOf c
+    leadingSpace c = maybe 0 (fst . punctSpace) (textClass c) * sizeOf c
+    textClass c = case T.unsnoc (bcText c) of
+      Just (_, ch) | boxKind c `elem` [KindText, KindPunctuation, KindKenten] && T.length (bcText c) == 1 -> Just (charClass ch)
+      _ -> Nothing
+    firstClass c = case T.uncons (bcText c) of
+      Just (ch, _) | not (isRubyBox c) -> Just (charClass ch)
+      _ -> Nothing
+    lastClass c = case T.unsnoc (bcText c) of
+      Just (_, ch) | not (isRubyBox c) -> Just (charClass ch)
+      _ -> Nothing
+    isRubyBox c = boxKind c `elem` [KindRuby, KindGroupRuby]
+    between p c =
+      let pc = lastClass p
+          cc = firstClass c
+          strict = ceKinsokuStrict env
+          noBreak =
+            maybe False (lineStartProhibited strict) cc
+              || maybe False lineEndProhibited pc
+              || (pc == Just Inseparable && cc == Just Inseparable)
+              || (pc == Just Western && cc == Just Western && bcExpandable p && bcExpandable c)
+          space = combined (trailingSpace p) (leadingSpace c) pc cc
+          isJa k = k /= Just Western
+          notPunct = maybe True (\cl -> punctSpace cl == (0, 0))
+          waou = (pc == Just Western && isJa cc && isJust cc && space == 0 && notPunct cc) || (cc == Just Western && isJa pc && isJust pc && space == 0 && notPunct pc)
+          pen = [Penalty 0 infPenalty NoHyphen | noBreak]
+       in if space > 0
+            then pen <> [Glue (round space) 0 (round space)]
+            else
+              if waou
+                then pen <> [Glue (em (1 / 4)) (em (1 / 4)) (em (1 / 8))]
+                else
+                  if noBreak
+                    then []
+                    else
+                      if bothJapanese pc cc
+                        then [Glue 0 (em (1 / 10)) 0]
+                        else [Penalty 0 0 NoHyphen | not (bcExpandable p && bcExpandable c)]
+    bothJapanese pc cc = maybe False (/= Western) pc && maybe False (/= Western) cc
+    combined post pre pc cc
+      | post == 0 = pre
+      | pre == 0 = if cc `elem` map Just [Closing, FullStop, Comma] then 0 else post
+      | pc `elem` map Just [Closing, FullStop, Comma] && cc == Just Opening = max post pre
+      | pc == Just MiddleDot || cc == Just MiddleDot = post + pre
+      | otherwise = 0
+
+-- | The texts of the composition: every pair of representatives, and each alone.
+akiTexts :: [Text]
+akiTexts = [T.pack [a, b] | a <- akiRepresentatives, b <- akiRepresentatives] <> [T.singleton a | a <- akiRepresentatives]
+
+-- | The set gyomatsu-yakumono-hankaku with one more rule.
+akiWith :: [Text] -> [Text] -> Aki.Aki -> AkiSet
+akiWith bs as a = withAkiRule (concatMap akiPositions bs) (concatMap akiPositions as) a defaultAkiSet
+
+akiEnv :: AkiSet -> ComposeEnv
+akiEnv s = (defaultComposeEnv fs) {ceAkiSet = s}
+
+-- | The distance from the right edge of the last box of a set line to the line end.
+trailingRoom :: Line -> Sp
+trailingRoom l = case reverse [(it, x) | (it@Box {}, x) <- placeLine l] of
+  ((Box w _, x) : _) -> lineTarget l - (x + w)
+  _ -> lineTarget l
+
+akiTests :: [TestTree]
+akiTests =
+  [ testCase "gyomatsu-yakumono-hankaku composes as before (kinsoku strict)" $ do
+      let env = akiEnv defaultAkiSet
+      [t | t <- akiTexts, compose env t /= referenceNormalize env (compose env t)] @?= [],
+    testCase "with kinsoku loose only Japanese before small kana and the long vowel mark differ" $ do
+      let env = (akiEnv defaultAkiSet) {ceKinsokuStrict = False}
+          differ = [t | t <- akiTexts, compose env t /= referenceNormalize env (compose env t)]
+          ja = filter (`notElem` ("「」・。、A" :: String)) akiRepresentatives
+      differ @?= [T.pack [a, b] | a <- ja, b <- "ーぁ"] `orderedAs` akiTexts
+      let stretch = Glue 0 (fs `div` 10) 0
+          asBreak it = if it == stretch then Penalty 0 0 NoHyphen else it
+      [t | t <- differ, compose env t /= map asBreak (referenceNormalize env (compose env t))] @?= [],
+    testCase "a set with (四分, 三分, 二分) between Japanese and Latin" $ do
+      let s = withAkiRule (akiPositions "western") (akiPositions "japanese") (Aki.Aki (1 / 4) (1 / 3) (1 / 2)) (akiWith ["japanese"] ["western"] (Aki.Aki (1 / 4) (1 / 3) (1 / 2)))
+          third = round (toRational fs / 3)
+          half = fs `div` 2
+          quarter = fs `div` 4
+      [g | g@Glue {} <- compose (akiEnv s) "漢A", itemStretch g < filStretch] @?= [Glue third (half - third) (third - quarter)]
+      [g | g@Glue {} <- compose (akiEnv s) "A漢", itemStretch g < filStretch] @?= [Glue third (half - third) (third - quarter)],
+    testCase "gyomatsu-yakumono-zenkaku keeps a half em after a closing bracket at the line end" $ do
+      let txt = "あいう」えおかき"
+          firstLine s w = case brLines (breakParagraph defaultParams (const w) (compose (akiEnv s) txt)) of
+            (l : _) -> l
+            [] -> error "no line"
+      zenkaku <- maybe (assertFailure "no zenkaku" >> error "unreachable") pure (Map.lookup "gyomatsu-yakumono-zenkaku" builtinAkiSets)
+      let lz = firstLine zenkaku (4 * fs)
+          lh = firstLine defaultAkiSet (7 * fs `div` 2)
+      [bcText c | Box _ c <- take 1 (reverse (lineItems lz))] @?= ["」"]
+      [bcText c | Box _ c <- take 1 (reverse (lineItems lh))] @?= ["」"]
+      trailingRoom lz @?= fs `div` 2
+      trailingRoom lh @?= 0,
+    testCase "a set without the space before an opening bracket at the paragraph start" $ do
+      let s = akiWith ["paragraph-start"] ["opening"] (Aki.Aki 0 0 0)
+      take 1 [() | Box {} <- take 1 (compose (akiEnv s) "「あ」")] @?= [()]
+      take 1 [() | Glue {} <- take 1 (compose (akiEnv defaultAkiSet) "「あ」")] @?= [()],
+    testCase "the space after a larger closing bracket is in the bracket's size" $ do
+      let env = (akiEnv defaultAkiSet) {ceRestyle = \lk -> \case CharStyle _ "big" _ -> lk {lkSize = 2 * fs}; _ -> lk}
+          items = fst (composeInlines env [CharStyle sp "big" [sp0 "」"], sp0 "漢"])
+      [g | g@Glue {} <- items, itemStretch g < filStretch] @?= [Glue fs 0 fs],
+    testCase "[aki] is a fixed glue with no break around it and no aki of the set" $ do
+      let items = fst (composeInlines (akiEnv defaultAkiSet) [sp0 "漢", Aki sp (AkiZw (1 / 5)), sp0 "A"])
+          boxText = \case
+            Box _ c -> Just (bcText c)
+            _ -> Nothing
+      map (\it -> maybe (Right it) Left (boxText it)) (take 4 items)
+        @?= [Left "漢", Right (Penalty 0 infPenalty NoHyphen), Right (Glue (fs `div` 5) 0 0), Left "A"]
+      length items @?= 7
+      let absolute = fst (composeInlines (akiEnv defaultAkiSet) [sp0 "3", Aki sp (AkiAbs 65536), sp0 "kg"])
+      [g | g@Glue {} <- absolute, itemStretch g < filStretch] @?= [Glue 65536 0 0]
+  ]
+  where
+    sp = mkSpan (FileId 0) 0 0
+    orderedAs xs order = [x | x <- order, x `elem` xs]

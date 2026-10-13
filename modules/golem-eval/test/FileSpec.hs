@@ -11,7 +11,7 @@ import Golem.Eval.Value
 import Golem.Parser (parseAst)
 import Golem.Parser.SourceSettings
 import Golem.Project.Paths (PathError (..))
-import Golem.Project.Style (LineBreaks (..), LocalStyles (..), RegexStyleDef (..), Style (..), defaultStyle, paraLineBreaks, parseStyle)
+import Golem.Project.Style (LineBreaks (..), LocalStyles (..), RegexStyleDef (..), Style (..), defaultStyle, dimToSp, paraLineBreaks, parseDim, parseStyle)
 import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -692,6 +692,27 @@ diagnosticTests =
         msgs "[strong: a|b]\n" @?= [("G0238", "strong には散文スロットが一つ必要です")]
         msgs "[index reading=a]\n" @?= [("G0238", "index には散文スロットが一つ必要です")]
         msgs "[ruby: a]\n" @?= [("G0238", "ruby には散文スロットが二つ必要です")],
+      testCase "[aki] puts a fixed space (docs/adr ADR 0019)" $ do
+        let akiOf src = case body src of
+              [Paragraph Nothing is] -> [(spanStart s, spanEnd s, a) | Aki s a <- is]
+              other -> error (show other)
+        akiOf "a[aki 五分]b\n" @?= [(1, 13, AkiZw (1 / 5))]
+        akiOf "[aki 0.25zw][aki 12.5%][aki 全角]\n" @?= [(0, 12, AkiZw (1 / 4)), (12, 23, AkiZw (1 / 8)), (23, 35, AkiZw 1)]
+        akiOf "3[aki 1mm]kg\n" @?= [(1, 10, AkiAbs (maybe 0 (dimToSp 0) (parseDim "1mm")))]
+        akiOf "[aki \"2pt\"]\n" @?= [(0, 11, AkiAbs (2 * 65536))]
+        errs "a[aki 五分]b\n" @?= [],
+      testCase "G0255: [aki] needs one amount and no prose slot" $ do
+        let g0255 src = do
+              let ms = msgs src
+              assertBool (show ms) (not (null ms) && all ((== "G0255") . fst) ms && all (("ベタ、全角、二分" `T.isInfixOf`) . snd) ms)
+              body src @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 1) "a"]]
+        g0255 "a[aki]\n"
+        g0255 "a[aki 十分]\n"
+        g0255 "a[aki 四分: 語]\n"
+        g0255 "a[aki 四分 二分]\n"
+        g0255 "a[aki -1zw]\n"
+        g0255 "a[aki x=四分]\n"
+        g0255 "a[aki [= 1]]\n",
       testCase "G0238: commands that take no prose slot" $ do
         msgs "[number-text 1: x]\n" @?= [("G0238", "number-text は散文スロットを取りません")]
         msgs "[ref-number intro: x]\n" @?= [("G0238", "ref-number は散文スロットを取りません")]
