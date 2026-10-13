@@ -171,11 +171,24 @@ whose span covers both (docs/adr ADR 0003). Inlines nested in commands
 are joined too.
 -}
 joinSoftBreaks :: [A.Located A.Inline] -> [A.Located A.Inline]
-joinSoftBreaks = mergeLocated . filter (not . isSoftBreak) . map nestedInline
+joinSoftBreaks = mergeLocated . dropSoft False . map nestedInline
+  where
+    -- 'A.HardBreak' stays (docs/adr ADR 0016), and so does a newline right
+    -- after it: the line after the hard break is empty, which the
+    -- evaluation reports
+    dropSoft afterHard = \case
+      [] -> []
+      (x : rest)
+        | isSoftBreak x && not afterHard -> dropSoft False rest
+        | otherwise -> x : dropSoft (isHardBreak x) rest
 
 isSoftBreak :: A.Located A.Inline -> Bool
 isSoftBreak (A.Located _ A.SoftBreak) = True
 isSoftBreak _ = False
+
+isHardBreak :: A.Located A.Inline -> Bool
+isHardBreak (A.Located _ A.HardBreak) = True
+isHardBreak _ = False
 
 mergeLocated :: [A.Located A.Inline] -> [A.Located A.Inline]
 mergeLocated (A.Located a (A.Text x) : A.Located b (A.Text y) : rest) =
@@ -297,7 +310,8 @@ block sp = Block sp Nothing
 
 evalBlock :: EvalContext -> A.Located A.Block -> M [Block]
 evalBlock ctx (A.Located sp b) = case b of
-  A.Paragraph is -> one . Paragraph Nothing <$> evalInlines ctx False is
+  -- items, definitions and captions break their lines by the same rule (docs/adr ADR 0016)
+  A.Paragraph is -> styledParagraph ctx sp Nothing is
   A.Heading l is -> one . Heading l noHeadingAttrs <$> evalInlines ctx True is
   A.BulletList items -> one . BulletList <$> mapM (fmap (ListItem Nothing) . evalBlocks ctx) items
   A.OrderedList items -> one . OrderedList <$> mapM (fmap (ListItem Nothing) . evalBlocks ctx) items
@@ -565,11 +579,42 @@ styledParagraph ctx sp mname is = case mname of
         ((_, first) : rest) -> [block sp (Paragraph (styleOf name) (first <> concat [LineBreak bsp : l | (bsp, l) <- rest]))]
   where
     styleOf n = if n == "body" then Nothing else Just n
-    joined st = (\x -> [block sp (Paragraph st x)]) <$> evalInlines ctx False (joinSoftBreaks is)
-    -- lines with the span of the newline before each (the first has none)
-    linesOf before xs = case break isSoftBreak xs of
+    joined st = (\x -> [block sp (Paragraph st x)]) <$> hardLines ctx sp is
+    -- lines with the span of the newline before each (the first has none);
+    -- a hard break is a newline here (docs/adr ADR 0016)
+    linesOf before xs = case break (\x -> isSoftBreak x || isHardBreak x) xs of
       (l, []) -> [(fromMaybe sp before, l)]
       (l, A.Located bsp _ : rest) -> (fromMaybe sp before, l) : linesOf (Just bsp) rest
+
+{- | The inlines of a paragraph that joins its lines, broken at its hard
+breaks (docs/adr ADR 0016): the lines joined by 'LineBreak'. A line left
+empty, or whose first source line has nothing in it, is G0257; an empty
+line goes with the break before it.
+-}
+hardLines :: EvalContext -> SrcSpan -> [A.Located A.Inline] -> M [Inline]
+hardLines ctx sp is = do
+  let ls = splitHard Nothing is
+  evaluated <- mapM (\(bsp, l) -> (bsp,l,) <$> evalInlines ctx False (joinSoftBreaks l)) ls
+  let breaks = [bsp | (Just bsp, _, _) <- evaluated]
+      -- where an empty line is reported: the break before it, or after it for the first line
+      at = \case
+        Just bsp -> bsp
+        Nothing -> case breaks of
+          (b : _) -> b
+          [] -> sp
+      emptyStart = \case
+        (A.Located _ A.SoftBreak : _) -> True
+        _ -> False
+      bad (_, l, x) = null x || emptyStart l
+  unless (null breaks) $
+    mapM_ (\(bsp, _, _) -> err "G0257" (at bsp) "強制改行の前後に文字がありません") (filter bad evaluated)
+  pure $ case [(bsp, x) | (bsp, _, x) <- evaluated, not (null x)] of
+    [] -> []
+    ((_, first) : rest) -> first <> concat [maybe [] (pure . LineBreak) bsp <> x | (bsp, x) <- rest]
+  where
+    splitHard before xs = case break isHardBreak xs of
+      (l, []) -> [(before, l)]
+      (l, A.Located bsp _ : rest) -> (before, l) : splitHard (Just bsp) rest
 
 -- | Paragraph styles a filter made up (docs/adr ADR 0005).
 unknownParaStyles :: EvalContext -> Document -> [Diagnostic]
@@ -753,6 +798,8 @@ evalInline :: EvalContext -> Bool -> A.Located A.Inline -> M [Inline]
 evalInline ctx inHeading (A.Located sp i) = case i of
   A.Text t -> pure [Text sp t]
   A.SoftBreak -> pure []
+  -- the hard breaks of a paragraph are split off before; this one is in a prose slot
+  A.HardBreak -> err "G0256" sp "強制改行は段落の中にだけ書けます。コマンドの中では使えません" >> pure []
   A.ErrorInline -> pure []
   A.ProofComment t
     | ctxProfile ctx == Prod -> report (diagnostic "G0205" Warning sp "校正用のコメントが残っています") >> pure []

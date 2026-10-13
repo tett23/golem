@@ -5,6 +5,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
+import Golem.Doc.Validate (validateDocument)
 import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
@@ -96,6 +97,7 @@ tests =
       settingsTests,
       styleTests,
       separatorTests,
+      hardBreakTests,
       breakTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
@@ -464,6 +466,57 @@ separatorTests =
         let (file, _, _) = parseAst (FileId 1) "a\n"
         erSource (evalFile lineCtx file) @?= SourceSettings LineSeparated
         erSource (evalFile ctx file) @?= defaultSourceSettings
+    ]
+
+-- ------------------------------------------------------------------ hard breaks
+
+-- | Hard line breaks (docs/adr ADR 0016), in both paragraph separators.
+hardBreakTests :: TestTree
+hardBreakTests =
+  testGroup
+    "hard line breaks (docs/adr ADR 0016)"
+    [ testCase "a backslash at the end of a line breaks the line" $
+        mapM_ (\c -> shapes c "a\\\nb\n" @?= [(Nothing, ["a", "<br>", "b"])]) [ctx, lineCtx],
+      testCase "the line style makes the two lines one paragraph" $
+        shapes lineCtx "a\\\nb\nc\n" @?= [(Nothing, ["a", "<br>", "b"]), (Nothing, ["c"])],
+      testCase "the blank-line style joins the next newline" $
+        shapes ctx "a\\\nb\nc\n" @?= [(Nothing, ["a", "<br>", "bc"])],
+      testCase "a keep style has one break per line" $
+        mapM_ (\c -> shapes c "@style verse\n  a\\\n  b\n" @?= [(Just "verse", ["a", "<br>", "b"])]) [ctx, lineCtx],
+      testCase "a join style breaks the line" $
+        mapM_ (\c -> shapes c "@style quote\na\\\nb\n" @?= [(Just "quote", ["a", "<br>", "b"])]) [ctx, lineCtx],
+      testCase "an item of a list" $
+        mapM_
+          ( \c -> case map blockBody (blocksIn c "- a\\\n  b\n") of
+              [BulletList [ListItem Nothing bs]] -> map (shapeOf . blockBody) bs @?= [(Nothing, ["a", "<br>", "b"])]
+              other -> assertFailure (show other)
+          )
+          [ctx, lineCtx],
+      testCase "a caption of a figure" $
+        mapM_
+          ( \c -> case map blockBody (blocksIn c "@figure images/a.png alt=a\n  c1\\\n  c2\n") of
+              [FigureBlock f] -> map (shapeOf . blockBody) (figCaption f) @?= [(Nothing, ["c1", "<br>", "c2"])]
+              other -> assertFailure (show other)
+          )
+          [ctx, lineCtx],
+      testCase "a hard break in a prose slot is G0256" $ do
+        errs "[note: a\\\nb] c\n" @?= ["G0256"]
+        paraOf "[note: a\\\nb] c\n" @?= ["<note 1>", "ab", " c"],
+      testCase "an empty line is G0257 and the paragraph is valid" $
+        mapM_
+          ( \c ->
+              mapM_
+                ( \src -> do
+                    let (bs, es) = run c src
+                    assertEqual (show src) ["G0257"] es
+                    validateDocument (const (Just 1000)) [] (Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing b | b <- bs]) @?= []
+                )
+                ["\\\na\n", "a\\\n\\\nb\n", "a\\\n%% c %%\nb\n"]
+          )
+          [ctx, lineCtx],
+      testCase "erSource of the line style stays" $ do
+        let (file, _, _) = parseAst (FileId 1) "a\\\nb\n"
+        erSource (evalFile lineCtx file) @?= SourceSettings LineSeparated
     ]
 
 -- | Forced page breaks (docs/adr ADR 0017).
