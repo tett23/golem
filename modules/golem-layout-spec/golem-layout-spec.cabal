@@ -34,6 +34,8 @@ test-suite golem-layout-spec-test
     , containers
     , golem-layout-spec
     , golem-project
+    , golem-syntax
     , tasty          >=1.4 && <1.6
+    , text
     , tasty-hunit    >=0.10 && <0.11
   default-language: GHC2021

@@ -516,111 +516,111 @@ tests =
       testGroup
         "pagination (ADR 0003)"
         [ testCase "no orphan: a paragraph's first line is not left alone at the page end" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 4), FParagraph (lines' 10 3)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 4), FParagraph (lines' 10 3)]
             slots ps @?= [[0, 1, 2, 3], [10, 11, 12]],
           testCase "no widow: the last line is not sent alone to the next page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 6)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 6)]
             slots ps @?= [[0, 1, 2, 3], [4, 5]],
           testCase "headings and definition terms stay with what follows" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 2 False 1 (lines' 20 1), FParagraph (lines' 30 3)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 2 False 1 (lines' 20 1), FParagraph (lines' 30 3)]
             slots ps @?= [[0, 1, 2], [20, 30, 31, 32]]
-            let qs = paginate 5 [FParagraph (lines' 0 4), FDefTerm (lines' 20 1), FParagraph (lines' 30 2)]
+            let qs = paginate 1 5 [FParagraph (lines' 0 4), FDefTerm (lines' 20 1), FParagraph (lines' 30 2)]
             slots qs @?= [[0, 1, 2, 3], [20, 30, 31]],
           testCase "a recto heading starts on an odd page after a blank page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 1 True 1 (lines' 20 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 1 True 1 (lines' 20 1)]
             map poBlank ps @?= [False, True, False]
             map poNumber ps @?= [1, 2, 3],
           testCase "a figure that does not fit goes to the next page; text moves up" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 10), (4, SLine 11)], [(0, SFigure 99)]],
           testCase "footnotes sit on the page of their marker and continue when too long" $ do
             let withNote i n = LineBox i [NoteBody (100 + i) n] [] []
-                ps = paginate 6 [FParagraph [LineBox 0 [] [] [], withNote 1 2, LineBox 2 [] [] [], withNote 3 1, LineBox 4 [] [] []]]
+                ps = paginate 1 6 [FParagraph [LineBox 0 [] [] [], withNote 1 2, LineBox 2 [] [] [], withNote 3 1, LineBox 4 [] [] []]]
             map poFootnotes ps @?= [[(101, 0, 2)], [(103, 0, 1)]]
-            let long = paginate 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
+            let long = paginate 1 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
             map poFootnotes long @?= [[(100, 0, 2)], [(100, 2, 2)], [(100, 4, 1)]],
           testCase "index marks go to the page of their line (golem-driver ADR 0007)" $ do
             let m = mkSpan (FileId 0) 10 20
-                ps = paginate 1 [FParagraph [LineBox 0 [] [] [], LineBox 1 [] [] [m], LineBox 2 [] [] []]]
+                ps = paginate 1 1 [FParagraph [LineBox 0 [] [] [], LineBox 1 [] [] [m], LineBox 2 [] [] []]]
             map poNumber ps @?= [1, 2, 3]
             markPages ps @?= Map.fromList [(m, 2)],
           testCase "the marks of a figure go with it to the next page" $ do
             let m = mkSpan (FileId 0) 10 20
-                ps = paginate 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [m], FParagraph (lines' 10 2)]
+                ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [m], FParagraph (lines' 10 2)]
             markPages ps @?= Map.fromList [(m, 2)],
           testCase "page references converge when the page count gains a digit" $ do
             -- the reference sits before the label; at three digits the reference line wraps
             let layout assumed =
                   let refWidthLines = if Map.findWithDefault 1 "end" assumed >= 100 then 2 else 1
-                   in paginate 5 (FParagraph (lines' 0 refWidthLines) : [FParagraph (lines' (1000 + i * 10) 2) | i <- [0 .. 196]] <> [FParagraph [LineBox 9999 [] ["end"] []]])
+                   in paginate 1 5 (FParagraph (lines' 0 refWidthLines) : [FParagraph (lines' (1000 + i * 10) 2) | i <- [0 .. 196]] <> [FParagraph [LineBox 9999 [] ["end"] []]])
             case resolvePageRefs layout of
               Right ps -> Map.lookup "end" (labelPages ps) @?= Just (toInteger (poNumber (last ps)))
               Left ls -> assertFailure (show ls),
           testCase "references that never settle are an error" $ do
-            let layout assumed = paginate 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"] []]])
+            let layout assumed = paginate 1 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"] []]])
             resolvePageRefs layout @?= Left ["x"],
           testCase "a space between stanzas takes grid lines (docs/adr ADR 0003)" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 4), FSpace 1, FParagraph (lines' 10 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 4), FSpace 1, FParagraph (lines' 10 1)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SLine 10)]]
-            let qs = paginate 5 [FParagraph (lines' 0 2), FSpace 2, FParagraph (lines' 10 1)]
+            let qs = paginate 1 5 [FParagraph (lines' 0 2), FSpace 2, FParagraph (lines' 10 1)]
             map poSlots qs @?= [[(0, SLine 0), (1, SLine 1), (4, SLine 10)]],
           testCase "a space at the top of a page takes nothing" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 5), FSpace 1, FParagraph (lines' 10 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 5), FSpace 1, FParagraph (lines' 10 1)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3), (4, SLine 4)], [(0, SLine 10)]]
-            map poSlots (paginate 5 [FSpace 3, FParagraph (lines' 0 1)]) @?= [[(0, SLine 0)]]
+            map poSlots (paginate 1 5 [FSpace 3, FParagraph (lines' 0 1)]) @?= [[(0, SLine 0)]]
         ],
       testGroup
         "forced breaks (docs/adr ADR 0017)"
         [ testCase "a page break in the middle of page 1 starts page 2" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakPage, FParagraph (lines' 10 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakPage, FParagraph (lines' 10 1)]
             slots ps @?= [[0], [10]]
             map poBlank ps @?= [False, False],
           testCase "two page breaks in a row make a blank page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakPage, FBreak BreakPage, FParagraph (lines' 10 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakPage, FBreak BreakPage, FParagraph (lines' 10 1)]
             map poBlank ps @?= [False, True, False]
             slots ps @?= [[0], [], [10]],
           testCase "a page break at the start of the book makes page 1 blank" $ do
-            let ps = paginate 5 [FBreak BreakPage, FParagraph (lines' 0 1)]
+            let ps = paginate 1 5 [FBreak BreakPage, FParagraph (lines' 0 1)]
             map poBlank ps @?= [True, False]
             slots ps @?= [[], [0]],
           testCase "a recto break goes to the next odd page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakRecto, FParagraph (lines' 10 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakRecto, FParagraph (lines' 10 1)]
             map poBlank ps @?= [False, True, False]
             slots ps @?= [[0], [], [10]]
-            let qs = paginate 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakRecto, FParagraph (lines' 20 1)]
+            let qs = paginate 1 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakRecto, FParagraph (lines' 20 1)]
             map poBlank qs @?= [False, False, False]
             slots qs @?= [[0, 1, 2, 3, 4], [10], [20]],
           testCase "a recto break on an empty odd page does nothing" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakPage, FBreak BreakPage, FBreak BreakRecto, FParagraph (lines' 10 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakPage, FBreak BreakPage, FBreak BreakRecto, FParagraph (lines' 10 1)]
             map poBlank ps @?= [False, True, False]
             slots ps @?= [[0], [], [10]],
           testCase "a verso break goes to the next even page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakVerso, FParagraph (lines' 10 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakVerso, FParagraph (lines' 10 1)]
             map poBlank ps @?= [False, False]
             slots ps @?= [[0], [10]]
-            let qs = paginate 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakVerso, FParagraph (lines' 20 1)]
+            let qs = paginate 1 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakVerso, FParagraph (lines' 20 1)]
             map poBlank qs @?= [False, False, True, False]
             slots qs @?= [[0, 1, 2, 3, 4], [10], [], [20]],
           testCase "breaks at the end of the book add no page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakPage]
-                qs = paginate 5 [FParagraph (lines' 0 1), FBreak BreakRecto]
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakPage]
+                qs = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakRecto]
             map poBlank ps @?= [False]
             map poBlank qs @?= [False],
           testCase "a recto heading after a page break adds a blank page only on an even page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 1), FBreak BreakPage, FHeading 1 True 1 (lines' 20 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakPage, FHeading 1 True 1 (lines' 20 1)]
             map poBlank ps @?= [False, True, False]
             slots ps @?= [[0], [], [20]]
-            let qs = paginate 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakPage, FHeading 1 True 1 (lines' 20 1)]
+            let qs = paginate 1 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakPage, FHeading 1 True 1 (lines' 20 1)]
             map poBlank qs @?= [False, False, False]
             slots qs @?= [[0, 1, 2, 3, 4], [10], [20]],
           testCase "a figure sent on goes to the top of the page after the break, not to a blank page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FBreak BreakPage, FParagraph (lines' 10 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FBreak BreakPage, FParagraph (lines' 10 1)]
             map poBlank ps @?= [False, False]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2)], [(0, SFigure 99), (3, SLine 10)]],
           testCase "a column break on one column is a page break" $ do
             let flows k = [FParagraph (lines' 0 1), FBreak k, FBreak k, FParagraph (lines' 10 1)]
-            paginate 5 (flows BreakColumn) @?= paginate 5 (flows BreakPage)
-            paginate 5 [FBreak BreakColumn, FParagraph (lines' 0 1)] @?= paginate 5 [FBreak BreakPage, FParagraph (lines' 0 1)]
+            paginate 1 5 (flows BreakColumn) @?= paginate 1 5 (flows BreakPage)
+            paginate 1 5 [FBreak BreakColumn, FParagraph (lines' 0 1)] @?= paginate 1 5 [FBreak BreakPage, FParagraph (lines' 0 1)]
         ],
       testGroup
         "looks: emphasis, character styles and colour (golem-driver ADR 0004)"
@@ -693,17 +693,17 @@ tests =
           testCase "a heading of the body size sits on the grid" $
             mapM_ (\m -> headingBlock fs (fs * 3 `div` 2) fs m @?= HeadingBlock (fs * 3 `div` 2) m 0) [1, 2, 3],
           testCase "a heading block takes its span; the next paragraph starts after it" $ do
-            let ps = paginate 10 [FHeading 1 False 3 (lines' 20 1), FParagraph (lines' 30 3)]
+            let ps = paginate 1 10 [FHeading 1 False 3 (lines' 20 1), FParagraph (lines' 30 3)]
             map poSlots ps @?= [[(0, SHeading 20 1), (3, SLine 30), (4, SLine 31), (5, SLine 32)]],
           testCase "a heading block is not split; it goes whole to the next page" $ do
-            let ps = paginate 6 [FParagraph (lines' 0 4), FHeading 2 False 3 (lines' 20 1), FParagraph (lines' 30 2)]
+            let ps = paginate 1 6 [FParagraph (lines' 0 4), FHeading 2 False 3 (lines' 20 1), FParagraph (lines' 30 2)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SHeading 20 1), (3, SLine 30), (4, SLine 31)]],
           testCase "keeping a heading with the next paragraph counts its span and two lines" $ do
             -- 2 used, 5 free: span 3 + 2 lines fit
-            let fits = paginate 7 [FParagraph (lines' 0 2), FHeading 2 False 3 (lines' 20 1), FParagraph (lines' 30 4)]
+            let fits = paginate 1 7 [FParagraph (lines' 0 2), FHeading 2 False 3 (lines' 20 1), FParagraph (lines' 30 4)]
             take 1 (map (map snd . poSlots) fits) @?= [[SLine 0, SLine 1, SHeading 20 1, SLine 30, SLine 31]]
             -- 3 used, 4 free: span 3 + 2 lines do not fit
-            let moves = paginate 7 [FParagraph (lines' 0 3), FHeading 2 False 3 (lines' 20 1), FParagraph (lines' 30 4)]
+            let moves = paginate 1 7 [FParagraph (lines' 0 3), FHeading 2 False 3 (lines' 20 1), FParagraph (lines' 30 4)]
             map (map snd . poSlots) moves @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 31, SLine 32, SLine 33]]
         ],
       testGroup
@@ -750,24 +750,82 @@ tests =
               Left e -> assertFailure (show e)
         ],
       testGroup
+        "columns (docs/adr ADR 0018)"
+        [ testCase "a paragraph fills the columns of a page in order, then the next page" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 8)]
+            cols ps @?= [(1, 0), (1, 1), (2, 0)]
+            map (length . poSlots) ps @?= [3, 3, 2]
+            slots ps @?= [[0, 1, 2], [3, 4, 5], [6, 7]],
+          testCase "an orphan at the end of a column goes to the next column" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 2), FParagraph (lines' 10 3)]
+            cols ps @?= [(1, 0), (1, 1)]
+            slots ps @?= [[0, 1], [10, 11, 12]],
+          testCase "a recto heading starts in column 0 of the next odd page; the rest of the page stays empty" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 5), FHeading 1 True 1 (lines' 20 1)]
+            cols ps @?= [(1, 0), (1, 1), (2, 0), (3, 0)]
+            map poBlank ps @?= [False, False, True, False]
+            slots ps @?= [[0, 1, 2], [3, 4], [], [20]],
+          testCase "footnotes sit in the column of their marker and continue in the next column" $ do
+            let withNote i n = LineBox i [NoteBody (100 + i) n] [] []
+                ps = paginate 2 4 [FParagraph [withNote 0 1, LineBox 1 [] [] [], LineBox 2 [] [] [], LineBox 3 [] [] [], LineBox 4 [] [] []]]
+            cols ps @?= [(1, 0), (1, 1)]
+            map poFootnotes ps @?= [[(100, 0, 1)], []]
+            let long = paginate 2 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
+            cols long @?= [(1, 0), (1, 1), (2, 0)]
+            map poFootnotes long @?= [[(100, 0, 2)], [(100, 2, 2)], [(100, 4, 1)]],
+          testCase "a figure that does not fit goes to the top of the next column; text moves up" $ do
+            let ps = paginate 2 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
+            cols ps @?= [(1, 0), (1, 1)]
+            map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 10), (4, SLine 11)], [(0, SFigure 99)]],
+          testCase "a table across a column boundary repeats its header" $ do
+            let ps = paginate 2 4 [FTable 100 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
+            cols ps @?= [(1, 0), (1, 1)]
+            map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 11, SLine 12], [SLine 0, SLine 13, SLine 14]]
+            map poTables ps @?= [[TableSegment 100 0 0 3], [TableSegment 100 0 0 2]],
+          testCase "a label in the second column is on the page of that column" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 3), FParagraph [LineBox 50 [] ["x"] []]]
+            cols ps @?= [(1, 0), (1, 1)]
+            labelPages ps @?= Map.fromList [("x", 1)],
+          testCase "a column break goes to the next column, then to the next page" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 1), FBreak BreakColumn, FParagraph (lines' 10 1), FBreak BreakColumn, FParagraph (lines' 20 1)]
+            cols ps @?= [(1, 0), (1, 1), (2, 0)]
+            slots ps @?= [[0], [10], [20]],
+          testCase "a column break at the top of an empty column leaves it empty" $ do
+            let ps = paginate 2 3 [FBreak BreakColumn, FParagraph (lines' 0 1)]
+            cols ps @?= [(1, 1)]
+            slots ps @?= [[0]],
+          testCase "a column break on one column is a page break" $ do
+            let flows k = [FParagraph (lines' 0 1), FBreak k, FParagraph (lines' 10 1)]
+            paginate 1 3 (flows BreakColumn) @?= paginate 1 3 (flows BreakPage),
+          testCase "one column: every part of the output is column 0 of its page" $ do
+            let ps = paginate 1 5 [FParagraph (lines' 0 12), FHeading 1 True 1 (lines' 20 1), FParagraph (lines' 30 3)]
+            map poColumn ps @?= map (const 0) ps
+            map poNumber ps @?= [1 .. length ps],
+          testCase "a page break in column 0 goes to column 0 of the next page" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 1), FBreak BreakPage, FParagraph (lines' 10 1)]
+            cols ps @?= [(1, 0), (2, 0)]
+            slots ps @?= [[0], [10]]
+            map poBlank ps @?= [False, False]
+        ],
+      testGroup
         "table pagination (golem-driver ADR 0008)"
         [ testCase "a table breaks between rows and repeats its header" $ do
-            let ps = paginate 4 [FTable 100 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
+            let ps = paginate 1 4 [FTable 100 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 11, SLine 12], [SLine 0, SLine 13, SLine 14]]
             map poTables ps @?= [[TableSegment 100 0 0 3], [TableSegment 100 0 0 2]],
           testCase "the header's label and note are counted once" $ do
             let header = [LineBox 0 [NoteBody 900 1] ["tbl"] []]
-                ps = paginate 4 [FTable 100 header [lines' (10 + i) 1 | i <- [0 .. 4]]]
+                ps = paginate 1 4 [FTable 100 header [lines' (10 + i) 1 | i <- [0 .. 4]]]
             map poLabels ps @?= ["tbl"] : replicate (length ps - 1) []
             [(poNumber p, n) | p <- ps, (n, _, _) <- poFootnotes p] @?= [(1, 900)],
           testCase "a table that cannot start with its header and first row goes to the next page" $ do
-            let ps = paginate 4 [FParagraph (lines' 0 3), FTable 100 (lines' 20 1) [lines' 30 1]]
+            let ps = paginate 1 4 [FParagraph (lines' 0 3), FTable 100 (lines' 20 1) [lines' 30 1]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SLine 20, SLine 30]],
           testCase "a row is never split across pages" $ do
-            let ps = paginate 4 [FTable 100 (lines' 0 1) [lines' 10 1, lines' 20 1, lines' 30 2]]
+            let ps = paginate 1 4 [FTable 100 (lines' 0 1) [lines' 10 1, lines' 20 1, lines' 30 2]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 20], [SLine 0, SLine 30, SLine 31]],
           testCase "a heading before a table stays with its header and first row" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 1 False 1 (lines' 20 1), FTable 100 (lines' 30 1) [lines' 40 2]]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 1 False 1 (lines' 20 1), FTable 100 (lines' 30 1) [lines' 40 2]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 40, SLine 41]]
         ],
       testGroup
@@ -782,13 +840,13 @@ tests =
                 r = breakParagraph defaultParams (wrappedLineWidth 160 ex 0) (paragraph (replicate 14 30))
             map lineTarget (take 3 (brLines r)) @?= [117, 117, 160],
           testCase "a continued paragraph has no first line to keep from being an orphan (golem-driver ADR 0005)" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 4), FContinued (lines' 10 3)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 4), FContinued (lines' 10 3)]
             slots ps @?= [[0, 1, 2, 3, 10], [11, 12]]
             -- the last line alone would be a widow: break a line earlier
-            let qs = paginate 5 [FParagraph (lines' 0 2), FContinued (lines' 10 4)]
+            let qs = paginate 1 5 [FParagraph (lines' 0 2), FContinued (lines' 10 4)]
             slots qs @?= [[0, 1, 10, 11], [12, 13]],
           testCase "a wrapped figure that does not fit the page goes to the next page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FWrapped 7 3 [] [] (lines' 50 3)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FWrapped 7 3 [] [] (lines' 50 3)]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SWrapped 7, SLine 50, SLine 51, SLine 52]]
         ],
       testGroup
@@ -872,6 +930,7 @@ tests =
     last' xs = if null xs then "" else last xs
     lines' base n = [LineBox (base + i) [] [] [] | i <- [0 .. n - 1]]
     slots = map (\p -> [i | (_, s) <- poSlots p, i <- slotLines s] <> [i | (_, SFigure i) <- poSlots p])
+    cols = map (\p -> (poNumber p, poColumn p))
     slotLines = \case
       SLine i -> [i]
       SHeading i n -> [i .. i + n - 1]
