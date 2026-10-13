@@ -21,7 +21,7 @@ lintProject :: Profile -> FilePath -> IO (Map FileId SourceInfo, [Diagnostic])
 lintProject profile root = do
   ev <- evaluateProject profile root
   pure $ case ev of
-    Left ds -> (Map.empty, finish ds)
+    Left f -> (pfSources f, finish (pfDiagnostics f))
     Right e -> (withLockSource e (sourceInfos (evProject e)), finish (evDiagnostics e <> lintEvaluated e))
   where
     finish = sortDiagnostics . map (adjustForProfile profile)

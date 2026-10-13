@@ -145,22 +145,23 @@ sourceInfos p =
     Map.map (\sf -> SourceInfo (sfPath sf) (mkLineIndex (sfText sf))) (projectSources p)
 
 -- | Everything up to S1. Stops after a stage that produced errors.
-evaluateProject :: Profile -> FilePath -> IO (Either [Diagnostic] Evaluated)
+evaluateProject :: Profile -> FilePath -> IO (Either ProjectFailure Evaluated)
 evaluateProject = evaluateProjectWith Map.empty
 
 -- | @overlay@ replaces file contents (unsaved edits in the LSP).
-evaluateProjectWith :: Map FilePath Text -> Profile -> FilePath -> IO (Either [Diagnostic] Evaluated)
+evaluateProjectWith :: Map FilePath Text -> Profile -> FilePath -> IO (Either ProjectFailure Evaluated)
 evaluateProjectWith overlay profile root = do
   lp <- loadProjectWith overlay root
   case lp of
-    Left ds -> pure (Left ds)
+    Left f -> pure (Left f)
     Right project -> do
       let synDiags = concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
           manifest0 = projectManifest project
           styleFid = styleFileId project
       styleText <- readMaybeText (root </> "style.toml")
       case loadStyle styleFid styleText of
-        Left ds -> pure (Left ds)
+        -- style.toml is where its errors point (golem-project ADR 0006)
+        Left ds -> pure (Left (ProjectFailure ds (Map.insert styleFid (SourceInfo "style.toml" (mkLineIndex (fromMaybe "" styleText))) (sourceInfos project))))
         Right style
           | hasErrors synDiags -> do
               assets <- loadAssets root project
@@ -168,9 +169,10 @@ evaluateProjectWith overlay profile root = do
               pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) Nothing Map.empty Nothing synDiags (reeval profile project style assets citeKeys noPlugins Map.empty)))
           | otherwise -> do
               let manifest = manifest0
+                  -- one G0307 for each name, in the order of the chapters (golem-project ADR 0006)
                   masterDiags =
                     [ diagnostic "G0307" Error (mkSpan (projectManifestFile project) 0 0) ("style.toml にないマスターページです: " <> m)
-                    | (_, Just m) <- projectChapters project,
+                    | m <- nub [m | (_, Just m) <- projectChapters project],
                       not (Map.member m (stMasters style))
                     ]
               cacheDir <- defaultCacheDir
@@ -358,7 +360,7 @@ build :: BuildOptions -> IO BuildResult
 build opts = do
   ev <- evaluateProject (optProfile opts) (optRoot opts)
   case ev of
-    Left ds -> pure (BuildResult (finish ds) Map.empty [])
+    Left f -> pure (BuildResult (finish (pfDiagnostics f)) (pfSources f) [])
     Right e -> do
       let project = evProject e
           targets = fromMaybe (targetsOf (projectManifest project)) (optTargets opts)
