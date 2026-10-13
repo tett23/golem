@@ -21,10 +21,10 @@ import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescrip
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
-import Golem.Driver.Pdf (Assumed (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, runningHeadText, runningHeads, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
+import Golem.Driver.Pdf (Assumed (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, runningHeadText, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Look (Look (..), Synthetic (..), plainLook)
+import Golem.Layout.Look (Kerning (..), Look (..), Synthetic (..), plainLook)
 import Golem.Layout.Paginate (Flow (..), LineBox (..), PageOut (..), Slotted (..), markPages, paginate)
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.Layout.Wrap (Exclusion (..))
@@ -329,6 +329,7 @@ tests =
       testGroup "forced breaks (docs/adr ADR 0017)" breakTests,
       testGroup "columns (docs/adr ADR 0018)" columnTests,
       testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
+      testGroup "kerning, proportional metrics and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "running heads (ADR 0014)" runningHeadTests,
       testGroup
         "public-domain books"
@@ -357,11 +358,105 @@ notoFonts = do
   style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
   loadFonts realProvider "test/fixtures/kanikosen" (FileId 0) style [] >>= either (assertFailure . show) pure
 
+-- | Source Han Sans (subset) and Source Sans Pro of golem-font's tests; the role palt has the feature palt.
+featureFonts :: IO LoadedFonts
+featureFonts = do
+  let src =
+        T.unlines
+          [ "[fonts.body]",
+            "ja = \"fonts/SourceHanSans-Regular_subset.otf\"",
+            "latin = \"fonts/SourceSansPro-Regular.otf\"",
+            "",
+            "[fonts.palt]",
+            "ja = \"fonts/SourceHanSans-Regular_subset.otf\"",
+            "features = [\"palt\"]"
+          ]
+  style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
+  loadFonts golemFontProvider "../golem-font/test" (FileId 0) style [] >>= either (assertFailure . show) pure
+
+-- | Noto Serif JP of the 蟹工船 fixture as the body role, and as the role palt with the feature palt (a style uses it, so that it is loaded).
+notoPaltFonts :: IO LoadedFonts
+notoPaltFonts = do
+  let src = "[fonts.body]\nja = \"fonts/NotoSerifJP-Regular.otf\"\n\n[fonts.palt]\nja = \"fonts/NotoSerifJP-Regular.otf\"\nfeatures = [\"palt\"]\n\n[character-styles.p]\nfont = \"palt\"\n"
+  style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
+  loadFonts golemFontProvider "test/fixtures/kanikosen" (FileId 0) style [] >>= either (assertFailure . show) pure
+
+-- | Kerning, proportional metrics and baseline shift (docs/adr/0020).
+characterFeatureTests :: [TestTree]
+characterFeatureTests =
+  [ testCase "a Latin word is kerned unless -kern is added" $ do
+      fonts <- featureFonts
+      let s = Shaping "body" False
+          apart extra = lfAdvance fonts (s extra) 'A' + lfAdvance fonts (s extra) 'V'
+      lfWordAdvance fonts (s ["-kern"]) "AV" @?= apart ["-kern"]
+      assertBool "kerned" (lfWordAdvance fonts (s []) "AV" < apart []),
+    -- the subset of Source Han Sans has no palt; Noto Serif JP of the 蟹工船 fixture has
+    testCase "palt narrows a bracket; -palt after the role's palt undoes it" $ do
+      fonts <- notoPaltFonts
+      assertBool "palt" (lfAdvance fonts (Shaping "body" False ["palt"]) '「' < 1)
+      lfAdvance fonts (Shaping "body" False ["-palt"]) '「' @?= 1
+      assertBool "the role's palt" (lfAdvance fonts (Shaping "palt" False []) '「' < 1)
+      lfAdvance fonts (Shaping "palt" False ["-palt"]) '「' @?= 1,
+    testCase "vpal narrows a bracket in vertical shaping" $ do
+      fonts <- featureFonts
+      lfAdvance fonts (Shaping "body" True []) '「' @?= 1
+      assertBool "vpal" (lfAdvance fonts (Shaping "body" True ["vpal"]) '「' < 1),
+    testCase "lfPairKern is the pair shaped together less the two shaped apart" $ do
+      fonts <- featureFonts
+      let s = Shaping "body" False []
+          together = lfWordAdvance fonts s "AV"
+      lfPairKern fonts s 'A' 'V' @?= together - lfAdvance fonts s 'A' - lfAdvance fonts s 'V'
+      assertBool "negative" (lfPairKern fonts s 'A' 'V' < 0)
+      lfPairKern fonts (Shaping "body" False ["-kern"]) 'A' 'V' @?= 0,
+    testCase "shapingOf: the features each kerning method adds" $ do
+      let lk k p = (plainLook "body" 655360) {lkKerning = k, lkProportional = p}
+      shapingOf False (lk KernMetrics False) 'あ' @?= Shaping "body" False []
+      shapingOf False (lk KernMetrics True) 'あ' @?= Shaping "body" False ["palt"]
+      shapingOf True (lk KernMetrics True) 'あ' @?= Shaping "body" True ["vpal"]
+      shapingOf False (lk KernNone False) 'あ' @?= Shaping "body" False ["-kern", "-vkrn"]
+      shapingOf True (lk KernNone True) 'あ' @?= Shaping "body" True ["-kern", "-vkrn", "vpal"]
+      shapingOf False (lk KernJapaneseEqualWidth True) 'あ' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"]
+      shapingOf False (lk KernNone True) 'a' @?= Shaping "body" False ["-kern"]
+      shapingOf False (lk KernJapaneseEqualWidth True) 'a' @?= Shaping "body" False []
+      -- Latin in vertical text is turned and measured horizontally
+      shapingOf True (lk KernMetrics False) 'a' @?= Shaping "body" False [],
+    testCase "PDF: a baseline shift moves the glyph up in horizontal text, right in vertical text" $ do
+      let up = "\n[character-styles.up]\nbaseline-shift = \"2pt\"\n"
+          at axis style = do
+            content <- miniPdf fakeProvider True (style <> up) "あ[style up: い]う\n" [] >>= fmap BS.concat . inflateAll
+            let pos c = [ptToRational (axis d) | d <- drawnGlyphs content, dGlyph d == fromEnum c]
+            case (pos 'あ', pos 'い') of
+              (a : _, i : _) -> pure (i - a)
+              other -> assertFailure (show other)
+      at dY horizontalStyle >>= (@?= 2)
+      at dX pdfStyle >>= (@?= 2),
+    testCase "HTML: the CSS of the keys; a key with the value of body's default is not written" $ do
+      let styles =
+            BS.concat
+              [ "[character-styles.tight]\nkerning = \"none\"\ntracking = -50\nproportional-metrics = true\nbaseline-shift = \"1pt\"\n\n",
+                "[character-styles.plain]\nkerning = \"metrics\"\ntracking = 0\nproportional-metrics = false\nbaseline-shift = \"0pt\"\n\n",
+                "[character-styles.grid]\nkerning = \"japanese-equal-width\"\nbaseline-shift = \"-0.25zw\"\n\n",
+                "[paragraph-styles.verse]\ntracking = 100\n"
+              ]
+          cssWith style = withVerseProject style verseSource $ \tmp -> do
+            r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+            assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+            TIO.readFile (tmp </> "build/html/style.css")
+      css <- cssWith styles
+      rulesOf ".cs-tight" css @?= [".cs-tight { font-kerning: none; letter-spacing: -0.05em; font-feature-settings: \"palt\" 1; vertical-align: 1pt; }"]
+      rulesOf ".cs-plain" css @?= []
+      rulesOf ".cs-grid" css @?= [".cs-grid { font-kerning: normal; vertical-align: -0.25em; }"]
+      assertBool "verse" (any ("letter-spacing: 0.1em;" `T.isInfixOf`) (rulesOf "p.ps-verse" css))
+      assertBool "body" (not (any ("letter-spacing" `T.isInfixOf`) (rulesOf "p" css)))
+      vertical <- cssWith (pdfStyle <> "\n" <> styles)
+      rulesOf ".cs-tight" vertical @?= [".cs-tight { font-kerning: none; letter-spacing: -0.05em; font-feature-settings: \"vpal\" 1; vertical-align: 1pt; }"]
+  ]
+
 variationTests :: [TestTree]
 variationTests =
   [ testCase "a base character and its variation selector are shaped together" $ do
       fonts <- notoFonts
-      [(shGlyph g, shText g) | g <- lfShape fonts "body" False "葛\xE0100"] @?= [(16314, "葛")],
+      [(shGlyph g, shText g) | g <- lfShape fonts (Shaping "body" False []) "葛\xE0100"] @?= [(16314, "葛")],
     testCase "the variant glyph is drawn and maps back to its base character" $ do
       noto <- BS.readFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
       let body = "\n[fonts.body]\nja = \"fonts/noto.otf\"\n"
@@ -2606,10 +2701,11 @@ is face 4.
 fakeFonts :: LoadedFonts
 fakeFonts =
   LoadedFonts
-    { lfAdvance = advOf,
-      lfWordAdvance = \role -> sum . map (advOf role) . T.unpack,
+    { lfAdvance = advOf . shRole,
+      lfWordAdvance = \s -> sum . map (advOf (shRole s)) . T.unpack,
+      lfPairKern = \_ _ _ -> 0,
       lfCode = \_ g -> g,
-      lfShape = \role _ t -> [Shaped (faceOf role) (fromEnum c `mod` 65536) (advOf role c) (T.singleton c) False | c <- T.unpack t],
+      lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i | (i, c) <- zip [0 ..] (T.unpack t)],
       lfEmBoxCentral = const (38 / 100),
       lfEmbed = \_ vertical used ->
         Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used ("Adobe", "Identity", 0)
@@ -2784,25 +2880,25 @@ turnedTests :: [TestTree]
 turnedTests =
   [ testCase "vertical shaping turns an em dash that has no vertical form" $ do
       fonts <- notoFonts
-      case lfShape fonts "body" True "\x2014" of
+      case lfShape fonts (Shaping "body" True []) "\x2014" of
         [g] -> (shGlyph g, shAdvance g, shTurned g) @?= (466, 890 / 1000, True)
         other -> assertFailure (show other),
     testCase "characters with vertical forms stay upright" $ do
       fonts <- notoFonts
-      let one c = case lfShape fonts "body" True (T.singleton c) of
+      let one c = case lfShape fonts (Shaping "body" True []) (T.singleton c) of
             [g] -> pure g
             other -> assertFailure (show other)
       gs <- mapM one "\x2015\x2026\x301C"
       map shGlyph gs @?= [15282, 15280, 17592]
       comma <- one '、'
-      horizontalComma <- case lfShape fonts "body" False "、" of
+      horizontalComma <- case lfShape fonts (Shaping "body" False []) "、" of
         [g] -> pure g
         other -> assertFailure (show other)
       assertBool "vertical form of 、" (shGlyph comma /= shGlyph horizontalComma)
       map shTurned (comma : gs) @?= replicate 4 False,
     testCase "a variation selector stays in the cluster of a turned character (golem-pdf ADR 0006)" $ do
       fonts <- notoFonts
-      let gs = lfShape fonts "body" True "\x2014\xFE00漢"
+      let gs = lfShape fonts (Shaping "body" True []) "\x2014\xFE00漢"
           dash = [g | g <- gs, shText g == "\x2014"]
       -- the selector is in the dash's cluster (HarfBuzz may give it a glyph of its own) and turns with it
       map shGlyph (take 1 dash) @?= [466]
@@ -2810,9 +2906,9 @@ turnedTests =
       [shTurned g | g <- gs, shText g == "漢"] @?= [False],
     testCase "ideographs are upright; horizontal shaping never turns" $ do
       fonts <- notoFonts
-      map shTurned (lfShape fonts "body" True "漢") @?= [False]
-      assertBool "horizontal" (not (any shTurned (lfShape fonts "body" False "——漁夫は―…〜、漢「」ー")))
-      assertBool "horizontal Latin" (not (any shTurned (lfShape fonts "body" False "Golem --"))),
+      map shTurned (lfShape fonts (Shaping "body" True []) "漢") @?= [False]
+      assertBool "horizontal" (not (any shTurned (lfShape fonts (Shaping "body" False []) "——漁夫は―…〜、漢「」ー")))
+      assertBool "horizontal Latin" (not (any shTurned (lfShape fonts (Shaping "body" False []) "Golem --"))),
     testCase "turned dashes are drawn with the horizontal font, centred on the line" $ do
       noto <- notoBytes
       fonts <- notoFonts

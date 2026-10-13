@@ -94,6 +94,8 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 和文も合成の斜体で傾く。
 段落スタイルは原稿の `@style 名前` で付け、韻文は組み込みの段落スタイル `verse` で書く（`@style verse`）。
 段落の字下げは段落スタイルの `indent` と `first-line-indent`（負ならぶら下げ）で指定し、既定は 0 である。
+文字スタイルと段落スタイルの `kerning`（`metrics`、`japanese-equal-width`、`none`）、`tracking`、`proportional-metrics`、`baseline-shift` で、カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフトを指定する。
+既定はフォントのペアカーニングを和文にも欧文にもかける `metrics` である（[docs/adr/0020](docs/adr/0020-indesign-character-features.md)）。
 PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
 和欧間や括弧類の前後などの字間の空き（アキ）の量は、`[aki-sets.<名前>]` で文字のクラスの組ごとに定義したアキ量のセットを、段落スタイルの `aki-set` で選んで変えられる（既定は行末約物半角の `gyomatsu-yakumono-hankaku`）。

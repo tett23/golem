@@ -191,8 +191,8 @@ fileStyles style header =
                       | not (null shapeErrs) -> (defs, ds <> shapeErrs)
                       | not (null [() | Def _ k' n _ <- defs, k' == k, n == name]) -> (defs, ds <> [err "G0253" sp ("同じ名前のスタイルを二度定義しています: " <> name)])
                       | otherwise -> case localStyleDef k [(key, v) | (key, _, v) <- kvs] of
-                          -- an aki amount in a dimension is G0320 (docs/adr ADR 0019)
-                          Left ms -> (defs, ds <> [err (if "アキの量の指定が正しくありません" `T.isPrefixOf` m then "G0320" else "G0306") sp ("@style-def の値が不正です: " <> m) | m <- ms])
+                          -- an aki amount in a dimension is G0320 (docs/adr ADR 0019); kerning, tracking and baseline shift G0321 (docs/adr/0020)
+                          Left ms -> (defs, ds <> [err (if "アキの量の指定が正しくありません" `T.isPrefixOf` m then "G0320" else code) sp ("@style-def の値が不正です: " <> m) | (code, m) <- ms])
                           Right d -> (defs <> [Def sp k name d], ds)
             _ -> (defs, ds <> [err "G0252" sp shape] <> shapeErrs)
     asString = \case

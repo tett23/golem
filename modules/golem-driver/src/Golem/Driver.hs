@@ -614,7 +614,7 @@ textLists style =
 htmlCharStyles :: Style -> Map Text HtmlCharStyle
 htmlCharStyles style =
   Map.fromList
-    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d))
+    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d)))
     | n <- Map.keys (stCharStyles style),
       Just d <- [charStyle style n]
     ]
@@ -630,10 +630,26 @@ htmlParaStyles style =
           (fromMaybe 0 (psSpaceBetween d))
           (cssLength (fromMaybe (Zw 0) (psIndent d)))
           (cssLength (fromMaybe (Zw 0) (psFirstLineIndent d)))
+          (htmlFeatures (psKerning d) (psTracking d) (psProportional d) (psBaselineShift d))
       )
     | n <- Map.keys (stParaStyles style),
       Just d <- [paraStyle style (Just n)]
     ]
+
+-- | The keys of the spacing of characters for CSS (docs/adr/0020).
+htmlFeatures :: Maybe Kerning -> Maybe Int -> Maybe Bool -> Maybe Dim -> HtmlFeatures
+htmlFeatures k t p b =
+  HtmlFeatures
+    { hfKerning =
+        k >>= \case
+          KernMetrics -> Just "metrics"
+          KernJapaneseEqualWidth -> Just "japanese-equal-width"
+          KernNone -> Just "none"
+          KernOptical -> Nothing,
+      hfTracking = t,
+      hfProportional = p,
+      hfBaselineShift = cssLength <$> b
+    }
 
 {- | The ideographic spaces that start the lines of a paragraph of a style
 in plain text (docs/adr ADR 0006): the whole part of indent plus

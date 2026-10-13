@@ -6,6 +6,8 @@ module Golem.Html
     HtmlLists (..),
     HtmlCharStyle (..),
     HtmlParaStyle (..),
+    HtmlFeatures (..),
+    noFeatures,
     HtmlLocalStyles (..),
     Face (..),
     noFace,
@@ -92,9 +94,28 @@ data HtmlCharStyle = HtmlCharStyle
     hcsBold :: !Bool,
     -- | the resolved synthetic-italic
     hcsItalic :: !Bool,
-    hcsColor :: !(Maybe Text)
+    hcsColor :: !(Maybe Text),
+    -- | kerning, tracking, proportional metrics and baseline shift (docs/adr/0020)
+    hcsFeatures :: !HtmlFeatures
   }
   deriving stock (Eq)
+
+{- | The keys of a style for the spacing of characters (docs/adr/0020),
+as written or resolved; Nothing is not written.
+-}
+data HtmlFeatures = HtmlFeatures
+  { -- | metrics, japanese-equal-width or none
+    hfKerning :: !(Maybe Text),
+    -- | in 1/1000 em
+    hfTracking :: !(Maybe Int),
+    hfProportional :: !(Maybe Bool),
+    -- | a CSS length
+    hfBaselineShift :: !(Maybe Text)
+  }
+  deriving stock (Eq)
+
+noFeatures :: HtmlFeatures
+noFeatures = HtmlFeatures Nothing Nothing Nothing Nothing
 
 -- | A resolved paragraph style for CSS (docs/adr ADR 0005, 0006).
 data HtmlParaStyle = HtmlParaStyle
@@ -104,7 +125,9 @@ data HtmlParaStyle = HtmlParaStyle
     -- | a CSS length
     hpsIndent :: !Text,
     -- | a CSS length; may be negative
-    hpsFirstLineIndent :: !Text
+    hpsFirstLineIndent :: !Text,
+    -- | kerning, tracking, proportional metrics and baseline shift (docs/adr/0020)
+    hpsFeatures :: !HtmlFeatures
   }
   deriving stock (Eq)
 
@@ -659,6 +682,22 @@ css cfg book =
              Just cmyk <- [Map.lookup sw (hcSwatches cfg)],
              let (r, g, b) = cmykToRgb cmyk
            ]
+        <> featureDecls (hcsFeatures cs)
+    {- the keys of the spacing of characters whose values differ from the
+    defaults of body (docs/adr/0020): CSS kerns Japanese and Latin alike,
+    so japanese-equal-width keeps the Latin kerning -}
+    featureDecls f =
+      [ "font-kerning: " <> (if k == "none" then "none" else "normal")
+      | Just k <- [hfKerning f],
+        k /= "metrics"
+      ]
+        <> ["letter-spacing: " <> thousandths t <> "em" | Just t <- [hfTracking f], t /= 0]
+        <> ["font-feature-settings: \"" <> (if hcVertical cfg then "vpal" else "palt") <> "\" 1" | hfProportional f == Just True]
+        <> ["vertical-align: " <> l | Just l <- [hfBaselineShift f], not (isZero l)]
+    thousandths n =
+      let (q, r) = abs n `divMod` 1000
+          frac = T.dropWhileEnd (== '0') (T.justifyRight 3 '0' (tshow r))
+       in (if n < 0 then "-" else "") <> tshow q <> (if T.null frac then "" else "." <> frac)
     rule sel ds = sel <> " { " <> T.concat [d <> "; " | d <- ds] <> "}"
     faceRule sel f = rule sel (["font-family: " <> fontStack role | Just role <- [faFont f]] <> ["font-size: " <> s | Just s <- [faSize f]])
     charRule name cs = rule (selectorOf name) (declsOf name cs)
@@ -684,6 +723,7 @@ css cfg book =
             <> [ sel <> " + " <> sel <> " { margin-block-start: " <> tshow (hpsSpaceBetween ps) <> "em; }"
                | hpsSpaceBetween ps > 0
                ]
+            <> [rule sel ds | let ds = featureDecls (hpsFeatures ps), not (null ds)]
     families role = case Map.lookup role (hcFonts cfg) of
       Just (ja, la) -> ["\"" <> family role "latin" <> "\"" | Just _ <- [la]] <> ["\"" <> family role "ja" <> "\"" | Just _ <- [ja]]
       Nothing -> []
@@ -700,11 +740,13 @@ css cfg book =
           charRules =
             [ rule
                 (pre <> " " <> selectorOf name)
-                [ "font-family: " <> stackOr (hcsFont cs),
-                  "font-weight: " <> (if hcsBold cs then "bold" else "normal"),
-                  "font-style: " <> (if hcsItalic cs then "italic" else "normal"),
-                  "color: " <> colorOf cs
-                ]
+                ( [ "font-family: " <> stackOr (hcsFont cs),
+                    "font-weight: " <> (if hcsBold cs then "bold" else "normal"),
+                    "font-style: " <> (if hcsItalic cs then "italic" else "normal"),
+                    "color: " <> colorOf cs
+                  ]
+                    <> featureDecls (hcsFeatures cs)
+                )
             | (name, cs) <- Map.toAscList (hlCharStyles l)
             ]
           paraOf name = if name == "body" then "p:not([class])" else "p.ps-" <> name
@@ -714,11 +756,13 @@ css cfg book =
             concat
               [ [ rule
                     (paraSel name)
-                    [ "font-family: " <> stackOr (hpsFont ps),
-                      "margin-block: " <> margin ps,
-                      "padding-inline-start: " <> hpsIndent ps,
-                      "text-indent: " <> hpsFirstLineIndent ps
-                    ],
+                    ( [ "font-family: " <> stackOr (hpsFont ps),
+                        "margin-block: " <> margin ps,
+                        "padding-inline-start: " <> hpsIndent ps,
+                        "text-indent: " <> hpsFirstLineIndent ps
+                      ]
+                        <> featureDecls (hpsFeatures ps)
+                    ),
                   rule (paraSel name <> " + " <> paraOf name) ["margin-block-start: " <> (if hpsSpaceBetween ps > 0 then tshow (hpsSpaceBetween ps) <> "em" else margin ps)]
                 ]
               | (name, ps) <- Map.toAscList (hlParaStyles l)

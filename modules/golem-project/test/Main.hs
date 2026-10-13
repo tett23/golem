@@ -361,6 +361,7 @@ tests =
         codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G0306"],
       indentTests,
       listTests,
+      characterFeatureTests,
       testCase "the sidenote font and size are the paragraph style sidenote (golem-driver ADR 0011)" $ do
         let retired = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
             hasIt ms = assertBool (show ms) (not (null ms) && all (\m -> "G0306" `T.isPrefixOf` m) ms && any ("[paragraph-styles.sidenote]" `T.isInfixOf`) ms)
@@ -652,6 +653,65 @@ specStyle =
       "folio = { position = \"bottom-outside\", format = \"{n}\" }"
     ]
 
+-- | Kerning, tracking, proportional metrics and baseline shift (docs/adr/0020).
+characterFeatureTests :: TestTree
+characterFeatureTests =
+  testGroup
+    "character features (docs/adr/0020)"
+    [ testCase "a character style reads kerning, tracking, proportional-metrics and baseline-shift" $
+        case parseStyle (FileId 0) "[character-styles.tight]\nkerning = \"none\"\ntracking = -50\nproportional-metrics = true\nbaseline-shift = \"1pt\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            let cs = charStyle s "tight"
+            fmap csKerning cs @?= Just (Just KernNone)
+            fmap csTracking cs @?= Just (Just (-50))
+            fmap csProportional cs @?= Just (Just True)
+            fmap csBaselineShift cs @?= Just (Just (Abs 65536)),
+      testCase "the other kerning values and a negative baseline shift are read" $
+        case parseStyle (FileId 0) "[character-styles.a]\nkerning = \"metrics\"\n\n[character-styles.b]\nkerning = \"japanese-equal-width\"\nbaseline-shift = \"-0.5zw\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            (charStyle s "a" >>= csKerning) @?= Just KernMetrics
+            (charStyle s "b" >>= csKerning) @?= Just KernJapaneseEqualWidth
+            (charStyle s "b" >>= csBaselineShift) @?= Just (Zw (-(1 / 2))),
+      testCase "wrong values are G0321" $ do
+        let g0321 src = codes (parseStyle (FileId 0) src) @?= ["G0321"]
+        g0321 "[character-styles.a]\nkerning = \"optical\"\n"
+        g0321 "[character-styles.a]\nkerning = \"auto\"\n"
+        g0321 "[character-styles.a]\ntracking = 10001\n"
+        g0321 "[character-styles.a]\ntracking = -1001\n"
+        g0321 "[character-styles.a]\nbaseline-shift = \"up\"\n"
+        g0321 "[paragraph-styles.a]\nkerning = \"optical\"\n"
+        g0321 "[paragraph-styles.a]\ntracking = 10001\n"
+        g0321 "[paragraph-styles.a]\nbaseline-shift = \"up\"\n",
+      testCase "optical kerning names v1" $
+        assertBool "message" (any ("v1 ではオプティカルカーニングを使えません" `T.isInfixOf`) (msgs (parseStyle (FileId 0) "[character-styles.a]\nkerning = \"optical\"\n"))),
+      testCase "the bounds of tracking are allowed" $ do
+        codes (parseStyle (FileId 0) "[character-styles.a]\ntracking = 10000\n") @?= []
+        codes (parseStyle (FileId 0) "[character-styles.a]\ntracking = -1000\n") @?= [],
+      testCase "paragraph styles inherit the keys through based-on; body defaults to metrics, 0, false, 0" $
+        case parseStyle (FileId 0) "[paragraph-styles.a]\nkerning = \"none\"\ntracking = 20\n\n[paragraph-styles.b]\nbased-on = \"a\"\nbaseline-shift = \"1pt\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            let b = paraStyle s (Just "b")
+            fmap psKerning b @?= Just (Just KernNone)
+            fmap psTracking b @?= Just (Just 20)
+            fmap psProportional b @?= Just (Just False)
+            fmap psBaselineShift b @?= Just (Just (Abs 65536))
+            let body = paraStyle s Nothing
+            fmap psKerning body @?= Just (Just KernMetrics)
+            fmap psTracking body @?= Just (Just 0)
+            fmap psProportional body @?= Just (Just False)
+            fmap psBaselineShift body @?= Just (Just (Abs 0)),
+      testCase "@style-def takes the same keys; their errors are G0321" $ do
+        localStyleDef CharacterKind [("kerning", LocalWord "none"), ("tracking", LocalWord "-50"), ("proportional-metrics", LocalWord "true"), ("baseline-shift", LocalWord "1pt")]
+          @?= Right (Left noCharDef {csKerning = Just KernNone, csTracking = Just (-50), csProportional = Just True, csBaselineShift = Just (Abs 65536)})
+        either (map fst) (const []) (localStyleDef ParagraphKind [("kerning", LocalWord "auto")]) @?= ["G0321"]
+        [c | (c, _, _) <- checkLocalStyles defaultStyle noLocalStyles {lsCharStyles = Map.fromList [("a", noCharDef {csKerning = Just KernOptical})]}] @?= ["G0321"]
+        either (map fst) (const []) (localStyleDef CharacterKind [("tracking", LocalWord "20000")]) @?= ["G0321"]
+        either (map fst) (const []) (localStyleDef CharacterKind [("colour", LocalWord "x")]) @?= ["G0306"]
+    ]
+
 -- | Aki amounts and aki sets (docs/adr ADR 0019).
 akiTests :: TestTree
 akiTests =
@@ -817,6 +877,10 @@ localStyleTests =
               "size" -> "1zw"
               "indent" -> "1zw"
               "first-line-indent" -> "1zw"
+              "kerning" -> "none"
+              "tracking" -> "10"
+              "proportional-metrics" -> "true"
+              "baseline-shift" -> "1pt"
               "aki-set" -> "gyomatsu-yakumono-hankaku"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))

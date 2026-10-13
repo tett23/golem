@@ -222,6 +222,7 @@ tests =
   testGroup
     "golem-layout"
     [ testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
+      testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
       testGroup
         "Knuth-Plass (ADR 0001)"
@@ -940,7 +941,62 @@ tests =
       SHeading i n -> [i .. i + n - 1]
       _ -> []
 
--- | The ruby style of the tests with every alignment the same and a half-em overhang.
+{- | The ruby style of the tests with every alignment the same and a half-em overhang.
+| Kerning, tracking and baseline shift (docs/adr/0020).
+-}
+characterFeatureTests :: [TestTree]
+characterFeatureTests =
+  [ testCase "the plain look: metrics, no tracking, no proportional metrics, no shift" $
+      (lkKerning look0, lkTracking look0, lkProportional look0, lkBaselineShift look0) @?= (KernMetrics, 0, False, 0),
+    testCase "the default environment kerns nothing" $
+      ceKern (defaultComposeEnv fs) look0 'あ' 'い' @?= 0,
+    testCase "a Japanese pair is kerned: the first box narrower, its end edge given back" $ do
+      [(w, bcEdgeEnd c) | Box w c <- compose kernEnv "あい"] @?= [(fs - tenth, tenth), (fs, 0)]
+      let none = kernEnv {ceLook = look0 {lkKerning = KernNone}}
+      [(w, bcEdgeEnd c) | Box w c <- compose none "あい"] @?= [(fs, 0), (fs, 0)]
+      let equal = kernEnv {ceLook = look0 {lkKerning = KernJapaneseEqualWidth}}
+      [(w, bcEdgeEnd c) | Box w c <- compose equal "あい"] @?= [(fs, 0), (fs, 0)],
+    testCase "pairs with punctuation are not kerned" $ do
+      let anyPair = kernEnv {ceKern = \_ _ _ -> -(1 / 10)}
+      [(bcText c, bcEdgeEnd c) | Box _ c <- compose anyPair "あ」"] @?= [("あ", 0), ("」", 0)]
+      [(bcText c, bcEdgeEnd c) | Box _ c <- compose anyPair "「あ"] @?= [("「", 0), ("あ", 0)]
+      [(bcText c, bcEdgeEnd c) | Box _ c <- compose anyPair "あ、い"] @?= [("あ", 0), ("、", 0), ("い", 0)],
+    testCase "a pair of different looks is not kerned" $ do
+      let env = kernEnv {ceRestyle = \lk _ -> lk {lkColor = Just "red"}}
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [sp0 "あ", Color (mkSpan (FileId 0) 0 0) "red" [sp0 "い"]])] @?= [(fs, 0), (fs, 0)],
+    testCase "tracking widens Japanese boxes, Latin words and spaces; every box gives it back at its end" $ do
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
+          plain = defaultComposeEnv fs
+      [(w, bcEdgeEnd c) | Box w c <- compose env "あ"] @?= [(fs + tenth, negate tenth)]
+      let wordBoxes e = [(w, bcEdgeEnd c) | Box w c <- compose e "abc def"]
+          gluesOf e = [w | Glue w _ _ <- take 3 (compose e "abc def")]
+      wordBoxes env @?= [(w + 3 * tenth, negate tenth) | (w, _) <- wordBoxes plain]
+      gluesOf env @?= [w + tenth | w <- gluesOf plain],
+    testCase "ruby, tate-chu-yoko and note marks get no tracking" $ do
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
+          sp = mkSpan (FileId 0) 0 0
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Tcy sp "12"])] @?= [(fs, 0)]
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Note sp 1 []])] @?= [(fs `div` 2, 0)],
+    testCase "with tracking, the last box of every line ends at the measure" $ do
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
+          items = compose env (T.replicate 40 "あ")
+          ls = brLines (breakParagraph defaultParams (const (10 * fs)) items)
+      assertBool "several lines" (length ls > 2)
+      sequence_
+        [ case [(off, w, c) | (Box w c, off) <- placeLine l] of
+            [] -> assertFailure "no box"
+            bs -> let (off, w, c) = last bs in assertBool (show (off + w + bcEdgeEnd c, lineTarget l)) (abs (off + w + bcEdgeEnd c - lineTarget l) <= 1)
+        | l <- init ls
+        ],
+    testCase "the baseline shift does not change the line breaks" $ do
+      let at shift = (defaultComposeEnv fs) {ceLook = look0 {lkBaselineShift = shift}}
+          breaksOf e = brPositions (breakParagraph defaultParams (const (10 * fs)) (compose e (T.replicate 25 "あい、")))
+      breaksOf (at (2 * 65536)) @?= breaksOf (at 0)
+  ]
+  where
+    tenth = fs `div` 10
+    kernEnv = (defaultComposeEnv fs) {ceKern = \_ a b -> if (a, b) == ('あ', 'い') then -(1 / 10) else 0}
+
 rubyStyle :: R.RubyAlign -> RubyStyle
 rubyStyle a = RubyStyle a a a 500 True
 
