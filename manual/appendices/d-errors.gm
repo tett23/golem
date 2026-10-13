@@ -1,0 +1,365 @@
+@nonumber
+@label app-errors
+# 付録D エラーと警告の一覧
+
+この付録は、Golem が出すエラーと警告を、コードの順ではなく、原因の種類ごとにまとめたものです。
+各項目は、コード、表示されるメッセージ、意味と直し方の順に並べています。
+メッセージの [style code: …] の部分には、名前やファイルのパスが入ります。
+エラーと警告の読み方は、第[ref-number check]章「[ref-title check]」で説明しています。[index reading=えらー/いちらん: エラー/一覧]
+
+ほとんどはエラーで、一つでもあれば出力を書きません。
+警告になるものは、項目の中にそう書いています。
+G0310 と G0504 は、[style code: --profile dev] では警告、[style code: --profile prod] ではエラーです。
+この付録にない番号は、今の版の Golem では出ません。
+
+@nonumber
+## ファイルの文字コードと改行
+
+= [strong: G0101 [style code: UTF-8 として不正なバイト列があります]]
+  原稿のファイルが UTF-8 で保存されていません。
+  Shift_JIS などで保存したファイルで起きます。
+  テキストエディタで文字コードに UTF-8 を選んで保存し直してください。
+= [strong: G0102 [style code: ファイルの先頭に BOM があります。BOM を取り除いてください]]
+  ファイルの先頭に BOM（文字コードを示す目印）が付いています。
+  BOM なしの UTF-8 で保存し直すか、[style code: golem fmt] を実行してください。
+= [strong: G0103 [style code: 改行に CR が含まれています。改行は LF に限ります]]
+  Windows の形式の改行（CRLF）で保存されています。
+  [style code: golem fmt] を実行すると直ります。
+
+@nonumber
+## 原稿の書き方（行頭の記号と字下げ）
+
+= [strong: G0110 [style code: このブロックを解釈できません]]
+  行頭の記号で始まる行が、どの書き方にも当てはまりません。
+  付録A の「ブロックの記法」と見比べてください。
+  本文の段落を [style code: #] や [style code: -] で始めたいときは、[style code: \\#] のように前に [style code: \\] を置きます。
+= [strong: G0111 [style code: インデントが不正です（タブ、または 2 の倍数でない空白）]]
+  行頭の字下げにタブがあるか、半角の空白の数が 2 の倍数ではありません。
+  字下げは半角の空白二つを単位にしてください。
+= [strong: G0112 [style code: 見出しの階層は 3 までです]]
+  [style code: ####] 以上の見出しがあります。
+  見出しは [style code: ###] までにしてください。
+= [strong: G0113 [style code: 用語のない =: があります]]
+  定義リストの [style code: =:] の前に、[style code: = 用語] の行がありません。
+= [strong: G0114 [style code: 表の 2 行目は区切りの行でなければなりません]]
+  表の見出しの行の次に、[style code: \|---\|---\|] の形の区切りの行を書いてください。
+= [strong: G0115 [style code: 表のセルの数が見出しの行と一致しません]]
+  表の行のセルの数が、見出しの行と違います。
+  空のセルも [style code: \| \|] と書き、[style code: \|] の数をそろえてください。
+= [strong: G0123 [style code: 表の行は \| で始まり \| で終わります]]
+  表の行の両端に [style code: \|] を書いてください。
+= [strong: G0116 [style code: コードブロックが閉じていません]]
+  [style code: ```] で始めたコードブロックに、終わりの [style code: ```] の行がありません。
+= [strong: G0122 [style code: 解釈できない入力が残っています]]
+  前にある書き間違いに引きずられて出ることが多いエラーです。
+  先に出たほかのエラーから直してください。
+= [strong: G0129 [style code: 構文エラー（…）]]
+  ほかのコードに当てはまらない書き間違いです。
+  示された位置の書き方を、付録A と見比べてください。
+
+@nonumber
+## 角括弧とコマンドの書き方
+
+= [strong: G0117 [style code: 閉じ括弧 \] がありません]]
+  [style code: \[] に対応する [style code: \]] がありません。
+  [style code: \]] を書き忘れているか、本文の [style code: \]] で早く閉じています。
+  本文の [style code: \]] は [style code: \\\]] と書きます。
+= [strong: G0121 [style code: \[ の後にはコマンド名か = が必要です。本文の \[ は \\\[ と書きます]]
+  本文に [style code: \[] を書くときは、[style code: \\\[] と書いてください。
+= [strong: G0118 [style code: コメントが段落の中で閉じていません]]
+  [style code: \%%] で始めたコメントを、同じ段落の中で [style code: \%%] で閉じてください。
+  本文に [style code: \%%] を書くときは [style code: \\\%%] とします。
+= [strong: G0119 [style code: キーワード引数の後に位置引数があります]]
+  コマンドの引数で、[style code: キー=値] の後に、名前の付かない引数があります。
+  名前の付かない引数を先に並べてください。
+= [strong: G0222 [style code: 未知のコマンドです: …]]
+  その名前のコマンドがありません。
+  綴りを確かめてください。
+  プラグインのコマンドなら、[style code: manifest.toml] にプラグインを宣言してください。
+= [strong: G0238 [style code: … には散文スロットが一つ必要です]]、[strong: [style code: ruby には散文スロットが二つ必要です]]
+  コマンドの [style code: :] の後の本文（散文スロット）の数が違います。
+  ルビは [style code: \[ruby: 親文字\|読み\]] のように、[style code: \|] で区切って二つ書きます。
+= [strong: G0215 [style code: モノルビの対象と読みのセグメントの数が一致しません]]
+  [style code: /] で区切ったルビの、親文字の区切りと読みの区切りの数が違います。
+  [style code: \[ruby: 東/京\|とう/きょう\]] のように、[style code: /] の数をそろえてください。
+= [strong: G0216 [style code: ルビの中にルビは入れられません]]
+  ルビの親文字の中に、別のルビがあります。
+= [strong: G0243 [style code: ルビの読みは地の文に限ります]]
+  ルビの読みに、コマンドが入っています。
+  読みには文字だけを書いてください。
+= [strong: G0239 [style code: 未知の圏点の形です: …]]
+  [style code: \[kenten ...\]] の [style code: shape] の値が違います。
+  付録A の形の名前から選んでください。
+= [strong: G0240 [style code: 縦中横の中身は地の文に限ります]]
+  [style code: \[tcy: ...\]] の中に、コマンドが入っています。
+  文字だけを書いてください。
+= [strong: G0217 [style code: style.toml にないスウォッチです: …]]、[strong: [style code: color にはスウォッチの名前を一つ書きます]]
+  [style code: \[color ...\]] の色の名前が、[style code: style.toml] の [style code: \[color.swatches\]] にありません。
+  色を定義するか、名前の綴りを直してください。
+= [strong: G0218 [style code: style.toml にない文字スタイルです: …]]、[strong: [style code: style には文字スタイルの名前を一つ書きます]]
+  [style code: \[style ...\]] の文字スタイルが定義されていません。
+  [style code: style.toml] に [style code: \[character-styles.名前\]] を書くか、名前の綴りを直してください。
+= [strong: G0219 [style code: number-text に渡せるのは整数だけです]] など
+  [style code: \[number-text ...\]] の引数が違います。
+  整数を一つ渡し、[style code: style] には [style code: kanji]、[style code: kanji-digits]、[style code: tcy] のどれかを書いてください。
+= [strong: G0220 [style code: 索引には reading が必要です]]
+  [style code: \[index reading=読み: 語\]] のように、読みを書いてください。
+= [strong: G0241 [style code: 索引の語は地の文に限ります]]
+  索引の語に、コマンドが入っています。
+  文字だけを書いてください。
+= [strong: G0242 [style code: 索引の語と読みの段の数が不正です]]
+  [style code: /] で区切った索引の段が三つ以上あるか、語と読みで [style code: /] の数が違うか、空の段があります。
+  段は二つまでにし、語と読みの [style code: /] の数をそろえてください。
+= [strong: G0221 [style code: 書誌データにないキーです: …]]
+  [style code: \[cite ...\]] のキーが、文献のデータにありません。
+  データの [style code: id] と綴りを見比べてください。
+= [strong: G0214 [style code: 見出しの中では相互参照を使えません]]、[strong: [style code: 見出しの中では doc を参照できません]]
+  見出しの中に、[style code: \[ref-number ...\]] などの相互参照か、[style code: doc] を使う式があります。
+  見出しの外の本文に移してください。
+
+@nonumber
+## 式と変数
+
+= [strong: G0120 [style code: 式を解釈できません]]
+  [style code: \[= ...\]] の中の式の書き方が違います。
+  演算子や括弧の対応を確かめてください。
+= [strong: G0201] 型の誤りのメッセージ
+  式で、使えない種類の値を計算しています。
+  たとえば文字列と数を足しているか、小数に [style code: div] や [style code: %] を使っています。
+  値の種類をそろえてください。
+= [strong: G0202 [style code: 未定義の名前 … です]]、[strong: [style code: 未定義の名前空間 … です]]
+  定義していない変数か、取り込んでいない名前を使っています。
+  [style code: @set] と [style code: @import] を書いたか、綴りが合っているかを確かめてください。
+= [strong: G0203 [style code: 0 で割っています]]
+  割る数が 0 になる計算です。
+= [strong: G0204 [style code: 結果が NaN か無限大になる演算です]]、[strong: [style code: 負の数の平方根です]]
+  計算の結果が数になりません。
+  値の範囲を確かめてください。
+= [strong: G0206 [style code: ] の指数は整数に限ります]**
+  [style code: **] の右に小数を書いています。
+  指数は整数にしてください。
+  平方根には [style code: sqrt] を使います。
+= [strong: G0207 [style code: 未定義の関数 … です]]、[strong: [style code: … の引数が不正です]]
+  関数の名前か、渡した引数の数や種類が違います。
+= [strong: G0208 [style code: … は本文に埋め込めません]]
+  配列や真偽値のように、本文に埋め込めない値です。
+  埋め込めるのは数と文字列です。
+= [strong: G0223 [style code: 予約語は変数の名前に使えません: …]]、[strong: [style code: 予約語は名前空間に使えません: …]]
+  [style code: doc]、[style code: meta]、[style code: true]、[style code: false]、[style code: nil] は、変数や [style code: @import] の名前に使えません。
+= [strong: G0224 [style code: 変数を二度定義しています: …]]
+  同じファイルで、同じ名前の変数を二度 [style code: @set] しています。
+= [strong: G0309 [style code: @import は「@import パス as 名前空間」の形で書きます]]
+  [style code: @import common/values.gm as values] のように書いてください。
+= [strong: G0305 [style code: import が循環しています: …]]
+  [style code: @import] でファイルどうしが互いを取り込んでいます。
+  共通の変数を別のファイルに移してください。
+
+@nonumber
+## ブロックコマンドと属性
+
+= [strong: G0209 [style code: 未知のブロックコマンドです: @…]]
+  その名前のブロックコマンドがありません。
+  綴りを確かめてください。
+= [strong: G0210 [style code: 属性の後にブロックがありません]]
+  [style code: @label] や [style code: @nonumber] などの次の行に、対象のブロックがありません。
+  あいだの空行を消すか、対象を書いてください。
+= [strong: G0211 [style code: 属性のまとまりに属性でないコマンドがあります]]
+  続けて書いた指定の行に、[style code: @toc] のような指定でないコマンドが混ざっています。
+  あいだに空行を入れてください。
+= [strong: G0212 [style code: 同じ属性を二度書いています]]
+  一つのブロックに、同じ指定を二度付けています。
+= [strong: G0213 [style code: @… はこのブロックには付けられません]]
+  その種類のブロックに付けられない指定です。
+  たとえば [style code: @notoc] は見出しに、[style code: @style] は段落にだけ付けられます。
+  図版のキャプションの見た目は、[style code: style.toml] の [style code: \[paragraph-styles.caption\]] で決めます。
+= [strong: G0225 [style code: @toc の depth は 1 から 3 の整数です]]
+  [style code: depth] を 1 から 3 の整数にしてください。
+= [strong: G0226 [style code: @label にはラベルの名前を一つ書きます]]、[strong: [style code: 参照にはラベルの名前を一つ書きます]]
+  ラベルの名前は、英小文字、数字、[style code: -]、[style code: _] で一つだけ書きます。
+= [strong: G0227 [style code: @number には整数を一つ書きます]]
+  [style code: @number 5] のように、整数を一つ書いてください。
+= [strong: G0228 [style code: 図版には alt の代替テキストが必要です]]
+  [style code: @figure] に [style code: alt="…"] を書いてください。
+= [strong: G0229 [style code: PDF の図版には web の代替画像が必要です]]
+  PDF の画像を使うときは、[style code: web=] で HTML と EPUB のための PNG か JPEG の画像を指定してください。
+= [strong: G0230 [style code: wrap は start か end です: …]]
+  [style code: wrap=start] か [style code: wrap=end] にしてください。
+= [strong: G0231 [style code: 回り込む図版には width が必要です]]
+  [style code: wrap] を書いた図版に、[style code: width=] で幅を書いてください。
+= [strong: G0232 [style code: @figure には画像のパスを一つ書きます]]
+  [style code: @figure] の後に、画像のパスを一つだけ書いてください。
+= [strong: G0233 [style code: ファイルがありません: …]]
+  [style code: @figure]、[style code: @table]、[style code: @listing] が指すファイルがありません。
+  パスはプロジェクトのディレクトリから書きます。
+  綴りと置き場所を確かめてください。
+= [strong: G0234 [style code: @table には src が必要です]]
+  [style code: src=] で CSV のファイルを指定してください。
+= [strong: G0235 [style code: CSV が空です]]、[strong: [style code: CSV の行ごとのセルの数が一致しません]]
+  CSV のファイルの各行の列の数を、一行目にそろえてください。
+= [strong: G0236 [style code: @listing にはファイルのパスが必要です]]
+  位置引数か [style code: src=] で、載せるファイルを指定してください。
+= [strong: G0237 [style code: lines の範囲が不正です: …]]
+  [style code: lines=3-10] のように、1 からファイルの行数までの範囲を書いてください。
+= [strong: G0245 [style code: @style の本体には段落だけを置けます。段落は空行で区切ります]]
+  字下げした [style code: @style] の本体に、箇条書きなどの段落でないものがあります。
+= [strong: G0246 [style code: @style の本体に段落がありません]]
+  本体の段落を、[style code: @style] の行より空白二つ深く字下げして書いてください。
+= [strong: G0247 [style code: style.toml にない段落スタイルです: …]]
+  [style code: style.toml] に [style code: \[paragraph-styles.名前\]] を書くか、名前の綴りを直してください。
+
+@nonumber
+## ラベルと参照と目次
+
+= [strong: G0401 [style code: ラベルが重複しています: …]]
+  同じラベルを二か所に付けています。
+  どちらかの名前を変えてください。
+= [strong: G0403 [style code: 存在しないラベルへの参照です: …]]
+  参照の名前と、[style code: @label] の名前を見比べてください。
+= [strong: G0405 [style code: 番号を持たない要素への参照です: …]]
+  [style code: @nonumber] の見出しのような、番号のない箇所を [style code: \[ref-number ...\]] で指しています。
+  題を出すなら [style code: \[ref-title ...\]] を使ってください。
+= [strong: G0402 [style code: @toc は文書に一つだけ置けます]]
+  [style code: @toc] を一つにしてください。
+= [strong: G0404 [style code: 最初の章より前の図版には、章番号を使う図番号を振れません]]
+  図番号の書式に [style code: {chapter}] があるのに、最初の章の見出しより前に図版があります。
+  図版を章の中に移すか、書式から [style code: {chapter}] を外してください。
+= [strong: G0721 [style code: ページ番号の参照が収束しません: …]]
+  ページ番号を入れると組み方が変わり、それでまたページ番号が変わる、という繰り返しが止まりません。
+  示された参照の近くの文言を少し変えてください。
+
+@nonumber
+## 誤りやすい書き方（lint）
+
+[style code: golem lint] と [style code: golem check] が見つけるものです。
+
+= [strong: G0501 [style code: 改行の前後が欧文なので、単語が空白なしにつながります。一行で書いてください]]
+  欧文の単語のあいだで改行しています。
+  欧文の文は一行に書いてください。
+  行分けを残したい詩などには、段落スタイル [style code: verse] を付けます。
+= [strong: G0502 [style code: 使われていない変数です: …]]
+  [style code: @set] の変数がどこからも使われていません。
+  消すか、使ってください。
+= [strong: G0503 [style code: 使われていない import です: …]]
+  [style code: @import] した名前が使われていません。
+= [strong: G0504 [style code: 参照されていないラベルです: …]]
+  [style code: --profile dev] では警告、[style code: --profile prod] ではエラーです。
+  参照を書くか、[style code: @label] を消してください。
+= [strong: G0205 [style code: 校正用のコメントが残っています]]
+  [style code: --profile prod] でだけ出る警告です。
+  校正の済んだ [style code: \%%= … \%%] を消してください。
+
+@nonumber
+## プロジェクトの設定（manifest.toml）
+
+= [strong: G0301 [style code: TOML の誤りです: …]]、[strong: [style code: 出力ターゲットが一つもありません]] など
+  [style code: manifest.toml] の書き方が違います。
+  キーの綴りと値の種類を、付録B と見比べてください。
+  [style code: \[targets\]] を書くときは、形式を一つ以上置きます。
+= [strong: G0302 [style code: manifest.toml がありません]]、[strong: [style code: ファイルがありません: …]]
+  プロジェクトのディレクトリで [style code: golem] を実行しているか、[style code: chapters] や [style code: @import] のパスが合っているかを確かめてください。
+= [strong: G0303 [style code: 絶対パスは使えません: …]]、[strong: [style code: URL は使えません: …]]、[strong: [style code: プロジェクトルートの外を指しています: …]]
+  ファイルはプロジェクトのディレクトリの中に置き、そこからの相対パスで書いてください。
+= [strong: G0304 [style code: 大文字と小文字だけが異なるパスです: …]]
+  大文字と小文字だけが違う二つのパスを使っています。
+  機械によって同じファイルと見なされるかどうかが変わるので、綴りをそろえてください。
+= [strong: G0307 [style code: style.toml にないマスターページです: …]]
+  [style code: manifest.toml] の章に書いたマスターページの名前が、[style code: style.toml] の [style code: \[masters\]] にありません。
+
+@nonumber
+## スタイルの設定（style.toml）
+
+= [strong: G0306] [style code: style.toml] の誤り
+  [style code: style.toml] の書き方が違います。
+  キーの綴り、値の種類、単位、選べる値を、付録C と見比べてください。
+  今の版では、知らないキーのメッセージは英語で、位置も示しません。
+  廃止した [style code: \[emphasis\]]、[style code: \[verse\]] などを書いたときは、書き換え先がメッセージに出ます。
+= [strong: G0317 [style code: 未知の判型です: …]] など
+  [style code: \[page\]] の [style code: size] が違います。
+  表の名前を書くか、[style code: { width = "148mm", height = "210mm" }] のように幅と高さで書いてください。
+= [strong: G0308 [style code: style.toml にないフォントの役割です: …]]
+  見出しやスタイルの [style code: font] に書いた役割が、[style code: \[fonts\]] にありません。
+= [strong: G0311 [style code: 段落スタイルの文字の大きさが版面の文字の大きさを超えます: …]]
+  段落スタイルの [style code: size] を、[style code: \[page.grid\]] の [style code: font-size] 以下にしてください。
+= [strong: G0312 [style code: 段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: …]]
+  ぶら下げの分だけ [style code: indent] を大きくしてください。
+= [strong: G0313 [style code: style.toml のスタイルの参照が不正です: …]]
+  [style code: based-on] の先のスタイルがないか、引き継ぎが輪になっているか、[style code: body] に [style code: based-on] があるか、文字スタイルの [style code: color] の色が定義されていません。
+
+@nonumber
+## 紙面に収まらないとき
+
+PDF を組むときに出るエラーです。
+
+= [strong: G0701 [style code: 版面がページからはみ出しています]] など
+  [style code: \[page\]] と [style code: \[page.grid\]] の値で版面を決められません。
+  字数、行数、文字の大きさ、[style code: position] を判型に収まる値にしてください。
+  [style code: \[page\]] や [style code: \[page.grid\]] がないときも、このコードが出ます。
+= [strong: G0702 [style code: 日本式のトンボには塗り足しが要ります。style.toml の \[page\] に bleed を書いてください]]
+  [style code: --marks japanese] を使うときは、[style code: bleed = "3mm"] のように塗り足しを書いてください。
+= [strong: G0724 [style code: 見出しが版面に入りません（…）]]
+  見出しが一ページに収まりません。
+  見出しを短くするか、[style code: \[headings\]] の [style code: size] を小さくしてください。
+= [strong: G0725 [style code: 段落の字下げが大きすぎます。…]]
+  字下げの後に、一行の長さが文字八つ分も残りません。
+  段落スタイルの [style code: indent] と [style code: first-line-indent] を小さくしてください。
+= [strong: G0722 [style code: 回り込む図版の幅が不正です。…]]
+  回り込ませる図版の [style code: width] を寸法で書き、脇に本文の文字が八つ以上入る幅にしてください。
+= [strong: G0723 [style code: 回り込む図版の除外領域が一ページの行数を超えます（…）]]
+  回り込ませた図版とキャプションが一ページに収まりません。
+  図版を小さくするか、キャプションを短くしてください。
+= [strong: G0732 [style code: 縦組みの段落の中には傍注を置けません]]
+  縦組みの本では、傍注の代わりに脚注（[style code: \[note: ...\]]）を使ってください。
+= [strong: G0734 [style code: 傍注欄（style.toml の \[sidenotes\]）のない版面では傍注を使えません]]
+  [style code: style.toml] に [style code: \[sidenotes\]] を書いてください。
+= [strong: G0735 [style code: PDF では、脚注の本文と図版のキャプションの中に傍注を置けません]]
+  傍注を本文の段落に移してください。
+= [strong: G0733 [style code: 傍注が傍注欄より高く、収まりません]]、[strong: [style code: このページの傍注が傍注欄に収まりません]]
+  傍注を短くするか、そのページの傍注を減らしてください。
+= [strong: G0741 [style code: 表の列の最小の幅の合計（…）が使える幅（…）に収まりません]]
+  表の列を減らすか、長い語を短くしてください。
+= [strong: G0742 [style code: 表の … 行目が見出しの行とともに一ページに収まりません]]
+  表の行の途中では改ページしないので、その行のセルの文を短くしてください。
+
+@nonumber
+## 書体と色のファイル
+
+= [strong: G0802 [style code: フォントのファイルがありません: …]]、[strong: [style code: style.toml に本文のフォント（\[fonts.body\]）がありません]] など
+  PDF を組むのに要る書体のファイルがありません。
+  [style code: style.toml] の [style code: \[fonts\]] のパスにファイルを置いてください。
+  [style code: golem new --no-fonts] で作ったプロジェクトは、書体を置くまでこのエラーが出ます。
+= [strong: G0310 [style code: フォントのファイルがないので、HTML と EPUB に同梱しません: …]]
+  [style code: --profile dev] では警告で、書体を同梱せずに HTML と EPUB を書きます。
+  [style code: --profile prod] ではエラーです。
+= [strong: G0803 [style code: フォントを読み込めません: …]]
+  書体のファイルが壊れているか、OpenType の書体ではありません。
+= [strong: G0804 [style code: ライセンスが埋め込みを禁じているフォントです（…）: …]]
+  書体のライセンスが、PDF への埋め込みを許していません。
+  埋め込みを許す書体に替えてください。
+= [strong: G0805 [style code: PostScript 名が同じ異なるフォントがあります: …]]
+  同じ書体の別の版のファイルを混ぜています。
+  どちらかのファイルにそろえてください。
+= [strong: G0806 [style code: 出力インテントの ICC プロファイルがありません: …]]
+  [style code: \[color\]] の [style code: intent] に書いたファイルがありません。
+
+@nonumber
+## プラグイン
+
+= [strong: G0602 [style code: plugins.lock にないプラグインです。golem plugin lock を実行してください: …]]
+  プラグインを宣言した後に、[style code: golem plugin lock] を実行してください。
+= [strong: G0603 [style code: キャッシュにないプラグインです。golem plugin fetch を実行してください: …]]
+  この機械にはまだプラグインの配布物がありません。
+  [style code: golem plugin fetch] を実行してください。
+= [strong: G0604 [style code: キャッシュの配布物のハッシュが plugins.lock と一致しません: …]]
+  手元の配布物が、記録したものと違います。
+  キャッシュのファイルを消して [style code: golem plugin fetch] をやり直し、配布物が差し替えられていないかを確かめてください。
+= [strong: G0605]、[strong: G0609] プラグインの誤り
+  プラグインを読み込めないか、実行が失敗しました。
+  メッセージを添えて、プラグインの作者に知らせてください。
+= [strong: G0606 [style code: 複数のプラグインが同じコマンドを提供しています: …]]
+  どちらかのプラグインを外してください。
+= [strong: G0607 [style code: 組み込みのコマンドと衝突しています（overrides で宣言してください）: …]]
+  組み込みのコマンドを置き換えるなら、[style code: overrides] にその名前を書いてください。
+= [strong: G0608 [style code: 上書きできないコマンドです: …]] など
+  [style code: overrides] に、置き換えられないコマンドか、そのプラグインにないコマンドを書いています。
+= [strong: G0610 [style code: 宣言されていないプラグインかフィルタです: …]]
+  [style code: \[\[filters\]\]] の [style code: plugin] と [style code: filter] の名前を確かめてください。

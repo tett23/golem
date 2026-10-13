@@ -3,7 +3,8 @@
 
 [style code: manifest.toml] は、一冊の本の構成を書くファイル（マニフェスト[index reading=まにふぇすと: マニフェスト]）です。
 どのファイルをどの順に並べるか、書名や著者は何か、どの形式に何を書き込むかをここに書きます。
-形式は TOML です。
+書き方は、TOML という設定ファイルの形式です。
+書けるキーの一覧は、[ref-title app-manifest]（[ref-page app-manifest] ページ）にあります。
 
 ## マニフェストの全体
 

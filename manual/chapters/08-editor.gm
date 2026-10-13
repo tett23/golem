@@ -1,11 +1,12 @@
 # エディタと LSP
 
-Golem は、エディタと話すための LSP（Language Server Protocol）[index reading=えるえすぴー: LSP]のサーバーを持っています。
+Golem には、エディタに Golem の原稿のための機能を足す部品が入っています。
+この部品は、多くのエディタが対応している LSP（Language Server Protocol）[index reading=えるえすぴー: LSP]という共通の取り決めに従っています。
 LSP に対応したエディタに設定すると、原稿を書きながら誤りを確かめ、ラベルや変数をたどれます。
 
 ## エディタでできること
 
-- 診断：保存を待たずに、[style code: golem check] と [style code: golem lint] と同じ診断を、誤りの箇所に表示します。
+- エラーと警告：保存を待たずに、[style code: golem check] と [style code: golem lint] と同じエラーと警告を、誤りの箇所に表示します。
 - 定義への移動と参照の検索：ラベル、変数、[style code: @import] のファイルをたどれます。ラベルは章をまたいで引けます。
 - 名前の変更：ラベルの名前を変えると、ほかの章の参照も一度に書き換えます。
 - 補完：コマンドの名前、ラベル、[style code: @import] のパスを補います。
@@ -15,13 +16,13 @@ LSP に対応したエディタに設定すると、原稿を書きながら誤�
 
 組んだ紙面のプレビューは、LSP の範囲に入っていません。
 紙面は [style code: golem build] で組んで確かめてください。
-LSP は書体のファイルを読まないので、書体を置く前でも原稿の診断は出ます。
+エディタの中では書体のファイルを読まないので、書体を置く前でも原稿のエラーは表示されます。
 
 ## エディタに設定する
 
-LSP のサーバーは、[style code: golem lsp] で起動します。
-エディタとは標準入力と標準出力で話します。
-エディタには、拡張子が [style code: .gm] のファイルに対してこのコマンドを起動し、[style code: manifest.toml] のあるディレクトリをプロジェクトの根とするように設定します。
+この部品は、[style code: golem lsp] というコマンドです。
+起動するのは人ではなくエディタで、エディタはこのコマンドの入出力を通してやりとりします。
+エディタには、拡張子が [style code: .gm] のファイルを開いたときにこのコマンドを起動し、[style code: manifest.toml] のあるディレクトリをプロジェクトのディレクトリとして扱うように設定します。
 
 Neovim（0.11 以降）では、たとえば次のように設定します。
 
@@ -35,4 +36,4 @@ vim.lsp.config("golem", {
 vim.lsp.enable("golem")
 ```
 
-ほかのエディタでも、起動するコマンド（[style code: golem lsp]）と、対象のファイル（[style code: .gm]）と、プロジェクトの根の目印（[style code: manifest.toml]）の三つを設定すれば使えます。
+ほかのエディタでも、起動するコマンド（[style code: golem lsp]）と、対象のファイル（[style code: .gm]）と、プロジェクトのディレクトリの目印（[style code: manifest.toml]）の三つを設定すれば使えます。

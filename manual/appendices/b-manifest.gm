@@ -1,0 +1,110 @@
+@nonumber
+@label app-manifest
+# 付録B manifest.toml のリファレンス
+
+この付録は、[style code: manifest.toml] に書けるキーをすべて並べたものです。
+書き方の流れは、第[ref-number manifest]章「[ref-title manifest]」で説明しています。[index reading=まにふぇすと/きーのいちらん: マニフェスト/キーの一覧]
+ここに載せていないキーを書くと、エラーになります。
+
+表の説明の括弧の中には、値の種類と、省けないキー（必須）を示します。
+値の種類は、次のように呼びます。
+
+= [strong: 文字列]
+  [style code: "…"] で囲んだ値です。
+= [strong: 日付]
+  [style code: 2026-10-13] のように、引用符を付けずに書く日付です。
+= [strong: 配列]
+  [style code: \[ … \]] で囲んで、カンマで区切った値の並びです。
+= [strong: 表]
+  [style code: \[名前\]] の見出しで始める、キーのまとまりです。
+
+@nonumber
+## 全体
+
+ファイルの先頭（どの [style code: \[ \]] の見出しよりも前）に書くキーと、ファイルの中の表です。
+
+| キー | 意味 |
+|:---|:---|
+| [style code: chapters] | 原稿のファイルを本の順に並べます（配列、必須）。 |
+| [style code: bibliography] | 文献のデータ（CSL-JSON）のファイルです（文字列の配列）。省くと文献を引用できません。 |
+| [style code: \[metadata\]] | 書名などの本の情報です（表、必須）。 |
+| [style code: \[targets\]] | 出力の形式ごとの設定です。 |
+| [style code: \[plugins.名前\]] | 使うプラグインの宣言です（表）。 |
+| [style code: \[\[filters\]\]] | フィルタのプラグインを当てるファイルです（表の並び）。 |
+
+[style code: chapters] の要素には、ファイルのパスを書きます。
+パスはプロジェクトのディレクトリからの相対パスで、プロジェクトの外や、[style code: /] で始まる絶対パス、URL は書けません。
+要素を配列にすると、いくつかのファイルを一つの章として続けて組みます。
+
+```toml
+chapters = [
+  "front.gm",
+  ["chapters/01-a.gm", "chapters/01-b.gm"],
+  "back.gm",
+]
+```
+
+@nonumber
+## [style code: \[metadata\]]
+
+本の情報です。
+ここに書いた値は、PDF、EPUB、HTML の決まった場所に書き込まれ、原稿からは [style code: \[= meta.title\]] のように参照できます。
+
+| キー | 意味 |
+|:---|:---|
+| [style code: id] | 本の識別子です（文字列、必須）。[style code: golem new] が [style code: urn:uuid:] で始まる値を作ります。一度決めたら変えません。PDF のファイルの名前にも使います。 |
+| [style code: title] | 書名です（文字列、必須）。 |
+| [style code: title-reading] | 書名の読みです（文字列）。電子書店での並べ替えに使われます。 |
+| [style code: language] | 本の言語です（文字列、必須）。日本語は [style code: "ja"]、英語は [style code: "en"] です。 |
+| [style code: date] | 発行日です（日付、必須）。PDF の作成日などに書き込みます。 |
+| [style code: edition] | 版です（文字列）。 |
+| [style code: publisher] | 発行者です（文字列）。 |
+| [style code: \[\[metadata.creators\]\]] | 著者などの関係者です（表の並び）。一人ごとに一つ書きます。 |
+
+[style code: \[\[metadata.creators\]\]] のキーは次のとおりです。
+
+| キー | 意味 |
+|:---|:---|
+| [style code: name] | 名前です（文字列、必須）。 |
+| [style code: reading] | 名前の読みです（文字列）。 |
+| [style code: role] | 役割の符号です（文字列、必須）。著者は [style code: "aut"]、編者は [style code: "edt"]、訳者は [style code: "trl"] のように、EPUB と同じ符号を書きます。 |
+
+@nonumber
+## [style code: \[targets\]]
+
+出力の形式ごとの設定です。
+形式の表は中身が空でもかまいません。
+[style code: \[targets\]] を書くときは、少なくとも一つの形式を置きます。
+
+| キー | 意味 |
+|:---|:---|
+| [style code: \[targets.pdf\]] | PDF の設定です。[style code: isbn] に紙の本の ISBN を書けます。 |
+| [style code: \[targets.epub\]] | EPUB の設定です。[style code: isbn] に電子版の ISBN を書けます。書けば EPUB の識別子に使います。 |
+| [style code: \[targets.html\]] | HTML の設定です。書けるキーはありません。 |
+| [style code: \[targets.text\]] | プレーンテキストの設定です。[style code: variants] に [style code: "vertical"]（縦書き用）と [style code: "horizontal"]（横書き用）の一方か両方を並べます。省くと両方を作ります。 |
+
+[style code: golem build] は、[style code: --target] を指定しなければ、この表にかかわらず四つの形式をすべて作ります。
+
+@nonumber
+## [style code: \[plugins.名前\]]
+
+使うプラグインを、名前を付けて宣言します。
+名前は、原稿や [style code: \[\[filters\]\]] からプラグインを指すのに使います。
+
+| キー | 意味 |
+|:---|:---|
+| [style code: url] | 配布物の URL です（文字列、必須）。[style code: https://] で始め、版を固定した URL を書きます。 |
+| [style code: overrides] | このプラグインで置き換える組み込みのコマンドの名前です（文字列の配列）。 |
+
+[style code: overrides] に書けるのは、[style code: strong]、[style code: bold]、[style code: italic]、[style code: ruby]、[style code: kenten]、[style code: color]、[style code: style]、[style code: tcy]、[style code: number-text] です。
+
+@nonumber
+## [style code: \[\[filters\]\]]
+
+フィルタを当てるファイルを、当てる順に書きます。
+
+| キー | 意味 |
+|:---|:---|
+| [style code: plugin] | [style code: \[plugins.名前\]] で宣言したプラグインの名前です（文字列、必須）。 |
+| [style code: filter] | そのプラグインのフィルタの名前です（文字列、必須）。 |
+| [style code: files] | フィルタを当てる原稿のファイルです（文字列の配列、必須）。 |
