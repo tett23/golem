@@ -23,8 +23,8 @@ heading f s l a lbl t = Block (sp f s) lbl (Heading l a [Text (sp f s) t])
 para :: Int -> Int -> [Inline] -> Block
 para f s is = Block (sp f s) Nothing (Paragraph Nothing is)
 
-noEval :: DocValues -> DeferredExpr -> Either Diagnostic Text
-noEval dv _ = Right ("count=" <> T.pack (show (dvChapterCount dv)))
+noEval :: DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text
+noEval dv _ _ = Right ("count=" <> T.pack (show (dvChapterCount dv)))
 
 codes :: [Diagnostic] -> [Text]
 codes = map (\d -> let DiagnosticCode c = diagCode d in c)

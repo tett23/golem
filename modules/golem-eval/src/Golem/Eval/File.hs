@@ -4,6 +4,7 @@ the layout (S2) are left as 'Ref' and 'Deferred' inlines.
 -}
 module Golem.Eval.File
   ( EvalContext (..),
+    Asset (..),
     PluginHook (..),
     noPlugins,
     Usage (..),
@@ -17,10 +18,10 @@ module Golem.Eval.File
   )
 where
 
-import Control.Monad (forM, unless, when)
+import Control.Monad (forM, unless)
 import Control.Monad.State.Strict
 import Data.Char (isAsciiLower, isDigit)
-import Data.List (nub, partition)
+import Data.List (partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
@@ -34,6 +35,7 @@ import Golem.Eval.Settings
 import Golem.Eval.Value
 import Golem.Parser.AST qualified as A
 import Golem.Parser.SourceSettings
+import Golem.Project.Paths (PathError (..), pathErrorMessage)
 import Golem.Project.Style (LineBreaks (..), LocalStyles (..), Style, noLocalStyles, paraLineBreaks, withLocalStyles)
 import Golem.Syntax
 
@@ -62,13 +64,24 @@ data EvalContext = EvalContext
     ctxParaStyles :: !(Map Text LineBreaks),
     ctxDefaultKenten :: !Text,
     ctxCiteKeys :: !(Set Text),
-    ctxAssets :: !(Map FilePath (Maybe Text)), -- referenced files; Nothing = binary but present
+    -- | the files @figure, @table and @listing refer to; a path not in it is missing
+    ctxAssets :: !(Map FilePath Asset),
     ctxPlugins :: !PluginHook,
     -- | how the file is read (docs/adr ADR 0013)
     ctxSource :: !SourceSettings,
     -- | style.toml as read, which the @style-def of a file is laid over (docs/adr ADR 0014)
     ctxStyle :: !Style
   }
+
+-- | A file referenced by @figure, @table or @listing (golem-eval ADR 0003).
+data Asset
+  = -- | read as text, for a table or a listing
+    AssetText !Text
+  | -- | present, and not read
+    AssetPresent
+  | -- | a path that cannot be used: absolute, a URL, outside the root, or missing
+    AssetInvalid !PathError
+  deriving stock (Eq, Show)
 
 data Usage = Usage
   { usageDefined :: ![(Text, SrcSpan)],
@@ -355,11 +368,11 @@ alignment = \case
 standalone :: EvalContext -> SrcSpan -> A.Located A.Name -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 standalone ctx sp (A.Located nsp name) args body = case name of
   "import" -> do
-    case map A.locValue args of
-      [A.Positional p, A.Positional (A.Word "as"), A.Positional (A.Word ns)] -> do
+    case args of
+      [A.Located _ (A.Positional p), A.Located _ (A.Positional (A.Word "as")), A.Located nssp (A.Positional (A.Word ns))] -> do
         let path = argText p
         if ns `elem` reservedNames
-          then err "G0223" sp ("予約語は名前空間に使えません: " <> ns)
+          then err "G0223" nssp ("予約語は名前空間に使えません: " <> ns)
           else do
             let vals = fromMaybe Map.empty (Map.lookup (T.unpack path) (ctxImports ctx))
             modify' (\s -> s {stNamespaces = Map.insert ns vals (stNamespaces s), stImports = stImports s <> [(ns, T.unpack path, sp)]})
@@ -433,10 +446,12 @@ attributedGroup ctx sp cmds target = case target of
     | not (isAttr (last cmds)) && isBlockCommand (last cmds) ->
         err "G0211" sp "属性のまとまりに属性でないコマンドがあります" >> concat <$> mapM (evalBlock ctx) (filter (not . isAttr) cmds)
     | otherwise -> err "G0210" sp "属性の後にブロックがありません" >> concat <$> mapM (evalBlock ctx) (filter (not . isAttr) cmds)
+  -- the commands that are not attributes are evaluated as well, in order (golem-eval ADR 0003)
   Just t -> do
     let nonAttrs = filter (not . isAttr) cmds
     unless (null nonAttrs) $ err "G0211" sp "属性のまとまりに属性でないコマンドがあります"
-    withAttrs (filter isAttr cmds) t
+    before <- concat <$> mapM (evalBlock ctx) nonAttrs
+    (before <>) <$> withAttrs (filter isAttr cmds) t
   where
     isAttr c@(A.Located _ (A.BlockCommand (A.Located _ n) _ body)) = n `elem` attributeCommands && not (isStyleCommand c && not (null body))
     isAttr _ = False
@@ -445,8 +460,10 @@ attributedGroup ctx sp cmds target = case target of
       _ -> False
     foldM' f z = foldl (\acc x -> acc >>= \a -> f a x) (pure z)
     withAttrs attrs t = do
-      let names = [n | A.Located _ (A.BlockCommand (A.Located _ n) _ _) <- attrs]
-      when (length names /= length (nub names)) $ err "G0212" sp "同じ属性を二度書いています"
+      -- every line of an attribute already given (golem-eval ADR 0003)
+      let named = [(n, asp) | A.Located asp (A.BlockCommand (A.Located _ n) _ _) <- attrs]
+          repeated = [asp | (i, (n, asp)) <- zip [0 :: Int ..] named, n `elem` map fst (take i named)]
+      mapM_ (\asp -> err "G0212" asp "同じ属性を二度書いています") repeated
       targetBlocks <- case (t, [c | c <- attrs, isStyleCommand c]) of
         (A.Located psp (A.Paragraph is), A.Located csp (A.BlockCommand _ args _) : _) -> styleName ctx csp args >>= \n -> styledParagraph ctx psp n is
         (A.Located tsp (A.Paragraph is), []) -> evalBlock ctx (A.Located tsp (A.Paragraph is))
@@ -503,7 +520,7 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
   A.BlockCommand (A.Located _ name) args _ -> case (name, body) of
     ("label", _) -> case map A.locValue args of
       [A.Positional (A.Word l)] | validLabel l -> pure (Just l, body)
-      _ -> err "G0226" sp "@label にはラベルの名前を一つ書きます" >> pure (label, body)
+      _ -> err "G0226" sp "@label にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます" >> pure (label, body)
     ("toc-title", Heading l a is) -> do
       t <- evalInlines ctx True [A.Located sp (A.Text (T.unwords (map (argText . positional) args)))]
       pure (label, Heading l a {haTocTitle = Just t} is)
@@ -679,9 +696,7 @@ figure ctx sp args body = do
                   | otherwise -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption))]
     _ -> err "G0232" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
-    check p
-      | Map.member (T.unpack p) (ctxAssets ctx) = pure True
-      | otherwise = err "G0233" sp ("ファイルがありません: " <> p) >> pure False
+    check p = isJust <$> asset ctx sp p
     -- a caption has no paragraph style of its own (docs/adr ADR 0005, golem-driver ADR 0010)
     noStyle csp = err "G0213" csp "@style は図版のキャプションには付けられません"
     unstyled = \case
@@ -703,15 +718,32 @@ csvTable ctx sp args = do
   kw <- keywords ctx args
   case argText <$> lookup "src" kw of
     Nothing -> err "G0234" sp "@table には src が必要です" >> pure []
-    Just src -> case Map.lookup (T.unpack src) (ctxAssets ctx) of
-      Just (Just content) -> case parseCsv content of
-        (h : rows)
-          | all ((== length h) . length) rows ->
-              let cell t = [Text sp t]
-               in pure [block sp (Table (map (const AlignDefault) h) (map cell h) (map (map cell) rows))]
-        [] -> err "G0235" sp "CSV が空です" >> pure []
-        _ -> err "G0235" sp "CSV の行ごとのセルの数が一致しません" >> pure []
-      _ -> err "G0233" sp ("ファイルがありません: " <> src) >> pure []
+    Just src ->
+      asset ctx sp src >>= \case
+        Just (AssetText content) -> case parseCsv content of
+          (h : rows)
+            | all ((== length h) . length) rows ->
+                let cell t = [Text sp t]
+                 in pure [block sp (Table (map (const AlignDefault) h) (map cell h) (map (map cell) rows))]
+          [] -> err "G0235" sp "CSV が空です" >> pure []
+          _ -> err "G0235" sp "CSV の行ごとのセルの数が一致しません" >> pure []
+        Just _ -> missing sp src >> pure []
+        Nothing -> pure []
+
+{- | The file a path refers to. A path that cannot be used is reported, and
+gives nothing.
+-}
+asset :: EvalContext -> SrcSpan -> Text -> M (Maybe Asset)
+asset ctx sp p = case Map.lookup (T.unpack p) (ctxAssets ctx) of
+  Nothing -> missing sp p >> pure Nothing
+  Just (AssetInvalid Missing) -> missing sp p >> pure Nothing
+  -- G0260: a path that cannot be used, worded as G0303 (golem-eval ADR 0003)
+  Just (AssetInvalid e) -> err "G0260" sp (T.pack (pathErrorMessage e) <> ": " <> p) >> pure Nothing
+  Just a -> pure (Just a)
+
+-- | G0233: a file that is not there.
+missing :: SrcSpan -> Text -> M ()
+missing sp p = err "G0233" sp ("ファイルがありません: " <> p)
 
 -- | RFC 4180: comma-separated, double-quoted fields with "" escapes.
 parseCsv :: Text -> [[Text]]
@@ -738,17 +770,19 @@ listing ctx sp args = do
         [] -> argText <$> lookup "src" kw
   case src of
     Nothing -> err "G0236" sp "@listing にはファイルのパスが必要です" >> pure []
-    Just p -> case Map.lookup (T.unpack p) (ctxAssets ctx) of
-      Just (Just content) -> do
-        let ls = T.lines content
-        case argText <$> lookup "lines" kw of
-          Nothing -> pure [block sp (CodeBlock Nothing (T.intercalate "\n" ls))]
-          Just r -> case map (fmap fst . decimalInt) (T.splitOn "-" r) of
-            [Just a, Just b]
-              | a >= 1 && b >= a && b <= length ls ->
-                  pure [block sp (CodeBlock Nothing (T.intercalate "\n" (take (b - a + 1) (drop (a - 1) ls))))]
-            _ -> err "G0237" sp ("lines の範囲が不正です: " <> r) >> pure []
-      _ -> err "G0233" sp ("ファイルがありません: " <> p) >> pure []
+    Just p ->
+      asset ctx sp p >>= \case
+        Just (AssetText content) -> do
+          let ls = T.lines content
+          case argText <$> lookup "lines" kw of
+            Nothing -> pure [block sp (CodeBlock Nothing (T.intercalate "\n" ls))]
+            Just r -> case map (fmap fst . decimalInt) (T.splitOn "-" r) of
+              [Just a, Just b]
+                | a >= 1 && b >= a && b <= length ls ->
+                    pure [block sp (CodeBlock Nothing (T.intercalate "\n" (take (b - a + 1) (drop (a - 1) ls))))]
+              _ -> err "G0237" sp ("lines の範囲が不正です: " <> r) >> pure []
+        Just _ -> missing sp p >> pure []
+        Nothing -> pure []
   where
     decimalInt x = if not (T.null x) && T.all isDigit x then Just (read (T.unpack x) :: Int, ()) else Nothing
 
@@ -833,16 +867,25 @@ evalInline ctx inHeading (A.Located sp i) = case i of
             Left ds -> mapM_ report ds >> pure []
             Right (out, ds) -> mapM_ report ds >> pure out
 
+{- | Commands that take no prose slot (golem-eval ADR 0003): a slot is G0238,
+reported before the arguments, and after G0214 for a reference in a heading.
+-}
+noSlotCommands :: [Text]
+noSlotCommands = ["number-text", "ref-number", "ref-title", "ref-page", "cite"]
+
 builtin :: EvalContext -> Bool -> SrcSpan -> Text -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
-builtin ctx inHeading sp name args slots = do
+builtin ctx inHeading sp name args slots
+  | inHeading && name `elem` ["ref-number", "ref-title", "ref-page"] = err "G0214" sp "見出しの中では相互参照を使えません" >> pure []
+  | name `elem` noSlotCommands && not (null slots) = err "G0238" sp (name <> " は散文スロットを取りません") >> pure []
+  | otherwise = builtinWith ctx inHeading sp name args slots
+
+builtinWith :: EvalContext -> Bool -> SrcSpan -> Text -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+builtinWith ctx inHeading sp name args slots = do
   kw <- keywords ctx args
   let pos = [v | A.Located _ (A.Positional v) <- args]
       oneSlot k = case slots of
         [s] -> evalInlines ctx inHeading s >>= k
         _ -> err "G0238" sp (name <> " には散文スロットが一つ必要です") >> pure []
-      noS1 k
-        | inHeading = err "G0214" sp "見出しの中では相互参照を使えません" >> pure []
-        | otherwise = k
   case name of
     -- the built-in character styles (docs/adr ADR 0005)
     "strong" -> oneSlot (pure . pure . CharStyle sp "strong")
@@ -854,12 +897,12 @@ builtin ctx inHeading sp name args slots = do
         Just s | s `notElem` kentenShapes -> err "G0239" sp ("未知の圏点の形です: " <> s) >> pure []
         _ -> oneSlot (pure . pure . Kenten sp shape)
     "color" -> case pos of
-      [v] | argText v `Set.member` ctxSwatches ctx -> oneSlot (pure . pure . Color sp (argText v))
-      [v] -> err "G0217" sp ("style.toml にないスウォッチです: " <> argText v) >> pure []
+      [v] | Just n <- nameArg v, n `Set.member` ctxSwatches ctx -> oneSlot (pure . pure . Color sp n)
+      [v] | Just n <- nameArg v -> err "G0217" sp ("style.toml にないスウォッチです: " <> n) >> pure []
       _ -> err "G0217" sp "color にはスウォッチの名前を一つ書きます" >> pure []
     "style" -> case pos of
-      [v] | argText v `Set.member` ctxCharStyles ctx -> oneSlot (pure . pure . CharStyle sp (argText v))
-      [v] -> err "G0218" sp ("定義されていない文字スタイルです: " <> argText v) >> pure []
+      [v] | Just n <- nameArg v, n `Set.member` ctxCharStyles ctx -> oneSlot (pure . pure . CharStyle sp n)
+      [v] | Just n <- nameArg v -> err "G0218" sp ("定義されていない文字スタイルです: " <> n) >> pure []
       _ -> err "G0218" sp "style には文字スタイルの名前を一つ書きます" >> pure []
     "tcy" -> oneSlot $ \case
       [Text _ t] -> pure [Tcy sp t]
@@ -876,10 +919,10 @@ builtin ctx inHeading sp name args slots = do
             | otherwise -> err "G0219" sp ("style は kanji、kanji-digits、tcy のいずれかです: " <> s) >> pure []
           (Left d, _) -> report d >> pure []
           _ -> err "G0219" sp "number-text に渡せるのは整数だけです" >> pure []
-      _ -> err "G0219" sp "number-text には数を一つ書きます" >> pure []
-    "ref-number" -> noS1 (refTo RefNumber pos)
-    "ref-title" -> noS1 (refTo RefTitle pos)
-    "ref-page" -> noS1 (refTo RefPage pos)
+      _ -> err "G0219" sp "number-text には整数を一つ書きます" >> pure []
+    "ref-number" -> refTo RefNumber pos
+    "ref-title" -> refTo RefTitle pos
+    "ref-page" -> refTo RefPage pos
     "note" -> oneSlot $ \body -> do
       n <- gets ((+ 1) . stNote)
       modify' (\s -> s {stNote = n})
@@ -902,15 +945,15 @@ builtin ctx inHeading sp name args slots = do
                   else pure [IndexMark sp (IndexEntry ts rs)]
       _ -> err "G0238" sp "index には散文スロットが一つ必要です" >> pure []
     "cite" -> case pos of
-      [v] | argText v `Set.member` ctxCiteKeys ctx -> pure [Cite sp (argText v)]
-      [v] -> err "G0221" sp ("書誌データにないキーです: " <> argText v) >> pure []
+      [v] | Just n <- nameArg v, n `Set.member` ctxCiteKeys ctx -> pure [Cite sp n]
+      [v] | Just n <- nameArg v -> err "G0221" sp ("書誌データにないキーです: " <> n) >> pure []
       _ -> err "G0221" sp "cite には書誌データのキーを一つ書きます" >> pure []
     "ruby" -> ruby ctx sp slots
     _ -> err "G0222" sp ("未知のコマンドです: " <> name) >> pure []
   where
     refTo k = \case
       [v] | validLabel (argText v) -> pure [Ref sp k (argText v)]
-      _ -> err "G0226" sp "参照にはラベルの名前を一つ書きます" >> pure []
+      _ -> err "G0226" sp "参照にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます" >> pure []
 
 plainText :: [Inline] -> Maybe Text
 plainText is = T.concat <$> traverse (\case Text _ t -> Just t; _ -> Nothing) is
@@ -926,11 +969,12 @@ ruby ctx sp = \case
       (Just nb, Just r) -> do
         let baseSegs = splitSegments nb
             readSegs = T.splitOn "/" r
-        if length baseSegs == 1
-          then pure [Ruby sp () [RubySegment nb (Just r)]]
+        -- a reading split by '/' needs a base split as many times (golem-eval ADR 0003)
+        if length baseSegs /= length readSegs
+          then err "G0215" sp "モノルビの対象と読みのセグメントの数が一致しません" >> pure []
           else
-            if length baseSegs /= length readSegs
-              then err "G0215" sp "モノルビの対象と読みのセグメントの数が一致しません" >> pure []
+            if length baseSegs == 1
+              then pure [Ruby sp () [RubySegment nb (Just r)]]
               else pure [Ruby sp () [RubySegment b (if T.null rd then Nothing else Just rd) | (b, rd) <- zip baseSegs readSegs]]
   _ -> err "G0238" sp "ruby には散文スロットが二つ必要です" >> pure []
 
@@ -951,6 +995,13 @@ splitSegments = foldr step [[]]
 
 keywords :: EvalContext -> [A.Located A.Argument] -> M [(Text, A.ArgValue)]
 keywords _ args = pure [(k, v) | A.Located _ (A.Keyword (A.Located _ k) v) <- args]
+
+-- | A name written as a word or a string literal.
+nameArg :: A.ArgValue -> Maybe Text
+nameArg = \case
+  A.Word t -> Just t
+  A.StringLit t -> Just t
+  _ -> Nothing
 
 argText :: A.ArgValue -> Text
 argText = \case

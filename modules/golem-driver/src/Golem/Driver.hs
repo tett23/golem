@@ -39,7 +39,7 @@ import Data.ByteString.Lazy qualified as BL
 import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -198,14 +198,15 @@ readMaybeText p = do
   e <- doesFileExist p
   if e then Just . TE.decodeUtf8Lenient <$> BS.readFile p else pure Nothing
 
-evalDeferred :: DocValues -> DeferredExpr -> Either Diagnostic Text
-evalDeferred dv (DeferredExpr e) =
+-- | A deferred expression; G0208 is at the inline @sp@ (golem-eval ADR 0003).
+evalDeferred :: DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text
+evalDeferred dv sp (DeferredExpr e) =
   let docNs = Map.fromList [("chapters", VHash (Map.fromList [("count", VInt (dvChapterCount dv))]))]
       en = Env Map.empty (Map.singleton "doc" docNs)
-   in evalExpr en e >>= embedValue (A.locSpan e)
+   in evalExpr en e >>= embedValue sp
 
 -- | Evaluates files in import order so that imports see their exports.
-evalAll :: Profile -> Project -> Style -> Map FilePath (Maybe Text) -> Set.Set Text -> PluginHook -> Map FileId EvalResult
+evalAll :: Profile -> Project -> Style -> Map FilePath Asset -> Set.Set Text -> PluginHook -> Map FileId EvalResult
 evalAll profile project style assets citeKeys hook = foldl' step Map.empty (projectOrder project)
   where
     step acc fid = case Map.lookup fid (projectSources project) of
@@ -213,7 +214,7 @@ evalAll profile project style assets citeKeys hook = foldl' step Map.empty (proj
       Just sf -> Map.insert fid (reeval profile project style assets citeKeys hook acc fid sf) acc
 
 -- | S0 of one file, with the exports of its imports taken from @acc@.
-reeval :: Profile -> Project -> Style -> Map FilePath (Maybe Text) -> Set.Set Text -> PluginHook -> Map FileId EvalResult -> FileId -> SourceFile -> EvalResult
+reeval :: Profile -> Project -> Style -> Map FilePath Asset -> Set.Set Text -> PluginHook -> Map FileId EvalResult -> FileId -> SourceFile -> EvalResult
 reeval profile project style assets citeKeys hook acc fid sf =
   let ft = projectFiles project
       meta = metadataValues (manifestMetadata (projectManifest project))
@@ -270,20 +271,21 @@ metadataValues md =
       <> [("publisher", VString p) | Just p <- [mdPublisher md]]
 
 {- | Files referenced by @figure, @table and @listing: text content for
-tables and listings, presence for images.
+tables and listings, presence for images, and why a path cannot be used
+(golem-eval ADR 0003). A path any reference reads as text is read as text.
 -}
-loadAssets :: FilePath -> Project -> IO (Map FilePath (Maybe Text))
+loadAssets :: FilePath -> Project -> IO (Map FilePath Asset)
 loadAssets root project = do
-  let refs = concatMap (assetRefs . sfAst) (Map.elems (projectSources project))
-  found <- forM refs $ \(path, wantText) -> do
-    r <- resolveInRoot root path
-    case r of
-      Left _ -> pure Nothing
-      Right rel ->
-        if wantText
-          then Just . (path,) . Just . TE.decodeUtf8Lenient <$> BS.readFile (root </> rel)
-          else pure (Just (path, Nothing))
-  pure (Map.fromList (catMaybes found))
+  let refs = Map.fromListWith (||) (concatMap (assetRefs . sfAst) (Map.elems (projectSources project)))
+  Map.traverseWithKey load refs
+  where
+    load path wantText = do
+      r <- resolveInRoot root path
+      case r of
+        Left e -> pure (AssetInvalid e)
+        Right rel
+          | wantText -> AssetText . TE.decodeUtf8Lenient <$> BS.readFile (root </> rel)
+          | otherwise -> pure AssetPresent
 
 assetRefs :: A.File -> [(FilePath, Bool)]
 assetRefs (A.File _ bs) = concatMap blk bs
