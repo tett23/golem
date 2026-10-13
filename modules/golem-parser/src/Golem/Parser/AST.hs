@@ -1,7 +1,7 @@
 {- | The abstract syntax tree (golem-parser ADR 0005): the meaning of the
 source before evaluation. Trivia and escapes are already resolved. A
 newline inside a paragraph or a prose slot stays as 'SoftBreak'; the
-evaluation drops it except in the body of @verse (docs/adr ADR 0003).
+evaluation drops it except in the body of @style verse (docs/adr ADR 0003).
 -}
 module Golem.Parser.AST
   ( File (..),
