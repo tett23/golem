@@ -62,7 +62,7 @@ foreign import capi unsafe "golem_plugin.h golem_wat2wasm" c_wat2wasm :: CString
 
 -- | The ABI version of this host.
 abiVersion :: Word32
-abiVersion = 4
+abiVersion = 5
 
 -- | The fuel of one call: about this many wasm instructions.
 defaultFuel :: Word64
@@ -278,6 +278,7 @@ inlineSpans = \case
   Cite s _ -> [s]
   ProofComment s _ -> [s]
   LineBreak s -> [s]
+  Aki s _ -> [s]
 
 inlineDeferred :: InlineF r -> [DeferredExpr]
 inlineDeferred = \case

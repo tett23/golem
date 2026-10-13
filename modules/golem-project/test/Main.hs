@@ -133,6 +133,17 @@ runningHeadTests =
       testCase "the message names the value and the vocabulary" $ do
         let ms = messages (runningHead "content = \"chapter\"")
         assertBool (show ms) (any ("heading.<階層>.short" `T.isInfixOf`) ms && any ("chapter" `T.isInfixOf`) ms),
+      testCase "an unknown position of a running head or a folio is G0318 (golem-driver ADR 0016)" $ do
+        let st = parseStyle (FileId 0) "[masters.body]\nrunning-head = { position = \"middle\", content = \"title\" }\n"
+        codes st @?= ["G0318"]
+        map (T.isPrefixOf "未知の位置です: middle") (messages st) @?= [True]
+        let fo = parseStyle (FileId 0) "[masters.body]\nfolio = { position = \"middle\", format = \"{n}\" }\n"
+        codes fo @?= ["G0318"]
+        map (T.isPrefixOf "未知の位置です: middle") (messages fo) @?= [True]
+        case fo of
+          Left [d] -> spanStart (diagSpan d) @?= T.length "[masters.body]\nfolio = { position = "
+          other -> assertFailure (show other)
+        codes (parseStyle (FileId 0) "[masters.body]\nfolio = { position = \"bottom-center\", format = \"{n}\" }\n") @?= [],
       testCase "the running-head of a heading is retired (G0319)" $ do
         let r = parseStyle (FileId 0) "[headings.1]\nrunning-head = true\n"
         codes r @?= ["G0319"]
@@ -405,6 +416,8 @@ tests =
       styleTests,
       runningHeadTests,
       localStyleTests,
+      akiTests,
+      regexStyleTests,
       testCase "[page] bleed (golem-pdf ADR 0004)" $ do
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"3mm\"\n") @?= Right (Just 557314)
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\n") @?= Right (Just 0)
@@ -699,6 +712,147 @@ characterFeatureTests =
         either (map fst) (const []) (localStyleDef CharacterKind [("colour", LocalWord "x")]) @?= ["G0306"]
     ]
 
+-- | Aki amounts and aki sets (docs/adr ADR 0019).
+akiTests :: TestTree
+akiTests =
+  testGroup
+    "aki amounts and aki sets (docs/adr ADR 0019)"
+    [ testCase "parseAki reads the names, zw and percentages" $ do
+        map parseAki ["ベタ", "全角", "二分", "三分", "四分", "五分", "六分", "八分", "二分四分", "0.2zw", "12.5%"]
+          @?= map Just [0, 1, 1 / 2, 1 / 3, 1 / 4, 1 / 5, 1 / 6, 1 / 8, 3 / 4, 1 / 5, 1 / 8]
+        map parseAki ["-1zw", "1mm", "十分"] @?= [Nothing, Nothing, Nothing],
+      testCase "[aki-sets.<name>] and the aki-set of a paragraph style are read" $
+        case parseStyle (FileId 0) wideWaou of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            fmap asBasedOn (Map.lookup "wide-waou" (stAkiSets s)) @?= Just (Just "gyomatsu-yakumono-hankaku")
+            fmap asRules (Map.lookup "wide-waou" (stAkiSets s))
+              @?= Just
+                [ AkiRuleDef ["japanese"] ["western"] (1 / 4) (1 / 3) (1 / 2),
+                  AkiRuleDef ["western"] ["japanese"] (1 / 4) (1 / 3) (1 / 2)
+                ]
+            (paraStyle s Nothing >>= psAkiSet) @?= Just "wide-waou"
+            (paraStyle s (Just "caption") >>= psAkiSet) @?= Just "wide-waou",
+      testCase "body uses gyomatsu-yakumono-hankaku by default; minimum and maximum default to optimum" $ do
+        case parseStyle (FileId 0) "" of
+          Left ds -> assertFailure (show ds)
+          Right s -> (paraStyle s (Just "verse") >>= psAkiSet) @?= Just "gyomatsu-yakumono-hankaku"
+        case parseStyle (FileId 0) "[aki-sets.a]\nrules = [{ before = [\"kana\", \"ideograph\"], after = \"line-end\", optimum = \"25%\" }]\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            fmap asBasedOn (Map.lookup "a" (stAkiSets s)) @?= Just Nothing
+            fmap asRules (Map.lookup "a" (stAkiSets s)) @?= Just [AkiRuleDef ["kana", "ideograph"] ["line-end"] (1 / 4) (1 / 4) (1 / 4)],
+      testCase "errors of aki amounts and aki sets are G0320" $ do
+        let rule r = "[aki-sets.a]\nrules = [" <> r <> "]\n"
+        codes (parseStyle (FileId 0) (rule "{ before = \"kana\", after = \"kana\", optimum = \"四分\", minimum = \"二分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) (rule "{ before = \"kana\", after = \"kana\", optimum = \"四分\", maximum = \"八分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) (rule "{ before = \"kanji\", after = \"kana\", optimum = \"四分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) (rule "{ before = \"line-end\", after = \"kana\", optimum = \"四分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) (rule "{ before = \"kana\", after = \"line-start\", optimum = \"四分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) (rule "{ before = \"kana\", after = \"paragraph-start\", optimum = \"四分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) (rule "{ before = \"kana\", after = \"kana\", optimum = \"十分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) "[aki-sets.gyomatsu-yakumono-hankaku]\nrules = []\n") @?= ["G0320"]
+        codes (parseStyle (FileId 0) "[aki-sets.gyomatsu-yakumono-zenkaku]\n") @?= ["G0320"]
+        let ms = either (map diagMessage) (const []) (parseStyle (FileId 0) (rule "{ before = \"kanji\", after = \"kana\", optimum = \"四分\" }"))
+        assertBool (show ms) (not (null ms) && all ("アキの量の指定が正しくありません: " `T.isPrefixOf`) ms),
+      testCase "an aki name in another dimension is G0320" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"二分\"\n") @?= ["G0320"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"wide\"\n") @?= ["G0306"],
+      testCase "references to aki sets are G0313" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\naki-set = \"nope\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[aki-sets.a]\nbased-on = \"nope\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[aki-sets.a]\nbased-on = \"b\"\n\n[aki-sets.b]\nbased-on = \"a\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[aki-sets.a]\nbased-on = \"gyomatsu-yakumono-zenkaku\"\n\n[paragraph-styles.quote]\naki-set = \"a\"\n") @?= [],
+      testCase "a paragraph style of a file may name an aki set" $ do
+        base <- either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) wideWaou)
+        localStyleDef ParagraphKind [("aki-set", LocalWord "wide-waou")] @?= Right (Right noParaDef {psAkiSet = Just "wide-waou"})
+        [(c, n) | (c, n, _) <- checkLocalStyles base (LocalStyles Map.empty (Map.fromList [("q", noParaDef {psAkiSet = Just "nope"})]) Map.empty)] @?= [("G0313", "q")]
+        [(c, n) | (c, n, _) <- checkLocalStyles base (LocalStyles Map.empty (Map.fromList [("q", noParaDef {psAkiSet = Just "wide-waou"})]) Map.empty)] @?= []
+    ]
+  where
+    wideWaou =
+      T.unlines
+        [ "[aki-sets.wide-waou]",
+          "based-on = \"gyomatsu-yakumono-hankaku\"",
+          "rules = [",
+          "  { before = \"japanese\", after = \"western\", optimum = \"三分\", minimum = \"四分\", maximum = \"二分\" },",
+          "  { before = \"western\", after = \"japanese\", optimum = \"三分\", minimum = \"四分\", maximum = \"二分\" },",
+          "]",
+          "",
+          "[paragraph-styles.body]",
+          "aki-set = \"wide-waou\""
+        ]
+
+-- | Regex styles (docs/adr ADR 0015).
+regexStyleTests :: TestTree
+regexStyleTests =
+  testGroup
+    "regex styles (docs/adr ADR 0015)"
+    [ testCase "regex-styles is read as an array of tables" $ do
+        s <- styleOf "[paragraph-styles.body]\nregex-styles = [{ pattern = '[0-9]+', style = \"bold\" }]\n"
+        (paraStyle s Nothing >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold"],
+      testCase "regex-styles is inherited through based-on, and replaced as a whole" $ do
+        s <- styleOf (body <> "[paragraph-styles.quote]\nindent = \"1zw\"\n")
+        (paraStyle s (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold"]
+        e <- styleOf (body <> "[paragraph-styles.quote]\nregex-styles = []\n")
+        (paraStyle e (Just "quote") >>= psRegexStyles) @?= Just []
+        o <- styleOf (body <> "[paragraph-styles.quote]\nregex-styles = [{ pattern = 'x', style = \"italic\" }]\n")
+        (paraStyle o (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "x" "italic"],
+      testCase "the built-in paragraph styles have no regex styles" $ do
+        s <- styleOf ""
+        mapM_ (\n -> (paraStyle s (Just n) >>= psRegexStyles) @?= Nothing) ["body", "verse", "caption", "sidenote"],
+      testCase "the keys of a regex style (G0306)" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ style = \"bold\" }]\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a' }]\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"bold\", colour = \"x\" }]\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 1, style = \"bold\" }]\n") @?= ["G0306"],
+      testCase "a pattern outside the dialect is G0315, an unknown character style G0313" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = '\\1', style = \"bold\" }]\n") @?= ["G0315"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"nope\" }]\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[character-styles.n]\nsynthetic-bold = true\n\n[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"n\" }]\n") @?= [],
+      testCase "the message of G0315 names the style, the place in the array and the offset" $
+        messages (parseStyle (FileId 0) "[paragraph-styles.quote]\nregex-styles = [{ pattern = 'a', style = \"bold\" }, { pattern = 'ab\\1', style = \"bold\" }]\n")
+          @?= ["G0315 正規表現を解釈できません: 後方参照は使えません（quote の 2 番目の正規表現の 3 字目）"],
+      testCase "the message of G0313 for a regex style" $
+        messages (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"nope\" }]\n")
+          @?= ["G0313 style.toml のスタイルの参照が不正です: 正規表現スタイルの文字スタイルがありません: nope"],
+      testCase "a regex style of a file goes after style.toml's, and reaches the styles based on it" $ do
+        base <- styleOf (body <> "[paragraph-styles.quote]\nindent = \"1zw\"\n")
+        let ls = noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "x" "italic"])]}
+            s = withLocalStyles base ls
+        (paraStyle s Nothing >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold", RegexStyleDef "x" "italic"]
+        (paraStyle s (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold", RegexStyleDef "x" "italic"]
+        (paraStyle base (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold"],
+      testCase "a regex style of a file does not reach a style with its own regex-styles" $ do
+        base <- styleOf (body <> "[paragraph-styles.quote]\nregex-styles = [{ pattern = 'q', style = \"bold\" }]\n")
+        let s = withLocalStyles base noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "x" "italic"])]}
+        (paraStyle s (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "q" "bold"],
+      testCase "a regex style of a file can use a character style of the file" $ do
+        base <- styleOf ""
+        let ls = noLocalStyles {lsCharStyles = Map.fromList [("n", noCharDef)], lsRegexStyles = Map.fromList [("body", [RegexStyleDef "a" "n"])]}
+        checkLocalRegexStyles base ls @?= [],
+      testCase "the errors of a file's regex styles, each at its place" $ do
+        base <- styleOf body
+        let ls = noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "a" "bold", RegexStyleDef "\\1" "bold", RegexStyleDef "b" "nope"]), ("nope", [RegexStyleDef "a" "bold"])]}
+        [(n, i, c) | (n, i, c, _) <- checkLocalRegexStyles base ls] @?= [("body", 1, "G0315"), ("body", 2, "G0313"), ("nope", 0, "G0313")],
+      testCase "checkLocalStyles does not repeat the errors of the regex styles" $ do
+        base <- styleOf body
+        checkLocalStyles base noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "\\1" "bold"])]} @?= [],
+      testCase "localRegexStyleDef reads pattern and style" $ do
+        localRegexStyleDef [("pattern", LocalString "[0-9]+"), ("style", LocalWord "bold")] @?= Right (RegexStyleDef "[0-9]+" "bold")
+        assertBool "missing style" (isLeftE (localRegexStyleDef [("pattern", LocalString "a")]))
+        assertBool "missing pattern" (isLeftE (localRegexStyleDef [("style", LocalWord "bold")]))
+        assertBool "unknown key" (isLeftE (localRegexStyleDef [("pattern", LocalString "a"), ("style", LocalWord "bold"), ("colour", LocalWord "x")]))
+        regexStyleKeys @?= ["pattern", "style"],
+      testCase "regex-styles cannot be written in @style-def paragraph" $
+        assertBool "G0306" (isLeftE (localStyleDef ParagraphKind [("regex-styles", LocalString "x")]))
+    ]
+  where
+    body = "[paragraph-styles.body]\nregex-styles = [{ pattern = '[0-9]+', style = \"bold\" }]\n\n"
+    styleOf t = either (\ds -> assertFailure (show ds) >> pure defaultStyle) pure (parseStyle (FileId 0) t)
+    messages = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
+    isLeftE = either (const True) (const False)
+
 -- | Styles defined in a file (docs/adr ADR 0014).
 localStyleTests :: TestTree
 localStyleTests =
@@ -727,6 +881,7 @@ localStyleTests =
               "tracking" -> "10"
               "proportional-metrics" -> "true"
               "baseline-shift" -> "1pt"
+              "aki-set" -> "gyomatsu-yakumono-hankaku"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
         assertBool "char" (all (known CharacterKind) charStyleKeys)
@@ -803,6 +958,8 @@ pageSizeTests =
     testCase "errors are G0317" $ do
       g0317 "\"148mm x 210mm\"" "未知の判型です: 148mm x 210mm。表にない判型は size = { width = \"…\", height = \"…\" } で書きます"
       g0317 "\"A3\"" "未知の判型です: A3"
+      -- a name with x is no longer left to the PDF's G0701 (golem-driver ADR 0016)
+      g0317 "\"148x210\"" "未知の判型です: 148x210"
       g0317 "\"菊版\"" "未知の判型です: 菊版"
       g0317 "\"新書版\"" "未知の判型です: 新書版"
       g0317 "{ width = \"148mm\" }" "判型の width と height はどちらも必須です"

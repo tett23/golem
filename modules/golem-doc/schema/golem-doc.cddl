@@ -2,7 +2,7 @@
 ; the Haskell types in Golem.Doc.IR mirror it. Sum types are arrays whose
 ; first element is a fixed tag; tags are never reused.
 
-document = [abi-version: 4, file: uint, blocks: [* block]]
+document = [abi-version: 5, file: uint, blocks: [* block]]
 
 span = [file: uint, start: uint, end: uint]
 
@@ -51,6 +51,7 @@ inline-no-ruby =
   / [15, span, key: tstr]                          ; citation
   / [16, span, tstr]                               ; proofreading comment
   / [17, span]                                     ; line break
+  / [18, span, zw: [int, uint] / null, sp: int / null] ; aki: zw or sp, exactly one (docs/adr ADR 0019)
 ; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005)
 
 number-style = 0..2                                ; kanji, kanji-digits, tcy

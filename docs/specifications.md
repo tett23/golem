@@ -138,7 +138,8 @@ EPUB と HTML はリフローであり、位置情報が意味論に混入した
 
 モジュールの依存の関係を次に示す。
 矢印は、元のモジュールが先のモジュールを使うことを表す。
-golem-syntax はすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
+golem-syntax は golem-regex を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
+golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
 ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
 プラグイン[^wasm]は wasm のモジュールとして配布し、取得した配布物のハッシュをロックファイルに記録する。
@@ -152,6 +153,7 @@ flowchart TD
     fmt["golem-fmt<br/>CST の整形"]
     plugin["golem-plugin<br/>wasm のランタイム、取得とロックファイル"]
     project["golem-project<br/>マニフェスト、style.toml、import の解決"]
+    regex["golem-regex<br/>正規表現スタイルの照合器"]
     parser["golem-parser<br/>PEG パーサー"]
     eval["golem-eval<br/>式の評価とプラグインの展開"]
     doc["golem-doc<br/>意味論 IR と文書構造（S1）の集約"]
@@ -192,6 +194,7 @@ flowchart TD
     plugin --> eval
     plugin --> project
     project --> parser
+    project --> regex
     text --> doc
     parser --> syntax
 ```
@@ -508,6 +511,9 @@ color = "accent"
 
 [paragraph-styles.body]
 first-line-indent = "1zw"
+regex-styles = [
+  { pattern = '(?<=第)[0-9]+(?=章)', style = "bold" },
+]
 
 [paragraph-styles.quote]
 font = "heading"
@@ -642,6 +648,8 @@ EPUB と HTML は `bleed` を無視する。
 `style.toml` が指すファイル（`[fonts]` のフォントと、`[color]` の `intent` の ICC プロファイル）の存在は、`style.toml` を読むときには検査しない。
 ファイルの存在は、そのファイルを使うターゲットのビルドと `golem check` でだけ検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
 PDF は、使う役割のフォントのファイルがなければ G0802、ICC プロファイルがなければ G0806 のエラーとし、PDF を書かない。
+`[fonts]` に役割が一つもないか、本文の役割に `ja` も `latin` もなければ、PDF は G0807 のエラーとし、レイアウトに進まない（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
+G0807 は設定の欠けであり、ファイルを置いても直らないので、G0802 と分ける。
 HTML と EPUB は、欠けたフォントを同梱せず、`@font-face` も書かずに出力し、G0310 を報告する。
 ブラウザーは `font-family` の並びの残りで組むので、出力は読める。
 G0310 は dev のプロファイルでは警告、prod のプロファイルではエラーであり、prod では HTML と EPUB を書かない。
@@ -725,7 +733,7 @@ CSS では、和文と欧文で別のカーニングを指定できない。
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
 `[character-styles.strong] based-on = "italic"` は、`[strong: ...]` を斜体で表す。
 
-段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift` である。
+段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift` である。
 段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G0311）とする。
 行送りの欄は設けない。
 PDF の本文を行の格子に載せるので、段落ごとに行送りを変えると見開きの行の位置がそろわなくなるためである。
@@ -741,6 +749,7 @@ HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS 
 どちらも行の始まりの側から測るので、縦組みでは天からの距離になる。
 `zw` は段落の文字の大きさを一字とする。
 `indent` と `first-line-indent` の和が負になる段落スタイルはエラー（G0312）、字下げの後の行長が段落の文字の大きさの 8 字分に満たない段落スタイルは PDF でエラー（G0725）とする。
+G0725 は `style.toml` だけで決まるので、PDF をターゲットに含むときは `golem check` も報告し、位置は `style.toml` の先頭とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 `line-breaks = "keep"` の段落では、改行で区切った各行が段落の始まりと同じく最初の行の字下げを受け、折り返した部分は `indent` の位置から始まる。
 組み込みの `verse` は `indent = "2zw"`、`first-line-indent = "-2zw"` で、各行の折り返した部分をぶら下げる。
 字下げは、文書の最上位の段落、`@style` の本体の段落、定義リストの説明の段落に効き、リストの項目の中の段落と、図版のキャプション、脚注と傍注の本文、表、見出し、目次、索引、参考文献には効かない。
@@ -754,6 +763,32 @@ PDF では、項目の印を行の始まりにぶら下げ、項目の二行目�
 `[paragraph-styles.body] first-line-indent = "1zw"` のように字下げを指定する場合は、原稿の先頭の全角の空白を消す。
 全角の空白と併用すると二重に下がり、処理系はそれを指摘しない。
 プレーンテキストでは、`indent` と `first-line-indent` がどちらも `zw` で書かれている場合に限り、和の整数部の数の全角の空白を段落の各行の先頭に置く。
+
+段落スタイルの `regex-styles` は正規表現スタイル（InDesign の正規表現スタイル、英語版の GREP スタイル）の並びであり、段落の中で正規表現に一致した文字に文字スタイルを当てる（[docs/adr/0015](adr/0015-regex-styles.md)）。
+値は `{ pattern = '正規表現', style = "文字スタイル" }` の表の配列であり、正規表現は TOML のリテラル文字列（`'...'`）で書くと `\` をそのまま書ける。
+`regex-styles` は一つのキーとして `based-on` で引き継ぐ。
+子のスタイルが書かなければ親の並びを引き継ぎ、書けば親の並びを置き換え、`regex-styles = []` は引き継がないことを表す。
+組み込みの段落スタイルは `regex-styles` を持たない。
+
+正規表現の方言は InDesign の方言（Boost の Perl 互換）の部分集合である。
+文字、エスケープした記号、`\t`、`\n`、`\xHH`、`\x{H...}`、`.`、文字クラス（範囲、POSIX の `[:alpha:]` など七つ）、`\d`、`\w`、`\s`、`\l`、`\u` とその補集合、一般カテゴリーの `\p{...}`、欲張りと怠惰な量指定子、選択と群、`^` と `$`（段落の先頭と末尾）、`\b`、`\B`、先読み、固定の長さの後読み、`\K`、先頭の `(?i)` を使える。
+文字の分類は Unicode の一般カテゴリーと White_Space で決めるので、`\d` は全角の数字に、`\w` は漢字と仮名に、`\s` は全角の空白に一致する。
+部分集合の外の構文（後方参照、名前付きの群、所有的な量指定子、先頭でないフラグ、文字体系の `\p{Han}`、可変長の後読み、InDesign の `~` のメタ文字など）、閉じていない括弧、範囲の両端の逆転、量指定子の展開を含めて 10000 命令を超える正規表現はエラー（G0315）とする。
+`style` が文字スタイルにない場合はエラー（G0313）とする。
+照合器は再実装したもの（golem-regex）であり、失敗した状態を記録するバックトラックで、一つの組の一つの段落の照合を命令の数と段落の長さの積に比例する手順に収める（仕様は [golem-regex の仕様書](golem-regex/specifications.md)）。
+
+正規表現スタイルは評価の最後に、一致した文字を意味論 IR の文字スタイル（`CharStyle`）で包んで当てる。
+媒体はすべて手で書いた `[style 名前: ...]` と同じに扱い、HTML と EPUB では静的な `<span class="cs-名前">`（組み込みの文字スタイルなら `<strong>`、`<b>`、`<i>`）になる。
+フィルタのプラグインの後に当てるので、フィルタの返した文字も対象になり、フィルタからは正規表現スタイルの結果は見えない。
+一致は段落ごとに求め、段落をまたがない。
+ルビは親文字だけを、縦中横、数の表記、相互参照、`doc` を参照する式、文献の引用、注、傍注は一字の置き換え文字として照合し、索引の項目と校正のコメントは照合の対象に入れない。
+脚注の本文、見出し、定義リストの用語、表のセル、目次、索引、参考文献には当てない。
+傍注の本文には `sidenote` の、図版のキャプションには `caption` の並びを当てる。
+各組は最左優先で重ならない一致を求め、空の一致は当てない。
+同じ文字に複数の組が一致した場合は、並びの最初の組の文字スタイルを最も外側に、後の組を内側に置くので、後の組が勝つ。
+原稿で手で当てた文字スタイル、色、圏点は正規表現スタイルの内側に置き直すので、手で当てた文字スタイルが勝つ。
+ルビの親文字の途中で一致が切れる場合は、各セグメントの親文字の中で文字スタイルを当てる。
+PDF は今、ルビの親文字の中の文字スタイルを描き分けないので、親文字の全体に一致した場合だけ見た目が変わる。
 
 `[lists]` は、箇条書きの印の字形と、番号付きリストの番号の書式を決める（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
 入れ子の深さごとに別の値を書ける。
@@ -801,8 +836,54 @@ CSS に対応する system のない差し込み（`{①}`、`{ア}`、`{イ}`�
 プレーンテキストは、深さごとの印と書式で組んだ文字列を項目の前に置く。
 `[lists]` を書かない本の HTML、EPUB、プレーンテキストの出力は変わらない。
 
+和文の字間の空き（アキ）の量は、アキ量のセットで決める（[docs/adr/0019](adr/0019-aki-settings.md)）。
+考え方は InDesign の文字組みアキ量設定に合わせ、文字のクラスの組ごとに、空きの最小、最適、最大を持つ。
+アキの量は、`"ベタ"`（0）、`"全角"`（1）、`"二分"`、`"三分"`、`"四分"`、`"五分"`、`"六分"`、`"八分"`、`"二分四分"`（3/4）の名前か、`"0.2zw"` のような `zw` の小数か、`"25%"` のような百分率（小数を許す）で書く。
+値は全角を 1 とする有理数として持ち、sp への変換は一度だけ丸める。
+負の量は書けない。
+名前と百分率は、アキの量を書く欄（アキ量のセットの規則と、原稿の `[aki]`）でだけ受け付け、`indent` などのほかの寸法の欄に書けばエラー（G0320）とする。
+
+```toml
+[aki-sets.wide-waou]
+based-on = "gyomatsu-yakumono-hankaku"
+rules = [
+  { before = "japanese", after = "western", optimum = "三分", minimum = "四分", maximum = "二分" },
+  { before = "western", after = "japanese", optimum = "三分", minimum = "四分", maximum = "二分" },
+]
+
+[paragraph-styles.body]
+aki-set = "wide-waou"
+```
+
+`[aki-sets.<名前>]` の `based-on` は基準にするセット（書かなければ `gyomatsu-yakumono-hankaku`）、`rules` は基準のセットの規則の後に足す規則の配列である。
+規則の `before` と `after` はクラスの名前かその配列、`optimum` は最適、`minimum` と `maximum` は最小と最大（書かなければ `optimum`）である。
+クラスの名前は、`opening`（始め括弧類）、`closing`（終わり括弧類）、`hyphen`（ハイフン類）、`dividing`（区切り約物）、`middle-dot`（中点類）、`full-stop`（句点類）、`comma`（読点類）、`inseparable`（分離禁止文字）、`iteration`（繰返し記号）、`prolonged-sound`（長音記号）、`small-kana`（小書きの仮名）、`ideographic-space`（和字間隔）、`kana`（平仮名と片仮名）、`ideograph`（漢字等）、`western`（欧文）と、`western` 以外のすべてを表す `japanese` である。
+`before` には `paragraph-start`（段落の最初の文字の前）と `line-start`（段落の途中で改行した後の行頭の文字の前）、`after` には `line-end`（改行する前の行末の文字の後ろ）も書ける。
+規則は `before` の各クラスと `after` の各クラスの組に空きを割り当て、後に書いた規則が同じ組の前の規則を上書きする。
+基準のセットの規則は、子のセットの規則より前にある。
+規則のない組の空きは 0 で、伸び縮みしない。
+行頭と行末の空きは `optimum` の固定の量とし、行の伸縮の調整には使わない。
+`minimum <= optimum <= maximum` でない規則、未知のクラスの名前、`before` の `line-end`、`after` の `line-start` と `paragraph-start`、組み込みと同じ名前の節はエラー（G0320）とする。
+
+組み込みのセットは `gyomatsu-yakumono-hankaku`（行末約物半角）と `gyomatsu-yakumono-zenkaku`（行末約物全角）の二つで、名前と考え方を InDesign の同名のセットに合わせ、値は [golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md) の組み方から決めた。
+`gyomatsu-yakumono-hankaku` が既定で、和欧間は (八分, 四分, 二分)、終わり括弧類と句読点の後ろと始め括弧類の前は (0, 二分, 二分)、中点類の前後は (0, 四分, 四分)、和文どうしの字間は (0, 0, 0.1zw) である。
+隣り合う約物の空きは、終わり括弧類と始め括弧類の間が二分、中点類と括弧類や句読点の間が二分四分、中点類どうしが二分になる。
+行末の約物の後ろの空きは 0 なので、行末の終わり括弧類と句読点は半角になる。
+`gyomatsu-yakumono-zenkaku` は、これに行末の終わり括弧類と句読点の後ろの二分と、行末の中点類の後ろの四分を足したものである。
+組み込みのセットの値を変えたい場合は、`based-on` で引き継いだ別の名前のセットを作る。
+空きの `zw` は、前後の一方だけが約物ならその約物の大きさ、両方が約物なら大きいほうの大きさ、どちらも約物でなければ段落の文字の大きさとし、行頭、行末、段落の先頭の空きはその文字の大きさとする。
+欧文の単語の箱は、両端の引用符やダッシュを含めて欧文（`western`）として扱う。
+ルビの箱は、隣が約物のときだけ漢字（`ideograph`）として扱い、それ以外では空きを置かない。
+
+段落スタイルの `aki-set` は、その段落を組むセットの名前である。
+`body` の既定は `gyomatsu-yakumono-hankaku` で、ほかの段落スタイルは `based-on` から引き継ぐ。
+見出し、表、目次、索引、脚注の本文は `body` のセットで、図版のキャプションは `caption` の、傍注の本文は `sidenote` の段落スタイルのセットで組む。
+`@style-def` でも `aki-set` を書けるが、セットそのものは `style.toml` にだけ定義できる。
+アキ量のセットは PDF にだけ効き、HTML と EPUB はブラウザーの既定で組む。
+
 文字スタイルと段落スタイルの `font` が `[fonts]` にない役割を指す場合も G0308 とする。
 `based-on` が存在しないスタイルを指す場合、循環する場合、`body` に `based-on` がある場合、文字スタイルの `color` が `[color.swatches]` にない場合はエラー（G0313）とする。
+段落スタイルの `aki-set` とアキ量のセットの `based-on` が存在しないセットを指す場合と、セットの `based-on` が循環する場合も G0313 とする。
 
 文字スタイルと段落スタイルは、原稿のファイルの先頭の `@style-def` でも定義できる（[docs/adr/0014](adr/0014-in-file-settings.md)）。
 `@style-def character 名前 key=value...` と `@style-def paragraph 名前 key=value...` の形で一行に一つのスタイルを書き、キーと値の検査、名前の規則（英小文字で始まり、英小文字、数字、`-` だけからなる）、診断のコードは `style.toml` と同じである。
@@ -813,7 +894,13 @@ CSS に対応する system のない差し込み（`{①}`、`{ア}`、`{イ}`�
 `@style-def` の名前と欄の誤り（G0306）、参照の誤り（G0308、G0313）のある定義は捨てる。
 HTML と EPUB では、ファイルの中のスタイルを持つ章の `<body>` に class `file-<n>`（`n` は章の順）を付け、`style.toml` の定義と異なるスタイルの規則を `style.css` の最後に `body.file-<n>` の下に、扱う性質をすべて書く。
 PDF とプレーンテキストは、文書ごとに、`style.toml` にそのファイルの定義を重ねたスタイルで組む。
-`@style-def regex`（正規表現スタイル）は、正規表現スタイルを実装するまでエラー（G0254）とする。
+`@style-def regex 段落スタイル pattern="正規表現" style=文字スタイル` は、そのファイルの段落スタイルに正規表現スタイルの組を足す（[docs/adr/0015](adr/0015-regex-styles.md)）。
+一行が一つの組であり、同じ段落スタイルに何行でも書け、書いた順に `style.toml` から見た並びの後に加わる（G0253 にはしない）。
+`regex-styles` を書かずにその段落スタイルを `based-on` で引き継ぐ段落スタイルにも及ぶ。
+段落スタイルと文字スタイルは、組み込み、`style.toml`、同じファイルの `@style-def` のどれかの名前でなければならない（G0313）。
+`pattern` と `style` の欠けと未知のキーは G0306、正規表現の誤りは G0315 とし、誤りのある組だけを捨てる。
+Golem の文字列の中では `\` の後の文字はその文字になるので、正規表現の `\` は `\\` と書く（`pattern="\\d+"`）。
+`@style-def paragraph` には `regex-styles` を書けない（G0306）。
 廃止した `[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size` はエラー（G0306）とし、メッセージで書き換え先を示す。
 `[verse]` の `indent = I`、`hang = H` は、`[paragraph-styles.verse]` の `indent = I + H`、`first-line-indent = -H` に書き換える。
 
@@ -830,6 +917,7 @@ PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と
 
 柱[^running-head]とノンブルは、マスターページ（`[masters.<名前>]`）の `running-head` と `folio` で置く（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
 `running-head` の `position` は柱の位置であり、`folio` の `position` と同じ値（`"top-outside"` など）をとる。
+`position` は `top-outside`、`top-inside`、`top-center`、`bottom-outside`、`bottom-inside`、`bottom-center` のどれかであり、ほかの値は `style.toml` を読むときに G0318 とし、位置は `position` の値の位置とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 柱の内容は、`content` に両方のページの値を一つ書くか、`even`（偶数ページ）と `odd`（奇数ページ）の両方に書く。
 偶数と奇数は、ノンブルと同じくページの通し番号で決める。
 
@@ -947,7 +1035,10 @@ HTML と EPUB では、CSS の `text-orientation` の既定の `mixed` に任せ
 足す機能は、欧文では `none` のときに `-kern` である。
 和文では、`none` のときに `-kern` と `-vkrn`、`japanese-equal-width` のときに `-kern`、`-vkrn`、`-palt`、`-vpal` であり、`japanese-equal-width` 以外で `proportional-metrics` が真なら、横組みで `palt`、縦組みで `vpal` を足す。
 
-ライセンスで埋め込みが禁止されているフォントを使った場合は、エラーとする。
+ライセンスで埋め込みが禁止されているフォントを使った場合は、エラー（G0804）とする。
+OS/2 の `fsType` は OpenType の仕様のとおりに読み、ビット 1（制限付きのライセンス）がビット 2 とビット 3 なしに立っている場合、ビット 8（サブセット化の禁止）が立っている場合、ビット 9（ビットマップの埋め込みだけを許す）が立っている場合に埋め込みを禁じているとみなす（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
+Golem は常にサブセットを埋め込むので、サブセット化を禁じるフォントは埋め込めない。
+読み込めないフォント（G0803）と埋め込めないフォント（G0804）は、パスごとにすべて報告する。
 
 PDF は、本文の役割と、見出しの `font`、文字スタイルの `font`、段落スタイル（組み込みの `caption` と `sidenote` を含む）の `font` が指す役割のフォントだけを読み込む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 使わない役割のフォントのライセンスでビルドを止めないためである。
@@ -982,6 +1073,7 @@ PDF では、図番号とキャプションを、画像の下（縦組みでは�
 脇の行は図版の直後の段落に限り、見出しなどの段落でないブロックが来たら、除外領域の残りを空けたまま、その後から組む。
 図版がページの残りに収まらない場合は、脇の行とともに次のページの先頭に送り、前のページの残りは空白にする。
 `width` が寸法として読めない場合と、脇の行の長さが本文の文字の大きさの 8 字分に満たない場合はエラー（G0722）、除外領域が一ページの行数を超える場合はエラー（G0723）とする。
+脇の段落で、脇の行の長さから字下げを引いた値が 0 以下になる行があれば、その段落を指すエラー（G0728）とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 
 ## 表
 
@@ -1023,6 +1115,12 @@ LSP は書きかけのファイルを常に扱うので、最初の構文エラ�
 プロジェクトの段階の診断（G0301 から G0309、G0316 など）は、プロジェクトの読み込みに失敗したときも、それまでに読んだファイル（`manifest.toml`、原稿、`style.toml`）の位置で表示する（[golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)）。
 `manifest.toml` がないときは G0316 とし、章や `@import` の指すファイルがないときの G0302 と分ける。
 LSP は、これらの診断を位置の指すファイルに載せ、どのファイルも指さない診断を `manifest.toml` に載せる。
+構文の段階のコード（G0101 から G0103、G0110 から G0122、G0129）は、出す条件、メッセージ、位置を [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md) が定める。
+読み込みの段階（BOM、UTF-8、CR の検査）は、原稿のほかに `manifest.toml` と `style.toml` にも行い、失敗したファイルの位置で表示する。
+`style.toml` の G0103 には、`golem fmt` で直す修正案を付けない（`golem fmt` は `style.toml` を整形しない）。
+LSP では、エディタで開いているファイルの BOM と CR も G0102 と G0103 にするが、プロジェクトの読み込みは止めない。
+プロジェクトの外のファイルに構文エラーがあるときは、構文の診断だけを出し、評価の診断を出さない。
+解析の段階の診断の位置は、誤りの文字から始まる（インデントの余分な空白、4 つ目の `#`、用語のない `=:`、本文の `[`）。
 Golem が書く `manifest.toml` と `style.toml` の誤りの文言は日本語とし、toml-parser 自身の文言（`missing key` など）は英語のまま出す。
 
 人が読む形式で診断を出した後に、文書にあるコードが一つでもあれば、標準エラー出力に `コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）` の一行を加える。
@@ -1267,7 +1365,8 @@ PDF では、傍注を版面の外の傍注欄に置く。
 
 v1 では、傍注は横組みに限る。
 縦組みの書籍の傍注は配置の慣習が横組みと異なり、それを決める材料がまだないためである。
-縦組みで傍注を使った場合はコンパイルエラーとする。
+縦組みで傍注を使った場合はコンパイルエラー（G0732）とする。
+段落の外の傍注（図版のキャプション、脚注の本文の中のものなど）も、傍注一つにつき一つ報告する（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 
 PDF では、さらに次の二つをコンパイルエラーとする（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。
 
@@ -1304,7 +1403,7 @@ PDF の索引は、一つの項目を一つの段落として本文と同じ書�
 - ページ番号は昇順に並べ、同じページは一度だけ出す。区切りは横組みでは `, `、縦組みでは `、` とする。
 - ページ番号は数として扱うので、縦組みでは `[numbers]` の `vertical` の表記（既定では漢数字）になる。
 - 印のページは、印を含む行が置かれたページとする。脚注と傍注の本文の中の印は、その注の印を含む本文の行のページ、図版のキャプションの中の印は図版を置いたページとする。
-- 印のページは、ページ番号への参照と同じくレイアウトを繰り返して収束させ、上限の回数までに収束しなければ G0721 とする。
+- 印のページは、ページ番号への参照と同じくレイアウトを繰り返して収束させ、上限の回数までに収束しなければ G0721 とする。G0721 は、ページの変わり続けたラベルと索引の語を並べ、最初のものの位置（ラベルを付けたブロックか索引の印）を指す（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 
 PDF の本文の引用の印は、HTML と同じく番号（`[1]`）を出し、`@bibliography` の位置に `[n] ` と書誌を最初に引用された順に並べる。
 
@@ -1437,6 +1536,8 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 日本式のトンボは仕上がりの線と塗り足しの線の間隔で塗り足しを示すので、塗り足しが 0 ならエラー（G0702）とし、PDF を出力しない。
 G0702 は PDF をターゲットに含むときにだけ出し、位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
 `golem check` も、マニフェストのターゲットに PDF があれば G0702 を検査する。
+同じく、`style.toml` だけで決まる版面の誤り（G0701）、段落スタイルの字下げの誤り（G0725）、本文のフォントの設定の欠け（G0807）も、PDF をターゲットに含む `golem check` が報告する（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
+これらの位置は、`style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
 `golem lint`、`golem fmt`、LSP は `--marks` を持たない。
 
 `golem new` の雛形は、そのまま四つのターゲットをすべてビルドできる（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
@@ -1586,7 +1687,7 @@ v1 の範囲から外した事項と、v1 の実装で次の段階以降に回�
 - **可変フォント**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。v1 は可変フォントを既定のインスタンスとして扱う（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 - **傍注の拡張**：段組みの版面での傍注欄、収まらない傍注を脚注に回すことと傍注のために本文の行を次のページに送ること、脚注の本文とキャプションの中の傍注の配置（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。
 - **表の拡張**：罫線の色と種類（縦の罫、本体の行のあいだの罫を含む）、表のための `style.toml` の設定（文字の大きさ、罫線の太さ、列の間隔、表の寄せ）、本文より小さい文字の表、列の幅の指定、セルの結合とセルの中のブロック、縦組みの本の中の横組みの表、表の行の途中での改ページ、表の番号とキャプション、表の続きを示す文言（[golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)）。
-- **正規表現のエンジンを Oniguruma に基づくものにすること**：正規表現スタイルのエンジンを、Oniguruma を土台にしたものに置き換える。InDesign の正規表現の方言は、Oniguruma を改造して受け付けるようにする。v1 の正規表現スタイルのエンジンと方言は、別の ADR で決める（次節の「正規表現スタイル」）。置き換えたときの方言の範囲と、v1 の方言で書いた設定との互換は、置き換えの ADR で決める。
+- **正規表現のエンジンを Oniguruma に基づくものにすること**：正規表現スタイルのエンジンを、Oniguruma を土台にしたものに置き換える。InDesign の正規表現の方言は、Oniguruma を改造して受け付けるようにする。v1 の正規表現スタイルのエンジンと方言は [docs/adr/0015](adr/0015-regex-styles.md) で決め、再実装した照合器（golem-regex）を使う。置き換えたときの方言の範囲と、v1 の方言で書いた設定との互換は、置き換えの ADR で決める。
 - **オプティカルカーニング**：グリフの輪郭から二字の間の空きを決めるカーニング。InDesign のオプティカルは欧文のグリフ向けだが、和文でも仮名の字面を詰めて遊ぶ組み方に使うことがあるので、和文にも効く方式とする。InDesign はアルゴリズムを公開していないので、InDesign と同じ値にはしない。方式は ADR で決める。v1 では `kerning = "optical"` をエラー（G0321）とする（[docs/adr/0020](adr/0020-indesign-character-features.md)）。
 - **文字の変形と詰め**：InDesign の文字パネルの水平比率と垂直比率、文字回転、文字ツメ、文字前と文字後のアキ量、二字の間に値を指定する手動のカーニング。水平比率と垂直比率は、縦組みでの比率の意味を資料で確かめられず、HTML と EPUB で字形を伸縮する CSS がない。長体と平体は、幅の異なる書体を役割に指定して代える（[docs/adr/0020](adr/0020-indesign-character-features.md)）。
 - **面付け**：組んだページを、印刷の刷版の大きさの紙に、折りと製本の順に並べた PDF を出す。折丁（一枚の紙を折って作る 8 ページ、16 ページなどのまとまり）の大きさ、中綴じと無線綴じ、フォリオ（ページの上下や左右の並べ方）の選択、面付けの PDF に付けるトンボと折りの印を含む。今の Golem は、一ページを一枚の PDF のページとして出し、面付けは印刷所の側で行う前提である。
@@ -1603,11 +1704,6 @@ v1 の範囲から外した事項と、v1 の実装で次の段階以降に回�
 v1 のリリースまでに、次の項目を扱う。
 仕様や機能を変える項目は、着手するときに ADR を作成する。
 採択済みの ADR があり、まだ実装していない項目には「（未実装）」と書き、その ADR へリンクする。
-
-#### 組版
-
-- **アキの指定**：全角、二分、三分、四分、五分、六分、八分のような、和文組版で慣用のアキ（空き）の量を指定できるようにする。InDesign の文字組みアキ量設定のように、和欧間、括弧類や句読点の前後などの文字のクラスの組ごとに、空きの量と伸縮の範囲を `style.toml` で設定できるようにする。原稿の中の任意の位置に五分アキなどの空きを入れる記法も設ける。今は、和欧間を四分の空きとし、約物の空きを JLReq の規則で決めているが（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）、その量を変える設定はない。原稿の中で空きを入れるには全角の空白を使うしかなく、寸法の単位も `zw` の小数（五分は `0.2zw`）で書くしかない。
-- **正規表現スタイル**：段落スタイルの中で、正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル）。`style.toml` の段落スタイルと、ファイルの中の `@style-def regex`（[docs/adr/0014](adr/0014-in-file-settings.md)）で定義する。ファイルの中の記法と効く範囲は [docs/adr/0014](adr/0014-in-file-settings.md) で決めた。段落スタイルのどの欄に置くか、正規表現の方言、一致の重なりと決定性、エンジンといった意味は別の ADR で決める。それまで `@style-def regex` はエラーになる。
 
 #### PDF
 

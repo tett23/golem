@@ -125,10 +125,14 @@ tests =
       testCase "a plugin of ABI version 2 is rejected (docs/adr ADR 0005)" $ do
         w <- fixed 2 (responseWith (TList []))
         void (loadPlugin w) @?= Left (AbiMismatch 2),
-      testCase "the ABI version is 4 and a plugin of version 3 is rejected (docs/adr ADR 0017)" $ do
-        (Golem.Plugin.abiVersion, Golem.Doc.IR.abiVersion) @?= (4, 4)
-        w <- fixed 3 (responseWith (TList []))
-        void (loadPlugin w) @?= Left (AbiMismatch 3),
+      testCase "the ABI version is 5 and a plugin of version 4 is rejected (docs/adr ADR 0019)" $ do
+        (Golem.Plugin.abiVersion, Golem.Doc.IR.abiVersion) @?= (5, 5)
+        w <- fixed 4 (responseWith (TList []))
+        void (loadPlugin w) @?= Left (AbiMismatch 4),
+      testCase "a paragraph with aki survives a filter unchanged (docs/adr ADR 0019)" $ do
+        p <- load =<< compile =<< wat "identity.wat"
+        let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a", Aki callSpan (AkiZw (1 / 5)), Aki callSpan (AkiAbs 65536)])]
+        fmap fst (applyFilter p "same" doc) @?= Right doc,
       testCase "a document with forced breaks survives a filter unchanged (docs/adr ADR 0017)" $ do
         p <- load =<< compile =<< wat "identity.wat"
         let blk k = Block callSpan Nothing (ForcedBreak k)

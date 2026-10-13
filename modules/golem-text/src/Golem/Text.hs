@@ -193,6 +193,9 @@ inline c = \case
     Nothing -> ""
   ProofComment _ t -> if cProfileDev c then "【校正：" <> t <> "】" else ""
   LineBreak _ -> "\n"
+  -- the whole part of an amount in zw as ideographic spaces; less than one, and absolute amounts, are nothing (docs/adr ADR 0019)
+  Aki _ (AkiZw r) -> T.replicate (fromInteger (max 0 (floor r))) "\x3000"
+  Aki _ (AkiAbs _) -> ""
 
 {- | Ruby as 「対象（読み）」. Consecutive segments with readings are joined;
 segments without a reading are written as they are.

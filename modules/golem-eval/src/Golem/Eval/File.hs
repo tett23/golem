@@ -31,13 +31,14 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Eval.Expr
+import Golem.Eval.RegexStyle (applyRegexStyles, regexRules)
 import Golem.Eval.Settings
 import Golem.Eval.Value
 import Golem.Parser.AST qualified as A
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportSite (..), importSite)
 import Golem.Project.Paths (PathError (..), pathErrorMessage)
-import Golem.Project.Style (LineBreaks (..), LocalStyles (..), Style, noLocalStyles, paraLineBreaks, withLocalStyles)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Style, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
 import Golem.Syntax
 
 -- | Plugin commands and filters, provided by golem-plugin.
@@ -125,7 +126,7 @@ err code sp msg = report (diagnostic code Error sp msg)
 
 builtinInlineCommands :: [Text]
 builtinInlineCommands =
-  ["strong", "bold", "italic", "ruby", "kenten", "color", "style", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "index", "cite"]
+  ["strong", "bold", "italic", "ruby", "kenten", "color", "style", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "index", "cite", "aki"]
 
 -- | Built-in commands a plugin may override when the manifest says so.
 overridableCommands :: [Text]
@@ -155,8 +156,10 @@ evalFile ctx0 (A.File fid blocks0) =
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
         Left ds -> (doc0, ds)
         Right (d, ws) -> (d, ws <> unknownParaStyles ctx d)
+      -- the regex styles last, so that the text of filters is matched too (docs/adr ADR 0015)
+      rules = regexRules (withLocalStyles (ctxStyle ctx0) local)
    in EvalResult
-        { erDocument = doc,
+        { erDocument = applyRegexStyles rules doc,
           erExports = stVars st,
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
           erDiagnostics = stDiags st <> breakDiags <> filterDiags,
@@ -878,6 +881,7 @@ noSlotCommands = ["number-text", "ref-number", "ref-title", "ref-page", "cite"]
 
 builtin :: EvalContext -> Bool -> SrcSpan -> Text -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
 builtin ctx inHeading sp name args slots
+  | name == "aki" = aki sp args slots
   | inHeading && name `elem` ["ref-number", "ref-title", "ref-page"] = err "G0214" sp "見出しの中では相互参照を使えません" >> pure []
   | name `elem` noSlotCommands && not (null slots) = err "G0238" sp (name <> " は散文スロットを取りません") >> pure []
   | otherwise = builtinWith ctx inHeading sp name args slots
@@ -957,6 +961,29 @@ builtinWith ctx inHeading sp name args slots = do
     refTo k = \case
       [v] | validLabel (argText v) -> pure [Ref sp k (argText v)]
       _ -> err "G0226" sp "参照にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます" >> pure []
+
+{- | @[aki 量]@ (docs/adr ADR 0019): one amount, an aki name, zw, a
+percentage or an absolute dimension, and no prose slot; otherwise G0255.
+-}
+aki :: SrcSpan -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+aki sp args slots = case (args, slots) of
+  (_, _ : _) -> wrong "aki は散文スロットを取りません"
+  ([A.Located _ (A.Positional v)], []) -> case nameArg v of
+    Just t
+      | Just a <- amount t -> pure [Aki sp a]
+      | otherwise -> wrong ("アキの量を読めません: " <> t)
+    Nothing -> wrong "aki には量を一つ書きます"
+  _ -> wrong "aki には量を一つ書きます"
+  where
+    amount t = case (parseAki t, parseDim t) of
+      (Just r, _) -> Just (AkiZw r)
+      (_, Just (Abs x)) -> Just (AkiAbs x)
+      _ -> Nothing
+    wrong why = err "G0255" sp (why <> "。" <> akiAmounts) >> pure []
+
+-- | What the amount of an [aki] may be (the message of G0255).
+akiAmounts :: Text
+akiAmounts = "量には、ベタ、全角、二分、三分、四分、五分、六分、八分、二分四分のどれか、0.2zw のような zw、25% のような百分率、1mm のような寸法のどれかを書きます"
 
 plainText :: [Inline] -> Maybe Text
 plainText is = T.concat <$> traverse (\case Text _ t -> Just t; _ -> Nothing) is

@@ -234,6 +234,27 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 横組みでは「[number-text 10]」と組み、縦組みでは「十」や「一〇」のような漢数字か、縦中横の「10」で組みます。
 縦組みでどの表記にするかは、[style code: \[number-text 10 style=kanji\]] のように個別に選ぶか、[style code: style.toml] の [style code: \[numbers\]] で決めます。
 
+## 空きを入れる
+
+二つの文字のあいだに決まった幅の空き[index reading=あき: アキ]を入れるときは、[style code: \[aki 量\]] と書きます。
+
+```
+第一章[aki 全角]吾輩は猫である
+3[aki 四分]kg
+```
+
+組むと、第一章[aki 全角]吾輩は猫である、3[aki 四分]kg のようになります。
+量は、[style code: ベタ]、[style code: 全角]、[style code: 二分]、[style code: 三分]、[style code: 四分]、[style code: 五分]、[style code: 六分]、[style code: 八分]、[style code: 二分四分] のような名前か、全角を 1 とする [style code: 0.2zw] のような小数か、[style code: 25\%] のような百分率か、[style code: 1mm] のような寸法で書きます。
+名前と小数と百分率は、その位置の文字の大きさを全角とします。
+
+[style code: \[aki\]] の前後では行を分けません。
+数と単位のあいだや、姓と名のあいだのように、行を分けたくない位置に使います。
+行を分けてよい空きは、全角の空白で書きます。
+[style code: \[aki\]] を置いた位置には、「[ref-title aki-sets]」で決める空きを足しません。
+
+HTML と EPUB では同じ幅の余白になります。
+プレーンテキストでは、全角の何倍かの整数の部分だけ全角の空白を出し、全角に満たない空きと寸法で書いた空きは出しません。
+
 @import common/values.gm as values
 
 ## 変数をファイルで共有する

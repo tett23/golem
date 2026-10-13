@@ -98,7 +98,10 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 既定はフォントのペアカーニングを和文にも欧文にもかける `metrics` である（[docs/adr/0020](docs/adr/0020-indesign-character-features.md)）。
 PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
+和欧間や括弧類の前後などの字間の空き（アキ）の量は、`[aki-sets.<名前>]` で文字のクラスの組ごとに定義したアキ量のセットを、段落スタイルの `aki-set` で選んで変えられる（既定は行末約物半角の `gyomatsu-yakumono-hankaku`）。
+原稿の任意の位置には、`3[aki 四分]kg` のように固定の空きを置ける。
 一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ効く（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
+段落スタイルの `regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` のような正規表現スタイルは、段落の中で正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル、[docs/adr/0015](./docs/adr/0015-regex-styles.md)）。
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注欄の幅、版面との間隔、本文側の印だけを書く。
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
@@ -109,7 +112,7 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 欧文の一重のトンボは `--marks western` で付ける。
 閲覧用の PDF は `--marks` を付けずに作る。
 トンボの有無は PDF のインスタンス ID に入るので、閲覧用と入稿用の PDF は区別できる。
-フォントの OS/2 の `fsType` が埋め込みを禁じている場合はエラーになる。
+フォントの OS/2 の `fsType` が埋め込みかサブセット化を禁じている場合はエラーになる（[golem-driver ADR 0016](docs/golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 原稿の異体字セレクタ（IVS）は PDF では字形の選択に使い、ToUnicode には基底の文字だけを書く（[golem-pdf ADR 0006](docs/golem-pdf/adr/0006-cid-system-info.md)）。
 ビルドはプラグインをキャッシュからだけ読み、ネットワークに接続しない。
 診断は `--format json` で JSON にできる。

@@ -33,6 +33,7 @@ import Golem.Lint
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.CST (Node)
+import Golem.Parser.Read (checkText)
 import Golem.Parser.SourceSettings
 import Golem.Project
 import Golem.Project.Style (Style (..), defaultStyle, withLocalStyles)
@@ -154,7 +155,11 @@ loose path text =
       -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
       ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle
       res = evalFile ctx ast
-   in Source path fid text cst ast (Just res {erDiagnostics = synDiags <> erDiagnostics res}) False
+      -- a BOM or CR in the buffer, then the syntax; the evaluation of a
+      -- file with syntax errors is not reported (golem-parser ADR 0009)
+      syntax = checkText fid text <> synDiags
+      shown = if hasErrors syntax then syntax else syntax <> erDiagnostics res
+   in Source path fid text cst ast (Just res {erDiagnostics = shown}) False
 
 {- | An edit. The edited file alone is evaluated again; the project is
 evaluated again only when its summary changed.
@@ -169,7 +174,8 @@ updateFile ws0 path text = do
   case wsEvaluated ws of
     Just e
       | Just (fid, old) <- findSource e path ->
-          let (ast, cst, synDiags) = parseAst fid text
+          let (ast, cst, synDiags0) = parseAst fid text
+              synDiags = checkText fid text <> synDiags0
               sf = old {sfText = text, sfCst = cst, sfAst = ast, sfSyntaxDiagnostics = synDiags}
               res = evReevaluate e fid sf
               oldRes = Map.lookup fid (evResults e)

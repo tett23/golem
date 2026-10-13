@@ -94,9 +94,14 @@ inlineErrors fileSize allowed i =
     Note _ _ xs -> sub xs
     Sidenote _ _ xs -> sub xs
     IndexMark _ (IndexEntry ts rs) -> ["索引の項目の段の数が不正です" | null ts || length ts > 2 || length ts /= length rs]
+    -- negative amounts are not written (docs/adr ADR 0019)
+    Aki _ a -> ["アキの量が負です" | negativeAki a]
     _ -> []
   where
     sub = concatMap (inlineErrors fileSize allowed)
+    negativeAki = \case
+      AkiZw r -> r < 0
+      AkiAbs x -> x < 0
 
 inlineSpan :: InlineF r -> SrcSpan
 inlineSpan = \case
@@ -115,3 +120,4 @@ inlineSpan = \case
   Cite s _ -> s
   ProofComment s _ -> s
   LineBreak s -> s
+  Aki s _ -> s

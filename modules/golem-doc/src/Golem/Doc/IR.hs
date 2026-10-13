@@ -18,6 +18,7 @@ module Golem.Doc.IR
     Figure (..),
     Wrap (..),
     InlineF (..),
+    AkiAmount (..),
     Inline,
     InlineNoRuby,
     RubySegment (..),
@@ -37,7 +38,7 @@ import Golem.Syntax.Span
 
 -- | The ABI version shared with plugins. Bump on any change to the IR.
 abiVersion :: Int
-abiVersion = 4
+abiVersion = 5
 
 data Document = Document
   { docFile :: !FileId,
@@ -143,6 +144,12 @@ data InlineF r
   | ProofComment !SrcSpan Text
   | -- | a forced line break, only between the inlines at the top of a paragraph (docs/adr ADR 0005)
     LineBreak !SrcSpan
+  | -- | a fixed space written with [aki] (docs/adr ADR 0019)
+    Aki !SrcSpan !AkiAmount
+  deriving stock (Eq, Show)
+
+-- | The amount of an [aki]: in zw (the size of the type there), or absolute in sp.
+data AkiAmount = AkiZw !Rational | AkiAbs !Integer
   deriving stock (Eq, Show)
 
 type Inline = InlineF ()
@@ -191,3 +198,4 @@ noRuby = \case
   Cite s k -> Just (Cite s k)
   ProofComment s t -> Just (ProofComment s t)
   LineBreak s -> Just (LineBreak s)
+  Aki s a -> Just (Aki s a)

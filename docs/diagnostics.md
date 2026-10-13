@@ -57,7 +57,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。下に節を置く。
 - **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。下に節を置く。
-- **空き**：G0104 から G0109、G0125 から G0128、G0255、G0601、G0703 から G0720、G0728、G0730、G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
+- **空き**：G0104 から G0109、G0125 から G0128、G0601、G0703 から G0720、G0730、G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
 
 ## G0101
 
@@ -68,12 +68,12 @@ UTF-8 として不正なバイト列があります
 
 ### 意味
 
-原稿のファイルに、UTF-8 として読めないバイト列がある。
+原稿のファイル（章と import したファイル）、`manifest.toml`、`style.toml` のどれかに、UTF-8 として読めないバイト列がある。
 位置は最初の不正なバイトである。
 
 - メッセージ: `UTF-8 として不正なバイト列があります`
 - 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
-- ADR: ADR なし（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md) がコードの例として挙げる）
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -92,11 +92,14 @@ UTF-8 で保存し直す。
 
 ### 意味
 
-原稿のファイルが UTF-8 の BOM で始まる。
+原稿のファイル（章と import したファイル）、`manifest.toml`、`style.toml` のどれかが UTF-8 の BOM で始まる。
+位置はバイト 0 から 3 である。
+先頭以外の BOM（U+FEFF）は拒まない。
+LSP では、エディタで開いているファイルにも出す。
 
 - メッセージ: `ファイルの先頭に BOM があります。BOM を取り除いてください`
 - 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -104,7 +107,8 @@ UTF-8 で保存し直す。
 
 ### 直し方
 
-BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
+BOM なしの UTF-8 で保存し直す。
+原稿のファイルなら、`golem fmt` でも取り除ける。
 
 ## G0103
 
@@ -115,12 +119,16 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 ### 意味
 
-改行に CR（CRLF の改行を含む）がある。
+原稿のファイル（章と import したファイル）、`manifest.toml`、`style.toml` のどれかに CR がある。
+CRLF の改行の CR も、単独の CR も含む。
 位置は最初の CR である。
+原稿のファイルの診断には、修正案「golem fmt で LF に直す」が付く。
+`golem fmt` は `style.toml` を整形しないので、`style.toml` の診断には付かない。
+LSP では、エディタで開いているファイルにも出す。
 
 - メッセージ: `改行に CR が含まれています。改行は LF に限ります`
 - 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -128,7 +136,7 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 ### 直し方
 
-`golem fmt` で LF に直す。
+原稿のファイルは `golem fmt` で LF に直す。
 エディタの改行の設定を LF にする。
 
 ## G0110
@@ -144,7 +152,7 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 - メッセージ: `このブロックを解釈できません`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md) が既存のコードとして触れる）
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -163,16 +171,19 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 ### 意味
 
-行頭のインデントにタブがあるか、空白の数が 2 の倍数でない。
+行頭で、そのブロックの深さの空白の後に、さらに空白かタブがある。
+たとえば、本文の段落の行頭に空白を置くとこのコードになる。
+箇条書きの項目の続きの行は、深さより多い空白で始めてもよい。
+位置は、余分な空白かタブから始まる。
 
-- メッセージ: `インデントが不正です（タブ、または 2 の倍数でない空白）`
+- メッセージ: `インデントが不正です（タブ、またはブロックの深さより多い空白）`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md) が既存のコードとして触れる）
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
 - インデントにタブを使った。
-- 空白の数が 2 の倍数でない。
+- ブロックの深さより多い空白で行を始めた。
 
 ### 直し方
 
@@ -189,10 +200,11 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 ### 意味
 
 `####` 以上の見出しがある。
+位置は 4 つ目の `#` から始まる。
 
 - メッセージ: `見出しの階層は 3 までです`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -213,10 +225,11 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 ### 意味
 
 定義リストの説明（`=:`）の前に、用語（`=`）の行がない。
+位置は `=:` から始まる。
 
 - メッセージ: `用語のない =: があります`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -239,7 +252,7 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 - メッセージ: `表の 2 行目は区切りの行でなければなりません`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -259,10 +272,11 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 ### 意味
 
 表の行のセルの数が、見出しの行のセルの数と違う。
+位置は、その行の終わりである。
 
 - メッセージ: `表のセルの数が見出しの行と一致しません`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -284,10 +298,11 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 ### 意味
 
 コードブロックの開始の行に対応する終わりの行がない。
+位置はファイルの終わりである。
 
 - メッセージ: `コードブロックが閉じていません`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -299,22 +314,26 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 ## G0117
 
-閉じ括弧 ] がありません
+ここに閉じ括弧 ] が必要です
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-インラインのコマンドや式の `[` に対応する `]` がない。
+インラインのコマンド、式（`[= ...]`）、展開する引数（`*[...]`、`**[...]`）の後に、`]` が来ない。
+`]` がない場合は、段落の終わりを指す。
+式やコマンドの後に余計なものがある場合は、その余計なものの始まりを指す。
+たとえば `[= 1 ? 2]` では、`?` の位置に出る。
 
-- メッセージ: `閉じ括弧 ] がありません`
+- メッセージ: `ここに閉じ括弧 ] が必要です`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md) が既存のコードとして触れる）
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
 - `]` を書き忘れた。
+- 式の中に、演算子でない記号を書いた。
 - 本文の中の `]` が、意図より早く括弧を閉じている。
 
 ### 直し方
@@ -332,10 +351,11 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 ### 意味
 
 `%%` で始めたコメントが、段落の終わりまでに `%%` で閉じていない。
+位置は段落の終わりである。
 
 - メッセージ: `コメントが段落の中で閉じていません`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -359,7 +379,7 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 - メッセージ: `キーワード引数の後に位置引数があります`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -378,11 +398,12 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 ### 意味
 
-`[= ...]` の式、または展開する引数（`*[...]`、`**[...]`）の式が文法に合わない。
+`[= ...]`、展開する引数（`*[...]`、`**[...]`）、`@set 名前 = 式` の `=` の後で、式が一つも読めない。
+式を読んだ後に `]` 以外が来た場合は、[G0117](#g0117) になる。
 
 - メッセージ: `式を解釈できません`
-- 段階とモジュール: 構文（golem-parser）。式の評価（golem-eval の `Golem.Eval.Expr`）も、解析できなかった式に同じコードを出す。
-- ADR: ADR なし（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md) が既存のコードとして触れる）
+- 段階とモジュール: 構文（golem-parser）。式の評価（golem-eval の `Golem.Eval.Expr`）も、解析できなかった式に同じコードを出す。ただし構文エラーのあるファイルの評価の診断は表示しないので、golem-eval の G0120 は表示されない。
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -402,10 +423,11 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 ### 意味
 
 `[` の後に、コマンド名も `=` も続かない。
+位置は `[` から始まる。
 
 - メッセージ: `[ の後にはコマンド名か = が必要です。本文の [ は \[ と書きます`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -424,11 +446,13 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 ### 意味
 
-解析を終えた後に、どの文法にも当てはまらない入力が残っている。
+ラベルを持たない構文エラーである。
+開始の規則の後に入力が残る場合と、開始の規則が失敗する場合に当たる。
+今の文法では、どちらも起こらない。
 
 - メッセージ: `解釈できない入力が残っています`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md) が既存のコードとして触れる）
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -505,7 +529,7 @@ G0110 から G0123 に当たらない構文エラーの既定のコードであ�
 
 - メッセージ: `構文エラー（<ラベル>）`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md) が既定のコードとして触れる）
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1805,25 +1829,50 @@ lines の範囲が不正です
 正規表現スタイルはまだ実装していません
 
 - 重大度: エラー
+- 状態: 廃止
+
+### 意味
+
+廃止した。
+正規表現スタイルを実装するまでの暫定のコードとして `@style-def regex` に定めたが、正規表現スタイルを実装し、このコードは出なくなった。
+番号は再利用しない。
+
+- メッセージ: `正規表現スタイルはまだ実装していません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0014](adr/0014-in-file-settings.md)（定めた）、[docs/adr/0015](adr/0015-regex-styles.md)（使わなくした）
+
+### 直し方
+
+`@style-def regex 段落スタイル pattern="..." style=文字スタイル` と書く（[docs/adr/0015](adr/0015-regex-styles.md)）。
+
+## G0255
+
+アキの量が正しくありません
+
+- 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@style-def regex` を使った。
-正規表現スタイルを実装するまでの暫定のコードであり、その行は定義としては扱わない。
+`[aki 量]` の書き方が正しくない。
+`[aki]` は位置引数を一つだけ取り、散文スロットを取らない。
+量は、アキの量の名前、`zw` の小数、百分率、絶対の寸法のどれかである。
+誤った `[aki]` は何も置かない。
 
-- メッセージ: `正規表現スタイルはまだ実装していません`
-- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
-- ADR: [docs/adr/0014](adr/0014-in-file-settings.md)（正規表現スタイルの意味は [docs/adr/0015](adr/0015-regex-styles.md)）
+- メッセージ: `<理由>。量には、ベタ、全角、二分、三分、四分、五分、六分、八分、二分四分のどれか、0.2zw のような zw、25% のような百分率、1mm のような寸法のどれかを書きます`。理由は `aki には量を一つ書きます`、`アキの量を読めません: <値>`、`aki は散文スロットを取りません` のどれかである。
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0019](adr/0019-aki-settings.md)
 
 ### 主な原因
 
-- 正規表現スタイルを、ファイルの中で定義しようとした。
+- `[aki]` に量を書かなかったか、二つ以上書いたか、キーワード引数で書いた。
+- 量の名前を誤った（`十分` など）か、負の量を書いた。
+- `[aki 四分: 語]` のように散文スロットを書いた。
 
 ### 直し方
 
-今は正規表現スタイルを使えない。
-`@style-def regex` の行を消す。
+`[aki 四分]`、`[aki 0.2zw]`、`[aki 25%]`、`[aki 1mm]` のように、量を一つだけ書く。
+空きを入れたい二つの文字の間に `[aki]` を置き、文字は `[aki]` の外に書く。
 
 ## G0256
 
@@ -2312,10 +2361,12 @@ style.toml のスタイルの参照が不正です
 ### 意味
 
 `based-on` が存在しないスタイルを指すか、循環するか、`body` に `based-on` があるか、文字スタイルの `color` が `[color.swatches]` にない。
+正規表現スタイルの `style` が文字スタイルにないか、`@style-def regex` の段落スタイルがない場合も、この誤りとする。
+段落スタイルの `aki-set` と、アキ量のセットの `based-on` が存在しないセットを指すか、セットの `based-on` が循環する場合も、この誤りとする。
 
-- メッセージ: `style.toml のスタイルの参照が不正です: <理由>`
+- メッセージ: `style.toml のスタイルの参照が不正です: <理由>`（ファイルの中の定義では `@style-def のスタイルの参照が不正です: <理由>`）。正規表現スタイルの理由は `正規表現スタイルの文字スタイルがありません: <名前>` か `正規表現スタイルの段落スタイルがありません: <名前>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)
+- ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（正規表現スタイルの参照は [docs/adr/0015](adr/0015-regex-styles.md)、アキ量のセットの参照は [docs/adr/0019](adr/0019-aki-settings.md)）
 
 ### 主な原因
 
@@ -2323,10 +2374,15 @@ style.toml のスタイルの参照が不正です
 - `based-on` が循環する。
 - `body` に `based-on` を書いた。
 - 文字スタイルの `color` が `[color.swatches]` にない。
+- 正規表現スタイルの `style` に、組み込みにも `style.toml` にも同じファイルの `@style-def character` にもない文字スタイルを書いた。
+- `@style-def regex` の二つ目の引数に、ない段落スタイルを書いた。
+- 段落スタイルの `aki-set` か、`[aki-sets.<名前>]` の `based-on` が、存在しないセットを指す。
+- `[aki-sets.<名前>]` の `based-on` が循環する。
 
 ### 直し方
 
-理由の示すスタイルの `based-on` か `color` を直す。
+理由の示すスタイルの `based-on`、`color`、`aki-set`、正規表現スタイルの `style` か段落スタイルの名前、アキ量のセットの `based-on` を直す。
+誤りのある正規表現スタイルの組だけが効かず、ほかの組は効く。
 
 ## G0314
 
@@ -2357,6 +2413,40 @@ style.toml のスタイルの参照が不正です
 
 `content = "heading.1.short"` のように両方のページの内容を一つ書くか、`even = "title"` と `odd = "heading.1.short"` のように左右のページの内容を両方書く。
 柱を出さないページには `none` を書くか、`running-head` のないマスターページを使う。
+
+## G0315
+
+正規表現を解釈できません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+正規表現スタイルの `pattern` が、Golem の正規表現の方言（InDesign の方言の部分集合）にない構文を含むか、正規表現として誤っている。
+部分集合の外の構文は、黙って別の意味に読まずにこの誤りとする。
+
+- メッセージ: `正規表現を解釈できません: <理由>（<段落スタイル> の <n> 番目の正規表現の <位置> 字目）`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`、照合器は golem-regex の `Golem.Regex`）。ファイルの中の `@style-def regex` は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその行になる
+- ADR: [docs/adr/0015](adr/0015-regex-styles.md)
+
+### 主な原因
+
+- 後方参照（`\1`、`\k<...>`）、名前付きの群、アトミックな群、所有的な量指定子（`*+` など）、条件、コメントの群を書いた。
+- 先頭でない位置に `(?i)` を書いたか、ほかのフラグ（`(?s)`、`(?m)`、`(?x)`、`(?-i)`）を書いた。
+- 方言の表にない英字のエスケープ（`\h`、`\Q`、`\A` など）か、文字体系の `\p{Han}` を書いた。
+- 長さが一つに決まらない後読み（`(?<=a+)` など）を書いた。
+- InDesign の `~` のメタ文字（`~m` など）を写した。
+- 括弧が閉じていないか、範囲の両端が逆か、`{n,m}` の `n` が `m` より大きい。
+- 量指定子の展開を含めて、照合のプログラムが 10000 命令を超えたか、繰り返しの回数に 65535 を超える数を書いた。
+
+### 直し方
+
+理由と位置の示す箇所を直す。
+文字の `~` は `\~` と書く。
+和文の文字体系は `[\x{4E00}-\x{9FFF}]` のように符号位置の範囲で書く。
+長さの異なる候補を持つ後読みは、候補ごとの後読みに分けて並べる（`(?<=ab|c)x` は `(?:(?<=ab)|(?<=c))x` と書く）。
+`@style-def regex` の文字列の中では、正規表現の `\` を `\\` と書く。
 
 ## G0316
 
@@ -2411,6 +2501,32 @@ manifest.toml がありません
 表の名前（`"A4"`、`"A5"`、`"A6"`、`"B5"`、`"B6"`、`"四六判"`、`"菊判"`、`"新書判"`、`"mass-market"`）を書くか、`size = { width = "148mm", height = "210mm" }` のように寸法で書く。
 単位は `mm`、`pt`、`Q`、`H` とし、`zw` は使わない。
 
+## G0318
+
+マスターページの位置が不正です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[masters.<名前>]` の `running-head` か `folio` の `position` が、`top-outside`、`top-inside`、`top-center`、`bottom-outside`、`bottom-inside`、`bottom-center` のどれでもない。
+`style.toml` を読むときに検査するので、ターゲットにかかわらず、`golem check` と LSP も報告する。
+位置は `position` の値の位置である。
+
+- メッセージ: `未知の位置です: <位置>`。誤った箇所の経路を添える。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
+
+### 主な原因
+
+- `position` の綴りを誤った。
+- `middle` や `top` のように、表にない位置を書いた。
+
+### 直し方
+
+`position` に上の 6 つのどれかを書く。
+
 ## G0319
 
 見出しの running-head は廃止しました
@@ -2434,6 +2550,39 @@ manifest.toml がありません
 ### 直し方
 
 `[headings.<階層>]` の `running-head` の行を消し、マスターページの `running-head` に `content = "heading.1.short"` のように柱に出す見出しの階層を書く。
+
+## G0320
+
+アキの量の指定が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[aki-sets.<名前>]` か、寸法の欄に書いたアキの量が正しくない。
+`[aki-sets]` の中の誤りは、すべてこのコードになる。
+ファイルの中の段落スタイルの定義（`@style-def`）の寸法の欄も同じである。
+
+- メッセージ: `アキの量の指定が正しくありません: <理由>`。理由は `アキの量として読めません: <値>`、`未知のクラスの名前です: <名前>`、`line-end は after にだけ書けます`、`<名前> は before にだけ書けます`、`minimum、optimum、maximum の順に小さくない値を書きます`、`組み込みのアキ量のセットと同じ名前です。…`、`アキの量の名前と百分率は、アキの量を書く欄でだけ使えます。…` などである。誤った箇所の経路を添える。`[aki-sets]` の中の型の誤りは、TOML のスキーマの文言になる。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。`@style-def` の寸法の欄は評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0019](adr/0019-aki-settings.md)
+
+### 主な原因
+
+- 規則の `optimum`、`minimum`、`maximum` に、読めない量や負の量を書いた。
+- `minimum` が `optimum` より大きいか、`optimum` が `maximum` より大きい。
+- `before` と `after` に未知のクラスの名前を書いた。
+- `line-end` を `before` に、`line-start` か `paragraph-start` を `after` に書いた。
+- 組み込みのセット（`gyomatsu-yakumono-hankaku`、`gyomatsu-yakumono-zenkaku`）と同じ名前の節を書いた。
+- `indent = "二分"` のように、アキの量の名前や百分率を寸法の欄に書いた。
+
+### 直し方
+
+量は `"四分"`、`"0.25zw"`、`"25%"` のように書き、`minimum <= optimum <= maximum` にする。
+クラスの名前は仕様書の表のとおりに書く。
+組み込みのセットを変えたいときは、`based-on` で引き継いだ別の名前のセットを作る。
+寸法の欄には `"0.5zw"` や `"2mm"` のように寸法を書く。
 
 ## G0321
 
@@ -3021,10 +3170,17 @@ plugins.lock を読めません
 ### 意味
 
 `style.toml` の版面の設定から、PDF の版面を計算できない。
+次の順に検査し、最初に当てはまったものを一つだけ報告する。
+`[page]` がない（`style.toml` がない場合を含む）、`[page.grid]` がない、`[page.grid]` の `font-size` が正の絶対的な寸法でない、字数か行数か段数が 0 以下か行送りが文字の大きさより小さい、版面が判型からはみ出す、縦組みの版面に `[sidenotes]` がある、段組みの版面に `[sidenotes]` がある、傍注欄が判型からはみ出す、の順である。
+PDF をターゲットに含むときは、ビルドと `golem check` の両方で、レイアウトの前に報告する。
+PDF を書かない。
+LSP は出さない。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+未知の判型は [G0317](#g0317)、マスターページの未知の位置は [G0318](#g0318) である。
 
-- メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注欄を設けられません`、`段組みの版面には傍注欄を設けられません`、`版面と傍注欄の合計がページからはみ出しています`、`未知の位置です: <位置>`
-- 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`）
-- ADR: ADR なし（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[docs/adr/0018](adr/0018-multi-column-layout.md) が触れる）
+- メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注欄を設けられません`、`段組みの版面には傍注欄を設けられません`、`版面と傍注欄の合計がページからはみ出しています`
+- 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`、golem-driver の `Golem.Driver`）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[docs/adr/0018](adr/0018-multi-column-layout.md) も触れる）
 
 ### 主な原因
 
@@ -3034,7 +3190,6 @@ plugins.lock を読めません
 - 版面か傍注欄が判型からはみ出している。
 - 縦組みの版面に傍注欄を設けた。
 - `[page.grid]` の `columns` が 2 以上の版面に傍注欄（`[sidenotes]`）を設けた。
-- `position` に未知の位置を書いた。
 
 ### 直し方
 
@@ -3073,12 +3228,16 @@ PDF をターゲットに含まないビルドと LSP では出さない。
 
 ### 意味
 
-ページ番号の参照（`ref-page`、目次、索引）を解決するためにレイアウトを繰り返したが、上限の回数までに収束しなかった。
-メッセージは、ページの変わり続けたラベルと索引の語を並べる。
+ページ番号の参照（`ref-page`、索引）を解決するためにレイアウトを繰り返したが、上限の 5 回までに収束しなかった。
+メッセージは、最後の二回のレイアウトでページの変わったラベルを名前の順に並べ、続けて、ページの変わった索引の印の語を印の位置の順に並べる。
+目次のページ番号は繰り返しの外で決めるので、見出しは並ばない。
+繰り返しの途中のレイアウトがほかのエラーを出した場合は、そのエラーを報告し、このコードは出さない。
+PDF を書かない。
+位置は並びの最初のもの（ラベルならそのラベルを付けたブロック、索引の語ならその印）で、二つ目以降のものの位置を関連情報に `ページが定まりません` として載せる。
 
 - メッセージ: `ページ番号の参照が収束しません: <ラベルと索引の語>`
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
-- ADR: ADR なし（[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md) がメッセージに索引の語を加えた。[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md) も触れる）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md) がメッセージに索引の語を加えた。[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md) も触れる）
 
 ### 主な原因
 
@@ -3161,29 +3320,32 @@ PDF をターゲットに含まないビルドと LSP では出さない。
 
 ## G0725
 
-段落の字下げが大きすぎます
+段落スタイルの字下げが大きすぎます
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-段落スタイルの字下げの後の行長が、段落の文字の大きさの 8 字分に満たない。
-または、回り込む図版の脇で、字下げを引いた行の長さが 0 以下になる。
+`style.toml` か原稿のファイルが定める段落スタイルについて、版面の段の行長から `indent` と `first-line-indent`（負なら 0）を引いた値が、その段落スタイルの文字の大きさの 8 字分に満たない。
+PDF をターゲットに含むときは、ビルドと `golem check` の両方で、レイアウトの前に報告する。
+PDF を書かない。
+LSP は出さない。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+回り込む図版の脇で行が残らない場合は [G0728](#g0728) である。
 
-- メッセージ: `段落の字下げが大きすぎます。行長を本文の文字の大きさの 8 字分以上残してください: <名前>`、`段落の字下げが大きすぎます。回り込む図版の脇の行が残りません`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
-- ADR: [docs/adr/0006](adr/0006-paragraph-indent.md)
+- メッセージ: `段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: <名前>`
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- ADR: [docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
 
 ### 主な原因
 
 - 段落スタイルの `indent` と `first-line-indent` が大きく、行長が段落の文字の大きさの 8 字分に満たない。
-- 回り込む図版の脇で、字下げを引いた行の長さが 0 以下になる。
+- 版面の一行の字数が少ない。
 
 ### 直し方
 
-段落スタイルの `indent` と `first-line-indent` を小さくする。
-図版の脇なら、図版の幅も小さくする。
+段落スタイルの `indent` と `first-line-indent` を小さくするか、`[page.grid]` の `characters` を増やす。
 
 ## G0726
 
@@ -3239,6 +3401,31 @@ PDF で、入れ子のリストの字下げの後に残る項目の本文の行�
 リストの入れ子を浅くする。
 印の幅を狭くするために、`[lists]` の `bullets` と `numbers` に短い印を書くか、`gap` を小さくする。
 
+## G0728
+
+回り込む図版の脇で、字下げを引くと行が残りません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF で、回り込む図版の脇の段落に、図版の脇の行の長さから字下げを引いた値が 0 以下になる行がある。
+段落一つにつき一つ報告し、位置はその段落である。
+リストの項目の段落では、代わりに [G0727](#g0727) を報告する。
+
+- メッセージ: `回り込む図版の脇で、字下げを引くと行が残りません`
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
+
+### 主な原因
+
+- 回り込む図版が広く、脇の行の長さが段落の字下げより短い。
+
+### 直し方
+
+図版の `width` を小さくするか、その段落の字下げを小さくする。
+
 ## G0729
 
 リストの番号を書式で表せません
@@ -3268,7 +3455,7 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 
 ## G0732
 
-縦組みの段落の中には傍注を置けません
+縦組みの版面では傍注を使えません
 
 - 重大度: エラー
 - 状態: 使用中
@@ -3277,10 +3464,14 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 
 縦組みの版面で傍注を使った。
 縦組みでは傍注欄を設けない。
+段落、見出し、リストの項目、定義リスト、表のセル、図版のキャプションの傍注と、圏点、色、文字スタイル、脚注の本文の中の傍注を、一つにつき一つ報告する。
+縦組みのときは、[G0734](#g0734) と [G0735](#g0735) を出さない。
+PDF を書かない。
+位置は傍注の位置である。
 
-- メッセージ: `縦組みの段落の中には傍注を置けません`
-- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Japanese`）
-- ADR: ADR なし（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md) が既存のコードとして使う）
+- メッセージ: `縦組みの版面では傍注を使えません。脚注に替えてください`
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Japanese`、golem-driver の `Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md) と [golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md) が条件を定めた）
 
 ### 主な原因
 
@@ -3421,11 +3612,12 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 
 フォントを読まない `noFontProvider` で PDF を作ろうとした。
 `golem` のコマンドは本物のフォントの読み込みを使うので、利用者がこのコードを見ることはない。
-テストだけが使う。
+テストが、フォントなしで PDF の経路の手前までを確かめるために使う。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
 
-- メッセージ: `フォントの処理（golem-font ADR 0001、0002）が未実装のため、PDF を出力できません`
+- メッセージ: `フォントを読まない設定（noFontProvider）では PDF を出力できません`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`）
-- ADR: ADR なし（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md) が使用済みの番号として触れる）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -3445,23 +3637,25 @@ PDF のフォントのファイルがありません
 
 ### 意味
 
-PDF が使う役割のフォントのファイルがないか、本文のフォントが設定されていない。
+PDF が使う役割のフォントのファイルがないか、パスが不正である。
 PDF を書かない。
+`golem check` も報告する。
 LSP は出さない。
+位置は `style.toml` の先頭である。
+本文のフォントの設定がない場合は [G0807](#g0807) である。
 
-- メッセージ: `フォントのファイルがありません: <パス>`、`style.toml に本文のフォント（[fonts.body]）がありません`、`[fonts.body] にフォントのファイルがありません`
+- メッセージ: `フォントのファイルがありません: <パス>`、またはパスの誤りの文言（`絶対パスは使えません: <パス>` など）
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Fonts`）
-- ADR: [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)（ターゲットごとの検査を定めた。[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md) も触れる）
+- ADR: [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)（ターゲットごとの検査を定めた）、[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（本文のフォントの設定の欠けを G0807 に分けた。[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md) も触れる）
 
 ### 主な原因
 
 - `style.toml` の `[fonts]` のパスの綴りを誤ったか、ファイルを置いていない。
-- 本文のフォント（`[fonts.body]`）を設定していない。
 - `golem new --no-fonts` で作ったプロジェクトに、まだフォントを置いていない。
 
 ### 直し方
 
-`style.toml` の `[fonts]` に本文のフォントを書き、指すファイルを置く。
+`style.toml` の `[fonts]` のパスを直すか、指すファイルを置く。
 
 ## G0803
 
@@ -3472,11 +3666,14 @@ LSP は出さない。
 
 ### 意味
 
-フォントのファイルを、OpenType のフォントとして読めない。
+PDF が使う役割のフォントのファイルを、OpenType（TrueType の輪郭か CFF の輪郭）のフォントとして開けない。
+読み込めないファイルをすべて、パスごとに一つずつ報告する。
+PDF を書かない。
+位置は `style.toml` の先頭である。
 
-- メッセージ: `フォントを読み込めません: <パス>`
+- メッセージ: `フォントを読み込めません: <パス>`。パスは `style.toml` に書いたとおりである。
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`）
-- ADR: ADR なし
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -3497,18 +3694,26 @@ LSP は出さない。
 ### 意味
 
 フォントの OS/2 の `fsType` が、PDF への埋め込みを禁じている。
+OpenType の仕様に従い、次のどれかに当てはまれば埋め込まない。
+ビット 1（`0x0002`、制限付きのライセンス）が立ち、ビット 2（`0x0004`）とビット 3（`0x0008`）が立っていない。
+ビット 8（`0x0100`、サブセット化の禁止）が立っている。
+Golem はサブセットしか埋め込まないためである。
+ビット 9（`0x0200`、ビットマップの埋め込みだけを許す）が立っている。
+読み込めないファイルをすべて、パスごとに一つずつ報告する。
+PDF を書かない。
+位置は `style.toml` の先頭である。
 
-- メッセージ: `ライセンスが埋め込みを禁じているフォントです（fsType <値>）: <パス>`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`）
-- ADR: ADR なし
+- メッセージ: `ライセンスが埋め込みを禁じているフォントです（fsType <値>）: <パス>`。値は `0x0102` のように `0x` と 4 桁の大文字の 16 進数で書く。
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`、golem-font の `Golem.Font`）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md) がエラーにすると定めた）
 
 ### 主な原因
 
-- フォントの OS/2 の `fsType` が、PDF への埋め込みを禁じている。
+- フォントの OS/2 の `fsType` が、PDF への埋め込みかサブセット化を禁じている。
 
 ### 直し方
 
-埋め込みを許すフォントに替える。
+埋め込みとサブセット化を許すフォントに替える。
 
 ## G0805
 
@@ -3520,10 +3725,12 @@ PostScript 名が同じ異なるフォントがあります
 ### 意味
 
 バイト列の異なる二つのフォントのファイルが、同じ PostScript 名を持つ。
+[G0803](#g0803) と [G0804](#g0804) がないときだけ検査する。
+位置は `style.toml` の先頭である。
 
 - メッセージ: `PostScript 名が同じ異なるフォントがあります: <名前>（<パス>、<パス>）`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`）
-- ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)
+- ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)（位置は [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）
 
 ### 主な原因
 
@@ -3558,3 +3765,31 @@ LSP は出さない。
 ### 直し方
 
 ICC プロファイルのファイルを置くか、パスを直す。
+
+## G0807
+
+PDF の本文のフォントの設定がありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF をターゲットに含むのに、`style.toml` の `[fonts]` に役割が一つもないか、本文の役割に `ja` も `latin` もない。
+本文の役割は `body` で、`[fonts]` に `body` がなければ名前の順で最初の役割である。
+`golem check` も報告し、PDF のレイアウトに進まない。
+LSP は出さない。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+
+- メッセージ: `style.toml に本文のフォントがありません。[fonts.body] を書いてください`、`[fonts.<役割>] にフォントのファイルがありません`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
+
+### 主な原因
+
+- `style.toml` に `[fonts.body]` を書いていない。
+- 本文の役割に `features` だけを書き、`ja` と `latin` を書いていない。
+
+### 直し方
+
+`style.toml` に `[fonts.body]` を書き、`ja` か `latin` にフォントのファイルのパスを書く。

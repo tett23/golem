@@ -5,6 +5,7 @@ module Golem.Project
   ( Project (..),
     SourceFile (..),
     ProjectFailure (..),
+    readFailure,
     loadProject,
     loadProjectWith,
     module Golem.Project.Manifest,
@@ -13,6 +14,7 @@ module Golem.Project
 where
 
 import Control.Monad (foldM)
+import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.Char (toLower)
 import Data.Either (fromRight, lefts, rights)
@@ -26,7 +28,7 @@ import Golem.Parser (parse)
 import Golem.Parser.AST (File (..))
 import Golem.Parser.CST (Node)
 import Golem.Parser.Lower (lower)
-import Golem.Parser.Read (readSource)
+import Golem.Parser.Read (ReadFailure (..), checkText, readSourceFile)
 import Golem.Parser.SourceSettings (SourceSettings)
 import Golem.Project.Imports
 import Golem.Project.Manifest
@@ -68,6 +70,13 @@ data ProjectFailure = ProjectFailure
     pfSources :: !(Map FileId SourceInfo)
   }
 
+{- | A failure of the reading stage as a failure of the project: its
+diagnostics, and the file that failed where they point (golem-parser ADR
+0009).
+-}
+readFailure :: ReadFailure -> ProjectFailure
+readFailure rf = ProjectFailure (rfDiagnostics rf) (rfSources rf)
+
 loadProject :: FilePath -> IO (Either ProjectFailure Project)
 loadProject = loadProjectWith Map.empty
 
@@ -83,8 +92,8 @@ loadProjectWith overlay root = do
       let mtext = TE.decodeUtf8Lenient mbytes
           manifestInfo = Map.singleton mfid (SourceInfo "manifest.toml" (mkLineIndex mtext))
           failure ds infos = Left (ProjectFailure ds (Map.union manifestInfo infos))
-      case readSource mfid mbytes >>= parseManifest mfid of
-        Left ds -> pure (failure ds Map.empty)
+      case first readFailure (readSourceFile mfid "manifest.toml" mbytes) >>= first (`ProjectFailure` Map.empty) . parseManifest mfid of
+        Left f -> pure (failure (pfDiagnostics f) (pfSources f))
         Right manifest -> do
           r <- loadSources overlay root mfid ft0 manifest
           pure $ case r of
@@ -195,15 +204,17 @@ loadSources overlay root mfid ft0 manifest = do
       | Map.member fid sources = crawl ft seen sources edges rest
       | otherwise = do
           let path = fromMaybe "" (lookupPath fid ft)
-          (content, shown) <- case Map.lookup path overlay of
-            Just t -> pure (Right t, t)
-            Nothing -> (\b -> (readSource fid b, TE.decodeUtf8Lenient b)) <$> BS.readFile (root </> path)
+          -- an unsaved buffer is checked but not stopped (golem-parser ADR 0009)
+          content <- case Map.lookup path overlay of
+            Just t -> pure (Right (t, checkText fid t))
+            Nothing -> fmap (,[]) . readSourceFile fid path <$> BS.readFile (root </> path)
           -- the sources read so far and this one, where the errors point (ADR 0006)
-          let failed ds = pure (Left (ds, Map.insert fid (SourceInfo path (mkLineIndex shown)) (Map.map sourceInfoOf sources)))
+          let known = Map.map sourceInfoOf sources
           case content of
-            Left ds -> failed ds
-            Right txt -> do
-              let (cst, synDiags) = parse fid txt
+            Left rf -> pure (Left (rfDiagnostics rf, Map.union (rfSources rf) known))
+            Right (txt, readDiags) -> do
+              let failed ds = pure (Left (ds, Map.insert fid (SourceInfo path (mkLineIndex txt)) known))
+                  (cst, synDiags) = fmap (readDiags <>) (parse fid txt)
                   ast = lower fid cst
                   sites = importsOf ast
                   bad = lefts sites
