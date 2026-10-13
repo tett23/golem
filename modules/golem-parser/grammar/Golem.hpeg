@@ -163,11 +163,16 @@ Block <- ( BadIndent(ind)
          / Paragraph(ind)
          )^block { () }
 
+# BadIndent, OrphanDef, TooDeep and BadBracket throw their labels before
+# the offending character, which they only look at (golem-parser ADR 0009).
+# The character after the failing predicate is never read; it keeps the
+# rule from matching the empty string, and it sits inside the label so
+# that nothing follows the recovery.
 BadIndent(ind :: Int) :: ()
-BadIndent <- Ind(ind) [ \t] (&{ False })^indent { () }
+BadIndent <- Ind(ind) &[ \t] (&{ False } [ \t])^indent { () }
 
 OrphanDef(ind :: Int) :: ()
-OrphanDef <- Ind(ind) '=:' (&{ False })^def_orphan { () }
+OrphanDef <- Ind(ind) &'=:' (&{ False } '=:')^def_orphan { () }
 
 # ------------------------------------------------------------ basics
 
@@ -208,7 +213,7 @@ Heading(ind :: Int) :: ()
 Heading <- Ind(ind) HashMark (TooDeep / Ws HeadInline(ind)* EOL) { () }
 
 TooDeep :: ()
-TooDeep <- '#' (&{ False })^heading_level { () }
+TooDeep <- &'#' (&{ False } '#')^heading_level { () }
 
 HeadInline(ind :: Int) :: ()
 HeadInline <- Escape { () }
@@ -278,7 +283,7 @@ LBr :: ()
 LBr <- '[' { () }
 
 BadBracket :: ()
-BadBracket <- LBr (&{ False })^bracket { () }
+BadBracket <- &LBr (&{ False } LBr)^bracket { () }
 
 RBr :: ()
 RBr <- ']' { () }

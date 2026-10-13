@@ -155,7 +155,7 @@ blockCommand (PN _ sp cs) =
    in case [(s, t) | PT KIdent s t <- sig] of
         ((_, "set") : (vsp, var) : _)
           | any ((== KEquals) . pkind) sig ->
-              Located sp (SetVar (Located vsp var) (exprOf [c | c <- sig, isExprNode c]))
+              Located sp (SetVar (Located vsp var) (exprOf sp [c | c <- sig, isExprNode c]))
         ((nsp, name) : _) ->
           Located sp (BlockCommand (Located nsp name) (arguments sig) (concat [blocks bcs | PN NCommandBody _ bcs <- cs]))
         [] -> Located sp ErrorBlock
@@ -226,7 +226,7 @@ inline = \case
   PT KNewline sp _ -> [Located sp SoftBreak]
   PT {} -> []
   PN NBlankLines _ _ -> []
-  PN NExpr sp cs -> [Located sp (Expr (exprOf (filter isExprNode cs)))]
+  PN NExpr sp cs -> [Located sp (Expr (exprOf sp (filter isExprNode cs)))]
   p@(PN NInlineCommand _ _) -> [command p]
   -- from the backslash to the end of the newline; the newline is no SoftBreak
   PN NHardBreak sp cs ->
@@ -270,7 +270,7 @@ arguments = mapMaybe arg
         _ -> Nothing
       PN NSplatArgument sp acs ->
         let isDouble = any (\case PT KStar _ t -> t == "**["; _ -> False) acs
-            e = exprOf (filter isExprNode acs)
+            e = exprOf sp (filter isExprNode acs)
          in Just (Located sp (if isDouble then SplatKeyword e else SplatPositional e))
       _ -> Nothing
 
@@ -278,7 +278,7 @@ argValue :: P -> Maybe ArgValue
 argValue = \case
   PT KString _ t -> Just (StringLit (unquote t))
   PT KWord _ t -> Just (Word t)
-  PN NExpr sp cs -> Just (ExprArg (Located sp (locValue (exprOf (filter isExprNode cs)))))
+  PN NExpr sp cs -> Just (ExprArg (Located sp (locValue (exprOf sp (filter isExprNode cs)))))
   p@(PN NInlineCommand _ _) -> Just (CommandArg (command p))
   _ -> Nothing
 
@@ -297,9 +297,12 @@ isExprNode = \case
   PT KError _ _ -> True
   _ -> False
 
-exprOf :: [P] -> Located Expr
-exprOf (p : _) = expr p
-exprOf [] = Located (mkSpan (FileId 0) 0 0) EError
+{- | The first expression of a slot; with none, an error of width zero at
+the start of the slot @sp@ (golem-parser ADR 0009).
+-}
+exprOf :: SrcSpan -> [P] -> Located Expr
+exprOf _ (p : _) = expr p
+exprOf sp [] = Located (mkSpan (spanFile sp) (spanStart sp) (spanStart sp)) EError
 
 expr :: P -> Located Expr
 expr p = Located (pspan p) $ case p of
@@ -324,7 +327,7 @@ expr p = Located (pspan p) $ case p of
     _ -> EError
   PN NArrayExpr _ cs -> EArray [expr e | e <- cs, isExprNode e]
   PN NHashExpr _ cs -> EHash [entry ecs | PN NHashEntry _ ecs <- cs]
-  PN NParenExpr _ cs -> locValue (exprOf (filter isExprNode cs))
+  PN NParenExpr _ cs -> locValue (exprOf (pspan p) (filter isExprNode cs))
   _ -> EError
   where
     entry ecs = case significant ecs of

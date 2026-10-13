@@ -1,32 +1,78 @@
--- | The reading stage before parsing (golem-parser ADR 0002).
+-- | The reading stage before parsing (golem-parser ADR 0002, ADR 0009).
 module Golem.Parser.Read
   ( readSource,
+    checkText,
+    ReadFailure (..),
+    readSourceFile,
+    readInfo,
   )
 where
 
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
-import Data.Text.Encoding (decodeUtf8')
+import Data.Text qualified as T
+import Data.Text.Encoding (decodeUtf8', decodeUtf8Lenient, encodeUtf8)
 import Golem.Syntax
 
--- | Rejects invalid UTF-8, a BOM and CRLF line endings.
+{- | A failure of the reading stage ('readSource'). The file that failed is
+in the table too, with its line index, so that the diagnostics show where
+they point (golem-parser ADR 0009).
+-}
+data ReadFailure = ReadFailure
+  { rfDiagnostics :: ![Diagnostic],
+    rfSources :: !(Map FileId SourceInfo)
+  }
+
+{- | Rejects a BOM at the start, invalid UTF-8 and any CR, in this order;
+only the first that applies is reported.
+-}
 readSource :: FileId -> ByteString -> Either [Diagnostic] Text
 readSource fid bs
-  | "\xEF\xBB\xBF" `BS.isPrefixOf` bs =
-      Left [diagnostic "G0102" Error (mkSpan fid 0 3) "ファイルの先頭に BOM があります。BOM を取り除いてください"]
+  | "\xEF\xBB\xBF" `BS.isPrefixOf` bs = Left [bomDiagnostic fid]
   | otherwise = case decodeUtf8' bs of
       Left _ ->
         let bad = invalidOffset bs
          in Left [diagnostic "G0101" Error (mkSpan fid bad (bad + 1)) "UTF-8 として不正なバイト列があります"]
-      Right t -> case BS.findIndex (== 13) bs of
-        Just i ->
-          Left
-            [ (diagnostic "G0103" Error (mkSpan fid i (i + 1)) "改行に CR が含まれています。改行は LF に限ります")
-                { diagFixes = [Fix "golem fmt で LF に直す" []]
-                }
-            ]
-        Nothing -> Right t
+      Right t -> case checkText fid t of
+        [] -> Right t
+        ds -> Left ds
+
+{- | 'readSource' for the file at @path@: on failure, the diagnostics and
+the file's entry in the source table.
+-}
+readSourceFile :: FileId -> FilePath -> ByteString -> Either ReadFailure Text
+readSourceFile fid path bs = case readSource fid bs of
+  Left ds -> Left (ReadFailure ds (Map.singleton fid (readInfo path bs)))
+  Right t -> Right t
+
+{- | What the renderers need of a file that may not have passed the reading
+stage: its line index over the bytes decoded leniently (an invalid byte
+becomes U+FFFD, so positions after it shift).
+-}
+readInfo :: FilePath -> ByteString -> SourceInfo
+readInfo path = SourceInfo path . mkLineIndex . decodeUtf8Lenient
+
+{- | The checks of 'readSource' left after decoding: a BOM (U+FEFF at the
+start) and CR. At most one diagnostic.
+-}
+checkText :: FileId -> Text -> [Diagnostic]
+checkText fid t
+  | "\xFEFF" `T.isPrefixOf` t = [bomDiagnostic fid]
+  | otherwise = case T.breakOn "\r" t of
+      (pre, rest)
+        | T.null rest -> []
+        | otherwise ->
+            let i = BS.length (encodeUtf8 pre)
+             in [ (diagnostic "G0103" Error (mkSpan fid i (i + 1)) "改行に CR が含まれています。改行は LF に限ります")
+                    { diagFixes = [Fix "golem fmt で LF に直す" []]
+                    }
+                ]
+
+bomDiagnostic :: FileId -> Diagnostic
+bomDiagnostic fid = diagnostic "G0102" Error (mkSpan fid 0 3) "ファイルの先頭に BOM があります。BOM を取り除いてください"
 
 -- | The first byte offset at which UTF-8 decoding fails.
 invalidOffset :: ByteString -> Int
