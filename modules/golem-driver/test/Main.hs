@@ -303,6 +303,7 @@ tests =
       testGroup "files of style.toml per target (golem-project ADR 0004)" styleFileTests,
       testGroup "verse (docs/adr ADR 0003)" verseTests,
       testGroup "paragraph indents (docs/adr ADR 0006)" indentTests,
+      testGroup "list indents (golem-driver ADR 0013)" listTests,
       testGroup "styles defined in a file (docs/adr ADR 0014)" inFileTests,
       testGroup "PDF headings (ADR 0003)" headingTests,
       testGroup "PDF emphasis, character styles and colour (ADR 0004)" emphasisTests,
@@ -577,6 +578,136 @@ indentTests =
             TIO.readFile (tmp </> "build/text/horizontal/v.txt")
       text "[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n" "本文。\n\n- 項目\n" >>= (@?= "　本文。\n\n・項目\n")
       text "[paragraph-styles.body]\nfirst-line-indent = \"3mm\"\n" "本文。\n" >>= (@?= "本文。\n")
+  ]
+
+-- | The text of each line of a layout, in order.
+lineTexts :: PdfLayout -> [T.Text]
+lineTexts pl = [T.concat [bcText c | Box _ c <- lineItems (slLine sl)] | sl <- Map.elems (plLines pl)]
+
+-- | The text of every line of every page.
+listPages :: BS.ByteString -> T.Text -> IO [T.Text]
+listPages style src = pagesMini "" style src [] Map.empty >>= either (assertFailure . show) (pure . concat)
+
+-- | The plain text of a one-file project, horizontal or vertical.
+listText :: BS.ByteString -> T.Text -> FilePath -> IO T.Text
+listText style src variant = withVerseProject style src $ \tmp -> do
+  r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+  assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+  TIO.readFile (tmp </> "build/text" </> variant </> "v.txt")
+
+listTests :: [TestTree]
+listTests =
+  [ testCase "PDF: the marker hangs and the lines of an item start at the text" $ do
+      (_, ls) <- verseLines horizontalStyle ("- " <> T.replicate 20 "あ" <> "\n")
+      ls @?= [(120 * pt, 0), (110 * pt, 10 * pt)],
+    testCase "PDF: the second paragraph of an item starts at the text" $ do
+      (_, ls) <- verseLines horizontalStyle "- 一つ目の段落。\n  二つ目の段落。\n"
+      map snd ls @?= [0, 10 * pt],
+    testCase "PDF: a nested list starts at the text of the outer item" $ do
+      (_, ls) <- verseLines horizontalStyle ("- 外\n  - " <> T.replicate 20 "あ" <> "\n")
+      map snd ls @?= [0, 10 * pt, 20 * pt],
+    testCase "PDF: the marker width of a numbered list is its widest number" $ do
+      let items = T.concat (replicate 9 ("+ " <> T.replicate 16 "あ" <> "\n"))
+      (_, ls) <- verseLines horizontalStyle items
+      [ind | (k, (_, ind)) <- zip [0 :: Int ..] ls, odd k] @?= replicate 9 (20 * pt)
+      (_, ls') <- verseLines horizontalStyle ("@number 100\n" <> items)
+      [ind | (k, (_, ind)) <- zip [0 :: Int ..] ls', odd k] @?= replicate 9 (30 * pt),
+    testCase "PDF: @number sets the numbers" $ do
+      ts <- listPages horizontalStyle "+ 一\n@number 5\n+ 二\n+ 三\n"
+      ts @?= ["1.一", "5.二", "6.三"],
+    testCase "PDF: no glue or penalty between the marker and the text" $ do
+      (_, pl) <- layoutOk horizontalStyle ("+ " <> T.replicate 20 "あ" <> "\n- い\n") []
+      let firsts = [lineItems (slLine sl) | sl <- Map.elems (plLines pl)]
+          beforeText = takeWhile (\case Box _ c -> bcText c `notElem` ["あ", "い"]; _ -> True)
+      case firsts of
+        (a : _ : b : _) -> do
+          assertBool (show (beforeText a)) (all (\case Box {} -> True; _ -> False) (beforeText a))
+          [bcText c | Box _ c <- beforeText a] @?= ["1", ".", ""]
+          [bcText c | Box _ c <- beforeText b] @?= ["・", ""]
+        _ -> assertFailure "lines",
+    testCase "PDF: vertical, the number is a Number and the marker ends with 、" $ do
+      let fs = maybe 0 (dimToSp 0) (parseDim "13Q")
+      (_, pl) <- layoutOk pdfStyle ("+ " <> T.replicate 60 "あ" <> "\n") []
+      case Map.elems (plLines pl) of
+        (first : second : _) -> do
+          take 3 [bcText c | Box _ c <- lineItems (slLine first)] @?= ["一", "、", ""]
+          slIndent second @?= 2 * fs
+        _ -> assertFailure "lines",
+    testCase "PDF: lists, parallel and sequential, give the same bytes" $ do
+      let src = "- " <> T.replicate 20 "あ" <> "\n  - 内[note: 注。]\n\n+ 一\n@number 9\n+ " <> T.replicate 30 "い" <> "\n"
+      (e1, a) <- buildMini fakeProvider True horizontalStyle src []
+      (e2, b) <- buildMini fakeProvider False horizontalStyle src []
+      (e1, e2) @?= ([], [])
+      assertBool "a PDF" (isJust a)
+      a @?= b,
+    testCase "PDF: the paragraph style's indent does not apply to list items" $ do
+      (_, ls) <- verseLines (horizontalStyle <> "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") ("- " <> T.replicate 20 "あ" <> "\n")
+      map snd ls @?= [0, 10 * pt],
+    testCase "PDF: lists nested so deep that less than 8 characters are left are G0727" $ do
+      let style = replaceIn "characters = 12" "characters = 10" horizontalStyle
+      (ok, _) <- buildMini fakeProvider False style "- 外\n  - 内の項目。\n" []
+      ok @?= []
+      r <- layoutMini style "- 一\n  - 二\n    - 三の項目。\n" []
+      case r of
+        Left ds -> do
+          [diagCode d | d <- ds] @?= [DiagnosticCode "G0727"]
+          [diagSpan d | d <- ds] /= [] @? "span"
+        Right _ -> assertFailure "expected G0727",
+    testCase "PDF: a note in a list item belongs to the line of its marker" $
+      forM_ [8 .. 14] $ \k -> do
+        (_, pl) <- layoutOk horizontalStyle ("- " <> T.replicate k "あ" <> "[note: 注。]" <> T.replicate 8 "い" <> "\n") []
+        let marked = [i | (i, sl) <- zip [0 :: Int ..] (Map.elems (plLines pl)), any (\case Box _ c -> bcText c == "*1"; _ -> False) (lineItems (slLine sl))]
+            noted = [i | (i, sl) <- zip [0 :: Int ..] (Map.elems (plLines pl)), not (null (slNotes sl))]
+        (k, noted) @?= (k, marked),
+    testCase "PDF: [lists] numbers set the marker, and its width" $ do
+      ts <- listPages (horizontalStyle <> "\n[lists]\nnumbers = [\"({1})\"]\n") "+ 一\n+ 二\n"
+      ts @?= ["(1)一", "(2)二"]
+      (_, ls) <- verseLines (horizontalStyle <> "\n[lists]\nnumbers = [\"({1})\"]\n") ("+ " <> T.replicate 20 "あ" <> "\n")
+      map snd ls @?= [0, 20 * pt],
+    testCase "PDF: [lists] bullets by depth, the last one for deeper lists, with a gap" $ do
+      let style = horizontalStyle <> TE.encodeUtf8 "\n[lists]\nbullets = [\"■\", \"□\"]\n"
+      (_, pl) <- layoutOk (replaceIn "characters = 12" "characters = 30" style) "- 一\n  - 二\n    - 三\n" []
+      map (T.take 1) (lineTexts pl) @?= ["■", "□", "□"]
+      (_, ls) <- verseLines style ("- " <> T.replicate 20 "あ" <> "\n")
+      -- 1 character and fs / 2, rounded up to whole characters
+      map snd ls @?= [0, 20 * pt],
+    testCase "a number its format cannot write is G0729, at the item" $ do
+      r <- layoutMini (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" []
+      case r of
+        Left ds -> do
+          [diagCode d | d <- ds] @?= [DiagnosticCode "G0729"]
+          let lineStart = BS.length (TE.encodeUtf8 "+ 一\n@number 51\n")
+          assertBool (show ds) (all (\d -> spanStart (diagSpan d) >= lineStart) ds)
+        Right _ -> assertFailure "expected G0729"
+      withVerseProject (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" $ \tmp -> do
+        r' <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText]}
+        [diagCode d | d <- brDiagnostics r', isError d] @?= [DiagnosticCode "G0729"],
+    testCase "HTML: [lists] writes a @counter-style for each depth" $
+      withVerseProject (TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({1})\", \"{①}\"]\n") "- 一\n  - 二\n\n+ 一\n  + 二\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        let has t = assertBool (T.unpack t <> "\n" <> T.unpack css) (t `T.isInfixOf` css)
+        has "@counter-style golem-ul-1 { system: cyclic; symbols: \"■\"; suffix: \" \"; }"
+        has "@counter-style golem-ul-2 { system: cyclic; symbols: \"□\"; suffix: \" \"; }"
+        has "@counter-style golem-ol-1 { system: extends decimal; prefix: \"(\"; suffix: \") \"; }"
+        has "@counter-style golem-ol-2 { system: fixed; symbols: \"①\"; suffix: \" \"; }"
+        has "ul.list-1 { list-style-type: golem-ul-1; }"
+        has "ol.list-2 { list-style-type: golem-ol-2; }"
+        assertBool (T.unpack page) ("<ul class=\"list-1\">" `T.isInfixOf` page && "<ol class=\"list-2\">" `T.isInfixOf` page),
+    testCase "HTML: no [lists], no @counter-style and no classes" $
+      withVerseProject "" "- 一\n\n+ 一\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool "css" (not ("@counter-style" `T.isInfixOf` css))
+        assertBool "page" ("<ul>" `T.isInfixOf` page && "<ol>" `T.isInfixOf` page),
+    testCase "plain text: [lists] markers by depth" $ do
+      let style = TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({1})\", \"{a}.\"]\n"
+      t <- listText style "- 一\n  - 二\n    - 三\n\n+ 一\n  + 二\n" "horizontal"
+      t @?= "■ 一\n　□ 二\n　　□ 三\n\n(1) 一\n　a. 二\n"
+      t' <- listText "" "- 一\n\n+ 一\n" "horizontal"
+      t' @?= "・一\n\n1. 一\n"
   ]
 
 -- | A project of chapters (in order) and other files, with a style.toml.
