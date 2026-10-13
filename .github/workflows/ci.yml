@@ -19,8 +19,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: tett23/adr-guard@v0.2.1
+      - uses: tett23/adr-guard@v0.4.0
         with:
+          # link-only changes to committed ADRs are allowed; unlinked ADR references fail
+          allow-links: true
           base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 

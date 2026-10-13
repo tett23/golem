@@ -86,7 +86,7 @@ data Inline
 改行の直前の空白を捨てる規則（[golem-parser ADR 0006](../golem-parser/adr/0006-discard-insignificant-whitespace.md)）はそのまま適用する。
 改行の前後の `Text` は連結しない。
 この変更は [golem-parser ADR 0005](../golem-parser/adr/0005-cst-to-ast.md) の「改行のトークンを捨てて、前後の地の文をそのまま連結する」を改め、改行を捨てる段階を評価に移す。
-ADR 0005 のステータスの行を「採択→段落内の改行の扱いは docs/adr ADR 0003」に変える。
+[ADR 0005](../golem-parser/adr/0005-cst-to-ast.md) のステータスの行を「採択→段落内の改行の扱いは docs/adr [ADR 0003](0003-verse-line-breaks.md)」に変える。
 
 AST を読むほかのモジュール（golem-lsp の出現位置の収集など）は、`SoftBreak` を何も持たない要素として読み飛ばす。
 
@@ -240,7 +240,7 @@ specifications.md の `style.toml` の例に `[verse]` を加える。
 G0501（段落内の改行の前後がともに欧文）は、韻文の行の区切りには当てない。
 `latinJoinedByNewline` で、名前が `verse` の `NBlockCommand` の `NCommandBody` の中の `NParagraph` では、最上位の改行を調べず、入れ子の `NProseSlot` だけを調べる。
 散文スロットの中の改行は韻文の中でも文字を生まないので、そこでは G0501 が引き続き意味を持つ。
-[golem-lint ADR 0001](../golem-lint/adr/0001-lint-rules.md) のステータスの行を「採択→G0501 の韻文の扱いは docs/adr ADR 0003」に変える。
+[golem-lint ADR 0001](../golem-lint/adr/0001-lint-rules.md) のステータスの行を「採択→G0501 の韻文の扱いは docs/adr [ADR 0003](0003-verse-line-breaks.md)」に変える。
 
 ### fmt（golem-fmt）
 

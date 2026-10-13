@@ -67,12 +67,14 @@ ADRs are written in Japanese.
 ```
 
 The status (ステータス) is one of 提案 (proposed), 採択 (accepted), 却下 (rejected), or 破棄 (abandoned).
-When a later ADR replaces part of one, the status names it, as in "採択→○○（変更部分）は ADR NNNN".
+When a later ADR replaces part of one, the status names it, as in "採択→○○（変更部分）は [ADR NNNN](...)", with a link.
 
 ### ADRs are immutable
 
 Once committed, an ADR cannot be changed except for its status line.
 `.githooks/pre-commit` and the `adr` job in CI reject edits, deletions, and renames.
+Changes that only add, remove, or retarget links of ADR references are allowed.
+ADR references in documents must link to the ADR file; the `adr` job in CI rejects unlinked ones, and `adr-guard links --fix` fixes them.
 
 To change the specification, do not rewrite the old ADR; write a new one with the next number.
 To abandon an ADR, set its status to 破棄 and record the reason in [docs/specifications.md](./docs/specifications.md).

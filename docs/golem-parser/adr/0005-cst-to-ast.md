@@ -1,6 +1,6 @@
 # ADR 0005: CST から AST への変換
 
-ステータス: 採択→段落内の改行の扱いは docs/adr ADR 0003
+ステータス: 採択→段落内の改行の扱いは [docs/adr/0003](../../adr/0003-verse-line-breaks.md)
 
 ## 文脈
 
