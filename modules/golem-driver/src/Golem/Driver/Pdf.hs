@@ -79,7 +79,7 @@ import Golem.Layout.Ruby qualified as R
 import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
 import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutTable)
 import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
-import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
+import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Pdf qualified as P
 import Golem.Project
@@ -426,7 +426,8 @@ order they are placed, looked up by the first line of their block.
 -}
 headingsOnPages :: (Int -> Maybe HeadingInfo) -> [PageOut] -> Map Int [HeadingInfo]
 headingsOnPages infoOf ps =
-  Map.fromList [(poNumber p, [h | (_, SHeading lid _) <- poSlots p, Just h <- [infoOf lid]]) | p <- ps]
+  -- the columns of a page in their order (docs/adr ADR 0018)
+  Map.fromListWith (flip (<>)) [(poNumber p, [h | (_, SHeading lid _) <- poSlots p, Just h <- [infoOf lid]]) | p <- ps]
 
 {- | The headings in effect after a heading: it is the one of its level,
 and the levels below it have none.
@@ -454,15 +455,20 @@ runningHeadText title content start started = case content of
           HeadNumbered -> maybe (short h) (\n -> n <> "\x3000" <> short h) (hiNumberText h)
      in render <$> chosen
 
+-- | The columns of each page, in order (docs/adr ADR 0018).
+pagesOf :: [PageOut] -> [[PageOut]]
+pagesOf = groupBy (\a b -> poNumber a == poNumber b)
+
 {- | The file of each page, in order (golem-driver ADR 0014): the file of
 the unit of its first line; a page without lines has the file of the page
 before it, and the first chapter's file when it is the first page.
 -}
 pageFiles :: PdfInput -> PdfLayout -> [FileId]
-pageFiles inp layout = drop 1 (scanl next firstFile (plPages layout))
+pageFiles inp layout = drop 1 (scanl next firstFile (pagesOf (plPages layout)))
   where
     firstFile = maybe (FileId 0) fst (listToMaybe (projectChapters (piProject inp)))
-    firstLine p = listToMaybe [lid | (_, s) <- poSlots p, lid <- case s of SLine l -> [l]; SHeading l _ -> [l]; _ -> []]
+    -- through the columns of the page in order (docs/adr ADR 0018)
+    firstLine ps = listToMaybe [lid | p <- ps, (_, s) <- poSlots p, lid <- case s of SLine l -> [l]; SHeading l _ -> [l]; _ -> []]
     next prev p = fromMaybe prev (firstLine p >>= \lid -> snd <$> Map.lookupLE lid (plLineFiles layout))
 
 {- | The master page of each page, in order: the one its file names in the
@@ -483,9 +489,9 @@ on pages whose master page has no running head.
 -}
 runningHeads :: PdfInput -> PageGeometry -> PdfLayout -> Map Int (Maybe Text)
 runningHeads inp geom layout =
-  let pages = plPages layout
+  let pages = [p | (p : _) <- pagesOf (plPages layout)]
       infoOf lid = Map.lookup lid (plHeadingSpans layout) >>= (`Map.lookup` bookHeadings (piBook inp))
-      started = headingsOnPages infoOf pages
+      started = headingsOnPages infoOf (plPages layout)
       startedOn p = Map.findWithDefault [] (poNumber p) started
       starts = scanl (foldl' activeAfter) Map.empty (map startedOn pages)
       title = mdTitle (manifestMetadata (projectManifest (piProject inp)))
@@ -727,7 +733,7 @@ fixpoint geom termOf layoutWith = go (1 :: Int) (Assumed Map.empty Map.empty)
     capacity = length (pgLineGrid geom)
     go i assumed = do
       built <- layoutWith assumed
-      let pages = paginate capacity (bFlow built)
+      let pages = paginate (length (pgColumns geom)) capacity (bFlow built)
           actual = Assumed (labelPages pages) (markPages pages)
       if not (null (bErrors built))
         then pure (Left (bErrors built))
@@ -1100,6 +1106,9 @@ buildFlow inp geom fonts images assumed = do
             gap = dimToSp fs (stWrapGap style)
             ex = (\side -> exclusion side pitch gap alongSp depth) <$> figWrap fig
             errs = case (figWrap fig, ex) of
+              -- no wrapping on a page of columns (docs/adr ADR 0018)
+              (Just _, _)
+                | length (pgColumns geom) > 1 -> [diagnostic "G0726" Error (uSpan u) "段組みの版面では図版を回り込ませられません。wrap を外すか、columns を 1 にしてください"]
               (Just _, Just e)
                 | isLeft along || measure - exWidth e < 8 * fs ->
                     [diagnostic "G0722" Error (uSpan u) ("回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
@@ -1504,9 +1513,13 @@ writeDocument inp geom fonts layout intent =
               LS.AlignCenter -> anX anchor - w `div` 2
               LS.AlignEnd -> anX anchor - w
          in runAt (plainLook body size) False False 0 (x0, anY anchor) txt
-      drawPage p master =
+      {- one column of a page, against the rectangle of the column (docs/adr
+      ADR 0018): its text, its images and its rules -}
+      drawColumn p =
         let n = poNumber p
-            ta = typeAreaFor geom n
+            ta = case drop (poColumn p) (columnsFor geom n) of
+              (c : _) -> c
+              [] -> typeAreaFor geom n
             lineParts =
               [drawLine ta (gridAt slot) sl | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines layout)]]
                 -- the leader and page number of a table of contents entry (golem-driver ADR 0009)
@@ -1530,18 +1543,25 @@ writeDocument inp geom fonts layout intent =
             noteLines = concat [take cnt (drop from (concat [ls | sl <- Map.elems (plLines layout), (nid', ls) <- slNotes sl, nid' == nid])) | (nid, from, cnt) <- poFootnotes p]
             bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
             noteParts = [drawLine ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] []) | (slot, l) <- zip bottomSlots noteLines]
-            masterParts = if poBlank p then [] else masterMarks n master (join (Map.lookup n heads))
-            -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
-            sidenoteParts =
-              [ drawLineAt (rectX area, rectY area + rectH area - (psTop ps + toInteger j * snPitch + round (toRational snSize' * baselineRatio))) (SetLine l snSize' 0 [] [])
-              | Just area <- [sidenoteAreaFor geom n],
-                ps <- Map.findWithDefault [] n (plSidenotes layout),
-                let (_, snSize', snPitch) = sidenoteMetrics (docStyle inp (spanFile (psSpan ps))) geom,
-                (j, l) <- zip [0 :: Int ..] (psLines ps)
-              ]
-            allParts = lineParts <> noteParts <> sidenoteParts <> masterParts
             ruleMarks = concat [tableRules ta seg w | seg <- poTables p, Just w <- [Map.lookup (tsTable seg) (plTables layout)]]
-         in (concatMap fst allParts <> figMarks <> ruleMarks, concatMap snd allParts)
+         in (lineParts <> noteParts, figMarks, ruleMarks)
+      -- the columns of a page, its sidenotes and, once, its running head and folio
+      drawPage ps master = case ps of
+        [] -> ([], [])
+        (p : _) ->
+          let n = poNumber p
+              columns = map drawColumn ps
+              masterParts = if poBlank p then [] else masterMarks n master (join (Map.lookup n heads))
+              -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
+              sidenoteParts =
+                [ drawLineAt (rectX area, rectY area + rectH area - (psTop ps' + toInteger j * snPitch + round (toRational snSize' * baselineRatio))) (SetLine l snSize' 0 [] [])
+                | Just area <- [sidenoteAreaFor geom n],
+                  ps' <- Map.findWithDefault [] n (plSidenotes layout),
+                  let (_, snSize', snPitch) = sidenoteMetrics (docStyle inp (spanFile (psSpan ps'))) geom,
+                  (j, l) <- zip [0 :: Int ..] (psLines ps')
+                ]
+              allParts = concat [t | (t, _, _) <- columns] <> sidenoteParts <> masterParts
+           in (concatMap fst allParts <> concat [f | (_, f, _) <- columns] <> concat [r | (_, _, r) <- columns], concatMap snd allParts)
       -- the rules of a table on a page, centred in the space between grid lines (golem-driver ADR 0008)
       tableRules ta seg w =
         let p = pgLinePitch geom
@@ -1577,7 +1597,8 @@ writeDocument inp geom fonts layout intent =
               folio = [textAt (pick a1 a2) size (formatNumber fmt [toInteger n] Nothing) | Just (fmt, a1, a2) <- [mgFolio m]]
               runningHead = [textAt (pick a1 a2) size h | Just (_, _, a1, a2) <- [mgRunningHead m], Just h <- [heading]]
            in runningHead <> folio
-      drawn = zipWith drawPage (plPages layout) masters
+      -- the columns of a page come together from 'paginate' (docs/adr ADR 0018)
+      drawn = zipWith drawPage (pagesOf (plPages layout)) masters
       -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
       bleed = maybe 0 pageBleed (stPage style)
       pdfPages = [P.framePage (piMarks inp) bleed (pw, ph) marks | (marks, _) <- drawn]

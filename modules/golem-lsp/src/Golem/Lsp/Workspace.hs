@@ -57,6 +57,8 @@ data Workspace = Workspace
     wsEvaluated :: !(Maybe Evaluated),
     -- | errors that stop the project from loading (bad manifest, import cycle…)
     wsProjectErrors :: ![Diagnostic],
+    -- | the files those errors point at (golem-project ADR 0006)
+    wsProjectSources :: !(Map FileId SourceInfo),
     -- | open files the manifest does not reach
     wsLoose :: !(Map FilePath Source),
     -- | how many times the whole project was evaluated
@@ -97,7 +99,7 @@ summaryOf ast res =
 openWorkspace :: FilePath -> IO Workspace
 openWorkspace root = do
   files <- listSources root
-  fullEvaluate (Workspace root Map.empty Nothing [] Map.empty 0 files Map.empty)
+  fullEvaluate (Workspace root Map.empty Nothing [] Map.empty Map.empty 0 files Map.empty)
 
 listSources :: FilePath -> IO [FilePath]
 listSources root = map (makeRelative root) <$> go root
@@ -120,8 +122,8 @@ fullEvaluate ws = do
   r <- evaluateProjectWith (wsOverlay ws) Dev (wsRoot ws)
   let ws' = ws {wsFullEvaluations = wsFullEvaluations ws + 1}
   pure . rebuildLines $ case r of
-    Left ds -> refreshLoose ws' {wsEvaluated = Nothing, wsProjectErrors = ds}
-    Right e -> refreshLoose ws' {wsEvaluated = Just e, wsProjectErrors = []}
+    Left f -> refreshLoose ws' {wsEvaluated = Nothing, wsProjectErrors = pfDiagnostics f, wsProjectSources = pfSources f}
+    Right e -> refreshLoose ws' {wsEvaluated = Just e, wsProjectErrors = [], wsProjectSources = Map.empty}
 
 -- | Line indexes of the project's sources and of every edited file.
 rebuildLines :: Workspace -> Workspace
@@ -220,7 +222,13 @@ diagnosticsFor ws =
     -- and its @manifest (docs/adr ADR 0013, 0014)
     looseDiags = Map.map (\s -> sortDiagnostics (maybe [] erDiagnostics (srcResult s) <> latinJoinedByNewline (maybe defaultSourceSettings erSource (srcResult s)) (looseKeep s) (srcFile s) (srcCst s))) (wsLoose ws)
     projectDiags = case wsEvaluated ws of
-      Nothing -> Map.fromList [("manifest.toml", wsProjectErrors ws)]
+      -- on the file each error points at; manifest.toml when it points at none (golem-project ADR 0006)
+      Nothing ->
+        let sources = wsProjectSources ws
+            pathOf d = maybe "manifest.toml" siPath (Map.lookup (spanFile (diagSpan d)) sources)
+            byFile = Map.fromListWith (flip (<>)) [(pathOf d, [d]) | d <- wsProjectErrors ws]
+            empties = Map.fromList (("manifest.toml", []) : [(siPath si, []) | si <- Map.elems sources])
+         in Map.union byFile empties
       Just e ->
         let p = evProject e
             ft = projectFiles p
