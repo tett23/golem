@@ -13,6 +13,7 @@ module Golem.Driver.Pdf
     Shaped (..),
     noFontProvider,
     bodyRole,
+    bodyFontDiagnostics,
     usedRoles,
     syntheticStroke,
     syntheticStrokeJa,
@@ -24,6 +25,7 @@ module Golem.Driver.Pdf
     PlacedSidenote (..),
     PdfLayout (..),
     sidenoteDiagnostics,
+    styleLayoutDiagnostics,
     listNumberDiagnostics,
     placePageSidenotes,
     layoutPdf,
@@ -31,6 +33,7 @@ module Golem.Driver.Pdf
     indexLines,
     bibliographyLines,
     Assumed (..),
+    fixpoint,
     TocGeometry (..),
     TocPage (..),
     tocPage,
@@ -122,14 +125,15 @@ data Shaped = Shaped
   deriving stock (Eq, Show)
 
 newtype FontProvider = FontProvider
-  { -- | the root, style.toml and the styles of the files (docs/adr ADR 0014)
-    loadFonts :: FilePath -> Style -> [LocalStyles] -> IO (Either [Diagnostic] LoadedFonts)
+  { {- | the root, style.toml and the styles of the files (docs/adr ADR 0014)
+    and the file of the diagnostics about style.toml (golem-driver ADR 0016)
+    -} loadFonts :: FilePath -> FileId -> Style -> [LocalStyles] -> IO (Either [Diagnostic] LoadedFonts)
   }
 
 noFontProvider :: FontProvider
 noFontProvider =
-  FontProvider $ \_ _ _ ->
-    pure (Left [diagnostic "G0801" Error (mkSpan (FileId 0) 0 0) "フォントの処理（golem-font ADR 0001、0002）が未実装のため、PDF を出力できません"])
+  FontProvider $ \_ fid _ _ ->
+    pure (Left [diagnostic "G0801" Error (mkSpan fid 0 0) "フォントを読まない設定（noFontProvider）では PDF を出力できません"])
 
 {- | What the instance ID is computed from: the bytes of every input, the
 embedded font programs and, last, @golem-@ and the version of Golem
@@ -159,7 +163,10 @@ data PdfInput = PdfInput
     -- | the styles each file defines (docs/adr ADR 0014)
     piLocalStyles :: !(Map FileId LocalStyles),
     -- | the master page of each chapter file that names one (golem-driver ADR 0014)
-    piMasters :: !(Map FileId Text)
+    piMasters :: !(Map FileId Text),
+    {- | where diagnostics about style.toml point: style.toml, or the
+    manifest without one (golem-driver ADR 0016)
+    -} piStyleFile :: !FileId
   }
 
 -- | The style of a document: style.toml with the styles its file defines (docs/adr ADR 0014).
@@ -171,6 +178,18 @@ bodyRole :: Style -> Text
 bodyRole style
   | Map.member "body" (stFonts style) = "body"
   | otherwise = maybe "body" fst (Map.lookupMin (stFonts style))
+
+{- | G0807 (golem-driver ADR 0016): style.toml sets no body font, or the
+body role has no file, at the top of @fid@.
+-}
+bodyFontDiagnostics :: FileId -> Style -> [Diagnostic]
+bodyFontDiagnostics fid style
+  | Map.null (stFonts style) = [err "style.toml に本文のフォントがありません。[fonts.body] を書いてください"]
+  | Just (FontRole Nothing Nothing _) <- Map.lookup body (stFonts style) = [err ("[fonts." <> body <> "] にフォントのファイルがありません")]
+  | otherwise = []
+  where
+    body = bodyRole style
+    err = diagnostic "G0807" Error (mkSpan fid 0 0)
 
 {- | The font roles the PDF uses, body first, then the others by name:
 headings (golem-driver ADR 0003), character styles (ADR 0004) and
@@ -360,11 +379,40 @@ data Built = Built
     bLineFiles :: Map Int FileId
   }
 
+{- | What style.toml alone decides before the layout (golem-driver ADR
+0016): the page geometry (G0701) and the indent of each paragraph style
+(G0725), at the top of @fid@. The driver reports them for golem check too.
+-}
+styleLayoutDiagnostics :: FileId -> Style -> [LocalStyles] -> [Diagnostic]
+styleLayoutDiagnostics fid style locals = either id (indentDiagnostics fid style locals) (pageGeometry fid style)
+
+{- | G0725: every paragraph style leaves 8 characters of its own size on a
+line of a column (docs/adr ADR 0006, golem-driver ADR 0005 and 0016), in
+style.toml and in the style of each file (docs/adr ADR 0014).
+-}
+indentDiagnostics :: FileId -> Style -> [LocalStyles] -> PageGeometry -> [Diagnostic]
+indentDiagnostics fid style locals geom =
+  nub
+    [ diagnostic "G0725" Error (mkSpan fid 0 0) ("段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: " <> name)
+    | st <- style : map (withLocalStyles style) locals,
+      name <- Map.keys (stParaStyles st),
+      let ((_, size), Indent s f) = paraLook st geom (Just name),
+      columnMeasure geom - s - max 0 f < 8 * size
+    ]
+
+-- | The page geometry, when style.toml passes 'styleLayoutDiagnostics'.
+checkedGeometry :: PdfInput -> Either [Diagnostic] PageGeometry
+checkedGeometry inp = do
+  geom <- pageGeometry (piStyleFile inp) (piStyle inp)
+  case indentDiagnostics (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp)) geom of
+    [] -> Right geom
+    ds -> Left ds
+
 renderPdf :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ByteString)
-renderPdf provider inp = case pageGeometry (piStyle inp) of
+renderPdf provider inp = case checkedGeometry inp of
   Left ds -> pure (Left ds)
   Right geom -> do
-    lf <- loadFonts provider (piRoot inp) (piStyle inp) (Map.elems (piLocalStyles inp))
+    lf <- loadFonts provider (piRoot inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> do
@@ -378,10 +426,10 @@ renderPdf provider inp = case pageGeometry (piStyle inp) of
 with no page numbers assumed (for tests).
 -}
 flowLines :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ([Flow], [(Sp, Sp)]))
-flowLines provider inp = case pageGeometry (piStyle inp) of
+flowLines provider inp = case checkedGeometry inp of
   Left ds -> pure (Left ds)
   Right geom -> do
-    lf <- loadFonts provider (piRoot inp) (piStyle inp) (Map.elems (piLocalStyles inp))
+    lf <- loadFonts provider (piRoot inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> do
@@ -397,7 +445,13 @@ layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) <> listNum
     figures <- loadFigures inp
     -- S2: compose with assumed page numbers until they settle
     let terms = Map.fromList [(sp, T.intercalate " / " (igTerms g)) | g <- bookIndex (piBook inp), (_, sp) <- igLocations g]
-    result <- fixpoint geom (\sp -> Map.findWithDefault "" sp terms) (buildFlow inp geom fonts figures)
+    let capacity = length (pgLineGrid geom)
+        round' assumed = do
+          built <- buildFlow inp geom fonts figures assumed
+          pure (if null (bErrors built) then Right (built, paginate (length (pgColumns geom)) capacity (bFlow built)) else Left (bErrors built))
+        labels = labelSpans (piBook inp)
+        labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
+    result <- fixpoint labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
     pure $ case result of
       Left ds -> Left ds
       Right (built, pages) ->
@@ -581,10 +635,10 @@ tocGeometry style geom fonts =
 (golem-driver ADR 0007): the boxes of a line joined.
 -}
 layoutPages :: FontProvider -> PdfInput -> IO (Either [Diagnostic] [[Text]])
-layoutPages provider inp = case pageGeometry (piStyle inp) of
+layoutPages provider inp = case checkedGeometry inp of
   Left ds -> pure (Left ds)
   Right geom -> do
-    lf <- loadFonts provider (piRoot inp) (piStyle inp) (Map.elems (piLocalStyles inp))
+    lf <- loadFonts provider (piRoot inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> fmap texts <$> layoutPdf inp geom fonts
@@ -676,6 +730,18 @@ sidenoteDiagnostics geom book
       CharStyle _ _ xs -> concatMap (inlineSites flow) xs
       _ -> []
 
+-- | The block of each label, where G0721 points (golem-driver ADR 0016).
+labelSpans :: Book -> Map Text SrcSpan
+labelSpans book = Map.fromListWith (\_ old -> old) (concatMap site (concat [bs | Document _ bs <- bookDocs book]))
+  where
+    site (Block sp l body) =
+      [(name, sp) | Just name <- [l]] <> case body of
+        BulletList items -> concatMap (concatMap site . itemBlocks) items
+        OrderedList items -> concatMap (concatMap site . itemBlocks) items
+        DefList gs -> concatMap (concatMap (concatMap site) . dgDefs) gs
+        FigureBlock fig -> concatMap site (figCaption fig)
+        _ -> []
+
 {- | Numbers of list items that the number format of their depth cannot
 write (golem-driver ADR 0013): G0729 at the item, whatever the target.
 -}
@@ -727,26 +793,37 @@ data Assumed = Assumed
   }
   deriving stock (Eq, Show)
 
-fixpoint :: PageGeometry -> (SrcSpan -> Text) -> (Assumed -> IO Built) -> IO (Either [Diagnostic] (Built, [PageOut]))
-fixpoint geom termOf layoutWith = go (1 :: Int) (Assumed Map.empty Map.empty)
+{- | S2: lays out with assumed page numbers until the pages of the labels
+and index marks settle. A round that fails stops it with its errors;
+after 'maxIterations' rounds, G0721 names what still moves and is at the
+first of them (golem-driver ADR 0016): the block of a label (@labelSpan@)
+or an index mark.
+-}
+fixpoint :: (Text -> SrcSpan) -> (SrcSpan -> Text) -> (Assumed -> IO (Either [Diagnostic] (b, [PageOut]))) -> IO (Either [Diagnostic] (b, [PageOut]))
+fixpoint labelSpan termOf layoutWith = go (1 :: Int) (Assumed Map.empty Map.empty)
   where
-    capacity = length (pgLineGrid geom)
     go i assumed = do
-      built <- layoutWith assumed
-      let pages = paginate (length (pgColumns geom)) capacity (bFlow built)
-          actual = Assumed (labelPages pages) (markPages pages)
-      if not (null (bErrors built))
-        then pure (Left (bErrors built))
-        else
-          if actual == assumed
-            then pure (Right (built, pages))
-            else
-              if i >= maxIterations
-                then pure (Left [diagnostic "G0721" Error (mkSpan (FileId 0) 0 0) ("ページ番号の参照が収束しません: " <> T.intercalate ", " (moved actual asLabels id <> nub (moved actual asMarks termOf)))])
-                else go (i + 1) actual
+      r <- layoutWith assumed
+      case r of
+        Left ds -> pure (Left ds)
+        Right (built, pages) ->
+          let actual = Assumed (labelPages pages) (markPages pages)
+           in if actual == assumed
+                then pure (Right (built, pages))
+                else
+                  if i >= maxIterations
+                    then pure (Left [notSettled (moved actual asLabels) (moved actual asMarks)])
+                    else go (i + 1) actual
       where
-        moved :: (Ord k) => Assumed -> (Assumed -> Map k Integer) -> (k -> Text) -> [Text]
-        moved now field name = [name k | k <- Map.keys (Map.union (field now) (field assumed)), Map.lookup k (field now) /= Map.lookup k (field assumed)]
+        moved :: (Ord k) => Assumed -> (Assumed -> Map k Integer) -> [k]
+        moved now field = [k | k <- Map.keys (Map.union (field now) (field assumed)), Map.lookup k (field now) /= Map.lookup k (field assumed)]
+    notSettled labels marks =
+      let named = [(labelSpan l, l) | l <- labels] <> nubOn snd [(m, termOf m) | m <- marks]
+          sites = map fst named
+       in (diagnostic "G0721" Error (fromMaybe (mkSpan (FileId 0) 0 0) (listToMaybe sites)) ("ページ番号の参照が収束しません: " <> T.intercalate ", " (map snd named)))
+            { diagRelated = [(sp, "ページが定まりません") | sp <- drop 1 sites]
+            }
+    nubOn key = reverse . fst . foldl (\(acc, seen) x -> if key x `elem` seen then (acc, seen) else (x : acc, key x : seen)) ([], [])
 
 {- | The composition environment of a unit set in a font role at a size
 (golem-driver ADR 0003).
@@ -1244,7 +1321,7 @@ buildFlow inp geom fonts images assumed = do
                              in (nid + length (cLines c), boxAcc <> bs, Map.union setAcc set)
                           tooNarrow =
                             [ if null (uLists (unitAt Map.! j))
-                                then diagnostic "G0725" Error (uSpan (unitAt Map.! j)) "段落の字下げが大きすぎます。回り込む図版の脇の行が残りません"
+                                then diagnostic "G0728" Error (uSpan (unitAt Map.! j)) "回り込む図版の脇で、字下げを引くと行が残りません"
                                 else listTooDeep (uSpan (unitAt Map.! j))
                             | (j, c, off) <- paras,
                               any (\k -> wrappedLineWidth measure ex off k - lineIndent (uKind (unitAt Map.! j)) k <= 0) [0 .. length (cLines c) - 1]
@@ -1278,16 +1355,6 @@ buildFlow inp geom fonts images assumed = do
                       )
                     _ -> (headAcc, errs)
                in (nextId + length ls, flows <> flowOf, Map.union lineAcc set, figAcc, headAcc', errs')
-      -- every paragraph style leaves 8 characters of its size (docs/adr ADR 0006, golem-driver ADR 0005)
-      -- in style.toml and in the style of each file (docs/adr ADR 0014)
-      indentErrors =
-        nub
-          [ diagnostic "G0725" Error (mkSpan (FileId 0) 0 0) ("段落の字下げが大きすぎます。行長を本文の文字の大きさの 8 字分以上残してください: " <> name)
-          | st <- style : map (withLocalStyles style) (Map.elems (piLocalStyles inp)),
-            name <- Map.keys (stParaStyles st),
-            let ((_, size), Indent s f) = paraLook st geom (Just name),
-            measure - s - max 0 f < 8 * size
-          ]
       -- the text of a list item leaves 8 characters of the type area (golem-driver ADR 0013)
       listTooDeep sp = diagnostic "G0727" Error sp "リストの入れ子が深く、項目の本文の行長が足りません。行長を本文の文字の大きさの 8 字分以上残してください"
       deepLists =
@@ -1305,7 +1372,7 @@ buildFlow inp geom fonts images assumed = do
       stepFiles (acc@(n0, _, _, _, _, _, _, _), files) iu@(_, u) =
         let acc'@(n1, _, _, _, _, _, _, _) = step acc iu
          in (acc', if n1 > n0 then Map.insert n0 (spanFile (uSpan u)) files else files)
-      ((_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths), (headingSpans, tocLines)), lineFiles) = foldl stepFiles ((0, [], Map.empty, Map.empty, Map.empty, indentErrors <> deepLists, (Map.empty, Map.empty), (Map.empty, Map.empty)), Map.empty) units
+      ((_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths), (headingSpans, tocLines)), lineFiles) = foldl stepFiles ((0, [], Map.empty, Map.empty, Map.empty, deepLists, (Map.empty, Map.empty), (Map.empty, Map.empty)), Map.empty) units
   pure (Built flow lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines lineFiles)
 
 -- | Which line (0-based) contains the item at an index.

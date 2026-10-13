@@ -133,6 +133,17 @@ runningHeadTests =
       testCase "the message names the value and the vocabulary" $ do
         let ms = messages (runningHead "content = \"chapter\"")
         assertBool (show ms) (any ("heading.<階層>.short" `T.isInfixOf`) ms && any ("chapter" `T.isInfixOf`) ms),
+      testCase "an unknown position of a running head or a folio is G0318 (golem-driver ADR 0016)" $ do
+        let st = parseStyle (FileId 0) "[masters.body]\nrunning-head = { position = \"middle\", content = \"title\" }\n"
+        codes st @?= ["G0318"]
+        map (T.isPrefixOf "未知の位置です: middle") (messages st) @?= [True]
+        let fo = parseStyle (FileId 0) "[masters.body]\nfolio = { position = \"middle\", format = \"{n}\" }\n"
+        codes fo @?= ["G0318"]
+        map (T.isPrefixOf "未知の位置です: middle") (messages fo) @?= [True]
+        case fo of
+          Left [d] -> spanStart (diagSpan d) @?= T.length "[masters.body]\nfolio = { position = "
+          other -> assertFailure (show other)
+        codes (parseStyle (FileId 0) "[masters.body]\nfolio = { position = \"bottom-center\", format = \"{n}\" }\n") @?= [],
       testCase "the running-head of a heading is retired (G0319)" $ do
         let r = parseStyle (FileId 0) "[headings.1]\nrunning-head = true\n"
         codes r @?= ["G0319"]
@@ -810,6 +821,8 @@ pageSizeTests =
     testCase "errors are G0317" $ do
       g0317 "\"148mm x 210mm\"" "未知の判型です: 148mm x 210mm。表にない判型は size = { width = \"…\", height = \"…\" } で書きます"
       g0317 "\"A3\"" "未知の判型です: A3"
+      -- a name with x is no longer left to the PDF's G0701 (golem-driver ADR 0016)
+      g0317 "\"148x210\"" "未知の判型です: 148x210"
       g0317 "\"菊版\"" "未知の判型です: 菊版"
       g0317 "\"新書版\"" "未知の判型です: 新書版"
       g0317 "{ width = \"148mm\" }" "判型の width と height はどちらも必須です"

@@ -676,11 +676,30 @@ instance FromValue SidenoteStyle where
     m <- enumKey "marker" ["number", "symbol", "none"]
     pure (SidenoteStyle w g (fromMaybe "number" m))
 
+-- | The positions of a running head and a folio (golem-driver ADR 0014).
+masterPositions :: [Text]
+masterPositions = ["top-outside", "top-inside", "top-center", "bottom-outside", "bottom-inside", "bottom-center"]
+
+{- | A position of a master page; an unknown one is an error at its value,
+which makes it G0318 (golem-driver ADR 0016).
+-}
+newtype MasterPosition = MasterPosition Text
+
+instance FromValue MasterPosition where
+  fromValue v = case v of
+    Text' l p
+      | p `elem` masterPositions -> pure (MasterPosition p)
+      | otherwise -> failAt l ("未知の位置です: " <> T.unpack p)
+    _ -> typeError "position such as top-outside" v
+
+reqPosition :: ParseTable l Text
+reqPosition = (\(MasterPosition p) -> p) <$> reqKey "position"
+
 data PosContent = PosContent Text Text
 
 instance FromValue PosContent where
   fromValue = parseTableFromValue $ do
-    p <- reqKey "position"
+    p <- reqPosition
     c <- optKey "content"
     f <- optKey "format"
     pure (PosContent p (fromMaybe "" (c <> f)))
@@ -696,7 +715,7 @@ G0314.
 -}
 instance FromValue RunningHeadDef where
   fromValue = parseTableFromValue $ do
-    p <- reqKey "position"
+    p <- reqPosition
     let contentOf v = do
           t <- fromValue v
           maybe (failAt (valueAnn v) (runningContentMessage t)) (pure . (t,)) (parseRunningContent t)
@@ -879,6 +898,8 @@ parseStyle fid src = do
       ScopeKey "lists" : _ -> "G0322"
       -- the contents of a running head are G0314, the retired running-head of a heading G0319 (golem-driver ADR 0014)
       ScopeKey "masters" : _ : ScopeKey "running-head" : ScopeKey k : _ | k `elem` ["content", "even", "odd"] -> "G0314"
+      -- an unknown position of a running head or a folio is G0318 (golem-driver ADR 0016)
+      ScopeKey "masters" : _ : ScopeKey k : ScopeKey "position" : _ | k `elem` ["running-head", "folio"] -> "G0318"
       ScopeKey "headings" : _ : ScopeKey "running-head" : _ -> "G0319"
       _ -> "G0306"
 

@@ -137,11 +137,23 @@ loadFont bytes = unsafePerformIO $ do
             ordering <- peek op >>= peekCString . unConstPtr
             supplement <- fromIntegral <$> peek sp
             pure (cidSystemInfo registry ordering supplement)
-      -- 0x0002: restricted licence embedding; 0x0200: bitmap embedding only
       pure $
-        if fsType == 0x0002 || (fsType `div` 0x0200) `mod` 2 == 1
+        if embeddingRestricted fsType
           then Left (EmbeddingRestricted fsType)
           else Right (Font fp bytes upem cff n ext ps ros)
+
+{- | Whether fsType forbids Golem to embed the font (golem-driver ADR 0016),
+as the OpenType specification reads it: bits 0 to 3 are usage permissions
+and the least restrictive one set applies, so bit 1 (restricted licence
+embedding) forbids only without bit 2 (preview and print) or bit 3
+(editable); bit 8 forbids subsetting, and Golem embeds only subsets; bit 9
+allows bitmap embedding only.
+-}
+embeddingRestricted :: Int -> Bool
+embeddingRestricted fsType =
+  (set 1 && not (set 2) && not (set 3)) || set 8 || set 9
+  where
+    set = testBit fsType
 
 {- | A ROS that a PDF string can hold as it is: printable ASCII and a
 supplement that is not negative (golem-pdf ADR 0006).

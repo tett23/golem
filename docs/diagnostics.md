@@ -57,7 +57,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。下に節を置く。
 - **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。下に節を置く。
-- **空き**：G0104 から G0109、G0125 から G0128、G0255、G0601、G0703 から G0720、G0728、G0730、G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
+- **空き**：G0104 から G0109、G0125 から G0128、G0255、G0601、G0703 から G0720、G0730、G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
 
 ## G0101
 
@@ -2468,6 +2468,32 @@ manifest.toml がありません
 表の名前（`"A4"`、`"A5"`、`"A6"`、`"B5"`、`"B6"`、`"四六判"`、`"菊判"`、`"新書判"`、`"mass-market"`）を書くか、`size = { width = "148mm", height = "210mm" }` のように寸法で書く。
 単位は `mm`、`pt`、`Q`、`H` とし、`zw` は使わない。
 
+## G0318
+
+マスターページの位置が不正です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[masters.<名前>]` の `running-head` か `folio` の `position` が、`top-outside`、`top-inside`、`top-center`、`bottom-outside`、`bottom-inside`、`bottom-center` のどれでもない。
+`style.toml` を読むときに検査するので、ターゲットにかかわらず、`golem check` と LSP も報告する。
+位置は `position` の値の位置である。
+
+- メッセージ: `未知の位置です: <位置>`。誤った箇所の経路を添える。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
+
+### 主な原因
+
+- `position` の綴りを誤った。
+- `middle` や `top` のように、表にない位置を書いた。
+
+### 直し方
+
+`position` に上の 6 つのどれかを書く。
+
 ## G0319
 
 見出しの running-head は廃止しました
@@ -3046,10 +3072,17 @@ plugins.lock を読めません
 ### 意味
 
 `style.toml` の版面の設定から、PDF の版面を計算できない。
+次の順に検査し、最初に当てはまったものを一つだけ報告する。
+`[page]` がない（`style.toml` がない場合を含む）、`[page.grid]` がない、`[page.grid]` の `font-size` が正の絶対的な寸法でない、字数か行数か段数が 0 以下か行送りが文字の大きさより小さい、版面が判型からはみ出す、縦組みの版面に `[sidenotes]` がある、段組みの版面に `[sidenotes]` がある、傍注欄が判型からはみ出す、の順である。
+PDF をターゲットに含むときは、ビルドと `golem check` の両方で、レイアウトの前に報告する。
+PDF を書かない。
+LSP は出さない。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+未知の判型は [G0317](#g0317)、マスターページの未知の位置は [G0318](#g0318) である。
 
-- メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注欄を設けられません`、`段組みの版面には傍注欄を設けられません`、`版面と傍注欄の合計がページからはみ出しています`、`未知の位置です: <位置>`
-- 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`）
-- ADR: ADR なし（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[docs/adr/0018](adr/0018-multi-column-layout.md) が触れる）
+- メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注欄を設けられません`、`段組みの版面には傍注欄を設けられません`、`版面と傍注欄の合計がページからはみ出しています`
+- 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`、golem-driver の `Golem.Driver`）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[docs/adr/0018](adr/0018-multi-column-layout.md) も触れる）
 
 ### 主な原因
 
@@ -3059,7 +3092,6 @@ plugins.lock を読めません
 - 版面か傍注欄が判型からはみ出している。
 - 縦組みの版面に傍注欄を設けた。
 - `[page.grid]` の `columns` が 2 以上の版面に傍注欄（`[sidenotes]`）を設けた。
-- `position` に未知の位置を書いた。
 
 ### 直し方
 
@@ -3098,12 +3130,16 @@ PDF をターゲットに含まないビルドと LSP では出さない。
 
 ### 意味
 
-ページ番号の参照（`ref-page`、目次、索引）を解決するためにレイアウトを繰り返したが、上限の回数までに収束しなかった。
-メッセージは、ページの変わり続けたラベルと索引の語を並べる。
+ページ番号の参照（`ref-page`、索引）を解決するためにレイアウトを繰り返したが、上限の 5 回までに収束しなかった。
+メッセージは、最後の二回のレイアウトでページの変わったラベルを名前の順に並べ、続けて、ページの変わった索引の印の語を印の位置の順に並べる。
+目次のページ番号は繰り返しの外で決めるので、見出しは並ばない。
+繰り返しの途中のレイアウトがほかのエラーを出した場合は、そのエラーを報告し、このコードは出さない。
+PDF を書かない。
+位置は並びの最初のもの（ラベルならそのラベルを付けたブロック、索引の語ならその印）で、二つ目以降のものの位置を関連情報に `ページが定まりません` として載せる。
 
 - メッセージ: `ページ番号の参照が収束しません: <ラベルと索引の語>`
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
-- ADR: ADR なし（[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md) がメッセージに索引の語を加えた。[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md) も触れる）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md) がメッセージに索引の語を加えた。[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md) も触れる）
 
 ### 主な原因
 
@@ -3186,29 +3222,32 @@ PDF をターゲットに含まないビルドと LSP では出さない。
 
 ## G0725
 
-段落の字下げが大きすぎます
+段落スタイルの字下げが大きすぎます
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-段落スタイルの字下げの後の行長が、段落の文字の大きさの 8 字分に満たない。
-または、回り込む図版の脇で、字下げを引いた行の長さが 0 以下になる。
+`style.toml` か原稿のファイルが定める段落スタイルについて、版面の段の行長から `indent` と `first-line-indent`（負なら 0）を引いた値が、その段落スタイルの文字の大きさの 8 字分に満たない。
+PDF をターゲットに含むときは、ビルドと `golem check` の両方で、レイアウトの前に報告する。
+PDF を書かない。
+LSP は出さない。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+回り込む図版の脇で行が残らない場合は [G0728](#g0728) である。
 
-- メッセージ: `段落の字下げが大きすぎます。行長を本文の文字の大きさの 8 字分以上残してください: <名前>`、`段落の字下げが大きすぎます。回り込む図版の脇の行が残りません`
-- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
-- ADR: [docs/adr/0006](adr/0006-paragraph-indent.md)
+- メッセージ: `段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: <名前>`
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- ADR: [docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
 
 ### 主な原因
 
 - 段落スタイルの `indent` と `first-line-indent` が大きく、行長が段落の文字の大きさの 8 字分に満たない。
-- 回り込む図版の脇で、字下げを引いた行の長さが 0 以下になる。
+- 版面の一行の字数が少ない。
 
 ### 直し方
 
-段落スタイルの `indent` と `first-line-indent` を小さくする。
-図版の脇なら、図版の幅も小さくする。
+段落スタイルの `indent` と `first-line-indent` を小さくするか、`[page.grid]` の `characters` を増やす。
 
 ## G0726
 
@@ -3264,6 +3303,31 @@ PDF で、入れ子のリストの字下げの後に残る項目の本文の行�
 リストの入れ子を浅くする。
 印の幅を狭くするために、`[lists]` の `bullets` と `numbers` に短い印を書くか、`gap` を小さくする。
 
+## G0728
+
+回り込む図版の脇で、字下げを引くと行が残りません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF で、回り込む図版の脇の段落に、図版の脇の行の長さから字下げを引いた値が 0 以下になる行がある。
+段落一つにつき一つ報告し、位置はその段落である。
+リストの項目の段落では、代わりに [G0727](#g0727) を報告する。
+
+- メッセージ: `回り込む図版の脇で、字下げを引くと行が残りません`
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
+
+### 主な原因
+
+- 回り込む図版が広く、脇の行の長さが段落の字下げより短い。
+
+### 直し方
+
+図版の `width` を小さくするか、その段落の字下げを小さくする。
+
 ## G0729
 
 リストの番号を書式で表せません
@@ -3293,7 +3357,7 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 
 ## G0732
 
-縦組みの段落の中には傍注を置けません
+縦組みの版面では傍注を使えません
 
 - 重大度: エラー
 - 状態: 使用中
@@ -3302,10 +3366,14 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 
 縦組みの版面で傍注を使った。
 縦組みでは傍注欄を設けない。
+段落、見出し、リストの項目、定義リスト、表のセル、図版のキャプションの傍注と、圏点、色、文字スタイル、脚注の本文の中の傍注を、一つにつき一つ報告する。
+縦組みのときは、[G0734](#g0734) と [G0735](#g0735) を出さない。
+PDF を書かない。
+位置は傍注の位置である。
 
-- メッセージ: `縦組みの段落の中には傍注を置けません`
-- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Japanese`）
-- ADR: ADR なし（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md) が既存のコードとして使う）
+- メッセージ: `縦組みの版面では傍注を使えません。脚注に替えてください`
+- 段階とモジュール: レイアウト（golem-layout の `Golem.Layout.Japanese`、golem-driver の `Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md) と [golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md) が条件を定めた）
 
 ### 主な原因
 
@@ -3446,11 +3514,12 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 
 フォントを読まない `noFontProvider` で PDF を作ろうとした。
 `golem` のコマンドは本物のフォントの読み込みを使うので、利用者がこのコードを見ることはない。
-テストだけが使う。
+テストが、フォントなしで PDF の経路の手前までを確かめるために使う。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
 
-- メッセージ: `フォントの処理（golem-font ADR 0001、0002）が未実装のため、PDF を出力できません`
+- メッセージ: `フォントを読まない設定（noFontProvider）では PDF を出力できません`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`）
-- ADR: ADR なし（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md) が使用済みの番号として触れる）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -3470,23 +3539,25 @@ PDF のフォントのファイルがありません
 
 ### 意味
 
-PDF が使う役割のフォントのファイルがないか、本文のフォントが設定されていない。
+PDF が使う役割のフォントのファイルがないか、パスが不正である。
 PDF を書かない。
+`golem check` も報告する。
 LSP は出さない。
+位置は `style.toml` の先頭である。
+本文のフォントの設定がない場合は [G0807](#g0807) である。
 
-- メッセージ: `フォントのファイルがありません: <パス>`、`style.toml に本文のフォント（[fonts.body]）がありません`、`[fonts.body] にフォントのファイルがありません`
+- メッセージ: `フォントのファイルがありません: <パス>`、またはパスの誤りの文言（`絶対パスは使えません: <パス>` など）
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Fonts`）
-- ADR: [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)（ターゲットごとの検査を定めた。[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md) も触れる）
+- ADR: [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)（ターゲットごとの検査を定めた）、[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（本文のフォントの設定の欠けを G0807 に分けた。[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md) も触れる）
 
 ### 主な原因
 
 - `style.toml` の `[fonts]` のパスの綴りを誤ったか、ファイルを置いていない。
-- 本文のフォント（`[fonts.body]`）を設定していない。
 - `golem new --no-fonts` で作ったプロジェクトに、まだフォントを置いていない。
 
 ### 直し方
 
-`style.toml` の `[fonts]` に本文のフォントを書き、指すファイルを置く。
+`style.toml` の `[fonts]` のパスを直すか、指すファイルを置く。
 
 ## G0803
 
@@ -3497,11 +3568,14 @@ LSP は出さない。
 
 ### 意味
 
-フォントのファイルを、OpenType のフォントとして読めない。
+PDF が使う役割のフォントのファイルを、OpenType（TrueType の輪郭か CFF の輪郭）のフォントとして開けない。
+読み込めないファイルをすべて、パスごとに一つずつ報告する。
+PDF を書かない。
+位置は `style.toml` の先頭である。
 
-- メッセージ: `フォントを読み込めません: <パス>`
+- メッセージ: `フォントを読み込めません: <パス>`。パスは `style.toml` に書いたとおりである。
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`）
-- ADR: ADR なし
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -3522,18 +3596,26 @@ LSP は出さない。
 ### 意味
 
 フォントの OS/2 の `fsType` が、PDF への埋め込みを禁じている。
+OpenType の仕様に従い、次のどれかに当てはまれば埋め込まない。
+ビット 1（`0x0002`、制限付きのライセンス）が立ち、ビット 2（`0x0004`）とビット 3（`0x0008`）が立っていない。
+ビット 8（`0x0100`、サブセット化の禁止）が立っている。
+Golem はサブセットしか埋め込まないためである。
+ビット 9（`0x0200`、ビットマップの埋め込みだけを許す）が立っている。
+読み込めないファイルをすべて、パスごとに一つずつ報告する。
+PDF を書かない。
+位置は `style.toml` の先頭である。
 
-- メッセージ: `ライセンスが埋め込みを禁じているフォントです（fsType <値>）: <パス>`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`）
-- ADR: ADR なし
+- メッセージ: `ライセンスが埋め込みを禁じているフォントです（fsType <値>）: <パス>`。値は `0x0102` のように `0x` と 4 桁の大文字の 16 進数で書く。
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`、golem-font の `Golem.Font`）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md) がエラーにすると定めた）
 
 ### 主な原因
 
-- フォントの OS/2 の `fsType` が、PDF への埋め込みを禁じている。
+- フォントの OS/2 の `fsType` が、PDF への埋め込みかサブセット化を禁じている。
 
 ### 直し方
 
-埋め込みを許すフォントに替える。
+埋め込みとサブセット化を許すフォントに替える。
 
 ## G0805
 
@@ -3545,10 +3627,12 @@ PostScript 名が同じ異なるフォントがあります
 ### 意味
 
 バイト列の異なる二つのフォントのファイルが、同じ PostScript 名を持つ。
+[G0803](#g0803) と [G0804](#g0804) がないときだけ検査する。
+位置は `style.toml` の先頭である。
 
 - メッセージ: `PostScript 名が同じ異なるフォントがあります: <名前>（<パス>、<パス>）`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`）
-- ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)
+- ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)（位置は [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）
 
 ### 主な原因
 
@@ -3583,3 +3667,31 @@ LSP は出さない。
 ### 直し方
 
 ICC プロファイルのファイルを置くか、パスを直す。
+
+## G0807
+
+PDF の本文のフォントの設定がありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF をターゲットに含むのに、`style.toml` の `[fonts]` に役割が一つもないか、本文の役割に `ja` も `latin` もない。
+本文の役割は `body` で、`[fonts]` に `body` がなければ名前の順で最初の役割である。
+`golem check` も報告し、PDF のレイアウトに進まない。
+LSP は出さない。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+
+- メッセージ: `style.toml に本文のフォントがありません。[fonts.body] を書いてください`、`[fonts.<役割>] にフォントのファイルがありません`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
+
+### 主な原因
+
+- `style.toml` に `[fonts.body]` を書いていない。
+- 本文の役割に `features` だけを書き、`ja` と `latin` を書いていない。
+
+### 直し方
+
+`style.toml` に `[fonts.body]` を書き、`ja` か `latin` にフォントのファイルのパスを書く。

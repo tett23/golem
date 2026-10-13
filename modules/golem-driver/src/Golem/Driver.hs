@@ -388,12 +388,17 @@ build opts = do
           infos =
             (if hasStyle then Map.insert styleFid (SourceInfo "style.toml" (mkLineIndex (evStyleText e))) else id)
               (withLockSource e (sourceInfos project))
-          marksDiags = cropMarkDiagnostics opts e (if hasStyle then styleFid else projectManifestFile project) targets
+          -- where diagnostics about style.toml point (golem-driver ADR 0016)
+          diagFid = if hasStyle then styleFid else projectManifestFile project
+          -- G0702, and what style.toml decides of the layout (G0701, G0725; golem-driver ADR 0016)
+          marksDiags =
+            cropMarkDiagnostics opts e diagFid targets
+              <> (if TargetPdf `elem` targets then styleLayoutDiagnostics diagFid (evStyle e) (Map.elems (localStylesOf e)) else [])
       -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
       missing <- missingStyleFiles (optRoot opts) (evStyle e)
-      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics styleFid (evStyle e) (Map.elems (localStylesOf e)) missing t)) | t <- targets]
+      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid (evStyle e) (Map.elems (localStylesOf e)) missing t)) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
-          -- G0702 stops the PDF before it is laid out; the other targets are written
+          -- G0701, G0702 and G0725 stop the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
       case evBook e of
         Just book
@@ -402,7 +407,7 @@ build opts = do
               let listDiags = listNumberDiagnostics (evStyle e) (maybe False pageVertical (stPage (evStyle e))) book
               (written, outDiags) <-
                 if null listDiags || null writable
-                  then writeTargets opts e book missing writable
+                  then writeTargets opts e diagFid book missing writable
                   else pure ([], listDiags)
               pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags <> outDiags)) infos written)
         _ -> pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags)) infos [])
@@ -419,11 +424,13 @@ missingStyleFiles root style = do
 {- | Diagnostics of the missing files for one target (golem-project ADR
 0004): the fonts the PDF uses and its output intent (errors), every font
 for HTML and EPUB (warnings, errors in prod), nothing for plain text.
+The PDF also needs a body font with a file (G0807, golem-driver ADR 0016).
 -}
 targetFileDiagnostics :: FileId -> Style -> [LocalStyles] -> Map FilePath PathError -> Target -> [Diagnostic]
 targetFileDiagnostics fid style locals missing = \case
   TargetPdf ->
-    report "G0802" Error "フォントのファイルがありません" pdfFonts
+    bodyFontDiagnostics fid style
+      <> report "G0802" Error "フォントのファイルがありません" pdfFonts
       <> report "G0806" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
   TargetHtml -> siteFonts
   TargetEpub -> siteFonts
@@ -469,8 +476,8 @@ optionsInput opts =
     <> " profile="
     <> (case optProfile opts of Dev -> "dev"; Prod -> "prod")
 
-writeTargets :: BuildOptions -> Evaluated -> Book -> Map FilePath PathError -> [Target] -> IO ([FilePath], [Diagnostic])
-writeTargets opts e book missing targets = do
+writeTargets :: BuildOptions -> Evaluated -> FileId -> Book -> Map FilePath PathError -> [Target] -> IO ([FilePath], [Diagnostic])
+writeTargets opts e diagFid book missing targets = do
   let root = optRoot opts
       project = evProject e
       style = evStyle e
@@ -576,7 +583,7 @@ writeTargets opts e book missing targets = do
           out = dir </> pdfFileName (mdId md)
           -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
           inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]))
+      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid)
       case r of
         Left ds -> pure ([], ds)
         Right bytes -> do

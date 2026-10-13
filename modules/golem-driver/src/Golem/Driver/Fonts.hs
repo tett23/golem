@@ -18,31 +18,50 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Driver.Pdf (FontProvider (..), LoadedFonts (..), Shaped (..), bodyRole, usedRoles)
+import Golem.Driver.Pdf (FontProvider (..), LoadedFonts (..), Shaped (..), bodyFontDiagnostics, bodyRole, usedRoles)
 import Golem.Font
 import Golem.Layout.Japanese (CharClass (..), charClass, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
 import Golem.Pdf qualified as P
-import Golem.Project.Paths (resolveInRoot)
+import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Syntax
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
+import Text.Printf (printf)
 
+{- | Every file that cannot be loaded is reported, once per path (G0802,
+G0803, G0804); G0805 is checked only when all are loaded. The
+diagnostics are at the top of @fid@ (golem-driver ADR 0016).
+-}
 golemFontProvider :: FontProvider
-golemFontProvider = FontProvider $ \root style locals ->
+golemFontProvider = FontProvider $ \root fid style locals ->
   let body = bodyRole style
-   in case Map.lookup body (stFonts style) of
-        Nothing -> pure (Left [err "G0802" "style.toml に本文のフォント（[fonts.body]）がありません"])
-        Just role | null (catMaybes [frJa role, frLatin role]) -> pure (Left [err "G0802" "[fonts.body] にフォントのファイルがありません"])
-        Just _ -> do
+      err code = diagnostic code Error (mkSpan fid 0 0)
+      load path = do
+        r <- resolveInRoot root path
+        case r of
+          -- reported by the driver before the fonts are loaded; kept for a provider used alone
+          Left e -> pure (Left (err "G0802" (T.pack ((if e == Missing then "フォントのファイルがありません" else pathErrorMessage e) <> ": " <> path))))
+          Right rel -> do
+            bytes <- BS.readFile (root </> rel)
+            pure $ case loadFont bytes of
+              Right f -> Right (bytes, f, path)
+              Left Unreadable -> Left (err "G0803" ("フォントを読み込めません: " <> T.pack path))
+              Left (EmbeddingRestricted t) -> Left (err "G0804" ("ライセンスが埋め込みを禁じているフォントです（fsType " <> T.pack (printf "0x%04X" t) <> "）: " <> T.pack path))
+   in case bodyFontDiagnostics fid style of
+        -- reported by the driver before the fonts are loaded; kept for a provider used alone
+        ds@(_ : _) -> pure (Left ds)
+        [] -> do
           let roles = [(r, fr) | r <- usedRoles style locals, Just fr <- [Map.lookup r (stFonts style)]]
-          loaded <- mapM (\(r, fr) -> (r,fr,,) <$> traverse (load root) (frJa fr) <*> traverse (load root) (frLatin fr)) roles
-          pure $ case [d | (_, _, ja, la) <- loaded, Left d <- catMaybes [ja, la]] of
-            (d : _) -> Left [d]
+              paths = nubOrd (concat [catMaybes [frJa fr, frLatin fr] | (_, fr) <- roles])
+          loadedPaths <- Map.fromList <$> mapM (\p -> (p,) <$> load p) paths
+          let side f fr = f fr >>= \p -> either (const Nothing) Just =<< Map.lookup p loadedPaths
+              files = [(r, fr, side frJa fr, side frLatin fr) | (r, fr) <- roles]
+          pure $ case [d | p <- paths, Just (Left d) <- [Map.lookup p loadedPaths]] of
+            ds@(_ : _) -> Left ds
             [] ->
-              let files = [(r, fr, right ja, right la) | (r, fr, ja, la) <- loaded]
-                  -- faces in order: body Japanese, body Latin, then the other roles by name; the same bytes are one face
+              let -- faces in order: body Japanese, body Latin, then the other roles by name; the same bytes are one face
                   ordered = concat [catMaybes [ja, la] | (_, _, ja, la) <- files]
                   faces = nubOn (\(b, _, _) -> b) ordered
                   faceOf (b, _, _) = length (takeWhile (\(b', _, _) -> b' /= b) faces)
@@ -60,20 +79,6 @@ golemFontProvider = FontProvider $ \root style locals ->
                     ((n, p1, p2) : _) -> Left [err "G0805" ("PostScript 名が同じ異なるフォントがあります: " <> n <> "（" <> T.pack p1 <> "、" <> T.pack p2 <> "）")]
                     [] -> Right (provide [f | (_, f, _) <- faces] body roleFaces)
   where
-    err code = diagnostic code Error (mkSpan (FileId 0) 0 0)
-    right = \case
-      Just (Right x) -> Just x
-      _ -> Nothing
-    load root path = do
-      r <- resolveInRoot root path
-      case r of
-        Left _ -> pure (Left (err "G0802" ("フォントのファイルがありません: " <> T.pack path)))
-        Right rel -> do
-          bytes <- BS.readFile (root </> rel)
-          pure $ case loadFont bytes of
-            Right f -> Right (bytes, f, path)
-            Left Unreadable -> Left (err "G0803" ("フォントを読み込めません: " <> T.pack path))
-            Left (EmbeddingRestricted t) -> Left (err "G0804" ("ライセンスが埋め込みを禁じているフォントです（fsType " <> T.pack (show t) <> "）: " <> T.pack path))
     nubOn key = reverse . fst . foldl' (\(acc, seen) x -> if key x `elem` seen then (acc, seen) else (x : acc, key x : seen)) ([], [])
 
 {- | Fonts by face number; each role maps to its Japanese and Latin faces
