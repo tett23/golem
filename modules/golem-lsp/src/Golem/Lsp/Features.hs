@@ -40,6 +40,7 @@ import Golem.Eval.Value (Value (..), typeName)
 import Golem.Fmt (FormatResult (..), format)
 import Golem.Lsp.Workspace
 import Golem.Parser.AST
+import Golem.Parser.SourceSettings (sourceKeys)
 import Golem.Project
 import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), charStyleKeys, defaultStyle, paraStyleKeys)
 import Golem.Syntax
@@ -286,9 +287,10 @@ completions ws path off = case sourceOf ws path of
         labels = nub [l | s <- allSources ws, (_, OccLabelDef l) <- occurrences (srcAst s)]
      in if "@import " `T.isPrefixOf` T.stripStart lineBefore
           then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
-          else case T.stripPrefix "@style-def " (T.stripStart lineBefore) of
-            Just rest -> styleDefCompletions style paraNames charNames rest
-            Nothing ->
+          else case (T.stripPrefix "@manifest " (T.stripStart lineBefore), T.stripPrefix "@style-def " (T.stripStart lineBefore)) of
+            (Just rest, _) -> manifestCompletions rest
+            (_, Just rest) -> styleDefCompletions style paraNames charNames rest
+            _ ->
               -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
               if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
                 then [Completion n CkParaStyle | n <- paraNames]
@@ -305,6 +307,21 @@ completions ws path off = case sourceOf ws path of
                       _ -> []
   where
     commandNames = [Completion c CkCommand | c <- builtinInlineCommands]
+
+{- | Completion after @manifest (docs/adr ADR 0014): the keys of [source]
+(docs/adr ADR 0013), then the values of a key.
+-}
+manifestCompletions :: Text -> [Completion]
+manifestCompletions rest = case T.words rest of
+  ws'
+    | T.null rest || T.isSuffixOf " " rest || null ws' -> keys
+    | (key, value) <- T.breakOn "=" (last ws'), not (T.null value) -> [Completion v CkSettingValue | v <- valuesOf key]
+    | otherwise -> keys
+  where
+    keys = [Completion (k <> "=") CkSettingKey | (k, _) <- sourceKeys]
+    valuesOf = \case
+      "paragraph-separator" -> ["blank-line", "line"]
+      _ -> []
 
 {- | Completion after @style-def (docs/adr ADR 0014): the kinds, then the
 keys of the kind, then the values of a key. regex is left out until

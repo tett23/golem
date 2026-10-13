@@ -500,9 +500,13 @@ indentTests =
 
 -- | A project of chapters (in order) and other files, with a style.toml.
 withChapters :: BS.ByteString -> [(FilePath, T.Text)] -> [(FilePath, T.Text)] -> (FilePath -> IO a) -> IO a
-withChapters style chapters others k = withSystemTempDirectory "golem-chapters" $ \tmp -> do
+withChapters style chapters = withEntries style ["\"" <> T.pack p <> "\"" | (p, _) <- chapters] chapters
+
+-- | As withChapters, with the entries of the chapters written as TOML.
+withEntries :: BS.ByteString -> [T.Text] -> [(FilePath, T.Text)] -> [(FilePath, T.Text)] -> (FilePath -> IO a) -> IO a
+withEntries style entries chapters others k = withSystemTempDirectory "golem-chapters" $ \tmp -> do
   manifest <- TIO.readFile (fixture </> "manifest.toml")
-  TIO.writeFile (tmp </> "manifest.toml") ("chapters = [" <> T.intercalate ", " ["\"" <> T.pack p <> "\"" | (p, _) <- chapters] <> "]\n" <> T.dropWhile (/= '\n') manifest)
+  TIO.writeFile (tmp </> "manifest.toml") ("chapters = [" <> T.intercalate ", " entries <> "]\n" <> T.dropWhile (/= '\n') manifest)
   BS.writeFile (tmp </> "style.toml") style
   forM_ (chapters <> others) $ \(p, src) -> TIO.writeFile (tmp </> p) src
   k tmp
@@ -612,6 +616,30 @@ inFileTests =
       withChapters "" [("c1.gm", "@style-def paragraph letter first-line-indent=1zw\n\n@style letter\n手紙。\n")] [] $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
         TIO.readFile (tmp </> "build/text/horizontal/c1.txt") >>= (@?= "　手紙。\n"),
+    testCase "HTML: @manifest reads its file in the line style" $
+      withChapters "" [("c1.gm", "@manifest paragraph-separator=line\n\n一。\n二。\n三。\n"), ("c2.gm", "一。\n二。\n")] [] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")
+        p2 <- TIO.readFile (tmp </> "build/html/c2.xhtml")
+        T.count "<p>" p1 @?= 3
+        T.count "<p>" p2 @?= 1,
+    testCase "HTML: @manifest wins over the entry of the chapter" $
+      withEntries "" ["{ file = \"c1.gm\", paragraph-separator = \"line\" }"] [("c1.gm", "@manifest paragraph-separator=blank-line\n\n一。\n二。\n")] [] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")
+        T.count "<p>" p1 @?= 1,
+    testCase "HTML: @manifest of a file imported does not reach the importer" $
+      withChapters "" [("c1.gm", "@import common.gm as c\n\n[= c.v]。\n二。\n")] [("common.gm", "@manifest paragraph-separator=line\n\n@set v = 1\n")] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")
+        T.count "<p>" p1 @?= 1,
+    testCase "lint: two Latin lines of a file in the line style are not G0501" $
+      withChapters "" [("c1.gm", "@manifest paragraph-separator=line\n\nFull fathom five\nOf his bones\n"), ("c2.gm", "Full fathom five\nOf his bones\n")] [] $ \tmp -> do
+        (infos, ds) <- lintProject Dev tmp
+        [p | d <- ds, diagCode d == DiagnosticCode "G0501", Just (SourceInfo p _) <- [Map.lookup (spanFile (diagSpan d)) infos]] @?= ["c2.gm"],
     testCase "lint: a style of the file that keeps its lines is not G0501" $
       withChapters "" [("c1.gm", "@style-def paragraph letter line-breaks=keep\n\n@style letter\n  Full fathom five\n  Of his bones\n"), ("c2.gm", "Full fathom five\nOf his bones\n")] [] $ \tmp -> do
         (infos, ds) <- lintProject Dev tmp

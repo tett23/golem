@@ -351,6 +351,40 @@ settingsTests =
         codesS "a\n\n@style-def paragraph letter\n" @?= ["G0249"]
         codesS "@label x\n@style-def paragraph letter\na\n" @?= ["G0249"]
         codesS "a\n\n@manifest paragraph-separator=line\n" @?= ["G0249"],
+      testCase "@manifest overrides how the file is read" $ do
+        let paras c src = let (bs, _, _) = runS c src in map stripped bs
+            lineS = sctx {ctxSource = SourceSettings LineSeparated}
+            (_, ds, r) = runS sctx "@manifest paragraph-separator=line\n\na\nb\n"
+        paras sctx "@manifest paragraph-separator=line\n\na\nb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])]
+        ds @?= []
+        erSource r @?= SourceSettings LineSeparated
+        paras sctx "@manifest paragraph-separator=\"line\"\na\nb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])]
+        codesS "@manifest paragraph-separator=\"line\"\na\nb\n" @?= []
+        paras sctx "%% 設定 %%\n@manifest paragraph-separator=line\n\na\nb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])]
+        let (file, _, _) = parseAst (FileId 1) "@manifest paragraph-separator=line\n@label p\na\nb\n"
+        map blockLabel (docBlocks (erDocument (evalFile sctx file))) @?= [Just "p", Nothing]
+        paras lineS "@manifest paragraph-separator=blank-line\n\na\nb\n" @?= [(Nothing, ["ab"])],
+      testCase "@manifest elsewhere does not apply" $ do
+        let (_, ds, r) = runS sctx "a\n\n@manifest paragraph-separator=line\n"
+        map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G0249"]
+        erSource r @?= ctxSource sctx,
+      testCase "the keys and values of @manifest (G0250, G0251, G0252)" $ do
+        codesS "@manifest title=x\n" @?= ["G0250"]
+        codesS "@manifest paragraph-separater=line\n" @?= ["G0250"]
+        codesS "@manifest paragraph-separator=lines\n" @?= ["G0251"]
+        mapM_
+          (\src -> (src, codesS src) @?= (src, ["G0252"]))
+          [ "@manifest paragraph-separator=line paragraph-separator=line\n",
+            "@manifest paragraph-separator=[= \"line\"]\n",
+            "@manifest paragraph-separator=line\n  a\n"
+          ]
+        let (bs, ds, _) = runS sctx "@manifest title=x paragraph-separator=line\n\na\nb\n"
+        map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G0250"]
+        map stripped bs @?= [(Nothing, ["a"]), (Nothing, ["b"])],
+      testCase "@manifest and @style-def together, without a blank line" $ do
+        let (bs, ds, _) = runS sctx "@manifest paragraph-separator=line\n@style-def paragraph letter\n@style letter\na\nb\n"
+        map stripped bs @?= [(Just "letter", ["a"]), (Nothing, ["b"])]
+        ds @?= [],
       testCase "a filter may give the paragraph styles of the file" $ do
         let hook = noPlugins {phApplyFilters = \_ (Document f bs) -> Right (Document f (bs <> [Block (mkSpan f 0 1) Nothing (Paragraph (Just "letter") [])]), [])}
         codesS "x\n" @?= []

@@ -117,6 +117,19 @@ tests =
         ws' <- updateFile ws "a.gm" (textOf ws "a.gm" <> "\n@style \n")
         let srcA = textOf ws' "a.gm"
         assertBool "not in another file" ("letter" `notElem` map cmpLabel (completions ws' "a.gm" (offsetIn srcA "@style \n" 7))),
+      testCase "completion: @manifest (docs/adr ADR 0014)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@manifest \n\n@manifest paragraph-separator=\n"
+        let src = textOf ws "b.gm"
+            found = completions ws "b.gm"
+        found (offsetIn src "@manifest \n" 10) @?= [Completion "paragraph-separator=" CkSettingKey]
+        found (offsetIn src "separator=\n" 10) @?= [Completion "blank-line" CkSettingValue, Completion "line" CkSettingValue],
+      testCase "a file outside the project read in the line style has no G0501 (docs/adr ADR 0014)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "loose.gm" "@manifest paragraph-separator=line\n\nFull fathom five\nOf his bones\n"
+        [c | d <- fromMaybe [] (Map.lookup "loose.gm" (diagnosticsFor ws)), let { DiagnosticCode c = diagCode d }] @?= []
+        ws' <- updateFile ws0 "loose.gm" "Full fathom five\nOf his bones\n"
+        [c | d <- fromMaybe [] (Map.lookup "loose.gm" (diagnosticsFor ws')), let { DiagnosticCode c = diagCode d }] @?= ["G0501"],
       testCase "definition: a style defined in the file (docs/adr ADR 0014)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@style-def paragraph letter\n@style-def paragraph verse line-breaks=join\n\n@label second\n# 次の章\n\n@style letter\n本文。\n\n@style verse\n詩。\n\n@style quote\n引用。\n"
