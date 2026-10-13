@@ -76,6 +76,12 @@ chapters = [
 
 章の項目に書いた値は、[style code: \[source\]] の値より優先します。
 [style code: @import] でだけ取り込むファイルには、[style code: \[source\]] の値が効きます。
+
+ファイルの先頭に [style code: @manifest paragraph-separator=line] と書くと、そのファイルの区切り方を、そのファイルの中で決められます。
+ファイルの中に書いた値は、章の項目と [style code: \[source\]] の値より優先します。
+ファイルを別の本に移しても、区切り方が一緒に付いていきます。
+[style code: @manifest] で変えられるのは [style code: \[source\]] の設定だけで、書名などを書くとエラーになります。
+
 [style code: "blank-line"] と [style code: "line"] のほかの値を書くと、エラーになります。
 
 ## 本の情報を書く
