@@ -836,12 +836,6 @@ fmt は本文を折り返し直さず、構造だけを整形する。
 
 `golem fmt --check` は、整形されていないファイルがあれば非ゼロで終了する。
 
-fmt は、整形の前に移行の段階を持つ（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
-移行の段階は、廃止した `@verse` を `@style verse` に書き換える。
-コードブロックの中の `@verse` は書き換えない。
-整形の不変条件は「移行の後の原稿と、整形の結果とで AST が一致する」となる。
-`@verse` を含むファイルは、`golem fmt --check` で整形されていないファイルとして報告される。
-
 ## LSP
 
 v1 の LSP は次の機能を持つ。
@@ -1292,7 +1286,6 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### 記法と設定
 
-- **`golem fmt` の移行の段階を外すこと**：`golem fmt` は、`@verse` を `@style verse` に書き換える移行の段階を持ち、その分だけ整形の不変条件に例外が一つ加わっている。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) は、移行の段階を v1 の間は残し、外すときは別の ADR で決めるとした。v1 のリリースまでに移行の段階を外し、不変条件の例外をなくす。
 - **寸法による判型の指定**：[golem-project ADR 0002](golem-project/adr/0002-style-toml.md) は、表にない判型を寸法で書くと決めたが、実装していない。`style.toml` の読み込みは `x` を含む `size` を通すが、ページの幾何の計算は未知の判型としてエラーにする。書き方は [golem-project ADR 0003](golem-project/adr/0003-mass-market-paperback-size.md) が別の ADR に回している。
 
 - **`@toc-title` と柱**：`@toc-title` が目次には効くが、柱には効かない。記法の仕様は、目次と柱の両方に使うと定めている。
