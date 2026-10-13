@@ -54,6 +54,7 @@ test-suite golem-lsp-test
     , containers
     , directory
     , filepath
+    , golem-driver
     , golem-lsp
     , golem-syntax
     , lsp
