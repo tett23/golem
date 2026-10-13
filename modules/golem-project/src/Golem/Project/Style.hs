@@ -20,6 +20,10 @@ module Golem.Project.Style
     CharStyleDef (..),
     LineBreaks (..),
     ParaStyleDef (..),
+    RegexStyleDef (..),
+    regexStyleKeys,
+    localRegexStyleDef,
+    checkLocalRegexStyles,
     builtinCharStyles,
     builtinParaStyles,
     noCharDef,
@@ -74,6 +78,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.ListMarkers (NumberFormat, parseNumberFormat)
 import Golem.Project.Manifest (decodeStrictBy)
+import Golem.Regex (RegexError (..), compile)
 import Golem.Syntax
 import Toml.Schema
 import Toml.Schema.FromValue (typeError)
@@ -190,8 +195,17 @@ data ParaStyleDef = ParaStyleDef
     psIndent :: !(Maybe Dim),
     -- | added to the indent on the first line; negative hangs
     psFirstLineIndent :: !(Maybe Dim),
+    -- | the regex styles, in order (docs/adr ADR 0015); replaced as a whole through based-on
+    psRegexStyles :: !(Maybe [RegexStyleDef]),
     -- | the aki set the paragraph is set with (docs/adr ADR 0019)
     psAkiSet :: !(Maybe Text)
+  }
+  deriving stock (Eq, Show)
+
+-- | A regex style: a pattern and the character style for its matches (docs/adr ADR 0015).
+data RegexStyleDef = RegexStyleDef
+  { rdPattern :: !Text,
+    rdStyle :: !Text
   }
   deriving stock (Eq, Show)
 
@@ -201,7 +215,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 {- | An aki amount (docs/adr ADR 0019): a name (ベタ, 全角, 二分, 三分, 四分,
 五分, 六分, 八分, 二分四分), a decimal in zw, or a percentage of zw. The
@@ -317,6 +331,7 @@ overPara u b =
     (psSpaceBetween u <|> psSpaceBetween b)
     (psIndent u <|> psIndent b)
     (psFirstLineIndent u <|> psFirstLineIndent b)
+    (psRegexStyles u <|> psRegexStyles b)
     (psAkiSet u <|> psAkiSet b)
 
 -- | The parent of a paragraph style: body has none, the others are based on body by default.
@@ -589,13 +604,13 @@ instance FromValue PageSize where
 newtype DimV = DimV Dim
 
 instance FromValue DimV where
-  fromValue v@(Text' _ t) = case parseDim t of
+  fromValue (Text' _ t) = case parseDim t of
     Just d -> pure (DimV d)
     Nothing
       -- the names of aki amounts and percentages are only for aki (docs/adr ADR 0019): G0320
       | Just _ <- parseAki t -> fail (T.unpack (akiError ("アキの量の名前と百分率は、アキの量を書く欄でだけ使えます。寸法は 0.5zw や 2mm のように書きます: " <> t)))
-      | otherwise -> typeError "dimension such as 13Q or 20mm" v
-  fromValue v = typeError "dimension string" v
+      | otherwise -> fail ("長さの書き方が不正です: " <> T.unpack t <> "（13Q や 20mm のように書きます）")
+  fromValue _ = fail "長さは文字列で書きます"
 
 -- | The message of G0320 (docs/adr ADR 0019).
 akiError :: Text -> Text
@@ -606,7 +621,7 @@ newtype AkiV = AkiV Rational
 
 instance FromValue AkiV where
   fromValue (Text' _ t) = maybe (fail (T.unpack (akiError ("アキの量として読めません: " <> t)))) (pure . AkiV) (parseAki t)
-  fromValue v = typeError "aki amount such as 四分 or 25%" v
+  fromValue _ = fail (T.unpack (akiError "アキの量は \"四分\" や \"25%\" のように文字列で書きます"))
 
 -- | The classes of one side of a rule: a name or an array of names.
 newtype ClassesV = ClassesV [Text]
@@ -614,7 +629,7 @@ newtype ClassesV = ClassesV [Text]
 instance FromValue ClassesV where
   fromValue (Text' _ t) = pure (ClassesV [t])
   fromValue v@(List' _ _) = ClassesV <$> fromValue v
-  fromValue v = typeError "class name or array of class names" v
+  fromValue _ = fail (T.unpack (akiError "クラスは名前の文字列か、その配列で書きます"))
 
 instance FromValue AkiRuleDef where
   fromValue = parseTableFromValue $ do
@@ -655,7 +670,7 @@ enumKey :: Text -> [Text] -> ParseTable l (Maybe Text)
 enumKey k allowed = do
   v <- optKey k
   case v of
-    Just x | x `notElem` allowed -> fail ("unknown value " <> T.unpack x <> " for " <> T.unpack k)
+    Just x | x `notElem` allowed -> fail (T.unpack (k <> " に使えない値です: " <> x <> "（" <> T.intercalate ", " allowed <> " のどれか）"))
     _ -> pure v
 
 instance FromValue Grid where
@@ -667,7 +682,7 @@ instance FromValue Grid where
     cols <- fromMaybe 1 <$> optKey "columns"
     gap <- dimKey "column-gap"
     pos <- reqKey "position"
-    when (cols > 1 && isNothing gap) $ fail "column-gap is required when columns > 1"
+    when (cols > 1 && isNothing gap) $ fail "columns が 2 以上のときは column-gap が要ります"
     let Position2 t g = pos
     pure (Grid fs ch ls lp cols gap t g)
 
@@ -713,12 +728,16 @@ instance FromValue ParaStyleDef where
     s <- dimKey "size"
     lb <- enumKey "line-breaks" ["join", "keep"]
     sb <- optKey "space-between"
-    when (maybe False (< 0) sb) $ fail "space-between must be 0 or more"
+    when (maybe False (< 0) sb) $ fail "space-between は 0 以上です"
     ind <- dimKey "indent"
     fli <- optKey "first-line-indent"
-    fli' <- traverse (\v -> maybe (fail ("dimension such as 1zw or -1zw: " <> T.unpack v)) pure (parseSignedDim v)) fli
+    fli' <- traverse (\v -> maybe (fail ("長さの書き方が不正です: " <> T.unpack v <> "（1zw や -1zw のように書きます）")) pure (parseSignedDim v)) fli
+    rs <- optKey "regex-styles"
     aki <- optKey "aki-set"
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' aki)
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki)
+
+instance FromValue RegexStyleDef where
+  fromValue = parseTableFromValue (RegexStyleDef <$> reqKey "pattern" <*> reqKey "style")
 
 instance FromValue HeadingStyle where
   fromValue = parseTableFromValue $ do
@@ -794,11 +813,30 @@ instance FromValue SidenoteStyle where
     m <- enumKey "marker" ["number", "symbol", "none"]
     pure (SidenoteStyle w g (fromMaybe "number" m))
 
+-- | The positions of a running head and a folio (golem-driver ADR 0014).
+masterPositions :: [Text]
+masterPositions = ["top-outside", "top-inside", "top-center", "bottom-outside", "bottom-inside", "bottom-center"]
+
+{- | A position of a master page; an unknown one is an error at its value,
+which makes it G0318 (golem-driver ADR 0016).
+-}
+newtype MasterPosition = MasterPosition Text
+
+instance FromValue MasterPosition where
+  fromValue v = case v of
+    Text' l p
+      | p `elem` masterPositions -> pure (MasterPosition p)
+      | otherwise -> failAt l ("未知の位置です: " <> T.unpack p)
+    _ -> typeError "position such as top-outside" v
+
+reqPosition :: ParseTable l Text
+reqPosition = (\(MasterPosition p) -> p) <$> reqKey "position"
+
 data PosContent = PosContent Text Text
 
 instance FromValue PosContent where
   fromValue = parseTableFromValue $ do
-    p <- reqKey "position"
+    p <- reqPosition
     c <- optKey "content"
     f <- optKey "format"
     pure (PosContent p (fromMaybe "" (c <> f)))
@@ -814,7 +852,7 @@ G0314.
 -}
 instance FromValue RunningHeadDef where
   fromValue = parseTableFromValue $ do
-    p <- reqKey "position"
+    p <- reqPosition
     let contentOf v = do
           t <- fromValue v
           maybe (failAt (valueAnn v) (runningContentMessage t)) (pure . (t,)) (parseRunningContent t)
@@ -843,7 +881,7 @@ instance FromValue Swatch where
     cs <- reqKey "cmyk"
     case cs of
       [c, m, y, k] | all (\x -> x >= 0 && x <= 100) cs -> pure (Swatch (c, m, y, k))
-      _ -> fail "cmyk must be four integers from 0 to 100"
+      _ -> fail "cmyk は 0 から 100 までの整数四つです"
 
 newtype Numbers = Numbers (Maybe Text)
 
@@ -924,15 +962,14 @@ instance FromValue Style where
     headings <- fromMaybe Map.empty <$> optKey "headings"
     comp <- fromMaybe defaultComposition <$> optKey "composition"
     Numbers nv <- fromMaybe (Numbers Nothing) <$> optKey "numbers"
-    retiredEmphasis <- optKey "emphasis"
-    when (isJust (retiredEmphasis :: Maybe EmphasisV)) $ fail "[emphasis] は廃止しました"
+    -- the value of a retired table fails with how to rewrite it
+    (_ :: Maybe EmphasisV) <- optKey "emphasis"
     Notes np <- fromMaybe (Notes Nothing) <$> optKey "notes"
     side <- optKey "sidenotes"
     Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
     masters <- fromMaybe Map.empty <$> optKey "masters"
-    retiredVerse <- optKey "verse"
-    when (isJust (retiredVerse :: Maybe VerseV)) $ fail "[verse] は廃止しました"
+    (_ :: Maybe VerseV) <- optKey "verse"
     TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
     ListsSec lists <- fromMaybe (ListsSec defaultListStyle) <$> optKey "lists"
     akiSets <- fromMaybe Map.empty <$> optKey "aki-sets"
@@ -967,7 +1004,7 @@ instance FromValue Style where
         "1" -> pure (1, v)
         "2" -> pure (2, v)
         "3" -> pure (3, v)
-        _ -> fail ("heading level must be 1, 2 or 3: " <> T.unpack k)
+        _ -> fail ("見出しの段は 1、2、3 のどれかです: " <> T.unpack k)
 
 negativeDim :: Dim -> Bool
 negativeDim = \case
@@ -1010,6 +1047,8 @@ parseStyle fid src = do
       ScopeKey "aki-sets" : _ -> "G0320"
       -- the contents of a running head are G0314, the retired running-head of a heading G0319 (golem-driver ADR 0014)
       ScopeKey "masters" : _ : ScopeKey "running-head" : ScopeKey k : _ | k `elem` ["content", "even", "odd"] -> "G0314"
+      -- an unknown position of a running head or a folio is G0318 (golem-driver ADR 0016)
+      ScopeKey "masters" : _ : ScopeKey k : ScopeKey "position" : _ | k `elem` ["running-head", "folio"] -> "G0318"
       ScopeKey "headings" : _ : ScopeKey "running-head" : _ -> "G0319"
       _ -> "G0306"
 
@@ -1025,6 +1064,7 @@ styleChecks owner s =
     <> [("G0306", "", m) | m <- checks]
     <> [("G0308", n, "style.toml にないフォントの役割です: " <> r) | (n, r) <- roles, Map.notMember r (stFonts s)]
     <> [("G0313", n, owner <> "スタイルの参照が不正です: " <> m) | (n, m) <- referenceChecks]
+    <> [(code, n, m) | (n, ParaStyleDef {psRegexStyles = Just rs}) <- Map.toList (stParaStyles s), (i, r) <- zip [0 ..] rs, (code, m) <- regexStyleErrors owner s n i r]
     <> [("G0311", n, "段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks]
     <> [("G0312", n, "段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | n <- indentChecks]
   where
@@ -1114,12 +1154,14 @@ the same name by 'withLocalStyles'.
 -}
 data LocalStyles = LocalStyles
   { lsCharStyles :: !(Map Text CharStyleDef),
-    lsParaStyles :: !(Map Text ParaStyleDef)
+    lsParaStyles :: !(Map Text ParaStyleDef),
+    -- | the regex styles of @style-def regex by paragraph style, in the order written (docs/adr ADR 0015)
+    lsRegexStyles :: !(Map Text [RegexStyleDef])
   }
   deriving stock (Eq, Show)
 
 noLocalStyles :: LocalStyles
-noLocalStyles = LocalStyles Map.empty Map.empty
+noLocalStyles = LocalStyles Map.empty Map.empty Map.empty
 
 -- | The kind of a style @style-def defines.
 data StyleKind = CharacterKind | ParagraphKind
@@ -1130,9 +1172,10 @@ data LocalValue = LocalWord Text | LocalString Text
   deriving stock (Eq, Show)
 
 -- | The keys @style-def takes, as style.toml's (for completion).
-charStyleKeys, paraStyleKeys :: [Text]
+charStyleKeys, paraStyleKeys, regexStyleKeys :: [Text]
 charStyleKeys = ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic"]
 paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent", "aki-set"]
+regexStyleKeys = ["pattern", "style"]
 
 {- | The keys of one @style-def as a TOML table, read with the 'FromValue'
 of style.toml: a string is a string, the words true and false are
@@ -1140,11 +1183,16 @@ booleans, a word of digits (with a leading -) is an integer, any other
 word is a string. Errors are messages of G0306.
 -}
 localStyleDef :: StyleKind -> [(Text, LocalValue)] -> Either [Text] (Either CharStyleDef ParaStyleDef)
-localStyleDef kind kvs =
-  let tab = Table (table [(k, tomlValue v) | (k, v) <- kvs])
-   in case kind of
-        CharacterKind -> Left <$> run tab
-        ParagraphKind -> Right <$> run tab
+localStyleDef kind kvs = case kind of
+  CharacterKind -> Left <$> readLocal kvs
+  ParagraphKind -> Right <$> readLocal kvs
+
+-- | The keys of one @style-def regex (docs/adr ADR 0015), read as a regex style of style.toml.
+localRegexStyleDef :: [(Text, LocalValue)] -> Either [Text] RegexStyleDef
+localRegexStyleDef = readLocal
+
+readLocal :: (FromValue a) => [(Text, LocalValue)] -> Either [Text] a
+readLocal kvs = run (Table (table [(k, tomlValue v) | (k, v) <- kvs]))
   where
     run :: (FromValue a) => Value -> Either [Text] a
     run v = case runMatcher (fromValue v) of
@@ -1172,10 +1220,14 @@ name added.
 -}
 withLocalStyles :: Style -> LocalStyles -> Style
 withLocalStyles s ls =
-  s
-    { stCharStyles = Map.unionWith overChar (lsCharStyles ls) (stCharStyles s),
-      stParaStyles = Map.unionWith overPara (lsParaStyles ls) (stParaStyles s)
-    }
+  let laid =
+        s
+          { stCharStyles = Map.unionWith overChar (lsCharStyles ls) (stCharStyles s),
+            stParaStyles = Map.unionWith overPara (lsParaStyles ls) (stParaStyles s)
+          }
+      -- the regex styles of the file after those the style resolves to (docs/adr ADR 0015)
+      added p rs d = d {psRegexStyles = Just (fromMaybe [] (paraStyle laid (Just p) >>= psRegexStyles) <> rs)}
+   in laid {stParaStyles = Map.foldrWithKey (\p rs -> Map.adjust (added p rs) p) (stParaStyles laid) (lsRegexStyles ls)}
 
 {- | The checks of style.toml on the styles of a file laid over it, less
 those style.toml has by itself: (code, the name of the style, message).
@@ -1183,7 +1235,46 @@ those style.toml has by itself: (code, the name of the style, message).
 checkLocalStyles :: Style -> LocalStyles -> [(Text, Text, Text)]
 checkLocalStyles s ls =
   let base = styleChecks owner s
-   in nub [c | c <- styleChecks owner (withLocalStyles s ls), c `notElem` base]
+   in nub [c | c <- styleChecks owner (withLocalStyles s ls {lsRegexStyles = Map.empty}), c `notElem` base]
+  where
+    owner = "@style-def の"
+
+{- | The errors of the i-th (from 0) regex style of a paragraph style
+(docs/adr ADR 0015): a pattern outside the dialect is G0315, a character
+style that does not exist G0313.
+-}
+regexStyleErrors :: Text -> Style -> Text -> Int -> RegexStyleDef -> [(Text, Text)]
+regexStyleErrors owner s para i (RegexStyleDef p st) =
+  [ ( "G0315",
+      "正規表現を解釈できません: "
+        <> reMessage e
+        <> "（"
+        <> para
+        <> " の "
+        <> T.pack (show (i + 1))
+        <> " 番目の正規表現の "
+        <> T.pack (show (reOffset e + 1))
+        <> " 字目）"
+    )
+  | Left e <- [compile p]
+  ]
+    <> [("G0313", owner <> "スタイルの参照が不正です: 正規表現スタイルの文字スタイルがありません: " <> st) | Map.notMember st (stCharStyles s)]
+
+{- | The errors of the regex styles of a file (docs/adr ADR 0015): the
+paragraph style, the place of the regex style among those the file adds
+to it (from 0), the code and the message. The paragraph style must exist
+(G0313); the character styles of the file count.
+-}
+checkLocalRegexStyles :: Style -> LocalStyles -> [(Text, Int, Text, Text)]
+checkLocalRegexStyles s ls =
+  let combined = withLocalStyles s ls {lsRegexStyles = Map.empty}
+   in concat
+        [ if Map.member p (stParaStyles combined)
+            then [(p, i, code, m) | (code, m) <- regexStyleErrors owner combined p i r]
+            else [(p, i, "G0313", owner <> "スタイルの参照が不正です: 正規表現スタイルの段落スタイルがありません: " <> p)]
+        | (p, rs) <- Map.toList (lsRegexStyles ls),
+          (i, r) <- zip [0 ..] rs
+        ]
   where
     owner = "@style-def の"
 

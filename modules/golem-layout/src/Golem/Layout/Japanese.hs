@@ -542,13 +542,13 @@ normalize env = go AtStart True
             Just _ -> [Penalty 0 0 NoHyphen | not noBreak]
             Nothing -> if noBreak then [] else [Penalty 0 0 NoHyphen | not (bcExpandable p && bcExpandable c)]
 
--- | Sidenotes inside a vertical paragraph are compile errors (ADR 0006).
+-- | Sidenotes in vertical text are compile errors (ADR 0006; the message is golem-driver ADR 0016).
 verticalSidenotes :: ComposeEnv -> [Inline] -> [Diagnostic]
 verticalSidenotes env inls
   | not (ceVertical env) = []
   | otherwise = concatMap go inls
   where
-    msg = "縦組みの段落の中には傍注を置けません"
+    msg = "縦組みの版面では傍注を使えません。脚注に替えてください"
     go = \case
       Sidenote sp _ _ -> [diagnostic "G0732" Error sp msg]
       Kenten _ _ xs -> concatMap go xs

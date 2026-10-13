@@ -102,16 +102,21 @@ fileSettings table s0 header = foldl step (s0, []) [(sp, args, body) | A.Located
           [] -> ""
           keys -> "。上書きできるのは " <> T.intercalate "、" keys <> " です"
 
--- | One @style-def read: its span, kind, name and keys.
-data Def = Def SrcSpan StyleKind Text (Either CharStyleDef ParaStyleDef)
+-- | One @style-def read: its span, kind, name and keys, or a regex style for a paragraph style (docs/adr ADR 0015).
+data Def
+  = Def SrcSpan StyleKind Text (Either CharStyleDef ParaStyleDef)
+  | RegexDef SrcSpan Text RegexStyleDef
 
 {- | The styles of the @style-def lines, checked against style.toml, and the
-diagnostics. A wrong definition is dropped as a whole.
+diagnostics. A wrong definition is dropped as a whole. The regex styles
+are checked after the character and the paragraph styles, each at its
+line; a wrong one is dropped and the others take effect (docs/adr ADR
+0015).
 -}
 fileStyles :: Style -> [A.Located A.Block] -> (LocalStyles, [Diagnostic])
 fileStyles style header =
   let (defs, ds1) = foldl readDef ([], []) [(sp, args, body) | A.Located sp (A.BlockCommand (A.Located _ "style-def") args body) <- header]
-      local0 = LocalStyles (Map.fromList [(n, d) | Def _ _ n (Left d) <- defs]) (Map.fromList [(n, d) | Def _ _ n (Right d) <- defs])
+      local0 = LocalStyles (Map.fromList [(n, d) | Def _ _ n (Left d) <- defs]) (Map.fromList [(n, d) | Def _ _ n (Right d) <- defs]) Map.empty
       spanOf kind n = listToMaybe [sp | Def sp k n' _ <- defs, k == kind, n' == n]
       (local, ds2) = checked local0 []
       -- the checks again until no definition is dropped
@@ -148,7 +153,21 @@ fileStyles style header =
                 <> [sp | m <- cs, Just sp <- [spanOf CharacterKind m]]
                 <> [sp | Def sp _ _ _ <- defs]
          in fromMaybe (mkSpan (FileId 0) 0 0) (listToMaybe candidates)
-   in (local, ds1 <> ds2)
+      -- the regex styles, in the order written, each with its line
+      regexes = [(sp, n, d) | RegexDef sp n d <- defs]
+      withRegexes = local {lsRegexStyles = Map.fromListWith (flip (<>)) [(n, [d]) | (_, n, d) <- regexes]}
+      regexSpan n i = case drop i [sp | (sp, n', _) <- regexes, n' == n] of
+        sp : _ -> sp
+        [] -> mkSpan (FileId 0) 0 0
+      regexErrs = checkLocalRegexStyles style withRegexes
+      wrongRegexes = [(n, i) | (n, i, _, _) <- regexErrs]
+      ds3 = [err code (regexSpan n i) m | (n, i, code, m) <- regexErrs]
+      final =
+        withRegexes
+          { lsRegexStyles =
+              Map.filter (not . null) (Map.mapWithKey (\n rs -> [r | (i, r) <- zip [0 ..] rs, (n, i) `notElem` wrongRegexes]) (lsRegexStyles withRegexes))
+          }
+   in (final, ds1 <> ds2 <> ds3)
   where
     shape = "@style-def には種類（character、paragraph、regex）と名前を書きます"
     readDef (defs, ds) (sp, args, body) =
@@ -162,17 +181,23 @@ fileStyles style header =
                 null splats,
                 Just kind <- kindOf kindW ->
                   case kind of
+                    -- a word is read as a string: the pattern and the style are strings (docs/adr ADR 0015)
                     Nothing
-                      | null shapeErrs -> (defs, ds <> [err "G0254" sp "正規表現スタイルはまだ実装していません"])
-                      | otherwise -> (defs, ds <> shapeErrs)
+                      | not (null shapeErrs) -> (defs, ds <> shapeErrs)
+                      | otherwise -> case localRegexStyleDef [(key, asString v) | (key, _, v) <- kvs] of
+                          Left ms -> (defs, ds <> [err "G0306" sp ("@style-def の値が不正です: " <> m) | m <- ms])
+                          Right d -> (defs <> [RegexDef sp name d], ds)
                     Just k
                       | not (null shapeErrs) -> (defs, ds <> shapeErrs)
-                      | any (\(Def _ k' n _) -> k' == k && n == name) defs -> (defs, ds <> [err "G0253" sp ("同じ名前のスタイルを二度定義しています: " <> name)])
+                      | not (null [() | Def _ k' n _ <- defs, k' == k, n == name]) -> (defs, ds <> [err "G0253" sp ("同じ名前のスタイルを二度定義しています: " <> name)])
                       | otherwise -> case localStyleDef k [(key, v) | (key, _, v) <- kvs] of
                           -- an aki amount in a dimension is G0320 (docs/adr ADR 0019)
                           Left ms -> (defs, ds <> [err (if "アキの量の指定が正しくありません" `T.isPrefixOf` m then "G0320" else "G0306") sp ("@style-def の値が不正です: " <> m) | m <- ms])
                           Right d -> (defs <> [Def sp k name d], ds)
             _ -> (defs, ds <> [err "G0252" sp shape] <> shapeErrs)
+    asString = \case
+      LocalWord w -> LocalString w
+      v -> v
     isSplat = \case
       A.SplatPositional _ -> True
       A.SplatKeyword _ -> True

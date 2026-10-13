@@ -1,5 +1,8 @@
 %% この章でだけ使う段落スタイル（docs/adr/0014） %%
 @style-def paragraph example based-on=memo first-line-indent=2zw
+%% 正規表現スタイルの例（docs/adr/0015） %%
+@style-def paragraph regex-example based-on=memo
+@style-def regex regex-example pattern="[0-9０-９]+" style=bold
 
 @label style
 # スタイルの設定
@@ -32,12 +35,23 @@
 - [style code: lines]：一ページの行数です。
 - [style code: line-pitch]：行送り（ある行から次の行までの距離）です。
 - [style code: position]：版面の位置です。[style code: top] は天（ページの上端）から、[style code: gutter] はノド（綴じる側の端）からの距離です。
+- [style code: columns]：段数です。省略すると 1 段になります。
+- [style code: column-gap]：段と段のあいだの空き（段間）です。[style code: columns] が 2 以上なら必ず書きます。
 
 寸法は、[style code: mm]、[style code: pt]、[style code: Q]（級）、[style code: H]（歯）、[style code: zw]（全角一字分）の単位を付けて書きます。
 1Q と 1H は、どちらも 0.25mm です。
 
 版面がページに収まらない値を書くと、エラーになります。
 字数か行数を減らすか、[style code: position] を変えてください。
+
+[style code: columns] を 2 以上にすると、PDF の版面は段組み[index reading=だんぐみ: 段組み]になります。
+[style code: characters] は一段の字数、[style code: lines] は一段の行数です。
+本文は、横組みでは左の段から右の段へ、縦組みでは上の段から下の段へ流れ、最後の段の次は次のページに進みます。
+見出し、図版、表、索引も、段の中に一段の幅で組まれます。
+脚注は、注の印のある段の下に入ります。
+章の終わりでは、後ろの段が空いたまま残ることがあります。
+段組みの版面では、傍注欄（[style code: \[sidenotes\]]）と図版の回り込み（[style code: wrap]）は使えず、エラーになります。
+HTML と EPUB は、段組みにしません。
 
 ## 書体
 
@@ -176,6 +190,50 @@ gap = "0.5zw"
   この段落には、この章のファイルの先頭で定義した段落スタイル [style code: example] を付けています。
 
   [style code: memo] を引き継ぎ、最初の行だけをもう一字下げています。
+
+## 正規表現スタイル
+
+段落スタイルには、正規表現に一致した文字に文字スタイルを当てる設定を書けます。
+InDesign の正規表現スタイル（GREP スタイル）と同じ考え方です。
+数字だけを欧文の書体にする、「第 N 章」の N だけを太字にする、といった体裁を、原稿に [style code: \[style ...\]] を書かずに付けられます。
+
+```toml
+[paragraph-styles.body]
+regex-styles = [
+  { pattern = '[0-9０-９]+', style = "latin-digits" },
+  { pattern = '(?<=第)[0-9]+(?=章)', style = "bold" },
+]
+```
+
+[style code: regex-styles] には、[style code: pattern]（正規表現）と [style code: style]（文字スタイルの名前）の組を並べます。
+正規表現は [style code: '...'] で囲むと、[style code: \\] をそのまま書けます。
+同じ文字に二つの組が一致した場合は、後の組が勝ちます。
+原稿で手で付けた文字スタイルは、正規表現スタイルより優先されます。
+
+[style code: regex-styles] は [style code: based-on] で引き継がれます。
+引き継いだ段落スタイルで [style code: regex-styles = \[\]] と書くと、引き継がなくなります。
+見出し、表、脚注の本文には当たりません。
+図のキャプションには [style code: caption] の、傍注の本文には [style code: sidenote] の [style code: regex-styles] が当たります。
+
+使える正規表現は、InDesign の正規表現の主なものです。
+[style code: \\d] は全角の数字にも、[style code: \\w] は漢字と仮名にも、[style code: \\s] は全角の空白にも一致します。
+後方参照、[style code: \\p{Han}] のような文字体系の指定、長さの決まらない後読み、InDesign の [style code: ~] で始まる記号は使えず、エラー（G0315）になります。
+和文の文字の範囲は [style code: \[\\x{4E00}-\\x{9FFF}\]] のように符号位置で書きます。
+縦中横と [style code: \[number-text ...\]] の数は一字として扱うので、[style code: \[0-9\]+] はその中の数字には一致しません。
+
+一つの章でだけ使う正規表現スタイルは、[style code: @style-def regex] で書けます。
+
+```
+@style-def regex body pattern="\\d+" style=bold
+```
+
+二つ目の語が組を足す段落スタイルの名前で、一行が一つの組です。
+文字列の中では [style code: \\] を [style code: \\\\] と書きます。
+
+@style regex-example
+  この段落には、数字だけを太字にする正規表現スタイルを、この章のファイルの先頭で付けています。
+
+  2026 年 10 月 14 日、１２３ページ。
 
 @label heading-style
 ## 見出しの体裁

@@ -33,6 +33,7 @@ import Golem.Lint
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.CST (Node)
+import Golem.Parser.Read (checkText)
 import Golem.Parser.SourceSettings
 import Golem.Project
 import Golem.Project.Style (Style (..), defaultStyle, withLocalStyles)
@@ -57,6 +58,8 @@ data Workspace = Workspace
     wsEvaluated :: !(Maybe Evaluated),
     -- | errors that stop the project from loading (bad manifest, import cycle…)
     wsProjectErrors :: ![Diagnostic],
+    -- | the files those errors point at (golem-project ADR 0006)
+    wsProjectSources :: !(Map FileId SourceInfo),
     -- | open files the manifest does not reach
     wsLoose :: !(Map FilePath Source),
     -- | how many times the whole project was evaluated
@@ -97,7 +100,7 @@ summaryOf ast res =
 openWorkspace :: FilePath -> IO Workspace
 openWorkspace root = do
   files <- listSources root
-  fullEvaluate (Workspace root Map.empty Nothing [] Map.empty 0 files Map.empty)
+  fullEvaluate (Workspace root Map.empty Nothing [] Map.empty Map.empty 0 files Map.empty)
 
 listSources :: FilePath -> IO [FilePath]
 listSources root = map (makeRelative root) <$> go root
@@ -120,8 +123,8 @@ fullEvaluate ws = do
   r <- evaluateProjectWith (wsOverlay ws) Dev (wsRoot ws)
   let ws' = ws {wsFullEvaluations = wsFullEvaluations ws + 1}
   pure . rebuildLines $ case r of
-    Left ds -> refreshLoose ws' {wsEvaluated = Nothing, wsProjectErrors = ds}
-    Right e -> refreshLoose ws' {wsEvaluated = Just e, wsProjectErrors = []}
+    Left f -> refreshLoose ws' {wsEvaluated = Nothing, wsProjectErrors = pfDiagnostics f, wsProjectSources = pfSources f}
+    Right e -> refreshLoose ws' {wsEvaluated = Just e, wsProjectErrors = [], wsProjectSources = Map.empty}
 
 -- | Line indexes of the project's sources and of every edited file.
 rebuildLines :: Workspace -> Workspace
@@ -152,7 +155,11 @@ loose path text =
       -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
       ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle
       res = evalFile ctx ast
-   in Source path fid text cst ast (Just res {erDiagnostics = synDiags <> erDiagnostics res}) False
+      -- a BOM or CR in the buffer, then the syntax; the evaluation of a
+      -- file with syntax errors is not reported (golem-parser ADR 0009)
+      syntax = checkText fid text <> synDiags
+      shown = if hasErrors syntax then syntax else syntax <> erDiagnostics res
+   in Source path fid text cst ast (Just res {erDiagnostics = shown}) False
 
 {- | An edit. The edited file alone is evaluated again; the project is
 evaluated again only when its summary changed.
@@ -167,7 +174,8 @@ updateFile ws0 path text = do
   case wsEvaluated ws of
     Just e
       | Just (fid, old) <- findSource e path ->
-          let (ast, cst, synDiags) = parseAst fid text
+          let (ast, cst, synDiags0) = parseAst fid text
+              synDiags = checkText fid text <> synDiags0
               sf = old {sfText = text, sfCst = cst, sfAst = ast, sfSyntaxDiagnostics = synDiags}
               res = evReevaluate e fid sf
               oldRes = Map.lookup fid (evResults e)
@@ -220,7 +228,13 @@ diagnosticsFor ws =
     -- and its @manifest (docs/adr ADR 0013, 0014)
     looseDiags = Map.map (\s -> sortDiagnostics (maybe [] erDiagnostics (srcResult s) <> latinJoinedByNewline (maybe defaultSourceSettings erSource (srcResult s)) (looseKeep s) (srcFile s) (srcCst s))) (wsLoose ws)
     projectDiags = case wsEvaluated ws of
-      Nothing -> Map.fromList [("manifest.toml", wsProjectErrors ws)]
+      -- on the file each error points at; manifest.toml when it points at none (golem-project ADR 0006)
+      Nothing ->
+        let sources = wsProjectSources ws
+            pathOf d = maybe "manifest.toml" siPath (Map.lookup (spanFile (diagSpan d)) sources)
+            byFile = Map.fromListWith (flip (<>)) [(pathOf d, [d]) | d <- wsProjectErrors ws]
+            empties = Map.fromList (("manifest.toml", []) : [(siPath si, []) | si <- Map.elems sources])
+         in Map.union byFile empties
       Just e ->
         let p = evProject e
             ft = projectFiles p

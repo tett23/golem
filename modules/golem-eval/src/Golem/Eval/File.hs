@@ -31,10 +31,12 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Eval.Expr
+import Golem.Eval.RegexStyle (applyRegexStyles, regexRules)
 import Golem.Eval.Settings
 import Golem.Eval.Value
 import Golem.Parser.AST qualified as A
 import Golem.Parser.SourceSettings
+import Golem.Project.Imports (ImportSite (..), importSite)
 import Golem.Project.Paths (PathError (..), pathErrorMessage)
 import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Style, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
 import Golem.Syntax
@@ -154,8 +156,10 @@ evalFile ctx0 (A.File fid blocks0) =
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
         Left ds -> (doc0, ds)
         Right (d, ws) -> (d, ws <> unknownParaStyles ctx d)
+      -- the regex styles last, so that the text of filters is matched too (docs/adr ADR 0015)
+      rules = regexRules (withLocalStyles (ctxStyle ctx0) local)
    in EvalResult
-        { erDocument = doc,
+        { erDocument = applyRegexStyles rules doc,
           erExports = stVars st,
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
           erDiagnostics = stDiags st <> breakDiags <> filterDiags,
@@ -368,15 +372,17 @@ alignment = \case
 standalone :: EvalContext -> SrcSpan -> A.Located A.Name -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 standalone ctx sp (A.Located nsp name) args body = case name of
   "import" -> do
-    case args of
-      [A.Located _ (A.Positional p), A.Located _ (A.Positional (A.Word "as")), A.Located nssp (A.Positional (A.Word ns))] -> do
-        let path = argText p
+    -- the same check as the project's (golem-project ADR 0006); G0223 points at the namespace
+    case (importSite sp (map A.locValue args), args) of
+      (Right (ImportSite path ns _), [_, _, A.Located nssp _]) -> do
         if ns `elem` reservedNames
           then err "G0223" nssp ("予約語は名前空間に使えません: " <> ns)
           else do
             let vals = fromMaybe Map.empty (Map.lookup (T.unpack path) (ctxImports ctx))
             modify' (\s -> s {stNamespaces = Map.insert ns vals (stNamespaces s), stImports = stImports s <> [(ns, T.unpack path, sp)]})
-      _ -> err "G0309" sp "@import は「@import パス as 名前空間」の形で書きます"
+      (Left d, _) -> report d
+      -- importSite accepts three arguments only
+      (Right _, _) -> pure ()
     pure []
   "toc" -> do
     kw <- keywords ctx args

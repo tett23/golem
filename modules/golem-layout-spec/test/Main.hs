@@ -2,8 +2,10 @@ module Main (main) where
 
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
+import Data.Text qualified as T
 import Golem.LayoutSpec
 import Golem.Project.Style
+import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -27,7 +29,7 @@ styleWith :: Bool -> Bool -> Grid -> Style
 styleWith bindingRight vertical g = defaultStyle {stPage = Just (Page (NamedSize "A5") bindingRight vertical (Just g) 0)}
 
 geom :: Style -> PageGeometry
-geom s = either (error . show) id (pageGeometry s)
+geom s = either (error . show) id (pageGeometry (FileId 0) s)
 
 tests :: TestTree
 tests =
@@ -74,8 +76,8 @@ tests =
         let gv = geom (styleWith True True (grid 40 20 1 Nothing))
         take 2 (pgLineGrid gv) @?= [pt 5, pt 22],
       testCase "a type area larger than the page is an error" $ do
-        assertBool "too wide" (isLeft (pageGeometry (styleWith False False (grid 40 30 1 Nothing))))
-        assertBool "too many lines" (isLeft (pageGeometry (styleWith False False (grid 30 60 1 Nothing)))),
+        assertBool "too wide" (isLeft (pageGeometry (FileId 0) (styleWith False False (grid 40 30 1 Nothing))))
+        assertBool "too many lines" (isLeft (pageGeometry (FileId 0) (styleWith False False (grid 30 60 1 Nothing)))),
       testCase "sidenote column on the fore-edge side; errors when vertical or too wide" $ do
         let sn w = SidenoteStyle (Abs (pt w)) (Abs (pt 10)) "{n}"
             s = (styleWith False False (grid 25 30 1 Nothing)) {stSidenotes = Just (sn 60)}
@@ -84,8 +86,38 @@ tests =
             Rect ex _ _ _ = pgTypeAreaEven g
         sidenoteAreaFor g 1 @?= Just (Rect (ox + pt 250 + pt 10) oy (pt 60) oh)
         sidenoteAreaFor g 2 @?= Just (Rect (ex - pt 10 - pt 60) oy (pt 60) oh)
-        assertBool "too wide" (isLeft (pageGeometry s {stSidenotes = Just (sn 200)}))
-        assertBool "vertical" (isLeft (pageGeometry ((styleWith True True (grid 40 20 1 Nothing)) {stSidenotes = Just (sn 20)}))),
+        assertBool "too wide" (isLeft (pageGeometry (FileId 0) s {stSidenotes = Just (sn 200)}))
+        assertBool "vertical" (isLeft (pageGeometry (FileId 0) ((styleWith True True (grid 40 20 1 Nothing)) {stSidenotes = Just (sn 20)}))),
+      testCase "G0701: one diagnostic per failed condition, at the top of the given file (golem-driver ADR 0016)" $ do
+        let sn w = SidenoteStyle (Abs (pt w)) (Abs (pt 10)) "{n}"
+            base = styleWith False False (grid 30 30 1 Nothing)
+            noGrid = defaultStyle {stPage = Just (Page (NamedSize "A5") False False Nothing 0)}
+            zwSize = styleWith False False ((grid 30 30 1 Nothing) {gridFontSize = Zw 1})
+            cases =
+              [ ("no [page]", defaultStyle, "style.toml に [page] がないため、版面を計算できません"),
+                ("no [page.grid]", noGrid, "style.toml に [page.grid] がないため、版面を計算できません"),
+                ("font-size in zw", zwSize, "文字の大きさは絶対的な寸法で書いてください"),
+                ("no characters", styleWith False False (grid 0 30 1 Nothing), "字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください"),
+                ("overflow", styleWith False False (grid 40 30 1 Nothing), "版面がページからはみ出しています"),
+                ("vertical with sidenotes", (styleWith True True (grid 40 20 1 Nothing)) {stSidenotes = Just (sn 20)}, "縦組みの版面には傍注欄を設けられません"),
+                ("sidenotes overflow", base {stSidenotes = Just (sn 200)}, "版面と傍注欄の合計がページからはみ出しています")
+              ]
+        mapM_
+          ( \(name, st, msg) -> case pageGeometry (FileId 7) st of
+              Left [d] -> do
+                assertEqual name (DiagnosticCode "G0701") (diagCode d)
+                assertEqual name msg (diagMessage d)
+                assertEqual name (mkSpan (FileId 7) 0 0) (diagSpan d)
+              other -> assertFailure (name <> ": " <> show other)
+          )
+          cases,
+      testCase "a sidenote column on a page of two columns is G0701 (docs/adr ADR 0018)" $ do
+        let sn = SidenoteStyle (Abs (pt 20)) (Abs (pt 10)) "{n}"
+        case pageGeometry (FileId 0) ((styleWith False False (grid 12 30 2 (Just (Abs (pt 20))))) {stSidenotes = Just sn}) of
+          Left [d] -> do
+            diagCode d @?= DiagnosticCode "G0701"
+            assertBool "mentions columns" ("段組み" `T.isInfixOf` diagMessage d)
+          other -> assertFailure (show other),
       testCase "running heads and folios: outside is the fore-edge, swapped on even pages" $ do
         let s = (styleWith False False (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef "top-outside" (RunningHeading 1 HeadShort PickFirst) RunningTitle)) (Just ("bottom-center", "{n}")))]}
             g = geom s

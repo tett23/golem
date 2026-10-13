@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Control.Monad (void)
+import Data.Bifunctor (first)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
@@ -9,7 +10,8 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Doc.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Parser.SourceSettings
-import Golem.Project
+import Golem.Project hiding (loadProject)
+import Golem.Project qualified as P
 import Golem.Project.Paths
 import Golem.Project.Style
 import Golem.Syntax
@@ -21,6 +23,10 @@ import Test.Tasty.HUnit
 
 main :: IO ()
 main = defaultMain tests
+
+-- | The diagnostics of a failed load, without the sources (golem-project ADR 0006).
+loadProject :: FilePath -> IO (Either [Diagnostic] Project)
+loadProject = fmap (first pfDiagnostics) . P.loadProject
 
 manifest :: [Text] -> Text
 manifest chapters =
@@ -127,6 +133,17 @@ runningHeadTests =
       testCase "the message names the value and the vocabulary" $ do
         let ms = messages (runningHead "content = \"chapter\"")
         assertBool (show ms) (any ("heading.<階層>.short" `T.isInfixOf`) ms && any ("chapter" `T.isInfixOf`) ms),
+      testCase "an unknown position of a running head or a folio is G0318 (golem-driver ADR 0016)" $ do
+        let st = parseStyle (FileId 0) "[masters.body]\nrunning-head = { position = \"middle\", content = \"title\" }\n"
+        codes st @?= ["G0318"]
+        map (T.isPrefixOf "未知の位置です: middle") (messages st) @?= [True]
+        let fo = parseStyle (FileId 0) "[masters.body]\nfolio = { position = \"middle\", format = \"{n}\" }\n"
+        codes fo @?= ["G0318"]
+        map (T.isPrefixOf "未知の位置です: middle") (messages fo) @?= [True]
+        case fo of
+          Left [d] -> spanStart (diagSpan d) @?= T.length "[masters.body]\nfolio = { position = "
+          other -> assertFailure (show other)
+        codes (parseStyle (FileId 0) "[masters.body]\nfolio = { position = \"bottom-center\", format = \"{n}\" }\n") @?= [],
       testCase "the running-head of a heading is retired (G0319)" $ do
         let r = parseStyle (FileId 0) "[headings.1]\nrunning-head = true\n"
         codes r @?= ["G0319"]
@@ -137,6 +154,104 @@ runningHeadTests =
       (\s -> Map.lookup "body" (stMasters s) >>= mdRunningHead)
         <$> parseStyle (FileId 0) ("[masters.body]\nrunning-head = { position = \"top-outside\"" <> (if T.null kv then "" else ", " <> kv) <> " }\n")
     messages = either (map diagMessage) (const [])
+
+msgs :: Either [Diagnostic] a -> [Text]
+msgs = either (map diagMessage) (const [])
+
+-- | The diagnostics of the project stage (ADR 0006).
+diagnosticCodeTests :: TestTree
+diagnosticCodeTests =
+  testGroup
+    "project diagnostic codes (ADR 0006)"
+    [ testCase "no manifest.toml is G0316" $
+        withProject [("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0316"]
+          msgs r @?= ["manifest.toml がありません"],
+      testCase "a missing import is G0302 at the @import" $
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import c.gm as c\n@import nope.gm as x\n"), ("c.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0302"]
+          msgs r @?= ["ファイルがありません: nope.gm"]
+          either (map (\d -> (spanFile (diagSpan d), spanStart (diagSpan d)))) (const []) r @?= [(FileId 1, 18)],
+      testCase "absolute paths and links out of the root are G0303" $ do
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import /abs.gm as x\n")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0303"]
+          msgs r @?= ["絶対パスは使えません: /abs.gm"]
+        withSystemTempDirectory "golem-outside" $ \outside -> do
+          TIO.writeFile (outside </> "x.gm") ""
+          withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import x.gm as x\n")] $ \root -> do
+            createFileLink (outside </> "x.gm") (root </> "x.gm")
+            r <- loadProject root
+            codes r @?= ["G0303"]
+            msgs r @?= ["プロジェクトルートの外を指しています: x.gm"],
+      testCase "a cycle of three files" $
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import b.gm as b\n"), ("b.gm", "@import c.gm as c\n"), ("c.gm", "@import a.gm as a\n")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0305"]
+          msgs r @?= ["import が循環しています: a.gm → b.gm → c.gm → a.gm"]
+          either (map (length . diagRelated)) (const []) r @?= [3],
+      testCase "an empty [targets] is G0301" $
+        withProject [("manifest.toml", T.replace "[targets.html]" "[targets]" (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0301"]
+          msgs r @?= ["出力ターゲットが一つもありません"],
+      testCase "a TOML syntax error in manifest.toml is G0301" $
+        withProject [("manifest.toml", "chapters = [\n"), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0301"]
+          assertBool (show (msgs r)) (all ("TOML の誤りです: " `T.isPrefixOf`) (msgs r)),
+      testCase "an empty path is not shown" $
+        withProject [("manifest.toml", "chapters = [\"a.gm\"]\n\n[targets.html]\n"), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0301"]
+          assertBool (show (msgs r)) (any ("missing key: metadata" `T.isSuffixOf`) (msgs r))
+          assertBool (show (msgs r)) (not (any ("()" `T.isInfixOf`) (msgs r))),
+      testCase "a chapter that is not a path, table or array" $
+        withProject [("manifest.toml", T.replace "chapters = [\"a.gm\"]" "chapters = [1]" (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0301"]
+          msgs r @?= ["章は、ファイルのパス、表、配列のどれかで書きます (.chapters[0])"],
+      testCase "a malformed @import is G0309" $
+        mapM_
+          ( \src -> withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", src), ("x.gm", "")] $ \root -> do
+              r <- loadProject root
+              assertEqual (T.unpack src) ["G0309"] (codes r)
+              assertEqual (T.unpack src) ["@import は「@import パス as 名前空間」の形で書きます"] (msgs r)
+          )
+          [ "@import x.gm\n",
+            "@import x.gm as\n",
+            "@import [= 1] as x\n",
+            "@import x.gm as x extra\n",
+            "@import x.gm\n@label a\n# 見出し\n"
+          ],
+      testCase "a TOML syntax error in style.toml is G0306" $ do
+        let r = parseStyle (FileId 0) "[page\n"
+        codes r @?= ["G0306"]
+        assertBool (show (msgs r)) (all ("TOML の誤りです: " `T.isPrefixOf`) (msgs r)),
+      testCase "the messages Golem writes are Japanese" $ do
+        let has src m = let ms = msgs (parseStyle (FileId 0) src) in assertBool (show ms) (any (m `T.isInfixOf`) ms)
+            grid extra = "[page]\nsize = \"B6\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 30\nlines = 20\nline-pitch = \"22H\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n" <> extra
+        has "[toc]\nleader = \"dash\"\n" "leader に使えない値です: dash（dots, none のどれか）"
+        has (grid "columns = 2\n") "columns が 2 以上のときは column-gap が要ります"
+        has "[paragraph-styles.x]\nspace-between = -1\n" "space-between は 0 以上です"
+        has "[paragraph-styles.x]\nfirst-line-indent = \"abc\"\n" "長さの書き方が不正です: abc（1zw や -1zw のように書きます）"
+        has "[page]\nsize = \"A6\"\nbleed = \"abc\"\n" "長さの書き方が不正です: abc（13Q や 20mm のように書きます）"
+        has "[page]\nsize = \"A6\"\nbleed = 3\n" "長さは文字列で書きます"
+        has "[color.swatches]\na = { cmyk = [0, 0, 0, 101] }\n" "cmyk は 0 から 100 までの整数四つです"
+        has "[headings.4]\n" "見出しの段は 1、2、3 のどれかです: 4",
+      testCase "the checks after reading" $ do
+        msgs (parseStyle (FileId 0) "[figures]\nnumber = \"{x}\"\n") @?= ["番号の書式が不正です: {x}"]
+        msgs (parseStyle (FileId 0) "[character-styles.Bad]\nsynthetic-bold = true\n") @?= ["スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: Bad"]
+        msgs (parseStyle (FileId 0) "[composition]\nexplicit-hyphen-penalty = 10001\n") @?= ["explicit-hyphen-penalty は -9999 から 10000 までです: 10001"]
+        -- a negative overhang cannot be written as a dimension, so the check after reading is not reached
+        msgs (parseStyle (FileId 0) "[composition.ruby]\noverhang = \"-1zw\"\n") @?= ["長さの書き方が不正です: -1zw（13Q や 20mm のように書きます） (.composition.ruby.overhang)"]
+        -- an unknown page size is G0317 at the value since golem-project ADR 0005
+        let r = parseStyle (FileId 0) "[page]\nsize = \"Z9\"\n"
+        codes r @?= ["G0317"]
+        assertBool (show (msgs r)) (all ("未知の判型です: Z9" `T.isPrefixOf`) (msgs r))
+    ]
 
 codes :: Either [Diagnostic] a -> [Text]
 codes = either (map ((\(DiagnosticCode c) -> c) . diagCode)) (const [])
@@ -200,8 +315,9 @@ tests =
           ]
         $ \root -> do
           r <- loadProject root
-          -- on case-insensitive file systems the second name may resolve to the first file
-          assertBool "error or single file" (codes r == ["G0304"] || either (const False) (const True) r),
+          -- the written paths are compared on every file system (ADR 0006)
+          codes r @?= ["G0304"]
+          msgs r @?= ["大文字と小文字だけが異なるパスです: common.gm と Common.gm"],
       testCase "symbolic links are resolved to the same file"
         $ withProject
           [ ("manifest.toml", manifest ["\"a.gm\"", "\"b.gm\""]),
@@ -219,6 +335,7 @@ tests =
         withProject [("manifest.toml", manifest ["\"a.gm\""] <> "\n[extra]\nx = 1\n"), ("a.gm", "")] $ \root -> loadProject root >>= (@?= ["G0301"]) . codes
         withProject [("manifest.toml", T.replace "id = " "idd = " (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> loadProject root >>= (@?= True) . (not . null) . codes,
       sourceTests,
+      diagnosticCodeTests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))
@@ -299,6 +416,7 @@ tests =
       runningHeadTests,
       localStyleTests,
       akiTests,
+      regexStyleTests,
       testCase "[page] bleed (golem-pdf ADR 0004)" $ do
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"3mm\"\n") @?= Right (Just 557314)
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\n") @?= Right (Just 0)
@@ -588,8 +706,8 @@ akiTests =
       testCase "a paragraph style of a file may name an aki set" $ do
         base <- either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) wideWaou)
         localStyleDef ParagraphKind [("aki-set", LocalWord "wide-waou")] @?= Right (Right noParaDef {psAkiSet = Just "wide-waou"})
-        [(c, n) | (c, n, _) <- checkLocalStyles base (LocalStyles Map.empty (Map.fromList [("q", noParaDef {psAkiSet = Just "nope"})]))] @?= [("G0313", "q")]
-        [(c, n) | (c, n, _) <- checkLocalStyles base (LocalStyles Map.empty (Map.fromList [("q", noParaDef {psAkiSet = Just "wide-waou"})]))] @?= []
+        [(c, n) | (c, n, _) <- checkLocalStyles base (LocalStyles Map.empty (Map.fromList [("q", noParaDef {psAkiSet = Just "nope"})]) Map.empty)] @?= [("G0313", "q")]
+        [(c, n) | (c, n, _) <- checkLocalStyles base (LocalStyles Map.empty (Map.fromList [("q", noParaDef {psAkiSet = Just "wide-waou"})]) Map.empty)] @?= []
     ]
   where
     wideWaou =
@@ -604,6 +722,76 @@ akiTests =
           "[paragraph-styles.body]",
           "aki-set = \"wide-waou\""
         ]
+
+-- | Regex styles (docs/adr ADR 0015).
+regexStyleTests :: TestTree
+regexStyleTests =
+  testGroup
+    "regex styles (docs/adr ADR 0015)"
+    [ testCase "regex-styles is read as an array of tables" $ do
+        s <- styleOf "[paragraph-styles.body]\nregex-styles = [{ pattern = '[0-9]+', style = \"bold\" }]\n"
+        (paraStyle s Nothing >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold"],
+      testCase "regex-styles is inherited through based-on, and replaced as a whole" $ do
+        s <- styleOf (body <> "[paragraph-styles.quote]\nindent = \"1zw\"\n")
+        (paraStyle s (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold"]
+        e <- styleOf (body <> "[paragraph-styles.quote]\nregex-styles = []\n")
+        (paraStyle e (Just "quote") >>= psRegexStyles) @?= Just []
+        o <- styleOf (body <> "[paragraph-styles.quote]\nregex-styles = [{ pattern = 'x', style = \"italic\" }]\n")
+        (paraStyle o (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "x" "italic"],
+      testCase "the built-in paragraph styles have no regex styles" $ do
+        s <- styleOf ""
+        mapM_ (\n -> (paraStyle s (Just n) >>= psRegexStyles) @?= Nothing) ["body", "verse", "caption", "sidenote"],
+      testCase "the keys of a regex style (G0306)" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ style = \"bold\" }]\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a' }]\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"bold\", colour = \"x\" }]\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 1, style = \"bold\" }]\n") @?= ["G0306"],
+      testCase "a pattern outside the dialect is G0315, an unknown character style G0313" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = '\\1', style = \"bold\" }]\n") @?= ["G0315"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"nope\" }]\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[character-styles.n]\nsynthetic-bold = true\n\n[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"n\" }]\n") @?= [],
+      testCase "the message of G0315 names the style, the place in the array and the offset" $
+        messages (parseStyle (FileId 0) "[paragraph-styles.quote]\nregex-styles = [{ pattern = 'a', style = \"bold\" }, { pattern = 'ab\\1', style = \"bold\" }]\n")
+          @?= ["G0315 正規表現を解釈できません: 後方参照は使えません（quote の 2 番目の正規表現の 3 字目）"],
+      testCase "the message of G0313 for a regex style" $
+        messages (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"nope\" }]\n")
+          @?= ["G0313 style.toml のスタイルの参照が不正です: 正規表現スタイルの文字スタイルがありません: nope"],
+      testCase "a regex style of a file goes after style.toml's, and reaches the styles based on it" $ do
+        base <- styleOf (body <> "[paragraph-styles.quote]\nindent = \"1zw\"\n")
+        let ls = noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "x" "italic"])]}
+            s = withLocalStyles base ls
+        (paraStyle s Nothing >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold", RegexStyleDef "x" "italic"]
+        (paraStyle s (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold", RegexStyleDef "x" "italic"]
+        (paraStyle base (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold"],
+      testCase "a regex style of a file does not reach a style with its own regex-styles" $ do
+        base <- styleOf (body <> "[paragraph-styles.quote]\nregex-styles = [{ pattern = 'q', style = \"bold\" }]\n")
+        let s = withLocalStyles base noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "x" "italic"])]}
+        (paraStyle s (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "q" "bold"],
+      testCase "a regex style of a file can use a character style of the file" $ do
+        base <- styleOf ""
+        let ls = noLocalStyles {lsCharStyles = Map.fromList [("n", noCharDef)], lsRegexStyles = Map.fromList [("body", [RegexStyleDef "a" "n"])]}
+        checkLocalRegexStyles base ls @?= [],
+      testCase "the errors of a file's regex styles, each at its place" $ do
+        base <- styleOf body
+        let ls = noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "a" "bold", RegexStyleDef "\\1" "bold", RegexStyleDef "b" "nope"]), ("nope", [RegexStyleDef "a" "bold"])]}
+        [(n, i, c) | (n, i, c, _) <- checkLocalRegexStyles base ls] @?= [("body", 1, "G0315"), ("body", 2, "G0313"), ("nope", 0, "G0313")],
+      testCase "checkLocalStyles does not repeat the errors of the regex styles" $ do
+        base <- styleOf body
+        checkLocalStyles base noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "\\1" "bold"])]} @?= [],
+      testCase "localRegexStyleDef reads pattern and style" $ do
+        localRegexStyleDef [("pattern", LocalString "[0-9]+"), ("style", LocalWord "bold")] @?= Right (RegexStyleDef "[0-9]+" "bold")
+        assertBool "missing style" (isLeftE (localRegexStyleDef [("pattern", LocalString "a")]))
+        assertBool "missing pattern" (isLeftE (localRegexStyleDef [("style", LocalWord "bold")]))
+        assertBool "unknown key" (isLeftE (localRegexStyleDef [("pattern", LocalString "a"), ("style", LocalWord "bold"), ("colour", LocalWord "x")]))
+        regexStyleKeys @?= ["pattern", "style"],
+      testCase "regex-styles cannot be written in @style-def paragraph" $
+        assertBool "G0306" (isLeftE (localStyleDef ParagraphKind [("regex-styles", LocalString "x")]))
+    ]
+  where
+    body = "[paragraph-styles.body]\nregex-styles = [{ pattern = '[0-9]+', style = \"bold\" }]\n\n"
+    styleOf t = either (\ds -> assertFailure (show ds) >> pure defaultStyle) pure (parseStyle (FileId 0) t)
+    messages = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
+    isLeftE = either (const True) (const False)
 
 -- | Styles defined in a file (docs/adr ADR 0014).
 localStyleTests :: TestTree
@@ -706,13 +894,15 @@ pageSizeTests =
     testCase "errors are G0317" $ do
       g0317 "\"148mm x 210mm\"" "未知の判型です: 148mm x 210mm。表にない判型は size = { width = \"…\", height = \"…\" } で書きます"
       g0317 "\"A3\"" "未知の判型です: A3"
+      -- a name with x is no longer left to the PDF's G0701 (golem-driver ADR 0016)
+      g0317 "\"148x210\"" "未知の判型です: 148x210"
       g0317 "\"菊版\"" "未知の判型です: 菊版"
       g0317 "\"新書版\"" "未知の判型です: 新書版"
       g0317 "{ width = \"148mm\" }" "判型の width と height はどちらも必須です"
       g0317 "{ width = \"148mm\", height = \"210mm\", depth = \"1mm\" }" "depth"
       g0317 "{ width = \"10zw\", height = \"210mm\" }" "判型には zw を使えません"
       g0317 "{ width = \"0mm\", height = \"210mm\" }" "判型の幅と高さは 0 より大きい寸法です"
-      g0317 "{ width = \"148\", height = \"210mm\" }" "dimension",
+      g0317 "{ width = \"148\", height = \"210mm\" }" "長さの書き方が不正です: 148",
     testCase "G0317 is at the value of size" $
       case parseStyle (FileId 0) "[page]\nsize = \"A3\"\n" of
         Left [d] -> spanStart (diagSpan d) @?= 14
