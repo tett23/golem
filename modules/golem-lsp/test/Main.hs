@@ -113,8 +113,8 @@ tests =
         ws <- updateFile ws0 "b.gm" "@style-def paragraph letter\n@style-def paragraph memo\n\n@label second\n# 次の章\n\n@style-def \n\n@style-def paragraph letter \n\n@style-def paragraph letter based-on=\n\n@style \n\n@style-def character term font=\n"
         let src = textOf ws "b.gm"
             found = completions ws "b.gm"
-        map cmpLabel (found (offsetIn src "@style-def \n" 11)) @?= ["character", "paragraph"]
-        map cmpKind (found (offsetIn src "@style-def \n" 11)) @?= [CkStyleKind, CkStyleKind]
+        map cmpLabel (found (offsetIn src "@style-def \n" 11)) @?= ["character", "paragraph", "regex"]
+        map cmpKind (found (offsetIn src "@style-def \n" 11)) @?= [CkStyleKind, CkStyleKind, CkStyleKind]
         let keys = found (offsetIn src "@style-def paragraph letter \n" 28)
         assertBool "keys" (all (`elem` map cmpLabel keys) ["based-on=", "indent="])
         assertBool "key kinds" (all ((== CkSettingKey) . cmpKind) keys)
@@ -124,6 +124,24 @@ tests =
         ws' <- updateFile ws "a.gm" (textOf ws "a.gm" <> "\n@style \n")
         let srcA = textOf ws' "a.gm"
         assertBool "not in another file" ("letter" `notElem` map cmpLabel (completions ws' "a.gm" (offsetIn srcA "@style \n" 7))),
+      testCase "completion: @style-def regex (docs/adr ADR 0015)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@style-def paragraph letter\n\n@label second\n# 次の章\n\n@style-def regex \n\n@style-def regex body \n\n@style-def regex body pattern=x style=\n"
+        let src = textOf ws "b.gm"
+            found = completions ws "b.gm"
+            paras = found (offsetIn src "@style-def regex \n" 17)
+        assertBool (show paras) (all (`elem` map cmpLabel paras) ["body", "verse", "letter"])
+        assertBool "paragraph kinds" (all ((== CkParaStyle) . cmpKind) paras)
+        found (offsetIn src "@style-def regex body \n" 22) @?= [Completion "pattern=" CkSettingKey, Completion "style=" CkSettingKey]
+        let chars = found (offsetIn src "style=\n" 6)
+        map cmpLabel chars @?= ["bold", "italic", "strong"]
+        assertBool "character kinds" (all ((== CkCharStyle) . cmpKind) chars),
+      testCase "definition: the styles @style-def regex names (docs/adr ADR 0015)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@style-def character n synthetic-bold=true\n@style-def paragraph letter\n@style-def regex letter pattern=x style=n\n\n@label second\n# 次の章\n"
+        let src = textOf ws "b.gm"
+        map (slice ws) (definition ws "b.gm" (offsetIn src "letter pattern" 1)) @?= ["letter"]
+        map (slice ws) (definition ws "b.gm" (offsetIn src "style=n\n" 1)) @?= ["n"],
       testCase "completion: @manifest (docs/adr ADR 0014)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@manifest \n\n@manifest paragraph-separator=\n"

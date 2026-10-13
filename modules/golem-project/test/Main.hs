@@ -404,6 +404,7 @@ tests =
       styleTests,
       runningHeadTests,
       localStyleTests,
+      regexStyleTests,
       testCase "[page] bleed (golem-pdf ADR 0004)" $ do
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"3mm\"\n") @?= Right (Just 557314)
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\n") @?= Right (Just 0)
@@ -638,6 +639,76 @@ specStyle =
       "running-head = { position = \"top-outside\", content = \"heading.1.short\" }",
       "folio = { position = \"bottom-outside\", format = \"{n}\" }"
     ]
+
+-- | Regex styles (docs/adr ADR 0015).
+regexStyleTests :: TestTree
+regexStyleTests =
+  testGroup
+    "regex styles (docs/adr ADR 0015)"
+    [ testCase "regex-styles is read as an array of tables" $ do
+        s <- styleOf "[paragraph-styles.body]\nregex-styles = [{ pattern = '[0-9]+', style = \"bold\" }]\n"
+        (paraStyle s Nothing >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold"],
+      testCase "regex-styles is inherited through based-on, and replaced as a whole" $ do
+        s <- styleOf (body <> "[paragraph-styles.quote]\nindent = \"1zw\"\n")
+        (paraStyle s (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold"]
+        e <- styleOf (body <> "[paragraph-styles.quote]\nregex-styles = []\n")
+        (paraStyle e (Just "quote") >>= psRegexStyles) @?= Just []
+        o <- styleOf (body <> "[paragraph-styles.quote]\nregex-styles = [{ pattern = 'x', style = \"italic\" }]\n")
+        (paraStyle o (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "x" "italic"],
+      testCase "the built-in paragraph styles have no regex styles" $ do
+        s <- styleOf ""
+        mapM_ (\n -> (paraStyle s (Just n) >>= psRegexStyles) @?= Nothing) ["body", "verse", "caption", "sidenote"],
+      testCase "the keys of a regex style (G0306)" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ style = \"bold\" }]\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a' }]\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"bold\", colour = \"x\" }]\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 1, style = \"bold\" }]\n") @?= ["G0306"],
+      testCase "a pattern outside the dialect is G0315, an unknown character style G0313" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = '\\1', style = \"bold\" }]\n") @?= ["G0315"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"nope\" }]\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[character-styles.n]\nsynthetic-bold = true\n\n[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"n\" }]\n") @?= [],
+      testCase "the message of G0315 names the style, the place in the array and the offset" $
+        messages (parseStyle (FileId 0) "[paragraph-styles.quote]\nregex-styles = [{ pattern = 'a', style = \"bold\" }, { pattern = 'ab\\1', style = \"bold\" }]\n")
+          @?= ["G0315 正規表現を解釈できません: 後方参照は使えません（quote の 2 番目の正規表現の 3 字目）"],
+      testCase "the message of G0313 for a regex style" $
+        messages (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"nope\" }]\n")
+          @?= ["G0313 style.toml のスタイルの参照が不正です: 正規表現スタイルの文字スタイルがありません: nope"],
+      testCase "a regex style of a file goes after style.toml's, and reaches the styles based on it" $ do
+        base <- styleOf (body <> "[paragraph-styles.quote]\nindent = \"1zw\"\n")
+        let ls = noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "x" "italic"])]}
+            s = withLocalStyles base ls
+        (paraStyle s Nothing >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold", RegexStyleDef "x" "italic"]
+        (paraStyle s (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold", RegexStyleDef "x" "italic"]
+        (paraStyle base (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "[0-9]+" "bold"],
+      testCase "a regex style of a file does not reach a style with its own regex-styles" $ do
+        base <- styleOf (body <> "[paragraph-styles.quote]\nregex-styles = [{ pattern = 'q', style = \"bold\" }]\n")
+        let s = withLocalStyles base noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "x" "italic"])]}
+        (paraStyle s (Just "quote") >>= psRegexStyles) @?= Just [RegexStyleDef "q" "bold"],
+      testCase "a regex style of a file can use a character style of the file" $ do
+        base <- styleOf ""
+        let ls = noLocalStyles {lsCharStyles = Map.fromList [("n", noCharDef)], lsRegexStyles = Map.fromList [("body", [RegexStyleDef "a" "n"])]}
+        checkLocalRegexStyles base ls @?= [],
+      testCase "the errors of a file's regex styles, each at its place" $ do
+        base <- styleOf body
+        let ls = noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "a" "bold", RegexStyleDef "\\1" "bold", RegexStyleDef "b" "nope"]), ("nope", [RegexStyleDef "a" "bold"])]}
+        [(n, i, c) | (n, i, c, _) <- checkLocalRegexStyles base ls] @?= [("body", 1, "G0315"), ("body", 2, "G0313"), ("nope", 0, "G0313")],
+      testCase "checkLocalStyles does not repeat the errors of the regex styles" $ do
+        base <- styleOf body
+        checkLocalStyles base noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "\\1" "bold"])]} @?= [],
+      testCase "localRegexStyleDef reads pattern and style" $ do
+        localRegexStyleDef [("pattern", LocalString "[0-9]+"), ("style", LocalWord "bold")] @?= Right (RegexStyleDef "[0-9]+" "bold")
+        assertBool "missing style" (isLeftE (localRegexStyleDef [("pattern", LocalString "a")]))
+        assertBool "missing pattern" (isLeftE (localRegexStyleDef [("style", LocalWord "bold")]))
+        assertBool "unknown key" (isLeftE (localRegexStyleDef [("pattern", LocalString "a"), ("style", LocalWord "bold"), ("colour", LocalWord "x")]))
+        regexStyleKeys @?= ["pattern", "style"],
+      testCase "regex-styles cannot be written in @style-def paragraph" $
+        assertBool "G0306" (isLeftE (localStyleDef ParagraphKind [("regex-styles", LocalString "x")]))
+    ]
+  where
+    body = "[paragraph-styles.body]\nregex-styles = [{ pattern = '[0-9]+', style = \"bold\" }]\n\n"
+    styleOf t = either (\ds -> assertFailure (show ds) >> pure defaultStyle) pure (parseStyle (FileId 0) t)
+    messages = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
+    isLeftE = either (const True) (const False)
 
 -- | Styles defined in a file (docs/adr ADR 0014).
 localStyleTests :: TestTree

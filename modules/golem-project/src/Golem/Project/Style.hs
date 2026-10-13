@@ -14,6 +14,10 @@ module Golem.Project.Style
     CharStyleDef (..),
     LineBreaks (..),
     ParaStyleDef (..),
+    RegexStyleDef (..),
+    regexStyleKeys,
+    localRegexStyleDef,
+    checkLocalRegexStyles,
     builtinCharStyles,
     builtinParaStyles,
     noCharDef,
@@ -68,6 +72,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.ListMarkers (NumberFormat, parseNumberFormat)
 import Golem.Project.Manifest (decodeStrictBy)
+import Golem.Regex (RegexError (..), compile)
 import Golem.Syntax
 import Toml.Schema
 import Toml.Schema.FromValue (typeError)
@@ -183,7 +188,16 @@ data ParaStyleDef = ParaStyleDef
     -- | the start of every line (docs/adr ADR 0006)
     psIndent :: !(Maybe Dim),
     -- | added to the indent on the first line; negative hangs
-    psFirstLineIndent :: !(Maybe Dim)
+    psFirstLineIndent :: !(Maybe Dim),
+    -- | the regex styles, in order (docs/adr ADR 0015); replaced as a whole through based-on
+    psRegexStyles :: !(Maybe [RegexStyleDef])
+  }
+  deriving stock (Eq, Show)
+
+-- | A regex style: a pattern and the character style for its matches (docs/adr ADR 0015).
+data RegexStyleDef = RegexStyleDef
+  { rdPattern :: !Text,
+    rdStyle :: !Text
   }
   deriving stock (Eq, Show)
 
@@ -193,7 +207,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The built-in character styles: bold, italic and strong.
 builtinCharStyles :: Map Text CharStyleDef
@@ -235,6 +249,7 @@ overPara u b =
     (psSpaceBetween u <|> psSpaceBetween b)
     (psIndent u <|> psIndent b)
     (psFirstLineIndent u <|> psFirstLineIndent b)
+    (psRegexStyles u <|> psRegexStyles b)
 
 -- | The parent of a paragraph style: body has none, the others are based on body by default.
 paraParent :: Text -> ParaStyleDef -> Maybe Text
@@ -581,7 +596,11 @@ instance FromValue ParaStyleDef where
     ind <- dimKey "indent"
     fli <- optKey "first-line-indent"
     fli' <- traverse (\v -> maybe (fail ("長さの書き方が不正です: " <> T.unpack v <> "（1zw や -1zw のように書きます）")) pure (parseSignedDim v)) fli
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli')
+    rs <- optKey "regex-styles"
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs)
+
+instance FromValue RegexStyleDef where
+  fromValue = parseTableFromValue (RegexStyleDef <$> reqKey "pattern" <*> reqKey "style")
 
 instance FromValue HeadingStyle where
   fromValue = parseTableFromValue $ do
@@ -875,6 +894,7 @@ styleChecks owner s =
     <> [("G0306", "", m) | m <- checks]
     <> [("G0308", n, "style.toml にないフォントの役割です: " <> r) | (n, r) <- roles, Map.notMember r (stFonts s)]
     <> [("G0313", n, owner <> "スタイルの参照が不正です: " <> m) | (n, m) <- referenceChecks]
+    <> [(code, n, m) | (n, ParaStyleDef {psRegexStyles = Just rs}) <- Map.toList (stParaStyles s), (i, r) <- zip [0 ..] rs, (code, m) <- regexStyleErrors owner s n i r]
     <> [("G0311", n, "段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks]
     <> [("G0312", n, "段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | n <- indentChecks]
   where
@@ -952,12 +972,14 @@ the same name by 'withLocalStyles'.
 -}
 data LocalStyles = LocalStyles
   { lsCharStyles :: !(Map Text CharStyleDef),
-    lsParaStyles :: !(Map Text ParaStyleDef)
+    lsParaStyles :: !(Map Text ParaStyleDef),
+    -- | the regex styles of @style-def regex by paragraph style, in the order written (docs/adr ADR 0015)
+    lsRegexStyles :: !(Map Text [RegexStyleDef])
   }
   deriving stock (Eq, Show)
 
 noLocalStyles :: LocalStyles
-noLocalStyles = LocalStyles Map.empty Map.empty
+noLocalStyles = LocalStyles Map.empty Map.empty Map.empty
 
 -- | The kind of a style @style-def defines.
 data StyleKind = CharacterKind | ParagraphKind
@@ -968,9 +990,10 @@ data LocalValue = LocalWord Text | LocalString Text
   deriving stock (Eq, Show)
 
 -- | The keys @style-def takes, as style.toml's (for completion).
-charStyleKeys, paraStyleKeys :: [Text]
+charStyleKeys, paraStyleKeys, regexStyleKeys :: [Text]
 charStyleKeys = ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic"]
 paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent"]
+regexStyleKeys = ["pattern", "style"]
 
 {- | The keys of one @style-def as a TOML table, read with the 'FromValue'
 of style.toml: a string is a string, the words true and false are
@@ -978,11 +1001,16 @@ booleans, a word of digits (with a leading -) is an integer, any other
 word is a string. Errors are messages of G0306.
 -}
 localStyleDef :: StyleKind -> [(Text, LocalValue)] -> Either [Text] (Either CharStyleDef ParaStyleDef)
-localStyleDef kind kvs =
-  let tab = Table (table [(k, tomlValue v) | (k, v) <- kvs])
-   in case kind of
-        CharacterKind -> Left <$> run tab
-        ParagraphKind -> Right <$> run tab
+localStyleDef kind kvs = case kind of
+  CharacterKind -> Left <$> readLocal kvs
+  ParagraphKind -> Right <$> readLocal kvs
+
+-- | The keys of one @style-def regex (docs/adr ADR 0015), read as a regex style of style.toml.
+localRegexStyleDef :: [(Text, LocalValue)] -> Either [Text] RegexStyleDef
+localRegexStyleDef = readLocal
+
+readLocal :: (FromValue a) => [(Text, LocalValue)] -> Either [Text] a
+readLocal kvs = run (Table (table [(k, tomlValue v) | (k, v) <- kvs]))
   where
     run :: (FromValue a) => Value -> Either [Text] a
     run v = case runMatcher (fromValue v) of
@@ -1010,10 +1038,14 @@ name added.
 -}
 withLocalStyles :: Style -> LocalStyles -> Style
 withLocalStyles s ls =
-  s
-    { stCharStyles = Map.unionWith overChar (lsCharStyles ls) (stCharStyles s),
-      stParaStyles = Map.unionWith overPara (lsParaStyles ls) (stParaStyles s)
-    }
+  let laid =
+        s
+          { stCharStyles = Map.unionWith overChar (lsCharStyles ls) (stCharStyles s),
+            stParaStyles = Map.unionWith overPara (lsParaStyles ls) (stParaStyles s)
+          }
+      -- the regex styles of the file after those the style resolves to (docs/adr ADR 0015)
+      added p rs d = d {psRegexStyles = Just (fromMaybe [] (paraStyle laid (Just p) >>= psRegexStyles) <> rs)}
+   in laid {stParaStyles = Map.foldrWithKey (\p rs -> Map.adjust (added p rs) p) (stParaStyles laid) (lsRegexStyles ls)}
 
 {- | The checks of style.toml on the styles of a file laid over it, less
 those style.toml has by itself: (code, the name of the style, message).
@@ -1021,7 +1053,46 @@ those style.toml has by itself: (code, the name of the style, message).
 checkLocalStyles :: Style -> LocalStyles -> [(Text, Text, Text)]
 checkLocalStyles s ls =
   let base = styleChecks owner s
-   in nub [c | c <- styleChecks owner (withLocalStyles s ls), c `notElem` base]
+   in nub [c | c <- styleChecks owner (withLocalStyles s ls {lsRegexStyles = Map.empty}), c `notElem` base]
+  where
+    owner = "@style-def の"
+
+{- | The errors of the i-th (from 0) regex style of a paragraph style
+(docs/adr ADR 0015): a pattern outside the dialect is G0315, a character
+style that does not exist G0313.
+-}
+regexStyleErrors :: Text -> Style -> Text -> Int -> RegexStyleDef -> [(Text, Text)]
+regexStyleErrors owner s para i (RegexStyleDef p st) =
+  [ ( "G0315",
+      "正規表現を解釈できません: "
+        <> reMessage e
+        <> "（"
+        <> para
+        <> " の "
+        <> T.pack (show (i + 1))
+        <> " 番目の正規表現の "
+        <> T.pack (show (reOffset e + 1))
+        <> " 字目）"
+    )
+  | Left e <- [compile p]
+  ]
+    <> [("G0313", owner <> "スタイルの参照が不正です: 正規表現スタイルの文字スタイルがありません: " <> st) | Map.notMember st (stCharStyles s)]
+
+{- | The errors of the regex styles of a file (docs/adr ADR 0015): the
+paragraph style, the place of the regex style among those the file adds
+to it (from 0), the code and the message. The paragraph style must exist
+(G0313); the character styles of the file count.
+-}
+checkLocalRegexStyles :: Style -> LocalStyles -> [(Text, Int, Text, Text)]
+checkLocalRegexStyles s ls =
+  let combined = withLocalStyles s ls {lsRegexStyles = Map.empty}
+   in concat
+        [ if Map.member p (stParaStyles combined)
+            then [(p, i, code, m) | (code, m) <- regexStyleErrors owner combined p i r]
+            else [(p, i, "G0313", owner <> "スタイルの参照が不正です: 正規表現スタイルの段落スタイルがありません: " <> p)]
+        | (p, rs) <- Map.toList (lsRegexStyles ls),
+          (i, r) <- zip [0 ..] rs
+        ]
   where
     owner = "@style-def の"
 
