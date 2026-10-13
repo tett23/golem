@@ -245,7 +245,11 @@ tests =
             a <- buildRealPdf True
             b <- buildRealPdf False
             a @?= b
-            assertBool "OpenType program" ("/Subtype /OpenType" `BS.isInfixOf` a)
+            -- the bare CFF, not the OpenType font: a viewer that takes the
+            -- codes of a CID-keyed CFF wrapped in OpenType as glyph IDs
+            -- (PDFium) draws no Japanese
+            assertBool "bare CFF program" ("/Subtype /CIDFontType0C" `BS.isInfixOf` a)
+            assertBool "no OpenType program" (not ("/Subtype /OpenType" `BS.isInfixOf` a))
             assertBool "vertical font" ("/Identity-V" `BS.isInfixOf` a)
             streams <- inflateAll a
             -- 「は」(U+306F) and 「じ」(U+3058) of 「はじめに」 are mapped back to text

@@ -124,7 +124,7 @@ provide fonts body roles =
           (bx0, by0, bx1, by1) = foldr (\(_, m) (a, b, c, d) -> let (x0, y0, x1, y1) = gmBBox m in (min a x0, min b y0, max c x1, max d y1)) (0, 0, 0, 0) metrics
        in P.Font
             { P.fontName = name,
-              P.fontProgram = if fontIsCff f then P.OpenTypeProgram program else P.TrueTypeProgram program,
+              P.fontProgram = if fontIsCff f then maybe (P.OpenTypeProgram program) P.CffProgram (sfntTable "CFF " program) else P.TrueTypeProgram program,
               P.fontVertical = vertical,
               P.fontWidths = [(cid g, per1000 (gmAdvance m)) | (g, m) <- metrics],
               P.fontVerticalAdvances = [(cid g, per1000 (gmVerticalAdvance m)) | vertical, (g, m) <- metrics],
@@ -149,3 +149,21 @@ memo f = unsafePerformIO $ do
         let v = f c
         atomicModifyIORef' ref (\m' -> (Map.insert c v m', v))
 {-# NOINLINE memo #-}
+
+{- | The bytes of one table of an sfnt (OpenType) font. A CFF font is embedded
+as its bare CFF table (FontFile3 with the subtype CIDFontType0C): PDFium
+takes the codes of a CID-keyed CFF wrapped in OpenType as glyph IDs, and
+drew no Japanese (golem-font ADR 0002 leaves the form of FontFile3 open).
+-}
+sfntTable :: BS.ByteString -> BS.ByteString -> Maybe BS.ByteString
+sfntTable tag font = go 0
+  where
+    numTables = u16 4
+    u16 o = fromIntegral (BS.index font o) * 256 + fromIntegral (BS.index font (o + 1)) :: Int
+    u32 o = u16 o * 65536 + u16 (o + 2)
+    go i
+      | BS.length font < rec + 16 || i >= numTables = Nothing
+      | BS.take 4 (BS.drop rec font) == tag = Just (BS.take (u32 (rec + 12)) (BS.drop (u32 (rec + 8)) font))
+      | otherwise = go (i + 1)
+      where
+        rec = 12 + 16 * i
