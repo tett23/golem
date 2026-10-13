@@ -34,10 +34,18 @@ inline =
 line :: Gen Text
 line = ((<>) . T.concat <$> Gen.list (Range.linear 1 3) inline) <*> spaces
 
+-- | Lines joined by newlines, some of them hard breaks (docs/adr ADR 0016).
+paragraphLines :: Text -> Gen Text
+paragraphLines indent = do
+  ls <- Gen.list (Range.linear 1 3) line
+  ends <- Gen.list (Range.singleton (length ls - 1)) (Gen.element ["\n", "\\\n", " \\\n"])
+  pure (T.concat (zipWith (\l e -> l <> e <> indent) ls ends) <> last ls)
+
 block :: Gen Text
 block =
   Gen.choice
-    [ T.intercalate "\n" <$> Gen.list (Range.linear 1 3) line,
+    [ paragraphLines "",
+      ("- " <>) <$> paragraphLines "  ",
       (\l s -> "# " <> l <> s) <$> line <*> spaces,
       (\items -> T.intercalate "\n" ["- " <> i | i <- items]) <$> Gen.list (Range.linear 1 3) line,
       (\s1 s2 -> "@toc" <> s1 <> "depth=2" <> s2) <$> Gen.element [" ", "   "] <*> spaces,
@@ -83,7 +91,9 @@ tests =
           golden "escapes" "\\a\\漢\\[\\]\\\\\\%と\\1\n\n\\1. 番号ではない\n",
           golden "trailing-whitespace" "@toc depth=2   \n\n- a  \n- b\t\n\n本文。  \n続き。 \n",
           golden "table-spacing" "| a|b |\n|---|:-:|\n|1|  2|\n",
-          golden "verse" "@style verse\n\tFull fathom five thy father lies;  \n\tOf his bones are coral made;\t\n\n\n  Nothing of him that doth fade,\n  But doth suffer a sea-change \n"
+          golden "verse" "@style verse\n\tFull fathom five thy father lies;  \n\tOf his bones are coral made;\t\n\n\n  Nothing of him that doth fade,\n  But doth suffer a sea-change \n",
+          -- docs/adr ADR 0016
+          golden "hard-breaks" "a\\\nb\n\n- a\\\n  b\n"
         ],
       testCase "BOM, CRLF and tab indentation are fixed" $
         formatted "\xFEFF- a\r\n\t- b\r\n" @?= "- a\n  - b\n",
