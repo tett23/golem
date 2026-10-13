@@ -79,19 +79,19 @@ cp "$HERE/testdata/run.json" "$WORK/in"
 run timings
 expect "timings: run 38319536503" 0 "| ジョブ | ステップ | 秒 |
 |---|---|---|
-| build (ubuntu-24.04) | ジョブ全体 | 564 |
-| build (ubuntu-24.04) | Set up job | 1 |
-| build (ubuntu-24.04) | Run actions/checkout@v7 | 1 |
-| build (ubuntu-24.04) | Run haskell-actions/setup@v2 | 143 |
-| build (ubuntu-24.04) | Run cabal build all | 230 |
-| adr | ジョブ全体 | 5 |
-| adr | Set up job | 0 |
-| adr | Run actions/checkout@v7 | 2 |
-| adr | Run tett23/adr-guard@v0.2.1 | 0 |
-| determinism | ジョブ全体 | 4 |
-| determinism | Set up job | 1 |
-| determinism | Run actions/download-artifact@v8 | 1 |
-| determinism | Outputs are byte-identical on x86-64 and aarch64 | 0 |"
+| \`build (ubuntu-24.04)\` | ジョブ全体 | 564 |
+| \`build (ubuntu-24.04)\` | \`Set up job\` | 1 |
+| \`build (ubuntu-24.04)\` | \`Run actions/checkout@v7\` | 1 |
+| \`build (ubuntu-24.04)\` | \`Run haskell-actions/setup@v2\` | 143 |
+| \`build (ubuntu-24.04)\` | \`Run cabal build all\` | 230 |
+| \`adr\` | ジョブ全体 | 5 |
+| \`adr\` | \`Set up job\` | 0 |
+| \`adr\` | \`Run actions/checkout@v7\` | 2 |
+| \`adr\` | \`Run tett23/adr-guard@v0.2.1\` | 0 |
+| \`determinism\` | ジョブ全体 | 4 |
+| \`determinism\` | \`Set up job\` | 1 |
+| \`determinism\` | \`Run actions/download-artifact@v8\` | 1 |
+| \`determinism\` | \`Outputs are byte-identical on x86-64 and aarch64\` | 0 |"
 
 # run J S1 S2 DURATION...: one run with the job J; step i lasts the i-th
 # duration in seconds, or is cancelled if the duration is "-"
@@ -117,22 +117,22 @@ mkrun j 3 - >"$WORK/in"
 run timings
 expect "timings: a cancelled step" 0 "| ジョブ | ステップ | 秒 |
 |---|---|---|
-| j | ジョブ全体 | 60 |
-| j | s1 | 3 |
-| j | s2 | - |"
+| \`j\` | ジョブ全体 | 60 |
+| \`j\` | \`s1\` | 3 |
+| \`j\` | \`s2\` | - |"
 
 printf '%s\n' '{"jobs":[{"name":"d","startedAt":"2026-10-12T22:23:26Z","completedAt":"2026-10-12T22:23:25Z","conclusion":"skipped","steps":[]}]}' >"$WORK/in"
 run timings
 expect "timings: a skipped job" 0 "| ジョブ | ステップ | 秒 |
 |---|---|---|
-| d | ジョブ全体 | - |"
+| \`d\` | ジョブ全体 | - |"
 
 mkrun 'a | b' 1 >"$WORK/in"
 run timings
 expect "timings: a bar in a name" 0 "| ジョブ | ステップ | 秒 |
 |---|---|---|
-| a \\| b | ジョブ全体 | 60 |
-| a \\| b | s1 | 1 |"
+| \`a \\| b\` | ジョブ全体 | 60 |
+| \`a \\| b\` | \`s1\` | 1 |"
 
 {
   mkrun j 10 10 -
@@ -142,17 +142,17 @@ expect "timings: a bar in a name" 0 "| ジョブ | ステップ | 秒 |
 run timings --median
 expect "timings: --median" 0 "| ジョブ | ステップ | 最小 | 中央値 | 最大 |
 |---|---|---|---|---|
-| j | ジョブ全体 | 60 | 60 | 60 |
-| j | s1 | 10 | 20 | 30 |
-| j | s2 | 10 | 15 | 20 |
-| j | s3 | - | - | - |"
+| \`j\` | ジョブ全体 | 60 | 60 | 60 |
+| \`j\` | \`s1\` | 10 | 20 | 30 |
+| \`j\` | \`s2\` | 10 | 15 | 20 |
+| \`j\` | \`s3\` | - | - | - |"
 
 {
   cat "$HERE/testdata/run.json"
   cat "$HERE/testdata/run.json"
 } >"$WORK/in"
 run timings --median
-if grep -qx '| build (ubuntu-24.04) | Run haskell-actions/setup@v2 | 143 | 143 | 143 |' "$WORK/out"; then ok; else ng "timings: --median of run 38319536503 twice"; fi
+if grep -qx '| `build (ubuntu-24.04)` | `Run haskell-actions/setup@v2` | 143 | 143 | 143 |' "$WORK/out"; then ok; else ng "timings: --median of run 38319536503 twice"; fi
 
 : >"$WORK/in"
 run timings --bogus
