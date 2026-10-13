@@ -57,7 +57,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。下に節を置く。
 - **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。下に節を置く。
-- **空き**：G0104 から G0109、G0124 から G0128、G0601、G0703 から G0720、G0726 から G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
+- **空き**：G0104 から G0109、G0124 から G0128、G0601、G0703 から G0720、G0727 から G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
 
 ## G0101
 
@@ -2715,9 +2715,9 @@ plugins.lock を読めません
 
 `style.toml` の版面の設定から、PDF の版面を計算できない。
 
-- メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注欄を設けられません`、`版面と傍注欄の合計がページからはみ出しています`、`未知の位置です: <位置>`
+- メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注欄を設けられません`、`段組みの版面には傍注欄を設けられません`、`版面と傍注欄の合計がページからはみ出しています`、`未知の位置です: <位置>`
 - 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`）
-- ADR: ADR なし（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md) が触れる）
+- ADR: ADR なし（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[docs/adr/0018](adr/0018-multi-column-layout.md) が触れる）
 
 ### 主な原因
 
@@ -2726,6 +2726,7 @@ plugins.lock を読めません
 - 字数、行数、段数が 0 以下か、行送りが文字の大きさより小さい。
 - 版面か傍注欄が判型からはみ出している。
 - 縦組みの版面に傍注欄を設けた。
+- `[page.grid]` の `columns` が 2 以上の版面に傍注欄（`[sidenotes]`）を設けた。
 - `position` に未知の位置を書いた。
 
 ### 直し方
@@ -2876,6 +2877,32 @@ PDF をターゲットに含まないビルドと LSP では出さない。
 
 段落スタイルの `indent` と `first-line-indent` を小さくする。
 図版の脇なら、図版の幅も小さくする。
+
+## G0726
+
+段組みの版面では図版を回り込ませられません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[page.grid]` の `columns` が 2 以上の版面で、図版に `wrap` を指定した。
+段組みの版面での回り込みの形は決まっていないので、黙って一段組みの形で組まずに止める。
+
+- メッセージ: `段組みの版面では図版を回り込ませられません。wrap を外すか、columns を 1 にしてください`
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- ADR: [docs/adr/0018](adr/0018-multi-column-layout.md)
+
+### 主な原因
+
+- 2 段以上の版面の原稿に、`wrap=start` か `wrap=end` の図版がある。
+- 一段組みで書いた原稿の版面を、後から段組みにした。
+
+### 直し方
+
+図版の `wrap` を外す。
+回り込みが要るなら、`style.toml` の `columns` を 1 にする。
 
 ## G0732
 

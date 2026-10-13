@@ -28,7 +28,7 @@ import Golem.Layout.Look (Look (..), Synthetic (..), plainLook)
 import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..), markPages)
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.Layout.Wrap (Exclusion (..))
-import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
+import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.Pdf (Font (..), FontProgram (..), spToPt)
 import Golem.Pdf qualified as P
 import Golem.Plugin (watToWasm)
@@ -316,6 +316,7 @@ tests =
       testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
       testGroup "forced breaks (docs/adr ADR 0017)" breakTests,
+      testGroup "columns (docs/adr ADR 0018)" columnTests,
       testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
       testGroup
         "public-domain books"
@@ -2536,4 +2537,105 @@ breakTests =
       plain <- text "a\n\nb\n"
       broken @?= plain
       plain @?= "a\n\nb\n"
+  ]
+
+-- | horizontalStyle in two columns two em apart (docs/adr ADR 0018).
+horizontal2 :: BS.ByteString
+horizontal2 = replaceIn "columns = 1" "columns = 2\ncolumn-gap = \"2zw\"" horizontalStyle
+
+-- | pdfStyle with 20 characters a line, in two columns two em apart.
+vertical2 :: BS.ByteString
+vertical2 = replaceIn "characters = 42" "characters = 20" (replaceIn "columns = 1" "columns = 2\ncolumn-gap = \"2zw\"" pdfStyle)
+
+-- | The page geometry of a style.
+geometryOf :: BS.ByteString -> IO PageGeometry
+geometryOf style = fst <$> layoutOk style "あ\n" []
+
+-- | The text of a set line.
+setLineText :: SetLine -> T.Text
+setLineText sl = T.concat [bcText c | Box _ c <- lineItems (slLine sl)]
+
+-- | The files of a build directory and their bytes, by path.
+buildFiles :: FilePath -> IO (Map.Map FilePath BS.ByteString)
+buildFiles dir = do
+  entries <- listDirectory dir
+  maps <- mapM one entries
+  pure (Map.unions maps)
+  where
+    one e = do
+      isDir <- doesDirectoryExist (dir </> e)
+      if isDir
+        then Map.mapKeys (e </>) <$> buildFiles (dir </> e)
+        else Map.singleton e <$> BS.readFile (dir </> e)
+
+columnTests :: [TestTree]
+columnTests =
+  [ testCase "PDF: a paragraph longer than two columns is set in the measure of a column" $ do
+      (_, pl) <- layoutOk horizontal2 (longPara 80) []
+      assertBool "column 1" (any ((== 1) . poColumn) (plPages pl))
+      nub [lineTarget (slLine sl) | sl <- Map.elems (plLines pl)] @?= [12 * 10 * pt],
+    testCase "PDF: the second column starts at the left edge of column 1, on the lines of column 0" $ do
+      geom <- geometryOf horizontal2
+      content <- miniPdf fakeProvider True horizontal2 (longPara 80) [] >>= fmap (take 1) . pageContents
+      let ds = concatMap drawnGlyphs content
+          x0 = TE.encodeUtf8 (spToPt (rectX (typeAreaFor geom 1)))
+          x1 = TE.encodeUtf8 (spToPt (rectX (columnsFor geom 1 !! 1)))
+          firstY x = take 1 (sortOn (negate . ptToRational) [dY d | d <- ds, dX d == x])
+      assertBool "column 0" (not (null (firstY x0)))
+      firstY x1 @?= firstY x0,
+    testCase "PDF: vertical, the second column starts at the top of column 1, on the first grid line" $ do
+      geom <- geometryOf vertical2
+      content <- miniPdf fakeProvider True vertical2 (longPara 40) [] >>= fmap (take 1) . pageContents
+      let ta = typeAreaFor geom 1
+          c1 = columnsFor geom 1 !! 1
+          x = TE.encodeUtf8 (spToPt (rectX ta + rectW ta - sum (take 1 (pgLineGrid geom))))
+          y = TE.encodeUtf8 (spToPt (rectY c1 + rectH c1))
+      assertBool "the first glyph of column 1" (any (any (\d -> dX d == x && dY d == y) . drawnGlyphs) content),
+    testCase "PDF: sixty lines fill the two columns of one page" $ do
+      (_, pl) <- layoutOk horizontal2 (longPara 72) []
+      Map.size (plLines pl) @?= 60
+      map (\p -> (poNumber p, poColumn p)) (plPages pl) @?= [(1, 0), (1, 1)],
+    testCase "PDF: the folio is drawn once a page" $ do
+      let style = horizontal2 <> "\n[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
+      content <- miniPdf fakeProvider True style (longPara 50) [] >>= pageContents
+      length content @?= 1
+      length [d | d <- concatMap drawnGlyphs content, dGlyph d == fromEnum '1'] @?= 1,
+    testCase "PDF: a wrapped figure on a page of two columns is G0726 at the figure" $ do
+      img <- tinyImage
+      let source = longPara 2 <> wrapped "start" "4zw" <> longPara 10
+      r <- layoutMini (figStyle horizontal2) source img
+      case r of
+        Left [d] -> do
+          diagCode d @?= DiagnosticCode "G0726"
+          [spanStart (diagSpan d)] @?= offsetsIn "@figure" source
+        other -> assertFailure (show (either (map diagCode) (const []) other)),
+    testCase "PDF: the index is set in the measure of a column and goes on in the second column" $ do
+      let readings = ["あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ"]
+          source = T.concat ["本文[index reading=" <> r <> ": 語" <> r <> "]。" | r <- readings] <> "\n\n@index\n"
+      (_, pl) <- layoutOk (replaceIn "lines = 30" "lines = 5" horizontal2) source []
+      let indexIn p = [sl | (_, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)], "語" `T.isPrefixOf` setLineText sl]
+      assertBool "in column 1" (any (\p -> poColumn p == 1 && not (null (indexIn p))) (plPages pl))
+      nub [lineTarget (slLine sl) | p <- plPages pl, sl <- indexIn p] @?= [12 * 10 * pt],
+    testCase "PDF: two columns, parallel and sequential, and two builds, give the same bytes" $ do
+      let source = "# 一\n\n本文[note: 注。]。\n\n" <> longPara 80
+      a <- miniPdf fakeProvider True horizontal2 source []
+      b <- miniPdf fakeProvider False horizontal2 source []
+      c <- miniPdf fakeProvider True horizontal2 source []
+      a @?= b
+      a @?= c
+      qpdfCheck a,
+    testCase "HTML and EPUB: the output of two columns is that of one column" $ do
+      let out style = withSystemTempDirectory "golem-columns" $ \tmp -> do
+            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
+            BS.writeFile (tmp </> "style.toml") style
+            BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 ("# 一\n\n" <> longPara 10))
+            r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
+            assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+            buildFiles (tmp </> "build")
+      one <- out horizontalStyle
+      two <- out horizontal2
+      assertBool "files" (not (Map.null one))
+      two @?= one
+      css <- maybe (assertFailure (show (Map.keys two))) pure (Map.lookup ("html" </> "style.css") two)
+      assertBool "no columns" (not ("columns" `BS.isInfixOf` css) && not ("column-count" `BS.isInfixOf` css))
   ]
