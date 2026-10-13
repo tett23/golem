@@ -25,7 +25,6 @@ module Golem.Layout.Paginate
   )
 where
 
-import Control.Applicative ((<|>))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
@@ -49,7 +48,7 @@ data LineBox = LineBox
 data Flow
   = FParagraph [LineBox]
   | -- | a heading, placed whole over 'fhSpan' grid lines (golem-driver ADR 0003)
-    FHeading {fhLevel :: !Int, fhShort :: !Text, fhRecto :: !Bool, fhSpan :: !Int, fhLines :: [LineBox]}
+    FHeading {fhLevel :: !Int, fhRecto :: !Bool, fhSpan :: !Int, fhLines :: [LineBox]}
   | FDefTerm [LineBox]
   | -- | a figure with its caption, in grid lines
     FFigure {ffId :: !Int, ffLines :: !Int, ffLabels :: ![Text], ffMarks :: ![SrcSpan]}
@@ -108,7 +107,6 @@ data PageOut = PageOut
     poSlots :: ![(Int, Slotted)],
     -- | note id, first line of the body shown here, number of lines
     poFootnotes :: ![(Int, Int, Int)],
-    poRunningHead :: !(Maybe Text),
     poLabels :: ![Text],
     -- | the index marks placed on the page (golem-driver ADR 0007)
     poMarks :: ![SrcSpan],
@@ -139,8 +137,7 @@ data St = St
     sDone :: ![PageOut],
     sDeferred :: ![Flow],
     sPendingNotes :: ![(Int, Int, Int)], -- note id, next line, remaining
-    sHead :: !(Maybe Text),
-    sPageHead :: !(Maybe Text),
+
     -- | forced breaks not applied yet, in the order written (docs/adr ADR 0017)
     sBreaks :: ![BreakKind]
   }
@@ -148,7 +145,7 @@ data St = St
 -- | Lays the flow out on pages of @capacity@ grid lines.
 paginate :: Int -> [Flow] -> [PageOut]
 paginate capacity flows =
-  let st0 = St 1 0 0 [] [] [] [] [] [] [] [] Nothing Nothing []
+  let st0 = St 1 0 0 [] [] [] [] [] [] [] [] []
       final = closePage (go st0 flows)
    in reverse (sDone final)
   where
@@ -174,7 +171,7 @@ paginate capacity flows =
       (FContinued ls : _) -> min 2 (length ls)
       (FTable _ h rows : _) -> length h + maybe 0 length (listToMaybe rows)
       (FDefTerm ls : _) -> length ls
-      (FHeading _ _ _ n _ : _) -> n
+      (FHeading _ _ n _ : _) -> n
       (FFigure _ n _ _ : _) -> min n capacity
       (FWrapped _ n _ _ ls : _) -> max n (length ls)
       (FSpace _ : _) -> 0
@@ -189,11 +186,10 @@ paginate capacity flows =
         let st1 = if length h + maybe 0 length (listToMaybe rows) > free st && not (isEmpty st) then newPage st else st
          in placeTable st1 i h rows
       FDefTerm ls -> placeLines (keep st (length ls + need)) True ls
-      FHeading lvl short recto n ls ->
+      FHeading _ recto n ls ->
         let st1 = if recto then parityStart odd st else keep st (n + need)
-            st2 = if lvl == 1 then st1 {sHead = Just short, sPageHead = sPageHead st1 <|> Just short} else st1
-            st3 = if n <= free st2 || isEmpty st2 then st2 else newPage st2
-         in putBlock st3 n ls
+            st2 = if n <= free st1 || isEmpty st1 then st1 else newPage st1
+         in putBlock st2 n ls
       FFigure i n labels marks
         | n <= free st || isEmpty st -> putSlot st n (SFigure i) labels marks
         | otherwise -> st {sDeferred = sDeferred st <> [f]}
@@ -211,7 +207,7 @@ paginate capacity flows =
     parityStart p st =
       let st1 = if isEmpty st then st else newPage st
        in if p (sPage st1) then st1 else blankPage st1
-    blankPage st = st {sDone = PageOut (sPage st) True [] [] Nothing [] [] [] : sDone st, sPage = sPage st + 1}
+    blankPage st = st {sDone = PageOut (sPage st) True [] [] [] [] [] : sDone st, sPage = sPage st + 1}
     putSlot st n s labels marks = st {sSlots = sSlots st <> [(sUsed st, s)], sUsed = sUsed st + n, sLabels = sLabels st <> labels, sMarks = sMarks st <> marks}
     -- lines of one paragraph; orphans and widows are moved
     placeLines st _ [] = st
@@ -293,11 +289,10 @@ paginate capacity flows =
     closePage st =
       if null (sSlots st) && null (sNotes st) && not (null (sDone st))
         then st
-        else st {sDone = PageOut (sPage st) False (sSlots st) (sNotes st) (pageHead st) (sLabels st) (sMarks st) (sTables st) : sDone st}
-    pageHead st = sPageHead st <|> sHead st
+        else st {sDone = PageOut (sPage st) False (sSlots st) (sNotes st) (sLabels st) (sMarks st) (sTables st) : sDone st}
     newPage st =
       let closed = closePage st
-          fresh = closed {sPage = sPage st + 1, sUsed = 0, sNoteLines = 0, sSlots = [], sNotes = [], sLabels = [], sMarks = [], sTables = [], sPendingNotes = [], sPageHead = Nothing}
+          fresh = closed {sPage = sPage st + 1, sUsed = 0, sNoteLines = 0, sSlots = [], sNotes = [], sLabels = [], sMarks = [], sTables = [], sPendingNotes = []}
           withNotes = foldl' carryNote fresh (sPendingNotes st)
        in placeDeferred withNotes {sDeferred = []} (sDeferred st)
     carryNote st (i, from, len) =

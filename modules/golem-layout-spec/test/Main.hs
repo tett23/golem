@@ -87,12 +87,13 @@ tests =
         assertBool "too wide" (isLeft (pageGeometry s {stSidenotes = Just (sn 200)}))
         assertBool "vertical" (isLeft (pageGeometry ((styleWith True True (grid 40 20 1 Nothing)) {stSidenotes = Just (sn 20)}))),
       testCase "running heads and folios: outside is the fore-edge, swapped on even pages" $ do
-        let s = (styleWith False False (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just ("top-outside", "heading.1.short")) (Just ("bottom-center", "{n}")))]}
+        let s = (styleWith False False (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef "top-outside" (RunningHeading 1 HeadShort PickFirst) RunningTitle)) (Just ("bottom-center", "{n}")))]}
             g = geom s
             Rect ox oy ow oh = pgTypeArea g
             Rect ex _ _ _ = pgTypeAreaEven g
         case Map.lookup "body" (pgMasters g) of
-          Just (MasterGeometry (Just (_, ho, he)) (Just (_, fo, _))) -> do
+          Just (MasterGeometry (Just (co, ce, ho, he)) (Just (_, fo, _))) -> do
+            (co, ce) @?= (RunningHeading 1 HeadShort PickFirst, RunningTitle)
             ho @?= Anchor (ox + ow) ((oy + oh + a5H) `div` 2) AlignEnd
             he @?= Anchor ex ((oy + oh + a5H) `div` 2) AlignStart
             fo @?= Anchor (ox + ow `div` 2) (oy `div` 2) AlignCenter

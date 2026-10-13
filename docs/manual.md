@@ -1105,15 +1105,39 @@ number = "{1}.{2}.{n}"
 
 ```toml
 [masters.body]
-running-head = { position = "top-outside" }
+running-head = { position = "top-outside", content = "heading.1.short" }
 folio = { position = "bottom-outside", format = "{n}" }
 ```
 
 `position` には、`"top-outside"`、`"top-center"`、`"top-inside"`、`"bottom-outside"`、`"bottom-center"`、`"bottom-inside"` のどれかを書きます。
 `top` と `bottom` は天と地の余白、`outside` は小口の側、`inside` はノドの側です。
-柱には、そのページの章の題が入ります。
+`content` は、柱に出す内容です。
+`"heading.1.short"` なら、そのページの章の題が入ります。
+`@toc-title` で短い題を付けた見出しは、短い題が入ります。
 `format` は、ノンブルの書式です。
 このマニュアルのように、柱を天の小口側に、ノンブルを地の小口側に置くのが普通です。
+
+柱の内容には、次の値を書けます。
+`<階層>` は見出しの階層の数です。
+
+- `"heading.<階層>.short"`：その階層の見出しの題です。ページの中で始まった最初の見出しを使い、なければその前から続く見出しを使います。
+- `"heading.<階層>.numbered"`：番号と題を全角の空白でつないだものです（「第3章　原稿の記法」など）。
+- `"heading.<階層>.short.last"`、`"heading.<階層>.numbered.last"`：ページの中で始まった最後の見出しを使います。辞書の柱のような使い方です。
+- `"title"`：`manifest.toml` の書名です。
+- `"none"`：柱を出しません。
+
+左右のページで柱を変えるときは、`content` の代わりに `even`（偶数ページ）と `odd`（奇数ページ）の両方を書きます。
+
+```toml
+[masters.body]
+running-head = { position = "top-outside", even = "title", odd = "heading.1.numbered" }
+```
+
+章の始まりのページ（`page-break = "recto"` の見出しのあるページ）と白ページには、柱を出しません。
+章ごとに別のマスターページを使うときは、`manifest.toml` の章の項目に `{ file = "front.gm", master = "front" }` のように `master` を書きます。
+`master` のない章は `[masters.body]` を使います。
+目次のページなどで柱を消したいときは、`running-head` のないマスターページを指定します。
+見出しの `[headings.<階層>]` には `running-head` を書けません。
 
 ## 注と図の設定
 
