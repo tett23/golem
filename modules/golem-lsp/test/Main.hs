@@ -172,6 +172,20 @@ tests =
         assertBool "syntax error in b.gm" (any ((== Error) . diagSeverity) (fromMaybe [] (Map.lookup "b.gm" diags)))
         let codes = [c | d <- concat (Map.elems diags), let DiagnosticCode c = diagCode d]
         assertBool (show codes) (all (`notElem` codes) ["G0306", "G0310", "G0802"]),
+      testCase "a missing import is reported on the file of the @import (golem-project ADR 0006)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        mapM_ (\f -> copyFile (root </> f) (tmp </> f)) ["manifest.toml", "b.gm"]
+        BS.writeFile (tmp </> "a.gm") "@import nope.gm as x\n"
+        ws <- openWorkspace tmp
+        let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
+        codesIn "a.gm" @?= ["G0302"]
+        codesIn "manifest.toml" @?= [],
+      testCase "a style.toml error is reported on style.toml (golem-project ADR 0006)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        mapM_ (\f -> createDirectoryIfMissing True (takeDirectory (tmp </> f)) >> copyFile (root </> f) (tmp </> f)) ["manifest.toml", "a.gm", "b.gm", "common/values.gm"]
+        BS.writeFile (tmp </> "style.toml") "[page]\nunknown = 1\n"
+        ws <- openWorkspace tmp
+        let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
+        codesIn "style.toml" @?= ["G0306"]
+        codesIn "manifest.toml" @?= [],
       testCase "G0501 is not reported for the newlines of the line style (docs/adr ADR 0013)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
             g0501 ws = [c | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d, c == "G0501"]

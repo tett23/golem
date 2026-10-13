@@ -69,6 +69,8 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **改ページ**：今のページを閉じ、次のページから続けること。原稿では `@page-break` で指定する（[markup.md](markup.md)、[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 - **改丁**：次の奇数ページから始めること。原稿では `@page-break recto`、見出しでは `style.toml` の `page-break = "recto"` で指定する（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 - **白ページ**：改ページや改丁で中身のないまま閉じたページ。柱もノンブルも描かない（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
+- **段**と**段間**：段組みの版面を等しい幅に分けた一つの領域と、段と段のあいだの空き。`style.toml` の `[page.grid]` の `columns`（段数）と `column-gap`（段間）で決める。本文は横組みでは左の段から右の段へ、縦組みでは上の段から下の段へ流れる（[docs/adr/0018](adr/0018-multi-column-layout.md)）。
+- **改段**：今の段を閉じ、次の段から続けること。最後の段なら次のページの最初の段に進む。原稿では `@column-break` で指定する（[docs/adr/0017](adr/0017-forced-page-breaks.md)、[docs/adr/0018](adr/0018-multi-column-layout.md)）。
 
 ## 出力
 

@@ -368,6 +368,7 @@ PDF の画像は HTML と EPUB では表示できないので、[style code: web
 [style code: wrap=start] なら行の始まりの側（横組みでは左）、[style code: wrap=end] なら終わりの側（右）に寄せます。
 回り込みには幅（[style code: width]）の指定が要ります。
 回り込みは PDF だけで行い、HTML と EPUB では通常の図版として置きます。
+段組みの版面では、回り込みは使えません。
 図[ref-number fig-new-project]は、この書き方で置いています。
 
 ## 相互参照
@@ -489,7 +490,7 @@ CSL-JSON は、多くの文献管理のソフトウェアが書き出せる形�
 - [style code: @page-break]：次のページから続けます。
 - [style code: @page-break recto]：次の奇数ページから続けます（改丁）。間の偶数ページは白ページになります。
 - [style code: @page-break verso]：次の偶数ページから続けます。
-- [style code: @column-break]：次の段から続けます。段組みにはまだ対応していないので、今は [style code: @page-break] と同じです。
+- [style code: @column-break]：次の段から続けます（改段）。最後の段にいるときは、次のページの最初の段から続けます。一段組みの版面では [style code: @page-break] と同じです。
 
 [style code: @page-break] を二つ続けると、白ページが一ページできます。
 白ページには、柱もノンブルも入りません。

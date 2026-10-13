@@ -152,6 +152,8 @@ pageGeometry fid style = case stPage style of
               sidenotes <- case stSidenotes style of
                 Nothing -> Right Nothing
                 Just _ | vertical -> Left [err "縦組みの版面には傍注欄を設けられません"]
+                -- no sidenote column on a page of columns (docs/adr ADR 0018)
+                Just _ | cols > 1 -> Left [err "段組みの版面には傍注欄を設けられません"]
                 Just sn -> do
                   let w = dimToSp fs (snWidth sn)
                       g = dimToSp fs (snGap sn)
