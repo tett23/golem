@@ -6,6 +6,7 @@ import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.List (isSuffixOf, nub, sort)
 import Data.Map.Strict qualified as Map
@@ -17,7 +18,7 @@ import Golem.Doc.Assemble (IndexGroup (..), inlineText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.New
-import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf)
+import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..))
@@ -101,6 +102,24 @@ tests =
             let inputs = instanceIdInputs ["input"] ["font program"]
             inputs @?= ["input", "font program", TE.encodeUtf8 ("golem-" <> golemVersion)]
             last inputs @?= TE.encodeUtf8 ("golem-" <> golemVersion)
+        ],
+      testGroup
+        "Producer (golem-pdf ADR 0005)"
+        [ testCase "the Producer is Golem and the version" $
+            producer @?= "Golem " <> golemVersion,
+          testCase "the version has the form check-version.sh accepts" $ do
+            let (core, pre) = T.breakOn "-" golemVersion
+                numbers = T.splitOn "." core
+                preOk = T.null pre || (T.length pre > 1 && T.all (\c -> isAsciiAlnum c || c == '.' || c == '-') (T.drop 1 pre))
+                isAsciiAlnum c = isDigit c || isAsciiLower c || isAsciiUpper c
+            assertBool (T.unpack golemVersion) (length numbers == 3 && all (\n -> not (T.null n) && T.all isDigit n) numbers && preOk),
+          testCase "the PDF has the Producer in the information dictionary, and in XMP with an output intent" $ do
+            plain <- miniPdf fakeProvider True horizontalStyle "x\n" []
+            assertBool "Info" (TE.encodeUtf8 ("/Producer (" <> producer <> ")") `BS.isInfixOf` plain)
+            assertBool "no XMP" (not ("<pdf:Producer>" `BS.isInfixOf` plain))
+            x4 <- miniPdf fakeProvider True (horizontalStyle <> "\n[color]\nintent = \"x.icc\"\n") "x\n" [("x.icc", "fake profile")]
+            assertBool "Info with an intent" (TE.encodeUtf8 ("/Producer (" <> producer <> ")") `BS.isInfixOf` x4)
+            assertBool "XMP" (TE.encodeUtf8 ("<pdf:Producer>" <> producer <> "</pdf:Producer>") `BS.isInfixOf` x4)
         ],
       golden "text-horizontal-01.txt" "build/text/horizontal/chapters/01.txt",
       golden "text-vertical-01.txt" "build/text/vertical/chapters/01.txt",

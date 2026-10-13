@@ -34,9 +34,11 @@ uuidText b =
 escapeXml :: Text -> Text
 escapeXml = T.concatMap (\case '<' -> "&lt;"; '>' -> "&gt;"; '&' -> "&amp;"; '"' -> "&quot;"; c -> T.singleton c)
 
--- | The XMP packet. Fixed key order and layout, so it is deterministic.
-xmpPacket :: PdfX -> Text -> (Integer, Int, Int) -> ByteString -> ByteString -> ByteString
-xmpPacket px title (y, m, d) docId inst =
+{- | The XMP packet: title, Producer (ADR 0005), date, document and instance
+IDs. Fixed key order and layout, so it is deterministic.
+-}
+xmpPacket :: PdfX -> Text -> Text -> (Integer, Int, Int) -> ByteString -> ByteString -> ByteString
+xmpPacket px title producer (y, m, d) docId inst =
   let date = T.pack (printf "%04d-%02d-%02dT00:00:00Z" y m d)
       creators =
         [ "   <dc:creator><rdf:Seq>" <> T.concat ["<rdf:li>" <> escapeXml c <> "</rdf:li>" | c <- pxCreators px] <> "</rdf:Seq></dc:creator>"
@@ -58,6 +60,7 @@ xmpPacket px title (y, m, d) docId inst =
                "   <xmpMM:InstanceID>uuid:" <> uuidText inst <> "</xmpMM:InstanceID>",
                "   <xmpMM:VersionID>1</xmpMM:VersionID>",
                "   <xmpMM:RenditionClass>default</xmpMM:RenditionClass>",
+               "   <pdf:Producer>" <> escapeXml producer <> "</pdf:Producer>",
                "   <pdf:Trapped>False</pdf:Trapped>",
                "   <pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>",
                "  </rdf:Description>",

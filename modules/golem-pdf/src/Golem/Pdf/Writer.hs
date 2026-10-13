@@ -17,6 +17,7 @@ module Golem.Pdf.Writer
     Obj (..),
     writePdf,
     contentStream,
+    pdfTextString,
     documentId,
     instanceId,
     pdfDate,
@@ -133,6 +134,8 @@ data Document = Document
     docDate :: !(Integer, Int, Int),
     docId :: !ByteString,
     docInstanceId :: !ByteString,
+    -- | the Producer, such as @Golem 0.1.0@ (ADR 0005); written as given
+    docProducer :: !Text,
     -- | PDF/X-4 (golem-pdf ADR 0002)
     docPdfX :: !(Maybe PdfX)
   }
@@ -237,6 +240,14 @@ rectObj (Rect x y w h) = OArr (map (OReal . spToPt) [x, y, x + w, y + h])
 utf16Hex :: Text -> Obj
 utf16Hex t = OHex (BS.pack [0xFE, 0xFF] <> TE.encodeUtf16BE t)
 
+{- | A text string: printable ASCII as a literal string, otherwise UTF-16BE
+with the byte order mark, as the Title (ADR 0005).
+-}
+pdfTextString :: Text -> Obj
+pdfTextString t
+  | T.all (\c -> c >= ' ' && c <= '~') t = OStr (TE.encodeUtf8 t)
+  | otherwise = utf16Hex t
+
 {- | Writes the document. Objects are numbered: catalog, page tree, each
 page (with its content), fonts and images in order of first reference,
 then the document information.
@@ -262,7 +273,7 @@ writePdf doc =
         Nothing -> ([], [])
         Just px ->
           ( [ OStream [("N", OInt 4), ("Filter", OName "FlateDecode")] (flate (pxProfile px)),
-              OStream [("Type", OName "Metadata"), ("Subtype", OName "XML")] (xmpPacket px (docTitle doc) (docDate doc) (docId doc) (docInstanceId doc))
+              OStream [("Type", OName "Metadata"), ("Subtype", OName "XML")] (xmpPacket px (docTitle doc) (docProducer doc) (docDate doc) (docId doc) (docInstanceId doc))
             ],
             [ ( "OutputIntents",
                 OArr
@@ -309,7 +320,8 @@ writePdf doc =
         ODict
           [ ("Title", utf16Hex (docTitle doc)),
             ("CreationDate", OStr (pdfDate (docDate doc))),
-            ("ModDate", OStr (pdfDate (docDate doc)))
+            ("ModDate", OStr (pdfDate (docDate doc))),
+            ("Producer", pdfTextString (docProducer doc))
           ]
           `addInfo` [("Trapped", OName "False"), ("GTS_PDFXVersion", OStr "PDF/X-4")]
       addInfo (ODict kvs) extra = ODict (kvs <> (if isJust (docPdfX doc) then extra else []))

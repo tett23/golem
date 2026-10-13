@@ -30,6 +30,7 @@ module Golem.Driver.Pdf
     flowLines,
     pdfFileName,
     instanceIdInputs,
+    producer,
   )
 where
 
@@ -103,6 +104,12 @@ embedded font programs and, last, @golem-@ and the version of Golem
 -}
 instanceIdInputs :: [ByteString] -> [ByteString] -> [ByteString]
 instanceIdInputs inputs programs = inputs <> programs <> [TE.encodeUtf8 ("golem-" <> golemVersion)]
+
+{- | The Producer of the PDF: @Golem @ and the version, from VERSION only
+(golem-pdf ADR 0005).
+-}
+producer :: Text
+producer = "Golem " <> golemVersion
 
 data PdfInput = PdfInput
   { piRoot :: !FilePath,
@@ -1060,6 +1067,7 @@ writeDocument inp geom fonts layout intent =
             P.docDate = (y, mo, d),
             P.docId = P.documentId (mdId md),
             P.docInstanceId = P.instanceId (instanceIdInputs (piInputs inp) programs),
+            P.docProducer = producer,
             P.docPdfX = intent
           }
    in P.writePdf doc

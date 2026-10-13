@@ -7,11 +7,16 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
+import Data.Text (Text)
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Numeric (readHex)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -853,8 +858,13 @@ documentWith ps =
       docDate = (2026, 10, 11),
       docId = documentId "urn:uuid:11111111-2222-4333-8444-555555555555",
       docInstanceId = instanceId ["source", "manifest"],
+      docProducer = testProducer,
       docPdfX = Nothing
     }
+
+-- | A fixed Producer, so that the goldens do not change with the version (ADR 0005).
+testProducer :: Text
+testProducer = "Golem 0.0.0-test"
 
 sample :: Document
 sample =
@@ -881,6 +891,67 @@ xrefConsistent pdf =
    in and [BC.pack (show n <> " 0 obj") `BS.isPrefixOf` BS.drop o pdf | (n, o) <- zip [1 :: Int ..] offsets]
         && "xref" `BS.isPrefixOf` BS.drop startxref pdf
         && not (null entries)
+
+-- | The text between two markers, after the first occurrence of the first.
+between :: ByteString -> ByteString -> ByteString -> Maybe ByteString
+between open close hay = case BS.breakSubstring open hay of
+  (_, rest) | BS.null rest -> Nothing
+  (_, rest) -> Just (fst (BS.breakSubstring close (BS.drop (BS.length open) rest)))
+
+-- | The document information dictionary: the object the trailer's /Info points at.
+infoDict :: ByteString -> ByteString
+infoDict pdf =
+  let ref = case BC.readInt (BS.drop 6 (snd (BS.breakSubstring "/Info " pdf))) of
+        Just (n, _) -> n
+        Nothing -> -1
+   in fst (BS.breakSubstring "\nendobj" (snd (BS.breakSubstring (BC.pack ("\n" <> show ref <> " 0 obj\n")) pdf)))
+
+-- | Decodes hex digits of UTF-16BE that start with the byte order mark.
+utf16FromHex :: ByteString -> Text
+utf16FromHex h =
+  let pairs s = if null s then [] else take 2 s : pairs (drop 2 s)
+      bytes = BS.pack [fromIntegral n | p <- pairs (BC.unpack h), (n, _) <- take 1 (readHex p :: [(Integer, String)])]
+   in TE.decodeUtf16BE (BS.drop 2 bytes)
+
+producerTests :: [TestTree]
+producerTests =
+  [ testCase "the information dictionary has the Producer without an output intent" $ do
+      let info = infoDict (writePdf sample)
+      assertBool (show info) ("/Producer (Golem 0.0.0-test)" `BS.isInfixOf` info),
+    testCase "with an output intent, the information dictionary and XMP both have the Producer" $ do
+      let pdf = writePdf sample {docPdfX = Just (PdfX "fake" "JC200103" [])}
+      assertBool "Info" ("/Producer (Golem 0.0.0-test)" `BS.isInfixOf` infoDict pdf)
+      assertBool "XMP" ("<pdf:Producer>Golem 0.0.0-test</pdf:Producer>" `BS.isInfixOf` pdf),
+    testCase "pdfTextString: printable ASCII as a literal string, otherwise UTF-16BE" $ do
+      pdfTextString "Golem 0.1.0-rc1" @?= OStr "Golem 0.1.0-rc1"
+      case pdfTextString "ゴーレム" of
+        OHex b -> BS.take 2 b @?= BS.pack [0xFE, 0xFF]
+        other -> assertFailure (show other),
+    testCase "the Producer is escaped in XMP" $ do
+      let x = xmpPacket (PdfX "" "JC200103" []) "t" "a<b&c" (2026, 10, 11) (documentId "x") (instanceId ["a"])
+      assertBool (show x) ("<pdf:Producer>a&lt;b&amp;c</pdf:Producer>" `BS.isInfixOf` x),
+    testCase "the information dictionary and XMP agree" $ do
+      let pdf = writePdf sample {docPdfX = Just (PdfX "fake" "JC200103" ["山田 太郎"])}
+          info = infoDict pdf
+          infoStr k = fromMaybe "" (between ("/" <> k <> " (") ")" info)
+          xmp k = maybe "" TE.decodeUtf8 (between ("<" <> k <> ">") ("</" <> k <> ">") pdf)
+          -- D:YYYYMMDDHHmmSSZ as YYYY-MM-DDTHH:mm:SSZ
+          asXmpDate d =
+            let part i n = take n (drop i d)
+             in T.pack (part 0 4 <> "-" <> part 4 2 <> "-" <> part 6 2 <> "T" <> part 8 2 <> ":" <> part 10 2 <> ":" <> part 12 2 <> "Z")
+          infoDate k = asXmpDate (drop 2 (BC.unpack (infoStr k)))
+          title = utf16FromHex (fromMaybe "" (between "/Title <" ">" info))
+          xmpTitle = maybe "" TE.decodeUtf8 (between "<rdf:li xml:lang=\"x-default\">" "</rdf:li>" pdf)
+          trapped = BC.takeWhile (`notElem` (" >/" :: String)) (fromMaybe "" (between "/Trapped /" ">" info))
+      title @?= "見本"
+      title @?= xmpTitle
+      infoDate "CreationDate" @?= xmp "xmp:CreateDate"
+      infoDate "ModDate" @?= xmp "xmp:ModifyDate"
+      TE.decodeUtf8 (infoStr "Producer") @?= xmp "pdf:Producer"
+      xmp "pdf:Producer" @?= testProducer
+      TE.decodeUtf8 trapped @?= xmp "pdf:Trapped"
+      xmp "pdf:Trapped" @?= "False"
+  ]
 
 tests :: TestTree
 tests =
@@ -999,8 +1070,9 @@ tests =
         assertBool "xref" (xrefConsistent pdf)
         checkPdfX [(pageMediaBox p, pageTrimBox p, pageBleedBox p) | p <- docPages sample] @?= []
         checkPdfX [(Rect 0 0 10 10, Rect 0 0 10 10, Rect (-1) 0 10 10)] @?= [1],
+      testGroup "Producer (ADR 0005)" producerTests,
       goldenVsString "XMP packet" "test/golden/xmp.xml" $
-        pure (BL.fromStrict (xmpPacket (PdfX "" "JC200103" ["山田 太郎"]) "見本 & <題>" (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
+        pure (BL.fromStrict (xmpPacket (PdfX "" "JC200103" ["山田 太郎"]) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
       testCase "qpdf --check accepts the output (when qpdf is installed)" $ do
         qpdf <- findExecutable "qpdf"
         case qpdf of
