@@ -18,7 +18,7 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Driver.Pdf (FontProvider (..), LoadedFonts (..), Shaped (..), bodyRole, usedRoles)
+import Golem.Driver.Pdf (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyRole, usedRoles)
 import Golem.Font
 import Golem.Layout.Japanese (CharClass (..), charClass, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
@@ -78,18 +78,24 @@ golemFontProvider = FontProvider $ \root style locals ->
 
 {- | Fonts by face number; each role maps to its Japanese and Latin faces
 and its OpenType features. A role that is not loaded is the body role.
+The measures are kept by the shaping too: its features change them
+(docs/adr/0020).
 -}
 provide :: [Font] -> Text -> Map.Map Text (Maybe Int, Maybe Int, [Text]) -> LoadedFonts
 provide fonts body roles =
   LoadedFonts
-    { lfAdvance = curry (memo (\(role, c) -> sum (map shAdvance (shapeText role False (T.singleton c))))),
-      lfWordAdvance = \role t -> sum (map shAdvance (shapeText role False t)),
+    { lfAdvance = advance,
+      lfWordAdvance = \s t -> sum (map shAdvance (shapeText s t)),
+      -- the pair shaped together less the two shaped apart (docs/adr/0020)
+      lfPairKern = \s a b -> pairKern (s, a, b),
       lfShape = shapeText,
       lfCode = glyphCid . fontAt,
       lfEmbed = embed,
       lfEmBoxCentral = \ix -> let f = fontAt ix in toInteger (fontEmBoxCentral f) % toInteger (fontUnitsPerEm f)
     }
   where
+    advance = curry (memo (\(s, c) -> sum (map shAdvance (shapeText s (T.singleton c)))))
+    pairKern = memo (\(s, a, b) -> sum (map shAdvance (shapeText s (T.pack [a, b]))) - advance s a - advance s b)
     fontAt i = fonts !! max 0 (min (length fonts - 1) i)
     roleOf role = case Map.lookup role roles of
       Just (Nothing, Nothing, _) -> roleOf body
@@ -100,15 +106,17 @@ provide fonts body roles =
        in fromMaybe 0 (if charClass c == Western then la <|> ja else ja <|> la)
     -- a variation selector stays with the character before it (golem-pdf ADR 0006)
     runs role t = [(fontFor role (T.head r), r) | r <- T.groupBy (\a b -> isVariationSelector b || fontFor role a == fontFor role b) t, not (T.null r)]
-    {- shaping a text in a role. In vertical text a cluster of a Japanese
-    run whose glyphs vert leaves as they are, and whose first character is
-    R or Tr in UAX #50, is turned: its horizontal glyphs and advances
-    (golem-driver ADR 0015) -}
-    shapeText role vertical t =
-      let (_, la, features) = roleOf role
+    {- shaping a text in a role, with the features added after the role's
+    (docs/adr/0020). In vertical text a cluster of a Japanese run whose
+    glyphs vert leaves as they are, and whose first character is R or Tr in
+    UAX #50, is turned: its horizontal glyphs and advances (golem-driver ADR
+    0015). The clusters are numbered by character in the whole text. -}
+    shapeText (Shaping role vertical extra) t =
+      let (_, la, roleFeatures) = roleOf role
+          features = roleFeatures <> extra
           shapeIn f r dir = shapeUnits f ((shapeRequest 1000 r) {srDirection = dir, srFeatures = features})
           glyph ix f r turned dir (g, c, (xa, ya, _, _)) =
-            Shaped ix g (toInteger (if dir == Vertical then negate ya else xa) % toInteger (fontUnitsPerEm f)) (clusterText r c) turned
+            Shaped ix g (toInteger (if dir == Vertical then negate ya else xa) % toInteger (fontUnitsPerEm f)) (clusterText r c) turned c
           clusters gs = [(c, [x | x@(_, c', _) <- gs, c' == c]) | c <- nubOrd [c | (_, c, _) <- gs]]
           gids = map (\(g, _, _) -> g)
           run (ix, r)
@@ -129,7 +137,10 @@ provide fonts body roles =
               f = fontAt ix
               -- a run for which fontFor chose the Latin face
               latinRun = isJust la && maybe False ((== Western) . charClass . fst) (T.uncons r)
-       in concatMap run (runs role t)
+          -- the byte offsets of a run's clusters as character indices in t
+          offsets = scanl (+) 0 [T.length r | (_, r) <- runs role t]
+          inText r start sh = sh {shCluster = start + T.length (TE.decodeUtf8Lenient (BS.take (shCluster sh) (TE.encodeUtf8 r)))}
+       in concat [map (inText r start) (run (ix, r)) | ((ix, r), start) <- zip (runs role t) offsets]
     -- the text of a glyph for ToUnicode: without variation selectors, so
     -- that a variant is found by its base character (golem-pdf ADR 0006)
     clusterText r c =
@@ -163,7 +174,7 @@ provide fonts body roles =
             }
 
 -- | Advances are asked for again and again while composing; cache them.
-memo :: ((Text, Char) -> Rational) -> (Text, Char) -> Rational
+memo :: (Ord k) => (k -> Rational) -> k -> Rational
 memo f = unsafePerformIO $ do
   ref <- newIORef Map.empty
   pure $ \c -> unsafePerformIO $ do

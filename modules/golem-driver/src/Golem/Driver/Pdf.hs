@@ -11,6 +11,8 @@ module Golem.Driver.Pdf
   ( FontProvider (..),
     LoadedFonts (..),
     Shaped (..),
+    Shaping (..),
+    shapingOf,
     noFontProvider,
     bodyRole,
     usedRoles,
@@ -59,6 +61,7 @@ import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, zip4)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, listToMaybe)
+import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -72,7 +75,8 @@ import Golem.Driver.Version (golemVersion)
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
-import Golem.Layout.Look
+import Golem.Layout.Look hiding (Kerning (..))
+import Golem.Layout.Look qualified as L
 import Golem.Layout.Paginate
 import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.Layout.Ruby qualified as R
@@ -88,16 +92,32 @@ import Golem.Project.Style
 import Golem.Syntax
 import System.FilePath (takeBaseName)
 
+{- | How a text is shaped (docs/adr/0020): the font role (golem-driver ADR
+0003; a role that is not loaded is the body role), the direction, and
+the features added after the role's features (HarfBuzz lets a later
+feature override an earlier one of the same tag).
+-}
+data Shaping = Shaping
+  { shRole :: !Text,
+    shVertical :: !Bool,
+    -- | the features added after the role's features
+    shExtra :: ![Text]
+  }
+  deriving stock (Eq, Ord, Show)
+
 {- | Fonts ready for layout and output. Advances are in em. The first
-argument of the measuring and shaping functions is the font role
-(golem-driver ADR 0003); a role that is not loaded is the body role.
+argument of the measuring and shaping functions is how the text is
+shaped (docs/adr/0020).
 -}
 data LoadedFonts = LoadedFonts
-  { lfAdvance :: Text -> Char -> Rational,
+  { lfAdvance :: Shaping -> Char -> Rational,
     -- | a Latin word as shaped (kerning, ligatures)
-    lfWordAdvance :: Text -> Text -> Rational,
-    -- | shaping: the glyphs of a text in a role, horizontal or vertical
-    lfShape :: Text -> Bool -> Text -> [Shaped],
+    lfWordAdvance :: Shaping -> Text -> Rational,
+    {- | the pair kerning of two characters: the pair shaped together less
+    the two shaped apart (docs/adr/0020)
+    -} lfPairKern :: Shaping -> Char -> Char -> Rational,
+    -- | shaping: the glyphs of a text
+    lfShape :: Shaping -> Text -> [Shaped],
     -- | the character code of a glyph in the PDF (its CID in a CID-keyed font)
     lfCode :: Int -> Int -> Int,
     {- | the embedded (subset) font of a face number, for horizontal or
@@ -117,7 +137,9 @@ data Shaped = Shaped
     -- | the text the glyph stands for
     shText :: !Text,
     -- | drawn turned 90° clockwise in vertical text (golem-driver ADR 0015)
-    shTurned :: !Bool
+    shTurned :: !Bool,
+    -- | the index of the first character of the glyph's cluster in the shaped text (docs/adr/0020)
+    shCluster :: !Int
   }
   deriving stock (Eq, Show)
 
@@ -206,6 +228,7 @@ restyle style lk = \case
             (Just _, Nothing) -> (True, True)
             (Nothing, _) -> (False, False)
           role = fromMaybe (lkFace lk) (csFont cs)
+          size = maybe (lkSize lk) (dimToSp (lkSize lk)) (csSize cs)
           side covered setting old = case setting of
             Just True -> not covered
             Just False -> False
@@ -218,14 +241,55 @@ restyle style lk = \case
        in lk
             { lkFace = if hasJa then role else lkFace lk,
               lkLatinFace = if hasLatin then role else lkLatinFace lk,
-              lkSize = maybe (lkSize lk) (dimToSp (lkSize lk)) (csSize cs),
+              lkSize = size,
               lkSynthetic = synth hasJa (lkSynthetic lk),
               lkLatinSynthetic = synth hasLatin (lkLatinSynthetic lk),
-              lkColor = csColor cs <|> lkColor lk
+              lkColor = csColor cs <|> lkColor lk,
+              -- kerning, tracking, proportional metrics and baseline shift (docs/adr/0020)
+              lkKerning = maybe (lkKerning lk) lookKerning (csKerning cs),
+              lkTracking = fromMaybe (lkTracking lk) (csTracking cs),
+              lkProportional = fromMaybe (lkProportional lk) (csProportional cs),
+              lkBaselineShift = maybe (lkBaselineShift lk) (dimToSp size) (csBaselineShift cs)
             }
     Nothing -> lk
   Color _ sw _ -> lk {lkColor = Just sw}
   _ -> lk
+
+-- | The kerning method of style.toml in a look; optical is rejected before layout (docs/adr/0020).
+lookKerning :: Kerning -> L.Kerning
+lookKerning = \case
+  KernJapaneseEqualWidth -> L.KernJapaneseEqualWidth
+  KernNone -> L.KernNone
+  _ -> L.KernMetrics
+
+{- | A look with the kerning, tracking, proportional metrics and baseline
+shift of a resolved paragraph style (docs/adr/0020); zw is the size of the look.
+-}
+withFeatures :: Maybe ParaStyleDef -> Look -> Look
+withFeatures d lk =
+  lk
+    { lkKerning = maybe (lkKerning lk) lookKerning (d >>= psKerning),
+      lkTracking = fromMaybe (lkTracking lk) (d >>= psTracking),
+      lkProportional = fromMaybe (lkProportional lk) (d >>= psProportional),
+      lkBaselineShift = maybe (lkBaselineShift lk) (dimToSp (lkSize lk)) (d >>= psBaselineShift)
+    }
+
+{- | How a character of a look is shaped (docs/adr/0020): in its role, in
+vertical text when it is Japanese in a vertical paragraph (Latin is turned
+and shaped horizontally), with the features of the kerning method and the
+proportional metrics after the role's. Japanese punctuation that JLReq
+spaces keeps its full width: palt and vpal are not added to it.
+-}
+shapingOf :: Bool -> Look -> Char -> Shaping
+shapingOf vertical lk c
+  | charClass c == Western = Shaping (lkLatinFace lk) False ["-kern" | lkKerning lk == L.KernNone]
+  | otherwise = Shaping (lkFace lk) vertical extra
+  where
+    proportional = [if vertical then "vpal" else "palt" | lkProportional lk, punctSpace (charClass c) == (0, 0)]
+    extra = case lkKerning lk of
+      L.KernJapaneseEqualWidth -> ["-kern", "-vkrn", "-palt", "-vpal"]
+      L.KernNone -> ["-kern", "-vkrn"] <> proportional
+      L.KernMetrics -> proportional
 
 -- | The rules at the top and bottom of a table: 0.6pt (golem-driver ADR 0008).
 thickRule :: Sp
@@ -408,7 +472,7 @@ layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) <> listNum
             -- the pages of the table of contents, once, on the settled pages (golem-driver ADR 0009)
             hPages = headingPages (bHeadingSpans built) pages
             tg = tocGeometry (piStyle inp) geom fonts
-            env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyRole (piStyle inp)) (pgFontSize geom)
+            env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyLook (piStyle inp) (pgFontSize geom))
             tocPages = Map.fromList [(lid, tocPage tg e (pageNumberLine env n)) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
          in case concat [ds | (_, Left ds) <- placed] of
               [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built))
@@ -573,7 +637,7 @@ tocMetrics env =
 tocGeometry :: Style -> PageGeometry -> LoadedFonts -> TocGeometry
 tocGeometry style geom fonts =
   let fs = pgFontSize geom
-      env = composeEnv style geom fonts (Assumed Map.empty Map.empty) (bodyRole style) fs
+      env = composeEnv style geom fonts (Assumed Map.empty Map.empty) (bodyLook style fs)
       (w, u) = tocMetrics env
    in TocGeometry (columnMeasure geom) w (fs `div` 2) u (stTocLeader style == "dots") (ceLook env)
 
@@ -751,20 +815,22 @@ fixpoint geom termOf layoutWith = go (1 :: Int) (Assumed Map.empty Map.empty)
 {- | The composition environment of a unit set in a font role at a size
 (golem-driver ADR 0003).
 -}
-composeEnv :: Style -> PageGeometry -> LoadedFonts -> Assumed -> Text -> Sp -> ComposeEnv
-composeEnv style geom fonts assumed role fs =
+composeEnv :: Style -> PageGeometry -> LoadedFonts -> Assumed -> Look -> ComposeEnv
+composeEnv style geom fonts assumed look =
   let comp = stComposition style
-   in (defaultComposeEnv fs)
-        { ceAdvance = \look c -> lfAdvance fonts (if charClass c == Western then lkLatinFace look else lkFace look) c,
-          ceWordAdvance = lfWordAdvance fonts . lkLatinFace,
-          ceLook = plainLook role fs,
+      shaping = shapingOf (pgVertical geom)
+   in (defaultComposeEnv (lkSize look))
+        { ceAdvance = \lk c -> lfAdvance fonts (shaping lk c) c,
+          ceWordAdvance = \lk t -> lfWordAdvance fonts (maybe (Shaping (lkLatinFace lk) False []) (shaping lk . fst) (T.uncons t)) t,
+          ceKern = \lk a b -> lfPairKern fonts (shaping lk a) a b,
+          ceLook = look,
           ceRestyle = restyle style,
           ceVertical = pgVertical geom,
           ceKinsokuStrict = compKinsokuStrict comp,
           ceHanging = compHanging comp,
           ceProtrusion = compProtrusion comp,
           ceExplicitHyphenPenalty = compExplicitHyphenPenalty comp,
-          ceRuby = rubyStyleOf style fs,
+          ceRuby = rubyStyleOf style (lkSize look),
           ceVerticalNumbers = case stNumbersVertical style of
             "kanji-digits" -> Just StyleKanjiDigits
             "tcy" -> Just StyleTcy
@@ -810,7 +876,7 @@ data Unit = Unit
     -- | the block the unit comes from, for diagnostics
     uSpan :: SrcSpan,
     -- | the role and the size the unit is set in (docs/adr ADR 0005)
-    uFace :: (Text, Sp),
+    uLook :: Look,
     -- | the style of its document (docs/adr ADR 0014)
     uStyle :: Style,
     -- | the numbers of the lists around the unit, outermost first; lists are numbered from 0 in document order (golem-driver ADR 0013)
@@ -840,13 +906,24 @@ data UnitKind
   | -- | a forced break (docs/adr ADR 0017)
     UBreak !BreakKind
 
--- | The role, the size and the indent of a paragraph style (docs/adr ADR 0005, 0006).
-paraLook :: Style -> PageGeometry -> Maybe Text -> ((Text, Sp), Indent)
+{- | The look and the indent of a paragraph style (docs/adr ADR 0005, 0006):
+its role, its size, and its kerning, tracking, proportional metrics and
+baseline shift (docs/adr/0020).
+-}
+paraLook :: Style -> PageGeometry -> Maybe Text -> (Look, Indent)
 paraLook style geom st =
   let d = paraStyle style st
-      face@(_, size) = faceFor style geom (d >>= psFont) (d >>= psSize)
+      (role, size) = faceFor style geom (d >>= psFont) (d >>= psSize)
       sp' f = dimToSp size (fromMaybe (Zw 0) (d >>= f))
-   in (face, Indent (sp' psIndent) (sp' psFirstLineIndent))
+   in (withFeatures d (plainLook role size), Indent (sp' psIndent) (sp' psFirstLineIndent))
+
+-- | The look of the body role at a size, with the keys of the paragraph style body (docs/adr/0020).
+bodyLook :: Style -> Sp -> Look
+bodyLook style = styleLook style Nothing (bodyRole style)
+
+-- | A role at a size with the keys of a paragraph style (docs/adr/0020).
+styleLook :: Style -> Maybe Text -> Text -> Sp -> Look
+styleLook style st role size = withFeatures (paraStyle style st) (plainLook role size)
 
 {- | The marker of an item of a list at a depth (golem-driver ADR 0013): the
 bullet of the depth, or the number in the format of the depth. @{n}@ is a
@@ -887,12 +964,11 @@ unitsOf book geom styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs bo
       let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx prev b <>) <$> block style ctx k b) n (zip (Nothing : map Just bs) bs)
        in (n', concat uss)
     gapBefore style ctx (Just (Block _ _ (Paragraph s1 _))) (Block sp _ (Paragraph s2 _))
-      | s1 == s2, Just g <- paraStyle style s2 >>= psSpaceBetween, g > 0 = [Unit (UGap g) Nothing [] sp (bodyFace style) style ctx Nothing]
+      | s1 == s2, Just g <- paraStyle style s2 >>= psSpaceBetween, g > 0 = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing]
     gapBefore _ _ _ _ = []
-    bodyFace style = (bodyRole style, fs)
     block style ctx n (Block sp lbl body) =
       let unit kind l is face = Unit kind l is sp face style ctx Nothing
-          plainUnit kind l is = unit kind l is (bodyFace style)
+          plainUnit kind l is = unit kind l is (bodyLook style fs)
        in case body of
             -- a style that keeps its lines: a unit for each line, each indented as a
             -- paragraph (docs/adr ADR 0005, 0006); otherwise the line breaks are
@@ -907,7 +983,7 @@ unitsOf book geom styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs bo
               let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
                   title = maybe [] (\h -> [txt (h <> "　")]) (if haNoNumber attrs then Nothing else num) <> is
                   recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
-               in (n, [unit (UHeading l (T.concat (map inlineText is)) recto) lbl title (headingFace style geom l)])
+               in (n, [unit (UHeading l (T.concat (map inlineText is)) recto) lbl title (uncurry (styleLook style Nothing) (headingFace style geom l))])
             BulletList items -> list style ctx n (map (Nothing,) items)
             OrderedList items -> list style ctx n (zip (map Just (itemNumbers items)) items)
             DefList gs ->
@@ -963,7 +1039,7 @@ listWidths envOf fs gap units =
     | u <- units,
       Just m <- [uMarker u],
       let g = case gap of
-            Just d -> dimToSp (snd (uFace u)) d
+            Just d -> dimToSp (lkSize (uLook u)) d
             Nothing
               | endsWithSpacedPunctuation (T.concat (map inlineText m)) -> 0
               | otherwise -> fs `div` 2,
@@ -1000,8 +1076,8 @@ buildFlow inp geom fonts images assumed = do
       vertical = pgVertical geom
       cites = Map.fromList (bookCitations (piBook inp))
       -- citations show their numbers (golem-driver ADR 0007)
-      envFor role size = (composeEnv style geom fonts assumed role size) {ceCiteNumber = (`Map.lookup` cites)}
-      bodyEnv = envFor body fs
+      envFor lk = (composeEnv style geom fonts assumed lk) {ceCiteNumber = (`Map.lookup` cites)}
+      bodyEnv = envFor (bodyLook style fs)
       params = kpParams style geom
       measure = columnMeasure geom
       -- the reserve for the page number of a table of contents entry: W and two em (golem-driver ADR 0009)
@@ -1013,7 +1089,7 @@ buildFlow inp geom fonts images assumed = do
       -- the character styles of the unit's document (docs/adr ADR 0014)
       styledEnv st e = e {ceRestyle = restyle st}
       -- the marker width M of each list, and the indents of the units in lists (golem-driver ADR 0013)
-      widths = listWidths (\u -> styledEnv (uStyle u) (uncurry envFor (uFace u))) fs (lsGap (stLists style)) rawUnits
+      widths = listWidths (\u -> styledEnv (uStyle u) (envFor (uLook u))) fs (lsGap (stLists style)) rawUnits
       widthOfList lid = Map.findWithDefault 0 lid widths
       -- O: the widths of the lists around a unit; Mi: the width of the innermost one
       outerOf u = sum (map widthOfList (uLists u))
@@ -1037,7 +1113,7 @@ buildFlow inp geom fonts images assumed = do
         UTocEntry l _ -> const (tocIndent l)
         _ -> const 0
       -- the role and size a unit is set in (docs/adr ADR 0005)
-      faceOf = uFace
+      faceOf u = (lkFace (uLook u), lkSize (uLook u))
       {- the marker of a list item: its boxes and an empty box up to Mi, before
       the text with no glue or penalty between them (golem-driver ADR 0013) -}
       markerItems env u = case uMarker u of
@@ -1047,9 +1123,8 @@ buildFlow inp geom fonts images assumed = do
               w = sum (map itemWidth boxes)
            in boxes <> [Box (innerOf u - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0)]
       compose lineWidth u =
-        let (role, size) = faceOf u
-            env = styledEnv (uStyle u) (envFor role size)
-            bodyEnv' = styledEnv (uStyle u) bodyEnv
+        let env = styledEnv (uStyle u) (envFor (uLook u))
+            bodyEnv' = styledEnv (uStyle u) (envFor (bodyLook (uStyle u) fs))
             marker = markerItems env u
             -- the anchors count the items of the text; the marker comes first
             shift = length marker
@@ -1068,7 +1143,7 @@ buildFlow inp geom fonts images assumed = do
       snMeasure = maybe 0 (rectW . fst) (pgSidenotes geom)
       sidenoteLines st n snBody =
         let (snRole, snSize', _) = sidenoteMetrics st geom
-            snEnv = styledEnv st (envFor snRole snSize')
+            snEnv = styledEnv st (envFor (styleLook st (Just "sidenote") snRole snSize'))
             snParams = params {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition style))}
             prefix = case ceSidenoteMarker bodyEnv of
               MarkerNumber -> [Text (mkSpan (FileId 0) 0 0) (T.pack (show n) <> " ")]
@@ -1095,7 +1170,7 @@ buildFlow inp geom fonts images assumed = do
             -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
             (captionRole, cs) = paraFace (uStyle u) geom "caption"
             captionParams = params {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
-            (captionItems, captionAnchors) = composeInlines (styledEnv (uStyle u) (envFor captionRole cs)) captionInlines
+            (captionItems, captionAnchors) = composeInlines (styledEnv (uStyle u) (envFor (styleLook (uStyle u) (Just "caption") captionRole cs))) captionInlines
             caption = if null captionInlines then [] else brLines (breakParagraph captionParams (const alongSp) captionItems)
             captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
             n = length caption
@@ -1285,7 +1360,8 @@ buildFlow inp geom fonts images assumed = do
           [ diagnostic "G0725" Error (mkSpan (FileId 0) 0 0) ("段落の字下げが大きすぎます。行長を本文の文字の大きさの 8 字分以上残してください: " <> name)
           | st <- style : map (withLocalStyles style) (Map.elems (piLocalStyles inp)),
             name <- Map.keys (stParaStyles st),
-            let ((_, size), Indent s f) = paraLook st geom (Just name),
+            let (lk, Indent s f) = paraLook st geom (Just name),
+            let size = lkSize lk,
             measure - s - max 0 f < 8 * size
           ]
       -- the text of a list item leaves 8 characters of the type area (golem-driver ADR 0013)
@@ -1397,16 +1473,36 @@ writeDocument inp geom fonts layout intent =
       -- the synthetic bold and slant of a run
       syntheticOf look latin = if latin then lkLatinSynthetic look else lkSynthetic look
       -- glyph marks of a text in a look starting at a point, and the glyphs used
-      runAt look v rotated scale (x0, y0) txt =
+      runAt look v rotated scale (bx, by) txt =
         let size = lkSize look
+            -- the baseline shift: up in horizontal text, right in vertical text (docs/adr/0020)
+            shift = lkBaselineShift look
+            (x0, y0) = if v then (bx + shift, by) else (bx, by + shift)
+            -- shaped with the features of the look; rotated Latin is shaped horizontally
+            vv = v && not rotated
+            shapingFor role r = (shapingOf vv look (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = vv}
+            {- the tracking after the last glyph of each cluster, for each of its
+            characters, as the boxes count it (docs/adr/0020) -}
+            tr = toInteger (lkTracking look) * size
+            trackingAfter r shaped =
+              let starts = map shCluster shaped
+                  nexts = drop 1 starts <> [T.length r]
+                  cluster c = minimum (T.length r : filter (> c) starts) - c
+               in [if n /= c then round (toInteger (cluster c) * tr % 1000) else 0 | (c, n) <- zip starts nexts]
             -- the stroke of synthetic bold of a side: Latin or Japanese (golem-driver ADR 0012)
             strokeOf latin s
               | synBold s = syntheticStroke (if latin then syntheticStrokeLatin else syntheticStrokeJa) size
               | otherwise = 0
-            gs = concat [[(ix, g, a, t, (synSlant s, strokeOf latin s), tu) | Shaped ix g a t tu <- lfShape fonts role (v && not rotated) r] | (role, r, latin) <- runsOf look txt, let s = syntheticOf look latin]
-            advs = scanl (+) 0 [toSp size a | (_, _, a, _, _, _) <- gs]
+            gs =
+              concat
+                [ [(ix, g, a, t, (synSlant s, strokeOf latin s), tu, extra) | (Shaped ix g a t tu _, extra) <- zip shaped (trackingAfter r shaped)]
+                | (role, r, latin) <- runsOf look txt,
+                  let s = syntheticOf look latin
+                      shaped = lfShape fonts (shapingFor role r) r
+                ]
+            advs = scanl (+) 0 [toSp size a + extra | (_, _, a, _, _, _, extra) <- gs]
             -- a glyph turned in vertical text: drawn with the horizontal font (golem-driver ADR 0015)
-            placed = [(ix, g, t, sb, tu && v && not rotated, off) | ((ix, g, _, t, sb, tu), off) <- zip gs advs]
+            placed = [(ix, g, t, sb, tu && v && not rotated, off) | ((ix, g, _, t, sb, tu, _), off) <- zip gs advs]
             byFont = Map.fromListWith (flip (<>)) [((ix, sb, tu), [(g, t, off)]) | (ix, g, t, sb, tu, off) <- placed]
             at off = if v then (x0, y0 - off) else (x0 + off, y0)
             -- the baseline of a turned glyph: left of the centre line by the centre of its em box
@@ -1464,7 +1560,7 @@ writeDocument inp geom fonts layout intent =
                             let (base, reading) = T.breakOn "|" (bcText c)
                                 rt = T.drop 1 reading
                                 rsize = lkSize half
-                                advOf lk ch = toSp (lkSize lk) (lfAdvance fonts (if isLatin ch then lkLatinFace lk else lkFace lk) ch)
+                                advOf lk ch = toSp (lkSize lk) (lfAdvance fonts (shapingOf vertical lk ch) ch)
                                 baseAdv = map (advOf look) (T.unpack base)
                                 readAdv = map (advOf half) (T.unpack rt)
                                 excess = max 0 (sum readAdv - w)
@@ -1507,7 +1603,7 @@ writeDocument inp geom fonts layout intent =
               _ -> concatMap (fst . snd) grp
          in (concatMap marksOf coloured, concatMap (snd . snd) parts)
       textAt anchor size txt =
-        let w = sum [toSp size (shAdvance g) | g <- lfShape fonts body False txt]
+        let w = sum [toSp size (shAdvance g) | g <- lfShape fonts (Shaping body False []) txt]
             x0 = case anAlign anchor of
               LS.AlignStart -> anX anchor
               LS.AlignCenter -> anX anchor - w `div` 2
