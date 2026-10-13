@@ -31,6 +31,9 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 
 行分けをそのまま残したい詩や歌詞には、後で説明する段落スタイル [style code: verse] を使います。
 
+和文の原稿には、一行を一つの段落として書く書き方もあります。
+[style code: manifest.toml] の [style code: \[source\]] に [style code: paragraph-separator = "line"] と書くと、改行ひとつで段落を区切る書き方になります（[ref-number source-settings]「[ref-title source-settings]」）。
+
 ## 見出し
 
 行頭の [style code: #] の数が、見出しの階層を表します。

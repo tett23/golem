@@ -699,10 +699,10 @@
 
 - **重大度**：エラー
 - **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Manifest`）
-- **メッセージ**：`TOML の誤りです: <詳細>`、`出力ターゲットが一つもありません`、または TOML のスキーマの誤りの文言（未知のキー、値の型の誤りなど）に誤った箇所の経路を添えたもの
-- **意味**：`manifest.toml` が TOML として読めないか、スキーマに合わないか、出力ターゲットが一つもない。
-- **原因と直し方**：キーの綴りと値の型を確かめる。未知のキーは無視せずエラーにする。ターゲット（`[targets.*]`）を一つ以上書く。
-- **ADR**：ADR なし（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えると決めたが、まだ実装していない）
+- **メッセージ**：`TOML の誤りです: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、または TOML のスキーマの誤りの文言（未知のキー、値の型の誤り、`[source]` の不正な値など）に誤った箇所の経路を添えたもの
+- **意味**：`manifest.toml` が TOML として読めないか、スキーマに合わないか、出力ターゲットが一つもない。`[source]` と章の項目の `[source]` のキー（`paragraph-separator` など）の未知のキーと不正な値、同じファイルを章の配列に二度並べて効く `[source]` の値が異なる場合も、この誤りとする。
+- **原因と直し方**：キーの綴りと値の型を確かめる。未知のキーは無視せずエラーにする。ターゲット（`[targets.*]`）を一つ以上書く。`paragraph-separator` は `"blank-line"` か `"line"` と書く。
+- **ADR**：ADR なし（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えた）
 
 ## G0302
 
@@ -862,9 +862,9 @@
 - **重大度**：エラー
 - **段階とモジュール**：lint（golem-lint の `Golem.Lint`）
 - **メッセージ**：`改行の前後が欧文なので、単語が空白なしにつながります。一行で書いてください`
-- **意味**：段落の中の改行の前後が、ともに欧文の文字である。段落の中の改行は文字を生まないので、単語が空白なしにつながる。`line-breaks = "keep"` の段落スタイルの段落の行の区切りには当てない。
+- **意味**：段落の中の改行の前後が、ともに欧文の文字である。段落の中の改行は文字を生まないので、単語が空白なしにつながる。`line-breaks = "keep"` の段落スタイルの段落の行の区切りには当てない。改行の様式（`[source]` の `paragraph-separator = "line"`）のファイルの段落とリストの項目の改行は段落の区切りなので当てず、散文スロットの中の改行にだけ当てる。
 - **原因と直し方**：欧文の文は一行で書くか、改行の前に空白を置く。行を保ちたい段落には、`line-breaks = "keep"` の段落スタイル（`verse` など）を付ける。
-- **ADR**：[golem-lint ADR 0001](golem-lint/adr/0001-lint-rules.md)（定めた）、[docs/adr/0003](adr/0003-verse-line-breaks.md) と [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（例外を定めた）、[docs/adr/0013](adr/0013-paragraph-separator.md)（改行の様式の扱いを定めたが、まだ実装していない）
+- **ADR**：[golem-lint ADR 0001](golem-lint/adr/0001-lint-rules.md)（定めた）、[docs/adr/0003](adr/0003-verse-line-breaks.md) と [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（例外を定めた）、[docs/adr/0013](adr/0013-paragraph-separator.md)（改行の様式の扱いを定めた）
 
 ## G0502
 
