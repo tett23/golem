@@ -1069,7 +1069,6 @@ data Composed = Composed
 buildFlow :: PdfInput -> PageGeometry -> LoadedFonts -> Map Text (Maybe P.ImageData) -> Assumed -> IO Built
 buildFlow inp geom fonts images assumed = do
   let style = piStyle inp
-      body = bodyRole style
       fs = pgFontSize geom
       pitch = pgLinePitch geom
       capacity = length (pgLineGrid geom)

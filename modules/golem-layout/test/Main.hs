@@ -964,9 +964,9 @@ characterFeatureTests =
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
           plain = defaultComposeEnv fs
       [(w, bcEdgeEnd c) | Box w c <- compose env "あ"] @?= [(fs + tenth, negate tenth)]
-      let wordsOf e = [(w, bcEdgeEnd c) | Box w c <- compose e "abc def"]
+      let wordBoxes e = [(w, bcEdgeEnd c) | Box w c <- compose e "abc def"]
           gluesOf e = [w | Glue w _ _ <- take 3 (compose e "abc def")]
-      wordsOf env @?= [(w + 3 * tenth, negate tenth) | (w, _) <- wordsOf plain]
+      wordBoxes env @?= [(w + 3 * tenth, negate tenth) | (w, _) <- wordBoxes plain]
       gluesOf env @?= [w + tenth | w <- gluesOf plain],
     testCase "ruby, tate-chu-yoko and note marks get no tracking" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
