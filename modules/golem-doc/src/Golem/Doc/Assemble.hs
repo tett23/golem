@@ -167,7 +167,7 @@ assemble cfg evalDeferred docs =
         Just (ch, n) -> Just (formatNumber (acFigureFormat cfg) [n] ch)
         Nothing -> Nothing
       figureErrors =
-        [ diagnostic "G0404" Error sp "最初の章より前の図版には、章番号を使う図番号を振れません"
+        [ diagnostic "G0404" Error sp "章の外にある図版には、章番号を使う図番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
         | "{chapter}" `T.isInfixOf` acFigureFormat cfg,
           (sp, (Nothing, _)) <- Map.toList (nsFigures ns)
         ]
@@ -177,8 +177,11 @@ assemble cfg evalDeferred docs =
       (docs', (refd, resolveDiags)) = runState (mapM (resolveDoc labels dv evalDeferred) docs) (Set.empty, [])
       tocs = [(d, sp) | Document _ bs <- docs, Block sp _ (ChannelOutput (TocOutput d)) <- allBlocks bs]
       tocDiags = case tocs of
-        (_ : (_, sp) : _) -> [diagnostic "G0402" Error sp "@toc は文書に一つだけ置けます"]
-        _ -> []
+        ((_, firstToc) : rest) ->
+          [ (diagnostic "G0402" Error sp "@toc は文書に一つだけ置けます") {diagRelated = [(firstToc, "最初の @toc")]}
+          | (_, sp) <- rest
+          ]
+        [] -> []
       toc =
         [ TocEntry (hiLevel h) (hiNumberText h) (hiTitle h) (hiAnchor h) (hiFile h) sp
         | Document _ bs <- docs,
@@ -275,7 +278,11 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
             Nothing -> do
               modify' (\(s, ds) -> (s, ds <> [diagnostic "G0405" Error sp ("番号を持たない要素への参照です: " <> l)]))
               pure []
-          (Just t, RefTitle) -> pure (map (relocate sp) (ltTitle t))
+          (Just t, RefTitle) -> case ltTitle t of
+            [] -> do
+              modify' (\(s, ds) -> (s, ds <> [diagnostic "G0406" Error sp ("題を持たない要素への参照です: " <> l)]))
+              pure []
+            title -> pure (map (relocate sp) title)
           (Just _, RefPage) -> pure [Ref sp k l]
       Deferred sp e -> case evalDeferred dv e of
         Left d -> modify' (\(s, ds) -> (s, ds <> [d])) >> pure []

@@ -47,13 +47,29 @@ block =
       (\s1 s2 -> "|" <> s1 <> "a|b" <> s2 <> "|\n|---|---|\n|1" <> s2 <> "|" <> s1 <> "2|") <$> spaces <*> spaces
     ]
 
+-- | The file settings at the top of a file (docs/adr ADR 0014).
+settings :: Gen Text
+settings = do
+  ls <-
+    Gen.list
+      (Range.linear 0 3)
+      ( Gen.choice
+          [ (\s1 s2 -> "@manifest" <> s1 <> "paragraph-separator=line" <> s2) <$> Gen.element [" ", "   "] <*> spaces,
+            (\s1 s2 s3 -> "@style-def" <> s1 <> "paragraph" <> s2 <> "letter" <> s3 <> "indent=1zw") <$> Gen.element [" ", "   "] <*> Gen.element [" ", "  "] <*> Gen.element [" ", "   "],
+            pure "@style-def character term synthetic-bold=true"
+          ]
+      )
+  end <- Gen.element ["\n", "\n\n"]
+  pure (if null ls then "" else T.intercalate "\n" ls <> end)
+
 document :: Gen Text
 document = do
+  header <- settings
   bs <- Gen.list (Range.linear 0 6) block
   seps <- Gen.list (Range.singleton (length bs)) (Gen.element ["\n\n", "\n\n\n", "\n \n\n"])
   lead <- Gen.element ["", "\n", "\n\n"]
   end <- Gen.element ["", "\n", "\n\n\n"]
-  pure (lead <> T.concat (zipWith (<>) bs seps) <> end)
+  pure (lead <> header <> T.concat (zipWith (<>) bs seps) <> end)
 
 formatted :: Text -> Text
 formatted t = case format t of
@@ -83,6 +99,7 @@ tests =
           golden "escapes" "\\a\\漢\\[\\]\\\\\\%と\\1\n\n\\1. 番号ではない\n",
           golden "trailing-whitespace" "@toc depth=2   \n\n- a  \n- b\t\n\n本文。  \n続き。 \n",
           golden "table-spacing" "| a|b |\n|---|:-:|\n|1|  2|\n",
+          golden "file-settings" "@manifest   paragraph-separator=line\n@style-def   paragraph  letter   indent=1zw\n\n本文。\n",
           golden "verse" "@style verse\n\tFull fathom five thy father lies;  \n\tOf his bones are coral made;\t\n\n\n  Nothing of him that doth fade,\n  But doth suffer a sea-change \n"
         ],
       testCase "BOM, CRLF and tab indentation are fixed" $
