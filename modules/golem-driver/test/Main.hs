@@ -308,6 +308,7 @@ tests =
       testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
+      testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
       testGroup
         "public-domain books"
         [ testCase "The Tempest builds horizontally to every target" $ do
@@ -324,6 +325,38 @@ tests =
             qpdfCheck pdf
         ]
     ]
+
+-- | Noto Serif JP of the 蟹工船 fixture through the golem-font provider.
+notoFonts :: IO LoadedFonts
+notoFonts = do
+  src <- TIO.readFile "test/fixtures/kanikosen/style.toml"
+  style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
+  loadFonts realProvider "test/fixtures/kanikosen" style >>= either (assertFailure . show) pure
+
+variationTests :: [TestTree]
+variationTests =
+  [ testCase "a base character and its variation selector are shaped together" $ do
+      fonts <- notoFonts
+      [(g, t) | (_, g, _, t) <- lfShape fonts "body" False "葛\xE0100"] @?= [(16314, "葛")],
+    testCase "the variant glyph is drawn and maps back to its base character" $ do
+      noto <- BS.readFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
+      let body = "\n[fonts.body]\nja = \"fonts/noto.otf\"\n"
+      forM_ [pdfStyle <> body, horizontalStyle <> body] $ \style -> do
+        pdf <- miniPdf realProvider True style "葛\xE0100と葛\n" [("fonts/noto.otf", noto)]
+        streams <- inflateAll pdf
+        let content = BS.concat [st | st <- streams, " Tf" `BS.isInfixOf` st]
+            cmaps = [st | st <- streams, "beginbfchar" `BS.isInfixOf` st]
+        -- CID 61923 is glyph 16314
+        assertBool "variant drawn" ("<F1E3> Tj" `BS.isInfixOf` content)
+        assertBool "maps to 葛" (any ("<F1E3> <845b>" `BS.isInfixOf`) cmaps)
+        -- no glyph for the selector alone: no .notdef, no mapping to it
+        assertBool "no .notdef" (not ("<0000> Tj" `BS.isInfixOf` content))
+        assertBool "no selector in ToUnicode" (not (any (\c -> "db40dd00" `BS.isInfixOf` c) cmaps))
+        qpdfCheck pdf,
+    testCase "the CIDFont of 蟹工船 stays Adobe-Identity-0" $ do
+      (_, pdf, _) <- buildBook "kanikosen"
+      assertBool "Identity" ("/CIDSystemInfo << /Ordering (Identity) /Registry (Adobe) /Supplement 0 >>" `BS.isInfixOf` pdf)
+  ]
 
 -- | Builds a copy of a book fixture (fonts included); no errors allowed.
 buildBook :: FilePath -> IO ([FilePath], BS.ByteString, [(FilePath, T.Text)])
@@ -1828,7 +1861,7 @@ fakeFonts =
       lfCode = \_ g -> g,
       lfShape = \role _ t -> [(faceOf role, fromEnum c `mod` 65536, advOf role c, T.singleton c) | c <- T.unpack t],
       lfEmbed = \_ vertical used ->
-        Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used
+        Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used ("Adobe", "Identity", 0)
     }
   where
     -- the role "wide" sets every character one em wide
