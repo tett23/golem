@@ -71,6 +71,105 @@ printf 'docs/a.md' >"$WORK/in"
 run needs_build
 expect "needs-build: no newline at the end" 0 false
 
+paths "a document that the tests read" true docs/diagnostics.md
+paths "it with another document" true docs/diagnostics.md docs/specifications.md
+
+# ---------------------------------------------------------------- changed-paths.sh
+# (docs/adr/0021-docs-workflow-and-ci-gate.md)
+
+changed_paths() { sh "$HERE/changed-paths.sh" "$@"; }
+G=$WORK/git
+mkdir -p "$G"
+(
+  cd "$G" || exit 1
+  git init -q -b main .
+  git config user.email ci@example.com
+  git config user.name ci
+  echo a >a.hs && git add a.hs && git commit -q -m a
+  git checkout -q -b topic
+  mkdir -p docs && echo x >docs/x.md && echo s >"docs/a b.md" && echo j >docs/日本語.md
+  git add docs && git commit -q -m x
+  git checkout -q main
+  echo b >b.hs && git add b.hs && git commit -q -m b
+) >/dev/null 2>&1
+MAIN=$(git -C "$G" rev-parse main)
+MAIN1=$(git -C "$G" rev-parse main~1)
+TOPIC=$(git -C "$G" rev-parse topic)
+: >"$WORK/in"
+in_g() { (cd "$G" && changed_paths "$@"); }
+run in_g pull_request "$MAIN" "$TOPIC"
+expect "changed-paths: a pull request from the merge base" 0 "docs/a b.md
+docs/x.md
+docs/日本語.md"
+run in_g push "$MAIN1" "$MAIN"
+expect "changed-paths: a push" 0 "b.hs"
+run in_g push 0000000000000000000000000000000000000000 "$MAIN"
+expect "changed-paths: a push that creates the branch" 3 ""
+run in_g push "" "$MAIN"
+expect "changed-paths: a push without before" 3 ""
+run in_g workflow_dispatch
+expect "changed-paths: workflow_dispatch" 3 ""
+run in_g pull_request 1234567890123456789012345678901234567890 "$TOPIC"
+if [ "$CODE" != 0 ] && [ "$CODE" != 3 ]; then ok; else ng "changed-paths: a commit that does not exist (exit code $CODE)"; fi
+
+# ---------------------------------------------------------------- docs-refs.sh
+
+docs_refs() { sh "$HERE/docs-refs.sh" "$@"; }
+run docs_refs "$HERE/../.."
+expect "docs-refs: the repository" 0
+R=$WORK/refs
+mkdir -p "$R/modules/x/test" "$R/scripts"
+printf 'main = readFile "../../docs/new.md"\n' >"$R/modules/x/test/Main.hs"
+run docs_refs "$R"
+expect "docs-refs: a document that is not in the list" 1
+if grep -q 'docs/new.md' "$WORK/err"; then ok; else ng "docs-refs: the document is named"; fi
+printf -- '-- docs/adr/0001-x.md\nmain = readFile "../../docs/diagnostics.md"\n' >"$R/modules/x/test/Main.hs"
+run docs_refs "$R"
+expect "docs-refs: an ADR and a listed document" 0
+
+# ---------------------------------------------------------------- gate.sh
+
+gate() { sh "$HERE/gate.sh" "$@"; }
+needs() { # needs NAME=RESULT...: the JSON of the needs context
+  printf '{'
+  sep=
+  for nr in "$@"; do
+    printf '%s"%s":{"result":"%s","outputs":{}}' "$sep" "${nr%%=*}" "${nr#*=}"
+    sep=,
+  done
+  printf '}\n'
+}
+needs changes=success build=success determinism=success release-scripts=success format=success >"$WORK/in"
+run gate
+expect "gate: all succeeded" 0
+needs changes=success build=skipped determinism=skipped release-scripts=skipped format=skipped >"$WORK/in"
+run gate
+expect "gate: docs only" 0
+needs changes=success build=failure determinism=skipped release-scripts=success format=success >"$WORK/in"
+run gate
+expect "gate: a failed build" 1
+if grep -q 'build' "$WORK/err" && grep -q 'failure' "$WORK/err"; then ok; else ng "gate: the failed job is named"; fi
+needs changes=success build=success determinism=cancelled release-scripts=success format=success >"$WORK/in"
+run gate
+expect "gate: a cancelled job" 1
+needs changes=success build=success determinism=success release-scripts=success >"$WORK/in"
+run gate
+expect "gate: a missing job" 1
+if grep -q 'format' "$WORK/err"; then ok; else ng "gate: the missing job is named"; fi
+echo 'not json' >"$WORK/in"
+run gate
+expect "gate: not JSON" 1
+
+# the jobs of ci.yml, but ci itself, are the jobs that gate.sh knows
+ci_jobs() { # ci_jobs WORKFLOW: the names of its jobs
+  awk '/^jobs:/ { on = 1; next } on && /^[^ #]/ { on = 0 } on && /^  [a-z][a-z0-9-]*:$/ { sub(/^  /, ""); sub(/:$/, ""); print }' "$1"
+}
+: >"$WORK/in"
+run gate --names
+if [ "$CODE" = 0 ] && [ "$(sort "$WORK/out")" = "$(ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx ci | sort)" ]; then ok; else ng "gate: the names are the jobs of ci.yml"; fi
+ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx ci | grep -vx format >"$WORK/fewer"
+if [ "$(sort "$WORK/out")" != "$(sort "$WORK/fewer")" ]; then ok; else ng "gate: a job missing from the names is found"; fi
+
 # ---------------------------------------------------------------- timings.sh
 
 timings() { sh "$HERE/timings.sh" "$@"; }
