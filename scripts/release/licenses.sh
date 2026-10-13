@@ -15,6 +15,9 @@
 #                  - peg-hs (source-repository-package) from dist-newstyle/src/
 #                  - packages that come with GHC from its share/doc (GHC_DOCDIR)
 #   ghc          GHC and its RTS
+#   ghc-libffi   the libffi that GHC bundles in its RTS (libCffi.a), from
+#                licenses/ghc-libffi/ of the repository, whose GHC_VERSION
+#                must be the GHC_VERSION here
 #   wasmtime     licenses/wasmtime-v<version>/ of the repository, after
 #                the crates and the C members of libwasmtime.a are checked
 #                against it, and the LICENSE of wasmtime
@@ -193,6 +196,13 @@ copy() { # copy SOURCE DIR
   cp "$1" "$OUT/$2/"
 }
 if has ghc; then copy "$GHC_DOCDIR/ghc-$GHC_VERSION/LICENSE" ghc; fi
+if has ghc-libffi; then
+  GLDIR=$ROOT/licenses/ghc-libffi
+  [ -f "$GLDIR/GHC_VERSION" ] || fail "no licenses/ghc-libffi/GHC_VERSION (the license of the libffi of GHC $GHC_VERSION)"
+  [ "$(cat "$GLDIR/GHC_VERSION")" = "$GHC_VERSION" ] ||
+    fail "licenses/ghc-libffi/ is for GHC $(cat "$GLDIR/GHC_VERSION"), not $GHC_VERSION: check the libffi that GHC bundles"
+  copy "$GLDIR/LICENSE" ghc-libffi
+fi
 copy "$ROOT/modules/golem-font/cbits/harfbuzz/COPYING" harfbuzz
 copy "$ROOT/modules/golem-font/cbits/freetype/LICENSE.TXT" freetype
 copy "$ROOT/modules/golem-font/cbits/freetype/docs/FTL.TXT" freetype
@@ -315,6 +325,7 @@ FREETYPE_YEAR=$(sed -n 's/.*Copyright (C) 1996-\([0-9]\{4\}\).*/\1/p' "$ROOT/mod
     line '' 'peg-hs, and the libraries that come with GHC'
   fi
   [ ! -d "$OUT/ghc" ] || line ghc/ "GHC $GHC_VERSION and its runtime system (RTS)"
+  [ ! -d "$OUT/ghc-libffi" ] || line ghc-libffi/ "libffi, bundled in the RTS of GHC $GHC_VERSION"
   line harfbuzz/ HarfBuzz
   line freetype/ 'FreeType, used under the FreeType License (FTL.TXT)'
   if [ -d "$OUT/wasmtime" ]; then

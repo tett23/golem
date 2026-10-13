@@ -14,6 +14,11 @@ Linux の `golem` に静的にリンクした Alpine のパッケージ（musl�
 
 ## 置いたもの
 
-まだ何も置いていない。
-各 origin の `-doc` パッケージが `/usr/share/licenses/` に何を入れるかは、Alpine のコンテナで確かめていないためである。
-最初のプレリリースの確かめ（[ADR 0008](../../docs/adr/0008-first-release-verification.md)）で、`build` ジョブのリンクマップと `licenses.sh` の結果から足りない origin を見つけ、その分をここに置き、置いた理由をこの節に書く。
+最初のプレリリースの確かめ（[ADR 0008](../../docs/adr/0008-first-release-verification.md)）の `build` ジョブで、`licenses.sh` は `gcc` と `musl` の文書がないと言って止まった。
+Alpine 3.24 には `musl-doc` がなく、`gcc-doc` は `/usr/share/licenses/` にファイルを入れないためである。
+この二つの分を、次のとおり置いた。
+
+- **musl/**：`COPYRIGHT`。musl の `v1.2.6` のタグのもの（`https://git.musl-libc.org/cgit/musl/plain/COPYRIGHT?h=v1.2.6`、SHA-256 `b870108ec5e7790e9f9919064f1b9421d62d5f9b0e6c230c6adf7ea2da62e97b`）。リンクした `musl-dev` は 1.2.6-r2 なので、`VERSION` は `1.2.6` とした。
+- **gcc/**：`COPYING3` と `COPYING.RUNTIME`。GCC の `releases/gcc-15.2.0` のタグのもの（GitHub の gcc-mirror/gcc から取得、SHA-256 はそれぞれ `8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903` と `9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74`）。版によって文面が変わらないので、`VERSION` は `any` とした。
+
+`libffi` は `libffi-doc` が `/usr/share/licenses/libffi/` に文書を入れるので、ここには置いていない。

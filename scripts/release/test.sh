@@ -270,6 +270,28 @@ gnu_map "$SYS/usr/lib/libncursesw.a(lib_baudrate.o)" >"$LC/gnu-ncurses.map"
 run link_components "$LC/gnu-ncurses.map"
 expect "link-components: an archive with no owner" 1
 if grep -q "$SYS/usr/lib/libncursesw.a" "$WORK/err"; then ok; else ng "link-components: the archive with no owner is named"; fi
+# the libffi that GHC bundles in its RTS (libCffi.a), not the one of Alpine
+gnu_map "$GHCLIB/rts-1.0.2/libCffi.a(ffi.o)" >"$LC/gnu-cffi.map"
+run link_components "$LC/gnu-cffi.map"
+expect "link-components: libCffi.a of GHC" 0
+if grep -q "^ghc-libffi	$GHCLIB/rts-1.0.2/libCffi.a" "$WORK/out"; then ok; else ng "link-components: libCffi.a is ghc-libffi"; fi
+mkdir -p "$LC/elsewhere"
+: >"$LC/elsewhere/libCffi.a"
+gnu_map "$LC/elsewhere/libCffi.a(ffi.o)" >"$LC/gnu-cffi-elsewhere.map"
+run link_components "$LC/gnu-cffi-elsewhere.map"
+expect "link-components: libCffi.a outside GHC" 1
+# GNU ld on x86-64 writes lines on merging the properties of the objects
+# into the section of the archive members; they name archives but are not
+# members of their own
+{
+  gnu_map | sed -n '1,2p'
+  printf 'Updated property 0xc0010001 (0x839) to merge %s/crt1.o (0x839) and %s/rts-1.0.2/libHSrts-1.0.2_thr.a(RtsStartup.thr_o) (0x839)\n' "$SYS/usr/lib" "$GHCLIB"
+  printf 'Removed property 0xc0010002 to merge %s/crt1.o (not found) and %s/elsewhere/libunknown.a(x.o)\n' "$SYS/usr/lib" "$LC"
+  gnu_map | sed '1,2d'
+} >"$LC/gnu-property.map"
+run link_components "$LC/gnu-property.map"
+expect "link-components: lines on merging properties" 0
+if [ "$(cut -f1 "$WORK/out" | tr '\n' ' ')" = "haskell ghc apk:musl apk:libffi apk:gcc wasmtime " ]; then ok; else ng "link-components: lines on merging properties add no component"; fi
 run link_components "$LC/none.map"
 expect "link-components: no map" 1
 echo 'something else' >"$LC/other.map"
@@ -298,6 +320,19 @@ ld64_map() { # ld64_map EXTRA-MEMBER...: an ld64 link map
 ld64_map >"$LC/ld64.map"
 run link_components "$LC/ld64.map"
 expect "link-components: ld64" 0
+# the symbols of ld64 may hold bytes that are not UTF-8
+{
+  ld64_map
+  printf '0x100000010\t0x00000010\t[  1] _\377\376\300(\n'
+} >"$LC/ld64-bytes.map"
+# the awk of macOS stops on such bytes in a UTF-8 locale; use it when it is there
+link_components_utf8() {
+  if [ -x /usr/bin/awk ]; then P=/usr/bin:$PATH; else P=$PATH; fi
+  PATH=$P LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 GHC_LIBDIR=$LC/ghc/lib APK_DB=$LC/installed APK_ROOT=$SYS \
+    sh "$HERE/link-components.sh" "$@"
+}
+run link_components_utf8 "$LC/ld64-bytes.map"
+expect "link-components: ld64 with bytes that are not UTF-8" 0
 if [ "$(cut -f1 "$WORK/out" | tr '\n' ' ')" = "haskell ghc gmp wasmtime " ]; then ok; else ng "link-components: ld64, the components in order"; fi
 ld64_map "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/17/lib/darwin/libclang_rt.osx.a(os_version_check.o)" >"$LC/ld64-rt.map"
 run link_components "$LC/ld64-rt.map"
@@ -431,6 +466,29 @@ if grep -q 'copyright © 2026 The FreeType Project' "$L/out/README" && grep -q '
 for d in golem-cli-0.1.0 golem-driver-0.1.0 happy-2.2 testonly-1.0 setuponly-1.0; do
   if [ -e "$L/out/haskell/$d" ]; then ng "licenses: $d is skipped"; else ok; fi
 done
+
+# the libffi bundled in GHC: licenses/ghc-libffi/ of the repository, for the
+# version of GHC written in its GHC_VERSION
+rm -rf "${L:?}/out"
+LINKMAP=$LC/gnu-cffi.map
+mkdir -p "$L/root/licenses/ghc-libffi"
+echo ghc-libffi >"$L/root/licenses/ghc-libffi/LICENSE"
+echo readme >"$L/root/licenses/ghc-libffi/README.md"
+echo 9.10.3 >"$L/root/licenses/ghc-libffi/GHC_VERSION"
+run licenses
+expect "licenses: libffi of GHC" 0
+if [ -f "$L/out/ghc-libffi/LICENSE" ]; then ok; else ng "licenses: ghc-libffi/LICENSE is written"; fi
+if [ -e "$L/out/ghc-libffi/GHC_VERSION" ] || [ -e "$L/out/ghc-libffi/README.md" ]; then ng "licenses: only the LICENSE of ghc-libffi is written"; else ok; fi
+if grep -q 'ghc-libffi/' "$L/out/README"; then ok; else ng "licenses: ghc-libffi in the README"; fi
+rm -rf "${L:?}/out"
+echo 9.12.2 >"$L/root/licenses/ghc-libffi/GHC_VERSION"
+run licenses
+expect "licenses: libffi of another GHC" 1
+if grep -q 'ghc-libffi' "$WORK/err"; then ok; else ng "licenses: the GHC version of ghc-libffi is named"; fi
+rm -rf "${L:?}/out" "${L:?}/root/licenses/ghc-libffi"
+run licenses
+expect "licenses: no license of the libffi of GHC" 1
+LINKMAP=$LC/gnu.map
 
 rm -rf "${L:?}/out"
 hackage_pkg bar 2.1

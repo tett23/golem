@@ -12,6 +12,7 @@
 # tells which. The rules, the first that applies:
 #
 #   libHSrts*.a under the libdir of GHC          ghc
+#   libCffi.a under the libdir of GHC            ghc-libffi (the libffi in the RTS)
 #   libHS<name>-<version>-*.a                    haskell
 #   libgmp.a                                     gmp
 #   third_party/wasmtime/lib/libwasmtime.a       wasmtime
@@ -27,6 +28,10 @@
 #   APK_DB      the installed database of apk (default: /lib/apk/db/installed)
 #   APK_ROOT    the root the paths in APK_DB are relative to (default: /)
 set -eu
+# the link map is bytes: the symbols of ld64 may not be UTF-8, and the awk
+# of macOS stops on them in a UTF-8 locale
+LC_ALL=C
+export LC_ALL
 
 fail() {
   printf 'link-components: %s\n' "$*" >&2
@@ -87,6 +92,9 @@ case "$FIRST" in
     awk '
       /^Archive member included to satisfy reference by file \(symbol\)$/ { on = 1; next }
       /^(Allocating common symbols|Discarded input sections|Memory Configuration|As-needed library included|Linker script and memory map)/ { on = 0 }
+      # GNU ld on x86-64 also writes "Updated property ... to merge A and B"
+      # here; those lines name objects already listed as members
+      /^(Updated|Removed|Added) property / { next }
       on && /^[^ \t]/ {
         if (match($0, /\.a\(/)) {
           a = substr($0, 1, RSTART + 1)
@@ -144,6 +152,10 @@ while IFS= read -r a; do
     libHSrts*.a)
       case "$real/" in "$GHC_REAL"/* | "${GHC_LIBDIR%/}"/*) comp=ghc ;; esac
       case "$a/" in "$GHC_REAL"/* | "${GHC_LIBDIR%/}"/*) comp=ghc ;; esac
+      ;;
+    libCffi.a)
+      case "$real/" in "$GHC_REAL"/* | "${GHC_LIBDIR%/}"/*) comp=ghc-libffi ;; esac
+      case "$a/" in "$GHC_REAL"/* | "${GHC_LIBDIR%/}"/*) comp=ghc-libffi ;; esac
       ;;
   esac
   if [ -z "$comp" ]; then
