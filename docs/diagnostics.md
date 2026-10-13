@@ -42,7 +42,7 @@
 次の番号は、ソースで使っていない。
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。
-- **定めたが未実装**：G0249 から G0254。[docs/adr/0014](adr/0014-in-file-settings.md) がファイルの中の設定（`@manifest` と `@style-def`）に定めた。この ADR を実装するまで、これらの診断は出ない。
+- **定めたが未実装**：G0251。[docs/adr/0014](adr/0014-in-file-settings.md) が `@manifest` の値の誤りに定めた。`@manifest` で上書きできる `[source]` のキーは [docs/adr/0013](adr/0013-paragraph-separator.md) が設けるので、その実装までこの診断は出ない。
 - **空き**：G0104 から G0109、G0124 から G0128、G0601、G0703 から G0720、G0726 から G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
 
 廃止と未実装の番号にも、下に節を置く。
@@ -366,10 +366,10 @@
 
 - **重大度**：エラー
 - **段階とモジュール**：評価（golem-eval の `Golem.Eval.File`）
-- **メッセージ**：`style.toml にない文字スタイルです: <名前>`、`style には文字スタイルの名前を一つ書きます`
-- **意味**：`[style ...]` に、定義されていない文字スタイルの名前を書いたか、名前を一つ書かなかった。
-- **原因と直し方**：`style.toml` の `[character-styles]` に定義するか、名前の綴りを直す。
-- **ADR**：ADR なし（[docs/adr/0014](adr/0014-in-file-settings.md) がメッセージの「style.toml にない」を「定義されていない」に改めると決めたが、まだ実装していない）
+- **メッセージ**：`定義されていない文字スタイルです: <名前>`、`style には文字スタイルの名前を一つ書きます`
+- **意味**：`[style ...]` に、`style.toml` にもそのファイルの `@style-def` にもない文字スタイルの名前を書いたか、名前を一つ書かなかった。
+- **原因と直し方**：`style.toml` の `[character-styles]` か、ファイルの先頭の `@style-def character` に定義するか、名前の綴りを直す。
+- **ADR**：ADR なし（メッセージは [docs/adr/0014](adr/0014-in-file-settings.md) が改めた）
 
 ## G0219
 
@@ -627,10 +627,10 @@
 
 - **重大度**：エラー
 - **段階とモジュール**：評価（golem-eval の `Golem.Eval.File`）
-- **メッセージ**：`style.toml にない段落スタイルです: <名前>`、`@style には段落スタイルの名前を一つ書きます`
-- **意味**：`@style` の段落スタイルが定義されていないか、名前を一つ書かなかった。フィルタのプラグインが、定義されていない段落スタイルの段落を返した場合も出る。
-- **原因と直し方**：`style.toml` の `[paragraph-styles]` に定義するか、名前の綴りを直す。
-- **ADR**：[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（[docs/adr/0014](adr/0014-in-file-settings.md) がメッセージの「style.toml にない」を「定義されていない」に改めると決めたが、まだ実装していない）
+- **メッセージ**：`定義されていない段落スタイルです: <名前>`、`@style には段落スタイルの名前を一つ書きます`
+- **意味**：`@style` の段落スタイルが、`style.toml` にもそのファイルの `@style-def` にもないか、名前を一つ書かなかった。フィルタのプラグインが、定義されていない段落スタイルの段落を返した場合も出る。`@import` したファイルの `@style-def` は、取り込む側では使えない。
+- **原因と直し方**：`style.toml` の `[paragraph-styles]` か、ファイルの先頭の `@style-def paragraph` に定義するか、名前の綴りを直す。
+- **ADR**：[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（メッセージは [docs/adr/0014](adr/0014-in-file-settings.md) が改めた）
 
 ## G0248
 
@@ -643,57 +643,57 @@
 
 ## G0249
 
-- **重大度**：エラー（未実装）
-- **段階とモジュール**：評価（golem-eval）
+- **重大度**：エラー
+- **段階とモジュール**：評価（golem-eval の `Golem.Eval.File`）
 - **メッセージ**：`@manifest と @style-def はファイルの最初に置きます`
-- **意味**：ファイルの設定の並びの外に、`@manifest` か `@style-def` がある。
-- **原因と直し方**：`@manifest` と `@style-def` をファイルの先頭に集める。
-- **ADR**：[docs/adr/0014](adr/0014-in-file-settings.md)（まだ実装していない）
+- **意味**：ファイルの設定の並びの外に、`@manifest` か `@style-def` がある。属性のまとまりの途中（`@label` の後など）に書いた場合も出る。上書きと定義としては扱わない。
+- **原因と直し方**：`@manifest` と `@style-def` をファイルの先頭に集める。前に置いてよいのは、コメントと空行だけである。
+- **ADR**：[docs/adr/0014](adr/0014-in-file-settings.md)
 
 ## G0250
 
-- **重大度**：エラー（未実装）
-- **段階とモジュール**：評価（golem-eval）
-- **メッセージ**：`ファイルの中で上書きできない設定です: <キー>。上書きできるのは paragraph-separator です`
-- **意味**：`@manifest` のキーが、ファイルの中で上書きできる `[source]` のキーでない。
+- **重大度**：エラー
+- **段階とモジュール**：評価（golem-eval の `Golem.Eval.Settings`）
+- **メッセージ**：`ファイルの中で上書きできない設定です: <キー>。上書きできるのは <キーの一覧> です`（上書きできるキーがないうちは、後半の一文を付けない）
+- **意味**：`@manifest` のキーが、ファイルの中で上書きできる `[source]` のキーでない。マニフェストにはあるが上書きできないキー（`title` など）と、未知のキーの両方に出る。上書きできる `[source]` のキーは [docs/adr/0013](adr/0013-paragraph-separator.md) が設けるので、その実装までは、どのキーもこのコードになる。
 - **原因と直し方**：ほかの設定は `manifest.toml` に書く。
-- **ADR**：[docs/adr/0014](adr/0014-in-file-settings.md)（まだ実装していない）
+- **ADR**：[docs/adr/0014](adr/0014-in-file-settings.md)
 
 ## G0251
 
 - **重大度**：エラー（未実装）
-- **段階とモジュール**：評価（golem-eval）
-- **メッセージ**：`paragraph-separator の値は blank-line か line です: <値>`
-- **意味**：`@manifest` の値が不正である。
+- **段階とモジュール**：評価（golem-eval の `Golem.Eval.Settings`）
+- **メッセージ**：`paragraph-separator の値は blank-line か line です: <値>`（`[source]` のキーの表が返すメッセージ）
+- **意味**：`@manifest` の値が不正である。上書きできる `[source]` のキーは [docs/adr/0013](adr/0013-paragraph-separator.md) が設けるので、その実装まではこの診断は出ない。
 - **原因と直し方**：`paragraph-separator` には `blank-line` か `line` を書く。
-- **ADR**：[docs/adr/0014](adr/0014-in-file-settings.md)（まだ実装していない）
+- **ADR**：[docs/adr/0014](adr/0014-in-file-settings.md)
 
 ## G0252
 
-- **重大度**：エラー（未実装）
-- **段階とモジュール**：評価（golem-eval）
+- **重大度**：エラー
+- **段階とモジュール**：評価（golem-eval の `Golem.Eval.Settings`）
 - **メッセージ**：`@manifest には key=value だけを書きます`、`@style-def には種類（character、paragraph、regex）と名前を書きます`、`値は語か文字列で書きます`、`同じキーを二度書いています: <キー>`
-- **意味**：`@manifest` か `@style-def` の引数の形が誤っている。
-- **原因と直し方**：メッセージの示す形に直す。
-- **ADR**：[docs/adr/0014](adr/0014-in-file-settings.md)（まだ実装していない）
+- **意味**：`@manifest` か `@style-def` の引数の形が誤っている。位置引数の数の誤り、未知の種類、展開する引数（`*[...]`、`**[...]`）、本体がある、`@manifest` に引数がない、同じキーを二度書いた、値が語と文字列のほか（`[= ...]` など）である。誤りのある `@manifest` の引数はその引数だけを無視し、誤りのある `@style-def` は定義の全体を捨てる。
+- **原因と直し方**：メッセージの示す形に直す。一つのスタイルは一行の `@style-def` で定義する。
+- **ADR**：[docs/adr/0014](adr/0014-in-file-settings.md)
 
 ## G0253
 
-- **重大度**：エラー（未実装）
-- **段階とモジュール**：評価（golem-eval）
+- **重大度**：エラー
+- **段階とモジュール**：評価（golem-eval の `Golem.Eval.Settings`）
 - **メッセージ**：`同じ名前のスタイルを二度定義しています: <名前>`
-- **意味**：同じファイルの中で、同じ種類の同じ名前のスタイルを `@style-def` で二度定義した。
-- **原因と直し方**：定義を一つにまとめる。
-- **ADR**：[docs/adr/0014](adr/0014-in-file-settings.md)（まだ実装していない）
+- **意味**：同じファイルの中で、同じ種類の同じ名前のスタイルを `@style-def` で二度定義した。二つ目以降の定義は捨てる。`style.toml` と組み込みのスタイルと同じ名前は、上書きとして受け付けるので、このコードにならない。
+- **原因と直し方**：定義を一つの `@style-def` にまとめる。
+- **ADR**：[docs/adr/0014](adr/0014-in-file-settings.md)
 
 ## G0254
 
-- **重大度**：エラー（未実装）
-- **段階とモジュール**：評価（golem-eval）
+- **重大度**：エラー
+- **段階とモジュール**：評価（golem-eval の `Golem.Eval.Settings`）
 - **メッセージ**：`正規表現スタイルはまだ実装していません`
-- **意味**：`@style-def regex` を使った。正規表現スタイルを実装するまでの暫定のコードである。
+- **意味**：`@style-def regex` を使った。正規表現スタイルを実装するまでの暫定のコードである。定義としては扱わない。
 - **原因と直し方**：今は正規表現スタイルを使えない。
-- **ADR**：[docs/adr/0014](adr/0014-in-file-settings.md)（まだ実装していない）
+- **ADR**：[docs/adr/0014](adr/0014-in-file-settings.md)（正規表現スタイルの意味は [docs/adr/0015](adr/0015-regex-styles.md)）
 
 ## G0301
 
@@ -743,11 +743,11 @@
 ## G0306
 
 - **重大度**：エラー
-- **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Style`）
-- **メッセージ**：`TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`未知の判型です: <判型>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。
-- **意味**：`style.toml` が TOML として読めないか、スキーマに合わないか、値が範囲の外にある。フォントのファイルの欠落には使わない（[G0310](#g0310)、[G0802](#g0802)）。
+- **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をする
+- **メッセージ**：`TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`未知の判型です: <判型>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。
+- **意味**：`style.toml` が TOML として読めないか、スキーマに合わないか、値が範囲の外にある。フォントのファイルの欠落には使わない（[G0310](#g0310)、[G0802](#g0802)）。`@style-def` の名前と欄の誤りにも出る。位置はその `@style-def` の行で、誤りのある定義は捨てる。
 - **原因と直し方**：キーの綴り、値の型、単位、列挙の値を確かめる。廃止した欄は、メッセージの示す節に移す。
-- **ADR**：ADR なし（条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）
+- **ADR**：ADR なし（条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)）
 
 ## G0307
 
@@ -761,11 +761,11 @@
 ## G0308
 
 - **重大度**：エラー
-- **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Style`）
+- **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をする
 - **メッセージ**：`style.toml にないフォントの役割です: <役割>`
-- **意味**：見出し、文字スタイル、段落スタイルの `font` が、`[fonts]` にない役割を指す。
+- **意味**：見出し、文字スタイル、段落スタイルの `font` が、`[fonts]` にない役割を指す。`@style-def` の `font` にも出る。
 - **原因と直し方**：`[fonts.<役割>]` を定義するか、役割の名前を直す。
-- **ADR**：[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)（定めた）、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（段落スタイルに広げた）
+- **ADR**：[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)（定めた）、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（段落スタイルに広げた）、[docs/adr/0014](adr/0014-in-file-settings.md)（ファイルの中の定義に広げた）
 
 ## G0309
 
@@ -788,29 +788,29 @@
 ## G0311
 
 - **重大度**：エラー
-- **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Style`）
+- **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をする
 - **メッセージ**：`段落スタイルの文字の大きさが版面の文字の大きさを超えます: <名前>`
-- **意味**：段落スタイルの解決した `size` が、`[page.grid]` の文字の大きさを超える。
+- **意味**：段落スタイルの解決した `size` が、`[page.grid]` の文字の大きさを超える。ファイルの中の定義では、`@style-def` で重ねた後のスタイルで検査する。
 - **原因と直し方**：段落スタイルの `size` を版面の文字の大きさ以下にする。
-- **ADR**：[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)
+- **ADR**：[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0014](adr/0014-in-file-settings.md)
 
 ## G0312
 
 - **重大度**：エラー
-- **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Style`）
+- **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をする
 - **メッセージ**：`段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: <名前>`
-- **意味**：段落スタイルの `indent` と `first-line-indent` の和が負になる。
+- **意味**：段落スタイルの `indent` と `first-line-indent` の和が負になる。ファイルの中で `body` などを上書きすると、`based-on` でそれを引き継ぐ `style.toml` のスタイルにも出うる。位置は、そのスタイルの `based-on` の鎖の中で最初にファイルの中で定義した名前の `@style-def` の行である。
 - **原因と直し方**：ぶら下げ（負の `first-line-indent`）の分だけ `indent` を大きくする。
-- **ADR**：[docs/adr/0006](adr/0006-paragraph-indent.md)
+- **ADR**：[docs/adr/0006](adr/0006-paragraph-indent.md)、[docs/adr/0014](adr/0014-in-file-settings.md)
 
 ## G0313
 
 - **重大度**：エラー
-- **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Style`）
-- **メッセージ**：`style.toml のスタイルの参照が不正です: <理由>`
-- **意味**：`based-on` が存在しないスタイルを指すか、循環するか、`body` に `based-on` があるか、文字スタイルの `color` が `[color.swatches]` にない。
+- **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をする
+- **メッセージ**：`style.toml のスタイルの参照が不正です: <理由>`、`@style-def のスタイルの参照が不正です: <理由>`
+- **意味**：`based-on` が存在しないスタイルを指すか、循環するか、`body` に `based-on` があるか、文字スタイルの `color` が `[color.swatches]` にない。`@style-def` の上書きで生じた循環（上書きした定義の `based-on` に自分の名前を書いた場合を含む）にも出る。誤りのある定義は捨てる。
 - **原因と直し方**：理由の示すスタイルの `based-on` か `color` を直す。
-- **ADR**：[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)
+- **ADR**：[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0014](adr/0014-in-file-settings.md)
 
 ## G0401
 

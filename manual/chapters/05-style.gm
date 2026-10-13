@@ -1,3 +1,6 @@
+%% この章でだけ使う段落スタイル（docs/adr/0014） %%
+@style-def paragraph example based-on=memo first-line-indent=2zw
+
 @label style
 # スタイルの設定
 
@@ -107,6 +110,38 @@ HTML と EPUB には、書体のファイルを同梱します。
 
 行送り[index reading=ぎょうおくり: 行送り]は、段落スタイルでは変えられません。
 本文を行の格子にそろえて組むので、段落ごとに行送りが変わると、見開きの左右で行の位置がずれるからです。
+
+## ファイルの中のスタイル
+
+一つの章でだけ使う段落スタイルと文字スタイルは、その章のファイルの先頭に [style code: @style-def] で書けます。
+ファイルの中で定義したスタイルは、そのファイルにだけ効きます。
+
+```
+@style-def paragraph letter based-on=body indent=2zw first-line-indent=0zw
+@style-def character sender font=heading
+
+@style letter
+拝啓[style sender: 浅川]殿
+```
+
+最初の語は種類で、[style code: paragraph]（段落スタイル）か [style code: character]（文字スタイル）です。
+次の語がスタイルの名前で、その後に [style code: style.toml] と同じキーを [style code: キー=値] の形で並べます。
+値は [style code: 2zw] や [style code: keep] のように引用符なしで書けます。
+[style code: true] と [style code: false] は真偽値に、数字だけの語は整数になります。
+一つのスタイルは一行で定義します。
+
+[style code: style.toml] にある名前を書くと、そのファイルの中でだけ、書いたキーが置き換わります。
+たとえば [style code: @style-def paragraph body indent=1zw] は、その章の本文の字下げだけを変えます。
+[style code: body] を引き継ぐ段落スタイルの字下げも、その章の中では一緒に変わります。
+
+[style code: @style-def] は、ファイルの最初に置きます。
+前に置けるのは、コメントと空行だけです。
+[style code: @import] で取り込んだファイルの [style code: @style-def] は、取り込んだ側では使えません。
+
+@style example
+  この段落には、この章のファイルの先頭で定義した段落スタイル [style code: example] を付けています。
+
+  [style code: memo] を引き継ぎ、最初の行だけをもう一字下げています。
 
 @label heading-style
 ## 見出しの体裁
