@@ -320,6 +320,19 @@ ld64_map() { # ld64_map EXTRA-MEMBER...: an ld64 link map
 ld64_map >"$LC/ld64.map"
 run link_components "$LC/ld64.map"
 expect "link-components: ld64" 0
+# the symbols of ld64 may hold bytes that are not UTF-8
+{
+  ld64_map
+  printf '0x100000010\t0x00000010\t[  1] _\377\376\300(\n'
+} >"$LC/ld64-bytes.map"
+# the awk of macOS stops on such bytes in a UTF-8 locale; use it when it is there
+link_components_utf8() {
+  if [ -x /usr/bin/awk ]; then P=/usr/bin:$PATH; else P=$PATH; fi
+  PATH=$P LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 GHC_LIBDIR=$LC/ghc/lib APK_DB=$LC/installed APK_ROOT=$SYS \
+    sh "$HERE/link-components.sh" "$@"
+}
+run link_components_utf8 "$LC/ld64-bytes.map"
+expect "link-components: ld64 with bytes that are not UTF-8" 0
 if [ "$(cut -f1 "$WORK/out" | tr '\n' ' ')" = "haskell ghc gmp wasmtime " ]; then ok; else ng "link-components: ld64, the components in order"; fi
 ld64_map "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/17/lib/darwin/libclang_rt.osx.a(os_version_check.o)" >"$LC/ld64-rt.map"
 run link_components "$LC/ld64-rt.map"

@@ -28,6 +28,10 @@
 #   APK_DB      the installed database of apk (default: /lib/apk/db/installed)
 #   APK_ROOT    the root the paths in APK_DB are relative to (default: /)
 set -eu
+# the link map is bytes: the symbols of ld64 may not be UTF-8, and the awk
+# of macOS stops on them in a UTF-8 locale
+LC_ALL=C
+export LC_ALL
 
 fail() {
   printf 'link-components: %s\n' "$*" >&2
