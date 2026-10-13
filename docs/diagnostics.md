@@ -42,6 +42,7 @@
 次の番号は、ソースで使っていない。
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。
+- **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。
 - **定めたが未実装**：G0249 から G0254。[docs/adr/0014](adr/0014-in-file-settings.md) がファイルの中の設定（`@manifest` と `@style-def`）に定めた。この ADR を実装するまで、これらの診断は出ない。
 - **空き**：G0104 から G0109、G0124 から G0128、G0601、G0703 から G0720、G0726 から G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
 
@@ -602,7 +603,7 @@
 - **段階とモジュール**：評価（golem-eval）
 - **メッセージ**：`@verse は引数を取りません`
 - **意味**：廃止した。`@verse` の引数の誤りに定めたが、`@verse` は `@style verse` に変わり、このコードは出なくなった。
-- **原因と直し方**：`@verse` は [G0248](#g0248) になる。
+- **原因と直し方**：`@verse` は [G0209](#g0209) になる。`@style verse` に書き換える。
 - **ADR**：[docs/adr/0003](adr/0003-verse-line-breaks.md)（定めた）、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（使わなくした）
 
 ## G0245
@@ -634,12 +635,12 @@
 
 ## G0248
 
-- **重大度**：エラー
-- **段階とモジュール**：評価（golem-eval の `Golem.Eval.File`）
+- **重大度**：（廃止）
+- **段階とモジュール**：評価（golem-eval）
 - **メッセージ**：`@verse は @style verse に変わりました。golem fmt で書き換えられます`
-- **意味**：廃止した `@verse` を使った。
-- **原因と直し方**：`golem fmt` で `@style verse` に書き換える。
-- **ADR**：[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)
+- **意味**：廃止した。廃止した `@verse` に定めたが、`@verse` はほかの未知のブロックコマンドと同じ [G0209](#g0209) になり、このコードは出なくなった。`golem fmt` も `@verse` を書き換えなくなった。
+- **原因と直し方**：`@verse` を `@style verse` に書き換える。
+- **ADR**：[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（定めた）、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md)（使わなくした）
 
 ## G0249
 

@@ -1,6 +1,6 @@
 # ADR 0005: 強調を文字スタイルへ、韻文を段落スタイルへ統合する
 
-ステータス: 採択
+ステータス: 採択→fmt の移行の段階と G0248 は [golem-fmt ADR 0002](../golem-fmt/adr/0002-remove-verse-migration.md)
 
 ## 文脈
 

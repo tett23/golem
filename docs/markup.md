@@ -317,9 +317,6 @@ PDF では、版面の行長を超えた行を折り返し、折り返した部�
 各行の字下げは `style.toml` の `[paragraph-styles.verse]` の `indent` と `first-line-indent` で、連の間に空ける行の数は `space-between` で指定する（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
 既定は `indent = "2zw"`、`first-line-indent = "-2zw"` であり、各行の始まりは字下げせず、折り返した部分を二字下げる。
 
-以前の `@verse` はエラーになる。
-`golem fmt` が `@verse` を `@style verse` に書き換える。
-
 ### ブロックへの属性
 
 ラベルや見出しの属性は、対象のブロックの直前の行にブロックコマンドとして書く。

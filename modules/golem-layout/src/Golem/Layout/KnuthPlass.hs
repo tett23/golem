@@ -29,7 +29,7 @@ where
 import Data.List (maximumBy, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
-import Data.Ord (comparing)
+import Data.Ord (Down (..), comparing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Golem.Layout.Look (Look)
@@ -266,9 +266,13 @@ breakParagraph ps lineWidth items =
           overflow b a = tW (sumsTo b) - tW (sumsTo (after (nPos a))) - lineWidth (nLine a)
           finalActives = foldl' step [start] candidates
           ends = [a | a <- finalActives, nPos a == n - 1]
-          -- of the least demerits, the path whose (position, fitness) from the
-          -- end is greatest: the one TeX keeps, merging line counts (ADR 0008)
-          key a = [(nPos x, nFit x) | x <- walk a]
+          -- of the least demerits, the path whose last line is loosest (TeX's
+          -- strict < at the end), then whose (position, fitness) from the
+          -- second-to-last break is greatest: the one TeX keeps, merging line
+          -- counts (ADR 0008, ADR 0010)
+          key a = case walk a of
+            x : rest -> (Down (nFit x), [(nPos y, nFit y) | y <- rest])
+            [] -> (Down 0, [])
        in case ends of
             [] -> Nothing
             _ ->
