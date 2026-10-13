@@ -10,6 +10,7 @@ import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
 import Golem.Parser.SourceSettings
+import Golem.Project.Paths (PathError (..))
 import Golem.Project.Style (LineBreaks (..), LocalStyles (..), Style (..), defaultStyle, paraLineBreaks, parseStyle)
 import Golem.Syntax
 import Test.Tasty
@@ -30,10 +31,17 @@ ctx =
       ctxCiteKeys = Set.fromList ["knuth1981"],
       ctxAssets =
         Map.fromList
-          [ ("images/a.png", Nothing),
-            ("images/a.pdf", Nothing),
-            ("data.csv", Just "a,b\n1,\"x,y\"\n"),
-            ("src/Main.hs", Just "l1\nl2\nl3\n")
+          [ ("images/a.png", AssetPresent),
+            ("images/a.pdf", AssetPresent),
+            ("data.csv", AssetText "a,b\n1,\"x,y\"\n"),
+            ("src/Main.hs", AssetText "l1\nl2\nl3\n"),
+            ("empty.csv", AssetText ""),
+            ("blank.csv", AssetText "\n\n"),
+            ("ragged.csv", AssetText "a,b\n1\n"),
+            ("/tmp/a.png", AssetInvalid Absolute),
+            ("https://example.com/a.png", AssetInvalid Url),
+            ("../outside.txt", AssetInvalid EscapesRoot),
+            ("gone.txt", AssetInvalid Missing)
           ],
       ctxPlugins = noPlugins,
       ctxSource = defaultSourceSettings,
@@ -53,6 +61,19 @@ body = fst . run ctx
 
 errs :: Text -> [Text]
 errs = snd . run ctx
+
+-- | The code, message, start and end of each diagnostic (golem-eval ADR 0003).
+diags :: Text -> [(Text, Text, Int, Int)]
+diags = diagsWith ctx
+
+diagsWith :: EvalContext -> Text -> [(Text, Text, Int, Int)]
+diagsWith c src =
+  let (file, _, pds) = parseAst (FileId 1) src
+   in [(code, diagMessage d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- pds <> erDiagnostics (evalFile c file), let DiagnosticCode code = diagCode d]
+
+-- | The code and message of each diagnostic.
+msgs :: Text -> [(Text, Text)]
+msgs src = [(c, m) | (c, m, _, _) <- diags src]
 
 stripSpans :: [Inline] -> [Text]
 stripSpans = concatMap go
@@ -94,6 +115,7 @@ tests =
   testGroup
     "file evaluation, S0 (ADR 0002)"
     [ verseTests,
+      diagnosticTests,
       settingsTests,
       styleTests,
       separatorTests,
@@ -585,3 +607,114 @@ breakTests =
       DefList gs -> any (any (any hasBreak) . dgDefs) gs
       FigureBlock f -> any hasBreak (figCaption f)
       _ -> False
+
+-- | The codes, messages and positions of golem-eval ADR 0003.
+diagnosticTests :: TestTree
+diagnosticTests =
+  testGroup
+    "diagnostic codes (golem-eval ADR 0003)"
+    [ testCase "G0223: a reserved word as a name" $ do
+        diags "@set doc = 1\n" @?= [("G0223", "予約語は変数の名前に使えません: doc", 5, 8)]
+        diags "@import common/values.gm as meta\n" @?= [("G0223", "予約語は名前空間に使えません: meta", 28, 32)],
+      testCase "G0225: the depth of @toc" $ do
+        mapM_ (\src -> (src, errs src) @?= (src, ["G0225"])) ["@toc depth=0\n", "@toc depth=4\n", "@toc depth=x\n"]
+        msgs "@toc depth=0\n" @?= [("G0225", "@toc の depth は 1 から 3 の整数です")]
+        errs "@toc\n" @?= []
+        errs "@toc depth=3\n" @?= [],
+      testCase "G0226: the names of labels" $ do
+        let labelMsg = "@label にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます"
+            refMsg = "参照にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます"
+        msgs "@label Intro\n# x\n" @?= [("G0226", labelMsg)]
+        msgs "@label a b\n# x\n" @?= [("G0226", labelMsg)]
+        msgs "[ref-number Intro]\n" @?= [("G0226", refMsg)]
+        msgs "[ref-number]\n" @?= [("G0226", refMsg)],
+      testCase "G0227: @number" $ do
+        errs "@number x\n# x\n" @?= ["G0227"]
+        errs "@number 1 2\n# x\n" @?= ["G0227"]
+        msgs "@number x\n# x\n" @?= [("G0227", "@number には整数を一つ書きます")]
+        errs "@number 3\n+ a\n" @?= [],
+      testCase "G0230, G0232, G0234" $ do
+        msgs "@figure images/a.png alt=x wrap=left width=10mm\n" @?= [("G0230", "wrap は start か end です: left")]
+        msgs "@figure alt=x\n" @?= [("G0232", "@figure には画像のパスを一つ書きます")]
+        errs "@figure images/a.png images/b.png alt=x\n" @?= ["G0232"]
+        msgs "@table data.csv\n" @?= [("G0234", "@table には src が必要です")],
+      testCase "G0235: CSV that is not a table" $ do
+        msgs "@table src=empty.csv\n" @?= [("G0235", "CSV が空です")]
+        msgs "@table src=blank.csv\n" @?= [("G0235", "CSV が空です")]
+        diags "@table src=ragged.csv\n" @?= [("G0235", "CSV の行ごとのセルの数が一致しません", 0, 22)],
+      testCase "G0236: @listing without a path" $ do
+        msgs "@listing\n" @?= [("G0236", "@listing にはファイルのパスが必要です")]
+        errs "@listing src=src/Main.hs\n" @?= [],
+      testCase "G0238: the number of prose slots" $ do
+        msgs "[strong]\n" @?= [("G0238", "strong には散文スロットが一つ必要です")]
+        msgs "[strong: a|b]\n" @?= [("G0238", "strong には散文スロットが一つ必要です")]
+        msgs "[index reading=a]\n" @?= [("G0238", "index には散文スロットが一つ必要です")]
+        msgs "[ruby: a]\n" @?= [("G0238", "ruby には散文スロットが二つ必要です")],
+      testCase "G0238: commands that take no prose slot" $ do
+        msgs "[number-text 1: x]\n" @?= [("G0238", "number-text は散文スロットを取りません")]
+        msgs "[ref-number intro: x]\n" @?= [("G0238", "ref-number は散文スロットを取りません")]
+        msgs "[ref-title intro: x]\n" @?= [("G0238", "ref-title は散文スロットを取りません")]
+        msgs "[ref-page intro: x]\n" @?= [("G0238", "ref-page は散文スロットを取りません")]
+        diags "[cite knuth1981: x]\n" @?= [("G0238", "cite は散文スロットを取りません", 0, 19)]
+        body "[cite knuth1981: x]\n" @?= [Paragraph Nothing []]
+        errs "# [ref-number intro: x]\n" @?= ["G0214"],
+      testCase "G0239, G0240, G0241, G0243" $ do
+        msgs "[kenten shape=star: a]\n" @?= [("G0239", "未知の圏点の形です: star")]
+        msgs "[tcy: [strong: 12]]\n" @?= [("G0240", "縦中横の中身は地の文に限ります")]
+        errs "a[tcy: %% c %%]b\n" @?= []
+        paraOf "a[tcy: %% c %%]b\n" @?= ["ab"]
+        msgs "[index reading=あ: [strong: 語]]\n" @?= [("G0241", "索引の語は地の文に限ります")]
+        msgs "[ruby: 字|[strong: じ]]\n" @?= [("G0243", "ルビの読みは地の文に限ります")],
+      testCase "G0205: kept in dev, a warning over the comment in prod" $ do
+        errs "本文%%= メモ %%\n" @?= []
+        case body "本文%%= メモ %%\n" of
+          [Paragraph Nothing [Text _ "本文", ProofComment _ _]] -> pure ()
+          other -> assertFailure (show other)
+        let (file, _, _) = parseAst (FileId 1) "本文%%= メモ %%\n"
+        [(diagCode d, diagSeverity d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- erDiagnostics (evalFile ctx {ctxProfile = Prod} file)]
+          @?= [(DiagnosticCode "G0205", Warning, 6, 19)],
+      testCase "G0209: the position is the name" $
+        diags "@nope\n" @?= [("G0209", "未知のブロックコマンドです: @nope", 1, 5)],
+      testCase "G0210: no block after attributes" $ do
+        diags "@label a\n" @?= [("G0210", "@label の後にブロックがありません", 0, 9)]
+        diags "@label a\n@notoc\n" @?= [("G0210", "属性の後にブロックがありません", 0, 16)]
+        diags "@style verse\n" @?= [("G0210", "@style の後にブロックがありません", 0, 13)],
+      testCase "G0211: the other commands of the group are evaluated" $ do
+        msgs "@label a\n@set x = 1\n# [= x]\n" @?= [("G0211", "属性のまとまりに属性でないコマンドがあります")]
+        case body "@label a\n@set x = 1\n# [= x]\n" of
+          [Heading 1 _ is] -> stripSpans is @?= ["1"]
+          other -> assertFailure (show other),
+      testCase "G0212: each repeated attribute line" $ do
+        diags "@label a\n@notoc\n@label b\n# x\n" @?= [("G0212", "同じ属性を二度書いています", 16, 25)]
+        map (\(c, _, s, e) -> (c, s, e)) (diags "@label a\n@label b\n@label c\n# x\n") @?= [("G0212", 9, 18), ("G0212", 18, 27)],
+      testCase "G0213: attributes on the wrong block" $ do
+        diags "@notoc\n本文。\n" @?= [("G0213", "@notoc はこのブロックには付けられません", 0, 7)]
+        diags "@figure images/a.png alt=x\n  @style quote\n  キャプション。\n" @?= [("G0213", "@style は図版のキャプションには付けられません", 27, 42)],
+      testCase "G0215: every ruby split into segments must match" $ do
+        msgs "[ruby: 東京|とう/きょう]\n" @?= [("G0215", "モノルビの対象と読みのセグメントの数が一致しません")]
+        errs "[ruby: 五月雨|さみだれ]\n" @?= []
+        errs "[ruby: お/父/さん|/とう/]\n" @?= [],
+      testCase "G0217, G0218, G0221: an argument that is not a name" $ do
+        msgs "[color [= \"x\"]: a]\n" @?= [("G0217", "color にはスウォッチの名前を一つ書きます")]
+        msgs "[style [= \"x\"]: a]\n" @?= [("G0218", "style には文字スタイルの名前を一つ書きます")]
+        msgs "[cite [= \"x\"]]\n" @?= [("G0221", "cite には書誌データのキーを一つ書きます")]
+        msgs "[color red: x]\n" @?= [("G0217", "style.toml にないスウォッチです: red")]
+        msgs "[cite nope]\n" @?= [("G0221", "書誌データにないキーです: nope")],
+      testCase "G0219: number-text" $ do
+        msgs "[number-text]\n" @?= [("G0219", "number-text には整数を一つ書きます")]
+        msgs "[number-text 1.5]\n" @?= [("G0219", "number-text に渡せるのは整数だけです")]
+        errs "[number-text [= 1 / 0]]\n" @?= ["G0203"],
+      testCase "G0222: the position is the name" $ do
+        diags "[nope: x]\n" @?= [("G0222", "未知のコマンドです: nope", 1, 5)]
+        case phCallCommand noPlugins "nope" [] [] (mkSpan (FileId 1) 0 3) of
+          Left [d] -> diagCode d @?= DiagnosticCode "G0222"
+          other -> assertFailure (show (fmap fst other)),
+      testCase "G0233: missing files" $ do
+        msgs "@listing images/none.txt\n" @?= [("G0233", "ファイルがありません: images/none.txt")]
+        msgs "@table src=none.csv\n" @?= [("G0233", "ファイルがありません: none.csv")]
+        msgs "@listing gone.txt\n" @?= [("G0233", "ファイルがありません: gone.txt")],
+      testCase "G0260: paths that cannot be used" $ do
+        msgs "@figure /tmp/a.png alt=x\n" @?= [("G0260", "絶対パスは使えません: /tmp/a.png")]
+        msgs "@figure images/a.png web=\"https://example.com/a.png\" alt=x\n" @?= [("G0260", "URL は使えません: https://example.com/a.png")]
+        diags "@listing ../outside.txt\n" @?= [("G0260", "プロジェクトルートの外を指しています: ../outside.txt", 0, 24)]
+    ]
