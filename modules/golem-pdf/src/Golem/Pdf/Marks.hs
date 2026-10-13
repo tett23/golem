@@ -10,11 +10,13 @@ module Golem.Pdf.Marks
     sheet,
     markRules,
     framePage,
+    registrationRects,
+    checkRegistration,
   )
 where
 
 import Golem.LayoutSpec (Rect (..))
-import Golem.Pdf.Writer (Mark (..), Page (..), Sp, Swatch (..))
+import Golem.Pdf.Writer (Mark (..), Page (..), Sp)
 
 data MarkStyle = Japanese | Western
   deriving stock (Eq, Show)
@@ -107,14 +109,36 @@ markRules style bleed (w, h) = concatMap corner corners <> centres
 
 {- | A page of size @(w, h)@ with its content, framed by the bleed and the
 marks. The content is moved to the trimmed page; the marks are drawn
-after it in 100% of each process colour.
+after it in the registration colour (ADR 0007).
 -}
 framePage :: Maybe MarkStyle -> Sp -> (Sp, Sp) -> [Mark] -> Page
 framePage marks bleed size content =
   let s = sheet marks bleed size
       m = shOrigin s
-      drawn = [Saved (SetColor (Swatch 100 100 100 100) : map Rule (markRules st bleed size)) | Just st <- [marks]]
+      drawn = [RegistrationRules (markRules st bleed size) | Just st <- [marks]]
       content'
         | m == 0 = content
         | otherwise = [Translated m m (content <> drawn)]
    in Page (shMedia s) (shTrim s) (shBleed s) content'
+
+{- | The rectangles of the 'RegistrationRules' in page content, in page
+coordinates: the moves of 'Translated' are added (ADR 0007).
+-}
+registrationRects :: [Mark] -> [Rect]
+registrationRects = concatMap (go 0 0)
+  where
+    go dx dy = \case
+      RegistrationRules rs -> [Rect (x + dx) (y + dy) w h | Rect x y w h <- rs]
+      Saved ms -> concatMap (go dx dy) ms
+      Translated x y ms -> concatMap (go (dx + x) (dy + y)) ms
+      _ -> []
+
+{- | The numbers (from 1) of the pages whose registration colour meets the
+interior of their BleedBox; empty when the colour stays in the marks
+(ADR 0007).
+-}
+checkRegistration :: [Page] -> [Int]
+checkRegistration pages =
+  [n | (n, p) <- zip [1 ..] pages, any (overlaps (pageBleedBox p)) (registrationRects (pageContent p))]
+  where
+    overlaps (Rect x y w h) (Rect x' y' w' h') = x < x' + w' && x' < x + w && y < y' + h' && y' < y + h

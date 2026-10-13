@@ -56,6 +56,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 次の番号は、ソースで使っていない。
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。下に節を置く。
+- **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。下に節を置く。
 - **定めたが未実装**：G0249 から G0254。[docs/adr/0014](adr/0014-in-file-settings.md) がファイルの中の設定（`@manifest` と `@style-def`）に定めた。この ADR を実装するまで、これらの診断は出ない。節の状態は使用中か廃止に限るので、実装するまで節を置かず、`golem explain` も未知のコードとして扱う。実装するときに、次の定めをもとに節を足す。
 - **空き**：G0104 から G0109、G0124 から G0128、G0601、G0703 から G0720、G0726 から G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
 
@@ -1529,7 +1530,7 @@ lines の範囲が不正です
 
 `@verse` は `@style verse` に変わった（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 行を保つ段落は `@style verse` と書く。
-今 `@verse` を書くと [G0248](#g0248) になり、`golem fmt` で書き換えられる。
+今 `@verse` を書くと、ほかの未知のブロックコマンドと同じ [G0209](#g0209) になる。
 
 ## G0245
 
@@ -1611,23 +1612,21 @@ lines の範囲が不正です
 @verse は @style verse に変わりました
 
 - 重大度: エラー
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
-廃止した `@verse` を使った。
+廃止した。
+廃止した `@verse` に定めたが、`@verse` はほかの未知のブロックコマンドと同じ [G0209](#g0209) になり、このコードは出なくなった。
+`golem fmt` も `@verse` を書き換えなくなった。
 
 - メッセージ: `@verse は @style verse に変わりました。golem fmt で書き換えられます`
-- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)
-
-### 主な原因
-
-- 廃止した `@verse` を使った。
+- 段階とモジュール: 評価（golem-eval）
+- ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（定めた）、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md)（使わなくした）
 
 ### 直し方
 
-`golem fmt` で `@style verse` に書き換える。
+`@verse` を `@style verse` に書き換える。
 
 ## G0301
 
