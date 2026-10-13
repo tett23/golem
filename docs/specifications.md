@@ -440,6 +440,27 @@ latin = "fonts/SourceSans3-Bold.otf"
 
 [character-styles.term]
 font = "heading"
+color = "accent"
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[paragraph-styles.quote]
+font = "heading"
+size = "0.9zw"
+space-between = 1
+indent = "2zw"
+
+[paragraph-styles.verse]
+indent = "2zw"
+first-line-indent = "-2zw"
+
+[paragraph-styles.caption]
+size = "11Q"
+
+[paragraph-styles.sidenote]
+font = "body"
+size = "11Q"
 
 [headings.1]
 font = "heading"
@@ -463,10 +484,6 @@ expansion = { limit = 20, step = 5 }
 [numbers]
 vertical = "kanji"
 
-[emphasis]
-strong = "bold"
-bold-font = "heading"
-
 [notes]
 placement = "page-foot"
 
@@ -474,17 +491,10 @@ placement = "page-foot"
 side = "outside"
 width = "14zw"
 gap = "2zw"
-font = "body"
-size = "11Q"
 marker = "number"
 
 [figures]
 number = "図{chapter}-{n}"
-
-[verse]
-indent = "0zw"
-hang = "2zw"
-stanza-gap = 1
 
 [color]
 intent = "icc/JapanColor2001Coated.icc"
@@ -507,14 +517,60 @@ folio = { position = "bottom-outside", format = "{n}" }
 綴りを誤った設定が黙って無視されると、その誤りは出力の見た目の劣化としてしか現れないためである。
 同じ理由で、見出しの `font` が `[fonts]` にない役割を指す場合もエラー（G0308）とする（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
 
-`[emphasis]` の `bold-font` と `italic-font` は、`[bold: ...]` と `[italic: ...]` を組むフォントの役割である（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
-`strong` が `bold` なら `[strong: ...]` は `[bold: ...]` と、`italic` なら `[italic: ...]` と同じ書体で組む。
-指定しない場合、PDF は本文の書体から合成の太字（輪郭を線で太らせる）と合成の斜体（字形を傾ける）で組む。
-`italic-font` の役割が和文と欧文の片方しか持たない場合は、持たない側の文字に合成の斜体をかける。
+文字の見た目は文字スタイル（`[character-styles.<名前>]`）、段落の見た目は段落スタイル（`[paragraph-styles.<名前>]`）にまとめる（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+考え方は Adobe InDesign の文字スタイルと段落スタイルに合わせ、スタイルは `based-on` で別のスタイルを引き継ぐ。
+スタイルの定義は、`based-on` をたどった鎖の根から順に、子のキーが親のキーを上書きして決める。
+スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
+
+文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic` である。
+`font` の役割は、役割が持つ側（和文か欧文）の文字だけをその役割で組み、持たない側の文字は外側の書体のまま組む。
+`synthetic-bold` が真なら、`font` の役割が持たない側の文字を合成の太字（輪郭を線で太らせる）にし、`font` がなければ両側を太らせる。
+PDF の合成の太字の線の幅は、和文で文字の大きさの 1/80、欧文で 1/60 とする（[golem-driver ADR 0012](golem-driver/adr/0012-synthetic-bold-weight.md)）。
+和文は画が多くすきまが狭いので、欧文と同じ幅ではふところが埋まるためである。
+太字らしい太さが要る場合は、`[character-styles.bold]` の `font` で太字の書体を指定する。
+`synthetic-italic` も同じ規則で合成の斜体（字形を傾ける）をかける。
 和文の書体は一般に斜体を持たないので、和文の斜体は字形がゆがむが、強調が黙って消えることを避けるために傾ける。
-`bold-font`、`italic-font`、文字スタイルの `font` が `[fonts]` にない役割を指す場合も G0308 とする。
 文字スタイルの `size` は、PDF でその文字を組む大きさになり、`zw` は外側の文字の大きさを一字とする。
-HTML と EPUB では、`bold-font` と `italic-font` の書体を `b` と `i`（`strong` の表し方に応じて `strong` にも）に指定する。
+
+組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）の三つである。
+原稿の `[strong: ...]`、`[bold: ...]`、`[italic: ...]` は、これらを付ける `[style 名前: ...]` の別名である。
+利用者が組み込みと同じ名前の表を書くと、書いたキーだけが組み込みの定義の同じキーを上書きする。
+`[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
+`[character-styles.strong] based-on = "italic"` は、`[strong: ...]` を斜体で表す。
+
+段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）である。
+段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G0311）とする。
+行送りの欄は設けない。
+PDF の本文を行の格子に載せるので、段落ごとに行送りを変えると見開きの行の位置がそろわなくなるためである。
+組み込みの段落スタイルは `body`、`verse`（`line-breaks = "keep"`、`space-between = 1`）、`caption`、`sidenote` の四つであり、段落スタイルを付けない段落は `body` で組む。
+図版のキャプションは段落スタイル `caption` の `font` と `size` で組み、ほかの欄（`line-breaks`、`space-between`、字下げ）はキャプションには効かない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
+傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
+これらの欄は `@style caption` や `@style sidenote` を付けた原稿の段落には効く。
+HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS に、`sidenote` の `font` と `size` を `.sidenote` の CSS に書く。
+`sidenote` の `size` がなければ、HTML の傍注は本文の 0.85 倍の大きさにする。
+`size` が絶対の大きさで `[page.grid]` の `font-size` も絶対の大きさなら、その比を `em` で書き、`[page.grid]` がなければ `pt` で書く。
+
+段落スタイルの `indent` はすべての行の始まりの字下げ（InDesign の左インデント）、`first-line-indent` は最初の行に `indent` へ加える量（1 行目左インデント）であり、負ならぶら下げになる（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
+どちらも行の始まりの側から測るので、縦組みでは天からの距離になる。
+`zw` は段落の文字の大きさを一字とする。
+`indent` と `first-line-indent` の和が負になる段落スタイルはエラー（G0312）、字下げの後の行長が段落の文字の大きさの 8 字分に満たない段落スタイルは PDF でエラー（G0725）とする。
+`line-breaks = "keep"` の段落では、改行で区切った各行が段落の始まりと同じく最初の行の字下げを受け、折り返した部分は `indent` の位置から始まる。
+組み込みの `verse` は `indent = "2zw"`、`first-line-indent = "-2zw"` で、各行の折り返した部分をぶら下げる。
+字下げは、文書の最上位の段落、`@style` の本体の段落、定義リストの説明の段落に効き、リストの項目の中の段落と、図版のキャプション、脚注と傍注の本文、表、見出し、目次、索引、参考文献には効かない。
+
+字下げの既定は 0 である。
+既定で一字下げると、段落の先頭に全角の空白を書いた既存の原稿が二字下がるためである。
+`[paragraph-styles.body] first-line-indent = "1zw"` のように字下げを指定する場合は、原稿の先頭の全角の空白を消す。
+全角の空白と併用すると二重に下がり、処理系はそれを指摘しない。
+プレーンテキストでは、`indent` と `first-line-indent` がどちらも `zw` で書かれている場合に限り、和の整数部の数の全角の空白を段落の各行の先頭に置く。
+
+文字スタイルと段落スタイルの `font` が `[fonts]` にない役割を指す場合も G0308 とする。
+`based-on` が存在しないスタイルを指す場合、循環する場合、`body` に `based-on` がある場合、文字スタイルの `color` が `[color.swatches]` にない場合はエラー（G0313）とする。
+廃止した `[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size` はエラー（G0306）とし、メッセージで書き換え先を示す。
+`[verse]` の `indent = I`、`hang = H` は、`[paragraph-styles.verse]` の `indent = I + H`、`first-line-indent = -H` に書き換える。
+
+HTML と EPUB では、組み込みの文字スタイルを `strong`、`b`、`i` の要素に、ほかの文字スタイルを `cs-名前` の class に、段落スタイルを `ps-名前` の class に対応させる。
+文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between` を CSS に書き、`size` はキャプションと傍注のほかは CSS に書かない。
 
 PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組む。
 `font` を省けば本文の役割、`size` を省けば版面の文字の大きさになる。
@@ -524,7 +580,7 @@ PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と
 見出しの大きさが版面の文字の大きさと同じなら、見出しの各行は本文と同じ格子の位置に来る。
 見出しはページをまたいで分けず、一ページの行数を超える見出しはエラー（G0724）とする（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
 
-EPUB と HTML は `style.toml` の一部（フォント、強調、色、番号の表記）だけを使い、版面とマスターページは無視する。
+EPUB と HTML は `style.toml` の一部（フォント、文字スタイル、段落スタイル、色、番号の表記）だけを使い、版面とマスターページは無視する。
 色は印刷用の値を sRGB に近似して使う。
 CSS を直接書く欄は設けない。
 CSS を書けると、媒体契約の外で見た目を変える抜け道になるためである。
@@ -558,7 +614,7 @@ OpenType の機能（縦書き用の字形、プロポーショナルな字詰�
 
 ライセンスで埋め込みが禁止されているフォントを使った場合は、エラーとする。
 
-PDF は、本文の役割と、見出しの `font`、`[emphasis]` の `bold-font` と `italic-font`、文字スタイルの `font` が指す役割のフォントだけを読み込む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
+PDF は、本文の役割と、見出しの `font`、文字スタイルの `font`、段落スタイル（組み込みの `caption` と `sidenote` を含む）の `font` が指す役割のフォントだけを読み込む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 使わない役割のフォントのライセンスでビルドを止めないためである。
 二つの役割が同じバイト列のファイルを指す場合は、一つのフォントとして一度だけ埋め込む。
 バイト列が異なるのに PostScript 名が同じフォントを使う場合は、エラー（G0805）とする。
@@ -573,8 +629,12 @@ PDF は、本文の役割と、見出しの `font`、`[emphasis]` の `bold-font
 - 図番号は章ごとに振り、文書構造（S1）で決める。図番号は「図 3-2」のように章番号と組み合わせて使うので、章を複数のファイルに分けても章の中で番号が続く必要があるためである。
 - ICC プロファイルを持たない RGB の画像は sRGB とみなし、sRGB のプロファイルを付けて埋め込む。
 
-PDF では、図番号とキャプションを、画像の下（縦組みでは左）に本文と同じ書体と大きさで組む（[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)）。
-画像とキャプションの行は行の格子に載せ、図版の後の本文も格子からずらさない。
+PDF では、図番号とキャプションを、画像の下（縦組みでは左）に、段落スタイル `caption` の `font` と `size` で組む（[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
+指定がなければ本文と同じ書体と大きさになる。
+本文より小さいキャプションの行は、本文の行送りと文字の大きさの比を保った行送りで送り、画像の直後の行の格子の先頭にそろえて置く。
+キャプションは、その全体を収める最も少ない数の格子の行を占め、余りはキャプションの後ろに回る。
+画像の行と、キャプションが占める格子の行は行の格子に載せ、図版の後の本文も格子からずらさない。
+回り込ませる図版の除外領域の深さは、キャプションの実際の終わりまでとする。
 回り込ませない図版の幅は版面の行長とし、回り込ませる図版の幅は `width` とする。
 回り込ませる図版は、画像とキャプションを含む矩形に `[figures]` の `wrap-gap` を足した除外領域を作り、その脇の行を除外領域の分だけ短く組む[^line-length]。
 脇の行は図版の直後の段落に限り、見出しなどの段落でないブロックが来たら、除外領域の残りを空けたまま、その後から組む。
@@ -624,7 +684,7 @@ LSP は書きかけのファイルを常に扱うので、最初の構文エラ�
 改行の前後は、空白を挟まずにそのままつながる。
 Golem は日本語の組版を主眼とし、日本語では行の折り返し位置に空白を入れないためである。
 欧文の単語の途中や単語の間で改行すると、単語どうしが空白なしにつながる。
-詩や戯曲の韻文のように行分けを保つには、ブロックコマンド `@verse` を使う（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。
+詩や戯曲の韻文のように行分けを保つには、`line-breaks = "keep"` の段落スタイル（組み込みの `verse` など）を `@style verse` のように付ける（[docs/adr/0003](adr/0003-verse-line-breaks.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 
 ## 行分割
 
@@ -651,7 +711,7 @@ lint の警告は抑制できない。
 
 v1 の規則の候補は次のとおりである。
 
-- 段落内の改行の前後がともに欧文の文字である箇所（改行は文字を生まないので、単語が空白なしに連結される）。`@verse` の本体の行の区切りは対象にしない。
+- 段落内の改行の前後がともに欧文の文字である箇所（改行は文字を生まないので、単語が空白なしに連結される）。`line-breaks = "keep"` の段落スタイルを付けた段落の行の区切りは対象にしない（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 - 使われていない `@set` 変数（エラー）。そのファイルの中でも、そのファイルを import するどのファイルからも参照されていない変数を指す。
 - 使われていない `@import`（エラー）
 - 参照されていない `@label`。dev のプロファイルでは警告、prod のプロファイルではエラーとする。外部からのリンクの受け口として書きかけの原稿に置いておくラベルは許すが、出荷する本に参照されないラベルを残さないためである。
@@ -669,6 +729,12 @@ fmt は本文を折り返し直さず、構造だけを整形する。
 本文の改行の位置は書き手が決めるものとして変更しない。
 
 `golem fmt --check` は、整形されていないファイルがあれば非ゼロで終了する。
+
+fmt は、整形の前に移行の段階を持つ（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+移行の段階は、廃止した `@verse` を `@style verse` に書き換える。
+コードブロックの中の `@verse` は書き換えない。
+整形の不変条件は「移行の後の原稿と、整形の結果とで AST が一致する」となる。
+`@verse` を含むファイルは、`golem fmt --check` で整形されていないファイルとして報告される。
 
 ## LSP
 
@@ -748,7 +814,8 @@ Golem は決定性を重視する[sidenote: 同じ入力から同じ出力を得
 注の本文はインラインの要素に限り、番号はファイルごとに振る。
 
 PDF では、傍注を版面の外の傍注欄に置く。
-傍注欄は、`style.toml` の `[sidenotes]` で、小口[^fore-edge]側の余白に幅と版面との間隔を指定して設ける。
+傍注欄は、`style.toml` の `[sidenotes]` で、小口[^fore-edge]側の余白に幅（`width`）と版面との間隔（`gap`）を指定して設ける。
+`[sidenotes]` には、ほかに本文側の印（`marker`）だけを書く。
 本文の版面は字詰めのとおりに組み、傍注は本文の行の長さに影響しない。
 傍注がある行だけ本文を短くすると、本文の端がページごとに不ぞろいになるためである。
 
@@ -776,7 +843,9 @@ PDF では、さらに次の二つをコンパイルエラーとする（[golem-
 - 脚注の本文と図版のキャプションの中に傍注を置いた場合（G0735）。これらの行は本文の流れの外に置かれるので、傍注を置く高さを決める行がない。
 
 傍注は、本文のページと行が確定した後に傍注欄に置き、傍注の量で本文の改ページを変えない。
-傍注の文字の大きさは `[sidenotes]` の `size`、行送りは本文の行送りを文字の大きさの比で縮めた値とし、傍注どうしの間には本文の行送りの半分を空ける。
+傍注の本文は、段落スタイル `sidenote` の `font` の役割の書体と `size` の大きさで組み、省略すれば本文の役割と版面の文字の大きさで組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
+傍注の行送りは本文の行送りを文字の大きさの比で縮めた値とし、傍注どうしの間には本文の行送りの半分を空ける。
+本文側の印は、本文の書体と大きさのまま組む。
 傍注の本文の先頭には、本文側の印と同じ番号か「※」を付け、印なしでは何も付けない。
 
 ### 索引
@@ -1038,8 +1107,6 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### 組版
 
-- **文字スタイルと段落スタイル**：段落の見た目に名前を付けて `style.toml` で定義し、原稿の段落に適用する仕組みがない。強調（`[strong: ...]`、`[bold: ...]`、`[italic: ...]`）のような見た目の記法と、韻文（[docs/adr/0003](adr/0003-verse-line-breaks.md) の `@verse`）のようなブロックの記法も、スタイルの仕組みの外にある。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で、`[paragraph-styles.<名前>]`（`based-on`、`font`、`size`、`line-breaks`、`space-between`）と `@style` を設け、強調を組み込みの文字スタイル `strong`、`bold`、`italic` を付ける `[style 名前: ...]` の別名にし、`@verse` を段落スタイル `verse` に置き換えて `golem fmt` で原稿を書き換えると決めた（未実装）。文字スタイルに `based-on`、`color`、`synthetic-bold`、`synthetic-italic` を加えること、属性のまとまりの最後に置いた `@style` や `@figure` を対象のブロックとして扱うこと（今は G0210）も、同じ ADR で決めた。
-- **字下げ**：段落の字下げ（段落の先頭の字下げ、二行目以降の字下げ、ぶら下げ）を指定する方法がない。[docs/adr/0006](adr/0006-paragraph-indent.md) で、段落スタイルに `indent` と `first-line-indent`（負ならぶら下げ）を加え、`[verse]` を廃止すると決めた（未実装）。
 - **リストの字下げ**：PDF のリストは、項目の先頭に印か番号を付けるだけで、項目の二行目以降と入れ子のリストを字下げしない。段落スタイルの字下げも、リストの項目の段落には効かせない（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
 - **ハイフネーション**：明示のハイフン（lime-tree の `-`）の位置を行分割の候補にしていない。Knuth と Plass の行分割は、一回目の試行でハイフネーションの候補をすべて除き、TeX と違って明示のハイフンも一回目から使わない。[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md) で、欧文の語の中のハイフンとダッシュの直後を候補にし（罰則は `[composition]` の `explicit-hyphen-penalty`、既定は 50）、罰点の等しい経路を TeX と同じ規則で選ぶと決めた（未実装）。
 - **ルビの配置の設定**：ルビの位置を調整する設定がない。今の `[composition]` の `ruby` は `position`（`"mono-center"` だけを取る）と `overhang` を持つが、`position` は配置を変えない。PDF は、読みを詰めて親文字の中央に置き、ルビが親文字より長いときは親文字の字間を空けずに両端を空ける。隣の文字へのかけは文字の種類を見ずに漢字や隣のルビにもかかり、行頭と行末でも戻さない。この挙動は [golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md) の記述とも一致していない。[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md) で、`position` をなくし、`[composition.ruby]` の `mono-align`（中付きか肩付きか）、`group-align`（グループルビが親文字より短いときの配置）、`base-spacing`（ルビが親文字より長いときの親文字の字間）、`overhang`（片側でかける量の上限）、`overhang-onto`（仮名にだけかけるか、かけないか）の欄で選べるようにすると決めた（未実装）。既定値は JLReq に合わせるので、ルビを含む PDF の出力は変わる。
@@ -1050,16 +1117,13 @@ v1 のリリースまでに、次の項目を扱う。
 #### PDF
 
 - **目次**：PDF の目次は番号と題だけを出し、ページ番号を出していない。[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md) で、ページ番号を項目の最後の行の終わりにそろえて置き、題とのあいだをリーダーで埋め、`[toc]` の `leader`（`"dots"` か `"none"`）で選べるようにすると決めた（未実装）。
-- **キャプションの書体**：キャプションの書体と大きさ（本文より小さくすることを含む）を `style.toml` で指定する設定がない。PDF のキャプションは本文と同じ書体と大きさで組む。[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md) で、組み込みの段落スタイル `caption` の `font` と `size` で組むと決めた（未実装）。
-- **傍注の書体**：`[sidenotes]` の `font` を PDF で使っていない。傍注は本文の書体で、`size` の大きさで組む（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md) で、組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` の `font` と `size` を廃止すると決めた（未実装）。
 - **柱の内容**：マスターページの `running-head` の `content`（`"heading.1.short"` など）と、`[headings.<階層>]` の `running-head` を読み込むが、PDF では使っていない。柱には常に 1 の階層の見出しの短い題を出す（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。設定のとおりに柱の内容を決めるか、使わない欄をなくす。
 - **トンボと塗り足し**：入稿用の、トンボと塗り足しの領域を付けた PDF を出力できない。今の PDF は、MediaBox、TrimBox、BleedBox をすべて仕上がりの判型と同じ大きさにしている。[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md) で、`style.toml` の `[page]` に `bleed` を、`golem build` と `golem check` に `--marks japanese|western|none` を加え、日本式のトンボで塗り足しが 0 なら G0702 とすると決めた（未実装）。
-- **合成の太字の太さ**：合成の太字の輪郭の線の幅（文字の大きさの 1/40）は、目で見ると太すぎる（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。[golem-driver ADR 0012](golem-driver/adr/0012-synthetic-bold-weight.md) で、和文を文字の大きさの 1/80、欧文を 1/60 に細くすると決めた（未実装）。
 - **PDF の Producer**：仕様では PDF の Producer に Golem の版を書くが、まだ書いていない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md) で、文書情報辞書の `Producer` と XMP の `pdf:Producer` に `Golem <版>`（例：`Golem 0.1.0-rc1`）を書くと決めた（未実装）。
 
 #### 記法と設定
 
-- **`golem fmt` の移行の段階を外すこと**：`golem fmt` は、`@verse` を `@style verse` に書き換える移行の段階を持つことになり、その分だけ整形の不変条件に例外が一つ加わる。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) は、移行の段階を v1 の間は残し、外すときは別の ADR で決めるとした。v1 のリリースまでに移行の段階を外し、不変条件の例外をなくす。
+- **`golem fmt` の移行の段階を外すこと**：`golem fmt` は、`@verse` を `@style verse` に書き換える移行の段階を持ち、その分だけ整形の不変条件に例外が一つ加わっている。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) は、移行の段階を v1 の間は残し、外すときは別の ADR で決めるとした。v1 のリリースまでに移行の段階を外し、不変条件の例外をなくす。
 - **寸法による判型の指定**：[golem-project ADR 0002](golem-project/adr/0002-style-toml.md) は、表にない判型を寸法で書くと決めたが、実装していない。`style.toml` の読み込みは `x` を含む `size` を通すが、ページの幾何の計算は未知の判型としてエラーにする。書き方は [golem-project ADR 0003](golem-project/adr/0003-mass-market-paperback-size.md) が別の ADR に回している。
 
 #### CLI と LSP

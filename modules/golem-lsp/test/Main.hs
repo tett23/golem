@@ -77,6 +77,14 @@ tests =
         assertBool "commands" ("color" `elem` names (offsetIn src "[co" 3))
         names (offsetIn src "[color " 7) @?= ["accent"]
         assertBool "paths" ("common/values.gm" `elem` names (offsetIn src "@import " 8)),
+      testCase "completion: paragraph and character styles (docs/adr ADR 0005)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@style \n本文。\n\n[style \n"
+        let src = textOf ws "b.gm"
+            found = completions ws "b.gm"
+        map cmpLabel (found (offsetIn src "@style " 7)) @?= ["body", "caption", "quote", "sidenote", "verse"]
+        map cmpKind (found (offsetIn src "@style " 7)) @?= replicate 5 CkParaStyle
+        map cmpLabel (found (offsetIn src "[style " 7)) @?= ["bold", "italic", "strong"],
       testCase "with a syntax error, completion and definition still work elsewhere" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n[ref-title intro]と[strong: 閉じない\n\n[ref-number \n"

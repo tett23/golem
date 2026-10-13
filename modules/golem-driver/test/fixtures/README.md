@@ -17,7 +17,7 @@ Do not edit them by hand.
   (1863) edited by W. G. Clark and W. A. Wright. The play is in the public
   domain. The converter drops the Project Gutenberg header and licence,
   the transcriber's note, the footnotes and the textual notes; the result
-  carries no Project Gutenberg trademark. Verse is set with `@verse`. The
+  carries no Project Gutenberg trademark. Verse is set with `@style verse`. The
   source marks verse only by its line breaks, so the converter guesses it
   and takes a few short prose speeches whose lines all start with capitals
   for verse (two in Act I, Scene I).

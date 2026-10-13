@@ -21,7 +21,7 @@ heading :: Int -> Int -> Int -> HeadingAttrs -> Maybe Text -> Text -> Block
 heading f s l a lbl t = Block (sp f s) lbl (Heading l a [Text (sp f s) t])
 
 para :: Int -> Int -> [Inline] -> Block
-para f s is = Block (sp f s) Nothing (Paragraph is)
+para f s is = Block (sp f s) Nothing (Paragraph Nothing is)
 
 noEval :: DocValues -> DeferredExpr -> Either Diagnostic Text
 noEval dv _ = Right ("count=" <> T.pack (show (dvChapterCount dv)))
@@ -53,14 +53,14 @@ tests =
             (book, ds) = assemble cfg noEval docs
         ds @?= []
         case bookDocs book of
-          [_, Document _ [Block _ _ (Paragraph is)]] -> is @?= [Number (sp 2 0) 1 Nothing, Text (sp 2 1) "はじめに", Ref (sp 2 2) RefPage "intro"]
+          [_, Document _ [Block _ _ (Paragraph Nothing is)]] -> is @?= [Number (sp 2 0) 1 Nothing, Text (sp 2 1) "はじめに", Ref (sp 2 2) RefPage "intro"]
           other -> assertFailure (show other)
         codes (snd (assemble cfg noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs (Just "a") "x", heading 1 5 1 noHeadingAttrs (Just "a") "y"]])) @?= ["G0401"]
         codes (snd (assemble cfg noEval [Document (FileId 1) [para 1 0 [Ref (sp 1 0) RefTitle "nope"]]])) @?= ["G0403"],
       testCase "deferred expressions see the chapter count" $ do
         let docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "a", heading 1 5 1 noHeadingAttrs Nothing "b", para 1 9 [Deferred (sp 1 9) (DeferredExpr undefined)]]]
         case bookDocs (fst (assemble cfg noEval docs)) of
-          [Document _ [_, _, Block _ _ (Paragraph is)]] -> is @?= [Text (sp 1 9) "count=2"]
+          [Document _ [_, _, Block _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 9) "count=2"]
           other -> assertFailure (show other),
       testCase "figure numbers restart per chapter" $ do
         let fig f s = Block (sp f s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing []))

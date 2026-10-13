@@ -228,9 +228,6 @@ alignPositions = go 0 0
 piecesOf :: ComposeEnv -> Bool -> Inline -> [Piece]
 piecesOf env kenten inl = case inl of
   Text _ t -> textPieces lk kenten t
-  Strong _ xs -> restyled xs
-  Bold _ xs -> restyled xs
-  Italic _ xs -> restyled xs
   Color _ _ xs -> restyled xs
   CharStyle _ _ xs -> restyled xs
   Kenten _ _ xs -> concatMap (piecesOf env True) xs
@@ -251,6 +248,8 @@ piecesOf env kenten inl = case inl of
   IndexMark sp e -> [PAnchor (\i -> AnchorIndex i sp e)]
   Cite _ k -> textPieces lk False ("[" <> maybe k (T.pack . show) (ceCiteNumber env k) <> "]")
   ProofComment {} -> []
+  -- paragraphs are split at line breaks before they are composed (docs/adr ADR 0005)
+  LineBreak {} -> []
   where
     lk = ceLook env
     -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
@@ -313,9 +312,6 @@ rubyPieces env segs = concat (zipWith piece [0 :: Int ..] segs)
        in [PRubyBreak | i > 0] <> [PBox lk label KindRuby width]
     plain = \case
       Text _ t -> t
-      Strong _ xs -> T.concat (map plain xs)
-      Bold _ xs -> T.concat (map plain xs)
-      Italic _ xs -> T.concat (map plain xs)
       Color _ _ xs -> T.concat (map plain xs)
       CharStyle _ _ xs -> T.concat (map plain xs)
       Kenten _ _ xs -> T.concat (map plain xs)
@@ -455,9 +451,6 @@ verticalSidenotes env inls
     msg = "縦組みの段落の中には傍注を置けません"
     go = \case
       Sidenote sp _ _ -> [diagnostic "G0732" Error sp msg]
-      Strong _ xs -> concatMap go xs
-      Bold _ xs -> concatMap go xs
-      Italic _ xs -> concatMap go xs
       Kenten _ _ xs -> concatMap go xs
       Color _ _ xs -> concatMap go xs
       CharStyle _ _ xs -> concatMap go xs

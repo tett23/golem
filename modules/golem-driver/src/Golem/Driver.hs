@@ -15,6 +15,10 @@ module Golem.Driver
     FontProvider (..),
     LoadedFonts (..),
     noFontProvider,
+    paraLineBreaks,
+    keepStyles,
+    builtinKeepStyles,
+    cssFontSize,
   )
 where
 
@@ -187,12 +191,26 @@ reeval profile project style assets citeKeys hook acc fid sf =
             ctxImports = exports,
             ctxSwatches = Map.keysSet (stSwatches style),
             ctxCharStyles = Map.keysSet (stCharStyles style),
+            ctxParaStyles = paraLineBreaks style,
             ctxDefaultKenten = compKenten (stComposition style),
             ctxCiteKeys = citeKeys,
             ctxAssets = assets,
             ctxPlugins = hook
           }
    in evalFile ctx (sfAst sf)
+
+-- | Whether each paragraph style keeps its lines, resolved (docs/adr ADR 0005).
+paraLineBreaks :: Style -> Map Text LineBreaks
+paraLineBreaks style =
+  Map.fromList [(n, fromMaybe JoinLines (psLineBreaks d)) | n <- Map.keys (stParaStyles style), Just d <- [paraStyle style (Just n)]]
+
+-- | The paragraph styles that keep their lines (lint G0501, docs/adr ADR 0005).
+keepStyles :: Style -> Set.Set Text
+keepStyles = Map.keysSet . Map.filter (== KeepLines) . paraLineBreaks
+
+-- | The built-in paragraph styles that keep their lines: verse.
+builtinKeepStyles :: Set.Set Text
+builtinKeepStyles = keepStyles defaultStyle
 
 metadataValues :: Metadata -> Map Text Value
 metadataValues md =
@@ -328,17 +346,32 @@ writeTargets opts e book targets = do
             hcLanguage = mdLanguage md,
             hcVertical = vertical,
             hcNumberDefault = stNumbersVertical style,
-            hcStrongAs = stStrongAs style,
             hcSwatches = Map.map (\(Swatch c) -> c) (stSwatches style),
-            hcCharStyles = Map.map csFont (stCharStyles style),
             hcFonts = Map.map (\fr -> (frJa fr, frLatin fr)) (stFonts style),
-            hcBoldFont = stBoldFont style,
-            hcItalicFont = stItalicFont style,
+            -- the resolved styles (docs/adr ADR 0005)
+            hcCharStyles =
+              Map.fromList
+                [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d))
+                | n <- Map.keys (stCharStyles style),
+                  Just d <- [charStyle style n]
+                ],
+            hcParaStyles =
+              Map.fromList
+                [ ( n,
+                    HtmlParaStyle
+                      (psFont d)
+                      (psLineBreaks d == Just KeepLines)
+                      (fromMaybe 0 (psSpaceBetween d))
+                      (cssLength (fromMaybe (Zw 0) (psIndent d)))
+                      (cssLength (fromMaybe (Zw 0) (psFirstLineIndent d)))
+                  )
+                | n <- Map.keys (stParaStyles style),
+                  Just d <- [paraStyle style (Just n)]
+                ],
             hcBibliography = bib,
             hcDev = dev,
-            hcVerseIndent = cssLength (vsIndent (stVerse style)),
-            hcVerseHang = cssLength (vsHang (stVerse style)),
-            hcStanzaGap = vsStanzaGap (stVerse style)
+            hcCaptionFace = let c = paraStyle style (Just "caption") in Face (c >>= psFont) (cssFontSize style <$> (c >>= psSize)),
+            hcSidenoteFace = let d = paraStyle style (Just "sidenote") in Face (d >>= psFont) (cssFontSize style <$> (d >>= psSize))
           }
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case
@@ -380,7 +413,7 @@ writeTargets opts e book targets = do
         let (sub, gv) = case v of
               TextVertical -> ("vertical", GT.Vertical)
               TextHorizontal -> ("horizontal", GT.Horizontal)
-        forM (GT.renderText (stNumbersVertical style) dev gv ft book) $ \(p, t) -> do
+        forM (GT.renderText (stNumbersVertical style) dev (textFirstLine style) gv ft book) $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)
       pure (concat files, [])
@@ -404,6 +437,15 @@ writeTargets opts e book targets = do
     writeText p t = createDirectoryIfMissing True (takeDirectory p) >> TIO.writeFile p t
     copy src dst = createDirectoryIfMissing True (takeDirectory dst) >> BS.readFile src >>= BS.writeFile dst
 
+{- | The ideographic spaces that start the lines of a paragraph of a style
+in plain text (docs/adr ADR 0006): the whole part of indent plus
+first-line-indent when both are in zw, none otherwise.
+-}
+textFirstLine :: Style -> Maybe Text -> Int
+textFirstLine style st = case paraStyle style st of
+  Just ParaStyleDef {psIndent = Just (Zw a), psFirstLineIndent = Just (Zw b)} -> max 0 (truncate (a + b))
+  _ -> 0
+
 {- | A length of style.toml in CSS: zw as em, other units as pt, with at
 most three decimals (docs/adr ADR 0003).
 -}
@@ -411,13 +453,26 @@ cssLength :: Dim -> Text
 cssLength = \case
   Zw r -> decimal3 r <> "em"
   Abs sp -> decimal3 (toRational sp / 65536) <> "pt"
-  where
-    decimal3 r =
-      let thousandths = round (r * 1000) :: Integer
-          (i, f) = abs thousandths `divMod` 1000
-          sign = if thousandths < 0 then "-" else ""
-          frac = T.dropWhileEnd (== '0') (T.justifyRight 3 '0' (T.pack (show f)))
-       in sign <> T.pack (show i) <> (if T.null frac then "" else "." <> frac)
+
+{- | A size of style.toml as a CSS font-size (golem-driver ADR 0010): zw as
+em, an absolute size as its ratio to an absolute grid size in em, pt
+without one.
+-}
+cssFontSize :: Style -> Dim -> Text
+cssFontSize style = \case
+  Zw r -> decimal3 r <> "em"
+  Abs sp -> case stPage style >>= pageGrid of
+    Just Grid {gridFontSize = Abs fs} | fs > 0 -> decimal3 (toRational sp / toRational fs) <> "em"
+    _ -> cssLength (Abs sp)
+
+-- | At most three decimals, fixed (docs/adr ADR 0003).
+decimal3 :: Rational -> Text
+decimal3 r =
+  let thousandths = round (r * 1000) :: Integer
+      (i, f) = abs thousandths `divMod` 1000
+      sign = if thousandths < 0 then "-" else ""
+      frac = T.dropWhileEnd (== '0') (T.justifyRight 3 '0' (T.pack (show f)))
+   in sign <> T.pack (show i) <> (if T.null frac then "" else "." <> frac)
 
 -- | The table of contents page of the HTML target.
 indexPage :: HtmlConfig -> FileTable -> Book -> Text

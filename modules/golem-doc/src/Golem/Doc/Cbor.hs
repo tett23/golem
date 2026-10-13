@@ -93,7 +93,7 @@ blockT (Block sp lbl body) = TList [spanT sp, opt text lbl, bodyT body]
 
 bodyT :: BlockBody -> Term
 bodyT = \case
-  Paragraph is -> tagged 0 [inlinesTerm is]
+  Paragraph st is -> tagged 10 [opt text st, inlinesTerm is]
   Heading l a is -> tagged 1 [int l, attrsT a, inlinesTerm is]
   BulletList items -> tagged 2 [list itemT items]
   OrderedList items -> tagged 3 [list itemT items]
@@ -102,7 +102,6 @@ bodyT = \case
   CodeBlock lang t -> tagged 6 [opt text lang, text t]
   FigureBlock fig -> tagged 7 [figureT fig]
   ChannelOutput c -> tagged 8 [channelT c]
-  VerseBlock stanzas -> tagged 9 [list (list inlinesTerm) stanzas]
 
 attrsT :: HeadingAttrs -> Term
 attrsT (HeadingAttrs tt n nn nt) = TList [opt inlinesTerm tt, opt int n, TBool nn, TBool nt]
@@ -126,9 +125,6 @@ inlinesTerm = list (inlineT (const TNull))
 inlineT :: (r -> Term) -> InlineF r -> Term
 inlineT rt = \case
   Text s t -> tagged 0 [spanT s, text t]
-  Strong s xs -> tagged 1 [spanT s, sub xs]
-  Bold s xs -> tagged 2 [spanT s, sub xs]
-  Italic s xs -> tagged 3 [spanT s, sub xs]
   Ruby s r segs -> let _ = rt r in tagged 4 [spanT s, list segT segs]
   Kenten s sh xs -> tagged 5 [spanT s, opt text sh, sub xs]
   Color s c xs -> tagged 6 [spanT s, text c, sub xs]
@@ -142,6 +138,7 @@ inlineT rt = \case
   IndexMark s (IndexEntry ts rs) -> tagged 14 [spanT s, list text ts, list text rs]
   Cite s k -> tagged 15 [spanT s, text k]
   ProofComment s t -> tagged 16 [spanT s, text t]
+  LineBreak s -> tagged 17 [spanT s]
   where
     sub = list (inlineT rt)
 
@@ -260,7 +257,7 @@ termBody t =
   asList t >>= \case
     (tag : fs) ->
       asIntI tag >>= \case
-        0 | [is] <- fs -> Paragraph <$> termInlines is
+        10 | [st, is] <- fs -> Paragraph <$> asOpt asText st <*> termInlines is
         1 | [l, a, is] <- fs -> Heading <$> asIntI l <*> termAttrs a <*> termInlines is
         2 | [xs] <- fs -> BulletList <$> (asList xs >>= traverse termItem)
         3 | [xs] <- fs -> OrderedList <$> (asList xs >>= traverse termItem)
@@ -274,16 +271,9 @@ termBody t =
         6 | [l, x] <- fs -> CodeBlock <$> asOpt asText l <*> asText x
         7 | [fig] <- fs -> FigureBlock <$> termFigure fig
         8 | [c] <- fs -> ChannelOutput <$> termChannel c
-        9 | [v] <- fs -> VerseBlock <$> nonEmpty "韻文" (nonEmpty "連" (nonEmpty "韻文の行" (termInline (const (Right ()))))) v
+        -- 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
         _ -> bad "ブロックの種類"
     [] -> bad "ブロックの種類"
-
--- | A list that must not be empty (verse, stanzas and lines).
-nonEmpty :: Text -> (Term -> D a) -> Term -> D [a]
-nonEmpty what f t =
-  asList t >>= \case
-    [] -> bad ("空の" <> what)
-    xs -> traverse f xs
 
 termAttrs :: Term -> D HeadingAttrs
 termAttrs t =
@@ -339,9 +329,6 @@ termInline rd t =
       let sub x = asList x >>= traverse (termInline rd)
       case (i, fs) of
         (0, [x]) -> Text s <$> asText x
-        (1, [x]) -> Strong s <$> sub x
-        (2, [x]) -> Bold s <$> sub x
-        (3, [x]) -> Italic s <$> sub x
         (4, [segs]) -> Ruby s <$> rd TNull <*> (asList segs >>= traverse termSeg)
         (5, [sh, x]) -> Kenten s <$> asOpt asText sh <*> sub x
         (6, [c, x]) -> Color s <$> asText c <*> sub x
@@ -355,6 +342,8 @@ termInline rd t =
         (14, [ts, rs]) -> (\a b -> IndexMark s (IndexEntry a b)) <$> (asList ts >>= traverse asText) <*> (asList rs >>= traverse asText)
         (15, [k]) -> Cite s <$> asText k
         (16, [x]) -> ProofComment s <$> asText x
+        (17, []) -> Right (LineBreak s)
+        -- 1, 2 and 3 (strong, bold, italic) are retired: they are character styles (docs/adr ADR 0005)
         _ -> bad "インラインの種類"
     _ -> bad "インライン"
 

@@ -6,7 +6,7 @@ Kept: the list of characters and the play to the end of the epilogue.
 Dropped: the Gutenberg header and licence, the transcriber's note, the
 title page, footnotes and textual notes, line numbers.
 
-Verse becomes @verse (docs/adr ADR 0003). The source marks verse only by
+Verse becomes @style verse (docs/adr ADR 0003, 0005). The source marks verse only by
 its line breaks, which prose also has where it was wrapped, so verse is
 guessed: a speech of two lines or more whose every line after the first
 starts a half line, is a stage direction, or starts with a capital, and a
@@ -114,7 +114,7 @@ def is_verse(b):
 
 
 def verse(b):
-    """@verse: one line of source per line of verse, the speaker's name on the
+    """@style verse: one line of source per line of verse, the speaker's name on the
     first; italic is closed at the end of each line and opened again."""
     lines = [re.sub(r"\s+", " ", strip_line_number(l).strip()).replace("--", "—") for l in b]
     out = []
@@ -133,7 +133,7 @@ def verse(b):
         if s[0] in SPECIAL_LINE_START:
             s = "\\" + s
         out.append("  " + s)
-    return "@verse\n" + "\n".join(out)
+    return "@style verse\n" + "\n".join(out)
 
 
 def convert(src):

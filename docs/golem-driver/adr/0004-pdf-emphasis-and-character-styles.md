@@ -1,6 +1,6 @@
 # ADR 0004: PDF で強調、文字スタイル、色を区別して組む
 
-ステータス: 採択
+ステータス: 採択→`[emphasis]` の欄と文字スタイルの `font` の意味は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md)
 
 ## 文脈
 

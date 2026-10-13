@@ -1,5 +1,2 @@
 [headings.1]
 number = "第{n:kanji}章"
-
-[emphasis]
-strong = "bold"

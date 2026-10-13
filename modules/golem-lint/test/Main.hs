@@ -14,7 +14,10 @@ main :: IO ()
 main = defaultMain tests
 
 newlineCodes :: Text -> [Text]
-newlineCodes src = [c | d <- latinJoinedByNewline (FileId 0) (fst (parse (FileId 0) src)), let DiagnosticCode c = diagCode d]
+newlineCodes = newlineCodesWith (Set.fromList ["verse"])
+
+newlineCodesWith :: Set.Set Text -> Text -> [Text]
+newlineCodesWith keep src = [c | d <- latinJoinedByNewline keep (FileId 0) (fst (parse (FileId 0) src)), let DiagnosticCode c = diagCode d]
 
 usage :: Usage
 usage = Usage [] Set.empty Map.empty []
@@ -38,20 +41,25 @@ tests =
       testCase "G0501 sees through indentation of continuation lines but not commands" $ do
         newlineCodes "- word\n  word\n" @?= ["G0501"]
         newlineCodes "[strong: a]\n[strong: b]\n" @?= [],
-      testCase "G0501 does not apply to the line breaks of verse (docs/adr ADR 0003)" $ do
-        newlineCodes "@verse\n  Full fathom five\n  Of his bones\n" @?= []
+      testCase "G0501 does not apply to the line breaks of keep styles (docs/adr ADR 0003, 0005)" $ do
+        newlineCodes "@style verse\n  Full fathom five\n  Of his bones\n" @?= []
+        newlineCodes "@style verse\nFull fathom five\nOf his bones\n" @?= []
+        newlineCodes "@label song\n@style verse\nFull fathom five\nOf his bones\n" @?= []
         newlineCodes "Full fathom five\nOf his bones\n" @?= ["G0501"]
-        newlineCodes "@verse\n  [note: a\n  b] x\n" @?= ["G0501"]
+        newlineCodes "@style verse\n  [note: a\n  b] x\n" @?= ["G0501"]
+        newlineCodes "@style quote\n  Full fathom five\n  Of his bones\n" @?= ["G0501"]
+        newlineCodes "@style quote\nFull fathom five\nOf his bones\n" @?= ["G0501"]
+        newlineCodesWith (Set.fromList ["verse", "quote"]) "@style quote\n  Full fathom five\n  Of his bones\n" @?= []
         newlineCodes "@figure a.png alt=x\n  Full fathom\n  five\n" @?= ["G0501"],
       testCase "G0502 unused variable, unless an importer uses it" $ do
         let defining = FileLint (FileId 1) "common.gm" (fst (parse (FileId 1) "")) usage {usageDefined = [("x", sp), ("y", sp)]}
             importing = FileLint (FileId 2) "ch.gm" (fst (parse (FileId 2) "")) usage {usageImports = [("c", "common.gm", sp)], usageNamespaceRefs = Map.fromList [("c", Set.fromList ["x"])]}
-        codes (lint (LintInput [defining, importing] Map.empty Set.empty)) @?= ["G0502"],
+        codes (lint (LintInput [defining, importing] Map.empty Set.empty (Set.fromList ["verse"]))) @?= ["G0502"],
       testCase "G0503 unused import" $ do
         let f = FileLint (FileId 1) "a.gm" (fst (parse (FileId 1) "")) usage {usageImports = [("v", "v.gm", sp)]}
-        codes (lint (LintInput [f] Map.empty Set.empty)) @?= ["G0503"],
+        codes (lint (LintInput [f] Map.empty Set.empty (Set.fromList ["verse"]))) @?= ["G0503"],
       testCase "G0504 unreferenced labels are warnings, errors in prod" $ do
-        let ds = lint (LintInput [] (Map.fromList [("a", sp), ("b", sp)]) (Set.fromList ["a"]))
+        let ds = lint (LintInput [] (Map.fromList [("a", sp), ("b", sp)]) (Set.fromList ["a"]) (Set.fromList ["verse"]))
         map diagSeverity ds @?= [Warning]
         map (diagSeverity . adjustForProfile Prod) ds @?= [Error]
     ]

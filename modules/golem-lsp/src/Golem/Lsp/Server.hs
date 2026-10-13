@@ -309,6 +309,7 @@ completionItem (F.Completion label kind) =
       F.CkPath -> CompletionItemKind_File
       F.CkSwatch -> CompletionItemKind_Color
       F.CkCharStyle -> CompletionItemKind_Value
+      F.CkParaStyle -> CompletionItemKind_Value
 
 symbol :: F.Encoding -> S.LineIndex -> F.Outline -> DocumentSymbol
 symbol enc li o =

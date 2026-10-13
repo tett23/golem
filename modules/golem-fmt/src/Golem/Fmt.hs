@@ -4,6 +4,7 @@ original source and a rule that would change it is not applied.
 -}
 module Golem.Fmt
   ( preprocess,
+    migrate,
     format,
     FormatResult (..),
     astFingerprint,
@@ -49,10 +50,35 @@ astFingerprint src =
         | T.null rest -> pre
         | otherwise -> pre <> eraseSpans (T.drop 1 (T.dropWhile (/= '}') rest))
 
+{- | The migration step (docs/adr ADR 0005): @verse without arguments
+becomes @style verse. A code block is not a block command, so @verse in
+it stays.
+-}
+migrate :: Node -> Node
+migrate n = node (nodeKind n) (concatMap element (nodeChildren n))
+  where
+    element = \case
+      ElemNode m -> [ElemNode (migrateCommand (migrate m))]
+      e -> [e]
+    migrateCommand m
+      | nodeKind m == NBlockCommand,
+        [tokText t | ElemToken t <- nodeChildren m, tokKind t == KIdent] == ["verse"],
+        null [a | ElemNode a <- nodeChildren m, nodeKind a == NArgument] =
+          node NBlockCommand (concatMap verseToStyle (nodeChildren m))
+      | otherwise = m
+    verseToStyle = \case
+      ElemToken (Token KIdent "verse") -> [token KIdent "style", token KWhitespace " ", ElemNode (node NArgument [token KWord "verse"])]
+      e -> [e]
+
+{- | Formats a source. The source is first migrated ('migrate'); the AST of
+the migrated source is what every rule must keep.
+-}
 format :: Text -> FormatResult
 format src0 =
-  let src = preprocess src0
-      (root, diags) = parse (FileId 0) src
+  let src1 = preprocess src0
+      (root0, diags) = parse (FileId 0) src1
+      src = render (migrate root0)
+      (root, _) = parse (FileId 0) src
    in if hasErrors diags
         then Unformattable diags
         else Formatted (foldl' (apply (astFingerprint src)) (render root) rules)

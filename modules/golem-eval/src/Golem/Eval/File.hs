@@ -31,6 +31,7 @@ import Golem.Doc.IR
 import Golem.Eval.Expr
 import Golem.Eval.Value
 import Golem.Parser.AST qualified as A
+import Golem.Project.Style (LineBreaks (..))
 import Golem.Syntax
 
 -- | Plugin commands and filters, provided by golem-plugin.
@@ -52,7 +53,10 @@ data EvalContext = EvalContext
     ctxMeta :: !(Map Text Value),
     ctxImports :: !(Map FilePath (Map Text Value)), -- exported variables by file
     ctxSwatches :: !(Set Text),
+    -- | the character styles, built-in ones included (docs/adr ADR 0005)
     ctxCharStyles :: !(Set Text),
+    -- | the paragraph styles and whether they keep their lines (docs/adr ADR 0005)
+    ctxParaStyles :: !(Map Text LineBreaks),
     ctxDefaultKenten :: !Text,
     ctxCiteKeys :: !(Set Text),
     ctxAssets :: !(Map FilePath (Maybe Text)), -- referenced files; Nothing = binary but present
@@ -103,7 +107,7 @@ overridableCommands :: [Text]
 overridableCommands = ["strong", "bold", "italic", "ruby", "kenten", "color", "style", "tcy", "number-text"]
 
 attributeCommands :: [Text]
-attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc"]
+attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc", "style"]
 
 kentenShapes :: [Text]
 kentenShapes = ["sesame", "open-sesame", "dot", "open-dot", "circle", "open-circle"]
@@ -119,7 +123,7 @@ evalFile ctx (A.File fid blocks0) =
       doc0 = Document fid bs
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
         Left ds -> (doc0, ds)
-        Right (d, ws) -> (d, ws)
+        Right (d, ws) -> (d, ws <> unknownParaStyles ctx d)
    in EvalResult
         { erDocument = doc,
           erExports = stVars st,
@@ -163,7 +167,9 @@ normalizeArg (A.Located sp a) = A.Located sp $ case a of
       v -> v
 
 {- | Every inline sequence of a block with its newlines dropped, except the
-lines of the body of @verse, which keep them at the top level.
+paragraphs a paragraph style is given to (the body of @style and the
+target of an attribute group with @style), which keep them at the top
+level (docs/adr ADR 0005).
 -}
 normalizeBlock :: A.Located A.Block -> A.Located A.Block
 normalizeBlock (A.Located sp b) = A.Located sp $ case b of
@@ -173,14 +179,21 @@ normalizeBlock (A.Located sp b) = A.Located sp $ case b of
   A.OrderedList items -> A.OrderedList (map (map normalizeBlock) items)
   A.DefList gs -> A.DefList [A.DefGroup (map joinSoftBreaks ts) (map (map normalizeBlock) ds) | A.DefGroup ts ds <- gs]
   A.Table al h rows -> A.Table al (map joinSoftBreaks h) (map (map joinSoftBreaks) rows)
-  A.BlockCommand n@(A.Located _ "verse") args body -> A.BlockCommand n (map normalizeArg args) (map verseBody body)
+  A.BlockCommand n@(A.Located _ "style") args body -> A.BlockCommand n (map normalizeArg args) (map styledBody body)
   A.BlockCommand n args body -> A.BlockCommand n (map normalizeArg args) (map normalizeBlock body)
-  A.Attributed cs t -> A.Attributed (map normalizeBlock cs) (normalizeBlock <$> t)
+  A.Attributed cs t
+    | any isStyleCommand cs -> A.Attributed (map normalizeBlock cs) (styledBody <$> t)
+    | otherwise -> A.Attributed (map normalizeBlock cs) (normalizeBlock <$> t)
   other -> other
   where
-    verseBody = \case
+    styledBody = \case
       A.Located psp (A.Paragraph is) -> A.Located psp (A.Paragraph (map nestedInline is))
       other -> normalizeBlock other
+
+isStyleCommand :: A.Located A.Block -> Bool
+isStyleCommand = \case
+  A.Located _ (A.BlockCommand (A.Located _ "style") _ _) -> True
+  _ -> False
 
 -- ------------------------------------------------------------------ blocks
 
@@ -192,7 +205,7 @@ block sp = Block sp Nothing
 
 evalBlock :: EvalContext -> A.Located A.Block -> M [Block]
 evalBlock ctx (A.Located sp b) = case b of
-  A.Paragraph is -> one . Paragraph <$> evalInlines ctx False is
+  A.Paragraph is -> one . Paragraph Nothing <$> evalInlines ctx False is
   A.Heading l is -> one . Heading l noHeadingAttrs <$> evalInlines ctx True is
   A.BulletList items -> one . BulletList <$> mapM (fmap (ListItem Nothing) . evalBlocks ctx) items
   A.OrderedList items -> one . OrderedList <$> mapM (fmap (ListItem Nothing) . evalBlocks ctx) items
@@ -257,31 +270,55 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "figure" -> figure ctx sp args body
   "table" -> csvTable ctx sp args
   "listing" -> listing ctx sp args
-  "verse" -> verse ctx sp args body
+  "style" -> styleBody ctx sp (maximum (spanEnd nsp : map (spanEnd . A.locSpan) args)) args body
+  "verse" -> err "G0248" sp "@verse は @style verse に変わりました。golem fmt で書き換えられます" >> pure []
   _
     | name `elem` attributeCommands -> err "G0210" sp ("@" <> name <> " の後にブロックがありません") >> pure []
     | otherwise -> err "G0209" nsp ("未知のブロックコマンドです: @" <> name) >> pure []
 
+{- | An attribute group and the block it applies to. Without a block after
+it, a last block command that is not an attribute (a figure, @style with a
+body) is the target (docs/adr ADR 0005).
+-}
 attributed :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
 attributed ctx sp cmds target = case target of
   Nothing
     | (not . any isAttr) cmds -> concat <$> mapM (evalBlock ctx) cmds
+    | (lastCmd : before) <- reverse cmds,
+      not (isAttr lastCmd),
+      isBlockCommand lastCmd,
+      all isAttr before ->
+        withAttrs (reverse before) lastCmd
+    | not (isAttr (last cmds)) && isBlockCommand (last cmds) ->
+        err "G0211" sp "属性のまとまりに属性でないコマンドがあります" >> concat <$> mapM (evalBlock ctx) (filter (not . isAttr) cmds)
     | otherwise -> err "G0210" sp "属性の後にブロックがありません" >> concat <$> mapM (evalBlock ctx) (filter (not . isAttr) cmds)
   Just t -> do
     let nonAttrs = filter (not . isAttr) cmds
-        names = [n | A.Located _ (A.BlockCommand (A.Located _ n) _ _) <- cmds]
     unless (null nonAttrs) $ err "G0211" sp "属性のまとまりに属性でないコマンドがあります"
-    when (length names /= length (nub names)) $ err "G0212" sp "同じ属性を二度書いています"
-    targetBlocks <- evalBlock ctx t
-    case targetBlocks of
-      [Block bsp _ body] -> do
-        (label, body') <- foldM' (applyAttr ctx) (Nothing, body) [c | c <- cmds, isAttr c]
-        pure [Block bsp label body']
-      other -> pure other
+    withAttrs (filter isAttr cmds) t
   where
-    isAttr (A.Located _ (A.BlockCommand (A.Located _ n) _ _)) = n `elem` attributeCommands
+    isAttr c@(A.Located _ (A.BlockCommand (A.Located _ n) _ body)) = n `elem` attributeCommands && not (isStyleCommand c && not (null body))
     isAttr _ = False
+    isBlockCommand = \case
+      A.Located _ (A.BlockCommand {}) -> True
+      _ -> False
     foldM' f z = foldl (\acc x -> acc >>= \a -> f a x) (pure z)
+    withAttrs attrs t = do
+      let names = [n | A.Located _ (A.BlockCommand (A.Located _ n) _ _) <- attrs]
+      when (length names /= length (nub names)) $ err "G0212" sp "同じ属性を二度書いています"
+      targetBlocks <- case (t, [c | c <- attrs, isStyleCommand c]) of
+        (A.Located psp (A.Paragraph is), A.Located csp (A.BlockCommand _ args _) : _) -> styleName ctx csp args >>= \n -> styledParagraph ctx psp n is
+        (A.Located tsp (A.Paragraph is), []) -> evalBlock ctx (A.Located tsp (A.Paragraph is))
+        (other, _) -> evalBlock ctx (joinTarget other)
+      case targetBlocks of
+        (Block bsp _ body : rest) -> do
+          (label, body') <- foldM' (applyAttr ctx) (Nothing, body) attrs
+          pure (Block bsp label body' : rest)
+        [] -> pure []
+    -- a target that is not a paragraph keeps no newlines
+    joinTarget = \case
+      A.Located tsp (A.Paragraph is) -> A.Located tsp (A.Paragraph (joinSoftBreaks is))
+      other -> other
 
 applyAttr :: EvalContext -> (Maybe Text, BlockBody) -> A.Located A.Block -> M (Maybe Text, BlockBody)
 applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
@@ -296,6 +333,8 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
     ("number", OrderedList (ListItem _ bs : rest)) -> withNumber $ \n -> OrderedList (ListItem (Just n) bs : rest)
     ("nonumber", Heading l a is) -> pure (label, Heading l a {haNoNumber = True} is)
     ("notoc", Heading l a is) -> pure (label, Heading l a {haNoToc = True} is)
+    -- the style of a paragraph is applied when the paragraph is evaluated
+    ("style", Paragraph {}) -> pure (label, body)
     _ -> err "G0213" sp ("@" <> name <> " はこのブロックには付けられません") >> pure (label, body)
     where
       withNumber f = case map A.locValue args of
@@ -311,22 +350,31 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
 validLabel :: Text -> Bool
 validLabel l = not (T.null l) && T.all (\c -> c `elem` ("-_" :: String) || isAsciiLower c || isDigit c) l
 
--- ------------------------------------------------------------------ verse
+-- ------------------------------------------------------------------ paragraph styles
 
-{- | @verse (docs/adr ADR 0003): each paragraph of the body is a stanza and
-each of its lines a line of verse.
+-- | The name of the paragraph style of @style; G0247 and body when it is not one name.
+styleName :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M (Maybe Text)
+styleName _ sp = \case
+  [A.Located _ (A.Positional (A.Word n))] -> pure (Just n)
+  _ -> err "G0247" sp "@style には段落スタイルの名前を一つ書きます" >> pure Nothing
+
+{- | The body form of @style (docs/adr ADR 0005): every paragraph of the
+body in the style.
 -}
-verse :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-verse ctx sp args body = case (args, others) of
-  (A.Located asp _ : _, _) -> err "G0244" asp "@verse は引数を取りません" >> pure []
-  (_, _ : _) -> mapM_ (\osp -> err "G0245" osp "@verse の本体には段落だけを置けます。連は空行で区切ります") others >> pure []
-  _ -> do
-    stanzas <- mapM (fmap (filter (not . null)) . mapM (evalInlines ctx False . trimLine) . splitLines) paragraphs
-    case filter (not . null) stanzas of
-      [] -> err "G0246" sp "@verse の本体がありません。韻文の行を 2 つ深くインデントして書きます" >> pure []
-      ss -> pure [block sp (VerseBlock ss)]
+styleBody :: EvalContext -> SrcSpan -> Int -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+styleBody ctx sp headerEnd args body
+  -- no body at all, or a body of comments only (the command spans more than its line)
+  | null body && spanEnd sp <= headerEnd + 1 = err "G0210" sp "@style の後にブロックがありません" >> pure []
+  | null body = err "G0246" sp "@style の本体に段落がありません" >> pure []
+  | not (null others) = mapM_ (\osp -> err "G0245" osp "@style の本体には段落だけを置けます。段落は空行で区切ります") others >> pure []
+  | otherwise = do
+      name <- styleName ctx sp args
+      bs <- concat <$> mapM (\(psp, is) -> styledParagraph ctx psp name is) paragraphs
+      case bs of
+        [] -> err "G0246" sp "@style の本体に段落がありません" >> pure []
+        _ -> pure bs
   where
-    paragraphs = [is | A.Located _ (A.Paragraph is) <- body]
+    paragraphs = [(psp, is) | A.Located psp (A.Paragraph is) <- body]
     others = [bsp | A.Located bsp b <- body, not (isParagraph b), not (isErrorBlock b)]
     isParagraph = \case
       A.Paragraph _ -> True
@@ -334,9 +382,42 @@ verse ctx sp args body = case (args, others) of
     isErrorBlock = \case
       A.ErrorBlock -> True
       _ -> False
-    splitLines is = case break isSoftBreak is of
-      (l, []) -> [l]
-      (l, _ : rest) -> l : splitLines rest
+
+{- | A paragraph in a paragraph style (docs/adr ADR 0005). An unknown style
+is G0247 and the paragraph is body. With line-breaks = "keep" each line
+of the source is a line, joined by 'LineBreak'; a paragraph with no line
+left is dropped.
+-}
+styledParagraph :: EvalContext -> SrcSpan -> Maybe Text -> [A.Located A.Inline] -> M [Block]
+styledParagraph ctx sp mname is = case mname of
+  Nothing -> joined Nothing
+  Just name -> case Map.lookup name (ctxParaStyles ctx) of
+    Nothing -> err "G0247" sp ("style.toml にない段落スタイルです: " <> name) >> joined Nothing
+    Just JoinLines -> joined (styleOf name)
+    Just KeepLines -> do
+      ls <- filter (not . null . snd) <$> mapM (\(bsp, l) -> (bsp,) <$> evalInlines ctx False (trimLine l)) (splitLines Nothing is)
+      pure $ case ls of
+        [] -> []
+        ((_, first) : rest) -> [block sp (Paragraph (styleOf name) (first <> concat [LineBreak bsp : l | (bsp, l) <- rest]))]
+  where
+    styleOf n = if n == "body" then Nothing else Just n
+    joined st = (\x -> [block sp (Paragraph st x)]) <$> evalInlines ctx False (joinSoftBreaks is)
+    -- lines with the span of the newline before each (the first has none)
+    splitLines before xs = case break isSoftBreak xs of
+      (l, []) -> [(fromMaybe sp before, l)]
+      (l, A.Located bsp _ : rest) -> (fromMaybe sp before, l) : splitLines (Just bsp) rest
+
+-- | Paragraph styles a filter made up (docs/adr ADR 0005).
+unknownParaStyles :: EvalContext -> Document -> [Diagnostic]
+unknownParaStyles ctx (Document _ bs) = concatMap go bs
+  where
+    go (Block sp _ body) = case body of
+      Paragraph (Just n) _ | Map.notMember n (ctxParaStyles ctx) -> [diagnostic "G0247" Error sp ("style.toml にない段落スタイルです: " <> n)]
+      BulletList items -> concatMap (concatMap go . itemBlocks) items
+      OrderedList items -> concatMap (concatMap go . itemBlocks) items
+      DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
+      FigureBlock f -> concatMap go (figCaption f)
+      _ -> []
 
 -- | Spaces and tabs at the start and the end of a line are not text.
 trimLine :: [A.Located A.Inline] -> [A.Located A.Inline]
@@ -370,7 +451,7 @@ figure ctx sp args body = do
           ok = and <$> sequence [check path, maybe (pure True) check web]
           isPdf = ".pdf" `T.isSuffixOf` T.toLower path
       fine <- ok
-      caption <- evalBlocks ctx body
+      caption <- evalBlocks ctx . concat =<< mapM unstyled body
       case look "alt" of
         Nothing -> err "G0228" sp "図版には alt の代替テキストが必要です" >> pure []
         Just alt
@@ -392,6 +473,21 @@ figure ctx sp args body = do
     check p
       | Map.member (T.unpack p) (ctxAssets ctx) = pure True
       | otherwise = err "G0233" sp ("ファイルがありません: " <> p) >> pure False
+    -- a caption has no paragraph style of its own (docs/adr ADR 0005, golem-driver ADR 0010)
+    noStyle csp = err "G0213" csp "@style は図版のキャプションには付けられません"
+    unstyled = \case
+      A.Located asp (A.Attributed cs t) | any isStyleCommand cs -> do
+        mapM_ (\(A.Located csp _) -> noStyle csp) (filter isStyleCommand cs)
+        let rest = filter (not . isStyleCommand) cs
+            t' = joinParagraph <$> t
+        pure $ case rest of
+          [] -> maybe [] pure t'
+          _ -> [A.Located asp (A.Attributed rest t')]
+      A.Located bsp (A.BlockCommand (A.Located _ "style") _ inner) -> noStyle bsp >> pure (map joinParagraph inner)
+      other -> pure [other]
+    joinParagraph = \case
+      A.Located psp (A.Paragraph is) -> A.Located psp (A.Paragraph (joinSoftBreaks is))
+      other -> other
 
 csvTable :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
 csvTable ctx sp args = do
@@ -537,9 +633,10 @@ builtin ctx inHeading sp name args slots = do
         | inHeading = err "G0214" sp "見出しの中では相互参照を使えません" >> pure []
         | otherwise = k
   case name of
-    "strong" -> oneSlot (pure . pure . Strong sp)
-    "bold" -> oneSlot (pure . pure . Bold sp)
-    "italic" -> oneSlot (pure . pure . Italic sp)
+    -- the built-in character styles (docs/adr ADR 0005)
+    "strong" -> oneSlot (pure . pure . CharStyle sp "strong")
+    "bold" -> oneSlot (pure . pure . CharStyle sp "bold")
+    "italic" -> oneSlot (pure . pure . CharStyle sp "italic")
     "kenten" -> do
       let shape = argText <$> lookup "shape" kw
       case shape of

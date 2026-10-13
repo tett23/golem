@@ -20,6 +20,3 @@ latin = "fonts/SourceSerif4-Regular.otf"
 
 [headings.1]
 number = "Chapter {n}"
-
-[emphasis]
-strong = "bold"

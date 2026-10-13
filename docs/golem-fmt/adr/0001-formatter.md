@@ -1,6 +1,6 @@
 # ADR 0001: 整形
 
-ステータス: 採択
+ステータス: 採択→移行の段階は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md)
 
 ## 文脈
 

@@ -2,15 +2,14 @@
 ; the Haskell types in Golem.Doc.IR mirror it. Sum types are arrays whose
 ; first element is a fixed tag; tags are never reused.
 
-document = [abi-version: 2, file: uint, blocks: [* block]]
+document = [abi-version: 3, file: uint, blocks: [* block]]
 
 span = [file: uint, start: uint, end: uint]
 
 block = [span, label: tstr / null, body: block-body]
 
 block-body =
-    [0, inlines]                                   ; paragraph
-  / [1, level: 1..3, heading-attrs, inlines]        ; heading
+    [1, level: 1..3, heading-attrs, inlines]        ; heading
   / [2, [* list-item]]                             ; bullet list
   / [3, [* list-item]]                             ; ordered list
   / [4, [* def-group]]                             ; definition list
@@ -18,7 +17,8 @@ block-body =
   / [6, lang: tstr / null, code: tstr]             ; code block
   / [7, figure]                                    ; figure
   / [8, channel]                                   ; channel output
-  / [9, verse]                                     ; verse
+  / [10, para-style: tstr / null, inlines]         ; paragraph; null is body
+; 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
 
 heading-attrs = [toc-title: inlines / null, number: int / null, nonumber: bool, notoc: bool]
 list-item = [number: int / null, [* block]]
@@ -26,9 +26,6 @@ def-group = [terms: [+ inlines], defs: [+ [* block]]]
 alignment = 0..3                                   ; default, left, center, right
 figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block]]
 channel = [0, depth: uint] / [1] / [2]             ; toc, index, bibliography
-verse = [+ stanza]
-stanza = [+ verse-line]
-verse-line = [+ inline]
 
 inlines = [* inline]
 inlines-no-ruby = [* inline-no-ruby]
@@ -39,9 +36,6 @@ ruby-segment = [base: inlines-no-ruby, reading: tstr / null]
 
 inline-no-ruby =
     [0, span, tstr]                                ; text
-  / [1, span, inlines]                             ; strong
-  / [2, span, inlines]                             ; bold
-  / [3, span, inlines]                             ; italic
   / [5, span, shape: tstr / null, inlines]         ; kenten
   / [6, span, swatch: tstr, inlines]               ; color
   / [7, span, style: tstr, inlines]                ; character style
@@ -54,6 +48,8 @@ inline-no-ruby =
   / [14, span, terms: [1*2 tstr], readings: [1*2 tstr]] ; index mark
   / [15, span, key: tstr]                          ; citation
   / [16, span, tstr]                               ; proofreading comment
+  / [17, span]                                     ; line break
+; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005)
 
 number-style = 0..2                                ; kanji, kanji-digits, tcy
 ref-kind = 0..2                                    ; number, title, page

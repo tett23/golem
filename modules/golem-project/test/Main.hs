@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
@@ -139,24 +140,133 @@ tests =
         codes (parseStyle (FileId 0) "[color.swatches]\na = { cmyk = [0, 0, 0, 101] }\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[figures]\nnumber = \"{x}\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G0306"],
-      testCase "[verse] (docs/adr ADR 0003)" $ do
-        fmap stVerse (parseStyle (FileId 0) "") @?= Right (VerseStyle (Zw 0) (Zw 2) 1)
-        fmap stVerse (parseStyle (FileId 0) "[verse]\nindent = \"1zw\"\nhang = \"3zw\"\nstanza-gap = 2\n") @?= Right (VerseStyle (Zw 1) (Zw 3) 2)
-        fmap stVerse (parseStyle (FileId 0) "[verse]\nhang = \"10pt\"\n") @?= Right (VerseStyle (Zw 0) (Abs 655360) 1)
-        codes (parseStyle (FileId 0) "[verse]\nunknown = 1\n") @?= ["G0306"]
-        codes (parseStyle (FileId 0) "[verse]\nstanza-gap = -1\n") @?= ["G0306"],
+      indentTests,
+      testCase "the sidenote font and size are the paragraph style sidenote (golem-driver ADR 0011)" $ do
+        let retired = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
+            hasIt ms = assertBool (show ms) (not (null ms) && all (\m -> "G0306" `T.isPrefixOf` m) ms && any ("[paragraph-styles.sidenote]" `T.isInfixOf`) ms)
+        hasIt (retired (parseStyle (FileId 0) "[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\nsize = \"8pt\"\n"))
+        hasIt (retired (parseStyle (FileId 0) "[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\nfont = \"note\"\n"))
+        case parseStyle (FileId 0) "[fonts.note]\nlatin = \"n.otf\"\n\n[paragraph-styles.sidenote]\nfont = \"note\"\nsize = \"8pt\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            (paraStyle s (Just "sidenote") >>= psFont) @?= Just "note"
+            (paraStyle s (Just "sidenote") >>= psSize) @?= Just (Abs (8 * 65536))
+        codes (parseStyle (FileId 0) "[paragraph-styles.sidenote]\nfont = \"nope\"\n") @?= ["G0308"],
+      testCase "a caption style (golem-driver ADR 0010)" $ do
+        case parseStyle (FileId 0) "[fonts.caption]\nlatin = \"c.otf\"\n\n[paragraph-styles.caption]\nfont = \"caption\"\nsize = \"8pt\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            (paraStyle s (Just "caption") >>= psFont) @?= Just "caption"
+            (paraStyle s (Just "caption") >>= psSize) @?= Just (Abs (8 * 65536))
+        codes (parseStyle (FileId 0) "[figures]\ncaption = \"x\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[figures.caption]\nfont = \"body\"\n") @?= ["G0306"],
       testCase "a heading font must name a font role (golem-driver ADR 0003)" $ do
         codes (parseStyle (FileId 0) "[headings.1]\nfont = \"nope\"\n") @?= ["G0308"]
         codes (parseStyle (FileId 0) "[fonts.heading]\nlatin = \"h.otf\"\n\n[headings.1]\nfont = \"heading\"\n") @?= [],
-      testCase "bold and italic fonts name font roles (golem-driver ADR 0004)" $ do
-        codes (parseStyle (FileId 0) "[emphasis]\nbold-font = \"gothic\"\n") @?= ["G0308"]
-        codes (parseStyle (FileId 0) "[emphasis]\nitalic-font = \"italic\"\n") @?= ["G0308"]
-        codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G0308"]
-        case parseStyle (FileId 0) "[fonts.gothic]\nja = \"g.otf\"\n\n[fonts.italic]\nlatin = \"i.otf\"\n\n[emphasis]\nbold-font = \"gothic\"\nitalic-font = \"italic\"\n" of
-          Left ds -> assertFailure (show ds)
-          Right s -> (stBoldFont s, stItalicFont s) @?= (Just "gothic", Just "italic")
-        fmap (\s -> (stBoldFont s, stItalicFont s)) (parseStyle (FileId 0) "[emphasis]\nstrong = \"italic\"\n") @?= Right (Nothing, Nothing)
+      testCase "character style fonts name font roles (golem-driver ADR 0004)" $
+        codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G0308"],
+      styleTests
     ]
+
+-- | Character and paragraph styles (docs/adr ADR 0005).
+styleTests :: TestTree
+styleTests =
+  testGroup
+    "character and paragraph styles (docs/adr ADR 0005)"
+    [ testCase "the built-in styles" $ do
+        s <- parsed ""
+        (charStyle s "strong" >>= csSyntheticBold) @?= Just True
+        (charStyle s "italic" >>= csSyntheticItalic) @?= Just True
+        (charStyle s "bold" >>= csSyntheticBold) @?= Just True
+        charStyle s "nope" @?= Nothing
+        (paraStyle s (Just "verse") >>= psLineBreaks) @?= Just KeepLines
+        (paraStyle s (Just "verse") >>= psSpaceBetween) @?= Just 1
+        (paraStyle s Nothing >>= psLineBreaks) @?= Just JoinLines
+        (paraStyle s Nothing >>= psSpaceBetween) @?= Just 0
+        paraStyle s (Just "nope") @?= Nothing
+        noBase (paraStyle s (Just "caption")) @?= noBase (paraStyle s Nothing)
+        noBase (paraStyle s (Just "sidenote")) @?= noBase (paraStyle s Nothing)
+        Map.keys (stParaStyles s) @?= ["body", "caption", "sidenote", "verse"]
+        Map.keys (stCharStyles s) @?= ["bold", "italic", "strong"],
+      testCase "a user definition overrides the keys it writes" $ do
+        s <- parsed "[paragraph-styles.caption]\nsize = \"0.8zw\"\n"
+        (paraStyle s (Just "caption") >>= psSize) @?= Just (Zw (4 / 5))
+        (paraStyle s (Just "caption") >>= psLineBreaks) @?= Just JoinLines
+        t <- parsed "[character-styles.strong]\nbased-on = \"italic\"\n"
+        (charStyle t "strong" >>= csSyntheticItalic) @?= Just True
+        (charStyle t "strong" >>= csSyntheticBold) @?= Nothing
+        u <- parsed "[fonts.gothic]\nja = \"g.otf\"\n\n[character-styles.bold]\nfont = \"gothic\"\n"
+        (charStyle u "bold" >>= csFont) @?= Just "gothic"
+        (charStyle u "bold" >>= csSyntheticBold) @?= Just True
+        (charStyle u "strong" >>= csFont) @?= Just "gothic",
+      testCase "a new paragraph style is based on body" $ do
+        s <- parsed "[fonts.heading]\nlatin = \"h.otf\"\n\n[paragraph-styles.quote]\nfont = \"heading\"\nspace-between = 2\n"
+        (paraStyle s (Just "quote") >>= psFont) @?= Just "heading"
+        (paraStyle s (Just "quote") >>= psSpaceBetween) @?= Just 2
+        (paraStyle s (Just "quote") >>= psLineBreaks) @?= Just JoinLines
+        t <- parsed "[character-styles.term]\ncolor = \"accent\"\n\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n"
+        (charStyle t "term" >>= csColor) @?= Just "accent",
+      testCase "references between styles (G0313)" $ do
+        codes (parseStyle (FileId 0) "[character-styles.a]\nbased-on = \"nope\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[character-styles.a]\nbased-on = \"b\"\n\n[character-styles.b]\nbased-on = \"a\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.a]\nbased-on = \"a\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\nbased-on = \"verse\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[character-styles.term]\ncolor = \"accent\"\n") @?= ["G0313"],
+      testCase "a paragraph style larger than the grid (G0311)" $ do
+        let grid = "[page]\nsize = \"B6\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 30\nlines = 20\nline-pitch = \"22H\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n"
+        codes (parseStyle (FileId 0) (grid <> "[paragraph-styles.big]\nsize = \"2zw\"\n")) @?= ["G0311"]
+        codes (parseStyle (FileId 0) (grid <> "[paragraph-styles.small]\nsize = \"0.9zw\"\n")) @?= []
+        codes (parseStyle (FileId 0) (grid <> "[paragraph-styles.big]\nsize = \"14Q\"\n")) @?= ["G0311"],
+      testCase "a paragraph style font must name a font role (G0308)" $
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nfont = \"nope\"\n") @?= ["G0308"],
+      testCase "names and values (G0306)" $ do
+        codes (parseStyle (FileId 0) "[character-styles.Term]\nsize = \"1zw\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nline-breaks = \"x\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nspace-between = -1\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nleading = 1\n") @?= ["G0306"],
+      testCase "retired keys name what replaces them" $ do
+        messages (parseStyle (FileId 0) "[emphasis]\nstrong = \"bold\"\n") `hasAll` ["G0306", "character-styles"]
+        messages (parseStyle (FileId 0) "[verse]\nstanza-gap = 1\n") `hasAll` ["G0306", "paragraph-styles.verse"]
+    ]
+  where
+    parsed src = either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) src)
+    noBase = fmap (\d -> d {psBasedOn = Nothing})
+    messages = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
+    hasAll ms needles = assertBool (show ms) (not (null ms) && all (\n -> any (n `T.isInfixOf`) ms) needles)
+
+-- | Paragraph indents (docs/adr ADR 0006).
+indentTests :: TestTree
+indentTests =
+  testGroup
+    "paragraph indents (docs/adr ADR 0006)"
+    [ testCase "the defaults of body and verse" $ do
+        s <- parsed ""
+        indents (paraStyle s Nothing) @?= Just (Zw 0, Zw 0)
+        indents (paraStyle s (Just "verse")) @?= Just (Zw 2, Zw (-2)),
+      testCase "a key not written is inherited" $ do
+        s <- parsed "[paragraph-styles.quote]\nindent = \"2zw\"\n"
+        indents (paraStyle s (Just "quote")) @?= Just (Zw 2, Zw 0),
+      testCase "signed dimensions" $ do
+        parseSignedDim "-1.5zw" @?= Just (Zw (-(3 / 2)))
+        fmap (\case Abs x -> x < 0; Zw _ -> False) (parseSignedDim "-3mm") @?= Just True
+        parseSignedDim "2zw" @?= Just (Zw 2)
+        parseSignedDim "--1zw" @?= Nothing
+        parseSignedDim "-zw" @?= Nothing,
+      testCase "a first line outside the type area (G0312)" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"-1zw\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"1zw\"\nfirst-line-indent = \"-2zw\"\n") @?= ["G0312"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"2zw\"\nfirst-line-indent = \"-2zw\"\n") @?= []
+        let grid = "[page]\nsize = \"B6\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 30\nlines = 20\nline-pitch = \"22H\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n"
+        codes (parseStyle (FileId 0) (grid <> "[paragraph-styles.quote]\nindent = \"1mm\"\nfirst-line-indent = \"-1zw\"\n")) @?= ["G0312"]
+        codes (parseStyle (FileId 0) (grid <> "[paragraph-styles.quote]\nindent = \"4mm\"\nfirst-line-indent = \"-1zw\"\n")) @?= [],
+      testCase "[verse] is retired" $
+        messages (parseStyle (FileId 0) "[verse]\nindent = \"0zw\"\n") `hasAll` ["G0306", "[paragraph-styles.verse]"]
+    ]
+  where
+    indents = fmap (\d -> (fromMaybe (Zw 99) (psIndent d), fromMaybe (Zw 99) (psFirstLineIndent d)))
+    parsed src = either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) src)
+    messages = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
+    hasAll ms needles = assertBool (show ms) (not (null ms) && all (\n -> any (n `T.isInfixOf`) ms) needles)
 
 specStyle :: Text
 specStyle =
@@ -185,6 +295,11 @@ specStyle =
       "",
       "[character-styles.term]",
       "font = \"heading\"",
+      "color = \"accent\"",
+      "",
+      "[paragraph-styles.quote]",
+      "font = \"heading\"",
+      "size = \"0.9zw\"",
       "",
       "[headings.1]",
       "font = \"heading\"",
@@ -208,9 +323,6 @@ specStyle =
       "[numbers]",
       "vertical = \"kanji\"",
       "",
-      "[emphasis]",
-      "strong = \"bold\"",
-      "",
       "[notes]",
       "placement = \"page-foot\"",
       "",
@@ -218,9 +330,11 @@ specStyle =
       "side = \"outside\"",
       "width = \"14zw\"",
       "gap = \"2zw\"",
+      "marker = \"number\"",
+      "",
+      "[paragraph-styles.sidenote]",
       "font = \"body\"",
       "size = \"11Q\"",
-      "marker = \"number\"",
       "",
       "[figures]",
       "number = \"図{chapter}-{n}\"",
