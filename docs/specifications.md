@@ -517,6 +517,17 @@ folio = { position = "bottom-outside", format = "{n}" }
 綴りを誤った設定が黙って無視されると、その誤りは出力の見た目の劣化としてしか現れないためである。
 同じ理由で、見出しの `font` が `[fonts]` にない役割を指す場合もエラー（G0308）とする（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
 
+`style.toml` が指すファイル（`[fonts]` のフォントと、`[color]` の `intent` の ICC プロファイル）の存在は、`style.toml` を読むときには検査しない。
+ファイルの存在は、そのファイルを使うターゲットのビルドと `golem check` でだけ検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
+PDF は、使う役割のフォントのファイルがなければ G0802、ICC プロファイルがなければ G0806 のエラーとし、PDF を書かない。
+HTML と EPUB は、欠けたフォントを同梱せず、`@font-face` も書かずに出力し、G0310 を報告する。
+ブラウザーは `font-family` の並びの残りで組むので、出力は読める。
+G0310 は dev のプロファイルでは警告、prod のプロファイルではエラーであり、prod では HTML と EPUB を書かない。
+プレーンテキストはファイルを検査しない。
+絶対パス、URL、プロジェクトルートの外を指すパスも、存在しないファイルと同じコードで報告する。
+診断の位置は `style.toml` の先頭とし、同じコードと同じパスの診断は一つだけ出す。
+LSP と `golem lint` はファイルを検査しないので、フォントを置く前でも原稿の診断を出す。
+
 文字の見た目は文字スタイル（`[character-styles.<名前>]`）、段落の見た目は段落スタイル（`[paragraph-styles.<名前>]`）にまとめる（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 考え方は Adobe InDesign の文字スタイルと段落スタイルに合わせ、スタイルは `based-on` で別のスタイルを引き継ぐ。
 スタイルの定義は、`based-on` をたどった鎖の根から順に、子のキーが親のキーを上書きして決める。
@@ -976,7 +987,7 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 |---|---|
 | `golem new <dir> [--language ja\|en] [--no-fonts]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する |
 | `golem build [--target ...] [--profile dev\|prod]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
-| `golem check` | 出力を作らず、構文、評価、文書構造（S1）までを検査する |
+| `golem check` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)） |
 | `golem lint` | lint を実行する |
 | `golem fmt [--check]` | 整形する |
 | `golem lsp` | LSP サーバーを起動する |
@@ -994,6 +1005,8 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 取得に失敗すると、プロジェクトのファイルを一つも書かない。
 ネットワークに接続するのは、この取得とプラグインの取得だけである。
 `--no-fonts` を付けると取得せず、置くべきファイルを表示する。
+フォントを置く前でも、HTML、EPUB、プレーンテキストはビルドできる（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
+PDF は、フォントを置くまで G0802 で止まる。
 
 診断は人が読む形で出力し、`--format json` を指定すると機械が読む形で出力する。
 終了コードは、成功が 0、診断によるエラーが 1、コマンドの使い方の誤りが 2 である。
@@ -1128,7 +1141,6 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### CLI と LSP
 
-- **`--no-fonts` で作ったプロジェクトのビルド**：`style.toml` が存在しないフォントのファイルを指すと、PDF だけでなくすべてのターゲットが G0306 になる。`golem new --no-fonts` で作ったプロジェクトは、フォントを置くまで HTML もビルドできない（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md) で、ファイルの存在をそのファイルを使うターゲットについてだけ検査し、PDF の欠落はエラー（G0802、G0806）、HTML と EPUB のフォントの欠落は dev では警告、prod ではエラー（G0310）とすると決めた（未実装）。
 - **診断のコードの説明**：診断のコード（`G0701` など）が何を表しているかを、利用者が CLI で調べられるようにする。たとえば `golem explain G0701` のように、コードごとに意味、主な原因、直し方の例を表示する。今の診断は、コードと一行のメッセージを出すだけで、コードの一覧と説明はどこにもない。
 - **LSP の位置の扱い**：UTF-8 の位置の交渉を、実際のエディタ（Neovim）で確かめていない。また、行の長さを超える列を、LSP 3.17 の定めのように行末に丸めず、結果を空にしている（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)）。
 
