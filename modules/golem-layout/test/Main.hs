@@ -104,9 +104,25 @@ sampleTrace =
 noPretol :: Params
 noPretol = defaultParams {pPretolerance = -1, pTolerance = 10000}
 
--- | Total demerits of a break sequence, computed directly from the rules.
-bruteDemerits :: Params -> (Int -> Sp) -> [Item] -> [Int] -> Maybe Integer
-bruteDemerits ps lw items brks = go 0 2 False (-1) brks 0
+{- | Of all break sequences, those with the least total demerits, and of
+them the one TeX keeps (ADR 0008). 'Nothing' if no sequence is feasible.
+-}
+bruteBest :: Params -> (Int -> Sp) -> [Item] -> Maybe (Integer, [Int])
+bruteBest ps lw items =
+  let end = length items - 1
+      scored = [r | s <- subsequences (filter (/= end) (legal items)), Just r <- [bruteScore ps lw items (s <> [end])]]
+   in case scored of
+        [] -> Nothing
+        _ ->
+          let d = minimum (map fst scored)
+           in -- the (position, fitness) pairs compared from the end, the greatest wins
+              Just (d, map fst (reverse (maximum [reverse path | (d', path) <- scored, d' == d])))
+
+{- | Total demerits of a break sequence and the (position, fitness) of
+each break, computed directly from the rules.
+-}
+bruteScore :: Params -> (Int -> Sp) -> [Item] -> [Int] -> Maybe (Integer, [(Int, Fitness)])
+bruteScore ps lw items brks = go 0 2 False (-1) brks 0 []
   where
     n = length items
     at = (items !!)
@@ -115,8 +131,8 @@ bruteDemerits ps lw items brks = go 0 2 False (-1) brks 0
       Box {} -> False
       Penalty _ p _ -> p > negate infPenalty
       Glue {} -> True
-    go _ _ _ _ [] acc = Just acc
-    go line prevFit prevFlag prev (b : rest) acc =
+    go _ _ _ _ [] acc path = Just (acc, reverse path)
+    go line prevFit prevFlag prev (b : rest) acc path =
       let s = if prev < 0 then 0 else afterBrk prev
           seg = [at j | j <- [s .. b - 1]]
           penW = case at b of Penalty w _ _ -> w; _ -> 0
@@ -136,7 +152,7 @@ bruteDemerits ps lw items brks = go 0 2 False (-1) brks 0
             lineDemerits ps bad pen
               + (if prevFlag && flag then toInteger (pDoubleHyphenDemerits ps) else 0)
               + (if abs (fit - prevFit) > 1 then toInteger (pAdjDemerits ps) else 0)
-       in if over || bad > pTolerance ps then Nothing else go (line + 1) fit flag b rest (acc + d)
+       in if over || bad > pTolerance ps then Nothing else go (line + 1) fit flag b rest (acc + d) ((b, fit) : path)
 
 legal :: [Item] -> [Int]
 legal items =
@@ -196,17 +212,13 @@ tests =
             target <- forAll (Gen.integral (Range.linear 60 140))
             let items = paragraph ws
                 r = breakParagraph noPretol (const target) items
-                end = length items - 1
-                candidates = [s <> [end] | s <- subsequences (filter (/= end) (legal items))]
-                scored = [(d, c) | c <- candidates, Just d <- [bruteDemerits noPretol (const target) items c]]
-                best = minimum' (map fst scored)
-            case best of
+            case bruteBest noPretol (const target) items of
               Nothing -> brPass r === 4
-              Just d -> do
+              Just (d, c) -> do
                 brPass r === 2
                 brDemerits r === d
                 -- ties go to the sequence greatest from the end (ADR 0008)
-                brPositions r === reverse (maximum [reverse c | (d', c) <- scored, d' == d]),
+                brPositions r === c,
           testCase "every line fits its own target length (L*(i))" $ do
             let items = paragraph (replicate 20 30)
                 lw :: Int -> Sp
@@ -232,12 +244,16 @@ tests =
             target <- forAll (Gen.integral (Range.linear 30 140))
             let items = paragraph ws
                 r = breakParagraph noPretol (const target) items
-                end = length items - 1
-                scored = [(d, c) | s <- subsequences (filter (/= end) (legal items)), let c = s <> [end], Just d <- [bruteDemerits noPretol (const target) items c]]
-                best = minimum' (map fst scored)
-            case best of
+            case bruteBest noPretol (const target) items of
               Nothing -> brPass r === 4
-              Just d -> brPositions r === reverse (maximum [reverse c | (d', c) <- scored, d' == d]),
+              Just (_, c) -> brPositions r === c,
+          testCase "equal demerits: fitness counts in the comparison from the end (ADR 0008)" $ do
+            -- [3, 9, 13] and [5, 9, 13] tie; at 9 the first is tight, the second very loose
+            let items = paragraph [15, 34, 33, 24, 25, 43]
+                r = breakParagraph noPretol (const 90) items
+            brDemerits r @?= 100032200
+            brPositions r @?= [3, 9, 13]
+            fmap snd (bruteBest noPretol (const 90) items) @?= Just (brPositions r),
           testCase "a line's demerits are capped as in TeX (ADR 0008)" $ do
             lineDemerits defaultParams 9990 0 @?= 100000000
             lineDemerits defaultParams 9989 0 @?= 99980001,
@@ -735,8 +751,6 @@ tests =
             | lkLatinFace lk == "wide" = 1
             | otherwise = 1 / 2
        in (defaultComposeEnv fs) {ceAdvance = adv, ceWordAdvance = \lk w -> sum (map (adv lk) (T.unpack w)), ceRestyle = restyle}
-    minimum' [] = Nothing
-    minimum' xs = Just (minimum xs)
     interleave xs g = concat [x : [g | i < length xs - 1] | (i, x) <- zip [0 :: Int ..] xs]
     head' (x : _) = x
     head' [] = ""
