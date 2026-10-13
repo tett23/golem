@@ -68,12 +68,12 @@ UTF-8 として不正なバイト列があります
 
 ### 意味
 
-原稿のファイルに、UTF-8 として読めないバイト列がある。
+原稿のファイル（章と import したファイル）、`manifest.toml`、`style.toml` のどれかに、UTF-8 として読めないバイト列がある。
 位置は最初の不正なバイトである。
 
 - メッセージ: `UTF-8 として不正なバイト列があります`
 - 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
-- ADR: ADR なし（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md) がコードの例として挙げる）
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -92,11 +92,14 @@ UTF-8 で保存し直す。
 
 ### 意味
 
-原稿のファイルが UTF-8 の BOM で始まる。
+原稿のファイル（章と import したファイル）、`manifest.toml`、`style.toml` のどれかが UTF-8 の BOM で始まる。
+位置はバイト 0 から 3 である。
+先頭以外の BOM（U+FEFF）は拒まない。
+LSP では、エディタで開いているファイルにも出す。
 
 - メッセージ: `ファイルの先頭に BOM があります。BOM を取り除いてください`
 - 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -104,7 +107,8 @@ UTF-8 で保存し直す。
 
 ### 直し方
 
-BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
+BOM なしの UTF-8 で保存し直す。
+原稿のファイルなら、`golem fmt` でも取り除ける。
 
 ## G0103
 
@@ -115,12 +119,16 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 ### 意味
 
-改行に CR（CRLF の改行を含む）がある。
+原稿のファイル（章と import したファイル）、`manifest.toml`、`style.toml` のどれかに CR がある。
+CRLF の改行の CR も、単独の CR も含む。
 位置は最初の CR である。
+原稿のファイルの診断には、修正案「golem fmt で LF に直す」が付く。
+`golem fmt` は `style.toml` を整形しないので、`style.toml` の診断には付かない。
+LSP では、エディタで開いているファイルにも出す。
 
 - メッセージ: `改行に CR が含まれています。改行は LF に限ります`
 - 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -128,7 +136,7 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 ### 直し方
 
-`golem fmt` で LF に直す。
+原稿のファイルは `golem fmt` で LF に直す。
 エディタの改行の設定を LF にする。
 
 ## G0110
@@ -144,7 +152,7 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 - メッセージ: `このブロックを解釈できません`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md) が既存のコードとして触れる）
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -163,16 +171,19 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 ### 意味
 
-行頭のインデントにタブがあるか、空白の数が 2 の倍数でない。
+行頭で、そのブロックの深さの空白の後に、さらに空白かタブがある。
+たとえば、本文の段落の行頭に空白を置くとこのコードになる。
+箇条書きの項目の続きの行は、深さより多い空白で始めてもよい。
+位置は、余分な空白かタブから始まる。
 
-- メッセージ: `インデントが不正です（タブ、または 2 の倍数でない空白）`
+- メッセージ: `インデントが不正です（タブ、またはブロックの深さより多い空白）`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md) が既存のコードとして触れる）
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
 - インデントにタブを使った。
-- 空白の数が 2 の倍数でない。
+- ブロックの深さより多い空白で行を始めた。
 
 ### 直し方
 
@@ -189,10 +200,11 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 ### 意味
 
 `####` 以上の見出しがある。
+位置は 4 つ目の `#` から始まる。
 
 - メッセージ: `見出しの階層は 3 までです`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -213,10 +225,11 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 ### 意味
 
 定義リストの説明（`=:`）の前に、用語（`=`）の行がない。
+位置は `=:` から始まる。
 
 - メッセージ: `用語のない =: があります`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -239,7 +252,7 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 - メッセージ: `表の 2 行目は区切りの行でなければなりません`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -259,10 +272,11 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 ### 意味
 
 表の行のセルの数が、見出しの行のセルの数と違う。
+位置は、その行の終わりである。
 
 - メッセージ: `表のセルの数が見出しの行と一致しません`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -284,10 +298,11 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 ### 意味
 
 コードブロックの開始の行に対応する終わりの行がない。
+位置はファイルの終わりである。
 
 - メッセージ: `コードブロックが閉じていません`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -299,22 +314,26 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 ## G0117
 
-閉じ括弧 ] がありません
+ここに閉じ括弧 ] が必要です
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-インラインのコマンドや式の `[` に対応する `]` がない。
+インラインのコマンド、式（`[= ...]`）、展開する引数（`*[...]`、`**[...]`）の後に、`]` が来ない。
+`]` がない場合は、段落の終わりを指す。
+式やコマンドの後に余計なものがある場合は、その余計なものの始まりを指す。
+たとえば `[= 1 ? 2]` では、`?` の位置に出る。
 
-- メッセージ: `閉じ括弧 ] がありません`
+- メッセージ: `ここに閉じ括弧 ] が必要です`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md) が既存のコードとして触れる）
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
 - `]` を書き忘れた。
+- 式の中に、演算子でない記号を書いた。
 - 本文の中の `]` が、意図より早く括弧を閉じている。
 
 ### 直し方
@@ -332,10 +351,11 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 ### 意味
 
 `%%` で始めたコメントが、段落の終わりまでに `%%` で閉じていない。
+位置は段落の終わりである。
 
 - メッセージ: `コメントが段落の中で閉じていません`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -359,7 +379,7 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 - メッセージ: `キーワード引数の後に位置引数があります`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -378,11 +398,12 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 ### 意味
 
-`[= ...]` の式、または展開する引数（`*[...]`、`**[...]`）の式が文法に合わない。
+`[= ...]`、展開する引数（`*[...]`、`**[...]`）、`@set 名前 = 式` の `=` の後で、式が一つも読めない。
+式を読んだ後に `]` 以外が来た場合は、[G0117](#g0117) になる。
 
 - メッセージ: `式を解釈できません`
-- 段階とモジュール: 構文（golem-parser）。式の評価（golem-eval の `Golem.Eval.Expr`）も、解析できなかった式に同じコードを出す。
-- ADR: ADR なし（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md) が既存のコードとして触れる）
+- 段階とモジュール: 構文（golem-parser）。式の評価（golem-eval の `Golem.Eval.Expr`）も、解析できなかった式に同じコードを出す。ただし構文エラーのあるファイルの評価の診断は表示しないので、golem-eval の G0120 は表示されない。
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -402,10 +423,11 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 ### 意味
 
 `[` の後に、コマンド名も `=` も続かない。
+位置は `[` から始まる。
 
 - メッセージ: `[ の後にはコマンド名か = が必要です。本文の [ は \[ と書きます`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -424,11 +446,13 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 ### 意味
 
-解析を終えた後に、どの文法にも当てはまらない入力が残っている。
+ラベルを持たない構文エラーである。
+開始の規則の後に入力が残る場合と、開始の規則が失敗する場合に当たる。
+今の文法では、どちらも起こらない。
 
 - メッセージ: `解釈できない入力が残っています`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md) が既存のコードとして触れる）
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -505,7 +529,7 @@ G0110 から G0123 に当たらない構文エラーの既定のコードであ�
 
 - メッセージ: `構文エラー（<ラベル>）`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: ADR なし（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md) が既定のコードとして触れる）
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
 
 ### 主な原因
 

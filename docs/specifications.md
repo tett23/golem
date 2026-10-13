@@ -964,6 +964,12 @@ LSP は書きかけのファイルを常に扱うので、最初の構文エラ�
 プロジェクトの段階の診断（G0301 から G0309、G0316 など）は、プロジェクトの読み込みに失敗したときも、それまでに読んだファイル（`manifest.toml`、原稿、`style.toml`）の位置で表示する（[golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)）。
 `manifest.toml` がないときは G0316 とし、章や `@import` の指すファイルがないときの G0302 と分ける。
 LSP は、これらの診断を位置の指すファイルに載せ、どのファイルも指さない診断を `manifest.toml` に載せる。
+構文の段階のコード（G0101 から G0103、G0110 から G0122、G0129）は、出す条件、メッセージ、位置を [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md) が定める。
+読み込みの段階（BOM、UTF-8、CR の検査）は、原稿のほかに `manifest.toml` と `style.toml` にも行い、失敗したファイルの位置で表示する。
+`style.toml` の G0103 には、`golem fmt` で直す修正案を付けない（`golem fmt` は `style.toml` を整形しない）。
+LSP では、エディタで開いているファイルの BOM と CR も G0102 と G0103 にするが、プロジェクトの読み込みは止めない。
+プロジェクトの外のファイルに構文エラーがあるときは、構文の診断だけを出し、評価の診断を出さない。
+解析の段階の診断の位置は、誤りの文字から始まる（インデントの余分な空白、4 つ目の `#`、用語のない `=:`、本文の `[`）。
 Golem が書く `manifest.toml` と `style.toml` の誤りの文言は日本語とし、toml-parser 自身の文言（`missing key` など）は英語のまま出す。
 
 人が読む形式で診断を出した後に、文書にあるコードが一つでもあれば、標準エラー出力に `コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）` の一行を加える。
