@@ -3,13 +3,15 @@
 -}
 module Main (main) where
 
+import Control.Monad (filterM)
 import Data.ByteString.Lazy qualified as BL
-import Data.List (isInfixOf)
+import Data.Char (isDigit)
+import Data.List (isInfixOf, isSuffixOf, nub, sort)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver.Version (golemVersion)
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -136,7 +138,8 @@ tests =
         code' @?= ExitSuccess
         readFile (tmp </> "a.gm") >>= (@?= "@style verse\n  Full fathom five\n"),
       missingFontTests,
-      marksTests
+      marksTests,
+      diagnosticsDocTests
     ]
 
 -- | Runs golem in a project whose body font is missing (golem-project ADR 0004).
@@ -199,3 +202,56 @@ marksTests =
         (code', err') <- golemIn projectFiles ["build", "--target", "html", "--marks", "japanese"]
         assertEqual err' ExitSuccess code'
     ]
+
+{- | Every diagnostic code in the sources has a section in docs/diagnostics.md
+(the codes that golem explain will use). Paths are relative to the package
+directory, where cabal runs the tests.
+-}
+diagnosticsDocTests :: TestTree
+diagnosticsDocTests =
+  testGroup
+    "docs/diagnostics.md"
+    [ testCase "every code in the sources has a heading" $ do
+        used <- sourceCodes
+        documented <- docCodes
+        assertBool "no code found in the sources" (not (null used))
+        case filter (`notElem` documented) used of
+          [] -> pure ()
+          missing -> assertFailure ("codes missing from docs/diagnostics.md: " <> unwords (map T.unpack missing)),
+      testCase "the headings are unique and in order" $ do
+        documented <- docCodes
+        documented @?= sort (nub documented)
+    ]
+
+sourceCodes :: IO [T.Text]
+sourceCodes = do
+  pkgs <- listDirectory "../../modules"
+  let roots = ["../../modules" </> p </> "src" | p <- pkgs] <> ["../../modules/golem-cli/app"]
+  files <- concat <$> (filterM doesDirectoryExist roots >>= mapM haskellFiles)
+  codes <- mapM (fmap quotedCodes . TIO.readFile) files
+  pure (sort (nub (concat codes)))
+
+haskellFiles :: FilePath -> IO [FilePath]
+haskellFiles dir = do
+  entries <- map (dir </>) <$> listDirectory dir
+  dirs <- filterM doesDirectoryExist entries
+  nested <- concat <$> mapM haskellFiles dirs
+  pure ([e | e <- entries, ".hs" `isSuffixOf` e, e `notElem` dirs] <> nested)
+
+-- | The strings @"G@ followed by four digits and @"@.
+quotedCodes :: T.Text -> [T.Text]
+quotedCodes src =
+  [ code
+  | (_, rest) <- T.breakOnAll "\"G" src,
+    let code = T.take 5 (T.drop 1 rest),
+    isCode code,
+    T.take 1 (T.drop 6 rest) == "\""
+  ]
+
+isCode :: T.Text -> Bool
+isCode t = T.length t == 5 && T.take 1 t == "G" && T.all isDigit (T.drop 1 t)
+
+docCodes :: IO [T.Text]
+docCodes = do
+  doc <- TIO.readFile "../../docs/diagnostics.md"
+  pure [c | l <- T.lines doc, Just rest <- [T.stripPrefix "## " l], let c = T.strip rest, isCode c]
