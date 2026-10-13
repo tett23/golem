@@ -5,6 +5,7 @@ module Golem.Html
   ( HtmlConfig (..),
     HtmlCharStyle (..),
     HtmlParaStyle (..),
+    HtmlLocalStyles (..),
     Face (..),
     noFace,
     XhtmlSite (..),
@@ -42,6 +43,8 @@ data HtmlConfig = HtmlConfig
     hcCharStyles :: !(Map Text HtmlCharStyle),
     -- | the paragraph styles, body included (docs/adr ADR 0005)
     hcParaStyles :: !(Map Text HtmlParaStyle),
+    -- | the styles of each file that differ from hcCharStyles and hcParaStyles (docs/adr ADR 0014)
+    hcLocalStyles :: !(Map FileId HtmlLocalStyles),
     -- | the font and size of figcaption (golem-driver ADR 0010)
     hcCaptionFace :: !Face,
     -- | the font and size of sidenotes (golem-driver ADR 0011)
@@ -61,6 +64,7 @@ data Face = Face
   { faFont :: !(Maybe Text),
     faSize :: !(Maybe Text)
   }
+  deriving stock (Eq)
 
 noFace :: Face
 noFace = Face Nothing Nothing
@@ -74,6 +78,7 @@ data HtmlCharStyle = HtmlCharStyle
     hcsItalic :: !Bool,
     hcsColor :: !(Maybe Text)
   }
+  deriving stock (Eq)
 
 -- | A resolved paragraph style for CSS (docs/adr ADR 0005, 0006).
 data HtmlParaStyle = HtmlParaStyle
@@ -84,6 +89,18 @@ data HtmlParaStyle = HtmlParaStyle
     hpsIndent :: !Text,
     -- | a CSS length; may be negative
     hpsFirstLineIndent :: !Text
+  }
+  deriving stock (Eq)
+
+{- | The styles a file defines, resolved, where they differ from those of
+style.toml (docs/adr ADR 0014): character and paragraph styles by name,
+and the faces of figcaption and sidenotes.
+-}
+data HtmlLocalStyles = HtmlLocalStyles
+  { hlCharStyles :: !(Map Text HtmlCharStyle),
+    hlParaStyles :: !(Map Text HtmlParaStyle),
+    hlCaptionFace :: !(Maybe Face),
+    hlSidenoteFace :: !(Maybe Face)
   }
 
 data XhtmlSite = XhtmlSite
@@ -113,14 +130,16 @@ data Ctx = Ctx
   { cCfg :: HtmlConfig,
     cFt :: FileTable,
     cBook :: Book,
-    cHere :: FilePath
+    cHere :: FilePath,
+    -- | the paragraph styles of the page: those of its file over those of style.toml (docs/adr ADR 0014)
+    cParaStyles :: Map Text HtmlParaStyle
   }
 
 renderXhtml :: HtmlConfig -> FileTable -> Book -> XhtmlSite
 renderXhtml cfg ft book =
   XhtmlSite
     { sitePages = [(pagePath ft fid, page cfg ft book d) | d@(Document fid _) <- bookDocs book],
-      siteCss = css cfg,
+      siteCss = css cfg [fid | Document fid _ <- bookDocs book],
       siteAssets =
         sortOn fst
           $ Map.toList
@@ -153,7 +172,10 @@ relLink from to =
 page :: HtmlConfig -> FileTable -> Book -> Document -> Text
 page cfg ft book d@(Document fid bs) =
   let here = pagePath ft fid
-      c = Ctx cfg ft book here
+      local = Map.lookup fid (hcLocalStyles cfg)
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg))
+      -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
+      classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
       body = topBlocks c bs <> notesSection c d
       title = case [hiTitle h | Block sp _ (Heading 1 _ _) <- bs, Just h <- [Map.lookup sp (bookHeadings book)]] of
         (t : _) -> T.concat (map plain t)
@@ -169,7 +191,7 @@ page cfg ft book d@(Document fid bs) =
           "</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"",
           relLink here "style.css",
           "\"/>\n</head>\n<body",
-          if hcVertical cfg then " class=\"vertical\"" else "",
+          if null classes then "" else " class=\"" <> T.unwords classes <> "\"",
           ">\n",
           body,
           "</body>\n</html>\n"
@@ -210,7 +232,7 @@ block :: Ctx -> Block -> Text
 block c (Block sp lbl body) = case body of
   Paragraph st is ->
     let cls = maybe "" (\n -> " class=\"ps-" <> escapeXml n <> "\"") st
-        keep = maybe False hpsKeepLines (Map.lookup (fromMaybe "body" st) (hcParaStyles (cCfg c)))
+        keep = maybe False hpsKeepLines (Map.lookup (fromMaybe "body" st) (cParaStyles c))
         -- the lines of a paragraph that keeps them, each a span; br is for readers without CSS (docs/adr ADR 0005)
         content
           | keep || any isLineBreak is = T.intercalate "<br/>\n" ["<span class=\"line\">" <> inlines c l <> "</span>" | l <- splitLines is]
@@ -449,8 +471,11 @@ shortClass = \case
   S.WarningTok -> "wa"
   S.NormalTok -> ""
 
-css :: HtmlConfig -> Text
-css cfg =
+{- | The style sheet; @ are the documents in order, which number the
+rules of the styles of their files (docs/adr ADR 0014).
+-}
+css :: HtmlConfig -> [FileId] -> Text
+css cfg docs =
   T.unlines $
     [ "@font-face { font-family: \""
         <> family role kind
@@ -509,10 +534,13 @@ css cfg =
          | k <- Set.toAscList (hcBreakKinds cfg),
            Just name <- [breakName k]
          ]
+      -- the styles of the files, last, under the class of their pages (docs/adr ADR 0014)
+      <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
   where
     -- a role a bold (italic) character style sets: its font is declared bold (italic)
-    boldRoles = [r | HtmlCharStyle {hcsFont = Just r, hcsBold = True} <- Map.elems (hcCharStyles cfg)]
-    italicRoles = [r | HtmlCharStyle {hcsFont = Just r, hcsItalic = True} <- Map.elems (hcCharStyles cfg)]
+    allCharStyles = Map.elems (hcCharStyles cfg) <> concatMap (Map.elems . hlCharStyles) (Map.elems (hcLocalStyles cfg))
+    boldRoles = [r | HtmlCharStyle {hcsFont = Just r, hcsBold = True} <- allCharStyles]
+    italicRoles = [r | HtmlCharStyle {hcsFont = Just r, hcsItalic = True} <- allCharStyles]
     selectorOf = \case
       "strong" -> "strong"
       "bold" -> "b"
@@ -571,3 +599,44 @@ css cfg =
       Nothing -> []
     family role kind = "golem-" <> role <> "-" <> kind
     fontStack role = T.intercalate ", " (families role <> ["serif"])
+    {- the rules of the styles of a file: every property they handle, as a
+    property left out would keep the value of the rule of style.toml -}
+    localRules n l =
+      let pre = "body.file-" <> tshow n
+          stackOr = maybe "inherit" fontStack
+          colorOf cs = case hcsColor cs >>= (`Map.lookup` hcSwatches cfg) of
+            Just cmyk -> let (r, g, b) = cmykToRgb cmyk in "rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> ")"
+            Nothing -> "inherit"
+          charRules =
+            [ rule
+                (pre <> " " <> selectorOf name)
+                [ "font-family: " <> stackOr (hcsFont cs),
+                  "font-weight: " <> (if hcsBold cs then "bold" else "normal"),
+                  "font-style: " <> (if hcsItalic cs then "italic" else "normal"),
+                  "color: " <> colorOf cs
+                ]
+            | (name, cs) <- Map.toAscList (hlCharStyles l)
+            ]
+          paraOf name = if name == "body" then "p:not([class])" else "p.ps-" <> name
+          paraSel name = pre <> " " <> paraOf name
+          margin ps = if hpsKeepLines ps then "0" else "1em"
+          paraRules =
+            concat
+              [ [ rule
+                    (paraSel name)
+                    [ "font-family: " <> stackOr (hpsFont ps),
+                      "margin-block: " <> margin ps,
+                      "padding-inline-start: " <> hpsIndent ps,
+                      "text-indent: " <> hpsFirstLineIndent ps
+                    ],
+                  rule (paraSel name <> " + " <> paraOf name) ["margin-block-start: " <> (if hpsSpaceBetween ps > 0 then tshow (hpsSpaceBetween ps) <> "em" else margin ps)]
+                ]
+              | (name, ps) <- Map.toAscList (hlParaStyles l)
+              ]
+          faceDecls f = ["font-family: " <> stackOr (faFont f), "font-size: " <> fromMaybe "inherit" (faSize f)]
+          faceRules =
+            [rule (pre <> " figcaption") (faceDecls f) | Just f <- [hlCaptionFace l]]
+              <> [rule (pre <> " .sidenote") (faceDecls f {faSize = Just (fromMaybe "0.85em" (faSize f))}) | Just f <- [hlSidenoteFace l]]
+          -- no indent in list items, after the rules of the paragraph styles of the page
+          listRule = [pre <> " li p:not([class]), " <> pre <> " li p[class] { padding-inline-start: 0; text-indent: 0; }" | not (Map.null (hlParaStyles l))]
+       in charRules <> paraRules <> faceRules <> listRule
