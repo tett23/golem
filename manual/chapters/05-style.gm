@@ -32,12 +32,23 @@
 - [style code: lines]：一ページの行数です。
 - [style code: line-pitch]：行送り（ある行から次の行までの距離）です。
 - [style code: position]：版面の位置です。[style code: top] は天（ページの上端）から、[style code: gutter] はノド（綴じる側の端）からの距離です。
+- [style code: columns]：段数です。省略すると 1 段になります。
+- [style code: column-gap]：段と段のあいだの空き（段間）です。[style code: columns] が 2 以上なら必ず書きます。
 
 寸法は、[style code: mm]、[style code: pt]、[style code: Q]（級）、[style code: H]（歯）、[style code: zw]（全角一字分）の単位を付けて書きます。
 1Q と 1H は、どちらも 0.25mm です。
 
 版面がページに収まらない値を書くと、エラーになります。
 字数か行数を減らすか、[style code: position] を変えてください。
+
+[style code: columns] を 2 以上にすると、PDF の版面は段組み[index reading=だんぐみ: 段組み]になります。
+[style code: characters] は一段の字数、[style code: lines] は一段の行数です。
+本文は、横組みでは左の段から右の段へ、縦組みでは上の段から下の段へ流れ、最後の段の次は次のページに進みます。
+見出し、図版、表、索引も、段の中に一段の幅で組まれます。
+脚注は、注の印のある段の下に入ります。
+章の終わりでは、後ろの段が空いたまま残ることがあります。
+段組みの版面では、傍注欄（[style code: \[sidenotes\]]）と図版の回り込み（[style code: wrap]）は使えず、エラーになります。
+HTML と EPUB は、段組みにしません。
 
 ## 書体
 

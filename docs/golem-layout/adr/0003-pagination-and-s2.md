@@ -1,6 +1,6 @@
 # ADR 0003: 改ページ、脚注、ページ番号の解決
 
-ステータス: 採択→原稿の改ページは [docs/adr/0017](../../adr/0017-forced-page-breaks.md)
+ステータス: 採択→原稿の改ページは [docs/adr/0017](../../adr/0017-forced-page-breaks.md)、改ページの単位を段にすることは [docs/adr/0018](../../adr/0018-multi-column-layout.md)
 
 ## 文脈
 
