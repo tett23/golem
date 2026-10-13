@@ -298,6 +298,7 @@ tests =
       styleTests,
       runningHeadTests,
       localStyleTests,
+      akiTests,
       testCase "[page] bleed (golem-pdf ADR 0004)" $ do
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"3mm\"\n") @?= Right (Just 557314)
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\n") @?= Right (Just 0)
@@ -533,6 +534,77 @@ specStyle =
       "folio = { position = \"bottom-outside\", format = \"{n}\" }"
     ]
 
+-- | Aki amounts and aki sets (docs/adr ADR 0019).
+akiTests :: TestTree
+akiTests =
+  testGroup
+    "aki amounts and aki sets (docs/adr ADR 0019)"
+    [ testCase "parseAki reads the names, zw and percentages" $ do
+        map parseAki ["ベタ", "全角", "二分", "三分", "四分", "五分", "六分", "八分", "二分四分", "0.2zw", "12.5%"]
+          @?= map Just [0, 1, 1 / 2, 1 / 3, 1 / 4, 1 / 5, 1 / 6, 1 / 8, 3 / 4, 1 / 5, 1 / 8]
+        map parseAki ["-1zw", "1mm", "十分"] @?= [Nothing, Nothing, Nothing],
+      testCase "[aki-sets.<name>] and the aki-set of a paragraph style are read" $
+        case parseStyle (FileId 0) wideWaou of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            fmap asBasedOn (Map.lookup "wide-waou" (stAkiSets s)) @?= Just (Just "gyomatsu-yakumono-hankaku")
+            fmap asRules (Map.lookup "wide-waou" (stAkiSets s))
+              @?= Just
+                [ AkiRuleDef ["japanese"] ["western"] (1 / 4) (1 / 3) (1 / 2),
+                  AkiRuleDef ["western"] ["japanese"] (1 / 4) (1 / 3) (1 / 2)
+                ]
+            (paraStyle s Nothing >>= psAkiSet) @?= Just "wide-waou"
+            (paraStyle s (Just "caption") >>= psAkiSet) @?= Just "wide-waou",
+      testCase "body uses gyomatsu-yakumono-hankaku by default; minimum and maximum default to optimum" $ do
+        case parseStyle (FileId 0) "" of
+          Left ds -> assertFailure (show ds)
+          Right s -> (paraStyle s (Just "verse") >>= psAkiSet) @?= Just "gyomatsu-yakumono-hankaku"
+        case parseStyle (FileId 0) "[aki-sets.a]\nrules = [{ before = [\"kana\", \"ideograph\"], after = \"line-end\", optimum = \"25%\" }]\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            fmap asBasedOn (Map.lookup "a" (stAkiSets s)) @?= Just Nothing
+            fmap asRules (Map.lookup "a" (stAkiSets s)) @?= Just [AkiRuleDef ["kana", "ideograph"] ["line-end"] (1 / 4) (1 / 4) (1 / 4)],
+      testCase "errors of aki amounts and aki sets are G0320" $ do
+        let rule r = "[aki-sets.a]\nrules = [" <> r <> "]\n"
+        codes (parseStyle (FileId 0) (rule "{ before = \"kana\", after = \"kana\", optimum = \"四分\", minimum = \"二分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) (rule "{ before = \"kana\", after = \"kana\", optimum = \"四分\", maximum = \"八分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) (rule "{ before = \"kanji\", after = \"kana\", optimum = \"四分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) (rule "{ before = \"line-end\", after = \"kana\", optimum = \"四分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) (rule "{ before = \"kana\", after = \"line-start\", optimum = \"四分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) (rule "{ before = \"kana\", after = \"paragraph-start\", optimum = \"四分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) (rule "{ before = \"kana\", after = \"kana\", optimum = \"十分\" }")) @?= ["G0320"]
+        codes (parseStyle (FileId 0) "[aki-sets.gyomatsu-yakumono-hankaku]\nrules = []\n") @?= ["G0320"]
+        codes (parseStyle (FileId 0) "[aki-sets.gyomatsu-yakumono-zenkaku]\n") @?= ["G0320"]
+        let ms = either (map diagMessage) (const []) (parseStyle (FileId 0) (rule "{ before = \"kanji\", after = \"kana\", optimum = \"四分\" }"))
+        assertBool (show ms) (not (null ms) && all ("アキの量の指定が正しくありません: " `T.isPrefixOf`) ms),
+      testCase "an aki name in another dimension is G0320" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"二分\"\n") @?= ["G0320"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"wide\"\n") @?= ["G0306"],
+      testCase "references to aki sets are G0313" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.body]\naki-set = \"nope\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[aki-sets.a]\nbased-on = \"nope\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[aki-sets.a]\nbased-on = \"b\"\n\n[aki-sets.b]\nbased-on = \"a\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[aki-sets.a]\nbased-on = \"gyomatsu-yakumono-zenkaku\"\n\n[paragraph-styles.quote]\naki-set = \"a\"\n") @?= [],
+      testCase "a paragraph style of a file may name an aki set" $ do
+        base <- either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) wideWaou)
+        localStyleDef ParagraphKind [("aki-set", LocalWord "wide-waou")] @?= Right (Right noParaDef {psAkiSet = Just "wide-waou"})
+        [(c, n) | (c, n, _) <- checkLocalStyles base (LocalStyles Map.empty (Map.fromList [("q", noParaDef {psAkiSet = Just "nope"})]))] @?= [("G0313", "q")]
+        [(c, n) | (c, n, _) <- checkLocalStyles base (LocalStyles Map.empty (Map.fromList [("q", noParaDef {psAkiSet = Just "wide-waou"})]))] @?= []
+    ]
+  where
+    wideWaou =
+      T.unlines
+        [ "[aki-sets.wide-waou]",
+          "based-on = \"gyomatsu-yakumono-hankaku\"",
+          "rules = [",
+          "  { before = \"japanese\", after = \"western\", optimum = \"三分\", minimum = \"四分\", maximum = \"二分\" },",
+          "  { before = \"western\", after = \"japanese\", optimum = \"三分\", minimum = \"四分\", maximum = \"二分\" },",
+          "]",
+          "",
+          "[paragraph-styles.body]",
+          "aki-set = \"wide-waou\""
+        ]
+
 -- | Styles defined in a file (docs/adr ADR 0014).
 localStyleTests :: TestTree
 localStyleTests =
@@ -557,6 +629,7 @@ localStyleTests =
               "size" -> "1zw"
               "indent" -> "1zw"
               "first-line-indent" -> "1zw"
+              "aki-set" -> "gyomatsu-yakumono-hankaku"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
         assertBool "char" (all (known CharacterKind) charStyleKeys)
