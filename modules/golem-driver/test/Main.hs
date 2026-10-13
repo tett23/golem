@@ -25,7 +25,7 @@ import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), Place
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), Synthetic (..), plainLook)
-import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..), markPages)
+import Golem.Layout.Paginate (Flow (..), LineBox (..), PageOut (..), Slotted (..), markPages, paginate)
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
@@ -316,6 +316,7 @@ tests =
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup "vertical glyphs turned without a vertical form (ADR 0015)" turnedTests,
       testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
+      testGroup "hard line breaks (docs/adr ADR 0016)" hardBreakTests,
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
       testGroup "forced breaks (docs/adr ADR 0017)" breakTests,
       testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
@@ -387,6 +388,44 @@ separatorTests =
         assertBool (T.unpack l) ("<p>一行目。</p>\n<p>二行目。</p>\n<p>三行目。</p>" `T.isInfixOf` l)
         b <- TIO.readFile (tmp </> "build/html/b.xhtml")
         assertBool (T.unpack b) ("<p>前の行後の行</p>" `T.isInfixOf` b)
+  ]
+
+hardBreakTests :: [TestTree]
+hardBreakTests =
+  [ testCase "PDF: the line after a hard break gets no first-line indent" $ do
+      let fs = 655360
+      (flow, ls) <- verseLines (horizontal30 "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") "東京都\\\n千代田区\n"
+      map snd ls @?= [fs, 0]
+      [length bs | FParagraph bs <- flow] @?= [2],
+    testCase "PDF: a hard break in verse starts a verse line as before" $ do
+      (_, withBreak) <- verseLines pdfStyle "@style verse\n  a\\\n  b\n"
+      (_, plain) <- verseLines pdfStyle "@style verse\n  a\n  b\n"
+      withBreak @?= plain,
+    testCase "PDF: a paragraph of hard breaks is one paragraph for the widow and orphan rules" $ do
+      (flow, ls) <- verseLines (horizontal30 "") "一行目\\\n二行目\\\n三行目\n"
+      length ls @?= 3
+      [length bs | FParagraph bs <- flow] @?= [3]
+      -- one line left on a page: the paragraph moves whole rather than leave its first line alone
+      case flow of
+        [p@(FParagraph _)] -> map (map fst . poSlots) (paginate 4 [FParagraph [LineBox i [] [] [] | i <- [100, 101, 102]], p]) @?= [[0, 1, 2], [0, 1, 2]]
+        other -> assertFailure (show (length other)),
+    testCase "HTML: a hard break is br inside the p; verse keeps its lines" $ do
+      withVerseProject "" "a\\\nb\n\n- c\\\n  d\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) ("<p>a<br/>b</p>" `T.isInfixOf` page)
+        assertBool (T.unpack page) ("<li>c<br/>d</li>" `T.isInfixOf` page)
+        assertBool (T.unpack page) (not ("<span class=\"line\">" `T.isInfixOf` page))
+      withVerseProject "" "@style verse\n  a\\\n  b\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) ("<span class=\"line\">a</span>" `T.isInfixOf` page),
+    testCase "plain text: a hard break is a newline" $
+      withVerseProject "" "a\\\nb\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        t <- TIO.readFile (tmp </> "build/text/horizontal/v.txt")
+        t @?= "a\nb\n"
   ]
 
 -- | Builds a copy of a book fixture (fonts included); no errors allowed.

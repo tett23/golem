@@ -888,10 +888,15 @@ unitsOf book geom styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs bo
       let unit kind l is face = Unit kind l is sp face style ctx Nothing
           plainUnit kind l is = unit kind l is (bodyFace style)
        in case body of
-            -- a unit for each part between line breaks, each indented as a paragraph (docs/adr ADR 0005, 0006)
+            -- a style that keeps its lines: a unit for each line, each indented as a
+            -- paragraph (docs/adr ADR 0005, 0006); otherwise the line breaks are
+            -- hard breaks inside one unit, and only its first line has the
+            -- first-line indent (docs/adr ADR 0016)
             Paragraph st is ->
               let (face, ind) = paraLook style geom st
-               in (n, [unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face | (i, part) <- zip [0 :: Int ..] (splitBreaks is)])
+                  keeps = (paraStyle style st >>= psLineBreaks) == Just KeepLines
+                  parts = if keeps then splitBreaks is else [is]
+               in (n, [unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face | (i, part) <- zip [0 :: Int ..] parts])
             Heading l attrs is ->
               let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
                   title = maybe [] (\h -> [txt (h <> "　")]) (if haNoNumber attrs then Nothing else num) <> is

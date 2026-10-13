@@ -655,9 +655,26 @@ tests =
                   _ -> lk
             [bcLook c | Box _ c <- fst (composeInlines env [Color sp "accent" [CharStyle sp "italic" [bold [sp0 "x"]]]])]
               @?= [look0 {lkColor = Just "accent", lkSynthetic = Synthetic True True, lkLatinSynthetic = Synthetic True True}],
-          testCase "a line break composes to nothing (docs/adr ADR 0005)" $ do
+          testCase "a line break composes to a forced break (docs/adr ADR 0016)" $ do
             let env = lookEnv const
-            [bcText c | Box _ c <- fst (composeInlines env [sp0 "ab", LineBreak sp, sp0 "cd"])] @?= [bcText c | Box _ c <- fst (composeInlines env [sp0 "ab", sp0 "cd"])]
+                items = fst (composeInlines env [sp0 "ab", LineBreak sp, sp0 "cd"])
+                marks = \case
+                  Box _ c -> [T.unpack (bcText c)]
+                  Penalty _ p _ | p >= infPenalty -> ["+inf"] | p <= negate infPenalty -> ["-inf"]
+                  Glue _ st _ | st >= filStretch -> ["fil"]
+                  _ -> []
+            take 7 (concatMap marks items) @?= ["ab", "+inf", "fil", "-inf", "cd", "+inf", "fil"],
+          testCase "a forced break always breaks the line (docs/adr ADR 0016)" $ do
+            let env = lookEnv const
+                items = fst (composeInlines env [sp0 "ab", LineBreak sp, sp0 "cd"])
+                r = breakParagraph defaultParams (const (100 * fs)) items
+            map (\l -> [T.unpack (bcText c) | Box _ c <- lineItems l]) (brLines r) @?= [["ab"], ["cd"]],
+          testCase "no space between Japanese and Latin across a forced break (docs/adr ADR 0016)" $ do
+            let env = lookEnv const
+                items = fst (composeInlines env [sp0 "あい", LineBreak sp, sp0 "cd"])
+                quarter = fs `div` 4
+            [w | Glue w _ _ <- items, w == quarter] @?= []
+            assertBool "the space appears without the break" (not (null [w | Glue w _ _ <- fst (composeInlines env [sp0 "あいcd"]), w == quarter]))
         ],
       testGroup
         "heading blocks (golem-driver ADR 0003)"

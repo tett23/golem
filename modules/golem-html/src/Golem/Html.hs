@@ -250,10 +250,10 @@ block :: Ctx -> Block -> Text
 block c (Block sp lbl body) = case body of
   Paragraph st is ->
     let cls = maybe "" (\n -> " class=\"ps-" <> escapeXml n <> "\"") st
-        keep = maybe False hpsKeepLines (Map.lookup (fromMaybe "body" st) (cParaStyles c))
-        -- the lines of a paragraph that keeps them, each a span; br is for readers without CSS (docs/adr ADR 0005)
+        -- the lines of a paragraph that keeps them, each a span; br is for readers without CSS (docs/adr ADR 0005).
+        -- A hard break elsewhere is a br, so that text-indent stays on the first line (docs/adr ADR 0016)
         content
-          | keep || any isLineBreak is = T.intercalate "<br/>\n" ["<span class=\"line\">" <> inlines c l <> "</span>" | l <- splitLines is]
+          | keepsLines c st = T.intercalate "<br/>\n" ["<span class=\"line\">" <> inlines c l <> "</span>" | l <- splitLines is]
           | otherwise = inlines c is
      in "<p" <> idAttr lbl <> cls <> ">" <> content <> "</p>\n" <> sidenotes c is
   Heading l _ is ->
@@ -312,8 +312,12 @@ block c (Block sp lbl body) = case body of
 item :: Ctx -> Maybe Integer -> ListItem -> Text
 item c value (ListItem _ bs) =
   "<li" <> maybe "" (\n -> " value=\"" <> T.pack (show n) <> "\"") value <> ">" <> case bs of
-    [Block _ _ (Paragraph Nothing is)] | not (any isLineBreak is) -> inlines c is <> "</li>\n"
+    [Block _ _ (Paragraph Nothing is)] | not (keepsLines c Nothing) -> inlines c is <> "</li>\n"
     _ -> "\n" <> T.concat (map (block c) bs) <> "</li>\n"
+
+-- | Whether the paragraph style keeps the lines of its paragraphs (docs/adr ADR 0005).
+keepsLines :: Ctx -> Maybe Text -> Bool
+keepsLines c st = maybe False hpsKeepLines (Map.lookup (fromMaybe "body" st) (cParaStyles c))
 
 toc :: Ctx -> Maybe Int -> Text
 toc c depth =
