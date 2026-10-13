@@ -2,7 +2,7 @@ module Main (main) where
 
 import Codec.Compression.Zlib qualified as Z
 import Control.Exception (SomeException, evaluate, try)
-import Control.Monad (forM_)
+import Control.Monad (filterM, forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
@@ -17,6 +17,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Doc.Assemble (IndexGroup (..), inlineText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
+import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescriptionUrl, explainHint, lookupExplanation, parseCatalog)
 import Golem.Driver.New
 import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
 import Golem.Driver.Version (golemVersion)
@@ -95,7 +96,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-driver (ADR 0001)"
-    [ testGroup
+    [ explainTests,
+      testGroup
         "version (docs/adr/0004)"
         [ testCase "golemVersion is the content of VERSION" $ do
             v <- T.strip <$> TIO.readFile "../../VERSION"
@@ -309,6 +311,7 @@ tests =
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
+      testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
       testGroup
         "public-domain books"
         [ testCase "The Tempest builds horizontally to every target" $ do
@@ -325,6 +328,38 @@ tests =
             qpdfCheck pdf
         ]
     ]
+
+-- | Noto Serif JP of the 蟹工船 fixture through the golem-font provider.
+notoFonts :: IO LoadedFonts
+notoFonts = do
+  src <- TIO.readFile "test/fixtures/kanikosen/style.toml"
+  style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
+  loadFonts realProvider "test/fixtures/kanikosen" style >>= either (assertFailure . show) pure
+
+variationTests :: [TestTree]
+variationTests =
+  [ testCase "a base character and its variation selector are shaped together" $ do
+      fonts <- notoFonts
+      [(g, t) | (_, g, _, t) <- lfShape fonts "body" False "葛\xE0100"] @?= [(16314, "葛")],
+    testCase "the variant glyph is drawn and maps back to its base character" $ do
+      noto <- BS.readFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
+      let body = "\n[fonts.body]\nja = \"fonts/noto.otf\"\n"
+      forM_ [pdfStyle <> body, horizontalStyle <> body] $ \style -> do
+        pdf <- miniPdf realProvider True style "葛\xE0100と葛\n" [("fonts/noto.otf", noto)]
+        streams <- inflateAll pdf
+        let content = BS.concat [st | st <- streams, " Tf" `BS.isInfixOf` st]
+            cmaps = [st | st <- streams, "beginbfchar" `BS.isInfixOf` st]
+        -- CID 61923 is glyph 16314
+        assertBool "variant drawn" ("<F1E3> Tj" `BS.isInfixOf` content)
+        assertBool "maps to 葛" (any ("<F1E3> <845b>" `BS.isInfixOf`) cmaps)
+        -- no glyph for the selector alone: no .notdef, no mapping to it
+        assertBool "no .notdef" (not ("<0000> Tj" `BS.isInfixOf` content))
+        assertBool "no selector in ToUnicode" (not (any (\c -> "db40dd00" `BS.isInfixOf` c) cmaps))
+        qpdfCheck pdf,
+    testCase "the CIDFont of 蟹工船 stays Adobe-Identity-0" $ do
+      (_, pdf, _) <- buildBook "kanikosen"
+      assertBool "Identity" ("/CIDSystemInfo << /Ordering (Identity) /Registry (Adobe) /Supplement 0 >>" `BS.isInfixOf` pdf)
+  ]
 
 separatorTests :: [TestTree]
 separatorTests =
@@ -496,18 +531,51 @@ indentTests =
 
 -- | A project with the identity plugin locked and cached.
 withPluginProject :: BS.ByteString -> (FilePath -> IO a) -> IO a
-withPluginProject manifestExtra k = withSystemTempDirectory "golem-driver" $ \tmp -> do
+withPluginProject = withPlugins [("identity", "identity.wat")]
+
+{- | A project with plugins (name, wat file of golem-plugin's tests) locked
+and cached; each is at https://example.com/<name>.wasm.
+-}
+withPlugins :: [(T.Text, FilePath)] -> BS.ByteString -> (FilePath -> IO a) -> IO a
+withPlugins plugins manifestExtra k = withSystemTempDirectory "golem-driver" $ \tmp -> do
   copyTree fixture tmp
   manifest <- BS.readFile (tmp </> "manifest.toml")
   BS.writeFile (tmp </> "manifest.toml") (manifest <> manifestExtra)
-  wat <- TIO.readFile "../golem-plugin/test/plugins/identity.wat"
-  wasm <- either (assertFailure . T.unpack) pure (watToWasm wat)
-  let url = "https://example.com/identity.wasm"
+  served <- mapM serve plugins
   setEnv "XDG_CACHE_HOME" (tmp </> "cache")
   cache <- defaultCacheDir
-  r <- lockPlugins (\u -> pure (if u == url then Right wasm else Left "404")) cache (Map.fromList [("identity", url)])
+  r <- lockPlugins (\u -> pure (maybe (Left "404") Right (lookup u served))) cache (Map.fromList [(name, pluginUrl name) | (name, _) <- plugins])
   either (assertFailure . show) (TIO.writeFile (tmp </> "plugins.lock") . renderLock) r
   k tmp
+  where
+    pluginUrl name = "https://example.com/" <> name <> ".wasm"
+    serve (name, wat) = do
+      src <- TIO.readFile ("../golem-plugin/test/plugins" </> wat)
+      wasm <- either (assertFailure . T.unpack) pure (watToWasm src)
+      pure (pluginUrl name, wasm)
+
+-- | The declaration of a plugin as withPlugins serves it.
+pluginDeclOf :: BS.ByteString -> BS.ByteString -> BS.ByteString
+pluginDeclOf name extra = "\n[plugins." <> name <> "]\nurl = \"https://example.com/" <> name <> ".wasm\"\n" <> extra
+
+-- | A [[filters]] item for chapters/01.gm.
+filterDecl :: BS.ByteString -> BS.ByteString -> BS.ByteString
+filterDecl plugin name = "\n[[filters]]\nplugin = \"" <> plugin <> "\"\nfilter = \"" <> name <> "\"\nfiles = [\"chapters/01.gm\"]\n"
+
+-- | The FileId of a file the build's diagnostics may point at.
+sourceFileId :: BuildResult -> FilePath -> Maybe FileId
+sourceFileId r path = lookup path [(siPath si, fid) | (fid, si) <- Map.toList (brSources r)]
+
+-- | The span at the top of a file of the build.
+topOf :: BuildResult -> FilePath -> Maybe SrcSpan
+topOf r path = (\fid -> mkSpan fid 0 0) <$> sourceFileId r path
+
+-- | The codes and messages of the diagnostics, all at the top of the manifest.
+atManifestTop :: BuildResult -> IO [(DiagnosticCode, T.Text)]
+atManifestTop r = do
+  let ds = brDiagnostics r
+  assertEqual "at the top of manifest.toml" (map (const (topOf r "manifest.toml")) ds) (map (Just . diagSpan) ds)
+  pure [(diagCode d, diagMessage d) | d <- ds]
 
 pluginTests :: [TestTree]
 pluginTests =
@@ -518,35 +586,104 @@ pluginTests =
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
         BL.fromStrict <$> BS.readFile (tmp </> "build/text/horizontal/chapters/01.txt")
       filtered @?= plain,
-    testCase "a command whose answer is invalid is a compile error" $
+    testCase "G0609: a command whose answer is invalid names the command, at the call" $
       withPluginProject pluginDecl $ \tmp -> do
         BS.appendFile (tmp </> "chapters/02.gm") "\n[broken: x]\n"
         r <- build (defaultOptions tmp)
-        assertBool (show (brDiagnostics r)) (DiagnosticCode "G0609" `elem` map diagCode (brDiagnostics r)),
-    testCase "a plugin missing from the lock or the cache is reported" $
+        case [d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G0609"] of
+          [d] -> do
+            assertBool (show d) ("identity.broken: " `T.isPrefixOf` diagMessage d)
+            Just (spanFile (diagSpan d)) @?= sourceFileId r "chapters/02.gm"
+            assertBool (show d) (spanStart (diagSpan d) > 0)
+          ds -> assertFailure (show ds),
+    testCase "G0609: a filter that fails points at the top of the file it was applied to" $
+      withPlugins [("loop", "loop-filter.wat")] (pluginDeclOf "loop" "" <> filterDecl "loop" "spin") $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        case [d | d <- brDiagnostics r, diagCode d == DiagnosticCode "G0609"] of
+          [d] -> do
+            assertBool (show d) ("loop.spin: " `T.isPrefixOf` diagMessage d)
+            Just (diagSpan d) @?= topOf r "chapters/01.gm"
+          ds -> assertFailure (show ds),
+    testCase "G0602: a plugin missing from the lock, or with another URL there" $
       withPluginProject pluginDecl $ \tmp -> do
+        locked <- TIO.readFile (tmp </> "plugins.lock")
         BS.writeFile (tmp </> "plugins.lock") ""
         r <- build (defaultOptions tmp)
-        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G0602"]
+        atManifestTop r >>= (@?= [(DiagnosticCode "G0602", "plugins.lock にないプラグインです。golem plugin lock を実行してください: identity")])
         setEnv "XDG_CACHE_HOME" (tmp </> "empty-cache")
         r' <- build (defaultOptions tmp) {optCheckOnly = True}
-        map diagCode (brDiagnostics r') @?= [DiagnosticCode "G0602"],
-    testCase "an uncached plugin asks for golem plugin fetch" $
+        map diagCode (brDiagnostics r') @?= [DiagnosticCode "G0602"]
+        TIO.writeFile (tmp </> "plugins.lock") (T.replace "identity.wasm" "other.wasm" locked)
+        r'' <- build (defaultOptions tmp)
+        atManifestTop r'' >>= (@?= [(DiagnosticCode "G0602", "plugins.lock の URL が manifest.toml と違います。golem plugin lock を実行してください: identity")]),
+    testCase "G0602 only: no G0222 for the commands after a plugin fails to load" $
+      withPluginProject pluginDecl $ \tmp -> do
+        BS.writeFile (tmp </> "plugins.lock") ""
+        BS.appendFile (tmp </> "chapters/02.gm") "\n[broken: x]\n"
+        r <- build (defaultOptions tmp)
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G0602"],
+    testCase "G0603: an uncached plugin asks for golem plugin fetch" $
       withPluginProject pluginDecl $ \tmp -> do
         setEnv "XDG_CACHE_HOME" (tmp </> "empty-cache")
         r <- build (defaultOptions tmp)
-        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G0603"],
-    testCase "overriding a command the plugin does not provide is an error" $
+        atManifestTop r >>= (@?= [(DiagnosticCode "G0603", "キャッシュにないプラグインです。golem plugin fetch を実行してください: identity")]),
+    testCase "G0604: a cached plugin that does not match its hash" $
+      withPluginProject pluginDecl $ \tmp -> do
+        cache <- defaultCacheDir
+        files <- listDirectory cache
+        forM_ files $ \f -> do
+          b <- BS.readFile (cache </> f)
+          BS.writeFile (cache </> f) (BS.cons (BS.head b + 1) (BS.tail b))
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G0604", "キャッシュの配布物のハッシュが plugins.lock と一致しません: identity")]),
+    testCase "G0605: a plugin that cannot be loaded" $
+      withPlugins [("imports", "imports.wat")] (pluginDeclOf "imports" "") $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        ds <- atManifestTop r
+        map fst ds @?= [DiagnosticCode "G0605"]
+        assertBool (show ds) (all (T.isPrefixOf "imports: プラグインが import を要求しています" . snd) ds),
+    testCase "G0606: one per command, naming the plugins in order" $
+      withPlugins [("b", "identity.wat"), ("a", "identity.wat")] (pluginDeclOf "b" "" <> pluginDeclOf "a" "") $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G0606", "複数のプラグインが同じコマンドを提供しています: broken（a、b）")]),
+    testCase "G0607: a collision with a built-in command, overridable or not" $
+      withPlugins [("names", "builtin-names.wat")] (pluginDeclOf "names" "") $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        ds <- atManifestTop r
+        sort ds
+          @?= sort
+            [ (DiagnosticCode "G0607", "組み込みのコマンドと衝突しています（overrides で宣言してください）: names.ruby"),
+              (DiagnosticCode "G0607", "上書きできない組み込みのコマンドと衝突しています: names.note")
+            ],
+    testCase "G0608: one per name in overrides" $ do
+      let g0608 m = [(DiagnosticCode "G0608", m)]
       withPluginProject (pluginDeclWith "overrides = [\"ruby\"]\n") $ \tmp -> do
         r <- build (defaultOptions tmp)
-        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G0608"]
+        atManifestTop r >>= (@?= g0608 "プラグインが提供していないコマンドを overrides に書いています: identity.ruby")
+      withPluginProject (pluginDeclWith "overrides = [\"xyz\"]\n") $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= g0608 "プラグインが提供していないコマンドを overrides に書いています: identity.xyz")
+      withPlugins [("names", "builtin-names.wat")] (pluginDeclOf "names" "overrides = [\"note\", \"ruby\"]\n") $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= g0608 "上書きできる組み込みのコマンドではありません: names.note"),
+    testCase "G0610: a filter of an undeclared plugin, or one the plugin does not provide" $ do
+      withPluginProject (pluginDeclOf "identity" "" <> filterDecl "ghost" "x") $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G0610", "宣言されていないプラグインです: ghost（フィルタ ghost.x）")])
+      withPluginProject (pluginDeclOf "identity" "" <> filterDecl "identity" "nope") $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G0610", "プラグインが提供していないフィルタです: identity.nope")]),
+    testCase "G0611: plugins.lock that cannot be read points into plugins.lock" $
+      withPluginProject pluginDecl $ \tmp -> do
+        BS.writeFile (tmp </> "plugins.lock") "[plugins.identity\nurl = 1\n"
+        r <- build (defaultOptions tmp)
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G0611"]
+        assertBool "plugins.lock is a source" (isJust (sourceFileId r "plugins.lock"))
+        map (Just . spanFile . diagSpan) (brDiagnostics r) @?= [sourceFileId r "plugins.lock"]
   ]
   where
     pluginDecl = pluginDeclWith ""
-    pluginDeclWith extra =
-      "\n[plugins.identity]\nurl = \"https://example.com/identity.wasm\"\n"
-        <> extra
-        <> "\n[[filters]]\nplugin = \"identity\"\nfilter = \"same\"\nfiles = [\"chapters/01.gm\"]\n"
+    pluginDeclWith extra = pluginDeclOf "identity" extra <> filterDecl "identity" "same"
 
 -- | B6, vertical, right binding, as in specifications.md.
 pdfStyle :: BS.ByteString
@@ -1852,7 +1989,7 @@ fakeFonts =
       lfCode = \_ g -> g,
       lfShape = \role _ t -> [(faceOf role, fromEnum c `mod` 65536, advOf role c, T.singleton c) | c <- T.unpack t],
       lfEmbed = \_ vertical used ->
-        Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used
+        Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used ("Adobe", "Identity", 0)
     }
   where
     -- the role "wide" sets every character one em wide
@@ -1993,3 +2130,110 @@ styleFileTests =
            doesDirectoryExist (dir </> "build/pdf") >>= assertBool "no PDF" . not
        | (lang, tag) <- [(Japanese, "ja"), (English, "en")]
        ]
+
+-- * golem explain (golem-cli ADR 0005)
+
+explainTests :: TestTree
+explainTests =
+  testGroup
+    "explanations of the diagnostic codes (golem-cli ADR 0005)"
+    [ testGroup
+        "docs/diagnostics.md covers the codes in the sources"
+        [ testCase "every code in the sources is in the catalog and in use" $ do
+            used <- sourceCodes
+            assertBool "no code found in the sources" (not (null used))
+            case [c | c <- used, fmap exStatus (Map.lookup c catalog) /= Just InUse] of
+              [] -> pure ()
+              missing -> assertFailure ("codes without an explanation in use: " <> unwords (map T.unpack missing)),
+          testCase "every code in use is in the sources" $ do
+            used <- sourceCodes
+            case [c | (c, e) <- Map.toList catalog, exStatus e == InUse, c `notElem` used] of
+              [] -> pure ()
+              unused -> assertFailure ("codes in use but not in the sources (make them retired): " <> unwords (map T.unpack unused)),
+          testCase "no retired code is in the sources" $ do
+            used <- sourceCodes
+            [c | (c, e) <- Map.toList catalog, exStatus e == Retired, c `elem` used] @?= [],
+          testCase "the profile-dependent codes, and only they, are a warning in dev and an error in prod" $ do
+            let dependent = [c | DiagnosticCode c <- profileDependentCodes]
+                isDependent e = "- 重大度: dev では警告、prod ではエラー" `elem` T.lines (exBody e)
+            assertBool "some profile-dependent codes" (not (null dependent))
+            sort [c | (c, e) <- Map.toList catalog, isDependent e] @?= sort dependent,
+          testCase "the catalog has G0244 retired" $
+            fmap exStatus (lookupExplanation "G0244") @?= Just Retired
+        ],
+      testGroup
+        "the form of the document"
+        [ testCase "two good sections give their titles, statuses and bodies" $
+            case parseCatalog (T.unlines (preamble <> inUse "G0101" <> retired "G0244")) of
+              Left e -> assertFailure (T.unpack e)
+              Right es -> do
+                map exCode es @?= ["G0101", "G0244"]
+                map exTitle es @?= ["G0101 の題", "G0244 の題"]
+                map exStatus es @?= [InUse, Retired]
+                map exBody es @?= [T.intercalate "\n" (dropLast (inUse "G0101")), T.intercalate "\n" (dropLast (retired "G0244"))],
+          bad "no 直し方" (preamble <> inUse "G0101" <> without "### 直し方" (inUse "G0102")) "## G0102",
+          bad "no title" (preamble <> inUse "G0101" <> without "G0102 の題" (inUse "G0102")) "## G0102",
+          bad "no status" (preamble <> inUse "G0101" <> without "- 状態: 使用中" (inUse "G0102")) "## G0102",
+          bad "a bad severity" (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: 致命的" else l) (inUse "G0102")) "- 重大度: 致命的",
+          bad "out of order" (preamble <> inUse "G0102" <> inUse "G0101") "## G0101",
+          bad "a code twice" (preamble <> inUse "G0101" <> inUse "G0101") "## G0101",
+          testCase "a retired section without 主な原因 is accepted" $
+            fmap (map exCode) (parseCatalog (T.unlines (preamble <> retired "G0244"))) @?= Right ["G0244"]
+        ],
+      testGroup
+        "lookup, hint and URL"
+        [ testCase "lookupExplanation ignores case" $ do
+            fmap exCode (lookupExplanation "g0117") @?= Just "G0117"
+            fmap exCode (lookupExplanation "G0117") @?= Just "G0117"
+            fmap exCode (lookupExplanation "G9999") @?= Nothing,
+          testCase "explainHint names the smallest documented code, once" $ do
+            let d c = diagnostic c Error (SrcSpan (FileId 0) 0 0) "m"
+            explainHint [d "G0403", d "G0117", d "X001"] @?= "コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）"
+            explainHint [d "X001"] @?= ""
+            explainHint [] @?= "",
+          testCase "codeDescriptionUrl points at the section on main" $ do
+            codeDescriptionUrl (DiagnosticCode "G0117") @?= Just "https://github.com/tett23/golem/blob/main/docs/diagnostics.md#g0117"
+            codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing
+        ]
+    ]
+  where
+    preamble = ["# 診断のコード", "", "前書き。", "", "## 番号の区分", "", "表。", ""]
+    inUse c = ["## " <> c, "", c <> " の題", "", "- 重大度: エラー", "- 状態: 使用中", "", "### 意味", "", "意味。", "", "### 主な原因", "", "- 原因。", "", "### 直し方", "", "直す。", ""]
+    retired c = ["## " <> c, "", c <> " の題", "", "- 重大度: エラー", "- 状態: 廃止", "", "### 意味", "", "廃止した。", "", "### 直し方", "", "代わりに書く。", ""]
+    dropLast xs = take (length xs - 1) xs
+    without l = filter (/= l)
+    bad name ls at = testCase (name <> " is rejected with the line number") $
+      case parseCatalog (T.unlines ls) of
+        Right _ -> assertFailure "accepted"
+        Left e -> do
+          let n = last [i | (i, l) <- zip [1 :: Int ..] ls, l == at]
+          assertBool (T.unpack e) (T.pack (show n <> " 行目") `T.isInfixOf` e)
+
+{- | The codes in the sources: the strings @"G@, four digits and @"@ in the
+Haskell files under ../*/src and ../golem-cli/app (not the tests, which
+write codes to cause errors).
+-}
+sourceCodes :: IO [T.Text]
+sourceCodes = do
+  pkgs <- listDirectory ".."
+  dirs <- filterM doesDirectoryExist ([".." </> p </> "src" | p <- pkgs] <> ["../golem-cli/app"])
+  files <- concat <$> mapM haskellFiles dirs
+  codes <- mapM (fmap quotedCodes . TIO.readFile) files
+  pure (sort (nub (concat codes)))
+
+haskellFiles :: FilePath -> IO [FilePath]
+haskellFiles dir = do
+  entries <- map (dir </>) <$> listDirectory dir
+  dirs <- filterM doesDirectoryExist entries
+  nested <- concat <$> mapM haskellFiles dirs
+  pure ([e | e <- entries, ".hs" `isSuffixOf` e, e `notElem` dirs] <> nested)
+
+quotedCodes :: T.Text -> [T.Text]
+quotedCodes src =
+  [ code
+  | (_, rest) <- T.breakOnAll "\"G" src,
+    let code = T.take 5 (T.drop 1 rest),
+    T.length code == 5,
+    T.all isDigit (T.drop 1 code),
+    T.take 1 (T.drop 6 rest) == "\""
+  ]

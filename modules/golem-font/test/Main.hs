@@ -106,6 +106,21 @@ tests han sans serif =
                 ff = head' [sgGlyphId g | g <- snd (run "office"), sgCluster g == 1]
             lookup ff m @?= Just "ff"
             lookup (head' [sgGlyphId g | g <- snd (run "office")]) m @?= Just "o"
+        ],
+      testGroup
+        "CIDSystemInfo (golem-pdf ADR 0006)"
+        [ testCase "a CID-keyed CFF font has its ROS" $
+            fontCidSystemInfo han @?= Just (CidSystemInfo "Adobe" "Identity" 0),
+          testCase "a name-keyed CFF font and a TrueType font have none" $ do
+            fontCidSystemInfo sans @?= Nothing
+            f <- either (assertFailure . show) pure (loadFont serif)
+            fontCidSystemInfo f @?= Nothing,
+          testCase "a subset keeps the ROS and the CIDs of the glyphs used" $ do
+            let used = [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "「日本語の組版」、ー。")]
+            sub <- maybe (assertFailure "subset failed") pure (subsetFont han used)
+            f <- either (assertFailure . show) pure (loadFont sub)
+            fontCidSystemInfo f @?= fontCidSystemInfo han
+            map (glyphCid f) used @?= map (glyphCid han) used
         ]
     ]
   where

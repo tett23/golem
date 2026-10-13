@@ -149,6 +149,22 @@ uint32_t golem_font_cid(golem_font *f, uint32_t gid) {
   return gid;
 }
 
+/* The ROS of a CID-keyed CFF font (golem-pdf ADR 0006). */
+int golem_font_ros(golem_font *f, const char **registry, const char **ordering,
+                   int *supplement) {
+  FT_Bool is_cid = 0;
+  const char *r = NULL, *o = NULL;
+  FT_Int s = 0;
+  if (FT_Get_CID_Is_Internally_CID_Keyed(f->face, &is_cid) == 0 && is_cid &&
+      FT_Get_CID_Registry_Ordering_Supplement(f->face, &r, &o, &s) == 0 && r && o) {
+    *registry = r;
+    *ordering = o;
+    *supplement = (int)s;
+    return 0;
+  }
+  return -1;
+}
+
 char *golem_font_postscript_name(golem_font *f) {
   const char *n = FT_Get_Postscript_Name(f->face);
   return (char *)(n ? n : "");

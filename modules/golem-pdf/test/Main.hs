@@ -43,7 +43,7 @@ page = Page box box box
     box = Rect 0 0 (595 * 65536) (842 * 65536)
 
 font :: Font
-font = Font "ABCDEF+Dummy" (TrueTypeProgram "not really a font") False [(1, 500), (2, 1000)] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 [(1, "A"), (2, "漢")]
+font = Font "ABCDEF+Dummy" (TrueTypeProgram "not really a font") False [(1, 500), (2, 1000)] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 [(1, "A"), (2, "漢")] ("Adobe", "Identity", 0)
 
 {- | A real 2×3 baseline JPEG (test/fixtures/tiny.jpg, written by macOS sips)
 with an APP2 ICC segment spliced in after SOI. qpdf --check decodes it.
@@ -1197,6 +1197,17 @@ tests =
         checkPdfX [(Rect 0 0 10 10, Rect 0 0 10 10, Rect (-1) 0 10 10)] @?= [1],
       testGroup "crop marks and bleed (ADR 0004)" marksTests,
       testGroup "Producer (ADR 0005)" producerTests,
+      testGroup
+        "CIDSystemInfo (ADR 0006)"
+        [ testCase "the CIDFont carries the ROS of the font" $ do
+            let doc = sample {docFonts = Map.fromList [(FontRef 7, font {fontProgram = CffProgram "not really a font", fontCidSystemInfo = ("Adobe", "Japan1", 7)})]}
+                pdf = writePdf doc
+            assertBool "Japan1" ("/CIDSystemInfo << /Ordering (Japan1) /Registry (Adobe) /Supplement 7 >>" `BS.isInfixOf` pdf)
+            assertBool "no Identity" (not ("/Ordering (Identity)" `BS.isInfixOf` pdf))
+            assertBool "xref" (xrefConsistent pdf),
+          testCase "Adobe-Identity-0 is written as before" $
+            assertBool "Identity" ("/CIDSystemInfo << /Ordering (Identity) /Registry (Adobe) /Supplement 0 >>" `BS.isInfixOf` writePdf sample)
+        ],
       goldenVsString "XMP packet" "test/golden/xmp.xml" $
         pure (BL.fromStrict (xmpPacket (PdfX "" "JC200103" ["山田 太郎"]) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
       testCase "qpdf --check accepts the output (when qpdf is installed)" $ do

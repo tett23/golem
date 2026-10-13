@@ -1,6 +1,6 @@
 # ADR 0002: フォントのサブセット化と PDF への埋め込み
 
-ステータス: 採択
+ステータス: 採択→`CIDSystemInfo` と異体字セレクタの ToUnicode は [golem-pdf ADR 0006](../../golem-pdf/adr/0006-cid-system-info.md)
 
 ## 文脈
 
