@@ -72,6 +72,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **シェイピング**：文字の並びを、フォントのグリフの並びと位置に変換すること。合字、カーニング、縦書き用の字形の置き換えを含み、HarfBuzz で行う（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)）。
 - **サブセット化**：フォントを、文書で使ったグリフだけを含む形に縮めること。Golem はグリフ番号を振り直さずに保つ（[golem-font ADR 0002](golem-font/adr/0002-subsetting-and-embedding.md)）。
 - **ToUnicode**：PDF の中のグリフから元の文字列へ戻すための対応表。PDF からの文字の抽出と検索に使われる。
+- **異体字セレクタ**と**IVS**：異体字セレクタは、直前の文字の字形を選ぶ Unicode の文字（`U+FE00` から `U+FE0F` と `U+E0100` から `U+E01EF`）。基底の文字と異体字セレクタの組を IVS（Ideographic Variation Sequence）という。PDF では基底の文字と一緒にシェイピングしてフォントの字形を選び、ToUnicode には基底の文字だけを書く（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。
 - **文書 ID** と**インスタンス ID**：PDF と XMP に書く識別子。文書 ID は本の識別子から、インスタンス ID は入力全体のハッシュから導出し、乱数を使わない（[仕様書](specifications.md)）。
 - **塗り足し**：仕上がりの判型の外側に設ける、断裁のずれを吸収するための領域。`style.toml` の `[page]` の `bleed` で幅を決める（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
 - **トンボ**：断裁の位置を示すために、仕上がりの判型の外側に描く線。日本式は仕上がりの線と塗り足しの線の二重、欧文は仕上がりの線だけの一重で、`golem build` の `--marks` で選ぶ（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。

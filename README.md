@@ -99,6 +99,7 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 閲覧用の PDF は `--marks` を付けずに作る。
 トンボの有無は PDF のインスタンス ID に入るので、閲覧用と入稿用の PDF は区別できる。
 フォントの OS/2 の `fsType` が埋め込みを禁じている場合はエラーになる。
+原稿の異体字セレクタ（IVS）は PDF では字形の選択に使い、ToUnicode には基底の文字だけを書く（[golem-pdf ADR 0006](docs/golem-pdf/adr/0006-cid-system-info.md)）。
 ビルドはプラグインをキャッシュからだけ読み、ネットワークに接続しない。
 診断は `--format json` で JSON にできる。
 診断のコード（`G0101` など）の意味と直し方は [docs/diagnostics.md](docs/diagnostics.md) にまとめてある。
