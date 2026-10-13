@@ -14,6 +14,7 @@ module Golem.Font
     fontIsCff,
     fontNumGlyphs,
     fontExtents,
+    fontEmBoxCentral,
     fontBytes,
     fontPostScriptName,
     CidSystemInfo (..),
@@ -65,6 +66,8 @@ foreign import capi unsafe "golem_font.h golem_font_is_cff" c_isCff :: Ptr CFont
 foreign import capi unsafe "golem_font.h golem_font_num_glyphs" c_numGlyphs :: Ptr CFont -> IO CInt
 
 foreign import capi unsafe "golem_font.h golem_font_extents" c_extents :: Ptr CFont -> Ptr Int32 -> Ptr Int32 -> Ptr Int32 -> IO ()
+
+foreign import capi unsafe "golem_font.h golem_font_embox_central" c_emboxCentral :: Ptr CFont -> IO CInt
 
 foreign import capi unsafe "golem_font.h golem_font_glyph_metrics" c_metrics :: Ptr CFont -> Word32 -> Ptr Int32 -> IO CInt
 
@@ -149,6 +152,14 @@ cidSystemInfo registry ordering supplement
   | otherwise = Nothing
   where
     printable c = c >= ' ' && c <= '~'
+
+{- | The height of the centre of the ideographic em box above the baseline,
+in font units (golem-driver ADR 0015): the ideoEmboxCentral baseline of
+HarfBuzz for horizontal Han text, from the BASE table or HarfBuzz's
+fallback when the font has none.
+-}
+fontEmBoxCentral :: Font -> Int
+fontEmBoxCentral f = unsafePerformIO $ withForeignPtr (fontPtr f) (fmap fromIntegral . c_emboxCentral)
 
 data Direction = Horizontal | Vertical
   deriving stock (Eq, Show)

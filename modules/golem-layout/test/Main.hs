@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Data.List (maximumBy, subsequences)
+import Data.List (isPrefixOf, maximumBy, subsequences)
 import Data.Map.Strict qualified as Map
 import Data.Ord (Down (..), comparing)
 import Data.Text (Text)
@@ -12,6 +12,7 @@ import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
+import Golem.Layout.Orientation
 import Golem.Layout.Paginate
 import Golem.Layout.Ruby hiding (RubyAlign (..))
 import Golem.Layout.Ruby qualified as R (RubyAlign (..))
@@ -217,7 +218,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-layout"
-    [ testGroup
+    [ testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
+      testGroup
         "Knuth-Plass (ADR 0001)"
         [ testCase "TeX badness" $ do
             badness 0 10 @?= 0
@@ -897,4 +899,26 @@ rubyTests =
             map snd (drop 2 (boxSpans end)) @?= [35]
         )
         [False, True]
+  ]
+
+orientationTests :: [TestTree]
+orientationTests =
+  [ testCase "the characters of the ADR take their UAX #50 values" $ do
+      let of' = map verticalOrientation
+      of' "\x2014\x2015\x2026\x2E3A" @?= replicate 4 Rotated
+      of' "\x301C\xFF5E\x300C\x30FC" @?= replicate 4 TransformedRotated
+      of' "\x3001" @?= [TransformedUpright]
+      of' "漢あ\xFE31" @?= replicate 3 Upright
+      map turnsInVertical "\x2014\x301C\x3001漢" @?= [True, True, False, False],
+    testCase "the ranges ascend and do not overlap" $ do
+      assertBool "not empty" (not (null orientationRanges))
+      assertBool "each range ordered" (and [lo <= hi | (lo, hi, _) <- orientationRanges])
+      assertBool "ascending and disjoint" (and (zipWith (\(_, hi, _) (lo, _, _) -> hi < lo) orientationRanges (drop 1 orientationRanges)))
+      assertBool ("the Unicode version: " <> orientationVersion) ("VerticalOrientation-" `isPrefixOf` orientationVersion),
+    testCase "unlisted code points follow the defaults of the file" $ do
+      -- unassigned in CJK Unified Ideographs Extension B..C: listed as U
+      verticalOrientation '\x2A6E0' @?= Upright
+      -- unassigned in Greek, not listed: the @missing value R
+      verticalOrientation '\x0378' @?= Rotated
+      verticalOrientation '\x10FFFF' @?= Rotated
   ]
