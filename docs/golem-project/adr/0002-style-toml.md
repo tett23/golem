@@ -1,6 +1,6 @@
 # ADR 0002: style.toml の読み込み
 
-ステータス: 採択→`[emphasis]` の廃止と `[paragraph-styles]` は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md)、`[sidenotes]` の `font` と `size` の廃止は [golem-driver ADR 0011](../../golem-driver/adr/0011-sidenote-font.md)、フォントと ICC プロファイルのファイルの存在の検査は [ADR 0004](0004-font-file-check-per-target.md)
+ステータス: 採択→`[emphasis]` の廃止と `[paragraph-styles]` は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md)、`[sidenotes]` の `font` と `size` の廃止は [golem-driver ADR 0011](../../golem-driver/adr/0011-sidenote-font.md)、フォントと ICC プロファイルのファイルの存在の検査は [ADR 0004](0004-font-file-check-per-target.md)、判型の寸法による指定は [ADR 0005](0005-page-size-by-dimensions.md)
 
 ## 文脈
 

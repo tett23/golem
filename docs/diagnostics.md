@@ -1762,8 +1762,9 @@ style.toml の誤りです
 
 `style.toml` が TOML として読めないか、スキーマに合わないか、値が範囲の外にある。
 フォントのファイルの欠落には使わない（[G0310](#g0310)、[G0802](#g0802)）。
+判型（`[page]` の `size`）の誤りには使わない（[G0317](#g0317)）。
 
-- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`未知の判型です: <判型>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。
+- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
 - ADR: ADR なし（条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）
 
@@ -1947,6 +1948,33 @@ style.toml のスタイルの参照が不正です
 ### 直し方
 
 理由の示すスタイルの `based-on` か `color` を直す。
+
+## G0317
+
+判型が不正です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[page]` の `size` が、判型の表の名前でも、正しい `{ width, height }` でもない。
+位置は `size` の値の位置である。
+
+- メッセージ: `未知の判型です: <名前>。表にない判型は size = { width = "…", height = "…" } で書きます`、`判型の width と height はどちらも必須です`、`判型には zw を使えません`、`判型の幅と高さは 0 より大きい寸法です`、または未知のキーと寸法の誤りの TOML のスキーマの文言。どれも誤った箇所の経路を添える。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [golem-project ADR 0005](golem-project/adr/0005-page-size-by-dimensions.md)
+
+### 主な原因
+
+- 判型の表にない名前を書いたか、名前の綴りを誤った。
+- `{ width, height }` の片方を書き忘れた。
+- 寸法に `zw` を使ったか、0 以下の値を書いた。
+
+### 直し方
+
+表の名前（`"A4"`、`"A5"`、`"A6"`、`"B5"`、`"B6"`、`"四六判"`、`"菊判"`、`"新書判"`、`"mass-market"`）を書くか、`size = { width = "148mm", height = "210mm" }` のように寸法で書く。
+単位は `mm`、`pt`、`Q`、`H` とし、`zw` は使わない。
 
 ## G0401
 
