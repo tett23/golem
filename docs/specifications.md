@@ -1256,7 +1256,7 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### 配布
 
-- **配布物のライセンスの一覧**：[docs/adr/0007](adr/0007-third-party-licenses.md) の仕組み（リンクマップからの構成要素の決定、Alpine のパッケージの文書、wasmtime のクレートの照合）は実装し、`licenses/wasmtime-v49.0.2/` にクレートの文書を生成した。残りは二つある。一つは、`licenses/wasmtime-v49.0.2/rust/`（Rust の標準ライブラリ、それが依存するクレート、compiler-rt の文書）の生成で、rustc 1.98.0 の導入と llvm-project からの取得を要するため、まだ `scripts/wasmtime-licenses.sh` を最後まで実行していない。これがないあいだ、`licenses.sh` は wasmtime の照合でエラーになり、配布物を作れない。もう一つは、Alpine の `-doc` パッケージが入れる文書の確かめで、足りない origin の文書を `licenses/alpine/` に置くことを、リリースの初回の検証で行う。
+- **配布物のライセンスの一覧**：[docs/adr/0007](adr/0007-third-party-licenses.md) の仕組み（リンクマップからの構成要素の決定、Alpine のパッケージの文書、wasmtime のクレートの照合）は実装し、`licenses/wasmtime-v49.0.2/` にクレート、Rust の標準ライブラリ、compiler-rt の文書を生成した。残りは、Alpine の `-doc` パッケージが入れる文書の確かめで、足りない origin の文書を `licenses/alpine/` に置くことを、リリースの初回の検証で行う。
 - **リリースの初回の検証**：リリースのワークフロー、Alpine での musl のビルド、コンテナの中での配布物の検査は、まだ一度も動かしていない。AI にリリースノートを書かせるには、リポジトリの秘密情報 `ANTHROPIC_API_KEY` が要る（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。[docs/adr/0008](adr/0008-first-release-verification.md) で、`v0.1.0-rc1` のタグで確かめる手順と項目を決めた（未実施）。タグは [docs/adr/0007](adr/0007-third-party-licenses.md) の実装をマージしてから付ける。
 
 ### 課題にしなかった事項
