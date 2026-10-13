@@ -2,8 +2,10 @@ module Main (main) where
 
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
+import Data.Text qualified as T
 import Golem.LayoutSpec
 import Golem.Project.Style
+import Golem.Syntax (Diagnostic (..), DiagnosticCode (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -86,6 +88,13 @@ tests =
         sidenoteAreaFor g 2 @?= Just (Rect (ex - pt 10 - pt 60) oy (pt 60) oh)
         assertBool "too wide" (isLeft (pageGeometry s {stSidenotes = Just (sn 200)}))
         assertBool "vertical" (isLeft (pageGeometry ((styleWith True True (grid 40 20 1 Nothing)) {stSidenotes = Just (sn 20)}))),
+      testCase "a sidenote column on a page of two columns is G0701 (docs/adr ADR 0018)" $ do
+        let sn = SidenoteStyle (Abs (pt 20)) (Abs (pt 10)) "{n}"
+        case pageGeometry ((styleWith False False (grid 12 30 2 (Just (Abs (pt 20))))) {stSidenotes = Just sn}) of
+          Left [d] -> do
+            diagCode d @?= DiagnosticCode "G0701"
+            assertBool "mentions columns" ("段組み" `T.isInfixOf` diagMessage d)
+          other -> assertFailure (show other),
       testCase "running heads and folios: outside is the fore-edge, swapped on even pages" $ do
         let s = (styleWith False False (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just ("top-outside", "heading.1.short")) (Just ("bottom-center", "{n}")))]}
             g = geom s
