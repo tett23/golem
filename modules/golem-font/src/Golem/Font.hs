@@ -17,6 +17,8 @@ module Golem.Font
     fontEmBoxCentral,
     fontBytes,
     fontPostScriptName,
+    CidSystemInfo (..),
+    fontCidSystemInfo,
     Direction (..),
     ShapeRequest (..),
     shapeRequest,
@@ -44,6 +46,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Foreign
+import Foreign.C.ConstPtr (ConstPtr (..))
 import Foreign.C.String (CString, peekCString, withCString)
 import Foreign.C.Types
 import System.IO.Unsafe (unsafePerformIO)
@@ -77,6 +80,8 @@ foreign import capi unsafe "golem_font.h golem_font_postscript_name" c_psName ::
 
 foreign import capi unsafe "golem_font.h golem_font_cid" c_cid :: Ptr CFont -> Word32 -> IO Word32
 
+foreign import capi unsafe "golem_font.h golem_font_ros" c_ros :: Ptr CFont -> Ptr (ConstPtr CChar) -> Ptr (ConstPtr CChar) -> Ptr CInt -> IO CInt
+
 foreign import capi unsafe "golem_font.h golem_free" c_free :: Ptr Word8 -> IO ()
 
 data Font = Font
@@ -87,8 +92,18 @@ data Font = Font
     fontNumGlyphs :: !Int,
     -- | ascender, descender, cap height in font units
     fontExtents :: !(Int, Int, Int),
-    fontPostScriptName :: !Text
+    fontPostScriptName :: !Text,
+    -- | the ROS of a CID-keyed CFF font; Nothing for any other font (golem-pdf ADR 0006)
+    fontCidSystemInfo :: !(Maybe CidSystemInfo)
   }
+
+-- | The Registry, Ordering and Supplement of a CID-keyed font.
+data CidSystemInfo = CidSystemInfo
+  { csiRegistry :: !Text,
+    csiOrdering :: !Text,
+    csiSupplement :: !Int
+  }
+  deriving stock (Eq, Show)
 
 data FontError
   = Unreadable
@@ -113,11 +128,30 @@ loadFont bytes = unsafePerformIO $ do
         [a, d, c] <- peekArray 3 arr
         pure (fromIntegral a, fromIntegral d, fromIntegral c)
       ps <- T.pack <$> (c_psName p >>= peekCString)
+      ros <- alloca $ \rp -> alloca $ \op -> alloca $ \sp -> do
+        r <- c_ros p rp op sp
+        if r /= 0
+          then pure Nothing
+          else do
+            registry <- peek rp >>= peekCString . unConstPtr
+            ordering <- peek op >>= peekCString . unConstPtr
+            supplement <- fromIntegral <$> peek sp
+            pure (cidSystemInfo registry ordering supplement)
       -- 0x0002: restricted licence embedding; 0x0200: bitmap embedding only
       pure $
         if fsType == 0x0002 || (fsType `div` 0x0200) `mod` 2 == 1
           then Left (EmbeddingRestricted fsType)
-          else Right (Font fp bytes upem cff n ext ps)
+          else Right (Font fp bytes upem cff n ext ps ros)
+
+{- | A ROS that a PDF string can hold as it is: printable ASCII and a
+supplement that is not negative (golem-pdf ADR 0006).
+-}
+cidSystemInfo :: String -> String -> Int -> Maybe CidSystemInfo
+cidSystemInfo registry ordering supplement
+  | all printable registry && all printable ordering && supplement >= 0 = Just (CidSystemInfo (T.pack registry) (T.pack ordering) supplement)
+  | otherwise = Nothing
+  where
+    printable c = c >= ' ' && c <= '~'
 
 {- | The height of the centre of the ideographic em box above the baseline,
 in font units (golem-driver ADR 0015): the ideoEmboxCentral baseline of
