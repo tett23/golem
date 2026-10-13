@@ -7,6 +7,7 @@ into Knuth–Plass items. Glyph advances come from a metrics function
 module Golem.Layout.Japanese
   ( CharClass (..),
     charClass,
+    isVariationSelector,
     ComposeEnv (..),
     SidenoteMarker (..),
     defaultComposeEnv,
@@ -171,6 +172,21 @@ defaultComposeEnv fs =
       | charClass c == Western = if isSpace c then 1 / 4 else 1 / 2
       | otherwise = 1
 
+{- | Variation selectors (U+FE00–U+FE0F) and ideographic variation
+selectors (U+E0100–U+E01EF): they join the box of the character before
+them (golem-pdf ADR 0006).
+-}
+isVariationSelector :: Char -> Bool
+isVariationSelector c = (c >= '\xFE00' && c <= '\xFE0F') || (c >= '\xE0100' && c <= '\xE01EF')
+
+{- | The text of a box without its trailing variation selectors, unless
+nothing else is left: the character classes come from the base character.
+-}
+withoutSelectors :: Text -> Text
+withoutSelectors t = case T.dropWhileEnd isVariationSelector t of
+  base | T.null base -> t
+  base -> base
+
 -- | Things the pagination must know about, at an item index.
 data Anchor
   = AnchorNote !Int !Int [Inline] -- item index, note number, body
@@ -192,7 +208,7 @@ boxKind = toEnum . bcTag
 
 -- One unit of composition before items are generated, with its look.
 data Piece
-  = PChar !Look !Char !Bool -- the character, kenten
+  = PChar !Look !Char !Text !Bool -- the character, its variation selectors, kenten
   | PWord !Look !Text -- a Latin word (no spaces)
   | PSpace !Look -- an inter-word space
   | PBox !Look !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
@@ -277,8 +293,13 @@ piecesOf env kenten inl = case inl of
     restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl} kenten)
 
 textPieces :: Look -> Bool -> Text -> [Piece]
-textPieces lk kenten t = go (zip cs latinish)
+textPieces lk kenten t = reverse (foldl' attach [] (go (zip cs latinish)))
   where
+    -- variation selectors join the character or word before them (golem-pdf ADR 0006)
+    attach acc p = case (acc, p) of
+      (PChar l c vs k : rest, PChar _ v "" _) | isVariationSelector v -> PChar l c (T.snoc vs v) k : rest
+      (PWord l w : rest, PChar _ v "" _) | isVariationSelector v -> PWord l (T.snoc w v) : rest
+      _ -> p : acc
     cs = T.unpack t
     isLatinWordChar c = charClass c == Western && not (isSpace c)
     -- quotation marks, apostrophes, hyphens and dashes join a Latin word when
@@ -300,7 +321,7 @@ textPieces lk kenten t = go (zip cs latinish)
       | l =
           let (w, rest') = span snd ((c, l) : rest)
            in PWord lk (T.pack (map fst w)) : go rest'
-      | otherwise = PChar lk c kenten : go rest
+      | otherwise = PChar lk c "" kenten : go rest
 
 numberPieces :: ComposeEnv -> Integer -> Maybe NumberStyle -> [Piece]
 numberPieces env n style
@@ -369,18 +390,22 @@ readingAdvances env lk = maybe [] (map (advance env lk {lkSize = lkSize lk `div`
 
 itemsFor :: ComposeEnv -> Maybe Piece -> Piece -> Maybe Piece -> [Item]
 itemsFor env prev p next = case p of
-  PChar lk c kenten ->
+  PChar lk c vs kenten ->
     let cls = charClass c
         fs = lkSize lk
         (pre, post) = punctSpace cls
-        w = advance env lk c - round ((pre + post) * toRational fs)
+        -- with variation selectors: shaped together with them
+        full
+          | T.null vs = advance env lk c
+          | otherwise = round (ceWordAdvance env lk (T.cons c vs) * toRational fs)
+        w = full - round ((pre + post) * toRational fs)
         tag
           | kenten = KindKenten
           | ceVertical env && cls == Western = KindRotated
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
-     in [Box w (BoxContent (T.singleton c) False 0 hang (fromEnum tag) lk 0 0)]
+     in [Box w (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 0)]
   PWord lk word -> wordItems env lk word
   PSpace lk ->
     let sw = advance env lk ' '
@@ -393,7 +418,7 @@ itemsFor env prev p next = case p of
         -- advance, the free space of a neighbouring reading, nothing else
         allowance before = \case
           _ | not (rsOverhangOntoKana style) -> 0
-          Just (PChar lk' c False) | isKanaClass (charClass c) -> min (rsOverhang style) (advance env lk' c `div` 2)
+          Just (PChar lk' c _ False) | isKanaClass (charClass c) -> min (rsOverhang style) (advance env lk' c `div` 2)
           Just (PRuby lk' _ b Nothing) -> case (if before then T.unsnoc b else (\(h, t) -> (t, h)) <$> T.uncons b) of
             Just (_, c) | isKanaClass (charClass c) -> min (rsOverhang style) (advance env lk' c `div` 2)
             _ -> 0
@@ -472,13 +497,15 @@ normalize env = go Nothing
       _ -> []
     trailingSpace c = maybe 0 (snd . punctSpace) (textClass c) * sizeOf c
     leadingSpace c = maybe 0 (fst . punctSpace) (textClass c) * sizeOf c
-    textClass c = case T.unsnoc (bcText c) of
-      Just (_, ch) | boxKind c `elem` [KindText, KindPunctuation, KindKenten] && T.length (bcText c) == 1 -> Just (charClass ch)
+    -- the classes come from the base characters, without variation selectors (golem-pdf ADR 0006)
+    baseText = withoutSelectors . bcText
+    textClass c = case T.unsnoc (baseText c) of
+      Just (_, ch) | boxKind c `elem` [KindText, KindPunctuation, KindKenten] && T.length (baseText c) == 1 -> Just (charClass ch)
       _ -> Nothing
-    firstClass c = case T.uncons (bcText c) of
+    firstClass c = case T.uncons (baseText c) of
       Just (ch, _) | not (isRuby c) -> Just (charClass ch)
       _ -> Nothing
-    lastClass c = case T.unsnoc (bcText c) of
+    lastClass c = case T.unsnoc (baseText c) of
       Just (_, ch) | not (isRuby c) -> Just (charClass ch)
       _ -> Nothing
     isRuby c = boxKind c `elem` [KindRuby, KindGroupRuby]

@@ -316,8 +316,9 @@ pluginFetch :: IO ExitCode
 pluginFetch = do
   exists <- doesFileExist "plugins.lock"
   text <- if exists then TE.decodeUtf8Lenient <$> BS.readFile "plugins.lock" else pure ""
+  -- G0611 points into plugins.lock (golem-plugin ADR 0003)
   case parseLock (FileId 0) text of
-    Left ds -> putHuman Map.empty ds >> pure (ExitFailure 1)
+    Left ds -> putHuman (Map.singleton (FileId 0) (SourceInfo "plugins.lock" (mkLineIndex text))) ds >> pure (ExitFailure 1)
     Right lock -> do
       fetcher <- httpsFetcher
       cache <- defaultCacheDir

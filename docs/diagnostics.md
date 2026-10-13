@@ -57,17 +57,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。下に節を置く。
 - **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。下に節を置く。
-- **定めたが未実装**：G0249 から G0254。[docs/adr/0014](adr/0014-in-file-settings.md) がファイルの中の設定（`@manifest` と `@style-def`）に定めた。この ADR を実装するまで、これらの診断は出ない。節の状態は使用中か廃止に限るので、実装するまで節を置かず、`golem explain` も未知のコードとして扱う。実装するときに、次の定めをもとに節を足す。
 - **空き**：G0104 から G0109、G0125 から G0128、G0601、G0703 から G0720、G0726 から G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
-
-定めたが未実装の番号の、メッセージと意味は次のとおりである。
-
-- G0249：`@manifest と @style-def はファイルの最初に置きます`。ファイルの設定の並びの外に、`@manifest` か `@style-def` がある。
-- G0250：`ファイルの中で上書きできない設定です: <キー>。上書きできるのは paragraph-separator です`。`@manifest` のキーが、ファイルの中で上書きできる `[source]` のキーでない。
-- G0251：`paragraph-separator の値は blank-line か line です: <値>`。`@manifest` の値が不正である。
-- G0252：`@manifest には key=value だけを書きます`、`@style-def には種類（character、paragraph、regex）と名前を書きます`、`値は語か文字列で書きます`、`同じキーを二度書いています: <キー>`。`@manifest` か `@style-def` の引数の形が誤っている。
-- G0253：`同じ名前のスタイルを二度定義しています: <名前>`。同じファイルの中で、同じ種類の同じ名前のスタイルを `@style-def` で二度定義した。
-- G0254：`正規表現スタイルはまだ実装していません`。`@style-def regex` を使った。正規表現スタイルを実装するまでの暫定のコードである。
 
 ## G0101
 
@@ -936,21 +926,21 @@ style.toml にないスウォッチです
 
 ### 意味
 
-`[style ...]` に、定義されていない文字スタイルの名前を書いたか、名前を一つ書かなかった。
+`[style ...]` に、`style.toml` にもそのファイルの `@style-def` にもない文字スタイルの名前を書いたか、名前を一つ書かなかった。
 
-- メッセージ: `style.toml にない文字スタイルです: <名前>`、`style には文字スタイルの名前を一つ書きます`
+- メッセージ: `定義されていない文字スタイルです: <名前>`、`style には文字スタイルの名前を一つ書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし（[docs/adr/0014](adr/0014-in-file-settings.md) がメッセージの「style.toml にない」を「定義されていない」に改めると決めたが、まだ実装していない）
+- ADR: ADR なし（メッセージは [docs/adr/0014](adr/0014-in-file-settings.md) が改めた）
 
 ### 主な原因
 
 - `[style ...]` の名前の綴りを誤った。
-- `style.toml` の `[character-styles]` に定義していない。
+- `style.toml` の `[character-styles]` にも、ファイルの先頭の `@style-def character` にも定義していない。
 - 名前を書かなかったか、二つ以上書いた。
 
 ### 直し方
 
-`[character-styles]` に定義するか、名前の綴りを直す。
+`style.toml` の `[character-styles]` か、ファイルの先頭の `@style-def character` に定義するか、名前の綴りを直す。
 
 ## G0219
 
@@ -1048,6 +1038,8 @@ number-text の引数が不正です
 
 コマンド名の綴りを確かめる。
 プラグインのコマンドなら、`manifest.toml` にプラグインを宣言する。
+プラグインの読み込みか検査が誤り（[G0602](#g0602) から [G0608](#g0608)、[G0610](#g0610)、[G0611](#g0611)）を出したときは、未知のコマンドを報告しない（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)）。
+プラグインの誤りを直した後のビルドで報告する。
 
 ## G0223
 
@@ -1619,23 +1611,24 @@ lines の範囲が不正です
 
 ### 意味
 
-`@style` の段落スタイルが定義されていないか、名前を一つ書かなかった。
+`@style` の段落スタイルが、`style.toml` にもそのファイルの `@style-def` にもないか、名前を一つ書かなかった。
+`@import` したファイルの `@style-def` は、取り込む側では使えない。
 フィルタのプラグインが、定義されていない段落スタイルの段落を返した場合も出る。
 
-- メッセージ: `style.toml にない段落スタイルです: <名前>`、`@style には段落スタイルの名前を一つ書きます`
+- メッセージ: `定義されていない段落スタイルです: <名前>`、`@style には段落スタイルの名前を一つ書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（[docs/adr/0014](adr/0014-in-file-settings.md) がメッセージの「style.toml にない」を「定義されていない」に改めると決めたが、まだ実装していない）
+- ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（メッセージは [docs/adr/0014](adr/0014-in-file-settings.md) が改めた）
 
 ### 主な原因
 
 - `@style` の段落スタイルの名前の綴りを誤った。
-- `style.toml` の `[paragraph-styles]` に定義していない。
+- `style.toml` の `[paragraph-styles]` にも、ファイルの先頭の `@style-def paragraph` にも定義していない。
 - 名前を書かなかったか、二つ以上書いた。
 - フィルタのプラグインが、定義されていない段落スタイルの段落を返した。
 
 ### 直し方
 
-`style.toml` の `[paragraph-styles]` に定義するか、名前の綴りを直す。
+`style.toml` の `[paragraph-styles]` か、ファイルの先頭の `@style-def paragraph` に定義するか、名前の綴りを直す。
 
 ## G0248
 
@@ -1657,6 +1650,162 @@ lines の範囲が不正です
 ### 直し方
 
 `@verse` を `@style verse` に書き換える。
+
+## G0249
+
+@manifest と @style-def はファイルの最初に置きます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+ファイルの設定の並びの外に、`@manifest` か `@style-def` がある。
+属性のまとまりの途中（`@label` の後など）に書いた場合も出る。
+その行は、上書きと定義としては扱わない。
+
+- メッセージ: `@manifest と @style-def はファイルの最初に置きます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0014](adr/0014-in-file-settings.md)
+
+### 主な原因
+
+- 本文の途中や末尾に `@manifest` か `@style-def` を書いた。
+- `@label` などの属性の後に書いた。
+
+### 直し方
+
+`@manifest` と `@style-def` をファイルの先頭に集める。
+前に置いてよいのは、コメントと空行だけである。
+
+## G0250
+
+ファイルの中で上書きできない設定です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@manifest` のキーが、ファイルの中で上書きできる `[source]` のキーでない。
+マニフェストにはあるが上書きできないキー（`title` など）と、未知のキーの両方に出る。
+そのキーは無視し、同じ `@manifest` のほかのキーの上書きは効かせる。
+
+- メッセージ: `ファイルの中で上書きできない設定です: <キー>。上書きできるのは paragraph-separator です`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0014](adr/0014-in-file-settings.md)
+
+### 主な原因
+
+- 書名や出力ターゲットのように、本の全体で一つの値を `@manifest` で変えようとした。
+- キーの綴りを誤った。
+
+### 直し方
+
+本の全体の設定は `manifest.toml` に書く。
+ファイルの中で変えられるのは `[source]` のキー（`paragraph-separator`）だけである。
+
+## G0251
+
+@manifest の値が不正です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@manifest` の `[source]` のキーの値が、受け付ける値でない。
+そのキーの上書きは効かない。
+
+- メッセージ: `paragraph-separator は "blank-line" か "line" です: <値>`（`[source]` のキーの表が返すメッセージ）
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0014](adr/0014-in-file-settings.md)
+
+### 主な原因
+
+- 値の綴りを誤った（`lines` など）。
+
+### 直し方
+
+`paragraph-separator` には `blank-line` か `line` を書く。
+
+## G0252
+
+@manifest か @style-def の引数の形が誤っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@manifest` か `@style-def` の引数の形が誤っている。
+位置引数の数の誤り、未知の種類、展開する引数（`*[...]`、`**[...]`）、本体がある、`@manifest` に引数がない、同じキーを二度書いた、値が語と文字列のほか（`[= ...]` など）のいずれかである。
+誤りのある `@manifest` の引数はその引数だけを無視し、誤りのある `@style-def` は定義の全体を捨てる。
+
+- メッセージ: `@manifest には key=value だけを書きます`、`@style-def には種類（character、paragraph、regex）と名前を書きます`、`値は語か文字列で書きます`、`同じキーを二度書いています: <キー>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0014](adr/0014-in-file-settings.md)
+
+### 主な原因
+
+- `@style-def` の種類か名前を書き忘れた。
+- 一つのスタイルの欄を、字下げした続きの行に書いた。
+- 値を式で書いた。
+
+### 直し方
+
+メッセージの示す形に直す。
+一つのスタイルは一行の `@style-def` で定義し、値は語か文字列で書く。
+
+## G0253
+
+同じ名前のスタイルを二度定義しています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+同じファイルの中で、同じ種類の同じ名前のスタイルを `@style-def` で二度定義した。
+二つ目以降の定義は捨てる。
+`style.toml` と組み込みのスタイルと同じ名前は、上書きとして受け付けるので、このコードにならない。
+
+- メッセージ: `同じ名前のスタイルを二度定義しています: <名前>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0014](adr/0014-in-file-settings.md)
+
+### 主な原因
+
+- 一つのスタイルの欄を、二つの `@style-def` に分けて書いた。
+
+### 直し方
+
+定義を一つの `@style-def` にまとめる。
+
+## G0254
+
+正規表現スタイルはまだ実装していません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@style-def regex` を使った。
+正規表現スタイルを実装するまでの暫定のコードであり、その行は定義としては扱わない。
+
+- メッセージ: `正規表現スタイルはまだ実装していません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0014](adr/0014-in-file-settings.md)（正規表現スタイルの意味は [docs/adr/0015](adr/0015-regex-styles.md)）
+
+### 主な原因
+
+- 正規表現スタイルを、ファイルの中で定義しようとした。
+
+### 直し方
+
+今は正規表現スタイルを使えない。
+`@style-def regex` の行を消す。
 
 ## G0256
 
@@ -1724,7 +1873,7 @@ manifest.toml の誤りです
 `manifest.toml` が TOML として読めないか、スキーマに合わないか、出力ターゲットが一つもない。
 `[source]` と章の項目の `[source]` のキー（`paragraph-separator` など）の未知のキーと不正な値、同じファイルを章の配列に二度並べて効く `[source]` の値が異なる場合も、この誤りとする。
 
-- メッセージ: `TOML の誤りです: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、または TOML のスキーマの誤りの文言（未知のキー、値の型の誤り、`[source]` の不正な値など）に誤った箇所の経路を添えたもの
+- メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、または TOML のスキーマの誤りの文言（未知のキー、値の型の誤り、`[source]` の不正な値など）に誤った箇所の経路を添えたもの
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）
 - ADR: ADR なし（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えた）
 
@@ -1849,10 +1998,11 @@ style.toml の誤りです
 `style.toml` が TOML として読めないか、スキーマに合わないか、値が範囲の外にある。
 フォントのファイルの欠落には使わない（[G0310](#g0310)、[G0802](#g0802)）。
 判型（`[page]` の `size`）の誤りには使わない（[G0317](#g0317)）。
+`@style-def` の名前と欄の誤りにも出る。誤りのある定義は捨てる。
 
 - メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: ADR なし（条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
+- ADR: ADR なし（条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)）
 
 ### 主な原因
 
@@ -1900,10 +2050,11 @@ style.toml にないフォントの役割です
 ### 意味
 
 見出し、文字スタイル、段落スタイルの `font` が、`[fonts]` にない役割を指す。
+`@style-def` の `font` にも出る。誤りのある定義は捨てる。
 
 - メッセージ: `style.toml にないフォントの役割です: <役割>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)（定めた）、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（段落スタイルに広げた）
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
+- ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)（定めた）、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（段落スタイルに広げた）、[docs/adr/0014](adr/0014-in-file-settings.md)（ファイルの中の定義に広げた）
 
 ### 主な原因
 
@@ -1975,7 +2126,7 @@ LSP は出さない。
 段落スタイルの解決した `size` が、`[page.grid]` の文字の大きさを超える。
 
 - メッセージ: `段落スタイルの文字の大きさが版面の文字の大きさを超えます: <名前>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
 - ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)
 
 ### 主な原因
@@ -1998,7 +2149,7 @@ LSP は出さない。
 段落スタイルの `indent` と `first-line-indent` の和が負になる。
 
 - メッセージ: `段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: <名前>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
 - ADR: [docs/adr/0006](adr/0006-paragraph-indent.md)
 
 ### 主な原因
@@ -2021,7 +2172,7 @@ style.toml のスタイルの参照が不正です
 `based-on` が存在しないスタイルを指すか、循環するか、`body` に `based-on` があるか、文字スタイルの `color` が `[color.swatches]` にない。
 
 - メッセージ: `style.toml のスタイルの参照が不正です: <理由>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
 - ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)
 
 ### 主な原因
@@ -2071,12 +2222,13 @@ style.toml のスタイルの参照が不正です
 
 ### 意味
 
-同じラベルを二つの要素に付けた。
-関連情報に最初の定義の位置を示す。
+同じラベルを二つ以上の要素に付けた。
+マニフェストの章の順、ファイルの中の順で、二つ目以降のそれぞれに一つ出る。
+位置はラベルを付けたブロックであり、関連情報に最初の定義の位置を示す。
 
 - メッセージ: `ラベルが重複しています: <ラベル>`
 - 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
-- ADR: ADR なし
+- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -2095,11 +2247,13 @@ style.toml のスタイルの参照が不正です
 
 ### 意味
 
-文書に `@toc` が二つ以上ある。
+文書（すべての章のファイル）に `@toc` が二つ以上ある。
+二つ目以降の `@toc` のそれぞれに一つ出る。
+関連情報に、一つ目の `@toc` の位置を示す。
 
 - メッセージ: `@toc は文書に一つだけ置けます`
 - 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
-- ADR: ADR なし
+- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -2108,6 +2262,7 @@ style.toml のスタイルの参照が不正です
 ### 直し方
 
 `@toc` を一つにする。
+関連情報が示す一つ目の `@toc` を残すなら、この診断が出た `@toc` をすべて消す。
 
 ## G0403
 
@@ -2118,11 +2273,13 @@ style.toml のスタイルの参照が不正です
 
 ### 意味
 
-相互参照が、どこにも付いていないラベルを指す。
+相互参照（`ref-number`、`ref-title`、`ref-page`）が、どこにも付いていないラベルを指す。
+参照の種類を問わない。
+位置は参照であり、参照は何も出力しない。
 
 - メッセージ: `存在しないラベルへの参照です: <ラベル>`
 - 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
-- ADR: ADR なし（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md) がテストの例として触れる）
+- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md) がテストの例として触れる）
 
 ### 主な原因
 
@@ -2135,22 +2292,26 @@ style.toml のスタイルの参照が不正です
 
 ## G0404
 
-最初の章より前の図版に章番号を使う図番号を振れません
+章の外にある図版に章番号を使う図番号を振れません
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-図番号の書式が `{chapter}` を使うのに、最初の章の見出しより前に図版がある。
+`style.toml` の図番号の書式（`figures.number`）が `{chapter}` を使うのに、章の番号を持たない図版がある。
+章は、番号を持つ階層 1 の見出しから、次の階層 1 の見出しまでである。
+最初の章の見出しより前の図版と、`@nonumber` の階層 1 の見出し（あとがきなど）の後の図版が、章の外になる。
+位置は図版のブロックである。
 
-- メッセージ: `最初の章より前の図版には、章番号を使う図番号を振れません`
+- メッセージ: `章の外にある図版には、章番号を使う図番号を振れません。章は番号を持つ階層 1 の見出しから始まります`
 - 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
-- ADR: ADR なし
+- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)
 
 ### 主な原因
 
 - 図番号の書式が `{chapter}` を使うのに、最初の章の見出しより前に図版を置いた。
+- 図番号の書式が `{chapter}` を使うのに、`@nonumber` の階層 1 の見出し（あとがきなど）の後に図版を置いた。
 
 ### 直し方
 
@@ -2165,11 +2326,13 @@ style.toml のスタイルの参照が不正です
 
 ### 意味
 
-`ref-number` が、番号を持たない要素（番号のない見出しなど）を指す。
+`ref-number` が、番号を持たない要素を指す。
+番号を持つのは、`@nonumber` のない見出しと図版である。
+位置は参照であり、参照は何も出力しない。
 
 - メッセージ: `番号を持たない要素への参照です: <ラベル>`
 - 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
-- ADR: ADR なし
+- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -2179,6 +2342,34 @@ style.toml のスタイルの参照が不正です
 
 題を参照するなら `ref-title` を使う。
 番号を参照するなら、番号の付く要素にラベルを移す。
+
+## G0406
+
+題を持たない要素への参照です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`ref-title` が、題を持たない要素を指す。
+題を持つのは、見出し（`@toc-title` があればそれ）と図版（代替テキスト）である。
+段落、リスト、表などに付けたラベルは、`ref-title` で参照できない。
+位置は参照であり、参照は何も出力しない。
+
+- メッセージ: `題を持たない要素への参照です: <ラベル>`
+- 段階とモジュール: 文書の組み立て（golem-doc の `Golem.Doc.Assemble`）
+- ADR: [golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)
+
+### 主な原因
+
+- 段落、リスト、表などに付けたラベルを `ref-title` で指した。
+- 題を参照するつもりで、見出しではなく、見出しの次の段落にラベルを付けた。
+
+### 直し方
+
+題を参照するなら、見出しか図版にラベルを移す。
+その箇所のページを参照するなら `ref-page` を使う。
 
 ## G0501
 
@@ -2285,16 +2476,18 @@ plugins.lock にないプラグインです
 
 ### 意味
 
-`manifest.toml` で宣言したプラグインが `plugins.lock` にないか、`plugins.lock` が読めない。
+`manifest.toml` で宣言したプラグインの名前が `plugins.lock` にないか、`plugins.lock` の項目の `url` が宣言の `url` と違う。
+`plugins.lock` がなければ、空の `plugins.lock` として扱う。
+位置は `manifest.toml` の先頭である。
 
-- メッセージ: `plugins.lock にないプラグインです。golem plugin lock を実行してください: <名前>`、または `plugins.lock` の TOML の誤りの文言
-- 段階とモジュール: プラグイン（golem-plugin の `Golem.Plugin.Lock`、golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- メッセージ: `plugins.lock にないプラグインです。golem plugin lock を実行してください: <名前>`、`plugins.lock の URL が manifest.toml と違います。golem plugin lock を実行してください: <名前>`
+- 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
 - `manifest.toml` にプラグインを足したが、`golem plugin lock` を実行していない。
-- `plugins.lock` が壊れていて読めない。
+- `manifest.toml` のプラグインの `url` を変えたが、`golem plugin lock` を実行していない。
 
 ### 直し方
 
@@ -2309,16 +2502,17 @@ plugins.lock にないプラグインです
 
 ### 意味
 
-プラグインの配布物がキャッシュにない。
+`plugins.lock` の項目のハッシュを名前とする配布物が、キャッシュにない。
 ビルドはネットワークに接続しないので、自分では取得しない。
+位置は `manifest.toml` の先頭である。
 
 - メッセージ: `キャッシュにないプラグインです。golem plugin fetch を実行してください: <名前>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
-- `golem plugin fetch` を実行していない。ビルドはネットワークに接続しないので、自分では取得しない。
+- `golem plugin fetch` を実行していない。
 
 ### 直し方
 
@@ -2333,11 +2527,12 @@ plugins.lock にないプラグインです
 
 ### 意味
 
-キャッシュにある配布物の SHA-256 が、`plugins.lock` の値と違う。
+キャッシュにある配布物の SHA-256 が、`plugins.lock` の項目のハッシュと一致しない。
+位置は `manifest.toml` の先頭である。
 
 - メッセージ: `キャッシュの配布物のハッシュが plugins.lock と一致しません: <名前>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -2357,11 +2552,15 @@ plugins.lock にないプラグインです
 
 ### 意味
 
-プラグインの wasm のモジュールを読み込めない。
+配布物を wasm のモジュールとして読み込めない。
+コンパイルの失敗、import の要求、ABI の版の違い、必要な関数の欠け、起動の失敗、`golem_describe` の不正な出力を含む。
+位置は `manifest.toml` の先頭である。
+理由の文言は次のいずれかで、[G0609](#g0609) と共有する。
+`プラグインを読み込めません: <詳細>`、`プラグインが import を要求しています: <import の一覧>`、`プラグインの ABI の版が異なります: <版>`、`プラグインが関数を公開していません: <関数>`、`プラグインの実行が命令数の上限を超えました`、`プラグインの実行が失敗しました（メモリの上限を超えた場合を含む）: <詳細>`、`プラグインを起動できません: <詳細>`、`プラグインの出力が不正です: <詳細>`
 
 - メッセージ: `<名前>: <理由>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -2381,10 +2580,12 @@ plugins.lock にないプラグインです
 ### 意味
 
 二つ以上のプラグインが、同じ名前のコマンドを提供している。
+コマンドの名前ごとに一つ出し、提供するプラグインを名前の順に並べる。
+位置は `manifest.toml` の先頭である。
 
-- メッセージ: `複数のプラグインが同じコマンドを提供しています: <コマンド>`
+- メッセージ: `複数のプラグインが同じコマンドを提供しています: <コマンド>（<プラグイン>、<プラグイン>）`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -2403,43 +2604,50 @@ plugins.lock にないプラグインです
 
 ### 意味
 
-プラグインのコマンドが組み込みのコマンドと同じ名前で、上書きを宣言していない。
+プラグインが組み込みのコマンドと同じ名前のコマンドを提供し、そのプラグインの `overrides` にその名前がない。
+組み込みのコマンドが上書きできるものなら一つ目の文言、上書きできないもの（`note` など）なら二つ目の文言になる。
+位置は `manifest.toml` の先頭である。
 
-- メッセージ: `組み込みのコマンドと衝突しています（overrides で宣言してください）: <プラグイン>.<コマンド>`
+- メッセージ: `組み込みのコマンドと衝突しています（overrides で宣言してください）: <プラグイン>.<コマンド>`、`上書きできない組み込みのコマンドと衝突しています: <プラグイン>.<コマンド>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
 - プラグインのコマンドが組み込みのコマンドと同じ名前で、上書きを宣言していない。
+- プラグインが、上書きできない組み込みのコマンドと同じ名前のコマンドを提供している。
 
 ### 直し方
 
-上書きするなら、`manifest.toml` のプラグインの `overrides` にコマンドを書く。
+上書きできるコマンドを上書きするなら、`manifest.toml` のプラグインの `overrides` にコマンドを書く。
+上書きできないコマンドと衝突するなら、そのプラグインを外す。
 
 ## G0608
 
-overrides に書けないコマンドです
+overrides に書けない名前です
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`overrides` に、そのプラグインが提供していないコマンドか、上書きできない組み込みのコマンドを書いた。
+プラグインの `overrides` に、そのプラグインが提供していないコマンドか、上書きできる組み込みのコマンドでない名前がある。
+`overrides` の一つの名前について、高々一つ出す。
+提供していなければ一つ目の文言、提供していても上書きできる組み込みのコマンドでなければ（組み込みでない名前か、上書きできない組み込みのコマンド）二つ目の文言になる。
+位置は `manifest.toml` の先頭である。
 
-- メッセージ: `プラグインが提供していないコマンドを overrides に書いています: <プラグイン>.<コマンド>`、`上書きできないコマンドです: <プラグイン>.<コマンド>`
+- メッセージ: `プラグインが提供していないコマンドを overrides に書いています: <プラグイン>.<コマンド>`、`上書きできる組み込みのコマンドではありません: <プラグイン>.<コマンド>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
 - `overrides` に、そのプラグインが提供していないコマンドを書いた。
-- `overrides` に、上書きできない組み込みのコマンドを書いた。
+- `overrides` に、組み込みでない名前か、上書きできない組み込みのコマンドを書いた。
 
 ### 直し方
 
-`overrides` からそのコマンドを外す。
+`overrides` からその名前を外す。
 
 ## G0609
 
@@ -2451,16 +2659,18 @@ overrides に書けないコマンドです
 ### 意味
 
 プラグインのコマンドかフィルタの実行が失敗した。
-命令数の上限に達した場合などである。
+命令数の上限、メモリの上限を含むトラップ、不正な出力を含む。
+位置は、コマンドならコマンドを呼んだ箇所、フィルタならフィルタを適用したファイルの先頭である。
+理由の文言は [G0605](#g0605) と同じである。
 
-- メッセージ: `<理由>`、`<プラグイン>.<フィルタ>: <理由>`
+- メッセージ: `<プラグイン>.<コマンド>: <理由>`、`<プラグイン>.<フィルタ>: <理由>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
-- プラグインのコマンドかフィルタが、命令数の上限に達した。
-- プラグインの中で誤りが起きた。
+- プラグインのコマンドかフィルタが、命令数の上限かメモリの上限に達した。
+- プラグインの中で誤りが起きたか、プラグインが不正な出力を返した。
 
 ### 直し方
 
@@ -2469,27 +2679,54 @@ overrides に書けないコマンドです
 
 ## G0610
 
-宣言されていないプラグインかフィルタです
+フィルタの設定が不正です
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`manifest.toml` のフィルタの設定が、宣言されていないプラグインか、プラグインが提供していないフィルタを指す。
+`[[filters]]` の項目が、宣言されていないプラグインか、宣言したプラグインが提供していないフィルタを指す。
+位置は `manifest.toml` の先頭である。
 
-- メッセージ: `宣言されていないプラグインかフィルタです: <名前>`
+- メッセージ: `宣言されていないプラグインです: <プラグイン>（フィルタ <プラグイン>.<フィルタ>）`、`プラグインが提供していないフィルタです: <プラグイン>.<フィルタ>`
 - 段階とモジュール: プラグイン（golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
 
 ### 主な原因
 
-- `manifest.toml` のフィルタの設定が、宣言されていないプラグインを指す。
-- プラグインが提供していないフィルタを指す。
+- `[[filters]]` の項目が、宣言されていないプラグインを指す。
+- `[[filters]]` の項目が、プラグインが提供していないフィルタを指す。
 
 ### 直し方
 
-プラグインを宣言するか、フィルタの名前を直す。
+プラグインを宣言するか、`[[filters]]` の項目のプラグインとフィルタの名前を直す。
+
+## G0611
+
+plugins.lock を読めません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`plugins.lock` が TOML として読めないか、項目の形（`url` と `sha256` の文字列）に合わない。
+位置は、`plugins.lock` の中の誤りの位置である。
+
+- メッセージ: `plugins.lock` の TOML の誤りの文言
+- 段階とモジュール: プラグイン（golem-plugin の `Golem.Plugin.Lock`、golem-driver の `Golem.Driver.Plugins`、`golem plugin fetch`）
+- ADR: [golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)
+
+### 主な原因
+
+- `plugins.lock` を手で編集した。
+- `plugins.lock` のマージで衝突が残った。
+
+### 直し方
+
+`plugins.lock` は処理系が書くファイルなので、手で直さない。
+`plugins.lock` を消して `golem plugin lock` を実行する。
 
 ## G0701
 

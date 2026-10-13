@@ -12,9 +12,12 @@ module Golem.Driver
     evaluateProject,
     evaluateProjectWith,
     Evaluated (..),
+    localStylesOf,
+    docStyles,
     missingStyleFiles,
     targetFileDiagnostics,
     sourceInfos,
+    withLockSource,
     FontProvider (..),
     LoadedFonts (..),
     noFontProvider,
@@ -106,6 +109,8 @@ data Evaluated = Evaluated
     evStyleFile :: !FileId,
     -- | the text of style.toml, empty when there is none (an input of the instance ID)
     evStyleText :: !Text,
+    -- | the text of plugins.lock, when there is one (golem-plugin ADR 0003)
+    evLockText :: !(Maybe Text),
     evResults :: !(Map FileId EvalResult),
     evBook :: !(Maybe Book),
     evDiagnostics :: ![Diagnostic],
@@ -114,6 +119,24 @@ data Evaluated = Evaluated
     files depend on has changed).
     -} evReevaluate :: FileId -> SourceFile -> EvalResult
   }
+
+-- | The styles each file defines, of the files that define any (docs/adr ADR 0014).
+localStylesOf :: Evaluated -> Map FileId LocalStyles
+localStylesOf = Map.filter (/= noLocalStyles) . Map.map erStyles . evResults
+
+-- | The style of each document: style.toml with the styles its file defines over it.
+docStyles :: Evaluated -> FileId -> Style
+docStyles e fid = maybe (evStyle e) (withLocalStyles (evStyle e)) (Map.lookup fid (localStylesOf e))
+
+{- | The FileId of plugins.lock, where G0611 points (golem-plugin ADR 0003):
+the one after style.toml's.
+-}
+lockFileId :: Project -> FileId
+lockFileId p = let FileId n = styleFileId p in FileId (n + 1)
+
+-- | Adds plugins.lock, when there is one, to the files of diagnostics.
+withLockSource :: Evaluated -> Map FileId SourceInfo -> Map FileId SourceInfo
+withLockSource e = maybe id (Map.insert (lockFileId (evProject e)) . SourceInfo "plugins.lock" . mkLineIndex) (evLockText e)
 
 -- | Line indexes for rendering diagnostics.
 sourceInfos :: Project -> Map FileId SourceInfo
@@ -142,7 +165,7 @@ evaluateProjectWith overlay profile root = do
           | hasErrors synDiags -> do
               assets <- loadAssets root project
               (citeKeys, _) <- loadBibliography root manifest0
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) Map.empty Nothing synDiags (reeval profile project style assets citeKeys noPlugins Map.empty)))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) Nothing Map.empty Nothing synDiags (reeval profile project style assets citeKeys noPlugins Map.empty)))
           | otherwise -> do
               let manifest = manifest0
                   masterDiags =
@@ -151,21 +174,24 @@ evaluateProjectWith overlay profile root = do
                       not (Map.member m (stMasters style))
                     ]
               cacheDir <- defaultCacheDir
-              hookE <- loadPlugins root cacheDir (projectManifestFile project) manifest
+              lockText <- readMaybeText (root </> "plugins.lock")
+              hookE <- loadPlugins cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) manifest
               let (pluginDiags, hook) = either (,noPlugins) ([],) hookE
+                  -- no G0222 after the plugins failed to load (golem-plugin ADR 0003)
+                  quiet = if null pluginDiags then id else \r -> r {erDiagnostics = filter ((/= DiagnosticCode "G0222") . diagCode) (erDiagnostics r)}
               assets <- loadAssets root project
               (citeKeys, _) <- loadBibliography root manifest
-              let results = evalAll profile project style assets citeKeys hook
+              let results = Map.map quiet (evalAll profile project style assets citeKeys hook)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
                   chapterDocs = [erDocument r | (fid, _) <- projectChapters project, Just r <- [Map.lookup fid results]]
                   cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style)
                   pre = masterDiags <> pluginDiags <> s0Diags
-                  again = reeval profile project style assets citeKeys hook results
+                  again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
               if hasErrors pre
-                then pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) results Nothing pre again))
+                then pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results Nothing pre again))
                 else do
                   let (book, s1Diags) = assemble cfg evalDeferred chapterDocs
-                  pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) results (Just book) (pre <> s1Diags) again))
+                  pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results (Just book) (pre <> s1Diags) again))
 
 readMaybeText :: FilePath -> IO (Maybe Text)
 readMaybeText p = do
@@ -213,18 +239,14 @@ reeval profile project style assets citeKeys hook acc fid sf =
             ctxCiteKeys = citeKeys,
             ctxAssets = assets,
             ctxPlugins = hook,
-            ctxSource = sourceSettingsOf project fid
+            ctxSource = sourceSettingsOf project fid,
+            ctxStyle = style
           }
    in evalFile ctx (sfAst sf)
 
 -- | How a file of the project is read (docs/adr ADR 0013).
 sourceSettingsOf :: Project -> FileId -> SourceSettings
 sourceSettingsOf project fid = Map.findWithDefault (manifestSource (projectManifest project)) fid (projectSourceSettings project)
-
--- | Whether each paragraph style keeps its lines, resolved (docs/adr ADR 0005).
-paraLineBreaks :: Style -> Map Text LineBreaks
-paraLineBreaks style =
-  Map.fromList [(n, fromMaybe JoinLines (psLineBreaks d)) | n <- Map.keys (stParaStyles style), Just d <- [paraStyle style (Just n)]]
 
 -- | The paragraph styles that keep their lines (lint G0501, docs/adr ADR 0005).
 keepStyles :: Style -> Set.Set Text
@@ -345,11 +367,11 @@ build opts = do
           -- style.toml is a source of diagnostics (golem-project ADR 0004, G0702) when it exists
           infos =
             (if hasStyle then Map.insert styleFid (SourceInfo "style.toml" (mkLineIndex (evStyleText e))) else id)
-              (sourceInfos project)
+              (withLockSource e (sourceInfos project))
           marksDiags = cropMarkDiagnostics opts e (if hasStyle then styleFid else projectManifestFile project) targets
       -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
       missing <- missingStyleFiles (optRoot opts) (evStyle e)
-      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics styleFid (evStyle e) missing t)) | t <- targets]
+      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics styleFid (evStyle e) (Map.elems (localStylesOf e)) missing t)) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
           -- G0702 stops the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
@@ -373,8 +395,8 @@ missingStyleFiles root style = do
 0004): the fonts the PDF uses and its output intent (errors), every font
 for HTML and EPUB (warnings, errors in prod), nothing for plain text.
 -}
-targetFileDiagnostics :: FileId -> Style -> Map FilePath PathError -> Target -> [Diagnostic]
-targetFileDiagnostics fid style missing = \case
+targetFileDiagnostics :: FileId -> Style -> [LocalStyles] -> Map FilePath PathError -> Target -> [Diagnostic]
+targetFileDiagnostics fid style locals missing = \case
   TargetPdf ->
     report "G0802" Error "フォントのファイルがありません" pdfFonts
       <> report "G0806" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
@@ -382,7 +404,7 @@ targetFileDiagnostics fid style missing = \case
   TargetEpub -> siteFonts
   TargetText -> []
   where
-    pdfFonts = [p | r <- usedRoles style, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
+    pdfFonts = [p | r <- usedRoles style locals, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
     siteFonts = report "G0310" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
     report code sev missingMsg paths =
       [ diagnostic code sev (mkSpan fid 0 0) (T.pack (msg <> ": " <> p))
@@ -443,34 +465,34 @@ writeTargets opts e book missing targets = do
             -- missing fonts are left out of the site (golem-project ADR 0004)
             hcFonts = Map.map (\fr -> (present (frJa fr), present (frLatin fr))) (stFonts style),
             -- the resolved styles (docs/adr ADR 0005)
-            hcCharStyles =
+            hcCharStyles = htmlCharStyles style,
+            hcParaStyles = htmlParaStyles style,
+            -- the styles of each file that differ from those of style.toml (docs/adr ADR 0014)
+            hcLocalStyles =
               Map.fromList
-                [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d))
-                | n <- Map.keys (stCharStyles style),
-                  Just d <- [charStyle style n]
-                ],
-            hcParaStyles =
-              Map.fromList
-                [ ( n,
-                    HtmlParaStyle
-                      (psFont d)
-                      (psLineBreaks d == Just KeepLines)
-                      (fromMaybe 0 (psSpaceBetween d))
-                      (cssLength (fromMaybe (Zw 0) (psIndent d)))
-                      (cssLength (fromMaybe (Zw 0) (psFirstLineIndent d)))
+                [ ( fid,
+                    HtmlLocalStyles
+                      { hlCharStyles = Map.differenceWith changed (htmlCharStyles st) (htmlCharStyles style),
+                        hlParaStyles = Map.differenceWith changed (htmlParaStyles st) (htmlParaStyles style),
+                        hlCaptionFace = mfilter (/= captionFace style) (Just (captionFace st)),
+                        hlSidenoteFace = mfilter (/= sidenoteFace style) (Just (sidenoteFace st))
+                      }
                   )
-                | n <- Map.keys (stParaStyles style),
-                  Just d <- [paraStyle style (Just n)]
+                | fid <- Map.keys (localStylesOf e),
+                  let st = docStyles e fid
                 ],
             hcBibliography = bib,
             hcDev = dev,
-            hcCaptionFace = let c = paraStyle style (Just "caption") in Face (c >>= psFont) (cssFontSize style <$> (c >>= psSize)),
-            hcSidenoteFace = let d = paraStyle style (Just "sidenote") in Face (d >>= psFont) (cssFontSize style <$> (d >>= psSize)),
+            hcCaptionFace = captionFace style,
+            hcSidenoteFace = sidenoteFace style,
             hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
             hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
             hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby)
           }
       present = mfilter (`Map.notMember` missing)
+      changed a b = if a == b then Nothing else Just a
+      captionFace st = let c = paraStyle st (Just "caption") in Face (c >>= psFont) (cssFontSize st <$> (c >>= psSize))
+      sidenoteFace st = let d = paraStyle st (Just "sidenote") in Face (d >>= psFont) (cssFontSize st <$> (d >>= psSize))
       ruby = compRuby (stComposition style)
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case
@@ -512,7 +534,9 @@ writeTargets opts e book missing targets = do
         let (sub, gv) = case v of
               TextVertical -> ("vertical", GT.Vertical)
               TextHorizontal -> ("horizontal", GT.Horizontal)
-        forM (GT.renderText (stNumbersVertical style) dev (textFirstLine style) gv ft book) $ \(p, t) -> do
+        -- each document with the indents of its style (docs/adr ADR 0014)
+        let pages = concat [GT.renderText (stNumbersVertical style) dev (textFirstLine (docStyles e fid)) gv ft book {bookDocs = [d]} | d@(Document fid _) <- bookDocs book]
+        forM pages $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)
       pure (concat files, [])
@@ -521,7 +545,7 @@ writeTargets opts e book missing targets = do
           out = dir </> pdfFileName (mdId md)
           -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
           inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)))
+      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e))
       case r of
         Left ds -> pure ([], ds)
         Right bytes -> do
@@ -536,6 +560,31 @@ writeTargets opts e book missing targets = do
       when ex (removeDirectoryRecursive dir)
     writeText p t = createDirectoryIfMissing True (takeDirectory p) >> TIO.writeFile p t
     copy src dst = createDirectoryIfMissing True (takeDirectory dst) >> BS.readFile src >>= BS.writeFile dst
+
+-- | The character styles of a style, resolved for CSS (docs/adr ADR 0005).
+htmlCharStyles :: Style -> Map Text HtmlCharStyle
+htmlCharStyles style =
+  Map.fromList
+    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d))
+    | n <- Map.keys (stCharStyles style),
+      Just d <- [charStyle style n]
+    ]
+
+-- | The paragraph styles of a style, resolved for CSS (docs/adr ADR 0005, 0006).
+htmlParaStyles :: Style -> Map Text HtmlParaStyle
+htmlParaStyles style =
+  Map.fromList
+    [ ( n,
+        HtmlParaStyle
+          (psFont d)
+          (psLineBreaks d == Just KeepLines)
+          (fromMaybe 0 (psSpaceBetween d))
+          (cssLength (fromMaybe (Zw 0) (psIndent d)))
+          (cssLength (fromMaybe (Zw 0) (psFirstLineIndent d)))
+      )
+    | n <- Map.keys (stParaStyles style),
+      Just d <- [paraStyle style (Just n)]
+    ]
 
 {- | The ideographic spaces that start the lines of a paragraph of a style
 in plain text (docs/adr ADR 0006): the whole part of indent plus
