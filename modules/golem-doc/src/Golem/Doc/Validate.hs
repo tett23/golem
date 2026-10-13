@@ -19,9 +19,16 @@ validateInlines :: (FileId -> Maybe Int) -> [DeferredExpr] -> [Inline] -> [Text]
 validateInlines fileSize allowed is = concatMap (inlineErrors fileSize allowed) is <> breakErrors False is
 
 validateDocument :: (FileId -> Maybe Int) -> [DeferredExpr] -> Document -> [Text]
-validateDocument fileSize allowed (Document _ bs) = concatMap blockErrors bs
+validateDocument fileSize allowed (Document _ bs) = concatMap (blockAt True) bs
   where
-    blockErrors (Block sp _ body) = spanErrors fileSize sp <> bodyErrors body
+    blockErrors = blockAt False
+    -- a forced break stands only at the top of a document, without a label (docs/adr ADR 0017)
+    blockAt top (Block sp lbl body) =
+      spanErrors fileSize sp <> case body of
+        ForcedBreak _ ->
+          ["改ページは文書の最上位にだけ置けます" | not top]
+            <> ["改ページはラベルを持てません" | Just _ <- [lbl]]
+        _ -> bodyErrors body
     inl is = concatMap (inlineErrors fileSize allowed) is <> breakErrors False is
     bodyErrors = \case
       Paragraph st is ->
@@ -42,6 +49,7 @@ validateDocument fileSize allowed (Document _ bs) = concatMap blockErrors bs
       CodeBlock _ _ -> []
       FigureBlock f -> concatMap blockErrors (figCaption f)
       ChannelOutput _ -> []
+      ForcedBreak _ -> []
 
 {- | A line break stands only between two inlines at the top of a
 paragraph, never two in a row (docs/adr ADR 0005).

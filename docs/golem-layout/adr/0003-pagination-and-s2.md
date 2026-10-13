@@ -1,6 +1,6 @@
 # ADR 0003: 改ページ、脚注、ページ番号の解決
 
-ステータス: 採択
+ステータス: 採択→原稿の改ページは [docs/adr/0017](../../adr/0017-forced-page-breaks.md)、柱の内容の決め方は [golem-driver ADR 0014](../../golem-driver/adr/0014-running-heads.md)
 
 ## 文脈
 

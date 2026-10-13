@@ -61,6 +61,10 @@ Golem は、機械にインストールされている書体を探しません�
 OpenType の機能は、[style code: features = \["palt"\]] のように役割ごとに指定できます。
 [style code: palt] は、和文の約物や仮名を詰めて組む機能です。
 
+縦組みの本では、書体の縦書き用の字形（OpenType の [style code: vert]）を使います。
+縦書き用の字形を持たないダッシュ（——）などの記号は、PDF では横組みの字形を 90 度回して、縦の線として組みます。
+HTML と EPUB では、ブラウザーやリーダーが同じように記号を回して表示します。
+
 PDF には、使った文字だけを含む形で書体を埋め込みます。
 ライセンスで埋め込みを禁じている書体を使うと、エラーになります。
 HTML と EPUB には、書体のファイルを同梱します。
@@ -83,6 +87,31 @@ HTML、EPUB、プレーンテキストには異体字セレクタをそのまま
 [style code: indent] を書くと、段落のすべての行を字下げします。
 [style code: first-line-indent] に負の値を書くと、最初の行だけが前に出るぶら下げになります。
 箇条書きの項目、表、見出し、注の本文には、字下げは効きません。
+
+## リストの印と番号
+
+PDF のリストは、項目の印を行の始まりに出し、項目の二行目以降を本文の始まりにそろえます。
+入れ子のリストは、外の項目の本文の始まりから下がります。
+番号付きのリストは、横組みの本では [style code: 1.]、縦組みの本では [style code: 一、] の形の番号になります。
+
+印の字形と番号の書式は、[style code: \[lists\]] で入れ子の深さごとに変えられます。
+
+```toml
+[lists]
+bullets = ["・", "◦"]
+numbers = ["{n}.", "({a})"]
+gap = "0.5zw"
+```
+
+[style code: bullets] は箇条書きの印、[style code: numbers] は番号の書式で、一段目のリストに最初の要素を、二段目に二つ目の要素を使います。
+入れ子が配列より深いときは、最後の要素を使い続けます。
+番号の書式には、番号を表す差し込みをちょうど一つ書きます。
+差し込みは [style code: {n}]（本の数の表記）、[style code: {1}]（算用数字）、[style code: {一}]（漢数字）、[style code: {①}]（丸数字）、[style code: {a}] と [style code: {A}]（ラテン文字）、[style code: {i}] と [style code: {I}]（ローマ数字）、[style code: {ア}] と [style code: {イ}]（片仮名のアイウエオ順とイロハ順）です。
+差し込みでない波括弧は、[style code: {{] と [style code: }}] のように重ねて書きます。
+[style code: gap] は印と本文の間の空きで、書かなければ印の最後の文字から決まります。
+
+[style code: \[lists\]] は HTML、EPUB、プレーンテキストにも効きます。
+丸数字のように表せる番号に限りのある書式で、表せない番号の項目があると、エラーになります。
 
 @label styles
 ## 段落スタイルと文字スタイル
@@ -217,9 +246,33 @@ regex-styles = [
 
 [style code: position] には、[style code: "top-outside"]、[style code: "top-center"]、[style code: "top-inside"]、[style code: "bottom-outside"]、[style code: "bottom-center"]、[style code: "bottom-inside"] のどれかを書きます。
 [style code: top] と [style code: bottom] は天と地の余白、[style code: outside] は小口の側、[style code: inside] はノドの側です。
-柱には、そのページの章の題が入ります。
+[style code: content] は、柱に出す内容です。
+[style code: "heading.1.short"] なら、そのページの章の題が入ります。
+[style code: @toc-title] で短い題を付けた見出しは、短い題が入ります。
 [style code: format] は、ノンブルの書式です。
 このマニュアルのように、柱を天の小口側に、ノンブルを地の小口側に置くのが普通です。
+
+柱の内容には、次の値を書けます。
+[style code: <階層>] は見出しの階層の数です。
+
+- [style code: "heading.<階層>.short"]：その階層の見出しの題です。ページの中で始まった最初の見出しを使い、なければその前から続く見出しを使います。
+- [style code: "heading.<階層>.numbered"]：番号と題を全角の空白でつないだものです（「第3章　原稿の記法」など）。
+- [style code: "heading.<階層>.short.last"]、[style code: "heading.<階層>.numbered.last"]：ページの中で始まった最後の見出しを使います。辞書の柱のような使い方です。
+- [style code: "title"]：[style code: manifest.toml] の書名です。
+- [style code: "none"]：柱を出しません。
+
+左右のページで柱を変えるときは、[style code: content] の代わりに [style code: even]（偶数ページ）と [style code: odd]（奇数ページ）の両方を書きます。
+
+```toml
+[masters.body]
+running-head = { position = "top-outside", even = "title", odd = "heading.1.numbered" }
+```
+
+章の始まりのページ（[style code: page-break = "recto"] の見出しのあるページ）と白ページには、柱を出しません。
+章ごとに別のマスターページを使うときは、[style code: manifest.toml] の章の項目に [style code: { file = "front.gm", master = "front" }] のように [style code: master] を書きます。
+[style code: master] のない章は [style code: \[masters.body\]] を使います。
+目次のページなどで柱を消したいときは、[style code: running-head] のないマスターページを指定します。
+見出しの [style code: \[headings.<階層>\]] には [style code: running-head] を書けません。
 
 @label notes-style
 ## 注と図の設定

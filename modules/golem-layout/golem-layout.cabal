@@ -23,11 +23,13 @@ library
                     Golem.Layout.Hyphenation.EnUs
                     Golem.Layout.Japanese
                     Golem.Layout.Look
+                    Golem.Layout.Orientation
                     Golem.Layout.Paginate
                     Golem.Layout.Ruby
                     Golem.Layout.Sidenotes
                     Golem.Layout.Table
                     Golem.Layout.Wrap
+  other-modules:    Golem.Layout.Orientation.Table
   build-depends:
     , base               >=4.20 && <4.21
     , containers         >=0.6  && <0.8

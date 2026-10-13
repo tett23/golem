@@ -214,6 +214,7 @@ data Piece
   | PBox !Look !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
   | PRuby !Look !RubyKind !Text !(Maybe Text) -- ruby: the base and the reading (none for a segment without one)
   | PRubyBreak -- a break allowed between mono ruby bases
+  | PForcedBreak -- a hard line break: the line ends as a paragraph does (docs/adr ADR 0016)
   | PAnchor (Int -> Anchor)
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
@@ -235,7 +236,11 @@ composeInlines env inls =
       at i = fromMaybe (length normalized) (lookup i positions)
    in (finish normalized, [f (at i) | (i, f) <- reverse anchors])
   where
-    finish its = its <> [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+    finish its = its <> lineEnd
+
+-- | The end of a paragraph, and of a line broken by a hard break: the rest of the line is fill.
+lineEnd :: [Item]
+lineEnd = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
 
 {- | Where each item ends up after 'normalize', which only inserts items
 before boxes: a box is the next box of the normalized items, anything
@@ -279,8 +284,9 @@ piecesOf env kenten inl = case inl of
   IndexMark sp e -> [PAnchor (\i -> AnchorIndex i sp e)]
   Cite _ k -> textPieces lk False ("[" <> maybe k (T.pack . show) (ceCiteNumber env k) <> "]")
   ProofComment {} -> []
-  -- paragraphs are split at line breaks before they are composed (docs/adr ADR 0005)
-  LineBreak {} -> []
+  -- the lines of a keep style are split before they are composed (docs/adr
+  -- ADR 0005); what reaches here is a hard break (docs/adr ADR 0016)
+  LineBreak {} -> [PForcedBreak]
   where
     lk = ceLook env
     -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
@@ -429,6 +435,8 @@ itemsFor env prev p next = case p of
           GroupRuby -> KindGroupRuby
      in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp))]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
+  -- normalize sees no box next to these items: the spacing is that of the line's edge
+  PForcedBreak -> lineEnd
   PAnchor _ -> []
 
 {- | A Latin word: broken after its explicit hyphens and dashes, or else

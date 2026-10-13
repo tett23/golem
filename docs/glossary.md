@@ -24,6 +24,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **式文脈**：`[= ...]` の中。式の言語で値を計算し、その結果を本文に埋め込む（[markup.md](markup.md)、[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
 - **命令文脈**：`[name ...]` の中。コマンドの名前、引数、散文スロットを書く（[markup.md](markup.md)）。
 - **段落の区切り方**：原稿の段落を何で区切るか。空行で区切り、段落の中の改行が文字を生まない空行の様式（既定）と、改行ひとつで区切る改行の様式の二つがある。マニフェストの `[source]` の `paragraph-separator` で選び、章の項目ごとにも変えられる（[markup.md](markup.md)、[docs/adr/0013](adr/0013-paragraph-separator.md)）。
+- **強制改行**：段落を分けずに行を改めること。行末の `\` で書く。強制改行の後の行には、一行目の字下げを掛けない（[markup.md](markup.md)、[docs/adr/0016](adr/0016-hard-line-breaks.md)）。
 - **韻文**：組み込みの段落スタイル `verse` を `@style verse` で付けた段落。段落の中の改行が行の区切りになり、段落の一つが一つの連になる（[markup.md](markup.md)、[docs/adr/0003](adr/0003-verse-line-breaks.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 - **文字スタイル**：文字の見た目（書体、大きさ、色、合成の太字と斜体）に名前を付けたもの。`style.toml` の `[character-styles.<名前>]` に定義し、ファイルの先頭の `@style-def character` でもそのファイルにだけ効く文字スタイルを定義できる。原稿では `[style 名前: ...]` で付ける。`[strong: ...]`、`[bold: ...]`、`[italic: ...]` は組み込みの文字スタイルの別名である。`based-on` で別の文字スタイルを引き継ぐ（[markup.md](markup.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 - **段落スタイル**：段落の見た目（書体、大きさ、改行の扱い、同じスタイルの段落の間の空き）に名前を付けたもの。`style.toml` の `[paragraph-styles.<名前>]` に定義し、ファイルの先頭の `@style-def paragraph` でもそのファイルにだけ効く段落スタイルを定義できる。原稿では `@style 名前` で付ける。段落スタイルを付けない段落は `body` で組む（[markup.md](markup.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
@@ -48,8 +49,8 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **版面**：ページの中で本文を組む領域。文字の大きさ、一行の字数、行数、行送り、段数で決め、余白はその位置から従属的に決まる（[仕様書](specifications.md)、[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)）。
 - **ノド**と**小口**：ページの綴じる側の端と、その反対側の端。右綴じの本では奇数ページのノドが右にある（[golem-layout-spec ADR 0002](golem-layout-spec/adr/0002-gutter-side-of-odd-pages.md)）。
 - **天**と**地**：ページの上端と下端。版面の位置は天とノドからの距離で決める。
-- **柱**と**ノンブル**：ページの余白に置く章題などの見出しと、ページ番号。マスターページで位置と内容を決める。
-- **マスターページ**：柱とノンブルの位置と内容をまとめた、ページの雛形。`style.toml` の `[masters]` に書く。
+- **柱**と**ノンブル**：ページの余白に置く章題などの見出しと、ページ番号。マスターページで位置と内容を決める。柱の内容は、マスターページの `running-head` の `content`（または `even` と `odd`）に、`heading.1.short` や `title` のような値で書く（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
+- **マスターページ**：柱とノンブルの位置と内容をまとめた、ページの雛形。`style.toml` の `[masters]` に書く。柱の内容は `running-head` の `content`（または `even` と `odd`）で決める。章のファイルごとにマニフェストの `master` で選び、指定のないファイルは `body` を使う（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
 - **行の格子**：版面の中で各行を置く位置の並び（ベースライングリッド）。見開きの左右のページで行の位置がそろう。
 - **sp**：Golem が内部で使う長さの単位。1pt の 65536 分の 1 であり、すべての寸法を整数で扱うためにある。`style.toml` では mm、pt、Q（級）、H（歯）、zw（全角一字分）で書き、読み込むときに sp へ変換する。
 - **Knuth-Plass の行分割**：段落全体を見て、行の詰まり具合の悪さ（不良度）と罰点の合計が最小になる改行の位置を選ぶ方法。行ごとに目標の行長（L*(i)）を変えられる（[golem-layout ADR 0001](golem-layout/adr/0001-knuth-plass-line-breaking.md)）。
@@ -57,14 +58,18 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **約物**：句読点、括弧、中点などの記号。和文では字面の外側に空きを持ち、隣り合うと空きを詰める。
 - **和欧間**：和文と欧文の文字が隣り合う位置。四分の空きを置く。
 - **ぶら下げ組**：行末の句読点を版面の外に出すことを許す組み方。
-- **字下げ**：段落の行の始まりを下げること。段落スタイルの `indent`（すべての行）と `first-line-indent`（最初の行に加える量。負なら二行目以降が下がるぶら下げになる）で指定し、横組みでも縦組みでも行の始まりの側から測る（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
+- **字下げ**：段落の行の始まりを下げること。段落スタイルの `indent`（すべての行）と `first-line-indent`（最初の行に加える量。負なら二行目以降が下がるぶら下げになる）で指定し、横組みでも縦組みでも行の始まりの側から測る（[docs/adr/0006](adr/0006-paragraph-indent.md)）。リストの項目は段落スタイルの字下げを受けず、PDF では印の幅だけ本文を下げて印をぶら下げ、入れ子のリストは外の項目の本文の始まりから下げる（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
 - **正規表現スタイル**：段落スタイルの中の、正規表現と文字スタイルの組の並び。段落の中で正規表現に一致した文字に、組の文字スタイルを当てる。InDesign の正規表現スタイル（英語版の GREP スタイル）に当たる（[docs/adr/0015](adr/0015-regex-styles.md)）。
 - **ルビ**：親文字の傍らに小さく添える読み。親文字一字ごとに振る**モノルビ**と、語の全体に振る**グループルビ**がある（[markup.md](markup.md)）。熟語の各字にモノルビとして振り、熟語の中では隣の親文字の空いている場所にかけることを許すものを**熟語ルビ**という。ルビが親文字より短いとき、ルビを親文字の中央に置くことを**中付き**、親文字の始まりの側（縦組みでは上、横組みでは左）にそろえて置くことを**肩付き**という。ルビが親文字より長いとき、はみ出す部分を隣の文字の上（縦組みでは右）に置くことを**ルビのかけ**という（[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)）。
 - **圏点**：強調のために親文字の傍らに打つ点。形（ゴマなど）は `style.toml` の既定か引数で決める。
 - **縦中横**：縦組みの中で、短い文字列を横向きのまま一字分の幅に組むこと。
+- **縦組みの向き（Vertical_Orientation）**：Unicode の UAX #50 が文字ごとに定める、縦組みでの文字の向き。正立（U）、回転（R）、縦書き用の字形があれば使い、なければ正立（Tu）、縦書き用の字形があれば使い、なければ回転（Tr）の四つの値がある。Golem の PDF は、縦書き用の字形がない R と Tr の文字を、横組みの字形を時計回りに 90 度回して描く（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 - **突き出し**と**伸縮（hz）**：行末のハイフンや句読点を版面の外へわずかに出すことと、欧文のグリフの幅をわずかに伸び縮みさせること。どちらも語間の空きのばらつきを減らす（[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md)）。
 - **回り込み**：図版の脇に本文を流し込むこと。図版の周りを除外領域とし、そこにかかる行の行長を短くする（[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。
 - **傍注**：版面の外の小口側に設けた傍注欄に置く注（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
+- **改ページ**：今のページを閉じ、次のページから続けること。原稿では `@page-break` で指定する（[markup.md](markup.md)、[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
+- **改丁**：次の奇数ページから始めること。原稿では `@page-break recto`、見出しでは `style.toml` の `page-break = "recto"` で指定する（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
+- **白ページ**：改ページや改丁で中身のないまま閉じたページ。柱もノンブルも描かない（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 
 ## 出力
 

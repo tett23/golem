@@ -39,7 +39,7 @@ import Data.ByteString.Lazy qualified as BL
 import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -48,6 +48,7 @@ import Data.Text.IO qualified as TIO
 import Data.Vector qualified as V
 import Golem.Doc.Assemble
 import Golem.Doc.IR
+import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Pdf
 import Golem.Driver.Plugins (loadPlugins)
@@ -198,14 +199,15 @@ readMaybeText p = do
   e <- doesFileExist p
   if e then Just . TE.decodeUtf8Lenient <$> BS.readFile p else pure Nothing
 
-evalDeferred :: DocValues -> DeferredExpr -> Either Diagnostic Text
-evalDeferred dv (DeferredExpr e) =
+-- | A deferred expression; G0208 is at the inline @sp@ (golem-eval ADR 0003).
+evalDeferred :: DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text
+evalDeferred dv sp (DeferredExpr e) =
   let docNs = Map.fromList [("chapters", VHash (Map.fromList [("count", VInt (dvChapterCount dv))]))]
       en = Env Map.empty (Map.singleton "doc" docNs)
-   in evalExpr en e >>= embedValue (A.locSpan e)
+   in evalExpr en e >>= embedValue sp
 
 -- | Evaluates files in import order so that imports see their exports.
-evalAll :: Profile -> Project -> Style -> Map FilePath (Maybe Text) -> Set.Set Text -> PluginHook -> Map FileId EvalResult
+evalAll :: Profile -> Project -> Style -> Map FilePath Asset -> Set.Set Text -> PluginHook -> Map FileId EvalResult
 evalAll profile project style assets citeKeys hook = foldl' step Map.empty (projectOrder project)
   where
     step acc fid = case Map.lookup fid (projectSources project) of
@@ -213,7 +215,7 @@ evalAll profile project style assets citeKeys hook = foldl' step Map.empty (proj
       Just sf -> Map.insert fid (reeval profile project style assets citeKeys hook acc fid sf) acc
 
 -- | S0 of one file, with the exports of its imports taken from @acc@.
-reeval :: Profile -> Project -> Style -> Map FilePath (Maybe Text) -> Set.Set Text -> PluginHook -> Map FileId EvalResult -> FileId -> SourceFile -> EvalResult
+reeval :: Profile -> Project -> Style -> Map FilePath Asset -> Set.Set Text -> PluginHook -> Map FileId EvalResult -> FileId -> SourceFile -> EvalResult
 reeval profile project style assets citeKeys hook acc fid sf =
   let ft = projectFiles project
       meta = metadataValues (manifestMetadata (projectManifest project))
@@ -270,20 +272,21 @@ metadataValues md =
       <> [("publisher", VString p) | Just p <- [mdPublisher md]]
 
 {- | Files referenced by @figure, @table and @listing: text content for
-tables and listings, presence for images.
+tables and listings, presence for images, and why a path cannot be used
+(golem-eval ADR 0003). A path any reference reads as text is read as text.
 -}
-loadAssets :: FilePath -> Project -> IO (Map FilePath (Maybe Text))
+loadAssets :: FilePath -> Project -> IO (Map FilePath Asset)
 loadAssets root project = do
-  let refs = concatMap (assetRefs . sfAst) (Map.elems (projectSources project))
-  found <- forM refs $ \(path, wantText) -> do
-    r <- resolveInRoot root path
-    case r of
-      Left _ -> pure Nothing
-      Right rel ->
-        if wantText
-          then Just . (path,) . Just . TE.decodeUtf8Lenient <$> BS.readFile (root </> rel)
-          else pure (Just (path, Nothing))
-  pure (Map.fromList (catMaybes found))
+  let refs = Map.fromListWith (||) (concatMap (assetRefs . sfAst) (Map.elems (projectSources project)))
+  Map.traverseWithKey load refs
+  where
+    load path wantText = do
+      r <- resolveInRoot root path
+      case r of
+        Left e -> pure (AssetInvalid e)
+        Right rel
+          | wantText -> AssetText . TE.decodeUtf8Lenient <$> BS.readFile (root </> rel)
+          | otherwise -> pure AssetPresent
 
 assetRefs :: A.File -> [(FilePath, Bool)]
 assetRefs (A.File _ bs) = concatMap blk bs
@@ -378,7 +381,12 @@ build opts = do
       case evBook e of
         Just book
           | not (hasErrors (finish (evDiagnostics e))) && not (optCheckOnly opts) -> do
-              (written, outDiags) <- writeTargets opts e book missing writable
+              -- a list number its format cannot write stops every target (golem-driver ADR 0013)
+              let listDiags = listNumberDiagnostics (evStyle e) (maybe False pageVertical (stPage (evStyle e))) book
+              (written, outDiags) <-
+                if null listDiags || null writable
+                  then writeTargets opts e book missing writable
+                  else pure ([], listDiags)
               pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags <> outDiags)) infos written)
         _ -> pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags)) infos [])
   where
@@ -487,7 +495,13 @@ writeTargets opts e book missing targets = do
             hcSidenoteFace = sidenoteFace style,
             hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
             hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
-            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby)
+            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
+            hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ (ForcedBreak k) <- bs],
+            -- only a book with [lists] changes the markers (golem-driver ADR 0013)
+            hcLists =
+              if stLists style == defaultListStyle
+                then Nothing
+                else Just (HtmlLists (lsBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style)))
           }
       present = mfilter (`Map.notMember` missing)
       changed a b = if a == b then Nothing else Just a
@@ -535,7 +549,7 @@ writeTargets opts e book missing targets = do
               TextVertical -> ("vertical", GT.Vertical)
               TextHorizontal -> ("horizontal", GT.Horizontal)
         -- each document with the indents of its style (docs/adr ADR 0014)
-        let pages = concat [GT.renderText (stNumbersVertical style) dev (textFirstLine (docStyles e fid)) gv ft book {bookDocs = [d]} | d@(Document fid _) <- bookDocs book]
+        let pages = concat [GT.renderText (stNumbersVertical style) dev (textFirstLine (docStyles e fid)) (textLists style) gv ft book {bookDocs = [d]} | d@(Document fid _) <- bookDocs book]
         forM pages $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)
@@ -545,7 +559,7 @@ writeTargets opts e book missing targets = do
           out = dir </> pdfFileName (mdId md)
           -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
           inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e))
+      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]))
       case r of
         Left ds -> pure ([], ds)
         Right bytes -> do
@@ -560,6 +574,17 @@ writeTargets opts e book missing targets = do
       when ex (removeDirectoryRecursive dir)
     writeText p t = createDirectoryIfMissing True (takeDirectory p) >> TIO.writeFile p t
     copy src dst = createDirectoryIfMissing True (takeDirectory dst) >> BS.readFile src >>= BS.writeFile dst
+
+{- | The markers of [lists] in plain text (golem-driver ADR 0013): a gap is
+written when [lists] gap is not 0, or by the last character without it.
+-}
+textLists :: Style -> GT.TextLists
+textLists style =
+  let l = stLists style
+      nonZero = \case
+        Abs x -> x /= 0
+        Zw r -> r /= 0
+   in GT.TextLists (lsBullets l) (lsNumbers l) (nonZero <$> lsGap l)
 
 -- | The character styles of a style, resolved for CSS (docs/adr ADR 0005).
 htmlCharStyles :: Style -> Map Text HtmlCharStyle

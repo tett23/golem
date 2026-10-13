@@ -56,6 +56,7 @@ kindForRule = \case
   "TableCell" -> Just NTableCell
   "TableDelimiter" -> Just NTableDelimiter
   "CodeBlock" -> Just NCodeBlock
+  "HardBreak" -> Just NHardBreak
   "ERROR" -> Just NErrorNode
   _ -> Nothing
 
@@ -65,6 +66,7 @@ kindForToken = \case
   "SlotText" -> KText
   "CellText" -> KText
   "Escape" -> KEscape
+  "Backslash" -> KBackslash
   "Ws" -> KWhitespace
   "Ind" -> KWhitespace
   "Nl" -> KNewline

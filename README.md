@@ -83,6 +83,7 @@ golem new mybook
 原稿の段落は、既定では空行で区切る。
 一行を一つの段落として書く和文の原稿は、`manifest.toml` の `[source]` に `paragraph-separator = "line"` と書くと、改行ひとつで段落を区切って読む。
 章の配列の項目（`{ file = "...", paragraph-separator = "blank-line" }`）で、章ごとに変えられる。
+段落を分けずに行を改めるには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](docs/adr/0016-hard-line-breaks.md)）。
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
@@ -93,6 +94,8 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 和文も合成の斜体で傾く。
 段落スタイルは原稿の `@style 名前` で付け、韻文は組み込みの段落スタイル `verse` で書く（`@style verse`）。
 段落の字下げは段落スタイルの `indent` と `first-line-indent`（負ならぶら下げ）で指定し、既定は 0 である。
+PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。
+箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
 一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ効く（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
 段落スタイルの `regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` のような正規表現スタイルは、段落の中で正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル、[docs/adr/0015](./docs/adr/0015-regex-styles.md)）。
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。

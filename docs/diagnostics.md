@@ -57,7 +57,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。下に節を置く。
 - **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。下に節を置く。
-- **空き**：G0104 から G0109、G0124 から G0128、G0601、G0703 から G0720、G0726 から G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
+- **空き**：G0104 から G0109、G0125 から G0128、G0255、G0601、G0703 から G0720、G0726 から G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
 
 ## G0101
 
@@ -461,6 +461,36 @@ BOM なしの UTF-8 で保存し直すか、`golem fmt` で取り除く。
 
 行の両端に `|` を書く。
 
+## G0124
+
+行末の \ の次の行に段落の続きがありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+行末の `\`（強制改行）の次の行が、同じ段落の続きの行ではない。
+空行、ファイルの末尾、ブロックの始まりの文字（`#`、`- ` など）で始まる行が続いた。
+見出し、定義リストの用語、表のセルの行末の `\` も、このコードになる。
+これらは一行で書く記法なので、強制改行を書けない。
+
+- メッセージ: `行末の \ は段落の中の強制改行です。次の行に段落の続きが要ります。本文の \ は \\ と書きます`
+- 段階とモジュール: 構文（golem-parser）
+- ADR: [docs/adr/0016](adr/0016-hard-line-breaks.md)
+
+### 主な原因
+
+- 段落の最後の行の末尾に `\` を書いた。
+- 本文の文字として、行末に `\` を置こうとした。
+- 見出しや定義リストの用語の中で、行を改めようとした。
+
+### 直し方
+
+段落の最後の行の `\` を消す。
+本文の `\` を行末に置くときは、`\\` と書く。
+見出しと用語は一行で書く。
+
 ## G0129
 
 構文エラー
@@ -496,9 +526,9 @@ G0110 から G0123 に当たらない構文エラーの既定のコードであ�
 
 式の演算や関数に、使えない型の値を渡した。
 
-- メッセージ: 型の誤りを述べる文言。たとえば `<型> と <型> にこの演算子は使えません`、`<型> は数ではありません`、`<型> の要素は参照できません`、`% は整数にだけ使えます`、`div は整数にだけ使えます`。
+- メッセージ: 型の誤りを述べる文言。たとえば `- は <型> に使えません`、`<型> と <型> にこの演算子は使えません`、`<型> は数ではありません`、`<型> の要素は参照できません`、`% は整数にだけ使えます`、`div は整数にだけ使えます`。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -521,7 +551,7 @@ G0110 から G0123 に当たらない構文エラーの既定のコードであ�
 
 - メッセージ: `未定義の名前 <名前> です`、`未定義の名前空間 <名前空間> です`、`名前がありません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -545,7 +575,7 @@ G0110 から G0123 に当たらない構文エラーの既定のコードであ�
 
 - メッセージ: `0 で割っています`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -568,7 +598,7 @@ G0110 から G0123 に当たらない構文エラーの既定のコードであ�
 
 - メッセージ: `結果が NaN か無限大になる演算です`、`負の数の平方根です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -593,7 +623,7 @@ dev では出力に残し、診断は出さない。
 
 - メッセージ: `校正用のコメントが残っています`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md) が触れる）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md) が触れる）
 
 ### 主な原因
 
@@ -616,7 +646,7 @@ dev では出力に残し、診断は出さない。
 
 - メッセージ: `** の指数は整数に限ります`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -629,27 +659,28 @@ dev では出力に残し、診断は出さない。
 
 ## G0207
 
-関数の引数が不正か、未定義の関数です
+関数の引数が不正です
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-組み込みの関数に誤った数か型の引数を渡したか、存在しない関数を呼んだ。
+組み込みの関数に、誤った数か型の引数を渡した。
+引数のない `min()` と `max()` も、このコードになる。
+存在しない関数の呼び出しは [G0261](#g0261) である。
 
-- メッセージ: `<関数> の引数が不正です`、`未定義の関数 <関数> です`、`引数がありません`
+- メッセージ: `<関数> の引数が不正です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
-- 関数名の綴りを誤った。
 - 引数の数か型が違う。
 
 ### 直し方
 
-関数名の綴りと引数を確かめる。
+関数の引数の数と型を確かめる。
 
 ## G0208
 
@@ -660,11 +691,13 @@ dev では出力に残し、診断は出さない。
 
 ### 意味
 
-`[= ...]` の式の値が、本文に埋め込めない型（配列、ハッシュなど）である。
+`[= ...]` の式の値が、本文に埋め込めない型（配列、連想配列など）である。
+位置は `[= ...]` のインラインである。
+`doc` を参照する式は文書の組み立て（S1）で評価するが、その場合も位置は同じである。
 
 - メッセージ: `<型> は本文に埋め込めません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -688,7 +721,7 @@ dev では出力に残し、診断は出さない。
 
 - メッセージ: `未知のブロックコマンドです: @<名前>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -711,7 +744,7 @@ dev では出力に残し、診断は出さない。
 
 - メッセージ: `属性の後にブロックがありません`、`@<名前> の後にブロックがありません`、`@style の後にブロックがありません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が `@style` の条件を加えた。[docs/adr/0003](adr/0003-verse-line-breaks.md) も触れる）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が `@style` の条件を加えた。[docs/adr/0003](adr/0003-verse-line-breaks.md) も触れる）
 
 ### 主な原因
 
@@ -731,10 +764,11 @@ dev では出力に残し、診断は出さない。
 ### 意味
 
 属性のまとまり（続けて書いた属性の行）に、属性でないブロックコマンドが混ざっている。
+混ざった `@set` などのコマンドも、書いた順に評価する。
 
 - メッセージ: `属性のまとまりに属性でないコマンドがあります`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0013](adr/0013-paragraph-separator.md)、[docs/adr/0014](adr/0014-in-file-settings.md) が触れる）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0013](adr/0013-paragraph-separator.md)、[docs/adr/0014](adr/0014-in-file-settings.md) が触れる）
 
 ### 主な原因
 
@@ -754,10 +788,12 @@ dev では出力に残し、診断は出さない。
 ### 意味
 
 一つのブロックに、同じ属性を二度付けた。
+位置は、重複した属性の二つ目以降の行である。
+重複した行のそれぞれに一つずつ出る。
 
 - メッセージ: `同じ属性を二度書いています`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -781,7 +817,7 @@ dev では出力に残し、診断は出さない。
 
 - メッセージ: `@<名前> はこのブロックには付けられません`、`@style は図版のキャプションには付けられません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が `@style` の条件を加えた。[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md) も触れる）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が `@style` の条件を加えた。[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md) も触れる）
 
 ### 主な原因
 
@@ -806,7 +842,7 @@ dev では出力に残し、診断は出さない。
 
 - メッセージ: `見出しの中では doc を参照できません`、`見出しの中では相互参照を使えません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -825,15 +861,17 @@ dev では出力に残し、診断は出さない。
 
 ### 意味
 
-`/` で区切ったルビの対象と読みの数が合わない。
+`/` で区切ったルビの対象と読みのセグメントの数が合わない。
+対象を区切らず、読みだけを `/` で区切った場合も、このコードになる。
 
 - メッセージ: `モノルビの対象と読みのセグメントの数が一致しません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
 - `/` で区切ったルビの対象と読みで、`/` の数が違う。
+- 対象を区切らずに、読みに `/` を書いた。
 
 ### 直し方
 
@@ -852,7 +890,7 @@ dev では出力に残し、診断は出さない。
 
 - メッセージ: `ルビの中にルビは入れられません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -872,10 +910,11 @@ style.toml にないスウォッチです
 ### 意味
 
 `[color ...]` に、`style.toml` の `[color.swatches]` にない名前を書いたか、名前を一つ書かなかった。
+名前の代わりに `[= ...]` やコマンドを書いた場合は、「一つ書きます」の側のメッセージになる。
 
 - メッセージ: `style.toml にないスウォッチです: <名前>`、`color にはスウォッチの名前を一つ書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -897,10 +936,11 @@ style.toml にないスウォッチです
 ### 意味
 
 `[style ...]` に、`style.toml` にもそのファイルの `@style-def` にもない文字スタイルの名前を書いたか、名前を一つ書かなかった。
+名前の代わりに `[= ...]` やコマンドを書いた場合は、「一つ書きます」の側のメッセージになる。
 
 - メッセージ: `定義されていない文字スタイルです: <名前>`、`style には文字スタイルの名前を一つ書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし（メッセージは [docs/adr/0014](adr/0014-in-file-settings.md) が改めた）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（メッセージは [docs/adr/0014](adr/0014-in-file-settings.md) が改めた）
 
 ### 主な原因
 
@@ -923,13 +963,13 @@ number-text の引数が不正です
 
 `[number-text ...]` の引数が不正である。
 
-- メッセージ: `style は kanji、kanji-digits、tcy のいずれかです: <値>`、`number-text に渡せるのは整数だけです`、`number-text には数を一つ書きます`
+- メッセージ: `style は kanji、kanji-digits、tcy のいずれかです: <値>`、`number-text に渡せるのは整数だけです`、`number-text には整数を一つ書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
-- `[number-text ...]` に整数でない値を渡したか、数を一つ書かなかった。
+- `[number-text ...]` に整数でない値を渡したか、整数を一つ書かなかった。
 - `style` に定義されていない値を書いた。
 
 ### 直し方
@@ -949,7 +989,7 @@ number-text の引数が不正です
 
 - メッセージ: `索引には reading が必要です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -969,10 +1009,11 @@ number-text の引数が不正です
 ### 意味
 
 `[cite ...]` のキーが書誌データにないか、キーを一つ書かなかった。
+キーの代わりに `[= ...]` やコマンドを書いた場合は、「一つ書きます」の側のメッセージになる。
 
 - メッセージ: `書誌データにないキーです: <キー>`、`cite には書誌データのキーを一つ書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -994,10 +1035,11 @@ number-text の引数が不正です
 ### 意味
 
 インラインのコマンドが、組み込みにもプラグインにもない。
+位置はコマンドの名前である。
 
 - メッセージ: `未知のコマンドです: <名前>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`。プラグインのコマンドの呼び出しでは golem-driver の `Golem.Driver.Plugins`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1021,10 +1063,12 @@ number-text の引数が不正です
 ### 意味
 
 `@set` の変数か `@import` の名前空間に、予約語を使った。
+予約語は `doc`、`meta`、`true`、`false`、`nil` である。
+位置は、変数の名前か名前空間の語である。
 
 - メッセージ: `予約語は変数の名前に使えません: <名前>`、`予約語は名前空間に使えません: <名前>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1047,7 +1091,7 @@ number-text の引数が不正です
 
 - メッセージ: `変数を二度定義しています: <名前>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1071,7 +1115,7 @@ number-text の引数が不正です
 
 - メッセージ: `@toc の depth は 1 から 3 の整数です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1092,17 +1136,18 @@ number-text の引数が不正です
 
 `@label` か相互参照のコマンドに、ラベルの名前として使える語を一つ書かなかった。
 
-- メッセージ: `@label にはラベルの名前を一つ書きます`、`参照にはラベルの名前を一つ書きます`
+- メッセージ: `@label にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます`、`参照にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
 - `@label` か相互参照のコマンドに、ラベルの名前を書かなかったか、名前として使えない値を書いた。
+- 名前に英大文字など、英小文字、数字、`-`、`_` 以外の文字を使った。
 
 ### 直し方
 
-ラベルの名前を一つ書く。
+ラベルの名前を一つ、英小文字、数字、`-`、`_` で書く。
 
 ## G0227
 
@@ -1117,7 +1162,7 @@ number-text の引数が不正です
 
 - メッセージ: `@number には整数を一つ書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1140,7 +1185,7 @@ number-text の引数が不正です
 
 - メッセージ: `図版には alt の代替テキストが必要です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1163,7 +1208,7 @@ PDF の画像を `@figure` に使い、HTML と EPUB のための `web` の代�
 
 - メッセージ: `PDF の図版には web の代替画像が必要です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1186,7 +1231,7 @@ wrap は start か end です
 
 - メッセージ: `wrap は start か end です: <値>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1209,7 +1254,7 @@ wrap は start か end です
 
 - メッセージ: `回り込む図版には width が必要です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1232,7 +1277,7 @@ wrap は start か end です
 
 - メッセージ: `@figure には画像のパスを一つ書きます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1252,10 +1297,11 @@ wrap は start か end です
 ### 意味
 
 `@figure`、`@table`、`@listing` が指すファイルがない。
+パスが絶対パス、URL、プロジェクトのルートの外を指す場合は、このコードでなく [G0260](#g0260) である。
 
 - メッセージ: `ファイルがありません: <パス>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1280,7 +1326,7 @@ wrap は start か end です
 
 - メッセージ: `@table には src が必要です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1303,7 +1349,7 @@ CSV が空か、行ごとのセルの数が一致しません
 
 - メッセージ: `CSV が空です`、`CSV の行ごとのセルの数が一致しません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1327,7 +1373,7 @@ CSV の各行の列の数を見出しの行にそろえる。
 
 - メッセージ: `@listing にはファイルのパスが必要です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1350,7 +1396,7 @@ lines の範囲が不正です
 
 - メッセージ: `lines の範囲が不正です: <値>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1371,10 +1417,11 @@ lines の範囲が不正です
 ### 意味
 
 インラインのコマンドの散文スロット（`: ` の後の本文）の数が違う。
+`number-text`、`ref-number`、`ref-title`、`ref-page`、`cite` は散文スロットを取らないので、書くとこのコードになり、コマンドは出力しない。
 
-- メッセージ: `<名前> には散文スロットが一つ必要です`、`index には散文スロットが一つ必要です`、`ruby には散文スロットが二つ必要です`
+- メッセージ: `<名前> には散文スロットが一つ必要です`、`index には散文スロットが一つ必要です`、`ruby には散文スロットが二つ必要です`、`<名前> は散文スロットを取りません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1384,6 +1431,7 @@ lines の範囲が不正です
 
 コマンドの書き方を確かめ、スロットの数をそろえる。
 ルビは対象と読みの二つを書く。
+散文スロットを取らないコマンドからは、`: ` の後の本文を消す。
 
 ## G0239
 
@@ -1398,7 +1446,7 @@ lines の範囲が不正です
 
 - メッセージ: `未知の圏点の形です: <形>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1421,7 +1469,7 @@ lines の範囲が不正です
 
 - メッセージ: `縦中横の中身は地の文に限ります`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし（[docs/adr/0003](adr/0003-verse-line-breaks.md) が触れる）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0003](adr/0003-verse-line-breaks.md) が触れる）
 
 ### 主な原因
 
@@ -1444,7 +1492,7 @@ lines の範囲が不正です
 
 - メッセージ: `索引の語は地の文に限ります`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1467,7 +1515,7 @@ lines の範囲が不正です
 
 - メッセージ: `索引の語と読みの段の数が不正です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -1492,7 +1540,7 @@ lines の範囲が不正です
 
 - メッセージ: `ルビの読みは地の文に限ります`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: ADR なし（[docs/adr/0003](adr/0003-verse-line-breaks.md) が触れる）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（[docs/adr/0003](adr/0003-verse-line-breaks.md) が触れる）
 
 ### 主な原因
 
@@ -1773,6 +1821,174 @@ lines の範囲が不正です
 
 `@style-def regex 段落スタイル pattern="..." style=文字スタイル` と書く（[docs/adr/0015](adr/0015-regex-styles.md)）。
 
+## G0256
+
+コマンドの中に強制改行があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+散文スロットの中（`[note: a\` の後に改行など）に、行末の `\` による強制改行がある。
+強制改行は、段落の最上位にだけ書ける。
+強制改行は無視され、前後の行はそのままつながる。
+
+- メッセージ: `強制改行は段落の中にだけ書けます。コマンドの中では使えません`
+- 段階とモジュール: 評価（golem-eval）
+- ADR: [docs/adr/0016](adr/0016-hard-line-breaks.md)
+
+### 主な原因
+
+- 注や文字スタイルの本文の中で、行を改めようとした。
+- 行をまたぐ斜体などのコマンドの中で、行末に `\` を書いた。
+
+### 直し方
+
+コマンドの中の行末の `\` を消す。
+行をまたいで斜体などを続けたいときは、行ごとにコマンドを閉じて開き直し、`\` をコマンドの外に書く。
+
+## G0257
+
+強制改行で中身のない行ができます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+強制改行で、中身のない行ができる。
+段落の最初の行が `\` だけの場合、`\` だけの行が続く場合、`\` の次の行がコメントだけの場合に出る。
+中身のない行は捨てられる。
+
+- メッセージ: `強制改行の前後に文字がありません`
+- 段階とモジュール: 評価（golem-eval）
+- ADR: [docs/adr/0016](adr/0016-hard-line-breaks.md)
+
+### 主な原因
+
+- 空の行で、行のあいだに空きを作ろうとした。
+- `\` を二つの行に続けて書いた。
+
+### 直し方
+
+中身のない行と、その前の `\` を消す。
+行のあいだの空きは、強制改行では作れない。
+
+## G0258
+
+改ページのコマンドの引数が誤っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@page-break` か `@column-break` の引数か本体が誤っている。
+`@page-break` は位置引数を一つまで取り、それは `recto` か `verso` である。
+`@column-break` は引数を取らない。
+どちらもキーワード引数と本体を持たない。
+誤ったコマンドは捨て、改ページしない。
+
+- メッセージ: `@page-break の引数は recto か verso です`、`@column-break は引数を取りません`、`@page-break と @column-break は本体を持てません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0017](adr/0017-forced-page-breaks.md)
+
+### 主な原因
+
+- `@page-break page` のように、`recto` と `verso` のほかの語を書いた。
+- `@page-break recto verso` のように、引数を二つ以上書いた。
+- `@page-break x=1` のように、キーワード引数を書いた。
+- `@column-break recto` のように、`@column-break` に引数を書いた。
+- `@page-break` の次の行を字下げして、本体にした。
+
+### 直し方
+
+ただの改ページは `@page-break` とだけ書き、奇数ページから始めるなら `@page-break recto`、偶数ページから始めるなら `@page-break verso` と書く。
+`@page-break` の次の行を字下げしているなら、字下げをやめる。
+
+## G0259
+
+改ページのコマンドは文書の最上位にだけ置けます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@page-break` か `@column-break` を、リストの項目、定義リストの説明、ブロックコマンドの本体（`@figure` のキャプションなど）の中に置いた。
+改ページは本文の流れの中の一点を表すので、文書の最上位のブロックの間にだけ置ける。
+その位置のコマンドは捨て、改ページしない。
+フィルタのプラグインが最上位でない位置に改ページを置いた場合は、このコードではなく、プラグインの出力の誤りになる。
+
+- メッセージ: `@page-break と @column-break は文書の最上位にだけ置けます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0017](adr/0017-forced-page-breaks.md)
+
+### 主な原因
+
+- リストの項目や定義リストの説明の中に、字下げして `@page-break` を書いた。
+- `@figure` の次の行を字下げして `@page-break` を書き、キャプションの中に入れた。
+
+### 直し方
+
+字下げをやめて、リストや図版の前か後ろに、文書の最上位のブロックとして書く。
+本体の形の `@style` の中に書いた場合は、このコードではなく [G0245](#g0245) になる。
+
+## G0260
+
+使えないパスです
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@figure`、`@table`、`@listing` のパスが、絶対パス、URL、またはプロジェクトのルートの外を指す。
+ルートの外を指すのは、`..` で外に出るパスと、外を指すシンボリックリンクである。
+その図版、表、ソースコードのリストは作らない。
+
+- メッセージ: `絶対パスは使えません: <パス>`、`URL は使えません: <パス>`、`プロジェクトルートの外を指しています: <パス>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`。パスは golem-driver が `resolveInRoot` で調べる）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
+
+### 主な原因
+
+- `/` から始まる絶対パスを書いた。
+- `https://` などの URL を書いた。
+- `../` でプロジェクトの外のファイルを指したか、外を指すシンボリックリンクを指した。
+
+### 直し方
+
+ファイルをプロジェクトの中に置き、プロジェクトのルートからの相対パスで書く。
+章と `@import` のパスの同じ誤りは [G0303](#g0303) である。
+
+## G0261
+
+未定義の関数です
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+式の中で、組み込みにない名前の関数を呼んだ。
+
+- メッセージ: `未定義の関数 <関数> です`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
+
+### 主な原因
+
+- 関数名の綴りを誤った。
+- 組み込みにない関数を使おうとした。
+
+### 直し方
+
+関数名の綴りを確かめる。
+使える関数は `sqrt`、`floor`、`ceil`、`round`、`fixed`、`abs`、`min`、`max`、`len`、`div` である。
+`@set` で関数は定義できない。
+
 ## G0301
 
 manifest.toml の誤りです
@@ -1910,6 +2126,8 @@ style.toml の誤りです
 `style.toml` が TOML として読めないか、スキーマに合わないか、値が範囲の外にある。
 フォントのファイルの欠落には使わない（[G0310](#g0310)、[G0802](#g0802)）。
 判型（`[page]` の `size`）の誤りには使わない（[G0317](#g0317)）。
+マスターページの柱の内容の誤りには使わない（[G0314](#g0314)）。
+見出しの `running-head` には使わない（[G0319](#g0319)）。
 `@style-def` の名前と欄の誤りにも出る。誤りのある定義は捨てる。
 
 - メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。
@@ -2136,6 +2354,36 @@ style.toml のスタイルの参照が不正です
 長さの異なる候補を持つ後読みは、候補ごとの後読みに分けて並べる（`(?<=ab|c)x` は `(?:(?<=ab)|(?<=c))x` と書く）。
 `@style-def regex` の文字列の中では、正規表現の `\` を `\\` と書く。
 
+## G0314
+
+柱の内容が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` のマスターページの `running-head` の内容が、決まった語彙のどれでもないか、書き方の組み合わせが正しくない。
+内容は `content` に一つ書くか、`even` と `odd` の両方に書く。
+位置は誤った値の位置である。
+
+- メッセージ: `柱の内容が正しくありません: <値>。heading.<階層>.short か heading.<階層>.numbered（末尾に .last を付けられます）、title、none のどれかを、content に一つ、または even と odd の両方に書いてください`。誤った箇所の経路を添える。組み合わせの誤りでは、`<値>` に書いた欄と値を並べ、どれも書いていなければ `（なし）` とする。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)
+
+### 主な原因
+
+- 内容の値の綴りを誤った（`heading.1.long`、`chapter` など）。
+- 見出しの階層に 0 や数でないものを書いた。
+- `content` と `even` または `odd` を一緒に書いた。
+- `even` と `odd` の片方だけを書いた。
+- 位置だけを書き、内容を書かなかった。
+
+### 直し方
+
+`content = "heading.1.short"` のように両方のページの内容を一つ書くか、`even = "title"` と `odd = "heading.1.short"` のように左右のページの内容を両方書く。
+柱を出さないページには `none` を書くか、`running-head` のないマスターページを使う。
+
 ## G0317
 
 判型が不正です
@@ -2162,6 +2410,59 @@ style.toml のスタイルの参照が不正です
 
 表の名前（`"A4"`、`"A5"`、`"A6"`、`"B5"`、`"B6"`、`"四六判"`、`"菊判"`、`"新書判"`、`"mass-market"`）を書くか、`size = { width = "148mm", height = "210mm" }` のように寸法で書く。
 単位は `mm`、`pt`、`Q`、`H` とし、`zw` は使わない。
+
+## G0319
+
+見出しの running-head は廃止しました
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[headings.<階層>]` に `running-head` を書いた。
+柱に使う見出しは、マスターページの `running-head` の内容で決める。
+
+- メッセージ: `[headings.<l>] の running-head は廃止しました。柱に使う見出しは [masters.<名前>] の running-head の content で指定してください`。誤った箇所の経路を添える。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)
+
+### 主な原因
+
+- 以前の `style.toml` の `[headings.1]` の `running-head = true` が残っている。
+
+### 直し方
+
+`[headings.<階層>]` の `running-head` の行を消し、マスターページの `running-head` に `content = "heading.1.short"` のように柱に出す見出しの階層を書く。
+
+## G0322
+
+リストの書式が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[lists]` の `bullets`、`numbers`、`gap` のどれかが正しくない。
+メッセージがどの欄の誤りかを示す。
+
+- メッセージ: `[lists] の <欄> が正しくありません: <理由>`。理由は `空の配列です`、`空の文字列があります`、`番号の差し込みがありません`、`番号の差し込みが二つ以上あります`、`表にない差し込みです: {x}`、`寸法として読めません`、`負の寸法です` など。誤った箇所の経路を添える。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)
+
+### 主な原因
+
+- `bullets` か `numbers` を空の配列にしたか、空の文字列を書いた。
+- `numbers` の書式に番号の差し込みを書かなかったか、二つ以上書いたか、表にない差し込みを書いた。
+- 差し込みでない `{` と `}` を、`{{` と `}}` と書かなかった。
+- `gap` が寸法として読めないか、負である。
+
+### 直し方
+
+`bullets` には印の文字列を、`numbers` には `"{n}."` や `"({a})"` のように差し込みをちょうど一つ含む書式を、一つ以上書く。
+差し込みは `{n}`、`{1}`、`{一}`、`{①}`、`{a}`、`{A}`、`{i}`、`{I}`、`{ア}`、`{イ}` のどれかにする。
+`gap` は `"0.5zw"` のように 0 以上の寸法で書く。
 
 ## G0401
 
@@ -2850,6 +3151,61 @@ PDF をターゲットに含まないビルドと LSP では出さない。
 
 段落スタイルの `indent` と `first-line-indent` を小さくする。
 図版の脇なら、図版の幅も小さくする。
+
+## G0727
+
+リストの入れ子が深く、項目の本文の行長が足りません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF で、入れ子のリストの字下げの後に残る項目の本文の行長が、版面の文字の大きさの 8 字分に満たない。
+または、回り込む図版の脇で、リストの字下げを引いた行の長さが 0 以下になる。
+位置はその項目の段落である。
+
+- メッセージ: `リストの入れ子が深く、項目の本文の行長が足りません。行長を本文の文字の大きさの 8 字分以上残してください`
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)
+
+### 主な原因
+
+- リストの入れ子が深く、各段の印の幅の和が行長の大部分を占める。
+- 版面の一行の字数が少ない。
+- 回り込む図版の脇にリストを置いた。
+
+### 直し方
+
+リストの入れ子を浅くする。
+印の幅を狭くするために、`[lists]` の `bullets` と `numbers` に短い印を書くか、`gap` を小さくする。
+
+## G0729
+
+リストの番号を書式で表せません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+番号付きリストの項目の番号を、その深さの `[lists]` の `numbers` の書式で表せない。
+丸数字は 1 から 50 まで、ローマ数字は 1 から 3999 まで、ラテン文字は 1 から、片仮名はアイウエオ順で 46 まで、イロハ順で 47 までを表せる。
+PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、どれも書かない。
+位置はその項目の最初のブロックである。
+
+- メッセージ: `リストの番号 <番号> は、書式 <書式> で表せません`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)
+
+### 主な原因
+
+- 丸数字や片仮名の書式のリストの項目が多すぎる。
+- `@number` で 0 や大きすぎる番号を指定した。
+
+### 直し方
+
+項目を減らすか、`@number` を直すか、その深さの書式を算用数字（`{n}` や `{1}`）などの表せる書式に替える。
 
 ## G0732
 
