@@ -1,0 +1,21 @@
+@nonumber
+# 参考文献
+
+@bibliography
+
+@nonumber
+# 索引
+
+@index
+
+@nonumber
+@notoc
+# 奥付
+
+- 書名：[= meta.title]
+- 発行日：[= meta.date]
+- 発行：[= meta.publisher]
+- 組版：Golem
+
+この本は Golem で組みました。
+本文の書体は Noto Serif JP と Source Serif 4、見出しの書体は Noto Sans JP と Source Sans 3 です。

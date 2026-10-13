@@ -1,0 +1,75 @@
+# Golem マニュアルの体裁
+
+[page]
+size = "A5"
+binding = "left"
+writing-mode = "horizontal"
+
+# 本文 13Q、行送り 22H、一行 32 字、29 行。
+# 字数は 35 字から 32 字に減らした。
+# 小口側の余白に傍注欄（幅 6zw と間隔 1zw）を取り、
+# 仕上がりの端までの余裕も残すため。
+[page.grid]
+font-size = "13Q"
+characters = 32
+lines = 29
+line-pitch = "22H"
+position = { top = "22mm", gutter = "14mm" }
+
+[fonts.body]
+ja = "fonts/NotoSerifJP-Regular.otf"
+latin = "fonts/SourceSerif4-Regular.otf"
+
+[fonts.heading]
+ja = "fonts/NotoSansJP-Bold.otf"
+latin = "fonts/SourceSans3-Bold.otf"
+
+[character-styles.bold]
+font = "heading"
+
+[character-styles.code]
+color = "code"
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[paragraph-styles.memo]
+font = "heading"
+size = "11Q"
+indent = "2zw"
+
+[paragraph-styles.caption]
+size = "11Q"
+
+[paragraph-styles.sidenote]
+size = "10Q"
+
+[headings.1]
+font = "heading"
+size = "20Q"
+number = "第{n}章"
+page-break = "recto"
+
+[headings.2]
+font = "heading"
+size = "15Q"
+number = "{1}.{n}"
+
+[headings.3]
+font = "heading"
+number = "{1}.{2}.{n}"
+
+[composition]
+hanging-punctuation = true
+
+[sidenotes]
+width = "6zw"
+gap = "1zw"
+
+[color.swatches]
+accent = { cmyk = [0, 80, 100, 0] }
+code = { cmyk = [90, 50, 0, 20] }
+
+[masters.body]
+running-head = { position = "top-outside" }
+folio = { position = "bottom-outside", format = "{n}" }

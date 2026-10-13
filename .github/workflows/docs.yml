@@ -36,3 +36,20 @@ jobs:
           allow-links: true
           base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+  # A pull request that changes the specification updates the manual too,
+  # or says that it does not need to with the trailer "Manual: unchanged"
+  # (docs/adr/0022-manual-as-typesetting-sample.md)
+  manual:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The manual follows the specification
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: sh scripts/manual/check-updated.sh "$PR_BASE" "$PR_HEAD"

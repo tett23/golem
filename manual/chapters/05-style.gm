@@ -1,0 +1,213 @@
+@label style
+# スタイルの設定
+
+[style code: style.toml] は、紙面の体裁を書くファイルです。
+判型、版面、書体、見出しの大きさ、注の置き方のように、原稿の外で決めることはすべてここに書きます。
+原稿に体裁を書かないので、同じ原稿を別の判型や別の書体で組み直すときも、変えるのは [style code: style.toml] だけです。
+
+この章の例の多くは、このマニュアル自身の [style code: style.toml] から取り込んでいます。
+[style code: manifest.toml] と同じく、知らないキーを書くとエラーになります。
+
+## 判型と版面
+
+紙面の大きさと、本文を組む領域（版面）は、[style code: \[page\]] と [style code: \[page.grid\]] で決めます。
+
+@listing style.toml lines=3-17
+
+[style code: \[page\]] には、紙面そのものを書きます。
+
+- [style code: size]：判型[index reading=はんけい: 判型]です。[style code: "A4"]、[style code: "A5"]、[style code: "A6"]、[style code: "B5"]、[style code: "B6"]、[style code: "四六判"]、[style code: "mass-market"]（ペーパーバック）から選びます。寸法は[ref-number tables]「[ref-title tables]」に載せています。
+- [style code: binding]：綴じる側です。縦組みの本は右綴じ（[style code: "right"]）、横組みの本は左綴じ（[style code: "left"]）が普通です。
+- [style code: writing-mode]：縦組み（[style code: "vertical"]）か横組み（[style code: "horizontal"]）かです。
+- [style code: bleed]：塗り足しの幅です（[ref-number print-pdf]「[ref-title print-pdf]」）。
+
+版面は、日本語の組版の流儀にならい、文字の大きさと字数と行数で決めます。
+余白は、版面をページのどこに置くかで決まります。
+
+- [style code: font-size]：本文の文字の大きさです。
+- [style code: characters]：一行の字数です。
+- [style code: lines]：一ページの行数です。
+- [style code: line-pitch]：行送り（ある行から次の行までの距離）です。
+- [style code: position]：版面の位置です。[style code: top] は天（ページの上端）から、[style code: gutter] はノド（綴じる側の端）からの距離です。
+
+寸法は、[style code: mm]、[style code: pt]、[style code: Q]（級）、[style code: H]（歯）、[style code: zw]（全角一字分）の単位を付けて書きます。
+1Q と 1H は、どちらも 0.25mm です。
+
+版面がページに収まらない値を書くと、エラーになります。
+字数か行数を減らすか、[style code: position] を変えてください。
+
+## 書体
+
+書体[index reading=しょたい: 書体]は、役割ごとに [style code: \[fonts.<役割>\]] で指定します。
+役割の名前は自由に付けられますが、[style code: body] が本文の書体になります。
+
+@listing style.toml lines=19-25
+
+[style code: ja] に和文の書体を、[style code: latin] に欧文の書体を書きます。
+和文と欧文で別の書体を組み合わせるのは、日本語の組版の普通のやり方です。
+このマニュアルは、本文を Noto Serif JP と Source Serif 4 で、見出しを Noto Sans JP と Source Sans 3 の太字で組んでいます。
+どれも SIL Open Font License 1.1 で配布されている書体です。
+
+書体のファイルは、プロジェクトの中に置きます。
+Golem は、機械にインストールされている書体を探しません。
+機械ごとに入っている書体が違うと、同じ原稿から同じ紙面が得られなくなるからです。
+
+OpenType の機能は、[style code: features = \["palt"\]] のように役割ごとに指定できます。
+[style code: palt] は、和文の約物や仮名を詰めて組む機能です。
+
+PDF には、使った文字だけを含む形で書体を埋め込みます。
+ライセンスで埋め込みを禁じている書体を使うと、エラーになります。
+HTML と EPUB には、書体のファイルを同梱します。
+
+## 本文の字下げ
+
+段落の始まりを一字下げる[index reading=じさげ: 字下げ]には、[style code: \[paragraph-styles.body\]] に [style code: first-line-indent] を書きます。
+
+@listing style.toml lines=33-34
+
+既定では字下げしません。
+字下げを指定したら、原稿の段落の先頭に全角の空白を書かないでください。
+全角の空白と字下げが重なり、二字下がります。
+
+[style code: indent] を書くと、段落のすべての行を字下げします。
+[style code: first-line-indent] に負の値を書くと、最初の行だけが前に出るぶら下げになります。
+箇条書きの項目、表、見出し、注の本文には、字下げは効きません。
+
+@label styles
+## 段落スタイルと文字スタイル
+
+段落の体裁は段落スタイルに、文字の体裁は文字スタイルにまとめます。
+考え方は、Adobe InDesign の段落スタイルと文字スタイルと同じです。
+
+@listing style.toml lines=27-45
+
+文字スタイル（[style code: \[character-styles.<名前>\]]）に書けるキーは次のとおりです。
+
+- [style code: font]：書体の役割です。
+- [style code: size]：文字の大きさです。
+- [style code: color]：色の名前（スウォッチ）です。
+- [style code: synthetic-bold]、[style code: synthetic-italic]：書体の輪郭を太らせた太字と、傾けた斜体です。
+- [style code: based-on]：引き継ぐ文字スタイルです。
+
+[style code: bold]、[style code: italic]、[style code: strong] の三つは、はじめから定義されています。
+同じ名前で書くと、書いたキーだけが置き換わります。
+このマニュアルは、[style code: bold] の書体を見出しの太いゴシック体にしています。
+[style code: strong] は [style code: bold] を引き継ぐので、[style code: \[strong: ...\]] も同じ書体で組まれます。
+
+段落スタイル（[style code: \[paragraph-styles.<名前>\]]）に書けるキーは次のとおりです。
+
+- [style code: font]、[style code: size]：書体の役割と文字の大きさです。大きさは本文の文字の大きさまでです。
+- [style code: indent]、[style code: first-line-indent]：字下げです。
+- [style code: space-between]：同じ段落スタイルの段落が続くときに、あいだに空ける行の数です。
+- [style code: line-breaks]：[style code: "keep"] にすると、段落の中の改行を行の区切りにします。
+- [style code: based-on]：引き継ぐ段落スタイルです。省くと [style code: body] を引き継ぎます。
+
+はじめから定義されている段落スタイルは、[style code: body]（本文）、[style code: verse]（韻文）、[style code: caption]（図のキャプション）、[style code: sidenote]（傍注の本文）の四つです。
+段落スタイルを付けない段落は [style code: body] で組みます。
+
+行送り[index reading=ぎょうおくり: 行送り]は、段落スタイルでは変えられません。
+本文を行の格子にそろえて組むので、段落ごとに行送りが変わると、見開きの左右で行の位置がずれるからです。
+
+@label heading-style
+## 見出しの体裁
+
+見出しの書体と番号は、階層ごとに [style code: \[headings.<階層>\]] で決めます。
+
+@listing style.toml lines=47-60
+
+- [style code: font]、[style code: size]：書体の役割と文字の大きさです。
+- [style code: number]：番号の書式です。[style code: {n}] がその階層の番号、[style code: {n:kanji}] が漢数字の番号、[style code: {1}] と [style code: {2}] が上の階層の番号になります。縦組みの本なら [style code: "第{n:kanji}章"] で「第三章」のように組めます。
+- [style code: page-break]：[style code: "recto"] にすると、その見出しを奇数ページから始めます。
+
+本文より大きい見出しも、行の格子からずらさずに置きます。
+見出しは、その大きさを収める行数を占め、その中の中央に組まれます。
+
+## [ruby: 柱 | はしら]とノンブル
+
+柱[index reading=はしら: 柱]（ページの余白に置く章の題）とノンブル[index reading=のんぶる: ノンブル]（ページ番号）は、[style code: \[masters.body\]] で置きます。
+
+@listing style.toml lines=73-75
+
+[style code: position] には、[style code: "top-outside"]、[style code: "top-center"]、[style code: "top-inside"]、[style code: "bottom-outside"]、[style code: "bottom-center"]、[style code: "bottom-inside"] のどれかを書きます。
+[style code: top] と [style code: bottom] は天と地の余白、[style code: outside] は小口の側、[style code: inside] はノドの側です。
+柱には、そのページの章の題が入ります。
+[style code: format] は、ノンブルの書式です。
+このマニュアルのように、柱を天の小口側に、ノンブルを地の小口側に置くのが普通です。
+
+@label notes-style
+## 注と図の設定
+
+注、傍注、図番号、目次の体裁は、それぞれの表で決めます。
+
+```toml
+[notes]
+placement = "page-foot"
+
+[sidenotes]
+width = "6zw"
+gap = "1zw"
+
+[figures]
+number = "図{chapter}-{n}"
+
+[toc]
+leader = "dots"
+```
+
+- [style code: \[notes\]] の [style code: placement]：脚注をページの下に置くか（[style code: "page-foot"]）、章の終わりにまとめるか（[style code: "chapter-end"]）です。既定はページの下です。
+- [style code: \[sidenotes\]]：傍注欄を、小口側の余白に設けます。[style code: width] が傍注欄の幅、[style code: gap] が版面とのあいだの空きです。[style code: marker] で本文側の印を、番号（[style code: "number"]）、「※」（[style code: "symbol"]）、なし（[style code: "none"]）から選べます。
+- [style code: \[figures\]] の [style code: number]：図番号の書式です。[style code: {chapter}] が章の番号、[style code: {n}] が章の中の図の番号です。[style code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。
+- [style code: \[toc\]] の [style code: leader]：目次のリーダーを点線（[style code: "dots"]）にするか、なし（[style code: "none"]）にするかです。
+
+傍注欄の幅は、傍注を使うなら必ず決めてください。
+[style code: \[sidenotes\]] がないまま傍注を使うと、PDF を組むときにエラーになります。
+このマニュアルは、傍注欄を取るために一行の字数を減らしています。
+傍注欄は小口側の余白の中に収まる必要があるからです。
+
+## 色
+
+色は、名前を付けて [style code: \[color.swatches\]] に定義します。[index reading=すうぉっち: スウォッチ]
+
+@listing style.toml lines=69-71
+
+値は、CMYK の各色の網点の割合（0 から 100）です。
+原稿や文字スタイルからは、この名前で色を指します。
+原稿に CMYK の値を直接書くことはできません。
+印刷を前提に色を決め、HTML と EPUB では、その色に近い画面の色で表示します。
+
+印刷所から出力の条件（ICC プロファイル）を指定されたら、[style code: \[color\]] の [style code: intent] にそのファイルを書きます。
+
+```toml
+[color]
+intent = "icc/JapanColor2001Coated.icc"
+```
+
+@label composition
+## 行分割と和文組版
+
+行の分け方と、和文の組み方の細部は、[style code: \[composition\]] で変えられます。
+何も書かなければ、日本語組版処理の要件（JLReq）が一般的な処理として示す組み方になります。
+
+@listing style.toml lines=62-63
+
+- [style code: kinsoku]：禁則[index reading=きんそく: 禁則]の強さです。[style code: "strict"]（既定）は、小書きの仮名（ぁ、っ、ゃ など）と長音記号も行頭に置きません。[style code: "loose"] は、それらの行頭を許します。
+- [style code: hanging-punctuation]：[style code: true] にすると、行末の句読点を版面の外に出すことを許します（ぶら下げ組[index reading=ぶらさげぐみ: ぶら下げ組]）。このマニュアルはぶら下げ組で組んでいます。
+- [style code: tolerance]、[style code: pretolerance]、[style code: emergency-stretch]：欧文の段落を行に分けるときの、語間の伸び縮みの許容度です。既定値は TeX と同じ 200、100、0 です。どうしても行に分けられないときは、行が版面からはみ出し、警告が出ます。
+
+ルビの配置は [style code: \[composition.ruby\]] で変えます（ルビの書き方は[ref-number ruby]「[ref-title ruby]」）。
+
+```toml
+[composition.ruby]
+mono-align = "center"
+group-align = "1:2:1"
+overhang = "0.5zw"
+overhang-onto = "kana"
+```
+
+- [style code: mono-align]：モノルビの読みが親文字より短いときに、中央に置くか（[style code: "center"]）、始まりにそろえるか（[style code: "start"]）です。
+- [style code: group-align]：グループルビの読みの配置です。[style code: "1:2:1"] は字のあいだに等しい空きを入れ、両端にその半分を置きます。
+- [style code: overhang]：読みが親文字より長いときに、隣の文字にかけてよい量です。
+- [style code: overhang-onto]：[style code: "kana"] なら仮名にだけかけ、[style code: "none"] ならかけません。
+
+縦組みの本で [style code: \[number-text ...\]] の数をどう組むかは、[style code: \[numbers\]] の [style code: vertical] で決めます。
+[style code: "kanji"]（十、百二十）、[style code: "kanji-digits"]（一〇、一二〇）、[style code: "tcy"]（縦中横の算用数字）から選べます。

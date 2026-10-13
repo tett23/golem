@@ -73,6 +73,7 @@ expect "needs-build: no newline at the end" 0 false
 
 paths "a document that the tests read" true docs/diagnostics.md
 paths "it with another document" true docs/diagnostics.md docs/specifications.md
+paths "the source of the manual (docs/adr/0022)" true docs/manual.md
 
 # ---------------------------------------------------------------- changed-paths.sh
 # (docs/adr/0021-docs-workflow-and-ci-gate.md)

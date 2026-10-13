@@ -1,0 +1,469 @@
+@label markup
+# 原稿の記法
+
+原稿は、拡張子が [style code: .gm] のテキストのファイルに書きます。
+文字コードは UTF-8、改行は LF です。
+
+Golem の記法は二つの層に分かれます。
+行頭の記号（[style code: #]、[style code: -]、[style code: @] など）は、見出しやリストのようなブロックを表します。
+角括弧（[style code: \[ ... \]]）は、ルビや注のように段落の中に置く要素を表します。
+Markdown を書いたことがあれば、ブロックの書き方はほぼ同じです。
+段落の中の装飾は、Markdown の [style code: **] や [style code: _] の代わりに、すべて角括弧で書きます。
+
+## 段落と改行
+
+空行で区切った行のまとまりが、一つの段落[index reading=だんらく: 段落]になります。
+
+```
+吾輩は猫である。
+名前はまだ無い。
+
+どこで生れたかとんと見当がつかぬ。
+```
+
+一つめの段落の二行は、「吾輩は猫である。名前はまだ無い。」と一続きに組まれます。
+段落の中の改行は文字を生まず、前後は空白なしでつながります。
+
+欧文では、この規則に注意が要ります。
+単語の間で改行すると、二つの単語が空白なしにつながってしまいます。
+欧文の語句は改行で分けず、一行に書いてください。
+[style code: golem lint] は、改行の前後がどちらも欧文の文字である箇所を誤りとして報告します。
+
+行分けをそのまま残したい詩や歌詞には、後で説明する段落スタイル [style code: verse] を使います。
+
+## 見出し
+
+行頭の [style code: #] の数が、見出しの階層を表します。
+使える階層は三つです。
+
+```
+# 章の見出し
+## 節の見出し
+### 項の見出し
+```
+
+番号は自動で振られます。
+「第 1 章」とするか「1.」とするかは、[style code: style.toml] で決めます（[ref-number heading-style]「[ref-title heading-style]」）。
+原稿の見出しには、番号を書かないでください。
+
+見出しの直前の行に書くブロックコマンドで、見出しの扱いを変えられます。
+
+```
+@nonumber
+@notoc
+# まえがき
+```
+
+- [style code: @nonumber]：番号を振りません。番号も数えません。[index reading=みだし/ばんごう: 見出し/番号]
+- [style code: @notoc]：目次に載せません。
+- [style code: @toc-title 短い題]：目次に載せる題を、見出しより短くします。
+- [style code: @number 5]：この見出しの番号を 5 にします。後の見出しは 6 から数えます。
+
+このマニュアルの「目次」と巻末の「参考文献」「索引」は、[style code: @nonumber] で番号を外しています。
+
+## 箇条書きと番号付きリスト
+
+行頭の [style code: -] と空白で、箇条書きの項目を書きます。
+入れ子にするときは、空白二つで字下げします。
+
+```
+- 印刷用の PDF
+- 画面で読むもの
+  - EPUB
+  - HTML
+```
+
+組むと、次のようになります。
+
+- 印刷用の PDF
+- 画面で読むもの
+  - EPUB
+  - HTML
+
+番号付きのリストは、行頭を [style code: +] にします。
+
+```
++ 原稿を書く
++ golem build で組む
++ PDF を確かめる
+```
+
+組むと、次のようになります。
+
++ 原稿を書く
++ golem build で組む
++ PDF を確かめる
+
+番号は 1 から自動で振られます。
+項目を入れ替えても、番号を書き直す必要はありません。
+途中の番号から始めるときは、項目の直前の行に [style code: @number 4] のように書きます。
+
+## 定義リスト
+
+用語と説明の組は、定義リストで書きます。
+行頭の [style code: =] と空白で用語を書き、次の行から空白二つで字下げして説明を書きます。
+
+```
+= 版面
+  ページの中で本文を組む領域。
+= ノンブル
+  ページ番号。
+```
+
+組むと、用語の行の次に、字下げした説明の行が続きます。
+
+= 版面
+  ページの中で本文を組む領域。
+= ノンブル
+  ページ番号。
+
+[style code: =] の行を続けて書くと、それらの用語が一つの説明を共有します。
+[style code: =:] の行は、直前の用語のまま、二つめの説明を始めます。
+
+## 強調と圏点
+
+段落の中の装飾は、角括弧の中に名前とコロンを書き、その後に対象の文字を書きます。
+
+```
+[strong: 強調する語]
+[kenten: 圏点を打つ語]
+```
+
+- [style code: \[strong: ...\]]：意味の上での強調です。このマニュアルでは[strong: 太いゴシック体]で表しています。
+- [style code: \[bold: ...\]]：太字にします。
+- [style code: \[italic: ...\]]：斜体にします。
+- [style code: \[kenten: ...\]]：文字の上（縦組みでは右）に圏点を打ちます。
+
+この段落の[kenten: ここ]には圏点[index reading=けんてん: 圏点]を打ち、[color accent: ここ]には色を付けています。
+
+強調をどの書体で表すかは、[style code: style.toml] の文字スタイル[index reading=もじすたいる: 文字スタイル]で決めます（[ref-number styles]「[ref-title styles]」）。
+原稿には「強調する」ことだけを書き、「ゴシック体にする」とは書かないのが基本です。
+後で体裁を変えたくなったときに、原稿に手を入れずに済みます。
+
+文字に色を付けるときは、[style code: style.toml] で名前を付けた色（スウォッチ）を指定します。
+
+```
+[color accent: 色を付ける語]
+```
+
+自分で定義した文字スタイルは、[style code: \[style 名前: ...\]] で使います。
+このマニュアルでは、コマンドやファイルの名前を、文字スタイル [style code: code] で色を付けて組んでいます。
+
+縦組みの本では、[style code: \[tcy: !?\]] のように書くと、短い文字列を横に並べて一字分の幅に組みます（縦中横）。
+
+@label ruby
+## [ruby: 振/り/仮/名 | ふ//が/な]（ルビ）
+
+振り仮名[index reading=るび: ルビ]は [style code: \[ruby: 親文字\|読み\]] で付けます。
+
+```
+[ruby: 五月雨|さみだれ]
+[ruby: 東/京|とう/きょう]
+[ruby: 振/り/仮/名|ふ//が/な]
+```
+
+- 一つめのように [style code: /] を使わないと、親文字の全体に読みを付けるグループルビになります。熟字訓に使います。
+- 二つめのように [style code: /] で区切ると、区切りごとに読みを付けるモノルビになります。親文字と読みの区切りの数は同じにします。
+- 三つめのように読みの区切りを空にすると、その文字には読みを付けません。送り仮名を含む語に使います。
+
+組むと、[ruby: 五月雨 | さみだれ]、[ruby: 東/京 | とう/きょう]、[ruby: 振/り/仮/名 | ふ//が/な]のようになります。[index reading=るび/ぐるーぷるび: ルビ/グループルビ][index reading=るび/ものるび: ルビ/モノルビ]
+この節の見出しの「振り仮名」にも、三つめの書き方で読みを付けています。
+
+読みが親文字より長いときは、前後の仮名に読みを少しかけて、親文字の字間が空きすぎないようにします。
+かけ方は [style code: style.toml] で変えられます（[ref-number composition]「[ref-title composition]」）。
+
+## 数と式
+
+本文に計算の結果を埋め込むときは、[style code: \[= 式\]] と書きます。
+
+```
+@set price = 1800
+
+税込みで[= price * 110 / 100]円です。
+```
+
+@set price = 1800
+
+[style code: @set] で変数を定義し、[style code: \[= ...\]] の中で使います。
+[style code: @set] は行頭に書くブロックコマンドで、前後を空行で区切ります。
+上の例は「税込みで[= price * 110 / 100]円です。」と組まれます。
+この文の金額も、原稿では式で書いています。
+
+式には、四則演算（[style code: +]、[style code: -]、[style code: *]、[style code: /]）、べき乗（[style code: **]）、剰余（[style code: %]）と、次の関数を使えます。
+
+- [style code: round(x, 桁数)]：四捨五入します。[style code: round(2.675, 2)] は [= round(2.675, 2)] です。
+- [style code: fixed(x, 桁数)]：小数点以下の桁をそろえた文字列にします。[style code: fixed(1.5, 2)] は [= fixed(1.5, 2)] です。価格の表示に使います。
+- [style code: floor]、[style code: ceil]、[style code: abs]、[style code: min]、[style code: max]、[style code: sqrt]、[style code: len]、[style code: div]（整数の割り算）
+
+浮動小数点数の計算は、どの機械で組んでも同じ結果になるように決めています。
+
+マニフェストに書いた本の情報は、[style code: meta] で参照できます。
+奥付のように、書名や発行日を本文に並べるページで使います。
+
+```
+[= meta.title]
+[= meta.date]
+```
+
+使える名前は [style code: title]、[style code: date]、[style code: id]、[style code: language] と、マニフェストに書いた場合の [style code: edition]、[style code: publisher]、[style code: title_reading] です。
+[style code: \[= doc.chapters.count\]] は、本の章の数になります。
+このマニュアルの書名は「[= meta.title]」、発行日は [= meta.date] で、[= doc.chapters.count] の章からなります。
+
+数を書くときは、[style code: \[number-text 10\]] という書き方もあります。
+横組みでは「[number-text 10]」と組み、縦組みでは「十」や「一〇」のような漢数字か、縦中横の「10」で組みます。
+縦組みでどの表記にするかは、[style code: \[number-text 10 style=kanji\]] のように個別に選ぶか、[style code: style.toml] の [style code: \[numbers\]] で決めます。
+
+@import common/values.gm as values
+
+## 変数をファイルで共有する
+
+定価や版のように、いくつもの章で使う値は、一つのファイルにまとめて取り込めます。
+
+```
+@set price = 1800
+@set edition = "第2版"
+```
+
+このファイルを [style code: common/values.gm] とすると、章の原稿からは次のように使います。
+
+```
+@import common/values.gm as values
+
+本書は[= values.edition]です。
+```
+
+[style code: @import] で取り込めるのは、[style code: @set] で定義した変数だけです。
+取り込んだ変数は、[style code: as] で付けた名前を前に付けて参照します。
+取り込むファイルは、章として [style code: manifest.toml] に並べる必要はありません。
+このマニュアルも、版面の字数と行数を [style code: common/values.gm] に書いて取り込み、ここで「一行 [= values.characters] 字、一ページ [= values.lines] 行」と組んでいます。
+
+## 注
+
+段落の中に [style code: \[note: 注の本文\]] と書くと、その位置に注の番号が付き、本文はページの下（脚注[index reading=きゃくちゅう: 脚注]）に組まれます。
+
+```
+本文の文。[note: 注の本文です。]
+```
+
+注の本文には、段落の中の要素（ルビや強調）を使えます。
+段落を分けることはできません。
+注の番号は、ファイルごとに 1 から振ります。
+注をページの下ではなく章の終わりにまとめるときは、[style code: style.toml] の [style code: \[notes\]] で指定します。
+この段落の終わりにも、注を一つ付けています。[note: この注は、ページの下に組まれています。HTML では章の終わりにまとめて置き、本文の番号と相互にリンクします。]
+
+横組みの本では、本文の脇の余白に置く傍注[index reading=ぼうちゅう: 傍注]も使えます。
+
+```
+本文の語。[sidenote: 傍注の本文です。]
+```
+
+PDF では、傍注は版面の外の傍注欄に、注の印のある行と同じ高さで組まれます。[sidenote: この傍注のように組まれます。]
+出典は脚注に、用語の補足は傍注に、という使い分けができます。
+傍注を使うには、[style code: style.toml] に傍注欄の設定（[style code: \[sidenotes\]]）が要ります（[ref-number notes-style]「[ref-title notes-style]」）。
+傍注は縦組みでは使えません。
+
+@label tables
+## 表
+
+行頭の [style code: \|] で始まる行で、表[index reading=ひょう: 表]を書きます。
+
+```
+| 形式 | 用途 | 同じ出力の保証 |
+|:---|:---|:---:|
+| PDF | 印刷 | あり |
+| HTML | 画面 | あり |
+| EPUB | 電子書籍 | なし |
+| テキスト | 転載 | あり |
+```
+
+一行目が見出しの行で、二行目の区切りの行で本体と分けます。
+区切りの行の [style code: :] の位置で、列の揃えを決めます。
+[style code: :---] は左寄せ、[style code: :---:] は中央、[style code: ---:] は右寄せです。
+上の例を組むと、次のようになります。
+
+| 形式 | 用途 | 同じ出力の保証 |
+|:---|:---|:---:|
+| PDF | 印刷 | あり |
+| HTML | 画面 | あり |
+| EPUB | 電子書籍 | なし |
+| テキスト | 転載 | あり |
+
+セルの中には、段落の中の要素だけを書けます。
+セルの結合はできません。
+
+データが CSV のファイルにあるときは、[style code: @table src=data/sizes.csv] のように書くと、そのファイルから表を作ります。
+CSV の一行目が見出しの行になります。
+次の表は、このマニュアルの原稿にある CSV のファイルから作っています。
+
+@table src=data/sizes.csv
+
+PDF では、表は本文の行に合わせて組み、ページをまたぐ表は次のページの先頭に見出しの行を繰り返します。
+
+## コードと外部のファイル
+
+プログラムや設定のように、書いたとおりに組みたいテキストは、コードブロックにします。
+行頭の三つのバッククォート（[style code: ```]）の行から、次の三つのバッククォートの行までがコードブロックです。
+
+@listing examples/code-block.txt
+
+最初の行に言語の名前（[style code: toml] など）を書くと、HTML では構文に応じて色分けします。
+コードブロックの中では、角括弧もコメントも解釈しません。
+
+ファイルの中身をそのまま載せるときは、[style code: @listing] を使います。
+
+```
+@listing style.toml lines=1-5
+```
+
+[style code: lines] で行の範囲を選べます。
+省けば、ファイルの全体を載せます。
+第[ref-number style]章「[ref-title style]」に載せた [style code: style.toml] は、この書き方で、マニュアル自身の設定ファイルから取り込んでいます。
+
+## 図版
+
+図版[index reading=ずはん: 図版]は [style code: @figure] で置きます。
+
+```
+@label fig-new
+@figure images/new-project.png alt="golem new で作った本の最初のページ"
+  golem new で作った本の最初のページ。
+```
+
+最初の引数が画像のファイルで、[style code: alt] が代替テキストです。
+代替テキストは、画面を読み上げる環境で画像の代わりに読まれるので、省くことはできません。
+[style code: @figure] の次の行から、空白二つで字下げして書いたのがキャプションです。
+
+画像の形式は PNG、JPEG、PDF です。
+PDF の画像は HTML と EPUB では表示できないので、[style code: web=images/arch.png] のように画面用の画像も指定します。
+
+図の番号は、章ごとに「図 2-1」のように振ります。
+書式は [style code: style.toml] の [style code: \[figures\]] で変えられます。
+
+[style code: wrap=end width=12zw] を加えると、図版を版面の端に寄せ、本文を図版の脇に回り込ませます。
+[style code: wrap=start] なら行の始まりの側（横組みでは左）、[style code: wrap=end] なら終わりの側（右）に寄せます。
+回り込みには幅（[style code: width]）の指定が要ります。
+回り込みは PDF だけで行い、HTML と EPUB では通常の図版として置きます。
+図[ref-number fig-new-project]は、この書き方で置いています。
+
+## 相互参照
+
+本の中のほかの箇所を指すときは、指される側に [style code: @label] で名前を付け、指す側でその名前を使います。[index reading=そうごさんしょう: 相互参照]
+
+```
+@label markup
+# 原稿の記法
+
+詳しくは第[ref-number markup]章「[ref-title markup]」を見てください。
+```
+
+- [style code: \[ref-number 名前\]]：章や節、図の番号になります。
+- [style code: \[ref-title 名前\]]：章や節の題になります。
+- [style code: \[ref-page 名前\]]：PDF では、その箇所のページ番号になります。
+
+たとえば、この章は第[ref-number markup]章「[ref-title markup]」です。
+図[ref-number fig-new-project]は、PDF では [ref-page fig-new-project] ページにあります。
+[style code: \[ref-page ...\]] は、HTML と EPUB ではページがないので、指す箇所の題へのリンクになります。
+HTML でこの段落を読むと、前の文のページ番号の位置に、図の代替テキストへのリンクが入っています。
+
+章の題を直しても、ラベルを変えなければ参照は壊れません。
+存在しないラベルを指すと、エラーになります。
+ラベルの名前は本の全体で一つの名前空間を持つので、ほかのファイルのラベルも指せます。
+同じ名前のラベルを二つ付けることはできません。
+
+@label toc-index
+## 目次と索引と参考文献
+
+目次[index reading=もくじ: 目次]は、置きたい位置に [style code: @toc] を書くと作られます。
+
+```
+@nonumber
+@notoc
+# 目次
+
+@toc depth=2
+```
+
+[style code: depth] で、目次に載せる見出しの階層を選びます。
+PDF の目次には、見出しの題と、リーダー（点線）とページ番号を組みます。
+HTML と EPUB の目次は、見出しへのリンクの一覧になります。
+[style code: @toc] は本に一つだけ置けます。
+
+索引[index reading=さくいん: 索引]の項目は、本文の中に [style code: \[index reading=読み: 語\]] で印を付けます。
+
+```
+[index reading=はんめん: 版面]
+[index reading=るび/ぐるーぷるび: ルビ/グループルビ]
+```
+
+印は紙面には何も出しません。
+[style code: @index] を書いた位置に、読みの順に並べた索引が組まれ、PDF ではページ番号が付きます。
+[style code: /] で区切ると、主項目と副項目の二段になります。
+読みを省くとエラーになります。
+並べ方は、日本語の文字列の照合の規格 JIS X 4061 [cite jisx4061] に基づいています。
+
+参考文献[index reading=さんこうぶんけん: 参考文献]は、文献のデータを CSL-JSON の形式のファイルに書き、[style code: manifest.toml] の [style code: bibliography] に並べます（[ref-number bibliography-data]「[ref-title bibliography-data]」）。
+CSL-JSON は、多くの文献管理のソフトウェアが書き出せる形式です。
+本文では [style code: \[cite キー\]] で引用し、[style code: @bibliography] を書いた位置に、引用した文献だけの一覧が組まれます。
+引用の位置には、一覧の中の番号が「\[1]」のように入ります。
+たとえば、日本語の組版の規則は JLReq [cite jlreq] にまとめられています。
+
+このマニュアルの目次、巻末の索引と参考文献は、この節の書き方で作っています。
+
+## 段落スタイルと韻文
+
+段落の体裁を変えるときは、段落スタイルを付けます。
+段落スタイル[index reading=だんらくすたいる: 段落スタイル]は [style code: style.toml] で定義し（[ref-number styles]「[ref-title styles]」）、原稿では段落の直前の行に [style code: @style 名前] と書きます。
+
+```
+@style memo
+この段落だけが memo の体裁になります。
+```
+
+@style memo
+この段落には、マニュアルの [style code: style.toml] で定義した段落スタイル [style code: memo] を付けています。
+小さめのゴシック体で、二字下げて組んでいます。
+
+いくつもの段落に同じ段落スタイルを付けるときは、[style code: @style 名前] の次の行から、空白二つで字下げして段落を並べます。
+
+組み込みの段落スタイル [style code: verse] は、段落の中の改行をそのまま行の区切りにします。
+詩や歌詞、戯曲の台詞のように、行分けに意味がある文章に使います。
+
+```
+@style verse
+  古池や
+  蛙飛びこむ
+  水の音
+```
+
+組むと、次のようになります。
+
+@style verse
+  古池や
+  蛙飛びこむ
+  水の音
+
+空行で区切ると、連を分けられます。
+行が長くて折り返すときは、折り返した部分を二字下げて組みます。
+
+## コメントとエスケープ
+
+[style code: \%%] と [style code: \%%] で囲んだ部分は、コメントとして出力されません。
+
+```
+本文。%% 出典を確かめる %%
+```
+
+[style code: \%%=] で始めると、校正のためのコメントになります。
+校正のためのコメントは、ふだんのビルドでは紙面に出ますが、出荷のためのビルド（[style code: --profile prod]）に残っていると警告になります（[ref-number profiles]「[ref-title profiles]」）。
+コメントは空行を越えられません。
+
+記法に使う文字を本文の文字として書くときは、前にバックスラッシュ [style code: \\] を置きます。
+
+- 本文の [style code: \[] は [style code: \\\[] と書きます。
+- 段落を [style code: #]、[style code: -]、[style code: +]、[style code: =]、[style code: @]、[style code: \|] で始めるときは、その文字の前に [style code: \\] を置きます。
+- 本文の [style code: \%%] は [style code: \\\%%] と書きます。
+- 角括弧の中の [style code: \]] と [style code: \|] は [style code: \\\]]、[style code: \\\|] と書きます。
+- [style code: \\] 自身は [style code: \\\\] と書きます。
+
+[style code: %] が一つだけなら、そのまま書けます。
+「50%」のような本文は、エスケープしなくても消えません。
