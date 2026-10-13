@@ -31,6 +31,7 @@ import Golem.Doc.Numerals (kanji, kanjiDigits)
 import Golem.Layout.Hyphenation
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
+import Golem.Layout.Ruby
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan, diagnostic)
 
 -- | JLReq character classes used by the rules (cl-01 … cl-27).
@@ -121,7 +122,8 @@ data ComposeEnv = ComposeEnv
     ceKinsokuStrict :: !Bool,
     ceHanging :: !Bool,
     ceProtrusion :: !Bool,
-    ceRubyOverhang :: !Sp,
+    -- | the placement of ruby (golem-layout ADR 0009)
+    ceRuby :: !RubyStyle,
     -- | the number notation of vertical text when the source names none
     ceVerticalNumbers :: !(Maybe NumberStyle),
     cePatterns :: !(Maybe Patterns),
@@ -154,7 +156,7 @@ defaultComposeEnv fs =
       ceKinsokuStrict = True,
       ceHanging = False,
       ceProtrusion = False,
-      ceRubyOverhang = fs,
+      ceRuby = defaultRubyStyle fs,
       ceVerticalNumbers = Nothing,
       cePatterns = Nothing,
       cePageOf = const Nothing,
@@ -177,8 +179,10 @@ data Anchor
   | AnchorIndex !Int !SrcSpan IndexEntry -- item index, the mark, the entry
   deriving stock (Eq, Show)
 
--- | What a box shows (kept in 'bcTag').
-data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation
+{- | What a box shows (kept in 'bcTag').
+'KindRuby' is a mono ruby, 'KindGroupRuby' a group ruby (golem-layout ADR 0009).
+-}
+data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby
   deriving stock (Eq, Show, Enum, Bounded)
 
 boxKind :: BoxContent -> BoxKind
@@ -192,16 +196,23 @@ data Piece
   | PWord !Look !Text -- a Latin word (no spaces)
   | PSpace !Look -- an inter-word space
   | PBox !Look !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
+  | PRuby !Look !RubyKind !Text !(Maybe Text) -- ruby: the base and the reading (none for a segment without one)
   | PRubyBreak -- a break allowed between mono ruby bases
   | PAnchor (Int -> Anchor)
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
 composeInlines env inls =
   let pieces = concatMap (piecesOf env False) inls
-      (items, anchors) = foldl' emit ([], []) (zip [0 :: Int ..] pieces)
-      emit (acc, as) (_, PAnchor f) = (acc, (length acc, f) : as)
-      emit (acc, as) (i, p) = (acc <> itemsFor env (neighbour (i - 1)) p (neighbour (i + 1)), as)
-      neighbour j = if j >= 0 && j < length pieces then Just (pieces !! j) else Nothing
+      (items, anchors) = foldl' emit ([], []) (zip3 prevs pieces nexts)
+      emit (acc, as) (_, PAnchor f, _) = (acc, (length acc, f) : as)
+      emit (acc, as) (pv, p, nx) = (acc <> itemsFor env pv p nx, as)
+      -- the neighbours of each piece, anchors and breaks between mono ruby bases skipped
+      solid = \case
+        PAnchor _ -> False
+        PRubyBreak -> False
+        _ -> True
+      prevs = scanl (\acc p -> if solid p then Just p else acc) Nothing pieces
+      nexts = drop 1 (scanr (\p acc -> if solid p then Just p else acc) Nothing pieces)
       normalized = normalize env items
       -- anchors index the normalized items: the spacing inserted before a box shifts it
       positions = alignPositions items normalized
@@ -298,23 +309,19 @@ numberPieces env n style
     Nothing <|> b = b
     a <|> _ = a
 
-{- | Ruby: half-size reading above the base. A reading longer than its base
-may overhang neighbouring kana by up to the overhang; what is left
-widens the base. Mono ruby (several segments) may break between bases.
+{- | Ruby: half-size reading above the base. Several segments, or one
+base character, are mono ruby; one segment over several characters is a
+group ruby (golem-layout ADR 0009). Mono ruby may break between bases.
+The width is decided with the neighbours ('itemsFor').
 -}
 rubyPieces :: ComposeEnv -> [RubySegment] -> [Piece]
 rubyPieces env segs = concat (zipWith piece [0 :: Int ..] segs)
   where
     lk = ceLook env
-    fs = lkSize lk
     piece i (RubySegment base reading) =
       let baseText = T.concat (map plain base)
-          baseW = sum [advance env lk c | c <- T.unpack baseText]
-          rubyW = maybe 0 (\r -> toInteger (T.length r) * fs `div` 2) reading
-          excess = max 0 (rubyW - baseW)
-          width = baseW + max 0 (excess - 2 * min (excess `div` 2) (ceRubyOverhang env))
-          label = baseText <> maybe "" ("|" <>) reading
-       in [PRubyBreak | i > 0] <> [PBox lk label KindRuby width]
+          kind = if length segs >= 2 || T.length baseText == 1 then MonoRuby else GroupRuby
+       in [PRubyBreak | i > 0] <> [PRuby lk kind baseText reading]
     plain = \case
       Text _ t -> t
       Color _ _ xs -> T.concat (map plain xs)
@@ -342,8 +349,20 @@ punctSpace = \case
   MiddleDot -> (1 / 4, 1 / 4)
   _ -> (0, 0)
 
+-- | Kana a ruby may overhang: hiragana, katakana, small kana and the long vowel mark.
+isKanaClass :: CharClass -> Bool
+isKanaClass cls = cls `elem` [Kana, SmallKana, ProlongedSound]
+
+-- | The advances of the base characters of a ruby, in the look of the paragraph.
+baseAdvances :: ComposeEnv -> Look -> Text -> [Sp]
+baseAdvances env lk = map (advance env lk) . T.unpack
+
+-- | The advances of the reading characters: half the size of the base, as drawn.
+readingAdvances :: ComposeEnv -> Look -> Maybe Text -> [Sp]
+readingAdvances env lk = maybe [] (map (advance env lk {lkSize = lkSize lk `div` 2}) . T.unpack)
+
 itemsFor :: ComposeEnv -> Maybe Piece -> Piece -> Maybe Piece -> [Item]
-itemsFor env _ p _ = case p of
+itemsFor env prev p next = case p of
   PChar lk c kenten ->
     let cls = charClass c
         fs = lkSize lk
@@ -355,12 +374,35 @@ itemsFor env _ p _ = case p of
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
-     in [Box w (BoxContent (T.singleton c) False 0 hang (fromEnum tag) lk)]
+     in [Box w (BoxContent (T.singleton c) False 0 hang (fromEnum tag) lk 0 0)]
   PWord lk word -> wordItems env lk word
   PSpace lk ->
     let sw = advance env lk ' '
      in [Glue sw (sw `div` 2) (sw `div` 3)]
-  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk)]
+  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0)]
+  PRuby lk kind base reading ->
+    let style = ceRuby env
+        rp = placeRuby style kind (baseAdvances env lk base) (readingAdvances env lk reading) (allowance True prev, allowance False next)
+        -- how far the reading may overhang a neighbour: kana up to half its
+        -- advance, the free space of a neighbouring reading, nothing else
+        allowance before = \case
+          _ | not (rsOverhangOntoKana style) -> 0
+          Just (PChar lk' c False) | isKanaClass (charClass c) -> min (rsOverhang style) (advance env lk' c `div` 2)
+          Just (PRuby lk' _ b Nothing) -> case (if before then T.unsnoc b else (\(h, t) -> (t, h)) <$> T.uncons b) of
+            Just (_, c) | isKanaClass (charClass c) -> min (rsOverhang style) (advance env lk' c `div` 2)
+            _ -> 0
+          Just (PRuby lk' k b r@(Just _)) ->
+            let ras = readingAdvances env lk' r
+                p = placeRuby style k (baseAdvances env lk' b) ras (0, 0)
+                room = case (rpReading p, reverse (zip (rpReading p) ras)) of
+                  (firstPos : _, (lastPos, lastAdv) : _) -> if before then rpWidth p - (lastPos + lastAdv) else firstPos
+                  _ -> 0
+             in min (rsOverhang style) (max 0 room)
+          _ -> 0
+        tag = case kind of
+          MonoRuby -> KindRuby
+          GroupRuby -> KindGroupRuby
+     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp))]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   PAnchor _ -> []
 
@@ -382,7 +424,7 @@ wordItems env lk word =
             (ps, _) = maybe (0, 0) (protrusionRatio . fst) (T.uncons t)
             (_, pe) = maybe (0, 0) (protrusionRatio . snd) (T.unsnoc t)
             prot r = if ceProtrusion env then min w (w * r `div` 1000) else 0
-         in Box w (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk)
+         in Box w (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk 0 0)
       prot' r t f = if T.null t then 0 else f r
    in concat [box part : [pen | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]
 
@@ -426,11 +468,12 @@ normalize env = go Nothing
       Just (_, ch) | boxKind c `elem` [KindText, KindPunctuation, KindKenten] && T.length (bcText c) == 1 -> Just (charClass ch)
       _ -> Nothing
     firstClass c = case T.uncons (bcText c) of
-      Just (ch, _) | boxKind c /= KindRuby -> Just (charClass ch)
+      Just (ch, _) | not (isRuby c) -> Just (charClass ch)
       _ -> Nothing
     lastClass c = case T.unsnoc (bcText c) of
-      Just (_, ch) | boxKind c /= KindRuby -> Just (charClass ch)
+      Just (_, ch) | not (isRuby c) -> Just (charClass ch)
       _ -> Nothing
+    isRuby c = boxKind c `elem` [KindRuby, KindGroupRuby]
     between p c =
       let pc = lastClass p
           cc = firstClass c

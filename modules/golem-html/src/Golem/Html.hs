@@ -45,7 +45,11 @@ data HtmlConfig = HtmlConfig
     -- | the font and size of sidenotes (golem-driver ADR 0011)
     hcSidenoteFace :: !Face,
     hcBibliography :: !(Map Text Text), -- key -> formatted entry
-    hcDev :: !Bool
+    hcDev :: !Bool,
+    -- | [composition.ruby] as CSS ruby-align values (golem-layout ADR 0009)
+    hcRubyMonoAlign :: !Text,
+    hcRubyGroupAlign :: !Text,
+    hcRubyBaseSpacing :: !Text
   }
 
 -- | A font role and a CSS font-size for an element (golem-driver ADR 0010).
@@ -280,7 +284,8 @@ inline :: Ctx -> InlineF r -> Text
 inline c = \case
   Text _ t -> escapeXml t
   Ruby _ _ segs ->
-    "<ruby>"
+    -- several segments, or one base character, are mono ruby (golem-layout ADR 0009)
+    (if length segs >= 2 || T.length (T.concat [foldMap inlineText b | RubySegment b _ <- segs]) == 1 then "<ruby class=\"mono\">" else "<ruby>")
       <> T.concat [inlines c b <> "<rp>（</rp><rt>" <> maybe "" escapeXml r <> "</rt><rp>）</rp>" | RubySegment b r <- segs]
       <> "</ruby>"
   Kenten _ sh xs -> "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "default" sh) <> "\">" <> inlines c xs <> "</span>"
@@ -444,6 +449,10 @@ css cfg =
            ".align-center { text-align: center; }",
            ".align-right { text-align: right; }",
            ".proof { background: #ffeb99; }",
+           -- ruby: the base, a group reading and a mono reading (golem-layout ADR 0009)
+           "ruby { ruby-align: " <> hcRubyBaseSpacing cfg <> "; }",
+           "rt { ruby-align: " <> hcRubyGroupAlign cfg <> "; }",
+           "ruby.mono rt { ruby-align: " <> hcRubyMonoAlign cfg <> "; }",
            T.strip (T.pack (S.styleToCss S.pygments))
          ]
       -- the caption's font and size (golem-driver ADR 0010)

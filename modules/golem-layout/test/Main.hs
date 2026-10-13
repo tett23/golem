@@ -12,6 +12,8 @@ import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
 import Golem.Layout.Paginate
+import Golem.Layout.Ruby hiding (RubyAlign (..))
+import Golem.Layout.Ruby qualified as R (RubyAlign (..))
 import Golem.Layout.Sidenotes
 import Golem.Layout.Table
 import Golem.Layout.Wrap
@@ -31,7 +33,7 @@ fs :: Sp
 fs = 10 * 65536
 
 box :: Sp -> Item
-box w = Box w (BoxContent "x" False 0 0 0 look0)
+box w = Box w (BoxContent "x" False 0 0 0 look0 0 0)
 
 -- | The original look of 'defaultComposeEnv'.
 look0 :: Look
@@ -42,7 +44,7 @@ paragraph :: [Sp] -> [Item]
 paragraph ws = concat [box w : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 refBox :: Text -> Sp -> Item
-refBox t w = Box w (BoxContent t False 0 0 0 referenceLook)
+refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0)
 
 knuthPlassWords, knuthPlassLog :: FilePath
 knuthPlassWords = "test/data/knuth-plass/frog-king.words"
@@ -441,11 +443,11 @@ tests =
             [w | Glue w _ _ <- items, w > 0, w < filStretch] @?= [fs `div` 4, fs `div` 4],
           testCase "ruby wider than its base overhangs, then widens the base" $ do
             let seg base r = RubySegment [Text (mkSpan (FileId 0) 0 0) base] (Just r)
-                rubyW e segs = [w | Box w c <- fst (composeInlines e [Ruby (mkSpan (FileId 0) 0 0) () segs]), boxKind c == KindRuby]
-                env = (defaultComposeEnv fs) {ceRubyOverhang = fs `div` 2}
+                rubyW e segs = [w | Box w c <- fst (composeInlines e [sp0 "の", Ruby (mkSpan (FileId 0) 0 0) () segs, sp0 "の"]), boxKind c `elem` [KindRuby, KindGroupRuby]]
+                env = (defaultComposeEnv fs) {ceRuby = (defaultRubyStyle fs) {rsOverhang = fs `div` 2}}
             rubyW env [seg "字" "じ"] @?= [fs] -- fits
             rubyW env [seg "字" "あいう"] @?= [fs] -- 1.5em reading: overhang absorbs it
-            rubyW env [seg "字" "あいうえおか"] @?= [fs * 2] -- 3em: one em overhangs, the base widens
+            rubyW env [seg "字" "あいうえおか"] @?= [fs * 2] -- 3em: half an em overhangs each kana, the base widens
             -- mono ruby may break between bases
             assertBool "mono" (any (\case Penalty 0 0 _ -> True; _ -> False) (fst (composeInlines env [Ruby (mkSpan (FileId 0) 0 0) () [seg "漢" "かん", seg "字" "じ"]]))),
           testCase "tate-chu-yoko and tcy numbers are one em boxes; Latin is rotated in vertical text" $ do
@@ -456,6 +458,7 @@ tests =
             map snd (boxes [sp0 "ab"]) @?= [KindRotated]
             [bcText c | Box _ c <- fst (composeInlines env [Number (mkSpan (FileId 0) 0 0) 120 Nothing])] @?= ["百", "二", "十"]
         ],
+      testGroup "ruby placement (ADR 0009)" rubyTests,
       testGroup
         "microtypography (ADR 0005)"
         [ testCase "protrusion of hyphens and full stops follows the table" $ do
@@ -469,12 +472,12 @@ tests =
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
             ws <- forAll (Gen.list (Range.linear 3 12) (Gen.integral (Range.linear 20 70)))
-            let items = [Box w (BoxContent "w" True 0 0 0 look0) | w <- ws] `interleave` Glue 6 3 2 <> finish
+            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0) | w <- ws] `interleave` Glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
           testCase "expansion lowers the spread of adjustment ratios" $ do
             let ws = [23, 41, 37, 19, 52, 33, 28, 45, 31, 26, 39, 22, 48, 35, 29, 41]
-                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0) | w <- ws] `interleave` Glue 600 300 200 <> finish
+                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0) | w <- ws] `interleave` Glue 600 300 200 <> finish
                 variance ps =
                   let rs = map glueRatio (init (brLines (breakParagraph ps (const 15000) items)))
                       m = sum rs / fromIntegral (length rs)
@@ -761,3 +764,96 @@ tests =
       SLine i -> [i]
       SHeading i n -> [i .. i + n - 1]
       _ -> []
+
+-- | The ruby style of the tests with every alignment the same and a half-em overhang.
+rubyStyle :: R.RubyAlign -> RubyStyle
+rubyStyle a = RubyStyle a a a 500 True
+
+-- | Ruby boxes of composed inlines at 1000sp: their width and their edges.
+rubyBoxes :: ComposeEnv -> [Inline] -> [(Sp, (Sp, Sp))]
+rubyBoxes env is = [(w, (bcEdgeStart c, bcEdgeEnd c)) | Box w c <- fst (composeInlines env is), boxKind c `elem` [KindRuby, KindGroupRuby]]
+
+rubyOf :: [(Text, Maybe Text)] -> Inline
+rubyOf segs = Ruby (mkSpan (FileId 0) 0 0) () [RubySegment [Text (mkSpan (FileId 0) 0 0) b] r | (b, r) <- segs]
+
+-- | A box with edges (the overhang of a ruby).
+edgeBox :: Sp -> (Sp, Sp) -> Item
+edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b)
+
+-- | The start and end of each box of a set line.
+boxSpans :: Line -> [(Sp, Sp)]
+boxSpans l =
+  let placed = placeLine l
+      ends = [round (toRational off + toRational w) | (Box w _, off) <- placed]
+   in zip [off | (Box {}, off) <- placed] ends
+
+rubyTests :: [TestTree]
+rubyTests =
+  [ testCase "a group ruby shorter than its base, in each alignment" $ do
+      let at a = placeRuby (rubyStyle a) GroupRuby [1000, 1000, 1000] [500, 500] (0, 0)
+      rpReading (at R.Align121) @?= [500, 2000]
+      rpReading (at R.Align010) @?= [0, 2500]
+      rpReading (at R.AlignCenter) @?= [1000, 1500]
+      rpReading (at R.AlignStart) @?= [0, 500]
+      mapM_ (\a -> (rpWidth (at a), rpBase (at a)) @?= (3000, [0, 1000, 2000])) [R.Align121, R.Align010, R.AlignCenter, R.AlignStart],
+    testCase "a one-character reading: 1:2:1 and 0:1:0 centre it" $ do
+      let at a = rpReading (placeRuby (rubyStyle a) GroupRuby [1000, 1000] [500] (0, 0))
+      at R.Align121 @?= at R.AlignCenter
+      at R.Align010 @?= at R.AlignCenter,
+    testCase "a mono ruby: centred or at the start" $ do
+      rpReading (placeRuby (rubyStyle R.AlignCenter) MonoRuby [1000] [500] (0, 0)) @?= [250]
+      rpReading (placeRuby (rubyStyle R.AlignStart) MonoRuby [1000] [500] (0, 0)) @?= [0],
+    testCase "a long reading overhangs, then spaces the base" $ do
+      let reading = replicate 6 500
+          full = placeRuby (rubyStyle R.Align121) GroupRuby [1000, 1000] reading (500, 500)
+      (rpOverhang full, rpWidth full, take 1 (rpReading full), rpBase full) @?= (500, 2000, [-500], [0, 1000])
+      let at a = placeRuby (rubyStyle a) GroupRuby [1000, 1000] reading (250, 250)
+      (rpWidth (at R.Align121), take 1 (rpReading (at R.Align121))) @?= (2500, [-250])
+      rpBase (at R.Align121) @?= [125, 1375]
+      rpBase (at R.Align010) @?= [0, 1500]
+      rpBase (at R.AlignCenter) @?= [250, 1250]
+      let oneSide = placeRuby (rubyStyle R.Align121) GroupRuby [1000, 1000] reading (500, 0)
+      (rpOverhang oneSide, rpWidth oneSide) @?= (0, 3000),
+    testProperty "ruby placement: the box holds the base, the reading fits the overhang, positions increase" $ property $ do
+      base <- forAll (Gen.list (Range.linear 1 5) (Gen.integral (Range.linear 100 2000)))
+      reading <- forAll (Gen.list (Range.linear 1 8) (Gen.integral (Range.linear 50 1000)))
+      a <- forAll (Gen.integral (Range.linear 0 1000))
+      b <- forAll (Gen.integral (Range.linear 0 1000))
+      align <- forAll (Gen.element [R.Align121, R.Align010, R.AlignCenter, R.AlignStart])
+      kind <- forAll (Gen.element [MonoRuby, GroupRuby])
+      let r = placeRuby (rubyStyle align) kind base reading (a, b)
+          increasing xs = and (zipWith (<) xs (drop 1 xs))
+      assert (rpWidth r >= sum base)
+      assert (rpWidth r >= sum reading - 2 * rpOverhang r)
+      assert (increasing (rpBase r) && increasing (rpReading r))
+      assert (last (rpBase r) + last base <= rpWidth r),
+    testCase "a reading overhangs kana on both sides" $
+      rubyBoxes (defaultComposeEnv 1000) [sp0 "の", rubyOf [("字", Just "あいう")], sp0 "の"] @?= [(1000, (250, 250))],
+    testCase "no overhang onto a kanji, a kenten character or with overhang-onto none" $ do
+      rubyBoxes (defaultComposeEnv 1000) [sp0 "漢", rubyOf [("字", Just "あいう")], sp0 "の"] @?= [(1500, (0, 0))]
+      rubyBoxes (defaultComposeEnv 1000) [Kenten (mkSpan (FileId 0) 0 0) Nothing [sp0 "の"], rubyOf [("字", Just "あいう")], sp0 "の"] @?= [(1500, (0, 0))]
+      let none = (defaultComposeEnv 1000) {ceRuby = (defaultRubyStyle 1000) {rsOverhangOntoKana = False}}
+      map fst (rubyBoxes none [sp0 "の", rubyOf [("字", Just "あいう")], sp0 "の"]) @?= [1500],
+    testCase "mono ruby overhangs only the free space of the next reading" $ do
+      map fst (rubyBoxes (defaultComposeEnv 1000) [sp0 "の", rubyOf [("東", Just "とう"), ("京", Just "きょう")], sp0 "の"]) @?= [1000, 1500]
+      rubyBoxes (defaultComposeEnv 1000) [sp0 "の", rubyOf [("東", Just "ひ"), ("京", Just "きょう")], sp0 "の"] @?= [(1000, (0, 0)), (1000, (250, 250))],
+    testCase "a Latin reading is measured with the advances" $
+      map fst (rubyBoxes (defaultComposeEnv 1000) [rubyOf [("字", Just "abcde")]]) @?= [1250],
+    testCase "the edges of a box at the line start, inside and at the line end" $
+      mapM_
+        ( \prot -> do
+            let params = defaultParams {pProtrusion = prot}
+                lineOf items w = case brLines (breakParagraph params (const w) (items <> finish)) of
+                  [l] -> pure l
+                  other -> assertFailure (show (length other))
+            start <- lineOf [edgeBox 10 (3, 0), Glue 5 5 5, box 10, Glue 5 5 5, box 10] 38
+            take 1 (boxSpans start) @?= [(3, 13)]
+            map snd (drop 2 (boxSpans start)) @?= [38]
+            lineEdge start @?= (3, 0)
+            middle <- lineOf [box 10, Glue 5 5 5, edgeBox 10 (3, 3), Glue 5 5 5, box 10] 40
+            map fst (boxSpans middle) @?= [0, 15, 30]
+            end <- lineOf [box 10, Glue 5 5 5, box 10, Glue 5 5 5, edgeBox 10 (0, 3)] 38
+            map snd (drop 2 (boxSpans end)) @?= [35]
+        )
+        [False, True]
+  ]

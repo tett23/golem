@@ -62,7 +62,9 @@ data TocEntry = TocEntry
     teNumber :: !(Maybe Text),
     teTitle :: ![Inline],
     teAnchor :: !Text,
-    teFile :: !FileId
+    teFile :: !FileId,
+    -- | the span of the heading block, the key of 'bookHeadings' (golem-driver ADR 0009)
+    teSpan :: !SrcSpan
   }
   deriving stock (Eq, Show)
 
@@ -178,7 +180,7 @@ assemble cfg evalDeferred docs =
         (_ : (_, sp) : _) -> [diagnostic "G0402" Error sp "@toc は文書に一つだけ置けます"]
         _ -> []
       toc =
-        [ TocEntry (hiLevel h) (hiNumberText h) (hiTitle h) (hiAnchor h) (hiFile h)
+        [ TocEntry (hiLevel h) (hiNumberText h) (hiTitle h) (hiAnchor h) (hiFile h) sp
         | Document _ bs <- docs,
           Block sp _ (Heading _ a _) <- allBlocks bs,
           not (haNoToc a),

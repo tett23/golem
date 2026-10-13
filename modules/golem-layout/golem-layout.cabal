@@ -24,6 +24,7 @@ library
                     Golem.Layout.Japanese
                     Golem.Layout.Look
                     Golem.Layout.Paginate
+                    Golem.Layout.Ruby
                     Golem.Layout.Sidenotes
                     Golem.Layout.Table
                     Golem.Layout.Wrap
