@@ -97,6 +97,9 @@ Golem は、同じ入力から常に同じバイト列を出力する。
 必要な機能が限られているなら、その機能だけを実装してよい。
 
 [README.md](./README.md) にある固定したネイティブライブラリ（HarfBuzz、FreeType、wasmtime、zlib、hyph-utf8）の版を上げるときは、ADR を書く。
+wasmtime の版を上げるときは、`scripts/wasmtime-licenses.sh` で `licenses/wasmtime-v<版>/`（`libwasmtime.a` に入った Rust のクレートなどのライセンスの文書）を作り直し、生成物もコミットする（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
+このスクリプトはネットワークに接続し、`cargo` と `rustup` を要する。
+`c-objects.tsv` の構成要素の列は、スクリプトが埋めないので手で埋める。
 `cabal.project.freeze` で固定した依存の版を変えるときも、変更の理由をプルリクエストに書く。
 
 ## 整形と検査
@@ -161,6 +164,17 @@ ADR で仕様が変わったら、同じプルリクエストで [docs/specifica
 
 配布物を作って検査するところまでを試すときは、`gh workflow run release.yml --ref <ブランチ>` で `workflow_dispatch` から起動する。
 このときはリリースを作らない。
+
+タグは次のとおり扱う（[docs/adr/0008](./docs/adr/0008-first-release-verification.md)）。
+
+- push したタグを別のコミットに付け直さない。
+- 公開していないリリースのタグは、ワークフローが失敗したとき、または配布物の確かめが通らなかったときに限り削除してよい。削除したタグの名前は再び使わず、プレリリースの識別子を進める（`rc1` の次は `rc2`）。
+- 公開したリリースのタグは削除しない。
+- コードを変えずに直る失敗（ランナーの不調、ネットワークの一時的な失敗、API の制限）は、タグを変えずにワークフローをやり直す（`gh run rerun <実行の ID> --failed`）。
+
+配布物を確かめた結果は、`docs/audits/releases/<タグ>.md` に日本語で記録し、プルリクエストで `main` に入れる。
+タグを削除してやり直した場合も、削除したタグの記録に失敗を書いて残し、次のタグの記録を別に作る。
+記録はコミットしたあとは変更しない。
 
 ## テスト用の素材
 

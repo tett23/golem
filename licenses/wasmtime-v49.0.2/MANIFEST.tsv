@@ -1,0 +1,257 @@
+package	version	library	license	files
+cranelift-assembler-x64	0.136.2	cranelift_assembler_x64	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-bforest	0.136.2	cranelift_bforest	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-bitset	0.136.2	cranelift_bitset	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-codegen	0.136.2	cranelift_codegen	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-codegen-shared	0.136.2	cranelift_codegen_shared	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-control	0.136.2	cranelift_control	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-entity	0.136.2	cranelift_entity	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-frontend	0.136.2	cranelift_frontend	Apache-2.0 WITH LLVM-exception	LICENSE
+cranelift-native	0.136.2	cranelift_native	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-c-api-impl	49.0.2	wasmtime_c_api	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-c-api-macros	49.0.2	wasmtime_internal_c_api_macros	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-c-api	49.0.2	wasmtime	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-cache	49.0.2	wasmtime_internal_cache	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-component-macro	49.0.2	wasmtime_internal_component_macro	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-component-util	49.0.2	wasmtime_internal_component_util	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-core	49.0.2	wasmtime_internal_core	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-cranelift	49.0.2	wasmtime_internal_cranelift	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-environ	49.0.2	wasmtime_environ	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-fiber	49.0.2	wasmtime_internal_fiber	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-jit-debug	49.0.2	wasmtime_internal_jit_debug	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-jit-icache-coherence	49.0.2	wasmtime_internal_jit_icache_coherence	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-unwinder	49.0.2	wasmtime_internal_unwinder	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-versioned-export-macros	49.0.2	wasmtime_internal_versioned_export_macros	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-wasi	49.0.2	wasmtime_wasi	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-wasi-http	49.0.2	wasmtime_wasi_http	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-wasi-io	49.0.2	wasmtime_wasi_io	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime	49.0.2	wasmtime	Apache-2.0 WITH LLVM-exception	LICENSE
+wiggle	49.0.2	wiggle	Apache-2.0 WITH LLVM-exception	LICENSE
+wiggle-generate	49.0.2	wiggle_generate	Apache-2.0 WITH LLVM-exception	LICENSE
+wiggle-macro	49.0.2	wiggle_macro	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-winch	49.0.2	wasmtime_internal_winch	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-wit-bindgen	49.0.2	wasmtime_internal_wit_bindgen	Apache-2.0 WITH LLVM-exception	LICENSE
+wasmtime-internal-wmemcheck	49.0.2	wasmtime_internal_wmemcheck	Apache-2.0 WITH LLVM-exception	LICENSE
+pulley-interpreter	49.0.2	pulley_interpreter	Apache-2.0 WITH LLVM-exception	LICENSE
+pulley-macros	49.0.2	pulley_macros	Apache-2.0 WITH LLVM-exception	LICENSE
+winch-codegen	49.0.2	winch_codegen	Apache-2.0 WITH LLVM-exception	LICENSE
+addr2line	0.26.0	addr2line	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
+aho-corasick	1.0.2	aho_corasick	Unlicense OR MIT	COPYING LICENSE-MIT
+allocator-api2	0.2.20	allocator_api2	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+ambient-authority	0.0.2	ambient_authority	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+anstream	0.6.21	anstream	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+anstyle-parse	0.2.7	anstyle_parse	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+anstyle-query	1.1.5	anstyle_query	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+anstyle	1.0.13	anstyle	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+anyhow	1.0.103	anyhow	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+arbitrary	1.4.2	arbitrary	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+async-trait	0.1.89	async_trait	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+atomic-waker	1.1.2	atomic_waker	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT LICENSE-THIRD-PARTY
+base64	0.22.1	base64	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+beef	0.5.2	beef	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+bitflags	2.11.1	bitflags	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+block-buffer	0.10.2	block_buffer	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+bumpalo	3.20.2	bumpalo	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+bytes	1.11.1	bytes	MIT	LICENSE
+cap-primitives	4.0.3	cap_primitives	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+capstone-sys	0.18.0	capstone_sys	MIT	LICENSE capstone/LICENSE.TXT capstone/LICENSE_LLVM.TXT
+capstone	0.14.0	capstone	MIT	LICENSE
+cfg-if	1.0.0	cfg_if	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT
+chacha20	0.10.0	chacha20	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+cobs	0.3.0	cobs	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+colorchoice	1.0.4	colorchoice	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+cpp_demangle	0.5.1	cpp_demangle	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+cpufeatures	0.2.7	cpufeatures	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+cpufeatures	0.3.0	cpufeatures	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+crc32fast	1.3.2	crc32fast	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+crossbeam-deque	0.8.1	crossbeam_deque	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+crossbeam-epoch	0.9.20	crossbeam_epoch	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+crossbeam-utils	0.8.20	crossbeam_utils	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+crypto-common	0.1.6	crypto_common	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+debugid	0.8.0	debugid	Apache-2.0	LICENSE
+derive_arbitrary	1.4.0	derive_arbitrary	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT
+digest	0.10.7	digest	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+directories-next	2.0.0	directories_next	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+dirs-sys-next	0.1.2	dirs_sys_next	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+displaydoc	0.2.5	displaydoc	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+either	1.13.0	either	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+embedded-io	0.4.0	embedded_io	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+embedded-io	0.6.1	embedded_io	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+encoding_rs	0.8.31	encoding_rs	(Apache-2.0 OR MIT) AND BSD-3-Clause	COPYRIGHT LICENSE-APACHE LICENSE-MIT LICENSE-WHATWG
+env_filter	0.1.2	env_filter	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+env_logger	0.11.5	env_logger	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+equivalent	1.0.1	equivalent	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
+errno	0.3.14	errno	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+fallible-iterator	0.3.0	fallible_iterator	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT
+fastrand	2.3.0	fastrand	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
+fixedbitset	0.4.2	fixedbitset	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT
+fnv	1.0.7	fnv	Apache-2.0 / MIT	LICENSE-APACHE LICENSE-MIT
+foldhash	0.2.0	foldhash	Zlib	LICENSE
+form_urlencoded	1.2.2	form_urlencoded	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+fs-set-times	0.20.3	fs_set_times	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+futures-channel	0.3.31	futures_channel	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+futures-core	0.3.31	futures_core	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+futures-executor	0.3.31	futures_executor	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+futures-io	0.3.31	futures_io	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+futures-macro	0.3.31	futures_macro	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+futures-sink	0.3.31	futures_sink	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+futures-task	0.3.31	futures_task	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+futures-util	0.3.31	futures_util	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+futures	0.3.31	futures	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+fxprof-processed-profile	0.8.1	fxprof_processed_profile	MIT OR Apache-2.0	LICENSE-APACHE NOTE
+generic-array	0.14.5	generic_array	MIT	LICENSE
+getrandom	0.2.15	getrandom	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+getrandom	0.4.2	getrandom	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+gimli	0.32.3	gimli	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+gimli	0.33.0	gimli	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+h2	0.4.16	h2	MIT	LICENSE
+hashbrown	0.16.1	hashbrown	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+hashbrown	0.17.0	hashbrown	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+heck	0.5.0	heck	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+http-body-util	0.1.3	http_body_util	MIT	LICENSE
+http-body	1.0.1	http_body	MIT	LICENSE
+http	1.3.1	http	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+httparse	1.10.1	httparse	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+httpdate	1.0.2	httpdate	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT
+humantime	2.1.0	humantime	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT
+hyper	1.9.0	hyper	MIT	LICENSE
+icu_collections	1.5.0	icu_collections	Unicode-3.0	LICENSE
+icu_locid	1.5.0	icu_locid	Unicode-3.0	LICENSE
+icu_locid_transform	1.5.0	icu_locid_transform	Unicode-3.0	LICENSE
+icu_locid_transform_data	1.5.0	icu_locid_transform_data	Unicode-3.0	LICENSE
+icu_normalizer	1.5.0	icu_normalizer	Unicode-3.0	LICENSE
+icu_normalizer_data	1.5.0	icu_normalizer_data	Unicode-3.0	LICENSE
+icu_properties	1.5.1	icu_properties	Unicode-3.0	LICENSE
+icu_properties_data	1.5.0	icu_properties_data	Unicode-3.0	LICENSE
+icu_provider	1.5.0	icu_provider	Unicode-3.0	LICENSE
+icu_provider_macros	1.5.0	icu_provider_macros	Unicode-3.0	LICENSE
+id-arena	2.3.0	id_arena	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT
+idna	1.1.0	idna	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+idna_adapter	1.2.0	idna_adapter	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
+indexmap	2.14.0	indexmap	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
+io-extras	0.19.0	io_extras	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+io-lifetimes	2.0.3	io_lifetimes	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+io-lifetimes	3.0.1	io_lifetimes	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+ipnet	2.5.0	ipnet	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+is_terminal_polyfill	1.70.1	is_terminal_polyfill	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+itertools	0.14.0	itertools	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+itoa	1.0.14	itoa	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+ittapi-sys	0.4.0	ittapi_sys	GPL-2.0-only OR BSD-3-Clause	LICENSES/BSD-3-Clause.txt LICENSES/GPL-2.0-only.txt
+ittapi	0.4.0	ittapi	GPL-2.0-only OR BSD-3-Clause	BSD-3-Clause.txt GPL-2.0-only.txt NOTE
+lazy_static	1.4.0	lazy_static	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT
+leb128	0.2.5	leb128	Apache-2.0/MIT	LICENSE-APACHE LICENSE-MIT
+leb128fmt	0.1.0	leb128fmt	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+libc	0.2.185	libc	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+libm	0.2.16	libm	MIT	LICENSE.txt
+linux-raw-sys	0.12.1	linux_raw_sys	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+litemap	0.7.4	litemap	Unicode-3.0	LICENSE
+log	0.4.28	log	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+logos-codegen	0.14.2	logos_codegen	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+logos-derive	0.14.2	logos_derive	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+logos	0.14.2	logos	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+mach2	0.6.0	mach2	BSD-2-Clause OR MIT OR Apache-2.0	LICENSE-APACHE LICENSE-BSD LICENSE-MIT
+maybe-owned	0.3.4	maybe_owned	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+memchr	2.7.6	memchr	Unlicense OR MIT	COPYING LICENSE-MIT
+memfd	0.6.5	memfd	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+mio	1.2.0	mio	MIT	LICENSE
+object	0.40.0	object	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
+once_cell	1.19.0	once_cell	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+percent-encoding	2.3.2	percent_encoding	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+petgraph	0.6.5	petgraph	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+pin-project-lite	0.2.14	pin_project_lite	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
+pin-utils	0.1.0	pin_utils	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+postcard	1.1.3	postcard	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+proc-macro2	1.0.101	proc_macro2	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+quote	1.0.41	quote	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+rand	0.10.1	rand	MIT OR Apache-2.0	COPYRIGHT LICENSE-APACHE LICENSE-MIT
+rand_core	0.10.0	rand_core	MIT OR Apache-2.0	COPYRIGHT LICENSE-APACHE LICENSE-MIT
+rayon-core	1.12.0	rayon_core	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+rayon	1.5.3	rayon	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+regalloc2	0.15.2	regalloc2	Apache-2.0 WITH LLVM-exception	LICENSE
+regex-automata	0.3.3	regex_automata	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+regex-syntax	0.7.4	regex_syntax	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+regex-syntax	0.8.5	regex_syntax	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+regex	1.9.1	regex	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+ring	0.17.14	ring	Apache-2.0 AND ISC	LICENSE LICENSE-BoringSSL LICENSE-other-bits src/polyfill/once_cell/LICENSE-APACHE src/polyfill/once_cell/LICENSE-MIT third_party/fiat/LICENSE
+rustc-demangle	0.1.24	rustc_demangle	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT
+rustc-hash	2.1.1	rustc_hash	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
+rustix-linux-procfs	0.1.1	rustix_linux_procfs	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+rustix	1.1.4	rustix	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+rustls-pki-types	1.13.1	rustls_pki_types	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+rustls-webpki	0.103.13	webpki	ISC	LICENSE
+rustls	0.23.37	rustls	Apache-2.0 OR ISC OR MIT	LICENSE-APACHE LICENSE-ISC LICENSE-MIT
+ryu	1.0.9	ryu	Apache-2.0 OR BSL-1.0	LICENSE-APACHE LICENSE-BOOST
+semver	1.0.27	semver	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+serde	1.0.228	serde	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+serde_core	1.0.228	serde_core	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+serde_derive	1.0.228	serde_derive	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+serde_json	1.0.140	serde_json	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+serde_spanned	1.1.1	serde_spanned	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+sha2	0.10.2	sha2	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+signal-hook-registry	1.4.1	signal_hook_registry	Apache-2.0/MIT	LICENSE-APACHE LICENSE-MIT
+slab	0.4.11	slab	MIT	LICENSE
+smallvec	1.15.1	smallvec	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+socket2	0.6.3	socket2	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+souper-ir	2.1.0	souper_ir	MIT OR Apache-2.0	LICENSE-APACHE NOTE
+stable_deref_trait	1.2.0	stable_deref_trait	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT
+static_assertions	1.1.0	static_assertions	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+subtle	2.5.0	subtle	BSD-3-Clause	LICENSE
+syn	2.0.106	syn	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+synstructure	0.13.1	synstructure	MIT	LICENSE
+target-lexicon	0.13.5	target_lexicon	Apache-2.0 WITH LLVM-exception	LICENSE
+tempfile	3.27.0	tempfile	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+termcolor	1.4.1	termcolor	Unlicense OR MIT	COPYING LICENSE-MIT
+thiserror-impl	1.0.65	thiserror_impl	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+thiserror-impl	2.0.17	thiserror_impl	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+thiserror	1.0.65	thiserror	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+thiserror	2.0.17	thiserror	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+tinystr	0.7.6	tinystr	Unicode-3.0	LICENSE
+tokio-macros	2.7.0	tokio_macros	MIT	LICENSE
+tokio-rustls	0.26.4	tokio_rustls	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+tokio-util	0.7.16	tokio_util	MIT	LICENSE
+tokio	1.51.1	tokio	MIT	LICENSE
+toml	1.1.4+spec-1.1.0	toml	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+toml_datetime	1.1.1+spec-1.1.0	toml_datetime	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+toml_parser	1.1.3+spec-1.1.0	toml_parser	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+toml_writer	1.1.2+spec-1.1.0	toml_writer	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+tracing-attributes	0.1.30	tracing_attributes	MIT	LICENSE
+tracing-core	0.1.34	tracing_core	MIT	LICENSE
+tracing	0.1.41	tracing	MIT	LICENSE
+try-lock	0.2.4	try_lock	MIT	LICENSE
+typenum	1.15.0	typenum	MIT OR Apache-2.0	LICENSE LICENSE-APACHE LICENSE-MIT
+unicode-ident	1.0.24	unicode_ident	(MIT OR Apache-2.0) AND Unicode-3.0	LICENSE-APACHE LICENSE-MIT LICENSE-UNICODE
+unicode-width	0.2.0	unicode_width	MIT OR Apache-2.0	COPYRIGHT LICENSE-APACHE LICENSE-MIT
+untrusted	0.9.0	untrusted	ISC	LICENSE.txt
+url	2.5.7	url	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+utf16_iter	1.0.5	utf16_iter	Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-MIT
+utf8_iter	1.0.4	utf8_iter	Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-MIT
+utf8parse	0.2.2	utf8parse	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
+uuid	1.0.0	uuid	Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-MIT
+want	0.3.0	want	MIT	LICENSE
+wasm-compose	0.258.3	wasm_compose	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+wasm-encoder	0.258.3	wasm_encoder	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+wasm-metadata	0.258.3	wasm_metadata	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+wasm-wave	0.258.3	wasm_wave	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+wasmparser	0.258.3	wasmparser	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+wasmprinter	0.258.3	wasmprinter	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+wast	258.0.3	wast	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+wast	35.0.2	wast	Apache-2.0 WITH LLVM-exception	LICENSE-Apache-2.0_WITH_LLVM-exception NOTE
+wat	1.258.3	wat	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+webpki-roots	1.0.7	webpki_roots	CDLA-Permissive-2.0	LICENSE
+winnow	1.0.4	winnow	MIT	LICENSE-MIT
+wit-component	0.258.3	wit_component	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+wit-parser	0.258.3	wit_parser	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-Apache-2.0_WITH_LLVM-exception LICENSE-MIT
+witx	0.9.1	witx	Apache-2.0	LICENSE
+write16	1.0.0	write16	Apache-2.0 OR MIT	COPYRIGHT LICENSE-APACHE LICENSE-MIT
+writeable	0.5.5	writeable	Unicode-3.0	LICENSE
+xed-sys	0.6.0+xed-2024.05.20	xed_sys	Apache-2.0	LICENSE
+yoke-derive	0.7.5	yoke_derive	Unicode-3.0	LICENSE
+yoke	0.7.5	yoke	Unicode-3.0	LICENSE
+zerofrom-derive	0.1.5	zerofrom_derive	Unicode-3.0	LICENSE
+zerofrom	0.1.5	zerofrom	Unicode-3.0	LICENSE
+zeroize	1.8.2	zeroize	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
+zerovec-derive	0.10.3	zerovec_derive	Unicode-3.0	LICENSE
+zerovec	0.10.4	zerovec	Unicode-3.0	LICENSE
+zstd-safe	7.0.0	zstd_safe	MIT/Apache-2.0	LICENSE LICENSE.Apache-2.0 LICENSE.Mit
+zstd-sys	2.0.9+zstd.1.5.5	zstd_sys	MIT/Apache-2.0	LICENSE LICENSE.Apache-2.0 LICENSE.BSD-3-Clause LICENSE.Mit zstd/COPYING zstd/LICENSE
+zstd	0.13.0	zstd	MIT	LICENSE

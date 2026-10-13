@@ -97,6 +97,9 @@ In that case, write thorough tests, using the original project's tests as a refe
 If only a few features are needed, implementing only those is fine.
 
 Raising the version of any pinned native library listed in [README.md](./README.md) (HarfBuzz, FreeType, wasmtime, zlib, hyph-utf8) requires an ADR.
+When raising the version of wasmtime, regenerate `licenses/wasmtime-v<version>/` (the license documents of the Rust crates and others in `libwasmtime.a`) with `scripts/wasmtime-licenses.sh` and commit the output ([docs/adr/0007](./docs/adr/0007-third-party-licenses.md)).
+The script connects to the network and needs `cargo` and `rustup`.
+It does not fill in the component column of `c-objects.tsv`; fill it in by hand.
 When changing dependency versions pinned in `cabal.project.freeze`, explain why in the pull request.
 
 ## Formatting and linting
@@ -161,6 +164,17 @@ A release goes as follows ([docs/adr/0004](./docs/adr/0004-binary-distribution-a
 
 To try the build and the checks without a release, run `gh workflow run release.yml --ref <branch>`, which starts the workflow through `workflow_dispatch`.
 It makes no release.
+
+Tags are handled as follows ([docs/adr/0008](./docs/adr/0008-first-release-verification.md)).
+
+- Never move a pushed tag to another commit.
+- The tag of a release that has not been published may be deleted only when the workflow failed or the checks of the archives did not pass. A deleted tag name is never used again; advance the pre-release identifier instead (`rc2` after `rc1`).
+- Never delete the tag of a published release.
+- A failure that goes away without a code change (a runner problem, a transient network failure, an API limit) is fixed by running the workflow again with the tag unchanged (`gh run rerun <run ID> --failed`).
+
+Record the results of the checks of the archives in `docs/audits/releases/<tag>.md`, in Japanese, and merge it into `main` through a pull request.
+When a tag is deleted and the release retried, the record of the deleted tag stays with the failure written in it, and the next tag gets a record of its own.
+Records are not changed once committed.
 
 ## Test material
 

@@ -1149,6 +1149,14 @@ Golem の版は `X.Y.Z` か、プレリリースの識別子を付けた `X.Y.Z-
 リリースには、三つのアーカイブのほかに、`SHA256SUMS`、ビルドの来歴の証明、リンクした GMP のソースのアーカイブを添える。
 GMP は LGPL-3.0 であり、三つの実行ファイルのどれにも静的にリンクされるためである。
 
+`THIRD_PARTY_LICENSES/` に入れるものは、固定の一覧ではなく、実行ファイルのリンクマップから決める（[docs/adr/0007](adr/0007-third-party-licenses.md)）。
+ビルドのスクリプトがリンカーにリンクマップを書かせ、`scripts/release/link-components.sh` が、実行ファイルに入ったアーカイブを一つずつ、ライセンスの文書を持つ構成要素（Haskell のパッケージ、GHC、GMP、wasmtime、Alpine のパッケージ、compiler-rt）に対応させる。
+対応の付かないアーカイブが一つでもあれば、配布物を作らずに止まる。
+Alpine のパッケージの文書は、そのパッケージの `-doc` から取り、入っていないものだけをリポジトリの `licenses/alpine/` に置く。
+`libwasmtime.a` に入った Rust のクレート、Rust の標準ライブラリ、compiler-rt の文書は、wasmtime の版ごとに `scripts/wasmtime-licenses.sh` で `licenses/wasmtime-v<版>/` に生成してコミットする。
+リリースのたびに、`libwasmtime.a` のシンボルとパニックの位置から取り出したクレートの一覧と、C のオブジェクトの一覧をこれと照合し、載っていないものがあれば止まる。
+リンクマップと照合に使った `nm`、`strings`、`ar` の出力は配布物に入れず、リリースのワークフローの成果物として残す。
+
 配布物はルート証明書を同梱せず、OS の証明書のストアを読む（`SSL_CERT_FILE` と `SSL_CERT_DIR` が優先される）。
 ストアが空のときは、HTTPS の取得は接続する前に失敗し、ca-certificates を入れるか `SSL_CERT_FILE` を指定するよう案内する。
 
@@ -1247,7 +1255,7 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### 配布
 
-- **配布物のライセンスの一覧**：配布物の `THIRD_PARTY_LICENSES` に、Linux の実行ファイルに静的にリンクする musl と libffi、libstdc++ と libgcc、`libwasmtime.a` に含まれる Rust のクレートのライセンスが入っていない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。[docs/adr/0007](adr/0007-third-party-licenses.md) で、リンカーのリンクマップから入れるものを決め、wasmtime のクレートの文書をリポジトリに置いてリリースのたびに照合すると決めた（未実装）。
+- **配布物のライセンスの一覧**：[docs/adr/0007](adr/0007-third-party-licenses.md) の仕組み（リンクマップからの構成要素の決定、Alpine のパッケージの文書、wasmtime のクレートの照合）は実装し、`licenses/wasmtime-v49.0.2/` にクレートの文書を生成した。残りは二つある。一つは、`licenses/wasmtime-v49.0.2/rust/`（Rust の標準ライブラリ、それが依存するクレート、compiler-rt の文書）の生成で、rustc 1.98.0 の導入と llvm-project からの取得を要するため、まだ `scripts/wasmtime-licenses.sh` を最後まで実行していない。これがないあいだ、`licenses.sh` は wasmtime の照合でエラーになり、配布物を作れない。もう一つは、Alpine の `-doc` パッケージが入れる文書の確かめで、足りない origin の文書を `licenses/alpine/` に置くことを、リリースの初回の検証で行う。
 - **リリースの初回の検証**：リリースのワークフロー、Alpine での musl のビルド、コンテナの中での配布物の検査は、まだ一度も動かしていない。AI にリリースノートを書かせるには、リポジトリの秘密情報 `ANTHROPIC_API_KEY` が要る（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。[docs/adr/0008](adr/0008-first-release-verification.md) で、`v0.1.0-rc1` のタグで確かめる手順と項目を決めた（未実施）。タグは [docs/adr/0007](adr/0007-third-party-licenses.md) の実装をマージしてから付ける。
 
 ### 課題にしなかった事項
