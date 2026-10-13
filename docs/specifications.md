@@ -111,7 +111,7 @@ CI が生成した最新のゲラを URL で共有すれば、関係者は常に
 - **DVI 出力**：DVI のフォントモデルは OpenType のグリフの置換と配置（GSUB と GPOS）を表現できず、モダンな組版と両立しない。PDF を直接生成する。
 - **Markdown のインライン記法**：強調などのインライン要素はすべて角括弧のコマンド記法で書く。行指向の軽量記法はブロック層（見出し、リスト、定義リスト）に限って残す。
 - **マクロ**：構文 `[!` の予約のみ行い、実装しない。導入する場合も hygienic な AST 変換[^hygienic]に限り、テキスト置換型は採らない。
-- **スポットカラー**：v1 はプロセスカラーのみ。色は名前で指定し、出力インテント[^intent]（Japan Color 2001 Coated）に束縛して解決する。
+- **スポットカラー**：v1 はプロセスカラーのみ。色は名前で指定し、出力インテント[^intent]（Japan Color 2001 Coated）に束縛して解決する。トンボのレジストレーションの色（Separation の `All`）だけは例外とする（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
 - **改ページの大域の最適化**：v1 の改ページは、段落の行分割のような大域の最適化をせず、先頭から順に詰める方式とする。見開きの単位の最適化と段の高さの調整も行わない。いずれも v2 以降で扱う。
 - **雑誌級のレイアウトエンジン**：レイアウト IR はフレーム間制約（レベル 3）[^frame-levels]まで表現できる型を持つが、v1 のエンジンは単一フローと除外領域（レベル 1、図版の回り込み）のみ実装する。エンジンは未実装の制約に遭遇したらエラーで停止し、黙って無視しない。
 - **ユーザー定義の lint / fmt ルールと lint の抑制**：ルールは処理系が固定し、個別の箇所で警告を止める手段も持たない。ユーザー拡張を許すと、ルールの妥当性をめぐる合意コストが処理系の外に漏れ出すためである。
@@ -676,6 +676,8 @@ CSS を書けると、媒体契約の外で見た目を変える抜け道にな�
 EPUB と HTML の色は、印刷用の色を RGB に近似したものになる。
 PDF の文字の色（`[color スウォッチ: ...]`）は、スウォッチの CMYK の値をそのまま DeviceCMYK のプロセスカラーとして書き、RGB への変換も特色の色空間も使わない（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 色を指定しない文字は、色を設定せずに描く。
+PDF の色はプロセスカラーだけであり、例外はトンボのレジストレーションの色（Separation の `All`）だけである（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
+レジストレーションの色は golem-pdf の中でトンボだけが使え、`style.toml` のスウォッチから使う手段はない。
 
 写真などの画像は、この規則の例外とする。
 Golem は画像の色を変換せず、ICC プロファイルを付けたまま PDF に埋め込み、印刷用の色への変換は印刷所の RIP[^rip] に任せる。
@@ -1096,7 +1098,7 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 未知の値と値の欠けは使い方の誤りとし、終了コード 2 で終える。
 トンボは閲覧用と入稿用の PDF を同じ原稿から作り分けるための出力の設定なので、ファイルではなくオプションで選ぶ。
 トンボがあると、MediaBox は仕上がりの判型の外側に、トンボの始点の距離と 13mm を足した幅だけ広がり、ページの内容はその分だけ移して描く。
-トンボの線は太さ 0.25pt、長さ 10mm で、CMYK の各 100% で描く。
+トンボの線は太さ 0.25pt、長さ 10mm で、レジストレーションの色（Separation の `All`）で描く（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
 日本式のトンボの始点は塗り足しの線、欧文のトンボの始点は塗り足しの線と仕上がりから 3mm のうち遠いほうである。
 日本式のトンボは仕上がりの線と塗り足しの線の間隔で塗り足しを示すので、塗り足しが 0 ならエラー（G0702）とし、PDF を出力しない。
 G0702 は PDF をターゲットに含むときにだけ出し、位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
@@ -1241,7 +1243,7 @@ v1 の範囲から外した事項と、v1 の実装で次の段階以降に回�
 - **ルビの拡張**：熟語の全体の読みが長い熟語ルビをグループルビとして配置し直すこと、片側だけのかけ、約物へのかけ、行頭と行末で親文字を行の端にそろえる配置、ルビの文字の大きさとルビを置く側の設定、ルビごとに配置を指定する記法、両側ルビ、ルビの中の圏点（[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)）。
 - **和文組版の拡張**：割注、傍線、添え字、縦組みの中の欧文を回転せずに一字ずつ組む方式、字送りを文字の大きさと異なる値にした（字間を詰めた）版面（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)、[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)）。
 - **行分割の拡張**：英語以外の欧文のハイフネーションのパターン、ソフトハイフン（U+00AD）と原稿で分割の位置を指定する記法、パターンによるハイフネーションを含む TeX との参照テスト（[golem-layout ADR 0001](golem-layout/adr/0001-knuth-plass-line-breaking.md)、[golem-layout ADR 0007](golem-layout/adr/0007-knuth-plass-reference-test.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。
-- **スポットカラー**：Separation と DeviceN の色空間（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。トンボをレジストレーションの色（Separation の `All`）で描くかも、このときに決める（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
+- **スポットカラー**：Separation と DeviceN の色空間（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。
 - **PDF のしおりとリンク**：アウトライン、文書の中のリンク、注釈（[golem-pdf ADR 0001](golem-pdf/adr/0001-deterministic-pdf-writer.md)）。
 - **プラグインの配布機構**：レジストリと版の解決、配布されたバイナリがどのソースから作られたかの検証、キャッシュの削除と整理のコマンド（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。
 - **配布の拡張**：Windows と x86-64 の macOS の実行ファイル、macOS の実行ファイルの署名（Developer ID）と公証、Homebrew の tap とインストール用のスクリプト、再現可能なビルド、`-split-sections` による実行ファイルの縮小（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
@@ -1338,7 +1340,6 @@ v1 の範囲で、次の事項が決まっていない。
 
 - **CID の扱い**：PDF に埋め込むフォントでは、CID-keyed の CFF のフォントは FreeType が返す CID を、それ以外のフォントはグリフ ID を CID として書き、`CIDSystemInfo` は常に Adobe-Identity-0 としている（[golem-font ADR 0002](golem-font/adr/0002-subsetting-and-embedding.md)）。Adobe-Japan1 の文字集合を持つ和文フォントで `CIDSystemInfo` を Adobe-Japan1 にするか、それがプリフライトや出力機（RIP）でのフォントの扱いにどう影響するか、異体字の選択（IVS）をどう表すかが決まっていない。
 - **PDF/X-4 の要件と規格の本文の照合**：[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) は、規格の本文を参照せずに要件を書き、本文と照合して差分があれば新しい ADR を作るとしたが、照合の結果を記した ADR はない。文書情報辞書と XMP の値を一致させる要件も、本文では確かめていない（[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。v1 の PDF を PDF/X-4 として出すまでに、本文と照合するか、商用のプリフライトでの確認で代えるかが決まっていない。
-- **トンボのインキの総量**：トンボを CMYK の各 100% で描くので、インキの総量は 400% になり、プリフライトの設定によっては総量の警告が出ると考えられるが、確かめていない（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。警告が出る場合に、v1 の範囲（プロセスカラーだけ）を広げてレジストレーションの色を使うかが決まっていない。
 - **裸の語の `*`**：`a*[x]` が `a*` と `[x]` の二つの引数として読まれるなど、`*` を含む裸の語の扱いに不整合がある（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md)）。受理する言語をどう決め直すかが決まっていない。
 
 ## 仕様が不明瞭な場合

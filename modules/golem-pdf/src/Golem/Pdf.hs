@@ -15,5 +15,5 @@ import Golem.Pdf.Marks
 import Golem.Pdf.Number
 import Golem.Pdf.Sha256 (sha256)
 import Golem.Pdf.Srgb (srgbProfile)
-import Golem.Pdf.Writer
+import Golem.Pdf.Writer hiding (RegistrationRules)
 import Golem.Pdf.X4
