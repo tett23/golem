@@ -165,6 +165,17 @@ A release goes as follows ([docs/adr/0004](./docs/adr/0004-binary-distribution-a
 To try the build and the checks without a release, run `gh workflow run release.yml --ref <branch>`, which starts the workflow through `workflow_dispatch`.
 It makes no release.
 
+Tags are handled as follows ([docs/adr/0008](./docs/adr/0008-first-release-verification.md)).
+
+- Never move a pushed tag to another commit.
+- The tag of a release that has not been published may be deleted only when the workflow failed or the checks of the archives did not pass. A deleted tag name is never used again; advance the pre-release identifier instead (`rc2` after `rc1`).
+- Never delete the tag of a published release.
+- A failure that goes away without a code change (a runner problem, a transient network failure, an API limit) is fixed by running the workflow again with the tag unchanged (`gh run rerun <run ID> --failed`).
+
+Record the results of the checks of the archives in `docs/audits/releases/<tag>.md`, in Japanese, and merge it into `main` through a pull request.
+When a tag is deleted and the release retried, the record of the deleted tag stays with the failure written in it, and the next tag gets a record of its own.
+Records are not changed once committed.
+
 ## Test material
 
 When adding outside text or fonts to fixtures, check the license and include the license text.
