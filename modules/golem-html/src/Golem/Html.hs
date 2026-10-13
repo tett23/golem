@@ -3,6 +3,7 @@ so that EPUB can use them unchanged.
 -}
 module Golem.Html
   ( HtmlConfig (..),
+    HtmlLists (..),
     HtmlCharStyle (..),
     HtmlParaStyle (..),
     HtmlLocalStyles (..),
@@ -17,6 +18,8 @@ module Golem.Html
 where
 
 import Data.List (sortOn)
+import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, mapMaybe)
@@ -26,6 +29,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble
 import Golem.Doc.IR
+import Golem.Doc.ListMarkers
 import Golem.Doc.Numerals
 import Golem.Syntax.Span
 import Skylighting qualified as S
@@ -56,7 +60,19 @@ data HtmlConfig = HtmlConfig
     hcRubyGroupAlign :: !Text,
     hcRubyBaseSpacing :: !Text,
     -- | the kinds of forced break the book uses (docs/adr ADR 0017)
-    hcBreakKinds :: !(Set BreakKind)
+    hcBreakKinds :: !(Set BreakKind),
+    -- | the markers of [lists], when the book has it (golem-driver ADR 0013)
+    hcLists :: !(Maybe HtmlLists)
+  }
+
+{- | The markers of [lists] (golem-driver ADR 0013): the bullets and the
+number formats by depth, and whether a gap is written (Nothing: by the last
+character of the marker).
+-}
+data HtmlLists = HtmlLists
+  { hlBullets :: !(NonEmpty Text),
+    hlNumbers :: !(NonEmpty NumberFormat),
+    hlGap :: !(Maybe Bool)
   }
 
 -- | A font role and a CSS font-size for an element (golem-driver ADR 0010).
@@ -132,14 +148,16 @@ data Ctx = Ctx
     cBook :: Book,
     cHere :: FilePath,
     -- | the paragraph styles of the page: those of its file over those of style.toml (docs/adr ADR 0014)
-    cParaStyles :: Map Text HtmlParaStyle
+    cParaStyles :: Map Text HtmlParaStyle,
+    -- | the depth of the list around (0 outside lists; golem-driver ADR 0013)
+    cListDepth :: Int
   }
 
 renderXhtml :: HtmlConfig -> FileTable -> Book -> XhtmlSite
 renderXhtml cfg ft book =
   XhtmlSite
     { sitePages = [(pagePath ft fid, page cfg ft book d) | d@(Document fid _) <- bookDocs book],
-      siteCss = css cfg [fid | Document fid _ <- bookDocs book],
+      siteCss = css cfg book,
       siteAssets =
         sortOn fst
           $ Map.toList
@@ -173,7 +191,7 @@ page :: HtmlConfig -> FileTable -> Book -> Document -> Text
 page cfg ft book d@(Document fid bs) =
   let here = pagePath ft fid
       local = Map.lookup fid (hcLocalStyles cfg)
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg))
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
       body = topBlocks c bs <> notesSection c d
@@ -244,12 +262,12 @@ block c (Block sp lbl body) = case body of
         anchor = maybe (headingAnchor lbl sp) hiAnchor info
         num = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</span>") (info >>= hiNumberText)
      in "<" <> tag <> " id=\"" <> escapeXml anchor <> "\">" <> num <> inlines c is <> "</" <> tag <> ">\n"
-  BulletList items -> "<ul" <> idAttr lbl <> ">\n" <> T.concat (map (item c Nothing) items) <> "</ul>\n"
+  BulletList items -> "<ul" <> idAttr lbl <> listClass (NE.length . hlBullets) <> ">\n" <> T.concat (map (item inList Nothing) items) <> "</ul>\n"
   OrderedList items ->
     let start = case items of
           (ListItem (Just n) _ : _) -> " start=\"" <> T.pack (show n) <> "\""
           _ -> ""
-     in "<ol" <> idAttr lbl <> start <> ">\n" <> T.concat (zipWith (\i it -> item c (if i > (0 :: Int) then itemNumber it else Nothing) it) [0 ..] items) <> "</ol>\n"
+     in "<ol" <> idAttr lbl <> listClass (NE.length . hlNumbers) <> start <> ">\n" <> T.concat (zipWith (\i it -> item inList (if i > (0 :: Int) then itemNumber it else Nothing) it) [0 ..] items) <> "</ol>\n"
   DefList gs ->
     "<dl"
       <> idAttr lbl
@@ -283,6 +301,13 @@ block c (Block sp lbl body) = case body of
         ]
       <> "</ol>\n"
   ForcedBreak _ -> ""
+  where
+    -- the lists inside count one deeper; with [lists], the class of the depth (golem-driver ADR 0013)
+    depth = cListDepth c + 1
+    inList = c {cListDepth = depth}
+    listClass count = case hcLists (cCfg c) of
+      Just ls -> " class=\"list-" <> tshow (min depth (count ls)) <> "\""
+      Nothing -> ""
 
 item :: Ctx -> Maybe Integer -> ListItem -> Text
 item c value (ListItem _ bs) =
@@ -475,11 +500,54 @@ shortClass = \case
   S.WarningTok -> "wa"
   S.NormalTok -> ""
 
-{- | The style sheet; @ are the documents in order, which number the
-rules of the styles of their files (docs/adr ADR 0014).
+{- | A @counter-style for the bullet and the number format of each depth,
+and the list-style-type of the lists of that class (golem-driver ADR 0013).
+Notations CSS has no system for are fixed symbols, as many as the largest
+number of the depth in the book.
 -}
-css :: HtmlConfig -> [FileId] -> Text
-css cfg docs =
+listRules :: HtmlConfig -> Book -> HtmlLists -> [Text]
+listRules cfg book ls =
+  concat
+    [ [ "@counter-style golem-ul-" <> tshow k <> " { system: cyclic; symbols: " <> str b <> "; suffix: " <> str (gapAfter b) <> "; }",
+        "ul.list-" <> tshow k <> " { list-style-type: golem-ul-" <> tshow k <> "; }"
+      ]
+    | (k, b) <- zip [1 :: Int ..] (NE.toList (hlBullets ls))
+    ]
+    <> concat
+      [ [ "@counter-style golem-ol-" <> tshow k <> " { " <> system k st <> (if T.null pre then "" else " prefix: " <> str pre <> ";") <> " suffix: " <> str (suf <> gapAfter (pre <> "0" <> suf)) <> "; }",
+          "ol.list-" <> tshow k <> " { list-style-type: golem-ol-" <> tshow k <> "; }"
+        ]
+      | (k, NumberFormat pre st suf) <- zip [1 :: Int ..] (NE.toList (hlNumbers ls))
+      ]
+  where
+    count = NE.length (hlNumbers ls)
+    -- the largest number at the depths of a class
+    largest k = maximum (1 : [lsiNumber s | s <- listSites (concat [bs | Document _ bs <- bookDocs book]), min (lsiDepth s) count == k])
+    system k st = case st of
+      NsBook
+        | hcVertical cfg -> case hcNumberDefault cfg of
+            "kanji-digits" -> extends "cjk-decimal"
+            "tcy" -> extends "decimal"
+            _ -> extends "japanese-informal"
+        | otherwise -> extends "decimal"
+      NsArabic -> extends "decimal"
+      NsKanji -> extends "japanese-informal"
+      NsLowerAlpha -> extends "lower-alpha"
+      NsUpperAlpha -> extends "upper-alpha"
+      NsLowerRoman -> extends "lower-roman"
+      NsUpperRoman -> extends "upper-roman"
+      _ -> "system: fixed; symbols: " <> T.unwords [str (fromMaybe (tshow n) (formatListNumber st n)) | n <- [1 .. largest k]] <> ";"
+    extends s = "system: extends " <> s <> ";"
+    -- the space after a marker: the gap of [lists], or none after punctuation with its own space
+    gapAfter m = if fromMaybe (not (endsWithSpacedPunctuation m)) (hlGap ls) then " " else ""
+    str t = "\"" <> T.replace "\"" "\\\"" (T.replace "\\" "\\\\" t) <> "\""
+
+{- | The style sheet; the documents of the book in order number the rules
+of the styles of their files (docs/adr ADR 0014), and its lists give the
+largest numbers of the fixed list markers (golem-driver ADR 0013).
+-}
+css :: HtmlConfig -> Book -> Text
+css cfg book =
   T.unlines $
     [ "@font-face { font-family: \""
         <> family role kind
@@ -533,6 +601,8 @@ css cfg docs =
            let (r, g, b) = cmykToRgb cmyk
          ]
       <> [r | (name, cs) <- Map.toAscList (hcCharStyles cfg), name /= "strong", Just r <- [charRuleMaybe name cs]]
+      -- the markers of [lists] by depth (golem-driver ADR 0013)
+      <> maybe [] (listRules cfg book) (hcLists cfg)
       -- forced breaks, only the kinds the book uses (docs/adr ADR 0017)
       <> [ "[data-break-before=\"" <> name <> "\"] { page-break-before: always; break-before: " <> name <> "; }"
          | k <- Set.toAscList (hcBreakKinds cfg),
@@ -541,6 +611,7 @@ css cfg docs =
       -- the styles of the files, last, under the class of their pages (docs/adr ADR 0014)
       <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
   where
+    docs = [fid | Document fid _ <- bookDocs book]
     -- a role a bold (italic) character style sets: its font is declared bold (italic)
     allCharStyles = Map.elems (hcCharStyles cfg) <> concatMap (Map.elems . hlCharStyles) (Map.elems (hcLocalStyles cfg))
     boldRoles = [r | HtmlCharStyle {hcsFont = Just r, hcsBold = True} <- allCharStyles]

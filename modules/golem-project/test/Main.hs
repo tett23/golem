@@ -1,11 +1,13 @@
 module Main (main) where
 
 import Control.Monad (void)
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
+import Golem.Doc.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Parser.SourceSettings
 import Golem.Project
 import Golem.Project.Paths
@@ -241,6 +243,7 @@ tests =
         codes (parseStyle (FileId 0) "[figures]\nnumber = \"{x}\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G0306"],
       indentTests,
+      listTests,
       testCase "the sidenote font and size are the paragraph style sidenote (golem-driver ADR 0011)" $ do
         let retired = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
             hasIt ms = assertBool (show ms) (not (null ms) && all (\m -> "G0306" `T.isPrefixOf` m) ms && any ("[paragraph-styles.sidenote]" `T.isInfixOf`) ms)
@@ -370,6 +373,44 @@ styleTests =
     noBase = fmap (\d -> d {psBasedOn = Nothing})
     messages = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
     hasAll ms needles = assertBool (show ms) (not (null ms) && all (\n -> any (n `T.isInfixOf`) ms) needles)
+
+-- | [lists] (golem-driver ADR 0013).
+listTests :: TestTree
+listTests =
+  testGroup
+    "[lists] (golem-driver ADR 0013)"
+    [ testCase "bullets, numbers and gap are read" $
+        case parseStyle (FileId 0) "[lists]\nbullets = [\"・\", \"◦\"]\nnumbers = [\"{n}.\", \"({a})\"]\ngap = \"0.5zw\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            lsBullets (stLists s) @?= "・" :| ["◦"]
+            lsNumbers (stLists s) @?= Just (NumberFormat "" NsBook "." :| [NumberFormat "(" NsLowerAlpha ")"])
+            lsGap (stLists s) @?= Just (Zw (1 / 2)),
+      testCase "without [lists]: the bullet ・, no numbers and no gap" $
+        case parseStyle (FileId 0) "" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            lsBullets (stLists s) @?= "・" :| []
+            lsNumbers (stLists s) @?= Nothing
+            lsGap (stLists s) @?= Nothing,
+      testCase "errors of [lists] are G0322 and name the key" $ do
+        let g0322 src key = do
+              let ms = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const []) (parseStyle (FileId 0) src)
+              assertBool (show ms) (not (null ms) && all ("G0322 [lists] の " `T.isPrefixOf`) ms && any (("[lists] の " <> key <> " が正しくありません") `T.isInfixOf`) ms)
+        g0322 "[lists]\nbullets = []\n" "bullets"
+        g0322 "[lists]\nbullets = [\"・\", \"\"]\n" "bullets"
+        g0322 "[lists]\nnumbers = []\n" "numbers"
+        g0322 "[lists]\nnumbers = [\"{n}\", \"x\"]\n" "numbers"
+        g0322 "[lists]\nnumbers = [\"{n}{n}\"]\n" "numbers"
+        g0322 "[lists]\nnumbers = [\"{x}\"]\n" "numbers"
+        g0322 "[lists]\nnumbers = [\"\"]\n" "numbers"
+        g0322 "[lists]\ngap = \"-1zw\"\n" "gap"
+        g0322 "[lists]\ngap = \"wide\"\n" "gap",
+      testCase "literal braces in a number format" $
+        case parseStyle (FileId 0) "[lists]\nnumbers = [\"{{{n}}}\"]\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> lsNumbers (stLists s) @?= Just (NumberFormat "{" NsBook "}" :| [])
+    ]
 
 -- | Paragraph indents (docs/adr ADR 0006).
 indentTests :: TestTree
