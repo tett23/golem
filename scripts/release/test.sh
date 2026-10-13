@@ -191,6 +191,152 @@ expect "check-notes: a pull request is missing" 1
 run check_notes "$(printf '%s' "$GOOD" | sed 's/^## .*/## 追加/')"
 expect "check-notes: no English heading" 1
 
+# ---------------------------------------------------------------- link-components.sh
+# (docs/adr/0007-third-party-licenses.md)
+
+LC=$WORK/lc
+GHCLIB=$LC/ghc/lib/x86_64-linux-ghc-9.10.3
+SYS=$LC/sys
+GCCDIR=usr/lib/gcc/x86_64-alpine-linux-musl/14.2.0
+mkdir -p "$GHCLIB/base-4.20.2.0-abcd" "$GHCLIB/rts-1.0.2" "$SYS/lib" "$SYS/usr/lib" "$SYS/$GCCDIR" "$LC/root/third_party/wasmtime/lib"
+: >"$SYS/lib/libc.a"
+# /usr/lib/libc.a is a symbolic link to the file that installed records as lib/libc.a
+ln -s ../../lib/libc.a "$SYS/usr/lib/libc.a"
+: >"$SYS/usr/lib/libffi.a"
+: >"$SYS/$GCCDIR/libgcc.a"
+: >"$SYS/usr/lib/libstdc++.a"
+: >"$SYS/usr/lib/libncursesw.a"
+cat >"$LC/installed" <<'EOF'
+C:Q1aaaa=
+P:musl-dev
+V:1.2.5-r10
+o:musl
+L:MIT
+F:lib
+R:libc.a
+F:usr/include
+R:stdio.h
+
+P:libffi-dev
+V:3.4.8-r0
+o:libffi
+L:MIT
+F:usr/lib
+R:libffi.a
+
+P:gcc
+V:14.2.0-r6
+o:gcc
+L:GPL-2.0-or-later AND LGPL-2.1-or-later
+F:usr/lib/gcc/x86_64-alpine-linux-musl/14.2.0
+R:libgcc.a
+R:libgcc_eh.a
+
+P:libstdc++-dev
+V:14.2.0-r6
+o:gcc
+L:GPL-2.0-or-later AND LGPL-2.1-or-later
+F:usr/lib
+R:libstdc++.a
+EOF
+gnu_map() { # gnu_map EXTRA-MEMBER...: a GNU ld link map
+  echo 'Archive member included to satisfy reference by file (symbol)'
+  echo
+  for a in "$GHCLIB/base-4.20.2.0-abcd/libHSbase-4.20.2.0-abcd.a(GHC/Base.o)" \
+    "$GHCLIB/base-4.20.2.0-abcd/libHSbase-4.20.2.0-abcd.a(GHC/Show.o)" \
+    "$GHCLIB/rts-1.0.2/libHSrts-1.0.2_thr.a(RtsStartup.thr_o)" \
+    "$SYS/usr/lib/libc.a(printf.o)" "$SYS/usr/lib/libc.a(malloc.lo)" \
+    "$SYS/usr/lib/libffi.a(ffi.o)" "$SYS/$GCCDIR/libgcc.a(_udivti3.o)" \
+    "$SYS/usr/lib/libstdc++.a(new_op.o)" \
+    "$LC/root/third_party/wasmtime/lib/libwasmtime.a(0123456789abcdef-aes_nohw.o)" \
+    "$LC/root/third_party/wasmtime/lib/libwasmtime.a(wasmtime-1.wasmtime.2-cgu.0.rcgu.o)" "$@"; do
+    printf '%s\n' "$a"
+    printf '                              Main.o (some_symbol)\n'
+  done
+  echo
+  echo 'Memory Configuration'
+  echo
+  echo "LOAD $SYS/usr/lib/libz.a"
+}
+link_components() { # link_components MAP [--apk]
+  GHC_LIBDIR=$LC/ghc/lib APK_DB=$LC/installed APK_ROOT=$SYS sh "$HERE/link-components.sh" "$@"
+}
+gnu_map >"$LC/gnu.map"
+run link_components "$LC/gnu.map"
+expect "link-components: GNU ld" 0
+if [ "$(cut -f1 "$WORK/out" | tr '\n' ' ')" = "haskell ghc apk:musl apk:libffi apk:gcc wasmtime " ]; then ok; else ng "link-components: GNU ld, the components in order"; fi
+if grep -q "^apk:musl	$SYS/usr/lib/libc.a" "$WORK/out"; then ok; else ng "link-components: libc.a through the symbolic link"; fi
+gnu_map "$SYS/usr/lib/libncursesw.a(lib_baudrate.o)" >"$LC/gnu-ncurses.map"
+run link_components "$LC/gnu-ncurses.map"
+expect "link-components: an archive with no owner" 1
+if grep -q "$SYS/usr/lib/libncursesw.a" "$WORK/err"; then ok; else ng "link-components: the archive with no owner is named"; fi
+run link_components "$LC/none.map"
+expect "link-components: no map" 1
+echo 'something else' >"$LC/other.map"
+run link_components "$LC/other.map"
+expect "link-components: an unknown format" 1
+
+ld64_map() { # ld64_map EXTRA-MEMBER...: an ld64 link map
+  echo "# Path: $LC/golem"
+  echo '# Arch: arm64'
+  echo '# Object files:'
+  echo '[  0] linker synthesized'
+  echo "[  1] $LC/Main.o"
+  i=2
+  for a in "$GHCLIB/base-4.20.2.0-abcd/libHSbase-4.20.2.0-abcd.a(Base.o)" \
+    "$GHCLIB/rts-1.0.2/libHSrts-1.0.2_thr.a(RtsStartup.thr_o)" \
+    "/opt/homebrew/lib/libgmp.a(add.o)" \
+    "$LC/root/third_party/wasmtime/lib/libwasmtime.a[12](0123456789abcdef-aes_nohw.o)" "$@"; do
+    printf '[%3d] %s\n' "$i" "$a"
+    i=$((i + 1))
+  done
+  echo '# Sections:'
+  echo '# Address	Size    	Segment	Section'
+  echo '# Symbols:'
+  echo '0x100000000	0x00000010	[  1] _main'
+}
+ld64_map >"$LC/ld64.map"
+run link_components "$LC/ld64.map"
+expect "link-components: ld64" 0
+if [ "$(cut -f1 "$WORK/out" | tr '\n' ' ')" = "haskell ghc gmp wasmtime " ]; then ok; else ng "link-components: ld64, the components in order"; fi
+ld64_map "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/17/lib/darwin/libclang_rt.osx.a(os_version_check.o)" >"$LC/ld64-rt.map"
+run link_components "$LC/ld64-rt.map"
+expect "link-components: ld64 with compiler-rt" 0
+if [ "$(cut -f1 "$WORK/out" | tr '\n' ' ')" = "haskell ghc gmp wasmtime compiler-rt " ]; then ok; else ng "link-components: compiler-rt"; fi
+run link_components "$LC/ld64-rt.map" --apk
+if [ "$CODE" = 0 ] && [ ! -s "$WORK/out" ]; then ok; else ng "link-components: --apk on macOS is empty"; fi
+run link_components "$LC/gnu.map" --apk
+expect "link-components: --apk" 0 "musl	musl-dev	1.2.5-r10	MIT	$SYS/usr/lib/libc.a
+libffi	libffi-dev	3.4.8-r0	MIT	$SYS/usr/lib/libffi.a
+gcc	gcc	14.2.0-r6	GPL-2.0-or-later AND LGPL-2.1-or-later	$SYS/$GCCDIR/libgcc.a
+gcc	libstdc++-dev	14.2.0-r6	GPL-2.0-or-later AND LGPL-2.1-or-later	$SYS/usr/lib/libstdc++.a"
+
+# ---------------------------------------------------------------- rust-crates.sh
+
+RC=$WORK/rc
+mkdir -p "$RC"
+cat >"$RC/nm" <<'EOF'
+0000000000000000 T __RNvCs6h3VoTfJ7Jy_8wasmtime3foo
+                 U _RNvCsairsClScZ4T_14wasmtime_c_api3bar
+0000000000000010 t __RNvMs_NtCs9xyzAB_4core3fmtNtB4_9Formatter3pad
+0000000000000020 t __RNvCsabc_8___rust_alloc
+0000000000000030 T _wasm_engine_new
+EOF
+cat >"$RC/strings" <<'EOF'
+/Users/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-webpki-0.103.13/src/lib.rs
+called `Option::unwrap()` on a `None` value
+/index.crates.io-1949cf8c6b5b557f/sha-1-0.10.0/src/lib.rs
+rustc version 1.98.0 (88d9e12ae 2026-08-18)
+EOF
+run sh "$HERE/rust-crates.sh" "$RC/nm" "$RC/strings"
+expect "rust-crates" 0 "crate	core	-
+crate	rustls_webpki	0.103.13
+crate	sha_1	0.10.0
+crate	wasmtime	-
+crate	wasmtime_c_api	-
+rustc	1.98.0"
+if grep -q '___rust\|^crate	_' "$WORK/out"; then ng "rust-crates: a name starting with _ is dropped"; else ok; fi
+
 # ---------------------------------------------------------------- licenses.sh
 
 L=$WORK/lic
@@ -242,9 +388,33 @@ cat >"$L/plan.json" <<'JSON'
  {"type":"pre-existing","id":"rts-1","pkg-name":"rts","pkg-version":"1.0.2","depends":[]}
 ]}
 JSON
+# the components of the link map (link-components.sh above), the Alpine
+# packages, and the license documents of the crates of wasmtime
+W=$L/root/licenses/wasmtime-v49.0.2
+mkdir -p "$L/apklic/musl" "$L/apklic/libffi" "$L/root/licenses/alpine/gcc" "$W/rust" \
+  "$W/crates/wasmtime-49.0.2" "$W/crates/ring-0.17.14" "$W/crates/rustls-webpki-0.103.13"
+echo musl >"$L/apklic/musl/COPYRIGHT"
+echo libffi >"$L/apklic/libffi/LICENSE"
+echo gpl3 >"$L/root/licenses/alpine/gcc/COPYING3"
+echo runtime >"$L/root/licenses/alpine/gcc/COPYING.RUNTIME"
+echo any >"$L/root/licenses/alpine/gcc/VERSION"
+echo wasmtime-v49.0.2-x86_64-musl-c-api >"$L/root/third_party/wasmtime/VERSION"
+printf 'package\tversion\tlibrary\tlicense\tfiles\nwasmtime\t49.0.2\twasmtime\tApache-2.0 WITH LLVM-exception\tLICENSE\nring\t0.17.14\tring\tApache-2.0 AND ISC\tLICENSE\nrustls-webpki\t0.103.13\twebpki\tISC\tLICENSE\n' >"$W/MANIFEST.tsv"
+for c in wasmtime-49.0.2 ring-0.17.14 rustls-webpki-0.103.13; do echo "$c" >"$W/crates/$c/LICENSE"; done
+printf 'package\tversion\tlibrary\tlicense\tfiles\n' >"$W/rust/MANIFEST.tsv"
+echo 1.98.0 >"$W/rust/VERSION"
+printf 'alloc\ncore\nstd\n' >"$W/rust/STD_CRATES"
+printf 'platform\tmember\tcomponent\nx86_64-musl\taes_nohw.o\tring\naarch64-musl\tsha256-armv8.o\tring\n' >"$W/c-objects.tsv"
+echo readme >"$W/README"
+printf '0 T __RNvCs6h3VoTfJ7Jy_8wasmtime3foo\n0 T __RNvCsairsClScZ4T_4ring3bar\n0 T __RNvCsx_6webpki3baz\n0 t __RNvCsy_3std3qux\n' >"$L/nm"
+printf '/index.crates.io-1949cf8c6b5b557f/ring-0.17.14/src/lib.rs\n/index.crates.io-1949cf8c6b5b557f/rustls-webpki-0.103.13/src/lib.rs\nrustc version 1.98.0 (88d9e12ae 2026-08-18)\n' >"$L/strings"
+printf '__.SYMDEF\n0123456789abcdef-aes_nohw.o\nwasmtime-1.wasmtime.2-cgu.0.rcgu.o\n' >"$L/ar"
+LINKMAP=$LC/gnu.map
 licenses() {
   GOLEM_ROOT="$L/root" CABAL_PACKAGES="$L/packages" GHC_DOCDIR="$L/ghcdoc" GHC_VERSION=9.10.3 \
     GMP_SOURCE="$L/gmp/gmp-6.3.0.tar.xz" GMP_VERSION=6.3.0 \
+    LINK_MAP="$LINKMAP" GHC_LIBDIR="$LC/ghc/lib" APK_DB="$LC/installed" APK_ROOT="$SYS" APK_LICENSES="$L/apklic" \
+    WASMTIME_NM="$L/nm" WASMTIME_STRINGS="$L/strings" WASMTIME_AR="$L/ar" \
     sh "$HERE/licenses.sh" "$L/plan.json" "$L/out" v0.1.0
 }
 run licenses
@@ -252,7 +422,8 @@ expect "licenses: all found" 0
 for f in README LICENSE-golem haskell/foo-1.0/LICENSE haskell/bar-2.1/license.md haskell/bar-2.1/COPYING \
   haskell/peg-runtime-0.1.0.0/LICENSE haskell/base-4.20.2.0/LICENSE ghc/LICENSE harfbuzz/COPYING \
   freetype/LICENSE.TXT freetype/FTL.TXT wasmtime/LICENSE hyph-en-us/LICENSE-hyph-en-us.txt \
-  gmp/COPYINGv3 gmp/COPYING.LESSERv3; do
+  gmp/COPYINGv3 gmp/COPYING.LESSERv3 musl/COPYRIGHT libffi/LICENSE gcc/COPYING3 gcc/COPYING.RUNTIME \
+  wasmtime/crates/wasmtime-49.0.2/LICENSE wasmtime/crates/ring-0.17.14/LICENSE wasmtime/MANIFEST.tsv; do
   if [ -f "$L/out/$f" ]; then ok; else ng "licenses: $f is written"; fi
 done
 if grep -q 'copyright © 2026 The FreeType Project' "$L/out/README" && grep -q 'GNU MP 6.3.0' "$L/out/README" &&
@@ -273,6 +444,72 @@ rm "$L/ghcdoc/base-4.20.2.0/LICENSE"
 run licenses
 expect "licenses: a GHC package without a license file" 1
 if grep -q 'base-4.20.2.0' "$WORK/err"; then ok; else ng "licenses: the GHC package is named"; fi
+
+rm -rf "${L:?}/out"
+echo base >"$L/ghcdoc/base-4.20.2.0/LICENSE"
+run licenses
+expect "licenses: all found, again" 0
+if grep -q 'GCC Runtime Library Exception' "$L/out/README" && grep -q 'GPL-2.0-or-later AND LGPL-2.1-or-later' "$L/out/README" &&
+  grep -q 'libstdc++-dev 14.2.0-r6' "$L/out/README" && grep -q 'musl-dev 1.2.5-r10' "$L/out/README" &&
+  grep -q '^  wasmtime/' "$L/out/README"; then ok; else ng "licenses: README lists the Alpine packages and wasmtime"; fi
+if [ -f "$L/out/wasmtime/c-objects.tsv" ] && [ ! -e "$L/out/gcc/VERSION" ]; then ok; else ng "licenses: licenses/wasmtime-v49.0.2 is copied, VERSION of licenses/alpine is not"; fi
+
+# relicense: runs licenses and removes the output
+relicense() {
+  run licenses
+  rm -rf "${L:?}/out"
+}
+
+mv "$L/apklic/libffi" "$L/apklic-libffi"
+relicense
+expect "licenses: an Alpine package without a license document" 1
+if grep -q 'libffi' "$WORK/err"; then ok; else ng "licenses: the Alpine package is named"; fi
+mkdir -p "$L/root/licenses/alpine/libffi"
+echo libffi >"$L/root/licenses/alpine/libffi/LICENSE"
+echo 3.4.7 >"$L/root/licenses/alpine/libffi/VERSION"
+relicense
+expect "licenses: licenses/alpine of another version" 1
+echo 3.4.8 >"$L/root/licenses/alpine/libffi/VERSION"
+run licenses
+expect "licenses: licenses/alpine of the version" 0
+if [ -f "$L/out/libffi/LICENSE" ] && [ ! -e "$L/out/libffi/VERSION" ]; then ok; else ng "licenses: licenses/alpine is copied"; fi
+rm -rf "${L:?}/out" "${L:?}/root/licenses/alpine/libffi"
+mv "$L/apklic-libffi" "$L/apklic/libffi"
+
+cp "$L/nm" "$L/nm.orig"
+echo '0 T __RNvCsz_8left_pad3pad' >>"$L/nm"
+relicense
+expect "licenses: a crate not in MANIFEST.tsv" 1
+if grep -q 'left_pad' "$WORK/err"; then ok; else ng "licenses: the crate is named"; fi
+cp "$L/nm.orig" "$L/nm"
+
+cp "$L/strings" "$L/strings.orig"
+echo '/index.crates.io-1949cf8c6b5b557f/ring-0.17.15/src/lib.rs' >>"$L/strings"
+relicense
+expect "licenses: a crate of another version" 1
+sed 's/1\.98\.0/1.99.0/' "$L/strings.orig" >"$L/strings"
+relicense
+expect "licenses: another rustc" 1
+cp "$L/strings.orig" "$L/strings"
+
+cp "$L/ar" "$L/ar.orig"
+echo 'fedcba9876543210-p256.o' >>"$L/ar"
+relicense
+expect "licenses: a C member not in c-objects.tsv" 1
+if grep -q 'p256.o' "$WORK/err"; then ok; else ng "licenses: the C member is named"; fi
+cp "$L/ar.orig" "$L/ar"
+
+LINKMAP=
+relicense
+expect "licenses: no LINK_MAP" 1
+
+grep -v libwasmtime "$LC/gnu.map" >"$LC/gnu-nowasmtime.map"
+LINKMAP=$LC/gnu-nowasmtime.map
+run licenses
+expect "licenses: no wasmtime in the link map" 0
+if [ -e "$L/out/wasmtime" ] || grep -q 'wasmtime' "$L/out/README"; then ng "licenses: no wasmtime/"; else ok; fi
+rm -rf "${L:?}/out"
+LINKMAP=$LC/gnu.map
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"

@@ -97,6 +97,9 @@ In that case, write thorough tests, using the original project's tests as a refe
 If only a few features are needed, implementing only those is fine.
 
 Raising the version of any pinned native library listed in [README.md](./README.md) (HarfBuzz, FreeType, wasmtime, zlib, hyph-utf8) requires an ADR.
+When raising the version of wasmtime, regenerate `licenses/wasmtime-v<version>/` (the license documents of the Rust crates and others in `libwasmtime.a`) with `scripts/wasmtime-licenses.sh` and commit the output ([docs/adr/0007](./docs/adr/0007-third-party-licenses.md)).
+The script connects to the network and needs `cargo` and `rustup`.
+It does not fill in the component column of `c-objects.tsv`; fill it in by hand.
 When changing dependency versions pinned in `cabal.project.freeze`, explain why in the pull request.
 
 ## Formatting and linting

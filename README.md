@@ -128,6 +128,7 @@ ADR はコミット後に変更しない規約であり、変更が必要な場�
 HarfBuzz と FreeType は、ソースを `modules/golem-font/cbits/` に同梱して静的にリンクする。
 zlib は Hackage の `zlib-clib` 1.3.2 を同梱版として使う（`cabal.project` で固定）。
 wasmtime はプラットフォームごとの C API の配布物を `scripts/fetch-wasmtime.sh` で取得する（SHA-256 を検証し、`third_party/wasmtime` に置く）。
+`licenses/` には、配布物の `THIRD_PARTY_LICENSES/` に写すライセンスの文書のうち、ビルドの環境から取れないもの（`libwasmtime.a` に入った Rust のクレートなどの文書と、Alpine のパッケージが入れない文書）を置く（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
 
 ### ビルドとテスト
 
@@ -221,7 +222,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 |---|---|
 | `ci` | `ci.yml` を再利用可能なワークフローとして呼ぶ |
 | `version` | `scripts/release/check-version.sh` で `VERSION` とタグを検査し、タグのコミットが `main` に含まれることを確かめる |
-| `build` | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクして、macOS では `macos-15` でビルドし、アーカイブを作る |
+| `build` | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクして、macOS では `macos-15` でビルドし、アーカイブを作る。`THIRD_PARTY_LICENSES/` を決めたリンクマップも成果物として上げる |
 | `smoke` | アーカイブを別のランナーと、`alpine` と `debian:stable-slim` のコンテナの中で展開して動かす |
 | `determinism` | 三つの配布物と CI のビルドの、`scripts/determinism.sh` の出力を比べる |
 | `release` | タグの push のときだけ、`SHA256SUMS`、来歴の証明、GMP のソース、AI が書いたリリースノートと共に下書きのリリースを作る |

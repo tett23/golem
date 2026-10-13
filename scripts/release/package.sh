@@ -9,6 +9,8 @@
 # Environment:
 #   GMP_SOURCE       gmp-<version>.tar.xz (see licenses.sh)
 #   GMP_VERSION      the GMP linked into the executable
+#   LINK_MAP, APK_DB, APK_ROOT, APK_LICENSES, WASMTIME_NM, WASMTIME_STRINGS,
+#   WASMTIME_AR      passed to licenses.sh (docs/adr/0007-third-party-licenses.md)
 #   COMMIT           the commit of the build (default: git rev-parse HEAD)
 #   BUILDINFO_EXTRA  a file whose lines are added to BUILDINFO
 # Run it at the root of the repository after the build.
@@ -41,7 +43,9 @@ AFTER=$(wc -c <"$STAGE/golem" | tr -d ' ')
 echo "golem: $BEFORE bytes before strip, $AFTER bytes after"
 
 cp "$ROOT/LICENSE" "$STAGE/LICENSE"
-sh "$HERE/licenses.sh" "$ROOT/dist-newstyle/cache/plan.json" "$STAGE/THIRD_PARTY_LICENSES" "$TAG"
+LINK_MAP=${LINK_MAP:-} WASMTIME_NM=${WASMTIME_NM:-} WASMTIME_STRINGS=${WASMTIME_STRINGS:-} WASMTIME_AR=${WASMTIME_AR:-} \
+  APK_DB=${APK_DB:-/lib/apk/db/installed} APK_ROOT=${APK_ROOT:-/} APK_LICENSES=${APK_LICENSES:-/usr/share/licenses} \
+  sh "$HERE/licenses.sh" "$ROOT/dist-newstyle/cache/plan.json" "$STAGE/THIRD_PARTY_LICENSES" "$TAG"
 
 if command -v "ghc-9.10.3" >/dev/null 2>&1; then GHC=ghc-9.10.3; else GHC=ghc; fi
 {

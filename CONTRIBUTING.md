@@ -97,6 +97,9 @@ Golem は、同じ入力から常に同じバイト列を出力する。
 必要な機能が限られているなら、その機能だけを実装してよい。
 
 [README.md](./README.md) にある固定したネイティブライブラリ（HarfBuzz、FreeType、wasmtime、zlib、hyph-utf8）の版を上げるときは、ADR を書く。
+wasmtime の版を上げるときは、`scripts/wasmtime-licenses.sh` で `licenses/wasmtime-v<版>/`（`libwasmtime.a` に入った Rust のクレートなどのライセンスの文書）を作り直し、生成物もコミットする（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
+このスクリプトはネットワークに接続し、`cargo` と `rustup` を要する。
+`c-objects.tsv` の構成要素の列は、スクリプトが埋めないので手で埋める。
 `cabal.project.freeze` で固定した依存の版を変えるときも、変更の理由をプルリクエストに書く。
 
 ## 整形と検査
