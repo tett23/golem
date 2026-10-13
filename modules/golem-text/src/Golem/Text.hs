@@ -39,19 +39,24 @@ data Ctx = Ctx
   { cVariant :: TextVariant,
     cNumberDefault :: Text,
     cBook :: Book,
-    cProfileDev :: Bool
+    cProfileDev :: Bool,
+    -- | the ideographic spaces before the first line of a paragraph of a style (docs/adr ADR 0006)
+    cFirstLine :: Maybe Text -> Int,
+    -- | inside a list item, where paragraphs are not indented
+    cInList :: Bool
   }
 
 {- | One text file per source file, named after the source with a .txt
-extension.
+extension. @firstLine@ gives the ideographic spaces that start the lines
+of a paragraph of a style (Nothing is body; docs/adr ADR 0006).
 -}
-renderText :: Text -> Bool -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
-renderText numberDefault dev variant ft book =
+renderText :: Text -> Bool -> (Maybe Text -> Int) -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
+renderText numberDefault dev firstLine variant ft book =
   [ (replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "txt", file ctx d)
   | d@(Document fid _) <- bookDocs book
   ]
   where
-    ctx = Ctx variant numberDefault book dev
+    ctx = Ctx variant numberDefault book dev firstLine False
 
 file :: Ctx -> Document -> Text
 file c (Document _ bs) =
@@ -67,8 +72,10 @@ indentBy n = T.replicate n "　"
 
 block :: Ctx -> Int -> Block -> Text
 block c ind (Block sp _ body) = case body of
-  -- a line break is a newline and the nesting indent (docs/adr ADR 0005)
-  Paragraph _ is -> indentBy ind <> T.intercalate ("\n" <> indentBy ind) (map (inlines c) (splitLines is)) <> sidenotes is
+  -- a line break is a newline and the nesting indent (docs/adr ADR 0005); each line starts with the first-line indent (docs/adr ADR 0006)
+  Paragraph st is ->
+    let lead = indentBy ind <> (if cInList c then "" else indentBy (cFirstLine c st))
+     in lead <> T.intercalate ("\n" <> lead) (map (inlines c) (splitLines is)) <> sidenotes is
   Heading _ _ is ->
     let num = Map.lookup sp (bookHeadings (cBook c)) >>= hiNumberText
      in maybe "" (<> "　") num <> inlines c is
@@ -94,9 +101,10 @@ block c ind (Block sp _ body) = case body of
     T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> k | (k, n) <- bookCitations (cBook c)]
   where
     marker n = if cVariant c == Vertical then kanji n <> "、" else T.pack (show n) <> ". "
+    inItem = c {cInList = True}
     itemText i (ListItem _ bs) = case bs of
-      (Block _ _ (Paragraph Nothing is) : rest) | not (any isLineBreak is) -> T.intercalate "\n" (inlines c is : map (block c i) rest)
-      _ -> T.intercalate "\n" (map (block c i) bs)
+      (Block _ _ (Paragraph Nothing is) : rest) | not (any isLineBreak is) -> T.intercalate "\n" (inlines c is : map (block inItem i) rest)
+      _ -> T.intercalate "\n" (map (block inItem i) bs)
     sidenotes is =
       T.concat ["\n※" <> T.pack (show n) <> " " <> inlines c xs | Sidenote _ n xs <- is]
 

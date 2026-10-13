@@ -356,14 +356,19 @@ writeTargets opts e book targets = do
                 ],
             hcParaStyles =
               Map.fromList
-                [ (n, HtmlParaStyle (psFont d) (psLineBreaks d == Just KeepLines) (fromMaybe 0 (psSpaceBetween d)))
+                [ ( n,
+                    HtmlParaStyle
+                      (psFont d)
+                      (psLineBreaks d == Just KeepLines)
+                      (fromMaybe 0 (psSpaceBetween d))
+                      (cssLength (fromMaybe (Zw 0) (psIndent d)))
+                      (cssLength (fromMaybe (Zw 0) (psFirstLineIndent d)))
+                  )
                 | n <- Map.keys (stParaStyles style),
                   Just d <- [paraStyle style (Just n)]
                 ],
             hcBibliography = bib,
-            hcDev = dev,
-            hcVerseIndent = cssLength (vsIndent (stVerse style)),
-            hcVerseHang = cssLength (vsHang (stVerse style))
+            hcDev = dev
           }
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case
@@ -405,7 +410,7 @@ writeTargets opts e book targets = do
         let (sub, gv) = case v of
               TextVertical -> ("vertical", GT.Vertical)
               TextHorizontal -> ("horizontal", GT.Horizontal)
-        forM (GT.renderText (stNumbersVertical style) dev gv ft book) $ \(p, t) -> do
+        forM (GT.renderText (stNumbersVertical style) dev (textFirstLine style) gv ft book) $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)
       pure (concat files, [])
@@ -428,6 +433,15 @@ writeTargets opts e book targets = do
       when ex (removeDirectoryRecursive dir)
     writeText p t = createDirectoryIfMissing True (takeDirectory p) >> TIO.writeFile p t
     copy src dst = createDirectoryIfMissing True (takeDirectory dst) >> BS.readFile src >>= BS.writeFile dst
+
+{- | The ideographic spaces that start the lines of a paragraph of a style
+in plain text (docs/adr ADR 0006): the whole part of indent plus
+first-line-indent when both are in zw, none otherwise.
+-}
+textFirstLine :: Style -> Maybe Text -> Int
+textFirstLine style st = case paraStyle style st of
+  Just ParaStyleDef {psIndent = Just (Zw a), psFirstLineIndent = Just (Zw b)} -> max 0 (truncate (a + b))
+  _ -> 0
 
 {- | A length of style.toml in CSS: zw as em, other units as pt, with at
 most three decimals (docs/adr ADR 0003).

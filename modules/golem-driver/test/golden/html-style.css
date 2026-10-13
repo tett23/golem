@@ -78,8 +78,9 @@ code span.vs { color: #4070a0; } /* VerbatimString */
 code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
 .sidenote { font-size: 0.85em; }
 @media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }
-p.ps-verse { margin-block: 0; margin-inline-start: 0em; }
-p.ps-verse .line { padding-inline-start: 2em; text-indent: -2em; }
+p.ps-verse { margin-block: 0; }
+p.ps-verse { padding-inline-start: 2em; text-indent: -2em; }
 p.ps-verse + p.ps-verse { margin-block-start: 1em; }
+li p, li p[class] { padding-inline-start: 0; text-indent: 0; }
 .line { display: block; }
 .line + br { display: none; }

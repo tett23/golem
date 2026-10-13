@@ -1,6 +1,6 @@
 # ADR 0003: 韻文の行分けを保つ @verse
 
-ステータス: 採択→記法と `stanza-gap` は [docs/adr/0005](0005-character-and-paragraph-styles.md)
+ステータス: 採択→記法と `stanza-gap` は [docs/adr/0005](0005-character-and-paragraph-styles.md)、`indent` と `hang` は [docs/adr/0006](0006-paragraph-indent.md)
 
 ## 文脈
 

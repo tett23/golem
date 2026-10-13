@@ -442,10 +442,18 @@ latin = "fonts/SourceSans3-Bold.otf"
 font = "heading"
 color = "accent"
 
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
 [paragraph-styles.quote]
 font = "heading"
 size = "0.9zw"
 space-between = 1
+indent = "2zw"
+
+[paragraph-styles.verse]
+indent = "2zw"
+first-line-indent = "-2zw"
 
 [headings.1]
 font = "heading"
@@ -482,10 +490,6 @@ marker = "number"
 
 [figures]
 number = "図{chapter}-{n}"
-
-[verse]
-indent = "0zw"
-hang = "2zw"
 
 [color]
 intent = "icc/JapanColor2001Coated.icc"
@@ -531,11 +535,25 @@ folio = { position = "bottom-outside", format = "{n}" }
 行送りの欄は設けない。
 PDF の本文を行の格子に載せるので、段落ごとに行送りを変えると見開きの行の位置がそろわなくなるためである。
 組み込みの段落スタイルは `body`、`verse`（`line-breaks = "keep"`、`space-between = 1`）、`caption`、`sidenote` の四つであり、段落スタイルを付けない段落は `body` で組む。
-`[verse]` の `indent` と `hang` は、`line-breaks = "keep"` のすべての段落スタイルの段落の行の字下げになる。
+
+段落スタイルの `indent` はすべての行の始まりの字下げ（InDesign の左インデント）、`first-line-indent` は最初の行に `indent` へ加える量（1 行目左インデント）であり、負ならぶら下げになる（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
+どちらも行の始まりの側から測るので、縦組みでは天からの距離になる。
+`zw` は段落の文字の大きさを一字とする。
+`indent` と `first-line-indent` の和が負になる段落スタイルはエラー（G0312）、字下げの後の行長が段落の文字の大きさの 8 字分に満たない段落スタイルは PDF でエラー（G0725）とする。
+`line-breaks = "keep"` の段落では、改行で区切った各行が段落の始まりと同じく最初の行の字下げを受け、折り返した部分は `indent` の位置から始まる。
+組み込みの `verse` は `indent = "2zw"`、`first-line-indent = "-2zw"` で、各行の折り返した部分をぶら下げる。
+字下げは、文書の最上位の段落、`@style` の本体の段落、定義リストの説明の段落に効き、リストの項目の中の段落と、図版のキャプション、脚注と傍注の本文、表、見出し、目次、索引、参考文献には効かない。
+
+字下げの既定は 0 である。
+既定で一字下げると、段落の先頭に全角の空白を書いた既存の原稿が二字下がるためである。
+`[paragraph-styles.body] first-line-indent = "1zw"` のように字下げを指定する場合は、原稿の先頭の全角の空白を消す。
+全角の空白と併用すると二重に下がり、処理系はそれを指摘しない。
+プレーンテキストでは、`indent` と `first-line-indent` がどちらも `zw` で書かれている場合に限り、和の整数部の数の全角の空白を段落の各行の先頭に置く。
 
 文字スタイルと段落スタイルの `font` が `[fonts]` にない役割を指す場合も G0308 とする。
 `based-on` が存在しないスタイルを指す場合、循環する場合、`body` に `based-on` がある場合、文字スタイルの `color` が `[color.swatches]` にない場合はエラー（G0313）とする。
-廃止した `[emphasis]` と `[verse]` の `stanza-gap` はエラー（G0306）とし、メッセージで書き換え先を示す。
+廃止した `[emphasis]` と `[verse]` はエラー（G0306）とし、メッセージで書き換え先を示す。
+`[verse]` の `indent = I`、`hang = H` は、`[paragraph-styles.verse]` の `indent = I + H`、`first-line-indent = -H` に書き換える。
 
 HTML と EPUB では、組み込みの文字スタイルを `strong`、`b`、`i` の要素に、ほかの文字スタイルを `cs-名前` の class に、段落スタイルを `ps-名前` の class に対応させる。
 文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between` を CSS に書き、`size` は CSS に書かない。
@@ -1068,7 +1086,6 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### 組版
 
-- **字下げ**：段落の字下げ（段落の先頭の字下げ、二行目以降の字下げ、ぶら下げ）を指定する方法がない。[docs/adr/0006](adr/0006-paragraph-indent.md) で、段落スタイルに `indent` と `first-line-indent`（負ならぶら下げ）を加え、`[verse]` を廃止すると決めた（未実装）。
 - **リストの字下げ**：PDF のリストは、項目の先頭に印か番号を付けるだけで、項目の二行目以降と入れ子のリストを字下げしない。段落スタイルの字下げも、リストの項目の段落には効かせない（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
 - **ハイフネーション**：明示のハイフン（lime-tree の `-`）の位置を行分割の候補にしていない。Knuth と Plass の行分割は、一回目の試行でハイフネーションの候補をすべて除き、TeX と違って明示のハイフンも一回目から使わない。[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md) で、欧文の語の中のハイフンとダッシュの直後を候補にし（罰則は `[composition]` の `explicit-hyphen-penalty`、既定は 50）、罰点の等しい経路を TeX と同じ規則で選ぶと決めた（未実装）。
 - **ルビの配置の設定**：ルビの位置を調整する設定がない。今の `[composition]` の `ruby` は `position`（`"mono-center"` だけを取る）と `overhang` を持つが、`position` は配置を変えない。PDF は、読みを詰めて親文字の中央に置き、ルビが親文字より長いときは親文字の字間を空けずに両端を空ける。隣の文字へのかけは文字の種類を見ずに漢字や隣のルビにもかかり、行頭と行末でも戻さない。この挙動は [golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md) の記述とも一致していない。[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md) で、`position` をなくし、`[composition.ruby]` の `mono-align`（中付きか肩付きか）、`group-align`（グループルビが親文字より短いときの配置）、`base-spacing`（ルビが親文字より長いときの親文字の字間）、`overhang`（片側でかける量の上限）、`overhang-onto`（仮名にだけかけるか、かけないか）の欄で選べるようにすると決めた（未実装）。既定値は JLReq に合わせるので、ルビを含む PDF の出力は変わる。

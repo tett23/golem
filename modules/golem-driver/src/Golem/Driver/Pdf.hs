@@ -521,16 +521,30 @@ data Unit = Unit
     uFace :: (Text, Sp)
   }
 
+-- | The indent of the lines of a paragraph in sp (docs/adr ADR 0006). inFirst may be negative; inStart + inFirst >= 0.
+data Indent = Indent {inStart :: !Sp, inFirst :: !Sp}
+  deriving stock (Eq, Show)
+
+noIndent :: Indent
+noIndent = Indent 0 0
+
 data UnitKind
-  = UPara
+  = UPara !Indent
   | UHeading Int Text Bool
   | UTerm
   | UFigure Figure
   | UTable [Alignment] [[Inline]] [[[Inline]]]
-  | -- | a line of verse: the indent and the hang in sp (docs/adr ADR 0003)
-    UVerseLine Sp Sp
   | -- | grid lines between paragraphs of a style (docs/adr ADR 0005)
     UGap Int
+
+-- | The role, the size and the indent of a paragraph style (docs/adr ADR 0005, 0006).
+paraLook :: Style -> PageGeometry -> Maybe Text -> ((Text, Sp), Indent)
+paraLook style geom st =
+  let fs = pgFontSize geom
+      d = paraStyle style st
+      size = maybe fs (dimToSp fs) (d >>= psSize)
+      sp' f = dimToSp size (fromMaybe (Zw 0) (d >>= f))
+   in ((fromMaybe (bodyRole style) (d >>= psFont), size), Indent (sp' psIndent) (sp' psFirstLineIndent))
 
 unitsOf :: Book -> PageGeometry -> Style -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
 unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
@@ -539,38 +553,35 @@ unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
     txt = Text sp0
     fs = pgFontSize geom
     bodyFace = (bodyRole style, fs)
-    doc (Document _ bs) = blocks bs
-    -- a list of blocks: paragraphs of the same style in a row are apart by its space-between (docs/adr ADR 0005)
-    blocks bs = concat [gapBefore prev b <> block b | (prev, b) <- zip (Nothing : map Just bs) bs]
+    doc (Document _ bs) = blocks False bs
+    {- a list of blocks: paragraphs of the same style in a row are apart by
+    its space-between (docs/adr ADR 0005); in a list item, paragraphs are
+    not indented (docs/adr ADR 0006) -}
+    blocks inList bs = concat [gapBefore prev b <> block inList b | (prev, b) <- zip (Nothing : map Just bs) bs]
     gapBefore (Just (Block _ _ (Paragraph s1 _))) (Block sp _ (Paragraph s2 _))
       | s1 == s2, Just n <- paraStyle style s2 >>= psSpaceBetween, n > 0 = [Unit (UGap n) Nothing [] sp bodyFace]
     gapBefore _ _ = []
-    block (Block sp lbl body) = case body of
-      -- a unit for each part between line breaks; the lines of a style that keeps them hang (docs/adr ADR 0003, 0005)
+    block inList (Block sp lbl body) = case body of
+      -- a unit for each part between line breaks, each indented as a paragraph (docs/adr ADR 0005, 0006)
       Paragraph st is ->
-        let d = paraStyle style st
-            face = (fromMaybe (bodyRole style) (d >>= psFont), maybe fs (dimToSp fs) (d >>= psSize))
-            vs = stVerse style
-            kind
-              | (d >>= psLineBreaks) == Just KeepLines = UVerseLine (dimToSp fs (vsIndent vs)) (dimToSp fs (vsHang vs))
-              | otherwise = UPara
-         in [Unit kind (if i == 0 then lbl else Nothing) part sp face | (i, part) <- zip [0 :: Int ..] (splitBreaks is)]
+        let (face, ind) = paraLook style geom st
+         in [Unit (UPara (if inList then noIndent else ind)) (if i == 0 then lbl else Nothing) part sp face | (i, part) <- zip [0 :: Int ..] (splitBreaks is)]
       Heading l attrs is ->
         let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
             title = maybe [] (\n -> [txt (n <> "　")]) (if haNoNumber attrs then Nothing else num) <> is
             recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
          in [Unit (UHeading l (T.concat (map inlineText is)) recto) lbl title sp (headingFace style geom l)]
-      BulletList items -> concat [prefixFirst "・" (blocks (itemBlocks it)) | it <- items]
-      OrderedList items -> concat [prefixFirst (T.pack (show n) <> ". ") (blocks (itemBlocks it)) | (n, it) <- zip [1 :: Integer ..] items]
-      DefList gs -> concat [[Unit UTerm Nothing t sp bodyFace | t <- dgTerms g] <> concatMap blocks (dgDefs g) | g <- gs]
+      BulletList items -> concat [prefixFirst "・" (blocks True (itemBlocks it)) | it <- items]
+      OrderedList items -> concat [prefixFirst (T.pack (show n) <> ". ") (blocks True (itemBlocks it)) | (n, it) <- zip [1 :: Integer ..] items]
+      DefList gs -> concat [[Unit UTerm Nothing t sp bodyFace | t <- dgTerms g] <> concatMap (blocks inList) (dgDefs g) | g <- gs]
       Table aligns h rows -> [Unit (UTable aligns h rows) lbl [] sp bodyFace]
-      CodeBlock _ code -> [Unit UPara lbl [txt l] sp bodyFace | l <- T.lines code]
+      CodeBlock _ code -> [Unit (UPara noIndent) lbl [txt l] sp bodyFace | l <- T.lines code]
       FigureBlock fig -> [Unit (UFigure fig) lbl [] sp bodyFace]
       -- the index marks of a title are counted at the heading, not in the table of contents
-      ChannelOutput (TocOutput depth) -> [Unit UPara Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) sp bodyFace | e <- bookToc book, teLevel e <= depth]
-      ChannelOutput IndexOutput -> [Unit UPara Nothing is sp bodyFace | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
-      ChannelOutput BibliographyOutput -> [Unit UPara Nothing is sp bodyFace | is <- bibliographyLines bib (bookCitations book)]
-    prefixFirst p (u@Unit {uKind = UPara} : rest) = u {uInlines = txt p : uInlines u} : rest
+      ChannelOutput (TocOutput depth) -> [Unit (UPara noIndent) Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) sp bodyFace | e <- bookToc book, teLevel e <= depth]
+      ChannelOutput IndexOutput -> [Unit (UPara noIndent) Nothing is sp bodyFace | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
+      ChannelOutput BibliographyOutput -> [Unit (UPara noIndent) Nothing is sp bodyFace | is <- bibliographyLines bib (bookCitations book)]
+    prefixFirst p (u@Unit {uKind = UPara _} : rest) = u {uInlines = txt p : uInlines u} : rest
     prefixFirst _ us = us
     splitBreaks is = case break isBreak is of
       (l, []) -> [l]
@@ -614,12 +625,10 @@ buildFlow inp geom fonts images assumed = do
       markPage sp = Map.lookup sp (asMarks assumed) <|> (if Map.null (asMarks assumed) then Just 1 else Nothing)
       units = zip [0 :: Int ..] (unitsOf (piBook inp) geom style markPage (piBibliography inp))
       unitAt = Map.fromList units
-      -- L*(i): verse lines are shortened by the indent, and their continuations also by the hang (docs/adr ADR 0003)
-      widthOf = \case
-        UVerseLine ind hang -> \k -> if k == 0 then measure - ind else measure - ind - hang
-        _ -> const measure
+      -- L*(i): the first line is shortened by the indent and the first-line indent, the others by the indent (docs/adr ADR 0006)
+      widthOf kind k = measure - lineIndent kind k
       lineIndent = \case
-        UVerseLine ind hang -> \k -> if k == (0 :: Int) then ind else ind + hang
+        UPara (Indent s f) -> \k -> if k == (0 :: Int) then s + f else s
         _ -> const 0
       -- the role and size a unit is set in (docs/adr ADR 0005)
       faceOf = uFace
@@ -683,8 +692,8 @@ buildFlow inp geom fonts images assumed = do
         where
           go j offset
             | offset >= exLines ex = pure []
-            | Just u@Unit {uKind = UPara} <- Map.lookup j unitAt = do
-                c <- force (compose (wrappedLineWidth measure ex offset) u)
+            | Just u@Unit {uKind = UPara _} <- Map.lookup j unitAt = do
+                c <- force (compose (\k -> wrappedLineWidth measure ex offset k - lineIndent (uKind u) k) u)
                 ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c))
             | otherwise = pure []
       jobs = [(i, ex) | (i, (pf, [], _)) <- Map.toList figures, Just ex <- [pfExclusion pf]]
@@ -785,9 +794,15 @@ buildFlow inp geom fonts images assumed = do
                       -- the figure and the lines beside it; the rest of a paragraph cut short continues
                       let paras = [(j, c, off) | j <- takeWhile (`Map.member` besides) [i + 1 ..], let (c, off) = besides Map.! j]
                           indentOf off k = if pfWrap pf == Just WrapStart && off + k < exLines ex then exWidth ex else 0
+                          -- beside the figure the paragraph indent adds to the exclusion (docs/adr ADR 0006)
                           go (nid, boxAcc, setAcc) (j, c, off) =
-                            let (bs, set) = numbered nid (unitAt Map.! j) c (indentOf off)
+                            let (bs, set) = numbered nid (unitAt Map.! j) c (\k -> indentOf off k + lineIndent (uKind (unitAt Map.! j)) k)
                              in (nid + length (cLines c), boxAcc <> bs, Map.union setAcc set)
+                          tooNarrow =
+                            [ diagnostic "G0725" Error (uSpan (unitAt Map.! j)) "段落の字下げが大きすぎます。回り込む図版の脇の行が残りません"
+                            | (j, c, off) <- paras,
+                              any (\k -> wrappedLineWidth measure ex off k - lineIndent (uKind (unitAt Map.! j)) k <= 0) [0 .. length (cLines c) - 1]
+                            ]
                           (nextId', allBoxes, sets) = foldl go (nextId + 1, [], Map.empty) paras
                           (beside, continued) = splitAt (exLines ex) allBoxes
                        in ( nextId',
@@ -795,7 +810,7 @@ buildFlow inp geom fonts images assumed = do
                             Map.union lineAcc sets,
                             Map.insert nextId pf figAcc,
                             headAcc,
-                            errs
+                            errs <> tooNarrow
                           )
                 _ -> (nextId + 1, flows <> [FFigure nextId (pfImageLines pf + length (pfCaption pf)) (label u) fmarks], lineAcc, Map.insert nextId pf figAcc, headAcc, errs <> ferrs)
             UGap n -> (nextId, flows <> [FSpace n], lineAcc, figAcc, headAcc, errs)
@@ -816,7 +831,14 @@ buildFlow inp geom fonts images assumed = do
                       )
                     _ -> (headAcc, errs)
                in (nextId + length ls, flows <> flowOf, Map.union lineAcc set, figAcc, headAcc', errs')
-      (_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths)) = foldl step (0, [], Map.empty, Map.empty, Map.empty, [], (Map.empty, Map.empty)) units
+      -- every paragraph style leaves 8 characters of its size (docs/adr ADR 0006, golem-driver ADR 0005)
+      indentErrors =
+        [ diagnostic "G0725" Error (mkSpan (FileId 0) 0 0) ("段落の字下げが大きすぎます。行長を本文の文字の大きさの 8 字分以上残してください: " <> name)
+        | name <- Map.keys (stParaStyles style),
+          let ((_, size), Indent s f) = paraLook style geom (Just name),
+          measure - s - max 0 f < 8 * size
+        ]
+      (_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths)) = foldl step (0, [], Map.empty, Map.empty, Map.empty, indentErrors, (Map.empty, Map.empty)) units
   pure (Built flow lineMap figMap headMap errors tableLines tableWidths)
 
 -- | Which line (0-based) contains the item at an index.

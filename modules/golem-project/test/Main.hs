@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
@@ -139,11 +140,7 @@ tests =
         codes (parseStyle (FileId 0) "[color.swatches]\na = { cmyk = [0, 0, 0, 101] }\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[figures]\nnumber = \"{x}\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G0306"],
-      testCase "[verse] keeps indent and hang (docs/adr ADR 0003, 0005)" $ do
-        fmap stVerse (parseStyle (FileId 0) "") @?= Right (VerseStyle (Zw 0) (Zw 2))
-        fmap stVerse (parseStyle (FileId 0) "[verse]\nindent = \"1zw\"\nhang = \"3zw\"\n") @?= Right (VerseStyle (Zw 1) (Zw 3))
-        fmap stVerse (parseStyle (FileId 0) "[verse]\nhang = \"10pt\"\n") @?= Right (VerseStyle (Zw 0) (Abs 655360))
-        codes (parseStyle (FileId 0) "[verse]\nunknown = 1\n") @?= ["G0306"],
+      indentTests,
       testCase "a heading font must name a font role (golem-driver ADR 0003)" $ do
         codes (parseStyle (FileId 0) "[headings.1]\nfont = \"nope\"\n") @?= ["G0308"]
         codes (parseStyle (FileId 0) "[fonts.heading]\nlatin = \"h.otf\"\n\n[headings.1]\nfont = \"heading\"\n") @?= [],
@@ -215,6 +212,40 @@ styleTests =
   where
     parsed src = either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) src)
     noBase = fmap (\d -> d {psBasedOn = Nothing})
+    messages = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
+    hasAll ms needles = assertBool (show ms) (not (null ms) && all (\n -> any (n `T.isInfixOf`) ms) needles)
+
+-- | Paragraph indents (docs/adr ADR 0006).
+indentTests :: TestTree
+indentTests =
+  testGroup
+    "paragraph indents (docs/adr ADR 0006)"
+    [ testCase "the defaults of body and verse" $ do
+        s <- parsed ""
+        indents (paraStyle s Nothing) @?= Just (Zw 0, Zw 0)
+        indents (paraStyle s (Just "verse")) @?= Just (Zw 2, Zw (-2)),
+      testCase "a key not written is inherited" $ do
+        s <- parsed "[paragraph-styles.quote]\nindent = \"2zw\"\n"
+        indents (paraStyle s (Just "quote")) @?= Just (Zw 2, Zw 0),
+      testCase "signed dimensions" $ do
+        parseSignedDim "-1.5zw" @?= Just (Zw (-(3 / 2)))
+        fmap (\case Abs x -> x < 0; Zw _ -> False) (parseSignedDim "-3mm") @?= Just True
+        parseSignedDim "2zw" @?= Just (Zw 2)
+        parseSignedDim "--1zw" @?= Nothing
+        parseSignedDim "-zw" @?= Nothing,
+      testCase "a first line outside the type area (G0312)" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"-1zw\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"1zw\"\nfirst-line-indent = \"-2zw\"\n") @?= ["G0312"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\nindent = \"2zw\"\nfirst-line-indent = \"-2zw\"\n") @?= []
+        let grid = "[page]\nsize = \"B6\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 30\nlines = 20\nline-pitch = \"22H\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n"
+        codes (parseStyle (FileId 0) (grid <> "[paragraph-styles.quote]\nindent = \"1mm\"\nfirst-line-indent = \"-1zw\"\n")) @?= ["G0312"]
+        codes (parseStyle (FileId 0) (grid <> "[paragraph-styles.quote]\nindent = \"4mm\"\nfirst-line-indent = \"-1zw\"\n")) @?= [],
+      testCase "[verse] is retired" $
+        messages (parseStyle (FileId 0) "[verse]\nindent = \"0zw\"\n") `hasAll` ["G0306", "[paragraph-styles.verse]"]
+    ]
+  where
+    indents = fmap (\d -> (fromMaybe (Zw 99) (psIndent d), fromMaybe (Zw 99) (psFirstLineIndent d)))
+    parsed src = either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) src)
     messages = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
     hasAll ms needles = assertBool (show ms) (not (null ms) && all (\n -> any (n `T.isInfixOf`) ms) needles)
 

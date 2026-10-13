@@ -39,10 +39,7 @@ data HtmlConfig = HtmlConfig
     -- | the paragraph styles, body included (docs/adr ADR 0005)
     hcParaStyles :: !(Map Text HtmlParaStyle),
     hcBibliography :: !(Map Text Text), -- key -> formatted entry
-    hcDev :: !Bool,
-    -- | [verse] of style.toml as CSS lengths (docs/adr ADR 0003)
-    hcVerseIndent :: !Text,
-    hcVerseHang :: !Text
+    hcDev :: !Bool
   }
 
 -- | A resolved character style for CSS (docs/adr ADR 0005).
@@ -55,11 +52,15 @@ data HtmlCharStyle = HtmlCharStyle
     hcsColor :: !(Maybe Text)
   }
 
--- | A resolved paragraph style for CSS (docs/adr ADR 0005).
+-- | A resolved paragraph style for CSS (docs/adr ADR 0005, 0006).
 data HtmlParaStyle = HtmlParaStyle
   { hpsFont :: !(Maybe Text),
     hpsKeepLines :: !Bool,
-    hpsSpaceBetween :: !Int
+    hpsSpaceBetween :: !Int,
+    -- | a CSS length
+    hpsIndent :: !Text,
+    -- | a CSS length; may be negative
+    hpsFirstLineIndent :: !Text
   }
 
 data XhtmlSite = XhtmlSite
@@ -434,6 +435,8 @@ css cfg =
          ]
       -- paragraph styles (docs/adr ADR 0005); body is the plain p
       <> concat [paraRules name ps | (name, ps) <- Map.toAscList (hcParaStyles cfg)]
+      -- no indent in list items (docs/adr ADR 0006); li p[class] is stronger than p.ps-name
+      <> ["li p, li p[class] { padding-inline-start: 0; text-indent: 0; }" | any (uncurry indentRule) (Map.toList (hcParaStyles cfg))]
       -- the lines of a paragraph that keeps them; br is for readers without CSS
       <> [ ".line { display: block; }",
            ".line + br { display: none; }"
@@ -481,14 +484,20 @@ css cfg =
     charRuleMaybe name cs =
       let ds = declsOf name cs
        in if null ds || ds == defaults name then Nothing else Just (rule (selectorOf name) ds)
+    {- the indent of a style is written when it differs from body's, and
+    body's when it is not 0; text-indent is inherited by the lines, so
+    each line of a style that keeps them hangs (docs/adr ADR 0006) -}
+    bodyIndent = maybe ("0em", "0em") (\b -> (hpsIndent b, hpsFirstLineIndent b)) (Map.lookup "body" (hcParaStyles cfg))
+    isZero l = T.dropWhile (== '-') l `elem` ["0em", "0pt"]
+    indentRule name ps
+      | name == "body" = not (isZero (hpsIndent ps) && isZero (hpsFirstLineIndent ps))
+      | otherwise = (hpsIndent ps, hpsFirstLineIndent ps) /= bodyIndent
     paraRules name ps =
       let sel = if name == "body" then "p" else "p.ps-" <> name
        in ["p.ps-" <> name <> " { font-family: " <> fontStack role <> "; }" | name /= "body", Just role <- [hpsFont ps]]
-            <> [ sel <> " { margin-block: 0; margin-inline-start: " <> hcVerseIndent cfg <> "; }"
-               | hpsKeepLines ps
-               ]
-            <> [ sel <> " .line { padding-inline-start: " <> hcVerseHang cfg <> "; text-indent: -" <> hcVerseHang cfg <> "; }"
-               | hpsKeepLines ps
+            <> [sel <> " { margin-block: 0; }" | hpsKeepLines ps]
+            <> [ sel <> " { padding-inline-start: " <> hpsIndent ps <> "; text-indent: " <> hpsFirstLineIndent ps <> "; }"
+               | indentRule name ps
                ]
             <> [ sel <> " + " <> sel <> " { margin-block-start: " <> tshow (hpsSpaceBetween ps) <> "em; }"
                | hpsSpaceBetween ps > 0

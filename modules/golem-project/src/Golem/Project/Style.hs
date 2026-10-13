@@ -4,6 +4,7 @@ module Golem.Project.Style
     Dim (..),
     Sp,
     parseDim,
+    parseSignedDim,
     dimToSp,
     Page (..),
     Grid (..),
@@ -19,8 +20,6 @@ module Golem.Project.Style
     HeadingStyle (..),
     Composition (..),
     SidenoteStyle (..),
-    VerseStyle (..),
-    defaultVerseStyle,
     MasterDef (..),
     Swatch (..),
     defaultStyle,
@@ -73,6 +72,20 @@ parseDim t =
       [i] | not (T.null i) -> Just (fromInteger (read (T.unpack i)))
       [i, f] | not (T.null i), not (T.null f) -> Just (read (T.unpack (i <> f)) % (10 ^ T.length f))
       _ -> Nothing
+
+{- | A dimension that may be negative: one leading @-@ and a dimension
+(docs/adr ADR 0006).
+-}
+parseSignedDim :: Text -> Maybe Dim
+parseSignedDim t = case T.stripPrefix "-" (T.strip t) of
+  Just rest
+    | not ("-" `T.isPrefixOf` rest) -> negateDim <$> parseDim rest
+    | otherwise -> Nothing
+  Nothing -> parseDim t
+  where
+    negateDim = \case
+      Abs x -> Abs (negate x)
+      Zw r -> Zw (negate r)
 
 -- | Resolves a dimension against a font size.
 dimToSp :: Sp -> Dim -> Sp
@@ -127,7 +140,11 @@ data ParaStyleDef = ParaStyleDef
     psFont :: !(Maybe Text),
     psSize :: !(Maybe Dim),
     psLineBreaks :: !(Maybe LineBreaks),
-    psSpaceBetween :: !(Maybe Int)
+    psSpaceBetween :: !(Maybe Int),
+    -- | the start of every line (docs/adr ADR 0006)
+    psIndent :: !(Maybe Dim),
+    -- | added to the indent on the first line; negative hangs
+    psFirstLineIndent :: !(Maybe Dim)
   }
   deriving stock (Eq, Show)
 
@@ -135,7 +152,7 @@ noChar :: CharStyleDef
 noChar = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing
 
 noPara :: ParaStyleDef
-noPara = ParaStyleDef Nothing Nothing Nothing Nothing Nothing
+noPara = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The built-in character styles: bold, italic and strong.
 builtinCharStyles :: Map Text CharStyleDef
@@ -150,8 +167,8 @@ builtinCharStyles =
 builtinParaStyles :: Map Text ParaStyleDef
 builtinParaStyles =
   Map.fromList
-    [ ("body", noPara {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0}),
-      ("verse", noPara {psBasedOn = Just "body", psLineBreaks = Just KeepLines, psSpaceBetween = Just 1}),
+    [ ("body", noPara {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0, psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0)}),
+      ("verse", noPara {psBasedOn = Just "body", psLineBreaks = Just KeepLines, psSpaceBetween = Just 1, psIndent = Just (Zw 2), psFirstLineIndent = Just (Zw (-2))}),
       ("caption", noPara {psBasedOn = Just "body"}),
       ("sidenote", noPara {psBasedOn = Just "body"})
     ]
@@ -175,6 +192,8 @@ overPara u b =
     (psSize u <|> psSize b)
     (psLineBreaks u <|> psLineBreaks b)
     (psSpaceBetween u <|> psSpaceBetween b)
+    (psIndent u <|> psIndent b)
+    (psFirstLineIndent u <|> psFirstLineIndent b)
 
 -- | The parent of a paragraph style: body has none, the others are based on body by default.
 paraParent :: Text -> ParaStyleDef -> Maybe Text
@@ -205,7 +224,7 @@ value; based-on is the style's parent.
 paraStyle :: Style -> Maybe Text -> Maybe ParaStyleDef
 paraStyle style mname =
   let name = fromMaybe "body" mname
-      defaults = noPara {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0}
+      defaults = noPara {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0, psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0)}
    in case chainOf paraParent (stParaStyles style) name of
         [] -> Nothing
         chain@(d : _) -> Just (foldr overPara defaults chain) {psBasedOn = paraParent name d}
@@ -247,20 +266,6 @@ data SidenoteStyle = SidenoteStyle
   }
   deriving stock (Eq, Show)
 
-{- | [verse] (docs/adr ADR 0003): the indent and the hang of the lines of
-every paragraph style with line-breaks = "keep" (docs/adr ADR 0005).
--}
-data VerseStyle = VerseStyle
-  { -- | the start of every line
-    vsIndent :: !Dim,
-    -- | the continuation of a line broken at the measure, beyond the indent
-    vsHang :: !Dim
-  }
-  deriving stock (Eq, Show)
-
-defaultVerseStyle :: VerseStyle
-defaultVerseStyle = VerseStyle (Zw 0) (Zw 2)
-
 data MasterDef = MasterDef
   { mdRunningHead :: !(Maybe (Text, Text)), -- position, content
     mdFolio :: !(Maybe (Text, Text)) -- position, format
@@ -286,8 +291,7 @@ data Style = Style
     stWrapGap :: !Dim,
     stIntent :: !(Maybe FilePath),
     stSwatches :: !(Map Text Swatch),
-    stMasters :: !(Map Text MasterDef),
-    stVerse :: !VerseStyle
+    stMasters :: !(Map Text MasterDef)
   }
   deriving stock (Eq, Show)
 
@@ -310,8 +314,7 @@ defaultStyle =
       stWrapGap = Zw 1,
       stIntent = Nothing,
       stSwatches = Map.empty,
-      stMasters = Map.empty,
-      stVerse = defaultVerseStyle
+      stMasters = Map.empty
     }
 
 -- | JIS B series, A series and 四六判, in millimetres.
@@ -399,7 +402,10 @@ instance FromValue ParaStyleDef where
     lb <- enumKey "line-breaks" ["join", "keep"]
     sb <- optKey "space-between"
     when (maybe False (< 0) sb) $ fail "space-between must be 0 or more"
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb)
+    ind <- dimKey "indent"
+    fli <- optKey "first-line-indent"
+    fli' <- traverse (\v -> maybe (fail ("dimension such as 1zw or -1zw: " <> T.unpack v)) pure (parseSignedDim v)) fli
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli')
 
 instance FromValue HeadingStyle where
   fromValue = parseTableFromValue $ do
@@ -504,14 +510,13 @@ data Figures = Figures (Maybe Text) (Maybe Dim)
 instance FromValue Figures where
   fromValue = parseTableFromValue (Figures <$> optKey "number" <*> dimKey "wrap-gap")
 
-instance FromValue VerseStyle where
-  fromValue = parseTableFromValue $ do
-    i <- dimKey "indent"
-    h <- dimKey "hang"
-    g <- optKey "stanza-gap"
-    when (isJust (g :: Maybe Int)) $ fail "[verse] の stanza-gap は廃止しました。[paragraph-styles.verse] の space-between に書き換えます"
-    let d = defaultVerseStyle
-    pure (VerseStyle (fromMaybe (vsIndent d) i) (fromMaybe (vsHang d) h))
+-- | The retired [verse] (docs/adr ADR 0005, 0006): an error that names its replacement.
+data VerseV
+
+instance FromValue VerseV where
+  fromValue _ =
+    fail
+      "[verse] は廃止しました。indent = I と hang = H は [paragraph-styles.verse] の indent = I + H と first-line-indent = -H に、stanza-gap は [paragraph-styles.verse] の space-between に書き換えます"
 
 data ColorSec = ColorSec (Maybe Text) (Map Text Swatch)
 
@@ -534,7 +539,8 @@ instance FromValue Style where
     Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
     masters <- fromMaybe Map.empty <$> optKey "masters"
-    verse <- fromMaybe defaultVerseStyle <$> optKey "verse"
+    retiredVerse <- optKey "verse"
+    when (isJust (retiredVerse :: Maybe VerseV)) $ fail "[verse] は廃止しました"
     hs <- traverse headingLevel (Map.toList (headings :: Map Text HeadingStyle))
     let d = defaultStyle
     pure
@@ -552,8 +558,7 @@ instance FromValue Style where
           stWrapGap = fromMaybe (stWrapGap d) fgap,
           stIntent = T.unpack <$> intent,
           stSwatches = swatches,
-          stMasters = masters,
-          stVerse = verse
+          stMasters = masters
         }
     where
       headingLevel (k, v) = case k of
@@ -584,7 +589,8 @@ parseStyle fid src = do
   case [diagnostic "G0306" Error (mkSpan fid 0 0) m | m <- checks s]
     <> [diagnostic "G0308" Error (mkSpan fid 0 0) m | m <- roleChecks s]
     <> [diagnostic "G0313" Error (mkSpan fid 0 0) ("style.toml のスタイルの参照が不正です: " <> m) | m <- referenceChecks s]
-    <> [diagnostic "G0311" Error (mkSpan fid 0 0) ("段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks s] of
+    <> [diagnostic "G0311" Error (mkSpan fid 0 0) ("段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks s]
+    <> [diagnostic "G0312" Error (mkSpan fid 0 0) ("段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | n <- indentChecks s] of
     [] -> Right s
     ds -> Left ds
   where
@@ -630,6 +636,18 @@ parseStyle fid src = do
           dimToSp fs d > fs
         ]
       _ -> []
+    {- the first line inside the type area: indent + first-line-indent >= 0
+    (docs/adr ADR 0006); zw and absolute lengths together only with a grid -}
+    indentChecks s =
+      let gridSize = case stPage s >>= pageGrid of
+            Just Grid {gridFontSize = Abs fs} -> Just fs
+            _ -> Nothing
+          negative d = case (psIndent d, psFirstLineIndent d) of
+            (Just (Zw a), Just (Zw b)) -> a + b < 0
+            (Just (Abs a), Just (Abs b)) -> a + b < 0
+            (Just a, Just b) | Just fs <- gridSize -> let size = maybe fs (dimToSp fs) (psSize d) in dimToSp size a + dimToSp size b < 0
+            _ -> False
+       in [n | n <- Map.keys (stParaStyles s), Just d <- [paraStyle s (Just n)], negative d]
     checks s =
       [ "番号の書式が不正です: " <> f
       | f <- stFigureNumber s : [n | HeadingStyle {hsNumber = Just n} <- Map.elems (stHeadings s)],

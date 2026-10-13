@@ -265,6 +265,7 @@ tests =
             qpdfCheck a
         ],
       testGroup "verse (docs/adr ADR 0003)" verseTests,
+      testGroup "paragraph indents (docs/adr ADR 0006)" indentTests,
       testGroup "PDF headings (ADR 0003)" headingTests,
       testGroup "PDF emphasis, character styles and colour (ADR 0004)" emphasisTests,
       testGroup "PDF wrapped figures (ADR 0005)" wrapTests,
@@ -328,7 +329,7 @@ verseLines style src = withVerseProject style src $ \tmp -> do
 verseTests :: [TestTree]
 verseTests =
   [ testCase "HTML: stanzas are p of the verse style, lines are span and br; the CSS hangs the lines" $
-      withVerseProject "[verse]\nhang = \"3zw\"\n" verseSource $ \tmp -> do
+      withVerseProject "[paragraph-styles.verse]\nindent = \"3zw\"\nfirst-line-indent = \"-3zw\"\n" verseSource $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
         page <- TIO.readFile (tmp </> "build/html/v.xhtml")
@@ -340,14 +341,15 @@ verseTests =
         css <- TIO.readFile (tmp </> "build/html/style.css")
         assertBool "line rule" (".line { display: block; }" `T.isInfixOf` css)
         assertBool "br rule" (".line + br { display: none; }" `T.isInfixOf` css)
-        assertBool "hang" ("p.ps-verse .line { padding-inline-start: 3em; text-indent: -3em; }" `T.isInfixOf` css)
+        assertBool "hang" ("p.ps-verse { padding-inline-start: 3em; text-indent: -3em; }" `T.isInfixOf` css)
         assertBool "stanza gap" ("p.ps-verse + p.ps-verse { margin-block-start: 1em; }" `T.isInfixOf` css),
     testCase "HTML: no space rule when space-between is 0" $
-      withVerseProject "[paragraph-styles.verse]\nspace-between = 0\n\n[verse]\nindent = \"10.5pt\"\n" verseSource $ \tmp -> do
+      withVerseProject "[paragraph-styles.verse]\nspace-between = 0\nindent = \"10.5pt\"\n" verseSource $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         css <- TIO.readFile (tmp </> "build/html/style.css")
         assertBool "no stanza gap" (not ("p.ps-verse + p.ps-verse" `T.isInfixOf` css))
-        assertBool "indent" ("p.ps-verse { margin-block: 0; margin-inline-start: 10.5pt; }" `T.isInfixOf` css),
+        assertBool "margin" ("p.ps-verse { margin-block: 0; }" `T.isInfixOf` css)
+        assertBool "indent" ("p.ps-verse { padding-inline-start: 10.5pt; text-indent: -2em; }" `T.isInfixOf` css),
     testCase "plain text: lines on lines, stanzas separated by a blank line" $
       withVerseProject "" verseSource $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
@@ -372,6 +374,71 @@ verseTests =
     testCase "PDF: a verse line takes the look of its inline elements" $ do
       (_, layout) <- layoutOk horizontalStyle "@style verse\n  前の[bold: 本文]後\n" []
       [bcText c | sl <- Map.elems (plLines layout), Box _ c <- lineItems (slLine sl), synBold (lkSynthetic (bcLook c))] @?= ["本", "文"]
+  ]
+
+-- | horizontalStyle with 30 characters a line (300pt), and more.
+horizontal30 :: BS.ByteString -> BS.ByteString
+horizontal30 extra = replaceIn "characters = 12" "characters = 30" horizontalStyle <> extra
+
+indentTests :: [TestTree]
+indentTests =
+  [ testCase "PDF: the first line of a paragraph is indented by first-line-indent" $ do
+      let fs = 655360
+      (_, ls) <- verseLines (horizontal30 "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") (T.replicate 45 "あ" <> "\n")
+      ls @?= [(29 * fs, fs), (30 * fs, 0)],
+    testCase "PDF: a hanging indent" $ do
+      let fs = 655360
+      (_, ls) <- verseLines (horizontal30 "\n[paragraph-styles.quote]\nindent = \"2zw\"\nfirst-line-indent = \"-2zw\"\n") ("@style quote\n" <> T.replicate 45 "あ" <> "\n")
+      map snd ls @?= [0, 2 * fs]
+      map fst ls @?= [30 * fs, 28 * fs],
+    testCase "PDF: vertical, the first line starts a character lower" $ do
+      let fs = maybe 0 (dimToSp 0) (parseDim "13Q")
+          firstY pdf = do
+            content <- BS.concat <$> inflateAll pdf
+            case [dY d | d <- drawnGlyphs content, dGlyph d == fromEnum 'い'] of
+              (y : _) -> pure (ptToRational y)
+              [] -> assertFailure "no glyph"
+      (_, ls) <- verseLines (pdfStyle <> "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") (T.replicate 60 "あ" <> "\n")
+      take 2 (map snd ls) @?= [fs, 0]
+      a <- miniPdf fakeProvider True (pdfStyle <> "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") "いろは\n" [] >>= firstY
+      b <- miniPdf fakeProvider True pdfStyle "いろは\n" [] >>= firstY
+      assertBool (show (a, b)) (abs ((b - a) - toRational fs / 65536) < 1 / 100),
+    testCase "PDF: no indent in list items and the table of contents; indent in definitions" $ do
+      let fs = 655360
+          style = horizontal30 "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n"
+      (_, items) <- verseLines style "- 項目\n- 項目\n"
+      map snd items @?= [0, 0]
+      (_, toc) <- verseLines style "@toc\n\n# 章\n"
+      assertBool (show toc) (all ((== 0) . snd) toc)
+      (_, defs) <- verseLines style "= 用語\n  説明の段落。\n"
+      map snd defs @?= [0, fs],
+    testCase "PDF: beside a wrap=start figure, the first line adds its indent to the exclusion" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk (horizontal24 <> "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") (wrapped "start" "4zw" <> longPara 30) img
+      (_, _, p, slot) <- theFigure pl
+      take 2 (map (slIndent . snd) (linesFrom pl p slot)) @?= [60 * pt, 50 * pt],
+    testCase "PDF: an indent that leaves less than 8 characters is G0725" $ do
+      let style = replaceIn "characters = 12" "characters = 10" horizontalStyle <> "\n[paragraph-styles.body]\nindent = \"3zw\"\n"
+      (errs, pdf) <- buildMini fakeProvider True style "本文。\n" []
+      (nub errs, pdf) @?= ([DiagnosticCode "G0725"], Nothing),
+    testCase "HTML: the indent of body and of verse, none in list items" $ do
+      withVerseProject "[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n" "本文。\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        assertBool "body" ("p { padding-inline-start: 0em; text-indent: 1em; }" `T.isInfixOf` css)
+        assertBool "list items" ("li p, li p[class] { padding-inline-start: 0; text-indent: 0; }" `T.isInfixOf` css)
+      withVerseProject "" verseSource $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        assertBool "verse" ("p.ps-verse { padding-inline-start: 2em; text-indent: -2em; }" `T.isInfixOf` css)
+        assertBool "lines" (".line { display: block; }" `T.isInfixOf` css)
+        assertBool "no body rule" (not ("\np { " `T.isInfixOf` css)),
+    testCase "plain text: the first line starts with ideographic spaces" $ do
+      let text style src = withVerseProject style src $ \tmp -> do
+            _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            TIO.readFile (tmp </> "build/text/horizontal/v.txt")
+      text "[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n" "本文。\n\n- 項目\n" >>= (@?= "　本文。\n\n・項目\n")
+      text "[paragraph-styles.body]\nfirst-line-indent = \"3mm\"\n" "本文。\n" >>= (@?= "本文。\n")
   ]
 
 -- | A project with the identity plugin locked and cached.

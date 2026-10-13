@@ -279,6 +279,9 @@ main = putStrLn "Golem"
 `@style` の引数は段落スタイルの名前一つである。
 `style.toml` にない名前はエラーになる。
 
+段落の字下げは段落スタイルの `indent`（すべての行）と `first-line-indent`（最初の行に加える量。負ならぶら下げ）で指定する（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
+既定は 0 なので、段落スタイルで字下げを指定する場合は、段落の先頭の全角の空白を書かない。
+
 組み込みの段落スタイルは `body`、`verse`、`caption`、`sidenote` の四つである。
 段落スタイルを付けない段落は `body` で組む。
 `caption` と `sidenote` は、図版のキャプションと傍注の本文の書体と大きさを決める段落スタイルでもある。
@@ -310,9 +313,9 @@ main = putStrLn "Golem"
 - 各行の先頭と末尾の空白とタブは無視する。エスケープした空白（`\ `）も行の先頭では無視する。全角の空白（U+3000）は無視しないので、和文の詩で行ごとに字下げしたい場合は全角の空白を使う。
 - 行頭でエスケープの要る文字（`#`、`-`、`+`、`=`、`@`、`|`）は、ほかの段落と同じく `\` でエスケープする。
 
-PDF では、版面の行長を超えた行を折り返し、折り返した部分を字下げする。
-すべての行の字下げと、折り返した部分の字下げは、`style.toml` の `[verse]` の `indent` と `hang` で指定する。
-連の間に空ける行の数は、`[paragraph-styles.verse]` の `space-between` で指定する。
+PDF では、版面の行長を超えた行を折り返し、折り返した部分を字下げする（ぶら下げ）。
+各行の字下げは `style.toml` の `[paragraph-styles.verse]` の `indent` と `first-line-indent` で、連の間に空ける行の数は `space-between` で指定する（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
+既定は `indent = "2zw"`、`first-line-indent = "-2zw"` であり、各行の始まりは字下げせず、折り返した部分を二字下げる。
 
 以前の `@verse` はエラーになる。
 `golem fmt` が `@verse` を `@style verse` に書き換える。
