@@ -42,7 +42,7 @@ CTAN のパッケージのページ（https://ctan.org/pkg/cm ）は確かめて
 
 ## 組版の条件
 
-`frog-king.tex` は ADR 0007 の「TeX との対応」の表のとおりに設定する。
+`frog-king.tex` は golem-layout [ADR 0007](../../../../../docs/golem-layout/adr/0007-knuth-plass-reference-test.md) の「TeX との対応」の表のとおりに設定する。
 ハイフネーションと明示のハイフンでの分割は罰則 10000 で止め、`\frenchspacing` で語間の空きを一つの値にする。
 
 `\hsize` は 160pt、200pt、240pt、300pt の四つである。
