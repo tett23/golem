@@ -812,8 +812,18 @@ LSP は書きかけのファイルを常に扱うので、最初の構文エラ�
 
 コンパイルエラー、lint の警告、LSP の診断は、すべて同じ診断の形式で表す。
 各診断は、安定した診断コード、重大度、ソース位置、可能な場合は修正案を持つ。
-診断のコードの一覧と、コードごとの意味、原因、直し方は [docs/diagnostics.md](diagnostics.md) にまとめる。
-ソースで使うコードがこの一覧にすべて載っていることは、golem-cli のテストが確かめる。
+診断のコードの一覧と、コードごとの意味、原因、直し方は [docs/diagnostics.md](diagnostics.md) にまとめる（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
+この文書は golem-driver に埋め込み、`golem explain <コード>` で節をそのまま表示する。
+節の形（題、重大度、状態、意味、主な原因、直し方）はコンパイルのときに検査し、形の崩れた文書では golem をビルドできない。
+新しいコードを足すときは、同じ変更でこの文書に説明を足す。
+使わなくなったコードは、節を消さずに状態を廃止にする。
+ソースで使うコードがすべて使用中の節を持ち、使用中の節のコードがすべてソースで使われていることは、golem-driver のテストが確かめる。
+プラグインが出す診断のコードは、この文書の対象外である。
+
+人が読む形式で診断を出した後に、文書にあるコードが一つでもあれば、標準エラー出力に `コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）` の一行を加える。
+例のコードは、出した診断のうち文書にあるコードの最小のものである。
+この行は一度だけ加え、`--format json` には加えない。
+LSP は、文書にあるコードの診断の `codeDescription` に、`main` の `docs/diagnostics.md` の節の URL（`…/docs/diagnostics.md#g0117` の形）を付ける。
 
 ## コメント
 
@@ -1162,6 +1172,7 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得し、キャッシュする |
 | `golem plugin lock` | `plugins.lock` を更新する |
 | `golem inspect <file>` | CST、AST、プラグインとの CBOR を人が読める形で表示する |
+| `golem explain [CODE]` | 診断のコードの説明を表示する。コードを省くと、すべてのコードと題を一行ずつ表示する。未知のコードと形の誤りは使い方の誤りとする（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)） |
 | `golem --version` | `golem` に版を続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
 `golem new` での `id` の生成が、Golem が乱数を使う唯一の箇所である。
@@ -1372,7 +1383,6 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### CLI と LSP
 
-- **診断のコードの説明**：診断のコード（`G0701` など）が何を表しているかを、利用者が CLI で調べられるようにする。たとえば `golem explain G0701` のように、コードごとに意味、主な原因、直し方の例を表示する。今の診断は、コードと一行のメッセージを出すだけである。コードの一覧と説明は [docs/diagnostics.md](diagnostics.md) にまとめてあるが、CLI からは引けない。
 - **プリフライト**：`golem preflight` で、印刷所に入稿する前の検査を行う。InDesign のプリフライトとおおむね同じことをする。たとえば、フォントの欠落と埋め込みの可否、原稿の文字に対応するグリフのない文字、図版のファイルの欠落、図版の実効の解像度の不足、出力インテントに合わない色空間の図版、塗り足しまで届かない図版、版面やページに収まらない要素、PDF/X-4 への適合を検査し、問題を一覧にする。`golem check` は原稿と設定の誤りを、`golem preflight` は組んだ結果が印刷に耐えるかを見る。検査の項目、しきい値（解像度など）、InDesign のプリフライトプロファイルにあたる設定の置き場所は ADR で決める。
 - **LSP の位置の扱い**：UTF-8 の位置の交渉を、実際のエディタ（Neovim）で確かめていない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)、[golem-lsp ADR 0003](golem-lsp/adr/0003-position-handling.md)）。
 
