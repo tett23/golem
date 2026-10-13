@@ -101,6 +101,7 @@ tests =
     "golem-driver (ADR 0001)"
     [ explainTests,
       testGroup "project diagnostics (golem-project ADR 0006)" projectDiagnosticTests,
+      testGroup "reading stage (golem-parser ADR 0009)" readingTests,
       evalDiagnosticTests,
       testGroup
         "version (docs/adr/0004)"
@@ -725,6 +726,41 @@ withEntries style entries chapters others k = withSystemTempDirectory "golem-cha
   forM_ (chapters <> others) $ \(p, src) -> TIO.writeFile (tmp </> p) src
   k tmp
 
+-- | The reading stage of every file of a project (golem-parser ADR 0009).
+readingTests :: [TestTree]
+readingTests =
+  [ testCase "an imported file with CRLF is shown at its path" $
+      withChapters "" [("a.gm", "@import y.gm as y\n\n一。\n")] [("y.gm", "a\r\nb\n")] $ \tmp -> do
+        (codes, out) <- checked tmp
+        codes @?= [DiagnosticCode "G0103"]
+        assertBool (T.unpack out) ("y.gm:1:2:" `T.isPrefixOf` out),
+    testCase "manifest.toml with CRLF is G0103 at manifest.toml" $
+      withChapters "" [("a.gm", "一。\n")] [] $ \tmp -> do
+        m <- BS.readFile (tmp </> "manifest.toml")
+        BS.writeFile (tmp </> "manifest.toml") (BS.intercalate "\r\n" (BS.split 10 m))
+        (codes, out) <- checked tmp
+        codes @?= [DiagnosticCode "G0103"]
+        assertBool (T.unpack out) ("manifest.toml:" `T.isPrefixOf` out),
+    testCase "style.toml with a BOM is G0102, not G0306" $
+      withChapters "\xEF\xBB\xBF[page]\n" [("a.gm", "一。\n")] [] $ \tmp -> do
+        (codes, out) <- checked tmp
+        codes @?= [DiagnosticCode "G0102"]
+        assertBool (T.unpack out) ("style.toml:1:1:" `T.isPrefixOf` out),
+    testCase "style.toml with CRLF is G0103, with no fix" $
+      withChapters "[lists]\r\n" [("a.gm", "一。\n")] [] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optCheckOnly = True}
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G0103"]
+        concatMap diagFixes (brDiagnostics r) @?= [],
+    testCase "an empty expression is one G0120" $
+      withChapters "" [("a.gm", "[=]\n")] [] $ \tmp -> do
+        (codes, _) <- checked tmp
+        codes @?= [DiagnosticCode "G0120"]
+  ]
+  where
+    checked tmp = do
+      r <- build (defaultOptions tmp) {optCheckOnly = True}
+      pure (map diagCode (brDiagnostics r), renderHuman (brSources r) (brDiagnostics r))
+
 -- | G0307 once per name and the positions of a failed load (golem-project ADR 0006).
 projectDiagnosticTests :: [TestTree]
 projectDiagnosticTests =
@@ -1059,7 +1095,8 @@ pdfStyle =
   BS.concat
     [ "[page]\nsize = \"B6\"\nbinding = \"right\"\nwriting-mode = \"vertical\"\n\n",
       "[page.grid]\nfont-size = \"13Q\"\ncharacters = 42\nlines = 16\nline-pitch = \"22H\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n",
-      "[headings.1]\nnumber = \"第{n:kanji}章\"\n\n[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
+      -- UTF-8: a literal ByteString keeps only the low byte of each character
+      TE.encodeUtf8 "[headings.1]\nnumber = \"第{n:kanji}章\"\n\n[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
     ]
 
 -- | The running head tests (ADR 0014).

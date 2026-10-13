@@ -60,7 +60,11 @@ tests :: TestTree
 tests =
   testGroup
     "expressions and numerics (ADR 0001)"
-    [ testCase "boundary values" $ do
+    [ testCase "an EError is G0120 at its position (golem-parser ADR 0009)" $ do
+        let sp = mkSpan (FileId 2) 5 6
+        either (\d -> Just (diagCode d, diagSpan d)) (const Nothing) (evalExpr env (Located sp EError))
+          @?= Just (DiagnosticCode "G0120", sp),
+      testCase "boundary values" $ do
         shown "round(2.675, 2)" @?= Right "2.68"
         shown "round(-2.5)" @?= Right "-3"
         shown "fixed(1.5, 2)" @?= Right "1.50"

@@ -3,6 +3,8 @@ module LowerSpec (tests) where
 import Data.Text (Text)
 import Golem.Parser
 import Golem.Parser.AST
+import Golem.Parser.CST
+import Golem.Parser.Lower (lower)
 import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -154,5 +156,12 @@ tests =
         other -> assertFailure (show other),
       testCase "figure caption becomes the command body" $ case ast "@figure a.png alt=\"x\"\n  キャプション。\n" of
         [BlockCommand n args [Located _ (Paragraph _)]] -> (locValue n, length args) @?= ("figure", 2)
-        other -> assertFailure (show other)
+        other -> assertFailure (show other),
+      -- golem-parser ADR 0009
+      testCase "an expression slot with no expression is an error at the slot" $ do
+        let cst = node NFile [ElemToken (Token KText "ab"), ElemNode (node NParagraph [ElemNode (node NExpr [token KExprOpen "[=", token KRBracket "]"])]), token KNewline "\n"]
+            other = FileId 3
+        case map locValue (fileBlocks (lower other cst)) of
+          [Paragraph [Located _ (Expr (Located sp EError))]] -> sp @?= mkSpan other 2 2
+          bs -> assertFailure (show bs)
     ]
