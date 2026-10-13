@@ -12,6 +12,7 @@
 # tells which. The rules, the first that applies:
 #
 #   libHSrts*.a under the libdir of GHC          ghc
+#   libCffi.a under the libdir of GHC            ghc-libffi (the libffi in the RTS)
 #   libHS<name>-<version>-*.a                    haskell
 #   libgmp.a                                     gmp
 #   third_party/wasmtime/lib/libwasmtime.a       wasmtime
@@ -144,6 +145,10 @@ while IFS= read -r a; do
     libHSrts*.a)
       case "$real/" in "$GHC_REAL"/* | "${GHC_LIBDIR%/}"/*) comp=ghc ;; esac
       case "$a/" in "$GHC_REAL"/* | "${GHC_LIBDIR%/}"/*) comp=ghc ;; esac
+      ;;
+    libCffi.a)
+      case "$real/" in "$GHC_REAL"/* | "${GHC_LIBDIR%/}"/*) comp=ghc-libffi ;; esac
+      case "$a/" in "$GHC_REAL"/* | "${GHC_LIBDIR%/}"/*) comp=ghc-libffi ;; esac
       ;;
   esac
   if [ -z "$comp" ]; then
