@@ -156,6 +156,35 @@ gap = "0.5zw"
 行送り[index reading=ぎょうおくり: 行送り]は、段落スタイルでは変えられません。
 本文を行の格子にそろえて組むので、段落ごとに行送りが変わると、見開きの左右で行の位置がずれるからです。
 
+## 文字の送り
+
+文字スタイルと段落スタイルには、文字の送りを決める四つのキーも書けます。
+[style code: \[paragraph-styles.body\]] に書くと、本の全体の既定になります。
+文字スタイルで書かなかったキーは、外側の文字の値のままです。
+
+- [style code: kerning]：カーニング[index reading=かーにんぐ: カーニング]（字の組ごとの字間の調整）の方式です。[style code: "metrics"]（既定）は、フォントのペアカーニングの情報で字間を調整します。[style code: "japanese-equal-width"] は欧文だけを調整し、和文は全角の送りのまま組みます。[style code: "none"] は調整しません。
+- [style code: tracking]：文字ごとに足す空きです。文字の大きさの 1/1000 を単位に、-1000 から 10000 までの整数で書きます。負の値は字間を詰めます。
+- [style code: proportional-metrics]：[style code: true] にすると、和文を字面に合わせた送り（プロポーショナルメトリクス）で組みます。括弧類と句読点は全角のまま組みます。
+- [style code: baseline-shift]：文字を、横組みでは上へ、縦組みでは右へずらす量です。[style code: "1pt"] や [style code: "-0.25zw"] のように書きます。行の位置は変わりません。
+
+```toml
+[paragraph-styles.body]
+kerning = "japanese-equal-width"
+
+[character-styles.tight]
+tracking = -50
+```
+
+和文のフォントがカーニングの情報を持っていると、既定の [style code: metrics] では和文の字間が字の組ごとに変わり、字送りの格子からずれる行が出ます。
+格子にそろえたい本文は、[style code: \[paragraph-styles.body\]] に [style code: kerning = "japanese-equal-width"] と書いてください。
+約物（括弧類、句読点、中点類）を含む字の組には、和文のカーニングをかけません。
+トラッキングの空きは、行の最後の文字の後ろには入りません。
+オプティカルカーニング（[style code: kerning = "optical"]）は、まだ使えません。
+書くと G0321 のエラーになります。
+
+HTML と EPUB では、CSS の [style code: font-kerning]、[style code: letter-spacing]、[style code: font-feature-settings]、[style code: vertical-align] で表します。
+CSS では和文と欧文で別のカーニングを指定できないので、[style code: japanese-equal-width] は欧文のカーニングを保ちます。
+
 ## ファイルの中のスタイル
 
 一つの章でだけ使う段落スタイルと文字スタイルは、その章のファイルの先頭に [style code: @style-def] で書けます。
