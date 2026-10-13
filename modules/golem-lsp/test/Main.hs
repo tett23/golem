@@ -16,6 +16,10 @@ import Golem.Lsp.Features
 import Golem.Lsp.Server (rewriteInitializeResponse, runGolemLspWithHandles)
 import Golem.Lsp.Workspace
 import Golem.Syntax
+import Hedgehog hiding (assert)
+import Hedgehog qualified as H
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
@@ -27,6 +31,7 @@ import System.Process (createPipe)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
+import Test.Tasty.Hedgehog
 
 root :: FilePath
 root = "test/fixtures/proj"
@@ -37,6 +42,13 @@ main = defaultMain tests
 -- | Byte offset of the k-th byte inside the first occurrence of needle.
 offsetIn :: Text -> Text -> Int -> Int
 offsetIn src needle k = BS.length (TE.encodeUtf8 (fst (T.breakOn needle src))) + k
+
+genText :: Gen Text
+genText =
+  T.pack
+    <$> Gen.list
+      (Range.linear 0 80)
+      (Gen.element ("ab 漢字かな\n😀𠮷x" :: String))
 
 textOf :: Workspace -> FilePath -> Text
 textOf ws p = maybe "" srcText (sourceOf ws p)
@@ -136,6 +148,41 @@ tests =
         fromLineCol Utf8 li (LineCol l (lcColumn (toLineCol Utf8 li off))) @?= Just off
         fromLineCol Utf16 li (LineCol l (lcColumn (toLineCol Utf16 li off))) @?= Just off
         fromLineCol Utf16 li (LineCol l (lcColumn (toLineCol Utf16 li off) - 1)) @?= Nothing, -- inside the pair
+      testCase "columns past the line end clamp to the line end (ADR 0003)" $ do
+        let li = mkLineIndex "漢字\nab"
+        fromLineCol Utf8 li (LineCol 0 7) @?= Just 6
+        fromLineCol Utf8 li (LineCol 0 1000) @?= Just 6
+        fromLineCol Utf16 li (LineCol 0 3) @?= Just 6
+        fromLineCol Utf16 li (LineCol 0 1000) @?= Just 6
+        fromLineCol Utf16 li (LineCol 0 2) @?= Just 6
+        fromLineCol Utf8 li (LineCol 1 5) @?= Just 9
+        fromLineCol Utf8 li (LineCol 2 0) @?= Nothing
+        fromLineCol Utf16 li (LineCol 2 0) @?= Nothing
+        fromLineCol Utf8 li (LineCol 0 1) @?= Nothing
+        let emoji = mkLineIndex "😀a"
+        fromLineCol Utf16 emoji (LineCol 0 1) @?= Nothing
+        fromLineCol Utf16 emoji (LineCol 0 9) @?= Just 5,
+      testProperty "a converted position lies within its line (ADR 0003)" $ property $ do
+        t <- forAll genText
+        enc <- forAll (Gen.element [Utf8, Utf16])
+        let li = mkLineIndex t
+        l <- forAll (Gen.int (Range.linear (-1) (lineCount li)))
+        c <- forAll (Gen.int (Range.linear 0 40))
+        case fromLineCol enc li (LineCol l c) of
+          Nothing -> success
+          Just o -> do
+            let start = fromLineCol enc li (LineCol l 0)
+            H.assert (maybe False (<= o) start)
+            H.assert (maybe False (o <=) (lineEndOffset li l)),
+      testProperty "within the line, fromLineCol agrees with the exact conversions (ADR 0003)" $ property $ do
+        t <- forAll genText
+        let li = mkLineIndex t
+        l <- forAll (Gen.int (Range.linear 0 (lineCount li - 1)))
+        let end = fromMaybe 0 (lineEndOffset li l)
+        c8 <- forAll (Gen.int (Range.linear 0 (lcColumn (toLineCol Utf8 li end))))
+        c16 <- forAll (Gen.int (Range.linear 0 (lcColumn (toLineCol Utf16 li end))))
+        fromLineCol Utf8 li (LineCol l c8) === utf8LineColToOffset li (LineCol l c8)
+        fromLineCol Utf16 li (LineCol l c16) === utf16LineColToOffset li (LineCol l c16),
       testCase "the workspace keeps a line index per file and follows edits (ADR 0002)" $ do
         ws0 <- openWorkspace root
         lineCount (lineIndexOf ws0 "a.gm") @?= lineCount (mkLineIndex (textOf ws0 "a.gm"))
@@ -173,7 +220,17 @@ tests =
                 assertBool "has a G0403" (not (null (srMissingLabelColumns r8))),
               testCase "utf-8 hover inside a character returns null (ADR 0002)" $ do
                 r8 <- s8
-                srInsideHover r8 @?= Just Nothing
+                srInsideHover r8 @?= Just Nothing,
+              testCase "completion past the line end clamps to the line end (ADR 0003)" $ do
+                r16 <- s16
+                r8 <- s8
+                srClampCompletions r16 @?= (["accent"], ["accent"])
+                srClampCompletions r8 @?= (["accent"], ["accent"]),
+              testCase "hover past the line end equals hover at the line end (ADR 0003)" $ do
+                r16 <- s16
+                r8 <- s8
+                uncurry (@?=) (srClampHover r16)
+                uncurry (@?=) (srClampHover r8)
             ]
     ]
 
@@ -192,7 +249,11 @@ utf8Session = SessionSpec [L.PositionEncodingKind_UTF8, L.PositionEncodingKind_U
 data SessionResult = SessionResult
   { srLines :: [String],
     srMissingLabelColumns :: [L.UInt],
-    srInsideHover :: Maybe (Maybe Text)
+    srInsideHover :: Maybe (Maybe Text),
+    -- | completions on b.gm "[color " at the line end and at column 1000
+    srClampCompletions :: ([Text], [Text]),
+    -- | hover on a.gm line 5 at column 1000 and at the line end
+    srClampHover :: (Maybe Text, Maybe Text)
   }
 
 render :: SessionResult -> BL.ByteString
@@ -207,6 +268,7 @@ withEncodings encs (L.ClientCapabilities w t n win gen ex) =
 session :: SessionSpec -> IO SessionResult
 session spec = do
   absRoot <- makeAbsolute root
+  aSource <- TE.decodeUtf8 <$> BS.readFile (root </> "a.gm")
   (serverIn, clientOut) <- createPipe
   (clientIn, serverOut) <- createPipe
   void (forkIO (void (runGolemLspWithHandles serverIn serverOut)))
@@ -215,6 +277,12 @@ session spec = do
     doc <- LT.openDoc "a.gm" "golem"
     h <- LT.getHover doc (ssHover spec)
     inside <- traverse (fmap (fmap hoverText) . LT.getHover doc) (ssInside spec)
+    let line5 = T.lines aSource !! 5
+        line5End
+          | L.PositionEncodingKind_UTF8 `elem` ssEncodings spec = BS.length (TE.encodeUtf8 line5)
+          | otherwise = T.length line5 + T.count "😀" line5
+    farHover <- fmap hoverText <$> LT.getHover doc (L.Position 5 1000)
+    endHover <- fmap hoverText <$> LT.getHover doc (L.Position 5 (fromIntegral line5End))
     defs <- LT.getDefinitions doc (ssDefinition spec)
     syms <- LT.getDocumentSymbols doc
     refs <- LT.getReferences doc (L.Position 2 8) True
@@ -222,6 +290,11 @@ session spec = do
     diags <- LT.waitForDiagnosticsSource "golem"
     LT.changeDoc doc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument "😀[ref-title nosuch]\n"))]
     missing <- missingLabel (absRoot </> "a.gm")
+    bdoc <- LT.openDoc "b.gm" "golem"
+    LT.changeDoc bdoc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument "[color \n"))]
+    _ <- errorsFor (absRoot </> "b.gm")
+    atEnd <- completionLabels <$> LT.getCompletions bdoc (L.Position 0 7)
+    far <- completionLabels <$> LT.getCompletions bdoc (L.Position 0 1000)
     pure
       SessionResult
         { srLines =
@@ -235,7 +308,9 @@ session spec = do
             ]
               <> maybe [] (\i -> ["hover inside a character: " <> show i]) inside,
           srMissingLabelColumns = [c | d <- missing, let L.Range (L.Position _ c) _ = d ^. diagRange],
-          srInsideHover = inside
+          srInsideHover = inside,
+          srClampCompletions = (atEnd, far),
+          srClampHover = (farHover, endHover)
         }
   hClose clientOut
   pure r
@@ -243,6 +318,7 @@ session spec = do
     (^.) x f = f x
     diagRange (L.Diagnostic rng _ _ _ _ _ _ _ _) = rng
     diagCode (L.Diagnostic _ _ c _ _ _ _ _ _) = c
+    startLine d = let L.Range (L.Position l _) _ = diagRange d in l
     hoverText (L.Hover (L.InL (L.MarkupContent _ t)) _) = t
     hoverText _ = ""
     positionEncoding (M.TResponseMessage _ _ res) = case res of
@@ -254,6 +330,18 @@ session spec = do
     symbolNames = \case
       Right ds -> [(n, [c | L.DocumentSymbol c _ _ _ _ _ _ _ <- fromMaybe [] kids]) | L.DocumentSymbol n _ _ _ _ _ _ kids <- ds]
       Left _ -> []
+    completionLabels = map (\(L.CompletionItem lbl _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _) -> lbl)
+    -- the diagnostics of the one-line b.gm: published for it, with
+    -- nothing on a later line left over from its previous content
+    errorsFor :: FilePath -> LT.Session [L.Diagnostic]
+    errorsFor path = do
+      msg <- LT.anyMessage
+      case msg of
+        M.FromServerMess M.SMethod_TextDocumentPublishDiagnostics (M.TNotificationMessage _ _ (L.PublishDiagnosticsParams u _ ds))
+          | L.uriToFilePath u == Just path,
+            all ((== 0) . startLine) ds ->
+              pure ds
+        _ -> errorsFor path
     -- the G0403 diagnostics published for the given file
     missingLabel :: FilePath -> LT.Session [L.Diagnostic]
     missingLabel path = do
