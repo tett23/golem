@@ -169,7 +169,7 @@ fileStyles style header =
                       | not (null shapeErrs) -> (defs, ds <> shapeErrs)
                       | any (\(Def _ k' n _) -> k' == k && n == name) defs -> (defs, ds <> [err "G0253" sp ("同じ名前のスタイルを二度定義しています: " <> name)])
                       | otherwise -> case localStyleDef k [(key, v) | (key, _, v) <- kvs] of
-                          Left ms -> (defs, ds <> [err "G0306" sp ("@style-def の値が不正です: " <> m) | m <- ms])
+                          Left ms -> (defs, ds <> [err code sp ("@style-def の値が不正です: " <> m) | (code, m) <- ms])
                           Right d -> (defs <> [Def sp k name d], ds)
             _ -> (defs, ds <> [err "G0252" sp shape] <> shapeErrs)
     isSplat = \case

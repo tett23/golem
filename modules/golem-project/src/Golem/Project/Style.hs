@@ -12,6 +12,8 @@ module Golem.Project.Style
     Grid (..),
     FontRole (..),
     CharStyleDef (..),
+    Kerning (..),
+    featureKeys,
     LineBreaks (..),
     ParaStyleDef (..),
     builtinCharStyles,
@@ -55,7 +57,7 @@ module Golem.Project.Style
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (when)
+import Control.Monad (when, (>=>))
 import Data.Bifunctor (bimap)
 import Data.Char (isAsciiLower, isDigit)
 import Data.List (nub)
@@ -158,6 +160,12 @@ data FontRole = FontRole
   }
   deriving stock (Eq, Show)
 
+{- | The kerning method of a style (docs/adr/0020). 'KernOptical' is read
+and then rejected by the checks of style.toml (G0321): it is a v2 item.
+-}
+data Kerning = KernMetrics | KernJapaneseEqualWidth | KernNone | KernOptical
+  deriving stock (Eq, Ord, Show)
+
 -- | [character-styles.<name>] (docs/adr ADR 0005).
 data CharStyleDef = CharStyleDef
   { csBasedOn :: !(Maybe Text),
@@ -165,7 +173,15 @@ data CharStyleDef = CharStyleDef
     csSize :: !(Maybe Dim),
     csColor :: !(Maybe Text),
     csSyntheticBold :: !(Maybe Bool),
-    csSyntheticItalic :: !(Maybe Bool)
+    csSyntheticItalic :: !(Maybe Bool),
+    -- | the kerning method (docs/adr/0020)
+    csKerning :: !(Maybe Kerning),
+    -- | the space added after each character, in 1/1000 of the size
+    csTracking :: !(Maybe Int),
+    -- | palt (vpal in vertical text) on Japanese characters
+    csProportional :: !(Maybe Bool),
+    -- | up in horizontal text, right in vertical text
+    csBaselineShift :: !(Maybe Dim)
   }
   deriving stock (Eq, Show)
 
@@ -183,17 +199,36 @@ data ParaStyleDef = ParaStyleDef
     -- | the start of every line (docs/adr ADR 0006)
     psIndent :: !(Maybe Dim),
     -- | added to the indent on the first line; negative hangs
-    psFirstLineIndent :: !(Maybe Dim)
+    psFirstLineIndent :: !(Maybe Dim),
+    -- | the kerning method, tracking, proportional metrics and baseline shift (docs/adr/0020)
+    psKerning :: !(Maybe Kerning),
+    psTracking :: !(Maybe Int),
+    psProportional :: !(Maybe Bool),
+    psBaselineShift :: !(Maybe Dim)
   }
   deriving stock (Eq, Show)
 
 -- | A character style with no key written.
 noCharDef :: CharStyleDef
-noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing
+noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+
+-- | The keys body has without a definition (docs/adr ADR 0005, 0006; docs/adr/0020).
+bodyDefaults :: ParaStyleDef
+bodyDefaults =
+  noParaDef
+    { psLineBreaks = Just JoinLines,
+      psSpaceBetween = Just 0,
+      psIndent = Just (Zw 0),
+      psFirstLineIndent = Just (Zw 0),
+      psKerning = Just KernMetrics,
+      psTracking = Just 0,
+      psProportional = Just False,
+      psBaselineShift = Just (Abs 0)
+    }
 
 -- | The built-in character styles: bold, italic and strong.
 builtinCharStyles :: Map Text CharStyleDef
@@ -208,7 +243,7 @@ builtinCharStyles =
 builtinParaStyles :: Map Text ParaStyleDef
 builtinParaStyles =
   Map.fromList
-    [ ("body", noParaDef {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0, psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0)}),
+    [ ("body", bodyDefaults),
       ("verse", noParaDef {psBasedOn = Just "body", psLineBreaks = Just KeepLines, psSpaceBetween = Just 1, psIndent = Just (Zw 2), psFirstLineIndent = Just (Zw (-2))}),
       ("caption", noParaDef {psBasedOn = Just "body"}),
       ("sidenote", noParaDef {psBasedOn = Just "body"})
@@ -224,6 +259,10 @@ overChar u b =
     (csColor u <|> csColor b)
     (csSyntheticBold u <|> csSyntheticBold b)
     (csSyntheticItalic u <|> csSyntheticItalic b)
+    (csKerning u <|> csKerning b)
+    (csTracking u <|> csTracking b)
+    (csProportional u <|> csProportional b)
+    (csBaselineShift u <|> csBaselineShift b)
 
 overPara :: ParaStyleDef -> ParaStyleDef -> ParaStyleDef
 overPara u b =
@@ -235,6 +274,10 @@ overPara u b =
     (psSpaceBetween u <|> psSpaceBetween b)
     (psIndent u <|> psIndent b)
     (psFirstLineIndent u <|> psFirstLineIndent b)
+    (psKerning u <|> psKerning b)
+    (psTracking u <|> psTracking b)
+    (psProportional u <|> psProportional b)
+    (psBaselineShift u <|> psBaselineShift b)
 
 -- | The parent of a paragraph style: body has none, the others are based on body by default.
 paraParent :: Text -> ParaStyleDef -> Maybe Text
@@ -265,10 +308,9 @@ value; based-on is the style's parent.
 paraStyle :: Style -> Maybe Text -> Maybe ParaStyleDef
 paraStyle style mname =
   let name = fromMaybe "body" mname
-      defaults = noParaDef {psLineBreaks = Just JoinLines, psSpaceBetween = Just 0, psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0)}
    in case chainOf paraParent (stParaStyles style) name of
         [] -> Nothing
-        chain@(d : _) -> Just (foldr overPara defaults chain) {psBasedOn = paraParent name d}
+        chain@(d : _) -> Just (foldr overPara bodyDefaults chain) {psBasedOn = paraParent name d}
 
 -- | Whether each paragraph style keeps its lines, resolved (docs/adr ADR 0005).
 paraLineBreaks :: Style -> Map Text LineBreaks
@@ -560,15 +602,41 @@ instance FromValue FontRole where
       (FontRole . fmap T.unpack <$> optKey "ja") <*> (fmap T.unpack <$> optKey "latin") <*> (fromMaybe [] <$> optKey "features")
 
 instance FromValue CharStyleDef where
-  fromValue =
-    parseTableFromValue $
-      CharStyleDef
-        <$> optKey "based-on"
-        <*> optKey "font"
-        <*> dimKey "size"
-        <*> optKey "color"
-        <*> optKey "synthetic-bold"
-        <*> optKey "synthetic-italic"
+  fromValue = parseTableFromValue $ do
+    b <- optKey "based-on"
+    f <- optKey "font"
+    s <- dimKey "size"
+    c <- optKey "color"
+    sb <- optKey "synthetic-bold"
+    si <- optKey "synthetic-italic"
+    (k, t, p, bs) <- featureKeysOf
+    pure (CharStyleDef b f s c sb si k t p bs)
+
+{- | kerning, tracking, proportional-metrics and baseline-shift
+(docs/adr/0020). Every error is under its key, which makes it G0321.
+-}
+featureKeysOf :: ParseTable l (Maybe Kerning, Maybe Int, Maybe Bool, Maybe Dim)
+featureKeysOf = do
+  let wrong key v = fail (T.unpack (key <> " の値が正しくありません: " <> v))
+  k <-
+    optKeyOf "kerning" $
+      fromValue >=> \case
+        "metrics" -> pure KernMetrics
+        "japanese-equal-width" -> pure KernJapaneseEqualWidth
+        "none" -> pure KernNone
+        "optical" -> pure KernOptical
+        v -> wrong "kerning" v
+  t <-
+    optKeyOf "tracking" $
+      fromValue >=> \n ->
+        if n < -1000 || n > 10000 then wrong "tracking" (T.pack (show n) <> "（-1000 から 10000 までです）") else pure n
+  p <- optKey "proportional-metrics"
+  bs <- optKeyOf "baseline-shift" (fromValue >=> \v -> maybe (wrong "baseline-shift" v) pure (parseSignedDim v))
+  pure (k, t, p, bs)
+
+-- | The keys of 'featureKeysOf': their errors are G0321 (docs/adr/0020).
+featureKeys :: [Text]
+featureKeys = ["kerning", "tracking", "proportional-metrics", "baseline-shift"]
 
 instance FromValue ParaStyleDef where
   fromValue = parseTableFromValue $ do
@@ -581,7 +649,8 @@ instance FromValue ParaStyleDef where
     ind <- dimKey "indent"
     fli <- optKey "first-line-indent"
     fli' <- traverse (\v -> maybe (fail ("長さの書き方が不正です: " <> T.unpack v <> "（1zw や -1zw のように書きます）")) pure (parseSignedDim v)) fli
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli')
+    (k, t, p, bs) <- featureKeysOf
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' k t p bs)
 
 instance FromValue HeadingStyle where
   fromValue = parseTableFromValue $ do
@@ -861,6 +930,8 @@ parseStyle fid src = do
       -- the contents of a running head are G0314, the retired running-head of a heading G0319 (golem-driver ADR 0014)
       ScopeKey "masters" : _ : ScopeKey "running-head" : ScopeKey k : _ | k `elem` ["content", "even", "odd"] -> "G0314"
       ScopeKey "headings" : _ : ScopeKey "running-head" : _ -> "G0319"
+      -- the keys of kerning, tracking and baseline shift are G0321 (docs/adr/0020)
+      ScopeKey t : _ : ScopeKey k : _ | t `elem` ["character-styles", "paragraph-styles"], k `elem` featureKeys -> "G0321"
       _ -> "G0306"
 
 {- | The checks of the styles of a 'Style' (docs/adr ADR 0005, 0006, 0014):
@@ -877,7 +948,12 @@ styleChecks owner s =
     <> [("G0313", n, owner <> "スタイルの参照が不正です: " <> m) | (n, m) <- referenceChecks]
     <> [("G0311", n, "段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks]
     <> [("G0312", n, "段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | n <- indentChecks]
+    <> [("G0321", n, "v1 ではオプティカルカーニングを使えません（" <> kind <> " " <> n <> " の kerning）") | (kind, n) <- opticals]
   where
+    -- optical kerning is a v2 item (docs/adr/0020)
+    opticals =
+      [("文字スタイル", n) | (n, CharStyleDef {csKerning = Just KernOptical}) <- Map.toList (stCharStyles s)]
+        <> [("段落スタイル", n) | (n, ParaStyleDef {psKerning = Just KernOptical}) <- Map.toList (stParaStyles s)]
     -- font roles named outside [fonts] must exist (golem-driver ADR 0003, 0004; docs/adr ADR 0005)
     roles =
       [("", f) | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings s)]
@@ -969,27 +1045,31 @@ data LocalValue = LocalWord Text | LocalString Text
 
 -- | The keys @style-def takes, as style.toml's (for completion).
 charStyleKeys, paraStyleKeys :: [Text]
-charStyleKeys = ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic"]
-paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent"]
+charStyleKeys = ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic"] <> featureKeys
+paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent"] <> featureKeys
 
 {- | The keys of one @style-def as a TOML table, read with the 'FromValue'
 of style.toml: a string is a string, the words true and false are
 booleans, a word of digits (with a leading -) is an integer, any other
-word is a string. Errors are messages of G0306.
+word is a string. Errors are (code, message): G0321 for the keys of
+kerning, tracking and baseline shift (docs/adr/0020), G0306 for the others.
 -}
-localStyleDef :: StyleKind -> [(Text, LocalValue)] -> Either [Text] (Either CharStyleDef ParaStyleDef)
+localStyleDef :: StyleKind -> [(Text, LocalValue)] -> Either [(Text, Text)] (Either CharStyleDef ParaStyleDef)
 localStyleDef kind kvs =
   let tab = Table (table [(k, tomlValue v) | (k, v) <- kvs])
    in case kind of
         CharacterKind -> Left <$> run tab
         ParagraphKind -> Right <$> run tab
   where
-    run :: (FromValue a) => Value -> Either [Text] a
+    run :: (FromValue a) => Value -> Either [(Text, Text)] a
     run v = case runMatcher (fromValue v) of
       Failure es -> Left (map message es)
       Success [] a -> Right a
       Success ws _ -> Left (map message ws)
-    message (MatchMessage _ path msg) = T.pack (msg <> concatMap scope path)
+    message (MatchMessage _ path msg) = (codeOf path, T.pack (msg <> concatMap scope path))
+    codeOf = \case
+      ScopeKey k : _ | k `elem` featureKeys -> "G0321"
+      _ -> "G0306"
     scope = \case
       ScopeKey k -> " (" <> T.unpack k <> ")"
       ScopeIndex i -> " [" <> show i <> "]"

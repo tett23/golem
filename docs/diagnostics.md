@@ -2134,6 +2134,7 @@ style.toml の誤りです
 判型（`[page]` の `size`）の誤りには使わない（[G0317](#g0317)）。
 マスターページの柱の内容の誤りには使わない（[G0314](#g0314)）。
 見出しの `running-head` には使わない（[G0319](#g0319)）。
+文字スタイルと段落スタイルの `kerning`、`tracking`、`proportional-metrics`、`baseline-shift` の誤りには使わない（[G0321](#g0321)）。
 `@style-def` の名前と欄の誤りにも出る。誤りのある定義は捨てる。
 
 - メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。スキーマの誤りには誤った箇所の経路を添え、経路が空のときは添えない。toml-parser 自身の文言（`missing key`、`unexpected key` など）は英語のままである。
@@ -2433,6 +2434,38 @@ manifest.toml がありません
 ### 直し方
 
 `[headings.<階層>]` の `running-head` の行を消し、マスターページの `running-head` に `content = "heading.1.short"` のように柱に出す見出しの階層を書く。
+
+## G0321
+
+文字の送りの欄の値が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+文字スタイルか段落スタイルの `kerning`、`tracking`、`proportional-metrics`、`baseline-shift` の値が正しくない。
+`style.toml` の `[character-styles.<名前>]` と `[paragraph-styles.<名前>]` にも、ファイルの中の定義（`@style-def`）にも出る。
+`kerning = "optical"` もこのコードになる。
+オプティカルカーニングは v2 以降に回した。
+
+- メッセージ: `<欄> の値が正しくありません: <値>`。`tracking` の範囲の外では `（-1000 から 10000 までです）` を添える。`kerning = "optical"` は `v1 ではオプティカルカーニングを使えません（<文字スタイル|段落スタイル> <名前> の kerning）`。値の型の誤りは toml-parser の文言になる。誤った箇所の経路を添える。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
+- ADR: [docs/adr/0020](adr/0020-indesign-character-features.md)
+
+### 主な原因
+
+- `kerning` に `metrics`、`japanese-equal-width`、`none` のほかの値を書いた。
+- `kerning = "optical"` と書いた。
+- `tracking` が -1000 から 10000 までの整数でない。
+- `proportional-metrics` が真偽値でない。
+- `baseline-shift` が `"1pt"` や `"-0.25zw"` のような寸法として読めない。
+
+### 直し方
+
+`kerning` は `metrics`、`japanese-equal-width`、`none` のどれかにする。
+オプティカルカーニングの代わりには `metrics` を使う。
+`tracking` は -1000 から 10000 までの整数（文字の大きさの 1/1000 が単位）で、`proportional-metrics` は `true` か `false` で、`baseline-shift` は符号付きの寸法で書く。
 
 ## G0322
 
