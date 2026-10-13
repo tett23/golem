@@ -33,6 +33,7 @@ import Golem.Lint
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.CST (Node)
+import Golem.Parser.SourceSettings
 import Golem.Project
 import Golem.Project.Style (Style (..), defaultStyle, withLocalStyles)
 import Golem.Syntax
@@ -149,7 +150,7 @@ loose path text =
   let fid = FileId 0
       (ast, cst, synDiags) = parseAst fid text
       -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
-      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultStyle
+      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle
       res = evalFile ctx ast
    in Source path fid text cst ast (Just res {erDiagnostics = synDiags <> erDiagnostics res}) False
 
@@ -216,7 +217,8 @@ diagnosticsFor ws =
   where
     -- the styles a loose file defines count for its G0501 (docs/adr ADR 0014)
     looseKeep s = maybe builtinKeepStyles (keepStyles . withLocalStyles defaultStyle . erStyles) (srcResult s)
-    looseDiags = Map.map (\s -> sortDiagnostics (maybe [] erDiagnostics (srcResult s) <> latinJoinedByNewline (looseKeep s) (srcFile s) (srcCst s))) (wsLoose ws)
+    -- and its @manifest (docs/adr ADR 0013, 0014)
+    looseDiags = Map.map (\s -> sortDiagnostics (maybe [] erDiagnostics (srcResult s) <> latinJoinedByNewline (maybe defaultSourceSettings erSource (srcResult s)) (looseKeep s) (srcFile s) (srcCst s))) (wsLoose ws)
     projectDiags = case wsEvaluated ws of
       Nothing -> Map.fromList [("manifest.toml", wsProjectErrors ws)]
       Just e ->

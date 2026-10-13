@@ -36,18 +36,20 @@ lintEvaluated e =
       sources = Map.toList (projectSources project)
       keep = keepStyles (evStyle e)
       locals = localStylesOf e
+      -- how each file was read, @manifest included (docs/adr ADR 0013, 0014)
+      sourceOf fid = maybe (sourceSettingsOf project fid) erSource (Map.lookup fid (evResults e))
       files =
-        [ FileLint fid (sfPath sf) (sfCst sf) (erUsage r)
+        [ FileLint fid (sfPath sf) (sfCst sf) (erSource r) (erUsage r)
         | (fid, sf) <- sources,
           Just r <- [Map.lookup fid (evResults e)]
         ]
       -- G0501 again for the files with styles of their own
       perFile ds =
         [d | d <- ds, not (diagCode d == DiagnosticCode "G0501" && Map.member (spanFile (diagSpan d)) locals)]
-          <> concat [latinJoinedByNewline (keepStyles (docStyles e fid)) fid (sfCst sf) | (fid, sf) <- sources, Map.member fid locals]
+          <> concat [latinJoinedByNewline (sourceOf fid) (keepStyles (docStyles e fid)) fid (sfCst sf) | (fid, sf) <- sources, Map.member fid locals]
    in case evBook e of
         Just b -> perFile (lint (LintInput files (Map.map ltSpan (bookLabels b)) (bookReferenced b) keep))
         -- evaluation stopped: only the rules that need no evaluation
         Nothing
-          | null files -> concat [latinJoinedByNewline keep fid (sfCst sf) | (fid, sf) <- sources]
+          | null files -> concat [latinJoinedByNewline (sourceOf fid) keep fid (sfCst sf) | (fid, sf) <- sources]
           | otherwise -> perFile (lint (LintInput files Map.empty Set.empty keep))

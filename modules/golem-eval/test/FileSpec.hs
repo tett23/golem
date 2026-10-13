@@ -8,6 +8,7 @@ import Golem.Doc.IR
 import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
+import Golem.Parser.SourceSettings
 import Golem.Project.Style (LineBreaks (..), LocalStyles (..), Style (..), defaultStyle, paraLineBreaks, parseStyle)
 import Golem.Syntax
 import Test.Tasty
@@ -34,6 +35,7 @@ ctx =
             ("src/Main.hs", Just "l1\nl2\nl3\n")
           ],
       ctxPlugins = noPlugins,
+      ctxSource = defaultSourceSettings,
       ctxStyle = defaultStyle
     }
 
@@ -93,6 +95,7 @@ tests =
     [ verseTests,
       settingsTests,
       styleTests,
+      separatorTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
@@ -213,7 +216,7 @@ styleTests =
         errs "@style nope\nx\n" @?= ["G0247"]
         map stripped (body "@style nope\nx\n") @?= [(Nothing, ["x"])]
         errs "@style\n  x\n" @?= ["G0247"]
-        errs "@verse\n  A\n" @?= ["G0248"]
+        errs "@verse\n  A\n" @?= ["G0209"]
         errs "@style verse\n  - a\n" @?= ["G0245"]
         errs "@style verse\n  %% c %%\n" @?= ["G0246"]
         errs "@style verse\n" @?= ["G0210"],
@@ -360,3 +363,70 @@ settingsTests =
     stripped = \case
       Paragraph st is -> (st, stripSpans is)
       other -> error (show other)
+
+-- ------------------------------------------------------------------ paragraph separator
+
+-- | The context of the line style (docs/adr ADR 0013).
+lineCtx :: EvalContext
+lineCtx = ctx {ctxSource = SourceSettings LineSeparated}
+
+-- | The blocks of a source in a context.
+blocksIn :: EvalContext -> Text -> [Block]
+blocksIn c src = let (file, _, _) = parseAst (FileId 1) src in docBlocks (erDocument (evalFile c file))
+
+-- | Each block as its paragraph style and text, or its constructor.
+shapes :: EvalContext -> Text -> [(Maybe Text, [Text])]
+shapes c = map (shapeOf . blockBody) . blocksIn c
+
+shapeOf :: BlockBody -> (Maybe Text, [Text])
+shapeOf = \case
+  Paragraph st is -> (st, stripSpans is)
+  Heading _ _ is -> (Just "#", stripSpans is)
+  other -> (Just "?", [T.pack (show other)])
+
+separatorTests :: TestTree
+separatorTests =
+  testGroup
+    "paragraph separator (docs/adr ADR 0013)"
+    [ testCase "one newline separates paragraphs in the line style only" $ do
+        shapes lineCtx "a\nb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])]
+        shapes ctx "a\nb\n" @?= [(Nothing, ["ab"])],
+      testCase "blank lines separate paragraphs in both styles" $ do
+        shapes lineCtx "a\n\n\nb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])]
+        shapes ctx "a\n\n\nb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])],
+      testCase "spaces and tabs at the start of a line go; the ideographic space stays" $ do
+        shapes lineCtx "a\n  b\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])]
+        shapes lineCtx "a\n\tb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])]
+        shapes lineCtx "a\n\x3000b\n" @?= [(Nothing, ["a"]), (Nothing, ["\x3000b"])],
+      testCase "a line of comments makes no paragraph; a comment across lines does not separate" $ do
+        shapes lineCtx "a\n%% c %%\nb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])]
+        length (shapes lineCtx "a %% x\ny %% b\n") @?= 1,
+      testCase "a proofreading comment alone on a line stays a paragraph" $
+        length (shapes lineCtx "a\n%%= c %%\nb\n") @?= 3,
+      testCase "newlines in a prose slot neither separate nor make characters" $
+        shapes lineCtx "[note: x\ny] z\nw\n" @?= [(Nothing, ["<note 1>", "xy", " z"]), (Nothing, ["w"])],
+      testCase "an attribute goes to the first line only" $ do
+        let bs = blocksIn lineCtx "@label p\na\nb\n"
+        map blockLabel bs @?= [Just "p", Nothing]
+        map (shapeOf . blockBody) bs @?= [(Nothing, ["a"]), (Nothing, ["b"])],
+      testCase "a keep style keeps its lines; its stanzas are separated by blank lines" $ do
+        shapes lineCtx "@style verse\na\nb\n" @?= [(Just "verse", ["a", "<br>", "b"])]
+        shapes lineCtx "@style verse\n  a\n  b\n\n  c\n" @?= [(Just "verse", ["a", "<br>", "b"]), (Just "verse", ["c"])],
+      testCase "the body of a join style is split" $
+        shapes lineCtx "@style quote\n  a\n  b\n" @?= [(Just "quote", ["a"]), (Just "quote", ["b"])],
+      testCase "the continuation line of a list item is the next paragraph of the item" $
+        case map blockBody (blocksIn lineCtx "- a\n  b\n") of
+          [BulletList [ListItem Nothing bs]] -> map (shapeOf . blockBody) bs @?= [(Nothing, ["a"]), (Nothing, ["b"])]
+          other -> assertFailure (show other),
+      testCase "a block starts at the start of a line in both styles" $ do
+        shapes lineCtx "a\n# h\nb\n" @?= [(Nothing, ["a"]), (Just "#", ["h"]), (Nothing, ["b"])]
+        shapes ctx "a\n# h\nb\n" @?= [(Nothing, ["a"]), (Just "#", ["h"]), (Nothing, ["b"])],
+      testCase "a caption of a figure is split" $
+        case map blockBody (blocksIn lineCtx "@figure images/a.png alt=a\n  c1\n  c2\n") of
+          [FigureBlock f] -> map (shapeOf . blockBody) (figCaption f) @?= [(Nothing, ["c1"]), (Nothing, ["c2"])]
+          other -> assertFailure (show other),
+      testCase "erSource is the settings of the context" $ do
+        let (file, _, _) = parseAst (FileId 1) "a\n"
+        erSource (evalFile lineCtx file) @?= SourceSettings LineSeparated
+        erSource (evalFile ctx file) @?= defaultSourceSettings
+    ]

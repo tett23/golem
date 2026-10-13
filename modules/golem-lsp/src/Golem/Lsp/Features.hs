@@ -1,5 +1,8 @@
 {- | The features of the language server as pure functions over the
 workspace, in UTF-8 byte offsets (golem-lsp ADR 0001).
+A requested column past the end of its line clamps to the line end, while a
+line past the document or a column inside a character has no offset
+(golem-lsp ADR 0003).
 -}
 module Golem.Lsp.Features
   ( Location (..),
@@ -51,9 +54,18 @@ toLineCol :: Encoding -> LineIndex -> Int -> LineCol
 toLineCol Utf8 = offsetToUtf8LineCol
 toLineCol Utf16 = offsetToUtf16LineCol
 
+{- | The offset of a requested position. A column longer than the line,
+counted in the negotiated unit without the newline, is the line end (LSP
+3.17 Position; ADR 0003); otherwise the conversion is exact.
+-}
 fromLineCol :: Encoding -> LineIndex -> LineCol -> Maybe Int
-fromLineCol Utf8 = utf8LineColToOffset
-fromLineCol Utf16 = utf16LineColToOffset
+fromLineCol enc li lc@(LineCol l c) = do
+  end <- lineEndOffset li l
+  let width = lcColumn (toLineCol enc li end)
+  if c > width then Just end else exact enc li lc
+  where
+    exact Utf8 = utf8LineColToOffset
+    exact Utf16 = utf16LineColToOffset
 
 {- | The position encoding from the client's offer (ADR 0002): UTF-8 when
 offered, in whatever order; otherwise UTF-16, which every client supports.

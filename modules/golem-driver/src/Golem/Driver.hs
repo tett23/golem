@@ -22,6 +22,7 @@ module Golem.Driver
     noFontProvider,
     paraLineBreaks,
     keepStyles,
+    sourceSettingsOf,
     builtinKeepStyles,
     cssFontSize,
   )
@@ -55,6 +56,7 @@ import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Html
 import Golem.Parser.AST qualified as A
+import Golem.Parser.SourceSettings (SourceSettings)
 import Golem.Pdf qualified as P
 import Golem.Plugin.Lock (defaultCacheDir)
 import Golem.Project
@@ -221,9 +223,14 @@ reeval profile project style assets citeKeys hook acc fid sf =
             ctxCiteKeys = citeKeys,
             ctxAssets = assets,
             ctxPlugins = hook,
+            ctxSource = sourceSettingsOf project fid,
             ctxStyle = style
           }
    in evalFile ctx (sfAst sf)
+
+-- | How a file of the project is read (docs/adr ADR 0013).
+sourceSettingsOf :: Project -> FileId -> SourceSettings
+sourceSettingsOf project fid = Map.findWithDefault (manifestSource (projectManifest project)) fid (projectSourceSettings project)
 
 -- | The paragraph styles that keep their lines (lint G0501, docs/adr ADR 0005).
 keepStyles :: Style -> Set.Set Text

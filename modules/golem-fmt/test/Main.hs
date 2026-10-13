@@ -42,7 +42,7 @@ block =
       (\items -> T.intercalate "\n" ["- " <> i | i <- items]) <$> Gen.list (Range.linear 1 3) line,
       (\s1 s2 -> "@toc" <> s1 <> "depth=2" <> s2) <$> Gen.element [" ", "   "] <*> spaces,
       (\s -> "@set" <> s <> "v = 1") <$> Gen.element [" ", "    "],
-      (\stanzas -> "@style verse\n" <> T.intercalate "\n\n" [T.intercalate "\n" ["  " <> l | l <- ls] | ls <- stanzas]) <$> Gen.list (Range.linear 1 2) (Gen.list (Range.linear 1 3) line),
+      (\name stanzas -> name <> "\n" <> T.intercalate "\n\n" [T.intercalate "\n" ["  " <> l | l <- ls] | ls <- stanzas]) <$> Gen.element ["@style verse", "@verse"] <*> Gen.list (Range.linear 1 2) (Gen.list (Range.linear 1 3) line),
       pure "```\n  code  \n```",
       (\s1 s2 -> "|" <> s1 <> "a|b" <> s2 <> "|\n|---|---|\n|1" <> s2 <> "|" <> s1 <> "2|") <$> spaces <*> spaces
     ]
@@ -100,7 +100,7 @@ tests =
           golden "trailing-whitespace" "@toc depth=2   \n\n- a  \n- b\t\n\n本文。  \n続き。 \n",
           golden "table-spacing" "| a|b |\n|---|:-:|\n|1|  2|\n",
           golden "file-settings" "@manifest   paragraph-separator=line\n@style-def   paragraph  letter   indent=1zw\n\n本文。\n",
-          golden "verse" "@verse\n\tFull fathom five thy father lies;  \n\tOf his bones are coral made;\t\n\n\n  Nothing of him that doth fade,\n  But doth suffer a sea-change \n"
+          golden "verse" "@style verse\n\tFull fathom five thy father lies;  \n\tOf his bones are coral made;\t\n\n\n  Nothing of him that doth fade,\n  But doth suffer a sea-change \n"
         ],
       testCase "BOM, CRLF and tab indentation are fixed" $
         formatted "\xFEFF- a\r\n\t- b\r\n" @?= "- a\n  - b\n",
@@ -109,23 +109,16 @@ tests =
           Unformattable ds -> assertBool "diagnostics" (not (null ds))
           Formatted r -> assertFailure ("formatted: " <> show r),
       testGroup
-        "migration (docs/adr ADR 0005)"
-        [ testCase "@verse becomes @style verse" $
-            formatted "@verse\n  a\n" @?= "@style verse\n  a\n",
-          testCase "@verse in a code block is left alone" $
-            formatted "```\n@verse\n```\n" @?= "```\n@verse\n```\n",
-          testCase "@verse with arguments is left alone" $
-            formatted "@verse x\n  a\n" @?= "@verse x\n  a\n",
-          testCase "the AST of the migrated source is kept" $
-            case format "@label song\n@verse\n  Full fathom five\n  Of his bones\n" of
-              Formatted r -> astFingerprint r @?= astFingerprint "@label song\n@style verse\n  Full fathom five\n  Of his bones\n"
-              Unformattable ds -> assertFailure (show ds),
-          testProperty "migrating then formatting is idempotent" $ property $ do
-            src <- forAll document
-            let old = T.replace "@style verse" "@verse" src
-                once = formatted old
-            formatted once === once
-            once === formatted src
+        "@verse is not rewritten (ADR 0002)"
+        [ testCase "@verse keeps its name" $
+            formatted "@verse\n  a\n" @?= "@verse\n  a\n",
+          testCase "only the formatting rules apply to @verse" $
+            formatted "@verse   \n  a  \n" @?= "@verse\n  a\n",
+          testCase "the AST of the source is kept" $
+            let src = "@label song\n@verse\n  Full fathom five\n"
+             in case format src of
+                  Formatted r -> astFingerprint r @?= astFingerprint src
+                  Unformattable ds -> assertFailure (show ds)
         ],
       testCase "code blocks and comments are untouched" $
         formatted "```\n  a   \n```\n\n本文%%  コメント   %%\n" @?= "```\n  a   \n```\n\n本文%%  コメント   %%\n"

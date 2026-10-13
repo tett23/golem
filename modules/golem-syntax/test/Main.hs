@@ -94,6 +94,12 @@ tests =
         utf8LineColToOffset li (LineCol 0 7) @?= Nothing
         utf8LineColToOffset li (LineCol 1 2) @?= Just 9
         utf8LineColToOffset li (LineCol 2 0) @?= Nothing,
+      testCase "lineEndOffset is the offset before the newline (golem-lsp ADR 0003)" $ do
+        let li = mkLineIndex "漢字\nab"
+        lineEndOffset li 0 @?= Just 6
+        lineEndOffset li 1 @?= Just 9
+        lineEndOffset li 2 @?= Nothing
+        lineEndOffset (mkLineIndex "a\n") 1 @?= Just 2,
       localOption (mkTimeout 2000000) $
         testCase "positions on 100000 lines round-trip quickly (golem-lsp ADR 0002)" $ do
           let n = 100000 :: Int

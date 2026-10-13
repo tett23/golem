@@ -2,7 +2,7 @@ module Main (main) where
 
 import Codec.Compression.Zlib qualified as Z
 import Control.Exception (SomeException, evaluate, try)
-import Control.Monad (forM_)
+import Control.Monad (filterM, forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
@@ -17,6 +17,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Doc.Assemble (Book, IndexGroup (..), inlineText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
+import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescriptionUrl, explainHint, lookupExplanation, parseCatalog)
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
 import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
@@ -96,7 +97,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-driver (ADR 0001)"
-    [ testGroup
+    [ explainTests,
+      testGroup
         "version (docs/adr/0004)"
         [ testCase "golemVersion is the content of VERSION" $ do
             v <- T.strip <$> TIO.readFile "../../VERSION"
@@ -309,6 +311,7 @@ tests =
       testGroup "PDF table of contents (ADR 0009)" tocTests,
       testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
+      testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
       testGroup
         "public-domain books"
@@ -326,6 +329,23 @@ tests =
             qpdfCheck pdf
         ]
     ]
+
+separatorTests :: [TestTree]
+separatorTests =
+  [ testCase "HTML: one newline separates paragraphs in the line style; a chapter entry keeps the blank-line style" $
+      withSystemTempDirectory "golem-separator" $ \tmp -> do
+        manifest <- TIO.readFile (fixture </> "manifest.toml")
+        let rest = T.dropWhile (/= '\n') manifest
+        TIO.writeFile (tmp </> "manifest.toml") ("chapters = [\"l.gm\", { file = \"b.gm\", paragraph-separator = \"blank-line\" }]\n" <> rest <> "\n[source]\nparagraph-separator = \"line\"\n")
+        TIO.writeFile (tmp </> "l.gm") "一行目。\n二行目。\n三行目。\n"
+        TIO.writeFile (tmp </> "b.gm") "前の行\n後の行\n"
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        l <- TIO.readFile (tmp </> "build/html/l.xhtml")
+        assertBool (T.unpack l) ("<p>一行目。</p>\n<p>二行目。</p>\n<p>三行目。</p>" `T.isInfixOf` l)
+        b <- TIO.readFile (tmp </> "build/html/b.xhtml")
+        assertBool (T.unpack b) ("<p>前の行後の行</p>" `T.isInfixOf` b)
+  ]
 
 -- | Builds a copy of a book fixture (fonts included); no errors allowed.
 buildBook :: FilePath -> IO ([FilePath], BS.ByteString, [(FilePath, T.Text)])
@@ -703,10 +723,14 @@ data Built = Built
 options; PDF only and the fake fonts unless the options say otherwise.
 -}
 buildMarks :: (BuildOptions -> BuildOptions) -> Maybe BS.ByteString -> IO Built
-buildMarks f style = withSystemTempDirectory "golem-marks" $ \tmp -> do
+buildMarks = buildMarksWith "本文。\n"
+
+-- | 'buildMarks' with another source of the chapter.
+buildMarksWith :: T.Text -> (BuildOptions -> BuildOptions) -> Maybe BS.ByteString -> IO Built
+buildMarksWith source f style = withSystemTempDirectory "golem-marks" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
   forM_ style (BS.writeFile (tmp </> "style.toml"))
-  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "本文。\n")
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
   r <- build (f (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider})
   pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
     [p] -> Just <$> BS.readFile p
@@ -746,6 +770,12 @@ a5Size = case parseStyle (FileId 0) (TE.decodeUtf8 horizontalStyle) of
   Right s -> either (assertFailure . show) (pure . pgPageSize) (pageGeometry s)
   Left ds -> assertFailure (show ds)
 
+-- | How many times a needle occurs.
+countIn :: BS.ByteString -> BS.ByteString -> Int
+countIn needle hay = case BS.breakSubstring needle hay of
+  (_, rest) | BS.null rest -> 0
+  (_, rest) -> 1 + countIn needle (BS.drop (BS.length needle) rest)
+
 marksTests :: [TestTree]
 marksTests =
   [ testCase "no bleed and no marks: the three boxes are the same and nothing is moved" $ do
@@ -754,7 +784,7 @@ marksTests =
       boxOf "MediaBox" pdf @?= boxOf "BleedBox" pdf
       streams <- inflateAll pdf
       assertBool "no cm" (not (any ("q 1 0 0 1 " `BS.isPrefixOf`) streams)),
-    testCase "3mm of bleed and Japanese marks: the boxes of the sheet, moved content and CMYK marks" $ do
+    testCase "3mm of bleed and Japanese marks: the boxes of the sheet, moved content and registration marks" $ do
       pdf <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
       (w, h) <- a5Size
       let s = P.sheet (Just P.Japanese) 557314 (w, h)
@@ -762,8 +792,26 @@ marksTests =
       boxOf "TrimBox" pdf @?= boxText (P.shTrim s)
       boxOf "BleedBox" pdf @?= boxText (P.shBleed s)
       streams <- inflateAll pdf
-      assertBool "moved" (any (\st -> "q 1 0 0 1 " `BS.isPrefixOf` st && "1 1 1 1 k" `BS.isInfixOf` st) streams)
+      assertBool "moved" (any (\st -> "q 1 0 0 1 " `BS.isPrefixOf` st && "/Reg cs 1 scn" `BS.isInfixOf` st) streams)
+      assertBool "no CMYK 100%" (not (any ("1 1 1 1 k" `BS.isInfixOf`) streams))
       qpdfCheck pdf,
+    testCase "Japanese marks: one Separation, of the colorant All, in the resources (ADR 0007)" $ do
+      pdf <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
+      streams <- inflateAll pdf
+      countIn "/Separation" (BS.concat (pdf : streams)) @?= 1
+      assertBool "All" ("/ColorSpace << /Reg [/Separation /All /DeviceCMYK " `BS.isInfixOf` pdf),
+    testCase "no marks: no Separation (ADR 0007)" $ do
+      pdf <- marksPdf (\o -> o {optMarks = NoMarks}) bleedStyle
+      streams <- inflateAll pdf
+      assertBool "Separation" (not (any ("/Separation" `BS.isInfixOf`) (pdf : streams))),
+    testCase "with marks, text in a swatch stays DeviceCMYK (ADR 0007)" $ do
+      let style = bleedStyle <> "\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n"
+      b <- buildMarksWith "前[color accent: 赤い語]後\n" (\o -> o {optMarks = JapaneseMarks}) (Just style)
+      assertEqual "no errors" [] (map diagCode (bErrors b))
+      pdf <- maybe (assertFailure "no PDF") pure (bPdf b)
+      streams <- inflateAll pdf
+      assertBool "text in k" (any ("0 0.8 1 0 k" `BS.isInfixOf`) streams)
+      assertBool "marks" (any ("/Reg cs 1 scn" `BS.isInfixOf`) streams),
     testCase "3mm of bleed without marks: the MediaBox is the BleedBox, the TrimBox inside" $ do
       pdf <- marksPdf id bleedStyle
       (w, h) <- a5Size
@@ -799,6 +847,12 @@ marksTests =
       fst (pdfIds none) @?= fst (pdfIds japanese)
       assertBool "marks" (snd (pdfIds none) /= snd (pdfIds japanese))
       assertBool "profile" (snd (pdfIds none) /= snd (pdfIds prod)),
+    testCase "a page size by dimensions is the TrimBox (golem-project ADR 0005)" $ do
+      pdf <- marksPdf id (replaceIn "size = \"A5\"\n" "size = { width = \"396pt\", height = \"612pt\" }\n" horizontalStyle)
+      boxOf "TrimBox" pdf @?= "0 0 396 612",
+    testCase "golem check rejects a page size outside the table (golem-project ADR 0005)" $ do
+      b <- buildMarks (\o -> o {optTargets = Nothing, optCheckOnly = True}) (Just (replaceIn "size = \"A5\"\n" "size = \"148mm x 210mm\"\n" horizontalStyle))
+      map diagCode (bErrors b) @?= [DiagnosticCode "G0317"],
     testCase "with marks and bleed, two builds give the same bytes" $ do
       a <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
       b <- marksPdf (\o -> o {optMarks = JapaneseMarks, optParallel = False}) bleedStyle
@@ -2068,3 +2122,110 @@ styleFileTests =
            doesDirectoryExist (dir </> "build/pdf") >>= assertBool "no PDF" . not
        | (lang, tag) <- [(Japanese, "ja"), (English, "en")]
        ]
+
+-- * golem explain (golem-cli ADR 0005)
+
+explainTests :: TestTree
+explainTests =
+  testGroup
+    "explanations of the diagnostic codes (golem-cli ADR 0005)"
+    [ testGroup
+        "docs/diagnostics.md covers the codes in the sources"
+        [ testCase "every code in the sources is in the catalog and in use" $ do
+            used <- sourceCodes
+            assertBool "no code found in the sources" (not (null used))
+            case [c | c <- used, fmap exStatus (Map.lookup c catalog) /= Just InUse] of
+              [] -> pure ()
+              missing -> assertFailure ("codes without an explanation in use: " <> unwords (map T.unpack missing)),
+          testCase "every code in use is in the sources" $ do
+            used <- sourceCodes
+            case [c | (c, e) <- Map.toList catalog, exStatus e == InUse, c `notElem` used] of
+              [] -> pure ()
+              unused -> assertFailure ("codes in use but not in the sources (make them retired): " <> unwords (map T.unpack unused)),
+          testCase "no retired code is in the sources" $ do
+            used <- sourceCodes
+            [c | (c, e) <- Map.toList catalog, exStatus e == Retired, c `elem` used] @?= [],
+          testCase "the profile-dependent codes, and only they, are a warning in dev and an error in prod" $ do
+            let dependent = [c | DiagnosticCode c <- profileDependentCodes]
+                isDependent e = "- 重大度: dev では警告、prod ではエラー" `elem` T.lines (exBody e)
+            assertBool "some profile-dependent codes" (not (null dependent))
+            sort [c | (c, e) <- Map.toList catalog, isDependent e] @?= sort dependent,
+          testCase "the catalog has G0244 retired" $
+            fmap exStatus (lookupExplanation "G0244") @?= Just Retired
+        ],
+      testGroup
+        "the form of the document"
+        [ testCase "two good sections give their titles, statuses and bodies" $
+            case parseCatalog (T.unlines (preamble <> inUse "G0101" <> retired "G0244")) of
+              Left e -> assertFailure (T.unpack e)
+              Right es -> do
+                map exCode es @?= ["G0101", "G0244"]
+                map exTitle es @?= ["G0101 の題", "G0244 の題"]
+                map exStatus es @?= [InUse, Retired]
+                map exBody es @?= [T.intercalate "\n" (dropLast (inUse "G0101")), T.intercalate "\n" (dropLast (retired "G0244"))],
+          bad "no 直し方" (preamble <> inUse "G0101" <> without "### 直し方" (inUse "G0102")) "## G0102",
+          bad "no title" (preamble <> inUse "G0101" <> without "G0102 の題" (inUse "G0102")) "## G0102",
+          bad "no status" (preamble <> inUse "G0101" <> without "- 状態: 使用中" (inUse "G0102")) "## G0102",
+          bad "a bad severity" (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: 致命的" else l) (inUse "G0102")) "- 重大度: 致命的",
+          bad "out of order" (preamble <> inUse "G0102" <> inUse "G0101") "## G0101",
+          bad "a code twice" (preamble <> inUse "G0101" <> inUse "G0101") "## G0101",
+          testCase "a retired section without 主な原因 is accepted" $
+            fmap (map exCode) (parseCatalog (T.unlines (preamble <> retired "G0244"))) @?= Right ["G0244"]
+        ],
+      testGroup
+        "lookup, hint and URL"
+        [ testCase "lookupExplanation ignores case" $ do
+            fmap exCode (lookupExplanation "g0117") @?= Just "G0117"
+            fmap exCode (lookupExplanation "G0117") @?= Just "G0117"
+            fmap exCode (lookupExplanation "G9999") @?= Nothing,
+          testCase "explainHint names the smallest documented code, once" $ do
+            let d c = diagnostic c Error (SrcSpan (FileId 0) 0 0) "m"
+            explainHint [d "G0403", d "G0117", d "X001"] @?= "コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）"
+            explainHint [d "X001"] @?= ""
+            explainHint [] @?= "",
+          testCase "codeDescriptionUrl points at the section on main" $ do
+            codeDescriptionUrl (DiagnosticCode "G0117") @?= Just "https://github.com/tett23/golem/blob/main/docs/diagnostics.md#g0117"
+            codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing
+        ]
+    ]
+  where
+    preamble = ["# 診断のコード", "", "前書き。", "", "## 番号の区分", "", "表。", ""]
+    inUse c = ["## " <> c, "", c <> " の題", "", "- 重大度: エラー", "- 状態: 使用中", "", "### 意味", "", "意味。", "", "### 主な原因", "", "- 原因。", "", "### 直し方", "", "直す。", ""]
+    retired c = ["## " <> c, "", c <> " の題", "", "- 重大度: エラー", "- 状態: 廃止", "", "### 意味", "", "廃止した。", "", "### 直し方", "", "代わりに書く。", ""]
+    dropLast xs = take (length xs - 1) xs
+    without l = filter (/= l)
+    bad name ls at = testCase (name <> " is rejected with the line number") $
+      case parseCatalog (T.unlines ls) of
+        Right _ -> assertFailure "accepted"
+        Left e -> do
+          let n = last [i | (i, l) <- zip [1 :: Int ..] ls, l == at]
+          assertBool (T.unpack e) (T.pack (show n <> " 行目") `T.isInfixOf` e)
+
+{- | The codes in the sources: the strings @"G@, four digits and @"@ in the
+Haskell files under ../*/src and ../golem-cli/app (not the tests, which
+write codes to cause errors).
+-}
+sourceCodes :: IO [T.Text]
+sourceCodes = do
+  pkgs <- listDirectory ".."
+  dirs <- filterM doesDirectoryExist ([".." </> p </> "src" | p <- pkgs] <> ["../golem-cli/app"])
+  files <- concat <$> mapM haskellFiles dirs
+  codes <- mapM (fmap quotedCodes . TIO.readFile) files
+  pure (sort (nub (concat codes)))
+
+haskellFiles :: FilePath -> IO [FilePath]
+haskellFiles dir = do
+  entries <- map (dir </>) <$> listDirectory dir
+  dirs <- filterM doesDirectoryExist entries
+  nested <- concat <$> mapM haskellFiles dirs
+  pure ([e | e <- entries, ".hs" `isSuffixOf` e, e `notElem` dirs] <> nested)
+
+quotedCodes :: T.Text -> [T.Text]
+quotedCodes src =
+  [ code
+  | (_, rest) <- T.breakOnAll "\"G" src,
+    let code = T.take 5 (T.drop 1 rest),
+    T.length code == 5,
+    T.all isDigit (T.drop 1 code),
+    T.take 1 (T.drop 6 rest) == "\""
+  ]

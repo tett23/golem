@@ -15,3 +15,4 @@
   fmt                      原稿を整形する
   lsp                      標準入出力で LSP サーバーを動かす
   inspect                  ファイルの CST、AST、IR を表示する
+  explain                  診断のコードの説明を表示する

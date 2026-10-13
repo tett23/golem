@@ -14,6 +14,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf
+import Golem.Pdf.Writer (Mark (..))
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -935,6 +936,10 @@ within (Rect x y w h) (Rect ox oy ow oh) = x >= ox && y >= oy && x + w <= ox + o
 boxesOf :: Sheet -> (Rect, Rect, Rect)
 boxesOf s = (shMedia s, shTrim s, shBleed s)
 
+-- | The ColorSpace resource of the registration colour (ADR 0007).
+registrationResource :: ByteString
+registrationResource = "/ColorSpace << /Reg [/Separation /All /DeviceCMYK << /C0 [0 0 0 0] /C1 [1 1 1 1] /Domain [0 1] /FunctionType 2 /N 1 >>] >>"
+
 marksTests :: [TestTree]
 marksTests =
   let (w, h) = trimSize
@@ -989,14 +994,38 @@ marksTests =
         testCase "a framed page without marks or bleed keeps its content" $ do
           let content = [Rule (Rect 0 0 65536 65536)]
           framePage Nothing 0 (w, h) content @?= Page (Rect 0 0 w h) (Rect 0 0 w h) (Rect 0 0 w h) content,
-        testCase "a framed page with Japanese marks draws them in CMYK over the moved content" $ do
+        testCase "a framed page with Japanese marks draws them in the registration colour over the moved content" $ do
           let content = [Rule (Rect 0 0 65536 65536)]
               m = b + mm13
-          case pageContent (framePage (Just Japanese) b (w, h) content) of
-            [Translated x y inner] -> do
-              (x, y) @?= (m, m)
-              inner @?= content <> [Saved (SetColor (Swatch 100 100 100 100) : map Rule (markRules Japanese b (w, h)))]
-            other -> assertFailure (show other),
+          pageContent (framePage (Just Japanese) b (w, h) content)
+            @?= [Translated m m (content <> [RegistrationRules (markRules Japanese b (w, h))])],
+        testCase "a framed page without marks has no registration rules" $ do
+          let content = [Rule (Rect 0 0 65536 65536)]
+          forM_ [0, b] $ \bl ->
+            registrationRects (pageContent (framePage Nothing bl (w, h) content)) @?= [],
+        testCase "registration rules: q, the Separation All fill, the rectangles, Q" $
+          contentStream Map.empty Map.empty [RegistrationRules [Rect 0 0 65536 65536]] @?= "q\n/Reg cs 1 scn\n0 0 1 1 re f\nQ\n",
+        testCase "a page with registration rules has the Reg colour space resource" $ do
+          let pdf = writePdf (documentWith [page [RegistrationRules [Rect 0 0 65536 65536]]])
+          assertBool (show pdf) (registrationResource `BS.isInfixOf` pdf)
+          assertBool "xref" (xrefConsistent pdf),
+        testCase "a PDF without registration rules has no ColorSpace and no Separation" $ do
+          let pdf = writePdf sample
+          assertBool "ColorSpace" (not ("/ColorSpace <<" `BS.isInfixOf` pdf))
+          assertBool "Separation" (not ("/Separation" `BS.isInfixOf` pdf)),
+        testCase "registration rules inside Translated and Saved still add the resource" $ do
+          let pdf = writePdf (documentWith [page [Translated 65536 65536 [Saved [RegistrationRules [Rect 0 0 65536 65536]]]]])
+          assertBool (show pdf) (registrationResource `BS.isInfixOf` pdf),
+        testCase "framed pages keep the registration colour out of the BleedBox" $
+          forM_ [(st, bl) | st <- [Japanese, Western], bl <- [0, b]] $ \(st, bl) ->
+            checkRegistration [framePage (Just st) bl (w, h) [Rule (Rect 0 0 65536 65536)]] @?= [],
+        testCase "registration rules on the trimmed page are reported by page number" $ do
+          let framed = framePage Nothing b (w, h) []
+              inside = framed {pageContent = [Translated b b [RegistrationRules [Rect 0 0 65536 65536]]]}
+          checkRegistration [framed, inside] @?= [2],
+        testCase "registrationRects adds the moves of Translated" $
+          registrationRects [Rule (Rect 0 0 1 1), Translated 10 20 [Saved [RegistrationRules [Rect 1 2 3 4]], Translated 100 200 [RegistrationRules [Rect 0 0 5 5]]]]
+            @?= [Rect 11 22 3 4, Rect 110 220 5 5],
         testCase "qpdf --check accepts a page with Japanese marks (when qpdf is installed)" $ do
           qpdf <- findExecutable "qpdf"
           case qpdf of
@@ -1188,7 +1217,8 @@ tests =
         Gen.choice
         [ GlyphRun (FontRef 7) <$> sp <*> Gen.list (Range.linear 0 5) ((,,) <$> Gen.int (Range.linear 0 3) <*> sp <*> sp),
           Rule <$> (Rect <$> sp <*> sp <*> sp <*> sp),
-          SetColor <$> (Swatch <$> pct <*> pct <*> pct <*> pct)
+          SetColor <$> (Swatch <$> pct <*> pct <*> pct <*> pct),
+          RegistrationRules <$> Gen.list (Range.linear 0 3) (Rect <$> sp <*> sp <*> sp <*> sp)
         ]
         [Translated <$> sp <*> sp <*> Gen.list (Range.linear 0 3) mark]
     pct = Gen.int (Range.linear 0 100)

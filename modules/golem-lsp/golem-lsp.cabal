@@ -54,14 +54,17 @@ test-suite golem-lsp-test
     , containers
     , directory
     , filepath
+    , golem-driver
     , golem-lsp
     , golem-syntax
+    , hedgehog       >=1.4 && <1.6
     , lsp
     , lsp-test       >=0.17 && <0.19
     , lsp-types
     , process
     , tasty          >=1.4 && <1.6
     , tasty-golden   >=2.3 && <2.4
+    , tasty-hedgehog >=1.4 && <1.5
     , tasty-hunit    >=0.10 && <0.11
     , temporary
     , text
