@@ -455,6 +455,9 @@ indent = "2zw"
 indent = "2zw"
 first-line-indent = "-2zw"
 
+[paragraph-styles.caption]
+size = "11Q"
+
 [headings.1]
 font = "heading"
 size = "20Q"
@@ -535,6 +538,10 @@ folio = { position = "bottom-outside", format = "{n}" }
 行送りの欄は設けない。
 PDF の本文を行の格子に載せるので、段落ごとに行送りを変えると見開きの行の位置がそろわなくなるためである。
 組み込みの段落スタイルは `body`、`verse`（`line-breaks = "keep"`、`space-between = 1`）、`caption`、`sidenote` の四つであり、段落スタイルを付けない段落は `body` で組む。
+図版のキャプションは段落スタイル `caption` の `font` と `size` で組み、ほかの欄（`line-breaks`、`space-between`、字下げ）はキャプションには効かない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
+これらの欄は `@style caption` を付けた原稿の段落には効く。
+HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS に書く。
+`size` が絶対の大きさで `[page.grid]` の `font-size` も絶対の大きさなら、その比を `em` で書き、`[page.grid]` がなければ `pt` で書く。
 
 段落スタイルの `indent` はすべての行の始まりの字下げ（InDesign の左インデント）、`first-line-indent` は最初の行に `indent` へ加える量（1 行目左インデント）であり、負ならぶら下げになる（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
 どちらも行の始まりの側から測るので、縦組みでは天からの距離になる。
@@ -556,7 +563,7 @@ PDF の本文を行の格子に載せるので、段落ごとに行送りを変�
 `[verse]` の `indent = I`、`hang = H` は、`[paragraph-styles.verse]` の `indent = I + H`、`first-line-indent = -H` に書き換える。
 
 HTML と EPUB では、組み込みの文字スタイルを `strong`、`b`、`i` の要素に、ほかの文字スタイルを `cs-名前` の class に、段落スタイルを `ps-名前` の class に対応させる。
-文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between` を CSS に書き、`size` は CSS に書かない。
+文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between` を CSS に書き、`size` はキャプションのほかは CSS に書かない。
 
 PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組む。
 `font` を省けば本文の役割、`size` を省けば版面の文字の大きさになる。
@@ -615,8 +622,12 @@ PDF は、本文の役割と、見出しの `font`、文字スタイルの `font
 - 図番号は章ごとに振り、文書構造（S1）で決める。図番号は「図 3-2」のように章番号と組み合わせて使うので、章を複数のファイルに分けても章の中で番号が続く必要があるためである。
 - ICC プロファイルを持たない RGB の画像は sRGB とみなし、sRGB のプロファイルを付けて埋め込む。
 
-PDF では、図番号とキャプションを、画像の下（縦組みでは左）に本文と同じ書体と大きさで組む（[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)）。
-画像とキャプションの行は行の格子に載せ、図版の後の本文も格子からずらさない。
+PDF では、図番号とキャプションを、画像の下（縦組みでは左）に、段落スタイル `caption` の `font` と `size` で組む（[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
+指定がなければ本文と同じ書体と大きさになる。
+本文より小さいキャプションの行は、本文の行送りと文字の大きさの比を保った行送りで送り、画像の直後の行の格子の先頭にそろえて置く。
+キャプションは、その全体を収める最も少ない数の格子の行を占め、余りはキャプションの後ろに回る。
+画像の行と、キャプションが占める格子の行は行の格子に載せ、図版の後の本文も格子からずらさない。
+回り込ませる図版の除外領域の深さは、キャプションの実際の終わりまでとする。
 回り込ませない図版の幅は版面の行長とし、回り込ませる図版の幅は `width` とする。
 回り込ませる図版は、画像とキャプションを含む矩形に `[figures]` の `wrap-gap` を足した除外領域を作り、その脇の行を除外領域の分だけ短く組む[^line-length]。
 脇の行は図版の直後の段落に限り、見出しなどの段落でないブロックが来たら、除外領域の残りを空けたまま、その後から組む。
@@ -1096,7 +1107,6 @@ v1 のリリースまでに、次の項目を扱う。
 #### PDF
 
 - **目次**：PDF の目次は番号と題だけを出し、ページ番号を出していない。[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md) で、ページ番号を項目の最後の行の終わりにそろえて置き、題とのあいだをリーダーで埋め、`[toc]` の `leader`（`"dots"` か `"none"`）で選べるようにすると決めた（未実装）。
-- **キャプションの書体**：キャプションの書体と大きさ（本文より小さくすることを含む）を `style.toml` で指定する設定がない。PDF のキャプションは本文と同じ書体と大きさで組む。[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md) で、組み込みの段落スタイル `caption` の `font` と `size` で組むと決めた（未実装）。
 - **傍注の書体**：`[sidenotes]` の `font` を PDF で使っていない。傍注は本文の書体で、`size` の大きさで組む（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md) で、組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` の `font` と `size` を廃止すると決めた（未実装）。
 - **柱の内容**：マスターページの `running-head` の `content`（`"heading.1.short"` など）と、`[headings.<階層>]` の `running-head` を読み込むが、PDF では使っていない。柱には常に 1 の階層の見出しの短い題を出す（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。設定のとおりに柱の内容を決めるか、使わない欄をなくす。
 - **トンボと塗り足し**：入稿用の、トンボと塗り足しの領域を付けた PDF を出力できない。今の PDF は、MediaBox、TrimBox、BleedBox をすべて仕上がりの判型と同じ大きさにしている。[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md) で、`style.toml` の `[page]` に `bleed` を、`golem build` と `golem check` に `--marks japanese|western|none` を加え、日本式のトンボで塗り足しが 0 なら G0702 とすると決めた（未実装）。

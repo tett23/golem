@@ -7,7 +7,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
-import Data.List (isSuffixOf, nub, sort)
+import Data.List (isSuffixOf, nub, sort, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
@@ -23,11 +23,11 @@ import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), Synthetic (..))
 import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..), markPages)
 import Golem.Layout.Wrap (Exclusion (..))
-import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, sidenoteAreaFor, typeAreaFor)
+import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.Pdf (Font (..), FontProgram (..), spToPt)
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
-import Golem.Project.Style (dimToSp, parseDim, parseStyle)
+import Golem.Project.Style (Dim (..), dimToSp, parseDim, parseStyle)
 import Golem.Syntax
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
 import System.Environment (setEnv)
@@ -269,6 +269,7 @@ tests =
       testGroup "PDF headings (ADR 0003)" headingTests,
       testGroup "PDF emphasis, character styles and colour (ADR 0004)" emphasisTests,
       testGroup "PDF wrapped figures (ADR 0005)" wrapTests,
+      testGroup "PDF captions (ADR 0010)" captionTests,
       testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
       testGroup "PDF index and bibliography (ADR 0007)" indexTests,
       testGroup "PDF tables (ADR 0008)" tableTests,
@@ -925,6 +926,149 @@ offsetsIn pat src = occurrences (TE.encodeUtf8 pat) (TE.encodeUtf8 src)
 
 twoLineNote :: T.Text
 twoLineNote = "[sidenote: あいうえおかきくけ]"
+
+-- | horizontal24 with a caption style.
+captionStyle :: BS.ByteString -> BS.ByteString
+captionStyle keys = horizontal24 <> "\n[paragraph-styles.caption]\n" <> keys
+
+-- | A figure that is not wrapped, with a caption of n full-width characters, and a paragraph after it.
+figureWith :: Int -> T.Text
+figureWith n = "@figure images/tiny.jpg alt=\"t\"\n  " <> T.replicate n "甲" <> "\n\n後の段落。\n"
+
+-- | The grid line of the first line after a figure, from the figure's first grid line.
+afterFigure :: PdfLayout -> IO Int
+afterFigure pl = do
+  (_, _, p, slot) <- theFigure pl
+  case [s | (s, SLine _) <- poSlots p, s > slot] of
+    (s : _) -> pure (s - slot)
+    [] -> assertFailure "no line after the figure"
+
+captionTests :: [TestTree]
+captionTests =
+  [ testCase "a small wrapped caption: its size, its pitch and the exclusion" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk (captionStyle "size = \"8pt\"\n") (wrapped "end" "4zw" <> longPara 30) img
+      (_, pf, _, _) <- theFigure pl
+      (pfCaptionSize pf, pfCaptionPitch pf) @?= (8 * pt, 12 * pt)
+      let n = toInteger (length (pfCaption pf))
+      fmap exLines (pfExclusion pf) @?= Just (fromInteger ((4 * 15 + (n - 1) * 12 + 8 + 10 + 14) `div` 15)),
+    testCase "a small caption takes fewer grid lines; the text after it stays on the grid" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk (captionStyle "size = \"6pt\"\n") (figureWith 100) img
+      (_, pf, _, _) <- theFigure pl
+      (length (pfCaption pf), pfCaptionPitch pf, pfCaptionSpan pf) @?= (3, 9 * pt, 2)
+      afterFigure pl >>= (@?= 24 + 2)
+      (_, plain) <- layoutOk horizontal24 (figureWith 100) img
+      (_, pf', _, _) <- theFigure plain
+      length (pfCaption pf') @?= 5
+      afterFigure plain >>= (@?= 24 + 5),
+    testCase "the caption is drawn at its size from the top of its grid lines" $ do
+      img <- tinyImage
+      let style = captionStyle "size = \"6pt\"\n"
+      (geom, pl) <- layoutOk style (figureWith 100) img
+      (_, _, p, slot) <- theFigure pl
+      pdf <- miniPdf fakeProvider True style (figureWith 100) img
+      content <- BS.concat <$> inflateAll pdf
+      let ta = typeAreaFor geom (poNumber p)
+          top = toRational (rectY ta + rectH ta) / 65536
+          ys = sortOn negate (nub [ptToRational (dY d) | d <- drawnGlyphs content, dSize d == "6"])
+          first = top - toRational (toInteger (slot + 24) * 15 * pt + round (toRational (6 * pt) * baselineRatio)) / 65536
+      case ys of
+        (y1 : y2 : _) -> do
+          assertBool (show (y1, first)) (abs (y1 - first) < 1 / 100)
+          assertBool (show (y1, y2)) (abs (y1 - y2 - 9) < 1 / 100)
+        other -> assertFailure (show other),
+    testCase "a caption role sets the caption, the body stays in the body role" $ do
+      img <- tinyImage
+      content <- miniPdf fakeProvider True (captionStyle "font = \"heading\"\n" <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n") (figureWith 4) (img <> fakeFontFiles) >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+      assertBool "drawn" (not (null [d | d <- ds, dGlyph d == fromEnum '甲']))
+      assertBool "the heading role's font" (nub [dFont d | d <- ds, dGlyph d == fromEnum '甲'] /= nub [dFont d | d <- ds, dGlyph d == fromEnum '後']),
+    testCase "a small caption fits where a body-size one is G0723" $ do
+      img <- tinyImage
+      let short = replaceIn "lines = 30" "lines = 8" horizontal24
+          source = "@figure images/tiny.jpg alt=\"t\" wrap=end width=4zw\n  " <> T.replicate 14 "甲" <> "\n\n" <> longPara 2
+      (errs, _) <- buildMini fakeProvider True short source img
+      errs @?= [DiagnosticCode "G0723"]
+      (errs', _) <- buildMini fakeProvider True (short <> "\n[paragraph-styles.caption]\nsize = \"5pt\"\n") source img
+      errs' @?= [],
+    testCase "vertical: the caption is in the type area, its first centre line half its size from the grid" $ do
+      img <- tinyImage
+      let style = figStyle (replaceIn "characters = 42" "characters = 20" pdfStyle) <> "\n[paragraph-styles.caption]\nsize = \"10Q\"\n"
+          q = maybe 0 (dimToSp 0) (parseDim "10Q")
+      (geom, pl) <- layoutOk style (figureWith 10) img
+      (_, pf, p, slot) <- theFigure pl
+      pdf <- miniPdf fakeProvider True style (figureWith 10) img
+      content <- BS.concat <$> inflateAll pdf
+      let ta = typeAreaFor geom (poNumber p)
+          right = toRational (rectX ta + rectW ta) / 65536
+          xs = sortOn negate (nub [ptToRational (dX d) | d <- drawnGlyphs content, dGlyph d == fromEnum '甲'])
+          expected = right - toRational (toInteger (slot + pfImageLines pf) * pgLinePitch geom + q `div` 2) / 65536
+      case xs of
+        (x : _) -> do
+          assertBool (show (x, expected)) (abs (x - expected) < 1 / 100)
+          assertBool "in the type area" (x > toRational (rectX ta) / 65536)
+        [] -> assertFailure "no caption glyph",
+    testCase "naming the body role and size changes nothing" $ do
+      img <- tinyImage
+      a <- miniPdf fakeProvider True (horizontal24 <> fakeBody) (figureWith 30) (img <> fakeFontFiles)
+      b <- miniPdf fakeProvider True (captionStyle "font = \"body\"\nsize = \"10pt\"\n" <> fakeBody) (figureWith 30) (img <> fakeFontFiles)
+      c1 <- BS.concat <$> inflateAll a
+      c2 <- BS.concat <$> inflateAll b
+      drawnGlyphs c1 @?= drawnGlyphs c2,
+    testCase "a caption based on another style takes its size" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk (horizontal24 <> "\n[paragraph-styles.note]\nsize = \"8pt\"\n\n[paragraph-styles.caption]\nbased-on = \"note\"\n") (figureWith 10) img
+      (_, pf, _, _) <- theFigure pl
+      pfCaptionSize pf @?= 8 * pt,
+    testCase "the indent of the caption style does not move the caption" $ do
+      img <- tinyImage
+      a <- miniPdf fakeProvider True horizontal24 (figureWith 30) img >>= fmap BS.concat . inflateAll
+      b <- miniPdf fakeProvider True (captionStyle "first-line-indent = \"1zw\"\n") (figureWith 30) img >>= fmap BS.concat . inflateAll
+      [d | d <- drawnGlyphs a, dGlyph d == fromEnum '甲'] @?= [d | d <- drawnGlyphs b, dGlyph d == fromEnum '甲'],
+    testCase "small captions: parallel and sequential, and two builds, give the same bytes" $ do
+      img <- tinyImage
+      let style = captionStyle "size = \"7pt\"\n"
+          source = wrapped "start" "4zw" <> longPara 20 <> figureWith 60
+      a <- miniPdf fakeProvider True style source img
+      b <- miniPdf fakeProvider False style source img
+      c <- miniPdf fakeProvider True style source img
+      a @?= b
+      a @?= c
+      qpdfCheck a,
+    testCase "with real fonts the caption font holds the caption's glyphs only" $ do
+      (sans, serif) <- realLatinFonts
+      img <- tinyImage
+      let style = horizontal24 <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.caption]\nlatin = \"fonts/serif.ttf\"\n\n[paragraph-styles.caption]\nfont = \"caption\"\n"
+      pdf <- miniPdf realProvider True style "@figure images/tiny.jpg alt=\"t\"\n  Zebra\n\nquick\n" (img <> [("fonts/sans.otf", sans), ("fonts/serif.ttf", serif)])
+      cmaps <- filter ("beginbfchar" `BS.isInfixOf`) <$> inflateAll pdf
+      length cmaps @?= 2
+      assertBool "caption glyphs only in one font" (any (\c -> "<005a>" `BS.isInfixOf` c && not ("<0071>" `BS.isInfixOf` c)) cmaps)
+      assertBool "body glyphs only in the other" (any (\c -> "<0071>" `BS.isInfixOf` c && not ("<005a>" `BS.isInfixOf` c)) cmaps)
+      qpdfCheck pdf,
+    testCase "HTML: figcaption takes the caption's font and size relative to the grid" $ do
+      let css keys = withSystemTempDirectory "golem-mini" $ \tmp -> do
+            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
+            BS.writeFile (tmp </> "style.toml") (horizontalStyle <> "\n[fonts.caption]\nlatin = \"fonts/c.otf\"\n\n[paragraph-styles.caption]\n" <> keys)
+            BS.writeFile (tmp </> "a.gm") "x\n"
+            createDirectoryIfMissing True (tmp </> "fonts")
+            BS.writeFile (tmp </> "fonts/c.otf") "fake"
+            r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+            assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+            TIO.readFile (tmp </> "build/html/style.css")
+      a <- css "font = \"caption\"\nsize = \"8pt\"\n"
+      assertBool (T.unpack a) ("figcaption { font-family: \"golem-caption-latin\", serif; font-size: 0.8em; }" `T.isInfixOf` a)
+      b <- css "size = \"0.85zw\"\n"
+      assertBool (T.unpack b) ("figcaption { font-size: 0.85em; }" `T.isInfixOf` b),
+    testCase "cssFontSize: relative to an absolute grid, pt without a page" $ do
+      let styleOf src = either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) src)
+          dim t = fromMaybe (Abs 0) (parseDim t)
+      s13 <- styleOf "[page]\nsize = \"B6\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 30\nlines = 20\nline-pitch = \"22H\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n"
+      cssFontSize s13 (dim "11Q") @?= "0.846em"
+      cssFontSize s13 (dim "0.85zw") @?= "0.85em"
+      none <- styleOf ""
+      cssFontSize none (dim "9pt") @?= "9pt"
+  ]
 
 sidenoteTests :: [TestTree]
 sidenoteTests =

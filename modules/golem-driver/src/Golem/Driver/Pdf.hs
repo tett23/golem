@@ -194,8 +194,21 @@ syntheticStroke size = size `div` 40
 headingFace :: Style -> PageGeometry -> Int -> (Text, Sp)
 headingFace style geom level =
   let hs = Map.lookup level (stHeadings style)
-      fs = pgFontSize geom
-   in (fromMaybe (bodyRole style) (hs >>= hsFont), maybe fs (dimToSp fs) (hs >>= hsSize))
+   in faceFor style geom (hs >>= hsFont) (hs >>= hsSize)
+
+{- | The role and size of a font role and a size of style.toml: the body
+role and the size of the grid when they are not given (golem-driver ADR
+0010).
+-}
+faceFor :: Style -> PageGeometry -> Maybe Text -> Maybe Dim -> (Text, Sp)
+faceFor style geom font size =
+  (fromMaybe (bodyRole style) font, maybe (pgFontSize geom) (dimToSp (pgFontSize geom)) size)
+
+-- | The role and size of a paragraph style (golem-driver ADR 0010): of captions, sidenotes and paragraphs.
+paraFace :: Style -> PageGeometry -> Text -> (Text, Sp)
+paraFace style geom name =
+  let d = paraStyle style (Just name)
+   in faceFor style geom (d >>= psFont) (d >>= psSize)
 
 -- | The file name of the PDF, from the book's identifier.
 pdfFileName :: Text -> FilePath
@@ -237,6 +250,12 @@ data PlacedFigure = PlacedFigure
     -- | the grid lines the image takes (m)
     pfImageLines :: !Int,
     pfCaption :: ![Line],
+    -- | the size of the caption (cs; golem-driver ADR 0010)
+    pfCaptionSize :: !Sp,
+    -- | the line pitch of the caption (cp)
+    pfCaptionPitch :: !Sp,
+    -- | the grid lines the caption takes (N)
+    pfCaptionSpan :: !Int,
     -- | the exclusion area of a wrapped figure
     pfExclusion :: !(Maybe Exclusion)
   }
@@ -540,11 +559,10 @@ data UnitKind
 -- | The role, the size and the indent of a paragraph style (docs/adr ADR 0005, 0006).
 paraLook :: Style -> PageGeometry -> Maybe Text -> ((Text, Sp), Indent)
 paraLook style geom st =
-  let fs = pgFontSize geom
-      d = paraStyle style st
-      size = maybe fs (dimToSp fs) (d >>= psSize)
+  let d = paraStyle style st
+      face@(_, size) = faceFor style geom (d >>= psFont) (d >>= psSize)
       sp' f = dimToSp size (fromMaybe (Zw 0) (d >>= f))
-   in ((fromMaybe (bodyRole style) (d >>= psFont), size), Indent (sp' psIndent) (sp' psFirstLineIndent))
+   in (face, Indent (sp' psIndent) (sp' psFirstLineIndent))
 
 unitsOf :: Book -> PageGeometry -> Style -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
 unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
@@ -672,11 +690,17 @@ buildFlow inp geom fonts images assumed = do
             m = fromInteger ((across + pitch - 1) `div` pitch)
             number = Map.lookup (uSpan u) (bookFigures (piBook inp))
             captionInlines = maybe [] (\num -> [Text (uSpan u) (num <> "　")]) number <> concat [is | Block _ _ (Paragraph _ is) <- figCaption fig]
-            (captionItems, captionAnchors) = composeInlines bodyEnv captionInlines
-            caption = if null captionInlines then [] else brLines (breakParagraph params (const alongSp) captionItems)
+            -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
+            (captionRole, cs) = paraFace style geom "caption"
+            captionParams = params {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
+            (captionItems, captionAnchors) = composeInlines (envFor captionRole cs) captionInlines
+            caption = if null captionInlines then [] else brLines (breakParagraph captionParams (const alongSp) captionItems)
             captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
             n = length caption
-            depth = if n > 0 then toInteger (m + n - 1) * pitch + fs else across
+            -- its pitch keeps the body's ratio of pitch to size; it takes the fewest grid lines that hold it
+            cb = headingBlock fs pitch cs n
+            (cp, span') = if n == 0 then (pitch, 0) else (hbPitch cb, hbSpan cb)
+            depth = if n > 0 then toInteger m * pitch + toInteger (n - 1) * cp + cs else across
             gap = dimToSp fs (stWrapGap style)
             ex = (\side -> exclusion side pitch gap alongSp depth) <$> figWrap fig
             errs = case (figWrap fig, ex) of
@@ -685,7 +709,7 @@ buildFlow inp geom fonts images assumed = do
                     [diagnostic "G0722" Error (uSpan u) ("回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
                 | exLines e > capacity -> [diagnostic "G0723" Error (uSpan u) ("回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
               _ -> []
-         in (PlacedFigure img alongSp across (figWrap fig) m caption ex, errs, captionMarks)
+         in (PlacedFigure img alongSp across (figWrap fig) m caption cs cp span' ex, errs, captionMarks)
       figures = Map.fromList [(i, f) | (i, u@Unit {uKind = UFigure fig}) <- units, Just f <- [figureOf u fig]]
       -- 1. a job per wrapped figure: the paragraphs right after it, in order, beside the exclusion
       wrapJob i ex = go (i + 1) 0
@@ -812,7 +836,7 @@ buildFlow inp geom fonts images assumed = do
                             headAcc,
                             errs <> tooNarrow
                           )
-                _ -> (nextId + 1, flows <> [FFigure nextId (pfImageLines pf + length (pfCaption pf)) (label u) fmarks], lineAcc, Map.insert nextId pf figAcc, headAcc, errs <> ferrs)
+                _ -> (nextId + 1, flows <> [FFigure nextId (pfImageLines pf + pfCaptionSpan pf) (label u) fmarks], lineAcc, Map.insert nextId pf figAcc, headAcc, errs <> ferrs)
             UGap n -> (nextId, flows <> [FSpace n], lineAcc, figAcc, headAcc, errs)
             _ ->
               let c = singles Map.! i
@@ -1032,7 +1056,7 @@ writeDocument inp geom fonts layout intent =
                      Just hb <- [Map.lookup lid (plHeadings layout)],
                      (j, Just sl) <- [(j, Map.lookup (lid + j) (plLines layout)) | j <- [0 .. m - 1]]
                    ]
-                <> [ drawLine ta (gridAt (slot + pfImageLines pf + j)) (SetLine l (pgFontSize geom) (captionIndent ta pf) [] [])
+                <> [ drawLine ta (captionLineAt slot pf j) (SetLine l (pfCaptionSize pf) (captionIndent ta pf) [] [])
                    | (slot, fid) <- placedFigures p,
                      Just pf <- [Map.lookup fid (plFigures layout)],
                      (j, l) <- zip [0 ..] (pfCaption pf)
@@ -1070,6 +1094,12 @@ writeDocument inp geom fonts layout intent =
             top = toInteger k * pgLinePitch geom + hbOffset hb + toInteger j * hbPitch hb
          in top + (if vertical then s `div` 2 else round (toRational s * baselineRatio))
       placedFigures p = [(slot, fid) | (slot, s) <- poSlots p, fid <- case s of SFigure f -> [f]; SWrapped f -> [f]; _ -> []]
+      {- line j of a caption: from the top of the grid line after the image,
+      j caption pitches on, at the top of its lines (golem-driver ADR 0010) -}
+      captionLineAt slot pf j =
+        let cs = pfCaptionSize pf
+            top = toInteger (slot + pfImageLines pf) * pgLinePitch geom + toInteger (j :: Int) * pfCaptionPitch pf
+         in top + (if vertical then cs `div` 2 else round (toRational cs * baselineRatio))
       -- caption lines start where the image starts (golem-driver ADR 0005)
       captionIndent ta pf
         | pfWrap pf == Just WrapEnd = (if vertical then rectH ta else rectW ta) - pfAlong pf

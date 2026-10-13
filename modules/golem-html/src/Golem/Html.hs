@@ -5,6 +5,8 @@ module Golem.Html
   ( HtmlConfig (..),
     HtmlCharStyle (..),
     HtmlParaStyle (..),
+    Face (..),
+    noFace,
     XhtmlSite (..),
     renderXhtml,
     pagePath,
@@ -16,7 +18,7 @@ where
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble
@@ -38,9 +40,20 @@ data HtmlConfig = HtmlConfig
     hcCharStyles :: !(Map Text HtmlCharStyle),
     -- | the paragraph styles, body included (docs/adr ADR 0005)
     hcParaStyles :: !(Map Text HtmlParaStyle),
+    -- | the font and size of figcaption (golem-driver ADR 0010)
+    hcCaptionFace :: !Face,
     hcBibliography :: !(Map Text Text), -- key -> formatted entry
     hcDev :: !Bool
   }
+
+-- | A font role and a CSS font-size for an element (golem-driver ADR 0010).
+data Face = Face
+  { faFont :: !(Maybe Text),
+    faSize :: !(Maybe Text)
+  }
+
+noFace :: Face
+noFace = Face Nothing Nothing
 
 -- | A resolved character style for CSS (docs/adr ADR 0005).
 data HtmlCharStyle = HtmlCharStyle
@@ -429,8 +442,11 @@ css cfg =
            ".align-center { text-align: center; }",
            ".align-right { text-align: right; }",
            ".proof { background: #ffeb99; }",
-           T.strip (T.pack (S.styleToCss S.pygments)),
-           ".sidenote { font-size: 0.85em; }",
+           T.strip (T.pack (S.styleToCss S.pygments))
+         ]
+      -- the caption's font and size (golem-driver ADR 0010)
+      <> [faceRule "figcaption" (hcCaptionFace cfg) | isJust (faFont (hcCaptionFace cfg)) || isJust (faSize (hcCaptionFace cfg))]
+      <> [ ".sidenote { font-size: 0.85em; }",
            "@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }"
          ]
       -- paragraph styles (docs/adr ADR 0005); body is the plain p
@@ -479,6 +495,7 @@ css cfg =
              let (r, g, b) = cmykToRgb cmyk
            ]
     rule sel ds = sel <> " { " <> T.concat [d <> "; " | d <- ds] <> "}"
+    faceRule sel f = rule sel (["font-family: " <> fontStack role | Just role <- [faFont f]] <> ["font-size: " <> s | Just s <- [faSize f]])
     charRule name cs = rule (selectorOf name) (declsOf name cs)
     -- a rule that says only what the element shows anyway is not written
     charRuleMaybe name cs =

@@ -18,6 +18,7 @@ module Golem.Driver
     paraLineBreaks,
     keepStyles,
     builtinKeepStyles,
+    cssFontSize,
   )
 where
 
@@ -368,7 +369,8 @@ writeTargets opts e book targets = do
                   Just d <- [paraStyle style (Just n)]
                 ],
             hcBibliography = bib,
-            hcDev = dev
+            hcDev = dev,
+            hcCaptionFace = let c = paraStyle style (Just "caption") in Face (c >>= psFont) (cssFontSize style <$> (c >>= psSize))
           }
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case
@@ -450,13 +452,26 @@ cssLength :: Dim -> Text
 cssLength = \case
   Zw r -> decimal3 r <> "em"
   Abs sp -> decimal3 (toRational sp / 65536) <> "pt"
-  where
-    decimal3 r =
-      let thousandths = round (r * 1000) :: Integer
-          (i, f) = abs thousandths `divMod` 1000
-          sign = if thousandths < 0 then "-" else ""
-          frac = T.dropWhileEnd (== '0') (T.justifyRight 3 '0' (T.pack (show f)))
-       in sign <> T.pack (show i) <> (if T.null frac then "" else "." <> frac)
+
+{- | A size of style.toml as a CSS font-size (golem-driver ADR 0010): zw as
+em, an absolute size as its ratio to an absolute grid size in em, pt
+without one.
+-}
+cssFontSize :: Style -> Dim -> Text
+cssFontSize style = \case
+  Zw r -> decimal3 r <> "em"
+  Abs sp -> case stPage style >>= pageGrid of
+    Just Grid {gridFontSize = Abs fs} | fs > 0 -> decimal3 (toRational sp / toRational fs) <> "em"
+    _ -> cssLength (Abs sp)
+
+-- | At most three decimals, fixed (docs/adr ADR 0003).
+decimal3 :: Rational -> Text
+decimal3 r =
+  let thousandths = round (r * 1000) :: Integer
+      (i, f) = abs thousandths `divMod` 1000
+      sign = if thousandths < 0 then "-" else ""
+      frac = T.dropWhileEnd (== '0') (T.justifyRight 3 '0' (T.pack (show f)))
+   in sign <> T.pack (show i) <> (if T.null frac then "" else "." <> frac)
 
 -- | The table of contents page of the HTML target.
 indexPage :: HtmlConfig -> FileTable -> Book -> Text
