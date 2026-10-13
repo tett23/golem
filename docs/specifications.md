@@ -656,7 +656,7 @@ PDF の合成の太字の線の幅は、和文で文字の大きさの 1/80、�
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
 `[character-styles.strong] based-on = "italic"` は、`[strong: ...]` を斜体で表す。
 
-段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）である。
+段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`aki-set`（アキ量のセットの名前）である。
 段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G0311）とする。
 行送りの欄は設けない。
 PDF の本文を行の格子に載せるので、段落ごとに行送りを変えると見開きの行の位置がそろわなくなるためである。
@@ -732,8 +732,54 @@ CSS に対応する system のない差し込み（`{①}`、`{ア}`、`{イ}`�
 プレーンテキストは、深さごとの印と書式で組んだ文字列を項目の前に置く。
 `[lists]` を書かない本の HTML、EPUB、プレーンテキストの出力は変わらない。
 
+和文の字間の空き（アキ）の量は、アキ量のセットで決める（[docs/adr/0019](adr/0019-aki-settings.md)）。
+考え方は InDesign の文字組みアキ量設定に合わせ、文字のクラスの組ごとに、空きの最小、最適、最大を持つ。
+アキの量は、`"ベタ"`（0）、`"全角"`（1）、`"二分"`、`"三分"`、`"四分"`、`"五分"`、`"六分"`、`"八分"`、`"二分四分"`（3/4）の名前か、`"0.2zw"` のような `zw` の小数か、`"25%"` のような百分率（小数を許す）で書く。
+値は全角を 1 とする有理数として持ち、sp への変換は一度だけ丸める。
+負の量は書けない。
+名前と百分率は、アキの量を書く欄（アキ量のセットの規則と、原稿の `[aki]`）でだけ受け付け、`indent` などのほかの寸法の欄に書けばエラー（G0320）とする。
+
+```toml
+[aki-sets.wide-waou]
+based-on = "gyomatsu-yakumono-hankaku"
+rules = [
+  { before = "japanese", after = "western", optimum = "三分", minimum = "四分", maximum = "二分" },
+  { before = "western", after = "japanese", optimum = "三分", minimum = "四分", maximum = "二分" },
+]
+
+[paragraph-styles.body]
+aki-set = "wide-waou"
+```
+
+`[aki-sets.<名前>]` の `based-on` は基準にするセット（書かなければ `gyomatsu-yakumono-hankaku`）、`rules` は基準のセットの規則の後に足す規則の配列である。
+規則の `before` と `after` はクラスの名前かその配列、`optimum` は最適、`minimum` と `maximum` は最小と最大（書かなければ `optimum`）である。
+クラスの名前は、`opening`（始め括弧類）、`closing`（終わり括弧類）、`hyphen`（ハイフン類）、`dividing`（区切り約物）、`middle-dot`（中点類）、`full-stop`（句点類）、`comma`（読点類）、`inseparable`（分離禁止文字）、`iteration`（繰返し記号）、`prolonged-sound`（長音記号）、`small-kana`（小書きの仮名）、`ideographic-space`（和字間隔）、`kana`（平仮名と片仮名）、`ideograph`（漢字等）、`western`（欧文）と、`western` 以外のすべてを表す `japanese` である。
+`before` には `paragraph-start`（段落の最初の文字の前）と `line-start`（段落の途中で改行した後の行頭の文字の前）、`after` には `line-end`（改行する前の行末の文字の後ろ）も書ける。
+規則は `before` の各クラスと `after` の各クラスの組に空きを割り当て、後に書いた規則が同じ組の前の規則を上書きする。
+基準のセットの規則は、子のセットの規則より前にある。
+規則のない組の空きは 0 で、伸び縮みしない。
+行頭と行末の空きは `optimum` の固定の量とし、行の伸縮の調整には使わない。
+`minimum <= optimum <= maximum` でない規則、未知のクラスの名前、`before` の `line-end`、`after` の `line-start` と `paragraph-start`、組み込みと同じ名前の節はエラー（G0320）とする。
+
+組み込みのセットは `gyomatsu-yakumono-hankaku`（行末約物半角）と `gyomatsu-yakumono-zenkaku`（行末約物全角）の二つで、名前と考え方を InDesign の同名のセットに合わせ、値は [golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md) の組み方から決めた。
+`gyomatsu-yakumono-hankaku` が既定で、和欧間は (八分, 四分, 二分)、終わり括弧類と句読点の後ろと始め括弧類の前は (0, 二分, 二分)、中点類の前後は (0, 四分, 四分)、和文どうしの字間は (0, 0, 0.1zw) である。
+隣り合う約物の空きは、終わり括弧類と始め括弧類の間が二分、中点類と括弧類や句読点の間が二分四分、中点類どうしが二分になる。
+行末の約物の後ろの空きは 0 なので、行末の終わり括弧類と句読点は半角になる。
+`gyomatsu-yakumono-zenkaku` は、これに行末の終わり括弧類と句読点の後ろの二分と、行末の中点類の後ろの四分を足したものである。
+組み込みのセットの値を変えたい場合は、`based-on` で引き継いだ別の名前のセットを作る。
+空きの `zw` は、前後の一方だけが約物ならその約物の大きさ、両方が約物なら大きいほうの大きさ、どちらも約物でなければ段落の文字の大きさとし、行頭、行末、段落の先頭の空きはその文字の大きさとする。
+欧文の単語の箱は、両端の引用符やダッシュを含めて欧文（`western`）として扱う。
+ルビの箱は、隣が約物のときだけ漢字（`ideograph`）として扱い、それ以外では空きを置かない。
+
+段落スタイルの `aki-set` は、その段落を組むセットの名前である。
+`body` の既定は `gyomatsu-yakumono-hankaku` で、ほかの段落スタイルは `based-on` から引き継ぐ。
+見出し、表、目次、索引、脚注の本文は `body` のセットで、図版のキャプションは `caption` の、傍注の本文は `sidenote` の段落スタイルのセットで組む。
+`@style-def` でも `aki-set` を書けるが、セットそのものは `style.toml` にだけ定義できる。
+アキ量のセットは PDF にだけ効き、HTML と EPUB はブラウザーの既定で組む。
+
 文字スタイルと段落スタイルの `font` が `[fonts]` にない役割を指す場合も G0308 とする。
 `based-on` が存在しないスタイルを指す場合、循環する場合、`body` に `based-on` がある場合、文字スタイルの `color` が `[color.swatches]` にない場合はエラー（G0313）とする。
+段落スタイルの `aki-set` とアキ量のセットの `based-on` が存在しないセットを指す場合と、セットの `based-on` が循環する場合も G0313 とする。
 
 文字スタイルと段落スタイルは、原稿のファイルの先頭の `@style-def` でも定義できる（[docs/adr/0014](adr/0014-in-file-settings.md)）。
 `@style-def character 名前 key=value...` と `@style-def paragraph 名前 key=value...` の形で一行に一つのスタイルを書き、キーと値の検査、名前の規則（英小文字で始まり、英小文字、数字、`-` だけからなる）、診断のコードは `style.toml` と同じである。
@@ -1526,7 +1572,6 @@ v1 のリリースまでに、次の項目を扱う。
 #### 組版
 
 - **InDesign の文字の組版の機能**：InDesign が文字に対して持つ組版の機能を実装する。カーニングの方式（メトリクス、和文等幅、なし）を選べるようにし、既定はフォントのペアカーニングの情報を使うメトリクスとする。トラッキング、プロポーショナルメトリクス、文字の比率（水平比率と垂直比率）、ベースラインシフトなども含め、v1 で扱う範囲を ADR で決める。オプティカルカーニングは v2 以降に回す（「v2 以降に回した事項」の「オプティカルカーニング」）。今は、フォントの役割ごとに OpenType の機能（`features`）を指定できるだけで、欧文のカーニングは HarfBuzz が既定で適用する機能に任せている。
-- **アキの指定**：全角、二分、三分、四分、五分、六分、八分のような、和文組版で慣用のアキ（空き）の量を指定できるようにする。InDesign の文字組みアキ量設定のように、和欧間、括弧類や句読点の前後などの文字のクラスの組ごとに、空きの量と伸縮の範囲を `style.toml` で設定できるようにする。原稿の中の任意の位置に五分アキなどの空きを入れる記法も設ける。今は、和欧間を四分の空きとし、約物の空きを JLReq の規則で決めているが（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）、その量を変える設定はない。原稿の中で空きを入れるには全角の空白を使うしかなく、寸法の単位も `zw` の小数（五分は `0.2zw`）で書くしかない。
 - **段組み**：`[page.grid]` の `columns` に 2 以上を書けるが、PDF は最初の段の行長で組み、二段目以降に本文を流さない。論文の組版に段組みが要るので、v1 で実装する。段組みをフレームのレベル 2 に当たるとして v1 から外す ADR（[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）と、段組みの版面を前提にする ADR（[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）が食い違っているので、実装するときに新しい ADR で決着させる。
 - **正規表現スタイル**：段落スタイルの中で、正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル）。`style.toml` の段落スタイルと、ファイルの中の `@style-def regex`（[docs/adr/0014](adr/0014-in-file-settings.md)）で定義する。ファイルの中の記法と効く範囲は [docs/adr/0014](adr/0014-in-file-settings.md) で決めた。段落スタイルのどの欄に置くか、正規表現の方言、一致の重なりと決定性、エンジンといった意味は別の ADR で決める。それまで `@style-def regex` はエラーになる。
 

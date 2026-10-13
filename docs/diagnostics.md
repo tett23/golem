@@ -57,7 +57,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。下に節を置く。
 - **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。下に節を置く。
-- **空き**：G0104 から G0109、G0125 から G0128、G0255、G0601、G0703 から G0720、G0726 から G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
+- **空き**：G0104 から G0109、G0125 から G0128、G0601、G0703 から G0720、G0726 から G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
 
 ## G0101
 
@@ -1825,6 +1825,35 @@ lines の範囲が不正です
 今は正規表現スタイルを使えない。
 `@style-def regex` の行を消す。
 
+## G0255
+
+アキの量が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`[aki 量]` の書き方が正しくない。
+`[aki]` は位置引数を一つだけ取り、散文スロットを取らない。
+量は、アキの量の名前、`zw` の小数、百分率、絶対の寸法のどれかである。
+誤った `[aki]` は何も置かない。
+
+- メッセージ: `<理由>。量には、ベタ、全角、二分、三分、四分、五分、六分、八分、二分四分のどれか、0.2zw のような zw、25% のような百分率、1mm のような寸法のどれかを書きます`。理由は `aki には量を一つ書きます`、`アキの量を読めません: <値>`、`aki は散文スロットを取りません` のどれかである。
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0019](adr/0019-aki-settings.md)
+
+### 主な原因
+
+- `[aki]` に量を書かなかったか、二つ以上書いたか、キーワード引数で書いた。
+- 量の名前を誤った（`十分` など）か、負の量を書いた。
+- `[aki 四分: 語]` のように散文スロットを書いた。
+
+### 直し方
+
+`[aki 四分]`、`[aki 0.2zw]`、`[aki 25%]`、`[aki 1mm]` のように、量を一つだけ書く。
+空きを入れたい二つの文字の間に `[aki]` を置き、文字は `[aki]` の外に書く。
+
 ## G0256
 
 コマンドの中に強制改行があります
@@ -2304,10 +2333,11 @@ style.toml のスタイルの参照が不正です
 ### 意味
 
 `based-on` が存在しないスタイルを指すか、循環するか、`body` に `based-on` があるか、文字スタイルの `color` が `[color.swatches]` にない。
+段落スタイルの `aki-set` と、アキ量のセットの `based-on` が存在しないセットを指すか、セットの `based-on` が循環する場合も、このコードになる。
 
 - メッセージ: `style.toml のスタイルの参照が不正です: <理由>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)
+- ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、アキ量のセットは [docs/adr/0019](adr/0019-aki-settings.md)
 
 ### 主な原因
 
@@ -2315,10 +2345,12 @@ style.toml のスタイルの参照が不正です
 - `based-on` が循環する。
 - `body` に `based-on` を書いた。
 - 文字スタイルの `color` が `[color.swatches]` にない。
+- 段落スタイルの `aki-set` か、`[aki-sets.<名前>]` の `based-on` が、存在しないセットを指す。
+- `[aki-sets.<名前>]` の `based-on` が循環する。
 
 ### 直し方
 
-理由の示すスタイルの `based-on` か `color` を直す。
+理由の示すスタイルの `based-on`、`color`、`aki-set` か、アキ量のセットの `based-on` を直す。
 
 ## G0314
 
@@ -2400,6 +2432,39 @@ style.toml のスタイルの参照が不正です
 ### 直し方
 
 `[headings.<階層>]` の `running-head` の行を消し、マスターページの `running-head` に `content = "heading.1.short"` のように柱に出す見出しの階層を書く。
+
+## G0320
+
+アキの量の指定が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[aki-sets.<名前>]` か、寸法の欄に書いたアキの量が正しくない。
+`[aki-sets]` の中の誤りは、すべてこのコードになる。
+ファイルの中の段落スタイルの定義（`@style-def`）の寸法の欄も同じである。
+
+- メッセージ: `アキの量の指定が正しくありません: <理由>`。理由は `アキの量として読めません: <値>`、`未知のクラスの名前です: <名前>`、`line-end は after にだけ書けます`、`<名前> は before にだけ書けます`、`minimum、optimum、maximum の順に小さくない値を書きます`、`組み込みのアキ量のセットと同じ名前です。…`、`アキの量の名前と百分率は、アキの量を書く欄でだけ使えます。…` などである。誤った箇所の経路を添える。`[aki-sets]` の中の型の誤りは、TOML のスキーマの文言になる。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。`@style-def` の寸法の欄は評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0019](adr/0019-aki-settings.md)
+
+### 主な原因
+
+- 規則の `optimum`、`minimum`、`maximum` に、読めない量や負の量を書いた。
+- `minimum` が `optimum` より大きいか、`optimum` が `maximum` より大きい。
+- `before` と `after` に未知のクラスの名前を書いた。
+- `line-end` を `before` に、`line-start` か `paragraph-start` を `after` に書いた。
+- 組み込みのセット（`gyomatsu-yakumono-hankaku`、`gyomatsu-yakumono-zenkaku`）と同じ名前の節を書いた。
+- `indent = "二分"` のように、アキの量の名前や百分率を寸法の欄に書いた。
+
+### 直し方
+
+量は `"四分"`、`"0.25zw"`、`"25%"` のように書き、`minimum <= optimum <= maximum` にする。
+クラスの名前は仕様書の表のとおりに書く。
+組み込みのセットを変えたいときは、`based-on` で引き継いだ別の名前のセットを作る。
+寸法の欄には `"0.5zw"` や `"2mm"` のように寸法を書く。
 
 ## G0322
 

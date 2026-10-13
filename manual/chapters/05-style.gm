@@ -304,3 +304,40 @@ overhang-onto = "kana"
 
 縦組みの本で [style code: \[number-text ...\]] の数をどう組むかは、[style code: \[numbers\]] の [style code: vertical] で決めます。
 [style code: "kanji"]（十、百二十）、[style code: "kanji-digits"]（一〇、一二〇）、[style code: "tcy"]（縦中横の算用数字）から選べます。
+
+@label aki-sets
+## 字間の空き
+
+和文の文字のあいだの空き[index reading=あき: アキ]の量は、アキ量のセットで決めます。
+InDesign の文字組みアキ量設定に当たる設定で、和文と欧文のあいだ（和欧間[index reading=わおうかん: 和欧間]）、括弧や句読点の前後のような文字の組み合わせごとに、空きの最小、最適、最大を持ちます。
+何も書かなければ、組み込みのセット [style code: gyomatsu-yakumono-hankaku]（行末約物半角）で組みます。
+和欧間は四分、括弧と句読点は半角の字面に二分の空き、行末の括弧と句読点は半角です。
+行末の括弧と句読点の後ろにも二分を残す [style code: gyomatsu-yakumono-zenkaku]（行末約物全角）も組み込みで持っています。
+
+セットを変えるには、[style code: \[aki-sets.名前\]] にセットを定義し、段落スタイルの [style code: aki-set] で選びます。
+
+```toml
+[aki-sets.wide-waou]
+based-on = "gyomatsu-yakumono-hankaku"
+rules = [
+  { before = "japanese", after = "western", optimum = "三分", minimum = "四分", maximum = "二分" },
+  { before = "western", after = "japanese", optimum = "三分", minimum = "四分", maximum = "二分" },
+]
+
+[paragraph-styles.body]
+aki-set = "wide-waou"
+```
+
+- [style code: based-on]：基準にするセットです。書かなければ [style code: gyomatsu-yakumono-hankaku] です。
+- [style code: rules]：基準のセットに足す規則です。後に書いた規則が、同じ組み合わせの前の規則を上書きします。
+- [style code: before] と [style code: after]：前と後ろの文字のクラスです。[style code: kana]（仮名）、[style code: ideograph]（漢字）、[style code: opening]（始め括弧）、[style code: closing]（終わり括弧）、[style code: full-stop]（句点）、[style code: comma]（読点）、[style code: middle-dot]（中点）、[style code: western]（欧文）、欧文のほかすべての [style code: japanese] などを書き、配列で並べることもできます。[style code: before] には段落の先頭の [style code: paragraph-start] と行頭の [style code: line-start]、[style code: after] には行末の [style code: line-end] も書けます。
+- [style code: optimum]、[style code: minimum]、[style code: maximum]：空きの最適、最小、最大です。最小と最大を書かなければ最適と同じになり、伸び縮みしません。
+
+量は [style code: "四分"] のような名前か、[style code: "0.25zw"] か、[style code: "25\%"] で書きます。
+段落スタイルは [style code: body] からセットを引き継ぐので、[style code: body] で選べば本の全体が変わります。
+引用だけ組み方を変えるときは、その段落スタイルの [style code: aki-set] だけを書きます。
+組み込みのセットと同じ名前のセットは定義できません。
+値を変えたいときは、[style code: based-on] で引き継いだ別の名前のセットを作ります。
+
+アキ量のセットは PDF にだけ効きます。
+HTML と EPUB は、ブラウザーの組み方で組みます。
