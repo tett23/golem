@@ -87,6 +87,27 @@ tests =
               inl p2 @?= [Text "C"]
             other -> assertFailure (show other)
         ],
+      testGroup
+        "hard breaks (docs/adr ADR 0016)"
+        [ testCase "a backslash at the end of a line" $
+            paraTexts "a\\\nb\n" @?= [[Text "a", HardBreak, Text "b"]],
+          testCase "spaces and tabs around it are not text; the ideographic space is" $ do
+            paraTexts "a  \\\n  b\n" @?= [[Text "a", HardBreak, Text "b"]]
+            paraTexts "a\t\\\n\tb\n" @?= [[Text "a", HardBreak, Text "b"]]
+            paraTexts "a\\\n\x3000\&b\n" @?= [[Text "a", HardBreak, Text "\x3000\&b"]],
+          testCase "an escaped space is not a hard break" $
+            paraTexts "a\\ \nb\n" @?= [[Text "a ", SoftBreak, Text "b"]],
+          testCase "an escaped backslash is not a hard break" $
+            paraTexts "a\\\\\nb\n" @?= [[Text "a\\", SoftBreak, Text "b"]],
+          testCase "a hard break in a prose slot stays in the slot" $ case paraTexts "[note: a\\\nb]\n" of
+            [[Command _ [] [slot]]] -> inl slot @?= [Text "a", HardBreak, Text "b"]
+            other -> assertFailure (show other),
+          testCase "a hard break at the start of a paragraph stays" $
+            paraTexts "\\\na\n" @?= [[HardBreak, Text "a"]],
+          testCase "the span is from the backslash to the end of the newline" $ case ast "a\\\nb\n" of
+            [Paragraph [_, Located sp HardBreak, _]] -> (spanStart sp, spanEnd sp) @?= (1, 3)
+            other -> assertFailure (show other)
+        ],
       testCase "escapes are resolved" $
         paraTexts "\\# 見出しではない \\[ x \\\\\n" @?= [[Text "# 見出しではない [ x \\"]],
       testCase "comments vanish, proofreading comments stay" $

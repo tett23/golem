@@ -34,6 +34,9 @@ module Golem.Driver.Pdf
     TocPage (..),
     tocPage,
     headingPages,
+    headingsOnPages,
+    runningHeadText,
+    runningHeads,
     figureRect,
     renderPdf,
     flowLines,
@@ -54,7 +57,7 @@ import Data.Either (fromRight, isLeft)
 import Data.List (groupBy, intercalate, nub, sortOn, zip4)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, listToMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -152,7 +155,9 @@ data PdfInput = PdfInput
     -- | the crop marks (golem-pdf ADR 0004)
     piMarks :: !(Maybe P.MarkStyle),
     -- | the styles each file defines (docs/adr ADR 0014)
-    piLocalStyles :: !(Map FileId LocalStyles)
+    piLocalStyles :: !(Map FileId LocalStyles),
+    -- | the master page of each chapter file that names one (golem-driver ADR 0014)
+    piMasters :: !(Map FileId Text)
   }
 
 -- | The style of a document: style.toml with the styles its file defines (docs/adr ADR 0014).
@@ -328,7 +333,11 @@ data PdfLayout = PdfLayout
     -- | the width of each table
     plTables :: !(Map Int Sp),
     -- | the leader and page number of each table of contents entry, by its last line (golem-driver ADR 0009)
-    plTocPages :: !(Map Int TocPage)
+    plTocPages :: !(Map Int TocPage),
+    -- | the file of the unit of each first line (golem-driver ADR 0014)
+    plLineFiles :: !(Map Int FileId),
+    -- | the span of each heading block by its first line
+    plHeadingSpans :: !(Map Int SrcSpan)
   }
 
 data Built = Built
@@ -344,7 +353,9 @@ data Built = Built
     -- | the span of each heading block by its first line (golem-driver ADR 0009)
     bHeadingSpans :: Map Int SrcSpan,
     -- | the heading and the end of the title of each table of contents entry, by its last line
-    bTocLines :: Map Int (SrcSpan, Sp)
+    bTocLines :: Map Int (SrcSpan, Sp),
+    -- | the file of each unit by the id of its first line (golem-driver ADR 0014)
+    bLineFiles :: Map Int FileId
   }
 
 renderPdf :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ByteString)
@@ -398,7 +409,7 @@ layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) of
             env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyRole (piStyle inp)) (pgFontSize geom)
             tocPages = Map.fromList [(lid, tocPage tg e (pageNumberLine env n)) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
          in case concat [ds | (_, Left ds) <- placed] of
-              [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages)
+              [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built))
               ds -> Left ds
 
 {- | The page of each heading (golem-driver ADR 0009): the page where the
@@ -407,6 +418,88 @@ first line of its block is placed, keyed by the span of the block.
 headingPages :: Map Int SrcSpan -> [PageOut] -> Map SrcSpan Integer
 headingPages spans ps =
   Map.fromList [(hs, toInteger (poNumber p)) | p <- ps, (_, SHeading lid _) <- poSlots p, Just hs <- [Map.lookup lid spans]]
+
+{- | The headings that start on each page (golem-driver ADR 0014), in the
+order they are placed, looked up by the first line of their block.
+-}
+headingsOnPages :: (Int -> Maybe HeadingInfo) -> [PageOut] -> Map Int [HeadingInfo]
+headingsOnPages infoOf ps =
+  -- the columns of a page in their order (docs/adr ADR 0018)
+  Map.fromListWith (flip (<>)) [(poNumber p, [h | (_, SHeading lid _) <- poSlots p, Just h <- [infoOf lid]]) | p <- ps]
+
+{- | The headings in effect after a heading: it is the one of its level,
+and the levels below it have none.
+-}
+activeAfter :: Map Int (Maybe HeadingInfo) -> HeadingInfo -> Map Int (Maybe HeadingInfo)
+activeAfter m h = Map.insert (hiLevel h) (Just h) (Map.mapWithKey (\l v -> if l > hiLevel h then Nothing else v) m)
+
+{- | The text of a running head (golem-driver ADR 0014) from the title of
+the book, the content, the headings in effect at the start of the page
+by level, and the headings that start on the page.
+-}
+runningHeadText :: Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> Maybe Text
+runningHeadText title content start started = case content of
+  RunningNone -> Nothing
+  RunningTitle -> if T.null title then Nothing else Just title
+  RunningHeading l form pick ->
+    let here = [h | h <- started, hiLevel h == l]
+        atEnd = foldl' activeAfter start started
+        chosen = case pick of
+          PickFirst -> listToMaybe here <|> join (Map.lookup l start)
+          PickLast -> listToMaybe (reverse here) <|> join (Map.lookup l atEnd)
+        short h = T.concat (map inlineText (hiTitle h))
+        render h = case form of
+          HeadShort -> short h
+          HeadNumbered -> maybe (short h) (\n -> n <> "\x3000" <> short h) (hiNumberText h)
+     in render <$> chosen
+
+-- | The columns of each page, in order (docs/adr ADR 0018).
+pagesOf :: [PageOut] -> [[PageOut]]
+pagesOf = groupBy (\a b -> poNumber a == poNumber b)
+
+{- | The file of each page, in order (golem-driver ADR 0014): the file of
+the unit of its first line; a page without lines has the file of the page
+before it, and the first chapter's file when it is the first page.
+-}
+pageFiles :: PdfInput -> PdfLayout -> [FileId]
+pageFiles inp layout = drop 1 (scanl next firstFile (pagesOf (plPages layout)))
+  where
+    firstFile = maybe (FileId 0) fst (listToMaybe (projectChapters (piProject inp)))
+    -- through the columns of the page in order (docs/adr ADR 0018)
+    firstLine ps = listToMaybe [lid | p <- ps, (_, s) <- poSlots p, lid <- case s of SLine l -> [l]; SHeading l _ -> [l]; _ -> []]
+    next prev p = fromMaybe prev (firstLine p >>= \lid -> snd <$> Map.lookupLE lid (plLineFiles layout))
+
+{- | The master page of each page, in order: the one its file names in the
+manifest, otherwise @body@, otherwise the first by name.
+-}
+pageMasters :: PdfInput -> PageGeometry -> PdfLayout -> [Maybe MasterGeometry]
+pageMasters inp geom layout = map masterOf (pageFiles inp layout)
+  where
+    ms = pgMasters geom
+    masterOf fid =
+      (Map.lookup fid (piMasters inp) >>= (`Map.lookup` ms))
+        <|> Map.lookup "body" ms
+        <|> fmap snd (Map.lookupMin ms)
+
+{- | The running head drawn on each page, by page number (golem-driver ADR
+0014). None on blank pages, on pages where a recto heading starts, and
+on pages whose master page has no running head.
+-}
+runningHeads :: PdfInput -> PageGeometry -> PdfLayout -> Map Int (Maybe Text)
+runningHeads inp geom layout =
+  let pages = [p | (p : _) <- pagesOf (plPages layout)]
+      infoOf lid = Map.lookup lid (plHeadingSpans layout) >>= (`Map.lookup` bookHeadings (piBook inp))
+      started = headingsOnPages infoOf (plPages layout)
+      startedOn p = Map.findWithDefault [] (poNumber p) started
+      starts = scanl (foldl' activeAfter) Map.empty (map startedOn pages)
+      title = mdTitle (manifestMetadata (projectManifest (piProject inp)))
+      recto h = maybe False hsRectoBreak (Map.lookup (hiLevel h) (stHeadings (piStyle inp)))
+      one p st m
+        | poBlank p || any recto (startedOn p) = Nothing
+        | otherwise = do
+            (co, ce, _, _) <- m >>= mgRunningHead
+            runningHeadText title (if odd (poNumber p) then co else ce) st (startedOn p)
+   in Map.fromList [(poNumber p, one p st m) | (p, st, m) <- zip3 pages starts (pageMasters inp geom layout)]
 
 -- | How the last line of a table of contents entry ends (golem-driver ADR 0009).
 data TocGeometry = TocGeometry
@@ -757,10 +850,15 @@ unitsOf book geom styleOf pageOf bib = concatMap doc (bookDocs book)
       let unit kind l is face = Unit kind l is sp face style
           plainUnit kind l is = unit kind l is (bodyFace style)
        in case body of
-            -- a unit for each part between line breaks, each indented as a paragraph (docs/adr ADR 0005, 0006)
+            -- a style that keeps its lines: a unit for each line, each indented as a
+            -- paragraph (docs/adr ADR 0005, 0006); otherwise the line breaks are
+            -- hard breaks inside one unit, and only its first line has the
+            -- first-line indent (docs/adr ADR 0016)
             Paragraph st is ->
               let (face, ind) = paraLook style geom st
-               in [unit (UPara (if inList then noIndent else ind)) (if i == 0 then lbl else Nothing) part face | (i, part) <- zip [0 :: Int ..] (splitBreaks is)]
+                  keeps = (paraStyle style st >>= psLineBreaks) == Just KeepLines
+                  parts = if keeps then splitBreaks is else [is]
+               in [unit (UPara (if inList then noIndent else ind)) (if i == 0 then lbl else Nothing) part face | (i, part) <- zip [0 :: Int ..] parts]
             Heading l attrs is ->
               let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
                   title = maybe [] (\n -> [txt (n <> "　")]) (if haNoNumber attrs then Nothing else num) <> is
@@ -1049,7 +1147,7 @@ buildFlow inp geom fonts images assumed = do
                   (_, size) = faceOf u
                   hb = headingBlock fs pitch size (length ls)
                   flowOf = case uKind u of
-                    UHeading l short recto -> [FHeading l short recto (hbSpan hb) boxes]
+                    UHeading l _ recto -> [FHeading l recto (hbSpan hb) boxes]
                     UTerm -> [FDefTerm boxes]
                     _ -> [FParagraph boxes]
                   (headAcc', errs') = case uKind u of
@@ -1069,8 +1167,12 @@ buildFlow inp geom fonts images assumed = do
             let ((_, size), Indent s f) = paraLook st geom (Just name),
             measure - s - max 0 f < 8 * size
           ]
-      (_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths), (headingSpans, tocLines)) = foldl step (0, [], Map.empty, Map.empty, Map.empty, indentErrors, (Map.empty, Map.empty), (Map.empty, Map.empty)) units
-  pure (Built flow lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines)
+      -- the file of each unit that has an id, by its first id (golem-driver ADR 0014)
+      stepFiles (acc@(n0, _, _, _, _, _, _, _), files) iu@(_, u) =
+        let acc'@(n1, _, _, _, _, _, _, _) = step acc iu
+         in (acc', if n1 > n0 then Map.insert n0 (spanFile (uSpan u)) files else files)
+      ((_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths), (headingSpans, tocLines)), lineFiles) = foldl stepFiles ((0, [], Map.empty, Map.empty, Map.empty, indentErrors, (Map.empty, Map.empty), (Map.empty, Map.empty)), Map.empty) units
+  pure (Built flow lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines lineFiles)
 
 -- | Which line (0-based) contains the item at an index.
 lineIndexOfItems :: [Item] -> [Line] -> Int -> Int
@@ -1138,9 +1240,9 @@ writeDocument inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
       vertical = pgVertical geom
-      master = case Map.elems (pgMasters geom) of
-        (m : _) -> Just m
-        [] -> Nothing
+      -- the master page and the running head of each page (golem-driver ADR 0014)
+      masters = pageMasters inp geom layout
+      heads = runningHeads inp geom layout
       grid = pgLineGrid geom
       gridAt sl = case drop sl grid of
         (g : _) -> g
@@ -1310,12 +1412,12 @@ writeDocument inp geom fonts layout intent =
             ruleMarks = concat [tableRules ta seg w | seg <- poTables p, Just w <- [Map.lookup (tsTable seg) (plTables layout)]]
          in (lineParts <> noteParts, figMarks, ruleMarks)
       -- the columns of a page, its sidenotes and, once, its running head and folio
-      drawPage ps = case ps of
+      drawPage ps master = case ps of
         [] -> ([], [])
         (p : _) ->
           let n = poNumber p
               columns = map drawColumn ps
-              masterParts = if poBlank p then [] else masterMarks n (poRunningHead p)
+              masterParts = if poBlank p then [] else masterMarks n master (join (Map.lookup n heads))
               -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
               sidenoteParts =
                 [ drawLineAt (rectX area, rectY area + rectH area - (psTop ps' + toInteger j * snPitch + round (toRational snSize' * baselineRatio))) (SetLine l snSize' 0 [] [])
@@ -1353,16 +1455,16 @@ writeDocument inp geom fonts layout intent =
       captionIndent ta pf
         | pfWrap pf == Just WrapEnd = (if vertical then rectH ta else rectW ta) - pfAlong pf
         | otherwise = 0
-      masterMarks n heading = case master of
+      masterMarks n master heading = case master of
         Nothing -> []
         Just m ->
-          let pick (_, a1, a2) = if odd n then a1 else a2
+          let pick a1 a2 = if odd n then a1 else a2
               size = pgFontSize geom
-              folio = [textAt (pick f) size (formatNumber fmt [toInteger n] Nothing) | f@(fmt, _, _) <- maybe [] pure (mgFolio m)]
-              runningHead = [textAt (pick r) size h | r <- maybe [] pure (mgRunningHead m), Just h <- [heading]]
+              folio = [textAt (pick a1 a2) size (formatNumber fmt [toInteger n] Nothing) | Just (fmt, a1, a2) <- [mgFolio m]]
+              runningHead = [textAt (pick a1 a2) size h | Just (_, _, a1, a2) <- [mgRunningHead m], Just h <- [heading]]
            in runningHead <> folio
       -- the columns of a page come together from 'paginate' (docs/adr ADR 0018)
-      drawn = map drawPage (groupBy (\a b -> poNumber a == poNumber b) (plPages layout))
+      drawn = zipWith drawPage (pagesOf (plPages layout)) masters
       -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
       bleed = maybe 0 pageBleed (stPage style)
       pdfPages = [P.framePage (piMarks inp) bleed (pw, ph) marks | (marks, _) <- drawn]

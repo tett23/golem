@@ -71,7 +71,8 @@ fragments =
     "😀",
     "{",
     ":",
-    "*[x]"
+    "*[x]",
+    "\\"
   ]
 
 fragment :: Gen Text
@@ -168,5 +169,22 @@ tests =
         let cs = map (fst . labelCode . Just) ls
         assertBool "no label falls back to G0129" ("G0129" `notElem` cs)
         sort (nub cs) @?= sort cs
-        fst (labelCode (Just "table_row")) @?= "G0123"
+        fst (labelCode (Just "table_row")) @?= "G0123",
+      -- docs/adr ADR 0016
+      testCase "a backslash at the end of a line is a hard break" $ do
+        parseOk "a\\\nb\n"
+        assertBool "a HardBreak node" (NHardBreak `elem` kinds (fst (parse fid "a\\\nb\n")))
+        parseOk "a  \\\n  b\n"
+        parseOk "- a\\\n  b\n",
+      testCase "a hard break needs the next line of the paragraph" $
+        mapM_ (\src -> assertEqual (show src) [DiagnosticCode "G0124"] (nub (codes src))) ["a\\\n\nb\n", "a\\\n", "a\\", "a\\\n# h\n"],
+      testCase "headings, terms and cells have no hard breaks" $ do
+        mapM_ (\src -> assertBool (show (src, codes src)) (DiagnosticCode "G0124" `elem` codes src)) ["# h\\\n", "= t\\\n  d\n"]
+        -- a row that ends in a backslash is no row: the table is a block that cannot be parsed
+        codes "| a\\\n|---|\n" @?= [DiagnosticCode "G0110"],
+      testCase "a hard break in a prose slot is not a syntax error" $ do
+        parseOk "[note: a\\\nb]\n"
+        assertBool "a HardBreak node" (NHardBreak `elem` kinds (fst (parse fid "[note: a\\\nb]\n"))),
+      testCase "hard_break has its code" $
+        fst (labelCode (Just "hard_break")) @?= "G0124"
     ]

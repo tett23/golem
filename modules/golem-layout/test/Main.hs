@@ -522,15 +522,14 @@ tests =
             let ps = paginate 1 5 [FParagraph (lines' 0 6)]
             slots ps @?= [[0, 1, 2, 3], [4, 5]],
           testCase "headings and definition terms stay with what follows" $ do
-            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 2 "節" False 1 (lines' 20 1), FParagraph (lines' 30 3)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 2 False 1 (lines' 20 1), FParagraph (lines' 30 3)]
             slots ps @?= [[0, 1, 2], [20, 30, 31, 32]]
             let qs = paginate 1 5 [FParagraph (lines' 0 4), FDefTerm (lines' 20 1), FParagraph (lines' 30 2)]
             slots qs @?= [[0, 1, 2, 3], [20, 30, 31]],
           testCase "a recto heading starts on an odd page after a blank page" $ do
-            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 1 "章" True 1 (lines' 20 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 1 True 1 (lines' 20 1)]
             map poBlank ps @?= [False, True, False]
-            map poNumber ps @?= [1, 2, 3]
-            poRunningHead (last ps) @?= Just "章",
+            map poNumber ps @?= [1, 2, 3],
           testCase "a figure that does not fit goes to the next page; text moves up" $ do
             let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 10), (4, SLine 11)], [(0, SFigure 99)]],
@@ -608,10 +607,10 @@ tests =
             map poBlank ps @?= [False]
             map poBlank qs @?= [False],
           testCase "a recto heading after a page break adds a blank page only on an even page" $ do
-            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakPage, FHeading 1 "章" True 1 (lines' 20 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakPage, FHeading 1 True 1 (lines' 20 1)]
             map poBlank ps @?= [False, True, False]
             slots ps @?= [[0], [], [20]]
-            let qs = paginate 1 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakPage, FHeading 1 "章" True 1 (lines' 20 1)]
+            let qs = paginate 1 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakPage, FHeading 1 True 1 (lines' 20 1)]
             map poBlank qs @?= [False, False, False]
             slots qs @?= [[0, 1, 2, 3, 4], [10], [20]],
           testCase "a figure sent on goes to the top of the page after the break, not to a blank page" $ do
@@ -656,9 +655,26 @@ tests =
                   _ -> lk
             [bcLook c | Box _ c <- fst (composeInlines env [Color sp "accent" [CharStyle sp "italic" [bold [sp0 "x"]]]])]
               @?= [look0 {lkColor = Just "accent", lkSynthetic = Synthetic True True, lkLatinSynthetic = Synthetic True True}],
-          testCase "a line break composes to nothing (docs/adr ADR 0005)" $ do
+          testCase "a line break composes to a forced break (docs/adr ADR 0016)" $ do
             let env = lookEnv const
-            [bcText c | Box _ c <- fst (composeInlines env [sp0 "ab", LineBreak sp, sp0 "cd"])] @?= [bcText c | Box _ c <- fst (composeInlines env [sp0 "ab", sp0 "cd"])]
+                items = fst (composeInlines env [sp0 "ab", LineBreak sp, sp0 "cd"])
+                marks = \case
+                  Box _ c -> [T.unpack (bcText c)]
+                  Penalty _ p _ | p >= infPenalty -> ["+inf"] | p <= negate infPenalty -> ["-inf"]
+                  Glue _ st _ | st >= filStretch -> ["fil"]
+                  _ -> []
+            take 7 (concatMap marks items) @?= ["ab", "+inf", "fil", "-inf", "cd", "+inf", "fil"],
+          testCase "a forced break always breaks the line (docs/adr ADR 0016)" $ do
+            let env = lookEnv const
+                items = fst (composeInlines env [sp0 "ab", LineBreak sp, sp0 "cd"])
+                r = breakParagraph defaultParams (const (100 * fs)) items
+            map (\l -> [T.unpack (bcText c) | Box _ c <- lineItems l]) (brLines r) @?= [["ab"], ["cd"]],
+          testCase "no space between Japanese and Latin across a forced break (docs/adr ADR 0016)" $ do
+            let env = lookEnv const
+                items = fst (composeInlines env [sp0 "あい", LineBreak sp, sp0 "cd"])
+                quarter = fs `div` 4
+            [w | Glue w _ _ <- items, w == quarter] @?= []
+            assertBool "the space appears without the break" (not (null [w | Glue w _ _ <- fst (composeInlines env [sp0 "あいcd"]), w == quarter]))
         ],
       testGroup
         "heading blocks (golem-driver ADR 0003)"
@@ -677,17 +693,17 @@ tests =
           testCase "a heading of the body size sits on the grid" $
             mapM_ (\m -> headingBlock fs (fs * 3 `div` 2) fs m @?= HeadingBlock (fs * 3 `div` 2) m 0) [1, 2, 3],
           testCase "a heading block takes its span; the next paragraph starts after it" $ do
-            let ps = paginate 1 10 [FHeading 1 "章" False 3 (lines' 20 1), FParagraph (lines' 30 3)]
+            let ps = paginate 1 10 [FHeading 1 False 3 (lines' 20 1), FParagraph (lines' 30 3)]
             map poSlots ps @?= [[(0, SHeading 20 1), (3, SLine 30), (4, SLine 31), (5, SLine 32)]],
           testCase "a heading block is not split; it goes whole to the next page" $ do
-            let ps = paginate 1 6 [FParagraph (lines' 0 4), FHeading 2 "節" False 3 (lines' 20 1), FParagraph (lines' 30 2)]
+            let ps = paginate 1 6 [FParagraph (lines' 0 4), FHeading 2 False 3 (lines' 20 1), FParagraph (lines' 30 2)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SHeading 20 1), (3, SLine 30), (4, SLine 31)]],
           testCase "keeping a heading with the next paragraph counts its span and two lines" $ do
             -- 2 used, 5 free: span 3 + 2 lines fit
-            let fits = paginate 1 7 [FParagraph (lines' 0 2), FHeading 2 "節" False 3 (lines' 20 1), FParagraph (lines' 30 4)]
+            let fits = paginate 1 7 [FParagraph (lines' 0 2), FHeading 2 False 3 (lines' 20 1), FParagraph (lines' 30 4)]
             take 1 (map (map snd . poSlots) fits) @?= [[SLine 0, SLine 1, SHeading 20 1, SLine 30, SLine 31]]
             -- 3 used, 4 free: span 3 + 2 lines do not fit
-            let moves = paginate 1 7 [FParagraph (lines' 0 3), FHeading 2 "節" False 3 (lines' 20 1), FParagraph (lines' 30 4)]
+            let moves = paginate 1 7 [FParagraph (lines' 0 3), FHeading 2 False 3 (lines' 20 1), FParagraph (lines' 30 4)]
             map (map snd . poSlots) moves @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 31, SLine 32, SLine 33]]
         ],
       testGroup
@@ -745,7 +761,7 @@ tests =
             cols ps @?= [(1, 0), (1, 1)]
             slots ps @?= [[0, 1], [10, 11, 12]],
           testCase "a recto heading starts in column 0 of the next odd page; the rest of the page stays empty" $ do
-            let ps = paginate 2 3 [FParagraph (lines' 0 5), FHeading 1 "章" True 1 (lines' 20 1)]
+            let ps = paginate 2 3 [FParagraph (lines' 0 5), FHeading 1 True 1 (lines' 20 1)]
             cols ps @?= [(1, 0), (1, 1), (2, 0), (3, 0)]
             map poBlank ps @?= [False, False, True, False]
             slots ps @?= [[0, 1, 2], [3, 4], [], [20]],
@@ -770,10 +786,6 @@ tests =
             let ps = paginate 2 3 [FParagraph (lines' 0 3), FParagraph [LineBox 50 [] ["x"] []]]
             cols ps @?= [(1, 0), (1, 1)]
             labelPages ps @?= Map.fromList [("x", 1)],
-          testCase "the columns of a page share the running head" $ do
-            let ps = paginate 2 3 [FHeading 1 "一" False 1 (lines' 0 1), FParagraph (lines' 10 8), FHeading 1 "二" False 1 (lines' 20 1), FParagraph (lines' 30 2)]
-            cols ps @?= [(1, 0), (1, 1), (2, 0), (2, 1)]
-            map poRunningHead ps @?= [Just "一", Just "一", Just "一", Just "一"],
           testCase "a column break goes to the next column, then to the next page" $ do
             let ps = paginate 2 3 [FParagraph (lines' 0 1), FBreak BreakColumn, FParagraph (lines' 10 1), FBreak BreakColumn, FParagraph (lines' 20 1)]
             cols ps @?= [(1, 0), (1, 1), (2, 0)]
@@ -786,7 +798,7 @@ tests =
             let flows k = [FParagraph (lines' 0 1), FBreak k, FParagraph (lines' 10 1)]
             paginate 1 3 (flows BreakColumn) @?= paginate 1 3 (flows BreakPage),
           testCase "one column: every part of the output is column 0 of its page" $ do
-            let ps = paginate 1 5 [FParagraph (lines' 0 12), FHeading 1 "章" True 1 (lines' 20 1), FParagraph (lines' 30 3)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 12), FHeading 1 True 1 (lines' 20 1), FParagraph (lines' 30 3)]
             map poColumn ps @?= map (const 0) ps
             map poNumber ps @?= [1 .. length ps],
           testCase "a page break in column 0 goes to column 0 of the next page" $ do
@@ -813,7 +825,7 @@ tests =
             let ps = paginate 1 4 [FTable 100 (lines' 0 1) [lines' 10 1, lines' 20 1, lines' 30 2]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 20], [SLine 0, SLine 30, SLine 31]],
           testCase "a heading before a table stays with its header and first row" $ do
-            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 1 "章" False 1 (lines' 20 1), FTable 100 (lines' 30 1) [lines' 40 2]]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 1 False 1 (lines' 20 1), FTable 100 (lines' 30 1) [lines' 40 2]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 40, SLine 41]]
         ],
       testGroup

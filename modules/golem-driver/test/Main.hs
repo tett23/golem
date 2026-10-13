@@ -14,18 +14,18 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Doc.Assemble (Book, IndexGroup (..), inlineText)
+import Golem.Doc.Assemble (Book, HeadingInfo (..), IndexGroup (..), inlineText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescriptionUrl, explainHint, lookupExplanation, parseCatalog)
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
-import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
+import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, runningHeadText, runningHeads, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), Synthetic (..), plainLook)
-import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..), markPages)
+import Golem.Layout.Paginate (Flow (..), LineBox (..), PageOut (..), Slotted (..), markPages, paginate)
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, sidenoteAreaFor, typeAreaFor)
@@ -33,7 +33,8 @@ import Golem.Pdf (Font (..), FontProgram (..), spToPt)
 import Golem.Pdf qualified as P
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
-import Golem.Project.Style (Dim (..), LocalStyles (..), ParaStyleDef (..), dimToSp, noLocalStyles, noParaDef, parseDim, parseStyle)
+import Golem.Project (Project (..))
+import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), LocalStyles (..), ParaStyleDef (..), RunningContent (..), dimToSp, noLocalStyles, noParaDef, parseDim, parseStyle)
 import Golem.Syntax
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
 import System.Environment (setEnv)
@@ -314,10 +315,12 @@ tests =
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup "vertical glyphs turned without a vertical form (ADR 0015)" turnedTests,
       testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
+      testGroup "hard line breaks (docs/adr ADR 0016)" hardBreakTests,
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
       testGroup "forced breaks (docs/adr ADR 0017)" breakTests,
       testGroup "columns (docs/adr ADR 0018)" columnTests,
       testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
+      testGroup "running heads (ADR 0014)" runningHeadTests,
       testGroup
         "public-domain books"
         [ testCase "The Tempest builds horizontally to every target" $ do
@@ -387,6 +390,44 @@ separatorTests =
         assertBool (T.unpack b) ("<p>前の行後の行</p>" `T.isInfixOf` b)
   ]
 
+hardBreakTests :: [TestTree]
+hardBreakTests =
+  [ testCase "PDF: the line after a hard break gets no first-line indent" $ do
+      let fs = 655360
+      (flow, ls) <- verseLines (horizontal30 "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") "東京都\\\n千代田区\n"
+      map snd ls @?= [fs, 0]
+      [length bs | FParagraph bs <- flow] @?= [2],
+    testCase "PDF: a hard break in verse starts a verse line as before" $ do
+      (_, withBreak) <- verseLines pdfStyle "@style verse\n  a\\\n  b\n"
+      (_, plain) <- verseLines pdfStyle "@style verse\n  a\n  b\n"
+      withBreak @?= plain,
+    testCase "PDF: a paragraph of hard breaks is one paragraph for the widow and orphan rules" $ do
+      (flow, ls) <- verseLines (horizontal30 "") "一行目\\\n二行目\\\n三行目\n"
+      length ls @?= 3
+      [length bs | FParagraph bs <- flow] @?= [3]
+      -- one line left on a page: the paragraph moves whole rather than leave its first line alone
+      case flow of
+        [p@(FParagraph _)] -> map (map fst . poSlots) (paginate 1 4 [FParagraph [LineBox i [] [] [] | i <- [100, 101, 102]], p]) @?= [[0, 1, 2], [0, 1, 2]]
+        other -> assertFailure (show (length other)),
+    testCase "HTML: a hard break is br inside the p; verse keeps its lines" $ do
+      withVerseProject "" "a\\\nb\n\n- c\\\n  d\n" $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) ("<p>a<br/>b</p>" `T.isInfixOf` page)
+        assertBool (T.unpack page) ("<li>c<br/>d</li>" `T.isInfixOf` page)
+        assertBool (T.unpack page) (not ("<span class=\"line\">" `T.isInfixOf` page))
+      withVerseProject "" "@style verse\n  a\\\n  b\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        page <- TIO.readFile (tmp </> "build/html/v.xhtml")
+        assertBool (T.unpack page) ("<span class=\"line\">a</span>" `T.isInfixOf` page),
+    testCase "plain text: a hard break is a newline" $
+      withVerseProject "" "a\\\nb\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        t <- TIO.readFile (tmp </> "build/text/horizontal/v.txt")
+        t @?= "a\nb\n"
+  ]
+
 -- | Builds a copy of a book fixture (fonts included); no errors allowed.
 buildBook :: FilePath -> IO ([FilePath], BS.ByteString, [(FilePath, T.Text)])
 buildBook name = withSystemTempDirectory "golem-book" $ \tmp -> do
@@ -420,7 +461,7 @@ verseLines style src = withVerseProject style src $ \tmp -> do
     Right e -> case evBook e of
       Nothing -> assertFailure (show (map diagCode (evDiagnostics e)))
       Just book -> do
-        r <- flowLines (FontProvider (\_ _ _ -> pure (Right fakeFonts))) (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty)
+        r <- flowLines (FontProvider (\_ _ _ -> pure (Right fakeFonts))) (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)))
         either (assertFailure . show) pure r
 
 verseTests :: [TestTree]
@@ -565,7 +606,7 @@ evaluatedOk tmp = do
 chapterLines :: BS.ByteString -> [(FilePath, T.Text)] -> IO [(Integer, Integer)]
 chapterLines style chapters = withChapters style chapters [] $ \tmp -> do
   (e, book) <- evaluatedOk tmp
-  r <- flowLines fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e))
+  r <- flowLines fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)))
   either (assertFailure . show) (pure . snd) r
 
 -- | The PDF layout of the chapters.
@@ -574,7 +615,7 @@ chapterLayout style chapters files = withChapters style chapters [] $ \tmp -> do
   forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
   (e, book) <- evaluatedOk tmp
   geom <- either (assertFailure . show) pure (pageGeometry (evStyle e))
-  r <- layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e)) geom fakeFonts
+  r <- layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e))) geom fakeFonts
   either (assertFailure . show) pure r
 
 -- | The rules of a style sheet that start with a selector.
@@ -855,6 +896,100 @@ pdfStyle =
       "[page.grid]\nfont-size = \"13Q\"\ncharacters = 42\nlines = 16\nline-pitch = \"22H\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n",
       "[headings.1]\nnumber = \"第{n:kanji}章\"\n\n[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
     ]
+
+-- | The running head tests (ADR 0014).
+runningHeadTests :: [TestTree]
+runningHeadTests =
+  [ testCase "first and last headings of a page" $ do
+      let h1 = Map.fromList [(1, Just umi)]
+          h12 = Map.fromList [(1, Just umi), (2, Just asa)]
+          h12' = Map.fromList [(1, Just umi), (2, Just hiru)]
+          h1' = Map.fromList [(1, Just yama), (2, Nothing)]
+          at = runningHeadText "書名"
+      -- 海 and 一 朝 start on the page
+      at (heading 1 HeadShort PickFirst) Map.empty [umi, asa] @?= Just "海"
+      at (heading 2 HeadShort PickFirst) Map.empty [umi, asa] @?= Just "朝"
+      at (heading 2 HeadShort PickLast) Map.empty [umi, asa] @?= Just "朝"
+      -- only 二 昼 starts
+      at (heading 2 HeadShort PickFirst) h12 [hiru] @?= Just "昼"
+      at (heading 1 HeadShort PickFirst) h12 [hiru] @?= Just "海"
+      -- no heading starts
+      at (heading 2 HeadShort PickFirst) h12' [] @?= Just "昼"
+      at (heading 2 HeadShort PickLast) h12' [] @?= Just "昼"
+      -- only 第二章 山 starts: first is the value at the start, last is none
+      at (heading 2 HeadShort PickFirst) h12' [yama] @?= Just "昼"
+      at (heading 2 HeadShort PickLast) h12' [yama] @?= Nothing
+      at (heading 1 HeadShort PickFirst) h12' [yama] @?= Just "山"
+      -- the next page
+      at (heading 2 HeadShort PickFirst) h1' [] @?= Nothing
+      at (heading 1 HeadShort PickFirst) h1 [] @?= Just "海",
+    testCase "numbered headings, unnumbered headings, title and none" $ do
+      runningHeadText "書名" (heading 1 HeadNumbered PickFirst) Map.empty [umi] @?= Just "第一章　海"
+      runningHeadText "書名" (heading 1 HeadNumbered PickFirst) Map.empty [umi {hiNumbers = Nothing, hiNumberText = Nothing}] @?= Just "海"
+      runningHeadText "書名" RunningTitle Map.empty [umi] @?= Just "書名"
+      runningHeadText "書名" RunningNone Map.empty [umi] @?= Nothing,
+    testCase "before the first heading there is none" $
+      runningHeadText "書名" (heading 1 HeadShort PickFirst) Map.empty [] @?= Nothing,
+    testCase "even pages the title, odd pages the chapter; none on recto and blank pages" $ do
+      (heads, _) <- layoutHeads miniManifest (headsStyle "even = \"title\", odd = \"heading.1.short\"") [("a.gm", twoChapters)]
+      Map.toList heads @?= [(1, Nothing), (2, Just "T"), (3, Just "海"), (4, Nothing), (5, Nothing), (6, Just "T")],
+    testCase "the folio is drawn on a recto page, not on a blank page" $ do
+      (errs, pdf) <- buildMini fakeProvider False (headsStyle "even = \"title\", odd = \"heading.1.short\"") twoChapters []
+      errs @?= []
+      content <- BS.concat <$> maybe (assertFailure "no PDF") inflateAll pdf
+      assertBool "folio 1" ("<0031> Tj" `BS.isInfixOf` content)
+      assertBool "folio 5" ("<0035> Tj" `BS.isInfixOf` content)
+      assertBool "no folio 4" (not ("<0034> Tj" `BS.isInfixOf` content))
+      assertBool "title on even pages" ("<0054> Tj" `BS.isInfixOf` content),
+    testCase "the short title of @toc-title" $ do
+      (heads, _) <- layoutHeads miniManifest (headsStyle "content = \"heading.1.short\"") [("a.gm", "@toc-title 短\n# 長い題\n\n" <> lines' 11 <> "\n")]
+      Map.lookup 2 heads @?= Just (Just "短"),
+    testCase "master pages per chapter file" $ do
+      let manifest = BS.concat ["chapters = [{ file = \"front.gm\", master = \"front\" }, { file = \"a.gm\", master = \"body\" }, \"b.gm\"]\n", BS.drop (BS.length "chapters = [\"a.gm\"]\n") miniManifest]
+          style =
+            BS.concat
+              [ shortGrid,
+                "[masters.appendix]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n\n",
+                "[masters.front]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n\n",
+                "[masters.body]\nrunning-head = { position = \"top-outside\", content = \"heading.1.short\" }\n"
+              ]
+      (heads, _) <-
+        layoutHeads manifest style [("front.gm", "# 目次\n\n" <> lines' 5 <> "\n"), ("a.gm", "# 甲\n\n" <> lines' 5 <> "\n"), ("b.gm", "# 乙\n\n" <> lines' 5 <> "\n")]
+      Map.toList heads @?= [(1, Nothing), (2, Just "甲"), (3, Just "乙")],
+    testCase "running heads do not move page breaks" $ do
+      (_, a) <- layoutHeads miniManifest (headsStyle "content = \"heading.1.short\"") [("a.gm", twoChapters)]
+      (_, b) <- layoutHeads miniManifest (headsStyle "even = \"title\", odd = \"heading.1.numbered.last\"") [("a.gm", twoChapters)]
+      plPages a @?= plPages b,
+    testCase "parallel and sequential builds agree, and twice" $ do
+      let style = headsStyle "even = \"title\", odd = \"heading.1.short\""
+      (_, p1) <- buildMini fakeProvider True style twoChapters []
+      (_, p2) <- buildMini fakeProvider False style twoChapters []
+      (_, p3) <- buildMini fakeProvider False style twoChapters []
+      assertBool "a PDF" (isJust p1)
+      p1 @?= p2
+      p2 @?= p3
+  ]
+  where
+    sp0 = mkSpan (FileId 0) 0 0
+    info l n nt t = HeadingInfo l (Just [n]) (Just nt) [Text sp0 t] t (FileId 0)
+    umi = info 1 1 "第一章" "海"
+    asa = info 2 1 "一" "朝"
+    hiru = info 2 2 "二" "昼"
+    yama = info 1 2 "第二章" "山"
+    heading = RunningHeading
+    -- n lines of twelve characters
+    lines' n = T.replicate (12 * n) "あ"
+    -- 海: pages 1 to 3, a blank page 4, 山: pages 5 and 6
+    twoChapters = T.intercalate "\n\n" ["# 海", lines' 5, lines' 6, lines' 6, "# 山", lines' 5, lines' 6] <> "\n"
+    shortGrid = replaceIn "lines = 30\n" "lines = 6\n" horizontalStyle <> "\n"
+    headsStyle rh =
+      BS.concat
+        [ shortGrid,
+          "[headings.1]\npage-break = \"recto\"\n\n",
+          "[masters.body]\nrunning-head = { position = \"top-outside\", ",
+          rh,
+          " }\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
+        ]
 
 -- | A4, horizontal, narrow lines: words must be hyphenated.
 horizontalStyle :: BS.ByteString
@@ -1296,9 +1431,35 @@ layoutMini style source files = withSystemTempDirectory "golem-layout" $ \tmp ->
     Left ds -> pure (Left ds)
     Right e -> case (evBook e, pageGeometry (evStyle e)) of
       _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> pure (Left errs)
-      (Just book, Right geom) -> fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty) geom fakeFonts
+      (Just book, Right geom) -> fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e))) geom fakeFonts
       (_, Left ds) -> pure (Left ds)
       (Nothing, _) -> pure (Left (filter isError (evDiagnostics e)))
+
+-- | The master page of each chapter file that names one, as the driver passes it.
+chapterMasters :: Project -> Map.Map FileId T.Text
+chapterMasters p = Map.fromList [(fid, m) | (fid, Just m) <- projectChapters p]
+
+{- | Lays out a project (manifest, style, sources) with the fake fonts and
+returns the running head of each page and the layout (ADR 0014).
+-}
+layoutHeads :: BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -> IO (Map.Map Int (Maybe T.Text), PdfLayout)
+layoutHeads manifest style sources = withSystemTempDirectory "golem-heads" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") manifest
+  BS.writeFile (tmp </> "style.toml") style
+  forM_ sources $ \(to, src) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) (TE.encodeUtf8 src)
+  ev <- evaluateProject Dev tmp
+  case ev of
+    Left ds -> assertFailure (show ds)
+    Right e -> case (evBook e, pageGeometry (evStyle e)) of
+      _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> assertFailure (show errs)
+      (Just book, Right geom) -> do
+        let inp = PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e))
+        r <- layoutPdf inp geom fakeFonts
+        case r of
+          Left ds -> assertFailure (show ds)
+          Right layout -> pure (runningHeads inp geom layout, layout)
+      (_, Left ds) -> assertFailure (show ds)
+      (Nothing, _) -> assertFailure "no book"
 
 -- | Lays out with no errors allowed.
 layoutOk :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO (PageGeometry, PdfLayout)
@@ -1796,7 +1957,7 @@ pagesMini manifestExtra style source files bib = withSystemTempDirectory "golem-
   case ev of
     Left ds -> pure (Left ds)
     Right e -> case (evBook e, filter isError (evDiagnostics e)) of
-      (Just book, []) -> layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] bib Nothing Map.empty)
+      (Just book, []) -> layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] bib Nothing Map.empty (chapterMasters (evProject e)))
       (_, ds) -> pure (Left ds)
 
 -- | horizontalStyle with five lines a page.
@@ -2595,6 +2756,13 @@ columnTests =
       (_, pl) <- layoutOk horizontal2 (longPara 72) []
       Map.size (plLines pl) @?= 60
       map (\p -> (poNumber p, poColumn p)) (plPages pl) @?= [(1, 0), (1, 1)],
+    testCase "PDF: the running head of a page takes the headings of its columns in order (golem-driver ADR 0014)" $ do
+      let style = horizontal2 <> "\n[masters.body]\nrunning-head = { position = \"top-outside\", content = \"heading.1.short\" }\n"
+      (heads, pl) <- layoutHeads miniManifest style [("a.gm", "# 一\n\n" <> longPara 33 <> "# 二\n\n" <> longPara 2)]
+      map (\p -> (poNumber p, poColumn p)) (plPages pl) @?= [(1, 0), (1, 1)]
+      Map.lookup 1 heads @?= Just (Just "一")
+      (heads', _) <- layoutHeads miniManifest style [("a.gm", longPara 36 <> "# 二\n\n" <> longPara 2)]
+      Map.lookup 1 heads' @?= Just (Just "二"),
     testCase "PDF: the folio is drawn once a page" $ do
       let style = horizontal2 <> "\n[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
       content <- miniPdf fakeProvider True style (longPara 50) [] >>= pageContents

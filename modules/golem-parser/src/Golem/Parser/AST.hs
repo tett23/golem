@@ -60,6 +60,8 @@ data Alignment = AlignDefault | AlignLeft | AlignCenter | AlignRight
 data Inline
   = Text Text
   | SoftBreak
+  | -- | a backslash at the end of a line: the line breaks in the paragraph (docs/adr ADR 0016)
+    HardBreak
   | Expr (Located Expr)
   | Command (Located Name) [Located Argument] [[Located Inline]]
   | ProofComment Text
