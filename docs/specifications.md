@@ -1204,7 +1204,7 @@ v1 の範囲から外した事項と、v1 の実装で次の段階以降に回�
 - **縦組みの傍注**：v1 の傍注は横組みに限る（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
 - **索引と参考文献の拡張**：索引の三段以上の階層と「〜を見よ」のような項目間の参照（v1 は二段まで）、索引の見出し（「あ」「か」のような行の区切り）と段組み、ページ番号の範囲の圧縮、副項目の折り返した行の字下げ、縦組みの本の索引を横組みにして巻末から始めること、参考文献の書式の選択（著者名の順の一覧を含む）と書誌のぶら下げ字下げ（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。
 - **`style.toml` の分割**：ほかのファイルを取り込む機能（[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)）。
-- **段落スタイルの拡張**：行送り、段落の前後の空き、行揃え、次のスタイル、ドロップキャップと字取り、先頭文字スタイルと正規表現スタイル、`@style` の引数による段落ごとの上書き、行の終わりの側の字下げ、段落の先頭の始め括弧類の字下げの調整（JLReq）、見出し、リスト、表などへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。
+- **段落スタイルの拡張**：行送り、段落の前後の空き、行揃え、次のスタイル、ドロップキャップと字取り、先頭文字スタイル、`@style` の引数による段落ごとの上書き、行の終わりの側の字下げ、段落の先頭の始め括弧類の字下げの調整（JLReq）、見出し、リスト、表などへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。
 - **Web 経路のスタイル**：HTML と EPUB で、見出しの `font` と `size`、文字スタイルの `size`、`caption` と `sidenote` 以外の段落スタイルの `size` を使うこと、Web 経路のフォントのサブセット化（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。
 - **韻文の拡張**：行番号（5 行ごとの番号など）、連をページで分けない指定、段落一般の強制改行（行末の `\`）（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。
 - **ルビの拡張**：熟語の全体の読みが長い熟語ルビをグループルビとして配置し直すこと、片側だけのかけ、約物へのかけ、行頭と行末で親文字を行の端にそろえる配置、ルビの文字の大きさとルビを置く側の設定、ルビごとに配置を指定する記法、両側ルビ、ルビの中の圏点（[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)）。
@@ -1238,6 +1238,7 @@ v1 のリリースまでに、次の項目を扱う。
 - **InDesign の文字の組版の機能**：InDesign が文字に対して持つ組版の機能を実装する。カーニングの方式（メトリクス、オプティカル、和文等幅、なし）を選べるようにし、既定はフォントのペアカーニングの情報を使うメトリクスとする。トラッキング、プロポーショナルメトリクス、文字の比率（水平比率と垂直比率）、ベースラインシフトなども含め、v1 で扱う範囲を ADR で決める。今は、フォントの役割ごとに OpenType の機能（`features`）を指定できるだけで、欧文のカーニングは HarfBuzz が既定で適用する機能に任せている。
 - **アキの指定**：全角、二分、三分、四分、五分、六分、八分のような、和文組版で慣用のアキ（空き）の量を指定できるようにする。InDesign の文字組みアキ量設定のように、和欧間、括弧類や句読点の前後などの文字のクラスの組ごとに、空きの量と伸縮の範囲を `style.toml` で設定できるようにする。原稿の中の任意の位置に五分アキなどの空きを入れる記法も設ける。今は、和欧間を四分の空きとし、約物の空きを JLReq の規則で決めているが（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）、その量を変える設定はない。原稿の中で空きを入れるには全角の空白を使うしかなく、寸法の単位も `zw` の小数（五分は `0.2zw`）で書くしかない。
 - **段組み**：`[page.grid]` の `columns` に 2 以上を書けるが、PDF は最初の段の行長で組み、二段目以降に本文を流さない。論文の組版に段組みが要るので、v1 で実装する。段組みをフレームのレベル 2 に当たるとして v1 から外す ADR（[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）と、段組みの版面を前提にする ADR（[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）が食い違っているので、実装するときに新しい ADR で決着させる。
+- **正規表現スタイル**：段落スタイルの中で、正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル）。`style.toml` の段落スタイルと、ファイルの中の `@style-def regex`（[docs/adr/0014](adr/0014-in-file-settings.md)）で定義する。ファイルの中の記法と効く範囲は [docs/adr/0014](adr/0014-in-file-settings.md) で決めた。段落スタイルのどの欄に置くか、正規表現の方言、一致の重なりと決定性、エンジンといった意味は別の ADR で決める。それまで `@style-def regex` はエラーになる。
 
 #### PDF
 
