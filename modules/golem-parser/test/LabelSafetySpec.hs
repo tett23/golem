@@ -78,15 +78,33 @@ mutations src =
 
 tests :: TestTree
 tests =
-  testGroup
-    "label safety (ADR 0007)"
+  testGroup "label safety (ADR 0007)" $
     [ testCase "every concatenation of up to three fragments" $ allAgree upToThree,
       testProperty "arbitrary fragments" $ withTests 500 $ property $ do
         src <- forAll (T.concat <$> Gen.list (Range.linear 0 30) fragment)
         assert (agree src),
-      testCase "the fixtures and their mutations" $ do
-        files <- sources
-        assertBool "fixtures found" (length files >= 3)
-        srcs <- mapM TIO.readFile files
-        allAgree (srcs <> concatMap mutations srcs)
+      testProperty "the parts together are the inputs" $ property $ do
+        xs <- forAll (Gen.list (Range.linear 0 50) (Gen.int (Range.linear 0 1000)))
+        n <- forAll (Gen.int (Range.linear 1 8))
+        sort (concatMap (\i -> shard n i xs) [0 .. n - 1]) === sort xs
     ]
+      <> [ testCase ("the fixtures and their mutations (part " <> show (i + 1) <> " of " <> show parts <> ")") $ do
+             files <- sources
+             assertBool "fixtures found" (length files >= 3)
+             srcs <- mapM TIO.readFile files
+             allAgree (shard parts i (srcs <> concatMap mutations srcs))
+         | i <- [0 .. parts - 1]
+         ]
+
+{- | The fixtures and their mutations are checked in this many parts, which
+the test suite runs in parallel (docs/adr/0009-ci-speed.md).
+-}
+parts :: Int
+parts = 4
+
+{- | @shard n i xs@: the elements of @xs@ whose index leaves the remainder @i@
+when divided by @n@. The parts @shard n 0 xs@ to @shard n (n - 1) xs@ are
+together the elements of @xs@.
+-}
+shard :: Int -> Int -> [a] -> [a]
+shard n i xs = [x | (k, x) <- zip [0 :: Int ..] xs, k `mod` n == i]

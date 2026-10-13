@@ -8,10 +8,23 @@ on:
   # release (docs/adr/0004)
   workflow_call:
 
+# A new push to a pull request cancels its running checks; pushes to main and
+# calls from release.yml each get a group of their own, so that every commit
+# of main is checked (docs/adr/0009)
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('ci-pr-{0}', github.event.pull_request.number) || format('ci-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # written once, for haskell-actions/setup and the cache keys (docs/adr/0009)
+  GHC_VERSION: "9.10.3"
+  CDDL_VERSION: "0.10.7"
+
 jobs:
   adr:
     # pushes to main and pull requests only: called from release.yml (a tag
-    # or workflow_dispatch) there is no range of commits to check
+    # or workflow_dispatch) there is no range of commits to check. It runs
+    # whatever the change, docs only included (docs/adr/0009)
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     steps:
@@ -24,7 +37,50 @@ jobs:
           base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
+  # Whether the change needs the build and the checks: not when it touches
+  # only docs/ and the Markdown files at the root (docs/adr/0009)
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tests of the CI scripts (docs/adr/0009)
+        run: sh scripts/ci/test.sh
+      - id: decide
+        name: Paths of the change
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # called from release.yml, github.event_name is the event of
+          # release.yml (a tag push or workflow_dispatch): build
+          BASE= HEAD=
+          if [ "$EVENT" = pull_request ]; then
+            BASE=$PR_BASE HEAD=$PR_HEAD
+          elif [ "$EVENT" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
+            case "$BEFORE" in
+              *[!0]*) BASE=$BEFORE HEAD=$GITHUB_SHA ;;
+            esac
+          fi
+          if [ -n "$BASE" ] && PATHS=$(git -c core.quotePath=false diff --name-only "$BASE" "$HEAD"); then
+            printf '%s\n' "$PATHS"
+            BUILD=$(printf '%s\n' "$PATHS" | sh scripts/ci/needs-build.sh)
+          else
+            BUILD=true
+          fi
+          echo "build=$BUILD"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -34,29 +90,86 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Image and GHC directory for the cache keys (docs/adr/0009)
+        run: |
+          # ImageOS is set on the runner, not in the env context
+          test -n "$ImageOS"
+          echo "ImageOS=$ImageOS" >> "$GITHUB_ENV"
+          # ghcup installs into $GHCUP_INSTALL_BASE_PREFIX/.ghcup, which is
+          # /usr/local on x86-64 and unset (so $HOME) on aarch64
+          echo "GHC_DIR=${GHCUP_INSTALL_BASE_PREFIX:-$HOME}/.ghcup/ghc/$GHC_VERSION" >> "$GITHUB_ENV"
+      - name: Cache GHC (docs/adr/0009)
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.GHC_DIR }}
+          key: ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
       - id: setup
         uses: haskell-actions/setup@v2
         with:
-          ghc-version: "9.10.3"
+          ghc-version: ${{ env.GHC_VERSION }}
           cabal-version: "3.16.1.0"
-      - uses: actions/cache@v6
+          cabal-update: false
+      - name: GHC on the PATH (docs/adr/0009)
+        # On a cache hit of GHC, ghcup skips the install and does not link
+        # ghc-$GHC_VERSION into its bin directory, so cabal (with-compiler:
+        # ghc-9.10.3) finds it in the GHC directory itself
+        run: |
+          if [ ! -x "$GHC_DIR/bin/ghc-$GHC_VERSION" ]; then
+            test -x "$GHC_DIR/bin/ghc"
+            ln -s ghc "$GHC_DIR/bin/ghc-$GHC_VERSION"
+          fi
+          echo "$GHC_DIR/bin" >> "$GITHUB_PATH"
+      - id: index
+        name: Cache the Hackage index (docs/adr/0009)
+        uses: actions/cache@v6
+        with:
+          path: ~/.cabal/packages/hackage.haskell.org
+          key: hackage-index-${{ hashFiles('cabal.project.freeze') }}
+      - if: steps.index.outputs.cache-hit != 'true'
+        run: cabal update
+      - name: Cache the cabal store
+        uses: actions/cache@v6
         with:
           path: ${{ steps.setup.outputs.cabal-store }}
-          key: cabal-${{ matrix.runner }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}
-          restore-keys: cabal-${{ matrix.runner }}-
+          key: cabal-store-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}
+          restore-keys: cabal-store-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-
+      - name: Restore dist-newstyle (docs/adr/0009)
+        uses: actions/cache/restore@v6
+        with:
+          path: dist-newstyle
+          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ github.sha }}
+          restore-keys: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-
       - name: wasmtime C API (golem-plugin ADR 0001)
         run: scripts/fetch-wasmtime.sh
-      - name: qpdf and epubcheck (golem-pdf ADR 0001, golem-epub ADR 0001)
-        run: sudo apt-get update && sudo apt-get install -y qpdf epubcheck
+      - name: qpdf, and epubcheck on x86-64 (golem-pdf ADR 0001, golem-epub ADR 0001)
+        timeout-minutes: 5
+        env:
+          PACKAGES: ${{ matrix.runner == 'ubuntu-24.04' && 'qpdf epubcheck' || 'qpdf' }}
+        run: |
+          echo 'man-db man-db/auto-update boolean false' | sudo debconf-set-selections
+          sudo apt-get update
+          # PACKAGES is a list of package names
+          # shellcheck disable=SC2086
+          sudo apt-get install -y --no-install-recommends $PACKAGES
+      - id: cddl
+        name: Cache the cddl CLI (docs/adr/0009)
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cddl
+          key: cddl-${{ env.CDDL_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
       - name: cddl CLI for the schema test (golem-doc ADR 0001)
-        run: cargo install cddl --version 0.10.7 --locked
-      - run: cabal build all
+        if: steps.cddl.outputs.cache-hit != 'true'
+        run: cargo install cddl --version "$CDDL_VERSION" --locked
+      # peg-cli is built with the rest, for the check of the generated parser
+      - run: cabal build all peg-cli:exe:peg-hs
       - run: cabal test all
       - name: Generated parser matches the grammar
         run: |
           scripts/gen-parser.sh
           git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs
+      # the EPUB of aarch64 is the same, by the determinism job
       - name: The EPUB passes epubcheck
+        if: matrix.runner == 'ubuntu-24.04'
         working-directory: modules/golem-driver/test/fixtures/sample
         run: |
           "$(cabal list-bin -v0 golem)" build --target epub
@@ -67,6 +180,14 @@ jobs:
         with:
           name: determinism-${{ matrix.runner }}
           path: determinism-${{ matrix.runner }}.txt
+      # pushes to main only: a pull request's cache would serve that pull
+      # request alone, under a key that changes with every commit
+      - name: Save dist-newstyle (docs/adr/0009)
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v6
+        with:
+          path: dist-newstyle
+          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ github.sha }}
 
   determinism:
     needs: build
@@ -80,6 +201,8 @@ jobs:
         run: diff determinism-ubuntu-24.04.txt determinism-ubuntu-24.04-arm.txt
 
   release-scripts:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -91,6 +214,9 @@ jobs:
         run: sh scripts/release/test.sh
 
   format:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    timeout-minutes: 10
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -103,16 +229,7 @@ jobs:
             modules/**/*.hs
             !modules/golem-parser/src/Golem/Parser/Generated.hs
             !modules/golem-parser/test/StrippedGrammar.hs
-      - id: setup
-        uses: haskell-actions/setup@v2
-        with:
-          ghc-version: "9.10.3"
-          cabal-version: "3.16.1.0"
-      - uses: actions/cache@v6
-        with:
-          path: ${{ steps.setup.outputs.cabal-store }}
-          key: hlint-3.10-${{ runner.os }}-${{ runner.arch }}
-      - name: Install hlint outside the project (the freeze file must not constrain it)
-        working-directory: ${{ runner.temp }}
-        run: cabal install hlint-3.10 --installdir="$HOME/.local/bin" --overwrite-policy=always
+      # the release of hlint, not a build of it with GHC (docs/adr/0009)
+      - name: hlint 3.10
+        run: sh scripts/ci/fetch-hlint.sh
       - run: '"$HOME/.local/bin/hlint" modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs"'
