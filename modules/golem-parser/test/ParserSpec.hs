@@ -33,7 +33,7 @@ astOf src = let (f, _, _) = parseAst fid src in Golem.Parser.AST.fileBlocks f
 -- | The labels the grammar declares with @%recover@.
 grammarLabels :: IO [Text]
 grammarLabels = do
-  g <- TIO.readFile "grammar/Golem.peg"
+  g <- TIO.readFile "grammar/Golem.hpeg"
   pure [l | ("%recover" : l : _) <- map T.words (T.lines g)]
 
 kinds :: Node -> [SyntaxKind]

@@ -166,7 +166,7 @@ cabal test all
 依存の版は `cabal.project.freeze` で固定している。
 このファイルを消してビルドすると、依存の版が変わりうる。
 
-パーサーは `modules/golem-parser/grammar/Golem.peg` から生成し、生成物をコミットする。
+パーサーは `modules/golem-parser/grammar/Golem.hpeg` から生成し、生成物をコミットする。
 文法を変えたら生成し直す。
 同じスクリプトが、ラベルを外した文法（`modules/golem-parser/test/StrippedGrammar.hs`）も生成する。テストは、二つの文法が同じ入力を受理することを確かめる（[golem-parser ADR 0007](./docs/golem-parser/adr/0007-grammar-label-safety.md)）。
 
