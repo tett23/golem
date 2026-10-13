@@ -37,6 +37,11 @@ module Golem.Project.Style
     defaultRubyStyleDef,
     SidenoteStyle (..),
     MasterDef (..),
+    RunningHeadDef (..),
+    RunningContent (..),
+    HeadForm (..),
+    HeadPick (..),
+    parseRunningContent,
     Swatch (..),
     ListStyle (..),
     defaultListStyle,
@@ -66,6 +71,8 @@ import Golem.Project.Manifest (decodeStrictBy)
 import Golem.Syntax
 import Toml.Schema
 import Toml.Schema.FromValue (typeError)
+import Toml.Schema.Matcher (inKey)
+import Toml.Semantics (valueAnn)
 
 -- | Scaled points: 1pt = 65536sp.
 type Sp = Integer
@@ -278,8 +285,7 @@ data HeadingStyle = HeadingStyle
   { hsFont :: !(Maybe Text),
     hsSize :: !(Maybe Dim),
     hsNumber :: !(Maybe Text),
-    hsRectoBreak :: !Bool,
-    hsRunningHead :: !Bool
+    hsRectoBreak :: !Bool
   }
   deriving stock (Eq, Show)
 
@@ -327,8 +333,33 @@ data SidenoteStyle = SidenoteStyle
   }
   deriving stock (Eq, Show)
 
+-- | How a heading is shown in a running head (golem-driver ADR 0014).
+data HeadForm = HeadShort | HeadNumbered
+  deriving stock (Eq, Show)
+
+-- | Which heading of a page a running head takes: the first or the last.
+data HeadPick = PickFirst | PickLast
+  deriving stock (Eq, Show)
+
+-- | What a running head shows.
+data RunningContent
+  = -- | a heading of a level
+    RunningHeading !Int !HeadForm !HeadPick
+  | -- | the title of the book
+    RunningTitle
+  | RunningNone
+  deriving stock (Eq, Show)
+
+-- | The running head of a master page: its position and the contents of odd and even pages.
+data RunningHeadDef = RunningHeadDef
+  { rhPosition :: !Text,
+    rhOdd :: !RunningContent,
+    rhEven :: !RunningContent
+  }
+  deriving stock (Eq, Show)
+
 data MasterDef = MasterDef
-  { mdRunningHead :: !(Maybe (Text, Text)), -- position, content
+  { mdRunningHead :: !(Maybe RunningHeadDef),
     mdFolio :: !(Maybe (Text, Text)) -- position, format
   }
   deriving stock (Eq, Show)
@@ -347,6 +378,27 @@ data ListStyle = ListStyle
 -- | No [lists]: the bullet ・, the numbers and the gap of the writing mode.
 defaultListStyle :: ListStyle
 defaultListStyle = ListStyle ("・" :| []) Nothing Nothing
+
+{- | A content value of a running head: @heading.<l>.short@,
+@heading.<l>.numbered@ (either with @.last@), @title@ or @none@
+(golem-driver ADR 0014).
+-}
+parseRunningContent :: Text -> Maybe RunningContent
+parseRunningContent = \case
+  "title" -> Just RunningTitle
+  "none" -> Just RunningNone
+  t -> case T.splitOn "." t of
+    ["heading", l, f] -> heading l f PickFirst
+    ["heading", l, f, "last"] -> heading l f PickLast
+    _ -> Nothing
+  where
+    heading l f pick = do
+      level <- if not (T.null l) && T.all isDigit l then Just (read (T.unpack l)) else Nothing
+      form <- case f of
+        "short" -> Just HeadShort
+        "numbered" -> Just HeadNumbered
+        _ -> Nothing
+      if level >= 1 then Just (RunningHeading level form pick) else Nothing
 
 newtype Swatch = Swatch (Int, Int, Int, Int)
   deriving stock (Eq, Show)
@@ -537,8 +589,12 @@ instance FromValue HeadingStyle where
     s <- dimKey "size"
     n <- optKey "number"
     pb <- enumKey "page-break" ["recto", "any"]
-    rh <- fromMaybe False <$> optKey "running-head"
-    pure (HeadingStyle f s n (pb == Just "recto") rh)
+    -- retired (golem-driver ADR 0014): G0319
+    pickKey
+      [ Key "running-head" (\v -> failAt (valueAnn v) "[headings.<l>] の running-head は廃止しました。柱に使う見出しは [masters.<名前>] の running-head の content で指定してください"),
+        Else (pure ())
+      ]
+    pure (HeadingStyle f s n (pb == Just "recto"))
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
@@ -610,12 +666,40 @@ instance FromValue PosContent where
     f <- optKey "format"
     pure (PosContent p (fromMaybe "" (c <> f)))
 
+-- | The message of G0314 (golem-driver ADR 0014).
+runningContentMessage :: Text -> String
+runningContentMessage v =
+  T.unpack ("柱の内容が正しくありません: " <> v <> "。heading.<階層>.short か heading.<階層>.numbered（末尾に .last を付けられます）、title、none のどれかを、content に一つ、または even と odd の両方に書いてください")
+
+{- | A running head: @position@, and @content@ or both @even@ and @odd@.
+Errors of the contents are reported under their key, which makes them
+G0314.
+-}
+instance FromValue RunningHeadDef where
+  fromValue = parseTableFromValue $ do
+    p <- reqKey "position"
+    let contentOf v = do
+          t <- fromValue v
+          maybe (failAt (valueAnn v) (runningContentMessage t)) (pure . (t,)) (parseRunningContent t)
+    c <- optKeyOf "content" contentOf
+    e <- optKeyOf "even" contentOf
+    o <- optKeyOf "odd" contentOf
+    let written = T.intercalate ", " [k <> " = \"" <> t <> "\"" | (k, Just (t, _)) <- [("content", c), ("even", e), ("odd", o)]]
+        wrong k = liftMatcher (inKey k (fail (runningContentMessage (if T.null written then "（なし）" else written))))
+    case (c, e, o) of
+      (Just (_, x), Nothing, Nothing) -> pure (RunningHeadDef p x x)
+      (Nothing, Just (_, x), Just (_, y)) -> pure (RunningHeadDef p y x)
+      (Just _, _, _) -> wrong "content"
+      (Nothing, Just _, Nothing) -> wrong "odd"
+      (Nothing, Nothing, Just _) -> wrong "even"
+      (Nothing, Nothing, Nothing) -> wrong "content"
+
 instance FromValue MasterDef where
   fromValue = parseTableFromValue $ do
     rh <- optKey "running-head"
     fo <- optKey "folio"
     let pc (PosContent a b) = (a, b)
-    pure (MasterDef (pc <$> rh) (pc <$> fo))
+    pure (MasterDef rh (pc <$> fo))
 
 instance FromValue Swatch where
   fromValue = parseTableFromValue $ do
@@ -775,6 +859,9 @@ parseStyle fid src = do
       ScopeKey "page" : ScopeKey "size" : _ -> "G0317"
       -- errors of [lists] are G0322 (golem-driver ADR 0013)
       ScopeKey "lists" : _ -> "G0322"
+      -- the contents of a running head are G0314, the retired running-head of a heading G0319 (golem-driver ADR 0014)
+      ScopeKey "masters" : _ : ScopeKey "running-head" : ScopeKey k : _ | k `elem` ["content", "even", "odd"] -> "G0314"
+      ScopeKey "headings" : _ : ScopeKey "running-head" : _ -> "G0319"
       _ -> "G0306"
 
 {- | The checks of the styles of a 'Style' (docs/adr ADR 0005, 0006, 0014):
@@ -792,10 +879,6 @@ styleChecks owner s =
     <> [("G0311", n, "段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks]
     <> [("G0312", n, "段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | n <- indentChecks]
   where
-    -- errors of the page size are G0317 (ADR 0005)
-    codeAt = \case
-      ScopeKey "page" : ScopeKey "size" : _ -> "G0317"
-      _ -> "G0306"
     -- font roles named outside [fonts] must exist (golem-driver ADR 0003, 0004; docs/adr ADR 0005)
     roles =
       [("", f) | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings s)]

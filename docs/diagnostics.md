@@ -1974,6 +1974,8 @@ style.toml の誤りです
 `style.toml` が TOML として読めないか、スキーマに合わないか、値が範囲の外にある。
 フォントのファイルの欠落には使わない（[G0310](#g0310)、[G0802](#g0802)）。
 判型（`[page]` の `size`）の誤りには使わない（[G0317](#g0317)）。
+マスターページの柱の内容の誤りには使わない（[G0314](#g0314)）。
+見出しの `running-head` には使わない（[G0319](#g0319)）。
 `@style-def` の名前と欄の誤りにも出る。誤りのある定義は捨てる。
 
 - メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。
@@ -2162,6 +2164,36 @@ style.toml のスタイルの参照が不正です
 
 理由の示すスタイルの `based-on` か `color` を直す。
 
+## G0314
+
+柱の内容が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` のマスターページの `running-head` の内容が、決まった語彙のどれでもないか、書き方の組み合わせが正しくない。
+内容は `content` に一つ書くか、`even` と `odd` の両方に書く。
+位置は誤った値の位置である。
+
+- メッセージ: `柱の内容が正しくありません: <値>。heading.<階層>.short か heading.<階層>.numbered（末尾に .last を付けられます）、title、none のどれかを、content に一つ、または even と odd の両方に書いてください`。誤った箇所の経路を添える。組み合わせの誤りでは、`<値>` に書いた欄と値を並べ、どれも書いていなければ `（なし）` とする。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)
+
+### 主な原因
+
+- 内容の値の綴りを誤った（`heading.1.long`、`chapter` など）。
+- 見出しの階層に 0 や数でないものを書いた。
+- `content` と `even` または `odd` を一緒に書いた。
+- `even` と `odd` の片方だけを書いた。
+- 位置だけを書き、内容を書かなかった。
+
+### 直し方
+
+`content = "heading.1.short"` のように両方のページの内容を一つ書くか、`even = "title"` と `odd = "heading.1.short"` のように左右のページの内容を両方書く。
+柱を出さないページには `none` を書くか、`running-head` のないマスターページを使う。
+
 ## G0317
 
 判型が不正です
@@ -2188,6 +2220,30 @@ style.toml のスタイルの参照が不正です
 
 表の名前（`"A4"`、`"A5"`、`"A6"`、`"B5"`、`"B6"`、`"四六判"`、`"菊判"`、`"新書判"`、`"mass-market"`）を書くか、`size = { width = "148mm", height = "210mm" }` のように寸法で書く。
 単位は `mm`、`pt`、`Q`、`H` とし、`zw` は使わない。
+
+## G0319
+
+見出しの running-head は廃止しました
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[headings.<階層>]` に `running-head` を書いた。
+柱に使う見出しは、マスターページの `running-head` の内容で決める。
+
+- メッセージ: `[headings.<l>] の running-head は廃止しました。柱に使う見出しは [masters.<名前>] の running-head の content で指定してください`。誤った箇所の経路を添える。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)
+
+### 主な原因
+
+- 以前の `style.toml` の `[headings.1]` の `running-head = true` が残っている。
+
+### 直し方
+
+`[headings.<階層>]` の `running-head` の行を消し、マスターページの `running-head` に `content = "heading.1.short"` のように柱に出す見出しの階層を書く。
 
 ## G0322
 

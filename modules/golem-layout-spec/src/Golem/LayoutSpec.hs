@@ -38,8 +38,8 @@ data Anchor = Anchor {anX :: !Sp, anY :: !Sp, anAlign :: !Align}
   deriving stock (Eq, Show)
 
 data MasterGeometry = MasterGeometry
-  { -- | content key and the anchors on odd and even pages
-    mgRunningHead :: !(Maybe (Text, Anchor, Anchor)),
+  { -- | the contents of odd and even pages and their anchors (golem-driver ADR 0014)
+    mgRunningHead :: !(Maybe (RunningContent, RunningContent, Anchor, Anchor)),
     -- | number format and the anchors on odd and even pages
     mgFolio :: !(Maybe (Text, Anchor, Anchor))
   }
@@ -179,8 +179,12 @@ the centre of the type area.
 -}
 masterGeometry :: Sp -> Sp -> Bool -> Rect -> Rect -> MasterDef -> Either [Diagnostic] MasterGeometry
 masterGeometry _ ph bindingRight oddArea evenArea md =
-  MasterGeometry <$> traverse place (mdRunningHead md) <*> traverse place (mdFolio md)
+  MasterGeometry <$> traverse head' (mdRunningHead md) <*> traverse place (mdFolio md)
   where
+    head' rh = do
+      a1 <- anchor (rhPosition rh) 1 oddArea
+      a2 <- anchor (rhPosition rh) 2 evenArea
+      Right (rhOdd rh, rhEven rh, a1, a2)
     place (pos, content) = do
       a1 <- anchor pos 1 oddArea
       a2 <- anchor pos 2 evenArea

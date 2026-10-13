@@ -101,6 +101,43 @@ sourceTests =
           loadProject root >>= (@?= []) . codes
     ]
 
+-- | The running head of a master page (golem-driver ADR 0014).
+runningHeadTests :: TestTree
+runningHeadTests =
+  testGroup
+    "running heads (golem-driver ADR 0014)"
+    [ testCase "content is both pages" $
+        runningHead "content = \"heading.1.short\""
+          @?= Right (Just (RunningHeadDef "top-outside" (RunningHeading 1 HeadShort PickFirst) (RunningHeading 1 HeadShort PickFirst))),
+      testCase "even and odd" $ do
+        runningHead "even = \"title\", odd = \"heading.2.numbered.last\""
+          @?= Right (Just (RunningHeadDef "top-outside" (RunningHeading 2 HeadNumbered PickLast) RunningTitle))
+        fmap (fmap rhOdd) (runningHead "content = \"none\"") @?= Right (Just RunningNone)
+        fmap (fmap rhEven) (runningHead "content = \"heading.3.short.last\"") @?= Right (Just (RunningHeading 3 HeadShort PickLast)),
+      testCase "wrong values are G0314" $ do
+        codes (runningHead "content = \"heading.0.short\"") @?= ["G0314"]
+        codes (runningHead "content = \"heading.1.long\"") @?= ["G0314"]
+        codes (runningHead "content = \"chapter\"") @?= ["G0314"]
+        codes (runningHead "even = \"title\", odd = \"heading.x.short\"") @?= ["G0314"],
+      testCase "content with even or odd, one of even and odd, or none is G0314" $ do
+        codes (runningHead "content = \"title\", odd = \"title\"") @?= ["G0314"]
+        codes (runningHead "even = \"title\"") @?= ["G0314"]
+        codes (runningHead "odd = \"title\"") @?= ["G0314"]
+        codes (runningHead "") @?= ["G0314"],
+      testCase "the message names the value and the vocabulary" $ do
+        let ms = messages (runningHead "content = \"chapter\"")
+        assertBool (show ms) (any ("heading.<階層>.short" `T.isInfixOf`) ms && any ("chapter" `T.isInfixOf`) ms),
+      testCase "the running-head of a heading is retired (G0319)" $ do
+        let r = parseStyle (FileId 0) "[headings.1]\nrunning-head = true\n"
+        codes r @?= ["G0319"]
+        assertBool (show (messages r)) (any ("[masters." `T.isInfixOf`) (messages r))
+    ]
+  where
+    runningHead kv =
+      (\s -> Map.lookup "body" (stMasters s) >>= mdRunningHead)
+        <$> parseStyle (FileId 0) ("[masters.body]\nrunning-head = { position = \"top-outside\"" <> (if T.null kv then "" else ", " <> kv) <> " }\n")
+    messages = either (map diagMessage) (const [])
+
 codes :: Either [Diagnostic] a -> [Text]
 codes = either (map ((\(DiagnosticCode c) -> c) . diagCode)) (const [])
 
@@ -259,6 +296,7 @@ tests =
       testCase "character style fonts name font roles (golem-driver ADR 0004)" $
         codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G0308"],
       styleTests,
+      runningHeadTests,
       localStyleTests,
       testCase "[page] bleed (golem-pdf ADR 0004)" $ do
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"3mm\"\n") @?= Right (Just 557314)
@@ -446,7 +484,6 @@ specStyle =
       "size = \"20Q\"",
       "number = \"第{n:kanji}章\"",
       "page-break = \"recto\"",
-      "running-head = true",
       "",
       "[headings.2]",
       "number = \"{1}.{n}\"",
