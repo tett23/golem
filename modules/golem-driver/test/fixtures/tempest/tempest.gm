@@ -51,7 +51,7 @@ SCENE—[italic: A ship at sea\[4\]: an uninhabited island.]
 
 [italic: Enter ALONSO, SEBASTIAN, ANTONIO, FERDINAND, GONZALO, and others.]
 
-@verse
+@style verse
   [strong: Alon.] Good boatswain, have care. Where’s the master?
   Play the men.
 
@@ -83,7 +83,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Boats.] Work you, then.
 
-@verse
+@style verse
   [strong: Ant.] Hang, cur! hang, you whoreson, insolent noise-maker.
   We are less afraid to be drowned than thou art.
 
@@ -97,18 +97,18 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Boats.] What, must our mouths be cold?
 
-@verse
+@style verse
   [strong: Gon.] The king and prince at prayers! let’s assist them,
   For our case is as theirs.
 
 [strong: Seb.] I’m out of patience.
 
-@verse
+@style verse
   [strong: Ant.] We are merely cheated of our lives by drunkards:
   This wide-chapp’d rascal,—would thou mightst lie drowning
   The washing of ten tides!
 
-@verse
+@style verse
   [strong: Gon.] He’ll be hang’d yet,
   Though every drop of water swear against it,
   And gape at widest to glut him.
@@ -128,7 +128,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [italic: Enter PROSPERO and MIRANDA.]
 
-@verse
+@style verse
   [strong: Mir.] If by your art, my dearest father, you have
   Put the wild waters in this roar, allay them.
   The sky, it seems, would pour down stinking pitch,
@@ -143,14 +143,14 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   It should the good ship so have swallow’d and
   The fraughting souls within her.
 
-@verse
+@style verse
   [strong: Pros.] Be collected:
   No more amazement: tell your piteous heart
   There’s no harm done.
 
 [strong: Mir.] O, woe the day!
 
-@verse
+@style verse
   [strong: Pros.] No harm.
   I have done nothing but in care of thee,
   Of thee, my dear one, thee, my daughter, who
@@ -159,11 +159,11 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Than Prospero, master of a full poor cell,
   And thy no greater father.
 
-@verse
+@style verse
   [strong: Mir.] More to know
   Did never meddle with my thoughts.
 
-@verse
+@style verse
   [strong: Pros.] ’Tis time
   I should inform thee farther. Lend thy hand,
   And pluck my magic garment from me. —So:
@@ -178,13 +178,13 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Which thou heard’st cry, which thou saw’st sink. Sit down;
   For thou must now know farther.
 
-@verse
+@style verse
   [strong: Mir.] You have often
   Begun to tell me what I am; but stopp’d,
   And left me to a bootless inquisition,
   Concluding “Stay: not yet.”
 
-@verse
+@style verse
   [strong: Pros.] The hour’s now come;
   The very minute bids thee ope thine ear;
   Obey, and be attentive. Canst thou remember
@@ -194,18 +194,18 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Mir.] Certainly, sir, I can.
 
-@verse
+@style verse
   [strong: Pros.] By what? by any other house or person?
   Of any thing the image tell me that
   Hath kept with thy remembrance.
 
-@verse
+@style verse
   [strong: Mir.] ’Tis far off,
   And rather like a dream than an assurance
   That my remembrance warrants. Had I not
   Four or five women once that tended me?
 
-@verse
+@style verse
   [strong: Pros.] Thou hadst, and more, Miranda. But how is it
   That this lives in thy mind? What seest thou else
   In the dark backward and abysm of time?
@@ -214,35 +214,35 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Mir.] But that I do not.
 
-@verse
+@style verse
   [strong: Pros.] Twelve year since, Miranda, twelve year since,
   Thy father was the Duke of Milan, and
   A prince of power.
 
 [strong: Mir.] Sir, are not you my father?
 
-@verse
+@style verse
   [strong: Pros.] Thy mother was a piece of virtue, and
   She said thou wast my daughter; and thy father
   Was Duke of Milan; and his only heir
   And princess, no worse issued.
 
-@verse
+@style verse
   [strong: Mir.] O the heavens!
   What foul play had we, that we came from thence?
   Or blessed was’t we did?
 
-@verse
+@style verse
   [strong: Pros.] Both, both, my girl:
   By foul play, as thou say’st, were we heaved thence;
   But blessedly holp hither.
 
-@verse
+@style verse
   [strong: Mir.] O, my heart bleeds
   To think o’ the teen that I have turn’d you to.
   Which is from my remembrance! Please you, farther.
 
-@verse
+@style verse
   [strong: Pros.] My brother, and thy uncle, call’d Antonio,—
   I pray thee, mark me,—that a brother should
   Be so perfidious!—he whom, next thyself,
@@ -259,7 +259,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Mir.] Sir, most heedfully.
 
-@verse
+@style verse
   [strong: Pros.] Being once perfected how to grant suits,
   How to deny them, whom to advance, and whom
   To trash for over-topping, new created
@@ -272,7 +272,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Mir.] O, good sir, I do.
 
-@verse
+@style verse
   [strong: Pros.] I pray thee, mark me.
   I, thus neglecting worldly ends, all dedicated
   To closeness and the bettering of my mind
@@ -295,7 +295,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Mir.] Your tale, sir, would cure deafness.
 
-@verse
+@style verse
   [strong: Pros.] To have no screen between this part he play’d
   And him he play’d it for, he needs will be
   Absolute Milan. Me, poor man, my library
@@ -309,16 +309,16 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Mir.] O the heavens!
 
-@verse
+@style verse
   [strong: Pros.] Mark his condition, and th’ event; then tell me
   If this might be a brother.
 
-@verse
+@style verse
   [strong: Mir.] I should sin
   To think but nobly of my grandmother:
   Good wombs have borne bad sons.
 
-@verse
+@style verse
   [strong: Pros.] Now the condition.
   This King of Naples, being an enemy
   To me inveterate, hearkens my brother’s suit;
@@ -333,23 +333,23 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   The ministers for the purpose hurried thence
   Me and thy crying self.
 
-@verse
+@style verse
   [strong: Mir.] Alack, for pity!
   I, not remembering how I cried out then,
   Will cry it o’er again: it is a hint
   That wrings mine eyes to’t.
 
-@verse
+@style verse
   [strong: Pros.] Hear a little further,
   And then I’ll bring thee to the present business
   Which now’s upon ’s; without the which, this story
   Were most impertinent.
 
-@verse
+@style verse
   [strong: Mir.] Wherefore did they not
   That hour destroy us?
 
-@verse
+@style verse
   [strong: Pros.] Well demanded, wench:
   My tale provokes that question. Dear, they durst not,
   So dear the love my people bore me; nor set
@@ -364,11 +364,11 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   To the winds, whose pity, sighing back again,
   Did us but loving wrong.
 
-@verse
+@style verse
   [strong: Mir.] Alack, what trouble
   Was I then to you!
 
-@verse
+@style verse
   [strong: Pros.] O, a cherubin
   Thou wast that did preserve me. Thou didst smile,
   Infused with a fortitude from heaven,
@@ -379,7 +379,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Mir.] How came we ashore?
 
-@verse
+@style verse
   [strong: Pros.] By Providence divine.
   Some food we had, and some fresh water, that
   A noble Neapolitan, Gonzalo,
@@ -391,11 +391,11 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   From mine own library with volumes that
   I prize above my dukedom.
 
-@verse
+@style verse
   [strong: Mir.] Would I might
   But ever see that man!
 
-@verse
+@style verse
   [strong: Pros.] Now I arise: \[[italic: Resumes his mantle.]
   Sit still, and hear the last of our sea-sorrow.
   Here in this island we arrived; and here
@@ -403,12 +403,12 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Than other princesses can, that have more time
   For vainer hours, and tutors not so careful.
 
-@verse
+@style verse
   [strong: Mir.] Heavens thank you for’t! And now, I pray you, sir,
   For still ’tis beating in my mind, your reason
   For raising this sea-storm?
 
-@verse
+@style verse
   [strong: Pros.] Know thus far forth.
   By accident most strange, bountiful Fortune,
   Now my dear lady, hath mine enemies
@@ -425,18 +425,18 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [italic: Enter] ARIEL[italic: .]
 
-@verse
+@style verse
   [strong: Ari.] All hail, great master! grave sir, hail! I come
   To answer thy best pleasure; be’t to fly,
   To swim, to dive into the fire, to ride
   On the curl’d clouds, to thy strong bidding task
   Ariel and all his quality.
 
-@verse
+@style verse
   [strong: Pros.] Hast thou, spirit,
   Perform’d to point the tempest that I bade thee?
 
-@verse
+@style verse
   [strong: Ari.] To every article.
   I boarded the king’s ship; now on the beak,
   Now in the waist, the deck, in every cabin,
@@ -450,12 +450,12 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Seem to besiege, and make his bold waves tremble,
   Yea, his dread trident shake.
 
-@verse
+@style verse
   [strong: Pros.] My brave spirit!
   Who was so firm, so constant, that this coil
   Would not infect his reason?
 
-@verse
+@style verse
   [strong: Ari.] Not a soul
   But felt a fever of the mad, and play’d
   Some tricks of desperation. All but mariners
@@ -465,7 +465,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Was the first man that leap’d; cried, “Hell is empty,
   And all the devils are here.”
 
-@verse
+@style verse
   [strong: Pros.] Why, that’s my spirit!
   But was not this nigh shore?
 
@@ -473,7 +473,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Pros.] But are they, Ariel, safe?
 
-@verse
+@style verse
   [strong: Ari.] Not a hair perish’d;
   On their sustaining garments not a blemish,
   But fresher than before: and, as thou badest me,
@@ -483,12 +483,12 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   In an odd angle of the isle, and sitting,
   His arms in this sad knot.
 
-@verse
+@style verse
   [strong: Pros.] Of the king’s ship
   The mariners, say how thou hast disposed,
   And all the rest o’ the fleet.
 
-@verse
+@style verse
   [strong: Ari.] Safely in harbour
   Is the king’s ship; in the deep nook, where once
   Thou call’dst me up at midnight to fetch dew
@@ -502,23 +502,23 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Supposing that they saw the king’s ship wreck’d,
   And his great person perish.
 
-@verse
+@style verse
   [strong: Pros.] Ariel, thy charge
   Exactly is perform’d: but there’s more work.
   What is the time o’ the day?
 
 [strong: Ari.] Past the mid season.
 
-@verse
+@style verse
   [strong: Pros.] At least two glasses. The time ’twixt six and now
   Must by us both be spent most preciously.
 
-@verse
+@style verse
   [strong: Ari.] Is there more toil? Since thou dost give me pains,
   Let me remember thee what thou hast promised,
   Which is not yet perform’d me.
 
-@verse
+@style verse
   [strong: Pros.] How now? moody?
   What is’t thou canst demand?
 
@@ -526,20 +526,20 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Pros.] Before the time be out? no more!
 
-@verse
+@style verse
   [strong: Ari.] I prithee,
   Remember I have done thee worthy service;
   Told thee no lies, made thee no mistakings, served
   Without or grudge or grumblings: thou didst promise
   To bate me a full year.
 
-@verse
+@style verse
   [strong: Pros.] Dost thou forget
   From what a torment I did free thee?
 
 [strong: Ari.] No.
 
-@verse
+@style verse
   [strong: Pros.] Thou dost; and think’st it much to tread the ooze
   Of the salt deep,
   To run upon the sharp wind of the north,
@@ -548,7 +548,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ari.] I do not, sir.
 
-@verse
+@style verse
   [strong: Pros.] Thou liest, malignant thing! Hast thou forgot
   The foul witch Sycorax, who with age and envy
   Was grown into a hoop? hast thou forgot her?
@@ -559,7 +559,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ari.] Sir, in Argier.
 
-@verse
+@style verse
   [strong: Pros.] O, was she so? I must
   Once in a month recount what thou hast been,
   Which thou forget’st. This damn’d witch Sycorax,
@@ -570,7 +570,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ari.] Ay, sir.
 
-@verse
+@style verse
   [strong: Pros.] This blue-eyed hag was hither brought with child,
   And here was left by the sailors. Thou, my slave,
   As thou report’st thyself, wast then her servant;
@@ -590,7 +590,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ari.] Yes, Caliban her son.
 
-@verse
+@style verse
   [strong: Pros.] Dull thing, I say so; he, that Caliban,
   Whom now I keep in service. Thou best know’st
   What torment I did find thee in; thy groans
@@ -603,25 +603,25 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ari.] I thank thee, master.
 
-@verse
+@style verse
   [strong: Pros.] If thou more murmur’st, I will rend an oak,
   And peg thee in his knotty entrails, till
   Thou hast howl’d away twelve winters.
 
-@verse
+@style verse
   [strong: Ari.] Pardon, master:
   I will be correspondent to command,
   And do my spiriting gently.
 
-@verse
+@style verse
   [strong: Pros.] Do so; and after two days
   I will discharge thee.
 
-@verse
+@style verse
   [strong: Ari.] That’s my noble master!
   What shall I do? say what; what shall I do?
 
-@verse
+@style verse
   [strong: Pros.] Go make thyself like a nymph o’ the sea:
   Be subject to no sight but thine and mine; invisible
   To every eyeball else. Go take this shape,
@@ -629,24 +629,24 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 \[[italic: Exit Ariel.]
 
-@verse
+@style verse
   Awake, dear heart, awake! thou hast slept well;
   Awake!
 
-@verse
+@style verse
   [strong: Mir.] The strangeness of your story put
   Heaviness in me.
 
-@verse
+@style verse
   [strong: Pros.] Shake it off. Come on;
   We’ll visit Caliban my slave, who never
   Yields us kind answer.
 
-@verse
+@style verse
   [strong: Mir.] ’Tis a villain, sir,
   I do not love to look on.
 
-@verse
+@style verse
   [strong: Pros.] But, as ’tis,
   We cannot miss him: he does make our fire,
   Fetch in our wood, and serves in offices
@@ -655,31 +655,31 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Cal.] \[[italic: within]] There’s wood enough within.
 
-@verse
+@style verse
   [strong: Pros.] Come forth, I say! there’s other business for thee:
   Come, thou tortoise! when?
 
 [italic: Re-enter ARIEL like a water-nymph.]
 
-@verse
+@style verse
   Fine apparition! My quaint Ariel,
   Hark in thine ear.
 
 [strong: Ari.] My lord, it shall be done. \[[italic: Exit.]
 
-@verse
+@style verse
   [strong: Pros.] Thou poisonous slave, got by the devil himself
   Upon thy wicked dam, come forth!
 
 [italic: Enter CALIBAN.]
 
-@verse
+@style verse
   [strong: Cal.] As wicked dew as e’er my mother brush’d
   With raven’s feather from unwholesome fen
   Drop on you both! a south-west blow on ye
   And blister you all o’er!
 
-@verse
+@style verse
   [strong: Pros.] For this, be sure, to-night thou shalt have cramps,
   Side-stitches that shall pen thy breath up; urchins
   Shall, for that vast of night that they may work,
@@ -687,7 +687,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   As thick as honeycomb, each pinch more stinging
   Than bees that made ’em.
 
-@verse
+@style verse
   [strong: Cal.] I must eat my dinner.
   This island’s mine, by Sycorax my mother,
   Which thou takest from me. When thou camest first,
@@ -704,19 +704,19 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   In this hard rock, whiles you do keep from me
   The rest o’ th’ island.
 
-@verse
+@style verse
   [strong: Pros.] Thou most lying slave,
   Whom stripes may move, not kindness! I have used thee,
   Filth as thou art, with human care; and lodged thee
   In mine own cell, till thou didst seek to violate
   The honour of my child.
 
-@verse
+@style verse
   [strong: Cal.] O ho, O ho! would ’t had been done!
   Thou didst prevent me; I had peopled else
   This isle with Calibans.
 
-@verse
+@style verse
   [strong: Pros.] Abhorred slave,
   Which any print of goodness wilt not take,
   Being capable of all ill! I pitied thee,
@@ -730,12 +730,12 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Deservedly confined into this rock,
   Who hadst deserved more than a prison.
 
-@verse
+@style verse
   [strong: Cal.] You taught me language; and my profit on’t
   Is, I know how to curse. The red plague rid you
   For learning me your language!
 
-@verse
+@style verse
   [strong: Pros.] Hag-seed, hence!
   Fetch us in fuel; and be quick, thou’rt best,
   To answer other business. Shrug’st thou, malice?
@@ -744,7 +744,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Fill all thy bones with aches, make thee roar,
   That beasts shall tremble at thy din.
 
-@verse
+@style verse
   [strong: Cal.] No, pray thee.
   \[[italic: Aside]] I must obey: his art is of such power,
   It would control my dam’s god, Setebos,
@@ -756,7 +756,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: ARIEL’S song.]
 
-@verse
+@style verse
   Come unto these yellow sands,
   And then take hands:
   Courtsied when you have and kiss’d
@@ -766,12 +766,12 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [italic: Burthen] \[[italic: dispersedly]]. Hark, hark! Bow-wow. The watch-dogs bark: Bow-wow.
 
-@verse
+@style verse
   [strong: Ari.] Hark, hark! I hear
   The strain of strutting chanticleer
   Cry, Cock-a-diddle-dow.
 
-@verse
+@style verse
   [strong: Fer.] Where should this music be? i’ th’ air or th’ earth?
   It sounds no more: and, sure, it waits upon
   Some god o’ th’ island. Sitting on a bank,
@@ -784,7 +784,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: ARIEL sings.]
 
-@verse
+@style verse
   Full fathom five thy father lies;
   Of his bones are coral made;
   Those are pearls that were his eyes:
@@ -797,21 +797,21 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ari.] Hark! now I hear them,—Ding-dong, bell.
 
-@verse
+@style verse
   [strong: Fer.] The ditty does remember my drown’d father.
   This is no mortal business, nor no sound
   That the earth owes:—I hear it now above me.
 
-@verse
+@style verse
   [strong: Pros.] The fringed curtains of thine eye advance,
   And say what thou seest yond.
 
-@verse
+@style verse
   [strong: Mir.] What is’t? a spirit?
   Lord, how it looks about! Believe me, sir,
   It carries a brave form. But ’tis a spirit.
 
-@verse
+@style verse
   [strong: Pros.] No, wench; it eats and sleeps and hath such senses
   As we have, such. This gallant which thou seest
   Was in the wreck; and, but he’s something stain’d
@@ -819,17 +819,17 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   A goodly person: he hath lost his fellows,
   And strays about to find ’em.
 
-@verse
+@style verse
   [strong: Mir.] I might call him
   A thing divine; for nothing natural
   I ever saw so noble.
 
-@verse
+@style verse
   [strong: Pros.] \[[italic: Aside]] It goes on, I see,
   As my soul prompts it. Spirit, fine spirit! I’ll free thee
   Within two days for this.
 
-@verse
+@style verse
   [strong: Fer.] Most sure, the goddess
   On whom these airs attend! Vouchsafe my prayer
   May know if you remain upon this island;
@@ -838,20 +838,20 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Which I do last pronounce, is, O you wonder!
   If you be maid or no?
 
-@verse
+@style verse
   [strong: Mir.] No wonder, sir;
   But certainly a maid.
 
-@verse
+@style verse
   [strong: Fer.] My language! heavens!
   I am the best of them that speak this speech,
   Were I but where ’tis spoken.
 
-@verse
+@style verse
   [strong: Pros.] How? the best?
   What wert thou, if the King of Naples heard thee?
 
-@verse
+@style verse
   [strong: Fer.] A single thing, as I am now, that wonders
   To hear thee speak of Naples. He does hear me;
   And that he does I weep: myself am Naples,
@@ -860,11 +860,11 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Mir.] Alack, for mercy!
 
-@verse
+@style verse
   [strong: Fer.] Yes, faith, and all his lords; the Duke of Milan
   And his brave son being twain.
 
-@verse
+@style verse
   [strong: Pros.] \[[italic: Aside]] The Duke of Milan
   And his more braver daughter could control thee,
   If now ’twere fit to do’t. At the first sight
@@ -872,18 +872,18 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   I’ll set thee free for this. \[[italic: To Fer.]] A word, good sir;
   I fear you have done yourself some wrong: a word.
 
-@verse
+@style verse
   [strong: Mir.] Why speaks my father so ungently? This
   Is the third man that e’er I saw; the first
   That e’er I sigh’d for: pity move my father
   To be inclined my way!
 
-@verse
+@style verse
   [strong: Fer.] O, if a virgin,
   And your affection not gone forth, I’ll make you
   The queen of Naples.
 
-@verse
+@style verse
   [strong: Pros.] Soft, sir! one word more.
   \[[italic: Aside]] They are both in either’s powers:
   but this swift business
@@ -896,12 +896,12 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Fer.] No, as I am a man.
 
-@verse
+@style verse
   [strong: Mir.] There’s nothing ill can dwell in such a temple:
   If the ill spirit have so fair a house,
   Good things will strive to dwell with’t.
 
-@verse
+@style verse
   [strong: Pros.] Follow me.
   Speak not you for him; he’s a traitor. Come;
   I’ll manacle thy neck and feet together:
@@ -909,18 +909,18 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   The fresh-brook muscles, wither’d roots, and husks
   Wherein the acorn cradled. Follow.
 
-@verse
+@style verse
   [strong: Fer.] No;
   I will resist such entertainment till
   Mine enemy has more power.
   \[[italic: Draws, and is charmed from moving.]
 
-@verse
+@style verse
   [strong: Mir.] O dear father,
   Make not too rash a trial of him, for
   He’s gentle, and not fearful.
 
-@verse
+@style verse
   [strong: Pros.] What! I say,
   My foot my tutor? Put thy sword up, traitor;
   Who makest a show, but darest not strike, thy conscience
@@ -932,11 +932,11 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Pros.] Hence! hang not on my garments.
 
-@verse
+@style verse
   [strong: Mir.] Sir, have pity;
   I’ll be his surety.
 
-@verse
+@style verse
   [strong: Pros.] Silence! one word more
   Shall make me chide thee, if not hate thee. What!
   An advocate for an impostor! hush!
@@ -945,17 +945,17 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   To the most of men this is a Caliban,
   And they to him are angels.
 
-@verse
+@style verse
   [strong: Mir.] My affections
   Are, then, most humble; I have no ambition
   To see a goodlier man.
 
-@verse
+@style verse
   [strong: Pros.] Come on; obey:
   Thy nerves are in their infancy again,
   And have no vigour in them.
 
-@verse
+@style verse
   [strong: Fer.] So they are:
   My spirits, as in a dream, are all bound up.
   My father’s loss, the weakness which I feel,
@@ -966,18 +966,18 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Let liberty make use of; space enough
   Have I in such a prison.
 
-@verse
+@style verse
   [strong: Pros.] \[[italic: Aside]] It works. \[[italic: To Fer.]] Come on.
   Thou hast done well, fine Ariel! \[[italic: To Fer.]] Follow me.
   \[[italic: To Ari.]] Hark what thou else shalt do me.
 
-@verse
+@style verse
   [strong: Mir.] Be of comfort;
   My father’s of a better nature, sir,
   Than he appears by speech: this is unwonted
   Which now came from him.
 
-@verse
+@style verse
   [strong: Pros.] Thou shalt be as free
   As mountain winds: but then exactly do
   All points of my command.
@@ -996,7 +996,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [italic: Enter ALONSO, SEBASTIAN, ANTONIO, GONZALO, ADRIAN, FRANCISCO, and others.]
 
-@verse
+@style verse
   [strong: Gon.] Beseech you, sir, be merry; you have cause,
   So have we all, of joy; for our escape
   Is much beyond our loss. Our hint of woe
@@ -1019,7 +1019,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Seb.] One: tell.
 
-@verse
+@style verse
   [strong: Gon.] When every grief is entertain’d that’s offer’d,
   Comes to the entertainer—
 
@@ -1111,7 +1111,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ant.] Widow! a pox o’ that! How came that widow in? widow Dido!
 
-@verse
+@style verse
   [strong: Seb.] What if he had said ‘widower Æneas’ too? Good
   Lord, how you take it!
 
@@ -1149,7 +1149,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Gon.] When I wore it at your daughter’s marriage?
 
-@verse
+@style verse
   [strong: Alon.] You cram these words into mine ears against
   The stomach of my sense. Would I had never
   Married my daughter there! for, coming thence,
@@ -1159,7 +1159,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Of Naples and of Milan, what strange fish
   Hath made his meal on thee?
 
-@verse
+@style verse
   [strong: Fran.] Sir, he may live:
   I saw him beat the surges under him,
   And ride upon their backs; he trod the water.
@@ -1173,7 +1173,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Alon.] No, no, he’s gone.
 
-@verse
+@style verse
   [strong: Seb.] Sir, you may thank yourself for this great loss,
   That would not bless our Europe with your daughter,
   But rather lose her to an African;
@@ -1182,7 +1182,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Alon.] Prithee, peace.
 
-@verse
+@style verse
   [strong: Seb.] You were kneel’d to, and importuned otherwise,
   By all of us; and the fair soul herself
   Weigh’d between loathness and obedience, at
@@ -1194,7 +1194,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Alon.] So is the dear’st o’ the loss.
 
-@verse
+@style verse
   [strong: Gon.] My lord Sebastian,
   The truth you speak doth lack some gentleness,
   And time to speak it in: you rub the sore,
@@ -1204,7 +1204,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ant.] And most chirurgeonly.
 
-@verse
+@style verse
   [strong: Gon.] It is foul weather in us all, good sir,
   When you are cloudy.
 
@@ -1222,7 +1222,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Seb.] ’Scape being drunk for want of wine.
 
-@verse
+@style verse
   [strong: Gon.] I’ the commonwealth I would by contraries
   Execute all things; for no kind of traffic
   Would I admit; no name of magistrate;
@@ -1238,7 +1238,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ant.] The latter end of his commonwealth forgets the beginning.
 
-@verse
+@style verse
   [strong: Gon.] All things in common nature should produce
   Without sweat or endeavour: treason, felony,
   Sword, pike, knife, gun, or need of any engine,
@@ -1250,7 +1250,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ant.] None, man; all idle; whores and knaves.
 
-@verse
+@style verse
   [strong: Gon.] I would with such perfection govern, sir,
   To excel the golden age.
 
@@ -1282,27 +1282,27 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Gon.] No, I warrant you; I will not adventure my discretion so weakly. Will you laugh me asleep, for I am very heavy?
 
-@verse
+@style verse
   [strong: Ant.] Go sleep, and hear us.
   \[[italic: All sleep except Alon., Seb., and Ant.]
 
-@verse
+@style verse
   [strong: Alon.] What, all so soon asleep! I wish mine eyes
   Would, with themselves, shut up my thoughts: I find
   They are inclined to do so.
 
-@verse
+@style verse
   [strong: Seb.] Please you, sir,
   Do not omit the heavy offer of it:
   It seldom visits sorrow; when it doth,
   It is a comforter.
 
-@verse
+@style verse
   [strong: Ant.] We two, my lord,
   Will guard your person while you take your rest,
   And watch your safety.
 
-@verse
+@style verse
   [strong: Alon.] Thank you.—Wondrous heavy.
   \[[italic: Alonso sleeps. Exit Ariel.]
 
@@ -1310,12 +1310,12 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ant.] It is the quality o’ the climate.
 
-@verse
+@style verse
   [strong: Seb.] Why
   Doth it not then our eyelids sink? I find not
   Myself disposed to sleep.
 
-@verse
+@style verse
   [strong: Ant.] Nor I; my spirits are nimble.
   They fell together all, as by consent;
   They dropp’d, as by a thunder-stroke. What might,
@@ -1329,7 +1329,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ant.] Do you not hear me speak?
 
-@verse
+@style verse
   [strong: Seb.] I do; and surely
   It is a sleepy language, and thou speak’st
   Out of thy sleep. What is it thou didst say?
@@ -1337,16 +1337,16 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   With eyes wide open; standing, speaking, moving,
   And yet so fast asleep.
 
-@verse
+@style verse
   [strong: Ant.] Noble Sebastian,
   Thou let’st thy fortune sleep—die, rather; wink’st
   Whiles thou art waking.
 
-@verse
+@style verse
   [strong: Seb.] Thou dost snore distinctly;
   There’s meaning in thy snores.
 
-@verse
+@style verse
   [strong: Ant.] I am more serious than my custom: you
   Must be so too, if heed me; which to do
   Trebles thee o’er.
@@ -1355,11 +1355,11 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ant.] I’ll teach you how to flow.
 
-@verse
+@style verse
   [strong: Seb.] Do so: to ebb
   Hereditary sloth instructs me.
 
-@verse
+@style verse
   [strong: Ant.] O,
   If you but knew how you the purpose cherish
   Whiles thus you mock it! how, in stripping it,
@@ -1367,13 +1367,13 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Most often do so near the bottom run
   By their own fear or sloth.
 
-@verse
+@style verse
   [strong: Seb.] Prithee, say on:
   The setting of thine eye and cheek proclaim
   A matter from thee; and a birth, indeed,
   Which throes thee much to yield.
 
-@verse
+@style verse
   [strong: Ant.] Thus, sir:
   Although this lord of weak remembrance, this,
   Who shall be of as little memory
@@ -1383,11 +1383,11 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   ’Tis as impossible that he’s undrown’d
   As he that sleeps here swims.
 
-@verse
+@style verse
   [strong: Seb.] I have no hope
   That he’s undrown’d.
 
-@verse
+@style verse
   [strong: Ant.] O, out of that ‘no hope’
   What great hope have you! no hope that way is
   Another way so high a hope that even
@@ -1397,13 +1397,13 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Seb.] He’s gone.
 
-@verse
+@style verse
   [strong: Ant.] Then, tell me,
   Who’s the next heir of Naples?
 
 [strong: Seb.] Claribel.
 
-@verse
+@style verse
   [strong: Ant.] She that is queen of Tunis; she that dwells
   Ten leagues beyond man’s life; she that from Naples
   Can have no note, unless the sun were post,—
@@ -1414,13 +1414,13 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   Whereof what’s past is prologue; what to come,
   In yours and my discharge.
 
-@verse
+@style verse
   [strong: Seb.] What stuff is this! How say you?
   ’Tis true, my brother’s daughter’s queen of Tunis;
   So is she heir of Naples; ’twixt which regions
   There is some space.
 
-@verse
+@style verse
   [strong: Ant.] A space whose every cubit
   Seems to cry out, “How shall that Claribel
   Measure us back to Naples? Keep in Tunis,
@@ -1436,15 +1436,15 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Seb.] Methinks I do.
 
-@verse
+@style verse
   [strong: Ant.] And how does your content
   Tender your own good fortune?
 
-@verse
+@style verse
   [strong: Seb.] I remember
   You did supplant your brother Prospero.
 
-@verse
+@style verse
   [strong: Ant.] True:
   And look how well my garments sit upon me;
   Much feater than before: my brother’s servants
@@ -1452,7 +1452,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Seb.] But for your conscience.
 
-@verse
+@style verse
   [strong: Ant.] Ay, sir; where lies that? if ’twere a kibe,
   ’Twould put me to my slipper: but I feel not
   This deity in my bosom: twenty consciences,
@@ -1469,14 +1469,14 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   They’ll tell the clock to any business that
   We say befits the hour.
 
-@verse
+@style verse
   [strong: Seb.] Thy case, dear friend,
   Shall be my precedent; as thou got’st Milan,
   I’ll come by Naples. Draw thy sword: one stroke
   Shall free thee from the tribute which thou payest;
   And I the king shall love thee.
 
-@verse
+@style verse
   [strong: Ant.] Draw together;
   And when I rear my hand, do you the like,
   To fall it on Gonzalo.
@@ -1485,13 +1485,13 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [italic: Re-enter ARIEL invisible.]
 
-@verse
+@style verse
   [strong: Ari.] My master through his art foresees the danger
   That you, his friend, are in; and sends me forth,—
   For else his project dies,—to keep them living.
   \[[italic: Sings in Gonzalo’s ear.]
 
-@verse
+@style verse
   While you here do snoring lie,
   Open-eyed conspiracy
   His time doth take.
@@ -1501,17 +1501,17 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Ant.] Then let us both be sudden.
 
-@verse
+@style verse
   [strong: Gon.] Now, good angels
   Preserve the king! \[[italic: They wake.]
 
-@verse
+@style verse
   [strong: Alon.] Why, how now? ho, awake!—Why are you drawn?
   Wherefore this ghastly looking?
 
 [strong: Gon.] What’s the matter?
 
-@verse
+@style verse
   [strong: Seb.] Whiles we stood here securing your repose,
   Even now, we heard a hollow burst of bellowing
   Like bulls, or rather lions: did’t not wake you?
@@ -1519,14 +1519,14 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [strong: Alon.] I heard nothing.
 
-@verse
+@style verse
   [strong: Ant.] O, ’twas a din to fright a monster’s ear,
   To make an earthquake! sure, it was the roar
   Of a whole herd of lions.
 
 [strong: Alon.] Heard you this, Gonzalo?
 
-@verse
+@style verse
   [strong: Gon.] Upon mine honour, sir, I heard a humming,
   And that a strange one too, which did awake me:
   I shaked you, sir, and cried: as mine eyes open’d,
@@ -1534,17 +1534,17 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
   That’s verily. ’Tis best we stand upon our guard,
   Or that we quit this place: let’s draw our weapons.
 
-@verse
+@style verse
   [strong: Alon.] Lead off this ground; and let’s make further search
   For my poor son.
 
-@verse
+@style verse
   [strong: Gon.] Heavens keep him from these beasts!
   For he is, sure, i’ th’ island.
 
 [strong: Alon.] Lead away.
 
-@verse
+@style verse
   [strong: Ari.] Prospero my lord shall know what I have done:
   So, king, go safely on to seek thy son. \[[italic: Exeunt.]
 
@@ -1555,7 +1555,7 @@ Yet again! what do you here? Shall we give o’er, and drown? Have you a mind to
 
 [italic: Enter CALIBAN with a burden of wood. A noise of thunder heard.]
 
-@verse
+@style verse
   [strong: Cal.] All the infections that the sun sucks up
   From bogs, fens, flats, on Prosper fall, and make him
   By inch-meal a disease! His spirits hear me,
@@ -1579,13 +1579,13 @@ Lo, now, lo! Here comes a spirit of his, and to torment me For bringing wood in 
 
 [italic: Enter STEPHANO, singing: a bottle in his hand.]
 
-@verse
+@style verse
   [strong: Ste.] I shall no more to sea, to sea,
   Here shall I die a-shore,—
 
 This is a very scurvy tune to sing at a man’s funeral: well, here’s my comfort. \[[italic: Drinks.]
 
-@verse
+@style verse
   \[[italic: Sings.] The master, the swabber, the boatswain, and I,
   The gunner, and his mate,
   Loved Mall, Meg, and Marian, and Margery,
@@ -1630,7 +1630,7 @@ This is a scurvy tune too: but here’s my comfort. \[[italic: Drinks.]
 
 [strong: Ste.] Prithee, do not turn me about; my stomach is not constant.
 
-@verse
+@style verse
   [strong: Cal.] \[[italic: aside]] These be fine things, an if they be not sprites.
   That’s a brave god, and bears celestial liquor:
   I will kneel to him.
@@ -1653,7 +1653,7 @@ This is a scurvy tune too: but here’s my comfort. \[[italic: Drinks.]
 
 [strong: Ste.] Out o’ the moon, I do assure thee: I was the man i’ the moon when time was.
 
-@verse
+@style verse
   [strong: Cal.] I have seen thee in her, and I do adore thee:
   My mistress show’d me thee, and thy dog, and thy bush.
 
@@ -1661,7 +1661,7 @@ This is a scurvy tune too: but here’s my comfort. \[[italic: Drinks.]
 
 [strong: Trin.] By this good light, this is a very shallow monster! I afeard of him! A very weak monster! The man i’ the moon! A most poor credulous monster! Well drawn, monster, in good sooth!
 
-@verse
+@style verse
   [strong: Cal.] I’ll show thee every fertile inch o’ th’ island;
   And I will kiss thy foot: I prithee, be my god.
 
@@ -1677,7 +1677,7 @@ This is a scurvy tune too: but here’s my comfort. \[[italic: Drinks.]
 
 [strong: Trin.] But that the poor monster’s in drink: an abominable monster!
 
-@verse
+@style verse
   [strong: Cal.] I’ll show thee the best springs; I’ll pluck thee berries;
   I’ll fish for thee, and get thee wood enough.
   A plague upon the tyrant that I serve!
@@ -1686,7 +1686,7 @@ This is a scurvy tune too: but here’s my comfort. \[[italic: Drinks.]
 
 [strong: Trin.] A most ridiculous monster, to make a wonder of a poor drunkard!
 
-@verse
+@style verse
   [strong: Cal.] I prithee, let me bring thee where crabs grow;
   And I with my long nails will dig thee pig-nuts;
   Show thee a jay’s nest, and instruct thee how
@@ -1700,7 +1700,7 @@ This is a scurvy tune too: but here’s my comfort. \[[italic: Drinks.]
 
 [strong: Trin.] A howling monster; a drunken monster!
 
-@verse
+@style verse
   [strong: Cal.] No more dams I’ll make for fish;
   Nor fetch in firing
   At requiring;
@@ -1722,7 +1722,7 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
 
 [italic: Enter FERDINAND, bearing a log.]
 
-@verse
+@style verse
   [strong: Fer.] There be some sports are painful, and their labour
   Delight in them sets off: some kinds of baseness
   Are nobly undergone, and most poor matters
@@ -1741,7 +1741,7 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
 
 [italic: Enter MIRANDA; and PROSPERO at a distance, unseen.]
 
-@verse
+@style verse
   [strong: Mir.] Alas, now, pray you,
   Work not so hard: I would the lightning had
   Burnt up those logs that you are enjoin’d to pile!
@@ -1750,45 +1750,45 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
   Is hard at study; pray, now, rest yourself;
   He’s safe for these three hours.
 
-@verse
+@style verse
   [strong: Fer.] O most dear mistress,
   The sun will set before I shall discharge
   What I must strive to do.
 
-@verse
+@style verse
   [strong: Mir.] If you’ll sit down,
   I’ll bear your logs the while: pray, give me that;
   I’ll carry it to the pile.
 
-@verse
+@style verse
   [strong: Fer.] No, precious creature;
   I had rather crack my sinews, break my back,
   Than you should such dishonour undergo,
   While I sit lazy by.
 
-@verse
+@style verse
   [strong: Mir.] It would become me
   As well as it does you: and I should do it
   With much more ease; for my good will is to it,
   And yours it is against.
 
-@verse
+@style verse
   [strong: Pros.] Poor worm, thou art infected!
   This visitation shows it.
 
 [strong: Mir.] You look wearily.
 
-@verse
+@style verse
   [strong: Fer.] No, noble mistress; ’tis fresh morning with me
   When you are by at night. I do beseech you,—
   Chiefly that I might set it in my prayers,—
   What is your name?
 
-@verse
+@style verse
   [strong: Mir.] Miranda. —O my father,
   I have broke your hest to say so!
 
-@verse
+@style verse
   [strong: Fer.] Admired Miranda!
   Indeed the top of admiration! worth
   What’s dearest to the world! Full many a lady
@@ -1802,7 +1802,7 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
   So perfect and so peerless, are created
   Of every creature’s best!
 
-@verse
+@style verse
   [strong: Mir.] I do not know
   One of my sex; no woman’s face remember,
   Save, from my glass, mine own; nor have I seen
@@ -1816,7 +1816,7 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
   Something too wildly, and my father’s precepts
   I therein do forget.
 
-@verse
+@style verse
   [strong: Fer.] I am, in my condition,
   A prince, Miranda; I do think, a king;
   I would, not so!—and would no more endure
@@ -1829,7 +1829,7 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
 
 [strong: Mir.] Do you love me?
 
-@verse
+@style verse
   [strong: Fer.] O heaven, O earth, bear witness to this sound,
   And crown what I profess with kind event,
   If I speak true! if hollowly, invert
@@ -1837,18 +1837,18 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
   Beyond all limit of what else i’ the world,
   Do love, prize, honour you.
 
-@verse
+@style verse
   [strong: Mir.] I am a fool
   To weep at what I am glad of.
 
-@verse
+@style verse
   [strong: Pros.] Fair encounter
   Of two most rare affections! Heavens rain grace
   On that which breeds between ’em!
 
 [strong: Fer.] Wherefore weep you?
 
-@verse
+@style verse
   [strong: Mir.] At mine unworthiness, that dare not offer
   What I desire to give; and much less take
   What I shall die to want. But this is trifling;
@@ -1860,17 +1860,17 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
   You may deny me; but I’ll be your servant,
   Whether you will or no.
 
-@verse
+@style verse
   [strong: Fer.] My mistress, dearest;
   And I thus humble ever.
 
 [strong: Mir.] My husband, then?
 
-@verse
+@style verse
   [strong: Fer.] Ay, with a heart as willing
   As bondage e’er of freedom: here’s my hand.
 
-@verse
+@style verse
   [strong: Mir.] And mine, with my heart in’t: and now farewell
   Till half an hour hence.
 
@@ -1878,7 +1878,7 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
 
 \[[italic: Exeunt Fer. and Mir. severally.]
 
-@verse
+@style verse
   [strong: Pros.] So glad of this as they I cannot be,
   Who are surprised withal; but my rejoicing
   At nothing can be more. I’ll to my book;
@@ -1910,7 +1910,7 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
 
 [strong: Ste.] Moon-calf, speak once in thy life, if thou beest a good moon-calf.
 
-@verse
+@style verse
   [strong: Cal.] How does thy honour? Let me lick thy shoe.
   I’ll not serve him, he is not valiant.
 
@@ -1934,7 +1934,7 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
 
 [strong: Ari.] Thou liest.
 
-@verse
+@style verse
   [strong: Cal.] Thou liest, thou jesting monkey, thou:
   I would my valiant master would destroy thee!
   I do not lie.
@@ -1945,7 +1945,7 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
 
 [strong: Ste.] Mum, then, and no more. Proceed.
 
-@verse
+@style verse
   [strong: Cal.] I say, by sorcery he got this isle;
   From me he got it. If thy greatness will
   Revenge it on him,—for I know thou darest,
@@ -1957,13 +1957,13 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
 
 [strong: Ste.] How now shall this be compassed? Canst thou bring me to the party?
 
-@verse
+@style verse
   [strong: Cal.] Yea, yea, my lord: I’ll yield him thee asleep,
   Where thou mayst knock a nail into his head.
 
 [strong: Ari.] Thou liest; thou canst not.
 
-@verse
+@style verse
   [strong: Cal.] What a pied ninny’s this! Thou scurvy patch!
   I do beseech thy Greatness, give him blows,
   And take his bottle from him: when that’s gone,
@@ -1986,13 +1986,13 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
 
 [strong: Ste.] Now, forward with your tale. —Prithee, stand farther off.
 
-@verse
+@style verse
   [strong: Cal.] Beat him enough: after a little time,
   I’ll beat him too.
 
 [strong: Ste.] Stand farther. Come, proceed.
 
-@verse
+@style verse
   [strong: Cal.] Why, as I told thee, ’tis a custom with him
   I’ th’ afternoon to sleep: there thou mayst brain him,
   Having first seized his books; or with a log
@@ -2013,7 +2013,7 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
 
 [strong: Ste.] Is it so brave a lass?
 
-@verse
+@style verse
   [strong: Cal.] Ay, lord; she will become thy bed, I warrant,
   And bring thee forth brave brood.
 
@@ -2023,7 +2023,7 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
 
 [strong: Ste.] Give me thy hand: I am sorry I beat thee; but, while thou livest, keep a good tongue in thy head.
 
-@verse
+@style verse
   [strong: Cal.] Within this half hour will he be asleep:
   Wilt thou destroy him then?
 
@@ -2031,7 +2031,7 @@ Freedom, hey-day! hey-day, freedom! freedom, hey-day, freedom!
 
 [strong: Ari.] This will I tell my master.
 
-@verse
+@style verse
   [strong: Cal.] Thou makest me merry; I am full of pleasure:
   Let us be jocund: will you troll the catch
   You taught me but while-ere?
@@ -2058,7 +2058,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [strong: Ste.] No, monster, not I.
 
-@verse
+@style verse
   [strong: Cal.] Be not afeard; the isle is full of noises,
   Sounds and sweet airs, that give delight, and hurt not.
   Sometimes a thousand twangling instruments
@@ -2088,13 +2088,13 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [italic: Enter ALONSO, SEBASTIAN, ANTONIO, GONZALO, ADRIAN, FRANCISCO, and others.]
 
-@verse
+@style verse
   [strong: Gon.] By’r lakin, I can go no further, sir;
   My old bones ache: here’s a maze trod, indeed,
   Through forth-rights and meanders! By your patience,
   I needs must rest me.
 
-@verse
+@style verse
   [strong: Alon.] Old lord, I cannot blame thee,
   Who am myself attach’d with weariness,
   To the dulling of my spirits: sit down, and rest.
@@ -2103,16 +2103,16 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   Whom thus we stray to find; and the sea mocks
   Our frustrate search on land. Well, let him go.
 
-@verse
+@style verse
   [strong: Ant.] \[[italic: Aside to Seb.]] I am right glad that he’s so out of hope.
   Do not, for one repulse, forego the purpose
   That you resolved to effect.
 
-@verse
+@style verse
   [strong: Seb.] \[[italic: Aside to Ant.]] The next advantage
   Will we take throughly.
 
-@verse
+@style verse
   [strong: Ant.] \[[italic: Aside to Seb.]] Let it be to-night;
   For, now they are oppress’d with travel, they
   Will not, nor cannot, use such vigilance
@@ -2130,19 +2130,19 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [strong: Alon.] Give us kind keepers, heavens!—What were these?
 
-@verse
+@style verse
   [strong: Seb.] A living drollery. Now I will believe
   That there are unicorns; that in Arabia
   There is one tree, the phœnix’ throne; one phœnix
   At this hour reigning there.
 
-@verse
+@style verse
   [strong: Ant.] I’ll believe both;
   And what does else want credit, come to me,
   And I’ll be sworn ’tis true: travellers ne’er did lie,
   Though fools at home condemn ’em.
 
-@verse
+@style verse
   [strong: Gon.] If in Naples
   I should report this now, would they believe me?
   If I should say, I saw such islanders,—
@@ -2152,12 +2152,12 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   Our human generation you shall find
   Many, nay, almost any.
 
-@verse
+@style verse
   [strong: Pros.] \[[italic: Aside]] Honest lord,
   Thou hast said well; for some of you there present
   Are worse than devils.
 
-@verse
+@style verse
   [strong: Alon.] I cannot too much muse
   Such shapes, such gesture, and such sound, expressing—
   Although they want the use of tongue—a kind
@@ -2167,14 +2167,14 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [strong: Fran.] They vanish’d strangely.
 
-@verse
+@style verse
   [strong: Seb.] No matter, since
   They have left their viands behind; for we have stomachs.—
   Will’t please you taste of what is here?
 
 [strong: Alon.] Not I.
 
-@verse
+@style verse
   [strong: Gon.] Faith, sir, you need not fear. When we were boys,
   Who would believe that there were mountaineers
   Dew-lapp’d like bulls, whose throats had hanging at ’em
@@ -2183,7 +2183,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   Each putter-out of five for one will bring us
   Good warrant of.
 
-@verse
+@style verse
   [strong: Alon.] I will stand to, and feed,
   Although my last: no matter, since I feel
   The best is past. Brother, my lord the duke,
@@ -2191,7 +2191,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [italic: Thunder and lightning. Enter ARIEL, like a harpy; claps his wings upon the table; and, with a quaint device, the banquet vanishes.]
 
-@verse
+@style verse
   [strong: Ari.] You are three men of sin, whom Destiny,—
   That hath to instrument this lower world
   And what is in’t,—the never-surfeited sea
@@ -2226,7 +2226,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [italic: He vanishes in thunder; then, to soft music, enter the Shapes again, and dance, with mocks and mows, and carrying out the table.]
 
-@verse
+@style verse
   [strong: Pros.] Bravely the figure of this harpy hast thou
   Perform’d, my Ariel; a grace it had, devouring:
   Of my instruction hast thou nothing bated
@@ -2239,11 +2239,11 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   Young Ferdinand,—whom they suppose is drown’d,—
   And his and mine loved darling. \[[italic: Exit above.]
 
-@verse
+@style verse
   [strong: Gon.] I’ the name of something holy, sir, why stand you
   In this strange stare?
 
-@verse
+@style verse
   [strong: Alon.] O, it is monstrous, monstrous!
   Methought the billows spoke, and told me of it;
   The winds did sing it to me; and the thunder,
@@ -2253,7 +2253,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   I’ll seek him deeper than e’er plummet sounded,
   And with him there lie mudded. \[[italic: Exit.]
 
-@verse
+@style verse
   [strong: Seb.] But one fiend at a time,
   I’ll fight their legions o’er.
 
@@ -2261,7 +2261,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 \[[italic: Exeunt Seb. and Ant.]
 
-@verse
+@style verse
   [strong: Gon.] All three of them are desperate: their great guilt,
   Like poison given to work a great time after,
   Now ’gins to bite the spirits. I do beseech you,
@@ -2281,7 +2281,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [italic: Enter PROSPERO, FERDINAND, and MIRANDA.]
 
-@verse
+@style verse
   [strong: Pros.] If I have too austerely punish’d you,
   Your compensation makes amends; for I
   Have given you here a third of mine own life,
@@ -2294,11 +2294,11 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   For thou shalt find she will outstrip all praise,
   And make it halt behind her.
 
-@verse
+@style verse
   [strong: Fer.] I do believe it
   Against an oracle.
 
-@verse
+@style verse
   [strong: Pros.] Then, as my gift, and thine own acquisition
   Worthily purchased, take my daughter: but
   If thou dost break her virgin-knot before
@@ -2311,7 +2311,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   That you shall hate it both: therefore take heed,
   As Hymen’s lamps shall light you.
 
-@verse
+@style verse
   [strong: Fer.] As I hope
   For quiet days, fair issue and long life,
   With such love as ’tis now, the murkiest den,
@@ -2322,7 +2322,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   When I shall think, or Phœbus’ steeds are founder’d,
   Or Night kept chain’d below.
 
-@verse
+@style verse
   [strong: Pros.] Fairly spoke.
   Sit, then, and talk with her; she is thine own.
   What, Ariel! my industrious servant, Ariel!
@@ -2331,7 +2331,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [strong: Ari.] What would my potent master? here I am.
 
-@verse
+@style verse
   [strong: Pros.] Thou and thy meaner fellows your last service
   Did worthily perform; and I must use you
   In such another trick. Go bring the rabble,
@@ -2345,31 +2345,31 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [strong: Pros.] Ay, with a twink.
 
-@verse
+@style verse
   [strong: Ari.] Before you can say, ‘come,’ and ‘go,’
   And breathe twice, and cry, ‘so, so,’
   Each one, tripping on his toe,
   Will be here with mop and mow.
   Do you love me, master? no?
 
-@verse
+@style verse
   [strong: Pros.] Dearly, my delicate Ariel. Do not approach
   Till thou dost hear me call.
 
 [strong: Ari.] Well, I conceive. \[[italic: Exit.]
 
-@verse
+@style verse
   [strong: Pros.] Look thou be true; do not give dalliance
   Too much the rein: the strongest oaths are straw
   To the fire i’ the blood: be more abstemious,
   Or else, good night your vow!
 
-@verse
+@style verse
   [strong: Fer.] I warrant you, sir;
   The white cold virgin snow upon my heart
   Abates the ardour of my liver.
 
-@verse
+@style verse
   [strong: Pros.] Well.
   Now come, my Ariel! bring a corollary,
   Rather than want a spirit: appear, and pertly!
@@ -2377,7 +2377,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [italic: Enter IRIS.]
 
-@verse
+@style verse
   [strong: Iris.] Ceres, most bounteous lady, thy rich leas
   Of wheat, rye, barley, vetches, oats, and pease;
   Thy turfy mountains, where live nibbling sheep,
@@ -2397,7 +2397,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [italic: Enter CERES.]
 
-@verse
+@style verse
   [strong: Cer.] Hail, many-colour’d messenger, that ne’er
   Dost disobey the wife of Jupiter;
   Who, with thy saffron wings, upon my flowers
@@ -2407,12 +2407,12 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   Rich scarf to my proud earth;—why hath thy queen
   Summon’d me hither, to this short-grass’d green?
 
-@verse
+@style verse
   [strong: Iris.] A contract of true love to celebrate;
   And some donation freely to estate
   On the blest lovers.
 
-@verse
+@style verse
   [strong: Cer.] Tell me, heavenly bow,
   If Venus or her son, as thou dost know,
   Do now attend the queen? Since they did plot
@@ -2420,7 +2420,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   Her and her blind boy’s scandal’d company
   I have forsworn.
 
-@verse
+@style verse
   [strong: Iris.] Of her society
   Be not afraid: I met her Deity
   Cutting the clouds towards Paphos, and her son
@@ -2433,24 +2433,24 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   Swears he will shoot no more, but play with sparrows,
   And be a boy right out.
 
-@verse
+@style verse
   [strong: Cer.] High’st queen of state,
   Great Juno, comes; I know her by her gait.
 
 [italic: Enter JUNO.]
 
-@verse
+@style verse
   [strong: Juno.] How does my bounteous sister? Go with me
   To bless this twain, that they may prosperous be,
   And honour’d in their issue. \[[italic: They sing:]
 
-@verse
+@style verse
   [strong: Juno.] Honour, riches, marriage-blessing,
   Long continuance, and increasing,
   Hourly joys be still upon you!
   Juno sings her blessings on you.
 
-@verse
+@style verse
   [strong: Cer.] Earth’s increase, foison plenty,
   Barns and garners never empty;
   Vines with clustering bunches growing;
@@ -2460,30 +2460,30 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   Scarcity and want shall shun you;
   Ceres’ blessing so is on you.
 
-@verse
+@style verse
   [strong: Fer.] This is a most majestic vision, and
   Harmonious charmingly. May I be bold
   To think these spirits?
 
-@verse
+@style verse
   [strong: Pros.] Spirits, which by mine art
   I have from their confines call’d to enact
   My present fancies.
 
-@verse
+@style verse
   [strong: Fer.] Let me live here ever;
   So rare a wonder’d father and a wife
   Makes this place Paradise.
 
 \[[italic: Juno and Ceres whisper, and send Iris on employment.]
 
-@verse
+@style verse
   [strong: Pros.] Sweet, now, silence!
   Juno and Ceres whisper seriously;
   There’s something else to do: hush, and be mute,
   Or else our spell is marr’d.
 
-@verse
+@style verse
   [strong: Iris.] You nymphs, call’d Naiads, of the windring brooks,
   With your sedged crowns and ever-harmless looks,
   Leave your crisp channels, and on this green land
@@ -2493,7 +2493,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [italic: Enter certain Nymphs.]
 
-@verse
+@style verse
   You sunburnt sicklemen, of August weary,
   Come hither from the furrow, and be merry:
   Make holiday; your rye-straw hats put on,
@@ -2502,21 +2502,21 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [italic: Enter certain Reapers, properly habited: they join with the Nymphs in a graceful dance; towards the end whereof PROSPERO starts suddenly, and speaks; after which, to a strange, hollow, and confused noise, they heavily vanish.]
 
-@verse
+@style verse
   [strong: Pros.] \[[italic: Aside]] I had forgot that foul conspiracy
   Of the beast Caliban and his confederates
   Against my life: the minute of their plot
   Is almost come. \[[italic: To the Spirits.]] Well done! avoid; no more!
 
-@verse
+@style verse
   [strong: Fer.] This is strange: your father’s in some passion
   That works him strongly.
 
-@verse
+@style verse
   [strong: Mir.] Never till this day
   Saw I him touch’d with anger so distemper’d.
 
-@verse
+@style verse
   [strong: Pros.] You do look, my son, in a moved sort,
   As if you were dismay’d: be cheerful, sir.
   Our revels now are ended. These our actors,
@@ -2544,18 +2544,18 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [strong: Ari.] Thy thoughts I cleave to. What’s thy pleasure?
 
-@verse
+@style verse
   [strong: Pros.] Spirit,
   We must prepare to meet with Caliban.
 
-@verse
+@style verse
   [strong: Ari.] Ay, my commander: when I presented Ceres,
   I thought to have told thee of it; but I fear’d
   Lest I might anger thee.
 
 [strong: Pros.] Say again, where didst thou leave these varlets?
 
-@verse
+@style verse
   [strong: Ari.] I told you, sir, they were red-hot with drinking;
   So full of valour that they smote the air
   For breathing in their faces; beat the ground
@@ -2571,7 +2571,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
   There dancing up to the chins, that the foul lake
   O’erstunk their feet.
 
-@verse
+@style verse
   [strong: Pros.] This was well done, my bird.
   Thy shape invisible retain thou still:
   The trumpery in my house, go bring it hither,
@@ -2579,7 +2579,7 @@ Flout ’em and scout ’em, and scout ’em and flout ’em; Thought is free.
 
 [strong: Ari.] I go, I go. \[[italic: Exit.]
 
-@verse
+@style verse
   [strong: Pros.] A devil, a born devil, on whose nature
   Nurture can never stick; on whom my pains,
   Humanely taken, all, all lost, quite lost;
@@ -2593,7 +2593,7 @@ Come, hang them on this line.
 
 [italic: PROSPERO and ARIEL remain, invisible. Enter CALIBAN, STEPHANO, and TRINCULO, all wet.]
 
-@verse
+@style verse
   [strong: Cal.] Pray you, tread softly, that the blind mole may not
   Hear a foot fall: we now are near his cell.
 
@@ -2605,7 +2605,7 @@ Come, hang them on this line.
 
 [strong: Trin.] Thou wert but a lost monster.
 
-@verse
+@style verse
   [strong: Cal.] Good my lord, give me thy favour still.
   Be patient, for the prize I’ll bring thee to
   Shall hoodwink this mischance: therefore speak softly.
@@ -2619,7 +2619,7 @@ Come, hang them on this line.
 
 [strong: Ste.] I will fetch off my bottle, though I be o’er ears for my labour.
 
-@verse
+@style verse
   [strong: Cal.] Prithee, my king, be quiet. See’st thou here,
   This is the mouth o’ the cell: no noise, and enter.
   Do that good mischief which may make this island
@@ -2632,7 +2632,7 @@ Come, hang them on this line.
 
 [strong: Cal.] Let it alone, thou fool; it is but trash.
 
-@verse
+@style verse
   [strong: Trin.] O, ho, monster! we know what belongs to a frippery.
   O King Stephano!
 
@@ -2640,7 +2640,7 @@ Come, hang them on this line.
 
 [strong: Trin.] Thy Grace shall have it.
 
-@verse
+@style verse
   [strong: Cal.] The dropsy drown this fool! what do you mean
   To dote thus on such luggage? Let’s alone,
   And do the murder first: if he awake,
@@ -2649,7 +2649,7 @@ Come, hang them on this line.
 
 [strong: Ste.] Be you quiet, monster. Mistress line, is not this my jerkin? Now is the jerkin under the line: now, jerkin, you are like to lose your hair, and prove a bald jerkin.
 
-@verse
+@style verse
   [strong: Trin.] Do, do: we steal by line and level, an’t like your
   Grace.
 
@@ -2657,7 +2657,7 @@ Come, hang them on this line.
 
 [strong: Trin.] Monster, come, put some lime upon your fingers, and away with the rest.
 
-@verse
+@style verse
   [strong: Cal.] I will have none on’t: we shall lose our time,
   And all be turn’d to barnacles, or to apes
   With foreheads villanous low.
@@ -2674,11 +2674,11 @@ Come, hang them on this line.
 
 [strong: Ari.] Silver! there it goes, Silver!
 
-@verse
+@style verse
   [strong: Pros.] Fury, fury! there, Tyrant, there! hark, hark!
   \[[italic: Cal., Ste., and Trin. are driven out.]
 
-@verse
+@style verse
   Go charge my goblins that they grind their joints
   With dry convulsions; shorten up their sinews
   With aged cramps; and more pinch-spotted make them
@@ -2686,7 +2686,7 @@ Come, hang them on this line.
 
 [strong: Ari.] Hark, they roar!
 
-@verse
+@style verse
   [strong: Pros.] Let them be hunted soundly. At this hour
   Lie at my mercy all mine enemies:
   Shortly shall all my labours end, and thou
@@ -2703,21 +2703,21 @@ Come, hang them on this line.
 
 [italic: Enter PROSPERO in his magic robes, and ARIEL.]
 
-@verse
+@style verse
   [strong: Pros.] Now does my project gather to a head:
   My charms crack not; my spirits obey; and time
   Goes upright with his carriage. How’s the day?
 
-@verse
+@style verse
   [strong: Ari.] On the sixth hour; at which time, my lord,
   You said our work should cease.
 
-@verse
+@style verse
   [strong: Pros.] I did say so,
   When first I raised the tempest. Say, my spirit,
   How fares the king and’s followers?
 
-@verse
+@style verse
   [strong: Ari.] Confined together
   In the same fashion as you gave in charge,
   Just as you left them; all prisoners, sir,
@@ -2736,7 +2736,7 @@ Come, hang them on this line.
 
 [strong: Ari.] Mine would, sir, were I human.
 
-@verse
+@style verse
   [strong: Pros.] And mine shall.
   Hast thou, which art but air, a touch, a feeling
   Of their afflictions, and shall not myself,
@@ -2753,7 +2753,7 @@ Come, hang them on this line.
 
 [strong: Ari.] I’ll fetch them, sir. \[[italic: Exit.]
 
-@verse
+@style verse
   [strong: Pros.] Ye elves of hills, brooks, standing lakes, and groves;
   And ye that on the sands with printless foot
   Do chase the ebbing Neptune, and do fly him
@@ -2782,7 +2782,7 @@ Come, hang them on this line.
 
 [italic: Re-enter ARIEL before: then ALONSO, with a frantic gesture, attended by GONZALO; SEBASTIAN and ANTONIO in like manner, attended by ADRIAN and FRANCISCO: they all enter the circle which PROSPERO had made, and there stand charmed; which PROSPERO observing, speaks:]
 
-@verse
+@style verse
   A solemn air, and the best comforter
   To an unsettled fancy, cure thy brains,
   Now useless, boil’d within thy skull! There stand,
@@ -2818,7 +2818,7 @@ Come, hang them on this line.
 
 Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch when owls do cry. On the bat’s back I do fly After summer merrily. Merrily, merrily shall I live now Under the blossom that hangs on the bough.
 
-@verse
+@style verse
   [strong: Pros.] Why, that’s my dainty Ariel! I shall miss thee;
   But yet thou shalt have freedom: so, so, so.
   To the king’s ship, invisible as thou art:
@@ -2827,16 +2827,16 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
   Being awake, enforce them to this place,
   And presently, I prithee.
 
-@verse
+@style verse
   [strong: Ari.] I drink the air before me, and return
   Or ere your pulse twice beat. \[[italic: Exit.]
 
-@verse
+@style verse
   [strong: Gon.] All torment, trouble, wonder and amazement
   Inhabits here: some heavenly power guide us
   Out of this fearful country!
 
-@verse
+@style verse
   [strong: Pros.] Behold, sir king,
   The wronged Duke of Milan, Prospero:
   For more assurance that a living prince
@@ -2844,7 +2844,7 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
   And to thee and thy company I bid
   A hearty welcome.
 
-@verse
+@style verse
   [strong: Alon.] Whether thou be’st he or no,
   Or some enchanted trifle to abuse me,
   As late I have been, I not know: thy pulse
@@ -2856,16 +2856,16 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
   Thou pardon me my wrongs. —But how should Prospero
   Be living and be here?
 
-@verse
+@style verse
   [strong: Pros.] First, noble friend,
   Let me embrace thine age, whose honour cannot
   Be measured or confined.
 
-@verse
+@style verse
   [strong: Gon.] Whether this be
   Or be not, I’ll not swear.
 
-@verse
+@style verse
   [strong: Pros.] You do yet taste
   Some subtilties o’ the isle, that will not let you
   Believe things certain. Welcome, my friends all!
@@ -2877,7 +2877,7 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 [strong: Seb.] \[[italic: Aside]] The devil speaks in him.
 
-@verse
+@style verse
   [strong: Pros.] No.
   For you, most wicked sir, whom to call brother
   Would even infect my mouth, I do forgive
@@ -2885,7 +2885,7 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
   My dukedom of thee, which perforce, I know,
   Thou must restore.
 
-@verse
+@style verse
   [strong: Alon.] If thou be’st Prospero,
   Give us particulars of thy preservation;
   How thou hast met us here, who three hours since
@@ -2895,11 +2895,11 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 [strong: Pros.] I am woe for’t, sir.
 
-@verse
+@style verse
   [strong: Alon.] Irreparable is the loss; and patience
   Says it is past her cure.
 
-@verse
+@style verse
   [strong: Pros.] I rather think
   You have not sought her help, of whose soft grace
   For the like loss I have her sovereign aid,
@@ -2907,20 +2907,20 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 [strong: Alon.] You the like loss!
 
-@verse
+@style verse
   [strong: Pros.] As great to me as late; and, supportable
   To make the dear loss, have I means much weaker
   Than you may call to comfort you, for I
   Have lost my daughter.
 
-@verse
+@style verse
   [strong: Alon.] A daughter?
   O heavens, that they were living both in Naples,
   The king and queen there! that they were, I wish
   Myself were mudded in that oozy bed
   Where my son lies. When did you lose you daughter?
 
-@verse
+@style verse
   [strong: Pros.] In this last tempest. I perceive, these lords
   At this encounter do so much admire,
   That they devour their reason, and scarce think
@@ -2945,31 +2945,31 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 [strong: Mir.] Sweet lord, you play me false.
 
-@verse
+@style verse
   [strong: Fer.] No, my dear’st love,
   I would not for the world.
 
-@verse
+@style verse
   [strong: Mir.] Yes, for a score of kingdoms you should wrangle,
   And I would call it fair play.
 
-@verse
+@style verse
   [strong: Alon.] If this prove
   A vision of the island, one dear son
   Shall I twice lose.
 
 [strong: Seb.] A most high miracle!
 
-@verse
+@style verse
   [strong: Fer.] Though the seas threaten, they are merciful;
   I have cursed them without cause. \[[italic: Kneels.]
 
-@verse
+@style verse
   [strong: Alon.] Now all the blessings
   Of a glad father compass thee about!
   Arise, and say how thou camest here.
 
-@verse
+@style verse
   [strong: Mir.] O, wonder!
   How many goodly creatures are there here!
   How beauteous mankind is! O brave new world,
@@ -2977,13 +2977,13 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 [strong: Pros.] ’Tis new to thee.
 
-@verse
+@style verse
   [strong: Alon.] What is this maid with whom thou wast at play?
   Your eld’st acquaintance cannot be three hours:
   Is she the goddess that hath sever’d us,
   And brought us thus together?
 
-@verse
+@style verse
   [strong: Fer.] Sir, she is mortal;
   But by immortal Providence she’s mine:
   I chose her when I could not ask my father
@@ -2994,17 +2994,17 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
   Received a second life; and second father
   This lady makes him to me.
 
-@verse
+@style verse
   [strong: Alon.] I am hers:
   But, O, how oddly will it sound that I
   Must ask my child forgiveness!
 
-@verse
+@style verse
   [strong: Pros.] There, sir, stop:
   Let us not burthen our remembrances with
   A heaviness that’s gone.
 
-@verse
+@style verse
   [strong: Gon.] I have inly wept,
   Or should have spoke ere this. Look down, you gods,
   And on this couple drop a blessed crown!
@@ -3013,7 +3013,7 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 [strong: Alon.] I say, Amen, Gonzalo!
 
-@verse
+@style verse
   [strong: Gon.] Was Milan thrust from Milan, that his issue
   Should become kings of Naples? O, rejoice
   Beyond a common joy! and set it down
@@ -3024,7 +3024,7 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
   In a poor isle, and all of us ourselves
   When no man was his own.
 
-@verse
+@style verse
   [strong: Alon.] \[[italic: to Fer. and Mir.]] Give me your hands:
   Let grief and sorrow still embrace his heart
   That doth not wish you joy!
@@ -3033,31 +3033,31 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 [italic: Re-enter ARIEL, with the] Master [italic: and] Boatswain [italic: amazedly following.]
 
-@verse
+@style verse
   O, look, sir, look, sir! here is more of us:
   I prophesied, if a gallows were on land,
   This fellow could not drown. Now, blasphemy,
   That swear’st grace o’erboard, not an oath on shore?
   Hast thou no mouth by land? What is the news?
 
-@verse
+@style verse
   [strong: Boats.] The best news is, that we have safely found
   Our king and company; the next, our ship—
   Which, but three glasses since, we gave out split—
   Is tight and yare and bravely rigg’d, as when
   We first put out to sea.
 
-@verse
+@style verse
   [strong: Ari.] \[[italic: Aside to Pros.]] Sir, all this service
   Have I done since I went.
 
 [strong: Pros.] \[[italic: Aside to Ari.]] My tricksy spirit!
 
-@verse
+@style verse
   [strong: Alon.] These are not natural events; they strengthen
   From strange to stranger. Say, how came you hither?
 
-@verse
+@style verse
   [strong: Boats.] If I did think, sir, I were well awake,
   I’ld strive to tell you. We were dead of sleep,
   And—how we know not—all clapp’d under hatches;
@@ -3075,13 +3075,13 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 [strong: Pros.] \[[italic: Aside to Ari.]] Bravely, my diligence. Thou shalt be free.
 
-@verse
+@style verse
   [strong: Alon.] This is as strange a maze as e’er men trod;
   And there is in this business more than nature
   Was ever conduct of: some oracle
   Must rectify our knowledge.
 
-@verse
+@style verse
   [strong: Pros.] Sir, my liege,
   Do not infest your mind with beating on
   The strangeness of this business; at pick’d leisure
@@ -3101,21 +3101,21 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 [strong: Trin.] If these be true spies which I wear in my head, here’s a goodly sight.
 
-@verse
+@style verse
   [strong: Cal.] O Setebos, these be brave spirits indeed!
   How fine my master is! I am afraid
   He will chastise me.
 
-@verse
+@style verse
   [strong: Seb.] Ha, ha!
   What things are these, my lord Antonio?
   Will money buy ’em?
 
-@verse
+@style verse
   [strong: Ant.] Very like; one of them
   Is a plain fish, and, no doubt, marketable.
 
-@verse
+@style verse
   [strong: Pros.] Mark but the badges of these men, my lords,
   Then say if they be true. This mis-shapen knave,
   His mother was a witch; and one so strong
@@ -3133,7 +3133,7 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 [strong: Seb.] He is drunk now: where had he wine?
 
-@verse
+@style verse
   [strong: Alon.] And Trinculo is reeling ripe: where should they
   Find this grand liquor that hath gilded ’em?—
   How camest thou in this pickle?
@@ -3148,17 +3148,17 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 [strong: Ste.] I should have been a sore one, then.
 
-@verse
+@style verse
   [strong: Alon.] This is a strange thing as e’er I look’d on.
   \[[italic: Pointing to Caliban.]
 
-@verse
+@style verse
   [strong: Pros.] He is as disproportion’d in his manners
   As in his shape. Go, sirrah, to my cell;
   Take with you your companions; as you look
   To have my pardon, trim it handsomely.
 
-@verse
+@style verse
   [strong: Cal.] Ay, that I will; and I’ll be wise hereafter,
   And seek for grace. What a thrice-double ass
   Was I, to take this drunkard for a god,
@@ -3170,7 +3170,7 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 [strong: Seb.] Or stole it, rather. \[[italic: Exeunt Cal., Ste., and Trin.]
 
-@verse
+@style verse
   [strong: Pros.] Sir, I invite your Highness and your train
   To my poor cell, where you shall take your rest
   For this one night; which, part of it, I’ll waste
@@ -3184,12 +3184,12 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
   And thence retire me to my Milan, where
   Every third thought shall be my grave.
 
-@verse
+@style verse
   [strong: Alon.] I long
   To hear the story of your life, which must
   Take the ear strangely.
 
-@verse
+@style verse
   [strong: Pros.] I’ll deliver all;
   And promise you calm seas, auspicious gales,
   And sail so expeditious, that shall catch
@@ -3203,7 +3203,7 @@ Where the bee sucks, there suck I: In a cowslip’s bell I lie; There I couch wh
 
 SPOKEN BY PROSPERO.
 
-@verse
+@style verse
   Now my charms are all o’erthrown,
   And what strength I have’s mine own,
   Which is most faint: now, ’tis true,

@@ -15,6 +15,9 @@ module Golem.Driver
     FontProvider (..),
     LoadedFonts (..),
     noFontProvider,
+    paraLineBreaks,
+    keepStyles,
+    builtinKeepStyles,
   )
 where
 
@@ -187,12 +190,26 @@ reeval profile project style assets citeKeys hook acc fid sf =
             ctxImports = exports,
             ctxSwatches = Map.keysSet (stSwatches style),
             ctxCharStyles = Map.keysSet (stCharStyles style),
+            ctxParaStyles = paraLineBreaks style,
             ctxDefaultKenten = compKenten (stComposition style),
             ctxCiteKeys = citeKeys,
             ctxAssets = assets,
             ctxPlugins = hook
           }
    in evalFile ctx (sfAst sf)
+
+-- | Whether each paragraph style keeps its lines, resolved (docs/adr ADR 0005).
+paraLineBreaks :: Style -> Map Text LineBreaks
+paraLineBreaks style =
+  Map.fromList [(n, fromMaybe JoinLines (psLineBreaks d)) | n <- Map.keys (stParaStyles style), Just d <- [paraStyle style (Just n)]]
+
+-- | The paragraph styles that keep their lines (lint G0501, docs/adr ADR 0005).
+keepStyles :: Style -> Set.Set Text
+keepStyles = Map.keysSet . Map.filter (== KeepLines) . paraLineBreaks
+
+-- | The built-in paragraph styles that keep their lines: verse.
+builtinKeepStyles :: Set.Set Text
+builtinKeepStyles = keepStyles defaultStyle
 
 metadataValues :: Metadata -> Map Text Value
 metadataValues md =
@@ -328,17 +345,25 @@ writeTargets opts e book targets = do
             hcLanguage = mdLanguage md,
             hcVertical = vertical,
             hcNumberDefault = stNumbersVertical style,
-            hcStrongAs = stStrongAs style,
             hcSwatches = Map.map (\(Swatch c) -> c) (stSwatches style),
-            hcCharStyles = Map.map csFont (stCharStyles style),
             hcFonts = Map.map (\fr -> (frJa fr, frLatin fr)) (stFonts style),
-            hcBoldFont = stBoldFont style,
-            hcItalicFont = stItalicFont style,
+            -- the resolved styles (docs/adr ADR 0005)
+            hcCharStyles =
+              Map.fromList
+                [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d))
+                | n <- Map.keys (stCharStyles style),
+                  Just d <- [charStyle style n]
+                ],
+            hcParaStyles =
+              Map.fromList
+                [ (n, HtmlParaStyle (psFont d) (psLineBreaks d == Just KeepLines) (fromMaybe 0 (psSpaceBetween d)))
+                | n <- Map.keys (stParaStyles style),
+                  Just d <- [paraStyle style (Just n)]
+                ],
             hcBibliography = bib,
             hcDev = dev,
             hcVerseIndent = cssLength (vsIndent (stVerse style)),
-            hcVerseHang = cssLength (vsHang (stVerse style)),
-            hcStanzaGap = vsStanzaGap (stVerse style)
+            hcVerseHang = cssLength (vsHang (stVerse style))
           }
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case

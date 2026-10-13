@@ -123,51 +123,56 @@ bodyRole style
   | otherwise = maybe "body" fst (Map.lookupMin (stFonts style))
 
 {- | The font roles the PDF uses, body first, then the others by name:
-headings (golem-driver ADR 0003), bold, italic and character styles
-(ADR 0004).
+headings (golem-driver ADR 0003), character styles (ADR 0004) and
+paragraph styles, built-in ones included (docs/adr ADR 0005).
 -}
 usedRoles :: Style -> [Text]
 usedRoles style =
   let body = bodyRole style
       named =
         [f | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings style)]
-          <> maybe [] pure (stBoldFont style)
-          <> maybe [] pure (stItalicFont style)
           <> [f | CharStyleDef {csFont = Just f} <- Map.elems (stCharStyles style)]
+          <> [f | ParaStyleDef {psFont = Just f} <- Map.elems (stParaStyles style)]
       others = Set.toAscList (Set.delete body (Set.fromList named))
    in body : others
 
-{- | The look inside an inline element (golem-driver ADR 0004): strong as
-bold or italic, bold and italic in their roles or synthetic, character
-styles' role and size, and colour. The inner setting wins; the rest is
+{- | The look inside an inline element (golem-driver ADR 0004, docs/adr ADR
+0005): a character style's role on the sides the role has, synthetic bold
+and slant on the sides it does not have (on both without a role), its
+size and colour; and colour. The inner setting wins; the rest is
 inherited.
 -}
 restyle :: Style -> Look -> Inline -> Look
 restyle style lk = \case
-  Strong {} -> if stStrongAs style == "italic" then italic else bold
-  Bold {} -> bold
-  Italic {} -> italic
-  CharStyle _ name _ -> case Map.lookup name (stCharStyles style) of
+  CharStyle _ name _ -> case charStyle style name of
     Just cs ->
-      let lk1 = maybe lk (\f -> lk {lkFace = f, lkLatinFace = f}) (csFont cs)
-       in maybe lk1 (\d -> lk1 {lkSize = dimToSp (lkSize lk) d}) (csSize cs)
+      let fr = csFont cs >>= (`Map.lookup` stFonts style)
+          -- the sides the role sets; without a role (or one not loaded), neither
+          (hasJa, hasLatin) = case (csFont cs, fr) of
+            (Just _, Just r) -> (isJust (frJa r), isJust (frLatin r))
+            (Just _, Nothing) -> (True, True)
+            (Nothing, _) -> (False, False)
+          role = fromMaybe (lkFace lk) (csFont cs)
+          side covered setting old = case setting of
+            Just True -> not covered
+            Just False -> False
+            Nothing -> old
+          synth covered s =
+            Synthetic
+              { synBold = side covered (csSyntheticBold cs) (synBold s),
+                synSlant = side covered (csSyntheticItalic cs) (synSlant s)
+              }
+       in lk
+            { lkFace = if hasJa then role else lkFace lk,
+              lkLatinFace = if hasLatin then role else lkLatinFace lk,
+              lkSize = maybe (lkSize lk) (dimToSp (lkSize lk)) (csSize cs),
+              lkSynthetic = synth hasJa (lkSynthetic lk),
+              lkLatinSynthetic = synth hasLatin (lkLatinSynthetic lk),
+              lkColor = csColor cs <|> lkColor lk
+            }
     Nothing -> lk
   Color _ sw _ -> lk {lkColor = Just sw}
   _ -> lk
-  where
-    bold = maybe lk {lkEmbolden = True} (\f -> lk {lkFace = f, lkLatinFace = f}) (stBoldFont style)
-    italic = case stItalicFont style of
-      Nothing -> lk {lkSlant = True}
-      Just f ->
-        let fr = Map.lookup f (stFonts style)
-            hasJa = isJust (fr >>= frJa)
-            hasLatin = isJust (fr >>= frLatin)
-         in lk
-              { lkFace = if hasJa then f else lkFace lk,
-                lkLatinFace = if hasLatin then f else lkLatinFace lk,
-                -- the side the role does not cover is slanted
-                lkSlant = lkSlant lk || not (hasJa && hasLatin)
-              }
 
 -- | The rules at the top and bottom of a table: 0.6pt (golem-driver ADR 0008).
 thickRule :: Sp
@@ -386,14 +391,13 @@ sidenoteDiagnostics geom book
     -- every list of inlines of the book, captions included
     inlineLists = concatMap blockInlines blocks
     blockInlines (Block _ _ body) = case body of
-      Paragraph is -> [is]
+      Paragraph _ is -> [is]
       Heading _ _ is -> [is]
       BulletList items -> concatMap (concatMap blockInlines . itemBlocks) items
       OrderedList items -> concatMap (concatMap blockInlines . itemBlocks) items
       DefList gs -> concat [dgTerms g <> concatMap (concatMap blockInlines) (dgDefs g) | g <- gs]
       Table _ h rows -> h <> concat rows
       FigureBlock fig -> concatMap blockInlines (figCaption fig)
-      VerseBlock stanzas -> concat stanzas
       _ -> []
     -- each sidenote, and whether it is in the text flow
     sites = concatMap siteBlock blocks
@@ -403,9 +407,6 @@ sidenoteDiagnostics geom book
     inlineSites flow = \case
       Sidenote sp _ xs -> (sp, flow) : concatMap (inlineSites flow) xs
       Note _ _ xs -> concatMap (inlineSites False) xs
-      Strong _ xs -> concatMap (inlineSites flow) xs
-      Bold _ xs -> concatMap (inlineSites flow) xs
-      Italic _ xs -> concatMap (inlineSites flow) xs
       Kenten _ _ xs -> concatMap (inlineSites flow) xs
       Color _ _ xs -> concatMap (inlineSites flow) xs
       CharStyle _ _ xs -> concatMap (inlineSites flow) xs
@@ -515,7 +516,9 @@ data Unit = Unit
     uLabel :: Maybe Text,
     uInlines :: [Inline],
     -- | the block the unit comes from, for diagnostics
-    uSpan :: SrcSpan
+    uSpan :: SrcSpan,
+    -- | the role and the size the unit is set in (docs/adr ADR 0005)
+    uFace :: (Text, Sp)
   }
 
 data UnitKind
@@ -526,7 +529,7 @@ data UnitKind
   | UTable [Alignment] [[Inline]] [[[Inline]]]
   | -- | a line of verse: the indent and the hang in sp (docs/adr ADR 0003)
     UVerseLine Sp Sp
-  | -- | grid lines between stanzas
+  | -- | grid lines between paragraphs of a style (docs/adr ADR 0005)
     UGap Int
 
 unitsOf :: Book -> PageGeometry -> Style -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
@@ -534,34 +537,47 @@ unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
   where
     sp0 = mkSpan (FileId 0) 0 0
     txt = Text sp0
-    doc (Document _ bs) = concatMap block bs
-    block (Block sp lbl body) = map ($ sp) $ case body of
-      Paragraph is -> [Unit UPara lbl is]
+    fs = pgFontSize geom
+    bodyFace = (bodyRole style, fs)
+    doc (Document _ bs) = blocks bs
+    -- a list of blocks: paragraphs of the same style in a row are apart by its space-between (docs/adr ADR 0005)
+    blocks bs = concat [gapBefore prev b <> block b | (prev, b) <- zip (Nothing : map Just bs) bs]
+    gapBefore (Just (Block _ _ (Paragraph s1 _))) (Block sp _ (Paragraph s2 _))
+      | s1 == s2, Just n <- paraStyle style s2 >>= psSpaceBetween, n > 0 = [Unit (UGap n) Nothing [] sp bodyFace]
+    gapBefore _ _ = []
+    block (Block sp lbl body) = case body of
+      -- a unit for each part between line breaks; the lines of a style that keeps them hang (docs/adr ADR 0003, 0005)
+      Paragraph st is ->
+        let d = paraStyle style st
+            face = (fromMaybe (bodyRole style) (d >>= psFont), maybe fs (dimToSp fs) (d >>= psSize))
+            vs = stVerse style
+            kind
+              | (d >>= psLineBreaks) == Just KeepLines = UVerseLine (dimToSp fs (vsIndent vs)) (dimToSp fs (vsHang vs))
+              | otherwise = UPara
+         in [Unit kind (if i == 0 then lbl else Nothing) part sp face | (i, part) <- zip [0 :: Int ..] (splitBreaks is)]
       Heading l attrs is ->
         let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
             title = maybe [] (\n -> [txt (n <> "　")]) (if haNoNumber attrs then Nothing else num) <> is
             recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
-         in [Unit (UHeading l (T.concat (map inlineText is)) recto) lbl title]
-      BulletList items -> map const (concat [prefixFirst "・" (concatMap block (itemBlocks it)) | it <- items])
-      OrderedList items -> map const (concat [prefixFirst (T.pack (show n) <> ". ") (concatMap block (itemBlocks it)) | (n, it) <- zip [1 :: Integer ..] items])
-      DefList gs -> map const (concat [[Unit UTerm Nothing t sp | t <- dgTerms g] <> concatMap (concatMap block) (dgDefs g) | g <- gs])
-      Table aligns h rows -> [Unit (UTable aligns h rows) lbl []]
-      CodeBlock _ code -> [Unit UPara lbl [txt l] | l <- T.lines code]
-      FigureBlock fig -> [Unit (UFigure fig) lbl []]
-      VerseBlock stanzas ->
-        let vs = stVerse style
-            fs = pgFontSize geom
-            kind = UVerseLine (dimToSp fs (vsIndent vs)) (dimToSp fs (vsHang vs))
-            stanzaUnits = [[Unit kind Nothing l | l <- st] | st <- stanzas]
-         in case intercalate [Unit (UGap (vsStanzaGap vs)) Nothing []] stanzaUnits of
-              (u : us) -> (\s -> (u s) {uLabel = lbl}) : us
-              [] -> []
+         in [Unit (UHeading l (T.concat (map inlineText is)) recto) lbl title sp (headingFace style geom l)]
+      BulletList items -> concat [prefixFirst "・" (blocks (itemBlocks it)) | it <- items]
+      OrderedList items -> concat [prefixFirst (T.pack (show n) <> ". ") (blocks (itemBlocks it)) | (n, it) <- zip [1 :: Integer ..] items]
+      DefList gs -> concat [[Unit UTerm Nothing t sp bodyFace | t <- dgTerms g] <> concatMap blocks (dgDefs g) | g <- gs]
+      Table aligns h rows -> [Unit (UTable aligns h rows) lbl [] sp bodyFace]
+      CodeBlock _ code -> [Unit UPara lbl [txt l] sp bodyFace | l <- T.lines code]
+      FigureBlock fig -> [Unit (UFigure fig) lbl [] sp bodyFace]
       -- the index marks of a title are counted at the heading, not in the table of contents
-      ChannelOutput (TocOutput depth) -> [Unit UPara Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) | e <- bookToc book, teLevel e <= depth]
-      ChannelOutput IndexOutput -> [Unit UPara Nothing is | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
-      ChannelOutput BibliographyOutput -> [Unit UPara Nothing is | is <- bibliographyLines bib (bookCitations book)]
-    prefixFirst p (Unit UPara l is s' : rest) = Unit UPara l (txt p : is) s' : rest
+      ChannelOutput (TocOutput depth) -> [Unit UPara Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) sp bodyFace | e <- bookToc book, teLevel e <= depth]
+      ChannelOutput IndexOutput -> [Unit UPara Nothing is sp bodyFace | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
+      ChannelOutput BibliographyOutput -> [Unit UPara Nothing is sp bodyFace | is <- bibliographyLines bib (bookCitations book)]
+    prefixFirst p (u@Unit {uKind = UPara} : rest) = u {uInlines = txt p : uInlines u} : rest
     prefixFirst _ us = us
+    splitBreaks is = case break isBreak is of
+      (l, []) -> [l]
+      (l, _ : rest) -> l : splitBreaks rest
+    isBreak = \case
+      LineBreak _ -> True
+      _ -> False
     isMark = \case
       IndexMark {} -> True
       _ -> False
@@ -605,10 +621,8 @@ buildFlow inp geom fonts images assumed = do
       lineIndent = \case
         UVerseLine ind hang -> \k -> if k == (0 :: Int) then ind else ind + hang
         _ -> const 0
-      -- the role and size a unit is set in
-      faceOf u = case uKind u of
-        UHeading l _ _ -> headingFace style geom l
-        _ -> (body, fs)
+      -- the role and size a unit is set in (docs/adr ADR 0005)
+      faceOf = uFace
       compose lineWidth u =
         let (role, size) = faceOf u
             env = envFor role size
@@ -648,7 +662,7 @@ buildFlow inp geom fonts images assumed = do
             across = if vertical then alongSp * w `div` max 1 h else alongSp * h `div` max 1 w
             m = fromInteger ((across + pitch - 1) `div` pitch)
             number = Map.lookup (uSpan u) (bookFigures (piBook inp))
-            captionInlines = maybe [] (\num -> [Text (uSpan u) (num <> "　")]) number <> concat [is | Block _ _ (Paragraph is) <- figCaption fig]
+            captionInlines = maybe [] (\num -> [Text (uSpan u) (num <> "　")]) number <> concat [is | Block _ _ (Paragraph _ is) <- figCaption fig]
             (captionItems, captionAnchors) = composeInlines bodyEnv captionInlines
             caption = if null captionInlines then [] else brLines (breakParagraph params (const alongSp) captionItems)
             captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
@@ -872,23 +886,25 @@ writeDocument inp geom fonts layout intent =
       style = piStyle inp
       body = bodyRole style
       isLatin = (== Western) . charClass
-      -- the role of a run of text in a look: Latin or Japanese (golem-driver ADR 0004)
+      {- the runs of a text in a look: its role and whether it is a Latin
+      run; split into Latin and other runs where the two sides differ in
+      role or in synthetic bold and slant (golem-driver ADR 0004, docs/adr ADR 0005) -}
       runsOf look txt
-        | lkFace look == lkLatinFace look = [(lkFace look, txt)]
-        | otherwise = [(if isLatin (T.head r) then lkLatinFace look else lkFace look, r) | r <- T.groupBy (\a b -> isLatin a == isLatin b) txt, not (T.null r)]
-      -- synthetic slant applies where the italic role does not set the text
-      slantedIn look role = lkSlant look && Just role /= stItalicFont style
+        | lkFace look == lkLatinFace look && lkSynthetic look == lkLatinSynthetic look = [(lkFace look, txt, False)]
+        | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isLatin a == isLatin b) txt, not (T.null r), let latin = isLatin (T.head r)]
+      -- the synthetic bold and slant of a run
+      syntheticOf look latin = if latin then lkLatinSynthetic look else lkSynthetic look
       -- glyph marks of a text in a look starting at a point, and the glyphs used
       runAt look v rotated scale (x0, y0) txt =
         let size = lkSize look
-            gs = concat [[(ix, g, a, t, slantedIn look role) | (ix, g, a, t) <- lfShape fonts role (v && not rotated) r] | (role, r) <- runsOf look txt]
+            gs = concat [[(ix, g, a, t, (synSlant s, synBold s)) | (ix, g, a, t) <- lfShape fonts role (v && not rotated) r] | (role, r, latin) <- runsOf look txt, let s = syntheticOf look latin]
             advs = scanl (+) 0 [toSp size a | (_, _, a, _, _) <- gs]
-            placed = [(ix, g, t, sl, off) | ((ix, g, _, t, sl), off) <- zip gs advs]
-            byFont = Map.fromListWith (flip (<>)) [((ix, sl), [(g, t, off)]) | (ix, g, t, sl, off) <- placed]
+            placed = [(ix, g, t, sb, off) | ((ix, g, _, t, sb), off) <- zip gs advs]
+            byFont = Map.fromListWith (flip (<>)) [((ix, sb), [(g, t, off)]) | (ix, g, t, sb, off) <- placed]
             at off = if v then (x0, y0 - off) else (x0 + off, y0)
-            mark (ix, sl) xs
-              | sl || lkEmbolden look =
-                  let rs = P.RunStyle (if v then 1000 else 1000 + scale) (v && rotated) (if sl then syntheticSlant else 0) (if lkEmbolden look then syntheticStroke size else 0)
+            mark (ix, (sl, bold)) xs
+              | sl || bold =
+                  let rs = P.RunStyle (if v then 1000 else 1000 + scale) (v && rotated) (if sl then syntheticSlant else 0) (if bold then syntheticStroke size else 0)
                    in P.StyledGlyphRun rs (ref ix (v && not rotated)) size [(code ix g, gx, gy) | (g, _, off) <- xs, let (gx, gy) = at off]
               | v && rotated = P.RotatedGlyphRun (ref ix False) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
               | v = P.GlyphRun (ref ix True) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
@@ -914,7 +930,7 @@ writeDocument inp geom fonts layout intent =
               | otherwise = (x0 + off, y0)
               where
                 off = off0 + slIndent sl
-            advance look t = sum [toSp (lkSize look) a | (role, r) <- runsOf look t, (_, _, a, _) <- lfShape fonts role (vertical && not (T.all isLatin r)) r]
+            advance look t = sum [toSp (lkSize look) a | (role, r, _) <- runsOf look t, (_, _, a, _) <- lfShape fonts role (vertical && not (T.all isLatin r)) r]
             -- a point beside the line at a distance across it: right of a
             -- vertical line, above a horizontal baseline
             beside (ox, oy) dist

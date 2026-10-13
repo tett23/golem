@@ -24,17 +24,19 @@ lintProject profile root = do
     Right e ->
       let project = evProject e
           sources = Map.toList (projectSources project)
+          -- the paragraph styles that keep their lines (docs/adr ADR 0005)
+          keep = keepStyles (evStyle e)
           files =
             [ FileLint fid (sfPath sf) (sfCst sf) (erUsage r)
             | (fid, sf) <- sources,
               Just r <- [Map.lookup fid (evResults e)]
             ]
           lintDiags = case evBook e of
-            Just b -> lint (LintInput files (Map.map ltSpan (bookLabels b)) (bookReferenced b))
+            Just b -> lint (LintInput files (Map.map ltSpan (bookLabels b)) (bookReferenced b) keep)
             -- evaluation stopped: only the rules that need no evaluation
             Nothing
-              | null files -> concat [latinJoinedByNewline fid (sfCst sf) | (fid, sf) <- sources]
-              | otherwise -> lint (LintInput files Map.empty Set.empty)
+              | null files -> concat [latinJoinedByNewline keep fid (sfCst sf) | (fid, sf) <- sources]
+              | otherwise -> lint (LintInput files Map.empty Set.empty keep)
        in (sourceInfos project, finish (evDiagnostics e <> lintDiags))
   where
     finish = sortDiagnostics . map (adjustForProfile profile)

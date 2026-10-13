@@ -35,14 +35,12 @@ genInlineWith mr =
         Deferred <$> genSpan <*> (DeferredExpr <$> genExpr),
         IndexMark <$> genSpan <*> (IndexEntry <$> Gen.list (Range.singleton 1) genText <*> Gen.list (Range.singleton 1) genText),
         Cite <$> genSpan <*> genText,
-        ProofComment <$> genSpan <*> genText
+        ProofComment <$> genSpan <*> genText,
+        LineBreak <$> genSpan
       ]
         <> maybe [] (\gr -> [Ruby <$> genSpan <*> gr <*> Gen.list (Range.linear 1 3) (RubySegment <$> Gen.list (Range.linear 0 2) genNoRuby <*> Gen.maybe genText)]) mr
     )
-    [ Strong <$> genSpan <*> sub,
-      Bold <$> genSpan <*> sub,
-      Italic <$> genSpan <*> sub,
-      Kenten <$> genSpan <*> Gen.maybe genText <*> sub,
+    [ Kenten <$> genSpan <*> Gen.maybe genText <*> sub,
       Color <$> genSpan <*> genText <*> sub,
       CharStyle <$> genSpan <*> genText <*> sub,
       Note <$> genSpan <*> Gen.int (Range.linear 1 99) <*> sub,
@@ -76,11 +74,10 @@ genBlock =
     <*> Gen.maybe genText
     <*> Gen.recursive
       Gen.choice
-      [ Paragraph <$> inl,
+      [ Paragraph <$> Gen.maybe genText <*> inl,
         Heading <$> Gen.int (Range.linear 1 3) <*> attrs <*> inl,
         CodeBlock <$> Gen.maybe genText <*> genText,
         ChannelOutput <$> Gen.element [TocOutput 2, IndexOutput, BibliographyOutput],
-        VerseBlock <$> Gen.list (Range.linear 1 3) (Gen.list (Range.linear 1 3) (Gen.list (Range.linear 1 3) genInline)),
         Table <$> Gen.list (Range.singleton 2) Gen.enumBounded <*> Gen.list (Range.singleton 2) inl <*> Gen.list (Range.linear 0 2) (Gen.list (Range.singleton 2) inl)
       ]
       [ BulletList <$> Gen.list (Range.linear 1 3) (ListItem <$> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.list (Range.linear 0 2) genBlock),

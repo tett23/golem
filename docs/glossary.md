@@ -23,7 +23,9 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **インラインの要素**：段落の中に `[` で始めて書く要素。`[` の直後の一文字で、式文脈か命令文脈かが決まる。
 - **式文脈**：`[= ...]` の中。式の言語で値を計算し、その結果を本文に埋め込む（[markup.md](markup.md)、[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
 - **命令文脈**：`[name ...]` の中。コマンドの名前、引数、散文スロットを書く（[markup.md](markup.md)）。
-- **韻文**：`@verse` の本体。段落の中の改行が行の区切りになり、本体の段落の一つが一つの連になる（[markup.md](markup.md)、[docs/adr/0003](adr/0003-verse-line-breaks.md)）。
+- **韻文**：組み込みの段落スタイル `verse` を `@style verse` で付けた段落。段落の中の改行が行の区切りになり、段落の一つが一つの連になる（[markup.md](markup.md)、[docs/adr/0003](adr/0003-verse-line-breaks.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+- **文字スタイル**：文字の見た目（書体、大きさ、色、合成の太字と斜体）に名前を付けたもの。`style.toml` の `[character-styles.<名前>]` に定義し、原稿では `[style 名前: ...]` で付ける。`[strong: ...]`、`[bold: ...]`、`[italic: ...]` は組み込みの文字スタイルの別名である。`based-on` で別の文字スタイルを引き継ぐ（[markup.md](markup.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+- **段落スタイル**：段落の見た目（書体、大きさ、改行の扱い、同じスタイルの段落の間の空き）に名前を付けたもの。`style.toml` の `[paragraph-styles.<名前>]` に定義し、原稿では `@style 名前` で付ける。段落スタイルを付けない段落は `body` で組む（[markup.md](markup.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 - **散文スロット**：命令文脈の `:` の後に書く本文の欄。`|` で区切って複数書ける。`[ruby: 漢字|かんじ]` の「漢字」と「かんじ」がそれぞれ散文スロットである。
 - **エスケープ**：特別な意味を持つ文字を本文の文字として書くための `\`。`\` が唯一のエスケープ文字である。
 - **校正用のコメント**：`%%=` で始まるコメント。dev のプロファイルでだけ出力に現れ、prod のプロファイルで残っていると警告になる（[仕様書](specifications.md)）。

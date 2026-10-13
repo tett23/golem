@@ -34,7 +34,7 @@ import Golem.Syntax.Span
 
 -- | The ABI version shared with plugins. Bump on any change to the IR.
 abiVersion :: Int
-abiVersion = 2
+abiVersion = 3
 
 data Document = Document
   { docFile :: !FileId,
@@ -50,7 +50,8 @@ data Block = Block
   deriving stock (Eq, Show)
 
 data BlockBody
-  = Paragraph [Inline]
+  = -- | a paragraph and its paragraph style; Nothing is body (docs/adr ADR 0005)
+    Paragraph !(Maybe Text) [Inline]
   | Heading !Int HeadingAttrs [Inline]
   | BulletList [ListItem]
   | OrderedList [ListItem]
@@ -59,8 +60,6 @@ data BlockBody
   | CodeBlock (Maybe Text) Text
   | FigureBlock Figure
   | ChannelOutput ChannelBlock
-  | -- | stanzas of lines of inlines (docs/adr ADR 0003); none is empty
-    VerseBlock [[[Inline]]]
   deriving stock (Eq, Show)
 
 data ListItem = ListItem
@@ -111,9 +110,6 @@ inside ruby is ruled out by the type.
 -}
 data InlineF r
   = Text !SrcSpan Text
-  | Strong !SrcSpan [InlineF r]
-  | Bold !SrcSpan [InlineF r]
-  | Italic !SrcSpan [InlineF r]
   | Ruby !SrcSpan !r [RubySegment]
   | Kenten !SrcSpan !(Maybe Text) [InlineF r]
   | Color !SrcSpan !Text [InlineF r]
@@ -127,6 +123,8 @@ data InlineF r
   | IndexMark !SrcSpan IndexEntry
   | Cite !SrcSpan !Text
   | ProofComment !SrcSpan Text
+  | -- | a forced line break, only between the inlines at the top of a paragraph (docs/adr ADR 0005)
+    LineBreak !SrcSpan
   deriving stock (Eq, Show)
 
 type Inline = InlineF ()
@@ -161,9 +159,6 @@ newtype DeferredExpr = DeferredExpr (AST.Located AST.Expr)
 noRuby :: Inline -> Maybe InlineNoRuby
 noRuby = \case
   Text s t -> Just (Text s t)
-  Strong s xs -> Strong s <$> traverse noRuby xs
-  Bold s xs -> Bold s <$> traverse noRuby xs
-  Italic s xs -> Italic s <$> traverse noRuby xs
   Ruby {} -> Nothing
   Kenten s sh xs -> Kenten s sh <$> traverse noRuby xs
   Color s c xs -> Color s c <$> traverse noRuby xs
@@ -177,3 +172,4 @@ noRuby = \case
   IndexMark s e -> Just (IndexMark s e)
   Cite s k -> Just (Cite s k)
   ProofComment s t -> Just (ProofComment s t)
+  LineBreak s -> Just (LineBreak s)

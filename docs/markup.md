@@ -55,7 +55,7 @@ Golem は[ruby: 組/版|くみ/はん]の結果を、同じ入力から常に同
 これらの位置に空白を置きたい場合は、`\ ` とエスケープして書く。
 全角の空白（U+3000）は無視しない。
 
-行分けを保つには、ブロックコマンド `@verse` を使う（「韻文」の節を参照）。
+行分けを保つには、段落スタイル `verse` を `@style verse` で付ける（「韻文」の節を参照）。
 
 ## エスケープ
 
@@ -186,7 +186,7 @@ v1 で定めるブロックコマンドは次のとおりである。
 - `@figure`：図版を置く（「図版」の節を参照）。
 - `@table src=path`：CSV のファイルから表を作る（「表」の節を参照）。
 - `@listing src=path lines=N-M`：Golem 以外のファイルの内容をコードとして取り込む（「コードブロック」の節を参照）。
-- `@verse`：韻文を置く（「韻文」の節を参照）。
+- `@style 名前`：段落に段落スタイルを付ける（「段落スタイル」の節を参照）。
 
 ### 図版
 
@@ -255,12 +255,42 @@ main = putStrLn "Golem"
 
 `lines` を省くと、ファイル全体を取り込む。
 
-### 韻文
+### 段落スタイル
 
-詩や戯曲の韻文は `@verse` で書く（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。
+段落の見た目は、`style.toml` の `[paragraph-styles.名前]` で定義した段落スタイルで決まる（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+段落スタイルは `@style 名前` で段落に付ける。
+`@style` は二つの形で書ける。
 
 ```
-@verse
+@style quote
+引用の段落。この段落だけが quote になる。
+
+@style verse
+  Full fathom five thy father lies;
+  Of his bones are coral made;
+
+  Nothing of him that doth fade,
+  But doth suffer a sea-change
+```
+
+- 属性の形：インデントのない次の行に段落を書く。直後の段落一つに段落スタイルが付く。
+- 本体の形：2 つ深くインデントした段落を並べる。本体のすべての段落に段落スタイルが付く。本体には段落だけを置ける。段落以外のブロックを置くとエラーになる。
+
+`@style` の引数は段落スタイルの名前一つである。
+`style.toml` にない名前はエラーになる。
+
+組み込みの段落スタイルは `body`、`verse`、`caption`、`sidenote` の四つである。
+段落スタイルを付けない段落は `body` で組む。
+`caption` と `sidenote` は、図版のキャプションと傍注の本文の書体と大きさを決める段落スタイルでもある。
+
+スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
+
+### 韻文
+
+詩や戯曲の韻文は、組み込みの段落スタイル `verse` を付けて書く（[docs/adr/0003](adr/0003-verse-line-breaks.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+
+```
+@style verse
   Full fathom five thy father lies;
   Of his bones are coral made;
   Those are pearls that were his eyes:
@@ -269,19 +299,23 @@ main = putStrLn "Golem"
   But doth suffer a sea-change
 ```
 
-`@verse` の行の直後に、2 つ深くインデントした段落を並べる。
 本体の段落の一つが一つの連であり、段落の中の各行が韻文の一行である。
 連は空行で区切る。
 
-- `@verse` は引数を取らない。
-- 本体の段落の中の改行は、段落の外と違い、行の区切りになる。
-- 行の区切りになるのは、インラインのコマンドの外にある改行だけである。散文スロットの中の改行（`[note: ...]` の中など）は、段落と同じく文字を生まない。行をまたいで斜体などを続けたい場合は、行ごとにコマンドを閉じて開き直す。
+`verse` は `line-breaks = "keep"` の段落スタイルである。
+`line-breaks = "keep"` の段落スタイルを付けた段落では、次の規則で行を分ける。
+
+- 段落の中の改行は、ほかの段落と違い、行の区切りになる。
+- 行の区切りになるのは、インラインのコマンドの外にある改行だけである。散文スロットの中の改行（`[note: ...]` の中など）は、ほかの段落と同じく文字を生まない。行をまたいで斜体などを続けたい場合は、行ごとにコマンドを閉じて開き直す。
 - 各行の先頭と末尾の空白とタブは無視する。エスケープした空白（`\ `）も行の先頭では無視する。全角の空白（U+3000）は無視しないので、和文の詩で行ごとに字下げしたい場合は全角の空白を使う。
-- 行頭でエスケープの要る文字（`#`、`-`、`+`、`=`、`@`、`|`）は、段落と同じく `\` でエスケープする。
-- 本体に段落以外のブロック（リスト、見出し、コードブロック、ブロックコマンドなど）を置くとエラーになる。
+- 行頭でエスケープの要る文字（`#`、`-`、`+`、`=`、`@`、`|`）は、ほかの段落と同じく `\` でエスケープする。
 
 PDF では、版面の行長を超えた行を折り返し、折り返した部分を字下げする。
-すべての行の字下げ、折り返した部分の字下げ、連の間に空ける行の数は、`style.toml` の `[verse]` の `indent`、`hang`、`stanza-gap` で指定する。
+すべての行の字下げと、折り返した部分の字下げは、`style.toml` の `[verse]` の `indent` と `hang` で指定する。
+連の間に空ける行の数は、`[paragraph-styles.verse]` の `space-between` で指定する。
+
+以前の `@verse` はエラーになる。
+`golem fmt` が `@verse` を `@style verse` に書き換える。
 
 ### ブロックへの属性
 
@@ -296,6 +330,15 @@ PDF では、版面の行長を超えた行を折り返し、折り返した部�
 ```
 
 属性のブロックコマンドの直後にブロックがない場合はコンパイルエラーとなる。
+ただし、属性のまとまりの最後に属性でないブロックコマンド（本体を持つ `@style` や `@figure`）を置くと、それが対象のブロックになる。
+
+```
+@label song
+@style verse
+  Full fathom five thy father lies;
+```
+
+`@style` を属性として付けられるのは段落だけである。
 
 見出しに付けられる属性は次の四つである。
 
@@ -428,7 +471,11 @@ NaN と無限大は、式の値として存在しない。
 [style term: 決定性]
 ```
 
-役割ごとのフォントより細かく書体を変えたい場合は、`style.toml` に文字スタイルを定義し、`[style 名前: ...]` で本文に適用する。
+役割ごとのフォントより細かく書体を変えたい場合は、`style.toml` の `[character-styles.名前]` に文字スタイルを定義し、`[style 名前: ...]` で本文に適用する（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+
+組み込みの文字スタイルは `strong`、`bold`、`italic` の三つである。
+`bold` は合成の太字、`italic` は合成の斜体、`strong` は `bold` を基準にした文字スタイルである。
+利用者が組み込みと同じ名前の表を書くと、書いたキーだけが組み込みの定義を上書きする。
 
 ### 圏点
 
@@ -465,12 +512,15 @@ CMYK の値を直接書くことはできない。
 [italic: 斜体にする語]
 ```
 
-`[strong: ...]` は意味の上での強調であり、太字で表すか斜体で表すかは `style.toml` のスタイルで決まる。
+`[strong: ...]`、`[bold: ...]`、`[italic: ...]` は、組み込みの文字スタイル `strong`、`bold`、`italic` を付ける `[style 名前: ...]` の別名である（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+`[strong: 語]` と `[style strong: 語]` は同じ意味になる。
+
+`[strong: ...]` は意味の上での強調であり、太字で表すか斜体で表すかは `style.toml` の `[character-styles.strong]` で決まる。
 見た目を直接指定したいときに限り、`[bold: ...]` と `[italic: ...]` を使う。
-太字と斜体の書体は `style.toml` の `[emphasis]` の `bold-font` と `italic-font` で指定する。
+太字と斜体の書体は `[character-styles.bold]` と `[character-styles.italic]` の `font` で指定する。
 指定がなければ、PDF では本文の書体から合成の太字と斜体で組む。
 和文の文字も斜体を指定すれば傾く。
-`italic-font` の役割が和文のフォントを持たない場合は、和文の文字に合成の斜体をかけるので、字形がゆがむ（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
+`font` の役割が和文のフォントを持たない場合は、和文の文字に合成の斜体をかけるので、字形がゆがむ（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 
 ### ルビ
 

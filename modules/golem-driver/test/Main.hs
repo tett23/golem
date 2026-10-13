@@ -20,7 +20,7 @@ import Golem.Driver.New
 import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Look (Look (..))
+import Golem.Layout.Look (Look (..), Synthetic (..))
 import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..), markPages)
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, sidenoteAreaFor, typeAreaFor)
@@ -311,7 +311,7 @@ withVerseProject style src k = withSystemTempDirectory "golem-verse" $ \tmp -> d
   k tmp
 
 verseSource :: T.Text
-verseSource = "@verse\n  Full fathom five thy father lies;\n  Of his bones are coral made;\n\n  Nothing of him that doth fade,\n"
+verseSource = "@style verse\n  Full fathom five thy father lies;\n  Of his bones are coral made;\n\n  Nothing of him that doth fade,\n"
 
 -- | The PDF flow of a verse project and its lines as (line length, indent).
 verseLines :: BS.ByteString -> T.Text -> IO ([Flow], [(Integer, Integer)])
@@ -327,25 +327,27 @@ verseLines style src = withVerseProject style src $ \tmp -> do
 
 verseTests :: [TestTree]
 verseTests =
-  [ testCase "HTML: stanzas are p, lines are span and br; the CSS hangs the lines" $
+  [ testCase "HTML: stanzas are p of the verse style, lines are span and br; the CSS hangs the lines" $
       withVerseProject "[verse]\nhang = \"3zw\"\n" verseSource $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
         page <- TIO.readFile (tmp </> "build/html/v.xhtml")
         assertBool
-          "verse"
-          ( "<div class=\"verse\">\n<p><span>Full fathom five thy father lies;</span><br/>\n<span>Of his bones are coral made;</span></p>\n<p><span>Nothing of him that doth fade,</span></p>\n</div>\n"
+          (T.unpack page)
+          ( "<p class=\"ps-verse\"><span class=\"line\">Full fathom five thy father lies;</span><br/>\n<span class=\"line\">Of his bones are coral made;</span></p>\n<p class=\"ps-verse\"><span class=\"line\">Nothing of him that doth fade,</span></p>\n"
               `T.isInfixOf` page
           )
         css <- TIO.readFile (tmp </> "build/html/style.css")
-        assertBool "span rule" (".verse span { display: block; padding-inline-start: 3em; text-indent: -3em; }" `T.isInfixOf` css)
-        assertBool "stanza gap" (".verse p + p { margin-block-start: 1em; }" `T.isInfixOf` css),
-    testCase "HTML: no stanza gap rule when stanza-gap is 0" $
-      withVerseProject "[verse]\nstanza-gap = 0\nindent = \"10.5pt\"\n" verseSource $ \tmp -> do
+        assertBool "line rule" (".line { display: block; }" `T.isInfixOf` css)
+        assertBool "br rule" (".line + br { display: none; }" `T.isInfixOf` css)
+        assertBool "hang" ("p.ps-verse .line { padding-inline-start: 3em; text-indent: -3em; }" `T.isInfixOf` css)
+        assertBool "stanza gap" ("p.ps-verse + p.ps-verse { margin-block-start: 1em; }" `T.isInfixOf` css),
+    testCase "HTML: no space rule when space-between is 0" $
+      withVerseProject "[paragraph-styles.verse]\nspace-between = 0\n\n[verse]\nindent = \"10.5pt\"\n" verseSource $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         css <- TIO.readFile (tmp </> "build/html/style.css")
-        assertBool "no stanza gap" (not (".verse p + p" `T.isInfixOf` css))
-        assertBool "indent" (".verse { margin-inline-start: 10.5pt; }" `T.isInfixOf` css),
+        assertBool "no stanza gap" (not ("p.ps-verse + p.ps-verse" `T.isInfixOf` css))
+        assertBool "indent" ("p.ps-verse { margin-block: 0; margin-inline-start: 10.5pt; }" `T.isInfixOf` css),
     testCase "plain text: lines on lines, stanzas separated by a blank line" $
       withVerseProject "" verseSource $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
@@ -354,18 +356,22 @@ verseTests =
     testCase "PDF: a long line is broken and its continuation hangs" $ do
       let style = "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 30\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n"
           fs = 655360
-      (flow, ls) <- verseLines style ("@verse\n  " <> T.replicate 45 "あ" <> "\n\n  い\n")
+      (flow, ls) <- verseLines style ("@style verse\n  " <> T.replicate 45 "あ" <> "\n\n  い\n")
       ls @?= [(30 * fs, 0), (28 * fs, 2 * fs), (30 * fs, 0)]
       [length bs | FParagraph bs <- flow] @?= [2, 1]
       [n | FSpace n <- flow] @?= [1],
-    testCase "PDF: the hang in vertical writing, and the stanza gap from the style" $ do
+    testCase "PDF: the hang in vertical writing, and the space between stanzas from the style" $ do
       let fs = maybe 0 (dimToSp 0) (parseDim "13Q")
-      (flow, ls) <- verseLines (pdfStyle <> "\n[verse]\nstanza-gap = 2\n") ("@verse\n  " <> T.replicate 60 "あ" <> "\n\n  い\n")
+      (flow, ls) <- verseLines (pdfStyle <> "\n[paragraph-styles.verse]\nspace-between = 2\n") ("@style verse\n  " <> T.replicate 60 "あ" <> "\n\n  い\n")
       map snd ls @?= [0, 2 * fs, 0]
       [n | FSpace n <- flow] @?= [2],
+    testCase "PDF: the attribute form and a label" $ do
+      (flow, ls) <- verseLines pdfStyle "@label song\n@style verse\nあ\nい\n"
+      length ls @?= 2
+      [length bs | FParagraph bs <- flow] @?= [1, 1],
     testCase "PDF: a verse line takes the look of its inline elements" $ do
-      (_, layout) <- layoutOk horizontalStyle "@verse\n  前の[bold: 本文]後\n" []
-      [bcText c | sl <- Map.elems (plLines layout), Box _ c <- lineItems (slLine sl), lkEmbolden (bcLook c)] @?= ["本", "文"]
+      (_, layout) <- layoutOk horizontalStyle "@style verse\n  前の[bold: 本文]後\n" []
+      [bcText c | sl <- Map.elems (plLines layout), Box _ c <- lineItems (slLine sl), synBold (lkSynthetic (bcLook c))] @?= ["本", "文"]
   ]
 
 -- | A project with the identity plugin locked and cached.
@@ -576,14 +582,14 @@ emphasisTests =
       sort [(dGlyph d, dX d, dY d) | d <- drawnGlyphs a] @?= sort [(dGlyph d, dX d, dY d) | d <- drawnGlyphs b],
     testCase "strong as italic slants Latin and Japanese alike, upright vertical glyphs too" $ do
       let slanted content = [(dGlyph d, dMatrix d) | d <- drawnGlyphs content, dGlyph d `elem` map fromEnum ("Gと組版" :: String)]
-      h <- miniPdf fakeProvider True (horizontalStyle <> "\n[emphasis]\nstrong = \"italic\"\n") "[strong: Golem と組版]\n" [] >>= fmap BS.concat . inflateAll
+      h <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.strong]\nbased-on = \"italic\"\n") "[strong: Golem と組版]\n" [] >>= fmap BS.concat . inflateAll
       assertBool (show (slanted h)) (length (slanted h) == 4 && all ((== ["1", "0", "0.2", "1"]) . snd) (slanted h))
-      v <- miniPdf fakeProvider True (pdfStyle <> "\n[emphasis]\nstrong = \"italic\"\n") "[strong: Golem と組版]\n" [] >>= fmap BS.concat . inflateAll
+      v <- miniPdf fakeProvider True (pdfStyle <> "\n[character-styles.strong]\nbased-on = \"italic\"\n") "[strong: Golem と組版]\n" [] >>= fmap BS.concat . inflateAll
       let upright = [m | (g, m) <- slanted v, g /= fromEnum 'G']
       assertBool (show (slanted v)) (length upright == 3 && all (== ["1", "0", "0.2", "1"]) upright)
       assertBool "turned Latin" (any ((== ["0", "-1", "1", "-0.2"]) . snd) (slanted v)),
     testCase "an italic role with only Latin sets Latin upright in it and slants the Japanese" $ do
-      content <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[emphasis]\nitalic-font = \"wide\"\n") "本[italic: Golem と組版]\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      content <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[character-styles.italic]\nfont = \"wide\"\n") "本[italic: Golem と組版]\n" fakeFontFiles >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           latin = [d | d <- ds, dGlyph d == fromEnum 'G']
           ja = [d | d <- ds, dGlyph d == fromEnum '組']
@@ -598,11 +604,11 @@ emphasisTests =
             content <- BS.concat <$> inflateAll pdf
             pure (length (nub [dY d | d <- drawnGlyphs content, dGlyph d `elem` map fromEnum ['a' .. 'p']]))
       plain <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n") source fakeFontFiles >>= rows
-      wide <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[emphasis]\nbold-font = \"wide\"\n") source fakeFontFiles >>= rows
+      wide <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[character-styles.bold]\nfont = \"wide\"\n") source fakeFontFiles >>= rows
       assertBool (show (plain, wide)) (wide > plain),
     testCase "a bold role with its own font embeds it with the bold glyphs only" $ do
       (sans, serif) <- realLatinFonts
-      pdf <- miniPdf realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.bold]\nlatin = \"fonts/serif.ttf\"\n\n[emphasis]\nbold-font = \"bold\"\n") "[bold: Zebra] quick\n" [("fonts/sans.otf", sans), ("fonts/serif.ttf", serif)]
+      pdf <- miniPdf realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.bold]\nlatin = \"fonts/serif.ttf\"\n\n[character-styles.bold]\nfont = \"bold\"\n") "[bold: Zebra] quick\n" [("fonts/sans.otf", sans), ("fonts/serif.ttf", serif)]
       cmaps <- filter ("beginbfchar" `BS.isInfixOf`) <$> inflateAll pdf
       length cmaps @?= 2
       assertBool "bold glyphs only in one font" (any (\c -> "<005a>" `BS.isInfixOf` c && not ("<0071>" `BS.isInfixOf` c)) cmaps)
@@ -621,7 +627,7 @@ emphasisTests =
       assertBool "the heading role's font" ([dFont d | d <- ds, dGlyph d == fromEnum '語'] /= [dFont d | d <- ds, dGlyph d == fromEnum '本'])
       [dSize d | d <- ds, dGlyph d == fromEnum '語'] @?= ["20"],
     testCase "emphasis, styles and colour: parallel and sequential, and two builds, give the same bytes" $ do
-      let style = horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[emphasis]\nitalic-font = \"wide\"\n\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n"
+      let style = horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[character-styles.italic]\nfont = \"wide\"\n\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n"
           source = "[strong: 強い] [bold: Bold] [italic: Golem と組版] [color accent: 赤 [bold: 太い]]。\n"
       a <- miniPdf fakeProvider True style source fakeFontFiles
       b <- miniPdf fakeProvider False style source fakeFontFiles
@@ -629,16 +635,32 @@ emphasisTests =
       a @?= b
       a @?= c
       qpdfCheck a,
-    testCase "HTML: a bold role gives b its font and no synthetic weight" $ withSystemTempDirectory "golem-mini" $ \tmp -> do
+    testCase "HTML: a bold role is declared bold and b names it before the body" $ withSystemTempDirectory "golem-mini" $ \tmp -> do
       BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
-      BS.writeFile (tmp </> "style.toml") "[fonts.body]\nja = \"fonts/b.otf\"\n\n[fonts.gothic]\nja = \"fonts/h.otf\"\n\n[emphasis]\nbold-font = \"gothic\"\n"
+      BS.writeFile (tmp </> "style.toml") "[fonts.body]\nja = \"fonts/b.otf\"\n\n[fonts.gothic]\nja = \"fonts/h.otf\"\n\n[character-styles.bold]\nfont = \"gothic\"\n"
       BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "[bold: 太い]\n")
       forM_ fakeFontFiles $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
       assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
       cssText <- TIO.readFile (tmp </> "build/html/style.css")
-      assertBool (T.unpack cssText) ("b { font-family: \"golem-gothic-ja\", serif; font-weight: normal; }" `T.isInfixOf` cssText)
-      assertBool "strong too" ("strong { font-family: \"golem-gothic-ja\", serif; font-weight: normal; }" `T.isInfixOf` cssText)
+      assertBool (T.unpack cssText) ("@font-face { font-family: \"golem-gothic-ja\"; src: url(\"fonts/h.otf\"); font-weight: bold; }" `T.isInfixOf` cssText)
+      assertBool (T.unpack cssText) ("b { font-family: \"golem-gothic-ja\", \"golem-body-ja\", serif; font-weight: bold; }" `T.isInfixOf` cssText)
+      assertBool "strong too" ("strong { font-family: \"golem-gothic-ja\", \"golem-body-ja\", serif; font-weight: bold; }" `T.isInfixOf` cssText),
+    testCase "a character style colours its text" $ do
+      pdf <- miniPdf fakeProvider True (horizontalStyle <> "\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n\n[character-styles.term]\ncolor = \"accent\"\n") "前[style term: 語]後\n" []
+      content <- BS.concat <$> inflateAll pdf
+      assertBool "fill" ("0 0.8 1 0 k" `BS.isInfixOf` content),
+    testCase "a paragraph style sets the role of its paragraphs" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n\n[paragraph-styles.quote]\nfont = \"heading\"\n") "本\n\n@style quote\n語\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+      assertBool "the heading role's font" ([dFont d | d <- ds, dGlyph d == fromEnum '語'] /= [dFont d | d <- ds, dGlyph d == fromEnum '本'])
+      assertBool "drawn" (not (null [d | d <- ds, dGlyph d == fromEnum '語'])),
+    testCase "a role with one side leaves the other side in the outer face, synthetic" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[character-styles.bold]\nfont = \"wide\"\n") "本[bold: 語Go]\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+      [dFont d | d <- ds, dGlyph d == fromEnum '語'] @?= [dFont d | d <- ds, dGlyph d == fromEnum '本']
+      assertBool "Latin in the wide role" ([dFont d | d <- ds, dGlyph d == fromEnum 'G'] /= [dFont d | d <- ds, dGlyph d == fromEnum '本'])
+      assertBool "the Japanese side is synthetic bold" ("2 Tr" `BS.isInfixOf` content)
   ]
 
 {- | Lays out a one-chapter project with the fake fonts, as far as the

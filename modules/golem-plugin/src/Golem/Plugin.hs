@@ -61,7 +61,7 @@ foreign import capi unsafe "golem_plugin.h golem_wat2wasm" c_wat2wasm :: CString
 
 -- | The ABI version of this host.
 abiVersion :: Word32
-abiVersion = 2
+abiVersion = 3
 
 -- | The fuel of one call: about this many wasm instructions.
 defaultFuel :: Word64
@@ -259,9 +259,6 @@ checkOutput allowedSpans allowedDeferred spans deferred
 inlineSpans :: InlineF r -> [SrcSpan]
 inlineSpans = \case
   Text s _ -> [s]
-  Strong s xs -> s : concatMap inlineSpans xs
-  Bold s xs -> s : concatMap inlineSpans xs
-  Italic s xs -> s : concatMap inlineSpans xs
   Ruby s _ segs -> s : concat [concatMap inlineSpans (rsBase g) | g <- segs]
   Kenten s _ xs -> s : concatMap inlineSpans xs
   Color s _ xs -> s : concatMap inlineSpans xs
@@ -275,13 +272,11 @@ inlineSpans = \case
   IndexMark s _ -> [s]
   Cite s _ -> [s]
   ProofComment s _ -> [s]
+  LineBreak s -> [s]
 
 inlineDeferred :: InlineF r -> [DeferredExpr]
 inlineDeferred = \case
   Deferred _ d -> [d]
-  Strong _ xs -> concatMap inlineDeferred xs
-  Bold _ xs -> concatMap inlineDeferred xs
-  Italic _ xs -> concatMap inlineDeferred xs
   Ruby _ _ segs -> concat [concatMap inlineDeferred (rsBase g) | g <- segs]
   Kenten _ _ xs -> concatMap inlineDeferred xs
   Color _ _ xs -> concatMap inlineDeferred xs
@@ -303,11 +298,10 @@ blocksOf (Document _ bs) = concatMap go bs
 
 blockInlines :: Block -> [Inline]
 blockInlines b = case blockBody b of
-  Paragraph is -> is
+  Paragraph _ is -> is
   Heading _ _ is -> is
   DefList gs -> concat (concatMap dgTerms gs)
   Table _ h rows -> concat h <> concat (concat rows)
-  VerseBlock stanzas -> concat (concat stanzas)
   _ -> []
 
 documentSpans :: Document -> [SrcSpan]

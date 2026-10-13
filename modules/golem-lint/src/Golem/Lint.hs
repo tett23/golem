@@ -32,13 +32,15 @@ data FileLint = FileLint
 data LintInput = LintInput
   { liFiles :: ![FileLint],
     liLabels :: !(Map Text SrcSpan), -- defined labels
-    liReferenced :: !(Set Text)
+    liReferenced :: !(Set Text),
+    -- | the paragraph styles with line-breaks = "keep" (docs/adr ADR 0005)
+    liKeepStyles :: !(Set Text)
   }
 
 lint :: LintInput -> [Diagnostic]
 lint input =
   sortDiagnostics $
-    concatMap (\f -> latinJoinedByNewline (flFile f) (flCst f)) (liFiles input)
+    concatMap (\f -> latinJoinedByNewline (liKeepStyles input) (flFile f) (flCst f)) (liFiles input)
       <> unusedVariables input
       <> unusedImports input
       <> unreferencedLabels input
@@ -54,17 +56,34 @@ isLatinScript c =
        )
 
 {- | G0501: a newline inside a paragraph between two Latin characters
-joins the words without a space. The newlines of the body of @verse break
-lines; only the prose slots inside it are checked (docs/adr ADR 0003).
+joins the words without a space. The newlines of a paragraph in a
+paragraph style that keeps its lines (the body of @style, or the target
+of an attribute group with @style) break lines; only the prose slots
+inside it are checked (docs/adr ADR 0003, 0005).
 -}
-latinJoinedByNewline :: FileId -> Node -> [Diagnostic]
-latinJoinedByNewline fid = go 0
+latinJoinedByNewline :: Set Text -> FileId -> Node -> [Diagnostic]
+latinJoinedByNewline keep fid = go 0
   where
     go start n
-      | isVerse n = verseBody start (nodeChildren n)
+      | isKeepStyle n = verseBody start (nodeChildren n)
+      | nodeKind n == NAttributed && or [isKeepStyle m | ElemNode m <- nodeChildren n] = keepTarget start (nodeChildren n)
       | nodeKind n `elem` [NParagraph, NProseSlot, NListItem, NDefTerm] = scan start (nodeChildren n)
       | otherwise = descend start (nodeChildren n)
-    isVerse n = nodeKind n == NBlockCommand && listToMaybe [tokText t | ElemToken t <- nodeChildren n, tokKind t == KIdent] == Just "verse"
+    -- @style with the name of a style that keeps its lines
+    isKeepStyle n =
+      nodeKind n == NBlockCommand
+        && listToMaybe [tokText t | ElemToken t <- nodeChildren n, tokKind t == KIdent] == Just "style"
+        && maybe False (`Set.member` keep) (listToMaybe [tokText t | ElemNode a <- nodeChildren n, nodeKind a == NArgument, ElemToken t <- nodeChildren a, tokKind t == KWord])
+    -- the paragraph of an attribute group: only its prose slots
+    keepTarget _ [] = []
+    keepTarget s (e : es) =
+      ( case e of
+          ElemNode m
+            | nodeKind m == NParagraph -> proseSlots s (nodeChildren m)
+            | otherwise -> go s m
+          _ -> []
+      )
+        <> keepTarget (s + elementWidth e) es
     -- paragraphs of the body: only their prose slots
     verseBody _ [] = []
     verseBody s (e : es) =

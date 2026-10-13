@@ -425,8 +425,8 @@ tests =
       testGroup
         "looks: emphasis, character styles and colour (golem-driver ADR 0004)"
         [ testCase "a bold role measures its characters in its own font" $ do
-            let env = lookEnv (\lk -> \case Bold {} -> lk {lkFace = "wide", lkLatinFace = "wide"}; _ -> lk)
-                boxes = [(w, lkFace (bcLook c)) | Box w c <- fst (composeInlines env [Bold sp [sp0 "AB"], sp0 "C"])]
+            let env = lookEnv (\lk -> \case CharStyle _ "bold" _ -> lk {lkFace = "wide", lkLatinFace = "wide"}; _ -> lk)
+                boxes = [(w, lkFace (bcLook c)) | Box w c <- fst (composeInlines env [bold [sp0 "AB"], sp0 "C"])]
             case boxes of
               [(ab, fab), (c, fc)] -> do
                 -- A and B are each twice as wide as C
@@ -434,27 +434,30 @@ tests =
                 (fab, fc) @?= ("wide", "body")
               other -> assertFailure (show other),
           testCase "synthetic bold keeps the widths" $ do
-            let env = lookEnv (\lk -> \case Bold {} -> lk {lkEmbolden = True}; _ -> lk)
+            let env = lookEnv (\lk -> \case CharStyle _ "bold" _ -> lk {lkSynthetic = both, lkLatinSynthetic = both}; _ -> lk)
                 widths is = [w | Box w _ <- fst (composeInlines env is)]
-            widths [Bold sp [sp0 "AB"], sp0 "C"] @?= widths [sp0 "AB", sp0 "C"]
-            [lkEmbolden (bcLook c) | Box _ c <- fst (composeInlines env [Bold sp [sp0 "AB"], sp0 "C"])] @?= [True, False],
+            widths [bold [sp0 "AB"], sp0 "C"] @?= widths [sp0 "AB", sp0 "C"]
+            [synBold (lkLatinSynthetic (bcLook c)) | Box _ c <- fst (composeInlines env [bold [sp0 "AB"], sp0 "C"])] @?= [True, False],
           testCase "the space after a closing bracket follows the bracket's size" $ do
             let env = lookEnv (\lk -> \case CharStyle {} -> lk {lkSize = 2 * lkSize lk}; _ -> lk)
                 items = fst (composeInlines env [CharStyle sp "big" [sp0 "」"], sp0 "あ"])
             [w | Glue w _ _ <- items, w > 0, w < filStretch] @?= [fs],
           testCase "a look boundary inside a Latin word is no break" $ do
-            let env = lookEnv (\lk -> \case Bold {} -> lk {lkEmbolden = True}; _ -> lk)
-                items = fst (composeInlines env [Bold sp [sp0 "Gol"], sp0 "em"])
+            let env = lookEnv (\lk -> \case CharStyle _ "bold" _ -> lk {lkSynthetic = both, lkLatinSynthetic = both}; _ -> lk)
+                items = fst (composeInlines env [bold [sp0 "Gol"], sp0 "em"])
             [bcText c | Box _ c <- items] @?= ["Gol", "em"]
             breakBeforeBox items 1 @?= False,
           testCase "nested looks inherit what they do not set" $ do
             let env = lookEnv $ \lk -> \case
-                  Bold {} -> lk {lkEmbolden = True}
-                  Italic {} -> lk {lkSlant = True}
+                  CharStyle _ "bold" _ -> lk {lkSynthetic = (lkSynthetic lk) {synBold = True}, lkLatinSynthetic = (lkLatinSynthetic lk) {synBold = True}}
+                  CharStyle _ "italic" _ -> lk {lkSynthetic = (lkSynthetic lk) {synSlant = True}, lkLatinSynthetic = (lkLatinSynthetic lk) {synSlant = True}}
                   Color _ c _ -> lk {lkColor = Just c}
                   _ -> lk
-            [bcLook c | Box _ c <- fst (composeInlines env [Color sp "accent" [Italic sp [Bold sp [sp0 "x"]]]])]
-              @?= [look0 {lkColor = Just "accent", lkSlant = True, lkEmbolden = True}]
+            [bcLook c | Box _ c <- fst (composeInlines env [Color sp "accent" [CharStyle sp "italic" [bold [sp0 "x"]]]])]
+              @?= [look0 {lkColor = Just "accent", lkSynthetic = Synthetic True True, lkLatinSynthetic = Synthetic True True}],
+          testCase "a line break composes to nothing (docs/adr ADR 0005)" $ do
+            let env = lookEnv const
+            [bcText c | Box _ c <- fst (composeInlines env [sp0 "ab", LineBreak sp, sp0 "cd"])] @?= [bcText c | Box _ c <- fst (composeInlines env [sp0 "ab", sp0 "cd"])]
         ],
       testGroup
         "heading blocks (golem-driver ADR 0003)"
@@ -620,6 +623,8 @@ tests =
     ]
   where
     sp = mkSpan (FileId 0) 0 0
+    bold = CharStyle sp "bold"
+    both = Synthetic True False
     -- Latin characters: one em in the role "wide", half an em otherwise
     lookEnv restyle =
       let adv lk c

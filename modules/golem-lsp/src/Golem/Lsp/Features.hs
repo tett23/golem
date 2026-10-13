@@ -227,7 +227,7 @@ renameLabel ws path off new = case sourceOf ws path >>= \s -> snd <$> occurrence
 
 -- ------------------------------------------------------------------ completion
 
-data CompletionKind = CkCommand | CkLabel | CkPath | CkSwatch | CkCharStyle
+data CompletionKind = CkCommand | CkLabel | CkPath | CkSwatch | CkCharStyle | CkParaStyle
   deriving stock (Eq, Show)
 
 data Completion = Completion {cmpLabel :: !Text, cmpKind :: !CompletionKind}
@@ -248,16 +248,20 @@ completions ws path off = case sourceOf ws path of
      in if "@import " `T.isPrefixOf` T.stripStart lineBefore
           then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
           else
-            if not hasOpen || T.isInfixOf "]" lastOpen
-              then []
-              else case ws' of
-                [] -> commandNames
-                [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
-                (cmd : _)
-                  | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
-                  | cmd == "color" -> [Completion n CkSwatch | Just st <- [style], n <- Map.keys (stSwatches st)]
-                  | cmd == "style" -> [Completion n CkCharStyle | Just st <- [style], n <- Map.keys (stCharStyles st)]
-                _ -> []
+            -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
+            if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+              then [Completion n CkParaStyle | Just st <- [style], n <- Map.keys (stParaStyles st)]
+              else
+                if not hasOpen || T.isInfixOf "]" lastOpen
+                  then []
+                  else case ws' of
+                    [] -> commandNames
+                    [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
+                    (cmd : _)
+                      | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
+                      | cmd == "color" -> [Completion n CkSwatch | Just st <- [style], n <- Map.keys (stSwatches st)]
+                      | cmd == "style" -> [Completion n CkCharStyle | Just st <- [style], n <- Map.keys (stCharStyles st)]
+                    _ -> []
   where
     commandNames = [Completion c CkCommand | c <- builtinInlineCommands]
 

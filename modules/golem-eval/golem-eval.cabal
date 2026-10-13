@@ -25,6 +25,7 @@ library
     , containers    >=0.6  && <0.8
     , golem-doc
     , golem-parser
+    , golem-project
     , mtl           >=2.3  && <2.4
     , golem-syntax
     , text          >=2.0  && <2.2
@@ -42,6 +43,7 @@ test-suite golem-eval-test
     , golem-doc
     , golem-eval
     , golem-parser
+    , golem-project
     , golem-syntax
     , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6

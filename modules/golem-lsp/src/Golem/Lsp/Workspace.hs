@@ -25,7 +25,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble (Book (..), LabelTarget (..))
-import Golem.Driver (Evaluated (..), evaluateProjectWith)
+import Golem.Driver (Evaluated (..), builtinKeepStyles, evaluateProjectWith, keepStyles, paraLineBreaks)
 import Golem.Eval.File
 import Golem.Eval.Value (Value)
 import Golem.Lint
@@ -33,6 +33,7 @@ import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
 import Golem.Parser.CST (Node)
 import Golem.Project
+import Golem.Project.Style (Style (..), defaultStyle)
 import Golem.Syntax
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath (makeRelative, (</>))
@@ -145,7 +146,8 @@ loose :: FilePath -> Text -> Source
 loose path text =
   let fid = FileId 0
       (ast, cst, synDiags) = parseAst fid text
-      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty Set.empty "sesame" Set.empty Map.empty noPlugins
+      -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
+      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins
       res = evalFile ctx ast
    in Source path fid text cst ast (Just res {erDiagnostics = synDiags <> erDiagnostics res}) False
 
@@ -210,7 +212,7 @@ diagnosticsFor :: Workspace -> Map FilePath [Diagnostic]
 diagnosticsFor ws =
   Map.unionWith (<>) projectDiags looseDiags
   where
-    looseDiags = Map.map (\s -> sortDiagnostics (maybe [] erDiagnostics (srcResult s) <> latinJoinedByNewline (srcFile s) (srcCst s))) (wsLoose ws)
+    looseDiags = Map.map (\s -> sortDiagnostics (maybe [] erDiagnostics (srcResult s) <> latinJoinedByNewline builtinKeepStyles (srcFile s) (srcCst s))) (wsLoose ws)
     projectDiags = case wsEvaluated ws of
       Nothing -> Map.fromList [("manifest.toml", wsProjectErrors ws)]
       Just e ->
@@ -218,8 +220,8 @@ diagnosticsFor ws =
             ft = projectFiles p
             files = [FileLint fid (sfPath sf) (sfCst sf) (erUsage r) | (fid, sf) <- Map.toList (projectSources p), Just r <- [Map.lookup fid (evResults e)]]
             lintDiags = case evBook e of
-              Just b -> lint (LintInput files (Map.map ltSpan (bookLabels b)) (bookReferenced b))
-              Nothing -> concat [latinJoinedByNewline fid (sfCst sf) | (fid, sf) <- Map.toList (projectSources p)]
+              Just b -> lint (LintInput files (Map.map ltSpan (bookLabels b)) (bookReferenced b) (keepStyles (evStyle e)))
+              Nothing -> concat [latinJoinedByNewline (keepStyles (evStyle e)) fid (sfCst sf) | (fid, sf) <- Map.toList (projectSources p)]
             all' = map (adjustForProfile Dev) (evDiagnostics e <> lintDiags)
             byFile = Map.fromListWith (flip (<>)) [(fromMaybe "manifest.toml" (lookupPath (spanFile (diagSpan d)) ft), [d]) | d <- all']
             empties = Map.fromList [(sfPath sf, []) | sf <- Map.elems (projectSources p)]

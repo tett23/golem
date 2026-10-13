@@ -67,7 +67,8 @@ indentBy n = T.replicate n "　"
 
 block :: Ctx -> Int -> Block -> Text
 block c ind (Block sp _ body) = case body of
-  Paragraph is -> indentBy ind <> inlines c is <> sidenotes is
+  -- a line break is a newline and the nesting indent (docs/adr ADR 0005)
+  Paragraph _ is -> indentBy ind <> T.intercalate ("\n" <> indentBy ind) (map (inlines c) (splitLines is)) <> sidenotes is
   Heading _ _ is ->
     let num = Map.lookup sp (bookHeadings (cBook c)) >>= hiNumberText
      in maybe "" (<> "　") num <> inlines c is
@@ -84,12 +85,8 @@ block c ind (Block sp _ body) = case body of
   CodeBlock _ t -> t
   FigureBlock f ->
     let num = fromMaybe "" (Map.lookup sp (bookFigures (cBook c)))
-        cap = T.intercalate "" [inlines c is | Block _ _ (Paragraph is) <- figCaption f]
+        cap = T.intercalate "" [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
      in "［" <> T.strip (num <> "　" <> cap) <> "］"
-  -- lines on lines, stanzas separated by a blank line; no hang without a measure (docs/adr ADR 0003)
-  VerseBlock stanzas ->
-    T.intercalate "\n\n" [T.intercalate "\n" [indentBy ind <> inlines c l | l <- st] | st <- stanzas]
-      <> sidenotes (concat (concat stanzas))
   ChannelOutput (TocOutput d) ->
     T.intercalate "\n" [maybe "" (<> "　") (teNumber e) <> inlines c (teTitle e) | e <- bookToc (cBook c), teLevel e <= d]
   ChannelOutput IndexOutput -> ""
@@ -98,10 +95,21 @@ block c ind (Block sp _ body) = case body of
   where
     marker n = if cVariant c == Vertical then kanji n <> "、" else T.pack (show n) <> ". "
     itemText i (ListItem _ bs) = case bs of
-      (Block _ _ (Paragraph is) : rest) -> T.intercalate "\n" (inlines c is : map (block c i) rest)
+      (Block _ _ (Paragraph Nothing is) : rest) | not (any isLineBreak is) -> T.intercalate "\n" (inlines c is : map (block c i) rest)
       _ -> T.intercalate "\n" (map (block c i) bs)
     sidenotes is =
       T.concat ["\n※" <> T.pack (show n) <> " " <> inlines c xs | Sidenote _ n xs <- is]
+
+isLineBreak :: InlineF r -> Bool
+isLineBreak = \case
+  LineBreak _ -> True
+  _ -> False
+
+-- | The inlines of a paragraph split at its line breaks.
+splitLines :: [InlineF r] -> [[InlineF r]]
+splitLines is = case break isLineBreak is of
+  (l, []) -> [l]
+  (l, _ : rest) -> l : splitLines rest
 
 itemNumbers :: [ListItem] -> [Integer]
 itemNumbers = go 1
@@ -111,21 +119,17 @@ itemNumbers = go 1
 
 blockInlines :: Block -> [Inline]
 blockInlines (Block _ _ body) = case body of
-  Paragraph is -> deep is
+  Paragraph _ is -> deep is
   Heading _ _ is -> deep is
   BulletList items -> concatMap (concatMap blockInlines . itemBlocks) items
   OrderedList items -> concatMap (concatMap blockInlines . itemBlocks) items
   DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockInlines) ds) gs
   Table _ h rows -> concatMap deep h <> concatMap (concatMap deep) rows
   FigureBlock f -> concatMap blockInlines (figCaption f)
-  VerseBlock stanzas -> concatMap (concatMap deep) stanzas
   _ -> []
   where
     deep = concatMap (\i -> i : nested i)
     nested = \case
-      Strong _ xs -> deep xs
-      Bold _ xs -> deep xs
-      Italic _ xs -> deep xs
       Kenten _ _ xs -> deep xs
       Color _ _ xs -> deep xs
       CharStyle _ _ xs -> deep xs
@@ -137,9 +141,6 @@ inlines c = T.concat . map (inline c)
 inline :: Ctx -> InlineF r -> Text
 inline c = \case
   Text _ t -> t
-  Strong _ xs -> inlines c xs
-  Bold _ xs -> inlines c xs
-  Italic _ xs -> inlines c xs
   Ruby _ _ segs -> ruby c segs
   Kenten _ _ xs -> inlines c xs
   Color _ _ xs -> inlines c xs
@@ -158,6 +159,7 @@ inline c = \case
     Just n -> "[" <> T.pack (show n) <> "]"
     Nothing -> ""
   ProofComment _ t -> if cProfileDev c then "【校正：" <> t <> "】" else ""
+  LineBreak _ -> "\n"
 
 {- | Ruby as 「対象（読み）」. Consecutive segments with readings are joined;
 segments without a reading are written as they are.

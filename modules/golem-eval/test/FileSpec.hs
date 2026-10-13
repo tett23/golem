@@ -8,6 +8,7 @@ import Golem.Doc.IR
 import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
+import Golem.Project.Style (LineBreaks (..))
 import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -21,7 +22,8 @@ ctx =
       ctxMeta = Map.fromList [("title", VString "本の題")],
       ctxImports = Map.fromList [("common/values.gm", Map.fromList [("price", VInt 100)])],
       ctxSwatches = Set.fromList ["accent"],
-      ctxCharStyles = Set.fromList ["term"],
+      ctxCharStyles = Set.fromList ["term", "strong", "bold", "italic"],
+      ctxParaStyles = Map.fromList [("body", JoinLines), ("verse", KeepLines), ("caption", JoinLines), ("sidenote", JoinLines), ("quote", JoinLines)],
       ctxDefaultKenten = "sesame",
       ctxCiteKeys = Set.fromList ["knuth1981"],
       ctxAssets =
@@ -53,8 +55,8 @@ stripSpans = concatMap go
   where
     go = \case
       Text _ t -> [t]
-      Strong _ xs -> "<strong>" : stripSpans xs
-      Italic _ xs -> "<italic>" : stripSpans xs
+      CharStyle _ n xs -> ("<" <> n <> ">") : stripSpans xs
+      LineBreak _ -> ["<br>"]
       Note _ n xs -> ("<note " <> tshow n <> ">") : stripSpans xs
       Ruby _ _ segs -> ["<ruby " <> tshow (length segs) <> ">"]
       Number _ n st -> ["<number " <> tshow n <> " " <> tshow st <> ">"]
@@ -64,14 +66,23 @@ stripSpans = concatMap go
     tshow :: (Show a) => a -> Text
     tshow = T.pack . show
 
+-- | The paragraphs of a verse: each a list of lines (split at line breaks).
 verseOf :: Text -> [[[Text]]]
-verseOf src = case body src of
-  [VerseBlock stanzas] -> map (map stripSpans) stanzas
-  other -> error (show other)
+verseOf src = map stanza (body src)
+  where
+    stanza = \case
+      Paragraph (Just "verse") is -> map stripSpans (splitBreaks is)
+      other -> error (show other)
+    splitBreaks is = case break isBreak is of
+      (l, []) -> [l]
+      (l, _ : rest) -> l : splitBreaks rest
+    isBreak = \case
+      LineBreak _ -> True
+      _ -> False
 
 paraOf :: Text -> [Text]
 paraOf src = case body src of
-  [Paragraph is] -> stripSpans is
+  [Paragraph Nothing is] -> stripSpans is
   other -> error (show other)
 
 tests :: TestTree
@@ -79,6 +90,7 @@ tests =
   testGroup
     "file evaluation, S0 (ADR 0002)"
     [ verseTests,
+      styleTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
@@ -145,36 +157,88 @@ tests =
                   phOverrides = Set.fromList ["strong"],
                   phCallCommand = \_ _ _ sp -> Right ([Text sp "PLUGIN"], [])
                 }
-        fst (run ctx {ctxPlugins = hook} "[strong: x]\n") @?= [Paragraph [Text (mkSpan (FileId 1) 0 11) "PLUGIN"]]
+        fst (run ctx {ctxPlugins = hook} "[strong: x]\n") @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 11) "PLUGIN"]]
     ]
 
 verseTests :: TestTree
 verseTests =
   testGroup
-    "verse and newlines in paragraphs (docs/adr ADR 0003)"
+    "verse and newlines in paragraphs (docs/adr ADR 0003, 0005)"
     [ testCase "newlines in a paragraph produce nothing" $
-        body "吾輩は猫である。\n名前はまだ無い。\n" @?= [Paragraph [Text (mkSpan (FileId 1) 0 49) "吾輩は猫である。名前はまだ無い。"]],
+        body "吾輩は猫である。\n名前はまだ無い。\n" @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 49) "吾輩は猫である。名前はまだ無い。"]],
       testCase "newlines are dropped before the tcy check" $
         errs "[tcy: 1\n2]\n" @?= [],
       testCase "lines and stanzas" $
-        verseOf "@verse\n  A\n  B\n\n  C\n" @?= [[["A"], ["B"]], [["C"]]],
+        verseOf "@style verse\n  A\n  B\n\n  C\n" @?= [[["A"], ["B"]], [["C"]]],
       testCase "whitespace at the start of a line is ignored, the ideographic space is not" $ do
-        verseOf "@verse\n  A\n    B\n" @?= [[["A"], ["B"]]]
-        verseOf "@verse\n  A\n  \x3000B\n" @?= [[["A"], ["\x3000B"]]],
+        verseOf "@style verse\n  A\n    B\n" @?= [[["A"], ["B"]]]
+        verseOf "@style verse\n  A\n  \x3000B\n" @?= [[["A"], ["\x3000B"]]],
       testCase "newlines inside a command produce nothing" $
-        verseOf "@verse\n  [italic: a\n  b] c\n" @?= [[["<italic>", "ab", " c"]]],
+        verseOf "@style verse\n  [italic: a\n  b] c\n" @?= [[["<italic>", "ab", " c"]]],
       testCase "lines of only comments are dropped" $
-        verseOf "@verse\n  A %% x %%\n  %% y %%\n  B\n" @?= [[["A"], ["B"]]],
-      testCase "errors" $ do
-        errs "@verse x\n  A\n" @?= ["G0244"]
-        errs "@verse\n  - a\n" @?= ["G0245"]
-        errs "@verse\n" @?= ["G0246"],
+        verseOf "@style verse\n  A %% x %%\n  %% y %%\n  B\n" @?= [[["A"], ["B"]]],
       testCase "notes in verse are numbered with the paragraphs around it" $ do
-        let notes = [n | b <- body "a[note: 一]\n\n@verse\n  b[note: 二]\n  c\n\nd[note: 三]\n", n <- noteNumbers b]
+        let notes = [n | b <- body "a[note: 一]\n\n@style verse\n  b[note: 二]\n  c\n\nd[note: 三]\n", n <- noteNumbers b]
         notes @?= [1, 2, 3]
     ]
   where
     noteNumbers = \case
-      Paragraph is -> [n | Note _ n _ <- is]
-      VerseBlock stanzas -> [n | st <- stanzas, l <- st, Note _ n _ <- l]
+      Paragraph _ is -> [n | Note _ n _ <- is]
       _ -> []
+
+-- | Character and paragraph styles (docs/adr ADR 0005).
+styleTests :: TestTree
+styleTests =
+  testGroup
+    "character and paragraph styles (docs/adr ADR 0005)"
+    [ testCase "emphasis is a built-in character style" $ do
+        let strong = [Paragraph Nothing [CharStyle (mkSpan (FileId 1) 0 11) "strong" [Text (mkSpan (FileId 1) 9 10) "a"]]]
+        body "[strong: a]\n" @?= strong
+        paraOf "[style strong: a]\n" @?= ["<strong>", "a"]
+        paraOf "[bold: a]\n" @?= ["<bold>", "a"]
+        paraOf "[style bold: a]\n" @?= ["<bold>", "a"]
+        paraOf "[italic: a]\n" @?= ["<italic>", "a"]
+        paraOf "[style italic: a]\n" @?= ["<italic>", "a"],
+      testCase "the body form" $
+        map stripped (body "@style verse\n  A\n  B\n\n  C\n") @?= [(Just "verse", ["A", "<br>", "B"]), (Just "verse", ["C"])],
+      testCase "the attribute form" $
+        map stripped (body "@style verse\nA\nB\n") @?= [(Just "verse", ["A", "<br>", "B"])],
+      testCase "a join style joins the lines" $
+        map stripped (body "@style quote\nab\ncd\n") @?= [(Just "quote", ["abcd"])],
+      testCase "body is no style" $
+        map stripped (body "@style body\nx\n") @?= [(Nothing, ["x"])],
+      testCase "errors" $ do
+        errs "@style nope\nx\n" @?= ["G0247"]
+        map stripped (body "@style nope\nx\n") @?= [(Nothing, ["x"])]
+        errs "@style\n  x\n" @?= ["G0247"]
+        errs "@verse\n  A\n" @?= ["G0248"]
+        errs "@style verse\n  - a\n" @?= ["G0245"]
+        errs "@style verse\n  %% c %%\n" @?= ["G0246"]
+        errs "@style verse\n" @?= ["G0210"],
+      testCase "a style on a block that is not a paragraph" $ do
+        errs "@style quote\n# 見出し\n" @?= ["G0213"]
+        case body "@style quote\n# 見出し\n" of
+          [Heading 1 _ _] -> pure ()
+          other -> assertFailure (show other),
+      testCase "a block command after attributes is their target" $ do
+        errs "@label song\n@style verse\n  A\n" @?= []
+        labels "@label song\n@style verse\n  A\n\n  B\n" @?= [Just "song", Nothing]
+        errs "@label fig\n@figure images/a.png alt=x\n  キャプション。\n" @?= []
+        case blocksOf "@label fig\n@figure images/a.png alt=x\n  キャプション。\n" of
+          [Block _ (Just "fig") (FigureBlock _)] -> pure ()
+          other -> assertFailure (show other)
+        errs "@label a\n@set x = 1\n@figure images/a.png alt=x\n" @?= ["G0211"],
+      testCase "a style inside a caption" $
+        errs "@figure images/a.png alt=x\n  @style quote\n  キャプション。\n" @?= ["G0213"],
+      testCase "a filter must not invent paragraph styles" $ do
+        let hook = noPlugins {phApplyFilters = \_ (Document f bs) -> Right (Document f (bs <> [Block (mkSpan f 0 1) Nothing (Paragraph (Just "nope") [])]), [])}
+        snd (run ctx {ctxPlugins = hook} "x\n") @?= ["G0247"]
+    ]
+  where
+    stripped = \case
+      Paragraph st is -> (st, stripSpans is)
+      other -> error (show other)
+    blocksOf src =
+      let (file, _, _) = parseAst (FileId 1) src
+       in docBlocks (erDocument (evalFile ctx file))
+    labels = map blockLabel . blocksOf

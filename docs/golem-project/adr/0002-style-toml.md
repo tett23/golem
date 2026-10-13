@@ -1,6 +1,6 @@
 # ADR 0002: style.toml の読み込み
 
-ステータス: 採択
+ステータス: 採択→`[emphasis]` の廃止と `[paragraph-styles]` は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md)
 
 ## 文脈
 
