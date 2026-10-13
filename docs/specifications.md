@@ -1035,6 +1035,7 @@ v1 のリリースまでに、次の項目を扱う。
 - **字下げ**：段落の字下げ（段落の先頭の字下げ、二行目以降の字下げ、ぶら下げ）を指定する方法がない。段落スタイルで指定できるようにする。
 - **ルビの配置の設定**：ルビの位置を調整する設定がない。今は `[ruby] position = "mono-center"` だけを持ち、モノルビを親文字の中央にそろえ、グループルビを親文字の全体に均等に配置する（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）。特にグループルビについて、ルビが親文字より短いときにルビの字間を空けて親文字の幅にそろえるか、ルビを詰めて中央に置くかを選べるようにする。ルビが親文字より長いときの、隣の文字へのかけ方と親文字の字間の空け方の設定も合わせて決める。
 - **PDF の Producer**：仕様では PDF の Producer に Golem の版を書くが、まだ書いていない。`golemVersion` を使えば足せるが、PDF の出力を変える変更なので別に扱う（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+- **診断のコードの説明**：診断のコード（`G0701` など）が何を表しているかを、利用者が CLI で調べられるようにする。たとえば `golem explain G0701` のように、コードごとに意味、主な原因、直し方の例を表示する。今の診断は、コードと一行のメッセージを出すだけで、コードの一覧と説明はどこにもない。
 - **`--no-fonts` で作ったプロジェクトのビルド**：`style.toml` が存在しないフォントのファイルを指すと、PDF だけでなくすべてのターゲットが G0306 になる。`golem new --no-fonts` で作ったプロジェクトは、フォントを置くまで HTML もビルドできない。フォントのファイルの検査を PDF のときだけにするかを決める（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
 - **配布物のライセンスの一覧**：配布物の `THIRD_PARTY_LICENSES` に、Linux の実行ファイルに静的にリンクする musl と libffi、libstdc++ と libgcc、`libwasmtime.a` に含まれる Rust のクレートのライセンスが入っていない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **合成の太字の太さ**：合成の太字の輪郭の線の幅（文字の大きさの 1/40）は、目で見ると太すぎる。値を見直す（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
