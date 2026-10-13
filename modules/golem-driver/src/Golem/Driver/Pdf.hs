@@ -1106,10 +1106,11 @@ writeDocument inp geom fonts layout intent =
       isLatin = (== Western) . charClass
       {- the runs of a text in a look: its role and whether it is a Latin
       run; split into Latin and other runs where the two sides differ in
-      role or in synthetic bold and slant (golem-driver ADR 0004, docs/adr ADR 0005) -}
+      role or in synthetic bold and slant (golem-driver ADR 0004, docs/adr ADR 0005);
+      a variation selector stays with the character before it (golem-pdf ADR 0006) -}
       runsOf look txt
         | lkFace look == lkLatinFace look && lkSynthetic look == lkLatinSynthetic look && not (synBold (lkSynthetic look) || synBold (lkLatinSynthetic look)) = [(lkFace look, txt, False)]
-        | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isLatin a == isLatin b) txt, not (T.null r), let latin = isLatin (T.head r)]
+        | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isVariationSelector b || isLatin a == isLatin b) txt, not (T.null r), let latin = isLatin (T.head r)]
       -- the synthetic bold and slant of a run
       syntheticOf look latin = if latin then lkLatinSynthetic look else lkSynthetic look
       -- glyph marks of a text in a look starting at a point, and the glyphs used

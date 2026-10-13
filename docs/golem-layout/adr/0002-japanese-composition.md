@@ -1,6 +1,6 @@
 # ADR 0002: 日本語組版の規則
 
-ステータス: 採択→ルビの配置は[ADR 0009](0009-ruby-placement.md)
+ステータス: 採択→ルビの配置は[ADR 0009](0009-ruby-placement.md)、異体字セレクタの箱は [golem-pdf ADR 0006](../../golem-pdf/adr/0006-cid-system-info.md)
 
 ## 文脈
 

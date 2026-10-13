@@ -32,5 +32,9 @@ int golem_font_shape(golem_font *f, const char *utf8, int len, const char *scrip
 uint8_t *golem_font_subset(golem_font *f, const uint32_t *gids, int n, size_t *out_len);
 char *golem_font_postscript_name(golem_font *f);
 uint32_t golem_font_cid(golem_font *f, uint32_t gid);
+/* The ROS of a CID-keyed CFF font (the strings belong to the font).
+   0 on success; -1 for any other font. */
+int golem_font_ros(golem_font *f, const char **registry, const char **ordering,
+                   int *supplement);
 void golem_free(void *p);
 #endif

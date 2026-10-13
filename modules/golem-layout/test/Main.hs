@@ -177,6 +177,19 @@ sp0 = Text (mkSpan (FileId 0) 0 0)
 compose :: ComposeEnv -> Text -> [Item]
 compose env t = fst (composeInlines env [sp0 t])
 
+-- | Advances that ignore variation selectors, so that boxes with and without them compare equal.
+vsEnv :: ComposeEnv
+vsEnv = (defaultComposeEnv fs) {ceWordAdvance = \_ t -> fromIntegral (T.length (T.filter (not . isVs) t))}
+
+isVs :: Char -> Bool
+isVs c = (c >= '\xFE00' && c <= '\xFE0F') || (c >= '\xE0100' && c <= '\xE01EF')
+
+-- | The items with the variation selectors removed from the box texts.
+stripVs :: Item -> Item
+stripVs = \case
+  Box w c -> Box w c {bcText = T.filter (not . isVs) (bcText c)}
+  it -> it
+
 -- | The environment with the bundled US English patterns.
 enUS :: ComposeEnv
 enUS = (defaultComposeEnv fs) {cePatterns = Just englishUS}
@@ -802,6 +815,20 @@ tests =
             boxes MarkerNone @?= ["本"]
             -- the anchor indexes the marker box, after the spacing before it
             snd (composeInlines (defaultComposeEnv fs) [sp0 "本", sn]) @?= [AnchorSidenote 2 1 snSpan [sp0 "注"]],
+          testCase "a variation selector joins the box of its base character (golem-pdf ADR 0006)" $ do
+            [bcText c | Box _ c <- compose vsEnv "葛\xE0100あ"] @?= ["葛\xE0100", "あ"]
+            [bcText c | Box _ c <- compose vsEnv "a\xFE00葛\xE0100\xFE01"] @?= ["a\xFE00", "葛\xE0100\xFE01"],
+          testCase "a variation selector is shaped with its base character for the advance" $ do
+            let env = (defaultComposeEnv fs) {ceWordAdvance = \_ t -> if t == "葛\xE0100" then 3 / 2 else 1}
+            [w | Box w _ <- compose env "葛\xE0100"] @?= [fs + fs `div` 2],
+          testCase "punctuation spacing after a variation selector is as without it" $
+            map stripVs (compose vsEnv "葛\xE0100、あ") @?= compose vsEnv "葛、あ",
+          testCase "line-start prohibitions after an opening bracket with a variation selector are as without it" $ do
+            let items = compose vsEnv "「\xFE00あい"
+            map stripVs items @?= compose vsEnv "「あい"
+            breakBeforeBox items 1 @?= False,
+          testCase "a variation selector at the paragraph start stays a box of its own" $
+            [bcText c | Box _ c <- compose vsEnv "\xE0100葛"] @?= ["\xE0100", "葛"],
           testCase "too many notes, or one taller than the column, are errors" $ do
             placeSidenotes 30 2 [(0, 10), (0, 10), (0, 10)] @?= Left (DoesNotFit 2)
             placeSidenotes 30 2 [(0, 40)] @?= Left (TooTall 0)
