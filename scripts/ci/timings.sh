@@ -27,6 +27,10 @@ jq -rs --arg mode "$MODE" '
     if .conclusion == "skipped" or (.startedAt | unset) or (.completedAt | unset) then null
     else (.completedAt | fromdateiso8601) - (.startedAt | fromdateiso8601) end;
   def cell: gsub("\\|"; "\\|");
+  # names of jobs and steps are inline code: they are copied from the
+  # workflow, and ADR references in them are not links (adr-guard)
+  def code: "`" + cell + "`";
+  def stepcell: if . == "ジョブ全体" then . else code end;
   def show: if . == null then "-" else tostring end;
   def rows:
     .jobs[] as $j
@@ -40,7 +44,7 @@ jq -rs --arg mode "$MODE" '
   if $mode == "run" then
     "| ジョブ | ステップ | 秒 |",
     "|---|---|---|",
-    (.[0] | rows | "| \(.[0] | cell) | \(.[1] | cell) | \(.[2] | show) |")
+    (.[0] | rows | "| \(.[0] | code) | \(.[1] | stepcell) | \(.[2] | show) |")
   else
     "| ジョブ | ステップ | 最小 | 中央値 | 最大 |",
     "|---|---|---|---|---|",
@@ -52,6 +56,6 @@ jq -rs --arg mode "$MODE" '
       | .keys[] as $k
       | ($k | fromjson) as [$job, $step]
       | ($vals[$k] | sort) as $v
-      | "| \($job | cell) | \($step | cell) | \($v | first | show) | \($v | median | show) | \($v | last | show) |")
+      | "| \($job | code) | \($step | stepcell) | \($v | first | show) | \($v | median | show) | \($v | last | show) |")
   end
 '
