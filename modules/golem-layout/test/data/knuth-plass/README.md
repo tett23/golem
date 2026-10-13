@@ -9,7 +9,7 @@ Knuth と Plass の論文（"Breaking Paragraphs into Lines", Software: Practice
 | `frog-king.tex` | 生成に使う plain TeX のファイル |
 | `frog-king.words` | TeX が測った語間の空き、字下げ、段落全体の幅、語ごとの幅（sp） |
 | `frog-king.log` | TeX のログ。`\tracingparagraphs` の分割の候補と、`\showbox` の各行のグルーの設定 |
-| `ties.tex` | 罰点の等しい経路を TeX がどう選ぶかを確かめる二つの段落（golem-layout [ADR 0008](../../../../../docs/golem-layout/adr/0008-explicit-hyphens.md)） |
+| `ties.tex` | 罰点の等しい経路を TeX がどう選ぶかを確かめる三つの段落（golem-layout [ADR 0008](../../../../../docs/golem-layout/adr/0008-explicit-hyphens.md)、[ADR 0010](../../../../../docs/golem-layout/adr/0010-tie-breaking-tex.md)） |
 | `ties.log` | `ties.tex` のログ。テストは読まない |
 
 ## 段落の出典
@@ -86,7 +86,7 @@ ADR の候補（180pt、240pt、300pt）だけでは二回目の段階の例が�
 
 ## 罰点の等しい経路（`ties.tex`）
 
-`ties.tex` は、罰点の合計が最小の経路が二つある段落を二つ組み、`\tracingparagraphs=1` と `\showbox` を出す。
+`ties.tex` は、罰点の合計が最小の経路が二つある段落を三つ組み、`\tracingparagraphs=1` と `\showbox` を出す。
 テストはこのログを読まず、TeX が選んだ経路を `../../Main.hs` の単体テストに書き写している。
 
 1. `\hsize=10pt` で、幅 10pt、0pt、10pt の三つの箱の間に `\penalty0` を置いた段落。
@@ -95,9 +95,15 @@ ADR の候補（180pt、240pt、300pt）だけでは二回目の段階の例が�
 2. `\hsize=20pt`、`\linepenalty=0`、`\adjdemerits=0` で、幅 20pt の箱、`\penalty0`、幅 10pt の箱と `\hskip0pt plus1fil` と `\penalty0`、幅 10pt の箱と `\hskip0pt plus1fil` と `\penalty0`、幅 20pt の箱を並べた段落。
    三行の経路と四行の経路がどちらも罰点 0 になる。
    TeX は四行の経路（ログの `@@5: line 4.2-`）を選ぶ。
+3. `\hsize=100pt`、`\linepenalty=0`、`\adjdemerits=0` で、幅 50pt の箱 A と B を `\penalty10000` と `\hskip0pt plus10pt minus10pt` でつなぎ、`\penalty0`、幅 6pt の箱 C、`\penalty0` を置き、幅 50pt の箱 D と E を同じようにつないだ段落。
+   B の後で分ければ一行目が decent、二行目が tight になり、C の後で分ければ一行目が tight、二行目が decent になる。
+   どちらも罰点の合計は 484 で、違うのは最後の行の適合度だけである。
+   TeX は C の後で分ける経路（ログの `@@3: line 2.2-`、最後の行が decent）を選ぶ。
 
-TeX は活性の候補を位置の順、同じ位置では適合度の分類の順に調べ、罰点が等しければ後から調べた候補を残す。
-Golem は、罰点が最小の経路のうち、分割の位置と適合度の分類の組を段落の終わりから並べた列が辞書式に最大のものを選び、この二つの段落で TeX と同じ経路になる。
+TeX は活性の候補を位置の順、同じ位置では適合度の分類の順に調べ、途中の分割では罰点が等しければ後から調べた候補を残す。
+段落の終わりでは厳密な `<` で比べるので、罰点が等しければ最後の行の適合度の番号が小さい候補を選ぶ。
+Golem は、罰点が最小の経路のうち、まず最後の行の適合度の番号が小さいものを選び、それでも複数あれば、分割の位置と適合度の分類の組を最後から二つ目の分割から並べた列が辞書式に最大のものを選ぶ。
+この三つの段落で TeX と同じ経路になる。
 
 ## 論文の図との照合
 

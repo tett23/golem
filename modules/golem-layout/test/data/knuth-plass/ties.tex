@@ -1,5 +1,5 @@
-% Two paragraphs whose least-demerit paths tie, set with plain TeX
-% (golem-layout ADR 0008). The test does not read ties.log; the paths TeX
+% Three paragraphs whose least-demerit paths tie, set with plain TeX
+% (golem-layout ADR 0008, ADR 0010). The test does not read ties.log; the paths TeX
 % chose are copied into the unit tests and README.md.
 %
 % Regenerate ties.log with
@@ -31,6 +31,17 @@
   \hbox to 10pt{B\hss}\hskip 0pt plus 1fil\penalty0
   \hbox to 10pt{C\hss}\hskip 0pt plus 1fil\penalty0
   \hbox to 20pt{D\hss}\par}
+\showbox1
+
+% 50pt ~ 50pt | 6pt | 50pt ~ 50pt on 100pt lines with no line penalty and
+% no adjacent demerits: breaking after B (decent, then tight) and after C
+% (tight, then decent) both cost 484; the last lines' fitness differs.
+\message{GOLEM-TIE=3}
+\setbox1=\vbox{\hsize=100pt \linepenalty=0 \adjdemerits=0
+  \tracingparagraphs=1
+  \noindent\hbox to 50pt{A\hss}\penalty10000\hskip 0pt plus 10pt minus 10pt\hbox to 50pt{B\hss}\penalty0
+  \hbox to 6pt{C\hss}\penalty0
+  \hbox to 50pt{D\hss}\penalty10000\hskip 0pt plus 10pt minus 10pt\hbox to 50pt{E\hss}\par}
 \showbox1
 
 \end
