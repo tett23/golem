@@ -370,7 +370,8 @@ writeTargets opts e book targets = do
                 ],
             hcBibliography = bib,
             hcDev = dev,
-            hcCaptionFace = let c = paraStyle style (Just "caption") in Face (c >>= psFont) (cssFontSize style <$> (c >>= psSize))
+            hcCaptionFace = let c = paraStyle style (Just "caption") in Face (c >>= psFont) (cssFontSize style <$> (c >>= psSize)),
+            hcSidenoteFace = let d = paraStyle style (Just "sidenote") in Face (d >>= psFont) (cssFontSize style <$> (d >>= psSize))
           }
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case

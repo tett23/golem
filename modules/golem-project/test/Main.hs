@@ -141,6 +141,17 @@ tests =
         codes (parseStyle (FileId 0) "[figures]\nnumber = \"{x}\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G0306"],
       indentTests,
+      testCase "the sidenote font and size are the paragraph style sidenote (golem-driver ADR 0011)" $ do
+        let retired = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
+            hasIt ms = assertBool (show ms) (not (null ms) && all (\m -> "G0306" `T.isPrefixOf` m) ms && any ("[paragraph-styles.sidenote]" `T.isInfixOf`) ms)
+        hasIt (retired (parseStyle (FileId 0) "[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\nsize = \"8pt\"\n"))
+        hasIt (retired (parseStyle (FileId 0) "[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\nfont = \"note\"\n"))
+        case parseStyle (FileId 0) "[fonts.note]\nlatin = \"n.otf\"\n\n[paragraph-styles.sidenote]\nfont = \"note\"\nsize = \"8pt\"\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> do
+            (paraStyle s (Just "sidenote") >>= psFont) @?= Just "note"
+            (paraStyle s (Just "sidenote") >>= psSize) @?= Just (Abs (8 * 65536))
+        codes (parseStyle (FileId 0) "[paragraph-styles.sidenote]\nfont = \"nope\"\n") @?= ["G0308"],
       testCase "a caption style (golem-driver ADR 0010)" $ do
         case parseStyle (FileId 0) "[fonts.caption]\nlatin = \"c.otf\"\n\n[paragraph-styles.caption]\nfont = \"caption\"\nsize = \"8pt\"\n" of
           Left ds -> assertFailure (show ds)
@@ -319,9 +330,11 @@ specStyle =
       "side = \"outside\"",
       "width = \"14zw\"",
       "gap = \"2zw\"",
+      "marker = \"number\"",
+      "",
+      "[paragraph-styles.sidenote]",
       "font = \"body\"",
       "size = \"11Q\"",
-      "marker = \"number\"",
       "",
       "[figures]",
       "number = \"図{chapter}-{n}\"",

@@ -67,7 +67,7 @@ tests =
         assertBool "too wide" (isLeft (pageGeometry (styleWith False False (grid 40 30 1 Nothing))))
         assertBool "too many lines" (isLeft (pageGeometry (styleWith False False (grid 30 60 1 Nothing)))),
       testCase "sidenote column on the fore-edge side; errors when vertical or too wide" $ do
-        let sn w = SidenoteStyle (Abs (pt w)) (Abs (pt 10)) Nothing Nothing "{n}"
+        let sn w = SidenoteStyle (Abs (pt w)) (Abs (pt 10)) "{n}"
             s = (styleWith False False (grid 25 30 1 Nothing)) {stSidenotes = Just (sn 60)}
             g = geom s
             Rect ox oy _ oh = pgTypeArea g

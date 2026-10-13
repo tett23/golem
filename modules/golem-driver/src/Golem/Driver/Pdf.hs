@@ -330,7 +330,7 @@ layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) of
       Left ds -> Left ds
       Right (built, pages) ->
         -- sidenotes are placed once, on the settled pages (golem-driver ADR 0006)
-        let (size, pitch) = sidenoteMetrics (piStyle inp) geom
+        let (_, size, pitch) = sidenoteMetrics (piStyle inp) geom
             placed = [(poNumber p, placePageSidenotes geom pitch size (bLines built) p) | p <- pages]
          in case concat [ds | (_, Left ds) <- placed] of
               [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built))
@@ -388,12 +388,14 @@ bibliographyLines :: Map Text Text -> [(Text, Int)] -> [[Inline]]
 bibliographyLines bib cites =
   [[Text (mkSpan (FileId 0) 0 0) ("[" <> T.pack (show n) <> "] " <> fromMaybe k (Map.lookup k bib))] | (k, n) <- cites]
 
--- | The size and line pitch of sidenotes: the body pitch scaled to the size.
-sidenoteMetrics :: Style -> PageGeometry -> (Sp, Sp)
+{- | The role, size and line pitch of sidenotes: the role and size of the
+paragraph style sidenote (golem-driver ADR 0011), the body pitch scaled
+to the size.
+-}
+sidenoteMetrics :: Style -> PageGeometry -> (Text, Sp, Sp)
 sidenoteMetrics style geom =
-  let fs = pgFontSize geom
-      size = maybe fs (dimToSp fs) (stSidenotes style >>= snSize)
-   in (size, pgLinePitch geom * size `div` fs)
+  let (role, size) = paraFace style geom "sidenote"
+   in (role, size, pgLinePitch geom * size `div` pgFontSize geom)
 
 {- | Sidenotes the PDF cannot place (golem-driver ADR 0006): in vertical
 writing (G0732), without a sidenote column (G0734), or in a footnote or
@@ -663,8 +665,8 @@ buildFlow inp geom fonts images assumed = do
                 <> [(i, sp) | AnchorSidenote i _ _ snBody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv snBody)]
          in Composed lines' notes sidenotes marks anchors items
       -- sidenote bodies: their size, the column width, the marker first (golem-driver ADR 0006)
-      (snSize', _) = sidenoteMetrics style geom
-      snEnv = envFor body snSize'
+      (snRole, snSize', _) = sidenoteMetrics style geom
+      snEnv = envFor snRole snSize'
       snParams = params {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition style))}
       snMeasure = maybe 0 (rectW . fst) (pgSidenotes geom)
       sidenoteLines n snBody =
@@ -1067,7 +1069,7 @@ writeDocument inp geom fonts layout intent =
             noteParts = [drawLine ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] []) | (slot, l) <- zip bottomSlots noteLines]
             masterParts = if poBlank p then [] else masterMarks n (poRunningHead p)
             -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
-            (snSize', snPitch) = sidenoteMetrics style geom
+            (_, snSize', snPitch) = sidenoteMetrics style geom
             sidenoteParts =
               [ drawLineAt (rectX area, rectY area + rectH area - (psTop ps + toInteger j * snPitch + round (toRational snSize' * baselineRatio))) (SetLine l snSize' 0 [] [])
               | Just area <- [sidenoteAreaFor geom n],

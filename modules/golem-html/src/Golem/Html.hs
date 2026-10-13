@@ -42,6 +42,8 @@ data HtmlConfig = HtmlConfig
     hcParaStyles :: !(Map Text HtmlParaStyle),
     -- | the font and size of figcaption (golem-driver ADR 0010)
     hcCaptionFace :: !Face,
+    -- | the font and size of sidenotes (golem-driver ADR 0011)
+    hcSidenoteFace :: !Face,
     hcBibliography :: !(Map Text Text), -- key -> formatted entry
     hcDev :: !Bool
   }
@@ -446,7 +448,8 @@ css cfg =
          ]
       -- the caption's font and size (golem-driver ADR 0010)
       <> [faceRule "figcaption" (hcCaptionFace cfg) | isJust (faFont (hcCaptionFace cfg)) || isJust (faSize (hcCaptionFace cfg))]
-      <> [ ".sidenote { font-size: 0.85em; }",
+      -- the sidenote's font and size; smaller than the text when no size is given (golem-driver ADR 0011)
+      <> [ faceRule ".sidenote" (hcSidenoteFace cfg) {faSize = Just (fromMaybe "0.85em" (faSize (hcSidenoteFace cfg)))},
            "@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }"
          ]
       -- paragraph styles (docs/adr ADR 0005); body is the plain p

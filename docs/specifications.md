@@ -458,6 +458,10 @@ first-line-indent = "-2zw"
 [paragraph-styles.caption]
 size = "11Q"
 
+[paragraph-styles.sidenote]
+font = "body"
+size = "11Q"
+
 [headings.1]
 font = "heading"
 size = "20Q"
@@ -487,8 +491,6 @@ placement = "page-foot"
 side = "outside"
 width = "14zw"
 gap = "2zw"
-font = "body"
-size = "11Q"
 marker = "number"
 
 [figures]
@@ -539,8 +541,10 @@ folio = { position = "bottom-outside", format = "{n}" }
 PDF の本文を行の格子に載せるので、段落ごとに行送りを変えると見開きの行の位置がそろわなくなるためである。
 組み込みの段落スタイルは `body`、`verse`（`line-breaks = "keep"`、`space-between = 1`）、`caption`、`sidenote` の四つであり、段落スタイルを付けない段落は `body` で組む。
 図版のキャプションは段落スタイル `caption` の `font` と `size` で組み、ほかの欄（`line-breaks`、`space-between`、字下げ）はキャプションには効かない（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
-これらの欄は `@style caption` を付けた原稿の段落には効く。
-HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS に書く。
+傍注の本文も同じく、段落スタイル `sidenote` の `font` と `size` で組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
+これらの欄は `@style caption` や `@style sidenote` を付けた原稿の段落には効く。
+HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS に、`sidenote` の `font` と `size` を `.sidenote` の CSS に書く。
+`sidenote` の `size` がなければ、HTML の傍注は本文の 0.85 倍の大きさにする。
 `size` が絶対の大きさで `[page.grid]` の `font-size` も絶対の大きさなら、その比を `em` で書き、`[page.grid]` がなければ `pt` で書く。
 
 段落スタイルの `indent` はすべての行の始まりの字下げ（InDesign の左インデント）、`first-line-indent` は最初の行に `indent` へ加える量（1 行目左インデント）であり、負ならぶら下げになる（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
@@ -559,11 +563,11 @@ HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS 
 
 文字スタイルと段落スタイルの `font` が `[fonts]` にない役割を指す場合も G0308 とする。
 `based-on` が存在しないスタイルを指す場合、循環する場合、`body` に `based-on` がある場合、文字スタイルの `color` が `[color.swatches]` にない場合はエラー（G0313）とする。
-廃止した `[emphasis]` と `[verse]` はエラー（G0306）とし、メッセージで書き換え先を示す。
+廃止した `[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size` はエラー（G0306）とし、メッセージで書き換え先を示す。
 `[verse]` の `indent = I`、`hang = H` は、`[paragraph-styles.verse]` の `indent = I + H`、`first-line-indent = -H` に書き換える。
 
 HTML と EPUB では、組み込みの文字スタイルを `strong`、`b`、`i` の要素に、ほかの文字スタイルを `cs-名前` の class に、段落スタイルを `ps-名前` の class に対応させる。
-文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between` を CSS に書き、`size` はキャプションのほかは CSS に書かない。
+文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between` を CSS に書き、`size` はキャプションと傍注のほかは CSS に書かない。
 
 PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組む。
 `font` を省けば本文の役割、`size` を省けば版面の文字の大きさになる。
@@ -607,7 +611,7 @@ OpenType の機能（縦書き用の字形、プロポーショナルな字詰�
 
 ライセンスで埋め込みが禁止されているフォントを使った場合は、エラーとする。
 
-PDF は、本文の役割と、見出しの `font`、文字スタイルの `font`、段落スタイル（組み込みのものを含む）の `font` が指す役割のフォントだけを読み込む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
+PDF は、本文の役割と、見出しの `font`、文字スタイルの `font`、段落スタイル（組み込みの `caption` と `sidenote` を含む）の `font` が指す役割のフォントだけを読み込む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 使わない役割のフォントのライセンスでビルドを止めないためである。
 二つの役割が同じバイト列のファイルを指す場合は、一つのフォントとして一度だけ埋め込む。
 バイト列が異なるのに PostScript 名が同じフォントを使う場合は、エラー（G0805）とする。
@@ -807,7 +811,8 @@ Golem は決定性を重視する[sidenote: 同じ入力から同じ出力を得
 注の本文はインラインの要素に限り、番号はファイルごとに振る。
 
 PDF では、傍注を版面の外の傍注欄に置く。
-傍注欄は、`style.toml` の `[sidenotes]` で、小口[^fore-edge]側の余白に幅と版面との間隔を指定して設ける。
+傍注欄は、`style.toml` の `[sidenotes]` で、小口[^fore-edge]側の余白に幅（`width`）と版面との間隔（`gap`）を指定して設ける。
+`[sidenotes]` には、ほかに本文側の印（`marker`）だけを書く。
 本文の版面は字詰めのとおりに組み、傍注は本文の行の長さに影響しない。
 傍注がある行だけ本文を短くすると、本文の端がページごとに不ぞろいになるためである。
 
@@ -835,7 +840,9 @@ PDF では、さらに次の二つをコンパイルエラーとする（[golem-
 - 脚注の本文と図版のキャプションの中に傍注を置いた場合（G0735）。これらの行は本文の流れの外に置かれるので、傍注を置く高さを決める行がない。
 
 傍注は、本文のページと行が確定した後に傍注欄に置き、傍注の量で本文の改ページを変えない。
-傍注の文字の大きさは `[sidenotes]` の `size`、行送りは本文の行送りを文字の大きさの比で縮めた値とし、傍注どうしの間には本文の行送りの半分を空ける。
+傍注の本文は、段落スタイル `sidenote` の `font` の役割の書体と `size` の大きさで組み、省略すれば本文の役割と版面の文字の大きさで組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
+傍注の行送りは本文の行送りを文字の大きさの比で縮めた値とし、傍注どうしの間には本文の行送りの半分を空ける。
+本文側の印は、本文の書体と大きさのまま組む。
 傍注の本文の先頭には、本文側の印と同じ番号か「※」を付け、印なしでは何も付けない。
 
 ### 索引
@@ -1107,7 +1114,6 @@ v1 のリリースまでに、次の項目を扱う。
 #### PDF
 
 - **目次**：PDF の目次は番号と題だけを出し、ページ番号を出していない。[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md) で、ページ番号を項目の最後の行の終わりにそろえて置き、題とのあいだをリーダーで埋め、`[toc]` の `leader`（`"dots"` か `"none"`）で選べるようにすると決めた（未実装）。
-- **傍注の書体**：`[sidenotes]` の `font` を PDF で使っていない。傍注は本文の書体で、`size` の大きさで組む（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md) で、組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` の `font` と `size` を廃止すると決めた（未実装）。
 - **柱の内容**：マスターページの `running-head` の `content`（`"heading.1.short"` など）と、`[headings.<階層>]` の `running-head` を読み込むが、PDF では使っていない。柱には常に 1 の階層の見出しの短い題を出す（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。設定のとおりに柱の内容を決めるか、使わない欄をなくす。
 - **トンボと塗り足し**：入稿用の、トンボと塗り足しの領域を付けた PDF を出力できない。今の PDF は、MediaBox、TrimBox、BleedBox をすべて仕上がりの判型と同じ大きさにしている。[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md) で、`style.toml` の `[page]` に `bleed` を、`golem build` と `golem check` に `--marks japanese|western|none` を加え、日本式のトンボで塗り足しが 0 なら G0702 とすると決めた（未実装）。
 - **合成の太字の太さ**：合成の太字の輪郭の線の幅（文字の大きさの 1/40）は、目で見ると太すぎる（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。[golem-driver ADR 0012](golem-driver/adr/0012-synthetic-bold-weight.md) で、和文を文字の大きさの 1/80、欧文を 1/60 に細くすると決めた（未実装）。

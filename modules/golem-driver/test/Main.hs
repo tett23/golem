@@ -17,7 +17,7 @@ import Golem.Doc.Assemble (IndexGroup (..), inlineText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.New
-import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf)
+import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, usedRoles)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), Synthetic (..))
@@ -903,7 +903,11 @@ wrapTests =
 
 -- | horizontalStyle with a sidenote column: 6zw wide, 1zw gap, 8pt; the sidenote pitch is 12pt.
 sidenoteStyle :: BS.ByteString
-sidenoteStyle = horizontalStyle <> "\n[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\nsize = \"8pt\"\n"
+sidenoteStyle = sidenoteStyleWith ""
+
+-- | sidenoteStyle with more keys for the paragraph style sidenote (golem-driver ADR 0011); [sidenotes] stays last.
+sidenoteStyleWith :: BS.ByteString -> BS.ByteString
+sidenoteStyleWith keys = horizontalStyle <> "\n[paragraph-styles.sidenote]\nsize = \"8pt\"\n" <> keys <> "\n[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\n"
 
 -- | Every placed sidenote with its page number.
 sidenotesOf :: PdfLayout -> [(Int, PlacedSidenote)]
@@ -1148,7 +1152,74 @@ sidenoteTests =
       c <- miniPdf fakeProvider True sidenoteStyle source []
       a @?= b
       a @?= c
-      qpdfCheck a
+      qpdfCheck a,
+    testCase "the roles the PDF uses include the sidenote's (golem-driver ADR 0011)" $ do
+      s <- either (assertFailure . show) pure (parseStyle (FileId 0) "[fonts.body]\nja = \"b.otf\"\n\n[fonts.heading]\nja = \"h.otf\"\n\n[paragraph-styles.sidenote]\nfont = \"heading\"\n")
+      usedRoles s @?= ["body", "heading"],
+    testCase "a sidenote role sets the note and its number; the text and its marker stay in the body" $ do
+      content <- miniPdf fakeProvider True (sidenoteStyleWith "font = \"heading\"\n" <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n") "本文[sidenote: 注]。\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          fontsOf c sz = nub [dFont d | d <- ds, dGlyph d == fromEnum c, dSize d == sz]
+      fontsOf '注' "8" @?= fontsOf '1' "8"
+      assertBool "drawn" (not (null (fontsOf '注' "8")))
+      assertBool "the note's role" (fontsOf '注' "8" /= fontsOf '本' "10")
+      nub [dFont d | d <- ds, dGlyph d == fromEnum '1', dSize d /= "8"] @?= fontsOf '本' "10",
+    testCase "a sidenote role measures the note in its own font" $ do
+      let note = "本文[sidenote: abcdefghijklmnopqrstuvwxyz]。\n"
+          linesOf style = do
+            (_, pl) <- layoutOk style note fakeFontFiles
+            pure (sum [length (psLines ps) | (_, ps) <- sidenotesOf pl])
+      plain <- linesOf (sidenoteStyle <> fakeBody)
+      wide <- linesOf (sidenoteStyleWith "font = \"wide\"\n" <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n")
+      assertBool (show (plain, wide)) (wide > plain),
+    testCase "naming the body role, or an indent, changes nothing" $ do
+      let source = "本文[sidenote: 傍注の本文はここにある。]。\n"
+      a <- miniPdf fakeProvider True (sidenoteStyle <> fakeBody) source fakeFontFiles
+      b <- miniPdf fakeProvider True (sidenoteStyleWith "font = \"body\"\n" <> fakeBody) source fakeFontFiles
+      c <- miniPdf fakeProvider True (sidenoteStyleWith "first-line-indent = \"1zw\"\n" <> fakeBody) source fakeFontFiles
+      a @?= b
+      a @?= c,
+    testCase "a character style inside a sidenote takes its own role" $ do
+      content <- miniPdf fakeProvider True (sidenoteStyle <> fakeBody <> "\n[fonts.wide]\nja = \"fonts/w.otf\"\n\n[character-styles.bold]\nfont = \"wide\"\n") "本文[sidenote: 注の[bold: 語]。]。\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          fontsOf c = nub [dFont d | d <- ds, dGlyph d == fromEnum c]
+      assertBool "the bold role" (fontsOf '語' /= fontsOf '注')
+      fontsOf '注' @?= fontsOf '本',
+    testCase "sidenote roles: parallel and sequential, and two builds, give the same bytes" $ do
+      let style = sidenoteStyleWith "font = \"heading\"\n" <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n"
+          files = fakeFontFiles
+          source = fillers 5 <> "一" <> twoLineNote <> "\n\n二" <> twoLineNote <> "\n\n" <> longPara 20
+      a <- miniPdf fakeProvider True style source files
+      b <- miniPdf fakeProvider False style source files
+      c <- miniPdf fakeProvider True style source files
+      a @?= b
+      a @?= c
+      qpdfCheck a,
+    testCase "with real fonts the sidenote font holds the sidenote's glyphs only" $ do
+      (sans, serif) <- realLatinFonts
+      let style = sidenoteStyleWith "font = \"note\"\n" <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.note]\nlatin = \"fonts/serif.ttf\"\n"
+      pdf <- miniPdf realProvider True style "quick[sidenote: Zebra] quick\n" [("fonts/sans.otf", sans), ("fonts/serif.ttf", serif)]
+      cmaps <- filter ("beginbfchar" `BS.isInfixOf`) <$> inflateAll pdf
+      length cmaps @?= 2
+      assertBool "sidenote glyphs only in one font" (any (\c -> "<005a>" `BS.isInfixOf` c && not ("<0071>" `BS.isInfixOf` c)) cmaps)
+      assertBool "body glyphs only in the other" (any (\c -> "<0071>" `BS.isInfixOf` c && not ("<005a>" `BS.isInfixOf` c)) cmaps)
+      qpdfCheck pdf,
+    testCase "HTML: .sidenote takes the sidenote's font and size" $ do
+      let css keys = withSystemTempDirectory "golem-mini" $ \tmp -> do
+            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
+            BS.writeFile (tmp </> "style.toml") (horizontalStyle <> "\n[fonts.note]\nlatin = \"fonts/n.otf\"\n\n[paragraph-styles.sidenote]\n" <> keys)
+            BS.writeFile (tmp </> "a.gm") "x\n"
+            createDirectoryIfMissing True (tmp </> "fonts")
+            BS.writeFile (tmp </> "fonts/n.otf") "fake"
+            r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+            assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+            TIO.readFile (tmp </> "build/html/style.css")
+      a <- css "font = \"note\"\nsize = \"8pt\"\n"
+      assertBool (T.unpack a) (".sidenote { font-family: \"golem-note-latin\", serif; font-size: 0.8em; }" `T.isInfixOf` a)
+      b <- css "size = \"8pt\"\n"
+      assertBool (T.unpack b) (".sidenote { font-size: 0.8em; }" `T.isInfixOf` b)
+      c <- css "font = \"note\"\n"
+      assertBool (T.unpack c) (".sidenote { font-family: \"golem-note-latin\", serif; font-size: 0.85em; }" `T.isInfixOf` c)
   ]
 
 -- | The text of index or bibliography inlines, page numbers as numbers.

@@ -257,11 +257,12 @@ data Composition = Composition
   }
   deriving stock (Eq, Show)
 
+{- | [sidenotes]: the sidenote column and the marker. The font and the size
+are the paragraph style sidenote's (golem-driver ADR 0011).
+-}
 data SidenoteStyle = SidenoteStyle
   { snWidth :: !Dim,
     snGap :: !Dim,
-    snFont :: !(Maybe Text),
-    snSize :: !(Maybe Dim),
     snMarker :: !Text
   }
   deriving stock (Eq, Show)
@@ -460,9 +461,11 @@ instance FromValue SidenoteStyle where
     w <- reqDim "width"
     g <- reqDim "gap"
     f <- optKey "font"
-    s <- dimKey "size"
+    s <- optKey "size"
+    when (isJust (f :: Maybe Text) || isJust (s :: Maybe Text)) $
+      fail "[sidenotes] の font と size は廃止しました。[paragraph-styles.sidenote] の font と size に書き換えます"
     m <- enumKey "marker" ["number", "symbol", "none"]
-    pure (SidenoteStyle w g f s (fromMaybe "number" m))
+    pure (SidenoteStyle w g (fromMaybe "number" m))
 
 data PosContent = PosContent Text Text
 
