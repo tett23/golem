@@ -1,6 +1,6 @@
 # ADR 0001: lint の規則
 
-ステータス: 採択→G0501 の韻文の扱いは docs/adr ADR 0003
+ステータス: 採択→G0501 の韻文の扱いは [docs/adr/0003](../../adr/0003-verse-line-breaks.md)
 
 ## 文脈
 

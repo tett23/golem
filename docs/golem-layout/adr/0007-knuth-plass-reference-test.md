@@ -180,7 +180,7 @@ TeX は期待値を作るときに一度だけ使い、テストの実行と CI 
 
 ## テスト設計
 
-`modules/golem-layout/test/Main.hs` の「Knuth-Plass (ADR 0001)」の群の隣に、「Knuth-Plass reference (ADR 0007)」の群を加える。
+`modules/golem-layout/test/Main.hs` の「Knuth-Plass ([ADR 0001](0001-knuth-plass-line-breaking.md))」の群の隣に、「Knuth-Plass reference (ADR 0007)」の群を加える。
 
 ### データを使わない単体テスト
 

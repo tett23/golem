@@ -124,7 +124,7 @@ restyle :: Style -> Look -> Inline -> Look
 
 ### フォントの読み込みと幅の関数（golem-driver）
 
-- [ADR 0003](0003-pdf-heading-styles.md) で読み込む役割に、`bold-font`、`italic-font`、`[character-styles.*]` の `font` が指す役割を加える。フェイスの番号の振り方、同じバイト列のファイルの統合、G0805 の検査は ADR 0003 のとおりとする。
+- [ADR 0003](0003-pdf-heading-styles.md) で読み込む役割に、`bold-font`、`italic-font`、`[character-styles.*]` の `font` が指す役割を加える。フェイスの番号の振り方、同じバイト列のファイルの統合、G0805 の検査は [ADR 0003](0003-pdf-heading-styles.md) のとおりとする。
 - `composeEnv` は、`ceAdvance look c` を、`c` が欧文の文字（`charClass` が `Western`）なら `lfAdvance (lkLatinFace look) c`、ほかは `lfAdvance (lkFace look) c` とする。`ceWordAdvance look w` は `lfWordAdvance (lkLatinFace look) w` とする。
 - `ceRestyle` には `restyle (piStyle inp)` を渡す。
 - `LoadedFonts` の型は [ADR 0003](0003-pdf-heading-styles.md) のまま変えない。
