@@ -108,7 +108,7 @@ Haskell のコードは fourmolu 0.21.0.0 で整形し、hlint 3.10 の指摘を
 どちらも CI の `format` ジョブで検査する。
 生成したパーサー（`modules/golem-parser/src/Golem/Parser/Generated.hs`）と、ラベルを外した文法（`modules/golem-parser/test/StrippedGrammar.hs`）は対象外である。
 
-文法（`modules/golem-parser/grammar/Golem.peg`）を変えたら、`scripts/gen-parser.sh` で生成し直して、生成物もコミットする。
+文法（`modules/golem-parser/grammar/Golem.hpeg`）を変えたら、`scripts/gen-parser.sh` で生成し直して、生成物もコミットする。
 このスクリプトは、ラベルを外した文法も生成する。golem-parser のテストは、二つの文法が同じ入力を受理することを確かめる。
 文法にラベルを足すときは、ラベルを外しても受理する言語が変わらないことを確かめ、理由のコメントを添えて `%safe` を書く。
 `scripts/gen-parser.sh` は peg-hs の警告を誤りとして扱うので、`%safe` のないラベルがあると生成が失敗する（[golem-parser ADR 0007](./docs/golem-parser/adr/0007-grammar-label-safety.md)）。
