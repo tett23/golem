@@ -34,8 +34,10 @@ import Control.Monad (forM, forM_, mfilter, when)
 import Data.Aeson qualified as J
 import Data.Aeson.Key qualified as JK
 import Data.Aeson.KeyMap qualified as KM
+import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
+import Data.Either (fromRight)
 import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -58,6 +60,7 @@ import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Html
 import Golem.Parser.AST qualified as A
+import Golem.Parser.Read (ReadFailure (..), readInfo, readSourceFile)
 import Golem.Parser.SourceSettings (SourceSettings)
 import Golem.Pdf qualified as P
 import Golem.Plugin.Lock (defaultCacheDir)
@@ -159,10 +162,13 @@ evaluateProjectWith overlay profile root = do
       let synDiags = concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
           manifest0 = projectManifest project
           styleFid = styleFileId project
-      styleText <- readMaybeText (root </> "style.toml")
-      case loadStyle styleFid styleText of
+      styleBytes <- readMaybeBytes (root </> "style.toml")
+      -- style.toml passes the reading stage too (golem-parser ADR 0009)
+      let styleRead = traverse (readSourceFile styleFid "style.toml") styleBytes
+          styleText = fromRight Nothing styleRead
+      case first (map noFix . rfDiagnostics) styleRead >>= loadStyle styleFid of
         -- style.toml is where its errors point (golem-project ADR 0006)
-        Left ds -> pure (Left (ProjectFailure ds (Map.insert styleFid (SourceInfo "style.toml" (mkLineIndex (fromMaybe "" styleText))) (sourceInfos project))))
+        Left ds -> pure (Left (ProjectFailure ds (Map.insert styleFid (maybe (SourceInfo "style.toml" (mkLineIndex "")) (readInfo "style.toml") styleBytes) (sourceInfos project))))
         Right style
           | hasErrors synDiags -> do
               assets <- loadAssets root project
@@ -200,6 +206,15 @@ readMaybeText :: FilePath -> IO (Maybe Text)
 readMaybeText p = do
   e <- doesFileExist p
   if e then Just . TE.decodeUtf8Lenient <$> BS.readFile p else pure Nothing
+
+readMaybeBytes :: FilePath -> IO (Maybe BS.ByteString)
+readMaybeBytes p = do
+  e <- doesFileExist p
+  if e then Just <$> BS.readFile p else pure Nothing
+
+-- | golem fmt does not format style.toml, so its G0103 has no fix (golem-parser ADR 0009).
+noFix :: Diagnostic -> Diagnostic
+noFix d = d {diagFixes = []}
 
 -- | A deferred expression; G0208 is at the inline @sp@ (golem-eval ADR 0003).
 evalDeferred :: DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text

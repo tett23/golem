@@ -137,6 +137,25 @@ tests =
         [c | d <- fromMaybe [] (Map.lookup "loose.gm" (diagnosticsFor ws)), let { DiagnosticCode c = diagCode d }] @?= []
         ws' <- updateFile ws0 "loose.gm" "Full fathom five\nOf his bones\n"
         [c | d <- fromMaybe [] (Map.lookup "loose.gm" (diagnosticsFor ws')), let { DiagnosticCode c = diagCode d }] @?= ["G0501"],
+      -- golem-parser ADR 0009
+      testCase "an empty expression outside the project is one G0120, and hover and completion still work" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "loose.gm" "[=]\n\n[= 1 + 2]\n\n[co\n"
+        let src = textOf ws "loose.gm"
+        filter (== "G0120") (codesOf ws "loose.gm") @?= ["G0120"]
+        -- the evaluation diagnostics go with a syntax error
+        filter (`notElem` ["G0117", "G0120"]) (codesOf ws "loose.gm") @?= []
+        assertBool "hover" (isJust (hover ws "loose.gm" (offsetIn src "1 + 2" 0)))
+        assertBool "completion" ("color" `elem` map cmpLabel (completions ws "loose.gm" (offsetIn src "[co" 3))),
+      testCase "a buffer with CR or a BOM is G0103 or G0102, in and outside the project" $ do
+        ws0 <- openWorkspace root
+        let cases = [("b.gm", "@label second\r\n# 次の章\n", "G0103"), ("b.gm", "\xFEFF@label second\n# 次の章\n", "G0102"), ("loose.gm", "本文\r\n", "G0103"), ("loose.gm", "\xFEFF本文\n", "G0102")]
+        mapM_
+          ( \(p, t, c) -> do
+              ws <- updateFile ws0 p t
+              assertBool (show (p, codesOf ws p)) (c `elem` codesOf ws p)
+          )
+          cases,
       testCase "definition: a style defined in the file (docs/adr ADR 0014)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@style-def paragraph letter\n@style-def paragraph verse line-breaks=join\n\n@label second\n# 次の章\n\n@style letter\n本文。\n\n@style verse\n詩。\n\n@style quote\n引用。\n"
@@ -436,3 +455,7 @@ session spec = do
             found@(_ : _) <- [d | d <- ds, diagCode d == Just (L.InR "G0403")] ->
               pure found
         _ -> missingLabel path
+
+-- | The codes of the diagnostics of a file.
+codesOf :: Workspace -> FilePath -> [Text]
+codesOf ws p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
