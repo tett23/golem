@@ -1,0 +1,17 @@
+[
+  {
+    "id": "jlreq",
+    "type": "report",
+    "title": "日本語組版処理の要件",
+    "publisher": "W3C",
+    "issued": {"date-parts": [[2020]]},
+    "URL": "https://www.w3.org/TR/jlreq/"
+  },
+  {
+    "id": "jisx4061",
+    "type": "standard",
+    "title": "JIS X 4061:1996 日本語文字列照合順番",
+    "publisher": "日本規格協会",
+    "issued": {"date-parts": [[1996]]}
+  }
+]

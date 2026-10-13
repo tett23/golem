@@ -4,3 +4,5 @@ build/
 cabal.project.local
 .claude/settings.local.json
 /dist/
+/manual/fonts/
+/manual/build/

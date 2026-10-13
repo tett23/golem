@@ -37,6 +37,11 @@ done
 }
 ARCHIVE=$1
 VERSION=$2
+# the steps below run in a temporary directory, which is removed at the end
+case "$DETERMINISM" in
+  "" | /*) ;;
+  *) DETERMINISM=$(pwd)/$DETERMINISM ;;
+esac
 
 fail() {
   printf 'smoke: %s\n' "$*" >&2

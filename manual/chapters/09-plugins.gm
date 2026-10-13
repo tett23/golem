@@ -1,0 +1,82 @@
+# プラグイン
+
+Golem の組み込みのコマンドでは足りないとき、プラグイン[index reading=ぷらぐいん: プラグイン]で機能を加えられます。
+たとえば、本文のすべての漢字に辞書で振り仮名を付ける処理は、Golem には組み込まれていません。
+こうした処理を、プラグインとして配布されたものを取り込んで使います。
+
+## プラグインでできること
+
+プラグインには二つの種類があります。
+
+- コマンド：[style code: \[furigana: ...\]] のように、原稿から角括弧で呼び出します。組み込みのコマンドと同じように、段落の中に要素を返します。
+- フィルタ：原稿のファイル一つ分の中身を受け取り、書き換えて返します。本文の全体を対象にする処理に使います。
+
+プラグインは WebAssembly（wasm）のファイルとして配布されます。
+
+## プラグインを使う
+
+使うプラグインは、[style code: manifest.toml] の [style code: \[plugins.<名前>\]] に、配布物の URL を書いて宣言します。
+
+```toml
+[plugins.furigana]
+url = "https://example.com/golem-furigana/v1.0.0/furigana.wasm"
+```
+
+URL は HTTPS に限ります。
+版を固定した URL（リリースごとの配布物の URL など）を書いてください。
+
+宣言したら、[style code: golem plugin lock] を実行します。
+
+```sh
+golem plugin lock
+```
+
+このコマンドは、配布物を取得し、そのハッシュをプロジェクトの [style code: plugins.lock] に書き込みます。
+[style code: plugins.lock] は手で編集せず、原稿と一緒に Git に入れます。
+同じ URL の中身が後から差し替えられても、ハッシュが合わなければエラーにして、知らないプラグインを動かさないためです。
+
+取得した配布物は、利用者のキャッシュのディレクトリ（[style code: ~/.cache/golem/plugins] など）に置きます。
+[style code: golem build] はキャッシュからだけ読み、ネットワークには接続しません。
+別の機械でプロジェクトを取り出したときは、[style code: golem plugin fetch] で [style code: plugins.lock] のとおりに配布物を取得してから組みます。
+
+```sh
+golem plugin fetch
+golem build
+```
+
+## 組み込みのコマンドを置き換える
+
+プラグインは、ルビや強調のような見た目に関わる組み込みのコマンドを置き換えられます。
+置き換えるときは、[style code: overrides] に置き換えるコマンドの名前を書きます。
+
+```toml
+[plugins.furigana]
+url = "https://example.com/golem-furigana/v1.0.0/furigana.wasm"
+overrides = ["ruby"]
+```
+
+書いていない名前は置き換わりません。
+目次、注、索引、相互参照のように、本の構造に関わるコマンドは置き換えられません。
+
+## フィルタを適用する
+
+フィルタは、[style code: \[\[filters\]\]] で、どのプラグインのどのフィルタを、どのファイルに適用するかを書きます。
+
+```toml
+[[filters]]
+plugin = "furigana"
+filter = "total-ruby"
+files = ["chapters/01.gm", "chapters/02.gm"]
+```
+
+[style code: \[\[filters\]\]] を複数書くと、書いた順に適用します。
+
+## プラグインを安全に動かすしくみ
+
+プラグインは、外から取り込んだプログラムです。
+Golem は、プラグインに、ファイル、ネットワーク、時計、乱数を渡しません。
+プラグインは、渡された原稿の一部を受け取って結果を返すことしかできません。
+このため、プラグインを使っても、同じ入力から同じ出力が得られる性質は崩れません。
+
+プラグインが返した結果は、Golem が検査してから使います。
+形の正しくない結果は、エラーになります。

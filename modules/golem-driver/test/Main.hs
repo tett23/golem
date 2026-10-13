@@ -245,7 +245,11 @@ tests =
             a <- buildRealPdf True
             b <- buildRealPdf False
             a @?= b
-            assertBool "OpenType program" ("/Subtype /OpenType" `BS.isInfixOf` a)
+            -- the bare CFF, not the OpenType font: a viewer that takes the
+            -- codes of a CID-keyed CFF wrapped in OpenType as glyph IDs
+            -- (PDFium) draws no Japanese
+            assertBool "bare CFF program" ("/Subtype /CIDFontType0C" `BS.isInfixOf` a)
+            assertBool "no OpenType program" (not ("/Subtype /OpenType" `BS.isInfixOf` a))
             assertBool "vertical font" ("/Identity-V" `BS.isInfixOf` a)
             streams <- inflateAll a
             -- 「は」(U+306F) and 「じ」(U+3058) of 「はじめに」 are mapped back to text
@@ -272,10 +276,7 @@ tests =
             let source = T.unwords (replicate 24 "well-known") <> "\n"
             pdf <- miniPdf fakeProvider False horizontalStyle source []
             contents <- pageContents pdf
-            let occurrences c = case BS.breakSubstring "<002D>" c of
-                  (_, rest) | BS.null rest -> 0 :: Int
-                  (_, rest) -> 1 + occurrences (BS.drop 6 rest)
-            sum (map occurrences contents) @?= T.count "-" source,
+            sum (map (length . occurrences "<002D>") contents) @?= T.count "-" source,
           testCase "fonts and layout are not touched unless PDF is a target" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
             copyTree fixture tmp
             BS.writeFile (tmp </> "style.toml") pdfStyle

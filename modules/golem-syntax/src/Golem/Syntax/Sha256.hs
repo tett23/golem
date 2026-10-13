@@ -78,21 +78,29 @@ k =
     0xc67178f2
   ]
 
-h0 :: [Word32]
-h0 = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
+{- | The eight working variables, strict, so that each block is computed
+when it is folded in and no thunks pile up across the blocks of a large
+input (a list kept its elements unevaluated until the end).
+-}
+data State = State !Word32 !Word32 !Word32 !Word32 !Word32 !Word32 !Word32 !Word32
 
-pad :: ByteString -> ByteString
-pad msg =
-  let len = BS.length msg
-      bitLen = fromIntegral len * 8 :: Integer
-      zeros = (55 - len) `mod` 64
-   in BS.concat [msg, BS.singleton 0x80, BS.replicate zeros 0, BS.pack [fromIntegral (bitLen `shiftR` (8 * i)) | i <- [7, 6 .. 0]]]
+h0 :: State
+h0 = State 0x6a09e667 0xbb67ae85 0x3c6ef372 0xa54ff53a 0x510e527f 0x9b05688c 0x1f83d9ab 0x5be0cd19
+
+{- | The last bytes of the message (fewer than 64) with the padding: the
+full blocks before them are read from the message itself, not copied.
+-}
+padTail :: Int -> ByteString -> ByteString
+padTail total rest =
+  let bitLen = fromIntegral total * 8 :: Integer
+      zeros = (55 - BS.length rest) `mod` 64
+   in BS.concat [rest, BS.singleton 0x80, BS.replicate zeros 0, BS.pack [fromIntegral (bitLen `shiftR` (8 * i)) | i <- [7, 6 .. 0]]]
 
 word :: ByteString -> Int -> Word32
 word b i = foldl' (\acc j -> (acc `shiftL` 8) .|. fromIntegral (BS.index b (i + j))) 0 [0 .. 3]
 
-block :: [Word32] -> ByteString -> [Word32]
-block hs chunk =
+block :: State -> ByteString -> State
+block hs@(State a0 b0 c0 d0 e0 f0 g0 h0') chunk =
   let -- a lazily self-referential array: each entry refers to earlier ones
       w :: Array Int Word32
       w = listArray (0, 63) [entry i | i <- [0 .. 63]]
@@ -102,25 +110,25 @@ block hs chunk =
             let s0 x = rotateR x 7 `xor` rotateR x 18 `xor` shiftR x 3
                 s1 x = rotateR x 17 `xor` rotateR x 19 `xor` shiftR x 10
              in s1 (w ! (i - 2)) + w ! (i - 7) + s0 (w ! (i - 15)) + w ! (i - 16)
-      schedule = elems w
-      step [a, b, c, d, e, f, g, h] (ki, wi) =
+      step (State a b c d e f g h) (ki, wi) =
         let s1 = rotateR e 6 `xor` rotateR e 11 `xor` rotateR e 25
             ch = (e .&. f) `xor` (complement e .&. g)
             t1 = h + s1 + ch + ki + wi
             s0 = rotateR a 2 `xor` rotateR a 13 `xor` rotateR a 22
             maj = (a .&. b) `xor` (a .&. c) `xor` (b .&. c)
             t2 = s0 + maj
-         in [t1 + t2, a, b, c, d + t1, e, f, g]
-      step st _ = st
-      final = foldl' step hs (zip k schedule)
-   in zipWith (+) hs final
+         in State (t1 + t2) a b c (d + t1) e f g
+      State a1 b1 c1 d1 e1 f1 g1 h1 = foldl' step hs (zip k (elems w))
+   in State (a0 + a1) (b0 + b1) (c0 + c1) (d0 + d1) (e0 + e1) (f0 + f1) (g0 + g1) (h0' + h1)
 
 sha256 :: ByteString -> ByteString
 sha256 msg =
-  let p = pad msg
-      chunks = [BS.take 64 (BS.drop (64 * i) p) | i <- [0 .. BS.length p `div` 64 - 1]]
-      hs = foldl' block h0 chunks
-   in BS.pack (concatMap bytes hs)
+  let len = BS.length msg
+      full = len `div` 64
+      blocksOf p = [BS.take 64 (BS.drop (64 * i) p) | i <- [0 .. BS.length p `div` 64 - 1]]
+      chunks = [BS.take 64 (BS.drop (64 * i) msg) | i <- [0 .. full - 1]] ++ blocksOf (padTail len (BS.drop (64 * full) msg))
+      State a b c d e f g h = foldl' block h0 chunks
+   in BS.pack (concatMap bytes [a, b, c, d, e, f, g, h])
   where
     bytes :: Word32 -> [Word8]
     bytes w = [fromIntegral (w `shiftR` s) | s <- [24, 16, 8, 0]]

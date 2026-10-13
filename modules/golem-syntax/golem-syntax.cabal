@@ -35,6 +35,8 @@ test-suite golem-syntax-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  -- a heap limit, so that a hash that keeps its state unevaluated fails
+  ghc-options:      -rtsopts "-with-rtsopts=-M64m"
   build-depends:
     , base
     , bytestring

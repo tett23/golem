@@ -1,0 +1,55 @@
+name: Docs
+
+# The checks of the ADRs and the documents. They run on every change, documents
+# only included, apart from the build of ci.yml, so that a cancelled run of
+# ci.yml or a call of it from release.yml does not touch them
+# (docs/adr/0021-docs-workflow-and-ci-gate.md).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# the same groups as ci.yml (docs/adr/0009)
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('docs-pr-{0}', github.event.pull_request.number) || format('docs-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  adr:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # status-line and link-only changes to committed ADRs are allowed;
+      # unlinked ADR references, ADRs without exactly one status line, and
+      # changes to committed records (docs/audit/, docs/audits/,
+      # docs/benchmarks/, docs/benchmark/) fail
+      # (docs/adr/0010, docs/adr/0011, docs/adr/0012)
+      - uses: tett23/adr-guard@v0.8.1
+        with:
+          allow-status: true
+          allow-links: true
+          base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+  # A pull request that changes the specification updates the manual too,
+  # or says that it does not need to with the trailer "Manual: unchanged"
+  # (docs/adr/0022-manual-as-typesetting-sample.md)
+  manual:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: The manual follows the specification
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: sh scripts/manual/check-updated.sh "$PR_BASE" "$PR_HEAD"

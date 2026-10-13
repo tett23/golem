@@ -1,0 +1,118 @@
+# 出力
+
+Golem は、一つの原稿から PDF、HTML、EPUB、プレーンテキストの四つを作ります。
+四つの形式は、見た目までは同じになりません。
+本文、見出し、注、図版といった中身はどの形式でも同じで、ページ番号や柱のようにページがあって初めて決まるものは、形式ごとに表し方が変わります。
+
+## PDF
+
+```sh
+golem build --target pdf
+```
+
+PDF は [style code: build/pdf/] に書かれます。
+ファイルの名前は、[style code: manifest.toml] の [style code: id] から作ります。
+
+PDF は、印刷用の規格 PDF/X-4 に合わせて書きます。
+書体は、使った文字だけを含む形で埋め込みます。
+写真などの画像は、色を変換せず、画像の色の情報（ICC プロファイル）を付けたまま埋め込みます。
+色の情報のない RGB の画像は、sRGB の画像として扱います。
+
+PDF/X-4 に合っているかは Golem 自身でも確かめていますが、印刷所に入稿する前には、Acrobat などのプリフライトの機能で確認してください。
+
+@label print-pdf
+## 入稿用の PDF
+
+日本の印刷所に入稿する PDF には、塗り足し[index reading=ぬりたし: 塗り足し]とトンボ[index reading=とんぼ: トンボ]を付けます。
+塗り足しは、仕上がりの寸法の外側に設ける領域で、断裁がずれても紙の端に白い筋が出ないようにするためのものです。
+トンボは、断裁の位置を示すために、仕上がりの寸法の外側に描く線です。
+
+塗り足しの幅は、[style code: style.toml] の [style code: \[page\]] に書きます。
+日本の印刷所では 3mm が多く使われます。
+
+```toml
+[page]
+size = "A6"
+binding = "right"
+writing-mode = "vertical"
+bleed = "3mm"
+```
+
+トンボは、[style code: golem build] の [style code: --marks] で付けます。
+
+```sh
+golem build --target pdf --marks japanese
+```
+
+- [style code: --marks japanese]：日本式のトンボ（仕上がりの線と塗り足しの線の二重）を付けます。
+- [style code: --marks western]：欧文の一重のトンボを付けます。
+- [style code: --marks none]：トンボを付けません。既定はこれです。
+
+日本式のトンボは、塗り足しの幅を二本の線の間隔で示すので、[style code: bleed] を書いていないとエラーになります。
+画面で読むための PDF と入稿用の PDF は、同じ原稿から [style code: --marks] を変えて作り分けます。
+
+@label fig-crop-marks
+@figure images/crop-marks.png alt="golem new で作った本に、塗り足しと日本式のトンボを付けたページ" wrap=end width=12zw
+  塗り足しと日本式のトンボを付けたページ。
+
+図[ref-number fig-crop-marks]は、[style code: golem new] で作った本に [style code: bleed = "3mm"] を書き、[style code: --marks japanese] を付けて組んだページです。
+
+## HTML
+
+```sh
+golem build --target html
+```
+
+HTML は [style code: build/html/] に、原稿のファイルごとに一つずつ書かれます。
+[style code: index.xhtml] が入り口です。
+書体のファイルとスタイルシートも同じディレクトリに置くので、ディレクトリごとサーバーに置けば、そのまま読めます。
+
+HTML は、画面の幅に合わせて文章を流し込む形式なので、版面、柱、ノンブルはありません。
+[style code: style.toml] からは、書体、文字スタイル、段落スタイル、色、番号の書式を使います。
+脚注は章の終わりにまとめ、本文の番号と相互にリンクします。
+傍注は、画面が広ければ余白に、狭ければ段落の直後に置きます。
+コードブロックは、言語の名前を書いていれば構文に応じて色分けします。
+
+HTML の見た目を、スタイルシートを直接書いて変える方法はありません。
+見た目は [style code: style.toml] で決め、PDF と同じ設定から作ります。
+
+## EPUB
+
+```sh
+golem build --target epub
+```
+
+EPUB は [style code: build/epub/book.epub] に書かれます。
+脚注は、電子書籍の端末でポップアップとして表示される形で書きます。
+傍注は、段落の直後に置きます。
+本の識別子には、[style code: \[targets.epub\]] に電子版の ISBN を書いていればそれを、なければ [style code: manifest.toml] の [style code: id] を使います。
+
+## プレーンテキスト
+
+```sh
+golem build --target text
+```
+
+プレーンテキストは、ブログなどに文章を転載するための形式です。
+[style code: build/text/vertical/] に縦書き用、[style code: build/text/horizontal/] に横書き用のテキストを、原稿のファイルごとに書きます。
+二つの違いは数の書き方です。
+[style code: \[number-text 10\]] は、縦書き用では「十」、横書き用では「10」になります。
+
+ルビは「組版（くみはん）」のように親文字の後に括弧で書き、注は章の終わりにまとめます。
+索引は出力しません。
+
+## 同じ原稿から同じ出力
+
+Golem は、同じ入力から、いつでも同じバイト列を出力します。[index reading=けっていせい: 決定性]
+入力とは、原稿、[style code: manifest.toml]、[style code: style.toml]、画像、書体のファイル、プラグイン、[style code: --marks] と [style code: --profile] の指定、それに Golem 自身の版です。
+
+組んだ日時は、出力に入りません。
+PDF の作成日などには、[style code: manifest.toml] の [style code: date] を書き込みます。
+組むたびに日時が変わると、中身が同じでも PDF のバイト列が変わってしまうからです。
+
+この性質があると、原稿や設定を変えたときに、変わったページだけを見つけられます。
+CI で毎回組み、前の版の PDF とページの画像を比べれば、崩れたページだけが差分として残ります。
+
+同じ出力を保証しているのは、PDF、HTML、プレーンテキストです。
+EPUB は、中の zip の時刻と並び順の扱いをまだ決めていないので、同じバイト列になることを保証していません。
+Golem の版を上げると、同じ原稿からでも出力は変わることがあります。
