@@ -90,6 +90,8 @@ data Mark
     StyledGlyphRun !RunStyle !FontRef !Sp ![(GlyphId, Sp, Sp)]
   | -- | marks drawn inside q and Q, so the graphics state is restored
     Saved ![Mark]
+  | -- | marks drawn with the origin moved, inside q and Q (ADR 0004)
+    Translated !Sp !Sp ![Mark]
   deriving stock (Eq, Show)
 
 data Page = Page
@@ -212,6 +214,7 @@ contentStream fontNames imageNames marks = BL.toStrict (B.toLazyByteString (mcon
               <> "ET Q"
               <> nl
       Saved ms -> "q" <> nl <> mconcat (map mark ms) <> "Q" <> nl
+      Translated x y ms -> "q 1 0 0 1 " <> num x <> sp <> num y <> " cm" <> nl <> mconcat (map mark ms) <> "Q" <> nl
     hex4 g = B.string7 (printf "%04X" g)
 
 -- ------------------------------------------------------------------ serialization
@@ -256,7 +259,7 @@ writePdf :: Document -> ByteString
 writePdf doc =
   let pages = docPages doc
       fontOrder = nub [f | p <- pages, m <- pageContent p, f <- fontsOf m]
-      imageOrder = nub [i | p <- pages, Image i _ <- pageContent p]
+      imageOrder = nub [i | p <- pages, m <- pageContent p, i <- imagesOf m]
       fontNames = Map.fromList (zip fontOrder [1 ..])
       imageNames = Map.fromList (zip imageOrder [1 ..])
       nPages = length pages
@@ -354,6 +357,12 @@ writePdf doc =
       RotatedGlyphRun f _ _ -> [f]
       StyledGlyphRun _ f _ _ -> [f]
       Saved ms -> concatMap fontsOf ms
+      Translated _ _ ms -> concatMap fontsOf ms
+      _ -> []
+    imagesOf = \case
+      Image i _ -> [i]
+      Saved ms -> concatMap imagesOf ms
+      Translated _ _ ms -> concatMap imagesOf ms
       _ -> []
 
 fontObjects :: Int -> Font -> [Obj]

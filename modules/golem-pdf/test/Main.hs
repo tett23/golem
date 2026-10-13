@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Codec.Compression.Zlib qualified as Z
+import Control.Monad (forM_)
 import Data.Bits (shiftR)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -913,6 +914,101 @@ utf16FromHex h =
       bytes = BS.pack [fromIntegral n | p <- pairs (BC.unpack h), (n, _) <- take 1 (readHex p :: [(Integer, String)])]
    in TE.decodeUtf16BE (BS.drop 2 bytes)
 
+-- | 3mm, 10mm and 13mm in sp (ADR 0004).
+mm3, mm10, mm13 :: Sp
+mm3 = 557314
+mm10 = 1857713
+mm13 = 2415027
+
+-- | A trimmed page size for the crop mark tests.
+trimSize :: (Sp, Sp)
+trimSize = (297 * 65536, 420 * 65536)
+
+-- | Whether the interiors of two rectangles meet.
+overlaps :: Rect -> Rect -> Bool
+overlaps (Rect x y w h) (Rect x' y' w' h') = x < x' + w' && x' < x + w && y < y' + h' && y' < y + h
+
+-- | Whether the first rectangle lies inside the second.
+within :: Rect -> Rect -> Bool
+within (Rect x y w h) (Rect ox oy ow oh) = x >= ox && y >= oy && x + w <= ox + ow && y + h <= oy + oh
+
+boxesOf :: Sheet -> (Rect, Rect, Rect)
+boxesOf s = (shMedia s, shTrim s, shBleed s)
+
+marksTests :: [TestTree]
+marksTests =
+  let (w, h) = trimSize
+      b = mm3
+   in [ testCase "no marks and no bleed: the three boxes are the trimmed page" $ do
+          let s = sheet Nothing 0 (w, h)
+          boxesOf s @?= (Rect 0 0 w h, Rect 0 0 w h, Rect 0 0 w h)
+          shOrigin s @?= 0,
+        testCase "bleed without marks: the MediaBox is the BleedBox" $ do
+          let s = sheet Nothing b (w, h)
+          boxesOf s @?= (Rect 0 0 (w + 2 * b) (h + 2 * b), Rect b b w h, Rect 0 0 (w + 2 * b) (h + 2 * b))
+          shOrigin s @?= b,
+        testCase "Japanese marks with 3mm of bleed" $ do
+          let s = sheet (Just Japanese) b (w, h)
+              m = b + mm13
+          shOrigin s @?= m
+          boxesOf s @?= (Rect 0 0 (w + 2 * m) (h + 2 * m), Rect m m w h, Rect (m - b) (m - b) (w + 2 * b) (h + 2 * b)),
+        testCase "Western marks without bleed start 3mm out" $
+          shOrigin (sheet (Just Western) 0 (w, h)) @?= mm3 + mm13,
+        testCase "every sheet passes the page box checks" $
+          checkPdfX [boxesOf (sheet ms bl (w, h)) | ms <- [Nothing, Just Japanese, Just Western], bl <- [0, b]] @?= [],
+        testCase "24 Japanese and 16 Western lines, outside the BleedBox and inside the MediaBox" $ do
+          length (markRules Japanese b (w, h)) @?= 24
+          length (markRules Western b (w, h)) @?= 16
+          length (markRules Western 0 (w, h)) @?= 16
+          forM_ [(Japanese, b), (Western, b), (Western, 0)] $ \(st, bl) -> do
+            let s = sheet (Just st) bl (w, h)
+                m = shOrigin s
+                Rect bx by bw bh = shBleed s
+                Rect mx my mw mh = shMedia s
+                bleedT = Rect (bx - m) (by - m) bw bh
+                mediaT = Rect (mx - m) (my - m) mw mh
+            forM_ (markRules st bl (w, h)) $ \r -> do
+              assertBool ("in the bleed: " <> show (st, bl, r)) (not (overlaps r bleedT))
+              assertBool ("outside the media: " <> show (st, bl, r)) (within r mediaT),
+        testCase "the four Japanese lines of the lower left corner" $ do
+          let o = b
+              l = mm10
+          take 4 (markRules Japanese b (w, h))
+            @?= [ Rect (-(o + l)) (-8192) l 16384,
+                  Rect (-(o + l)) (-b - 8192) l 16384,
+                  Rect (-8192) (-(o + l)) 16384 l,
+                  Rect (-b - 8192) (-(o + l)) 16384 l
+                ],
+        testCase "a translated mark moves the origin inside q and Q" $
+          contentStream Map.empty Map.empty [Translated 65536 131072 [Rule (Rect 0 0 65536 65536)]] @?= "q 1 0 0 1 1 2 cm\n0 0 1 1 re f\nQ\n",
+        testCase "images and fonts inside translated marks are page resources" $ do
+          let pdf = writePdf (documentWith [page [Translated 65536 65536 [Saved [Image (ImageRef 1) (Rect 0 0 65536 65536)], GlyphRun (FontRef 7) 65536 [(1, 0, 0)]]]])
+          assertBool "XObject" ("/XObject << /Im1 " `BS.isInfixOf` pdf)
+          assertBool "Font" ("/Font << /F1 " `BS.isInfixOf` pdf)
+          assertBool "jpeg" (jpeg `BS.isInfixOf` pdf),
+        testCase "a framed page without marks or bleed keeps its content" $ do
+          let content = [Rule (Rect 0 0 65536 65536)]
+          framePage Nothing 0 (w, h) content @?= Page (Rect 0 0 w h) (Rect 0 0 w h) (Rect 0 0 w h) content,
+        testCase "a framed page with Japanese marks draws them in CMYK over the moved content" $ do
+          let content = [Rule (Rect 0 0 65536 65536)]
+              m = b + mm13
+          case pageContent (framePage (Just Japanese) b (w, h) content) of
+            [Translated x y inner] -> do
+              (x, y) @?= (m, m)
+              inner @?= content <> [Saved (SetColor (Swatch 100 100 100 100) : map Rule (markRules Japanese b (w, h)))]
+            other -> assertFailure (show other),
+        testCase "qpdf --check accepts a page with Japanese marks (when qpdf is installed)" $ do
+          qpdf <- findExecutable "qpdf"
+          case qpdf of
+            Nothing -> pure ()
+            Just exe -> withSystemTempDirectory "golem-pdf" $ \dir -> do
+              let path = dir </> "marks.pdf"
+                  framed = framePage (Just Japanese) b (w, h) [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]
+              BS.writeFile path (writePdf (documentWith [framed]) {docPdfX = Just (PdfX "fake" "JC200103" [])})
+              (code, out, err) <- readProcessWithExitCode exe ["--check", path] ""
+              assertEqual (out <> err) ExitSuccess code
+      ]
+
 producerTests :: [TestTree]
 producerTests =
   [ testCase "the information dictionary has the Producer without an output intent" $ do
@@ -1070,6 +1166,7 @@ tests =
         assertBool "xref" (xrefConsistent pdf)
         checkPdfX [(pageMediaBox p, pageTrimBox p, pageBleedBox p) | p <- docPages sample] @?= []
         checkPdfX [(Rect 0 0 10 10, Rect 0 0 10 10, Rect (-1) 0 10 10)] @?= [1],
+      testGroup "crop marks and bleed (ADR 0004)" marksTests,
       testGroup "Producer (ADR 0005)" producerTests,
       goldenVsString "XMP packet" "test/golden/xmp.xml" $
         pure (BL.fromStrict (xmpPacket (PdfX "" "JC200103" ["山田 太郎"]) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
@@ -1085,10 +1182,13 @@ tests =
     ]
   where
     sp = Gen.integral (Range.linearFrom 0 (-1000000) 100000000)
+    -- translated marks nest other marks (ADR 0004)
     mark =
-      Gen.choice
+      Gen.recursive
+        Gen.choice
         [ GlyphRun (FontRef 7) <$> sp <*> Gen.list (Range.linear 0 5) ((,,) <$> Gen.int (Range.linear 0 3) <*> sp <*> sp),
           Rule <$> (Rect <$> sp <*> sp <*> sp <*> sp),
           SetColor <$> (Swatch <$> pct <*> pct <*> pct <*> pct)
         ]
+        [Translated <$> sp <*> sp <*> Gen.list (Range.linear 0 3) mark]
     pct = Gen.int (Range.linear 0 100)

@@ -10,7 +10,7 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.List (isSuffixOf, nub, sort)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
@@ -26,6 +26,7 @@ import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..), markPages)
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.Pdf (Font (..), FontProgram (..), spToPt)
+import Golem.Pdf qualified as P
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
 import Golem.Project.Style (dimToSp, parseDim, parseStyle)
@@ -291,6 +292,7 @@ tests =
       testGroup "PDF index and bibliography (ADR 0007)" indexTests,
       testGroup "PDF tables (ADR 0008)" tableTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
+      testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
       testGroup
         "public-domain books"
         [ testCase "The Tempest builds horizontally to every target" $ do
@@ -341,7 +343,7 @@ verseLines style src = withVerseProject style src $ \tmp -> do
     Right e -> case evBook e of
       Nothing -> assertFailure (show (map diagCode (evDiagnostics e)))
       Just book -> do
-        r <- flowLines (FontProvider (\_ _ -> pure (Right fakeFonts))) (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty)
+        r <- flowLines (FontProvider (\_ _ -> pure (Right fakeFonts))) (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing)
         either (assertFailure . show) pure r
 
 verseTests :: [TestTree]
@@ -474,6 +476,121 @@ buildMini fonts parallel style source files = withSystemTempDirectory "golem-min
     _ -> pure Nothing
   pure (map diagCode (filter isError (brDiagnostics r)), pdf)
 
+-- | What a build of the one-chapter project left behind.
+data Built = Built
+  { bErrors :: ![Diagnostic],
+    bSources :: !(Map.Map FileId SourceInfo),
+    bPdf :: !(Maybe BS.ByteString),
+    bWritten :: ![FilePath],
+    bBuildDir :: !Bool
+  }
+
+{- | Builds the one-chapter project with a style.toml (if given) and changed
+options; PDF only and the fake fonts unless the options say otherwise.
+-}
+buildMarks :: (BuildOptions -> BuildOptions) -> Maybe BS.ByteString -> IO Built
+buildMarks f style = withSystemTempDirectory "golem-marks" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
+  forM_ style (BS.writeFile (tmp </> "style.toml"))
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "本文。\n")
+  r <- build (f (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider})
+  pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
+    [p] -> Just <$> BS.readFile p
+    _ -> pure Nothing
+  dir <- doesDirectoryExist (tmp </> "build")
+  pure (Built (filter isError (brDiagnostics r)) (brSources r) pdf (brWritten r) dir)
+
+-- | A built PDF; no errors allowed.
+marksPdf :: (BuildOptions -> BuildOptions) -> BS.ByteString -> IO BS.ByteString
+marksPdf f style = do
+  b <- buildMarks f (Just style)
+  assertEqual "no errors" [] (map diagCode (bErrors b))
+  maybe (assertFailure "no PDF") pure (bPdf b)
+
+-- | The A5 page of horizontalStyle with 3mm of bleed.
+bleedStyle :: BS.ByteString
+bleedStyle = replaceIn "size = \"A5\"\n" "size = \"A5\"\nbleed = \"3mm\"\n" horizontalStyle
+
+-- | The value of a page box, as written.
+boxOf :: BS.ByteString -> BS.ByteString -> BS.ByteString
+boxOf name pdf = BC.takeWhile (/= ']') (BS.drop (BS.length name + 3) (snd (BS.breakSubstring ("/" <> name <> " [") pdf)))
+
+-- | A rectangle as a page box is written.
+boxText :: Rect -> BS.ByteString
+boxText (Rect x y w h) = BC.unwords [TE.encodeUtf8 (spToPt v) | v <- [x, y, x + w, y + h]]
+
+-- | The document ID and the instance ID of the trailer.
+pdfIds :: BS.ByteString -> (BS.ByteString, BS.ByteString)
+pdfIds pdf =
+  let rest = BS.drop 6 (snd (BS.breakSubstring "/ID [<" pdf))
+      (a, rest') = BS.breakSubstring ">" rest
+   in (a, BC.takeWhile (/= '>') (BS.drop 3 rest'))
+
+-- | The trimmed size of the A5 page of horizontalStyle.
+a5Size :: IO (Integer, Integer)
+a5Size = case parseStyle (FileId 0) (TE.decodeUtf8 horizontalStyle) of
+  Right s -> either (assertFailure . show) (pure . pgPageSize) (pageGeometry s)
+  Left ds -> assertFailure (show ds)
+
+marksTests :: [TestTree]
+marksTests =
+  [ testCase "no bleed and no marks: the three boxes are the same and nothing is moved" $ do
+      pdf <- marksPdf id horizontalStyle
+      boxOf "MediaBox" pdf @?= boxOf "TrimBox" pdf
+      boxOf "MediaBox" pdf @?= boxOf "BleedBox" pdf
+      streams <- inflateAll pdf
+      assertBool "no cm" (not (any ("q 1 0 0 1 " `BS.isPrefixOf`) streams)),
+    testCase "3mm of bleed and Japanese marks: the boxes of the sheet, moved content and CMYK marks" $ do
+      pdf <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
+      (w, h) <- a5Size
+      let s = P.sheet (Just P.Japanese) 557314 (w, h)
+      boxOf "MediaBox" pdf @?= boxText (P.shMedia s)
+      boxOf "TrimBox" pdf @?= boxText (P.shTrim s)
+      boxOf "BleedBox" pdf @?= boxText (P.shBleed s)
+      streams <- inflateAll pdf
+      assertBool "moved" (any (\st -> "q 1 0 0 1 " `BS.isPrefixOf` st && "1 1 1 1 k" `BS.isInfixOf` st) streams)
+      qpdfCheck pdf,
+    testCase "3mm of bleed without marks: the MediaBox is the BleedBox, the TrimBox inside" $ do
+      pdf <- marksPdf id bleedStyle
+      (w, h) <- a5Size
+      boxOf "MediaBox" pdf @?= boxOf "BleedBox" pdf
+      boxOf "TrimBox" pdf @?= boxText (Rect 557314 557314 w h),
+    testCase "Japanese marks without bleed are G0702 at the top of style.toml, and no PDF" $ do
+      b <- buildMarks (\o -> o {optMarks = JapaneseMarks}) (Just horizontalStyle)
+      map diagCode (bErrors b) @?= [DiagnosticCode "G0702"]
+      [(fmap siPath (Map.lookup (spanFile (diagSpan d)) (bSources b)), spanStart (diagSpan d)) | d <- bErrors b] @?= [(Just "style.toml", 0)]
+      bPdf b @?= Nothing
+      w <- buildMarks (\o -> o {optMarks = WesternMarks}) (Just horizontalStyle)
+      map diagCode (bErrors w) @?= []
+      assertBool "Western PDF" (isJust (bPdf w)),
+    testCase "without style.toml, G0702 is at the top of manifest.toml" $ do
+      b <- buildMarks (\o -> o {optMarks = JapaneseMarks}) Nothing
+      [(fmap siPath (Map.lookup (spanFile (diagSpan d)) (bSources b)), spanStart (diagSpan d)) | d <- bErrors b] @?= [(Just "manifest.toml", 0)],
+    testCase "Japanese marks without bleed are not G0702 when PDF is not a target" $ do
+      b <- buildMarks (\o -> o {optMarks = JapaneseMarks, optTargets = Just [TargetHtml]}) (Just horizontalStyle)
+      map diagCode (bErrors b) @?= []
+      assertBool "HTML" (any (".xhtml" `isSuffixOf`) (bWritten b)),
+    testCase "golem check with Japanese marks and no bleed is G0702 and writes nothing" $ do
+      b <- buildMarks (\o -> o {optMarks = JapaneseMarks, optTargets = Nothing, optCheckOnly = True}) (Just horizontalStyle)
+      map diagCode (bErrors b) @?= [DiagnosticCode "G0702"]
+      bBuildDir b @?= False,
+    testCase "bleed in style.toml changes the instance ID" $ do
+      a <- marksPdf id horizontalStyle
+      b <- marksPdf id bleedStyle
+      assertBool "instance" (snd (pdfIds a) /= snd (pdfIds b)),
+    testCase "--marks and --profile change the instance ID, not the document ID" $ do
+      none <- marksPdf id bleedStyle
+      japanese <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
+      prod <- marksPdf (\o -> o {optProfile = Prod}) bleedStyle
+      fst (pdfIds none) @?= fst (pdfIds japanese)
+      assertBool "marks" (snd (pdfIds none) /= snd (pdfIds japanese))
+      assertBool "profile" (snd (pdfIds none) /= snd (pdfIds prod)),
+    testCase "with marks and bleed, two builds give the same bytes" $ do
+      a <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
+      b <- marksPdf (\o -> o {optMarks = JapaneseMarks, optParallel = False}) bleedStyle
+      a @?= b
+  ]
+
 -- | The golem-font provider that builds use by default.
 realProvider :: FontProvider
 realProvider = optFonts (defaultOptions "")
@@ -534,7 +651,10 @@ headingTests =
           files = [("fonts/sans.otf", sans)]
       a <- miniPdf realProvider True base "# Zebra\n\nquick\n" files
       b <- miniPdf realProvider True (base <> "\n[headings.1]\nfont = \"body\"\nsize = \"10pt\"\n") "# Zebra\n\nquick\n" files
-      a @?= b,
+      -- style.toml is an input of the instance ID (golem-pdf ADR 0004), so the trailer differs
+      let withoutId pdf = fst (BS.breakSubstring "/ID [" pdf)
+      withoutId a @?= withoutId b
+      assertBool "instance ID" (snd (pdfIds a) /= snd (pdfIds b)),
     testCase "heading roles: parallel and sequential, and two builds, give the same bytes" $ do
       (sans, serif) <- realLatinFonts
       let style = horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.heading]\nlatin = \"fonts/serif.ttf\"\n\n[headings.1]\nfont = \"heading\"\nsize = \"20pt\"\n"
@@ -674,7 +794,7 @@ layoutMini style source files = withSystemTempDirectory "golem-layout" $ \tmp ->
     Left ds -> pure (Left ds)
     Right e -> case (evBook e, pageGeometry (evStyle e)) of
       _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> pure (Left errs)
-      (Just book, Right geom) -> fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty) geom fakeFonts
+      (Just book, Right geom) -> fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing) geom fakeFonts
       (_, Left ds) -> pure (Left ds)
       (Nothing, _) -> pure (Left (filter isError (evDiagnostics e)))
 
@@ -958,7 +1078,7 @@ pagesMini manifestExtra style source files bib = withSystemTempDirectory "golem-
   case ev of
     Left ds -> pure (Left ds)
     Right e -> case (evBook e, filter isError (evDiagnostics e)) of
-      (Just book, []) -> layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] bib)
+      (Just book, []) -> layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] bib Nothing)
       (_, ds) -> pure (Left ds)
 
 -- | horizontalStyle with five lines a page.

@@ -39,8 +39,8 @@ data InspectAs = AsCst | AsAst | AsIr
 
 data Command
   = New FilePath Language Bool
-  | Build [Target] Profile Format
-  | Check Profile Format
+  | Build [Target] Profile CropMarks Format
+  | Check Profile CropMarks Format
   | PluginFetch
   | PluginLock
   | Inspect FilePath InspectAs
@@ -105,6 +105,13 @@ targetOpt =
     (choice "ターゲット" [("html", TargetHtml), ("epub", TargetEpub), ("text", TargetText), ("pdf", TargetPdf)])
     (long "target" <> metavar "html|epub|text|pdf" <> help "作るターゲット（省くとすべて）")
 
+-- | The crop marks of the PDF (golem-pdf ADR 0004).
+marksOpt :: Parser CropMarks
+marksOpt =
+  option
+    (choice "トンボの形" [("japanese", JapaneseMarks), ("western", WesternMarks), ("none", NoMarks)])
+    (long "marks" <> value NoMarks <> metavar "japanese|western|none" <> help "PDF に付けるトンボ（既定は none）")
+
 inspectAsOpt :: Parser InspectAs
 inspectAsOpt =
   option
@@ -117,8 +124,8 @@ commands =
     ( commandGroup "コマンド:"
         <> metavar "COMMAND"
         <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない")) "プロジェクトを作る"
-        <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> formatOpt) "出力を build/ に書く"
-        <> cmd "check" (Check <$> profileOpt <*> formatOpt) "出力を書かずに検査する"
+        <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> marksOpt <*> formatOpt) "出力を build/ に書く"
+        <> cmd "check" (Check <$> profileOpt <*> marksOpt <*> formatOpt) "出力を書かずに検査する"
         <> cmd
           "plugin"
           ( subparser
@@ -166,8 +173,8 @@ localize = intercalate "\n" . go . lines
 run :: Command -> IO ExitCode
 run = \case
   New dir lang noFonts -> newProject dir lang noFonts
-  Build tgs profile fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile}
-  Check profile fmt -> report fmt =<< build (defaultOptions ".") {optProfile = profile, optCheckOnly = True}
+  Build tgs profile marks fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks}
+  Check profile marks fmt -> report fmt =<< build (defaultOptions ".") {optProfile = profile, optCheckOnly = True, optMarks = marks}
   PluginFetch -> pluginFetch
   PluginLock -> pluginLock
   Inspect path mode -> inspect path mode

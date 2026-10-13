@@ -1,5 +1,5 @@
 使い方: golem build [--target html|epub|text|pdf] [--profile dev|prod] 
-                    [--format human|json]
+                    [--marks japanese|western|none] [--format human|json]
 
   出力を build/ に書く
 
@@ -7,5 +7,7 @@
   --target html|epub|text|pdf
                            作るターゲット（省くとすべて）
   --profile dev|prod       ビルドのプロファイル（既定は dev）
+  --marks japanese|western|none
+                           PDF に付けるトンボ（既定は none）
   --format human|json      診断の出力形式（既定は human）
   -h,--help                このヘルプを表示する

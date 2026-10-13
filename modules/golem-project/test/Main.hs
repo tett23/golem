@@ -155,7 +155,14 @@ tests =
         case parseStyle (FileId 0) "[fonts.gothic]\nja = \"g.otf\"\n\n[fonts.italic]\nlatin = \"i.otf\"\n\n[emphasis]\nbold-font = \"gothic\"\nitalic-font = \"italic\"\n" of
           Left ds -> assertFailure (show ds)
           Right s -> (stBoldFont s, stItalicFont s) @?= (Just "gothic", Just "italic")
-        fmap (\s -> (stBoldFont s, stItalicFont s)) (parseStyle (FileId 0) "[emphasis]\nstrong = \"italic\"\n") @?= Right (Nothing, Nothing)
+        fmap (\s -> (stBoldFont s, stItalicFont s)) (parseStyle (FileId 0) "[emphasis]\nstrong = \"italic\"\n") @?= Right (Nothing, Nothing),
+      testCase "[page] bleed (golem-pdf ADR 0004)" $ do
+        fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"3mm\"\n") @?= Right (Just 557314)
+        fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\n") @?= Right (Just 0)
+        codes (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"1zw\"\n") @?= ["G0306"],
+      testCase "marks is not a key of the manifest (golem-pdf ADR 0004)" $
+        withProject [("manifest.toml", manifest ["\"a.gm\""] <> "\n[targets.pdf]\nmarks = \"japanese\"\n"), ("a.gm", "")] $ \root ->
+          loadProject root >>= (@?= ["G0301"]) . codes
     ]
 
 specStyle :: Text

@@ -87,7 +87,9 @@ data Page = Page
   { pageSizeName :: !Text,
     pageBindingRight :: !Bool,
     pageVertical :: !Bool,
-    pageGrid :: !(Maybe Grid)
+    pageGrid :: !(Maybe Grid),
+    -- | the bleed around the trimmed page (golem-pdf ADR 0004); 0 by default
+    pageBleed :: !Sp
   }
   deriving stock (Eq, Show)
 
@@ -265,7 +267,13 @@ instance FromValue Page where
     binding <- enumKey "binding" ["right", "left"]
     wm <- enumKey "writing-mode" ["vertical", "horizontal"]
     grid <- optKey "grid"
-    pure (Page size (binding == Just "right") (wm == Just "vertical") grid)
+    bleed <-
+      dimKey "bleed" >>= \case
+        Nothing -> pure 0
+        Just (Abs s) -> pure s
+        -- the bleed does not depend on the size of the type (golem-pdf ADR 0004)
+        Just (Zw _) -> fail "塗り足しには zw を使えません"
+    pure (Page size (binding == Just "right") (wm == Just "vertical") grid bleed)
 
 instance FromValue FontRole where
   fromValue =

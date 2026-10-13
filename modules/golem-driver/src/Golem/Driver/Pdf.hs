@@ -120,7 +120,9 @@ data PdfInput = PdfInput
     -- | bytes of every input, for the instance ID
     piInputs :: ![ByteString],
     -- | the formatted entries of the bibliography by key (golem-driver ADR 0007)
-    piBibliography :: !(Map Text Text)
+    piBibliography :: !(Map Text Text),
+    -- | the crop marks (golem-pdf ADR 0004)
+    piMarks :: !(Maybe P.MarkStyle)
   }
 
 -- | The body font role: @body@, or the first role when there is none.
@@ -864,7 +866,6 @@ writeDocument :: PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P
 writeDocument inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
-      pageRect = Rect 0 0 pw ph
       vertical = pgVertical geom
       master = case Map.elems (pgMasters geom) of
         (m : _) -> Just m
@@ -1052,7 +1053,9 @@ writeDocument inp geom fonts layout intent =
               runningHead = [textAt (pick r) size h | r <- maybe [] pure (mgRunningHead m), Just h <- [heading]]
            in runningHead <> folio
       drawn = map drawPage (plPages layout)
-      pdfPages = [P.Page pageRect pageRect pageRect marks | (marks, _) <- drawn]
+      -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
+      bleed = maybe 0 pageBleed (stPage style)
+      pdfPages = [P.framePage (piMarks inp) bleed (pw, ph) marks | (marks, _) <- drawn]
       -- each glyph once per font, with the text of its first occurrence (golem-font ADR 0002)
       used = Map.map Map.toList (Map.fromListWith (Map.unionWith (\_ old -> old)) [(r, Map.singleton g t) | (_, us) <- reverse drawn, (r, g, t) <- reverse us])
       fontsUsed = Map.fromList [(r, lfEmbed fonts ix (odd k) gts) | (r@(P.FontRef k), gts) <- Map.toList used, let ix = k `div` 2]

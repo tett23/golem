@@ -68,8 +68,8 @@ golem new mybook
 | `golem new DIR [--language ja\|en] [--no-fonts]` | プロジェクトを作る。版面の設定と、配布元から取得したフォントを含む |
 | `golem plugin lock` | マニフェストのプラグインを取得し、ハッシュを `plugins.lock` に書く |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
-| `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る |
-| `golem check` | 出力を書かずに検査する |
+| `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none） |
+| `golem check [--profile dev\|prod] [--marks japanese\|western\|none]` | 出力を書かずに検査する |
 | `golem lint` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形する |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
@@ -83,6 +83,12 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 和文も合成の斜体で傾く。
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には商用のプリフライト（Acrobat や pdfToolbox など）で確認する。
+
+日本の印刷所に入稿する PDF は、`style.toml` の `[page]` に `bleed = "3mm"` を書き、`golem build --target pdf --marks japanese` で作る。
+塗り足しのない日本式のトンボはエラー（G0702）になる。
+欧文の一重のトンボは `--marks western` で付ける。
+閲覧用の PDF は `--marks` を付けずに作る。
+トンボの有無は PDF のインスタンス ID に入るので、閲覧用と入稿用の PDF は区別できる。
 フォントの OS/2 の `fsType` が埋め込みを禁じている場合はエラーになる。
 ビルドはプラグインをキャッシュからだけ読み、ネットワークに接続しない。
 診断は `--format json` で JSON にできる。
