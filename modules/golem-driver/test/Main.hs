@@ -33,7 +33,7 @@ import Golem.Pdf (Font (..), FontProgram (..), spToPt)
 import Golem.Pdf qualified as P
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
-import Golem.Project (Project (..))
+import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), LocalStyles (..), ParaStyleDef (..), RunningContent (..), dimToSp, noLocalStyles, noParaDef, parseDim, parseStyle)
 import Golem.Syntax
 import System.Directory (copyFile, createDirectoryIfMissing, createFileLink, doesDirectoryExist, findExecutable, listDirectory)
@@ -100,6 +100,7 @@ tests =
   testGroup
     "golem-driver (ADR 0001)"
     [ explainTests,
+      testGroup "project diagnostics (golem-project ADR 0006)" projectDiagnosticTests,
       evalDiagnosticTests,
       testGroup
         "version (docs/adr/0004)"
@@ -459,7 +460,7 @@ verseLines :: BS.ByteString -> T.Text -> IO ([Flow], [(Integer, Integer)])
 verseLines style src = withVerseProject style src $ \tmp -> do
   ev <- evaluateProject Dev tmp
   case ev of
-    Left ds -> assertFailure (show ds)
+    Left f -> assertFailure (show (pfDiagnostics f))
     Right e -> case evBook e of
       Nothing -> assertFailure (show (map diagCode (evDiagnostics e)))
       Just book -> do
@@ -724,12 +725,44 @@ withEntries style entries chapters others k = withSystemTempDirectory "golem-cha
   forM_ (chapters <> others) $ \(p, src) -> TIO.writeFile (tmp </> p) src
   k tmp
 
+-- | G0307 once per name and the positions of a failed load (golem-project ADR 0006).
+projectDiagnosticTests :: [TestTree]
+projectDiagnosticTests =
+  [ testCase "G0307 once per missing master page" $
+      withEntries "" ["\"a.gm\"", "{ file = \"b.gm\", master = \"nope\" }", "{ file = \"c.gm\", master = \"nope\" }"] [("a.gm", "一。\n"), ("b.gm", "二。\n"), ("c.gm", "三。\n")] [] $ \tmp -> do
+        ds <- g0307 tmp
+        ds @?= ["style.toml にないマスターページです: nope"],
+    testCase "no G0307 for a master page of style.toml" $
+      withEntries "[masters.body]\n" ["{ file = \"a.gm\", master = \"body\" }"] [("a.gm", "一。\n")] [] $ \tmp ->
+        g0307 tmp >>= (@?= []),
+    testCase "no G0307 after a syntax error" $
+      withEntries "" ["{ file = \"a.gm\", master = \"nope\" }"] [("a.gm", "[strong: 閉じない\n")] [] $ \tmp ->
+        g0307 tmp >>= (@?= []),
+    testCase "a failed style.toml is shown at style.toml" $
+      withEntries "[page]\nunknown = 1\n" ["\"a.gm\""] [("a.gm", "一。\n")] [] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optCheckOnly = True}
+        assertBool "style.toml is a source" (isJust (sourceFileId r "style.toml"))
+        let out = renderHuman (brSources r) (brDiagnostics r)
+        assertBool (T.unpack out) ("style.toml:" `T.isPrefixOf` out),
+    testCase "a missing chapter is shown at manifest.toml" $
+      withEntries "" ["\"nope.gm\""] [] [] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optCheckOnly = True}
+        let out = renderHuman (brSources r) (brDiagnostics r)
+        assertBool (T.unpack out) ("manifest.toml:1:1:" `T.isPrefixOf` out)
+  ]
+  where
+    g0307 tmp = do
+      ev <- evaluateProject Dev tmp
+      case ev of
+        Left f -> assertFailure (show (pfDiagnostics f))
+        Right e -> pure [diagMessage d | d <- evDiagnostics e, diagCode d == DiagnosticCode "G0307"]
+
 -- | The evaluated project of 'withChapters'; no errors allowed.
 evaluatedOk :: FilePath -> IO (Evaluated, Book)
 evaluatedOk tmp = do
   ev <- evaluateProject Dev tmp
   case ev of
-    Left ds -> assertFailure (show ds)
+    Left f -> assertFailure (show (pfDiagnostics f))
     Right e -> case (evBook e, filter isError (evDiagnostics e)) of
       (Just book, []) -> pure (e, book)
       (_, errs) -> assertFailure (show [(diagCode d, diagMessage d) | d <- errs])
@@ -823,7 +856,7 @@ inFileTests =
       withChapters "" [("c1.gm", "@import common.gm as c\n\n@style letter\n手紙。\n")] [("common.gm", "@style-def paragraph letter\n\n@set v = 1\n")] $ \tmp -> do
         ev <- evaluateProject Dev tmp
         case ev of
-          Left ds -> assertFailure (show ds)
+          Left f -> assertFailure (show (pfDiagnostics f))
           Right e -> assertBool "G0247" (DiagnosticCode "G0247" `elem` map diagCode (evDiagnostics e)),
     testCase "plain text: the first line of a style of the file" $
       withChapters "" [("c1.gm", "@style-def paragraph letter first-line-indent=1zw\n\n@style letter\n手紙。\n")] [] $ \tmp -> do
@@ -1560,7 +1593,7 @@ layoutMini style source files = withSystemTempDirectory "golem-layout" $ \tmp ->
   forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
   ev <- evaluateProject Dev tmp
   case ev of
-    Left ds -> pure (Left ds)
+    Left f -> pure (Left (pfDiagnostics f))
     Right e -> case (evBook e, pageGeometry (evStyle e)) of
       _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> pure (Left errs)
       (Just book, Right geom) -> fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e))) geom fakeFonts
@@ -1581,7 +1614,7 @@ layoutHeads manifest style sources = withSystemTempDirectory "golem-heads" $ \tm
   forM_ sources $ \(to, src) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) (TE.encodeUtf8 src)
   ev <- evaluateProject Dev tmp
   case ev of
-    Left ds -> assertFailure (show ds)
+    Left f -> assertFailure (show (pfDiagnostics f))
     Right e -> case (evBook e, pageGeometry (evStyle e)) of
       _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> assertFailure (show errs)
       (Just book, Right geom) -> do
@@ -2087,7 +2120,7 @@ pagesMini manifestExtra style source files bib = withSystemTempDirectory "golem-
   forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
   ev <- evaluateProject Dev tmp
   case ev of
-    Left ds -> pure (Left ds)
+    Left f -> pure (Left (pfDiagnostics f))
     Right e -> case (evBook e, filter isError (evDiagnostics e)) of
       (Just book, []) -> layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] bib Nothing Map.empty (chapterMasters (evProject e)))
       (_, ds) -> pure (Left ds)
@@ -2523,7 +2556,7 @@ styleFileTests :: [TestTree]
 styleFileTests =
   [ testCase "a missing font does not stop the evaluation" $ withStyleProject missingStyle [] $ \tmp -> do
       e <- evaluateProject Dev tmp
-      either (assertFailure . show) (const (pure ())) e,
+      either (assertFailure . show . pfDiagnostics) (const (pure ())) e,
     testCase "HTML, EPUB and plain text are written without the missing font, with one G0310 warning" $ withStyleProject missingStyle [] $ \tmp -> do
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub, TargetText]}
       codeSeverities r @?= [(DiagnosticCode "G0310", Warning)]
@@ -2538,7 +2571,7 @@ styleFileTests =
       calls <- newIORef (0 :: Int)
       r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = countingFonts calls}
       codeSeverities r @?= [(DiagnosticCode "G0802", Error)]
-      e <- evaluateProject Dev tmp >>= either (assertFailure . show) pure
+      e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
       map (spanFile . diagSpan) (brDiagnostics r) @?= [evStyleFile e]
       doesDirectoryExist (tmp </> "build/pdf") >>= assertBool "no PDF" . not
       readIORef calls >>= (@?= 0),

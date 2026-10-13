@@ -23,7 +23,7 @@ import Golem.Lsp.Server (runGolemLsp)
 import Golem.Parser (parseAst, parseFile)
 import Golem.Parser.CST (pretty)
 import Golem.Plugin.Lock (defaultCacheDir, fetchPlugins, httpsFetcher, lockPlugins, parseLock, renderLock)
-import Golem.Project (Project (..), SourceFile (..), loadProject)
+import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..), loadProject)
 import Golem.Project.Manifest (Manifest (..), PluginDecl (..), parseManifest)
 import Golem.Syntax
 import Options.Applicative
@@ -246,7 +246,7 @@ inspect path mode = do
         AsIr -> do
           ev <- evaluateProject Dev "."
           case ev of
-            Left eds -> TIO.hPutStr stderr (T.pack (show eds))
+            Left f -> TIO.hPutStr stderr (T.pack (show (pfDiagnostics f)))
             Right e -> forM_ (Map.elems (evResults e)) $ \res -> print (erDocument res) >> printf "CBOR: %d bytes\n" (BS.length (encodeDocument (erDocument res)))
       unless (null ds) $ TIO.hPutStr stderr (T.pack (show ds))
       pure ExitSuccess
@@ -273,7 +273,7 @@ formatFiles check files0 = do
     if null files0
       then
         loadProject "." >>= \case
-          Left ds -> putHuman Map.empty ds >> pure Nothing
+          Left f -> putHuman (pfSources f) (pfDiagnostics f) >> pure Nothing
           Right p -> pure (Just (map sfPath (Map.elems (projectSources p))))
       else pure (Just files0)
   case files of

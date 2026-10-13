@@ -2005,9 +2005,9 @@ manifest.toml の誤りです
 `manifest.toml` が TOML として読めないか、スキーマに合わないか、出力ターゲットが一つもない。
 `[source]` と章の項目の `[source]` のキー（`paragraph-separator` など）の未知のキーと不正な値、同じファイルを章の配列に二度並べて効く `[source]` の値が異なる場合も、この誤りとする。
 
-- メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、または TOML のスキーマの誤りの文言（未知のキー、値の型の誤り、`[source]` の不正な値など）に誤った箇所の経路を添えたもの
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）
-- ADR: ADR なし（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えた）
+- メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、`章は、ファイルのパス、表、配列のどれかで書きます`、または TOML のスキーマの誤りの文言（未知のキー、値の型の誤り、`[source]` の不正な値など）。スキーマの誤りには、`(.targets.html)` のように誤った箇所の経路を添える。経路が空のとき（ファイルの最上位の誤り）は添えない。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）。位置は、スキーマの誤りでは誤った値の位置、それ以外では `manifest.toml` の先頭である
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えた
 
 ### 主な原因
 
@@ -2030,20 +2030,19 @@ manifest.toml の誤りです
 
 ### 意味
 
-プロジェクトのルートに `manifest.toml` がないか、章や `@import` が指すファイルがない。
+章や `@import` が指すファイルがない。
+プロジェクトのルートに `manifest.toml` がないときは、この誤りではなく [G0316](#g0316) とする。
 
-- メッセージ: `manifest.toml がありません`、`ファイルがありません: <パス>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project`）
-- ADR: ADR なし
+- メッセージ: `ファイルがありません: <パス>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project`）。位置は、章なら `manifest.toml` の先頭、`@import` ならその `@import` のブロック全体である
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)
 
 ### 主な原因
 
-- プロジェクトのルートでない場所で `golem` を実行した。
 - 章や `@import` のパスの綴りを誤ったか、ファイルを置いていない。
 
 ### 直し方
 
-`golem` をプロジェクトのルートで実行しているかを確かめる。
 パスの綴りとファイルの置き場所を確かめる。
 
 ## G0303
@@ -2056,10 +2055,11 @@ manifest.toml の誤りです
 ### 意味
 
 章や `@import` のパスが、絶対パス、URL、またはプロジェクトのルートの外を指すパスである。
+シンボリックリンクを解決した実体がルートの外にあるときも、この誤りとする。
 
 - メッセージ: `絶対パスは使えません: <パス>`、`URL は使えません: <パス>`、`プロジェクトルートの外を指しています: <パス>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project`）
-- ADR: ADR なし
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project`）。位置は [G0302](#g0302) と同じである
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -2081,10 +2081,12 @@ manifest.toml の誤りです
 
 大文字と小文字だけが違う二つのパスを使った。
 大文字と小文字を区別しないファイルシステムで、結果が変わるためである。
+書いたパスで比べるので、どのファイルシステムでも同じ誤りになる。
+シンボリックリンクを解決した後のパスも比べる。
 
-- メッセージ: `大文字と小文字だけが異なるパスです: <パス> と <パス>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project`）
-- ADR: ADR なし
+- メッセージ: `大文字と小文字だけが異なるパスです: <後のパス> と <先のパス>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project`）。位置は、章なら `manifest.toml` の先頭、`@import` ならその `@import` のブロック全体である
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -2106,9 +2108,9 @@ import が循環しています
 `@import` が循環している。
 自分自身の import も含む。
 
-- メッセージ: `import が循環しています: <ファイル> → <ファイル> → ...`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project`）
-- ADR: ADR なし
+- メッセージ: `import が循環しています: <ファイル> → <ファイル> → ... → <最初のファイル>`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project`）。位置は循環の最初のファイルの `@import` で、循環に含まれる各 `@import` を関連位置に載せる
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)
 
 ### 主な原因
 
@@ -2134,9 +2136,9 @@ style.toml の誤りです
 見出しの `running-head` には使わない（[G0319](#g0319)）。
 `@style-def` の名前と欄の誤りにも出る。誤りのある定義は捨てる。
 
-- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: ADR なし（条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)）
+- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。スキーマの誤りには誤った箇所の経路を添え、経路が空のときは添えない。toml-parser 自身の文言（`missing key`、`unexpected key` など）は英語のままである。
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りでは誤った値の位置、TOML の構文の誤りと読み込んだ後の検査では `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md) である
 
 ### 主な原因
 
@@ -2160,10 +2162,13 @@ style.toml にないマスターページです
 ### 意味
 
 `manifest.toml` の章の項目の `master` が、`style.toml` にないマスターページを指す。
+`style.toml` がないときは、`master` を書いた項目がすべて該当する。
+名前ごとに一つだけ出し、順序は章の順で名前が最初に現れた順である。
+原稿に構文の誤りがあるときは調べない。
 
 - メッセージ: `style.toml にないマスターページです: <名前>`
-- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver`）
-- ADR: ADR なし（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md) が使用済みの番号として触れる）
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver`）。位置は `manifest.toml` の先頭である
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md) が使用済みの番号として触れる
 
 ### 主な原因
 
@@ -2208,10 +2213,12 @@ style.toml にないフォントの役割です
 ### 意味
 
 `@import` の引数が `パス as 名前空間` の形でない。
+引数は、ちょうど三つの位置引数「語か文字列」「語 `as`」「語」の並びでなければならない。
+キーワード引数、式やコマンドの引数、引数の数の違いは、すべてこの誤りである。
 
 - メッセージ: `@import は「@import パス as 名前空間」の形で書きます`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Imports`。評価でも golem-eval の `Golem.Eval.File` が同じ検査をする）
-- ADR: ADR なし（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md) と [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md) が使用済みの番号として触れる）
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Imports`）。プロジェクトの外のファイルを評価するときは、golem-eval の `Golem.Eval.File` が同じ関数で調べる。位置はその `@import` のブロック全体である
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md) と [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md) が使用済みの番号として触れる
 
 ### 主な原因
 
@@ -2349,6 +2356,32 @@ style.toml のスタイルの参照が不正です
 
 `content = "heading.1.short"` のように両方のページの内容を一つ書くか、`even = "title"` と `odd = "heading.1.short"` のように左右のページの内容を両方書く。
 柱を出さないページには `none` を書くか、`running-head` のないマスターページを使う。
+
+## G0316
+
+manifest.toml がありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+プロジェクトのルートに `manifest.toml` がない。
+章や `@import` が指すファイルがないときは [G0302](#g0302) とする。
+
+- メッセージ: `manifest.toml がありません`
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project`）。ファイルがないので、位置は表示されない
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)
+
+### 主な原因
+
+- プロジェクトのルートでない場所で `golem` を実行した。
+- `manifest.toml` を置いていないか、名前の綴りを誤った。
+
+### 直し方
+
+`golem` をプロジェクトのルートで実行しているかを確かめる。
+新しいプロジェクトは `golem new` で作る。
 
 ## G0317
 

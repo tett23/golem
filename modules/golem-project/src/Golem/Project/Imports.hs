@@ -7,6 +7,7 @@ module Golem.Project.Imports
   ( ImportSite (..),
     ImportGraph (..),
     importsOf,
+    importSite,
     findCycles,
     topoOrder,
   )
@@ -39,13 +40,19 @@ importsOf :: File -> [Either Diagnostic ImportSite]
 importsOf (File _ bs) = concatMap fromBlock bs
   where
     fromBlock (Located sp b) = case b of
-      BlockCommand (Located _ "import") args _ -> [site sp (map locValue args)]
+      BlockCommand (Located _ "import") args _ -> [importSite sp (map locValue args)]
       Attributed cmds _ -> concatMap fromBlock cmds
       _ -> []
-    site sp = \case
-      [Positional (Word p), Positional (Word "as"), Positional (Word ns)] -> Right (ImportSite p ns sp)
-      [Positional (StringLit p), Positional (Word "as"), Positional (Word ns)] -> Right (ImportSite p ns sp)
-      _ -> Left (diagnostic "G0309" Error sp "@import は「@import パス as 名前空間」の形で書きます")
+
+{- | The arguments of one \@import: a word or a string, the word @as@ and a
+word (G0309 otherwise). Shared by the project and the evaluation of a
+file outside it (golem-project ADR 0006).
+-}
+importSite :: SrcSpan -> [Argument] -> Either Diagnostic ImportSite
+importSite sp = \case
+  [Positional (Word p), Positional (Word "as"), Positional (Word ns)] -> Right (ImportSite p ns sp)
+  [Positional (StringLit p), Positional (Word "as"), Positional (Word ns)] -> Right (ImportSite p ns sp)
+  _ -> Left (diagnostic "G0309" Error sp "@import は「@import パス as 名前空間」の形で書きます")
 
 {- | Cycles found by a depth-first search over files and edges in order,
 each as the import sites along it. A self-import is a cycle of length 1.

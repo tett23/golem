@@ -28,7 +28,6 @@ import Golem.Parser.SourceSettings
 import Golem.Syntax
 import Toml qualified
 import Toml.Schema
-import Toml.Schema.FromValue (typeError)
 import Toml.Syntax (Position (..))
 
 data Manifest = Manifest
@@ -159,7 +158,7 @@ instance FromValue ChapterEntry where
     Text' _ t -> pure (ChapterFile (T.unpack t) Nothing [])
     List' _ xs -> ChapterGroup <$> traverse fromValue xs
     v@Table' {} -> parseTableFromValue (ChapterFile . T.unpack <$> reqKey "file" <*> optKey "master" <*> sourceEdits) v
-    v -> typeError "file path, table or array" v
+    _ -> fail "章は、ファイルのパス、表、配列のどれかで書きます"
 
 -- | The [source] table: its keys as edits of the settings (docs/adr ADR 0013).
 newtype SourceTable = SourceTable {sourceTableEdits :: [SourceEdit]}
@@ -273,7 +272,11 @@ tomlDiagnosticsBy codeAt fid src = map one
         Nothing -> mkSpan fid 0 0
       Nothing -> mkSpan fid 0 0
     one (MatchMessage loc path msg) =
-      diagnostic (codeAt path) Error (at loc) (T.pack (msg <> " (" <> showPath path <> ")"))
+      diagnostic (codeAt path) Error (at loc) (T.pack (msg <> suffix path))
+    -- no empty parentheses when the message is about the top of the file (ADR 0006)
+    suffix = \case
+      [] -> ""
+      path -> " (" <> showPath path <> ")"
     showPath = concatMap $ \case
       ScopeKey k -> "." <> T.unpack k
       ScopeIndex i -> "[" <> show i <> "]"
