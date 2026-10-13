@@ -42,7 +42,7 @@ import Golem.Lsp.Workspace
 import Golem.Parser.AST
 import Golem.Parser.SourceSettings (sourceKeys)
 import Golem.Project
-import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), charStyleKeys, defaultStyle, paraStyleKeys)
+import Golem.Project.Style (FontRole, LocalStyles (..), Style (..), StyleKind (..), charStyleKeys, defaultStyle, noLocalStyles, paraStyleKeys, regexStyleKeys)
 import Golem.Syntax
 import Language.LSP.Protocol.Types (PositionEncodingKind (..))
 
@@ -123,6 +123,9 @@ occurrences (File _ bs) = concatMap block bs
       ("import", Located asp (Positional (StringLit p)) : _) -> [(asp, OccImport p)]
       ("label", Located asp (Positional (Word l)) : _) -> [(asp, OccLabelDef l)]
       ("style", [Located asp (Positional (Word n))]) -> [(asp, OccStyleRef ParagraphKind n)]
+      -- a regex style names a paragraph style and a character style (docs/adr ADR 0015)
+      ("style-def", Located _ (Positional (Word "regex")) : Located nsp (Positional (Word n)) : rest) ->
+        (nsp, OccStyleRef ParagraphKind n) : [(vsp, OccStyleRef CharacterKind v) | Located vsp (Keyword (Located _ "style") (Word v)) <- rest]
       ("style-def", Located _ (Positional (Word k)) : Located nsp (Positional (Word n)) : rest)
         | Just kind <- styleKindOf k ->
             (nsp, OccStyleDef kind n) : [(bsp, OccStyleRef kind b) | Located bsp (Keyword (Located _ "based-on") (Word b)) <- rest]
@@ -280,7 +283,7 @@ completions ws path off = case sourceOf ws path of
         style = maybe defaultStyle evStyle (wsEvaluated ws)
         {- the styles of the file (docs/adr ADR 0014): of its evaluation, and
         of its @style-def lines while it does not evaluate -}
-        local = maybe (LocalStyles Map.empty Map.empty) erStyles (srcResult src)
+        local = maybe noLocalStyles erStyles (srcResult src)
         defined k = [n | (_, OccStyleDef k' n) <- occurrences (srcAst src), k' == k]
         paraNames = nub (Map.keys (stParaStyles style) <> Map.keys (lsParaStyles local) <> defined ParagraphKind)
         charNames = nub (Map.keys (stCharStyles style) <> Map.keys (lsCharStyles local) <> defined CharacterKind)
@@ -324,17 +327,19 @@ manifestCompletions rest = case T.words rest of
       _ -> []
 
 {- | Completion after @style-def (docs/adr ADR 0014): the kinds, then the
-keys of the kind, then the values of a key. regex is left out until
-regular expression styles are implemented.
+keys of the kind, then the values of a key. After regex come the
+paragraph styles, then pattern= and style= (docs/adr ADR 0015).
 -}
 styleDefCompletions :: Style -> [Text] -> [Text] -> Text -> [Completion]
 styleDefCompletions style paraNames charNames rest =
   let ws' = T.words rest
       trailing = T.null rest || T.isSuffixOf " " rest
-      kinds = [Completion k CkStyleKind | k <- ["character", "paragraph"]]
+      kinds = [Completion k CkStyleKind | k <- ["character", "paragraph", "regex"]]
    in case ws' of
         [] -> kinds
         [_] | not trailing -> kinds
+        ["regex"] -> paragraphs
+        ["regex", _] | not trailing -> paragraphs
         (kind : _ : _)
           | trailing -> [Completion (k <> "=") CkSettingKey | k <- keysOf kind]
           | (key, value) <- T.breakOn "=" (last ws'),
@@ -343,9 +348,11 @@ styleDefCompletions style paraNames charNames rest =
               valuesOf kind key
         _ -> []
   where
+    paragraphs = [Completion n CkParaStyle | n <- paraNames]
     keysOf = \case
       "character" -> charStyleKeys
       "paragraph" -> paraStyleKeys
+      "regex" -> regexStyleKeys
       _ -> []
     valuesOf kind = \case
       "based-on" -> case kind of
@@ -354,6 +361,7 @@ styleDefCompletions style paraNames charNames rest =
         _ -> []
       "font" -> [Completion r CkSettingValue | r <- Map.keys (stFonts style :: Map.Map Text FontRole)]
       "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
+      "style" | kind == "regex" -> [Completion n CkCharStyle | n <- charNames]
       "line-breaks" | kind == "paragraph" -> [Completion v CkSettingValue | v <- ["join", "keep"]]
       _ -> []
 
