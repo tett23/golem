@@ -1170,6 +1170,7 @@ Alpine のパッケージの文書は、そのパッケージの `-doc` から�
 リリースノートは AI が英語で書き、検査（`scripts/release/check-notes.sh`）に通らなければ変更の一覧をそのまま使う。
 人がリリースノートを読んで直してから公開する。
 公開の操作はワークフローでは行わない。
+最初のプレリリース v0.1.0-rc1 で確かめた結果は、[docs/audits/releases/v0.1.0-rc1.md](audits/releases/v0.1.0-rc1.md) に記録した（[docs/adr/0008](adr/0008-first-release-verification.md)）。
 
 同じ版の Golem に同じ入力を与えれば、配布物でも同じ出力が得られる。
 同じソースから同じバイト列の実行ファイルが得られること（再現可能なビルド）は、v1 では求めない。
