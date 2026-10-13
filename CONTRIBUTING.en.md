@@ -20,6 +20,7 @@ git config core.hooksPath .githooks
 
 The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.8.1 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.1`).
 This setting is not stored in the repository, so run it in every clone.
+`.githooks/pre-push` stops the push of a branch that changes the specification without updating the manual (see Documentation).
 
 ## How a change proceeds
 
@@ -121,6 +122,14 @@ Implementation details of a module go in `docs/<module>/specifications.md`.
 
 References to ADRs from the specification must link to the ADR file.
 When introducing a new term, add it to [docs/glossary.md](./docs/glossary.md).
+
+The manual for the users of Golem has two sources: [docs/manual.md](./docs/manual.md), in Markdown, which is the authoritative text, and `manual/`, a Golem project that rewrites it in Golem's notation ([docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md)).
+When implementing an ADR changes what users see, update both docs/manual.md and `manual/` in the same pull request.
+The manual describes only the specification that is accepted and implemented.
+`scripts/manual/check-headings.sh` checks that the two sources have the same headings, and `manual/` must build with `scripts/manual/build.sh` without a single diagnostic (the `build` job of CI runs both).
+A branch that changes docs/markup.md or docs/specifications.md without changing docs/manual.md is stopped by `.githooks/pre-push` and by the `manual` job of CI (`docs.yml`).
+When a change of the specification does not change what the manual describes, such as adding an item for v2, end the message of one of the commits of the branch with the trailer line `Manual: unchanged`.
+The hook checks from the merge base with your local `origin/main`; if it stops a push because of changes already on `main`, run `git fetch` and push again.
 
 When the build or the tests start to read a document under `docs/`, add it to the list in `scripts/ci/needs-build.sh`.
 A document not in the list counts as documentation only, and changing it does not run the build.

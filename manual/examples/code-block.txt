@@ -1,0 +1,4 @@
+```toml
+[page]
+size = "A5"
+```

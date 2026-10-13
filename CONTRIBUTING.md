@@ -19,6 +19,7 @@ git config core.hooksPath .githooks
 ```
 
 フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.8.1 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.1`）。
+`.githooks/pre-push` は、仕様を変えたのにマニュアルを直していないブランチの push を止める（「ドキュメント」の節）。
 この設定はリポジトリに保存されないため、クローンのたびに実行する。
 
 ## 変更の流れ
@@ -121,6 +122,14 @@ ADR で仕様が変わったら、同じプルリクエストで [docs/specifica
 
 仕様書から ADR を参照するときは、ADR のファイルへのリンクを付ける。
 新しい用語を導入したら、[docs/glossary.md](./docs/glossary.md) にも加える。
+
+使い手のためのマニュアルは、[docs/manual.md](./docs/manual.md)（Markdown の原稿で、内容はこちらを正とする）と、それを Golem の記法で書き直した `manual/`（Golem のプロジェクト）の二つからなる（[docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md)）。
+ADR を実装して使い手から見える振る舞いが変わるときは、同じプルリクエストで docs/manual.md と `manual/` の両方を直す。
+マニュアルには、採択して実装を終えた仕様だけを書く。
+二つの原稿の見出しは `scripts/manual/check-headings.sh` が照合し、`manual/` は `scripts/manual/build.sh` で診断を一つも出さずに組めなければならない（どちらも CI の `build` ジョブで走る）。
+docs/markup.md か docs/specifications.md を変えて docs/manual.md を変えていないブランチは、`.githooks/pre-push` と CI の `manual` ジョブ（`docs.yml`）が止める。
+v2 以降の課題を足すときのように、仕様書を変えてもマニュアルに書いた振る舞いが変わらない場合は、ブランチのコミットのどれかのメッセージの末尾に `Manual: unchanged` というトレーラーの行を書く。
+フックは手元の `origin/main` との分岐点から検査するので、`main` に入った変更で止まったときは `git fetch` をしてから push し直す。
 
 ビルドやテストが `docs/` の下の文書を読むようにしたときは、その文書を `scripts/ci/needs-build.sh` の一覧に加える。
 一覧にない文書は docs だけの変更として扱われ、変えてもビルドが走らない。

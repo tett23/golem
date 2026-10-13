@@ -198,10 +198,23 @@ jobs:
           pattern: archive-*
           path: dist
           merge-multiple: true
+      # the manual, built with the golem of the x86-64 Linux archive
+      # (docs/adr/0022-manual-as-typesetting-sample.md)
+      - name: The PDF and the HTML of the manual
+        run: |
+          tar -xzf "dist/golem-$TAG-x86_64-linux.tar.gz" -C "$RUNNER_TEMP"
+          GOLEM="$RUNNER_TEMP/golem-$TAG-x86_64-linux/golem" sh scripts/manual/build.sh
+          set -- manual/build/pdf/*.pdf
+          [ $# -eq 1 ] && [ -f "$1" ]
+          cp "$1" "dist/golem-manual-$TAG.pdf"
+          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+            --transform "s,^html,golem-manual-$TAG-html," -C manual/build -cf - html |
+            gzip -n > "dist/golem-manual-$TAG-html.tar.gz"
       - name: SHA256SUMS and the source of GMP
         run: |
           cd dist
           cat golem-*.tar.gz.sha256 > SHA256SUMS
+          sha256sum "golem-manual-$TAG.pdf" "golem-manual-$TAG-html.tar.gz" >> SHA256SUMS
           sha256sum -c SHA256SUMS
           for v in $(cat gmp-version-*.txt | sort -u); do
             sh ../scripts/release/fetch-gmp.sh "$v" .
@@ -226,4 +239,5 @@ jobs:
         run: |
           set -- --draft --verify-tag --title "$TAG" --notes-file notes.md
           if [ "$PRERELEASE" = true ]; then set -- "$@" --prerelease; fi
-          gh release create "$TAG" "$@" dist/golem-*.tar.gz dist/SHA256SUMS dist/gmp-*.tar.xz
+          # dist/golem-*.tar.gz has the HTML of the manual too
+          gh release create "$TAG" "$@" dist/golem-*.tar.gz dist/golem-manual-*.pdf dist/SHA256SUMS dist/gmp-*.tar.xz

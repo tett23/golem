@@ -1146,7 +1146,7 @@ Golem の版は `X.Y.Z` か、プレリリースの識別子を付けた `X.Y.Z-
 
 アーカイブの名前は `golem-<タグ>-<プラットフォーム>.tar.gz` とし、展開すると `golem-<タグ>-<プラットフォーム>/` の一つのディレクトリができる。
 中には、実行ファイル `golem`、Golem のライセンス `LICENSE`、静的にリンクしたものと同梱したデータのライセンスの文書 `THIRD_PARTY_LICENSES/`、ビルドの情報 `BUILDINFO` が入る。
-リリースには、三つのアーカイブのほかに、`SHA256SUMS`、ビルドの来歴の証明、リンクした GMP のソースのアーカイブを添える。
+リリースには、三つのアーカイブのほかに、`SHA256SUMS`、ビルドの来歴の証明、リンクした GMP のソースのアーカイブ、マニュアルの PDF と HTML（「マニュアル」の節）を添える。
 GMP は LGPL-3.0 であり、三つの実行ファイルのどれにも静的にリンクされるためである。
 
 `THIRD_PARTY_LICENSES/` に入れるものは、固定の一覧ではなく、実行ファイルのリンクマップから決める（[docs/adr/0007](adr/0007-third-party-licenses.md)）。
@@ -1174,6 +1174,35 @@ Alpine のパッケージの文書は、そのパッケージの `-doc` から�
 同じ版の Golem に同じ入力を与えれば、配布物でも同じ出力が得られる。
 同じソースから同じバイト列の実行ファイルが得られること（再現可能なビルド）は、v1 では求めない。
 代わりに、`BUILDINFO` にビルドの環境を記録し、来歴の証明でどのワークフローがどのコミットから作ったかを検証できるようにする。
+
+## マニュアル
+
+使い手のためのマニュアルを、二つの原稿で持つ（[docs/adr/0022](adr/0022-manual-as-typesetting-sample.md)）。
+
+- **docs/manual.md**：Markdown で書いたマニュアルの本文。GitHub の上でそのまま読める。内容はこちらを正とする。
+- **manual/**：docs/manual.md を Golem の記法に手で書き直した Golem のプロジェクト。各節は、その節で説明する機能（ルビ、注、表、相互参照など）を実際に使って組む。A5 判の横組みで、出力は PDF と HTML だけとする。
+
+マニュアルを Golem 自身で組むのは、配布する PDF をそのまま組版の見本にし、一冊の本の分量の原稿を毎回組むことを回帰の検査にするためである。
+二つの原稿の対応は、見出し（`#` から `###` まで）の階層と文字列で照合する（`scripts/manual/check-headings.sh`）。
+`manual/` の見出しは、Golem の記法を外したテキストで比べる。
+本文の段落の単位では照合しない。
+
+マニュアルに書くのは、採択して実装を終えた仕様のうち、使い手から見える振る舞いだけである。
+「今後の実装項目」に残っている事項、提案の ADR、未決事項は書かない。
+読み手は Golem で本を作る人（著者、編集者、組版の担当者）なので、敬体で書き、ADR の番号、モジュールの名前、内部の処理の段階や型の名前を本文に出さない。
+
+ADR を実装して使い手から見える振る舞いが変わるプルリクエストでは、同じプルリクエストで docs/manual.md と `manual/` も直す。
+`scripts/manual/check-updated.sh` は、ブランチの分岐点からの変更が docs/markup.md か docs/specifications.md を含み、docs/manual.md を含まないときに失敗する。
+範囲のコミットのどれかのメッセージに `Manual: unchanged` のトレーラーがあれば通す。
+Git の `pre-push` のフック（`origin/main` からの分岐点で検査する）と、`docs.yml` の `manual` ジョブ（プルリクエストのとき）が、このスクリプトを走らせる。
+
+CI の `build` ジョブは、テストの後に見出しを照合し、`scripts/manual/build.sh` で `manual/` を組む。
+診断が一つでも出れば失敗とする。
+組んだ PDF と HTML のハッシュは `scripts/determinism.sh` の出力に入り、x86-64 と aarch64 で同じバイト列になることを `determinism` ジョブが確かめる。
+docs/manual.md は、ビルドが読む文書の一覧（`scripts/ci/needs-build.sh`）に入っている。
+書体（Noto Serif JP、Noto Sans JP の Bold、Source Serif 4、Source Sans 3 の Bold。どれも SIL Open Font License 1.1）はリポジトリに入れず、`scripts/manual/fetch-fonts.sh` が版を固定した URL から取得し、SHA-256 を検査して `manual/fonts/` に置く。
+
+リリースのワークフローは、そのリリースの x86-64 の Linux の配布物で `manual/` を組み、`golem-manual-<タグ>.pdf` と `golem-manual-<タグ>-html.tar.gz` をリリースの資産と `SHA256SUMS` に加える。
 
 ## 開発順序
 

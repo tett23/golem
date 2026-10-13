@@ -24,6 +24,9 @@ trap 'rm -f "$MISSING"' EXIT
     # the paths in the tests of the CI scripts are their inputs, not files
     # that they read
     */scripts/ci/test.sh) continue ;;
+    # check-updated.sh compares the paths of a diff and reads no document;
+    # the tests of the manual name their inputs (docs/adr/0022)
+    */scripts/manual/check-updated.sh | */scripts/manual/test.sh) continue ;;
   esac
   grep -hoE 'docs/[A-Za-z0-9_./-]*\.(md|toml|txt|json)' "$f" || true
 done | sort -u | while IFS= read -r ref; do

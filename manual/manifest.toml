@@ -1,0 +1,30 @@
+chapters = [
+  "front.gm",
+  "chapters/01-introduction.gm",
+  "chapters/02-first-book.gm",
+  "chapters/03-markup.gm",
+  "chapters/04-manifest.gm",
+  "chapters/05-style.gm",
+  "chapters/06-output.gm",
+  "chapters/07-check.gm",
+  "chapters/08-editor.gm",
+  "chapters/09-plugins.gm",
+  "back.gm",
+]
+bibliography = ["references.json"]
+
+[metadata]
+id = "urn:uuid:6f1d2c4e-8a3b-4f5e-9c7d-2b1a0e9f8d63"
+title = "Golem マニュアル"
+title-reading = "ゴーレムまにゅある"
+language = "ja"
+date = 2026-10-13
+publisher = "Golem プロジェクト"
+
+[[metadata.creators]]
+name = "Golem プロジェクト"
+role = "aut"
+
+[targets.pdf]
+
+[targets.html]
