@@ -518,6 +518,7 @@ composeEnv style geom fonts assumed role fs =
           ceKinsokuStrict = compKinsokuStrict comp,
           ceHanging = compHanging comp,
           ceProtrusion = compProtrusion comp,
+          ceExplicitHyphenPenalty = compExplicitHyphenPenalty comp,
           ceRubyOverhang = dimToSp fs (compRubyOverhang comp),
           ceVerticalNumbers = case stNumbersVertical style of
             "kanji-digits" -> Just StyleKanjiDigits
@@ -1054,7 +1055,7 @@ writeDocument inp geom fonts layout intent =
                               | otherwise = (ox, oy) -- Identity-V: the origin is the top centre of the em box
                          in runAt look vertical rotated (if bcExpandable c then lineExpansion l else 0) pt (bcText c)
               -- a word broken at the line end gets its hyphen
-              Penalty hw _ True
+              Penalty hw _ PatternHyphen
                 | i == lastIx && hw > 0 ->
                     let (ox, oy) = origin off
                         look = lookBefore i

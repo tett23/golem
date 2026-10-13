@@ -1,0 +1,36 @@
+% Two paragraphs whose least-demerit paths tie, set with plain TeX
+% (golem-layout ADR 0008). The test does not read ties.log; the paths TeX
+% chose are copied into the unit tests and README.md.
+%
+% Regenerate ties.log with
+%   max_print_line=10000 tex -interaction=batchmode ties.tex
+% (see README.md).
+
+\parindent=0pt
+\parfillskip=0pt plus 1fil
+\leftskip=0pt \rightskip=0pt
+\pretolerance=100 \tolerance=200 \emergencystretch=0pt
+\doublehyphendemerits=10000 \finalhyphendemerits=0
+\looseness=0
+\showboxdepth=10000 \showboxbreadth=10000
+
+% A(10pt) | B(0pt) | C(10pt) on 10pt lines: a break after A or after B gives
+% two exact lines and 200 demerits either way.
+\message{GOLEM-TIE=1}
+\setbox1=\vbox{\hsize=10pt \linepenalty=10 \adjdemerits=10000
+  \tracingparagraphs=1
+  \noindent\hbox to 10pt{A\hss}\penalty0 \hbox to 0pt{}\penalty0 \hbox to 10pt{C\hss}\par}
+\showbox1
+
+% 20pt | 10pt fil | 10pt fil | 20pt on 20pt lines with no line penalty and
+% no adjacent demerits: three lines and four lines both cost 0.
+\message{GOLEM-TIE=2}
+\setbox1=\vbox{\hsize=20pt \linepenalty=0 \adjdemerits=0
+  \tracingparagraphs=1
+  \noindent\hbox to 20pt{A\hss}\penalty0
+  \hbox to 10pt{B\hss}\hskip 0pt plus 1fil\penalty0
+  \hbox to 10pt{C\hss}\hskip 0pt plus 1fil\penalty0
+  \hbox to 20pt{D\hss}\par}
+\showbox1
+
+\end
