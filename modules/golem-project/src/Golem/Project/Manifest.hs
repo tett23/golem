@@ -4,12 +4,14 @@ module Golem.Project.Manifest
     Metadata (..),
     Creator (..),
     ChapterEntry (..),
+    SourceEdit (..),
     Targets (..),
     TextVariant (..),
     PluginDecl (..),
     FilterDecl (..),
     parseManifest,
     chapterFiles,
+    applyEdits,
     tomlDiagnostics,
     decodeStrict,
     decodeStrictBy,
@@ -18,10 +20,11 @@ where
 
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (Day)
+import Golem.Parser.SourceSettings
 import Golem.Syntax
 import Toml qualified
 import Toml.Schema
@@ -34,7 +37,9 @@ data Manifest = Manifest
     manifestTargets :: !Targets,
     manifestPlugins :: !(Map Text PluginDecl),
     manifestFilters :: ![FilterDecl],
-    manifestBibliography :: ![FilePath]
+    manifestBibliography :: ![FilePath],
+    -- | the [source] table (docs/adr ADR 0013)
+    manifestSource :: !SourceSettings
   }
   deriving stock (Eq, Show)
 
@@ -57,10 +62,26 @@ data Creator = Creator
   }
   deriving stock (Eq, Show)
 
+-- | path, master page, and the [source] keys of the entry in order
 data ChapterEntry
-  = ChapterFile !FilePath !(Maybe Text) -- path, master page
+  = ChapterFile !FilePath !(Maybe Text) ![SourceEdit]
   | ChapterGroup ![ChapterEntry]
   deriving stock (Eq, Show)
+
+{- | A [source] key written in a chapter entry (docs/adr ADR 0013): the
+key and the value as written, and how it changes the settings.
+-}
+data SourceEdit = SourceEdit
+  { seKey :: !Text,
+    seValue :: !Text,
+    seApply :: SourceSettings -> SourceSettings
+  }
+
+instance Eq SourceEdit where
+  a == b = (seKey a, seValue a) == (seKey b, seValue b)
+
+instance Show SourceEdit where
+  show e = "SourceEdit " <> show (seKey e) <> " " <> show (seValue e)
 
 data TextVariant = TextVertical | TextHorizontal
   deriving stock (Eq, Ord, Show)
@@ -86,11 +107,13 @@ data FilterDecl = FilterDecl
   }
   deriving stock (Eq, Show)
 
--- | Chapter files in manifest order, flattened, with their master pages.
-chapterFiles :: [ChapterEntry] -> [(FilePath, Maybe Text)]
+{- | Chapter files in manifest order, flattened, with their master pages
+and the [source] keys of their entries.
+-}
+chapterFiles :: [ChapterEntry] -> [(FilePath, Maybe Text, [SourceEdit])]
 chapterFiles = concatMap go
   where
-    go (ChapterFile p m) = [(p, m)]
+    go (ChapterFile p m es) = [(p, m, es)]
     go (ChapterGroup es) = concatMap go es
 
 instance FromValue Manifest where
@@ -101,6 +124,7 @@ instance FromValue Manifest where
     pl <- optKey "plugins"
     fl <- optKey "filters"
     bib <- optKey "bibliography"
+    src <- optKey "source"
     pure
       Manifest
         { manifestMetadata = md,
@@ -108,7 +132,8 @@ instance FromValue Manifest where
           manifestTargets = fromMaybe defaultTargets tg,
           manifestPlugins = fromMaybe Map.empty pl,
           manifestFilters = fromMaybe [] fl,
-          manifestBibliography = maybe [] (map T.unpack) bib
+          manifestBibliography = maybe [] (map T.unpack) bib,
+          manifestSource = applyEdits (maybe [] sourceTableEdits src) defaultSourceSettings
         }
 
 defaultTargets :: Targets
@@ -131,10 +156,31 @@ instance FromValue Creator where
 
 instance FromValue ChapterEntry where
   fromValue = \case
-    Text' _ t -> pure (ChapterFile (T.unpack t) Nothing)
+    Text' _ t -> pure (ChapterFile (T.unpack t) Nothing [])
     List' _ xs -> ChapterGroup <$> traverse fromValue xs
-    v@Table' {} -> parseTableFromValue ((ChapterFile . T.unpack <$> reqKey "file") <*> optKey "master") v
+    v@Table' {} -> parseTableFromValue (ChapterFile . T.unpack <$> reqKey "file" <*> optKey "master" <*> sourceEdits) v
     v -> typeError "file path, table or array" v
+
+-- | The [source] table: its keys as edits of the settings (docs/adr ADR 0013).
+newtype SourceTable = SourceTable {sourceTableEdits :: [SourceEdit]}
+
+instance FromValue SourceTable where
+  fromValue = parseTableFromValue (SourceTable <$> sourceEdits)
+
+{- | The keys of 'sourceKeys' in a table. An invalid value fails; keys left
+over are unknown keys and are reported as such.
+-}
+sourceEdits :: ParseTable l [SourceEdit]
+sourceEdits = catMaybes <$> traverse one sourceKeys
+  where
+    one (k, f) =
+      optKey k >>= \case
+        Nothing -> pure Nothing
+        Just v -> either (fail . T.unpack) (pure . Just . SourceEdit k v) (f v)
+
+-- | The edits applied in order.
+applyEdits :: [SourceEdit] -> SourceSettings -> SourceSettings
+applyEdits es s = foldl (flip seApply) s es
 
 instance FromValue Targets where
   fromValue = parseTableFromValue $ do

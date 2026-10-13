@@ -41,8 +41,10 @@ test-suite golem-cli-test
   default-extensions: DerivingStrategies LambdaCase OverloadedStrings
   build-tool-depends: golem-cli:golem
   build-depends:
+    , aeson
     , base
     , bytestring
+    , containers
     , directory
     , filepath
     , golem-driver

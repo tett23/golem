@@ -77,7 +77,12 @@ golem new mybook
 | `golem fmt [--check] [FILE...]` | 原稿を整形する |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
 | `golem inspect FILE --as cst\|ast\|ir` | 構文木と IR を表示する |
+| `golem explain [CODE]` | 診断のコードの説明を表示する。コードを省くと一覧を表示する |
 | `golem --version` | 版を表示する（例：`golem 0.1.0`） |
+
+原稿の段落は、既定では空行で区切る。
+一行を一つの段落として書く和文の原稿は、`manifest.toml` の `[source]` に `paragraph-separator = "line"` と書くと、改行ひとつで段落を区切って読む。
+章の配列の項目（`{ file = "...", paragraph-separator = "blank-line" }`）で、章ごとに変えられる。
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
@@ -99,6 +104,7 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 閲覧用の PDF は `--marks` を付けずに作る。
 トンボの有無は PDF のインスタンス ID に入るので、閲覧用と入稿用の PDF は区別できる。
 フォントの OS/2 の `fsType` が埋め込みを禁じている場合はエラーになる。
+原稿の異体字セレクタ（IVS）は PDF では字形の選択に使い、ToUnicode には基底の文字だけを書く（[golem-pdf ADR 0006](docs/golem-pdf/adr/0006-cid-system-info.md)）。
 ビルドはプラグインをキャッシュからだけ読み、ネットワークに接続しない。
 診断は `--format json` で JSON にできる。
 診断のコード（`G0101` など）の意味と直し方は [docs/diagnostics.md](docs/diagnostics.md) にまとめてある。

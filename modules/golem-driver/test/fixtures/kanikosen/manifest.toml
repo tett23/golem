@@ -12,6 +12,9 @@ name = "小林多喜二"
 reading = "こばやし たきじ"
 role = "aut"
 
+[source]
+paragraph-separator = "line"
+
 [targets.html]
 [targets.epub]
 [targets.text]

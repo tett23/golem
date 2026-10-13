@@ -35,6 +35,50 @@ chapters = [
 一つの原稿のファイルが、別の原稿のファイルの中身を取り込むことはできません。
 章の構成は、[style code: manifest.toml] の [style code: chapters] だけで決まります。
 
+@label source-settings
+## 原稿の読み方
+
+[style code: \[source\]] には、原稿の読み方を書きます。
+今は、段落の区切り方を選ぶ [style code: paragraph-separator] だけがあります。
+
+```toml
+[source]
+paragraph-separator = "line"
+```
+
+- [style code: "blank-line"]：空行で段落を区切ります。段落の中の改行は文字を生みません。書かなければこちらになります。
+- [style code: "line"]：改行ひとつで段落を区切ります。一行が一つの段落になります。
+
+[style code: "line"] は、青空文庫の形式のように、一行を一つの段落として書く和文の原稿に向いています。
+
+```
+　吾輩は猫である。
+　名前はまだ無い。
+```
+
+この二行は、二つの段落になります。
+行頭の全角の空白は本文に残るので、段落の頭の一字下げをそのまま書けます。
+空行は無視され、いくつ続けても空きにはなりません。
+見出しやリストは、空行を挟まずに段落の直後の行に書けます。
+一つの段落は一行で書きます。
+段落の途中で改行して折り返す書き方はありません。
+
+[style code: @style verse] の段落では、[style code: "line"] でも改行は行の区切りになり、連は空行で区切ります。
+属性の形で [style code: @style verse] を付けると、直後の一行ではなく、次の空行までの行がまとめて一つの連になります。
+
+章ごとに区切り方を変えるときは、[style code: chapters] の項目に書きます。
+
+```toml
+chapters = [
+  "chapters/01.gm",
+  { file = "chapters/02-en.gm", paragraph-separator = "blank-line" },
+]
+```
+
+章の項目に書いた値は、[style code: \[source\]] の値より優先します。
+[style code: @import] でだけ取り込むファイルには、[style code: \[source\]] の値が効きます。
+[style code: "blank-line"] と [style code: "line"] のほかの値を書くと、エラーになります。
+
 ## 本の情報を書く
 
 [style code: \[metadata\]] に、書名や著者などの本の情報を書きます。

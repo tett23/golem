@@ -31,10 +31,14 @@
 | [style code: \[targets\]] | 出力の形式ごとの設定です。 |
 | [style code: \[plugins.名前\]] | 使うプラグインの宣言です（表）。 |
 | [style code: \[\[filters\]\]] | フィルタのプラグインを当てるファイルです（表の並び）。 |
+| [style code: \[source\]] | 原稿の読み方です（表）。 |
 
 [style code: chapters] の要素には、ファイルのパスを書きます。
 パスはプロジェクトのディレクトリからの相対パスで、プロジェクトの外や、[style code: /] で始まる絶対パス、URL は書けません。
 要素を配列にすると、いくつかのファイルを一つの章として続けて組みます。
+要素を [style code: { file = "chapters/02.gm", paragraph-separator = "blank-line" }] のような表にすると、その章だけ原稿の読み方を変えられます。
+表に書けるのは、[style code: file]（必須）と、[style code: \[source\]] と同じキーです。
+同じファイルを、読み方を変えて二度並べることはできません。
 
 ```toml
 chapters = [
@@ -84,6 +88,17 @@ chapters = [
 | [style code: \[targets.text\]] | プレーンテキストの設定です。[style code: variants] に [style code: "vertical"]（縦書き用）と [style code: "horizontal"]（横書き用）の一方か両方を並べます。省くと両方を作ります。 |
 
 [style code: golem build] は、[style code: --target] を指定しなければ、この表にかかわらず四つの形式をすべて作ります。
+
+@nonumber
+## [style code: \[source\]]
+
+原稿の読み方です。
+章の項目に同じキーを書くと、その章ではそちらが優先します。
+[style code: @import] でだけ取り込むファイルには、[style code: \[source\]] の値が効きます。
+
+| キー | 意味 |
+|:---|:---|
+| [style code: paragraph-separator] | 段落の区切り方です（文字列）。[style code: "blank-line"] は空行で段落を区切り、[style code: "line"] は改行ひとつで区切って一行を一つの段落にします。省くと [style code: "blank-line"] です。 |
 
 @nonumber
 ## [style code: \[plugins.名前\]]

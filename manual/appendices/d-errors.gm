@@ -6,6 +6,7 @@
 各項目は、コード、表示されるメッセージ、意味と直し方の順に並べています。
 メッセージの [style code: …] の部分には、名前やファイルのパスが入ります。
 エラーと警告の読み方は、第[ref-number check]章「[ref-title check]」で説明しています。[index reading=えらー/いちらん: エラー/一覧]
+同じ説明は、[style code: golem explain G0215] のように、コマンドでも表示できます。
 
 ほとんどはエラーで、一つでもあれば出力を書きません。
 警告になるものは、項目の中にそう書いています。
@@ -255,6 +256,8 @@ G0310 と G0504 は、[style code: --profile dev] では警告、[style code: --
   [style code: manifest.toml] の書き方が違います。
   キーの綴りと値の種類を、付録B と見比べてください。
   [style code: \[targets\]] を書くときは、形式を一つ以上置きます。
+  [style code: paragraph-separator] には [style code: "blank-line"] か [style code: "line"] を書きます。
+  同じファイルを、読み方を変えて [style code: chapters] に二度並べることもできません。
 = [strong: G0302 [style code: manifest.toml がありません]]、[strong: [style code: ファイルがありません: …]]
   プロジェクトのディレクトリで [style code: golem] を実行しているか、[style code: chapters] や [style code: @import] のパスが合っているかを確かめてください。
 = [strong: G0303 [style code: 絶対パスは使えません: …]]、[strong: [style code: URL は使えません: …]]、[strong: [style code: プロジェクトルートの外を指しています: …]]
@@ -344,8 +347,12 @@ PDF を組むときに出るエラーです。
 @nonumber
 ## プラグイン
 
-= [strong: G0602 [style code: plugins.lock にないプラグインです。golem plugin lock を実行してください: …]]
-  プラグインを宣言した後に、[style code: golem plugin lock] を実行してください。
+= [strong: G0602 [style code: plugins.lock にないプラグインです。golem plugin lock を実行してください: …]]、[strong: [style code: plugins.lock の URL が manifest.toml と違います。golem plugin lock を実行してください: …]]
+  プラグインを宣言したり URL を変えたりした後に、[style code: golem plugin lock] を実行してください。
+= [strong: G0611] [style code: plugins.lock] の誤り
+  [style code: plugins.lock] が読めません。
+  手で編集したか、Git のマージで衝突が残っています。
+  [style code: plugins.lock] を消してから [style code: golem plugin lock] を実行し直してください。
 = [strong: G0603 [style code: キャッシュにないプラグインです。golem plugin fetch を実行してください: …]]
   この機械にはまだプラグインの配布物がありません。
   [style code: golem plugin fetch] を実行してください。
@@ -357,9 +364,10 @@ PDF を組むときに出るエラーです。
   メッセージを添えて、プラグインの作者に知らせてください。
 = [strong: G0606 [style code: 複数のプラグインが同じコマンドを提供しています: …]]
   どちらかのプラグインを外してください。
-= [strong: G0607 [style code: 組み込みのコマンドと衝突しています（overrides で宣言してください）: …]]
+= [strong: G0607 [style code: 組み込みのコマンドと衝突しています（overrides で宣言してください）: …]]、[strong: [style code: 上書きできない組み込みのコマンドと衝突しています: …]]
   組み込みのコマンドを置き換えるなら、[style code: overrides] にその名前を書いてください。
-= [strong: G0608 [style code: 上書きできないコマンドです: …]] など
+  置き換えられないコマンドと同じ名前なら、プラグインの作者に知らせてください。
+= [strong: G0608 [style code: 上書きできる組み込みのコマンドではありません: …]]、[strong: [style code: プラグインが提供していないコマンドを overrides に書いています: …]]
   [style code: overrides] に、置き換えられないコマンドか、そのプラグインにないコマンドを書いています。
-= [strong: G0610 [style code: 宣言されていないプラグインかフィルタです: …]]
+= [strong: G0610 [style code: 宣言されていないプラグインです: …]]、[strong: [style code: プラグインが提供していないフィルタです: …]]
   [style code: \[\[filters\]\]] の [style code: plugin] と [style code: filter] の名前を確かめてください。

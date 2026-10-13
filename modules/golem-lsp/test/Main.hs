@@ -12,6 +12,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Lsp.Features
 import Golem.Lsp.Server (rewriteInitializeResponse, runGolemLspWithHandles)
 import Golem.Lsp.Workspace
@@ -63,7 +64,9 @@ tests :: TestTree
 tests =
   testGroup
     "golem-lsp (ADR 0001)"
-    [ testCase "definition: label across files, import path, namespaced variable" $ do
+    [ testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
+        codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing,
+      testCase "definition: label across files, import path, namespaced variable" $ do
         ws <- openWorkspace root
         map (slice ws) (definition ws "a.gm" (at ws "a.gm" "second]" 1)) @?= ["second"]
         map locPath (definition ws "a.gm" (at ws "a.gm" "second]" 1)) @?= ["b.gm"]
@@ -115,6 +118,17 @@ tests =
         assertBool "syntax error in b.gm" (any ((== Error) . diagSeverity) (fromMaybe [] (Map.lookup "b.gm" diags)))
         let codes = [c | d <- concat (Map.elems diags), let DiagnosticCode c = diagCode d]
         assertBool (show codes) (all (`notElem` codes) ["G0306", "G0310", "G0802"]),
+      testCase "G0501 is not reported for the newlines of the line style (docs/adr ADR 0013)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
+            g0501 ws = [c | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d, c == "G0501"]
+        BS.writeFile (tmp </> "a.gm") "Full fathom\nfive\n"
+        BS.writeFile (tmp </> "manifest.toml") manifest
+        ws0 <- openWorkspace tmp
+        g0501 ws0 @?= ["G0501"]
+        BS.writeFile (tmp </> "manifest.toml") (manifest <> "\n[source]\nparagraph-separator = \"line\"\n")
+        ws1 <- openWorkspace tmp
+        assertBool "evaluated" (isJust (wsEvaluated ws1))
+        g0501 ws1 @?= [],
       testCase "only changes to headings, labels or exports re-evaluate the project" $ do
         ws0 <- openWorkspace root
         let n0 = wsFullEvaluations ws0
@@ -299,6 +313,7 @@ session spec = do
       SessionResult
         { srLines =
             [ "diagnostics: " <> show [(d ^. diagRange, d ^. diagCode) | d <- diags],
+              "codeDescription: " <> show [fmap (\(L.CodeDescription (L.Uri u)) -> u) (d ^. diagCodeDescription) | d <- diags],
               "hover: " <> show (fmap hoverText h),
               "definition: " <> show (defTargets absRoot defs),
               "symbols: " <> concat [T.unpack n <> "(" <> T.unpack (T.intercalate "," cs) <> ")" | (n, cs) <- symbolNames syms],
@@ -318,6 +333,7 @@ session spec = do
     (^.) x f = f x
     diagRange (L.Diagnostic rng _ _ _ _ _ _ _ _) = rng
     diagCode (L.Diagnostic _ _ c _ _ _ _ _ _) = c
+    diagCodeDescription (L.Diagnostic _ _ _ cd _ _ _ _ _) = cd
     startLine d = let L.Range (L.Position l _) _ = diagRange d in l
     hoverText (L.Hover (L.InL (L.MarkupContent _ t)) _) = t
     hoverText _ = ""

@@ -20,12 +20,15 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Eval.File (Usage (..))
 import Golem.Parser.CST
+import Golem.Parser.SourceSettings
 import Golem.Syntax
 
 data FileLint = FileLint
   { flFile :: !FileId,
     flPath :: !FilePath,
     flCst :: !Node,
+    -- | how the file was read (docs/adr ADR 0013)
+    flSource :: !SourceSettings,
     flUsage :: !Usage
   }
 
@@ -40,7 +43,7 @@ data LintInput = LintInput
 lint :: LintInput -> [Diagnostic]
 lint input =
   sortDiagnostics $
-    concatMap (\f -> latinJoinedByNewline (liKeepStyles input) (flFile f) (flCst f)) (liFiles input)
+    concatMap (\f -> latinJoinedByNewline (flSource f) (liKeepStyles input) (flFile f) (flCst f)) (liFiles input)
       <> unusedVariables input
       <> unusedImports input
       <> unreferencedLabels input
@@ -58,15 +61,19 @@ isLatinScript c =
 {- | G0501: a newline inside a paragraph between two Latin characters
 joins the words without a space. The newlines of a paragraph in a
 paragraph style that keeps its lines (the body of @style, or the target
-of an attribute group with @style) break lines; only the prose slots
-inside it are checked (docs/adr ADR 0003, 0005).
+of an attribute group with @style) break lines, and those of a paragraph
+or a list item in the line style separate paragraphs; only the prose
+slots inside them are checked (docs/adr ADR 0003, 0005, 0013).
 -}
-latinJoinedByNewline :: Set Text -> FileId -> Node -> [Diagnostic]
-latinJoinedByNewline keep fid = go 0
+latinJoinedByNewline :: SourceSettings -> Set Text -> FileId -> Node -> [Diagnostic]
+latinJoinedByNewline source keep fid = go 0
   where
+    lineStyle = ssParagraphSeparator source == LineSeparated
     go start n
       | isKeepStyle n = verseBody start (nodeChildren n)
       | nodeKind n == NAttributed && or [isKeepStyle m | ElemNode m <- nodeChildren n] = keepTarget start (nodeChildren n)
+      -- in the line style a newline of a paragraph separates paragraphs (docs/adr ADR 0013)
+      | lineStyle && nodeKind n `elem` [NParagraph, NListItem] = proseSlots start (nodeChildren n)
       | nodeKind n `elem` [NParagraph, NProseSlot, NListItem, NDefTerm] = scan start (nodeChildren n)
       | otherwise = descend start (nodeChildren n)
     -- @style with the name of a style that keeps its lines

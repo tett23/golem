@@ -33,6 +33,8 @@
 = [strong: 異体字]
   Golem は文字を置き換えません。
   CJK 互換漢字のような異体字も、書いたとおりに組みます。
+  漢字の後に異体字セレクタ（IVS）を書くと、PDF ではその字形で組みます。
+  書体がその字形を持たなければ、もとの字の字形になります。
 
 @nonumber
 ## ブロックの記法
@@ -44,6 +46,7 @@
   記号で始まらない行のまとまりです。
   空行までが一つの段落になります。
   段落の中の改行は文字を生まず、前後は空白なしでつながります。
+  [style code: manifest.toml] の [style code: \[source\]] に [style code: paragraph-separator = "line"] と書くと、一行が一つの段落になります（付録B）。
 = [strong: [style code: # 題]、[style code: ## 題]、[style code: ### 題]]
   見出しです。
   [style code: #] の数が階層で、三つまで使えます。
