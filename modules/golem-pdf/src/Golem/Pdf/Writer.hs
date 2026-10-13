@@ -92,6 +92,11 @@ data Mark
     Saved ![Mark]
   | -- | marks drawn with the origin moved, inside q and Q (ADR 0004)
     Translated !Sp !Sp ![Mark]
+  | {- | crop mark lines filled in the registration colour, the Separation
+    of the colorant All, inside q and Q (ADR 0007). The only mark that
+    writes a Separation; Golem.Pdf does not export it.
+    -}
+    RegistrationRules ![Rect]
   deriving stock (Eq, Show)
 
 data Page = Page
@@ -215,6 +220,7 @@ contentStream fontNames imageNames marks = BL.toStrict (B.toLazyByteString (mcon
               <> nl
       Saved ms -> "q" <> nl <> mconcat (map mark ms) <> "Q" <> nl
       Translated x y ms -> "q 1 0 0 1 " <> num x <> sp <> num y <> " cm" <> nl <> mconcat (map mark ms) <> "Q" <> nl
+      RegistrationRules rs -> "q" <> nl <> "/Reg cs 1 scn" <> nl <> mconcat (map (mark . Rule) rs) <> "Q" <> nl
     hex4 g = B.string7 (printf "%04X" g)
 
 -- ------------------------------------------------------------------ serialization
@@ -299,6 +305,7 @@ writePdf doc =
         ODict
           ( [("Font", ODict [("F" <> tshow n, ORef (fontBase Map.! f)) | (f, n) <- Map.toList fontNames]) | not (null fontOrder)]
               <> [("XObject", ODict [("Im" <> tshow n, ORef (imageBase Map.! i)) | (i, n) <- Map.toList imageNames]) | not (null imageOrder)]
+              <> [("ColorSpace", ODict [("Reg", registrationColorSpace)]) | any usesRegistration [m | p <- pages, m <- pageContent p]]
           )
       catalog = ODict ([("Type", OName "Catalog"), ("Pages", ORef 2)] <> xCatalog)
       pageTree = ODict [("Type", OName "Pages"), ("Kids", OArr [ORef (pageObj i) | i <- [0 .. nPages - 1]]), ("Count", OInt (fromIntegral nPages))]
@@ -364,6 +371,36 @@ writePdf doc =
       Saved ms -> concatMap imagesOf ms
       Translated _ _ ms -> concatMap imagesOf ms
       _ -> []
+
+{- | Whether a mark is or contains 'RegistrationRules', which needs the
+@/Reg@ colour space resource (ADR 0007).
+-}
+usesRegistration :: Mark -> Bool
+usesRegistration = \case
+  RegistrationRules _ -> True
+  Saved ms -> any usesRegistration ms
+  Translated _ _ ms -> any usesRegistration ms
+  _ -> False
+
+{- | The registration colour (ADR 0007): the Separation of the colorant
+All, with DeviceCMYK as the alternate space and a tint transform from 0%
+to 100% of each process colour. Written as a direct value, so that the
+object numbers do not change.
+-}
+registrationColorSpace :: Obj
+registrationColorSpace =
+  OArr
+    [ OName "Separation",
+      OName "All",
+      OName "DeviceCMYK",
+      ODict
+        [ ("FunctionType", OInt 2),
+          ("Domain", OArr [OInt 0, OInt 1]),
+          ("C0", OArr (replicate 4 (OInt 0))),
+          ("C1", OArr (replicate 4 (OInt 1))),
+          ("N", OInt 1)
+        ]
+    ]
 
 fontObjects :: Int -> Font -> [Obj]
 fontObjects base f =
