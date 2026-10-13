@@ -581,10 +581,14 @@ data Built = Built
 options; PDF only and the fake fonts unless the options say otherwise.
 -}
 buildMarks :: (BuildOptions -> BuildOptions) -> Maybe BS.ByteString -> IO Built
-buildMarks f style = withSystemTempDirectory "golem-marks" $ \tmp -> do
+buildMarks = buildMarksWith "本文。\n"
+
+-- | 'buildMarks' with another source of the chapter.
+buildMarksWith :: T.Text -> (BuildOptions -> BuildOptions) -> Maybe BS.ByteString -> IO Built
+buildMarksWith source f style = withSystemTempDirectory "golem-marks" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
   forM_ style (BS.writeFile (tmp </> "style.toml"))
-  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "本文。\n")
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
   r <- build (f (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider})
   pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
     [p] -> Just <$> BS.readFile p
@@ -624,6 +628,12 @@ a5Size = case parseStyle (FileId 0) (TE.decodeUtf8 horizontalStyle) of
   Right s -> either (assertFailure . show) (pure . pgPageSize) (pageGeometry s)
   Left ds -> assertFailure (show ds)
 
+-- | How many times a needle occurs.
+countIn :: BS.ByteString -> BS.ByteString -> Int
+countIn needle hay = case BS.breakSubstring needle hay of
+  (_, rest) | BS.null rest -> 0
+  (_, rest) -> 1 + countIn needle (BS.drop (BS.length needle) rest)
+
 marksTests :: [TestTree]
 marksTests =
   [ testCase "no bleed and no marks: the three boxes are the same and nothing is moved" $ do
@@ -632,7 +642,7 @@ marksTests =
       boxOf "MediaBox" pdf @?= boxOf "BleedBox" pdf
       streams <- inflateAll pdf
       assertBool "no cm" (not (any ("q 1 0 0 1 " `BS.isPrefixOf`) streams)),
-    testCase "3mm of bleed and Japanese marks: the boxes of the sheet, moved content and CMYK marks" $ do
+    testCase "3mm of bleed and Japanese marks: the boxes of the sheet, moved content and registration marks" $ do
       pdf <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
       (w, h) <- a5Size
       let s = P.sheet (Just P.Japanese) 557314 (w, h)
@@ -640,8 +650,26 @@ marksTests =
       boxOf "TrimBox" pdf @?= boxText (P.shTrim s)
       boxOf "BleedBox" pdf @?= boxText (P.shBleed s)
       streams <- inflateAll pdf
-      assertBool "moved" (any (\st -> "q 1 0 0 1 " `BS.isPrefixOf` st && "1 1 1 1 k" `BS.isInfixOf` st) streams)
+      assertBool "moved" (any (\st -> "q 1 0 0 1 " `BS.isPrefixOf` st && "/Reg cs 1 scn" `BS.isInfixOf` st) streams)
+      assertBool "no CMYK 100%" (not (any ("1 1 1 1 k" `BS.isInfixOf`) streams))
       qpdfCheck pdf,
+    testCase "Japanese marks: one Separation, of the colorant All, in the resources (ADR 0007)" $ do
+      pdf <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
+      streams <- inflateAll pdf
+      countIn "/Separation" (BS.concat (pdf : streams)) @?= 1
+      assertBool "All" ("/ColorSpace << /Reg [/Separation /All /DeviceCMYK " `BS.isInfixOf` pdf),
+    testCase "no marks: no Separation (ADR 0007)" $ do
+      pdf <- marksPdf (\o -> o {optMarks = NoMarks}) bleedStyle
+      streams <- inflateAll pdf
+      assertBool "Separation" (not (any ("/Separation" `BS.isInfixOf`) (pdf : streams))),
+    testCase "with marks, text in a swatch stays DeviceCMYK (ADR 0007)" $ do
+      let style = bleedStyle <> "\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n"
+      b <- buildMarksWith "前[color accent: 赤い語]後\n" (\o -> o {optMarks = JapaneseMarks}) (Just style)
+      assertEqual "no errors" [] (map diagCode (bErrors b))
+      pdf <- maybe (assertFailure "no PDF") pure (bPdf b)
+      streams <- inflateAll pdf
+      assertBool "text in k" (any ("0 0.8 1 0 k" `BS.isInfixOf`) streams)
+      assertBool "marks" (any ("/Reg cs 1 scn" `BS.isInfixOf`) streams),
     testCase "3mm of bleed without marks: the MediaBox is the BleedBox, the TrimBox inside" $ do
       pdf <- marksPdf id bleedStyle
       (w, h) <- a5Size

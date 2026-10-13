@@ -271,7 +271,6 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "table" -> csvTable ctx sp args
   "listing" -> listing ctx sp args
   "style" -> styleBody ctx sp (maximum (spanEnd nsp : map (spanEnd . A.locSpan) args)) args body
-  "verse" -> err "G0248" sp "@verse は @style verse に変わりました。golem fmt で書き換えられます" >> pure []
   _
     | name `elem` attributeCommands -> err "G0210" sp ("@" <> name <> " の後にブロックがありません") >> pure []
     | otherwise -> err "G0209" nsp ("未知のブロックコマンドです: @" <> name) >> pure []

@@ -1,7 +1,8 @@
 module Main (main) where
 
-import Data.List (isPrefixOf, subsequences)
+import Data.List (isPrefixOf, maximumBy, subsequences)
 import Data.Map.Strict qualified as Map
+import Data.Ord (Down (..), comparing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
@@ -116,8 +117,12 @@ bruteBest ps lw items =
         [] -> Nothing
         _ ->
           let d = minimum (map fst scored)
-           in -- the (position, fitness) pairs compared from the end, the greatest wins
-              Just (d, map fst (reverse (maximum [reverse path | (d', path) <- scored, d' == d])))
+              -- the last line's fitness, the smaller first; then the
+              -- (position, fitness) pairs compared from the end, the greatest wins (ADR 0010)
+              key rpath = case rpath of
+                x : rest -> (Down (snd x), rest)
+                [] -> (Down 0, [])
+           in Just (d, map fst (reverse (maximumBy (comparing key) [reverse path | (d', path) <- scored, d' == d])))
 
 {- | Total demerits of a break sequence and the (position, fitness) of
 each break, computed directly from the rules.
@@ -219,7 +224,7 @@ tests =
               Just (d, c) -> do
                 brPass r === 2
                 brDemerits r === d
-                -- ties go to the sequence greatest from the end (ADR 0008)
+                -- ties go to the loosest last line, then the sequence greatest from the end (ADR 0010)
                 brPositions r === c,
           testCase "every line fits its own target length (L*(i))" $ do
             let items = paragraph (replicate 20 30)
@@ -241,7 +246,7 @@ tests =
                 r = breakParagraph defaultParams {pLinePenalty = 0, pAdjDemerits = 0} (const 20) items
             length (brLines r) @?= 4
             brDemerits r @?= 0,
-          testProperty "of the least-demerit break sequences, the one greatest from the end is chosen" $ property $ do
+          testProperty "of the least-demerit break sequences, the loosest last line, then the one greatest from the end, is chosen" $ property $ do
             ws <- forAll (Gen.list (Range.linear 1 7) (Gen.integral (Range.linear 0 60)))
             target <- forAll (Gen.integral (Range.linear 30 140))
             let items = paragraph ws
@@ -256,6 +261,15 @@ tests =
             brDemerits r @?= 100032200
             brPositions r @?= [3, 9, 13]
             fmap snd (bruteBest noPretol (const 90) items) @?= Just (brPositions r),
+          testCase "equal demerits: the loosest last line wins, as in TeX (ADR 0010)" $ do
+            -- after B: decent then tight; after C: tight then decent; both 484
+            let items = [box 50, Penalty 0 infPenalty NoHyphen, Glue 0 10 10, box 50, Penalty 0 0 NoHyphen, box 6, Penalty 0 0 NoHyphen, box 50, Penalty 0 infPenalty NoHyphen, Glue 0 10 10, box 50] <> finish
+                r = breakParagraph defaultParams {pLinePenalty = 0, pAdjDemerits = 0} (const 100) items
+            brPositions r @?= [6, length items - 1]
+            brDemerits r @?= 484
+            brPass r @?= 1
+            -- the last line is set at its natural width: badness 0, decent (2)
+            map lineRatio (brLines r) @?= [negate (3 / 5), 0],
           testCase "a line's demerits are capped as in TeX (ADR 0008)" $ do
             lineDemerits defaultParams 9990 0 @?= 100000000
             lineDemerits defaultParams 9989 0 @?= 99980001,

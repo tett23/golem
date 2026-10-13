@@ -14,6 +14,7 @@ module Golem.Syntax.Position
     utf8LineColToOffset,
     lineCount,
     lineText,
+    lineEndOffset,
   )
 where
 
@@ -54,6 +55,12 @@ lineStartAndEnd li n =
         | n + 1 < lineCount li = starts ! (n + 1) - 1
         | otherwise = BS.length (liBytes li)
    in (starts ! n, e)
+
+-- | 行の末尾（改行の直前）のバイト位置。行がなければ Nothing。
+lineEndOffset :: LineIndex -> Int -> Maybe Int
+lineEndOffset li n
+  | n < 0 || n >= lineCount li = Nothing
+  | otherwise = Just (snd (lineStartAndEnd li n))
 
 lineBytesOf :: LineIndex -> Int -> (Int, ByteString)
 lineBytesOf li n =
