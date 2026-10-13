@@ -1,0 +1,12 @@
+package	version	library	license	files
+addr2line	0.25.1	addr2line	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
+adler2	2.0.1	adler2	0BSD OR MIT OR Apache-2.0	LICENSE-0BSD LICENSE-APACHE LICENSE-MIT
+cfg-if	1.0.4	cfg_if	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+foldhash	0.2.0	foldhash	Zlib	LICENSE
+gimli	0.32.3	gimli	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+hashbrown	0.17.1	hashbrown	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+libc	0.2.185	libc	MIT OR Apache-2.0	LICENSE-APACHE LICENSE-MIT
+memchr	2.7.6	memchr	Unlicense OR MIT	COPYING LICENSE-MIT
+miniz_oxide	0.8.9	miniz_oxide	MIT OR Zlib OR Apache-2.0	LICENSE LICENSE-APACHE.md LICENSE-MIT.md LICENSE-ZLIB.md
+object	0.37.3	object	Apache-2.0 OR MIT	LICENSE-APACHE LICENSE-MIT
+rustc-demangle	0.1.27	rustc_demangle	MIT/Apache-2.0	LICENSE-APACHE LICENSE-MIT

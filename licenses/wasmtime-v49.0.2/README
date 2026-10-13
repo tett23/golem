@@ -4,7 +4,7 @@ compiler-rt in libwasmtime.a of the wasmtime 49.0.2 C API
 the component column of c-objects.tsv.
 
 generated: 2026-10-13
-command: scripts/wasmtime-licenses.sh (SKIP_RUST=1)
+command: scripts/wasmtime-licenses.sh
 wasmtime: v49.0.2, commit 3c8a3e79aa3188a1a12b3aebbaa097abccceac92
 rustc: 1.98.0
 cargo: cargo 1.97.0-nightly (eb94155a9 2026-04-09)
@@ -13,22 +13,5 @@ crates in MANIFEST.tsv: 256
 crates found in libwasmtime.a of aarch64-macos: 134
 crates found in libwasmtime.a of x86_64-musl: 138
 crates found in libwasmtime.a of aarch64-musl: 137
-not found in the dependencies (step 7):
-  aarch64-macos: alloc
-  aarch64-macos: compiler_builtins
-  aarch64-macos: core
-  aarch64-macos: std
-  aarch64-macos: std_detect
-  x86_64-musl: alloc
-  x86_64-musl: compiler_builtins
-  x86_64-musl: core
-  x86_64-musl: miniz_oxide
-  x86_64-musl: std
-  x86_64-musl: std_detect
-  aarch64-musl: alloc
-  aarch64-musl: compiler_builtins
-  aarch64-musl: core
-  aarch64-musl: miniz_oxide
-  aarch64-musl: std
-  aarch64-musl: std_detect
+step 7: every crate found in the three archives is listed
 members of c-objects.tsv without a component: 0
