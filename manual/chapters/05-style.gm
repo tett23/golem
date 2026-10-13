@@ -1,5 +1,8 @@
 %% この章でだけ使う段落スタイル（docs/adr/0014） %%
 @style-def paragraph example based-on=memo first-line-indent=2zw
+%% 正規表現スタイルの例（docs/adr/0015） %%
+@style-def paragraph regex-example based-on=memo
+@style-def regex regex-example pattern="[0-9０-９]+" style=bold
 
 @label style
 # スタイルの設定
@@ -147,6 +150,50 @@ HTML、EPUB、プレーンテキストには異体字セレクタをそのまま
   この段落には、この章のファイルの先頭で定義した段落スタイル [style code: example] を付けています。
 
   [style code: memo] を引き継ぎ、最初の行だけをもう一字下げています。
+
+## 正規表現スタイル
+
+段落スタイルには、正規表現に一致した文字に文字スタイルを当てる設定を書けます。
+InDesign の正規表現スタイル（GREP スタイル）と同じ考え方です。
+数字だけを欧文の書体にする、「第 N 章」の N だけを太字にする、といった体裁を、原稿に [style code: \[style ...\]] を書かずに付けられます。
+
+```toml
+[paragraph-styles.body]
+regex-styles = [
+  { pattern = '[0-9０-９]+', style = "latin-digits" },
+  { pattern = '(?<=第)[0-9]+(?=章)', style = "bold" },
+]
+```
+
+[style code: regex-styles] には、[style code: pattern]（正規表現）と [style code: style]（文字スタイルの名前）の組を並べます。
+正規表現は [style code: '...'] で囲むと、[style code: \\] をそのまま書けます。
+同じ文字に二つの組が一致した場合は、後の組が勝ちます。
+原稿で手で付けた文字スタイルは、正規表現スタイルより優先されます。
+
+[style code: regex-styles] は [style code: based-on] で引き継がれます。
+引き継いだ段落スタイルで [style code: regex-styles = \[\]] と書くと、引き継がなくなります。
+見出し、表、脚注の本文には当たりません。
+図のキャプションには [style code: caption] の、傍注の本文には [style code: sidenote] の [style code: regex-styles] が当たります。
+
+使える正規表現は、InDesign の正規表現の主なものです。
+[style code: \\d] は全角の数字にも、[style code: \\w] は漢字と仮名にも、[style code: \\s] は全角の空白にも一致します。
+後方参照、[style code: \\p{Han}] のような文字体系の指定、長さの決まらない後読み、InDesign の [style code: ~] で始まる記号は使えず、エラー（G0315）になります。
+和文の文字の範囲は [style code: \[\\x{4E00}-\\x{9FFF}\]] のように符号位置で書きます。
+縦中横と [style code: \[number-text ...\]] の数は一字として扱うので、[style code: \[0-9\]+] はその中の数字には一致しません。
+
+一つの章でだけ使う正規表現スタイルは、[style code: @style-def regex] で書けます。
+
+```
+@style-def regex body pattern="\\d+" style=bold
+```
+
+二つ目の語が組を足す段落スタイルの名前で、一行が一つの組です。
+文字列の中では [style code: \\] を [style code: \\\\] と書きます。
+
+@style regex-example
+  この段落には、数字だけを太字にする正規表現スタイルを、この章のファイルの先頭で付けています。
+
+  2026 年 10 月 14 日、１２３ページ。
 
 @label heading-style
 ## 見出しの体裁
