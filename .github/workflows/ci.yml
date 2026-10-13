@@ -26,7 +26,7 @@ jobs:
     # or workflow_dispatch) there is no range of commits to check. It runs
     # whatever the change, docs only included (docs/adr/0009)
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
