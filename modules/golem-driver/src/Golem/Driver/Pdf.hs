@@ -23,6 +23,7 @@ module Golem.Driver.Pdf
     PlacedSidenote (..),
     PdfLayout (..),
     sidenoteDiagnostics,
+    listNumberDiagnostics,
     placePageSidenotes,
     layoutPdf,
     layoutPages,
@@ -50,7 +51,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii)
 import Data.Either (fromRight, isLeft)
-import Data.List (groupBy, intercalate, nub, sortOn, zip4)
+import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, zip4)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
@@ -61,6 +62,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Time.Calendar (toGregorian)
 import Golem.Doc.Assemble
 import Golem.Doc.IR
+import Golem.Doc.ListMarkers
 import Golem.Doc.Numerals (formatNumber)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.Hyphenation.EnUs (englishUS)
@@ -352,7 +354,7 @@ flowLines provider inp = case pageGeometry (piStyle inp) of
 
 -- | Composition, line breaking and pagination, with page references resolved (S2).
 layoutPdf :: PdfInput -> PageGeometry -> LoadedFonts -> IO (Either [Diagnostic] PdfLayout)
-layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) of
+layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) <> listNumberDiagnostics (piStyle inp) (pgVertical geom) (piBook inp) of
   ds@(_ : _) -> pure (Left ds)
   [] -> do
     figures <- loadFigures inp
@@ -554,6 +556,19 @@ sidenoteDiagnostics geom book
       CharStyle _ _ xs -> concatMap (inlineSites flow) xs
       _ -> []
 
+{- | Numbers of list items that the number format of their depth cannot
+write (golem-driver ADR 0013): G0729 at the item, whatever the target.
+-}
+listNumberDiagnostics :: Style -> Bool -> Book -> [Diagnostic]
+listNumberDiagnostics style vertical book =
+  [ diagnostic "G0729" Error (lsiSpan s) ("リストの番号 " <> T.pack (show (lsiNumber s)) <> " は、書式 " <> renderNumberFormat f <> " で表せません")
+  | s <- listSites (concat [bs | Document _ bs <- bookDocs book]),
+    let f = atDepth formats (lsiDepth s),
+    null (formatListNumber (nfStyle f) (lsiNumber s))
+  ]
+  where
+    formats = fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))
+
 {- | Places the sidenotes of a page in its sidenote column (golem-driver
 ADR 0006): each wants the top of the line of its marker; they keep their
 order, half a body pitch apart. Takes the sidenote pitch and size.
@@ -666,7 +681,7 @@ kpParams style geom =
           pProtrusion = compProtrusion comp || compHanging comp
         }
 
--- | A paragraph unit to break: the inlines and a prefix (list markers).
+-- | A paragraph unit to break: the inlines, and the lists around it.
 data Unit = Unit
   { uKind :: UnitKind,
     uLabel :: Maybe Text,
@@ -674,7 +689,11 @@ data Unit = Unit
     -- | the block the unit comes from, for diagnostics
     uSpan :: SrcSpan,
     -- | the role and the size the unit is set in (docs/adr ADR 0005)
-    uFace :: (Text, Sp)
+    uFace :: (Text, Sp),
+    -- | the numbers of the lists around the unit, outermost first; lists are numbered from 0 in document order (golem-driver ADR 0013)
+    uLists :: [Int],
+    -- | the marker of the first paragraph of a list item
+    uMarker :: Maybe [Inline]
   }
 
 -- | The indent of the lines of a paragraph in sp (docs/adr ADR 0006). inFirst may be negative; inStart + inFirst >= 0.
@@ -687,7 +706,8 @@ noIndent = Indent 0 0
 data UnitKind
   = UPara !Indent
   | UHeading Int Text Bool
-  | UTerm
+  | -- | a term of a definition list; indented in a list item (golem-driver ADR 0013)
+    UTerm !Indent
   | UFigure Figure
   | UTable [Alignment] [[Inline]] [[[Inline]]]
   | -- | grid lines between paragraphs of a style (docs/adr ADR 0005)
@@ -703,43 +723,84 @@ paraLook style geom st =
       sp' f = dimToSp size (fromMaybe (Zw 0) (d >>= f))
    in (face, Indent (sp' psIndent) (sp' psFirstLineIndent))
 
+{- | The marker of an item of a list at a depth (golem-driver ADR 0013): the
+bullet of the depth, or the number in the format of the depth. @{n}@ is a
+'Number'; in vertical writing an Arabic number of up to two digits is
+tate-chu-yoko and other Latin is rotated as Latin text is.
+-}
+listMarker :: Style -> Bool -> Int -> Maybe Integer -> [Inline]
+listMarker style vertical depth = \case
+  Nothing -> [Text sp0 (atDepth (lsBullets (stLists style)) depth)]
+  Just n ->
+    let NumberFormat pre st suf = atDepth (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) depth
+        written = fromMaybe (T.pack (show n)) (formatListNumber st n)
+        number = case st of
+          NsBook -> Number sp0 n Nothing
+          NsArabic | vertical, n >= 0, T.length written <= 2 -> Tcy sp0 written
+          _ -> Text sp0 written
+     in [Text sp0 pre | not (T.null pre)] <> [number] <> [Text sp0 suf | not (T.null suf)]
+  where
+    sp0 = mkSpan (FileId 0) 0 0
+
 unitsOf :: Book -> PageGeometry -> Style -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
-unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
+unitsOf book geom style pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs book)))
   where
     sp0 = mkSpan (FileId 0) 0 0
     txt = Text sp0
     fs = pgFontSize geom
     bodyFace = (bodyRole style, fs)
-    doc (Document _ bs) = blocks False bs
-    {- a list of blocks: paragraphs of the same style in a row are apart by
-    its space-between (docs/adr ADR 0005); in a list item, paragraphs are
-    not indented (docs/adr ADR 0006) -}
-    blocks inList bs = concat [gapBefore prev b <> block inList b | (prev, b) <- zip (Nothing : map Just bs) bs]
-    gapBefore (Just (Block _ _ (Paragraph s1 _))) (Block sp _ (Paragraph s2 _))
-      | s1 == s2, Just n <- paraStyle style s2 >>= psSpaceBetween, n > 0 = [Unit (UGap n) Nothing [] sp bodyFace]
-    gapBefore _ _ = []
-    block inList (Block sp lbl body) = case body of
+    doc n (Document _ bs) = blocks [] n bs
+    {- a list of blocks inside the lists @ctx@, from the list number @n@:
+    paragraphs of the same style in a row are apart by its space-between
+    (docs/adr ADR 0005); in a list item, paragraphs are not indented by
+    their style (docs/adr ADR 0006) but by the lists (golem-driver ADR 0013) -}
+    blocks ctx n bs =
+      let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore ctx prev b <>) <$> block ctx k b) n (zip (Nothing : map Just bs) bs)
+       in (n', concat uss)
+    unit ctx kind lbl is sp face = Unit kind lbl is sp face ctx Nothing
+    gapBefore ctx (Just (Block _ _ (Paragraph s1 _))) (Block sp _ (Paragraph s2 _))
+      | s1 == s2, Just g <- paraStyle style s2 >>= psSpaceBetween, g > 0 = [unit ctx (UGap g) Nothing [] sp bodyFace]
+    gapBefore _ _ _ = []
+    block ctx n (Block sp lbl body) = case body of
       -- a unit for each part between line breaks, each indented as a paragraph (docs/adr ADR 0005, 0006)
       Paragraph st is ->
         let (face, ind) = paraLook style geom st
-         in [Unit (UPara (if inList then noIndent else ind)) (if i == 0 then lbl else Nothing) part sp face | (i, part) <- zip [0 :: Int ..] (splitBreaks is)]
+         in (n, [unit ctx (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part sp face | (i, part) <- zip [0 :: Int ..] (splitBreaks is)])
       Heading l attrs is ->
         let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
-            title = maybe [] (\n -> [txt (n <> "　")]) (if haNoNumber attrs then Nothing else num) <> is
+            title = maybe [] (\h -> [txt (h <> "　")]) (if haNoNumber attrs then Nothing else num) <> is
             recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
-         in [Unit (UHeading l (T.concat (map inlineText is)) recto) lbl title sp (headingFace style geom l)]
-      BulletList items -> concat [prefixFirst "・" (blocks True (itemBlocks it)) | it <- items]
-      OrderedList items -> concat [prefixFirst (T.pack (show n) <> ". ") (blocks True (itemBlocks it)) | (n, it) <- zip [1 :: Integer ..] items]
-      DefList gs -> concat [[Unit UTerm Nothing t sp bodyFace | t <- dgTerms g] <> concatMap (blocks inList) (dgDefs g) | g <- gs]
-      Table aligns h rows -> [Unit (UTable aligns h rows) lbl [] sp bodyFace]
-      CodeBlock _ code -> [Unit (UPara noIndent) lbl [txt l] sp bodyFace | l <- T.lines code]
-      FigureBlock fig -> [Unit (UFigure fig) lbl [] sp bodyFace]
+         in (n, [unit ctx (UHeading l (T.concat (map inlineText is)) recto) lbl title sp (headingFace style geom l)])
+      BulletList items -> list ctx n (map (Nothing,) items)
+      OrderedList items -> list ctx n (zip (map Just (itemNumbers items)) items)
+      DefList gs ->
+        let group k g = ([unit ctx (UTerm noIndent) Nothing t sp bodyFace | t <- dgTerms g] <>) <$> blocksOf k (dgDefs g)
+            blocksOf k ds = let (k', dss) = mapAccumL (blocks ctx) k ds in (k', concat dss)
+            (n', uss) = mapAccumL group n gs
+         in (n', concat uss)
+      Table aligns h rows -> (n, [unit ctx (UTable aligns h rows) lbl [] sp bodyFace])
+      CodeBlock _ code -> (n, [unit ctx (UPara noIndent) lbl [txt l] sp bodyFace | l <- T.lines code])
+      FigureBlock fig -> (n, [unit ctx (UFigure fig) lbl [] sp bodyFace])
       -- the index marks of a title are counted at the heading, not in the table of contents
-      ChannelOutput (TocOutput depth) -> [Unit (UTocEntry (teLevel e) (teSpan e)) Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) sp bodyFace | e <- bookToc book, teLevel e <= depth]
-      ChannelOutput IndexOutput -> [Unit (UPara noIndent) Nothing is sp bodyFace | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
-      ChannelOutput BibliographyOutput -> [Unit (UPara noIndent) Nothing is sp bodyFace | is <- bibliographyLines bib (bookCitations book)]
-    prefixFirst p (u@Unit {uKind = UPara _} : rest) = u {uInlines = txt p : uInlines u} : rest
-    prefixFirst _ us = us
+      ChannelOutput (TocOutput depth) -> (n, [unit ctx (UTocEntry (teLevel e) (teSpan e)) Nothing (maybe [] (\h -> [txt (h <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) sp bodyFace | e <- bookToc book, teLevel e <= depth])
+      ChannelOutput IndexOutput -> (n, [unit ctx (UPara noIndent) Nothing is sp bodyFace | is <- indexLines (pgVertical geom) pageOf (bookIndex book)])
+      ChannelOutput BibliographyOutput -> (n, [unit ctx (UPara noIndent) Nothing is sp bodyFace | is <- bibliographyLines bib (bookCitations book)])
+    {- the items of the list numbered n: their units are inside it, the first
+    unit of an item that starts with a paragraph carries the marker -}
+    list ctx n items =
+      let ctx' = ctx <> [n]
+          marker = listMarker style (pgVertical geom) (length ctx')
+          item k (num, it) =
+            let (k', us) = blocks ctx' k (itemBlocks it)
+             in (k', if startsWithParagraph it then markFirst (marker num) us else us)
+          (n', uss) = mapAccumL item (n + 1) items
+       in (n', concat uss)
+    startsWithParagraph it = case itemBlocks it of
+      (Block _ _ (Paragraph {}) : _) -> True
+      _ -> False
+    markFirst m = \case
+      (u : rest) -> u {uMarker = Just m} : rest
+      [] -> []
     splitBreaks is = case break isBreak is of
       (l, []) -> [l]
       (l, _ : rest) -> l : splitBreaks rest
@@ -750,6 +811,33 @@ unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
       IndexMark {} -> True
       _ -> False
 
+{- | The marker width M of each list, by its number (golem-driver ADR 0013):
+the widest marker w of the list and the gap G, rounded up to whole
+characters of the type area's size @fs@. G is @gap@ (zw of the
+paragraph's size), or 0 after punctuation with its own space and fs / 2
+otherwise. A list without a marker has no width.
+-}
+listWidths :: (Unit -> ComposeEnv) -> Sp -> Maybe Dim -> [Unit] -> Map Int Sp
+listWidths envOf fs gap units =
+  Map.fromListWith
+    max
+    [ (lid, roundUp (markerWidth (envOf u) m + g))
+    | u <- units,
+      Just m <- [uMarker u],
+      let g = case gap of
+            Just d -> dimToSp (snd (uFace u)) d
+            Nothing
+              | endsWithSpacedPunctuation (T.concat (map inlineText m)) -> 0
+              | otherwise -> fs `div` 2,
+      lid <- take 1 (reverse (uLists u))
+    ]
+  where
+    roundUp x = ((x + fs - 1) `div` fs) * fs
+
+-- | w: the width of the boxes of a marker.
+markerWidth :: ComposeEnv -> [Inline] -> Sp
+markerWidth env m = sum [w | Box w _ <- fst (composeInlines env m)]
+
 -- | A unit composed and broken into lines.
 data Composed = Composed
   { cLines :: [Line],
@@ -759,7 +847,9 @@ data Composed = Composed
     -- | index marks: the item index they belong to (a note's marks go with the note) and the mark
     cMarks :: [(Int, SrcSpan)],
     cAnchors :: [Golem.Layout.Japanese.Anchor],
-    cItems :: [Item]
+    cItems :: [Item],
+    -- | the items of a list marker before the text: the item indices of the anchors are shifted by it (golem-driver ADR 0013)
+    cShift :: Int
   }
 
 buildFlow :: PdfInput -> PageGeometry -> LoadedFonts -> Map Text (Maybe P.ImageData) -> Assumed -> IO Built
@@ -781,29 +871,57 @@ buildFlow inp geom fonts images assumed = do
       tocIndent l = toInteger (l - 1) * fs
       -- a mark without an assumed page yet stands at page 1 in the first round
       markPage sp = Map.lookup sp (asMarks assumed) <|> (if Map.null (asMarks assumed) then Just 1 else Nothing)
-      units = zip [0 :: Int ..] (unitsOf (piBook inp) geom style markPage (piBibliography inp))
+      rawUnits = unitsOf (piBook inp) geom style markPage (piBibliography inp)
+      -- the marker width M of each list, and the indents of the units in lists (golem-driver ADR 0013)
+      widths = listWidths (uncurry envFor . uFace) fs (lsGap (stLists style)) rawUnits
+      widthOfList lid = Map.findWithDefault 0 lid widths
+      -- O: the widths of the lists around a unit; Mi: the width of the innermost one
+      outerOf u = sum (map widthOfList (uLists u))
+      innerOf u = case reverse (uLists u) of
+        (lid : _) -> widthOfList lid
+        [] -> 0
+      withListIndent u
+        | null (uLists u) = u
+        | otherwise = case uKind u of
+            UPara _ -> u {uKind = UPara (Indent (outerOf u) (if isJust (uMarker u) then negate (innerOf u) else 0))}
+            UTerm _ -> u {uKind = UTerm (Indent (outerOf u) 0)}
+            _ -> u
+      units = zip [0 :: Int ..] (map withListIndent rawUnits)
       unitAt = Map.fromList units
       -- L*(i): the first line is shortened by the indent and the first-line indent, the others by the indent (docs/adr ADR 0006);
       -- a table of contents entry also by the reserve for its page number (golem-driver ADR 0009)
       widthOf kind k = measure - lineIndent kind k - (case kind of UTocEntry {} -> tocReserve; _ -> 0)
       lineIndent = \case
         UPara (Indent s f) -> \k -> if k == (0 :: Int) then s + f else s
+        UTerm (Indent s _) -> const s
         UTocEntry l _ -> const (tocIndent l)
         _ -> const 0
       -- the role and size a unit is set in (docs/adr ADR 0005)
       faceOf = uFace
+      {- the marker of a list item: its boxes and an empty box up to Mi, before
+      the text with no glue or penalty between them (golem-driver ADR 0013) -}
+      markerItems env u = case uMarker u of
+        Nothing -> []
+        Just m ->
+          let boxes = [b | b@Box {} <- fst (composeInlines env m)]
+              w = sum (map itemWidth boxes)
+           in boxes <> [Box (innerOf u - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0)]
       compose lineWidth u =
         let (role, size) = faceOf u
             env = envFor role size
-            (items, anchors) = composeInlines env (uInlines u)
+            marker = markerItems env u
+            -- the anchors count the items of the text; the marker comes first
+            shift = length marker
+            (textItems, anchors) = composeInlines env (uInlines u)
+            items = marker <> textItems
             lines' = brLines (breakParagraph params lineWidth items)
             notes = [(n, brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv nbody)))) | AnchorNote _ n nbody <- anchors]
-            sidenotes = [(i, sp, sidenoteLines n snBody) | AnchorSidenote i n sp snBody <- anchors]
+            sidenotes = [(i + shift, sp, sidenoteLines n snBody) | AnchorSidenote i n sp snBody <- anchors]
             marks =
-              [(i, sp) | AnchorIndex i sp _ <- anchors]
-                <> [(i, sp) | AnchorNote i _ nbody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv nbody)]
-                <> [(i, sp) | AnchorSidenote i _ _ snBody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv snBody)]
-         in Composed lines' notes sidenotes marks anchors items
+              [(i + shift, sp) | AnchorIndex i sp _ <- anchors]
+                <> [(i + shift, sp) | AnchorNote i _ nbody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv nbody)]
+                <> [(i + shift, sp) | AnchorSidenote i _ _ snBody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv snBody)]
+         in Composed lines' notes sidenotes marks anchors items shift
       -- sidenote bodies: their size, the column width, the marker first (golem-driver ADR 0006)
       (snRole, snSize', _) = sidenoteMetrics style geom
       snEnv = envFor snRole snSize'
@@ -909,7 +1027,7 @@ buildFlow inp geom fonts images assumed = do
             (_, size) = faceOf u
             -- notes belong to the line containing their anchor
             lineOfItem = lineIndexOfItems (cItems c) ls
-            noteLines = Map.fromListWith (<>) [(lineOfItem i, [(n, nls)]) | (AnchorNote i n _, (_, nls)) <- zip [a | a@AnchorNote {} <- cAnchors c] (cNotes c)]
+            noteLines = Map.fromListWith (<>) [(lineOfItem (i + cShift c), [(n, nls)]) | (AnchorNote i n _, (_, nls)) <- zip [a | a@AnchorNote {} <- cAnchors c] (cNotes c)]
             sidenoteLinesOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [(sp, sls)]) | (i, sp, sls) <- cSidenotes c]
             marksOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [sp]) | (i, sp) <- cMarks c]
             boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) | (k, lid) <- zip [0 ..] ids]
@@ -977,7 +1095,9 @@ buildFlow inp geom fonts images assumed = do
                             let (bs, set) = numbered nid (unitAt Map.! j) c (\k -> indentOf off k + lineIndent (uKind (unitAt Map.! j)) k)
                              in (nid + length (cLines c), boxAcc <> bs, Map.union setAcc set)
                           tooNarrow =
-                            [ diagnostic "G0725" Error (uSpan (unitAt Map.! j)) "段落の字下げが大きすぎます。回り込む図版の脇の行が残りません"
+                            [ if null (uLists (unitAt Map.! j))
+                                then diagnostic "G0725" Error (uSpan (unitAt Map.! j)) "段落の字下げが大きすぎます。回り込む図版の脇の行が残りません"
+                                else listTooDeep (uSpan (unitAt Map.! j))
                             | (j, c, off) <- paras,
                               any (\k -> wrappedLineWidth measure ex off k - lineIndent (uKind (unitAt Map.! j)) k <= 0) [0 .. length (cLines c) - 1]
                             ]
@@ -1000,7 +1120,7 @@ buildFlow inp geom fonts images assumed = do
                   hb = headingBlock fs pitch size (length ls)
                   flowOf = case uKind u of
                     UHeading l short recto -> [FHeading l short recto (hbSpan hb) boxes]
-                    UTerm -> [FDefTerm boxes]
+                    UTerm _ -> [FDefTerm boxes]
                     _ -> [FParagraph boxes]
                   (headAcc', errs') = case uKind u of
                     UHeading l short _ ->
@@ -1016,7 +1136,20 @@ buildFlow inp geom fonts images assumed = do
           let ((_, size), Indent s f) = paraLook style geom (Just name),
           measure - s - max 0 f < 8 * size
         ]
-      (_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths), (headingSpans, tocLines)) = foldl step (0, [], Map.empty, Map.empty, Map.empty, indentErrors, (Map.empty, Map.empty), (Map.empty, Map.empty)) units
+      -- the text of a list item leaves 8 characters of the type area (golem-driver ADR 0013)
+      listTooDeep sp = diagnostic "G0727" Error sp "リストの入れ子が深く、項目の本文の行長が足りません。行長を本文の文字の大きさの 8 字分以上残してください"
+      deepLists =
+        nub
+          [ listTooDeep (uSpan u)
+          | (_, u) <- units,
+            not (null (uLists u)),
+            case uKind u of
+              UPara _ -> True
+              UTerm _ -> True
+              _ -> False,
+            measure - outerOf u < 8 * fs
+          ]
+      (_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths), (headingSpans, tocLines)) = foldl step (0, [], Map.empty, Map.empty, Map.empty, indentErrors <> deepLists, (Map.empty, Map.empty), (Map.empty, Map.empty)) units
   pure (Built flow lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines)
 
 -- | Which line (0-based) contains the item at an index.

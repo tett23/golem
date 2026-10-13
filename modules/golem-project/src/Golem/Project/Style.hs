@@ -26,6 +26,8 @@ module Golem.Project.Style
     SidenoteStyle (..),
     MasterDef (..),
     Swatch (..),
+    ListStyle (..),
+    defaultListStyle,
     defaultStyle,
     parseStyle,
     loadStyle,
@@ -39,12 +41,14 @@ import Control.Applicative ((<|>))
 import Control.Monad (when)
 import Data.Bifunctor (bimap)
 import Data.Char (isAsciiLower, isDigit)
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Doc.ListMarkers (NumberFormat, parseNumberFormat)
 import Golem.Project.Manifest (decodeStrictBy)
 import Golem.Syntax
 import Toml.Schema
@@ -309,6 +313,21 @@ data MasterDef = MasterDef
   }
   deriving stock (Eq, Show)
 
+{- | [lists] (golem-driver ADR 0013): the bullet and the number format of
+each depth, and the gap between a marker and the text. Without numbers,
+the default of the writing mode is used.
+-}
+data ListStyle = ListStyle
+  { lsBullets :: !(NonEmpty Text),
+    lsNumbers :: !(Maybe (NonEmpty NumberFormat)),
+    lsGap :: !(Maybe Dim)
+  }
+  deriving stock (Eq, Show)
+
+-- | No [lists]: the bullet ・, the numbers and the gap of the writing mode.
+defaultListStyle :: ListStyle
+defaultListStyle = ListStyle ("・" :| []) Nothing Nothing
+
 newtype Swatch = Swatch (Int, Int, Int, Int)
   deriving stock (Eq, Show)
 
@@ -330,7 +349,9 @@ data Style = Style
     stSwatches :: !(Map Text Swatch),
     stMasters :: !(Map Text MasterDef),
     -- | [toc] leader: "dots" or "none" (golem-driver ADR 0009)
-    stTocLeader :: !Text
+    stTocLeader :: !Text,
+    -- | [lists]: the markers of lists, for the whole book (golem-driver ADR 0013)
+    stLists :: !ListStyle
   }
   deriving stock (Eq, Show)
 
@@ -354,7 +375,8 @@ defaultStyle =
       stIntent = Nothing,
       stSwatches = Map.empty,
       stMasters = Map.empty,
-      stTocLeader = "dots"
+      stTocLeader = "dots",
+      stLists = defaultListStyle
     }
 
 -- | JIS B series, A series, 四六判, 菊判, 新書判 and mass-market, in millimetres.
@@ -613,6 +635,35 @@ instance FromValue VerseV where
     fail
       "[verse] は廃止しました。indent = I と hang = H は [paragraph-styles.verse] の indent = I + H と first-line-indent = -H に、stanza-gap は [paragraph-styles.verse] の space-between に書き換えます"
 
+{- | [lists] (golem-driver ADR 0013): every error names its key; they are
+G0322 by their path.
+-}
+newtype ListsSec = ListsSec ListStyle
+
+instance FromValue ListsSec where
+  fromValue = parseTableFromValue $ do
+    bullets <- optKey "bullets"
+    numbers <- optKey "numbers"
+    gap <- optKey "gap"
+    let bad key why = fail (T.unpack ("[lists] の " <> key <> " が正しくありません: " <> why))
+        nonEmpty key = \case
+          Nothing -> pure Nothing
+          Just [] -> bad key "空の配列です"
+          Just (x : rest)
+            | any T.null (x : rest) -> bad key "空の文字列があります"
+            | otherwise -> pure (Just (x :| rest))
+    bs <- nonEmpty "bullets" bullets
+    ns <- nonEmpty "numbers" numbers
+    fmts <- traverse (traverse (\f -> either (\why -> bad "numbers" (why <> ": " <> f)) pure (parseNumberFormat f))) ns
+    g <- case gap of
+      Nothing -> pure Nothing
+      Just t -> case parseSignedDim t of
+        Nothing -> bad "gap" ("寸法として読めません: " <> t)
+        Just d
+          | negativeDim d -> bad "gap" ("負の寸法です: " <> t)
+          | otherwise -> pure (Just d)
+    pure (ListsSec (ListStyle (fromMaybe (lsBullets defaultListStyle) bs) fmts g))
+
 newtype TocSec = TocSec (Maybe Text)
 
 instance FromValue TocSec where
@@ -642,6 +693,7 @@ instance FromValue Style where
     retiredVerse <- optKey "verse"
     when (isJust (retiredVerse :: Maybe VerseV)) $ fail "[verse] は廃止しました"
     TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
+    ListsSec lists <- fromMaybe (ListsSec defaultListStyle) <$> optKey "lists"
     hs <- traverse headingLevel (Map.toList (headings :: Map Text HeadingStyle))
     let d = defaultStyle
     pure
@@ -660,7 +712,8 @@ instance FromValue Style where
           stIntent = T.unpack <$> intent,
           stSwatches = swatches,
           stMasters = masters,
-          stTocLeader = fromMaybe (stTocLeader d) leader
+          stTocLeader = fromMaybe (stTocLeader d) leader,
+          stLists = lists
         }
     where
       headingLevel (k, v) = case k of
@@ -704,6 +757,8 @@ parseStyle fid src = do
     -- errors of the page size are G0317 (ADR 0005)
     codeAt = \case
       ScopeKey "page" : ScopeKey "size" : _ -> "G0317"
+      -- errors of [lists] are G0322 (golem-driver ADR 0013)
+      ScopeKey "lists" : _ -> "G0322"
       _ -> "G0306"
     -- font roles named outside [fonts] must exist (golem-driver ADR 0003, 0004; docs/adr ADR 0005)
     roleChecks s =

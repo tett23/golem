@@ -46,6 +46,7 @@ import Data.Text.IO qualified as TIO
 import Data.Vector qualified as V
 import Golem.Doc.Assemble
 import Golem.Doc.IR
+import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Pdf
 import Golem.Driver.Plugins (loadPlugins)
@@ -372,7 +373,12 @@ build opts = do
       case evBook e of
         Just book
           | not (hasErrors (finish (evDiagnostics e))) && not (optCheckOnly opts) -> do
-              (written, outDiags) <- writeTargets opts e book missing writable
+              -- a list number its format cannot write stops every target (golem-driver ADR 0013)
+              let listDiags = listNumberDiagnostics (evStyle e) (maybe False pageVertical (stPage (evStyle e))) book
+              (written, outDiags) <-
+                if null listDiags || null writable
+                  then writeTargets opts e book missing writable
+                  else pure ([], listDiags)
               pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags <> outDiags)) infos written)
         _ -> pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags)) infos [])
   where
@@ -484,7 +490,12 @@ writeTargets opts e book missing targets = do
             hcSidenoteFace = let d = paraStyle style (Just "sidenote") in Face (d >>= psFont) (cssFontSize style <$> (d >>= psSize)),
             hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
             hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
-            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby)
+            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
+            -- only a book with [lists] changes the markers (golem-driver ADR 0013)
+            hcLists =
+              if stLists style == defaultListStyle
+                then Nothing
+                else Just (HtmlLists (lsBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style)))
           }
       present = mfilter (`Map.notMember` missing)
       ruby = compRuby (stComposition style)
@@ -528,7 +539,7 @@ writeTargets opts e book missing targets = do
         let (sub, gv) = case v of
               TextVertical -> ("vertical", GT.Vertical)
               TextHorizontal -> ("horizontal", GT.Horizontal)
-        forM (GT.renderText (stNumbersVertical style) dev (textFirstLine style) gv ft book) $ \(p, t) -> do
+        forM (GT.renderText (stNumbersVertical style) dev (textFirstLine style) (textLists style) gv ft book) $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)
       pure (concat files, [])
@@ -552,6 +563,17 @@ writeTargets opts e book missing targets = do
       when ex (removeDirectoryRecursive dir)
     writeText p t = createDirectoryIfMissing True (takeDirectory p) >> TIO.writeFile p t
     copy src dst = createDirectoryIfMissing True (takeDirectory dst) >> BS.readFile src >>= BS.writeFile dst
+
+{- | The markers of [lists] in plain text (golem-driver ADR 0013): a gap is
+written when [lists] gap is not 0, or by the last character without it.
+-}
+textLists :: Style -> GT.TextLists
+textLists style =
+  let l = stLists style
+      nonZero = \case
+        Abs x -> x /= 0
+        Zw r -> r /= 0
+   in GT.TextLists (lsBullets l) (lsNumbers l) (nonZero <$> lsGap l)
 
 {- | The ideographic spaces that start the lines of a paragraph of a style
 in plain text (docs/adr ADR 0006): the whole part of indent plus
