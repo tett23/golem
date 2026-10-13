@@ -32,6 +32,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Lsp.Features qualified as F
 import Golem.Lsp.Workspace
 import Golem.Syntax qualified as S
@@ -292,7 +293,8 @@ toDiagnostic enc li d =
         (Range (toPosition (F.toLineCol enc li (S.spanStart sp))) (toPosition (F.toLineCol enc li (S.spanEnd sp))))
         (Just (if S.diagSeverity d == S.Error then DiagnosticSeverity_Error else DiagnosticSeverity_Warning))
         (Just (InR code))
-        Nothing
+        -- the section of docs/diagnostics.md on main (golem-cli ADR 0005)
+        (CodeDescription . Uri <$> codeDescriptionUrl (S.diagCode d))
         (Just "golem")
         (S.diagMessage d)
         Nothing

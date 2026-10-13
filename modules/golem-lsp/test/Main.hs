@@ -12,6 +12,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Lsp.Features
 import Golem.Lsp.Server (rewriteInitializeResponse, runGolemLspWithHandles)
 import Golem.Lsp.Workspace
@@ -63,7 +64,9 @@ tests :: TestTree
 tests =
   testGroup
     "golem-lsp (ADR 0001)"
-    [ testCase "definition: label across files, import path, namespaced variable" $ do
+    [ testCase "no codeDescription for a code outside docs/diagnostics.md (golem-cli ADR 0005)" $
+        codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing,
+      testCase "definition: label across files, import path, namespaced variable" $ do
         ws <- openWorkspace root
         map (slice ws) (definition ws "a.gm" (at ws "a.gm" "second]" 1)) @?= ["second"]
         map locPath (definition ws "a.gm" (at ws "a.gm" "second]" 1)) @?= ["b.gm"]
@@ -310,6 +313,7 @@ session spec = do
       SessionResult
         { srLines =
             [ "diagnostics: " <> show [(d ^. diagRange, d ^. diagCode) | d <- diags],
+              "codeDescription: " <> show [fmap (\(L.CodeDescription (L.Uri u)) -> u) (d ^. diagCodeDescription) | d <- diags],
               "hover: " <> show (fmap hoverText h),
               "definition: " <> show (defTargets absRoot defs),
               "symbols: " <> concat [T.unpack n <> "(" <> T.unpack (T.intercalate "," cs) <> ")" | (n, cs) <- symbolNames syms],
@@ -329,6 +333,7 @@ session spec = do
     (^.) x f = f x
     diagRange (L.Diagnostic rng _ _ _ _ _ _ _ _) = rng
     diagCode (L.Diagnostic _ _ c _ _ _ _ _ _) = c
+    diagCodeDescription (L.Diagnostic _ _ _ cd _ _ _ _ _) = cd
     startLine d = let L.Range (L.Position l _) _ = diagRange d in l
     hoverText (L.Hover (L.InL (L.MarkupContent _ t)) _) = t
     hoverText _ = ""
