@@ -12,6 +12,7 @@ module Golem.Project.Manifest
     chapterFiles,
     tomlDiagnostics,
     decodeStrict,
+    decodeStrictBy,
   )
 where
 
@@ -190,12 +191,18 @@ instance FromValue FilterDecl where
 in toml-parser) are errors: a misspelt key must not be silently ignored.
 -}
 decodeStrict :: (FromValue a) => Text -> FileId -> Text -> Either [Diagnostic] a
-decodeStrict code fid src = case Toml.parse src of
+decodeStrict code = decodeStrictBy code (const code)
+
+{- | 'decodeStrict' whose schema messages take their code from the path of
+the value; TOML syntax errors take the first code.
+-}
+decodeStrictBy :: (FromValue a) => Text -> ([Scope] -> Text) -> FileId -> Text -> Either [Diagnostic] a
+decodeStrictBy code codeAt fid src = case Toml.parse src of
   Left msg -> Left [diagnostic code Error (mkSpan fid 0 0) ("TOML の誤りです: " <> T.pack msg)]
   Right tab -> case runMatcher (fromValue (Table' (Position 0 1 1) tab)) of
-    Failure es -> Left (tomlDiagnostics code fid src es)
+    Failure es -> Left (tomlDiagnosticsBy codeAt fid src es)
     Success [] a -> Right a
-    Success ws _ -> Left (tomlDiagnostics code fid src ws)
+    Success ws _ -> Left (tomlDiagnosticsBy codeAt fid src ws)
 
 parseManifest :: FileId -> Text -> Either [Diagnostic] Manifest
 parseManifest fid src = do
@@ -207,7 +214,11 @@ parseManifest fid src = do
 
 -- | Converts toml-parser messages to diagnostics at their line.
 tomlDiagnostics :: Text -> FileId -> Text -> [MatchMessage Position] -> [Diagnostic]
-tomlDiagnostics code fid src = map one
+tomlDiagnostics code = tomlDiagnosticsBy (const code)
+
+-- | 'tomlDiagnostics' with the code taken from the path of each message.
+tomlDiagnosticsBy :: ([Scope] -> Text) -> FileId -> Text -> [MatchMessage Position] -> [Diagnostic]
+tomlDiagnosticsBy codeAt fid src = map one
   where
     li = mkLineIndex src
     at mpos = case mpos of
@@ -216,7 +227,7 @@ tomlDiagnostics code fid src = map one
         Nothing -> mkSpan fid 0 0
       Nothing -> mkSpan fid 0 0
     one (MatchMessage loc path msg) =
-      diagnostic code Error (at loc) (T.pack (msg <> " (" <> showPath path <> ")"))
+      diagnostic (codeAt path) Error (at loc) (T.pack (msg <> " (" <> showPath path <> ")"))
     showPath = concatMap $ \case
       ScopeKey k -> "." <> T.unpack k
       ScopeIndex i -> "[" <> show i <> "]"

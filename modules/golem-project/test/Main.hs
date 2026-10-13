@@ -130,7 +130,7 @@ tests =
           Left ds -> assertFailure (show ds)
           Right s -> do
             Map.keys (stHeadings s) @?= [1, 2]
-            fmap pageSizeName (stPage s) @?= Just "B6"
+            fmap pageSizeSpec (stPage s) @?= Just (NamedSize "B6")
             Map.lookup "accent" (stSwatches s) @?= Just (Swatch (0, 80, 100, 0)),
       testCase "mass-market paperback size (ADR 0003)" $ do
         pageSize "mass-market" @?= Just (10795 / 100, 174625 / 1000)
@@ -198,6 +198,7 @@ tests =
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"3mm\"\n") @?= Right (Just 557314)
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\n") @?= Right (Just 0)
         codes (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"1zw\"\n") @?= ["G0306"],
+      testGroup "page size by dimensions (ADR 0005)" pageSizeTests,
       testCase "marks is not a key of the manifest (golem-pdf ADR 0004)" $
         withProject [("manifest.toml", manifest ["\"a.gm\""] <> "\n[targets.pdf]\nmarks = \"japanese\"\n"), ("a.gm", "")] $ \root ->
           loadProject root >>= (@?= ["G0301"]) . codes
@@ -390,3 +391,52 @@ specStyle =
       "running-head = { position = \"top-outside\", content = \"heading.1.short\" }",
       "folio = { position = \"bottom-outside\", format = \"{n}\" }"
     ]
+
+pageSizeTests :: [TestTree]
+pageSizeTests =
+  [ testCase "width and height are dimensions" $ do
+      trim "{ width = \"148mm\", height = \"210mm\" }" @?= Right (Just (abs' "148mm", abs' "210mm"))
+      trim "{ width = \"396pt\", height = \"612pt\" }" @?= Right (Just (396 * 65536, 612 * 65536))
+      trim "{ width = \"100mm\", height = \"600Q\" }" @?= Right (Just (abs' "100mm", abs' "600Q"))
+      trim "{ width = \"210mm\", height = \"148mm\" }" @?= Right (Just (abs' "210mm", abs' "148mm")),
+    testCase "a page given by dimensions is the same as the named size" $
+      trim "{ width = \"107.95mm\", height = \"174.625mm\" }" @?= trim "\"mass-market\"",
+    testCase "the named sizes are the table in sp" $
+      sequence_
+        [ trim ("\"" <> n <> "\"") @?= Right (Just (mm w, mm h))
+        | n <- ["A4", "A5", "A6", "B5", "B6", "四六判", "mass-market"],
+          Just (w, h) <- [pageSize n]
+        ],
+    testCase "菊判 and 新書判" $ do
+      trim "\"菊判\"" @?= trim "{ width = \"150mm\", height = \"220mm\" }"
+      trim "\"新書判\"" @?= trim "{ width = \"103mm\", height = \"182mm\" }"
+      assertBool "菊判" (isRight (trim "\"菊判\""))
+      assertBool "新書判" (isRight (trim "\"新書判\"")),
+    testCase "errors are G0317" $ do
+      g0317 "\"148mm x 210mm\"" "未知の判型です: 148mm x 210mm。表にない判型は size = { width = \"…\", height = \"…\" } で書きます"
+      g0317 "\"A3\"" "未知の判型です: A3"
+      g0317 "\"菊版\"" "未知の判型です: 菊版"
+      g0317 "\"新書版\"" "未知の判型です: 新書版"
+      g0317 "{ width = \"148mm\" }" "判型の width と height はどちらも必須です"
+      g0317 "{ width = \"148mm\", height = \"210mm\", depth = \"1mm\" }" "depth"
+      g0317 "{ width = \"10zw\", height = \"210mm\" }" "判型には zw を使えません"
+      g0317 "{ width = \"0mm\", height = \"210mm\" }" "判型の幅と高さは 0 より大きい寸法です"
+      g0317 "{ width = \"148\", height = \"210mm\" }" "dimension",
+    testCase "G0317 is at the value of size" $
+      case parseStyle (FileId 0) "[page]\nsize = \"A3\"\n" of
+        Left [d] -> spanStart (diagSpan d) @?= 14
+        r -> assertFailure (show r)
+  ]
+  where
+    src v = "[page]\nsize = " <> v <> "\n"
+    trim v = fmap (fmap pageTrimSize . stPage) (parseStyle (FileId 0) (src v))
+    abs' t = case parseDim t of
+      Just (Abs x) -> x
+      d -> error (show d)
+    mm x = round (x * 72 * 65536 / (254 / 10) :: Rational)
+    isRight = either (const False) (const True)
+    g0317 v needle = case parseStyle (FileId 0) (src v) of
+      Left ds -> do
+        map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G0317"]
+        assertBool (show (map diagMessage ds)) (any ((needle `T.isInfixOf`) . diagMessage) ds)
+      Right _ -> assertFailure ("not an error: " <> T.unpack v)

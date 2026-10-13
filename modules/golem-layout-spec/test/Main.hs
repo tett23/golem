@@ -24,7 +24,7 @@ grid :: Int -> Int -> Int -> Maybe Dim -> Grid
 grid chars ls cols gap = Grid (Abs (pt 10)) chars ls (Abs (pt 17)) cols gap (Abs mm18) (Abs mm20)
 
 styleWith :: Bool -> Bool -> Grid -> Style
-styleWith bindingRight vertical g = defaultStyle {stPage = Just (Page "A5" bindingRight vertical (Just g) 0)}
+styleWith bindingRight vertical g = defaultStyle {stPage = Just (Page (NamedSize "A5") bindingRight vertical (Just g) 0)}
 
 geom :: Style -> PageGeometry
 geom s = either (error . show) id (pageGeometry s)
@@ -33,7 +33,17 @@ tests :: TestTree
 tests =
   testGroup
     "golem-layout-spec (ADR 0001)"
-    [ testCase "horizontal, one column, left binding" $ do
+    [ testCase "a page size by dimensions is the same as the named size (golem-project ADR 0005)" $ do
+        let withSize sz = defaultStyle {stPage = Just (Page sz True True (Just (grid 30 15 1 Nothing)) 0)}
+            dim t = case parseDim t of
+              Just (Abs x) -> x
+              d -> error (show d)
+            named = geom (withSize (NamedSize "B6"))
+            custom = geom (withSize (CustomSize (dim "128mm") (dim "182mm")))
+        pgPageSize custom @?= pgPageSize named
+        pgTypeArea custom @?= pgTypeArea named
+        pgTypeAreaEven custom @?= pgTypeAreaEven named,
+      testCase "horizontal, one column, left binding" $ do
         let g = geom (styleWith False False (grid 30 30 1 Nothing))
         pgPageSize g @?= (a5W, a5H)
         -- width 10pt × 30, height 17pt × 29 + 10pt
