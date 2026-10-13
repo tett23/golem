@@ -792,7 +792,8 @@ U+2010 と U+2013 は、引用符や em ダッシュと同じく、どちらか�
 ハイフンやダッシュを含む語には、TeX と同じく Liang のパターンを当てない。
 `well-known` は `well-` の後ろでだけ分けられ、`self-evident` の後半は分けない。
 
-罰点の合計が最小の経路が複数あるときは、各経路の分割の位置と適合度の分類の組を段落の終わりから並べた列を辞書式に比べ、大きいほうを選ぶ（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。
+罰点の合計が最小の経路が複数あるときは、まず段落の最後の行の適合度の分類の番号が小さいもの（very loose の側）を選ぶ（[golem-layout ADR 0010](golem-layout/adr/0010-tie-breaking-tex.md)）。
+それでも複数あれば、各経路の分割の位置と適合度の分類の組を最後から二つ目の分割から段落の始まりへ並べた列を辞書式に比べ、大きいほうを選ぶ（[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)）。
 これは、行長が一定の段落で TeX の選ぶ経路と一致する。
 行長の変わる段落では、罰点の等しい経路について TeX と異なる経路を選ぶ場合がある。
 
