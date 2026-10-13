@@ -101,6 +101,13 @@ tests =
         map cmpLabel (found (offsetIn src "@style " 7)) @?= ["body", "caption", "quote", "sidenote", "verse"]
         map cmpKind (found (offsetIn src "@style " 7)) @?= replicate 5 CkParaStyle
         map cmpLabel (found (offsetIn src "[style " 7)) @?= ["bold", "italic", "strong"],
+      testCase "completion: the kinds of a page break (docs/adr ADR 0017)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@page-break \n"
+        let src = textOf ws "b.gm"
+            found = completions ws "b.gm" (offsetIn src "@page-break " 12)
+        map cmpLabel found @?= ["recto", "verso"]
+        map cmpKind found @?= [CkSettingValue, CkSettingValue],
       testCase "with a syntax error, completion and definition still work elsewhere" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n[ref-title intro]と[strong: 閉じない\n\n[ref-number \n"
