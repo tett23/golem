@@ -5,6 +5,7 @@ Handled: ruby 《》 and ｜, emphasis dots ［＃「…」に傍点］, tate-ch
 ［＃「…」は縦中横］, headings ［＃「…」は大／中／小見出し］, the gaiji used
 in the text, and the colophon (kept at the end, as the Aozora terms ask).
 Layout annotations (字下げ, 字詰め, 罫囲み, 地付き) are dropped.
+Each paragraph is one line, for [source] paragraph-separator = "line".
 
 Usage: aozora_to_gm.py INPUT.txt OUTPUT.gm
 """
@@ -156,7 +157,19 @@ def convert(src):
             out.append(g)
     out.append("@nonumber\n# 底本と作成者")
     out.extend(text_escape(l.strip()) for l in colophon if l.strip())
-    return "\n\n".join(out) + "\n", title, author
+    return join_paragraphs(out) + "\n", title, author
+
+
+def join_paragraphs(blocks):
+    """Joins the blocks for paragraph-separator = "line": one newline between
+    paragraphs, a blank line before and after a heading (docs/adr/0013)."""
+    s = ""
+    for i, b in enumerate(blocks):
+        if i > 0:
+            heading = b.startswith("@nonumber\n") or blocks[i - 1].startswith("@nonumber\n")
+            s += "\n\n" if heading else "\n"
+        s += b
+    return s
 
 
 def main():

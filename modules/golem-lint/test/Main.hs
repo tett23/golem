@@ -6,6 +6,7 @@ import Data.Text (Text)
 import Golem.Eval.File (Usage (..))
 import Golem.Lint
 import Golem.Parser (parse)
+import Golem.Parser.SourceSettings
 import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -17,7 +18,10 @@ newlineCodes :: Text -> [Text]
 newlineCodes = newlineCodesWith (Set.fromList ["verse"])
 
 newlineCodesWith :: Set.Set Text -> Text -> [Text]
-newlineCodesWith keep src = [c | d <- latinJoinedByNewline keep (FileId 0) (fst (parse (FileId 0) src)), let DiagnosticCode c = diagCode d]
+newlineCodesWith = newlineCodesIn defaultSourceSettings
+
+newlineCodesIn :: SourceSettings -> Set.Set Text -> Text -> [Text]
+newlineCodesIn source keep src = [c | d <- latinJoinedByNewline source keep (FileId 0) (fst (parse (FileId 0) src)), let DiagnosticCode c = diagCode d]
 
 usage :: Usage
 usage = Usage [] Set.empty Map.empty []
@@ -51,12 +55,19 @@ tests =
         newlineCodes "@style quote\nFull fathom five\nOf his bones\n" @?= ["G0501"]
         newlineCodesWith (Set.fromList ["verse", "quote"]) "@style quote\n  Full fathom five\n  Of his bones\n" @?= []
         newlineCodes "@figure a.png alt=x\n  Full fathom\n  five\n" @?= ["G0501"],
+      testCase "G0501 does not apply to the newlines that separate paragraphs (docs/adr ADR 0013)" $ do
+        let lineCodes = newlineCodesIn (SourceSettings LineSeparated) (Set.fromList ["verse"])
+        lineCodes "Full fathom\nfive\n" @?= []
+        newlineCodes "Full fathom\nfive\n" @?= ["G0501"]
+        lineCodes "- Full fathom\n  five\n" @?= []
+        lineCodes "@style quote\n  Full fathom\n  five\n" @?= []
+        lineCodes "[note: a\nb] x\n" @?= ["G0501"],
       testCase "G0502 unused variable, unless an importer uses it" $ do
-        let defining = FileLint (FileId 1) "common.gm" (fst (parse (FileId 1) "")) usage {usageDefined = [("x", sp), ("y", sp)]}
-            importing = FileLint (FileId 2) "ch.gm" (fst (parse (FileId 2) "")) usage {usageImports = [("c", "common.gm", sp)], usageNamespaceRefs = Map.fromList [("c", Set.fromList ["x"])]}
+        let defining = FileLint (FileId 1) "common.gm" (fst (parse (FileId 1) "")) defaultSourceSettings usage {usageDefined = [("x", sp), ("y", sp)]}
+            importing = FileLint (FileId 2) "ch.gm" (fst (parse (FileId 2) "")) defaultSourceSettings usage {usageImports = [("c", "common.gm", sp)], usageNamespaceRefs = Map.fromList [("c", Set.fromList ["x"])]}
         codes (lint (LintInput [defining, importing] Map.empty Set.empty (Set.fromList ["verse"]))) @?= ["G0502"],
       testCase "G0503 unused import" $ do
-        let f = FileLint (FileId 1) "a.gm" (fst (parse (FileId 1) "")) usage {usageImports = [("v", "v.gm", sp)]}
+        let f = FileLint (FileId 1) "a.gm" (fst (parse (FileId 1) "")) defaultSourceSettings usage {usageImports = [("v", "v.gm", sp)]}
         codes (lint (LintInput [f] Map.empty Set.empty (Set.fromList ["verse"]))) @?= ["G0503"],
       testCase "G0504 unreferenced labels are warnings, errors in prod" $ do
         let ds = lint (LintInput [] (Map.fromList [("a", sp), ("b", sp)]) (Set.fromList ["a"]) (Set.fromList ["verse"]))

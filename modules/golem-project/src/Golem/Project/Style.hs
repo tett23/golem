@@ -7,6 +7,8 @@ module Golem.Project.Style
     parseSignedDim,
     dimToSp,
     Page (..),
+    PageSize (..),
+    pageTrimSize,
     Grid (..),
     FontRole (..),
     CharStyleDef (..),
@@ -35,6 +37,7 @@ where
 
 import Control.Applicative ((<|>))
 import Control.Monad (when)
+import Data.Bifunctor (bimap)
 import Data.Char (isAsciiLower, isDigit)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -42,7 +45,7 @@ import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Project.Manifest (decodeStrict)
+import Golem.Project.Manifest (decodeStrictBy)
 import Golem.Syntax
 import Toml.Schema
 import Toml.Schema.FromValue (typeError)
@@ -64,13 +67,12 @@ parseDim t =
         r <- decimal num
         case unit of
           "pt" -> Just (Abs (round (r * 65536)))
-          "mm" -> Just (Abs (round (r * mmToSp)))
-          "Q" -> Just (Abs (round (r * (1 % 4) * mmToSp)))
-          "H" -> Just (Abs (round (r * (1 % 4) * mmToSp)))
+          "mm" -> Just (Abs (mmToSp r))
+          "Q" -> Just (Abs (mmToSp (r * (1 % 4))))
+          "H" -> Just (Abs (mmToSp (r * (1 % 4))))
           "zw" -> Just (Zw r)
           _ -> Nothing
   where
-    mmToSp = 72 * 65536 / (254 % 10)
     decimal s = case T.splitOn "." s of
       [i] | not (T.null i) -> Just (fromInteger (read (T.unpack i)))
       [i, f] | not (T.null i), not (T.null f) -> Just (read (T.unpack (i <> f)) % (10 ^ T.length f))
@@ -107,8 +109,16 @@ data Grid = Grid
   }
   deriving stock (Eq, Show)
 
+-- | [page] の size。名前は読み込みで表と照合済みである（ADR 0005）。
+data PageSize
+  = -- | 判型の表の名前
+    NamedSize !Text
+  | -- | 幅と高さ（sp）
+    CustomSize !Sp !Sp
+  deriving stock (Eq, Show)
+
 data Page = Page
-  { pageSizeName :: !Text,
+  { pageSizeSpec :: !PageSize,
     pageBindingRight :: !Bool,
     pageVertical :: !Bool,
     pageGrid :: !(Maybe Grid),
@@ -347,7 +357,7 @@ defaultStyle =
       stTocLeader = "dots"
     }
 
--- | JIS B series, A series and 四六判, in millimetres.
+-- | JIS B series, A series, 四六判, 菊判, 新書判 and mass-market, in millimetres.
 pageSize :: Text -> Maybe (Rational, Rational)
 pageSize = \case
   "A4" -> Just (210, 297)
@@ -356,9 +366,45 @@ pageSize = \case
   "B5" -> Just (182, 257)
   "B6" -> Just (128, 182)
   "四六判" -> Just (127, 188)
+  -- ADR 0005
+  "菊判" -> Just (150, 220)
+  "新書判" -> Just (103, 182)
   -- 4.25in x 6.875in (ADR 0003)
   "mass-market" -> Just (17 / 4 * 254 / 10, 55 / 8 * 254 / 10)
   _ -> Nothing
+
+-- | 仕上がりの幅と高さ（sp）。
+pageTrimSize :: Page -> (Sp, Sp)
+pageTrimSize p = case pageSizeSpec p of
+  -- the name was checked against the table when style.toml was read
+  NamedSize n -> maybe (0, 0) (bimap mmToSp mmToSp) (pageSize n)
+  CustomSize w h -> (w, h)
+
+-- | Millimetres to sp, rounded once, half to even.
+mmToSp :: Rational -> Sp
+mmToSp mm = round (mm * 72 * 65536 / (254 % 10))
+
+{- | A name of the table, or @{ width, height }@ in absolute dimensions
+greater than 0 (ADR 0005). Errors are at the value of size.
+-}
+instance FromValue PageSize where
+  fromValue v = case v of
+    Text' l n
+      | isJust (pageSize n) -> pure (NamedSize n)
+      | otherwise -> failAt l ("未知の判型です: " <> T.unpack n <> "。表にない判型は size = { width = \"…\", height = \"…\" } で書きます")
+    Table' l _ -> do
+      (w, h) <- parseTableFromValue ((,) <$> dimKey "width" <*> dimKey "height") v
+      case (w, h) of
+        (Just w', Just h') -> CustomSize <$> side l w' <*> side l h'
+        _ -> failAt l "判型の width と height はどちらも必須です"
+    _ -> typeError "page size name or { width = ..., height = ... }" v
+    where
+      side l = \case
+        Abs x
+          | x > 0 -> pure x
+          | otherwise -> failAt l "判型の幅と高さは 0 より大きい寸法です"
+        -- the page size does not depend on the size of the type, as the bleed
+        Zw _ -> failAt l "判型には zw を使えません"
 
 newtype DimV = DimV Dim
 
@@ -646,7 +692,7 @@ filesystem.
 -}
 parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
-  s <- decodeStrict "G0306" fid src
+  s <- decodeStrictBy "G0306" codeAt fid src
   case [diagnostic "G0306" Error (mkSpan fid 0 0) m | m <- checks s]
     <> [diagnostic "G0308" Error (mkSpan fid 0 0) m | m <- roleChecks s]
     <> [diagnostic "G0313" Error (mkSpan fid 0 0) ("style.toml のスタイルの参照が不正です: " <> m) | m <- referenceChecks s]
@@ -655,6 +701,10 @@ parseStyle fid src = do
     [] -> Right s
     ds -> Left ds
   where
+    -- errors of the page size are G0317 (ADR 0005)
+    codeAt = \case
+      ScopeKey "page" : ScopeKey "size" : _ -> "G0317"
+      _ -> "G0306"
     -- font roles named outside [fonts] must exist (golem-driver ADR 0003, 0004; docs/adr ADR 0005)
     roleChecks s =
       [ "style.toml にないフォントの役割です: " <> r
@@ -721,11 +771,6 @@ parseStyle fid src = do
            ]
         <> [ "ルビのかけの量は 0 以上です（[composition.ruby] の overhang）"
            | negativeDim (rdOverhang (compRuby (stComposition s)))
-           ]
-        <> [ "未知の判型です: " <> pageSizeName p
-           | Just p <- [stPage s],
-             isNothing (pageSize (pageSizeName p)),
-             not (T.any (== 'x') (pageSizeName p))
            ]
 
 {- | Reads style.toml from the project root; a missing file means the
