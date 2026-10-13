@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Control.Monad (void)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -163,6 +164,11 @@ tests =
       testCase "a heading font must name a font role (golem-driver ADR 0003)" $ do
         codes (parseStyle (FileId 0) "[headings.1]\nfont = \"nope\"\n") @?= ["G0308"]
         codes (parseStyle (FileId 0) "[fonts.heading]\nlatin = \"h.otf\"\n\n[headings.1]\nfont = \"heading\"\n") @?= [],
+      testCase "loadStyle does not look for the files it names (ADR 0004)" $
+        void (loadStyle (FileId 0) (Just "[fonts.body]\nja = \"fonts/none.otf\"\n\n[color]\nintent = \"icc/none.icc\"\n")) @?= Right (),
+      testCase "fontFiles lists roles by name, Japanese before Latin (ADR 0004)" $
+        fmap fontFiles (loadStyle (FileId 0) (Just "[fonts.mono]\nlatin = \"m.otf\"\n\n[fonts.body]\nja = \"b.otf\"\nlatin = \"l.otf\"\n"))
+          @?= Right [("body", "b.otf"), ("body", "l.otf"), ("mono", "m.otf")],
       testCase "character style fonts name font roles (golem-driver ADR 0004)" $
         codes (parseStyle (FileId 0) "[character-styles.term]\nfont = \"nope\"\n") @?= ["G0308"],
       styleTests

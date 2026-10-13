@@ -11,6 +11,8 @@ module Golem.Driver
     evaluateProject,
     evaluateProjectWith,
     Evaluated (..),
+    missingStyleFiles,
+    targetFileDiagnostics,
     sourceInfos,
     FontProvider (..),
     LoadedFonts (..),
@@ -23,12 +25,13 @@ module Golem.Driver
 where
 
 import Control.Exception (SomeException, try)
-import Control.Monad (forM, forM_, when)
+import Control.Monad (forM, forM_, mfilter, when)
 import Data.Aeson qualified as J
 import Data.Aeson.Key qualified as JK
 import Data.Aeson.KeyMap qualified as KM
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
+import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe)
@@ -51,7 +54,7 @@ import Golem.Html
 import Golem.Parser.AST qualified as A
 import Golem.Plugin.Lock (defaultCacheDir)
 import Golem.Project
-import Golem.Project.Paths (resolveInRoot)
+import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Text qualified as GT
@@ -88,6 +91,8 @@ data BuildResult = BuildResult
 data Evaluated = Evaluated
   { evProject :: !Project,
     evStyle :: !Style,
+    -- | the FileId of style.toml, where its diagnostics point
+    evStyleFile :: !FileId,
     evResults :: !(Map FileId EvalResult),
     evBook :: !(Maybe Book),
     evDiagnostics :: ![Diagnostic],
@@ -116,16 +121,15 @@ evaluateProjectWith overlay profile root = do
     Right project -> do
       let synDiags = concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
           manifest0 = projectManifest project
-          styleFid = FileId (length (fileTableEntries (projectFiles project)))
+          styleFid = styleFileId project
       styleText <- readMaybeText (root </> "style.toml")
-      estyle <- loadStyle (\p -> doesFileExist (root </> p)) styleFid styleText
-      case estyle of
+      case loadStyle styleFid styleText of
         Left ds -> pure (Left ds)
         Right style
           | hasErrors synDiags -> do
               assets <- loadAssets root project
               (citeKeys, _) <- loadBibliography root manifest0
-              pure (Right (Evaluated project style Map.empty Nothing synDiags (reeval profile project style assets citeKeys noPlugins Map.empty)))
+              pure (Right (Evaluated project style styleFid Map.empty Nothing synDiags (reeval profile project style assets citeKeys noPlugins Map.empty)))
           | otherwise -> do
               let manifest = manifest0
                   masterDiags =
@@ -145,10 +149,10 @@ evaluateProjectWith overlay profile root = do
                   pre = masterDiags <> pluginDiags <> s0Diags
                   again = reeval profile project style assets citeKeys hook results
               if hasErrors pre
-                then pure (Right (Evaluated project style results Nothing pre again))
+                then pure (Right (Evaluated project style styleFid results Nothing pre again))
                 else do
                   let (book, s1Diags) = assemble cfg evalDeferred chapterDocs
-                  pure (Right (Evaluated project style results (Just book) (pre <> s1Diags) again))
+                  pure (Right (Evaluated project style styleFid results (Just book) (pre <> s1Diags) again))
 
 readMaybeText :: FilePath -> IO (Maybe Text)
 readMaybeText p = do
@@ -317,20 +321,54 @@ build opts = do
     Left ds -> pure (BuildResult (finish ds) Map.empty [])
     Right e -> do
       let project = evProject e
-          infos = sourceInfos project
+          -- the diagnostics of style.toml point at its start (golem-project ADR 0004)
+          infos = Map.insert (evStyleFile e) (SourceInfo "style.toml" (mkLineIndex "")) (sourceInfos project)
+          targets = fromMaybe (targetsOf (projectManifest project)) (optTargets opts)
+      -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
+      missing <- missingStyleFiles (optRoot opts) (evStyle e)
+      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics (evStyleFile e) (evStyle e) missing t)) | t <- targets]
+          fileDiags = nub (concatMap snd perTarget)
+          writable = [t | (t, ds) <- perTarget, not (hasErrors ds)]
       case evBook e of
         Just book
           | not (hasErrors (finish (evDiagnostics e))) && not (optCheckOnly opts) -> do
-              let manifest = projectManifest project
-                  targets = fromMaybe (targetsOf manifest) (optTargets opts)
-              (written, outDiags) <- writeTargets opts e book targets
-              pure (BuildResult (finish (evDiagnostics e <> outDiags)) infos written)
-        _ -> pure (BuildResult (finish (evDiagnostics e)) infos [])
+              (written, outDiags) <- writeTargets opts e book missing writable
+              pure (BuildResult (finish (evDiagnostics e <> fileDiags <> outDiags)) infos written)
+        _ -> pure (BuildResult (finish (evDiagnostics e <> fileDiags)) infos [])
   where
     finish = sortDiagnostics . map (adjustForProfile (optProfile opts))
 
-writeTargets :: BuildOptions -> Evaluated -> Book -> [Target] -> IO ([FilePath], [Diagnostic])
-writeTargets opts e book targets = do
+-- | Files of style.toml that cannot be used: path -> why (resolveInRoot).
+missingStyleFiles :: FilePath -> Style -> IO (Map FilePath PathError)
+missingStyleFiles root style = do
+  let paths = nub (map snd (fontFiles style) <> maybe [] pure (stIntent style))
+  resolved <- forM paths $ \p -> (p,) <$> resolveInRoot root p
+  pure (Map.fromList [(p, err) | (p, Left err) <- resolved])
+
+{- | Diagnostics of the missing files for one target (golem-project ADR
+0004): the fonts the PDF uses and its output intent (errors), every font
+for HTML and EPUB (warnings, errors in prod), nothing for plain text.
+-}
+targetFileDiagnostics :: FileId -> Style -> Map FilePath PathError -> Target -> [Diagnostic]
+targetFileDiagnostics fid style missing = \case
+  TargetPdf ->
+    report "G0802" Error "フォントのファイルがありません" pdfFonts
+      <> report "G0806" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
+  TargetHtml -> siteFonts
+  TargetEpub -> siteFonts
+  TargetText -> []
+  where
+    pdfFonts = [p | r <- usedRoles style, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
+    siteFonts = report "G0310" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
+    report code sev missingMsg paths =
+      [ diagnostic code sev (mkSpan fid 0 0) (T.pack (msg <> ": " <> p))
+      | p <- nub paths,
+        Just err <- [Map.lookup p missing],
+        let msg = if err == Missing then missingMsg else pathErrorMessage err
+      ]
+
+writeTargets :: BuildOptions -> Evaluated -> Book -> Map FilePath PathError -> [Target] -> IO ([FilePath], [Diagnostic])
+writeTargets opts e book missing targets = do
   let root = optRoot opts
       project = evProject e
       style = evStyle e
@@ -347,7 +385,8 @@ writeTargets opts e book targets = do
             hcVertical = vertical,
             hcNumberDefault = stNumbersVertical style,
             hcSwatches = Map.map (\(Swatch c) -> c) (stSwatches style),
-            hcFonts = Map.map (\fr -> (frJa fr, frLatin fr)) (stFonts style),
+            -- missing fonts are left out of the site (golem-project ADR 0004)
+            hcFonts = Map.map (\fr -> (present (frJa fr), present (frLatin fr))) (stFonts style),
             -- the resolved styles (docs/adr ADR 0005)
             hcCharStyles =
               Map.fromList
@@ -373,6 +412,7 @@ writeTargets opts e book targets = do
             hcCaptionFace = let c = paraStyle style (Just "caption") in Face (c >>= psFont) (cssFontSize style <$> (c >>= psSize)),
             hcSidenoteFace = let d = paraStyle style (Just "sidenote") in Face (d >>= psFont) (cssFontSize style <$> (d >>= psSize))
           }
+      present = mfilter (`Map.notMember` missing)
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case
     TargetHtml -> do

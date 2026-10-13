@@ -173,10 +173,8 @@ loadSources overlay root mfid ft0 manifest = do
 
 pathDiagnostic :: SrcSpan -> FilePath -> PathError -> Diagnostic
 pathDiagnostic sp p e =
-  diagnostic code Error sp (T.pack (msg <> ": " <> p))
+  diagnostic code Error sp (T.pack (pathErrorMessage e <> ": " <> p))
   where
-    (code, msg) = case e of
-      Absolute -> ("G0303", "絶対パスは使えません")
-      Url -> ("G0303", "URL は使えません")
-      EscapesRoot -> ("G0303", "プロジェクトルートの外を指しています")
-      Missing -> ("G0302", "ファイルがありません")
+    code = case e of
+      Missing -> "G0302"
+      _ -> "G0303"
