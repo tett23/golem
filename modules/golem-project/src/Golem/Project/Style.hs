@@ -254,7 +254,9 @@ data Composition = Composition
     compTolerance :: !Int,
     compEmergencyStretch :: !Dim,
     compProtrusion :: !Bool,
-    compExpansion :: !(Maybe (Int, Int))
+    compExpansion :: !(Maybe (Int, Int)),
+    -- | the penalty of a break after an explicit hyphen (golem-layout ADR 0008)
+    compExplicitHyphenPenalty :: !Int
   }
   deriving stock (Eq, Show)
 
@@ -298,7 +300,7 @@ data Style = Style
   deriving stock (Eq, Show)
 
 defaultComposition :: Composition
-defaultComposition = Composition True False (Zw 1) "sesame" 100 200 (Abs 0) False Nothing
+defaultComposition = Composition True False (Zw 1) "sesame" 100 200 (Abs 0) False Nothing 50
 
 defaultStyle :: Style
 defaultStyle =
@@ -442,6 +444,7 @@ instance FromValue Composition where
     es <- dimKey "emergency-stretch"
     pr <- optKey "protrusion"
     ex <- optKey "expansion"
+    eh <- optKey "explicit-hyphen-penalty"
     let d = defaultComposition
     pure
       Composition
@@ -453,7 +456,8 @@ instance FromValue Composition where
           compTolerance = fromMaybe (compTolerance d) tol,
           compEmergencyStretch = fromMaybe (compEmergencyStretch d) es,
           compProtrusion = fromMaybe False pr,
-          compExpansion = (\(Expansion l s) -> (l, s)) <$> ex
+          compExpansion = (\(Expansion l s) -> (l, s)) <$> ex,
+          compExplicitHyphenPenalty = fromMaybe (compExplicitHyphenPenalty d) eh
         }
 
 instance FromValue SidenoteStyle where
@@ -658,6 +662,10 @@ parseStyle fid src = do
         not (validNumberFormat f)
       ]
         <> ["スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n | n <- Map.keys (stCharStyles s) <> Map.keys (stParaStyles s), not (validStyleName n)]
+        <> [ "explicit-hyphen-penalty は -9999 から 10000 までです: " <> T.pack (show p)
+           | let p = compExplicitHyphenPenalty (stComposition s),
+             p < -9999 || p > 10000
+           ]
         <> [ "未知の判型です: " <> pageSizeName p
            | Just p <- [stPage s],
              isNothing (pageSize (pageSizeName p)),

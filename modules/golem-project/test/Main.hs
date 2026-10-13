@@ -161,6 +161,12 @@ tests =
             (paraStyle s (Just "caption") >>= psSize) @?= Just (Abs (8 * 65536))
         codes (parseStyle (FileId 0) "[figures]\ncaption = \"x\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[figures.caption]\nfont = \"body\"\n") @?= ["G0306"],
+      testCase "explicit-hyphen-penalty (golem-layout ADR 0008)" $ do
+        fmap (compExplicitHyphenPenalty . stComposition) (parseStyle (FileId 0) "") @?= Right 50
+        fmap (compExplicitHyphenPenalty . stComposition) (parseStyle (FileId 0) "[composition]\nexplicit-hyphen-penalty = 100\n") @?= Right 100
+        fmap (compExplicitHyphenPenalty . stComposition) (parseStyle (FileId 0) "[composition]\nexplicit-hyphen-penalty = -9999\n") @?= Right (-9999)
+        codes (parseStyle (FileId 0) "[composition]\nexplicit-hyphen-penalty = -10000\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[composition]\nexplicit-hyphen-penalty = 10001\n") @?= ["G0306"],
       testCase "a heading font must name a font role (golem-driver ADR 0003)" $ do
         codes (parseStyle (FileId 0) "[headings.1]\nfont = \"nope\"\n") @?= ["G0308"]
         codes (parseStyle (FileId 0) "[fonts.heading]\nlatin = \"h.otf\"\n\n[headings.1]\nfont = \"heading\"\n") @?= [],

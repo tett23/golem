@@ -5,6 +5,7 @@ reads both and compares them with 'breakParagraph'.
 -}
 module KnuthPlassReference
   ( Words (..),
+    WordRec (..),
     TexRun (..),
     TexBreak (..),
     readWords,
@@ -14,6 +15,7 @@ module KnuthPlassReference
     finish,
     parseTrace,
     parseScaled,
+    wordsOf,
     compareRun,
   )
 where
@@ -36,9 +38,14 @@ data Words = Words
     wParindent :: !Sp,
     -- | the whole paragraph in one \hbox
     wWhole :: !Sp,
-    -- | the words in order, punctuation attached to the word before
-    wBoxes :: ![(Text, Sp)]
+    {- | the words in order, punctuation attached to the word before; a
+    word with a hyphen in parts, an explicit hyphen between them
+    -} wBoxes :: ![WordRec]
   }
+  deriving stock (Eq, Show)
+
+-- | A measured word (or part of one), or an explicit hyphen after it (ADR 0008).
+data WordRec = WordBox !Text !Sp | WordExHyphen
   deriving stock (Eq, Show)
 
 data TexRun = TexRun
@@ -83,7 +90,8 @@ parseWords t = do
   pure (Words space parindent whole (rights recs))
   where
     record line = case T.words line of
-      ["box", w, word] -> (\n -> Right (word, n)) <$> int w
+      ["box", w, word] -> Right . WordBox word <$> int w
+      ["exhyphen"] -> Right (Right WordExHyphen)
       (key : vals) | key `elem` ["space", "parindent", "whole"] -> (\ns -> Left (key, ns)) <$> traverse int vals
       _ -> Left ("unexpected record: " <> T.unpack line)
     single key recs = case [x | Left (k, [x]) <- recs, k == key] of
@@ -95,20 +103,27 @@ parseWords t = do
 
 -- | The end of a paragraph, as in TeX: no break, \parfillskip, the forced break.
 finish :: [Item]
-finish = [Penalty 0 infPenalty False, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) False]
+finish = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
 
 -- | The look of the boxes: the algorithm does not read it.
 referenceLook :: Look
 referenceLook = plainLook "body" 0
 
--- | The indent, the words with interword glue between them, the paragraph end.
+{- | The indent, the words with interword glue between them, the paragraph
+end. An explicit hyphen takes the place of the glue after its part, with
+the penalty of \exhyphenpenalty (ADR 0008).
+-}
 paragraphItems :: Words -> [Item]
 paragraphItems ws =
   let (w, y, z) = wSpace ws
-      boxes = [Box n (BoxContent word False 0 0 0 referenceLook) | (word, n) <- wBoxes ws]
-   in Box (wParindent ws) (BoxContent "" False 0 0 0 referenceLook)
-        : concat [b : [Glue w y z | i < length boxes - 1] | (i, b) <- zip [0 :: Int ..] boxes]
-          <> finish
+      between = \case
+        (WordBox {} : _) -> [Glue w y z]
+        _ -> []
+      items = \case
+        (WordBox word n : rest) -> Box n (BoxContent word False 0 0 0 referenceLook) : between rest <> items rest
+        (WordExHyphen : rest) -> Penalty 0 50 ExplicitHyphen : items rest
+        [] -> []
+   in Box (wParindent ws) (BoxContent "" False 0 0 0 referenceLook) : items (wBoxes ws) <> finish
 
 -- ------------------------------------------------------------------ the log
 
@@ -180,9 +195,17 @@ lastPass ls =
       Right (n, r) | T.null r -> Just (n :: Int)
       _ -> Nothing
 
--- | The words of a printed piece of the paragraph, without the indent and font.
+{- | The words of a printed piece of the paragraph, without the indent and
+font. A word is split after a hyphen followed by more: TeX prints lime-
+and tree apart when the break after lime- is feasible, and lime-tree
+together when it is not (ADR 0008).
+-}
 wordsOf :: Text -> [Text]
-wordsOf = T.words . T.replace "\\tenrm" " " . T.replace "[]" " "
+wordsOf = concatMap splitHyphen . T.words . T.replace "\\tenrm" " " . T.replace "[]" " "
+  where
+    splitHyphen w = case T.breakOn "-" w of
+      (a, rest) | Just more <- T.stripPrefix "-" rest, not (T.null more) -> (a <> "-") : splitHyphen more
+      _ -> [w]
 
 -- | The glue set of each line (the depth-one \hbox) of a \showbox.
 glueSets :: [Text] -> [Rational]

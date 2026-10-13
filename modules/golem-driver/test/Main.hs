@@ -247,6 +247,14 @@ tests =
             assertBool ("sizes: " <> show sizes) (length sizes >= 2)
             assertBool "sesame dot" ("<FE45>" `BS.isInfixOf` content)
             assertBool "hyphen" ("<002D>" `BS.isInfixOf` content),
+          testCase "a line broken at an explicit hyphen gets no added hyphen (golem-layout ADR 0008)" $ do
+            let source = T.unwords (replicate 24 "well-known") <> "\n"
+            pdf <- miniPdf fakeProvider False horizontalStyle source []
+            contents <- pageContents pdf
+            let occurrences c = case BS.breakSubstring "<002D>" c of
+                  (_, rest) | BS.null rest -> 0 :: Int
+                  (_, rest) -> 1 + occurrences (BS.drop 6 rest)
+            sum (map occurrences contents) @?= T.count "-" source,
           testCase "fonts and layout are not touched unless PDF is a target" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
             copyTree fixture tmp
             BS.writeFile (tmp </> "style.toml") pdfStyle

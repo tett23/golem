@@ -13,31 +13,31 @@ daughters were all beautiful; and the
 @ via @@2 b=1 p=0 d=121
 @@3: line 3.2 t=3470 -> @@2
 @secondpass
-[]\tenrm In olden times when wish-ing still 
+[]\tenrm In olden times when wishing still 
 @ via @@0 b=47 p=0 d=3249
 @@1: line 1.3 t=3249 -> @@0
 helped one, there lived a king whose 
 @ via @@1 b=0 p=0 d=100
 @@2: line 2.2 t=3349 -> @@1
-daugh-ters were all beau-ti-ful; and the 
+daughters were all beautiful; and the 
 @ via @@2 b=1 p=0 d=121
 @@3: line 3.2 t=3470 -> @@2
-youngest was so beau-ti-ful that the 
+youngest was so beautiful that the 
 @ via @@3 b=125 p=0 d=28225
 @@4: line 4.0 t=31695 -> @@3
-sun it-self, which has seen so much, 
+sun itself, which has seen so much, 
 @ via @@4 b=52 p=0 d=3844
 @@5: line 5.1 t=35539 -> @@4
-was as-ton-ished when-ever it shone in 
+was astonished whenever it shone in 
 @ via @@5 b=1 p=0 d=121
 @@6: line 6.2 t=35660 -> @@5
-her face. Close by the king's cas-tle 
+her face. Close by the king's castle 
 @ via @@6 b=66 p=0 d=5776
 @@7: line 7.1 t=41436 -> @@6
 lay 
 @ via @@6 b=86 p=0 d=9216
 @@8: line 7.3 t=44876 -> @@6
-a great dark for-est, and un-der 
+a great dark forest, and under 
 @ via @@7 b=175 p=0 d=34225
 @@9: line 8.0 t=75661 -> @@7
 an 
@@ -46,7 +46,7 @@ an
 old 
 @ via @@8 b=3 p=0 d=169
 @@11: line 8.2 t=45045 -> @@8
-lime-tree in the for-est was a 
+lime-tree in the forest was a 
 @ via @@9 b=22 p=0 d=1024
 @@12: line 9.1 t=76685 -> @@9
 well, 
@@ -62,13 +62,13 @@ the
 @ via @@13 b=74 p=0 d=7056
 @ via @@14 b=189 p=0 d=49601
 @@16: line 10.3 t=48757 -> @@13
-king's child went out into the for-est 
+king's child went out into the forest 
 @ via @@16 b=5 p=0 d=225
 @@17: line 11.2 t=48982 -> @@16
 and sat down by the side of the cool 
 @ via @@17 b=0 p=0 d=100
 @@18: line 12.2 t=49082 -> @@17
-foun-tain; and when she was bored she 
+fountain; and when she was bored she 
 @ via @@18 b=84 p=0 d=8836
 @@19: line 13.3 t=57918 -> @@18
 took a golden ball, and threw it up 
@@ -83,7 +83,7 @@ high and caught it; and this ball
 was 
 @ via @@21 b=0 p=0 d=100
 @@23: line 15.2 t=63947 -> @@21
-her fa-vorite play-thing. 
+her favorite plaything. 
 @\par via @@22 b=0 p=-10000 d=100
 @\par via @@23 b=0 p=-10000 d=100
 @@24: line 16.2- t=64047 -> @@23
@@ -116,8 +116,6 @@ her fa-vorite play-thing.
 ..\tenrm i
 ..\tenrm s
 ..\tenrm h
-..\discretionary
-...\tenrm -
 ..\tenrm i
 ..\tenrm n
 ..\tenrm g
@@ -176,9 +174,6 @@ her fa-vorite play-thing.
 ..\tenrm a
 ..\tenrm u
 ..\tenrm g
-..\discretionary replacing 2
-...\tenrm h
-...\tenrm -
 ..\tenrm h
 ..\kern-0.27779
 ..\tenrm t
@@ -201,12 +196,8 @@ her fa-vorite play-thing.
 ..\tenrm e
 ..\tenrm a
 ..\tenrm u
-..\discretionary
-...\tenrm -
 ..\tenrm t
 ..\tenrm i
-..\discretionary
-...\tenrm -
 ..\tenrm f
 ..\tenrm u
 ..\tenrm l
@@ -245,12 +236,8 @@ her fa-vorite play-thing.
 ..\tenrm e
 ..\tenrm a
 ..\tenrm u
-..\discretionary
-...\tenrm -
 ..\tenrm t
 ..\tenrm i
-..\discretionary
-...\tenrm -
 ..\tenrm f
 ..\tenrm u
 ..\tenrm l
@@ -272,8 +259,6 @@ her fa-vorite play-thing.
 ..\glue 3.33333 plus 1.66666 minus 1.11111
 ..\tenrm i
 ..\tenrm t
-..\discretionary
-...\tenrm -
 ..\tenrm s
 ..\tenrm e
 ..\tenrm l
@@ -316,13 +301,9 @@ her fa-vorite play-thing.
 ..\glue 3.33333 plus 1.66666 minus 1.11111
 ..\tenrm a
 ..\tenrm s
-..\discretionary
-...\tenrm -
 ..\tenrm t
 ..\tenrm o
 ..\tenrm n
-..\discretionary
-...\tenrm -
 ..\tenrm i
 ..\tenrm s
 ..\tenrm h
@@ -333,8 +314,6 @@ her fa-vorite play-thing.
 ..\tenrm h
 ..\tenrm e
 ..\tenrm n
-..\discretionary
-...\tenrm -
 ..\tenrm e
 ..\tenrm v
 ..\kern-0.27779
@@ -389,8 +368,6 @@ her fa-vorite play-thing.
 ..\tenrm c
 ..\tenrm a
 ..\tenrm s
-..\discretionary
-...\tenrm -
 ..\tenrm t
 ..\tenrm l
 ..\tenrm e
@@ -418,8 +395,6 @@ her fa-vorite play-thing.
 ..\tenrm f
 ..\tenrm o
 ..\tenrm r
-..\discretionary
-...\tenrm -
 ..\tenrm e
 ..\tenrm s
 ..\tenrm t
@@ -431,8 +406,6 @@ her fa-vorite play-thing.
 ..\glue 3.33333 plus 1.66666 minus 1.11111
 ..\tenrm u
 ..\tenrm n
-..\discretionary
-...\tenrm -
 ..\tenrm d
 ..\tenrm e
 ..\tenrm r
@@ -467,8 +440,6 @@ her fa-vorite play-thing.
 ..\tenrm f
 ..\tenrm o
 ..\tenrm r
-..\discretionary
-...\tenrm -
 ..\tenrm e
 ..\tenrm s
 ..\tenrm t
@@ -569,8 +540,6 @@ her fa-vorite play-thing.
 ..\tenrm f
 ..\tenrm o
 ..\tenrm r
-..\discretionary
-...\tenrm -
 ..\tenrm e
 ..\tenrm s
 ..\tenrm t
@@ -622,9 +591,6 @@ her fa-vorite play-thing.
 ..\tenrm f
 ..\tenrm o
 ..\tenrm u
-..\discretionary replacing 2
-...\tenrm n
-...\tenrm -
 ..\tenrm n
 ..\kern-0.27779
 ..\tenrm t
@@ -754,9 +720,6 @@ her fa-vorite play-thing.
 ..\tenrm r
 ..\glue 3.33333 plus 1.66666 minus 1.11111
 ..\tenrm f
-..\discretionary replacing 2
-...\tenrm a
-...\tenrm -
 ..\tenrm a
 ..\kern-0.27779
 ..\tenrm v
@@ -772,8 +735,6 @@ her fa-vorite play-thing.
 ..\tenrm a
 ..\kern-0.27779
 ..\tenrm y
-..\discretionary
-...\tenrm -
 ..\tenrm t
 ..\tenrm h
 ..\tenrm i
@@ -787,7 +748,7 @@ her fa-vorite play-thing.
 ! OK.
 \golemset ...graphs =1 \frogking \par }\showbox 1 
                                                   
-l.68 \golemset{160pt}
+l.84 \golemset{160pt}
                      
 
 GOLEM-HSIZE=13107200
@@ -808,37 +769,37 @@ was astonished whenever it shone in her face.
 @ via @@4 b=0 p=0 d=100
 @@5: line 5.2 t=23310 -> @@4
 @secondpass
-[]\tenrm In olden times when wish-ing still helped 
+[]\tenrm In olden times when wishing still helped 
 @ via @@0 b=5 p=0 d=225
 @@1: line 1.2 t=225 -> @@0
-one, there lived a king whose daugh-ters were 
+one, there lived a king whose daughters were 
 @ via @@1 b=4 p=0 d=196
 @@2: line 2.2 t=421 -> @@1
-all beau-ti-ful; and the youngest was so beau-ti-ful 
+all beautiful; and the youngest was so beautiful 
 @ via @@2 b=95 p=0 d=11025
 @@3: line 3.3 t=11446 -> @@2
-that the sun it-self, which has seen so much, 
+that the sun itself, which has seen so much, 
 @ via @@3 b=32 p=0 d=11764
 @@4: line 4.1 t=23210 -> @@3
-was as-ton-ished when-ever it shone in her face. 
+was astonished whenever it shone in her face. 
 @ via @@4 b=0 p=0 d=100
 @@5: line 5.2 t=23310 -> @@4
-Close by the king's cas-tle lay a great dark 
+Close by the king's castle lay a great dark 
 @ via @@5 b=168 p=0 d=41684
 @@6: line 6.0 t=64994 -> @@5
-for-est, and un-der an old lime-tree in the for-est 
+forest, and under an old lime-tree in the forest 
 @ via @@6 b=6 p=0 d=10256
 @@7: line 7.2 t=75250 -> @@6
 was a well, and when the day was very warm, 
 @ via @@7 b=0 p=0 d=100
 @@8: line 8.2 t=75350 -> @@7
-the king's child went out into the for-est and 
+the king's child went out into the forest and 
 @ via @@8 b=15 p=0 d=625
 @@9: line 9.1 t=75975 -> @@8
 sat 
 @ via @@8 b=74 p=0 d=7056
 @@10: line 9.3 t=82406 -> @@8
-down by the side of the cool foun-tain; and 
+down by the side of the cool fountain; and 
 @ via @@9 b=0 p=0 d=100
 @ via @@10 b=132 p=0 d=30164
 @@11: line 10.2 t=76075 -> @@9
@@ -859,7 +820,7 @@ this
 ball 
 @ via @@13 b=48 p=0 d=3364
 @@17: line 12.3 t=86495 -> @@13
-was her fa-vorite play-thing. 
+was her favorite plaything. 
 @\par via @@14 b=0 p=-10000 d=100
 @\par via @@15 b=0 p=-10000 d=100
 @\par via @@16 b=0 p=-10000 d=100
@@ -894,8 +855,6 @@ was her fa-vorite play-thing.
 ..\tenrm i
 ..\tenrm s
 ..\tenrm h
-..\discretionary
-...\tenrm -
 ..\tenrm i
 ..\tenrm n
 ..\tenrm g
@@ -952,9 +911,6 @@ was her fa-vorite play-thing.
 ..\tenrm a
 ..\tenrm u
 ..\tenrm g
-..\discretionary replacing 2
-...\tenrm h
-...\tenrm -
 ..\tenrm h
 ..\kern-0.27779
 ..\tenrm t
@@ -979,12 +935,8 @@ was her fa-vorite play-thing.
 ..\tenrm e
 ..\tenrm a
 ..\tenrm u
-..\discretionary
-...\tenrm -
 ..\tenrm t
 ..\tenrm i
-..\discretionary
-...\tenrm -
 ..\tenrm f
 ..\tenrm u
 ..\tenrm l
@@ -1021,12 +973,8 @@ was her fa-vorite play-thing.
 ..\tenrm e
 ..\tenrm a
 ..\tenrm u
-..\discretionary
-...\tenrm -
 ..\tenrm t
 ..\tenrm i
-..\discretionary
-...\tenrm -
 ..\tenrm f
 ..\tenrm u
 ..\tenrm l
@@ -1048,8 +996,6 @@ was her fa-vorite play-thing.
 ..\glue 3.33333 plus 1.66666 minus 1.11111
 ..\tenrm i
 ..\tenrm t
-..\discretionary
-...\tenrm -
 ..\tenrm s
 ..\tenrm e
 ..\tenrm l
@@ -1092,13 +1038,9 @@ was her fa-vorite play-thing.
 ..\glue 3.33333 plus 1.66666 minus 1.11111
 ..\tenrm a
 ..\tenrm s
-..\discretionary
-...\tenrm -
 ..\tenrm t
 ..\tenrm o
 ..\tenrm n
-..\discretionary
-...\tenrm -
 ..\tenrm i
 ..\tenrm s
 ..\tenrm h
@@ -1109,8 +1051,6 @@ was her fa-vorite play-thing.
 ..\tenrm h
 ..\tenrm e
 ..\tenrm n
-..\discretionary
-...\tenrm -
 ..\tenrm e
 ..\tenrm v
 ..\kern-0.27779
@@ -1165,8 +1105,6 @@ was her fa-vorite play-thing.
 ..\tenrm c
 ..\tenrm a
 ..\tenrm s
-..\discretionary
-...\tenrm -
 ..\tenrm t
 ..\tenrm l
 ..\tenrm e
@@ -1194,8 +1132,6 @@ was her fa-vorite play-thing.
 ..\tenrm f
 ..\tenrm o
 ..\tenrm r
-..\discretionary
-...\tenrm -
 ..\tenrm e
 ..\tenrm s
 ..\tenrm t
@@ -1207,8 +1143,6 @@ was her fa-vorite play-thing.
 ..\glue 3.33333 plus 1.66666 minus 1.11111
 ..\tenrm u
 ..\tenrm n
-..\discretionary
-...\tenrm -
 ..\tenrm d
 ..\tenrm e
 ..\tenrm r
@@ -1241,8 +1175,6 @@ was her fa-vorite play-thing.
 ..\tenrm f
 ..\tenrm o
 ..\tenrm r
-..\discretionary
-...\tenrm -
 ..\tenrm e
 ..\tenrm s
 ..\tenrm t
@@ -1343,8 +1275,6 @@ was her fa-vorite play-thing.
 ..\tenrm f
 ..\tenrm o
 ..\tenrm r
-..\discretionary
-...\tenrm -
 ..\tenrm e
 ..\tenrm s
 ..\tenrm t
@@ -1394,9 +1324,6 @@ was her fa-vorite play-thing.
 ..\tenrm f
 ..\tenrm o
 ..\tenrm u
-..\discretionary replacing 2
-...\tenrm n
-...\tenrm -
 ..\tenrm n
 ..\kern-0.27779
 ..\tenrm t
@@ -1526,9 +1453,6 @@ was her fa-vorite play-thing.
 ..\tenrm r
 ..\glue 3.33333 plus 1.66666 minus 1.11111
 ..\tenrm f
-..\discretionary replacing 2
-...\tenrm a
-...\tenrm -
 ..\tenrm a
 ..\kern-0.27779
 ..\tenrm v
@@ -1544,8 +1468,6 @@ was her fa-vorite play-thing.
 ..\tenrm a
 ..\kern-0.27779
 ..\tenrm y
-..\discretionary
-...\tenrm -
 ..\tenrm t
 ..\tenrm h
 ..\tenrm i
@@ -1559,7 +1481,7 @@ was her fa-vorite play-thing.
 ! OK.
 \golemset ...graphs =1 \frogking \par }\showbox 1 
                                                   
-l.69 \golemset{200pt}
+l.85 \golemset{200pt}
                      
 
 GOLEM-HSIZE=15728640
@@ -2310,7 +2232,706 @@ was her favorite plaything.
 ! OK.
 \golemset ...graphs =1 \frogking \par }\showbox 1 
                                                   
-l.70 \golemset{240pt}
+l.86 \golemset{240pt}
+                     
+
+GOLEM-HSIZE=17039360
+@firstpass
+[]\tenrm In olden times when wishing still helped one, there lived 
+@ via @@0 b=32 p=0 d=1764
+@@1: line 1.3 t=1764 -> @@0
+a king whose daughters were all beautiful; and the youngest 
+@ via @@1 b=2 p=0 d=144
+@@2: line 2.2 t=1908 -> @@1
+was so beautiful that the sun itself, which has seen so much, 
+@ via @@2 b=5 p=0 d=225
+@@3: line 3.2 t=2133 -> @@2
+was astonished whenever it shone in her face. Close by the 
+@ via @@3 b=1 p=0 d=121
+@@4: line 4.2 t=2254 -> @@3
+king's castle lay a great dark forest, and under an old lime-
+@\discretionary via @@4 b=0 p=50 d=2600
+@@5: line 5.2- t=4854 -> @@4
+tree in the forest was a well, and when the day was very 
+@ via @@5 b=30 p=0 d=1600
+@@6: line 6.1 t=6454 -> @@5
+warm, the king's child went out into the forest and sat down 
+@ via @@6 b=10 p=0 d=400
+@@7: line 7.2 t=6854 -> @@6
+by the side of the cool fountain; and when she was bored 
+@ via @@7 b=18 p=0 d=784
+@@8: line 8.1 t=7638 -> @@7
+she 
+@ via @@7 b=14 p=0 d=576
+@@9: line 8.3 t=7430 -> @@7
+took a golden ball, and threw it up on high and caught 
+@ via @@8 b=0 p=0 d=100
+@ via @@9 b=95 p=0 d=21025
+@@10: line 9.2 t=7738 -> @@8
+it; 
+@ via @@8 b=57 p=0 d=14489
+@ via @@9 b=2 p=0 d=144
+@@11: line 9.2 t=7574 -> @@9
+and 
+@ via @@9 b=94 p=0 d=10816
+@@12: line 9.3 t=18246 -> @@9
+this ball was her favorite plaything. 
+@\par via @@10 b=0 p=-10000 d=100
+@\par via @@11 b=0 p=-10000 d=100
+@\par via @@12 b=0 p=-10000 d=100
+@@13: line 10.2- t=7674 -> @@11
+
+> \box1=
+\vbox(114.94444+1.94444)x260.0
+.\hbox(6.94444+1.94444)x260.0, glue set - 0.68614
+..\hbox(0.0+0.0)x20.0
+..\tenrm I
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm i
+..\tenrm m
+..\tenrm e
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm i
+..\tenrm s
+..\tenrm h
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm t
+..\tenrm i
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm e
+..\tenrm l
+..\tenrm p
+..\kern0.27779
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm n
+..\tenrm e
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm i
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm d
+..\glue(\rightskip) 0.0
+.\penalty 150
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x260.0, glue set - 0.27226
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm o
+..\tenrm s
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\tenrm u
+..\tenrm g
+..\tenrm h
+..\kern-0.27779
+..\tenrm t
+..\tenrm e
+..\tenrm r
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm e
+..\tenrm a
+..\tenrm u
+..\tenrm t
+..\tenrm i
+..\tenrm f
+..\tenrm u
+..\tenrm l
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm y
+..\kern-0.27779
+..\tenrm o
+..\tenrm u
+..\tenrm n
+..\tenrm g
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x260.0, glue set - 0.37276
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm e
+..\tenrm a
+..\tenrm u
+..\tenrm t
+..\tenrm i
+..\tenrm f
+..\tenrm u
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm u
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\tenrm s
+..\tenrm e
+..\tenrm l
+..\tenrm f
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm i
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm e
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm m
+..\kern-0.27779
+..\tenrm u
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\tenrm ,
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x260.0, glue set 0.21332
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm s
+..\tenrm t
+..\tenrm o
+..\tenrm n
+..\tenrm i
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\tenrm e
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm o
+..\tenrm n
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm a
+..\tenrm c
+..\tenrm e
+..\tenrm .
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm C
+..\tenrm l
+..\tenrm o
+..\tenrm s
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x260.0, glue set - 0.00005
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm '
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm a
+..\tenrm s
+..\tenrm t
+..\tenrm l
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm g
+..\tenrm r
+..\tenrm e
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\tenrm r
+..\tenrm k
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm u
+..\tenrm n
+..\tenrm d
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm l
+..\tenrm i
+..\tenrm m
+..\tenrm e
+..\tenrm -
+..\discretionary
+..\glue(\rightskip) 0.0
+.\penalty 100
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x260.0, glue set 0.66805
+..\tenrm t
+..\tenrm r
+..\tenrm e
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm l
+..\tenrm l
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm v
+..\kern-0.27779
+..\tenrm e
+..\tenrm r
+..\tenrm y
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x260.0, glue set - 0.47276
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm r
+..\tenrm m
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm k
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm '
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\kern-0.27779
+..\tenrm h
+..\tenrm i
+..\tenrm l
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm e
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm u
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\tenrm o
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm s
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm a
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm d
+..\tenrm o
+..\kern-0.27779
+..\tenrm w
+..\tenrm n
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x260.0, glue set - 0.51878
+..\tenrm b
+..\kern-0.27779
+..\tenrm y
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm i
+..\tenrm d
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm f
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm o
+..\kern0.27779
+..\tenrm o
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm o
+..\tenrm u
+..\tenrm n
+..\kern-0.27779
+..\tenrm t
+..\tenrm a
+..\tenrm i
+..\tenrm n
+..\tenrm ;
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\tenrm h
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\kern0.27779
+..\tenrm o
+..\tenrm r
+..\tenrm e
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm s
+..\tenrm h
+..\tenrm e
+..\glue(\rightskip) 0.0
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x260.0, glue set 0.26248
+..\tenrm t
+..\tenrm o
+..\kern0.27779
+..\tenrm o
+..\tenrm k
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm g
+..\tenrm o
+..\tenrm l
+..\tenrm d
+..\tenrm e
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\tenrm ,
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm r
+..\tenrm e
+..\tenrm w
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm u
+..\tenrm p
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm o
+..\tenrm n
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm i
+..\tenrm g
+..\tenrm h
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm c
+..\tenrm a
+..\tenrm u
+..\tenrm g
+..\tenrm h
+..\kern-0.27779
+..\tenrm t
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm i
+..\tenrm t
+..\tenrm ;
+..\glue(\rightskip) 0.0
+.\penalty 150
+.\glue(\baselineskip) 3.11111
+.\hbox(6.94444+1.94444)x260.0, glue set 85.11076fil
+..\tenrm a
+..\tenrm n
+..\tenrm d
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm t
+..\tenrm h
+..\tenrm i
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm b
+..\tenrm a
+..\tenrm l
+..\tenrm l
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm w
+..\kern-0.27779
+..\tenrm a
+..\tenrm s
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm h
+..\tenrm e
+..\tenrm r
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm f
+..\tenrm a
+..\kern-0.27779
+..\tenrm v
+..\kern-0.27779
+..\tenrm o
+..\tenrm r
+..\tenrm i
+..\tenrm t
+..\tenrm e
+..\glue 3.33333 plus 1.66666 minus 1.11111
+..\tenrm p
+..\tenrm l
+..\tenrm a
+..\kern-0.27779
+..\tenrm y
+..\tenrm t
+..\tenrm h
+..\tenrm i
+..\tenrm n
+..\tenrm g
+..\tenrm .
+..\penalty 10000
+..\glue(\parfillskip) 0.0 plus 1.0fil
+..\glue(\rightskip) 0.0
+
+! OK.
+\golemset ...graphs =1 \frogking \par }\showbox 1 
+                                                  
+l.87 \golemset{260pt}
                      
 
 GOLEM-HSIZE=19660800
@@ -3051,7 +3672,7 @@ her favorite plaything.
 ! OK.
 \golemset ...graphs =1 \frogking \par }\showbox 1 
                                                   
-l.71 \golemset{300pt}
+l.88 \golemset{300pt}
                      
 
  )
