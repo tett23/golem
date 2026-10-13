@@ -42,7 +42,7 @@ block =
       (\items -> T.intercalate "\n" ["- " <> i | i <- items]) <$> Gen.list (Range.linear 1 3) line,
       (\s1 s2 -> "@toc" <> s1 <> "depth=2" <> s2) <$> Gen.element [" ", "   "] <*> spaces,
       (\s -> "@set" <> s <> "v = 1") <$> Gen.element [" ", "    "],
-      (\stanzas -> "@verse\n" <> T.intercalate "\n\n" [T.intercalate "\n" ["  " <> l | l <- ls] | ls <- stanzas]) <$> Gen.list (Range.linear 1 2) (Gen.list (Range.linear 1 3) line),
+      (\stanzas -> "@style verse\n" <> T.intercalate "\n\n" [T.intercalate "\n" ["  " <> l | l <- ls] | ls <- stanzas]) <$> Gen.list (Range.linear 1 2) (Gen.list (Range.linear 1 3) line),
       pure "```\n  code  \n```",
       (\s1 s2 -> "|" <> s1 <> "a|b" <> s2 <> "|\n|---|---|\n|1" <> s2 <> "|" <> s1 <> "2|") <$> spaces <*> spaces
     ]
@@ -91,6 +91,25 @@ tests =
         case format "[strong: a\n" of
           Unformattable ds -> assertBool "diagnostics" (not (null ds))
           Formatted r -> assertFailure ("formatted: " <> show r),
+      testGroup
+        "migration (docs/adr ADR 0005)"
+        [ testCase "@verse becomes @style verse" $
+            formatted "@verse\n  a\n" @?= "@style verse\n  a\n",
+          testCase "@verse in a code block is left alone" $
+            formatted "```\n@verse\n```\n" @?= "```\n@verse\n```\n",
+          testCase "@verse with arguments is left alone" $
+            formatted "@verse x\n  a\n" @?= "@verse x\n  a\n",
+          testCase "the AST of the migrated source is kept" $
+            case format "@label song\n@verse\n  Full fathom five\n  Of his bones\n" of
+              Formatted r -> astFingerprint r @?= astFingerprint "@label song\n@style verse\n  Full fathom five\n  Of his bones\n"
+              Unformattable ds -> assertFailure (show ds),
+          testProperty "migrating then formatting is idempotent" $ property $ do
+            src <- forAll document
+            let old = T.replace "@style verse" "@verse" src
+                once = formatted old
+            formatted once === once
+            once === formatted src
+        ],
       testCase "code blocks and comments are untouched" $
         formatted "```\n  a   \n```\n\n本文%%  コメント   %%\n" @?= "```\n  a   \n```\n\n本文%%  コメント   %%\n"
     ]

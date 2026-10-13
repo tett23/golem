@@ -82,10 +82,7 @@ templateFiles lang uuid =
     fonts comment path = ["[fonts.body]", comment, path, ""]
     rest number =
       [ "[headings.1]",
-        "number = \"" <> number <> "\"",
-        "",
-        "[emphasis]",
-        "strong = \"bold\""
+        "number = \"" <> number <> "\""
       ]
 
 -- | A file to fetch into a new project.

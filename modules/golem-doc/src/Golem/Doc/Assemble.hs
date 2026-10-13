@@ -93,9 +93,6 @@ headingAnchor Nothing (SrcSpan (FileId f) s _) = "h-" <> T.pack (show f) <> "-" 
 inlineText :: InlineF r -> Text
 inlineText = \case
   Text _ t -> t
-  Strong _ xs -> foldMap inlineText xs
-  Bold _ xs -> foldMap inlineText xs
-  Italic _ xs -> foldMap inlineText xs
   Ruby _ _ segs -> foldMap (foldMap inlineText . rsBase) segs
   Kenten _ _ xs -> foldMap inlineText xs
   Color _ _ xs -> foldMap inlineText xs
@@ -253,14 +250,13 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
   where
     blk (Block sp l body) =
       Block sp l <$> case body of
-        Paragraph is -> Paragraph <$> inls is
+        Paragraph st is -> Paragraph st <$> inls is
         Heading lv a is -> pure (Heading lv a is)
         BulletList items -> BulletList <$> mapM item items
         OrderedList items -> OrderedList <$> mapM item items
         DefList gs -> DefList <$> mapM (\(DefGroup ts ds) -> DefGroup <$> mapM inls ts <*> mapM (mapM blk) ds) gs
         Table al h rows -> Table al <$> mapM inls h <*> mapM (mapM inls) rows
         FigureBlock f -> (\c -> FigureBlock f {figCaption = c}) <$> mapM blk (figCaption f)
-        VerseBlock stanzas -> VerseBlock <$> mapM (mapM inls) stanzas
         other -> pure other
     item (ListItem n bs') = ListItem n <$> mapM blk bs'
     inls is = concat <$> mapM inl is
@@ -282,9 +278,6 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
       Deferred sp e -> case evalDeferred dv e of
         Left d -> modify' (\(s, ds) -> (s, ds <> [d])) >> pure []
         Right t -> pure [Text sp t]
-      Strong sp xs -> pure . Strong sp <$> inls xs
-      Bold sp xs -> pure . Bold sp <$> inls xs
-      Italic sp xs -> pure . Italic sp <$> inls xs
       Kenten sp s xs -> pure . Kenten sp s <$> inls xs
       Color sp c xs -> pure . Color sp c <$> inls xs
       CharStyle sp c xs -> pure . CharStyle sp c <$> inls xs
@@ -318,18 +311,14 @@ indexGroups docs =
 -- | Inlines of a block body, descending into inline containers.
 bodyInlines :: BlockBody -> [Inline]
 bodyInlines body = concatMap flatten $ case body of
-  Paragraph is -> is
+  Paragraph _ is -> is
   Heading _ _ is -> is
   DefList gs -> concat (concatMap dgTerms gs)
   Table _ h rows -> concat h <> concat (concat rows)
-  VerseBlock stanzas -> concat (concat stanzas)
   _ -> []
   where
     flatten i =
       i : case i of
-        Strong _ xs -> concatMap flatten xs
-        Bold _ xs -> concatMap flatten xs
-        Italic _ xs -> concatMap flatten xs
         Kenten _ _ xs -> concatMap flatten xs
         Color _ _ xs -> concatMap flatten xs
         CharStyle _ _ xs -> concatMap flatten xs

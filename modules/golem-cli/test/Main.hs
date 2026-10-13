@@ -126,5 +126,13 @@ tests =
                | (name, args) <- messages
                ]
         ),
-      versionTests
+      versionTests,
+      testCase "golem fmt --check reports a file with @verse (docs/adr ADR 0005)" $ withSystemTempDirectory "golem-cli" $ \tmp -> do
+        writeFile (tmp </> "a.gm") "@verse\n  Full fathom five\n"
+        (code, out, _) <- readCreateProcessWithExitCode (proc "golem" ["fmt", "--check", "a.gm"]) {cwd = Just tmp} ""
+        code @?= ExitFailure 1
+        assertBool out ("a.gm" `isInfixOf` out)
+        (code', _, _) <- readCreateProcessWithExitCode (proc "golem" ["fmt", "a.gm"]) {cwd = Just tmp} ""
+        code' @?= ExitSuccess
+        readFile (tmp </> "a.gm") >>= (@?= "@style verse\n  Full fathom five\n")
     ]

@@ -79,8 +79,14 @@ golem new mybook
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
 `font` が `[fonts]` にない役割を指す場合はエラーになる。
-`[bold: ...]` と `[italic: ...]` は `[emphasis]` の `bold-font` と `italic-font` の役割の書体で組み、指定がなければ合成の太字と斜体で組む。
+文字の見た目は `[character-styles.<名前>]` の文字スタイル、段落の見た目は `[paragraph-styles.<名前>]` の段落スタイルにまとめる。
+`[strong: ...]`、`[bold: ...]`、`[italic: ...]` は組み込みの文字スタイル `strong`、`bold`、`italic` の別名であり、`[character-styles.bold]` などの `font` の役割の書体で組む。
+指定がなければ合成の太字と斜体で組み、役割が和文か欧文の片方しか持たない場合は、持たない側の文字を合成で組む。
 和文も合成の斜体で傾く。
+段落スタイルは原稿の `@style 名前` で付け、韻文は組み込みの段落スタイル `verse` で書く（`@style verse`）。
+段落の字下げは段落スタイルの `indent` と `first-line-indent`（負ならぶら下げ）で指定し、既定は 0 である。
+図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
+傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注欄の幅、版面との間隔、本文側の印だけを書く。
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には商用のプリフライト（Acrobat や pdfToolbox など）で確認する。
 フォントの OS/2 の `fsType` が埋め込みを禁じている場合はエラーになる。

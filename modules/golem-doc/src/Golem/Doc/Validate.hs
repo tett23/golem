@@ -16,15 +16,18 @@ import Golem.Syntax.Span
 deferred expressions present in the request; output may only repeat them.
 -}
 validateInlines :: (FileId -> Maybe Int) -> [DeferredExpr] -> [Inline] -> [Text]
-validateInlines fileSize allowed = concatMap (inlineErrors fileSize allowed)
+validateInlines fileSize allowed is = concatMap (inlineErrors fileSize allowed) is <> breakErrors False is
 
 validateDocument :: (FileId -> Maybe Int) -> [DeferredExpr] -> Document -> [Text]
 validateDocument fileSize allowed (Document _ bs) = concatMap blockErrors bs
   where
     blockErrors (Block sp _ body) = spanErrors fileSize sp <> bodyErrors body
-    inl = concatMap (inlineErrors fileSize allowed)
+    inl is = concatMap (inlineErrors fileSize allowed) is <> breakErrors False is
     bodyErrors = \case
-      Paragraph is -> inl is
+      Paragraph st is ->
+        ["段落スタイル body は null で表します" | st == Just "body"]
+          <> concatMap (inlineErrors fileSize allowed) is
+          <> breakErrors True is
       Heading l a is ->
         ["見出しの階層が範囲外です: " <> T.pack (show l) | l < 1 || l > 3]
           <> maybe [] inl (haTocTitle a)
@@ -39,7 +42,33 @@ validateDocument fileSize allowed (Document _ bs) = concatMap blockErrors bs
       CodeBlock _ _ -> []
       FigureBlock f -> concatMap blockErrors (figCaption f)
       ChannelOutput _ -> []
-      VerseBlock stanzas -> concatMap (concatMap inl) stanzas
+
+{- | A line break stands only between two inlines at the top of a
+paragraph, never two in a row (docs/adr ADR 0005).
+-}
+breakErrors :: Bool -> [InlineF r] -> [Text]
+breakErrors top is =
+  ["改行は段落の最上位のインラインの間にだけ置けます" | any nested is || topLevel]
+  where
+    isBreak = \case
+      LineBreak _ -> True
+      _ -> False
+    topLevel
+      | not top = any isBreak is
+      | otherwise = case is of
+          [] -> False
+          (x : _) -> isBreak x || isBreak (last is) || or (zipWith (\a b -> isBreak a && isBreak b) is (drop 1 is))
+    nested :: InlineF r -> Bool
+    nested = \case
+      Ruby _ _ segs -> any (any (\x -> isBreak x || nested x) . rsBase) segs
+      Kenten _ _ xs -> deep xs
+      Color _ _ xs -> deep xs
+      CharStyle _ _ xs -> deep xs
+      Note _ _ xs -> deep xs
+      Sidenote _ _ xs -> deep xs
+      _ -> False
+    deep :: [InlineF r] -> Bool
+    deep = any (\x -> isBreak x || nested x)
 
 spanErrors :: (FileId -> Maybe Int) -> SrcSpan -> [Text]
 spanErrors fileSize (SrcSpan f s e) = case fileSize f of
@@ -49,9 +78,6 @@ spanErrors fileSize (SrcSpan f s e) = case fileSize f of
 inlineErrors :: (FileId -> Maybe Int) -> [DeferredExpr] -> InlineF r -> [Text]
 inlineErrors fileSize allowed i =
   spanErrors fileSize (inlineSpan i) <> case i of
-    Strong _ xs -> sub xs
-    Bold _ xs -> sub xs
-    Italic _ xs -> sub xs
     Ruby _ _ segs -> concatMap (concatMap (inlineErrors fileSize allowed) . rsBase) segs
     Kenten _ _ xs -> sub xs
     Color _ _ xs -> sub xs
@@ -67,9 +93,6 @@ inlineErrors fileSize allowed i =
 inlineSpan :: InlineF r -> SrcSpan
 inlineSpan = \case
   Text s _ -> s
-  Strong s _ -> s
-  Bold s _ -> s
-  Italic s _ -> s
   Ruby s _ _ -> s
   Kenten s _ _ -> s
   Color s _ _ -> s
@@ -83,3 +106,4 @@ inlineSpan = \case
   IndexMark s _ -> s
   Cite s _ -> s
   ProofComment s _ -> s
+  LineBreak s -> s

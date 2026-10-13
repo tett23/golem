@@ -7,7 +7,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
-import Data.List (isSuffixOf, nub, sort)
+import Data.List (isSuffixOf, nub, sort, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text qualified as T
@@ -17,17 +17,17 @@ import Golem.Doc.Assemble (IndexGroup (..), inlineText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.New
-import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf)
+import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Look (Look (..))
+import Golem.Layout.Look (Look (..), Synthetic (..))
 import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..), markPages)
 import Golem.Layout.Wrap (Exclusion (..))
-import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, sidenoteAreaFor, typeAreaFor)
+import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.Pdf (Font (..), FontProgram (..), spToPt)
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
-import Golem.Project.Style (dimToSp, parseDim, parseStyle)
+import Golem.Project.Style (Dim (..), dimToSp, parseDim, parseStyle)
 import Golem.Syntax
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
 import System.Environment (setEnv)
@@ -265,9 +265,11 @@ tests =
             qpdfCheck a
         ],
       testGroup "verse (docs/adr ADR 0003)" verseTests,
+      testGroup "paragraph indents (docs/adr ADR 0006)" indentTests,
       testGroup "PDF headings (ADR 0003)" headingTests,
       testGroup "PDF emphasis, character styles and colour (ADR 0004)" emphasisTests,
       testGroup "PDF wrapped figures (ADR 0005)" wrapTests,
+      testGroup "PDF captions (ADR 0010)" captionTests,
       testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
       testGroup "PDF index and bibliography (ADR 0007)" indexTests,
       testGroup "PDF tables (ADR 0008)" tableTests,
@@ -311,7 +313,7 @@ withVerseProject style src k = withSystemTempDirectory "golem-verse" $ \tmp -> d
   k tmp
 
 verseSource :: T.Text
-verseSource = "@verse\n  Full fathom five thy father lies;\n  Of his bones are coral made;\n\n  Nothing of him that doth fade,\n"
+verseSource = "@style verse\n  Full fathom five thy father lies;\n  Of his bones are coral made;\n\n  Nothing of him that doth fade,\n"
 
 -- | The PDF flow of a verse project and its lines as (line length, indent).
 verseLines :: BS.ByteString -> T.Text -> IO ([Flow], [(Integer, Integer)])
@@ -327,25 +329,28 @@ verseLines style src = withVerseProject style src $ \tmp -> do
 
 verseTests :: [TestTree]
 verseTests =
-  [ testCase "HTML: stanzas are p, lines are span and br; the CSS hangs the lines" $
-      withVerseProject "[verse]\nhang = \"3zw\"\n" verseSource $ \tmp -> do
+  [ testCase "HTML: stanzas are p of the verse style, lines are span and br; the CSS hangs the lines" $
+      withVerseProject "[paragraph-styles.verse]\nindent = \"3zw\"\nfirst-line-indent = \"-3zw\"\n" verseSource $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
         page <- TIO.readFile (tmp </> "build/html/v.xhtml")
         assertBool
-          "verse"
-          ( "<div class=\"verse\">\n<p><span>Full fathom five thy father lies;</span><br/>\n<span>Of his bones are coral made;</span></p>\n<p><span>Nothing of him that doth fade,</span></p>\n</div>\n"
+          (T.unpack page)
+          ( "<p class=\"ps-verse\"><span class=\"line\">Full fathom five thy father lies;</span><br/>\n<span class=\"line\">Of his bones are coral made;</span></p>\n<p class=\"ps-verse\"><span class=\"line\">Nothing of him that doth fade,</span></p>\n"
               `T.isInfixOf` page
           )
         css <- TIO.readFile (tmp </> "build/html/style.css")
-        assertBool "span rule" (".verse span { display: block; padding-inline-start: 3em; text-indent: -3em; }" `T.isInfixOf` css)
-        assertBool "stanza gap" (".verse p + p { margin-block-start: 1em; }" `T.isInfixOf` css),
-    testCase "HTML: no stanza gap rule when stanza-gap is 0" $
-      withVerseProject "[verse]\nstanza-gap = 0\nindent = \"10.5pt\"\n" verseSource $ \tmp -> do
+        assertBool "line rule" (".line { display: block; }" `T.isInfixOf` css)
+        assertBool "br rule" (".line + br { display: none; }" `T.isInfixOf` css)
+        assertBool "hang" ("p.ps-verse { padding-inline-start: 3em; text-indent: -3em; }" `T.isInfixOf` css)
+        assertBool "stanza gap" ("p.ps-verse + p.ps-verse { margin-block-start: 1em; }" `T.isInfixOf` css),
+    testCase "HTML: no space rule when space-between is 0" $
+      withVerseProject "[paragraph-styles.verse]\nspace-between = 0\nindent = \"10.5pt\"\n" verseSource $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         css <- TIO.readFile (tmp </> "build/html/style.css")
-        assertBool "no stanza gap" (not (".verse p + p" `T.isInfixOf` css))
-        assertBool "indent" (".verse { margin-inline-start: 10.5pt; }" `T.isInfixOf` css),
+        assertBool "no stanza gap" (not ("p.ps-verse + p.ps-verse" `T.isInfixOf` css))
+        assertBool "margin" ("p.ps-verse { margin-block: 0; }" `T.isInfixOf` css)
+        assertBool "indent" ("p.ps-verse { padding-inline-start: 10.5pt; text-indent: -2em; }" `T.isInfixOf` css),
     testCase "plain text: lines on lines, stanzas separated by a blank line" $
       withVerseProject "" verseSource $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
@@ -354,18 +359,87 @@ verseTests =
     testCase "PDF: a long line is broken and its continuation hangs" $ do
       let style = "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 30\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n"
           fs = 655360
-      (flow, ls) <- verseLines style ("@verse\n  " <> T.replicate 45 "あ" <> "\n\n  い\n")
+      (flow, ls) <- verseLines style ("@style verse\n  " <> T.replicate 45 "あ" <> "\n\n  い\n")
       ls @?= [(30 * fs, 0), (28 * fs, 2 * fs), (30 * fs, 0)]
       [length bs | FParagraph bs <- flow] @?= [2, 1]
       [n | FSpace n <- flow] @?= [1],
-    testCase "PDF: the hang in vertical writing, and the stanza gap from the style" $ do
+    testCase "PDF: the hang in vertical writing, and the space between stanzas from the style" $ do
       let fs = maybe 0 (dimToSp 0) (parseDim "13Q")
-      (flow, ls) <- verseLines (pdfStyle <> "\n[verse]\nstanza-gap = 2\n") ("@verse\n  " <> T.replicate 60 "あ" <> "\n\n  い\n")
+      (flow, ls) <- verseLines (pdfStyle <> "\n[paragraph-styles.verse]\nspace-between = 2\n") ("@style verse\n  " <> T.replicate 60 "あ" <> "\n\n  い\n")
       map snd ls @?= [0, 2 * fs, 0]
       [n | FSpace n <- flow] @?= [2],
+    testCase "PDF: the attribute form and a label" $ do
+      (flow, ls) <- verseLines pdfStyle "@label song\n@style verse\nあ\nい\n"
+      length ls @?= 2
+      [length bs | FParagraph bs <- flow] @?= [1, 1],
     testCase "PDF: a verse line takes the look of its inline elements" $ do
-      (_, layout) <- layoutOk horizontalStyle "@verse\n  前の[bold: 本文]後\n" []
-      [bcText c | sl <- Map.elems (plLines layout), Box _ c <- lineItems (slLine sl), lkEmbolden (bcLook c)] @?= ["本", "文"]
+      (_, layout) <- layoutOk horizontalStyle "@style verse\n  前の[bold: 本文]後\n" []
+      [bcText c | sl <- Map.elems (plLines layout), Box _ c <- lineItems (slLine sl), synBold (lkSynthetic (bcLook c))] @?= ["本", "文"]
+  ]
+
+-- | horizontalStyle with 30 characters a line (300pt), and more.
+horizontal30 :: BS.ByteString -> BS.ByteString
+horizontal30 extra = replaceIn "characters = 12" "characters = 30" horizontalStyle <> extra
+
+indentTests :: [TestTree]
+indentTests =
+  [ testCase "PDF: the first line of a paragraph is indented by first-line-indent" $ do
+      let fs = 655360
+      (_, ls) <- verseLines (horizontal30 "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") (T.replicate 45 "あ" <> "\n")
+      ls @?= [(29 * fs, fs), (30 * fs, 0)],
+    testCase "PDF: a hanging indent" $ do
+      let fs = 655360
+      (_, ls) <- verseLines (horizontal30 "\n[paragraph-styles.quote]\nindent = \"2zw\"\nfirst-line-indent = \"-2zw\"\n") ("@style quote\n" <> T.replicate 45 "あ" <> "\n")
+      map snd ls @?= [0, 2 * fs]
+      map fst ls @?= [30 * fs, 28 * fs],
+    testCase "PDF: vertical, the first line starts a character lower" $ do
+      let fs = maybe 0 (dimToSp 0) (parseDim "13Q")
+          firstY pdf = do
+            content <- BS.concat <$> inflateAll pdf
+            case [dY d | d <- drawnGlyphs content, dGlyph d == fromEnum 'い'] of
+              (y : _) -> pure (ptToRational y)
+              [] -> assertFailure "no glyph"
+      (_, ls) <- verseLines (pdfStyle <> "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") (T.replicate 60 "あ" <> "\n")
+      take 2 (map snd ls) @?= [fs, 0]
+      a <- miniPdf fakeProvider True (pdfStyle <> "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") "いろは\n" [] >>= firstY
+      b <- miniPdf fakeProvider True pdfStyle "いろは\n" [] >>= firstY
+      assertBool (show (a, b)) (abs ((b - a) - toRational fs / 65536) < 1 / 100),
+    testCase "PDF: no indent in list items and the table of contents; indent in definitions" $ do
+      let fs = 655360
+          style = horizontal30 "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n"
+      (_, items) <- verseLines style "- 項目\n- 項目\n"
+      map snd items @?= [0, 0]
+      (_, toc) <- verseLines style "@toc\n\n# 章\n"
+      assertBool (show toc) (all ((== 0) . snd) toc)
+      (_, defs) <- verseLines style "= 用語\n  説明の段落。\n"
+      map snd defs @?= [0, fs],
+    testCase "PDF: beside a wrap=start figure, the first line adds its indent to the exclusion" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk (horizontal24 <> "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") (wrapped "start" "4zw" <> longPara 30) img
+      (_, _, p, slot) <- theFigure pl
+      take 2 (map (slIndent . snd) (linesFrom pl p slot)) @?= [60 * pt, 50 * pt],
+    testCase "PDF: an indent that leaves less than 8 characters is G0725" $ do
+      let style = replaceIn "characters = 12" "characters = 10" horizontalStyle <> "\n[paragraph-styles.body]\nindent = \"3zw\"\n"
+      (errs, pdf) <- buildMini fakeProvider True style "本文。\n" []
+      (nub errs, pdf) @?= ([DiagnosticCode "G0725"], Nothing),
+    testCase "HTML: the indent of body and of verse, none in list items" $ do
+      withVerseProject "[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n" "本文。\n" $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        assertBool "body" ("p { padding-inline-start: 0em; text-indent: 1em; }" `T.isInfixOf` css)
+        assertBool "list items" ("li p, li p[class] { padding-inline-start: 0; text-indent: 0; }" `T.isInfixOf` css)
+      withVerseProject "" verseSource $ \tmp -> do
+        _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        css <- TIO.readFile (tmp </> "build/html/style.css")
+        assertBool "verse" ("p.ps-verse { padding-inline-start: 2em; text-indent: -2em; }" `T.isInfixOf` css)
+        assertBool "lines" (".line { display: block; }" `T.isInfixOf` css)
+        assertBool "no body rule" (not ("\np { " `T.isInfixOf` css)),
+    testCase "plain text: the first line starts with ideographic spaces" $ do
+      let text style src = withVerseProject style src $ \tmp -> do
+            _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            TIO.readFile (tmp </> "build/text/horizontal/v.txt")
+      text "[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n" "本文。\n\n- 項目\n" >>= (@?= "　本文。\n\n・項目\n")
+      text "[paragraph-styles.body]\nfirst-line-indent = \"3mm\"\n" "本文。\n" >>= (@?= "本文。\n")
   ]
 
 -- | A project with the identity plugin locked and cached.
@@ -559,6 +633,31 @@ drawnGlyphs content = go ("", "") (BC.lines content)
       (f : size : "Tf" : _) -> Just (f, size)
       _ -> Nothing
 
+{- | The runs of glyphs of a content stream: the font resource, the stroke
+width of synthetic bold (when the run has one) and the glyphs (golem-driver ADR 0012).
+-}
+strokeRuns :: BS.ByteString -> [(BS.ByteString, Maybe BS.ByteString, [Int])]
+strokeRuns content = go (BC.lines content)
+  where
+    go [] = []
+    go (l : rest)
+      | ws@(_ : _) <- BC.words l,
+        "Tf" `elem` ws,
+        (f : _) <- dropWhile (not . ("/F" `BS.isPrefixOf`)) ws =
+          let (body, rest') = break (("ET" `BS.isPrefixOf`) . BC.strip) rest
+              width = case dropWhile (/= "Tr") ws of
+                (_ : w : "w" : _) -> Just w
+                _ -> Nothing
+           in (f, width, [g | b <- body, Just g <- [glyph b]]) : go rest'
+      | otherwise = go rest
+    glyph l = case reverse (BC.words l) of
+      ("Tj" : hexg : "Tm" : _) -> Just (read ("0x" <> BC.unpack (BC.filter (`notElem` ("<>" :: String)) hexg)))
+      _ -> Nothing
+
+-- | The stroke widths of the runs that draw a character.
+widthsOf :: Char -> [(BS.ByteString, Maybe BS.ByteString, [Int])] -> [Maybe BS.ByteString]
+widthsOf c runs = nub [w | (_, w, gs) <- runs, fromEnum c `elem` gs]
+
 -- | A body role for styles that name other roles, so that the body stays the body.
 fakeBody :: BS.ByteString
 fakeBody = "\n[fonts.body]\nja = \"fonts/b.otf\"\n"
@@ -576,14 +675,14 @@ emphasisTests =
       sort [(dGlyph d, dX d, dY d) | d <- drawnGlyphs a] @?= sort [(dGlyph d, dX d, dY d) | d <- drawnGlyphs b],
     testCase "strong as italic slants Latin and Japanese alike, upright vertical glyphs too" $ do
       let slanted content = [(dGlyph d, dMatrix d) | d <- drawnGlyphs content, dGlyph d `elem` map fromEnum ("Gと組版" :: String)]
-      h <- miniPdf fakeProvider True (horizontalStyle <> "\n[emphasis]\nstrong = \"italic\"\n") "[strong: Golem と組版]\n" [] >>= fmap BS.concat . inflateAll
+      h <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.strong]\nbased-on = \"italic\"\n") "[strong: Golem と組版]\n" [] >>= fmap BS.concat . inflateAll
       assertBool (show (slanted h)) (length (slanted h) == 4 && all ((== ["1", "0", "0.2", "1"]) . snd) (slanted h))
-      v <- miniPdf fakeProvider True (pdfStyle <> "\n[emphasis]\nstrong = \"italic\"\n") "[strong: Golem と組版]\n" [] >>= fmap BS.concat . inflateAll
+      v <- miniPdf fakeProvider True (pdfStyle <> "\n[character-styles.strong]\nbased-on = \"italic\"\n") "[strong: Golem と組版]\n" [] >>= fmap BS.concat . inflateAll
       let upright = [m | (g, m) <- slanted v, g /= fromEnum 'G']
       assertBool (show (slanted v)) (length upright == 3 && all (== ["1", "0", "0.2", "1"]) upright)
       assertBool "turned Latin" (any ((== ["0", "-1", "1", "-0.2"]) . snd) (slanted v)),
     testCase "an italic role with only Latin sets Latin upright in it and slants the Japanese" $ do
-      content <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[emphasis]\nitalic-font = \"wide\"\n") "本[italic: Golem と組版]\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      content <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[character-styles.italic]\nfont = \"wide\"\n") "本[italic: Golem と組版]\n" fakeFontFiles >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           latin = [d | d <- ds, dGlyph d == fromEnum 'G']
           ja = [d | d <- ds, dGlyph d == fromEnum '組']
@@ -598,11 +697,11 @@ emphasisTests =
             content <- BS.concat <$> inflateAll pdf
             pure (length (nub [dY d | d <- drawnGlyphs content, dGlyph d `elem` map fromEnum ['a' .. 'p']]))
       plain <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n") source fakeFontFiles >>= rows
-      wide <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[emphasis]\nbold-font = \"wide\"\n") source fakeFontFiles >>= rows
+      wide <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[character-styles.bold]\nfont = \"wide\"\n") source fakeFontFiles >>= rows
       assertBool (show (plain, wide)) (wide > plain),
     testCase "a bold role with its own font embeds it with the bold glyphs only" $ do
       (sans, serif) <- realLatinFonts
-      pdf <- miniPdf realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.bold]\nlatin = \"fonts/serif.ttf\"\n\n[emphasis]\nbold-font = \"bold\"\n") "[bold: Zebra] quick\n" [("fonts/sans.otf", sans), ("fonts/serif.ttf", serif)]
+      pdf <- miniPdf realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.bold]\nlatin = \"fonts/serif.ttf\"\n\n[character-styles.bold]\nfont = \"bold\"\n") "[bold: Zebra] quick\n" [("fonts/sans.otf", sans), ("fonts/serif.ttf", serif)]
       cmaps <- filter ("beginbfchar" `BS.isInfixOf`) <$> inflateAll pdf
       length cmaps @?= 2
       assertBool "bold glyphs only in one font" (any (\c -> "<005a>" `BS.isInfixOf` c && not ("<0071>" `BS.isInfixOf` c)) cmaps)
@@ -621,7 +720,7 @@ emphasisTests =
       assertBool "the heading role's font" ([dFont d | d <- ds, dGlyph d == fromEnum '語'] /= [dFont d | d <- ds, dGlyph d == fromEnum '本'])
       [dSize d | d <- ds, dGlyph d == fromEnum '語'] @?= ["20"],
     testCase "emphasis, styles and colour: parallel and sequential, and two builds, give the same bytes" $ do
-      let style = horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[emphasis]\nitalic-font = \"wide\"\n\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n"
+      let style = horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[character-styles.italic]\nfont = \"wide\"\n\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n"
           source = "[strong: 強い] [bold: Bold] [italic: Golem と組版] [color accent: 赤 [bold: 太い]]。\n"
       a <- miniPdf fakeProvider True style source fakeFontFiles
       b <- miniPdf fakeProvider False style source fakeFontFiles
@@ -629,16 +728,55 @@ emphasisTests =
       a @?= b
       a @?= c
       qpdfCheck a,
-    testCase "HTML: a bold role gives b its font and no synthetic weight" $ withSystemTempDirectory "golem-mini" $ \tmp -> do
+    testCase "HTML: a bold role is declared bold and b names it before the body" $ withSystemTempDirectory "golem-mini" $ \tmp -> do
       BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
-      BS.writeFile (tmp </> "style.toml") "[fonts.body]\nja = \"fonts/b.otf\"\n\n[fonts.gothic]\nja = \"fonts/h.otf\"\n\n[emphasis]\nbold-font = \"gothic\"\n"
+      BS.writeFile (tmp </> "style.toml") "[fonts.body]\nja = \"fonts/b.otf\"\n\n[fonts.gothic]\nja = \"fonts/h.otf\"\n\n[character-styles.bold]\nfont = \"gothic\"\n"
       BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "[bold: 太い]\n")
       forM_ fakeFontFiles $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
       assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
       cssText <- TIO.readFile (tmp </> "build/html/style.css")
-      assertBool (T.unpack cssText) ("b { font-family: \"golem-gothic-ja\", serif; font-weight: normal; }" `T.isInfixOf` cssText)
-      assertBool "strong too" ("strong { font-family: \"golem-gothic-ja\", serif; font-weight: normal; }" `T.isInfixOf` cssText)
+      assertBool (T.unpack cssText) ("@font-face { font-family: \"golem-gothic-ja\"; src: url(\"fonts/h.otf\"); font-weight: bold; }" `T.isInfixOf` cssText)
+      assertBool (T.unpack cssText) ("b { font-family: \"golem-gothic-ja\", \"golem-body-ja\", serif; font-weight: bold; }" `T.isInfixOf` cssText)
+      assertBool "strong too" ("strong { font-family: \"golem-gothic-ja\", \"golem-body-ja\", serif; font-weight: bold; }" `T.isInfixOf` cssText),
+    testCase "the stroke of synthetic bold: 1/80 of the size for Japanese, 1/60 for Latin (golem-driver ADR 0012)" $ do
+      syntheticStroke syntheticStrokeJa 655360 @?= 8192
+      syntheticStroke syntheticStrokeLatin 655360 @?= 10922
+      ja <- miniPdf fakeProvider True horizontalStyle "前の[bold: 本文]後\n" [] >>= fmap (strokeRuns . BS.concat) . inflateAll
+      nub [w | (_, Just w, _) <- ja] @?= ["0.125"]
+      latin <- miniPdf fakeProvider True horizontalStyle "[bold: Golem]\n" [] >>= fmap (strokeRuns . BS.concat) . inflateAll
+      nub [w | (_, Just w, _) <- latin] @?= [TE.encodeUtf8 (spToPt 10922)],
+    testCase "Japanese and Latin in one bold run get their own strokes, and the glyphs stay" $ do
+      let style = horizontalStyle <> fakeBody
+      runs <- miniPdf fakeProvider True style "[bold: 本Golem]\n" fakeFontFiles >>= fmap (strokeRuns . BS.concat) . inflateAll
+      widthsOf '本' runs @?= [Just "0.125"]
+      widthsOf 'G' runs @?= [Just (TE.encodeUtf8 (spToPt 10922))]
+      a <- miniPdf fakeProvider True style "[bold: 本Golem]\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      b <- miniPdf fakeProvider True style "本Golem\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      sort [(dGlyph d, dX d, dY d) | d <- drawnGlyphs a] @?= sort [(dGlyph d, dX d, dY d) | d <- drawnGlyphs b],
+    testCase "the stroke follows the size" $ do
+      runs <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.big]\nsize = \"2zw\"\n") "[style big: [bold: 本]]\n" [] >>= fmap (strokeRuns . BS.concat) . inflateAll
+      widthsOf '本' runs @?= [Just "0.25"],
+    testCase "a bold role with Japanese only: Japanese in it without a stroke, Latin synthetic" $ do
+      runs <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n\n[character-styles.bold]\nfont = \"heading\"\n") "[bold: 本Golem]\n" fakeFontFiles >>= fmap (strokeRuns . BS.concat) . inflateAll
+      widthsOf '本' runs @?= [Nothing]
+      widthsOf 'G' runs @?= [Just (TE.encodeUtf8 (spToPt 10922))]
+      assertBool "different fonts" (nub [f | (f, _, gs) <- runs, fromEnum '本' `elem` gs] /= nub [f | (f, _, gs) <- runs, fromEnum 'G' `elem` gs]),
+    testCase "a character style colours its text" $ do
+      pdf <- miniPdf fakeProvider True (horizontalStyle <> "\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n\n[character-styles.term]\ncolor = \"accent\"\n") "前[style term: 語]後\n" []
+      content <- BS.concat <$> inflateAll pdf
+      assertBool "fill" ("0 0.8 1 0 k" `BS.isInfixOf` content),
+    testCase "a paragraph style sets the role of its paragraphs" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n\n[paragraph-styles.quote]\nfont = \"heading\"\n") "本\n\n@style quote\n語\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+      assertBool "the heading role's font" ([dFont d | d <- ds, dGlyph d == fromEnum '語'] /= [dFont d | d <- ds, dGlyph d == fromEnum '本'])
+      assertBool "drawn" (not (null [d | d <- ds, dGlyph d == fromEnum '語'])),
+    testCase "a role with one side leaves the other side in the outer face, synthetic" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[character-styles.bold]\nfont = \"wide\"\n") "本[bold: 語Go]\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+      [dFont d | d <- ds, dGlyph d == fromEnum '語'] @?= [dFont d | d <- ds, dGlyph d == fromEnum '本']
+      assertBool "Latin in the wide role" ([dFont d | d <- ds, dGlyph d == fromEnum 'G'] /= [dFont d | d <- ds, dGlyph d == fromEnum '本'])
+      assertBool "the Japanese side is synthetic bold" ("2 Tr" `BS.isInfixOf` content)
   ]
 
 {- | Lays out a one-chapter project with the fake fonts, as far as the
@@ -813,7 +951,11 @@ wrapTests =
 
 -- | horizontalStyle with a sidenote column: 6zw wide, 1zw gap, 8pt; the sidenote pitch is 12pt.
 sidenoteStyle :: BS.ByteString
-sidenoteStyle = horizontalStyle <> "\n[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\nsize = \"8pt\"\n"
+sidenoteStyle = sidenoteStyleWith ""
+
+-- | sidenoteStyle with more keys for the paragraph style sidenote (golem-driver ADR 0011); [sidenotes] stays last.
+sidenoteStyleWith :: BS.ByteString -> BS.ByteString
+sidenoteStyleWith keys = horizontalStyle <> "\n[paragraph-styles.sidenote]\nsize = \"8pt\"\n" <> keys <> "\n[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\n"
 
 -- | Every placed sidenote with its page number.
 sidenotesOf :: PdfLayout -> [(Int, PlacedSidenote)]
@@ -836,6 +978,149 @@ offsetsIn pat src = occurrences (TE.encodeUtf8 pat) (TE.encodeUtf8 src)
 
 twoLineNote :: T.Text
 twoLineNote = "[sidenote: あいうえおかきくけ]"
+
+-- | horizontal24 with a caption style.
+captionStyle :: BS.ByteString -> BS.ByteString
+captionStyle keys = horizontal24 <> "\n[paragraph-styles.caption]\n" <> keys
+
+-- | A figure that is not wrapped, with a caption of n full-width characters, and a paragraph after it.
+figureWith :: Int -> T.Text
+figureWith n = "@figure images/tiny.jpg alt=\"t\"\n  " <> T.replicate n "甲" <> "\n\n後の段落。\n"
+
+-- | The grid line of the first line after a figure, from the figure's first grid line.
+afterFigure :: PdfLayout -> IO Int
+afterFigure pl = do
+  (_, _, p, slot) <- theFigure pl
+  case [s | (s, SLine _) <- poSlots p, s > slot] of
+    (s : _) -> pure (s - slot)
+    [] -> assertFailure "no line after the figure"
+
+captionTests :: [TestTree]
+captionTests =
+  [ testCase "a small wrapped caption: its size, its pitch and the exclusion" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk (captionStyle "size = \"8pt\"\n") (wrapped "end" "4zw" <> longPara 30) img
+      (_, pf, _, _) <- theFigure pl
+      (pfCaptionSize pf, pfCaptionPitch pf) @?= (8 * pt, 12 * pt)
+      let n = toInteger (length (pfCaption pf))
+      fmap exLines (pfExclusion pf) @?= Just (fromInteger ((4 * 15 + (n - 1) * 12 + 8 + 10 + 14) `div` 15)),
+    testCase "a small caption takes fewer grid lines; the text after it stays on the grid" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk (captionStyle "size = \"6pt\"\n") (figureWith 100) img
+      (_, pf, _, _) <- theFigure pl
+      (length (pfCaption pf), pfCaptionPitch pf, pfCaptionSpan pf) @?= (3, 9 * pt, 2)
+      afterFigure pl >>= (@?= 24 + 2)
+      (_, plain) <- layoutOk horizontal24 (figureWith 100) img
+      (_, pf', _, _) <- theFigure plain
+      length (pfCaption pf') @?= 5
+      afterFigure plain >>= (@?= 24 + 5),
+    testCase "the caption is drawn at its size from the top of its grid lines" $ do
+      img <- tinyImage
+      let style = captionStyle "size = \"6pt\"\n"
+      (geom, pl) <- layoutOk style (figureWith 100) img
+      (_, _, p, slot) <- theFigure pl
+      pdf <- miniPdf fakeProvider True style (figureWith 100) img
+      content <- BS.concat <$> inflateAll pdf
+      let ta = typeAreaFor geom (poNumber p)
+          top = toRational (rectY ta + rectH ta) / 65536
+          ys = sortOn negate (nub [ptToRational (dY d) | d <- drawnGlyphs content, dSize d == "6"])
+          first = top - toRational (toInteger (slot + 24) * 15 * pt + round (toRational (6 * pt) * baselineRatio)) / 65536
+      case ys of
+        (y1 : y2 : _) -> do
+          assertBool (show (y1, first)) (abs (y1 - first) < 1 / 100)
+          assertBool (show (y1, y2)) (abs (y1 - y2 - 9) < 1 / 100)
+        other -> assertFailure (show other),
+    testCase "a caption role sets the caption, the body stays in the body role" $ do
+      img <- tinyImage
+      content <- miniPdf fakeProvider True (captionStyle "font = \"heading\"\n" <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n") (figureWith 4) (img <> fakeFontFiles) >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+      assertBool "drawn" (not (null [d | d <- ds, dGlyph d == fromEnum '甲']))
+      assertBool "the heading role's font" (nub [dFont d | d <- ds, dGlyph d == fromEnum '甲'] /= nub [dFont d | d <- ds, dGlyph d == fromEnum '後']),
+    testCase "a small caption fits where a body-size one is G0723" $ do
+      img <- tinyImage
+      let short = replaceIn "lines = 30" "lines = 8" horizontal24
+          source = "@figure images/tiny.jpg alt=\"t\" wrap=end width=4zw\n  " <> T.replicate 14 "甲" <> "\n\n" <> longPara 2
+      (errs, _) <- buildMini fakeProvider True short source img
+      errs @?= [DiagnosticCode "G0723"]
+      (errs', _) <- buildMini fakeProvider True (short <> "\n[paragraph-styles.caption]\nsize = \"5pt\"\n") source img
+      errs' @?= [],
+    testCase "vertical: the caption is in the type area, its first centre line half its size from the grid" $ do
+      img <- tinyImage
+      let style = figStyle (replaceIn "characters = 42" "characters = 20" pdfStyle) <> "\n[paragraph-styles.caption]\nsize = \"10Q\"\n"
+          q = maybe 0 (dimToSp 0) (parseDim "10Q")
+      (geom, pl) <- layoutOk style (figureWith 10) img
+      (_, pf, p, slot) <- theFigure pl
+      pdf <- miniPdf fakeProvider True style (figureWith 10) img
+      content <- BS.concat <$> inflateAll pdf
+      let ta = typeAreaFor geom (poNumber p)
+          right = toRational (rectX ta + rectW ta) / 65536
+          xs = sortOn negate (nub [ptToRational (dX d) | d <- drawnGlyphs content, dGlyph d == fromEnum '甲'])
+          expected = right - toRational (toInteger (slot + pfImageLines pf) * pgLinePitch geom + q `div` 2) / 65536
+      case xs of
+        (x : _) -> do
+          assertBool (show (x, expected)) (abs (x - expected) < 1 / 100)
+          assertBool "in the type area" (x > toRational (rectX ta) / 65536)
+        [] -> assertFailure "no caption glyph",
+    testCase "naming the body role and size changes nothing" $ do
+      img <- tinyImage
+      a <- miniPdf fakeProvider True (horizontal24 <> fakeBody) (figureWith 30) (img <> fakeFontFiles)
+      b <- miniPdf fakeProvider True (captionStyle "font = \"body\"\nsize = \"10pt\"\n" <> fakeBody) (figureWith 30) (img <> fakeFontFiles)
+      c1 <- BS.concat <$> inflateAll a
+      c2 <- BS.concat <$> inflateAll b
+      drawnGlyphs c1 @?= drawnGlyphs c2,
+    testCase "a caption based on another style takes its size" $ do
+      img <- tinyImage
+      (_, pl) <- layoutOk (horizontal24 <> "\n[paragraph-styles.note]\nsize = \"8pt\"\n\n[paragraph-styles.caption]\nbased-on = \"note\"\n") (figureWith 10) img
+      (_, pf, _, _) <- theFigure pl
+      pfCaptionSize pf @?= 8 * pt,
+    testCase "the indent of the caption style does not move the caption" $ do
+      img <- tinyImage
+      a <- miniPdf fakeProvider True horizontal24 (figureWith 30) img >>= fmap BS.concat . inflateAll
+      b <- miniPdf fakeProvider True (captionStyle "first-line-indent = \"1zw\"\n") (figureWith 30) img >>= fmap BS.concat . inflateAll
+      [d | d <- drawnGlyphs a, dGlyph d == fromEnum '甲'] @?= [d | d <- drawnGlyphs b, dGlyph d == fromEnum '甲'],
+    testCase "small captions: parallel and sequential, and two builds, give the same bytes" $ do
+      img <- tinyImage
+      let style = captionStyle "size = \"7pt\"\n"
+          source = wrapped "start" "4zw" <> longPara 20 <> figureWith 60
+      a <- miniPdf fakeProvider True style source img
+      b <- miniPdf fakeProvider False style source img
+      c <- miniPdf fakeProvider True style source img
+      a @?= b
+      a @?= c
+      qpdfCheck a,
+    testCase "with real fonts the caption font holds the caption's glyphs only" $ do
+      (sans, serif) <- realLatinFonts
+      img <- tinyImage
+      let style = horizontal24 <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.caption]\nlatin = \"fonts/serif.ttf\"\n\n[paragraph-styles.caption]\nfont = \"caption\"\n"
+      pdf <- miniPdf realProvider True style "@figure images/tiny.jpg alt=\"t\"\n  Zebra\n\nquick\n" (img <> [("fonts/sans.otf", sans), ("fonts/serif.ttf", serif)])
+      cmaps <- filter ("beginbfchar" `BS.isInfixOf`) <$> inflateAll pdf
+      length cmaps @?= 2
+      assertBool "caption glyphs only in one font" (any (\c -> "<005a>" `BS.isInfixOf` c && not ("<0071>" `BS.isInfixOf` c)) cmaps)
+      assertBool "body glyphs only in the other" (any (\c -> "<0071>" `BS.isInfixOf` c && not ("<005a>" `BS.isInfixOf` c)) cmaps)
+      qpdfCheck pdf,
+    testCase "HTML: figcaption takes the caption's font and size relative to the grid" $ do
+      let css keys = withSystemTempDirectory "golem-mini" $ \tmp -> do
+            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
+            BS.writeFile (tmp </> "style.toml") (horizontalStyle <> "\n[fonts.caption]\nlatin = \"fonts/c.otf\"\n\n[paragraph-styles.caption]\n" <> keys)
+            BS.writeFile (tmp </> "a.gm") "x\n"
+            createDirectoryIfMissing True (tmp </> "fonts")
+            BS.writeFile (tmp </> "fonts/c.otf") "fake"
+            r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+            assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+            TIO.readFile (tmp </> "build/html/style.css")
+      a <- css "font = \"caption\"\nsize = \"8pt\"\n"
+      assertBool (T.unpack a) ("figcaption { font-family: \"golem-caption-latin\", serif; font-size: 0.8em; }" `T.isInfixOf` a)
+      b <- css "size = \"0.85zw\"\n"
+      assertBool (T.unpack b) ("figcaption { font-size: 0.85em; }" `T.isInfixOf` b),
+    testCase "cssFontSize: relative to an absolute grid, pt without a page" $ do
+      let styleOf src = either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) src)
+          dim t = fromMaybe (Abs 0) (parseDim t)
+      s13 <- styleOf "[page]\nsize = \"B6\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 30\nlines = 20\nline-pitch = \"22H\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n"
+      cssFontSize s13 (dim "11Q") @?= "0.846em"
+      cssFontSize s13 (dim "0.85zw") @?= "0.85em"
+      none <- styleOf ""
+      cssFontSize none (dim "9pt") @?= "9pt"
+  ]
 
 sidenoteTests :: [TestTree]
 sidenoteTests =
@@ -915,7 +1200,74 @@ sidenoteTests =
       c <- miniPdf fakeProvider True sidenoteStyle source []
       a @?= b
       a @?= c
-      qpdfCheck a
+      qpdfCheck a,
+    testCase "the roles the PDF uses include the sidenote's (golem-driver ADR 0011)" $ do
+      s <- either (assertFailure . show) pure (parseStyle (FileId 0) "[fonts.body]\nja = \"b.otf\"\n\n[fonts.heading]\nja = \"h.otf\"\n\n[paragraph-styles.sidenote]\nfont = \"heading\"\n")
+      usedRoles s @?= ["body", "heading"],
+    testCase "a sidenote role sets the note and its number; the text and its marker stay in the body" $ do
+      content <- miniPdf fakeProvider True (sidenoteStyleWith "font = \"heading\"\n" <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n") "本文[sidenote: 注]。\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          fontsOf c sz = nub [dFont d | d <- ds, dGlyph d == fromEnum c, dSize d == sz]
+      fontsOf '注' "8" @?= fontsOf '1' "8"
+      assertBool "drawn" (not (null (fontsOf '注' "8")))
+      assertBool "the note's role" (fontsOf '注' "8" /= fontsOf '本' "10")
+      nub [dFont d | d <- ds, dGlyph d == fromEnum '1', dSize d /= "8"] @?= fontsOf '本' "10",
+    testCase "a sidenote role measures the note in its own font" $ do
+      let note = "本文[sidenote: abcdefghijklmnopqrstuvwxyz]。\n"
+          linesOf style = do
+            (_, pl) <- layoutOk style note fakeFontFiles
+            pure (sum [length (psLines ps) | (_, ps) <- sidenotesOf pl])
+      plain <- linesOf (sidenoteStyle <> fakeBody)
+      wide <- linesOf (sidenoteStyleWith "font = \"wide\"\n" <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n")
+      assertBool (show (plain, wide)) (wide > plain),
+    testCase "naming the body role, or an indent, changes nothing" $ do
+      let source = "本文[sidenote: 傍注の本文はここにある。]。\n"
+      a <- miniPdf fakeProvider True (sidenoteStyle <> fakeBody) source fakeFontFiles
+      b <- miniPdf fakeProvider True (sidenoteStyleWith "font = \"body\"\n" <> fakeBody) source fakeFontFiles
+      c <- miniPdf fakeProvider True (sidenoteStyleWith "first-line-indent = \"1zw\"\n" <> fakeBody) source fakeFontFiles
+      a @?= b
+      a @?= c,
+    testCase "a character style inside a sidenote takes its own role" $ do
+      content <- miniPdf fakeProvider True (sidenoteStyle <> fakeBody <> "\n[fonts.wide]\nja = \"fonts/w.otf\"\n\n[character-styles.bold]\nfont = \"wide\"\n") "本文[sidenote: 注の[bold: 語]。]。\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          fontsOf c = nub [dFont d | d <- ds, dGlyph d == fromEnum c]
+      assertBool "the bold role" (fontsOf '語' /= fontsOf '注')
+      fontsOf '注' @?= fontsOf '本',
+    testCase "sidenote roles: parallel and sequential, and two builds, give the same bytes" $ do
+      let style = sidenoteStyleWith "font = \"heading\"\n" <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n"
+          files = fakeFontFiles
+          source = fillers 5 <> "一" <> twoLineNote <> "\n\n二" <> twoLineNote <> "\n\n" <> longPara 20
+      a <- miniPdf fakeProvider True style source files
+      b <- miniPdf fakeProvider False style source files
+      c <- miniPdf fakeProvider True style source files
+      a @?= b
+      a @?= c
+      qpdfCheck a,
+    testCase "with real fonts the sidenote font holds the sidenote's glyphs only" $ do
+      (sans, serif) <- realLatinFonts
+      let style = sidenoteStyleWith "font = \"note\"\n" <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.note]\nlatin = \"fonts/serif.ttf\"\n"
+      pdf <- miniPdf realProvider True style "quick[sidenote: Zebra] quick\n" [("fonts/sans.otf", sans), ("fonts/serif.ttf", serif)]
+      cmaps <- filter ("beginbfchar" `BS.isInfixOf`) <$> inflateAll pdf
+      length cmaps @?= 2
+      assertBool "sidenote glyphs only in one font" (any (\c -> "<005a>" `BS.isInfixOf` c && not ("<0071>" `BS.isInfixOf` c)) cmaps)
+      assertBool "body glyphs only in the other" (any (\c -> "<0071>" `BS.isInfixOf` c && not ("<005a>" `BS.isInfixOf` c)) cmaps)
+      qpdfCheck pdf,
+    testCase "HTML: .sidenote takes the sidenote's font and size" $ do
+      let css keys = withSystemTempDirectory "golem-mini" $ \tmp -> do
+            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
+            BS.writeFile (tmp </> "style.toml") (horizontalStyle <> "\n[fonts.note]\nlatin = \"fonts/n.otf\"\n\n[paragraph-styles.sidenote]\n" <> keys)
+            BS.writeFile (tmp </> "a.gm") "x\n"
+            createDirectoryIfMissing True (tmp </> "fonts")
+            BS.writeFile (tmp </> "fonts/n.otf") "fake"
+            r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+            assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+            TIO.readFile (tmp </> "build/html/style.css")
+      a <- css "font = \"note\"\nsize = \"8pt\"\n"
+      assertBool (T.unpack a) (".sidenote { font-family: \"golem-note-latin\", serif; font-size: 0.8em; }" `T.isInfixOf` a)
+      b <- css "size = \"8pt\"\n"
+      assertBool (T.unpack b) (".sidenote { font-size: 0.8em; }" `T.isInfixOf` b)
+      c <- css "font = \"note\"\n"
+      assertBool (T.unpack c) (".sidenote { font-family: \"golem-note-latin\", serif; font-size: 0.85em; }" `T.isInfixOf` c)
   ]
 
 -- | The text of index or bibliography inlines, page numbers as numbers.

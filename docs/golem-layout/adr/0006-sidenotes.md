@@ -1,6 +1,6 @@
 # ADR 0006: 傍注の配置
 
-ステータス: 採択
+ステータス: 採択→傍注の書体と大きさの欄は [golem-driver ADR 0011](../../golem-driver/adr/0011-sidenote-font.md)
 
 ## 文脈
 

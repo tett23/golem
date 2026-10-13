@@ -88,29 +88,34 @@ cbor =
       testCase "wrong ABI version is rejected" $ do
         let bytes = toStrictByteString (encodeTerm (TList [TInt 99, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes)),
-      testCase "a document of ABI version 1 is rejected (docs/adr ADR 0003)" $ do
-        abiVersion @?= 2
-        let bytes = toStrictByteString (encodeTerm (TList [TInt 1, TInt 0, TList []]))
+      testCase "a document of ABI version 2 is rejected (docs/adr ADR 0005)" $ do
+        abiVersion @?= 3
+        let bytes = toStrictByteString (encodeTerm (TList [TInt 2, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes)),
-      testCase "verse: empty verse, stanzas and lines are rejected" $ do
+      testCase "retired tags are rejected (docs/adr ADR 0005)" $ do
         let spT = TList [TInt 0, TInt 0, TInt 1]
             text = TList [TInt 0, spT, TString "a"]
-            doc v = toStrictByteString (encodeTerm (TList [TInt 2, TInt 0, TList [TList [spT, TNull, TList [TInt 9, v]]]]))
-        assertBool "a line" (not (isLeft (decodeDocument (doc (TList [TList [TList [text]]])))))
-        assertBool "no stanzas" (isLeft (decodeDocument (doc (TList []))))
-        assertBool "an empty stanza" (isLeft (decodeDocument (doc (TList [TList []]))))
-        assertBool "an empty line" (isLeft (decodeDocument (doc (TList [TList [TList []]])))),
-      testCase "verse: ruby inside ruby in a line is rejected by the decoder" $ do
-        let spT = TList [TInt 0, TInt 0, TInt 1]
-            inner = TList [TInt 4, spT, TList [TList [TList [], TNull]]]
-            outer = TList [TInt 4, spT, TList [TList [TList [inner], TString "よみ"]]]
-            bytes = toStrictByteString (encodeTerm (TList [TInt 2, TInt 0, TList [TList [spT, TNull, TList [TInt 9, TList [TList [TList [outer]]]]]]]))
-        assertBool "rejected" (isLeft (decodeDocument bytes)),
-      testCase "verse: the inlines of lines are validated" $ do
+            doc body = toStrictByteString (encodeTerm (TList [TInt 3, TInt 0, TList [TList [spT, TNull, body]]]))
+        assertBool "a styled paragraph" (not (isLeft (decodeDocument (doc (TList [TInt 10, TString "verse", TList [text]])))))
+        assertBool "a body paragraph" (not (isLeft (decodeDocument (doc (TList [TInt 10, TNull, TList [text, TList [TInt 17, spT], text]])))))
+        assertBool "paragraph 0" (isLeft (decodeDocument (doc (TList [TInt 0, TList [text]]))))
+        assertBool "verse 9" (isLeft (decodeDocument (doc (TList [TInt 9, TList [TList [TList [text]]]]))))
+        mapM_
+          (\t -> assertBool ("inline " <> show t) (isLeft (decodeInlines (toStrictByteString (encodeTerm (TList [TList [TInt t, spT, TList [text]]]))))))
+          [1, 2, 3],
+      testCase "line breaks only between inlines at the top of a paragraph (docs/adr ADR 0005)" $ do
         let size (FileId 0) = Just 10
             size _ = Nothing
-            doc = Document (FileId 0) [Block sp Nothing (VerseBlock [[[Text sp "a"], [Text (SrcSpan (FileId 0) 5 20) "b"]]])]
-        validateDocument size [] doc @?= ["ソース位置がファイルの範囲外です"],
+            para st is = Document (FileId 0) [Block sp Nothing (Paragraph st is)]
+            a = Text sp "a"
+            br = LineBreak sp
+        validateDocument size [] (para (Just "verse") [a, br, a]) @?= []
+        validateDocument size [] (para Nothing [CharStyle sp "strong" [a, br, a]]) @?= ["改行は段落の最上位のインラインの間にだけ置けます"]
+        validateDocument size [] (para Nothing [br, a]) @?= ["改行は段落の最上位のインラインの間にだけ置けます"]
+        validateDocument size [] (para Nothing [a, br]) @?= ["改行は段落の最上位のインラインの間にだけ置けます"]
+        validateDocument size [] (para Nothing [a, br, br, a]) @?= ["改行は段落の最上位のインラインの間にだけ置けます"]
+        validateDocument size [] (para (Just "body") [a]) @?= ["段落スタイル body は null で表します"]
+        validateInlines size [] [a, br, a] @?= ["改行は段落の最上位のインラインの間にだけ置けます"],
       testCase "trailing bytes are rejected" $
         assertBool "rejected" (isLeft (decodeInlines (encodeInlines [] <> "\0"))),
       testCase "validation: spans, deferred expressions, index levels" $ do

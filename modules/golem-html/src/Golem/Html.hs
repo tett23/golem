@@ -3,6 +3,10 @@ so that EPUB can use them unchanged.
 -}
 module Golem.Html
   ( HtmlConfig (..),
+    HtmlCharStyle (..),
+    HtmlParaStyle (..),
+    Face (..),
+    noFace,
     XhtmlSite (..),
     renderXhtml,
     pagePath,
@@ -14,7 +18,7 @@ where
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble
@@ -29,18 +33,49 @@ data HtmlConfig = HtmlConfig
     hcLanguage :: !Text,
     hcVertical :: !Bool,
     hcNumberDefault :: !Text, -- kanji, kanji-digits, tcy
-    hcStrongAs :: !Text, -- bold or italic
     hcSwatches :: !(Map Text (Int, Int, Int, Int)),
-    hcCharStyles :: !(Map Text (Maybe Text)), -- style -> font role
     hcFonts :: !(Map Text (Maybe FilePath, Maybe FilePath)), -- role -> (ja, latin)
-    hcBoldFont :: !(Maybe Text), -- the font role of b (golem-driver ADR 0004)
-    hcItalicFont :: !(Maybe Text), -- the font role of i
+
+    -- | the character styles, built-in ones included (docs/adr ADR 0005)
+    hcCharStyles :: !(Map Text HtmlCharStyle),
+    -- | the paragraph styles, body included (docs/adr ADR 0005)
+    hcParaStyles :: !(Map Text HtmlParaStyle),
+    -- | the font and size of figcaption (golem-driver ADR 0010)
+    hcCaptionFace :: !Face,
+    -- | the font and size of sidenotes (golem-driver ADR 0011)
+    hcSidenoteFace :: !Face,
     hcBibliography :: !(Map Text Text), -- key -> formatted entry
-    hcDev :: !Bool,
-    -- | [verse] of style.toml as CSS lengths, and the stanza gap in lines (docs/adr ADR 0003)
-    hcVerseIndent :: !Text,
-    hcVerseHang :: !Text,
-    hcStanzaGap :: !Int
+    hcDev :: !Bool
+  }
+
+-- | A font role and a CSS font-size for an element (golem-driver ADR 0010).
+data Face = Face
+  { faFont :: !(Maybe Text),
+    faSize :: !(Maybe Text)
+  }
+
+noFace :: Face
+noFace = Face Nothing Nothing
+
+-- | A resolved character style for CSS (docs/adr ADR 0005).
+data HtmlCharStyle = HtmlCharStyle
+  { hcsFont :: !(Maybe Text),
+    -- | the resolved synthetic-bold
+    hcsBold :: !Bool,
+    -- | the resolved synthetic-italic
+    hcsItalic :: !Bool,
+    hcsColor :: !(Maybe Text)
+  }
+
+-- | A resolved paragraph style for CSS (docs/adr ADR 0005, 0006).
+data HtmlParaStyle = HtmlParaStyle
+  { hpsFont :: !(Maybe Text),
+    hpsKeepLines :: !Bool,
+    hpsSpaceBetween :: !Int,
+    -- | a CSS length
+    hpsIndent :: !Text,
+    -- | a CSS length; may be negative
+    hpsFirstLineIndent :: !Text
   }
 
 data XhtmlSite = XhtmlSite
@@ -140,7 +175,14 @@ idAttr = maybe "" (\l -> " id=\"" <> escapeXml l <> "\"")
 
 block :: Ctx -> Block -> Text
 block c (Block sp lbl body) = case body of
-  Paragraph is -> "<p" <> idAttr lbl <> ">" <> inlines c is <> "</p>\n" <> sidenotes c is
+  Paragraph st is ->
+    let cls = maybe "" (\n -> " class=\"ps-" <> escapeXml n <> "\"") st
+        keep = maybe False hpsKeepLines (Map.lookup (fromMaybe "body" st) (hcParaStyles (cCfg c)))
+        -- the lines of a paragraph that keeps them, each a span; br is for readers without CSS (docs/adr ADR 0005)
+        content
+          | keep || any isLineBreak is = T.intercalate "<br/>\n" ["<span class=\"line\">" <> inlines c l <> "</span>" | l <- splitLines is]
+          | otherwise = inlines c is
+     in "<p" <> idAttr lbl <> cls <> ">" <> content <> "</p>\n" <> sidenotes c is
   Heading l _ is ->
     let tag = "h" <> T.pack (show l)
         info = Map.lookup sp (bookHeadings (cBook c))
@@ -174,15 +216,8 @@ block c (Block sp lbl body) = case body of
     "<pre" <> idAttr lbl <> "><code" <> maybe "" (\l -> " class=\"sourceCode language-" <> escapeXml l <> "\"") lang <> ">" <> highlighted lang t <> "</code></pre>\n"
   FigureBlock f ->
     let num = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</span>") (Map.lookup sp (bookFigures (cBook c)))
-        cap = T.concat [inlines c is | Block _ _ (Paragraph is) <- figCaption f]
+        cap = T.concat [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
      in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> relLink (cHere c) (T.unpack (webSource f)) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
-  VerseBlock stanzas ->
-    "<div class=\"verse\""
-      <> idAttr lbl
-      <> ">\n"
-      <> T.concat ["<p>" <> T.intercalate "<br/>\n" ["<span>" <> inlines c l <> "</span>" | l <- st] <> "</p>\n" | st <- stanzas]
-      <> "</div>\n"
-      <> sidenotes c (concat (concat stanzas))
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c
   ChannelOutput BibliographyOutput ->
@@ -196,7 +231,7 @@ block c (Block sp lbl body) = case body of
 item :: Ctx -> Maybe Integer -> ListItem -> Text
 item c value (ListItem _ bs) =
   "<li" <> maybe "" (\n -> " value=\"" <> T.pack (show n) <> "\"") value <> ">" <> case bs of
-    [Block _ _ (Paragraph is)] -> inlines c is <> "</li>\n"
+    [Block _ _ (Paragraph Nothing is)] | not (any isLineBreak is) -> inlines c is <> "</li>\n"
     _ -> "\n" <> T.concat (map (block c) bs) <> "</li>\n"
 
 toc :: Ctx -> Maybe Int -> Text
@@ -244,15 +279,16 @@ inlines c = T.concat . map (inline c)
 inline :: Ctx -> InlineF r -> Text
 inline c = \case
   Text _ t -> escapeXml t
-  Strong _ xs -> "<strong>" <> inlines c xs <> "</strong>"
-  Bold _ xs -> "<b>" <> inlines c xs <> "</b>"
-  Italic _ xs -> "<i>" <> inlines c xs <> "</i>"
   Ruby _ _ segs ->
     "<ruby>"
       <> T.concat [inlines c b <> "<rp>（</rp><rt>" <> maybe "" escapeXml r <> "</rt><rp>）</rp>" | RubySegment b r <- segs]
       <> "</ruby>"
   Kenten _ sh xs -> "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "default" sh) <> "\">" <> inlines c xs <> "</span>"
   Color _ s xs -> "<span class=\"swatch-" <> escapeXml s <> "\">" <> inlines c xs <> "</span>"
+  -- the built-in character styles keep their elements (docs/adr ADR 0005)
+  CharStyle _ "strong" xs -> "<strong>" <> inlines c xs <> "</strong>"
+  CharStyle _ "bold" xs -> "<b>" <> inlines c xs <> "</b>"
+  CharStyle _ "italic" xs -> "<i>" <> inlines c xs <> "</i>"
   CharStyle _ s xs -> "<span class=\"cs-" <> escapeXml s <> "\">" <> inlines c xs <> "</span>"
   Tcy _ t -> "<span class=\"tcy\">" <> escapeXml t <> "</span>"
   Number _ n st
@@ -272,6 +308,7 @@ inline c = \case
     Just n -> "<a class=\"cite\" href=\"#cite-" <> escapeXml k <> "\">[" <> tshow n <> "]</a>"
     Nothing -> ""
   ProofComment _ t -> if hcDev (cCfg c) then "<span class=\"proof\">" <> escapeXml t <> "</span>" else ""
+  LineBreak _ -> "<br/>"
   where
     styleOf = \case
       "kanji-digits" -> StyleKanjiDigits
@@ -280,6 +317,17 @@ inline c = \case
 
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
+
+isLineBreak :: InlineF r -> Bool
+isLineBreak = \case
+  LineBreak _ -> True
+  _ -> False
+
+-- | The inlines of a paragraph split at its line breaks.
+splitLines :: [InlineF r] -> [[InlineF r]]
+splitLines is = case break isLineBreak is of
+  (l, []) -> [l]
+  (l, _ : rest) -> l : splitLines rest
 
 sidenotes :: Ctx -> [Inline] -> Text
 sidenotes c is = T.concat ["<aside class=\"sidenote\"><span class=\"number\">" <> tshow n <> "</span>" <> inlines c xs <> "</aside>\n" | Sidenote _ n xs <- is]
@@ -302,21 +350,17 @@ notesSection c (Document _ bs) =
 
 blockNotes :: Block -> [Inline]
 blockNotes (Block _ _ body) = case body of
-  Paragraph is -> deep is
+  Paragraph _ is -> deep is
   Heading _ _ is -> deep is
   BulletList items -> concatMap (concatMap blockNotes . itemBlocks) items
   OrderedList items -> concatMap (concatMap blockNotes . itemBlocks) items
   DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockNotes) ds) gs
   Table _ h rows -> concatMap deep h <> concatMap (concatMap deep) rows
   FigureBlock f -> concatMap blockNotes (figCaption f)
-  VerseBlock stanzas -> concatMap (concatMap deep) stanzas
   _ -> []
   where
     deep = concatMap (\i -> i : nested i)
     nested = \case
-      Strong _ xs -> deep xs
-      Bold _ xs -> deep xs
-      Italic _ xs -> deep xs
       Kenten _ _ xs -> deep xs
       Color _ _ xs -> deep xs
       CharStyle _ _ xs -> deep xs
@@ -373,14 +417,23 @@ shortClass = \case
 css :: HtmlConfig -> Text
 css cfg =
   T.unlines $
-    [ "@font-face { font-family: \"" <> family role kind <> "\"; src: url(\"" <> T.pack (fontOut p) <> "\");" <> (if Just role == hcItalicFont cfg then " font-style: italic;" else "") <> " }"
+    [ "@font-face { font-family: \""
+        <> family role kind
+        <> "\"; src: url(\""
+        <> T.pack (fontOut p)
+        <> "\");"
+        <> (if role `elem` boldRoles then " font-weight: bold;" else "")
+        <> (if role `elem` italicRoles then " font-style: italic;" else "")
+        <> " }"
     | (role, (ja, la)) <- Map.toAscList (hcFonts cfg),
       (kind, Just p) <- [("latin" :: Text, la), ("ja", ja)]
     ]
       <> [ "body { font-family: " <> fontStack "body" <> "; }",
-           "body.vertical { writing-mode: vertical-rl; -epub-writing-mode: vertical-rl; }",
-           "strong { font-weight: " <> (if hcStrongAs cfg == "italic" then "normal; font-style: italic" else "bold") <> "; }",
-           ".tcy { text-combine-upright: all; -epub-text-combine: horizontal; }",
+           "body.vertical { writing-mode: vertical-rl; -epub-writing-mode: vertical-rl; }"
+         ]
+      -- strong is always written (docs/adr ADR 0005)
+      <> [charRule "strong" cs | Just cs <- [Map.lookup "strong" (hcCharStyles cfg)]]
+      <> [ ".tcy { text-combine-upright: all; -epub-text-combine: horizontal; }",
            ".kenten { text-emphasis-style: sesame; -epub-text-emphasis-style: sesame; }",
            ".kenten-open-sesame { text-emphasis-style: open sesame; }",
            ".kenten-dot { text-emphasis-style: dot; }",
@@ -391,35 +444,84 @@ css cfg =
            ".align-center { text-align: center; }",
            ".align-right { text-align: right; }",
            ".proof { background: #ffeb99; }",
-           T.strip (T.pack (S.styleToCss S.pygments)),
-           ".sidenote { font-size: 0.85em; }",
-           "@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }",
-           -- verse (docs/adr ADR 0003): lines hang; br is for readers without CSS
-           ".verse { margin-inline-start: " <> hcVerseIndent cfg <> "; }",
-           ".verse p { margin: 0; text-indent: 0; }"
+           T.strip (T.pack (S.styleToCss S.pygments))
          ]
-      <> [".verse p + p { margin-block-start: 1em; }" | hcStanzaGap cfg > 0]
-      <> [ ".verse span { display: block; padding-inline-start: " <> hcVerseHang cfg <> "; text-indent: -" <> hcVerseHang cfg <> "; }",
-           ".verse br { display: none; }"
+      -- the caption's font and size (golem-driver ADR 0010)
+      <> [faceRule "figcaption" (hcCaptionFace cfg) | isJust (faFont (hcCaptionFace cfg)) || isJust (faSize (hcCaptionFace cfg))]
+      -- the sidenote's font and size; smaller than the text when no size is given (golem-driver ADR 0011)
+      <> [ faceRule ".sidenote" (hcSidenoteFace cfg) {faSize = Just (fromMaybe "0.85em" (faSize (hcSidenoteFace cfg)))},
+           "@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }"
+         ]
+      -- paragraph styles (docs/adr ADR 0005); body is the plain p
+      <> concat [paraRules name ps | (name, ps) <- Map.toAscList (hcParaStyles cfg)]
+      -- no indent in list items (docs/adr ADR 0006); li p[class] is stronger than p.ps-name
+      <> ["li p, li p[class] { padding-inline-start: 0; text-indent: 0; }" | any (uncurry indentRule) (Map.toList (hcParaStyles cfg))]
+      -- the lines of a paragraph that keeps them; br is for readers without CSS
+      <> [ ".line { display: block; }",
+           ".line + br { display: none; }"
          ]
       <> [ ".swatch-" <> name <> " { color: rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> "); }"
          | (name, cmyk) <- Map.toAscList (hcSwatches cfg),
            let (r, g, b) = cmykToRgb cmyk
          ]
-      <> [ ".cs-" <> name <> " { font-family: " <> fontStack role <> "; }"
-         | (name, Just role) <- Map.toAscList (hcCharStyles cfg)
-         ]
-      -- the bold and italic roles: the role's font is already bold or italic,
-      -- so the browser does not synthesise it again (golem-driver ADR 0004)
-      <> [ sel <> " { font-family: " <> fontStack role <> "; font-weight: normal; }"
-         | Just role <- [hcBoldFont cfg],
-           sel <- ["b"] <> ["strong" | hcStrongAs cfg == "bold"]
-         ]
-      <> [ sel <> " { font-family: " <> T.intercalate ", " (families role <> [fontStack "body"]) <> "; font-style: italic; }"
-         | Just role <- [hcItalicFont cfg],
-           sel <- ["i"] <> ["strong" | hcStrongAs cfg == "italic"]
-         ]
+      <> [r | (name, cs) <- Map.toAscList (hcCharStyles cfg), name /= "strong", Just r <- [charRuleMaybe name cs]]
   where
+    -- a role a bold (italic) character style sets: its font is declared bold (italic)
+    boldRoles = [r | HtmlCharStyle {hcsFont = Just r, hcsBold = True} <- Map.elems (hcCharStyles cfg)]
+    italicRoles = [r | HtmlCharStyle {hcsFont = Just r, hcsItalic = True} <- Map.elems (hcCharStyles cfg)]
+    selectorOf = \case
+      "strong" -> "strong"
+      "bold" -> "b"
+      "italic" -> "i"
+      name -> ".cs-" <> name
+    -- what the element shows without a rule
+    defaults = \case
+      "strong" -> ["font-weight: bold"]
+      "bold" -> ["font-weight: bold"]
+      "italic" -> ["font-style: italic"]
+      _ -> []
+    declsOf name cs =
+      [ "font-family: " <> T.intercalate ", " (families role <> families "body" <> ["serif"])
+      | Just role <- [hcsFont cs]
+      ]
+        <> ( if hcsBold cs
+               then ["font-weight: bold"]
+               else ["font-weight: normal" | "font-weight: bold" `elem` defaults name]
+           )
+        <> ( if hcsItalic cs
+               then ["font-style: italic"]
+               else ["font-style: normal" | "font-style: italic" `elem` defaults name]
+           )
+        <> [ "color: rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> ")"
+           | Just sw <- [hcsColor cs],
+             Just cmyk <- [Map.lookup sw (hcSwatches cfg)],
+             let (r, g, b) = cmykToRgb cmyk
+           ]
+    rule sel ds = sel <> " { " <> T.concat [d <> "; " | d <- ds] <> "}"
+    faceRule sel f = rule sel (["font-family: " <> fontStack role | Just role <- [faFont f]] <> ["font-size: " <> s | Just s <- [faSize f]])
+    charRule name cs = rule (selectorOf name) (declsOf name cs)
+    -- a rule that says only what the element shows anyway is not written
+    charRuleMaybe name cs =
+      let ds = declsOf name cs
+       in if null ds || ds == defaults name then Nothing else Just (rule (selectorOf name) ds)
+    {- the indent of a style is written when it differs from body's, and
+    body's when it is not 0; text-indent is inherited by the lines, so
+    each line of a style that keeps them hangs (docs/adr ADR 0006) -}
+    bodyIndent = maybe ("0em", "0em") (\b -> (hpsIndent b, hpsFirstLineIndent b)) (Map.lookup "body" (hcParaStyles cfg))
+    isZero l = T.dropWhile (== '-') l `elem` ["0em", "0pt"]
+    indentRule name ps
+      | name == "body" = not (isZero (hpsIndent ps) && isZero (hpsFirstLineIndent ps))
+      | otherwise = (hpsIndent ps, hpsFirstLineIndent ps) /= bodyIndent
+    paraRules name ps =
+      let sel = if name == "body" then "p" else "p.ps-" <> name
+       in ["p.ps-" <> name <> " { font-family: " <> fontStack role <> "; }" | name /= "body", Just role <- [hpsFont ps]]
+            <> [sel <> " { margin-block: 0; }" | hpsKeepLines ps]
+            <> [ sel <> " { padding-inline-start: " <> hpsIndent ps <> "; text-indent: " <> hpsFirstLineIndent ps <> "; }"
+               | indentRule name ps
+               ]
+            <> [ sel <> " + " <> sel <> " { margin-block-start: " <> tshow (hpsSpaceBetween ps) <> "em; }"
+               | hpsSpaceBetween ps > 0
+               ]
     families role = case Map.lookup role (hcFonts cfg) of
       Just (ja, la) -> ["\"" <> family role "latin" <> "\"" | Just _ <- [la]] <> ["\"" <> family role "ja" <> "\"" | Just _ <- [ja]]
       Nothing -> []
