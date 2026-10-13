@@ -6,6 +6,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
+import Golem.Parser.SourceSettings
 import Golem.Project
 import Golem.Project.Paths
 import Golem.Project.Style
@@ -37,6 +38,66 @@ withProject :: [(FilePath, Text)] -> (FilePath -> IO a) -> IO a
 withProject files act = withSystemTempDirectory "golem" $ \root -> do
   mapM_ (\(p, c) -> createDirectoryIfMissing True (takeDirectory (root </> p)) >> TIO.writeFile (root </> p) c) files
   act root
+
+-- | The manifest with a [source] table (and other text) after it.
+manifestWith :: [Text] -> Text -> Text
+manifestWith chapters extra = manifest chapters <> "\n" <> extra
+
+-- | The separator of each file of the project, by path.
+separators :: Project -> [(FilePath, ParagraphSeparator)]
+separators p =
+  [ (path, ssParagraphSeparator s)
+  | (fid, s) <- Map.toList (projectSourceSettings p),
+    Just path <- [lookupPath fid (projectFiles p)]
+  ]
+
+sourceTests :: TestTree
+sourceTests =
+  testGroup
+    "[source] (docs/adr ADR 0013)"
+    [ testCase "without [source] the settings are the default" $
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          case r of
+            Left ds -> assertFailure (show ds)
+            Right p -> do
+              manifestSource (projectManifest p) @?= defaultSourceSettings
+              separators p @?= [("a.gm", BlankLineSeparated)],
+      testCase "paragraph-separator = \"line\" is read" $
+        withProject [("manifest.toml", manifestWith ["\"a.gm\""] "[source]\nparagraph-separator = \"line\"\n"), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          case r of
+            Left ds -> assertFailure (show ds)
+            Right p -> ssParagraphSeparator (manifestSource (projectManifest p)) @?= LineSeparated,
+      testCase "an invalid value and an unknown key are G0301" $ do
+        withProject [("manifest.toml", manifestWith ["\"a.gm\""] "[source]\nparagraph-separator = \"lines\"\n"), ("a.gm", "")] $ \root ->
+          loadProject root >>= (@?= ["G0301"]) . codes
+        withProject [("manifest.toml", manifestWith ["\"a.gm\""] "[source]\nparagraph-separators = \"line\"\n"), ("a.gm", "")] $ \root ->
+          loadProject root >>= (@?= ["G0301"]) . codes
+        withProject [("manifest.toml", manifest ["{ file = \"a.gm\", paragraph-separator = \"lines\" }"]), ("a.gm", "")] $ \root ->
+          loadProject root >>= (@?= ["G0301"]) . codes
+        withProject [("manifest.toml", manifest ["{ file = \"a.gm\", unknown = \"x\" }"]), ("a.gm", "")] $ \root ->
+          loadProject root >>= (@?= ["G0301"]) . codes,
+      testCase "a chapter entry overrides [source]; imported files take [source]"
+        $ withProject
+          [ ("manifest.toml", manifestWith ["\"a.gm\"", "{ file = \"b.gm\", paragraph-separator = \"blank-line\" }"] "[source]\nparagraph-separator = \"line\"\n"),
+            ("a.gm", "@import c.gm as c\n"),
+            ("b.gm", "@import c.gm as c\n"),
+            ("c.gm", "@set x = 1\n")
+          ]
+        $ \root -> do
+          r <- loadProject root
+          case r of
+            Left ds -> assertFailure (show ds)
+            Right p -> do
+              separators p @?= [("a.gm", LineSeparated), ("b.gm", BlankLineSeparated), ("c.gm", LineSeparated)]
+              map (\(_, m, es) -> (m, length es)) (chapterFiles (manifestChapters (projectManifest p))) @?= [(Nothing, 0), (Nothing, 1)],
+      testCase "the same file twice with different settings is G0301" $ do
+        withProject [("manifest.toml", manifest ["\"a.gm\"", "{ file = \"a.gm\", paragraph-separator = \"line\" }"]), ("a.gm", "")] $ \root ->
+          loadProject root >>= (@?= ["G0301"]) . codes
+        withProject [("manifest.toml", manifest ["\"a.gm\"", "{ file = \"a.gm\", paragraph-separator = \"blank-line\" }"]), ("a.gm", "")] $ \root ->
+          loadProject root >>= (@?= []) . codes
+    ]
 
 codes :: Either [Diagnostic] a -> [Text]
 codes = either (map ((\(DiagnosticCode c) -> c) . diagCode)) (const [])
@@ -118,6 +179,7 @@ tests =
       testCase "unknown manifest keys and missing id are errors" $ do
         withProject [("manifest.toml", manifest ["\"a.gm\""] <> "\n[extra]\nx = 1\n"), ("a.gm", "")] $ \root -> loadProject root >>= (@?= ["G0301"]) . codes
         withProject [("manifest.toml", T.replace "id = " "idd = " (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> loadProject root >>= (@?= True) . (not . null) . codes,
+      sourceTests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))

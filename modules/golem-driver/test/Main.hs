@@ -309,6 +309,7 @@ tests =
       testGroup "PDF table of contents (ADR 0009)" tocTests,
       testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
+      testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
       testGroup
         "public-domain books"
@@ -326,6 +327,23 @@ tests =
             qpdfCheck pdf
         ]
     ]
+
+separatorTests :: [TestTree]
+separatorTests =
+  [ testCase "HTML: one newline separates paragraphs in the line style; a chapter entry keeps the blank-line style" $
+      withSystemTempDirectory "golem-separator" $ \tmp -> do
+        manifest <- TIO.readFile (fixture </> "manifest.toml")
+        let rest = T.dropWhile (/= '\n') manifest
+        TIO.writeFile (tmp </> "manifest.toml") ("chapters = [\"l.gm\", { file = \"b.gm\", paragraph-separator = \"blank-line\" }]\n" <> rest <> "\n[source]\nparagraph-separator = \"line\"\n")
+        TIO.writeFile (tmp </> "l.gm") "一行目。\n二行目。\n三行目。\n"
+        TIO.writeFile (tmp </> "b.gm") "前の行\n後の行\n"
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        l <- TIO.readFile (tmp </> "build/html/l.xhtml")
+        assertBool (T.unpack l) ("<p>一行目。</p>\n<p>二行目。</p>\n<p>三行目。</p>" `T.isInfixOf` l)
+        b <- TIO.readFile (tmp </> "build/html/b.xhtml")
+        assertBool (T.unpack b) ("<p>前の行後の行</p>" `T.isInfixOf` b)
+  ]
 
 -- | Builds a copy of a book fixture (fonts included); no errors allowed.
 buildBook :: FilePath -> IO ([FilePath], BS.ByteString, [(FilePath, T.Text)])
