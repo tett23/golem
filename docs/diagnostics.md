@@ -744,8 +744,8 @@
 
 - **重大度**：エラー
 - **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Style`）
-- **メッセージ**：`TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`未知の判型です: <判型>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。
-- **意味**：`style.toml` が TOML として読めないか、スキーマに合わないか、値が範囲の外にある。フォントのファイルの欠落には使わない（[G0310](#g0310)、[G0802](#g0802)）。
+- **メッセージ**：`TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。
+- **意味**：`style.toml` が TOML として読めないか、スキーマに合わないか、値が範囲の外にある。フォントのファイルの欠落には使わない（[G0310](#g0310)、[G0802](#g0802)）。判型（`[page]` の `size`）の誤りには使わない（[G0317](#g0317)）。
 - **原因と直し方**：キーの綴り、値の型、単位、列挙の値を確かめる。廃止した欄は、メッセージの示す節に移す。
 - **ADR**：ADR なし（条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）
 
@@ -811,6 +811,15 @@
 - **意味**：`based-on` が存在しないスタイルを指すか、循環するか、`body` に `based-on` があるか、文字スタイルの `color` が `[color.swatches]` にない。
 - **原因と直し方**：理由の示すスタイルの `based-on` か `color` を直す。
 - **ADR**：[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)
+
+## G0317
+
+- **重大度**：エラー
+- **段階とモジュール**：プロジェクト（golem-project の `Golem.Project.Style`）
+- **メッセージ**：`未知の判型です: <名前>。表にない判型は size = { width = "…", height = "…" } で書きます`、`判型の width と height はどちらも必須です`、`判型には zw を使えません`、`判型の幅と高さは 0 より大きい寸法です`、または未知のキーと寸法の誤りの TOML のスキーマの文言。どれも誤った箇所の経路を添える。
+- **意味**：`style.toml` の `[page]` の `size` が、判型の表の名前でも、正しい `{ width, height }` でもない。位置は `size` の値の位置である。
+- **原因と直し方**：表の名前（`"A4"`、`"A5"`、`"A6"`、`"B5"`、`"B6"`、`"四六判"`、`"菊判"`、`"新書判"`、`"mass-market"`）を書くか、`size = { width = "148mm", height = "210mm" }` のように寸法で書く。単位は `mm`、`pt`、`Q`、`H` とし、`zw` は使わない。
+- **ADR**：[golem-project ADR 0005](golem-project/adr/0005-page-size-by-dimensions.md)
 
 ## G0401
 

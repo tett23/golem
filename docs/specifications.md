@@ -549,6 +549,32 @@ folio = { position = "bottom-outside", format = "{n}" }
 
 寸法は `mm`、`pt`、`Q`（級）、`H`（歯）、`zw`（全角一字分）の単位を付けた文字列で書き、処理系の内部では整数の sp に変換する。
 
+`[page]` の `size` は判型であり、仕上がりの寸法である（[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)、[golem-project ADR 0005](golem-project/adr/0005-page-size-by-dimensions.md)）。
+判型の表の名前か、幅と高さの寸法で書く。
+
+| 名前 | 幅 × 高さ |
+|---|---|
+| `"A4"` | 210mm × 297mm |
+| `"A5"` | 148mm × 210mm |
+| `"A6"` | 105mm × 148mm |
+| `"B5"` | 182mm × 257mm |
+| `"B6"` | 128mm × 182mm |
+| `"四六判"` | 127mm × 188mm |
+| `"菊判"` | 150mm × 220mm |
+| `"新書判"` | 103mm × 182mm |
+| `"mass-market"` | 4.25in × 6.875in（[golem-project ADR 0003](golem-project/adr/0003-mass-market-paperback-size.md)） |
+
+表にない判型は、`size = { width = "148mm", height = "210mm" }` のように、`width` と `height` の二つの欄を持つテーブルで書く。
+二つの欄はどちらも必須で、単位は `mm`、`pt`、`Q`、`H` とし、幅と高さで単位が異なってもよい。
+判型は文字の大きさに依存しない長さなので、`zw` は使えない。
+幅と高さは、組み方向や綴じの方向によらず、ページを正立させたときの横と縦の寸法である。
+幅が高さより大きい横長の判型も書ける。
+表の名前はどれも縦長の寸法であり、横長にするには寸法で書く。
+インチの単位はなく、インチの判型は `mm`（1in = 25.4mm）か `pt`（1in = 72pt）で書く。
+表にない名前（`"148mm x 210mm"` のような文字列を含む）、欄の欠落、未知の欄、寸法として読めない値、`zw`、0 以下の値は、読み込みの段階で G0317 とし、位置は `size` の値の位置とする。
+読み込みで判型が確定するので、`golem check` と、PDF を含まないビルドでも検出する。
+判型を使うのは PDF だけであり、HTML、EPUB、プレーンテキストは判型を読まない。
+
 `[page]` の `bleed` は塗り足し[^bleed]の幅であり、既定は `0mm` である（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
 塗り足しは文字の大きさに依存しない長さなので、`zw` で書くとエラー（G0306）とする。
 塗り足しがあれば、PDF の MediaBox と BleedBox は仕上がりの判型の外側に塗り足しの幅だけ広がり、TrimBox が仕上がりの判型になる。
@@ -1293,7 +1319,6 @@ v1 のリリースまでに、次の項目を扱う。
 #### 記法と設定
 
 - **`golem fmt` の移行の段階を外すこと**：`golem fmt` は、`@verse` を `@style verse` に書き換える移行の段階を持ち、その分だけ整形の不変条件に例外が一つ加わっている。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) は、移行の段階を v1 の間は残し、外すときは別の ADR で決めるとした。v1 のリリースまでに移行の段階を外し、不変条件の例外をなくす。
-- **寸法による判型の指定**：[golem-project ADR 0002](golem-project/adr/0002-style-toml.md) は、表にない判型を寸法で書くと決めたが、実装していない。`style.toml` の読み込みは `x` を含む `size` を通すが、ページの幾何の計算は未知の判型としてエラーにする。書き方は [golem-project ADR 0003](golem-project/adr/0003-mass-market-paperback-size.md) が別の ADR に回している。
 
 - **`@toc-title` と柱**：`@toc-title` が目次には効くが、柱には効かない。記法の仕様は、目次と柱の両方に使うと定めている。
 - **style.toml の未知のキーの診断**：`style.toml` の未知のキーの診断（G0306）に位置がなく、メッセージが英語である（`unexpected key: bindng (.page)` など）。
