@@ -18,7 +18,7 @@ Golem への変更は、どれも ADR（Architecture Decision Record）から始
 git config core.hooksPath .githooks
 ```
 
-フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.5.0 以降を呼び出すので、あらかじめインストールしておく。
+フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.8.0 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.0`）。
 この設定はリポジトリに保存されないため、クローンのたびに実行する。
 
 ## 変更の流れ
@@ -74,6 +74,7 @@ ADR は日本語で書く。
 コミットした ADR は、ステータスの行を除いて変更できない。
 `.githooks/pre-commit` と CI の `adr` ジョブが、変更、削除、リネームを拒否する。
 ステータスの行の変更（`--allow-status`）と、ADR の参照のリンクだけを変える変更（`--allow-links`）は許す（[docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md)）。
+ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持つ。無い ADR と二つ以上ある ADR は、フックと CI の `adr` ジョブが拒否する。`adr-guard check-status` で一覧にできる（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)）。
 文書の中の ADR の参照にはリンクを付ける。リンクのない参照は CI の `adr` ジョブが拒否する。`adr-guard links --fix` で直せる。
 
 仕様を変えたくなったら、元の ADR を書き換えずに、新しい連番の ADR を書く。
@@ -120,6 +121,8 @@ ADR で仕様が変わったら、同じプルリクエストで [docs/specifica
 
 監査の記録や性能計測のスナップショットは、`docs/` の下に用途ごとのディレクトリを作って置く。
 これらもコミットしたあとは変更しない。
+`docs/audit/` と `docs/benchmarks/` に置いた記録は、フックと CI の `adr` ジョブがコミット後の変更、削除、移動を拒否する（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)）。
+`docs/ci-timings/` のようにほかの名前のディレクトリに置いた記録は検査されないので、約束とレビューで守る。
 
 日本語の文章は、一文ごとに改行する。
 地の文では、ダッシュ（——）と、並列を表す中黒（・）を使わない。
