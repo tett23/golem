@@ -210,20 +210,24 @@ CI の hlint は、GHC でビルドせず、hlint のリリースの x86-64 Linu
 
 ### CI
 
-`.github/workflows/ci.yml` に次のジョブがある。
+CI は二つのワークフローからなる。
+`.github/workflows/docs.yml` は ADR とドキュメントを、`.github/workflows/ci.yml` はコードを検査する（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
 
-| ジョブ | 内容 |
-|---|---|
-| `adr` | コミット済みの ADR と記録（`docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/`）が変更されていないこと、文書の中の ADR の参照にリンクがあること、各 ADR がステータスの行をちょうど一つ持つことを検査する |
-| `changes` | `scripts/ci/` のスクリプトのテスト（`scripts/ci/test.sh`）を実行し、変更のパスからビルドが要るかを決める |
-| `build` | x86-64 と aarch64 の Linux でビルドとテストを行い、生成したパーサーが文法と一致することを確かめる。x86-64 では EPUB が epubcheck を通ることも確かめる |
-| `determinism` | 決まった入力（`scripts/determinism.sh`）の出力のハッシュを、二つのアーキテクチャで比べる |
-| `release-scripts` | `VERSION` と全パッケージの版の一致を検査し、`scripts/release/` のスクリプトのテスト（`scripts/release/test.sh`）を実行する |
-| `format` | fourmolu と hlint で検査する |
+| ワークフロー | ジョブ | 内容 |
+|---|---|---|
+| `docs.yml` | `adr` | コミット済みの ADR と記録（`docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/`）が変更されていないこと、文書の中の ADR の参照にリンクがあること、各 ADR がステータスの行をちょうど一つ持つことを検査する |
+| `ci.yml` | `changes` | `scripts/ci/` のスクリプトのテスト（`scripts/ci/test.sh`）を実行し、ビルドが読む `docs/` の下の文書が一覧にあることを確かめ、変更のパスからビルドが要るかを決める |
+| `ci.yml` | `build` | x86-64 と aarch64 の Linux でビルドとテストを行い、生成したパーサーが文法と一致することを確かめる。x86-64 では EPUB が epubcheck を通ることも確かめる |
+| `ci.yml` | `determinism` | 決まった入力（`scripts/determinism.sh`）の出力のハッシュを、二つのアーキテクチャで比べる |
+| `ci.yml` | `release-scripts` | `VERSION` と全パッケージの版の一致を検査し、`scripts/release/` のスクリプトのテスト（`scripts/release/test.sh`）を実行する |
+| `ci.yml` | `format` | fourmolu と hlint で検査する |
+| `ci.yml` | `ci` | `ci.yml` のほかのジョブがすべて成功したか、省かれたことを確かめる（`scripts/ci/gate.sh`） |
 
 変更が `docs/` の下のファイルとリポジトリの根の Markdown のファイルだけの場合、`build`、`determinism`、`format`、`release-scripts` は省かれる（[docs/adr/0009](./docs/adr/0009-ci-speed.md)）。
-判定は `scripts/ci/needs-build.sh` が行う。
+判定は `scripts/ci/needs-build.sh` が行い、プルリクエストの変更のパスは分岐点からの差分で取る（`scripts/ci/changed-paths.sh`）。
+ただし、ビルドやテストが読む文書（今は `docs/diagnostics.md`）を変えた場合はビルドする（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
 `adr` は、変更のパスにかかわらず常に走る。
+`main` の保護の規則が必須とする検査は、`ci` と `adr` の二つである。
 同じプルリクエストに新しいコミットを push すると、走っている前の実行は取り消される。
 CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timings.sh` で作る。
 
