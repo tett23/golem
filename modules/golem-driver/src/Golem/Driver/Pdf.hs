@@ -25,6 +25,10 @@ module Golem.Driver.Pdf
     indexLines,
     bibliographyLines,
     Assumed (..),
+    TocGeometry (..),
+    TocPage (..),
+    tocPage,
+    headingPages,
     figureRect,
     renderPdf,
     flowLines,
@@ -248,7 +252,9 @@ data PdfLayout = PdfLayout
     -- | the cell lines on each grid line of a table, shifted to their columns (golem-driver ADR 0008)
     plTableLines :: !(Map Int [SetLine]),
     -- | the width of each table
-    plTables :: !(Map Int Sp)
+    plTables :: !(Map Int Sp),
+    -- | the leader and page number of each table of contents entry, by its last line (golem-driver ADR 0009)
+    plTocPages :: !(Map Int TocPage)
   }
 
 data Built = Built
@@ -260,7 +266,11 @@ data Built = Built
     -- | errors found while building (G0722, G0723, G0724, G0741, G0742)
     bErrors :: [Diagnostic],
     bTableLines :: Map Int [SetLine],
-    bTables :: Map Int Sp
+    bTables :: Map Int Sp,
+    -- | the span of each heading block by its first line (golem-driver ADR 0009)
+    bHeadingSpans :: Map Int SrcSpan,
+    -- | the heading and the end of the title of each table of contents entry, by its last line
+    bTocLines :: Map Int (SrcSpan, Sp)
   }
 
 renderPdf :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ByteString)
@@ -308,9 +318,95 @@ layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) of
         -- sidenotes are placed once, on the settled pages (golem-driver ADR 0006)
         let (size, pitch) = sidenoteMetrics (piStyle inp) geom
             placed = [(poNumber p, placePageSidenotes geom pitch size (bLines built) p) | p <- pages]
+            -- the pages of the table of contents, once, on the settled pages (golem-driver ADR 0009)
+            hPages = headingPages (bHeadingSpans built) pages
+            tg = tocGeometry (piStyle inp) geom fonts
+            env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyRole (piStyle inp)) (pgFontSize geom)
+            tocPages = Map.fromList [(lid, tocPage tg e (pageNumberLine env n)) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
          in case concat [ds | (_, Left ds) <- placed] of
-              [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built))
+              [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages)
               ds -> Left ds
+
+{- | The page of each heading (golem-driver ADR 0009): the page where the
+first line of its block is placed, keyed by the span of the block.
+-}
+headingPages :: Map Int SrcSpan -> [PageOut] -> Map SrcSpan Integer
+headingPages spans ps =
+  Map.fromList [(hs, toInteger (poNumber p)) | p <- ps, (_, SHeading lid _) <- poSlots p, Just hs <- [Map.lookup lid spans]]
+
+-- | How the last line of a table of contents entry ends (golem-driver ADR 0009).
+data TocGeometry = TocGeometry
+  { -- | the measure of the column
+    tgMeasure :: !Sp,
+    -- | W: the width of the page number 999
+    tgReserve :: !Sp,
+    -- | g: the space on either side of the leader
+    tgGap :: !Sp,
+    -- | u: the advance of one leader character
+    tgLeaderUnit :: !Sp,
+    -- | [toc] leader is "dots"
+    tgLeaders :: !Bool,
+    -- | the look the leader is set in
+    tgLook :: !Look
+  }
+  deriving stock (Show)
+
+-- | The leader and the page number of the last line of an entry.
+data TocPage = TocPage
+  { -- | from the line start to the start of the leader
+    tpLeaderStart :: !Sp,
+    -- | the leader characters (possibly none)
+    tpLeader :: !Line,
+    -- | from the line start to the start of the page number
+    tpNumberStart :: !Sp,
+    -- | the page number as set
+    tpNumber :: !Line
+  }
+  deriving stock (Show)
+
+{- | Places the leader and the page number on the last line of an entry
+whose title ends at @e@ from the line start (indent included). The page
+number ends at the measure; the leader ends a gap before the reserve (or
+before a wider number) so that leaders line up; integer sp only.
+-}
+tocPage :: TocGeometry -> Sp -> Line -> TocPage
+tocPage tg e number =
+  let w = sum [bw | Box bw _ <- lineItems number]
+      g = tgGap tg
+      u = tgLeaderUnit tg
+      ns0 = tgMeasure tg - w
+      le = tgMeasure tg - max (tgReserve tg) w - g
+      k0 = if tgLeaders tg && u > 0 then max 0 ((le - (e + g)) `div` u) else 0
+      (ns, k) = if ns0 < e + g then (e + g, 0) else (ns0, k0)
+      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg)) | _ <- [1 .. k]] 0 (k * u) 0 (0, 0) False
+   in TocPage (le - k * u) leader ns number
+
+-- | The measure of a column of the page.
+columnMeasure :: PageGeometry -> Sp
+columnMeasure geom = case pgColumns geom of
+  (c : _) -> if pgVertical geom then rectH c else rectW c
+  [] -> 0
+
+-- | A page number set as a number in the body (golem-driver ADR 0009): its boxes as a line.
+pageNumberLine :: ComposeEnv -> Integer -> Line
+pageNumberLine env n =
+  let boxes = [b | b@Box {} <- fst (composeInlines env [Number (mkSpan (FileId 0) 0 0) n Nothing])]
+      w = sum (map itemWidth boxes)
+   in Line boxes 0 w 0 (0, 0) False
+
+-- | W and u, measured once in the body role at the type size.
+tocMetrics :: ComposeEnv -> (Sp, Sp)
+tocMetrics env =
+  let width is = sum [w | Box w _ <- fst (composeInlines env is)]
+      sp0 = mkSpan (FileId 0) 0 0
+   in (width [Number sp0 999 Nothing], width [Text sp0 "…"])
+
+tocGeometry :: Style -> PageGeometry -> LoadedFonts -> TocGeometry
+tocGeometry style geom fonts =
+  let fs = pgFontSize geom
+      env = composeEnv style geom fonts (Assumed Map.empty Map.empty) (bodyRole style) fs
+      (w, u) = tocMetrics env
+   in TocGeometry (columnMeasure geom) w (fs `div` 2) u (stTocLeader style == "dots") (ceLook env)
 
 {- | The text of the lines of each page, as far as the layout goes
 (golem-driver ADR 0007): the boxes of a line joined.
@@ -328,6 +424,7 @@ layoutPages provider inp = case pageGeometry (piStyle inp) of
       [ [ case Map.lookup lid (plTableLines layout) of
             Just cells -> T.intercalate " " (map setLineText cells)
             Nothing -> setLineText sl
+            <> maybe "" (\tp -> lineText (tpLeader tp) <> lineText (tpNumber tp)) (Map.lookup lid (plTocPages layout))
         | (_, s) <- poSlots p,
           lid <- case s of
             SLine l -> [l]
@@ -337,7 +434,8 @@ layoutPages provider inp = case pageGeometry (piStyle inp) of
         ]
       | p <- plPages layout
       ]
-    setLineText sl = T.concat [bcText c | Box _ c <- lineItems (slLine sl)]
+    setLineText = lineText . slLine
+    lineText l = T.concat [bcText c | Box _ c <- lineItems l]
 
 {- | The lines of the index (golem-driver ADR 0007): a main entry and its
 pages, sub-entries indented by a full-width space below their main entry
@@ -528,6 +626,8 @@ data UnitKind
     UVerseLine Sp Sp
   | -- | grid lines between stanzas
     UGap Int
+  | -- | an entry of the table of contents: its level and its heading (golem-driver ADR 0009)
+    UTocEntry Int SrcSpan
 
 unitsOf :: Book -> PageGeometry -> Style -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
 unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
@@ -557,7 +657,7 @@ unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
               (u : us) -> (\s -> (u s) {uLabel = lbl}) : us
               [] -> []
       -- the index marks of a title are counted at the heading, not in the table of contents
-      ChannelOutput (TocOutput depth) -> [Unit UPara Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) | e <- bookToc book, teLevel e <= depth]
+      ChannelOutput (TocOutput depth) -> [Unit (UTocEntry (teLevel e) (teSpan e)) Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) | e <- bookToc book, teLevel e <= depth]
       ChannelOutput IndexOutput -> [Unit UPara Nothing is | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
       ChannelOutput BibliographyOutput -> [Unit UPara Nothing is | is <- bibliographyLines bib (bookCitations book)]
     prefixFirst p (Unit UPara l is s' : rest) = Unit UPara l (txt p : is) s' : rest
@@ -591,9 +691,10 @@ buildFlow inp geom fonts images assumed = do
       envFor role size = (composeEnv style geom fonts assumed role size) {ceCiteNumber = (`Map.lookup` cites)}
       bodyEnv = envFor body fs
       params = kpParams style geom
-      measure = case pgColumns geom of
-        (c : _) -> if vertical then rectH c else rectW c
-        [] -> 0
+      measure = columnMeasure geom
+      -- the reserve for the page number of a table of contents entry: W and two em (golem-driver ADR 0009)
+      tocReserve = fst (tocMetrics bodyEnv) + 2 * fs
+      tocIndent l = toInteger (l - 1) * fs
       -- a mark without an assumed page yet stands at page 1 in the first round
       markPage sp = Map.lookup sp (asMarks assumed) <|> (if Map.null (asMarks assumed) then Just 1 else Nothing)
       units = zip [0 :: Int ..] (unitsOf (piBook inp) geom style markPage (piBibliography inp))
@@ -601,9 +702,11 @@ buildFlow inp geom fonts images assumed = do
       -- L*(i): verse lines are shortened by the indent, and their continuations also by the hang (docs/adr ADR 0003)
       widthOf = \case
         UVerseLine ind hang -> \k -> if k == 0 then measure - ind else measure - ind - hang
+        UTocEntry l _ -> const (measure - tocIndent l - tocReserve)
         _ -> const measure
       lineIndent = \case
         UVerseLine ind hang -> \k -> if k == (0 :: Int) then ind else ind + hang
+        UTocEntry l _ -> const (tocIndent l)
         _ -> const 0
       -- the role and size a unit is set in
       faceOf u = case uKind u of
@@ -728,13 +831,13 @@ buildFlow inp geom fonts images assumed = do
          in (boxes, set)
       emptyLine = Line [] 0 0 0 (0, 0) False
       mm sp = let tenths = round (toRational sp * 254 / (72 * 65536)) :: Integer in T.pack (show (tenths `div` 10) <> "." <> show (tenths `mod` 10))
-      step (nextId, flows, lineAcc, figAcc, headAcc, errs, tabAcc) (i, u) = case uKind u of
+      step (nextId, flows, lineAcc, figAcc, headAcc, errs, tabAcc, ext) (i, u) = case uKind u of
         UTable {} -> case Map.lookup i tables of
           Just (Left (ColumnsTooWide mn avail)) ->
-            (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G0741" Error (uSpan u) ("表の列の最小の幅の合計（" <> mm mn <> " mm）が使える幅（" <> mm avail <> " mm）に収まりません")], tabAcc)
+            (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G0741" Error (uSpan u) ("表の列の最小の幅の合計（" <> mm mn <> " mm）が使える幅（" <> mm avail <> " mm）に収まりません")], tabAcc, ext)
           Just (Right (t, atts))
             | tall@(_ : _) <- [r | (r, h) <- zip [1 :: Int ..] (stRowLines t), stHeaderLines t + h > capacity] ->
-                (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G0742" Error (uSpan u) ("表の " <> T.pack (show r) <> " 行目が見出しの行とともに一ページに収まりません") | r <- tall], tabAcc)
+                (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G0742" Error (uSpan u) ("表の " <> T.pack (show r) <> " 行目が見出しの行とともに一ページに収まりません") | r <- tall], tabAcc, ext)
             | otherwise ->
                 let heights = stHeaderLines t : stRowLines t
                     starts = scanl (+) nextId heights
@@ -756,10 +859,22 @@ buildFlow inp geom fonts images assumed = do
                       figAcc,
                       headAcc,
                       errs,
-                      (Map.unions (tl : [m | (_, _, m) <- rowsOut]), Map.insert nextId (stWidth t) tw)
+                      (Map.unions (tl : [m | (_, _, m) <- rowsOut]), Map.insert nextId (stWidth t) tw),
+                      ext
                     )
-          Nothing -> (nextId, flows, lineAcc, figAcc, headAcc, errs, tabAcc)
-        _ -> let (a, b, c', d, e, f) = step' (nextId, flows, lineAcc, figAcc, headAcc, errs) (i, u) in (a, b, c', d, e, f, tabAcc)
+          Nothing -> (nextId, flows, lineAcc, figAcc, headAcc, errs, tabAcc, ext)
+        _ -> let (a, b, c', d, e, f) = step' (nextId, flows, lineAcc, figAcc, headAcc, errs) (i, u) in (a, b, c', d, e, f, tabAcc, extras nextId i u ext)
+      -- headings and table of contents entries by their lines (golem-driver ADR 0009)
+      extras nextId i u (hAcc, tAcc) = case uKind u of
+        UHeading {} -> (Map.insert nextId (uSpan u) hAcc, tAcc)
+        UTocEntry l hs
+          | Just c <- Map.lookup i singles,
+            ls@(_ : _) <- cLines c ->
+              let end = case [off + w | (Box w _, off) <- placeLine (last ls)] of
+                    [] -> 0
+                    ends -> last ends
+               in (hAcc, Map.insert (nextId + length ls - 1) (hs, tocIndent l + end) tAcc)
+        _ -> (hAcc, tAcc)
       step' st@(nextId, flows, lineAcc, figAcc, headAcc, errs) (i, u)
         | Map.member i besides = st -- set beside its figure
         | otherwise = case uKind u of
@@ -802,8 +917,8 @@ buildFlow inp geom fonts images assumed = do
                       )
                     _ -> (headAcc, errs)
                in (nextId + length ls, flows <> flowOf, Map.union lineAcc set, figAcc, headAcc', errs')
-      (_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths)) = foldl step (0, [], Map.empty, Map.empty, Map.empty, [], (Map.empty, Map.empty)) units
-  pure (Built flow lineMap figMap headMap errors tableLines tableWidths)
+      (_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths), (headingSpans, tocLines)) = foldl step (0, [], Map.empty, Map.empty, Map.empty, [], (Map.empty, Map.empty), (Map.empty, Map.empty)) units
+  pure (Built flow lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines)
 
 -- | Which line (0-based) contains the item at an index.
 lineIndexOfItems :: [Item] -> [Line] -> Int -> Int
@@ -988,6 +1103,12 @@ writeDocument inp geom fonts layout intent =
             ta = typeAreaFor geom n
             lineParts =
               [drawLine ta (gridAt slot) sl | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines layout)]]
+                -- the leader and page number of a table of contents entry (golem-driver ADR 0009)
+                <> [ drawLine ta (gridAt slot) (SetLine l (pgFontSize geom) start [] [])
+                   | (slot, SLine lid) <- poSlots p,
+                     Just tp <- [Map.lookup lid (plTocPages layout)],
+                     (l, start) <- [(tpLeader tp, tpLeaderStart tp), (tpNumber tp, tpNumberStart tp)]
+                   ]
                 <> [drawLine ta (gridAt slot) cell | (slot, SLine lid) <- poSlots p, cell <- Map.findWithDefault [] lid (plTableLines layout)]
                 <> [ drawLine ta (headingLineAt slot hb j sl) sl
                    | (slot, SHeading lid m) <- poSlots p,

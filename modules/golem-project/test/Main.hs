@@ -145,6 +145,11 @@ tests =
         fmap stVerse (parseStyle (FileId 0) "[verse]\nhang = \"10pt\"\n") @?= Right (VerseStyle (Zw 0) (Abs 655360) 1)
         codes (parseStyle (FileId 0) "[verse]\nunknown = 1\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[verse]\nstanza-gap = -1\n") @?= ["G0306"],
+      testCase "[toc] leader (golem-driver ADR 0009)" $ do
+        fmap stTocLeader (parseStyle (FileId 0) "[toc]\nleader = \"none\"\n") @?= Right "none"
+        fmap stTocLeader (parseStyle (FileId 0) "") @?= Right "dots"
+        codes (parseStyle (FileId 0) "[toc]\nleader = \"dash\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[toc]\nfont = \"body\"\n") @?= ["G0306"],
       testCase "a heading font must name a font role (golem-driver ADR 0003)" $ do
         codes (parseStyle (FileId 0) "[headings.1]\nfont = \"nope\"\n") @?= ["G0308"]
         codes (parseStyle (FileId 0) "[fonts.heading]\nlatin = \"h.otf\"\n\n[headings.1]\nfont = \"heading\"\n") @?= [],

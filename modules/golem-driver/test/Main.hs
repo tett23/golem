@@ -17,10 +17,10 @@ import Golem.Doc.Assemble (IndexGroup (..), inlineText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.New
-import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf)
+import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, tocPage)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Look (Look (..))
+import Golem.Layout.Look (Look (..), plainLook)
 import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..), markPages)
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, sidenoteAreaFor, typeAreaFor)
@@ -271,6 +271,7 @@ tests =
       testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
       testGroup "PDF index and bibliography (ADR 0007)" indexTests,
       testGroup "PDF tables (ADR 0008)" tableTests,
+      testGroup "PDF table of contents (ADR 0009)" tocTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup
         "public-domain books"
@@ -1024,6 +1025,126 @@ indexTests =
       a <- build' True
       b <- build' False
       c <- build' True
+      a @?= b
+      a @?= c
+      qpdfCheck a
+  ]
+
+-- | A line of one box of a width (a page number in the tests of tocPage).
+oneBoxLine :: Integer -> Line
+oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)))] 0 w 0 (0, 0) False
+
+-- | fs = 10pt, measure = 120pt, W = 15pt, g = 5pt, u = 10pt.
+tocGeom :: Bool -> TocGeometry
+tocGeom leaders = TocGeometry (120 * pt) (15 * pt) (5 * pt) (10 * pt) leaders (plainLook "body" (10 * pt))
+
+leaderCount :: TocPage -> Int
+leaderCount tp = length [() | Box {} <- lineItems (tpLeader tp)]
+
+-- | Twelve chapters of a few lines each, after a table of contents.
+twelveChapters :: T.Text
+twelveChapters = "@toc\n\n" <> T.concat ["# 章" <> T.singleton k <> "\n\n" <> fillers 3 | k <- "あいうえおかきくけこさし"]
+
+-- | The page number at the end of a line of the table of contents.
+trailingNumber :: T.Text -> Maybe Int
+trailingNumber l = case T.takeWhileEnd (`elem` ['0' .. '9']) l of
+  ds | not (T.null ds) -> Just (read (T.unpack ds))
+  _ -> Nothing
+
+-- | The lines of the table of contents of a book's pages: the lines with a leader.
+tocLinesOf :: [[T.Text]] -> [T.Text]
+tocLinesOf pages = [l | ls <- pages, l <- ls, "…" `T.isInfixOf` l]
+
+-- | The first page (from 1) with a line that ends with a text and is not in the table of contents.
+pageWith :: [[T.Text]] -> T.Text -> Maybe Int
+pageWith pages t = case [n | (n, ls) <- zip [1 ..] pages, any (\l -> t `T.isSuffixOf` l && not ("…" `T.isInfixOf` l)) ls] of
+  (n : _) -> Just n
+  [] -> Nothing
+
+tocTests :: [TestTree]
+tocTests =
+  [ testCase "tocPage: leaders end at the same place; the number ends at the measure" $ do
+      let at e = tocPage (tocGeom True) (e * pt) (oneBoxLine (10 * pt))
+          a = at 60
+      leaderCount a @?= 3
+      tpLeaderStart a @?= 70 * pt
+      tpNumberStart a @?= 110 * pt
+      let b = at 62
+      tpLeaderStart b @?= 70 * pt
+      tpLeaderStart b + toInteger (leaderCount b) * 10 * pt @?= 100 * pt
+      let c = at 85
+      leaderCount c @?= 1
+      tpLeaderStart c @?= 90 * pt,
+    testCase "tocPage: a number wider than W, an overfull title, no leaders" $ do
+      let wide = tocPage (tocGeom True) (60 * pt) (oneBoxLine (20 * pt))
+      tpNumberStart wide @?= 100 * pt
+      tpLeaderStart wide + toInteger (leaderCount wide) * 10 * pt @?= 95 * pt
+      let over = tocPage (tocGeom True) (118 * pt) (oneBoxLine (10 * pt))
+      tpNumberStart over @?= 123 * pt
+      leaderCount over @?= 0
+      forM_ [60, 62, 85, 118] $ \e -> do
+        let none = tocPage (tocGeom False) (e * pt) (oneBoxLine (10 * pt))
+            dots = tocPage (tocGeom True) (e * pt) (oneBoxLine (10 * pt))
+        leaderCount none @?= 0
+        tpNumberStart none @?= tpNumberStart dots,
+    testCase "toc lines are shortened by the reserve and indented by level" $ do
+      (_, ls) <- verseLines horizontalStyle "@toc depth=2\n\n# 一\n\n本文。\n\n## 節\n\n本文。\n\n# 二\n\n本文。\n"
+      take 3 ls @?= [(85 * pt, 0), (75 * pt, 10 * pt), (85 * pt, 0)],
+    testCase "a toc over three pages shows the page of each heading" $ do
+      r <- pagesMini "" fiveLines twelveChapters [] Map.empty
+      pages <- either (assertFailure . show) pure r
+      let tocs = tocLinesOf pages
+      length tocs @?= 12
+      [n | (n, ls) <- zip [1 :: Int ..] pages, any ("…" `T.isInfixOf`) ls] @?= [1, 2, 3]
+      forM_ (zip tocs "あいうえおかきくけこさし") $ \(l, k) ->
+        trailingNumber l @?= pageWith pages ("章" <> T.singleton k),
+    testCase "the toc lines do not depend on the page numbers" $ do
+      (_, first) <- verseLines fiveLines twelveChapters
+      (_, pl) <- layoutOk fiveLines twelveChapters []
+      [(lineTarget (slLine sl), slIndent sl) | sl <- Map.elems (plLines pl)] @?= first
+      let boxesOf sl = [bcText c | Box _ c <- lineItems (slLine sl)]
+      assertBool "toc lines" (not (any (any ("…" `T.isInfixOf`) . boxesOf) (take 12 (Map.elems (plLines pl))))),
+    testCase "a heading that moves from page 9 to 10 shows 10 and converges" $ do
+      r <- pagesMini "" fiveLines ("@toc\n\n" <> fillers 44 <> "# 終\n\n本文。\n") [] Map.empty
+      pages <- either (assertFailure . show) pure r
+      pageWith pages "終" @?= Just 10
+      map trailingNumber (tocLinesOf pages) @?= [Just 10],
+    testCase "a recto heading after a blank page shows its odd page" $ do
+      r <- pagesMini "" (fiveLines <> "\n[headings.1]\npage-break = \"recto\"\n") "@toc\n\n# 一\n\n本文。\n\n# 二\n\n本文。\n" [] Map.empty
+      pages <- either (assertFailure . show) pure r
+      map trailingNumber (tocLinesOf pages) @?= [Just 3, Just 5]
+      pageWith pages "一" @?= Just 3
+      pages !! 1 @?= [],
+    testCase "every toc entry within the depth has a page" $ do
+      (_, pl) <- layoutOk fiveLines "@toc depth=2\n\n# 一\n\n## 節\n\n### 項\n\n本文。\n\n# 二\n\n## 節二\n\n本文。\n" []
+      Map.size (plTocPages pl) @?= 4,
+    testCase "leader = none draws no leader but the page" $ do
+      r <- pagesMini "" (fiveLines <> "\n[toc]\nleader = \"none\"\n") "@toc\n\n# 一\n\n本文。\n" [] Map.empty
+      pages <- either (assertFailure . show) pure r
+      case concat pages of
+        (l : _) -> do
+          assertBool (show l) (not ("…" `T.isInfixOf` l))
+          trailingNumber l @?= Just 1
+        [] -> assertFailure "no lines",
+    testCase "vertical toc page numbers are kanji" $ do
+      r <- pagesMini "" pdfStyle ("@toc\n\n" <> fillers 34 <> "# 終\n\n本文。\n") [] Map.empty
+      pages <- either (assertFailure . show) pure r
+      case tocLinesOf pages of
+        [l] -> assertBool (show l) ("…三" `T.isSuffixOf` l)
+        other -> assertFailure (show other),
+    testCase "toc page numbers end at the right edge of the type area" $ do
+      let source = "@toc depth=2\n\n# 一\n\n## 節\n\n本文。\n\n# 二\n\n本文。\n"
+          style = horizontalStyle <> "\n[headings.1]\nnumber = \"{n:kanji}\"\n\n[headings.2]\nnumber = \"{n:kanji}\"\n"
+      content <- miniPdf fakeProvider True style source [] >>= fmap BS.concat . inflateAll
+      geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 style) >>= pageGeometry)
+      let ta = typeAreaFor geom 1
+          ones = [d | d <- drawnGlyphs content, dGlyph d == fromEnum '1']
+      length ones @?= 3
+      map dX ones @?= replicate 3 (TE.encodeUtf8 (spToPt (rectX ta + 115 * pt))),
+    testCase "a book with a toc: parallel and sequential, and two builds, give the same bytes" $ do
+      a <- miniPdf fakeProvider True fiveLines twelveChapters []
+      b <- miniPdf fakeProvider False fiveLines twelveChapters []
+      c <- miniPdf fakeProvider True fiveLines twelveChapters []
       a @?= b
       a @?= c
       qpdfCheck a

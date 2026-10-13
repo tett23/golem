@@ -177,7 +177,9 @@ data Style = Style
     stIntent :: !(Maybe FilePath),
     stSwatches :: !(Map Text Swatch),
     stMasters :: !(Map Text MasterDef),
-    stVerse :: !VerseStyle
+    stVerse :: !VerseStyle,
+    -- | [toc] leader: "dots" or "none" (golem-driver ADR 0009)
+    stTocLeader :: !Text
   }
   deriving stock (Eq, Show)
 
@@ -203,7 +205,8 @@ defaultStyle =
       stIntent = Nothing,
       stSwatches = Map.empty,
       stMasters = Map.empty,
-      stVerse = defaultVerseStyle
+      stVerse = defaultVerseStyle,
+      stTocLeader = "dots"
     }
 
 -- | JIS B series, A series and 四六判, in millimetres.
@@ -384,6 +387,11 @@ instance FromValue VerseStyle where
     let d = defaultVerseStyle
     pure (VerseStyle (fromMaybe (vsIndent d) i) (fromMaybe (vsHang d) h) (fromMaybe (vsStanzaGap d) g))
 
+newtype TocSec = TocSec (Maybe Text)
+
+instance FromValue TocSec where
+  fromValue = parseTableFromValue (TocSec <$> enumKey "leader" ["dots", "none"])
+
 data ColorSec = ColorSec (Maybe Text) (Map Text Swatch)
 
 instance FromValue ColorSec where
@@ -404,6 +412,7 @@ instance FromValue Style where
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
     masters <- fromMaybe Map.empty <$> optKey "masters"
     verse <- fromMaybe defaultVerseStyle <$> optKey "verse"
+    TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
     hs <- traverse headingLevel (Map.toList (headings :: Map Text HeadingStyle))
     let d = defaultStyle
     pure
@@ -424,7 +433,8 @@ instance FromValue Style where
           stIntent = T.unpack <$> intent,
           stSwatches = swatches,
           stMasters = masters,
-          stVerse = verse
+          stVerse = verse,
+          stTocLeader = fromMaybe (stTocLeader d) leader
         }
     where
       headingLevel (k, v) = case k of
