@@ -9,7 +9,7 @@ import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
 import Golem.Parser.SourceSettings
-import Golem.Project.Style (LineBreaks (..), LocalStyles (..), Style (..), defaultStyle, paraLineBreaks, parseStyle)
+import Golem.Project.Style (LineBreaks (..), LocalStyles (..), RegexStyleDef (..), Style (..), defaultStyle, paraLineBreaks, parseStyle)
 import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -339,8 +339,50 @@ settingsTests =
         let (bs, ds, _) = runS sctx "@manifest title=x\n@label p\na\n"
         map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G0250"]
         map stripped bs @?= [(Nothing, ["a"])],
-      testCase "regular expression styles are not implemented yet (G0254)" $
-        codesS "@style-def regex body pattern=\"[0-9]+\" style=strong\n" @?= ["G0254"],
+      testCase "@style-def regex adds a regex style for the file (docs/adr ADR 0015)" $ do
+        let (bs, ds, _) = runS sctx "@style-def regex body pattern=\"\\\\d+\" style=bold\n\na1\n"
+        map stripped bs @?= [(Nothing, ["a", "<bold>", "1"])]
+        ds @?= []
+        let (bs', _, _) = runS sctx "a1\n"
+        map stripped bs' @?= [(Nothing, ["a1"])],
+      testCase "the errors of @style-def regex (docs/adr ADR 0015)" $ do
+        codesS "@style-def regex nope pattern=x style=bold\n" @?= ["G0313"]
+        codesS "@style-def regex body style=bold\n" @?= ["G0306"]
+        codesS "@style-def regex body pattern=\"\\\\1\" style=bold\n" @?= ["G0315"]
+        codesS "@style-def regex body\n" @?= ["G0306"]
+        codesS "@style-def regex body pattern=x style=nope\n" @?= ["G0313"]
+        codesS "@style-def regex body pattern=x style=bold colour=x\n" @?= ["G0306"]
+        codesS "@style-def regex body pattern=x pattern=y style=bold\n" @?= ["G0252"],
+      testCase "a wrong regex style is reported at its line and dropped, the others stay" $ do
+        let src = "@style-def regex body pattern=a style=bold\n@style-def regex body pattern=\"\\\\1\" style=bold\n@style-def regex body pattern=b style=nope\n\nab\n"
+            (bs, ds, r) = runS sctx src
+        [(x, spanStart (diagSpan d)) | d <- ds, let { DiagnosticCode x = diagCode d }] @?= [("G0315", 43), ("G0313", 90)]
+        Map.lookup "body" (lsRegexStyles (erStyles r)) @?= Just [RegexStyleDef "a" "bold"]
+        map stripped bs @?= [(Nothing, ["<bold>", "a", "b"])],
+      testCase "the regex styles of a file are added in the order written, not G0253" $ do
+        let (bs, ds, r) = runS sctx "@style-def regex body pattern=\"[0-9]+\" style=bold\n@style-def regex body pattern=2 style=italic\n\n12\n"
+        ds @?= []
+        Map.lookup "body" (lsRegexStyles (erStyles r)) @?= Just [RegexStyleDef "[0-9]+" "bold", RegexStyleDef "2" "italic"]
+        map stripped bs @?= [(Nothing, ["<bold>", "1", "<bold>", "<italic>", "2"])],
+      testCase "a regex style may use a character style and a paragraph style of the file" $ do
+        let (bs, ds, _) = runS sctx "@style-def character n synthetic-bold=true\n@style-def paragraph letter\n@style-def regex letter pattern=x style=n\n\n@style letter\naxb\n"
+        ds @?= []
+        map stripped bs @?= [(Just "letter", ["a", "<n>", "x", "b"])],
+      testCase "a word of digits is read as the pattern" $ do
+        let (bs, ds, _) = runS sctx "@style-def regex body pattern=12 style=bold\n\na12\n"
+        ds @?= []
+        map stripped bs @?= [(Nothing, ["a", "<bold>", "12"])],
+      testCase "a regex style of style.toml applies" $ do
+        let st = either (error . show) id (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = '[0-9]+', style = \"bold\" }]\n")
+            c = sctx {ctxStyle = st}
+            (bs, ds, _) = runS c "第12章\n"
+        ds @?= []
+        map stripped bs @?= [(Nothing, ["第", "<bold>", "12", "章"])],
+      testCase "the text a filter gives is matched too" $ do
+        let hook = noPlugins {phApplyFilters = \_ (Document f bs0) -> Right (Document f (bs0 <> [Block (mkSpan f 0 1) Nothing (Paragraph Nothing [Text (mkSpan f 0 1) "x9"])]), [])}
+            (bs, ds, _) = runS sctx {ctxPlugins = hook} "@style-def regex body pattern=\"[0-9]\" style=bold\n\na\n"
+        ds @?= []
+        map stripped bs @?= [(Nothing, ["a"]), (Nothing, ["x", "<bold>", "9"])],
       testCase "an invalid definition is reported at its @style-def and dropped" $ do
         let at src = let (_, ds, _) = runS sctx src in [(x, spanStart (diagSpan d)) | d <- ds, let DiagnosticCode x = diagCode d]
         at "@style-def paragraph Letter\n" @?= [("G0306", 0)]

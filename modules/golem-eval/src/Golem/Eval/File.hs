@@ -30,6 +30,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Eval.Expr
+import Golem.Eval.RegexStyle (applyRegexStyles, regexRules)
 import Golem.Eval.Settings
 import Golem.Eval.Value
 import Golem.Parser.AST qualified as A
@@ -140,8 +141,10 @@ evalFile ctx0 (A.File fid blocks0) =
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
         Left ds -> (doc0, ds)
         Right (d, ws) -> (d, ws <> unknownParaStyles ctx d)
+      -- the regex styles last, so that the text of filters is matched too (docs/adr ADR 0015)
+      rules = regexRules (withLocalStyles (ctxStyle ctx0) local)
    in EvalResult
-        { erDocument = doc,
+        { erDocument = applyRegexStyles rules doc,
           erExports = stVars st,
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
           erDiagnostics = stDiags st <> filterDiags,
