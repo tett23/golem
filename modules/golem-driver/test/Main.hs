@@ -700,6 +700,12 @@ marksTests =
       fst (pdfIds none) @?= fst (pdfIds japanese)
       assertBool "marks" (snd (pdfIds none) /= snd (pdfIds japanese))
       assertBool "profile" (snd (pdfIds none) /= snd (pdfIds prod)),
+    testCase "a page size by dimensions is the TrimBox (golem-project ADR 0005)" $ do
+      pdf <- marksPdf id (replaceIn "size = \"A5\"\n" "size = { width = \"396pt\", height = \"612pt\" }\n" horizontalStyle)
+      boxOf "TrimBox" pdf @?= "0 0 396 612",
+    testCase "golem check rejects a page size outside the table (golem-project ADR 0005)" $ do
+      b <- buildMarks (\o -> o {optTargets = Nothing, optCheckOnly = True}) (Just (replaceIn "size = \"A5\"\n" "size = \"148mm x 210mm\"\n" horizontalStyle))
+      map diagCode (bErrors b) @?= [DiagnosticCode "G0317"],
     testCase "with marks and bleed, two builds give the same bytes" $ do
       a <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
       b <- marksPdf (\o -> o {optMarks = JapaneseMarks, optParallel = False}) bleedStyle
