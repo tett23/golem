@@ -25,6 +25,7 @@ where
 
 import Data.Char (isAscii, isSpace)
 import Data.Maybe (fromMaybe, isJust)
+import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
@@ -119,6 +120,8 @@ data ComposeEnv = ComposeEnv
     ceAdvance :: Look -> Char -> Rational,
     -- | advance of a Latin word in a look, in em, as shaped (kerning, ligatures)
     ceWordAdvance :: Look -> Text -> Rational,
+    -- | the pair kerning of two Japanese characters in a look, in em (docs/adr/0020)
+    ceKern :: Look -> Char -> Char -> Rational,
     ceVertical :: !Bool,
     ceKinsokuStrict :: !Bool,
     ceHanging :: !Bool,
@@ -153,6 +156,7 @@ defaultComposeEnv fs =
     { ceFontSize = fs,
       ceAdvance = const defaultAdvance,
       ceWordAdvance = const (sum . map defaultAdvance . T.unpack),
+      ceKern = \_ _ _ -> 0,
       ceVertical = False,
       ceKinsokuStrict = True,
       ceHanging = False,
@@ -230,7 +234,7 @@ composeInlines env inls =
         _ -> True
       prevs = scanl (\acc p -> if solid p then Just p else acc) Nothing pieces
       nexts = drop 1 (scanr (\p acc -> if solid p then Just p else acc) Nothing pieces)
-      normalized = normalize env items
+      normalized = normalize env (kernPairs env items)
       -- anchors index the normalized items: the spacing inserted before a box shifts it
       positions = alignPositions items normalized
       at i = fromMaybe (length normalized) (lookup i positions)
@@ -362,6 +366,35 @@ rubyPieces env segs = concat (zipWith piece [0 :: Int ..] segs)
 advance :: ComposeEnv -> Look -> Char -> Sp
 advance env lk c = round (ceAdvance env lk c * toRational (lkSize lk))
 
+-- | The tracking of a look in sp: lkTracking thousandths of its size (docs/adr/0020).
+tracking :: Look -> Sp
+tracking lk = round (toInteger (lkTracking lk) * lkSize lk % 1000)
+
+{- | The pair kerning of Japanese characters (docs/adr/0020): two boxes of
+one Japanese character each, side by side, of the same look with metrics
+kerning and neither of them punctuation, whose spacing the rules of
+JLReq decide. The kerning widens (narrows) the first box and is given
+back at its end edge, so that it does not count at the end of a line.
+-}
+kernPairs :: ComposeEnv -> [Item] -> [Item]
+kernPairs env = \case
+  Box w p : rest@(Box _ c : _)
+    | Just a <- single p,
+      Just b <- single c,
+      bcLook p == bcLook c,
+      lkKerning (bcLook p) == KernMetrics ->
+        let k = round (ceKern env (bcLook p) a b * toRational (lkSize (bcLook p)))
+         in Box (w + k) p {bcEdgeEnd = bcEdgeEnd p - k} : kernPairs env rest
+  x : rest -> x : kernPairs env rest
+  [] -> []
+  where
+    single c = case T.unpack (withoutSelectors (bcText c)) of
+      [ch]
+        | boxKind c `elem` [KindText, KindKenten],
+          charClass ch `notElem` [Western, Opening, Closing, FullStop, Comma, MiddleDot] ->
+            Just ch
+      _ -> Nothing
+
 -- ------------------------------------------------------------------ items
 
 {- | Space before and after a punctuation glyph, in em (JLReq: the glyph
@@ -399,17 +432,19 @@ itemsFor env prev p next = case p of
           | T.null vs = advance env lk c
           | otherwise = round (ceWordAdvance env lk (T.cons c vs) * toRational fs)
         w = full - round ((pre + post) * toRational fs)
+        -- tracking after the character, given back at the line end (docs/adr/0020)
+        t = tracking lk
         tag
           | kenten = KindKenten
           | ceVertical env && cls == Western = KindRotated
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
-     in [Box w (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 0)]
+     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t))]
   PWord lk word -> wordItems env lk word
   PSpace lk ->
     let sw = advance env lk ' '
-     in [Glue sw (sw `div` 2) (sw `div` 3)]
+     in [Glue (sw + tracking lk) (sw `div` 2) (sw `div` 3)]
   PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0)]
   PRuby lk kind base reading ->
     let style = ceRuby env
@@ -452,12 +487,14 @@ wordItems env lk word =
         | otherwise = (maybe [word] (`hyphenate` word) (cePatterns env), Penalty (advance env lk '-') 50 PatternHyphen)
       rotated = ceVertical env
       tag = fromEnum (if rotated then KindRotated else KindText)
+      tr = tracking lk
+      -- the tracking after each character, given back at the line end (docs/adr/0020)
       box t =
         let w = round (ceWordAdvance env lk t * toRational (lkSize lk))
             (ps, _) = maybe (0, 0) (protrusionRatio . fst) (T.uncons t)
             (_, pe) = maybe (0, 0) (protrusionRatio . snd) (T.unsnoc t)
             prot r = if ceProtrusion env then min w (w * r `div` 1000) else 0
-         in Box w (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk 0 0)
+         in Box (w + tr * toInteger (T.length t)) (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk 0 (negate tr))
       prot' r t f = if T.null t then 0 else f r
    in concat [box part : [pen | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]
 
