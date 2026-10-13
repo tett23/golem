@@ -72,6 +72,13 @@ tests =
       testCase "only one @toc" $ do
         let toc s = Block (sp 1 s) Nothing (ChannelOutput (TocOutput 2))
         codes (snd (assemble cfg noEval [Document (FileId 1) [toc 0, toc 5]])) @?= ["G0402"],
+      testCase "toc entries carry the span of their heading block (golem-driver ADR 0009)" $ do
+        let toc = Block (sp 1 0) Nothing (ChannelOutput (TocOutput 2))
+            docs = [Document (FileId 1) [toc, heading 1 10 1 noHeadingAttrs Nothing "一", heading 1 20 2 noHeadingAttrs Nothing "節", heading 1 30 1 noHeadingAttrs {haNoToc = True} Nothing "外"]]
+            book = fst (assemble cfg noEval docs)
+        map teSpan (bookToc book) @?= [sp 1 10, sp 1 20]
+        all ((`Map.member` bookHeadings book) . teSpan) (bookToc book) @?= True
+        assertBool "notoc" (sp 1 30 `notElem` map teSpan (bookToc book)),
       testCase "index order: kana, voicing, small kana, long vowel, latin before kana" $ do
         let mark s t r = IndexMark (sp 1 s) (IndexEntry [t] [r])
             docs = [Document (FileId 1) [para 1 0 [mark 0 "ガ" "が", mark 1 "カ" "か", mark 2 "パ" "ぱ", mark 3 "ハ" "は", mark 4 "バ" "ば", mark 5 "API" "API", mark 6 "ツ" "つ", mark 7 "ッ" "っ", mark 8 "カ" "か"]]]

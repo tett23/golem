@@ -19,6 +19,8 @@ module Golem.Project.Style
     validStyleName,
     HeadingStyle (..),
     Composition (..),
+    RubyStyleDef (..),
+    defaultRubyStyleDef,
     SidenoteStyle (..),
     MasterDef (..),
     Swatch (..),
@@ -250,7 +252,8 @@ data HeadingStyle = HeadingStyle
 data Composition = Composition
   { compKinsokuStrict :: !Bool,
     compHanging :: !Bool,
-    compRubyOverhang :: !Dim,
+    -- | [composition.ruby] (golem-layout ADR 0009)
+    compRuby :: !RubyStyleDef,
     compKenten :: !Text,
     compPretolerance :: !Int,
     compTolerance :: !Int,
@@ -261,6 +264,24 @@ data Composition = Composition
     compExplicitHyphenPenalty :: !Int
   }
   deriving stock (Eq, Show)
+
+-- | The placement of ruby (golem-layout ADR 0009).
+data RubyStyleDef = RubyStyleDef
+  { -- | "center" | "start"
+    rdMonoAlign :: !Text,
+    -- | "1:2:1" | "0:1:0" | "center" | "start"
+    rdGroupAlign :: !Text,
+    -- | "1:2:1" | "0:1:0" | "center"
+    rdBaseSpacing :: !Text,
+    rdOverhang :: !Dim,
+    -- | "kana" | "none"
+    rdOverhangOnto :: !Text
+  }
+  deriving stock (Eq, Show)
+
+-- | JLReq's usual setting.
+defaultRubyStyleDef :: RubyStyleDef
+defaultRubyStyleDef = RubyStyleDef "center" "1:2:1" "1:2:1" (Zw (1 % 2)) "kana"
 
 {- | [sidenotes]: the sidenote column and the marker. The font and the size
 are the paragraph style sidenote's (golem-driver ADR 0011).
@@ -297,12 +318,14 @@ data Style = Style
     stWrapGap :: !Dim,
     stIntent :: !(Maybe FilePath),
     stSwatches :: !(Map Text Swatch),
-    stMasters :: !(Map Text MasterDef)
+    stMasters :: !(Map Text MasterDef),
+    -- | [toc] leader: "dots" or "none" (golem-driver ADR 0009)
+    stTocLeader :: !Text
   }
   deriving stock (Eq, Show)
 
 defaultComposition :: Composition
-defaultComposition = Composition True False (Zw 1) "sesame" 100 200 (Abs 0) False Nothing 50
+defaultComposition = Composition True False defaultRubyStyleDef "sesame" 100 200 (Abs 0) False Nothing 50
 
 defaultStyle :: Style
 defaultStyle =
@@ -320,7 +343,8 @@ defaultStyle =
       stWrapGap = Zw 1,
       stIntent = Nothing,
       stSwatches = Map.empty,
-      stMasters = Map.empty
+      stMasters = Map.empty,
+      stTocLeader = "dots"
     }
 
 -- | JIS B series, A series and 四六判, in millimetres.
@@ -428,13 +452,22 @@ instance FromValue HeadingStyle where
     rh <- fromMaybe False <$> optKey "running-head"
     pure (HeadingStyle f s n (pb == Just "recto") rh)
 
-newtype RubyOpt = RubyOpt Dim
-
-instance FromValue RubyOpt where
+instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
-    _ <- enumKey "position" ["mono-center"]
+    m <- enumKey "mono-align" ["center", "start"]
+    g <- enumKey "group-align" ["1:2:1", "0:1:0", "center", "start"]
+    b <- enumKey "base-spacing" ["1:2:1", "0:1:0", "center"]
     o <- dimKey "overhang"
-    pure (RubyOpt (fromMaybe (Zw 1) o))
+    onto <- enumKey "overhang-onto" ["kana", "none"]
+    let d = defaultRubyStyleDef
+    pure
+      RubyStyleDef
+        { rdMonoAlign = fromMaybe (rdMonoAlign d) m,
+          rdGroupAlign = fromMaybe (rdGroupAlign d) g,
+          rdBaseSpacing = fromMaybe (rdBaseSpacing d) b,
+          rdOverhang = fromMaybe (rdOverhang d) o,
+          rdOverhangOnto = fromMaybe (rdOverhangOnto d) onto
+        }
 
 data Expansion = Expansion Int Int
 
@@ -458,7 +491,7 @@ instance FromValue Composition where
       Composition
         { compKinsokuStrict = maybe (compKinsokuStrict d) (== "strict") k,
           compHanging = fromMaybe (compHanging d) h,
-          compRubyOverhang = maybe (compRubyOverhang d) (\(RubyOpt o) -> o) r,
+          compRuby = fromMaybe (compRuby d) r,
           compKenten = fromMaybe (compKenten d) kt,
           compPretolerance = fromMaybe (compPretolerance d) pre,
           compTolerance = fromMaybe (compTolerance d) tol,
@@ -534,6 +567,11 @@ instance FromValue VerseV where
     fail
       "[verse] は廃止しました。indent = I と hang = H は [paragraph-styles.verse] の indent = I + H と first-line-indent = -H に、stanza-gap は [paragraph-styles.verse] の space-between に書き換えます"
 
+newtype TocSec = TocSec (Maybe Text)
+
+instance FromValue TocSec where
+  fromValue = parseTableFromValue (TocSec <$> enumKey "leader" ["dots", "none"])
+
 data ColorSec = ColorSec (Maybe Text) (Map Text Swatch)
 
 instance FromValue ColorSec where
@@ -557,6 +595,7 @@ instance FromValue Style where
     masters <- fromMaybe Map.empty <$> optKey "masters"
     retiredVerse <- optKey "verse"
     when (isJust (retiredVerse :: Maybe VerseV)) $ fail "[verse] は廃止しました"
+    TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
     hs <- traverse headingLevel (Map.toList (headings :: Map Text HeadingStyle))
     let d = defaultStyle
     pure
@@ -574,7 +613,8 @@ instance FromValue Style where
           stWrapGap = fromMaybe (stWrapGap d) fgap,
           stIntent = T.unpack <$> intent,
           stSwatches = swatches,
-          stMasters = masters
+          stMasters = masters,
+          stTocLeader = fromMaybe (stTocLeader d) leader
         }
     where
       headingLevel (k, v) = case k of
@@ -582,6 +622,11 @@ instance FromValue Style where
         "2" -> pure (2, v)
         "3" -> pure (3, v)
         _ -> fail ("heading level must be 1, 2 or 3: " <> T.unpack k)
+
+negativeDim :: Dim -> Bool
+negativeDim = \case
+  Abs x -> x < 0
+  Zw r -> r < 0
 
 -- | Placeholders allowed in number formats.
 validNumberFormat :: Text -> Bool
@@ -673,6 +718,9 @@ parseStyle fid src = do
         <> [ "explicit-hyphen-penalty は -9999 から 10000 までです: " <> T.pack (show p)
            | let p = compExplicitHyphenPenalty (stComposition s),
              p < -9999 || p > 10000
+           ]
+        <> [ "ルビのかけの量は 0 以上です（[composition.ruby] の overhang）"
+           | negativeDim (rdOverhang (compRuby (stComposition s)))
            ]
         <> [ "未知の判型です: " <> pageSizeName p
            | Just p <- [stPage s],

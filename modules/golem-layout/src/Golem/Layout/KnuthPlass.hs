@@ -49,7 +49,10 @@ data BoxContent = BoxContent
     -- | opaque data for later stages (ruby, rotation…)
     bcTag :: !Int,
     -- | the look of the box; the algorithm does not read it (golem-driver ADR 0004)
-    bcLook :: !Look
+    bcLook :: !Look,
+    -- | at the line start (end), the space added inside the line: a ruby's overhang taken back (golem-layout ADR 0009)
+    bcEdgeStart :: !Sp,
+    bcEdgeEnd :: !Sp
   }
   deriving stock (Eq, Show)
 
@@ -112,7 +115,9 @@ data Line = Line
     -- | protrusion at the start and the end
     lineProtrusion :: !(Sp, Sp),
     -- | the natural width exceeds the target even when fully shrunk
-    lineOverfull :: !Bool
+    lineOverfull :: !Bool,
+    -- | the edges of the first and the last box (golem-layout ADR 0009)
+    lineEdge :: !(Sp, Sp)
   }
   deriving stock (Eq, Show)
 
@@ -277,7 +282,8 @@ breakParagraph ps lineWidth items =
             Penalty w _ _ -> w
             _ -> 0
           (protS, protE) = protrusionOf s b
-          natural = tW tw - tW ts + penW - protS - protE
+          (edgeS, edgeE) = edgesOf s b
+          natural = tW tw - tW ts + penW - protS - protE + edgeS + edgeE
           (ey, ez) = expansionOf (tE tw - tE ts)
           stretch = tY tw - tY ts + emergency + ey
           shrink = tZ tw - tZ ts + ez
@@ -306,6 +312,11 @@ breakParagraph ps lineWidth items =
           let firstBox = listToMaybe [c | j <- [s .. b - 1], Box _ c <- [at j]]
               lastBox = listToMaybe [c | j <- [b - 1, b - 2 .. s], Box _ c <- [at j]]
            in (maybe 0 bcProtrudeStart firstBox, maybe 0 bcProtrudeEnd lastBox)
+    -- the edges of the first and last boxes count whether or not protrusion is on
+    edgesOf s b =
+      let firstBox = listToMaybe [c | j <- [s .. b - 1], Box _ c <- [at j]]
+          lastBox = listToMaybe [c | j <- [b - 1, b - 2 .. s], Box _ c <- [at j]]
+       in (maybe 0 bcEdgeStart firstBox, maybe 0 bcEdgeEnd lastBox)
     expansionOf e = case pExpansion ps of
       Just (limit, _) -> (e * toInteger limit `div` 1000, e * toInteger limit `div` 1000)
       Nothing -> (0, 0)
@@ -326,7 +337,8 @@ breakParagraph ps lineWidth items =
             Penalty w _ _ -> w
             _ -> 0
           (protS, protE) = protrusionOf s b
-          natural = tW tw - tW ts + penW - protS - protE
+          edges@(edgeS, edgeE) = edgesOf s b
+          natural = tW tw - tW ts + penW - protS - protE + edgeS + edgeE
           target = lineWidth i
           e = tE tw - tE ts
           (ey, ez) = expansionOf e
@@ -341,7 +353,7 @@ breakParagraph ps lineWidth items =
           expansion = case pExpansion ps of
             Just (limit, stp) | e > 0 -> expansionStep limit stp ratio
             _ -> 0
-       in Line its ratio target expansion (protS, protE) overfull
+       in Line its ratio target expansion (protS, protE) overfull edges
 
 {- | The expansion of a line in permille: the ratio times the limit,
 rounded towards zero to a multiple of the step, with integer arithmetic.
@@ -364,6 +376,7 @@ placeLine :: Line -> [(Item, Sp)]
 placeLine l =
   let its = lineItems l
       (protS, _) = lineProtrusion l
+      (edgeS, _) = lineEdge l
       ex = toRational (lineExpansion l) / 1000
       g = glueRatio l
       lastIx = length its - 1
@@ -372,7 +385,7 @@ placeLine l =
         Box w c -> toRational w * (if bcExpandable c then 1 + ex else 1)
         Glue w y z -> toRational w + (if g >= 0 then toRational y else toRational z) * g
         Penalty w _ _ -> if i == lastIx then toRational w else 0
-      offsets = scanl (+) (negate (toRational protS)) (zipWith (curry width) [0 ..] its)
+      offsets = scanl (+) (toRational (edgeS - protS)) (zipWith (curry width) [0 ..] its)
    in zip its (map round offsets)
 
 {- | The ratio by which the glue of a set line is stretched or shrunk,
@@ -382,9 +395,10 @@ glueRatio :: Line -> Rational
 glueRatio l =
   let its = lineItems l
       (protS, protE) = lineProtrusion l
+      (edgeS, edgeE) = lineEdge l
       ex = toRational (lineExpansion l) / 1000
       lastIx = length its - 1
-      natural = toRational (sum [itemWidth it | (i, it) <- zip [0 :: Int ..] its, not (isPenalty it) || i == lastIx] - protS - protE)
+      natural = toRational (sum [itemWidth it | (i, it) <- zip [0 :: Int ..] its, not (isPenalty it) || i == lastIx] - protS - protE + edgeS + edgeE)
       isPenalty = \case
         Penalty {} -> True
         _ -> False

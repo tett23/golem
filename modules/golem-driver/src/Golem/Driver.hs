@@ -458,9 +458,13 @@ writeTargets opts e book missing targets = do
             hcBibliography = bib,
             hcDev = dev,
             hcCaptionFace = let c = paraStyle style (Just "caption") in Face (c >>= psFont) (cssFontSize style <$> (c >>= psSize)),
-            hcSidenoteFace = let d = paraStyle style (Just "sidenote") in Face (d >>= psFont) (cssFontSize style <$> (d >>= psSize))
+            hcSidenoteFace = let d = paraStyle style (Just "sidenote") in Face (d >>= psFont) (cssFontSize style <$> (d >>= psSize)),
+            hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
+            hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
+            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby)
           }
       present = mfilter (`Map.notMember` missing)
+      ruby = compRuby (stComposition style)
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case
     TargetHtml -> do
@@ -534,6 +538,14 @@ textFirstLine :: Style -> Maybe Text -> Int
 textFirstLine style st = case paraStyle style st of
   Just ParaStyleDef {psIndent = Just (Zw a), psFirstLineIndent = Just (Zw b)} -> max 0 (truncate (a + b))
   _ -> 0
+
+-- | A ruby alignment of style.toml as a CSS ruby-align value (golem-layout ADR 0009).
+rubyAlignCss :: Text -> Text
+rubyAlignCss = \case
+  "1:2:1" -> "space-around"
+  "0:1:0" -> "space-between"
+  "start" -> "start"
+  _ -> "center"
 
 {- | A length of style.toml in CSS: zw as em, other units as pt, with at
 most three decimals (docs/adr ADR 0003).
