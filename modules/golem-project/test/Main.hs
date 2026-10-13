@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Control.Monad (void)
+import Data.Bifunctor (first)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
@@ -9,7 +10,8 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Doc.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Parser.SourceSettings
-import Golem.Project
+import Golem.Project hiding (loadProject)
+import Golem.Project qualified as P
 import Golem.Project.Paths
 import Golem.Project.Style
 import Golem.Syntax
@@ -21,6 +23,10 @@ import Test.Tasty.HUnit
 
 main :: IO ()
 main = defaultMain tests
+
+-- | The diagnostics of a failed load, without the sources (golem-project ADR 0006).
+loadProject :: FilePath -> IO (Either [Diagnostic] Project)
+loadProject = fmap (first pfDiagnostics) . P.loadProject
 
 manifest :: [Text] -> Text
 manifest chapters =
@@ -138,6 +144,104 @@ runningHeadTests =
         <$> parseStyle (FileId 0) ("[masters.body]\nrunning-head = { position = \"top-outside\"" <> (if T.null kv then "" else ", " <> kv) <> " }\n")
     messages = either (map diagMessage) (const [])
 
+msgs :: Either [Diagnostic] a -> [Text]
+msgs = either (map diagMessage) (const [])
+
+-- | The diagnostics of the project stage (ADR 0006).
+diagnosticCodeTests :: TestTree
+diagnosticCodeTests =
+  testGroup
+    "project diagnostic codes (ADR 0006)"
+    [ testCase "no manifest.toml is G0316" $
+        withProject [("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0316"]
+          msgs r @?= ["manifest.toml がありません"],
+      testCase "a missing import is G0302 at the @import" $
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import c.gm as c\n@import nope.gm as x\n"), ("c.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0302"]
+          msgs r @?= ["ファイルがありません: nope.gm"]
+          either (map (\d -> (spanFile (diagSpan d), spanStart (diagSpan d)))) (const []) r @?= [(FileId 1, 18)],
+      testCase "absolute paths and links out of the root are G0303" $ do
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import /abs.gm as x\n")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0303"]
+          msgs r @?= ["絶対パスは使えません: /abs.gm"]
+        withSystemTempDirectory "golem-outside" $ \outside -> do
+          TIO.writeFile (outside </> "x.gm") ""
+          withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import x.gm as x\n")] $ \root -> do
+            createFileLink (outside </> "x.gm") (root </> "x.gm")
+            r <- loadProject root
+            codes r @?= ["G0303"]
+            msgs r @?= ["プロジェクトルートの外を指しています: x.gm"],
+      testCase "a cycle of three files" $
+        withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", "@import b.gm as b\n"), ("b.gm", "@import c.gm as c\n"), ("c.gm", "@import a.gm as a\n")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0305"]
+          msgs r @?= ["import が循環しています: a.gm → b.gm → c.gm → a.gm"]
+          either (map (length . diagRelated)) (const []) r @?= [3],
+      testCase "an empty [targets] is G0301" $
+        withProject [("manifest.toml", T.replace "[targets.html]" "[targets]" (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0301"]
+          msgs r @?= ["出力ターゲットが一つもありません"],
+      testCase "a TOML syntax error in manifest.toml is G0301" $
+        withProject [("manifest.toml", "chapters = [\n"), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0301"]
+          assertBool (show (msgs r)) (all ("TOML の誤りです: " `T.isPrefixOf`) (msgs r)),
+      testCase "an empty path is not shown" $
+        withProject [("manifest.toml", "chapters = [\"a.gm\"]\n\n[targets.html]\n"), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0301"]
+          assertBool (show (msgs r)) (any ("missing key: metadata" `T.isSuffixOf`) (msgs r))
+          assertBool (show (msgs r)) (not (any ("()" `T.isInfixOf`) (msgs r))),
+      testCase "a chapter that is not a path, table or array" $
+        withProject [("manifest.toml", T.replace "chapters = [\"a.gm\"]" "chapters = [1]" (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0301"]
+          msgs r @?= ["章は、ファイルのパス、表、配列のどれかで書きます (.chapters[0])"],
+      testCase "a malformed @import is G0309" $
+        mapM_
+          ( \src -> withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", src), ("x.gm", "")] $ \root -> do
+              r <- loadProject root
+              assertEqual (T.unpack src) ["G0309"] (codes r)
+              assertEqual (T.unpack src) ["@import は「@import パス as 名前空間」の形で書きます"] (msgs r)
+          )
+          [ "@import x.gm\n",
+            "@import x.gm as\n",
+            "@import [= 1] as x\n",
+            "@import x.gm as x extra\n",
+            "@import x.gm\n@label a\n# 見出し\n"
+          ],
+      testCase "a TOML syntax error in style.toml is G0306" $ do
+        let r = parseStyle (FileId 0) "[page\n"
+        codes r @?= ["G0306"]
+        assertBool (show (msgs r)) (all ("TOML の誤りです: " `T.isPrefixOf`) (msgs r)),
+      testCase "the messages Golem writes are Japanese" $ do
+        let has src m = let ms = msgs (parseStyle (FileId 0) src) in assertBool (show ms) (any (m `T.isInfixOf`) ms)
+            grid extra = "[page]\nsize = \"B6\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 30\nlines = 20\nline-pitch = \"22H\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n" <> extra
+        has "[toc]\nleader = \"dash\"\n" "leader に使えない値です: dash（dots, none のどれか）"
+        has (grid "columns = 2\n") "columns が 2 以上のときは column-gap が要ります"
+        has "[paragraph-styles.x]\nspace-between = -1\n" "space-between は 0 以上です"
+        has "[paragraph-styles.x]\nfirst-line-indent = \"abc\"\n" "長さの書き方が不正です: abc（1zw や -1zw のように書きます）"
+        has "[page]\nsize = \"A6\"\nbleed = \"abc\"\n" "長さの書き方が不正です: abc（13Q や 20mm のように書きます）"
+        has "[page]\nsize = \"A6\"\nbleed = 3\n" "長さは文字列で書きます"
+        has "[color.swatches]\na = { cmyk = [0, 0, 0, 101] }\n" "cmyk は 0 から 100 までの整数四つです"
+        has "[headings.4]\n" "見出しの段は 1、2、3 のどれかです: 4",
+      testCase "the checks after reading" $ do
+        msgs (parseStyle (FileId 0) "[figures]\nnumber = \"{x}\"\n") @?= ["番号の書式が不正です: {x}"]
+        msgs (parseStyle (FileId 0) "[character-styles.Bad]\nsynthetic-bold = true\n") @?= ["スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: Bad"]
+        msgs (parseStyle (FileId 0) "[composition]\nexplicit-hyphen-penalty = 10001\n") @?= ["explicit-hyphen-penalty は -9999 から 10000 までです: 10001"]
+        -- a negative overhang cannot be written as a dimension, so the check after reading is not reached
+        msgs (parseStyle (FileId 0) "[composition.ruby]\noverhang = \"-1zw\"\n") @?= ["長さの書き方が不正です: -1zw（13Q や 20mm のように書きます） (.composition.ruby.overhang)"]
+        -- an unknown page size is G0317 at the value since golem-project ADR 0005
+        let r = parseStyle (FileId 0) "[page]\nsize = \"Z9\"\n"
+        codes r @?= ["G0317"]
+        assertBool (show (msgs r)) (all ("未知の判型です: Z9" `T.isPrefixOf`) (msgs r))
+    ]
+
 codes :: Either [Diagnostic] a -> [Text]
 codes = either (map ((\(DiagnosticCode c) -> c) . diagCode)) (const [])
 
@@ -200,8 +304,9 @@ tests =
           ]
         $ \root -> do
           r <- loadProject root
-          -- on case-insensitive file systems the second name may resolve to the first file
-          assertBool "error or single file" (codes r == ["G0304"] || either (const False) (const True) r),
+          -- the written paths are compared on every file system (ADR 0006)
+          codes r @?= ["G0304"]
+          msgs r @?= ["大文字と小文字だけが異なるパスです: common.gm と Common.gm"],
       testCase "symbolic links are resolved to the same file"
         $ withProject
           [ ("manifest.toml", manifest ["\"a.gm\"", "\"b.gm\""]),
@@ -219,6 +324,7 @@ tests =
         withProject [("manifest.toml", manifest ["\"a.gm\""] <> "\n[extra]\nx = 1\n"), ("a.gm", "")] $ \root -> loadProject root >>= (@?= ["G0301"]) . codes
         withProject [("manifest.toml", T.replace "id = " "idd = " (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> loadProject root >>= (@?= True) . (not . null) . codes,
       sourceTests,
+      diagnosticCodeTests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))
@@ -710,7 +816,7 @@ pageSizeTests =
       g0317 "{ width = \"148mm\", height = \"210mm\", depth = \"1mm\" }" "depth"
       g0317 "{ width = \"10zw\", height = \"210mm\" }" "判型には zw を使えません"
       g0317 "{ width = \"0mm\", height = \"210mm\" }" "判型の幅と高さは 0 より大きい寸法です"
-      g0317 "{ width = \"148\", height = \"210mm\" }" "dimension",
+      g0317 "{ width = \"148\", height = \"210mm\" }" "長さの書き方が不正です: 148",
     testCase "G0317 is at the value of size" $
       case parseStyle (FileId 0) "[page]\nsize = \"A3\"\n" of
         Left [d] -> spanStart (diagSpan d) @?= 14

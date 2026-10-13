@@ -518,8 +518,8 @@ instance FromValue PageSize where
 newtype DimV = DimV Dim
 
 instance FromValue DimV where
-  fromValue v@(Text' _ t) = maybe (typeError "dimension such as 13Q or 20mm" v) (pure . DimV) (parseDim t)
-  fromValue v = typeError "dimension string" v
+  fromValue (Text' _ t) = maybe (fail ("長さの書き方が不正です: " <> T.unpack t <> "（13Q や 20mm のように書きます）")) (pure . DimV) (parseDim t)
+  fromValue _ = fail "長さは文字列で書きます"
 
 unDim :: Maybe DimV -> Maybe Dim
 unDim = fmap (\(DimV d) -> d)
@@ -534,7 +534,7 @@ enumKey :: Text -> [Text] -> ParseTable l (Maybe Text)
 enumKey k allowed = do
   v <- optKey k
   case v of
-    Just x | x `notElem` allowed -> fail ("unknown value " <> T.unpack x <> " for " <> T.unpack k)
+    Just x | x `notElem` allowed -> fail (T.unpack (k <> " に使えない値です: " <> x <> "（" <> T.intercalate ", " allowed <> " のどれか）"))
     _ -> pure v
 
 instance FromValue Grid where
@@ -546,7 +546,7 @@ instance FromValue Grid where
     cols <- fromMaybe 1 <$> optKey "columns"
     gap <- dimKey "column-gap"
     pos <- reqKey "position"
-    when (cols > 1 && isNothing gap) $ fail "column-gap is required when columns > 1"
+    when (cols > 1 && isNothing gap) $ fail "columns が 2 以上のときは column-gap が要ります"
     let Position2 t g = pos
     pure (Grid fs ch ls lp cols gap t g)
 
@@ -592,10 +592,10 @@ instance FromValue ParaStyleDef where
     s <- dimKey "size"
     lb <- enumKey "line-breaks" ["join", "keep"]
     sb <- optKey "space-between"
-    when (maybe False (< 0) sb) $ fail "space-between must be 0 or more"
+    when (maybe False (< 0) sb) $ fail "space-between は 0 以上です"
     ind <- dimKey "indent"
     fli <- optKey "first-line-indent"
-    fli' <- traverse (\v -> maybe (fail ("dimension such as 1zw or -1zw: " <> T.unpack v)) pure (parseSignedDim v)) fli
+    fli' <- traverse (\v -> maybe (fail ("長さの書き方が不正です: " <> T.unpack v <> "（1zw や -1zw のように書きます）")) pure (parseSignedDim v)) fli
     rs <- optKey "regex-styles"
     pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs)
 
@@ -725,7 +725,7 @@ instance FromValue Swatch where
     cs <- reqKey "cmyk"
     case cs of
       [c, m, y, k] | all (\x -> x >= 0 && x <= 100) cs -> pure (Swatch (c, m, y, k))
-      _ -> fail "cmyk must be four integers from 0 to 100"
+      _ -> fail "cmyk は 0 から 100 までの整数四つです"
 
 newtype Numbers = Numbers (Maybe Text)
 
@@ -806,15 +806,14 @@ instance FromValue Style where
     headings <- fromMaybe Map.empty <$> optKey "headings"
     comp <- fromMaybe defaultComposition <$> optKey "composition"
     Numbers nv <- fromMaybe (Numbers Nothing) <$> optKey "numbers"
-    retiredEmphasis <- optKey "emphasis"
-    when (isJust (retiredEmphasis :: Maybe EmphasisV)) $ fail "[emphasis] は廃止しました"
+    -- the value of a retired table fails with how to rewrite it
+    (_ :: Maybe EmphasisV) <- optKey "emphasis"
     Notes np <- fromMaybe (Notes Nothing) <$> optKey "notes"
     side <- optKey "sidenotes"
     Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
     masters <- fromMaybe Map.empty <$> optKey "masters"
-    retiredVerse <- optKey "verse"
-    when (isJust (retiredVerse :: Maybe VerseV)) $ fail "[verse] は廃止しました"
+    (_ :: Maybe VerseV) <- optKey "verse"
     TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
     ListsSec lists <- fromMaybe (ListsSec defaultListStyle) <$> optKey "lists"
     hs <- traverse headingLevel (Map.toList (headings :: Map Text HeadingStyle))
@@ -843,7 +842,7 @@ instance FromValue Style where
         "1" -> pure (1, v)
         "2" -> pure (2, v)
         "3" -> pure (3, v)
-        _ -> fail ("heading level must be 1, 2 or 3: " <> T.unpack k)
+        _ -> fail ("見出しの段は 1、2、3 のどれかです: " <> T.unpack k)
 
 negativeDim :: Dim -> Bool
 negativeDim = \case

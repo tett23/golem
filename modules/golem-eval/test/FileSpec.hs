@@ -128,6 +128,9 @@ tests =
         errs "[= y]\n\n@set y = 1\n" @?= ["G0202"],
       testCase "imports bind a namespace" $
         paraOf "@import common/values.gm as v\n\n[= v.price + 1]\n" @?= ["101"],
+      testCase "an expression as the path of @import is G0309 (golem-project ADR 0006)" $ do
+        errs "@import [= 1] as x\n" @?= ["G0309"]
+        errs "@import \"common/values.gm\" as v\n" @?= [],
       testCase "doc becomes a deferred expression; forbidden in headings" $ do
         paraOf "@set n = 1\n\n[= doc.chapters.count + n]\n" @?= ["<deferred>"]
         errs "# 全 [= doc.chapters.count] 章\n" @?= ["G0214"]
