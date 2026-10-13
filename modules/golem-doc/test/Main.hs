@@ -12,6 +12,7 @@ import Golem.Doc.Validate
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
 import Hedgehog
+import ListMarkersSpec qualified
 import System.Directory (findExecutable)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
@@ -38,7 +39,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, AssembleSpec.tests]
+  testGroup "golem-doc" [cbor, AssembleSpec.tests, ListMarkersSpec.tests]
 
 cbor :: TestTree
 cbor =

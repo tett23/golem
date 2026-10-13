@@ -8,6 +8,7 @@ module Golem.Doc.IR
     Block (..),
     BlockBody (..),
     ListItem (..),
+    itemNumbers,
     DefGroup (..),
     Alignment (..),
     HeadingAttrs (..),
@@ -27,6 +28,7 @@ module Golem.Doc.IR
   )
 where
 
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Void (Void)
 import Golem.Parser.AST qualified as AST
@@ -67,6 +69,15 @@ data ListItem = ListItem
     itemBlocks :: ![Block]
   }
   deriving stock (Eq, Show)
+
+{- | The numbers of the items of a numbered list (golem-driver ADR 0013):
+an item with @number N is N, and the items after it count on from N.
+-}
+itemNumbers :: [ListItem] -> [Integer]
+itemNumbers = go 1
+  where
+    go _ [] = []
+    go next (ListItem n _ : rest) = let k = fromMaybe next n in k : go (k + 1) rest
 
 data DefGroup = DefGroup
   { dgTerms :: [[Inline]],
