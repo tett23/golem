@@ -75,6 +75,12 @@ tests han sans serif =
             -- half to even
             unitsToSp 2 1 1 @?= 0
             unitsToSp 2 3 1 @?= 2,
+          testCase "the centre of the ideographic em box lies within the extents (golem-driver ADR 0015)" $ do
+            let (asc, desc, _) = fontExtents han
+                c = fontEmBoxCentral han
+            assertBool (show (desc, c, asc)) (desc < c && c < asc)
+            -- the subset has no BASE table: HarfBuzz takes the middle of the hhea ascender (1160) and descender (-320)
+            c @?= 420,
           testCase "metrics come from FreeType in font units" $ do
             fontUnitsPerEm han @?= 1000
             case glyphMetrics han (head' [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "日")]) of

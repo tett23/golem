@@ -15,6 +15,10 @@ int golem_font_is_cff(golem_font *f);
 int golem_font_num_glyphs(golem_font *f);
 /* ascender, descender, cap height; font units */
 void golem_font_extents(golem_font *f, int32_t *asc, int32_t *desc, int32_t *cap);
+/* The height of the centre of the ideographic em box above the baseline
+   (HarfBuzz's ideoEmboxCentral baseline, horizontal, script hani); font
+   units. Falls back to HarfBuzz's estimate without a BASE table. */
+int golem_font_embox_central(golem_font *f);
 /* advance (h, v), bbox (xmin, ymin, xmax, ymax); font units. 0 on success. */
 int golem_font_glyph_metrics(golem_font *f, uint32_t gid, int32_t *out6);
 
