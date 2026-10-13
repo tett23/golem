@@ -627,6 +627,8 @@ EPUB と HTML は `bleed` を無視する。
 `style.toml` が指すファイル（`[fonts]` のフォントと、`[color]` の `intent` の ICC プロファイル）の存在は、`style.toml` を読むときには検査しない。
 ファイルの存在は、そのファイルを使うターゲットのビルドと `golem check` でだけ検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
 PDF は、使う役割のフォントのファイルがなければ G0802、ICC プロファイルがなければ G0806 のエラーとし、PDF を書かない。
+`[fonts]` に役割が一つもないか、本文の役割に `ja` も `latin` もなければ、PDF は G0807 のエラーとし、レイアウトに進まない（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
+G0807 は設定の欠けであり、ファイルを置いても直らないので、G0802 と分ける。
 HTML と EPUB は、欠けたフォントを同梱せず、`@font-face` も書かずに出力し、G0310 を報告する。
 ブラウザーは `font-family` の並びの残りで組むので、出力は読める。
 G0310 は dev のプロファイルでは警告、prod のプロファイルではエラーであり、prod では HTML と EPUB を書かない。
@@ -672,6 +674,7 @@ HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS 
 どちらも行の始まりの側から測るので、縦組みでは天からの距離になる。
 `zw` は段落の文字の大きさを一字とする。
 `indent` と `first-line-indent` の和が負になる段落スタイルはエラー（G0312）、字下げの後の行長が段落の文字の大きさの 8 字分に満たない段落スタイルは PDF でエラー（G0725）とする。
+G0725 は `style.toml` だけで決まるので、PDF をターゲットに含むときは `golem check` も報告し、位置は `style.toml` の先頭とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 `line-breaks = "keep"` の段落では、改行で区切った各行が段落の始まりと同じく最初の行の字下げを受け、折り返した部分は `indent` の位置から始まる。
 組み込みの `verse` は `indent = "2zw"`、`first-line-indent = "-2zw"` で、各行の折り返した部分をぶら下げる。
 字下げは、文書の最上位の段落、`@style` の本体の段落、定義リストの説明の段落に効き、リストの項目の中の段落と、図版のキャプション、脚注と傍注の本文、表、見出し、目次、索引、参考文献には効かない。
@@ -761,6 +764,7 @@ PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と
 
 柱[^running-head]とノンブルは、マスターページ（`[masters.<名前>]`）の `running-head` と `folio` で置く（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
 `running-head` の `position` は柱の位置であり、`folio` の `position` と同じ値（`"top-outside"` など）をとる。
+`position` は `top-outside`、`top-inside`、`top-center`、`bottom-outside`、`bottom-inside`、`bottom-center` のどれかであり、ほかの値は `style.toml` を読むときに G0318 とし、位置は `position` の値の位置とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 柱の内容は、`content` に両方のページの値を一つ書くか、`even`（偶数ページ）と `odd`（奇数ページ）の両方に書く。
 偶数と奇数は、ノンブルと同じくページの通し番号で決める。
 
@@ -873,7 +877,10 @@ OpenType の機能（縦書き用の字形、プロポーショナルな字詰�
 HTML と EPUB では、CSS の `text-orientation` の既定の `mixed` に任せる。
 役割より細かく書体を変えたい場合は、`style.toml` に文字スタイルを定義し、本文から適用する。
 
-ライセンスで埋め込みが禁止されているフォントを使った場合は、エラーとする。
+ライセンスで埋め込みが禁止されているフォントを使った場合は、エラー（G0804）とする。
+OS/2 の `fsType` は OpenType の仕様のとおりに読み、ビット 1（制限付きのライセンス）がビット 2 とビット 3 なしに立っている場合、ビット 8（サブセット化の禁止）が立っている場合、ビット 9（ビットマップの埋め込みだけを許す）が立っている場合に埋め込みを禁じているとみなす（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
+Golem は常にサブセットを埋め込むので、サブセット化を禁じるフォントは埋め込めない。
+読み込めないフォント（G0803）と埋め込めないフォント（G0804）は、パスごとにすべて報告する。
 
 PDF は、本文の役割と、見出しの `font`、文字スタイルの `font`、段落スタイル（組み込みの `caption` と `sidenote` を含む）の `font` が指す役割のフォントだけを読み込む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 使わない役割のフォントのライセンスでビルドを止めないためである。
@@ -908,6 +915,7 @@ PDF では、図番号とキャプションを、画像の下（縦組みでは�
 脇の行は図版の直後の段落に限り、見出しなどの段落でないブロックが来たら、除外領域の残りを空けたまま、その後から組む。
 図版がページの残りに収まらない場合は、脇の行とともに次のページの先頭に送り、前のページの残りは空白にする。
 `width` が寸法として読めない場合と、脇の行の長さが本文の文字の大きさの 8 字分に満たない場合はエラー（G0722）、除外領域が一ページの行数を超える場合はエラー（G0723）とする。
+脇の段落で、脇の行の長さから字下げを引いた値が 0 以下になる行があれば、その段落を指すエラー（G0728）とする（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 
 ## 表
 
@@ -1187,7 +1195,8 @@ PDF では、傍注を版面の外の傍注欄に置く。
 
 v1 では、傍注は横組みに限る。
 縦組みの書籍の傍注は配置の慣習が横組みと異なり、それを決める材料がまだないためである。
-縦組みで傍注を使った場合はコンパイルエラーとする。
+縦組みで傍注を使った場合はコンパイルエラー（G0732）とする。
+段落の外の傍注（図版のキャプション、脚注の本文の中のものなど）も、傍注一つにつき一つ報告する（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 
 PDF では、さらに次の二つをコンパイルエラーとする（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。
 
@@ -1224,7 +1233,7 @@ PDF の索引は、一つの項目を一つの段落として本文と同じ書�
 - ページ番号は昇順に並べ、同じページは一度だけ出す。区切りは横組みでは `, `、縦組みでは `、` とする。
 - ページ番号は数として扱うので、縦組みでは `[numbers]` の `vertical` の表記（既定では漢数字）になる。
 - 印のページは、印を含む行が置かれたページとする。脚注と傍注の本文の中の印は、その注の印を含む本文の行のページ、図版のキャプションの中の印は図版を置いたページとする。
-- 印のページは、ページ番号への参照と同じくレイアウトを繰り返して収束させ、上限の回数までに収束しなければ G0721 とする。
+- 印のページは、ページ番号への参照と同じくレイアウトを繰り返して収束させ、上限の回数までに収束しなければ G0721 とする。G0721 は、ページの変わり続けたラベルと索引の語を並べ、最初のものの位置（ラベルを付けたブロックか索引の印）を指す（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 
 PDF の本文の引用の印は、HTML と同じく番号（`[1]`）を出し、`@bibliography` の位置に `[n] ` と書誌を最初に引用された順に並べる。
 
@@ -1357,6 +1366,8 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 日本式のトンボは仕上がりの線と塗り足しの線の間隔で塗り足しを示すので、塗り足しが 0 ならエラー（G0702）とし、PDF を出力しない。
 G0702 は PDF をターゲットに含むときにだけ出し、位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
 `golem check` も、マニフェストのターゲットに PDF があれば G0702 を検査する。
+同じく、`style.toml` だけで決まる版面の誤り（G0701）、段落スタイルの字下げの誤り（G0725）、本文のフォントの設定の欠け（G0807）も、PDF をターゲットに含む `golem check` が報告する（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
+これらの位置は、`style.toml` の先頭（`style.toml` がなければマニフェストの先頭）とする。
 `golem lint`、`golem fmt`、LSP は `--marks` を持たない。
 
 `golem new` の雛形は、そのまま四つのターゲットをすべてビルドできる（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
