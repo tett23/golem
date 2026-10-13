@@ -69,6 +69,7 @@ import Golem.Doc.IR
 import Golem.Doc.ListMarkers
 import Golem.Doc.Numerals (formatNumber)
 import Golem.Driver.Version (golemVersion)
+import Golem.Layout.Aki (AkiSet, resolveAkiSet)
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
@@ -769,8 +770,16 @@ composeEnv style geom fonts assumed role fs =
             Just "none" -> MarkerNone
             _ -> MarkerNumber,
           -- Latin words: US English patterns (golem-layout ADR 0001)
-          cePatterns = Just englishUS
+          cePatterns = Just englishUS,
+          -- the set of body; a paragraph, a caption and a sidenote take their style's (docs/adr ADR 0019)
+          ceAkiSet = akiSetOf style Nothing
         }
+
+{- | The aki set of a paragraph style (docs/adr ADR 0019): its aki-set,
+inherited through based-on; Nothing is body.
+-}
+akiSetOf :: Style -> Maybe Text -> AkiSet
+akiSetOf style st = resolveAkiSet (stAkiSets style) (fromMaybe defaultAkiSetName (paraStyle style st >>= psAkiSet))
 
 {- | The placement of ruby from [composition.ruby] (golem-layout ADR
 0009); @zw@ is the size of the paragraph.
@@ -810,7 +819,9 @@ data Unit = Unit
     -- | the numbers of the lists around the unit, outermost first; lists are numbered from 0 in document order (golem-driver ADR 0013)
     uLists :: [Int],
     -- | the marker of the first paragraph of a list item
-    uMarker :: Maybe [Inline]
+    uMarker :: Maybe [Inline],
+    -- | the paragraph style of a paragraph, whose aki set it is set with; Nothing is body (docs/adr ADR 0019)
+    uParaStyle :: Maybe Text
   }
 
 -- | The indent of the lines of a paragraph in sp (docs/adr ADR 0006). inFirst may be negative; inStart + inFirst >= 0.
@@ -881,11 +892,11 @@ unitsOf book geom styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs bo
       let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx prev b <>) <$> block style ctx k b) n (zip (Nothing : map Just bs) bs)
        in (n', concat uss)
     gapBefore style ctx (Just (Block _ _ (Paragraph s1 _))) (Block sp _ (Paragraph s2 _))
-      | s1 == s2, Just g <- paraStyle style s2 >>= psSpaceBetween, g > 0 = [Unit (UGap g) Nothing [] sp (bodyFace style) style ctx Nothing]
+      | s1 == s2, Just g <- paraStyle style s2 >>= psSpaceBetween, g > 0 = [Unit (UGap g) Nothing [] sp (bodyFace style) style ctx Nothing Nothing]
     gapBefore _ _ _ _ = []
     bodyFace style = (bodyRole style, fs)
     block style ctx n (Block sp lbl body) =
-      let unit kind l is face = Unit kind l is sp face style ctx Nothing
+      let unit kind l is face = Unit kind l is sp face style ctx Nothing Nothing
           plainUnit kind l is = unit kind l is (bodyFace style)
        in case body of
             -- a style that keeps its lines: a unit for each line, each indented as a
@@ -896,7 +907,7 @@ unitsOf book geom styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs bo
               let (face, ind) = paraLook style geom st
                   keeps = (paraStyle style st >>= psLineBreaks) == Just KeepLines
                   parts = if keeps then splitBreaks is else [is]
-               in (n, [unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face | (i, part) <- zip [0 :: Int ..] parts])
+               in (n, [(unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face) {uParaStyle = st} | (i, part) <- zip [0 :: Int ..] parts])
             Heading l attrs is ->
               let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
                   title = maybe [] (\h -> [txt (h <> "　")]) (if haNoNumber attrs then Nothing else num) <> is
@@ -1007,7 +1018,7 @@ buildFlow inp geom fonts images assumed = do
       -- the character styles of the unit's document (docs/adr ADR 0014)
       styledEnv st e = e {ceRestyle = restyle st}
       -- the marker width M of each list, and the indents of the units in lists (golem-driver ADR 0013)
-      widths = listWidths (\u -> styledEnv (uStyle u) (uncurry envFor (uFace u))) fs (lsGap (stLists style)) rawUnits
+      widths = listWidths (\u -> (styledEnv (uStyle u) (uncurry envFor (uFace u))) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u)}) fs (lsGap (stLists style)) rawUnits
       widthOfList lid = Map.findWithDefault 0 lid widths
       -- O: the widths of the lists around a unit; Mi: the width of the innermost one
       outerOf u = sum (map widthOfList (uLists u))
@@ -1042,8 +1053,8 @@ buildFlow inp geom fonts images assumed = do
            in boxes <> [Box (innerOf u - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0)]
       compose lineWidth u =
         let (role, size) = faceOf u
-            env = styledEnv (uStyle u) (envFor role size)
-            bodyEnv' = styledEnv (uStyle u) bodyEnv
+            env = (styledEnv (uStyle u) (envFor role size)) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u)}
+            bodyEnv' = (styledEnv (uStyle u) bodyEnv) {ceAkiSet = akiSetOf (uStyle u) Nothing}
             marker = markerItems env u
             -- the anchors count the items of the text; the marker comes first
             shift = length marker
@@ -1062,7 +1073,7 @@ buildFlow inp geom fonts images assumed = do
       snMeasure = maybe 0 (rectW . fst) (pgSidenotes geom)
       sidenoteLines st n snBody =
         let (snRole, snSize', _) = sidenoteMetrics st geom
-            snEnv = styledEnv st (envFor snRole snSize')
+            snEnv = (styledEnv st (envFor snRole snSize')) {ceAkiSet = akiSetOf st (Just "sidenote")}
             snParams = params {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition style))}
             prefix = case ceSidenoteMarker bodyEnv of
               MarkerNumber -> [Text (mkSpan (FileId 0) 0 0) (T.pack (show n) <> " ")]
@@ -1089,7 +1100,7 @@ buildFlow inp geom fonts images assumed = do
             -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
             (captionRole, cs) = paraFace (uStyle u) geom "caption"
             captionParams = params {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
-            (captionItems, captionAnchors) = composeInlines (styledEnv (uStyle u) (envFor captionRole cs)) captionInlines
+            (captionItems, captionAnchors) = composeInlines ((styledEnv (uStyle u) (envFor captionRole cs)) {ceAkiSet = akiSetOf (uStyle u) (Just "caption")}) captionInlines
             caption = if null captionInlines then [] else brLines (breakParagraph captionParams (const alongSp) captionItems)
             captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
             n = length caption
