@@ -30,6 +30,7 @@ import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
+import Golem.Doc.IR (BreakKind (..))
 import Golem.Syntax (SrcSpan)
 
 data NoteBody = NoteBody {nbId :: !Int, nbLines :: !Int}
@@ -63,6 +64,8 @@ data Flow
     nothing at the top of a page
     -}
     FSpace !Int
+  | -- | a forced break before what follows (docs/adr ADR 0017)
+    FBreak !BreakKind
   deriving stock (Eq, Show)
 
 data Slotted
@@ -133,18 +136,36 @@ data St = St
     sTables :: ![TableSegment],
     sDone :: ![PageOut],
     sDeferred :: ![Flow],
-    sPendingNotes :: ![(Int, Int, Int)] -- note id, next line, remaining
+    sPendingNotes :: ![(Int, Int, Int)], -- note id, next line, remaining
+
+    -- | forced breaks not applied yet, in the order written (docs/adr ADR 0017)
+    sBreaks :: ![BreakKind]
   }
 
 -- | Lays the flow out on pages of @capacity@ grid lines.
 paginate :: Int -> [Flow] -> [PageOut]
 paginate capacity flows =
-  let st0 = St 1 0 0 [] [] [] [] [] [] [] []
+  let st0 = St 1 0 0 [] [] [] [] [] [] [] [] []
       final = closePage (go st0 flows)
    in reverse (sDone final)
   where
-    go st [] = flushDeferred st
-    go st (f : rest) = go (place st f (nextNeed rest)) rest
+    -- breaks left at the end of the book are dropped (docs/adr ADR 0017)
+    go st [] = flushDeferred st {sBreaks = []}
+    go st (f : rest) = go (place (ready f st) f (nextNeed rest)) rest
+    -- the breaks written so far apply before anything but another break
+    ready = \case
+      FBreak _ -> id
+      _ -> applyBreaks
+    applyBreaks st = foldl' applyBreak st {sBreaks = []} (sBreaks st)
+    applyBreak st = \case
+      BreakPage -> breakPage st
+      BreakRecto -> parityStart odd st
+      BreakVerso -> parityStart even st
+      BreakColumn -> breakPage st -- docs/adr ADR 0018 replaces this with the next column
+    breakPage st
+      -- the page is closed even when empty; an empty page is blank
+      | isEmpty st = blankPage st
+      | otherwise = newPage st
     nextNeed = \case
       (FParagraph ls : _) -> min 2 (length ls)
       (FContinued ls : _) -> min 2 (length ls)
@@ -154,6 +175,7 @@ paginate capacity flows =
       (FFigure _ n _ _ : _) -> min n capacity
       (FWrapped _ n _ _ ls : _) -> max n (length ls)
       (FSpace _ : _) -> 0
+      (FBreak _ : _) -> 0
       [] -> 0
     free st = capacity - sUsed st - sNoteLines st
     isEmpty st = sUsed st == 0 && null (sNotes st)
@@ -165,7 +187,7 @@ paginate capacity flows =
          in placeTable st1 i h rows
       FDefTerm ls -> placeLines (keep st (length ls + need)) True ls
       FHeading _ recto n ls ->
-        let st1 = if recto then rectoStart st else keep st (n + need)
+        let st1 = if recto then parityStart odd st else keep st (n + need)
             st2 = if n <= free st1 || isEmpty st1 then st1 else newPage st1
          in putBlock st2 n ls
       FFigure i n labels marks
@@ -176,13 +198,15 @@ paginate capacity flows =
             st1 = if size <= free st || isEmpty st then st else newPage st
             st2 = putSlot st1 0 (SWrapped i) labels marks
          in (placeLines st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines st2 False beside))}
+      FBreak k -> st {sBreaks = sBreaks st <> [k]}
       FSpace n
         | sUsed st == 0 -> st
         | otherwise -> st {sUsed = sUsed st + max 0 (min n (free st))}
     keep st n = if n > free st && not (isEmpty st) then newPage st else st
-    rectoStart st =
+    -- start on a page whose number satisfies p, after a blank page if needed
+    parityStart p st =
       let st1 = if isEmpty st then st else newPage st
-       in if even (sPage st1) then blankPage st1 else st1
+       in if p (sPage st1) then st1 else blankPage st1
     blankPage st = st {sDone = PageOut (sPage st) True [] [] [] [] [] : sDone st, sPage = sPage st + 1}
     putSlot st n s labels marks = st {sSlots = sSlots st <> [(sUsed st, s)], sUsed = sUsed st + n, sLabels = sLabels st <> labels, sMarks = sMarks st <> marks}
     -- lines of one paragraph; orphans and widows are moved

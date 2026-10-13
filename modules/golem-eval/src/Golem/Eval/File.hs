@@ -20,7 +20,7 @@ where
 import Control.Monad (forM, unless, when)
 import Control.Monad.State.Strict
 import Data.Char (isAsciiLower, isDigit)
-import Data.List (nub)
+import Data.List (nub, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
@@ -30,10 +30,11 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Eval.Expr
+import Golem.Eval.Settings
 import Golem.Eval.Value
 import Golem.Parser.AST qualified as A
 import Golem.Parser.SourceSettings
-import Golem.Project.Style (LineBreaks (..))
+import Golem.Project.Style (LineBreaks (..), LocalStyles (..), Style, noLocalStyles, paraLineBreaks, withLocalStyles)
 import Golem.Syntax
 
 -- | Plugin commands and filters, provided by golem-plugin.
@@ -64,7 +65,9 @@ data EvalContext = EvalContext
     ctxAssets :: !(Map FilePath (Maybe Text)), -- referenced files; Nothing = binary but present
     ctxPlugins :: !PluginHook,
     -- | how the file is read (docs/adr ADR 0013)
-    ctxSource :: !SourceSettings
+    ctxSource :: !SourceSettings,
+    -- | style.toml as read, which the @style-def of a file is laid over (docs/adr ADR 0014)
+    ctxStyle :: !Style
   }
 
 data Usage = Usage
@@ -81,7 +84,9 @@ data EvalResult = EvalResult
     erUsage :: !Usage,
     erDiagnostics :: ![Diagnostic],
     -- | the settings that applied to the file (docs/adr ADR 0013)
-    erSource :: !SourceSettings
+    erSource :: !SourceSettings,
+    -- | the styles the file defines (docs/adr ADR 0014)
+    erStyles :: !LocalStyles
   }
 
 data St = St
@@ -122,10 +127,16 @@ reservedNames :: [Text]
 reservedNames = ["doc", "meta", "true", "false", "nil"]
 
 evalFile :: EvalContext -> A.File -> EvalResult
-evalFile ctx (A.File fid blocks0) =
-  let blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) blocks0)
-      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 []
-      (bs, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
+evalFile ctx0 (A.File fid blocks0) =
+  let -- the file settings (docs/adr ADR 0014): @manifest over the [source] of the context, and @style-def
+      (header, rest) = fileHeader blocks0
+      (source, settingDiags) = fileSettings sourceKeys (ctxSource ctx0) header
+      (local, styleDiags) = fileStyles (ctxStyle ctx0) header
+      ctx = (withFileStyles local ctx0) {ctxSource = source}
+      blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
+      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags)
+      (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
+      (bs, breakDiags) = nestedBreaks bs0
       doc0 = Document fid bs
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
         Left ds -> (doc0, ds)
@@ -134,8 +145,23 @@ evalFile ctx (A.File fid blocks0) =
         { erDocument = doc,
           erExports = stVars st,
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
-          erDiagnostics = stDiags st <> filterDiags,
-          erSource = ctxSource ctx
+          erDiagnostics = stDiags st <> breakDiags <> filterDiags,
+          erSource = ctxSource ctx,
+          erStyles = local
+        }
+
+{- | The context with the styles of the file over those of style.toml
+(docs/adr ADR 0014): its character styles added, and whether each
+paragraph style keeps its lines resolved again, as an override may change
+the styles based on it.
+-}
+withFileStyles :: LocalStyles -> EvalContext -> EvalContext
+withFileStyles local ctx
+  | local == noLocalStyles = ctx
+  | otherwise =
+      ctx
+        { ctxCharStyles = Set.union (Map.keysSet (lsCharStyles local)) (ctxCharStyles ctx),
+          ctxParaStyles = Map.union (paraLineBreaks (withLocalStyles (ctxStyle ctx) local)) (ctxParaStyles ctx)
         }
 
 -- ------------------------------------------------------------------ newlines
@@ -333,10 +359,14 @@ standalone ctx sp (A.Located nsp name) args body = case name of
       _ -> err "G0225" sp "@toc の depth は 1 から 3 の整数です" >> pure []
   "index" -> pure [block sp (ChannelOutput IndexOutput)]
   "bibliography" -> pure [block sp (ChannelOutput BibliographyOutput)]
+  "page-break" -> forcedBreak sp name args body
+  "column-break" -> forcedBreak sp name args body
   "figure" -> figure ctx sp args body
   "table" -> csvTable ctx sp args
   "listing" -> listing ctx sp args
   "style" -> styleBody ctx sp (maximum (spanEnd nsp : map (spanEnd . A.locSpan) args)) args body
+  -- the file settings are read before the blocks; elsewhere they are errors (docs/adr ADR 0014)
+  _ | name `elem` settingCommands -> misplacedSetting sp >> pure []
   _
     | name `elem` attributeCommands -> err "G0210" sp ("@" <> name <> " の後にブロックがありません") >> pure []
     | otherwise -> err "G0209" nsp ("未知のブロックコマンドです: @" <> name) >> pure []
@@ -346,7 +376,39 @@ it, a last block command that is not an attribute (a figure, @style with a
 body) is the target (docs/adr ADR 0005).
 -}
 attributed :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
-attributed ctx sp cmds target = case target of
+attributed ctx sp cmds0 target
+  -- a file setting inside an attribute group is out of place (docs/adr ADR 0014)
+  | any isSettingCommand cmds0 = do
+      mapM_ (misplacedSetting . A.locSpan) (filter isSettingCommand cmds0)
+      case (filter (not . isSettingCommand) cmds0, target) of
+        ([], Just t) -> evalBlock ctx t
+        ([], Nothing) -> pure []
+        (cmds, _) -> attributed ctx sp cmds target
+  | otherwise = attributedWith ctx sp cmds0 target
+
+-- | G0249: @manifest or @style-def after the file settings (docs/adr ADR 0014).
+misplacedSetting :: SrcSpan -> M ()
+misplacedSetting sp = err "G0249" sp "@manifest と @style-def はファイルの最初に置きます"
+
+attributedWith :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
+attributedWith ctx sp cmds target
+  -- the breaks of the group go before its target; the attributes skip them (docs/adr ADR 0017)
+  | (breaks@(_ : _), rest) <- partition isBreakCommand cmds = do
+      bs <- concat <$> mapM (evalBlock ctx) breaks
+      others <- case (rest, target) of
+        ([], Just t) -> evalBlock ctx t
+        ([], Nothing) -> pure []
+        _ -> attributedWith ctx sp rest target
+      pure (bs <> others)
+  | otherwise = attributedGroup ctx sp cmds target
+
+isBreakCommand :: A.Located A.Block -> Bool
+isBreakCommand = \case
+  A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["page-break", "column-break"]
+  _ -> False
+
+attributedGroup :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
+attributedGroup ctx sp cmds target = case target of
   Nothing
     | (not . any isAttr) cmds -> concat <$> mapM (evalBlock ctx) cmds
     | (lastCmd : before) <- reverse cmds,
@@ -384,6 +446,43 @@ attributed ctx sp cmds target = case target of
     joinTarget = \case
       A.Located tsp (A.Paragraph is) -> A.Located tsp (A.Paragraph (joinSoftBreaks is))
       other -> other
+
+-- | @page-break and @column-break (docs/adr ADR 0017).
+forcedBreak :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+forcedBreak sp name args body
+  | not (null body) = err "G0258" sp "@page-break と @column-break は本体を持てません" >> pure []
+  | otherwise = case (name, map A.locValue args) of
+      ("page-break", []) -> ok BreakPage
+      ("page-break", [A.Positional (A.Word "recto")]) -> ok BreakRecto
+      ("page-break", [A.Positional (A.Word "verso")]) -> ok BreakVerso
+      ("column-break", []) -> ok BreakColumn
+      ("column-break", _) -> err "G0258" sp "@column-break は引数を取りません" >> pure []
+      _ -> err "G0258" sp "@page-break の引数は recto か verso です" >> pure []
+  where
+    ok k = pure [block sp (ForcedBreak k)]
+
+{- | Forced breaks below the top of the document are dropped with G0259
+(docs/adr ADR 0017).
+-}
+nestedBreaks :: [Block] -> ([Block], [Diagnostic])
+nestedBreaks bs = let (ds, bs') = concat <$> traverse top bs in (bs', ds)
+  where
+    top b = case blockBody b of
+      ForcedBreak _ -> ([], [b])
+      _ -> inner b
+    -- the diagnostics and what is left of a block below the top
+    inner :: Block -> ([Diagnostic], [Block])
+    inner b@(Block sp lbl body) = case body of
+      ForcedBreak _ -> ([diagnostic "G0259" Error sp "@page-break と @column-break は文書の最上位にだけ置けます"], [])
+      BulletList items -> rebuild BulletList <$> traverse item items
+      OrderedList items -> rebuild OrderedList <$> traverse item items
+      DefList gs -> rebuild DefList <$> traverse (\(DefGroup ts ds) -> DefGroup ts <$> traverse nested ds) gs
+      FigureBlock f -> rebuild (\c -> FigureBlock f {figCaption = c}) <$> nested (figCaption f)
+      _ -> ([], [b])
+      where
+        rebuild f x = [Block sp lbl (f x)]
+    item (ListItem n bs') = ListItem n <$> nested bs'
+    nested bs' = concat <$> traverse inner bs'
 
 applyAttr :: EvalContext -> (Maybe Text, BlockBody) -> A.Located A.Block -> M (Maybe Text, BlockBody)
 applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
@@ -457,7 +556,7 @@ styledParagraph :: EvalContext -> SrcSpan -> Maybe Text -> [A.Located A.Inline] 
 styledParagraph ctx sp mname is = case mname of
   Nothing -> joined Nothing
   Just name -> case Map.lookup name (ctxParaStyles ctx) of
-    Nothing -> err "G0247" sp ("style.toml にない段落スタイルです: " <> name) >> joined Nothing
+    Nothing -> err "G0247" sp ("定義されていない段落スタイルです: " <> name) >> joined Nothing
     Just JoinLines -> joined (styleOf name)
     Just KeepLines -> do
       ls <- filter (not . null . snd) <$> mapM (\(bsp, l) -> (bsp,) <$> evalInlines ctx False (trimLine l)) (linesOf Nothing is)
@@ -477,7 +576,7 @@ unknownParaStyles :: EvalContext -> Document -> [Diagnostic]
 unknownParaStyles ctx (Document _ bs) = concatMap go bs
   where
     go (Block sp _ body) = case body of
-      Paragraph (Just n) _ | Map.notMember n (ctxParaStyles ctx) -> [diagnostic "G0247" Error sp ("style.toml にない段落スタイルです: " <> n)]
+      Paragraph (Just n) _ | Map.notMember n (ctxParaStyles ctx) -> [diagnostic "G0247" Error sp ("定義されていない段落スタイルです: " <> n)]
       BulletList items -> concatMap (concatMap go . itemBlocks) items
       OrderedList items -> concatMap (concatMap go . itemBlocks) items
       DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
@@ -713,7 +812,7 @@ builtin ctx inHeading sp name args slots = do
       _ -> err "G0217" sp "color にはスウォッチの名前を一つ書きます" >> pure []
     "style" -> case pos of
       [v] | argText v `Set.member` ctxCharStyles ctx -> oneSlot (pure . pure . CharStyle sp (argText v))
-      [v] -> err "G0218" sp ("style.toml にない文字スタイルです: " <> argText v) >> pure []
+      [v] -> err "G0218" sp ("定義されていない文字スタイルです: " <> argText v) >> pure []
       _ -> err "G0218" sp "style には文字スタイルの名前を一つ書きます" >> pure []
     "tcy" -> oneSlot $ \case
       [Text _ t] -> pure [Tcy sp t]
