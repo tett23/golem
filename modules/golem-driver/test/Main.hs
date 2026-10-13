@@ -22,6 +22,7 @@ import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..), plainLook)
 import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..), markPages)
+import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.Pdf (Font (..), FontProgram (..), spToPt)
@@ -272,6 +273,7 @@ tests =
       testGroup "PDF index and bibliography (ADR 0007)" indexTests,
       testGroup "PDF tables (ADR 0008)" tableTests,
       testGroup "PDF table of contents (ADR 0009)" tocTests,
+      testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup
         "public-domain books"
@@ -1032,7 +1034,7 @@ indexTests =
 
 -- | A line of one box of a width (a page number in the tests of tocPage).
 oneBoxLine :: Integer -> Line
-oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)))] 0 w 0 (0, 0) False
+oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0)] 0 w 0 (0, 0) False (0, 0)
 
 -- | fs = 10pt, measure = 120pt, W = 15pt, g = 5pt, u = 10pt.
 tocGeom :: Bool -> TocGeometry
@@ -1148,6 +1150,60 @@ tocTests =
       a @?= b
       a @?= c
       qpdfCheck a
+  ]
+
+-- | Builds a one-chapter project to HTML and returns the chapter and the style sheet.
+htmlMini :: BS.ByteString -> T.Text -> IO (T.Text, T.Text)
+htmlMini style source = withSystemTempDirectory "golem-html" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
+  BS.writeFile (tmp </> "style.toml") style
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+  assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+  page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+  css' <- TIO.readFile (tmp </> "build/html/style.css")
+  pure (page, css')
+
+-- | The x of each glyph of a size, as numbers.
+glyphXs :: BS.ByteString -> BS.ByteString -> [Double]
+glyphXs size content = [read (BC.unpack (dX d)) | d <- drawnGlyphs content, dSize d == size]
+
+rubyTests :: [TestTree]
+rubyTests =
+  [ testCase "the reading of a group ruby is drawn where placeRuby puts it" $ do
+      let source = "[ruby: 五月雨|さみだれ]が降る。\n"
+          drawnAt align = do
+            content <- miniPdf fakeProvider True (horizontalStyle <> "\n[composition.ruby]\ngroup-align = \"" <> align <> "\"\n") source [] >>= fmap BS.concat . inflateAll
+            pure [dX d | d <- drawnGlyphs content, dSize d == "5"]
+          expected a =
+            let style = RubyStyle a a a 0 True
+             in [rpReading (placeRuby style GroupRuby (replicate 3 (10 * pt)) (replicate 4 (5 * pt)) (0, 0))]
+      geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 horizontalStyle) >>= pageGeometry)
+      let ta = typeAreaFor geom 1
+          xsOf ps = [TE.encodeUtf8 (spToPt (rectX ta + p)) | p <- ps]
+      spaced <- drawnAt "1:2:1"
+      centred <- drawnAt "center"
+      [spaced] @?= map xsOf (expected Align121)
+      [centred] @?= map xsOf (expected AlignCenter)
+      assertBool "different" (spaced /= centred),
+    testCase "a ruby at the line start does not stick out of the type area" $ do
+      let source = T.replicate 12 "あ" <> "[ruby: 字|あいう]の" <> T.replicate 6 "あ" <> "\n"
+      content <- miniPdf fakeProvider True horizontalStyle source [] >>= fmap BS.concat . inflateAll
+      geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 horizontalStyle) >>= pageGeometry)
+      let left = read (T.unpack (spToPt (rectX (typeAreaFor geom 1)))) :: Double
+          xs = glyphXs "5" content
+      assertBool (show (left, xs)) (not (null xs) && all (>= left - 0.001) xs)
+      assertBool (show (left, xs)) (any (\x -> abs (x - left) < 0.001) xs),
+    testCase "HTML: mono ruby has class mono; the style sheet sets ruby-align" $ do
+      (page, css') <- htmlMini horizontalStyle "[ruby: 組/版|くみ/はん]と[ruby: 五月雨|さみだれ]と[ruby: 字|じ]\n"
+      assertBool (T.unpack page) ("<ruby class=\"mono\">組<rp>" `T.isInfixOf` page)
+      assertBool (T.unpack page) ("<ruby>五月雨<rp>" `T.isInfixOf` page)
+      assertBool (T.unpack page) ("<ruby class=\"mono\">字<rp>" `T.isInfixOf` page)
+      assertBool (T.unpack css') ("ruby { ruby-align: space-around; }" `T.isInfixOf` css')
+      assertBool (T.unpack css') ("rt { ruby-align: space-around; }" `T.isInfixOf` css')
+      assertBool (T.unpack css') ("ruby.mono rt { ruby-align: center; }" `T.isInfixOf` css')
+      (_, css2) <- htmlMini (horizontalStyle <> "\n[composition.ruby]\ngroup-align = \"0:1:0\"\n") "[ruby: 五月雨|さみだれ]\n"
+      assertBool (T.unpack css2) ("rt { ruby-align: space-between; }" `T.isInfixOf` css2)
   ]
 
 -- | The rules of a content stream: x, y, width, height as written.

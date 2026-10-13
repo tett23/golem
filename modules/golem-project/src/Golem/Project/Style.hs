@@ -11,6 +11,8 @@ module Golem.Project.Style
     CharStyleDef (..),
     HeadingStyle (..),
     Composition (..),
+    RubyStyleDef (..),
+    defaultRubyStyleDef,
     SidenoteStyle (..),
     VerseStyle (..),
     defaultVerseStyle,
@@ -116,7 +118,8 @@ data HeadingStyle = HeadingStyle
 data Composition = Composition
   { compKinsokuStrict :: !Bool,
     compHanging :: !Bool,
-    compRubyOverhang :: !Dim,
+    -- | [composition.ruby] (golem-layout ADR 0009)
+    compRuby :: !RubyStyleDef,
     compKenten :: !Text,
     compPretolerance :: !Int,
     compTolerance :: !Int,
@@ -125,6 +128,24 @@ data Composition = Composition
     compExpansion :: !(Maybe (Int, Int))
   }
   deriving stock (Eq, Show)
+
+-- | The placement of ruby (golem-layout ADR 0009).
+data RubyStyleDef = RubyStyleDef
+  { -- | "center" | "start"
+    rdMonoAlign :: !Text,
+    -- | "1:2:1" | "0:1:0" | "center" | "start"
+    rdGroupAlign :: !Text,
+    -- | "1:2:1" | "0:1:0" | "center"
+    rdBaseSpacing :: !Text,
+    rdOverhang :: !Dim,
+    -- | "kana" | "none"
+    rdOverhangOnto :: !Text
+  }
+  deriving stock (Eq, Show)
+
+-- | JLReq's usual setting.
+defaultRubyStyleDef :: RubyStyleDef
+defaultRubyStyleDef = RubyStyleDef "center" "1:2:1" "1:2:1" (Zw (1 % 2)) "kana"
 
 data SidenoteStyle = SidenoteStyle
   { snWidth :: !Dim,
@@ -184,7 +205,7 @@ data Style = Style
   deriving stock (Eq, Show)
 
 defaultComposition :: Composition
-defaultComposition = Composition True False (Zw 1) "sesame" 100 200 (Abs 0) False Nothing
+defaultComposition = Composition True False defaultRubyStyleDef "sesame" 100 200 (Abs 0) False Nothing
 
 defaultStyle :: Style
 defaultStyle =
@@ -287,13 +308,22 @@ instance FromValue HeadingStyle where
     rh <- fromMaybe False <$> optKey "running-head"
     pure (HeadingStyle f s n (pb == Just "recto") rh)
 
-newtype RubyOpt = RubyOpt Dim
-
-instance FromValue RubyOpt where
+instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
-    _ <- enumKey "position" ["mono-center"]
+    m <- enumKey "mono-align" ["center", "start"]
+    g <- enumKey "group-align" ["1:2:1", "0:1:0", "center", "start"]
+    b <- enumKey "base-spacing" ["1:2:1", "0:1:0", "center"]
     o <- dimKey "overhang"
-    pure (RubyOpt (fromMaybe (Zw 1) o))
+    onto <- enumKey "overhang-onto" ["kana", "none"]
+    let d = defaultRubyStyleDef
+    pure
+      RubyStyleDef
+        { rdMonoAlign = fromMaybe (rdMonoAlign d) m,
+          rdGroupAlign = fromMaybe (rdGroupAlign d) g,
+          rdBaseSpacing = fromMaybe (rdBaseSpacing d) b,
+          rdOverhang = fromMaybe (rdOverhang d) o,
+          rdOverhangOnto = fromMaybe (rdOverhangOnto d) onto
+        }
 
 data Expansion = Expansion Int Int
 
@@ -316,7 +346,7 @@ instance FromValue Composition where
       Composition
         { compKinsokuStrict = maybe (compKinsokuStrict d) (== "strict") k,
           compHanging = fromMaybe (compHanging d) h,
-          compRubyOverhang = maybe (compRubyOverhang d) (\(RubyOpt o) -> o) r,
+          compRuby = fromMaybe (compRuby d) r,
           compKenten = fromMaybe (compKenten d) kt,
           compPretolerance = fromMaybe (compPretolerance d) pre,
           compTolerance = fromMaybe (compTolerance d) tol,
@@ -443,6 +473,11 @@ instance FromValue Style where
         "3" -> pure (3, v)
         _ -> fail ("heading level must be 1, 2 or 3: " <> T.unpack k)
 
+negativeDim :: Dim -> Bool
+negativeDim = \case
+  Abs x -> x < 0
+  Zw r -> r < 0
+
 -- | Placeholders allowed in number formats.
 validNumberFormat :: Text -> Bool
 validNumberFormat = go
@@ -481,6 +516,9 @@ parseStyle fid src = do
       | f <- stFigureNumber s : [n | HeadingStyle {hsNumber = Just n} <- Map.elems (stHeadings s)],
         not (validNumberFormat f)
       ]
+        <> [ "ルビのかけの量は 0 以上です（[composition.ruby] の overhang）"
+           | negativeDim (rdOverhang (compRuby (stComposition s)))
+           ]
         <> [ "未知の判型です: " <> pageSizeName p
            | Just p <- [stPage s],
              isNothing (pageSize (pageSizeName p)),

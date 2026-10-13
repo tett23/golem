@@ -105,8 +105,8 @@ referenceLook = plainLook "body" 0
 paragraphItems :: Words -> [Item]
 paragraphItems ws =
   let (w, y, z) = wSpace ws
-      boxes = [Box n (BoxContent word False 0 0 0 referenceLook) | (word, n) <- wBoxes ws]
-   in Box (wParindent ws) (BoxContent "" False 0 0 0 referenceLook)
+      boxes = [Box n (BoxContent word False 0 0 0 referenceLook 0 0) | (word, n) <- wBoxes ws]
+   in Box (wParindent ws) (BoxContent "" False 0 0 0 referenceLook 0 0)
         : concat [b : [Glue w y z | i < length boxes - 1] | (i, b) <- zip [0 :: Int ..] boxes]
           <> finish
 

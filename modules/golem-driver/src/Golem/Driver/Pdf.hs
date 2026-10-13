@@ -63,6 +63,8 @@ import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
 import Golem.Layout.Look
 import Golem.Layout.Paginate
+import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
+import Golem.Layout.Ruby qualified as R
 import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
 import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutTable)
 import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
@@ -378,7 +380,7 @@ tocPage tg e number =
       le = tgMeasure tg - max (tgReserve tg) w - g
       k0 = if tgLeaders tg && u > 0 then max 0 ((le - (e + g)) `div` u) else 0
       (ns, k) = if ns0 < e + g then (e + g, 0) else (ns0, k0)
-      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg)) | _ <- [1 .. k]] 0 (k * u) 0 (0, 0) False
+      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0) | _ <- [1 .. k]] 0 (k * u) 0 (0, 0) False (0, 0)
    in TocPage (le - k * u) leader ns number
 
 -- | The measure of a column of the page.
@@ -392,7 +394,7 @@ pageNumberLine :: ComposeEnv -> Integer -> Line
 pageNumberLine env n =
   let boxes = [b | b@Box {} <- fst (composeInlines env [Number (mkSpan (FileId 0) 0 0) n Nothing])]
       w = sum (map itemWidth boxes)
-   in Line boxes 0 w 0 (0, 0) False
+   in Line boxes 0 w 0 (0, 0) False (0, 0)
 
 -- | W and u, measured once in the body role at the type size.
 tocMetrics :: ComposeEnv -> (Sp, Sp)
@@ -424,7 +426,7 @@ layoutPages provider inp = case pageGeometry (piStyle inp) of
       [ [ case Map.lookup lid (plTableLines layout) of
             Just cells -> T.intercalate " " (map setLineText cells)
             Nothing -> setLineText sl
-            <> maybe "" (\tp -> lineText (tpLeader tp) <> lineText (tpNumber tp)) (Map.lookup lid (plTocPages layout))
+            <> maybe "" (\tp -> boxesText (tpLeader tp) <> boxesText (tpNumber tp)) (Map.lookup lid (plTocPages layout))
         | (_, s) <- poSlots p,
           lid <- case s of
             SLine l -> [l]
@@ -434,8 +436,8 @@ layoutPages provider inp = case pageGeometry (piStyle inp) of
         ]
       | p <- plPages layout
       ]
-    setLineText = lineText . slLine
-    lineText l = T.concat [bcText c | Box _ c <- lineItems l]
+    setLineText = boxesText . slLine
+    boxesText l = T.concat [bcText c | Box _ c <- lineItems l]
 
 {- | The lines of the index (golem-driver ADR 0007): a main entry and its
 pages, sub-entries indented by a full-width space below their main entry
@@ -582,7 +584,7 @@ composeEnv style geom fonts assumed role fs =
           ceKinsokuStrict = compKinsokuStrict comp,
           ceHanging = compHanging comp,
           ceProtrusion = compProtrusion comp,
-          ceRubyOverhang = dimToSp fs (compRubyOverhang comp),
+          ceRuby = rubyStyleOf style fs,
           ceVerticalNumbers = case stNumbersVertical style of
             "kanji-digits" -> Just StyleKanjiDigits
             "tcy" -> Just StyleTcy
@@ -595,6 +597,19 @@ composeEnv style geom fonts assumed role fs =
           -- Latin words: US English patterns (golem-layout ADR 0001)
           cePatterns = Just englishUS
         }
+
+{- | The placement of ruby from [composition.ruby] (golem-layout ADR
+0009); @zw@ is the size of the paragraph.
+-}
+rubyStyleOf :: Style -> Sp -> RubyStyle
+rubyStyleOf style fs =
+  let rd = compRuby (stComposition style)
+      align = \case
+        "1:2:1" -> R.Align121
+        "0:1:0" -> R.Align010
+        "start" -> R.AlignStart
+        _ -> R.AlignCenter
+   in RubyStyle (align (rdMonoAlign rd)) (align (rdGroupAlign rd)) (align (rdBaseSpacing rd)) (dimToSp fs (rdOverhang rd)) (rdOverhangOnto rd == "kana")
 
 kpParams :: Style -> PageGeometry -> Params
 kpParams style geom =
@@ -829,7 +844,7 @@ buildFlow inp geom fonts images assumed = do
             boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) | (k, lid) <- zip [0 ..] ids]
             set = Map.fromList [(lid, SetLine l size (indentOf k) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
          in (boxes, set)
-      emptyLine = Line [] 0 0 0 (0, 0) False
+      emptyLine = Line [] 0 0 0 (0, 0) False (0, 0)
       mm sp = let tenths = round (toRational sp * 254 / (72 * 65536)) :: Integer in T.pack (show (tenths `div` 10) <> "." <> show (tenths `mod` 10))
       step (nextId, flows, lineAcc, figAcc, headAcc, errs, tabAcc, ext) (i, u) = case uKind u of
         UTable {} -> case Map.lookup i tables of
@@ -1029,7 +1044,6 @@ writeDocument inp geom fonts layout intent =
               | otherwise = (x0 + off, y0)
               where
                 off = off0 + slIndent sl
-            advance look t = sum [toSp (lkSize look) a | (role, r) <- runsOf look t, (_, _, a, _) <- lfShape fonts role (vertical && not (T.all isLatin r)) r]
             -- a point beside the line at a distance across it: right of a
             -- vertical line, above a horizontal baseline
             beside (ox, oy) dist
@@ -1047,17 +1061,21 @@ writeDocument inp geom fonts layout intent =
                     size = lkSize look
                     half = look {lkSize = size `div` 2}
                  in (,) (lkColor look) $ case boxKind c of
-                      KindRuby ->
-                        -- the base centred in the box, the reading at half size beside it
-                        let (base, reading) = T.breakOn "|" (bcText c)
-                            rt = T.drop 1 reading
-                            rsize = lkSize half
-                            baseStart = off + (w - advance look base) `div` 2
-                            readStart = off + (w - advance half rt) `div` 2
-                            (bx, by) = origin baseStart
-                            (b1, u1) = runAt look vertical False 0 (bx, by) base
-                            (b2, u2) = runAt half vertical False 0 (beside (origin readStart) (if vertical then size `div` 2 + rsize `div` 2 else size)) rt
-                         in (b1 <> b2, u1 <> u2)
+                      kind
+                        | kind `elem` [KindRuby, KindGroupRuby] ->
+                            -- each base and reading character where placeRuby puts it (golem-layout ADR 0009)
+                            let (base, reading) = T.breakOn "|" (bcText c)
+                                rt = T.drop 1 reading
+                                rsize = lkSize half
+                                advOf lk ch = toSp (lkSize lk) (lfAdvance fonts (if isLatin ch then lkLatinFace lk else lkFace lk) ch)
+                                baseAdv = map (advOf look) (T.unpack base)
+                                readAdv = map (advOf half) (T.unpack rt)
+                                excess = max 0 (sum readAdv - w)
+                                rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (excess `div` 2, excess `div` 2)
+                                across = if vertical then size `div` 2 + rsize `div` 2 else size
+                                placed1 = [runAt look vertical False 0 (origin (off + pos)) (T.singleton ch) | (ch, pos) <- zip (T.unpack base) (rpBase rp)]
+                                placed2 = [runAt half vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
+                             in (concatMap fst (placed1 <> placed2), concatMap snd (placed1 <> placed2))
                       KindKenten ->
                         -- the character, and a sesame dot centred beside it
                         let dsize = lkSize half

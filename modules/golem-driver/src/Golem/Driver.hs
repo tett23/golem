@@ -338,8 +338,12 @@ writeTargets opts e book targets = do
             hcDev = dev,
             hcVerseIndent = cssLength (vsIndent (stVerse style)),
             hcVerseHang = cssLength (vsHang (stVerse style)),
-            hcStanzaGap = vsStanzaGap (stVerse style)
+            hcStanzaGap = vsStanzaGap (stVerse style),
+            hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
+            hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
+            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby)
           }
+      ruby = compRuby (stComposition style)
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case
     TargetHtml -> do
@@ -403,6 +407,14 @@ writeTargets opts e book targets = do
       when ex (removeDirectoryRecursive dir)
     writeText p t = createDirectoryIfMissing True (takeDirectory p) >> TIO.writeFile p t
     copy src dst = createDirectoryIfMissing True (takeDirectory dst) >> BS.readFile src >>= BS.writeFile dst
+
+-- | A ruby alignment of style.toml as a CSS ruby-align value (golem-layout ADR 0009).
+rubyAlignCss :: Text -> Text
+rubyAlignCss = \case
+  "1:2:1" -> "space-around"
+  "0:1:0" -> "space-between"
+  "start" -> "start"
+  _ -> "center"
 
 {- | A length of style.toml in CSS: zw as em, other units as pt, with at
 most three decimals (docs/adr ADR 0003).

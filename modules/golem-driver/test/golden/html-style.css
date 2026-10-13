@@ -12,6 +12,9 @@ strong { font-weight: bold; }
 .align-center { text-align: center; }
 .align-right { text-align: right; }
 .proof { background: #ffeb99; }
+ruby { ruby-align: space-around; }
+rt { ruby-align: space-around; }
+ruby.mono rt { ruby-align: center; }
 html { -webkit-text-size-adjust: 100%; }
 pre > code.sourceCode { white-space: pre; position: relative; }
 pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }

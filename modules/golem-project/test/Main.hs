@@ -145,6 +145,17 @@ tests =
         fmap stVerse (parseStyle (FileId 0) "[verse]\nhang = \"10pt\"\n") @?= Right (VerseStyle (Zw 0) (Abs 655360) 1)
         codes (parseStyle (FileId 0) "[verse]\nunknown = 1\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[verse]\nstanza-gap = -1\n") @?= ["G0306"],
+      testCase "[composition.ruby] (golem-layout ADR 0009)" $ do
+        let rubyOf = fmap (compRuby . stComposition) . parseStyle (FileId 0)
+        rubyOf "" @?= Right (RubyStyleDef "center" "1:2:1" "1:2:1" (Zw 0.5) "kana")
+        rubyOf "[composition.ruby]\nmono-align = \"start\"\ngroup-align = \"0:1:0\"\nbase-spacing = \"center\"\noverhang = \"1zw\"\noverhang-onto = \"none\"\n"
+          @?= Right (RubyStyleDef "start" "0:1:0" "center" (Zw 1) "none")
+        rubyOf "[composition.ruby]\ngroup-align = \"center\"\n" @?= Right (RubyStyleDef "center" "center" "1:2:1" (Zw 0.5) "kana")
+        codes (parseStyle (FileId 0) "[composition.ruby]\ngroup-align = \"justify\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[composition.ruby]\nmono-align = \"1:2:1\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[composition.ruby]\noverhang = \"-1zw\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[composition.ruby]\nposition = \"mono-center\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[composition]\nruby = { position = \"mono-center\", overhang = \"1zw\" }\n") @?= ["G0306"],
       testCase "[toc] leader (golem-driver ADR 0009)" $ do
         fmap stTocLeader (parseStyle (FileId 0) "[toc]\nleader = \"none\"\n") @?= Right "none"
         fmap stTocLeader (parseStyle (FileId 0) "") @?= Right "dots"
@@ -204,11 +215,17 @@ specStyle =
       "[composition]",
       "kinsoku = \"strict\"",
       "hanging-punctuation = true",
-      "ruby = { position = \"mono-center\", overhang = \"1zw\" }",
       "kenten = \"sesame\"",
       "tolerance = 200",
       "protrusion = true",
       "expansion = { limit = 20, step = 5 }",
+      "",
+      "[composition.ruby]",
+      "mono-align = \"center\"",
+      "group-align = \"1:2:1\"",
+      "base-spacing = \"1:2:1\"",
+      "overhang = \"0.5zw\"",
+      "overhang-onto = \"kana\"",
       "",
       "[numbers]",
       "vertical = \"kanji\"",

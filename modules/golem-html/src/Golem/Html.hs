@@ -40,7 +40,11 @@ data HtmlConfig = HtmlConfig
     -- | [verse] of style.toml as CSS lengths, and the stanza gap in lines (docs/adr ADR 0003)
     hcVerseIndent :: !Text,
     hcVerseHang :: !Text,
-    hcStanzaGap :: !Int
+    hcStanzaGap :: !Int,
+    -- | [composition.ruby] as CSS ruby-align values (golem-layout ADR 0009)
+    hcRubyMonoAlign :: !Text,
+    hcRubyGroupAlign :: !Text,
+    hcRubyBaseSpacing :: !Text
   }
 
 data XhtmlSite = XhtmlSite
@@ -248,7 +252,8 @@ inline c = \case
   Bold _ xs -> "<b>" <> inlines c xs <> "</b>"
   Italic _ xs -> "<i>" <> inlines c xs <> "</i>"
   Ruby _ _ segs ->
-    "<ruby>"
+    -- several segments, or one base character, are mono ruby (golem-layout ADR 0009)
+    (if length segs >= 2 || T.length (T.concat [foldMap inlineText b | RubySegment b _ <- segs]) == 1 then "<ruby class=\"mono\">" else "<ruby>")
       <> T.concat [inlines c b <> "<rp>（</rp><rt>" <> maybe "" escapeXml r <> "</rt><rp>）</rp>" | RubySegment b r <- segs]
       <> "</ruby>"
   Kenten _ sh xs -> "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "default" sh) <> "\">" <> inlines c xs <> "</span>"
@@ -391,6 +396,10 @@ css cfg =
            ".align-center { text-align: center; }",
            ".align-right { text-align: right; }",
            ".proof { background: #ffeb99; }",
+           -- ruby: the base, a group reading and a mono reading (golem-layout ADR 0009)
+           "ruby { ruby-align: " <> hcRubyBaseSpacing cfg <> "; }",
+           "rt { ruby-align: " <> hcRubyGroupAlign cfg <> "; }",
+           "ruby.mono rt { ruby-align: " <> hcRubyMonoAlign cfg <> "; }",
            T.strip (T.pack (S.styleToCss S.pygments)),
            ".sidenote { font-size: 0.85em; }",
            "@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }",
