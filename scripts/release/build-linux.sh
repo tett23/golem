@@ -30,7 +30,7 @@ cd "$ROOT"
 
 # The packages of the build. The static libraries (GMP, libffi, libstdc++,
 # ncurses, zlib) are linked into golem.
-PACKAGES="bash binutils build-base ca-certificates curl file git gmp-dev gzip jq libffi-dev ncurses-dev ncurses-static numactl-dev perl tar xz zlib-dev zlib-static"
+PACKAGES="bash binutils build-base ca-certificates curl file git gmp-dev gmp-static gzip jq libffi-dev ncurses-dev ncurses-static numactl-dev perl tar xz zlib-dev zlib-static"
 # shellcheck disable=SC2086
 apk add --no-cache $PACKAGES
 
