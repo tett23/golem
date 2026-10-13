@@ -468,7 +468,8 @@ writeTargets opts e book missing targets = do
             hcSidenoteFace = let d = paraStyle style (Just "sidenote") in Face (d >>= psFont) (cssFontSize style <$> (d >>= psSize)),
             hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
             hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
-            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby)
+            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
+            hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ (ForcedBreak k) <- bs]
           }
       present = mfilter (`Map.notMember` missing)
       ruby = compRuby (stComposition style)
