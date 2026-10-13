@@ -39,8 +39,10 @@ VERSION=49.0.2
 COMMIT=3c8a3e79aa3188a1a12b3aebbaa097abccceac92
 RUSTC_VERSION=1.98.0
 # the SHA-256 of compiler-rt/LICENSE.TXT of llvm-project at the version
-# of LLVM of rustc $RUSTC_VERSION; recorded at the first full run
-COMPILER_RT_LICENSE_SHA256=
+# of LLVM of rustc $RUSTC_VERSION (llvmorg-22.1.8, the blob
+# 5a79a1b9d5cb0af9a779751f07033e44ca3b14d8 of the tag); recorded at the
+# first full run (2026-10-13)
+COMPILER_RT_LICENSE_SHA256=1a8f1058753f1ba890de984e48f0242a3a5c29a6a8f2ed9fd813f36985387e8d
 ARCHES="aarch64-macos x86_64-musl aarch64-musl"
 LICENSE_RE='^(LICEN[CS]E|COPYING|COPYRIGHT|NOTICE)([._-][^/]*)?$'
 
@@ -305,8 +307,13 @@ if [ "${SKIP_RUST:-}" != 1 ]; then
   [ -f "$LIBRARY/Cargo.lock" ] || fail "no $LIBRARY/Cargo.lock (rust-src)"
   : >"$WORK/std-packages"
   for a in $ARCHES; do
-    cargo "+$RUSTC_VERSION" metadata --locked --format-version 1 --manifest-path "$LIBRARY/Cargo.toml" \
-      --filter-platform "$(triple "$a")" >"$WORK/std-metadata-$a.json"
+    # library/Cargo.toml declares cargo-features, which a stable cargo
+    # accepts only with RUSTC_BOOTSTRAP=1 (as the bootstrap of rustc does).
+    # The bootstrap builds std with optional features on (backtrace pulls
+    # in addr2line, object and miniz_oxide), so every feature is on here,
+    # as in step 4
+    RUSTC_BOOTSTRAP=1 cargo "+$RUSTC_VERSION" metadata --locked --all-features --format-version 1 \
+      --manifest-path "$LIBRARY/Cargo.toml" --filter-platform "$(triple "$a")" >"$WORK/std-metadata-$a.json"
     jq -r '
       (.packages | map({key: .id, value: .}) | from_entries) as $pkgs
       | (.resolve.nodes | map({key: .id, value: .}) | from_entries) as $nodes

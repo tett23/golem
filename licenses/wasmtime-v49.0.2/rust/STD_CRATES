@@ -1,0 +1,10 @@
+alloc
+compiler_builtins
+core
+panic_abort
+panic_unwind
+rustc_std_workspace_alloc
+rustc_std_workspace_core
+std
+std_detect
+unwind
