@@ -23,6 +23,7 @@ library
     Golem.Parser.Lower
     Golem.Parser.Generated
     Golem.Parser.Read
+    Golem.Parser.SourceSettings
   build-depends:
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
@@ -39,7 +40,7 @@ test-suite golem-parser-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    CSTSpec ParserSpec LowerSpec LabelSafetySpec StrippedGrammar
+  other-modules:    CSTSpec ParserSpec LowerSpec LabelSafetySpec SourceSettingsSpec StrippedGrammar
   build-depends:
     , base
     , bytestring

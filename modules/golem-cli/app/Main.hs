@@ -3,6 +3,7 @@ module Main (main) where
 
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
+import Data.Char (isDigit)
 import Data.List (intercalate, isPrefixOf, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
@@ -12,6 +13,7 @@ import Data.UUID qualified as UUID
 import Data.UUID.V4 qualified as UUID
 import Golem.Doc.Cbor (encodeDocument)
 import Golem.Driver
+import Golem.Driver.Explain (Explanation (..), Status (..), catalog, explainHint)
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
 import Golem.Driver.Version (golemVersion)
@@ -47,6 +49,7 @@ data Command
   | Lint Profile Format
   | Fmt Bool [FilePath]
   | Lsp
+  | Explain (Maybe T.Text)
 
 main :: IO ()
 main = do
@@ -118,6 +121,19 @@ inspectAsOpt =
     (choice "表示の種類" [("cst", AsCst), ("ast", AsAst), ("ir", AsIr)])
     (long "as" <> value AsCst <> metavar "cst|ast|ir" <> help "表示するもの（既定は cst）")
 
+{- | A diagnostic code documented in docs/diagnostics.md, in any case
+(golem-cli ADR 0005). Anything else is a usage error, as in ADR 0004.
+-}
+codeArg :: ReadM T.Text
+codeArg = eitherReader $ \s ->
+  let code = T.toUpper (T.pack s)
+   in if T.length code /= 5 || T.take 1 code /= "G" || not (T.all isDigit (T.drop 1 code))
+        then Left ("診断のコードは G と 4 桁の数字です: " <> s)
+        else
+          if Map.member code catalog
+            then Right code
+            else Left ("未知の診断のコードです: " <> s <> "。プラグインが出す診断は、プラグインの文書を参照してください")
+
 commands :: Parser Command
 commands =
   subparser
@@ -140,6 +156,7 @@ commands =
         <> cmd "fmt" (Fmt <$> switch (long "check" <> help "整形が必要なファイルを示すだけにする") <*> many (strArgument (metavar "FILE"))) "原稿を整形する"
         <> cmd "lsp" (pure Lsp) "標準入出力で LSP サーバーを動かす"
         <> cmd "inspect" (Inspect <$> strArgument (metavar "FILE") <*> inspectAsOpt) "ファイルの CST、AST、IR を表示する"
+        <> cmd "explain" (Explain <$> optional (argument codeArg (metavar "CODE"))) "診断のコードの説明を表示する"
     )
   where
     cmd name p desc = command name (info (p <**> helpOption) (progDesc desc))
@@ -183,12 +200,35 @@ run = \case
     report fmt (BuildResult ds infos [])
   Fmt check files -> formatFiles check files
   Lsp -> (\c -> if c == 0 then ExitSuccess else ExitFailure c) <$> runGolemLsp
+  Explain code -> explain code
+
+{- | golem explain (golem-cli ADR 0005): the section of one code as it is
+written, or every code with its title.
+-}
+explain :: Maybe T.Text -> IO ExitCode
+explain = \case
+  Just code -> do
+    mapM_ (TIO.putStrLn . exBody) (Map.lookup code catalog)
+    pure ExitSuccess
+  Nothing -> do
+    forM_ (Map.elems catalog) $ \e ->
+      TIO.putStrLn (exCode e <> "  " <> exTitle e <> (if exStatus e == Retired then "（廃止）" else ""))
+    pure ExitSuccess
+
+{- | The diagnostics in the human format, followed by one line on golem
+explain when a code of them is documented (golem-cli ADR 0005).
+-}
+putHuman :: Map.Map FileId SourceInfo -> [Diagnostic] -> IO ()
+putHuman sources ds = do
+  TIO.hPutStr stderr (renderHuman sources ds)
+  let hint = explainHint ds
+  unless (T.null hint) (TIO.hPutStrLn stderr hint)
 
 report :: Format -> BuildResult -> IO ExitCode
 report fmt r = do
   let ds = brDiagnostics r
   case fmt of
-    Human -> TIO.hPutStr stderr (renderHuman (brSources r) ds)
+    Human -> putHuman (brSources r) ds
     Json -> TIO.hPutStr stderr (renderJson (brSources r) ds)
   pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
 
@@ -233,7 +273,7 @@ formatFiles check files0 = do
     if null files0
       then
         loadProject "." >>= \case
-          Left ds -> TIO.hPutStr stderr (renderHuman Map.empty ds) >> pure Nothing
+          Left ds -> putHuman Map.empty ds >> pure Nothing
           Right p -> pure (Just (map sfPath (Map.elems (projectSources p))))
       else pure (Just files0)
   case files of
@@ -250,7 +290,7 @@ formatFiles check files0 = do
     formatOne path bytes src =
       case format src of
         Unformattable ds -> do
-          TIO.hPutStr stderr (renderHuman (Map.singleton (FileId 0) (SourceInfo path (mkLineIndex src))) ds)
+          putHuman (Map.singleton (FileId 0) (SourceInfo path (mkLineIndex src))) ds
           pure False
         Formatted out
           | TE.encodeUtf8 out == bytes -> pure True
@@ -262,7 +302,7 @@ pluginLock :: IO ExitCode
 pluginLock = do
   bytes <- BS.readFile "manifest.toml"
   case parseManifest (FileId 0) (TE.decodeUtf8Lenient bytes) of
-    Left ds -> TIO.hPutStr stderr (renderHuman Map.empty ds) >> pure (ExitFailure 1)
+    Left ds -> putHuman Map.empty ds >> pure (ExitFailure 1)
     Right m -> do
       fetcher <- httpsFetcher
       cache <- defaultCacheDir
@@ -278,7 +318,7 @@ pluginFetch = do
   text <- if exists then TE.decodeUtf8Lenient <$> BS.readFile "plugins.lock" else pure ""
   -- G0611 points into plugins.lock (golem-plugin ADR 0003)
   case parseLock (FileId 0) text of
-    Left ds -> TIO.hPutStr stderr (renderHuman (Map.singleton (FileId 0) (SourceInfo "plugins.lock" (mkLineIndex text))) ds) >> pure (ExitFailure 1)
+    Left ds -> putHuman (Map.singleton (FileId 0) (SourceInfo "plugins.lock" (mkLineIndex text))) ds >> pure (ExitFailure 1)
     Right lock -> do
       fetcher <- httpsFetcher
       cache <- defaultCacheDir

@@ -9,8 +9,11 @@ category:           Text
 build-type:         Simple
 -- the version of Golem, embedded by Golem.Driver.Version (docs/adr/0004);
 -- a symbolic link to VERSION at the root of the repository
+-- the explanations of the diagnostic codes, embedded by Golem.Driver.Explain
+-- (golem-cli ADR 0005); a symbolic link to docs/diagnostics.md
 extra-source-files:
   VERSION
+  diagnostics.md
 
 common warnings
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
@@ -20,6 +23,8 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Golem.Driver
+                    Golem.Driver.Explain
+                    Golem.Driver.Explain.Catalog
                     Golem.Driver.Fonts
                     Golem.Driver.Lint
                     Golem.Driver.New
