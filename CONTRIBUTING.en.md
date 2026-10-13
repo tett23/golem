@@ -18,7 +18,7 @@ After cloning, enable the Git hooks first.
 git config core.hooksPath .githooks
 ```
 
-The hook calls [adr-guard](https://github.com/tett23/adr-guard), so install it beforehand.
+The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.5.0 or later, so install it beforehand.
 This setting is not stored in the repository, so run it in every clone.
 
 ## How a change proceeds
@@ -73,7 +73,7 @@ When a later ADR replaces part of one, the status names it, as in "採択→○�
 
 Once committed, an ADR cannot be changed except for its status line.
 `.githooks/pre-commit` and the `adr` job in CI reject edits, deletions, and renames.
-Changes that only add, remove, or retarget links of ADR references are allowed.
+Changes to the status line (`--allow-status`) and changes that only add, remove, or retarget links of ADR references (`--allow-links`) are allowed ([docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md)).
 ADR references in documents must link to the ADR file; the `adr` job in CI rejects unlinked ones, and `adr-guard links --fix` fixes them.
 
 To change the specification, do not rewrite the old ADR; write a new one with the next number.
