@@ -999,7 +999,7 @@ v1 の範囲から外した事項と、v1 の実装で次の段階以降に回�
 - **式の超越関数**：三角関数、指数関数、対数関数と、浮動小数点数の指数による累乗（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
 - **改ページの大域の最適化**：見開きの単位の最適化と、段組みの段の高さの調整を含む（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 - **フレーム**：レベル 2 と 3 のフレーム。型は定義してあり、v1 では値を書くとエラーになる（[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)）。
-- **段組みの拡張**：段抜きの見出し、段組みの版面での回り込みと段をまたぐ除外領域（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。段組みそのものを v1 で扱うかは、次節の「段組み」で決める。
+- **段組みの拡張**：v1 で実装する段組み（次節の「段組み」）を超える部分。段抜きの見出し、一冊の中で段数を切り替えること（索引だけを段組みにすることなど）、段組みの版面での回り込みと段をまたぐ除外領域を含む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。段の高さの調整は「改ページの大域の最適化」に、段組みの版面での傍注欄は「傍注の拡張」に含める。
 - **SVG の図版**：PDF へ変換する処理が重いため、v1 では PDF、PNG、JPEG に限る。
 - **図版とキャプションの拡張**：版面より大きい図版を縮小する、複数のページに分ける、見開きに置くといった扱い（v1 は空のページにそのまま置く）、回り込ませない図版の幅の指定、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。
 - **複数段落の注**：v1 の注は一つの段落に限る。
@@ -1010,7 +1010,6 @@ v1 の範囲から外した事項と、v1 の実装で次の段階以降に回�
 - **`style.toml` の分割**：ほかのファイルを取り込む機能（[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)）。
 - **段落スタイルの拡張**：行送り、段落の前後の空き、行揃え、次のスタイル、ドロップキャップと字取り、先頭文字スタイルと正規表現スタイル、`@style` の引数による段落ごとの上書き、行の終わりの側の字下げ、段落の先頭の始め括弧類の字下げの調整（JLReq）、見出し、リスト、表などへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。
 - **Web 経路のスタイル**：HTML と EPUB で、見出しの `font` と `size`、文字スタイルの `size`、`caption` と `sidenote` 以外の段落スタイルの `size` を使うこと、Web 経路のフォントのサブセット化（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。
-- **`golem fmt` の移行の段階を外すこと**：`@verse` を `@style verse` に書き換える移行の段階は v1 の間は残し、外すときに ADR を作成する（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 - **韻文の拡張**：行番号（5 行ごとの番号など）、連をページで分けない指定、段落一般の強制改行（行末の `\`）（[docs/adr/0003](adr/0003-verse-line-breaks.md)）。
 - **ルビの拡張**：熟語の全体の読みが長い熟語ルビをグループルビとして配置し直すこと、片側だけのかけ、約物へのかけ、行頭と行末で親文字を行の端にそろえる配置、ルビの文字の大きさとルビを置く側の設定、ルビごとに配置を指定する記法、両側ルビ、ルビの中の圏点（[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)）。
 - **和文組版の拡張**：割注、傍線、添え字、縦組みの中の欧文を回転せずに一字ずつ組む方式、字送りを文字の大きさと異なる値にした（字間を詰めた）版面（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)、[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)）。
@@ -1046,7 +1045,7 @@ v1 のリリースまでに、次の項目を扱う。
 - **ルビの配置の設定**：ルビの位置を調整する設定がない。今の `[composition]` の `ruby` は `position`（`"mono-center"` だけを取る）と `overhang` を持つが、`position` は配置を変えない。PDF は、読みを詰めて親文字の中央に置き、ルビが親文字より長いときは親文字の字間を空けずに両端を空ける。隣の文字へのかけは文字の種類を見ずに漢字や隣のルビにもかかり、行頭と行末でも戻さない。この挙動は [golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md) の記述とも一致していない。[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md) で、`position` をなくし、`[composition.ruby]` の `mono-align`（中付きか肩付きか）、`group-align`（グループルビが親文字より短いときの配置）、`base-spacing`（ルビが親文字より長いときの親文字の字間）、`overhang`（片側でかける量の上限）、`overhang-onto`（仮名にだけかけるか、かけないか）の欄で選べるようにすると決めた（未実装）。既定値は JLReq に合わせるので、ルビを含む PDF の出力は変わる。
 - **InDesign の文字の組版の機能**：InDesign が文字に対して持つ組版の機能を実装する。カーニングの方式（メトリクス、オプティカル、和文等幅、なし）を選べるようにし、既定はフォントのペアカーニングの情報を使うメトリクスとする。トラッキング、プロポーショナルメトリクス、文字の比率（水平比率と垂直比率）、ベースラインシフトなども含め、v1 で扱う範囲を ADR で決める。今は、フォントの役割ごとに OpenType の機能（`features`）を指定できるだけで、欧文のカーニングは HarfBuzz が既定で適用する機能に任せている。
 - **アキの指定**：全角、二分、三分、四分、五分、六分、八分のような、和文組版で慣用のアキ（空き）の量を指定できるようにする。InDesign の文字組みアキ量設定のように、和欧間、括弧類や句読点の前後などの文字のクラスの組ごとに、空きの量と伸縮の範囲を `style.toml` で設定できるようにする。原稿の中の任意の位置に五分アキなどの空きを入れる記法も設ける。今は、和欧間を四分の空きとし、約物の空きを JLReq の規則で決めているが（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）、その量を変える設定はない。原稿の中で空きを入れるには全角の空白を使うしかなく、寸法の単位も `zw` の小数（五分は `0.2zw`）で書くしかない。
-- **段組み**：`[page.grid]` の `columns` に 2 以上を書けるが、PDF は最初の段の行長で組み、二段目以降に本文を流さない。段組みはフレームのレベル 2 に当たり v1 では扱わないとする ADR（[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）と、段組みの版面を前提にする ADR（[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）がある。v1 で段組みを組むか、v2 以降に送って 2 以上の値をエラーにするかを決める。
+- **段組み**：`[page.grid]` の `columns` に 2 以上を書けるが、PDF は最初の段の行長で組み、二段目以降に本文を流さない。論文の組版に段組みが要るので、v1 で実装する。段組みをフレームのレベル 2 に当たるとして v1 から外す ADR（[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）と、段組みの版面を前提にする ADR（[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）が食い違っているので、実装するときに新しい ADR で決着させる。
 
 #### PDF
 
@@ -1060,8 +1059,8 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### 記法と設定
 
+- **`golem fmt` の移行の段階を外すこと**：`golem fmt` は、`@verse` を `@style verse` に書き換える移行の段階を持つことになり、その分だけ整形の不変条件に例外が一つ加わる。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) は、移行の段階を v1 の間は残し、外すときは別の ADR で決めるとした。v1 のリリースまでに移行の段階を外し、不変条件の例外をなくす。
 - **寸法による判型の指定**：[golem-project ADR 0002](golem-project/adr/0002-style-toml.md) は、表にない判型を寸法で書くと決めたが、実装していない。`style.toml` の読み込みは `x` を含む `size` を通すが、ページの幾何の計算は未知の判型としてエラーにする。書き方は [golem-project ADR 0003](golem-project/adr/0003-mass-market-paperback-size.md) が別の ADR に回している。
-- **裸の語の `*`**：`a*[x]` が `a*` と `[x]` の二つの引数として読まれるなど、`*` を含む裸の語の扱いに不整合がある（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md)）。
 
 #### CLI と LSP
 
@@ -1074,6 +1073,30 @@ v1 のリリースまでに、次の項目を扱う。
 - **配布物のライセンスの一覧**：配布物の `THIRD_PARTY_LICENSES` に、Linux の実行ファイルに静的にリンクする musl と libffi、libstdc++ と libgcc、`libwasmtime.a` に含まれる Rust のクレートのライセンスが入っていない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。[docs/adr/0007](adr/0007-third-party-licenses.md) で、リンカーのリンクマップから入れるものを決め、wasmtime のクレートの文書をリポジトリに置いてリリースのたびに照合すると決めた（未実装）。
 - **リリースの初回の検証**：リリースのワークフロー、Alpine での musl のビルド、コンテナの中での配布物の検査は、まだ一度も動かしていない。AI にリリースノートを書かせるには、リポジトリの秘密情報 `ANTHROPIC_API_KEY` が要る（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。[docs/adr/0008](adr/0008-first-release-verification.md) で、`v0.1.0-rc1` のタグで確かめる手順と項目を決めた（未実施）。タグは [docs/adr/0007](adr/0007-third-party-licenses.md) の実装をマージしてから付ける。
 
+### 課題にしなかった事項
+
+ADR と仕様が扱わないと決めたもので、課題として残さないものをここにまとめる。
+扱う必要が出てきた場合は、新しい ADR で決め直す。
+
+- **macOS と Windows での CI、stack によるビルド**：決定性の検査は Linux の二つのアーキテクチャで足り、依存の版は cabal と freeze ファイルで固定できるので採らない（[docs/adr/0001](adr/0001-haskell-workspace-and-ci.md)）。
+- **異なる版の Golem の間での出力の一致**：Golem の版は入力の一部であり、版が変われば出力が変わってよいので求めない（[docs/adr/0002](adr/0002-determinism.md)）。
+- **決定性に反する処理の静的な検出**：決定性の規則はレビューとテストで守ると決めたので作らない（[docs/adr/0002](adr/0002-determinism.md)）。
+- **リリースの運用の自動化**：リリースの自動公開、リリースで確かめる項目の自動化、監査の記録を仕組みで変更できなくすることは、公開を人が行い、確かめは繰り返しが重くなってから自動化を考え、記録は約束とレビューで守ると決めたので扱わない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)、[docs/adr/0008](adr/0008-first-release-verification.md)、[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)）。
+- **CI の高速化の候補**：大きいランナー、aarch64 の `build` の省略、HarfBuzz と FreeType の切り出しや翻訳単位の分割、GHC を含むコンテナ、古いキャッシュを消すジョブは、費用、決定性の検査、効果の見込みの理由で採らないと決めた（[docs/adr/0009](adr/0009-ci-speed.md)）。
+- **スタイルの仕組みで作らないもの**：組み込みのスタイルを消すことと名前を変えること、`style.toml` の自動の書き換え、組み込みの文字スタイル `emphasis`、段落スタイルの `hang` のキー、原稿の先頭の全角の空白の除去と警告は、ADR が作らないと決め、`hang` は負の `first-line-indent` で表せるので扱わない（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。
+- **合成の太字と斜体の設定**：線の幅と傾きを変える設定、フォントや文字の大きさごとの値、太った分だけ送りを広げること、OS/2 テーブルから書体を選ぶことは、品質が要る本では太字や斜体の書体を役割で指定すればよいので作らない（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0012](golem-driver/adr/0012-synthetic-bold-weight.md)）。
+- **lint の規則の設定と抑制、表記の規則**：規則は処理系が固定し、合意の取れない表記の規則は外部の校正ツールに任せると決めたので持たない（[golem-lint ADR 0001](golem-lint/adr/0001-lint-rules.md)、[「lint」の節](#lint)）。
+- **生の CSS**：媒体契約の外で見た目を変える抜け道になるので設けない（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)、[「style.toml」の節](#styletoml)）。
+- **fmt の表の列揃え、本文の折り返し、整形の規則の設定**：整形の結果が環境によって揺れず、書き手の改行を変えないことを優先したので作らない（[golem-fmt ADR 0001](golem-fmt/adr/0001-formatter.md)）。
+- **式の拡張**：ユーザー定義の関数、条件式、繰り返し、文字列の演算子、浮動小数点数の指数表記は、書籍の原稿の計算で要る場面が少ないので、必要が明らかになるまで加えない（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)、[golem-parser ADR 0004](golem-parser/adr/0004-inline-grammar.md)）。
+- **フォントの難読化と Type 3 による埋め込み**：v1 の出力に要らないので、ADR が扱わないと決めた（[golem-font ADR 0002](golem-font/adr/0002-subsetting-and-embedding.md)、[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
+- **複雑な文字体系の検証**：Golem の対象を和文と欧文に限るので、アラビア文字やインド系の文字は確かめない（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)）。
+- **固定レイアウトの EPUB**：EPUB は幾何を持たないリフローの媒体として扱うので作らない（[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)、[「設計原則」の節](#設計原則)）。
+- **ICC プロファイルによる Web の色変換**：画面の色は印刷の色の近似でよいと決めたので、差が問題になるまで扱わない（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。
+- **musl の malloc の速度**：GHC のヒープは RTS が自前で管理して影響が限られるので、問題になるまで扱わない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+- **utf-32 の交渉と、`lsp` パッケージを使わない LSP の実装**：UTF-16 で常に応えられ、`lsp` への細工は一か所に閉じ込められるので採らない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)）。
+- **診断と CLI の文言の多言語化**：v1 の診断と使い方の文言は日本語だけと決めたので扱わない（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
+
 ## 未決事項
 
 v1 の範囲で、次の事項が決まっていない。
@@ -1082,6 +1105,7 @@ v1 の範囲で、次の事項が決まっていない。
 - **CID の扱い**：PDF に埋め込むフォントでは、CID-keyed の CFF のフォントは FreeType が返す CID を、それ以外のフォントはグリフ ID を CID として書き、`CIDSystemInfo` は常に Adobe-Identity-0 としている（[golem-font ADR 0002](golem-font/adr/0002-subsetting-and-embedding.md)）。Adobe-Japan1 の文字集合を持つ和文フォントで `CIDSystemInfo` を Adobe-Japan1 にするか、それがプリフライトや出力機（RIP）でのフォントの扱いにどう影響するか、異体字の選択（IVS）をどう表すかが決まっていない。
 - **PDF/X-4 の要件と規格の本文の照合**：[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md) は、規格の本文を参照せずに要件を書き、本文と照合して差分があれば新しい ADR を作るとしたが、照合の結果を記した ADR はない。文書情報辞書と XMP の値を一致させる要件も、本文では確かめていない（[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。v1 の PDF を PDF/X-4 として出すまでに、本文と照合するか、商用のプリフライトでの確認で代えるかが決まっていない。
 - **トンボのインキの総量**：トンボを CMYK の各 100% で描くので、インキの総量は 400% になり、プリフライトの設定によっては総量の警告が出ると考えられるが、確かめていない（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。警告が出る場合に、v1 の範囲（プロセスカラーだけ）を広げてレジストレーションの色を使うかが決まっていない。
+- **裸の語の `*`**：`a*[x]` が `a*` と `[x]` の二つの引数として読まれるなど、`*` を含む裸の語の扱いに不整合がある（[golem-parser ADR 0007](golem-parser/adr/0007-grammar-label-safety.md)）。受理する言語をどう決め直すかが決まっていない。
 
 ## 仕様が不明瞭な場合
 
