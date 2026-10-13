@@ -19,6 +19,8 @@ module Golem.Parser.Generated
   , syntaxKindLineContinuation
   , syntaxKindText
   , syntaxKindEscape
+  , syntaxKindHardBreak
+  , syntaxKindBackslash
   , syntaxKindComment
   , syntaxKindProofComment
   , syntaxKindInlineCommand
@@ -123,6 +125,8 @@ module Golem.Parser.Generated
   , castParagraphSyntax
   , LineContinuationSyntax(..)
   , castLineContinuationSyntax
+  , HardBreakSyntax(..)
+  , castHardBreakSyntax
   , InlineCommandSyntax(..)
   , castInlineCommandSyntax
   , ArgumentsSyntax(..)
@@ -239,9 +243,9 @@ import Prelude
 
 -- | Parse the whole input with the rule @File@.
 parse :: PegRt.Text -> PegPrelude.Either PegRt.ParseError (
-{-# LINE 134 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 140 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 245 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 249 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )
 parse peg'input =
   PegPrelude.fmap PegPrelude.fst (Prelude.fst (PegRt.runParser peg'config (peg'newStore) peg'rule'File peg'input))
@@ -254,9 +258,9 @@ parseSyntax peg'input =
 -- | Parse the whole input with the rule @File@, recovering from labelled failures.
 -- The value is 'PegPrelude.Nothing' only if the rule could not be recovered.
 parseRecover :: PegRt.Text -> (PegPrelude.Maybe (
-{-# LINE 134 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 140 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 260 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 264 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.SyntaxError])
 parseRecover peg'input =
   let (peg'v, peg'e, _) = PegRt.runParserRecover peg'config (peg'newStore) peg'rule'File peg'input
@@ -313,381 +317,389 @@ syntaxKindText = PegRt.SyntaxKind 11
 syntaxKindEscape :: PegRt.SyntaxKind
 syntaxKindEscape = PegRt.SyntaxKind 12
 
+-- | The syntax kind of @HardBreak@.
+syntaxKindHardBreak :: PegRt.SyntaxKind
+syntaxKindHardBreak = PegRt.SyntaxKind 13
+
+-- | The syntax kind of @Backslash@.
+syntaxKindBackslash :: PegRt.SyntaxKind
+syntaxKindBackslash = PegRt.SyntaxKind 14
+
 -- | The syntax kind of @Comment@.
 syntaxKindComment :: PegRt.SyntaxKind
-syntaxKindComment = PegRt.SyntaxKind 13
+syntaxKindComment = PegRt.SyntaxKind 15
 
 -- | The syntax kind of @ProofComment@.
 syntaxKindProofComment :: PegRt.SyntaxKind
-syntaxKindProofComment = PegRt.SyntaxKind 14
+syntaxKindProofComment = PegRt.SyntaxKind 16
 
 -- | The syntax kind of @InlineCommand@.
 syntaxKindInlineCommand :: PegRt.SyntaxKind
-syntaxKindInlineCommand = PegRt.SyntaxKind 15
+syntaxKindInlineCommand = PegRt.SyntaxKind 17
 
 -- | The syntax kind of @LBr@.
 syntaxKindLBr :: PegRt.SyntaxKind
-syntaxKindLBr = PegRt.SyntaxKind 16
+syntaxKindLBr = PegRt.SyntaxKind 18
 
 -- | The syntax kind of @RBr@.
 syntaxKindRBr :: PegRt.SyntaxKind
-syntaxKindRBr = PegRt.SyntaxKind 17
+syntaxKindRBr = PegRt.SyntaxKind 19
 
 -- | The syntax kind of @Ident@.
 syntaxKindIdent :: PegRt.SyntaxKind
-syntaxKindIdent = PegRt.SyntaxKind 18
+syntaxKindIdent = PegRt.SyntaxKind 20
 
 -- | The syntax kind of @Arguments@.
 syntaxKindArguments :: PegRt.SyntaxKind
-syntaxKindArguments = PegRt.SyntaxKind 19
+syntaxKindArguments = PegRt.SyntaxKind 21
 
 -- | The syntax kind of @Argument@.
 syntaxKindArgument :: PegRt.SyntaxKind
-syntaxKindArgument = PegRt.SyntaxKind 20
+syntaxKindArgument = PegRt.SyntaxKind 22
 
 -- | The syntax kind of @KeywordArgument@.
 syntaxKindKeywordArgument :: PegRt.SyntaxKind
-syntaxKindKeywordArgument = PegRt.SyntaxKind 21
+syntaxKindKeywordArgument = PegRt.SyntaxKind 23
 
 -- | The syntax kind of @SplatArgument@.
 syntaxKindSplatArgument :: PegRt.SyntaxKind
-syntaxKindSplatArgument = PegRt.SyntaxKind 22
+syntaxKindSplatArgument = PegRt.SyntaxKind 24
 
 -- | The syntax kind of @Splat@.
 syntaxKindSplat :: PegRt.SyntaxKind
-syntaxKindSplat = PegRt.SyntaxKind 23
+syntaxKindSplat = PegRt.SyntaxKind 25
 
 -- | The syntax kind of @Word@.
 syntaxKindWord :: PegRt.SyntaxKind
-syntaxKindWord = PegRt.SyntaxKind 24
+syntaxKindWord = PegRt.SyntaxKind 26
 
 -- | The syntax kind of @Eq@.
 syntaxKindEq :: PegRt.SyntaxKind
-syntaxKindEq = PegRt.SyntaxKind 25
+syntaxKindEq = PegRt.SyntaxKind 27
 
 -- | The syntax kind of @StringLit@.
 syntaxKindStringLit :: PegRt.SyntaxKind
-syntaxKindStringLit = PegRt.SyntaxKind 26
+syntaxKindStringLit = PegRt.SyntaxKind 28
 
 -- | The syntax kind of @ProseSlots@.
 syntaxKindProseSlots :: PegRt.SyntaxKind
-syntaxKindProseSlots = PegRt.SyntaxKind 27
+syntaxKindProseSlots = PegRt.SyntaxKind 29
 
 -- | The syntax kind of @Colon@.
 syntaxKindColon :: PegRt.SyntaxKind
-syntaxKindColon = PegRt.SyntaxKind 28
+syntaxKindColon = PegRt.SyntaxKind 30
 
 -- | The syntax kind of @Pipe@.
 syntaxKindPipe :: PegRt.SyntaxKind
-syntaxKindPipe = PegRt.SyntaxKind 29
+syntaxKindPipe = PegRt.SyntaxKind 31
 
 -- | The syntax kind of @ProseSlot@.
 syntaxKindProseSlot :: PegRt.SyntaxKind
-syntaxKindProseSlot = PegRt.SyntaxKind 30
+syntaxKindProseSlot = PegRt.SyntaxKind 32
 
 -- | The syntax kind of @SlotText@.
 syntaxKindSlotText :: PegRt.SyntaxKind
-syntaxKindSlotText = PegRt.SyntaxKind 31
+syntaxKindSlotText = PegRt.SyntaxKind 33
 
 -- | The syntax kind of @ExprCtx@.
 syntaxKindExprCtx :: PegRt.SyntaxKind
-syntaxKindExprCtx = PegRt.SyntaxKind 32
+syntaxKindExprCtx = PegRt.SyntaxKind 34
 
 -- | The syntax kind of @ExprOpen@.
 syntaxKindExprOpen :: PegRt.SyntaxKind
-syntaxKindExprOpen = PegRt.SyntaxKind 33
+syntaxKindExprOpen = PegRt.SyntaxKind 35
 
 -- | The syntax kind of @ExprBody@.
 syntaxKindExprBody :: PegRt.SyntaxKind
-syntaxKindExprBody = PegRt.SyntaxKind 34
+syntaxKindExprBody = PegRt.SyntaxKind 36
 
 -- | The syntax kind of @Expr@.
 syntaxKindExpr :: PegRt.SyntaxKind
-syntaxKindExpr = PegRt.SyntaxKind 35
+syntaxKindExpr = PegRt.SyntaxKind 37
 
 -- | The syntax kind of @CompareExpr@.
 syntaxKindCompareExpr :: PegRt.SyntaxKind
-syntaxKindCompareExpr = PegRt.SyntaxKind 36
+syntaxKindCompareExpr = PegRt.SyntaxKind 38
 
 -- | The syntax kind of @CmpOp@.
 syntaxKindCmpOp :: PegRt.SyntaxKind
-syntaxKindCmpOp = PegRt.SyntaxKind 37
+syntaxKindCmpOp = PegRt.SyntaxKind 39
 
 -- | The syntax kind of @AddExpr@.
 syntaxKindAddExpr :: PegRt.SyntaxKind
-syntaxKindAddExpr = PegRt.SyntaxKind 38
+syntaxKindAddExpr = PegRt.SyntaxKind 40
 
 -- | The syntax kind of @AddOp@.
 syntaxKindAddOp :: PegRt.SyntaxKind
-syntaxKindAddOp = PegRt.SyntaxKind 39
+syntaxKindAddOp = PegRt.SyntaxKind 41
 
 -- | The syntax kind of @MulExpr@.
 syntaxKindMulExpr :: PegRt.SyntaxKind
-syntaxKindMulExpr = PegRt.SyntaxKind 40
+syntaxKindMulExpr = PegRt.SyntaxKind 42
 
 -- | The syntax kind of @MulOp@.
 syntaxKindMulOp :: PegRt.SyntaxKind
-syntaxKindMulOp = PegRt.SyntaxKind 41
+syntaxKindMulOp = PegRt.SyntaxKind 43
 
 -- | The syntax kind of @UnaryExpr@.
 syntaxKindUnaryExpr :: PegRt.SyntaxKind
-syntaxKindUnaryExpr = PegRt.SyntaxKind 42
+syntaxKindUnaryExpr = PegRt.SyntaxKind 44
 
 -- | The syntax kind of @NegOp@.
 syntaxKindNegOp :: PegRt.SyntaxKind
-syntaxKindNegOp = PegRt.SyntaxKind 43
+syntaxKindNegOp = PegRt.SyntaxKind 45
 
 -- | The syntax kind of @PowExpr@.
 syntaxKindPowExpr :: PegRt.SyntaxKind
-syntaxKindPowExpr = PegRt.SyntaxKind 44
+syntaxKindPowExpr = PegRt.SyntaxKind 46
 
 -- | The syntax kind of @PowOp@.
 syntaxKindPowOp :: PegRt.SyntaxKind
-syntaxKindPowOp = PegRt.SyntaxKind 45
+syntaxKindPowOp = PegRt.SyntaxKind 47
 
 -- | The syntax kind of @PostfixExpr@.
 syntaxKindPostfixExpr :: PegRt.SyntaxKind
-syntaxKindPostfixExpr = PegRt.SyntaxKind 46
+syntaxKindPostfixExpr = PegRt.SyntaxKind 48
 
 -- | The syntax kind of @CallExpr@.
 syntaxKindCallExpr :: PegRt.SyntaxKind
-syntaxKindCallExpr = PegRt.SyntaxKind 47
+syntaxKindCallExpr = PegRt.SyntaxKind 49
 
 -- | The syntax kind of @NumberLiteral@.
 syntaxKindNumberLiteral :: PegRt.SyntaxKind
-syntaxKindNumberLiteral = PegRt.SyntaxKind 48
+syntaxKindNumberLiteral = PegRt.SyntaxKind 50
 
 -- | The syntax kind of @Number@.
 syntaxKindNumber :: PegRt.SyntaxKind
-syntaxKindNumber = PegRt.SyntaxKind 49
+syntaxKindNumber = PegRt.SyntaxKind 51
 
 -- | The syntax kind of @StringLiteral@.
 syntaxKindStringLiteral :: PegRt.SyntaxKind
-syntaxKindStringLiteral = PegRt.SyntaxKind 50
+syntaxKindStringLiteral = PegRt.SyntaxKind 52
 
 -- | The syntax kind of @KeywordLiteral@.
 syntaxKindKeywordLiteral :: PegRt.SyntaxKind
-syntaxKindKeywordLiteral = PegRt.SyntaxKind 51
+syntaxKindKeywordLiteral = PegRt.SyntaxKind 53
 
 -- | The syntax kind of @Keyword@.
 syntaxKindKeyword :: PegRt.SyntaxKind
-syntaxKindKeyword = PegRt.SyntaxKind 52
+syntaxKindKeyword = PegRt.SyntaxKind 54
 
 -- | The syntax kind of @VarExpr@.
 syntaxKindVarExpr :: PegRt.SyntaxKind
-syntaxKindVarExpr = PegRt.SyntaxKind 53
+syntaxKindVarExpr = PegRt.SyntaxKind 55
 
 -- | The syntax kind of @ExprIdent@.
 syntaxKindExprIdent :: PegRt.SyntaxKind
-syntaxKindExprIdent = PegRt.SyntaxKind 54
+syntaxKindExprIdent = PegRt.SyntaxKind 56
 
 -- | The syntax kind of @Dot@.
 syntaxKindDot :: PegRt.SyntaxKind
-syntaxKindDot = PegRt.SyntaxKind 55
+syntaxKindDot = PegRt.SyntaxKind 57
 
 -- | The syntax kind of @ArrayExpr@.
 syntaxKindArrayExpr :: PegRt.SyntaxKind
-syntaxKindArrayExpr = PegRt.SyntaxKind 56
+syntaxKindArrayExpr = PegRt.SyntaxKind 58
 
 -- | The syntax kind of @HashExpr@.
 syntaxKindHashExpr :: PegRt.SyntaxKind
-syntaxKindHashExpr = PegRt.SyntaxKind 57
+syntaxKindHashExpr = PegRt.SyntaxKind 59
 
 -- | The syntax kind of @HashEntry@.
 syntaxKindHashEntry :: PegRt.SyntaxKind
-syntaxKindHashEntry = PegRt.SyntaxKind 58
+syntaxKindHashEntry = PegRt.SyntaxKind 60
 
 -- | The syntax kind of @ParenExpr@.
 syntaxKindParenExpr :: PegRt.SyntaxKind
-syntaxKindParenExpr = PegRt.SyntaxKind 59
+syntaxKindParenExpr = PegRt.SyntaxKind 61
 
 -- | The syntax kind of @Comma@.
 syntaxKindComma :: PegRt.SyntaxKind
-syntaxKindComma = PegRt.SyntaxKind 60
+syntaxKindComma = PegRt.SyntaxKind 62
 
 -- | The syntax kind of @LBrace@.
 syntaxKindLBrace :: PegRt.SyntaxKind
-syntaxKindLBrace = PegRt.SyntaxKind 61
+syntaxKindLBrace = PegRt.SyntaxKind 63
 
 -- | The syntax kind of @RBrace@.
 syntaxKindRBrace :: PegRt.SyntaxKind
-syntaxKindRBrace = PegRt.SyntaxKind 62
+syntaxKindRBrace = PegRt.SyntaxKind 64
 
 -- | The syntax kind of @LParen@.
 syntaxKindLParen :: PegRt.SyntaxKind
-syntaxKindLParen = PegRt.SyntaxKind 63
+syntaxKindLParen = PegRt.SyntaxKind 65
 
 -- | The syntax kind of @RParen@.
 syntaxKindRParen :: PegRt.SyntaxKind
-syntaxKindRParen = PegRt.SyntaxKind 64
+syntaxKindRParen = PegRt.SyntaxKind 66
 
 -- | The syntax kind of @BlockGroup@.
 syntaxKindBlockGroup :: PegRt.SyntaxKind
-syntaxKindBlockGroup = PegRt.SyntaxKind 65
+syntaxKindBlockGroup = PegRt.SyntaxKind 67
 
 -- | The syntax kind of @BlockCommandStart@.
 syntaxKindBlockCommandStart :: PegRt.SyntaxKind
-syntaxKindBlockCommandStart = PegRt.SyntaxKind 66
+syntaxKindBlockCommandStart = PegRt.SyntaxKind 68
 
 -- | The syntax kind of @AttributedBlock@.
 syntaxKindAttributedBlock :: PegRt.SyntaxKind
-syntaxKindAttributedBlock = PegRt.SyntaxKind 67
+syntaxKindAttributedBlock = PegRt.SyntaxKind 69
 
 -- | The syntax kind of @BlockCommand@.
 syntaxKindBlockCommand :: PegRt.SyntaxKind
-syntaxKindBlockCommand = PegRt.SyntaxKind 68
+syntaxKindBlockCommand = PegRt.SyntaxKind 70
 
 -- | The syntax kind of @At@.
 syntaxKindAt :: PegRt.SyntaxKind
-syntaxKindAt = PegRt.SyntaxKind 69
+syntaxKindAt = PegRt.SyntaxKind 71
 
 -- | The syntax kind of @SetIdent@.
 syntaxKindSetIdent :: PegRt.SyntaxKind
-syntaxKindSetIdent = PegRt.SyntaxKind 70
+syntaxKindSetIdent = PegRt.SyntaxKind 72
 
 -- | The syntax kind of @SetName@.
 syntaxKindSetName :: PegRt.SyntaxKind
-syntaxKindSetName = PegRt.SyntaxKind 71
+syntaxKindSetName = PegRt.SyntaxKind 73
 
 -- | The syntax kind of @CommandBody@.
 syntaxKindCommandBody :: PegRt.SyntaxKind
-syntaxKindCommandBody = PegRt.SyntaxKind 72
+syntaxKindCommandBody = PegRt.SyntaxKind 74
 
 -- | The syntax kind of @BulletList@.
 syntaxKindBulletList :: PegRt.SyntaxKind
-syntaxKindBulletList = PegRt.SyntaxKind 73
+syntaxKindBulletList = PegRt.SyntaxKind 75
 
 -- | The syntax kind of @OrderedList@.
 syntaxKindOrderedList :: PegRt.SyntaxKind
-syntaxKindOrderedList = PegRt.SyntaxKind 74
+syntaxKindOrderedList = PegRt.SyntaxKind 76
 
 -- | The syntax kind of @ListItem@.
 syntaxKindListItem :: PegRt.SyntaxKind
-syntaxKindListItem = PegRt.SyntaxKind 75
+syntaxKindListItem = PegRt.SyntaxKind 77
 
 -- | The syntax kind of @ListMark@.
 syntaxKindListMark :: PegRt.SyntaxKind
-syntaxKindListMark = PegRt.SyntaxKind 76
+syntaxKindListMark = PegRt.SyntaxKind 78
 
 -- | The syntax kind of @BulletMark@.
 syntaxKindBulletMark :: PegRt.SyntaxKind
-syntaxKindBulletMark = PegRt.SyntaxKind 77
+syntaxKindBulletMark = PegRt.SyntaxKind 79
 
 -- | The syntax kind of @OrderedMark@.
 syntaxKindOrderedMark :: PegRt.SyntaxKind
-syntaxKindOrderedMark = PegRt.SyntaxKind 78
+syntaxKindOrderedMark = PegRt.SyntaxKind 80
 
 -- | The syntax kind of @DefList@.
 syntaxKindDefList :: PegRt.SyntaxKind
-syntaxKindDefList = PegRt.SyntaxKind 79
+syntaxKindDefList = PegRt.SyntaxKind 81
 
 -- | The syntax kind of @DefGroup@.
 syntaxKindDefGroup :: PegRt.SyntaxKind
-syntaxKindDefGroup = PegRt.SyntaxKind 80
+syntaxKindDefGroup = PegRt.SyntaxKind 82
 
 -- | The syntax kind of @DefTerm@.
 syntaxKindDefTerm :: PegRt.SyntaxKind
-syntaxKindDefTerm = PegRt.SyntaxKind 81
+syntaxKindDefTerm = PegRt.SyntaxKind 83
 
 -- | The syntax kind of @TermMark@.
 syntaxKindTermMark :: PegRt.SyntaxKind
-syntaxKindTermMark = PegRt.SyntaxKind 82
+syntaxKindTermMark = PegRt.SyntaxKind 84
 
 -- | The syntax kind of @DefNew@.
 syntaxKindDefNew :: PegRt.SyntaxKind
-syntaxKindDefNew = PegRt.SyntaxKind 83
+syntaxKindDefNew = PegRt.SyntaxKind 85
 
 -- | The syntax kind of @NewDefMark@.
 syntaxKindNewDefMark :: PegRt.SyntaxKind
-syntaxKindNewDefMark = PegRt.SyntaxKind 84
+syntaxKindNewDefMark = PegRt.SyntaxKind 86
 
 -- | The syntax kind of @DefBody@.
 syntaxKindDefBody :: PegRt.SyntaxKind
-syntaxKindDefBody = PegRt.SyntaxKind 85
+syntaxKindDefBody = PegRt.SyntaxKind 87
 
 -- | The syntax kind of @Table@.
 syntaxKindTable :: PegRt.SyntaxKind
-syntaxKindTable = PegRt.SyntaxKind 86
+syntaxKindTable = PegRt.SyntaxKind 88
 
 -- | The syntax kind of @TableRow@.
 syntaxKindTableRow :: PegRt.SyntaxKind
-syntaxKindTableRow = PegRt.SyntaxKind 87
+syntaxKindTableRow = PegRt.SyntaxKind 89
 
 -- | The syntax kind of @TableCellAndPipe@.
 syntaxKindTableCellAndPipe :: PegRt.SyntaxKind
-syntaxKindTableCellAndPipe = PegRt.SyntaxKind 88
+syntaxKindTableCellAndPipe = PegRt.SyntaxKind 90
 
 -- | The syntax kind of @TableCell@.
 syntaxKindTableCell :: PegRt.SyntaxKind
-syntaxKindTableCell = PegRt.SyntaxKind 89
+syntaxKindTableCell = PegRt.SyntaxKind 91
 
 -- | The syntax kind of @CellText@.
 syntaxKindCellText :: PegRt.SyntaxKind
-syntaxKindCellText = PegRt.SyntaxKind 90
+syntaxKindCellText = PegRt.SyntaxKind 92
 
 -- | The syntax kind of @TableDelimiter@.
 syntaxKindTableDelimiter :: PegRt.SyntaxKind
-syntaxKindTableDelimiter = PegRt.SyntaxKind 91
+syntaxKindTableDelimiter = PegRt.SyntaxKind 93
 
 -- | The syntax kind of @Delim@.
 syntaxKindDelim :: PegRt.SyntaxKind
-syntaxKindDelim = PegRt.SyntaxKind 92
+syntaxKindDelim = PegRt.SyntaxKind 94
 
 -- | The syntax kind of @CodeBlock@.
 syntaxKindCodeBlock :: PegRt.SyntaxKind
-syntaxKindCodeBlock = PegRt.SyntaxKind 93
+syntaxKindCodeBlock = PegRt.SyntaxKind 95
 
 -- | The syntax kind of @Fence@.
 syntaxKindFence :: PegRt.SyntaxKind
-syntaxKindFence = PegRt.SyntaxKind 94
+syntaxKindFence = PegRt.SyntaxKind 96
 
 -- | The syntax kind of @Lang@.
 syntaxKindLang :: PegRt.SyntaxKind
-syntaxKindLang = PegRt.SyntaxKind 95
+syntaxKindLang = PegRt.SyntaxKind 97
 
 -- | The syntax kind of @CodeLine@.
 syntaxKindCodeLine :: PegRt.SyntaxKind
-syntaxKindCodeLine = PegRt.SyntaxKind 96
+syntaxKindCodeLine = PegRt.SyntaxKind 98
 
 -- | The syntax kind of @CodeClose@.
 syntaxKindCodeClose :: PegRt.SyntaxKind
-syntaxKindCodeClose = PegRt.SyntaxKind 97
+syntaxKindCodeClose = PegRt.SyntaxKind 99
 
 -- | The syntax kind of @SkipBlock@.
 syntaxKindSkipBlock :: PegRt.SyntaxKind
-syntaxKindSkipBlock = PegRt.SyntaxKind 98
+syntaxKindSkipBlock = PegRt.SyntaxKind 100
 
 -- | The syntax kind of @Rest@.
 syntaxKindRest :: PegRt.SyntaxKind
-syntaxKindRest = PegRt.SyntaxKind 99
+syntaxKindRest = PegRt.SyntaxKind 101
 
 -- | The syntax kind of @SkipParagraph@.
 syntaxKindSkipParagraph :: PegRt.SyntaxKind
-syntaxKindSkipParagraph = PegRt.SyntaxKind 100
+syntaxKindSkipParagraph = PegRt.SyntaxKind 102
 
 -- | The syntax kind of @SkipLine@.
 syntaxKindSkipLine :: PegRt.SyntaxKind
-syntaxKindSkipLine = PegRt.SyntaxKind 101
+syntaxKindSkipLine = PegRt.SyntaxKind 103
 
 -- | The syntax kind of @SkipAll@.
 syntaxKindSkipAll :: PegRt.SyntaxKind
-syntaxKindSkipAll = PegRt.SyntaxKind 102
+syntaxKindSkipAll = PegRt.SyntaxKind 104
 
 -- | The syntax kind of @SkipArgs@.
 syntaxKindSkipArgs :: PegRt.SyntaxKind
-syntaxKindSkipArgs = PegRt.SyntaxKind 103
+syntaxKindSkipArgs = PegRt.SyntaxKind 105
 
 -- | The syntax kind of @SkippedArgs@.
 syntaxKindSkippedArgs :: PegRt.SyntaxKind
-syntaxKindSkippedArgs = PegRt.SyntaxKind 104
+syntaxKindSkippedArgs = PegRt.SyntaxKind 106
 
 -- | The syntax kind of @SkipExpr@.
 syntaxKindSkipExpr :: PegRt.SyntaxKind
-syntaxKindSkipExpr = PegRt.SyntaxKind 105
+syntaxKindSkipExpr = PegRt.SyntaxKind 107
 
 -- | The syntax kind of @SkippedExpr@.
 syntaxKindSkippedExpr :: PegRt.SyntaxKind
-syntaxKindSkippedExpr = PegRt.SyntaxKind 106
+syntaxKindSkippedExpr = PegRt.SyntaxKind 108
 
 -- | The name of a syntax kind.
 nameOfSyntaxKind :: PegRt.SyntaxKind -> PegRt.Text
@@ -705,100 +717,102 @@ nameOfSyntaxKind peg'k = PegRt.labelText (case peg'k of
   ; PegRt.SyntaxKind 10 -> "LineContinuation"
   ; PegRt.SyntaxKind 11 -> "Text"
   ; PegRt.SyntaxKind 12 -> "Escape"
-  ; PegRt.SyntaxKind 13 -> "Comment"
-  ; PegRt.SyntaxKind 14 -> "ProofComment"
-  ; PegRt.SyntaxKind 15 -> "InlineCommand"
-  ; PegRt.SyntaxKind 16 -> "LBr"
-  ; PegRt.SyntaxKind 17 -> "RBr"
-  ; PegRt.SyntaxKind 18 -> "Ident"
-  ; PegRt.SyntaxKind 19 -> "Arguments"
-  ; PegRt.SyntaxKind 20 -> "Argument"
-  ; PegRt.SyntaxKind 21 -> "KeywordArgument"
-  ; PegRt.SyntaxKind 22 -> "SplatArgument"
-  ; PegRt.SyntaxKind 23 -> "Splat"
-  ; PegRt.SyntaxKind 24 -> "Word"
-  ; PegRt.SyntaxKind 25 -> "Eq"
-  ; PegRt.SyntaxKind 26 -> "StringLit"
-  ; PegRt.SyntaxKind 27 -> "ProseSlots"
-  ; PegRt.SyntaxKind 28 -> "Colon"
-  ; PegRt.SyntaxKind 29 -> "Pipe"
-  ; PegRt.SyntaxKind 30 -> "ProseSlot"
-  ; PegRt.SyntaxKind 31 -> "SlotText"
-  ; PegRt.SyntaxKind 32 -> "ExprCtx"
-  ; PegRt.SyntaxKind 33 -> "ExprOpen"
-  ; PegRt.SyntaxKind 34 -> "ExprBody"
-  ; PegRt.SyntaxKind 35 -> "Expr"
-  ; PegRt.SyntaxKind 36 -> "CompareExpr"
-  ; PegRt.SyntaxKind 37 -> "CmpOp"
-  ; PegRt.SyntaxKind 38 -> "AddExpr"
-  ; PegRt.SyntaxKind 39 -> "AddOp"
-  ; PegRt.SyntaxKind 40 -> "MulExpr"
-  ; PegRt.SyntaxKind 41 -> "MulOp"
-  ; PegRt.SyntaxKind 42 -> "UnaryExpr"
-  ; PegRt.SyntaxKind 43 -> "NegOp"
-  ; PegRt.SyntaxKind 44 -> "PowExpr"
-  ; PegRt.SyntaxKind 45 -> "PowOp"
-  ; PegRt.SyntaxKind 46 -> "PostfixExpr"
-  ; PegRt.SyntaxKind 47 -> "CallExpr"
-  ; PegRt.SyntaxKind 48 -> "NumberLiteral"
-  ; PegRt.SyntaxKind 49 -> "Number"
-  ; PegRt.SyntaxKind 50 -> "StringLiteral"
-  ; PegRt.SyntaxKind 51 -> "KeywordLiteral"
-  ; PegRt.SyntaxKind 52 -> "Keyword"
-  ; PegRt.SyntaxKind 53 -> "VarExpr"
-  ; PegRt.SyntaxKind 54 -> "ExprIdent"
-  ; PegRt.SyntaxKind 55 -> "Dot"
-  ; PegRt.SyntaxKind 56 -> "ArrayExpr"
-  ; PegRt.SyntaxKind 57 -> "HashExpr"
-  ; PegRt.SyntaxKind 58 -> "HashEntry"
-  ; PegRt.SyntaxKind 59 -> "ParenExpr"
-  ; PegRt.SyntaxKind 60 -> "Comma"
-  ; PegRt.SyntaxKind 61 -> "LBrace"
-  ; PegRt.SyntaxKind 62 -> "RBrace"
-  ; PegRt.SyntaxKind 63 -> "LParen"
-  ; PegRt.SyntaxKind 64 -> "RParen"
-  ; PegRt.SyntaxKind 65 -> "BlockGroup"
-  ; PegRt.SyntaxKind 66 -> "BlockCommandStart"
-  ; PegRt.SyntaxKind 67 -> "AttributedBlock"
-  ; PegRt.SyntaxKind 68 -> "BlockCommand"
-  ; PegRt.SyntaxKind 69 -> "At"
-  ; PegRt.SyntaxKind 70 -> "SetIdent"
-  ; PegRt.SyntaxKind 71 -> "SetName"
-  ; PegRt.SyntaxKind 72 -> "CommandBody"
-  ; PegRt.SyntaxKind 73 -> "BulletList"
-  ; PegRt.SyntaxKind 74 -> "OrderedList"
-  ; PegRt.SyntaxKind 75 -> "ListItem"
-  ; PegRt.SyntaxKind 76 -> "ListMark"
-  ; PegRt.SyntaxKind 77 -> "BulletMark"
-  ; PegRt.SyntaxKind 78 -> "OrderedMark"
-  ; PegRt.SyntaxKind 79 -> "DefList"
-  ; PegRt.SyntaxKind 80 -> "DefGroup"
-  ; PegRt.SyntaxKind 81 -> "DefTerm"
-  ; PegRt.SyntaxKind 82 -> "TermMark"
-  ; PegRt.SyntaxKind 83 -> "DefNew"
-  ; PegRt.SyntaxKind 84 -> "NewDefMark"
-  ; PegRt.SyntaxKind 85 -> "DefBody"
-  ; PegRt.SyntaxKind 86 -> "Table"
-  ; PegRt.SyntaxKind 87 -> "TableRow"
-  ; PegRt.SyntaxKind 88 -> "TableCellAndPipe"
-  ; PegRt.SyntaxKind 89 -> "TableCell"
-  ; PegRt.SyntaxKind 90 -> "CellText"
-  ; PegRt.SyntaxKind 91 -> "TableDelimiter"
-  ; PegRt.SyntaxKind 92 -> "Delim"
-  ; PegRt.SyntaxKind 93 -> "CodeBlock"
-  ; PegRt.SyntaxKind 94 -> "Fence"
-  ; PegRt.SyntaxKind 95 -> "Lang"
-  ; PegRt.SyntaxKind 96 -> "CodeLine"
-  ; PegRt.SyntaxKind 97 -> "CodeClose"
-  ; PegRt.SyntaxKind 98 -> "SkipBlock"
-  ; PegRt.SyntaxKind 99 -> "Rest"
-  ; PegRt.SyntaxKind 100 -> "SkipParagraph"
-  ; PegRt.SyntaxKind 101 -> "SkipLine"
-  ; PegRt.SyntaxKind 102 -> "SkipAll"
-  ; PegRt.SyntaxKind 103 -> "SkipArgs"
-  ; PegRt.SyntaxKind 104 -> "SkippedArgs"
-  ; PegRt.SyntaxKind 105 -> "SkipExpr"
-  ; PegRt.SyntaxKind 106 -> "SkippedExpr"
+  ; PegRt.SyntaxKind 13 -> "HardBreak"
+  ; PegRt.SyntaxKind 14 -> "Backslash"
+  ; PegRt.SyntaxKind 15 -> "Comment"
+  ; PegRt.SyntaxKind 16 -> "ProofComment"
+  ; PegRt.SyntaxKind 17 -> "InlineCommand"
+  ; PegRt.SyntaxKind 18 -> "LBr"
+  ; PegRt.SyntaxKind 19 -> "RBr"
+  ; PegRt.SyntaxKind 20 -> "Ident"
+  ; PegRt.SyntaxKind 21 -> "Arguments"
+  ; PegRt.SyntaxKind 22 -> "Argument"
+  ; PegRt.SyntaxKind 23 -> "KeywordArgument"
+  ; PegRt.SyntaxKind 24 -> "SplatArgument"
+  ; PegRt.SyntaxKind 25 -> "Splat"
+  ; PegRt.SyntaxKind 26 -> "Word"
+  ; PegRt.SyntaxKind 27 -> "Eq"
+  ; PegRt.SyntaxKind 28 -> "StringLit"
+  ; PegRt.SyntaxKind 29 -> "ProseSlots"
+  ; PegRt.SyntaxKind 30 -> "Colon"
+  ; PegRt.SyntaxKind 31 -> "Pipe"
+  ; PegRt.SyntaxKind 32 -> "ProseSlot"
+  ; PegRt.SyntaxKind 33 -> "SlotText"
+  ; PegRt.SyntaxKind 34 -> "ExprCtx"
+  ; PegRt.SyntaxKind 35 -> "ExprOpen"
+  ; PegRt.SyntaxKind 36 -> "ExprBody"
+  ; PegRt.SyntaxKind 37 -> "Expr"
+  ; PegRt.SyntaxKind 38 -> "CompareExpr"
+  ; PegRt.SyntaxKind 39 -> "CmpOp"
+  ; PegRt.SyntaxKind 40 -> "AddExpr"
+  ; PegRt.SyntaxKind 41 -> "AddOp"
+  ; PegRt.SyntaxKind 42 -> "MulExpr"
+  ; PegRt.SyntaxKind 43 -> "MulOp"
+  ; PegRt.SyntaxKind 44 -> "UnaryExpr"
+  ; PegRt.SyntaxKind 45 -> "NegOp"
+  ; PegRt.SyntaxKind 46 -> "PowExpr"
+  ; PegRt.SyntaxKind 47 -> "PowOp"
+  ; PegRt.SyntaxKind 48 -> "PostfixExpr"
+  ; PegRt.SyntaxKind 49 -> "CallExpr"
+  ; PegRt.SyntaxKind 50 -> "NumberLiteral"
+  ; PegRt.SyntaxKind 51 -> "Number"
+  ; PegRt.SyntaxKind 52 -> "StringLiteral"
+  ; PegRt.SyntaxKind 53 -> "KeywordLiteral"
+  ; PegRt.SyntaxKind 54 -> "Keyword"
+  ; PegRt.SyntaxKind 55 -> "VarExpr"
+  ; PegRt.SyntaxKind 56 -> "ExprIdent"
+  ; PegRt.SyntaxKind 57 -> "Dot"
+  ; PegRt.SyntaxKind 58 -> "ArrayExpr"
+  ; PegRt.SyntaxKind 59 -> "HashExpr"
+  ; PegRt.SyntaxKind 60 -> "HashEntry"
+  ; PegRt.SyntaxKind 61 -> "ParenExpr"
+  ; PegRt.SyntaxKind 62 -> "Comma"
+  ; PegRt.SyntaxKind 63 -> "LBrace"
+  ; PegRt.SyntaxKind 64 -> "RBrace"
+  ; PegRt.SyntaxKind 65 -> "LParen"
+  ; PegRt.SyntaxKind 66 -> "RParen"
+  ; PegRt.SyntaxKind 67 -> "BlockGroup"
+  ; PegRt.SyntaxKind 68 -> "BlockCommandStart"
+  ; PegRt.SyntaxKind 69 -> "AttributedBlock"
+  ; PegRt.SyntaxKind 70 -> "BlockCommand"
+  ; PegRt.SyntaxKind 71 -> "At"
+  ; PegRt.SyntaxKind 72 -> "SetIdent"
+  ; PegRt.SyntaxKind 73 -> "SetName"
+  ; PegRt.SyntaxKind 74 -> "CommandBody"
+  ; PegRt.SyntaxKind 75 -> "BulletList"
+  ; PegRt.SyntaxKind 76 -> "OrderedList"
+  ; PegRt.SyntaxKind 77 -> "ListItem"
+  ; PegRt.SyntaxKind 78 -> "ListMark"
+  ; PegRt.SyntaxKind 79 -> "BulletMark"
+  ; PegRt.SyntaxKind 80 -> "OrderedMark"
+  ; PegRt.SyntaxKind 81 -> "DefList"
+  ; PegRt.SyntaxKind 82 -> "DefGroup"
+  ; PegRt.SyntaxKind 83 -> "DefTerm"
+  ; PegRt.SyntaxKind 84 -> "TermMark"
+  ; PegRt.SyntaxKind 85 -> "DefNew"
+  ; PegRt.SyntaxKind 86 -> "NewDefMark"
+  ; PegRt.SyntaxKind 87 -> "DefBody"
+  ; PegRt.SyntaxKind 88 -> "Table"
+  ; PegRt.SyntaxKind 89 -> "TableRow"
+  ; PegRt.SyntaxKind 90 -> "TableCellAndPipe"
+  ; PegRt.SyntaxKind 91 -> "TableCell"
+  ; PegRt.SyntaxKind 92 -> "CellText"
+  ; PegRt.SyntaxKind 93 -> "TableDelimiter"
+  ; PegRt.SyntaxKind 94 -> "Delim"
+  ; PegRt.SyntaxKind 95 -> "CodeBlock"
+  ; PegRt.SyntaxKind 96 -> "Fence"
+  ; PegRt.SyntaxKind 97 -> "Lang"
+  ; PegRt.SyntaxKind 98 -> "CodeLine"
+  ; PegRt.SyntaxKind 99 -> "CodeClose"
+  ; PegRt.SyntaxKind 100 -> "SkipBlock"
+  ; PegRt.SyntaxKind 101 -> "Rest"
+  ; PegRt.SyntaxKind 102 -> "SkipParagraph"
+  ; PegRt.SyntaxKind 103 -> "SkipLine"
+  ; PegRt.SyntaxKind 104 -> "SkipAll"
+  ; PegRt.SyntaxKind 105 -> "SkipArgs"
+  ; PegRt.SyntaxKind 106 -> "SkippedArgs"
+  ; PegRt.SyntaxKind 107 -> "SkipExpr"
+  ; PegRt.SyntaxKind 108 -> "SkippedExpr"
   ; _ -> "UNKNOWN"
   })
 
@@ -850,6 +864,15 @@ newtype LineContinuationSyntax = LineContinuationSyntax PegRt.SyntaxNode
 castLineContinuationSyntax :: PegRt.SyntaxNode -> PegPrelude.Maybe LineContinuationSyntax
 castLineContinuationSyntax peg'n =
   if PegRt.syntaxKind peg'n PegPrelude.== syntaxKindLineContinuation then PegPrelude.Just (LineContinuationSyntax peg'n) else PegPrelude.Nothing
+
+-- | A node of the rule @HardBreak@.
+newtype HardBreakSyntax = HardBreakSyntax PegRt.SyntaxNode
+  deriving (PegPrelude.Eq, PegPrelude.Show)
+
+-- | The node, if it is a node of the rule @HardBreak@.
+castHardBreakSyntax :: PegRt.SyntaxNode -> PegPrelude.Maybe HardBreakSyntax
+castHardBreakSyntax peg'n =
+  if PegRt.syntaxKind peg'n PegPrelude.== syntaxKindHardBreak then PegPrelude.Just (HardBreakSyntax peg'n) else PegPrelude.Nothing
 
 -- | A node of the rule @InlineCommand@.
 newtype InlineCommandSyntax = InlineCommandSyntax PegRt.SyntaxNode
@@ -1341,789 +1364,808 @@ peg'config = PegRt.defaultConfig
 
 data Peg'Store peg's = Peg'Store
   { peg'memo'File :: PegRt.Table peg's ((
-{-# LINE 134 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 140 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 1347 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1370 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'BlankLines :: PegRt.Table peg's ((
-{-# LINE 137 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 143 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}()
-{-# LINE 1352 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'BlankLine :: PegRt.Table peg's ((
-{-# LINE 140 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 14 #-}()
-{-# LINE 1357 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'Blocks :: PegRt.ArgTable peg's (
-{-# LINE 144 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 15 #-}Int
-{-# LINE 1362 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 144 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 23 #-}()
-{-# LINE 1366 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'Block :: PegRt.ArgTable peg's (
-{-# LINE 147 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 14 #-}Int
-{-# LINE 1371 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 147 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 22 #-}()
 {-# LINE 1375 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'BadIndent :: PegRt.ArgTable peg's (
-{-# LINE 160 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 18 #-}Int
+  , peg'memo'BlankLine :: PegRt.Table peg's ((
+{-# LINE 146 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 14 #-}()
 {-# LINE 1380 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 160 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 26 #-}()
-{-# LINE 1384 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'OrphanDef :: PegRt.ArgTable peg's (
-{-# LINE 163 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 18 #-}Int
+  , peg'memo'Blocks :: PegRt.ArgTable peg's (
+{-# LINE 150 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 15 #-}Int
+{-# LINE 1385 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 150 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 23 #-}()
 {-# LINE 1389 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 163 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 26 #-}()
-{-# LINE 1393 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'Ind :: PegRt.ArgTable peg's (
-{-# LINE 168 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 10 #-}Int
+  , peg'memo'Block :: PegRt.ArgTable peg's (
+{-# LINE 153 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 14 #-}Int
+{-# LINE 1394 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 153 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 22 #-}()
 {-# LINE 1398 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 168 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 18 #-}()
-{-# LINE 1402 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'Ws :: PegRt.Table peg's ((
-{-# LINE 172 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 7 #-}()
+  , peg'memo'BadIndent :: PegRt.ArgTable peg's (
+{-# LINE 166 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 18 #-}Int
+{-# LINE 1403 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 166 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 26 #-}()
 {-# LINE 1407 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'Sp :: PegRt.Table peg's ((
-{-# LINE 175 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 7 #-}()
+  , peg'memo'OrphanDef :: PegRt.ArgTable peg's (
+{-# LINE 169 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 18 #-}Int
 {-# LINE 1412 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 169 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 26 #-}()
+{-# LINE 1416 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'Nl :: PegRt.Table peg's ((
+  , peg'memo'Ind :: PegRt.ArgTable peg's (
+{-# LINE 174 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 10 #-}Int
+{-# LINE 1421 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 174 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 18 #-}()
+{-# LINE 1425 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'Ws :: PegRt.Table peg's ((
 {-# LINE 178 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 7 #-}()
-{-# LINE 1417 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1430 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'Sp :: PegRt.Table peg's ((
+{-# LINE 181 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 7 #-}()
+{-# LINE 1435 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'Nl :: PegRt.Table peg's ((
+{-# LINE 184 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 7 #-}()
+{-# LINE 1440 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'EOL :: PegRt.Table peg's ((
-{-# LINE 181 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 187 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 8 #-}()
-{-# LINE 1422 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1445 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'ParaEnd :: PegRt.Table peg's ((
-{-# LINE 185 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 191 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 1427 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1450 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'BlockStart :: PegRt.Table peg's ((
-{-# LINE 190 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 196 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}()
-{-# LINE 1432 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'Heading :: PegRt.ArgTable peg's (
-{-# LINE 201 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 16 #-}Int
-{-# LINE 1437 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 201 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 24 #-}()
-{-# LINE 1441 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'TooDeep :: PegRt.Table peg's ((
-{-# LINE 204 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 12 #-}()
-{-# LINE 1446 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'HeadInline :: PegRt.ArgTable peg's (
-{-# LINE 207 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 19 #-}Int
-{-# LINE 1451 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 207 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 27 #-}()
 {-# LINE 1455 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'HashMark :: PegRt.Table peg's ((
-{-# LINE 216 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 13 #-}()
+  , peg'memo'Heading :: PegRt.ArgTable peg's (
+{-# LINE 207 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 16 #-}Int
 {-# LINE 1460 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'Paragraph :: PegRt.ArgTable peg's (
-{-# LINE 221 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 18 #-}Int
-{-# LINE 1465 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 221 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 26 #-}()
+{-# LINE 207 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 24 #-}()
+{-# LINE 1464 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'TooDeep :: PegRt.Table peg's ((
+{-# LINE 210 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 12 #-}()
 {-# LINE 1469 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'LineContinuation :: PegRt.ArgTable peg's (
-{-# LINE 224 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 25 #-}Int
+  , peg'memo'HeadInline :: PegRt.ArgTable peg's (
+{-# LINE 213 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 19 #-}Int
 {-# LINE 1474 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 224 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 33 #-}()
+{-# LINE 213 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 27 #-}()
 {-# LINE 1478 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'Inline :: PegRt.ArgTable peg's (
-{-# LINE 227 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 15 #-}Int
+  , peg'memo'HashMark :: PegRt.Table peg's ((
+{-# LINE 223 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 13 #-}()
 {-# LINE 1483 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 227 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 23 #-}()
-{-# LINE 1487 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'Text :: PegRt.Table peg's ((
-{-# LINE 237 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 9 #-}()
+  , peg'memo'Paragraph :: PegRt.ArgTable peg's (
+{-# LINE 228 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 18 #-}Int
+{-# LINE 1488 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 228 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 26 #-}()
 {-# LINE 1492 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'Escape :: PegRt.Table peg's ((
-{-# LINE 240 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 11 #-}()
+  , peg'memo'LineContinuation :: PegRt.ArgTable peg's (
+{-# LINE 231 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 25 #-}Int
 {-# LINE 1497 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 231 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 33 #-}()
+{-# LINE 1501 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'Inline :: PegRt.ArgTable peg's (
+{-# LINE 234 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 15 #-}Int
+{-# LINE 1506 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 234 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 23 #-}()
+{-# LINE 1510 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'Text :: PegRt.Table peg's ((
+{-# LINE 246 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 9 #-}()
+{-# LINE 1515 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'Escape :: PegRt.Table peg's ((
+{-# LINE 249 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 11 #-}()
+{-# LINE 1520 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'HardBreak :: PegRt.ArgTable peg's (
+{-# LINE 255 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 18 #-}Int
+{-# LINE 1525 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 255 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 26 #-}()
+{-# LINE 1529 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'Backslash :: PegRt.Table peg's ((
+{-# LINE 258 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 14 #-}()
+{-# LINE 1534 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'BadBreak :: PegRt.Table peg's ((
+{-# LINE 263 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 13 #-}()
+{-# LINE 1539 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Comment :: PegRt.Table peg's ((
-{-# LINE 243 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 266 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 1502 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1544 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'ProofComment :: PegRt.Table peg's ((
-{-# LINE 246 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 269 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-}()
-{-# LINE 1507 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1549 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'InlineCommand :: PegRt.ArgTable peg's (
-{-# LINE 251 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 274 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-}Int
-{-# LINE 1512 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1554 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 251 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 274 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 30 #-}()
-{-# LINE 1516 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1558 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'LBr :: PegRt.Table peg's ((
-{-# LINE 254 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 277 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 8 #-}()
-{-# LINE 1521 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1563 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'BadBracket :: PegRt.Table peg's ((
-{-# LINE 257 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 280 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}()
-{-# LINE 1526 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1568 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'RBr :: PegRt.Table peg's ((
-{-# LINE 260 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 283 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 8 #-}()
-{-# LINE 1531 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1573 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Ident :: PegRt.Table peg's ((
-{-# LINE 263 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 286 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 1536 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1578 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Arguments :: PegRt.Table peg's ((
-{-# LINE 266 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 289 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 1541 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1583 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'PosArg :: PegRt.Table peg's ((
-{-# LINE 269 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 292 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 11 #-}()
-{-# LINE 1546 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1588 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Argument :: PegRt.Table peg's ((
-{-# LINE 273 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 296 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 1551 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1593 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'KeywordArgument :: PegRt.Table peg's ((
-{-# LINE 276 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 299 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 20 #-}()
-{-# LINE 1556 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1598 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'SplatArgument :: PegRt.Table peg's ((
-{-# LINE 279 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 302 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}()
-{-# LINE 1561 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1603 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Splat :: PegRt.Table peg's ((
-{-# LINE 282 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 305 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 1566 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1608 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'ArgValue :: PegRt.Table peg's ((
-{-# LINE 285 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 308 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 1571 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1613 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Word :: PegRt.Table peg's ((
-{-# LINE 291 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 314 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 1576 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1618 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Eq :: PegRt.Table peg's ((
-{-# LINE 294 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 317 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 7 #-}()
-{-# LINE 1581 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'StringLit :: PegRt.Table peg's ((
-{-# LINE 297 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 14 #-}()
-{-# LINE 1586 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'ProseSlots :: PegRt.ArgTable peg's (
-{-# LINE 300 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 19 #-}Int
-{-# LINE 1591 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 300 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 27 #-}()
-{-# LINE 1595 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'Colon :: PegRt.Table peg's ((
-{-# LINE 303 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 10 #-}()
-{-# LINE 1600 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'Pipe :: PegRt.Table peg's ((
-{-# LINE 306 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 9 #-}()
-{-# LINE 1605 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'ProseSlot :: PegRt.ArgTable peg's (
-{-# LINE 309 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 18 #-}Int
-{-# LINE 1610 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 309 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 26 #-}()
-{-# LINE 1614 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'SlotInline :: PegRt.ArgTable peg's (
-{-# LINE 312 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 19 #-}Int
-{-# LINE 1619 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 312 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 27 #-}()
 {-# LINE 1623 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'SlotText :: PegRt.Table peg's ((
-{-# LINE 322 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 13 #-}()
+  , peg'memo'StringLit :: PegRt.Table peg's ((
+{-# LINE 320 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 14 #-}()
 {-# LINE 1628 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'ExprCtx :: PegRt.Table peg's ((
-{-# LINE 327 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 12 #-}()
+  , peg'memo'ProseSlots :: PegRt.ArgTable peg's (
+{-# LINE 323 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 19 #-}Int
 {-# LINE 1633 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 323 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 27 #-}()
+{-# LINE 1637 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'Colon :: PegRt.Table peg's ((
+{-# LINE 326 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 10 #-}()
+{-# LINE 1642 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'Pipe :: PegRt.Table peg's ((
+{-# LINE 329 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 9 #-}()
+{-# LINE 1647 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'ProseSlot :: PegRt.ArgTable peg's (
+{-# LINE 332 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 18 #-}Int
+{-# LINE 1652 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 332 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 26 #-}()
+{-# LINE 1656 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'SlotInline :: PegRt.ArgTable peg's (
+{-# LINE 335 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 19 #-}Int
+{-# LINE 1661 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 335 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 27 #-}()
+{-# LINE 1665 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'SlotText :: PegRt.Table peg's ((
+{-# LINE 347 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 13 #-}()
+{-# LINE 1670 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'ExprCtx :: PegRt.Table peg's ((
+{-# LINE 352 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 12 #-}()
+{-# LINE 1675 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'ExprOpen :: PegRt.Table peg's ((
-{-# LINE 330 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 355 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 1638 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1680 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'ExprBody :: PegRt.Table peg's ((
-{-# LINE 333 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 358 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 1643 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1685 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'ES :: PegRt.Table peg's ((
-{-# LINE 336 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 361 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 7 #-}()
-{-# LINE 1648 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1690 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Expr :: PegRt.Table peg's ((
-{-# LINE 339 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 364 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 1653 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1695 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'CompareExpr :: PegRt.Table peg's ((
-{-# LINE 342 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 367 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}()
-{-# LINE 1658 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1700 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'CmpOp :: PegRt.Table peg's ((
-{-# LINE 346 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 371 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 1663 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1705 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'AddExpr :: PegRt.Table peg's ((
-{-# LINE 349 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 374 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 1668 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1710 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'AddOp :: PegRt.Table peg's ((
-{-# LINE 353 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 378 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 1673 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1715 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'MulExpr :: PegRt.Table peg's ((
-{-# LINE 356 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 381 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 1678 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1720 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'MulOp :: PegRt.Table peg's ((
-{-# LINE 360 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 385 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 1683 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1725 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'UnaryExpr :: PegRt.Table peg's ((
-{-# LINE 363 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 388 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 1688 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1730 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'NegOp :: PegRt.Table peg's ((
-{-# LINE 367 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 392 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 1693 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1735 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'PowExpr :: PegRt.Table peg's ((
-{-# LINE 370 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 395 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 1698 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1740 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'PowOp :: PegRt.Table peg's ((
-{-# LINE 374 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 399 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 1703 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1745 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'PostfixExpr :: PegRt.Table peg's ((
-{-# LINE 377 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 402 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}()
-{-# LINE 1708 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1750 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'CallExpr :: PegRt.Table peg's ((
-{-# LINE 381 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 406 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 1713 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1755 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Primary :: PegRt.Table peg's ((
-{-# LINE 384 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 409 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 1718 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1760 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'NumberLiteral :: PegRt.Table peg's ((
-{-# LINE 393 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 418 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}()
-{-# LINE 1723 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1765 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Number :: PegRt.Table peg's ((
-{-# LINE 396 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 421 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 11 #-}()
-{-# LINE 1728 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1770 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'StringLiteral :: PegRt.Table peg's ((
-{-# LINE 399 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 424 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}()
-{-# LINE 1733 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1775 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'KeywordLiteral :: PegRt.Table peg's ((
-{-# LINE 402 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 427 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 19 #-}()
-{-# LINE 1738 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1780 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Keyword :: PegRt.Table peg's ((
-{-# LINE 405 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 430 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 1743 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1785 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'VarExpr :: PegRt.Table peg's ((
-{-# LINE 408 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 433 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 1748 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1790 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'ExprIdent :: PegRt.Table peg's ((
-{-# LINE 411 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 436 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 1753 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1795 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Dot :: PegRt.Table peg's ((
-{-# LINE 414 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 439 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 8 #-}()
-{-# LINE 1758 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1800 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'ArrayExpr :: PegRt.Table peg's ((
-{-# LINE 417 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 442 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 1763 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1805 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'HashExpr :: PegRt.Table peg's ((
-{-# LINE 420 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 445 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 1768 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1810 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'HashEntry :: PegRt.Table peg's ((
-{-# LINE 423 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 448 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 1773 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1815 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'ParenExpr :: PegRt.Table peg's ((
-{-# LINE 426 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 451 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 1778 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1820 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Comma :: PegRt.Table peg's ((
-{-# LINE 429 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 454 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 1783 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1825 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'LBrace :: PegRt.Table peg's ((
-{-# LINE 432 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 457 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 11 #-}()
-{-# LINE 1788 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1830 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'RBrace :: PegRt.Table peg's ((
-{-# LINE 435 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 460 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 11 #-}()
-{-# LINE 1793 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'LParen :: PegRt.Table peg's ((
-{-# LINE 438 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 11 #-}()
-{-# LINE 1798 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'RParen :: PegRt.Table peg's ((
-{-# LINE 441 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 11 #-}()
-{-# LINE 1803 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'BlockGroup :: PegRt.ArgTable peg's (
-{-# LINE 446 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 19 #-}Int
-{-# LINE 1808 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 446 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 27 #-}()
-{-# LINE 1812 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'BlockCommandStart :: PegRt.Table peg's ((
-{-# LINE 449 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 22 #-}()
-{-# LINE 1817 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'AttributedBlock :: PegRt.ArgTable peg's (
-{-# LINE 452 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 24 #-}Int
-{-# LINE 1822 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 452 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 32 #-}()
-{-# LINE 1826 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'BlockCommand :: PegRt.ArgTable peg's (
-{-# LINE 462 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 21 #-}Int
-{-# LINE 1831 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 462 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 29 #-}()
 {-# LINE 1835 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'At :: PegRt.Table peg's ((
-{-# LINE 466 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 7 #-}()
+  , peg'memo'LParen :: PegRt.Table peg's ((
+{-# LINE 463 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 11 #-}()
 {-# LINE 1840 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'SetIdent :: PegRt.Table peg's ((
-{-# LINE 469 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 13 #-}()
+  , peg'memo'RParen :: PegRt.Table peg's ((
+{-# LINE 466 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 11 #-}()
 {-# LINE 1845 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'SetName :: PegRt.Table peg's ((
-{-# LINE 472 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 12 #-}()
+  , peg'memo'BlockGroup :: PegRt.ArgTable peg's (
+{-# LINE 471 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 19 #-}Int
 {-# LINE 1850 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'CommandBody :: PegRt.ArgTable peg's (
-{-# LINE 475 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 20 #-}Int
-{-# LINE 1855 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 475 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 28 #-}()
+{-# LINE 471 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 27 #-}()
+{-# LINE 1854 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'BlockCommandStart :: PegRt.Table peg's ((
+{-# LINE 474 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 22 #-}()
 {-# LINE 1859 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'BulletList :: PegRt.ArgTable peg's (
-{-# LINE 480 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 19 #-}Int
+  , peg'memo'AttributedBlock :: PegRt.ArgTable peg's (
+{-# LINE 477 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 24 #-}Int
 {-# LINE 1864 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 480 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 27 #-}()
+{-# LINE 477 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 32 #-}()
 {-# LINE 1868 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'OrderedList :: PegRt.ArgTable peg's (
-{-# LINE 483 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 20 #-}Int
+  , peg'memo'BlockCommand :: PegRt.ArgTable peg's (
+{-# LINE 487 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 21 #-}Int
 {-# LINE 1873 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 483 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 28 #-}()
+{-# LINE 487 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 29 #-}()
 {-# LINE 1877 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'ListItem :: PegRt.ArgTable peg's ((
-{-# LINE 486 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 17 #-}Int
+  , peg'memo'At :: PegRt.Table peg's ((
+{-# LINE 491 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 7 #-}()
 {-# LINE 1882 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'SetIdent :: PegRt.Table peg's ((
+{-# LINE 494 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 13 #-}()
+{-# LINE 1887 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'SetName :: PegRt.Table peg's ((
+{-# LINE 497 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 12 #-}()
+{-# LINE 1892 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'CommandBody :: PegRt.ArgTable peg's (
+{-# LINE 500 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 20 #-}Int
+{-# LINE 1897 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 500 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 28 #-}()
+{-# LINE 1901 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'BulletList :: PegRt.ArgTable peg's (
+{-# LINE 505 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 19 #-}Int
+{-# LINE 1906 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 505 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 27 #-}()
+{-# LINE 1910 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'OrderedList :: PegRt.ArgTable peg's (
+{-# LINE 508 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 20 #-}Int
+{-# LINE 1915 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 508 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 28 #-}()
+{-# LINE 1919 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'ListItem :: PegRt.ArgTable peg's ((
+{-# LINE 511 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 17 #-}Int
+{-# LINE 1924 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), (
-{-# LINE 486 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 511 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 33 #-}Int
-{-# LINE 1886 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1928 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )) ((
-{-# LINE 486 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 511 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 41 #-}()
-{-# LINE 1890 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1932 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'ListMark :: PegRt.ArgTable peg's (
-{-# LINE 489 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 514 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-}Int
-{-# LINE 1895 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1937 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 489 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 514 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 29 #-}()
-{-# LINE 1899 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1941 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'BulletMark :: PegRt.Table peg's ((
-{-# LINE 493 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 518 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}()
-{-# LINE 1904 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1946 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'OrderedMark :: PegRt.Table peg's ((
-{-# LINE 496 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 521 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}()
-{-# LINE 1909 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1951 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'ItemTail :: PegRt.ArgTable peg's (
-{-# LINE 499 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 524 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-}Int
-{-# LINE 1914 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1956 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 499 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 524 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-}()
-{-# LINE 1918 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1960 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'DefList :: PegRt.ArgTable peg's (
-{-# LINE 504 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 529 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}Int
-{-# LINE 1923 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1965 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 504 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 529 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-}()
-{-# LINE 1927 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1969 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'DefGroup :: PegRt.ArgTable peg's (
-{-# LINE 507 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 532 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-}Int
-{-# LINE 1932 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1974 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 507 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 532 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-}()
-{-# LINE 1936 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1978 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'DefTerm :: PegRt.ArgTable peg's (
-{-# LINE 510 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 535 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}Int
-{-# LINE 1941 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1983 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 510 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 535 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-}()
-{-# LINE 1945 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1987 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'TermMark :: PegRt.Table peg's ((
-{-# LINE 513 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 538 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 1950 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1992 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'DefNew :: PegRt.ArgTable peg's (
-{-# LINE 516 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 541 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}Int
-{-# LINE 1955 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 1997 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 516 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 541 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-}()
-{-# LINE 1959 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2001 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'NewDefMark :: PegRt.Table peg's ((
-{-# LINE 519 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 544 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}()
-{-# LINE 1964 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2006 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'DefBody :: PegRt.ArgTable peg's (
-{-# LINE 522 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 547 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}Int
-{-# LINE 1969 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2011 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 522 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 547 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-}()
-{-# LINE 1973 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2015 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Table :: PegRt.ArgTable peg's (
-{-# LINE 527 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 552 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}Int
-{-# LINE 1978 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2020 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 527 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 552 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-}()
-{-# LINE 1982 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'TableBodyRow :: PegRt.ArgTable peg's ((
-{-# LINE 531 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 21 #-}Int
-{-# LINE 1987 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), (
-{-# LINE 531 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 31 #-}Int
-{-# LINE 1991 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    )) ((
-{-# LINE 531 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 39 #-}()
-{-# LINE 1995 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'TableRow :: PegRt.ArgTable peg's (
-{-# LINE 534 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 17 #-}Int
-{-# LINE 2000 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 534 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 25 #-}Int
-{-# LINE 2004 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'TableCellAndPipe :: PegRt.Table peg's ((
-{-# LINE 537 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 21 #-}()
-{-# LINE 2009 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'TableCell :: PegRt.Table peg's ((
-{-# LINE 540 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 14 #-}()
-{-# LINE 2014 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'CellInline :: PegRt.Table peg's ((
-{-# LINE 543 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 15 #-}()
-{-# LINE 2019 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), [PegRt.Child])
-  , peg'memo'CellText :: PegRt.Table peg's ((
-{-# LINE 551 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 13 #-}()
 {-# LINE 2024 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
-  , peg'memo'TableDelimiter :: PegRt.ArgTable peg's (
-{-# LINE 554 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 23 #-}Int
+  , peg'memo'TableBodyRow :: PegRt.ArgTable peg's ((
+{-# LINE 556 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 21 #-}Int
 {-# LINE 2029 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ) ((
-{-# LINE 554 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 31 #-}()
+    ), (
+{-# LINE 556 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 31 #-}Int
 {-# LINE 2033 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    )) ((
+{-# LINE 556 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 39 #-}()
+{-# LINE 2037 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'TableRow :: PegRt.ArgTable peg's (
+{-# LINE 559 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 17 #-}Int
+{-# LINE 2042 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 559 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 25 #-}Int
+{-# LINE 2046 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'TableCellAndPipe :: PegRt.Table peg's ((
+{-# LINE 562 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 21 #-}()
+{-# LINE 2051 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'TableCell :: PegRt.Table peg's ((
+{-# LINE 565 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 14 #-}()
+{-# LINE 2056 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'CellInline :: PegRt.Table peg's ((
+{-# LINE 568 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 15 #-}()
+{-# LINE 2061 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'CellText :: PegRt.Table peg's ((
+{-# LINE 577 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 13 #-}()
+{-# LINE 2066 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+  , peg'memo'TableDelimiter :: PegRt.ArgTable peg's (
+{-# LINE 580 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 23 #-}Int
+{-# LINE 2071 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) ((
+{-# LINE 580 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 31 #-}()
+{-# LINE 2075 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Delim :: PegRt.Table peg's ((
-{-# LINE 557 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 583 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 2038 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2080 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'CodeBlock :: PegRt.ArgTable peg's (
-{-# LINE 562 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 588 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}Int
-{-# LINE 2043 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2085 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 562 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 588 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-}()
-{-# LINE 2047 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2089 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Fence :: PegRt.Table peg's ((
-{-# LINE 567 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 593 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 2052 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2094 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Lang :: PegRt.Table peg's ((
-{-# LINE 570 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 596 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 2057 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2099 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'CodeLine :: PegRt.Table peg's ((
-{-# LINE 573 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 599 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 2062 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2104 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'CodeClose :: PegRt.ArgTable peg's (
-{-# LINE 576 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 602 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}Int
-{-# LINE 2067 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2109 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) ((
-{-# LINE 576 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 602 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-}()
-{-# LINE 2071 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2113 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'SkipBlock :: PegRt.Table peg's ((
-{-# LINE 581 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 607 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 2076 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2118 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'Rest :: PegRt.Table peg's ((
-{-# LINE 584 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 610 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 2081 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2123 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'SkipParagraph :: PegRt.Table peg's ((
-{-# LINE 587 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 613 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}()
-{-# LINE 2086 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2128 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'SkipLine :: PegRt.Table peg's ((
-{-# LINE 590 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 616 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 2091 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2133 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'SkipAll :: PegRt.Table peg's ((
-{-# LINE 593 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 619 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 2096 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2138 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'SkipArgs :: PegRt.Table peg's ((
-{-# LINE 596 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 622 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 2101 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2143 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'SkippedArgs :: PegRt.Table peg's ((
-{-# LINE 599 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 625 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}()
-{-# LINE 2106 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2148 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'SkipExpr :: PegRt.Table peg's ((
-{-# LINE 602 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 628 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 2111 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2153 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   , peg'memo'SkippedExpr :: PegRt.Table peg's ((
-{-# LINE 605 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 631 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}()
-{-# LINE 2116 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2158 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
   }
 
 peg'newStore :: PegRt.ST peg's (Peg'Store peg's)
 peg'newStore =
-  Peg'Store PegPrelude.<$> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable
+  Peg'Store PegPrelude.<$> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newArgTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable PegPrelude.<*> PegRt.newTable
 
 peg'rule'File :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 134 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 140 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 2127 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2169 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'File =
   PegRt.memo peg'memo'File "File"
@@ -2132,26 +2174,26 @@ peg'rule'File =
           ; (_, peg'k0) <- (PegRt.optionalS) (peg'rule'BlankLines)
           ; (_, peg'k4) <- (PegRt.optionalS) (PegRt.choice [do { (_, peg'k1) <- (PegRt.plain PegPrelude.. PegRt.andP) (PegRt.plain (PegRt.anyChar))
           ; (_, peg'k2) <- PegRt.withCol (\_col -> peg'rule'Blocks (
-{-# LINE 135 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 141 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 32 #-}0
-{-# LINE 2138 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2180 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k3) <- (PegRt.optionalS) (peg'rule'BlankLines)
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k1, peg'k2, peg'k3])
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 135 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 141 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 50 #-} () 
-{-# LINE 2147 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2189 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k4])
           }
       ]))
 
 peg'rule'BlankLines :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 137 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 143 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}()
-{-# LINE 2155 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2197 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'BlankLines =
   PegRt.memo peg'memo'BlankLines "BlankLines"
@@ -2160,17 +2202,17 @@ peg'rule'BlankLines =
           ; (_, peg'k0) <- (PegRt.many1S) (peg'rule'BlankLine)
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 138 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 144 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-} () 
-{-# LINE 2166 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2208 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'BlankLine :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 140 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 146 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 2174 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2216 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'BlankLine =
   PegRt.memo peg'memo'BlankLine "BlankLine"
@@ -2180,9 +2222,9 @@ peg'rule'BlankLine =
           ; (_, peg'k1) <- peg'rule'Nl
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 141 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 147 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-} () 
-{-# LINE 2186 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2228 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1])
           }
       , do { peg'start <- PegRt.getOffset
@@ -2190,255 +2232,255 @@ peg'rule'BlankLine =
           ; (_, peg'k3) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.anyChar))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 142 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 148 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-} () 
-{-# LINE 2196 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2238 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k2, peg'k3])
           }
       ])
 
 peg'rule'Blocks :: (
-{-# LINE 144 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 150 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}Int
-{-# LINE 2204 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2246 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 144 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 150 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-}()
-{-# LINE 2208 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2250 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Blocks ind =
   PegRt.memoArg peg'memo'Blocks "Blocks" ind
     (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Block (
-{-# LINE 145 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 151 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-}ind
-{-# LINE 2217 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2259 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k7) <- (PegRt.manyS) (PegRt.choice [do { (_, peg'k1) <- (PegRt.optionalS) (peg'rule'BlankLines)
           ; (_, peg'k5) <- (PegRt.plain PegPrelude.. PegRt.andP) (PegRt.choice [do { (_, peg'k2) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 145 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 151 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 41 #-}ind
-{-# LINE 2223 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2265 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k3) <- (PegRt.plain PegPrelude.. PegRt.notP) (peg'rule'BlankLine)
           ; (_, peg'k4) <- PegRt.plain (PegRt.anyChar)
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k2, peg'k3, peg'k4])
           }])
           ; (_, peg'k6) <- PegRt.withCol (\_col -> peg'rule'Block (
-{-# LINE 145 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 151 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 66 #-}ind
-{-# LINE 2232 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2274 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k1, peg'k5, peg'k6])
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 145 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 151 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 74 #-} () 
-{-# LINE 2240 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2282 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k7])
           }
       ])
 
 peg'rule'Block :: (
-{-# LINE 147 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 153 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}Int
-{-# LINE 2248 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2290 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 147 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 153 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-}()
-{-# LINE 2252 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2294 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Block ind =
   PegRt.memoArg peg'memo'Block "Block" ind
     (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k10) <- PegRt.labeledS "block" (PegPrelude.Just (PegRt.voidS peg'rule'SkipBlock)) (PegRt.choice [do { (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'BadIndent (
-{-# LINE 148 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 154 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-}ind
-{-# LINE 2261 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2303 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k0)
           }, do { (_, peg'k1) <- PegRt.withCol (\_col -> peg'rule'OrphanDef (
-{-# LINE 149 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 22 #-}ind
-{-# LINE 2267 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ))
-          ; PegPrelude.pure ((), peg'k1)
-          }, do { (_, peg'k2) <- PegRt.withCol (\_col -> peg'rule'BlockGroup (
-{-# LINE 150 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 23 #-}ind
-{-# LINE 2273 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ))
-          ; PegPrelude.pure ((), peg'k2)
-          }, do { (_, peg'k3) <- PegRt.withCol (\_col -> peg'rule'Heading (
-{-# LINE 151 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 20 #-}ind
-{-# LINE 2279 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ))
-          ; PegPrelude.pure ((), peg'k3)
-          }, do { (_, peg'k4) <- PegRt.withCol (\_col -> peg'rule'BulletList (
-{-# LINE 152 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 23 #-}ind
-{-# LINE 2285 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ))
-          ; PegPrelude.pure ((), peg'k4)
-          }, do { (_, peg'k5) <- PegRt.withCol (\_col -> peg'rule'OrderedList (
-{-# LINE 153 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 24 #-}ind
-{-# LINE 2291 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ))
-          ; PegPrelude.pure ((), peg'k5)
-          }, do { (_, peg'k6) <- PegRt.withCol (\_col -> peg'rule'DefList (
-{-# LINE 154 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 20 #-}ind
-{-# LINE 2297 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ))
-          ; PegPrelude.pure ((), peg'k6)
-          }, do { (_, peg'k7) <- PegRt.withCol (\_col -> peg'rule'Table (
 {-# LINE 155 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 18 #-}ind
-{-# LINE 2303 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ))
-          ; PegPrelude.pure ((), peg'k7)
-          }, do { (_, peg'k8) <- PegRt.withCol (\_col -> peg'rule'CodeBlock (
-{-# LINE 156 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-}ind
 {-# LINE 2309 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
+          ; PegPrelude.pure ((), peg'k1)
+          }, do { (_, peg'k2) <- PegRt.withCol (\_col -> peg'rule'BlockGroup (
+{-# LINE 156 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 23 #-}ind
+{-# LINE 2315 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
+          ; PegPrelude.pure ((), peg'k2)
+          }, do { (_, peg'k3) <- PegRt.withCol (\_col -> peg'rule'Heading (
+{-# LINE 157 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 20 #-}ind
+{-# LINE 2321 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
+          ; PegPrelude.pure ((), peg'k3)
+          }, do { (_, peg'k4) <- PegRt.withCol (\_col -> peg'rule'BulletList (
+{-# LINE 158 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 23 #-}ind
+{-# LINE 2327 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
+          ; PegPrelude.pure ((), peg'k4)
+          }, do { (_, peg'k5) <- PegRt.withCol (\_col -> peg'rule'OrderedList (
+{-# LINE 159 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 24 #-}ind
+{-# LINE 2333 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
+          ; PegPrelude.pure ((), peg'k5)
+          }, do { (_, peg'k6) <- PegRt.withCol (\_col -> peg'rule'DefList (
+{-# LINE 160 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 20 #-}ind
+{-# LINE 2339 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
+          ; PegPrelude.pure ((), peg'k6)
+          }, do { (_, peg'k7) <- PegRt.withCol (\_col -> peg'rule'Table (
+{-# LINE 161 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 18 #-}ind
+{-# LINE 2345 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
+          ; PegPrelude.pure ((), peg'k7)
+          }, do { (_, peg'k8) <- PegRt.withCol (\_col -> peg'rule'CodeBlock (
+{-# LINE 162 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 22 #-}ind
+{-# LINE 2351 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
           ; PegPrelude.pure ((), peg'k8)
           }, do { (_, peg'k9) <- PegRt.withCol (\_col -> peg'rule'Paragraph (
-{-# LINE 157 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 163 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-}ind
-{-# LINE 2315 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2357 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k9)
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 158 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 164 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 19 #-} () 
-{-# LINE 2323 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2365 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k10)
           }
       ])
 
 peg'rule'BadIndent :: (
-{-# LINE 160 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 166 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}Int
-{-# LINE 2331 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2373 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 160 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 166 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-}()
-{-# LINE 2335 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2377 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'BadIndent ind =
   PegRt.memoArg peg'memo'BadIndent "BadIndent" ind
     (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 161 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 167 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}ind
-{-# LINE 2344 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2386 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- PegRt.plain (PegRt.cls [(' ', ' '), ('\t', '\t')] "[ \\t]")
           ; (_, peg'k3) <- PegRt.labeledS "indent" (PegPrelude.Just (PegRt.voidS peg'rule'SkipBlock)) (PegRt.choice [do { (_, peg'k2) <- PegRt.plain (PegRt.predicate (\_col -> 
-{-# LINE 161 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 167 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 32 #-} False 
-{-# LINE 2350 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2392 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k2)
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 161 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 167 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 50 #-} () 
-{-# LINE 2358 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2400 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k3])
           }
       ])
 
 peg'rule'OrphanDef :: (
-{-# LINE 163 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 169 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}Int
-{-# LINE 2366 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2408 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 163 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 169 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-}()
-{-# LINE 2370 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2412 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'OrphanDef ind =
   PegRt.memoArg peg'memo'OrphanDef "OrphanDef" ind
     (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 164 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 170 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}ind
-{-# LINE 2379 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2421 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- PegRt.plain (PegRt.lit "=:" "'=:'")
           ; (_, peg'k3) <- PegRt.labeledS "def_orphan" (PegPrelude.Just (PegRt.voidS peg'rule'SkipBlock)) (PegRt.choice [do { (_, peg'k2) <- PegRt.plain (PegRt.predicate (\_col -> 
-{-# LINE 164 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 170 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 31 #-} False 
-{-# LINE 2385 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2427 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k2)
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 164 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 170 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 53 #-} () 
-{-# LINE 2393 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2435 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k3])
           }
       ])
 
 peg'rule'Ind :: (
-{-# LINE 168 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 174 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}Int
-{-# LINE 2401 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2443 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 168 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 174 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}()
-{-# LINE 2405 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2447 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Ind n =
   PegRt.memoArg peg'memo'Ind "Ind" n
     (PegRt.token syntaxKindInd (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.plain (PegRt.predicate (\_col -> 
-{-# LINE 169 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 175 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-} n == 0 
-{-# LINE 2414 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2456 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 169 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 175 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-} () 
-{-# LINE 2420 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2462 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k1) <- PegRt.plain (PegRt.lit " " "' '")
           ; (_, peg'k2) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 170 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 176 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}n - 1
-{-# LINE 2428 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2470 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 170 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 176 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-} () 
-{-# LINE 2434 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2476 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k1, peg'k2])
           }
       ]))
 
 peg'rule'Ws :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 172 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 178 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 7 #-}()
-{-# LINE 2442 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2484 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Ws =
   PegRt.memo peg'memo'Ws "Ws"
@@ -2447,17 +2489,17 @@ peg'rule'Ws =
           ; (_, peg'k0) <- (PegRt.many1S) (PegRt.plain (PegRt.cls [(' ', ' '), ('\t', '\t')] "[ \\t]"))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 173 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 179 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-} () 
-{-# LINE 2453 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2495 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'Sp :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 175 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 181 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 7 #-}()
-{-# LINE 2461 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2503 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Sp =
   PegRt.memo peg'memo'Sp "Sp"
@@ -2466,17 +2508,17 @@ peg'rule'Sp =
           ; (_, peg'k0) <- (PegRt.optionalS) (peg'rule'Ws)
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 176 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 182 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-} () 
-{-# LINE 2472 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2514 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ])
 
 peg'rule'Nl :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 178 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 184 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 7 #-}()
-{-# LINE 2480 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2522 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Nl =
   PegRt.memo peg'memo'Nl "Nl"
@@ -2485,17 +2527,17 @@ peg'rule'Nl =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "\n" "'\\n'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 179 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 185 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-} () 
-{-# LINE 2491 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2533 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'EOL :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 181 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 187 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 8 #-}()
-{-# LINE 2499 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2541 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'EOL =
   PegRt.memo peg'memo'EOL "EOL"
@@ -2509,17 +2551,17 @@ peg'rule'EOL =
           }]
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 182 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 188 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-} () 
-{-# LINE 2515 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2557 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k3])
           }
       ])
 
 peg'rule'ParaEnd :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 185 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 191 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 2523 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2565 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ParaEnd =
   PegRt.memo peg'memo'ParaEnd "ParaEnd"
@@ -2533,26 +2575,26 @@ peg'rule'ParaEnd =
           }]
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 186 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 192 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 33 #-} () 
-{-# LINE 2539 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2581 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k3])
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k4) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.anyChar))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 187 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 193 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-} () 
-{-# LINE 2548 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2590 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k4)
           }
       ])
 
 peg'rule'BlockStart :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 190 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 196 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}()
-{-# LINE 2556 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2598 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'BlockStart =
   PegRt.memo peg'memo'BlockStart "BlockStart"
@@ -2561,9 +2603,9 @@ peg'rule'BlockStart =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "#" "'#'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 191 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 197 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 20 #-} () 
-{-# LINE 2567 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2609 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
@@ -2571,9 +2613,9 @@ peg'rule'BlockStart =
           ; (_, peg'k2) <- PegRt.plain (PegRt.cls [(' ', ' '), ('\t', '\t')] "[ \\t]")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 192 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 198 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-} () 
-{-# LINE 2577 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2619 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k1, peg'k2])
           }
       , do { peg'start <- PegRt.getOffset
@@ -2581,9 +2623,9 @@ peg'rule'BlockStart =
           ; (_, peg'k4) <- PegRt.plain (PegRt.cls [(' ', ' '), ('\t', '\t')] "[ \\t]")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 193 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 199 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-} () 
-{-# LINE 2587 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2629 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k3, peg'k4])
           }
       , do { peg'start <- PegRt.getOffset
@@ -2591,27 +2633,27 @@ peg'rule'BlockStart =
           ; (_, peg'k6) <- PegRt.plain (PegRt.cls [(' ', ' '), ('\t', '\t'), (':', ':')] "[ \\t:]")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 194 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 200 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-} () 
-{-# LINE 2597 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2639 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k5, peg'k6])
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k7) <- PegRt.plain (PegRt.lit "|" "'|'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 195 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 201 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 20 #-} () 
-{-# LINE 2606 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2648 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k7)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k8) <- PegRt.plain (PegRt.lit "```" "'```'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 196 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 202 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-} () 
-{-# LINE 2615 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2657 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k8)
           }
       , do { peg'start <- PegRt.getOffset
@@ -2619,56 +2661,56 @@ peg'rule'BlockStart =
           ; (_, peg'k10) <- PegRt.plain (PegRt.cls [('a', 'z')] "[a-z]")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 197 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 203 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-} () 
-{-# LINE 2625 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2667 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k9, peg'k10])
           }
       ])
 
 peg'rule'Heading :: (
-{-# LINE 201 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 207 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}Int
-{-# LINE 2633 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2675 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 201 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 207 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-}()
-{-# LINE 2637 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2679 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Heading ind =
   PegRt.memoArg peg'memo'Heading "Heading" ind
     (PegRt.node syntaxKindHeading (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 202 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 208 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}ind
-{-# LINE 2646 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2688 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- peg'rule'HashMark
           ; (_, peg'k6) <- PegRt.choice [do { (_, peg'k2) <- peg'rule'TooDeep
           ; PegPrelude.pure ((), peg'k2)
           }, do { (_, peg'k3) <- peg'rule'Ws
           ; (_, peg'k4) <- (PegRt.manyS) (PegRt.withCol (\_col -> peg'rule'HeadInline (
-{-# LINE 202 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 208 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 55 #-}ind
-{-# LINE 2655 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2697 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; (_, peg'k5) <- peg'rule'EOL
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k3, peg'k4, peg'k5])
           }]
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 202 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 208 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 67 #-} () 
-{-# LINE 2664 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2706 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k6])
           }
       ]))
 
 peg'rule'TooDeep :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 204 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 210 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 2672 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2714 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'TooDeep =
   PegRt.memo peg'memo'TooDeep "TooDeep"
@@ -2676,29 +2718,29 @@ peg'rule'TooDeep =
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "#" "'#'")
           ; (_, peg'k2) <- PegRt.labeledS "heading_level" (PegPrelude.Just (PegRt.voidS peg'rule'SkipBlock)) (PegRt.choice [do { (_, peg'k1) <- PegRt.plain (PegRt.predicate (\_col -> 
-{-# LINE 205 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 211 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 19 #-} False 
-{-# LINE 2682 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2724 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k1)
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 205 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 211 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 44 #-} () 
-{-# LINE 2690 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2732 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k2])
           }
       ])
 
 peg'rule'HeadInline :: (
-{-# LINE 207 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 213 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 19 #-}Int
-{-# LINE 2698 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2740 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 207 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 213 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-}()
-{-# LINE 2702 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2744 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'HeadInline ind =
   PegRt.memoArg peg'memo'HeadInline "HeadInline" ind
@@ -2707,75 +2749,84 @@ peg'rule'HeadInline ind =
           ; (_, peg'k0) <- peg'rule'Escape
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 208 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 214 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-} () 
-{-# LINE 2713 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2755 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k1) <- peg'rule'ProofComment
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 209 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 215 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 29 #-} () 
-{-# LINE 2722 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2764 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k1)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k2) <- peg'rule'Comment
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 210 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 216 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-} () 
-{-# LINE 2731 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2773 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k3) <- peg'rule'ExprCtx
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 211 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 217 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-} () 
-{-# LINE 2740 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2782 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k3)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k4) <- PegRt.withCol (\_col -> peg'rule'InlineCommand (
-{-# LINE 212 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 218 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 29 #-}ind
-{-# LINE 2747 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2789 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 212 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 218 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 35 #-} () 
-{-# LINE 2753 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2795 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k4)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k5) <- peg'rule'BadBracket
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 213 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 219 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-} () 
-{-# LINE 2762 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2804 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k5)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k6) <- peg'rule'Text
+          ; (_, peg'k6) <- peg'rule'BadBreak
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 214 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 21 #-} () 
-{-# LINE 2771 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 220 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 25 #-} () 
+{-# LINE 2813 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k6)
+          }
+      , do { peg'start <- PegRt.getOffset
+          ; (_, peg'k7) <- peg'rule'Text
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 221 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 21 #-} () 
+{-# LINE 2822 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), peg'k7)
           }
       ])
 
 peg'rule'HashMark :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 216 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 223 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 2779 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2830 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'HashMark =
   PegRt.memo peg'memo'HashMark "HashMark"
@@ -2784,55 +2835,55 @@ peg'rule'HashMark =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "###" "'###'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 217 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 224 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 20 #-} () 
-{-# LINE 2790 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2841 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k1) <- PegRt.plain (PegRt.lit "##" "'##'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 217 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 224 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 34 #-} () 
-{-# LINE 2799 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2850 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k1)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k2) <- PegRt.plain (PegRt.lit "#" "'#'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 217 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 224 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 47 #-} () 
-{-# LINE 2808 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2859 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       ]))
 
 peg'rule'Paragraph :: (
-{-# LINE 221 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 228 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}Int
-{-# LINE 2816 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2867 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 221 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 228 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-}()
-{-# LINE 2820 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2871 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Paragraph ind =
   PegRt.memoArg peg'memo'Paragraph "Paragraph" ind
     (PegRt.node syntaxKindParagraph (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 222 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 229 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}ind
-{-# LINE 2829 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2880 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.cls [(' ', ' '), ('\t', '\t')] "[ \\t]"))
           ; (_, peg'k2) <- (PegRt.plain PegPrelude.. PegRt.notP) (peg'rule'BlockStart)
           ; (_, peg'k3) <- (PegRt.many1S) (PegRt.withCol (\_col -> peg'rule'Inline (
-{-# LINE 222 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 229 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 49 #-}ind
-{-# LINE 2836 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2887 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; (_, peg'k6) <- PegRt.choice [do { (_, peg'k4) <- peg'rule'Nl
           ; PegPrelude.pure ((), peg'k4)
@@ -2841,21 +2892,21 @@ peg'rule'Paragraph ind =
           }]
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 222 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 229 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 66 #-} () 
-{-# LINE 2847 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2898 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k6])
           }
       ]))
 
 peg'rule'LineContinuation :: (
-{-# LINE 224 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 231 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-}Int
-{-# LINE 2855 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2906 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 224 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 231 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 33 #-}()
-{-# LINE 2859 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2910 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'LineContinuation ind =
   PegRt.memoArg peg'memo'LineContinuation "LineContinuation" ind
@@ -2864,28 +2915,28 @@ peg'rule'LineContinuation ind =
           ; (_, peg'k0) <- peg'rule'Nl
           ; (_, peg'k1) <- (PegRt.plain PegPrelude.. PegRt.notP) (peg'rule'BlankLine)
           ; (_, peg'k2) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 225 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 232 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 39 #-}ind
-{-# LINE 2870 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2921 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k3) <- (PegRt.plain PegPrelude.. PegRt.notP) (peg'rule'BlockStart)
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 225 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 232 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 57 #-} () 
-{-# LINE 2877 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2928 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3])
           }
       ]))
 
 peg'rule'Inline :: (
-{-# LINE 227 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 234 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}Int
-{-# LINE 2885 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2936 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 227 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 234 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-}()
-{-# LINE 2889 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2940 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Inline ind =
   PegRt.memoArg peg'memo'Inline "Inline" ind
@@ -2894,88 +2945,110 @@ peg'rule'Inline ind =
           ; (_, peg'k0) <- peg'rule'Escape
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 228 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 235 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 19 #-} () 
-{-# LINE 2900 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2951 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k1) <- peg'rule'ProofComment
+          ; (_, peg'k1) <- PegRt.withCol (\_col -> peg'rule'HardBreak (
+{-# LINE 236 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 21 #-}ind
+{-# LINE 2958 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 229 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 25 #-} () 
-{-# LINE 2909 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 236 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 27 #-} () 
+{-# LINE 2964 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k1)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k2) <- peg'rule'Comment
+          ; (_, peg'k2) <- peg'rule'ProofComment
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 230 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 20 #-} () 
-{-# LINE 2918 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 237 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 25 #-} () 
+{-# LINE 2973 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k3) <- peg'rule'ExprCtx
+          ; (_, peg'k3) <- peg'rule'Comment
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 231 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 238 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 20 #-} () 
-{-# LINE 2927 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 2982 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k3)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k4) <- PegRt.withCol (\_col -> peg'rule'InlineCommand (
-{-# LINE 232 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 25 #-}ind
-{-# LINE 2934 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ))
+          ; (_, peg'k4) <- peg'rule'ExprCtx
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 232 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 31 #-} () 
-{-# LINE 2940 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 239 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 20 #-} () 
+{-# LINE 2991 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k4)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k5) <- peg'rule'BadBracket
-          ; _span <- PegRt.spanFrom peg'start
-          ; PegPrelude.pure ((
-{-# LINE 233 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 23 #-} () 
-{-# LINE 2949 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), peg'k5)
-          }
-      , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k6) <- peg'rule'Text
-          ; _span <- PegRt.spanFrom peg'start
-          ; PegPrelude.pure ((
-{-# LINE 234 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 17 #-} () 
-{-# LINE 2958 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), peg'k6)
-          }
-      , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k7) <- PegRt.withCol (\_col -> peg'rule'LineContinuation (
-{-# LINE 235 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 28 #-}ind
-{-# LINE 2965 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+          ; (_, peg'k5) <- PegRt.withCol (\_col -> peg'rule'InlineCommand (
+{-# LINE 240 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 25 #-}ind
+{-# LINE 2998 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 235 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 34 #-} () 
-{-# LINE 2971 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 240 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 31 #-} () 
+{-# LINE 3004 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), peg'k5)
+          }
+      , do { peg'start <- PegRt.getOffset
+          ; (_, peg'k6) <- peg'rule'BadBracket
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 241 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 23 #-} () 
+{-# LINE 3013 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), peg'k6)
+          }
+      , do { peg'start <- PegRt.getOffset
+          ; (_, peg'k7) <- peg'rule'BadBreak
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 242 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 21 #-} () 
+{-# LINE 3022 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k7)
+          }
+      , do { peg'start <- PegRt.getOffset
+          ; (_, peg'k8) <- peg'rule'Text
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 243 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 17 #-} () 
+{-# LINE 3031 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), peg'k8)
+          }
+      , do { peg'start <- PegRt.getOffset
+          ; (_, peg'k9) <- PegRt.withCol (\_col -> peg'rule'LineContinuation (
+{-# LINE 244 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 28 #-}ind
+{-# LINE 3038 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 244 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 34 #-} () 
+{-# LINE 3044 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), peg'k9)
           }
       ])
 
 peg'rule'Text :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 237 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 246 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 2979 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3052 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Text =
   PegRt.memo peg'memo'Text "Text"
@@ -2988,17 +3061,17 @@ peg'rule'Text =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 238 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 247 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 31 #-} () 
-{-# LINE 2994 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3067 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k3)
           }
       ]))
 
 peg'rule'Escape :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 240 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 249 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 11 #-}()
-{-# LINE 3002 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3075 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Escape =
   PegRt.memo peg'memo'Escape "Escape"
@@ -3009,17 +3082,92 @@ peg'rule'Escape =
           ; (_, peg'k2) <- PegRt.plain (PegRt.anyChar)
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 241 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 250 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-} () 
-{-# LINE 3015 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3088 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2])
           }
       ]))
 
+peg'rule'HardBreak :: (
+{-# LINE 255 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 18 #-}Int
+{-# LINE 3096 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ) -> PegRt.P (Peg'Store peg's) peg's ((
+{-# LINE 255 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 26 #-}()
+{-# LINE 3100 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+peg'rule'HardBreak ind =
+  PegRt.memoArg peg'memo'HardBreak "HardBreak" ind
+    (PegRt.node syntaxKindHardBreak (PegRt.choice
+      [ do { peg'start <- PegRt.getOffset
+          ; (_, peg'k0) <- peg'rule'Backslash
+          ; (_, peg'k1) <- PegRt.withCol (\_col -> peg'rule'LineContinuation (
+{-# LINE 256 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 41 #-}ind
+{-# LINE 3110 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
+          ; (_, peg'k2) <- (PegRt.plain PegPrelude.. PegRt.andP) (PegRt.plain (PegRt.anyChar))
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 256 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 50 #-} () 
+{-# LINE 3117 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), PegPrelude.concat [peg'k0, peg'k1, peg'k2])
+          }
+      ]))
+
+peg'rule'Backslash :: PegRt.P (Peg'Store peg's) peg's ((
+{-# LINE 258 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 14 #-}()
+{-# LINE 3125 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+peg'rule'Backslash =
+  PegRt.memo peg'memo'Backslash "Backslash"
+    (PegRt.token syntaxKindBackslash (PegRt.choice
+      [ do { peg'start <- PegRt.getOffset
+          ; (_, peg'k0) <- PegRt.plain (PegRt.lit "\\" "'\\\\'")
+          ; (_, peg'k1) <- (PegRt.plain PegPrelude.. PegRt.andP) (PegRt.plain (PegRt.lit "\n" "'\\n'"))
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 259 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 26 #-} () 
+{-# LINE 3137 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), PegPrelude.concat [peg'k0, peg'k1])
+          }
+      ]))
+
+peg'rule'BadBreak :: PegRt.P (Peg'Store peg's) peg's ((
+{-# LINE 263 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 13 #-}()
+{-# LINE 3145 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), [PegRt.Child])
+peg'rule'BadBreak =
+  PegRt.memo peg'memo'BadBreak "BadBreak"
+    (PegRt.choice
+      [ do { peg'start <- PegRt.getOffset
+          ; (_, peg'k0) <- PegRt.plain (PegRt.lit "\\" "'\\\\'")
+          ; (_, peg'k2) <- PegRt.labeledS "hard_break" (PegPrelude.Just (PegRt.voidS peg'rule'SkipLine)) (PegRt.choice [do { (_, peg'k1) <- PegRt.plain (PegRt.predicate (\_col -> 
+{-# LINE 264 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 21 #-} False 
+{-# LINE 3155 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
+          ; PegPrelude.pure ((), peg'k1)
+          }])
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 264 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 43 #-} () 
+{-# LINE 3163 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), PegPrelude.concat [peg'k0, peg'k2])
+          }
+      ])
+
 peg'rule'Comment :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 243 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 266 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 3023 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3171 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Comment =
   PegRt.memo peg'memo'Comment "Comment"
@@ -3036,17 +3184,17 @@ peg'rule'Comment =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 244 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 267 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 59 #-} () 
-{-# LINE 3042 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3190 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k4, peg'k6])
           }
       ]))
 
 peg'rule'ProofComment :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 246 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 269 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-}()
-{-# LINE 3050 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3198 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ProofComment =
   PegRt.memo peg'memo'ProofComment "ProofComment"
@@ -3063,21 +3211,21 @@ peg'rule'ProofComment =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 247 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 270 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 65 #-} () 
-{-# LINE 3069 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3217 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k4, peg'k6])
           }
       ]))
 
 peg'rule'InlineCommand :: (
-{-# LINE 251 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 274 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-}Int
-{-# LINE 3077 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3225 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 251 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 274 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 30 #-}()
-{-# LINE 3081 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3229 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'InlineCommand ind =
   PegRt.memoArg peg'memo'InlineCommand "InlineCommand" ind
@@ -3087,9 +3235,9 @@ peg'rule'InlineCommand ind =
           ; (_, peg'k1) <- peg'rule'Ident
           ; (_, peg'k2) <- peg'rule'Arguments
           ; (_, peg'k3) <- (PegRt.optionalS) (PegRt.withCol (\_col -> peg'rule'ProseSlots (
-{-# LINE 252 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 275 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 49 #-}ind
-{-# LINE 3093 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3241 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; (_, peg'k6) <- PegRt.labeledS "close" (PegPrelude.Just (PegRt.voidS peg'rule'SkipParagraph)) (PegRt.choice [do { (_, peg'k4) <- peg'rule'Sp
           ; (_, peg'k5) <- peg'rule'RBr
@@ -3097,17 +3245,17 @@ peg'rule'InlineCommand ind =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 252 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 275 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 71 #-} () 
-{-# LINE 3103 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3251 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k6])
           }
       ]))
 
 peg'rule'LBr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 254 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 277 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 8 #-}()
-{-# LINE 3111 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3259 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'LBr =
   PegRt.memo peg'memo'LBr "LBr"
@@ -3116,17 +3264,17 @@ peg'rule'LBr =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "[" "'['")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 255 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 278 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-} () 
-{-# LINE 3122 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3270 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'BadBracket :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 257 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 280 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}()
-{-# LINE 3130 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3278 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'BadBracket =
   PegRt.memo peg'memo'BadBracket "BadBracket"
@@ -3134,25 +3282,25 @@ peg'rule'BadBracket =
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- peg'rule'LBr
           ; (_, peg'k2) <- PegRt.labeledS "bracket" (PegPrelude.Just (PegRt.voidS peg'rule'SkipParagraph)) (PegRt.choice [do { (_, peg'k1) <- PegRt.plain (PegRt.predicate (\_col -> 
-{-# LINE 258 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 281 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-} False 
-{-# LINE 3140 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3288 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k1)
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 258 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 281 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 41 #-} () 
-{-# LINE 3148 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3296 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k2])
           }
       ])
 
 peg'rule'RBr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 260 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 283 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 8 #-}()
-{-# LINE 3156 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3304 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'RBr =
   PegRt.memo peg'memo'RBr "RBr"
@@ -3161,17 +3309,17 @@ peg'rule'RBr =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "]" "']'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 261 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 284 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-} () 
-{-# LINE 3167 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3315 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'Ident :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 263 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 286 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 3175 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3323 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Ident =
   PegRt.memo peg'memo'Ident "Ident"
@@ -3181,17 +3329,17 @@ peg'rule'Ident =
           ; (_, peg'k1) <- (PegRt.manyS) (PegRt.plain (PegRt.cls [('a', 'z'), ('0', '9'), ('-', '-')] "[a-z0-9\\-]"))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 264 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 287 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 29 #-} () 
-{-# LINE 3187 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3335 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1])
           }
       ]))
 
 peg'rule'Arguments :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 266 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 289 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 3195 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3343 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Arguments =
   PegRt.memo peg'memo'Arguments "Arguments"
@@ -3213,17 +3361,17 @@ peg'rule'Arguments =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 267 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 290 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 75 #-} () 
-{-# LINE 3219 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3367 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k2, peg'k5, peg'k9])
           }
       ]))
 
 peg'rule'PosArg :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 269 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 292 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 11 #-}()
-{-# LINE 3227 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3375 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'PosArg =
   PegRt.memo peg'memo'PosArg "PosArg"
@@ -3236,9 +3384,9 @@ peg'rule'PosArg =
           ; (_, peg'k3) <- peg'rule'SplatArgument
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 270 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 293 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 37 #-} () 
-{-# LINE 3242 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3390 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k2, peg'k3])
           }
       , do { peg'start <- PegRt.getOffset
@@ -3250,17 +3398,17 @@ peg'rule'PosArg =
           ; (_, peg'k8) <- peg'rule'Argument
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 271 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 294 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 39 #-} () 
-{-# LINE 3256 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3404 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k6, peg'k7, peg'k8])
           }
       ])
 
 peg'rule'Argument :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 273 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 296 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 3264 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3412 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Argument =
   PegRt.memo peg'memo'Argument "Argument"
@@ -3269,17 +3417,17 @@ peg'rule'Argument =
           ; (_, peg'k0) <- peg'rule'ArgValue
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 274 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 297 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-} () 
-{-# LINE 3275 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3423 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'KeywordArgument :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 276 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 299 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 20 #-}()
-{-# LINE 3283 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3431 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'KeywordArgument =
   PegRt.memo peg'memo'KeywordArgument "KeywordArgument"
@@ -3290,17 +3438,17 @@ peg'rule'KeywordArgument =
           ; (_, peg'k2) <- peg'rule'ArgValue
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 277 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 300 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 38 #-} () 
-{-# LINE 3296 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3444 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2])
           }
       ]))
 
 peg'rule'SplatArgument :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 279 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 302 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}()
-{-# LINE 3304 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3452 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SplatArgument =
   PegRt.memo peg'memo'SplatArgument "SplatArgument"
@@ -3313,17 +3461,17 @@ peg'rule'SplatArgument =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 280 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 303 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 46 #-} () 
-{-# LINE 3319 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3467 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k3])
           }
       ]))
 
 peg'rule'Splat :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 282 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 305 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 3327 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3475 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Splat =
   PegRt.memo peg'memo'Splat "Splat"
@@ -3332,26 +3480,26 @@ peg'rule'Splat =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "**[" "'**['")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 283 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 306 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-} () 
-{-# LINE 3338 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3486 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k1) <- PegRt.plain (PegRt.lit "*[" "'*['")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 283 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 306 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 31 #-} () 
-{-# LINE 3347 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3495 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k1)
           }
       ]))
 
 peg'rule'ArgValue :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 285 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 308 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 3355 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3503 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ArgValue =
   PegRt.memo peg'memo'ArgValue "ArgValue"
@@ -3360,48 +3508,48 @@ peg'rule'ArgValue =
           ; (_, peg'k0) <- peg'rule'StringLit
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 286 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 309 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-} () 
-{-# LINE 3366 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3514 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k1) <- peg'rule'ExprCtx
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 287 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 310 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-} () 
-{-# LINE 3375 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3523 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k1)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k2) <- PegRt.withCol (\_col -> peg'rule'InlineCommand (
-{-# LINE 288 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 311 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-}0
-{-# LINE 3382 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3530 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 288 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 311 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 31 #-} () 
-{-# LINE 3388 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3536 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k3) <- peg'rule'Word
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 289 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 312 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 19 #-} () 
-{-# LINE 3397 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3545 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k3)
           }
       ])
 
 peg'rule'Word :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 291 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 314 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 3405 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3553 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Word =
   PegRt.memo peg'memo'Word "Word"
@@ -3413,17 +3561,17 @@ peg'rule'Word =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 292 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 315 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 34 #-} () 
-{-# LINE 3419 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3567 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       ]))
 
 peg'rule'Eq :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 294 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 317 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 7 #-}()
-{-# LINE 3427 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3575 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Eq =
   PegRt.memo peg'memo'Eq "Eq"
@@ -3432,17 +3580,17 @@ peg'rule'Eq =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "=" "'='")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 295 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 318 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-} () 
-{-# LINE 3438 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3586 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'StringLit :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 297 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 320 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 3446 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3594 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'StringLit =
   PegRt.memo peg'memo'StringLit "StringLit"
@@ -3459,21 +3607,21 @@ peg'rule'StringLit =
           ; (_, peg'k6) <- PegRt.plain (PegRt.lit "\"" "'\"'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 298 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 321 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 44 #-} () 
-{-# LINE 3465 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3613 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k5, peg'k6])
           }
       ]))
 
 peg'rule'ProseSlots :: (
-{-# LINE 300 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 323 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 19 #-}Int
-{-# LINE 3473 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3621 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 300 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 323 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-}()
-{-# LINE 3477 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3625 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ProseSlots ind =
   PegRt.memoArg peg'memo'ProseSlots "ProseSlots" ind
@@ -3483,33 +3631,33 @@ peg'rule'ProseSlots ind =
           ; (_, peg'k1) <- peg'rule'Colon
           ; (_, peg'k2) <- peg'rule'Sp
           ; (_, peg'k3) <- PegRt.withCol (\_col -> peg'rule'ProseSlot (
-{-# LINE 301 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 324 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 37 #-}ind
-{-# LINE 3489 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3637 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k8) <- (PegRt.manyS) (PegRt.choice [do { (_, peg'k4) <- peg'rule'Sp
           ; (_, peg'k5) <- peg'rule'Pipe
           ; (_, peg'k6) <- peg'rule'Sp
           ; (_, peg'k7) <- PegRt.withCol (\_col -> peg'rule'ProseSlot (
-{-# LINE 301 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 324 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 64 #-}ind
-{-# LINE 3497 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3645 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k4, peg'k5, peg'k6, peg'k7])
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 301 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 324 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 72 #-} () 
-{-# LINE 3505 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3653 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k8])
           }
       ]))
 
 peg'rule'Colon :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 303 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 326 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 3513 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3661 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Colon =
   PegRt.memo peg'memo'Colon "Colon"
@@ -3518,17 +3666,17 @@ peg'rule'Colon =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit ":" "':'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 304 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 327 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-} () 
-{-# LINE 3524 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3672 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'Pipe :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 306 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 329 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 3532 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3680 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Pipe =
   PegRt.memo peg'memo'Pipe "Pipe"
@@ -3537,48 +3685,48 @@ peg'rule'Pipe =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "|" "'|'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 307 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 330 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-} () 
-{-# LINE 3543 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3691 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'ProseSlot :: (
-{-# LINE 309 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 332 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}Int
-{-# LINE 3551 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3699 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 309 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 332 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-}()
-{-# LINE 3555 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3703 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ProseSlot ind =
   PegRt.memoArg peg'memo'ProseSlot "ProseSlot" ind
     (PegRt.node syntaxKindProseSlot (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- (PegRt.manyS) (PegRt.withCol (\_col -> peg'rule'SlotInline (
-{-# LINE 310 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 333 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-}ind
-{-# LINE 3564 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3712 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 310 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 333 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 32 #-} () 
-{-# LINE 3570 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3718 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'SlotInline :: (
-{-# LINE 312 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 335 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 19 #-}Int
-{-# LINE 3578 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3726 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 312 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 335 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-}()
-{-# LINE 3582 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3730 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SlotInline ind =
   PegRt.memoArg peg'memo'SlotInline "SlotInline" ind
@@ -3587,88 +3735,110 @@ peg'rule'SlotInline ind =
           ; (_, peg'k0) <- peg'rule'Escape
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 313 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 336 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-} () 
-{-# LINE 3593 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3741 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k1) <- peg'rule'ProofComment
+          ; (_, peg'k1) <- PegRt.withCol (\_col -> peg'rule'HardBreak (
+{-# LINE 337 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 25 #-}ind
+{-# LINE 3748 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 314 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 29 #-} () 
-{-# LINE 3602 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 337 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 31 #-} () 
+{-# LINE 3754 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k1)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k2) <- peg'rule'Comment
+          ; (_, peg'k2) <- peg'rule'ProofComment
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 315 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 24 #-} () 
-{-# LINE 3611 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 338 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 29 #-} () 
+{-# LINE 3763 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k3) <- peg'rule'ExprCtx
+          ; (_, peg'k3) <- peg'rule'Comment
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 316 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 339 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-} () 
-{-# LINE 3620 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3772 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k3)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k4) <- PegRt.withCol (\_col -> peg'rule'InlineCommand (
-{-# LINE 317 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 29 #-}ind
-{-# LINE 3627 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ))
+          ; (_, peg'k4) <- peg'rule'ExprCtx
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 317 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 35 #-} () 
-{-# LINE 3633 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 340 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 24 #-} () 
+{-# LINE 3781 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k4)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k5) <- peg'rule'BadBracket
-          ; _span <- PegRt.spanFrom peg'start
-          ; PegPrelude.pure ((
-{-# LINE 318 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 27 #-} () 
-{-# LINE 3642 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), peg'k5)
-          }
-      , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k6) <- peg'rule'SlotText
-          ; _span <- PegRt.spanFrom peg'start
-          ; PegPrelude.pure ((
-{-# LINE 319 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 25 #-} () 
-{-# LINE 3651 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
-    ), peg'k6)
-          }
-      , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k7) <- PegRt.withCol (\_col -> peg'rule'LineContinuation (
-{-# LINE 320 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 32 #-}ind
-{-# LINE 3658 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+          ; (_, peg'k5) <- PegRt.withCol (\_col -> peg'rule'InlineCommand (
+{-# LINE 341 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 29 #-}ind
+{-# LINE 3788 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 320 "modules/golem-parser/grammar/Golem.hpeg" #-}
- {-# COLUMN 38 #-} () 
-{-# LINE 3664 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 341 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 35 #-} () 
+{-# LINE 3794 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), peg'k5)
+          }
+      , do { peg'start <- PegRt.getOffset
+          ; (_, peg'k6) <- peg'rule'BadBracket
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 342 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 27 #-} () 
+{-# LINE 3803 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), peg'k6)
+          }
+      , do { peg'start <- PegRt.getOffset
+          ; (_, peg'k7) <- peg'rule'BadBreak
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 343 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 25 #-} () 
+{-# LINE 3812 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k7)
+          }
+      , do { peg'start <- PegRt.getOffset
+          ; (_, peg'k8) <- peg'rule'SlotText
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 344 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 25 #-} () 
+{-# LINE 3821 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), peg'k8)
+          }
+      , do { peg'start <- PegRt.getOffset
+          ; (_, peg'k9) <- PegRt.withCol (\_col -> peg'rule'LineContinuation (
+{-# LINE 345 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 32 #-}ind
+{-# LINE 3828 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ))
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 345 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 38 #-} () 
+{-# LINE 3834 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), peg'k9)
           }
       ])
 
 peg'rule'SlotText :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 322 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 347 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 3672 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3842 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SlotText =
   PegRt.memo peg'memo'SlotText "SlotText"
@@ -3681,17 +3851,17 @@ peg'rule'SlotText =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 323 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 348 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 38 #-} () 
-{-# LINE 3687 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3857 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k3)
           }
       ]))
 
 peg'rule'ExprCtx :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 327 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 352 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 3695 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3865 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ExprCtx =
   PegRt.memo peg'memo'ExprCtx "ExprCtx"
@@ -3704,17 +3874,17 @@ peg'rule'ExprCtx =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 328 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 353 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 43 #-} () 
-{-# LINE 3710 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3880 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k3])
           }
       ]))
 
 peg'rule'ExprOpen :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 330 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 355 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 3718 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3888 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ExprOpen =
   PegRt.memo peg'memo'ExprOpen "ExprOpen"
@@ -3723,17 +3893,17 @@ peg'rule'ExprOpen =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "[=" "'[='")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 331 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 356 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 19 #-} () 
-{-# LINE 3729 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3899 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'ExprBody :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 333 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 358 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 3737 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3907 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ExprBody =
   PegRt.memo peg'memo'ExprBody "ExprBody"
@@ -3746,17 +3916,17 @@ peg'rule'ExprBody =
           ; (_, peg'k3) <- peg'rule'ES
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 334 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 359 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 32 #-} () 
-{-# LINE 3752 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3922 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k2, peg'k3])
           }
       ]))
 
 peg'rule'ES :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 336 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 361 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 7 #-}()
-{-# LINE 3760 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3930 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ES =
   PegRt.memo peg'memo'ES "ES"
@@ -3765,17 +3935,17 @@ peg'rule'ES =
           ; (_, peg'k0) <- (PegRt.optionalS) (peg'rule'Ws)
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 337 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 362 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-} () 
-{-# LINE 3771 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3941 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ])
 
 peg'rule'Expr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 339 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 364 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 3779 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3949 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Expr =
   PegRt.memo peg'memo'Expr "Expr"
@@ -3784,17 +3954,17 @@ peg'rule'Expr =
           ; (_, peg'k0) <- peg'rule'CompareExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 340 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 365 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-} () 
-{-# LINE 3790 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3960 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'CompareExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 342 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 367 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}()
-{-# LINE 3798 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3968 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'CompareExpr =
   PegRt.memo peg'memo'CompareExpr "CompareExpr"
@@ -3807,26 +3977,26 @@ peg'rule'CompareExpr =
           ; (_, peg'k4) <- peg'rule'AddExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 343 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 368 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 45 #-} () 
-{-# LINE 3813 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3983 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k4])
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k5) <- peg'rule'AddExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 344 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 369 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-} () 
-{-# LINE 3822 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 3992 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k5)
           }
       ]))
 
 peg'rule'CmpOp :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 346 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 371 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 3830 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4000 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'CmpOp =
   PegRt.memo peg'memo'CmpOp "CmpOp"
@@ -3835,62 +4005,62 @@ peg'rule'CmpOp =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "==" "'=='")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 347 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 372 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-} () 
-{-# LINE 3841 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4011 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k1) <- PegRt.plain (PegRt.lit "!=" "'!='")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 347 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 372 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 30 #-} () 
-{-# LINE 3850 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4020 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k1)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k2) <- PegRt.plain (PegRt.lit "<=" "'<='")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 347 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 372 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 44 #-} () 
-{-# LINE 3859 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4029 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k3) <- PegRt.plain (PegRt.lit ">=" "'>='")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 347 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 372 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 58 #-} () 
-{-# LINE 3868 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4038 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k3)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k4) <- PegRt.plain (PegRt.lit "<" "'<'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 347 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 372 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 71 #-} () 
-{-# LINE 3877 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4047 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k4)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k5) <- PegRt.plain (PegRt.lit ">" "'>'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 347 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 372 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 84 #-} () 
-{-# LINE 3886 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4056 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k5)
           }
       ]))
 
 peg'rule'AddExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 349 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 374 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 3894 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4064 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'AddExpr =
   PegRt.memoLR peg'memo'AddExpr "AddExpr"
@@ -3903,26 +4073,26 @@ peg'rule'AddExpr =
           ; (_, peg'k4) <- peg'rule'MulExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 350 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 375 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 41 #-} () 
-{-# LINE 3909 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4079 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k4])
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k5) <- peg'rule'MulExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 351 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 376 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-} () 
-{-# LINE 3918 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4088 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k5)
           }
       ]))
 
 peg'rule'AddOp :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 353 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 378 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 3926 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4096 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'AddOp =
   PegRt.memo peg'memo'AddOp "AddOp"
@@ -3931,26 +4101,26 @@ peg'rule'AddOp =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "+" "'+'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 354 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 379 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-} () 
-{-# LINE 3937 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4107 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k1) <- PegRt.plain (PegRt.lit "-" "'-'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 354 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 379 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 28 #-} () 
-{-# LINE 3946 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4116 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k1)
           }
       ]))
 
 peg'rule'MulExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 356 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 381 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 3954 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4124 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'MulExpr =
   PegRt.memoLR peg'memo'MulExpr "MulExpr"
@@ -3963,26 +4133,26 @@ peg'rule'MulExpr =
           ; (_, peg'k4) <- peg'rule'UnaryExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 357 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 382 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 43 #-} () 
-{-# LINE 3969 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4139 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k4])
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k5) <- peg'rule'UnaryExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 358 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 383 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-} () 
-{-# LINE 3978 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4148 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k5)
           }
       ]))
 
 peg'rule'MulOp :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 360 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 385 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 3986 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4156 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'MulOp =
   PegRt.memo peg'memo'MulOp "MulOp"
@@ -3992,18 +4162,18 @@ peg'rule'MulOp =
           ; (_, peg'k1) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.lit "*" "'*'"))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 361 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 386 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 20 #-} () 
-{-# LINE 3998 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4168 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1])
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k2) <- PegRt.plain (PegRt.lit "/" "'/'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 361 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 386 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 33 #-} () 
-{-# LINE 4007 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4177 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       , do { peg'start <- PegRt.getOffset
@@ -4011,17 +4181,17 @@ peg'rule'MulOp =
           ; (_, peg'k4) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.lit "%" "'%'"))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 361 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 386 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 51 #-} () 
-{-# LINE 4017 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4187 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k3, peg'k4])
           }
       ]))
 
 peg'rule'UnaryExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 363 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 388 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 4025 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4195 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'UnaryExpr =
   PegRt.memo peg'memo'UnaryExpr "UnaryExpr"
@@ -4032,26 +4202,26 @@ peg'rule'UnaryExpr =
           ; (_, peg'k2) <- peg'rule'UnaryExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 364 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 389 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 34 #-} () 
-{-# LINE 4038 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4208 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2])
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k3) <- peg'rule'PowExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 365 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 390 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-} () 
-{-# LINE 4047 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4217 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k3)
           }
       ]))
 
 peg'rule'NegOp :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 367 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 392 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 4055 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4225 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'NegOp =
   PegRt.memo peg'memo'NegOp "NegOp"
@@ -4060,17 +4230,17 @@ peg'rule'NegOp =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "-" "'-'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 368 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 393 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-} () 
-{-# LINE 4066 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4236 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'PowExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 370 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 395 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 4074 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4244 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'PowExpr =
   PegRt.memo peg'memo'PowExpr "PowExpr"
@@ -4083,26 +4253,26 @@ peg'rule'PowExpr =
           ; (_, peg'k4) <- peg'rule'UnaryExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 371 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 396 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 47 #-} () 
-{-# LINE 4089 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4259 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k4])
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k5) <- peg'rule'PostfixExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 372 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 397 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-} () 
-{-# LINE 4098 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4268 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k5)
           }
       ]))
 
 peg'rule'PowOp :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 374 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 399 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 4106 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4276 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'PowOp =
   PegRt.memo peg'memo'PowOp "PowOp"
@@ -4111,17 +4281,17 @@ peg'rule'PowOp =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "**" "'**'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 375 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 400 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-} () 
-{-# LINE 4117 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4287 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'PostfixExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 377 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 402 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}()
-{-# LINE 4125 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4295 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'PostfixExpr =
   PegRt.memo peg'memo'PostfixExpr "PostfixExpr"
@@ -4130,26 +4300,26 @@ peg'rule'PostfixExpr =
           ; (_, peg'k0) <- peg'rule'CallExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 378 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 403 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-} () 
-{-# LINE 4136 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4306 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k1) <- peg'rule'Primary
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 379 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 404 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-} () 
-{-# LINE 4145 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4315 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k1)
           }
       ]))
 
 peg'rule'CallExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 381 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 406 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 4153 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4323 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'CallExpr =
   PegRt.memo peg'memo'CallExpr "CallExpr"
@@ -4171,17 +4341,17 @@ peg'rule'CallExpr =
           ; (_, peg'k11) <- peg'rule'RParen
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 382 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 407 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 72 #-} () 
-{-# LINE 4177 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4347 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k10, peg'k11])
           }
       ]))
 
 peg'rule'Primary :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 384 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 409 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 4185 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4355 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Primary =
   PegRt.memo peg'memo'Primary "Primary"
@@ -4190,71 +4360,71 @@ peg'rule'Primary =
           ; (_, peg'k0) <- peg'rule'NumberLiteral
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 385 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 410 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-} () 
-{-# LINE 4196 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4366 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k1) <- peg'rule'StringLiteral
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 386 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 411 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-} () 
-{-# LINE 4205 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4375 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k1)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k2) <- peg'rule'KeywordLiteral
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 387 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 412 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 28 #-} () 
-{-# LINE 4214 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4384 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k3) <- peg'rule'ArrayExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 388 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 413 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-} () 
-{-# LINE 4223 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4393 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k3)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k4) <- peg'rule'HashExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 389 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 414 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-} () 
-{-# LINE 4232 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4402 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k4)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k5) <- peg'rule'ParenExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 390 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 415 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-} () 
-{-# LINE 4241 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4411 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k5)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k6) <- peg'rule'VarExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 391 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 416 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-} () 
-{-# LINE 4250 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4420 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k6)
           }
       ])
 
 peg'rule'NumberLiteral :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 393 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 418 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}()
-{-# LINE 4258 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4428 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'NumberLiteral =
   PegRt.memo peg'memo'NumberLiteral "NumberLiteral"
@@ -4263,17 +4433,17 @@ peg'rule'NumberLiteral =
           ; (_, peg'k0) <- peg'rule'Number
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 394 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 419 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-} () 
-{-# LINE 4269 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4439 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'Number :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 396 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 421 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 11 #-}()
-{-# LINE 4277 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4447 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Number =
   PegRt.memo peg'memo'Number "Number"
@@ -4286,17 +4456,17 @@ peg'rule'Number =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 397 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 422 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 33 #-} () 
-{-# LINE 4292 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4462 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k3])
           }
       ]))
 
 peg'rule'StringLiteral :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 399 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 424 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}()
-{-# LINE 4300 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4470 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'StringLiteral =
   PegRt.memo peg'memo'StringLiteral "StringLiteral"
@@ -4305,17 +4475,17 @@ peg'rule'StringLiteral =
           ; (_, peg'k0) <- peg'rule'StringLit
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 400 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 425 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 29 #-} () 
-{-# LINE 4311 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4481 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'KeywordLiteral :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 402 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 427 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 19 #-}()
-{-# LINE 4319 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4489 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'KeywordLiteral =
   PegRt.memo peg'memo'KeywordLiteral "KeywordLiteral"
@@ -4324,17 +4494,17 @@ peg'rule'KeywordLiteral =
           ; (_, peg'k0) <- peg'rule'Keyword
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 403 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 428 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 28 #-} () 
-{-# LINE 4330 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4500 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'Keyword :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 405 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 430 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 4338 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4508 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Keyword =
   PegRt.memo peg'memo'Keyword "Keyword"
@@ -4350,17 +4520,17 @@ peg'rule'Keyword =
           ; (_, peg'k4) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.cls [('a', 'z'), ('0', '9'), ('_', '_')] "[a-z0-9_]"))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 406 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 431 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 51 #-} () 
-{-# LINE 4356 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4526 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k3, peg'k4])
           }
       ]))
 
 peg'rule'VarExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 408 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 433 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 4364 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4534 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'VarExpr =
   PegRt.memo peg'memo'VarExpr "VarExpr"
@@ -4374,17 +4544,17 @@ peg'rule'VarExpr =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 409 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 434 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 49 #-} () 
-{-# LINE 4380 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4550 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k4])
           }
       ]))
 
 peg'rule'ExprIdent :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 411 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 436 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 4388 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4558 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ExprIdent =
   PegRt.memo peg'memo'ExprIdent "ExprIdent"
@@ -4394,17 +4564,17 @@ peg'rule'ExprIdent =
           ; (_, peg'k1) <- (PegRt.manyS) (PegRt.plain (PegRt.cls [('a', 'z'), ('A', 'Z'), ('0', '9'), ('_', '_')] "[a-zA-Z0-9_]"))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 412 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 437 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 39 #-} () 
-{-# LINE 4400 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4570 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1])
           }
       ]))
 
 peg'rule'Dot :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 414 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 439 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 8 #-}()
-{-# LINE 4408 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4578 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Dot =
   PegRt.memo peg'memo'Dot "Dot"
@@ -4413,17 +4583,17 @@ peg'rule'Dot =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "." "'.'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 415 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 440 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-} () 
-{-# LINE 4419 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4589 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'ArrayExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 417 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 442 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 4427 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4597 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ArrayExpr =
   PegRt.memo peg'memo'ArrayExpr "ArrayExpr"
@@ -4444,17 +4614,17 @@ peg'rule'ArrayExpr =
           ; (_, peg'k10) <- peg'rule'RBr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 418 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 443 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 57 #-} () 
-{-# LINE 4450 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4620 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k9, peg'k10])
           }
       ]))
 
 peg'rule'HashExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 420 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 445 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 4458 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4628 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'HashExpr =
   PegRt.memo peg'memo'HashExpr "HashExpr"
@@ -4475,17 +4645,17 @@ peg'rule'HashExpr =
           ; (_, peg'k10) <- peg'rule'RBrace
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 421 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 446 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 72 #-} () 
-{-# LINE 4481 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4651 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k9, peg'k10])
           }
       ]))
 
 peg'rule'HashEntry :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 423 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 448 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 4489 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4659 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'HashEntry =
   PegRt.memo peg'memo'HashEntry "HashEntry"
@@ -4502,17 +4672,17 @@ peg'rule'HashEntry =
           ; (_, peg'k6) <- peg'rule'Expr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 424 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 449 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 56 #-} () 
-{-# LINE 4508 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4678 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k2, peg'k3, peg'k4, peg'k5, peg'k6])
           }
       ]))
 
 peg'rule'ParenExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 426 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 451 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 4516 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4686 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ParenExpr =
   PegRt.memo peg'memo'ParenExpr "ParenExpr"
@@ -4525,17 +4695,17 @@ peg'rule'ParenExpr =
           ; (_, peg'k4) <- peg'rule'RParen
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 427 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 452 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 40 #-} () 
-{-# LINE 4531 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4701 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k4])
           }
       ]))
 
 peg'rule'Comma :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 429 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 454 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 4539 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4709 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Comma =
   PegRt.memo peg'memo'Comma "Comma"
@@ -4544,17 +4714,17 @@ peg'rule'Comma =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "," "','")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 430 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 455 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-} () 
-{-# LINE 4550 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4720 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'LBrace :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 432 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 457 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 11 #-}()
-{-# LINE 4558 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4728 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'LBrace =
   PegRt.memo peg'memo'LBrace "LBrace"
@@ -4563,17 +4733,17 @@ peg'rule'LBrace =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "{" "'{'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 433 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 458 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-} () 
-{-# LINE 4569 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4739 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'RBrace :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 435 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 460 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 11 #-}()
-{-# LINE 4577 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4747 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'RBrace =
   PegRt.memo peg'memo'RBrace "RBrace"
@@ -4582,17 +4752,17 @@ peg'rule'RBrace =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "}" "'}'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 436 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 461 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-} () 
-{-# LINE 4588 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4758 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'LParen :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 438 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 463 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 11 #-}()
-{-# LINE 4596 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4766 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'LParen =
   PegRt.memo peg'memo'LParen "LParen"
@@ -4601,17 +4771,17 @@ peg'rule'LParen =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "(" "'('")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 439 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 464 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-} () 
-{-# LINE 4607 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4777 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'RParen :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 441 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 466 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 11 #-}()
-{-# LINE 4615 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4785 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'RParen =
   PegRt.memo peg'memo'RParen "RParen"
@@ -4620,35 +4790,35 @@ peg'rule'RParen =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit ")" "')'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 442 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 467 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-} () 
-{-# LINE 4626 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4796 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'BlockGroup :: (
-{-# LINE 446 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 471 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 19 #-}Int
-{-# LINE 4634 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4804 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 446 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 471 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-}()
-{-# LINE 4638 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4808 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'BlockGroup ind =
   PegRt.memoArg peg'memo'BlockGroup "BlockGroup" ind
     (PegRt.node syntaxKindBlockGroup (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- (PegRt.many1S) (PegRt.withCol (\_col -> peg'rule'BlockCommand (
-{-# LINE 447 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 472 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 28 #-}ind
-{-# LINE 4647 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4817 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; (_, peg'k7) <- (PegRt.optionalS) (PegRt.choice [do { (_, peg'k5) <- (PegRt.plain PegPrelude.. PegRt.andP) (PegRt.choice [do { (_, peg'k1) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 447 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 472 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 41 #-}ind
-{-# LINE 4652 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4822 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k2) <- (PegRt.plain PegPrelude.. PegRt.notP) (peg'rule'BlockCommandStart)
           ; (_, peg'k3) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.cls [(' ', ' '), ('\t', '\t')] "[ \\t]"))
@@ -4656,25 +4826,25 @@ peg'rule'BlockGroup ind =
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k1, peg'k2, peg'k3, peg'k4])
           }])
           ; (_, peg'k6) <- PegRt.withCol (\_col -> peg'rule'AttributedBlock (
-{-# LINE 447 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 472 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 100 #-}ind
-{-# LINE 4662 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4832 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k5, peg'k6])
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 447 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 472 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 108 #-} () 
-{-# LINE 4670 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4840 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k7])
           }
       ]))
 
 peg'rule'BlockCommandStart :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 449 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 474 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-}()
-{-# LINE 4678 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4848 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'BlockCommandStart =
   PegRt.memo peg'memo'BlockCommandStart "BlockCommandStart"
@@ -4684,95 +4854,95 @@ peg'rule'BlockCommandStart =
           ; (_, peg'k1) <- PegRt.plain (PegRt.cls [('a', 'z')] "[a-z]")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 450 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 475 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 33 #-} () 
-{-# LINE 4690 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4860 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1])
           }
       ]))
 
 peg'rule'AttributedBlock :: (
-{-# LINE 452 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 477 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-}Int
-{-# LINE 4698 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4868 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 452 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 477 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 32 #-}()
-{-# LINE 4702 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4872 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'AttributedBlock ind =
   PegRt.memoArg peg'memo'AttributedBlock "AttributedBlock" ind
     (PegRt.node syntaxKindAttributedBlock (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k7) <- PegRt.choice [do { (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Heading (
-{-# LINE 453 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 478 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 30 #-}ind
-{-# LINE 4711 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4881 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k0)
           }, do { (_, peg'k1) <- PegRt.withCol (\_col -> peg'rule'BulletList (
-{-# LINE 454 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 479 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 33 #-}ind
-{-# LINE 4717 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4887 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k1)
           }, do { (_, peg'k2) <- PegRt.withCol (\_col -> peg'rule'OrderedList (
-{-# LINE 455 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 480 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 34 #-}ind
-{-# LINE 4723 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4893 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k2)
           }, do { (_, peg'k3) <- PegRt.withCol (\_col -> peg'rule'DefList (
-{-# LINE 456 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 481 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 30 #-}ind
-{-# LINE 4729 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4899 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k3)
           }, do { (_, peg'k4) <- PegRt.withCol (\_col -> peg'rule'Table (
-{-# LINE 457 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 482 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 28 #-}ind
-{-# LINE 4735 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4905 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k4)
           }, do { (_, peg'k5) <- PegRt.withCol (\_col -> peg'rule'CodeBlock (
-{-# LINE 458 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 483 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 32 #-}ind
-{-# LINE 4741 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4911 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k5)
           }, do { (_, peg'k6) <- PegRt.withCol (\_col -> peg'rule'Paragraph (
-{-# LINE 459 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 484 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 32 #-}ind
-{-# LINE 4747 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4917 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k6)
           }]
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 460 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 485 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-} () 
-{-# LINE 4755 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4925 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k7)
           }
       ]))
 
 peg'rule'BlockCommand :: (
-{-# LINE 462 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 487 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-}Int
-{-# LINE 4763 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4933 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 462 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 487 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 29 #-}()
-{-# LINE 4767 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4937 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'BlockCommand ind =
   PegRt.memoArg peg'memo'BlockCommand "BlockCommand" ind
     (PegRt.node syntaxKindBlockCommand (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 463 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 488 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-}ind
-{-# LINE 4776 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4946 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- peg'rule'At
           ; (_, peg'k2) <- peg'rule'SetIdent
@@ -4788,16 +4958,16 @@ peg'rule'BlockCommand ind =
           }]
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 463 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 488 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 75 #-} () 
-{-# LINE 4794 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4964 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k4, peg'k5, peg'k6, peg'k7, peg'k10])
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k11) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 464 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 489 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-}ind
-{-# LINE 4801 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4971 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k12) <- peg'rule'At
           ; (_, peg'k13) <- peg'rule'Ident
@@ -4809,23 +4979,23 @@ peg'rule'BlockCommand ind =
           ; PegPrelude.pure ((), peg'k17)
           }]
           ; (_, peg'k19) <- (PegRt.optionalS) (PegRt.withCol (\_col -> peg'rule'CommandBody (
-{-# LINE 464 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 489 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 70 #-}ind
-{-# LINE 4815 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4985 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 464 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 489 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 77 #-} () 
-{-# LINE 4821 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4991 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k11, peg'k12, peg'k13, peg'k14, peg'k15, peg'k18, peg'k19])
           }
       ]))
 
 peg'rule'At :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 466 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 491 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 7 #-}()
-{-# LINE 4829 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 4999 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'At =
   PegRt.memo peg'memo'At "At"
@@ -4834,17 +5004,17 @@ peg'rule'At =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "@" "'@'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 467 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 492 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-} () 
-{-# LINE 4840 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5010 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'SetIdent :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 469 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 494 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 4848 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5018 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SetIdent =
   PegRt.memo peg'memo'SetIdent "SetIdent"
@@ -4854,17 +5024,17 @@ peg'rule'SetIdent =
           ; (_, peg'k1) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.cls [('a', 'z'), ('0', '9'), ('-', '-')] "[a-z0-9\\-]"))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 470 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 495 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 32 #-} () 
-{-# LINE 4860 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5030 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1])
           }
       ]))
 
 peg'rule'SetName :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 472 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 497 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 4868 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5038 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SetName =
   PegRt.memo peg'memo'SetName "SetName"
@@ -4873,30 +5043,30 @@ peg'rule'SetName =
           ; (_, peg'k0) <- peg'rule'ExprIdent
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 473 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 498 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-} () 
-{-# LINE 4879 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5049 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'CommandBody :: (
-{-# LINE 475 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 500 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 20 #-}Int
-{-# LINE 4887 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5057 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 475 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 500 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 28 #-}()
-{-# LINE 4891 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5061 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'CommandBody ind =
   PegRt.memoArg peg'memo'CommandBody "CommandBody" ind
     (PegRt.node syntaxKindCommandBody (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k4) <- (PegRt.plain PegPrelude.. PegRt.andP) (PegRt.choice [do { (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 476 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 501 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-}ind + 2
-{-# LINE 4900 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5070 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.cls [(' ', ' '), ('\t', '\t')] "[ \\t]"))
           ; (_, peg'k2) <- (PegRt.plain PegPrelude.. PegRt.notP) (peg'rule'BlankLine)
@@ -4904,137 +5074,137 @@ peg'rule'CommandBody ind =
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3])
           }])
           ; (_, peg'k5) <- PegRt.withCol (\_col -> peg'rule'Blocks (
-{-# LINE 476 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 501 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 59 #-}ind + 2
-{-# LINE 4910 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5080 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 476 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 501 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 69 #-} () 
-{-# LINE 4916 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5086 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k4, peg'k5])
           }
       ]))
 
 peg'rule'BulletList :: (
-{-# LINE 480 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 505 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 19 #-}Int
-{-# LINE 4924 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5094 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 480 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 505 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-}()
-{-# LINE 4928 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5098 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'BulletList ind =
   PegRt.memoArg peg'memo'BulletList "BulletList" ind
     (PegRt.node syntaxKindBulletList (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'ListItem (
-{-# LINE 481 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 506 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-}ind
-{-# LINE 4937 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5107 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) (
-{-# LINE 481 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 506 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 29 #-}0
-{-# LINE 4941 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5111 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k3) <- (PegRt.manyS) (PegRt.choice [do { (_, peg'k1) <- (PegRt.optionalS) (peg'rule'BlankLines)
           ; (_, peg'k2) <- PegRt.withCol (\_col -> peg'rule'ListItem (
-{-# LINE 481 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 506 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 54 #-}ind
-{-# LINE 4947 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5117 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) (
-{-# LINE 481 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 506 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 59 #-}0
-{-# LINE 4951 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5121 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k1, peg'k2])
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 481 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 506 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 65 #-} () 
-{-# LINE 4959 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5129 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k3])
           }
       ]))
 
 peg'rule'OrderedList :: (
-{-# LINE 483 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 508 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 20 #-}Int
-{-# LINE 4967 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5137 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 483 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 508 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 28 #-}()
-{-# LINE 4971 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5141 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'OrderedList ind =
   PegRt.memoArg peg'memo'OrderedList "OrderedList" ind
     (PegRt.node syntaxKindOrderedList (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'ListItem (
-{-# LINE 484 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 509 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-}ind
-{-# LINE 4980 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5150 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) (
-{-# LINE 484 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 509 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 30 #-}1
-{-# LINE 4984 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5154 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k3) <- (PegRt.manyS) (PegRt.choice [do { (_, peg'k1) <- (PegRt.optionalS) (peg'rule'BlankLines)
           ; (_, peg'k2) <- PegRt.withCol (\_col -> peg'rule'ListItem (
-{-# LINE 484 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 509 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 55 #-}ind
-{-# LINE 4990 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5160 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) (
-{-# LINE 484 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 509 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 60 #-}1
-{-# LINE 4994 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5164 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k1, peg'k2])
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 484 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 509 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 66 #-} () 
-{-# LINE 5002 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5172 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k3])
           }
       ]))
 
 peg'rule'ListItem :: (
-{-# LINE 486 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 511 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-}Int
-{-# LINE 5010 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5180 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> (
-{-# LINE 486 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 511 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 33 #-}Int
-{-# LINE 5014 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5184 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 486 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 511 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 41 #-}()
-{-# LINE 5018 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5188 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ListItem ind ordered =
   PegRt.memoArg peg'memo'ListItem "ListItem" (ind, ordered)
     (PegRt.node syntaxKindListItem (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 487 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 512 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-}ind
-{-# LINE 5027 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5197 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- PegRt.withCol (\_col -> peg'rule'ListMark (
-{-# LINE 487 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 512 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 31 #-}ordered
-{-# LINE 5032 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5202 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k2) <- peg'rule'Ws
           ; (_, peg'k3) <- (PegRt.many1S) (PegRt.withCol (\_col -> peg'rule'Inline (
-{-# LINE 487 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 512 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 50 #-}ind + 2
-{-# LINE 5038 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5208 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; (_, peg'k6) <- PegRt.choice [do { (_, peg'k4) <- peg'rule'Nl
           ; PegPrelude.pure ((), peg'k4)
@@ -5042,65 +5212,65 @@ peg'rule'ListItem ind ordered =
           ; PegPrelude.pure ((), peg'k5)
           }]
           ; (_, peg'k7) <- PegRt.withCol (\_col -> peg'rule'ItemTail (
-{-# LINE 487 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 512 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 79 #-}ind + 2
-{-# LINE 5048 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5218 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 487 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 512 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 89 #-} () 
-{-# LINE 5054 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5224 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k6, peg'k7])
           }
       ]))
 
 peg'rule'ListMark :: (
-{-# LINE 489 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 514 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-}Int
-{-# LINE 5062 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5232 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 489 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 514 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 29 #-}()
-{-# LINE 5066 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5236 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ListMark ordered =
   PegRt.memoArg peg'memo'ListMark "ListMark" ordered
     (PegRt.node syntaxKindListMark (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.plain (PegRt.predicate (\_col -> 
-{-# LINE 490 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 515 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-} ordered == 0 
-{-# LINE 5075 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5245 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- peg'rule'BulletMark
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 490 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 515 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 43 #-} () 
-{-# LINE 5082 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5252 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1])
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k2) <- PegRt.plain (PegRt.predicate (\_col -> 
-{-# LINE 491 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 516 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-} ordered == 1 
-{-# LINE 5089 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5259 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k3) <- peg'rule'OrderedMark
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 491 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 516 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 44 #-} () 
-{-# LINE 5096 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5266 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k2, peg'k3])
           }
       ]))
 
 peg'rule'BulletMark :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 493 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 518 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}()
-{-# LINE 5104 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5274 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'BulletMark =
   PegRt.memo peg'memo'BulletMark "BulletMark"
@@ -5109,17 +5279,17 @@ peg'rule'BulletMark =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "-" "'-'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 494 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 519 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 20 #-} () 
-{-# LINE 5115 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5285 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'OrderedMark :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 496 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 521 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}()
-{-# LINE 5123 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5293 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'OrderedMark =
   PegRt.memo peg'memo'OrderedMark "OrderedMark"
@@ -5128,21 +5298,21 @@ peg'rule'OrderedMark =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "+" "'+'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 497 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 522 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-} () 
-{-# LINE 5134 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5304 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'ItemTail :: (
-{-# LINE 499 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 524 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-}Int
-{-# LINE 5142 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5312 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 499 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 524 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-}()
-{-# LINE 5146 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5316 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'ItemTail ind =
   PegRt.memoArg peg'memo'ItemTail "ItemTail" ind
@@ -5150,9 +5320,9 @@ peg'rule'ItemTail ind =
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k7) <- (PegRt.manyS) (PegRt.choice [do { (_, peg'k0) <- (PegRt.optionalS) (peg'rule'BlankLines)
           ; (_, peg'k5) <- (PegRt.plain PegPrelude.. PegRt.andP) (PegRt.choice [do { (_, peg'k1) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 500 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 525 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 32 #-}ind
-{-# LINE 5156 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5326 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k2) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.cls [(' ', ' '), ('\t', '\t')] "[ \\t]"))
           ; (_, peg'k3) <- (PegRt.plain PegPrelude.. PegRt.notP) (peg'rule'BlankLine)
@@ -5160,134 +5330,134 @@ peg'rule'ItemTail ind =
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k1, peg'k2, peg'k3, peg'k4])
           }])
           ; (_, peg'k6) <- PegRt.withCol (\_col -> peg'rule'Block (
-{-# LINE 500 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 525 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 64 #-}ind
-{-# LINE 5166 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5336 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k0, peg'k5, peg'k6])
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 500 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 525 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 72 #-} () 
-{-# LINE 5174 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5344 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k7)
           }
       ])
 
 peg'rule'DefList :: (
-{-# LINE 504 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 529 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}Int
-{-# LINE 5182 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5352 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 504 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 529 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-}()
-{-# LINE 5186 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5356 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'DefList ind =
   PegRt.memoArg peg'memo'DefList "DefList" ind
     (PegRt.node syntaxKindDefList (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'DefGroup (
-{-# LINE 505 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 530 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-}ind
-{-# LINE 5195 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5365 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k7) <- (PegRt.manyS) (PegRt.choice [do { (_, peg'k1) <- (PegRt.optionalS) (peg'rule'BlankLines)
           ; (_, peg'k5) <- (PegRt.plain PegPrelude.. PegRt.andP) (PegRt.choice [do { (_, peg'k2) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 505 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 530 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 45 #-}ind
-{-# LINE 5201 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5371 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k3) <- PegRt.plain (PegRt.lit "=" "'='")
           ; (_, peg'k4) <- PegRt.plain (PegRt.cls [(' ', ' '), ('\t', '\t')] "[ \\t]")
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k2, peg'k3, peg'k4])
           }])
           ; (_, peg'k6) <- PegRt.withCol (\_col -> peg'rule'DefGroup (
-{-# LINE 505 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 530 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 70 #-}ind
-{-# LINE 5210 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5380 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k1, peg'k5, peg'k6])
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 505 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 530 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 78 #-} () 
-{-# LINE 5218 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5388 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k7])
           }
       ]))
 
 peg'rule'DefGroup :: (
-{-# LINE 507 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 532 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-}Int
-{-# LINE 5226 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5396 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 507 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 532 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-}()
-{-# LINE 5230 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5400 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'DefGroup ind =
   PegRt.memoArg peg'memo'DefGroup "DefGroup" ind
     (PegRt.node syntaxKindDefGroup (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- (PegRt.many1S) (PegRt.withCol (\_col -> peg'rule'DefTerm (
-{-# LINE 508 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 533 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-}ind
-{-# LINE 5239 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5409 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; (_, peg'k1) <- PegRt.withCol (\_col -> peg'rule'DefBody (
-{-# LINE 508 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 533 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 35 #-}ind
-{-# LINE 5244 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5414 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k5) <- (PegRt.manyS) (PegRt.choice [do { (_, peg'k2) <- (PegRt.optionalS) (peg'rule'BlankLines)
           ; (_, peg'k3) <- PegRt.withCol (\_col -> peg'rule'DefNew (
-{-# LINE 508 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 533 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 60 #-}ind
-{-# LINE 5250 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5420 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k4) <- PegRt.withCol (\_col -> peg'rule'DefBody (
-{-# LINE 508 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 533 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 73 #-}ind
-{-# LINE 5255 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5425 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k2, peg'k3, peg'k4])
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 508 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 533 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 81 #-} () 
-{-# LINE 5263 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5433 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k5])
           }
       ]))
 
 peg'rule'DefTerm :: (
-{-# LINE 510 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 535 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}Int
-{-# LINE 5271 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5441 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 510 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 535 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-}()
-{-# LINE 5275 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5445 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'DefTerm ind =
   PegRt.memoArg peg'memo'DefTerm "DefTerm" ind
     (PegRt.node syntaxKindDefTerm (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 511 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 536 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}ind
-{-# LINE 5284 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5454 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- peg'rule'TermMark
           ; (_, peg'k2) <- peg'rule'Ws
           ; (_, peg'k3) <- (PegRt.many1S) (PegRt.withCol (\_col -> peg'rule'HeadInline (
-{-# LINE 511 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 536 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 44 #-}ind + 2
-{-# LINE 5291 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5461 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; (_, peg'k6) <- PegRt.choice [do { (_, peg'k4) <- peg'rule'Nl
           ; PegPrelude.pure ((), peg'k4)
@@ -5296,17 +5466,17 @@ peg'rule'DefTerm ind =
           }]
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 511 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 536 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 65 #-} () 
-{-# LINE 5302 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5472 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k6])
           }
       ]))
 
 peg'rule'TermMark :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 513 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 538 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 5310 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5480 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'TermMark =
   PegRt.memo peg'memo'TermMark "TermMark"
@@ -5315,30 +5485,30 @@ peg'rule'TermMark =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "=" "'='")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 514 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 539 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-} () 
-{-# LINE 5321 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5491 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'DefNew :: (
-{-# LINE 516 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 541 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}Int
-{-# LINE 5329 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5499 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 516 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 541 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-}()
-{-# LINE 5333 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5503 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'DefNew ind =
   PegRt.memoArg peg'memo'DefNew "DefNew" ind
     (PegRt.node syntaxKindDefNew (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 517 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 542 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}ind
-{-# LINE 5342 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5512 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- peg'rule'NewDefMark
           ; (_, peg'k2) <- peg'rule'Sp
@@ -5349,17 +5519,17 @@ peg'rule'DefNew ind =
           }]
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 517 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 542 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 45 #-} () 
-{-# LINE 5355 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5525 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k5])
           }
       ]))
 
 peg'rule'NewDefMark :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 519 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 544 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}()
-{-# LINE 5363 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5533 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'NewDefMark =
   PegRt.memo peg'memo'NewDefMark "NewDefMark"
@@ -5368,30 +5538,30 @@ peg'rule'NewDefMark =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "=:" "'=:'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 520 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 545 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-} () 
-{-# LINE 5374 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5544 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'DefBody :: (
-{-# LINE 522 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 547 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}Int
-{-# LINE 5382 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5552 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 522 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 547 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-}()
-{-# LINE 5386 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5556 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'DefBody ind =
   PegRt.memoArg peg'memo'DefBody "DefBody" ind
     (PegRt.node syntaxKindDefBody (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k4) <- (PegRt.plain PegPrelude.. PegRt.andP) (PegRt.choice [do { (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 523 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 548 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}ind + 2
-{-# LINE 5395 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5565 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.cls [(' ', ' '), ('\t', '\t')] "[ \\t]"))
           ; (_, peg'k2) <- (PegRt.plain PegPrelude.. PegRt.notP) (peg'rule'BlankLine)
@@ -5399,15 +5569,15 @@ peg'rule'DefBody ind =
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3])
           }])
           ; (_, peg'k5) <- PegRt.withCol (\_col -> peg'rule'Block (
-{-# LINE 523 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 548 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 54 #-}ind + 2
-{-# LINE 5405 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5575 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k13) <- (PegRt.manyS) (PegRt.choice [do { (_, peg'k6) <- (PegRt.optionalS) (peg'rule'BlankLines)
           ; (_, peg'k11) <- (PegRt.plain PegPrelude.. PegRt.andP) (PegRt.choice [do { (_, peg'k7) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 523 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 548 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 82 #-}ind + 2
-{-# LINE 5411 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5581 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k8) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.plain (PegRt.cls [(' ', ' '), ('\t', '\t')] "[ \\t]"))
           ; (_, peg'k9) <- (PegRt.plain PegPrelude.. PegRt.notP) (peg'rule'BlankLine)
@@ -5415,62 +5585,62 @@ peg'rule'DefBody ind =
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k7, peg'k8, peg'k9, peg'k10])
           }])
           ; (_, peg'k12) <- PegRt.withCol (\_col -> peg'rule'Block (
-{-# LINE 523 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 548 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 118 #-}ind + 2
-{-# LINE 5421 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5591 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k6, peg'k11, peg'k12])
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 523 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 548 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 130 #-} () 
-{-# LINE 5429 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5599 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k4, peg'k5, peg'k13])
           }
       ]))
 
 peg'rule'Table :: (
-{-# LINE 527 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 552 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}Int
-{-# LINE 5437 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5607 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 527 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 552 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 22 #-}()
-{-# LINE 5441 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5611 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Table ind =
   PegRt.memoArg peg'memo'Table "Table" ind
     (PegRt.node syntaxKindTable (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (h, peg'k0) <- PegRt.label "h" (PegRt.withCol (\_col -> peg'rule'TableRow (
-{-# LINE 528 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 553 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-}ind
-{-# LINE 5450 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5620 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; PegRt.touch h
           ; (_, peg'k1) <- peg'rule'Nl
           ; (_, peg'k3) <- PegRt.labeledS "table_delimiter" (PegPrelude.Just (PegRt.voidS peg'rule'SkipBlock)) (PegRt.choice [do { (_, peg'k2) <- PegRt.withCol (\_col -> peg'rule'TableDelimiter (
-{-# LINE 528 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 553 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 45 #-}ind
-{-# LINE 5457 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5627 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k2)
           }])
           ; (_, peg'k4) <- (PegRt.manyS) (PegRt.withCol (\_col -> peg'rule'TableBodyRow (
-{-# LINE 529 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 554 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-}ind
-{-# LINE 5464 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5634 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) (
-{-# LINE 529 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 554 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 28 #-}h
-{-# LINE 5468 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5638 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; (_, peg'k9) <- PegRt.labeledS "table_row" (PegPrelude.Just (PegRt.voidS peg'rule'SkipBlock)) (PegRt.choice [do { (_, peg'k8) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.choice [do { (_, peg'k5) <- peg'rule'Nl
           ; (_, peg'k6) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 529 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 554 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 42 #-}ind
-{-# LINE 5474 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5644 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k7) <- peg'rule'Pipe
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k5, peg'k6, peg'k7])
@@ -5484,25 +5654,25 @@ peg'rule'Table ind =
           }]
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 529 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 554 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 75 #-} () 
-{-# LINE 5490 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5660 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k3, peg'k4, peg'k9, peg'k12])
           }
       ]))
 
 peg'rule'TableBodyRow :: (
-{-# LINE 531 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 556 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-}Int
-{-# LINE 5498 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5668 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> (
-{-# LINE 531 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 556 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 31 #-}Int
-{-# LINE 5502 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5672 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 531 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 556 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 39 #-}()
-{-# LINE 5506 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5676 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'TableBodyRow ind h =
   PegRt.memoArg peg'memo'TableBodyRow "TableBodyRow" (ind, h)
@@ -5510,44 +5680,44 @@ peg'rule'TableBodyRow ind h =
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- peg'rule'Nl
           ; (r, peg'k1) <- PegRt.label "r" (PegRt.withCol (\_col -> peg'rule'TableRow (
-{-# LINE 532 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 557 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 31 #-}ind
-{-# LINE 5516 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5686 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; PegRt.touch r
           ; (_, peg'k3) <- PegRt.labeledS "table_cells" (PegPrelude.Just (PegRt.voidS peg'rule'SkipLine)) (PegRt.choice [do { (_, peg'k2) <- PegRt.plain (PegRt.predicate (\_col -> 
-{-# LINE 532 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 557 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 39 #-} r == h 
-{-# LINE 5522 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5692 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k2)
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 532 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 557 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 63 #-} () 
-{-# LINE 5530 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5700 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k3])
           }
       ])
 
 peg'rule'TableRow :: (
-{-# LINE 534 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 559 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-}Int
-{-# LINE 5538 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5708 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 534 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 559 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-}Int
-{-# LINE 5542 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5712 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'TableRow ind =
   PegRt.memoArg peg'memo'TableRow "TableRow" ind
     (PegRt.node syntaxKindTableRow (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 535 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 560 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-}ind
-{-# LINE 5551 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5721 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (cs, peg'k1) <- PegRt.label "cs" ((PegRt.many1S) (peg'rule'TableCellAndPipe))
           ; PegRt.touch cs
@@ -5555,17 +5725,17 @@ peg'rule'TableRow ind =
           ; (_, peg'k3) <- peg'rule'Sp
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 535 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 560 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 52 #-} length cs 
-{-# LINE 5561 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5731 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3])
           }
       ]))
 
 peg'rule'TableCellAndPipe :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 537 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 562 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 21 #-}()
-{-# LINE 5569 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5739 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'TableCellAndPipe =
   PegRt.memo peg'memo'TableCellAndPipe "TableCellAndPipe"
@@ -5578,17 +5748,17 @@ peg'rule'TableCellAndPipe =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 538 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 563 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 45 #-} () 
-{-# LINE 5584 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5754 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k3])
           }
       ]))
 
 peg'rule'TableCell :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 540 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 565 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 5592 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5762 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'TableCell =
   PegRt.memo peg'memo'TableCell "TableCell"
@@ -5597,17 +5767,17 @@ peg'rule'TableCell =
           ; (_, peg'k0) <- (PegRt.manyS) (peg'rule'CellInline)
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 541 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 566 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-} () 
-{-# LINE 5603 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5773 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'CellInline :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 543 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 568 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 15 #-}()
-{-# LINE 5611 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5781 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'CellInline =
   PegRt.memo peg'memo'CellInline "CellInline"
@@ -5616,66 +5786,75 @@ peg'rule'CellInline =
           ; (_, peg'k0) <- peg'rule'Escape
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 544 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 569 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-} () 
-{-# LINE 5622 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5792 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k1) <- peg'rule'Comment
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 545 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 570 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-} () 
-{-# LINE 5631 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5801 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k1)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k2) <- peg'rule'ExprCtx
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 546 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 571 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-} () 
-{-# LINE 5640 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5810 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k3) <- PegRt.withCol (\_col -> peg'rule'InlineCommand (
-{-# LINE 547 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 572 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 29 #-}0
-{-# LINE 5647 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5817 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 547 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 572 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 33 #-} () 
-{-# LINE 5653 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5823 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k3)
           }
       , do { peg'start <- PegRt.getOffset
           ; (_, peg'k4) <- peg'rule'BadBracket
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 548 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 573 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-} () 
-{-# LINE 5662 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5832 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k4)
           }
       , do { peg'start <- PegRt.getOffset
-          ; (_, peg'k5) <- peg'rule'CellText
+          ; (_, peg'k5) <- peg'rule'BadBreak
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 549 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 574 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-} () 
-{-# LINE 5671 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5841 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k5)
+          }
+      , do { peg'start <- PegRt.getOffset
+          ; (_, peg'k6) <- peg'rule'CellText
+          ; _span <- PegRt.spanFrom peg'start
+          ; PegPrelude.pure ((
+{-# LINE 575 "modules/golem-parser/grammar/Golem.hpeg" #-}
+ {-# COLUMN 25 #-} () 
+{-# LINE 5850 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+    ), peg'k6)
           }
       ])
 
 peg'rule'CellText :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 551 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 577 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 5679 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5858 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'CellText =
   PegRt.memo peg'memo'CellText "CellText"
@@ -5688,30 +5867,30 @@ peg'rule'CellText =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 552 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 578 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 36 #-} () 
-{-# LINE 5694 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5873 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k3)
           }
       ]))
 
 peg'rule'TableDelimiter :: (
-{-# LINE 554 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 580 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-}Int
-{-# LINE 5702 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5881 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 554 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 580 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 31 #-}()
-{-# LINE 5706 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5885 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'TableDelimiter ind =
   PegRt.memoArg peg'memo'TableDelimiter "TableDelimiter" ind
     (PegRt.node syntaxKindTableDelimiter (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 555 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 581 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 23 #-}ind
-{-# LINE 5715 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5894 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k3) <- (PegRt.many1S) (PegRt.choice [do { (_, peg'k1) <- peg'rule'Pipe
           ; (_, peg'k2) <- peg'rule'Delim
@@ -5721,17 +5900,17 @@ peg'rule'TableDelimiter ind =
           ; (_, peg'k5) <- peg'rule'Sp
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 555 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 581 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 51 #-} () 
-{-# LINE 5727 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5906 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k3, peg'k4, peg'k5])
           }
       ]))
 
 peg'rule'Delim :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 557 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 583 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 5735 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5914 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Delim =
   PegRt.memo peg'memo'Delim "Delim"
@@ -5744,63 +5923,63 @@ peg'rule'Delim =
           ; (_, peg'k4) <- peg'rule'Sp
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 558 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 584 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 32 #-} () 
-{-# LINE 5750 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5929 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k4])
           }
       ]))
 
 peg'rule'CodeBlock :: (
-{-# LINE 562 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 588 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}Int
-{-# LINE 5758 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5937 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 562 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 588 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-}()
-{-# LINE 5762 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5941 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'CodeBlock ind =
   PegRt.memoArg peg'memo'CodeBlock "CodeBlock" ind
     (PegRt.node syntaxKindCodeBlock (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 563 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 589 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}ind
-{-# LINE 5771 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5950 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- peg'rule'Fence
           ; (_, peg'k2) <- (PegRt.optionalS) (peg'rule'Lang)
           ; (_, peg'k3) <- peg'rule'Sp
           ; (_, peg'k4) <- peg'rule'Nl
           ; (_, peg'k7) <- (PegRt.manyS) (PegRt.choice [do { (_, peg'k5) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.withCol (\_col -> peg'rule'CodeClose (
-{-# LINE 564 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 590 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-}ind
-{-# LINE 5780 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5959 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     )))
           ; (_, peg'k6) <- peg'rule'CodeLine
           ; PegPrelude.pure ((), PegPrelude.concat [peg'k5, peg'k6])
           }])
           ; (_, peg'k9) <- PegRt.labeledS "code_close" (PegPrelude.Just (PegRt.voidS peg'rule'SkipAll)) (PegRt.choice [do { (_, peg'k8) <- PegRt.withCol (\_col -> peg'rule'CodeClose (
-{-# LINE 565 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 591 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-}ind
-{-# LINE 5788 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5967 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; PegPrelude.pure ((), peg'k8)
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 565 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 591 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 43 #-} () 
-{-# LINE 5796 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5975 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k4, peg'k7, peg'k9])
           }
       ]))
 
 peg'rule'Fence :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 567 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 593 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 5804 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5983 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Fence =
   PegRt.memo peg'memo'Fence "Fence"
@@ -5809,17 +5988,17 @@ peg'rule'Fence =
           ; (_, peg'k0) <- PegRt.plain (PegRt.lit "```" "'```'")
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 568 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 594 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-} () 
-{-# LINE 5815 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 5994 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'Lang :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 570 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 596 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 5823 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6002 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Lang =
   PegRt.memo peg'memo'Lang "Lang"
@@ -5828,17 +6007,17 @@ peg'rule'Lang =
           ; (_, peg'k0) <- (PegRt.many1S) (PegRt.plain (PegRt.cls [('a', 'z'), ('A', 'Z'), ('0', '9'), ('_', '_'), ('+', '+'), ('-', '-')] "[a-zA-Z0-9_+\\-]"))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 571 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 597 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-} () 
-{-# LINE 5834 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6013 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'CodeLine :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 573 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 599 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 5842 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6021 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'CodeLine =
   PegRt.memo peg'memo'CodeLine "CodeLine"
@@ -5851,30 +6030,30 @@ peg'rule'CodeLine =
           ; (_, peg'k3) <- peg'rule'Nl
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 574 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 600 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 28 #-} () 
-{-# LINE 5857 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6036 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k2, peg'k3])
           }
       ]))
 
 peg'rule'CodeClose :: (
-{-# LINE 576 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 602 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}Int
-{-# LINE 5865 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6044 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 576 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 602 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-}()
-{-# LINE 5869 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6048 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'CodeClose ind =
   PegRt.memoArg peg'memo'CodeClose "CodeClose" ind
     (PegRt.node syntaxKindCodeClose (PegRt.choice
       [ do { peg'start <- PegRt.getOffset
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
-{-# LINE 577 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 603 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}ind
-{-# LINE 5878 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6057 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ))
           ; (_, peg'k1) <- peg'rule'Fence
           ; (_, peg'k2) <- peg'rule'Sp
@@ -5885,17 +6064,17 @@ peg'rule'CodeClose ind =
           }]
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 577 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 603 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 43 #-} () 
-{-# LINE 5891 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6070 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k5])
           }
       ]))
 
 peg'rule'SkipBlock :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 581 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 607 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 5899 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6078 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkipBlock =
   PegRt.memo peg'memo'SkipBlock "SkipBlock"
@@ -5904,17 +6083,17 @@ peg'rule'SkipBlock =
           ; (_, peg'k0) <- peg'rule'Rest
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 582 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 608 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 20 #-} () 
-{-# LINE 5910 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6089 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'Rest :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 584 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 610 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 5918 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6097 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'Rest =
   PegRt.memo peg'memo'Rest "Rest"
@@ -5926,17 +6105,17 @@ peg'rule'Rest =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 585 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 611 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-} () 
-{-# LINE 5932 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6111 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       ]))
 
 peg'rule'SkipParagraph :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 587 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 613 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}()
-{-# LINE 5940 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6119 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkipParagraph =
   PegRt.memo peg'memo'SkipParagraph "SkipParagraph"
@@ -5945,17 +6124,17 @@ peg'rule'SkipParagraph =
           ; (_, peg'k0) <- peg'rule'Rest
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 588 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 614 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-} () 
-{-# LINE 5951 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6130 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'SkipLine :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 590 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 616 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 5959 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6138 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkipLine =
   PegRt.memo peg'memo'SkipLine "SkipLine"
@@ -5967,17 +6146,17 @@ peg'rule'SkipLine =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 591 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 617 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-} () 
-{-# LINE 5973 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6152 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       ]))
 
 peg'rule'SkipAll :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 593 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 619 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 5981 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6160 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkipAll =
   PegRt.memo peg'memo'SkipAll "SkipAll"
@@ -5986,17 +6165,17 @@ peg'rule'SkipAll =
           ; (_, peg'k0) <- (PegRt.manyS) (PegRt.plain (PegRt.anyChar))
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 594 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 620 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-} () 
-{-# LINE 5992 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6171 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'SkipArgs :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 596 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 622 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 6000 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6179 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkipArgs =
   PegRt.memo peg'memo'SkipArgs "SkipArgs"
@@ -6005,17 +6184,17 @@ peg'rule'SkipArgs =
           ; (_, peg'k0) <- peg'rule'SkippedArgs
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 597 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 623 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-} () 
-{-# LINE 6011 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6190 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'SkippedArgs :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 599 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 625 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}()
-{-# LINE 6019 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6198 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkippedArgs =
   PegRt.memo peg'memo'SkippedArgs "SkippedArgs"
@@ -6027,17 +6206,17 @@ peg'rule'SkippedArgs =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 600 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 626 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 30 #-} () 
-{-# LINE 6033 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6212 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k2)
           }
       ]))
 
 peg'rule'SkipExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 602 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 628 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 6041 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6220 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkipExpr =
   PegRt.memo peg'memo'SkipExpr "SkipExpr"
@@ -6046,17 +6225,17 @@ peg'rule'SkipExpr =
           ; (_, peg'k0) <- peg'rule'SkippedExpr
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 603 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 629 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-} () 
-{-# LINE 6052 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6231 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k0)
           }
       ]))
 
 peg'rule'SkippedExpr :: PegRt.P (Peg'Store peg's) peg's ((
-{-# LINE 605 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 631 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}()
-{-# LINE 6060 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6239 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkippedExpr =
   PegRt.memo peg'memo'SkippedExpr "SkippedExpr"
@@ -6069,9 +6248,9 @@ peg'rule'SkippedExpr =
           }])
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
-{-# LINE 606 "modules/golem-parser/grammar/Golem.hpeg" #-}
+{-# LINE 632 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 36 #-} () 
-{-# LINE 6075 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
+{-# LINE 6254 "modules/golem-parser/src/Golem/Parser/Generated.hs" #-}
     ), peg'k3)
           }
       ]))
