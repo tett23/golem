@@ -1713,24 +1713,35 @@ v1 のリリースまでに、次の項目を扱う。
 - **脚注の印**：PDF の脚注の印（`*1`）の幅を半角に固定しているので、印が次の字と重なる。ページの下の注の本文にも番号が付かない。
 - **PDF の圏点**：圏点の `shape` を PDF で使わず、常に `﹅` で描く。横組みでは圏点が右にずれ、字の上端に重なる。
 - **PDF の脚注の番号の衝突**：PDF の脚注が、別のファイルの同じ番号の注とぶつかる。あるファイルの注 1 の位置に、別のファイルの注 1 の本文が組まれる。マニュアルの付録の注で見つかった。
+- **GPOS の配置のずらし**：PDF の描画は、HarfBuzz が返す配置のずらし（GPOS の x と y のオフセット）を使わない。`palt` や `vpal` で送りは縮むが、字は縮んだ箱の中で少しずれて置かれる。役割の `features` に `palt` を書いた場合も同じである。
+- **二倍ダッシュのカーニング**：`——` はペアカーニングを止める約物の一覧（[docs/adr/0020](adr/0020-indesign-character-features.md)）に入っていないので、`kerning = "metrics"` でフォントのカーニングがかかる。蟹工船の縦組みでは 319 か所に −0.088em かかる。
+- **ルビの親文字の中の文字スタイル**：PDF は、ルビの親文字の中の文字スタイルを描き分けない（golem-layout の `rubyPieces` が親文字の中のスタイルを平らにする）。手で書いた `[style]` も、親文字の一部に一致した正規表現スタイル（[docs/adr/0015](adr/0015-regex-styles.md)）も、HTML では効くが PDF では見た目が変わらない。
+- **`[aki]` の空きの見分け方**：行の組み方は、`[aki]` の空きを「伸び縮みしない空き（`Glue w 0 0`）」という形で見分けている（[docs/adr/0019](adr/0019-aki-settings.md)）。今は同じ形の空きがほかに出ないが、幅 0 の語間の空白が出ると `[aki]` と取り違える。印を付けて見分ける形に改める。
 
 #### 記法と設定
-
 
 - **style.toml の未知のキーの診断**：`style.toml` の未知のキーと値の型の誤りの診断（G0306）は、toml-parser の英語の文言のままである（`unexpected key: bindng (.page)` など）。位置を表示しない問題は [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md) で直した。
 - **参考文献の書式**：CSL の `literal` の名前を使わない。和文の後のピリオドの前に空白が入る（`日本規格協会 . 1996.`）。
 - **HTML の見出しの番号**：HTML の見出しで、番号と題の間に空きがない（「第3章原稿の記法」）。
 - **ルビの中の `/` のエスケープ**：記法の仕様はルビの中で `\/` と書けば `/` そのものになると定めているが、`[ruby: a\/b|えー]` が G0215 になる。マニュアルの付録 A を書くときに見つかった。
+- **表のセルの行末の `\`**：表のセルの行末に書いた `\` は、[docs/adr/0016](adr/0016-hard-line-breaks.md) の定める G0124 ではなく G0110 になる。行末が `\` の行は表の行になれず、やり直した試行の中の誤りを peg-hs が捨てるためである。見出しと用語では G0124 になる。直すには peg-hs の側の変更が要る。
 
 #### CLI と LSP
 
 - **プリフライト**：`golem preflight` で、印刷所に入稿する前の検査を行う。InDesign のプリフライトとおおむね同じことをする。たとえば、フォントの欠落と埋め込みの可否、原稿の文字に対応するグリフのない文字、図版のファイルの欠落、図版の実効の解像度の不足、出力インテントに合わない色空間の図版、塗り足しまで届かない図版、版面やページに収まらない要素、PDF/X-4 への適合を検査し、問題を一覧にする。`golem check` は原稿と設定の誤りを、`golem preflight` は組んだ結果が印刷に耐えるかを見る。検査の項目、しきい値（解像度など）、InDesign のプリフライトプロファイルにあたる設定の置き場所は ADR で決める。
-- **LSP の位置の扱い**：UTF-8 の位置の交渉を、実際のエディタ（Neovim）で確かめていない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)、[golem-lsp ADR 0003](golem-lsp/adr/0003-position-handling.md)）。
 
-#### 配布
+### 手で確かめる項目
 
-- **配布物のライセンスの一覧**：[docs/adr/0007](adr/0007-third-party-licenses.md) の仕組み（リンクマップからの構成要素の決定、Alpine のパッケージの文書、wasmtime のクレートの照合）は実装し、`licenses/wasmtime-v49.0.2/` にクレート、Rust の標準ライブラリ、compiler-rt の文書を生成した。残りは、Alpine の `-doc` パッケージが入れる文書の確かめで、足りない origin の文書を `licenses/alpine/` に置くことを、リリースの初回の検証で行う。
-- **リリースの初回の検証**：リリースのワークフロー、Alpine での musl のビルド、コンテナの中での配布物の検査は、まだ一度も動かしていない。AI にリリースノートを書かせるには、リポジトリの秘密情報 `ANTHROPIC_API_KEY` が要る（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。[docs/adr/0008](adr/0008-first-release-verification.md) で、`v0.1.0-rc1` のタグで確かめる手順と項目を決めた（未実施）。タグは [docs/adr/0007](adr/0007-third-party-licenses.md) の実装をマージしてから付ける。
+実装は終わり、自動のテストも通っているが、ADR が求める手作業の確かめがまだ残っている項目をここにまとめる。
+確かめたら、結果を実装のプルリクエストか `docs/audits/` の記録に書き、この一覧から消す。
+
+- **LSP の位置の扱い**：UTF-8 の位置の交渉と、行の長さを超える列の丸めを、実際のエディタ（Neovim）で確かめていない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)、[golem-lsp ADR 0003](golem-lsp/adr/0003-position-handling.md)）。
+- **CIDSystemInfo と異体字**：Adobe-Japan1 の ROS を持つフォント（小塚明朝 Pr6N など）で組んだ PDF を Acrobat のプリフライトにかけ、`CIDSystemInfo` がフォントの ROS になっていること、IVS の異体字が出ることを確かめていない。リポジトリにそうしたフォントがないためである（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。
+- **トンボのレジストレーションの色**：トンボを付けた PDF を Acrobat の出力プレビューとプリフライトで開き、トンボが全版に出ること、本文に特色が混ざらないこと、InDesign の書き出しと同じ形であることを確かめていない（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
+- **縦組みのダッシュ**：縦組みの PDF を目で見ること、InDesign の縦組みとの比較、縦組みの HTML を Safari と Chrome で開いて向きが PDF と同じことの確かめが残っている（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
+- **リストの字下げ**：入れ子のリストと 10 項目を超える番号付きリストを、横組みと縦組みで PDF と EPUB にして目で見ることと、決定性の検査の蟹工船とテンペストの出力が変わらないことの確かめが残っている（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
+- **段組みの脚注**：段組みの版面で、脚注がその段の下に組まれることを PDF で目で確かめていない。自動のテストでだけ確かめている（[docs/adr/0018](adr/0018-multi-column-layout.md)）。
+- **診断の説明へのリンク**：GitHub の上で `docs/diagnostics.md#g0117` を開き、G0117 の節に移ることを確かめていない（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
 
 ### 課題にしなかった事項
 
