@@ -13,6 +13,7 @@
 
 この章の例の多くは、このマニュアル自身の [style code: style.toml] から取り込んでいます。
 [style code: manifest.toml] と同じく、知らないキーを書くとエラーになります。
+書ける表とキーの一覧は、[ref-title app-style]（[ref-page app-style] ページ）にあります。
 
 ## 判型と版面
 
@@ -355,7 +356,7 @@ leader = "dots"
 原稿に CMYK の値を直接書くことはできません。
 印刷を前提に色を決め、HTML と EPUB では、その色に近い画面の色で表示します。
 
-印刷所から出力の条件（ICC プロファイル）を指定されたら、[style code: \[color\]] の [style code: intent] にそのファイルを書きます。
+印刷所から印刷の色の条件を記したファイル（ICC プロファイル）を指定されたら、[style code: \[color\]] の [style code: intent] にそのファイルを書きます。
 
 ```toml
 [color]

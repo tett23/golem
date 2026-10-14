@@ -16,7 +16,8 @@ Golem の実行ファイルは、GitHub Releases で配布しています。
 
 Windows では、WSL2 の上で Linux のアーカイブを使います。
 
-アーカイブと [style code: SHA256SUMS] を取得し、ハッシュを確かめてから展開します。
+アーカイブと [style code: SHA256SUMS] を取得し、ファイルが壊れていないかを確かめてから展開します。
+[style code: SHA256SUMS] には、各ファイルの中身から計算した値（ハッシュ）が書いてあり、手元で計算した値と合えば、ファイルは正しく取得できています。
 次の例は、x86-64 の Linux で版 [style code: v0.1.0] を入れる場合です。
 
 ```sh

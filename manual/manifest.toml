@@ -9,6 +9,10 @@ chapters = [
   "chapters/07-check.gm",
   "chapters/08-editor.gm",
   "chapters/09-plugins.gm",
+  "appendices/a-markup.gm",
+  "appendices/b-manifest.gm",
+  "appendices/c-style.gm",
+  "appendices/d-errors.gm",
   "back.gm",
 ]
 bibliography = ["references.json"]

@@ -3,9 +3,10 @@
 
 [style code: manifest.toml] は、一冊の本の構成を書くファイル（マニフェスト[index reading=まにふぇすと: マニフェスト]）です。
 どのファイルをどの順に並べるか、書名や著者は何か、どの形式に何を書き込むかをここに書きます。
-形式は TOML です。
+書き方は、TOML という設定ファイルの形式です。
+書けるキーの一覧は、[ref-title app-manifest]（[ref-page app-manifest] ページ）にあります。
 [style code: manifest.toml] と [style code: style.toml] も、原稿と同じく文字コードは UTF-8、改行は LF とし、BOM を付けません。
-BOM や CR があると、原稿と同じ診断（G0102、G0103）が出ます。
+BOM や CR があると、原稿と同じエラー（G0102、G0103）が出ます。
 
 ## マニフェストの全体
 
