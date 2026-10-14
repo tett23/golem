@@ -10,37 +10,58 @@ where
 
 import Control.Applicative ((<|>))
 import Data.ByteString qualified as BS
+import Data.Containers.ListUtils (nubOrd)
 import Data.IORef (atomicModifyIORef', newIORef, readIORef)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Driver.Pdf (FontProvider (..), LoadedFonts (..), bodyRole, usedRoles)
+import Golem.Driver.Pdf (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, usedRoles)
 import Golem.Font
 import Golem.Layout.Japanese (CharClass (..), charClass, isVariationSelector)
+import Golem.Layout.Orientation (turnsInVertical)
 import Golem.Pdf qualified as P
-import Golem.Project.Paths (resolveInRoot)
+import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Syntax
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
+import Text.Printf (printf)
 
+{- | Every file that cannot be loaded is reported, once per path (G0802,
+G0803, G0804); G0805 is checked only when all are loaded. The
+diagnostics are at the top of @fid@ (golem-driver ADR 0016).
+-}
 golemFontProvider :: FontProvider
-golemFontProvider = FontProvider $ \root style ->
+golemFontProvider = FontProvider $ \root fid style locals ->
   let body = bodyRole style
-   in case Map.lookup body (stFonts style) of
-        Nothing -> pure (Left [err "G0802" "style.toml に本文のフォント（[fonts.body]）がありません"])
-        Just role | null (catMaybes [frJa role, frLatin role]) -> pure (Left [err "G0802" "[fonts.body] にフォントのファイルがありません"])
-        Just _ -> do
-          let roles = [(r, fr) | r <- usedRoles style, Just fr <- [Map.lookup r (stFonts style)]]
-          loaded <- mapM (\(r, fr) -> (r,fr,,) <$> traverse (load root) (frJa fr) <*> traverse (load root) (frLatin fr)) roles
-          pure $ case [d | (_, _, ja, la) <- loaded, Left d <- catMaybes [ja, la]] of
-            (d : _) -> Left [d]
+      err code = diagnostic code Error (mkSpan fid 0 0)
+      load path = do
+        r <- resolveInRoot root path
+        case r of
+          -- reported by the driver before the fonts are loaded; kept for a provider used alone
+          Left e -> pure (Left (err "G0802" (T.pack ((if e == Missing then "フォントのファイルがありません" else pathErrorMessage e) <> ": " <> path))))
+          Right rel -> do
+            bytes <- BS.readFile (root </> rel)
+            pure $ case loadFont bytes of
+              Right f -> Right (bytes, f, path)
+              Left Unreadable -> Left (err "G0803" ("フォントを読み込めません: " <> T.pack path))
+              Left (EmbeddingRestricted t) -> Left (err "G0804" ("ライセンスが埋め込みを禁じているフォントです（fsType " <> T.pack (printf "0x%04X" t) <> "）: " <> T.pack path))
+   in case bodyFontDiagnostics fid style of
+        -- reported by the driver before the fonts are loaded; kept for a provider used alone
+        ds@(_ : _) -> pure (Left ds)
+        [] -> do
+          let roles = [(r, fr) | r <- usedRoles style locals, Just fr <- [Map.lookup r (stFonts style)]]
+              paths = nubOrd (concat [catMaybes [frJa fr, frLatin fr] | (_, fr) <- roles])
+          loadedPaths <- Map.fromList <$> mapM (\p -> (p,) <$> load p) paths
+          let side f fr = f fr >>= \p -> either (const Nothing) Just =<< Map.lookup p loadedPaths
+              files = [(r, fr, side frJa fr, side frLatin fr) | (r, fr) <- roles]
+          pure $ case [d | p <- paths, Just (Left d) <- [Map.lookup p loadedPaths]] of
+            ds@(_ : _) -> Left ds
             [] ->
-              let files = [(r, fr, right ja, right la) | (r, fr, ja, la) <- loaded]
-                  -- faces in order: body Japanese, body Latin, then the other roles by name; the same bytes are one face
+              let -- faces in order: body Japanese, body Latin, then the other roles by name; the same bytes are one face
                   ordered = concat [catMaybes [ja, la] | (_, _, ja, la) <- files]
                   faces = nubOn (\(b, _, _) -> b) ordered
                   faceOf (b, _, _) = length (takeWhile (\(b', _, _) -> b' /= b) faces)
@@ -58,35 +79,28 @@ golemFontProvider = FontProvider $ \root style ->
                     ((n, p1, p2) : _) -> Left [err "G0805" ("PostScript 名が同じ異なるフォントがあります: " <> n <> "（" <> T.pack p1 <> "、" <> T.pack p2 <> "）")]
                     [] -> Right (provide [f | (_, f, _) <- faces] body roleFaces)
   where
-    err code = diagnostic code Error (mkSpan (FileId 0) 0 0)
-    right = \case
-      Just (Right x) -> Just x
-      _ -> Nothing
-    load root path = do
-      r <- resolveInRoot root path
-      case r of
-        Left _ -> pure (Left (err "G0802" ("フォントのファイルがありません: " <> T.pack path)))
-        Right rel -> do
-          bytes <- BS.readFile (root </> rel)
-          pure $ case loadFont bytes of
-            Right f -> Right (bytes, f, path)
-            Left Unreadable -> Left (err "G0803" ("フォントを読み込めません: " <> T.pack path))
-            Left (EmbeddingRestricted t) -> Left (err "G0804" ("ライセンスが埋め込みを禁じているフォントです（fsType " <> T.pack (show t) <> "）: " <> T.pack path))
     nubOn key = reverse . fst . foldl' (\(acc, seen) x -> if key x `elem` seen then (acc, seen) else (x : acc, key x : seen)) ([], [])
 
 {- | Fonts by face number; each role maps to its Japanese and Latin faces
 and its OpenType features. A role that is not loaded is the body role.
+The measures are kept by the shaping too: its features change them
+(docs/adr/0020).
 -}
 provide :: [Font] -> Text -> Map.Map Text (Maybe Int, Maybe Int, [Text]) -> LoadedFonts
 provide fonts body roles =
   LoadedFonts
-    { lfAdvance = curry (memo (\(role, c) -> sum [a | (_, _, a, _) <- shapeText role False (T.singleton c)])),
-      lfWordAdvance = \role t -> sum [a | (_, _, a, _) <- shapeText role False t],
+    { lfAdvance = advance,
+      lfWordAdvance = \s t -> sum (map shAdvance (shapeText s t)),
+      -- the pair shaped together less the two shaped apart (docs/adr/0020)
+      lfPairKern = \s a b -> pairKern (s, a, b),
       lfShape = shapeText,
       lfCode = glyphCid . fontAt,
-      lfEmbed = embed
+      lfEmbed = embed,
+      lfEmBoxCentral = \ix -> let f = fontAt ix in toInteger (fontEmBoxCentral f) % toInteger (fontUnitsPerEm f)
     }
   where
+    advance = curry (memo (\(s, c) -> sum (map shAdvance (shapeText s (T.singleton c)))))
+    pairKern = memo (\(s, a, b) -> sum (map shAdvance (shapeText s (T.pack [a, b]))) - advance s a - advance s b)
     fontAt i = fonts !! max 0 (min (length fonts - 1) i)
     roleOf role = case Map.lookup role roles of
       Just (Nothing, Nothing, _) -> roleOf body
@@ -97,18 +111,41 @@ provide fonts body roles =
        in fromMaybe 0 (if charClass c == Western then la <|> ja else ja <|> la)
     -- a variation selector stays with the character before it (golem-pdf ADR 0006)
     runs role t = [(fontFor role (T.head r), r) | r <- T.groupBy (\a b -> isVariationSelector b || fontFor role a == fontFor role b) t, not (T.null r)]
-    shapeText role vertical t =
-      let (_, _, features) = roleOf role
-       in concat
-            [ [ (ix, g, toInteger adv % toInteger upem, clusterText r c)
-              | (g, c, (xa, ya, _, _)) <- shapeUnits f req,
-                let adv = if vertical then negate ya else xa
-              ]
-            | (ix, r) <- runs role t,
-              let f = fontAt ix
-                  upem = fontUnitsPerEm f
-                  req = (shapeRequest 1000 r) {srDirection = if vertical then Vertical else Horizontal, srFeatures = features}
-            ]
+    {- shaping a text in a role, with the features added after the role's
+    (docs/adr/0020). In vertical text a cluster of a Japanese run whose
+    glyphs vert leaves as they are, and whose first character is R or Tr in
+    UAX #50, is turned: its horizontal glyphs and advances (golem-driver ADR
+    0015). The clusters are numbered by character in the whole text. -}
+    shapeText (Shaping role vertical extra) t =
+      let (_, la, roleFeatures) = roleOf role
+          features = roleFeatures <> extra
+          shapeIn f r dir = shapeUnits f ((shapeRequest 1000 r) {srDirection = dir, srFeatures = features})
+          glyph ix f r turned dir (g, c, (xa, ya, _, _)) =
+            Shaped ix g (toInteger (if dir == Vertical then negate ya else xa) % toInteger (fontUnitsPerEm f)) (clusterText r c) turned c
+          clusters gs = [(c, [x | x@(_, c', _) <- gs, c' == c]) | c <- nubOrd [c | (_, c, _) <- gs]]
+          gids = map (\(g, _, _) -> g)
+          run (ix, r)
+            | not vertical = map (glyph ix f r False Horizontal) (shapeIn f r Horizontal)
+            | latinRun = map (glyph ix f r False Vertical) (shapeIn f r Vertical)
+            | otherwise =
+                let across = Map.fromList (clusters (shapeIn f r Horizontal))
+                 in concat
+                      [ case Map.lookup c across of
+                          Just hs
+                            | gids hs == gids vs,
+                              maybe False (turnsInVertical . fst) (T.uncons (clusterText r c)) ->
+                                map (glyph ix f r True Horizontal) hs
+                          _ -> map (glyph ix f r False Vertical) vs
+                      | (c, vs) <- clusters (shapeIn f r Vertical)
+                      ]
+            where
+              f = fontAt ix
+              -- a run for which fontFor chose the Latin face
+              latinRun = isJust la && maybe False ((== Western) . charClass . fst) (T.uncons r)
+          -- the byte offsets of a run's clusters as character indices in t
+          offsets = scanl (+) 0 [T.length r | (_, r) <- runs role t]
+          inText r start sh = sh {shCluster = start + T.length (TE.decodeUtf8Lenient (BS.take (shCluster sh) (TE.encodeUtf8 r)))}
+       in concat [map (inText r start) (run (ix, r)) | ((ix, r), start) <- zip (runs role t) offsets]
     -- the text of a glyph for ToUnicode: without variation selectors, so
     -- that a variant is found by its base character (golem-pdf ADR 0006)
     clusterText r c =
@@ -142,7 +179,7 @@ provide fonts body roles =
             }
 
 -- | Advances are asked for again and again while composing; cache them.
-memo :: ((Text, Char) -> Rational) -> (Text, Char) -> Rational
+memo :: (Ord k) => (k -> Rational) -> k -> Rational
 memo f = unsafePerformIO $ do
   ref <- newIORef Map.empty
   pure $ \c -> unsafePerformIO $ do

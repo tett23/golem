@@ -12,6 +12,7 @@
 %token SlotText
 %token CellText
 %token Escape
+%token Backslash
 %token Ws
 %trivia Ws
 %token Nl
@@ -76,6 +77,7 @@
 %inline OrphanDef
 %inline TooDeep
 %inline BadBracket
+%inline BadBreak
 %inline HeadInline
 %inline Block
 %inline ItemTail
@@ -94,6 +96,7 @@
 %recover arg_order SkipArgs
 %recover expr SkipExpr
 %recover bracket SkipParagraph
+%recover hard_break SkipLine
 
 # Every label is safe (golem-parser ADR 0007): removing it does not change
 # the language. The check of peg-hs 7114641, with the improvements of peg-hs
@@ -110,6 +113,9 @@
 %safe heading_level
 %safe code_close
 %safe bracket
+# The same as bracket (docs/adr ADR 0016): BadBreak has no alternative
+# that can go on at the same place after it fails.
+%safe hard_break
 %safe arg_order
 # The same, and for the close of SplatArgument: after *[ fails, the checker
 # takes (Sp KeywordArgument)* to be able to go on. It uses the known *[ only
@@ -157,11 +163,16 @@ Block <- ( BadIndent(ind)
          / Paragraph(ind)
          )^block { () }
 
+# BadIndent, OrphanDef, TooDeep and BadBracket throw their labels before
+# the offending character, which they only look at (golem-parser ADR 0009).
+# The character after the failing predicate is never read; it keeps the
+# rule from matching the empty string, and it sits inside the label so
+# that nothing follows the recovery.
 BadIndent(ind :: Int) :: ()
-BadIndent <- Ind(ind) [ \t] (&{ False })^indent { () }
+BadIndent <- Ind(ind) &[ \t] (&{ False } [ \t])^indent { () }
 
 OrphanDef(ind :: Int) :: ()
-OrphanDef <- Ind(ind) '=:' (&{ False })^def_orphan { () }
+OrphanDef <- Ind(ind) &'=:' (&{ False } '=:')^def_orphan { () }
 
 # ------------------------------------------------------------ basics
 
@@ -202,7 +213,7 @@ Heading(ind :: Int) :: ()
 Heading <- Ind(ind) HashMark (TooDeep / Ws HeadInline(ind)* EOL) { () }
 
 TooDeep :: ()
-TooDeep <- '#' (&{ False })^heading_level { () }
+TooDeep <- &'#' (&{ False } '#')^heading_level { () }
 
 HeadInline(ind :: Int) :: ()
 HeadInline <- Escape { () }
@@ -211,6 +222,7 @@ HeadInline <- Escape { () }
             / ExprCtx { () }
             / InlineCommand(ind) { () }
             / BadBracket { () }
+            / BadBreak { () }
             / Text { () }
 
 HashMark :: ()
@@ -226,11 +238,13 @@ LineContinuation <- Nl !BlankLine Ind(ind) !BlockStart { () }
 
 Inline(ind :: Int) :: ()
 Inline <- Escape { () }
+        / HardBreak(ind) { () }
         / ProofComment { () }
         / Comment { () }
         / ExprCtx { () }
         / InlineCommand(ind) { () }
         / BadBracket { () }
+        / BadBreak { () }
         / Text { () }
         / LineContinuation(ind) { () }
 
@@ -239,6 +253,20 @@ Text <- (![\[\\\n] !'%%' .)+ { () }
 
 Escape :: ()
 Escape <- '\\' ![\n] . { () }
+
+# A backslash at the end of a line breaks the line in the paragraph; the
+# next line must continue the paragraph (docs/adr ADR 0016). A newline at
+# the end of input continues nothing.
+HardBreak(ind :: Int) :: ()
+HardBreak <- Backslash LineContinuation(ind) &. { () }
+
+Backslash :: ()
+Backslash <- '\\' &'\n' { () }
+
+# a backslash that escapes nothing: before a newline that does not continue
+# the paragraph, or at the end of input
+BadBreak :: ()
+BadBreak <- '\\' (&{ False })^hard_break { () }
 
 Comment :: ()
 Comment <- '%%' (!'%%' !ParaEnd .)* ('%%')^comment_close { () }
@@ -255,7 +283,7 @@ LBr :: ()
 LBr <- '[' { () }
 
 BadBracket :: ()
-BadBracket <- LBr (&{ False })^bracket { () }
+BadBracket <- &LBr (&{ False } LBr)^bracket { () }
 
 RBr :: ()
 RBr <- ']' { () }
@@ -311,11 +339,13 @@ ProseSlot <- SlotInline(ind)* { () }
 
 SlotInline(ind :: Int) :: ()
 SlotInline <- Escape { () }
+            / HardBreak(ind) { () }
             / ProofComment { () }
             / Comment { () }
             / ExprCtx { () }
             / InlineCommand(ind) { () }
             / BadBracket { () }
+            / BadBreak { () }
             / SlotText { () }
             / LineContinuation(ind) { () }
 
@@ -546,6 +576,7 @@ CellInline <- Escape { () }
             / ExprCtx { () }
             / InlineCommand(0) { () }
             / BadBracket { () }
+            / BadBreak { () }
             / CellText { () }
 
 CellText :: ()

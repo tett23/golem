@@ -1,17 +1,21 @@
 module Main (main) where
 
-import Data.List (maximumBy, subsequences)
+import Data.List (isPrefixOf, maximumBy, subsequences)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (isJust)
 import Data.Ord (Down (..), comparing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Doc.IR
+import Golem.Layout.Aki (AkiSet, akiPositions, builtinAkiSets, defaultAkiSet, withAkiRule)
+import Golem.Layout.Aki qualified as Aki
 import Golem.Layout.Hyphenation
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
+import Golem.Layout.Orientation
 import Golem.Layout.Paginate
 import Golem.Layout.Ruby hiding (RubyAlign (..))
 import Golem.Layout.Ruby qualified as R (RubyAlign (..))
@@ -217,7 +221,10 @@ tests :: TestTree
 tests =
   testGroup
     "golem-layout"
-    [ testGroup
+    [ testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
+      testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
+      testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
+      testGroup
         "Knuth-Plass (ADR 0001)"
         [ testCase "TeX badness" $ do
             badness 0 10 @?= 0
@@ -514,59 +521,111 @@ tests =
       testGroup
         "pagination (ADR 0003)"
         [ testCase "no orphan: a paragraph's first line is not left alone at the page end" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 4), FParagraph (lines' 10 3)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 4), FParagraph (lines' 10 3)]
             slots ps @?= [[0, 1, 2, 3], [10, 11, 12]],
           testCase "no widow: the last line is not sent alone to the next page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 6)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 6)]
             slots ps @?= [[0, 1, 2, 3], [4, 5]],
           testCase "headings and definition terms stay with what follows" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 2 "節" False 1 (lines' 20 1), FParagraph (lines' 30 3)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 2 False 1 (lines' 20 1), FParagraph (lines' 30 3)]
             slots ps @?= [[0, 1, 2], [20, 30, 31, 32]]
-            let qs = paginate 5 [FParagraph (lines' 0 4), FDefTerm (lines' 20 1), FParagraph (lines' 30 2)]
+            let qs = paginate 1 5 [FParagraph (lines' 0 4), FDefTerm (lines' 20 1), FParagraph (lines' 30 2)]
             slots qs @?= [[0, 1, 2, 3], [20, 30, 31]],
           testCase "a recto heading starts on an odd page after a blank page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 1 "章" True 1 (lines' 20 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 1 True 1 (lines' 20 1)]
             map poBlank ps @?= [False, True, False]
-            map poNumber ps @?= [1, 2, 3]
-            poRunningHead (last ps) @?= Just "章",
+            map poNumber ps @?= [1, 2, 3],
           testCase "a figure that does not fit goes to the next page; text moves up" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 10), (4, SLine 11)], [(0, SFigure 99)]],
           testCase "footnotes sit on the page of their marker and continue when too long" $ do
             let withNote i n = LineBox i [NoteBody (100 + i) n] [] []
-                ps = paginate 6 [FParagraph [LineBox 0 [] [] [], withNote 1 2, LineBox 2 [] [] [], withNote 3 1, LineBox 4 [] [] []]]
+                ps = paginate 1 6 [FParagraph [LineBox 0 [] [] [], withNote 1 2, LineBox 2 [] [] [], withNote 3 1, LineBox 4 [] [] []]]
             map poFootnotes ps @?= [[(101, 0, 2)], [(103, 0, 1)]]
-            let long = paginate 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
+            let long = paginate 1 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
             map poFootnotes long @?= [[(100, 0, 2)], [(100, 2, 2)], [(100, 4, 1)]],
           testCase "index marks go to the page of their line (golem-driver ADR 0007)" $ do
             let m = mkSpan (FileId 0) 10 20
-                ps = paginate 1 [FParagraph [LineBox 0 [] [] [], LineBox 1 [] [] [m], LineBox 2 [] [] []]]
+                ps = paginate 1 1 [FParagraph [LineBox 0 [] [] [], LineBox 1 [] [] [m], LineBox 2 [] [] []]]
             map poNumber ps @?= [1, 2, 3]
             markPages ps @?= Map.fromList [(m, 2)],
           testCase "the marks of a figure go with it to the next page" $ do
             let m = mkSpan (FileId 0) 10 20
-                ps = paginate 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [m], FParagraph (lines' 10 2)]
+                ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [m], FParagraph (lines' 10 2)]
             markPages ps @?= Map.fromList [(m, 2)],
           testCase "page references converge when the page count gains a digit" $ do
             -- the reference sits before the label; at three digits the reference line wraps
             let layout assumed =
                   let refWidthLines = if Map.findWithDefault 1 "end" assumed >= 100 then 2 else 1
-                   in paginate 5 (FParagraph (lines' 0 refWidthLines) : [FParagraph (lines' (1000 + i * 10) 2) | i <- [0 .. 196]] <> [FParagraph [LineBox 9999 [] ["end"] []]])
+                   in paginate 1 5 (FParagraph (lines' 0 refWidthLines) : [FParagraph (lines' (1000 + i * 10) 2) | i <- [0 .. 196]] <> [FParagraph [LineBox 9999 [] ["end"] []]])
             case resolvePageRefs layout of
               Right ps -> Map.lookup "end" (labelPages ps) @?= Just (toInteger (poNumber (last ps)))
               Left ls -> assertFailure (show ls),
           testCase "references that never settle are an error" $ do
-            let layout assumed = paginate 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"] []]])
+            let layout assumed = paginate 1 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"] []]])
             resolvePageRefs layout @?= Left ["x"],
           testCase "a space between stanzas takes grid lines (docs/adr ADR 0003)" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 4), FSpace 1, FParagraph (lines' 10 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 4), FSpace 1, FParagraph (lines' 10 1)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SLine 10)]]
-            let qs = paginate 5 [FParagraph (lines' 0 2), FSpace 2, FParagraph (lines' 10 1)]
+            let qs = paginate 1 5 [FParagraph (lines' 0 2), FSpace 2, FParagraph (lines' 10 1)]
             map poSlots qs @?= [[(0, SLine 0), (1, SLine 1), (4, SLine 10)]],
           testCase "a space at the top of a page takes nothing" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 5), FSpace 1, FParagraph (lines' 10 1)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 5), FSpace 1, FParagraph (lines' 10 1)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3), (4, SLine 4)], [(0, SLine 10)]]
-            map poSlots (paginate 5 [FSpace 3, FParagraph (lines' 0 1)]) @?= [[(0, SLine 0)]]
+            map poSlots (paginate 1 5 [FSpace 3, FParagraph (lines' 0 1)]) @?= [[(0, SLine 0)]]
+        ],
+      testGroup
+        "forced breaks (docs/adr ADR 0017)"
+        [ testCase "a page break in the middle of page 1 starts page 2" $ do
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakPage, FParagraph (lines' 10 1)]
+            slots ps @?= [[0], [10]]
+            map poBlank ps @?= [False, False],
+          testCase "two page breaks in a row make a blank page" $ do
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakPage, FBreak BreakPage, FParagraph (lines' 10 1)]
+            map poBlank ps @?= [False, True, False]
+            slots ps @?= [[0], [], [10]],
+          testCase "a page break at the start of the book makes page 1 blank" $ do
+            let ps = paginate 1 5 [FBreak BreakPage, FParagraph (lines' 0 1)]
+            map poBlank ps @?= [True, False]
+            slots ps @?= [[], [0]],
+          testCase "a recto break goes to the next odd page" $ do
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakRecto, FParagraph (lines' 10 1)]
+            map poBlank ps @?= [False, True, False]
+            slots ps @?= [[0], [], [10]]
+            let qs = paginate 1 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakRecto, FParagraph (lines' 20 1)]
+            map poBlank qs @?= [False, False, False]
+            slots qs @?= [[0, 1, 2, 3, 4], [10], [20]],
+          testCase "a recto break on an empty odd page does nothing" $ do
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakPage, FBreak BreakPage, FBreak BreakRecto, FParagraph (lines' 10 1)]
+            map poBlank ps @?= [False, True, False]
+            slots ps @?= [[0], [], [10]],
+          testCase "a verso break goes to the next even page" $ do
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakVerso, FParagraph (lines' 10 1)]
+            map poBlank ps @?= [False, False]
+            slots ps @?= [[0], [10]]
+            let qs = paginate 1 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakVerso, FParagraph (lines' 20 1)]
+            map poBlank qs @?= [False, False, True, False]
+            slots qs @?= [[0, 1, 2, 3, 4], [10], [], [20]],
+          testCase "breaks at the end of the book add no page" $ do
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakPage]
+                qs = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakRecto]
+            map poBlank ps @?= [False]
+            map poBlank qs @?= [False],
+          testCase "a recto heading after a page break adds a blank page only on an even page" $ do
+            let ps = paginate 1 5 [FParagraph (lines' 0 1), FBreak BreakPage, FHeading 1 True 1 (lines' 20 1)]
+            map poBlank ps @?= [False, True, False]
+            slots ps @?= [[0], [], [20]]
+            let qs = paginate 1 5 [FParagraph (lines' 0 5), FParagraph (lines' 10 1), FBreak BreakPage, FHeading 1 True 1 (lines' 20 1)]
+            map poBlank qs @?= [False, False, False]
+            slots qs @?= [[0, 1, 2, 3, 4], [10], [20]],
+          testCase "a figure sent on goes to the top of the page after the break, not to a blank page" $ do
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FBreak BreakPage, FParagraph (lines' 10 1)]
+            map poBlank ps @?= [False, False]
+            map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2)], [(0, SFigure 99), (3, SLine 10)]],
+          testCase "a column break on one column is a page break" $ do
+            let flows k = [FParagraph (lines' 0 1), FBreak k, FBreak k, FParagraph (lines' 10 1)]
+            paginate 1 5 (flows BreakColumn) @?= paginate 1 5 (flows BreakPage)
+            paginate 1 5 [FBreak BreakColumn, FParagraph (lines' 0 1)] @?= paginate 1 5 [FBreak BreakPage, FParagraph (lines' 0 1)]
         ],
       testGroup
         "looks: emphasis, character styles and colour (golem-driver ADR 0004)"
@@ -601,9 +660,26 @@ tests =
                   _ -> lk
             [bcLook c | Box _ c <- fst (composeInlines env [Color sp "accent" [CharStyle sp "italic" [bold [sp0 "x"]]]])]
               @?= [look0 {lkColor = Just "accent", lkSynthetic = Synthetic True True, lkLatinSynthetic = Synthetic True True}],
-          testCase "a line break composes to nothing (docs/adr ADR 0005)" $ do
+          testCase "a line break composes to a forced break (docs/adr ADR 0016)" $ do
             let env = lookEnv const
-            [bcText c | Box _ c <- fst (composeInlines env [sp0 "ab", LineBreak sp, sp0 "cd"])] @?= [bcText c | Box _ c <- fst (composeInlines env [sp0 "ab", sp0 "cd"])]
+                items = fst (composeInlines env [sp0 "ab", LineBreak sp, sp0 "cd"])
+                marks = \case
+                  Box _ c -> [T.unpack (bcText c)]
+                  Penalty _ p _ | p >= infPenalty -> ["+inf"] | p <= negate infPenalty -> ["-inf"]
+                  Glue _ st _ | st >= filStretch -> ["fil"]
+                  _ -> []
+            take 7 (concatMap marks items) @?= ["ab", "+inf", "fil", "-inf", "cd", "+inf", "fil"],
+          testCase "a forced break always breaks the line (docs/adr ADR 0016)" $ do
+            let env = lookEnv const
+                items = fst (composeInlines env [sp0 "ab", LineBreak sp, sp0 "cd"])
+                r = breakParagraph defaultParams (const (100 * fs)) items
+            map (\l -> [T.unpack (bcText c) | Box _ c <- lineItems l]) (brLines r) @?= [["ab"], ["cd"]],
+          testCase "no space between Japanese and Latin across a forced break (docs/adr ADR 0016)" $ do
+            let env = lookEnv const
+                items = fst (composeInlines env [sp0 "あい", LineBreak sp, sp0 "cd"])
+                quarter = fs `div` 4
+            [w | Glue w _ _ <- items, w == quarter] @?= []
+            assertBool "the space appears without the break" (not (null [w | Glue w _ _ <- fst (composeInlines env [sp0 "あいcd"]), w == quarter]))
         ],
       testGroup
         "heading blocks (golem-driver ADR 0003)"
@@ -622,17 +698,17 @@ tests =
           testCase "a heading of the body size sits on the grid" $
             mapM_ (\m -> headingBlock fs (fs * 3 `div` 2) fs m @?= HeadingBlock (fs * 3 `div` 2) m 0) [1, 2, 3],
           testCase "a heading block takes its span; the next paragraph starts after it" $ do
-            let ps = paginate 10 [FHeading 1 "章" False 3 (lines' 20 1), FParagraph (lines' 30 3)]
+            let ps = paginate 1 10 [FHeading 1 False 3 (lines' 20 1), FParagraph (lines' 30 3)]
             map poSlots ps @?= [[(0, SHeading 20 1), (3, SLine 30), (4, SLine 31), (5, SLine 32)]],
           testCase "a heading block is not split; it goes whole to the next page" $ do
-            let ps = paginate 6 [FParagraph (lines' 0 4), FHeading 2 "節" False 3 (lines' 20 1), FParagraph (lines' 30 2)]
+            let ps = paginate 1 6 [FParagraph (lines' 0 4), FHeading 2 False 3 (lines' 20 1), FParagraph (lines' 30 2)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SHeading 20 1), (3, SLine 30), (4, SLine 31)]],
           testCase "keeping a heading with the next paragraph counts its span and two lines" $ do
             -- 2 used, 5 free: span 3 + 2 lines fit
-            let fits = paginate 7 [FParagraph (lines' 0 2), FHeading 2 "節" False 3 (lines' 20 1), FParagraph (lines' 30 4)]
+            let fits = paginate 1 7 [FParagraph (lines' 0 2), FHeading 2 False 3 (lines' 20 1), FParagraph (lines' 30 4)]
             take 1 (map (map snd . poSlots) fits) @?= [[SLine 0, SLine 1, SHeading 20 1, SLine 30, SLine 31]]
             -- 3 used, 4 free: span 3 + 2 lines do not fit
-            let moves = paginate 7 [FParagraph (lines' 0 3), FHeading 2 "節" False 3 (lines' 20 1), FParagraph (lines' 30 4)]
+            let moves = paginate 1 7 [FParagraph (lines' 0 3), FHeading 2 False 3 (lines' 20 1), FParagraph (lines' 30 4)]
             map (map snd . poSlots) moves @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 31, SLine 32, SLine 33]]
         ],
       testGroup
@@ -679,24 +755,82 @@ tests =
               Left e -> assertFailure (show e)
         ],
       testGroup
+        "columns (docs/adr ADR 0018)"
+        [ testCase "a paragraph fills the columns of a page in order, then the next page" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 8)]
+            cols ps @?= [(1, 0), (1, 1), (2, 0)]
+            map (length . poSlots) ps @?= [3, 3, 2]
+            slots ps @?= [[0, 1, 2], [3, 4, 5], [6, 7]],
+          testCase "an orphan at the end of a column goes to the next column" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 2), FParagraph (lines' 10 3)]
+            cols ps @?= [(1, 0), (1, 1)]
+            slots ps @?= [[0, 1], [10, 11, 12]],
+          testCase "a recto heading starts in column 0 of the next odd page; the rest of the page stays empty" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 5), FHeading 1 True 1 (lines' 20 1)]
+            cols ps @?= [(1, 0), (1, 1), (2, 0), (3, 0)]
+            map poBlank ps @?= [False, False, True, False]
+            slots ps @?= [[0, 1, 2], [3, 4], [], [20]],
+          testCase "footnotes sit in the column of their marker and continue in the next column" $ do
+            let withNote i n = LineBox i [NoteBody (100 + i) n] [] []
+                ps = paginate 2 4 [FParagraph [withNote 0 1, LineBox 1 [] [] [], LineBox 2 [] [] [], LineBox 3 [] [] [], LineBox 4 [] [] []]]
+            cols ps @?= [(1, 0), (1, 1)]
+            map poFootnotes ps @?= [[(100, 0, 1)], []]
+            let long = paginate 2 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
+            cols long @?= [(1, 0), (1, 1), (2, 0)]
+            map poFootnotes long @?= [[(100, 0, 2)], [(100, 2, 2)], [(100, 4, 1)]],
+          testCase "a figure that does not fit goes to the top of the next column; text moves up" $ do
+            let ps = paginate 2 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
+            cols ps @?= [(1, 0), (1, 1)]
+            map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 10), (4, SLine 11)], [(0, SFigure 99)]],
+          testCase "a table across a column boundary repeats its header" $ do
+            let ps = paginate 2 4 [FTable 100 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
+            cols ps @?= [(1, 0), (1, 1)]
+            map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 11, SLine 12], [SLine 0, SLine 13, SLine 14]]
+            map poTables ps @?= [[TableSegment 100 0 0 3], [TableSegment 100 0 0 2]],
+          testCase "a label in the second column is on the page of that column" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 3), FParagraph [LineBox 50 [] ["x"] []]]
+            cols ps @?= [(1, 0), (1, 1)]
+            labelPages ps @?= Map.fromList [("x", 1)],
+          testCase "a column break goes to the next column, then to the next page" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 1), FBreak BreakColumn, FParagraph (lines' 10 1), FBreak BreakColumn, FParagraph (lines' 20 1)]
+            cols ps @?= [(1, 0), (1, 1), (2, 0)]
+            slots ps @?= [[0], [10], [20]],
+          testCase "a column break at the top of an empty column leaves it empty" $ do
+            let ps = paginate 2 3 [FBreak BreakColumn, FParagraph (lines' 0 1)]
+            cols ps @?= [(1, 1)]
+            slots ps @?= [[0]],
+          testCase "a column break on one column is a page break" $ do
+            let flows k = [FParagraph (lines' 0 1), FBreak k, FParagraph (lines' 10 1)]
+            paginate 1 3 (flows BreakColumn) @?= paginate 1 3 (flows BreakPage),
+          testCase "one column: every part of the output is column 0 of its page" $ do
+            let ps = paginate 1 5 [FParagraph (lines' 0 12), FHeading 1 True 1 (lines' 20 1), FParagraph (lines' 30 3)]
+            map poColumn ps @?= map (const 0) ps
+            map poNumber ps @?= [1 .. length ps],
+          testCase "a page break in column 0 goes to column 0 of the next page" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 1), FBreak BreakPage, FParagraph (lines' 10 1)]
+            cols ps @?= [(1, 0), (2, 0)]
+            slots ps @?= [[0], [10]]
+            map poBlank ps @?= [False, False]
+        ],
+      testGroup
         "table pagination (golem-driver ADR 0008)"
         [ testCase "a table breaks between rows and repeats its header" $ do
-            let ps = paginate 4 [FTable 100 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
+            let ps = paginate 1 4 [FTable 100 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 11, SLine 12], [SLine 0, SLine 13, SLine 14]]
             map poTables ps @?= [[TableSegment 100 0 0 3], [TableSegment 100 0 0 2]],
           testCase "the header's label and note are counted once" $ do
             let header = [LineBox 0 [NoteBody 900 1] ["tbl"] []]
-                ps = paginate 4 [FTable 100 header [lines' (10 + i) 1 | i <- [0 .. 4]]]
+                ps = paginate 1 4 [FTable 100 header [lines' (10 + i) 1 | i <- [0 .. 4]]]
             map poLabels ps @?= ["tbl"] : replicate (length ps - 1) []
             [(poNumber p, n) | p <- ps, (n, _, _) <- poFootnotes p] @?= [(1, 900)],
           testCase "a table that cannot start with its header and first row goes to the next page" $ do
-            let ps = paginate 4 [FParagraph (lines' 0 3), FTable 100 (lines' 20 1) [lines' 30 1]]
+            let ps = paginate 1 4 [FParagraph (lines' 0 3), FTable 100 (lines' 20 1) [lines' 30 1]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SLine 20, SLine 30]],
           testCase "a row is never split across pages" $ do
-            let ps = paginate 4 [FTable 100 (lines' 0 1) [lines' 10 1, lines' 20 1, lines' 30 2]]
+            let ps = paginate 1 4 [FTable 100 (lines' 0 1) [lines' 10 1, lines' 20 1, lines' 30 2]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 20], [SLine 0, SLine 30, SLine 31]],
           testCase "a heading before a table stays with its header and first row" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FHeading 1 "章" False 1 (lines' 20 1), FTable 100 (lines' 30 1) [lines' 40 2]]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 1 False 1 (lines' 20 1), FTable 100 (lines' 30 1) [lines' 40 2]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 40, SLine 41]]
         ],
       testGroup
@@ -711,13 +845,13 @@ tests =
                 r = breakParagraph defaultParams (wrappedLineWidth 160 ex 0) (paragraph (replicate 14 30))
             map lineTarget (take 3 (brLines r)) @?= [117, 117, 160],
           testCase "a continued paragraph has no first line to keep from being an orphan (golem-driver ADR 0005)" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 4), FContinued (lines' 10 3)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 4), FContinued (lines' 10 3)]
             slots ps @?= [[0, 1, 2, 3, 10], [11, 12]]
             -- the last line alone would be a widow: break a line earlier
-            let qs = paginate 5 [FParagraph (lines' 0 2), FContinued (lines' 10 4)]
+            let qs = paginate 1 5 [FParagraph (lines' 0 2), FContinued (lines' 10 4)]
             slots qs @?= [[0, 1, 10, 11], [12, 13]],
           testCase "a wrapped figure that does not fit the page goes to the next page" $ do
-            let ps = paginate 5 [FParagraph (lines' 0 3), FWrapped 7 3 [] [] (lines' 50 3)]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FWrapped 7 3 [] [] (lines' 50 3)]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SWrapped 7, SLine 50, SLine 51, SLine 52]]
         ],
       testGroup
@@ -801,12 +935,68 @@ tests =
     last' xs = if null xs then "" else last xs
     lines' base n = [LineBox (base + i) [] [] [] | i <- [0 .. n - 1]]
     slots = map (\p -> [i | (_, s) <- poSlots p, i <- slotLines s] <> [i | (_, SFigure i) <- poSlots p])
+    cols = map (\p -> (poNumber p, poColumn p))
     slotLines = \case
       SLine i -> [i]
       SHeading i n -> [i .. i + n - 1]
       _ -> []
 
--- | The ruby style of the tests with every alignment the same and a half-em overhang.
+{- | The ruby style of the tests with every alignment the same and a half-em overhang.
+| Kerning, tracking and baseline shift (docs/adr/0020).
+-}
+characterFeatureTests :: [TestTree]
+characterFeatureTests =
+  [ testCase "the plain look: metrics, no tracking, no proportional metrics, no shift" $
+      (lkKerning look0, lkTracking look0, lkProportional look0, lkBaselineShift look0) @?= (KernMetrics, 0, False, 0),
+    testCase "the default environment kerns nothing" $
+      ceKern (defaultComposeEnv fs) look0 'あ' 'い' @?= 0,
+    testCase "a Japanese pair is kerned: the first box narrower, its end edge given back" $ do
+      [(w, bcEdgeEnd c) | Box w c <- compose kernEnv "あい"] @?= [(fs - tenth, tenth), (fs, 0)]
+      let none = kernEnv {ceLook = look0 {lkKerning = KernNone}}
+      [(w, bcEdgeEnd c) | Box w c <- compose none "あい"] @?= [(fs, 0), (fs, 0)]
+      let equal = kernEnv {ceLook = look0 {lkKerning = KernJapaneseEqualWidth}}
+      [(w, bcEdgeEnd c) | Box w c <- compose equal "あい"] @?= [(fs, 0), (fs, 0)],
+    testCase "pairs with punctuation are not kerned" $ do
+      let anyPair = kernEnv {ceKern = \_ _ _ -> -(1 / 10)}
+      [(bcText c, bcEdgeEnd c) | Box _ c <- compose anyPair "あ」"] @?= [("あ", 0), ("」", 0)]
+      [(bcText c, bcEdgeEnd c) | Box _ c <- compose anyPair "「あ"] @?= [("「", 0), ("あ", 0)]
+      [(bcText c, bcEdgeEnd c) | Box _ c <- compose anyPair "あ、い"] @?= [("あ", 0), ("、", 0), ("い", 0)],
+    testCase "a pair of different looks is not kerned" $ do
+      let env = kernEnv {ceRestyle = \lk _ -> lk {lkColor = Just "red"}}
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [sp0 "あ", Color (mkSpan (FileId 0) 0 0) "red" [sp0 "い"]])] @?= [(fs, 0), (fs, 0)],
+    testCase "tracking widens Japanese boxes, Latin words and spaces; every box gives it back at its end" $ do
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
+          plain = defaultComposeEnv fs
+      [(w, bcEdgeEnd c) | Box w c <- compose env "あ"] @?= [(fs + tenth, negate tenth)]
+      let wordBoxes e = [(w, bcEdgeEnd c) | Box w c <- compose e "abc def"]
+          gluesOf e = [w | Glue w _ _ <- take 3 (compose e "abc def")]
+      wordBoxes env @?= [(w + 3 * tenth, negate tenth) | (w, _) <- wordBoxes plain]
+      gluesOf env @?= [w + tenth | w <- gluesOf plain],
+    testCase "ruby, tate-chu-yoko and note marks get no tracking" $ do
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
+          sp = mkSpan (FileId 0) 0 0
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Tcy sp "12"])] @?= [(fs, 0)]
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Note sp 1 []])] @?= [(fs `div` 2, 0)],
+    testCase "with tracking, the last box of every line ends at the measure" $ do
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
+          items = compose env (T.replicate 40 "あ")
+          ls = brLines (breakParagraph defaultParams (const (10 * fs)) items)
+      assertBool "several lines" (length ls > 2)
+      sequence_
+        [ case [(off, w, c) | (Box w c, off) <- placeLine l] of
+            [] -> assertFailure "no box"
+            bs -> let (off, w, c) = last bs in assertBool (show (off + w + bcEdgeEnd c, lineTarget l)) (abs (off + w + bcEdgeEnd c - lineTarget l) <= 1)
+        | l <- init ls
+        ],
+    testCase "the baseline shift does not change the line breaks" $ do
+      let at shift = (defaultComposeEnv fs) {ceLook = look0 {lkBaselineShift = shift}}
+          breaksOf e = brPositions (breakParagraph defaultParams (const (10 * fs)) (compose e (T.replicate 25 "あい、")))
+      breaksOf (at (2 * 65536)) @?= breaksOf (at 0)
+  ]
+  where
+    tenth = fs `div` 10
+    kernEnv = (defaultComposeEnv fs) {ceKern = \_ a b -> if (a, b) == ('あ', 'い') then -(1 / 10) else 0}
+
 rubyStyle :: R.RubyAlign -> RubyStyle
 rubyStyle a = RubyStyle a a a 500 True
 
@@ -898,3 +1088,169 @@ rubyTests =
         )
         [False, True]
   ]
+
+orientationTests :: [TestTree]
+orientationTests =
+  [ testCase "the characters of the ADR take their UAX #50 values" $ do
+      let of' = map verticalOrientation
+      of' "\x2014\x2015\x2026\x2E3A" @?= replicate 4 Rotated
+      of' "\x301C\xFF5E\x300C\x30FC" @?= replicate 4 TransformedRotated
+      of' "\x3001" @?= [TransformedUpright]
+      of' "漢あ\xFE31" @?= replicate 3 Upright
+      map turnsInVertical "\x2014\x301C\x3001漢" @?= [True, True, False, False],
+    testCase "the ranges ascend and do not overlap" $ do
+      assertBool "not empty" (not (null orientationRanges))
+      assertBool "each range ordered" (and [lo <= hi | (lo, hi, _) <- orientationRanges])
+      assertBool "ascending and disjoint" (and (zipWith (\(_, hi, _) (lo, _, _) -> hi < lo) orientationRanges (drop 1 orientationRanges)))
+      assertBool ("the Unicode version: " <> orientationVersion) ("VerticalOrientation-" `isPrefixOf` orientationVersion),
+    testCase "unlisted code points follow the defaults of the file" $ do
+      -- unassigned in CJK Unified Ideographs Extension B..C: listed as U
+      verticalOrientation '\x2A6E0' @?= Upright
+      -- unassigned in Greek, not listed: the @missing value R
+      verticalOrientation '\x0378' @?= Rotated
+      verticalOrientation '\x10FFFF' @?= Rotated
+  ]
+
+-- ------------------------------------------------------------------ aki (docs/adr ADR 0019)
+
+-- | A character of each of the 15 classes.
+akiRepresentatives :: [Char]
+akiRepresentatives = "「」゠！・。、…々ーぁ\x3000あ漢A"
+
+{- | The spacing of the composition before docs/adr ADR 0019, as it was
+written in 'normalize', applied to the boxes of a composition and its
+paragraph end. The inter-character stretch is rounded, as the aki sets
+convert it.
+-}
+referenceNormalize :: ComposeEnv -> [Item] -> [Item]
+referenceNormalize env items = go Nothing [it | it@Box {} <- items] <> lineEndItems
+  where
+    lineEndItems = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+    fsz = ceFontSize env
+    em r = round (r * toRational fsz)
+    go _ [] = []
+    go prev (x : rest) = case (prev, x) of
+      (Just p, Box _ c) -> between p c <> [x] <> go (Just c) rest
+      (_, Box _ c) -> leading c <> [x] <> go (Just c) rest
+      _ -> x : go Nothing rest
+    sizeOf c = toRational (lkSize (bcLook c))
+    leading c = case textClass c of
+      Just cls | fst (punctSpace cls) > 0 -> let w = round (fst (punctSpace cls) * sizeOf c) in [Glue w 0 w]
+      _ -> []
+    trailingSpace c = maybe 0 (snd . punctSpace) (textClass c) * sizeOf c
+    leadingSpace c = maybe 0 (fst . punctSpace) (textClass c) * sizeOf c
+    textClass c = case T.unsnoc (bcText c) of
+      Just (_, ch) | boxKind c `elem` [KindText, KindPunctuation, KindKenten] && T.length (bcText c) == 1 -> Just (charClass ch)
+      _ -> Nothing
+    firstClass c = case T.uncons (bcText c) of
+      Just (ch, _) | not (isRubyBox c) -> Just (charClass ch)
+      _ -> Nothing
+    lastClass c = case T.unsnoc (bcText c) of
+      Just (_, ch) | not (isRubyBox c) -> Just (charClass ch)
+      _ -> Nothing
+    isRubyBox c = boxKind c `elem` [KindRuby, KindGroupRuby]
+    between p c =
+      let pc = lastClass p
+          cc = firstClass c
+          strict = ceKinsokuStrict env
+          noBreak =
+            maybe False (lineStartProhibited strict) cc
+              || maybe False lineEndProhibited pc
+              || (pc == Just Inseparable && cc == Just Inseparable)
+              || (pc == Just Western && cc == Just Western && bcExpandable p && bcExpandable c)
+          space = combined (trailingSpace p) (leadingSpace c) pc cc
+          isJa k = k /= Just Western
+          notPunct = maybe True (\cl -> punctSpace cl == (0, 0))
+          waou = (pc == Just Western && isJa cc && isJust cc && space == 0 && notPunct cc) || (cc == Just Western && isJa pc && isJust pc && space == 0 && notPunct pc)
+          pen = [Penalty 0 infPenalty NoHyphen | noBreak]
+       in if space > 0
+            then pen <> [Glue (round space) 0 (round space)]
+            else
+              if waou
+                then pen <> [Glue (em (1 / 4)) (em (1 / 4)) (em (1 / 8))]
+                else
+                  if noBreak
+                    then []
+                    else
+                      if bothJapanese pc cc
+                        then [Glue 0 (em (1 / 10)) 0]
+                        else [Penalty 0 0 NoHyphen | not (bcExpandable p && bcExpandable c)]
+    bothJapanese pc cc = maybe False (/= Western) pc && maybe False (/= Western) cc
+    combined post pre pc cc
+      | post == 0 = pre
+      | pre == 0 = if cc `elem` map Just [Closing, FullStop, Comma] then 0 else post
+      | pc `elem` map Just [Closing, FullStop, Comma] && cc == Just Opening = max post pre
+      | pc == Just MiddleDot || cc == Just MiddleDot = post + pre
+      | otherwise = 0
+
+-- | The texts of the composition: every pair of representatives, and each alone.
+akiTexts :: [Text]
+akiTexts = [T.pack [a, b] | a <- akiRepresentatives, b <- akiRepresentatives] <> [T.singleton a | a <- akiRepresentatives]
+
+-- | The set gyomatsu-yakumono-hankaku with one more rule.
+akiWith :: [Text] -> [Text] -> Aki.Aki -> AkiSet
+akiWith bs as a = withAkiRule (concatMap akiPositions bs) (concatMap akiPositions as) a defaultAkiSet
+
+akiEnv :: AkiSet -> ComposeEnv
+akiEnv s = (defaultComposeEnv fs) {ceAkiSet = s}
+
+-- | The distance from the right edge of the last box of a set line to the line end.
+trailingRoom :: Line -> Sp
+trailingRoom l = case reverse [(it, x) | (it@Box {}, x) <- placeLine l] of
+  ((Box w _, x) : _) -> lineTarget l - (x + w)
+  _ -> lineTarget l
+
+akiTests :: [TestTree]
+akiTests =
+  [ testCase "gyomatsu-yakumono-hankaku composes as before (kinsoku strict)" $ do
+      let env = akiEnv defaultAkiSet
+      [t | t <- akiTexts, compose env t /= referenceNormalize env (compose env t)] @?= [],
+    testCase "with kinsoku loose only Japanese before small kana and the long vowel mark differ" $ do
+      let env = (akiEnv defaultAkiSet) {ceKinsokuStrict = False}
+          differ = [t | t <- akiTexts, compose env t /= referenceNormalize env (compose env t)]
+          ja = filter (`notElem` ("「」・。、A" :: String)) akiRepresentatives
+      differ @?= [T.pack [a, b] | a <- ja, b <- "ーぁ"] `orderedAs` akiTexts
+      let stretch = Glue 0 (fs `div` 10) 0
+          asBreak it = if it == stretch then Penalty 0 0 NoHyphen else it
+      [t | t <- differ, compose env t /= map asBreak (referenceNormalize env (compose env t))] @?= [],
+    testCase "a set with (四分, 三分, 二分) between Japanese and Latin" $ do
+      let s = withAkiRule (akiPositions "western") (akiPositions "japanese") (Aki.Aki (1 / 4) (1 / 3) (1 / 2)) (akiWith ["japanese"] ["western"] (Aki.Aki (1 / 4) (1 / 3) (1 / 2)))
+          third = round (toRational fs / 3)
+          half = fs `div` 2
+          quarter = fs `div` 4
+      [g | g@Glue {} <- compose (akiEnv s) "漢A", itemStretch g < filStretch] @?= [Glue third (half - third) (third - quarter)]
+      [g | g@Glue {} <- compose (akiEnv s) "A漢", itemStretch g < filStretch] @?= [Glue third (half - third) (third - quarter)],
+    testCase "gyomatsu-yakumono-zenkaku keeps a half em after a closing bracket at the line end" $ do
+      let txt = "あいう」えおかき"
+          firstLine s w = case brLines (breakParagraph defaultParams (const w) (compose (akiEnv s) txt)) of
+            (l : _) -> l
+            [] -> error "no line"
+      zenkaku <- maybe (assertFailure "no zenkaku" >> error "unreachable") pure (Map.lookup "gyomatsu-yakumono-zenkaku" builtinAkiSets)
+      let lz = firstLine zenkaku (4 * fs)
+          lh = firstLine defaultAkiSet (7 * fs `div` 2)
+      [bcText c | Box _ c <- take 1 (reverse (lineItems lz))] @?= ["」"]
+      [bcText c | Box _ c <- take 1 (reverse (lineItems lh))] @?= ["」"]
+      trailingRoom lz @?= fs `div` 2
+      trailingRoom lh @?= 0,
+    testCase "a set without the space before an opening bracket at the paragraph start" $ do
+      let s = akiWith ["paragraph-start"] ["opening"] (Aki.Aki 0 0 0)
+      take 1 [() | Box {} <- take 1 (compose (akiEnv s) "「あ」")] @?= [()]
+      take 1 [() | Glue {} <- take 1 (compose (akiEnv defaultAkiSet) "「あ」")] @?= [()],
+    testCase "the space after a larger closing bracket is in the bracket's size" $ do
+      let env = (akiEnv defaultAkiSet) {ceRestyle = \lk -> \case CharStyle _ "big" _ -> lk {lkSize = 2 * fs}; _ -> lk}
+          items = fst (composeInlines env [CharStyle sp "big" [sp0 "」"], sp0 "漢"])
+      [g | g@Glue {} <- items, itemStretch g < filStretch] @?= [Glue fs 0 fs],
+    testCase "[aki] is a fixed glue with no break around it and no aki of the set" $ do
+      let items = fst (composeInlines (akiEnv defaultAkiSet) [sp0 "漢", Aki sp (AkiZw (1 / 5)), sp0 "A"])
+          boxText = \case
+            Box _ c -> Just (bcText c)
+            _ -> Nothing
+      map (\it -> maybe (Right it) Left (boxText it)) (take 4 items)
+        @?= [Left "漢", Right (Penalty 0 infPenalty NoHyphen), Right (Glue (fs `div` 5) 0 0), Left "A"]
+      length items @?= 7
+      let absolute = fst (composeInlines (akiEnv defaultAkiSet) [sp0 "3", Aki sp (AkiAbs 65536), sp0 "kg"])
+      [g | g@Glue {} <- absolute, itemStretch g < filStretch] @?= [Glue 65536 0 0]
+  ]
+  where
+    sp = mkSpan (FileId 0) 0 0
+    orderedAs xs order = [x | x <- order, x `elem` xs]

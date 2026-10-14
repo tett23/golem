@@ -5,6 +5,8 @@
 どのファイルをどの順に並べるか、書名や著者は何か、どの形式に何を書き込むかをここに書きます。
 書き方は、TOML という設定ファイルの形式です。
 書けるキーの一覧は、[ref-title app-manifest]（[ref-page app-manifest] ページ）にあります。
+[style code: manifest.toml] と [style code: style.toml] も、原稿と同じく文字コードは UTF-8、改行は LF とし、BOM を付けません。
+BOM や CR があると、原稿と同じエラー（G0102、G0103）が出ます。
 
 ## マニフェストの全体
 
@@ -77,6 +79,12 @@ chapters = [
 
 章の項目に書いた値は、[style code: \[source\]] の値より優先します。
 [style code: @import] でだけ取り込むファイルには、[style code: \[source\]] の値が効きます。
+
+ファイルの先頭に [style code: @manifest paragraph-separator=line] と書くと、そのファイルの区切り方を、そのファイルの中で決められます。
+ファイルの中に書いた値は、章の項目と [style code: \[source\]] の値より優先します。
+ファイルを別の本に移しても、区切り方が一緒に付いていきます。
+[style code: @manifest] で変えられるのは [style code: \[source\]] の設定だけで、書名などを書くとエラーになります。
+
 [style code: "blank-line"] と [style code: "line"] のほかの値を書くと、エラーになります。
 
 ## 本の情報を書く

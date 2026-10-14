@@ -69,6 +69,14 @@ void golem_font_extents(golem_font *f, int32_t *asc, int32_t *desc, int32_t *cap
   *cap = (os2 && os2->version >= 2) ? os2->sCapHeight : f->face->ascender;
 }
 
+int golem_font_embox_central(golem_font *f) {
+  hb_position_t coord = 0;
+  hb_ot_layout_get_baseline_with_fallback(f->hbfont, HB_OT_LAYOUT_BASELINE_TAG_IDEO_EMBOX_CENTRAL,
+                                          HB_DIRECTION_LTR, HB_TAG('h','a','n','i'),
+                                          HB_TAG_NONE, &coord);
+  return (int)coord;
+}
+
 int golem_font_glyph_metrics(golem_font *f, uint32_t gid, int32_t *out) {
   if (FT_Load_Glyph(f->face, gid, FT_LOAD_NO_SCALE | FT_LOAD_NO_HINTING)) return -1;
   FT_Glyph_Metrics *m = &f->face->glyph->metrics;

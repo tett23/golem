@@ -12,6 +12,7 @@ import Golem.Doc.Validate
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
 import Hedgehog
+import ListMarkersSpec qualified
 import System.Directory (findExecutable)
 import System.Environment (lookupEnv)
 import System.Exit (ExitCode (..))
@@ -38,7 +39,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, AssembleSpec.tests]
+  testGroup "golem-doc" [cbor, AssembleSpec.tests, ListMarkersSpec.tests]
 
 cbor :: TestTree
 cbor =
@@ -89,13 +90,12 @@ cbor =
         let bytes = toStrictByteString (encodeTerm (TList [TInt 99, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes)),
       testCase "a document of ABI version 2 is rejected (docs/adr ADR 0005)" $ do
-        abiVersion @?= 3
         let bytes = toStrictByteString (encodeTerm (TList [TInt 2, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes)),
       testCase "retired tags are rejected (docs/adr ADR 0005)" $ do
         let spT = TList [TInt 0, TInt 0, TInt 1]
             text = TList [TInt 0, spT, TString "a"]
-            doc body = toStrictByteString (encodeTerm (TList [TInt 3, TInt 0, TList [TList [spT, TNull, body]]]))
+            doc body = toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, body]]]))
         assertBool "a styled paragraph" (not (isLeft (decodeDocument (doc (TList [TInt 10, TString "verse", TList [text]])))))
         assertBool "a body paragraph" (not (isLeft (decodeDocument (doc (TList [TInt 10, TNull, TList [text, TList [TInt 17, spT], text]])))))
         assertBool "paragraph 0" (isLeft (decodeDocument (doc (TList [TInt 0, TList [text]]))))
@@ -116,6 +116,42 @@ cbor =
         validateDocument size [] (para Nothing [a, br, br, a]) @?= ["改行は段落の最上位のインラインの間にだけ置けます"]
         validateDocument size [] (para (Just "body") [a]) @?= ["段落スタイル body は null で表します"]
         validateInlines size [] [a, br, a] @?= ["改行は段落の最上位のインラインの間にだけ置けます"],
+      testCase "the ABI version is 5 and version 4 is rejected (docs/adr ADR 0019)" $ do
+        abiVersion @?= 5
+        let bytes = toStrictByteString (encodeTerm (TList [TInt 4, TInt 0, TList []]))
+        assertBool "rejected" (isLeft (decodeDocument bytes)),
+      testCase "aki survives the CBOR round trip as tag 18 (docs/adr ADR 0019)" $ do
+        let is = [Aki sp (AkiZw (1 / 5)), Aki sp (AkiZw 0), Aki sp (AkiAbs 185795)]
+        decodeInlines (encodeInlines is) @?= Right is
+        let spT = TList [TInt 0, TInt 0, TInt 1]
+            inl t = decodeInlines (toStrictByteString (encodeTerm (TList [t])))
+        inl (TList [TInt 18, spT, TList [TInt 1, TInt 5], TNull]) @?= Right [Aki sp (AkiZw (1 / 5))]
+        inl (TList [TInt 18, spT, TNull, TInt 65536]) @?= Right [Aki sp (AkiAbs 65536)]
+        assertBool "both" (isLeft (inl (TList [TInt 18, spT, TList [TInt 1, TInt 5], TInt 65536])))
+        assertBool "neither" (isLeft (inl (TList [TInt 18, spT, TNull, TNull])))
+        assertBool "zero denominator" (isLeft (inl (TList [TInt 18, spT, TList [TInt 1, TInt 0], TNull]))),
+      testCase "a negative aki is invalid (docs/adr ADR 0019)" $ do
+        let size (FileId 0) = Just 10
+            size _ = Nothing
+        validateInlines size [] [Aki sp (AkiZw (1 / 5)), Aki sp (AkiAbs 10)] @?= []
+        validateInlines size [] [Aki sp (AkiZw (-1))] @?= ["アキの量が負です"]
+        validateInlines size [] [Aki sp (AkiAbs (-1))] @?= ["アキの量が負です"],
+      testCase "every kind of forced break survives the CBOR round trip (docs/adr ADR 0017)" $ do
+        let d = Document (FileId 0) [Block sp Nothing (ForcedBreak k) | k <- [minBound .. maxBound]]
+        decodeDocument (encodeDocument d) @?= Right d
+        [minBound .. maxBound :: BreakKind] @?= [BreakPage, BreakRecto, BreakVerso, BreakColumn],
+      testCase "forced breaks only at the top of a document, without a label (docs/adr ADR 0017)" $ do
+        let size (FileId 0) = Just 10
+            size _ = Nothing
+            brk = Block sp Nothing (ForcedBreak BreakPage)
+            doc = Document (FileId 0)
+            msgNested = "改ページは文書の最上位にだけ置けます"
+            msgLabel = "改ページはラベルを持てません"
+        validateDocument size [] (doc [brk]) @?= []
+        validateDocument size [] (doc [Block sp Nothing (BulletList [ListItem Nothing [brk]])]) @?= [msgNested]
+        validateDocument size [] (doc [Block sp Nothing (DefList [DefGroup [[]] [[brk]]])]) @?= [msgNested]
+        validateDocument size [] (doc [Block sp Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing [brk]))]) @?= [msgNested]
+        validateDocument size [] (doc [Block sp (Just "x") (ForcedBreak BreakRecto)]) @?= [msgLabel],
       testCase "trailing bytes are rejected" $
         assertBool "rejected" (isLeft (decodeInlines (encodeInlines [] <> "\0"))),
       testCase "validation: spans, deferred expressions, index levels" $ do

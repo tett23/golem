@@ -47,6 +47,10 @@
   空行までが一つの段落になります。
   段落の中の改行は文字を生まず、前後は空白なしでつながります。
   [style code: manifest.toml] の [style code: \[source\]] に [style code: paragraph-separator = "line"] と書くと、一行が一つの段落になります（付録B）。
+= [strong: 行末の [style code: \\]]
+  段落を分けずに、その位置で行を改めます（強制改行）。
+  [style code: \\] は行の最後の文字にし、次の行に同じ段落の続きを書きます。
+  見出し、表のセル、角括弧の中には書けません。
 = [strong: [style code: # 題]、[style code: ## 題]、[style code: ### 題]]
   見出しです。
   [style code: #] の数が階層で、三つまで使えます。
@@ -141,8 +145,36 @@
   インデントのない次の行に段落を書くと、その段落一つに付きます。
   次の行から空白二つで字下げして段落を並べると、それらの段落のすべてに付きます。
   字下げした本体には段落だけを置けます。
+= [strong: [style code: @page-break]]
+  次のページから続けます（改ページ）。
+  [style code: @page-break recto] は次の奇数ページから（改丁）、[style code: @page-break verso] は次の偶数ページから続けます。
+  リストの項目や図版のキャプションの中には書けません。
+= [strong: [style code: @column-break]]
+  段組みの版面で、次の段から続けます（改段）。
+  一段組みの版面では [style code: @page-break] と同じです。
+= [strong: [style code: @manifest キー=値]]
+  そのファイルにだけ効く原稿の読み方を書きます。
+  書けるのは [style code: manifest.toml] の [style code: \[source\]] のキー（[style code: paragraph-separator]）だけです。
+  例：[style code: @manifest paragraph-separator=line]
+= [strong: [style code: @style-def 種類 名前 キー=値…]]
+  そのファイルにだけ効くスタイルを定義します。
+  種類は [style code: paragraph]（段落スタイル）、[style code: character]（文字スタイル）、[style code: regex]（正規表現スタイル）のどれかです。
+  キーは [style code: style.toml] と同じで、値は [style code: 2zw] や [style code: keep] のように引用符なしで書けます。
+  [style code: style.toml] にある名前を書くと、そのファイルの中でだけ、書いたキーが置き換わります。
+  [style code: regex] では、二つ目の語に組を足す段落スタイルの名前を、キーに [style code: pattern] と [style code: style] を書きます。
+
+[style code: @manifest] と [style code: @style-def] は、ファイルの最初に置きます。
+前に置けるのは、コメントと空行だけです。
+一つのスタイルは一行で定義します。
+
+```
+@manifest paragraph-separator=line
+@style-def paragraph letter based-on=body indent=2zw
+@style-def regex body pattern="\\d+" style=bold
+```
 
 [style code: @figure]、[style code: @table]、[style code: @listing] が指すファイルも、プロジェクトのディレクトリからの相対パスで書きます。
+絶対パス、URL、プロジェクトの外を指すパスは使えません。
 
 @nonumber
 ## 見出しやブロックに付ける指定
@@ -236,14 +268,21 @@
   傍注です。
   横組みの本でだけ使えます。
   PDF では [style code: style.toml] に [style code: \[sidenotes\]] が要り、脚注の本文と図版のキャプションの中には置けません。
+= [strong: [style code: \[aki 量\]]]
+  その位置に、決まった幅の空きを入れます。
+  量は [style code: 全角]、[style code: 二分]、[style code: 三分]、[style code: 四分]、[style code: 五分]、[style code: 六分]、[style code: 八分]、[style code: 二分四分]、[style code: ベタ] のような名前か、[style code: 0.2zw]、[style code: 25%]、[style code: 1mm] のように書きます。
+  [style code: \[aki\]] の前後では行を分けません。
+  本文は取りません。
 = [strong: [style code: \[ref-number ラベル\]]]
   ラベルを付けた章、節、図の番号になります。
-  番号のない見出しを指すとエラーになります。
+  番号のない見出しや段落を指すとエラーになります。
 = [strong: [style code: \[ref-title ラベル\]]]
-  ラベルを付けた章や節の題になります。
+  ラベルを付けた見出しの題か、図版の代替テキストになります。
+  段落や表のような題のない箇所を指すとエラーになります。
 = [strong: [style code: \[ref-page ラベル\]]]
   PDF では、ラベルを付けた箇所のページ番号になります。
   HTML と EPUB では、その箇所へのリンクになります。
+  相互参照の三つのコマンドには、[style code: :] の後の本文を書けません。
 = [strong: [style code: \[index reading=読み: 語\]]]
   索引の項目の印です。
   紙面には何も出しません。
@@ -338,7 +377,7 @@ PDF と HTML の版では、この例も次の段落で実際に組んでいま�
 - 角括弧の中の本文の [style code: \]] と [style code: \|]（[style code: \\\]]、[style code: \\\|]）。
 - 段落の行頭の [style code: #]、[style code: -]、[style code: +]、[style code: =]、[style code: @]、[style code: \|]（[style code: \\#] など）。
 - 本文の [style code: \%%]（[style code: \\\%%]）。
-- [style code: \\] そのもの（[style code: \\\\]）。
+- [style code: \\] そのもの（[style code: \\\\]）。行末の [style code: \\] は強制改行になるので、本文の [style code: \\] を行末に置くときも [style code: \\\\] と書きます。
 - 行末に残したい半角の空白（[style code: \\\ ]）。
 
 [style code: %] が一つだけなら、そのまま書けます。

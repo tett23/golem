@@ -37,7 +37,9 @@
 パスはプロジェクトのディレクトリからの相対パスで、プロジェクトの外や、[style code: /] で始まる絶対パス、URL は書けません。
 要素を配列にすると、いくつかのファイルを一つの章として続けて組みます。
 要素を [style code: { file = "chapters/02.gm", paragraph-separator = "blank-line" }] のような表にすると、その章だけ原稿の読み方を変えられます。
-表に書けるのは、[style code: file]（必須）と、[style code: \[source\]] と同じキーです。
+表に書けるのは、[style code: file]（必須）と、[style code: \[source\]] と同じキーと、[style code: master] です。
+[style code: master] には、その章で使う [style code: style.toml] のマスターページの名前を書きます（付録C の [style code: \[masters.名前\]]）。
+書かなければ [style code: body] のマスターページを使います。
 同じファイルを、読み方を変えて二度並べることはできません。
 
 ```toml
@@ -94,6 +96,7 @@ chapters = [
 
 原稿の読み方です。
 章の項目に同じキーを書くと、その章ではそちらが優先します。
+原稿のファイルの先頭に [style code: @manifest paragraph-separator=line] と書くと、そのファイルではそれがいちばん優先します（付録A の「ブロックコマンド」）。
 [style code: @import] でだけ取り込むファイルには、[style code: \[source\]] の値が効きます。
 
 | キー | 意味 |

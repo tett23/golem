@@ -36,7 +36,8 @@ genInlineWith mr =
         IndexMark <$> genSpan <*> (IndexEntry <$> Gen.list (Range.singleton 1) genText <*> Gen.list (Range.singleton 1) genText),
         Cite <$> genSpan <*> genText,
         ProofComment <$> genSpan <*> genText,
-        LineBreak <$> genSpan
+        LineBreak <$> genSpan,
+        Aki <$> genSpan <*> Gen.choice [AkiZw <$> genRatio, AkiAbs <$> Gen.integral (Range.linear 0 10000000)]
       ]
         <> maybe [] (\gr -> [Ruby <$> genSpan <*> gr <*> Gen.list (Range.linear 1 3) (RubySegment <$> Gen.list (Range.linear 0 2) genNoRuby <*> Gen.maybe genText)]) mr
     )
@@ -48,6 +49,10 @@ genInlineWith mr =
     ]
   where
     sub = Gen.list (Range.linear 0 3) (genInlineWith mr)
+
+-- | A non-negative amount in zw, in lowest terms as 'Rational' keeps it.
+genRatio :: Gen Rational
+genRatio = (\n d -> fromInteger n / fromInteger d) <$> Gen.integral (Range.linear 0 40) <*> Gen.integral (Range.linear 1 12)
 
 genExpr :: Gen (AST.Located AST.Expr)
 genExpr =
@@ -90,4 +95,12 @@ genBlock =
     attrs = HeadingAttrs <$> Gen.maybe inl <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool <*> Gen.bool
 
 genDocument :: Gen Document
-genDocument = Document (FileId 0) <$> Gen.list (Range.linear 0 5) genBlock
+genDocument = Document (FileId 0) <$> Gen.list (Range.linear 0 5) genTopBlock
+
+-- | A block at the top of a document, where a forced break may stand (docs/adr ADR 0017).
+genTopBlock :: Gen Block
+genTopBlock =
+  Gen.frequency
+    [ (5, genBlock),
+      (1, Block <$> genSpan <*> pure Nothing <*> (ForcedBreak <$> Gen.enumBounded))
+    ]

@@ -155,7 +155,7 @@ blockCommand (PN _ sp cs) =
    in case [(s, t) | PT KIdent s t <- sig] of
         ((_, "set") : (vsp, var) : _)
           | any ((== KEquals) . pkind) sig ->
-              Located sp (SetVar (Located vsp var) (exprOf [c | c <- sig, isExprNode c]))
+              Located sp (SetVar (Located vsp var) (exprOf sp [c | c <- sig, isExprNode c]))
         ((nsp, name) : _) ->
           Located sp (BlockCommand (Located nsp name) (arguments sig) (concat [blocks bcs | PN NCommandBody _ bcs <- cs]))
         [] -> Located sp ErrorBlock
@@ -165,6 +165,8 @@ blockCommand p = Located (pspan p) ErrorBlock
 
 {- | A newline between the lines of a paragraph or a prose slot becomes
 'SoftBreak' (docs/adr ADR 0003); the newline that ends the inlines does not.
+A hard break stays even at the edges; the evaluation reports it there
+(docs/adr ADR 0016).
 -}
 inlines :: [P] -> [Located Inline]
 inlines = mergeText . dropEdgeBreaks . concatMap inline . trimEnds
@@ -183,6 +185,11 @@ Escaped spaces are separate tokens and stay.
 trimEnds :: [P] -> [P]
 trimEnds = \case
   [] -> []
+  -- the line after a hard break starts without spaces and tabs (docs/adr ADR 0016)
+  (h@(PN NHardBreak _ _) : PT KText sp t : rest) ->
+    let t' = T.dropWhile isSpaceTab t
+        sp' = mkSpan (spanFile sp) (spanEnd sp - utf8Len t') (spanEnd sp)
+     in h : trimEnds ([PT KText sp' t' | not (T.null t')] <> rest)
   (PT KText sp t : rest)
     | atLineEnd rest ->
         let t' = T.dropWhileEnd isSpaceTab t
@@ -193,6 +200,7 @@ trimEnds = \case
     atLineEnd = \case
       [] -> True
       (PT KNewline _ _ : _) -> True
+      (PN NHardBreak _ _ : _) -> True
       (PT KWhitespace _ _ : more) -> atLineEnd more
       _ -> False
 
@@ -218,8 +226,14 @@ inline = \case
   PT KNewline sp _ -> [Located sp SoftBreak]
   PT {} -> []
   PN NBlankLines _ _ -> []
-  PN NExpr sp cs -> [Located sp (Expr (exprOf (filter isExprNode cs)))]
+  PN NExpr sp cs -> [Located sp (Expr (exprOf sp (filter isExprNode cs)))]
   p@(PN NInlineCommand _ _) -> [command p]
+  -- from the backslash to the end of the newline; the newline is no SoftBreak
+  PN NHardBreak sp cs ->
+    let end = case [spanEnd s | PT KNewline s _ <- cs] of
+          (e : _) -> e
+          [] -> spanEnd sp
+     in [Located (mkSpan (spanFile sp) (spanStart sp) end) HardBreak]
   PN NErrorNode sp _ -> [Located sp ErrorInline]
   PN _ _ cs -> concatMap inline cs
 
@@ -256,7 +270,7 @@ arguments = mapMaybe arg
         _ -> Nothing
       PN NSplatArgument sp acs ->
         let isDouble = any (\case PT KStar _ t -> t == "**["; _ -> False) acs
-            e = exprOf (filter isExprNode acs)
+            e = exprOf sp (filter isExprNode acs)
          in Just (Located sp (if isDouble then SplatKeyword e else SplatPositional e))
       _ -> Nothing
 
@@ -264,7 +278,7 @@ argValue :: P -> Maybe ArgValue
 argValue = \case
   PT KString _ t -> Just (StringLit (unquote t))
   PT KWord _ t -> Just (Word t)
-  PN NExpr sp cs -> Just (ExprArg (Located sp (locValue (exprOf (filter isExprNode cs)))))
+  PN NExpr sp cs -> Just (ExprArg (Located sp (locValue (exprOf sp (filter isExprNode cs)))))
   p@(PN NInlineCommand _ _) -> Just (CommandArg (command p))
   _ -> Nothing
 
@@ -283,9 +297,12 @@ isExprNode = \case
   PT KError _ _ -> True
   _ -> False
 
-exprOf :: [P] -> Located Expr
-exprOf (p : _) = expr p
-exprOf [] = Located (mkSpan (FileId 0) 0 0) EError
+{- | The first expression of a slot; with none, an error of width zero at
+the start of the slot @sp@ (golem-parser ADR 0009).
+-}
+exprOf :: SrcSpan -> [P] -> Located Expr
+exprOf _ (p : _) = expr p
+exprOf sp [] = Located (mkSpan (spanFile sp) (spanStart sp) (spanStart sp)) EError
 
 expr :: P -> Located Expr
 expr p = Located (pspan p) $ case p of
@@ -310,7 +327,7 @@ expr p = Located (pspan p) $ case p of
     _ -> EError
   PN NArrayExpr _ cs -> EArray [expr e | e <- cs, isExprNode e]
   PN NHashExpr _ cs -> EHash [entry ecs | PN NHashEntry _ ecs <- cs]
-  PN NParenExpr _ cs -> locValue (exprOf (filter isExprNode cs))
+  PN NParenExpr _ cs -> locValue (exprOf (pspan p) (filter isExprNode cs))
   _ -> EError
   where
     entry ecs = case significant ecs of

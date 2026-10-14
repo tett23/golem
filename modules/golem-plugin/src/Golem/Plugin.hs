@@ -38,6 +38,7 @@ import Foreign.C.String (CString, peekCString, withCStringLen)
 import Foreign.C.Types
 import Golem.Doc.Cbor
 import Golem.Doc.IR hiding (abiVersion)
+import Golem.Doc.Validate (validateDocument)
 import Golem.Eval.Value (Value (..))
 import Golem.Syntax
 import System.IO.Unsafe (unsafePerformIO)
@@ -61,7 +62,7 @@ foreign import capi unsafe "golem_plugin.h golem_wat2wasm" c_wat2wasm :: CString
 
 -- | The ABI version of this host.
 abiVersion :: Word32
-abiVersion = 3
+abiVersion = 5
 
 -- | The fuel of one call: about this many wasm instructions.
 defaultFuel :: Word64
@@ -228,7 +229,11 @@ applyFilter plugin name doc = do
   (outT, diags) <- response out
   doc' <- either (Left . BadOutput) Right (termDocument outT)
   checkOutput (Set.fromList (documentSpans doc)) (documentDeferred doc) (documentSpans doc') (documentDeferred doc')
-  Right (doc', diags)
+  -- the invariants of the IR, such as forced breaks only at the top (docs/adr ADR 0017);
+  -- the spans were checked above, so every file is taken to be large enough
+  case validateDocument (const (Just maxBound)) (documentDeferred doc) doc' of
+    [] -> Right (doc', diags)
+    errs -> Left (BadOutput (T.intercalate "、" errs))
 
 response :: ByteString -> Either PluginError (Term, [Diagnostic])
 response bytes = do
@@ -273,6 +278,7 @@ inlineSpans = \case
   Cite s _ -> [s]
   ProofComment s _ -> [s]
   LineBreak s -> [s]
+  Aki s _ -> [s]
 
 inlineDeferred :: InlineF r -> [DeferredExpr]
 inlineDeferred = \case

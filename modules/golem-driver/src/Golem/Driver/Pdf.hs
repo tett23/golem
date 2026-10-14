@@ -10,8 +10,12 @@ implemented yet; 'noFontProvider' reports that.
 module Golem.Driver.Pdf
   ( FontProvider (..),
     LoadedFonts (..),
+    Shaped (..),
+    Shaping (..),
+    shapingOf,
     noFontProvider,
     bodyRole,
+    bodyFontDiagnostics,
     usedRoles,
     syntheticStroke,
     syntheticStrokeJa,
@@ -23,16 +27,22 @@ module Golem.Driver.Pdf
     PlacedSidenote (..),
     PdfLayout (..),
     sidenoteDiagnostics,
+    styleLayoutDiagnostics,
+    listNumberDiagnostics,
     placePageSidenotes,
     layoutPdf,
     layoutPages,
     indexLines,
     bibliographyLines,
     Assumed (..),
+    fixpoint,
     TocGeometry (..),
     TocPage (..),
     tocPage,
     headingPages,
+    headingsOnPages,
+    runningHeadText,
+    runningHeads,
     figureRect,
     renderPdf,
     flowLines,
@@ -50,10 +60,11 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii)
 import Data.Either (fromRight, isLeft)
-import Data.List (groupBy, intercalate, nub, sortOn, zip4)
+import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, zip4)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, listToMaybe)
+import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -61,19 +72,22 @@ import Data.Text.Encoding qualified as TE
 import Data.Time.Calendar (toGregorian)
 import Golem.Doc.Assemble
 import Golem.Doc.IR
+import Golem.Doc.ListMarkers
 import Golem.Doc.Numerals (formatNumber)
 import Golem.Driver.Version (golemVersion)
+import Golem.Layout.Aki (AkiSet, resolveAkiSet)
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass hiding (Sp)
-import Golem.Layout.Look
+import Golem.Layout.Look hiding (Kerning (..))
+import Golem.Layout.Look qualified as L
 import Golem.Layout.Paginate
 import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.Layout.Ruby qualified as R
 import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
 import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutTable)
 import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
-import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
+import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Pdf qualified as P
 import Golem.Project
@@ -82,32 +96,67 @@ import Golem.Project.Style
 import Golem.Syntax
 import System.FilePath (takeBaseName)
 
+{- | How a text is shaped (docs/adr/0020): the font role (golem-driver ADR
+0003; a role that is not loaded is the body role), the direction, and
+the features added after the role's features (HarfBuzz lets a later
+feature override an earlier one of the same tag).
+-}
+data Shaping = Shaping
+  { shRole :: !Text,
+    shVertical :: !Bool,
+    -- | the features added after the role's features
+    shExtra :: ![Text]
+  }
+  deriving stock (Eq, Ord, Show)
+
 {- | Fonts ready for layout and output. Advances are in em. The first
-argument of the measuring and shaping functions is the font role
-(golem-driver ADR 0003); a role that is not loaded is the body role.
+argument of the measuring and shaping functions is how the text is
+shaped (docs/adr/0020).
 -}
 data LoadedFonts = LoadedFonts
-  { lfAdvance :: Text -> Char -> Rational,
+  { lfAdvance :: Shaping -> Char -> Rational,
     -- | a Latin word as shaped (kerning, ligatures)
-    lfWordAdvance :: Text -> Text -> Rational,
-    {- | shaping: for each glyph the face number, glyph id, advance in em
-    (downwards when vertical) and the text it stands for
-    -} lfShape :: Text -> Bool -> Text -> [(Int, Int, Rational, Text)],
+    lfWordAdvance :: Shaping -> Text -> Rational,
+    {- | the pair kerning of two characters: the pair shaped together less
+    the two shaped apart (docs/adr/0020)
+    -} lfPairKern :: Shaping -> Char -> Char -> Rational,
+    -- | shaping: the glyphs of a text
+    lfShape :: Shaping -> Text -> [Shaped],
     -- | the character code of a glyph in the PDF (its CID in a CID-keyed font)
     lfCode :: Int -> Int -> Int,
     {- | the embedded (subset) font of a face number, for horizontal or
     vertical use, with the glyphs used and their text
-    -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> P.Font
+    -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> P.Font,
+    {- | the height of the centre of the ideographic em box above the
+    baseline of a face number, in em (golem-driver ADR 0015)
+    -} lfEmBoxCentral :: Int -> Rational
   }
 
+-- | A glyph from shaping.
+data Shaped = Shaped
+  { shFace :: !Int,
+    shGlyph :: !Int,
+    -- | the advance in em along the line
+    shAdvance :: !Rational,
+    -- | the text the glyph stands for
+    shText :: !Text,
+    -- | drawn turned 90° clockwise in vertical text (golem-driver ADR 0015)
+    shTurned :: !Bool,
+    -- | the index of the first character of the glyph's cluster in the shaped text (docs/adr/0020)
+    shCluster :: !Int
+  }
+  deriving stock (Eq, Show)
+
 newtype FontProvider = FontProvider
-  { loadFonts :: FilePath -> Style -> IO (Either [Diagnostic] LoadedFonts)
+  { {- | the root, style.toml and the styles of the files (docs/adr ADR 0014)
+    and the file of the diagnostics about style.toml (golem-driver ADR 0016)
+    -} loadFonts :: FilePath -> FileId -> Style -> [LocalStyles] -> IO (Either [Diagnostic] LoadedFonts)
   }
 
 noFontProvider :: FontProvider
 noFontProvider =
-  FontProvider $ \_ _ ->
-    pure (Left [diagnostic "G0801" Error (mkSpan (FileId 0) 0 0) "フォントの処理（golem-font ADR 0001、0002）が未実装のため、PDF を出力できません"])
+  FontProvider $ \_ fid _ _ ->
+    pure (Left [diagnostic "G0801" Error (mkSpan fid 0 0) "フォントを読まない設定（noFontProvider）では PDF を出力できません"])
 
 {- | What the instance ID is computed from: the bytes of every input, the
 embedded font programs and, last, @golem-@ and the version of Golem
@@ -133,8 +182,19 @@ data PdfInput = PdfInput
     -- | the formatted entries of the bibliography by key (golem-driver ADR 0007)
     piBibliography :: !(Map Text Text),
     -- | the crop marks (golem-pdf ADR 0004)
-    piMarks :: !(Maybe P.MarkStyle)
+    piMarks :: !(Maybe P.MarkStyle),
+    -- | the styles each file defines (docs/adr ADR 0014)
+    piLocalStyles :: !(Map FileId LocalStyles),
+    -- | the master page of each chapter file that names one (golem-driver ADR 0014)
+    piMasters :: !(Map FileId Text),
+    {- | where diagnostics about style.toml point: style.toml, or the
+    manifest without one (golem-driver ADR 0016)
+    -} piStyleFile :: !FileId
   }
+
+-- | The style of a document: style.toml with the styles its file defines (docs/adr ADR 0014).
+docStyle :: PdfInput -> FileId -> Style
+docStyle inp fid = maybe (piStyle inp) (withLocalStyles (piStyle inp)) (Map.lookup fid (piLocalStyles inp))
 
 -- | The body font role: @body@, or the first role when there is none.
 bodyRole :: Style -> Text
@@ -142,17 +202,32 @@ bodyRole style
   | Map.member "body" (stFonts style) = "body"
   | otherwise = maybe "body" fst (Map.lookupMin (stFonts style))
 
+{- | G0807 (golem-driver ADR 0016): style.toml sets no body font, or the
+body role has no file, at the top of @fid@.
+-}
+bodyFontDiagnostics :: FileId -> Style -> [Diagnostic]
+bodyFontDiagnostics fid style
+  | Map.null (stFonts style) = [err "style.toml に本文のフォントがありません。[fonts.body] を書いてください"]
+  | Just (FontRole Nothing Nothing _) <- Map.lookup body (stFonts style) = [err ("[fonts." <> body <> "] にフォントのファイルがありません")]
+  | otherwise = []
+  where
+    body = bodyRole style
+    err = diagnostic "G0807" Error (mkSpan fid 0 0)
+
 {- | The font roles the PDF uses, body first, then the others by name:
 headings (golem-driver ADR 0003), character styles (ADR 0004) and
-paragraph styles, built-in ones included (docs/adr ADR 0005).
+paragraph styles, built-in ones included (docs/adr ADR 0005), and the styles
+the files define (docs/adr ADR 0014).
 -}
-usedRoles :: Style -> [Text]
-usedRoles style =
+usedRoles :: Style -> [LocalStyles] -> [Text]
+usedRoles style locals =
   let body = bodyRole style
       named =
         [f | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings style)]
           <> [f | CharStyleDef {csFont = Just f} <- Map.elems (stCharStyles style)]
           <> [f | ParaStyleDef {psFont = Just f} <- Map.elems (stParaStyles style)]
+          <> [f | ls <- locals, CharStyleDef {csFont = Just f} <- Map.elems (lsCharStyles ls)]
+          <> [f | ls <- locals, ParaStyleDef {psFont = Just f} <- Map.elems (lsParaStyles ls)]
       others = Set.toAscList (Set.delete body (Set.fromList named))
    in body : others
 
@@ -173,6 +248,7 @@ restyle style lk = \case
             (Just _, Nothing) -> (True, True)
             (Nothing, _) -> (False, False)
           role = fromMaybe (lkFace lk) (csFont cs)
+          size = maybe (lkSize lk) (dimToSp (lkSize lk)) (csSize cs)
           side covered setting old = case setting of
             Just True -> not covered
             Just False -> False
@@ -185,14 +261,55 @@ restyle style lk = \case
        in lk
             { lkFace = if hasJa then role else lkFace lk,
               lkLatinFace = if hasLatin then role else lkLatinFace lk,
-              lkSize = maybe (lkSize lk) (dimToSp (lkSize lk)) (csSize cs),
+              lkSize = size,
               lkSynthetic = synth hasJa (lkSynthetic lk),
               lkLatinSynthetic = synth hasLatin (lkLatinSynthetic lk),
-              lkColor = csColor cs <|> lkColor lk
+              lkColor = csColor cs <|> lkColor lk,
+              -- kerning, tracking, proportional metrics and baseline shift (docs/adr/0020)
+              lkKerning = maybe (lkKerning lk) lookKerning (csKerning cs),
+              lkTracking = fromMaybe (lkTracking lk) (csTracking cs),
+              lkProportional = fromMaybe (lkProportional lk) (csProportional cs),
+              lkBaselineShift = maybe (lkBaselineShift lk) (dimToSp size) (csBaselineShift cs)
             }
     Nothing -> lk
   Color _ sw _ -> lk {lkColor = Just sw}
   _ -> lk
+
+-- | The kerning method of style.toml in a look; optical is rejected before layout (docs/adr/0020).
+lookKerning :: Kerning -> L.Kerning
+lookKerning = \case
+  KernJapaneseEqualWidth -> L.KernJapaneseEqualWidth
+  KernNone -> L.KernNone
+  _ -> L.KernMetrics
+
+{- | A look with the kerning, tracking, proportional metrics and baseline
+shift of a resolved paragraph style (docs/adr/0020); zw is the size of the look.
+-}
+withFeatures :: Maybe ParaStyleDef -> Look -> Look
+withFeatures d lk =
+  lk
+    { lkKerning = maybe (lkKerning lk) lookKerning (d >>= psKerning),
+      lkTracking = fromMaybe (lkTracking lk) (d >>= psTracking),
+      lkProportional = fromMaybe (lkProportional lk) (d >>= psProportional),
+      lkBaselineShift = maybe (lkBaselineShift lk) (dimToSp (lkSize lk)) (d >>= psBaselineShift)
+    }
+
+{- | How a character of a look is shaped (docs/adr/0020): in its role, in
+vertical text when it is Japanese in a vertical paragraph (Latin is turned
+and shaped horizontally), with the features of the kerning method and the
+proportional metrics after the role's. Japanese punctuation that JLReq
+spaces keeps its full width: palt and vpal are not added to it.
+-}
+shapingOf :: Bool -> Look -> Char -> Shaping
+shapingOf vertical lk c
+  | charClass c == Western = Shaping (lkLatinFace lk) False ["-kern" | lkKerning lk == L.KernNone]
+  | otherwise = Shaping (lkFace lk) vertical extra
+  where
+    proportional = [if vertical then "vpal" else "palt" | lkProportional lk, punctSpace (charClass c) == (0, 0)]
+    extra = case lkKerning lk of
+      L.KernJapaneseEqualWidth -> ["-kern", "-vkrn", "-palt", "-vpal"]
+      L.KernNone -> ["-kern", "-vkrn"] <> proportional
+      L.KernMetrics -> proportional
 
 -- | The rules at the top and bottom of a table: 0.6pt (golem-driver ADR 0008).
 thickRule :: Sp
@@ -302,7 +419,11 @@ data PdfLayout = PdfLayout
     -- | the width of each table
     plTables :: !(Map Int Sp),
     -- | the leader and page number of each table of contents entry, by its last line (golem-driver ADR 0009)
-    plTocPages :: !(Map Int TocPage)
+    plTocPages :: !(Map Int TocPage),
+    -- | the file of the unit of each first line (golem-driver ADR 0014)
+    plLineFiles :: !(Map Int FileId),
+    -- | the span of each heading block by its first line
+    plHeadingSpans :: !(Map Int SrcSpan)
   }
 
 data Built = Built
@@ -318,14 +439,46 @@ data Built = Built
     -- | the span of each heading block by its first line (golem-driver ADR 0009)
     bHeadingSpans :: Map Int SrcSpan,
     -- | the heading and the end of the title of each table of contents entry, by its last line
-    bTocLines :: Map Int (SrcSpan, Sp)
+    bTocLines :: Map Int (SrcSpan, Sp),
+    -- | the file of each unit by the id of its first line (golem-driver ADR 0014)
+    bLineFiles :: Map Int FileId
   }
 
+{- | What style.toml alone decides before the layout (golem-driver ADR
+0016): the page geometry (G0701) and the indent of each paragraph style
+(G0725), at the top of @fid@. The driver reports them for golem check too.
+-}
+styleLayoutDiagnostics :: FileId -> Style -> [LocalStyles] -> [Diagnostic]
+styleLayoutDiagnostics fid style locals = either id (indentDiagnostics fid style locals) (pageGeometry fid style)
+
+{- | G0725: every paragraph style leaves 8 characters of its own size on a
+line of a column (docs/adr ADR 0006, golem-driver ADR 0005 and 0016), in
+style.toml and in the style of each file (docs/adr ADR 0014).
+-}
+indentDiagnostics :: FileId -> Style -> [LocalStyles] -> PageGeometry -> [Diagnostic]
+indentDiagnostics fid style locals geom =
+  nub
+    [ diagnostic "G0725" Error (mkSpan fid 0 0) ("段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: " <> name)
+    | st <- style : map (withLocalStyles style) locals,
+      name <- Map.keys (stParaStyles st),
+      let (lk, Indent s f) = paraLook st geom (Just name),
+      let size = lkSize lk,
+      columnMeasure geom - s - max 0 f < 8 * size
+    ]
+
+-- | The page geometry, when style.toml passes 'styleLayoutDiagnostics'.
+checkedGeometry :: PdfInput -> Either [Diagnostic] PageGeometry
+checkedGeometry inp = do
+  geom <- pageGeometry (piStyleFile inp) (piStyle inp)
+  case indentDiagnostics (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp)) geom of
+    [] -> Right geom
+    ds -> Left ds
+
 renderPdf :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ByteString)
-renderPdf provider inp = case pageGeometry (piStyle inp) of
+renderPdf provider inp = case checkedGeometry inp of
   Left ds -> pure (Left ds)
   Right geom -> do
-    lf <- loadFonts provider (piRoot inp) (piStyle inp)
+    lf <- loadFonts provider (piRoot inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> do
@@ -339,10 +492,10 @@ renderPdf provider inp = case pageGeometry (piStyle inp) of
 with no page numbers assumed (for tests).
 -}
 flowLines :: FontProvider -> PdfInput -> IO (Either [Diagnostic] ([Flow], [(Sp, Sp)]))
-flowLines provider inp = case pageGeometry (piStyle inp) of
+flowLines provider inp = case checkedGeometry inp of
   Left ds -> pure (Left ds)
   Right geom -> do
-    lf <- loadFonts provider (piRoot inp) (piStyle inp)
+    lf <- loadFonts provider (piRoot inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> do
@@ -352,26 +505,33 @@ flowLines provider inp = case pageGeometry (piStyle inp) of
 
 -- | Composition, line breaking and pagination, with page references resolved (S2).
 layoutPdf :: PdfInput -> PageGeometry -> LoadedFonts -> IO (Either [Diagnostic] PdfLayout)
-layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) of
+layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) <> listNumberDiagnostics (piStyle inp) (pgVertical geom) (piBook inp) of
   ds@(_ : _) -> pure (Left ds)
   [] -> do
     figures <- loadFigures inp
     -- S2: compose with assumed page numbers until they settle
     let terms = Map.fromList [(sp, T.intercalate " / " (igTerms g)) | g <- bookIndex (piBook inp), (_, sp) <- igLocations g]
-    result <- fixpoint geom (\sp -> Map.findWithDefault "" sp terms) (buildFlow inp geom fonts figures)
+    let capacity = length (pgLineGrid geom)
+        round' assumed = do
+          built <- buildFlow inp geom fonts figures assumed
+          pure (if null (bErrors built) then Right (built, paginate (length (pgColumns geom)) capacity (bFlow built)) else Left (bErrors built))
+        labels = labelSpans (piBook inp)
+        labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
+    result <- fixpoint labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
     pure $ case result of
       Left ds -> Left ds
       Right (built, pages) ->
         -- sidenotes are placed once, on the settled pages (golem-driver ADR 0006)
-        let (_, size, pitch) = sidenoteMetrics (piStyle inp) geom
-            placed = [(poNumber p, placePageSidenotes geom pitch size (bLines built) p) | p <- pages]
+        -- in the size of the document of each sidenote (docs/adr ADR 0014)
+        let metricsOf sp = let (_, size, pitch) = sidenoteMetrics (docStyle inp (spanFile sp)) geom in (pitch, size)
+            placed = [(poNumber p, placePageSidenotes geom metricsOf (bLines built) p) | p <- pages]
             -- the pages of the table of contents, once, on the settled pages (golem-driver ADR 0009)
             hPages = headingPages (bHeadingSpans built) pages
             tg = tocGeometry (piStyle inp) geom fonts
-            env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyRole (piStyle inp)) (pgFontSize geom)
+            env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyLook (piStyle inp) (pgFontSize geom))
             tocPages = Map.fromList [(lid, tocPage tg e (pageNumberLine env n)) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
          in case concat [ds | (_, Left ds) <- placed] of
-              [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages)
+              [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built))
               ds -> Left ds
 
 {- | The page of each heading (golem-driver ADR 0009): the page where the
@@ -380,6 +540,88 @@ first line of its block is placed, keyed by the span of the block.
 headingPages :: Map Int SrcSpan -> [PageOut] -> Map SrcSpan Integer
 headingPages spans ps =
   Map.fromList [(hs, toInteger (poNumber p)) | p <- ps, (_, SHeading lid _) <- poSlots p, Just hs <- [Map.lookup lid spans]]
+
+{- | The headings that start on each page (golem-driver ADR 0014), in the
+order they are placed, looked up by the first line of their block.
+-}
+headingsOnPages :: (Int -> Maybe HeadingInfo) -> [PageOut] -> Map Int [HeadingInfo]
+headingsOnPages infoOf ps =
+  -- the columns of a page in their order (docs/adr ADR 0018)
+  Map.fromListWith (flip (<>)) [(poNumber p, [h | (_, SHeading lid _) <- poSlots p, Just h <- [infoOf lid]]) | p <- ps]
+
+{- | The headings in effect after a heading: it is the one of its level,
+and the levels below it have none.
+-}
+activeAfter :: Map Int (Maybe HeadingInfo) -> HeadingInfo -> Map Int (Maybe HeadingInfo)
+activeAfter m h = Map.insert (hiLevel h) (Just h) (Map.mapWithKey (\l v -> if l > hiLevel h then Nothing else v) m)
+
+{- | The text of a running head (golem-driver ADR 0014) from the title of
+the book, the content, the headings in effect at the start of the page
+by level, and the headings that start on the page.
+-}
+runningHeadText :: Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> Maybe Text
+runningHeadText title content start started = case content of
+  RunningNone -> Nothing
+  RunningTitle -> if T.null title then Nothing else Just title
+  RunningHeading l form pick ->
+    let here = [h | h <- started, hiLevel h == l]
+        atEnd = foldl' activeAfter start started
+        chosen = case pick of
+          PickFirst -> listToMaybe here <|> join (Map.lookup l start)
+          PickLast -> listToMaybe (reverse here) <|> join (Map.lookup l atEnd)
+        short h = T.concat (map inlineText (hiTitle h))
+        render h = case form of
+          HeadShort -> short h
+          HeadNumbered -> maybe (short h) (\n -> n <> "\x3000" <> short h) (hiNumberText h)
+     in render <$> chosen
+
+-- | The columns of each page, in order (docs/adr ADR 0018).
+pagesOf :: [PageOut] -> [[PageOut]]
+pagesOf = groupBy (\a b -> poNumber a == poNumber b)
+
+{- | The file of each page, in order (golem-driver ADR 0014): the file of
+the unit of its first line; a page without lines has the file of the page
+before it, and the first chapter's file when it is the first page.
+-}
+pageFiles :: PdfInput -> PdfLayout -> [FileId]
+pageFiles inp layout = drop 1 (scanl next firstFile (pagesOf (plPages layout)))
+  where
+    firstFile = maybe (FileId 0) fst (listToMaybe (projectChapters (piProject inp)))
+    -- through the columns of the page in order (docs/adr ADR 0018)
+    firstLine ps = listToMaybe [lid | p <- ps, (_, s) <- poSlots p, lid <- case s of SLine l -> [l]; SHeading l _ -> [l]; _ -> []]
+    next prev p = fromMaybe prev (firstLine p >>= \lid -> snd <$> Map.lookupLE lid (plLineFiles layout))
+
+{- | The master page of each page, in order: the one its file names in the
+manifest, otherwise @body@, otherwise the first by name.
+-}
+pageMasters :: PdfInput -> PageGeometry -> PdfLayout -> [Maybe MasterGeometry]
+pageMasters inp geom layout = map masterOf (pageFiles inp layout)
+  where
+    ms = pgMasters geom
+    masterOf fid =
+      (Map.lookup fid (piMasters inp) >>= (`Map.lookup` ms))
+        <|> Map.lookup "body" ms
+        <|> fmap snd (Map.lookupMin ms)
+
+{- | The running head drawn on each page, by page number (golem-driver ADR
+0014). None on blank pages, on pages where a recto heading starts, and
+on pages whose master page has no running head.
+-}
+runningHeads :: PdfInput -> PageGeometry -> PdfLayout -> Map Int (Maybe Text)
+runningHeads inp geom layout =
+  let pages = [p | (p : _) <- pagesOf (plPages layout)]
+      infoOf lid = Map.lookup lid (plHeadingSpans layout) >>= (`Map.lookup` bookHeadings (piBook inp))
+      started = headingsOnPages infoOf (plPages layout)
+      startedOn p = Map.findWithDefault [] (poNumber p) started
+      starts = scanl (foldl' activeAfter) Map.empty (map startedOn pages)
+      title = mdTitle (manifestMetadata (projectManifest (piProject inp)))
+      recto h = maybe False hsRectoBreak (Map.lookup (hiLevel h) (stHeadings (piStyle inp)))
+      one p st m
+        | poBlank p || any recto (startedOn p) = Nothing
+        | otherwise = do
+            (co, ce, _, _) <- m >>= mgRunningHead
+            runningHeadText title (if odd (poNumber p) then co else ce) st (startedOn p)
+   in Map.fromList [(poNumber p, one p st m) | (p, st, m) <- zip3 pages starts (pageMasters inp geom layout)]
 
 -- | How the last line of a table of contents entry ends (golem-driver ADR 0009).
 data TocGeometry = TocGeometry
@@ -451,7 +693,7 @@ tocMetrics env =
 tocGeometry :: Style -> PageGeometry -> LoadedFonts -> TocGeometry
 tocGeometry style geom fonts =
   let fs = pgFontSize geom
-      env = composeEnv style geom fonts (Assumed Map.empty Map.empty) (bodyRole style) fs
+      env = composeEnv style geom fonts (Assumed Map.empty Map.empty) (bodyLook style fs)
       (w, u) = tocMetrics env
    in TocGeometry (columnMeasure geom) w (fs `div` 2) u (stTocLeader style == "dots") (ceLook env)
 
@@ -459,10 +701,10 @@ tocGeometry style geom fonts =
 (golem-driver ADR 0007): the boxes of a line joined.
 -}
 layoutPages :: FontProvider -> PdfInput -> IO (Either [Diagnostic] [[Text]])
-layoutPages provider inp = case pageGeometry (piStyle inp) of
+layoutPages provider inp = case checkedGeometry inp of
   Left ds -> pure (Left ds)
   Right geom -> do
-    lf <- loadFonts provider (piRoot inp) (piStyle inp)
+    lf <- loadFonts provider (piRoot inp) (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp))
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> fmap texts <$> layoutPdf inp geom fonts
@@ -554,12 +796,38 @@ sidenoteDiagnostics geom book
       CharStyle _ _ xs -> concatMap (inlineSites flow) xs
       _ -> []
 
+-- | The block of each label, where G0721 points (golem-driver ADR 0016).
+labelSpans :: Book -> Map Text SrcSpan
+labelSpans book = Map.fromListWith (\_ old -> old) (concatMap site (concat [bs | Document _ bs <- bookDocs book]))
+  where
+    site (Block sp l body) =
+      [(name, sp) | Just name <- [l]] <> case body of
+        BulletList items -> concatMap (concatMap site . itemBlocks) items
+        OrderedList items -> concatMap (concatMap site . itemBlocks) items
+        DefList gs -> concatMap (concatMap (concatMap site) . dgDefs) gs
+        FigureBlock fig -> concatMap site (figCaption fig)
+        _ -> []
+
+{- | Numbers of list items that the number format of their depth cannot
+write (golem-driver ADR 0013): G0729 at the item, whatever the target.
+-}
+listNumberDiagnostics :: Style -> Bool -> Book -> [Diagnostic]
+listNumberDiagnostics style vertical book =
+  [ diagnostic "G0729" Error (lsiSpan s) ("リストの番号 " <> T.pack (show (lsiNumber s)) <> " は、書式 " <> renderNumberFormat f <> " で表せません")
+  | s <- listSites (concat [bs | Document _ bs <- bookDocs book]),
+    let f = atDepth formats (lsiDepth s),
+    null (formatListNumber (nfStyle f) (lsiNumber s))
+  ]
+  where
+    formats = fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))
+
 {- | Places the sidenotes of a page in its sidenote column (golem-driver
 ADR 0006): each wants the top of the line of its marker; they keep their
-order, half a body pitch apart. Takes the sidenote pitch and size.
+order, half a body pitch apart. Takes the sidenote pitch and size of a
+sidenote by its span (docs/adr ADR 0014).
 -}
-placePageSidenotes :: PageGeometry -> Sp -> Sp -> Map Int SetLine -> PageOut -> Either [Diagnostic] [PlacedSidenote]
-placePageSidenotes geom pitch size lineMap p =
+placePageSidenotes :: PageGeometry -> (SrcSpan -> (Sp, Sp)) -> Map Int SetLine -> PageOut -> Either [Diagnostic] [PlacedSidenote]
+placePageSidenotes geom metricsOf lineMap p =
   let bodyPitch = pgLinePitch geom
       lineIds = \case
         SLine lid -> [lid]
@@ -572,14 +840,14 @@ placePageSidenotes geom pitch size lineMap p =
           Just sl <- [Map.lookup lid lineMap],
           (sp, ls) <- slSidenotes sl
         ]
-      height ls = toInteger (max 1 (length ls) - 1) * pitch + size
+      height sp ls = let (pitch, size) = metricsOf sp in toInteger (max 1 (length ls) - 1) * pitch + size
       columnH = maybe 0 rectH (sidenoteAreaFor geom (poNumber p))
       at i = case drop i notes of
         ((sp, _, _) : _) -> sp
         [] -> mkSpan (FileId 0) 0 0
    in if null notes
         then Right []
-        else case placeSidenotes columnH (bodyPitch `div` 2) [(want, height ls) | (_, want, ls) <- notes] of
+        else case placeSidenotes columnH (bodyPitch `div` 2) [(want, height sp ls) | (sp, want, ls) <- notes] of
           Right tops -> Right [PlacedSidenote sp t ls | ((sp, _, ls), t) <- zip notes tops]
           Left (TooTall i) -> Left [diagnostic "G0733" Error (at i) "傍注が傍注欄より高く、収まりません"]
           Left (DoesNotFit i) -> Left [diagnostic "G0733" Error (at i) "このページの傍注が傍注欄に収まりません"]
@@ -591,44 +859,57 @@ data Assumed = Assumed
   }
   deriving stock (Eq, Show)
 
-fixpoint :: PageGeometry -> (SrcSpan -> Text) -> (Assumed -> IO Built) -> IO (Either [Diagnostic] (Built, [PageOut]))
-fixpoint geom termOf layoutWith = go (1 :: Int) (Assumed Map.empty Map.empty)
+{- | S2: lays out with assumed page numbers until the pages of the labels
+and index marks settle. A round that fails stops it with its errors;
+after 'maxIterations' rounds, G0721 names what still moves and is at the
+first of them (golem-driver ADR 0016): the block of a label (@labelSpan@)
+or an index mark.
+-}
+fixpoint :: (Text -> SrcSpan) -> (SrcSpan -> Text) -> (Assumed -> IO (Either [Diagnostic] (b, [PageOut]))) -> IO (Either [Diagnostic] (b, [PageOut]))
+fixpoint labelSpan termOf layoutWith = go (1 :: Int) (Assumed Map.empty Map.empty)
   where
-    capacity = length (pgLineGrid geom)
     go i assumed = do
-      built <- layoutWith assumed
-      let pages = paginate capacity (bFlow built)
-          actual = Assumed (labelPages pages) (markPages pages)
-      if not (null (bErrors built))
-        then pure (Left (bErrors built))
-        else
-          if actual == assumed
-            then pure (Right (built, pages))
-            else
-              if i >= maxIterations
-                then pure (Left [diagnostic "G0721" Error (mkSpan (FileId 0) 0 0) ("ページ番号の参照が収束しません: " <> T.intercalate ", " (moved actual asLabels id <> nub (moved actual asMarks termOf)))])
-                else go (i + 1) actual
+      r <- layoutWith assumed
+      case r of
+        Left ds -> pure (Left ds)
+        Right (built, pages) ->
+          let actual = Assumed (labelPages pages) (markPages pages)
+           in if actual == assumed
+                then pure (Right (built, pages))
+                else
+                  if i >= maxIterations
+                    then pure (Left [notSettled (moved actual asLabels) (moved actual asMarks)])
+                    else go (i + 1) actual
       where
-        moved :: (Ord k) => Assumed -> (Assumed -> Map k Integer) -> (k -> Text) -> [Text]
-        moved now field name = [name k | k <- Map.keys (Map.union (field now) (field assumed)), Map.lookup k (field now) /= Map.lookup k (field assumed)]
+        moved :: (Ord k) => Assumed -> (Assumed -> Map k Integer) -> [k]
+        moved now field = [k | k <- Map.keys (Map.union (field now) (field assumed)), Map.lookup k (field now) /= Map.lookup k (field assumed)]
+    notSettled labels marks =
+      let named = [(labelSpan l, l) | l <- labels] <> nubOn snd [(m, termOf m) | m <- marks]
+          sites = map fst named
+       in (diagnostic "G0721" Error (fromMaybe (mkSpan (FileId 0) 0 0) (listToMaybe sites)) ("ページ番号の参照が収束しません: " <> T.intercalate ", " (map snd named)))
+            { diagRelated = [(sp, "ページが定まりません") | sp <- drop 1 sites]
+            }
+    nubOn key = reverse . fst . foldl (\(acc, seen) x -> if key x `elem` seen then (acc, seen) else (x : acc, key x : seen)) ([], [])
 
 {- | The composition environment of a unit set in a font role at a size
 (golem-driver ADR 0003).
 -}
-composeEnv :: Style -> PageGeometry -> LoadedFonts -> Assumed -> Text -> Sp -> ComposeEnv
-composeEnv style geom fonts assumed role fs =
+composeEnv :: Style -> PageGeometry -> LoadedFonts -> Assumed -> Look -> ComposeEnv
+composeEnv style geom fonts assumed look =
   let comp = stComposition style
-   in (defaultComposeEnv fs)
-        { ceAdvance = \look c -> lfAdvance fonts (if charClass c == Western then lkLatinFace look else lkFace look) c,
-          ceWordAdvance = lfWordAdvance fonts . lkLatinFace,
-          ceLook = plainLook role fs,
+      shaping = shapingOf (pgVertical geom)
+   in (defaultComposeEnv (lkSize look))
+        { ceAdvance = \lk c -> lfAdvance fonts (shaping lk c) c,
+          ceWordAdvance = \lk t -> lfWordAdvance fonts (maybe (Shaping (lkLatinFace lk) False []) (shaping lk . fst) (T.uncons t)) t,
+          ceKern = \lk a b -> lfPairKern fonts (shaping lk a) a b,
+          ceLook = look,
           ceRestyle = restyle style,
           ceVertical = pgVertical geom,
           ceKinsokuStrict = compKinsokuStrict comp,
           ceHanging = compHanging comp,
           ceProtrusion = compProtrusion comp,
           ceExplicitHyphenPenalty = compExplicitHyphenPenalty comp,
-          ceRuby = rubyStyleOf style fs,
+          ceRuby = rubyStyleOf style (lkSize look),
           ceVerticalNumbers = case stNumbersVertical style of
             "kanji-digits" -> Just StyleKanjiDigits
             "tcy" -> Just StyleTcy
@@ -639,8 +920,16 @@ composeEnv style geom fonts assumed role fs =
             Just "none" -> MarkerNone
             _ -> MarkerNumber,
           -- Latin words: US English patterns (golem-layout ADR 0001)
-          cePatterns = Just englishUS
+          cePatterns = Just englishUS,
+          -- the set of body; a paragraph, a caption and a sidenote take their style's (docs/adr ADR 0019)
+          ceAkiSet = akiSetOf style Nothing
         }
+
+{- | The aki set of a paragraph style (docs/adr ADR 0019): its aki-set,
+inherited through based-on; Nothing is body.
+-}
+akiSetOf :: Style -> Maybe Text -> AkiSet
+akiSetOf style st = resolveAkiSet (stAkiSets style) (fromMaybe defaultAkiSetName (paraStyle style st >>= psAkiSet))
 
 {- | The placement of ruby from [composition.ruby] (golem-layout ADR
 0009); @zw@ is the size of the paragraph.
@@ -666,7 +955,7 @@ kpParams style geom =
           pProtrusion = compProtrusion comp || compHanging comp
         }
 
--- | A paragraph unit to break: the inlines and a prefix (list markers).
+-- | A paragraph unit to break: the inlines, and the lists around it.
 data Unit = Unit
   { uKind :: UnitKind,
     uLabel :: Maybe Text,
@@ -674,7 +963,15 @@ data Unit = Unit
     -- | the block the unit comes from, for diagnostics
     uSpan :: SrcSpan,
     -- | the role and the size the unit is set in (docs/adr ADR 0005)
-    uFace :: (Text, Sp)
+    uLook :: Look,
+    -- | the style of its document (docs/adr ADR 0014)
+    uStyle :: Style,
+    -- | the numbers of the lists around the unit, outermost first; lists are numbered from 0 in document order (golem-driver ADR 0013)
+    uLists :: [Int],
+    -- | the marker of the first paragraph of a list item
+    uMarker :: Maybe [Inline],
+    -- | the paragraph style of a paragraph, whose aki set it is set with; Nothing is body (docs/adr ADR 0019)
+    uParaStyle :: Maybe Text
   }
 
 -- | The indent of the lines of a paragraph in sp (docs/adr ADR 0006). inFirst may be negative; inStart + inFirst >= 0.
@@ -687,59 +984,126 @@ noIndent = Indent 0 0
 data UnitKind
   = UPara !Indent
   | UHeading Int Text Bool
-  | UTerm
+  | -- | a term of a definition list; indented in a list item (golem-driver ADR 0013)
+    UTerm !Indent
   | UFigure Figure
   | UTable [Alignment] [[Inline]] [[[Inline]]]
   | -- | grid lines between paragraphs of a style (docs/adr ADR 0005)
     UGap Int
   | -- | an entry of the table of contents: its level and its heading (golem-driver ADR 0009)
     UTocEntry Int SrcSpan
+  | -- | a forced break (docs/adr ADR 0017)
+    UBreak !BreakKind
 
--- | The role, the size and the indent of a paragraph style (docs/adr ADR 0005, 0006).
-paraLook :: Style -> PageGeometry -> Maybe Text -> ((Text, Sp), Indent)
+{- | The look and the indent of a paragraph style (docs/adr ADR 0005, 0006):
+its role, its size, and its kerning, tracking, proportional metrics and
+baseline shift (docs/adr/0020).
+-}
+paraLook :: Style -> PageGeometry -> Maybe Text -> (Look, Indent)
 paraLook style geom st =
   let d = paraStyle style st
-      face@(_, size) = faceFor style geom (d >>= psFont) (d >>= psSize)
+      (role, size) = faceFor style geom (d >>= psFont) (d >>= psSize)
       sp' f = dimToSp size (fromMaybe (Zw 0) (d >>= f))
-   in (face, Indent (sp' psIndent) (sp' psFirstLineIndent))
+   in (withFeatures d (plainLook role size), Indent (sp' psIndent) (sp' psFirstLineIndent))
 
-unitsOf :: Book -> PageGeometry -> Style -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
-unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
+-- | The look of the body role at a size, with the keys of the paragraph style body (docs/adr/0020).
+bodyLook :: Style -> Sp -> Look
+bodyLook style = styleLook style Nothing (bodyRole style)
+
+-- | A role at a size with the keys of a paragraph style (docs/adr/0020).
+styleLook :: Style -> Maybe Text -> Text -> Sp -> Look
+styleLook style st role size = withFeatures (paraStyle style st) (plainLook role size)
+
+{- | The marker of an item of a list at a depth (golem-driver ADR 0013): the
+bullet of the depth, or the number in the format of the depth. @{n}@ is a
+'Number'; in vertical writing an Arabic number of up to two digits is
+tate-chu-yoko and other Latin is rotated as Latin text is.
+-}
+listMarker :: Style -> Bool -> Int -> Maybe Integer -> [Inline]
+listMarker style vertical depth = \case
+  Nothing -> [Text sp0 (atDepth (lsBullets (stLists style)) depth)]
+  Just n ->
+    let NumberFormat pre st suf = atDepth (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) depth
+        written = fromMaybe (T.pack (show n)) (formatListNumber st n)
+        number = case st of
+          NsBook -> Number sp0 n Nothing
+          NsArabic | vertical, n >= 0, T.length written <= 2 -> Tcy sp0 written
+          _ -> Text sp0 written
+     in [Text sp0 pre | not (T.null pre)] <> [number] <> [Text sp0 suf | not (T.null suf)]
+  where
+    sp0 = mkSpan (FileId 0) 0 0
+
+{- | The units of the book. Each document is set in its own style: style.toml
+with the styles its file defines (docs/adr ADR 0014). Lists are numbered
+in document order; the units inside a list know the lists around them
+(golem-driver ADR 0013).
+-}
+unitsOf :: Book -> PageGeometry -> (FileId -> Style) -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
+unitsOf book geom styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs book)))
   where
     sp0 = mkSpan (FileId 0) 0 0
     txt = Text sp0
     fs = pgFontSize geom
-    bodyFace = (bodyRole style, fs)
-    doc (Document _ bs) = blocks False bs
-    {- a list of blocks: paragraphs of the same style in a row are apart by
-    its space-between (docs/adr ADR 0005); in a list item, paragraphs are
-    not indented (docs/adr ADR 0006) -}
-    blocks inList bs = concat [gapBefore prev b <> block inList b | (prev, b) <- zip (Nothing : map Just bs) bs]
-    gapBefore (Just (Block _ _ (Paragraph s1 _))) (Block sp _ (Paragraph s2 _))
-      | s1 == s2, Just n <- paraStyle style s2 >>= psSpaceBetween, n > 0 = [Unit (UGap n) Nothing [] sp bodyFace]
-    gapBefore _ _ = []
-    block inList (Block sp lbl body) = case body of
-      -- a unit for each part between line breaks, each indented as a paragraph (docs/adr ADR 0005, 0006)
-      Paragraph st is ->
-        let (face, ind) = paraLook style geom st
-         in [Unit (UPara (if inList then noIndent else ind)) (if i == 0 then lbl else Nothing) part sp face | (i, part) <- zip [0 :: Int ..] (splitBreaks is)]
-      Heading l attrs is ->
-        let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
-            title = maybe [] (\n -> [txt (n <> "　")]) (if haNoNumber attrs then Nothing else num) <> is
-            recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
-         in [Unit (UHeading l (T.concat (map inlineText is)) recto) lbl title sp (headingFace style geom l)]
-      BulletList items -> concat [prefixFirst "・" (blocks True (itemBlocks it)) | it <- items]
-      OrderedList items -> concat [prefixFirst (T.pack (show n) <> ". ") (blocks True (itemBlocks it)) | (n, it) <- zip [1 :: Integer ..] items]
-      DefList gs -> concat [[Unit UTerm Nothing t sp bodyFace | t <- dgTerms g] <> concatMap (blocks inList) (dgDefs g) | g <- gs]
-      Table aligns h rows -> [Unit (UTable aligns h rows) lbl [] sp bodyFace]
-      CodeBlock _ code -> [Unit (UPara noIndent) lbl [txt l] sp bodyFace | l <- T.lines code]
-      FigureBlock fig -> [Unit (UFigure fig) lbl [] sp bodyFace]
-      -- the index marks of a title are counted at the heading, not in the table of contents
-      ChannelOutput (TocOutput depth) -> [Unit (UTocEntry (teLevel e) (teSpan e)) Nothing (maybe [] (\n -> [txt (n <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) sp bodyFace | e <- bookToc book, teLevel e <= depth]
-      ChannelOutput IndexOutput -> [Unit (UPara noIndent) Nothing is sp bodyFace | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
-      ChannelOutput BibliographyOutput -> [Unit (UPara noIndent) Nothing is sp bodyFace | is <- bibliographyLines bib (bookCitations book)]
-    prefixFirst p (u@Unit {uKind = UPara _} : rest) = u {uInlines = txt p : uInlines u} : rest
-    prefixFirst _ us = us
+    doc n (Document fid bs) = blocks (styleOf fid) [] n bs
+    {- a list of blocks inside the lists @ctx@, from the list number @n@:
+    paragraphs of the same style in a row are apart by its space-between
+    (docs/adr ADR 0005); in a list item, paragraphs are not indented by
+    their style (docs/adr ADR 0006) but by the lists (golem-driver ADR 0013) -}
+    blocks style ctx n bs =
+      let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx prev b <>) <$> block style ctx k b) n (zip (Nothing : map Just bs) bs)
+       in (n', concat uss)
+    gapBefore style ctx (Just (Block _ _ (Paragraph s1 _))) (Block sp _ (Paragraph s2 _))
+      | s1 == s2, Just g <- paraStyle style s2 >>= psSpaceBetween, g > 0 = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing]
+    gapBefore _ _ _ _ = []
+    block style ctx n (Block sp lbl body) =
+      let unit kind l is face = Unit kind l is sp face style ctx Nothing Nothing
+          plainUnit kind l is = unit kind l is (bodyLook style fs)
+       in case body of
+            -- a style that keeps its lines: a unit for each line, each indented as a
+            -- paragraph (docs/adr ADR 0005, 0006); otherwise the line breaks are
+            -- hard breaks inside one unit, and only its first line has the
+            -- first-line indent (docs/adr ADR 0016)
+            Paragraph st is ->
+              let (face, ind) = paraLook style geom st
+                  keeps = (paraStyle style st >>= psLineBreaks) == Just KeepLines
+                  parts = if keeps then splitBreaks is else [is]
+               in (n, [(unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face) {uParaStyle = st} | (i, part) <- zip [0 :: Int ..] parts])
+            Heading l attrs is ->
+              let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
+                  title = maybe [] (\h -> [txt (h <> "　")]) (if haNoNumber attrs then Nothing else num) <> is
+                  recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
+               in (n, [unit (UHeading l (T.concat (map inlineText is)) recto) lbl title (uncurry (styleLook style Nothing) (headingFace style geom l))])
+            BulletList items -> list style ctx n (map (Nothing,) items)
+            OrderedList items -> list style ctx n (zip (map Just (itemNumbers items)) items)
+            DefList gs ->
+              let group k g = ([plainUnit (UTerm noIndent) Nothing t | t <- dgTerms g] <>) <$> blocksOf k (dgDefs g)
+                  blocksOf k ds = let (k', dss) = mapAccumL (blocks style ctx) k ds in (k', concat dss)
+                  (n', uss) = mapAccumL group n gs
+               in (n', concat uss)
+            Table aligns h rows -> (n, [plainUnit (UTable aligns h rows) lbl []])
+            CodeBlock _ code -> (n, [plainUnit (UPara noIndent) lbl [txt l] | l <- T.lines code])
+            FigureBlock fig -> (n, [plainUnit (UFigure fig) lbl []])
+            -- the index marks of a title are counted at the heading, not in the table of contents
+            ChannelOutput (TocOutput depth) -> (n, [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (maybe [] (\h -> [txt (h <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) | e <- bookToc book, teLevel e <= depth])
+            ChannelOutput IndexOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- indexLines (pgVertical geom) pageOf (bookIndex book)])
+            ChannelOutput BibliographyOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bookCitations book)])
+            ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
+    {- the items of the list numbered n: their units are inside it, the first
+    unit of an item that starts with a paragraph carries the marker -}
+    list style ctx n items =
+      let ctx' = ctx <> [n]
+          marker = listMarker style (pgVertical geom) (length ctx')
+          item k (num, it) =
+            let (k', us) = blocks style ctx' k (itemBlocks it)
+             in (k', if startsWithParagraph it then markFirst (marker num) us else us)
+          (n', uss) = mapAccumL item (n + 1) items
+       in (n', concat uss)
+    startsWithParagraph it = case itemBlocks it of
+      (Block _ _ (Paragraph {}) : _) -> True
+      _ -> False
+    markFirst m = \case
+      (u : rest) -> u {uMarker = Just m} : rest
+      [] -> []
     splitBreaks is = case break isBreak is of
       (l, []) -> [l]
       (l, _ : rest) -> l : splitBreaks rest
@@ -750,6 +1114,33 @@ unitsOf book geom style pageOf bib = concatMap doc (bookDocs book)
       IndexMark {} -> True
       _ -> False
 
+{- | The marker width M of each list, by its number (golem-driver ADR 0013):
+the widest marker w of the list and the gap G, rounded up to whole
+characters of the type area's size @fs@. G is @gap@ (zw of the
+paragraph's size), or 0 after punctuation with its own space and fs / 2
+otherwise. A list without a marker has no width.
+-}
+listWidths :: (Unit -> ComposeEnv) -> Sp -> Maybe Dim -> [Unit] -> Map Int Sp
+listWidths envOf fs gap units =
+  Map.fromListWith
+    max
+    [ (lid, roundUp (markerWidth (envOf u) m + g))
+    | u <- units,
+      Just m <- [uMarker u],
+      let g = case gap of
+            Just d -> dimToSp (lkSize (uLook u)) d
+            Nothing
+              | endsWithSpacedPunctuation (T.concat (map inlineText m)) -> 0
+              | otherwise -> fs `div` 2,
+      lid <- take 1 (reverse (uLists u))
+    ]
+  where
+    roundUp x = ((x + fs - 1) `div` fs) * fs
+
+-- | w: the width of the boxes of a marker.
+markerWidth :: ComposeEnv -> [Inline] -> Sp
+markerWidth env m = sum [w | Box w _ <- fst (composeInlines env m)]
+
 -- | A unit composed and broken into lines.
 data Composed = Composed
   { cLines :: [Line],
@@ -759,21 +1150,22 @@ data Composed = Composed
     -- | index marks: the item index they belong to (a note's marks go with the note) and the mark
     cMarks :: [(Int, SrcSpan)],
     cAnchors :: [Golem.Layout.Japanese.Anchor],
-    cItems :: [Item]
+    cItems :: [Item],
+    -- | the items of a list marker before the text: the item indices of the anchors are shifted by it (golem-driver ADR 0013)
+    cShift :: Int
   }
 
 buildFlow :: PdfInput -> PageGeometry -> LoadedFonts -> Map Text (Maybe P.ImageData) -> Assumed -> IO Built
 buildFlow inp geom fonts images assumed = do
   let style = piStyle inp
-      body = bodyRole style
       fs = pgFontSize geom
       pitch = pgLinePitch geom
       capacity = length (pgLineGrid geom)
       vertical = pgVertical geom
       cites = Map.fromList (bookCitations (piBook inp))
       -- citations show their numbers (golem-driver ADR 0007)
-      envFor role size = (composeEnv style geom fonts assumed role size) {ceCiteNumber = (`Map.lookup` cites)}
-      bodyEnv = envFor body fs
+      envFor lk = (composeEnv style geom fonts assumed lk) {ceCiteNumber = (`Map.lookup` cites)}
+      bodyEnv = envFor (bodyLook style fs)
       params = kpParams style geom
       measure = columnMeasure geom
       -- the reserve for the page number of a table of contents entry: W and two em (golem-driver ADR 0009)
@@ -781,36 +1173,67 @@ buildFlow inp geom fonts images assumed = do
       tocIndent l = toInteger (l - 1) * fs
       -- a mark without an assumed page yet stands at page 1 in the first round
       markPage sp = Map.lookup sp (asMarks assumed) <|> (if Map.null (asMarks assumed) then Just 1 else Nothing)
-      units = zip [0 :: Int ..] (unitsOf (piBook inp) geom style markPage (piBibliography inp))
+      rawUnits = unitsOf (piBook inp) geom (docStyle inp) markPage (piBibliography inp)
+      -- the character styles of the unit's document (docs/adr ADR 0014)
+      styledEnv st e = e {ceRestyle = restyle st}
+      -- the marker width M of each list, and the indents of the units in lists (golem-driver ADR 0013)
+      widths = listWidths (\u -> (styledEnv (uStyle u) (envFor (uLook u))) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u)}) fs (lsGap (stLists style)) rawUnits
+      widthOfList lid = Map.findWithDefault 0 lid widths
+      -- O: the widths of the lists around a unit; Mi: the width of the innermost one
+      outerOf u = sum (map widthOfList (uLists u))
+      innerOf u = case reverse (uLists u) of
+        (lid : _) -> widthOfList lid
+        [] -> 0
+      withListIndent u
+        | null (uLists u) = u
+        | otherwise = case uKind u of
+            UPara _ -> u {uKind = UPara (Indent (outerOf u) (if isJust (uMarker u) then negate (innerOf u) else 0))}
+            UTerm _ -> u {uKind = UTerm (Indent (outerOf u) 0)}
+            _ -> u
+      units = zip [0 :: Int ..] (map withListIndent rawUnits)
       unitAt = Map.fromList units
       -- L*(i): the first line is shortened by the indent and the first-line indent, the others by the indent (docs/adr ADR 0006);
       -- a table of contents entry also by the reserve for its page number (golem-driver ADR 0009)
       widthOf kind k = measure - lineIndent kind k - (case kind of UTocEntry {} -> tocReserve; _ -> 0)
       lineIndent = \case
         UPara (Indent s f) -> \k -> if k == (0 :: Int) then s + f else s
+        UTerm (Indent s _) -> const s
         UTocEntry l _ -> const (tocIndent l)
         _ -> const 0
       -- the role and size a unit is set in (docs/adr ADR 0005)
-      faceOf = uFace
+      faceOf u = (lkFace (uLook u), lkSize (uLook u))
+      {- the marker of a list item: its boxes and an empty box up to Mi, before
+      the text with no glue or penalty between them (golem-driver ADR 0013) -}
+      markerItems env u = case uMarker u of
+        Nothing -> []
+        Just m ->
+          let boxes = [b | b@Box {} <- fst (composeInlines env m)]
+              w = sum (map itemWidth boxes)
+           in boxes <> [Box (innerOf u - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0)]
       compose lineWidth u =
-        let (role, size) = faceOf u
-            env = envFor role size
-            (items, anchors) = composeInlines env (uInlines u)
+        let env = (styledEnv (uStyle u) (envFor (uLook u))) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u)}
+            bodyEnv' = (styledEnv (uStyle u) (envFor (bodyLook (uStyle u) fs))) {ceAkiSet = akiSetOf (uStyle u) Nothing}
+            marker = markerItems env u
+            -- the anchors count the items of the text; the marker comes first
+            shift = length marker
+            (textItems, anchors) = composeInlines env (uInlines u)
+            items = marker <> textItems
             lines' = brLines (breakParagraph params lineWidth items)
-            notes = [(n, brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv nbody)))) | AnchorNote _ n nbody <- anchors]
-            sidenotes = [(i, sp, sidenoteLines n snBody) | AnchorSidenote i n sp snBody <- anchors]
+            notes = [(n, brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv' nbody)))) | AnchorNote _ n nbody <- anchors]
+            sidenotes = [(i + shift, sp, sidenoteLines (uStyle u) n snBody) | AnchorSidenote i n sp snBody <- anchors]
             marks =
-              [(i, sp) | AnchorIndex i sp _ <- anchors]
-                <> [(i, sp) | AnchorNote i _ nbody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv nbody)]
-                <> [(i, sp) | AnchorSidenote i _ _ snBody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv snBody)]
-         in Composed lines' notes sidenotes marks anchors items
+              [(i + shift, sp) | AnchorIndex i sp _ <- anchors]
+                <> [(i + shift, sp) | AnchorNote i _ nbody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv' nbody)]
+                <> [(i + shift, sp) | AnchorSidenote i _ _ snBody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv' snBody)]
+         in Composed lines' notes sidenotes marks anchors items shift
       -- sidenote bodies: their size, the column width, the marker first (golem-driver ADR 0006)
-      (snRole, snSize', _) = sidenoteMetrics style geom
-      snEnv = envFor snRole snSize'
-      snParams = params {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition style))}
+      -- in the role and size of the paragraph style sidenote of the document (docs/adr ADR 0014)
       snMeasure = maybe 0 (rectW . fst) (pgSidenotes geom)
-      sidenoteLines n snBody =
-        let prefix = case ceSidenoteMarker bodyEnv of
+      sidenoteLines st n snBody =
+        let (snRole, snSize', _) = sidenoteMetrics st geom
+            snEnv = (styledEnv st (envFor (styleLook st (Just "sidenote") snRole snSize'))) {ceAkiSet = akiSetOf st (Just "sidenote")}
+            snParams = params {pEmergencyStretch = dimToSp snSize' (compEmergencyStretch (stComposition style))}
+            prefix = case ceSidenoteMarker bodyEnv of
               MarkerNumber -> [Text (mkSpan (FileId 0) 0 0) (T.pack (show n) <> " ")]
               MarkerSymbol -> [Text (mkSpan (FileId 0) 0 0) "※ "]
               MarkerNone -> []
@@ -833,9 +1256,9 @@ buildFlow inp geom fonts images assumed = do
             number = Map.lookup (uSpan u) (bookFigures (piBook inp))
             captionInlines = maybe [] (\num -> [Text (uSpan u) (num <> "　")]) number <> concat [is | Block _ _ (Paragraph _ is) <- figCaption fig]
             -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
-            (captionRole, cs) = paraFace style geom "caption"
+            (captionRole, cs) = paraFace (uStyle u) geom "caption"
             captionParams = params {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
-            (captionItems, captionAnchors) = composeInlines (envFor captionRole cs) captionInlines
+            (captionItems, captionAnchors) = composeInlines ((styledEnv (uStyle u) (envFor (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption")}) captionInlines
             caption = if null captionInlines then [] else brLines (breakParagraph captionParams (const alongSp) captionItems)
             captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
             n = length caption
@@ -846,6 +1269,9 @@ buildFlow inp geom fonts images assumed = do
             gap = dimToSp fs (stWrapGap style)
             ex = (\side -> exclusion side pitch gap alongSp depth) <$> figWrap fig
             errs = case (figWrap fig, ex) of
+              -- no wrapping on a page of columns (docs/adr ADR 0018)
+              (Just _, _)
+                | length (pgColumns geom) > 1 -> [diagnostic "G0726" Error (uSpan u) "段組みの版面では図版を回り込ませられません。wrap を外すか、columns を 1 にしてください"]
               (Just _, Just e)
                 | isLeft along || measure - exWidth e < 8 * fs ->
                     [diagnostic "G0722" Error (uSpan u) ("回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
@@ -866,8 +1292,10 @@ buildFlow inp geom fonts images assumed = do
   besides <- Map.fromList . concat <$> mapper (uncurry wrapJob) jobs
   -- 2. every other unit on its own
   let rest = [(i, u) | (i, u) <- units, Map.notMember i besides, not (isFigure u), not (isTable u), not (isGap u)]
+      -- gaps and breaks are not composed
       isGap u = case uKind u of
         UGap _ -> True
+        UBreak _ -> True
         _ -> False
       isFigure u = case uKind u of
         UFigure _ -> True
@@ -876,30 +1304,31 @@ buildFlow inp geom fonts images assumed = do
         UTable {} -> True
         _ -> False
       -- the notes, sidenotes and index marks of composed inlines, by the line that holds them
-      attached items anchors ls =
+      attached st items anchors ls =
         let lineOf = lineIndexOfItems items ls
-            noteBody b = brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv b)))
-            marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines bodyEnv b)]
+            env = styledEnv st bodyEnv
+            noteBody b = brLines (breakParagraph params (const measure) (fst (composeInlines env b)))
+            marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines env b)]
          in ( Map.fromListWith (flip (<>)) [(lineOf i, [(n, noteBody b)]) | AnchorNote i n b <- anchors],
-              Map.fromListWith (flip (<>)) [(lineOf i, [(sp, sidenoteLines n b)]) | AnchorSidenote i n sp b <- anchors],
+              Map.fromListWith (flip (<>)) [(lineOf i, [(sp, sidenoteLines st n b)]) | AnchorSidenote i n sp b <- anchors],
               Map.fromListWith (flip (<>)) ([(lineOf i, [sp]) | AnchorIndex i sp _ <- anchors] <> [(lineOf i, sps) | AnchorNote i _ b <- anchors, let { sps = marksIn b }, not (null sps)] <> [(lineOf i, sps) | AnchorSidenote i _ _ b <- anchors, let sps = marksIn b, not (null sps)])
             )
       -- a table: every cell at the body size, no hanging punctuation (golem-driver ADR 0008)
-      composeTable aligns h rows =
-        let env = bodyEnv {ceHanging = False}
+      composeTable st aligns h rows =
+        let env = (styledEnv st bodyEnv) {ceHanging = False}
             cellOf = composeInlines env
             hCells = map cellOf h
             rCells = map (map cellOf) rows
             rowAttached cells setCells height =
-              let perCell = [attached items anchors (scLines sc) | ((items, anchors), sc) <- zip cells setCells]
+              let perCell = [attached st items anchors (scLines sc) | ((items, anchors), sc) <- zip cells setCells]
                in [(concat [Map.findWithDefault [] k ns | (ns, _, _) <- perCell], concat [Map.findWithDefault [] k sn | (_, sn, _) <- perCell], concat [Map.findWithDefault [] k ms | (_, _, ms) <- perCell]) | k <- [0 .. height - 1]]
          in case layoutTable params measure fs aligns (map fst hCells) (map (map fst) rCells) of
               Left e -> Left e
               Right t -> Right (t, rowAttached hCells (stHeader t) (stHeaderLines t) : zipWith3 rowAttached rCells (stRows t) (stRowLines t))
-      tableUnits = [(i, aligns, h, rows) | (i, Unit {uKind = UTable aligns h rows}) <- units]
+      tableUnits = [(i, uStyle u, aligns, h, rows) | (i, u@Unit {uKind = UTable aligns h rows}) <- units]
   _ <- mapper (\(_, (pf, _, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (\(_, u) -> force (compose (widthOf (uKind u)) u)) rest
-  tables <- Map.fromList <$> mapper (\(i, aligns, h, rows) -> let r = composeTable aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) tableUnits
+  tables <- Map.fromList <$> mapper (\(i, st, aligns, h, rows) -> let r = composeTable st aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) tableUnits
   -- 3. number the lines in document order
   let label u = maybe [] pure (uLabel u)
       -- the lines of a paragraph-like unit from an id; indent of line k
@@ -909,7 +1338,7 @@ buildFlow inp geom fonts images assumed = do
             (_, size) = faceOf u
             -- notes belong to the line containing their anchor
             lineOfItem = lineIndexOfItems (cItems c) ls
-            noteLines = Map.fromListWith (<>) [(lineOfItem i, [(n, nls)]) | (AnchorNote i n _, (_, nls)) <- zip [a | a@AnchorNote {} <- cAnchors c] (cNotes c)]
+            noteLines = Map.fromListWith (<>) [(lineOfItem (i + cShift c), [(n, nls)]) | (AnchorNote i n _, (_, nls)) <- zip [a | a@AnchorNote {} <- cAnchors c] (cNotes c)]
             sidenoteLinesOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [(sp, sls)]) | (i, sp, sls) <- cSidenotes c]
             marksOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [sp]) | (i, sp) <- cMarks c]
             boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) | (k, lid) <- zip [0 ..] ids]
@@ -977,7 +1406,9 @@ buildFlow inp geom fonts images assumed = do
                             let (bs, set) = numbered nid (unitAt Map.! j) c (\k -> indentOf off k + lineIndent (uKind (unitAt Map.! j)) k)
                              in (nid + length (cLines c), boxAcc <> bs, Map.union setAcc set)
                           tooNarrow =
-                            [ diagnostic "G0725" Error (uSpan (unitAt Map.! j)) "段落の字下げが大きすぎます。回り込む図版の脇の行が残りません"
+                            [ if null (uLists (unitAt Map.! j))
+                                then diagnostic "G0728" Error (uSpan (unitAt Map.! j)) "回り込む図版の脇で、字下げを引くと行が残りません"
+                                else listTooDeep (uSpan (unitAt Map.! j))
                             | (j, c, off) <- paras,
                               any (\k -> wrappedLineWidth measure ex off k - lineIndent (uKind (unitAt Map.! j)) k <= 0) [0 .. length (cLines c) - 1]
                             ]
@@ -992,6 +1423,7 @@ buildFlow inp geom fonts images assumed = do
                           )
                 _ -> (nextId + 1, flows <> [FFigure nextId (pfImageLines pf + pfCaptionSpan pf) (label u) fmarks], lineAcc, Map.insert nextId pf figAcc, headAcc, errs <> ferrs)
             UGap n -> (nextId, flows <> [FSpace n], lineAcc, figAcc, headAcc, errs)
+            UBreak k -> (nextId, flows <> [FBreak k], lineAcc, figAcc, headAcc, errs)
             _ ->
               let c = singles Map.! i
                   ls = cLines c
@@ -999,8 +1431,8 @@ buildFlow inp geom fonts images assumed = do
                   (_, size) = faceOf u
                   hb = headingBlock fs pitch size (length ls)
                   flowOf = case uKind u of
-                    UHeading l short recto -> [FHeading l short recto (hbSpan hb) boxes]
-                    UTerm -> [FDefTerm boxes]
+                    UHeading l _ recto -> [FHeading l recto (hbSpan hb) boxes]
+                    UTerm _ -> [FDefTerm boxes]
                     _ -> [FParagraph boxes]
                   (headAcc', errs') = case uKind u of
                     UHeading l short _ ->
@@ -1009,15 +1441,25 @@ buildFlow inp geom fonts images assumed = do
                       )
                     _ -> (headAcc, errs)
                in (nextId + length ls, flows <> flowOf, Map.union lineAcc set, figAcc, headAcc', errs')
-      -- every paragraph style leaves 8 characters of its size (docs/adr ADR 0006, golem-driver ADR 0005)
-      indentErrors =
-        [ diagnostic "G0725" Error (mkSpan (FileId 0) 0 0) ("段落の字下げが大きすぎます。行長を本文の文字の大きさの 8 字分以上残してください: " <> name)
-        | name <- Map.keys (stParaStyles style),
-          let ((_, size), Indent s f) = paraLook style geom (Just name),
-          measure - s - max 0 f < 8 * size
-        ]
-      (_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths), (headingSpans, tocLines)) = foldl step (0, [], Map.empty, Map.empty, Map.empty, indentErrors, (Map.empty, Map.empty), (Map.empty, Map.empty)) units
-  pure (Built flow lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines)
+      -- the text of a list item leaves 8 characters of the type area (golem-driver ADR 0013)
+      listTooDeep sp = diagnostic "G0727" Error sp "リストの入れ子が深く、項目の本文の行長が足りません。行長を本文の文字の大きさの 8 字分以上残してください"
+      deepLists =
+        nub
+          [ listTooDeep (uSpan u)
+          | (_, u) <- units,
+            not (null (uLists u)),
+            case uKind u of
+              UPara _ -> True
+              UTerm _ -> True
+              _ -> False,
+            measure - outerOf u < 8 * fs
+          ]
+      -- the file of each unit that has an id, by its first id (golem-driver ADR 0014)
+      stepFiles (acc@(n0, _, _, _, _, _, _, _), files) iu@(_, u) =
+        let acc'@(n1, _, _, _, _, _, _, _) = step acc iu
+         in (acc', if n1 > n0 then Map.insert n0 (spanFile (uSpan u)) files else files)
+      ((_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths), (headingSpans, tocLines)), lineFiles) = foldl stepFiles ((0, [], Map.empty, Map.empty, Map.empty, deepLists, (Map.empty, Map.empty), (Map.empty, Map.empty)), Map.empty) units
+  pure (Built flow lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines lineFiles)
 
 -- | Which line (0-based) contains the item at an index.
 lineIndexOfItems :: [Item] -> [Line] -> Int -> Int
@@ -1085,9 +1527,9 @@ writeDocument inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
       vertical = pgVertical geom
-      master = case Map.elems (pgMasters geom) of
-        (m : _) -> Just m
-        [] -> Nothing
+      -- the master page and the running head of each page (golem-driver ADR 0014)
+      masters = pageMasters inp geom layout
+      heads = runningHeads inp geom layout
       grid = pgLineGrid geom
       gridAt sl = case drop sl grid of
         (g : _) -> g
@@ -1108,27 +1550,52 @@ writeDocument inp geom fonts layout intent =
       -- the synthetic bold and slant of a run
       syntheticOf look latin = if latin then lkLatinSynthetic look else lkSynthetic look
       -- glyph marks of a text in a look starting at a point, and the glyphs used
-      runAt look v rotated scale (x0, y0) txt =
+      runAt look v rotated scale (bx, by) txt =
         let size = lkSize look
+            -- the baseline shift: up in horizontal text, right in vertical text (docs/adr/0020)
+            shift = lkBaselineShift look
+            (x0, y0) = if v then (bx + shift, by) else (bx, by + shift)
+            -- shaped with the features of the look; rotated Latin is shaped horizontally
+            vv = v && not rotated
+            shapingFor role r = (shapingOf vv look (maybe ' ' fst (T.uncons r))) {shRole = role, shVertical = vv}
+            {- the tracking after the last glyph of each cluster, for each of its
+            characters, as the boxes count it (docs/adr/0020) -}
+            tr = toInteger (lkTracking look) * size
+            trackingAfter r shaped =
+              let starts = map shCluster shaped
+                  nexts = drop 1 starts <> [T.length r]
+                  cluster c = minimum (T.length r : filter (> c) starts) - c
+               in [if n /= c then round (toInteger (cluster c) * tr % 1000) else 0 | (c, n) <- zip starts nexts]
             -- the stroke of synthetic bold of a side: Latin or Japanese (golem-driver ADR 0012)
             strokeOf latin s
               | synBold s = syntheticStroke (if latin then syntheticStrokeLatin else syntheticStrokeJa) size
               | otherwise = 0
-            gs = concat [[(ix, g, a, t, (synSlant s, strokeOf latin s)) | (ix, g, a, t) <- lfShape fonts role (v && not rotated) r] | (role, r, latin) <- runsOf look txt, let s = syntheticOf look latin]
-            advs = scanl (+) 0 [toSp size a | (_, _, a, _, _) <- gs]
-            placed = [(ix, g, t, sb, off) | ((ix, g, _, t, sb), off) <- zip gs advs]
-            byFont = Map.fromListWith (flip (<>)) [((ix, sb), [(g, t, off)]) | (ix, g, t, sb, off) <- placed]
+            gs =
+              concat
+                [ [(ix, g, a, t, (synSlant s, strokeOf latin s), tu, extra) | (Shaped ix g a t tu _, extra) <- zip shaped (trackingAfter r shaped)]
+                | (role, r, latin) <- runsOf look txt,
+                  let s = syntheticOf look latin
+                      shaped = lfShape fonts (shapingFor role r) r
+                ]
+            advs = scanl (+) 0 [toSp size a + extra | (_, _, a, _, _, _, extra) <- gs]
+            -- a glyph turned in vertical text: drawn with the horizontal font (golem-driver ADR 0015)
+            placed = [(ix, g, t, sb, tu && v && not rotated, off) | ((ix, g, _, t, sb, tu, _), off) <- zip gs advs]
+            byFont = Map.fromListWith (flip (<>)) [((ix, sb, tu), [(g, t, off)]) | (ix, g, t, sb, tu, off) <- placed]
             at off = if v then (x0, y0 - off) else (x0 + off, y0)
-            mark (ix, (sl, stroke)) xs
+            -- the baseline of a turned glyph: left of the centre line by the centre of its em box
+            turnedAt ix off = (x0 - toSp size (lfEmBoxCentral fonts ix), y0 - off)
+            mark (ix, (sl, stroke), turned) xs
               | sl || stroke > 0 =
-                  let rs = P.RunStyle (if v then 1000 else 1000 + scale) (v && rotated) (if sl then syntheticSlant else 0) stroke
-                   in P.StyledGlyphRun rs (ref ix (v && not rotated)) size [(code ix g, gx, gy) | (g, _, off) <- xs, let (gx, gy) = at off]
+                  let rs = P.RunStyle (if v then 1000 else 1000 + scale) (v && (rotated || turned)) (if sl then syntheticSlant else 0) stroke
+                      pos off = if turned then turnedAt ix off else at off
+                   in P.StyledGlyphRun rs (ref ix (v && not rotated && not turned)) size [(code ix g, gx, gy) | (g, _, off) <- xs, let (gx, gy) = pos off]
+              | turned = P.RotatedGlyphRun (ref ix False) size [(code ix g, gx, gy) | (g, _, off) <- xs, let (gx, gy) = turnedAt ix off]
               | v && rotated = P.RotatedGlyphRun (ref ix False) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
               | v = P.GlyphRun (ref ix True) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
               | scale /= 0 = P.ScaledGlyphRun (ref ix False) size (1000 + scale) [(code ix g, x0 + off, y0) | (g, _, off) <- xs]
               | otherwise = P.GlyphRun (ref ix False) size [(code ix g, x0 + off, y0) | (g, _, off) <- xs]
             code = lfCode fonts
-         in ([mark k xs | (k, xs) <- Map.toList byFont], [(ref ix (v && not rotated), g, t) | (ix, g, t, _, _) <- placed])
+         in ([mark k xs | (k, xs) <- Map.toList byFont], [(ref ix (v && not rotated && not tu), g, t) | (ix, g, t, _, tu, _) <- placed])
       -- the swatch of a look, when it names one (golem-driver ADR 0004)
       swatchOf look = do
         name <- lkColor look
@@ -1170,7 +1637,7 @@ writeDocument inp geom fonts layout intent =
                             let (base, reading) = T.breakOn "|" (bcText c)
                                 rt = T.drop 1 reading
                                 rsize = lkSize half
-                                advOf lk ch = toSp (lkSize lk) (lfAdvance fonts (if isLatin ch then lkLatinFace lk else lkFace lk) ch)
+                                advOf lk ch = toSp (lkSize lk) (lfAdvance fonts (shapingOf vertical lk ch) ch)
                                 baseAdv = map (advOf look) (T.unpack base)
                                 readAdv = map (advOf half) (T.unpack rt)
                                 excess = max 0 (sum readAdv - w)
@@ -1213,15 +1680,19 @@ writeDocument inp geom fonts layout intent =
               _ -> concatMap (fst . snd) grp
          in (concatMap marksOf coloured, concatMap (snd . snd) parts)
       textAt anchor size txt =
-        let w = sum [toSp size a | (_, _, a, _) <- lfShape fonts body False txt]
+        let w = sum [toSp size (shAdvance g) | g <- lfShape fonts (Shaping body False []) txt]
             x0 = case anAlign anchor of
               LS.AlignStart -> anX anchor
               LS.AlignCenter -> anX anchor - w `div` 2
               LS.AlignEnd -> anX anchor - w
          in runAt (plainLook body size) False False 0 (x0, anY anchor) txt
-      drawPage p =
+      {- one column of a page, against the rectangle of the column (docs/adr
+      ADR 0018): its text, its images and its rules -}
+      drawColumn p =
         let n = poNumber p
-            ta = typeAreaFor geom n
+            ta = case drop (poColumn p) (columnsFor geom n) of
+              (c : _) -> c
+              [] -> typeAreaFor geom n
             lineParts =
               [drawLine ta (gridAt slot) sl | (slot, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines layout)]]
                 -- the leader and page number of a table of contents entry (golem-driver ADR 0009)
@@ -1245,18 +1716,25 @@ writeDocument inp geom fonts layout intent =
             noteLines = concat [take cnt (drop from (concat [ls | sl <- Map.elems (plLines layout), (nid', ls) <- slNotes sl, nid' == nid])) | (nid, from, cnt) <- poFootnotes p]
             bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
             noteParts = [drawLine ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] []) | (slot, l) <- zip bottomSlots noteLines]
-            masterParts = if poBlank p then [] else masterMarks n (poRunningHead p)
-            -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
-            (_, snSize', snPitch) = sidenoteMetrics style geom
-            sidenoteParts =
-              [ drawLineAt (rectX area, rectY area + rectH area - (psTop ps + toInteger j * snPitch + round (toRational snSize' * baselineRatio))) (SetLine l snSize' 0 [] [])
-              | Just area <- [sidenoteAreaFor geom n],
-                ps <- Map.findWithDefault [] n (plSidenotes layout),
-                (j, l) <- zip [0 :: Int ..] (psLines ps)
-              ]
-            allParts = lineParts <> noteParts <> sidenoteParts <> masterParts
             ruleMarks = concat [tableRules ta seg w | seg <- poTables p, Just w <- [Map.lookup (tsTable seg) (plTables layout)]]
-         in (concatMap fst allParts <> figMarks <> ruleMarks, concatMap snd allParts)
+         in (lineParts <> noteParts, figMarks, ruleMarks)
+      -- the columns of a page, its sidenotes and, once, its running head and folio
+      drawPage ps master = case ps of
+        [] -> ([], [])
+        (p : _) ->
+          let n = poNumber p
+              columns = map drawColumn ps
+              masterParts = if poBlank p then [] else masterMarks n master (join (Map.lookup n heads))
+              -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
+              sidenoteParts =
+                [ drawLineAt (rectX area, rectY area + rectH area - (psTop ps' + toInteger j * snPitch + round (toRational snSize' * baselineRatio))) (SetLine l snSize' 0 [] [])
+                | Just area <- [sidenoteAreaFor geom n],
+                  ps' <- Map.findWithDefault [] n (plSidenotes layout),
+                  let (_, snSize', snPitch) = sidenoteMetrics (docStyle inp (spanFile (psSpan ps'))) geom,
+                  (j, l) <- zip [0 :: Int ..] (psLines ps')
+                ]
+              allParts = concat [t | (t, _, _) <- columns] <> sidenoteParts <> masterParts
+           in (concatMap fst allParts <> concat [f | (_, f, _) <- columns] <> concat [r | (_, _, r) <- columns], concatMap snd allParts)
       -- the rules of a table on a page, centred in the space between grid lines (golem-driver ADR 0008)
       tableRules ta seg w =
         let p = pgLinePitch geom
@@ -1284,15 +1762,16 @@ writeDocument inp geom fonts layout intent =
       captionIndent ta pf
         | pfWrap pf == Just WrapEnd = (if vertical then rectH ta else rectW ta) - pfAlong pf
         | otherwise = 0
-      masterMarks n heading = case master of
+      masterMarks n master heading = case master of
         Nothing -> []
         Just m ->
-          let pick (_, a1, a2) = if odd n then a1 else a2
+          let pick a1 a2 = if odd n then a1 else a2
               size = pgFontSize geom
-              folio = [textAt (pick f) size (formatNumber fmt [toInteger n] Nothing) | f@(fmt, _, _) <- maybe [] pure (mgFolio m)]
-              runningHead = [textAt (pick r) size h | r <- maybe [] pure (mgRunningHead m), Just h <- [heading]]
+              folio = [textAt (pick a1 a2) size (formatNumber fmt [toInteger n] Nothing) | Just (fmt, a1, a2) <- [mgFolio m]]
+              runningHead = [textAt (pick a1 a2) size h | Just (_, _, a1, a2) <- [mgRunningHead m], Just h <- [heading]]
            in runningHead <> folio
-      drawn = map drawPage (plPages layout)
+      -- the columns of a page come together from 'paginate' (docs/adr ADR 0018)
+      drawn = zipWith drawPage (pagesOf (plPages layout)) masters
       -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
       bleed = maybe 0 pageBleed (stPage style)
       pdfPages = [P.framePage (piMarks inp) bleed (pw, ph) marks | (marks, _) <- drawn]

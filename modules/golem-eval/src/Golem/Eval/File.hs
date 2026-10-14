@@ -4,6 +4,7 @@ the layout (S2) are left as 'Ref' and 'Deferred' inlines.
 -}
 module Golem.Eval.File
   ( EvalContext (..),
+    Asset (..),
     PluginHook (..),
     noPlugins,
     Usage (..),
@@ -17,10 +18,10 @@ module Golem.Eval.File
   )
 where
 
-import Control.Monad (forM, unless, when)
+import Control.Monad (forM, unless)
 import Control.Monad.State.Strict
 import Data.Char (isAsciiLower, isDigit)
-import Data.List (nub)
+import Data.List (partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
@@ -30,10 +31,14 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Eval.Expr
+import Golem.Eval.RegexStyle (applyRegexStyles, regexRules)
+import Golem.Eval.Settings
 import Golem.Eval.Value
 import Golem.Parser.AST qualified as A
 import Golem.Parser.SourceSettings
-import Golem.Project.Style (LineBreaks (..))
+import Golem.Project.Imports (ImportSite (..), importSite)
+import Golem.Project.Paths (PathError (..), pathErrorMessage)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Style, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
 import Golem.Syntax
 
 -- | Plugin commands and filters, provided by golem-plugin.
@@ -61,11 +66,24 @@ data EvalContext = EvalContext
     ctxParaStyles :: !(Map Text LineBreaks),
     ctxDefaultKenten :: !Text,
     ctxCiteKeys :: !(Set Text),
-    ctxAssets :: !(Map FilePath (Maybe Text)), -- referenced files; Nothing = binary but present
+    -- | the files @figure, @table and @listing refer to; a path not in it is missing
+    ctxAssets :: !(Map FilePath Asset),
     ctxPlugins :: !PluginHook,
     -- | how the file is read (docs/adr ADR 0013)
-    ctxSource :: !SourceSettings
+    ctxSource :: !SourceSettings,
+    -- | style.toml as read, which the @style-def of a file is laid over (docs/adr ADR 0014)
+    ctxStyle :: !Style
   }
+
+-- | A file referenced by @figure, @table or @listing (golem-eval ADR 0003).
+data Asset
+  = -- | read as text, for a table or a listing
+    AssetText !Text
+  | -- | present, and not read
+    AssetPresent
+  | -- | a path that cannot be used: absolute, a URL, outside the root, or missing
+    AssetInvalid !PathError
+  deriving stock (Eq, Show)
 
 data Usage = Usage
   { usageDefined :: ![(Text, SrcSpan)],
@@ -81,7 +99,9 @@ data EvalResult = EvalResult
     erUsage :: !Usage,
     erDiagnostics :: ![Diagnostic],
     -- | the settings that applied to the file (docs/adr ADR 0013)
-    erSource :: !SourceSettings
+    erSource :: !SourceSettings,
+    -- | the styles the file defines (docs/adr ADR 0014)
+    erStyles :: !LocalStyles
   }
 
 data St = St
@@ -106,7 +126,7 @@ err code sp msg = report (diagnostic code Error sp msg)
 
 builtinInlineCommands :: [Text]
 builtinInlineCommands =
-  ["strong", "bold", "italic", "ruby", "kenten", "color", "style", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "index", "cite"]
+  ["strong", "bold", "italic", "ruby", "kenten", "color", "style", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "index", "cite", "aki"]
 
 -- | Built-in commands a plugin may override when the manifest says so.
 overridableCommands :: [Text]
@@ -122,20 +142,43 @@ reservedNames :: [Text]
 reservedNames = ["doc", "meta", "true", "false", "nil"]
 
 evalFile :: EvalContext -> A.File -> EvalResult
-evalFile ctx (A.File fid blocks0) =
-  let blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) blocks0)
-      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 []
-      (bs, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
+evalFile ctx0 (A.File fid blocks0) =
+  let -- the file settings (docs/adr ADR 0014): @manifest over the [source] of the context, and @style-def
+      (header, rest) = fileHeader blocks0
+      (source, settingDiags) = fileSettings sourceKeys (ctxSource ctx0) header
+      (local, styleDiags) = fileStyles (ctxStyle ctx0) header
+      ctx = (withFileStyles local ctx0) {ctxSource = source}
+      blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
+      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags)
+      (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
+      (bs, breakDiags) = nestedBreaks bs0
       doc0 = Document fid bs
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
         Left ds -> (doc0, ds)
         Right (d, ws) -> (d, ws <> unknownParaStyles ctx d)
+      -- the regex styles last, so that the text of filters is matched too (docs/adr ADR 0015)
+      rules = regexRules (withLocalStyles (ctxStyle ctx0) local)
    in EvalResult
-        { erDocument = doc,
+        { erDocument = applyRegexStyles rules doc,
           erExports = stVars st,
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
-          erDiagnostics = stDiags st <> filterDiags,
-          erSource = ctxSource ctx
+          erDiagnostics = stDiags st <> breakDiags <> filterDiags,
+          erSource = ctxSource ctx,
+          erStyles = local
+        }
+
+{- | The context with the styles of the file over those of style.toml
+(docs/adr ADR 0014): its character styles added, and whether each
+paragraph style keeps its lines resolved again, as an override may change
+the styles based on it.
+-}
+withFileStyles :: LocalStyles -> EvalContext -> EvalContext
+withFileStyles local ctx
+  | local == noLocalStyles = ctx
+  | otherwise =
+      ctx
+        { ctxCharStyles = Set.union (Map.keysSet (lsCharStyles local)) (ctxCharStyles ctx),
+          ctxParaStyles = Map.union (paraLineBreaks (withLocalStyles (ctxStyle ctx) local)) (ctxParaStyles ctx)
         }
 
 -- ------------------------------------------------------------------ newlines
@@ -145,11 +188,24 @@ whose span covers both (docs/adr ADR 0003). Inlines nested in commands
 are joined too.
 -}
 joinSoftBreaks :: [A.Located A.Inline] -> [A.Located A.Inline]
-joinSoftBreaks = mergeLocated . filter (not . isSoftBreak) . map nestedInline
+joinSoftBreaks = mergeLocated . dropSoft False . map nestedInline
+  where
+    -- 'A.HardBreak' stays (docs/adr ADR 0016), and so does a newline right
+    -- after it: the line after the hard break is empty, which the
+    -- evaluation reports
+    dropSoft afterHard = \case
+      [] -> []
+      (x : rest)
+        | isSoftBreak x && not afterHard -> dropSoft False rest
+        | otherwise -> x : dropSoft (isHardBreak x) rest
 
 isSoftBreak :: A.Located A.Inline -> Bool
 isSoftBreak (A.Located _ A.SoftBreak) = True
 isSoftBreak _ = False
+
+isHardBreak :: A.Located A.Inline -> Bool
+isHardBreak (A.Located _ A.HardBreak) = True
+isHardBreak _ = False
 
 mergeLocated :: [A.Located A.Inline] -> [A.Located A.Inline]
 mergeLocated (A.Located a (A.Text x) : A.Located b (A.Text y) : rest) =
@@ -271,7 +327,8 @@ block sp = Block sp Nothing
 
 evalBlock :: EvalContext -> A.Located A.Block -> M [Block]
 evalBlock ctx (A.Located sp b) = case b of
-  A.Paragraph is -> one . Paragraph Nothing <$> evalInlines ctx False is
+  -- items, definitions and captions break their lines by the same rule (docs/adr ADR 0016)
+  A.Paragraph is -> styledParagraph ctx sp Nothing is
   A.Heading l is -> one . Heading l noHeadingAttrs <$> evalInlines ctx True is
   A.BulletList items -> one . BulletList <$> mapM (fmap (ListItem Nothing) . evalBlocks ctx) items
   A.OrderedList items -> one . OrderedList <$> mapM (fmap (ListItem Nothing) . evalBlocks ctx) items
@@ -315,15 +372,17 @@ alignment = \case
 standalone :: EvalContext -> SrcSpan -> A.Located A.Name -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 standalone ctx sp (A.Located nsp name) args body = case name of
   "import" -> do
-    case map A.locValue args of
-      [A.Positional p, A.Positional (A.Word "as"), A.Positional (A.Word ns)] -> do
-        let path = argText p
+    -- the same check as the project's (golem-project ADR 0006); G0223 points at the namespace
+    case (importSite sp (map A.locValue args), args) of
+      (Right (ImportSite path ns _), [_, _, A.Located nssp _]) -> do
         if ns `elem` reservedNames
-          then err "G0223" sp ("予約語は名前空間に使えません: " <> ns)
+          then err "G0223" nssp ("予約語は名前空間に使えません: " <> ns)
           else do
             let vals = fromMaybe Map.empty (Map.lookup (T.unpack path) (ctxImports ctx))
             modify' (\s -> s {stNamespaces = Map.insert ns vals (stNamespaces s), stImports = stImports s <> [(ns, T.unpack path, sp)]})
-      _ -> err "G0309" sp "@import は「@import パス as 名前空間」の形で書きます"
+      (Left d, _) -> report d
+      -- importSite accepts three arguments only
+      (Right _, _) -> pure ()
     pure []
   "toc" -> do
     kw <- keywords ctx args
@@ -333,10 +392,14 @@ standalone ctx sp (A.Located nsp name) args body = case name of
       _ -> err "G0225" sp "@toc の depth は 1 から 3 の整数です" >> pure []
   "index" -> pure [block sp (ChannelOutput IndexOutput)]
   "bibliography" -> pure [block sp (ChannelOutput BibliographyOutput)]
+  "page-break" -> forcedBreak sp name args body
+  "column-break" -> forcedBreak sp name args body
   "figure" -> figure ctx sp args body
   "table" -> csvTable ctx sp args
   "listing" -> listing ctx sp args
   "style" -> styleBody ctx sp (maximum (spanEnd nsp : map (spanEnd . A.locSpan) args)) args body
+  -- the file settings are read before the blocks; elsewhere they are errors (docs/adr ADR 0014)
+  _ | name `elem` settingCommands -> misplacedSetting sp >> pure []
   _
     | name `elem` attributeCommands -> err "G0210" sp ("@" <> name <> " の後にブロックがありません") >> pure []
     | otherwise -> err "G0209" nsp ("未知のブロックコマンドです: @" <> name) >> pure []
@@ -346,7 +409,39 @@ it, a last block command that is not an attribute (a figure, @style with a
 body) is the target (docs/adr ADR 0005).
 -}
 attributed :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
-attributed ctx sp cmds target = case target of
+attributed ctx sp cmds0 target
+  -- a file setting inside an attribute group is out of place (docs/adr ADR 0014)
+  | any isSettingCommand cmds0 = do
+      mapM_ (misplacedSetting . A.locSpan) (filter isSettingCommand cmds0)
+      case (filter (not . isSettingCommand) cmds0, target) of
+        ([], Just t) -> evalBlock ctx t
+        ([], Nothing) -> pure []
+        (cmds, _) -> attributed ctx sp cmds target
+  | otherwise = attributedWith ctx sp cmds0 target
+
+-- | G0249: @manifest or @style-def after the file settings (docs/adr ADR 0014).
+misplacedSetting :: SrcSpan -> M ()
+misplacedSetting sp = err "G0249" sp "@manifest と @style-def はファイルの最初に置きます"
+
+attributedWith :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
+attributedWith ctx sp cmds target
+  -- the breaks of the group go before its target; the attributes skip them (docs/adr ADR 0017)
+  | (breaks@(_ : _), rest) <- partition isBreakCommand cmds = do
+      bs <- concat <$> mapM (evalBlock ctx) breaks
+      others <- case (rest, target) of
+        ([], Just t) -> evalBlock ctx t
+        ([], Nothing) -> pure []
+        _ -> attributedWith ctx sp rest target
+      pure (bs <> others)
+  | otherwise = attributedGroup ctx sp cmds target
+
+isBreakCommand :: A.Located A.Block -> Bool
+isBreakCommand = \case
+  A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["page-break", "column-break"]
+  _ -> False
+
+attributedGroup :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
+attributedGroup ctx sp cmds target = case target of
   Nothing
     | (not . any isAttr) cmds -> concat <$> mapM (evalBlock ctx) cmds
     | (lastCmd : before) <- reverse cmds,
@@ -357,10 +452,12 @@ attributed ctx sp cmds target = case target of
     | not (isAttr (last cmds)) && isBlockCommand (last cmds) ->
         err "G0211" sp "属性のまとまりに属性でないコマンドがあります" >> concat <$> mapM (evalBlock ctx) (filter (not . isAttr) cmds)
     | otherwise -> err "G0210" sp "属性の後にブロックがありません" >> concat <$> mapM (evalBlock ctx) (filter (not . isAttr) cmds)
+  -- the commands that are not attributes are evaluated as well, in order (golem-eval ADR 0003)
   Just t -> do
     let nonAttrs = filter (not . isAttr) cmds
     unless (null nonAttrs) $ err "G0211" sp "属性のまとまりに属性でないコマンドがあります"
-    withAttrs (filter isAttr cmds) t
+    before <- concat <$> mapM (evalBlock ctx) nonAttrs
+    (before <>) <$> withAttrs (filter isAttr cmds) t
   where
     isAttr c@(A.Located _ (A.BlockCommand (A.Located _ n) _ body)) = n `elem` attributeCommands && not (isStyleCommand c && not (null body))
     isAttr _ = False
@@ -369,8 +466,10 @@ attributed ctx sp cmds target = case target of
       _ -> False
     foldM' f z = foldl (\acc x -> acc >>= \a -> f a x) (pure z)
     withAttrs attrs t = do
-      let names = [n | A.Located _ (A.BlockCommand (A.Located _ n) _ _) <- attrs]
-      when (length names /= length (nub names)) $ err "G0212" sp "同じ属性を二度書いています"
+      -- every line of an attribute already given (golem-eval ADR 0003)
+      let named = [(n, asp) | A.Located asp (A.BlockCommand (A.Located _ n) _ _) <- attrs]
+          repeated = [asp | (i, (n, asp)) <- zip [0 :: Int ..] named, n `elem` map fst (take i named)]
+      mapM_ (\asp -> err "G0212" asp "同じ属性を二度書いています") repeated
       targetBlocks <- case (t, [c | c <- attrs, isStyleCommand c]) of
         (A.Located psp (A.Paragraph is), A.Located csp (A.BlockCommand _ args _) : _) -> styleName ctx csp args >>= \n -> styledParagraph ctx psp n is
         (A.Located tsp (A.Paragraph is), []) -> evalBlock ctx (A.Located tsp (A.Paragraph is))
@@ -385,12 +484,49 @@ attributed ctx sp cmds target = case target of
       A.Located tsp (A.Paragraph is) -> A.Located tsp (A.Paragraph (joinSoftBreaks is))
       other -> other
 
+-- | @page-break and @column-break (docs/adr ADR 0017).
+forcedBreak :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+forcedBreak sp name args body
+  | not (null body) = err "G0258" sp "@page-break と @column-break は本体を持てません" >> pure []
+  | otherwise = case (name, map A.locValue args) of
+      ("page-break", []) -> ok BreakPage
+      ("page-break", [A.Positional (A.Word "recto")]) -> ok BreakRecto
+      ("page-break", [A.Positional (A.Word "verso")]) -> ok BreakVerso
+      ("column-break", []) -> ok BreakColumn
+      ("column-break", _) -> err "G0258" sp "@column-break は引数を取りません" >> pure []
+      _ -> err "G0258" sp "@page-break の引数は recto か verso です" >> pure []
+  where
+    ok k = pure [block sp (ForcedBreak k)]
+
+{- | Forced breaks below the top of the document are dropped with G0259
+(docs/adr ADR 0017).
+-}
+nestedBreaks :: [Block] -> ([Block], [Diagnostic])
+nestedBreaks bs = let (ds, bs') = concat <$> traverse top bs in (bs', ds)
+  where
+    top b = case blockBody b of
+      ForcedBreak _ -> ([], [b])
+      _ -> inner b
+    -- the diagnostics and what is left of a block below the top
+    inner :: Block -> ([Diagnostic], [Block])
+    inner b@(Block sp lbl body) = case body of
+      ForcedBreak _ -> ([diagnostic "G0259" Error sp "@page-break と @column-break は文書の最上位にだけ置けます"], [])
+      BulletList items -> rebuild BulletList <$> traverse item items
+      OrderedList items -> rebuild OrderedList <$> traverse item items
+      DefList gs -> rebuild DefList <$> traverse (\(DefGroup ts ds) -> DefGroup ts <$> traverse nested ds) gs
+      FigureBlock f -> rebuild (\c -> FigureBlock f {figCaption = c}) <$> nested (figCaption f)
+      _ -> ([], [b])
+      where
+        rebuild f x = [Block sp lbl (f x)]
+    item (ListItem n bs') = ListItem n <$> nested bs'
+    nested bs' = concat <$> traverse inner bs'
+
 applyAttr :: EvalContext -> (Maybe Text, BlockBody) -> A.Located A.Block -> M (Maybe Text, BlockBody)
 applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
   A.BlockCommand (A.Located _ name) args _ -> case (name, body) of
     ("label", _) -> case map A.locValue args of
       [A.Positional (A.Word l)] | validLabel l -> pure (Just l, body)
-      _ -> err "G0226" sp "@label にはラベルの名前を一つ書きます" >> pure (label, body)
+      _ -> err "G0226" sp "@label にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます" >> pure (label, body)
     ("toc-title", Heading l a is) -> do
       t <- evalInlines ctx True [A.Located sp (A.Text (T.unwords (map (argText . positional) args)))]
       pure (label, Heading l a {haTocTitle = Just t} is)
@@ -457,7 +593,7 @@ styledParagraph :: EvalContext -> SrcSpan -> Maybe Text -> [A.Located A.Inline] 
 styledParagraph ctx sp mname is = case mname of
   Nothing -> joined Nothing
   Just name -> case Map.lookup name (ctxParaStyles ctx) of
-    Nothing -> err "G0247" sp ("style.toml にない段落スタイルです: " <> name) >> joined Nothing
+    Nothing -> err "G0247" sp ("定義されていない段落スタイルです: " <> name) >> joined Nothing
     Just JoinLines -> joined (styleOf name)
     Just KeepLines -> do
       ls <- filter (not . null . snd) <$> mapM (\(bsp, l) -> (bsp,) <$> evalInlines ctx False (trimLine l)) (linesOf Nothing is)
@@ -466,18 +602,49 @@ styledParagraph ctx sp mname is = case mname of
         ((_, first) : rest) -> [block sp (Paragraph (styleOf name) (first <> concat [LineBreak bsp : l | (bsp, l) <- rest]))]
   where
     styleOf n = if n == "body" then Nothing else Just n
-    joined st = (\x -> [block sp (Paragraph st x)]) <$> evalInlines ctx False (joinSoftBreaks is)
-    -- lines with the span of the newline before each (the first has none)
-    linesOf before xs = case break isSoftBreak xs of
+    joined st = (\x -> [block sp (Paragraph st x)]) <$> hardLines ctx sp is
+    -- lines with the span of the newline before each (the first has none);
+    -- a hard break is a newline here (docs/adr ADR 0016)
+    linesOf before xs = case break (\x -> isSoftBreak x || isHardBreak x) xs of
       (l, []) -> [(fromMaybe sp before, l)]
       (l, A.Located bsp _ : rest) -> (fromMaybe sp before, l) : linesOf (Just bsp) rest
+
+{- | The inlines of a paragraph that joins its lines, broken at its hard
+breaks (docs/adr ADR 0016): the lines joined by 'LineBreak'. A line left
+empty, or whose first source line has nothing in it, is G0257; an empty
+line goes with the break before it.
+-}
+hardLines :: EvalContext -> SrcSpan -> [A.Located A.Inline] -> M [Inline]
+hardLines ctx sp is = do
+  let ls = splitHard Nothing is
+  evaluated <- mapM (\(bsp, l) -> (bsp,l,) <$> evalInlines ctx False (joinSoftBreaks l)) ls
+  let breaks = [bsp | (Just bsp, _, _) <- evaluated]
+      -- where an empty line is reported: the break before it, or after it for the first line
+      at = \case
+        Just bsp -> bsp
+        Nothing -> case breaks of
+          (b : _) -> b
+          [] -> sp
+      emptyStart = \case
+        (A.Located _ A.SoftBreak : _) -> True
+        _ -> False
+      bad (_, l, x) = null x || emptyStart l
+  unless (null breaks) $
+    mapM_ (\(bsp, _, _) -> err "G0257" (at bsp) "強制改行の前後に文字がありません") (filter bad evaluated)
+  pure $ case [(bsp, x) | (bsp, _, x) <- evaluated, not (null x)] of
+    [] -> []
+    ((_, first) : rest) -> first <> concat [maybe [] (pure . LineBreak) bsp <> x | (bsp, x) <- rest]
+  where
+    splitHard before xs = case break isHardBreak xs of
+      (l, []) -> [(before, l)]
+      (l, A.Located bsp _ : rest) -> (before, l) : splitHard (Just bsp) rest
 
 -- | Paragraph styles a filter made up (docs/adr ADR 0005).
 unknownParaStyles :: EvalContext -> Document -> [Diagnostic]
 unknownParaStyles ctx (Document _ bs) = concatMap go bs
   where
     go (Block sp _ body) = case body of
-      Paragraph (Just n) _ | Map.notMember n (ctxParaStyles ctx) -> [diagnostic "G0247" Error sp ("style.toml にない段落スタイルです: " <> n)]
+      Paragraph (Just n) _ | Map.notMember n (ctxParaStyles ctx) -> [diagnostic "G0247" Error sp ("定義されていない段落スタイルです: " <> n)]
       BulletList items -> concatMap (concatMap go . itemBlocks) items
       OrderedList items -> concatMap (concatMap go . itemBlocks) items
       DefList gs -> concatMap (concatMap (concatMap go) . dgDefs) gs
@@ -535,9 +702,7 @@ figure ctx sp args body = do
                   | otherwise -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption))]
     _ -> err "G0232" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
-    check p
-      | Map.member (T.unpack p) (ctxAssets ctx) = pure True
-      | otherwise = err "G0233" sp ("ファイルがありません: " <> p) >> pure False
+    check p = isJust <$> asset ctx sp p
     -- a caption has no paragraph style of its own (docs/adr ADR 0005, golem-driver ADR 0010)
     noStyle csp = err "G0213" csp "@style は図版のキャプションには付けられません"
     unstyled = \case
@@ -559,15 +724,32 @@ csvTable ctx sp args = do
   kw <- keywords ctx args
   case argText <$> lookup "src" kw of
     Nothing -> err "G0234" sp "@table には src が必要です" >> pure []
-    Just src -> case Map.lookup (T.unpack src) (ctxAssets ctx) of
-      Just (Just content) -> case parseCsv content of
-        (h : rows)
-          | all ((== length h) . length) rows ->
-              let cell t = [Text sp t]
-               in pure [block sp (Table (map (const AlignDefault) h) (map cell h) (map (map cell) rows))]
-        [] -> err "G0235" sp "CSV が空です" >> pure []
-        _ -> err "G0235" sp "CSV の行ごとのセルの数が一致しません" >> pure []
-      _ -> err "G0233" sp ("ファイルがありません: " <> src) >> pure []
+    Just src ->
+      asset ctx sp src >>= \case
+        Just (AssetText content) -> case parseCsv content of
+          (h : rows)
+            | all ((== length h) . length) rows ->
+                let cell t = [Text sp t]
+                 in pure [block sp (Table (map (const AlignDefault) h) (map cell h) (map (map cell) rows))]
+          [] -> err "G0235" sp "CSV が空です" >> pure []
+          _ -> err "G0235" sp "CSV の行ごとのセルの数が一致しません" >> pure []
+        Just _ -> missing sp src >> pure []
+        Nothing -> pure []
+
+{- | The file a path refers to. A path that cannot be used is reported, and
+gives nothing.
+-}
+asset :: EvalContext -> SrcSpan -> Text -> M (Maybe Asset)
+asset ctx sp p = case Map.lookup (T.unpack p) (ctxAssets ctx) of
+  Nothing -> missing sp p >> pure Nothing
+  Just (AssetInvalid Missing) -> missing sp p >> pure Nothing
+  -- G0260: a path that cannot be used, worded as G0303 (golem-eval ADR 0003)
+  Just (AssetInvalid e) -> err "G0260" sp (T.pack (pathErrorMessage e) <> ": " <> p) >> pure Nothing
+  Just a -> pure (Just a)
+
+-- | G0233: a file that is not there.
+missing :: SrcSpan -> Text -> M ()
+missing sp p = err "G0233" sp ("ファイルがありません: " <> p)
 
 -- | RFC 4180: comma-separated, double-quoted fields with "" escapes.
 parseCsv :: Text -> [[Text]]
@@ -594,17 +776,19 @@ listing ctx sp args = do
         [] -> argText <$> lookup "src" kw
   case src of
     Nothing -> err "G0236" sp "@listing にはファイルのパスが必要です" >> pure []
-    Just p -> case Map.lookup (T.unpack p) (ctxAssets ctx) of
-      Just (Just content) -> do
-        let ls = T.lines content
-        case argText <$> lookup "lines" kw of
-          Nothing -> pure [block sp (CodeBlock Nothing (T.intercalate "\n" ls))]
-          Just r -> case map (fmap fst . decimalInt) (T.splitOn "-" r) of
-            [Just a, Just b]
-              | a >= 1 && b >= a && b <= length ls ->
-                  pure [block sp (CodeBlock Nothing (T.intercalate "\n" (take (b - a + 1) (drop (a - 1) ls))))]
-            _ -> err "G0237" sp ("lines の範囲が不正です: " <> r) >> pure []
-      _ -> err "G0233" sp ("ファイルがありません: " <> p) >> pure []
+    Just p ->
+      asset ctx sp p >>= \case
+        Just (AssetText content) -> do
+          let ls = T.lines content
+          case argText <$> lookup "lines" kw of
+            Nothing -> pure [block sp (CodeBlock Nothing (T.intercalate "\n" ls))]
+            Just r -> case map (fmap fst . decimalInt) (T.splitOn "-" r) of
+              [Just a, Just b]
+                | a >= 1 && b >= a && b <= length ls ->
+                    pure [block sp (CodeBlock Nothing (T.intercalate "\n" (take (b - a + 1) (drop (a - 1) ls))))]
+              _ -> err "G0237" sp ("lines の範囲が不正です: " <> r) >> pure []
+        Just _ -> missing sp p >> pure []
+        Nothing -> pure []
   where
     decimalInt x = if not (T.null x) && T.all isDigit x then Just (read (T.unpack x) :: Int, ()) else Nothing
 
@@ -654,6 +838,8 @@ evalInline :: EvalContext -> Bool -> A.Located A.Inline -> M [Inline]
 evalInline ctx inHeading (A.Located sp i) = case i of
   A.Text t -> pure [Text sp t]
   A.SoftBreak -> pure []
+  -- the hard breaks of a paragraph are split off before; this one is in a prose slot
+  A.HardBreak -> err "G0256" sp "強制改行は段落の中にだけ書けます。コマンドの中では使えません" >> pure []
   A.ErrorInline -> pure []
   A.ProofComment t
     | ctxProfile ctx == Prod -> report (diagnostic "G0205" Warning sp "校正用のコメントが残っています") >> pure []
@@ -687,16 +873,26 @@ evalInline ctx inHeading (A.Located sp i) = case i of
             Left ds -> mapM_ report ds >> pure []
             Right (out, ds) -> mapM_ report ds >> pure out
 
+{- | Commands that take no prose slot (golem-eval ADR 0003): a slot is G0238,
+reported before the arguments, and after G0214 for a reference in a heading.
+-}
+noSlotCommands :: [Text]
+noSlotCommands = ["number-text", "ref-number", "ref-title", "ref-page", "cite"]
+
 builtin :: EvalContext -> Bool -> SrcSpan -> Text -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
-builtin ctx inHeading sp name args slots = do
+builtin ctx inHeading sp name args slots
+  | name == "aki" = aki sp args slots
+  | inHeading && name `elem` ["ref-number", "ref-title", "ref-page"] = err "G0214" sp "見出しの中では相互参照を使えません" >> pure []
+  | name `elem` noSlotCommands && not (null slots) = err "G0238" sp (name <> " は散文スロットを取りません") >> pure []
+  | otherwise = builtinWith ctx inHeading sp name args slots
+
+builtinWith :: EvalContext -> Bool -> SrcSpan -> Text -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+builtinWith ctx inHeading sp name args slots = do
   kw <- keywords ctx args
   let pos = [v | A.Located _ (A.Positional v) <- args]
       oneSlot k = case slots of
         [s] -> evalInlines ctx inHeading s >>= k
         _ -> err "G0238" sp (name <> " には散文スロットが一つ必要です") >> pure []
-      noS1 k
-        | inHeading = err "G0214" sp "見出しの中では相互参照を使えません" >> pure []
-        | otherwise = k
   case name of
     -- the built-in character styles (docs/adr ADR 0005)
     "strong" -> oneSlot (pure . pure . CharStyle sp "strong")
@@ -708,12 +904,12 @@ builtin ctx inHeading sp name args slots = do
         Just s | s `notElem` kentenShapes -> err "G0239" sp ("未知の圏点の形です: " <> s) >> pure []
         _ -> oneSlot (pure . pure . Kenten sp shape)
     "color" -> case pos of
-      [v] | argText v `Set.member` ctxSwatches ctx -> oneSlot (pure . pure . Color sp (argText v))
-      [v] -> err "G0217" sp ("style.toml にないスウォッチです: " <> argText v) >> pure []
+      [v] | Just n <- nameArg v, n `Set.member` ctxSwatches ctx -> oneSlot (pure . pure . Color sp n)
+      [v] | Just n <- nameArg v -> err "G0217" sp ("style.toml にないスウォッチです: " <> n) >> pure []
       _ -> err "G0217" sp "color にはスウォッチの名前を一つ書きます" >> pure []
     "style" -> case pos of
-      [v] | argText v `Set.member` ctxCharStyles ctx -> oneSlot (pure . pure . CharStyle sp (argText v))
-      [v] -> err "G0218" sp ("style.toml にない文字スタイルです: " <> argText v) >> pure []
+      [v] | Just n <- nameArg v, n `Set.member` ctxCharStyles ctx -> oneSlot (pure . pure . CharStyle sp n)
+      [v] | Just n <- nameArg v -> err "G0218" sp ("定義されていない文字スタイルです: " <> n) >> pure []
       _ -> err "G0218" sp "style には文字スタイルの名前を一つ書きます" >> pure []
     "tcy" -> oneSlot $ \case
       [Text _ t] -> pure [Tcy sp t]
@@ -730,10 +926,10 @@ builtin ctx inHeading sp name args slots = do
             | otherwise -> err "G0219" sp ("style は kanji、kanji-digits、tcy のいずれかです: " <> s) >> pure []
           (Left d, _) -> report d >> pure []
           _ -> err "G0219" sp "number-text に渡せるのは整数だけです" >> pure []
-      _ -> err "G0219" sp "number-text には数を一つ書きます" >> pure []
-    "ref-number" -> noS1 (refTo RefNumber pos)
-    "ref-title" -> noS1 (refTo RefTitle pos)
-    "ref-page" -> noS1 (refTo RefPage pos)
+      _ -> err "G0219" sp "number-text には整数を一つ書きます" >> pure []
+    "ref-number" -> refTo RefNumber pos
+    "ref-title" -> refTo RefTitle pos
+    "ref-page" -> refTo RefPage pos
     "note" -> oneSlot $ \body -> do
       n <- gets ((+ 1) . stNote)
       modify' (\s -> s {stNote = n})
@@ -756,15 +952,38 @@ builtin ctx inHeading sp name args slots = do
                   else pure [IndexMark sp (IndexEntry ts rs)]
       _ -> err "G0238" sp "index には散文スロットが一つ必要です" >> pure []
     "cite" -> case pos of
-      [v] | argText v `Set.member` ctxCiteKeys ctx -> pure [Cite sp (argText v)]
-      [v] -> err "G0221" sp ("書誌データにないキーです: " <> argText v) >> pure []
+      [v] | Just n <- nameArg v, n `Set.member` ctxCiteKeys ctx -> pure [Cite sp n]
+      [v] | Just n <- nameArg v -> err "G0221" sp ("書誌データにないキーです: " <> n) >> pure []
       _ -> err "G0221" sp "cite には書誌データのキーを一つ書きます" >> pure []
     "ruby" -> ruby ctx sp slots
     _ -> err "G0222" sp ("未知のコマンドです: " <> name) >> pure []
   where
     refTo k = \case
       [v] | validLabel (argText v) -> pure [Ref sp k (argText v)]
-      _ -> err "G0226" sp "参照にはラベルの名前を一つ書きます" >> pure []
+      _ -> err "G0226" sp "参照にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます" >> pure []
+
+{- | @[aki 量]@ (docs/adr ADR 0019): one amount, an aki name, zw, a
+percentage or an absolute dimension, and no prose slot; otherwise G0255.
+-}
+aki :: SrcSpan -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+aki sp args slots = case (args, slots) of
+  (_, _ : _) -> wrong "aki は散文スロットを取りません"
+  ([A.Located _ (A.Positional v)], []) -> case nameArg v of
+    Just t
+      | Just a <- amount t -> pure [Aki sp a]
+      | otherwise -> wrong ("アキの量を読めません: " <> t)
+    Nothing -> wrong "aki には量を一つ書きます"
+  _ -> wrong "aki には量を一つ書きます"
+  where
+    amount t = case (parseAki t, parseDim t) of
+      (Just r, _) -> Just (AkiZw r)
+      (_, Just (Abs x)) -> Just (AkiAbs x)
+      _ -> Nothing
+    wrong why = err "G0255" sp (why <> "。" <> akiAmounts) >> pure []
+
+-- | What the amount of an [aki] may be (the message of G0255).
+akiAmounts :: Text
+akiAmounts = "量には、ベタ、全角、二分、三分、四分、五分、六分、八分、二分四分のどれか、0.2zw のような zw、25% のような百分率、1mm のような寸法のどれかを書きます"
 
 plainText :: [Inline] -> Maybe Text
 plainText is = T.concat <$> traverse (\case Text _ t -> Just t; _ -> Nothing) is
@@ -780,11 +999,12 @@ ruby ctx sp = \case
       (Just nb, Just r) -> do
         let baseSegs = splitSegments nb
             readSegs = T.splitOn "/" r
-        if length baseSegs == 1
-          then pure [Ruby sp () [RubySegment nb (Just r)]]
+        -- a reading split by '/' needs a base split as many times (golem-eval ADR 0003)
+        if length baseSegs /= length readSegs
+          then err "G0215" sp "モノルビの対象と読みのセグメントの数が一致しません" >> pure []
           else
-            if length baseSegs /= length readSegs
-              then err "G0215" sp "モノルビの対象と読みのセグメントの数が一致しません" >> pure []
+            if length baseSegs == 1
+              then pure [Ruby sp () [RubySegment nb (Just r)]]
               else pure [Ruby sp () [RubySegment b (if T.null rd then Nothing else Just rd) | (b, rd) <- zip baseSegs readSegs]]
   _ -> err "G0238" sp "ruby には散文スロットが二つ必要です" >> pure []
 
@@ -805,6 +1025,13 @@ splitSegments = foldr step [[]]
 
 keywords :: EvalContext -> [A.Located A.Argument] -> M [(Text, A.ArgValue)]
 keywords _ args = pure [(k, v) | A.Located _ (A.Keyword (A.Located _ k) v) <- args]
+
+-- | A name written as a word or a string literal.
+nameArg :: A.ArgValue -> Maybe Text
+nameArg = \case
+  A.Word t -> Just t
+  A.StringLit t -> Just t
+  _ -> Nothing
 
 argText :: A.ArgValue -> Text
 argText = \case

@@ -1,3 +1,9 @@
+%% この章でだけ使う段落スタイル（docs/adr/0014） %%
+@style-def paragraph example based-on=memo first-line-indent=2zw
+%% 正規表現スタイルの例（docs/adr/0015） %%
+@style-def paragraph regex-example based-on=memo
+@style-def regex regex-example pattern="[0-9０-９]+" style=bold
+
 @label style
 # スタイルの設定
 
@@ -30,12 +36,23 @@
 - [style code: lines]：一ページの行数です。
 - [style code: line-pitch]：行送り（ある行から次の行までの距離）です。
 - [style code: position]：版面の位置です。[style code: top] は天（ページの上端）から、[style code: gutter] はノド（綴じる側の端）からの距離です。
+- [style code: columns]：段数です。省略すると 1 段になります。
+- [style code: column-gap]：段と段のあいだの空き（段間）です。[style code: columns] が 2 以上なら必ず書きます。
 
 寸法は、[style code: mm]、[style code: pt]、[style code: Q]（級）、[style code: H]（歯）、[style code: zw]（全角一字分）の単位を付けて書きます。
 1Q と 1H は、どちらも 0.25mm です。
 
 版面がページに収まらない値を書くと、エラーになります。
 字数か行数を減らすか、[style code: position] を変えてください。
+
+[style code: columns] を 2 以上にすると、PDF の版面は段組み[index reading=だんぐみ: 段組み]になります。
+[style code: characters] は一段の字数、[style code: lines] は一段の行数です。
+本文は、横組みでは左の段から右の段へ、縦組みでは上の段から下の段へ流れ、最後の段の次は次のページに進みます。
+見出し、図版、表、索引も、段の中に一段の幅で組まれます。
+脚注は、注の印のある段の下に入ります。
+章の終わりでは、後ろの段が空いたまま残ることがあります。
+段組みの版面では、傍注欄（[style code: \[sidenotes\]]）と図版の回り込み（[style code: wrap]）は使えず、エラーになります。
+HTML と EPUB は、段組みにしません。
 
 ## 書体
 
@@ -55,6 +72,10 @@ Golem は、機械にインストールされている書体を探しません�
 
 OpenType の機能は、[style code: features = \["palt"\]] のように役割ごとに指定できます。
 [style code: palt] は、和文の約物や仮名を詰めて組む機能です。
+
+縦組みの本では、書体の縦書き用の字形（OpenType の [style code: vert]）を使います。
+縦書き用の字形を持たないダッシュ（——）などの記号は、PDF では横組みの字形を 90 度回して、縦の線として組みます。
+HTML と EPUB では、ブラウザーやリーダーが同じように記号を回して表示します。
 
 PDF には、使った文字だけを含む形で書体を埋め込みます。
 ライセンスで埋め込みを禁じている書体を使うと、エラーになります。
@@ -78,6 +99,31 @@ HTML、EPUB、プレーンテキストには異体字セレクタをそのまま
 [style code: indent] を書くと、段落のすべての行を字下げします。
 [style code: first-line-indent] に負の値を書くと、最初の行だけが前に出るぶら下げになります。
 箇条書きの項目、表、見出し、注の本文には、字下げは効きません。
+
+## リストの印と番号
+
+PDF のリストは、項目の印を行の始まりに出し、項目の二行目以降を本文の始まりにそろえます。
+入れ子のリストは、外の項目の本文の始まりから下がります。
+番号付きのリストは、横組みの本では [style code: 1.]、縦組みの本では [style code: 一、] の形の番号になります。
+
+印の字形と番号の書式は、[style code: \[lists\]] で入れ子の深さごとに変えられます。
+
+```toml
+[lists]
+bullets = ["・", "◦"]
+numbers = ["{n}.", "({a})"]
+gap = "0.5zw"
+```
+
+[style code: bullets] は箇条書きの印、[style code: numbers] は番号の書式で、一段目のリストに最初の要素を、二段目に二つ目の要素を使います。
+入れ子が配列より深いときは、最後の要素を使い続けます。
+番号の書式には、番号を表す差し込みをちょうど一つ書きます。
+差し込みは [style code: {n}]（本の数の表記）、[style code: {1}]（算用数字）、[style code: {一}]（漢数字）、[style code: {①}]（丸数字）、[style code: {a}] と [style code: {A}]（ラテン文字）、[style code: {i}] と [style code: {I}]（ローマ数字）、[style code: {ア}] と [style code: {イ}]（片仮名のアイウエオ順とイロハ順）です。
+差し込みでない波括弧は、[style code: {{] と [style code: }}] のように重ねて書きます。
+[style code: gap] は印と本文の間の空きで、書かなければ印の最後の文字から決まります。
+
+[style code: \[lists\]] は HTML、EPUB、プレーンテキストにも効きます。
+丸数字のように表せる番号に限りのある書式で、表せない番号の項目があると、エラーになります。
 
 @label styles
 ## 段落スタイルと文字スタイル
@@ -114,6 +160,111 @@ HTML、EPUB、プレーンテキストには異体字セレクタをそのまま
 行送り[index reading=ぎょうおくり: 行送り]は、段落スタイルでは変えられません。
 本文を行の格子にそろえて組むので、段落ごとに行送りが変わると、見開きの左右で行の位置がずれるからです。
 
+## 文字の送り
+
+文字スタイルと段落スタイルには、文字の送りを決める四つのキーも書けます。
+[style code: \[paragraph-styles.body\]] に書くと、本の全体の既定になります。
+文字スタイルで書かなかったキーは、外側の文字の値のままです。
+
+- [style code: kerning]：カーニング[index reading=かーにんぐ: カーニング]（字の組ごとの字間の調整）の方式です。[style code: "metrics"]（既定）は、フォントのペアカーニングの情報で字間を調整します。[style code: "japanese-equal-width"] は欧文だけを調整し、和文は全角の送りのまま組みます。[style code: "none"] は調整しません。
+- [style code: tracking]：文字ごとに足す空きです。文字の大きさの 1/1000 を単位に、-1000 から 10000 までの整数で書きます。負の値は字間を詰めます。
+- [style code: proportional-metrics]：[style code: true] にすると、和文を字面に合わせた送り（プロポーショナルメトリクス）で組みます。括弧類と句読点は全角のまま組みます。
+- [style code: baseline-shift]：文字を、横組みでは上へ、縦組みでは右へずらす量です。[style code: "1pt"] や [style code: "-0.25zw"] のように書きます。行の位置は変わりません。
+
+```toml
+[paragraph-styles.body]
+kerning = "japanese-equal-width"
+
+[character-styles.tight]
+tracking = -50
+```
+
+和文のフォントがカーニングの情報を持っていると、既定の [style code: metrics] では和文の字間が字の組ごとに変わり、字送りの格子からずれる行が出ます。
+格子にそろえたい本文は、[style code: \[paragraph-styles.body\]] に [style code: kerning = "japanese-equal-width"] と書いてください。
+約物（括弧類、句読点、中点類）を含む字の組には、和文のカーニングをかけません。
+トラッキングの空きは、行の最後の文字の後ろには入りません。
+オプティカルカーニング（[style code: kerning = "optical"]）は、まだ使えません。
+書くと G0321 のエラーになります。
+
+HTML と EPUB では、CSS の [style code: font-kerning]、[style code: letter-spacing]、[style code: font-feature-settings]、[style code: vertical-align] で表します。
+CSS では和文と欧文で別のカーニングを指定できないので、[style code: japanese-equal-width] は欧文のカーニングを保ちます。
+
+## ファイルの中のスタイル
+
+一つの章でだけ使う段落スタイルと文字スタイルは、その章のファイルの先頭に [style code: @style-def] で書けます。
+ファイルの中で定義したスタイルは、そのファイルにだけ効きます。
+
+```
+@style-def paragraph letter based-on=body indent=2zw first-line-indent=0zw
+@style-def character sender font=heading
+
+@style letter
+拝啓[style sender: 浅川]殿
+```
+
+最初の語は種類で、[style code: paragraph]（段落スタイル）か [style code: character]（文字スタイル）です。
+次の語がスタイルの名前で、その後に [style code: style.toml] と同じキーを [style code: キー=値] の形で並べます。
+値は [style code: 2zw] や [style code: keep] のように引用符なしで書けます。
+[style code: true] と [style code: false] は真偽値に、数字だけの語は整数になります。
+一つのスタイルは一行で定義します。
+
+[style code: style.toml] にある名前を書くと、そのファイルの中でだけ、書いたキーが置き換わります。
+たとえば [style code: @style-def paragraph body indent=1zw] は、その章の本文の字下げだけを変えます。
+[style code: body] を引き継ぐ段落スタイルの字下げも、その章の中では一緒に変わります。
+
+[style code: @style-def] は、ファイルの最初に置きます。
+前に置けるのは、コメントと空行だけです。
+[style code: @import] で取り込んだファイルの [style code: @style-def] は、取り込んだ側では使えません。
+
+@style example
+  この段落には、この章のファイルの先頭で定義した段落スタイル [style code: example] を付けています。
+
+  [style code: memo] を引き継ぎ、最初の行だけをもう一字下げています。
+
+## 正規表現スタイル
+
+段落スタイルには、正規表現に一致した文字に文字スタイルを当てる設定を書けます。
+InDesign の正規表現スタイル（GREP スタイル）と同じ考え方です。
+数字だけを欧文の書体にする、「第 N 章」の N だけを太字にする、といった体裁を、原稿に [style code: \[style ...\]] を書かずに付けられます。
+
+```toml
+[paragraph-styles.body]
+regex-styles = [
+  { pattern = '[0-9０-９]+', style = "latin-digits" },
+  { pattern = '(?<=第)[0-9]+(?=章)', style = "bold" },
+]
+```
+
+[style code: regex-styles] には、[style code: pattern]（正規表現）と [style code: style]（文字スタイルの名前）の組を並べます。
+正規表現は [style code: '...'] で囲むと、[style code: \\] をそのまま書けます。
+同じ文字に二つの組が一致した場合は、後の組が勝ちます。
+原稿で手で付けた文字スタイルは、正規表現スタイルより優先されます。
+
+[style code: regex-styles] は [style code: based-on] で引き継がれます。
+引き継いだ段落スタイルで [style code: regex-styles = \[\]] と書くと、引き継がなくなります。
+見出し、表、脚注の本文には当たりません。
+図のキャプションには [style code: caption] の、傍注の本文には [style code: sidenote] の [style code: regex-styles] が当たります。
+
+使える正規表現は、InDesign の正規表現の主なものです。
+[style code: \\d] は全角の数字にも、[style code: \\w] は漢字と仮名にも、[style code: \\s] は全角の空白にも一致します。
+後方参照、[style code: \\p{Han}] のような文字体系の指定、長さの決まらない後読み、InDesign の [style code: ~] で始まる記号は使えず、エラー（G0315）になります。
+和文の文字の範囲は [style code: \[\\x{4E00}-\\x{9FFF}\]] のように符号位置で書きます。
+縦中横と [style code: \[number-text ...\]] の数は一字として扱うので、[style code: \[0-9\]+] はその中の数字には一致しません。
+
+一つの章でだけ使う正規表現スタイルは、[style code: @style-def regex] で書けます。
+
+```
+@style-def regex body pattern="\\d+" style=bold
+```
+
+二つ目の語が組を足す段落スタイルの名前で、一行が一つの組です。
+文字列の中では [style code: \\] を [style code: \\\\] と書きます。
+
+@style regex-example
+  この段落には、数字だけを太字にする正規表現スタイルを、この章のファイルの先頭で付けています。
+
+  2026 年 10 月 14 日、１２３ページ。
+
 @label heading-style
 ## 見出しの体裁
 
@@ -136,9 +287,33 @@ HTML、EPUB、プレーンテキストには異体字セレクタをそのまま
 
 [style code: position] には、[style code: "top-outside"]、[style code: "top-center"]、[style code: "top-inside"]、[style code: "bottom-outside"]、[style code: "bottom-center"]、[style code: "bottom-inside"] のどれかを書きます。
 [style code: top] と [style code: bottom] は天と地の余白、[style code: outside] は小口の側、[style code: inside] はノドの側です。
-柱には、そのページの章の題が入ります。
+[style code: content] は、柱に出す内容です。
+[style code: "heading.1.short"] なら、そのページの章の題が入ります。
+[style code: @toc-title] で短い題を付けた見出しは、短い題が入ります。
 [style code: format] は、ノンブルの書式です。
 このマニュアルのように、柱を天の小口側に、ノンブルを地の小口側に置くのが普通です。
+
+柱の内容には、次の値を書けます。
+[style code: <階層>] は見出しの階層の数です。
+
+- [style code: "heading.<階層>.short"]：その階層の見出しの題です。ページの中で始まった最初の見出しを使い、なければその前から続く見出しを使います。
+- [style code: "heading.<階層>.numbered"]：番号と題を全角の空白でつないだものです（「第3章　原稿の記法」など）。
+- [style code: "heading.<階層>.short.last"]、[style code: "heading.<階層>.numbered.last"]：ページの中で始まった最後の見出しを使います。辞書の柱のような使い方です。
+- [style code: "title"]：[style code: manifest.toml] の書名です。
+- [style code: "none"]：柱を出しません。
+
+左右のページで柱を変えるときは、[style code: content] の代わりに [style code: even]（偶数ページ）と [style code: odd]（奇数ページ）の両方を書きます。
+
+```toml
+[masters.body]
+running-head = { position = "top-outside", even = "title", odd = "heading.1.numbered" }
+```
+
+章の始まりのページ（[style code: page-break = "recto"] の見出しのあるページ）と白ページには、柱を出しません。
+章ごとに別のマスターページを使うときは、[style code: manifest.toml] の章の項目に [style code: { file = "front.gm", master = "front" }] のように [style code: master] を書きます。
+[style code: master] のない章は [style code: \[masters.body\]] を使います。
+目次のページなどで柱を消したいときは、[style code: running-head] のないマスターページを指定します。
+見出しの [style code: \[headings.<階層>\]] には [style code: running-head] を書けません。
 
 @label notes-style
 ## 注と図の設定
@@ -217,3 +392,40 @@ overhang-onto = "kana"
 
 縦組みの本で [style code: \[number-text ...\]] の数をどう組むかは、[style code: \[numbers\]] の [style code: vertical] で決めます。
 [style code: "kanji"]（十、百二十）、[style code: "kanji-digits"]（一〇、一二〇）、[style code: "tcy"]（縦中横の算用数字）から選べます。
+
+@label aki-sets
+## 字間の空き
+
+和文の文字のあいだの空き[index reading=あき: アキ]の量は、アキ量のセットで決めます。
+InDesign の文字組みアキ量設定に当たる設定で、和文と欧文のあいだ（和欧間[index reading=わおうかん: 和欧間]）、括弧や句読点の前後のような文字の組み合わせごとに、空きの最小、最適、最大を持ちます。
+何も書かなければ、組み込みのセット [style code: gyomatsu-yakumono-hankaku]（行末約物半角）で組みます。
+和欧間は四分、括弧と句読点は半角の字面に二分の空き、行末の括弧と句読点は半角です。
+行末の括弧と句読点の後ろにも二分を残す [style code: gyomatsu-yakumono-zenkaku]（行末約物全角）も組み込みで持っています。
+
+セットを変えるには、[style code: \[aki-sets.名前\]] にセットを定義し、段落スタイルの [style code: aki-set] で選びます。
+
+```toml
+[aki-sets.wide-waou]
+based-on = "gyomatsu-yakumono-hankaku"
+rules = [
+  { before = "japanese", after = "western", optimum = "三分", minimum = "四分", maximum = "二分" },
+  { before = "western", after = "japanese", optimum = "三分", minimum = "四分", maximum = "二分" },
+]
+
+[paragraph-styles.body]
+aki-set = "wide-waou"
+```
+
+- [style code: based-on]：基準にするセットです。書かなければ [style code: gyomatsu-yakumono-hankaku] です。
+- [style code: rules]：基準のセットに足す規則です。後に書いた規則が、同じ組み合わせの前の規則を上書きします。
+- [style code: before] と [style code: after]：前と後ろの文字のクラスです。[style code: kana]（仮名）、[style code: ideograph]（漢字）、[style code: opening]（始め括弧）、[style code: closing]（終わり括弧）、[style code: full-stop]（句点）、[style code: comma]（読点）、[style code: middle-dot]（中点）、[style code: western]（欧文）、欧文のほかすべての [style code: japanese] などを書き、配列で並べることもできます。[style code: before] には段落の先頭の [style code: paragraph-start] と行頭の [style code: line-start]、[style code: after] には行末の [style code: line-end] も書けます。
+- [style code: optimum]、[style code: minimum]、[style code: maximum]：空きの最適、最小、最大です。最小と最大を書かなければ最適と同じになり、伸び縮みしません。
+
+量は [style code: "四分"] のような名前か、[style code: "0.25zw"] か、[style code: "25\%"] で書きます。
+段落スタイルは [style code: body] からセットを引き継ぐので、[style code: body] で選べば本の全体が変わります。
+引用だけ組み方を変えるときは、その段落スタイルの [style code: aki-set] だけを書きます。
+組み込みのセットと同じ名前のセットは定義できません。
+値を変えたいときは、[style code: based-on] で引き継いだ別の名前のセットを作ります。
+
+アキ量のセットは PDF にだけ効きます。
+HTML と EPUB は、ブラウザーの組み方で組みます。

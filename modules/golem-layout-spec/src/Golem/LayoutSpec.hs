@@ -20,7 +20,9 @@ module Golem.LayoutSpec
 where
 
 import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
+import Data.Text qualified as T
 import Golem.Project.Style
 import Golem.Syntax
 
@@ -38,8 +40,8 @@ data Anchor = Anchor {anX :: !Sp, anY :: !Sp, anAlign :: !Align}
   deriving stock (Eq, Show)
 
 data MasterGeometry = MasterGeometry
-  { -- | content key and the anchors on odd and even pages
-    mgRunningHead :: !(Maybe (Text, Anchor, Anchor)),
+  { -- | the contents of odd and even pages and their anchors (golem-driver ADR 0014)
+    mgRunningHead :: !(Maybe (RunningContent, RunningContent, Anchor, Anchor)),
     -- | number format and the anchors on odd and even pages
     mgFolio :: !(Maybe (Text, Anchor, Anchor))
   }
@@ -93,14 +95,19 @@ columnsFor g p = if odd p then pgColumns g else pgColumnsEven g
 sidenoteAreaFor :: PageGeometry -> Int -> Maybe Rect
 sidenoteAreaFor g p = (\(o, e) -> if odd p then o else e) <$> pgSidenotes g
 
-pageGeometry :: Style -> Either [Diagnostic] PageGeometry
-pageGeometry style = case stPage style of
+{- | The page geometry, or G0701 at the top of @fid@: style.toml, or the
+manifest without one (golem-driver ADR 0016). The first condition that
+fails is reported, alone. The page size and the positions of master
+pages were checked when style.toml was read (G0317, G0318).
+-}
+pageGeometry :: FileId -> Style -> Either [Diagnostic] PageGeometry
+pageGeometry fid style = case stPage style of
   Nothing -> Left [err "style.toml に [page] がないため、版面を計算できません"]
   Just page -> case pageGrid page of
     Nothing -> Left [err "style.toml に [page.grid] がないため、版面を計算できません"]
     Just grid -> geometry page grid (pageTrimSize page)
   where
-    err = diagnostic "G0701" Error (mkSpan (FileId 0) 0 0)
+    err = diagnostic "G0701" Error (mkSpan fid 0 0)
     geometry page grid (pw, ph) = do
       fs <- case gridFontSize grid of
         Abs s | s > 0 -> Right s
@@ -145,6 +152,8 @@ pageGeometry style = case stPage style of
               sidenotes <- case stSidenotes style of
                 Nothing -> Right Nothing
                 Just _ | vertical -> Left [err "縦組みの版面には傍注欄を設けられません"]
+                -- no sidenote column on a page of columns (docs/adr ADR 0018)
+                Just _ | cols > 1 -> Left [err "段組みの版面には傍注欄を設けられません"]
                 Just sn -> do
                   let w = dimToSp fs (snWidth sn)
                       g = dimToSp fs (snGap sn)
@@ -156,7 +165,7 @@ pageGeometry style = case stPage style of
                   if overflow so || overflow se
                     then Left [err "版面と傍注欄の合計がページからはみ出しています"]
                     else Right (Just (so, se))
-              masters <- traverse (masterGeometry pw ph bindingRight odd' even') (stMasters style)
+              let masters = Map.map (masterGeometry ph bindingRight odd' even') (stMasters style)
               Right
                 PageGeometry
                   { pgPageSize = (pw, ph),
@@ -177,27 +186,18 @@ pageGeometry style = case stPage style of
 foot margin; horizontally the outer (fore-edge), inner (gutter) edge or
 the centre of the type area.
 -}
-masterGeometry :: Sp -> Sp -> Bool -> Rect -> Rect -> MasterDef -> Either [Diagnostic] MasterGeometry
-masterGeometry _ ph bindingRight oddArea evenArea md =
-  MasterGeometry <$> traverse place (mdRunningHead md) <*> traverse place (mdFolio md)
+masterGeometry :: Sp -> Bool -> Rect -> Rect -> MasterDef -> MasterGeometry
+masterGeometry ph bindingRight oddArea evenArea md =
+  MasterGeometry (head' <$> mdRunningHead md) (place <$> mdFolio md)
   where
-    place (pos, content) = do
-      a1 <- anchor pos 1 oddArea
-      a2 <- anchor pos 2 evenArea
-      Right (content, a1, a2)
-    anchor pos p (Rect x y w h) = do
-      (vert, horiz) <- case pos of
-        "top-outside" -> Right (True, "outside")
-        "top-inside" -> Right (True, "inside")
-        "top-center" -> Right (True, "center")
-        "bottom-outside" -> Right (False, "outside")
-        "bottom-inside" -> Right (False, "inside")
-        "bottom-center" -> Right (False, "center")
-        other -> Left [diagnostic "G0701" Error (mkSpan (FileId 0) 0 0) ("未知の位置です: " <> other)]
-      let ay = if vert then (y + h + ph) `div` 2 else y `div` 2
+    head' rh = (rhOdd rh, rhEven rh, anchor (rhPosition rh) 1 oddArea, anchor (rhPosition rh) 2 evenArea)
+    place (pos, content) = (content, anchor pos 1 oddArea, anchor pos 2 evenArea)
+    anchor pos p (Rect x y w h) =
+      let (vert, horiz) = T.breakOn "-" pos
+          ay = if vert == "top" then (y + h + ph) `div` 2 else y `div` 2
           gutterLeft = gutterSide bindingRight p == SideLeft
-          (ax, al) = case (horiz :: Text) of
-            "center" -> (x + w `div` 2, AlignCenter)
-            "outside" -> if gutterLeft then (x + w, AlignEnd) else (x, AlignStart)
-            _ -> if gutterLeft then (x, AlignStart) else (x + w, AlignEnd)
-      Right (Anchor ax ay al)
+          (ax, al) = case horiz of
+            "-outside" -> if gutterLeft then (x + w, AlignEnd) else (x, AlignStart)
+            "-inside" -> if gutterLeft then (x, AlignStart) else (x + w, AlignEnd)
+            _ -> (x + w `div` 2, AlignCenter)
+       in Anchor ax ay al

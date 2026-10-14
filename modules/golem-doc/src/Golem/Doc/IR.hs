@@ -7,7 +7,9 @@ module Golem.Doc.IR
     Document (..),
     Block (..),
     BlockBody (..),
+    BreakKind (..),
     ListItem (..),
+    itemNumbers,
     DefGroup (..),
     Alignment (..),
     HeadingAttrs (..),
@@ -16,6 +18,7 @@ module Golem.Doc.IR
     Figure (..),
     Wrap (..),
     InlineF (..),
+    AkiAmount (..),
     Inline,
     InlineNoRuby,
     RubySegment (..),
@@ -27,6 +30,7 @@ module Golem.Doc.IR
   )
 where
 
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Void (Void)
 import Golem.Parser.AST qualified as AST
@@ -34,7 +38,7 @@ import Golem.Syntax.Span
 
 -- | The ABI version shared with plugins. Bump on any change to the IR.
 abiVersion :: Int
-abiVersion = 3
+abiVersion = 5
 
 data Document = Document
   { docFile :: !FileId,
@@ -60,13 +64,28 @@ data BlockBody
   | CodeBlock (Maybe Text) Text
   | FigureBlock Figure
   | ChannelOutput ChannelBlock
+  | -- | a forced break before what follows (docs/adr ADR 0017)
+    ForcedBreak !BreakKind
   deriving stock (Eq, Show)
+
+-- | The kind of a forced break (docs/adr ADR 0017).
+data BreakKind = BreakPage | BreakRecto | BreakVerso | BreakColumn
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 data ListItem = ListItem
   { itemNumber :: !(Maybe Integer), -- explicit @number
     itemBlocks :: ![Block]
   }
   deriving stock (Eq, Show)
+
+{- | The numbers of the items of a numbered list (golem-driver ADR 0013):
+an item with @number N is N, and the items after it count on from N.
+-}
+itemNumbers :: [ListItem] -> [Integer]
+itemNumbers = go 1
+  where
+    go _ [] = []
+    go next (ListItem n _ : rest) = let k = fromMaybe next n in k : go (k + 1) rest
 
 data DefGroup = DefGroup
   { dgTerms :: [[Inline]],
@@ -125,6 +144,12 @@ data InlineF r
   | ProofComment !SrcSpan Text
   | -- | a forced line break, only between the inlines at the top of a paragraph (docs/adr ADR 0005)
     LineBreak !SrcSpan
+  | -- | a fixed space written with [aki] (docs/adr ADR 0019)
+    Aki !SrcSpan !AkiAmount
+  deriving stock (Eq, Show)
+
+-- | The amount of an [aki]: in zw (the size of the type there), or absolute in sp.
+data AkiAmount = AkiZw !Rational | AkiAbs !Integer
   deriving stock (Eq, Show)
 
 type Inline = InlineF ()
@@ -173,3 +198,4 @@ noRuby = \case
   Cite s k -> Just (Cite s k)
   ProofComment s t -> Just (ProofComment s t)
   LineBreak s -> Just (LineBreak s)
+  Aki s a -> Just (Aki s a)

@@ -12,6 +12,8 @@ module Golem.Driver
     evaluateProject,
     evaluateProjectWith,
     Evaluated (..),
+    localStylesOf,
+    docStyles,
     missingStyleFiles,
     targetFileDiagnostics,
     sourceInfos,
@@ -32,12 +34,14 @@ import Control.Monad (forM, forM_, mfilter, when)
 import Data.Aeson qualified as J
 import Data.Aeson.Key qualified as JK
 import Data.Aeson.KeyMap qualified as KM
+import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
+import Data.Either (fromRight)
 import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (catMaybes, fromMaybe, isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -46,6 +50,7 @@ import Data.Text.IO qualified as TIO
 import Data.Vector qualified as V
 import Golem.Doc.Assemble
 import Golem.Doc.IR
+import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Pdf
 import Golem.Driver.Plugins (loadPlugins)
@@ -55,6 +60,7 @@ import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Html
 import Golem.Parser.AST qualified as A
+import Golem.Parser.Read (ReadFailure (..), readInfo, readSourceFile)
 import Golem.Parser.SourceSettings (SourceSettings)
 import Golem.Pdf qualified as P
 import Golem.Plugin.Lock (defaultCacheDir)
@@ -118,6 +124,14 @@ data Evaluated = Evaluated
     -} evReevaluate :: FileId -> SourceFile -> EvalResult
   }
 
+-- | The styles each file defines, of the files that define any (docs/adr ADR 0014).
+localStylesOf :: Evaluated -> Map FileId LocalStyles
+localStylesOf = Map.filter (/= noLocalStyles) . Map.map erStyles . evResults
+
+-- | The style of each document: style.toml with the styles its file defines over it.
+docStyles :: Evaluated -> FileId -> Style
+docStyles e fid = maybe (evStyle e) (withLocalStyles (evStyle e)) (Map.lookup fid (localStylesOf e))
+
 {- | The FileId of plugins.lock, where G0611 points (golem-plugin ADR 0003):
 the one after style.toml's.
 -}
@@ -135,22 +149,26 @@ sourceInfos p =
     Map.map (\sf -> SourceInfo (sfPath sf) (mkLineIndex (sfText sf))) (projectSources p)
 
 -- | Everything up to S1. Stops after a stage that produced errors.
-evaluateProject :: Profile -> FilePath -> IO (Either [Diagnostic] Evaluated)
+evaluateProject :: Profile -> FilePath -> IO (Either ProjectFailure Evaluated)
 evaluateProject = evaluateProjectWith Map.empty
 
 -- | @overlay@ replaces file contents (unsaved edits in the LSP).
-evaluateProjectWith :: Map FilePath Text -> Profile -> FilePath -> IO (Either [Diagnostic] Evaluated)
+evaluateProjectWith :: Map FilePath Text -> Profile -> FilePath -> IO (Either ProjectFailure Evaluated)
 evaluateProjectWith overlay profile root = do
   lp <- loadProjectWith overlay root
   case lp of
-    Left ds -> pure (Left ds)
+    Left f -> pure (Left f)
     Right project -> do
       let synDiags = concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
           manifest0 = projectManifest project
           styleFid = styleFileId project
-      styleText <- readMaybeText (root </> "style.toml")
-      case loadStyle styleFid styleText of
-        Left ds -> pure (Left ds)
+      styleBytes <- readMaybeBytes (root </> "style.toml")
+      -- style.toml passes the reading stage too (golem-parser ADR 0009)
+      let styleRead = traverse (readSourceFile styleFid "style.toml") styleBytes
+          styleText = fromRight Nothing styleRead
+      case first (map noFix . rfDiagnostics) styleRead >>= loadStyle styleFid of
+        -- style.toml is where its errors point (golem-project ADR 0006)
+        Left ds -> pure (Left (ProjectFailure ds (Map.insert styleFid (maybe (SourceInfo "style.toml" (mkLineIndex "")) (readInfo "style.toml") styleBytes) (sourceInfos project))))
         Right style
           | hasErrors synDiags -> do
               assets <- loadAssets root project
@@ -158,9 +176,10 @@ evaluateProjectWith overlay profile root = do
               pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) Nothing Map.empty Nothing synDiags (reeval profile project style assets citeKeys noPlugins Map.empty)))
           | otherwise -> do
               let manifest = manifest0
+                  -- one G0307 for each name, in the order of the chapters (golem-project ADR 0006)
                   masterDiags =
                     [ diagnostic "G0307" Error (mkSpan (projectManifestFile project) 0 0) ("style.toml にないマスターページです: " <> m)
-                    | (_, Just m) <- projectChapters project,
+                    | m <- nub [m | (_, Just m) <- projectChapters project],
                       not (Map.member m (stMasters style))
                     ]
               cacheDir <- defaultCacheDir
@@ -188,14 +207,24 @@ readMaybeText p = do
   e <- doesFileExist p
   if e then Just . TE.decodeUtf8Lenient <$> BS.readFile p else pure Nothing
 
-evalDeferred :: DocValues -> DeferredExpr -> Either Diagnostic Text
-evalDeferred dv (DeferredExpr e) =
+readMaybeBytes :: FilePath -> IO (Maybe BS.ByteString)
+readMaybeBytes p = do
+  e <- doesFileExist p
+  if e then Just <$> BS.readFile p else pure Nothing
+
+-- | golem fmt does not format style.toml, so its G0103 has no fix (golem-parser ADR 0009).
+noFix :: Diagnostic -> Diagnostic
+noFix d = d {diagFixes = []}
+
+-- | A deferred expression; G0208 is at the inline @sp@ (golem-eval ADR 0003).
+evalDeferred :: DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text
+evalDeferred dv sp (DeferredExpr e) =
   let docNs = Map.fromList [("chapters", VHash (Map.fromList [("count", VInt (dvChapterCount dv))]))]
       en = Env Map.empty (Map.singleton "doc" docNs)
-   in evalExpr en e >>= embedValue (A.locSpan e)
+   in evalExpr en e >>= embedValue sp
 
 -- | Evaluates files in import order so that imports see their exports.
-evalAll :: Profile -> Project -> Style -> Map FilePath (Maybe Text) -> Set.Set Text -> PluginHook -> Map FileId EvalResult
+evalAll :: Profile -> Project -> Style -> Map FilePath Asset -> Set.Set Text -> PluginHook -> Map FileId EvalResult
 evalAll profile project style assets citeKeys hook = foldl' step Map.empty (projectOrder project)
   where
     step acc fid = case Map.lookup fid (projectSources project) of
@@ -203,7 +232,7 @@ evalAll profile project style assets citeKeys hook = foldl' step Map.empty (proj
       Just sf -> Map.insert fid (reeval profile project style assets citeKeys hook acc fid sf) acc
 
 -- | S0 of one file, with the exports of its imports taken from @acc@.
-reeval :: Profile -> Project -> Style -> Map FilePath (Maybe Text) -> Set.Set Text -> PluginHook -> Map FileId EvalResult -> FileId -> SourceFile -> EvalResult
+reeval :: Profile -> Project -> Style -> Map FilePath Asset -> Set.Set Text -> PluginHook -> Map FileId EvalResult -> FileId -> SourceFile -> EvalResult
 reeval profile project style assets citeKeys hook acc fid sf =
   let ft = projectFiles project
       meta = metadataValues (manifestMetadata (projectManifest project))
@@ -229,18 +258,14 @@ reeval profile project style assets citeKeys hook acc fid sf =
             ctxCiteKeys = citeKeys,
             ctxAssets = assets,
             ctxPlugins = hook,
-            ctxSource = sourceSettingsOf project fid
+            ctxSource = sourceSettingsOf project fid,
+            ctxStyle = style
           }
    in evalFile ctx (sfAst sf)
 
 -- | How a file of the project is read (docs/adr ADR 0013).
 sourceSettingsOf :: Project -> FileId -> SourceSettings
 sourceSettingsOf project fid = Map.findWithDefault (manifestSource (projectManifest project)) fid (projectSourceSettings project)
-
--- | Whether each paragraph style keeps its lines, resolved (docs/adr ADR 0005).
-paraLineBreaks :: Style -> Map Text LineBreaks
-paraLineBreaks style =
-  Map.fromList [(n, fromMaybe JoinLines (psLineBreaks d)) | n <- Map.keys (stParaStyles style), Just d <- [paraStyle style (Just n)]]
 
 -- | The paragraph styles that keep their lines (lint G0501, docs/adr ADR 0005).
 keepStyles :: Style -> Set.Set Text
@@ -264,20 +289,21 @@ metadataValues md =
       <> [("publisher", VString p) | Just p <- [mdPublisher md]]
 
 {- | Files referenced by @figure, @table and @listing: text content for
-tables and listings, presence for images.
+tables and listings, presence for images, and why a path cannot be used
+(golem-eval ADR 0003). A path any reference reads as text is read as text.
 -}
-loadAssets :: FilePath -> Project -> IO (Map FilePath (Maybe Text))
+loadAssets :: FilePath -> Project -> IO (Map FilePath Asset)
 loadAssets root project = do
-  let refs = concatMap (assetRefs . sfAst) (Map.elems (projectSources project))
-  found <- forM refs $ \(path, wantText) -> do
-    r <- resolveInRoot root path
-    case r of
-      Left _ -> pure Nothing
-      Right rel ->
-        if wantText
-          then Just . (path,) . Just . TE.decodeUtf8Lenient <$> BS.readFile (root </> rel)
-          else pure (Just (path, Nothing))
-  pure (Map.fromList (catMaybes found))
+  let refs = Map.fromListWith (||) (concatMap (assetRefs . sfAst) (Map.elems (projectSources project)))
+  Map.traverseWithKey load refs
+  where
+    load path wantText = do
+      r <- resolveInRoot root path
+      case r of
+        Left e -> pure (AssetInvalid e)
+        Right rel
+          | wantText -> AssetText . TE.decodeUtf8Lenient <$> BS.readFile (root </> rel)
+          | otherwise -> pure AssetPresent
 
 assetRefs :: A.File -> [(FilePath, Bool)]
 assetRefs (A.File _ bs) = concatMap blk bs
@@ -352,7 +378,7 @@ build :: BuildOptions -> IO BuildResult
 build opts = do
   ev <- evaluateProject (optProfile opts) (optRoot opts)
   case ev of
-    Left ds -> pure (BuildResult (finish ds) Map.empty [])
+    Left f -> pure (BuildResult (finish (pfDiagnostics f)) (pfSources f) [])
     Right e -> do
       let project = evProject e
           targets = fromMaybe (targetsOf (projectManifest project)) (optTargets opts)
@@ -362,17 +388,27 @@ build opts = do
           infos =
             (if hasStyle then Map.insert styleFid (SourceInfo "style.toml" (mkLineIndex (evStyleText e))) else id)
               (withLockSource e (sourceInfos project))
-          marksDiags = cropMarkDiagnostics opts e (if hasStyle then styleFid else projectManifestFile project) targets
+          -- where diagnostics about style.toml point (golem-driver ADR 0016)
+          diagFid = if hasStyle then styleFid else projectManifestFile project
+          -- G0702, and what style.toml decides of the layout (G0701, G0725; golem-driver ADR 0016)
+          marksDiags =
+            cropMarkDiagnostics opts e diagFid targets
+              <> (if TargetPdf `elem` targets then styleLayoutDiagnostics diagFid (evStyle e) (Map.elems (localStylesOf e)) else [])
       -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
       missing <- missingStyleFiles (optRoot opts) (evStyle e)
-      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics styleFid (evStyle e) missing t)) | t <- targets]
+      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid (evStyle e) (Map.elems (localStylesOf e)) missing t)) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
-          -- G0702 stops the PDF before it is laid out; the other targets are written
+          -- G0701, G0702 and G0725 stop the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
       case evBook e of
         Just book
           | not (hasErrors (finish (evDiagnostics e))) && not (optCheckOnly opts) -> do
-              (written, outDiags) <- writeTargets opts e book missing writable
+              -- a list number its format cannot write stops every target (golem-driver ADR 0013)
+              let listDiags = listNumberDiagnostics (evStyle e) (maybe False pageVertical (stPage (evStyle e))) book
+              (written, outDiags) <-
+                if null listDiags || null writable
+                  then writeTargets opts e diagFid book missing writable
+                  else pure ([], listDiags)
               pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags <> outDiags)) infos written)
         _ -> pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags)) infos [])
   where
@@ -388,17 +424,19 @@ missingStyleFiles root style = do
 {- | Diagnostics of the missing files for one target (golem-project ADR
 0004): the fonts the PDF uses and its output intent (errors), every font
 for HTML and EPUB (warnings, errors in prod), nothing for plain text.
+The PDF also needs a body font with a file (G0807, golem-driver ADR 0016).
 -}
-targetFileDiagnostics :: FileId -> Style -> Map FilePath PathError -> Target -> [Diagnostic]
-targetFileDiagnostics fid style missing = \case
+targetFileDiagnostics :: FileId -> Style -> [LocalStyles] -> Map FilePath PathError -> Target -> [Diagnostic]
+targetFileDiagnostics fid style locals missing = \case
   TargetPdf ->
-    report "G0802" Error "フォントのファイルがありません" pdfFonts
+    bodyFontDiagnostics fid style
+      <> report "G0802" Error "フォントのファイルがありません" pdfFonts
       <> report "G0806" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
   TargetHtml -> siteFonts
   TargetEpub -> siteFonts
   TargetText -> []
   where
-    pdfFonts = [p | r <- usedRoles style, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
+    pdfFonts = [p | r <- usedRoles style locals, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
     siteFonts = report "G0310" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
     report code sev missingMsg paths =
       [ diagnostic code sev (mkSpan fid 0 0) (T.pack (msg <> ": " <> p))
@@ -438,8 +476,8 @@ optionsInput opts =
     <> " profile="
     <> (case optProfile opts of Dev -> "dev"; Prod -> "prod")
 
-writeTargets :: BuildOptions -> Evaluated -> Book -> Map FilePath PathError -> [Target] -> IO ([FilePath], [Diagnostic])
-writeTargets opts e book missing targets = do
+writeTargets :: BuildOptions -> Evaluated -> FileId -> Book -> Map FilePath PathError -> [Target] -> IO ([FilePath], [Diagnostic])
+writeTargets opts e diagFid book missing targets = do
   let root = optRoot opts
       project = evProject e
       style = evStyle e
@@ -459,34 +497,40 @@ writeTargets opts e book missing targets = do
             -- missing fonts are left out of the site (golem-project ADR 0004)
             hcFonts = Map.map (\fr -> (present (frJa fr), present (frLatin fr))) (stFonts style),
             -- the resolved styles (docs/adr ADR 0005)
-            hcCharStyles =
+            hcCharStyles = htmlCharStyles style,
+            hcParaStyles = htmlParaStyles style,
+            -- the styles of each file that differ from those of style.toml (docs/adr ADR 0014)
+            hcLocalStyles =
               Map.fromList
-                [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d))
-                | n <- Map.keys (stCharStyles style),
-                  Just d <- [charStyle style n]
-                ],
-            hcParaStyles =
-              Map.fromList
-                [ ( n,
-                    HtmlParaStyle
-                      (psFont d)
-                      (psLineBreaks d == Just KeepLines)
-                      (fromMaybe 0 (psSpaceBetween d))
-                      (cssLength (fromMaybe (Zw 0) (psIndent d)))
-                      (cssLength (fromMaybe (Zw 0) (psFirstLineIndent d)))
+                [ ( fid,
+                    HtmlLocalStyles
+                      { hlCharStyles = Map.differenceWith changed (htmlCharStyles st) (htmlCharStyles style),
+                        hlParaStyles = Map.differenceWith changed (htmlParaStyles st) (htmlParaStyles style),
+                        hlCaptionFace = mfilter (/= captionFace style) (Just (captionFace st)),
+                        hlSidenoteFace = mfilter (/= sidenoteFace style) (Just (sidenoteFace st))
+                      }
                   )
-                | n <- Map.keys (stParaStyles style),
-                  Just d <- [paraStyle style (Just n)]
+                | fid <- Map.keys (localStylesOf e),
+                  let st = docStyles e fid
                 ],
             hcBibliography = bib,
             hcDev = dev,
-            hcCaptionFace = let c = paraStyle style (Just "caption") in Face (c >>= psFont) (cssFontSize style <$> (c >>= psSize)),
-            hcSidenoteFace = let d = paraStyle style (Just "sidenote") in Face (d >>= psFont) (cssFontSize style <$> (d >>= psSize)),
+            hcCaptionFace = captionFace style,
+            hcSidenoteFace = sidenoteFace style,
             hcRubyMonoAlign = rubyAlignCss (rdMonoAlign ruby),
             hcRubyGroupAlign = rubyAlignCss (rdGroupAlign ruby),
-            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby)
+            hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
+            hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ (ForcedBreak k) <- bs],
+            -- only a book with [lists] changes the markers (golem-driver ADR 0013)
+            hcLists =
+              if stLists style == defaultListStyle
+                then Nothing
+                else Just (HtmlLists (lsBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style)))
           }
       present = mfilter (`Map.notMember` missing)
+      changed a b = if a == b then Nothing else Just a
+      captionFace st = let c = paraStyle st (Just "caption") in Face (c >>= psFont) (cssFontSize st <$> (c >>= psSize))
+      sidenoteFace st = let d = paraStyle st (Just "sidenote") in Face (d >>= psFont) (cssFontSize st <$> (d >>= psSize))
       ruby = compRuby (stComposition style)
       site = renderXhtml hcfg ft book
   results <- forM targets $ \case
@@ -528,7 +572,9 @@ writeTargets opts e book missing targets = do
         let (sub, gv) = case v of
               TextVertical -> ("vertical", GT.Vertical)
               TextHorizontal -> ("horizontal", GT.Horizontal)
-        forM (GT.renderText (stNumbersVertical style) dev (textFirstLine style) gv ft book) $ \(p, t) -> do
+        -- each document with the indents of its style (docs/adr ADR 0014)
+        let pages = concat [GT.renderText (stNumbersVertical style) dev (textFirstLine (docStyles e fid)) (textLists style) gv ft book {bookDocs = [d]} | d@(Document fid _) <- bookDocs book]
+        forM pages $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)
       pure (concat files, [])
@@ -537,7 +583,7 @@ writeTargets opts e book missing targets = do
           out = dir </> pdfFileName (mdId md)
           -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
           inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)))
+      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid)
       case r of
         Left ds -> pure ([], ds)
         Right bytes -> do
@@ -552,6 +598,58 @@ writeTargets opts e book missing targets = do
       when ex (removeDirectoryRecursive dir)
     writeText p t = createDirectoryIfMissing True (takeDirectory p) >> TIO.writeFile p t
     copy src dst = createDirectoryIfMissing True (takeDirectory dst) >> BS.readFile src >>= BS.writeFile dst
+
+{- | The markers of [lists] in plain text (golem-driver ADR 0013): a gap is
+written when [lists] gap is not 0, or by the last character without it.
+-}
+textLists :: Style -> GT.TextLists
+textLists style =
+  let l = stLists style
+      nonZero = \case
+        Abs x -> x /= 0
+        Zw r -> r /= 0
+   in GT.TextLists (lsBullets l) (lsNumbers l) (nonZero <$> lsGap l)
+
+-- | The character styles of a style, resolved for CSS (docs/adr ADR 0005).
+htmlCharStyles :: Style -> Map Text HtmlCharStyle
+htmlCharStyles style =
+  Map.fromList
+    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d)))
+    | n <- Map.keys (stCharStyles style),
+      Just d <- [charStyle style n]
+    ]
+
+-- | The paragraph styles of a style, resolved for CSS (docs/adr ADR 0005, 0006).
+htmlParaStyles :: Style -> Map Text HtmlParaStyle
+htmlParaStyles style =
+  Map.fromList
+    [ ( n,
+        HtmlParaStyle
+          (psFont d)
+          (psLineBreaks d == Just KeepLines)
+          (fromMaybe 0 (psSpaceBetween d))
+          (cssLength (fromMaybe (Zw 0) (psIndent d)))
+          (cssLength (fromMaybe (Zw 0) (psFirstLineIndent d)))
+          (htmlFeatures (psKerning d) (psTracking d) (psProportional d) (psBaselineShift d))
+      )
+    | n <- Map.keys (stParaStyles style),
+      Just d <- [paraStyle style (Just n)]
+    ]
+
+-- | The keys of the spacing of characters for CSS (docs/adr/0020).
+htmlFeatures :: Maybe Kerning -> Maybe Int -> Maybe Bool -> Maybe Dim -> HtmlFeatures
+htmlFeatures k t p b =
+  HtmlFeatures
+    { hfKerning =
+        k >>= \case
+          KernMetrics -> Just "metrics"
+          KernJapaneseEqualWidth -> Just "japanese-equal-width"
+          KernNone -> Just "none"
+          KernOptical -> Nothing,
+      hfTracking = t,
+      hfProportional = p,
+      hfBaselineShift = cssLength <$> b
+    }
 
 {- | The ideographic spaces that start the lines of a paragraph of a style
 in plain text (docs/adr ADR 0006): the whole part of indent plus

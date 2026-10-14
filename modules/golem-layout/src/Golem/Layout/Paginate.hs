@@ -7,6 +7,11 @@ fixed point of page-number references (S2).
 Everything is counted in grid lines: a footnote line takes one grid
 line from the bottom of the page and the footnote area is separated
 from the text by one grid line.
+
+A page may have several columns (docs/adr ADR 0018): the unit of the
+break is the column, the flow goes through the columns of a page in
+order and then to the next page, and each 'PageOut' is one column of a
+page.
 -}
 module Golem.Layout.Paginate
   ( LineBox (..),
@@ -25,12 +30,12 @@ module Golem.Layout.Paginate
   )
 where
 
-import Control.Applicative ((<|>))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (listToMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
+import Golem.Doc.IR (BreakKind (..))
 import Golem.Syntax (SrcSpan)
 
 data NoteBody = NoteBody {nbId :: !Int, nbLines :: !Int}
@@ -48,7 +53,7 @@ data LineBox = LineBox
 data Flow
   = FParagraph [LineBox]
   | -- | a heading, placed whole over 'fhSpan' grid lines (golem-driver ADR 0003)
-    FHeading {fhLevel :: !Int, fhShort :: !Text, fhRecto :: !Bool, fhSpan :: !Int, fhLines :: [LineBox]}
+    FHeading {fhLevel :: !Int, fhRecto :: !Bool, fhSpan :: !Int, fhLines :: [LineBox]}
   | FDefTerm [LineBox]
   | -- | a figure with its caption, in grid lines
     FFigure {ffId :: !Int, ffLines :: !Int, ffLabels :: ![Text], ffMarks :: ![SrcSpan]}
@@ -64,6 +69,8 @@ data Flow
     nothing at the top of a page
     -}
     FSpace !Int
+  | -- | a forced break before what follows (docs/adr ADR 0017)
+    FBreak !BreakKind
   deriving stock (Eq, Show)
 
 data Slotted
@@ -98,14 +105,16 @@ headingBlock fs p s m =
       area = (n - 1) * p + fs
    in HeadingBlock hp (fromInteger n) ((area - extent) `div` 2)
 
+-- | One column of a page (docs/adr ADR 0018).
 data PageOut = PageOut
   { poNumber :: !Int,
+    -- | the column, from 0 in the order of 'pgColumns'
+    poColumn :: !Int,
     poBlank :: !Bool,
     -- | grid line index and what starts there
     poSlots :: ![(Int, Slotted)],
     -- | note id, first line of the body shown here, number of lines
     poFootnotes :: ![(Int, Int, Int)],
-    poRunningHead :: !(Maybe Text),
     poLabels :: ![Text],
     -- | the index marks placed on the page (golem-driver ADR 0007)
     poMarks :: ![SrcSpan],
@@ -126,6 +135,7 @@ data TableSegment = TableSegment
 
 data St = St
   { sPage :: !Int,
+    sColumn :: !Int,
     sUsed :: !Int, -- grid lines used from the top
     sNoteLines :: !Int, -- footnote lines used from the bottom (separator included)
     sSlots :: ![(Int, Slotted)],
@@ -136,28 +146,50 @@ data St = St
     sDone :: ![PageOut],
     sDeferred :: ![Flow],
     sPendingNotes :: ![(Int, Int, Int)], -- note id, next line, remaining
-    sHead :: !(Maybe Text),
-    sPageHead :: !(Maybe Text)
+
+    -- | forced breaks not applied yet, in the order written (docs/adr ADR 0017)
+    sBreaks :: ![BreakKind]
   }
 
--- | Lays the flow out on pages of @capacity@ grid lines.
-paginate :: Int -> [Flow] -> [PageOut]
-paginate capacity flows =
-  let st0 = St 1 0 0 [] [] [] [] [] [] [] [] Nothing Nothing
+{- | Lays the flow out on pages of @columns@ columns of @capacity@ grid
+lines each (docs/adr ADR 0018).
+-}
+paginate :: Int -> Int -> [Flow] -> [PageOut]
+paginate columns capacity flows =
+  let st0 = St 1 0 0 0 [] [] [] [] [] [] [] [] []
       final = closePage (go st0 flows)
-   in reverse (sDone final)
+      done = reverse (sDone final)
+   in if null done then [PageOut 1 0 False [] [] [] [] []] else done
   where
-    go st [] = flushDeferred st
-    go st (f : rest) = go (place st f (nextNeed rest)) rest
+    -- breaks left at the end of the book are dropped (docs/adr ADR 0017)
+    go st [] = flushDeferred st {sBreaks = []}
+    go st (f : rest) = go (place (ready f st) f (nextNeed rest)) rest
+    -- the breaks written so far apply before anything but another break
+    ready = \case
+      FBreak _ -> id
+      _ -> applyBreaks
+    applyBreaks st = foldl' applyBreak st {sBreaks = []} (sBreaks st)
+    applyBreak st = \case
+      BreakPage -> breakPage st
+      BreakRecto -> parityStart odd st
+      BreakVerso -> parityStart even st
+      BreakColumn
+        | columns > 1 -> nextColumn st
+        | otherwise -> breakPage st
+    breakPage st
+      -- the page is closed even when empty; an empty page is blank
+      | isEmpty st && sColumn st == 0 = blankPage st
+      | otherwise = nextPage st
     nextNeed = \case
       (FParagraph ls : _) -> min 2 (length ls)
       (FContinued ls : _) -> min 2 (length ls)
       (FTable _ h rows : _) -> length h + maybe 0 length (listToMaybe rows)
       (FDefTerm ls : _) -> length ls
-      (FHeading _ _ _ n _ : _) -> n
+      (FHeading _ _ n _ : _) -> n
       (FFigure _ n _ _ : _) -> min n capacity
       (FWrapped _ n _ _ ls : _) -> max n (length ls)
       (FSpace _ : _) -> 0
+      (FBreak _ : _) -> 0
       [] -> 0
     free st = capacity - sUsed st - sNoteLines st
     isEmpty st = sUsed st == 0 && null (sNotes st)
@@ -165,30 +197,31 @@ paginate capacity flows =
       FParagraph ls -> placeLines st True ls
       FContinued ls -> placeLines st False ls
       FTable i h rows ->
-        let st1 = if length h + maybe 0 length (listToMaybe rows) > free st && not (isEmpty st) then newPage st else st
+        let st1 = if length h + maybe 0 length (listToMaybe rows) > free st && not (isEmpty st) then nextColumn st else st
          in placeTable st1 i h rows
       FDefTerm ls -> placeLines (keep st (length ls + need)) True ls
-      FHeading lvl short recto n ls ->
-        let st1 = if recto then rectoStart st else keep st (n + need)
-            st2 = if lvl == 1 then st1 {sHead = Just short, sPageHead = sPageHead st1 <|> Just short} else st1
-            st3 = if n <= free st2 || isEmpty st2 then st2 else newPage st2
-         in putBlock st3 n ls
+      FHeading _ recto n ls ->
+        let st1 = if recto then parityStart odd st else keep st (n + need)
+            st2 = if n <= free st1 || isEmpty st1 then st1 else nextColumn st1
+         in putBlock st2 n ls
       FFigure i n labels marks
         | n <= free st || isEmpty st -> putSlot st n (SFigure i) labels marks
         | otherwise -> st {sDeferred = sDeferred st <> [f]}
       FWrapped i n labels marks beside ->
         let size = max n (length beside)
-            st1 = if size <= free st || isEmpty st then st else newPage st
+            st1 = if size <= free st || isEmpty st then st else nextColumn st
             st2 = putSlot st1 0 (SWrapped i) labels marks
          in (placeLines st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines st2 False beside))}
+      FBreak k -> st {sBreaks = sBreaks st <> [k]}
       FSpace n
         | sUsed st == 0 -> st
         | otherwise -> st {sUsed = sUsed st + max 0 (min n (free st))}
-    keep st n = if n > free st && not (isEmpty st) then newPage st else st
-    rectoStart st =
-      let st1 = if isEmpty st then st else newPage st
-       in if even (sPage st1) then blankPage st1 else st1
-    blankPage st = st {sDone = PageOut (sPage st) True [] [] Nothing [] [] [] : sDone st, sPage = sPage st + 1}
+    keep st n = if n > free st && not (isEmpty st) then nextColumn st else st
+    -- start in column 0 of a page whose number satisfies p, after a blank page if needed
+    parityStart p st =
+      let st1 = if isEmpty st && sColumn st == 0 then st else nextPage st
+       in if p (sPage st1) then st1 else blankPage st1
+    blankPage st = st {sDone = PageOut (sPage st) 0 True [] [] [] [] [] : sDone st, sPage = sPage st + 1}
     putSlot st n s labels marks = st {sSlots = sSlots st <> [(sUsed st, s)], sUsed = sUsed st + n, sLabels = sLabels st <> labels, sMarks = sMarks st <> marks}
     -- lines of one paragraph; orphans and widows are moved
     placeLines st _ [] = st
@@ -202,7 +235,7 @@ paginate capacity flows =
             then foldl' putLine st ls
             else
               let st1 = foldl' putLine st (take k ls)
-               in placeLines (newPage st1) (isStart && k == 0) (drop k ls)
+               in placeLines (nextColumn st1) (isStart && k == 0) (drop k ls)
     -- how many lines fit, with their notes
     fitting st ls = length (takeWhile id (snd (foldl' step ((sUsed st, sNoteLines st), []) ls)))
       where
@@ -237,7 +270,7 @@ paginate capacity flows =
             | fitting stc r >= length r || sUsed stc == first + length h = go (foldl' putLine stc r) first rest
             | otherwise =
                 let closed = segment stc first
-                    fresh = newPage closed
+                    fresh = nextColumn closed
                     repeated = foldl' putLine fresh [l {lbNotes = [], lbLabels = [], lbMarks = []} | l <- h]
                  in go repeated (sUsed fresh) (r : rest)
           segment stc first = stc {sTables = sTables stc <> [TableSegment i first (first + length h - 1) (sUsed stc - 1)]}
@@ -267,14 +300,32 @@ paginate capacity flows =
           | len <= r = let (a, b) = go' (r - len) rest in ((i, 0, len) : a, b)
           | r > 0 = ([(i, 0, r)], (i, r, len - r) : [(j, 0, m) | NoteBody j m <- rest])
           | otherwise = ([], (i, 0, len) : [(j, 0, m) | NoteBody j m <- rest])
+    -- an empty column makes no output
     closePage st =
-      if null (sSlots st) && null (sNotes st) && not (null (sDone st))
+      if null (sSlots st) && null (sNotes st)
         then st
-        else st {sDone = PageOut (sPage st) False (sSlots st) (sNotes st) (pageHead st) (sLabels st) (sMarks st) (sTables st) : sDone st}
-    pageHead st = sPageHead st <|> sHead st
-    newPage st =
+        else st {sDone = PageOut (sPage st) (sColumn st) False (sSlots st) (sNotes st) (sLabels st) (sMarks st) (sTables st) : sDone st}
+    -- the next column of the page, or column 0 of the next page
+    nextColumn st = advance (sColumn st + 1 >= columns) st
+    nextPage = advance True
+    advance toPage st =
       let closed = closePage st
-          fresh = closed {sPage = sPage st + 1, sUsed = 0, sNoteLines = 0, sSlots = [], sNotes = [], sLabels = [], sMarks = [], sTables = [], sPendingNotes = [], sPageHead = Nothing}
+          -- a page left with nothing in any column is blank
+          written = any ((== sPage st) . poNumber) (sDone closed)
+          closed' = if toPage && not written then closed {sDone = PageOut (sPage st) 0 True [] [] [] [] [] : sDone closed} else closed
+          fresh =
+            closed'
+              { sPage = if toPage then sPage st + 1 else sPage st,
+                sColumn = if toPage then 0 else sColumn st + 1,
+                sUsed = 0,
+                sNoteLines = 0,
+                sSlots = [],
+                sNotes = [],
+                sLabels = [],
+                sMarks = [],
+                sTables = [],
+                sPendingNotes = []
+              }
           withNotes = foldl' carryNote fresh (sPendingNotes st)
        in placeDeferred withNotes {sDeferred = []} (sDeferred st)
     carryNote st (i, from, len) =
@@ -293,7 +344,7 @@ paginate capacity flows =
     placeDeferred st (_ : rest) = placeDeferred st rest
     flushDeferred st
       | null (sDeferred st) && null (sPendingNotes st) = st
-      | otherwise = flushDeferred (newPage st)
+      | otherwise = flushDeferred (nextColumn st)
 
 -- | The page of each label.
 labelPages :: [PageOut] -> Map Text Integer

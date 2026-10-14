@@ -101,6 +101,97 @@ tests =
         map cmpLabel (found (offsetIn src "@style " 7)) @?= ["body", "caption", "quote", "sidenote", "verse"]
         map cmpKind (found (offsetIn src "@style " 7)) @?= replicate 5 CkParaStyle
         map cmpLabel (found (offsetIn src "[style " 7)) @?= ["bold", "italic", "strong"],
+      testCase "completion: the kinds of a page break (docs/adr ADR 0017)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@page-break \n"
+        let src = textOf ws "b.gm"
+            found = completions ws "b.gm" (offsetIn src "@page-break " 12)
+        map cmpLabel found @?= ["recto", "verso"]
+        map cmpKind found @?= [CkSettingValue, CkSettingValue],
+      testCase "completion: @style-def (docs/adr ADR 0014)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@style-def paragraph letter\n@style-def paragraph memo\n\n@label second\n# 次の章\n\n@style-def \n\n@style-def paragraph letter \n\n@style-def paragraph letter based-on=\n\n@style \n\n@style-def character term font=\n"
+        let src = textOf ws "b.gm"
+            found = completions ws "b.gm"
+        map cmpLabel (found (offsetIn src "@style-def \n" 11)) @?= ["character", "paragraph", "regex"]
+        map cmpKind (found (offsetIn src "@style-def \n" 11)) @?= [CkStyleKind, CkStyleKind, CkStyleKind]
+        let keys = found (offsetIn src "@style-def paragraph letter \n" 28)
+        assertBool "keys" (all (`elem` map cmpLabel keys) ["based-on=", "indent="])
+        assertBool "key kinds" (all ((== CkSettingKey) . cmpKind) keys)
+        let bases = map cmpLabel (found (offsetIn src "based-on=\n" 9))
+        assertBool (show bases) (all (`elem` bases) ["body", "verse", "quote", "memo"])
+        assertBool "@style" ("letter" `elem` map cmpLabel (found (offsetIn src "@style \n" 7)))
+        ws' <- updateFile ws "a.gm" (textOf ws "a.gm" <> "\n@style \n")
+        let srcA = textOf ws' "a.gm"
+        assertBool "not in another file" ("letter" `notElem` map cmpLabel (completions ws' "a.gm" (offsetIn srcA "@style \n" 7))),
+      testCase "completion: @style-def regex (docs/adr ADR 0015)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@style-def paragraph letter\n\n@label second\n# 次の章\n\n@style-def regex \n\n@style-def regex body \n\n@style-def regex body pattern=x style=\n"
+        let src = textOf ws "b.gm"
+            found = completions ws "b.gm"
+            paras = found (offsetIn src "@style-def regex \n" 17)
+        assertBool (show paras) (all (`elem` map cmpLabel paras) ["body", "verse", "letter"])
+        assertBool "paragraph kinds" (all ((== CkParaStyle) . cmpKind) paras)
+        found (offsetIn src "@style-def regex body \n" 22) @?= [Completion "pattern=" CkSettingKey, Completion "style=" CkSettingKey]
+        let chars = found (offsetIn src "style=\n" 6)
+        map cmpLabel chars @?= ["bold", "italic", "strong"]
+        assertBool "character kinds" (all ((== CkCharStyle) . cmpKind) chars),
+      testCase "definition: the styles @style-def regex names (docs/adr ADR 0015)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@style-def character n synthetic-bold=true\n@style-def paragraph letter\n@style-def regex letter pattern=x style=n\n\n@label second\n# 次の章\n"
+        let src = textOf ws "b.gm"
+        map (slice ws) (definition ws "b.gm" (offsetIn src "letter pattern" 1)) @?= ["letter"]
+        map (slice ws) (definition ws "b.gm" (offsetIn src "style=n\n" 1)) @?= ["n"],
+      testCase "completion: @manifest (docs/adr ADR 0014)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@manifest \n\n@manifest paragraph-separator=\n"
+        let src = textOf ws "b.gm"
+            found = completions ws "b.gm"
+        found (offsetIn src "@manifest \n" 10) @?= [Completion "paragraph-separator=" CkSettingKey]
+        found (offsetIn src "separator=\n" 10) @?= [Completion "blank-line" CkSettingValue, Completion "line" CkSettingValue],
+      testCase "a file outside the project read in the line style has no G0501 (docs/adr ADR 0014)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "loose.gm" "@manifest paragraph-separator=line\n\nFull fathom five\nOf his bones\n"
+        [c | d <- fromMaybe [] (Map.lookup "loose.gm" (diagnosticsFor ws)), let { DiagnosticCode c = diagCode d }] @?= []
+        ws' <- updateFile ws0 "loose.gm" "Full fathom five\nOf his bones\n"
+        [c | d <- fromMaybe [] (Map.lookup "loose.gm" (diagnosticsFor ws')), let { DiagnosticCode c = diagCode d }] @?= ["G0501"],
+      -- golem-parser ADR 0009
+      testCase "an empty expression outside the project is one G0120, and hover and completion still work" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "loose.gm" "[=]\n\n[= 1 + 2]\n\n[co\n"
+        let src = textOf ws "loose.gm"
+        filter (== "G0120") (codesOf ws "loose.gm") @?= ["G0120"]
+        -- the evaluation diagnostics go with a syntax error
+        filter (`notElem` ["G0117", "G0120"]) (codesOf ws "loose.gm") @?= []
+        assertBool "hover" (isJust (hover ws "loose.gm" (offsetIn src "1 + 2" 0)))
+        assertBool "completion" ("color" `elem` map cmpLabel (completions ws "loose.gm" (offsetIn src "[co" 3))),
+      testCase "a buffer with CR or a BOM is G0103 or G0102, in and outside the project" $ do
+        ws0 <- openWorkspace root
+        let cases = [("b.gm", "@label second\r\n# 次の章\n", "G0103"), ("b.gm", "\xFEFF@label second\n# 次の章\n", "G0102"), ("loose.gm", "本文\r\n", "G0103"), ("loose.gm", "\xFEFF本文\n", "G0102")]
+        mapM_
+          ( \(p, t, c) -> do
+              ws <- updateFile ws0 p t
+              assertBool (show (p, codesOf ws p)) (c `elem` codesOf ws p)
+          )
+          cases,
+      testCase "definition: a style defined in the file (docs/adr ADR 0014)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@style-def paragraph letter\n@style-def paragraph verse line-breaks=join\n\n@label second\n# 次の章\n\n@style letter\n本文。\n\n@style verse\n詩。\n\n@style quote\n引用。\n"
+        let src = textOf ws "b.gm"
+        definition ws "b.gm" (offsetIn src "letter\n本文" 1) @?= [Location "b.gm" (offsetIn src "letter\n@style-def" 0) (offsetIn src "letter\n@style-def" 6)]
+        map (slice ws) (definition ws "b.gm" (offsetIn src "verse\n詩" 1)) @?= ["verse"]
+        definition ws "b.gm" (offsetIn src "quote\n引用" 1) @?= []
+        ws' <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@style verse\n詩。\n"
+        definition ws' "b.gm" (offsetIn (textOf ws' "b.gm") "verse\n詩" 1) @?= [],
+      testCase "editing the file settings evaluates that file alone (docs/adr ADR 0014)" $ do
+        ws0 <- openWorkspace root
+        let n0 = wsFullEvaluations ws0
+            rest = "@label second\n# 次の章\n\n[ref-title intro]と[ref-page intro]を見る。\n"
+        ws1 <- updateFile ws0 "b.gm" ("@style-def paragraph letter indent=1zw\n\n" <> rest)
+        ws2 <- updateFile ws1 "b.gm" ("@style-def paragraph letter indent=2zw\n\n" <> rest)
+        ws3 <- updateFile ws2 "b.gm" ("@style-def paragraph letter indent=2zw\n" <> rest)
+        ws4 <- updateFile ws3 "b.gm" ("@style-def paragraph letter indent=3zw\n@manifest title=x\n" <> rest)
+        wsFullEvaluations ws4 @?= n0,
       testCase "with a syntax error, completion and definition still work elsewhere" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n[ref-title intro]と[strong: 閉じない\n\n[ref-number \n"
@@ -118,6 +209,20 @@ tests =
         assertBool "syntax error in b.gm" (any ((== Error) . diagSeverity) (fromMaybe [] (Map.lookup "b.gm" diags)))
         let codes = [c | d <- concat (Map.elems diags), let DiagnosticCode c = diagCode d]
         assertBool (show codes) (all (`notElem` codes) ["G0306", "G0310", "G0802"]),
+      testCase "a missing import is reported on the file of the @import (golem-project ADR 0006)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        mapM_ (\f -> copyFile (root </> f) (tmp </> f)) ["manifest.toml", "b.gm"]
+        BS.writeFile (tmp </> "a.gm") "@import nope.gm as x\n"
+        ws <- openWorkspace tmp
+        let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
+        codesIn "a.gm" @?= ["G0302"]
+        codesIn "manifest.toml" @?= [],
+      testCase "a style.toml error is reported on style.toml (golem-project ADR 0006)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        mapM_ (\f -> createDirectoryIfMissing True (takeDirectory (tmp </> f)) >> copyFile (root </> f) (tmp </> f)) ["manifest.toml", "a.gm", "b.gm", "common/values.gm"]
+        BS.writeFile (tmp </> "style.toml") "[page]\nunknown = 1\n"
+        ws <- openWorkspace tmp
+        let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
+        codesIn "style.toml" @?= ["G0306"]
+        codesIn "manifest.toml" @?= [],
       testCase "G0501 is not reported for the newlines of the line style (docs/adr ADR 0013)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
             g0501 ws = [c | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d, c == "G0501"]
@@ -368,3 +473,7 @@ session spec = do
             found@(_ : _) <- [d | d <- ds, diagCode d == Just (L.InR "G0403")] ->
               pure found
         _ -> missingLabel path
+
+-- | The codes of the diagnostics of a file.
+codesOf :: Workspace -> FilePath -> [Text]
+codesOf ws p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]

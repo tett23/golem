@@ -83,6 +83,7 @@ golem new mybook
 原稿の段落は、既定では空行で区切る。
 一行を一つの段落として書く和文の原稿は、`manifest.toml` の `[source]` に `paragraph-separator = "line"` と書くと、改行ひとつで段落を区切って読む。
 章の配列の項目（`{ file = "...", paragraph-separator = "blank-line" }`）で、章ごとに変えられる。
+段落を分けずに行を改めるには、行の末尾に `\` を書く（強制改行、[docs/adr/0016](docs/adr/0016-hard-line-breaks.md)）。
 
 PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文のフォントのファイルを書く。
 見出しは `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組み、行の格子にそろえて置く。
@@ -93,6 +94,14 @@ PDF を出力するには、`style.toml` の `[fonts.body]` に和文と欧文�
 和文も合成の斜体で傾く。
 段落スタイルは原稿の `@style 名前` で付け、韻文は組み込みの段落スタイル `verse` で書く（`@style verse`）。
 段落の字下げは段落スタイルの `indent` と `first-line-indent`（負ならぶら下げ）で指定し、既定は 0 である。
+文字スタイルと段落スタイルの `kerning`（`metrics`、`japanese-equal-width`、`none`）、`tracking`、`proportional-metrics`、`baseline-shift` で、カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフトを指定する。
+既定はフォントのペアカーニングを和文にも欧文にもかける `metrics` である（[docs/adr/0020](docs/adr/0020-indesign-character-features.md)）。
+PDF のリストは項目の印をぶら下げ、入れ子のリストを外の項目の本文の始まりから下げる。
+箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
+和欧間や括弧類の前後などの字間の空き（アキ）の量は、`[aki-sets.<名前>]` で文字のクラスの組ごとに定義したアキ量のセットを、段落スタイルの `aki-set` で選んで変えられる（既定は行末約物半角の `gyomatsu-yakumono-hankaku`）。
+原稿の任意の位置には、`3[aki 四分]kg` のように固定の空きを置ける。
+一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ効く（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
+段落スタイルの `regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` のような正規表現スタイルは、段落の中で正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル、[docs/adr/0015](./docs/adr/0015-regex-styles.md)）。
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注欄の幅、版面との間隔、本文側の印だけを書く。
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
@@ -103,7 +112,7 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 欧文の一重のトンボは `--marks western` で付ける。
 閲覧用の PDF は `--marks` を付けずに作る。
 トンボの有無は PDF のインスタンス ID に入るので、閲覧用と入稿用の PDF は区別できる。
-フォントの OS/2 の `fsType` が埋め込みを禁じている場合はエラーになる。
+フォントの OS/2 の `fsType` が埋め込みかサブセット化を禁じている場合はエラーになる（[golem-driver ADR 0016](docs/golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 原稿の異体字セレクタ（IVS）は PDF では字形の選択に使い、ToUnicode には基底の文字だけを書く（[golem-pdf ADR 0006](docs/golem-pdf/adr/0006-cid-system-info.md)）。
 ビルドはプラグインをキャッシュからだけ読み、ネットワークに接続しない。
 診断は `--format json` で JSON にできる。
@@ -185,6 +194,14 @@ cabal test all
 
 ```bash
 scripts/gen-parser.sh
+```
+
+テストの fixture の『テンペスト』と『蟹工船』は、`scripts/fixtures/fetch-public-domain.sh` が原文を取得して作る。
+原文の変換は `modules/golem-fixtures` の実行ファイル `golem-fixtures` が行う。
+このパッケージはリリースの配布物に入らない（[docs/adr/0023](./docs/adr/0023-fixture-converters-without-python.md)）。
+
+```bash
+GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 ```
 
 テストのうち CDDL のスキーマへの適合の検査は、Rust の `cddl` クレートの CLI（0.10.7）を使う。

@@ -19,6 +19,8 @@ library
     Golem.Eval.Expr
     Golem.Eval.File
     Golem.Eval.Number
+    Golem.Eval.RegexStyle
+    Golem.Eval.Settings
     Golem.Eval.Value
   build-depends:
     , base          >=4.20 && <4.21
@@ -26,6 +28,7 @@ library
     , golem-doc
     , golem-parser
     , golem-project
+    , golem-regex
     , mtl           >=2.3  && <2.4
     , golem-syntax
     , text          >=2.0  && <2.2
@@ -36,7 +39,7 @@ test-suite golem-eval-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    ExprSpec FileSpec
+  other-modules:    ExprSpec FileSpec RegexStyleSpec
   build-depends:
     , base
     , containers
@@ -44,6 +47,7 @@ test-suite golem-eval-test
     , golem-eval
     , golem-parser
     , golem-project
+    , golem-regex
     , golem-syntax
     , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6

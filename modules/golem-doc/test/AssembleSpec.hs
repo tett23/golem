@@ -23,8 +23,8 @@ heading f s l a lbl t = Block (sp f s) lbl (Heading l a [Text (sp f s) t])
 para :: Int -> Int -> [Inline] -> Block
 para f s is = Block (sp f s) Nothing (Paragraph Nothing is)
 
-noEval :: DocValues -> DeferredExpr -> Either Diagnostic Text
-noEval dv _ = Right ("count=" <> T.pack (show (dvChapterCount dv)))
+noEval :: DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text
+noEval dv _ _ = Right ("count=" <> T.pack (show (dvChapterCount dv)))
 
 codes :: [Diagnostic] -> [Text]
 codes = map (\d -> let DiagnosticCode c = diagCode d in c)
@@ -88,5 +88,70 @@ tests =
         compare (collationKey "かー") (collationKey "かあ") @?= EQ,
       testCase "citations are numbered in order of first citation" $ do
         let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) "b", Cite (sp 1 1) "a", Cite (sp 1 2) "b"]]]
-        bookCitations (fst (assemble cfg noEval docs)) @?= [("b", 1), ("a", 2)]
+        bookCitations (fst (assemble cfg noEval docs)) @?= [("b", 1), ("a", 2)],
+      diagnosticCodes
     ]
+
+-- | The diagnostics of document assembly (golem-doc ADR 0003).
+diagnosticCodes :: TestTree
+diagnosticCodes =
+  testGroup
+    "diagnostic codes (golem-doc ADR 0003)"
+    [ testCase "G0401: every later duplicate, related to the first definition" $ do
+        let ds = snd (assemble cfg noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs (Just "a") "x", heading 1 5 1 noHeadingAttrs (Just "a") "y", heading 1 9 1 noHeadingAttrs (Just "a") "z"]])
+        map summary ds
+          @?= [ ("G0401", Error, sp 1 5, "ラベルが重複しています: a", [(sp 1 0, "最初の定義")]),
+                ("G0401", Error, sp 1 9, "ラベルが重複しています: a", [(sp 1 0, "最初の定義")])
+              ]
+        let cross = snd (assemble cfg noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs (Just "a") "x"], Document (FileId 2) [heading 2 0 1 noHeadingAttrs (Just "a") "y"]])
+        map summary cross @?= [("G0401", Error, sp 2 0, "ラベルが重複しています: a", [(sp 1 0, "最初の定義")])],
+      testCase "G0402: every later @toc, related to the first" $ do
+        let toc s = Block (sp 1 s) Nothing (ChannelOutput (TocOutput 2))
+            ds = snd (assemble cfg noEval [Document (FileId 1) [toc 0, toc 5, toc 9]])
+        map summary ds
+          @?= [ ("G0402", Error, sp 1 5, "@toc は文書に一つだけ置けます", [(sp 1 0, "最初の @toc")]),
+                ("G0402", Error, sp 1 9, "@toc は文書に一つだけ置けます", [(sp 1 0, "最初の @toc")])
+              ],
+      testCase "G0403: references of every kind to a missing label, also inside a list item" $ do
+        let refs = [Ref (sp 1 1) RefNumber "nope", Ref (sp 1 2) RefTitle "nope", Ref (sp 1 3) RefPage "nope"]
+            listed = Block (sp 1 4) Nothing (BulletList [ListItem Nothing [para 1 5 [Ref (sp 1 6) RefNumber "gone"]]])
+            (book, ds) = assemble cfg noEval [Document (FileId 1) [para 1 0 refs, listed]]
+        map summary ds
+          @?= [ ("G0403", Error, sp 1 1, "存在しないラベルへの参照です: nope", []),
+                ("G0403", Error, sp 1 2, "存在しないラベルへの参照です: nope", []),
+                ("G0403", Error, sp 1 3, "存在しないラベルへの参照です: nope", []),
+                ("G0403", Error, sp 1 6, "存在しないラベルへの参照です: gone", [])
+              ]
+        case bookDocs book of
+          [Document _ (Block _ _ (Paragraph Nothing is) : _)] -> is @?= []
+          other -> assertFailure (show other),
+      testCase "G0404: figures outside a chapter, before the first and after a @nonumber chapter" $ do
+        let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing []))
+            docs = [Document (FileId 1) [fig 0, heading 1 2 1 noHeadingAttrs Nothing "一", fig 4, heading 1 6 1 noHeadingAttrs {haNoNumber = True} Nothing "あとがき", fig 8]]
+            msg = "章の外にある図版には、章番号を使う図番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
+        map summary (snd (assemble cfg noEval docs))
+          @?= [("G0404", Error, sp 1 0, msg, []), ("G0404", Error, sp 1 8, msg, [])]
+        snd (assemble cfg {acFigureFormat = "{n}"} noEval docs) @?= [],
+      testCase "G0405: ref-number to an unnumbered heading; ref-title to it is fine" $ do
+        let h = heading 1 0 1 noHeadingAttrs {haNoNumber = True} (Just "pre") "まえがき"
+            (book, ds) = assemble cfg noEval [Document (FileId 1) [h, para 1 5 [Ref (sp 1 6) RefNumber "pre"]]]
+        map summary ds @?= [("G0405", Error, sp 1 6, "番号を持たない要素への参照です: pre", [])]
+        case bookDocs book of
+          [Document _ [_, Block _ _ (Paragraph Nothing is)]] -> is @?= []
+          other -> assertFailure (show other)
+        snd (assemble cfg noEval [Document (FileId 1) [h, para 1 5 [Ref (sp 1 6) RefTitle "pre"]]]) @?= [],
+      testCase "G0406: ref-title to an element without a title" $ do
+        let p = Block (sp 1 0) (Just "p") (Paragraph Nothing [Text (sp 1 0) "本文"])
+            (book, ds) = assemble cfg noEval [Document (FileId 1) [p, para 1 5 [Ref (sp 1 6) RefTitle "p"]]]
+        map summary ds @?= [("G0406", Error, sp 1 6, "題を持たない要素への参照です: p", [])]
+        case bookDocs book of
+          [Document _ [_, Block _ _ (Paragraph Nothing is)]] -> is @?= []
+          other -> assertFailure (show other)
+        snd (assemble cfg noEval [Document (FileId 1) [p, para 1 5 [Ref (sp 1 6) RefPage "p"]]]) @?= []
+        let h = heading 1 0 1 noHeadingAttrs (Just "h") "一"
+            f = Block (sp 1 2) (Just "f") (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing []))
+        snd (assemble cfg noEval [Document (FileId 1) [h, f, para 1 5 [Ref (sp 1 6) RefTitle "h", Ref (sp 1 7) RefTitle "f"]]]) @?= []
+    ]
+
+summary :: Diagnostic -> (Text, Severity, SrcSpan, Text, [(SrcSpan, Text)])
+summary d = let DiagnosticCode c = diagCode d in (c, diagSeverity d, diagSpan d, diagMessage d, diagRelated d)

@@ -27,6 +27,7 @@ import Control.Monad (when, (>=>))
 import Data.Bits (shiftR, (.&.))
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy qualified as BL
+import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Void (Void, absurd)
@@ -102,6 +103,7 @@ bodyT = \case
   CodeBlock lang t -> tagged 6 [opt text lang, text t]
   FigureBlock fig -> tagged 7 [figureT fig]
   ChannelOutput c -> tagged 8 [channelT c]
+  ForcedBreak k -> tagged 11 [int (fromEnum k)]
 
 attrsT :: HeadingAttrs -> Term
 attrsT (HeadingAttrs tt n nn nt) = TList [opt inlinesTerm tt, opt int n, TBool nn, TBool nt]
@@ -139,6 +141,8 @@ inlineT rt = \case
   Cite s k -> tagged 15 [spanT s, text k]
   ProofComment s t -> tagged 16 [spanT s, text t]
   LineBreak s -> tagged 17 [spanT s]
+  Aki s (AkiZw r) -> tagged 18 [spanT s, TList [int (numerator r), int (denominator r)], TNull]
+  Aki s (AkiAbs x) -> tagged 18 [spanT s, TNull, int x]
   where
     sub = list (inlineT rt)
 
@@ -271,6 +275,7 @@ termBody t =
         6 | [l, x] <- fs -> CodeBlock <$> asOpt asText l <*> asText x
         7 | [fig] <- fs -> FigureBlock <$> termFigure fig
         8 | [c] <- fs -> ChannelOutput <$> termChannel c
+        11 | [k] <- fs -> ForcedBreak <$> asEnum k
         -- 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
         _ -> bad "ブロックの種類"
     [] -> bad "ブロックの種類"
@@ -343,6 +348,12 @@ termInline rd t =
         (15, [k]) -> Cite s <$> asText k
         (16, [x]) -> ProofComment s <$> asText x
         (17, []) -> Right (LineBreak s)
+        -- aki (docs/adr ADR 0019): zw as numerator and denominator, or sp; exactly one of them
+        (18, [TList [n, d], TNull]) -> do
+          n' <- asInt n
+          d' <- asInt d
+          if d' > 0 then Right (Aki s (AkiZw (n' % d'))) else bad "アキの分母"
+        (18, [TNull, x]) -> Aki s . AkiAbs <$> asInt x
         -- 1, 2 and 3 (strong, bold, italic) are retired: they are character styles (docs/adr ADR 0005)
         _ -> bad "インラインの種類"
     _ -> bad "インライン"

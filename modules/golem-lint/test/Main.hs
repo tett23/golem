@@ -54,7 +54,12 @@ tests =
         newlineCodes "@style quote\n  Full fathom five\n  Of his bones\n" @?= ["G0501"]
         newlineCodes "@style quote\nFull fathom five\nOf his bones\n" @?= ["G0501"]
         newlineCodesWith (Set.fromList ["verse", "quote"]) "@style quote\n  Full fathom five\n  Of his bones\n" @?= []
+        -- a style a file defines (docs/adr ADR 0014)
+        newlineCodesWith (Set.fromList ["verse", "letter"]) "@style letter\n  Full fathom five\n  Of his bones\n" @?= []
         newlineCodes "@figure a.png alt=x\n  Full fathom\n  five\n" @?= ["G0501"],
+      testCase "G0501 does not apply to hard line breaks (docs/adr ADR 0016)" $ do
+        newlineCodes "Full fathom\\\nfive\n" @?= []
+        newlineCodes "Full fathom\nfive\n" @?= ["G0501"],
       testCase "G0501 does not apply to the newlines that separate paragraphs (docs/adr ADR 0013)" $ do
         let lineCodes = newlineCodesIn (SourceSettings LineSeparated) (Set.fromList ["verse"])
         lineCodes "Full fathom\nfive\n" @?= []

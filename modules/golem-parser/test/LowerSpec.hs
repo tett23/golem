@@ -3,6 +3,8 @@ module LowerSpec (tests) where
 import Data.Text (Text)
 import Golem.Parser
 import Golem.Parser.AST
+import Golem.Parser.CST
+import Golem.Parser.Lower (lower)
 import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -87,6 +89,27 @@ tests =
               inl p2 @?= [Text "C"]
             other -> assertFailure (show other)
         ],
+      testGroup
+        "hard breaks (docs/adr ADR 0016)"
+        [ testCase "a backslash at the end of a line" $
+            paraTexts "a\\\nb\n" @?= [[Text "a", HardBreak, Text "b"]],
+          testCase "spaces and tabs around it are not text; the ideographic space is" $ do
+            paraTexts "a  \\\n  b\n" @?= [[Text "a", HardBreak, Text "b"]]
+            paraTexts "a\t\\\n\tb\n" @?= [[Text "a", HardBreak, Text "b"]]
+            paraTexts "a\\\n\x3000\&b\n" @?= [[Text "a", HardBreak, Text "\x3000\&b"]],
+          testCase "an escaped space is not a hard break" $
+            paraTexts "a\\ \nb\n" @?= [[Text "a ", SoftBreak, Text "b"]],
+          testCase "an escaped backslash is not a hard break" $
+            paraTexts "a\\\\\nb\n" @?= [[Text "a\\", SoftBreak, Text "b"]],
+          testCase "a hard break in a prose slot stays in the slot" $ case paraTexts "[note: a\\\nb]\n" of
+            [[Command _ [] [slot]]] -> inl slot @?= [Text "a", HardBreak, Text "b"]
+            other -> assertFailure (show other),
+          testCase "a hard break at the start of a paragraph stays" $
+            paraTexts "\\\na\n" @?= [[HardBreak, Text "a"]],
+          testCase "the span is from the backslash to the end of the newline" $ case ast "a\\\nb\n" of
+            [Paragraph [_, Located sp HardBreak, _]] -> (spanStart sp, spanEnd sp) @?= (1, 3)
+            other -> assertFailure (show other)
+        ],
       testCase "escapes are resolved" $
         paraTexts "\\# 見出しではない \\[ x \\\\\n" @?= [[Text "# 見出しではない [ x \\"]],
       testCase "comments vanish, proofreading comments stay" $
@@ -133,5 +156,12 @@ tests =
         other -> assertFailure (show other),
       testCase "figure caption becomes the command body" $ case ast "@figure a.png alt=\"x\"\n  キャプション。\n" of
         [BlockCommand n args [Located _ (Paragraph _)]] -> (locValue n, length args) @?= ("figure", 2)
-        other -> assertFailure (show other)
+        other -> assertFailure (show other),
+      -- golem-parser ADR 0009
+      testCase "an expression slot with no expression is an error at the slot" $ do
+        let cst = node NFile [ElemToken (Token KText "ab"), ElemNode (node NParagraph [ElemNode (node NExpr [token KExprOpen "[=", token KRBracket "]"])]), token KNewline "\n"]
+            other = FileId 3
+        case map locValue (fileBlocks (lower other cst)) of
+          [Paragraph [Located _ (Expr (Located sp EError))]] -> sp @?= mkSpan other 2 2
+          bs -> assertFailure (show bs)
     ]

@@ -3,17 +3,20 @@
 -}
 module Golem.Text
   ( TextVariant (..),
+    TextLists (..),
     renderText,
     renderNumber,
   )
 where
 
+import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble
 import Golem.Doc.IR
+import Golem.Doc.ListMarkers
 import Golem.Doc.Numerals
 import Golem.Syntax.Span
 import System.FilePath (replaceExtension)
@@ -43,20 +46,34 @@ data Ctx = Ctx
     -- | the ideographic spaces before the first line of a paragraph of a style (docs/adr ADR 0006)
     cFirstLine :: Maybe Text -> Int,
     -- | inside a list item, where paragraphs are not indented
-    cInList :: Bool
+    cInList :: Bool,
+    -- | the markers of [lists] (golem-driver ADR 0013)
+    cLists :: TextLists,
+    -- | the depth of the list around (0 outside lists)
+    cDepth :: Int
+  }
+
+{- | The markers of [lists] (golem-driver ADR 0013): the bullets and the
+number formats by depth (Nothing: the numbers of a book without them),
+and whether a gap is written (Nothing: by the last character).
+-}
+data TextLists = TextLists
+  { tlBullets :: NonEmpty Text,
+    tlNumbers :: Maybe (NonEmpty NumberFormat),
+    tlGap :: Maybe Bool
   }
 
 {- | One text file per source file, named after the source with a .txt
 extension. @firstLine@ gives the ideographic spaces that start the lines
 of a paragraph of a style (Nothing is body; docs/adr ADR 0006).
 -}
-renderText :: Text -> Bool -> (Maybe Text -> Int) -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
-renderText numberDefault dev firstLine variant ft book =
+renderText :: Text -> Bool -> (Maybe Text -> Int) -> TextLists -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
+renderText numberDefault dev firstLine lists variant ft book =
   [ (replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "txt", file ctx d)
   | d@(Document fid _) <- bookDocs book
   ]
   where
-    ctx = Ctx variant numberDefault book dev firstLine False
+    ctx = Ctx variant numberDefault book dev firstLine False lists 0
 
 file :: Ctx -> Document -> Text
 file c (Document _ bs) =
@@ -79,7 +96,7 @@ block c ind (Block sp _ body) = case body of
   Heading _ _ is ->
     let num = Map.lookup sp (bookHeadings (cBook c)) >>= hiNumberText
      in maybe "" (<> "　") num <> inlines c is
-  BulletList items -> T.intercalate "\n" [indentBy ind <> "・" <> itemText (ind + 1) it | it <- items]
+  BulletList items -> T.intercalate "\n" [indentBy ind <> spaced (atDepth (tlBullets (cLists c)) depth) <> itemText (ind + 1) it | it <- items]
   OrderedList items ->
     T.intercalate "\n" [indentBy ind <> marker n <> itemText (ind + 1) it | (n, it) <- zip (itemNumbers items) items]
   DefList gs ->
@@ -97,11 +114,25 @@ block c ind (Block sp _ body) = case body of
   ChannelOutput (TocOutput d) ->
     T.intercalate "\n" [maybe "" (<> "　") (teNumber e) <> inlines c (teTitle e) | e <- bookToc (cBook c), teLevel e <= d]
   ChannelOutput IndexOutput -> ""
+  -- plain text has no pages (docs/adr ADR 0017)
+  ForcedBreak _ -> ""
   ChannelOutput BibliographyOutput ->
     T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> k | (k, n) <- bookCitations (cBook c)]
   where
-    marker n = if cVariant c == Vertical then kanji n <> "、" else T.pack (show n) <> ". "
-    inItem = c {cInList = True}
+    -- the markers of [lists] by depth; without numbers, those of a book without [lists] (golem-driver ADR 0013)
+    depth = cDepth c + 1
+    marker n = case tlNumbers (cLists c) of
+      Nothing -> if cVariant c == Vertical then kanji n <> "、" else T.pack (show n) <> ". "
+      Just fmts ->
+        let NumberFormat pre st suf = atDepth fmts depth
+            num = case st of
+              NsBook -> renderNumber (cVariant c) (cNumberDefault c) n Nothing
+              _ -> fromMaybe (T.pack (show n)) (formatListNumber st n)
+         in spaced (pre <> num <> suf)
+    spaced m =
+      let gap = fromMaybe (not (endsWithSpacedPunctuation m)) (tlGap (cLists c))
+       in if gap then m <> (if cVariant c == Vertical then "　" else " ") else m
+    inItem = c {cInList = True, cDepth = depth}
     itemText i (ListItem _ bs) = case bs of
       (Block _ _ (Paragraph Nothing is) : rest) | not (any isLineBreak is) -> T.intercalate "\n" (inlines c is : map (block inItem i) rest)
       _ -> T.intercalate "\n" (map (block inItem i) bs)
@@ -118,12 +149,6 @@ splitLines :: [InlineF r] -> [[InlineF r]]
 splitLines is = case break isLineBreak is of
   (l, []) -> [l]
   (l, _ : rest) -> l : splitLines rest
-
-itemNumbers :: [ListItem] -> [Integer]
-itemNumbers = go 1
-  where
-    go _ [] = []
-    go next (ListItem n _ : rest) = let k = fromMaybe next n in k : go (k + 1) rest
 
 blockInlines :: Block -> [Inline]
 blockInlines (Block _ _ body) = case body of
@@ -168,6 +193,9 @@ inline c = \case
     Nothing -> ""
   ProofComment _ t -> if cProfileDev c then "【校正：" <> t <> "】" else ""
   LineBreak _ -> "\n"
+  -- the whole part of an amount in zw as ideographic spaces; less than one, and absolute amounts, are nothing (docs/adr ADR 0019)
+  Aki _ (AkiZw r) -> T.replicate (fromInteger (max 0 (floor r))) "\x3000"
+  Aki _ (AkiAbs _) -> ""
 
 {- | Ruby as 「対象（読み）」. Consecutive segments with readings are joined;
 segments without a reading are written as they are.

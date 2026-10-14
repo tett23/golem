@@ -23,54 +23,21 @@ module Golem.Layout.Japanese
   )
 where
 
-import Data.Char (isAscii, isSpace)
-import Data.Maybe (fromMaybe, isJust)
+import Data.Char (isSpace)
+import Data.Maybe (fromMaybe)
+import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Doc.Numerals (kanji, kanjiDigits)
+import Golem.Layout.Aki (AkiPos (..), AkiSet, akiBetween, defaultAkiSet, noAki)
+import Golem.Layout.Aki qualified as A
+import Golem.Layout.CharClass
 import Golem.Layout.Hyphenation
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
 import Golem.Layout.Ruby
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan, diagnostic)
-
--- | JLReq character classes used by the rules (cl-01 … cl-27).
-data CharClass
-  = Opening -- cl-01
-  | Closing -- cl-02
-  | Hyphen -- cl-03
-  | Dividing -- cl-04
-  | MiddleDot -- cl-05
-  | FullStop -- cl-06
-  | Comma -- cl-07
-  | Inseparable -- cl-08
-  | Iteration -- cl-09
-  | ProlongedSound -- cl-10
-  | SmallKana -- cl-11
-  | IdeographicSpace -- cl-14
-  | Kana -- cl-15, cl-16
-  | Ideograph -- cl-19 and other full-width characters
-  | Western -- cl-27
-  deriving stock (Eq, Show)
-
-charClass :: Char -> CharClass
-charClass c
-  | c `elem` ("「『（［｛〈《【〔〘〖〝‘“｟«" :: String) = Opening
-  | c `elem` ("」』）］｝〉》】〕〙〗〟’”｠»" :: String) = Closing
-  | c `elem` ("‐‑〜゠–" :: String) = Hyphen
-  | c `elem` ("？！‼⁇⁈⁉" :: String) = Dividing
-  | c `elem` ("・：；" :: String) = MiddleDot
-  | c `elem` ("。．" :: String) = FullStop
-  | c `elem` ("、，" :: String) = Comma
-  | c `elem` ("—…‥〳〴〵" :: String) = Inseparable
-  | c `elem` ("ヽヾゝゞ々〻" :: String) = Iteration
-  | c == 'ー' = ProlongedSound
-  | c `elem` ("ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ" :: String) = SmallKana
-  | c == '\x3000' = IdeographicSpace
-  | (c >= '\x3041' && c <= '\x309F') || (c >= '\x30A0' && c <= '\x30FF') = Kana
-  | isAscii c || (c >= '\x00A0' && c <= '\x024F') || (c >= '\x0370' && c <= '\x04FF') = Western
-  | otherwise = Ideograph
 
 lineStartProhibited :: Bool -> CharClass -> Bool
 lineStartProhibited strict = \case
@@ -119,6 +86,8 @@ data ComposeEnv = ComposeEnv
     ceAdvance :: Look -> Char -> Rational,
     -- | advance of a Latin word in a look, in em, as shaped (kerning, ligatures)
     ceWordAdvance :: Look -> Text -> Rational,
+    -- | the pair kerning of two Japanese characters in a look, in em (docs/adr/0020)
+    ceKern :: Look -> Char -> Char -> Rational,
     ceVertical :: !Bool,
     ceKinsokuStrict :: !Bool,
     ceHanging :: !Bool,
@@ -140,7 +109,9 @@ data ComposeEnv = ComposeEnv
     ceCiteNumber :: Text -> Maybe Int,
     {- | the penalty of a break after a hyphen or dash in a Latin word;
     10000 or more means no such break (golem-layout ADR 0008)
-    -} ceExplicitHyphenPenalty :: !Int
+    -} ceExplicitHyphenPenalty :: !Int,
+    -- | the aki set of the paragraph (docs/adr ADR 0019)
+    ceAkiSet :: !AkiSet
   }
 
 -- | The mark of a sidenote in the text: its number, ※ or nothing.
@@ -153,6 +124,7 @@ defaultComposeEnv fs =
     { ceFontSize = fs,
       ceAdvance = const defaultAdvance,
       ceWordAdvance = const (sum . map defaultAdvance . T.unpack),
+      ceKern = \_ _ _ -> 0,
       ceVertical = False,
       ceKinsokuStrict = True,
       ceHanging = False,
@@ -165,7 +137,8 @@ defaultComposeEnv fs =
       ceRestyle = const,
       ceSidenoteMarker = MarkerNumber,
       ceCiteNumber = const Nothing,
-      ceExplicitHyphenPenalty = 50
+      ceExplicitHyphenPenalty = 50,
+      ceAkiSet = defaultAkiSet
     }
   where
     defaultAdvance c
@@ -214,6 +187,8 @@ data Piece
   | PBox !Look !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
   | PRuby !Look !RubyKind !Text !(Maybe Text) -- ruby: the base and the reading (none for a segment without one)
   | PRubyBreak -- a break allowed between mono ruby bases
+  | PForcedBreak -- a hard line break: the line ends as a paragraph does (docs/adr ADR 0016)
+  | PAki !Look !AkiAmount -- [aki]: a fixed space, no break around it (docs/adr ADR 0019)
   | PAnchor (Int -> Anchor)
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
@@ -229,13 +204,17 @@ composeInlines env inls =
         _ -> True
       prevs = scanl (\acc p -> if solid p then Just p else acc) Nothing pieces
       nexts = drop 1 (scanr (\p acc -> if solid p then Just p else acc) Nothing pieces)
-      normalized = normalize env items
+      normalized = normalize env (kernPairs env items)
       -- anchors index the normalized items: the spacing inserted before a box shifts it
       positions = alignPositions items normalized
       at i = fromMaybe (length normalized) (lookup i positions)
    in (finish normalized, [f (at i) | (i, f) <- reverse anchors])
   where
-    finish its = its <> [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
+    finish its = its <> lineEnd
+
+-- | The end of a paragraph, and of a line broken by a hard break: the rest of the line is fill.
+lineEnd :: [Item]
+lineEnd = [Penalty 0 infPenalty NoHyphen, Glue 0 filStretch 0, Penalty 0 (negate infPenalty) NoHyphen]
 
 {- | Where each item ends up after 'normalize', which only inserts items
 before boxes: a box is the next box of the normalized items, anything
@@ -279,8 +258,10 @@ piecesOf env kenten inl = case inl of
   IndexMark sp e -> [PAnchor (\i -> AnchorIndex i sp e)]
   Cite _ k -> textPieces lk False ("[" <> maybe k (T.pack . show) (ceCiteNumber env k) <> "]")
   ProofComment {} -> []
-  -- paragraphs are split at line breaks before they are composed (docs/adr ADR 0005)
-  LineBreak {} -> []
+  -- the lines of a keep style are split before they are composed (docs/adr
+  -- ADR 0005); what reaches here is a hard break (docs/adr ADR 0016)
+  LineBreak {} -> [PForcedBreak]
+  Aki _ a -> [PAki lk a]
   where
     lk = ceLook env
     -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
@@ -356,6 +337,35 @@ rubyPieces env segs = concat (zipWith piece [0 :: Int ..] segs)
 advance :: ComposeEnv -> Look -> Char -> Sp
 advance env lk c = round (ceAdvance env lk c * toRational (lkSize lk))
 
+-- | The tracking of a look in sp: lkTracking thousandths of its size (docs/adr/0020).
+tracking :: Look -> Sp
+tracking lk = round (toInteger (lkTracking lk) * lkSize lk % 1000)
+
+{- | The pair kerning of Japanese characters (docs/adr/0020): two boxes of
+one Japanese character each, side by side, of the same look with metrics
+kerning and neither of them punctuation, whose spacing the rules of
+JLReq decide. The kerning widens (narrows) the first box and is given
+back at its end edge, so that it does not count at the end of a line.
+-}
+kernPairs :: ComposeEnv -> [Item] -> [Item]
+kernPairs env = \case
+  Box w p : rest@(Box _ c : _)
+    | Just a <- single p,
+      Just b <- single c,
+      bcLook p == bcLook c,
+      lkKerning (bcLook p) == KernMetrics ->
+        let k = round (ceKern env (bcLook p) a b * toRational (lkSize (bcLook p)))
+         in Box (w + k) p {bcEdgeEnd = bcEdgeEnd p - k} : kernPairs env rest
+  x : rest -> x : kernPairs env rest
+  [] -> []
+  where
+    single c = case T.unpack (withoutSelectors (bcText c)) of
+      [ch]
+        | boxKind c `elem` [KindText, KindKenten],
+          charClass ch `notElem` [Western, Opening, Closing, FullStop, Comma, MiddleDot] ->
+            Just ch
+      _ -> Nothing
+
 -- ------------------------------------------------------------------ items
 
 {- | Space before and after a punctuation glyph, in em (JLReq: the glyph
@@ -393,17 +403,19 @@ itemsFor env prev p next = case p of
           | T.null vs = advance env lk c
           | otherwise = round (ceWordAdvance env lk (T.cons c vs) * toRational fs)
         w = full - round ((pre + post) * toRational fs)
+        -- tracking after the character, given back at the line end (docs/adr/0020)
+        t = tracking lk
         tag
           | kenten = KindKenten
           | ceVertical env && cls == Western = KindRotated
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
-     in [Box w (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 0)]
+     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t))]
   PWord lk word -> wordItems env lk word
   PSpace lk ->
     let sw = advance env lk ' '
-     in [Glue sw (sw `div` 2) (sw `div` 3)]
+     in [Glue (sw + tracking lk) (sw `div` 2) (sw `div` 3)]
   PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0)]
   PRuby lk kind base reading ->
     let style = ceRuby env
@@ -429,6 +441,14 @@ itemsFor env prev p next = case p of
           GroupRuby -> KindGroupRuby
      in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp))]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
+  -- normalize sees no box next to these items: the spacing is that of the line's edge
+  PForcedBreak -> lineEnd
+  -- zw is the size of the type at its place; the penalty and the glue after it keep the line whole
+  PAki lk a ->
+    let w = case a of
+          AkiZw r -> round (r * toRational (lkSize lk))
+          AkiAbs x -> x
+     in [Penalty 0 infPenalty NoHyphen, Glue w 0 0]
   PAnchor _ -> []
 
 {- | A Latin word: broken after its explicit hyphens and dashes, or else
@@ -444,12 +464,14 @@ wordItems env lk word =
         | otherwise = (maybe [word] (`hyphenate` word) (cePatterns env), Penalty (advance env lk '-') 50 PatternHyphen)
       rotated = ceVertical env
       tag = fromEnum (if rotated then KindRotated else KindText)
+      tr = tracking lk
+      -- the tracking after each character, given back at the line end (docs/adr/0020)
       box t =
         let w = round (ceWordAdvance env lk t * toRational (lkSize lk))
             (ps, _) = maybe (0, 0) (protrusionRatio . fst) (T.uncons t)
             (_, pe) = maybe (0, 0) (protrusionRatio . snd) (T.unsnoc t)
             prot r = if ceProtrusion env then min w (w * r `div` 1000) else 0
-         in Box w (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk 0 0)
+         in Box (w + tr * toInteger (T.length t)) (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk 0 (negate tr))
       prot' r t f = if T.null t then 0 else f r
    in concat [box part : [pen | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]
 
@@ -468,32 +490,54 @@ explicitParts word = go [] (zip [0 :: Int ..] groups)
       | cutAfter i g = T.concat (reverse (g : acc)) : go [] rest
       | otherwise = go (g : acc) rest
 
-{- | Inserts break opportunities and spacing between neighbouring items
-following JLReq: no break where a prohibition applies, punctuation
-spaces combined, quarter-em spaces between Japanese and Latin text.
+-- | What comes before an item in 'normalize'.
+data Before
+  = -- | the start of the paragraph, or an item that is neither a box nor an [aki]
+    AtStart
+  | -- | the glue of an [aki] (docs/adr ADR 0019)
+    AfterAki
+  | AfterBox !BoxContent
+
+{- | Inserts break opportunities and spacing between neighbouring boxes:
+no break where a prohibition applies (golem-layout ADR 0002), and the
+spacing of the aki set of the paragraph (docs/adr ADR 0019). The spaces
+of the line start and the line end are the edges of the boxes. An [aki]
+is the space between its neighbours: the set adds none there.
 -}
 normalize :: ComposeEnv -> [Item] -> [Item]
-normalize env = go Nothing
+normalize env = go AtStart True
   where
-    fs = ceFontSize env
-    em r = round (r * toRational fs)
-    go _ [] = []
-    go prev (x : rest) = case (prev, x) of
-      (Just p, Box _ c) -> between p c <> [x] <> go (Just c) rest
-      (_, Box _ c) -> leading c <> [x] <> go (Just c) rest
-      _ -> x : go Nothing rest
-    -- punctuation spaces are in the size of their own box (golem-driver ADR 0004)
-    sizeOf c = toRational (lkSize (bcLook c))
-    leading c = case textClass c of
-      Just cls | fst (punctSpace cls) > 0 -> let w = round (fst (punctSpace cls) * sizeOf c) in [Glue w 0 w]
+    set = ceAkiSet env
+    go _ _ [] = []
+    go before first (x : rest) = case x of
+      Box w c ->
+        let spacing = case before of
+              AfterBox p -> between p c
+              AtStart -> leading c
+              AfterAki -> []
+         in spacing <> [Box w (withEdges first c)] <> go (AfterBox c) False rest
+      -- the glue of an [aki], after its penalty
+      Glue _ 0 0 -> x : go AfterAki first rest
+      _ -> x : go AtStart first rest
+    sizeOf = lkSize . bcLook
+    glueOf base (A.Aki n o m) =
+      let sp r = round (r * toRational base)
+       in [Glue (sp o) (sp m - sp o) (sp o - sp n)]
+    -- the space before the first box of a paragraph, in the box's size
+    leading c = case akiFirst c of
+      Just b | a <- akiBetween set AkiParagraphStart (AkiChar b), a /= noAki -> glueOf (sizeOf c) a
       _ -> []
-    trailingSpace c = maybe 0 (snd . punctSpace) (textClass c) * sizeOf c
-    leadingSpace c = maybe 0 (fst . punctSpace) (textClass c) * sizeOf c
+    -- the line start (but not the paragraph start) and the line end are fixed, in the box's size
+    withEdges first c = case (akiFirst c, akiLast c) of
+      (Just f, Just l) ->
+        let edge a = round (A.akiOptimum a * toRational (sizeOf c))
+         in c
+              { bcEdgeStart = bcEdgeStart c + (if first then 0 else edge (akiBetween set AkiLineStart (AkiChar f))),
+                bcEdgeEnd = bcEdgeEnd c + edge (akiBetween set (AkiChar l) AkiLineEnd)
+              }
+      _ -> c
     -- the classes come from the base characters, without variation selectors (golem-pdf ADR 0006)
     baseText = withoutSelectors . bcText
-    textClass c = case T.unsnoc (baseText c) of
-      Just (_, ch) | boxKind c `elem` [KindText, KindPunctuation, KindKenten] && T.length (baseText c) == 1 -> Just (charClass ch)
-      _ -> Nothing
     firstClass c = case T.uncons (baseText c) of
       Just (ch, _) | not (isRuby c) -> Just (charClass ch)
       _ -> Nothing
@@ -501,6 +545,10 @@ normalize env = go Nothing
       Just (_, ch) | not (isRuby c) -> Just (charClass ch)
       _ -> Nothing
     isRuby c = boxKind c `elem` [KindRuby, KindGroupRuby]
+    -- a Latin word is Latin text at both ends, quotation marks and dashes included
+    akiFirst c = if bcExpandable c then Just Western else firstClass c
+    akiLast c = if bcExpandable c then Just Western else lastClass c
+    isPunct k = k `elem` [Opening, Closing, FullStop, Comma, MiddleDot]
     between p c =
       let pc = lastClass p
           cc = firstClass c
@@ -510,42 +558,34 @@ normalize env = go Nothing
               || maybe False lineEndProhibited pc
               || (pc == Just Inseparable && cc == Just Inseparable)
               || (pc == Just Western && cc == Just Western && bcExpandable p && bcExpandable c)
-          space = combined (trailingSpace p) (leadingSpace c) pc cc
-          isJa k = (k /= Just Western)
-          waou = (pc == Just Western && isJa cc && isJust cc && space == 0 && notPunct cc) || (cc == Just Western && isJa pc && isJust pc && space == 0 && notPunct pc)
-          notPunct = maybe True (\cl -> punctSpace cl == (0, 0))
-          pen = ([Penalty 0 infPenalty NoHyphen | noBreak])
-       in if space > 0
-            then pen <> [Glue (round space) 0 (round space)]
-            else
-              if waou
-                then pen <> [Glue (em (1 / 4)) (em (1 / 4)) (em (1 / 8))]
-                else
-                  if noBreak
-                    then []
-                    else
-                      if bothJapanese pc cc
-                        then [Glue 0 (fs `div` 10) 0] -- inter-character: adjusted last
-                        else [Penalty 0 0 NoHyphen | interBox p c]
-    bothJapanese pc cc = maybe False (/= Western) pc && maybe False (/= Western) cc
-    interBox p c = not (bcExpandable p && bcExpandable c)
-    -- JLReq: closing followed by opening keeps a half em; other adjacent
-    -- punctuation spaces collapse; middle dots keep their quarters. In sp,
-    -- unrounded: each space is in the size of its own box.
-    combined post pre pc cc
-      | post == 0 = pre
-      | pre == 0 = if cc `elem` map Just [Closing, FullStop, Comma] then 0 else post
-      | pc `elem` map Just [Closing, FullStop, Comma] && cc == Just Opening = max post pre
-      | pc == Just MiddleDot || cc == Just MiddleDot = post + pre
-      | otherwise = 0
+          pen = [Penalty 0 infPenalty NoHyphen | noBreak]
+          -- a ruby is an ideograph next to punctuation, so that the punctuation keeps its space
+          classes = case (akiLast p, akiFirst c) of
+            (Nothing, Just b) | isPunct b -> Just (Ideograph, b)
+            (Just a, Nothing) | isPunct a -> Just (a, Ideograph)
+            (Just a, Just b) -> Just (a, b)
+            _ -> Nothing
+          -- zw: the punctuation's size, the larger of two, or the paragraph's
+          base a b
+            | isPunct a && isPunct b = max (sizeOf p) (sizeOf c)
+            | isPunct a = sizeOf p
+            | isPunct b = sizeOf c
+            | otherwise = ceFontSize env
+       in case classes of
+            Just (a, b)
+              | aki <- akiBetween set (AkiChar a) (AkiChar b),
+                aki /= noAki ->
+                  pen <> glueOf (base a b) aki
+            Just _ -> [Penalty 0 0 NoHyphen | not noBreak]
+            Nothing -> if noBreak then [] else [Penalty 0 0 NoHyphen | not (bcExpandable p && bcExpandable c)]
 
--- | Sidenotes inside a vertical paragraph are compile errors (ADR 0006).
+-- | Sidenotes in vertical text are compile errors (ADR 0006; the message is golem-driver ADR 0016).
 verticalSidenotes :: ComposeEnv -> [Inline] -> [Diagnostic]
 verticalSidenotes env inls
   | not (ceVertical env) = []
   | otherwise = concatMap go inls
   where
-    msg = "縦組みの段落の中には傍注を置けません"
+    msg = "縦組みの版面では傍注を使えません。脚注に替えてください"
     go = \case
       Sidenote sp _ _ -> [diagnostic "G0732" Error sp msg]
       Kenten _ _ xs -> concatMap go xs

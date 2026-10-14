@@ -19,9 +19,16 @@ validateInlines :: (FileId -> Maybe Int) -> [DeferredExpr] -> [Inline] -> [Text]
 validateInlines fileSize allowed is = concatMap (inlineErrors fileSize allowed) is <> breakErrors False is
 
 validateDocument :: (FileId -> Maybe Int) -> [DeferredExpr] -> Document -> [Text]
-validateDocument fileSize allowed (Document _ bs) = concatMap blockErrors bs
+validateDocument fileSize allowed (Document _ bs) = concatMap (blockAt True) bs
   where
-    blockErrors (Block sp _ body) = spanErrors fileSize sp <> bodyErrors body
+    blockErrors = blockAt False
+    -- a forced break stands only at the top of a document, without a label (docs/adr ADR 0017)
+    blockAt top (Block sp lbl body) =
+      spanErrors fileSize sp <> case body of
+        ForcedBreak _ ->
+          ["改ページは文書の最上位にだけ置けます" | not top]
+            <> ["改ページはラベルを持てません" | Just _ <- [lbl]]
+        _ -> bodyErrors body
     inl is = concatMap (inlineErrors fileSize allowed) is <> breakErrors False is
     bodyErrors = \case
       Paragraph st is ->
@@ -42,6 +49,7 @@ validateDocument fileSize allowed (Document _ bs) = concatMap blockErrors bs
       CodeBlock _ _ -> []
       FigureBlock f -> concatMap blockErrors (figCaption f)
       ChannelOutput _ -> []
+      ForcedBreak _ -> []
 
 {- | A line break stands only between two inlines at the top of a
 paragraph, never two in a row (docs/adr ADR 0005).
@@ -86,9 +94,14 @@ inlineErrors fileSize allowed i =
     Note _ _ xs -> sub xs
     Sidenote _ _ xs -> sub xs
     IndexMark _ (IndexEntry ts rs) -> ["索引の項目の段の数が不正です" | null ts || length ts > 2 || length ts /= length rs]
+    -- negative amounts are not written (docs/adr ADR 0019)
+    Aki _ a -> ["アキの量が負です" | negativeAki a]
     _ -> []
   where
     sub = concatMap (inlineErrors fileSize allowed)
+    negativeAki = \case
+      AkiZw r -> r < 0
+      AkiAbs x -> x < 0
 
 inlineSpan :: InlineF r -> SrcSpan
 inlineSpan = \case
@@ -107,3 +120,4 @@ inlineSpan = \case
   Cite s _ -> s
   ProofComment s _ -> s
   LineBreak s -> s
+  Aki s _ -> s

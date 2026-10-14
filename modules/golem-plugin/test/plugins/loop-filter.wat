@@ -4,7 +4,7 @@
   (memory (export "memory") 1)
   ;; [[], ["spin"]]
   (data (i32.const 16) "\82\80\81\64spin")
-  (func (export "golem_abi_version") (result i32) (i32.const 3))
+  (func (export "golem_abi_version") (result i32) (i32.const 5))
   (func (export "golem_alloc") (param i32) (result i32) (i32.const 4096))
   (func (export "golem_dealloc") (param i32 i32))
   (func (export "golem_describe") (result i64)

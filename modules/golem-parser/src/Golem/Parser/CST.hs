@@ -66,6 +66,7 @@ data SyntaxKind
   | KNewDefMark
   | KDelim
   | KKeyword
+  | KBackslash
   | KError
   | -- nodes
     NFile
@@ -103,6 +104,7 @@ data SyntaxKind
   | NHashExpr
   | NHashEntry
   | NParenExpr
+  | NHardBreak
   | NErrorNode
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
