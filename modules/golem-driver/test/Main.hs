@@ -10,7 +10,7 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.List (isSuffixOf, nub, sort, sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
@@ -33,10 +33,12 @@ import Golem.Pdf (Font (..), FontProgram (..), spToPt)
 import Golem.Pdf qualified as P
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
+import Golem.Preflight.Rules (Level (..), Rules (..), parseRules, printRules)
+import Golem.Preflight.View (GlyphView (..), ImageView (..), LineView (..), PageView (..), RuleView (..), View (..))
 import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), LocalStyles (..), ParaStyleDef (..), RunningContent (..), dimToSp, noLocalStyles, noParaDef, parseDim, parseStyle)
 import Golem.Syntax
-import System.Directory (copyFile, createDirectoryIfMissing, createFileLink, doesDirectoryExist, findExecutable, listDirectory)
+import System.Directory (copyFile, createDirectoryIfMissing, createFileLink, doesDirectoryExist, doesFileExist, findExecutable, listDirectory)
 import System.Environment (setEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
@@ -170,7 +172,7 @@ tests =
         "golem new (golem-cli ADR 0003)"
         ( [ goldenVsString ("new-" <> tag <> "-" <> name) ("test/golden/new-" <> tag <> "-" <> name) (templateFile lang file)
           | (lang, tag) <- [(Japanese, "ja"), (English, "en")],
-            (name, file) <- [("manifest.toml", "manifest.toml"), ("style.toml", "style.toml"), ("01.gm", "chapters/01.gm")]
+            (name, file) <- [("manifest.toml", "manifest.toml"), ("style.toml", "style.toml"), ("01.gm", "chapters/01.gm"), ("preflight.toml", "preflight.toml")]
           ]
             <> [ testCase "the template lays out a page" $
                    mapM_
@@ -217,6 +219,7 @@ tests =
                    assertBool "error" (either (const True) (const False) r)
                    listDirectory tmp >>= (@?= ["keep"])
                ]
+            <> newPreflightTests
         ),
       testGroup
         "all targets when none is given (golem-cli ADR 0002)"
@@ -334,6 +337,7 @@ tests =
       testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
       testGroup "kerning, proportional metrics and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "running heads (ADR 0014)" runningHeadTests,
+      testGroup "golem preflight (golem-cli ADR 0006)" preflightTests,
       testGroup
         "public-domain books"
         [ testCase "The Tempest builds horizontally to every target" $ do
@@ -2718,6 +2722,7 @@ fakeFonts =
       lfCode = \_ g -> g,
       lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i | (i, c) <- zip [0 ..] (T.unpack t)],
       lfEmBoxCentral = const (38 / 100),
+      lfFaceFile = const ("fonts/b.otf", "truetype"),
       lfEmbed = \_ vertical used ->
         Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used ("Adobe", "Identity", 0)
     }
@@ -3069,6 +3074,9 @@ explainTests =
           testCase "the notices of the catalog are noticeCodes (golem-syntax ADR 0002)" $ do
             let isNotice e = "- 重大度: お知らせ" `elem` T.lines (exBody e)
             sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isNotice e] @?= sort [c | DiagnosticCode c <- noticeCodes],
+          testCase "the preflight codes of the catalog are preflightCodes (golem-cli ADR 0006)" $ do
+            let isPreflight e = any ("- 重大度: プリフライトの設定による" `T.isPrefixOf`) (T.lines (exBody e))
+            sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isPreflight e] @?= sort [c | DiagnosticCode c <- preflightCodes],
           testCase "the catalog has G0244 retired" $
             fmap exStatus (lookupExplanation "G0244") @?= Just Retired
         ],
@@ -3088,6 +3096,8 @@ explainTests =
           bad "a bad severity" (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: 致命的" else l) (inUse "G0102")) "- 重大度: 致命的",
           testCase "お知らせ is a severity (golem-syntax ADR 0002)" $
             fmap (map exCode) (parseCatalog (T.unlines (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: お知らせ" else l) (inUse "G0102")))) @?= Right ["G0101", "G0102"],
+          testCase "a severity by the preflight rules, with the default of print (golem-cli ADR 0006)" $
+            fmap (map exCode) (parseCatalog (T.unlines (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: プリフライトの設定による（print では警告）" else l) (inUse "G0102")))) @?= Right ["G0101", "G0102"],
           bad "a severity that is none of the four" (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: 情報" else l) (inUse "G0102")) "- 重大度: 情報",
           bad "out of order" (preamble <> inUse "G0102" <> inUse "G0101") "## G0101",
           bad "a code twice" (preamble <> inUse "G0101" <> inUse "G0101") "## G0101",
@@ -3825,3 +3835,140 @@ codeTests =
       css <- TIO.readFile (tmp </> "build/html/style.css")
       page <- TIO.readFile (tmp </> "build/html/a.xhtml")
       k css page
+
+-- ------------------------------------------------------------------ golem preflight (golem-cli ADR 0006)
+
+-- | The preflight.toml of golem new (golem-cli ADR 0006).
+newPreflightTests :: [TestTree]
+newPreflightTests =
+  [ testCase "the Japanese and English preflight.toml differ only in comments" $
+      uncommented (templateText Japanese "preflight.toml") @?= uncommented (templateText English "preflight.toml"),
+    testCase "preflight.toml is written without fonts" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+      createProject (tmp </> "book") (templateFiles English uuid0) Nothing >>= (@?= Right ())
+      TIO.readFile (tmp </> "book/preflight.toml") >>= (@?= templateText English "preflight.toml"),
+    testCase "a failed download writes no preflight.toml" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+      _ <- createProject (tmp </> "book") (templateFiles Japanese uuid0) (Just (fakeFetch (Left "offline"), [fakeFont "FONT"]))
+      doesFileExist (tmp </> "book/preflight.toml") >>= assertBool "no preflight.toml" . not,
+    testCase "the template reads as print, and its examples uncommented too" $
+      forM_ [Japanese, English] $ \lang -> do
+        let t = templateText lang "preflight.toml"
+            (examples, pageCount) = T.breakOn pageCountMarker t
+        parseRules (FileId 0) t @?= Right printRules
+        parseRules (FileId 0) (uncomment examples <> pageCount) @?= Right printRules
+        parseRules (FileId 0) (uncomment t) @?= Right printRules {ruPageCount = LevelError, ruPageMultiple = 16}
+  ]
+  where
+    uncommented = T.unlines . filter (not . ("#" `T.isPrefixOf`)) . T.lines
+    -- the comment line just before the page-count example
+    pageCountMarker = "\n# [page-count]"
+    -- the example lines: "# " taken off the lines of keys and tables
+    uncomment = T.unlines . map one . T.lines
+    one l = case T.stripPrefix "# " l of
+      Just rest | isSetting rest -> rest
+      _ -> l
+    isSetting r = "[" `T.isPrefixOf` r || (" = " `T.isInfixOf` r && not ("name" `T.isPrefixOf` r))
+
+-- | A one-chapter project for golem preflight, with the fake fonts.
+withPreflightProject :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withPreflightProject style source files act = withSystemTempDirectory "golem-preflight" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") miniManifest
+  BS.writeFile (tmp </> "style.toml") (withBodyFont style)
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  forM_ (bodyFontFiles style <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  act tmp
+
+preflightIn :: FilePath -> IO PreflightResult
+preflightIn tmp = preflight (defaultPreflightOptions tmp) {poFonts = fakeProvider}
+
+errorCodes :: [Diagnostic] -> [DiagnosticCode]
+errorCodes = map diagCode . filter isError
+
+preflightTests :: [TestTree]
+preflightTests =
+  [ testCase "the PDF checked is the PDF of build --profile prod, not of dev" $
+      withPreflightProject horizontalStyle "本文。\n" [] $ \tmp -> do
+        p <- preflightIn tmp
+        pdf <- maybe (assertFailure "no PDF") pure (prPdf p)
+        let built profile = do
+              r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = profile}
+              case filter (".pdf" `isSuffixOf`) (brWritten r) of
+                [path] -> BS.readFile path
+                other -> assertFailure (show other)
+        prod <- built Prod
+        dev <- built Dev
+        assertBool "prod" (pdf == prod)
+        assertBool "dev" (pdf /= dev),
+    testCase "the view: the trimmed page, the folio, the image and the table rules" $ do
+      img <- tinyImage
+      let source = "# 章\n\n@figure images/tiny.jpg alt=\"t\"\n  キャプション。\n\n| a | b |\n|---|---|\n| c | d |\n\n本文。\n"
+      withPreflightProject (horizontalStyle <> "\n[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n") source img $ \tmp -> do
+        p <- preflightIn tmp
+        v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+        -- A5: 148mm wide
+        map (rectW . pvTrim) (vwPages v) @?= map (const (round (148 * 72 / 25.4 * 65536 :: Rational))) (vwPages v)
+        assertBool "folio on every page" (all (any ((== "ノンブル") . lvKind) . pvLines) (vwPages v))
+        case concatMap pvImages (vwPages v) of
+          [iv] -> do
+            ivPath iv @?= "images/tiny.jpg"
+            -- a figure that does not wrap fills the measure: 12 characters of 10pt
+            rectW (ivRect iv) @?= 120 * 65536
+          other -> assertFailure (show (length other))
+        sort (map rvWeight (concatMap pvRules (vwPages v))) @?= [round (0.3 * 65536 :: Rational), round (0.6 * 65536 :: Rational), round (0.6 * 65536 :: Rational)],
+    testCase "a character the font has not is glyph 0 in the view (with real fonts)" $ withSystemTempDirectory "golem-preflight" $ \tmp -> do
+      copyTree fixture tmp
+      createDirectoryIfMissing True (tmp </> "fonts")
+      copyFile "../golem-font/test/fonts/SourceHanSans-Regular_subset.otf" (tmp </> "fonts/ja.otf")
+      BS.writeFile (tmp </> "style.toml") (pdfStyle <> "\n[fonts.body]\nja = \"fonts/ja.otf\"\n")
+      BS.appendFile (tmp </> "chapters/02.gm") (TE.encodeUtf8 "\n私用\xE000。\n")
+      p <- preflight (defaultPreflightOptions tmp)
+      v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+      assertBool "glyph 0 of U+E000" (any (any (\g -> gvGlyph g == 0 && gvText g == "\xE000") . pvGlyphs) (vwPages v))
+      assertBool "G0902" (DiagnosticCode "G0902" `elem` errorCodes (prDiagnostics p)),
+    testCase "a PDF as a figure is G0905" $
+      withPreflightProject horizontalStyle "# 章\n\n@figure images/a.pdf web=images/a.png alt=\"t\"\n\n本文。\n" [("images/a.pdf", "%PDF-1.4\n"), ("images/a.png", "png")] $ \tmp -> do
+        p <- preflightIn tmp
+        assertEqual (show (prDiagnostics p)) [DiagnosticCode "G0905"] (map diagCode (filter ((== DiagnosticCode "G0905") . diagCode) (prDiagnostics p))),
+    {- the profile is prod: G0205 is reported in prod only. G0504, the
+    example of the ADR, is a diagnostic of golem lint, which neither golem
+    build nor golem preflight runs. -}
+    testCase "the profile is prod (G0205 is reported in prod only)" $
+      withPreflightProject horizontalStyle "本文。 %%= 校正 %%\n" [] $ \tmp -> do
+        p <- preflightIn tmp
+        [diagSeverity d | d <- prDiagnostics p, diagCode d == DiagnosticCode "G0205"] @?= [Warning]
+        assertBool "a view" (isJust (prView p)),
+    testCase "an error of the build stops before the checks" $
+      withPreflightProject horizontalStyle "[nope: x]\n" [] $ \tmp -> do
+        p <- preflightIn tmp
+        assertBool "errors" (not (null (errorCodes (prDiagnostics p))))
+        assertBool "no view" (isNothing (prView p)),
+    testCase "rules out of the project are read, a missing file is G0901" $
+      withPreflightProject horizontalStyle "本文。\n" [] $ \tmp -> withSystemTempDirectory "golem-rules" $ \other -> do
+        TIO.writeFile (other </> "printer.toml") "based-on = \"none\"\nname = \"A 印刷\"\n"
+        p <- preflight (defaultPreflightOptions tmp) {poFonts = fakeProvider, poRules = Just (other </> "printer.toml")}
+        prRulesLabel p @?= "A 印刷"
+        prBasedOn p @?= "none"
+        errorCodes (prDiagnostics p) @?= []
+        q <- preflight (defaultPreflightOptions tmp) {poFonts = fakeProvider, poRules = Just (other </> "missing.toml")}
+        map diagCode (prDiagnostics q) @?= [DiagnosticCode "G0901"]
+        prPdf q @?= Nothing,
+    testCase "a wrong preflight.toml stops before the PDF" $
+      withPreflightProject horizontalStyle "本文。\n" [("preflight.toml", "[pdf-x]\nseverity = \"notice\"\n")] $ \tmp -> do
+        p <- preflightIn tmp
+        map diagCode (prDiagnostics p) @?= [DiagnosticCode "G0901"]
+        prPdf p @?= Nothing
+  ]
+    <> [ testCase ("the template fails print with G0910 and G0914 only, and passes with bleed and intent (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
+           let dir = tmp </> "book"
+           createProject dir (templateFiles lang uuid0) Nothing >>= (@?= Right ())
+           forM_ (templateFonts lang) $ \f -> createDirectoryIfMissing True (takeDirectory (dir </> fsPath f)) >> BS.writeFile (dir </> fsPath f) "fake"
+           p <- preflightIn dir
+           sort (errorCodes (prDiagnostics p)) @?= [DiagnosticCode "G0910", DiagnosticCode "G0914"]
+           [diagMessage d | d <- prDiagnostics p, diagCode d == DiagnosticCode "G0914"] @?= ["PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）"]
+           style <- TIO.readFile (dir </> "style.toml")
+           TIO.writeFile (dir </> "style.toml") (T.replace "[page]\n" "[page]\nbleed = \"3mm\"\n" style <> "\n[color]\nintent = \"profiles/test.icc\"\n")
+           createDirectoryIfMissing True (dir </> "profiles")
+           BS.writeFile (dir </> "profiles/test.icc") "fake profile"
+           q <- preflightIn dir
+           errorCodes (prDiagnostics q) @?= []
+       | (lang, tag) <- [(Japanese, "ja"), (English, "en")]
+       ]

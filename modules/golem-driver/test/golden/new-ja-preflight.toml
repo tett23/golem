@@ -1,0 +1,34 @@
+# golem preflight の設定です（入稿の前の検査）。
+# 書かなかった値は based-on の設定から引き継ぎます。
+# 印刷所から設定のファイルを受け取ったら、このファイルをそれに置き換えます。
+based-on = "print"
+# name = "○○印刷 オフセット"
+
+# 次の行は print の主な値を書き写したものです。
+# 行頭の # を外して、印刷所の求める値に書き換えます。
+#
+# [image-resolution]
+# color = { error-below = 150, warning-below = 300 }
+# gray = { error-below = 150, warning-below = 300 }
+# bitmap = { error-below = 600, warning-below = 1200 }
+#
+# [image-color-space]
+# severity = "warning"
+# allowed = ["cmyk", "gray"]
+#
+# [bleed-size]
+# severity = "error"
+# min = "3mm"
+#
+# [live-area]
+# severity = "warning"
+# distance = "3mm"
+#
+# [ink-coverage]
+# severity = "warning"
+# max = 350
+
+# ページ数を折の単位にそろえる印刷所では、次の行の # を外します（print では off です）。
+# [page-count]
+# severity = "error"
+# multiple-of = 16

@@ -11,6 +11,7 @@ module Golem.Driver.Explain.Catalog
     Explanation (..),
     parseCatalog,
     severities,
+    preflightSeverity,
   )
 where
 
@@ -39,6 +40,16 @@ data Explanation = Explanation
 -- | The values of @- 重大度: @.
 severities :: [Text]
 severities = ["エラー", "警告", "dev では警告、prod ではエラー", "お知らせ"]
+
+{- | One of 'severities', or a severity the preflight rules decide, with
+the default of print after it (golem-cli ADR 0006).
+-}
+validSeverity :: Text -> Bool
+validSeverity s = s `elem` severities || preflightSeverity `T.isPrefixOf` s
+
+-- | The severity of the codes of golem preflight that the rules decide.
+preflightSeverity :: Text
+preflightSeverity = "プリフライトの設定による"
 
 -- | A line with its number, counted from 1.
 type Numbered = (Int, Text)
@@ -101,8 +112,8 @@ section (h, ls) = do
       header = [(n, l) | (n, l) <- rest, n < firstSub]
   title <- titleOf code h header
   severity <- field code h "重大度" header
-  unless (snd severity `elem` severities) $
-    Left (at (fst severity) ("重大度は " <> T.intercalate "、" severities <> " のいずれかにします: " <> snd severity))
+  unless (validSeverity (snd severity)) $
+    Left (at (fst severity) ("重大度は " <> T.intercalate "、" (severities <> [preflightSeverity <> "（…）"]) <> " のいずれかにします: " <> snd severity))
   (sn, statusText) <- field code h "状態" header
   status <- case statusText of
     "使用中" -> Right InUse
