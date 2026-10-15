@@ -35,6 +35,7 @@ ctx =
             ("images/a.pdf", AssetPresent),
             ("data.csv", AssetText "a,b\n1,\"x,y\"\n"),
             ("src/Main.hs", AssetText "l1\nl2\nl3\n"),
+            ("x.hs", AssetText (T.unlines ["line " <> T.pack (show i) | i <- [1 :: Int .. 25]])),
             ("empty.csv", AssetText ""),
             ("blank.csv", AssetText "\n\n"),
             ("ragged.csv", AssetText "a,b\n1\n"),
@@ -127,6 +128,7 @@ tests =
       separatorTests,
       hardBreakTests,
       breakTests,
+      codeTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
@@ -184,7 +186,7 @@ tests =
         case body "@table src=data.csv\n" of
           [Table _ h [r]] -> (map stripSpans h, map stripSpans r) @?= ([["a"], ["b"]], [["1"], ["x,y"]])
           other -> assertFailure (show other)
-        body "@listing src/Main.hs lines=2-3\n" @?= [CodeBlock Nothing "l2\nl3"]
+        map (fmap codeText . codeOf) (body "@listing src/Main.hs lines=2-3\n") @?= [Just "l2\nl3"]
         errs "@listing src/Main.hs lines=3-9\n" @?= ["G0237"],
       testCase "proofreading comments: kept in dev, warned and dropped in prod" $ do
         errs "本文%%= メモ %%\n" @?= []
@@ -706,6 +708,109 @@ breakTests =
       DefList gs -> any (any (any hasBreak) . dgDefs) gs
       FigureBlock f -> any hasBreak (figCaption f)
       _ -> False
+
+-- | The code of a code block.
+codeOf :: BlockBody -> Maybe Code
+codeOf = \case
+  CodeBlock c -> Just c
+  _ -> Nothing
+
+-- | The code of the only code block of a source.
+oneCode :: Text -> IO Code
+oneCode src = case run ctx src of
+  ([CodeBlock c], []) -> pure c
+  other -> assertFailure (show other) >> error "unreachable"
+
+{- | The lines of code: text, number, diff mark, highlight and callouts
+(golem-driver ADR 0023).
+-}
+linesOf :: Code -> [(Text, Maybe Integer, Maybe DiffMark, Bool, [Int])]
+linesOf c = [(clText l, clNumber l, clDiff l, clHighlight l, clCallouts l) | l <- codeLines c]
+
+-- | Code blocks for technical books (golem-driver ADR 0023).
+codeTests :: TestTree
+codeTests =
+  testGroup
+    "code blocks for technical books (golem-driver ADR 0023)"
+    [ testCase "numbers=10: the lines are 10, 11, 12" $ do
+        c <- oneCode "```haskell numbers=10\na\nb\nc\n```\n"
+        map clNumber (codeLines c) @?= [Just 10, Just 11, Just 12]
+        codeNumbers c @?= Just True
+        codeLang c @?= Just "haskell",
+      testCase "numbers=true: 1, 2, 3; numbers=false: Just False; nothing written: Nothing" $ do
+        c <- oneCode "``` numbers=true\na\nb\nc\n```\n"
+        map clNumber (codeLines c) @?= [Just 1, Just 2, Just 3]
+        codeNumbers c @?= Just True
+        codeLang c @?= Nothing
+        f <- oneCode "``` numbers=false\na\n```\n"
+        codeNumbers f @?= Just False
+        n <- oneCode "```\na\nb\n```\n"
+        codeNumbers n @?= Nothing
+        map clNumber (codeLines n) @?= [Just 1, Just 2],
+      testCase "@listing lines=20-22 numbers the lines 20, 21, 22; numbers=5 makes them 5, 6, 7" $ do
+        c <- oneCode "@listing x.hs lines=20-22\n"
+        linesOf c @?= [("line 20", Just 20, Nothing, False, []), ("line 21", Just 21, Nothing, False, []), ("line 22", Just 22, Nothing, False, [])]
+        d <- oneCode "@listing x.hs lines=20-22 numbers=5\n"
+        map clNumber (codeLines d) @?= [Just 5, Just 6, Just 7],
+      testCase "highlight=2,4-5: lines 2, 4 and 5; highlight=9 in three lines is G0269" $ do
+        c <- oneCode "``` highlight=2,4-5\na\nb\nc\nd\ne\n```\n"
+        map clHighlight (codeLines c) @?= [False, True, False, True, True]
+        msgs "``` highlight=9\na\nb\nc\n```\n" @?= [("G0269", "highlight の行 9 はこのコードにありません")]
+        l <- oneCode "@listing x.hs lines=20-22 highlight=21\n"
+        map clHighlight (codeLines l) @?= [False, True, False],
+      testCase "diff=true: +, -, space and an empty line" $ do
+        c <- oneCode "``` diff=true\n+a\n-b\n c\n\n```\n"
+        codeDiff c @?= True
+        linesOf c
+          @?= [ ("a", Just 1, Just DiffAdded, False, []),
+                ("b", Nothing, Just DiffRemoved, False, []),
+                ("c", Just 2, Just DiffContext, False, []),
+                ("", Just 3, Just DiffContext, False, [])
+              ],
+      testCase "diff=true: a line that starts with another character is G0269 at the line" $
+        diags "``` diff=true\n+a\nxa\n```\n" @?= [("G0269", "diff=true のコードの行は +、-、空白のどれかで始めます", 17, 19)],
+      testCase "a removed line cannot be highlighted" $
+        msgs "``` diff=true highlight=2\n+a\n-b\n```\n" @?= [("G0269", "highlight の行 2 はこのコードにありません")],
+      testCase "callouts=true: <1> at the line end, several, the spaces before them" $ do
+        c <- oneCode "``` callouts=true\nfoo  <1>\nbar <2> <3>\nbaz\n```\n"
+        linesOf c @?= [("foo", Just 1, Nothing, False, [1]), ("bar", Just 2, Nothing, False, [2, 3]), ("baz", Just 3, Nothing, False, [])]
+        diags "``` callouts=true\nfoo <51>\n```\n" @?= [("G0269", "注釈の印の番号は 1 から 50 までです: 51", 18, 26)],
+      testCase "without callouts, <1> stays in the text" $ do
+        c <- oneCode "```\nList<1>\nfoo <1>\n```\n"
+        map clText (codeLines c) @?= ["List<1>", "foo <1>"]
+        map clCallouts (codeLines c) @?= [[], []],
+      testCase "@caption: inlines, code style included" $ do
+        c <- oneCode "@caption 設定の [code: x] の読み込み\n```\na\n```\n"
+        fmap stripSpans (codeCaption c) @?= Just ["設定の ", "<code>", "x", " の読み込み"],
+      testCase "@caption on a paragraph is G0213; with no text G0269" $ do
+        errs "@caption 説明\n段落。\n" @?= ["G0213"]
+        msgs "@caption\n```\na\n```\n" @?= [("G0269", "@caption には本文を書きます")],
+      testCase "@caption and @label before @listing" $ do
+        case body "@label cfg\n@caption 設定\n@listing x.hs lines=1-2\n" of
+          [CodeBlock c] -> fmap stripSpans (codeCaption c) @?= Just ["設定"]
+          other -> assertFailure (show other)
+        case run ctx "@label cfg\n@caption 設定\n@listing x.hs lines=1-2\n" of
+          (_, ds) -> ds @?= [],
+      testCase "the wrong arguments are G0269" $ do
+        msgs "```haskell foo\na\n```\n" @?= [("G0269", "コードブロックの開始の行には、言語の名前とキーワード引数だけを書けます")]
+        msgs "``` unknown=1\na\n```\n" @?= [("G0269", "コードブロックに書けないキーです: unknown。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます")]
+        msgs "``` numbers=-1\na\n```\n" @?= [("G0269", "numbers の値が正しくありません: -1")]
+        msgs "``` numbers=abc\na\n```\n" @?= [("G0269", "numbers の値が正しくありません: abc")]
+        msgs "``` diff=yes\na\n```\n" @?= [("G0269", "diff の値が正しくありません: yes")]
+        msgs "@listing x.hs unknown=1\n" @?= [("G0269", "コードブロックに書けないキーです: unknown。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます")],
+      testCase "lang= of @listing is the language; on the fence it is G0269" $ do
+        c <- oneCode "@listing x.hs lines=1-1 lang=haskell\n"
+        codeLang c @?= Just "haskell"
+        errs "``` lang=haskell\na\n```\n" @?= ["G0269"],
+      testCase "file= is the file name" $ do
+        c <- oneCode "```haskell file=\"src/Main.hs\"\na\n```\n"
+        codeFile c @?= Just "src/Main.hs"
+        l <- oneCode "@listing x.hs lines=1-1 file=x.hs\n"
+        codeFile l @?= Just "x.hs",
+      testCase "a code block without arguments is as before" $ do
+        c <- oneCode "```hs\na\n  b\n```\n"
+        c @?= Code (Just "hs") Nothing Nothing Nothing False [CodeLine "a" (Just 1) Nothing False [], CodeLine "  b" (Just 2) Nothing False []]
+    ]
 
 -- | The codes, messages and positions of golem-eval ADR 0003.
 diagnosticTests :: TestTree
