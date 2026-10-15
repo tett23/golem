@@ -6,7 +6,8 @@ fixed point of page-number references (S2).
 
 Everything is counted in grid lines: a footnote line takes one grid
 line from the bottom of the page and the footnote area is separated
-from the text by one grid line.
+from the text by the grid lines of the separator, one unless
+[notes.rule] asks for more (golem-driver ADR 0024).
 
 A page may have several columns (docs/adr ADR 0018): the unit of the
 break is the column, the flow goes through the columns of a page in
@@ -197,21 +198,24 @@ data St = St
 lines each (docs/adr ADR 0018).
 -}
 paginate :: Int -> Int -> [Flow] -> [PageOut]
-paginate columns = paginateIn (ColumnSet columns 0 0 0)
+paginate columns = paginateIn 1 (ColumnSet columns 0 0 0)
 
-{- | 'paginate' with the columns of the page as a set (docs/adr ADR 0025):
+{- | 'paginate' with the grid lines of the footnote separator
+(golem-driver ADR 0024) and the columns of the page as a set (docs/adr ADR 0025):
 'FSwitchColumns' starts another set of columns, after the lines used on
 a page of one column or on the next page otherwise, and
 'FRestoreColumns' goes back to @base@ on the next page.
 -}
-paginateIn :: ColumnSet -> Int -> [Flow] -> [PageOut]
-paginateIn base capacity flows =
+paginateIn :: Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
+paginateIn separatorLines base capacity flows =
   let st0 = St 1 0 0 0 [] [] [] [] [] [] [] [] [] base {csFirstLine = 0} 0
       final = closePage (go st0 flows)
       done = reverse (sDone final)
    in if null done then [PageOut 1 0 False [] [] [] [] [] base] else done
   where
     columns = csColumns base
+    -- a footnote line always fits under the separator and one line of text
+    separator = max 1 (min separatorLines (capacity - 2))
     top st = csFirstLine (sSet st)
     -- breaks left at the end of the book are dropped (docs/adr ADR 0017)
     go st [] = flushDeferred st {sBreaks = []}
@@ -333,14 +337,14 @@ paginateIn base capacity flows =
       where
         step ((u, nl), acc) l =
           let noteLines = sum (map nbLines (lbNotes l))
-              sep = if nl == 0 && noteLines > 0 then 1 else 0
+              sep = if nl == 0 && noteLines > 0 then separator else 0
               u' = u + 1
               nl' = nl + noteLines + sep
               ok = u' + nl' <= capacity && (null acc || last acc)
            in ((u', nl'), acc <> [ok])
     putLine st l =
       let noteLines = sum (map nbLines (lbNotes l))
-          sep = if sNoteLines st == 0 && noteLines > 0 then 1 else 0
+          sep = if sNoteLines st == 0 && noteLines > 0 then separator else 0
           room = capacity - sUsed st - 1 - sNoteLines st - sep
           (shown, pending) = splitNotes room (lbNotes l)
        in st
@@ -372,7 +376,7 @@ paginateIn base capacity flows =
     putBlock st n ls@(l0 : _) =
       let notes = concatMap lbNotes ls
           noteLines = sum (map nbLines notes)
-          sep = if sNoteLines st == 0 && noteLines > 0 then 1 else 0
+          sep = if sNoteLines st == 0 && noteLines > 0 then separator else 0
           room = capacity - sUsed st - n - sNoteLines st - sep
           (shown, pending) = splitNotes room notes
        in st
@@ -423,7 +427,7 @@ paginateIn base capacity flows =
           withNotes = foldl' carryNote fresh (sPendingNotes st)
        in placeDeferred withNotes {sDeferred = []} (sDeferred st)
     carryNote st (i, from, len) =
-      let sep = if sNoteLines st == 0 then 1 else 0
+      let sep = if sNoteLines st == 0 then separator else 0
           room = capacity - sNoteLines st - sep - 1
           shown = min len room
        in st
