@@ -12,8 +12,8 @@
 = [strong: 拡張子]
   原稿のファイルの名前は [code: .gm] で終えます。
 = [strong: 文字コード]
-  UTF-8 で保存します。
-  UTF-8 は、いまのテキストエディタの多くが標準で使う文字コードです。
+  UTF-8 で保存します[note: RFC 3629（UTF-8）。[code: https://www.rfc-editor.org/rfc/rfc3629]]。
+  UTF-8 は、いまのテキストエディタの多くが標準で使う文字コードです（第[ref-number basics]章「[ref-title text-files]」）。
   Shift_JIS などで保存したファイルは、エラーになります。
 = [strong: BOM]
   ファイルの先頭に BOM（文字コードを示すために先頭に付ける数バイトの目印）を付けないでください。
@@ -31,10 +31,11 @@
   全角の空白は、どこにあっても本文の文字として残ります。
   行末などに半角の空白を残したいときは、[code: \\\ ] のように前にバックスラッシュを置きます。
 = [strong: 異体字]
-  Golem は文字を置き換えません。
+  Golem は Unicode の正規化をせず、文字を置き換えません[note: The Unicode Standard。[code: https://www.unicode.org/versions/latest/]]。
   CJK 互換漢字のような異体字も、書いたとおりに組みます。
-  漢字の後に異体字セレクタ（IVS）を書くと、PDF ではその字形で組みます。
+  漢字の後に異体字セレクタ（IVS）を書くと、PDF ではその字形で組みます[note: Ideographic Variation Database。[code: https://unicode.org/ivd/]]。
   書体がその字形を持たなければ、もとの字の字形になります。
+  HTML、EPUB、プレーンテキストには、異体字セレクタを原稿のまま書き出します。
 
 @nonumber
 ## ブロックの記法
@@ -79,6 +80,9 @@
   コードブロックの始まりと終わりの行です。
   始まりの行に言語の名前（[code: toml] など）を書くと、HTML で構文に応じて色分けします。
   中ではコマンド、コメント、エスケープを解釈しません。
+  段落スタイル [code: code] で組みます（付録C）。
+  PDF では、行頭と行の途中の空白をそのまま残し、タブは空白二つ分ごとの位置まで進めます。
+  行長に収まらない行は折り返し、お知らせ（G0730）を出します。
 = [strong: [code: @名前]]
   ブロックコマンドです。
   行頭の [code: @] に続けてコマンドの名前を書き、空白で区切って引数を並べます。
@@ -113,7 +117,7 @@
   別のファイルの [code: @set] の変数を、名前を付けて取り込みます。
   取り込んだ変数は [code: 名前.変数] で参照します。
   [code: as] と名前は省けません。
-  パスはプロジェクトのディレクトリからの相対パスで書きます。
+  パスはプロジェクトのフォルダからの相対パスで書きます。
   例：[code: @import common/values.gm as values]
 = [strong: [code: @toc depth=N]]
   その位置に目次を組みます。
@@ -141,11 +145,13 @@
   ファイルは最初の引数に書きます。
   [code: src=] でも書けますが、廃止予定なので、お知らせ（G0265）が出ます。
   [code: lines] で載せる行の範囲を選べ、省くとファイルの全体を載せます。
+  [code: ```] のコードブロックと同じく、段落スタイル [code: code] で組みます。
 = [strong: [code: @style 名前]]
   段落に段落スタイルを付けます。
   インデントのない次の行に段落を書くと、その段落一つに付きます。
   次の行から空白二つで字下げして段落を並べると、それらの段落のすべてに付きます。
   字下げした本体には段落だけを置けます。
+  コードブロックの段落スタイル [code: code] は付けられません。
 = [strong: [code: @page-break]]
   次のページから続けます（改ページ）。
   [code: @page-break recto] は次の奇数ページから（改丁）、[code: @page-break verso] は次の偶数ページから続けます。
@@ -163,9 +169,13 @@
   キーは [code: style.toml] と同じで、値は [code: 2zw] や [code: keep] のように引用符なしで書けます。
   [code: style.toml] にある名前を書くと、そのファイルの中でだけ、書いたキーが置き換わります。
   [code: regex] では、二つ目の語に組を足す段落スタイルの名前を、キーに [code: pattern] と [code: style] を書きます。
+  [code: paragraph] には [code: regex-styles] を書けません。
+  [code: paragraph code] に書けるのは、[code: style.toml] と同じく [code: font]、[code: size]、[code: background]、[code: padding] だけです。
+  アキ量のセットは [code: aki-set] で選べますが、セットそのものは [code: style.toml] にだけ定義できます。
 
 [code: @manifest] と [code: @style-def] は、ファイルの最初に置きます。
 前に置けるのは、コメントと空行だけです。
+[code: @import] と [code: @set] は、その後に書きます。
 一つのスタイルは一行で定義します。
 
 ```
@@ -174,7 +184,7 @@
 @style-def regex body pattern="\\d+" style=bold
 ```
 
-[code: @figure]、[code: @table]、[code: @listing] が指すファイルも、プロジェクトのディレクトリからの相対パスで書きます。
+[code: @figure]、[code: @table]、[code: @listing] が指すファイルも、プロジェクトのフォルダからの相対パスで書きます。
 絶対パス、URL、プロジェクトの外を指すパスは使えません。
 
 @nonumber
@@ -236,6 +246,13 @@
 = [strong: [code: \[bold: 語\]]]、[strong: [code: \[italic: 語\]]]
   太字と斜体です。
   文字スタイル [code: bold] と [code: italic] を付けます。
+= [strong: [code: \[code: 語\]]]
+  本文の中のファイルの名前、コマンド、パスに使います。
+  文字スタイル [code: code] を付け、書体は [code: style.toml] の [code: \[fonts.code\]] で決まります（付録C）。
+  PDF では、ハイフンを入れず、空白と [code: /] の後でだけ行を改めます。
+  [code: /] の後で改めても、ハイフンは描きません。
+  HTML と EPUB では [code: <code>] の要素になります。
+  中身は本文なので、[code: \[]、[code: \]]、[code: \|] はバックスラッシュでエスケープします。
 = [strong: [code: \[style 名前: 語\]]]
   [code: style.toml] で定義した文字スタイルを付けます。
   [code: \[strong: 語\]] は [code: \[style strong: 語\]] と同じ意味です。
@@ -297,7 +314,7 @@
 プラグインのコマンドも、同じ形で呼び出します（第[ref-number plugins]章「[ref-title plugins]」）。
 
 ```
-[ruby: 東/京|とう/きょう]の[kenten shape=dot: 下町]。[note: 注]
+[ruby: 東/京|とう/きょう]の[kenten shape=dot: 下町][note: 注]。
 図[ref-number fig-new]は[ref-page fig-new]ページにあります。
 ```
 
@@ -325,9 +342,13 @@ PDF と HTML の版では、この例の一行めのうち、ルビと圏点を�
   本文には埋め込めません。
 = [strong: 名前]
   [code: @set] の変数は名前で、[code: @import] で取り込んだ変数は [code: 名前.変数] で参照します。
+  連想配列の値は、[code: 名前.キー] で参照します。
   [code: pi] と [code: e] は円周率と自然対数の底です。
 = [strong: 本の情報]
   [code: meta.title]、[code: meta.date]、[code: meta.id]、[code: meta.language] と、書いてあれば [code: meta.edition]、[code: meta.publisher]、[code: meta.title_reading] で、[code: manifest.toml] の [code: \[metadata\]] の値を参照します。
+  [code: meta.creators] は関係者の名前の配列です。
+  本文には埋め込めませんが、[code: len(meta.creators)] で人数を数えられます。
+  [code: meta] は見出しの中でも使えます。
 = [strong: 本の構成]
   [code: doc.chapters.count] は本の章の数です。
   見出しの中では使えません。

@@ -1,6 +1,6 @@
-%% この章でだけ使う段落スタイル（docs/adr/0014） %%
+%% この章でだけ使う段落スタイル（「ファイルの中のスタイル」の節の例） %%
 @style-def paragraph example based-on=memo first-line-indent=2zw
-%% 正規表現スタイルの例（docs/adr/0015） %%
+%% 正規表現スタイルの例（「正規表現スタイル」の節の例） %%
 @style-def paragraph regex-example based-on=memo
 @style-def regex regex-example pattern="[0-9０-９]+" style=bold
 
@@ -8,25 +8,32 @@
 # スタイルの設定
 
 [code: style.toml] は、紙面の体裁を書くファイルです。
-判型、版面、書体、見出しの大きさ、注の置き方のように、原稿の外で決めることはすべてここに書きます。
+判型、版面、書体、段落スタイル、見出しの大きさ、注の置き方のように、原稿の外で決めることはすべてここに書きます。
 原稿に体裁を書かないので、同じ原稿を別の判型や別の書体で組み直すときも、変えるのは [code: style.toml] だけです。
 
+InDesign では、版面や段落スタイルはドキュメントの中に保存され、設定のダイアログで確かめます。
+Golem では、それらがすべて [code: style.toml] という一つのテキストのファイルに並んでいます。
+このファイルを別のプロジェクトにコピーすれば、同じ体裁を使い回せます。
+
 この章の例の多くは、このマニュアル自身の [code: style.toml] から取り込んでいます。
+書き方は TOML です（「[ref-title toml]」、[ref-page toml] ページ）。
 [code: manifest.toml] と同じく、知らないキーを書くとエラーになります。
+綴りを誤ったキーが黙って無視されると、その誤りは組み上がりの崩れとしてしか見えないからです。
 書ける表とキーの一覧は、[ref-title app-style]（[ref-page app-style] ページ）にあります。
 
 ## 判型と版面
 
 紙面の大きさと、本文を組む領域（版面）は、[code: \[page\]] と [code: \[page.grid\]] で決めます。
+InDesign の新規ドキュメントの設定と、レイアウトグリッドの設定に当たります。
 
 @listing style.toml lines=3-17
 
 [code: \[page\]] には、紙面そのものを書きます。
 
-- [code: size]：判型[index reading=はんけい: 判型]です。[code: "A4"]、[code: "A5"]、[code: "A6"]、[code: "B5"]、[code: "B6"]、[code: "四六判"]、[code: "菊判"]、[code: "新書判"]、[code: "mass-market"]（ペーパーバック）から選びます。寸法は[ref-number tables]「[ref-title tables]」に載せています。表にない判型は、[code: size = { width = "148mm", height = "210mm" }] のように幅と高さで書きます。
+- [code: size]：判型[index reading=はんけい: 判型]です。[code: "A4"]、[code: "A5"]、[code: "A6"]、[code: "B5"]、[code: "B6"]、[code: "四六判"]、[code: "菊判"]、[code: "新書判"]、[code: "mass-market"]（ペーパーバック）から選びます。寸法は「[ref-title tables]」（[ref-page tables] ページ）に載せています。表にない判型は、[code: size = { width = "148mm", height = "210mm" }] のように幅と高さで書きます。
 - [code: binding]：綴じる側です。縦組みの本は右綴じ（[code: "right"]）、横組みの本は左綴じ（[code: "left"]）が普通です。
 - [code: writing-mode]：縦組み（[code: "vertical"]）か横組み（[code: "horizontal"]）かです。
-- [code: bleed]：塗り足しの幅です（[ref-number print-pdf]「[ref-title print-pdf]」）。
+- [code: bleed]：塗り足しの幅です（「[ref-title print-pdf]」、[ref-page print-pdf] ページ）。
 
 版面は、日本語の組版の流儀にならい、文字の大きさと字数と行数で決めます。
 余白は、版面をページのどこに置くかで決まります。
@@ -42,6 +49,12 @@
 寸法は、[code: mm]、[code: pt]、[code: Q]（級）、[code: H]（歯）、[code: zw]（全角一字分）の単位を付けて書きます。
 1Q と 1H は、どちらも 0.25mm です。
 
+InDesign のレイアウトグリッドと違うのは、格子が目安ではなく、組版の規則そのものだという点です。
+Golem には、テキストフレームを描いて置く操作がありません。
+本文は版面の格子の上を先頭から順に流れ、本文の行は常に行の格子に載ります。
+見出し、図版、表、コードブロックも、格子の行を何行か占める形で置かれるので、その後の本文が格子からずれることはありません。
+このため、行送りは版面で一つだけ決め、段落スタイルでは変えられません（「[ref-title styles]」、[ref-page styles] ページ）。
+
 版面がページに収まらない値を書くと、エラーになります。
 字数か行数を減らすか、[code: position] を変えてください。
 
@@ -49,46 +62,77 @@
 [code: characters] は一段の字数、[code: lines] は一段の行数です。
 本文は、横組みでは左の段から右の段へ、縦組みでは上の段から下の段へ流れ、最後の段の次は次のページに進みます。
 見出し、図版、表、索引も、段の中に一段の幅で組まれます。
-索引だけは、[code: \[index\]] で版面と異なる段数にできます（「索引の段組み」の節）。
+索引だけは、[code: \[index\]] で版面と異なる段数にできます（「[ref-title index-columns]」、[ref-page index-columns] ページ）。
 脚注は、注の印のある段の下に入ります。
 章の終わりでは、後ろの段が空いたまま残ることがあります。
 段組みの版面では、傍注欄（[code: \[sidenotes\]]）と図版の回り込み（[code: wrap]）は使えず、エラーになります。
 HTML と EPUB は、段組みにしません。
 
+@label fonts
 ## 書体
 
 書体[index reading=しょたい: 書体]は、役割ごとに [code: \[fonts.<役割>\]] で指定します。
-役割の名前は自由に付けられますが、[code: body] が本文の書体になります。
+役割の名前は自由に付けられますが、[code: body] が本文の書体、[code: code] がコードの書体になります。
 
 @listing style.toml lines=19-29
 
 [code: ja] に和文の書体を、[code: latin] に欧文の書体を書きます。
 和文と欧文で別の書体を組み合わせるのは、日本語の組版の普通のやり方です。
-このマニュアルは、本文を Noto Serif JP と Source Serif 4 で、見出しを Noto Sans JP と Source Sans 3 の太字で組んでいます。
-どれも SIL Open Font License 1.1 で配布されている書体です。
+このマニュアルは、本文を Noto Serif JP と Source Serif 4 で、見出しを Noto Sans JP と Source Sans 3 の太字で、コードを Source Code Pro と Noto Sans JP で組んでいます。
 
-コードの書体は、役割 [code: code] で指定します。
-コードブロックと [code: \[code: ...\]] は、この役割の書体で組みます。
-[code: \[fonts.code\]] がなければ本文の書体で組み、お知らせ G0808 で知らせます。
-このマニュアルは、コードを Source Code Pro と Noto Sans JP で組んでいます。
-どちらも SIL Open Font License 1.1 で配布されている書体です。
+コードブロックと [code: \[code: ...\]] は、役割 [code: code] の書体で組みます。
+[code: \[fonts.code\]] がなければ本文の書体で組み、お知らせ G0808 で知らせます（「[ref-title notices]」、[ref-page notices] ページ）。
 
-書体のファイルは、プロジェクトの中に置きます。
-Golem は、機械にインストールされている書体を探しません。
-機械ごとに入っている書体が違うと、同じ原稿から同じ紙面が得られなくなるからです。
+### 書体をプロジェクトの中に置く理由
 
-OpenType の機能は、[code: features = \["palt"\]] のように役割ごとに指定できます。
-[code: palt] は、和文の約物や仮名を詰めて組む機能です。
+書体のファイルは、プロジェクトのフォルダの中に置き、[code: style.toml] にはプロジェクトのフォルダからのパスを書きます。
+InDesign の Document Fonts フォルダー[index reading=どきゅめんとふぉんつふぉるだー: Document Fonts フォルダー]と同じ考え方です。
+違いは、Golem が機械にインストールされている書体を一切探さないことです。
+InDesign は、Document Fonts フォルダーにない書体を機械に入っている書体から探しますが、Golem では、プロジェクトの中にない書体はエラー（G0802）になります。
 
-縦組みの本では、書体の縦書き用の字形（OpenType の [code: vert]）を使います。
-縦書き用の字形を持たないダッシュ（——）などの記号は、PDF では横組みの字形を 90 度回して、縦の線として組みます。
-HTML と EPUB では、ブラウザーやリーダーが同じように記号を回して表示します。
+こうしているのは、機械ごとに入っている書体とその版が違うと、同じ原稿から同じ紙面が得られなくなるからです。
+同じ名前の書体でも、版が違えば字形や字幅や詰めの情報が変わることがあります。
+書体をプロジェクトに置けば、誰がどの機械で組んでも、同じファイルの書体で組まれます（「[ref-title same-output]」、[ref-page same-output] ページ）。
 
-PDF には、使った文字だけを含む形で書体を埋め込みます。
-ライセンスで埋め込みを禁じている書体を使うと、エラーになります。
-HTML と EPUB には、書体のファイルを同梱します。
+その代わり、プロジェクトを人に渡すと、書体のファイルも一緒に渡すことになります。
+HTML と EPUB にも書体のファイルを同梱するので、それらを公開すれば書体を配ることになります。
+書体のライセンスが、この使い方を許しているかを確かめてください。
+このマニュアルで使っている書体は、どれも SIL Open Font License 1.1 で配布されていて、文書への埋め込みと、ほかのソフトウェアと一緒に配ることを許しています[note: SIL Open Font License 1.1。[code: https://openfontlicense.org/]]。
+
+### 埋め込みのライセンス
+
+PDF には、使った文字だけを含む形（サブセット）で書体を埋め込みます。
+書体のファイルには、作り手が埋め込みを許すかどうかを記した欄があります。
+OpenType の書体の OS/2 という表の [code: fsType] の欄です[note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
+Golem はこの欄を仕様のとおりに読み、次のどれかに当たる書体を埋め込まず、エラー（G0804）にします。
+
+- 制限付きのライセンス（埋め込みを許さない）の印があり、閲覧や編集のための埋め込みを許す印がない。
+- サブセットにすることを禁じる印がある。Golem は常にサブセットで埋め込むからです。
+- ビットマップだけの埋め込みを許す印がある。
+
+エラーになった書体は、ライセンスの条件を変えて使うことはできないので、埋め込みを許す書体に替えてください。
+この欄は機械が読める印にすぎず、ライセンスの契約の全体ではありません。
+欄が埋め込みを許していても、書体の使用許諾の契約に別の条件がないかは、契約の文書で確かめてください。
+
+### OpenType の機能
+
+OpenType の書体は、字形の置き換えや字送りの調整を、機能という単位で持っています。
+機能には [code: palt] や [code: vert] のような四文字のタグが付いていて、その一覧は OpenType の仕様が定めています[note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。
+どの機能を持つかは書体によって違います。
+
+役割ごとに使う機能を、[code: features = \["palt"\]] のように指定できます。
+[code: palt] は、和文の約物や仮名を字面に合わせて詰めて組む機能です。
+同じ詰めは、文字スタイルと段落スタイルの [code: proportional-metrics] でも指定できます（「[ref-title kerning]」、[ref-page kerning] ページ）。
+
+縦組みの本では、書体の縦書き用の字形（[code: vert]）を使います。
+縦書き用の字形を持たないダッシュ（U+2014）などの記号は、PDF では横組みの字形を 90 度回して、縦の線として組みます。
+どの文字を回すかは、Unicode の縦組みの字の向きの規則（UAX #50）で決めています[note: UAX #50（Unicode Vertical Text Layout）。[code: https://www.unicode.org/reports/tr50/]]。
+HTML と EPUB では、ブラウザーやリーダーが同じ規則で記号を回して表示します。
+
+### 異体字
 
 原稿の漢字の後に異体字セレクタ（IVS）を書くと、PDF ではその字形で組みます。
+異体字セレクタと字形の組は、Ideographic Variation Database に登録されています[note: Ideographic Variation Database。[code: https://unicode.org/ivd/]]。
 書体がその異体字を持たない場合は、もとの字の字形になります。
 PDF から文字を検索したり複写したりすると、異体字はもとの字として扱われます。
 HTML、EPUB、プレーンテキストには異体字セレクタをそのまま書き、字形の選択は閲覧する環境の書体に任せます。
@@ -135,8 +179,8 @@ gap = "0.5zw"
 @label styles
 ## 段落スタイルと文字スタイル
 
-段落の体裁は段落スタイルに、文字の体裁は文字スタイルにまとめます。
-考え方は、Adobe InDesign の段落スタイルと文字スタイルと同じです。
+段落の体裁は段落スタイル[index reading=だんらくすたいる: 段落スタイル]に、文字の体裁は文字スタイル[index reading=もじすたいる: 文字スタイル]にまとめます。
+InDesign の段落スタイルと文字スタイルに当たり、ほかのスタイルを引き継ぐ [code: based-on] は、InDesign の「基準」に当たります。
 
 @listing style.toml lines=31-53
 
@@ -146,11 +190,12 @@ gap = "0.5zw"
 - [code: size]：文字の大きさです。
 - [code: color]：色の名前（スウォッチ）です。
 - [code: synthetic-bold]、[code: synthetic-italic]：書体の輪郭を太らせた太字と、傾けた斜体です。
+- [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]：文字の送りです（「[ref-title kerning]」、[ref-page kerning] ページ）。
 - [code: based-on]：引き継ぐ文字スタイルです。
 
-[code: bold]、[code: italic]、[code: strong] の三つは、はじめから定義されています。
+[code: bold]、[code: italic]、[code: strong]、[code: code] の四つは、はじめから定義されています。
 同じ名前で書くと、書いたキーだけが置き換わります。
-このマニュアルは、[code: bold] の書体を見出しの太いゴシック体にしています。
+このマニュアルは、[code: bold] の書体を見出しの太いゴシック体にし、[code: code] に色を付けています。
 [code: strong] は [code: bold] を引き継ぐので、[code: \[strong: ...\]] も同じ書体で組まれます。
 
 段落スタイル（[code: \[paragraph-styles.<名前>\]]）に書けるキーは次のとおりです。
@@ -159,24 +204,38 @@ gap = "0.5zw"
 - [code: indent]、[code: first-line-indent]：字下げです。
 - [code: space-between]：同じ段落スタイルの段落が続くときに、あいだに空ける行の数です。
 - [code: line-breaks]：[code: "keep"] にすると、段落の中の改行を行の区切りにします。
+- [code: regex-styles]：正規表現スタイルです（「[ref-title regex-styles]」、[ref-page regex-styles] ページ）。
+- [code: aki-set]：アキ量のセットです（「[ref-title aki-sets]」、[ref-page aki-sets] ページ）。
+- 文字の送りの四つのキーも書けます。
 - [code: based-on]：引き継ぐ段落スタイルです。省くと [code: body] を引き継ぎます。
 
-はじめから定義されている段落スタイルは、[code: body]（本文）、[code: verse]（韻文）、[code: caption]（図のキャプション）、[code: sidenote]（傍注の本文）の四つです。
+はじめから定義されている段落スタイルは、[code: body]（本文）、[code: verse]（韻文）、[code: caption]（図のキャプション）、[code: sidenote]（傍注の本文）、[code: code]（コードブロック）の五つです。
 段落スタイルを付けない段落は [code: body] で組みます。
 
-行送り[index reading=ぎょうおくり: 行送り]は、段落スタイルでは変えられません。
-本文を行の格子にそろえて組むので、段落ごとに行送りが変わると、見開きの左右で行の位置がずれるからです。
+[code: code] だけは、ほかの段落スタイルと扱いが違います。
+[code: body] を引き継がず、書けるキーは [code: font]、[code: size]、[code: background]（背景の色のスウォッチ）、[code: padding]（背景の内側の余白）の四つだけです。
+本文の字下げやアキ量のセットがコードに及ばないようにするためです。
+原稿で [code: @style code] とは書けず、コードは [code: ```] か [code: @listing] で書きます（「[ref-title code-blocks]」、[ref-page code-blocks] ページ）。
 
+InDesign の段落スタイルとの違いは、次のとおりです。
+
+- 行送り[index reading=ぎょうおくり: 行送り]を持ちません。行送りは版面で一つだけ決め、本文はすべて行の格子に載ります。段落ごとに行送りが変わると、見開きの左右で行の位置がずれるからです。
+- 文字の大きさは、本文の文字の大きさより大きくできません。大きい文字は見出しで組みます（「[ref-title heading-style]」、[ref-page heading-style] ページ）。
+- 段落の前後のアキの設定は、同じ段落スタイルの段落が続くときに空ける行の数（[code: space-between]）だけです。格子からずれる半端な空きは作れません。
+- 段落ごとに書いたスタイルの上書き（オーバーライド）はありません。体裁を変えたい段落には、別の段落スタイルを作って付けます。原稿にあるのはスタイルの名前だけなので、スタイルを直せば、それを使うすべての段落が変わります。
+
+@label kerning
 ## 文字の送り
 
 文字スタイルと段落スタイルには、文字の送りを決める四つのキーも書けます。
+InDesign のカーニング、トラッキング、プロポーショナルメトリクス、ベースラインシフトに当たります。
 [code: \[paragraph-styles.body\]] に書くと、本の全体の既定になります。
 文字スタイルで書かなかったキーは、外側の文字の値のままです。
 
-- [code: kerning]：カーニング[index reading=かーにんぐ: カーニング]（字の組ごとの字間の調整）の方式です。[code: "metrics"]（既定）は、フォントのペアカーニングの情報で字間を調整します。[code: "japanese-equal-width"] は欧文だけを調整し、和文は全角の送りのまま組みます。[code: "none"] は調整しません。
-- [code: tracking]：文字ごとに足す空きです。文字の大きさの 1/1000 を単位に、-1000 から 10000 までの整数で書きます。負の値は字間を詰めます。
-- [code: proportional-metrics]：[code: true] にすると、和文を字面に合わせた送り（プロポーショナルメトリクス）で組みます。括弧類と句読点は全角のまま組みます。
-- [code: baseline-shift]：文字を、横組みでは上へ、縦組みでは右へずらす量です。[code: "1pt"] や [code: "-0.25zw"] のように書きます。行の位置は変わりません。
+- [code: kerning]：カーニング[index reading=かーにんぐ: カーニング]（字の組ごとの字間の調整）の方式です。[code: "metrics"]（既定）は、フォントのペアカーニングの情報で字間を調整します。InDesign の「メトリクス」に当たります。[code: "japanese-equal-width"] は欧文だけを調整し、和文は全角の送りのまま組みます。InDesign の「和文等幅」に当たります。[code: "none"] は調整しません。
+- [code: tracking]：文字ごとに足す空き（トラッキング[index reading=とらっきんぐ: トラッキング]）です。InDesign と同じく、文字の大きさの 1/1000 を単位に、-1000 から 10000 までの整数で書きます。負の値は字間を詰めます。
+- [code: proportional-metrics]：[code: true] にすると、和文を字面に合わせた送り（プロポーショナルメトリクス）で組みます。OpenType の [code: palt]（縦組みでは [code: vpal]）の機能を使います。括弧類と句読点は全角のまま組みます。
+- [code: baseline-shift]：文字を、横組みでは上へ、縦組みでは右へずらす量（ベースラインシフト）です。[code: "1pt"] や [code: "-0.25zw"] のように書きます。行の位置は変わりません。
 
 ```toml
 [paragraph-styles.body]
@@ -189,9 +248,12 @@ tracking = -50
 和文のフォントがカーニングの情報を持っていると、既定の [code: metrics] では和文の字間が字の組ごとに変わり、字送りの格子からずれる行が出ます。
 格子にそろえたい本文は、[code: \[paragraph-styles.body\]] に [code: kerning = "japanese-equal-width"] と書いてください。
 約物（括弧類、句読点、中点類）を含む字の組には、和文のカーニングをかけません。
+
+InDesign と違う点もあります。
 トラッキングの空きは、行の最後の文字の後ろには入りません。
-オプティカルカーニング（[code: kerning = "optical"]）は、まだ使えません。
+InDesign の「オプティカル」に当たるカーニング（[code: kerning = "optical"]）は使えません。
 書くと G0321 のエラーになります。
+文字の比率（水平比率と垂直比率）、文字回転、文字ツメもありません。
 
 HTML と EPUB では、CSS の [code: font-kerning]、[code: letter-spacing]、[code: font-feature-settings]、[code: vertical-align] で表します。
 CSS では和文と欧文で別のカーニングを指定できないので、[code: japanese-equal-width] は欧文のカーニングを保ちます。
@@ -218,6 +280,7 @@ CSS では和文と欧文で別のカーニングを指定できないので、[
 [code: style.toml] にある名前を書くと、そのファイルの中でだけ、書いたキーが置き換わります。
 たとえば [code: @style-def paragraph body indent=1zw] は、その章の本文の字下げだけを変えます。
 [code: body] を引き継ぐ段落スタイルの字下げも、その章の中では一緒に変わります。
+置き換えたときは、お知らせ G0262 で知らせます。
 
 [code: @style-def] は、ファイルの最初に置きます。
 前に置けるのは、コメントと空行だけです。
@@ -228,10 +291,11 @@ CSS では和文と欧文で別のカーニングを指定できないので、[
 
   [code: memo] を引き継ぎ、最初の行だけをもう一字下げています。
 
+@label regex-styles
 ## 正規表現スタイル
 
 段落スタイルには、正規表現に一致した文字に文字スタイルを当てる設定を書けます。
-InDesign の正規表現スタイル（GREP スタイル）と同じ考え方です。
+InDesign の正規表現スタイル（GREP スタイル）[index reading=せいきひょうげんすたいる: 正規表現スタイル]に当たります。
 数字だけを欧文の書体にする、「第 N 章」の N だけを太字にする、といった体裁を、原稿に [code: \[style ...\]] を書かずに付けられます。
 
 ```toml
@@ -284,13 +348,14 @@ regex-styles = [
 - [code: page-break]：[code: "recto"] にすると、その見出しを奇数ページから始めます。
 
 本文より大きい見出しも、行の格子からずらさずに置きます。
-見出しは、その大きさを収める行数を占め、その中の中央に組まれます。
+見出しは、その大きさを収める行数を占め、その中の中央に組まれます（行取り）。
 
 ## [ruby: 柱 | はしら]とノンブル
 
-柱[index reading=はしら: 柱]（ページの余白に置く章の題）とノンブル[index reading=のんぶる: ノンブル]（ページ番号）は、[code: \[masters.body\]] で置きます。
+柱[index reading=はしら: 柱]（ページの余白に置く章の題）とノンブル[index reading=のんぶる: ノンブル]（ページ番号）は、マスターページの [code: \[masters.body\]] で置きます。
+マスターページ[index reading=ますたーぺーじ: マスターページ]は、InDesign の親ページ（InDesign 2022 より前の版ではマスターページ）に当たります。
 
-@listing style.toml lines=82-87
+@listing style.toml lines=87-92
 
 [code: position] には、[code: "top-outside"]、[code: "top-center"]、[code: "top-inside"]、[code: "bottom-outside"]、[code: "bottom-center"]、[code: "bottom-inside"] のどれかを書きます。
 [code: top] と [code: bottom] は天と地の余白、[code: outside] は小口の側、[code: inside] はノドの側です。
@@ -324,6 +389,10 @@ odd = "heading.1.numbered"
 目次のページなどで柱を消したいときは、[code: running-head] のないマスターページを指定します。
 見出しの [code: \[headings.<階層>\]] には [code: running-head] を書けません。
 
+InDesign の親ページとの違いは、置けるものが柱とノンブルの二つだけであることです。
+親ページのように、罫線や画像やテキストフレームを置くことはできません。
+マスターページはページごとではなく章のファイルごとに選び、ページごとに親ページの項目を上書きすることもありません。
+
 @label notes-style
 ## 注と図の設定
 
@@ -344,7 +413,7 @@ number = "図{chapter}-{n}"
 leader = "dots"
 ```
 
-- [code: \[notes\]] の [code: placement]：脚注をページの下に置くか（[code: "page-foot"]）、章の終わりにまとめるか（[code: "chapter-end"]）です。既定はページの下です。
+- [code: \[notes\]] の [code: placement]：注の置き場所の指定です。[code: "page-foot"]（ページの下）と [code: "chapter-end"]（章の終わり）を書けますが、今の版の Golem はこの値で置き方を変えません。PDF では常にページの下に、HTML とプレーンテキストでは章の終わりに置きます。
 - [code: \[sidenotes\]]：傍注欄を、小口側の余白に設けます。[code: width] が傍注欄の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。
 - [code: \[figures\]] の [code: number]：図番号の書式です。[code: {chapter}] が章の番号、[code: {n}] が章の中の図の番号です。[code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。
 - [code: \[toc\]] の [code: leader]：目次のリーダーを点線（[code: "dots"]）にするか、なし（[code: "none"]）にするかです。
@@ -354,6 +423,7 @@ leader = "dots"
 このマニュアルは、傍注欄を取るために一行の字数を減らしています。
 傍注欄は小口側の余白の中に収まる必要があるからです。
 
+@label index-columns
 ## 索引の段組み
 
 索引は短い語とページ番号の並びなので、本文と同じ行長で組むと、行の後半が空いたままになります。
@@ -381,29 +451,41 @@ column-gap = "2zw"
 HTML と EPUB は、索引を段組みにしません。
 このマニュアルの索引は、二段で組んでいます。
 
+@label colors
 ## 色
 
-色は、名前を付けて [code: \[color.swatches\]] に定義します。[index reading=すうぉっち: スウォッチ]
+色は、名前を付けて [code: \[color.swatches\]] に定義します。
+InDesign のスウォッチ[index reading=すうぉっち: スウォッチ]に当たります。
 
-@listing style.toml lines=77-80
+@listing style.toml lines=82-85
 
 値は、CMYK の各色の網点の割合（0 から 100）です。
 原稿や文字スタイルからは、この名前で色を指します。
 原稿に CMYK の値を直接書くことはできません。
-印刷を前提に色を決め、HTML と EPUB では、その色に近い画面の色で表示します。
+色を名前で扱うので、色を変えたいときは [code: style.toml] の値を一か所直せば、その名前を使うすべての箇所が変わります。
 
-印刷所から印刷の色の条件を記したファイル（ICC プロファイル）を指定されたら、[code: \[color\]] の [code: intent] にそのファイルを書きます。
+InDesign のスウォッチとの違いは、色がプロセスカラーの CMYK だけであることです。
+特色（スポットカラー）、RGB や Lab のスウォッチ、濃淡（平網）のスウォッチは作れません。
+PDF には、スウォッチの CMYK の値をそのまま書きます。
+HTML と EPUB では、その値を画面の色に近づけて表示します。
+
+スウォッチの CMYK の値は、どの印刷の条件で刷るかを決めて初めて、紙の上の色が決まります。
+その条件は、[code: \[color\]] の [code: intent] に ICC プロファイルを書いて指定します。
 
 ```toml
 [color]
 intent = "icc/JapanColor2001Coated.icc"
 ```
 
+入稿用の PDF では、これが PDF/X-4 の出力インテントになります。
+ICC プロファイルと出力インテントについては、「[ref-title pdf-x4]」（[ref-page pdf-x4] ページ）で説明します。
+
 @label composition
 ## 行分割と和文組版
 
 行の分け方と、和文の組み方の細部は、[code: \[composition\]] で変えられます。
-何も書かなければ、日本語組版処理の要件（JLReq）が一般的な処理として示す組み方になります。
+何も書かなければ、W3C の日本語組版処理の要件（JLReq）が一般的な処理として示す組み方になります[note: W3C, Requirements for Japanese Text Layout（JLReq）。[code: https://www.w3.org/TR/jlreq/]]。
+JLReq は、日本語の組版の規格 JIS X 4051 と、組版の現場の慣行をもとにまとめられた文書です[note: JIS X 4051:2004（日本産業標準調査会の JIS の検索）。[code: https://www.jisc.go.jp/app/jis/general/GnrJISSearch.html]]。
 
 @listing style.toml lines=70-71
 
@@ -411,7 +493,10 @@ intent = "icc/JapanColor2001Coated.icc"
 - [code: hanging-punctuation]：[code: true] にすると、行末の句読点を版面の外に出すことを許します（ぶら下げ組[index reading=ぶらさげぐみ: ぶら下げ組]）。このマニュアルはぶら下げ組で組んでいます。
 - [code: tolerance]、[code: pretolerance]、[code: emergency-stretch]：欧文の段落を行に分けるときの、語間の伸び縮みの許容度です。既定値は TeX と同じ 200、100、0 です。どうしても行に分けられないときは、行が版面からはみ出し、警告が出ます。
 
-ルビの配置は [code: \[composition.ruby\]] で変えます（ルビの書き方は[ref-number ruby]「[ref-title ruby]」）。
+段落は、一行ずつ先頭から分けるのではなく、段落の全体を見て、語間や字間の伸び縮みが全体として最も少なくなる位置で行に分けます。
+InDesign の段落コンポーザーに近い考え方です。
+
+ルビの配置は [code: \[composition.ruby\]] で変えます（ルビの書き方は「[ref-title ruby]」、[ref-page ruby] ページ）。
 
 ```toml
 [composition.ruby]
@@ -432,11 +517,12 @@ overhang-onto = "kana"
 @label aki-sets
 ## 字間の空き
 
-和文の文字のあいだの空き[index reading=あき: アキ]の量は、アキ量のセットで決めます。
+和文の文字のあいだの空き[index reading=あき: アキ]の量は、アキ量のセット[index reading=あきりょうのせっと: アキ量のセット]で決めます。
 InDesign の文字組みアキ量設定に当たる設定で、和文と欧文のあいだ（和欧間[index reading=わおうかん: 和欧間]）、括弧や句読点の前後のような文字の組み合わせごとに、空きの最小、最適、最大を持ちます。
 何も書かなければ、組み込みのセット [code: gyomatsu-yakumono-hankaku]（行末約物半角）で組みます。
 和欧間は四分、括弧と句読点は半角の字面に二分の空き、行末の括弧と句読点は半角です。
 行末の括弧と句読点の後ろにも二分を残す [code: gyomatsu-yakumono-zenkaku]（行末約物全角）も組み込みで持っています。
+名前は、InDesign の同じ名前の組み込みのセットにならっていますが、空きの値が InDesign のセットと同じであるとは限りません。
 
 セットを変えるには、[code: \[aki-sets.名前\]] にセットを定義し、段落スタイルの [code: aki-set] で選びます。
 
