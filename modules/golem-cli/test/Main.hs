@@ -149,6 +149,7 @@ tests =
       marksTests,
       preflightTests,
       explainTests,
+      tomlMessageTests,
       noticeTests,
       -- golem-parser ADR 0010
       testCase "a backslash after the last | of a table row is G0124, not G0110" $
@@ -258,6 +259,25 @@ explainTests =
         assertEqual err (ExitFailure 1) code
         assertBool err (isJust (J.decode (BL.fromStrict (TE.encodeUtf8 (T.pack err))) :: Maybe J.Value))
     ]
+
+-- | The TOML messages are Japanese in the output of golem check (golem-project ADR 0007).
+tomlMessageTests :: TestTree
+tomlMessageTests =
+  testGroup
+    "TOML messages in Japanese (golem-project ADR 0007)"
+    [ testCase "G0301 and G0306 show no message of toml-parser" $ do
+        (code, err) <- golemIn [("manifest.toml", T.unpack (T.replace "title = \"T\"\n" "" (T.pack manifestText))), ("a.gm", "本文。\n")] ["check"]
+        assertEqual err (ExitFailure 1) code
+        assertBool err ("G0301" `isInfixOf` err && "必須のキーがありません: metadata.title" `isInfixOf` err)
+        (code', err') <- golemIn [("manifest.toml", manifestText), ("style.toml", "[page]\nsize = \"A5\"\nbindng = \"left\"\n"), ("a.gm", "本文。\n")] ["check"]
+        assertEqual err' (ExitFailure 1) code'
+        assertBool err' ("G0306" `isInfixOf` err' && "知らないキーです: page.bindng" `isInfixOf` err')
+        mapM_
+          (\w -> assertBool (w <> " in " <> err <> err') (not (w `isInfixOf` (err <> err'))))
+          ["unexpected key", "missing key", "expected ", "lexical error", "parse error"]
+    ]
+  where
+    manifestText = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
 
 -- | A project whose only chapter has an unclosed bracket (G0117).
 syntaxErrorFiles :: [(FilePath, String)]

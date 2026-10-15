@@ -236,6 +236,11 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0266 [code: code はコードブロックの段落スタイルです。コードは ``` か @listing で書きます]]
   [code: @style code] は書けません。
   コードは [code: ```] で囲むか [code: @listing] で載せ、本文の中のコードは [code: \[code: ...\]] で書いてください。
+= [strong: G0269 [code: コードブロックに書けないキーです: …]] など
+  コードブロックの開始の行か [code: @listing] の引数か、それが決める中身の読み方に誤りがあります。
+  書けるキーは [code: numbers]、[code: file]、[code: highlight]、[code: diff]、[code: callouts] で、[code: @listing] では [code: lang] も書けます。
+  [code: highlight] の番号がコードにない、[code: diff=true] のコードに [code: +]、[code: -]、空白のどれでも始まらない行がある、注釈の印の番号が 1 から 50 の外にある、[code: @caption] にキャプションがない、といった場合も、このエラーになります。
+  メッセージの示すキーと値を直してください。
 = [strong: G0258 [code: @page-break の引数は recto か verso です]] など
   [code: @page-break] には何も書かないか、[code: recto] か [code: verso] を一つだけ書きます。
   [code: @column-break] は引数を取りません。
@@ -283,9 +288,9 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   ページを出すなら [code: \[ref-page ...\]] を使ってください。
 = [strong: G0402 [code: @toc は文書に一つだけ置けます]]
   [code: @toc] を一つにしてください。
-= [strong: G0404 [code: 章の外にある図版には、章番号を使う図番号を振れません。…]]
-  図番号の書式に [code: {chapter}] があるのに、番号を持つ章の見出しより前に図版があります。
-  図版を章の中に移すか、書式から [code: {chapter}] を外してください。
+= [strong: G0404 [code: 章の外にある図版とコードには、章番号を使う番号を振れません。…]]
+  図番号かリスト番号の書式に [code: {chapter}] があるのに、番号を持つ章の見出しより前に図版か、キャプションを付けたコードブロックがあります。
+  図版とコードブロックを章の中に移すか、書式から [code: {chapter}] を外してください。
 = [strong: G0721 [code: ページ番号の参照が収束しません: …]]
   ページ番号を入れると組み方が変わり、それでまたページ番号が変わる、という繰り返しが止まりません。
   示された参照の近くの文言を少し変えてください。
@@ -348,7 +353,7 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0306] [code: style.toml] の誤り
   [code: style.toml] の書き方が違います。
   キーの綴り、値の種類、単位、選べる値を、付録C と見比べてください。
-  今の版では、知らないキーのメッセージは英語です。
+  知らないキーは、[code: 知らないキーです: page.bindng] のように、表とキーをつなげた名前で示します。
   廃止した [code: \[emphasis\]]、[code: \[verse\]] などを書いたときは、書き換え先がメッセージに出ます。
 = [strong: G0317 [code: 未知の判型です: …]] など
   [code: \[page\]] の [code: size] が違います。

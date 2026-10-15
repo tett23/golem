@@ -6080,36 +6080,37 @@ peg'rule'CodeBlock ind =
     ))
           ; (_, peg'k1) <- peg'rule'Fence
           ; (_, peg'k2) <- (PegRt.optionalS) (peg'rule'Lang)
-          ; (_, peg'k3) <- peg'rule'Sp
-          ; (_, peg'k4) <- peg'rule'Nl
-          ; (_, peg'k7) <- (PegRt.manyS) (PegRt.choice [do { (_, peg'k5) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.withCol (\_col -> peg'rule'CodeClose (
+          ; (_, peg'k3) <- peg'rule'Arguments
+          ; (_, peg'k4) <- peg'rule'Sp
+          ; (_, peg'k5) <- peg'rule'Nl
+          ; (_, peg'k8) <- (PegRt.manyS) (PegRt.choice [do { (_, peg'k6) <- (PegRt.plain PegPrelude.. PegRt.notP) (PegRt.withCol (\_col -> peg'rule'CodeClose (
 {-# LINE 601 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-}ind
-{-# LINE 6089 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6090 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     )))
-          ; (_, peg'k6) <- peg'rule'CodeLine
-          ; PegPrelude.pure ((), PegPrelude.concat [peg'k5, peg'k6])
+          ; (_, peg'k7) <- peg'rule'CodeLine
+          ; PegPrelude.pure ((), PegPrelude.concat [peg'k6, peg'k7])
           }])
-          ; (_, peg'k9) <- PegRt.choice [do { (_, peg'k8) <- PegRt.withCol (\_col -> peg'rule'CodeClose (
+          ; (_, peg'k10) <- PegRt.choice [do { (_, peg'k9) <- PegRt.withCol (\_col -> peg'rule'CodeClose (
 {-# LINE 602 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-}ind
-{-# LINE 6097 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6098 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ))
-          ; PegPrelude.pure ((), peg'k8)
+          ; PegPrelude.pure ((), peg'k9)
           }]
           ; _span <- PegRt.spanFrom peg'start
           ; PegPrelude.pure ((
 {-# LINE 602 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 43 #-} () 
-{-# LINE 6105 "modules/golem-parser/test/StrippedGrammar.hs" #-}
-    ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k4, peg'k7, peg'k9])
+{-# LINE 6106 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+    ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k3, peg'k4, peg'k5, peg'k8, peg'k10])
           }
       ]))
 
 peg'rule'Fence :: PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 604 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 10 #-}()
-{-# LINE 6113 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6114 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'Fence =
   PegRt.memo peg'memo'Fence "Fence"
@@ -6120,7 +6121,7 @@ peg'rule'Fence =
           ; PegPrelude.pure ((
 {-# LINE 605 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 17 #-} () 
-{-# LINE 6124 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6125 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), peg'k0)
           }
       ]))
@@ -6128,7 +6129,7 @@ peg'rule'Fence =
 peg'rule'Lang :: PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 607 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 6132 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6133 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'Lang =
   PegRt.memo peg'memo'Lang "Lang"
@@ -6139,7 +6140,7 @@ peg'rule'Lang =
           ; PegPrelude.pure ((
 {-# LINE 608 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 27 #-} () 
-{-# LINE 6143 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6144 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), peg'k0)
           }
       ]))
@@ -6147,7 +6148,7 @@ peg'rule'Lang =
 peg'rule'CodeLine :: PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 610 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 6151 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6152 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'CodeLine =
   PegRt.memo peg'memo'CodeLine "CodeLine"
@@ -6162,7 +6163,7 @@ peg'rule'CodeLine =
           ; PegPrelude.pure ((
 {-# LINE 611 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 28 #-} () 
-{-# LINE 6166 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6167 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), PegPrelude.concat [peg'k2, peg'k3])
           }
       ]))
@@ -6170,11 +6171,11 @@ peg'rule'CodeLine =
 peg'rule'CodeClose :: (
 {-# LINE 613 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}Int
-{-# LINE 6174 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6175 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ) -> PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 613 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-}()
-{-# LINE 6178 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6179 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'CodeClose ind =
   PegRt.memoArg peg'memo'CodeClose "CodeClose" ind
@@ -6183,7 +6184,7 @@ peg'rule'CodeClose ind =
           ; (_, peg'k0) <- PegRt.withCol (\_col -> peg'rule'Ind (
 {-# LINE 614 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}ind
-{-# LINE 6187 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6188 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ))
           ; (_, peg'k1) <- peg'rule'Fence
           ; (_, peg'k2) <- peg'rule'Sp
@@ -6196,7 +6197,7 @@ peg'rule'CodeClose ind =
           ; PegPrelude.pure ((
 {-# LINE 614 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 43 #-} () 
-{-# LINE 6200 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6201 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), PegPrelude.concat [peg'k0, peg'k1, peg'k2, peg'k5])
           }
       ]))
@@ -6204,7 +6205,7 @@ peg'rule'CodeClose ind =
 peg'rule'SkipBlock :: PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 618 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 14 #-}()
-{-# LINE 6208 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6209 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkipBlock =
   PegRt.memo peg'memo'SkipBlock "SkipBlock"
@@ -6215,7 +6216,7 @@ peg'rule'SkipBlock =
           ; PegPrelude.pure ((
 {-# LINE 619 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 20 #-} () 
-{-# LINE 6219 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6220 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), peg'k0)
           }
       ]))
@@ -6223,7 +6224,7 @@ peg'rule'SkipBlock =
 peg'rule'Rest :: PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 621 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 9 #-}()
-{-# LINE 6227 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6228 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'Rest =
   PegRt.memo peg'memo'Rest "Rest"
@@ -6237,7 +6238,7 @@ peg'rule'Rest =
           ; PegPrelude.pure ((
 {-# LINE 622 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-} () 
-{-# LINE 6241 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6242 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), peg'k2)
           }
       ]))
@@ -6245,7 +6246,7 @@ peg'rule'Rest =
 peg'rule'SkipParagraph :: PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 624 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 18 #-}()
-{-# LINE 6249 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6250 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkipParagraph =
   PegRt.memo peg'memo'SkipParagraph "SkipParagraph"
@@ -6256,7 +6257,7 @@ peg'rule'SkipParagraph =
           ; PegPrelude.pure ((
 {-# LINE 625 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 24 #-} () 
-{-# LINE 6260 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6261 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), peg'k0)
           }
       ]))
@@ -6264,7 +6265,7 @@ peg'rule'SkipParagraph =
 peg'rule'SkipLine :: PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 627 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 6268 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6269 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkipLine =
   PegRt.memo peg'memo'SkipLine "SkipLine"
@@ -6278,7 +6279,7 @@ peg'rule'SkipLine =
           ; PegPrelude.pure ((
 {-# LINE 628 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 25 #-} () 
-{-# LINE 6282 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6283 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), peg'k2)
           }
       ]))
@@ -6286,7 +6287,7 @@ peg'rule'SkipLine =
 peg'rule'SkipAll :: PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 630 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 12 #-}()
-{-# LINE 6290 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6291 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkipAll =
   PegRt.memo peg'memo'SkipAll "SkipAll"
@@ -6297,7 +6298,7 @@ peg'rule'SkipAll =
           ; PegPrelude.pure ((
 {-# LINE 631 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-} () 
-{-# LINE 6301 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6302 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), peg'k0)
           }
       ]))
@@ -6305,7 +6306,7 @@ peg'rule'SkipAll =
 peg'rule'SkipArgs :: PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 633 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 6309 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6310 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkipArgs =
   PegRt.memo peg'memo'SkipArgs "SkipArgs"
@@ -6316,7 +6317,7 @@ peg'rule'SkipArgs =
           ; PegPrelude.pure ((
 {-# LINE 634 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-} () 
-{-# LINE 6320 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6321 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), peg'k0)
           }
       ]))
@@ -6324,7 +6325,7 @@ peg'rule'SkipArgs =
 peg'rule'SkippedArgs :: PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 636 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}()
-{-# LINE 6328 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6329 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkippedArgs =
   PegRt.memo peg'memo'SkippedArgs "SkippedArgs"
@@ -6338,7 +6339,7 @@ peg'rule'SkippedArgs =
           ; PegPrelude.pure ((
 {-# LINE 637 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 30 #-} () 
-{-# LINE 6342 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6343 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), peg'k2)
           }
       ]))
@@ -6346,7 +6347,7 @@ peg'rule'SkippedArgs =
 peg'rule'SkipExpr :: PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 639 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 13 #-}()
-{-# LINE 6350 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6351 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkipExpr =
   PegRt.memo peg'memo'SkipExpr "SkipExpr"
@@ -6357,7 +6358,7 @@ peg'rule'SkipExpr =
           ; PegPrelude.pure ((
 {-# LINE 640 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 26 #-} () 
-{-# LINE 6361 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6362 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), peg'k0)
           }
       ]))
@@ -6365,7 +6366,7 @@ peg'rule'SkipExpr =
 peg'rule'SkippedExpr :: PegRt.P (Peg'Store peg's) peg's ((
 {-# LINE 642 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 16 #-}()
-{-# LINE 6369 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6370 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), [PegRt.Child])
 peg'rule'SkippedExpr =
   PegRt.memo peg'memo'SkippedExpr "SkippedExpr"
@@ -6380,7 +6381,7 @@ peg'rule'SkippedExpr =
           ; PegPrelude.pure ((
 {-# LINE 643 "modules/golem-parser/grammar/Golem.hpeg" #-}
  {-# COLUMN 36 #-} () 
-{-# LINE 6384 "modules/golem-parser/test/StrippedGrammar.hs" #-}
+{-# LINE 6385 "modules/golem-parser/test/StrippedGrammar.hs" #-}
     ), peg'k3)
           }
       ]))

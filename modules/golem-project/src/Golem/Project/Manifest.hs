@@ -28,12 +28,14 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (Day)
 import Golem.Parser.SourceSettings
+import Golem.Project.TomlMessage (schemaMessage, semanticMessage, syntaxMessage)
 import Golem.Syntax
 import Toml qualified
 import Toml.Schema
 import Toml.Schema.FromValue (typeError)
 import Toml.Schema.Matcher (inIndex)
-import Toml.Syntax (Position (..))
+import Toml.Semantics (SemanticError (..), semantics)
+import Toml.Syntax (Located (..), Position (..), parseRawToml)
 
 data Manifest = Manifest
   { manifestMetadata :: !Metadata,
@@ -282,12 +284,33 @@ decodeStrict code = decodeStrictBy code (const code)
 the value; TOML syntax errors take the first code.
 -}
 decodeStrictBy :: (FromValue a) => Text -> ([Scope] -> Text) -> FileId -> Text -> Either [Diagnostic] a
-decodeStrictBy code codeAt fid src = case Toml.parse src of
-  Left msg -> Left [diagnostic code Error (mkSpan fid 0 0) ("TOML の誤りです: " <> T.pack msg)]
+decodeStrictBy code codeAt fid src = case parseToml src of
+  Left (ErrSyntax (Located pos msg)) -> Left [diagnostic code Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> syntaxMessage msg)]
+  Left (ErrSemantics (SemanticError pos key kind)) -> Left [diagnostic code Error (positionSpan fid src (Just pos)) ("TOML の誤りです: " <> semanticMessage kind key)]
   Right tab -> case runMatcher (fromValue (Table' (Position 0 1 1) tab)) of
     Failure es -> Left (tomlDiagnosticsBy codeAt fid src es)
     Success [] a -> Right a
     Success ws _ -> Left (tomlDiagnosticsBy codeAt fid src ws)
+
+-- | The errors of reading TOML before the schema (Toml.parse' of toml-parser, which the package does not export).
+data TomlError
+  = ErrSyntax (Located String)
+  | ErrSemantics (SemanticError Position)
+
+{- | 'Toml.parse' without folding the error into a string: the syntax
+errors keep their position (golem-project ADR 0007).
+-}
+parseToml :: Text -> Either TomlError (Table' Position)
+parseToml src = do
+  exprs <- either (Left . ErrSyntax) Right (parseRawToml src)
+  either (Left . ErrSemantics) Right (semantics exprs)
+
+-- | The span of a position of toml-parser; the start of the file without one.
+positionSpan :: FileId -> Text -> Maybe Position -> SrcSpan
+positionSpan fid src = \case
+  Just (Position _ l c)
+    | Just off <- lineColToOffset (mkLineIndex src) (LineCol (l - 1) (c - 1)) -> mkSpan fid off off
+  _ -> mkSpan fid 0 0
 
 parseManifest :: FileId -> Text -> Either [Diagnostic] Manifest
 parseManifest fid src = do
@@ -305,18 +328,5 @@ tomlDiagnostics code = tomlDiagnosticsBy (const code)
 tomlDiagnosticsBy :: ([Scope] -> Text) -> FileId -> Text -> [MatchMessage Position] -> [Diagnostic]
 tomlDiagnosticsBy codeAt fid src = map one
   where
-    li = mkLineIndex src
-    at mpos = case mpos of
-      Just (Position _ l c) -> case lineColToOffset li (LineCol (l - 1) (c - 1)) of
-        Just off -> mkSpan fid off off
-        Nothing -> mkSpan fid 0 0
-      Nothing -> mkSpan fid 0 0
     one (MatchMessage loc path msg) =
-      diagnostic (codeAt path) Error (at loc) (T.pack (msg <> suffix path))
-    -- no empty parentheses when the message is about the top of the file (ADR 0006)
-    suffix = \case
-      [] -> ""
-      path -> " (" <> showPath path <> ")"
-    showPath = concatMap $ \case
-      ScopeKey k -> "." <> T.unpack k
-      ScopeIndex i -> "[" <> show i <> "]"
+      diagnostic (codeAt path) Error (positionSpan fid src loc) (schemaMessage path msg)

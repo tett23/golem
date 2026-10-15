@@ -192,7 +192,23 @@ tests =
       testCase "code block content" $
         ast "- x\n\n  ```hs\n  a\n    b\n  ```\n" @?= ast "- x\n\n  ```hs\n  a\n    b\n  ```\n",
       testCase "code block in item strips indentation" $ case ast "```hs\na\n  b\n```\n" of
-        [CodeBlock l c] -> (l, c) @?= (Just "hs", "a\n  b")
+        [CodeBlock l [] c] -> (l, map locValue c) @?= (Just "hs", ["a", "  b"])
+        other -> assertFailure (show other),
+      -- golem-driver ADR 0023
+      testCase "a code block with a language and keyword arguments" $ case ast "```haskell numbers=10 file=\"a.hs\"\nx\n```\n" of
+        [CodeBlock l args c] -> do
+          l @?= Just "haskell"
+          [(locValue k, v) | Located _ (Keyword k v) <- args] @?= [("numbers", Word "10"), ("file", StringLit "a.hs")]
+          map locValue c @?= ["x"]
+        other -> assertFailure (show other),
+      testCase "a code block with keyword arguments and no language" $ case ast "``` numbers=true\nx\n```\n" of
+        [CodeBlock Nothing [Located _ (Keyword k (Word "true"))] _] -> locValue k @?= "numbers"
+        other -> assertFailure (show other),
+      testCase "a positional argument after the language is read, for the evaluation to report" $ case ast "```haskell foo\nx\n```\n" of
+        [CodeBlock (Just "haskell") [Located _ (Positional (Word "foo"))] _] -> pure ()
+        other -> assertFailure (show other),
+      testCase "the lines of a code block have the spans of their source lines" $ case [b | Located _ b <- fileBlocks (let (f, _, _) = parseAst fid "```\nab\n  c\n```\n" in f)] of
+        [CodeBlock Nothing [] [Located s1 "ab", Located s2 "  c"]] -> (spanStart s1, spanEnd s1, spanStart s2, spanEnd s2) @?= (4, 6, 7, 10)
         other -> assertFailure (show other),
       testCase "figure caption becomes the command body" $ case ast "@figure a.png alt=\"x\"\n  キャプション。\n" of
         [BlockCommand n args [Located _ (Paragraph _)]] -> (locValue n, length args) @?= ("figure", 2)
