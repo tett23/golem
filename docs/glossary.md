@@ -37,7 +37,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 ## 評価と文書構造
 
 - **CST**：原稿を、空白とコメントまで含めて失わずに表す具象構文木（Concrete Syntax Tree）。元のテキストを一字一句復元でき、整形と LSP が使う（[golem-parser ADR 0001](golem-parser/adr/0001-cst-types-and-invariants.md)）。
-- **AST**：CST から空白、コメント、エスケープを取り除き、意味だけを残した抽象構文木。評価器は AST だけを読む（[golem-parser ADR 0005](golem-parser/adr/0005-cst-to-ast.md)）。
+- **AST**：CST から空白とコメントを取り除き、意味だけを残した抽象構文木。エスケープした文字は印を付けて残し、評価が地の文に戻す。評価器は AST だけを読む（[golem-parser ADR 0005](golem-parser/adr/0005-cst-to-ast.md)、[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。
 - **意味論 IR**：評価が済んだ文書の表現。幾何を持たず、全媒体の出力がここから分かれる。正典は CDDL で書いたスキーマであり、CBOR で直列化する（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)）。
 - **評価の段階（S0、S1、S2）**：値がいつ決まるかによる三つの段階。**S0** はファイルの中だけで決まる値（変数、import した定義、見出しの文字列）、**S1** は全ファイルから決まる文書構造（目次、章番号、ラベルの章題と番号）、**S2** はレイアウトの後に決まる値（ページ番号）である（[仕様書](specifications.md)、[golem-eval ADR 0002](golem-eval/adr/0002-file-evaluation.md)）。
 - **DeferredExpr**：S1 で初めて値が決まる式（`doc` 名前空間を参照する式）を、意味論 IR の中に評価を遅らせて保持したもの（[golem-eval ADR 0002](golem-eval/adr/0002-file-evaluation.md)）。
