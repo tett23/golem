@@ -5,6 +5,7 @@ fills the page exactly, and the line pitch equal to the font size.
 -}
 module GeometrySpec (geometryTests) where
 
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -65,7 +66,8 @@ geometryTests =
         columnsFor (geom (a5 (grid 14 30 2 (Just (Zw 2))))) 1
           @?= [Rect 3715427 2703489 9175040 32964608, Rect 14201187 2703489 9175040 32964608],
       testCase "top-inside is at the gutter edge: the left of odd pages, the right of even pages" $ do
-        let s = (a5 (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef "top-inside" RunningTitle RunningTitle)) Nothing)]}
+        let s = (a5 (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef "top-inside" title title)) Nothing)]}
+            title = RunningLines ([PartRef (RefMeta "title") False] :| [])
             -- y: the middle of the head margin, (2703489 + 32964608 + 39011981) / 2
             heads = [(ho, he) | MasterGeometry (Just (_, _, ho, he)) _ <- Map.elems (pgMasters (geom s))]
         heads @?= [(Anchor 3715427 37340039 AlignStart, Anchor 23778731 37340039 AlignEnd)],

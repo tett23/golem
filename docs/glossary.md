@@ -51,7 +51,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **版面**：ページの中で本文を組む領域。文字の大きさ、一行の字数、行数、行送り、段数で決め、余白はその位置から従属的に決まる（[仕様書](specifications.md)、[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)）。
 - **ノド**と**小口**：ページの綴じる側の端と、その反対側の端。右綴じの本では奇数ページのノドが右にある（[golem-layout-spec ADR 0002](golem-layout-spec/adr/0002-gutter-side-of-odd-pages.md)）。
 - **天**と**地**：ページの上端と下端。版面の位置は天とノドからの距離で決める。
-- **柱**と**ノンブル**：ページの余白に置く章題などの見出しと、ページ番号。マスターページで位置と内容を決める。柱の内容は、マスターページの `running-head` の `content`（または `even` と `odd`）に、`heading.1.short` や `title` のような値で書く（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
+- **柱**と**ノンブル**：ページの余白に置く章題などの見出しと、ページ番号。マスターページで位置と内容を決める。柱の内容は、マスターページの `running-head` の `content`（または `even` と `odd`）に、`heading.1.short` や `title` のような値か、`["{meta.title}　{heading.1.short}"]` のような書式の配列で書く（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)、[golem-driver ADR 0022](golem-driver/adr/0022-running-head-formats.md)）。
 - **マスターページ**：柱とノンブルの位置と内容をまとめた、ページの雛形。`style.toml` の `[masters]` に書く。柱の内容は `running-head` の `content`（または `even` と `odd`）で決める。章のファイルごとにマニフェストの `master` で選び、指定のないファイルは `body` を使う（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
 - **行の格子**：版面の中で各行を置く位置の並び（ベースライングリッド）。見開きの左右のページで行の位置がそろう。
 - **脚注の区切り線**：PDF のページ下の脚注の前に引く罫線。`style.toml` の `[notes.rule]` に書いたときだけ引く。本文と脚注のあいだの区切りの領域は格子の行の整数倍で、間隔を書くと行の数が増える（[仕様書](specifications.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。

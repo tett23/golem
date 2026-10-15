@@ -366,9 +366,15 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   ぶら下げの分だけ [code: indent] を大きくしてください。
 = [strong: G0313 [code: style.toml のスタイルの参照が不正です: …]]
   [code: based-on] の先のスタイルがないか、引き継ぎが輪になっているか、[code: body] に [code: based-on] があるか、文字スタイルの [code: color] の色が定義されていないか、[code: regex-styles] の文字スタイルがありません。
-= [strong: G0314 [code: 柱の内容が正しくありません: …]]
+= [strong: G0314 [code: 柱の内容が正しくありません: …]]、[strong: [code: 柱の書式が正しくありません: …]]
   [code: \[masters.名前\]] の [code: running-head] には、[code: content = "heading.1.short"] のように内容を一つ書くか、[code: even] と [code: odd] の両方を書いてください。
-  書ける内容は付録C にあります。
+  書式は [code: content = \["{meta.title}　{heading.1.short}"\]] のように文字列の配列で書きます。
+  書ける内容と差し込みは付録C にあります。
+= [strong: G0267 [code: 柱が参照する変数 … が、このファイルにありません（マスターページ …）]]
+  柱の書式の [code: {set.名前}] の変数を、その章のファイルで [code: @set] するか、[code: @import] で取り込んでください。
+  変数のない章で柱の行を出さなくてよいなら、[code: {set.名前?}] と書きます。
+= [strong: G0268 [code: 柱に出せるのは文字列と数です: …]]
+  柱の書式で参照する変数を、文字列か数にしてください。
 = [strong: G0318 [code: 未知の位置です: …]]
   柱かノンブルの [code: position] を、[code: top-outside] などの六つのどれかにしてください。
 = [strong: G0319 [code: \[headings.… \] の running-head は廃止しました。…]]
@@ -445,6 +451,13 @@ PDF を組むときに出るエラーです。
 = [strong: G0744 [code: 索引の段の行長が足りません。columns を減らすか column-gap を狭めてください]]
   [code: \[index\]] の段数に対して版面が狭く、索引の一段の行長が文字八つ分に満たなくなっています。
   [code: \[index\]] の [code: columns] を減らすか、[code: column-gap] を狭めてください。
+= [strong: G0751 [code: 柱の行が版面の幅を超えています（… ページ）: …]]
+  警告です。
+  柱は折り返さないので、余白へ伸びて組まれます。
+  柱の書式の行を二行に分けるか、短い題を付けてください。
+= [strong: G0752 [code: 柱の行がページからはみ出しています。行の数を減らすか、天（または地）の余白を広げてください]]
+  柱の書式の行が多く、ページの外に出ます。
+  行を減らすか、[code: \[page.grid\]] の [code: position] で余白を広げてください。
 
 @nonumber
 ## 書体と色のファイル

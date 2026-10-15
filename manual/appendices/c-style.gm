@@ -462,4 +462,25 @@ PDF でだけ効きます。
 - [code: "title"]：書名です。
 - [code: "none"]：柱を出しません。
 
+内容は、文字列の配列（書式）でも書けます。
+配列の要素が柱の一行で、配列の順に天から地へ重ねます。
+[code: content]、[code: even]、[code: odd] のどれにも書けます。
+書式の中では、[code: {] と [code: }] で囲んだ差し込みに値が入ります。
+
+| 差し込み | 値 |
+|:---|:---|
+| [code: {heading.<階層>.short}] | その階層の見出しの題です。[code: "heading.<階層>.short"] と同じです。 |
+| [code: {heading.<階層>.numbered}] | 番号と題を並べたものです。[code: "heading.<階層>.numbered"] と同じです。 |
+| [code: {heading.<階層>.number}] | 見出しの番号だけです。番号のない見出しでは値がありません。 |
+| [code: {meta.キー}] | [code: manifest.toml] の [code: \[metadata\]] の値です。キーは [code: title]、[code: title_reading]、[code: edition]、[code: publisher]、[code: date]、[code: language]、[code: id] です。 |
+| [code: {set.名前}] | そのページの章のファイルで [code: @set] した変数です。 |
+| [code: {set.名前空間.名前}] | その章のファイルが [code: @import ... as 名前空間] で取り込んだ変数です。 |
+
+見出しの差し込みの末尾には [code: .last] を付けられます。
+差し込みの値がない行は描きません。
+差し込みの末尾に [code: ?] を付けると、値がないときに空になり、行の前後の空白（半角と全角）を取り除きます。
+[code: {] と [code: }] そのものは [code: {{] と [code: }}] と書きます。
+柱の行が版面の幅を超えると警告（G0751）が出ます。
+行が多すぎてページからはみ出すとエラー（G0752）になります。
+
 章の始まりのページと白ページには、柱を出しません。
