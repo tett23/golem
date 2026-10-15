@@ -441,6 +441,7 @@ indentSpec s = case stripPrefix "改行天付き、折り返して" s of
       let (ds, r) = span (`elem` ("0123456789０１２３４５６７８９" :: String)) t
        in if null ds then Nothing else Just (foldl (\a d -> a * 10 + digit d) 0 ds, r)
     digit d = fromMaybe 0 (lookup d (zip "0123456789" [0 ..] <> zip "０１２３４５６７８９" [0 ..]))
+
 -- | Takes back up to n plain characters emitted as themselves, last first.
 takeBase :: Int -> [(String, String)] -> (String, [(String, String)])
 takeBase n out
