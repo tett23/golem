@@ -196,10 +196,13 @@ evaluateProjectWith overlay profile root = do
               (citeKeys, _) <- loadBibliography root manifest
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
-                  chapterDocs = [erDocument r | (fid, _) <- projectChapters project, Just r <- [Map.lookup fid results]]
+                  -- the chapter of the manifest of each file: a top-level entry, a nested array as one (golem-driver ADR 0018)
+                  chapterOfFile = [i | (i, e) <- zip [0 :: Int ..] (manifestChapters manifest), _ <- chapterFiles [e]] <> [length (manifestChapters manifest) ..]
+                  chapterRuns = [(erDocument r, ch) | ((fid, _), ch) <- zip (projectChapters project) chapterOfFile, Just r <- [Map.lookup fid results]]
+                  chapterDocs = map fst chapterRuns
                   -- where G0407 points (golem-syntax ADR 0002)
                   numberSites = Map.unions (map erNumberSites (Map.elems results))
-                  cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites
+                  cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns)
                   pre = defaultStyleNotice <> masterDiags <> pluginDiags <> s0Diags
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
               if hasErrors pre
