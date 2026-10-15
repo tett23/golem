@@ -773,6 +773,30 @@ NaN と無限大は、式の値として存在しない。
 ```
 
 圏点の形は `style.toml` の既定に従い、`shape` で個別に変えられる。
+形は CSS の `text-emphasis-style` に合わせた次の十である（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。
+一覧にない形は G0239 になる。
+
+| 形 | 字 | 名前 |
+|---|---|---|
+| `sesame` | ﹅（U+FE45） | ゴマ |
+| `open-sesame` | ﹆（U+FE46） | 白ゴマ |
+| `dot` | •（U+2022） | 小さい黒丸 |
+| `open-dot` | ◦（U+25E6） | 小さい白丸 |
+| `circle` | ●（U+25CF） | 黒丸 |
+| `open-circle` | ○（U+25CB） | 白丸 |
+| `double-circle` | ◉（U+25C9） | 蛇の目 |
+| `open-double-circle` | ◎（U+25CE） | 二重丸 |
+| `triangle` | ▲（U+25B2） | 黒三角 |
+| `open-triangle` | △（U+25B3） | 白三角 |
+
+`shape` を省くと、`style.toml` の `[composition]` の `kenten` の形になる（既定は `sesame`）。
+約物（句読点、括弧など、Unicode の一般カテゴリ P の字）と区切り（空白など、Z の字）には、圏点の中でも圏点を付けない。
+長音記号（ー）と踊り字（々）には付く。
+圏点の中の欧文の語には、PDF では圏点を付けない。
+
+PDF は、圏点の字を親文字の和文の書体で、親文字の半分の大きさで描く。
+書体に圏点の字がなければ G0809 になり、PDF を書かない。
+ルビの親文字の中の圏点と、圏点の中のルビは、PDF では圏点を描かず、お知らせ G0745 を出す。
 
 ### 色
 

@@ -629,7 +629,8 @@ writeTargets opts e diagFid book missing targets = do
           inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
       r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid)
       -- G0808: code in the body role without [fonts.code] (golem-driver ADR 0017)
-      let fontNotice = codeFontNotice diagFid style book
+      -- G0745: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
+      let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
       case r of
         Left ds -> pure ([], ds <> fontNotice)
         Right (bytes, notices) -> do
