@@ -905,7 +905,7 @@ tocPage tg e number =
       le = tgMeasure tg - max (tgReserve tg) w - g
       k0 = if tgLeaders tg && u > 0 then max 0 ((le - (e + g)) `div` u) else 0
       (ns, k) = if ns0 < e + g then (e + g, 0) else (ns0, k0)
-      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0) | _ <- [1 .. k]] 0 (k * u) 0 (0, 0) False (0, 0)
+      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 []) | _ <- [1 .. k]] 0 (k * u) 0 (0, 0) False (0, 0)
    in TocPage (le - k * u) leader ns number
 
 -- | The measure of a column of the page.
@@ -1481,7 +1481,7 @@ buildFlow inp geom fonts images assumed = do
         Just m ->
           let boxes = [b | b@Box {} <- fst (composeInlines env m)]
               w = sum (map itemWidth boxes)
-           in boxes <> [Box (innerOf u - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0)]
+           in boxes <> [Box (innerOf u - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0 [])]
       compose lineWidth u =
         let env = (styledEnv (uStyle u) (envFor (uLook u))) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u)}
             bodyEnv' = (styledEnv (uStyle u) (envFor (bodyLook (uStyle u) fs))) {ceAkiSet = akiSetOf (uStyle u) Nothing}
@@ -1793,12 +1793,12 @@ codeBlockOf geom fonts measure capacity u lead code =
       perLine = map rowsOf (T.splitOn "\n" code)
       wrapped = length (filter ((> 1) . length) perLine)
       tagOf latin = fromEnum (if vertical && latin then KindRotated else KindText)
-      emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0)
+      emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [])
       lineOf row =
         let go _ [] = []
             go x (pc : rest) =
               [emptyBox (cpOffset pc - x) | cpOffset pc > x]
-                <> [Box (cpWidth pc) (BoxContent (cpText pc) False 0 0 (tagOf (cpLatin pc)) lk 0 0)]
+                <> [Box (cpWidth pc) (BoxContent (cpText pc) False 0 0 (tagOf (cpLatin pc)) lk 0 0 [])]
                 <> go (cpOffset pc + cpWidth pc) rest
          in Line (go 0 (crPieces row)) 0 avail 0 (0, 0) False (0, 0)
       g = codeGeometry (pgFontSize geom) (pgLinePitch geom) size pad
@@ -1997,17 +1997,25 @@ writeDocument inp geom fonts layout intent =
                  in (,) (lkColor look) $ case boxKind c of
                       kind
                         | kind `elem` [KindRuby, KindGroupRuby] ->
-                            -- each base and reading character where placeRuby puts it (golem-layout ADR 0009)
+                            -- each base and reading character where placeRuby puts it (golem-layout ADR 0009);
+                            -- each base character in its own look (golem-layout ADR 0011)
                             let (base, reading) = T.breakOn "|" (bcText c)
                                 rt = T.drop 1 reading
                                 rsize = lkSize half
+                                baseLooks = zipWith const (bcBaseLooks c <> repeat look) (T.unpack base)
                                 advOf lk ch = toSp (lkSize lk) (lfAdvance fonts (shapingOf vertical lk ch) ch)
-                                baseAdv = map (advOf look) (T.unpack base)
+                                baseAdv = zipWith advOf baseLooks (T.unpack base)
                                 readAdv = map (advOf half) (T.unpack rt)
                                 excess = max 0 (sum readAdv - w)
                                 rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (excess `div` 2, excess `div` 2)
-                                across = if vertical then size `div` 2 + rsize `div` 2 else size
-                                placed1 = [runAt look vertical False 0 (origin (off + pos)) (T.singleton ch) | (ch, pos) <- zip (T.unpack base) (rpBase rp)]
+                                -- the reading sits beside the largest base character
+                                big = if null baseLooks then size else maximum (map lkSize baseLooks)
+                                across = if vertical then big `div` 2 + rsize `div` 2 else big
+                                -- a base character of another colour than the box is drawn in its own
+                                inColour lk (marks, glyphs)
+                                  | lkColor lk /= lkColor look, Just sw <- swatchOf lk = ([P.Saved (P.SetColor sw : marks)], glyphs)
+                                  | otherwise = (marks, glyphs)
+                                placed1 = [inColour lk (runAt lk vertical False 0 (origin (off + pos)) (T.singleton ch)) | (ch, lk, pos) <- zip3 (T.unpack base) baseLooks (rpBase rp)]
                                 placed2 = [runAt half vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
                              in (concatMap fst (placed1 <> placed2), concatMap snd (placed1 <> placed2))
                       KindKenten ->

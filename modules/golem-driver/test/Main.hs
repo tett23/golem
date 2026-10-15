@@ -2694,7 +2694,7 @@ bibliographyFormatTests =
 
 -- | A line of one box of a width (a page number in the tests of tocPage).
 oneBoxLine :: Integer -> Line
-oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0)] 0 w 0 (0, 0) False (0, 0)
+oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0 [])] 0 w 0 (0, 0) False (0, 0)
 
 -- | fs = 10pt, measure = 120pt, W = 15pt, g = 5pt, u = 10pt.
 tocGeom :: Bool -> TocGeometry
@@ -2846,6 +2846,37 @@ rubyTests =
       [spaced] @?= map xsOf (expected Align121)
       [centred] @?= map xsOf (expected AlignCenter)
       assertBool "different" (spaced /= centred),
+    testCase "bold on the second base character: that glyph alone is synthetic bold (golem-layout ADR 0011)" $ do
+      runs <- miniPdf fakeProvider True horizontalStyle "[ruby: 漢[bold: 字]|かんじ]\n" [] >>= fmap (strokeRuns . BS.concat) . inflateAll
+      widthsOf '字' runs @?= [Just "0.125"]
+      widthsOf '漢' runs @?= [Nothing]
+      widthsOf 'か' runs @?= [Nothing],
+    testCase "a colour on the first base character: set before that glyph, the reading in the default colour (golem-layout ADR 0011)" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> "\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n") "[ruby: [color accent: 漢]字|かんじ]\n" [] >>= fmap BS.concat . inflateAll
+      let (before, coloured) = BS.breakSubstring "0 0.8 1 0 k" content
+          inside = fst (BS.breakSubstring "\nQ\n" coloured)
+      assertBool "coloured" (not (BS.null coloured))
+      assertBool (show inside) ("<6F22>" `BS.isInfixOf` inside)
+      assertBool (show inside) (not ("<5B57>" `BS.isInfixOf` inside) && not ("<304B>" `BS.isInfixOf` inside))
+      assertBool "the reading is drawn outside" ("<304B>" `BS.isInfixOf` (before <> BS.drop (BS.length inside) coloured)),
+    testCase "a base character 1.5 times the size: the reading's baseline is 1.5 s above the base (golem-layout ADR 0011)" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> "\n[character-styles.big]\nsize = \"1.5zw\"\n") "[ruby: [style big: 漢]字|かんじ]\n" [] >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          ysOf c = nub [read (BC.unpack (dY d)) :: Double | d <- ds, dGlyph d == fromEnum c]
+      ysOf '漢' @?= ysOf '字'
+      case (ysOf '漢', ysOf 'か') of
+        ([base], [reading]) -> assertBool (show (base, reading)) (abs (reading - base - 15) < 0.001)
+        other -> assertFailure (show other)
+      [dSize d | d <- ds, dGlyph d == fromEnum '漢'] @?= ["15"],
+    testCase "a regex style matching part of a ruby base sets the match in its role (golem-layout ADR 0011)" $ do
+      let style = pdfStyle <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\nlatin = \"fonts/h.otf\"\n\n[character-styles.n]\nfont = \"heading\"\n\n[paragraph-styles.body]\nregex-styles = [{ pattern = '[0-9]+', style = \"n\" }]\n"
+          fontsOf content c = nub [dFont d | d <- drawnGlyphs content, dGlyph d == fromEnum c]
+      styled <- miniPdf fakeProvider True style "[ruby: 東京12|とうきょう]へ\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      plain <- miniPdf fakeProvider True (pdfStyle <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\nlatin = \"fonts/h.otf\"\n") "[ruby: 東京12|とうきょう]へ\n" fakeFontFiles >>= fmap BS.concat . inflateAll
+      -- 2, not 1: the folio draws a 1 in the body role
+      assertBool "drawn" (not (null (fontsOf styled '2')))
+      assertBool (show (fontsOf styled '2', fontsOf plain '2')) (fontsOf styled '2' /= fontsOf plain '2')
+      fontsOf styled '東' @?= fontsOf plain '東',
     testCase "a ruby at the line start does not stick out of the type area" $ do
       let source = T.replicate 12 "あ" <> "[ruby: 字|あいう]の" <> T.replicate 6 "あ" <> "\n"
       content <- miniPdf fakeProvider True horizontalStyle source [] >>= fmap BS.concat . inflateAll
