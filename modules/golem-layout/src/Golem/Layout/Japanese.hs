@@ -354,7 +354,8 @@ The width is decided with the neighbours ('itemsFor').
 rubyPieces :: ComposeEnv -> [RubySegment] -> [Piece]
 rubyPieces env segs = concat (zipWith piece [0 :: Int ..] segs)
   where
-    lk = ceLook env
+    -- no kenten on a ruby base (golem-layout ADR 0011, golem-driver ADR 0019)
+    lk = (ceLook env) {lkKenten = Nothing}
     piece i (RubySegment base reading) =
       let chars = concatMap (baseChars env lk) base
           baseText = T.pack (map fst chars)

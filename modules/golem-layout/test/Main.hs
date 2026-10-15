@@ -1199,7 +1199,12 @@ kentenTests =
     testCase "a Latin word in kenten stays text" $
       [k | (t, k, _) <- kentenBoxes [Kenten sp00 (Just "circle") [sp0 "Golem"]], t == "Golem"] @?= [KindText],
     testCase "text outside kenten has no shape" $
-      kentenBoxes [sp0 "字"] @?= [("字", KindText, Nothing)]
+      kentenBoxes [sp0 "字"] @?= [("字", KindText, Nothing)],
+    testCase "a ruby base has no kenten, inside kenten or with kenten in it (golem-layout ADR 0011)" $ do
+      let rubyLooks is = [map lkKenten (bcLook c : bcBaseLooks c) | Box _ c <- fst (composeInlines (defaultComposeEnv 1000) is), boxKind c `elem` [KindRuby, KindGroupRuby]]
+          kentenIn = Kenten sp00 (Just "circle") [Text sp00 "漢"]
+      rubyLooks [Ruby sp00 () [RubySegment [kentenIn] (Just "かん")]] @?= [[Nothing, Nothing]]
+      rubyLooks [Kenten sp00 (Just "circle") [Ruby sp00 () [RubySegment [Text sp00 "漢"] (Just "かん")]]] @?= [[Nothing, Nothing]]
   ]
   where
     sp00 = mkSpan (FileId 0) 0 0
