@@ -63,6 +63,12 @@ number = "{1}.{2}.{n}"
 [composition]
 hanging-punctuation = true
 
+# 脚注の前に区切り線を引く（golem-driver ADR 0024）。
+[notes.rule]
+length = "10zw"
+space-before = "0.5zw"
+space-after = "0.5zw"
+
 # 索引は二段で組む（docs/adr/0025）。
 [index]
 columns = 2

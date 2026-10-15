@@ -1,6 +1,6 @@
 @nonumber
 @label app-glossary
-# 付録F 用語の一覧
+# 付録G 用語の一覧
 
 このマニュアルで使う言葉のうち、DTP の現場ではあまり使わないものと、Golem に固有のものを並べます。
 各項目の最後に、詳しく説明している箇所を示します。
@@ -147,7 +147,7 @@
 = [strong: プロジェクト]
   一冊の本を作るためのフォルダです。[index reading=ぷろじぇくと: プロジェクト]
   [code: manifest.toml]、[code: style.toml]、原稿、書体、図版を入れます。
-  InDesign のブックに近いものです（付録E）。
+  InDesign のブックに近いものです（付録F）。
   「[ref-title new-project]」（[ref-page new-project] ページ）。
 = [strong: マニフェスト]
   プロジェクトの [code: manifest.toml] のことです。[index reading=まにふぇすと: マニフェスト]
@@ -202,7 +202,7 @@
 = [strong: 診断]
   Golem が原稿と設定について報告することの総称です。[index reading=しんだん: 診断]
   重い順に、エラー、警告、お知らせがあり、どれも [code: G0215] のようなコードを持ちます。
-  第[ref-number check]章「[ref-title check]」、付録D。
+  第[ref-number check]章「[ref-title check]」、付録E。
 = [strong: エラー]
   直さなければならない誤りです。[index reading=えらー: エラー]
   一つでもあれば、ビルドは失敗します。
@@ -228,6 +228,23 @@
   印刷所に渡すための PDF です。[index reading=にゅうこうようのぴーでぃーえふ: 入稿用の PDF]
   Golem は PDF/X-4 を目指して作りますが、適合しているかは商用のプリフライトで確かめます[note: ISO 15930-7:2010（PDF/X-4）。[code: https://www.iso.org/standard/55843.html]]。
   「[ref-title print-pdf]」（[ref-page print-pdf] ページ）。
+= [strong: プリフライト]
+  組んだ PDF が印刷に耐えるかを、入稿の前に確かめる検査です。[index reading=ぷりふらいと/ようご: プリフライト/用語]
+  [code: golem preflight] で行います。
+  「[ref-title preflight]」（[ref-page preflight] ページ）。
+= [strong: プリフライトの設定]
+  プリフライトでどの検査をどの重さとしきい値で行うかを書いたファイルです。InDesign のプリフライトプロファイルに当たります。
+  既定は [code: preflight.toml] で、組み込みの [code: basic]、[code: print]、[code: none] のどれかを元にします。
+  [ref-title app-preflight]。
+= [strong: 実効の解像度]
+  紙面に置いた画像の解像度です。画像の画素の数を、置いた大きさ（インチ）で割った値で、ppi で表します。
+  「[ref-title preflight]」（[ref-page preflight] ページ）。
+= [strong: 断裁の危険域]
+  断裁のずれで切れたり白い縁が出たりする、仕上がりの線のまわりの範囲です。
+  [ref-title app-preflight]。
+= [strong: 安全域]
+  仕上がりの線から一定の幅だけ内側の範囲です。文字と線をこの中に収めれば、断裁のずれで切れません。
+  [ref-title app-preflight]。
 = [strong: 出力インテントと ICC プロファイル]
   印刷の色の条件を表すファイルが ICC プロファイルで、PDF に埋め込んだそれを出力インテントと呼びます。[index reading=しゅつりょくいんてんと: 出力インテント][note: ICC.1:2022（ICC プロファイルの仕様）。[code: https://www.color.org/specification/ICC.1-2022-05.pdf]]
   [code: style.toml] の [code: \[color\]] の [code: intent] に書きます。

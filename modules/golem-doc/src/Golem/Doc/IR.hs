@@ -15,6 +15,10 @@ module Golem.Doc.IR
     HeadingAttrs (..),
     noHeadingAttrs,
     ChannelBlock (..),
+    Code (..),
+    CodeLine (..),
+    DiffMark (..),
+    codeText,
     Figure (..),
     Wrap (..),
     InlineF (..),
@@ -32,13 +36,14 @@ where
 
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Void (Void)
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
 
 -- | The ABI version shared with plugins. Bump on any change to the IR.
 abiVersion :: Int
-abiVersion = 5
+abiVersion = 6
 
 data Document = Document
   { docFile :: !FileId,
@@ -61,7 +66,8 @@ data BlockBody
   | OrderedList [ListItem]
   | DefList [DefGroup]
   | Table [Alignment] [[Inline]] [[[Inline]]]
-  | CodeBlock (Maybe Text) Text
+  | -- | a code block (golem-driver ADR 0023)
+    CodeBlock !Code
   | FigureBlock Figure
   | ChannelOutput ChannelBlock
   | -- | a forced break before what follows (docs/adr ADR 0017)
@@ -109,6 +115,41 @@ noHeadingAttrs = HeadingAttrs Nothing Nothing False False
 
 data ChannelBlock = TocOutput !Int | IndexOutput | BibliographyOutput
   deriving stock (Eq, Show)
+
+{- | A code block (golem-driver ADR 0023): its language, whether it has
+line numbers (Nothing: [code] line-numbers decides), its file name, its
+caption, whether it is a diff, and its lines as the evaluation read them.
+-}
+data Code = Code
+  { codeLang :: !(Maybe Text),
+    codeNumbers :: !(Maybe Bool),
+    codeFile :: !(Maybe Text),
+    codeCaption :: !(Maybe [Inline]),
+    codeDiff :: !Bool,
+    codeLines :: ![CodeLine]
+  }
+  deriving stock (Eq, Show)
+
+-- | The mark of a line of a diff.
+data DiffMark = DiffAdded | DiffRemoved | DiffContext
+  deriving stock (Eq, Show, Enum, Bounded)
+
+{- | A line of code: its text without the diff mark and the callouts, its
+number (Nothing for a removed line), its diff mark (Nothing when the code
+is not a diff), whether it is highlighted, and its callouts.
+-}
+data CodeLine = CodeLine
+  { clText :: !Text,
+    clNumber :: !(Maybe Integer),
+    clDiff :: !(Maybe DiffMark),
+    clHighlight :: !Bool,
+    clCallouts :: ![Int]
+  }
+  deriving stock (Eq, Show)
+
+-- | The text of the lines of code, joined by newlines.
+codeText :: Code -> Text
+codeText = T.intercalate "\n" . map clText . codeLines
 
 data Wrap = WrapStart | WrapEnd
   deriving stock (Eq, Show, Enum, Bounded)

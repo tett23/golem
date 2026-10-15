@@ -19,6 +19,7 @@ library
                     Golem.Pdf.Image
                     Golem.Pdf.Marks
                     Golem.Pdf.Number
+                    Golem.Pdf.Object
                     Golem.Pdf.Sha256
                     Golem.Pdf.Srgb
                     Golem.Pdf.Writer
@@ -40,7 +41,7 @@ test-suite golem-pdf-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    ExternalTool
+  other-modules:    ExternalTool ImageSpec
   build-depends:
     , base
     , bytestring

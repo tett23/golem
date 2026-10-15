@@ -403,6 +403,70 @@ PDF では、語の途中で分けず、行は空白と [code: /] の後でだ�
 省けば、ファイルの全体を載せます。
 第[ref-number style]章「[ref-title style]」に載せた [code: style.toml] は、この書き方で、マニュアル自身の設定ファイルから取り込んでいます。
 
+@label code-book
+### 行番号、キャプション、注釈の印
+
+技術書のコードには、行番号、ファイル名、キャプション、強調する行、差分、注釈の印を付けられます。[index reading=こーどぶろっく: コードブロック]
+コードブロックの最初の行の言語の名前の後に、キーワード引数で書きます。
+キャプションは、コードブロックの直前の行に [code: @caption] で書きます。
+
+@listing examples/code-book.txt
+
+組むと、次のようになります。
+
+@caption 引数を一行ずつ出す
+```haskell numbers=10 highlight=12 callouts=true
+main :: IO ()
+main = do
+  args <- getArgs      <1>
+  mapM_ putStrLn args  <2>
+```
+
+① でコマンドの引数を受け取り、② で一行ずつ出力します。
+このように、本文では同じ丸数字を地の文に書いて、コードの行を説明します。
+
+キーワード引数は次のとおりです。
+
+| キー | 意味 |
+|:---|:---|
+| [code: numbers] | 行番号を付けます。[code: true] で 1 から、[code: 10] のような整数でその番号から数えます。[code: false] で付けません。 |
+| [code: file] | コードの上に出すファイル名です。[code: file="src/Main.hs"] のように書きます。 |
+| [code: highlight] | 強調する行の番号です。[code: 3,5-7] のようにカンマで区切り、[code: 5-7] は 5 行目から 7 行目までです。 |
+| [code: diff] | [code: true] にすると、行頭の [code: +]、[code: -]、空白を差分の印として読みます。 |
+| [code: callouts] | [code: true] にすると、行末の [code: <1>] を注釈の印 ① として読みます。番号は 1 から 50 までです。 |
+
+行の番号は、行番号を表示しないコードブロックでも数えます。
+[code: highlight] の番号も、この数え方で書きます。
+[code: @listing] で [code: lines=20-48] のように範囲を選ぶと、番号はファイルの行番号と同じ 20 から始まります。
+
+差分は、各行の最初の一字に印を書きます。
+[code: +] は追加した行、[code: -] は削除した行、空白は変わらない行です。
+削除した行は番号を持たないので、行番号は変更した後のコードの番号になります。
+
+@listing examples/code-diff.txt
+
+組むと、次のようになります。
+
+```toml diff=true
+ [page]
+-size = "A5"
++size = "B6"
+```
+
+[code: callouts] を既定で切っているのは、[code: List<1>] のように [code: <数>] で終わるコードが言語によってはあるからです。
+
+[code: @listing] にも同じキーワード引数を書けます。
+[code: @listing] では、色分けの言語の名前を [code: lang=haskell] のように書きます。
+
+```
+@listing src/Config.hs lines=20-48 lang=haskell
+```
+
+キャプションを付けたコードブロックには、章ごとにリスト番号が振られます。
+リスト番号は図の番号とは別に数え、[code: style.toml] の [code: \[code\]] の [code: number] で表記を変えられます（付録C）。
+[code: @label] を付けると、[code: \[ref-number ...\]] でリスト番号を、[code: \[ref-title ...\]] でキャプションを参照できます。
+行番号の色、強調と差分の背景の色、構文に応じた色分け、折り返した行の印、ページをまたいだコードの「次ページに続く」のような文言も、[code: \[code\]] と [code: \[code.colors\]] で決めます。
+
 ## 図版
 
 図版[index reading=ずはん: 図版]は [code: @figure] で置きます。

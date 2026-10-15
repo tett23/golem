@@ -140,7 +140,7 @@ ADR は領域を解放する [code: golem_dealloc(ptr: u32, len: u32)] も挙げ
 + インスタンスを捨てる。
 
 読み込みの時点で、ホストは [code: golem_abi_version] を呼び、ホストの ABI の版と比べる。
-今の ABI の版は 5 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
+今の ABI の版は 6 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
 一致しなければ、読み込みの時点でエラー（G0605）になる。
 続けて [code: golem_describe] を呼び、プラグインが提供するコマンドとフィルタの名前を得る。
 
@@ -235,7 +235,7 @@ golem-plugin のテストは、テスト用のプラグインを wat（wasm の�
   (global $heap (mut i32) (i32.const 65536))
   ;; golem_describe の CBOR: [[], ["same"]]
   (data (i32.const 16) "\82\80\81\64same")
-  (func (export "golem_abi_version") (result i32) (i32.const 5))
+  (func (export "golem_abi_version") (result i32) (i32.const 6))
   (func (export "golem_alloc") (param $n i32) (result i32)
     (local $p i32)
     (local.set $p (global.get $heap))

@@ -29,6 +29,9 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import KnuthPlassReference
+import LineBreakingSpec (lineBreakingTests)
+import PaginateSpec (paginateTests)
+import PunctuationSpec (punctuationTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
@@ -277,6 +280,7 @@ tests =
     [ testGroup "kenten shapes (golem-driver ADR 0019)" kentenTests,
       testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
       testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
+      testGroup "boundaries and invariants" [paginateTests, punctuationTests, lineBreakingTests],
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
@@ -601,6 +605,17 @@ tests =
             map poFootnotes ps @?= [[(nid 101, 0, 2)], [(nid 103, 0, 1)]]
             let long = paginate 1 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
             map poFootnotes long @?= [[(nid 100, 0, 2)], [(nid 100, 2, 2)], [(nid 100, 4, 1)]],
+          testCase "a separator of two lines leaves one line less on a page of footnotes (golem-driver ADR 0024)" $ do
+            let withNote i = LineBox i [NoteBody (nid (100 + i)) 1] [] []
+                flow = [FParagraph (withNote 0 : [LineBox i [] [] [] | i <- [1 .. 9]])]
+                lay sep = paginateIn sep (ColumnSet 1 0 0 0) 6 flow
+            map (length . poSlots) (lay 1) @?= [4, 6]
+            map (length . poSlots) (lay 2) @?= [3, 5, 2]
+            map poFootnotes (lay 2) @?= [[(nid 100, 0, 1)], [], []]
+            -- a page without footnotes is the same whatever the separator
+            let plain = [FParagraph (lines' 0 14)]
+            paginateIn 2 (ColumnSet 1 0 0 0) 6 plain @?= paginateIn 1 (ColumnSet 1 0 0 0) 6 plain
+            paginateIn 1 (ColumnSet 1 0 0 0) 6 plain @?= paginate 1 6 plain,
           testCase "index marks go to the page of their line (golem-driver ADR 0007)" $ do
             let m = mkSpan (FileId 0) 10 20
                 ps = paginate 1 1 [FParagraph [LineBox 0 [] [] [], LineBox 1 [] [] [m], LineBox 2 [] [] []]]
@@ -1546,17 +1561,27 @@ codeTests =
         assertBool (show (k, top, bottom)) (abs (top - bottom) <= 1),
     testCase "a code block breaks between rows; each part takes its own lines" $ do
       let g = CodeGeometry 10 10 10 10 0
-          ps = paginate 1 5 [FParagraph (ids 0 3), FCode g (ids 10 5)]
+          ps = paginate 1 5 [FParagraph (ids 0 3), FCode g 0 1 False (ids 10 5)]
       map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SCode 10 2 2)], [(0, SCode 12 3 3)]],
     testCase "a block whose first row and padding do not fit starts on the next page" $ do
       let g = CodeGeometry 10 10 10 10 3
-          ps = paginate 1 5 [FParagraph (ids 0 4), FCode g (ids 10 2)]
+          ps = paginate 1 5 [FParagraph (ids 0 4), FCode g 0 1 False (ids 10 2)]
       codeSpan g 1 @?= 2
       map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SCode 10 2 3)]],
     testCase "the columns of a page break a code block as pages do" $ do
       let g = CodeGeometry 10 10 10 10 0
-          ps = paginate 2 3 [FParagraph (ids 0 2), FCode g (ids 10 3)]
+          ps = paginate 2 3 [FParagraph (ids 0 2), FCode g 0 1 False (ids 10 3)]
       [(poNumber p, poColumn p, poSlots p) | p <- ps] @?= [(1, 0, [(0, SLine 0), (1, SLine 1), (2, SCode 10 1 1)]), (1, 1, [(0, SCode 11 2 2)])],
+    -- golem-driver ADR 0023
+    testCase "a code block: the caption with the first rows, the file row with the first code row" $ do
+      let g = CodeGeometry 10 10 10 10 0
+      map poSlots (paginate 1 5 [FParagraph (ids 0 3), FCode g 1 1 False (ids 10 3)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SCode 10 1 2)], [(0, SCode 11 2 2)]]
+      map poSlots (paginate 1 5 [FParagraph (ids 0 4), FCode g 1 1 False (ids 10 3)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SCode 10 3 4)]]
+      map poSlots (paginate 1 5 [FParagraph (ids 0 4), FCode g 0 2 False (ids 10 3)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SCode 10 3 3)]],
+    testCase "a code block that continues: a row more in each part before the last" $ do
+      let g = CodeGeometry 10 10 10 10 0
+      map poSlots (paginate 1 5 [FParagraph (ids 0 2), FCode g 0 1 True (ids 10 5)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SCode 10 2 3)], [(0, SCode 12 3 3)]]
+      map poSlots (paginate 1 5 [FParagraph (ids 0 2), FCode g 0 1 False (ids 10 5)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SCode 10 3 3)], [(0, SCode 13 2 2)]],
     testCase "code: breaks only at spaces and after a slash, with no hyphen" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True}, cePatterns = Just englishUS}
           its = compose env "modules/golem-driver/Pdf.hs"

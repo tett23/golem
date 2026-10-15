@@ -50,6 +50,7 @@ library
     , golem-pdf
     , golem-plugin
     , golem-parser
+    , golem-preflight
     , golem-project
     , golem-syntax
     , golem-text
@@ -77,6 +78,7 @@ test-suite golem-driver-test
     , golem-layout-spec
     , golem-pdf
     , golem-plugin
+    , golem-preflight
     , golem-project
     , golem-syntax
     , process

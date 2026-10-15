@@ -15,6 +15,8 @@ module Golem.Pdf.Writer
     Font (..),
     Document (..),
     Obj (..),
+    PdfObjects (..),
+    documentObjects,
     writePdf,
     contentStream,
     pdfTextString,
@@ -43,6 +45,7 @@ import Data.UUID.V5 qualified as V5
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf.Image
 import Golem.Pdf.Number
+import Golem.Pdf.Object
 import Golem.Pdf.Sha256 (sha256)
 import Golem.Pdf.Srgb (srgbProfile)
 import Golem.Pdf.X4
@@ -149,19 +152,6 @@ data Document = Document
     docPdfX :: !(Maybe PdfX)
   }
 
-data Obj
-  = ODict ![(Text, Obj)]
-  | OArr ![Obj]
-  | OName !Text
-  | OInt !Integer
-  | OReal !Text
-  | OStr !ByteString
-  | OHex !ByteString
-  | ORef !Int
-  | OBool !Bool
-  | OStream ![(Text, Obj)] !ByteString
-  deriving stock (Eq, Show)
-
 -- ------------------------------------------------------------------ identifiers
 
 -- | The document ID: a name-based UUID (v5) of the book's identifier.
@@ -259,12 +249,38 @@ pdfTextString t
   | T.all (\c -> c >= ' ' && c <= '~') t = OStr (TE.encodeUtf8 t)
   | otherwise = utf16Hex t
 
-{- | Writes the document. Objects are numbered: catalog, page tree, each
-page (with its content), fonts and images in order of first reference,
-then the document information.
--}
+-- | Writes the document: 'documentObjects', serialized.
 writePdf :: Document -> ByteString
-writePdf doc =
+writePdf = serializePdf . documentObjects
+
+-- | The header, the objects, a classic xref table and the trailer.
+serializePdf :: PdfObjects -> ByteString
+serializePdf (PdfObjects version objects trailerDict) =
+  let header = "%PDF-" <> B.byteString (TE.encodeUtf8 version) <> "\n%" <> B.word8 0xE2 <> B.word8 0xE3 <> B.word8 0xCF <> B.word8 0xD3 <> "\n"
+      headerLen = 12 + BS.length (TE.encodeUtf8 version)
+      bodies = [BL.toStrict (B.toLazyByteString (B.intDec n <> " 0 obj\n" <> serialize o <> "\nendobj\n")) | (n, o) <- zip [1 :: Int ..] objects]
+      offsets = scanl (+) headerLen (map BS.length bodies)
+      xrefAt = last offsets
+      size = length objects + 1
+      xref =
+        "xref\n0 "
+          <> B.intDec size
+          <> "\n0000000000 65535 f \n"
+          <> mconcat [B.string7 (printf "%010d 00000 n \n" o) | o <- init offsets]
+      trailer =
+        "trailer\n"
+          <> serialize trailerDict
+          <> "\nstartxref\n"
+          <> B.intDec xrefAt
+          <> "\n%%EOF\n"
+   in BL.toStrict (B.toLazyByteString (header <> mconcat (map B.byteString bodies) <> xref <> trailer))
+
+{- | The objects of the document. Objects are numbered: catalog, page tree,
+each page (with its content), fonts and images in order of first
+reference, then the document information.
+-}
+documentObjects :: Document -> PdfObjects
+documentObjects doc =
   let pages = docPages doc
       fontOrder = nub [f | p <- pages, m <- pageContent p, f <- fontsOf m]
       imageOrder = nub [i | p <- pages, m <- pageContent p, i <- imagesOf m]
@@ -339,24 +355,8 @@ writePdf doc =
       addInfo (ODict kvs) extra = ODict (kvs <> (if isJust (docPdfX doc) then extra else []))
       addInfo o _ = o
       objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> xObjs <> [info]
-      header = "%PDF-1.6\n%" <> B.word8 0xE2 <> B.word8 0xE3 <> B.word8 0xCF <> B.word8 0xD3 <> "\n"
-      headerLen = 15
-      bodies = [BL.toStrict (B.toLazyByteString (B.intDec n <> " 0 obj\n" <> serialize o <> "\nendobj\n")) | (n, o) <- zip [1 :: Int ..] objects]
-      offsets = scanl (+) headerLen (map BS.length bodies)
-      xrefAt = last offsets
       size = length objects + 1
-      xref =
-        "xref\n0 "
-          <> B.intDec size
-          <> "\n0000000000 65535 f \n"
-          <> mconcat [B.string7 (printf "%010d 00000 n \n" o) | o <- init offsets]
-      trailer =
-        "trailer\n"
-          <> serialize (ODict [("Size", OInt (fromIntegral size)), ("Root", ORef 1), ("Info", ORef infoObj), ("ID", OArr [OHex (docId doc), OHex (docInstanceId doc)])])
-          <> "\nstartxref\n"
-          <> B.intDec xrefAt
-          <> "\n%%EOF\n"
-   in BL.toStrict (B.toLazyByteString (header <> mconcat (map B.byteString bodies) <> xref <> trailer))
+   in PdfObjects "1.6" objects (ODict [("Size", OInt (fromIntegral size)), ("Root", ORef 1), ("Info", ORef infoObj), ("ID", OArr [OHex (docId doc), OHex (docInstanceId doc)])])
   where
     tshow :: Int -> Text
     tshow = T.pack . show

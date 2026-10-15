@@ -39,7 +39,7 @@ test-suite golem-eval-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    ExprSpec FileSpec RegexStyleSpec
+  other-modules:    DeferredSpec DiagnosticSitesSpec ExprSpec FileSpec OperatorSpec RegexStyleSpec
   build-depends:
     , base
     , containers

@@ -7,6 +7,7 @@ module Golem.Doc.Validate
   )
 where
 
+import Data.Maybe (isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
@@ -46,7 +47,11 @@ validateDocument fileSize allowed (Document _ bs) = concatMap (blockAt True) bs
         concatMap inl h
           <> concatMap (concatMap inl) rows
           <> ["表のセルの数が一致しません" | any ((/= length h) . length) rows]
-      CodeBlock _ _ -> []
+      -- the caption, the callouts and the diff marks (golem-driver ADR 0023)
+      CodeBlock c ->
+        maybe [] inl (codeCaption c)
+          <> ["注釈の印の番号は 1 から 50 までです" | any (any (\n -> n < 1 || n > 50) . clCallouts) (codeLines c)]
+          <> ["差分のコードの行には差分の印が、ほかのコードの行には印がありません" | any (\l -> isJust (clDiff l) /= codeDiff c) (codeLines c)]
       FigureBlock f -> concatMap blockErrors (figCaption f)
       ChannelOutput _ -> []
       ForcedBreak _ -> []

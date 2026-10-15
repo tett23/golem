@@ -8,6 +8,7 @@ padding, with the rows centred in them.
 module Golem.Layout.Code
   ( CodeAtom (..),
     codeAtoms,
+    codeAtomsColored,
     CodePiece (..),
     CodeRow (..),
     layoutCodeLine,
@@ -32,8 +33,10 @@ type Sp = Integer
 data CodeAtom
   = ASpace
   | ATab
-  | -- | the text of the cluster, its advance and whether it is Latin text
-    AGlyph !Text !Sp !Bool
+  | {- | the text of the cluster, its advance, whether it is Latin text and
+    the swatch of its token (golem-driver ADR 0023)
+    -}
+    AGlyph !Text !Sp !Bool !(Maybe Text)
   deriving stock (Eq, Show)
 
 {- | The atoms of a line of code: spaces and tabs, and the clusters of each
@@ -42,17 +45,23 @@ its text to the text and the advance of each cluster). A variation
 selector stays with the character before it (golem-pdf ADR 0006).
 -}
 codeAtoms :: (Bool -> Text -> [(Text, Sp)]) -> Text -> [CodeAtom]
-codeAtoms shape = concatMap atoms . T.groupBy sameRun
+codeAtoms shape t = codeAtomsColored shape [(Nothing, t)]
+
+{- | The atoms of a line of code in tokens, each with the swatch of its
+glyphs (golem-driver ADR 0023): the runs of each token are shaped apart.
+-}
+codeAtomsColored :: (Bool -> Text -> [(Text, Sp)]) -> [(Maybe Text, Text)] -> [CodeAtom]
+codeAtomsColored shape = concatMap (\(col, t) -> concatMap (atoms col) (T.groupBy sameRun t))
   where
     latin c = charClass c == Western
     blank c = c == ' ' || c == '\t'
     sameRun a b
       | blank a || blank b = False
       | otherwise = isVariationSelector b || latin a == latin b
-    atoms r = case T.unpack r of
+    atoms col r = case T.unpack r of
       " " -> [ASpace]
       "\t" -> [ATab]
-      (c : _) -> [AGlyph t w (latin c) | (t, w) <- shape (latin c) r]
+      (c : _) -> [AGlyph t w (latin c) col | (t, w) <- shape (latin c) r]
       [] -> []
 
 -- | Glyphs placed on a row, from the text start: the offset, the text, its advance and whether it is Latin.
@@ -60,7 +69,9 @@ data CodePiece = CodePiece
   { cpOffset :: !Sp,
     cpText :: !Text,
     cpWidth :: !Sp,
-    cpLatin :: !Bool
+    cpLatin :: !Bool,
+    -- | the swatch of the glyphs (golem-driver ADR 0023)
+    cpColor :: !(Maybe Text)
   }
   deriving stock (Eq, Show)
 
@@ -87,7 +98,7 @@ advance :: Sp -> Sp -> CodeAtom -> Sp
 advance s x = \case
   ASpace -> x + s
   ATab -> let unit = 2 * s in if unit <= 0 then x else (x `div` unit + 1) * unit
-  AGlyph _ w _ -> x + w
+  AGlyph _ w _ _ -> x + w
 
 {- | The rows of a line of code with the space advance @s@ and @avail@ for
 the text: a glyph that would end past @avail@ starts a new row at
@@ -101,15 +112,15 @@ layoutCodeLine s avail atoms = go 0 False [] [] atoms
     close acc = CodeRow (reverse acc)
     go _ _ acc rows [] = reverse (close acc : rows)
     go x hasGlyph acc rows (a : rest) = case a of
-      AGlyph t w l
+      AGlyph t w l col
         | x + w > avail && hasGlyph -> go cont False [] (close acc : rows) (a : rest)
-        | otherwise -> go (x + w) True (place x t w l acc) rows rest
+        | otherwise -> go (x + w) True (place x t w l col acc) rows rest
       _ -> go (advance s x a) hasGlyph acc rows rest
-    -- a glyph right after one of the same side joins its piece
-    place x t w l = \case
-      CodePiece o pt pw pl : acc
-        | pl == l && o + pw == x -> CodePiece o (pt <> t) (pw + w) pl : acc
-      acc -> CodePiece x t w l : acc
+    -- a glyph right after one of the same side and swatch joins its piece
+    place x t w l col = \case
+      CodePiece o pt pw pl pc : acc
+        | pl == l && pc == col && o + pw == x -> CodePiece o (pt <> t) (pw + w) pl pc : acc
+      acc -> CodePiece x t w l col : acc
 
 {- | The sizes a code block is set with: the size and pitch of the grid,
 the size of the code, the pitch of its rows and the padding.

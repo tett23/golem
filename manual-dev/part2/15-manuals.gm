@@ -146,6 +146,7 @@ URL を先に書けば、URL の行はそろわないまま残り、和文の名
 
 - 前付けは、番号のない「はじめに」（目次に載せる）、目次の順にする。
 - 索引は二段で組む（[code: style.toml] の [code: \[index\]] の [code: columns = 2]）。
+- 脚注の前に区切り線を引く（[code: style.toml] の [code: \[notes.rule\]]）。長さは一行の字数の 4 分の 1 ほどにし、線の前後に 0.5zw の間隔を書く。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md]（golem-driver ADR 0024「罫線の指定と脚注の区切り線」）]
 - 奥付は版とコミットの二行を載せる。
 - コードブロックは組み込みの段落スタイル [code: code] で組み、背景のスウォッチ（[code: { cmyk = \[0, 0, 0, 8\] }] を出発点にする）と内側の余白を付ける。墨だけのごく薄い色にするのは、本文の文字の色と重ならず、モノクロで印刷しても沈まないようにするためである。
 - 本文の中のファイル名、コマンド、パス、キーは [code: \[code: ...\]] で書く。[code: \[style code: ...\]] は使わない。

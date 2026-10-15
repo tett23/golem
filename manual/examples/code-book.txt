@@ -1,0 +1,7 @@
+@caption 引数を一行ずつ出す
+```haskell numbers=10 highlight=12 callouts=true
+main :: IO ()
+main = do
+  args <- getArgs      <1>
+  mapM_ putStrLn args  <2>
+```

@@ -12,6 +12,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import EditingSpec (editingTests)
 import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Lsp.Features
 import Golem.Lsp.Server (lspSeverity, rewriteInitializeResponse, runGolemLspWithHandles)
@@ -369,7 +370,8 @@ tests =
                 r8 <- s8
                 uncurry (@?=) (srClampHover r16)
                 uncurry (@?=) (srClampHover r8)
-            ]
+            ],
+      editingTests
     ]
 
 data SessionSpec = SessionSpec

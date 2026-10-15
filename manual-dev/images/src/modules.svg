@@ -47,12 +47,15 @@
   <line x1="360" y1="758" x2="360" y2="822"/>
   <line x1="360" y1="878" x2="360" y2="942"/>
   <path class="edge" d="M1085,250 H1280 V850 H435"/>
+  <line x1="575" y1="250" x2="537" y2="250"/>
+  <path class="edge" d="M460,278 V310 H990 V342"/>
 
   <!-- nodes: center x, y; width 150 (layout-spec 190) -->
   <rect class="box tool" x="575" y="22" width="150" height="56"/><text class="name" x="650" y="50">cli</text>
   <rect class="box tool" x="575" y="122" width="150" height="56"/><text class="name" x="650" y="150">lsp</text>
   <rect class="box tool" x="575" y="222" width="150" height="56"/><text class="name" x="650" y="250">driver</text>
   <rect class="box tool" x="935" y="222" width="150" height="56"/><text class="name" x="1010" y="250">fmt</text>
+  <rect class="box pdf" x="385" y="222" width="150" height="56"/><text class="name" x="460" y="250">preflight</text>
 
   <rect class="box txt" x="20" y="342" width="150" height="56"/><text class="name" x="95" y="370">text</text>
   <rect class="box web" x="215" y="342" width="150" height="56"/><text class="name" x="290" y="370">epub</text>
