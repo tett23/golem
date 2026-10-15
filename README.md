@@ -71,9 +71,9 @@ golem new mybook
 | `golem new DIR [--language ja\|en] [--no-fonts]` | プロジェクトを作る。版面の設定と、配布元から取得したフォントを含む。`--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない） |
 | `golem plugin lock` | マニフェストのプラグインを取得し、ハッシュを `plugins.lock` に書く |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
-| `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none） |
-| `golem check [--profile dev\|prod] [--marks japanese\|western\|none]` | 出力を書かずに検査する |
-| `golem lint` | lint の規則を適用する |
+| `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限りお知らせを出さない |
+| `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | 出力を書かずに検査する |
+| `golem lint [--profile dev\|prod] [--no-notices]` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形する |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
 | `golem inspect FILE --as cst\|ast\|ir` | 構文木と IR を表示する |
@@ -106,6 +106,7 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注欄の幅、版面との間隔、本文側の印だけを書く。
 コードブロックは組み込みの段落スタイル `code` で組み、書体は `[fonts.code]` の役割、背景の色と内側の余白は `[paragraph-styles.code]` の `background` と `padding` で指定する（[golem-driver ADR 0017](./docs/golem-driver/adr/0017-pdf-code-blocks.md)）。
 PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折り返す。
+PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組みの本でも二段のように版面と異なる段数で組める（[docs/adr/0025](docs/adr/0025-index-columns.md)）。
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には商用のプリフライト（Acrobat や pdfToolbox など）で確認する。
 

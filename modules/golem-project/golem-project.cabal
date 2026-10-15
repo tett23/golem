@@ -43,6 +43,7 @@ test-suite golem-project-test
   main-is:          Main.hs
   build-depends:
     , base
+    , bytestring
     , containers
     , directory
     , filepath

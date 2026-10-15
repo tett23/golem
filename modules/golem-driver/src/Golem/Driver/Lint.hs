@@ -17,14 +17,18 @@ import Golem.Lint
 import Golem.Project
 import Golem.Syntax
 
-lintProject :: Profile -> FilePath -> IO (Map FileId SourceInfo, [Diagnostic])
-lintProject profile root = do
+{- | The diagnostics of golem lint; with @noNotices@ (--no-notices) no
+notice, and otherwise none of the codes of silence-notices (golem-syntax
+ADR 0002).
+-}
+lintProject :: Profile -> Bool -> FilePath -> IO (Map FileId SourceInfo, [Diagnostic])
+lintProject profile noNotices root = do
   ev <- evaluateProject profile root
   pure $ case ev of
-    Left f -> (pfSources f, finish (pfDiagnostics f))
-    Right e -> (withLockSource e (sourceInfos (evProject e)), finish (evDiagnostics e <> lintEvaluated e))
+    Left f -> (pfSources f, finish Set.empty (pfDiagnostics f))
+    Right e -> (withLockSource e (sourceInfos (evProject e)), finish (manifestSilencedNotices (projectManifest (evProject e))) (evDiagnostics e <> lintEvaluated e))
   where
-    finish = sortDiagnostics . map (adjustForProfile profile)
+    finish silenced = sortDiagnostics . silenceNotices (if noNotices then Nothing else Just silenced) . map (adjustForProfile profile)
 
 {- | The rules on an evaluated project. G0501 of a file that defines styles
 uses the paragraph styles that keep their lines in that file (docs/adr

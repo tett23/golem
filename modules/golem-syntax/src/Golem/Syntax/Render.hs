@@ -25,6 +25,7 @@ data SourceInfo = SourceInfo
 severityText :: Severity -> Text
 severityText Error = "error"
 severityText Warning = "warning"
+severityText Notice = "notice"
 
 codeText :: DiagnosticCode -> Text
 codeText (DiagnosticCode c) = c

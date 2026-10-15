@@ -266,7 +266,7 @@ v1 で定めるブロックコマンドは次のとおりである。
 - `@bibliography`：参考文献の一覧を出力する。
 - `@figure`：図版を置く（「図版」の節を参照）。
 - `@table src=path`：CSV のファイルから表を作る（「表」の節を参照）。
-- `@listing src=path lines=N-M`：Golem 以外のファイルの内容をコードとして取り込む（「コードブロック」の節を参照）。
+- `@listing path lines=N-M`：Golem 以外のファイルの内容をコードとして取り込む（「コードブロック」の節を参照）。パスは最初の引数に書く。`src=path` とも書けるが廃止予定であり、お知らせ（G0265）を出す（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 - `@style 名前`：段落に段落スタイルを付ける（「段落スタイル」の節を参照）。
 - `@page-break`、`@page-break recto`、`@page-break verso`：次のページ、次の奇数ページ、次の偶数ページから続ける（「改ページ」の節を参照）。
 - `@column-break`：次の段から続ける（「改ページ」の節を参照）。

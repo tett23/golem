@@ -75,7 +75,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **改ページ**：今のページを閉じ、次のページから続けること。原稿では `@page-break` で指定する（[markup.md](markup.md)、[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 - **改丁**：次の奇数ページから始めること。原稿では `@page-break recto`、見出しでは `style.toml` の `page-break = "recto"` で指定する（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 - **白ページ**：改ページや改丁で中身のないまま閉じたページ。柱もノンブルも描かない（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
-- **段**と**段間**：段組みの版面を等しい幅に分けた一つの領域と、段と段のあいだの空き。`style.toml` の `[page.grid]` の `columns`（段数）と `column-gap`（段間）で決める。本文は横組みでは左の段から右の段へ、縦組みでは上の段から下の段へ流れる（[docs/adr/0018](adr/0018-multi-column-layout.md)）。
+- **段**と**段間**：段組みの版面を等しい幅に分けた一つの領域と、段と段のあいだの空き。`style.toml` の `[page.grid]` の `columns`（段数）と `column-gap`（段間）で決める。本文は横組みでは左の段から右の段へ、縦組みでは上の段から下の段へ流れる（[docs/adr/0018](adr/0018-multi-column-layout.md)）。PDF の索引は、`[index]` の `columns` と `column-gap` で、版面と異なる段数の段（索引の段）で組める。索引の段は版面の文字の領域を等しい幅に分け、行の位置は版面の行の格子に置く（[docs/adr/0025](adr/0025-index-columns.md)）。
 - **改段**：今の段を閉じ、次の段から続けること。最後の段なら次のページの最初の段に進む。原稿では `@column-break` で指定する（[docs/adr/0017](adr/0017-forced-page-breaks.md)、[docs/adr/0018](adr/0018-multi-column-layout.md)）。
 
 ## 出力
@@ -98,7 +98,8 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **lint**：原稿の誤りの可能性を指摘する検査。規則は処理系が固定し、利用者が加えたり止めたりはできない（[golem-lint ADR 0001](golem-lint/adr/0001-lint-rules.md)）。
 - **fmt**：出力を変えずに原稿の書式を整える整形。整形の前後で AST が一致することを保つ（[golem-fmt ADR 0001](golem-fmt/adr/0001-formatter.md)）。
 - **LSP**：エディタに診断、補完、定義への移動などを提供する言語サーバーの規約（Language Server Protocol）。`golem lsp` が話す（[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md)）。
-- **診断**：構文の誤り、評価の誤り、lint の指摘などを、ソース上の位置と符号（`G0101` など）を付けて報告したもの。重大度はエラーと警告の二つである（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)）。コードの一覧と説明は [docs/diagnostics.md](diagnostics.md) にある。
+- **診断**：構文の誤り、評価の誤り、lint の指摘などを、ソース上の位置と符号（`G0101` など）を付けて報告したもの。重大度はエラー、警告、お知らせの三つである（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)、[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。コードの一覧と説明は [docs/diagnostics.md](diagnostics.md) にある。
+- **お知らせ**：警告より下の診断の重大度（`notice`）。誤りではないが書き手が知っておいたほうがよいこと（スタイルの上書き、効果のない書き方、廃止予定の書き方など）を伝える。終了コードと出力を変えず、マニフェストの `[diagnostics]` の `silence-notices` と、コマンドの `--no-notices` で抑制できる。抑制できる診断はお知らせだけである（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 - **プラグイン**：wasm のモジュールとして配布する拡張。import を一切受け取らず、呼び出しごとに新しいインスタンスで実行する。文書から呼ぶ**コマンド**と、ファイル一つ分の文書を書き換える**フィルタ**の二種類がある（[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
 - **命令数の上限**：プラグインが一回の呼び出しで実行できる命令の数の上限（wasmtime の fuel）。命令の数で数えるので、上限に達する位置も決定的である。
 - **ロックファイル**：プラグインの配布物の URL と SHA-256 を記録した `plugins.lock`。処理系だけが書き、ビルドはこのハッシュと一致するキャッシュからだけプラグインを読む（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。

@@ -20,7 +20,8 @@ where
 
 import Control.Monad (forM, unless)
 import Control.Monad.State.Strict
-import Data.Char (isAsciiLower, isDigit)
+import Data.ByteString qualified as BS
+import Data.Char (isAscii, isAsciiLower, isDigit)
 import Data.List (partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -29,6 +30,7 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Doc.IR
 import Golem.Eval.Expr
 import Golem.Eval.RegexStyle (applyRegexStyles, regexRules)
@@ -101,7 +103,9 @@ data EvalResult = EvalResult
     -- | the settings that applied to the file (docs/adr ADR 0013)
     erSource :: !SourceSettings,
     -- | the styles the file defines (docs/adr ADR 0014)
-    erStyles :: !LocalStyles
+    erStyles :: !LocalStyles,
+    -- | the line of each @number by the span of the block it numbers (G0407, golem-syntax ADR 0002)
+    erNumberSites :: !(Map SrcSpan SrcSpan)
   }
 
 data St = St
@@ -113,7 +117,9 @@ data St = St
     stImports :: ![(Text, FilePath, SrcSpan)],
     stNote :: !Int,
     stSidenote :: !Int,
-    stDiags :: ![Diagnostic]
+    stDiags :: ![Diagnostic],
+    -- | the line of each @number by the span of its block (G0407)
+    stNumberSites :: !(Map SrcSpan SrcSpan)
   }
 
 type M = State St
@@ -149,7 +155,7 @@ evalFile ctx0 (A.File fid blocks0) =
       (local, styleDiags) = fileStyles (ctxStyle ctx0) header
       ctx = (withFileStyles local ctx0) {ctxSource = source}
       blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
-      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags)
+      st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty
       (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
       (bs, breakDiags) = nestedBreaks bs0
       doc0 = Document fid bs
@@ -164,7 +170,8 @@ evalFile ctx0 (A.File fid blocks0) =
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
           erDiagnostics = stDiags st <> breakDiags <> filterDiags,
           erSource = ctxSource ctx,
-          erStyles = local
+          erStyles = local,
+          erNumberSites = stNumberSites st
         }
 
 {- | The context with the styles of the file over those of style.toml
@@ -476,6 +483,10 @@ attributedGroup ctx sp cmds target = case target of
         (other, _) -> evalBlock ctx (joinTarget other)
       case targetBlocks of
         (Block bsp _ body : rest) -> do
+          -- where G0407 points: the @number line (golem-syntax ADR 0002)
+          case [asp | ("number", asp) <- named] of
+            (asp : _) -> modify' (\s -> s {stNumberSites = Map.insert bsp asp (stNumberSites s)})
+            [] -> pure ()
           (label, body') <- foldM' (applyAttr ctx) (Nothing, body) attrs
           pure (Block bsp label body' : rest)
         [] -> pure []
@@ -600,12 +611,23 @@ styledParagraph ctx sp mname is = case mname of
     Nothing -> err "G0247" sp ("定義されていない段落スタイルです: " <> name) >> joined Nothing
     Just JoinLines -> joined (styleOf name)
     Just KeepLines -> do
+      mapM_ escapedIndent (linesOf Nothing is)
       ls <- filter (not . null . snd) <$> mapM (\(bsp, l) -> (bsp,) <$> evalInlines ctx False (trimLine l)) (linesOf Nothing is)
       pure $ case ls of
         [] -> []
         ((_, first) : rest) -> [block sp (Paragraph (styleOf name) (first <> concat [LineBreak bsp : l | (bsp, l) <- rest]))]
   where
     styleOf n = if n == "body" then Nothing else Just n
+    {- G0264: an escaped space or tab at the start of a line is dropped
+    as the plain ones are (golem-syntax ADR 0002). The escape is merged
+    into the text, which is then a byte longer than its span says. -}
+    escapedIndent = \case
+      (_, A.Located tsp (A.Text t) : _)
+        | Just (c, _) <- T.uncons t,
+          c == ' ' || c == '\t',
+          spanEnd tsp - spanStart tsp > BS.length (TE.encodeUtf8 t) ->
+            report (notice "G0264" (mkSpan (spanFile tsp) (spanStart tsp) (spanStart tsp + 1)) "行頭のエスケープした空白は無視されます。字下げには全角の空白を使います")
+      _ -> pure ()
     joined st = (\x -> [block sp (Paragraph st x)]) <$> hardLines ctx sp is
     -- lines with the span of the newline before each (the first has none);
     -- a hard break is a newline here (docs/adr ADR 0016)
@@ -775,6 +797,10 @@ parseCsv t = filter (/= [""]) (rows (T.unpack (T.replace "\r\n" "\n" t)))
 listing :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
 listing ctx sp args = do
   kw <- keywords ctx args
+  -- G0265: the path as src= is to be retired (golem-syntax ADR 0002)
+  mapM_
+    (\asp -> report (notice "G0265" asp "@listing の src= は廃止予定です。パスを最初の引数に書きます"))
+    [asp | A.Located asp (A.Keyword (A.Located _ "src") _) <- args]
   let src = case [v | A.Located _ (A.Positional v) <- args] of
         (v : _) -> Just (argText v)
         [] -> argText <$> lookup "src" kw
@@ -918,7 +944,10 @@ builtinWith ctx inHeading sp name args slots = do
       [v] | Just n <- nameArg v -> err "G0218" sp ("定義されていない文字スタイルです: " <> n) >> pure []
       _ -> err "G0218" sp "style には文字スタイルの名前を一つ書きます" >> pure []
     "tcy" -> oneSlot $ \case
-      [Text _ t] -> pure [Tcy sp t]
+      [Text _ t]
+        -- G0263: a number reads better as a number (golem-syntax ADR 0002)
+        | not (T.null t) && T.all isDigit t && T.all isAscii t -> report (notice "G0263" sp ("数の縦中横は [number-text " <> t <> " style=tcy] でも書けます")) >> pure [Tcy sp t]
+        | otherwise -> pure [Tcy sp t]
       [] -> pure []
       _ -> err "G0240" sp "縦中横の中身は地の文に限ります" >> pure []
     "number-text" -> case pos of

@@ -143,7 +143,8 @@ tests =
         readFile (tmp </> "a.gm") >>= (@?= "@verse\n  Full fathom five\n"),
       missingFontTests,
       marksTests,
-      explainTests
+      explainTests,
+      noticeTests
     ]
 
 -- | Runs golem in a project whose body font is missing (golem-project ADR 0004).
@@ -252,3 +253,72 @@ syntaxErrorFiles =
     ),
     ("a.gm", "[strong: 閉じない\n")
   ]
+
+{- | A project with a notice only (G0263). The body font is a file that is
+not a font: golem check looks for it and does not read it.
+-}
+noticeFiles :: [(FilePath, String)]
+noticeFiles =
+  [ ( "manifest.toml",
+      "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n\n[targets.text]\n"
+    ),
+    ("style.toml", "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 12\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n[fonts.body]\nja = \"a.otf\"\n"),
+    ("a.otf", "not a font"),
+    ("a.gm", "[tcy: 10]\n")
+  ]
+
+-- | The notices with an error (G0222) and a warning (G0205 in prod).
+mixedFiles :: [(FilePath, String)]
+mixedFiles = [(p, if p == "a.gm" then "[tcy: 10]\n\n[unknown: x] %%= 校正 %%\n" else c) | (p, c) <- noticeFiles]
+
+-- | Runs golem in the project and returns the exit code, stderr and the files under build/.
+golemOutputs :: [(FilePath, String)] -> [String] -> IO (ExitCode, String, [(FilePath, BL.ByteString)])
+golemOutputs files args = withSystemTempDirectory "golem-cli" $ \tmp -> do
+  mapM_ (\(p, c) -> BL.writeFile (tmp </> p) (BL.fromStrict (TE.encodeUtf8 (T.pack c)))) files
+  (code, _, err) <- readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
+  outs <- mapM (\p -> (p,) <$> BL.readFile (tmp </> "build" </> p)) ["html/a.xhtml", "text/vertical/a.txt", "text/horizontal/a.txt"]
+  pure (code, err, outs)
+
+-- | The notices (golem-syntax ADR 0002).
+noticeTests :: TestTree
+noticeTests =
+  testGroup
+    "notices (golem-syntax ADR 0002)"
+    [ testCase "notices alone exit with 0, in dev and in prod" $
+        mapM_
+          ( \args -> do
+              (code, err) <- golemIn noticeFiles args
+              assertEqual (unwords args <> "\n" <> err) ExitSuccess code
+              assertBool err ("notice[G0263]" `isInfixOf` err)
+          )
+          [build, ["check"], ["lint"], build <> ["--profile", "prod"], ["check", "--profile", "prod"], ["lint", "--profile", "prod"]],
+      testCase "--no-notices drops the notices and keeps errors and warnings" $
+        mapM_
+          ( \cmd -> do
+              (_, err) <- golemIn mixedFiles (cmd <> ["--profile", "prod", "--no-notices"])
+              assertBool err (not ("notice[" `isInfixOf` err))
+              assertBool err ("error[G0222]" `isInfixOf` err && "warning[G0205]" `isInfixOf` err)
+              (_, json) <- golemIn mixedFiles (cmd <> ["--profile", "prod", "--no-notices", "--format", "json"])
+              assertBool json (not ("\"notice\"" `isInfixOf` json))
+              assertBool json ("\"G0222\"" `isInfixOf` json && "\"G0205\"" `isInfixOf` json)
+              (_, loud) <- golemIn mixedFiles (cmd <> ["--profile", "prod", "--format", "json"])
+              assertBool loud ("\"severity\":\"notice\"" `isInfixOf` loud)
+          )
+          [build, ["check"], ["lint"]],
+      testCase "the hint follows notices alone, and not --no-notices" $ do
+        (_, err) <- golemIn noticeFiles ["check"]
+        last (lines err) @?= "コードの説明は golem explain <コード> で表示できます（例: golem explain G0263）"
+        (code, quiet) <- golemIn noticeFiles ["check", "--no-notices"]
+        code @?= ExitSuccess
+        quiet @?= "",
+      testCase "golem build --no-notices writes the same bytes" $ do
+        (_, _, loud) <- golemOutputs noticeFiles build
+        (_, err, quiet) <- golemOutputs noticeFiles (build <> ["--no-notices"])
+        err @?= ""
+        quiet @?= loud,
+      exitsWith (ExitFailure 2) ["fmt", "--no-notices"],
+      exitsWith (ExitFailure 2) ["explain", "--no-notices"]
+    ]
+  where
+    -- the PDF needs a real font, so golem build writes the other targets
+    build = ["build", "--target", "html", "--target", "text"]

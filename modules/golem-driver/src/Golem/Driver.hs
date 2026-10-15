@@ -41,7 +41,7 @@ import Data.Either (fromRight)
 import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -94,11 +94,13 @@ data BuildOptions = BuildOptions
     optFonts :: !FontProvider,
     optParallel :: !Bool,
     -- | the crop marks of the PDF (golem-pdf ADR 0004)
-    optMarks :: !CropMarks
+    optMarks :: !CropMarks,
+    -- | --no-notices: no notice is reported (golem-syntax ADR 0002)
+    optNoNotices :: !Bool
   }
 
 defaultOptions :: FilePath -> BuildOptions
-defaultOptions root = BuildOptions root Nothing Dev False golemFontProvider True NoMarks
+defaultOptions root = BuildOptions root Nothing Dev False golemFontProvider True NoMarks False
 
 data BuildResult = BuildResult
   { brDiagnostics :: ![Diagnostic],
@@ -159,10 +161,12 @@ evaluateProjectWith overlay profile root = do
   case lp of
     Left f -> pure (Left f)
     Right project -> do
-      let synDiags = concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
+      styleBytes <- readMaybeBytes (root </> "style.toml")
+      let -- G0323: the default style, when there is no style.toml (golem-syntax ADR 0002)
+          defaultStyleNotice = [notice "G0323" (mkSpan (projectManifestFile project) 0 0) "style.toml がないので、既定の体裁で組みます" | isNothing styleBytes]
+          synDiags = defaultStyleNotice <> concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
           manifest0 = projectManifest project
           styleFid = styleFileId project
-      styleBytes <- readMaybeBytes (root </> "style.toml")
       -- style.toml passes the reading stage too (golem-parser ADR 0009)
       let styleRead = traverse (readSourceFile styleFid "style.toml") styleBytes
           styleText = fromRight Nothing styleRead
@@ -193,8 +197,10 @@ evaluateProjectWith overlay profile root = do
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
                   chapterDocs = [erDocument r | (fid, _) <- projectChapters project, Just r <- [Map.lookup fid results]]
-                  cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style)
-                  pre = masterDiags <> pluginDiags <> s0Diags
+                  -- where G0407 points (golem-syntax ADR 0002)
+                  numberSites = Map.unions (map erNumberSites (Map.elems results))
+                  cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites
+                  pre = defaultStyleNotice <> masterDiags <> pluginDiags <> s0Diags
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
               if hasErrors pre
                 then pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results Nothing pre again))
@@ -378,9 +384,10 @@ build :: BuildOptions -> IO BuildResult
 build opts = do
   ev <- evaluateProject (optProfile opts) (optRoot opts)
   case ev of
-    Left f -> pure (BuildResult (finish (pfDiagnostics f)) (pfSources f) [])
+    Left f -> pure (BuildResult (finishWith Set.empty (pfDiagnostics f)) (pfSources f) [])
     Right e -> do
       let project = evProject e
+          finish = finishWith (manifestSilencedNotices (projectManifest project))
           targets = fromMaybe (targetsOf (projectManifest project)) (optTargets opts)
       hasStyle <- doesFileExist (optRoot opts </> "style.toml")
       let styleFid = evStyleFile e
@@ -414,7 +421,8 @@ build opts = do
               pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags <> outDiags)) infos written)
         _ -> pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags)) infos [])
   where
-    finish = sortDiagnostics . map (adjustForProfile (optProfile opts))
+    -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002)
+    finishWith silenced = sortDiagnostics . silenceNotices (if optNoNotices opts then Nothing else Just silenced) . map (adjustForProfile (optProfile opts))
 
 -- | Files of style.toml that cannot be used: path -> why (resolveInRoot).
 missingStyleFiles :: FilePath -> Style -> IO (Map FilePath PathError)

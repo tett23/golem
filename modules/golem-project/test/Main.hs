@@ -2,11 +2,14 @@ module Main (main) where
 
 import Control.Monad (forM_, void)
 import Data.Bifunctor (first)
+import Data.ByteString qualified as BS
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Doc.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Parser.SourceSettings
@@ -106,6 +109,35 @@ sourceTests =
         withProject [("manifest.toml", manifest ["\"a.gm\"", "{ file = \"a.gm\", paragraph-separator = \"blank-line\" }"]), ("a.gm", "")] $ \root ->
           loadProject root >>= (@?= []) . codes
     ]
+
+-- | [diagnostics] silence-notices of the manifest (golem-syntax ADR 0002).
+silenceTests :: TestTree
+silenceTests =
+  testGroup
+    "[diagnostics] silence-notices (golem-syntax ADR 0002)"
+    [ testCase "the codes of notices are read" $
+        fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = [\"G0262\"]\n") @?= Right (Set.fromList [DiagnosticCode "G0262"]),
+      testCase "without [diagnostics] and with an empty array nothing is silenced" $ do
+        fmap manifestSilencedNotices (parse "") @?= Right Set.empty
+        fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-notices = []\n") @?= Right Set.empty,
+      testCase "a code that is no notice, or no code, is G0324 at the element" $
+        mapM_
+          ( \c -> do
+              let extra = "[diagnostics]\nsilence-notices = [\"G0262\", \"" <> c <> "\"]\n"
+                  src = manifestWith ["\"a.gm\""] extra
+                  at = BS.length (TE.encodeUtf8 (fst (T.breakOn ("\"" <> c <> "\"") src)))
+              case parseManifest (FileId 0) src of
+                Left [d] -> (diagCode d, spanStart (diagSpan d)) @?= (DiagnosticCode "G0324", at)
+                other -> assertFailure (T.unpack c <> ": " <> show (codes other))
+          )
+          ["G0101", "G0205", "G0248", "G9999", "all", "g0262"],
+      testCase "a string instead of an array is G0301" $
+        codes (parse "[diagnostics]\nsilence-notices = \"all\"\n") @?= ["G0301"],
+      testCase "an unknown key of [diagnostics] is G0301" $
+        codes (parse "[diagnostics]\nsilence-warnings = [\"G0205\"]\n") @?= ["G0301"]
+    ]
+  where
+    parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] extra)
 
 -- | The running head of a master page (golem-driver ADR 0014).
 runningHeadTests :: TestTree
@@ -424,9 +456,37 @@ tests =
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\n") @?= Right (Just 0)
         codes (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"1zw\"\n") @?= ["G0306"],
       testGroup "page size by dimensions (ADR 0005)" pageSizeTests,
+      silenceTests,
+      indexStyleTests,
       testCase "marks is not a key of the manifest (golem-pdf ADR 0004)" $
         withProject [("manifest.toml", manifest ["\"a.gm\""] <> "\n[targets.pdf]\nmarks = \"japanese\"\n"), ("a.gm", "")] $ \root ->
           loadProject root >>= (@?= ["G0301"]) . codes
+    ]
+
+-- | [index] (docs/adr ADR 0025).
+indexStyleTests :: TestTree
+indexStyleTests =
+  testGroup
+    "[index] (docs/adr ADR 0025)"
+    [ testCase "columns and column-gap are read" $ do
+        let src = "[index]\ncolumns = 2\ncolumn-gap = \"2zw\"\n"
+        fmap stIndex (parseStyle (FileId 0) src) @?= Right (Just (IndexStyle (Just 2) (Just (Zw 2)) (T.length "[index]\ncolumns = ")))
+        fmap (fmap ixColumnGap . stIndex) (parseStyle (FileId 0) "[index]\ncolumns = 2\n") @?= Right (Just Nothing)
+        fmap stIndex (parseStyle (FileId 0) "") @?= Right Nothing,
+      testCase "a columns that is not an integer of 1 or more is G0325 at the value" $
+        mapM_
+          ( \v -> do
+              let src = "[index]\ncolumns = " <> v <> "\n"
+                  r = parseStyle (FileId 0) src
+              codes r @?= ["G0325"]
+              either (map (spanStart . diagSpan)) (const []) r @?= [T.length "[index]\ncolumns = "]
+          )
+          ["0", "-1", "1.5", "\"2\""],
+      testCase "a column-gap that is negative or not a dimension is G0325" $ do
+        codes (parseStyle (FileId 0) "[index]\ncolumns = 2\ncolumn-gap = \"-1zw\"\n") @?= ["G0325"]
+        codes (parseStyle (FileId 0) "[index]\ncolumns = 2\ncolumn-gap = \"abc\"\n") @?= ["G0325"],
+      testCase "an unknown key of [index] is G0306" $
+        codes (parseStyle (FileId 0) "[index]\ncolums = 2\n") @?= ["G0306"]
     ]
 
 -- | Character and paragraph styles (docs/adr ADR 0005).

@@ -816,6 +816,48 @@ tests =
             map poBlank ps @?= [False, False]
         ],
       testGroup
+        "index columns (docs/adr ADR 0025)"
+        [ testCase "without a switch every part is in the columns of the page" $ do
+            let ps = paginate 2 3 [FParagraph (lines' 0 8)]
+            map poColumnSet ps @?= map (const (ColumnSet 2 0 0 0)) ps,
+          testCase "one column: after a heading of 2 lines the rest of the page is two columns of 8 lines" $ do
+            let ps = paginate 1 10 ([FHeading 1 False 2 (lines' 0 1), FSwitchColumns index2] <> entries 100 16 <> [FRestoreColumns])
+            sets ps @?= [(1, 0, 1, 0), (1, 0, 2, 2), (1, 1, 2, 2)]
+            map (map fst . poSlots) ps @?= [[0], [2 .. 9], [2 .. 9]]
+            slots ps @?= [[0], [100 .. 107], [108 .. 115]],
+          testCase "twenty entries: the last 4 start column 0 of the next page" $ do
+            let ps = paginate 1 10 ([FHeading 1 False 2 (lines' 0 1), FSwitchColumns index2] <> entries 100 20 <> [FRestoreColumns])
+            sets ps @?= [(1, 0, 1, 0), (1, 0, 2, 2), (1, 1, 2, 2), (2, 0, 2, 0)]
+            map (map fst . poSlots) (drop 3 ps) @?= [[0 .. 3]]
+            slots (drop 3 ps) @?= [[116 .. 119]],
+          testCase "no line left on the page: the columns start at line 0 of the next page" $ do
+            let ps = paginate 1 10 ([FHeading 1 False 10 (lines' 0 1), FSwitchColumns index2] <> entries 100 3 <> [FRestoreColumns])
+            sets ps @?= [(1, 0, 1, 0), (2, 0, 2, 0)]
+            map (map fst . poSlots) ps @?= [[0], [0 .. 2]],
+          testCase "footnotes on the page of the switch: the columns leave their lines" $ do
+            let withNote i n = LineBox i [NoteBody (500 + i) n] [] []
+                -- a note of 1 line and its separator: 2 grid lines
+                ps = paginate 1 10 ([FParagraph [withNote 0 1, LineBox 1 [] [] []], FSwitchColumns index2] <> entries 100 12 <> [FRestoreColumns])
+            sets ps @?= [(1, 0, 1, 0), (1, 0, 2, 2), (1, 1, 2, 2)]
+            map (map fst . poSlots) ps @?= [[0, 1], [2 .. 7], [2 .. 7]]
+            map poFootnotes ps @?= [[(500, 0, 1)], [], []],
+          testCase "two columns: the page is closed and three columns start at line 0 of the next page" $ do
+            let ps = paginate 2 10 ([FParagraph (lines' 0 3), FSwitchColumns index3 {csColumns = 3}] <> entries 100 4 <> [FRestoreColumns])
+            sets ps @?= [(1, 0, 2, 0), (2, 0, 3, 0)]
+            map (map fst . poSlots) ps @?= [[0, 1, 2], [0 .. 3]],
+          testCase "after the index the flow goes on at line 0 of the next page in the columns of the page" $ do
+            let ps = paginate 1 10 ([FHeading 1 False 2 (lines' 0 1), FSwitchColumns index2] <> entries 100 3 <> [FRestoreColumns, FParagraph (lines' 200 2)])
+            sets ps @?= [(1, 0, 1, 0), (1, 0, 2, 2), (2, 0, 1, 0)]
+            last (map poColumnSet ps) @?= ColumnSet 1 0 0 0
+            slots (drop 2 ps) @?= [[200, 201]],
+          testCase "an index at the end of the book makes no page after it" $ do
+            let ps = paginate 1 10 ([FHeading 1 False 2 (lines' 0 1), FSwitchColumns index2] <> entries 100 3 <> [FRestoreColumns])
+            map poNumber ps @?= [1, 1],
+          testCase "the column set is the same in either writing direction: paginate knows no direction" $ do
+            let flows = [FHeading 1 False 2 (lines' 0 1), FSwitchColumns index2] <> entries 100 16 <> [FRestoreColumns]
+            map poColumnSet (paginate 1 10 flows) @?= [ColumnSet 1 0 0 0, index2 {csFirstLine = 2}, index2 {csFirstLine = 2}]
+        ],
+      testGroup
         "table pagination (golem-driver ADR 0008)"
         [ testCase "a table breaks between rows and repeats its header" $ do
             let ps = paginate 1 4 [FTable 100 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
@@ -939,6 +981,11 @@ tests =
     lines' base n = [LineBox (base + i) [] [] [] | i <- [0 .. n - 1]]
     slots = map (\p -> [i | (_, s) <- poSlots p, i <- slotLines s] <> [i | (_, SFigure i) <- poSlots p])
     cols = map (\p -> (poNumber p, poColumn p))
+    -- page, column, columns of the set and its first line (docs/adr ADR 0025)
+    sets = map (\p -> (poNumber p, poColumn p, csColumns (poColumnSet p), csFirstLine (poColumnSet p)))
+    index2 = ColumnSet 2 (15 * 65536) (2 * 65536) 0
+    index3 = index2
+    entries base n = [FParagraph [LineBox (base + i) [] [] []] | i <- [0 .. n - 1]]
     slotLines = \case
       SLine i -> [i]
       SHeading i n -> [i .. i + n - 1]

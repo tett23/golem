@@ -41,12 +41,12 @@ data InspectAs = AsCst | AsAst | AsIr
 
 data Command
   = New FilePath Language Bool
-  | Build [Target] Profile CropMarks Format
-  | Check Profile CropMarks Format
+  | Build [Target] Profile CropMarks Bool Format
+  | Check Profile CropMarks Bool Format
   | PluginFetch
   | PluginLock
   | Inspect FilePath InspectAs
-  | Lint Profile Format
+  | Lint Profile Bool Format
   | Fmt Bool [FilePath]
   | Lsp
   | Explain (Maybe T.Text)
@@ -102,6 +102,10 @@ formatOpt =
     (choice "出力形式" [("human", Human), ("json", Json)])
     (long "format" <> value Human <> metavar "human|json" <> help "診断の出力形式（既定は human）")
 
+-- | --no-notices: no notice for this run (golem-syntax ADR 0002).
+noNoticesOpt :: Parser Bool
+noNoticesOpt = switch (long "no-notices" <> help "お知らせを表示しない")
+
 targetOpt :: Parser Target
 targetOpt =
   option
@@ -140,8 +144,8 @@ commands =
     ( commandGroup "コマンド:"
         <> metavar "COMMAND"
         <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない")) "プロジェクトを作る"
-        <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> marksOpt <*> formatOpt) "出力を build/ に書く"
-        <> cmd "check" (Check <$> profileOpt <*> marksOpt <*> formatOpt) "出力を書かずに検査する"
+        <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> marksOpt <*> noNoticesOpt <*> formatOpt) "出力を build/ に書く"
+        <> cmd "check" (Check <$> profileOpt <*> marksOpt <*> noNoticesOpt <*> formatOpt) "出力を書かずに検査する"
         <> cmd
           "plugin"
           ( subparser
@@ -152,7 +156,7 @@ commands =
               )
           )
           "プラグインを管理する"
-        <> cmd "lint" (Lint <$> profileOpt <*> formatOpt) "lint の規則を適用する"
+        <> cmd "lint" (Lint <$> profileOpt <*> noNoticesOpt <*> formatOpt) "lint の規則を適用する"
         <> cmd "fmt" (Fmt <$> switch (long "check" <> help "整形が必要なファイルを示すだけにする") <*> many (strArgument (metavar "FILE"))) "原稿を整形する"
         <> cmd "lsp" (pure Lsp) "標準入出力で LSP サーバーを動かす"
         <> cmd "inspect" (Inspect <$> strArgument (metavar "FILE") <*> inspectAsOpt) "ファイルの CST、AST、IR を表示する"
@@ -190,13 +194,13 @@ localize = intercalate "\n" . go . lines
 run :: Command -> IO ExitCode
 run = \case
   New dir lang noFonts -> newProject dir lang noFonts
-  Build tgs profile marks fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks}
-  Check profile marks fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks}
+  Build tgs profile marks quiet fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet}
+  Check profile marks quiet fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet}
   PluginFetch -> pluginFetch
   PluginLock -> pluginLock
   Inspect path mode -> inspect path mode
-  Lint profile fmt -> do
-    (infos, ds) <- lintProject profile "."
+  Lint profile quiet fmt -> do
+    (infos, ds) <- lintProject profile quiet "."
     report fmt (BuildResult ds infos [])
   Fmt check files -> formatFiles check files
   Lsp -> (\c -> if c == 0 then ExitSuccess else ExitFailure c) <$> runGolemLsp

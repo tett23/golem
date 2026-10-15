@@ -74,6 +74,11 @@ hanging-punctuation = true
 width = "6zw"
 gap = "1zw"
 
+# 索引は 15 字の二段で組む（docs/adr/0025）。
+[index]
+columns = 2
+column-gap = "2zw"
+
 [color.swatches]
 accent = { cmyk = [0, 80, 100, 0] }
 code = { cmyk = [90, 50, 0, 20] }

@@ -32,7 +32,10 @@ import Golem.Syntax
 
 data AssembleConfig = AssembleConfig
   { acHeadingFormats :: !(Map Int Text),
-    acFigureFormat :: !Text
+    acFigureFormat :: !Text,
+    {- | the line of each @number by the span of the block it numbers,
+    where G0407 points; a block not in it is pointed at itself
+    -} acNumberSites :: !(Map SrcSpan SrcSpan)
   }
 
 -- | The values of the @doc@ namespace.
@@ -140,7 +143,9 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.
             chapter = if l == 1 then head' <$> nums else nsChapter st
             figureReset = if l == 1 then 0 else nsFigure st
             info = HeadingInfo l nums numText (fromMaybe is (haTocTitle a)) (headingAnchor lbl sp) fid
-        put st {nsCounters = cs', nsChapter = if l == 1 then chapter else nsChapter st, nsFigure = figureReset, nsHeadings = Map.insert sp info (nsHeadings st)}
+            -- G0407: @number equal to the number it would get without it (golem-syntax ADR 0002)
+            redundant = [redundantNumber cfg sp n | not (haNoNumber a), Just n <- [haNumber a], n == cs !! (l - 1) + 1]
+        put st {nsDiags = nsDiags st <> redundant, nsCounters = cs', nsChapter = if l == 1 then chapter else nsChapter st, nsFigure = figureReset, nsHeadings = Map.insert sp info (nsHeadings st)}
       FigureBlock f -> do
         st <- get
         let n = nsFigure st + 1
@@ -204,8 +209,65 @@ assemble cfg evalDeferred docs =
             bookLabels = labels,
             bookReferenced = refd
           },
-        sortDiagnostics (nsDiags ns <> figureErrors <> labelDiags <> resolveDiags <> tocDiags)
+        sortDiagnostics (nsDiags ns <> figureErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs)
       )
+
+-- | G0407 at the @number line of the block (golem-syntax ADR 0002).
+redundantNumber :: AssembleConfig -> SrcSpan -> Integer -> Diagnostic
+redundantNumber cfg sp n =
+  notice "G0407" (Map.findWithDefault sp sp (acNumberSites cfg)) ("@number " <> T.pack (show n) <> " は自動で振られる番号と同じです")
+
+{- | G0407 for the items of numbered lists. An attribute before an item
+makes a list of its own, which without the attribute would continue the
+list right before it; so a list right after a numbered list counts on from
+the last number of that list.
+-}
+listNumberNotices :: AssembleConfig -> [Document] -> [Diagnostic]
+listNumberNotices cfg = concatMap (blocks . docBlocks)
+  where
+    blocks = snd . foldl step (Nothing, [])
+    step (prev, acc) (Block sp _ body) = case body of
+      OrderedList items ->
+        let start = maybe 1 (+ 1) prev
+            nums = numbersFrom start items
+            autos = start : map (+ 1) nums
+            found =
+              [ redundantNumber cfg (if i == 0 then sp else itemSpan sp it) n
+              | (i, it, auto) <- zip3 [0 :: Int ..] items autos,
+                Just n <- [itemNumber it],
+                n == auto
+              ]
+         in (lastMaybe nums, acc <> found <> concatMap (blocks . itemBlocks) items)
+      _ -> (Nothing, acc <> concatMap blocks (inner body))
+    inner = \case
+      BulletList items -> map itemBlocks items
+      DefList gs -> concatMap dgDefs gs
+      FigureBlock f -> [figCaption f]
+      _ -> []
+    numbersFrom _ [] = []
+    numbersFrom next (ListItem n _ : rest) = let k = fromMaybe next n in k : numbersFrom (k + 1) rest
+    itemSpan sp it = case itemBlocks it of
+      (Block bsp _ _ : _) -> bsp
+      [] -> sp
+    lastMaybe = \case
+      [] -> Nothing
+      xs -> Just (last xs)
+
+{- | G0408 for the page and column breaks at the end of the last file: the
+book drops them (golem-syntax ADR 0002). The breaks at the end of another
+file act on the next file.
+-}
+trailingBreaks :: [Document] -> [Diagnostic]
+trailingBreaks docs = case reverse docs of
+  (Document _ bs : _) ->
+    [ notice "G0408" sp "本の最後の改ページは効果がありません"
+    | Block sp _ _ <- reverse (takeWhile isBreak (reverse bs))
+    ]
+  [] -> []
+  where
+    isBreak b = case blockBody b of
+      ForcedBreak _ -> True
+      _ -> False
 
 -- | Every block in document order, descending into containers.
 allBlocks :: [Block] -> [Block]

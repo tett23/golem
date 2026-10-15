@@ -15,6 +15,7 @@ page.
 -}
 module Golem.Layout.Paginate
   ( LineBox (..),
+    ColumnSet (..),
     NoteBody (..),
     Flow (..),
     Slotted (..),
@@ -23,6 +24,7 @@ module Golem.Layout.Paginate
     HeadingBlock (..),
     headingBlock,
     paginate,
+    paginateIn,
     labelPages,
     markPages,
     resolvePageRefs,
@@ -76,6 +78,25 @@ data Flow
     takes the grid lines of 'codeSpan' (golem-driver ADR 0017)
     -}
     FCode !CodeGeometry [LineBox]
+  | -- | the start of the index in its own columns (docs/adr ADR 0025)
+    FSwitchColumns !ColumnSet
+  | -- | the end of the index: the next page, in the columns of the page
+    FRestoreColumns
+  deriving stock (Eq, Show)
+
+{- | A set of columns (docs/adr ADR 0025): from which grid line of the
+page, how many columns, of which measure and gap.
+-}
+data ColumnSet = ColumnSet
+  { -- | the number of columns
+    csColumns :: !Int,
+    -- | the measure of a column (sp)
+    csMeasure :: !Integer,
+    -- | the gap between columns (sp)
+    csGap :: !Integer,
+    -- | the grid line of the page where the columns start, from 0
+    csFirstLine :: !Int
+  }
   deriving stock (Eq, Show)
 
 data Slotted
@@ -126,7 +147,9 @@ data PageOut = PageOut
     -- | the index marks placed on the page (golem-driver ADR 0007)
     poMarks :: ![SrcSpan],
     -- | the parts of tables on the page (golem-driver ADR 0008)
-    poTables :: ![TableSegment]
+    poTables :: ![TableSegment],
+    -- | the set of columns the column belongs to (docs/adr ADR 0025)
+    poColumnSet :: !ColumnSet
   }
   deriving stock (Eq, Show)
 
@@ -155,19 +178,33 @@ data St = St
     sPendingNotes :: ![(Int, Int, Int)], -- note id, next line, remaining
 
     -- | forced breaks not applied yet, in the order written (docs/adr ADR 0017)
-    sBreaks :: ![BreakKind]
+    sBreaks :: ![BreakKind],
+    -- | the set of columns in effect, its first line on this page (docs/adr ADR 0025)
+    sSet :: !ColumnSet,
+    -- | footnote lines that every column of the set leaves at the foot of this page
+    sReserved :: !Int
   }
 
 {- | Lays the flow out on pages of @columns@ columns of @capacity@ grid
 lines each (docs/adr ADR 0018).
 -}
 paginate :: Int -> Int -> [Flow] -> [PageOut]
-paginate columns capacity flows =
-  let st0 = St 1 0 0 0 [] [] [] [] [] [] [] [] []
+paginate columns = paginateIn (ColumnSet columns 0 0 0)
+
+{- | 'paginate' with the columns of the page as a set (docs/adr ADR 0025):
+'FSwitchColumns' starts another set of columns, after the lines used on
+a page of one column or on the next page otherwise, and
+'FRestoreColumns' goes back to @base@ on the next page.
+-}
+paginateIn :: ColumnSet -> Int -> [Flow] -> [PageOut]
+paginateIn base capacity flows =
+  let st0 = St 1 0 0 0 [] [] [] [] [] [] [] [] [] base {csFirstLine = 0} 0
       final = closePage (go st0 flows)
       done = reverse (sDone final)
-   in if null done then [PageOut 1 0 False [] [] [] [] []] else done
+   in if null done then [PageOut 1 0 False [] [] [] [] [] base] else done
   where
+    columns = csColumns base
+    top st = csFirstLine (sSet st)
     -- breaks left at the end of the book are dropped (docs/adr ADR 0017)
     go st [] = flushDeferred st {sBreaks = []}
     go st (f : rest) = go (place (ready f st) f (nextNeed rest)) rest
@@ -181,7 +218,7 @@ paginate columns capacity flows =
       BreakRecto -> parityStart odd st
       BreakVerso -> parityStart even st
       BreakColumn
-        | columns > 1 -> nextColumn st
+        | csColumns (sSet st) > 1 -> nextColumn st
         | otherwise -> breakPage st
     breakPage st
       -- the page is closed even when empty; an empty page is blank
@@ -198,9 +235,13 @@ paginate columns capacity flows =
       (FSpace _ : _) -> 0
       (FBreak _ : _) -> 0
       (FCode g ls : _) -> if null ls then 0 else codeSpan g 1
+      -- a heading before the index columns on a page of one column keeps their first line
+      (FSwitchColumns _ : rest) | columns == 1 -> nextNeed rest
+      (FSwitchColumns _ : _) -> 0
+      (FRestoreColumns : _) -> 0
       [] -> 0
     free st = capacity - sUsed st - sNoteLines st
-    isEmpty st = sUsed st == 0 && null (sNotes st)
+    isEmpty st = sUsed st == top st && null (sNotes st)
     place st f need = case f of
       FParagraph ls -> placeLines st True ls
       FContinued ls -> placeLines st False ls
@@ -222,9 +263,30 @@ paginate columns capacity flows =
          in (placeLines st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines st2 False beside))}
       FBreak k -> st {sBreaks = sBreaks st <> [k]}
       FCode g ls -> placeCode st g ls
+      FSwitchColumns set ->
+        let st1 = flushDeferred st
+         in if (columns == 1 && free st1 > 0) || (isEmpty st1 && sColumn st1 == 0)
+              then startSet st1 set (sUsed st1)
+              else (nextPage st1) {sSet = set {csFirstLine = 0}}
+      FRestoreColumns
+        | isEmpty st && sColumn st == 0 && top st == 0 -> st {sSet = base {csFirstLine = 0}}
+        | otherwise -> (nextPage st) {sSet = base {csFirstLine = 0}}
       FSpace n
-        | sUsed st == 0 -> st
+        | sUsed st == top st -> st
         | otherwise -> st {sUsed = sUsed st + max 0 (min n (free st))}
+    -- the set starts at line @first@ of the page, above the footnotes already there
+    startSet st set first =
+      (closePage st)
+        { sSet = set {csFirstLine = first},
+          sColumn = 0,
+          sUsed = first,
+          sReserved = sNoteLines st,
+          sSlots = [],
+          sNotes = [],
+          sLabels = [],
+          sMarks = [],
+          sTables = []
+        }
     keep st n = if n > free st && not (isEmpty st) then nextColumn st else st
     {- a code block: as many rows as their grid lines fit in the column, the
     rest in the next column; at least one row in an empty column (golem-driver ADR 0017) -}
@@ -243,7 +305,7 @@ paginate columns capacity flows =
     parityStart p st =
       let st1 = if isEmpty st && sColumn st == 0 then st else nextPage st
        in if p (sPage st1) then st1 else blankPage st1
-    blankPage st = st {sDone = PageOut (sPage st) 0 True [] [] [] [] [] : sDone st, sPage = sPage st + 1}
+    blankPage st = st {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} : sDone st, sPage = sPage st + 1}
     putSlot st n s labels marks = st {sSlots = sSlots st <> [(sUsed st, s)], sUsed = sUsed st + n, sLabels = sLabels st <> labels, sMarks = sMarks st <> marks}
     -- lines of one paragraph; orphans and widows are moved
     placeLines st _ [] = st
@@ -326,21 +388,23 @@ paginate columns capacity flows =
     closePage st =
       if null (sSlots st) && null (sNotes st)
         then st
-        else st {sDone = PageOut (sPage st) (sColumn st) False (sSlots st) (sNotes st) (sLabels st) (sMarks st) (sTables st) : sDone st}
+        else st {sDone = PageOut (sPage st) (sColumn st) False (sSlots st) (sNotes st) (sLabels st) (sMarks st) (sTables st) (sSet st) : sDone st}
     -- the next column of the page, or column 0 of the next page
-    nextColumn st = advance (sColumn st + 1 >= columns) st
+    nextColumn st = advance (sColumn st + 1 >= csColumns (sSet st)) st
     nextPage = advance True
     advance toPage st =
       let closed = closePage st
           -- a page left with nothing in any column is blank
           written = any ((== sPage st) . poNumber) (sDone closed)
-          closed' = if toPage && not written then closed {sDone = PageOut (sPage st) 0 True [] [] [] [] [] : sDone closed} else closed
+          closed' = if toPage && not written then closed {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} : sDone closed} else closed
           fresh =
             closed'
               { sPage = if toPage then sPage st + 1 else sPage st,
                 sColumn = if toPage then 0 else sColumn st + 1,
-                sUsed = 0,
-                sNoteLines = 0,
+                sSet = if toPage then (sSet st) {csFirstLine = 0} else sSet st,
+                sReserved = if toPage then 0 else sReserved st,
+                sUsed = if toPage then 0 else top st,
+                sNoteLines = if toPage then 0 else sReserved st,
                 sSlots = [],
                 sNotes = [],
                 sLabels = [],

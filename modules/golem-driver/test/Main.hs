@@ -2,7 +2,7 @@ module Main (main) where
 
 import Codec.Compression.Zlib qualified as Z
 import Control.Exception (SomeException, evaluate, try)
-import Control.Monad (filterM, forM_)
+import Control.Monad (filterM, forM, forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
@@ -25,7 +25,7 @@ import Golem.Driver.Pdf (Assumed (..), PdfInput (..), PdfLayout (..), PlacedFigu
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Kerning (..), Look (..), Synthetic (..), plainLook)
-import Golem.Layout.Paginate (Flow (..), LineBox (..), PageOut (..), Slotted (..), markPages, paginate)
+import Golem.Layout.Paginate (ColumnSet (..), Flow (..), LineBox (..), PageOut (..), Slotted (..), labelPages, markPages, paginate)
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, sidenoteAreaFor, typeAreaFor)
@@ -100,6 +100,7 @@ tests =
   testGroup
     "golem-driver (ADR 0001)"
     [ explainTests,
+      noticeTests,
       testGroup "project diagnostics (golem-project ADR 0006)" projectDiagnosticTests,
       testGroup "reading stage (golem-parser ADR 0009)" readingTests,
       evalDiagnosticTests,
@@ -329,6 +330,7 @@ tests =
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
       testGroup "forced breaks (docs/adr ADR 0017)" breakTests,
       testGroup "columns (docs/adr ADR 0018)" columnTests,
+      testGroup "index columns (docs/adr ADR 0025)" indexColumnTests,
       testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
       testGroup "kerning, proportional metrics and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "running heads (ADR 0014)" runningHeadTests,
@@ -1085,11 +1087,11 @@ inFileTests =
         T.count "<p>" p1 @?= 1,
     testCase "lint: two Latin lines of a file in the line style are not G0501" $
       withChapters "" [("c1.gm", "@manifest paragraph-separator=line\n\nFull fathom five\nOf his bones\n"), ("c2.gm", "Full fathom five\nOf his bones\n")] [] $ \tmp -> do
-        (infos, ds) <- lintProject Dev tmp
+        (infos, ds) <- lintProject Dev False tmp
         [p | d <- ds, diagCode d == DiagnosticCode "G0501", Just (SourceInfo p _) <- [Map.lookup (spanFile (diagSpan d)) infos]] @?= ["c2.gm"],
     testCase "lint: a style of the file that keeps its lines is not G0501" $
       withChapters "" [("c1.gm", "@style-def paragraph letter line-breaks=keep\n\n@style letter\n  Full fathom five\n  Of his bones\n"), ("c2.gm", "Full fathom five\nOf his bones\n")] [] $ \tmp -> do
-        (infos, ds) <- lintProject Dev tmp
+        (infos, ds) <- lintProject Dev False tmp
         [p | d <- ds, diagCode d == DiagnosticCode "G0501", Just (SourceInfo p _) <- [Map.lookup (spanFile (diagSpan d)) infos]] @?= ["c2.gm"]
   ]
   where
@@ -2937,6 +2939,98 @@ turnedTests =
         other -> assertFailure (show other)
   ]
 
+-- * notices (golem-syntax ADR 0002)
+
+-- | What a build of a project left: the diagnostics and the files written.
+data Notified = Notified
+  { nDiagnostics :: ![Diagnostic],
+    -- | the files written, by their paths under build/
+    nOutputs :: ![(FilePath, BS.ByteString)]
+  }
+
+-- | Builds a project of the given files with the options.
+buildNotified :: [(FilePath, BS.ByteString)] -> (BuildOptions -> BuildOptions) -> IO Notified
+buildNotified files f = withSystemTempDirectory "golem-notice" $ \tmp -> do
+  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  r <- build (f (defaultOptions tmp) {optFonts = fakeProvider})
+  outs <- forM (sort (brWritten r)) $ \p -> (drop (length (tmp </> "build/")) p,) <$> BS.readFile p
+  pure (Notified (brDiagnostics r) outs)
+
+-- | The manifest of 'noticeProject' with the four targets and more text after it.
+noticeManifest :: BS.ByteString -> BS.ByteString
+noticeManifest extra = miniManifest <> "\n[targets.html]\n\n[targets.epub]\n\n[targets.text]\n" <> extra
+
+-- | A source that gives every notice but G0323.
+noticeSource :: BS.ByteString
+noticeSource =
+  "@style-def paragraph body indent=1zw\n\n# A\n\n[tcy: 10]\n\n@style verse\n  \\ x\n  y\n\n@listing src=code.hs\n\n@number 1\n+ a\n+ b\n\n@page-break\n"
+
+noticeProject :: BS.ByteString -> BS.ByteString -> [(FilePath, BS.ByteString)]
+noticeProject extra source =
+  [("manifest.toml", noticeManifest extra), ("style.toml", withBodyFont horizontalStyle), ("a.gm", source), ("code.hs", "main = pure ()\n")] <> fakeFontFiles
+
+-- | The PDF without its instance ID, which is computed from the text of manifest.toml.
+withoutInstanceId :: (FilePath, BS.ByteString) -> (FilePath, BS.ByteString)
+withoutInstanceId (p, b)
+  | ".pdf" `isSuffixOf` p =
+      let (before, rest) = BS.breakSubstring "/ID [" b
+       in (p, before <> BS.drop 1 (BC.dropWhile (/= ']') rest))
+  | otherwise = (p, b)
+
+codesOf :: [Diagnostic] -> [T.Text]
+codesOf ds = [c | DiagnosticCode c <- map diagCode ds]
+
+noticeTests :: TestTree
+noticeTests =
+  testGroup
+    "notices (golem-syntax ADR 0002)"
+    [ testCase "the notices of a project" $ do
+        n <- buildNotified (noticeProject "" noticeSource) id
+        -- the @listing is code and style.toml has no [fonts.code]: G0808 (golem-driver ADR 0017)
+        codesOf (nDiagnostics n) @?= ["G0262", "G0263", "G0264", "G0265", "G0407", "G0408", "G0808"]
+        map diagSeverity (nDiagnostics n) @?= replicate 7 Notice,
+      testCase "silence-notices drops those notices only" $ do
+        n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G0263\", \"G0408\"]\n" noticeSource) id
+        codesOf (nDiagnostics n) @?= ["G0262", "G0264", "G0265", "G0407", "G0808"],
+      testCase "--no-notices drops every notice and keeps the errors" $ do
+        n <- buildNotified (noticeProject "" (noticeSource <> "\n[unknown: x]\n")) (\o -> o {optNoNotices = True})
+        codesOf (nDiagnostics n) @?= ["G0222"]
+        n' <- buildNotified (noticeProject "" (noticeSource <> "\n[unknown: x]\n")) id
+        take 1 (codesOf (nDiagnostics n')) @?= ["G0222"]
+        assertBool "notices after the error" (length (nDiagnostics n') > 1),
+      testCase "the notices do not change the outputs of the four targets" $ do
+        let silenced = "\n[diagnostics]\nsilence-notices = [\"G0262\", \"G0263\", \"G0264\", \"G0265\", \"G0407\", \"G0408\", \"G0808\"]\n"
+        loud <- buildNotified (noticeProject "" noticeSource) id
+        quiet <- buildNotified (noticeProject silenced noticeSource) id
+        codesOf (nDiagnostics quiet) @?= []
+        assertBool "four targets" (all (\ext -> any ((ext `isSuffixOf`) . fst) (nOutputs loud)) [".pdf", ".epub", ".xhtml", ".txt"])
+        map withoutInstanceId (nOutputs quiet) @?= map withoutInstanceId (nOutputs loud)
+        quiet' <- buildNotified (noticeProject "" noticeSource) (\o -> o {optNoNotices = True})
+        nOutputs quiet' @?= nOutputs loud,
+      testCase "the path of @listing as the first argument gives the same outputs as src=" $ do
+        let (pre, post) = BS.breakSubstring "src=code.hs" noticeSource
+            positional = pre <> "code.hs" <> BS.drop (BS.length "src=code.hs") post
+        a <- buildNotified (noticeProject "" noticeSource) id
+        b <- buildNotified (noticeProject "" positional) id
+        map withoutInstanceId (nOutputs b) @?= map withoutInstanceId (nOutputs a)
+        assertBool "no G0265" ("G0265" `notElem` codesOf (nDiagnostics b)),
+      testCase "G0323: no style.toml, at the start of manifest.toml" $ do
+        let files = [("manifest.toml", "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n\n[targets.epub]\n\n[targets.text]\n"), ("a.gm", "x\n")]
+        n <- buildNotified files id
+        [(diagCode d, diagSeverity d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- nDiagnostics n] @?= [(DiagnosticCode "G0323", Notice, 0, 0)]
+        q <- buildNotified files (\o -> o {optNoNotices = True})
+        nDiagnostics q @?= []
+        nOutputs q @?= nOutputs n
+        withStyle <- buildNotified (("style.toml", "") : files) id
+        codesOf (nDiagnostics withStyle) @?= [],
+      testCase "G0323 comes with G0807 when the PDF has no fonts" $ do
+        n <- buildNotified [("manifest.toml", miniManifest), ("a.gm", "x\n")] id
+        -- no page either (G0701); the notice comes after the errors
+        let cs = codesOf (nDiagnostics n)
+        assertBool (show cs) ("G0807" `elem` cs)
+        drop (length cs - 1) cs @?= ["G0323"]
+    ]
+
 -- * golem explain (golem-cli ADR 0005)
 
 explainTests :: TestTree
@@ -2964,6 +3058,9 @@ explainTests =
                 isDependent e = "- 重大度: dev では警告、prod ではエラー" `elem` T.lines (exBody e)
             assertBool "some profile-dependent codes" (not (null dependent))
             sort [c | (c, e) <- Map.toList catalog, isDependent e] @?= sort dependent,
+          testCase "the notices of the catalog are noticeCodes (golem-syntax ADR 0002)" $ do
+            let isNotice e = "- 重大度: お知らせ" `elem` T.lines (exBody e)
+            sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isNotice e] @?= sort [c | DiagnosticCode c <- noticeCodes],
           testCase "the catalog has G0244 retired" $
             fmap exStatus (lookupExplanation "G0244") @?= Just Retired
         ],
@@ -2981,6 +3078,9 @@ explainTests =
           bad "no title" (preamble <> inUse "G0101" <> without "G0102 の題" (inUse "G0102")) "## G0102",
           bad "no status" (preamble <> inUse "G0101" <> without "- 状態: 使用中" (inUse "G0102")) "## G0102",
           bad "a bad severity" (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: 致命的" else l) (inUse "G0102")) "- 重大度: 致命的",
+          testCase "お知らせ is a severity (golem-syntax ADR 0002)" $
+            fmap (map exCode) (parseCatalog (T.unlines (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: お知らせ" else l) (inUse "G0102")))) @?= Right ["G0101", "G0102"],
+          bad "a severity that is none of the four" (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: 情報" else l) (inUse "G0102")) "- 重大度: 情報",
           bad "out of order" (preamble <> inUse "G0102" <> inUse "G0101") "## G0101",
           bad "a code twice" (preamble <> inUse "G0101" <> inUse "G0101") "## G0101",
           testCase "a retired section without 主な原因 is accepted" $
@@ -3206,6 +3306,111 @@ columnTests =
       assertBool "no columns" (not ("columns" `BS.isInfixOf` css) && not ("column-count" `BS.isInfixOf` css))
   ]
 
+-- | A one-column style of 32 characters a line, the column gap 2zw (docs/adr ADR 0025).
+horizontal32 :: BS.ByteString
+horizontal32 = replaceIn "characters = 12" "characters = 32" (replaceIn "columns = 1" "columns = 1\ncolumn-gap = \"2zw\"" horizontalStyle)
+
+-- | A style with [index] of @n@ columns after it.
+withIndexColumns :: T.Text -> BS.ByteString -> BS.ByteString
+withIndexColumns n style = style <> "\n[index]\ncolumns = " <> BC.pack (T.unpack n) <> "\n"
+
+-- | Forty index marks, each on its own term, then a heading and the index.
+indexSource :: T.Text
+indexSource =
+  T.concat ["本文[index reading=" <> r <> ": 語" <> r <> "]。" | r <- indexReadings] <> "\n\n# 索引\n\n@index\n"
+
+indexReadings :: [T.Text]
+indexReadings = [a <> b | a <- ["あ", "い", "う", "え", "お"], b <- ["か", "き", "く", "け", "こ", "さ", "し", "す"]]
+
+-- | The lines of the index entries on a page.
+indexLinesOn :: PdfLayout -> PageOut -> [SetLine]
+indexLinesOn pl p = [sl | (_, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)], "語" `T.isPrefixOf` setLineText sl]
+
+indexColumnTests :: [TestTree]
+indexColumnTests =
+  [ testCase "PDF: one column of 32 characters, two index columns 2zw apart are 15 characters wide" $ do
+      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32)
+      (geom, pl) <- layoutOk style indexSource []
+      let entries = [sl | p <- plPages pl, sl <- indexLinesOn pl p]
+      assertBool "entries" (not (null entries))
+      nub [lineTarget (slLine sl) | sl <- entries] @?= [15 * 10 * pt]
+      nub [csMeasure (poColumnSet p) | p <- plPages pl, not (null (indexLinesOn pl p))] @?= [15 * 10 * pt]
+      content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
+      let ta = typeAreaFor geom 1
+          x1 = TE.encodeUtf8 (spToPt (rectX ta + 17 * 10 * pt))
+      assertBool "the second column starts 17 characters on" (any (any ((== x1) . dX) . drawnGlyphs) (take 1 content)),
+    testCase "PDF: the lines of the index columns are on the grid of the type area" $ do
+      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32)
+      (geom, _) <- layoutOk style indexSource []
+      content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
+      let ta = typeAreaFor geom 1
+          x1 = TE.encodeUtf8 (spToPt (rectX ta + 17 * 10 * pt))
+          grid = [TE.encodeUtf8 (spToPt (rectY ta + rectH ta - g)) | g <- pgLineGrid geom]
+          ys = [dY d | c <- content, d <- drawnGlyphs c, dX d == x1]
+      assertBool "lines" (not (null ys))
+      assertBool (show ys) (all (`elem` grid) ys),
+    testCase "PDF: the running head is drawn once on the page of the switch and on the index pages" $ do
+      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32) <> "\n[masters.body]\nrunning-head = { position = \"top-outside\", content = \"title\" }\n"
+      content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
+      assertBool "pages" (length content >= 2)
+      map (\c -> length [d | d <- drawnGlyphs c, dGlyph d == fromEnum 'T']) content @?= map (const 1) content,
+    testCase "PDF: without [index], or with as many columns as the page, the bytes are the same" $ do
+      let style = replaceIn "lines = 30" "lines = 10" horizontal32
+      a <- miniPdf fakeProvider True style indexSource []
+      b <- miniPdf fakeProvider True (withIndexColumns "1" style) indexSource []
+      c <- miniPdf fakeProvider True (withIndexColumns "1" style <> "column-gap = \"5zw\"\n") indexSource []
+      -- the instance ID is made from every input, style.toml among them (docs/adr/0004)
+      let body = fst . BS.breakSubstring "trailer"
+      body a @?= body b
+      body a @?= body c,
+    testCase "G0744: index columns under 8 characters, at the value of columns, also in golem check" $ do
+      let style = withIndexColumns "5" horizontalStyle
+          src = BC.unpack style
+          at = length (takeWhile (/= "[index]") (lines src))
+          offset = sum (map ((+ 1) . length) (take at (lines src))) + length ("[index]\ncolumns = " :: String)
+      b <- buildMarksFilesWith indexSource id (Just (style <> fakeBody)) fakeFontFiles
+      map diagMessage (ofCode "G0744" b) @?= ["索引の段の行長が足りません。columns を減らすか column-gap を狭めてください"]
+      map (whereIs b) (ofCode "G0744" b) @?= [(Just "style.toml", offset)]
+      bPdf b @?= Nothing
+      c <- buildMarksFilesWith indexSource (\o -> o {optCheckOnly = True}) (Just (style <> fakeBody)) fakeFontFiles
+      map diagCode (ofCode "G0744" c) @?= [DiagnosticCode "G0744"],
+    testCase "PDF: with a sidenote column, two index columns are not G0701 and leave the column out" $ do
+      let style = withIndexColumns "2" (replaceIn "characters = 12" "characters = 24" sidenoteStyle) <> "column-gap = \"2zw\"\n"
+      (_, pl) <- layoutOk style indexSource []
+      nub [lineTarget (slLine sl) | p <- plPages pl, sl <- indexLinesOn pl p] @?= [11 * 10 * pt],
+    testCase "PDF: a page reference after an index of fewer pages converges on the right page" $ do
+      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32)
+          source = "参照は[ref-page later]ページ。\n\n" <> indexSource <> "\n@label later\n後。\n"
+      (_, pl) <- layoutOk style source []
+      later <- maybe (assertFailure "later") pure (Map.lookup "later" (labelPages (plPages pl)))
+      let refLine = [setLineText sl | sl <- Map.elems (plLines pl), "参照は" `T.isPrefixOf` setLineText sl]
+      refLine @?= ["参照は" <> T.pack (show later) <> "ページ。"]
+      let one = withIndexColumns "1" (replaceIn "lines = 30" "lines = 10" horizontal32)
+      (_, pl1) <- layoutOk one source []
+      assertBool "fewer pages" (Map.lookup "later" (labelPages (plPages pl1)) > Just later),
+    testCase "PDF: vertical, the index columns run from top to bottom" $ do
+      let style = withIndexColumns "2" pdfStyle <> "column-gap = \"2zw\"\n"
+      (geom, pl) <- layoutOk style indexSource []
+      nub [lineTarget (slLine sl) | p <- plPages pl, sl <- indexLinesOn pl p] @?= [20 * pgFontSize geom]
+      content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
+      let ta = typeAreaFor geom 1
+          ta2 = typeAreaFor geom 2
+          y1 r = TE.encodeUtf8 (spToPt (rectY r + rectH r - 22 * pgFontSize geom))
+      assertBool "a glyph at the top of the second column" (any (any (\d -> dY d `elem` [y1 ta, y1 ta2]) . drawnGlyphs) content),
+    testCase "HTML and EPUB: [index] columns change nothing" $ do
+      let out style = withSystemTempDirectory "golem-index-columns" $ \tmp -> do
+            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
+            BS.writeFile (tmp </> "style.toml") style
+            BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 indexSource)
+            r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
+            assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+            buildFiles (tmp </> "build")
+      one <- out horizontalStyle
+      two <- out (withIndexColumns "2" horizontalStyle)
+      assertBool "files" (not (Map.null one))
+      two @?= one
+  ]
+
 -- | The fixture copied to @root@ with @src@ after its chapter 02.
 withChapter :: FilePath -> BS.ByteString -> IO Int
 withChapter root src = do
@@ -3282,7 +3487,7 @@ ofCode c b = [d | d <- bErrors b, diagCode d == DiagnosticCode c]
 
 -- | Pages with the labels and marks given, page n holding the nth list.
 pagesWith :: [[T.Text]] -> [PageOut]
-pagesWith ls = [PageOut n 0 False [] [] l [] [] | (n, l) <- zip [1 ..] ls]
+pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) | (n, l) <- zip [1 ..] ls]
 
 outputDiagnosticTests :: [TestTree]
 outputDiagnosticTests =
@@ -3450,7 +3655,7 @@ codeTests =
             ],
     testCase "G0730: one notice for a block with wrapped lines, with the number of lines" $ do
       r <- buildAll horizontalStyle "```\nabcdefghijklmnopqrstuvwxyzabcd\nx\nabcdefghijklmnopqrstuvwxyzabcd\n```\n" []
-      map diagMessage (codeOf r "G0730") @?= ["コードの行を折り返しました（2 行）"]
+      [(diagMessage d, diagSeverity d) | d <- codeOf r "G0730"] @?= [("コードの行を折り返しました（2 行）", Notice)]
       assertBool "the PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
       r' <- buildAll horizontalStyle "```\nabc\n```\n" []
       codeOf r' "G0730" @?= [],
@@ -3546,7 +3751,7 @@ codeTests =
       assertBool "not embedded" (not ("SourceSansPro" `BS.isInfixOf` without)),
     testCase "G0808: without [fonts.code], code is set in the body role, with one notice" $ do
       r <- buildAll horizontalStyle "```\nabc\n```\n\n[code: x] and [code: y]\n" []
-      map diagMessage (codeOf r "G0808") @?= ["コードの書体の役割 code がないので、本文の書体で組みます"]
+      [(diagMessage d, diagSeverity d) | d <- codeOf r "G0808"] @?= [("コードの書体の役割 code がないので、本文の書体で組みます", Notice)]
       assertBool "the PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
       r' <- buildAll horizontalStyle "本文。\n" []
       codeOf r' "G0808" @?= [],
