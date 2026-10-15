@@ -1,0 +1,164 @@
+@label build-test
+# ビルドとテスト
+
+Golem をソースからビルドする手順は、README の Development の節にある。
+この章はその手順を、なぜその順序なのかと一緒に並べ直す。
+手順の多くは、依存の版を固定して、どの機械でも同じ実行ファイルの振る舞いを得るためにある。[note: [code: https://github.com/tett23/golem/blob/main/README.md#development]（README の Development の節）]
+
+## 道具をそろえる
+
+Haskell の処理系は GHC 9.10.3、ビルドの道具は cabal-install 3.16.1.0 であり、どちらも ghcup で入れる。[index reading=cabal: cabal]
+版は [code: cabal.project] の [code: with-compiler: ghc-9.10.3] と [code: mise.toml] に書いてある。
+[code: mise.toml] は ghcup の [code: bin] を [code: PATH] に加え、二つの版を環境変数に記録する。
+HarfBuzz、FreeType、wasmtime の C の部分をビルドするので、C と C++ のコンパイラも要る。
+GHC の版を上げるときは ADR を書く。
+
+依存のライブラリの版は、[code: cabal.project.freeze] で固定してコミットしてある。
+このファイルを消してビルドすると依存の版が変わりうるので、消さない。
+固定した版を変えるときは、変更の理由をプルリクエストに書く。[note: [code: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md の「テストと実装」の節）]
+
+ほかに、次のものを入れておく。
+
+- adr-guard の v0.8.1 以降。Git のフックが呼ぶ（第[ref-number adr]章）。
+- Rust の [code: cddl] クレートの CLI の 0.10.7。CDDL のスキーマへの適合のテストに使う。
+- fourmolu 0.21.0.0 と hlint 3.10。整形と検査に使う。
+
+```sh
+cargo install --git https://github.com/tett23/adr-guard --tag v0.8.1
+cargo install cddl --version 0.10.7 --locked
+```
+
+## クローンした後の設定
+
+クローンしたら、まず Git のフックを有効にする。
+
+```sh
+git config core.hooksPath .githooks
+```
+
+[code: core.hooksPath] はクローンごとのローカルの設定で、リポジトリには保存されない。
+クローンのたびに実行する。
+フックは二つある。
+[code: .githooks/pre-commit] はコミット済みの ADR の変更を拒み、[code: .githooks/pre-push] は仕様を変えたのにマニュアルを直していないブランチの push を止める（第[ref-number adr]章、第[ref-number docs]章）。
+
+## ビルドする
+
+最初に wasmtime の C API を取得する。
+
+```sh
+scripts/fetch-wasmtime.sh
+```
+
+このスクリプトは、プラットフォームに合う wasmtime 49.0.2 の C API の配布物を取得し、SHA-256 を検証して [code: third_party/wasmtime] に置く。[index reading="fetch-wasmtime.sh": fetch-wasmtime.sh]
+ライブラリの絶対パスを [code: cabal.project.local] に書き込むので、以後の [code: cabal] はそれを使ってリンクする。
+[code: third_party/] と [code: cabal.project.local] は [code: .gitignore] に入っている。
+
+```sh
+cabal build all
+cabal test all
+```
+
+[code: cabal.project] は [code: tests: True] なので、[code: cabal build all] はテストスイートもビルドする。
+peg-hs は [code: source-repository-package] でコミットを固定してあり、初回のビルドで取得される。
+
+[code: golem] の実行ファイルは、golem-cli の [code: exe:golem] である。
+手元で使うには、次のどちらかにする。
+
+```sh
+cabal install exe:golem --installdir="$HOME/.local/bin" \
+  --install-method=copy --overwrite-policy=always
+cabal list-bin golem    # インストールせずにパスを調べる
+```
+
+HarfBuzz、FreeType、wasmtime、zlib は静的にリンクする。
+macOS でビルドした実行ファイルは OS の標準のライブラリだけに依存する。
+
+## テストの道具と書き方
+
+単体テストとプロパティテストには tasty と hedgehog を、出力を固定の値と比べるテストには tasty-golden を使う。[index reading=てすと: テスト]
+各パッケージの [code: cabal test] が単独で通ることを保つ。
+
+golem-cli のテストは、[code: build-tool-depends] で [code: golem] の実行ファイルをビルドし、それを一時ディレクトリで実行して、終了コードと出力を確かめる。
+このテストができる前は、ADR 0001 が終了コード 2 と決めていた使い方の誤りが、実際には 1 を返していた。
+テスト設計に書いたテストを実際に書かないと、決定と実装のずれに誰も気付かない、という実例である。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0004-usage-error-exit-code.md]（golem-cli ADR 0004「使い方の誤りの終了コードを 2 にし、使い方の文言を日本語にする」）]
+
+CDDL のスキーマへの適合のテスト（golem-doc）は、外部の検証器 [code: cddl] の CLI を使う。
+[code: PATH] にあるか、環境変数 [code: GOLEM_CDDL] でパスを指定したときだけ実行し、なければ飛ばす。
+CI では必ず実行する。
+Haskell には成熟した CDDL の検証器がないので、テストにだけ外部の道具を使うと決めている。
+
+テストのうち、[code: docs/diagnostics.md] の節とソースのコードの一致を確かめるのは golem-driver のテストである（第[ref-number docs]章）。
+
+## パーサーを生成する
+
+パーサーは、文法 [code: modules/golem-parser/grammar/Golem.hpeg] から生成し、生成物 [code: modules/golem-parser/src/Golem/Parser/Generated.hs] をコミットする。
+文法を変えたら、生成し直して生成物もコミットする。
+
+```sh
+scripts/gen-parser.sh
+```
+
+このスクリプトは peg-hs の CLI をビルドして実行し、ラベルを外した文法（[code: modules/golem-parser/test/StrippedGrammar.hs]）も生成する。[index reading="gen-parser.sh": gen-parser.sh]
+golem-parser のテストは、二つの文法が同じ入力を受理することを確かめる。
+文法にラベルを足すときは、ラベルを外しても受理する言語が変わらないことを確かめ、理由のコメントを添えて [code: %safe] を書く。
+[code: scripts/gen-parser.sh] は peg-hs の警告を誤りとして扱う（[code: --Werror]）ので、[code: %safe] のないラベルがあると生成が失敗する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-parser/adr/0007-grammar-label-safety.md]（golem-parser ADR 0007「文法のラベルを安全にする」）]
+
+CI の [code: build] ジョブは、[code: scripts/gen-parser.sh] を実行し、生成物に差分がないことを [code: git diff --exit-code] で確かめる。
+文法だけを変えて生成し忘れると、CI が止まる。
+
+## 整形と検査
+
+Haskell のコードは fourmolu 0.21.0.0 で整形し（設定は [code: fourmolu.yaml]）、hlint 3.10 の指摘をなくす。[index reading="fourmolu": fourmolu][index reading="hlint": hlint]
+どちらも CI の [code: format] ジョブが検査する。
+生成したパーサーと、ラベルを外した文法は対象外である。
+
+CI の [code: format] ジョブは、hlint を次のように呼ぶ。
+手元で同じ検査をするときも、この形で実行すればよい。
+
+```sh
+hlint modules \
+  --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" \
+  --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs"
+```
+
+CI の hlint は、GHC でビルドせず、hlint のリリースの x86-64 の Linux の配布物を [code: scripts/ci/fetch-hlint.sh] で取得して使う。
+以前の [code: format] ジョブは、hlint を動かすためだけに GHC の導入と [code: cabal install hlint-3.10] に時間を払っていた。
+配布物に替えて、ジョブの時間はおよそ 168 秒から 30 秒前後に縮んだと ADR は見積もっている。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0009-ci-speed.md]（docs/adr の ADR 0009「CI の高速化」）]
+
+## シェルのスクリプトとそのテスト
+
+CI とリリースとマニュアルの仕組みは、[code: scripts/] の下の POSIX の [code: sh] のスクリプトでできている。
+Golem の方針として、小さな道具を組み合わせ、Python のスクリプトはコミットしない。
+スクリプトには、それぞれテストのスクリプトがある。
+
+| テスト | 対象 |
+| --- | --- |
+| [code: scripts/ci/test.sh] | [code: scripts/ci/] のスクリプト（変更のパス、ビルドの要否、判定のジョブ） |
+| [code: scripts/manual/test.sh] | [code: scripts/manual/] のスクリプト（組み方、版の情報、更新の検査、書体の取得） |
+| [code: scripts/release/test.sh] | [code: scripts/release/] のスクリプト（版の検査、リリースノート、ライセンス） |
+
+どれも一時ディレクトリに Git のリポジトリや偽の [code: golem] を作り、スクリプトの終了コードと出力を確かめる。
+CI の [code: changes] ジョブが前の二つを、[code: release-scripts] ジョブが最後の一つを実行する（第[ref-number ci-jobs]章）。
+スクリプトを変えたら、手元でも [code: sh scripts/ci/test.sh] のように実行して確かめる。
+
+## マニュアルを組む
+
+二つのマニュアルは、[code: scripts/manual/build.sh] で組む。
+
+```sh
+GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh
+GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev
+```
+
+マニュアルを編集する前に、[code: sh scripts/manual/build-info.sh manual-dev] を一度実行する。
+奥付が読む [code: common/build-info.gm] は生成物で、ないまま [code: golem check] や LSP で開くと、[code: @import] の先がないエラー（G0302）になるからである。
+詳しくは第[ref-number manuals]章で説明する。
+
+## フィクスチャを取得する
+
+テストのフィクスチャのうち、『テンペスト』と『蟹工船』は、[code: scripts/fixtures/fetch-public-domain.sh] が原文を取得して作る。
+原文の変換は golem-fixtures の実行ファイルが行う（第[ref-number fixtures]章）。
+
+```sh
+GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
+```

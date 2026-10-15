@@ -1,0 +1,168 @@
+@label cli
+# コマンドと終了コード
+
+Golem の操作は、すべて [code: golem] という一つの実行ファイルのコマンドで行う。
+対話的な入力はなく、すべての操作が引数だけで完結する。
+CI から呼ぶことを前提にした設計であり、呼ぶ側は引数を渡し、終了コードと出力を読めばよい。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0001-command-line-interface.md]（golem-cli ADR 0001「コマンドラインのインターフェース」）]
+
+golem-cli は実行ファイルを持つ唯一のモジュールであり、引数を解釈して各モジュールを呼ぶだけの薄い層である。
+処理の本体は golem-driver や golem-lsp にある。
+同じ処理を LSP のようなほかの入口から使えるようにするためである。
+
+## コマンドの一覧
+
+コマンドは次のとおりである。[index reading=こまんど: コマンド][note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#cli]（仕様書の「CLI」の節）]
+
+| コマンド | 内容 |
+| --- | --- |
+| [code: golem new DIR] | プロジェクトを作る |
+| [code: golem build] | 出力を [code: build/] に書く |
+| [code: golem check] | 出力を書かずに検査する |
+| [code: golem lint] | lint の規則を適用する |
+| [code: golem fmt] | 原稿を整形する |
+| [code: golem lsp] | 標準入出力で LSP を話す |
+| [code: golem plugin fetch] | プラグインを取得する |
+| [code: golem plugin lock] | [code: plugins.lock] を更新する |
+| [code: golem inspect FILE] | CST、AST、IR を表示する |
+| [code: golem explain] | 診断のコードの説明を表示する |
+| [code: golem --version] | 版を表示する |
+
+オプションはコマンドごとに決まっている。
+主なものを次に示す。
+
+| オプション | 受け付けるコマンド | 値 |
+| --- | --- | --- |
+| [code: --target] | [code: build] | [code: html]、[code: epub]、[code: text]、[code: pdf]。何度でも書ける |
+| [code: --profile] | [code: build]、[code: check]、[code: lint] | [code: dev]（既定）、[code: prod] |
+| [code: --marks] | [code: build]、[code: check] | [code: none]（既定）、[code: japanese]、[code: western] |
+| [code: --no-notices] | [code: build]、[code: check]、[code: lint] | なし |
+| [code: --format] | [code: build]、[code: check]、[code: lint] | [code: human]（既定）、[code: json] |
+| [code: --check] | [code: fmt] | なし |
+| [code: --as] | [code: inspect] | [code: cst]（既定）、[code: ast]、[code: ir] |
+| [code: --language] | [code: new] | [code: ja]（既定）、[code: en] |
+| [code: --no-fonts] | [code: new] | なし |
+
+[code: golem build] は、[code: --target] を一つも書かなければ、HTML、EPUB、プレーンテキスト、PDF の四つをこの順で作る。[index reading="golem build": golem build]
+マニフェストの [code: \[targets.*\]] の有無は見ない。
+[code: \[targets.*\]] は、ISBN やプレーンテキストの [code: variants] のような、ターゲットごとの設定の置き場所である。
+CI で PDF だけが要るなら、[code: --target pdf] を明示する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0002-build-all-targets-by-default.md]（golem-cli ADR 0002「--target を省いた golem build はすべてのターゲットを作る」）]
+
+[code: golem check] は出力を作らず、構文、評価、文書構造（S1）までを検査する。[index reading="golem check": golem check]
+四つのターゲットが使う [code: style.toml] のファイルの存在も確かめ、版面の誤り（G0701）、トンボと塗り足しの誤り（G0702）、段落スタイルの字下げの誤り（G0725）、本文のフォントの欠け（G0807）も報告する。
+行分割と改ページ（S2）はしないので、ページに収まらないことによる誤りは [code: golem build] でしか見つからない。
+
+## 出力先
+
+[code: golem build] は、プロジェクトの根の [code: build/<ターゲット>/] に書く。
+書く前に、そのターゲットのディレクトリを空にする。
+前回のビルドの古いファイルが残って、今回の出力の一部と誤解されるのを防ぐためである。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0001-build-pipeline.md]（golem-driver ADR 0001「ビルドのパイプライン」）]
+
+| 対象 | 出力 |
+| --- | --- |
+| [code: html] | [code: build/html/]（[code: index.xhtml]、章ごとの XHTML、[code: style.css]、図版とフォント） |
+| [code: epub] | [code: build/epub/book.epub] |
+| [code: text] | [code: build/text/vertical/] と [code: build/text/horizontal/] |
+| [code: pdf] | [code: build/pdf/<id>.pdf]（マニフェストの [code: id] の [code: :] を [code: -] にした名前） |
+
+PDF のファイル名は、マニフェストの [code: id] から作る。
+たとえば [code: id] が [code: urn:uuid:…] なら、ファイル名は [code: urn-uuid-….pdf] になる。
+CI で PDF を拾うときは、[code: build/pdf/*.pdf] のように一つだけあることを前提にすればよい。
+
+## 終了コード
+
+終了コードは三つの値だけをとる。[index reading=しゅうりょうこーど: 終了コード][note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0004-usage-error-exit-code.md]（golem-cli ADR 0004「使い方の誤りの終了コードを 2 にし、使い方の文言を日本語にする」）]
+
+| コード | 意味 |
+| --- | --- |
+| 0 | 成功。警告とお知らせがあっても 0 |
+| 1 | 診断によるエラーがある |
+| 2 | 使い方の誤り（未知のオプション、未知のコマンド、列挙にない値、値の欠け） |
+
+CI で Golem を使う人は、1 と 2 で「原稿の誤り」と「呼び出し方の誤り」を見分けられる。
+1 は原稿か設定を直す合図であり、2 はワークフローの書き方を直す合図である。
+引数なしの [code: golem] も、コマンドを指定していないので 2 になる。
+[code: --help] は 0 で終わる。
+
+使い方の誤りでは、そのコマンドの使い方を日本語で標準エラー出力に書く。
+
+```console
+$ golem build --nope
+未知のオプションです: --nope
+
+使い方: golem build [--target html|epub|text|pdf] [--profile dev|prod]
+                    [--marks japanese|western|none] [--no-notices]
+                    [--format human|json]
+
+  出力を build/ に書く
+$ echo $?
+2
+```
+
+引数の解釈には optparse-applicative を使い、そのライブラリが組み込みで持つ英語の文言（[code: Usage:] など）は、決まった語句の表で日本語に置き換えている。
+表は optparse-applicative 0.19.0.0 の文言に合わせてあり、golem-cli の golden テストが置き換えの結果を固定している。
+
+[code: --version] は [code: golem] 自身のオプションである。
+[code: golem build --version] のようにコマンドに付けると使い方の誤りになる。
+出力は [code: golem 0.1.0-rc1] のように、[code: golem] に版を続けた一行である。
+
+コマンドごとの成功と失敗の決まりは次のとおりである。
+
+- [code: golem build] と [code: golem check] は、エラーの診断が一つでもあれば 1 で終わる。PDF のフォントがなくてエラーになっても、ほかのターゲットの出力は書く。
+- [code: golem lint] は、エラーが一つでもあれば 1、警告だけなら 0 で終わる。
+- [code: golem fmt --check] は、整形されていないファイルがあればそのパスを標準出力に書き、1 で終わる。
+- [code: golem explain] は、文書にないコードを渡すと使い方の誤りとして 2 で終わる。
+
+## 標準出力と標準エラー出力
+
+診断は標準エラー出力に、それ以外の出力は標準出力に書く。[index reading="ひょうじゅんえらーしゅつりょく": 標準エラー出力]
+[code: --format json] の診断も標準エラー出力に出る。
+CI で JSON を受け取るときは、標準エラー出力をファイルに向ける。
+
+```sh
+golem build --target pdf --format json 2> diagnostics.json
+```
+
+[code: golem inspect] の表示、[code: golem explain] の説明、[code: golem fmt --check] のパスの一覧は標準出力に出る。
+
+## プロファイル
+
+[code: --profile] は [code: dev] と [code: prod] の二つで、既定は [code: dev] である。[index reading=ぷろふぁいる: プロファイル]
+プロファイルが変えるのは、校正用のコメント（[code: \%%= ... \%%]）の扱いと、診断の重大度の二つだけである。
+
+- 校正用のコメントは、[code: dev] では出力に現れ、[code: prod] では出力されず警告（G0205）になる。
+- 参照されていないラベル（G0504）と、HTML と EPUB のフォントの欠け（G0310）は、[code: dev] では警告、[code: prod] ではエラーになる。
+
+重大度の変更は、golem-syntax の [code: adjustForProfile] の一箇所で行う。
+対象のコードは [code: Golem.Syntax.Diagnostic.profileDependentCodes] に並んでいる。
+出荷する本を組む CI では [code: --profile prod] を付け、書きかけの原稿を組む CI では既定の [code: dev] を使うのが、この分け方の意図である。
+
+## トンボ
+
+[code: --marks] は PDF に付けるトンボの形を選ぶ。[index reading="とんぼ": トンボ]
+値は [code: japanese]（日本式の二重のトンボ）、[code: western]（欧文の一重のトンボ）、[code: none] で、既定は [code: none] である。
+PDF を書かないビルドでは何も変えない。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0004-crop-marks-and-bleed.md]（golem-pdf ADR 0004「トンボと塗り足し」）]
+
+トンボは閲覧用と入稿用の PDF を同じ原稿から作り分けるための出力の設定なので、ファイルではなくオプションで選ぶ。
+[code: --marks] はインスタンス ID の入力に入るので、閲覧用と入稿用の PDF は同じドキュメント ID と異なるインスタンス ID を持つ。
+日本式のトンボは塗り足しを示すので、[code: style.toml] の [code: \[page\]] に [code: bleed] がなければエラー（G0702）になり、PDF を書かない。
+
+## プロジェクトの雛形
+
+[code: golem new DIR] は、[code: manifest.toml]、[code: style.toml]、章のファイル、[code: .gitignore] を作る。[index reading="golem new": golem new]
+[code: --language ja] は A6 判の縦組みで Noto Serif JP を、[code: --language en] はマスマーケットのペーパーバックの横組みで Source Serif 4 を使う。
+フォントは配布元のタグで固定した版から HTTPS で取得し、Golem のソースに固定した SHA-256 で検査してから [code: fonts/] に置く。
+取得に失敗すると、プロジェクトのファイルを一つも書かない。
+[code: --no-fonts] では取得せず、置くべきファイルと URL を表示する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0003-new-project-page-and-fonts.md]（golem-cli ADR 0003「golem new の雛形に版面とフォントを入れる」）]
+
+マニフェストの [code: id] は、[code: golem new] が UUID の v4 で一度だけ生成する。
+これが Golem が乱数を使う唯一の箇所である。
+[code: golem new] の出力は決定的ではないが、[code: id] は一度作れば変えない値なので、その後のビルドの決定性には影響しない。
+ネットワークに接続するのも、このフォントの取得と、プラグインの取得の二つだけである。
+
+## 構文木と IR を見る
+
+[code: golem inspect FILE --as cst] は、ファイルの CST を人が読める形で表示する。[index reading="golem inspect": golem inspect]
+[code: --as ast] は AST を、[code: --as ir] はプロジェクトを評価した意味論 IR と、その CBOR のバイト数を表示する。
+[code: --as ir] は作業中のディレクトリのプロジェクトを評価するので、プロジェクトの根で実行する。
+プラグインの作者が、受け取る IR の形を確かめるのに使える。
+意味論 IR と CBOR の形は第[ref-number ir]章で説明する。

@@ -1,0 +1,179 @@
+@label ci
+# CI で本を組む
+
+Golem は、原稿とスタイルをリポジトリで管理し、push のたびに CI が成果物を組む使い方を前提にしている。
+この使い方が成り立つ根拠は、出力の[strong: 決定性]にある。[index reading=けっていせい: 決定性]
+同じ入力からバイト単位で同じ PDF ができるとき、そしてそのときに限り、出力の差分は変更の影響と一致する。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#golem-が強いるワークフロー]（仕様書の「Golem が強いるワークフロー」の節）]
+
+CI に載せるだけなら、[code: golem build] を呼んで終了コードを見れば足りる。
+決定性を使うと、その先ができる。
+前回と出力が同じかどうかをハッシュで判定でき、変わったページだけを画像の差分で拾える。
+この章は、CI で組む手順から始め、決定性をどう使うかまでを説明する。
+
+## golem を用意する
+
+CI では、GitHub Releases の配布物を使うのが手軽である。
+Linux の配布物は musl で完全に静的にリンクしてあり、ディストリビューションを問わない。[note: [code: https://github.com/tett23/golem/blob/main/README.md#installation]（README の Installation の節）]
+
+| アーカイブ | 対象 |
+| --- | --- |
+| [code: golem-<タグ>-x86_64-linux.tar.gz] | Linux の x86-64 |
+| [code: golem-<タグ>-aarch64-linux.tar.gz] | Linux の aarch64 |
+| [code: golem-<タグ>-aarch64-macos.tar.gz] | macOS 14 以降の Apple Silicon |
+
+アーカイブは [code: SHA256SUMS] で検証してから展開する。
+
+```sh
+TAG=v0.1.0
+BASE=https://github.com/tett23/golem/releases/download/$TAG
+curl -LO "$BASE/golem-$TAG-x86_64-linux.tar.gz"
+curl -LO "$BASE/SHA256SUMS"
+sha256sum --ignore-missing -c SHA256SUMS
+tar -xzf "golem-$TAG-x86_64-linux.tar.gz"
+install -m 755 "golem-$TAG-x86_64-linux/golem" "$HOME/.local/bin/golem"
+golem --version
+```
+
+ビルドの来歴は [code: gh attestation verify] で検証できる。[index reading="らいれきのしょうめい": 来歴の証明]
+どのワークフローがどのコミットから作ったかを、GitHub の来歴の証明で確かめる仕組みである。
+
+```sh
+gh attestation verify "golem-$TAG-x86_64-linux.tar.gz" --repo tett23/golem
+```
+
+CI で使う [code: golem] の版は、タグで固定する。
+Golem の版は入力の一部であり、版が変われば出力のバイト列も変わってよいと決めているからである。
+PDF の Producer にも版が入る（[code: Golem 0.1.0-rc1] の形）。
+最新の版を毎回取ってくる CI は、Golem の更新だけで出力が変わり、差分の意味が崩れる。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0002-determinism.md]（docs/adr の ADR 0002「決定性の規則」）]
+
+配布物はルート証明書を同梱せず、OS の証明書のストアを読む。
+ca-certificates のない最小構成のコンテナで [code: golem new] やプラグインの取得をするときは、ca-certificates を入れるか、[code: SSL_CERT_FILE] で証明書のファイルを指定する。
+[code: golem build] はネットワークに接続しないので、ビルドだけならこの準備は要らない。
+
+## 組んで、結果を読む
+
+組む手順は、プロジェクトの根で [code: golem build] を実行するだけである。
+
+```sh
+golem build --target pdf --profile prod --format json 2> diag.json
+```
+
+出荷する本なら [code: --profile prod] を付ける。
+参照されていないラベルと HTML と EPUB のフォントの欠けがエラーになり、校正用のコメントの残りが警告になる。
+終了コードは、成功が 0、エラーの診断があれば 1、使い方の誤りが 2 である（第[ref-number cli]章）。
+
+診断を CI の画面に出すなら人が読む形式、集計やコメントへの転記をするなら JSON の形式を選ぶ。
+JSON は標準エラー出力に出るので、ファイルに向ける。
+並び順は入力だけで決まるので、前回の [code: diag.json] と比べた差分は、診断の増減そのものになる。
+JSON の形は第[ref-number diagnostics]章で説明した。
+
+出力は [code: build/<ターゲット>/] に書かれる。
+CI の成果物として上げるのは、このディレクトリである。
+
+## フォントとプラグインを用意する
+
+PDF を組むには、[code: style.toml] の指すフォントのファイルが要る。
+Golem はシステムにインストールされたフォントを探さないので、CI のランナーに入っているフォントは使われない。
+フォントのファイルはプロジェクトの中（ふつうは [code: fonts/]）に置き、[code: style.toml] からプロジェクトの根からのパスで指す。
+ライセンスがリポジトリへの同梱を許さないフォントは、CI の中で取得してから組む。
+取得したファイルの SHA-256 を確かめておくと、配布元の差し替えに気付ける。
+Golem のマニュアル自身がこの形で組まれている（第[ref-number manuals]章）。
+
+フォントがなくても、HTML、EPUB、プレーンテキストは組める。
+PDF だけが G0802 で止まる。
+
+プラグインを使うプロジェクトでは、[code: plugins.lock] をリポジトリにコミットし、CI で組む前に [code: golem plugin fetch] を実行する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0002-distribution-and-lock.md]（golem-plugin ADR 0002「プラグインの取得とロックファイル」）]
+
+```sh
+golem plugin fetch
+golem build --target pdf
+```
+
+[code: golem plugin fetch] は [code: plugins.lock] のとおりに配布物を取得し、SHA-256 を検証してキャッシュに置く。
+キャッシュは XDG の規則に従うユーザーのキャッシュのディレクトリの [code: golem/plugins/] で、Linux ではふつう [code: ~/.cache/golem/plugins/<SHA-256>.wasm] になる。
+[code: golem build] はキャッシュからだけ読み、ネットワークに接続しない。
+CI のキャッシュの鍵を [code: plugins.lock] のハッシュにすれば、プラグインの取得は [code: plugins.lock] を変えたときだけになる。
+
+## 決定性が保証する範囲
+
+決定性は、同じ版の Golem に同じ入力を与えたときの約束である。
+入力は次のものに限る。
+
+- [code: manifest.toml]、[code: style.toml]、[code: plugins.lock]
+- マニフェストから到達できる原稿のファイル、import されるファイル、図版、CSV、書誌データ、取り込むコードのファイル
+- [code: style.toml] が指すフォントと ICC プロファイル
+- [code: plugins.lock] のハッシュで固定したプラグインの配布物
+- Golem 自身の版と、Golem に同梱して版を固定したネイティブライブラリ
+- 出力を変えるコマンドのオプション（[code: --marks]）
+
+Golem は時計を読まず、乱数を使わず（[code: golem new] の [code: id] だけが例外）、環境変数、ロケール、タイムゾーンを出力に影響させない。
+成果物の日時は、マニフェストの [code: metadata.date] だけから作る。
+[code: SOURCE_DATE_EPOCH] も読まない。
+CI で何度組んでも同じ日時が書かれるのは、この規則の帰結である。
+
+v1 で決定性を保証するのは PDF、HTML、プレーンテキストである。
+EPUB（zip のエントリの時刻と順序）の決定性は v2 で扱うと決めている。
+バイト列の比較を CI の判定に使うなら、EPUB は対象から外しておく。
+
+## 出力が変わったかを判定する
+
+決定性があれば、前回と今回の出力が同じかどうかは、ハッシュの比較だけで判定できる。
+原稿の誤字を一つ直したとき、PDF のハッシュが変わるのは当然である。
+しかし、たとえばリポジトリの README だけを直したコミットで PDF のハッシュが変われば、それは入力の外から何かが入り込んだ証拠になる。
+
+```sh
+cd build && find pdf html text -type f | LC_ALL=C sort |
+  xargs sha256sum > ../hashes.txt
+```
+
+ファイルの一覧を [code: LC_ALL=C] で並べてから [code: sha256sum] に渡すのは、[code: find] の列挙の順がファイルシステムで変わるからである。
+Golem の開発の CI も、[code: scripts/determinism.sh] で同じ形の一覧を作り、x86-64 と aarch64 の結果を [code: diff] で比べている（第[ref-number determinism]章）。
+
+インスタンス ID には、マニフェスト、[code: style.toml]、原稿、出力を変えるオプションが入る。[index reading="いんすたんすID": インスタンス ID]
+閲覧用と入稿用の PDF のように、オプションだけが違う二つの PDF は、同じドキュメント ID と異なるインスタンス ID を持つ。
+ハッシュの比較では、この二つは別のファイルとして扱えばよい。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0004-crop-marks-and-bleed.md]（golem-pdf ADR 0004「トンボと塗り足し」の「インスタンス ID の入力」）]
+
+## ページ画像の差分を取る
+
+ハッシュの比較は「変わったか」しか答えない。
+数百ページのどこが変わったかを知るには、ページを画像にして比べる。
+
+Golem 自身は、ページ画像の差分を取る仕組みを持たない。[index reading="ぺーじがぞうのさぶん": ページ画像の差分]
+Golem の責務は、差分が意味を持つ決定的な出力を作るところまでであり、差分は外部の道具に任せると決めている。
+差分の仕組みを自前で持つ可能性はあるが、GUI を作るより後になる。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#golem-が強いるワークフロー]（仕様書の「Golem が強いるワークフロー」の節）]
+
+外部の道具の組み合わせは自由である。
+たとえば Poppler の [code: pdftoppm] でページを PNG にし、ImageMagick の [code: compare] で画素の差を数えられる。
+
+```sh
+pdftoppm -r 100 -png old.pdf old/p
+pdftoppm -r 100 -png new.pdf new/p
+for f in old/*.png; do
+  g=new/${f#old/}
+  n=$(compare -metric AE "$f" "$g" null: 2>&1) || true
+  [ "$n" = 0 ] || echo "${f#old/}: $n"
+done
+```
+
+この比較が意味を持つのは、二つの PDF を同じ版の Golem で組んだときに限る。
+版が違えば、原稿を変えていなくても、行分割や字形の位置が変わりうる。
+Golem を更新するときは、更新だけのコミットを作って差分を一度確かめ、原稿の変更と混ぜないとよい。
+
+ページの数が変わると、それより後のページはすべて「変わった」と出る。
+原稿の途中で一行増えて改ページの位置がずれれば、本の後半がすべて差分になる。
+これは改ページが先頭から順に詰める方式であることの帰結であり、差分の道具の側でページの対応を取る工夫が要る。
+
+## 診断を残さずに組む
+
+Golem のマニュアルは、組んだときに Golem が何かを出力すれば、それがお知らせ一つでも失敗とする（第[ref-number manuals]章）。
+見本として配る本では、お知らせの原因（折り返したコードの行など）も原稿の側で取り除くからである。
+同じ方針を自分の本の CI に取り入れるなら、終了コードに加えて、標準エラー出力が空であることを確かめる。
+
+```sh
+golem build --target pdf > out.log 2>&1
+code=$?
+if [ "$code" -ne 0 ] || [ -s out.log ]; then cat out.log; exit 1; fi
+```
+
+この方針では、[code: silence-notices] と [code: --no-notices] でお知らせを消すことも認めないのが筋である。
+消してしまえば、検査が何も見ていないのと変わらない。

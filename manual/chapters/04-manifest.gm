@@ -3,9 +3,16 @@
 
 [code: manifest.toml] は、一冊の本の構成を書くファイル（マニフェスト[index reading=まにふぇすと: マニフェスト]）です。
 どのファイルをどの順に並べるか、書名や著者は何か、どの形式に何を書き込むかをここに書きます。
-書き方は、TOML という設定ファイルの形式です。
+書き方は TOML という設定ファイルの形式です（「[ref-title toml]」、[ref-page toml] ページ）。
 書けるキーの一覧は、[ref-title app-manifest]（[ref-page app-manifest] ページ）にあります。
-[code: manifest.toml] と [code: style.toml] も、原稿と同じく文字コードは UTF-8、改行は LF とし、BOM を付けません。
+
+プロジェクト[index reading=ぷろじぇくと: プロジェクト]（[code: manifest.toml]、原稿、[code: style.toml]、図版、書体をまとめたフォルダ）は、InDesign のドキュメントとブックに当たります。
+[code: manifest.toml] が章のファイルを並べる役は、ブックが個々のドキュメントを並べる役に近いものです。
+違いは、体裁の置き場所です。
+InDesign のブックでは個々のドキュメントがそれぞれスタイルを持ち、それらをそろえる操作が要りますが、Golem の一冊の本は [code: style.toml] を一つだけ持ちます。
+章のファイルは体裁を持たないので、章のあいだで体裁が食い違うことはありません。
+
+[code: manifest.toml] と [code: style.toml] も、原稿と同じく文字コードは UTF-8、改行は LF とし、BOM を付けません（「[ref-title text-files]」、[ref-page text-files] ページ）。
 BOM や CR があると、原稿と同じエラー（G0102、G0103）が出ます。
 
 ## マニフェストの全体
@@ -20,7 +27,7 @@ BOM や CR があると、原稿と同じエラー（G0102、G0103）が出ま�
 ## 章を並べる
 
 [code: chapters] に、原稿のファイルを本の順に並べます。
-パスはプロジェクトのディレクトリから書きます。
+パスは、プロジェクトのフォルダからのパスで書きます（「[ref-title folders]」、[ref-page folders] ページ）。
 
 一つの章をいくつかのファイルに分けて書くときは、配列を入れ子にします。
 
@@ -52,6 +59,7 @@ paragraph-separator = "line"
 - [code: "line"]：改行ひとつで段落を区切ります。一行が一つの段落になります。
 
 [code: "line"] は、青空文庫の形式のように、一行を一つの段落として書く和文の原稿に向いています。
+ワープロや InDesign から書き出したテキストの多くも、この形です。
 
 ```
 　吾輩は猫である。
@@ -87,20 +95,29 @@ chapters = [
 
 [code: "blank-line"] と [code: "line"] のほかの値を書くと、エラーになります。
 
+@label metadata
 ## 本の情報を書く
 
-[code: \[metadata\]] に、書名や著者などの本の情報を書きます。
+[code: \[metadata\]] に、書名や著者などの本の情報（メタデータ）を書きます。
 ここに書いた値は、PDF、EPUB、HTML のそれぞれの形式で決まった場所に書き込まれます。
+たとえば書名は、PDF では文書の情報に、EPUB では本の情報をまとめたファイル（パッケージ文書）に入り、電子書店や読書のアプリが書名の表示に使います。
 
 - [code: id]：本の識別子です。[code: golem new] が一度だけ作ります。後から変えないでください。
 - [code: title]：書名です。
 - [code: title-reading]：書名の読みです。電子書店での並べ替えに使われます。
 - [code: language]：本の言語です。日本語なら [code: "ja"]、英語なら [code: "en"] です。
-- [code: date]：発行日です。PDF の作成日などは、組んだ日時ではなく、この日付から作ります。版を改めるときに書き換えます。
+- [code: date]：発行日です。版を改めるときに書き換えます。
 - [code: edition]：版です。
 - [code: publisher]：発行者です。
 
+PDF の作成日と更新日には、組んだ日時ではなく [code: date] の日付を書き込みます。
+組んだ日時を書くと、同じ原稿から組んでも組むたびに PDF の中身が変わってしまうからです（「[ref-title same-output]」、[ref-page same-output] ページ）。
+
+[code: id] を後から変えないのは、ISBN を書いていない EPUB の識別子に使うからです。
+電子書店と読書のアプリは、識別子で同じ本かどうかを見分けるので、版を改めた本の識別子が変わると、別の本として扱われることがあります。
+
 著者などの関係者は、[code: \[\[metadata.creators\]\]] を人数分並べて書きます。
+二重の角括弧は、同じ名前の表を配列として何度も書く TOML の書き方です。
 
 ```toml
 [[metadata.creators]]
@@ -109,7 +126,8 @@ reading = "なつめ そうせき"
 role = "aut"
 ```
 
-[code: role] には、著者なら [code: "aut"]、編者なら [code: "edt"]、訳者なら [code: "trl"] のように、EPUB と同じ役割の符号を書きます。
+[code: role] には、著者なら [code: "aut"]、編者なら [code: "edt"]、訳者なら [code: "trl"] のように、役割の符号を書きます。
+これは、EPUB の仕様が著者の役割の表し方として参照している MARC の役割の符号（MARC Relator）です[note: EPUB 3.3。[code: https://www.w3.org/TR/epub-33/]]。
 
 ## 出力の設定
 
@@ -138,16 +156,36 @@ variants = ["horizontal"]
 @label bibliography-data
 ## 参考文献のデータ
 
-[code: bibliography] には、文献のデータを書いた CSL-JSON のファイルを並べます。
+参考文献の書式とデータには、学術の分野で広く使われている決まりがあります。
+CSL（Citation Style Language）は、引用と参考文献の一覧の書式を記述するための言語で、その仕様は CSL 1.0.2 です[note: Citation Style Language 1.0.2 の仕様。[code: https://docs.citationstyles.org/en/stable/specification.html]]。
+CSL-JSON[index reading=しーえすえるじぇいそん: CSL-JSON] は、CSL が書式を当てる対象の文献のデータを、JSON という形式で書いたものです[note: CSL-JSON のスキーマ。[code: https://github.com/citation-style-language/schema]]。
+Zotero のような文献管理のソフトウェアの多くが、文献の一覧を CSL-JSON で書き出せます。
+
+Golem が読むのは、このうち CSL-JSON の文献のデータだけです。
+CSL の書式のファイルは読まず、一覧は Golem が持つ一種類の書式で組みます。
+書式を選ぶ機能は、今の Golem にはありません。
+
+[code: bibliography] に、文献のデータを書いた CSL-JSON のファイルを並べます。
 
 ```toml
 bibliography = ["references.json"]
 ```
 
-CSL-JSON は、文献を一件ずつ JSON のオブジェクトにした配列です。
+CSL-JSON は、文献を一件ずつ JSON のオブジェクト（波括弧で囲んだ、名前と値の組の集まり）にし、それを角括弧で囲んで並べた配列です。
 このマニュアルの参考文献のデータは、次のように始まります。
 
 @listing references.json lines=1-9
 
-本文では、[code: id] の値を使って [code: \[cite jlreq\]] のように引用します（[ref-number toc-index]「[ref-title toc-index]」）。
-一覧には、著者（[code: author] の [code: family] と [code: given]）、題（[code: title]）、発行者（[code: publisher]）、発行の年（[code: issued]）を、この順に並べて組みます。
+本文では、[code: id] の値を使って [code: \[cite jlreq\]] のように引用します（「[ref-title toc-index]」、[ref-page toc-index] ページ）。
+Golem が使う欄は、次のとおりです。
+
+- [code: id]：引用に使うキーです。
+- [code: author]：著者の配列です。一人ずつ [code: family]（姓）と [code: given]（名）を書きます。
+- [code: title]：題です。
+- [code: publisher]：発行者です。
+- [code: issued]：発行の日付です。[code: date-parts] の最初の数を、発行の年として使います。
+
+一覧には、著者、題、発行者、発行の年を、この順に並べて組みます。
+ほかの欄（このマニュアルのデータにある [code: type] や [code: URL] など）は、書いてあってもかまいませんが、今は一覧に出しません。
+文献管理のソフトウェアが書き出したファイルを、そのまま置けるようにするためです。
+CSL-JSON のファイルも、文字コードは UTF-8 で保存します。

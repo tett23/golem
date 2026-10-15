@@ -1,0 +1,102 @@
+@label fixtures
+# フィクスチャとライセンス
+
+Golem のテストは、実際の本に近い入力を必要とする。
+行分割や禁則の不具合は、小さな手書きの例では現れず、一冊の分量の原稿を組んで初めて見えることが多い。
+そのために、リポジトリには外部の文章とフォントが入っている。
+外部のものを入れれば、そのライセンスを守る責任が生じる。
+同じことは、配布する実行ファイルに静的にリンクしたライブラリにも言える。
+この章は、その二つの扱いをまとめる。
+
+## テスト用の素材
+
+フィクスチャに外部の文章やフォントを加えるときは、次の決まりに従う。[index reading=ふぃくすちゃ: フィクスチャ][note: [code: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md の「テスト用の素材」の節）]
+
+- ライセンスを確かめ、ライセンスの文書を一緒に置く。
+- 出典は、そのフィクスチャの README に書く。
+- 取得するスクリプトでは、取得したファイルの SHA-256 を固定して検証する。
+- 取得した原文を Golem の原稿に変換する処理は、Python で書かない。
+
+golem-driver のフィクスチャ（[code: modules/golem-driver/test/fixtures/]）には、三つのプロジェクトがある。
+
+| ディレクトリ | 内容 |
+| --- | --- |
+| [code: sample/] | テストのために書いた小さなプロジェクト |
+| [code: tempest/] | シェイクスピアの『テンペスト』。横組み |
+| [code: kanikosen/] | 小林多喜二の『蟹工船』。縦組み |
+
+『テンペスト』は Project Gutenberg の eBook #23042（ケンブリッジ版）から、『蟹工船』は青空文庫の図書カード No.1465 から作る。
+どちらも著作権の保護期間が満了している。
+各プロジェクトは、使うフォントとそのライセンスを [code: fonts/] に持ち、そのディレクトリで [code: golem build] を実行すれば組める。
+
+## 原文から原稿を作る
+
+[code: tempest.gm] と [code: kanikosen.gm] は手で編集しない。
+原稿は [code: scripts/fixtures/fetch-public-domain.sh] が、原文を取得して SHA-256 を検査し、golem-fixtures で Golem の原稿に変換し、[code: golem fmt] で整形して作る。
+
+```sh
+GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
+```
+
+変換の実行ファイル [code: golem-fixtures] は、二つの命令を持つ。[index reading="golem-fixtures": golem-fixtures][note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0023-fixture-converters-without-python.md]（docs/adr の ADR 0023「fixture の変換を Python から移す」）]
+
+```text
+golem-fixtures gutenberg-play INPUT.txt OUTPUT.gm
+golem-fixtures aozora INPUT.txt OUTPUT.gm
+```
+
+[code: gutenberg-play] は、Project Gutenberg の戯曲の韻文を行の形から推し量って [code: @style verse] にし、話者の名前を [code: \[strong: …\]] にする。
+[code: aozora] は、青空文庫のルビ、傍点、縦中横、見出し、外字の注記を Golem の記法にする。
+
+この変換は、以前は Python のスクリプトだった。
+リポジトリの持ち主は Python を使わず、Python のスクリプトはコミットせずにできる限りシェルのスクリプトで書く、という方針がある。
+『テンペスト』の変換は POSIX の [code: sh] と [code: awk] で書けるが、『蟹工船』のルビの親文字を決める処理は、文字を一字ずつさかのぼって種類を判定する必要がある。
+macOS の [code: awk] は UTF-8 の文字を一字として数えないので、どの [code: awk] でも同じに動くようには書きにくい。
+そこで、リポジトリの言語である Haskell の小さな実行ファイルにした。
+
+golem-fixtures は [code: base]、[code: text]、[code: containers]、[code: bytestring] だけに依存する。
+[code: golem] の実行ファイルはこのパッケージに依存せず、リリースの配布物にも入らない。
+
+## テスト用のフォント
+
+golem-font のテストが使う書体は、[code: modules/golem-font/test/fonts/] に置いてある。
+PDF の決定性の検査（[code: scripts/determinism.sh]）も、ここの Source Han Sans のサブセットと Source Sans Pro で組む。
+ライセンスの文書（[code: OFL.txt]）と出典の README が同じディレクトリにある。
+
+二つのマニュアルの書体は、リポジトリに入れない。
+組む前に [code: scripts/manual/fetch-fonts.sh] が、配布元のタグで固定した URL から取得し、SHA-256 を検査して置く（第[ref-number manuals]章）。
+
+## 配布物のライセンス
+
+配布する [code: golem] の実行ファイルは、多くのものを静的にリンクしている。
+Haskell のパッケージ、GHC のランタイム、GMP、HarfBuzz、FreeType、wasmtime（とその中の Rust のクレート）、Linux では musl と Alpine のパッケージである。
+それぞれのライセンスは、配布物の [code: THIRD_PARTY_LICENSES/] に入れる。
+
+入れるものは、固定の一覧ではなく、実行ファイルのリンクマップから決める。[index reading=らいせんす: ライセンス][index reading="THIRD_PARTY_LICENSES": THIRD_PARTY_LICENSES]
+固定の一覧は、依存が変わるたびに手で直す必要があり、直し忘れても気付けないからである。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0007-third-party-licenses.md]（docs/adr の ADR 0007「配布物の THIRD_PARTY_LICENSES にリンクしたものをすべて入れる」）]
+
++ ビルドのスクリプトが、リンカーにリンクマップを書かせる。
++ [code: scripts/release/link-components.sh] が、実行ファイルに入ったアーカイブを一つずつ、ライセンスの文書を持つ構成要素（Haskell のパッケージ、GHC、GMP、wasmtime、Alpine のパッケージ、compiler-rt）に対応させる。
++ 対応の付かないアーカイブが一つでもあれば、配布物を作らずに止まる。
+
+文書の取り方は、構成要素によって違う。
+
+- Alpine のパッケージの文書は、そのパッケージの [code: -doc] から取る。入っていないものだけを [code: licenses/alpine/] に置く。
+- Linux の GHC がランタイムに同梱する libffi（[code: libCffi.a]）は、構成要素 [code: ghc-libffi] として、[code: licenses/ghc-libffi/] にコミットした文書を使う。
+- [code: libwasmtime.a] に入った Rust のクレート、Rust の標準ライブラリ、compiler-rt の文書は、wasmtime の版ごとに [code: scripts/wasmtime-licenses.sh] で [code: licenses/wasmtime-v<版>/] に生成してコミットする。
+
+リリースのたびに、[code: libwasmtime.a] のシンボルとパニックの位置から取り出したクレートの一覧と、C のオブジェクトの一覧を、コミットした文書と照合する。
+載っていないものがあれば止まる。
+リンクマップと照合に使った [code: nm]、[code: strings]、[code: ar] の出力は配布物に入れず、リリースのワークフローの成果物として残す。
+
+## wasmtime の版を上げるとき
+
+wasmtime の版を上げるときは、ADR を書き、ライセンスの文書も作り直す。
+文書は [code: scripts/wasmtime-licenses.sh] が [code: licenses/wasmtime-v<版>/] に生成するので、生成物もコミットする。
+このスクリプトはネットワークに接続し、[code: cargo] と [code: rustup] を要する。
+[code: c-objects.tsv] の構成要素の列は、スクリプトが埋めないので手で埋める。
+
+## Golem 自身のライセンス
+
+Golem は MIT ライセンスで配布する。
+貢献したコードとドキュメントも、MIT ライセンスのもとで配布される。

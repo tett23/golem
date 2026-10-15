@@ -5,6 +5,8 @@
 この付録は、[code: manifest.toml] に書けるキーをすべて並べたものです。
 書き方の流れは、第[ref-number manifest]章「[ref-title manifest]」で説明しています。[index reading=まにふぇすと/きーのいちらん: マニフェスト/キーの一覧]
 ここに載せていないキーを書くと、エラーになります。
+[code: manifest.toml] は TOML の形式で書きます[note: TOML v1.0.0。[code: https://toml.io/en/v1.0.0]]。
+TOML の書き方は、第[ref-number basics]章「[ref-title toml]」で説明しています。
 
 表の説明の括弧の中には、値の種類と、省けないキー（必須）を示します。
 値の種類は、次のように呼びます。
@@ -26,15 +28,16 @@
 | キー | 意味 |
 |:---|:---|
 | [code: chapters] | 原稿のファイルを本の順に並べます（配列、必須）。 |
-| [code: bibliography] | 文献のデータ（CSL-JSON）のファイルです（文字列の配列）。省くと文献を引用できません。 |
+| [code: bibliography] | 文献のデータ（CSL-JSON）のファイルです（文字列の配列）。省くと文献を引用できません[note: CSL-JSON のスキーマ。[code: https://github.com/citation-style-language/schema]]。 |
 | [code: \[metadata\]] | 書名などの本の情報です（表、必須）。 |
 | [code: \[targets\]] | 出力の形式ごとの設定です。 |
 | [code: \[plugins.名前\]] | 使うプラグインの宣言です（表）。 |
 | [code: \[\[filters\]\]] | フィルタのプラグインを当てるファイルです（表の並び）。 |
 | [code: \[source\]] | 原稿の読み方です（表）。 |
+| [code: \[diagnostics\]] | 診断の扱いです（表）。 |
 
 [code: chapters] の要素には、ファイルのパスを書きます。
-パスはプロジェクトのディレクトリからの相対パスで、プロジェクトの外や、[code: /] で始まる絶対パス、URL は書けません。
+パスはプロジェクトのフォルダからの相対パスで、プロジェクトの外や、[code: /] で始まる絶対パス、URL は書けません。
 要素を配列にすると、いくつかのファイルを一つの章として続けて組みます。
 要素を [code: { file = "chapters/02.gm", paragraph-separator = "blank-line" }] のような表にすると、その章だけ原稿の読み方を変えられます。
 表に書けるのは、[code: file]（必須）と、[code: \[source\]] と同じキーと、[code: master] です。
@@ -123,7 +126,7 @@ chapters = [
 | [code: url] | 配布物の URL です（文字列、必須）。[code: https://] で始め、版を固定した URL を書きます。 |
 | [code: overrides] | このプラグインで置き換える組み込みのコマンドの名前です（文字列の配列）。 |
 
-[code: overrides] に書けるのは、[code: strong]、[code: bold]、[code: italic]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text] です。
+[code: overrides] に書けるのは、[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text] です。
 
 @nonumber
 ## [code: \[\[filters\]\]]

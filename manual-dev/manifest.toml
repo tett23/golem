@@ -1,0 +1,38 @@
+chapters = [
+  "preface.gm",
+  "toc.gm",
+  "part1/00-part.gm",
+  "part1/01-cli.gm",
+  "part1/02-diagnostics.gm",
+  "part1/03-ci.gm",
+  "part1/04-lsp.gm",
+  "part1/05-plugins.gm",
+  "part1/06-ir.gm",
+  "part2/00-part.gm",
+  "part2/07-modules.gm",
+  "part2/08-build-test.gm",
+  "part2/09-adr.gm",
+  "part2/10-docs.gm",
+  "part2/11-ci-jobs.gm",
+  "part2/12-determinism.gm",
+  "part2/13-release.gm",
+  "part2/14-fixtures.gm",
+  "part2/15-manuals.gm",
+  "back.gm",
+]
+
+[metadata]
+id = "urn:uuid:3b7e9c41-52d8-4a6f-8e1b-9d0c7a2f4e58"
+title = "Golem 開発者のマニュアル"
+title-reading = "ごーれむかいはつしゃのまにゅある"
+language = "ja"
+date = 2026-10-15
+publisher = "Golem プロジェクト"
+
+[[metadata.creators]]
+name = "Golem プロジェクト"
+role = "aut"
+
+[targets.pdf]
+
+[targets.html]

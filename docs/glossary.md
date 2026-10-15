@@ -103,3 +103,10 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **プラグイン**：wasm のモジュールとして配布する拡張。import を一切受け取らず、呼び出しごとに新しいインスタンスで実行する。文書から呼ぶ**コマンド**と、ファイル一つ分の文書を書き換える**フィルタ**の二種類がある（[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
 - **命令数の上限**：プラグインが一回の呼び出しで実行できる命令の数の上限（wasmtime の fuel）。命令の数で数えるので、上限に達する位置も決定的である。
 - **ロックファイル**：プラグインの配布物の URL と SHA-256 を記録した `plugins.lock`。処理系だけが書き、ビルドはこのハッシュと一致するキャッシュからだけプラグインを読む（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。
+
+## マニュアル
+
+- **使い手のマニュアル**：Golem で本を作る人に向けたマニュアル。読み手は、組版の知識を持ち InDesign を使える編集者と DTP オペレーターで、敬体で書く。原稿は `manual/` の Golem のプロジェクトで、A5 判の PDF と HTML に組む（[docs/adr/0022](adr/0022-manual-as-typesetting-sample.md)、[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
+- **開発者のマニュアル**：Golem を使って仕組みを作る人（第一部）と、Golem そのものを開発する人（第二部）に向けたマニュアル。常体で書き、仕様書と ADR をまとめてリンクする。原稿は `manual-dev/` で、B5 判の PDF と HTML に組む（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
+- **マニュアルの方針**：二つのマニュアルの読み手、文体、説明の厚さ、根拠と脚注、規格の一覧、章立て、コードの表示、更新の決まりを書いた文書 [docs/manual-policy.md](manual-policy.md)。マニュアルを書く人とレビューする人の基準である（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
+- **奥付の版**：マニュアルの奥付に載せる版（タグか、`VERSION` に「の開発版」を続けたもの）と、組んだコミットの 40 桁のハッシュ。`scripts/manual/build-info.sh` が組む前に `common/build-info.gm` に書き、奥付が `@import` で読む（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。

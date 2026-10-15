@@ -1,8 +1,8 @@
 @nonumber
 @label app-errors
-# 付録D エラーと警告の一覧
+# 付録D 診断の一覧
 
-この付録は、Golem が出すエラーと警告を、コードの順ではなく、原因の種類ごとにまとめたものです。
+この付録は、Golem が出す診断（エラー、警告、お知らせ）を、コードの順ではなく、原因の種類ごとにまとめたものです。[index reading=しんだん/いちらん: 診断/一覧]
 各項目は、コード、表示されるメッセージ、意味と直し方の順に並べています。
 メッセージの [code: …] の部分には、名前やファイルのパスが入ります。
 エラーと警告の読み方は、第[ref-number check]章「[ref-title check]」で説明しています。[index reading=えらー/いちらん: エラー/一覧]
@@ -153,7 +153,7 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0204 [code: 結果が NaN か無限大になる演算です]]、[strong: [code: 負の数の平方根です]]
   計算の結果が数になりません。
   値の範囲を確かめてください。
-= [strong: G0206 [code: ] の指数は整数に限ります]**
+= [strong: G0206 [code: ** の指数は整数に限ります]]
   [code: **] の右に小数を書いています。
   指数は整数にしてください。
   平方根には [code: sqrt] を使います。
@@ -195,7 +195,8 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   図版のキャプションの見た目は、[code: style.toml] の [code: \[paragraph-styles.caption\]] で決めます。
 = [strong: G0225 [code: @toc の depth は 1 から 3 の整数です]]
   [code: depth] を 1 から 3 の整数にしてください。
-= [strong: G0226 [code: @label にはラベルの名前を一つ書きます]]、[strong: [code: 参照にはラベルの名前を一つ書きます]]
+= [strong: G0226 [code: @label にはラベルの名前を一つ書きます。…]]、[strong: [code: 参照にはラベルの名前を一つ書きます。…]]
+  [code: @label] か相互参照のコマンドに、ラベルの名前がないか、二つ以上あるか、使えない文字があります。
   ラベルの名前は、英小文字、数字、[code: -]、[code: _] で一つだけ書きます。
 = [strong: G0227 [code: @number には整数を一つ書きます]]
   [code: @number 5] のように、整数を一つ書いてください。
@@ -211,7 +212,7 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   [code: @figure] の後に、画像のパスを一つだけ書いてください。
 = [strong: G0233 [code: ファイルがありません: …]]
   [code: @figure]、[code: @table]、[code: @listing] が指すファイルがありません。
-  パスはプロジェクトのディレクトリから書きます。
+  パスはプロジェクトのフォルダから書きます。
   綴りと置き場所を確かめてください。
 = [strong: G0234 [code: @table には src が必要です]]
   [code: src=] で CSV のファイルを指定してください。
@@ -228,7 +229,8 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0247 [code: 定義されていない段落スタイルです: …]]
   [code: style.toml] に [code: \[paragraph-styles.名前\]] を書くか、ファイルの先頭に [code: @style-def paragraph] で定義するか、名前の綴りを直してください。
 = [strong: G0266 [code: code はコードブロックの段落スタイルです。コードは ``` か @listing で書きます]]
-  [code: @style code] は書けません。コードは [code: ```] で囲むか [code: @listing] で載せ、本文の中のコードは [code: \[code: ...\]] で書いてください。
+  [code: @style code] は書けません。
+  コードは [code: ```] で囲むか [code: @listing] で載せ、本文の中のコードは [code: \[code: ...\]] で書いてください。
 = [strong: G0258 [code: @page-break の引数は recto か verso です]] など
   [code: @page-break] には何も書かないか、[code: recto] か [code: verso] を一つだけ書きます。
   [code: @column-break] は引数を取りません。
@@ -315,12 +317,12 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   [code: paragraph-separator] には [code: "blank-line"] か [code: "line"] を書きます。
   同じファイルを、読み方を変えて [code: chapters] に二度並べることもできません。
 = [strong: G0316 [code: manifest.toml がありません]]
-  プロジェクトのディレクトリで [code: golem] を実行しているかを確かめてください。
+  プロジェクトのフォルダで [code: golem] を実行しているかを確かめてください。
   新しいプロジェクトは [code: golem new] で作ります。
 = [strong: G0302 [code: ファイルがありません: …]]
   [code: chapters] や [code: @import] のパスの綴りと、ファイルの置き場所を確かめてください。
 = [strong: G0303 [code: 絶対パスは使えません: …]]、[strong: [code: URL は使えません: …]]、[strong: [code: プロジェクトルートの外を指しています: …]]
-  ファイルはプロジェクトのディレクトリの中に置き、そこからの相対パスで書いてください。
+  ファイルはプロジェクトのフォルダの中に置き、そこからの相対パスで書いてください。
 = [strong: G0304 [code: 大文字と小文字だけが異なるパスです: …]]
   大文字と小文字だけが違う二つのパスを使っています。
   機械によって同じファイルと見なされるかどうかが変わるので、綴りをそろえてください。
@@ -372,6 +374,9 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0322 [code: \[lists\] の … が正しくありません: …]]
   [code: \[lists\]] の [code: bullets]、[code: numbers]、[code: gap] の値が違います。
   [code: numbers] の書式には、番号の差し込みをちょうど一つ書いてください。
+= [strong: G0325 [code: \[index\] の columns は 1 以上の整数です]]、[strong: [code: \[index\] の column-gap が正しくありません]]
+  [code: \[index\]] の [code: columns] は [code: 2] のように 1 以上の整数で、[code: column-gap] は [code: "2zw"] のように 0 以上の寸法で書いてください。
+  [code: "2"] のように引用符で囲むと、文字列になって誤りになります。
 
 @nonumber
 ## 紙面に収まらないとき
@@ -418,6 +423,9 @@ PDF を組むときに出るエラーです。
   表の行の途中では改ページしないので、その行のセルの文を短くしてください。
 = [strong: G0743 [code: コードブロックの行長が足りません]]、[strong: [code: コードブロックの一行が一ページに収まりません]]
   段落スタイル [code: code] の [code: padding] か [code: size] を小さくするか、コードブロックをリストの浅いところに移してください。
+= [strong: G0744 [code: 索引の段の行長が足りません。columns を減らすか column-gap を狭めてください]]
+  [code: \[index\]] の段数に対して版面が狭く、索引の一段の行長が文字八つ分に満たなくなっています。
+  [code: \[index\]] の [code: columns] を減らすか、[code: column-gap] を狭めてください。
 
 @nonumber
 ## 書体と色のファイル
@@ -442,6 +450,9 @@ PDF を組むときに出るエラーです。
   どちらかのファイルにそろえてください。
 = [strong: G0806 [code: 出力インテントの ICC プロファイルがありません: …]]
   [code: \[color\]] の [code: intent] に書いたファイルがありません。
+= [strong: G0801 [code: フォントを読まない設定（noFontProvider）では PDF を出力できません]]
+  Golem を試験するときにだけ使うコードで、[code: golem] のコマンドを使っていれば出ません。
+  出たときは Golem の誤りなので、作者に知らせてください。
 
 @nonumber
 ## プラグイン
@@ -450,7 +461,7 @@ PDF を組むときに出るエラーです。
   プラグインを宣言したり URL を変えたりした後に、[code: golem plugin lock] を実行してください。
 = [strong: G0611] [code: plugins.lock] の誤り
   [code: plugins.lock] が読めません。
-  手で編集したか、Git のマージで衝突が残っています。
+  手で編集したか、Git で二つの変更を合わせたときの食い違いが残っています（第[ref-number git-ci]章「[ref-title git-ci]」）。
   [code: plugins.lock] を消してから [code: golem plugin lock] を実行し直してください。
 = [strong: G0603 [code: キャッシュにないプラグインです。golem plugin fetch を実行してください: …]]
   この機械にはまだプラグインの配布物がありません。
@@ -493,7 +504,7 @@ PDF を組むときに出るエラーです。
   [code: @listing src=src/Main.hs] は [code: @listing src/Main.hs] と書き換えてください。
   今の版では同じ内容を取り込みますが、今後の版では使えなくなります。
 = [strong: G0323 [code: style.toml がないので、既定の体裁で組みます]]
-  プロジェクトのディレクトリに [code: style.toml] がありません。
+  プロジェクトのフォルダに [code: style.toml] がありません。
   既定の体裁でよければ、そのままでかまいません。
 = [strong: G0407 [code: @number … は自動で振られる番号と同じです]]
   見出しやリストの項目の [code: @number] が、書かなくても振られる番号と同じです。

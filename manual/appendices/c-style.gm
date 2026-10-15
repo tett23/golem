@@ -5,6 +5,7 @@
 この付録は、[code: style.toml] に書ける表とキーをすべて並べたものです。
 書き方の流れは、第[ref-number style]章「[ref-title style]」で説明しています。[index reading=すたいる/きーのいちらん: スタイル/キーの一覧]
 ここに載せていないキーを書くと、エラーになります。
+[code: style.toml] も、[code: manifest.toml] と同じく TOML の形式で書きます（第[ref-number basics]章「[ref-title toml]」）。
 表の「既定」の欄と、説明の中の「既定は」は、キーを省いたときの値です。
 「なし」は、省いてもよく、省くとその機能を使わないことを表します。
 
@@ -65,14 +66,20 @@ PDF を作るには必須です。
 ## [code: \[fonts.役割\]]
 
 書体を、役割の名前を付けて指定します。
-役割の名前は自由ですが、[code: body] は本文の書体で、PDF を作るには必須です。
-書体のファイルはプロジェクトの中に置き、プロジェクトのディレクトリからの相対パスで書きます。
+役割の名前は自由ですが、次の二つは決まった使い方をします。
+
+- [code: body]：本文の書体です。PDF を作るには必須です。
+- [code: code]：コードの書体です。コードブロックと [code: \[code: ...\]] の文字を組みます。書かなければ本文の書体で組み、本にコードがあればお知らせ（G0808）を出します。
+
+書体のファイルはプロジェクトの中に置き、プロジェクトのフォルダからの相対パスで書きます。
+Golem は、機械に入っている書体を探しません。
+書体のライセンスが PDF への埋め込みを禁じていれば、エラー（G0804）になります[note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
 
 | キー | 意味 |
 |:---|:---|
 | [code: ja] | 和文の書体のファイルです。 |
 | [code: latin] | 欧文の書体のファイルです。 |
-| [code: features] | OpenType の機能の名前の配列です。たとえば [code: \["palt"\]] で、和文の約物や仮名を詰めて組みます。省くと、書体の標準の機能だけを使います。 |
+| [code: features] | OpenType の機能の名前の配列です。たとえば [code: \["palt"\]] で、和文の約物や仮名を詰めて組みます。省くと、書体の標準の機能だけを使います[note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。 |
 
 @nonumber
 ## [code: \[character-styles.名前\]]
@@ -95,10 +102,17 @@ PDF を作るには必須です。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [code: kerning] | [code: "metrics"] | カーニング（字の組ごとの字間の調整）の方式です。[code: "metrics"] は書体のペアカーニングの情報で調整し、[code: japanese-equal-width] は欧文だけを調整し、[code: "none"] は調整しません。[code: "optical"] はまだ使えません。 |
+| [code: kerning] | [code: "metrics"] | カーニング（字の組ごとの字間の調整）の方式です。値は下に書きます。 |
 | [code: tracking] | [code: 0] | 文字ごとに足す空きです。文字の大きさの 1000 分の 1 を単位に、-1000 から 10000 までの整数で書きます。 |
 | [code: proportional-metrics] | [code: false] | [code: true] にすると、和文を字面に合わせた送りで組みます。 |
 | [code: baseline-shift] | [code: "0pt"] | 文字を、横組みでは上へ、縦組みでは右へずらす量です。[code: "-0.25zw"] のように負の値も書けます。 |
+
+[code: kerning] の値は次の三つです。
+[code: "optical"] はまだ使えません。
+
+- [code: "metrics"]：書体のペアカーニングの情報で、欧文と和文を調整します。
+- [code: "japanese-equal-width"]：欧文だけを調整し、和文を全角の送りで組みます。
+- [code: "none"]：調整しません。
 
 組み込みの文字スタイルは、[code: bold] が [code: synthetic-bold = true]、[code: italic] が [code: synthetic-italic = true]、[code: strong] が [code: based-on = "bold"]、[code: code] が [code: font = "code"] です。
 [code: code] と、[code: based-on] で [code: code] を引き継ぐ文字スタイルの文字は、PDF で語の途中で分けず、空白と [code: /] の後でだけ行を改めます。
@@ -155,6 +169,7 @@ PDF を作るには必須です。
 コードブロックは、行と上下の余白を収める行数を占め、その中の中央に組みます。
 後の本文は、行の格子からずれません。
 [code: background] と [code: padding] は、[code: code] のほかの段落スタイルには書けません。
+ファイルの先頭の [code: @style-def paragraph code] にも、同じ四つのキーだけを書けます。
 
 @nonumber
 ## [code: \[headings.階層\]]
@@ -217,7 +232,7 @@ PDF を作るには必須です。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [code: placement] | [code: "page-foot"] | 脚注の位置です。[code: "page-foot"]（ページの下）か [code: "chapter-end"]（章の終わり）です。 |
+| [code: placement] | [code: "page-foot"] | 脚注の位置です。[code: "page-foot"] か [code: "chapter-end"] を書けますが、今の版の Golem は値を読むだけで、どちらでも置き方は同じです（PDF はページの下、HTML とプレーンテキストは章の終わり）。 |
 
 @nonumber
 ## [code: \[sidenotes\]]
@@ -256,7 +271,9 @@ HTML と EPUB には効きません。
 | キー | 既定 | 意味 |
 |:---|:---|:---|
 | [code: columns] | 版面の段数 | 索引を組む段数です。1 以上の整数で書きます。 |
-| [code: column-gap] | [code: \[page.grid\]] の [code: column-gap] | 索引の段と段のあいだの空きです。 |
+| [code: column-gap] | [code: \[page.grid\]] の [code: column-gap] | 索引の段と段のあいだの空きです。[code: zw] は版面の文字の大きさを一字とします。 |
+
+索引の一段の行長が、版面の文字の大きさで 8 字分に満たないと、エラー（G0744）になります。
 
 @nonumber
 ## [code: \[lists\]]
@@ -268,7 +285,7 @@ PDF、HTML、EPUB、プレーンテキストのどれにも効きます。
 |:---|:---|
 | [code: bullets] | 箇条書きの印の配列です。一段目のリストに最初の要素を、二段目に二つ目の要素を使い、入れ子が配列より深ければ最後の要素を使い続けます。既定は [code: \["・"\]] です。 |
 | [code: numbers] | 番号の書式の配列です。使い方は [code: bullets] と同じです。書式には、番号の差し込みをちょうど一つ書きます。書かなければ、組み方向で決まる書式になります（下の説明）。 |
-| [code: gap] | 印と項目の本文のあいだの空きです。書かなければ、印の最後の文字から決まります。 |
+| [code: gap] | 印と項目の本文のあいだの空きです。PDF でだけ効きます。書かなければ、印の最後の文字から決まります。 |
 
 [code: numbers] を書かなければ、横組みの本では [code: 1.]、縦組みの本では [code: 一、] の形になります。
 番号の差し込みは次のとおりです。
@@ -341,8 +358,12 @@ PDF でだけ効きます。
 
 | キー | 意味 |
 |:---|:---|
-| [code: intent] | 印刷所から指定された印刷の色の条件のファイル（ICC プロファイル）です。書けば PDF に埋め込みます。 |
+| [code: intent] | 印刷所から指定された印刷の色の条件のファイル（ICC プロファイル）です。書けば PDF に出力インテントとして埋め込みます[note: ICC.1:2022（ICC プロファイルの仕様）。[code: https://www.color.org/specification/ICC.1-2022-05.pdf]]。 |
 | [code: \[color.swatches\]] | 色に名前を付けます。[code: accent = { cmyk = \[0, 80, 100, 0\] }] のように、C、M、Y、K の網点の割合を 0 から 100 の整数で書きます。 |
+
+PDF の色は、プロセスカラー（CMYK）だけです。
+特色の版は作りません。
+HTML と EPUB では、CMYK の値を RGB に近似して使います。
 
 @nonumber
 ## [code: \[masters.名前\]]

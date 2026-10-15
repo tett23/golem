@@ -1703,7 +1703,7 @@ Golem の版は `X.Y.Z` か、プレリリースの識別子を付けた `X.Y.Z-
 
 アーカイブの名前は `golem-<タグ>-<プラットフォーム>.tar.gz` とし、展開すると `golem-<タグ>-<プラットフォーム>/` の一つのディレクトリができる。
 中には、実行ファイル `golem`、Golem のライセンス `LICENSE`、静的にリンクしたものと同梱したデータのライセンスの文書 `THIRD_PARTY_LICENSES/`、ビルドの情報 `BUILDINFO` が入る。
-リリースには、三つのアーカイブのほかに、`SHA256SUMS`、ビルドの来歴の証明、リンクした GMP のソースのアーカイブ、マニュアルの PDF と HTML（「マニュアル」の節）を添える。
+リリースには、三つのアーカイブのほかに、`SHA256SUMS`、ビルドの来歴の証明、リンクした GMP のソースのアーカイブ、二つのマニュアルの PDF と HTML（「マニュアル」の節）を添える。
 GMP は LGPL-3.0 であり、三つの実行ファイルのどれにも静的にリンクされるためである。
 
 `THIRD_PARTY_LICENSES/` に入れるものは、固定の一覧ではなく、実行ファイルのリンクマップから決める（[docs/adr/0007](adr/0007-third-party-licenses.md)）。
@@ -1735,32 +1735,57 @@ Alpine のパッケージの文書は、そのパッケージの `-doc` から�
 
 ## マニュアル
 
-使い手のためのマニュアルを、二つの原稿で持つ（[docs/adr/0022](adr/0022-manual-as-typesetting-sample.md)）。
+Golem には二つのマニュアルがあり、どちらも Golem 自身で組む（[docs/adr/0022](adr/0022-manual-as-typesetting-sample.md)、[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
+原稿は Golem のプロジェクトだけであり、Markdown の版は持たない。
 
-- **docs/manual.md**：Markdown で書いたマニュアルの本文。GitHub の上でそのまま読める。内容はこちらを正とする。
-- **manual/**：docs/manual.md を Golem の記法に手で書き直した Golem のプロジェクト。各節は、その節で説明する機能（ルビ、注、表、相互参照など）を実際に使って組む。A5 判の横組みで、出力は PDF と HTML だけとする。
+- **manual/**：使い手のマニュアル。読み手は、一般的な組版の知識を持ち InDesign を使える編集者と DTP オペレーターである。A5 判の横組みで、敬体で書く。各節は、その節で説明する機能（ルビ、注、表、相互参照など）を実際に使って組む。
+- **manual-dev/**：開発者のマニュアル。第一部「Golem で仕組みを作る」はプラグインの作者、CI で自動の組版を組む人、エディタに LSP をつなぐ人に、第二部「Golem を開発する」は Golem そのものを開発する人に向ける。B5 判の横組みで、常体で書く。仕様書、各モジュールの仕様書、ADR、CONTRIBUTING.md をまとめてリンクし、新しい決定はしない。
+
+出力は、どちらも PDF と HTML だけとする。
+読み手、文体、説明の厚さ、根拠の示し方、規格の一覧、章立て、コードの表示、更新の決まりは、方針の文書 [docs/manual-policy.md](manual-policy.md) に書く。
+マニュアルに書くのは、採択して実装を終えた仕様だけである。
+「今後の実装項目」に残っている事項、提案の ADR、未決事項は書かない。
+マニュアルと ADR や仕様書が食い違ったときは、ADR と仕様書に従ってマニュアルを直す。
 
 マニュアルを Golem 自身で組むのは、配布する PDF をそのまま組版の見本にし、一冊の本の分量の原稿を毎回組むことを回帰の検査にするためである。
-二つの原稿の対応は、見出し（`#` から `###` まで）の階層と文字列で照合する（`scripts/manual/check-headings.sh`）。
-`manual/` の見出しは、Golem の記法を外したテキストで比べる。
-本文の段落の単位では照合しない。
+二つのマニュアルの体裁は、次の点をそろえる。
 
-マニュアルに書くのは、採択して実装を終えた仕様のうち、使い手から見える振る舞いだけである。
-「今後の実装項目」に残っている事項、提案の ADR、未決事項は書かない。
-読み手は Golem で本を作る人（著者、編集者、組版の担当者）なので、敬体で書き、ADR の番号、モジュールの名前、内部の処理の段階や型の名前を本文に出さない。
+- 前付けは、番号のない「はじめに」（`@nonumber`、目次に載せる）、目次の順に置く。ノンブルは「はじめに」から通しで振る。
+- 索引は、`[index]` の `columns` で二段に組む（[docs/adr/0025](adr/0025-index-columns.md)）。
+- コードブロックは組み込みの段落スタイル `code` に背景の色を付けて組み、本文の中のコードは `[code: ...]` で書く。書体の役割 `code` は、欧文が Source Code Pro、和文が Noto Sans JP の Regular である（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
+- 奥付に、版と、組んだコミットのハッシュを載せる。
 
-ADR を実装して使い手から見える振る舞いが変わるプルリクエストでは、同じプルリクエストで docs/manual.md と `manual/` も直す。
-`scripts/manual/check-updated.sh` は、ブランチの分岐点からの変更が docs/markup.md か docs/specifications.md を含み、docs/manual.md を含まないときに失敗する。
-範囲のコミットのどれかのメッセージに `Manual: unchanged` のトレーラーがあれば通す。
+奥付の値は、`scripts/manual/build-info.sh PROJECT` が組む前に `PROJECT/common/build-info.gm` に書き、奥付が `@import` で読む。
+`edition` は、組むコミットに `v` で始まるタグがあればそのタグ、なければ `VERSION` の内容に「の開発版」を続けた文字列である。
+`commit` は `git rev-parse HEAD` の 40 桁のハッシュで、追跡しているファイルにコミットしていない変更があれば「（コミットしていない変更を含む）」を続ける。
+環境変数 `GOLEM_MANUAL_COMMIT` と `GOLEM_MANUAL_TAG` があれば、git を読まずにその値を使う。
+どちらもなく、ハッシュを読めない場合は、終了コード 1 で終わり、ファイルを書かない。
+`build-info.gm` は生成物であり、Git で管理しない。
+これがないまま `golem check` や LSP でマニュアルを開くと G0302 になるので、編集する前に一度 `build-info.sh` を実行する。
+奥付のハッシュも入力の一部なので、マニュアルの出力は内容を変えていないコミットでも奥付の分だけ変わる。
+決定性の検査は同じコミットを二つの機械で組んで比べるので、この影響を受けない。
+
+`scripts/manual/build.sh [manual|manual-dev]...`（省くと両方）は、プロジェクトごとに `build-info.sh` を呼び、`scripts/manual/fetch-fonts.sh` でフォントを取得し（あれば検査だけ）、`golem build --target pdf --target html` で組む。
+エラー、警告、お知らせのどれか一つでも出れば失敗とする。
+マニフェストに `silence-notices` があれば、組む前に失敗とする。
+`--no-notices` は付けない。
+書体（Noto Serif JP、Noto Sans JP の Regular と Bold、Source Serif 4、Source Sans 3 の Bold、Source Code Pro。どれも SIL Open Font License 1.1）はリポジトリに入れず、`fetch-fonts.sh` が版を固定した URL から取得し、SHA-256 を検査して各プロジェクトの `fonts/` に置く。
+
+`scripts/manual/check-updated.sh` は、ブランチの分岐点からの変更を次の規則で検査する。
+
+1. docs/markup.md か docs/specifications.md を変えたら、`manual/` か `manual-dev/` の下のどれかのファイルを変えていなければならない。
+2. CONTRIBUTING.md か CONTRIBUTING.en.md を変えたら、`manual-dev/` の下のどれかのファイルを変えていなければならない。
+3. どちらの規則も、範囲のコミットのどれかのメッセージに `Manual: unchanged` のトレーラーがあれば通す。
+
+各モジュールの仕様書と ADR の変更は検査しない。
 Git の `pre-push` のフック（`origin/main` からの分岐点で検査する）と、`docs.yml` の `manual` ジョブ（プルリクエストのとき）が、このスクリプトを走らせる。
 
-CI の `build` ジョブは、テストの後に見出しを照合し、`scripts/manual/build.sh` で `manual/` を組む。
-診断が一つでも出れば失敗とする。
+CI の `build` ジョブは、テストの後に `scripts/manual/build.sh` で二つのマニュアルを組み、x86-64 のジョブで成果物 `manual` と `manual-dev` を上げる。
 組んだ PDF と HTML のハッシュは `scripts/determinism.sh` の出力に入り、x86-64 と aarch64 で同じバイト列になることを `determinism` ジョブが確かめる。
-docs/manual.md は、ビルドが読む文書の一覧（`scripts/ci/needs-build.sh`）に入っている。
-書体（Noto Serif JP、Noto Sans JP の Bold、Source Serif 4、Source Sans 3 の Bold。どれも SIL Open Font License 1.1）はリポジトリに入れず、`scripts/manual/fetch-fonts.sh` が版を固定した URL から取得し、SHA-256 を検査して `manual/fonts/` に置く。
+docs/manual-policy.md は Golem の振る舞いを定めないので、ビルドが読む文書の一覧（`scripts/ci/needs-build.sh`）に入れない。
+`manual/` と `manual-dev/` は docs/ の外にあるので、その変更はビルドを走らせる。
 
-リリースのワークフローは、そのリリースの x86-64 の Linux の配布物で `manual/` を組み、`golem-manual-<タグ>.pdf` と `golem-manual-<タグ>-html.tar.gz` をリリースの資産と `SHA256SUMS` に加える。
+リリースのワークフローは、そのリリースの x86-64 の Linux の配布物で、`GOLEM_MANUAL_TAG` にタグを渡して二つのマニュアルを組み、`golem-manual-<タグ>.pdf`、`golem-manual-<タグ>-html.tar.gz`、`golem-dev-manual-<タグ>.pdf`、`golem-dev-manual-<タグ>-html.tar.gz` をリリースの資産と `SHA256SUMS` に加える。
 
 ## 開発順序
 
@@ -1833,7 +1858,6 @@ v1 のリリースまでに、次の項目を扱う。
 - **PDF のコードブロックの技術書の機能**：コードの書体の役割、コードブロックの組み方（空白とタブの保持、折り返し、背景）、本文の中のコードの組み方は[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)で実装した。技術書で使うコードブロックの機能は、まだない。行番号（開始の番号の指定を含む）、ファイル名やキャプション、特定の行の強調、コードの中の注釈の印（①のような印を行末に置き、本文で説明するもの）、差分の表示（追加と削除の行）、PDF での構文に応じた色分け、枠、折り返した印、改ページした部分の続きの表示、`@listing` で取り込んだファイルへの同じ指定を含む。本文の中のコード（`[code: ...]`）の背景の色も扱っていない。記法、`style.toml` の設定、HTML と EPUB での表し方は ADR で決める。
 - **脚注の印**：PDF の脚注の印（`*1`）の幅を半角に固定しているので、印が次の字と重なる。ページの下の注の本文にも番号が付かない。
 - **PDF の圏点**：圏点の `shape` を PDF で使わず、常に `﹅` で描く。横組みでは圏点が右にずれ、字の上端に重なる。
-- **PDF の脚注の番号の衝突**：PDF の脚注が、別のファイルの同じ番号の注とぶつかる。あるファイルの注 1 の位置に、別のファイルの注 1 の本文が組まれる。マニュアルの付録の注で見つかった。
 - **GPOS の配置のずらし**：PDF の描画は、HarfBuzz が返す配置のずらし（GPOS の x と y のオフセット）を使わない。`palt` や `vpal` で送りは縮むが、字は縮んだ箱の中で少しずれて置かれる。役割の `features` に `palt` を書いた場合も同じである。
 - **二倍ダッシュのカーニング**：`——` はペアカーニングを止める約物の一覧（[docs/adr/0020](adr/0020-indesign-character-features.md)）に入っていないので、`kerning = "metrics"` でフォントのカーニングがかかる。蟹工船の縦組みでは 319 か所に −0.088em かかる。
 - **ルビの親文字の中の文字スタイル**：PDF は、ルビの親文字の中の文字スタイルを描き分けない（golem-layout の `rubyPieces` が親文字の中のスタイルを平らにする）。手で書いた `[style]` も、親文字の一部に一致した正規表現スタイル（[docs/adr/0015](adr/0015-regex-styles.md)）も、HTML では効くが PDF では見た目が変わらない。

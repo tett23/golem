@@ -2,9 +2,8 @@
 # 原稿の記法
 
 原稿は、拡張子が [code: .gm] のテキストのファイルに書きます。
-文字コードは UTF-8 で保存します。
-UTF-8 は、いまのテキストエディタの多くが標準で使う文字コードです。
-改行の文字は、Windows の CRLF ではなく LF にします。
+文字コードは UTF-8、改行は LF で保存し、BOM を付けません。
+この決まりの理由は「[ref-title text-files]」（[ref-page text-files] ページ）で説明しました。
 
 Golem の記法は二つの層に分かれます。
 行頭の記号（[code: #]、[code: -]、[code: @] など）は、見出しやリストのような、行のまとまり（ブロック）を表します。
@@ -56,7 +55,7 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 本文の [code: \\] を行末に置くときは、[code: \\\\] と書きます。
 
 和文の原稿には、一行を一つの段落として書く書き方もあります。
-[code: manifest.toml] の [code: \[source\]] に [code: paragraph-separator = "line"] と書くと、改行ひとつで段落を区切る書き方になります（[ref-number source-settings]「[ref-title source-settings]」）。
+[code: manifest.toml] の [code: \[source\]] に [code: paragraph-separator = "line"] と書くと、改行ひとつで段落を区切る書き方になります（「[ref-title source-settings]」、[ref-page source-settings] ページ）。
 
 ## 見出し
 
@@ -70,7 +69,7 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 ```
 
 番号は自動で振られます。
-「第 1 章」とするか「1.」とするかは、[code: style.toml] で決めます（[ref-number heading-style]「[ref-title heading-style]」）。
+「第 1 章」とするか「1.」とするかは、[code: style.toml] で決めます（「[ref-title heading-style]」、[ref-page heading-style] ページ）。
 原稿の見出しには、番号を書かないでください。
 
 見出しの直前の行にブロックコマンドを書くと、見出しの扱いを変えられます。
@@ -163,18 +162,20 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 
 この段落の[kenten: ここ]には圏点[index reading=けんてん: 圏点]を打ち、[color accent: ここ]には色を付けています。
 
-強調をどの書体で表すかは、[code: style.toml] の文字スタイル[index reading=もじすたいる: 文字スタイル]で決めます（[ref-number styles]「[ref-title styles]」）。
+強調をどの書体で表すかは、[code: style.toml] の文字スタイル[index reading=もじすたいる: 文字スタイル]で決めます。
+文字スタイルは、InDesign の文字スタイルに当たります（違いは「[ref-title styles]」、[ref-page styles] ページ）。
 原稿には「強調する」ことだけを書き、「ゴシック体にする」とは書かないのが基本です。
 後で体裁を変えたくなったときに、原稿に手を入れずに済みます。
 
-文字に色を付けるときは、[code: style.toml] で名前を付けた色（スウォッチ）を指定します。
+文字に色を付けるときは、[code: style.toml] で名前を付けた色（InDesign のスウォッチに当たります）を指定します（「[ref-title colors]」、[ref-page colors] ページ）。
 
 ```
 [color accent: 色を付ける語]
 ```
 
 自分で定義した文字スタイルは、[code: \[style 名前: ...\]] で使います。
-このマニュアルでは、コマンドやファイルの名前を、文字スタイル [code: code] で色を付けて組んでいます。
+コマンドやファイルの名前は、[code: \[code: ...\]] で書きます（「[ref-title code-blocks]」、[ref-page code-blocks] ページ）。
+このマニュアルは、組み込みの文字スタイル [code: code] に色を足して、それらの名前を組んでいます。
 
 縦組みの本では、[code: \[tcy: !?\]] のように書くと、短い文字列を横に並べて一字分の幅に組みます（縦中横）。
 
@@ -197,7 +198,7 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 この節の見出しの「振り仮名」にも、三つめの書き方で読みを付けています。
 
 読みが親文字より長いときは、前後の仮名に読みを少しかけて、親文字の字間が空きすぎないようにします。
-かけ方は [code: style.toml] で変えられます（[ref-number composition]「[ref-title composition]」）。
+かけ方は [code: style.toml] で変えられます（「[ref-title composition]」、[ref-page composition] ページ）。
 
 ## 数と式
 
@@ -290,14 +291,14 @@ HTML と EPUB では同じ幅の余白になります。
 段落の中に [code: \[note: 注の本文\]] と書くと、その位置に注の番号が付き、本文はページの下（脚注[index reading=きゃくちゅう: 脚注]）に組まれます。
 
 ```
-本文の文。[note: 注の本文です。]
+本文の文[note: 注の本文です。]。
 ```
 
 注の本文には、段落の中の要素（ルビや強調）を使えます。
 段落を分けることはできません。
 注の番号は、ファイルごとに 1 から振ります。
-注をページの下ではなく章の終わりにまとめるときは、[code: style.toml] の [code: \[notes\]] で指定します。
-この段落の終わりにも、注を一つ付けています。[note: この注は、ページの下に組まれています。HTML では章の終わりにまとめて置き、本文の番号と相互にリンクします。]
+PDF では注をページの下に、HTML とプレーンテキストでは章の終わりにまとめて置きます。
+この段落の終わりにも、注を一つ付けています[note: この注は、ページの下に組まれています。HTML では章の終わりにまとめて置き、本文の番号と相互にリンクします。]。
 
 横組みの本では、本文の脇の余白に置く傍注[index reading=ぼうちゅう: 傍注]も使えます。
 
@@ -307,7 +308,7 @@ HTML と EPUB では同じ幅の余白になります。
 
 PDF では、傍注は版面の外の傍注欄に、注の印のある行と同じ高さで組まれます。[sidenote: この傍注のように組まれます。]
 出典は脚注に、用語の補足は傍注に、という使い分けができます。
-傍注を使うには、[code: style.toml] に傍注欄の設定（[code: \[sidenotes\]]）が要ります（[ref-number notes-style]「[ref-title notes-style]」）。
+傍注を使うには、[code: style.toml] に傍注欄の設定（[code: \[sidenotes\]]）が要ります（「[ref-title notes-style]」、[ref-page notes-style] ページ）。
 傍注は縦組みでは使えません。
 
 @label tables
@@ -347,6 +348,7 @@ CSV の一行目が見出しの行になります。
 
 PDF では、表は本文の行に合わせて組み、ページをまたぐ表は次のページの先頭に見出しの行を繰り返します。
 
+@label code-blocks
 ## コードと外部のファイル
 
 プログラムや設定のように、書いたとおりに組みたいテキストは、コードブロックにします。
@@ -362,7 +364,7 @@ PDF では、行頭と行の途中の空白をそのまま残し、タブは空�
 両端揃えにせず、語をハイフンで分けず、和文と欧文のあいだも空けません。
 版面に収まらない長い行は折り返し、続きを元の行の字下げより空白二つ分深い位置から始めます。
 折り返したときは、お知らせ G0730 で知らせます。
-書体は「スタイルの設定」の章の「書体」で、大きさと背景の色は付録C の段落スタイル [code: code] で決めます。
+書体は役割 [code: code] で（「[ref-title fonts]」、[ref-page fonts] ページ）、大きさと背景の色は段落スタイル [code: code] で決めます（「[ref-title styles]」、[ref-page styles] ページ）。
 
 本文の中のファイル名やコマンドは、[code: \[code: manifest.toml\]] のように [code: \[code: ...\]] で書きます。
 PDF では、語の途中で分けず、行は空白と [code: /] の後でだけ改めます。
@@ -394,7 +396,7 @@ PDF では、語の途中で分けず、行は空白と [code: /] の後でだ�
 画像の形式は PNG、JPEG、PDF です。
 PDF の画像は HTML と EPUB では表示できないので、[code: web=images/arch.png] のように画面用の画像も指定します。
 
-画像のパスは、プロジェクトのディレクトリからの相対パスで書きます。
+画像のパスは、プロジェクトのフォルダからのパスで書きます（「[ref-title folders]」、[ref-page folders] ページ）。
 [code: @table] と [code: @listing] のファイルも同じです。
 絶対パス、URL、プロジェクトの外を指すパスは使えず、エラー（G0260）になります。
 
@@ -466,7 +468,7 @@ HTML と EPUB の目次は、見出しへのリンクの一覧になります。
 読みを省くとエラーになります。
 並べ方は、日本語の文字列の照合の規格 JIS X 4061 [cite jisx4061] に基づいています。
 
-参考文献[index reading=さんこうぶんけん: 参考文献]は、文献のデータを CSL-JSON の形式のファイルに書き、[code: manifest.toml] の [code: bibliography] に並べます（[ref-number bibliography-data]「[ref-title bibliography-data]」）。
+参考文献[index reading=さんこうぶんけん: 参考文献]は、文献のデータを CSL-JSON の形式のファイルに書き、[code: manifest.toml] の [code: bibliography] に並べます（「[ref-title bibliography-data]」、[ref-page bibliography-data] ページ）。
 CSL-JSON は、多くの文献管理のソフトウェアが書き出せる形式です。
 本文では [code: \[cite キー\]] で引用し、[code: @bibliography] を書いた位置に、引用した文献だけの一覧が組まれます。
 引用の位置には、一覧の中の番号が「\[1]」のように入ります。
@@ -477,7 +479,9 @@ CSL-JSON は、多くの文献管理のソフトウェアが書き出せる形�
 ## 段落スタイルと韻文
 
 段落の体裁を変えるときは、段落スタイルを付けます。
-段落スタイル[index reading=だんらくすたいる: 段落スタイル]は [code: style.toml] で定義し（[ref-number styles]「[ref-title styles]」）、原稿では段落の直前の行に [code: @style 名前] と書きます。
+段落スタイル[index reading=だんらくすたいる: 段落スタイル]は、InDesign の段落スタイルに当たります。
+[code: style.toml] で定義し、原稿では段落の直前の行に [code: @style 名前] と書きます。
+InDesign と違い、段落スタイルは行送りを持たず、本文はどの段落スタイルでも版面の行の格子に載ります（「[ref-title styles]」、[ref-page styles] ページ）。
 
 ```
 @style memo
@@ -555,7 +559,7 @@ HTML と EPUB では、改ページの後の段落や見出しが次のページ
 ```
 
 [code: \%%=] で始めると、校正のためのコメントになります。
-校正のためのコメントは、ふだん組むときは紙面に出ますが、出荷する本として組むとき（[code: --profile prod]）に残っていると警告になります（[ref-number profiles]「[ref-title profiles]」）。
+校正のためのコメントは、ふだん組むときは紙面に出ますが、出荷する本として組むとき（[code: --profile prod]）に残っていると警告になります（「[ref-title profiles]」、[ref-page profiles] ページ）。
 コメントは空行を越えられません。
 
 記法に使う文字を本文の文字として書くときは、前にバックスラッシュ [code: \\] を置きます。

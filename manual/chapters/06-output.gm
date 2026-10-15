@@ -1,8 +1,14 @@
+@label output
 # 出力
 
 Golem は、一つの原稿から PDF、HTML、EPUB、プレーンテキストの四つを作ります。
+InDesign で言えば書き出し[index reading=かきだし: 書き出し]に当たる作業で、[code: golem build] のコマンドがそれを行います。
+InDesign の書き出しと違い、形式ごとの設定を書き出すたびに選ぶことはありません。
+設定はすべて [code: manifest.toml] と [code: style.toml] に書いてあり、同じコマンドで同じ設定から四つの形式を作ります。
+入稿用のトンボのように、同じ原稿から作り分けたいものだけを、コマンドのオプションで選びます。
+
 四つの形式は、見た目までは同じになりません。
-本文、見出し、注、図版といった中身はどの形式でも同じで、ページ番号や柱のようにページがあって初めて決まるものは、形式ごとに表し方が変わります。
+本文、見出し、注、図版といった中身はどの形式でも同じで、ページ番号や柱のようにページがあって初めて決まるものは、形式ごとに表し方が変わります[note: 仕様書の「成果物」の節の「媒体契約」。[code: https://github.com/tett23/golem/blob/main/docs/specifications.md]]。
 
 ## PDF
 
@@ -10,24 +16,59 @@ Golem は、一つの原稿から PDF、HTML、EPUB、プレーンテキスト�
 golem build --target pdf
 ```
 
-PDF は [code: build/pdf/] に書かれます。
+PDF は [code: build/pdf/] のフォルダに書かれます。
 ファイルの名前は、[code: manifest.toml] の [code: id] から作ります。
 
-PDF は、印刷用の規格 PDF/X-4 に合わせて書きます。
-書体は、使った文字だけを含む形で埋め込みます。
+書体は、使った文字だけを含む形（サブセット）で埋め込みます。
+埋め込みを許さない書体を使うと、エラーになります（「[ref-title fonts]」、[ref-page fonts] ページ）。
+色は、[code: style.toml] のスウォッチの CMYK の値をそのまま書き、RGB への変換も特色も使いません。
 写真などの画像は、色を変換せず、画像の色の情報（ICC プロファイル）を付けたまま埋め込みます。
-色の情報のない RGB の画像は、sRGB の画像として扱います。
+色の情報を持たない RGB の画像は、sRGB の画像として扱い、sRGB のプロファイルを付けます。
+印刷用の色への変換は、印刷所の出力の機械（RIP）に任せる形です。
+印刷所が CMYK の画像での入稿を求めているときは、画像を前もって CMYK に変換しておいてください。
 
-PDF/X-4 に合っているかは Golem 自身でも確かめていますが、印刷所に入稿する前には、Acrobat などのプリフライトの機能で確認してください。
+@label pdf-x4
+## PDF/X-4 と出力インテント
+
+入稿用の PDF には、PDF/X の規格に従ったファイルを求める印刷所が多くあります。
+PDF/X は、印刷に要るものをすべてファイルの中に持ち、印刷に要らないもの（JavaScript や外部のファイルへの参照）を持たないことを定めた、PDF の約束事の集まりです。
+Golem が書くのは、そのうちの PDF/X-4 です[note: ISO 15930-7:2010（PDF/X-4）。規格の本文は有償です。[code: https://www.iso.org/standard/55843.html]]。
+PDF/X-4 は PDF 1.6 を元にし、透明を平坦化せずにそのまま持てる版です。
+
+PDF/X が求めるものの一つに、出力インテント[index reading=しゅつりょくいんてんと: 出力インテント]があります。
+出力インテントは、その PDF をどの印刷の条件で刷る前提で作ったかを示す情報で、印刷の条件を記した ICC プロファイル[index reading=あいしーしーぷろふぁいる: ICC プロファイル]を PDF の中に埋め込んで表します。
+ICC プロファイルは、ある機械や印刷の条件で、色の値がどの色として再現されるかを記したファイルで、形式は ICC.1 の仕様が定めています[note: ICC.1:2022（ICC プロファイルの仕様）。[code: https://www.color.org/specification/ICC.1-2022-05.pdf]]。
+日本の枚葉のオフセット印刷でコート紙に刷る場合は、Japan Color 2001 Coated がよく使われます[note: Japan Color（日本印刷産業機械工業会の Japan Color 認証制度の案内）。[code: https://japancolor.jp/]]。
+
+出力インテントは、[code: style.toml] の [code: \[color\]] の [code: intent] に、ICC プロファイルのファイルのパスを書いて指定します。
+
+```toml
+[color]
+intent = "icc/JapanColor2001Coated.icc"
+```
+
+ICC プロファイルのファイルは Golem に含まれていません。
+印刷所から指定されたものを入手し、書体と同じくプロジェクトの中に置きます。
+ファイルがないと、PDF を組むときにエラー（G0806）になり、PDF を書きません。
+
+[strong: [code: intent] を書かないと、PDF は PDF/X-4 の形になりません。]
+Golem は、[code: intent] があるときにだけ、出力インテントと、PDF/X-4 であることを示すメタデータ（XMP）を PDF に書きます。
+画面で読むための PDF なら [code: intent] は要りませんが、入稿用の PDF には必ず書いてください。
+このマニュアルの PDF は画面で読むためのものなので、[code: intent] を書いていません。
+
+出力インテントを書いても、スウォッチの CMYK の値は変わりません。
+Golem は、スウォッチの値を、出力インテントの印刷の条件で刷るための値として、そのまま PDF に書きます。
+
+[strong: Golem は、自分の書いた PDF が PDF/X-4 に適合しているかを判定できません。]
+Golem の開発では、PDF/X-4 の要件のうち Golem が書く要素（出力インテント、XMP、各ページの仕上がりの寸法の指定、書体の埋め込み、暗号化や JavaScript がないこと）を自動のテストで確かめ、PDF の構造を qpdf という道具で検査しています[note: 仕様書の「成果物」の節。[code: https://github.com/tett23/golem/blob/main/docs/specifications.md]]。
+しかし、PDF/X-4 への適合を判定できる自由に使える検証の道具はなく、規格の要件のすべてを確かめているわけではありません。
+入稿の前には、Acrobat のプリフライトのような商用の道具で PDF/X-4 として検査し、印刷所の指示にも合っているかを確かめてください。
 
 @label print-pdf
-## 入稿用の PDF
+## 塗り足しとトンボ
 
 日本の印刷所に入稿する PDF には、塗り足し[index reading=ぬりたし: 塗り足し]とトンボ[index reading=とんぼ: トンボ]を付けます。
-塗り足しは、仕上がりの寸法の外側に設ける領域で、断裁がずれても紙の端に白い筋が出ないようにするためのものです。
-トンボは、断裁の位置を示すために、仕上がりの寸法の外側に描く線です。
-
-塗り足しの幅は、[code: style.toml] の [code: \[page\]] に書きます。
+塗り足しの幅は、[code: style.toml] の [code: \[page\]] の [code: bleed] に書きます。
 日本の印刷所では 3mm が多く使われます。
 
 ```toml
@@ -38,7 +79,12 @@ writing-mode = "vertical"
 bleed = "3mm"
 ```
 
-トンボは、[code: golem build] の [code: --marks] で付けます。
+[code: bleed] を書くと、PDF のページは仕上がりの寸法の外側に塗り足しの幅だけ広がります。
+PDF の中では、仕上がりの寸法を TrimBox、塗り足しを含めた寸法を BleedBox という名前の枠で記録し、印刷所の機械はこの枠を読んで断裁の位置を知ります。
+今の Golem は仕上がりの寸法の外側に何も描かないので、塗り足しの領域は空のままです。
+ページの端まで伸ばす図版は置けません。
+
+トンボは、[code: style.toml] ではなく、[code: golem build] の [code: --marks] のオプションで付けます。
 
 ```sh
 golem build --target pdf --marks japanese
@@ -48,8 +94,16 @@ golem build --target pdf --marks japanese
 - [code: --marks western]：欧文の一重のトンボを付けます。
 - [code: --marks none]：トンボを付けません。既定はこれです。
 
-日本式のトンボは、塗り足しの幅を二本の線の間隔で示すので、[code: bleed] を書いていないとエラーになります。
-画面で読むための PDF と入稿用の PDF は、同じ原稿から [code: --marks] を変えて作り分けます。
+トンボをファイルではなくオプションで選ぶのは、画面で読むための PDF と入稿用の PDF を、同じ原稿と同じ設定から作り分けるためです。
+トンボの線は太さ 0.25pt、長さ 10mm で、どの版にも出るレジストレーションの色で描きます。
+トンボを付けた PDF は、トンボの分だけページが仕上がりの寸法より大きくなります。
+日本式のトンボは、塗り足しの幅を二本の線の間隔で示すので、[code: bleed] を書いていないとエラー（G0702）になります。
+
+入稿用の PDF を作る手順をまとめると、次のようになります。
+
++ [code: style.toml] の [code: \[page\]] に [code: bleed] を、[code: \[color\]] に [code: intent] を書く。
++ [code: --marks japanese] と [code: --profile prod] を付けて PDF を組む（[code: --profile prod] は「[ref-title profiles]」、[ref-page profiles] ページ）。
++ 組んだ PDF を商用のプリフライトで検査する。
 
 @label fig-crop-marks
 @figure images/crop-marks.png alt="golem new で作った本に、塗り足しと日本式のトンボを付けたページ" wrap=end width=12zw
@@ -65,16 +119,24 @@ golem build --target html
 
 HTML は [code: build/html/] に、原稿のファイルごとに一つずつ書かれます。
 [code: index.xhtml] が入り口です。
-書体のファイルとスタイルシートも同じディレクトリに置くので、ディレクトリごと Web サーバーに置けば、そのまま読めます。
+書き方は、HTML Living Standard の XML の書き方（XHTML）です[note: HTML Living Standard。[code: https://html.spec.whatwg.org/multipage/]]。
+EPUB の本文も XHTML でなければならないので、HTML と EPUB で同じ本文を使えるように、HTML も XHTML で書きます。
+書体のファイルとスタイルシートも同じフォルダに置くので、フォルダごと Web サーバーに置けば、そのまま読めます。
+書体のファイルを同梱するので、HTML を公開すると書体のファイルも配ることになります。
+書体のライセンスが配布を許しているかを確かめてください（「[ref-title fonts]」、[ref-page fonts] ページ）。
 
 HTML は、画面の幅に合わせて文章を流し込む形式なので、版面、柱、ノンブルはありません。
 [code: style.toml] からは、書体、文字スタイル、段落スタイル、色、番号の書式を使います。
+色は、印刷用の CMYK の値を画面の色に近づけたものです。
+行の分け方、禁則、和文と欧文のあいだの空きは、ブラウザーが CSS の規則で組みます[note: CSS Text Module Level 3。[code: https://www.w3.org/TR/css-text-3/]]。
+アキ量のセットやぶら下げ組のような PDF の細かな組み方は、HTML には移りません。
 脚注は章の終わりにまとめ、本文の番号と相互にリンクします。
 傍注は、画面が広ければ余白に、狭ければ段落の直後に置きます。
 コードブロックは、言語の名前を書いていれば構文に応じて色分けします。
 
 HTML の見た目を、スタイルシートを直接書いて変える方法はありません。
 見た目は [code: style.toml] で決め、PDF と同じ設定から作ります。
+スタイルシートを書けると、PDF と HTML で中身が食い違う抜け道になるからです。
 
 ## EPUB
 
@@ -83,9 +145,19 @@ golem build --target epub
 ```
 
 EPUB は [code: build/epub/book.epub] に書かれます。
+形式は EPUB 3.3 に従います[note: EPUB 3.3。[code: https://www.w3.org/TR/epub-33/]]。
+Golem の開発では、組んだ EPUB を、EPUB の検証の道具 epubcheck にかけ、エラーと警告が出ないことを確かめています。
+
+本文は HTML と同じ XHTML で、端末やアプリの画面の大きさに合わせて流し込むリフローの EPUB になります。
+固定レイアウトの EPUB は作れません。
+目次（EPUB のナビゲーション文書）は、[code: @toc] があってもなくても必ず作ります。
+縦組みの本は、ページを右から左へめくる向きにします。
 脚注は、電子書籍の端末でポップアップとして表示される形で書きます。
 傍注は、段落の直後に置きます。
+書体のファイルは、HTML と同じく EPUB の中に同梱し、難読化はしません。
+
 本の識別子には、[code: \[targets.epub\]] に電子版の ISBN を書いていればそれを、なければ [code: manifest.toml] の [code: id] を使います。
+書名、著者、発行者、言語は [code: \[metadata\]] から書き込みます（「[ref-title metadata]」、[ref-page metadata] ページ）。
 
 ## プレーンテキスト
 
@@ -101,18 +173,24 @@ golem build --target text
 ルビは「組版（くみはん）」のように親文字の後に括弧で書き、注は章の終わりにまとめます。
 索引は出力しません。
 
+@label same-output
 ## 同じ原稿から同じ出力
 
-Golem は、同じ入力から、いつでも中身が一バイトも違わない同じファイルを出力します。[index reading=おなじげんこうからおなじしゅつりょく: 同じ原稿から同じ出力]
-入力とは、原稿、[code: manifest.toml]、[code: style.toml]、画像、書体のファイル、プラグイン、[code: --marks] と [code: --profile] の指定、それに Golem 自身の版です。
+Golem は、同じ入力から、いつでも、どの機械でも、中身が一バイトも違わない同じファイルを出力します。[index reading=おなじげんこうからおなじしゅつりょく: 同じ原稿から同じ出力]
+この性質を決定性[index reading=けっていせい: 決定性]と呼びます。
+入力とは、原稿、[code: manifest.toml]、[code: style.toml]、画像、書体のファイル、ICC プロファイル、プラグイン、[code: --marks] と [code: --profile] の指定、それに Golem 自身の版です。
 
-組んだ日時は、出力に入りません。
+決定性を保つために、Golem は出力が機械や時刻に左右される入力を読みません。
+機械に入っている書体を探さないのは、そのためです（「[ref-title fonts]」、[ref-page fonts] ページ）。
+組んだ日時も、出力に入りません。
 PDF の作成日などには、[code: manifest.toml] の [code: date] を書き込みます。
 組むたびに日時が変わると、紙面が同じでも PDF のファイルの中身が変わってしまうからです。
 
 この性質があると、原稿や設定を変えたときに、変わったページだけを見つけられます。
-原稿を変えるたびに自動で組み直す仕組み（CI）で毎回組み、前の版の PDF とページの画像を比べれば、崩れたページだけが差分として残ります。
+前の版の PDF と新しい PDF をページの画像にして比べると、中身の変わらないページは画像も同じになるので、違いが出たページだけを見ればよくなります。
+原稿を変えるたびに自動で組み直して確かめる方法は、第[ref-number git-ci]章の「[ref-title ci-determinism]」（[ref-page ci-determinism] ページ）で説明します。
 
 同じ出力を保証しているのは、PDF、HTML、プレーンテキストです。
-EPUB は、中にまとめるファイルの記録の仕方をまだ決めていないので、同じ中身になることを保証していません。
+EPUB は、中にまとめるファイルの記録の仕方（日時と順序）をまだ決めていないので、同じ中身になることを保証していません。
 Golem の版を上げると、同じ原稿からでも出力は変わることがあります。
+版は入力の一部だからです。

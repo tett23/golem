@@ -9,13 +9,14 @@
 # The documents under docs/ that the build or the tests read are not docs
 # only: a change of one of them needs the build (docs/adr/0021). docs-refs.sh
 # checks that the list has every document that the code names.
-# docs/manual.md is the source of the manual: the build job checks its
-# headings against manual/ (docs/adr/0022).
+# The manuals are built from manual/ and manual-dev/, outside docs/; the
+# policy of the manuals (manual-policy.md under docs/) is docs only
+# (docs/adr/0024).
 #
 #   needs-build.sh < paths
 #   needs-build.sh --list     the documents that the build reads
 set -eu
-BUILD_DOCS="docs/diagnostics.md docs/manual.md"
+BUILD_DOCS="docs/diagnostics.md"
 if [ "${1-}" = --list ]; then
   printf '%s\n' $BUILD_DOCS
   exit 0

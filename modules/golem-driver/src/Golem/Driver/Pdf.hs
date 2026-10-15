@@ -60,6 +60,7 @@ import Control.Applicative ((<|>))
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Exception (evaluate)
 import Control.Monad (join)
+import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii)
@@ -1109,6 +1110,10 @@ inherited through based-on; Nothing is body.
 akiSetOf :: Style -> Maybe Text -> AkiSet
 akiSetOf style st = resolveAkiSet (stAkiSets style) (fromMaybe defaultAkiSetName (paraStyle style st >>= psAkiSet))
 
+-- | Larger than the number of notes of any file (see noteKey).
+noteKeyBase :: Int
+noteKeyBase = 1000000
+
 {- | The placement of ruby from [composition.ruby] (golem-layout ADR
 0009); @zw@ is the size of the paragraph.
 -}
@@ -1540,6 +1545,11 @@ buildFlow inp geom fonts images assumed = do
   tables <- Map.fromList <$> mapper (\(i, st, aligns, h, rows) -> let r = composeTable st aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) tableUnits
   -- 3. number the lines in document order
   let label u = maybe [] pure (uLabel u)
+      -- the key of a footnote in the book: its number counts in its file,
+      -- so the line of its marker tells it from a note of another file
+      -- with the same number
+      noteKey lid n = lid * noteKeyBase + n
+      noteKeys lid = map (first (noteKey lid))
       -- the lines of a paragraph-like unit from an id; indent of line k
       numbered nextId u c indentOf =
         let ls = cLines c
@@ -1550,8 +1560,8 @@ buildFlow inp geom fonts images assumed = do
             noteLines = Map.fromListWith (<>) [(lineOfItem (i + cShift c), [(n, nls)]) | (AnchorNote i n _, (_, nls)) <- zip [a | a@AnchorNote {} <- cAnchors c] (cNotes c)]
             sidenoteLinesOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [(sp, sls)]) | (i, sp, sls) <- cSidenotes c]
             marksOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [sp]) | (i, sp) <- cMarks c]
-            boxes = [LineBox lid [NoteBody n (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) | (k, lid) <- zip [0 ..] ids]
-            set = Map.fromList [(lid, SetLine l size (indentOf k) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
+            boxes = [LineBox lid [NoteBody (noteKey lid n) (length nls) | (n, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) | (k, lid) <- zip [0 ..] ids]
+            set = Map.fromList [(lid, SetLine l size (indentOf k) (noteKeys lid (Map.findWithDefault [] k noteLines)) (Map.findWithDefault [] k sidenoteLinesOf)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
          in (boxes, set)
       emptyLine = Line [] 0 0 0 (0, 0) False (0, 0)
       mm sp = let tenths = round (toRational sp * 254 / (72 * 65536)) :: Integer in T.pack (show (tenths `div` 10) <> "." <> show (tenths `mod` 10))
@@ -1566,8 +1576,8 @@ buildFlow inp geom fonts images assumed = do
                 let heights = stHeaderLines t : stRowLines t
                     starts = scanl (+) nextId heights
                     rowsOut =
-                      [ ( [LineBox lid [NoteBody n (length nls) | (n, nls) <- ns] (if lid == nextId then label u else []) ms | (lid, (ns, _, ms)) <- zip ids att],
-                          Map.fromList [(lid, SetLine emptyLine fs 0 ns sn) | (lid, (ns, sn, _)) <- zip ids att],
+                      [ ( [LineBox lid [NoteBody (noteKey lid n) (length nls) | (n, nls) <- ns] (if lid == nextId then label u else []) ms | (lid, (ns, _, ms)) <- zip ids att],
+                          Map.fromList [(lid, SetLine emptyLine fs 0 (noteKeys lid ns) sn) | (lid, (ns, sn, _)) <- zip ids att],
                           Map.fromList [(lid, [SetLine l fs (scOffset c + sh) [] [] | c <- cells, (j, (l, sh)) <- zip [0 :: Int ..] (zip (scLines c) (scShifts c)), j == k]) | (k, lid) <- zip [0 ..] ids]
                         )
                       | (start, h, cells, att) <- zip4 starts heights (stHeader t : stRows t) atts,

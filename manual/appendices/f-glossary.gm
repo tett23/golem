@@ -1,0 +1,241 @@
+@nonumber
+@label app-glossary
+# 付録F 用語の一覧
+
+このマニュアルで使う言葉のうち、DTP の現場ではあまり使わないものと、Golem に固有のものを並べます。
+各項目の最後に、詳しく説明している箇所を示します。
+組版の用語（版面、行送り、禁則、ルビ、トンボ、塗り足しなど）は載せていません。
+
+@nonumber
+## コンピュータと版の管理の言葉
+
+= [strong: ターミナル]
+  文字でコンピュータに指示を出すためのアプリケーションです。[index reading=たーみなる: ターミナル]
+  macOS では「ターミナル」、Windows では「ターミナル」や「PowerShell」が使えます。
+  「[ref-title install]」（[ref-page install] ページ）、「[ref-title terminal]」（[ref-page terminal] ページ）。
+= [strong: コマンド]
+  ターミナルに打ち込む指示です。[index reading=こまんど/たーみなるの: コマンド/ターミナルの]
+  [code: golem build] のように、プログラムの名前と、何をするかを並べて書きます。
+  「[ref-title install]」（[ref-page install] ページ）、「[ref-title terminal]」（[ref-page terminal] ページ）。
+= [strong: オプション]
+  コマンドの振る舞いを変える指定です。[index reading=おぷしょん: オプション]
+  [code: --target pdf] のように、[code: -] で始めます。
+  「[ref-title terminal]」（[ref-page terminal] ページ）。
+= [strong: 引数]
+  コマンドに渡す値です。[index reading=ひきすう: 引数]
+  [code: golem new mybook] の [code: mybook] のように、コマンドの後に空白で区切って書きます。
+  「[ref-title terminal]」（[ref-page terminal] ページ）。
+= [strong: ディレクトリ（フォルダ）]
+  Finder やエクスプローラーで見るフォルダのことです。[index reading=でぃれくとり: ディレクトリ]
+  このマニュアルの地の文では「フォルダ」と書きます。
+  コマンドやエラーのメッセージには「ディレクトリ」と出ることがあります。
+  「[ref-title new-project]」（[ref-page new-project] ページ）、「[ref-title folders]」（[ref-page folders] ページ）。
+= [strong: 作業中のフォルダ]
+  ターミナルが今いるフォルダです。[index reading=さぎょうちゅうのふぉるだ: 作業中のフォルダ]
+  コマンドは、このフォルダを起点にファイルを探します。
+  [code: golem] は、プロジェクトのフォルダを作業中のフォルダにして実行します。
+  「[ref-title folders]」（[ref-page folders] ページ）。
+= [strong: パス]
+  ファイルやフォルダの場所を、フォルダの名前を [code: /] でつないで表したものです。[index reading=ぱす: パス]
+  [code: chapters/01.gm] のように、あるフォルダを起点に書いたものを相対パスと呼びます。
+  「[ref-title folders]」（[ref-page folders] ページ）。
+= [strong: 終了コード]
+  コマンドが終わったときに返す数です。[index reading=しゅうりょうこーど: 終了コード]
+  0 は成功を表します。
+  [code: golem] は、エラーがあれば 1、コマンドの使い方の誤りなら 2 を返します。
+  「[ref-title terminal]」（[ref-page terminal] ページ）。
+= [strong: 標準出力と標準エラー出力]
+  コマンドが文字を書き出す二つの行き先です。[index reading=ひょうじゅんしゅつりょく: 標準出力]
+  どちらもふだんはターミナルに表示されますが、ファイルに分けて保存することもできます。
+  [code: golem] は、エラーや警告のような診断を標準エラー出力に書きます。
+  「[ref-title terminal]」（[ref-page terminal] ページ）。
+= [strong: 文字コード]
+  文字をバイトの並びとしてファイルに保存するときの決まりです。[index reading=もじこーど: 文字コード]
+  Shift_JIS や UTF-8 があります。
+  「[ref-title text-files]」（[ref-page text-files] ページ）。
+= [strong: UTF-8]
+  Unicode の文字を保存する文字コードの一つです。[index reading=ゆーてぃーえふえいと: UTF-8][note: RFC 3629（UTF-8）。[code: https://www.rfc-editor.org/rfc/rfc3629]]
+  Golem の原稿と設定のファイルは、UTF-8 で保存します。
+  「[ref-title text-files]」（[ref-page text-files] ページ）。
+= [strong: BOM]
+  文字コードを示すために、ファイルの先頭に付ける数バイトの目印です。[index reading=ぼむ: BOM]
+  Golem のファイルには付けません。
+  付いていればエラーになり、[code: golem fmt] で取り除けます。
+  「[ref-title text-files]」（[ref-page text-files] ページ）。
+= [strong: 改行コード]
+  行の終わりを表す文字です。[index reading=かいぎょうこーど: 改行コード]
+  LF と、CR に LF を続けた CRLF があります。
+  Golem のファイルは LF に限り、CR を含むとエラーになります。
+  「[ref-title text-files]」（[ref-page text-files] ページ）。
+= [strong: Unicode の正規化]
+  見た目や意味が同じとされる別の文字を、一つの文字にそろえる処理です。[index reading=ゆにこーどのせいきか: Unicode の正規化][note: The Unicode Standard。[code: https://www.unicode.org/versions/latest/]]
+  CJK 互換漢字が統合漢字に置き換わり、書き手の選んだ字形が失われるので、Golem は正規化をしません。
+  「[ref-title text-files]」（[ref-page text-files] ページ）。
+= [strong: 異体字セレクタ]
+  漢字の直後に置いて、その字の字形を指定する目に見えない文字です。[index reading=いたいじせれくた: 異体字セレクタ][note: Ideographic Variation Database。[code: https://unicode.org/ivd/]]
+  書体がその字形を持っていれば、PDF ではその字形で組みます。
+  「[ref-title text-files]」（[ref-page text-files] ページ）。
+= [strong: テキストエディタ]
+  文字だけのファイル（テキストのファイル）を編集するアプリケーションです。[index reading=てきすとえでぃた: テキストエディタ]
+  ワープロと違い、文字の大きさや書体を保存しません。
+  原稿と設定のファイルは、テキストエディタで書きます。
+  「[ref-title text-files]」（[ref-page text-files] ページ）。
+= [strong: TOML]
+  設定を書くためのテキストの形式です。[index reading=とむる: TOML][note: TOML v1.0.0。[code: https://toml.io/en/v1.0.0]]
+  [code: manifest.toml] と [code: style.toml] は、この形式で書きます。
+  「[ref-title toml]」（[ref-page toml] ページ）。
+= [strong: 表（TOML の）]
+  TOML で、[code: \[page\]] のような見出しの下にまとめたキーと値の集まりです。[index reading=ひょう/とむるの: 表/TOML の]
+  [code: { width = "148mm", height = "210mm" }] のように一行でも書けます。
+  「[ref-title toml]」（[ref-page toml] ページ）。
+= [strong: 配列]
+  [code: \[ "a.gm", "b.gm" \]] のように、角括弧で囲んで値を並べたものです。[index reading=はいれつ: 配列]
+  TOML でも、原稿の式でも使います。
+  「[ref-title toml]」（[ref-page toml] ページ）。
+= [strong: ハッシュ（ファイルの）]
+  ファイルの中身から計算する短い文字列です。[index reading=はっしゅ: ハッシュ]
+  中身が一バイトでも違えば、ほぼ確実に違う値になります。
+  取得したファイルが壊れたり差し替えられたりしていないかを、公開された値と比べて確かめます。
+  「[ref-title install]」（[ref-page install] ページ）。
+= [strong: 版の管理]
+  ファイルの変更を、いつ、誰が、何のために行ったかとともに記録し、前の状態に戻したり比べたりできるようにすることです。[index reading=はんのかんり: 版の管理]
+  「[ref-title git-why]」（[ref-page git-why] ページ）。
+= [strong: Git]
+  版の管理に使う道具です。[index reading=ぎっと: Git][note: Git の公式の文書。[code: https://git-scm.com/doc]]
+  Golem のプロジェクトはテキストのファイルなので、Git で変更を一行ずつ追えます。
+  「[ref-title git-setup]」（[ref-page git-setup] ページ）。
+= [strong: リポジトリ]
+  Git が変更の履歴を記録しておく場所です。[index reading=りぽじとり: リポジトリ]
+  プロジェクトのフォルダをリポジトリにして使います。
+  「[ref-title git-setup]」（[ref-page git-setup] ページ）。
+= [strong: コミット]
+  ファイルの変更をひとまとまりにして、履歴に記録したものです。[index reading=こみっと: コミット]
+  コミットごとに、それを指すハッシュ（コミットのハッシュ）が付きます。
+  「[ref-title git-commit]」（[ref-page git-commit] ページ）。
+= [strong: 差分]
+  二つの版のあいだで、どの行がどう変わったかを示したものです。[index reading=さぶん: 差分]
+  「[ref-title git-diff]」（[ref-page git-diff] ページ）。
+= [strong: ブランチ]
+  本流の履歴から分かれて、別の変更を進めるための履歴の枝です。[index reading=ぶらんち: ブランチ]
+  「[ref-title git-branch]」（[ref-page git-branch] ページ）。
+= [strong: クローン]
+  ほかの場所にあるリポジトリを、履歴ごと手元に写したものです。[index reading=くろーん: クローン]
+  「[ref-title git-share]」（[ref-page git-share] ページ）。
+= [strong: プッシュ]
+  手元のリポジトリに記録したコミットを、共有の置き場所へ送ることです。[index reading=ぷっしゅ: プッシュ]
+  「[ref-title git-share]」（[ref-page git-share] ページ）。
+= [strong: プルリクエスト]
+  ブランチの変更を本流に取り込んでほしいと、ほかの人に頼み、確かめてもらう仕組みです。[index reading=ぷるりくえすと: プルリクエスト]
+  GitHub のような置き場所が用意しています。
+  「[ref-title git-branch]」（[ref-page git-branch] ページ）。
+= [strong: CI]
+  変更を共有の置き場所に送るたびに、決めておいた作業を自動で行う仕組みです。[index reading=しーあい: CI]
+  Golem のプロジェクトでは、プッシュのたびに本を組み、誤りがないかを確かめます。
+  「[ref-title ci]」（[ref-page ci] ページ）。
+= [strong: 決定性]
+  同じ入力から、いつ、どの機械で処理しても、同じ出力が得られる性質です。[index reading=けっていせい: 決定性]
+  同じ版の Golem は、同じ原稿から同じバイト列の PDF を作ります。
+  「[ref-title same-output]」（[ref-page same-output] ページ）、「[ref-title ci-determinism]」（[ref-page ci-determinism] ページ）。
+= [strong: LSP]
+  エディタと、言語ごとの道具とのあいだの共通の取り決め（Language Server Protocol）です。[index reading=えるえすぴー: LSP][note: Language Server Protocol 3.17。[code: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/]]
+  [code: golem lsp] をエディタにつなぐと、書いている途中の原稿に誤りの印や補完が出ます。
+  第[ref-number editor]章「[ref-title editor]」。
+
+@nonumber
+## Golem の言葉
+
+= [strong: プロジェクト]
+  一冊の本を作るためのフォルダです。[index reading=ぷろじぇくと: プロジェクト]
+  [code: manifest.toml]、[code: style.toml]、原稿、書体、図版を入れます。
+  InDesign のブックに近いものです（付録E）。
+  「[ref-title new-project]」（[ref-page new-project] ページ）。
+= [strong: マニフェスト]
+  プロジェクトの [code: manifest.toml] のことです。[index reading=まにふぇすと: マニフェスト]
+  書名などの本の情報、章のファイルの並び、出力の形式を書きます。
+  第[ref-number manifest]章「[ref-title manifest]」。
+= [strong: 原稿]
+  本文を書いた [code: .gm] のファイルです。[index reading=げんこう: 原稿]
+  第[ref-number markup]章「[ref-title markup]」。
+= [strong: 組む（ビルド）]
+  原稿と設定から、PDF などの出力を作ることです。[index reading=びるど: ビルド]
+  [code: golem build] で行います。
+  「[ref-title first-build]」（[ref-page first-build] ページ）。
+= [strong: 版面]
+  [code: style.toml] の [code: \[page.grid\]] で、文字の大きさ、字数、行数、行送り、段数から決める本文の領域です。[index reading=はんめん/ごーれむの: 版面/Golem の]
+  本文は、常に版面の行の格子に載ります。
+  第[ref-number style]章「[ref-title style]」。
+= [strong: 書体の役割]
+  [code: body] や [code: code] のように、[code: style.toml] の [code: \[fonts\]] で書体の組み合わせに付ける名前です。[index reading=しょたいのやくわり: 書体の役割]
+  和文と欧文の書体を一つの役割にまとめます。
+  第[ref-number style]章「[ref-title style]」。
+= [strong: 段落スタイル]
+  段落の体裁（書体、大きさ、字下げなど）に名前を付けたものです。[index reading=だんらくすたいる: 段落スタイル]
+  InDesign の段落スタイルに当たりますが、行送りは持ちません。
+  「[ref-title styles]」（[ref-page styles] ページ）。
+= [strong: 文字スタイル]
+  一部の文字の体裁（書体、大きさ、色など）に名前を付けたものです。[index reading=もじすたいる: 文字スタイル]
+  原稿では [code: \[style 名前: 語\]] のように付けます。
+  「[ref-title styles]」（[ref-page styles] ページ）。
+= [strong: 正規表現スタイル]
+  段落の中で、決まった形に一致した文字に、自動で文字スタイルを付ける設定です。[index reading=せいきひょうげんすたいる: 正規表現スタイル]
+  段落スタイルの [code: regex-styles] に書きます。
+  第[ref-number style]章「[ref-title style]」。
+= [strong: アキ量のセット]
+  和文の字間の空きの量を、文字の組み合わせごとに決めたものです。[index reading=あきりょうのせっと: アキ量のセット]
+  InDesign の文字組みアキ量設定に当たります。
+  「[ref-title aki-sets]」（[ref-page aki-sets] ページ）。
+= [strong: マスターページ]
+  柱とノンブルの置き方を決めるものです。[index reading=ますたーぺーじ: マスターページ]
+  [code: style.toml] の [code: \[masters.名前\]] に書きます。
+  第[ref-number style]章「[ref-title style]」。
+= [strong: スウォッチ]
+  CMYK の色に付けた名前です。[index reading=すうぉっち: スウォッチ]
+  [code: style.toml] の [code: \[color.swatches\]] に書き、原稿と体裁からは名前で指します。
+  第[ref-number style]章「[ref-title style]」。
+= [strong: ラベルと相互参照]
+  見出しや図版に [code: @label] で付けた名前と、その名前で番号、題、ページを引くことです。[index reading=そうごさんしょう: 相互参照]
+  第[ref-number markup]章「[ref-title markup]」。
+= [strong: 散文スロット]
+  段落の中のコマンドで、[code: :] の後に書く本文の部分です。[index reading=さんぶんすろっと: 散文スロット]
+  エラーのメッセージに出てくる言葉です。
+  付録A。
+= [strong: 診断]
+  Golem が原稿と設定について報告することの総称です。[index reading=しんだん: 診断]
+  重い順に、エラー、警告、お知らせがあり、どれも [code: G0215] のようなコードを持ちます。
+  第[ref-number check]章「[ref-title check]」、付録D。
+= [strong: エラー]
+  直さなければならない誤りです。[index reading=えらー: エラー]
+  一つでもあれば、ビルドは失敗します。
+  第[ref-number check]章「[ref-title check]」。
+= [strong: 警告]
+  直すべきですが、書きかけの段階ではビルドを止めない誤りです。[index reading=けいこく: 警告]
+  第[ref-number check]章「[ref-title check]」。
+= [strong: お知らせ]
+  誤りではないものの、知っておいたほうがよいことです。[index reading=おしらせ/ようご: お知らせ/用語]
+  出力を変えず、終了コードにも影響しません。
+  コードを [code: manifest.toml] の [code: \[diagnostics\]] の [code: silence-notices] に並べると、そのお知らせを出さなくなります。
+  「[ref-title notices]」（[ref-page notices] ページ）。
+= [strong: プロファイル（dev と prod）]
+  [code: --profile] で選ぶ、ビルドの二つの段階です。[index reading=ぷろふぁいる: プロファイル]
+  [code: dev] は書きかけの原稿のため、[code: prod] は出荷する本のためのもので、既定は [code: dev] です。
+  [code: prod] では校正のためのコメントが出力から落ち、いくつかの警告がエラーになります。
+  「[ref-title profiles]」（[ref-page profiles] ページ）。
+= [strong: lint]
+  記法としては正しいものの、ほぼ確実に誤りである書き方を探す検査です。[index reading=りんと: lint]
+  [code: golem lint] で行います。
+  第[ref-number check]章「[ref-title check]」。
+= [strong: 入稿用の PDF]
+  印刷所に渡すための PDF です。[index reading=にゅうこうようのぴーでぃーえふ: 入稿用の PDF]
+  Golem は PDF/X-4 を目指して作りますが、適合しているかは商用のプリフライトで確かめます[note: ISO 15930-7:2010（PDF/X-4）。[code: https://www.iso.org/standard/55843.html]]。
+  「[ref-title print-pdf]」（[ref-page print-pdf] ページ）。
+= [strong: 出力インテントと ICC プロファイル]
+  印刷の色の条件を表すファイルが ICC プロファイルで、PDF に埋め込んだそれを出力インテントと呼びます。[index reading=しゅつりょくいんてんと: 出力インテント][note: ICC.1:2022（ICC プロファイルの仕様）。[code: https://www.color.org/specification/ICC.1-2022-05.pdf]]
+  [code: style.toml] の [code: \[color\]] の [code: intent] に書きます。
+  「[ref-title print-pdf]」（[ref-page print-pdf] ページ）。
+= [strong: CSL-JSON]
+  参考文献のデータを書く形式です。[index reading=しーえすえるじぇいそん: CSL-JSON][note: CSL-JSON のスキーマ。[code: https://github.com/citation-style-language/schema]]
+  [code: manifest.toml] の [code: bibliography] に、このファイルを並べます。
+  「[ref-title bibliography-data]」（[ref-page bibliography-data] ページ）。
+= [strong: プラグイン]
+  Golem にコマンドやフィルタを足す、別に配布されるプログラムです。[index reading=ぷらぐいん: プラグイン]
+  第[ref-number plugins]章「[ref-title plugins]」。

@@ -789,6 +789,14 @@ listTests =
         let marked = [i | (i, sl) <- zip [0 :: Int ..] (Map.elems (plLines pl)), any (\case Box _ c -> bcText c == "*1"; _ -> False) (lineItems (slLine sl))]
             noted = [i | (i, sl) <- zip [0 :: Int ..] (Map.elems (plLines pl)), not (null (slNotes sl))]
         (k, noted) @?= (k, marked),
+    testCase "PDF: notes of two files with the same number keep their own bodies" $ do
+      let manifest = replaceIn "chapters = [\"a.gm\"]" "chapters = [\"a.gm\", \"b.gm\"]" miniManifest
+      (_, pl) <- layoutHeads manifest horizontalStyle [("a.gm", "一[note: 甲。]\n"), ("b.gm", "二[note: " <> T.replicate 30 "乙" <> "]\n")]
+      let keys = [nid | sl <- Map.elems (plLines pl), (nid, _) <- slNotes sl]
+          placed = [nid | p <- plPages pl, (nid, _, _) <- poFootnotes p]
+      length keys @?= 2
+      length (nub keys) @?= 2
+      sort placed @?= sort keys,
     testCase "PDF: [lists] numbers set the marker, and its width" $ do
       ts <- listPages (horizontalStyle <> "\n[lists]\nnumbers = [\"({1})\"]\n") "+ 一\n+ 二\n"
       ts @?= ["(1)一", "(2)二"]

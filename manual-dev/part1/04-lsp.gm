@@ -1,0 +1,115 @@
+@label lsp
+# エディタに LSP をつなぐ
+
+[code: golem lsp] は、標準入出力で Language Server Protocol 3.17 を話すサーバーである。[index reading=lsp: LSP]
+LSP に対応したエディタなら、どれでもつなげる。
+実装は Haskell の [code: lsp] パッケージの上にあり、golem-lsp のモジュールに閉じている。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-lsp/adr/0001-language-server.md]（golem-lsp ADR 0001「LSP サーバー」）]
+
+エディタに原稿を開いた瞬間から、書きかけの原稿は構文エラーを含んでいる。
+閉じていない [code: \[] があるたびに解析が止まるなら、LSP は何の役にも立たない。
+Golem のパーサーは構文エラーから回復して構文木を作るので、誤りの箇所の外では補完も定義への移動も働く。
+この性質は、パーサーに PEG のライブラリ（peg-hs）を選んだときの要件の一つである。
+
+## 機能
+
+v1 の LSP は次の機能を持つ。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#lsp]（仕様書の「LSP」の節）]
+
+| 機能 | 内容 |
+| --- | --- |
+| 診断 | 構文エラー、コンパイルエラー、lint。lint の重大度は dev のプロファイルで決める |
+| 定義への移動 | [code: @import] のパス、名前空間を通した変数、ラベル、ファイルの中で定義したスタイル |
+| 参照の検索 | 変数とラベル。ラベルはファイルをまたいで検索する |
+| 名前の変更 | ラベルの名前を、定義とすべての参照で書き換える。既存のラベルと重なる名前は拒否する |
+| 補完 | 組み込みのコマンドの名前、ラベル、[code: @import] のパス、スウォッチ、スタイルの名前、[code: @manifest] と [code: @style-def] のキーと値 |
+| ホバー | [code: \[= ...\]] の評価の結果 |
+| 整形 | [code: golem fmt] と同じ整形 |
+| アウトライン | 見出しの階層 |
+
+組版の結果のプレビューは、LSP の範囲の外である。
+LSP はレイアウト（S2）とバックエンドを実行しない。
+ホバーは、S1 で決まる値（章の番号など）なら S1 の結果を表示し、ページ番号のように S2 で決まる値なら、その値がレイアウトの後に決まることを表示する。
+
+## つなぎ方
+
+サーバーの起動のコマンドは [code: golem lsp] だけで、引数はない。
+エディタの側では、次の三つを設定する。
+
+- 起動のコマンド：[code: golem lsp]
+- 対象のファイル：拡張子 [code: .gm]
+- プロジェクトの根を決める印：[code: manifest.toml]
+
+[code: manifest.toml] のあるディレクトリが、プロジェクトの根になる。
+マニフェストから到達しないファイルを開いた場合は、構文解析とファイル内評価（S0）だけを行い、文書構造（S1）の診断は出さない。
+
+Neovim の組み込みのクライアント（ADR が挙動を調べたのは 0.12.5）なら、次の設定でつながる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-lsp/adr/0003-position-handling.md]（golem-lsp ADR 0003「行の長さを超える列を行末に丸め、位置の交渉をエディタで確かめる」）]
+
+```lua
+vim.filetype.add({ extension = { gm = 'golem' } })
+vim.lsp.config('golem', {
+  cmd = { 'golem', 'lsp' },
+  filetypes = { 'golem' },
+  root_markers = { 'manifest.toml' },
+})
+vim.lsp.enable('golem')
+```
+
+この設定は、ADR がエディタでの確かめの手順として示しているものである。
+実際の Neovim でこの手順を通して確かめる作業は、仕様書の「手で確かめる項目」にまだ残っている。
+
+## 位置の単位の交渉
+
+LSP の位置は、行と列で表す。
+問題は列の数え方で、LSP 3.17 は UTF-8、UTF-16、UTF-32 の三つの単位を定め、初期化のときにクライアントとサーバーが交渉で一つを選ぶ。[index reading=いちのたんい: 位置の単位]
+Golem は、クライアントが UTF-8 を申し出れば UTF-8 を、申し出なければ UTF-16 を選ぶ。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-lsp/adr/0002-utf8-position-encoding.md]（golem-lsp ADR 0002「LSP の位置の単位に UTF-8 を交渉する」）]
+
+- 初期化の要求の [code: capabilities.general.positionEncodings] に [code: utf-8] があれば UTF-8 を選ぶ。クライアントが並べた順は見ない。
+- 一覧がない場合、空の場合、[code: utf-8] を含まない場合は UTF-16 を選ぶ。LSP 3.17 は UTF-16 を常に使える単位と定めている。
+- UTF-32 は選ばない。
+
+選んだ単位は、初期化の応答の [code: capabilities.positionEncoding] で返す。[index reading="positionEncoding": positionEncoding]
+UTF-8 を優先するのは、Golem の内部の位置の単位が UTF-8 のバイト数だからである（第[ref-number diagnostics]章）。
+UTF-8 なら、列とバイト位置の変換に行の走査が要らない。
+
+日本語の原稿では、単位の違いがそのまま列のずれになる。
+「漢」は UTF-8 で 3 バイト、UTF-16 で 1 単位であり、絵文字は UTF-8 で 4 バイト、UTF-16 で 2 単位である。
+クライアントの実装が交渉の結果を正しく使わないと、診断の下線や定義への移動の位置がずれる。
+エディタで位置がずれたときは、まずクライアントがどの単位に決まったかを確かめる。
+Neovim なら次の式で表示できる。
+
+```lua
+:lua =vim.lsp.get_clients({ name = 'golem' })[1].offset_encoding
+```
+
+### 範囲の外の位置
+
+要求の位置が行の長さを超える場合は、LSP 3.17 の定めのとおり、行末に丸める。
+行の長さは、交渉した単位で数え、改行を含まない。
+行の番号が文書の行の数を超える場合と、列が文字の途中（UTF-8 の後続のバイト、UTF-16 のサロゲートペアの間）に当たる場合は、仕様が定めていないので丸めず、結果を空にする。
+丸めると、クライアントの誤りを隠して、利用者が指していない位置の結果を返すことになるからである。
+
+## 文書の同期と再評価
+
+文書の同期は全文の同期である。[index reading="ぜんぶんのどうき": 全文の同期]
+変更のたびに、クライアントはファイルの全文を送る。
+章のファイルの単位の原稿は大きくなりにくく、差分の同期とインクリメンタルな再解析は、遅さが問題になってから扱うと決めている。
+
+編集中の内容は、ディスクのファイルより優先する。
+LSP は最後の変更から一定の時間を待ってから、変わったファイルを構文解析し、S0 で評価し直す。
+見出し、ラベル、import される変数が変わったときだけ、S1 と、影響を受けるほかのファイルを評価し直す。
+
+## 診断の載せ方
+
+LSP の診断の重大度は、エラーが [code: Error]、警告が [code: Warning]、お知らせが [code: Information] になる。
+お知らせを [code: Hint] にしないのは、エディタの多くが [code: Information] を問題の一覧に載せるからである。
+マニフェストの [code: silence-notices] に並べたコードのお知らせは、公開しない（第[ref-number diagnostics]章）。
+
+プロジェクトの段階の診断のうち、どのファイルも指さないものは [code: manifest.toml] に載せる。
+文書にあるコードの診断には、[code: codeDescription] に [code: docs/diagnostics.md] の節の URL が付く。
+エディタによっては、この URL を開くリンクとして表示する。
+
+## プラグインと LSP
+
+プラグインのコマンドを含むファイルの評価には、プラグインのキャッシュを使う。
+LSP はネットワークに接続しない。
+キャッシュにないプラグインは、[code: golem plugin fetch] を求める診断になり、そのコマンドを含む部分だけを評価しない。
+プラグインを使うプロジェクトをエディタで開く前に、一度 [code: golem plugin fetch] を実行しておく。
