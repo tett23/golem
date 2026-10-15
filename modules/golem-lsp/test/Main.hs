@@ -329,7 +329,7 @@ tests =
         lineCount (lineIndexOf ws "b.gm") @?= 6
         offsetToUtf8LineCol (lineIndexOf ws "b.gm") (offsetIn (textOf ws "b.gm") "intro" 0) @?= LineCol 4 11
         lineCount (lineIndexOf ws "nosuch.gm") @?= 1,
-      testCase "chooseEncoding prefers utf-8 and falls back to utf-16 (ADR 0002)" $ do
+      testCase "the server prefers UTF-8 positions and falls back to UTF-16 (ADR 0002)" $ do
         chooseEncoding Nothing @?= Utf16
         chooseEncoding (Just []) @?= Utf16
         chooseEncoding (Just [L.PositionEncodingKind_UTF16]) @?= Utf16
@@ -338,7 +338,7 @@ tests =
         chooseEncoding (Just [L.PositionEncodingKind_UTF16, L.PositionEncodingKind_UTF8]) @?= Utf8
         encodingKind Utf8 @?= L.PositionEncodingKind_UTF8
         encodingKind Utf16 @?= L.PositionEncodingKind_UTF16,
-      testCase "rewriteInitializeResponse replaces only positionEncoding of the matching response (ADR 0002)" $ do
+      testCase "only the matching initialize response gets its positionEncoding replaced (ADR 0002)" $ do
         let resp = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-16\",\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
             expected = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"capabilities\":{\"positionEncoding\":\"utf-8\",\"hoverProvider\":true},\"serverInfo\":{\"name\":\"x\"}}}"
             decode = J.decode :: BL.ByteString -> Maybe J.Value

@@ -12,12 +12,14 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import ExternalTool (needsTool)
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf
 import Golem.Pdf.Writer (Mark (..))
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import ImageSpec qualified
 import Numeric (readHex)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (..))
@@ -940,6 +942,64 @@ boxesOf s = (shMedia s, shTrim s, shBleed s)
 registrationResource :: ByteString
 registrationResource = "/ColorSpace << /Reg [/Separation /All /DeviceCMYK << /C0 [0 0 0 0] /C1 [1 1 1 1] /Domain [0 1] /FunctionType 2 /N 1 >>] >>"
 
+{- | Golem.Pdf.X4.verify on the objects before they are written (golem-cli
+ADR 0006): each requirement of the PDF/X-4 test, broken alone, is one
+problem.
+-}
+verifyTests :: [TestTree]
+verifyTests =
+  [ testCase "what Golem writes with an output intent has no problem" $ do
+      verify (documentObjects x4Sample) @?= []
+      verify (documentObjects (documentWith [framePage Nothing 0 (100 * 65536, 100 * 65536) [], framePage (Just Japanese) (3 * 65536) (100 * 65536, 100 * 65536) []]) {docPdfX = Just x4px}) @?= [],
+    testCase "without an output intent the intent, the XMP and Trapped are missing" $ do
+      let ps = verify (documentObjects sample)
+      assertBool (show ps) (not (null ps)),
+    one "no output intent" (mapObjs (onDict isCatalog (dropKey "OutputIntents"))),
+    one "no DestOutputProfile" (mapObjs (onDict isCatalog (mapKey "OutputIntents" (\case OArr [ODict kvs] -> OArr [ODict (filter ((/= "DestOutputProfile") . fst) kvs)]; o -> o)))),
+    one "no GTS_PDFXVersion" (mapObjs (onStream isMetadata (cut "   <pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>\n"))),
+    one "no Trapped" (mapObjs (onStream isMetadata (cut "   <pdf:Trapped>False</pdf:Trapped>\n"))),
+    one "no TrimBox" (mapFirst isPage (onDict (const True) (dropKey "TrimBox"))),
+    one "a BleedBox outside the MediaBox" (mapFirst isPage (onDict (const True) (mapKey "BleedBox" (const (OArr (map OInt [-1, 0, 595, 842])))))),
+    one "a font not embedded" (mapObjs (onDict (hasType "FontDescriptor") (dropKey "FontFile2"))),
+    one "RGB without an ICC profile" (mapObjs (onStream isImage (mapStreamKey "ColorSpace" (const (OName "DeviceRGB"))))),
+    one "encryption" (\o -> o {pdfTrailer = case pdfTrailer o of ODict kvs -> ODict (kvs <> [("Encrypt", ORef 1)]); t -> t}),
+    one "JavaScript" (mapObjs (onDict isCatalog (<> [("Names", ODict [("JavaScript", ORef 1)])]))),
+    one "a version after 1.6" (\o -> o {pdfVersion = "1.7"}),
+    testCase "a problem names its requirement" $ do
+      let ps = verify (mapFirst isPage (onDict (const True) (dropKey "TrimBox")) (documentObjects x4Sample))
+      map x4Requirement ps @?= ["TrimBox"]
+  ]
+  where
+    x4px = PdfX "fake-japan-color-profile" "JC200103" []
+    x4Sample = sample {docPdfX = Just x4px}
+    one name f = testCase name $ do
+      let ps = verify (f (documentObjects x4Sample))
+      assertEqual (show ps) 1 (length ps)
+    mapObjs f o = o {pdfObjects = map f (pdfObjects o)}
+    mapFirst p f o =
+      let (before, rest) = break p (pdfObjects o)
+       in o {pdfObjects = before <> take 1 (map f rest) <> drop 1 rest}
+    hasType t = \case
+      ODict kvs -> lookup "Type" kvs == Just (OName t)
+      OStream kvs _ -> lookup "Type" kvs == Just (OName t)
+      _ -> False
+    isCatalog = hasType "Catalog"
+    isPage = hasType "Page"
+    isMetadata = hasType "Metadata"
+    isImage = \case
+      OStream kvs _ -> lookup "Subtype" kvs == Just (OName "Image")
+      _ -> False
+    onDict p f = \case
+      d@(ODict kvs) | p d -> ODict (f kvs)
+      o -> o
+    onStream p f = \case
+      s@(OStream kvs b) | p s -> uncurry OStream (f (kvs, b))
+      o -> o
+    dropKey k = filter ((/= k) . fst)
+    mapKey k f = map (\(k', v) -> if k' == k then (k', f v) else (k', v))
+    mapStreamKey k f (kvs, b) = (mapKey k f kvs, b)
+    cut piece (kvs, b) = let (pre, post) = BS.breakSubstring piece b in (kvs, pre <> BS.drop (BS.length piece) post)
+
 marksTests :: [TestTree]
 marksTests =
   let (w, h) = trimSize
@@ -1023,14 +1083,13 @@ marksTests =
           let framed = framePage Nothing b (w, h) []
               inside = framed {pageContent = [Translated b b [RegistrationRules [Rect 0 0 65536 65536]]]}
           checkRegistration [framed, inside] @?= [2],
-        testCase "registrationRects adds the moves of Translated" $
+        testCase "registration rules inside Translated are found at their moved positions" $
           registrationRects [Rule (Rect 0 0 1 1), Translated 10 20 [Saved [RegistrationRules [Rect 1 2 3 4]], Translated 100 200 [RegistrationRules [Rect 0 0 5 5]]]]
             @?= [Rect 11 22 3 4, Rect 110 220 5 5],
-        testCase "qpdf --check accepts a page with Japanese marks (when qpdf is installed)" $ do
-          qpdf <- findExecutable "qpdf"
-          case qpdf of
-            Nothing -> pure ()
-            Just exe -> withSystemTempDirectory "golem-pdf" $ \dir -> do
+        needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
+          testCase "qpdf --check accepts a page with Japanese marks" $ do
+            exe <- qpdf
+            withSystemTempDirectory "golem-pdf" $ \dir -> do
               let path = dir </> "marks.pdf"
                   framed = framePage (Just Japanese) b (w, h) [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]
               BS.writeFile path (writePdf (documentWith [framed]) {docPdfX = Just (PdfX "fake" "JC200103" [])})
@@ -1047,7 +1106,7 @@ producerTests =
       let pdf = writePdf sample {docPdfX = Just (PdfX "fake" "JC200103" [])}
       assertBool "Info" ("/Producer (Golem 0.0.0-test)" `BS.isInfixOf` infoDict pdf)
       assertBool "XMP" ("<pdf:Producer>Golem 0.0.0-test</pdf:Producer>" `BS.isInfixOf` pdf),
-    testCase "pdfTextString: printable ASCII as a literal string, otherwise UTF-16BE" $ do
+    testCase "a PDF text string is literal for printable ASCII, otherwise UTF-16BE with a byte order mark" $ do
       pdfTextString "Golem 0.1.0-rc1" @?= OStr "Golem 0.1.0-rc1"
       case pdfTextString "ゴーレム" of
         OHex b -> BS.take 2 b @?= BS.pack [0xFE, 0xFF]
@@ -1193,10 +1252,14 @@ tests =
         countOf "/FontFile2 " pdf + countOf "/FontFile3 " pdf @?= countOf "/Type /FontDescriptor" pdf
         assertBool "no forbidden entries" (not (any (`BS.isInfixOf` pdf) ["/Encrypt", "/JavaScript", "/JS ", "/URI", "/Launch", "/GoToR"]))
         assertBool "xref" (xrefConsistent pdf)
+        -- the same checks as golem preflight (golem-cli ADR 0006)
+        verify (documentObjects sample {docPdfX = Just px}) @?= []
         checkPdfX [(pageMediaBox p, pageTrimBox p, pageBleedBox p) | p <- docPages sample] @?= []
         checkPdfX [(Rect 0 0 10 10, Rect 0 0 10 10, Rect (-1) 0 10 10)] @?= [1],
+      testGroup "X4.verify (golem-cli ADR 0006)" verifyTests,
       testGroup "crop marks and bleed (ADR 0004)" marksTests,
       testGroup "Producer (ADR 0005)" producerTests,
+      ImageSpec.tests,
       testGroup
         "CIDSystemInfo (ADR 0006)"
         [ testCase "the CIDFont carries the ROS of the font" $ do
@@ -1210,11 +1273,10 @@ tests =
         ],
       goldenVsString "XMP packet" "test/golden/xmp.xml" $
         pure (BL.fromStrict (xmpPacket (PdfX "" "JC200103" ["山田 太郎"]) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
-      testCase "qpdf --check accepts the output (when qpdf is installed)" $ do
-        qpdf <- findExecutable "qpdf"
-        case qpdf of
-          Nothing -> pure ()
-          Just exe -> withSystemTempDirectory "golem-pdf" $ \dir -> do
+      needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
+        testCase "qpdf --check accepts the output" $ do
+          exe <- qpdf
+          withSystemTempDirectory "golem-pdf" $ \dir -> do
             let path = dir </> "sample.pdf"
             BS.writeFile path (writePdf sample)
             (code, out, err) <- readProcessWithExitCode exe ["--check", path] ""

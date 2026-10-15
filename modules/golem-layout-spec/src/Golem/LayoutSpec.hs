@@ -72,7 +72,9 @@ data PageGeometry = PageGeometry
     pgMasters :: !(Map Text MasterGeometry),
     {- | the hidden folios (golem-driver ADR 0021): only when they are
     enabled and the PDF has crop marks
-    -} pgHiddenFolio :: !(Maybe HiddenFolioGeometry)
+    -} pgHiddenFolio :: !(Maybe HiddenFolioGeometry),
+    -- | the grid lines between the text and the footnotes (golem-driver ADR 0024)
+    pgNoteSeparator :: !Int
   }
   deriving stock (Eq, Show)
 
@@ -181,6 +183,13 @@ pageGeometry fid marks style = case stPage style of
                   if overflow so || overflow se
                     then Left [err "版面と傍注欄の合計がページからはみ出しています"]
                     else Right (Just (so, se))
+              {- the rule before footnotes no longer than a line of a column, and
+              the grid lines of the separator (golem-driver ADR 0024) -}
+              separator <- case stNotesRule style of
+                Nothing -> Right 1
+                Just rule
+                  | maybe 0 (dimToSp fs) (rsLength rule) > columnLength -> Left [err "脚注の区切り線の length が行長を超えます"]
+                  | otherwise -> Right (separatorLines fs pitch rule)
               let masters = Map.map (masterGeometry ph bindingRight odd' even') (stMasters style)
               runningHeadFits fid ph fs pitch masters
               hidden <- hiddenFolioGeometry fid marks style pw bindingRight [(1, odd' : maybe [] (pure . fst) sidenotes), (2, even' : maybe [] (pure . snd) sidenotes)]
@@ -198,7 +207,8 @@ pageGeometry fid marks style = case stPage style of
                     pgColumnsEven = columnsOf even',
                     pgSidenotes = sidenotes,
                     pgMasters = masters,
-                    pgHiddenFolio = hidden
+                    pgHiddenFolio = hidden,
+                    pgNoteSeparator = separator
                   }
 
 {- | Whether the anchor of a running head is in the head margin rather than
@@ -234,6 +244,19 @@ runningHeadFits fid ph fs pitch masters =
     outside (a, n) =
       let bs = runningHeadBaselines ph pitch a n
        in maximum bs + above > ph || minimum bs - (fs - above) < 0
+
+{- | The grid lines between the text and the footnotes (golem-driver ADR
+0024): one without spaces; with them, the fewest lines n for which the
+distance from the em box of the last line of the text to that of the
+first footnote line, n * pitch + (pitch - size), holds space-before,
+the weight and space-after.
+-}
+separatorLines :: Sp -> Sp -> RuleSpec -> Int
+separatorLines fs pitch rule = case (rsSpaceBefore rule, rsSpaceAfter rule) of
+  (Nothing, Nothing) -> 1
+  (b, a) ->
+    let need = maybe 0 (dimToSp fs) b + rsWeight rule + maybe 0 (dimToSp fs) a - (pitch - fs)
+     in max 1 (fromInteger (negate (negate need `div` pitch)))
 
 {- | The hidden folios (golem-driver ADR 0021): only with crop marks and
 when enabled; G0750 at the top of @fid@ when the column of digits (half

@@ -121,7 +121,17 @@ renderJson files ds = "[" <> T.intercalate "," (map one (sortDiagnostics ds)) <>
         <> T.intercalate "," [rel sp m | (sp, m) <- diagRelated d]
         <> "],\"fixes\":["
         <> T.intercalate "," (map fix (diagFixes d))
-        <> "]}"
+        <> "]"
+        <> facts (diagFacts d)
+        <> "}"
+    -- only a diagnostic with facts has the key (golem-cli ADR 0006)
+    facts [] = ""
+    facts fs = ",\"facts\":{" <> T.intercalate "," [jsonString k <> ":" <> factJson v | (k, v) <- fs] <> "}"
+    factJson = \case
+      FactInt i -> T.pack (show i)
+      FactText t -> jsonString t
+      FactInts is -> "[" <> T.intercalate "," (map (T.pack . show) is) <> "]"
+      FactTexts ts -> "[" <> T.intercalate "," (map jsonString ts) <> "]"
     rel sp m = "{\"span\":" <> jsonSpan files sp <> ",\"message\":" <> jsonString m <> "}"
     fix f =
       "{\"title\":"

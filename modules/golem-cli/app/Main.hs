@@ -26,6 +26,7 @@ import Golem.Plugin.Lock (defaultCacheDir, fetchPlugins, httpsFetcher, lockPlugi
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..), loadProject)
 import Golem.Project.Manifest (Manifest (..), PluginDecl (..), parseManifest)
 import Golem.Syntax
+import Golem.Syntax.Sha256 (sha256)
 import Options.Applicative
 import Options.Applicative.Extra (helperWith)
 import System.Directory (doesFileExist)
@@ -43,6 +44,7 @@ data Command
   = New FilePath Language Bool
   | Build [Target] Profile CropMarks Bool Format
   | Check Profile CropMarks Bool Format
+  | Preflight (Maybe FilePath) CropMarks Format
   | PluginFetch
   | PluginLock
   | Inspect FilePath InspectAs
@@ -146,6 +148,7 @@ commands =
         <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない")) "プロジェクトを作る"
         <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> marksOpt <*> noNoticesOpt <*> formatOpt) "出力を build/ に書く"
         <> cmd "check" (Check <$> profileOpt <*> marksOpt <*> noNoticesOpt <*> formatOpt) "出力を書かずに検査する"
+        <> cmd "preflight" (Preflight <$> optional (strOption (long "rules" <> metavar "FILE" <> help "プリフライトの設定のファイル（既定は preflight.toml）")) <*> marksOpt <*> formatOpt) "入稿の前に PDF を検査する"
         <> cmd
           "plugin"
           ( subparser
@@ -196,6 +199,7 @@ run = \case
   New dir lang noFonts -> newProject dir lang noFonts
   Build tgs profile marks quiet fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet}
   Check profile marks quiet fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet}
+  Preflight rules marks fmt -> preflightRun rules marks fmt
   PluginFetch -> pluginFetch
   PluginLock -> pluginLock
   Inspect path mode -> inspect path mode
@@ -234,6 +238,32 @@ report fmt r = do
   case fmt of
     Human -> putHuman (brSources r) ds
     Json -> TIO.hPutStr stderr (renderJson (brSources r) ds)
+  pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
+
+{- | golem preflight (golem-cli ADR 0006): the diagnostics, and in the human
+format a summary as the last line when the PDF was made.
+-}
+preflightRun :: Maybe FilePath -> CropMarks -> Format -> IO ExitCode
+preflightRun rules marks fmt = do
+  r <- preflight (defaultPreflightOptions ".") {poRules = rules, poMarks = marks}
+  let ds = prDiagnostics r
+      count sev = length (filter ((== sev) . diagSeverity) ds)
+  case fmt of
+    Json -> TIO.hPutStr stderr (renderJson (prSources r) ds)
+    Human -> do
+      putHuman (prSources r) ds
+      forM_ (prPdf r) $ \pdf ->
+        TIO.hPutStrLn stderr $
+          "プリフライト（設定: "
+            <> prRulesLabel r
+            <> "、基にした設定: "
+            <> prBasedOn r
+            <> "）: エラー "
+            <> T.pack (show (count Error))
+            <> "、警告 "
+            <> T.pack (show (count Warning))
+            <> "。PDF/X-4 の適合の判定ではないので、入稿の前に商用のプリフライトでも確かめます。検査した PDF の SHA-256: "
+            <> T.pack (concatMap (printf "%02x") (BS.unpack (sha256 pdf)))
   pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
 
 inspect :: FilePath -> InspectAs -> IO ExitCode

@@ -443,6 +443,11 @@ InDesign の親ページとの違いは、置けるものが柱とノンブル�
 placement = "page-foot"
 numbering = "chapter"
 
+[notes.rule]
+length = "8zw"
+space-before = "0.5zw"
+space-after = "0.5zw"
+
 [sidenotes]
 width = "6zw"
 gap = "1zw"
@@ -456,9 +461,20 @@ leader = "dots"
 
 - [code: \[notes\]] の [code: placement]：注の置き場所の指定です。[code: "page-foot"]（ページの下）と [code: "chapter-end"]（章の終わり）を書けますが、今の版の Golem はこの値で置き方を変えません。PDF では常にページの下に、HTML とプレーンテキストでは章の終わりに置きます。
 - [code: \[notes\]] の [code: numbering]：注の番号を 1 から振り直す範囲です。[code: "chapter"]（マニフェストの章ごと）、[code: "file"]（ファイルごと）、[code: "book"]（本の全体で通し番号）から選べます。省くと [code: "chapter"] です。傍注の番号も、脚注と別に同じ範囲で振ります。
+- [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。この表がなければ線は引きません。
 - [code: \[sidenotes\]]：傍注欄を、小口側の余白に設けます。[code: width] が傍注欄の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。
 - [code: \[figures\]] の [code: number]：図番号の書式です。[code: {chapter}] が章の番号、[code: {n}] が章の中の図の番号です。[code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。
 - [code: \[toc\]] の [code: leader]：目次のリーダーを点線（[code: "dots"]）にするか、なし（[code: "none"]）にするかです。
+
+本文と脚注のあいだは、行の格子の一行分だけ空いています。
+[code: \[notes.rule\]] で空きを書かなければ、区切り線はその一行の上下の中央に引かれ、本文の行の数は変わりません。
+空きを書くと、Golem は空きと線の太さが収まるまで、本文と脚注のあいだの行を一行ずつ増やします。
+脚注の行が格子からずれないようにするためです。
+[code: space-after] は書いたとおりの空きになり、余った分は線の上の空きに入ります。
+そのため、[code: space-before] は「少なくともこれだけ空ける」という意味になります。
+行が増えると、脚注のあるページの本文はその分だけ短くなります。
+[code: length] は [code: zw] で書くと版面の文字の大きさを一字として数え、一行の長さ（段組みでは一段の長さ）より長いとエラーになります。
+このマニュアルは、脚注の前に 8 字分の区切り線を引いています。
 
 傍注欄の幅は、傍注を使うなら必ず決めてください。
 [code: \[sidenotes\]] がないまま傍注を使うと、PDF を組むときにエラーになります。

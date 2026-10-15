@@ -1,0 +1,5 @@
+```toml diff=true
+ [page]
+-size = "A5"
++size = "B6"
+```

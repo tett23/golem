@@ -47,7 +47,7 @@ golem plugin fetch
 golem build
 ```
 
-プラグインを読み込めないときは、[code: plugins.lock] やキャッシュの問題を示すエラー（G0602 から G0611。付録D）だけを出します。
+プラグインを読み込めないときは、[code: plugins.lock] やキャッシュの問題を示すエラー（G0602 から G0611。付録E）だけを出します。
 そのプラグインのコマンドを使った箇所は、未知のコマンドとして報告しません。
 [code: plugins.lock] が壊れて読めないときは、[code: plugins.lock] を消してから [code: golem plugin lock] を実行し直してください。
 
