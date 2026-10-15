@@ -36,6 +36,7 @@ import Network.Socket
 import Network.Wai qualified as W
 import Network.Wai.Handler.Warp qualified as Warp
 import Network.Wai.Handler.WarpTLS qualified as WT
+import ResponseSpec (responseTests)
 import System.Directory
   ( doesFileExist,
     findExecutable,
@@ -50,7 +51,7 @@ import Test.Tasty.HUnit
 import Text.Printf (printf)
 
 main :: IO ()
-main = defaultMain (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests])
+main = defaultMain (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests])
 
 callSpan :: SrcSpan
 callSpan = mkSpan (FileId 1) 10 20
