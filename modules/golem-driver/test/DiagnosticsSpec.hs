@@ -233,16 +233,16 @@ explainTests =
         ],
       testGroup
         "lookup, hint and URL"
-        [ testCase "lookupExplanation ignores case" $ do
+        [ testCase "a code is explained whatever its case" $ do
             fmap exCode (lookupExplanation "g0117") @?= Just "G0117"
             fmap exCode (lookupExplanation "G0117") @?= Just "G0117"
             fmap exCode (lookupExplanation "G9999") @?= Nothing,
-          testCase "explainHint names the smallest documented code, once" $ do
+          testCase "the explain hint names the smallest documented code, once" $ do
             let d c = diagnostic c Error (SrcSpan (FileId 0) 0 0) "m"
             explainHint [d "G0403", d "G0117", d "X001"] @?= "コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）"
             explainHint [d "X001"] @?= ""
             explainHint [] @?= "",
-          testCase "codeDescriptionUrl points at the section on main" $ do
+          testCase "a code's description URL points at its section on main" $ do
             codeDescriptionUrl (DiagnosticCode "G0117") @?= Just "https://github.com/tett23/golem/blob/main/docs/diagnostics.md#g0117"
             codeDescriptionUrl (DiagnosticCode "X001") @?= Nothing
         ]

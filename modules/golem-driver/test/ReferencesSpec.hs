@@ -207,7 +207,7 @@ pageWith pages t = case [n | (n, ls) <- zip [1 ..] pages, any (\l -> t `T.isSuff
 
 tocTests :: [TestTree]
 tocTests =
-  [ testCase "tocPage: leaders end at the same place; the number ends at the measure" $ do
+  [ testCase "a toc line's leaders end at the same place and its page number ends at the measure" $ do
       let at e = tocPage (tocGeom True) (e * pt) (oneBoxLine (10 * pt))
           a = at 60
       leaderCount a @?= 3
@@ -219,7 +219,7 @@ tocTests =
       let c = at 85
       leaderCount c @?= 1
       tpLeaderStart c @?= 90 * pt,
-    testCase "tocPage: a number wider than W, an overfull title, no leaders" $ do
+    testCase "a toc line with a wide number, an overfull title, or no leaders" $ do
       let wide = tocPage (tocGeom True) (60 * pt) (oneBoxLine (20 * pt))
       tpNumberStart wide @?= 100 * pt
       tpLeaderStart wide + toInteger (leaderCount wide) * 10 * pt @?= 95 * pt

@@ -393,7 +393,7 @@ tests =
         ],
       testGroup
         "Knuth-Plass reference (ADR 0007)"
-        ( [ testCase "parseTrace reads the passes, the chosen path and the glue settings" $
+        ( [ testCase "a TeX trace gives each run's passes, chosen breaks and glue settings" $
               parseTrace sampleTrace
                 @?= [ TexRun
                         { trHsize = 100 * 65536,
@@ -415,7 +415,7 @@ tests =
               parseScaled "- 0.5" @?= -32768
               parseScaled "1.0" @?= 65536
               parseScaled "104.05528fil" @?= 104 * 65536 + 3623,
-            testCase "paragraphItems: indent, words, interword glue and the paragraph end" $
+            testCase "reference words become the indent box, the words with interword glue, and the paragraph end" $
               paragraphItems (Words (6, 3, 2) 20 0 [WordBox "a" 10, WordBox "b" 12])
                 @?= [refBox "" 20, refBox "a" 10, Glue 6 3 2, refBox "b" 12] <> finish,
             testCase "an exhyphen record becomes an explicit hyphen penalty (ADR 0008)" $ do

@@ -39,7 +39,7 @@ versionTests :: TestTree
 versionTests =
   testGroup
     "version (docs/adr/0004)"
-    [ testCase "golemVersion is the content of VERSION" $ do
+    [ testCase "the version Golem reports is the content of VERSION" $ do
         v <- T.strip <$> TIO.readFile "../../VERSION"
         golemVersion @?= v,
       testCase "the PDF instance ID is computed from golem- and the version, last" $ do
@@ -109,7 +109,7 @@ allTargetsTests :: TestTree
 allTargetsTests =
   testGroup
     "all targets when none is given (golem-cli ADR 0002)"
-    [ testCase "allTargets lists the four targets in order" $
+    [ testCase "all targets are HTML, EPUB, plain text and PDF, in that order" $
         allTargets @?= [TargetHtml, TargetEpub, TargetText, TargetPdf],
       testCase "all targets are built whatever the manifest declares" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
         copyTree fixture tmp

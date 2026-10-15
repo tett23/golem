@@ -147,14 +147,14 @@ characterFeatureTests =
       fonts <- featureFonts
       lfAdvance fonts (Shaping "body" True []) '「' @?= 1
       assertBool "vpal" (lfAdvance fonts (Shaping "body" True ["vpal"]) '「' < 1),
-    testCase "lfPairKern is the pair shaped together less the two shaped apart" $ do
+    testCase "the kerning of a pair is the pair shaped together less the two shaped apart" $ do
       fonts <- featureFonts
       let s = Shaping "body" False []
           together = lfWordAdvance fonts s "AV"
       lfPairKern fonts s 'A' 'V' @?= together - lfAdvance fonts s 'A' - lfAdvance fonts s 'V'
       assertBool "negative" (lfPairKern fonts s 'A' 'V' < 0)
       lfPairKern fonts (Shaping "body" False ["-kern"]) 'A' 'V' @?= 0,
-    testCase "shapingOf: the features each kerning method adds" $ do
+    testCase "each kerning method and proportional metrics turn on their OpenType features" $ do
       let lk k p = (plainLook "body" 655360) {lkKerning = k, lkProportional = p}
       shapingOf False (lk KernMetrics False) 'あ' @?= Shaping "body" False []
       shapingOf False (lk KernMetrics True) 'あ' @?= Shaping "body" False ["palt"]

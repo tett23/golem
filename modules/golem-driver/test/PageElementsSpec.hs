@@ -833,7 +833,7 @@ captionTests =
       assertBool (T.unpack a) ("figcaption { font-family: \"golem-caption-latin\", serif; font-size: 0.8em; }" `T.isInfixOf` a)
       b <- css "size = \"0.85zw\"\n"
       assertBool (T.unpack b) ("figcaption { font-size: 0.85em; }" `T.isInfixOf` b),
-    testCase "cssFontSize: relative to an absolute grid, pt without a page" $ do
+    testCase "a font size in CSS is relative to the grid's size, or in pt without a page" $ do
       let styleOf src = either (\ds -> assertFailure (show ds) >> error "unreachable") pure (parseStyle (FileId 0) src)
           dim t = fromMaybe (Abs 0) (parseDim t)
       s13 <- styleOf "[page]\nsize = \"B6\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 30\nlines = 20\nline-pitch = \"22H\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n"
