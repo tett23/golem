@@ -599,6 +599,17 @@ tests =
             map poFootnotes ps @?= [[(nid 101, 0, 2)], [(nid 103, 0, 1)]]
             let long = paginate 1 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
             map poFootnotes long @?= [[(nid 100, 0, 2)], [(nid 100, 2, 2)], [(nid 100, 4, 1)]],
+          testCase "a separator of two lines leaves one line less on a page of footnotes (golem-driver ADR 0024)" $ do
+            let withNote i = LineBox i [NoteBody (nid (100 + i)) 1] [] []
+                flow = [FParagraph (withNote 0 : [LineBox i [] [] [] | i <- [1 .. 9]])]
+                lay sep = paginateIn sep (ColumnSet 1 0 0 0) 6 flow
+            map (length . poSlots) (lay 1) @?= [4, 6]
+            map (length . poSlots) (lay 2) @?= [3, 5, 2]
+            map poFootnotes (lay 2) @?= [[(nid 100, 0, 1)], [], []]
+            -- a page without footnotes is the same whatever the separator
+            let plain = [FParagraph (lines' 0 14)]
+            paginateIn 2 (ColumnSet 1 0 0 0) 6 plain @?= paginateIn 1 (ColumnSet 1 0 0 0) 6 plain
+            paginateIn 1 (ColumnSet 1 0 0 0) 6 plain @?= paginate 1 6 plain,
           testCase "index marks go to the page of their line (golem-driver ADR 0007)" $ do
             let m = mkSpan (FileId 0) 10 20
                 ps = paginate 1 1 [FParagraph [LineBox 0 [] [] [], LineBox 1 [] [] [m], LineBox 2 [] [] []]]

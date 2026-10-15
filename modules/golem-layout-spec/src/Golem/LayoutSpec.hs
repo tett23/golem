@@ -67,7 +67,9 @@ data PageGeometry = PageGeometry
     pgColumnsEven :: ![Rect],
     -- | the sidenote column of odd and even pages
     pgSidenotes :: !(Maybe (Rect, Rect)),
-    pgMasters :: !(Map Text MasterGeometry)
+    pgMasters :: !(Map Text MasterGeometry),
+    -- | the grid lines between the text and the footnotes (golem-driver ADR 0024)
+    pgNoteSeparator :: !Int
   }
   deriving stock (Eq, Show)
 
@@ -165,6 +167,13 @@ pageGeometry fid style = case stPage style of
                   if overflow so || overflow se
                     then Left [err "版面と傍注欄の合計がページからはみ出しています"]
                     else Right (Just (so, se))
+              {- the rule before footnotes no longer than a line of a column, and
+              the grid lines of the separator (golem-driver ADR 0024) -}
+              separator <- case stNotesRule style of
+                Nothing -> Right 1
+                Just rule
+                  | maybe 0 (dimToSp fs) (rsLength rule) > columnLength -> Left [err "脚注の区切り線の length が行長を超えます"]
+                  | otherwise -> Right (separatorLines fs pitch rule)
               let masters = Map.map (masterGeometry ph bindingRight odd' even') (stMasters style)
               Right
                 PageGeometry
@@ -179,8 +188,22 @@ pageGeometry fid style = case stPage style of
                     pgColumns = columnsOf odd',
                     pgColumnsEven = columnsOf even',
                     pgSidenotes = sidenotes,
-                    pgMasters = masters
+                    pgMasters = masters,
+                    pgNoteSeparator = separator
                   }
+
+{- | The grid lines between the text and the footnotes (golem-driver ADR
+0024): one without spaces; with them, the fewest lines n for which the
+distance from the em box of the last line of the text to that of the
+first footnote line, n * pitch + (pitch - size), holds space-before,
+the weight and space-after.
+-}
+separatorLines :: Sp -> Sp -> RuleSpec -> Int
+separatorLines fs pitch rule = case (rsSpaceBefore rule, rsSpaceAfter rule) of
+  (Nothing, Nothing) -> 1
+  (b, a) ->
+    let need = maybe 0 (dimToSp fs) b + rsWeight rule + maybe 0 (dimToSp fs) a - (pitch - fs)
+     in max 1 (fromInteger (negate (negate need `div` pitch)))
 
 {- | Positions such as @top-outside@: vertically the middle of the head or
 foot margin; horizontally the outer (fore-edge), inner (gutter) edge or
