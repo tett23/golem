@@ -158,6 +158,7 @@ flowchart TD
     eval["golem-eval<br/>式の評価とプラグインの展開"]
     doc["golem-doc<br/>意味論 IR と文書構造（S1）の集約"]
     syntax["golem-syntax<br/>診断とソース位置（最下層）"]
+    preflight["golem-preflight<br/>プリフライトの設定と検査"]
     subgraph pdfpath["PDF 経路"]
         layoutspec["golem-layout-spec<br/>レイアウト IR"]
         layout["golem-layout<br/>行分割、禁則、改ページ"]
@@ -179,6 +180,7 @@ flowchart TD
     driver --> lint
     driver --> pdf
     driver --> plugin
+    driver --> preflight
     driver --> text
     epub --> html
     eval --> project
@@ -191,6 +193,7 @@ flowchart TD
     lsp --> fmt
     pdf --> layoutspec
     plugin --> eval
+    preflight --> pdf
     project --> doc
     project --> regex
     text --> doc
@@ -1392,6 +1395,17 @@ LSP は `silence-notices` に従い、抑制したお知らせを公開しない
 LSP には `--no-notices` に当たる設定を設けない。
 記法と設定のキーを廃止するときは、まず廃止予定のお知らせを少なくとも一つの minor の版で出し、次の ADR でエラーにする（手順は [docs/diagnostics.md](diagnostics.md) の「お知らせ」の節）。
 
+診断は、機械が読む事実（`diagFacts`）を持てる（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+事実は名前と値（整数、文字列、整数の配列、文字列の配列）の組の並びで、今はプリフライトの診断だけが、ページ番号（`pdf-pages`）や測った値（`ppi` など）を持つ。
+JSON の形式では、事実を持つ診断にだけ、書いた順にキーを並べた `"facts"` のオブジェクトを `"fixes"` の後に加える。
+
+```json
+{"code":"G0906","severity":"warning","span":{...},"message":"…","related":[],"fixes":[],"facts":{"pdf-pages":[12],"ppi":212,"limit":300}}
+```
+
+事実のない診断の JSON は変わらない。
+人が読む形式は事実を表示せず、メッセージに同じことを書く。
+
 人が読む形式で診断を出した後に、文書にあるコードが一つでもあれば、標準エラー出力に `コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）` の一行を加える。
 例のコードは、出した診断のうち文書にあるコードの最小のものである。
 お知らせのコードも数え、抑制した後に残った診断から作る。
@@ -1849,6 +1863,7 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | `golem new <dir> [--language ja\|en] [--no-fonts]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する |
 | `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)） |
+| `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)） |
 | `golem lint [--profile dev\|prod] [--no-notices]` | lint を実行する |
 | `golem fmt [--check]` | 整形する |
 | `golem lsp` | LSP サーバーを起動する |
@@ -1883,6 +1898,10 @@ G0702 は PDF をターゲットに含むときにだけ出し、位置は `styl
 `golem lint`、`golem fmt`、LSP は `--marks` を持たない。
 
 `golem new` の雛形は、そのまま四つのターゲットをすべてビルドできる（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
+雛形には、`manifest.toml`、`style.toml`、最初の章の原稿のほかに、プリフライトの設定 `preflight.toml` が入る（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+`preflight.toml` は `based-on = "print"` の一行と、`print` の主な値をコメントで書き写した例からなり、コメントの言語だけを雛形の言語に合わせる。
+`--no-fonts` を付けても作り、フォントの取得に失敗したときはほかのファイルと同じく書かない。
+雛形のプロジェクトは、そのままでは `print` のプリフライトを通らない（塗り足しの不足の G0910 と、出力インテントの欠けの G0914）。
 `--language` で日本語（既定）と英語を選び、言語に合わせて版面とフォントを決める。
 日本語は A6 判の縦組みで Noto Serif JP を、英語はマスマーケットのペーパーバック（4.25in × 6.875in、`mass-market`）の横組みで Source Serif 4 を使う。
 フォントとそのライセンスの文書は、配布元のタグで固定した版から取得し、Golem のソースに固定した SHA-256 で検査してから `fonts/` に置く。
@@ -1891,6 +1910,74 @@ G0702 は PDF をターゲットに含むときにだけ出し、位置は `styl
 `--no-fonts` を付けると取得せず、置くべきファイルを表示する。
 フォントを置く前でも、HTML、EPUB、プレーンテキストはビルドできる（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
 PDF は、フォントを置くまで G0802 で止まる。
+
+### golem preflight
+
+`golem preflight` は、印刷所に入稿する前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+`golem build --target pdf` と同じ手順で PDF を組み、ファイルに書かずに、組んだ結果と PDF を検査する。
+プロファイルは常に prod で、`--profile` を付けると使い方の誤りになる。
+`manifest.toml` の `[targets.*]` の有無は見ず、常に PDF を組む。
+`--marks` は `golem build` と同じ意味で、入稿する PDF と同じトンボで検査するためにある。
+構文から出力までの段階の誤りは `golem build` と同じコードで出し、そのどれかのエラーで PDF を作れなければ、プリフライトの検査は行わない。
+LSP、`golem check`、`golem build` はプリフライトの検査を行わない。
+ビルドは原稿と設定の誤りで止まり、プリフライトは印刷の条件で止まる、という分け方である。
+
+InDesign のプリフライトプロファイルにあたるものを、プリフライトの設定と呼ぶ。
+プリフライトの設定は TOML のファイルに書き、`--rules` で指す（作業ディレクトリからの相対パスか絶対パスで、プロジェクトの外でもよい）。
+`--rules` を付けなければプロジェクトのルートの `preflight.toml` を読み、それもなければ組み込みの `print` を使う。
+最上位のキーは `based-on`（`basic`、`print`、`none` のどれか。省けば `print`）と `name`（要約に出す名前）と、検査の名前の表である。
+各検査の表は `severity`（`error`、`warning`、`off`）としきい値のキーを持ち、書かなかったキーは `based-on` の設定から引き継ぐ。
+お知らせは設定の値として選べない。
+長さは `style.toml` と同じ書き方で、`zw` は使えない。
+設定のファイルの誤りはすべて G0901 で、G0901 があれば PDF を組まずに終える。
+
+組み込みの設定は次のとおりである。
+`basic` は InDesign の [基本] にあたり、ビルドを止めない項目だけを検査する。
+`print` のしきい値は、日本の印刷所の入稿の案内でよく見る値から選んだもので、特定の規格の値ではない。
+`none` はすべての検査を `off` にした設定で、一から設定を書くときの基にする。
+
+| 検査 | コード | `basic` | `print` |
+| --- | --- | --- | --- |
+| `glyph-missing`（グリフのない文字） | G0902 | error | error |
+| `font-formats`（許さない形式のフォント） | G0903 | off | off |
+| `type-size`（小さすぎる文字） | G0904 | off | warning（5pt 未満、二版以上の色だけ） |
+| `image-unplaceable`（PDF に置けない図版） | G0905 | error | error |
+| `image-resolution`（実効の解像度の不足） | G0906 | なし | カラーとグレーは 150ppi 未満がエラー、300ppi 未満が警告。二値は 600ppi と 1200ppi |
+| `image-resolution-max`（実効の解像度の過剰） | G0907 | off | off |
+| `image-color-space`（許さない色空間の図版） | G0908 | off | warning（`cmyk` と `gray` を許す） |
+| `image-icc`（出力インテントと違うプロファイル） | G0909 | off | warning |
+| `bleed-size`（塗り足しの幅の不足） | G0910 | off | error（3mm 以上） |
+| `bleed-trim-hazard`（断裁の危険域の図版） | G0911 | off | error（3mm） |
+| `live-area`（断裁の危険域の文字と線） | G0912 | off | warning（3mm） |
+| `overfull-lines`（行長からはみ出す行） | G0913 | warning | warning |
+| `pdf-x`（PDF/X-4 の要件） | G0914 | error | error |
+| `ink-coverage`（総インキ量） | G0915 | off | warning（350%） |
+| `page-count`（ページ数） | G0916 | off | off |
+| `blank-pages`（空白のページ） | G0917 | off | off |
+| `stroke-weight`（細すぎる線） | G0918 | off | warning（0.1mm 未満） |
+
+同じ原因の診断は検査ごとの単位で一つにまとめ、最初のページの位置に出す。
+ページは PDF の何ページ目か（1 から数える）で示し、メッセージには最初の十ページまでを書き、それより多ければ `ほか <n> ページ` と添える。
+長さは mm で、小数点以下一桁に丸めて書く。
+検査は golem-preflight の純粋な関数（`Golem.Preflight.check`）が、golem-driver の PDF の書き手が作る組んだ結果の写し（`Golem.Preflight.View`）に対して行う。
+写しは `golem preflight` のときだけ作り、`golem build` の速さと出力を変えない。
+G0914 の検査は、golem-pdf の `Golem.Pdf.X4.verify` が書く前の PDF のオブジェクトに対して行う、Golem が生成しうる要素に限った自前の検査であり、PDF/X-4 の適合の判定ではない（[golem-pdf ADR 0003](golem-pdf/adr/0003-pdf-x-4-validator.md)）。
+入稿の前には、商用のプリフライトでも確かめる。
+
+終了コードはほかのコマンドと同じく、エラーの診断がなければ 0、あれば 1、使い方の誤りは 2 である。
+警告だけなら 0 で、警告でも止めたいときは設定で重大度を `error` にする。
+人が読む形式では、PDF を作れたときに、診断の後に要約の一行を標準エラー出力に加える。
+
+```
+プリフライト（設定: preflight.toml、基にした設定: print）: エラー 1、警告 3。PDF/X-4 の適合の判定ではないので、入稿の前に商用のプリフライトでも確かめます。検査した PDF の SHA-256: 3f2a…（64 桁）
+```
+
+設定の名前は、`name` があればそれ、なければファイル名、ファイルがなければ `組み込みの print` である。
+SHA-256 は検査した PDF のバイト列のもので、`golem build --target pdf --profile prod` に同じ `--marks` を付けて作った PDF と一致する。
+プロファイルは PDF のインスタンス ID の入力に入るので、`--profile prod` を付けずに作った PDF とは一致しない。
+`--format json` では要約の行を出さない。
+
+### 診断と終了コード
 
 診断は人が読む形で出力し、`--format json` を指定すると機械が読む形で出力する。
 終了コードは、成功が 0、診断によるエラーが 1、コマンドの使い方の誤りが 2 である。
@@ -2096,8 +2183,7 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### CLI と LSP
 
-- **プリフライト**（未実装、[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）：`golem preflight` で、印刷所に入稿する前の検査を行う。InDesign のプリフライトとおおむね同じことをする。たとえば、フォントの欠落と埋め込みの可否、原稿の文字に対応するグリフのない文字、図版のファイルの欠落、図版の実効の解像度の不足、出力インテントに合わない色空間の図版、塗り足しまで届かない図版、版面やページに収まらない要素、PDF/X-4 への適合を検査し、問題を一覧にする。`golem check` は原稿と設定の誤りを、`golem preflight` は組んだ結果が印刷に耐えるかを見る。検査の項目、しきい値（解像度など）、InDesign のプリフライトプロファイルにあたる設定の置き場所は ADR で決める。
-- **雛形のプロジェクトとプリフライト**：`golem new` で作ったプロジェクトは、そのままではプリフライトを通らない。塗り足しが 0 であることと、出力インテント（`[color] intent`）がないことが誤りになる。ICC プロファイルは印刷所ごとに違うので雛形に入れられず、塗り足しだけを入れても出力インテントの誤りは残る。雛形の利用者が入稿までに何を足せばよいかを、どう案内するかを決める。
+- **PDF に置けない図版**：`golem build` は、JPEG と PNG として読めない `@figure` の画像（PDF の図版、壊れた画像）を、診断を出さずに PDF から落とす。`golem preflight` は G0905 で報告するが、`golem build` のエラーにするかどうかは決めていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 
 ### 手で確かめる項目
 
@@ -2106,6 +2192,7 @@ v1 のリリースまでに、次の項目を扱う。
 
 - **LSP の位置の扱い**：UTF-8 の位置の交渉と、行の長さを超える列の丸めを、実際のエディタ（Neovim）で確かめていない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)、[golem-lsp ADR 0003](golem-lsp/adr/0003-position-handling.md)）。
 - **CIDSystemInfo と異体字**：Adobe-Japan1 の ROS を持つフォント（小塚明朝 Pr6N など）で組んだ PDF を Acrobat のプリフライトにかけ、`CIDSystemInfo` がフォントの ROS になっていること、IVS の異体字が出ることを確かめていない。リポジトリにそうしたフォントがないためである（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。
+- **プリフライトと商用のプリフライトの差**：Golem の G0914 が出なかった PDF を Acrobat のプリフライト（PDF/X-4 の適合の検査）にかけ、Acrobat が PDF/X-4 の誤りを報告するかを確かめていない。差があれば `Golem.Pdf.X4.verify` に足す要件を ADR にし、結果は `docs/audits/` に残す。同じ条件の文書を InDesign のプリフライトにかけ、同じ種類の問題が両方で出るかも確かめていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 - **トンボのレジストレーションの色**：トンボを付けた PDF を Acrobat の出力プレビューとプリフライトで開き、トンボが全版に出ること、本文に特色が混ざらないこと、InDesign の書き出しと同じ形であることを確かめていない（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
 - **縦組みのダッシュ**：縦組みの PDF を目で見ること、InDesign の縦組みとの比較、縦組みの HTML を Safari と Chrome で開いて向きが PDF と同じことの確かめが残っている（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 - **リストの字下げ**：入れ子のリストと 10 項目を超える番号付きリストを、横組みと縦組みで PDF と EPUB にして目で見ることと、決定性の検査の蟹工船とテンペストの出力が変わらないことの確かめが残っている（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。

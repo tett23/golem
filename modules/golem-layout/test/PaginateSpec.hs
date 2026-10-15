@@ -67,11 +67,11 @@ keepWithNextTests =
       contents ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 40, SLine 41]],
     testCase "a heading before a code block keeps the grid lines of its first row with padding" $ do
       -- 2 free: heading 1 + one row with padding 2 = 3 > 2; three rows take 4 lines
-      let ps = paginate 1 5 [FParagraph (lines' 0 3), heading 20, FCode paddedCode (lines' 30 3)]
+      let ps = paginate 1 5 [FParagraph (lines' 0 3), heading 20, FCode paddedCode 0 1 False (lines' 30 3)]
       contents ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SCode 30 3 4]],
     testCase "a heading stays when the first row of the code block after it fits; the rest goes on" $ do
       -- 3 free: heading 1 + one row 2 = 3; the other two rows take 3 lines on page 2
-      let ps = paginate 1 6 [FParagraph (lines' 0 3), heading 20, FCode paddedCode (lines' 30 3)]
+      let ps = paginate 1 6 [FParagraph (lines' 0 3), heading 20, FCode paddedCode 0 1 False (lines' 30 3)]
       contents ps @?= [[SLine 0, SLine 1, SLine 2, SHeading 20 1, SCode 30 1 2], [SCode 31 2 3]],
     testCase "a heading before a heading of two grid lines counts that span" $ do
       -- 2 free: heading 1 + the next heading's span 2 = 3 > 2
@@ -79,7 +79,7 @@ keepWithNextTests =
       contents ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SHeading 25 1, SLine 30, SLine 31]],
     testCase "a definition term before a code block keeps its first row" $ do
       -- 2 free: term 1 + one row 2 = 3 > 2
-      let ps = paginate 1 5 [FParagraph (lines' 0 3), FDefTerm (lines' 20 1), FCode paddedCode (lines' 30 1)]
+      let ps = paginate 1 5 [FParagraph (lines' 0 3), FDefTerm (lines' 20 1), FCode paddedCode 0 1 False (lines' 30 1)]
       contents ps @?= [[SLine 0, SLine 1, SLine 2], [SLine 20, SCode 30 1 2]]
   ]
 

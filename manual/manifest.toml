@@ -14,9 +14,10 @@ chapters = [
   "appendices/a-markup.gm",
   "appendices/b-manifest.gm",
   "appendices/c-style.gm",
-  "appendices/d-errors.gm",
-  "appendices/e-indesign.gm",
-  "appendices/f-glossary.gm",
+  "appendices/d-preflight.gm",
+  "appendices/e-errors.gm",
+  "appendices/f-indesign.gm",
+  "appendices/g-glossary.gm",
   "back.gm",
 ]
 bibliography = ["references.json"]

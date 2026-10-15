@@ -96,6 +96,11 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **文書 ID** と**インスタンス ID**：PDF と XMP に書く識別子。文書 ID は本の識別子から、インスタンス ID は入力全体のハッシュから導出し、乱数を使わない（[仕様書](specifications.md)）。
 - **塗り足し**：仕上がりの判型の外側に設ける、断裁のずれを吸収するための領域。`style.toml` の `[page]` の `bleed` で幅を決める（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
 - **トンボ**：断裁の位置を示すために、仕上がりの判型の外側に描く線。日本式は仕上がりの線と塗り足しの線の二重、欧文は仕上がりの線だけの一重で、`golem build` の `--marks` で選ぶ（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
+- **プリフライト**：印刷所に入稿する前に、組んだ PDF が印刷に耐えるかを検査すること。Golem では `golem preflight` が、`golem build --target pdf --profile prod` と同じ PDF を組んで検査する。ビルドを止める原稿と設定の誤りとは分け、印刷の条件で止める（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+- **プリフライトの設定**：プリフライトで行う検査、その重大度、しきい値の組。InDesign のプリフライトプロファイルにあたる。TOML のファイル（既定は `preflight.toml`）に書き、組み込みの `basic`、`print`、`none` のどれかを基にする。「プロファイル」の語は dev と prod を指すので使わない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+- **実効の解像度**：紙面に置いた画像の解像度。画素数を、置いた大きさ（インチ）で割った値で、縦と横の小さいほうを ppi で表す（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+- **断裁の危険域**：断裁のずれで切れたり、白い縁が出たりする位置。仕上がりの線の内側の一定の幅と、仕上がりの線から塗り足しの線までのあいだである（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+- **安全域**：仕上がりの線から一定の幅だけ内側に縮めた矩形。文字と線をこの中に収めれば、断裁のずれで切れない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 - **レジストレーションの色**：すべての版に出る色。PDF では色材の名前が `All` の Separation の色空間で表す。Golem はトンボだけをこの色で描き、本文や図版には使わない（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
 
 ## ツールと拡張

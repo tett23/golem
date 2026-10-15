@@ -61,6 +61,7 @@ golem-syntax の [code: Golem.Syntax.Render] の [code: renderJson] が文字列
 | [code: message] | 文字列 | 一行のメッセージ |
 | [code: related] | 配列 | [code: span] と [code: message] を持つオブジェクトの列 |
 | [code: fixes] | 配列 | [code: title] と [code: edits] を持つ修正案の列 |
+| [code: facts] | オブジェクト | 機械が読む事実。持つ診断にだけある（下を参照） |
 
 [code: span] は次の五つの鍵を持つ。
 
@@ -80,6 +81,22 @@ golem-syntax の [code: Golem.Syntax.Render] の [code: renderJson] が文字列
 修正案の [code: edits] は、[code: span] と、その範囲を置き換える [code: text] の組の列である。
 編集の列が空で、題だけが直し方を示す修正案もある。
 CR を含む原稿の G0103 に付く「golem fmt で LF に直す」がその例である。
+
+一部の診断は、[code: fixes] の後に [code: facts] のオブジェクトを持つ。[index reading=facts: facts][note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
+ページ番号や測った値のように、メッセージに書いたことを機械が読める形にしたもので、鍵は診断ごとに決まった順に並ぶ。
+値は整数、文字列、整数の配列、文字列の配列のどれかである。
+今は [code: golem preflight] の診断（G0902 から G0918）だけが持ち、ほかの診断の JSON に [code: facts] の鍵は現れない。
+
+```json
+{"code":"G0906","severity":"warning",
+ "span":{...},"message":"…","related":[],"fixes":[],
+ "facts":{"ppi":212,"limit":300,
+          "pixels":[1200,900],"pdf-pages":[12]}}
+```
+
+[code: pdf-pages] は、PDF の何ページ目か（1 から数える）の列である。
+同じ原因の診断は一つにまとめるので、メッセージには最初の十ページまでしか書かないが、[code: pdf-pages] にはすべてのページが入る。
+ノンブルは前付けと本文で数え方が変わるので、ページの特定には使わない。
 
 ## 並び順
 
@@ -107,6 +124,7 @@ notice を後に回すのは、notice の多いプロジェクトで、ビルド
 | 06 | プラグイン | golem-plugin、golem-driver |
 | 07 | レイアウト（版面、改ページ、傍注、表） | golem-layout |
 | 08 | 出力（フォント、出力インテント） | golem-driver |
+| 09 | プリフライト | golem-preflight |
 
 一度割り当てたコードは、別の意味に再利用しない。
 使わなくなったコードは、文書の節を消さずに状態を「廃止」にする。
@@ -116,6 +134,8 @@ CI でコードごとに扱いを分ける仕組み（特定のコードを集�
 一部のコードは、プロファイルで重大度が変わる。
 今は G0310（HTML と EPUB に同梱するフォントの欠け）と G0504（参照されていないラベル）で、[code: dev] では警告、[code: prod] ではエラーになる。
 G0205（校正用のコメントの残り）は [code: prod] でだけ出る警告である。
+G0902 から G0918 の重大度は、プリフライトの設定で決まる（[code: Golem.Syntax.Diagnostic.preflightCodes]）。
+設定で選べるのは [code: error]、[code: warning]、[code: off] で、[code: notice] は選べない。
 
 プラグインが出す診断のコードは、プラグインが決める。
 Golem の文書の対象外であり、[code: golem explain] も説明を持たない。
