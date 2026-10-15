@@ -360,7 +360,8 @@ tracking lk = round (toInteger (lkTracking lk) * lkSize lk % 1000)
 
 {- | The pair kerning of Japanese characters (docs/adr/0020): two boxes of
 one Japanese character each, side by side, of the same look with metrics
-kerning and neither of them punctuation, whose spacing the rules of
+kerning and neither of them punctuation or an inseparable character
+(golem-driver ADR 0020), whose spacing the rules of
 JLReq decide. The kerning widens (narrows) the first box and is given
 back at its end edge, so that it does not count at the end of a line.
 -}
@@ -380,7 +381,7 @@ kernPairs env = \case
     single c = case T.unpack (withoutSelectors (bcText c)) of
       [ch]
         | boxKind c `elem` [KindText, KindKenten],
-          charClass ch `notElem` [Western, Opening, Closing, FullStop, Comma, MiddleDot] ->
+          charClass ch `notElem` [Western, Opening, Closing, FullStop, Comma, MiddleDot, Inseparable] ->
             Just ch
       _ -> Nothing
 

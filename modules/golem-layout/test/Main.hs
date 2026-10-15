@@ -1041,7 +1041,19 @@ characterFeatureTests =
     testCase "the baseline shift does not change the line breaks" $ do
       let at shift = (defaultComposeEnv fs) {ceLook = look0 {lkBaselineShift = shift}}
           breaksOf e = brPositions (breakParagraph defaultParams (const (10 * fs)) (compose e (T.replicate 25 "あい、")))
-      breaksOf (at (2 * 65536)) @?= breaksOf (at 0)
+      breaksOf (at (2 * 65536)) @?= breaksOf (at 0),
+    testCase "pairs with an inseparable character are not kerned, horizontal or vertical (golem-driver ADR 0020)" $ do
+      let kernAll v = (defaultComposeEnv fs) {ceKern = \_ _ _ -> -(88 / 1000), ceVertical = v}
+          plain v = (defaultComposeEnv fs) {ceVertical = v}
+          boxes e t = [(bcText c, w, bcEdgeEnd c) | Box w c <- compose e t]
+      sequence_
+        [ boxes (kernAll v) t @?= boxes (plain v) t
+        | v <- [False, True],
+          t <- ["あ\x2014\x2014い", "あ……い", "あ‥‥い", "漢\x2014", "\x2014漢"]
+        ]
+      sequence_ [assertBool (show (boxes (plain v) "あ\x2014\x2014い")) (all (\(_, _, e) -> e == 0) (boxes (plain v) "あ\x2014\x2014い")) | v <- [False, True]]
+      -- a Japanese pair is kerned as before
+      sequence_ [map (\(_, _, e) -> e) (boxes (kernAll v) "あい") @?= [round (toRational fs * 88 / 1000), 0] | v <- [False, True]]
   ]
   where
     tenth = fs `div` 10
