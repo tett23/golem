@@ -860,7 +860,7 @@ PDF では、項目の印を行の始まりにぶら下げ、項目の二行目�
 同じ文字に複数の組が一致した場合は、並びの最初の組の文字スタイルを最も外側に、後の組を内側に置くので、後の組が勝つ。
 原稿で手で当てた文字スタイル、色、圏点は正規表現スタイルの内側に置き直すので、手で当てた文字スタイルが勝つ。
 ルビの親文字の途中で一致が切れる場合は、各セグメントの親文字の中で文字スタイルを当てる。
-PDF は今、ルビの親文字の中の文字スタイルを描き分けないので、親文字の全体に一致した場合だけ見た目が変わる。
+PDF も、親文字のうち一致した字だけを文字スタイルで組む（[golem-layout ADR 0011](golem-layout/adr/0011-ruby-base-character-styles.md)）。
 
 `[lists]` は、箇条書きの印の字形と、番号付きリストの番号の書式を決める（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
 入れ子の深さごとに別の値を書ける。
@@ -1071,6 +1071,12 @@ CSS を書けると、媒体契約の外で見た目を変える抜け道にな�
 片側にかけられない場合（片側が漢字の場合など）は、どちらの側にもかけない。
 行頭と行末に来たルビは、その側のかけを戻し、読みを版面の内側に収める。
 寸法が負の値と、列挙にない値は G0306 とする。
+
+親文字の中に文字スタイルや色を書くと、PDF はその字だけを内側の設定で組む（[golem-layout ADR 0011](golem-layout/adr/0011-ruby-base-character-styles.md)）。
+親文字の各字の送りはその字の書体と大きさで測り、隣のルビへのかけの余地も隣の親文字の各字で測る。
+読みは、ルビの外側の書体、色、大きさの半分で組み、親文字の中の文字スタイルを受け継がない。
+読みの位置は、親文字のうち最も大きい字に合わせる。
+親文字の中ではペアカーニングとトラッキングをかけず、親文字が大きくても行送りは広げない。
 
 `[toc]` の `leader` は、PDF の目次のリーダーを `"dots"`（既定）か `"none"` で選ぶ（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
 
@@ -1885,7 +1891,6 @@ v1 のリリースまでに、次の項目を扱う。
 - **PDF の圏点**（未実装、[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）：圏点の `shape` を PDF で使わず、常に `﹅` で描く。横組みでは圏点が右にずれ、字の上端に重なる。
 - **GPOS の配置のずらし**（未実装、[golem-driver ADR 0020](golem-driver/adr/0020-glyph-positioning-and-dash-kerning.md)）：PDF の描画は、HarfBuzz が返す配置のずらし（GPOS の x と y のオフセット）を使わない。`palt` や `vpal` で送りは縮むが、字は縮んだ箱の中で少しずれて置かれる。役割の `features` に `palt` を書いた場合も同じである。
 - **二倍ダッシュのカーニング**（未実装、[golem-driver ADR 0020](golem-driver/adr/0020-glyph-positioning-and-dash-kerning.md)）：`——` はペアカーニングを止める約物の一覧（[docs/adr/0020](adr/0020-indesign-character-features.md)）に入っていないので、`kerning = "metrics"` でフォントのカーニングがかかる。蟹工船の縦組みでは 319 か所に −0.088em かかる。
-- **ルビの親文字の中の文字スタイル**（未実装、[golem-layout ADR 0011](golem-layout/adr/0011-ruby-base-character-styles.md)）：PDF は、ルビの親文字の中の文字スタイルを描き分けない（golem-layout の `rubyPieces` が親文字の中のスタイルを平らにする）。手で書いた `[style]` も、親文字の一部に一致した正規表現スタイル（[docs/adr/0015](adr/0015-regex-styles.md)）も、HTML では効くが PDF では見た目が変わらない。
 - **`[aki]` の空きの見分け方**（未実装、[golem-layout ADR 0012](golem-layout/adr/0012-aki-glue-marker.md)）：行の組み方は、`[aki]` の空きを「伸び縮みしない空き（`Glue w 0 0`）」という形で見分けている（[docs/adr/0019](adr/0019-aki-settings.md)）。今は同じ形の空きがほかに出ないが、幅 0 の語間の空白が出ると `[aki]` と取り違える。印を付けて見分ける形に改める。
 - **章末の注**：`[notes] placement = "chapter-end"` を読み込むが、どの出力も注の置き方を変えない。仕様書とマニュアルは章末に置けると書いていない形に直したが、章末の注そのものはまだない。
 - **図版の欠落の扱い**：PDF の図版のうち、置けない形式のものや壊れた画像を、`golem build` が誤りにせずに落としている可能性がある（コードを読んだ結果で、実際の出力では確かめていない）。
