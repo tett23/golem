@@ -6,7 +6,8 @@ fixed point of page-number references (S2).
 
 Everything is counted in grid lines: a footnote line takes one grid
 line from the bottom of the page and the footnote area is separated
-from the text by one grid line.
+from the text by the grid lines of the separator, one unless
+[notes.rule] asks for more (golem-driver ADR 0024).
 
 A page may have several columns (docs/adr ADR 0018): the unit of the
 break is the column, the flow goes through the columns of a page in
@@ -83,9 +84,18 @@ data Flow
   | -- | a forced break before what follows (docs/adr ADR 0017)
     FBreak !BreakKind
   | {- | a code block: its rows, broken between any two of them; each part
-    takes the grid lines of 'codeSpan' (golem-driver ADR 0017)
+    takes the grid lines of 'codeSpan' (golem-driver ADR 0017). The first
+    part has the grid lines of the caption above it and at least
+    'fcFirst' rows; with 'fcContinued', each part but the last has a row
+    more for the text that it continues (golem-driver ADR 0023).
     -}
-    FCode !CodeGeometry [LineBox]
+    FCode
+      { fcGeometry :: !CodeGeometry,
+        fcCaption :: !Int,
+        fcFirst :: !Int,
+        fcContinued :: !Bool,
+        fcRows :: [LineBox]
+      }
   | -- | the start of the index in its own columns (docs/adr ADR 0025)
     FSwitchColumns !ColumnSet
   | -- | the end of the index: the next page, in the columns of the page
@@ -197,21 +207,24 @@ data St = St
 lines each (docs/adr ADR 0018).
 -}
 paginate :: Int -> Int -> [Flow] -> [PageOut]
-paginate columns = paginateIn (ColumnSet columns 0 0 0)
+paginate columns = paginateIn 1 (ColumnSet columns 0 0 0)
 
-{- | 'paginate' with the columns of the page as a set (docs/adr ADR 0025):
+{- | 'paginate' with the grid lines of the footnote separator
+(golem-driver ADR 0024) and the columns of the page as a set (docs/adr ADR 0025):
 'FSwitchColumns' starts another set of columns, after the lines used on
 a page of one column or on the next page otherwise, and
 'FRestoreColumns' goes back to @base@ on the next page.
 -}
-paginateIn :: ColumnSet -> Int -> [Flow] -> [PageOut]
-paginateIn base capacity flows =
+paginateIn :: Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
+paginateIn separatorLines base capacity flows =
   let st0 = St 1 0 0 0 [] [] [] [] [] [] [] [] [] base {csFirstLine = 0} 0
       final = closePage (go st0 flows)
       done = reverse (sDone final)
    in if null done then [PageOut 1 0 False [] [] [] [] [] base] else done
   where
     columns = csColumns base
+    -- a footnote line always fits under the separator and one line of text
+    separator = max 1 (min separatorLines (capacity - 2))
     top st = csFirstLine (sSet st)
     -- breaks left at the end of the book are dropped (docs/adr ADR 0017)
     go st [] = flushDeferred st {sBreaks = []}
@@ -242,7 +255,9 @@ paginateIn base capacity flows =
       (FWrapped _ n _ _ ls : _) -> max n (length ls)
       (FSpace _ : _) -> 0
       (FBreak _ : _) -> 0
-      (FCode g ls : _) -> if null ls then 0 else codeSpan g 1
+      (FCode g cap first cont ls : _)
+        | null ls -> 0
+        | otherwise -> let k = min (length ls) (max 1 first) in cap + codeSpan g (k + (if cont && k < length ls then 1 else 0))
       -- a heading before the index columns on a page of one column keeps their first line
       (FSwitchColumns _ : rest) | columns == 1 -> nextNeed rest
       (FSwitchColumns _ : _) -> 0
@@ -270,7 +285,7 @@ paginateIn base capacity flows =
             st2 = putSlot st1 0 (SWrapped i) labels marks
          in (placeLines st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines st2 False beside))}
       FBreak k -> st {sBreaks = sBreaks st <> [k]}
-      FCode g ls -> placeCode st g ls
+      FCode g cap first cont ls -> placeCode st (g, cap, first, cont) True ls
       FSwitchColumns set ->
         let st1 = flushDeferred st
          in if (columns == 1 && free st1 > 0) || (isEmpty st1 && sColumn st1 == 0)
@@ -297,18 +312,26 @@ paginateIn base capacity flows =
         }
     keep st n = if n > free st && not (isEmpty st) then nextColumn st else st
     {- a code block: as many rows as their grid lines fit in the column, the
-    rest in the next column; at least one row in an empty column (golem-driver ADR 0017) -}
-    placeCode st _ [] = st
-    placeCode st g ls@(l0 : _) =
-      let fits k = codeSpan g k <= free st
-          k0 = length (takeWhile fits [1 .. length ls])
-          k = if k0 == 0 && isEmpty st then 1 else k0
+    rest in the next column; at least one row in an empty column (golem-driver ADR 0017).
+    The first part has its caption and its first rows; a part before the
+    last has a row for the text that it continues (golem-driver ADR 0023) -}
+    placeCode st _ _ [] = st
+    placeCode st c@(g, cap0, first, cont) isFirst ls@(l0 : _) =
+      let len = length ls
+          cap = if isFirst then cap0 else 0
+          least = if isFirst then min len (max 1 first) else 1
+          spanOf j = cap + codeSpan g (j + (if cont && j < len then 1 else 0))
+          k0 = length (takeWhile (\j -> spanOf j <= free st) [1 .. len])
+          k
+            | k0 >= least = k0
+            | isEmpty st = least
+            | otherwise = 0
           (part, rest) = splitAt k ls
-          n = codeSpan g k
+          n = spanOf k
           st1 = putSlot st n (SCode (lbId l0) k n) (concatMap lbLabels part) (concatMap lbMarks part)
        in if k == 0
-            then placeCode (nextColumn st) g ls
-            else if null rest then st1 else placeCode (nextColumn st1) g rest
+            then placeCode (nextColumn st) c isFirst ls
+            else if null rest then st1 else placeCode (nextColumn st1) c False rest
     -- start in column 0 of a page whose number satisfies p, after a blank page if needed
     parityStart p st =
       let st1 = if isEmpty st && sColumn st == 0 then st else nextPage st
@@ -333,14 +356,14 @@ paginateIn base capacity flows =
       where
         step ((u, nl), acc) l =
           let noteLines = sum (map nbLines (lbNotes l))
-              sep = if nl == 0 && noteLines > 0 then 1 else 0
+              sep = if nl == 0 && noteLines > 0 then separator else 0
               u' = u + 1
               nl' = nl + noteLines + sep
               ok = u' + nl' <= capacity && (null acc || last acc)
            in ((u', nl'), acc <> [ok])
     putLine st l =
       let noteLines = sum (map nbLines (lbNotes l))
-          sep = if sNoteLines st == 0 && noteLines > 0 then 1 else 0
+          sep = if sNoteLines st == 0 && noteLines > 0 then separator else 0
           room = capacity - sUsed st - 1 - sNoteLines st - sep
           (shown, pending) = splitNotes room (lbNotes l)
        in st
@@ -372,7 +395,7 @@ paginateIn base capacity flows =
     putBlock st n ls@(l0 : _) =
       let notes = concatMap lbNotes ls
           noteLines = sum (map nbLines notes)
-          sep = if sNoteLines st == 0 && noteLines > 0 then 1 else 0
+          sep = if sNoteLines st == 0 && noteLines > 0 then separator else 0
           room = capacity - sUsed st - n - sNoteLines st - sep
           (shown, pending) = splitNotes room notes
        in st
@@ -423,7 +446,7 @@ paginateIn base capacity flows =
           withNotes = foldl' carryNote fresh (sPendingNotes st)
        in placeDeferred withNotes {sDeferred = []} (sDeferred st)
     carryNote st (i, from, len) =
-      let sep = if sNoteLines st == 0 then 1 else 0
+      let sep = if sNoteLines st == 0 then separator else 0
           room = capacity - sNoteLines st - sep - 1
           shown = min len room
        in st

@@ -43,6 +43,8 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **DeferredExpr**：S1 で初めて値が決まる式（`doc` 名前空間を参照する式）を、意味論 IR の中に評価を遅らせて保持したもの（[golem-eval ADR 0002](golem-eval/adr/0002-file-evaluation.md)）。
 - **チャネル**：文書の各所から項目を集め、別の位置に一覧として出す仕組み。目次、脚注、索引、参考文献がこの形をとる（[仕様書](specifications.md)）。
 - **ラベル**：`@label` でブロックに付ける名前。相互参照（章番号、章題、ページ番号）の参照先になる。
+- **リスト番号**：`@caption` でキャプションを付けたコードブロックに、章ごとに振る番号。図番号とは別に数え、表記は `style.toml` の `[code]` の `number`（既定 `リスト{chapter}-{n}`）で決める（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+- **注釈の印**：コードブロックの行末に置き、本文で同じ印を使って説明する丸数字（①）。原稿では `callouts=true` のコードブロックの行末に `<1>` と書く（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 
 ## 組版
 
@@ -52,6 +54,8 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **柱**と**ノンブル**：ページの余白に置く章題などの見出しと、ページ番号。マスターページで位置と内容を決める。柱の内容は、マスターページの `running-head` の `content`（または `even` と `odd`）に、`heading.1.short` や `title` のような値で書く（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
 - **マスターページ**：柱とノンブルの位置と内容をまとめた、ページの雛形。`style.toml` の `[masters]` に書く。柱の内容は `running-head` の `content`（または `even` と `odd`）で決める。章のファイルごとにマニフェストの `master` で選び、指定のないファイルは `body` を使う（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
 - **行の格子**：版面の中で各行を置く位置の並び（ベースライングリッド）。見開きの左右のページで行の位置がそろう。
+- **脚注の区切り線**：PDF のページ下の脚注の前に引く罫線。`style.toml` の `[notes.rule]` に書いたときだけ引く。本文と脚注のあいだの区切りの領域は格子の行の整数倍で、間隔を書くと行の数が増える（[仕様書](specifications.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
+- **罫線の指定**：`style.toml` で罫線を書く共通の値の形。`length`、`weight`、`space-before`、`space-after` の四つのキーを持ち、値の検査はどの使い手でも同じである。今の使い手は脚注の区切り線だけである（[仕様書](specifications.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 - **sp**：Golem が内部で使う長さの単位。1pt の 65536 分の 1 であり、すべての寸法を整数で扱うためにある。`style.toml` では mm、pt、Q（級）、H（歯）、zw（全角一字分）で書き、読み込むときに sp へ変換する。
 - **Knuth-Plass の行分割**：段落全体を見て、行の詰まり具合の悪さ（不良度）と罰点の合計が最小になる改行の位置を選ぶ方法。行ごとに目標の行長（L*(i)）を変えられる（[golem-layout ADR 0001](golem-layout/adr/0001-knuth-plass-line-breaking.md)）。
 - **禁則**：行頭や行末に置いてはいけない文字を、その位置に来させない規則。閉じ括弧や句読点は行頭に置かない（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）。
@@ -66,7 +70,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **字下げ**：段落の行の始まりを下げること。段落スタイルの `indent`（すべての行）と `first-line-indent`（最初の行に加える量。負なら二行目以降が下がるぶら下げになる）で指定し、横組みでも縦組みでも行の始まりの側から測る（[docs/adr/0006](adr/0006-paragraph-indent.md)）。リストの項目は段落スタイルの字下げを受けず、PDF では印の幅だけ本文を下げて印をぶら下げ、入れ子のリストは外の項目の本文の始まりから下げる（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
 - **正規表現スタイル**：段落スタイルの中の、正規表現と文字スタイルの組の並び。段落の中で正規表現に一致した文字に、組の文字スタイルを当てる。InDesign の正規表現スタイル（英語版の GREP スタイル）に当たる（[docs/adr/0015](adr/0015-regex-styles.md)）。
 - **ルビ**：親文字の傍らに小さく添える読み。親文字一字ごとに振る**モノルビ**と、語の全体に振る**グループルビ**がある（[markup.md](markup.md)）。熟語の各字にモノルビとして振り、熟語の中では隣の親文字の空いている場所にかけることを許すものを**熟語ルビ**という。ルビが親文字より短いとき、ルビを親文字の中央に置くことを**中付き**、親文字の始まりの側（縦組みでは上、横組みでは左）にそろえて置くことを**肩付き**という。ルビが親文字より長いとき、はみ出す部分を隣の文字の上（縦組みでは右）に置くことを**ルビのかけ**という（[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)）。
-- **圏点**：強調のために親文字の傍らに打つ点。形（ゴマなど）は `style.toml` の既定か引数で決める。
+- **圏点**：強調のために親文字の傍らに打つ点。形（ゴマなど）は `style.toml` の既定か引数で決める。十の形の一覧は [docs/markup.md](markup.md) の「圏点」にある。約物と区切り（空白など）には付けない。
 - **縦中横**：縦組みの中で、短い文字列を横向きのまま一字分の幅に組むこと。
 - **縦組みの向き（Vertical_Orientation）**：Unicode の UAX #50 が文字ごとに定める、縦組みでの文字の向き。正立（U）、回転（R）、縦書き用の字形があれば使い、なければ正立（Tu）、縦書き用の字形があれば使い、なければ回転（Tr）の四つの値がある。Golem の PDF は、縦書き用の字形がない R と Tr の文字を、横組みの字形を時計回りに 90 度回して描く（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 - **突き出し**と**伸縮（hz）**：行末のハイフンや句読点を版面の外へわずかに出すことと、欧文のグリフの幅をわずかに伸び縮みさせること。どちらも語間の空きのばらつきを減らす（[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md)）。
@@ -92,6 +96,11 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **文書 ID** と**インスタンス ID**：PDF と XMP に書く識別子。文書 ID は本の識別子から、インスタンス ID は入力全体のハッシュから導出し、乱数を使わない（[仕様書](specifications.md)）。
 - **塗り足し**：仕上がりの判型の外側に設ける、断裁のずれを吸収するための領域。`style.toml` の `[page]` の `bleed` で幅を決める（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
 - **トンボ**：断裁の位置を示すために、仕上がりの判型の外側に描く線。日本式は仕上がりの線と塗り足しの線の二重、欧文は仕上がりの線だけの一重で、`golem build` の `--marks` で選ぶ（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
+- **プリフライト**：印刷所に入稿する前に、組んだ PDF が印刷に耐えるかを検査すること。Golem では `golem preflight` が、`golem build --target pdf --profile prod` と同じ PDF を組んで検査する。ビルドを止める原稿と設定の誤りとは分け、印刷の条件で止める（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+- **プリフライトの設定**：プリフライトで行う検査、その重大度、しきい値の組。InDesign のプリフライトプロファイルにあたる。TOML のファイル（既定は `preflight.toml`）に書き、組み込みの `basic`、`print`、`none` のどれかを基にする。「プロファイル」の語は dev と prod を指すので使わない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+- **実効の解像度**：紙面に置いた画像の解像度。画素数を、置いた大きさ（インチ）で割った値で、縦と横の小さいほうを ppi で表す（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+- **断裁の危険域**：断裁のずれで切れたり、白い縁が出たりする位置。仕上がりの線の内側の一定の幅と、仕上がりの線から塗り足しの線までのあいだである（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+- **安全域**：仕上がりの線から一定の幅だけ内側に縮めた矩形。文字と線をこの中に収めれば、断裁のずれで切れない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 - **レジストレーションの色**：すべての版に出る色。PDF では色材の名前が `All` の Separation の色空間で表す。Golem はトンボだけをこの色で描き、本文や図版には使わない（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
 
 ## ツールと拡張

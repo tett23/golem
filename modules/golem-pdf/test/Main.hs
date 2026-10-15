@@ -941,6 +941,64 @@ boxesOf s = (shMedia s, shTrim s, shBleed s)
 registrationResource :: ByteString
 registrationResource = "/ColorSpace << /Reg [/Separation /All /DeviceCMYK << /C0 [0 0 0 0] /C1 [1 1 1 1] /Domain [0 1] /FunctionType 2 /N 1 >>] >>"
 
+{- | Golem.Pdf.X4.verify on the objects before they are written (golem-cli
+ADR 0006): each requirement of the PDF/X-4 test, broken alone, is one
+problem.
+-}
+verifyTests :: [TestTree]
+verifyTests =
+  [ testCase "what Golem writes with an output intent has no problem" $ do
+      verify (documentObjects x4Sample) @?= []
+      verify (documentObjects (documentWith [framePage Nothing 0 (100 * 65536, 100 * 65536) [], framePage (Just Japanese) (3 * 65536) (100 * 65536, 100 * 65536) []]) {docPdfX = Just x4px}) @?= [],
+    testCase "without an output intent the intent, the XMP and Trapped are missing" $ do
+      let ps = verify (documentObjects sample)
+      assertBool (show ps) (not (null ps)),
+    one "no output intent" (mapObjs (onDict isCatalog (dropKey "OutputIntents"))),
+    one "no DestOutputProfile" (mapObjs (onDict isCatalog (mapKey "OutputIntents" (\case OArr [ODict kvs] -> OArr [ODict (filter ((/= "DestOutputProfile") . fst) kvs)]; o -> o)))),
+    one "no GTS_PDFXVersion" (mapObjs (onStream isMetadata (cut "   <pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>\n"))),
+    one "no Trapped" (mapObjs (onStream isMetadata (cut "   <pdf:Trapped>False</pdf:Trapped>\n"))),
+    one "no TrimBox" (mapFirst isPage (onDict (const True) (dropKey "TrimBox"))),
+    one "a BleedBox outside the MediaBox" (mapFirst isPage (onDict (const True) (mapKey "BleedBox" (const (OArr (map OInt [-1, 0, 595, 842])))))),
+    one "a font not embedded" (mapObjs (onDict (hasType "FontDescriptor") (dropKey "FontFile2"))),
+    one "RGB without an ICC profile" (mapObjs (onStream isImage (mapStreamKey "ColorSpace" (const (OName "DeviceRGB"))))),
+    one "encryption" (\o -> o {pdfTrailer = case pdfTrailer o of ODict kvs -> ODict (kvs <> [("Encrypt", ORef 1)]); t -> t}),
+    one "JavaScript" (mapObjs (onDict isCatalog (<> [("Names", ODict [("JavaScript", ORef 1)])]))),
+    one "a version after 1.6" (\o -> o {pdfVersion = "1.7"}),
+    testCase "a problem names its requirement" $ do
+      let ps = verify (mapFirst isPage (onDict (const True) (dropKey "TrimBox")) (documentObjects x4Sample))
+      map x4Requirement ps @?= ["TrimBox"]
+  ]
+  where
+    x4px = PdfX "fake-japan-color-profile" "JC200103" []
+    x4Sample = sample {docPdfX = Just x4px}
+    one name f = testCase name $ do
+      let ps = verify (f (documentObjects x4Sample))
+      assertEqual (show ps) 1 (length ps)
+    mapObjs f o = o {pdfObjects = map f (pdfObjects o)}
+    mapFirst p f o =
+      let (before, rest) = break p (pdfObjects o)
+       in o {pdfObjects = before <> take 1 (map f rest) <> drop 1 rest}
+    hasType t = \case
+      ODict kvs -> lookup "Type" kvs == Just (OName t)
+      OStream kvs _ -> lookup "Type" kvs == Just (OName t)
+      _ -> False
+    isCatalog = hasType "Catalog"
+    isPage = hasType "Page"
+    isMetadata = hasType "Metadata"
+    isImage = \case
+      OStream kvs _ -> lookup "Subtype" kvs == Just (OName "Image")
+      _ -> False
+    onDict p f = \case
+      d@(ODict kvs) | p d -> ODict (f kvs)
+      o -> o
+    onStream p f = \case
+      s@(OStream kvs b) | p s -> uncurry OStream (f (kvs, b))
+      o -> o
+    dropKey k = filter ((/= k) . fst)
+    mapKey k f = map (\(k', v) -> if k' == k then (k', f v) else (k', v))
+    mapStreamKey k f (kvs, b) = (mapKey k f kvs, b)
+    cut piece (kvs, b) = let (pre, post) = BS.breakSubstring piece b in (kvs, pre <> BS.drop (BS.length piece) post)
+
 marksTests :: [TestTree]
 marksTests =
   let (w, h) = trimSize
@@ -1194,8 +1252,11 @@ tests =
         countOf "/FontFile2 " pdf + countOf "/FontFile3 " pdf @?= countOf "/Type /FontDescriptor" pdf
         assertBool "no forbidden entries" (not (any (`BS.isInfixOf` pdf) ["/Encrypt", "/JavaScript", "/JS ", "/URI", "/Launch", "/GoToR"]))
         assertBool "xref" (xrefConsistent pdf)
+        -- the same checks as golem preflight (golem-cli ADR 0006)
+        verify (documentObjects sample {docPdfX = Just px}) @?= []
         checkPdfX [(pageMediaBox p, pageTrimBox p, pageBleedBox p) | p <- docPages sample] @?= []
         checkPdfX [(Rect 0 0 10 10, Rect 0 0 10 10, Rect (-1) 0 10 10)] @?= [1],
+      testGroup "X4.verify (golem-cli ADR 0006)" verifyTests,
       testGroup "crop marks and bleed (ADR 0004)" marksTests,
       testGroup "Producer (ADR 0005)" producerTests,
       ImageSpec.tests,

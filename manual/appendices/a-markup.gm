@@ -83,6 +83,9 @@
   段落スタイル [code: code] で組みます（付録C）。
   PDF では、行頭と行の途中の空白をそのまま残し、タブは空白二つ分ごとの位置まで進めます。
   行長に収まらない行は折り返し、お知らせ（G0730）を出します。
+  言語の名前の後に、キーワード引数 [code: numbers]（行番号）、[code: file]（ファイル名）、[code: highlight]（強調する行）、[code: diff]（差分）、[code: callouts]（注釈の印）を書けます（第[ref-number markup]章「[ref-title code-book]」）。
+  言語の名前を書かずに、[code: ``` numbers=true] のようにキーワード引数だけを書いてもかまいません。
+  ほかの語や表にないキーを書くと、エラー（G0269）になります。
 = [strong: [code: @名前]]
   ブロックコマンドです。
   行頭の [code: @] に続けてコマンドの名前を書き、空白で区切って引数を並べます。
@@ -146,6 +149,8 @@
   [code: src=] でも書けますが、廃止予定なので、お知らせ（G0265）が出ます。
   [code: lines] で載せる行の範囲を選べ、省くとファイルの全体を載せます。
   [code: ```] のコードブロックと同じく、段落スタイル [code: code] で組みます。
+  コードブロックと同じキーワード引数と、色分けの言語の名前 [code: lang] を書けます。
+  [code: lines] を書くと、行番号はその範囲の最初の行の番号から始まります。
 = [strong: [code: @style 名前]]
   段落に段落スタイルを付けます。
   インデントのない次の行に段落を書くと、その段落一つに付きます。
@@ -207,6 +212,11 @@
   見出しを目次に載せません。
 = [strong: [code: @toc-title 短い題]]
   目次に載せる題を、見出しの題と別にします。
+= [strong: [code: @caption キャプション]]
+  コードブロックと [code: @listing] に、キャプションを付けます。
+  キャプションには [code: \[code: ...\]] のようなインラインの要素を書けます。
+  キャプションを付けたコードブロックには、リスト番号が振られます。
+  ほかのブロックに付けるとエラー（G0213）、キャプションを書かないとエラー（G0269）になります。
 = [strong: [code: @number N]]
   見出しの番号を [code: N] にします。
   後の見出しは [code: N] から続けて数えます。
@@ -261,8 +271,9 @@
 = [strong: [code: \[kenten: 語\]]]
   圏点を打ちます。
   [code: shape=] で形を選べます。
-  形は [code: sesame]（ゴマ）、[code: open-sesame]（白ゴマ）、[code: dot]（小さい黒丸）、[code: open-dot]（小さい白丸）、[code: circle]（大きい黒丸）、[code: open-circle]（大きい白丸）のどれかで、省くと [code: style.toml] の [code: \[composition\]] の [code: kenten] になります。
-  今の版では、形の指定は HTML と EPUB でだけ効き、PDF では常にゴマで組みます。
+  形は [code: sesame]（ゴマ）、[code: open-sesame]（白ゴマ）、[code: dot]（小さい黒丸）、[code: open-dot]（小さい白丸）、[code: circle]（大きい黒丸）、[code: open-circle]（大きい白丸）、[code: double-circle]（蛇の目）、[code: open-double-circle]（二重丸）、[code: triangle]（黒三角）、[code: open-triangle]（白三角）のどれかで、省くと [code: style.toml] の [code: \[composition\]] の [code: kenten] になります。
+  句読点や括弧などの約物と空白には、圏点の中でも圏点を打ちません。
+  PDF では、本文の和文の書体にある圏点の字を使います。
 = [strong: [code: \[tcy: 文字\]]]
   縦組みで、短い文字列を横に並べて一字分の幅に組みます（縦中横）。
   中には文字だけを書けます。

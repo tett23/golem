@@ -100,10 +100,16 @@ bodyT = \case
   OrderedList items -> tagged 3 [list itemT items]
   DefList gs -> tagged 4 [list (\(DefGroup ts ds) -> TList [list inlinesTerm ts, list (list blockT) ds]) gs]
   Table al h rows -> tagged 5 [list (int . fromEnum) al, list inlinesTerm h, list (list inlinesTerm) rows]
-  CodeBlock lang t -> tagged 6 [opt text lang, text t]
+  CodeBlock c -> tagged 6 [codeT c]
   FigureBlock fig -> tagged 7 [figureT fig]
   ChannelOutput c -> tagged 8 [channelT c]
   ForcedBreak k -> tagged 11 [int (fromEnum k)]
+
+codeT :: Code -> Term
+codeT (Code lang nums file cap diff ls) =
+  TList [opt text lang, opt TBool nums, opt text file, opt inlinesTerm cap, TBool diff, list lineT ls]
+  where
+    lineT (CodeLine t n d h cs) = TList [text t, opt int n, opt (int . fromEnum) d, TBool h, list int cs]
 
 attrsT :: HeadingAttrs -> Term
 attrsT (HeadingAttrs tt n nn nt) = TList [opt inlinesTerm tt, opt int n, TBool nn, TBool nt]
@@ -272,13 +278,24 @@ termBody t =
                 <$> (asList al >>= traverse asEnum)
                 <*> (asList h >>= traverse termInlines)
                 <*> (asList rows >>= traverse (asList >=> traverse termInlines))
-        6 | [l, x] <- fs -> CodeBlock <$> asOpt asText l <*> asText x
+        6 | [c] <- fs -> CodeBlock <$> termCode c
         7 | [fig] <- fs -> FigureBlock <$> termFigure fig
         8 | [c] <- fs -> ChannelOutput <$> termChannel c
         11 | [k] <- fs -> ForcedBreak <$> asEnum k
         -- 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
         _ -> bad "ブロックの種類"
     [] -> bad "ブロックの種類"
+
+termCode :: Term -> D Code
+termCode t =
+  asList t >>= \case
+    [l, n, f, c, d, ls] -> Code <$> asOpt asText l <*> asOpt asBool n <*> asOpt asText f <*> asOpt termInlines c <*> asBool d <*> (asList ls >>= traverse termLine)
+    _ -> bad "コードブロック"
+  where
+    termLine x =
+      asList x >>= \case
+        [s, n, d, h, cs] -> CodeLine <$> asText s <*> asOpt asInt n <*> asOpt asEnum d <*> asBool h <*> (asList cs >>= traverse asIntI)
+        _ -> bad "コードの行"
 
 termAttrs :: Term -> D HeadingAttrs
 termAttrs t =

@@ -30,6 +30,7 @@ templateFiles lang uuid =
   [ ("manifest.toml", manifest),
     ("style.toml", style),
     ("chapters/01.gm", chapter),
+    ("preflight.toml", preflightToml lang),
     (".gitignore", "build/\n")
   ]
   where
@@ -84,6 +85,71 @@ templateFiles lang uuid =
       [ "[headings.1]",
         "number = \"" <> number <> "\""
       ]
+
+{- | preflight.toml (golem-cli ADR 0006): based on print, with the main
+values of print as comments, in the language of the template. The keys
+and values are the same in both languages.
+-}
+preflightToml :: Language -> Text
+preflightToml lang =
+  T.unlines $
+    head'
+      <> [ "based-on = \"print\"",
+           name,
+           ""
+         ]
+      <> examplesIntro
+      <> [ "#",
+           "# [image-resolution]",
+           "# color = { error-below = 150, warning-below = 300 }",
+           "# gray = { error-below = 150, warning-below = 300 }",
+           "# bitmap = { error-below = 600, warning-below = 1200 }",
+           "#",
+           "# [image-color-space]",
+           "# severity = \"warning\"",
+           "# allowed = [\"cmyk\", \"gray\"]",
+           "#",
+           "# [bleed-size]",
+           "# severity = \"error\"",
+           "# min = \"3mm\"",
+           "#",
+           "# [live-area]",
+           "# severity = \"warning\"",
+           "# distance = \"3mm\"",
+           "#",
+           "# [ink-coverage]",
+           "# severity = \"warning\"",
+           "# max = 350",
+           "",
+           pageCountIntro,
+           "# [page-count]",
+           "# severity = \"error\"",
+           "# multiple-of = 16"
+         ]
+  where
+    (head', name, examplesIntro, pageCountIntro) = case lang of
+      Japanese ->
+        ( [ "# golem preflight の設定です（入稿の前の検査）。",
+            "# 書かなかった値は based-on の設定から引き継ぎます。",
+            "# 印刷所から設定のファイルを受け取ったら、このファイルをそれに置き換えます。"
+          ],
+          "# name = \"○○印刷 オフセット\"",
+          [ "# 次の行は print の主な値を書き写したものです。",
+            "# 行頭の # を外して、印刷所の求める値に書き換えます。"
+          ],
+          "# ページ数を折の単位にそろえる印刷所では、次の行の # を外します（print では off です）。"
+        )
+      English ->
+        ( [ "# The rules of golem preflight (the checks before handing off to the printer).",
+            "# A value not written here comes from the rules of based-on.",
+            "# When your printer gives you a file of rules, replace this file with it."
+          ],
+          "# name = \"Example Printing, offset\"",
+          [ "# The lines below copy the main values of print.",
+            "# Take the # off the start of a line and write the value your printer asks for."
+          ],
+          "# If your printer wants the pages in multiples of a signature, take the # off the lines below (off in print)."
+        )
 
 -- | A file to fetch into a new project.
 data FontSource = FontSource {fsPath :: !FilePath, fsUrl :: !Text, fsSha256 :: !Text}

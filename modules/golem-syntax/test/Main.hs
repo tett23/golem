@@ -149,6 +149,22 @@ tests =
             d = (diagnostic "G0101" Error (mkSpan (FileId 0) 10 13) "閉じていない [") {diagFixes = [Fix "fix" [(mkSpan (FileId 0) 13 13, "]")]]}
         renderJson files [d]
           @?= "[{\"code\":\"G0101\",\"severity\":\"error\",\"span\":{\"file\":\"ch/01.gm\",\"start\":10,\"end\":13,\"line\":2,\"column\":1},\"message\":\"閉じていない [\",\"related\":[],\"fixes\":[{\"title\":\"fix\",\"edits\":[{\"span\":{\"file\":\"ch/01.gm\",\"start\":13,\"end\":13,\"line\":2,\"column\":2},\"text\":\"]\"}]}]}]\n",
+      testCase "facts (golem-cli ADR 0006): none leaves the JSON as it was" $ do
+        let files = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex "x"))]
+            d = diagnostic "G0201" Error (mkSpan (FileId 0) 0 1) "m"
+        diagFacts d @?= []
+        renderJson files [d]
+          @?= "[{\"code\":\"G0201\",\"severity\":\"error\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"m\",\"related\":[],\"fixes\":[]}]\n",
+      testCase "facts (golem-cli ADR 0006): written in the order given" $ do
+        let files = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex "x"))]
+            d = (diagnostic "G0906" Warning (mkSpan (FileId 0) 0 1) "m") {diagFacts = [("pdf-pages", FactInts [12, 13]), ("ppi", FactInt 212), ("font", FactText "f\"x"), ("names", FactTexts ["a", "b"])]}
+        renderJson files [d]
+          @?= "[{\"code\":\"G0906\",\"severity\":\"warning\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"m\",\"related\":[],\"fixes\":[],\"facts\":{\"pdf-pages\":[12,13],\"ppi\":212,\"font\":\"f\\\"x\",\"names\":[\"a\",\"b\"]}}]\n"
+        renderHuman files [d] @?= renderHuman files [d {diagFacts = []}],
+      testCase "preflightCodes are G0902 to G0918, apart from notices and the profile" $ do
+        preflightCodes @?= [DiagnosticCode (T.pack ("G09" <> (if n < 10 then "0" else "") <> show n)) | n <- [2 .. 18 :: Int]]
+        assertBool "no notice" (not (any (`elem` noticeCodes) preflightCodes))
+        assertBool "no profile" (not (any (`elem` profileDependentCodes) preflightCodes)),
       testCase "human rendering" $ do
         let src = "abc\ndef"
             files = Map.fromList [(FileId 0, SourceInfo "x.gm" (mkLineIndex src))]
@@ -178,7 +194,7 @@ noticeTests =
       testCase "no code is a notice and profile-dependent" $
         [c | c <- noticeCodes, c `elem` profileDependentCodes] @?= [],
       testCase "the initial notice codes" $
-        noticeCodes @?= map DiagnosticCode ["G0262", "G0263", "G0264", "G0265", "G0323", "G0407", "G0408", "G0730", "G0808"],
+        noticeCodes @?= map DiagnosticCode ["G0262", "G0263", "G0264", "G0265", "G0323", "G0407", "G0408", "G0730", "G0745", "G0808"],
       testCase "a notice early in the file comes after an error late in it" $ do
         let n = notice "G0265" (mkSpan (FileId 0) 0 1) "n"
             e = diagnostic "G0201" Error (mkSpan (FileId 1) 50 51) "e"

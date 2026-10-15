@@ -70,6 +70,30 @@ JSON の形は第[ref-number diagnostics]章で説明した。
 出力は [code: build/<ターゲット>/] に書かれる。
 CI の成果物として上げるのは、このディレクトリである。
 
+入稿の前の CI では、組む前に [code: golem preflight] を走らせる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
+
+```sh
+golem preflight --marks japanese --format json \
+  2> preflight.json
+golem preflight --marks japanese 2> preflight.txt
+tail -n 1 preflight.txt
+golem build --target pdf --profile prod \
+  --marks japanese
+sha256sum build/pdf/*.pdf
+```
+
+[code: golem preflight] は PDF を書かず、[code: golem build --target pdf --profile prod] と同じ手順で組んだ PDF を、プリフライトの設定（既定は [code: preflight.toml]）に従って検査する。
+エラーがあれば 1 で終わるので、そこで CI の回を止められる。
+この例は、機械が読む JSON と、要約の行を含む人が読む形式を得るために、二度検査している。
+どちらか一方でよければ、一度で済む。
+JSON の診断のうち、プリフライトの診断は [code: facts] を持つ（第[ref-number diagnostics]章）。
+[code: facts] の [code: pdf-pages] で該当するページを、[code: ppi] や [code: limit] で測った値としきい値を、メッセージを解析せずに読める。
+
+人が読む形式では、最後の一行が要約で、検査した PDF の SHA-256 を含む。
+Golem は同じ入力とオプションから同じバイト列の PDF を作るので、この値は、続けて [code: --profile prod] と同じ [code: --marks] で組んだ PDF の SHA-256 と一致する。
+二つを比べれば、検査した PDF と成果物に上げる PDF が同じものであることを確かめられる。
+[code: --profile prod] を付けずに組んだ PDF は、プロファイルがインスタンス ID の入力に入るので一致しない。
+
 ## フォントとプラグインを用意する
 
 PDF を組むには、[code: style.toml] の指すフォントのファイルが要る。

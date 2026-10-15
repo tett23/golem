@@ -1,6 +1,6 @@
 # ADR 0001: コマンドラインのインターフェース
 
-ステータス: 採択→`golem build` と `golem check` の `--marks` は[golem-pdf ADR 0004](../../golem-pdf/adr/0004-crop-marks-and-bleed.md)
+ステータス: 採択→`golem build` と `golem check` の `--marks` は[golem-pdf ADR 0004](../../golem-pdf/adr/0004-crop-marks-and-bleed.md)、`golem preflight` は[ADR 0006](0006-preflight.md)
 
 ## 文脈
 

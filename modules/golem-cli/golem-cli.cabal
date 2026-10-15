@@ -48,6 +48,7 @@ test-suite golem-cli-test
     , directory
     , filepath
     , golem-driver
+    , golem-syntax
     , process
     , tasty          >=1.4 && <1.6
     , tasty-golden   >=2.3 && <2.4

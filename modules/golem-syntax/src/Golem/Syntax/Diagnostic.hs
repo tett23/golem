@@ -3,6 +3,7 @@ module Golem.Syntax.Diagnostic
     DiagnosticCode (..),
     Diagnostic (..),
     Fix (..),
+    Fact (..),
     Profile (..),
     diagnostic,
     notice,
@@ -13,6 +14,7 @@ module Golem.Syntax.Diagnostic
     adjustForProfile,
     sortDiagnostics,
     profileDependentCodes,
+    preflightCodes,
   )
 where
 
@@ -20,6 +22,7 @@ import Data.List (sortOn)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
+import Data.Text qualified as T
 import Golem.Syntax.Span
 
 {- | A notice is below a warning (golem-syntax ADR 0002): something the
@@ -31,7 +34,7 @@ data Severity = Error | Warning | Notice
 
 {- | @G@ followed by four digits. The upper two digits name the source
 (01 syntax, 02 eval, 03 project, 04 document, 05 lint, 06 plugin,
-07 layout, 08 output). A code is never reused for another meaning.
+07 layout, 08 output, 09 preflight). A code is never reused for another meaning.
 -}
 newtype DiagnosticCode = DiagnosticCode Text
   deriving stock (Eq, Ord, Show)
@@ -42,13 +45,21 @@ data Fix = Fix
   }
   deriving stock (Eq, Ord, Show)
 
+{- | A value a machine reads from a diagnostic (golem-cli ADR 0006): a page
+number, a measured value, a path.
+-}
+data Fact = FactInt !Integer | FactText !Text | FactInts ![Integer] | FactTexts ![Text]
+  deriving stock (Eq, Ord, Show)
+
 data Diagnostic = Diagnostic
   { diagCode :: !DiagnosticCode,
     diagSeverity :: !Severity,
     diagSpan :: !SrcSpan,
     diagMessage :: !Text,
     diagRelated :: ![(SrcSpan, Text)],
-    diagFixes :: ![Fix]
+    diagFixes :: ![Fix],
+    -- | facts for machines (golem-cli ADR 0006); none is not written to JSON
+    diagFacts :: ![(Text, Fact)]
   }
   deriving stock (Eq, Ord, Show)
 
@@ -56,7 +67,7 @@ data Profile = Dev | Prod
   deriving stock (Eq, Ord, Show)
 
 diagnostic :: Text -> Severity -> SrcSpan -> Text -> Diagnostic
-diagnostic code sev sp msg = Diagnostic (DiagnosticCode code) sev sp msg [] []
+diagnostic code sev sp msg = Diagnostic (DiagnosticCode code) sev sp msg [] [] []
 
 -- | A diagnostic of severity 'Notice'; its code must be in 'noticeCodes'.
 notice :: Text -> SrcSpan -> Text -> Diagnostic
@@ -78,6 +89,7 @@ noticeCodes =
       "G0407", -- @number equal to the automatic number
       "G0408", -- page breaks at the very end of the book
       "G0730", -- a line of a code block wrapped (golem-driver ADR 0017)
+      "G0745", -- kenten with ruby, not drawn in the PDF (golem-driver ADR 0019)
       "G0808" -- code in the body role without [fonts.code] (golem-driver ADR 0017)
     ]
 
@@ -105,6 +117,15 @@ profileDependentCodes =
     DiagnosticCode "G0310" -- a font missing from HTML and EPUB (golem-project ADR 0004)
   ]
 
+{- | The codes of golem preflight whose severity the preflight rules decide
+(golem-cli ADR 0006). They are neither notices nor profile-dependent, and
+docs/diagnostics.md must agree with them (a golem-driver test).
+-}
+preflightCodes :: [DiagnosticCode]
+preflightCodes = [DiagnosticCode (T.pack ("G09" <> pad n)) | n <- [2 .. 18 :: Int]]
+  where
+    pad n = (if n < 10 then "0" else "") <> show n
+
 -- | The single place where the build profile changes severities.
 adjustForProfile :: Profile -> Diagnostic -> Diagnostic
 adjustForProfile prof d
@@ -126,6 +147,6 @@ sortDiagnostics =
           diagCode d,
           diagMessage d,
           -- the rest only breaks ties, so the order is total
-          show (diagSeverity d, diagRelated d, diagFixes d)
+          show (diagSeverity d, diagRelated d, diagFixes d, diagFacts d)
         )
     )

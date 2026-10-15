@@ -275,15 +275,16 @@ Golem の長さは、[code: "13Q"] や [code: "3mm"] のように単位を付け
 
 ```
 style.toml:1:1: error[G0306]: 長さは文字列で
-書きます (.page.grid.font-size)
+書きます (page.grid.font-size)
 ```
 
-括弧の中の [code: .page.grid.font-size] は、どの表のどのキーの値が誤っているかを示します。
-同じ表の中で同じキーを二度書いた場合と、引用符を閉じ忘れた場合は、TOML の誤りとして、ファイルの中の行と列を付けて報告します。
+括弧の中の [code: page.grid.font-size] は、どの表のどのキーの値が誤っているかを示します。
+キーの綴りを誤った場合は、[code: 知らないキーです: page.bindng] のように、表とキーをつなげた名前で示します。
+同じ表の中で同じキーを二度書いた場合と、引用符を閉じ忘れた場合は、TOML の誤りとして、誤りのある行と列で報告します。
 
 ```
-style.toml:1:1: error[G0306]: TOML の誤りです:
-10:1: key error: lines is already assigned
+style.toml:10:1: error[G0306]: TOML の誤りです:
+同じキーに二度値を書いています: lines
 ```
 
 この例では、10 行目の [code: lines] が二度目の指定であることを示しています。

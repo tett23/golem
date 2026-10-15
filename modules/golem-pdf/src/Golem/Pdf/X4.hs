@@ -6,15 +6,20 @@ module Golem.Pdf.X4
     xmpPacket,
     checkPdfX,
     uuidText,
+    X4Problem (..),
+    verify,
   )
 where
 
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.Char (isDigit)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.LayoutSpec (Rect (..))
+import Golem.Pdf.Object
 import Text.Printf (printf)
 
 data PdfX = PdfX
@@ -81,3 +86,121 @@ checkPdfX boxes =
   ]
   where
     inside (Rect x y w h) (Rect ox oy ow oh) = x >= ox && y >= oy && x + w <= ox + ow && y + h <= oy + oh
+
+-- ------------------------------------------------------------------ verify
+
+-- | A PDF/X-4 requirement a PDF does not meet (golem-cli ADR 0006).
+data X4Problem = X4Problem
+  { x4Requirement :: !Text,
+    x4Detail :: !Text
+  }
+  deriving stock (Eq, Ord, Show)
+
+{- | The requirements of golem-pdf ADR 0002 that Golem checks itself, on
+the objects before they are written (golem-cli ADR 0006): the version,
+the output intent and its profile, GTS_PDFXVersion and Trapped in XMP,
+the page boxes, embedded fonts, no RGB without an ICC profile, and no
+encryption, JavaScript or external references. Not a judgement of
+conformance (golem-pdf ADR 0003).
+-}
+verify :: PdfObjects -> [X4Problem]
+verify (PdfObjects version objects trailer) =
+  concat
+    [ [X4Problem "PDF の版" (version <> "（1.6 以下にします）") | not (versionOk version)],
+      intentProblems,
+      [X4Problem "GTS_PDFXVersion" "XMP に PDF/X-4 の版がありません" | not ("<pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>" `BS.isInfixOf` xmp)],
+      [X4Problem "Trapped" "XMP と文書情報の両方に Trapped が要ります" | not (trappedInXmp && trappedInInfo)],
+      [X4Problem "TrimBox" (pagesText noTrim <> " ページ目に TrimBox がありません") | not (null noTrim)],
+      [X4Problem "ページのボックス" (pagesText badBoxes <> " ページ目の TrimBox が BleedBox の、BleedBox が MediaBox の外にはみ出しています") | not (null badBoxes)],
+      [X4Problem "フォントの埋め込み" (T.intercalate "、" unembedded <> " を埋め込んでいません") | not (null unembedded)],
+      [X4Problem "ICC プロファイルのない RGB" "DeviceRGB の色空間があります" | any usesDeviceRgb objects],
+      [X4Problem "暗号化" "Encrypt があります" | hasKey "Encrypt" trailer],
+      [X4Problem "JavaScript と外部への参照" (T.intercalate "、" forbidden <> " があります") | not (null forbidden)]
+    ]
+  where
+    deref = \case
+      ORef n | n >= 1, (o : _) <- drop (n - 1) objects -> o
+      o -> o
+    dictOf = \case
+      ODict kvs -> kvs
+      OStream kvs _ -> kvs
+      _ -> []
+    look k o = lookup k (dictOf o)
+    hasKey k o = isJust (look k o)
+    catalog = maybe (ODict []) deref (look "Root" trailer)
+    info = maybe (ODict []) deref (look "Info" trailer)
+    intents = case deref <$> look "OutputIntents" catalog of
+      Just (OArr xs) -> [d | x <- xs, let d = deref x, look "S" d == Just (OName "GTS_PDFX")]
+      _ -> []
+    intentProblems = case intents of
+      [] -> [X4Problem "出力インテント" "カタログに GTS_PDFX の出力インテントがありません"]
+      (i : _) -> case deref <$> look "DestOutputProfile" i of
+        Just (OStream _ b) | not (BS.null b) -> []
+        _ -> [X4Problem "DestOutputProfile" "出力インテントに ICC プロファイルがありません"]
+    xmp = case deref <$> look "Metadata" catalog of
+      Just (OStream _ b) -> b
+      _ -> ""
+    trappedInXmp = any (`BS.isInfixOf` xmp) ["<pdf:Trapped>True</pdf:Trapped>", "<pdf:Trapped>False</pdf:Trapped>"]
+    trappedInInfo = look "Trapped" info `elem` [Just (OName "True"), Just (OName "False")]
+    pages = [o | o <- objects, look "Type" o == Just (OName "Page")]
+    numbered = zip [1 :: Int ..] pages
+    noTrim = [i | (i, p) <- numbered, not (hasKey "TrimBox" p)]
+    badBoxes =
+      [ i
+      | (i, p) <- numbered,
+        Just media <- [boxOf =<< look "MediaBox" p],
+        let bleed = fromMaybe media (boxOf =<< look "BleedBox" p),
+        Just trim <- [boxOf =<< look "TrimBox" p],
+        not (inside bleed media && inside trim bleed)
+      ]
+    boxOf = \case
+      OArr [a, b, c, d] -> (,,,) <$> numberOf a <*> numberOf b <*> numberOf c <*> numberOf d
+      _ -> Nothing
+    inside (x0, y0, x1, y1) (ox0, oy0, ox1, oy1) = x0 >= ox0 && y0 >= oy0 && x1 <= ox1 && y1 <= oy1
+    pagesText = T.intercalate "、" . map (T.pack . show)
+    unembedded =
+      [ maybe "名前のないフォント" nameText (look "FontName" o)
+      | o <- objects,
+        look "Type" o == Just (OName "FontDescriptor"),
+        not (any (`hasKey` o) ["FontFile", "FontFile2", "FontFile3"])
+      ]
+    nameText = \case
+      OName n -> n
+      _ -> "名前のないフォント"
+    usesDeviceRgb = \case
+      OName "DeviceRGB" -> True
+      ODict kvs -> any (usesDeviceRgb . snd) kvs
+      OArr xs -> any usesDeviceRgb xs
+      OStream kvs _ -> any (usesDeviceRgb . snd) kvs
+      _ -> False
+    forbiddenNames = ["JavaScript", "JS", "URI", "Launch", "GoToR"]
+    forbidden = nubOrd' (concatMap namesIn (trailer : objects))
+    namesIn = \case
+      ODict kvs -> [k | (k, _) <- kvs, k `elem` forbiddenNames] <> concatMap (namesIn . snd) kvs
+      OStream kvs _ -> [k | (k, _) <- kvs, k `elem` forbiddenNames] <> concatMap (namesIn . snd) kvs
+      OArr xs -> concatMap namesIn xs
+      OName n | n `elem` forbiddenNames -> [n]
+      _ -> []
+    nubOrd' = foldr (\x acc -> if x `elem` acc then acc else x : acc) [] . reverse
+
+-- | Whether a version is at most 1.6, as PDF/X-4 is based on PDF 1.6.
+versionOk :: Text -> Bool
+versionOk v = case T.splitOn "." v of
+  [a, b] | Just x <- readInt a, Just y <- readInt b -> (x, y) <= (1 :: Int, 6 :: Int)
+  _ -> False
+  where
+    readInt t = if not (T.null t) && T.all isDigit t then Just (read (T.unpack t)) else Nothing
+
+-- | A number of a PDF as written: an integer or a decimal.
+numberOf :: Obj -> Maybe Rational
+numberOf = \case
+  OInt i -> Just (fromInteger i)
+  OReal t ->
+    let (sign, digits) = maybe (1, t) (-1,) (T.stripPrefix "-" t)
+     in case T.splitOn "." digits of
+          [i] | ok i -> Just (sign * fromInteger (read (T.unpack i)))
+          [i, f] | ok i, ok f -> Just (sign * (fromInteger (read (T.unpack (i <> f))) / 10 ^ T.length f))
+          _ -> Nothing
+  _ -> Nothing
+  where
+    ok x = not (T.null x) && T.all isDigit x

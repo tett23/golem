@@ -1,4 +1,4 @@
-module Gen (genDocument, genInline) where
+module Gen (genDocument, genInline, genExpr, genFloat) where
 
 import Data.Text (Text)
 import Data.Void (Void)
@@ -54,23 +54,67 @@ genInlineWith mr =
 genRatio :: Gen Rational
 genRatio = (\n d -> fromInteger n / fromInteger d) <$> Gen.integral (Range.linear 0 40) <*> Gen.integral (Range.linear 1 12)
 
+-- | Every kind of expression and every operator (golem-doc ADR 0001).
 genExpr :: Gen (AST.Located AST.Expr)
 genExpr =
   AST.Located
     <$> genSpan
     <*> Gen.recursive
       Gen.choice
-      [ AST.EInt <$> Gen.integral (Range.linearFrom 0 (-100) 100),
-        AST.EFloat <$> Gen.element [0.5, 1.5e-7, 2.675, 1e300, 65504, 0.1],
+      [ AST.EInt <$> genInt,
+        AST.EFloat <$> genFloat,
         AST.EString <$> genText,
         AST.EBool <$> Gen.bool,
         pure AST.ENil,
-        AST.EVar <$> Gen.list (Range.linear 1 3) genText
+        AST.EVar <$> Gen.list (Range.linear 1 3) genText,
+        pure AST.EError
       ]
       [ AST.EArray <$> Gen.list (Range.linear 0 3) genExpr,
-        AST.EBinary <$> Gen.element [AST.Add, AST.Pow, AST.OpGe] <*> genExpr <*> genExpr,
+        AST.EHash <$> Gen.list (Range.linear 0 3) ((,) <$> genText <*> genExpr),
+        AST.EBinary <$> Gen.element binaryOps <*> genExpr <*> genExpr,
+        AST.EUnary AST.Negate <$> genExpr,
         AST.ECall <$> genText <*> Gen.list (Range.linear 0 2) genExpr
       ]
+
+binaryOps :: [AST.BinaryOp]
+binaryOps = [AST.Add, AST.Sub, AST.Mul, AST.Div, AST.Mod, AST.Pow, AST.OpEq, AST.OpNe, AST.OpLt, AST.OpLe, AST.OpGt, AST.OpGe]
+
+-- | Integers within the CBOR major types 0 and 1 (the CDDL @int@), with their ends.
+genInt :: Gen Integer
+genInt =
+  Gen.choice
+    [ Gen.integral (Range.linearFrom 0 (-100) 100),
+      Gen.element [23, 24, 255, 256, 65535, 65536, 4294967295, 4294967296, 18446744073709551615, -24, -25, -18446744073709551616]
+    ]
+
+{- | Floats at the edges of the half, single and double precision encodings
+(RFC 8949 preferred serialization).
+-}
+genFloat :: Gen Double
+genFloat =
+  Gen.choice
+    [ Gen.element
+        [ 0,
+          0.5,
+          -2.5,
+          65504, -- the largest half
+          65520, -- rounds past the largest half: single
+          6.103515625e-5, -- 2^-14, the smallest normal half
+          5.960464477539063e-8, -- 2^-24, the smallest subnormal half
+          2.9802322387695312e-8, -- 2^-25: single
+          1.0009765625, -- 1 + 2^-10: half
+          1.00048828125, -- 1 + 2^-11: single
+          3.4028234663852886e38, -- the largest single
+          1.401298464324817e-45, -- the smallest subnormal single
+          0.1, -- double
+          1.5e-7,
+          2.675,
+          1e300,
+          5.0e-324, -- the smallest subnormal double
+          1.7976931348623157e308 -- the largest double
+        ],
+      Gen.double (Range.exponentialFloatFrom 0 (-1e30) 1e30)
+    ]
 
 genBlock :: Gen Block
 genBlock =
@@ -81,7 +125,7 @@ genBlock =
       Gen.choice
       [ Paragraph <$> Gen.maybe genText <*> inl,
         Heading <$> Gen.int (Range.linear 1 3) <*> attrs <*> inl,
-        CodeBlock <$> Gen.maybe genText <*> genText,
+        CodeBlock <$> genCode,
         ChannelOutput <$> Gen.element [TocOutput 2, IndexOutput, BibliographyOutput],
         Table <$> Gen.list (Range.singleton 2) Gen.enumBounded <*> Gen.list (Range.singleton 2) inl <*> Gen.list (Range.linear 0 2) (Gen.list (Range.singleton 2) inl)
       ]
@@ -93,6 +137,16 @@ genBlock =
   where
     inl = Gen.list (Range.linear 0 3) genInline
     attrs = HeadingAttrs <$> Gen.maybe inl <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool <*> Gen.bool
+
+genCode :: Gen Code
+genCode =
+  Code
+    <$> Gen.maybe genText
+    <*> Gen.maybe Gen.bool
+    <*> Gen.maybe genText
+    <*> Gen.maybe (Gen.list (Range.linear 0 2) genInline)
+    <*> Gen.bool
+    <*> Gen.list (Range.linear 0 3) (CodeLine <$> genText <*> Gen.maybe (Gen.integral (Range.linear 0 99)) <*> Gen.maybe Gen.enumBounded <*> Gen.bool <*> Gen.list (Range.linear 0 2) (Gen.int (Range.linear 1 50)))
 
 genDocument :: Gen Document
 genDocument = Document (FileId 0) <$> Gen.list (Range.linear 0 5) genTopBlock

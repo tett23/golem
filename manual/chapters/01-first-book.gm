@@ -88,6 +88,7 @@ golem new mybook
 - [code: manifest.toml]：本の構成（章の順、書名、出力の設定）。第[ref-number manifest]章で説明します。
 - [code: style.toml]：紙面の体裁（判型、版面、書体）。第[ref-number style]章で説明します。
 - [code: chapters/01.gm]：最初の章の原稿
+- [code: preflight.toml]：入稿の前の検査の設定。第[ref-number output]章で使います。
 - [code: fonts/]：本文の書体（Noto Serif JP）と、そのライセンスの文書
 - [code: .gitignore]：版の管理の道具に、組んだ結果を記録しないように伝える設定（第[ref-number git-ci]章で使います）
 

@@ -21,7 +21,8 @@ where
 import Control.Monad (forM, unless)
 import Control.Monad.State.Strict
 import Data.Char (isAscii, isAsciiLower, isDigit)
-import Data.List (partition)
+import Data.Either (fromLeft)
+import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
@@ -38,7 +39,7 @@ import Golem.Parser.AST qualified as A
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportSite (..), importSite)
 import Golem.Project.Paths (PathError (..), pathErrorMessage)
-import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Style, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Style, kentenShapeNames, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
 import Golem.Syntax
 
 -- | Plugin commands and filters, provided by golem-plugin.
@@ -137,10 +138,11 @@ overridableCommands :: [Text]
 overridableCommands = ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "tcy", "number-text"]
 
 attributeCommands :: [Text]
-attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc", "style"]
+attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc", "style", "caption"]
 
+-- | The shapes of kenten (golem-driver ADR 0019); an unknown one is G0239.
 kentenShapes :: [Text]
-kentenShapes = ["sesame", "open-sesame", "dot", "open-dot", "circle", "open-circle"]
+kentenShapes = kentenShapeNames
 
 reservedNames :: [Text]
 reservedNames = ["doc", "meta", "true", "false", "nil"]
@@ -343,7 +345,10 @@ evalBlock ctx (A.Located sp b) = case b of
     h' <- mapM (evalInlines ctx False) h
     rows' <- mapM (mapM (evalInlines ctx False)) rows
     pure [block sp (Table (map alignment al) h' rows')]
-  A.CodeBlock lang t -> pure [block sp (CodeBlock lang t)]
+  A.CodeBlock lang args ls -> do
+    ca <- codeArgs ctx sp [] args
+    c <- codeOf ca Nothing lang [(lsp, t) | A.Located lsp t <- ls]
+    pure [block sp (CodeBlock c)]
   A.SetVar (A.Located nsp n) e -> do
     defined <- gets (Map.member n . stVars)
     if n `elem` reservedNames
@@ -546,6 +551,12 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
     ("notoc", Heading l a is) -> pure (label, Heading l a {haNoToc = True} is)
     -- the style of a paragraph is applied when the paragraph is evaluated
     ("style", Paragraph {}) -> pure (label, body)
+    -- the caption of a code block: the rest of the line, inlines included (golem-driver ADR 0023)
+    ("caption", CodeBlock c)
+      | null args -> err "G0269" sp "@caption には本文を書きます" >> pure (label, body)
+      | otherwise -> do
+          is <- evalInlines ctx False (captionInlines args)
+          pure (label, CodeBlock c {codeCaption = Just is})
     _ -> err "G0213" sp ("@" <> name <> " はこのブロックには付けられません") >> pure (label, body)
     where
       withNumber f = case map A.locValue args of
@@ -557,6 +568,24 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
       A.Located _ (A.Positional v) -> v
       A.Located _ (A.Keyword _ v) -> v
       A.Located _ _ -> A.Word ""
+
+{- | The arguments of @caption as inlines (golem-driver ADR 0023): words
+and strings are text, commands and expressions are themselves, a space
+between two arguments.
+-}
+captionInlines :: [A.Located A.Argument] -> [A.Located A.Inline]
+captionInlines args = concat (zipWith (\i a -> [space a | i > (0 :: Int)] <> one a) [0 ..] args)
+  where
+    space (A.Located asp _) = A.Located (mkSpan (spanFile asp) (spanStart asp) (spanStart asp)) (A.Text " ")
+    one (A.Located asp a) = case a of
+      A.Positional v -> value asp v
+      A.Keyword (A.Located _ k) v -> A.Located asp (A.Text (k <> "=")) : value asp v
+      _ -> []
+    value asp = \case
+      A.Word t -> [A.Located asp (A.Text t)]
+      A.StringLit t -> [A.Located asp (A.Text t)]
+      A.CommandArg i -> [i]
+      A.ExprArg e -> [A.Located asp (A.Expr e)]
 
 validLabel :: Text -> Bool
 validLabel l = not (T.null l) && T.all (\c -> c `elem` ("-_" :: String) || isAsciiLower c || isDigit c) l
@@ -807,17 +836,157 @@ listing ctx sp args = do
       asset ctx sp p >>= \case
         Just (AssetText content) -> do
           let ls = T.lines content
+              -- the arguments of a code block, and lang (golem-driver ADR 0023)
+              codeArgsOf = [a | a@(A.Located _ (A.Keyword (A.Located _ k) _)) <- args, k `notElem` ["src", "lines"]]
+              code start xs = do
+                ca <- codeArgs ctx sp ["lang"] codeArgsOf
+                c <- codeOf ca start (caLang ca) [(sp, x) | x <- xs]
+                pure [block sp (CodeBlock c)]
           case argText <$> lookup "lines" kw of
-            Nothing -> pure [block sp (CodeBlock Nothing (T.intercalate "\n" ls))]
+            Nothing -> code Nothing ls
             Just r -> case map (fmap fst . decimalInt) (T.splitOn "-" r) of
               [Just a, Just b]
-                | a >= 1 && b >= a && b <= length ls ->
-                    pure [block sp (CodeBlock Nothing (T.intercalate "\n" (take (b - a + 1) (drop (a - 1) ls))))]
+                | a >= 1 && b >= a && b <= length ls -> code (Just (toInteger a)) (take (b - a + 1) (drop (a - 1) ls))
               _ -> err "G0237" sp ("lines の範囲が不正です: " <> r) >> pure []
         Just _ -> missing sp p >> pure []
         Nothing -> pure []
   where
     decimalInt x = if not (T.null x) && T.all isDigit x then Just (read (T.unpack x) :: Int, ()) else Nothing
+
+-- ------------------------------------------------------------------ code blocks (golem-driver ADR 0023)
+
+-- | The arguments of a code block, as read.
+data CodeArgs = CodeArgs
+  { -- | true or false, or the number of the first line
+    caNumbers :: !(Maybe (Either Bool Integer)),
+    caFile :: !(Maybe Text),
+    -- | the ranges of highlight=, and where the argument is
+    caHighlight :: !(Maybe (SrcSpan, [(Integer, Integer)])),
+    caDiff :: !Bool,
+    caCallouts :: !Bool,
+    -- | lang=, of @listing only
+    caLang :: !(Maybe Text)
+  }
+
+-- | The keys a code block takes; @listing takes lang too.
+codeKeys :: [Text]
+codeKeys = ["numbers", "file", "highlight", "diff", "callouts"]
+
+{- | The arguments of a code block (golem-driver ADR 0023): keyword
+arguments of 'codeKeys' and @extra@. Another key, a wrong value and a
+positional argument are G0269.
+-}
+codeArgs :: EvalContext -> SrcSpan -> [Text] -> [A.Located A.Argument] -> M CodeArgs
+codeArgs ctx _ extra = foldl (\m a -> m >>= \acc -> step acc a) (pure (CodeArgs Nothing Nothing Nothing False False Nothing))
+  where
+    step acc (A.Located asp a) = case a of
+      A.Keyword (A.Located _ k) v
+        | k `elem` codeKeys <> extra -> do
+            t <- scalar v
+            case t >>= reading asp k of
+              Just f -> pure (f acc)
+              Nothing -> err "G0269" asp (k <> " の値が正しくありません: " <> fromMaybe "" t) >> pure acc
+        | otherwise -> err "G0269" asp ("コードブロックに書けないキーです: " <> k <> "。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます") >> pure acc
+      _ -> err "G0269" asp "コードブロックの開始の行には、言語の名前とキーワード引数だけを書けます" >> pure acc
+    scalar = \case
+      A.Word t -> pure (Just t)
+      A.StringLit t -> pure (Just t)
+      v@(A.ExprArg _) ->
+        argValue ctx v >>= \case
+          Right (VInt n) -> pure (Just (T.pack (show n)))
+          Right (VString s) -> pure (Just s)
+          Right (VBool b) -> pure (Just (if b then "true" else "false"))
+          Right _ -> pure Nothing
+          Left d -> report d >> pure Nothing
+      A.CommandArg _ -> pure Nothing
+    bool = \case
+      "true" -> Just True
+      "false" -> Just False
+      _ -> Nothing
+    reading asp k t = case k of
+      "numbers" -> case bool t of
+        Just b -> Just (\c -> c {caNumbers = Just (Left b)})
+        Nothing -> (\n c -> c {caNumbers = Just (Right n)}) <$> natural t
+      "file" -> Just (\c -> c {caFile = Just t})
+      "highlight" -> (\rs c -> c {caHighlight = Just (asp, rs)}) <$> traverse range (T.splitOn "," t)
+      "diff" -> (\b c -> c {caDiff = b}) <$> bool t
+      "callouts" -> (\b c -> c {caCallouts = b}) <$> bool t
+      "lang" | not (T.null t) -> Just (\c -> c {caLang = Just t})
+      _ -> Nothing
+    natural t = if not (T.null t) && T.all isDigit t then Just (read (T.unpack t)) else Nothing
+    range r = case T.splitOn "-" r of
+      [a] -> (\n -> (n, n)) <$> natural a
+      [a, b] -> do
+        x <- natural a
+        y <- natural b
+        if x <= y then Just (x, y) else Nothing
+      _ -> Nothing
+
+{- | The code of lines with their spans (golem-driver ADR 0023): the diff
+marks and the callouts taken off, each line numbered from the first
+number, a removed line not counted, and the lines of highlight marked.
+@start@ is the first line of lines= of @listing.
+-}
+codeOf :: CodeArgs -> Maybe Integer -> Maybe Text -> [(SrcSpan, Text)] -> M Code
+codeOf ca start lang ls = do
+  marked <- mapM diffOf ls
+  withCallouts <- mapM calloutsOf marked
+  let first = case caNumbers ca of
+        Just (Right n) -> n
+        _ -> fromMaybe 1 start
+      numbered = snd (mapAccumL number first withCallouts)
+      number n (t, d, cs)
+        | d == Just DiffRemoved = (n, CodeLine t Nothing d False cs)
+        | otherwise = (n + 1, CodeLine t (Just n) d False cs)
+      present = Set.fromList [n | CodeLine {clNumber = Just n} <- numbered]
+  hl <- case caHighlight ca of
+    Nothing -> pure Set.empty
+    Just (asp, rs) -> do
+      mapM_ (\n -> err "G0269" asp ("highlight の行 " <> T.pack (show n) <> " はこのコードにありません")) [n | (a, b) <- rs, n <- take 1 [x | x <- [a .. b], x `Set.notMember` present]]
+      pure (Set.fromList [n | (a, b) <- rs, n <- [a .. b]])
+  pure
+    Code
+      { codeLang = lang,
+        codeNumbers = fromLeft True <$> caNumbers ca,
+        codeFile = caFile ca,
+        codeCaption = Nothing,
+        codeDiff = caDiff ca,
+        codeLines = [l {clHighlight = maybe False (`Set.member` hl) (clNumber l)} | l <- numbered]
+      }
+  where
+    diffOf (lsp, t)
+      | not (caDiff ca) = pure (lsp, t, Nothing)
+      | otherwise = case T.uncons t of
+          Nothing -> pure (lsp, t, Just DiffContext)
+          Just ('+', rest) -> pure (lsp, rest, Just DiffAdded)
+          Just ('-', rest) -> pure (lsp, rest, Just DiffRemoved)
+          Just (' ', rest) -> pure (lsp, rest, Just DiffContext)
+          Just _ -> err "G0269" lsp "diff=true のコードの行は +、-、空白のどれかで始めます" >> pure (lsp, t, Just DiffContext)
+    calloutsOf (lsp, t, d)
+      | not (caCallouts ca) = pure (t, d, [])
+      | otherwise = do
+          let (t', ns) = lineCallouts t
+              bad = [n | n <- ns, n < 1 || n > 50]
+          mapM_ (\n -> err "G0269" lsp ("注釈の印の番号は 1 から 50 までです: " <> T.pack (show n))) bad
+          pure (t', d, [fromInteger n | n <- ns, n >= 1, n <= 50])
+
+{- | The callouts at the end of a line (golem-driver ADR 0023): each @<N>@
+after the text, with the spaces before them taken off; a line without
+one is left as it is.
+-}
+lineCallouts :: Text -> (Text, [Integer])
+lineCallouts t = case go (T.dropWhileEnd isBlank t) [] of
+  (_, []) -> (t, [])
+  r -> r
+  where
+    isBlank c = c == ' ' || c == '\t'
+    go s acc = case T.stripSuffix ">" s of
+      Just s1 ->
+        let (pre, digits) = T.breakOnEnd "<" s1
+         in if T.null pre || T.null digits || not (T.all isDigit digits)
+              then (s, acc)
+              else go (T.dropWhileEnd isBlank (T.dropEnd 1 pre)) (read (T.unpack digits) : acc)
+      Nothing -> (s, acc)
 
 -- ------------------------------------------------------------------ inlines
 
@@ -933,7 +1102,8 @@ builtinWith ctx inHeading sp name args slots = do
       let shape = argText <$> lookup "shape" kw
       case shape of
         Just s | s `notElem` kentenShapes -> err "G0239" sp ("未知の圏点の形です: " <> s) >> pure []
-        _ -> oneSlot (pure . pure . Kenten sp shape)
+        -- without a shape, the default of style.toml (golem-driver ADR 0019)
+        _ -> oneSlot (pure . pure . Kenten sp (Just (fromMaybe (ctxDefaultKenten ctx) shape)))
     "color" -> case pos of
       [v] | Just n <- nameArg v, n `Set.member` ctxSwatches ctx -> oneSlot (pure . pure . Color sp n)
       [v] | Just n <- nameArg v -> err "G0217" sp ("style.toml にないスウォッチです: " <> n) >> pure []

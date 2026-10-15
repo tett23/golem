@@ -19,6 +19,7 @@ library
                     Golem.Pdf.Image
                     Golem.Pdf.Marks
                     Golem.Pdf.Number
+                    Golem.Pdf.Object
                     Golem.Pdf.Sha256
                     Golem.Pdf.Srgb
                     Golem.Pdf.Writer

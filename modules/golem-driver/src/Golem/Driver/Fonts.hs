@@ -77,7 +77,7 @@ golemFontProvider = FontProvider $ \root fid style locals ->
                     ]
                in case clashes of
                     ((n, p1, p2) : _) -> Left [err "G0805" ("PostScript 名が同じ異なるフォントがあります: " <> n <> "（" <> T.pack p1 <> "、" <> T.pack p2 <> "）")]
-                    [] -> Right (provide [f | (_, f, _) <- faces] body roleFaces)
+                    [] -> Right (provide [(f, p) | (_, f, p) <- faces] body roleFaces)
   where
     nubOn key = reverse . fst . foldl' (\(acc, seen) x -> if key x `elem` seen then (acc, seen) else (x : acc, key x : seen)) ([], [])
 
@@ -86,8 +86,8 @@ and its OpenType features. A role that is not loaded is the body role.
 The measures are kept by the shaping too: its features change them
 (docs/adr/0020).
 -}
-provide :: [Font] -> Text -> Map.Map Text (Maybe Int, Maybe Int, [Text]) -> LoadedFonts
-provide fonts body roles =
+provide :: [(Font, FilePath)] -> Text -> Map.Map Text (Maybe Int, Maybe Int, [Text]) -> LoadedFonts
+provide faces body roles =
   LoadedFonts
     { lfAdvance = advance,
       lfWordAdvance = \s t -> sum (map shAdvance (shapeText s t)),
@@ -96,12 +96,21 @@ provide fonts body roles =
       lfShape = shapeText,
       lfCode = glyphCid . fontAt,
       lfEmbed = embed,
-      lfEmBoxCentral = \ix -> let f = fontAt ix in toInteger (fontEmBoxCentral f) % toInteger (fontUnitsPerEm f)
+      lfEmBoxCentral = \ix -> let f = fontAt ix in toInteger (fontEmBoxCentral f) % toInteger (fontUnitsPerEm f),
+      -- the path in style.toml and the form of a face (golem-cli ADR 0006)
+      lfFaceFile = \ix -> let (f, p) = faceAt ix in (p, if fontIsCff f then "cff" else "truetype"),
+      -- the ink box of a glyph from FreeType, in em (golem-driver ADR 0019)
+      lfInkBox = \ix g ->
+        let f = fontAt ix
+            em v = toInteger v % toInteger (fontUnitsPerEm f)
+         in (\m -> let (x0, y0, x1, y1) = gmBBox m in (em x0, em y0, em x1, em y1)) <$> glyphMetrics f g
     }
   where
     advance = curry (memo (\(s, c) -> sum (map shAdvance (shapeText s (T.singleton c)))))
     pairKern = memo (\(s, a, b) -> sum (map shAdvance (shapeText s (T.pack [a, b]))) - advance s a - advance s b)
-    fontAt i = fonts !! max 0 (min (length fonts - 1) i)
+    fonts = map fst faces
+    faceAt i = faces !! max 0 (min (length faces - 1) i)
+    fontAt = fst . faceAt
     roleOf role = case Map.lookup role roles of
       Just (Nothing, Nothing, _) -> roleOf body
       Just r -> r
