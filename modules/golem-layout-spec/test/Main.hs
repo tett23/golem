@@ -3,6 +3,7 @@ module Main (main) where
 import Data.Either (isLeft)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
+import GeometrySpec (geometryTests)
 import Golem.LayoutSpec
 import Golem.Project.Style
 import Golem.Syntax
@@ -35,7 +36,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-layout-spec (ADR 0001)"
-    [ testCase "a page size by dimensions is the same as the named size (golem-project ADR 0005)" $ do
+    [ geometryTests,
+      testCase "a page size by dimensions is the same as the named size (golem-project ADR 0005)" $ do
         let withSize sz = defaultStyle {stPage = Just (Page sz True True (Just (grid 30 15 1 Nothing)) 0)}
             dim t = case parseDim t of
               Just (Abs x) -> x

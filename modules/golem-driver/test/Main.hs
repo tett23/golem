@@ -10,10 +10,11 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.List (isSuffixOf, nub, sort, sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import ExternalTool (needsTool, optionalTool)
 import Golem.Doc.Assemble (Book, HeadingInfo (..), IndexGroup (..), inlineText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
@@ -21,7 +22,7 @@ import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescrip
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
-import Golem.Driver.Pdf (Assumed (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, hiddenFolios, indexLines, instanceIdInputs, layoutPages, layoutPdf, offsetOrigin, producer, runningHeadText, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
+import Golem.Driver.Pdf (Assumed (..), CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, hiddenFolios, indexLines, instanceIdInputs, layoutPages, layoutPdf, offsetOrigin, producer, runningHeadText, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Kerning (..), Look (..), Synthetic (..), plainLook)
@@ -33,11 +34,13 @@ import Golem.Pdf (Font (..), FontProgram (..), spToPt)
 import Golem.Pdf qualified as P
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
+import Golem.Preflight.Rules (Level (..), Rules (..), parseRules, printRules)
+import Golem.Preflight.View (GlyphView (..), ImageView (..), LineView (..), PageView (..), RuleView (..), View (..))
 import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), LocalStyles (..), ParaStyleDef (..), RunningContent (..), dimToSp, noLocalStyles, noParaDef, parseDim, parseStyle)
 import Golem.Syntax
-import System.Directory (copyFile, createDirectoryIfMissing, createFileLink, doesDirectoryExist, findExecutable, listDirectory)
-import System.Environment (lookupEnv, setEnv)
+import System.Directory (copyFile, createDirectoryIfMissing, createFileLink, doesDirectoryExist, doesFileExist, findExecutable, listDirectory)
+import System.Environment (setEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -83,6 +86,12 @@ uuid0 = "00000000-0000-4000-8000-000000000000"
 templateText :: Language -> FilePath -> T.Text
 templateText lang file = fromMaybe "" (lookup file (templateFiles lang uuid0))
 
+-- | The page size, vertical writing and right binding the template's style.toml lays out.
+templatePage :: Language -> Either [Diagnostic] ((Integer, Integer), Bool, Bool)
+templatePage lang =
+  (\g -> (pgPageSize g, pgVertical g, pgBindingRight g))
+    <$> (parseStyle (FileId 0) (templateText lang "style.toml") >>= pageGeometry (FileId 0) False)
+
 templateFile :: Language -> FilePath -> IO BL.ByteString
 templateFile lang file = pure (BL.fromStrict (TE.encodeUtf8 (templateText lang file)))
 
@@ -99,7 +108,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-driver (ADR 0001)"
-    [ explainTests,
+    [ qpdfInstalled,
+      explainTests,
       noticeTests,
       testGroup "project diagnostics (golem-project ADR 0006)" projectDiagnosticTests,
       testGroup "reading stage (golem-parser ADR 0009)" readingTests,
@@ -170,12 +180,14 @@ tests =
         "golem new (golem-cli ADR 0003)"
         ( [ goldenVsString ("new-" <> tag <> "-" <> name) ("test/golden/new-" <> tag <> "-" <> name) (templateFile lang file)
           | (lang, tag) <- [(Japanese, "ja"), (English, "en")],
-            (name, file) <- [("manifest.toml", "manifest.toml"), ("style.toml", "style.toml"), ("01.gm", "chapters/01.gm")]
+            (name, file) <- [("manifest.toml", "manifest.toml"), ("style.toml", "style.toml"), ("01.gm", "chapters/01.gm"), ("preflight.toml", "preflight.toml")]
           ]
-            <> [ testCase "the template lays out a page" $
-                   mapM_
-                     (\lang -> either (assertFailure . show) (const (pure ())) (parseStyle (FileId 0) (templateText lang "style.toml") >>= pageGeometry (FileId 0) False))
-                     [Japanese, English],
+            <> [ -- A6 is 105 x 148 mm, at 72/25.4 pt per mm and 65536 sp per pt (rounded);
+                 -- mass-market is 4.25 x 6.875 in, 306 x 495 pt
+                 testCase "the Japanese template lays out a vertical A6 page bound on the right" $
+                   templatePage Japanese @?= Right ((19505991, 27494158), True, True),
+                 testCase "the English template lays out a horizontal mass-market page bound on the left" $
+                   templatePage English @?= Right ((20054016, 32440320), False, False),
                  testCase "fonts come from tagged releases with fixed hashes" $ do
                    map fsPath (templateFonts Japanese) @?= ["fonts/NotoSerifJP-Regular.otf", "fonts/LICENSE-NotoSerifJP.txt"]
                    map fsPath (templateFonts English) @?= ["fonts/SourceSerif4-Regular.otf", "fonts/LICENSE-SourceSerif4.md"]
@@ -217,6 +229,7 @@ tests =
                    assertBool "error" (either (const True) (const False) r)
                    listDirectory tmp >>= (@?= ["keep"])
                ]
+            <> newPreflightTests
         ),
       testGroup
         "all targets when none is given (golem-cli ADR 0002)"
@@ -337,6 +350,7 @@ tests =
       testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
       testGroup "kerning, proportional metrics and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "running heads (ADR 0014)" runningHeadTests,
+      testGroup "golem preflight (golem-cli ADR 0006)" preflightTests,
       testGroup "footnote marks and numbers (ADR 0018)" footnoteTests,
       testGroup "the footnote separator (ADR 0024)" noteRuleTests,
       testGroup
@@ -3194,6 +3208,7 @@ fakeFonts =
       lfCode = \_ g -> g,
       lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i (0, 0) | (i, c) <- zip [0 ..] (T.unpack t)],
       lfEmBoxCentral = const (38 / 100),
+      lfFaceFile = const ("fonts/b.otf", "truetype"),
       lfInkBox = \_ _ -> Just (1 / 10, -(1 / 10), 9 / 10, 8 / 10),
       lfEmbed = \_ vertical used ->
         Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used ("Adobe", "Identity", 0)
@@ -3208,15 +3223,26 @@ fakeFonts =
       _ -> 0
     adv c = if fromEnum c < 0x2000 then 1 / 2 else 1
 
+{- | qpdf --check accepts the PDF. Where qpdf is not installed the check is
+left out of the test that calls it, and 'qpdfInstalled' reports the SKIP;
+with GOLEM_REQUIRE_EXTERNAL_TOOLS=1 (CI) the test fails instead.
+-}
 qpdfCheck :: BS.ByteString -> IO ()
 qpdfCheck pdf = do
-  qpdf <- findExecutable "qpdf"
+  qpdf <- optionalTool "qpdf" (findExecutable "qpdf")
   case qpdf of
     Nothing -> pure ()
     Just exe -> withSystemTempDirectory "golem-pdf" $ \dir -> do
       BS.writeFile (dir </> "out.pdf") pdf
       (code, out, err) <- readProcessWithExitCode exe ["--check", dir </> "out.pdf"] ""
       assertEqual (out <> err) ExitSuccess code
+
+-- | Reports whether the qpdf checks of 'qpdfCheck' run: SKIP without qpdf.
+qpdfInstalled :: TestTree
+qpdfInstalled =
+  needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
+    testCase "qpdf is installed for the structure checks of the PDFs" $
+      qpdf >>= \exe -> assertBool exe (not (null exe))
 
 -- | Every Flate stream of a PDF, inflated (others as they are).
 inflateAll :: BS.ByteString -> IO [BS.ByteString]
@@ -3273,9 +3299,9 @@ codeSeverities r = [(diagCode d, diagSeverity d) | d <- brDiagnostics r]
 
 styleFileTests :: [TestTree]
 styleFileTests =
-  [ testCase "a missing font does not stop the evaluation" $ withStyleProject missingStyle [] $ \tmp -> do
-      e <- evaluateProject Dev tmp
-      either (assertFailure . show . pfDiagnostics) (const (pure ())) e,
+  [ testCase "a missing font does not stop the evaluation: the book is assembled with no diagnostics" $ withStyleProject missingStyle [] $ \tmp -> do
+      e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+      (isJust (evBook e), map diagCode (evDiagnostics e)) @?= (True, []),
     testCase "HTML, EPUB and plain text are written without the missing font, with one G0310 warning" $ withStyleProject missingStyle [] $ \tmp -> do
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub, TargetText]}
       codeSeverities r @?= [(DiagnosticCode "G0310", Warning)]
@@ -3665,6 +3691,9 @@ explainTests =
           testCase "the notices of the catalog are noticeCodes (golem-syntax ADR 0002)" $ do
             let isNotice e = "- 重大度: お知らせ" `elem` T.lines (exBody e)
             sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isNotice e] @?= sort [c | DiagnosticCode c <- noticeCodes],
+          testCase "the preflight codes of the catalog are preflightCodes (golem-cli ADR 0006)" $ do
+            let isPreflight e = any ("- 重大度: プリフライトの設定による" `T.isPrefixOf`) (T.lines (exBody e))
+            sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isPreflight e] @?= sort [c | DiagnosticCode c <- preflightCodes],
           testCase "the catalog has G0244 retired" $
             fmap exStatus (lookupExplanation "G0244") @?= Just Retired
         ],
@@ -3684,6 +3713,8 @@ explainTests =
           bad "a bad severity" (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: 致命的" else l) (inUse "G0102")) "- 重大度: 致命的",
           testCase "お知らせ is a severity (golem-syntax ADR 0002)" $
             fmap (map exCode) (parseCatalog (T.unlines (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: お知らせ" else l) (inUse "G0102")))) @?= Right ["G0101", "G0102"],
+          testCase "a severity by the preflight rules, with the default of print (golem-cli ADR 0006)" $
+            fmap (map exCode) (parseCatalog (T.unlines (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: プリフライトの設定による（print では警告）" else l) (inUse "G0102")))) @?= Right ["G0101", "G0102"],
           bad "a severity that is none of the four" (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: 情報" else l) (inUse "G0102")) "- 重大度: 情報",
           bad "out of order" (preamble <> inUse "G0102" <> inUse "G0101") "## G0101",
           bad "a code twice" (preamble <> inUse "G0101" <> inUse "G0101") "## G0101",
@@ -4231,7 +4262,7 @@ codeTests =
   [ testCase "leading spaces: the first glyph after four spaces is at the padding and four spaces" $ do
       (_, pl) <- layoutOk horizontalStyle "```\n    x\n```\n" []
       codeRows pl @?= [[(pad + 4 * sp, "x")]],
-    testCase "spaces in a line are kept as many as written" $ do
+    testCase "a code block of the source keeps the spaces in a line as many as written" $ do
       (_, pl) <- layoutOk horizontalStyle "```\na   b\n```\n" []
       codeRows pl @?= [[(pad, "a"), (pad + 4 * sp, "b")]],
     testCase "tabs go to the stops every two spaces; after a Japanese character too" $ do
@@ -4300,7 +4331,7 @@ codeTests =
       pdf <- miniPdf fakeProvider True (fiveLines <> codeBg) "一。\n\n二。\n\n三。\n\n```\na\nb\nc\nd\ne\n```\n" []
       contents <- pageContents pdf
       map (length . filledRects) contents @?= [1, 1],
-    testCase "a block whose first row and padding do not fit starts on the next page" $ do
+    testCase "a code block of the source whose first row and padding do not fit starts on the next page" $ do
       (_, pl) <- layoutOk fiveLines "一。\n\n二。\n\n三。\n\n四。\n\n```\na\n```\n" []
       codeSlots pl @?= [[], [(0, SCode 4 1 2)]],
     testCase "columns: the rows break at the end of a column as at a page" $ do
@@ -4392,7 +4423,157 @@ codeTests =
           other -> assertFailure (show other),
     testCase "HTML: without [fonts.code], monospace only" $
       withCode horizontalStyle "```\nx\n```\n" $ \css _ ->
-        rulesOf "pre, code" css @?= ["pre, code { font-family: monospace; }"]
+        rulesOf "pre, code" css @?= ["pre, code { font-family: monospace; }"],
+    -- golem-driver ADR 0023
+    testCase "line numbers: a column of two digits, the numbers end together, none on a wrapped row" $ do
+      (_, pl) <- layoutOk horizontalStyle "``` numbers=9\na\nabcdefghijklmnopqrstuvwxyz\nc\n```\n" []
+      codeRows pl
+        @?= [ [(pad + 5 * pt, "9"), (pad + 20 * pt, "a")],
+              [(pad, "10"), (pad + 20 * pt, "abcdefghijklmnopqr")],
+              [(pad + 30 * pt, "stuvwxyz")],
+              [(pad, "11"), (pad + 20 * pt, "c")]
+            ],
+    testCase "[code] line-numbers = true numbers every block; numbers=false turns it off" $ do
+      let style = horizontalStyle <> "\n[code]\nline-numbers = true\n"
+      (_, pl) <- layoutOk style "```\na\n```\n\n``` numbers=false\nb\n```\n" []
+      codeRows pl @?= [[(pad, "1"), (pad + 15 * pt, "a")], [(pad, "b")]],
+    testCase "G0743: line numbers and diff marks leave too little measure in a list" $ do
+      let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
+      r <- buildAll style "- a\n  - b\n\n    ``` numbers=100 diff=true\n    +x\n    ```\n" []
+      map diagMessage (codeOf r "G0743") @?= ["コードブロックの行長が足りません"]
+      ok <- buildAll style "- a\n  - b\n\n    ```\n    +x\n    ```\n" []
+      codeOf ok "G0743" @?= [],
+    testCase "file: one more row with the file name first, not repeated after a page break" $ do
+      (_, plain) <- layoutOk horizontalStyle "```\na\nb\n```\n" []
+      (_, named) <- layoutOk horizontalStyle "``` file=a.hs\na\nb\n```\n" []
+      codeSlots plain @?= [[(0, SCode 0 2 3)]]
+      codeSlots named @?= [[(0, SCode 0 3 4)]]
+      take 1 (codeRows named) @?= [[(pad, "a.hs")]]
+      (_, split) <- layoutOk fiveLines "一。\n\n二。\n\n``` file=a.hs\na\nb\nc\nd\ne\n```\n" []
+      codeSlots split @?= [[(2, SCode 2 2 3)], [(0, SCode 4 4 5)]]
+      map (map snd) (codeRows split) @?= [["a.hs"], ["a"], ["b"], ["c"], ["d"], ["e"]],
+    testCase "caption: above the block, in the caption size, outside the background" $ do
+      let style = horizontalStyle <> codeBg <> "\n[code]\nnumber = \"L{n}\"\n\n[paragraph-styles.caption]\nsize = \"8pt\"\n"
+      (geom, pl) <- layoutOk style "@caption 設定\n```\na\n```\n" []
+      codeSlots pl @?= [[(0, SCode 0 1 3)]]
+      case Map.elems (plCodes pl) of
+        (ci : _) -> do
+          ciCaptionSize ci @?= 8 * pt
+          ciCaptionSpan ci @?= 1
+          [T.concat [bcText c | Box _ c <- lineItems l] | l <- ciCaption ci] @?= ["L1　設定"]
+        [] -> assertFailure "no code"
+      contents <- miniPdf fakeProvider True style "@caption 設定\n```\na\n```\n" [] >>= pageContents
+      let ta = firstColumn geom
+          top = rectY ta + rectH ta + (15 - 10) * pt `div` 2 - 15 * pt
+      case concatMap filledRects contents of
+        [[_, y, _, h]] -> do
+          assertBool (show (y, h, toPt top)) (abs (y + h - toPt top) < 0.001)
+          assertBool (show h) (abs (h - 30) < 0.001)
+        other -> assertFailure (show other),
+    testCase "caption: with the first row on the next page when they do not fit" $ do
+      (_, pl) <- layoutOk (fiveLines <> "\n[code]\nnumber = \"L{n}\"\n") "一。\n\n二。\n\n三。\n\n@caption 設定\n```\na\n```\n" []
+      codeSlots pl @?= [[], [(0, SCode 3 1 3)]],
+    testCase "highlight: a K 15% band of the row, after the background and before the text" $ do
+      contents <- miniPdf fakeProvider True (horizontalStyle <> codeBg) "``` highlight=2\na\nb\n```\n" [] >>= pageContents
+      case contents of
+        (c : _) -> do
+          case filledRects c of
+            [_, [_, _, w, h]] -> do
+              assertBool (show w) (abs (w - 120) < 0.001)
+              assertBool (show h) (abs (h - 15) < 0.001)
+            other -> assertFailure (show other)
+          let (before, _) = BS.breakSubstring "BT" c
+              (bg, band) = BS.breakSubstring "0 0 0 0.15 k" before
+          assertBool "the background first" ("0 0 0 0.08 k" `BS.isInfixOf` bg)
+          assertBool "the band before the text" (" re f" `BS.isInfixOf` band)
+        [] -> assertFailure "no page"
+      named <- miniPdf fakeProvider True (horizontalStyle <> "\n[color.swatches]\nhl = { cmyk = [0, 0, 30, 0] }\n\n[code]\nhighlight = \"hl\"\n") "``` highlight=2\na\nb\n```\n" [] >>= pageContents
+      assertBool "the swatch" (any ("0 0 0.3 0 k" `BS.isInfixOf`) named)
+      wrapped <- miniPdf fakeProvider True horizontalStyle "``` highlight=2\na\nabcdefghijklmnopqrstuvwxyzabcd\n```\n" [] >>= pageContents
+      case concatMap filledRects wrapped of
+        [[_, _, _, h]] -> assertBool (show h) (abs (h - 30) < 0.001)
+        other -> assertFailure (show other),
+    testCase "diff: the marks in their column; bands only with added and removed" $ do
+      (_, pl) <- layoutOk horizontalStyle "``` diff=true\n+a\n-b\n c\n```\n" []
+      codeRows pl @?= [[(pad, "+"), (pad + 10 * pt, "a")], [(pad, "-"), (pad + 10 * pt, "b")], [(pad + 10 * pt, "c")]]
+      plain <- miniPdf fakeProvider True horizontalStyle "``` diff=true\n+a\n-b\n c\n```\n" [] >>= pageContents
+      map filledRects plain @?= [[]]
+      coloured <- miniPdf fakeProvider True (horizontalStyle <> "\n[color.swatches]\nadd = { cmyk = [20, 0, 20, 0] }\ndel = { cmyk = [0, 20, 20, 0] }\n\n[code]\nadded = \"add\"\nremoved = \"del\"\n") "``` diff=true\n+a\n-b\n c\n```\n" [] >>= pageContents
+      map (length . filledRects) coloured @?= [2],
+    testCase "colours: a keyword of Haskell in its swatch, the rest in the colour of the text" $ do
+      let style = horizontalStyle <> "\n[color.swatches]\nkw = { cmyk = [100, 50, 0, 0] }\n\n[code.colors]\nkeyword = \"kw\"\n"
+      (_, pl) <- layoutOk style "```haskell\nf x = y where y = x\n```\n" []
+      let looks = [(bcText c, lkColor (bcLook c)) | sl <- Map.elems (plLines pl), Box _ c <- lineItems (slLine sl), not (T.null (bcText c))]
+      [t | (t, Just "kw") <- looks] @?= ["where"]
+      assertBool (show looks) (all (\(t, col) -> t == "where" || isNothing col) looks)
+      plain <- miniPdf fakeProvider True horizontalStyle "```haskell\nf x = y where y = x\n```\n" [] >>= pageContents
+      assertBool "no colour" (not (any (" K\n" `BS.isInfixOf`) plain))
+      r <- buildAll style "```nosuchlanguage\nwhere\n```\n" []
+      [diagCode d | d <- brDiagnostics r, diagSeverity d /= Notice] @?= [],
+    testCase "callouts: aligned at two spaces after the longest line" $ do
+      (_, pl) <- layoutOk horizontalStyle "``` callouts=true\nab <1>\nabcd <2>\n```\n" []
+      codeRows pl @?= [[(pad, "ab"), (pad + 30 * pt, "①")], [(pad, "abcd"), (pad + 30 * pt, "②")]],
+    testCase "callouts: each line on its own when aligning does not fit; before the mark when the line does not" $ do
+      (_, pl) <- layoutOk horizontalStyle "``` callouts=true\na <1>\nabcdefghijklmnopqrs <2>\n```\n" []
+      codeRows pl @?= [[(pad, "a"), (pad + 15 * pt, "①")], [(pad, "abcdefghijklmnopqrs")], [(pad + 10 * pt, "②")]],
+    testCase "wrap-mark: at the end of the column on the rows that continue" $ do
+      let style = horizontalStyle <> TE.encodeUtf8 "\n[code]\nwrap-mark = \"↩\"\n"
+      (_, pl) <- layoutOk style "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n" []
+      codeRows pl @?= [[(pad, "abcdefghijklmnopqrst"), (pad + 100 * pt, "↩")], [(pad + 10 * pt, "uvwxyzabcd")]],
+    testCase "continued: the text at the end of the parts before the last, one row less in them" $ do
+      let style = fiveLines <> TE.encodeUtf8 "\n[code]\ncontinued = \"（続く）\"\n"
+          src = "一。\n\n二。\n\n```\na\nb\nc\nd\ne\n```\n"
+      (_, plain) <- layoutOk fiveLines src []
+      codeSlots plain @?= [[(2, SCode 2 2 3)], [(0, SCode 4 3 4)]]
+      (_, cont) <- layoutOk style src []
+      codeSlots cont @?= [[(2, SCode 2 1 3)], [(0, SCode 3 4 5)]]
+      case Map.elems (plCodes cont) of
+        (ci : _) -> fmap (\l -> T.concat [bcText c | Box _ c <- lineItems l]) (ciContinued ci) @?= Just "（続く）"
+        [] -> assertFailure "no code",
+    testCase "border: a rectangle of lines of border-width around each part" $ do
+      let style = fiveLines <> "\n[color.swatches]\nline = { cmyk = [0, 0, 0, 100] }\n\n[paragraph-styles.code]\nborder = \"line\"\nborder-width = \"1pt\"\n"
+      contents <- miniPdf fakeProvider True style "一。\n\n二。\n\n```\na\nb\nc\nd\ne\n```\n" [] >>= pageContents
+      map (length . filledRects) contents @?= [4, 4]
+      case contents of
+        (c : _) -> assertBool "thin" (any (any (\x -> abs (x - 1) < 0.001) . drop 2) (filledRects c))
+        [] -> assertFailure "no page",
+    testCase "vertical: the line numbers before the code along the line" $ do
+      (_, pl) <- layoutOk pdfStyle "``` numbers=true\nx\n```\n" []
+      case codeRows pl of
+        [[(a, "1"), (b, "x")]] -> assertBool (show (a, b)) (a < b)
+        other -> assertFailure (show other),
+    testCase "@listing with the same arguments is set as the code block" $ do
+      let file = [("src/a.txt", "a\nb\nc\n")]
+      (_, a) <- layoutOk horizontalStyle "@listing src/a.txt numbers=true highlight=2 file=a.txt\n" file
+      (_, b) <- layoutOk horizontalStyle "``` numbers=true highlight=2 file=a.txt\na\nb\nc\n```\n" []
+      codeRows a @?= codeRows b,
+    testCase "the features in parallel and in sequence give the same bytes" $ do
+      let style = horizontalStyle <> codeBg <> "\n[code]\nnumber = \"L{n}\"\n"
+          src = "@caption c\n``` numbers=true highlight=1 diff=true callouts=true file=a\n+a <1>\n-b\n c\n```\n"
+      a <- miniPdf fakeProvider True style src []
+      b <- miniPdf fakeProvider False style src []
+      a @?= b,
+    testCase "HTML: a caption and a file wrap the block in a figure" $
+      withCode (horizontalStyle <> "\n[code]\nnumber = \"L{n}\"\n") "@caption 設定\n```haskell file=a.hs\nx\n```\n\n```\ny\n```\n" $ \_ page -> do
+        assertBool (T.unpack page) ("<figure class=\"listing\"><figcaption>L1　設定</figcaption><div class=\"code-file\">a.hs</div><pre>" `T.isInfixOf` page)
+        assertBool (T.unpack page) ("<pre><code>y</code></pre>" `T.isInfixOf` page),
+    testCase "HTML: the lines, the line numbers, the highlight, the diff and the callouts" $
+      withCode horizontalStyle "``` numbers=true highlight=1 diff=true callouts=true\n+a <1>\n-b\n c\n```\n" $ \css page -> do
+        assertBool (T.unpack page) ("<span class=\"line hl add\"><span class=\"ln\" aria-hidden=\"true\">1</span><span class=\"dm\" aria-hidden=\"true\">+</span>a <span class=\"callout\">①</span></span>\n" `T.isInfixOf` page)
+        assertBool (T.unpack page) ("<span class=\"line del\"><span class=\"ln\" aria-hidden=\"true\"></span><span class=\"dm\" aria-hidden=\"true\">-</span>b</span>\n" `T.isInfixOf` page)
+        assertBool (T.unpack page) ("<span class=\"line\"><span class=\"ln\" aria-hidden=\"true\">2</span><span class=\"dm\" aria-hidden=\"true\"> </span>c</span>" `T.isInfixOf` page)
+        assertBool (T.unpack css) (any ("user-select: none" `T.isInfixOf`) (rulesOf ".ln, .dm" css))
+        assertBool (T.unpack css) (any ("background-color" `T.isInfixOf`) (rulesOf "pre .hl" css)),
+    testCase "HTML: the colours of [code.colors] only when it is written" $ do
+      withCode (horizontalStyle <> "\n[color.swatches]\nkw = { cmyk = [100, 50, 0, 0] }\n\n[code.colors]\nkeyword = \"kw\"\n") "```haskell\nx where\n```\n" $ \css _ ->
+        assertBool (T.unpack css) (any ("color: rgb(" `T.isInfixOf`) (rulesOf "code span.kw" css))
+      withCode horizontalStyle "```haskell\nx where\n```\n" $ \css _ ->
+        rulesOf "code span.kw" css @?= [],
+    testCase "HTML: the border of pre" $
+      withCode (horizontalStyle <> "\n[color.swatches]\nline = { cmyk = [0, 0, 0, 100] }\n\n[paragraph-styles.code]\nborder = \"line\"\n") "```\nx\n```\n" $ \css _ ->
+        case rulesOf "pre" css of
+          [r] -> assertBool (T.unpack r) ("border: 0.25pt solid rgb(" `T.isInfixOf` r)
+          other -> assertFailure (show other)
   ]
   where
     -- the fake fonts: a space is half an em of 10pt; the padding is 0.5zw
@@ -4421,3 +4602,145 @@ codeTests =
       css <- TIO.readFile (tmp </> "build/html/style.css")
       page <- TIO.readFile (tmp </> "build/html/a.xhtml")
       k css page
+
+-- ------------------------------------------------------------------ golem preflight (golem-cli ADR 0006)
+
+-- | The preflight.toml of golem new (golem-cli ADR 0006).
+newPreflightTests :: [TestTree]
+newPreflightTests =
+  [ testCase "the Japanese and English preflight.toml differ only in comments" $
+      uncommented (templateText Japanese "preflight.toml") @?= uncommented (templateText English "preflight.toml"),
+    testCase "preflight.toml is written without fonts" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+      createProject (tmp </> "book") (templateFiles English uuid0) Nothing >>= (@?= Right ())
+      TIO.readFile (tmp </> "book/preflight.toml") >>= (@?= templateText English "preflight.toml"),
+    testCase "a failed download writes no preflight.toml" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+      _ <- createProject (tmp </> "book") (templateFiles Japanese uuid0) (Just (fakeFetch (Left "offline"), [fakeFont "FONT"]))
+      doesFileExist (tmp </> "book/preflight.toml") >>= assertBool "no preflight.toml" . not,
+    testCase "the template reads as print, and its examples uncommented too" $
+      forM_ [Japanese, English] $ \lang -> do
+        let t = templateText lang "preflight.toml"
+            (examples, pageCount) = T.breakOn pageCountMarker t
+        parseRules (FileId 0) t @?= Right printRules
+        parseRules (FileId 0) (uncomment examples <> pageCount) @?= Right printRules
+        parseRules (FileId 0) (uncomment t) @?= Right printRules {ruPageCount = LevelError, ruPageMultiple = 16}
+  ]
+  where
+    uncommented = T.unlines . filter (not . ("#" `T.isPrefixOf`)) . T.lines
+    -- the comment line just before the page-count example
+    pageCountMarker = "\n# [page-count]"
+    -- the example lines: "# " taken off the lines of keys and tables
+    uncomment = T.unlines . map one . T.lines
+    one l = case T.stripPrefix "# " l of
+      Just rest | isSetting rest -> rest
+      _ -> l
+    isSetting r = "[" `T.isPrefixOf` r || (" = " `T.isInfixOf` r && not ("name" `T.isPrefixOf` r))
+
+-- | A one-chapter project for golem preflight, with the fake fonts.
+withPreflightProject :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withPreflightProject style source files act = withSystemTempDirectory "golem-preflight" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") miniManifest
+  BS.writeFile (tmp </> "style.toml") (withBodyFont style)
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  forM_ (bodyFontFiles style <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  act tmp
+
+preflightIn :: FilePath -> IO PreflightResult
+preflightIn tmp = preflight (defaultPreflightOptions tmp) {poFonts = fakeProvider}
+
+errorCodes :: [Diagnostic] -> [DiagnosticCode]
+errorCodes = map diagCode . filter isError
+
+preflightTests :: [TestTree]
+preflightTests =
+  [ testCase "the PDF checked is the PDF of build --profile prod, not of dev" $
+      withPreflightProject horizontalStyle "本文。\n" [] $ \tmp -> do
+        p <- preflightIn tmp
+        pdf <- maybe (assertFailure "no PDF") pure (prPdf p)
+        let built profile = do
+              r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = profile}
+              case filter (".pdf" `isSuffixOf`) (brWritten r) of
+                [path] -> BS.readFile path
+                other -> assertFailure (show other)
+        prod <- built Prod
+        dev <- built Dev
+        assertBool "prod" (pdf == prod)
+        assertBool "dev" (pdf /= dev),
+    testCase "the view: the trimmed page, the folio, the image and the table rules" $ do
+      img <- tinyImage
+      let source = "# 章\n\n@figure images/tiny.jpg alt=\"t\"\n  キャプション。\n\n| a | b |\n|---|---|\n| c | d |\n\n本文。\n"
+      withPreflightProject (horizontalStyle <> "\n[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n") source img $ \tmp -> do
+        p <- preflightIn tmp
+        v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+        -- A5: 148mm wide
+        map (rectW . pvTrim) (vwPages v) @?= map (const (round (148 * 72 / 25.4 * 65536 :: Rational))) (vwPages v)
+        assertBool "folio on every page" (all (any ((== "ノンブル") . lvKind) . pvLines) (vwPages v))
+        case concatMap pvImages (vwPages v) of
+          [iv] -> do
+            ivPath iv @?= "images/tiny.jpg"
+            -- a figure that does not wrap fills the measure: 12 characters of 10pt
+            rectW (ivRect iv) @?= 120 * 65536
+          other -> assertFailure (show (length other))
+        sort (map rvWeight (concatMap pvRules (vwPages v))) @?= [round (0.3 * 65536 :: Rational), round (0.6 * 65536 :: Rational), round (0.6 * 65536 :: Rational)],
+    testCase "the view: the rule before the footnotes is a rule of its own kind (golem-driver ADR 0024)" $
+      withPreflightProject (horizontalStyle <> "\n[notes.rule]\nlength = \"5zw\"\nweight = \"0.2pt\"\n") "# 章\n\n漢[note: 注。]字\n" [] $ \tmp -> do
+        p <- preflightIn tmp
+        v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+        [(rvKind r, rvWeight r) | r <- concatMap pvRules (vwPages v)] @?= [("脚注の罫線", round (0.2 * 65536 :: Rational))],
+    testCase "a character the font has not is glyph 0 in the view (with real fonts)" $ withSystemTempDirectory "golem-preflight" $ \tmp -> do
+      copyTree fixture tmp
+      createDirectoryIfMissing True (tmp </> "fonts")
+      copyFile "../golem-font/test/fonts/SourceHanSans-Regular_subset.otf" (tmp </> "fonts/ja.otf")
+      BS.writeFile (tmp </> "style.toml") (pdfStyle <> "\n[fonts.body]\nja = \"fonts/ja.otf\"\n")
+      BS.appendFile (tmp </> "chapters/02.gm") (TE.encodeUtf8 "\n私用\xE000。\n")
+      p <- preflight (defaultPreflightOptions tmp)
+      v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+      assertBool "glyph 0 of U+E000" (any (any (\g -> gvGlyph g == 0 && gvText g == "\xE000") . pvGlyphs) (vwPages v))
+      assertBool "G0902" (DiagnosticCode "G0902" `elem` errorCodes (prDiagnostics p)),
+    testCase "a PDF as a figure is G0905" $
+      withPreflightProject horizontalStyle "# 章\n\n@figure images/a.pdf web=images/a.png alt=\"t\"\n\n本文。\n" [("images/a.pdf", "%PDF-1.4\n"), ("images/a.png", "png")] $ \tmp -> do
+        p <- preflightIn tmp
+        assertEqual (show (prDiagnostics p)) [DiagnosticCode "G0905"] (map diagCode (filter ((== DiagnosticCode "G0905") . diagCode) (prDiagnostics p))),
+    {- the profile is prod: G0205 is reported in prod only. G0504, the
+    example of the ADR, is a diagnostic of golem lint, which neither golem
+    build nor golem preflight runs. -}
+    testCase "the profile is prod (G0205 is reported in prod only)" $
+      withPreflightProject horizontalStyle "本文。 %%= 校正 %%\n" [] $ \tmp -> do
+        p <- preflightIn tmp
+        [diagSeverity d | d <- prDiagnostics p, diagCode d == DiagnosticCode "G0205"] @?= [Warning]
+        assertBool "a view" (isJust (prView p)),
+    testCase "an error of the build stops before the checks" $
+      withPreflightProject horizontalStyle "[nope: x]\n" [] $ \tmp -> do
+        p <- preflightIn tmp
+        assertBool "errors" (not (null (errorCodes (prDiagnostics p))))
+        assertBool "no view" (isNothing (prView p)),
+    testCase "rules out of the project are read, a missing file is G0901" $
+      withPreflightProject horizontalStyle "本文。\n" [] $ \tmp -> withSystemTempDirectory "golem-rules" $ \other -> do
+        TIO.writeFile (other </> "printer.toml") "based-on = \"none\"\nname = \"A 印刷\"\n"
+        p <- preflight (defaultPreflightOptions tmp) {poFonts = fakeProvider, poRules = Just (other </> "printer.toml")}
+        prRulesLabel p @?= "A 印刷"
+        prBasedOn p @?= "none"
+        errorCodes (prDiagnostics p) @?= []
+        q <- preflight (defaultPreflightOptions tmp) {poFonts = fakeProvider, poRules = Just (other </> "missing.toml")}
+        map diagCode (prDiagnostics q) @?= [DiagnosticCode "G0901"]
+        prPdf q @?= Nothing,
+    testCase "a wrong preflight.toml stops before the PDF" $
+      withPreflightProject horizontalStyle "本文。\n" [("preflight.toml", "[pdf-x]\nseverity = \"notice\"\n")] $ \tmp -> do
+        p <- preflightIn tmp
+        map diagCode (prDiagnostics p) @?= [DiagnosticCode "G0901"]
+        prPdf p @?= Nothing
+  ]
+    <> [ testCase ("the template fails print with G0910 and G0914 only, and passes with bleed and intent (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
+           let dir = tmp </> "book"
+           createProject dir (templateFiles lang uuid0) Nothing >>= (@?= Right ())
+           forM_ (templateFonts lang) $ \f -> createDirectoryIfMissing True (takeDirectory (dir </> fsPath f)) >> BS.writeFile (dir </> fsPath f) "fake"
+           p <- preflightIn dir
+           sort (errorCodes (prDiagnostics p)) @?= [DiagnosticCode "G0910", DiagnosticCode "G0914"]
+           [diagMessage d | d <- prDiagnostics p, diagCode d == DiagnosticCode "G0914"] @?= ["PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）"]
+           style <- TIO.readFile (dir </> "style.toml")
+           TIO.writeFile (dir </> "style.toml") (T.replace "[page]\n" "[page]\nbleed = \"3mm\"\n" style <> "\n[color]\nintent = \"profiles/test.icc\"\n")
+           createDirectoryIfMissing True (dir </> "profiles")
+           BS.writeFile (dir </> "profiles/test.icc") "fake profile"
+           q <- preflightIn dir
+           errorCodes (prDiagnostics q) @?= []
+       | (lang, tag) <- [(Japanese, "ja"), (English, "en")]
+       ]
