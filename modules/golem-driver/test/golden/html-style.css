@@ -1,5 +1,7 @@
 body { font-family: serif; }
 body.vertical { writing-mode: vertical-rl; -epub-writing-mode: vertical-rl; }
+pre, code { font-family: monospace; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; hyphens: none; font-kerning: none; }
 strong { font-weight: bold; }
 .tcy { text-combine-upright: all; -epub-text-combine: horizontal; }
 .kenten { text-emphasis-style: sesame; -epub-text-emphasis-style: sesame; }

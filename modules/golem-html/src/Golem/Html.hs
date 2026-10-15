@@ -11,6 +11,7 @@ module Golem.Html
     HtmlLocalStyles (..),
     Face (..),
     noFace,
+    HtmlCode (..),
     XhtmlSite (..),
     renderXhtml,
     pagePath,
@@ -64,8 +65,22 @@ data HtmlConfig = HtmlConfig
     -- | the kinds of forced break the book uses (docs/adr ADR 0017)
     hcBreakKinds :: !(Set BreakKind),
     -- | the markers of [lists], when the book has it (golem-driver ADR 0013)
-    hcLists :: !(Maybe HtmlLists)
+    hcLists :: !(Maybe HtmlLists),
+    -- | the paragraph style code: pre (golem-driver ADR 0017)
+    hcCode :: !HtmlCode
   }
+
+{- | The paragraph style code for pre (golem-driver ADR 0017): its font
+role, its size and its padding as CSS lengths, and the swatch of its
+background.
+-}
+data HtmlCode = HtmlCode
+  { hcoFont :: !(Maybe Text),
+    hcoSize :: !(Maybe Text),
+    hcoBackground :: !(Maybe Text),
+    hcoPadding :: !Text
+  }
+  deriving stock (Eq)
 
 {- | The markers of [lists] (golem-driver ADR 0013): the bullets and the
 number formats by depth, and whether a gap is written (Nothing: by the last
@@ -96,7 +111,9 @@ data HtmlCharStyle = HtmlCharStyle
     hcsItalic :: !Bool,
     hcsColor :: !(Maybe Text),
     -- | kerning, tracking, proportional metrics and baseline shift (docs/adr/0020)
-    hcsFeatures :: !HtmlFeatures
+    hcsFeatures :: !HtmlFeatures,
+    -- | code or based on it (golem-driver ADR 0017)
+    hcsCode :: !Bool
   }
   deriving stock (Eq)
 
@@ -398,6 +415,7 @@ inline c = \case
   CharStyle _ "strong" xs -> "<strong>" <> inlines c xs <> "</strong>"
   CharStyle _ "bold" xs -> "<b>" <> inlines c xs <> "</b>"
   CharStyle _ "italic" xs -> "<i>" <> inlines c xs <> "</i>"
+  CharStyle _ "code" xs -> "<code>" <> inlines c xs <> "</code>"
   CharStyle _ s xs -> "<span class=\"cs-" <> escapeXml s <> "\">" <> inlines c xs <> "</span>"
   Tcy _ t -> "<span class=\"tcy\">" <> escapeXml t <> "</span>"
   Number _ n st
@@ -599,7 +617,10 @@ css cfg book =
       (kind, Just p) <- [("latin" :: Text, la), ("ja", ja)]
     ]
       <> [ "body { font-family: " <> fontStack "body" <> "; }",
-           "body.vertical { writing-mode: vertical-rl; -epub-writing-mode: vertical-rl; }"
+           "body.vertical { writing-mode: vertical-rl; -epub-writing-mode: vertical-rl; }",
+           -- code blocks and code (golem-driver ADR 0017)
+           "pre, code { font-family: " <> codeStack <> "; }",
+           rule "pre" (["white-space: pre-wrap", "overflow-wrap: anywhere", "tab-size: 2", "hyphens: none", "font-kerning: none"] <> preDecls)
          ]
       -- strong is always written (docs/adr ADR 0005)
       <> [charRule "strong" cs | Just cs <- [Map.lookup "strong" (hcCharStyles cfg)]]
@@ -627,7 +648,7 @@ css cfg book =
            "@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }"
          ]
       -- paragraph styles (docs/adr ADR 0005); body is the plain p
-      <> concat [paraRules name ps | (name, ps) <- Map.toAscList (hcParaStyles cfg)]
+      <> concat [paraRules name ps | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
       -- no indent in list items (docs/adr ADR 0006); li p[class] is stronger than p.ps-name
       <> ["li p, li p[class] { padding-inline-start: 0; text-indent: 0; }" | any (uncurry indentRule) (Map.toList (hcParaStyles cfg))]
       -- the lines of a paragraph that keeps them; br is for readers without CSS
@@ -650,6 +671,17 @@ css cfg book =
       <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
   where
     docs = [fid | Document fid _ <- bookDocs book]
+    -- the role of code, then monospace (golem-driver ADR 0017)
+    codeStack = T.intercalate ", " (maybe [] families (hcoFont (hcCode cfg)) <> ["monospace"])
+    preDecls =
+      let co = hcCode cfg
+       in [ d
+          | Just sw <- [hcoBackground co],
+            Just cmyk <- [Map.lookup sw (hcSwatches cfg)],
+            let (r, g, b) = cmykToRgb cmyk,
+            d <- ["background-color: rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> ")", "padding: " <> hcoPadding co]
+          ]
+            <> ["font-size: " <> sz | Just sz <- [hcoSize co]]
     -- a role a bold (italic) character style sets: its font is declared bold (italic)
     allCharStyles = Map.elems (hcCharStyles cfg) <> concatMap (Map.elems . hlCharStyles) (Map.elems (hcLocalStyles cfg))
     boldRoles = [r | HtmlCharStyle {hcsFont = Just r, hcsBold = True} <- allCharStyles]
@@ -658,6 +690,7 @@ css cfg book =
       "strong" -> "strong"
       "bold" -> "b"
       "italic" -> "i"
+      "code" -> "code"
       name -> ".cs-" <> name
     -- what the element shows without a rule
     defaults = \case
@@ -666,9 +699,12 @@ css cfg book =
       "italic" -> ["font-style: italic"]
       _ -> []
     declsOf name cs =
-      [ "font-family: " <> T.intercalate ", " (families role <> families "body" <> ["serif"])
-      | Just role <- [hcsFont cs]
+      [ "font-family: " <> T.intercalate ", " (families role <> fallback)
+      | -- code is in the rule of pre and code when it has the role of pre
+        name /= "code" || hcsFont cs /= hcoFont (hcCode cfg),
+        Just role <- [hcsFont cs]
       ]
+        <> ["hyphens: none" | hcsCode cs, name /= "code"]
         <> ( if hcsBold cs
                then ["font-weight: bold"]
                else ["font-weight: normal" | "font-weight: bold" `elem` defaults name]
@@ -683,6 +719,8 @@ css cfg book =
              let (r, g, b) = cmykToRgb cmyk
            ]
         <> featureDecls (hcsFeatures cs)
+      where
+        fallback = if hcsCode cs then ["monospace"] else families "body" <> ["serif"]
     {- the keys of the spacing of characters whose values differ from the
     defaults of body (docs/adr/0020): CSS kerns Japanese and Latin alike,
     so japanese-equal-width keeps the Latin kerning -}
@@ -765,7 +803,8 @@ css cfg book =
                     ),
                   rule (paraSel name <> " + " <> paraOf name) ["margin-block-start: " <> (if hpsSpaceBetween ps > 0 then tshow (hpsSpaceBetween ps) <> "em" else margin ps)]
                 ]
-              | (name, ps) <- Map.toAscList (hlParaStyles l)
+              | (name, ps) <- Map.toAscList (hlParaStyles l),
+                name /= "code"
               ]
           faceDecls f = ["font-family: " <> stackOr (faFont f), "font-size: " <> fromMaybe "inherit" (faSize f)]
           faceRules =

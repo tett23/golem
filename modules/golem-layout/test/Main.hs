@@ -1325,8 +1325,8 @@ codeTests =
   where
     s = 100
     -- every character s wide but Japanese ones, which are 3s
-    shape _ t = [(T.singleton c, if c < '\x2000' then s else 3 * s) | c <- T.unpack t]
-    atomsOf = codeAtoms shape
+    shapeOf _ t = [(T.singleton c, if c < '\x2000' then s else 3 * s) | c <- T.unpack t]
+    atomsOf = codeAtoms shapeOf
     rowsWith = layoutCodeLine s
     rows1 = rowsWith 1000 . atomsOf
     offsets rs = [[(cpOffset p, cpText p) | p <- crPieces r] | r <- rs]
