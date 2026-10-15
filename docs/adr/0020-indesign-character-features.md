@@ -1,6 +1,6 @@
 # ADR 0020: カーニングの方式、トラッキング、プロポーショナルメトリクス、ベースラインシフト
 
-ステータス: 採択
+ステータス: 採択→和文のペアカーニングから除く一覧への分離禁止文字の追加は [golem-driver ADR 0020](../golem-driver/adr/0020-glyph-positioning-and-dash-kerning.md)
 
 ## 文脈
 

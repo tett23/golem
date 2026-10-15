@@ -11,6 +11,8 @@ module Golem.Driver.Pdf
   ( FontProvider (..),
     LoadedFonts (..),
     Shaped (..),
+    GlyphFrame (..),
+    offsetOrigin,
     Shaping (..),
     shapingOf,
     noFontProvider,
@@ -149,9 +151,31 @@ data Shaped = Shaped
     -- | drawn turned 90° clockwise in vertical text (golem-driver ADR 0015)
     shTurned :: !Bool,
     -- | the index of the first character of the glyph's cluster in the shaped text (docs/adr/0020)
-    shCluster :: !Int
+    shCluster :: !Int,
+    {- | the GPOS offset (x, y) in em, in the coordinates of the direction the
+    glyph is drawn in, y up (golem-driver ADR 0020)
+    -} shOffset :: !(Rational, Rational)
   }
   deriving stock (Eq, Show)
+
+-- | How a glyph is drawn, for its offset (golem-driver ADR 0020).
+data GlyphFrame
+  = -- | horizontal, with the horizontal scale of a scaled run (0 for none)
+    FrameHorizontal !Int
+  | -- | upright in vertical text
+    FrameUpright
+  | -- | turned 90° clockwise in vertical text
+    FrameTurned
+  deriving stock (Eq, Show)
+
+-- | The origin of a glyph moved by its offset at a size (golem-driver ADR 0020).
+offsetOrigin :: Integer -> GlyphFrame -> (Rational, Rational) -> (Integer, Integer) -> (Integer, Integer)
+offsetOrigin size frame (dx, dy) (gx, gy) = case frame of
+  FrameHorizontal scale -> (gx + sp (dx * toRational (1000 + scale) / 1000), gy + sp dy)
+  FrameUpright -> (gx + sp dx, gy + sp dy)
+  FrameTurned -> (gx + sp dy, gy - sp dx)
+  where
+    sp a = round (a * toRational size)
 
 newtype FontProvider = FontProvider
   { {- | the root, style.toml and the styles of the files (docs/adr ADR 0014)
@@ -1869,15 +1893,21 @@ writeDocument inp geom fonts layout intent =
               | otherwise = 0
             gs =
               concat
-                [ [(ix, g, a, t, (synSlant s, strokeOf latin s), tu, extra) | (Shaped ix g a t tu _, extra) <- zip shaped (trackingAfter r shaped)]
+                [ [(ix, g, a, t, (synSlant s, strokeOf latin s), tu, extra, o) | (Shaped ix g a t tu _ o, extra) <- zip shaped (trackingAfter r shaped)]
                 | (role, r, latin) <- runsOf look txt,
                   let s = syntheticOf look latin
                       shaped = lfShape fonts (shapingFor role r) r
                 ]
-            advs = scanl (+) 0 [toSp size a + extra | (_, _, a, _, _, _, extra) <- gs]
+            advs = scanl (+) 0 [toSp size a + extra | (_, _, a, _, _, _, extra, _) <- gs]
             -- a glyph turned in vertical text: drawn with the horizontal font (golem-driver ADR 0015)
-            placed = [(ix, g, t, sb, tu && v && not rotated, off) | ((ix, g, _, t, sb, tu, _), off) <- zip gs advs]
-            byFont = Map.fromListWith (flip (<>)) [((ix, sb, tu), [(g, t, off)]) | (ix, g, t, sb, tu, off) <- placed]
+            placed = [(ix, g, t, sb, tu && v && not rotated, off, o) | ((ix, g, _, t, sb, tu, _, o), off) <- zip gs advs]
+            byFont = Map.fromListWith (flip (<>)) [((ix, sb, tu), [(g, t, off, o)]) | (ix, g, t, sb, tu, off, o) <- placed]
+            -- each glyph moved by its GPOS offset, by how it is drawn (golem-driver ADR 0020)
+            frameOf turned
+              | v && (rotated || turned) = FrameTurned
+              | v = FrameUpright
+              | otherwise = FrameHorizontal scale
+            moved turned = offsetOrigin size (frameOf turned)
             at off = if v then (x0, y0 - off) else (x0 + off, y0)
             -- the baseline of a turned glyph: left of the centre line by the centre of its em box
             turnedAt ix off = (x0 - toSp size (lfEmBoxCentral fonts ix), y0 - off)
@@ -1885,14 +1915,14 @@ writeDocument inp geom fonts layout intent =
               | sl || stroke > 0 =
                   let rs = P.RunStyle (if v then 1000 else 1000 + scale) (v && (rotated || turned)) (if sl then syntheticSlant else 0) stroke
                       pos off = if turned then turnedAt ix off else at off
-                   in P.StyledGlyphRun rs (ref ix (v && not rotated && not turned)) size [(code ix g, gx, gy) | (g, _, off) <- xs, let (gx, gy) = pos off]
-              | turned = P.RotatedGlyphRun (ref ix False) size [(code ix g, gx, gy) | (g, _, off) <- xs, let (gx, gy) = turnedAt ix off]
-              | v && rotated = P.RotatedGlyphRun (ref ix False) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
-              | v = P.GlyphRun (ref ix True) size [(code ix g, x0, y0 - off) | (g, _, off) <- xs]
-              | scale /= 0 = P.ScaledGlyphRun (ref ix False) size (1000 + scale) [(code ix g, x0 + off, y0) | (g, _, off) <- xs]
-              | otherwise = P.GlyphRun (ref ix False) size [(code ix g, x0 + off, y0) | (g, _, off) <- xs]
+                   in P.StyledGlyphRun rs (ref ix (v && not rotated && not turned)) size [(code ix g, gx, gy) | (g, _, off, o) <- xs, let (gx, gy) = moved turned o (pos off)]
+              | turned = P.RotatedGlyphRun (ref ix False) size [(code ix g, gx, gy) | (g, _, off, o) <- xs, let (gx, gy) = moved turned o (turnedAt ix off)]
+              | v && rotated = P.RotatedGlyphRun (ref ix False) size [(code ix g, gx, gy) | (g, _, off, o) <- xs, let (gx, gy) = moved turned o (x0, y0 - off)]
+              | v = P.GlyphRun (ref ix True) size [(code ix g, gx, gy) | (g, _, off, o) <- xs, let (gx, gy) = moved turned o (x0, y0 - off)]
+              | scale /= 0 = P.ScaledGlyphRun (ref ix False) size (1000 + scale) [(code ix g, gx, gy) | (g, _, off, o) <- xs, let (gx, gy) = moved turned o (x0 + off, y0)]
+              | otherwise = P.GlyphRun (ref ix False) size [(code ix g, gx, gy) | (g, _, off, o) <- xs, let (gx, gy) = moved turned o (x0 + off, y0)]
             code = lfCode fonts
-         in ([mark k xs | (k, xs) <- Map.toList byFont], [(ref ix (v && not rotated && not tu), g, t) | (ix, g, t, _, tu, _) <- placed])
+         in ([mark k xs | (k, xs) <- Map.toList byFont], [(ref ix (v && not rotated && not tu), g, t) | (ix, g, t, _, tu, _, _) <- placed])
       -- the swatch of a look, when it names one (golem-driver ADR 0004)
       swatchOf look = do
         name <- lkColor look
