@@ -449,7 +449,57 @@ data Built = Built
 (G0725), at the top of @fid@. The driver reports them for golem check too.
 -}
 styleLayoutDiagnostics :: FileId -> Style -> [LocalStyles] -> [Diagnostic]
-styleLayoutDiagnostics fid style locals = either id (indentDiagnostics fid style locals) (pageGeometry fid style)
+styleLayoutDiagnostics fid style locals = either id (\geom -> indentDiagnostics fid style locals geom <> indexDiagnostics fid style geom) (pageGeometry fid style)
+
+{- | The columns of the page as a set (docs/adr ADR 0025): their number,
+measure and gap, from line 0.
+-}
+pageColumnSet :: Style -> PageGeometry -> ColumnSet
+pageColumnSet style geom = ColumnSet (length (pgColumns geom)) (columnMeasure geom) (pageColumnGap style geom) 0
+
+-- | The column-gap of [page.grid] in sp; 0 without one.
+pageColumnGap :: Style -> PageGeometry -> Sp
+pageColumnGap style geom = maybe 0 (dimToSp (pgFontSize geom)) (stPage style >>= pageGrid >>= gridColumnGap)
+
+{- | The columns of the index (docs/adr ADR 0025), when [index] columns
+differs from the columns of the page: the width of the type area (its
+columns and their gaps, without the sidenote column) cut into that many
+columns @column-gap@ apart, rounded down to sp.
+-}
+indexColumnSet :: Style -> PageGeometry -> Maybe ColumnSet
+indexColumnSet style geom = do
+  ix <- stIndex style
+  n <- ixColumns ix
+  let ta = pgTypeArea geom
+      w = if pgVertical geom then rectH ta else rectW ta
+      gap = maybe (pageColumnGap style geom) (dimToSp (pgFontSize geom)) (ixColumnGap ix)
+  if n == length (pgColumns geom)
+    then Nothing
+    else Just (ColumnSet n ((w - toInteger (n - 1) * gap) `div` toInteger n) gap 0)
+
+{- | G0744: the columns of the index leave 8 characters of the type
+area's size (docs/adr ADR 0025), at the value of [index] columns.
+-}
+indexDiagnostics :: FileId -> Style -> PageGeometry -> [Diagnostic]
+indexDiagnostics fid style geom =
+  [ diagnostic "G0744" Error (mkSpan fid at at) "索引の段の行長が足りません。columns を減らすか column-gap を狭めてください"
+  | Just set <- [indexColumnSet style geom],
+    csMeasure set < 8 * pgFontSize geom,
+    let at = maybe 0 ixColumnsAt (stIndex style)
+  ]
+
+{- | The rectangles of the columns of a set on page @n@ (docs/adr ADR
+0025): in the type area, left to right in horizontal writing and top to
+bottom in vertical writing.
+-}
+columnSetRects :: PageGeometry -> Int -> ColumnSet -> [Rect]
+columnSetRects geom n set =
+  let Rect x y w h = typeAreaFor geom n
+      m = csMeasure set
+      g = csGap set
+   in [ if pgVertical geom then Rect x (y + h - (i + 1) * m - i * g) w m else Rect (x + i * (m + g)) y m h
+      | i <- [0 .. toInteger (csColumns set) - 1]
+      ]
 
 {- | G0725: every paragraph style leaves 8 characters of its own size on a
 line of a column (docs/adr ADR 0006, golem-driver ADR 0005 and 0016), in
@@ -470,7 +520,7 @@ indentDiagnostics fid style locals geom =
 checkedGeometry :: PdfInput -> Either [Diagnostic] PageGeometry
 checkedGeometry inp = do
   geom <- pageGeometry (piStyleFile inp) (piStyle inp)
-  case indentDiagnostics (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp)) geom of
+  case indentDiagnostics (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp)) geom <> indexDiagnostics (piStyleFile inp) (piStyle inp) geom of
     [] -> Right geom
     ds -> Left ds
 
@@ -514,7 +564,7 @@ layoutPdf inp geom fonts = case sidenoteDiagnostics geom (piBook inp) <> listNum
     let capacity = length (pgLineGrid geom)
         round' assumed = do
           built <- buildFlow inp geom fonts figures assumed
-          pure (if null (bErrors built) then Right (built, paginate (length (pgColumns geom)) capacity (bFlow built)) else Left (bErrors built))
+          pure (if null (bErrors built) then Right (built, paginateIn (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
         labels = labelSpans (piBook inp)
         labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
     result <- fixpoint labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
@@ -994,6 +1044,10 @@ data UnitKind
     UTocEntry Int SrcSpan
   | -- | a forced break (docs/adr ADR 0017)
     UBreak !BreakKind
+  | -- | an entry of the index in its own columns, of their measure (docs/adr ADR 0025)
+    UIndexEntry !Sp
+  | -- | the start (with the set) and the end of the columns of the index
+    UColumns !(Maybe ColumnSet)
 
 {- | The look and the indent of a paragraph style (docs/adr ADR 0005, 0006):
 its role, its size, and its kerning, tracking, proportional metrics and
@@ -1038,8 +1092,8 @@ with the styles its file defines (docs/adr ADR 0014). Lists are numbered
 in document order; the units inside a list know the lists around them
 (golem-driver ADR 0013).
 -}
-unitsOf :: Book -> PageGeometry -> (FileId -> Style) -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
-unitsOf book geom styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs book)))
+unitsOf :: Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
+unitsOf book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs book)))
   where
     sp0 = mkSpan (FileId 0) 0 0
     txt = Text sp0
@@ -1085,7 +1139,12 @@ unitsOf book geom styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs bo
             FigureBlock fig -> (n, [plainUnit (UFigure fig) lbl []])
             -- the index marks of a title are counted at the heading, not in the table of contents
             ChannelOutput (TocOutput depth) -> (n, [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (maybe [] (\h -> [txt (h <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) | e <- bookToc book, teLevel e <= depth])
-            ChannelOutput IndexOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- indexLines (pgVertical geom) pageOf (bookIndex book)])
+            ChannelOutput IndexOutput ->
+              let entries kind = [plainUnit kind Nothing is | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
+               in case indexSet of
+                    Nothing -> (n, entries (UPara noIndent))
+                    -- the index in its own columns (docs/adr ADR 0025)
+                    Just set -> (n, [plainUnit (UColumns (Just set)) Nothing []] <> entries (UIndexEntry (csMeasure set)) <> [plainUnit (UColumns Nothing) Nothing []])
             ChannelOutput BibliographyOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bookCitations book)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
     {- the items of the list numbered n: their units are inside it, the first
@@ -1173,7 +1232,7 @@ buildFlow inp geom fonts images assumed = do
       tocIndent l = toInteger (l - 1) * fs
       -- a mark without an assumed page yet stands at page 1 in the first round
       markPage sp = Map.lookup sp (asMarks assumed) <|> (if Map.null (asMarks assumed) then Just 1 else Nothing)
-      rawUnits = unitsOf (piBook inp) geom (docStyle inp) markPage (piBibliography inp)
+      rawUnits = unitsOf (piBook inp) geom (indexColumnSet style geom) (docStyle inp) markPage (piBibliography inp)
       -- the character styles of the unit's document (docs/adr ADR 0014)
       styledEnv st e = e {ceRestyle = restyle st}
       -- the marker width M of each list, and the indents of the units in lists (golem-driver ADR 0013)
@@ -1194,7 +1253,9 @@ buildFlow inp geom fonts images assumed = do
       unitAt = Map.fromList units
       -- L*(i): the first line is shortened by the indent and the first-line indent, the others by the indent (docs/adr ADR 0006);
       -- a table of contents entry also by the reserve for its page number (golem-driver ADR 0009)
-      widthOf kind k = measure - lineIndent kind k - (case kind of UTocEntry {} -> tocReserve; _ -> 0)
+      widthOf kind k = case kind of
+        UIndexEntry m -> m
+        _ -> measure - lineIndent kind k - (case kind of UTocEntry {} -> tocReserve; _ -> 0)
       lineIndent = \case
         UPara (Indent s f) -> \k -> if k == (0 :: Int) then s + f else s
         UTerm (Indent s _) -> const s
@@ -1296,6 +1357,7 @@ buildFlow inp geom fonts images assumed = do
       isGap u = case uKind u of
         UGap _ -> True
         UBreak _ -> True
+        UColumns _ -> True
         _ -> False
       isFigure u = case uKind u of
         UFigure _ -> True
@@ -1424,6 +1486,7 @@ buildFlow inp geom fonts images assumed = do
                 _ -> (nextId + 1, flows <> [FFigure nextId (pfImageLines pf + pfCaptionSpan pf) (label u) fmarks], lineAcc, Map.insert nextId pf figAcc, headAcc, errs <> ferrs)
             UGap n -> (nextId, flows <> [FSpace n], lineAcc, figAcc, headAcc, errs)
             UBreak k -> (nextId, flows <> [FBreak k], lineAcc, figAcc, headAcc, errs)
+            UColumns set -> (nextId, flows <> [maybe FRestoreColumns FSwitchColumns set], lineAcc, figAcc, headAcc, errs)
             _ ->
               let c = singles Map.! i
                   ls = cLines c
@@ -1531,6 +1594,7 @@ writeDocument inp geom fonts layout intent =
       masters = pageMasters inp geom layout
       heads = runningHeads inp geom layout
       grid = pgLineGrid geom
+      baseSet = pageColumnSet (piStyle inp) geom
       gridAt sl = case drop sl grid of
         (g : _) -> g
         [] -> 0
@@ -1690,7 +1754,9 @@ writeDocument inp geom fonts layout intent =
       ADR 0018): its text, its images and its rules -}
       drawColumn p =
         let n = poNumber p
-            ta = case drop (poColumn p) (columnsFor geom n) of
+            -- the columns of the page, or of the index (docs/adr ADR 0025)
+            rects = if poColumnSet p == baseSet then columnsFor geom n else columnSetRects geom n (poColumnSet p)
+            ta = case drop (poColumn p) rects of
               (c : _) -> c
               [] -> typeAreaFor geom n
             lineParts =

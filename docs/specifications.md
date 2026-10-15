@@ -586,6 +586,10 @@ number = "図{chapter}-{n}"
 [toc]
 leader = "dots"
 
+[index]
+columns = 2
+column-gap = "2zw"
+
 [color]
 intent = "icc/JapanColor2001Coated.icc"
 
@@ -607,7 +611,7 @@ folio = { position = "bottom-outside", format = "{n}" }
 本文は一本の流れのまま、ページの段を読む順にたどり、最後の段の次は次のページの最初の段に進む。
 横組みでは左の段から右の段へ、縦組みでは上の段から下の段へ進み、段の順は綴じの方向によらない。
 本文の行、見出し、図版、表、目次、索引、参考文献は、どれも一段の行長で組み、段の中に置く。
-索引も本の全体と同じ段数で組む。
+索引は、`[index]` がなければ本の全体と同じ段数で組む。
 段の高さはそろえないので、本の最後のページや改丁の前のページでは、後ろの段が空のまま残ることがある。
 脚注の本文は、注の印を含む行が置かれた段の下部に、段の行長で置く。
 傍注欄（`[sidenotes]`）は段組みの版面に設けられず、`pageGeometry` で G0701 とする。
@@ -615,6 +619,30 @@ folio = { position = "bottom-outside", format = "{n}" }
 柱とノンブルは、段の数によらずページに一度だけ描く。
 HTML と EPUB は版面を無視するので、段組みを出力せず、CSS の `columns` も `column-count` も書かない。
 プレーンテキストも段組みを出力しない。
+
+`[index]` は、PDF の索引だけを版面と異なる段数で組む（[docs/adr/0025](adr/0025-index-columns.md)）。
+
+| キー | 型 | 既定 | 意味 |
+| --- | --- | --- | --- |
+| `columns` | 1 以上の整数 | 版面の段数（`[page.grid]` の `columns`） | 索引を組む段数 |
+| `column-gap` | 寸法 | `[page.grid]` の `column-gap` | 索引の段間。`zw` は版面の文字の大きさを一字とする |
+
+`columns` が 1 以上の整数でない場合と、`column-gap` が寸法として読めないか負の場合は、その値の位置で G0325 とする。
+`[index]` の未知のキーは G0306 とする。
+`[index]` がない本と、`columns` が版面の段数と等しい本は、版面の段組みのまま索引を組む。
+
+索引の段の行長は、版面の文字の領域の幅 W を `columns` の数の段と段間に等しく分けた値であり、sp に切り捨てる。
+
+```
+索引の段の行長 = (W − (columns − 1) × column-gap) ÷ columns
+W = 版面の段数 × 版面の段の行長 + (版面の段数 − 1) × 版面の段間
+```
+
+W に傍注欄は含めない。
+索引のページの傍注欄は空のまま残り、傍注欄と版面の段組みの組を禁じる G0701 は、索引の段数を数えない。
+索引の段の行長は字送りの格子の整数倍にそろえず、行の位置だけを版面の行の格子に置く。
+索引の段の行長が版面の文字の大きさの 8 字分に満たない場合は、`[index]` の `columns` の値の位置で G0744 とし、PDF をターゲットに含む `golem check` も報告する。
+索引の段数を切り替える位置は、「索引」の節に書く。
 
 寸法は `mm`、`pt`、`Q`（級）、`H`（歯）、`zw`（全角一字分）の単位を付けた文字列で書き、処理系の内部では整数の sp に変換する。
 
@@ -1440,6 +1468,16 @@ PDF の索引は、一つの項目を一つの段落として本文と同じ書�
 - 印のページは、印を含む行が置かれたページとする。脚注と傍注の本文の中の印は、その注の印を含む本文の行のページ、図版のキャプションの中の印は図版を置いたページとする。
 - 印のページは、ページ番号への参照と同じくレイアウトを繰り返して収束させ、上限の回数までに収束しなければ G0721 とする。G0721 は、ページの変わり続けたラベルと索引の語を並べ、最初のものの位置（ラベルを付けたブロックか索引の印）を指す（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 
+`style.toml` の `[index]` の `columns` が版面の段数と異なる場合、PDF は `@index` の位置で段数を切り替える（[docs/adr/0025](adr/0025-index-columns.md)）。
+段の行長の決め方は「style.toml」の節に書く。
+
+- 版面が一段組みなら、`@index` の前の内容が置かれた行の後から、そのページの残りの行を `columns` の段に分ける。`# 索引` のような見出しは一段の行長のまま、索引の段の上に置かれる。ページに脚注があれば、脚注が占める行をページの下から除いた残りを分ける。残りの行がなければ、次のページの最初から分ける。
+- 版面が二段以上なら、今のページを閉じ、次のページの最初から索引の段で組む。今のページの残りの段は空のまま残す。
+- 次のページからは、ページの全体の行を索引の段に分ける。縦組みでは段は上から下に並ぶ。
+- 索引の最後の項目の後はページを閉じ、次の内容を次のページから版面の段組みで組む。本の最後が索引なら、白ページは作らない。
+- 段の高さはそろえない。柱とノンブルは、切り替えによらずページに一度だけ描く。
+- HTML と EPUB には索引の段組みを出力しない。
+
 PDF の本文の引用の印は、HTML と同じく番号（`[1]`）を出し、`@bibliography` の位置に `[n] ` と書誌を最初に引用された順に並べる。
 
 ### 引用と参考文献
@@ -1702,14 +1740,14 @@ v1 の範囲から外した事項と、v1 の実装で次の段階以降に回�
 - **式の超越関数**：三角関数、指数関数、対数関数と、浮動小数点数の指数による累乗（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
 - **改ページの大域の最適化**：見開きの単位の最適化と、段組みの段の高さの調整を含む（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 - **フレーム**：レベル 2 と 3 のフレーム。型は定義してあり、v1 では値を書くとエラーになる（[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)）。
-- **段組みの拡張**：v1 で実装する段組み（「style.toml」の節の段組み、[docs/adr/0018](adr/0018-multi-column-layout.md)）を超える部分。段抜きの見出し、一冊の中で段数を切り替えること（索引だけを段組みにすることなど）、段組みの版面での回り込みと段をまたぐ除外領域を含む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。段の高さの調整は「改ページの大域の最適化」に、段組みの版面での傍注欄は「傍注の拡張」に含める。
+- **段組みの拡張**：v1 で実装する段組み（「style.toml」の節の段組み、[docs/adr/0018](adr/0018-multi-column-layout.md)）を超える部分。段抜きの見出し、索引のほかで一冊の中で段数を切り替えること、段組みの版面での回り込みと段をまたぐ除外領域を含む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。段の高さの調整は「改ページの大域の最適化」に、段組みの版面での傍注欄は「傍注の拡張」に含める。索引の段組みは [docs/adr/0025](adr/0025-index-columns.md) で v1 に入れた。
 - **SVG の図版**：PDF へ変換する処理が重いため、v1 では PDF、PNG、JPEG に限る。
 - **図版とキャプションの拡張**：版面より大きい図版を縮小する、複数のページに分ける、見開きに置くといった扱い（v1 は空のページにそのまま置く）、回り込ませない図版の幅の指定、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。
 - **複数段落の注**：v1 の注は一つの段落に限る。
 - **目次の拡張**：章ごとの小目次（v1 の `@toc` は文書に一つだけ）、`[toc]` の `font` と `size` による項目の書体と大きさ、階層ごとの書体の切り替え、字下げ、空き、リーダーの字の設定、折り返した題のぶら下げ、図目次と表目次（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
 - **ページ番号と柱の拡張**：ノンブルの書式を目次と索引のページ番号に使うこと、前付けのローマ数字のノンブルと、前付けと本文でのページ番号の振り直し、EPUB の `page-list`、柱とノンブルと目次の項目を見出しの書体で組むこと、柱、ノンブル、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。
 - **縦組みの傍注**：v1 の傍注は横組みに限る（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
-- **索引と参考文献の拡張**：索引の三段以上の階層と「〜を見よ」のような項目間の参照（v1 は二段まで）、索引の見出し（「あ」「か」のような行の区切り）と段組み、ページ番号の範囲の圧縮、副項目の折り返した行の字下げ、縦組みの本の索引を横組みにして巻末から始めること、参考文献の書式の選択（著者名の順の一覧を含む）と書誌のぶら下げ字下げ（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。
+- **索引と参考文献の拡張**：索引の三段以上の階層と「〜を見よ」のような項目間の参照（v1 は二段まで）、索引の見出し（「あ」「か」のような行の区切り）、ページ番号の範囲の圧縮、副項目の折り返した行の字下げ、縦組みの本の索引を横組みにして巻末から始めること、参考文献の書式の選択（著者名の順の一覧を含む）と書誌のぶら下げ字下げ（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)）。
 - **`style.toml` の分割**：ほかのファイルを取り込む機能（[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)）。
 - **`@style-def` の複数行の記法**：一つのスタイルの定義を、複数の行に分けて書けるようにする。v1 では、一つのスタイルは一行の `@style-def` で定義し、同じ名前を二つの `@style-def` に分けて書くことはできない（[docs/adr/0014](adr/0014-in-file-settings.md)）。欄の多いスタイルや正規表現スタイルでは一行が長くなる。行の分け方（続きの行の字下げ、本体を持つブロックコマンドにするか）は ADR で決める。
 - **段落スタイルの拡張**：行送り、段落の前後の空き、行揃え、次のスタイル、ドロップキャップと字取り、先頭文字スタイル、`@style` の引数による段落ごとの上書き、行の終わりの側の字下げ、段落の先頭の始め括弧類の字下げの調整（JLReq）、見出し、リスト、表などへの段落スタイルの適用（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)）。
