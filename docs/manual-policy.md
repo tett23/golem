@@ -244,6 +244,7 @@ docs/diagnostics.md の重大度の欄の値を説明するときに限り、そ
 ## 二つのマニュアルに共通する体裁
 
 - 前付けの順（番号のない「はじめに」、目次）、索引の二段組み、奥付の版の表示をそろえる。
+- 脚注の前に区切り線を引く。`style.toml` の `[notes.rule]` に、一行の字数の 4 分の 1 ほどの `length` と、前後の 0.5zw の間隔を書く（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 - 奥付は `@import common/build-info.gm as build` で読み、「版：[= build.edition]」と「コミット：[code: [= build.commit]]」の二行を載せる。
 - コードブロックは組み込みの段落スタイル `code` で組み、背景のスウォッチ（`{ cmyk = [0, 0, 0, 8] }` を出発点にする）と内側の余白を付ける。
 - 本文の中のファイル名、コマンド、パス、キーは `[code: ...]` で書く。`[style code: ...]` は使わない。
