@@ -10,6 +10,7 @@ import Golem.Syntax.Span
 import Golem.Text
 import Test.Tasty
 import Test.Tasty.HUnit
+import TextOutputSpec (textOutputTests)
 
 main :: IO ()
 main = defaultMain tests
@@ -38,5 +39,6 @@ tests =
     "golem-text"
     [ testCase "@bibliography lists the entries, or the key without one (golem-doc ADR 0004)" $
         render (Map.fromList [("jlreq", "日本語組版処理の要件、W3C、2020。")]) [("jlreq", 1), ("missing", 2)]
-          @?= [("a.txt", "[1] 日本語組版処理の要件、W3C、2020。\n[2] missing\n")]
+          @?= [("a.txt", "[1] 日本語組版処理の要件、W3C、2020。\n[2] missing\n")],
+      textOutputTests
     ]

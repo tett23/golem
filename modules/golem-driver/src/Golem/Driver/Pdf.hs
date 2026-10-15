@@ -836,7 +836,7 @@ layoutPdf inp0 geom fonts =
           let capacity = length (pgLineGrid geom)
               round' assumed = do
                 built <- buildFlow inp geom fonts figures assumed
-                pure (if null (bErrors built) then Right (built, paginateIn (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
+                pure (if null (bErrors built) then Right (built, paginateIn (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
               labels = labelSpans (piBook inp)
               labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
           result <- fixpoint labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
@@ -2027,7 +2027,7 @@ data PageDrawn = PageDrawn
     pdUses :: [GlyphUse],
     pdLines :: [(LineRec, [GlyphUse])],
     pdImages :: [(Rect, PlacedFigure)],
-    pdRules :: [(Rect, Sp)],
+    pdRules :: [(Text, Rect, Sp)],
     pdBlank :: Bool,
     pdNumber :: Int,
     pdBackgrounds :: [P.Swatch]
@@ -2338,8 +2338,10 @@ writeDocumentView inp geom fonts layout intent =
             noteLines = concat [[(nid, l) | l <- take cnt (drop from (Map.findWithDefault [] nid noteBodies))] | (nid, from, cnt) <- poFootnotes p]
             bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
             noteParts = [entry "脚注の行" (noteSpan nid) ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] []) | (slot, (nid, l)) <- zip bottomSlots noteLines]
-            rules = concat [tableRules ta seg w | seg <- poTables p, Just w <- [Map.lookup (tsTable seg) (plTables layout)]]
-         in (lineParts <> noteParts, (figMarks, [(r, pf) | (_, r, pf) <- figures]), (map (P.Rule . fst) rules, rules), (map snd backgrounds, map fst backgrounds))
+            rules =
+              [("表の罫線", r, t) | seg <- poTables p, Just w <- [Map.lookup (tsTable seg) (plTables layout)], (r, t) <- tableRules ta seg w]
+                <> [("脚注の罫線", r, t) | not (null noteLines), Just rule <- [stNotesRule style], let (r, t) = noteRule ta rule (length grid - length noteLines)]
+         in (lineParts <> noteParts, (figMarks, [(r, pf) | (_, r, pf) <- figures]), ([P.Rule r | (_, r, _) <- rules], rules), (map snd backgrounds, map fst backgrounds))
       -- the columns of a page, its sidenotes and, once, its running head and folio
       drawPage ps master = case ps of
         [] -> PageDrawn [] [] [] [] [] True 0 []
@@ -2373,6 +2375,22 @@ writeDocumentView inp geom fonts layout intent =
                   pdNumber = n,
                   pdBackgrounds = concat [snd b | (_, _, _, b) <- columns]
                 }
+      {- the rule before the footnotes from grid line first (golem-driver ADR
+      0024): without spaces through the middle of the em box of the line
+      before; with them space-after above the em box of the first
+      footnote line. From the start of the line of the column, its near
+      edge and far edge measured from the top (the right in vertical text). -}
+      noteRule ta rule first =
+        let p = pgLinePitch geom
+            fs = pgFontSize geom
+            w = rsWeight rule
+            len = maybe 0 (dimToSp fs) (rsLength rule)
+            far = case rsSpaceAfter rule of
+              Nothing -> toInteger (first - 1) * p + fs `div` 2 - w `div` 2
+              Just a -> toInteger first * p - dimToSp fs a - w
+         in if vertical
+              then (Rect (rectX ta + rectW ta - far - w) (rectY ta + rectH ta - len) w len, w)
+              else (Rect (rectX ta) (rectY ta + rectH ta - far - w) len w, w)
       -- the rules of a table on a page, centred in the space between grid lines (golem-driver ADR 0008)
       tableRules ta seg w =
         let p = pgLinePitch geom
@@ -2479,7 +2497,7 @@ writeDocumentView inp geom fonts layout intent =
             V.pvImages = [V.ImageView r (pfImage pf) (pfSpan pf) (pfSource pf) | (r, pf) <- pdImages pd],
             V.pvLines = [V.LineView r (lrKind rec) (lrSpan rec) (lrOverfull rec) | (rec, _) <- pdLines pd, Just r <- [lrRect rec]],
             V.pvGlyphs = [glyphView (lrSpan rec) u | (rec, us) <- pdLines pd, u <- us],
-            V.pvRules = [V.RuleView "表の罫線" t r | (r, t) <- pdRules pd],
+            V.pvRules = [V.RuleView k t r | (k, r, t) <- pdRules pd],
             V.pvBlank = pdBlank pd,
             V.pvGutterLeft = gutterSide bindingRight (pdNumber pd) == SideLeft
           }

@@ -52,6 +52,8 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **柱**と**ノンブル**：ページの余白に置く章題などの見出しと、ページ番号。マスターページで位置と内容を決める。柱の内容は、マスターページの `running-head` の `content`（または `even` と `odd`）に、`heading.1.short` や `title` のような値で書く（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
 - **マスターページ**：柱とノンブルの位置と内容をまとめた、ページの雛形。`style.toml` の `[masters]` に書く。柱の内容は `running-head` の `content`（または `even` と `odd`）で決める。章のファイルごとにマニフェストの `master` で選び、指定のないファイルは `body` を使う（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
 - **行の格子**：版面の中で各行を置く位置の並び（ベースライングリッド）。見開きの左右のページで行の位置がそろう。
+- **脚注の区切り線**：PDF のページ下の脚注の前に引く罫線。`style.toml` の `[notes.rule]` に書いたときだけ引く。本文と脚注のあいだの区切りの領域は格子の行の整数倍で、間隔を書くと行の数が増える（[仕様書](specifications.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
+- **罫線の指定**：`style.toml` で罫線を書く共通の値の形。`length`、`weight`、`space-before`、`space-after` の四つのキーを持ち、値の検査はどの使い手でも同じである。今の使い手は脚注の区切り線だけである（[仕様書](specifications.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 - **sp**：Golem が内部で使う長さの単位。1pt の 65536 分の 1 であり、すべての寸法を整数で扱うためにある。`style.toml` では mm、pt、Q（級）、H（歯）、zw（全角一字分）で書き、読み込むときに sp へ変換する。
 - **Knuth-Plass の行分割**：段落全体を見て、行の詰まり具合の悪さ（不良度）と罰点の合計が最小になる改行の位置を選ぶ方法。行ごとに目標の行長（L*(i)）を変えられる（[golem-layout ADR 0001](golem-layout/adr/0001-knuth-plass-line-breaking.md)）。
 - **禁則**：行頭や行末に置いてはいけない文字を、その位置に来させない規則。閉じ括弧や句読点は行頭に置かない（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）。

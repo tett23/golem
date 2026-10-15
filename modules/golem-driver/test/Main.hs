@@ -342,6 +342,7 @@ tests =
       testGroup "running heads (ADR 0014)" runningHeadTests,
       testGroup "golem preflight (golem-cli ADR 0006)" preflightTests,
       testGroup "footnote marks and numbers (ADR 0018)" footnoteTests,
+      testGroup "the footnote separator (ADR 0024)" noteRuleTests,
       testGroup
         "public-domain books"
         [ testCase "The Tempest builds horizontally to every target" $ do
@@ -1408,6 +1409,82 @@ footnoteTests =
     listToMaybe' = \case
       (x : _) -> Just x
       [] -> Nothing
+
+-- | The rule before the footnotes of a page (golem-driver ADR 0024).
+noteRuleTests :: [TestTree]
+noteRuleTests =
+  [ testCase "horizontal: a rule of the length through the middle of the separator line, from the left of the type area" $ do
+      content <- miniPdf fakeProvider True (ruled horizontalStyle "") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+      case (rulesIn content, glyphsOf '注' content) of
+        ([[x, y, w, h]], [(_, yn)]) -> do
+          near (ptToRational x) (mmPt 20)
+          near (ptToRational w) 50
+          near (ptToRational h) 0.3
+          -- the em box of the note line starts 8.8pt above its baseline; the separator line is one pitch (15pt) above
+          near (ptToRational y + 0.15) (yn + 8.8 + 5 + 5)
+        other -> assertFailure (show other),
+    testCase "no rule on a page without footnotes, nor without [notes.rule]" $ do
+      pdf <- miniPdf fakeProvider True (ruled fiveLines "") ("漢[note: 注。]字\n\n" <> T.replicate 120 "あ" <> "\n") []
+      pages <- pageContents pdf
+      map (length . rulesIn) pages @?= 1 : replicate (length pages - 1) 0
+      plain <- miniPdf fakeProvider True horizontalStyle "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+      rulesIn plain @?= [],
+    testCase "the rule on a page of a footnote continued from the page before" $ do
+      pdf <- miniPdf fakeProvider True (ruled fiveLines "") ("漢[note: " <> T.replicate 40 "注" <> "]字\n") []
+      pages <- pageContents pdf
+      map (length . rulesIn) pages @?= [1, 1],
+    testCase "vertical: a rule down from the top of the type area" $ do
+      content <- miniPdf fakeProvider True (ruled pdfStyle "") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+      let size = 13 / 4 * 72 / 25.4
+          pitch = 22 / 4 * 72 / 25.4
+      case (rulesIn content, glyphsOf '注' content) of
+        ([[x, y, w, h]], [(xn, _)]) -> do
+          near (ptToRational w) 0.3
+          near (ptToRational h) (5 * size)
+          -- B6: 182mm high, the type area 18mm from the top
+          near (ptToRational y + ptToRational h) (mmPt (182 - 18))
+          -- the separator line is one pitch right of the note line
+          near (ptToRational x + 0.15) (xn + pitch)
+        other -> assertFailure (show other),
+    testCase "two columns: the rule only in the column of the footnote, from its left" $ do
+      content <- miniPdf fakeProvider True (ruled horizontal2 "") "前。\n\n@column-break\n\n漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+      case rulesIn content of
+        [[x, _, w, _]] -> do
+          near (ptToRational x) (mmPt 20 + 140)
+          near (ptToRational w) 50
+        other -> assertFailure (show other),
+    testCase "spaces: space-after exactly below the rule, space-before at least above it" $ do
+      let style = ruled fiveLines "space-before = \"15pt\"\nspace-after = \"5pt\"\n"
+      pdf <- miniPdf fakeProvider True style ("漢[note: 注。]" <> T.replicate 60 "あ" <> "\n") []
+      pages <- pageContents pdf
+      case pages of
+        (first : _) -> case (rulesIn first, glyphsOf '注' first, map snd (glyphsOf 'あ' first)) of
+          ([[_, y, _, h]], [(_, yn)], ys@(_ : _)) -> do
+            let bottom = ptToRational y
+                top = bottom + ptToRational h
+                lastBody = minimum ys
+            near (bottom - (yn + 8.8)) 5
+            assertBool (show (lastBody - 1.2 - top)) (lastBody - 1.2 - top >= 15)
+            -- two separator lines: the body has two lines on a page of five with one note line
+            length (nub ys) @?= 2
+          other -> assertFailure (show other)
+        [] -> assertFailure "no pages",
+    testCase "a rule longer than the line is G0701" $ do
+      (errs, pdf) <- buildMini fakeProvider True (horizontalStyle <> "\n[notes.rule]\nlength = \"13zw\"\n") "漢[note: 注。]字\n" []
+      (errs, pdf) @?= ([DiagnosticCode "G0701"], Nothing),
+    testCase "parallel and sequential builds with a rule agree" $ do
+      let style = ruled fiveLines "space-before = \"15pt\"\nspace-after = \"5pt\"\n"
+          source = "漢[note: " <> T.replicate 40 "注" <> "]字\n"
+      a <- miniPdf fakeProvider True style source []
+      b <- miniPdf fakeProvider False style source []
+      a @?= b
+      qpdfCheck a
+  ]
+  where
+    ruled style extra = style <> "\n[notes.rule]\nlength = \"5zw\"\nweight = \"0.3pt\"\n" <> extra
+    near a b = assertBool (show (fromRational a :: Double, fromRational b :: Double)) (abs (a - b) < 1 / 100)
+    mmPt mm = mm * 72 / 25.4
+    glyphsOf c content = [(ptToRational (dX d), ptToRational (dY d)) | d <- drawnGlyphs content, dGlyph d == fromEnum c]
 
 -- | Builds a project of several files to PDF with the fake fonts and returns its content streams.
 projectPdf :: BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -> IO BS.ByteString
@@ -4387,6 +4464,11 @@ preflightTests =
             rectW (ivRect iv) @?= 120 * 65536
           other -> assertFailure (show (length other))
         sort (map rvWeight (concatMap pvRules (vwPages v))) @?= [round (0.3 * 65536 :: Rational), round (0.6 * 65536 :: Rational), round (0.6 * 65536 :: Rational)],
+    testCase "the view: the rule before the footnotes is a rule of its own kind (golem-driver ADR 0024)" $
+      withPreflightProject (horizontalStyle <> "\n[notes.rule]\nlength = \"5zw\"\nweight = \"0.2pt\"\n") "# 章\n\n漢[note: 注。]字\n" [] $ \tmp -> do
+        p <- preflightIn tmp
+        v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+        [(rvKind r, rvWeight r) | r <- concatMap pvRules (vwPages v)] @?= [("脚注の罫線", round (0.2 * 65536 :: Rational))],
     testCase "a character the font has not is glyph 0 in the view (with real fonts)" $ withSystemTempDirectory "golem-preflight" $ \tmp -> do
       copyTree fixture tmp
       createDirectoryIfMissing True (tmp </> "fonts")
