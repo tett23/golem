@@ -395,6 +395,7 @@ PDF を組むときに出るエラーです。
   [code: \[page\]] と [code: \[page.grid\]] の値で版面を決められません。
   字数、行数、文字の大きさ、[code: position] を判型に収まる値にしてください。
   [code: \[page\]] や [code: \[page.grid\]] がないときと、縦組みや段組みの版面に傍注欄を設けたときも、このコードが出ます。
+  脚注の区切り線（[code: \[notes.rule\]]）の [code: length] が一行の長さ（段組みでは一段の長さ）より長いときも出ます。
 = [strong: G0702 [code: 日本式のトンボには塗り足しが要ります。style.toml の \[page\] に bleed を書いてください]]
   [code: --marks japanese] を使うときは、[code: bleed = "3mm"] のように塗り足しを書いてください。
 = [strong: G0750 [code: 隠しノンブルが版面に重なります。\[hidden-folio\] の gutter を小さくするか、ノドの余白を広げてください]]

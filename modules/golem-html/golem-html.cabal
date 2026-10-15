@@ -25,3 +25,22 @@ library
     , skylighting   >=0.14 && <0.16
     , text          >=2.0  && <2.2
   default-language: GHC2021
+
+test-suite golem-html-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  other-modules:    XhtmlSpec
+  build-depends:
+    , base
+    , containers
+    , golem-doc
+    , golem-html
+    , golem-syntax
+    , hedgehog       >=1.4 && <1.6
+    , tasty          >=1.4 && <1.6
+    , tasty-hedgehog >=1.4 && <1.5
+    , tasty-hunit    >=0.10 && <0.11
+    , text
+  default-language: GHC2021
