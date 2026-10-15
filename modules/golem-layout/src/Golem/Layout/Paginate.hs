@@ -16,6 +16,7 @@ page.
 module Golem.Layout.Paginate
   ( LineBox (..),
     ColumnSet (..),
+    NoteId (..),
     NoteBody (..),
     Flow (..),
     Slotted (..),
@@ -41,7 +42,14 @@ import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry, codeSpan)
 import Golem.Syntax (SrcSpan)
 
-data NoteBody = NoteBody {nbId :: !Int, nbLines :: !Int}
+{- | A footnote in the book (golem-driver ADR 0018): the span of the note,
+and its place among the notes of the same span in one paragraph (from
+0). Notes numbered in different files never share a key.
+-}
+data NoteId = NoteId !SrcSpan !Int
+  deriving stock (Eq, Ord, Show)
+
+data NoteBody = NoteBody {nbId :: !NoteId, nbLines :: !Int}
   deriving stock (Eq, Show)
 
 data LineBox = LineBox
@@ -142,7 +150,7 @@ data PageOut = PageOut
     -- | grid line index and what starts there
     poSlots :: ![(Int, Slotted)],
     -- | note id, first line of the body shown here, number of lines
-    poFootnotes :: ![(Int, Int, Int)],
+    poFootnotes :: ![(NoteId, Int, Int)],
     poLabels :: ![Text],
     -- | the index marks placed on the page (golem-driver ADR 0007)
     poMarks :: ![SrcSpan],
@@ -169,13 +177,13 @@ data St = St
     sUsed :: !Int, -- grid lines used from the top
     sNoteLines :: !Int, -- footnote lines used from the bottom (separator included)
     sSlots :: ![(Int, Slotted)],
-    sNotes :: ![(Int, Int, Int)],
+    sNotes :: ![(NoteId, Int, Int)],
     sLabels :: ![Text],
     sMarks :: ![SrcSpan],
     sTables :: ![TableSegment],
     sDone :: ![PageOut],
     sDeferred :: ![Flow],
-    sPendingNotes :: ![(Int, Int, Int)], -- note id, next line, remaining
+    sPendingNotes :: ![(NoteId, Int, Int)], -- note id, next line, remaining
 
     -- | forced breaks not applied yet, in the order written (docs/adr ADR 0017)
     sBreaks :: ![BreakKind],
