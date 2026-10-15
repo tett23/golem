@@ -1,0 +1,77 @@
+[
+  {
+    "id": "knuth-plass",
+    "type": "article-journal",
+    "author": [{"family": "Knuth", "given": "Donald"}, {"family": "Plass", "given": "Michael"}],
+    "title": "Breaking Paragraphs into Lines",
+    "container-title": "Software: Practice and Experience",
+    "volume": "11",
+    "issued": {"date-parts": [[1981]]}
+  },
+  {
+    "id": "jlreq",
+    "type": "report",
+    "title": "日本語組版処理の要件",
+    "publisher": "W3C",
+    "issued": {"date-parts": [[2020]]},
+    "URL": "https://www.w3.org/TR/jlreq/"
+  },
+  {
+    "id": "rfc8949",
+    "type": "standard",
+    "title": "RFC 8949, Concise Binary Object Representation (CBOR)",
+    "URL": "https://www.rfc-editor.org/rfc/rfc8949"
+  },
+  {
+    "id": "rfc8610",
+    "type": "standard",
+    "title": "RFC 8610, Concise Data Definition Language (CDDL)",
+    "URL": "https://www.rfc-editor.org/rfc/rfc8610"
+  },
+  {
+    "id": "pdfx4",
+    "type": "standard",
+    "title": "ISO 15930-7:2010, Graphic technology: Prepress digital data exchange using PDF, Part 7（PDF/X-4）",
+    "publisher": "ISO",
+    "issued": {"date-parts": [[2010]]},
+    "URL": "https://www.iso.org/standard/55843.html"
+  },
+  {
+    "id": "unicode",
+    "type": "standard",
+    "title": "The Unicode Standard",
+    "URL": "https://www.unicode.org/versions/latest/"
+  },
+  {
+    "id": "rfc3629",
+    "type": "standard",
+    "title": "RFC 3629, UTF-8, a transformation format of ISO 10646",
+    "URL": "https://www.rfc-editor.org/rfc/rfc3629"
+  },
+  {
+    "id": "toml",
+    "type": "standard",
+    "title": "TOML v1.0.0",
+    "URL": "https://toml.io/en/v1.0.0"
+  },
+  {
+    "id": "lsp",
+    "type": "standard",
+    "title": "Language Server Protocol Specification 3.17",
+    "publisher": "Microsoft",
+    "URL": "https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/"
+  },
+  {
+    "id": "epub33",
+    "type": "standard",
+    "title": "EPUB 3.3",
+    "publisher": "W3C",
+    "URL": "https://www.w3.org/TR/epub-33/"
+  },
+  {
+    "id": "ofl",
+    "type": "document",
+    "title": "SIL Open Font License 1.1",
+    "URL": "https://openfontlicense.org/"
+  }
+]

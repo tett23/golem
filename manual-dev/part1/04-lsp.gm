@@ -1,7 +1,7 @@
 @label lsp
 # エディタに LSP をつなぐ
 
-[code: golem lsp] は、標準入出力で Language Server Protocol 3.17 を話すサーバーである。[index reading=lsp: LSP]
+[code: golem lsp] は、標準入出力で Language Server Protocol 3.17 [cite lsp] を話すサーバーである。[index reading=lsp: LSP]
 LSP に対応したエディタなら、どれでもつなげる。
 実装は Haskell の [code: lsp] パッケージの上にあり、golem-lsp のモジュールに閉じている。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-lsp/adr/0001-language-server.md]（golem-lsp ADR 0001「LSP サーバー」）]
 
@@ -99,9 +99,9 @@ LSP は最後の変更から一定の時間を待ってから、変わったフ�
 
 ## 診断の載せ方
 
-LSP の診断の重大度は、エラーが [code: Error]、警告が [code: Warning]、お知らせが [code: Information] になる。
-お知らせを [code: Hint] にしないのは、エディタの多くが [code: Information] を問題の一覧に載せるからである。
-マニフェストの [code: silence-notices] に並べたコードのお知らせは、公開しない（第[ref-number diagnostics]章）。
+LSP の診断の重大度は、error が [code: Error]、warning が [code: Warning]、notice が [code: Information] になる。
+notice を [code: Hint] にしないのは、エディタの多くが [code: Information] を問題の一覧に載せるからである。
+マニフェストの [code: silence-notices] に並べたコードの notice は、公開しない（第[ref-number diagnostics]章）。
 
 プロジェクトの段階の診断のうち、どのファイルも指さないものは [code: manifest.toml] に載せる。
 文書にあるコードの診断には、[code: codeDescription] に [code: docs/diagnostics.md] の節の URL が付く。

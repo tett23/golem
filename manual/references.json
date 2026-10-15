@@ -13,5 +13,141 @@
     "title": "JIS X 4061:1996 日本語文字列照合順番",
     "publisher": "日本規格協会",
     "issued": {"date-parts": [[1996]]}
+  },
+  {
+    "id": "jisx4051",
+    "type": "standard",
+    "title": "JIS X 4051:2004 日本語文書の組版方法",
+    "publisher": "日本規格協会",
+    "issued": {"date-parts": [[2004]]},
+    "URL": "https://www.jisc.go.jp/app/jis/general/GnrJISSearch.html"
+  },
+  {
+    "id": "knuth-plass",
+    "type": "article-journal",
+    "author": [{"family": "Knuth", "given": "Donald"}, {"family": "Plass", "given": "Michael"}],
+    "title": "Breaking Paragraphs into Lines",
+    "container-title": "Software: Practice and Experience",
+    "volume": "11",
+    "issued": {"date-parts": [[1981]]}
+  },
+  {
+    "id": "unicode",
+    "type": "standard",
+    "title": "The Unicode Standard",
+    "URL": "https://www.unicode.org/versions/latest/"
+  },
+  {
+    "id": "rfc3629",
+    "type": "standard",
+    "title": "RFC 3629, UTF-8, a transformation format of ISO 10646",
+    "URL": "https://www.rfc-editor.org/rfc/rfc3629"
+  },
+  {
+    "id": "ivd",
+    "type": "dataset",
+    "title": "Ideographic Variation Database",
+    "URL": "https://unicode.org/ivd/"
+  },
+  {
+    "id": "toml",
+    "type": "standard",
+    "title": "TOML v1.0.0",
+    "URL": "https://toml.io/en/v1.0.0"
+  },
+  {
+    "id": "opentype-os2",
+    "type": "standard",
+    "title": "OpenType specification, OS/2 table",
+    "publisher": "Microsoft",
+    "URL": "https://learn.microsoft.com/en-us/typography/opentype/spec/os2"
+  },
+  {
+    "id": "opentype-features",
+    "type": "standard",
+    "title": "OpenType specification, Registered features",
+    "publisher": "Microsoft",
+    "URL": "https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist"
+  },
+  {
+    "id": "uax50",
+    "type": "standard",
+    "title": "Unicode Standard Annex #50, Unicode Vertical Text Layout",
+    "URL": "https://www.unicode.org/reports/tr50/"
+  },
+  {
+    "id": "pdfx4",
+    "type": "standard",
+    "title": "ISO 15930-7:2010, Graphic technology: Prepress digital data exchange using PDF, Part 7（PDF/X-4）",
+    "publisher": "ISO",
+    "issued": {"date-parts": [[2010]]},
+    "URL": "https://www.iso.org/standard/55843.html"
+  },
+  {
+    "id": "icc",
+    "type": "standard",
+    "title": "ICC.1:2022, Image technology colour management",
+    "publisher": "ICC",
+    "issued": {"date-parts": [[2022]]},
+    "URL": "https://www.color.org/specification/ICC.1-2022-05.pdf"
+  },
+  {
+    "id": "japancolor",
+    "type": "webpage",
+    "title": "Japan Color 認証制度の案内",
+    "publisher": "日本印刷産業機械工業会",
+    "URL": "https://japancolor.jp/"
+  },
+  {
+    "id": "css-text-3",
+    "type": "standard",
+    "title": "CSS Text Module Level 3",
+    "publisher": "W3C",
+    "URL": "https://www.w3.org/TR/css-text-3/"
+  },
+  {
+    "id": "html",
+    "type": "standard",
+    "title": "HTML Living Standard",
+    "publisher": "WHATWG",
+    "URL": "https://html.spec.whatwg.org/multipage/"
+  },
+  {
+    "id": "epub33",
+    "type": "standard",
+    "title": "EPUB 3.3",
+    "publisher": "W3C",
+    "URL": "https://www.w3.org/TR/epub-33/"
+  },
+  {
+    "id": "csl",
+    "type": "standard",
+    "title": "Citation Style Language 1.0.2 Specification",
+    "URL": "https://docs.citationstyles.org/en/stable/specification.html"
+  },
+  {
+    "id": "csl-json",
+    "type": "software",
+    "title": "CSL-JSON schema",
+    "URL": "https://github.com/citation-style-language/schema"
+  },
+  {
+    "id": "lsp",
+    "type": "standard",
+    "title": "Language Server Protocol Specification 3.17",
+    "publisher": "Microsoft",
+    "URL": "https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/"
+  },
+  {
+    "id": "git",
+    "type": "webpage",
+    "title": "Git Documentation",
+    "URL": "https://git-scm.com/doc"
+  },
+  {
+    "id": "ofl",
+    "type": "document",
+    "title": "SIL Open Font License 1.1",
+    "URL": "https://openfontlicense.org/"
   }
 ]

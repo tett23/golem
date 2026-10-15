@@ -155,8 +155,8 @@ Golem に対応したテキストエディタでは、書いている途中で�
 
 コンピュータは、文字を数の並びとして保存します。
 どの文字をどの数で表すかの決まりを、[strong: 文字コード][index reading=もじこーど: 文字コード]と呼びます。
-今の文字コードの土台は Unicode という規格で、世界の文字に一つずつ番号を振っています[note: The Unicode Standard。[code: https://www.unicode.org/versions/latest/]]。
-その番号をファイルのバイトの並びに直す方式の一つが [strong: UTF-8] です[note: RFC 3629, UTF-8, a transformation format of ISO 10646。[code: https://www.rfc-editor.org/rfc/rfc3629]]。[index reading=ゆーてぃーえふえいと: UTF-8]
+今の文字コードの土台は Unicode という規格 [cite unicode] で、世界の文字に一つずつ番号を振っています[note: The Unicode Standard。[code: https://www.unicode.org/versions/latest/]]。
+その番号をファイルのバイトの並びに直す方式の一つが [strong: UTF-8] です [cite rfc3629][note: RFC 3629, UTF-8, a transformation format of ISO 10646。[code: https://www.rfc-editor.org/rfc/rfc3629]]。[index reading=ゆーてぃーえふえいと: UTF-8]
 
 Golem の原稿、[code: manifest.toml]、[code: style.toml] は、UTF-8 で保存します。
 日本でかつて広く使われていた Shift_JIS で保存したファイルを Golem に読ませると、UTF-8 として読めないバイトがあるエラー（G0101）になります。
@@ -189,7 +189,7 @@ Golem は、原稿の文字を正規化しません。
 原稿に書いた文字は、書いたとおりの番号のまま PDF に入ります。
 
 人名や地名で特定の字形（たとえば「葛」の下の部分の違い）を指定したいときは、漢字の直後に異体字セレクタという見えない文字を置きます。[index reading=いたいじせれくた: 異体字セレクタ]
-どの漢字のどの字形をどの異体字セレクタで表すかは、Unicode が管理する Ideographic Variation Database に登録されています[note: Ideographic Variation Database。[code: https://unicode.org/ivd/]]。
+どの漢字のどの字形をどの異体字セレクタで表すかは、Unicode が管理する Ideographic Variation Database [cite ivd] に登録されています[note: Ideographic Variation Database。[code: https://unicode.org/ivd/]]。
 Golem は、PDF では異体字セレクタを使ってフォントの中から字形を選び、PDF の文字の情報には元の漢字だけを書きます。
 PDF の中で検索するときは、異体字を元の漢字で探せます。
 HTML、EPUB、プレーンテキストには、異体字セレクタを原稿のまま書き出します。
@@ -198,7 +198,7 @@ HTML、EPUB、プレーンテキストには、異体字セレクタを原稿の
 ## TOML の書き方
 
 [code: manifest.toml] と [code: style.toml] は、TOML という形式で書きます。[index reading=とむる: TOML]
-TOML は、設定を書くために作られたテキストの形式で、規格は TOML v1.0.0 です[note: TOML v1.0.0。[code: https://toml.io/en/v1.0.0]]。
+TOML は、設定を書くために作られたテキストの形式で、規格は TOML v1.0.0 です [cite toml][note: TOML v1.0.0。[code: https://toml.io/en/v1.0.0]]。
 人が読み書きしやすく、しかも書き方の決まりが厳密なので、誤りがあればプログラムが必ず気付けます。
 
 ### キーと値
