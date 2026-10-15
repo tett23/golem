@@ -352,7 +352,7 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0306] [code: style.toml] の誤り
   [code: style.toml] の書き方が違います。
   キーの綴り、値の種類、単位、選べる値を、付録C と見比べてください。
-  今の版では、知らないキーのメッセージは英語です。
+  知らないキーは、[code: 知らないキーです: page.bindng] のように、表とキーをつなげた名前で示します。
   廃止した [code: \[emphasis\]]、[code: \[verse\]] などを書いたときは、書き換え先がメッセージに出ます。
 = [strong: G0317 [code: 未知の判型です: …]] など
   [code: \[page\]] の [code: size] が違います。

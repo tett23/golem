@@ -482,6 +482,9 @@ settingsTests =
         ds @?= []
         let (bs', _, _) = runS sctx "a1\n"
         map stripped bs' @?= [(Nothing, ["a1"])],
+      testCase "a value of the wrong type in @style-def is in Japanese (golem-project ADR 0007)" $ do
+        let (_, ds, _) = runS sctx "@style-def character term font=1\n\nx\n"
+        [(x, diagMessage d) | d <- ds, let { DiagnosticCode x = diagCode d }] @?= [("G0306", "@style-def の値が不正です: font には文字列を書きます（整数が書かれています）")],
       testCase "the errors of @style-def regex (docs/adr ADR 0015)" $ do
         codesS "@style-def regex nope pattern=x style=bold\n" @?= ["G0313"]
         codesS "@style-def regex body style=bold\n" @?= ["G0306"]

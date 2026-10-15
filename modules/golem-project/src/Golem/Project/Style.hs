@@ -93,11 +93,11 @@ import Data.Text qualified as T
 import Golem.Doc.Assemble (NoteNumbering (..))
 import Golem.Doc.ListMarkers (NumberFormat, parseNumberFormat)
 import Golem.Project.Manifest (decodeStrictBy)
+import Golem.Project.TomlMessage (schemaMessage)
 import Golem.Regex (RegexError (..), compile)
 import Golem.Syntax
 import Toml qualified
 import Toml.Schema
-import Toml.Schema.FromValue (typeError)
 import Toml.Schema.Matcher (inKey)
 import Toml.Semantics (valueAnn)
 import Toml.Syntax (Position (..))
@@ -866,7 +866,7 @@ instance FromValue PageSize where
       case (w, h) of
         (Just w', Just h') -> CustomSize <$> side l w' <*> side l h'
         _ -> failAt l "判型の width と height はどちらも必須です"
-    _ -> typeError "page size name or { width = ..., height = ... }" v
+    _ -> fail "判型の名前か { width = ..., height = ... } を書きます"
     where
       side l = \case
         Abs x
@@ -1142,7 +1142,7 @@ instance FromValue MasterPosition where
     Text' l p
       | p `elem` masterPositions -> pure (MasterPosition p)
       | otherwise -> failAt l ("未知の位置です: " <> T.unpack p)
-    _ -> typeError "position such as top-outside" v
+    _ -> fail "top-outside のような位置を書きます"
 
 reqPosition :: ParseTable l Text
 reqPosition = (\(MasterPosition p) -> p) <$> reqKey "position"
@@ -1652,13 +1652,10 @@ readLocal kvs = run (Table (table [(k, tomlValue v) | (k, v) <- kvs]))
       Failure es -> Left (map message es)
       Success [] a -> Right a
       Success ws _ -> Left (map message ws)
-    message (MatchMessage _ path msg) = (codeOf path, T.pack (msg <> concatMap scope path))
+    message (MatchMessage _ path msg) = (codeOf path, schemaMessage path msg)
     codeOf = \case
       ScopeKey k : _ | k `elem` featureKeys -> "G0321"
       _ -> "G0306"
-    scope = \case
-      ScopeKey k -> " (" <> T.unpack k <> ")"
-      ScopeIndex i -> " [" <> show i <> "]"
     tomlValue = \case
       LocalString t -> Text t
       LocalWord "true" -> Bool True
