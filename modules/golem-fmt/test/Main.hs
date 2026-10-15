@@ -91,10 +91,11 @@ tests :: TestTree
 tests =
   testGroup
     "golem-fmt (ADR 0001)"
-    [ testProperty "output is unchanged: the AST is preserved" $ property $ do
+    [ -- the escapes the formatter may remove are made text first (golem-parser ADR 0010)
+      testProperty "output is unchanged: the AST is preserved" $ property $ do
         src <- forAll document
         case format src of
-          Formatted r -> astFingerprint r === astFingerprint (preprocess src)
+          Formatted r -> astFingerprintWith removableEscape r === astFingerprintWith removableEscape (preprocess src)
           Unformattable _ -> discard,
       testProperty "idempotent" $ property $ do
         src <- forAll document
@@ -129,6 +130,17 @@ tests =
              in case format src of
                   Formatted r -> astFingerprint r @?= astFingerprint src
                   Unformattable ds -> assertFailure (show ds)
+        ],
+      testGroup
+        "escapes in the AST (golem-parser ADR 0010)"
+        [ testCase "an escape of a plain character is removed" $
+            formatted "\\あ\n" @?= "あ\n",
+          testCase "escapes the evaluation reads are kept" $ do
+            formatted "[ruby: a\\/b | えー]\n" @?= "[ruby: a\\/b | えー]\n"
+            formatted "a\\ \n" @?= "a\\ \n"
+            formatted "\\# 見出しではない\n" @?= "\\# 見出しではない\n",
+          testCase "the characters the evaluation tells apart by an escape are not removable" $
+            mapM_ (\c -> assertBool (show c) (not (removableEscape c))) ['/', ' ', '\t']
         ],
       testCase "code blocks and comments are untouched" $
         formatted "```\n  a   \n```\n\n本文%%  コメント   %%\n" @?= "```\n  a   \n```\n\n本文%%  コメント   %%\n"

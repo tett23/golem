@@ -21,7 +21,7 @@ import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescrip
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
-import Golem.Driver.Pdf (Assumed (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, hiddenFolios, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, runningHeadText, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
+import Golem.Driver.Pdf (Assumed (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, hiddenFolios, indexLines, instanceIdInputs, layoutPages, layoutPdf, offsetOrigin, producer, runningHeadText, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Kerning (..), Look (..), Synthetic (..), plainLook)
@@ -319,6 +319,7 @@ tests =
       testGroup "PDF captions (ADR 0010)" captionTests,
       testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
       testGroup "PDF index and bibliography (ADR 0007)" indexTests,
+      testGroup "bibliography entries and G0326 (golem-doc ADR 0004)" bibliographyFormatTests,
       testGroup "PDF tables (ADR 0008)" tableTests,
       testGroup "PDF table of contents (ADR 0009)" tocTests,
       testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
@@ -434,6 +435,66 @@ characterFeatureTests =
               other -> assertFailure (show other)
       at dY horizontalStyle >>= (@?= 2)
       at dX pdfStyle >>= (@?= 2),
+    testCase "shaping without palt or vpal gives no offsets, horizontal or vertical (golem-driver ADR 0020)" $ do
+      noto <- notoFonts
+      han <- featureFonts
+      let txt = "漢「字」、。ー\x2014 AVa"
+      sequence_
+        [ assertEqual (show (fonts', v)) [] [g | g <- lfShape fonts (Shaping "body" v []) txt, shOffset g /= (0, 0)]
+        | (fonts, fonts') <- [(noto, "noto" :: String), (han, "han")],
+          v <- [False, True]
+        ],
+    testCase "palt and vpal move a bracket within its box (golem-driver ADR 0020)" $ do
+      noto <- notoPaltFonts
+      han <- featureFonts
+      case lfShape noto (Shaping "body" False ["palt"]) "「" of
+        [g] -> assertBool (show g) (fst (shOffset g) /= 0)
+        other -> assertFailure (show other)
+      case lfShape han (Shaping "body" True ["vpal"]) "「" of
+        [g] -> assertBool (show g) (snd (shOffset g) /= 0)
+        other -> assertFailure (show other),
+    testCase "PDF: a glyph is drawn at its box moved by its offset; other glyphs stay (golem-driver ADR 0020)" $ do
+      -- a bracket gets palt or vpal from a role's features (proportional-metrics leaves punctuation to the aki)
+      let style feature = fakeBody <> "\n[fonts.palt]\nja = \"fonts/h.otf\"\nfeatures = [\"" <> feature <> "\"]\n\n[character-styles.p]\nfont = \"palt\"\n"
+          -- the bracket of the role palt moved as palt (horizontal) or vpal (vertical) would; the advances stay
+          moved =
+            fakeFonts
+              { lfShape = \s t ->
+                  [ if shText g == "「" && shRole s == "palt" then g {shOffset = if shVertical s then (0, 1 / 4) else (-(1 / 4), 0)} else g
+                  | g <- lfShape fakeFonts s t
+                  ]
+              }
+          drawn fonts base feature = miniPdf (FontProvider (\_ _ _ _ -> pure (Right fonts))) True (base <> style feature) "[style p: 漢「字」]\n" fakeFontFiles >>= fmap (drawnGlyphs . BS.concat) . inflateAll
+          diff base feature = do
+            plain <- drawn fakeFonts base feature
+            off <- drawn moved base feature
+            assertEqual "the same glyphs" (map dGlyph plain) (map dGlyph off)
+            pure [(dGlyph a, ptToRational (dX b) - ptToRational (dX a), ptToRational (dY b) - ptToRational (dY a)) | (a, b) <- zip plain off, dX a /= dX b || dY a /= dY b]
+          near expected got = assertBool (show (expected, got)) (abs (expected - got) < 1 / 100)
+      horizontal <- diff horizontalStyle "palt"
+      case horizontal of
+        [(g, dx', dy')] -> do
+          g @?= fromEnum '「'
+          near (-(10 / 4)) dx'
+          dy' @?= 0
+        other -> assertFailure (show other)
+      vertical <- diff pdfStyle "vpal"
+      case vertical of
+        -- 13Q is 3.25mm: a quarter of it upward
+        [(g, dx', dy')] -> do
+          g @?= fromEnum '「'
+          dx' @?= 0
+          near (13 / 4 / 4 * 72 / 25.4) dy'
+        other -> assertFailure (show other),
+    testCase "the offset of a glyph by how it is drawn; a scaled run scales the x offset (golem-driver ADR 0020)" $ do
+      let size = 655360
+      offsetOrigin size (FrameHorizontal 0) (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + 65536, 2000 + 131072)
+      offsetOrigin size (FrameHorizontal 50) (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + round (65536 * 1050 / 1000 :: Rational), 2000 + 131072)
+      offsetOrigin size (FrameHorizontal (-30)) (1 / 10, 0) (0, 0) @?= (round (65536 * 970 / 1000 :: Rational), 0)
+      offsetOrigin size FrameUpright (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + 65536, 2000 + 131072)
+      -- turned 90° clockwise: the glyph's x runs down the page, its y to the right
+      offsetOrigin size FrameTurned (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + 131072, 2000 - 65536)
+      offsetOrigin size (FrameHorizontal 50) (0, 0) (1000, 2000) @?= (1000, 2000),
     testCase "HTML: the CSS of the keys; a key with the value of body's default is not written" $ do
       let styles =
             BS.concat
@@ -2570,6 +2631,67 @@ indexTests =
       qpdfCheck a
   ]
 
+-- | A one-chapter project with a bibliography line and extra files.
+withBibProject :: T.Text -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withBibProject bibLine source files act = withSystemTempDirectory "golem-bib" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 bibLine <> "\n" <> miniManifest <> "[targets.html]\n")
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  forM_ files $ \(to, bytes) -> BS.writeFile (tmp </> to) bytes
+  act tmp
+
+-- | loadBibliography of a project: diagnostics, keys and entries.
+bibOf :: T.Text -> [(FilePath, BS.ByteString)] -> IO ([Diagnostic], Map.Map T.Text T.Text)
+bibOf bibLine files = withBibProject bibLine "本文。\n" files $ \tmp -> do
+  ev <- evaluateProject Dev tmp
+  case ev of
+    Left f -> assertFailure (show (pfDiagnostics f))
+    Right e -> do
+      (ds, _, m) <- loadBibliography tmp (projectManifest (evProject e))
+      pure (ds, m)
+
+-- | A Japanese entry, by a literal author, as CSL-JSON.
+jaRefsJson :: BS.ByteString
+jaRefsJson = TE.encodeUtf8 "[{\"id\": \"jisx4061\", \"title\": \"JIS X 4061:1996 日本語文字列照合順番\", \"publisher\": \"日本規格協会\", \"issued\": {\"date-parts\": [[1996]]}}, {\"id\": \"lit\", \"author\": [{\"literal\": \"日本規格協会\", \"family\": \"x\"}], \"title\": \"照合順番\", \"issued\": {\"literal\": \"n.d.\"}}]"
+
+bibliographyFormatTests :: [TestTree]
+bibliographyFormatTests =
+  [ testCase "a literal author and a literal date are in the entry" $ do
+      (ds, m) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", jaRefsJson)]
+      ds @?= []
+      Map.lookup "lit" m @?= Just "日本規格協会、照合順番、n.d.。"
+      Map.lookup "jisx4061" m @?= Just "JIS X 4061:1996 日本語文字列照合順番、日本規格協会、1996。",
+    testCase "a missing file is G0326 at the head of manifest.toml" $ do
+      (ds, m) <- bibOf "bibliography = [\"nope.json\"]" []
+      map (\d -> (diagCode d, diagSeverity d, diagSpan d, diagMessage d)) ds @?= [(DiagnosticCode "G0326", Error, mkSpan (FileId 0) 0 0, "参考文献のファイルがありません: nope.json")]
+      m @?= Map.empty,
+    testCase "a file that is not JSON, or not an array, is G0326" $ do
+      (ds1, _) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", "{")]
+      map diagCode ds1 @?= [DiagnosticCode "G0326"]
+      assertBool (show ds1) (all (("参考文献のファイルを JSON として読めません: refs.json（" `T.isPrefixOf`) . diagMessage) ds1)
+      (ds2, _) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", "{}")]
+      map diagMessage ds2 @?= ["参考文献のファイルは CSL-JSON の配列で書きます: refs.json"],
+    testCase "an absolute path is G0303" $ do
+      (ds, _) <- bibOf "bibliography = [\"/abs.json\"]" []
+      map diagCode ds @?= [DiagnosticCode "G0303"],
+    testCase "golem check reports G0326 before the G0221 it causes" $
+      withBibProject "bibliography = [\"nope.json\"]" "本文[cite jlreq]。\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optCheckOnly = True}
+        -- G0807 of the fontless PDF target comes after them
+        take 2 (map diagCode (filter isError (brDiagnostics r))) @?= [DiagnosticCode "G0326", DiagnosticCode "G0221"],
+    testCase "HTML lists a Japanese entry with 、 and 。" $
+      withBibProject "bibliography = [\"refs.json\"]" "本文[cite jisx4061]。\n\n@bibliography\n" [("refs.json", jaRefsJson)] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        assertBool (T.unpack page) ("JIS X 4061:1996 日本語文字列照合順番、日本規格協会、1996。</li>" `T.isInfixOf` page),
+    testCase "the PDF bibliography line has no space before a Latin period" $ do
+      (_, m) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", jaRefsJson)]
+      let ls = map rendered (bibliographyLines m [("jisx4061", 1)])
+      assertBool (show ls) (not (any ("日本規格協会 ." `T.isInfixOf`) ls))
+      assertBool (show ls) (any ("日本規格協会、" `T.isInfixOf`) ls)
+  ]
+
 -- | A line of one box of a width (a page number in the tests of tocPage).
 oneBoxLine :: Integer -> Line
 oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0)] 0 w 0 (0, 0) False (0, 0)
@@ -2834,7 +2956,7 @@ fakeFonts =
       lfWordAdvance = \s -> sum . map (advOf (shRole s)) . T.unpack,
       lfPairKern = \_ _ _ -> 0,
       lfCode = \_ g -> g,
-      lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i | (i, c) <- zip [0 ..] (T.unpack t)],
+      lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i (0, 0) | (i, c) <- zip [0 ..] (T.unpack t)],
       lfEmBoxCentral = const (38 / 100),
       lfEmbed = \_ vertical used ->
         Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used ("Adobe", "Identity", 0)

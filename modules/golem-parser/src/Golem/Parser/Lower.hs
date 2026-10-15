@@ -220,7 +220,10 @@ utf8Len = BS.length . TE.encodeUtf8
 inline :: P -> [Located Inline]
 inline = \case
   PT KText sp t -> [Located sp (Text t)]
-  PT KEscape sp t -> [Located sp (Text (T.drop 1 t))]
+  -- the escaped character stays apart from the text (golem-parser ADR 0010)
+  PT KEscape sp t -> case T.uncons (T.drop 1 t) of
+    Just (c, rest) | T.null rest -> [Located sp (Escaped c)]
+    _ -> [Located sp (Text (T.drop 1 t))]
   PT KProofComment sp t -> [Located sp (ProofComment (proofText t))]
   PT KError sp _ -> [Located sp ErrorInline]
   PT KNewline sp _ -> [Located sp SoftBreak]
@@ -242,6 +245,7 @@ proofText = T.strip . dropEnd . T.drop 3
   where
     dropEnd t = fromMaybe t (T.stripSuffix "%%" t)
 
+-- | Neighbouring 'Text' joined; 'Escaped' is not joined (golem-parser ADR 0010).
 mergeText :: [Located Inline] -> [Located Inline]
 mergeText (Located a (Text x) : Located b (Text y) : rest) =
   mergeText (Located (mkSpan (spanFile a) (spanStart a) (spanEnd b)) (Text (x <> y)) : rest)

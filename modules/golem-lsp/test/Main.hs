@@ -268,6 +268,11 @@ tests =
         map (\o -> (olTitle o, map olTitle (olChildren o))) (outline ws0 "a.gm") @?= [("はじめに", ["節"])]
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n\n\n[ref-title   intro]と[ref-page intro]を見る。\n"
         formatting ws "b.gm" @?= Just "@label second\n# 次の章\n\n[ref-title intro]と[ref-page intro]を見る。\n",
+      -- golem-parser ADR 0010
+      testCase "outline: an escaped character is the character, without the backslash" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "# a\\[b\n"
+        map olTitle (outline ws "b.gm") @?= ["a[b"],
       testCase "UTF-8 and UTF-16 positions on a line with Japanese and a 4-byte character" $ do
         ws <- openWorkspace root
         let src = textOf ws "a.gm"
