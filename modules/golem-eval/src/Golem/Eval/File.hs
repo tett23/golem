@@ -40,7 +40,7 @@ import Golem.Parser.AST qualified as A
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportSite (..), importSite)
 import Golem.Project.Paths (PathError (..), pathErrorMessage)
-import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Style, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
+import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Style, kentenShapeNames, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
 import Golem.Syntax
 
 -- | Plugin commands and filters, provided by golem-plugin.
@@ -141,8 +141,9 @@ overridableCommands = ["strong", "bold", "italic", "code", "ruby", "kenten", "co
 attributeCommands :: [Text]
 attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc", "style"]
 
+-- | The shapes of kenten (golem-driver ADR 0019); an unknown one is G0239.
 kentenShapes :: [Text]
-kentenShapes = ["sesame", "open-sesame", "dot", "open-dot", "circle", "open-circle"]
+kentenShapes = kentenShapeNames
 
 reservedNames :: [Text]
 reservedNames = ["doc", "meta", "true", "false", "nil"]
@@ -934,7 +935,8 @@ builtinWith ctx inHeading sp name args slots = do
       let shape = argText <$> lookup "shape" kw
       case shape of
         Just s | s `notElem` kentenShapes -> err "G0239" sp ("未知の圏点の形です: " <> s) >> pure []
-        _ -> oneSlot (pure . pure . Kenten sp shape)
+        -- without a shape, the default of style.toml (golem-driver ADR 0019)
+        _ -> oneSlot (pure . pure . Kenten sp (Just (fromMaybe (ctxDefaultKenten ctx) shape)))
     "color" -> case pos of
       [v] | Just n <- nameArg v, n `Set.member` ctxSwatches ctx -> oneSlot (pure . pure . Color sp n)
       [v] | Just n <- nameArg v -> err "G0217" sp ("style.toml にないスウォッチです: " <> n) >> pure []
