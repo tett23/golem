@@ -161,6 +161,7 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 - [code: \[kenten: ...\]]：文字の上（縦組みでは右）に圏点を打ちます。
 
 この段落の[kenten: ここ]には圏点[index reading=けんてん: 圏点]を打ち、[color accent: ここ]には色を付けています。
+圏点の形は [code: shape=] で変えられ、[kenten shape=circle: ここ]は [code: \[kenten shape=circle: ここ\]] と書いて黒丸にしています。
 
 強調をどの書体で表すかは、[code: style.toml] の文字スタイル[index reading=もじすたいる: 文字スタイル]で決めます。
 文字スタイルは、InDesign の文字スタイルに当たります（違いは「[ref-title styles]」、[ref-page styles] ページ）。

@@ -98,7 +98,12 @@ provide faces body roles =
       lfEmbed = embed,
       lfEmBoxCentral = \ix -> let f = fontAt ix in toInteger (fontEmBoxCentral f) % toInteger (fontUnitsPerEm f),
       -- the path in style.toml and the form of a face (golem-cli ADR 0006)
-      lfFaceFile = \ix -> let (f, p) = faceAt ix in (p, if fontIsCff f then "cff" else "truetype")
+      lfFaceFile = \ix -> let (f, p) = faceAt ix in (p, if fontIsCff f then "cff" else "truetype"),
+      -- the ink box of a glyph from FreeType, in em (golem-driver ADR 0019)
+      lfInkBox = \ix g ->
+        let f = fontAt ix
+            em v = toInteger v % toInteger (fontUnitsPerEm f)
+         in (\m -> let (x0, y0, x1, y1) = gmBBox m in (em x0, em y0, em x1, em y1)) <$> glyphMetrics f g
     }
   where
     advance = curry (memo (\(s, c) -> sum (map shAdvance (shapeText s (T.singleton c)))))

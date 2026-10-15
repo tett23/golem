@@ -24,8 +24,8 @@ module Golem.Layout.Japanese
   )
 where
 
-import Data.Char (isSpace)
-import Data.Maybe (fromMaybe)
+import Data.Char (GeneralCategory (..), generalCategory, isSpace)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -185,7 +185,7 @@ boxKind = toEnum . bcTag
 
 -- One unit of composition before items are generated, with its look.
 data Piece
-  = PChar !Look !Char !Text !Bool -- the character, its variation selectors, kenten
+  = PChar !Look !Char !Text -- the character and its variation selectors; kenten is in the look
   | PWord !Look !Text -- a Latin word (no spaces)
   | PSpace !Look -- an inter-word space
   | PBox !Look !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
@@ -198,7 +198,7 @@ data Piece
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
 composeInlines env inls =
-  let pieces = concatMap (piecesOf env False) inls
+  let pieces = concatMap (piecesOf env) inls
       (items, anchors) = foldl' emit ([], []) (zip3 prevs pieces nexts)
       emit (acc, as) (_, PAnchor f, _) = (acc, (length acc, f) : as)
       emit (acc, as) (pv, p, nx) = (acc <> itemsFor env pv p nx, as)
@@ -240,19 +240,20 @@ alignPositions = go 0 0
       Box {} -> True
       _ -> False
 
-piecesOf :: ComposeEnv -> Bool -> Inline -> [Piece]
-piecesOf env kenten inl = case inl of
-  Text _ t -> textPieces lk kenten t
+piecesOf :: ComposeEnv -> Inline -> [Piece]
+piecesOf env inl = case inl of
+  Text _ t -> textPieces lk t
   Color _ _ xs -> restyled xs
   CharStyle _ _ xs -> restyled xs
-  Kenten _ _ xs -> concatMap (piecesOf env True) xs
+  -- the shape is a look of the characters inside; the inner kenten wins (golem-driver ADR 0019)
+  Kenten _ sh xs -> concatMap (piecesOf env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}}) xs
   Ruby _ _ segs -> rubyPieces env segs
   Tcy _ t -> [PBox lk t KindTcy (lkSize lk)]
   Number _ n style -> numberPieces env n style
   Ref _ RefPage l ->
     let n = fromMaybe 1 (cePageOf env l)
-     in PAnchor (`AnchorPageRef` l) : textPieces lk False (T.pack (show n))
-  Ref _ _ l -> textPieces lk False l
+     in PAnchor (`AnchorPageRef` l) : textPieces lk (T.pack (show n))
+  Ref _ _ l -> textPieces lk l
   Deferred {} -> []
   Note sp n body -> [PAnchor (\i -> AnchorNote i n sp body), markPiece ("*" <> T.pack (show n))]
   Sidenote sp n body ->
@@ -261,7 +262,7 @@ piecesOf env kenten inl = case inl of
       MarkerSymbol -> [PBox lk "※" KindText (lkSize lk)]
       MarkerNone -> []
   IndexMark sp e -> [PAnchor (\i -> AnchorIndex i sp e)]
-  Cite _ k -> textPieces lk False ("[" <> maybe k (T.pack . show) (ceCiteNumber env k) <> "]")
+  Cite _ k -> textPieces lk ("[" <> maybe k (T.pack . show) (ceCiteNumber env k) <> "]")
   ProofComment {} -> []
   -- the lines of a keep style are split before they are composed (docs/adr
   -- ADR 0005); what reaches here is a hard break (docs/adr ADR 0016)
@@ -270,7 +271,7 @@ piecesOf env kenten inl = case inl of
   where
     lk = ceLook env
     -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
-    restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl} kenten)
+    restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl})
     {- the mark of a note or a numbered sidenote (golem-driver ADR 0018):
     set at half the size, as wide as its advance across, half the size
     down; the box keeps the look of its place -}
@@ -285,15 +286,15 @@ piecesOf env kenten inl = case inl of
 noteMarkSize :: Sp -> Sp
 noteMarkSize s = s `div` 2
 
-textPieces :: Look -> Bool -> Text -> [Piece]
-textPieces lk kenten t
+textPieces :: Look -> Text -> [Piece]
+textPieces lk t
   | lkCode lk = codePieces lk t
   | otherwise = reverse (foldl' attach [] (go (zip cs latinish)))
   where
     -- variation selectors join the character or word before them (golem-pdf ADR 0006)
     attach acc p = case (acc, p) of
-      (PChar l c vs k : rest, PChar _ v "" _) | isVariationSelector v -> PChar l c (T.snoc vs v) k : rest
-      (PWord l w : rest, PChar _ v "" _) | isVariationSelector v -> PWord l (T.snoc w v) : rest
+      (PChar l c vs : rest, PChar _ v "") | isVariationSelector v -> PChar l c (T.snoc vs v) : rest
+      (PWord l w : rest, PChar _ v "") | isVariationSelector v -> PWord l (T.snoc w v) : rest
       _ -> p : acc
     cs = T.unpack t
     isLatinWordChar c = charClass c == Western && not (isSpace c)
@@ -316,7 +317,7 @@ textPieces lk kenten t
       | l =
           let (w, rest') = span snd ((c, l) : rest)
            in PWord lk (T.pack (map fst w)) : go rest'
-      | otherwise = PChar lk c "" kenten : go rest
+      | otherwise = PChar lk c "" : go rest
 
 {- | The text of code (golem-driver ADR 0017): spaces as between words, a
 tab as other text has it, and each run of the rest as one piece.
@@ -327,19 +328,19 @@ codePieces lk = go
     go t = case T.uncons t of
       Nothing -> []
       Just (' ', _) -> PSpace lk : go (T.dropWhile (== ' ') t)
-      Just ('\t', rest) -> PChar lk '\t' "" False : go rest
+      Just ('\t', rest) -> PChar lk '\t' "" : go rest
       Just _ ->
         let (run, rest) = T.break (\c -> c == ' ' || c == '\t') t
          in PCode lk run : go rest
 
 numberPieces :: ComposeEnv -> Integer -> Maybe NumberStyle -> [Piece]
 numberPieces env n style
-  | not (ceVertical env) = textPieces lk False (T.pack (show n))
+  | not (ceVertical env) = textPieces lk (T.pack (show n))
   | otherwise = case style <|> ceVerticalNumbers env of
-      Just StyleKanji -> textPieces lk False (kanji n)
-      Just StyleKanjiDigits -> textPieces lk False (kanjiDigits n)
+      Just StyleKanji -> textPieces lk (kanji n)
+      Just StyleKanjiDigits -> textPieces lk (kanjiDigits n)
       Just StyleTcy -> [PBox lk (T.pack (show n)) KindTcy (lkSize lk)]
-      Nothing -> textPieces lk False (kanji n)
+      Nothing -> textPieces lk (kanji n)
   where
     lk = ceLook env
     Nothing <|> b = b
@@ -353,7 +354,8 @@ The width is decided with the neighbours ('itemsFor').
 rubyPieces :: ComposeEnv -> [RubySegment] -> [Piece]
 rubyPieces env segs = concat (zipWith piece [0 :: Int ..] segs)
   where
-    lk = ceLook env
+    -- no kenten on a ruby base (golem-layout ADR 0011, golem-driver ADR 0019)
+    lk = (ceLook env) {lkKenten = Nothing}
     piece i (RubySegment base reading) =
       let chars = concatMap (baseChars env lk) base
           baseText = T.pack (map fst chars)
@@ -446,6 +448,26 @@ punctSpace = \case
   MiddleDot -> (1 / 4, 1 / 4)
   _ -> (0, 0)
 
+{- | Whether a character takes kenten (golem-driver ADR 0019): not
+punctuation (P), a separator (Z) or a control or format character (Cc,
+Cf), as CSS text-emphasis has it.
+-}
+takesKenten :: Char -> Bool
+takesKenten c = case generalCategory c of
+  ConnectorPunctuation -> False
+  DashPunctuation -> False
+  OpenPunctuation -> False
+  ClosePunctuation -> False
+  InitialQuote -> False
+  FinalQuote -> False
+  OtherPunctuation -> False
+  Space -> False
+  LineSeparator -> False
+  ParagraphSeparator -> False
+  Control -> False
+  Format -> False
+  _ -> True
+
 -- | Kana a ruby may overhang: hiragana, katakana, small kana and the long vowel mark.
 isKanaClass :: CharClass -> Bool
 isKanaClass cls = cls `elem` [Kana, SmallKana, ProlongedSound]
@@ -462,7 +484,7 @@ readingAdvances env lk = maybe [] (map (advance env lk {lkSize = lkSize lk `div`
 
 itemsFor :: ComposeEnv -> Maybe Piece -> Piece -> Maybe Piece -> [Item]
 itemsFor env prev p next = case p of
-  PChar lk c vs kenten ->
+  PChar lk c vs ->
     let cls = charClass c
         fs = lkSize lk
         (pre, post) = punctSpace cls
@@ -473,8 +495,9 @@ itemsFor env prev p next = case p of
         w = full - round ((pre + post) * toRational fs)
         -- tracking after the character, given back at the line end (docs/adr/0020)
         t = tracking lk
+        -- kenten on characters other than punctuation and separators (golem-driver ADR 0019)
         tag
-          | kenten = KindKenten
+          | isJust (lkKenten lk) && takesKenten c = KindKenten
           | ceVertical env && cls == Western = KindRotated
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
@@ -493,7 +516,7 @@ itemsFor env prev p next = case p of
         -- a neighbouring base is measured in the looks of its characters
         allowance before = \case
           _ | not (rsOverhangOntoKana style) -> 0
-          Just (PChar lk' c _ False) | isKanaClass (charClass c) -> min (rsOverhang style) (advance env lk' c `div` 2)
+          Just (PChar lk' c _) | isNothing (lkKenten lk'), isKanaClass (charClass c) -> min (rsOverhang style) (advance env lk' c `div` 2)
           Just (PRuby lk' _ b ls Nothing) -> case (if before then reverse else id) (zip (T.unpack b) (ls <> repeat lk')) of
             (c, lc) : _ | isKanaClass (charClass c) -> min (rsOverhang style) (advance env lc c `div` 2)
             _ -> 0

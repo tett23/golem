@@ -328,6 +328,7 @@ tests =
       testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
       testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
       testGroup "vertical glyphs turned without a vertical form (ADR 0015)" turnedTests,
+      testGroup "kenten in the PDF (golem-driver ADR 0019)" kentenTests,
       testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,
       testGroup "hard line breaks (docs/adr ADR 0016)" hardBreakTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
@@ -3075,6 +3076,7 @@ fakeFonts =
       lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i (0, 0) | (i, c) <- zip [0 ..] (T.unpack t)],
       lfEmBoxCentral = const (38 / 100),
       lfFaceFile = const ("fonts/b.otf", "truetype"),
+      lfInkBox = \_ _ -> Just (1 / 10, -(1 / 10), 9 / 10, 8 / 10),
       lfEmbed = \_ vertical used ->
         Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used ("Adobe", "Identity", 0)
     }
@@ -3245,6 +3247,125 @@ fontResources pdf = do
         pure (name, dict, cmap)
     )
     names
+
+-- | The glyph of a character in Noto Serif JP, shaped horizontally or vertically: its id and its code in the PDF.
+notoGlyph :: LoadedFonts -> Bool -> Char -> IO (Int, Int)
+notoGlyph fonts v c = case lfShape fonts (Shaping "body" v []) (T.singleton c) of
+  [g] -> pure (shGlyph g, lfCode fonts (shFace g) (shGlyph g))
+  other -> assertFailure (show other)
+
+-- | A PDF of a source with Noto Serif JP as the body font, and its glyphs drawn.
+kentenDrawn :: BS.ByteString -> T.Text -> IO [Drawn]
+kentenDrawn style source = do
+  noto <- notoBytes
+  pdf <- miniPdf golemFontProvider True (style <> "\n[fonts.body]\nja = \"fonts/noto.otf\"\n") source [("fonts/noto.otf", noto)]
+  drawnGlyphs . BS.concat <$> inflateAll pdf
+
+{- | The centre of the ink box of a drawn glyph of a glyph id: horizontal,
+or in a vertical font (origin at (500, 880) of the glyph).
+-}
+inkCentre :: LoadedFonts -> Bool -> Int -> Drawn -> IO (Rational, Rational)
+inkCentre fonts v gid d = case lfInkBox fonts 0 gid of
+  Just (x0, y0, x1, y1) ->
+    let size = ptToRational (dSize d)
+        (ox, oy) = if v then (1 / 2, 88 / 100) else (0, 0)
+     in pure (ptToRational (dX d) + size * ((x0 + x1) / 2 - ox), ptToRational (dY d) + size * ((y0 + y1) / 2 - oy))
+  Nothing -> assertFailure ("no ink box of glyph " <> show gid)
+
+kentenTests :: [TestTree]
+kentenTests =
+  [ testCase "the ink box of a glyph in em" $ do
+      fonts <- notoFonts
+      (kan, _) <- notoGlyph fonts False '漢'
+      lfInkBox fonts 0 kan @?= Just (36 / 1000, -(78 / 1000), 974 / 1000, 836 / 1000),
+    testCase "horizontal: the sesame dot, half the size, centred above the em box" $ do
+      fonts <- notoFonts
+      (_, kan) <- notoGlyph fonts False '漢'
+      (dotId, dot) <- notoGlyph fonts False '\xFE45'
+      drawn <- kentenDrawn horizontalStyle "[kenten: 漢]\n"
+      case ([d | d <- drawn, dGlyph d == kan], [d | d <- drawn, dGlyph d == dot]) of
+        ([base], [mark]) -> do
+          let s = ptToRational (dSize base)
+              c = lfEmBoxCentral fonts 0
+          ptToRational (dSize mark) @?= s / 2
+          (cx, cy) <- inkCentre fonts False dotId mark
+          let ex = ptToRational (dX base) + s / 2
+              ey = ptToRational (dY base) + (c + 1 / 2) * s + s / 4
+          assertBool (show (fromRational cx :: Double, fromRational ex :: Double)) (abs (cx - ex) < 1 / 100)
+          assertBool (show (fromRational cy :: Double, fromRational ey :: Double)) (abs (cy - ey) < 1 / 100)
+        other -> assertFailure (show other),
+    testCase "vertical: the mark right of the centre line by 3s/4, s/2 down from the start of the box" $ do
+      fonts <- notoFonts
+      (_, kan) <- notoGlyph fonts True '漢'
+      (dotId, dot) <- notoGlyph fonts True '\xFE45'
+      drawn <- kentenDrawn pdfStyle "[kenten: 漢]\n"
+      case ([d | d <- drawn, dGlyph d == kan], [d | d <- drawn, dGlyph d == dot]) of
+        ([base], [mark]) -> do
+          let s = ptToRational (dSize base)
+          ptToRational (dSize mark) @?= s / 2
+          (cx, cy) <- inkCentre fonts True dotId mark
+          let ex = ptToRational (dX base) + 3 * s / 4
+              ey = ptToRational (dY base) - s / 2
+          assertBool (show (fromRational cx :: Double, fromRational ex :: Double)) (abs (cx - ex) < 1 / 100)
+          assertBool (show (fromRational cy :: Double, fromRational ey :: Double)) (abs (cy - ey) < 1 / 100)
+        other -> assertFailure (show other),
+    testCase "shape=triangle draws U+25B2" $ do
+      fonts <- notoFonts
+      (_, tri) <- notoGlyph fonts False '\x25B2'
+      drawn <- kentenDrawn horizontalStyle "[kenten shape=triangle: 漢]\n"
+      length [d | d <- drawn, dGlyph d == tri] @?= 1,
+    testCase "the default shape of style.toml: open-circle draws U+25CB" $ do
+      fonts <- notoFonts
+      (_, circle) <- notoGlyph fonts False '\x25CB'
+      (_, sesame) <- notoGlyph fonts False '\xFE45'
+      drawn <- kentenDrawn (horizontalStyle <> "\n[composition]\nkenten = \"open-circle\"\n") "[kenten: 漢字]\n"
+      length [d | d <- drawn, dGlyph d == circle] @?= 2
+      length [d | d <- drawn, dGlyph d == sesame] @?= 0,
+    testCase "an opening bracket in kenten is where it is without kenten, with no mark" $ do
+      fonts <- notoFonts
+      (_, bracket) <- notoGlyph fonts False '「'
+      (_, sesame) <- notoGlyph fonts False '\xFE45'
+      with <- kentenDrawn horizontalStyle "[kenten: 「字」]\n"
+      without <- kentenDrawn horizontalStyle "「字」\n"
+      [(dX d, dY d) | d <- with, dGlyph d == bracket] @?= [(dX d, dY d) | d <- without, dGlyph d == bracket]
+      length [d | d <- with, dGlyph d == sesame] @?= 1,
+    testCase "G0809: the Japanese font has no kenten character; once per role and shape, no PDF" $ do
+      (sans, _) <- realLatinFonts
+      (errs, pdf) <- buildMini golemFontProvider True (horizontalStyle <> "\n[fonts.body]\nja = \"fonts/sans.otf\"\n") "[kenten: 漢]と[kenten: 字]\n" [("fonts/sans.otf", sans)]
+      errs @?= [DiagnosticCode "G0809"]
+      pdf @?= Nothing,
+    testCase "G0809: the message names the role, the shape and the character" $ do
+      (sans, _) <- realLatinFonts
+      n <- buildNotified [("manifest.toml", miniManifest), ("style.toml", horizontalStyle <> "\n[fonts.body]\nja = \"fonts/sans.otf\"\n"), ("a.gm", TE.encodeUtf8 "[kenten shape=open-sesame: 漢]\n"), ("fonts/sans.otf", sans)] (\o -> o {optFonts = golemFontProvider})
+      [(c, diagMessage d) | d <- nDiagnostics n, let DiagnosticCode c = diagCode d, c == "G0809"]
+        @?= [("G0809", "役割 body の和文の書体に圏点の形 open-sesame の字（U+FE46）がありません")],
+    testCase "G0745: kenten in a ruby base, and ruby in kenten, are a notice; the PDF is written" $
+      forM_ [("[ruby: [kenten: 漢]|かん]\n", 7), ("[kenten: [ruby: 漢|かん]]\n", 9)] $ \(src, at) -> do
+        n <- buildNotified ([("manifest.toml", miniManifest), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 src)] <> fakeFontFiles) id
+        [(c, diagSeverity d, spanStart (diagSpan d)) | d <- nDiagnostics n, let { DiagnosticCode c = diagCode d }, c == "G0745"] @?= [("G0745", Notice, at)]
+        assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n)),
+    testCase "HTML: the class of the shape; no shape is sesame" $ do
+      n <- buildNotified ([("manifest.toml", miniManifest <> "\n[targets.html]\n"), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 "[kenten: 漢][kenten shape=open-triangle: 字]\n")] <> fakeFontFiles) id
+      case [b | (p, b) <- nOutputs n, ".xhtml" `isSuffixOf` p, "kenten" `BS.isInfixOf` b] of
+        [page] -> do
+          assertBool "sesame" ("<span class=\"kenten kenten-sesame\">" `BS.isInfixOf` page)
+          assertBool "open-triangle" ("<span class=\"kenten kenten-open-triangle\">" `BS.isInfixOf` page)
+          assertBool "no default" (not ("kenten-default" `BS.isInfixOf` page))
+        other -> assertFailure (show (length other, map fst (nOutputs n), nDiagnostics n))
+      case [b | (p, b) <- nOutputs n, "style.css" `isSuffixOf` p, "html" `isPrefixOf'` p] of
+        (css : _) ->
+          mapM_
+            (\rule -> assertBool (BC.unpack rule) (rule `BS.isInfixOf` css))
+            [ ".kenten-sesame { text-emphasis-style: sesame; -epub-text-emphasis-style: sesame; }",
+              ".kenten-double-circle { text-emphasis-style: double-circle; }",
+              ".kenten-open-double-circle { text-emphasis-style: open double-circle; }",
+              ".kenten-triangle { text-emphasis-style: triangle; }",
+              ".kenten-open-triangle { text-emphasis-style: open triangle; }"
+            ]
+        [] -> assertFailure "no style.css"
+  ]
+  where
+    isPrefixOf' a b = take (length a) b == a
 
 turnedTests :: [TestTree]
 turnedTests =
