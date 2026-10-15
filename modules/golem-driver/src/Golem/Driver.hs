@@ -425,7 +425,7 @@ build opts = do
           -- G0702, and what style.toml decides of the layout (G0701, G0725; golem-driver ADR 0016)
           marksDiags =
             cropMarkDiagnostics opts e diagFid targets
-              <> (if TargetPdf `elem` targets then styleLayoutDiagnostics diagFid (evStyle e) (Map.elems (localStylesOf e)) else [])
+              <> (if TargetPdf `elem` targets then styleLayoutDiagnostics diagFid (isJust (markStyle (optMarks opts))) (evStyle e) (Map.elems (localStylesOf e)) else [])
       -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
       missing <- missingStyleFiles (optRoot opts) (evStyle e)
       -- without code in the book, the role code is not used (golem-driver ADR 0017)
@@ -629,7 +629,8 @@ writeTargets opts e diagFid book missing targets = do
           inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
       r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid)
       -- G0808: code in the body role without [fonts.code] (golem-driver ADR 0017)
-      let fontNotice = codeFontNotice diagFid style book
+      -- G0745: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
+      let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
       case r of
         Left ds -> pure ([], ds <> fontNotice)
         Right (bytes, notices) -> do

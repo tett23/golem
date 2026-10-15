@@ -10,6 +10,7 @@ module Golem.LayoutSpec
     Anchor (..),
     MasterGeometry (..),
     PageGeometry (..),
+    HiddenFolioGeometry (..),
     pageGeometry,
     gutterSide,
     typeAreaFor,
@@ -68,8 +69,22 @@ data PageGeometry = PageGeometry
     -- | the sidenote column of odd and even pages
     pgSidenotes :: !(Maybe (Rect, Rect)),
     pgMasters :: !(Map Text MasterGeometry),
+    {- | the hidden folios (golem-driver ADR 0021): only when they are
+    enabled and the PDF has crop marks
+    -} pgHiddenFolio :: !(Maybe HiddenFolioGeometry),
     -- | the grid lines between the text and the footnotes (golem-driver ADR 0024)
     pgNoteSeparator :: !Int
+  }
+  deriving stock (Eq, Show)
+
+-- | The hidden folios of a PDF with crop marks (golem-driver ADR 0021).
+data HiddenFolioGeometry = HiddenFolioGeometry
+  { -- | the size of the digits and their advance down the column
+    hgSize :: !Sp,
+    -- | from the trim line of the gutter to the centre line of the column
+    hgGutter :: !Sp,
+    -- | on every page, not only on the pages without a folio
+    hgAll :: !Bool
   }
   deriving stock (Eq, Show)
 
@@ -102,8 +117,8 @@ manifest without one (golem-driver ADR 0016). The first condition that
 fails is reported, alone. The page size and the positions of master
 pages were checked when style.toml was read (G0317, G0318).
 -}
-pageGeometry :: FileId -> Style -> Either [Diagnostic] PageGeometry
-pageGeometry fid style = case stPage style of
+pageGeometry :: FileId -> Bool -> Style -> Either [Diagnostic] PageGeometry
+pageGeometry fid marks style = case stPage style of
   Nothing -> Left [err "style.toml に [page] がないため、版面を計算できません"]
   Just page -> case pageGrid page of
     Nothing -> Left [err "style.toml に [page.grid] がないため、版面を計算できません"]
@@ -175,6 +190,7 @@ pageGeometry fid style = case stPage style of
                   | maybe 0 (dimToSp fs) (rsLength rule) > columnLength -> Left [err "脚注の区切り線の length が行長を超えます"]
                   | otherwise -> Right (separatorLines fs pitch rule)
               let masters = Map.map (masterGeometry ph bindingRight odd' even') (stMasters style)
+              hidden <- hiddenFolioGeometry fid marks style pw bindingRight [(1, odd' : maybe [] (pure . fst) sidenotes), (2, even' : maybe [] (pure . snd) sidenotes)]
               Right
                 PageGeometry
                   { pgPageSize = (pw, ph),
@@ -189,6 +205,7 @@ pageGeometry fid style = case stPage style of
                     pgColumnsEven = columnsOf even',
                     pgSidenotes = sidenotes,
                     pgMasters = masters,
+                    pgHiddenFolio = hidden,
                     pgNoteSeparator = separator
                   }
 
@@ -204,6 +221,24 @@ separatorLines fs pitch rule = case (rsSpaceBefore rule, rsSpaceAfter rule) of
   (b, a) ->
     let need = maybe 0 (dimToSp fs) b + rsWeight rule + maybe 0 (dimToSp fs) a - (pitch - fs)
      in max 1 (fromInteger (negate (negate need `div` pitch)))
+
+{- | The hidden folios (golem-driver ADR 0021): only with crop marks and
+when enabled; G0750 at the top of @fid@ when the column of digits (half
+the size on each side of its centre line) overlaps, across the page, the
+type area or the sidenote column of an odd or an even page.
+-}
+hiddenFolioGeometry :: FileId -> Bool -> Style -> Sp -> Bool -> [(Int, [Rect])] -> Either [Diagnostic] (Maybe HiddenFolioGeometry)
+hiddenFolioGeometry fid marks style pw bindingRight areas = case stHiddenFolio style of
+  HiddenFolio True pages (Abs size) (Abs gutter)
+    | marks ->
+        let centre p = case gutterSide bindingRight p of
+              SideLeft -> gutter
+              SideRight -> pw - gutter
+            overlaps p (Rect x _ w _) = centre p - size `div` 2 < x + w && centre p + size `div` 2 > x
+         in if or [overlaps p r | (p, rs) <- areas, r <- rs]
+              then Left [diagnostic "G0750" Error (mkSpan fid 0 0) "隠しノンブルが版面に重なります。[hidden-folio] の gutter を小さくするか、ノドの余白を広げてください"]
+              else Right (Just (HiddenFolioGeometry size gutter (pages == HiddenAll)))
+  _ -> Right Nothing
 
 {- | Positions such as @top-outside@: vertically the middle of the head or
 foot margin; horizontally the outer (fore-edge), inner (gutter) edge or

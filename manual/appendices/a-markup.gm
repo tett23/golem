@@ -261,8 +261,9 @@
 = [strong: [code: \[kenten: 語\]]]
   圏点を打ちます。
   [code: shape=] で形を選べます。
-  形は [code: sesame]（ゴマ）、[code: open-sesame]（白ゴマ）、[code: dot]（小さい黒丸）、[code: open-dot]（小さい白丸）、[code: circle]（大きい黒丸）、[code: open-circle]（大きい白丸）のどれかで、省くと [code: style.toml] の [code: \[composition\]] の [code: kenten] になります。
-  今の版では、形の指定は HTML と EPUB でだけ効き、PDF では常にゴマで組みます。
+  形は [code: sesame]（ゴマ）、[code: open-sesame]（白ゴマ）、[code: dot]（小さい黒丸）、[code: open-dot]（小さい白丸）、[code: circle]（大きい黒丸）、[code: open-circle]（大きい白丸）、[code: double-circle]（蛇の目）、[code: open-double-circle]（二重丸）、[code: triangle]（黒三角）、[code: open-triangle]（白三角）のどれかで、省くと [code: style.toml] の [code: \[composition\]] の [code: kenten] になります。
+  句読点や括弧などの約物と空白には、圏点の中でも圏点を打ちません。
+  PDF では、本文の和文の書体にある圏点の字を使います。
 = [strong: [code: \[tcy: 文字\]]]
   縦組みで、短い文字列を横に並べて一字分の幅に組みます（縦中横）。
   中には文字だけを書けます。
@@ -270,6 +271,8 @@
   ルビを振ります。
   [code: /] を使わなければグループルビ、親文字と読みを同じ数の [code: /] で区切ればモノルビです。
   読みの区切りを空にすると、その文字には読みを振りません。
+  親文字の中には文字スタイルのコマンドを書けます。
+  スタイルは親文字の字にだけ効きます。
   読みには文字だけを書けます。
   ルビの中にルビは入れられません。
   親文字と読みに [code: /] という文字そのものを書くときは、[code: \\/] と書きます。

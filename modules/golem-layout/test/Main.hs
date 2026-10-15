@@ -40,7 +40,7 @@ fs :: Sp
 fs = 10 * 65536
 
 box :: Sp -> Item
-box w = Box w (BoxContent "x" False 0 0 0 look0 0 0)
+box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [])
 
 -- | The original look of 'defaultComposeEnv'.
 look0 :: Look
@@ -51,7 +51,7 @@ paragraph :: [Sp] -> [Item]
 paragraph ws = concat [box w : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 refBox :: Text -> Sp -> Item
-refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0)
+refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [])
 
 knuthPlassWords, knuthPlassLog :: FilePath
 knuthPlassWords = "test/data/knuth-plass/frog-king.words"
@@ -274,7 +274,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-layout"
-    [ testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
+    [ testGroup "kenten shapes (golem-driver ADR 0019)" kentenTests,
+      testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
       testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
@@ -548,6 +549,7 @@ tests =
             [bcText c | Box _ c <- fst (composeInlines env [Number (mkSpan (FileId 0) 0 0) 120 Nothing])] @?= ["百", "二", "十"]
         ],
       testGroup "ruby placement (ADR 0009)" rubyTests,
+      testGroup "ruby base character styles (ADR 0011)" rubyBaseTests,
       testGroup
         "microtypography (ADR 0005)"
         [ testCase "protrusion of hyphens and full stops follows the table" $ do
@@ -561,12 +563,12 @@ tests =
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
             ws <- forAll (Gen.list (Range.linear 3 12) (Gen.integral (Range.linear 20 70)))
-            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0) | w <- ws] `interleave` Glue 6 3 2 <> finish
+            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 []) | w <- ws] `interleave` Glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
           testCase "expansion lowers the spread of adjustment ratios" $ do
             let ws = [23, 41, 37, 19, 52, 33, 28, 45, 31, 26, 39, 22, 48, 35, 29, 41]
-                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0) | w <- ws] `interleave` Glue 600 300 200 <> finish
+                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 []) | w <- ws] `interleave` Glue 600 300 200 <> finish
                 variance ps =
                   let rs = map glueRatio (init (brLines (breakParagraph ps (const 15000) items)))
                       m = sum rs / fromIntegral (length rs)
@@ -1122,10 +1124,102 @@ characterFeatureTests =
     tenth = fs `div` 10
     kernEnv = (defaultComposeEnv fs) {ceKern = \_ a b -> if (a, b) == ('あ', 'い') then -(1 / 10) else 0}
 
+{- | Ruby base character styles (golem-layout ADR 0011): an advance of 1
+in the body role and 1.2 in the heading role; the character style h sets
+the heading role, a colour its swatch.
+-}
+rubyBaseTests :: [TestTree]
+rubyBaseTests =
+  [ testCase "a character style in a group ruby base: the looks of the base and the width" $ do
+      let (looks, ws) = baseOf [rubyIn [([t "漢", CharStyle sp "h" [t "字"]], Just "か")]]
+      looks @?= [[outer, heading]]
+      ws @?= [2200],
+    testCase "no character style: every base character has the outer look, the width is as before" $ do
+      let (looks, ws) = baseOf [rubyIn [([t "漢字"], Just "か")]]
+      looks @?= [[outer, outer]]
+      ws @?= [2000],
+    testCase "a colour in the base: the character has its swatch" $ do
+      let (looks, _) = baseOf [rubyIn [([t "漢", Color sp "red" [t "字"]], Just "かんじ")]]
+      looks @?= [[outer, outer {lkColor = Just "red"}]],
+    testCase "kenten in the base: the character's look is the look around it, without kenten" $ do
+      let (looks, _) = baseOf [rubyIn [([Kenten sp Nothing [t "漢"], t "字"], Just "かんじ")]]
+      looks @?= [[outer, outer]],
+    testCase "mono ruby: the allowance onto the neighbour is measured in the neighbour's base looks" $ do
+      let style = rubyStyle R.AlignCenter
+          env' = env {ceRuby = style}
+          boxesOf segs = rubyBoxes env' [rubyIn segs, t "の"]
+          -- the first base in the heading role is 1200 wide: 350 free beside its reading of 500
+          expected room = let p = placeRuby style MonoRuby [1000] [500, 500, 500, 500] (room, 500) in (rpWidth p, (rpOverhang p, rpOverhang p))
+      drop 1 (boxesOf [([CharStyle sp "h" [t "東"]], Just "ひ"), ([t "京"], Just "きょうと")]) @?= [expected 350]
+      assertBool "the look matters" (expected 350 /= expected 250),
+    testCase "boxes other than ruby have no base looks" $ do
+      let items = fst (composeInlines env [t "前", rubyIn [([t "字"], Just "じ")], CharStyle sp "h" [t "後"], Tcy sp "12"])
+      [bcBaseLooks c | Box _ c <- items, boxKind c `notElem` [KindRuby, KindGroupRuby]] @?= [[], [], []]
+  ]
+  where
+    sp = mkSpan (FileId 0) 0 0
+    t = Text sp
+    env =
+      (defaultComposeEnv 1000)
+        { ceAdvance = \lk _ -> if lkFace lk == "heading" then 6 / 5 else 1,
+          ceRestyle = \lk -> \case
+            CharStyle _ "h" _ -> lk {lkFace = "heading", lkLatinFace = "heading"}
+            Color _ c _ -> lk {lkColor = Just c}
+            _ -> lk
+        }
+    outer = ceLook env
+    heading = outer {lkFace = "heading", lkLatinFace = "heading"}
+    rubyIn segs = Ruby sp () [RubySegment base r | (base, r) <- segs]
+    baseOf is = unzip [(bcBaseLooks c, w) | Box w c <- fst (composeInlines env is), boxKind c `elem` [KindRuby, KindGroupRuby]]
+
 rubyStyle :: R.RubyAlign -> RubyStyle
 rubyStyle a = RubyStyle a a a 500 True
 
--- | Ruby boxes of composed inlines at 1000sp: their width and their edges.
+{- | Ruby boxes of composed inlines at 1000sp: their width and their edges.
+| The boxes of one-character text: the character, its kind and its kenten shape.
+-}
+kentenBoxes :: [Inline] -> [(Text, BoxKind, Maybe KentenShape)]
+kentenBoxes is = [(bcText c, boxKind c, lkKenten (bcLook c)) | Box _ c <- fst (composeInlines (defaultComposeEnv 1000) is)]
+
+kentenTests :: [TestTree]
+kentenTests =
+  [ testCase "the ten shapes and their characters" $
+      map kentenChar [minBound .. maxBound] @?= "\xFE45\xFE46\x2022\x25E6\x25CF\x25CB\x25C9\x25CE\x25B2\x25B3",
+    testCase "the names of the shapes" $ do
+      map kentenShapeName [minBound .. maxBound] @?= ["sesame", "open-sesame", "dot", "open-dot", "circle", "open-circle", "double-circle", "open-double-circle", "triangle", "open-triangle"]
+      map (kentenShapeFromName . kentenShapeName) [minBound .. maxBound] @?= map Just [minBound .. maxBound]
+      kentenShapeFromName "star" @?= Nothing,
+    testCase "plainLook has no kenten" $
+      lkKenten (plainLook "body" 1000) @?= Nothing,
+    testCase "punctuation in kenten is punctuation; ideographs and the long vowel mark get the shape" $
+      kentenBoxes [Kenten sp00 (Just "circle") [sp0 "漢、「字」ー"]]
+        @?= [ ("漢", KindKenten, Just KentenCircle),
+              ("、", KindPunctuation, Just KentenCircle),
+              ("「", KindPunctuation, Just KentenCircle),
+              ("字", KindKenten, Just KentenCircle),
+              ("」", KindPunctuation, Just KentenCircle),
+              ("ー", KindKenten, Just KentenCircle)
+            ],
+    testCase "a space and an iteration mark in kenten" $
+      [(t, k) | (t, k, _) <- kentenBoxes [Kenten sp00 (Just "dot") [sp0 "々\x3000"]]] @?= [("々", KindKenten), ("\x3000", KindText)],
+    testCase "the inner kenten wins" $
+      kentenBoxes [Kenten sp00 (Just "dot") [sp0 "あ", Kenten sp00 (Just "circle") [sp0 "い"]]]
+        @?= [("あ", KindKenten, Just KentenDot), ("い", KindKenten, Just KentenCircle)],
+    testCase "kenten without a shape is sesame" $
+      kentenBoxes [Kenten sp00 Nothing [sp0 "あ"]] @?= [("あ", KindKenten, Just KentenSesame)],
+    testCase "a Latin word in kenten stays text" $
+      [k | (t, k, _) <- kentenBoxes [Kenten sp00 (Just "circle") [sp0 "Golem"]], t == "Golem"] @?= [KindText],
+    testCase "text outside kenten has no shape" $
+      kentenBoxes [sp0 "字"] @?= [("字", KindText, Nothing)],
+    testCase "a ruby base has no kenten, inside kenten or with kenten in it (golem-layout ADR 0011)" $ do
+      let rubyLooks is = [map lkKenten (bcLook c : bcBaseLooks c) | Box _ c <- fst (composeInlines (defaultComposeEnv 1000) is), boxKind c `elem` [KindRuby, KindGroupRuby]]
+          kentenIn = Kenten sp00 (Just "circle") [Text sp00 "漢"]
+      rubyLooks [Ruby sp00 () [RubySegment [kentenIn] (Just "かん")]] @?= [[Nothing, Nothing]]
+      rubyLooks [Kenten sp00 (Just "circle") [Ruby sp00 () [RubySegment [Text sp00 "漢"] (Just "かん")]]] @?= [[Nothing, Nothing]]
+  ]
+  where
+    sp00 = mkSpan (FileId 0) 0 0
+
 rubyBoxes :: ComposeEnv -> [Inline] -> [(Sp, (Sp, Sp))]
 rubyBoxes env is = [(w, (bcEdgeStart c, bcEdgeEnd c)) | Box w c <- fst (composeInlines env is), boxKind c `elem` [KindRuby, KindGroupRuby]]
 
@@ -1134,7 +1228,7 @@ rubyOf segs = Ruby (mkSpan (FileId 0) 0 0) () [RubySegment [Text (mkSpan (FileId
 
 -- | A box with edges (the overhang of a ruby).
 edgeBox :: Sp -> (Sp, Sp) -> Item
-edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b)
+edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [])
 
 -- | The start and end of each box of a set line.
 boxSpans :: Line -> [(Sp, Sp)]

@@ -120,6 +120,8 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 塗り足しのない日本式のトンボはエラー（G0702）になる。
 欧文の一重のトンボは `--marks western` で付ける。
 閲覧用の PDF は `--marks` を付けずに作る。
+トンボを付けた PDF には、ノンブルのないページのノドの側に隠しノンブルが入る。
+中綴じの本では `style.toml` の `[hidden-folio]` に `enabled = false` を書く（[golem-driver ADR 0021](docs/golem-driver/adr/0021-hidden-folios.md)）。
 トンボの有無は PDF のインスタンス ID に入るので、閲覧用と入稿用の PDF は区別できる。
 フォントの OS/2 の `fsType` が埋め込みかサブセット化を禁じている場合はエラーになる（[golem-driver ADR 0016](docs/golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 原稿の異体字セレクタ（IVS）は PDF では字形の選択に使い、ToUnicode には基底の文字だけを書く（[golem-pdf ADR 0006](docs/golem-pdf/adr/0006-cid-system-info.md)）。

@@ -49,8 +49,12 @@ module Golem.Project.Style
     Composition (..),
     RubyStyleDef (..),
     defaultRubyStyleDef,
+    kentenShapeNames,
     SidenoteStyle (..),
     IndexStyle (..),
+    HiddenFolio (..),
+    HiddenFolioPages (..),
+    defaultHiddenFolio,
     MasterDef (..),
     RunningHeadDef (..),
     RunningContent (..),
@@ -519,6 +523,59 @@ data IndexStyle = IndexStyle
   }
   deriving stock (Eq, Show)
 
+-- | The pages that get a hidden folio (golem-driver ADR 0021).
+data HiddenFolioPages = HiddenUnnumbered | HiddenAll
+  deriving stock (Eq, Show)
+
+{- | [hidden-folio] (golem-driver ADR 0021): the page number in the gutter
+of a PDF with crop marks.
+-}
+data HiddenFolio = HiddenFolio
+  { hfEnabled :: !Bool,
+    hfPages :: !HiddenFolioPages,
+    -- | the size of the digits, absolute
+    hfSize :: !Dim,
+    -- | from the trim line of the gutter to the centre line of the column, absolute
+    hfGutter :: !Dim
+  }
+  deriving stock (Eq, Show)
+
+-- | Without [hidden-folio]: enabled, on the pages without a folio, 6pt, 1.5mm.
+defaultHiddenFolio :: HiddenFolio
+defaultHiddenFolio = HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs (mmToSp (3 % 2)))
+
+{- | Every error of [hidden-folio] is G0306: a dimension in zw, of 0 or
+less or unreadable, a value of pages outside the table, an unknown key,
+and a gutter less than half the size (golem-driver ADR 0021).
+-}
+instance FromValue HiddenFolio where
+  fromValue = parseTableFromValue $ do
+    let d = defaultHiddenFolio
+    enabled <- fromMaybe (hfEnabled d) <$> optKey "enabled"
+    pages <-
+      optKeyOf
+        "pages"
+        ( fromValue >=> \case
+            "unnumbered" -> pure HiddenUnnumbered
+            "all" -> pure HiddenAll
+            v -> fail ("[hidden-folio] の pages に使えない値です: " <> T.unpack v <> "（unnumbered, all のどれか）")
+        )
+    let len k = optKeyOf k $ \case
+          Text' _ t -> case parseDim t of
+            Just (Abs x) | x > 0 -> pure (Abs x)
+            Just (Abs _) -> fail ("[hidden-folio] の " <> T.unpack k <> " は 0 より大きい寸法です: " <> T.unpack t)
+            -- not relative to the size of the type, as the page size (golem-driver ADR 0021)
+            Just (Zw _) -> fail ("[hidden-folio] の " <> T.unpack k <> " には zw を使えません")
+            Nothing -> fail ("[hidden-folio] の " <> T.unpack k <> " の長さの書き方が不正です: " <> T.unpack t)
+          _ -> fail ("[hidden-folio] の " <> T.unpack k <> " は文字列で書きます")
+    size <- fromMaybe (hfSize d) <$> len "size"
+    gutter <- fromMaybe (hfGutter d) <$> len "gutter"
+    -- half the size stands for half the advance of a digit, which the font decides
+    case (size, gutter) of
+      (Abs s, Abs g) | 2 * g < s -> fail "[hidden-folio] の gutter が size の半分より小さいため、隠しノンブルが仕上がりの線を越えます"
+      _ -> pure ()
+    pure (HiddenFolio enabled (fromMaybe (hfPages d) pages) size gutter)
+
 -- | How a heading is shown in a running head (golem-driver ADR 0014).
 data HeadForm = HeadShort | HeadNumbered
   deriving stock (Eq, Show)
@@ -667,7 +724,9 @@ data Style = Style
     -- | [aki-sets.<name>]: the user's aki sets, not the built-in ones (docs/adr ADR 0019)
     stAkiSets :: !(Map Text AkiSetDef),
     -- | [index]: the columns of the index (docs/adr ADR 0025)
-    stIndex :: !(Maybe IndexStyle)
+    stIndex :: !(Maybe IndexStyle),
+    -- | [hidden-folio] (golem-driver ADR 0021)
+    stHiddenFolio :: !HiddenFolio
   }
   deriving stock (Eq, Show)
 
@@ -696,7 +755,8 @@ defaultStyle =
       stTocLeader = "dots",
       stLists = defaultListStyle,
       stAkiSets = Map.empty,
-      stIndex = Nothing
+      stIndex = Nothing,
+      stHiddenFolio = defaultHiddenFolio
     }
 
 -- | JIS B series, A series, 四六判, 菊判, 新書判 and mass-market, in millimetres.
@@ -812,6 +872,13 @@ dimKey k = unDim <$> optKey k
 
 reqDim :: Text -> ParseTable l Dim
 reqDim k = (\(DimV d) -> d) <$> reqKey k
+
+{- | The names of the shapes of kenten, in [kenten shape=...] and in
+[composition] kenten (golem-driver ADR 0019): those of CSS
+text-emphasis-style.
+-}
+kentenShapeNames :: [Text]
+kentenShapeNames = ["sesame", "open-sesame", "dot", "open-dot", "circle", "open-circle", "double-circle", "open-double-circle", "triangle", "open-triangle"]
 
 enumKey :: Text -> [Text] -> ParseTable l (Maybe Text)
 enumKey k allowed = do
@@ -957,7 +1024,7 @@ instance FromValue Composition where
     k <- enumKey "kinsoku" ["strict", "loose"]
     h <- optKey "hanging-punctuation"
     r <- optKey "ruby"
-    kt <- optKey "kenten"
+    kt <- enumKey "kenten" kentenShapeNames
     pre <- optKey "pretolerance"
     tol <- optKey "tolerance"
     es <- dimKey "emergency-stretch"
@@ -1181,6 +1248,7 @@ instance FromValue Style where
     ListsSec lists <- fromMaybe (ListsSec defaultListStyle) <$> optKey "lists"
     akiSets <- fromMaybe Map.empty <$> optKey "aki-sets"
     index <- fmap (\(IndexSec ix) -> ix) <$> optKey "index"
+    hidden <- fromMaybe defaultHiddenFolio <$> optKey "hidden-folio"
     -- the built-in sets cannot be defined again (docs/adr ADR 0019)
     case filter (`elem` builtinAkiSetNames) (Map.keys akiSets) of
       (n : _) -> liftMatcher (inKey "aki-sets" (inKey n (fail (T.unpack (akiError ("組み込みのアキ量のセットと同じ名前です。based-on で引き継いだ別の名前のセットを作ります: " <> n))))))
@@ -1208,7 +1276,8 @@ instance FromValue Style where
           stTocLeader = fromMaybe (stTocLeader d) leader,
           stLists = lists,
           stAkiSets = akiSets,
-          stIndex = index
+          stIndex = index,
+          stHiddenFolio = hidden
         }
     where
       headingLevel (k, v) = case k of
