@@ -18,6 +18,7 @@ import Golem.Pdf.Writer (Mark (..))
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import ImageSpec qualified
 import Numeric (readHex)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (..))
@@ -1258,6 +1259,7 @@ tests =
       testGroup "X4.verify (golem-cli ADR 0006)" verifyTests,
       testGroup "crop marks and bleed (ADR 0004)" marksTests,
       testGroup "Producer (ADR 0005)" producerTests,
+      ImageSpec.tests,
       testGroup
         "CIDSystemInfo (ADR 0006)"
         [ testCase "the CIDFont carries the ROS of the font" $ do
