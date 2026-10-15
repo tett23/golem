@@ -38,7 +38,7 @@ PDF/X-4 は PDF 1.6 を元にし、透明を平坦化せずにそのまま持て
 PDF/X が求めるものの一つに、出力インテント[index reading=しゅつりょくいんてんと: 出力インテント]があります。
 出力インテントは、その PDF をどの印刷の条件で刷る前提で作ったかを示す情報で、印刷の条件を記した ICC プロファイル[index reading=あいしーしーぷろふぁいる: ICC プロファイル]を PDF の中に埋め込んで表します。
 ICC プロファイルは、ある機械や印刷の条件で、色の値がどの色として再現されるかを記したファイルで、形式は ICC.1 の仕様が定めています[note: ICC.1:2022（ICC プロファイルの仕様）。[code: https://www.color.org/specification/ICC.1-2022-05.pdf]]。
-日本の枚葉のオフセット印刷でコート紙に刷る場合は、Japan Color 2001 Coated がよく使われます[note: Japan Color 2001 Coated（日本印刷産業連合会の案内）。[code: https://www.jfpi.or.jp/topics/detail/id=4716]]。
+日本の枚葉のオフセット印刷でコート紙に刷る場合は、Japan Color 2001 Coated がよく使われます[note: Japan Color（日本印刷産業機械工業会の Japan Color 認証制度の案内）。[code: https://japancolor.jp/]]。
 
 出力インテントは、[code: style.toml] の [code: \[color\]] の [code: intent] に、ICC プロファイルのファイルのパスを書いて指定します。
 
