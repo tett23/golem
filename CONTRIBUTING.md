@@ -123,12 +123,19 @@ ADR で仕様が変わったら、同じプルリクエストで [docs/specifica
 仕様書から ADR を参照するときは、ADR のファイルへのリンクを付ける。
 新しい用語を導入したら、[docs/glossary.md](./docs/glossary.md) にも加える。
 
-使い手のためのマニュアルは、[docs/manual.md](./docs/manual.md)（Markdown の原稿で、内容はこちらを正とする）と、それを Golem の記法で書き直した `manual/`（Golem のプロジェクト）の二つからなる（[docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md)）。
-ADR を実装して使い手から見える振る舞いが変わるときは、同じプルリクエストで docs/manual.md と `manual/` の両方を直す。
+マニュアルは、使い手のマニュアル `manual/` と開発者のマニュアル `manual-dev/` の二つで、どちらも Golem のプロジェクトとして書き、Golem で組む（[docs/adr/0024](./docs/adr/0024-manual-audiences-and-policy.md)）。
+読み手、文体、説明の厚さ、根拠と脚注の書き方、章立て、コードの表示は、方針の文書 [docs/manual-policy.md](./docs/manual-policy.md) に従う。
+ADR を実装して使い手から見える振る舞いが変わるときは同じプルリクエストで `manual/` を、開発の手順や仕組みが変わるときは `manual-dev/` を直す。
 マニュアルには、採択して実装を終えた仕様だけを書く。
-二つの原稿の見出しは `scripts/manual/check-headings.sh` が照合し、`manual/` は `scripts/manual/build.sh` で診断を一つも出さずに組めなければならない（どちらも CI の `build` ジョブで走る）。
-docs/markup.md か docs/specifications.md を変えて docs/manual.md を変えていないブランチは、`.githooks/pre-push` と CI の `manual` ジョブ（`docs.yml`）が止める。
-v2 以降の課題を足すときのように、仕様書を変えてもマニュアルに書いた振る舞いが変わらない場合は、ブランチのコミットのどれかのメッセージの末尾に `Manual: unchanged` というトレーラーの行を書く。
+マニュアルを編集する前に、一度 `sh scripts/manual/build-info.sh manual`（と `manual-dev`）を実行して、奥付が読む `common/build-info.gm` を作っておく。
+二つのマニュアルは `scripts/manual/build.sh` で、エラー、警告、お知らせを一つも出さずに組めなければならない（CI の `build` ジョブで走る）。
+`silence-notices` と `--no-notices` で、お知らせを消してはいけない。
+`.githooks/pre-push` と CI の `manual` ジョブ（`docs.yml`）は、次のブランチを止める。
+
+- docs/markup.md か docs/specifications.md を変えて、`manual/` も `manual-dev/` も変えていないブランチ
+- CONTRIBUTING.md か CONTRIBUTING.en.md を変えて、`manual-dev/` を変えていないブランチ
+
+v2 以降の課題を足すときのように、変更がマニュアルに書いた事柄を変えない場合は、ブランチのコミットのどれかのメッセージの末尾に `Manual: unchanged` というトレーラーの行を書く。
 フックは手元の `origin/main` との分岐点から検査するので、`main` に入った変更で止まったときは `git fetch` をしてから push し直す。
 
 ビルドやテストが `docs/` の下の文書を読むようにしたときは、その文書を `scripts/ci/needs-build.sh` の一覧に加える。

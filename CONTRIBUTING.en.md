@@ -123,12 +123,19 @@ Implementation details of a module go in `docs/<module>/specifications.md`.
 References to ADRs from the specification must link to the ADR file.
 When introducing a new term, add it to [docs/glossary.md](./docs/glossary.md).
 
-The manual for the users of Golem has two sources: [docs/manual.md](./docs/manual.md), in Markdown, which is the authoritative text, and `manual/`, a Golem project that rewrites it in Golem's notation ([docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md)).
-When implementing an ADR changes what users see, update both docs/manual.md and `manual/` in the same pull request.
-The manual describes only the specification that is accepted and implemented.
-`scripts/manual/check-headings.sh` checks that the two sources have the same headings, and `manual/` must build with `scripts/manual/build.sh` without a single diagnostic (the `build` job of CI runs both).
-A branch that changes docs/markup.md or docs/specifications.md without changing docs/manual.md is stopped by `.githooks/pre-push` and by the `manual` job of CI (`docs.yml`).
-When a change of the specification does not change what the manual describes, such as adding an item for v2, end the message of one of the commits of the branch with the trailer line `Manual: unchanged`.
+There are two manuals, the user manual `manual/` and the developer manual `manual-dev/`; both are written as Golem projects and typeset with Golem ([docs/adr/0024](./docs/adr/0024-manual-audiences-and-policy.md)).
+Their readers, style, depth of explanation, grounds and footnotes, structure and code display follow the policy [docs/manual-policy.md](./docs/manual-policy.md).
+When implementing an ADR changes what users see, update `manual/` in the same pull request; when it changes how Golem is developed or built upon, update `manual-dev/`.
+The manuals describe only the specification that is accepted and implemented.
+Before editing a manual, run `sh scripts/manual/build-info.sh manual` (and `manual-dev`) once, so that `common/build-info.gm`, which the colophon imports, exists.
+Both manuals must build with `scripts/manual/build.sh` without a single error, warning or notice (the `build` job of CI runs it).
+Do not hide notices with `silence-notices` or `--no-notices`.
+`.githooks/pre-push` and the `manual` job of CI (`docs.yml`) stop these branches:
+
+- a branch that changes docs/markup.md or docs/specifications.md without changing `manual/` or `manual-dev/`;
+- a branch that changes CONTRIBUTING.md or CONTRIBUTING.en.md without changing `manual-dev/`.
+
+When a change does not change what the manuals describe, such as adding an item for v2, end the message of one of the commits of the branch with the trailer line `Manual: unchanged`.
 The hook checks from the merge base with your local `origin/main`; if it stops a push because of changes already on `main`, run `git fetch` and push again.
 
 When the build or the tests start to read a document under `docs/`, add it to the list in `scripts/ci/needs-build.sh`.

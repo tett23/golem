@@ -7,8 +7,13 @@ Golem は、コマンドラインと CI で動く組版システムである。
 仕様は [docs/specifications.md](./docs/specifications.md) と [docs/markup.md](./docs/markup.md) にある。
 用語は [docs/glossary.md](./docs/glossary.md) にまとめている。
 
-使い方の案内は、マニュアル [docs/manual.md](./docs/manual.md) にある。
-リリースには、同じ内容を Golem 自身で組んだ PDF（`golem-manual-<タグ>.pdf`）と HTML（`golem-manual-<タグ>-html.tar.gz`）を添えている（[docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md)）。
+マニュアルは二つあり、どちらも Golem 自身で組んで、リリースの資産に添えている（[docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md)、[docs/adr/0024](./docs/adr/0024-manual-audiences-and-policy.md)）。
+
+- 使い手のマニュアル：PDF（`golem-manual-<タグ>.pdf`）と HTML（`golem-manual-<タグ>-html.tar.gz`）。原稿は [`manual/`](./manual/)。
+- 開発者のマニュアル：PDF（`golem-dev-manual-<タグ>.pdf`）と HTML（`golem-dev-manual-<タグ>-html.tar.gz`）。原稿は [`manual-dev/`](./manual-dev/)。
+
+リリースの前のものは、CI の `build` ジョブの成果物（`manual` と `manual-dev`）で読める。
+マニュアルの読み手と書き方の方針は [docs/manual-policy.md](./docs/manual-policy.md) にある。
 
 ## Installation
 
@@ -143,8 +148,8 @@ ADR は、行頭が `ステータス:` のステータスの行をちょうど�
 監査の記録（`docs/audit/`、`docs/audits/`）と性能計測の記録（`docs/benchmarks/`、`docs/benchmark/`）も、コミット済みのものは変更、削除、移動を拒否する。記録には `--allow-status` と `--allow-links` の例外も効かない。
 文書の中の ADR の参照（`ADR 0001` の形）には、ADR のファイルへのリンクを付ける。リンクのない参照は `adr-guard links` で一覧にでき、`adr-guard links --fix` で直せる。
 ADR はコミット後に変更しない規約であり、変更が必要な場合は新しい連番の ADR を作成する（詳細は [CLAUDE.md](./CLAUDE.md)）。
-`.githooks/pre-push` は、`docs/markup.md` か `docs/specifications.md` を変えたのに `docs/manual.md` を変えていないブランチの push を止める（`scripts/manual/check-updated.sh`、[docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md)）。
-マニュアルの変わらない仕様の変更では、コミットのメッセージの末尾に `Manual: unchanged` のトレーラーを書く。
+`.githooks/pre-push` は、`docs/markup.md` か `docs/specifications.md` を変えたのに `manual/` と `manual-dev/` のどちらも変えていないブランチと、`CONTRIBUTING.md` か `CONTRIBUTING.en.md` を変えたのに `manual-dev/` を変えていないブランチの push を止める（`scripts/manual/check-updated.sh`、[docs/adr/0024](./docs/adr/0024-manual-audiences-and-policy.md)）。
+マニュアルの変わらない変更では、コミットのメッセージの末尾に `Manual: unchanged` のトレーラーを書く。
 `main` への push とブランチの削除は検査しない。
 `core.hooksPath` はクローンごとのローカル設定であり、リポジトリには保存されないため、クローンのたびに実行が必要になる。
 同じ検査は CI の `adr` ジョブでも、adr-guard の v0.8.1 の action に `allow-status: true` と `allow-links: true` を付けて行う。
@@ -237,18 +242,24 @@ Golem の版の正本はリポジトリの根の `VERSION` である。
 
 ### マニュアル
 
-マニュアルの原稿は、Markdown の `docs/manual.md` と、それを Golem の記法で書き直した `manual/`（Golem のプロジェクト）の二つである（[docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md)）。
-`manual/` は、次のスクリプトで組める。
+マニュアルの原稿は、使い手のマニュアルの `manual/` と、開発者のマニュアルの `manual-dev/` の二つの Golem のプロジェクトである（[docs/adr/0024](./docs/adr/0024-manual-audiences-and-policy.md)）。
+書き方の方針は [docs/manual-policy.md](./docs/manual-policy.md) にある。
+次のスクリプトで組める。
 
 ```bash
-GOLEM="$(cabal list-bin golem)" scripts/manual/build.sh
+GOLEM="$(cabal list-bin golem)" sh scripts/manual/build.sh             # 二冊とも
+GOLEM="$(cabal list-bin golem)" sh scripts/manual/build.sh manual-dev  # 一冊だけ
 ```
 
-このスクリプトは、マニュアルの書体（Noto Serif JP、Noto Sans JP、Source Serif 4、Source Sans 3。どれも SIL Open Font License 1.1）を、版を固定した配布元から取得して SHA-256 を検査し、`manual/fonts/` に置く（`scripts/manual/fetch-fonts.sh`。二回目からは検査だけを行う）。
-そのあと `golem build --target pdf --target html` で組み、出力を `manual/build/` に書く。
-診断が一つでも出れば失敗する。
+このスクリプトは、プロジェクトごとに、奥付の版とコミットのハッシュを `common/build-info.gm` に書き（`scripts/manual/build-info.sh`）、マニュアルの書体（Noto Serif JP、Noto Sans JP、Source Serif 4、Source Sans 3、Source Code Pro。どれも SIL Open Font License 1.1）を、版を固定した配布元から取得して SHA-256 を検査し、`fonts/` に置く（`scripts/manual/fetch-fonts.sh`。二回目からは検査だけを行う）。
+そのあと `golem build --target pdf --target html` で組み、出力を `build/` に書く。
+エラー、警告、お知らせのどれか一つでも出れば失敗し、マニフェストに `silence-notices` があれば組む前に失敗する。
 `GOLEM` を省くと、`PATH` にある `golem` を使う。
-二つの原稿の見出しは `scripts/manual/check-headings.sh` で照合する。
+
+`build-info.gm` は生成物で、Git では管理しない。
+マニュアルを `golem check` や LSP で開く前に、一度 `sh scripts/manual/build-info.sh manual`（開発者のマニュアルは `manual-dev`）を実行する。
+実行しないと、奥付の `@import` の先がないエラー（G0302）になる。
+Git のリポジトリの外で組むときは、環境変数 `GOLEM_MANUAL_COMMIT` と `GOLEM_MANUAL_TAG` で値を渡す。
 スクリプトのテストは `scripts/manual/test.sh` にある。
 
 ### 整形と検査
@@ -265,17 +276,17 @@ CI は二つのワークフローからなる。
 | ワークフロー | ジョブ | 内容 |
 |---|---|---|
 | `docs.yml` | `adr` | コミット済みの ADR と記録（`docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/`）が変更されていないこと、文書の中の ADR の参照にリンクがあること、各 ADR がステータスの行をちょうど一つ持つことを検査する |
-| `docs.yml` | `manual` | プルリクエストで、`docs/markup.md` か `docs/specifications.md` を変えたのに `docs/manual.md` を変えていないことを検査する（`scripts/manual/check-updated.sh`）。`main` への push では省く |
+| `docs.yml` | `manual` | プルリクエストで、`docs/markup.md` か `docs/specifications.md` を変えたのに `manual/` も `manual-dev/` も変えていないこと、`CONTRIBUTING.md` か `CONTRIBUTING.en.md` を変えたのに `manual-dev/` を変えていないことを検査する（`scripts/manual/check-updated.sh`）。`main` への push では省く |
 | `ci.yml` | `changes` | `scripts/ci/` と `scripts/manual/` のスクリプトのテスト（`scripts/ci/test.sh`、`scripts/manual/test.sh`）を実行し、ビルドが読む `docs/` の下の文書が一覧にあることを確かめ、変更のパスからビルドが要るかを決める |
-| `ci.yml` | `build` | x86-64 と aarch64 の Linux でビルドとテストを行い、生成したパーサーが文法と一致することを確かめる。マニュアルの二つの原稿の見出しを照合し、`manual/` を診断なしで組む。x86-64 では EPUB が epubcheck を通ることを確かめ、組んだマニュアルの PDF と HTML を成果物 `manual` として上げる |
-| `ci.yml` | `determinism` | 決まった入力（`scripts/determinism.sh`。マニュアルを含む）の出力のハッシュを、二つのアーキテクチャで比べる |
+| `ci.yml` | `build` | x86-64 と aarch64 の Linux でビルドとテストを行い、生成したパーサーが文法と一致することを確かめる。`manual/` と `manual-dev/` をお知らせも含めて診断なしで組む。x86-64 では EPUB が epubcheck を通ることを確かめ、組んだ二つのマニュアルの PDF と HTML を成果物 `manual` と `manual-dev` として上げる |
+| `ci.yml` | `determinism` | 決まった入力（`scripts/determinism.sh`。二つのマニュアルを含む）の出力のハッシュを、二つのアーキテクチャで比べる |
 | `ci.yml` | `release-scripts` | `VERSION` と全パッケージの版の一致を検査し、`scripts/release/` のスクリプトのテスト（`scripts/release/test.sh`）を実行する |
 | `ci.yml` | `format` | fourmolu と hlint で検査する |
 | `ci.yml` | `ci` | `ci.yml` のほかのジョブがすべて成功したか、省かれたことを確かめる（`scripts/ci/gate.sh`） |
 
 変更が `docs/` の下のファイルとリポジトリの根の Markdown のファイルだけの場合、`build`、`determinism`、`format`、`release-scripts` は省かれる（[docs/adr/0009](./docs/adr/0009-ci-speed.md)）。
 判定は `scripts/ci/needs-build.sh` が行い、プルリクエストの変更のパスは分岐点からの差分で取る（`scripts/ci/changed-paths.sh`）。
-ただし、ビルドやテストが読む文書（今は `docs/diagnostics.md` と `docs/manual.md`）を変えた場合はビルドする（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
+ただし、ビルドやテストが読む文書（今は `docs/diagnostics.md`）を変えた場合はビルドする（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
 `adr` は、変更のパスにかかわらず常に走る。
 `main` の保護の規則が必須とする検査は、`ci` と `adr` の二つである。
 同じプルリクエストに新しいコミットを push すると、走っている前の実行は取り消される。
@@ -291,7 +302,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 | `build` | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクして、macOS では `macos-15` でビルドし、アーカイブを作る。`THIRD_PARTY_LICENSES/` を決めたリンクマップも成果物として上げる |
 | `smoke` | アーカイブを別のランナーと、`alpine` と `debian:stable-slim` のコンテナの中で展開して動かす |
 | `determinism` | 三つの配布物と CI のビルドの、`scripts/determinism.sh` の出力を比べる |
-| `release` | タグの push のときだけ、`SHA256SUMS`、来歴の証明、GMP のソース、x86-64 の Linux の配布物で組んだマニュアルの PDF と HTML、AI が書いたリリースノートと共に下書きのリリースを作る |
+| `release` | タグの push のときだけ、`SHA256SUMS`、来歴の証明、GMP のソース、x86-64 の Linux の配布物で組んだ二つのマニュアルの PDF と HTML（`golem-manual-<タグ>` と `golem-dev-manual-<タグ>`）、AI が書いたリリースノートと共に下書きのリリースを作る |
 
 リリースノートを書く AI の API キーは、リポジトリの秘密情報 `ANTHROPIC_API_KEY` に置く。
 
