@@ -1,0 +1,156 @@
+@label docs
+# ドキュメントの決まり
+
+Golem のリポジトリの [code: docs/] には、性質の違う文書が並んでいる。
+今の仕様を書く文書、決定の経緯を書く ADR、確かめた結果を残す記録である。
+性質が違うので、変えてよい時期と変え方も違う。
+この章は、文書ごとの決まりと、それを確かめる仕組みをまとめる。
+
+## 文書の地図
+
+| 文書 | 内容 | 変え方 |
+| --- | --- | --- |
+| [code: docs/specifications.md] | Golem の能力、ワークフロー、採用しなかったもの、モジュール構成 | ADR に合わせて直す。[code: main] で常に最新 |
+| [code: docs/markup.md] | 原稿の記法の仕様 | 同上 |
+| [code: docs/<モジュール>/specifications.md] | モジュールの実装の詳細 | 同上 |
+| [code: docs/glossary.md] | 用語集 | 新しい用語を導入したら足す |
+| [code: docs/diagnostics.md] | 診断のコードの説明 | コードを足すときに同じ変更で足す |
+| [code: docs/adr/]、[code: docs/<モジュール>/adr/] | ADR | ステータスの行を除き変えない |
+| [code: docs/audits/] など | 監査と性能計測の記録 | コミットした後は変えない |
+| [code: docs/manual-policy.md] | 二つのマニュアルの方針 | 第[ref-number manuals]章 |
+| [code: README.md] | 概要、導入、使い方、開発の手順 | ADR に合わせて直す。[code: main] で常に最新 |
+| [code: CONTRIBUTING.md] | 貢献の手順と約束ごと | 日本語を正とし、英語の版を合わせる |
+
+仕様書には実装の詳細を書かない。
+実装の詳細は、各モジュールの仕様書に書く。
+仕様書から ADR を参照するときは、ADR のファイルへのリンクを付ける（第[ref-number adr]章）。
+
+## 仕様書と README を最新に保つ
+
+ADR で仕様が変わったら、同じプルリクエストで [code: docs/specifications.md] と [code: README.md] も直す。[index reading=しようしょ: 仕様書]
+この二つは、[code: main] で常に最新でなければならない。[note: [code: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md の「ドキュメント」の節）]
+
+「常に最新」は、プルリクエストを分けないということである。
+実装だけを先にマージして、仕様書を後で直す、という進め方をすると、そのあいだの [code: main] では仕様書が実装と食い違う。
+[code: main] のどのコミットを取り出しても、そのコミットの振る舞いが仕様書に書いてある、という状態を保つ。
+
+仕様書の「今後の実装項目」は、v1 の範囲から外した事項と、まだ実装していない項目の一覧である。
+採択済みの ADR があってまだ実装していない項目には「（未実装）」と書き、その ADR へリンクする。
+実装を終えたら、その項目を一覧から消す。
+「手で確かめる項目」は、実装もテストも終わったが ADR の求める手作業の確かめが残っている項目である。
+確かめたら、結果をプルリクエストか [code: docs/audits/] の記録に書き、一覧から消す。
+
+## 用語集と診断の文書
+
+新しい用語を導入したら、[code: docs/glossary.md] にも加える。
+
+診断のコードを足すときは、同じ変更で [code: docs/diagnostics.md] に節を足す。[index reading="diagnostics.md": diagnostics.md]
+節の形は決まっている。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0005-explain-diagnostic-codes.md]（golem-cli ADR 0005「診断のコードの説明を golem explain で表示する」）]
+
+```markdown
+## G0701
+
+版面を計算できません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+### 主な原因
+
+### 直し方
+```
+
+- 見出しは [code: ##] とコードだけにする。GitHub の見出しの id がコードの小文字（[code: #g0701]）になり、LSP の [code: codeDescription] が節を直接指せる。
+- 見出しの次の段落が、一行の題になる。[code: golem explain] の一覧に使う。
+- 重大度は、エラー、警告、「dev では警告、prod ではエラー」、お知らせのどれかを書く。
+- 状態は、使用中か廃止を書く。使わなくなったコードは、節を消さずに状態を廃止にし、代わりの書き方を書く。
+- 使用中のコードの節は、「意味」「主な原因」「直し方」の三つの小見出しをこの順に持ち、どれも空にしない。
+- 節はコードの昇順に並べる。
+
+この文書は golem-driver にコンパイルのときに埋め込まれ、形が崩れていると golem をビルドできない。
+加えて、golem-driver のテストが次の一致を確かめる。
+
+- ソースで使うコードが、すべて使用中の節を持つ。
+- 使用中の節のコードが、すべてソースで使われている。
+- 重大度が、[code: profileDependentCodes] と [code: noticeCodes] に合う。
+
+新しいお知らせを足すときは、[code: Golem.Syntax.Diagnostic.noticeCodes] にもコードを加える。
+
+## ビルドが読む文書
+
+[code: docs/] の下の文書の多くは、ビルドもテストも読まない。
+CI は、変更が [code: docs/] の下のファイルとリポジトリの根の Markdown のファイルだけなら、ビルドとテストを省く（第[ref-number ci-jobs]章）。
+
+例外は、ビルドやテストが読む文書である。
+今は [code: docs/diagnostics.md] がそれに当たり、[code: scripts/ci/needs-build.sh] の一覧に載っている。
+この文書を変えると、[code: docs/] の下の変更でもビルドする。
+
+ビルドやテストが [code: docs/] の下の文書を読むようにしたときは、その文書を [code: scripts/ci/needs-build.sh] の一覧に加える。[index reading="needs-build.sh": needs-build.sh]
+一覧にない文書は docs だけの変更として扱われ、変えてもビルドが走らない。
+コードの中では、文書のパスを一つの文字列（[code: "../../docs/diagnostics.md"] の形）で書く。
+CI の [code: changes] ジョブが実行する [code: scripts/ci/docs-refs.sh] は、[code: modules/] の [code: .hs] と [code: .cabal] と [code: scripts/] の [code: .sh] からそうした文字列を拾い、一覧と照らし合わせる。
+パスを文字列の連結で組み立てると、この検査をすり抜ける。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0021-docs-workflow-and-ci-gate.md]（docs/adr の ADR 0021「ドキュメントの検査の分離と CI の判定ジョブ」）]
+
+## 記録
+
+監査の記録と性能計測のスナップショットは、[code: docs/] の下に用途ごとのディレクトリを作って置く。
+リリースの確かめの記録は [code: docs/audits/releases/<タグ>.md]、性能計測は [code: docs/benchmarks/] である。
+
+記録は、コミットした後は変えない。
+次の四つのディレクトリの記録は、adr-guard が変更、削除、移動を拒む。
+
+- [code: docs/audit/]、[code: docs/audits/]
+- [code: docs/benchmarks/]、[code: docs/benchmark/]
+
+[code: docs/ci-timings/] のように、ほかの名前のディレクトリに置いた記録は検査されないので、約束とレビューで守る。
+CI の所要時間の記録は [code: docs/ci-timings/] に置き、[code: scripts/ci/timings.sh] で作る。
+
+## 文章の書き方
+
+ドキュメントは日本語で書き、一文ごとに改行する。
+差分が文の単位で出るので、レビューで変更を追いやすい。
+地の文では、ダッシュ（——）と、並列を表す中黒（・）を使わない。
+
+[code: CONTRIBUTING.md] は日本語の版を正とし、英語の版（[code: CONTRIBUTING.en.md]）は翻訳である。
+内容が食い違うときは日本語の版に従う。
+
+## マニュアルの更新の検査
+
+仕様が変わったのにマニュアルが古いまま、という状態を防ぐために、[code: scripts/manual/check-updated.sh] がブランチの変更を検査する。[index reading=まにゅあるのこうしんのけんさ: マニュアルの更新の検査][index reading="check-updated.sh": check-updated.sh][note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0024-manual-audiences-and-policy.md]（docs/adr の ADR 0024「マニュアルの読み手と方針」）]
+
+```sh
+sh scripts/manual/check-updated.sh BASE HEAD
+```
+
+[code: BASE...HEAD] の変更のパス（分岐点からの差分）と、[code: BASE..HEAD] のコミットのメッセージを読み、次の規則で判定する。
+
++ [code: docs/markup.md] か [code: docs/specifications.md] を変えたら、[code: manual/] か [code: manual-dev/] の下のどれかのファイルを変えていなければならない。
++ [code: CONTRIBUTING.md] か [code: CONTRIBUTING.en.md] を変えたら、[code: manual-dev/] の下のどれかのファイルを変えていなければならない。
++ どちらの規則も、範囲のコミットのどれかのメッセージに [code: Manual: unchanged] のトレーラーがあれば通す。
+
+規則 1 は、二つのマニュアルのどちらを直しても通る。
+仕様書の変更には、使い手から見える振る舞いの変更と、開発者にだけ見える変更（CI の仕組みなど）があり、どちらのマニュアルを直すべきかを機械では決められないからである。
+どちらを直すべきかはレビューで確かめる。
+規則 2 は、この本の第二部が [code: CONTRIBUTING.md] をまとめているので、開発の手順の変更が第二部に届くようにするためである。
+
+v2 以降の課題を足すときのように、仕様書を変えてもマニュアルに書いた振る舞いが変わらない場合は、コミットのメッセージの末尾にトレーラーを書く。[index reading="Manual: unchanged": Manual: unchanged]
+
+```text
+Add the plain-text targets to the v2 items
+
+Manual: unchanged
+```
+
+トレーラーは、メッセージの末尾のトレーラーの段落になければならない。
+本文の途中に書いても通らない。
+
+この検査は二箇所で動く。
+
+- [code: .githooks/pre-push]：push する各ブランチについて、手元の [code: origin/main] との分岐点から検査する。[code: main] への push とブランチの削除は検査しない。[code: origin/main] を取得し直さないので、[code: main] に入った変更で止まったときは [code: git fetch] をしてから push し直す。
+- CI の [code: docs.yml] の [code: manual] ジョブ：プルリクエストのときだけ、ベースとヘッドのコミットで検査する。
+
+各モジュールの仕様書と ADR の変更は検査しない。
+数が多く、そのほとんどがマニュアルの粒度より細かいからである。
+細部のずれはレビューで見つける。

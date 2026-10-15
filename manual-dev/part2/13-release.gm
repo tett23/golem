@@ -1,0 +1,130 @@
+@label release
+# リリースの手順
+
+Golem の実行ファイルは、GitHub Releases で配布する。[index reading=りりーす: リリース]
+配布物を作り、検査し、下書きのリリースを作るところまでは [code: .github/workflows/release.yml] が自動で行う。
+リリースノートを読んで直し、公開するのは人である。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0004-binary-distribution-and-release.md]（docs/adr の ADR 0004「実行ファイルの配布とリリースの自動化」）]
+
+## 版
+
+Golem の版は [code: X.Y.Z] か、プレリリースの識別子を付けた [code: X.Y.Z-<識別子>]（例：[code: 0.1.0-rc1]）で表す。
+1.0.0 までは、原稿の記法、CLI、出力の互換性を壊す変更で [code: Y] を、それ以外の変更で [code: Z] を上げる。
+
+リポジトリの根のファイル [code: VERSION] が、版の正本である。[index reading="VERSION": VERSION]
+この値は golem-driver の [code: Golem.Driver.Version] がコンパイルの時点に埋め込み、[code: golem --version] と PDF の Producer が使う。
+全パッケージの cabal ファイルの [code: version] は、[code: VERSION] から識別子を除いた [code: X.Y.Z] と同じにする。
+[code: scripts/release/check-version.sh] が、この一致と、タグと [code: VERSION] の一致を検査する。
+
+## タグ
+
+[code: v] で始まるタグをリリースとして扱う。
+[code: v0.1.0-rc1] のように版の後に識別子が付くタグは、プレリリースとする。
+
+タグは次のとおり扱う。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0008-first-release-verification.md]（docs/adr の ADR 0008「最初のプレリリース v0.1.0-rc1 でリリースのワークフローを確かめる」）]
+
+- push したタグを、別のコミットに付け直さない。
+- 公開していないリリースのタグは、ワークフローが失敗したとき、または配布物の確かめが通らなかったときに限り削除してよい。削除したタグの名前は再び使わず、プレリリースの識別子を進める（[code: rc1] の次は [code: rc2]）。
+- 公開したリリースのタグは削除しない。
+- コードを変えずに直る失敗（ランナーの不調、ネットワークの一時的な失敗、API の制限）は、タグを変えずにワークフローをやり直す。
+
+```sh
+gh run rerun <実行の ID> --failed
+```
+
+## 手順
+
++ 版を上げるプルリクエストを作る。[code: VERSION] を新しい版（例：[code: 0.1.0-rc1]）に書き換え、識別子を除いた [code: X.Y.Z] を全パッケージの cabal ファイルの [code: version] に書く。CI の [code: release-scripts] ジョブが、二つの一致を検査する。
++ プルリクエストを [code: main] にマージする。
++ マージしたコミットに、[code: v] に [code: VERSION] の内容を続けたタグ（例：[code: v0.1.0-rc1]）を付けて push する。
++ [code: release.yml] が、配布物を作って検査し、下書きのリリースを作る。プレリリースのタグでは、プレリリースの印が付く。
++ 下書きのリリースノートを読み、分類やまとめ方がおかしければ手で直す。
++ GitHub の Releases の画面で、下書きを公開する。
+
+タグと [code: VERSION] が一致しないとき、タグのコミットが [code: main] に含まれないときは、ワークフローの [code: version] ジョブが失敗し、リリースは作られない。
+
+配布物を作って検査するところまでを試すときは、[code: workflow_dispatch] から起動する。
+このときはリリースを作らない。
+
+```sh
+gh workflow run release.yml --ref <ブランチ>
+```
+
+## release.yml のジョブ
+
+| ジョブ | 内容 |
+| --- | --- |
+| [code: ci] | [code: ci.yml] を再利用可能なワークフローとして呼ぶ。CI と同じビルド、テスト、決定性の検査を通す |
+| [code: version] | [code: check-version.sh] で [code: VERSION] とタグを検査し、タグのコミットが [code: main] に含まれることを確かめる |
+| [code: build] | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクし、macOS では [code: macos-15] でビルドしてアーカイブを作る |
+| [code: smoke] | アーカイブを別のランナーと、[code: alpine] と [code: debian:stable-slim] のコンテナの中で展開して動かす |
+| [code: determinism] | 三つの配布物と CI のビルドの、[code: scripts/determinism.sh] の出力を比べる |
+| [code: release] | タグの push のときだけ、資産をそろえて下書きのリリースを作る |
+
+[code: smoke] は、ca-certificates のある [code: debian:stable-slim] と、ないものの両方で動かす。
+配布物はルート証明書を同梱せず OS の証明書のストアを読むので、ストアがない環境で正しく失敗し、[code: SSL_CERT_FILE] で救えることも確かめる必要がある。
+
+[code: determinism] は、CI のビルドの出力と三つの配布物の出力が、一行も違わないことを確かめる。
+配布物は CI とは別の環境（Alpine の musl、macOS）でビルドするので、そこで出力が変わらないことを、ここで初めて確かめられる。
+
+## 資産
+
+[code: release] ジョブが下書きのリリースに付ける資産は次のとおりである。
+
+| 資産 | 内容 |
+| --- | --- |
+| [code: golem-<タグ>-<プラットフォーム>.tar.gz] | 三つのプラットフォームの配布物 |
+| [code: SHA256SUMS] | アーカイブとマニュアルの SHA-256 |
+| [code: golem-manual-<タグ>.pdf] | 使い手のマニュアルの PDF |
+| [code: golem-manual-<タグ>-html.tar.gz] | 使い手のマニュアルの HTML |
+| [code: golem-dev-manual-<タグ>.pdf] | 開発者のマニュアル（この本）の PDF |
+| [code: golem-dev-manual-<タグ>-html.tar.gz] | 開発者のマニュアルの HTML |
+| [code: gmp-*.tar.xz] | 静的にリンクした GMP のソース |
+
+二つのマニュアルは、そのリリースの x86-64 の Linux の配布物の [code: golem] で組む。[index reading="SHA256SUMS": SHA256SUMS]
+[code: GOLEM_MANUAL_TAG] にリリースのタグを渡すので、奥付の版はタグになる（第[ref-number manuals]章）。
+HTML の圧縮ファイルは、[code: tar] に名前の順、時刻 0、所有者 0 を指定し、[code: gzip -n] で作る。
+同じ HTML から同じバイト列の圧縮ファイルができるようにするためである。
+
+配布物には、[code: actions/attest-build-provenance] で来歴の証明を付ける。
+どのワークフローがどのコミットから作ったかを、利用者が [code: gh attestation verify] で検証できる。
+
+GMP のソースを添えるのは、GMP が LGPL-3.0 であり、三つの実行ファイルのどれにも静的にリンクされるからである。
+
+## 配布物の中身
+
+アーカイブを展開すると、[code: golem-<タグ>-<プラットフォーム>/] の一つのディレクトリができる。
+
+| ファイル | 内容 |
+| --- | --- |
+| [code: golem] | 実行ファイル |
+| [code: LICENSE] | Golem のライセンス（MIT） |
+| [code: THIRD_PARTY_LICENSES/] | 静的にリンクしたものと同梱したデータのライセンスの文書 |
+| [code: BUILDINFO] | ビルドしたコミットと環境 |
+
+[code: THIRD_PARTY_LICENSES/] に入れるものは、実行ファイルのリンクマップから決める（第[ref-number fixtures]章）。
+同じソースから同じバイト列の実行ファイルが得られること（再現可能なビルド）は、v1 では求めない。
+代わりに、[code: BUILDINFO] にビルドの環境を記録し、来歴の証明でどのワークフローがどのコミットから作ったかを検証できるようにしている。
+
+macOS の実行ファイルにはアドホックの署名だけを付け、公証はしない。
+Windows と x86-64 の macOS は配布の対象にしていない。
+
+## リリースノート
+
+リリースノートは英語で書き、GitHub の Releases に置く。
+変更点は「Added」「Changed」「Removed」「Fixed」のように項目を分け、できれば各変更のコミットかプルリクエストと ADR を絶対リンクで添える。
+
+下書きのノートは AI が書く。[index reading="りりーすのーと": リリースノート]
+[code: scripts/release/write-notes.sh] が、前のタグからの変更の一覧（[code: scripts/release/notes.sh]）、プルリクエスト、範囲で加わった ADR を Claude Code に渡して書かせ、[code: scripts/release/check-notes.sh] で検査する。
+検査は、見出しが英語であること、[code: ## Unsorted] がないこと、リンクが [code: https://github.com/tett23/golem/] で始まる絶対リンクであること、一覧のすべてのプルリクエストへのリンクがあることを確かめる。
+
+AI の実行か検査に失敗したときは、リリースを止めず、[code: ## Unsorted] に変更の一覧が残ったノートを使う。
+失敗の理由は、ワークフローの要約に書かれる。
+その場合は、人が分類して書き直してから公開する。
+AI の API の鍵は、リポジトリの秘密の情報 [code: ANTHROPIC_API_KEY] に置く。
+
+## 確かめた結果の記録
+
+配布物を確かめた結果は、[code: docs/audits/releases/<タグ>.md] に日本語で記録し、プルリクエストで [code: main] に入れる。
+最初のプレリリースの記録は [code: docs/audits/releases/v0.1.0-rc1.md] にある。
+タグを削除してやり直した場合も、削除したタグの記録に失敗を書いて残し、次のタグの記録を別に作る。
+記録はコミットした後は変えない（第[ref-number docs]章）。

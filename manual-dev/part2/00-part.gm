@@ -1,0 +1,18 @@
+@nonumber
+# 第二部　Golem を開発する
+
+第二部は、Golem そのものに手を入れる人に向けている。
+
+Golem の開発には、ふつうのソフトウェアより強い約束がいくつかある。
+コミットした ADR は書き換えられず、仕様書と README は [code: main] で常に最新でなければならず、出力を変える変更は二つのアーキテクチャでバイト列が一致しなければならない。
+どれも面倒に見えるが、一つ一つに理由がある。
+ADR を書き換えられないのは、モジュールを並行して実装するときに、インターフェースの決定が後から黙って変わらないようにするためである。
+バイト列の一致を求めるのは、決定性が Golem の存在理由だからである。
+
+第二部の各章は、こうした約束を、それを強制する仕組み（Git のフック、CI のジョブ、テスト）と一緒に説明する。
+約束の正は [code: CONTRIBUTING.md] と README と各 ADR であり、この部はそれをまとめてリンクする。
+
+第[ref-number modules]章でモジュールの構成と処理の流れを見て、第[ref-number build-test]章でビルドとテストの手順を説明する。
+第[ref-number adr]章から第[ref-number docs]章は、ADR とドキュメントの決まりである。
+第[ref-number ci-jobs]章は CI のジョブ、第[ref-number determinism]章は決定性を守るための注意、第[ref-number release]章はリリースの手順を扱う。
+第[ref-number fixtures]章はフィクスチャとライセンス、第[ref-number manuals]章は二つのマニュアルの方針である。

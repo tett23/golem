@@ -1,0 +1,271 @@
+@label plugins
+# プラグインを書く
+
+Golem のプラグインは、WebAssembly（wasm）のモジュールである。[index reading=ぷらぐいん: プラグイン]
+プラグインは原稿のテキストを書き換えない。
+評価済みの文書の断片を CBOR で受け取り、書き換えた断片を CBOR で返す関数である。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#プラグイン]（仕様書の「プラグイン」の節）]
+
+wasm を選んだ理由の一つは、決定性と隔離を、プラグインの作者の規律ではなく、ホストの設定で強制できることにある。
+プラグインは外部から取得したコードであり、手元のファイルにもネットワークにも触れられないほうがよい。
+同じ入力から同じ出力という Golem の約束を、プラグインが破れないようにもしたい。
+この章で説明する呼び出し規約と制限は、どれもこの二つの目的から決まっている。
+
+## 二つの種類
+
+プラグインには二つの種類がある。
+
+= コマンド
+  [code: \[furigana: ...\]] のように原稿から呼ばれ、評価済みの引数と散文スロットを受け取り、インラインの列を返す。
+= フィルタ
+  ソースファイル一つ分の評価済みの文書を受け取り、書き換えた文書を返す。総ルビのように本文の全体を対象にする処理に使う。
+
+ソースファイルの評価では、まずコマンドを含む本文を評価し、次にフィルタをマニフェストの宣言の順に適用する。
+
+プラグインはファイル内評価（S0）の段階でだけ実行する。
+目次やページ番号のように、文書全体を集めてから決まる値（S1、S2）は受け取れない。
+出力にラベルへの参照を含めることはできるが、その値を読むことはできない。
+フィルタも、自分のソースファイルしか見られない。
+このため、プラグインが評価の段階のあいだに循環を作ることはない。
+
+プラグインが返す断片には、評価前の式（[code: \[= ...\]]）を含められない。
+式を出力できると、プラグインが処理系にコードを注入する経路になり、評価の順序と段階が崩れるからである。
+意味論 IR の [code: DeferredExpr]（S1 で評価する式）は、要求に含まれていたものをそのまま返すことだけができ、新しく作ることはできない。
+
+## マニフェストでの宣言
+
+使うプラグインは、マニフェストに配布物の URL で宣言する。
+v1 には、レジストリも版の解決もない。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0002-distribution-and-lock.md]（golem-plugin ADR 0002「プラグインの取得とロックファイル」）]
+
+```toml
+[plugins.furigana]
+url = "https://example.com/golem-furigana/v1.0.0/furigana.wasm"
+overrides = ["ruby"]
+
+[[filters]]
+plugin = "furigana"
+filter = "total-ruby"
+files = ["chapters/01.gm", "chapters/02.gm"]
+```
+
+- [code: url] は HTTPS に限る。GitHub のリリースのような、版ごとに固定された URL を書く。
+- [code: overrides] は、プラグインが組み込みのコマンドを上書きするときに、そのコマンドの名前を並べる。宣言のない上書きはエラーになる。プラグインを足しただけで既存の原稿の意味が黙って変わるのを防ぐためである。
+- [code: \[\[filters\]\]] は、どのファイルにどのフィルタを適用するかを宣言する。複数のフィルタは宣言の順に適用する。
+
+上書きできるのは、表示だけに関わるインラインのコマンドである。
+golem-eval ADR 0002 は [code: strong]、[code: bold]、[code: italic]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text] を挙げ、今の実装は [code: code] も同じ一覧に入れている。
+ブロックコマンドと、文書構造、注、チャネルに関わるコマンド（[code: ref-number]、[code: ref-title]、[code: note]、[code: sidenote]、[code: index]、[code: cite]）は上書きできない。
+これらは S1 の集約が前提にする情報を作るので、プラグインが置き換えると、番号やチャネルの不変条件を処理系が保証できなくなる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0002-file-evaluation.md]（golem-eval ADR 0002「ファイル内評価（S0）」）]
+
+コマンドの名前は、上書きを宣言したプラグインのコマンド、組み込みのコマンド、プラグインのコマンドの順に探す。[index reading="overrides": overrides]
+二つのプラグインが同じ名前のコマンドを提供すると、プロジェクトの読み込みの時点でエラーになる。
+
+## plugins.lock とキャッシュ
+
+マニフェストの宣言から配布物を取得し、そのハッシュを [code: plugins.lock] に書くのは [code: golem plugin lock] である。[index reading=plugins.lock: plugins.lock]
+
+```toml
+[plugins.furigana]
+url = "https://example.com/golem-furigana/v1.0.0/furigana.wasm"
+sha256 = "..."
+```
+
+[code: plugins.lock] は TOML で、プラグインの名前の順に並ぶ。
+処理系だけが書き、手で編集しない。
+リポジトリにコミットする。
+同じ入力から同じ出力を得るには、プラグインのバイト列まで入力の一部として固定する必要があるからである。
+
+| コマンド | 動き |
+| --- | --- |
+| [code: golem plugin lock] | マニフェストの宣言に従って取得し、ハッシュを [code: plugins.lock] に書く。マニフェストから消えたプラグインは [code: plugins.lock] からも消す |
+| [code: golem plugin fetch] | [code: plugins.lock] のとおりに取得し、ハッシュを検証してキャッシュに置く。一致しなければキャッシュに置かない |
+
+取得した配布物は、SHA-256 を名前にしてユーザーのキャッシュのディレクトリ（XDG の規則に従う [code: golem/plugins/]）に置く。
+ビルドと LSP はキャッシュからだけ読み、ネットワークに接続しない。
+HTTPS のリダイレクトには従うが、HTTPS から HTTP へのリダイレクトはエラーにする。
+取得したバイト列は、ハッシュを検証するまでプラグインとして扱わない。
+
+同じ URL の中身が差し替えられていれば、ハッシュが一致しないので、[code: fetch] もビルドもエラーになる。
+新しい版のプラグインに移るときは、マニフェストの URL を書き換えて [code: golem plugin lock] を実行する。
+v1 は、配布されたバイナリがどのソースから作られたかを検証しない。
+利用者は配布元を信用して使うことになり、隔離で被害の範囲を限ることで、その信用の必要を小さくしている。
+
+## ホストが与えるもの、与えないもの
+
+ホストは wasmtime の C API を FFI で呼ぶ。[index reading=wasmtime: wasmtime]
+版は 49.0.2 に固定してあり、上げるときは ADR を書く。
+FFI は golem-plugin の中に閉じ、ほかのモジュールは golem-plugin の Haskell の API だけを使う。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0001-wasm-host-and-abi.md]（golem-plugin ADR 0001「wasm のホストと ABI」）]
+
+ホストの設定は次のとおりである。
+
+- import を一つも渡さない。WASI も渡さない。プラグインは時計、乱数、ファイル、ネットワーク、環境変数に触れられない。import を要求するモジュールは、読み込みの時点でエラーになる。
+- スレッドを無効にする。
+- 浮動小数点数の NaN を正規化する。
+- 結果が実装によって変わりうる命令（relaxed SIMD）を無効にする。
+- 一回の呼び出しで実行できる命令の数に上限（wasmtime の fuel）を設ける。今の上限はおよそ 10 億命令である。命令の数で数えるので、上限を超えるかどうかも決定的である。[index reading="fuel": fuel]
+- メモリの量に上限を設ける。今の上限は一つのインスタンスあたり 256 MiB である。
+- 呼び出しごとに新しいインスタンスを作り、呼び出しのあいだで状態を持ち越させない。
+
+最後の規則は速さを犠牲にしている。
+辞書の初期化のような重い処理も、呼び出しのたびに繰り返すことになる。
+それでも状態を持ち越させないのは、持ち越せば呼び出しの順序が結果に影響しうるからである。
+呼び出しの順序に依存しないので、ファイルを並列に評価しても結果は同じになる。
+
+WASI がないので、標準入出力やファイルを使うライブラリは、そのままでは使えない。
+総ルビの辞書のような資産は、wasm のモジュールに埋め込む。
+
+## 呼び出し規約
+
+プラグインのモジュールは、次のものを公開する。[index reading="ABI": ABI]
+
+| 名前 | 型 | 役割 |
+| --- | --- | --- |
+| [code: memory] | メモリ | 入力と出力を置く線形メモリ |
+| [code: golem_abi_version] | [code: () -> u32] | ABI の版 |
+| [code: golem_describe] | [code: () -> u64] | コマンドとフィルタの名前の一覧を CBOR で返す |
+| [code: golem_alloc] | [code: (len: u32) -> u32] | 入力を書く領域を確保し、その位置を返す |
+| [code: golem_invoke] | [code: (ptr: u32, len: u32) -> u64] | CBOR の要求を受け取り、CBOR の応答を返す |
+
+ADR は領域を解放する [code: golem_dealloc(ptr: u32, len: u32)] も挙げている。
+ただし、今のホストは呼び出しごとにインスタンスを捨てるので、この関数を呼ばない。
+
+[code: u64] で返す値は、上位 32 ビットが出力の位置、下位 32 ビットが出力の長さである。
+ホストは、その範囲のバイト列を線形メモリから読む。
+
+一回の呼び出しの流れは次のとおりである。[index reading="golem_invoke": golem_invoke]
+
++ ホストは新しいインスタンスを作る。
++ [code: golem_alloc] に要求の長さを渡し、返った位置に要求の CBOR を書き込む。
++ [code: golem_invoke] にその位置と長さを渡す。
++ 返った [code: u64] から応答の位置と長さを取り出し、応答の CBOR を読む。
++ インスタンスを捨てる。
+
+読み込みの時点で、ホストは [code: golem_abi_version] を呼び、ホストの ABI の版と比べる。
+今の ABI の版は 5 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
+一致しなければ、読み込みの時点でエラー（G0605）になる。
+続けて [code: golem_describe] を呼び、プラグインが提供するコマンドとフィルタの名前を得る。
+
+## 受け渡す CBOR
+
+要求と応答の形は、意味論 IR と同じ CDDL のファイル（[code: modules/golem-doc/schema/golem-doc.cddl]）に定義してある。[index reading=cbor: CBOR]
+CDDL は CBOR のデータの形を記述するスキーマの言語で、RFC 8610 が定める。
+直和型は [code: \[タグ番号, フィールド...\]] の配列で表し、マップを使わず、フィールドの順序で区別する。
+CBOR は RFC 8949 の決定的な符号化で書く。
+
+```cddl
+command-request = [0, name: tstr, args: [* argument],
+                   slots: [* inlines], span]
+filter-request = [1, name: tstr, document]
+argument = [0, value] / [1, key: tstr, value]
+value = int / float / tstr / bool / null / [* value]
+response = [output: inlines / document,
+            diagnostics: [* plugin-diagnostic]]
+plugin-diagnostic = [code: tstr, severity: 0 / 1, span, message: tstr]
+description = [commands: [* tstr], filters: [* tstr]]
+```
+
+- [code: golem_describe] は [code: description] を返す。
+- コマンドの呼び出しでは、[code: golem_invoke] は [code: command-request] を受け取り、[code: output] がインラインの列（[code: inlines]）の [code: response] を返す。
+- フィルタの呼び出しでは、[code: filter-request] を受け取り、[code: output] がファイル一つ分の文書（[code: document]）の [code: response] を返す。
+- 引数の値に連想配列は渡せない。[code: value] にマップがないのはそのためである。
+- 応答の診断の重大度は、0 がエラー、1 が警告である。プラグインはお知らせを出せない。コードはプラグインが決め、Golem の [code: docs/diagnostics.md] の対象外である。
+
+たとえばファイルの先頭に書いた [code: \[furigana: 漢字\]] の呼び出しの要求は、CBOR の診断の表記（RFC 8949 が定める、CBOR を人が読むための表記）で次のような形になる。
+[code: span] は、ファイルの番号と、UTF-8 のバイトの範囲の組である。
+最後の [code: \[0, 0, 18\]] が呼び出しの全体の位置で、プラグインが新しく作るノードにはこの位置を付ける。
+
+```text
+[0, "furigana", [],
+ [[[0, [0, 11, 17], "漢字"]]],
+ [0, 0, 18]]
+```
+
+[code: inlines] と [code: document] の形は、第[ref-number ir]章で説明する。
+
+## 出力の検証
+
+ホストは応答を受け取るたびに、次のことを検査する。
+
+- CDDL のスキーマと、意味論 IR の不変条件（ルビの入れ子がないこと、モノルビのセグメントの数が一致すること、強制改行が最上位にだけあることなど）。
+- 出力の [code: DeferredExpr] が、要求に含まれていたものと同一であること。
+- 出力のノードのソース位置が、呼び出しの位置か、要求に含まれていたノードの位置であること。プラグインが作ったノードには、呼び出しの位置を付ける。
+
+処理系の内部では型で守っている不変条件も、wasm の境界を越えると保証されなくなる。
+違反はエラーにし、黙って直したり、該当の部分を捨てたりはしない。
+
+## プラグインの診断
+
+プラグインの読み込みと実行の誤りは、G0602 から G0611 で報告する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0003-plugin-diagnostic-codes.md]（golem-plugin ADR 0003「プラグインの診断のコード（G0602 から G0610）」）]
+
+| コード | 内容 |
+| --- | --- |
+| G0602 | [code: plugins.lock] にないか、URL がマニフェストと違う |
+| G0603 | キャッシュにない（[code: golem plugin fetch] を求める） |
+| G0604 | キャッシュの配布物のハッシュが一致しない |
+| G0605 | wasm として読み込めない（import、ABI の版、関数の欠けを含む） |
+| G0606 | 二つ以上のプラグインが同じコマンドを提供する |
+| G0607 | 組み込みのコマンドとの衝突に [code: overrides] の宣言がない |
+| G0608 | [code: overrides] の名前が誤っている |
+| G0609 | 実行が失敗した（命令数、メモリ、不正な出力） |
+| G0610 | [code: \[\[filters\]\]] が誤ったプラグインかフィルタを指す |
+| G0611 | [code: plugins.lock] が TOML として読めない |
+
+診断の位置は、ほとんどが [code: manifest.toml] の先頭である。
+マニフェストはプラグインの宣言の位置を持たないので、メッセージにプラグインの名前を書いて、宣言を見つけられるようにしている。
+例外は二つで、G0609 はコマンドを呼んだ箇所か、フィルタを適用したファイルの先頭を指し、G0611 は [code: plugins.lock] の中の位置を指す。
+
+G0605 と G0609 のメッセージには、理由が続く（[code: プラグインの ABI の版が異なります: 4] など）。
+G0609 のメッセージは [code: <プラグイン>.<コマンド>: <理由>] の形で、どのプラグインのどのコマンドが失敗したかを示す。
+読み込みか検査で誤りが出たときは、そのプラグインのコマンドを未知のコマンド（G0222）として報告しない。
+読み込めなかったプラグインのコマンドがすべて G0222 になり、本当の原因を埋もれさせるのを防ぐためである。
+
+## 作り方と確かめ方
+
+Golem のリポジトリには、プラグインを書くための SDK はない。
+ADR は、最初の SDK（Rust）を別のリポジトリで扱うとしている。
+プラグインは、上の呼び出し規約と CBOR の形を満たせば、どの言語で書いてもよい。
+
+golem-plugin のテストは、テスト用のプラグインを wat（wasm のテキストの形式）で書き、[code: modules/golem-plugin/test/plugins/] に置いている。
+規約の最小の形は、そのテストのプラグインから読み取れる。
+次は、受け取った文書をそのまま返すフィルタ [code: same] だけを持つプラグインである。
+[code: identity.wat] から、コマンドの部分を除いて整形し直した。
+
+```wat
+(module
+  (memory (export "memory") 2)
+  (global $heap (mut i32) (i32.const 65536))
+  ;; golem_describe の CBOR: [[], ["same"]]
+  (data (i32.const 16) "\82\80\81\64same")
+  (func (export "golem_abi_version") (result i32) (i32.const 5))
+  (func (export "golem_alloc") (param $n i32) (result i32)
+    (local $p i32)
+    (local.set $p (global.get $heap))
+    (global.set $heap (i32.add (global.get $heap) (local.get $n)))
+    (local.get $p))
+  (func (export "golem_dealloc") (param i32 i32))
+  (func (export "golem_describe") (result i64)
+    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 8)))
+  (func (export "golem_invoke") (param $ptr i32) (param $len i32)
+    (result i64)
+    (local $skip i32) (local $doc i32)
+    ;; 要求は [1, 名前, 文書]。名前は 24 バイト未満とする
+    (local.set $skip
+      (i32.add (i32.const 3)
+        (i32.and
+          (i32.load8_u (i32.add (local.get $ptr) (i32.const 2)))
+          (i32.const 31))))
+    (local.set $doc (i32.sub (local.get $len) (local.get $skip)))
+    ;; 応答の [文書, []] を 1024 番地に組み立てる
+    (i32.store8 (i32.const 1024) (i32.const 0x82))
+    (memory.copy (i32.const 1025)
+      (i32.add (local.get $ptr) (local.get $skip))
+      (local.get $doc))
+    (i32.store8 (i32.add (i32.const 1025) (local.get $doc))
+      (i32.const 0x80))
+    (i64.or (i64.shl (i64.const 1024) (i64.const 32))
+      (i64.extend_i32_u (i32.add (local.get $doc) (i32.const 2))))))
+```
+
+要求の文書を CBOR として解釈せず、名前の後ろのバイト列をそのまま応答に写している。
+CBOR の配列の頭のバイト（[code: 0x82] は要素が二つの配列、[code: 0x80] は空の配列）を手で書けば、この程度のプラグインは解析器なしで作れる。
+実際のプラグインは、使う言語の CBOR のライブラリで要求を読み、応答を組み立てることになる。
+受け取る IR の中身は [code: golem inspect FILE --as ir] で確かめられる。

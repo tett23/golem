@@ -1,0 +1,142 @@
+@label adr
+# ADR と変更の流れ
+
+Golem への変更は、どれも ADR から始まる。[index reading=ADR: ADR]
+ADR（Architecture Decision Record）は、設計の決定を一件ずつ記録する文書である。
+仕様を決めてからテストを書き、テストを失敗させてから実装する、という順番を守る。[note: [code: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md）]
+
+誤字の修正や、仕様に影響しないドキュメントの修正には ADR は要らない。
+迷ったら ADR を書く、というのが [code: CONTRIBUTING.md] の基準である。
+
+## 変更の流れ
+
++ ADR を書いて、レビューを受ける。
++ ADR のテスト設計にあるテストを書き、失敗することを確かめる。
++ 実装して、テストを通す。
++ 仕様書と README を更新する。
++ ブランチを push して、プルリクエストを作る。
++ CI が通ったら、[code: main] に no-ff でマージする。
+
+テストを先に書いて失敗させるのは、テストが実装を本当に検査していることを確かめるためである。[index reading=てすとをさきにかく: テストを先に書く]
+実装の後に書いたテストは、最初から通るので、何も検査していないテストと見分けがつかない。
+設定の値のように自動のテストを書けない変更は、ADR のテスト設計に確かめ方を書いておき、実装の後に実際に動かして確かめる。
+確かめた結果は、実装のプルリクエストのコメントか、[code: docs/audits/] の記録に残す。
+
+## 置き場所と名前
+
+特定のモジュールに属する ADR は [code: docs/<モジュール>/adr/] に、モジュールをまたぐ ADR は [code: docs/adr/] に置く。
+ファイル名には [code: 0001-feature-details.md] のように 4 桁の連番を付け、連番の後は内容がわかる kebab-case の名前にする。
+連番はディレクトリごとに数える。
+golem-cli ADR 0005 と docs/adr の ADR 0005 は別の文書である。
+
+## 構成
+
+ADR は日本語で、次の形で書く。
+
+```markdown
+# ADR 0001: タイトル
+
+ステータス: 提案
+
+## 文脈
+
+## 実装すること
+
+## 実装しないこと
+
+## テスト設計
+
+## トレードオフ
+
+## 参考文献
+```
+
+データ構造やアルゴリズムを変える場合は、その節も立てる。
+検討の経緯として残したいこと（比べた方法、調べたこと）があれば、ほかの節を足してよい。
+「実装しないこと」は、範囲を決めるための節である。
+書いておけば、実装する人が範囲の外まで手を広げることも、後の人が「なぜやらなかったのか」を探し回ることもなくなる。
+
+## ステータス
+
+ステータスの行は、行頭が [code: ステータス:] の行で、ADR はこれをちょうど一つ持つ。[index reading=すてーたす: ステータスの行]
+値は、提案、採択、却下、破棄のどれかである。
+後の ADR が一部を置き換えた場合は、「採択→○○は ADR NNNN」のように、置き換えた ADR をリンクで示す。
+
+```markdown
+ステータス: 採択→行の長さを超える列の扱いは [ADR 0003](0003-position-handling.md)
+```
+
+ADR をやめる場合は、ステータスを破棄にして、理由を [code: docs/specifications.md] に書く。
+破棄した ADR のファイルは消さない。
+
+## コミットした ADR は変えない
+
+コミットした ADR は、ステータスの行を除いて変更できない。
+仕様を変えたくなったら、元の ADR を書き換えずに、新しい連番の ADR を書き、元の ADR のステータスの行で新しい ADR を指す。
+
+この規則は、モジュールを並行して実装する進め方から来ている。
+あるモジュールが別のモジュールの ADR を前提にして実装している最中に、その ADR が書き換わると、前提が黙って変わる。
+書き換えを禁じれば、決定の変更は必ず新しい ADR として目に見える形で現れ、元の ADR を前提にした実装のどこを直すべきかを、新しい ADR の文脈から追える。
+
+ADR はレビューを受けるまでコミットしない。
+提案の段階で内容を直せるのは、コミットするまでのあいだだけだからである。
+
+## adr-guard
+
+この規則は、adr-guard が機械で強制する。[index reading=adr-guard: adr-guard]
+今使っている版は v0.8.1 である。[note: [code: https://github.com/tett23/adr-guard]（adr-guard）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0012-update-adr-guard-to-v0.8.1.md]（docs/adr の ADR 0012「adr-guard を v0.8.1 に上げ、ADR と記録のディレクトリ名の別名も保護する」）]
+
+[code: .githooks/pre-commit] の中身は一行である。
+
+```sh
+#!/bin/sh
+exec adr-guard pre-commit --allow-status --allow-links
+```
+
+このフックは、コミット済みの ADR（[code: docs/adr/] と [code: docs/<モジュール>/adr/] の下）への変更、削除、リネームを含むコミットを拒む。
+例外は二つで、ステータスの行の変更（[code: --allow-status]）と、ADR の参照のリンクを付ける、外す、リンク先を変えるだけの変更（[code: --allow-links]）である。
+ステータスの行のない ADR と、二つ以上ある ADR も拒む。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0010-update-adr-guard-to-v0.5.0.md]（docs/adr の ADR 0010「adr-guard を v0.5.0 に上げ、ステータスの行の変更を --allow-status で許可する」）]
+
+監査の記録（[code: docs/audit/]、[code: docs/audits/]）と性能計測の記録（[code: docs/benchmarks/]、[code: docs/benchmark/]）も、コミットした後の変更、削除、移動を拒む。
+記録には、[code: --allow-status] と [code: --allow-links] の例外も効かない。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0011-update-adr-guard-to-v0.8.0.md]（docs/adr の ADR 0011「adr-guard を v0.8.0 に上げ、ステータスの行の数と記録の保護も検査する」）]
+
+同じ検査は、CI の [code: docs.yml] の [code: adr] ジョブでも、adr-guard の v0.8.1 の action に [code: allow-status: true] と [code: allow-links: true] を付けて行う。
+フックは手元の設定なので外せるが、CI の検査は外せない。
+
+## ADR の参照にはリンクを付ける
+
+文書の中で ADR を参照するとき（[code: ADR 0001] の形）は、ADR のファイルへのリンクを付ける。
+リンクのない参照は、CI の [code: adr] ジョブが拒む。
+adr-guard には、一覧を出す命令と直す命令がある。
+
+```sh
+adr-guard links          # リンクのない ADR の参照の一覧
+adr-guard links --fix    # リンクを付ける
+adr-guard check-status   # ステータスの行の数が誤った ADR の一覧
+```
+
+ADR を書いた後と、仕様書や README を直した後は、[code: adr-guard links --fix] を実行してから確かめる。
+
+## コミットとマージ
+
+コミットのメッセージは英語で書き、一つのコミットには一つのまとまった変更だけを入れる。
+ADR や仕様書が日本語でも、コミットのメッセージ、リリースノート、CHANGELOG は英語である。
+
+[code: main] に直接 push せず、ブランチを切ってプルリクエストを作る。
+マージは常に no-ff で行う。[index reading="no-ff": no-ff]
+[code: main] には保護の規則があり、プルリクエストを経ない push と、マージのコミット以外のマージ（squash と rebase）を拒む。[index reading="ほごのきそく": 保護の規則]
+マージには、CI の [code: ci]（[code: ci.yml]）と [code: adr]（[code: docs.yml]）の二つの検査が通っている必要がある（第[ref-number ci-jobs]章）。
+
+[code: main] の rebase と force push は禁じている。
+例外は、API の鍵のような秘密の情報を誤ってコミットした場合だけである。
+自分のブランチは、マージするまでなら rebase してよい。
+
+## 依存を増やす前に
+
+ライセンスに問題がなく、再実装がやさしいものは、依存に加えずに再実装する。
+その場合は、本家のテストを参考にして、テストを十分に厚く書く。
+必要な機能が限られているなら、その機能だけを実装してよい。
+正規表現スタイルの照合器 golem-regex は、この方針で作ったモジュールである。
+
+固定したネイティブライブラリ（HarfBuzz、FreeType、wasmtime、zlib、hyph-utf8）の版を上げるときは ADR を書く。
+wasmtime の版を上げるときは、ライセンスの文書も作り直す（第[ref-number fixtures]章）。

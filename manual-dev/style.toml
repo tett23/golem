@@ -1,0 +1,80 @@
+# Golem 開発者のマニュアルの体裁（docs/adr/0024、docs/manual-policy.md）
+
+[page]
+size = "B5"
+binding = "left"
+writing-mode = "horizontal"
+
+# 本文 13Q、行送り 22H、一行 40 字、34 行（ADR 0024 の出発点のまま）。
+# 版面は幅 130mm、高さ 184.75mm になり、B5（182mm × 257mm）の
+# 天に 28mm、ノドに 24mm を取る。
+[page.grid]
+font-size = "13Q"
+characters = 40
+lines = 34
+line-pitch = "22H"
+position = { top = "28mm", gutter = "24mm" }
+
+[fonts.body]
+ja = "fonts/NotoSerifJP-Regular.otf"
+latin = "fonts/SourceSerif4-Regular.otf"
+
+[fonts.heading]
+ja = "fonts/NotoSansJP-Bold.otf"
+latin = "fonts/SourceSans3-Bold.otf"
+
+[fonts.code]
+ja = "fonts/NotoSansJP-Regular.otf"
+latin = "fonts/SourceCodePro-Regular.otf"
+
+[character-styles.bold]
+font = "heading"
+
+[character-styles.code]
+color = "code"
+
+[paragraph-styles.body]
+first-line-indent = "1zw"
+
+[paragraph-styles.caption]
+size = "11Q"
+
+# コードは 11Q で組む。背景の内側の余白（既定の 0.5zw）を除いて、
+# 一行におよそ 77 字が収まる（golem-driver ADR 0017）。
+[paragraph-styles.code]
+size = "11Q"
+background = "code-bg"
+
+[headings.1]
+font = "heading"
+size = "20Q"
+number = "第{n}章"
+page-break = "recto"
+
+[headings.2]
+font = "heading"
+size = "15Q"
+number = "{1}.{n}"
+
+[headings.3]
+font = "heading"
+number = "{1}.{2}.{n}"
+
+[composition]
+hanging-punctuation = true
+
+# 索引は二段で組む（docs/adr/0025）。
+[index]
+columns = 2
+column-gap = "2zw"
+
+[color.swatches]
+code = { cmyk = [90, 50, 0, 20] }
+code-bg = { cmyk = [0, 0, 0, 8] }
+
+[masters.body]
+folio = { position = "bottom-outside", format = "{n}" }
+
+[masters.body.running-head]
+position = "top-outside"
+content = "heading.1.short"

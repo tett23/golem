@@ -1,0 +1,144 @@
+@label ci-jobs
+# CI のジョブ
+
+Golem の CI は、GitHub Actions の二つのワークフローからなる。[index reading=CI: CI]
+[code: .github/workflows/docs.yml] は ADR とドキュメントを、[code: .github/workflows/ci.yml] はコードを検査する。
+どちらも、[code: main] への push とプルリクエストで動く。
+[code: ci.yml] は、リリースのワークフローからも呼ばれる（第[ref-number release]章）。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0021-docs-workflow-and-ci-gate.md]（docs/adr の ADR 0021「ドキュメントの検査の分離と CI の判定ジョブ」）]
+
+二つに分けたのは、ドキュメントの検査を、コードの検査の取り消しや省略に巻き込まないためである。
+ADR の検査は、ドキュメントだけの変更こそが対象なので、必ず走らなければならない。
+一方、コードのビルドはドキュメントだけの変更では省きたい。
+ワークフローを分ければ、[code: ci.yml] の古い実行が取り消されても、[code: adr] の結果は残る。
+
+## ジョブの一覧
+
+[code: docs.yml] のジョブは次の二つである。
+
+| ジョブ | 内容 |
+| --- | --- |
+| [code: adr] | コミット済みの ADR と記録が変わっていないこと、ADR の参照にリンクがあること、ステータスの行がちょうど一つであること |
+| [code: manual] | プルリクエストで、仕様書や [code: CONTRIBUTING.md] の変更にマニュアルが追随していること |
+
+[code: ci.yml] のジョブは次の六つである。
+
+| ジョブ | 内容 |
+| --- | --- |
+| [code: changes] | スクリプトのテスト、ビルドが読む文書の一覧の検査、ビルドの要否の判定 |
+| [code: build] | x86-64 と aarch64 でのビルドとテスト、生成したパーサーの検査、二つのマニュアル |
+| [code: determinism] | 二つのアーキテクチャの出力のハッシュの比較 |
+| [code: release-scripts] | [code: VERSION] と全パッケージの版の一致、リリースのスクリプトのテスト |
+| [code: format] | fourmolu と hlint |
+| [code: ci] | ほかのジョブがすべて成功したか、省かれたことの確認 |
+
+[code: main] の保護の規則が必須とする検査は、[code: ci] と [code: adr] の二つだけである。
+以前は、[code: ci.yml] のジョブを名前で七つ、必須の検査に並べていた。[index reading="ci（じょぶ）": ci（ジョブ）]
+ジョブを足す、名前を変える、マトリクスを変えるたびに保護の規則も直す必要があり、直し忘れると存在しない検査を待ち続けるか、新しいジョブが必須から漏れる。
+そこで、ジョブの結果をまとめて判定する [code: ci] ジョブを一つ置き、保護の規則はそれだけを見るようにした。
+省かれたジョブを成功と同じに扱う判定も、この一箇所にある。
+
+## changes
+
+[code: changes] は、最初に次の三つを実行する。
+
+- [code: scripts/ci/test.sh]：CI のスクリプトのテスト。
+- [code: scripts/manual/test.sh]：マニュアルのスクリプトのテスト。
+- [code: scripts/ci/docs-refs.sh]：コードとスクリプトが名指す [code: docs/] の下の文書が、ビルドの読む文書の一覧にあること（第[ref-number docs]章）。
+
+そのあと、変更のパスから、ビルドが要るかを決める。
+パスは [code: scripts/ci/changed-paths.sh] が取り、判定は [code: scripts/ci/needs-build.sh] が行う。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0009-ci-speed.md]（docs/adr の ADR 0009「CI の高速化」）]
+
+| 起動 | 変更のパスの範囲 |
+| --- | --- |
+| プルリクエスト | 分岐点からヘッドまで（[code: BASE...HEAD]） |
+| [code: main] への push | push の前のコミットから後のコミットまで |
+| リリースからの呼び出し | 範囲がないので、常にビルドする |
+
+分岐点からの差分にするのは、ベースのブランチの先端がほかのプルリクエストのマージで進むからである。
+二点の差分では、ほかのプルリクエストの変更まで数えてしまう。
+
+[code: needs-build.sh] は、変更が [code: docs/] の下のファイルとリポジトリの根の Markdown のファイルだけなら [code: false] を、それ以外なら [code: true] を書く。
+ビルドが読む文書（今は [code: docs/diagnostics.md]）の変更は [code: true] になる。
+[code: manual/] と [code: manual-dev/] は [code: docs/] の外にあるので、マニュアルの変更はビルドする側になる。
+[code: docs/manual-policy.md] は Golem の振る舞いを定めないので、その変更だけならビルドしない。
+変更のパスが空のときと、パスを取れなかったときも、検査を飛ばさないように [code: true] にする。
+
+[code: changes] が [code: false] を出すと、[code: build]、[code: determinism]、[code: release-scripts]、[code: format] は省かれる。
+[code: docs.yml] の [code: adr] は、変更のパスにかかわらず常に走る。
+
+## build
+
+[code: build] は、[code: ubuntu-24.04]（x86-64）と [code: ubuntu-24.04-arm]（aarch64）の二つのランナーで同じ手順を実行する。
+主な手順は次のとおりである。
+
++ GHC 9.10.3 と cabal-install 3.16.1.0 を用意する。GHC のディレクトリ、Hackage の索引、cabal の store、[code: dist-newstyle] をキャッシュから戻す。
++ [code: scripts/fetch-wasmtime.sh] で wasmtime を取得し、qpdf を入れる（x86-64 では epubcheck も）。
++ [code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
++ [code: cabal build all] と [code: cabal test all] を実行する。
++ [code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
++ 二つのマニュアルの書体をキャッシュから戻し、[code: scripts/manual/build.sh] で二つのマニュアルを組む。何か一つでも診断が出れば失敗する。
++ x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
++ [code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。
++ x86-64 では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。
+
+キャッシュの鍵は、[code: cabal.project] と [code: cabal.project.freeze] のハッシュ、ランナーの OS とアーキテクチャ、GHC の版から作る。
+[code: dist-newstyle] のキャッシュは、[code: main] への push のときだけ保存する。
+プルリクエストのキャッシュはそのプルリクエストにしか使えず、しかもコミットごとに鍵が変わるからである。
+マニュアルの書体のキャッシュの鍵は、[code: scripts/manual/fetch-fonts.sh] のハッシュである。
+書体の URL と SHA-256 はこのスクリプトに書いてあるので、書体を変えれば鍵も変わる。
+
+aarch64 のランナーで同じことをするのは、時間がかかっても省けない。
+浮動小数点数の計算とネイティブライブラリの結果が二つのアーキテクチャで一致することが、決定性の主張の根拠そのものだからである。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0001-haskell-workspace-and-ci.md]（docs/adr の ADR 0001「Haskell のワークスペースと CI」）]
+
+## determinism
+
+[code: determinism] は、[code: build] の二つのランナーが上げた [code: scripts/determinism.sh] の出力を取り寄せ、[code: diff] で比べる。
+一行でも違えば失敗する。
+
+[code: scripts/determinism.sh] は、決まった入力を組み、すべての出力のファイルの SHA-256 を一行に一つずつ書く。[index reading="determinism.sh": determinism.sh]
+入力は次のとおりである。
+
+- [code: scripts/determinism/] の式の評価のプロジェクト（HTML、EPUB、テキスト）
+- golem-driver のテストのサンプルのプロジェクト（HTML、EPUB、テキスト）
+- 同じサンプルを golem-font のテスト用の書体で組んだ PDF
+- 二つのマニュアル（PDF と HTML）
+
+ファイルの一覧は [code: LC_ALL=C] で並べてからハッシュを取るので、一覧の順もファイルシステムに左右されない。
+決定性の詳しい規則は第[ref-number determinism]章で説明する。
+
+## release-scripts と format
+
+[code: release-scripts] は、[code: scripts/release/check-version.sh] で [code: VERSION] と全パッケージの cabal ファイルの版の一致を検査し、[code: scripts/release/test.sh] でリリースのスクリプトのテストを実行する。
+版を上げるプルリクエストは、ここで一致を確かめられる（第[ref-number release]章）。
+
+[code: format] は、fourmolu 0.21.0.0 で整形済みであることと、hlint 3.10 の指摘がないことを確かめる（第[ref-number build-test]章）。
+
+## ci
+
+[code: ci] は、[code: changes]、[code: build]、[code: determinism]、[code: release-scripts]、[code: format] のすべての後に、失敗したジョブがあっても必ず走る。
+各ジョブの結果を [code: scripts/ci/gate.sh] に渡し、すべてが成功か省略なら成功、一つでも失敗、取り消し、欠けがあれば失敗とする。
+
+[code: ci.yml] に新しいジョブを足すときは、[code: ci] ジョブの [code: needs] と、[code: gate.sh] の [code: NAMES] の両方に加える。
+片方だけに加えると、新しいジョブが失敗しても [code: ci] が成功してしまうか、[code: ci] が新しいジョブの欠けで常に失敗する。
+
+## adr と manual
+
+[code: docs.yml] の [code: adr] は、adr-guard の v0.8.1 の action で、コミット済みの ADR と記録の保護、ADR の参照のリンク、ステータスの行の数を検査する（第[ref-number adr]章）。
+プルリクエストではベースからヘッドまで、[code: main] への push では push の前から後までの変更を見る。
+
+[code: manual] は、プルリクエストのときだけ、[code: scripts/manual/check-updated.sh] でマニュアルの更新を検査する（第[ref-number docs]章）。
+
+## 取り消しと時間
+
+同じプルリクエストに新しいコミットを push すると、走っている前の実行は取り消される。
+[code: main] への push とリリースからの呼び出しは、それぞれ別の組になり、取り消されない。
+[code: main] のどのコミットも検査されるようにするためである。
+
+[code: build] は 30 分で打ち切る。
+CI の所要時間の記録は [code: docs/ci-timings/] に置き、[code: scripts/ci/timings.sh] で作る。
+
+## Actions の版
+
+GitHub Actions のアクションは、Node 24 以降で動く最新のメジャー版を使う。
+Node を使う手順では、最新の LTS を使う。
+リリースのワークフローがリリースノートを書く道具を入れる手順も、[code: actions/setup-node] に [code: lts/*] を渡している。
