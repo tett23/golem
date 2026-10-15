@@ -21,7 +21,7 @@ import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescrip
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
-import Golem.Driver.Pdf (Assumed (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, runningHeadText, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
+import Golem.Driver.Pdf (Assumed (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, hiddenFolios, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, runningHeadText, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Kerning (..), Look (..), Synthetic (..), plainLook)
@@ -174,7 +174,7 @@ tests =
           ]
             <> [ testCase "the template lays out a page" $
                    mapM_
-                     (\lang -> either (assertFailure . show) (const (pure ())) (parseStyle (FileId 0) (templateText lang "style.toml") >>= pageGeometry (FileId 0)))
+                     (\lang -> either (assertFailure . show) (const (pure ())) (parseStyle (FileId 0) (templateText lang "style.toml") >>= pageGeometry (FileId 0) False))
                      [Japanese, English],
                  testCase "fonts come from tagged releases with fixed hashes" $ do
                    map fsPath (templateFonts Japanese) @?= ["fonts/NotoSerifJP-Regular.otf", "fonts/LICENSE-NotoSerifJP.txt"]
@@ -328,6 +328,7 @@ tests =
       testGroup "hard line breaks (docs/adr ADR 0016)" hardBreakTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
+      testGroup "hidden folios (ADR 0021)" hiddenFolioTests,
       testGroup "forced breaks (docs/adr ADR 0017)" breakTests,
       testGroup "columns (docs/adr ADR 0018)" columnTests,
       testGroup "index columns (docs/adr ADR 0025)" indexColumnTests,
@@ -950,7 +951,7 @@ chapterLayout :: BS.ByteString -> [(FilePath, T.Text)] -> [(FilePath, BS.ByteStr
 chapterLayout style chapters files = withChapters style chapters [] $ \tmp -> do
   forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
   (e, book) <- evaluatedOk tmp
-  geom <- either (assertFailure . show) pure (pageGeometry (FileId 0) (evStyle e))
+  geom <- either (assertFailure . show) pure (pageGeometry (FileId 0) False (evStyle e))
   r <- layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e)) geom fakeFonts
   either (assertFailure . show) pure r
 
@@ -1368,6 +1369,123 @@ runningHeadTests =
           " }\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
         ]
 
+{- | Lays out a project (manifest, style, sources) with the fake fonts and
+crop marks or none, and returns the geometry, the layout and the hidden
+folios of each page (ADR 0021).
+-}
+layoutHidden :: Maybe P.MarkStyle -> BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -> IO (PageGeometry, PdfLayout, Map.Map Int [(Char, (Integer, Integer))])
+layoutHidden marks manifest style sources = withSystemTempDirectory "golem-hidden" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") manifest
+  BS.writeFile (tmp </> "style.toml") style
+  forM_ sources $ \(to, src) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) (TE.encodeUtf8 src)
+  ev <- evaluateProject Dev tmp
+  case ev of
+    Left f -> assertFailure (show (pfDiagnostics f))
+    Right e -> case (evBook e, pageGeometry (FileId 0) (isJust marks) (evStyle e)) of
+      _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> assertFailure (show errs)
+      (Just book, Right geom) -> do
+        let inp = PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty marks (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e)
+        r <- layoutPdf inp geom fakeFonts
+        case r of
+          Left ds -> assertFailure (show ds)
+          Right layout -> pure (geom, layout, hiddenFolios inp geom layout)
+      (_, Left ds) -> assertFailure (show ds)
+      (Nothing, _) -> assertFailure "no book"
+
+-- | The hidden folio tests (ADR 0021).
+hiddenFolioTests :: [TestTree]
+hiddenFolioTests =
+  [ testCase "with crop marks, only the blank page has one" $ do
+      (_, _, hf) <- layoutHidden (Just P.Western) miniManifest headsStyle [("a.gm", twoChapters)]
+      Map.keys hf @?= [4],
+    testCase "without crop marks, none" $ do
+      (_, _, hf) <- layoutHidden Nothing miniManifest headsStyle [("a.gm", twoChapters)]
+      hf @?= Map.empty,
+    testCase "enabled = false, none even with crop marks" $ do
+      (_, _, hf) <- layoutHidden (Just P.Western) miniManifest (headsStyle <> "\n[hidden-folio]\nenabled = false\n") [("a.gm", twoChapters)]
+      hf @?= Map.empty,
+    testCase "pages = \"all\": every page" $ do
+      (_, _, hf) <- layoutHidden (Just P.Western) miniManifest (headsStyle <> allPages) [("a.gm", twoChapters)]
+      Map.keys hf @?= [1 .. 6],
+    testCase "without master pages, every page; and a page whose master page has no folio" $ do
+      (_, layout, hf) <- layoutHidden (Just P.Western) miniManifest shortGrid [("a.gm", twoChapters)]
+      Map.keys hf @?= nub (map poNumber (plPages layout))
+      let manifest = BS.concat ["chapters = [{ file = \"front.gm\", master = \"front\" }, \"a.gm\"]\n", BS.drop (BS.length "chapters = [\"a.gm\"]\n") miniManifest]
+          style =
+            BS.concat
+              [ shortGrid,
+                "[masters.front]\nrunning-head = { position = \"top-outside\", content = \"title\" }\n\n",
+                "[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
+              ]
+      (_, _, hf') <- layoutHidden (Just P.Western) manifest style [("front.gm", lines' 5 <> "\n"), ("a.gm", lines' 5 <> "\n")]
+      Map.keys hf' @?= [1],
+    testCase "the column is on the gutter side: left binding, then right binding" $ do
+      (geom, _, hf) <- layoutHidden (Just P.Western) miniManifest (shortGrid <> allPages) [("a.gm", twoChapters)]
+      let (pw, _) = pgPageSize geom
+          xs m n = nub [x | (_, (x, _)) <- Map.findWithDefault [] n m]
+      xs hf 1 @?= [mm15]
+      xs hf 2 @?= [pw - mm15]
+      (_, _, hr) <- layoutHidden (Just P.Western) miniManifest (replaceIn "binding = \"left\"" "binding = \"right\"" shortGrid <> allPages) [("a.gm", twoChapters)]
+      xs hr 1 @?= [pw - mm15]
+      xs hr 2 @?= [mm15],
+    testCase "page 123: three digits from top to bottom, centred on the height of the page" $ do
+      let oneLine = replaceIn "lines = 30\n" "lines = 1\n" horizontalStyle <> allPages
+      (geom, _, hf) <- layoutHidden (Just P.Western) miniManifest oneLine [("a.gm", lines' 130 <> "\n")]
+      let (_, ph) = pgPageSize geom
+          size = 6 * pt
+          h2 = ph `div` 2
+      Map.lookup 123 hf @?= Just [('1', (mm15, h2 + size)), ('2', (mm15, h2)), ('3', (mm15, h2 - size))],
+    testCase "the folios do not move page breaks" $ do
+      (_, a, _) <- layoutHidden Nothing miniManifest (headsStyle <> allPages) [("a.gm", twoChapters)]
+      (_, b, hf) <- layoutHidden (Just P.Western) miniManifest (headsStyle <> allPages) [("a.gm", twoChapters)]
+      assertBool "folios" (not (Map.null hf))
+      plPages a @?= plPages b,
+    testCase "bleed and marks: placed against the trimmed page, moved with it in the content" $ do
+      pdf <- marksPdf (\o -> o {optMarks = JapaneseMarks}) (bleedStyle <> allPages)
+      (w, h) <- a5Size
+      let m = TE.encodeUtf8 (spToPt (P.shOrigin (P.sheet (Just P.Japanese) 557314 (w, h))))
+      streams <- inflateAll pdf
+      let pageStreams = [st | st <- streams, "Tj" `BS.isInfixOf` st]
+      assertBool "a page" (not (null pageStreams))
+      assertBool "moved" (all (("q 1 0 0 1 " <> m <> " " <> m <> " cm") `BS.isPrefixOf`) pageStreams)
+      -- '1' in 6pt, half an em wide in the fake font, centred on the line 1.5mm from the gutter
+      [(dX d, dY d) | d <- drawnGlyphs (BS.concat pageStreams), dGlyph d == fromEnum '1', dSize d == "6"]
+        @?= [(TE.encodeUtf8 (spToPt (mm15 - 3 * pt `div` 2)), TE.encodeUtf8 (spToPt (h `div` 2 + 3 * pt - round (toRational (6 * pt) * baselineRatio))))],
+    testCase "drawn after the figures of the page" $ do
+      img <- tinyImage
+      b <- buildMarksFilesWith "@figure images/tiny.jpg alt=\"t\"\n  キャプション。\n" (\o -> o {optMarks = WesternMarks}) (Just (withBodyFont (figStyle horizontalStyle <> allPages))) (bodyFontFiles horizontalStyle <> img)
+      assertEqual "no errors" [] (map diagCode (bErrors b))
+      pdf <- maybe (assertFailure "no PDF") pure (bPdf b)
+      content <- BS.concat <$> inflateAll pdf
+      let after = snd (BS.breakSubstring " Do" content)
+      assertBool "a figure" (not (BS.null after))
+      assertBool "the folio after it" ("<0031> Tj" `BS.isInfixOf` after),
+    testCase "golem check reports G0750 only with crop marks" $ do
+      let narrow = replaceIn "gutter = \"20mm\"" "gutter = \"1mm\"" horizontalStyle
+      b <- buildMarks (\o -> o {optMarks = WesternMarks, optTargets = Nothing, optCheckOnly = True}) (Just narrow)
+      map diagCode (bErrors b) @?= [DiagnosticCode "G0750"]
+      n <- buildMarks (\o -> o {optTargets = Nothing, optCheckOnly = True}) (Just narrow)
+      map diagCode (bErrors n) @?= [],
+    testCase "with marks, parallel and sequential builds agree" $ do
+      a <- marksPdf (\o -> o {optMarks = JapaneseMarks}) (bleedStyle <> allPages)
+      b <- marksPdf (\o -> o {optMarks = JapaneseMarks, optParallel = False}) (bleedStyle <> allPages)
+      a @?= b
+  ]
+  where
+    allPages = "\n[hidden-folio]\npages = \"all\"\n"
+    -- 1.5mm
+    mm15 = 278657
+    lines' n = T.replicate (12 * n) "あ"
+    -- pages 1 to 3, a blank page 4, pages 5 and 6
+    twoChapters = T.intercalate "\n\n" ["# 海", lines' 5, lines' 6, lines' 6, "# 山", lines' 5, lines' 6] <> "\n"
+    shortGrid = replaceIn "lines = 30\n" "lines = 6\n" horizontalStyle <> "\n"
+    headsStyle =
+      BS.concat
+        [ shortGrid,
+          "[headings.1]\npage-break = \"recto\"\n\n",
+          "[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
+        ]
+
 -- | A4, horizontal, narrow lines: words must be hyphenated.
 horizontalStyle :: BS.ByteString
 horizontalStyle =
@@ -1457,7 +1575,7 @@ pdfIds pdf =
 -- | The trimmed size of the A5 page of horizontalStyle.
 a5Size :: IO (Integer, Integer)
 a5Size = case parseStyle (FileId 0) (TE.decodeUtf8 horizontalStyle) of
-  Right s -> either (assertFailure . show) (pure . pgPageSize) (pageGeometry (FileId 0) s)
+  Right s -> either (assertFailure . show) (pure . pgPageSize) (pageGeometry (FileId 0) False s)
   Left ds -> assertFailure (show ds)
 
 -- | How many times a needle occurs.
@@ -1834,7 +1952,7 @@ layoutMini style source files = withSystemTempDirectory "golem-layout" $ \tmp ->
   ev <- evaluateProject Dev tmp
   case ev of
     Left f -> pure (Left (pfDiagnostics f))
-    Right e -> case (evBook e, pageGeometry (FileId 0) (evStyle e)) of
+    Right e -> case (evBook e, pageGeometry (FileId 0) False (evStyle e)) of
       _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> pure (Left errs)
       (Just book, Right geom) -> fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e)) geom fakeFonts
       (_, Left ds) -> pure (Left ds)
@@ -1855,7 +1973,7 @@ layoutHeads manifest style sources = withSystemTempDirectory "golem-heads" $ \tm
   ev <- evaluateProject Dev tmp
   case ev of
     Left f -> assertFailure (show (pfDiagnostics f))
-    Right e -> case (evBook e, pageGeometry (FileId 0) (evStyle e)) of
+    Right e -> case (evBook e, pageGeometry (FileId 0) False (evStyle e)) of
       _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> assertFailure (show errs)
       (Just book, Right geom) -> do
         let inp = PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e)
@@ -2254,7 +2372,7 @@ sidenoteTests =
       either (map diagCode) (const []) d @?= [DiagnosticCode "G0735"],
     testCase "sidenote text is drawn in the sidenote column at its size" $ do
       content <- miniPdf fakeProvider True sidenoteStyle "本文[sidenote: 注]。\n" [] >>= fmap BS.concat . inflateAll
-      geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 sidenoteStyle) >>= pageGeometry (FileId 0))
+      geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 sidenoteStyle) >>= pageGeometry (FileId 0) False)
       area <- maybe (assertFailure "no column") pure (sidenoteAreaFor geom 1)
       let small = [d | d <- drawnGlyphs content, dSize d == "8"]
       assertBool "8pt glyphs" (not (null small))
@@ -2558,7 +2676,7 @@ tocTests =
       let source = "@toc depth=2\n\n# 一\n\n## 節\n\n本文。\n\n# 二\n\n本文。\n"
           style = horizontalStyle <> "\n[headings.1]\nnumber = \"{n:kanji}\"\n\n[headings.2]\nnumber = \"{n:kanji}\"\n"
       content <- miniPdf fakeProvider True style source [] >>= fmap BS.concat . inflateAll
-      geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 style) >>= pageGeometry (FileId 0))
+      geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 style) >>= pageGeometry (FileId 0) False)
       let ta = typeAreaFor geom 1
           ones = [d | d <- drawnGlyphs content, dGlyph d == fromEnum '1']
       length ones @?= 3
@@ -2598,7 +2716,7 @@ rubyTests =
           expected a =
             let style = RubyStyle a a a 0 True
              in [rpReading (placeRuby style GroupRuby (replicate 3 (10 * pt)) (replicate 4 (5 * pt)) (0, 0))]
-      geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 horizontalStyle) >>= pageGeometry (FileId 0))
+      geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 horizontalStyle) >>= pageGeometry (FileId 0) False)
       let ta = typeAreaFor geom 1
           xsOf ps = [TE.encodeUtf8 (spToPt (rectX ta + p)) | p <- ps]
       spaced <- drawnAt "1:2:1"
@@ -2609,7 +2727,7 @@ rubyTests =
     testCase "a ruby at the line start does not stick out of the type area" $ do
       let source = T.replicate 12 "あ" <> "[ruby: 字|あいう]の" <> T.replicate 6 "あ" <> "\n"
       content <- miniPdf fakeProvider True horizontalStyle source [] >>= fmap BS.concat . inflateAll
-      geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 horizontalStyle) >>= pageGeometry (FileId 0))
+      geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 horizontalStyle) >>= pageGeometry (FileId 0) False)
       let left = read (T.unpack (spToPt (rectX (typeAreaFor geom 1)))) :: Double
           xs = glyphXs "5" content
       assertBool (show (left, xs)) (not (null xs) && all (>= left - 0.001) xs)

@@ -47,6 +47,8 @@ module Golem.Driver.Pdf
     headingsOnPages,
     runningHeadText,
     runningHeads,
+    hiddenFolios,
+    drawsFolio,
     figureRect,
     renderPdf,
     flowLines,
@@ -93,7 +95,7 @@ import Golem.Layout.Ruby qualified as R
 import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
 import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutTable)
 import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
-import Golem.LayoutSpec (Anchor (..), MasterGeometry (..), PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, sidenoteAreaFor, typeAreaFor)
+import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, gutterSide, pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Pdf qualified as P
 import Golem.Project
@@ -552,8 +554,8 @@ data Built = Built
 0016): the page geometry (G0701) and the indent of each paragraph style
 (G0725), at the top of @fid@. The driver reports them for golem check too.
 -}
-styleLayoutDiagnostics :: FileId -> Style -> [LocalStyles] -> [Diagnostic]
-styleLayoutDiagnostics fid style locals = either id (\geom -> indentDiagnostics fid style locals geom <> indexDiagnostics fid style geom <> codeMeasureDiagnostics fid style locals geom) (pageGeometry fid style)
+styleLayoutDiagnostics :: FileId -> Bool -> Style -> [LocalStyles] -> [Diagnostic]
+styleLayoutDiagnostics fid marks style locals = either id (\geom -> indentDiagnostics fid style locals geom <> indexDiagnostics fid style geom <> codeMeasureDiagnostics fid style locals geom) (pageGeometry fid marks style)
 
 {- | G0743 (golem-driver ADR 0017): the measure of a column less the padding
 on both sides leaves 8 characters of code, in style.toml and in the style
@@ -637,7 +639,7 @@ indentDiagnostics fid style locals geom =
 -- | The page geometry, when style.toml passes 'styleLayoutDiagnostics'.
 checkedGeometry :: PdfInput -> Either [Diagnostic] PageGeometry
 checkedGeometry inp = do
-  geom <- pageGeometry (piStyleFile inp) (piStyle inp)
+  geom <- pageGeometry (piStyleFile inp) (isJust (piMarks inp)) (piStyle inp)
   case indentDiagnostics (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp)) geom <> indexDiagnostics (piStyleFile inp) (piStyle inp) geom <> codeMeasureDiagnostics (piStyleFile inp) (piStyle inp) (Map.elems (piLocalStyles inp)) geom of
     [] -> Right geom
     ds -> Left ds
@@ -799,6 +801,41 @@ runningHeads inp geom layout =
             (co, ce, _, _) <- m >>= mgRunningHead
             runningHeadText title (if odd (poNumber p) then co else ce) st (startedOn p)
    in Map.fromList [(poNumber p, one p st m) | (p, st, m) <- zip3 pages starts (pageMasters inp geom layout)]
+
+{- | Whether a page gets its folio (golem-driver ADR 0021): not a blank
+page, and its master page has a folio. 'masterMarks' and 'hiddenFolios'
+share it.
+-}
+drawsFolio :: Bool -> Maybe MasterGeometry -> Bool
+drawsFolio blank master = not blank && isJust (master >>= mgFolio)
+
+{- | The hidden folios of each page by its number (golem-driver ADR 0021):
+each digit of the page number and the centre of its advance box, in the
+trimmed page. Only with crop marks and when enabled; on the pages without
+a folio, or on every page. The digits run from top to bottom one size
+apart, on the line @gutter@ from the trim line of the gutter, and the
+column is centred on the height of the page.
+-}
+hiddenFolios :: PdfInput -> PageGeometry -> PdfLayout -> Map Int [(Char, (Sp, Sp))]
+hiddenFolios inp geom layout = case (piMarks inp, pgHiddenFolio geom) of
+  (Just _, Just hg) ->
+    Map.fromList
+      [ (n, column hg n)
+      | (p : _, m) <- zip (pagesOf (plPages layout)) (pageMasters inp geom layout),
+        let n = poNumber p,
+        hgAll hg || not (drawsFolio (poBlank p) m)
+      ]
+  _ -> Map.empty
+  where
+    (pw, ph) = pgPageSize geom
+    column hg n =
+      let size = hgSize hg
+          digits = show n
+          k = length digits
+          x = case gutterSide (pgBindingRight geom) n of
+            SideLeft -> hgGutter hg
+            SideRight -> pw - hgGutter hg
+       in [(c, (x, ph `div` 2 + (toInteger (k - 1 - 2 * i) * size) `div` 2)) | (i, c) <- zip [0 ..] digits]
 
 -- | How the last line of a table of contents entry ends (golem-driver ADR 0009).
 data TocGeometry = TocGeometry
@@ -2036,7 +2073,9 @@ writeDocument inp geom fonts layout intent =
         (p : _) ->
           let n = poNumber p
               columns = map drawColumn ps
-              masterParts = if poBlank p then [] else masterMarks n master (join (Map.lookup n heads))
+              masterParts = masterMarks n (poBlank p) master (join (Map.lookup n heads))
+              -- the hidden folio, after everything else of the page (golem-driver ADR 0021)
+              hiddenParts = hiddenMarks n
               -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
               sidenoteParts =
                 [ drawLineAt (rectX area, rectY area + rectH area - (psTop ps' + toInteger j * snPitch + round (toRational snSize' * baselineRatio))) (SetLine l snSize' 0 [] [])
@@ -2046,7 +2085,7 @@ writeDocument inp geom fonts layout intent =
                   (j, l) <- zip [0 :: Int ..] (psLines ps')
                 ]
               allParts = concat [t | (t, _, _, _) <- columns] <> sidenoteParts <> masterParts
-           in (concat [b | (_, _, _, b) <- columns] <> concatMap fst allParts <> concat [f | (_, f, _, _) <- columns] <> concat [r | (_, _, r, _) <- columns], concatMap snd allParts)
+           in (concat [b | (_, _, _, b) <- columns] <> concatMap fst allParts <> concat [f | (_, f, _, _) <- columns] <> concat [r | (_, _, r, _) <- columns] <> concatMap fst hiddenParts, concatMap snd (allParts <> hiddenParts))
       -- the rules of a table on a page, centred in the space between grid lines (golem-driver ADR 0008)
       tableRules ta seg w =
         let p = pgLinePitch geom
@@ -2091,13 +2130,23 @@ writeDocument inp geom fonts layout intent =
       captionIndent ta pf
         | pfWrap pf == Just WrapEnd = (if vertical then rectH ta else rectW ta) - pfAlong pf
         | otherwise = 0
-      masterMarks n master heading = case master of
+      -- each digit of a hidden folio, its advance centred on its point (golem-driver ADR 0021)
+      hidden = hiddenFolios inp geom layout
+      hiddenMarks n =
+        [ runAt (plainLook body size) False False 0 (cx - w `div` 2, cy + size `div` 2 - round (toRational size * baselineRatio)) txt
+        | Just hg <- [pgHiddenFolio geom],
+          let size = hgSize hg,
+          (c, (cx, cy)) <- Map.findWithDefault [] n hidden,
+          let txt = T.singleton c
+              w = sum [toSp size (shAdvance g) | g <- lfShape fonts (Shaping body False []) txt]
+        ]
+      masterMarks n blank master heading = case master of
         Nothing -> []
         Just m ->
           let pick a1 a2 = if odd n then a1 else a2
               size = pgFontSize geom
-              folio = [textAt (pick a1 a2) size (formatNumber fmt [toInteger n] Nothing) | Just (fmt, a1, a2) <- [mgFolio m]]
-              runningHead = [textAt (pick a1 a2) size h | Just (_, _, a1, a2) <- [mgRunningHead m], Just h <- [heading]]
+              folio = [textAt (pick a1 a2) size (formatNumber fmt [toInteger n] Nothing) | drawsFolio blank master, Just (fmt, a1, a2) <- [mgFolio m]]
+              runningHead = [textAt (pick a1 a2) size h | not blank, Just (_, _, a1, a2) <- [mgRunningHead m], Just h <- [heading]]
            in runningHead <> folio
       -- the columns of a page come together from 'paginate' (docs/adr ADR 0018)
       drawn = zipWith drawPage (pagesOf (plPages layout)) masters
