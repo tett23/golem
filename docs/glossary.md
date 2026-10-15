@@ -59,7 +59,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **和欧間**：和文と欧文の文字が隣り合う位置。既定では四分の空きを置き、量はアキ量のセットで変えられる（[docs/adr/0019](adr/0019-aki-settings.md)）。
 - **アキ**と**アキ量のセット**：文字と文字の間の空きと、その量を文字のクラスの組ごとに最小、最適、最大で決めた設定。InDesign の文字組みアキ量設定に当たる。`style.toml` の `[aki-sets.<名前>]` で定義し、段落スタイルの `aki-set` で選ぶ。組み込みのセットは `gyomatsu-yakumono-hankaku`（行末約物半角、既定）と `gyomatsu-yakumono-zenkaku`（行末約物全角）である。量は全角、二分、四分、五分などの名前、`zw`、百分率で書く。原稿の任意の位置には `[aki 五分]` のように固定の空きを置ける（[docs/adr/0019](adr/0019-aki-settings.md)）。
 - **ぶら下げ組**：行末の句読点を版面の外に出すことを許す組み方。
-- **カーニング**：隣り合う二字のあいだの空きを、字の組ごとに詰めたり広げたりすること。Golem はフォントの持つペアカーニングの情報を使う方式（メトリクス）を既定とし、欧文だけにかける方式（和文等幅、`japanese-equal-width`）と、かけない方式（`none`）を文字スタイルと段落スタイルの `kerning` で選べる。和文のペアカーニングは約物を含む組にはかけない（[docs/adr/0020](adr/0020-indesign-character-features.md)）。
+- **カーニング**：隣り合う二字のあいだの空きを、字の組ごとに詰めたり広げたりすること。Golem はフォントの持つペアカーニングの情報を使う方式（メトリクス）を既定とし、欧文だけにかける方式（和文等幅、`japanese-equal-width`）と、かけない方式（`none`）を文字スタイルと段落スタイルの `kerning` で選べる。和文のペアカーニングは約物を含む組にはかけない（[docs/adr/0020](adr/0020-indesign-character-features.md)）。分離禁止文字（二倍ダッシュの `—`、三点リーダーの `…` など）を含む組にもかけない（[golem-driver ADR 0020](golem-driver/adr/0020-glyph-positioning-and-dash-kerning.md)）。
 - **トラッキング**：文字ごとに一定の空きを足して、字間をそろえて広げたり詰めたりすること。文字スタイルと段落スタイルの `tracking` で、文字の大きさの 1/1000 を単位に指定する。PDF では行の最後の文字の後ろには足さない（[docs/adr/0020](adr/0020-indesign-character-features.md)）。
 - **プロポーショナルメトリクス**：和文の字を、全角の送りではなく字面に合わせた送りで組むこと。OpenType の `palt`（縦組みでは `vpal`）を使い、文字スタイルと段落スタイルの `proportional-metrics` で指定する（[docs/adr/0020](adr/0020-indesign-character-features.md)）。
 - **ベースラインシフト**：文字を、行分割と行送りを変えずに、横組みでは上へ、縦組みでは右へずらすこと。文字スタイルと段落スタイルの `baseline-shift` で指定する（[docs/adr/0020](adr/0020-indesign-character-features.md)）。
