@@ -2841,7 +2841,7 @@ fakeFonts =
       lfCode = \_ g -> g,
       lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i (0, 0) | (i, c) <- zip [0 ..] (T.unpack t)],
       lfEmBoxCentral = const (38 / 100),
-      lfInkBox = \_ _ -> Just (1 / 10, -1 / 10, 9 / 10, 8 / 10),
+      lfInkBox = \_ _ -> Just (1 / 10, -(1 / 10), 9 / 10, 8 / 10),
       lfEmbed = \_ vertical used ->
         Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used ("Adobe", "Identity", 0)
     }
@@ -3042,7 +3042,7 @@ kentenTests =
   [ testCase "the ink box of a glyph in em" $ do
       fonts <- notoFonts
       (kan, _) <- notoGlyph fonts False '漢'
-      lfInkBox fonts 0 kan @?= Just (36 / 1000, -78 / 1000, 974 / 1000, 836 / 1000),
+      lfInkBox fonts 0 kan @?= Just (36 / 1000, -(78 / 1000), 974 / 1000, 836 / 1000),
     testCase "horizontal: the sesame dot, half the size, centred above the em box" $ do
       fonts <- notoFonts
       (_, kan) <- notoGlyph fonts False '漢'
