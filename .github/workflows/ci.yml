@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
       - name: Tests of the CI scripts (docs/adr/0009)
         run: sh scripts/ci/test.sh
-      - name: Tests of the scripts of the manual (docs/adr/0022)
+      - name: Tests of the scripts of the manuals (docs/adr/0022, docs/adr/0024)
         run: sh scripts/manual/test.sh
       - name: The documents that the build reads are listed (docs/adr/0021)
         run: sh scripts/ci/docs-refs.sh
@@ -154,17 +154,17 @@ jobs:
         run: |
           scripts/gen-parser.sh
           git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs
-      # the manual: its two sources have the same headings, and manual/
-      # builds without a single diagnostic; the determinism step below
-      # builds it again and lists its hashes (docs/adr/0022)
-      - name: The headings of docs/manual.md and manual/ match (docs/adr/0022)
-        run: sh scripts/manual/check-headings.sh
-      - name: Cache the fonts of the manual (docs/adr/0022)
+      # the two manuals build without a single diagnostic, notices
+      # included; the determinism step below builds them again and lists
+      # their hashes (docs/adr/0022, docs/adr/0024)
+      - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
         uses: actions/cache@v6
         with:
-          path: manual/fonts
+          path: |
+            manual/fonts
+            manual-dev/fonts
           key: manual-fonts-${{ hashFiles('scripts/manual/fetch-fonts.sh') }}
-      - name: The manual builds without diagnostics (docs/adr/0022)
+      - name: The manuals build without diagnostics (docs/adr/0022, docs/adr/0024)
         run: GOLEM="$(cabal list-bin -v0 golem)" sh scripts/manual/build.sh
       # the EPUB of aarch64 is the same, by the determinism job
       - name: The EPUB passes epubcheck
@@ -179,9 +179,9 @@ jobs:
         with:
           name: determinism-${{ matrix.runner }}
           path: determinism-${{ matrix.runner }}.txt
-      # the PDF and the HTML of the manual; those of aarch64 are the same,
-      # by the determinism job (docs/adr/0022)
-      - name: The manual (docs/adr/0022)
+      # the PDF and the HTML of the manuals; those of aarch64 are the same,
+      # by the determinism job (docs/adr/0022, docs/adr/0024)
+      - name: The user manual (docs/adr/0022)
         if: matrix.runner == 'ubuntu-24.04'
         uses: actions/upload-artifact@v7
         with:
@@ -189,6 +189,14 @@ jobs:
           path: |
             manual/build/pdf
             manual/build/html
+      - name: The developer manual (docs/adr/0024)
+        if: matrix.runner == 'ubuntu-24.04'
+        uses: actions/upload-artifact@v7
+        with:
+          name: manual-dev
+          path: |
+            manual-dev/build/pdf
+            manual-dev/build/html
       # pushes to main only: a pull request's cache would serve that pull
       # request alone, under a key that changes with every commit
       - name: Save dist-newstyle (docs/adr/0009)

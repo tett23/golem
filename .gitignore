@@ -6,3 +6,7 @@ cabal.project.local
 /dist/
 /manual/fonts/
 /manual/build/
+/manual-dev/fonts/
+/manual-dev/build/
+/manual/common/build-info.gm
+/manual-dev/common/build-info.gm

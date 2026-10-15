@@ -1,9 +1,10 @@
 #!/bin/sh
 # Builds the fixed inputs and prints the SHA-256 of every output file.
 # CI runs this on x86-64 and aarch64 and compares the lists
-# (docs/adr/0001, docs/adr/0002, golem-eval ADR 0001). The manual is one of
-# the inputs: it is built with its fonts, which are fetched once, and left in
-# manual/build for CI to upload (docs/adr/0022).
+# (docs/adr/0001, docs/adr/0002, golem-eval ADR 0001). The two manuals are
+# inputs too: they are built with their fonts, which are fetched once, and
+# left in manual/build and manual-dev/build for CI to upload
+# (docs/adr/0022, docs/adr/0024).
 set -eu
 if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum -a 256"; fi
 GOLEM=${GOLEM:-golem}
@@ -27,8 +28,10 @@ cp "$ROOT/scripts/determinism/pdf-style.toml" "$WORK/pdf/style.toml"
 (cd "$WORK/pdf" && find build -type f | LC_ALL=C sort | while read -r f; do
   printf '%s  %s\n' "$($SHA "$f" | cut -d' ' -f1)" "pdf/$f"
 done)
-# the manual (docs/adr/0022)
-GOLEM=$GOLEM sh "$ROOT/scripts/manual/build.sh"
-(cd "$ROOT/manual" && find build -type f | LC_ALL=C sort | while read -r f; do
-  printf '%s  %s\n' "$($SHA "$f" | cut -d' ' -f1)" "manual/$f"
-done)
+# the manuals (docs/adr/0022, docs/adr/0024)
+GOLEM=$GOLEM sh "$ROOT/scripts/manual/build.sh" manual manual-dev
+for manual in manual manual-dev; do
+  (cd "$ROOT/$manual" && find build -type f | LC_ALL=C sort | while read -r f; do
+    printf '%s  %s\n' "$($SHA "$f" | cut -d' ' -f1)" "$manual/$f"
+  done)
+done

@@ -73,7 +73,13 @@ expect "needs-build: no newline at the end" 0 false
 
 paths "a document that the tests read" true docs/diagnostics.md
 paths "it with another document" true docs/diagnostics.md docs/specifications.md
-paths "the source of the manual (docs/adr/0022)" true docs/manual.md
+paths "the policy of the manuals (docs/adr/0024)" false docs/manual-policy.md
+paths "the developer manual (docs/adr/0024)" true manual-dev/style.toml
+
+needs_build_list() { sh "$HERE/needs-build.sh" --list; }
+: >"$WORK/in"
+run needs_build_list
+expect "needs-build: the documents that the build reads (docs/adr/0024)" 0 "docs/diagnostics.md"
 
 # ---------------------------------------------------------------- changed-paths.sh
 # (docs/adr/0021-docs-workflow-and-ci-gate.md)

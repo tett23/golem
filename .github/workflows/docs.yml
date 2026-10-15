@@ -37,9 +37,9 @@ jobs:
           base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           head: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
-  # A pull request that changes the specification updates the manual too,
-  # or says that it does not need to with the trailer "Manual: unchanged"
-  # (docs/adr/0022-manual-as-typesetting-sample.md)
+  # A pull request that changes the specification or CONTRIBUTING updates a
+  # manual too, or says that it does not need to with the trailer
+  # "Manual: unchanged" (docs/adr/0024-manual-audiences-and-policy.md)
   manual:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04

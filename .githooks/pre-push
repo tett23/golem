@@ -1,6 +1,6 @@
 #!/bin/sh
-# A change of the specification on a branch must update the manual too
-# (docs/adr/0022-manual-as-typesetting-sample.md). For each branch that is
+# A change of the specification or of CONTRIBUTING on a branch must update a
+# manual too (docs/adr/0024-manual-audiences-and-policy.md). For each branch that is
 # pushed, it checks the commits from the merge base with origin/main to the
 # pushed tip with scripts/manual/check-updated.sh. Pushes to main and the
 # deletion of a branch are not checked. It does not fetch origin/main: if it
