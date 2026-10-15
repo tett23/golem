@@ -239,6 +239,12 @@ lockTests =
             ]
         parseLock (FileId 0) (renderLock lock) @?= Right lock
         listDirectory cache >>= (@?= 2) . length,
+      testCase "an unknown key of plugins.lock is G0611 in Japanese (golem-project ADR 0007)" $
+        case parseLock (FileId 0) "[plugins.a]\nurl = \"https://example.com/a.wasm\"\nsha256 = \"00\"\nsha = \"00\"\n" of
+          Left ds -> do
+            map diagCode ds @?= [DiagnosticCode "G0611"]
+            assertBool (show (map diagMessage ds)) (all (("知らないキーです: " `T.isPrefixOf`) . diagMessage) ds)
+          Right m -> assertFailure (show m),
       testCase "a plugin removed from the manifest leaves the lock" $ withSystemTempDirectory "cache" $ \cache -> do
         files <- newIORef (Map.fromList [(urlA, "AAA"), (urlB, "BBB")])
         hits <- newIORef 0

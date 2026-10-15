@@ -23,6 +23,7 @@ import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
+import TomlMessageSpec qualified
 
 main :: IO ()
 main = defaultMain tests
@@ -190,6 +191,69 @@ runningHeadTests =
 msgs :: Either [Diagnostic] a -> [Text]
 msgs = either (map diagMessage) (const [])
 
+-- | The 1-based line of the start of a diagnostic in a source.
+lineOf :: Text -> Diagnostic -> Int
+lineOf src d = T.count "\n" (T.take (spanStart (diagSpan d)) src) + 1
+
+-- | The messages of the TOML files in Japanese (golem-project ADR 0007).
+tomlMessageTests :: TestTree
+tomlMessageTests =
+  testGroup
+    "TOML messages in Japanese (golem-project ADR 0007)"
+    [ testCase "an unknown key of style.toml names the full path at its line" $ do
+        let src = "[page]\nsize = \"A6\"\nbindng = \"left\"\n"
+        case parseStyle (FileId 0) src of
+          Left [d] -> do
+            diagCode d @?= DiagnosticCode "G0306"
+            diagMessage d @?= "知らないキーです: page.bindng"
+            lineOf src d @?= 3
+          r -> assertFailure (show r),
+      testCase "a missing table of manifest.toml" $
+        withProject [("manifest.toml", "chapters = [\"a.gm\"]\n\n[targets.html]\n"), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0301"]
+          msgs r @?= ["必須のキーがありません: metadata"],
+      testCase "a missing key of [metadata]" $
+        withProject [("manifest.toml", T.replace "title = \"テスト\"\n" "" (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          codes r @?= ["G0301"]
+          msgs r @?= ["必須のキーがありません: metadata.title"],
+      -- the ADR's example is bleed = 3, but a dimension says 長さは文字列で書きます
+      -- by Golem's own fail (ADR 0006); binding is read by toml-parser's FromValue
+      testCase "a value of the wrong type" $
+        msgs (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbinding = 3\n") @?= ["page.binding には文字列を書きます（整数が書かれています）"],
+      testCase "a page size that is neither a name nor a table" $ do
+        let r = parseStyle (FileId 0) "[page]\nsize = 3\n"
+        assertBool (show (msgs r)) (not (null (msgs r)) && all ("判型の名前か { width = ..., height = ... } を書きます" `T.isPrefixOf`) (msgs r)),
+      testCase "a chapter that is not a path names chapters[0]" $
+        withProject [("manifest.toml", T.replace "chapters = [\"a.gm\"]" "chapters = [3]" (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> do
+          r <- loadProject root
+          assertBool (show (msgs r)) (not (null (msgs r)) && all ("chapters[0]" `T.isInfixOf`) (msgs r)),
+      testCase "a table written twice is at the second table" $ do
+        let src = "[page]\nsize = \"A6\"\n\n[page]\nbleed = \"3mm\"\n"
+        case parseStyle (FileId 0) src of
+          Left [d] -> do
+            diagCode d @?= DiagnosticCode "G0306"
+            diagMessage d @?= "TOML の誤りです: 閉じた表にキーを足しています: page"
+            lineOf src d @?= 4
+          r -> assertFailure (show r),
+      -- toml-parser reports a string that runs into a newline as the end of the
+      -- line; a string that runs into the end of the file is unterminated
+      testCase "an unterminated string is at its line" $ do
+        let src = "[page]\nsize = \"A6\"\n\n[x]\ntitle = \"abc"
+        case parseStyle (FileId 0) src of
+          Left [d] -> do
+            diagMessage d @?= "TOML の誤りです: 文字列が閉じていません"
+            lineOf src d @?= 5
+          r -> assertFailure (show r),
+      testCase "a line that ends after =" $ do
+        let ms = msgs (parseStyle (FileId 0) "[x]\ntitle = \n")
+        assertBool (show ms) (not (null ms) && all (\m -> "TOML の誤りです: " `T.isPrefixOf` m && "行末" `T.isInfixOf` m) ms),
+      testCase "a leading zero" $ do
+        let ms = msgs (parseStyle (FileId 0) "n = 012\n")
+        assertBool (show ms) (not (null ms) && all ("整数の先頭に 0 は書けません" `T.isInfixOf`) ms)
+    ]
+
 -- | The diagnostics of the project stage (ADR 0006).
 diagnosticCodeTests :: TestTree
 diagnosticCodeTests =
@@ -238,13 +302,13 @@ diagnosticCodeTests =
         withProject [("manifest.toml", "chapters = [\"a.gm\"]\n\n[targets.html]\n"), ("a.gm", "")] $ \root -> do
           r <- loadProject root
           codes r @?= ["G0301"]
-          assertBool (show (msgs r)) (any ("missing key: metadata" `T.isSuffixOf`) (msgs r))
+          assertBool (show (msgs r)) (any ("必須のキーがありません: metadata" `T.isSuffixOf`) (msgs r))
           assertBool (show (msgs r)) (not (any ("()" `T.isInfixOf`) (msgs r))),
       testCase "a chapter that is not a path, table or array" $
         withProject [("manifest.toml", T.replace "chapters = [\"a.gm\"]" "chapters = [1]" (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> do
           r <- loadProject root
           codes r @?= ["G0301"]
-          msgs r @?= ["章は、ファイルのパス、表、配列のどれかで書きます (.chapters[0])"],
+          msgs r @?= ["章は、ファイルのパス、表、配列のどれかで書きます (chapters[0])"],
       testCase "a malformed @import is G0309" $
         mapM_
           ( \src -> withProject [("manifest.toml", manifest ["\"a.gm\""]), ("a.gm", src), ("x.gm", "")] $ \root -> do
@@ -278,7 +342,7 @@ diagnosticCodeTests =
         msgs (parseStyle (FileId 0) "[character-styles.Bad]\nsynthetic-bold = true\n") @?= ["スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: Bad"]
         msgs (parseStyle (FileId 0) "[composition]\nexplicit-hyphen-penalty = 10001\n") @?= ["explicit-hyphen-penalty は -9999 から 10000 までです: 10001"]
         -- a negative overhang cannot be written as a dimension, so the check after reading is not reached
-        msgs (parseStyle (FileId 0) "[composition.ruby]\noverhang = \"-1zw\"\n") @?= ["長さの書き方が不正です: -1zw（13Q や 20mm のように書きます） (.composition.ruby.overhang)"]
+        msgs (parseStyle (FileId 0) "[composition.ruby]\noverhang = \"-1zw\"\n") @?= ["長さの書き方が不正です: -1zw（13Q や 20mm のように書きます） (composition.ruby.overhang)"]
         -- an unknown page size is G0317 at the value since golem-project ADR 0005
         let r = parseStyle (FileId 0) "[page]\nsize = \"Z9\"\n"
         codes r @?= ["G0317"]
@@ -368,6 +432,8 @@ tests =
         withProject [("manifest.toml", T.replace "id = " "idd = " (manifest ["\"a.gm\""])), ("a.gm", "")] $ \root -> loadProject root >>= (@?= True) . (not . null) . codes,
       sourceTests,
       diagnosticCodeTests,
+      tomlMessageTests,
+      TomlMessageSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))
