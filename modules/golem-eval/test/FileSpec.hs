@@ -75,6 +75,11 @@ diagsWith c src =
 msgs :: Text -> [(Text, Text)]
 msgs src = [(c, m) | (c, m, _, _) <- diags src]
 
+paraInlines :: BlockBody -> Maybe [Inline]
+paraInlines = \case
+  Paragraph _ is -> Just is
+  _ -> Nothing
+
 stripSpans :: [Inline] -> [Text]
 stripSpans = concatMap go
   where
@@ -234,6 +239,15 @@ styleTests =
         paraOf "[style bold: a]\n" @?= ["<bold>", "a"]
         paraOf "[italic: a]\n" @?= ["<italic>", "a"]
         paraOf "[style italic: a]\n" @?= ["<italic>", "a"],
+      testCase "[code: ...] is [style code: ...] (golem-driver ADR 0017)" $ do
+        let c = ctx {ctxCharStyles = Set.insert "code" (ctxCharStyles ctx)}
+        fst (run c "[code: manifest.toml]\n") @?= [Paragraph Nothing [CharStyle (mkSpan (FileId 1) 0 21) "code" [Text (mkSpan (FileId 1) 7 20) "manifest.toml"]]]
+        map (fmap stripSpans . paraInlines) (fst (run c "[code: manifest.toml]\n")) @?= map (fmap stripSpans . paraInlines) (fst (run c "[style code: manifest.toml]\n")),
+      testCase "@style code is G0266 (golem-driver ADR 0017)" $ do
+        let c = ctx {ctxParaStyles = Map.insert "code" JoinLines (ctxParaStyles ctx)}
+        snd (run c "@style code\nx\n") @?= ["G0266"]
+        snd (run c "@style code\n  x\n") @?= ["G0266"]
+        [m | (code', m, _, _) <- diagsWith c "@style code\nx\n", code' == "G0266"] @?= ["code はコードブロックの段落スタイルです。コードは ``` か @listing で書きます"],
       testCase "the body form" $
         map stripped (body "@style verse\n  A\n  B\n\n  C\n") @?= [(Just "verse", ["A", "<br>", "B"]), (Just "verse", ["C"])],
       testCase "the attribute form" $

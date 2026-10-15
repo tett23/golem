@@ -9,55 +9,55 @@ Golem の組み込みのコマンドでは足りないとき、プラグイン[i
 
 プラグインには二つの種類があります。
 
-- コマンド：[style code: \[furigana: ...\]] のように、原稿から角括弧で呼び出します。組み込みのコマンドと同じように、段落の中に要素を返します。
+- コマンド：[code: \[furigana: ...\]] のように、原稿から角括弧で呼び出します。組み込みのコマンドと同じように、段落の中に要素を返します。
 - フィルタ：原稿のファイル一つ分の中身を受け取り、書き換えて返します。本文の全体を対象にする処理に使います。
 
 プラグインは、どの機械でも同じように動く WebAssembly（wasm）という形式のファイルで配布されます。
 
 ## プラグインを使う
 
-使うプラグインは、[style code: manifest.toml] の [style code: \[plugins.<名前>\]] に、配布物の URL を書いて宣言します。
+使うプラグインは、[code: manifest.toml] の [code: \[plugins.<名前>\]] に、配布物の URL を書いて宣言します。
 
 ```toml
 [plugins.furigana]
-url = "https://example.com/golem-furigana/v1.0.0/furigana.wasm"
+url = "https://example.com/furigana/v1.0.0/furigana.wasm"
 ```
 
 URL は HTTPS に限ります。
 版を固定した URL（リリースごとの配布物の URL など）を書いてください。
 
-宣言したら、[style code: golem plugin lock] を実行します。
+宣言したら、[code: golem plugin lock] を実行します。
 
 ```sh
 golem plugin lock
 ```
 
-このコマンドは、配布物を取得し、その中身から計算した値（ハッシュ）をプロジェクトの [style code: plugins.lock] に書き込みます。
+このコマンドは、配布物を取得し、その中身から計算した値（ハッシュ）をプロジェクトの [code: plugins.lock] に書き込みます。
 ハッシュは、ファイルの中身が一バイトでも変わると変わる値です。
-[style code: plugins.lock] は手で編集せず、原稿と一緒に Git に入れます。
+[code: plugins.lock] は手で編集せず、原稿と一緒に Git に入れます。
 同じ URL の中身が後から差し替えられても、ハッシュが合わなければエラーにして、知らないプラグインを動かさないためです。
 
-取得した配布物は、利用者ごとの置き場所（キャッシュ、[style code: ~/.cache/golem/plugins] など）に置きます。
-[style code: golem build] はキャッシュからだけ読み、ネットワークには接続しません。
-別の機械でプロジェクトを取り出したときは、[style code: golem plugin fetch] で [style code: plugins.lock] のとおりに配布物を取得してから組みます。
+取得した配布物は、利用者ごとの置き場所（キャッシュ、[code: ~/.cache/golem/plugins] など）に置きます。
+[code: golem build] はキャッシュからだけ読み、ネットワークには接続しません。
+別の機械でプロジェクトを取り出したときは、[code: golem plugin fetch] で [code: plugins.lock] のとおりに配布物を取得してから組みます。
 
 ```sh
 golem plugin fetch
 golem build
 ```
 
-プラグインを読み込めないときは、[style code: plugins.lock] やキャッシュの問題を示すエラーだけを出します。
+プラグインを読み込めないときは、[code: plugins.lock] やキャッシュの問題を示すエラーだけを出します。
 そのプラグインのコマンドを使った箇所は、未知のコマンドとして報告しません。
-[style code: plugins.lock] が壊れて読めないときは、[style code: plugins.lock] を消してから [style code: golem plugin lock] を実行し直してください。
+[code: plugins.lock] が壊れて読めないときは、[code: plugins.lock] を消してから [code: golem plugin lock] を実行し直してください。
 
 ## 組み込みのコマンドを置き換える
 
 プラグインは、ルビや強調のような見た目に関わる組み込みのコマンドを置き換えられます。
-置き換えるときは、[style code: overrides] に置き換えるコマンドの名前を書きます。
+置き換えるときは、[code: overrides] に置き換えるコマンドの名前を書きます。
 
 ```toml
 [plugins.furigana]
-url = "https://example.com/golem-furigana/v1.0.0/furigana.wasm"
+url = "https://example.com/furigana/v1.0.0/furigana.wasm"
 overrides = ["ruby"]
 ```
 
@@ -66,7 +66,7 @@ overrides = ["ruby"]
 
 ## フィルタを適用する
 
-フィルタは、[style code: \[\[filters\]\]] で、どのプラグインのどのフィルタを、どのファイルに適用するかを書きます。
+フィルタは、[code: \[\[filters\]\]] で、どのプラグインのどのフィルタを、どのファイルに適用するかを書きます。
 
 ```toml
 [[filters]]
@@ -75,7 +75,7 @@ filter = "total-ruby"
 files = ["chapters/01.gm", "chapters/02.gm"]
 ```
 
-[style code: \[\[filters\]\]] を複数書くと、書いた順に適用します。
+[code: \[\[filters\]\]] を複数書くと、書いた順に適用します。
 
 ## プラグインを安全に動かすしくみ
 

@@ -32,6 +32,8 @@ module Golem.Project.Style
     noParaDef,
     charStyle,
     paraStyle,
+    isCodeCharStyle,
+    codeParaKeys,
     paraLineBreaks,
     validStyleName,
     LocalStyles (..),
@@ -222,7 +224,11 @@ data ParaStyleDef = ParaStyleDef
     psKerning :: !(Maybe Kerning),
     psTracking :: !(Maybe Int),
     psProportional :: !(Maybe Bool),
-    psBaselineShift :: !(Maybe Dim)
+    psBaselineShift :: !(Maybe Dim),
+    {- | the swatch of the background and the padding inside it (golem-driver
+    ADR 0017); v1 sets them only for the paragraph style code
+    -} psBackground :: !(Maybe Text),
+    psPadding :: !(Maybe Dim)
   }
   deriving stock (Eq, Show)
 
@@ -239,7 +245,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020).
 bodyDefaults :: ParaStyleDef
@@ -330,24 +336,41 @@ decimalOf s = case T.splitOn "." s of
   [i, f] | not (T.null i), not (T.null f), T.all isDigit (i <> f) -> Just (read (T.unpack (i <> f)) % (10 ^ T.length f))
   _ -> Nothing
 
--- | The built-in character styles: bold, italic and strong.
+-- | The built-in character styles: bold, italic, strong and code (golem-driver ADR 0017).
 builtinCharStyles :: Map Text CharStyleDef
 builtinCharStyles =
   Map.fromList
     [ ("bold", noCharDef {csSyntheticBold = Just True}),
+      ("code", noCharDef {csFont = Just "code"}),
       ("italic", noCharDef {csSyntheticItalic = Just True}),
       ("strong", noCharDef {csBasedOn = Just "bold"})
     ]
 
--- | The built-in paragraph styles: body, verse, caption and sidenote.
+-- | The built-in paragraph styles: body, verse, caption, sidenote and code (golem-driver ADR 0017).
 builtinParaStyles :: Map Text ParaStyleDef
 builtinParaStyles =
   Map.fromList
     [ ("body", bodyDefaults),
       ("verse", noParaDef {psBasedOn = Just "body", psLineBreaks = Just KeepLines, psSpaceBetween = Just 1, psIndent = Just (Zw 2), psFirstLineIndent = Just (Zw (-2))}),
       ("caption", noParaDef {psBasedOn = Just "body"}),
-      ("sidenote", noParaDef {psBasedOn = Just "body"})
+      ("sidenote", noParaDef {psBasedOn = Just "body"}),
+      ("code", noParaDef {psFont = Just "code", psPadding = Just (Zw (1 % 2))})
     ]
+
+-- | The keys the paragraph style code takes (golem-driver ADR 0017).
+codeParaKeys :: [Text]
+codeParaKeys = ["font", "size", "background", "padding"]
+
+{- | Whether a character style is code or reaches code through based-on
+(golem-driver ADR 0017).
+-}
+isCodeCharStyle :: Style -> Text -> Bool
+isCodeCharStyle style = go []
+  where
+    go seen name
+      | name == "code" = Map.member "code" (stCharStyles style)
+      | name `elem` seen = False
+      | otherwise = maybe False (go (name : seen)) (Map.lookup name (stCharStyles style) >>= csBasedOn)
 
 -- | A user definition over a built-in one: the keys written win.
 overChar :: CharStyleDef -> CharStyleDef -> CharStyleDef
@@ -380,10 +403,14 @@ overPara u b =
     (psTracking u <|> psTracking b)
     (psProportional u <|> psProportional b)
     (psBaselineShift u <|> psBaselineShift b)
+    (psBackground u <|> psBackground b)
+    (psPadding u <|> psPadding b)
 
--- | The parent of a paragraph style: body has none, the others are based on body by default.
+{- | The parent of a paragraph style: body and code have none (golem-driver
+ADR 0017), the others are based on body by default.
+-}
 paraParent :: Text -> ParaStyleDef -> Maybe Text
-paraParent n d = if n == "body" then Nothing else Just (fromMaybe "body" (psBasedOn d))
+paraParent n d = if n `elem` ["body", "code"] then Nothing else Just (fromMaybe "body" (psBasedOn d))
 
 -- | A chain of definitions from a name to its root; stops at a missing name or a cycle.
 chainOf :: (Text -> a -> Maybe Text) -> Map Text a -> Text -> [a]
@@ -822,7 +849,11 @@ instance FromValue ParaStyleDef where
     rs <- optKey "regex-styles"
     aki <- optKey "aki-set"
     (k, t, p, bs) <- featureKeysOf
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs)
+    bg <- optKey "background"
+    pad <- optKey "padding"
+    -- a negative padding is read and reported by the checks (golem-driver ADR 0017)
+    pad' <- traverse (\v -> maybe (fail ("長さの書き方が不正です: " <> T.unpack v <> "（0.5zw や 1mm のように書きます）")) pure (parseSignedDim v)) pad
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad')
 
 instance FromValue RegexStyleDef where
   fromValue = parseTableFromValue (RegexStyleDef <$> reqKey "pattern" <*> reqKey "style")
@@ -1181,6 +1212,7 @@ styleChecks owner s =
   [("G0306", "", m) | m <- numberChecks]
     <> [("G0306", n, "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | n <- Map.keys (stCharStyles s) <> Map.keys (stParaStyles s), not (validStyleName n)]
     <> [("G0306", "", m) | m <- checks]
+    <> [("G0306", n, m) | (n, m) <- codeChecks]
     <> [("G0308", n, "style.toml にないフォントの役割です: " <> r) | (n, r) <- roles, Map.notMember r (stFonts s)]
     <> [("G0313", n, owner <> "スタイルの参照が不正です: " <> m) | (n, m) <- referenceChecks]
     <> [(code, n, m) | (n, ParaStyleDef {psRegexStyles = Just rs}) <- Map.toList (stParaStyles s), (i, r) <- zip [0 ..] rs, (code, m) <- regexStyleErrors owner s n i r]
@@ -1192,11 +1224,43 @@ styleChecks owner s =
     opticals =
       [("文字スタイル", n) | (n, CharStyleDef {csKerning = Just KernOptical}) <- Map.toList (stCharStyles s)]
         <> [("段落スタイル", n) | (n, ParaStyleDef {psKerning = Just KernOptical}) <- Map.toList (stParaStyles s)]
-    -- font roles named outside [fonts] must exist (golem-driver ADR 0003, 0004; docs/adr ADR 0005)
+    {- font roles named outside [fonts] must exist (golem-driver ADR 0003, 0004; docs/adr ADR 0005);
+    the role code of the styles code may be missing: the body role sets code (golem-driver ADR 0017) -}
     roles =
       [("", f) | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings s)]
-        <> [(n, f) | (n, CharStyleDef {csFont = Just f}) <- Map.toList (stCharStyles s)]
-        <> [(n, f) | (n, ParaStyleDef {psFont = Just f}) <- Map.toList (stParaStyles s)]
+        <> [(n, f) | (n, CharStyleDef {csFont = Just f}) <- Map.toList (stCharStyles s), (n, f) /= ("code", "code")]
+        <> [(n, f) | (n, ParaStyleDef {psFont = Just f}) <- Map.toList (stParaStyles s), (n, f) /= ("code", "code")]
+    {- the paragraph style code takes four keys; background and padding are
+    for code only; a padding is not negative (golem-driver ADR 0017) -}
+    codeChecks =
+      [ ("code", "段落スタイル code に書けるキーは " <> T.intercalate "、" codeParaKeys <> " だけです: " <> T.intercalate ", " ks)
+      | Just d <- [Map.lookup "code" (stParaStyles s)],
+        let ks = writtenOtherKeys d,
+        not (null ks)
+      ]
+        <> [ (n, "background と padding は段落スタイル code にだけ書けます: " <> n)
+           | (n, d) <- Map.toList (stParaStyles s),
+             n /= "code",
+             isJust (psBackground d) || isJust (psPadding d)
+           ]
+        <> [("code", "padding は 0 以上の寸法です") | Just ParaStyleDef {psPadding = Just p} <- [Map.lookup "code" (stParaStyles s)], negativeDim p]
+    writtenOtherKeys d =
+      [ k
+      | (k, written) <-
+          [ ("based-on", isJust (psBasedOn d)),
+            ("line-breaks", isJust (psLineBreaks d)),
+            ("space-between", isJust (psSpaceBetween d)),
+            ("indent", isJust (psIndent d)),
+            ("first-line-indent", isJust (psFirstLineIndent d)),
+            ("regex-styles", isJust (psRegexStyles d)),
+            ("aki-set", isJust (psAkiSet d)),
+            ("kerning", isJust (psKerning d)),
+            ("tracking", isJust (psTracking d)),
+            ("proportional-metrics", isJust (psProportional d)),
+            ("baseline-shift", isJust (psBaselineShift d))
+          ],
+        written
+      ]
     -- based-on names an existing style without a cycle; body has none; colours exist (docs/adr ADR 0005)
     referenceChecks =
       let cs = stCharStyles s
@@ -1221,9 +1285,16 @@ styleChecks owner s =
             <> [("body", "段落スタイル body には based-on を書けません") | Just ParaStyleDef {psBasedOn = Just _} <- [Map.lookup "body" ps]]
             <> [ (n, "段落スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, ParaStyleDef {psBasedOn = Just b}) <- Map.toList ps,
-                 n /= "body",
+                 n `notElem` ["body", "code"],
                  Map.notMember b ps
                ]
+            -- code is not a base of other styles (golem-driver ADR 0017)
+            <> [ (n, "段落スタイル code は based-on に書けません。コードブロックの段落スタイルです: " <> n)
+               | (n, ParaStyleDef {psBasedOn = Just "code"}) <- Map.toList ps,
+                 n /= "code"
+               ]
+            -- the swatch of a background (golem-driver ADR 0017)
+            <> [(n, "段落スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBackground = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
             <> [(n, "段落スタイルの based-on が循環しています: " <> T.intercalate ", " paraCycle) | n <- paraCycle]
             -- aki sets: aki-set and based-on name a set, without a cycle (docs/adr ADR 0019)
             <> [ (n, "段落スタイル " <> n <> " の aki-set のアキ量のセットがありません: " <> a)
@@ -1298,7 +1369,7 @@ data LocalValue = LocalWord Text | LocalString Text
 -- | The keys @style-def takes, as style.toml's (for completion).
 charStyleKeys, paraStyleKeys, regexStyleKeys :: [Text]
 charStyleKeys = ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic"] <> featureKeys
-paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent", "aki-set"] <> featureKeys
+paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent", "aki-set"] <> featureKeys <> ["background", "padding"]
 regexStyleKeys = ["pattern", "style"]
 
 {- | The keys of one @style-def as a TOML table, read with the 'FromValue'

@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Control.Monad (forM_)
 import Data.List (isPrefixOf, maximumBy, subsequences)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
@@ -10,6 +11,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiSet, akiPositions, builtinAkiSets, defaultAkiSet, withAkiRule)
 import Golem.Layout.Aki qualified as Aki
+import Golem.Layout.Code
 import Golem.Layout.Hyphenation
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
@@ -221,7 +223,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-layout"
-    [ testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
+    [ testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
+      testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
       testGroup
@@ -1301,3 +1304,80 @@ akiTests =
   where
     sp = mkSpan (FileId 0) 0 0
     orderedAs xs order = [x | x <- order, x `elem` xs]
+
+-- | Code blocks and the character style code (golem-driver ADR 0017).
+codeTests :: [TestTree]
+codeTests =
+  [ testCase "leading spaces are kept: four spaces put the first glyph at 4s" $
+      offsets (rows1 "    x") @?= [[(4 * s, "x")]],
+    testCase "spaces in a line are kept as many as written" $
+      offsets (rows1 "a   b") @?= [[(0, "a"), (4 * s, "b")]],
+    testCase "a tab goes to the next stop, every 2s from the text start" $ do
+      offsets (rows1 "\tx") @?= [[(2 * s, "x")]]
+      offsets (rows1 "ab\tx") @?= [[(0, "ab"), (4 * s, "x")]]
+      offsets (rows1 "abcd\tx") @?= [[(0, "abcd"), (6 * s, "x")]]
+      -- a Japanese character is not a multiple of s: 2s + 1 em goes to the next stop
+      offsets (rowsWith 1000 (atomsOf "漢\tx")) @?= [[(0, "漢"), (4 * s, "x")]],
+    testCase "no justification: words keep the advance of a space between them" $
+      offsets (rows1 "ab cd") @?= [[(0, "ab"), (3 * s, "cd")]],
+    testCase "no aki between Japanese and Latin: the advances add up" $
+      [o | (o, _) <- concat (offsets (rows1 "a漢b"))] @?= [0, s, 4 * s],
+    testCase "a long word wraps at a cluster boundary, with no hyphen" $
+      offsets (rowsWith (10 * s) (atomsOf "abcdefghijklmn")) @?= [[(0, "abcdefghij")], [(2 * s, "klmn")]],
+    testCase "a wrapped line continues 2s after the indent of the line" $
+      offsets (rowsWith (20 * s) (atomsOf "  abcdefghijklmnopqrstuvwxyz")) @?= [[(0 + 2 * s, "abcdefghijklmnopqr")], [(4 * s, "stuvwxyz")]],
+    testCase "without 8s after the indent, the continuation starts at 2s" $
+      offsets (rowsWith (16 * s) (atomsOf "          abcdefghijkl")) @?= [[(10 * s, "abcdef")], [(2 * s, "ghijkl")]],
+    testCase "a line that fits is not wrapped" $
+      length (rowsWith (20 * s) (atomsOf "abc def")) @?= 1,
+    testCase "an empty line is one row" $
+      rowsWith (20 * s) (atomsOf "") @?= [CodeRow []],
+    testCase "the grid: 13Q body, 22H pitch, 11Q code with 0.5zw padding takes 3 lines for 3 rows" $ do
+      let q n = n * 65536 * 72 * 10 `div` (254 * 4) -- approximately; only ratios matter
+          g = codeGeometry (q 13) (q 22) (q 11) (q 11 `div` 2)
+      codeSpan g 3 @?= 3
+      codeSpan g 1 @?= 1,
+    testCase "the rows are centred in the lines they take" $ do
+      let g = codeGeometry 130 220 110 55
+      forM_ [1 .. 6] $ \k -> do
+        let top = codeRowsTop g k - cgPadding g
+            extent = toInteger (k - 1) * cgPitch g + cgSize g
+            bottom = toInteger (codeSpan g k) * cgGridPitch g - codeRowsTop g k - extent - cgPadding g
+        assertBool (show (k, top, bottom)) (abs (top - bottom) <= 1),
+    testCase "a code block breaks between rows; each part takes its own lines" $ do
+      let g = CodeGeometry 10 10 10 10 0
+          ps = paginate 1 5 [FParagraph (ids 0 3), FCode g (ids 10 5)]
+      map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SCode 10 2 2)], [(0, SCode 12 3 3)]],
+    testCase "a block whose first row and padding do not fit starts on the next page" $ do
+      let g = CodeGeometry 10 10 10 10 3
+          ps = paginate 1 5 [FParagraph (ids 0 4), FCode g (ids 10 2)]
+      codeSpan g 1 @?= 2
+      map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SCode 10 2 3)]],
+    testCase "the columns of a page break a code block as pages do" $ do
+      let g = CodeGeometry 10 10 10 10 0
+          ps = paginate 2 3 [FParagraph (ids 0 2), FCode g (ids 10 3)]
+      [(poNumber p, poColumn p, poSlots p) | p <- ps] @?= [(1, 0, [(0, SLine 0), (1, SLine 1), (2, SCode 10 1 1)]), (1, 1, [(0, SCode 11 2 2)])],
+    testCase "code: breaks only at spaces and after a slash, with no hyphen" $ do
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True}, cePatterns = Just englishUS}
+          its = compose env "modules/golem-driver/Pdf.hs"
+      [h | Penalty _ p h <- its, abs p < infPenalty] @?= [NoHyphen, NoHyphen]
+      [t | Box _ c <- its, let { t = bcText c }] @?= ["modules/", "golem-driver/", "Pdf.hs"]
+      [h | Penalty _ p h <- compose env "manifest.toml", abs p < infPenalty, h /= NoHyphen] @?= [],
+    testCase "code: no aki inside, the advances as they are" $ do
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True}}
+          its = compose env "a漢b"
+      [w | Glue w _ _ <- takeWhile (not . isFinalPenalty) its] @?= []
+      sum [w | Box w _ <- its] @?= fs `div` 2 + fs + fs `div` 2
+  ]
+  where
+    s = 100
+    -- every character s wide but Japanese ones, which are 3s
+    shapeOf _ t = [(T.singleton c, if c < '\x2000' then s else 3 * s) | c <- T.unpack t]
+    atomsOf = codeAtoms shapeOf
+    rowsWith = layoutCodeLine s
+    rows1 = rowsWith 1000 . atomsOf
+    offsets rs = [[(cpOffset p, cpText p) | p <- crPieces r] | r <- rs]
+    ids from n = [LineBox i [] [] [] | i <- [from .. from + n - 1]]
+    isFinalPenalty = \case
+      Penalty _ p _ -> p >= infPenalty
+      _ -> False

@@ -403,7 +403,9 @@ build opts = do
               <> (if TargetPdf `elem` targets then styleLayoutDiagnostics diagFid (evStyle e) (Map.elems (localStylesOf e)) else [])
       -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
       missing <- missingStyleFiles (optRoot opts) (evStyle e)
-      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid (evStyle e) (Map.elems (localStylesOf e)) missing t)) | t <- targets]
+      -- without code in the book, the role code is not used (golem-driver ADR 0017)
+      let fileStyle = maybe id (\b -> codeStyles (bookHasCode (docStyles e) b) (stFonts (evStyle e))) (evBook e) (evStyle e)
+          perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid fileStyle (Map.elems (localStylesOf e)) missing t)) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
           -- G0701, G0702 and G0725 stop the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
@@ -530,6 +532,15 @@ writeTargets opts e diagFid book missing targets = do
             hcRubyBaseSpacing = rubyAlignCss (rdBaseSpacing ruby),
             hcBreakKinds = Set.fromList [k | Document _ bs <- bookDocs book, Block _ _ (ForcedBreak k) <- bs],
             -- only a book with [lists] changes the markers (golem-driver ADR 0013)
+            -- the paragraph style code for pre (golem-driver ADR 0017)
+            hcCode =
+              let d = paraStyle style (Just "code")
+               in HtmlCode
+                    { hcoFont = d >>= psFont,
+                      hcoSize = cssFontSize style <$> (d >>= psSize),
+                      hcoBackground = d >>= psBackground,
+                      hcoPadding = cssLength (fromMaybe (Zw 0.5) (d >>= psPadding))
+                    },
             hcLists =
               if stLists style == defaultListStyle
                 then Nothing
@@ -592,13 +603,15 @@ writeTargets opts e diagFid book missing targets = do
           -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
           inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
       r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid)
+      -- G0808: code in the body role without [fonts.code] (golem-driver ADR 0017)
+      let fontNotice = codeFontNotice diagFid style book
       case r of
-        Left ds -> pure ([], ds)
-        Right bytes -> do
+        Left ds -> pure ([], ds <> fontNotice)
+        Right (bytes, notices) -> do
           clean dir
           createDirectoryIfMissing True dir
           BS.writeFile out bytes
-          pure ([out], [])
+          pure ([out], notices <> fontNotice)
   pure (concatMap fst results, concatMap snd results)
   where
     clean dir = do
@@ -622,7 +635,7 @@ textLists style =
 htmlCharStyles :: Style -> Map Text HtmlCharStyle
 htmlCharStyles style =
   Map.fromList
-    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d)))
+    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d)) (isCodeCharStyle style n))
     | n <- Map.keys (stCharStyles style),
       Just d <- [charStyle style n]
     ]

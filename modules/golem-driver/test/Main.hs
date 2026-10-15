@@ -23,7 +23,7 @@ import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
 import Golem.Driver.Pdf (Assumed (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, runningHeadText, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
 import Golem.Driver.Version (golemVersion)
-import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
+import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Kerning (..), Look (..), Synthetic (..), plainLook)
 import Golem.Layout.Paginate (ColumnSet (..), Flow (..), LineBox (..), PageOut (..), Slotted (..), labelPages, markPages, paginate)
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
@@ -105,6 +105,7 @@ tests =
       testGroup "reading stage (golem-parser ADR 0009)" readingTests,
       evalDiagnosticTests,
       testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
+      testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
       testGroup
         "version (docs/adr/0004)"
         [ testCase "golemVersion is the content of VERSION" $ do
@@ -2718,6 +2719,7 @@ fakeFonts =
     faceOf = \case
       "wide" -> 2
       "heading" -> 4
+      "code" -> 6
       _ -> 0
     adv c = if fromEnum c < 0x2000 then 1 / 2 else 1
 
@@ -2818,7 +2820,8 @@ styleFileTests =
       let style = horizontalStyle <> fakeBody <> "\n[fonts.mono]\nlatin = \"fonts/missing.otf\"\n"
       withStyleProject style fakeFontFiles $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
-        codeSeverities r @?= []
+        -- the fixture has code and no [fonts.code]: G0808 (golem-driver ADR 0017)
+        filter ((/= DiagnosticCode "G0808") . fst) (codeSeverities r) @?= []
         h <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         codeSeverities h @?= [(DiagnosticCode "G0310", Warning)]
         css <- TIO.readFile (tmp </> "build/html/style.css")
@@ -2983,11 +2986,12 @@ noticeTests =
     "notices (golem-syntax ADR 0002)"
     [ testCase "the notices of a project" $ do
         n <- buildNotified (noticeProject "" noticeSource) id
-        codesOf (nDiagnostics n) @?= ["G0262", "G0263", "G0264", "G0265", "G0407", "G0408"]
-        map diagSeverity (nDiagnostics n) @?= replicate 6 Notice,
+        -- the @listing is code and style.toml has no [fonts.code]: G0808 (golem-driver ADR 0017)
+        codesOf (nDiagnostics n) @?= ["G0262", "G0263", "G0264", "G0265", "G0407", "G0408", "G0808"]
+        map diagSeverity (nDiagnostics n) @?= replicate 7 Notice,
       testCase "silence-notices drops those notices only" $ do
         n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G0263\", \"G0408\"]\n" noticeSource) id
-        codesOf (nDiagnostics n) @?= ["G0262", "G0264", "G0265", "G0407"],
+        codesOf (nDiagnostics n) @?= ["G0262", "G0264", "G0265", "G0407", "G0808"],
       testCase "--no-notices drops every notice and keeps the errors" $ do
         n <- buildNotified (noticeProject "" (noticeSource <> "\n[unknown: x]\n")) (\o -> o {optNoNotices = True})
         codesOf (nDiagnostics n) @?= ["G0222"]
@@ -2995,7 +2999,7 @@ noticeTests =
         take 1 (codesOf (nDiagnostics n')) @?= ["G0222"]
         assertBool "notices after the error" (length (nDiagnostics n') > 1),
       testCase "the notices do not change the outputs of the four targets" $ do
-        let silenced = "\n[diagnostics]\nsilence-notices = [\"G0262\", \"G0263\", \"G0264\", \"G0265\", \"G0407\", \"G0408\"]\n"
+        let silenced = "\n[diagnostics]\nsilence-notices = [\"G0262\", \"G0263\", \"G0264\", \"G0265\", \"G0407\", \"G0408\", \"G0808\"]\n"
         loud <- buildNotified (noticeProject "" noticeSource) id
         quiet <- buildNotified (noticeProject silenced noticeSource) id
         codesOf (nDiagnostics quiet) @?= []
@@ -3582,3 +3586,234 @@ outputDiagnosticTests =
       map diagCode (bErrors b) @?= [DiagnosticCode "G0804"]
       map diagMessage (bErrors b) @?= ["ライセンスが埋め込みを禁じているフォントです（fsType 0x0002）: fonts/r.otf"]
   ]
+
+-- ------------------------------------------------------------------ code (golem-driver ADR 0017)
+
+-- | The rows of the code blocks of a layout: each box with its text, from the line start of the column.
+codeRows :: PdfLayout -> [[(Integer, T.Text)]]
+codeRows pl =
+  [ [(slIndent sl + off, bcText c) | (Box _ c, off) <- placeLine (slLine sl), not (T.null (bcText c))]
+  | p <- plPages pl,
+    (_, SCode lid k _) <- poSlots p,
+    j <- [0 .. k - 1],
+    Just sl <- [Map.lookup (lid + j) (plLines pl)]
+  ]
+
+-- | The code slots of each page and column.
+codeSlots :: PdfLayout -> [[(Int, Slotted)]]
+codeSlots pl = [[x | x@(_, SCode {}) <- poSlots p] | p <- plPages pl]
+
+-- | The rectangles filled in a content stream: x, y, width and height in pt.
+filledRects :: BS.ByteString -> [[Double]]
+filledRects content = [map (read . BC.unpack) (take 4 ws) | l <- BC.lines content, let ws = BC.words l, drop 4 ws == ["re", "f"]]
+
+-- | Every diagnostic of a build of the one-chapter project, with the fake fonts.
+buildAllWith :: (BuildOptions -> BuildOptions) -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO BuildResult
+buildAllWith f style source files = withSystemTempDirectory "golem-code" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") miniManifest
+  BS.writeFile (tmp </> "style.toml") (withBodyFont style)
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  forM_ (bodyFontFiles style <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  build (f (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider})
+
+buildAll :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO BuildResult
+buildAll = buildAllWith id
+
+codeOf :: BuildResult -> T.Text -> [Diagnostic]
+codeOf r c = [d | d <- brDiagnostics r, diagCode d == DiagnosticCode c]
+
+codeTests :: [TestTree]
+codeTests =
+  [ testCase "leading spaces: the first glyph after four spaces is at the padding and four spaces" $ do
+      (_, pl) <- layoutOk horizontalStyle "```\n    x\n```\n" []
+      codeRows pl @?= [[(pad + 4 * sp, "x")]],
+    testCase "spaces in a line are kept as many as written" $ do
+      (_, pl) <- layoutOk horizontalStyle "```\na   b\n```\n" []
+      codeRows pl @?= [[(pad, "a"), (pad + 4 * sp, "b")]],
+    testCase "tabs go to the stops every two spaces; after a Japanese character too" $ do
+      (_, pl) <- layoutOk horizontalStyle "```\n\tx\nab\tx\nabcd\tx\n漢\tx\n```\n" []
+      codeRows pl @?= [[(pad + 2 * sp, "x")], [(pad, "ab"), (pad + 4 * sp, "x")], [(pad, "abcd"), (pad + 6 * sp, "x")], [(pad, "漢"), (pad + 4 * sp, "x")]],
+    testCase "a tab in [code: ...] of a paragraph is set as before, not at a stop" $ do
+      (_, pl) <- layoutOk horizontalStyle "[code: a\tb]\n" []
+      [(off, bcText c) | sl <- Map.elems (plLines pl), (Box _ c, off) <- placeLine (slLine sl), not (T.null (bcText c))] @?= [(0, "a"), (sp, "\t"), (2 * sp, "b")],
+    testCase "no justification: two short words keep one space between them" $ do
+      (_, pl) <- layoutOk horizontalStyle "```\nab cd\n```\n" []
+      codeRows pl @?= [[(pad, "ab"), (pad + 3 * sp, "cd")]],
+    testCase "no hyphenation: a long word wraps at a cluster, with no hyphen" $ do
+      (_, pl) <- layoutOk horizontalStyle "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n" []
+      codeRows pl @?= [[(pad, "abcdefghijklmnopqrstuv")], [(pad + 2 * sp, "wxyzabcd")]],
+    testCase "no aki between Japanese and Latin: a漢b as their advances" $ do
+      (_, pl) <- layoutOk horizontalStyle "```\na漢b\n```\n" []
+      codeRows pl @?= [[(pad, "a"), (pad + sp, "漢"), (pad + sp + 10 * pt, "b")]],
+    testCase "a wrapped line continues two spaces after its indent, or at two spaces" $ do
+      (_, pl) <- layoutOk horizontalStyle "```\n  abcdefghijklmnopqrstuvwxyz\n              abcdefghijklm\n```\n" []
+      codeRows pl
+        @?= [ [(pad + 2 * sp, "abcdefghijklmnopqrst")],
+              [(pad + 4 * sp, "uvwxyz")],
+              [(pad + 14 * sp, "abcdefgh")],
+              [(pad + 2 * sp, "ijklm")]
+            ],
+    testCase "G0730: one notice for a block with wrapped lines, with the number of lines" $ do
+      r <- buildAll horizontalStyle "```\nabcdefghijklmnopqrstuvwxyzabcd\nx\nabcdefghijklmnopqrstuvwxyzabcd\n```\n" []
+      [(diagMessage d, diagSeverity d) | d <- codeOf r "G0730"] @?= [("コードの行を折り返しました（2 行）", Notice)]
+      assertBool "the PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
+      r' <- buildAll horizontalStyle "```\nabc\n```\n" []
+      codeOf r' "G0730" @?= [],
+    testCase "the grid: three rows of 11Q code on 13Q and 22H take three lines; the text after is on the grid" $ do
+      (_, pl) <- layoutOk (grid13 <> "\n[paragraph-styles.code]\nsize = \"11Q\"\n") "```\na\nb\nc\n```\n\n本文。\n" []
+      case plPages pl of
+        (p : _) -> case poSlots p of
+          (s0 : s1 : _) -> do
+            s0 @?= (0, SCode 0 3 3)
+            fst s1 @?= 3
+          other -> assertFailure (show other)
+        [] -> assertFailure "no page",
+    testCase "the background: a CMYK rectangle of the lines taken, drawn before the text" $ do
+      pdf <- miniPdf fakeProvider True (horizontalStyle <> codeBg) "```\na\nb\n```\n" []
+      (geom, _) <- layoutOk (horizontalStyle <> codeBg) "```\na\nb\n```\n" []
+      contents <- pageContents pdf
+      let ta = firstColumn geom
+          -- (2 - 1) * 15 + 10 + 2 * 5 = 35pt: three lines of 15pt
+          top = rectY ta + rectH ta + (15 - 10) * pt `div` 2
+      case contents of
+        (c : _) -> do
+          case filledRects c of
+            [[x, y, w, h]] -> do
+              assertBool (show (x, toPt (rectX ta))) (abs (x - toPt (rectX ta)) < 0.001)
+              assertBool (show (y, h, toPt top)) (abs (y + h - toPt top) < 0.001)
+              assertBool (show w) (abs (w - 120) < 0.001)
+              assertBool (show h) (abs (h - 45) < 0.001)
+            other -> assertFailure (show other)
+          assertBool "the colour" ("0 0 0 0.08 k" `BS.isInfixOf` c)
+          let (before, _) = BS.breakSubstring "BT" c
+          assertBool "before the text" (" re f" `BS.isInfixOf` before)
+        [] -> assertFailure "no page"
+      plain <- miniPdf fakeProvider True horizontalStyle "```\na\n```\n" [] >>= pageContents
+      map filledRects plain @?= [[]],
+    testCase "a page break between rows: the rows that fit, the rest on the next page, a background each" $ do
+      (_, pl) <- layoutOk fiveLines "一。\n\n二。\n\n三。\n\n```\na\nb\nc\nd\ne\n```\n" []
+      codeSlots pl @?= [[(3, SCode 3 1 2)], [(0, SCode 4 4 5)]]
+      pdf <- miniPdf fakeProvider True (fiveLines <> codeBg) "一。\n\n二。\n\n三。\n\n```\na\nb\nc\nd\ne\n```\n" []
+      contents <- pageContents pdf
+      map (length . filledRects) contents @?= [1, 1],
+    testCase "a block whose first row and padding do not fit starts on the next page" $ do
+      (_, pl) <- layoutOk fiveLines "一。\n\n二。\n\n三。\n\n四。\n\n```\na\n```\n" []
+      codeSlots pl @?= [[], [(0, SCode 4 1 2)]],
+    testCase "columns: the rows break at the end of a column as at a page" $ do
+      (_, pl) <- layoutOk (replaceIn "lines = 30" "lines = 5" horizontal2) "一。\n\n二。\n\n三。\n\n```\na\nb\nc\n```\n" []
+      [(poColumn p, [x | x@(_, SCode {}) <- poSlots p]) | p <- plPages pl] @?= [(0, [(3, SCode 3 1 2)]), (1, [(0, SCode 4 2 3)])],
+    testCase "in a list: the background and the text start at the text of the item" $ do
+      (geom, pl) <- layoutOk (horizontalStyle <> codeBg) "- 項目\n\n  ```\n  x\n  ```\n" []
+      codeRows pl @?= [[(10 * pt + pad, "x")]]
+      contents <- miniPdf fakeProvider True (horizontalStyle <> codeBg) "- 項目\n\n  ```\n  x\n  ```\n" [] >>= pageContents
+      case concatMap filledRects contents of
+        [[x, _, w, _]] -> do
+          assertBool (show x) (abs (x - toPt (rectX (firstColumn geom) + 10 * pt)) < 0.001)
+          assertBool (show w) (abs (w - 110) < 0.001)
+        other -> assertFailure (show other),
+    testCase "G0743: too little measure in a deep list, at the block" $ do
+      let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
+      r <- buildAll style "- a\n  - b\n    - c\n\n      ```\n      x\n      ```\n" []
+      [(diagMessage d, spanStart (diagSpan d) > 0) | d <- codeOf r "G0743"] @?= [("コードブロックの行長が足りません", True)]
+      ok <- buildAll style "- a\n  - b\n\n    ```\n    x\n    ```\n" []
+      codeOf ok "G0743" @?= [],
+    testCase "G0743: too little measure at the top, reported by golem check too" $ do
+      let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"3zw\"\n"
+      r <- buildAllWith (\o -> o {optCheckOnly = True}) style "```\nx\n```\n" []
+      map diagMessage (codeOf r "G0743") @?= ["コードブロックの行長が足りません"],
+    testCase "G0743: one row and its padding taller than a page" $ do
+      r <- buildAll (replaceIn "lines = 30" "lines = 1" horizontalStyle) "```\nx\n```\n" []
+      map diagMessage (codeOf r "G0743") @?= ["コードブロックの一行が一ページに収まりません"],
+    testCase "empty lines are rows, at the start, in the middle and at the end" $ do
+      (_, pl) <- layoutOk horizontalStyle "```\n\nx\n\ny\n\n```\n" []
+      map (map snd) (codeRows pl) @?= [[], ["x"], [], ["y"], []],
+    testCase "vertical: the spaces and the tab stops are along the line, from the top" $ do
+      (_, pl) <- layoutOk pdfStyle "```\n  \tx\n```\n" []
+      let s13 = maybe 0 (dimToSp 0) (parseDim "13Q")
+          half = round (toRational s13 / 2) :: Integer
+      codeRows pl @?= [[(half + 4 * half, "x")]],
+    testCase "@listing is set as a code block" $ do
+      (_, a) <- layoutOk horizontalStyle "@listing src/a.txt\n" [("src/a.txt", "  a\tb\nlong line that wraps at the end\n")]
+      (_, b) <- layoutOk horizontalStyle "```\n  a\tb\nlong line that wraps at the end\n```\n" []
+      codeRows a @?= codeRows b,
+    testCase "[fonts.code]: code is set in it" $ do
+      let style = horizontalStyle <> "\n[fonts.code]\nlatin = \"fonts/w.otf\"\n" <> fakeBody
+      (_, pl) <- layoutOk style "```\nab\n```\n" fakeFontFiles
+      [lkLatinFace (bcLook c) | sl <- Map.elems (plLines pl), Box _ c <- lineItems (slLine sl), bcText c == "ab"] @?= ["code"],
+    testCase "[fonts.code] is embedded only when the book has code" $ do
+      noto <- BS.readFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
+      sans <- BS.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf"
+      let style = horizontalStyle <> "\n[fonts.body]\nja = \"fonts/noto.otf\"\n\n[fonts.code]\nlatin = \"fonts/sans.otf\"\n"
+          files = [("fonts/noto.otf", noto), ("fonts/sans.otf", sans)]
+      withCode' <- miniPdf realProvider False style "本文。\n\n```\nabc\n```\n" files
+      assertBool "embedded" ("SourceSansPro" `BS.isInfixOf` withCode')
+      without <- miniPdf realProvider False style "本文。\n" files
+      assertBool "not embedded" (not ("SourceSansPro" `BS.isInfixOf` without)),
+    testCase "G0808: without [fonts.code], code is set in the body role, with one notice" $ do
+      r <- buildAll horizontalStyle "```\nabc\n```\n\n[code: x] and [code: y]\n" []
+      [(diagMessage d, diagSeverity d) | d <- codeOf r "G0808"] @?= [("コードの書体の役割 code がないので、本文の書体で組みます", Notice)]
+      assertBool "the PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
+      r' <- buildAll horizontalStyle "本文。\n" []
+      codeOf r' "G0808" @?= [],
+    testCase "[code: manifest.toml] at the line end is not hyphenated: the whole goes to the next line" $ do
+      ts <- listPages horizontalStyle "あいうえおかきくけ[code: manifest.toml]です。\n"
+      assertBool (show ts) (any ("manifest.toml" `T.isPrefixOf`) ts),
+    testCase "a path in [code: ...] breaks after a slash, with no hyphen" $ do
+      (_, pl) <- layoutOk horizontalStyle "あいうえお[code: modules/golem-driver/src/Golem/Driver/Pdf.hs]\n" []
+      assertSlashBreaks pl,
+    testCase "a character style based on code is set as code" $ do
+      (_, pl) <- layoutOk (horizontalStyle <> "\n[character-styles.path]\nbased-on = \"code\"\n") "あいうえお[style path: modules/golem-driver/src/Golem/Driver/Pdf.hs]\n" []
+      assertSlashBreaks pl,
+    testCase "[character-styles.code] color: the role code and the colour" $ do
+      let style = horizontalStyle <> "\n[fonts.code]\nlatin = \"fonts/w.otf\"\n" <> fakeBody <> "\n[color.swatches]\nx = { cmyk = [90, 50, 0, 20] }\n\n[character-styles.code]\ncolor = \"x\"\n"
+      (_, pl) <- layoutOk style "[code: abc]\n" fakeFontFiles
+      [(lkLatinFace (bcLook c), lkColor (bcLook c)) | sl <- Map.elems (plLines pl), Box _ c <- lineItems (slLine sl), bcText c == "abc"] @?= [("code", Just "x")],
+    testCase "HTML: pre and code in the code role and monospace; pre wraps with tabs of 2" $
+      withCode (horizontalStyle <> "\n[fonts.code]\nlatin = \"fonts/w.otf\"\n" <> fakeBody) "```\nx\n```\n\n[code: y]\n" $ \css page -> do
+        rulesOf "pre, code" css @?= ["pre, code { font-family: \"golem-code-latin\", monospace; }"]
+        case rulesOf "pre" css of
+          [r] -> do
+            forM_ ["white-space: pre-wrap", "overflow-wrap: anywhere", "tab-size: 2", "hyphens: none", "font-kerning: none"] $ \d -> assertBool (T.unpack r) (d `T.isInfixOf` r)
+            assertBool "no background" (not ("background-color" `T.isInfixOf` r))
+            assertBool "no padding" (not ("padding" `T.isInfixOf` r))
+          other -> assertFailure (show other)
+        assertBool "no tab-size for code" (not (any ("tab-size" `T.isInfixOf`) (rulesOf "code" css)))
+        assertBool (T.unpack page) ("<code>y</code>" `T.isInfixOf` page),
+    testCase "HTML: the background and the padding of pre" $
+      withCode (horizontalStyle <> codeBg) "```\nx\n```\n" $ \css _ ->
+        case rulesOf "pre" css of
+          [r] -> do
+            assertBool (T.unpack r) ("background-color: rgb(" `T.isInfixOf` r)
+            assertBool (T.unpack r) ("padding: 0.5em" `T.isInfixOf` r)
+          other -> assertFailure (show other),
+    testCase "HTML: without [fonts.code], monospace only" $
+      withCode horizontalStyle "```\nx\n```\n" $ \css _ ->
+        rulesOf "pre, code" css @?= ["pre, code { font-family: monospace; }"]
+  ]
+  where
+    -- the fake fonts: a space is half an em of 10pt; the padding is 0.5zw
+    sp = 5 * pt
+    pad = 5 * pt
+    toPt x = fromIntegral x / 65536 :: Double
+    firstColumn geom = case columnsFor geom 1 of
+      (r : _) -> r
+      [] -> typeAreaFor geom 1
+    codeBg = "\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.code]\nbackground = \"code-bg\"\n"
+    grid13 = replaceIn "font-size = \"10pt\"" "font-size = \"13Q\"" (replaceIn "line-pitch = \"15pt\"" "line-pitch = \"22H\"" horizontalStyle)
+    -- every line but the last ends after a slash or a Japanese character
+    assertSlashBreaks pl = do
+      let ls = map (lineItems . slLine) (Map.elems (plLines pl))
+          texts = [T.concat [bcText c | Box _ c <- l] | l <- ls]
+      assertBool (show texts) (length texts > 1 && all (\t -> "/" `T.isSuffixOf` t || maybe False ((> '\x7f') . snd) (T.unsnoc t)) (take (length texts - 1) texts))
+      assertBool (show texts) (T.concat texts == "あいうえおmodules/golem-driver/src/Golem/Driver/Pdf.hs")
+      assertBool "no hyphen" (null [() | l <- ls, Penalty w _ PatternHyphen <- take 1 (reverse l), w > 0])
+    withCode style src k = withSystemTempDirectory "golem-code-html" $ \tmp -> do
+      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
+      BS.writeFile (tmp </> "style.toml") (withBodyFont style)
+      forM_ fakeFontFiles $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+      BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 src)
+      r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+      assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+      css <- TIO.readFile (tmp </> "build/html/style.css")
+      page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+      k css page

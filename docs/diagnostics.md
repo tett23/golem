@@ -59,7 +59,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 人が読む形式と JSON の形式では、エラーと警告の後に並ぶ。
 
 お知らせのコードは `Golem.Syntax.Diagnostic.noticeCodes` にまとめてある。
-今は次の七つである。
+今は次の九つである。
 
 | コード | 種類 | 段階 |
 | --- | --- | --- |
@@ -70,6 +70,8 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | [G0323](#g0323) | 既定の使用 | プロジェクト |
 | [G0407](#g0407) | 効果のない書き方 | 文書の組み立て |
 | [G0408](#g0408) | 効果のない書き方 | 文書の組み立て |
+| [G0730](#g0730) | 処理系による調整 | レイアウト |
+| [G0808](#g0808) | 既定の使用 | 出力 |
 
 抑制できるのはお知らせだけであり、エラーと警告を抑制する手段はない。
 `manifest.toml` の `[diagnostics]` の `silence-notices` に並べたコードのお知らせは、`golem build`、`golem check`、`golem lint`、LSP のどれにも出ない。
@@ -94,7 +96,7 @@ silence-notices = ["G0262", "G0407"]
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。下に節を置く。
 - **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。下に節を置く。
-- **空き**：G0104 から G0109、G0125 から G0128、G0601、G0703 から G0720、G0730、G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
+- **空き**：G0104 から G0109、G0125 から G0128、G0601、G0703 から G0720、G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
 
 ## G0101
 
@@ -2219,6 +2221,31 @@ lines の範囲が不正です
 ```
 @listing src/Main.hs lines=10-20
 ```
+## G0266
+
+code はコードブロックの段落スタイルです
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+原稿の `@style` に、組み込みの段落スタイル `code` を書いた。
+`code` はコードブロックだけを組む段落スタイルであり、段落には付けられない。
+段落は本文の段落スタイルで組む。
+
+- メッセージ: `code はコードブロックの段落スタイルです。コードは ``` か @listing で書きます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)
+
+### 主な原因
+
+- コードを段落として書き、`@style code` で等幅の書体にしようとした。
+
+### 直し方
+
+コードは ```` ``` ```` で囲んだコードブロックか、`@listing` で書く。
+本文の中のコードの名前は `[code: ...]` で書く。
 
 ## G0301
 
@@ -2374,6 +2401,8 @@ style.toml の誤りです
 - キーの綴り、値の型、単位、列挙の値を誤った。
 - 値が範囲の外にある。
 - 廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）を書いた。
+- 段落スタイル `code` に、`font`、`size`、`background`、`padding` のほかのキー（`based-on` を含む）を書いた（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
+- `background` か `padding` を、`code` のほかの段落スタイルに書いた。`padding` が負であるか、寸法として読めない。
 
 ### 直し方
 
@@ -2418,6 +2447,7 @@ style.toml にないフォントの役割です
 
 見出し、文字スタイル、段落スタイルの `font` が、`[fonts]` にない役割を指す。
 `@style-def` の `font` にも出る。誤りのある定義は捨てる。
+組み込みの段落スタイル `code` と文字スタイル `code` の `font` が既定の役割 `code` を指し、`[fonts.code]` がない場合は、この誤りとせず、本文の役割で組む（[G0808](#g0808)、[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 
 - メッセージ: `style.toml にないフォントの役割です: <役割>`
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
@@ -2556,6 +2586,8 @@ style.toml のスタイルの参照が不正です
 - `@style-def regex` の二つ目の引数に、ない段落スタイルを書いた。
 - 段落スタイルの `aki-set` か、`[aki-sets.<名前>]` の `based-on` が、存在しないセットを指す。
 - `[aki-sets.<名前>]` の `based-on` が循環する。
+- 段落スタイルの `based-on` に `code` を書いた。`code` はほかの段落スタイルの元にならない（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
+- 段落スタイル `code` の `background` が `[color.swatches]` にない。
 
 ### 直し方
 
@@ -3777,6 +3809,38 @@ PDF、HTML、EPUB、プレーンテキストのどれを組んでも報告し、
 
 項目を減らすか、`@number` を直すか、その深さの書式を算用数字（`{n}` や `{1}`）などの表せる書式に替える。
 
+## G0730
+
+コードの行を折り返しました
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+PDF のコードブロックに、行長から左右の `padding` を引いた幅に収まらない行があり、シェイピングのクラスタの境界で折り返した。
+折り返した続きの行は、元の行の行頭の空白とタブの幅に空白の送りの 2 倍を足した位置から始まる。
+折り返した印は描かない。
+コードブロックごとに一つ出し、位置はコードブロックの始まりである。
+PDF は書く。
+お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+
+- メッセージ: `コードの行を折り返しました（<n> 行）`。`<n>` は折り返した元の行の数
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`、golem-layout の `Golem.Layout.Code`）
+- ADR: [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)
+
+### 主な原因
+
+- コードの行が版面の行長より長い。
+- `@listing` で取り込んだファイルの行が長い。
+
+### 直し方
+
+行を短く書き直すか、`[paragraph-styles.code]` の `size` か `padding` を小さくする。
+`@listing` で取り込むファイルの行を直せない場合は、折り返しを受け入れてよい。
+`manifest.toml` の `[diagnostics]` の `silence-notices` に `"G0730"` を加えると、このお知らせを出さなくなる。
+
+
 ## G0732
 
 縦組みの版面では傍注を使えません
@@ -3925,6 +3989,33 @@ PDF を書かない。
 
 その行のセルの文を短くするか、列の幅が広がるように表を組み直す。
 
+## G0743
+
+コードブロックの行長が足りません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF のコードブロックについて、行長から左右の `padding` を引いた幅が、コードの文字の大きさの 8 字分に満たないか、コードの一行と上下の `padding` が一ページの行数に収まらない。
+`style.toml` とファイルの中の定義だけで決まる最上位のコードブロックの行長の不足は、PDF をターゲットに含むときに、ビルドと `golem check` の両方でレイアウトの前に報告し、位置は `style.toml` の先頭（なければ `manifest.toml` の先頭）である。
+リストの深い入れ子の中の行長の不足と、一ページに収まらない場合は、レイアウトで報告し、位置はコードブロックの始まりである。
+PDF を書かない。
+
+- メッセージ: `コードブロックの行長が足りません` または `コードブロックの一行が一ページに収まりません`
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)
+
+### 主な原因
+
+- `[paragraph-styles.code]` の `padding` が大きい。
+- コードブロックをリストの深い入れ子の中に置いた。
+- 版面の行数が少なく、コードの文字の大きさと `padding` が大きい。
+
+### 直し方
+
+`padding` か `size` を小さくするか、コードブロックをリストの浅いところに移す。
 ## G0744
 
 索引の段の行長が足りません
@@ -4144,3 +4235,33 @@ LSP は出さない。
 ### 直し方
 
 `style.toml` に `[fonts.body]` を書き、`ja` か `latin` にフォントのファイルのパスを書く。
+
+## G0808
+
+コードの書体の役割がありません
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+本にコードブロックかコードの文字スタイル（`code` と、`based-on` で `code` に行き着く文字スタイル）の文字があるのに、`style.toml` に `[fonts.code]` がない。
+PDF はコードを本文の役割で組む。
+一回のビルドで一つだけ出し、PDF は書く。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+`code` の段落スタイルか文字スタイルの `font` を別の役割に変え、その役割が `[fonts]` にない場合は [G0308](#g0308) である。
+お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+
+- メッセージ: `コードの書体の役割 code がないので、本文の書体で組みます`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)
+
+### 主な原因
+
+- `style.toml` に、コード用の書体の役割 `[fonts.code]` を書いていない。`golem new` の雛形は書かない。
+
+### 直し方
+
+`style.toml` に `[fonts.code]` を書き、等幅の書体のファイルを `latin`（和文も載せるなら `ja`）に書く。
+本文の書体で組んでよければ、そのままでよい。
+`manifest.toml` の `[diagnostics]` の `silence-notices` に `"G0808"` を加えると、このお知らせを出さなくなる。

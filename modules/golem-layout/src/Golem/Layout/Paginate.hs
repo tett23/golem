@@ -38,6 +38,7 @@ import Data.Maybe (listToMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
+import Golem.Layout.Code (CodeGeometry, codeSpan)
 import Golem.Syntax (SrcSpan)
 
 data NoteBody = NoteBody {nbId :: !Int, nbLines :: !Int}
@@ -73,6 +74,10 @@ data Flow
     FSpace !Int
   | -- | a forced break before what follows (docs/adr ADR 0017)
     FBreak !BreakKind
+  | {- | a code block: its rows, broken between any two of them; each part
+    takes the grid lines of 'codeSpan' (golem-driver ADR 0017)
+    -}
+    FCode !CodeGeometry [LineBox]
   | -- | the start of the index in its own columns (docs/adr ADR 0025)
     FSwitchColumns !ColumnSet
   | -- | the end of the index: the next page, in the columns of the page
@@ -100,6 +105,8 @@ data Slotted
   | SWrapped !Int
   | -- | a heading block: its first line and how many lines it has
     SHeading !Int !Int
+  | -- | a part of a code block: its first row, how many rows it has and the grid lines it takes (golem-driver ADR 0017)
+    SCode !Int !Int !Int
   deriving stock (Eq, Show)
 
 -- | How a heading sits on the line grid (golem-driver ADR 0003).
@@ -227,6 +234,7 @@ paginateIn base capacity flows =
       (FWrapped _ n _ _ ls : _) -> max n (length ls)
       (FSpace _ : _) -> 0
       (FBreak _ : _) -> 0
+      (FCode g ls : _) -> if null ls then 0 else codeSpan g 1
       -- a heading before the index columns on a page of one column keeps their first line
       (FSwitchColumns _ : rest) | columns == 1 -> nextNeed rest
       (FSwitchColumns _ : _) -> 0
@@ -254,6 +262,7 @@ paginateIn base capacity flows =
             st2 = putSlot st1 0 (SWrapped i) labels marks
          in (placeLines st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines st2 False beside))}
       FBreak k -> st {sBreaks = sBreaks st <> [k]}
+      FCode g ls -> placeCode st g ls
       FSwitchColumns set ->
         let st1 = flushDeferred st
          in if (columns == 1 && free st1 > 0) || (isEmpty st1 && sColumn st1 == 0)
@@ -279,6 +288,19 @@ paginateIn base capacity flows =
           sTables = []
         }
     keep st n = if n > free st && not (isEmpty st) then nextColumn st else st
+    {- a code block: as many rows as their grid lines fit in the column, the
+    rest in the next column; at least one row in an empty column (golem-driver ADR 0017) -}
+    placeCode st _ [] = st
+    placeCode st g ls@(l0 : _) =
+      let fits k = codeSpan g k <= free st
+          k0 = length (takeWhile fits [1 .. length ls])
+          k = if k0 == 0 && isEmpty st then 1 else k0
+          (part, rest) = splitAt k ls
+          n = codeSpan g k
+          st1 = putSlot st n (SCode (lbId l0) k n) (concatMap lbLabels part) (concatMap lbMarks part)
+       in if k == 0
+            then placeCode (nextColumn st) g ls
+            else if null rest then st1 else placeCode (nextColumn st1) g rest
     -- start in column 0 of a page whose number satisfies p, after a blank page if needed
     parityStart p st =
       let st1 = if isEmpty st && sColumn st == 0 then st else nextPage st

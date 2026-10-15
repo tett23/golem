@@ -2,7 +2,7 @@
 @label app-manifest
 # 付録B manifest.toml のリファレンス
 
-この付録は、[style code: manifest.toml] に書けるキーをすべて並べたものです。
+この付録は、[code: manifest.toml] に書けるキーをすべて並べたものです。
 書き方の流れは、第[ref-number manifest]章「[ref-title manifest]」で説明しています。[index reading=まにふぇすと/きーのいちらん: マニフェスト/キーの一覧]
 ここに載せていないキーを書くと、エラーになります。
 
@@ -10,36 +10,36 @@
 値の種類は、次のように呼びます。
 
 = [strong: 文字列]
-  [style code: "…"] で囲んだ値です。
+  [code: "…"] で囲んだ値です。
 = [strong: 日付]
-  [style code: 2026-10-13] のように、引用符を付けずに書く日付です。
+  [code: 2026-10-13] のように、引用符を付けずに書く日付です。
 = [strong: 配列]
-  [style code: \[ … \]] で囲んで、カンマで区切った値の並びです。
+  [code: \[ … \]] で囲んで、カンマで区切った値の並びです。
 = [strong: 表]
-  [style code: \[名前\]] の見出しで始める、キーのまとまりです。
+  [code: \[名前\]] の見出しで始める、キーのまとまりです。
 
 @nonumber
 ## 全体
 
-ファイルの先頭（どの [style code: \[ \]] の見出しよりも前）に書くキーと、ファイルの中の表です。
+ファイルの先頭（どの [code: \[ \]] の見出しよりも前）に書くキーと、ファイルの中の表です。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: chapters] | 原稿のファイルを本の順に並べます（配列、必須）。 |
-| [style code: bibliography] | 文献のデータ（CSL-JSON）のファイルです（文字列の配列）。省くと文献を引用できません。 |
-| [style code: \[metadata\]] | 書名などの本の情報です（表、必須）。 |
-| [style code: \[targets\]] | 出力の形式ごとの設定です。 |
-| [style code: \[plugins.名前\]] | 使うプラグインの宣言です（表）。 |
-| [style code: \[\[filters\]\]] | フィルタのプラグインを当てるファイルです（表の並び）。 |
-| [style code: \[source\]] | 原稿の読み方です（表）。 |
+| [code: chapters] | 原稿のファイルを本の順に並べます（配列、必須）。 |
+| [code: bibliography] | 文献のデータ（CSL-JSON）のファイルです（文字列の配列）。省くと文献を引用できません。 |
+| [code: \[metadata\]] | 書名などの本の情報です（表、必須）。 |
+| [code: \[targets\]] | 出力の形式ごとの設定です。 |
+| [code: \[plugins.名前\]] | 使うプラグインの宣言です（表）。 |
+| [code: \[\[filters\]\]] | フィルタのプラグインを当てるファイルです（表の並び）。 |
+| [code: \[source\]] | 原稿の読み方です（表）。 |
 
-[style code: chapters] の要素には、ファイルのパスを書きます。
-パスはプロジェクトのディレクトリからの相対パスで、プロジェクトの外や、[style code: /] で始まる絶対パス、URL は書けません。
+[code: chapters] の要素には、ファイルのパスを書きます。
+パスはプロジェクトのディレクトリからの相対パスで、プロジェクトの外や、[code: /] で始まる絶対パス、URL は書けません。
 要素を配列にすると、いくつかのファイルを一つの章として続けて組みます。
-要素を [style code: { file = "chapters/02.gm", paragraph-separator = "blank-line" }] のような表にすると、その章だけ原稿の読み方を変えられます。
-表に書けるのは、[style code: file]（必須）と、[style code: \[source\]] と同じキーと、[style code: master] です。
-[style code: master] には、その章で使う [style code: style.toml] のマスターページの名前を書きます（付録C の [style code: \[masters.名前\]]）。
-書かなければ [style code: body] のマスターページを使います。
+要素を [code: { file = "chapters/02.gm", paragraph-separator = "blank-line" }] のような表にすると、その章だけ原稿の読み方を変えられます。
+表に書けるのは、[code: file]（必須）と、[code: \[source\]] と同じキーと、[code: master] です。
+[code: master] には、その章で使う [code: style.toml] のマスターページの名前を書きます（付録C の [code: \[masters.名前\]]）。
+書かなければ [code: body] のマスターページを使います。
 同じファイルを、読み方を変えて二度並べることはできません。
 
 ```toml
@@ -51,87 +51,87 @@ chapters = [
 ```
 
 @nonumber
-## [style code: \[metadata\]]
+## [code: \[metadata\]]
 
 本の情報です。
-ここに書いた値は、PDF、EPUB、HTML の決まった場所に書き込まれ、原稿からは [style code: \[= meta.title\]] のように参照できます。
+ここに書いた値は、PDF、EPUB、HTML の決まった場所に書き込まれ、原稿からは [code: \[= meta.title\]] のように参照できます。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: id] | 本の識別子です（文字列、必須）。[style code: golem new] が [style code: urn:uuid:] で始まる値を作ります。一度決めたら変えません。PDF のファイルの名前にも使います。 |
-| [style code: title] | 書名です（文字列、必須）。 |
-| [style code: title-reading] | 書名の読みです（文字列）。電子書店での並べ替えに使われます。 |
-| [style code: language] | 本の言語です（文字列、必須）。日本語は [style code: "ja"]、英語は [style code: "en"] です。 |
-| [style code: date] | 発行日です（日付、必須）。PDF の作成日などに書き込みます。 |
-| [style code: edition] | 版です（文字列）。 |
-| [style code: publisher] | 発行者です（文字列）。 |
-| [style code: \[\[metadata.creators\]\]] | 著者などの関係者です（表の並び）。一人ごとに一つ書きます。 |
+| [code: id] | 本の識別子です（文字列、必須）。[code: golem new] が [code: urn:uuid:] で始まる値を作ります。一度決めたら変えません。PDF のファイルの名前にも使います。 |
+| [code: title] | 書名です（文字列、必須）。 |
+| [code: title-reading] | 書名の読みです（文字列）。電子書店での並べ替えに使われます。 |
+| [code: language] | 本の言語です（文字列、必須）。日本語は [code: "ja"]、英語は [code: "en"] です。 |
+| [code: date] | 発行日です（日付、必須）。PDF の作成日などに書き込みます。 |
+| [code: edition] | 版です（文字列）。 |
+| [code: publisher] | 発行者です（文字列）。 |
+| [code: \[\[metadata.creators\]\]] | 著者などの関係者です（表の並び）。一人ごとに一つ書きます。 |
 
-[style code: \[\[metadata.creators\]\]] のキーは次のとおりです。
+[code: \[\[metadata.creators\]\]] のキーは次のとおりです。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: name] | 名前です（文字列、必須）。 |
-| [style code: reading] | 名前の読みです（文字列）。 |
-| [style code: role] | 役割の符号です（文字列、必須）。著者は [style code: "aut"]、編者は [style code: "edt"]、訳者は [style code: "trl"] のように、EPUB と同じ符号を書きます。 |
+| [code: name] | 名前です（文字列、必須）。 |
+| [code: reading] | 名前の読みです（文字列）。 |
+| [code: role] | 役割の符号です（文字列、必須）。著者は [code: "aut"]、編者は [code: "edt"]、訳者は [code: "trl"] のように、EPUB と同じ符号を書きます。 |
 
 @nonumber
-## [style code: \[targets\]]
+## [code: \[targets\]]
 
 出力の形式ごとの設定です。
 形式の表は中身が空でもかまいません。
-[style code: \[targets\]] を書くときは、少なくとも一つの形式を置きます。
+[code: \[targets\]] を書くときは、少なくとも一つの形式を置きます。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: \[targets.pdf\]] | PDF の設定です。[style code: isbn] に紙の本の ISBN を書けます。 |
-| [style code: \[targets.epub\]] | EPUB の設定です。[style code: isbn] に電子版の ISBN を書けます。書けば EPUB の識別子に使います。 |
-| [style code: \[targets.html\]] | HTML の設定です。書けるキーはありません。 |
-| [style code: \[targets.text\]] | プレーンテキストの設定です。[style code: variants] に [style code: "vertical"]（縦書き用）と [style code: "horizontal"]（横書き用）の一方か両方を並べます。省くと両方を作ります。 |
+| [code: \[targets.pdf\]] | PDF の設定です。[code: isbn] に紙の本の ISBN を書けます。 |
+| [code: \[targets.epub\]] | EPUB の設定です。[code: isbn] に電子版の ISBN を書けます。書けば EPUB の識別子に使います。 |
+| [code: \[targets.html\]] | HTML の設定です。書けるキーはありません。 |
+| [code: \[targets.text\]] | プレーンテキストの設定です。[code: variants] に [code: "vertical"]（縦書き用）と [code: "horizontal"]（横書き用）の一方か両方を並べます。省くと両方を作ります。 |
 
-[style code: golem build] は、[style code: --target] を指定しなければ、この表にかかわらず四つの形式をすべて作ります。
+[code: golem build] は、[code: --target] を指定しなければ、この表にかかわらず四つの形式をすべて作ります。
 
 @nonumber
-## [style code: \[source\]]
+## [code: \[source\]]
 
 原稿の読み方です。
 章の項目に同じキーを書くと、その章ではそちらが優先します。
-原稿のファイルの先頭に [style code: @manifest paragraph-separator=line] と書くと、そのファイルではそれがいちばん優先します（付録A の「ブロックコマンド」）。
-[style code: @import] でだけ取り込むファイルには、[style code: \[source\]] の値が効きます。
+原稿のファイルの先頭に [code: @manifest paragraph-separator=line] と書くと、そのファイルではそれがいちばん優先します（付録A の「ブロックコマンド」）。
+[code: @import] でだけ取り込むファイルには、[code: \[source\]] の値が効きます。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: paragraph-separator] | 段落の区切り方です（文字列）。[style code: "blank-line"] は空行で段落を区切り、[style code: "line"] は改行ひとつで区切って一行を一つの段落にします。省くと [style code: "blank-line"] です。 |
+| [code: paragraph-separator] | 段落の区切り方です（文字列）。[code: "blank-line"] は空行で段落を区切り、[code: "line"] は改行ひとつで区切って一行を一つの段落にします。省くと [code: "blank-line"] です。 |
 
 @nonumber
-## [style code: \[diagnostics\]]
+## [code: \[diagnostics\]]
 
 診断の扱いです。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: silence-notices] | 出さないお知らせのコードです（文字列の配列）。お知らせのコードだけを書けます（第[ref-number check]章の「お知らせ」）。省くと、すべてのお知らせを出します。 |
+| [code: silence-notices] | 出さないお知らせのコードです（文字列の配列）。お知らせのコードだけを書けます（第[ref-number check]章の「お知らせ」）。省くと、すべてのお知らせを出します。 |
 
 @nonumber
-## [style code: \[plugins.名前\]]
+## [code: \[plugins.名前\]]
 
 使うプラグインを、名前を付けて宣言します。
-名前は、原稿や [style code: \[\[filters\]\]] からプラグインを指すのに使います。
+名前は、原稿や [code: \[\[filters\]\]] からプラグインを指すのに使います。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: url] | 配布物の URL です（文字列、必須）。[style code: https://] で始め、版を固定した URL を書きます。 |
-| [style code: overrides] | このプラグインで置き換える組み込みのコマンドの名前です（文字列の配列）。 |
+| [code: url] | 配布物の URL です（文字列、必須）。[code: https://] で始め、版を固定した URL を書きます。 |
+| [code: overrides] | このプラグインで置き換える組み込みのコマンドの名前です（文字列の配列）。 |
 
-[style code: overrides] に書けるのは、[style code: strong]、[style code: bold]、[style code: italic]、[style code: ruby]、[style code: kenten]、[style code: color]、[style code: style]、[style code: tcy]、[style code: number-text] です。
+[code: overrides] に書けるのは、[code: strong]、[code: bold]、[code: italic]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text] です。
 
 @nonumber
-## [style code: \[\[filters\]\]]
+## [code: \[\[filters\]\]]
 
 フィルタを当てるファイルを、当てる順に書きます。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: plugin] | [style code: \[plugins.名前\]] で宣言したプラグインの名前です（文字列、必須）。 |
-| [style code: filter] | そのプラグインのフィルタの名前です（文字列、必須）。 |
-| [style code: files] | フィルタを当てる原稿のファイルです（文字列の配列、必須）。 |
+| [code: plugin] | [code: \[plugins.名前\]] で宣言したプラグインの名前です（文字列、必須）。 |
+| [code: filter] | そのプラグインのフィルタの名前です（文字列、必須）。 |
+| [code: files] | フィルタを当てる原稿のファイルです（文字列の配列、必須）。 |

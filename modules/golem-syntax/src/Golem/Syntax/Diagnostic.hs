@@ -76,7 +76,9 @@ noticeCodes =
       "G0265", -- @listing src= (to be retired)
       "G0323", -- no style.toml
       "G0407", -- @number equal to the automatic number
-      "G0408" -- page breaks at the very end of the book
+      "G0408", -- page breaks at the very end of the book
+      "G0730", -- a line of a code block wrapped (golem-driver ADR 0017)
+      "G0808" -- code in the body role without [fonts.code] (golem-driver ADR 0017)
     ]
 
 {- | The single place where notices are silenced: those whose codes are in

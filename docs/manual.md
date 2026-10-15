@@ -549,6 +549,16 @@ size = "A5"
 最初の行に言語の名前（`toml` など）を書くと、HTML では構文に応じて色分けします。
 コードブロックの中では、角括弧もコメントも解釈しません。
 
+コードブロックは、組み込みの段落スタイル `code` で組みます。
+PDF では、行頭と行の途中の空白をそのまま残し、タブは空白二つ分ごとの位置まで進めます。
+両端揃えにせず、語をハイフンで分けず、和文と欧文のあいだも空けません。
+版面に収まらない長い行は折り返し、続きを元の行の字下げより空白二つ分深い位置から始めます。
+折り返したときは、お知らせ G0730 で知らせます。
+書体は「スタイルの設定」の章の「書体」で、大きさと背景の色は付録C の段落スタイル `code` で決めます。
+
+本文の中のファイル名やコマンドは、`[code: manifest.toml]` のように `[code: ...]` で書きます。
+PDF では、語の途中で分けず、行は空白と `/` の後でだけ改めます。
+
 ファイルの中身をそのまま載せるときは、`@listing` を使います。
 
 ```
@@ -565,7 +575,7 @@ size = "A5"
 
 ```
 @label fig-new
-@figure images/new-project.png alt="golem new で作った本の最初のページ"
+@figure images/new-project.png alt="golem new で作った本の例"
   golem new で作った本の最初のページ。
 ```
 
@@ -598,7 +608,7 @@ PDF の画像は HTML と EPUB では表示できないので、`web=images/arch
 @label markup
 # 原稿の記法
 
-詳しくは第[ref-number markup]章「[ref-title markup]」を見てください。
+第[ref-number markup]章「[ref-title markup]」を見てください。
 ```
 
 - `[ref-number 名前]`：章や節、図の番号になります。
@@ -856,7 +866,7 @@ paragraph-separator = "line"
 ```toml
 chapters = [
   "chapters/01.gm",
-  { file = "chapters/02-en.gm", paragraph-separator = "blank-line" },
+  { file = "en/02.gm", paragraph-separator = "blank-line" },
 ]
 ```
 
@@ -1023,12 +1033,22 @@ latin = "fonts/SourceSerif4-Regular.otf"
 [fonts.heading]
 ja = "fonts/NotoSansJP-Bold.otf"
 latin = "fonts/SourceSans3-Bold.otf"
+
+[fonts.code]
+ja = "fonts/NotoSansJP-Regular.otf"
+latin = "fonts/SourceCodePro-Regular.otf"
 ```
 
 `ja` に和文の書体を、`latin` に欧文の書体を書きます。
 和文と欧文で別の書体を組み合わせるのは、日本語の組版の普通のやり方です。
 このマニュアルは、本文を Noto Serif JP と Source Serif 4 で、見出しを Noto Sans JP と Source Sans 3 の太字で組んでいます。
 どれも SIL Open Font License 1.1 で配布されている書体です。
+
+コードの書体は、役割 `code` で指定します。
+コードブロックと `[code: ...]` は、この役割の書体で組みます。
+`[fonts.code]` がなければ本文の書体で組み、お知らせ G0808 で知らせます。
+このマニュアルは、コードを Source Code Pro と Noto Sans JP で組んでいます。
+どちらも SIL Open Font License 1.1 で配布されている書体です。
 
 書体のファイルは、プロジェクトの中に置きます。
 Golem は、機械にインストールされている書体を探しません。
@@ -1181,7 +1201,7 @@ CSS では和文と欧文で別のカーニングを指定できないので、`
 ファイルの中で定義したスタイルは、そのファイルにだけ効きます。
 
 ```
-@style-def paragraph letter based-on=body indent=2zw first-line-indent=0zw
+@style-def paragraph letter indent=2zw first-line-indent=0zw
 @style-def character sender font=heading
 
 @style letter
@@ -1281,8 +1301,11 @@ number = "{1}.{2}.{n}"
 
 ```toml
 [masters.body]
-running-head = { position = "top-outside", content = "heading.1.short" }
 folio = { position = "bottom-outside", format = "{n}" }
+
+[masters.body.running-head]
+position = "top-outside"
+content = "heading.1.short"
 ```
 
 `position` には、`"top-outside"`、`"top-center"`、`"top-inside"`、`"bottom-outside"`、`"bottom-center"`、`"bottom-inside"` のどれかを書きます。
@@ -1305,8 +1328,10 @@ folio = { position = "bottom-outside", format = "{n}" }
 左右のページで柱を変えるときは、`content` の代わりに `even`（偶数ページ）と `odd`（奇数ページ）の両方を書きます。
 
 ```toml
-[masters.body]
-running-head = { position = "top-outside", even = "title", odd = "heading.1.numbered" }
+[masters.body.running-head]
+position = "top-outside"
+even = "title"
+odd = "heading.1.numbered"
 ```
 
 章の始まりのページ（`page-break = "recto"` の見出しのあるページ）と白ページには、柱を出しません。
@@ -1438,10 +1463,20 @@ InDesign の文字組みアキ量設定に当たる設定で、和文と欧文�
 ```toml
 [aki-sets.wide-waou]
 based-on = "gyomatsu-yakumono-hankaku"
-rules = [
-  { before = "japanese", after = "western", optimum = "三分", minimum = "四分", maximum = "二分" },
-  { before = "western", after = "japanese", optimum = "三分", minimum = "四分", maximum = "二分" },
-]
+
+[[aki-sets.wide-waou.rules]]
+before = "japanese"
+after = "western"
+optimum = "三分"
+minimum = "四分"
+maximum = "二分"
+
+[[aki-sets.wide-waou.rules]]
+before = "western"
+after = "japanese"
+optimum = "三分"
+minimum = "四分"
+maximum = "二分"
 
 [paragraph-styles.body]
 aki-set = "wide-waou"
@@ -1585,23 +1620,23 @@ Golem の版を上げると、同じ原稿からでも出力は変わること�
 
 ## エラーと警告の読み方
 
-モノルビの区切りの数を誤ると、次のエラーが出ます。
+コマンドの名前を誤ると、次のエラーが出ます。
 
 ```
-chapters/01.gm:3:1: error[G0215]: モノルビの対象と読みのセグメントの数が一致しません
-  | [ruby: 東/京|とう]
+chapters/01.gm:3:2: error[G0222]: 未知のコマンドです: rubi
+  | [rubi: 東京|とうきょう]
 ```
 
 一行目は、左から次のように読みます。
 
-- `chapters/01.gm:3:1`：ファイルと、行と、その行の何文字めかです。
+- `chapters/01.gm:3:2`：ファイルと、行と、その行の何文字めかです。
 - `error`：重大度です。`error`（エラー）、`warning`（警告）、`notice`（お知らせ）のどれかです。お知らせは、この章の「お知らせ」の節で説明します。
-- `G0215`：エラーと警告のコードです。版が変わっても同じ誤りには同じコードが付くので、検索や記録に使えます。コードごとの意味と直し方は、付録D にまとめています。
+- `G0222`：エラーと警告のコードです。版が変わっても同じ誤りには同じコードが付くので、検索や記録に使えます。コードごとの意味と直し方は、付録D にまとめています。
 - その後が、誤りの説明です。
 
 二行目は、誤りのある行の中身です。
-この例では、親文字を `東/京` の二つに区切ったのに、読みを `とう` の一つしか書いていません。
-`[ruby: 東/京|とう/きょう]` と直せば、エラーは消えます。
+この例では、ルビのコマンドの名前 `ruby` を `rubi` と書いています。
+`[ruby: 東京|とうきょう]` と直せば、エラーは消えます。
 
 エラーが一つでもあると、`golem build` はその形式の出力を書きません。
 警告だけなら出力を書きます。
@@ -1621,17 +1656,13 @@ golem check --format json
 コードは小文字で書いてもかまいません。
 
 ```sh
-golem explain G0215
+golem explain G0222
 ```
 
 コードを省くと、すべてのコードを題とともに一行ずつ表示します。
 使わなくなったコードには、題の後に「（廃止）」が付きます。
 
-エラーや警告を出したときは、最後に次の一行を加えて、このコマンドを案内します。
-
-```
-コードの説明は golem explain <コード> で表示できます（例: golem explain G0215）
-```
+エラーや警告を出したときは、最後に「`コードの説明は golem explain <コード> で表示できます（例: golem explain G0222）`」の一行を加えて、このコマンドを案内します。
 
 同じ説明は、Golem のリポジトリの `docs/diagnostics.md` でも読めます。
 プラグインが出すエラーと警告のコードは、プラグインの文書を参照してください。
@@ -1639,11 +1670,11 @@ golem explain G0215
 ## お知らせ
 
 Golem は、誤りではないものの、知っておいたほうがよいことをお知らせとして伝えます。
-たとえば、`@listing` のパスを `src=` で書くと、次のお知らせが出ます。
+たとえば、自動で振られる番号と同じ番号を `@number` に書くと、次のお知らせが出ます。
 
 ```
-chapters/01.gm:12:10: notice[G0265]: @listing の src= は廃止予定です。パスを最初の引数に書きます
-  | @listing src=src/Main.hs lines=10-20
+a.gm:5:1: notice[G0407]: @number 1 は自動で振られる番号と同じです
+  | @number 1
 ```
 
 重大度は `notice` です。
@@ -1819,7 +1850,7 @@ Golem の組み込みのコマンドでは足りないとき、プラグイン�
 
 ```toml
 [plugins.furigana]
-url = "https://example.com/golem-furigana/v1.0.0/furigana.wasm"
+url = "https://example.com/furigana/v1.0.0/furigana.wasm"
 ```
 
 URL は HTTPS に限ります。
@@ -1856,7 +1887,7 @@ golem build
 
 ```toml
 [plugins.furigana]
-url = "https://example.com/golem-furigana/v1.0.0/furigana.wasm"
+url = "https://example.com/furigana/v1.0.0/furigana.wasm"
 overrides = ["ruby"]
 ```
 
@@ -2023,7 +2054,7 @@ Golem は、プラグインに、ファイル、ネットワーク、時計、�
 プラグインのコマンドも、同じ形で呼び出します（「プラグイン」の章）。
 
 ```
-[ruby: 東/京|とう/きょう]の[kenten shape=dot: 下町]。[note: 注の本文。]
+[ruby: 東/京|とう/きょう]の[kenten shape=dot: 下町]。[note: 注]
 図[ref-number fig-new]は[ref-page fig-new]ページにあります。
 ```
 
@@ -2057,7 +2088,7 @@ PDF と HTML の版では、この例の一行めのうち、ルビと圏点を�
 ```
 @set price = 1800
 
-税込みで[= fixed(price * 1.1, 0)]円、本書は全[= doc.chapters.count]章です。
+税込み[= fixed(price * 1.1, 0)]円、全[= doc.chapters.count]章。
 ```
 
 PDF と HTML の版では、この例も次の段落で実際に組んでいます。
@@ -2282,7 +2313,7 @@ PDF を作るには必須です。
 
 文字スタイルです。
 名前は英小文字で始め、英小文字、数字、`-` だけで付けます。
-`bold`、`italic`、`strong` ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
+`bold`、`italic`、`strong`、`code` ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
@@ -2298,18 +2329,19 @@ PDF を作るには必須です。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| `kerning` | `"metrics"` | カーニング（字の組ごとの字間の調整）の方式です。`"metrics"` は書体のペアカーニングの情報で調整し、`"japanese-equal-width"` は欧文だけを調整し、`"none"` は調整しません。`"optical"` はまだ使えません。 |
+| `kerning` | `"metrics"` | カーニング（字の組ごとの字間の調整）の方式です。`"metrics"` は書体のペアカーニングの情報で調整し、`japanese-equal-width` は欧文だけを調整し、`"none"` は調整しません。`"optical"` はまだ使えません。 |
 | `tracking` | `0` | 文字ごとに足す空きです。文字の大きさの 1000 分の 1 を単位に、-1000 から 10000 までの整数で書きます。 |
 | `proportional-metrics` | `false` | `true` にすると、和文を字面に合わせた送りで組みます。 |
 | `baseline-shift` | `"0pt"` | 文字を、横組みでは上へ、縦組みでは右へずらす量です。`"-0.25zw"` のように負の値も書けます。 |
 
-組み込みの文字スタイルは、`bold` が `synthetic-bold = true`、`italic` が `synthetic-italic = true`、`strong` が `based-on = "bold"` です。
+組み込みの文字スタイルは、`bold` が `synthetic-bold = true`、`italic` が `synthetic-italic = true`、`strong` が `based-on = "bold"`、`code` が `font = "code"` です。
+`code` と、`based-on` で `code` を引き継ぐ文字スタイルの文字は、PDF で語の途中で分けず、空白と `/` の後でだけ行を改めます。
 
 ## `[paragraph-styles.名前]`
 
 段落スタイルです。
 名前の付け方は文字スタイルと同じです。
-`body`、`verse`、`caption`、`sidenote` ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
+`body`、`verse`、`caption`、`sidenote`、`code` ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
 
 | キー | 意味 |
 |:---|:---|
@@ -2340,6 +2372,22 @@ PDF を作るには必須です。
 - `verse`：韻文です。`line-breaks = "keep"`、`space-between = 1`、`indent = "2zw"`、`first-line-indent = "-2zw"` です。
 - `caption`：図版のキャプションです。キャプションには `font` と `size` だけが効きます。
 - `sidenote`：傍注の本文です。傍注には `font` と `size` だけが効きます。
+- `code`：コードブロックです。`font = "code"`、`padding = "0.5zw"` です。
+
+段落スタイル `code` に書けるキーは、次の四つだけです。
+`based-on` は書けず、ほかの段落スタイルの `based-on` にも書けません。
+原稿の `@style code` もエラーです。
+
+| キー | 既定 | 意味 |
+|:---|:---|:---|
+| `font` | `"code"` | 書体の役割の名前です。 |
+| `size` | 本文の大きさ | 文字の大きさです。本文の文字の大きさまでにします。 |
+| `background` | なし | 背景の色の名前です。`[color.swatches]` で付けた名前を書きます。書かなければ背景を塗りません。 |
+| `padding` | `"0.5zw"` | 背景の内側の余白です。`zw` はコードの文字の大きさを一字とします。上下と左右に同じ量を取ります。 |
+
+コードブロックは、行と上下の余白を収める行数を占め、その中の中央に組みます。
+後の本文は、行の格子からずれません。
+`background` と `padding` は、`code` のほかの段落スタイルには書けません。
 
 ## `[headings.階層]`
 
@@ -2640,6 +2688,7 @@ G0310 と G0504 は、`--profile dev` では警告、`--profile prod` ではエ�
 - **G0245 `@style の本体には段落だけを置けます。段落は空行で区切ります`**：字下げした `@style` の本体に、箇条書きなどの段落でないものがあります。
 - **G0246 `@style の本体に段落がありません`**：本体の段落を、`@style` の行より空白二つ深く字下げして書いてください。
 - **G0247 `定義されていない段落スタイルです: …`**：`style.toml` に `[paragraph-styles.名前]` を書くか、ファイルの先頭に `@style-def paragraph` で定義するか、名前の綴りを直してください。
+- **G0266 `code はコードブロックの段落スタイルです。コードは ``` か @listing で書きます`**：`@style code` は書けません。コードは ```` ``` ```` で囲むか `@listing` で載せ、本文の中のコードは `[code: ...]` で書いてください。
 - **G0258 `@page-break の引数は recto か verso です`** など：`@page-break` には何も書かないか、`recto` か `verso` を一つだけ書きます。`@column-break` は引数を取りません。次の行を字下げしているなら、字下げをやめてください。
 - **G0259 `@page-break と @column-break は文書の最上位にだけ置けます`**：リストの項目や図版のキャプションの中に改ページを書いています。字下げをやめて、リストや図版の前か後ろに書いてください。
 - **G0260 `絶対パスは使えません: …`** など：`@figure`、`@table`、`@listing` のパスが、絶対パス、URL、プロジェクトの外のどれかを指しています。ファイルをプロジェクトの中に置き、そこからの相対パスで書いてください。
@@ -2718,6 +2767,7 @@ PDF を組むときに出るエラーです。
 - **G0733 `傍注が傍注欄より高く、収まりません`**、**`このページの傍注が傍注欄に収まりません`**：傍注を短くするか、そのページの傍注を減らしてください。
 - **G0741 `表の列の最小の幅の合計（…）が使える幅（…）に収まりません`**：表の列を減らすか、長い語を短くしてください。
 - **G0742 `表の … 行目が見出しの行とともに一ページに収まりません`**：表の行の途中では改ページしないので、その行のセルの文を短くしてください。
+- **G0743 `コードブロックの行長が足りません`**、**`コードブロックの一行が一ページに収まりません`**：段落スタイル `code` の `padding` か `size` を小さくするか、コードブロックをリストの浅いところに移してください。
 
 ## 書体と色のファイル
 
@@ -2754,6 +2804,8 @@ PDF を組むときに出るエラーです。
 - **G0323 `style.toml がないので、既定の体裁で組みます`**：プロジェクトのディレクトリに `style.toml` がありません。既定の体裁でよければ、そのままでかまいません。
 - **G0407 `@number … は自動で振られる番号と同じです`**：見出しやリストの項目の `@number` が、書かなくても振られる番号と同じです。項目を入れ替えたときに番号が固定されてしまうので、消してください。
 - **G0408 `本の最後の改ページは効果がありません`**：本の最後のファイルの終わりにある `@page-break` と `@column-break` は捨てられます。白ページは作られないので、消してください。
+- **G0730 `コードの行を折り返しました（… 行）`**：コードブロックの行が版面に収まらず、折り返して組みました。行を短く書き直すか、段落スタイル `code` の `size` を小さくしてください。`@listing` で取り込むファイルのように直せないときは、そのままでかまいません。
+- **G0808 `コードの書体の役割 code がないので、本文の書体で組みます`**：本にコードがあるのに、`style.toml` に `[fonts.code]` がありません。等幅の書体で組みたければ `[fonts.code]` を書いてください。本文の書体のままでよければ、そのままでかまいません。
 
 # 参考文献
 

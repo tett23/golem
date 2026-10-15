@@ -285,7 +285,8 @@ completions ws path off = case sourceOf ws path of
         of its @style-def lines while it does not evaluate -}
         local = maybe noLocalStyles erStyles (srcResult src)
         defined k = [n | (_, OccStyleDef k' n) <- occurrences (srcAst src), k' == k]
-        paraNames = nub (Map.keys (stParaStyles style) <> Map.keys (lsParaStyles local) <> defined ParagraphKind)
+        -- code is the style of code blocks, not of @style, based-on or regex styles (golem-driver ADR 0017)
+        paraNames = filter (/= "code") (nub (Map.keys (stParaStyles style) <> Map.keys (lsParaStyles local) <> defined ParagraphKind))
         charNames = nub (Map.keys (stCharStyles style) <> Map.keys (lsCharStyles local) <> defined CharacterKind)
         labels = nub [l | s <- allSources ws, (_, OccLabelDef l) <- occurrences (srcAst s)]
      in if "@import " `T.isPrefixOf` T.stripStart lineBefore

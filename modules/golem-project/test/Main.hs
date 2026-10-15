@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Control.Monad (void)
+import Control.Monad (forM_, void)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.List.NonEmpty (NonEmpty (..))
@@ -394,6 +394,7 @@ tests =
       indentTests,
       listTests,
       characterFeatureTests,
+      codeStyleTests,
       testCase "the sidenote font and size are the paragraph style sidenote (golem-driver ADR 0011)" $ do
         let retired = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
             hasIt ms = assertBool (show ms) (not (null ms) && all (\m -> "G0306" `T.isPrefixOf` m) ms && any ("[paragraph-styles.sidenote]" `T.isInfixOf`) ms)
@@ -506,8 +507,8 @@ styleTests =
         paraStyle s (Just "nope") @?= Nothing
         noBase (paraStyle s (Just "caption")) @?= noBase (paraStyle s Nothing)
         noBase (paraStyle s (Just "sidenote")) @?= noBase (paraStyle s Nothing)
-        Map.keys (stParaStyles s) @?= ["body", "caption", "sidenote", "verse"]
-        Map.keys (stCharStyles s) @?= ["bold", "italic", "strong"],
+        Map.keys (stParaStyles s) @?= ["body", "caption", "code", "sidenote", "verse"]
+        Map.keys (stCharStyles s) @?= ["bold", "code", "italic", "strong"],
       testCase "a user definition overrides the keys it writes" $ do
         s <- parsed "[paragraph-styles.caption]\nsize = \"0.8zw\"\n"
         (paraStyle s (Just "caption") >>= psSize) @?= Just (Zw (4 / 5))
@@ -713,7 +714,73 @@ specStyle =
       "folio = { position = \"bottom-outside\", format = \"{n}\" }"
     ]
 
--- | Kerning, tracking, proportional metrics and baseline shift (docs/adr/0020).
+{- | Kerning, tracking, proportional metrics and baseline shift (docs/adr/0020).
+| The paragraph style code and the character style code (golem-driver ADR 0017).
+-}
+codeStyleTests :: TestTree
+codeStyleTests =
+  testGroup
+    "code (golem-driver ADR 0017)"
+    [ testCase "[paragraph-styles.code] reads font, size, background and padding" $ do
+        s <- styleOf "[fonts.mono]\nlatin = \"m.otf\"\n\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.code]\nfont = \"mono\"\nsize = \"11Q\"\nbackground = \"code-bg\"\npadding = \"1zw\"\n"
+        let d = paraStyle s (Just "code")
+        (d >>= psFont) @?= Just "mono"
+        (d >>= psSize) @?= parseDim "11Q"
+        (d >>= psBackground) @?= Just "code-bg"
+        (d >>= psPadding) @?= Just (Zw 1),
+      testCase "the defaults of code: font code, padding 0.5zw, no background" $ do
+        s <- styleOf ""
+        let d = paraStyle s (Just "code")
+        (d >>= psFont) @?= Just "code"
+        (d >>= psPadding) @?= Just (Zw 0.5)
+        (d >>= psBackground) @?= Nothing
+        (charStyle s "code" >>= csFont) @?= Just "code",
+      testCase "code without [fonts.code] is not G0308; another role that is missing is" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.code]\nsize = \"11Q\"\n") @?= []
+        codes (parseStyle (FileId 0) "[paragraph-styles.code]\nfont = \"mono\"\n") @?= ["G0308"]
+        codes (parseStyle (FileId 0) "[character-styles.code]\nfont = \"mono\"\n") @?= ["G0308"],
+      testCase "code takes only font, size, background and padding (G0306)" $
+        forM_ ["based-on = \"body\"", "indent = \"1zw\"", "line-breaks = \"keep\"", "regex-styles = []"] $ \kv -> do
+          let r = parseStyle (FileId 0) ("[paragraph-styles.code]\n" <> kv <> "\n")
+          codes r @?= ["G0306"]
+          assertBool (show (messages r)) (any ("font、size、background、padding" `T.isInfixOf`) (messages r)),
+      testCase "background and padding only in code (G0306)" $ do
+        let r1 = parseStyle (FileId 0) "[color.swatches]\nbg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.quote]\nbackground = \"bg\"\n"
+        codes r1 @?= ["G0306"]
+        assertBool (show (messages r1)) (any ("code" `T.isInfixOf`) (messages r1))
+        codes (parseStyle (FileId 0) "[paragraph-styles.quote]\npadding = \"1zw\"\n") @?= ["G0306"],
+      testCase "based-on = \"code\" is G0313" $
+        codes (parseStyle (FileId 0) "[paragraph-styles.x]\nbased-on = \"code\"\n") @?= ["G0313"],
+      testCase "a missing swatch is G0313; a padding that is negative or not a dimension G0306" $ do
+        codes (parseStyle (FileId 0) "[paragraph-styles.code]\nbackground = \"nope\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.code]\npadding = \"-1zw\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.code]\npadding = \"abc\"\n") @?= ["G0306"],
+      testCase "a size larger than the grid is G0311" $
+        codes (parseStyle (FileId 0) "[page]\nsize = \"A5\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 30\nlines = 20\nline-pitch = \"22H\"\nposition = { top = \"20mm\", gutter = \"20mm\" }\n\n[paragraph-styles.code]\nsize = \"14Q\"\n") @?= ["G0311"],
+      testCase "@style-def paragraph code: the four keys only" $ do
+        base <- styleOf ""
+        case localStyleDef ParagraphKind [("size", LocalWord "10Q")] of
+          Right (Right d) -> do
+            [c | (c, _, _) <- checkLocalStyles base noLocalStyles {lsParaStyles = Map.fromList [("code", d)]}] @?= []
+            (paraStyle (withLocalStyles base noLocalStyles {lsParaStyles = Map.fromList [("code", d)]}) (Just "code") >>= psSize) @?= parseDim "10Q"
+          other -> assertFailure (show other)
+        case localStyleDef ParagraphKind [("indent", LocalWord "1zw")] of
+          Right (Right d) -> [c | (c, _, _) <- checkLocalStyles base noLocalStyles {lsParaStyles = Map.fromList [("code", d)]}] @?= ["G0306"]
+          other -> assertFailure (show other),
+      testCase "a user's [character-styles.code] keeps the built-in font" $ do
+        s <- styleOf "[color.swatches]\nx = { cmyk = [90, 50, 0, 20] }\n\n[character-styles.code]\ncolor = \"x\"\n"
+        (charStyle s "code" >>= csFont) @?= Just "code"
+        (charStyle s "code" >>= csColor) @?= Just "x",
+      testCase "a character style based on code is a code style" $ do
+        s <- styleOf "[character-styles.path]\nbased-on = \"code\"\n"
+        isCodeCharStyle s "path" @?= True
+        isCodeCharStyle s "code" @?= True
+        isCodeCharStyle s "strong" @?= False
+    ]
+  where
+    styleOf t = either (\ds -> assertFailure (show ds) >> pure defaultStyle) pure (parseStyle (FileId 0) t)
+    messages = either (map diagMessage) (const [])
+
 characterFeatureTests :: TestTree
 characterFeatureTests =
   testGroup
@@ -942,6 +1009,7 @@ localStyleTests =
               "proportional-metrics" -> "true"
               "baseline-shift" -> "1pt"
               "aki-set" -> "gyomatsu-yakumono-hankaku"
+              "padding" -> "1zw"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
         assertBool "char" (all (known CharacterKind) charStyleKeys)
