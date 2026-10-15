@@ -2,6 +2,7 @@ module Main (main) where
 
 import BuildSpec
 import CliSpec
+import DiagnosticSitesSpec
 import DiagnosticsSpec
 import PageElementsSpec
 import ParagraphSpec
@@ -67,6 +68,7 @@ tests =
              testGroup "golem preflight (golem-cli ADR 0006)" preflightTests,
              testGroup "footnote marks and numbers (ADR 0018)" footnoteTests,
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
-             publicDomainTests
+             publicDomainTests,
+             diagnosticSiteTests
            ]
     )

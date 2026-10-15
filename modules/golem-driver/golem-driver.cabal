@@ -68,6 +68,7 @@ test-suite golem-driver-test
   other-modules:
     BuildSpec
     CliSpec
+    DiagnosticSitesSpec
     DiagnosticsSpec
     ExternalTool
     PageElementsSpec

@@ -43,6 +43,7 @@ module Golem.Driver.Pdf
     bibliographyLines,
     Assumed (..),
     fixpoint,
+    labelSpans,
     TocGeometry (..),
     TocPage (..),
     tocPage,
