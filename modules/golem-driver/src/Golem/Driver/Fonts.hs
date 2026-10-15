@@ -124,8 +124,13 @@ provide faces body roles =
       let (_, la, roleFeatures) = roleOf role
           features = roleFeatures <> extra
           shapeIn f r dir = shapeUnits f ((shapeRequest 1000 r) {srDirection = dir, srFeatures = features})
-          glyph ix f r turned dir (g, c, (xa, ya, _, _)) =
-            Shaped ix g (toInteger (if dir == Vertical then negate ya else xa) % toInteger (fontUnitsPerEm f)) (clusterText r c) turned c
+          em f u = toInteger u % toInteger (fontUnitsPerEm f)
+          {- the offsets as HarfBuzz gives them in horizontal shaping; vertical
+          shaping subtracts the vertical origin, added back here (golem-driver
+          ADR 0020) -}
+          glyph ix f r turned dir (g, c, (xa, ya, xo, yo)) =
+            let (ox, oy) = if dir == Vertical then glyphVerticalOrigin f g else (0, 0)
+             in Shaped ix g (em f (if dir == Vertical then negate ya else xa)) (clusterText r c) turned c (em f (xo + ox), em f (yo + oy))
           clusters gs = [(c, [x | x@(_, c', _) <- gs, c' == c]) | c <- nubOrd [c | (_, c, _) <- gs]]
           gids = map (\(g, _, _) -> g)
           run (ix, r)

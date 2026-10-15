@@ -34,6 +34,12 @@ codes src = map diagCode (snd (parse fid src))
 astOf :: Text -> [Golem.Parser.AST.Located Golem.Parser.AST.Block]
 astOf src = let (f, _, _) = parseAst fid src in Golem.Parser.AST.fileBlocks f
 
+-- | The cells of a table without their spans; other blocks are Nothing.
+tableShape :: Golem.Parser.AST.Located Golem.Parser.AST.Block -> Maybe [[[Golem.Parser.AST.Inline]]]
+tableShape (Golem.Parser.AST.Located _ b) = case b of
+  Golem.Parser.AST.Table _ h rows -> Just [map (map Golem.Parser.AST.locValue) r | r <- h : rows]
+  _ -> Nothing
+
 -- | The labels the grammar declares with @%recover@.
 grammarLabels :: IO [Text]
 grammarLabels = do
@@ -191,6 +197,24 @@ tests =
         assertBool "a HardBreak node" (NHardBreak `elem` kinds (fst (parse fid "[note: a\\\nb]\n"))),
       testCase "hard_break has its code" $
         fst (labelCode (Just "hard_break")) @?= "G0124",
+      -- golem-parser ADR 0010
+      testGroup
+        "a backslash after the last | of a table row (ADR 0010)"
+        [ -- right after the backslash, where BadBreak reports it in a heading too ("# h\\" is at 4)
+          testCase "in the header row: G0124 only, at the backslash" $ do
+            parsed "| a | b |\\\n|---|---|\n| c | d |\n" @?= [(g "G0124", 10, 10)]
+            parsed "# h\\\n" @?= [(g "G0124", 4, 4)],
+          testCase "in a body row: G0124 only, and the table keeps its rows" $ do
+            parsed "| a | b |\n|---|---|\n| c | d |\\\n| e | f |\n" @?= [(g "G0124", 30, 30)]
+            map tableShape (astOf "| a | b |\n|---|---|\n| c | d |\\\n| e | f |\n")
+              @?= map tableShape (astOf "| a | b |\n|---|---|\n| c | d |\n| e | f |\n"),
+          testCase "on the last line without a newline" $
+            parsed "| a | b |\n|---|---|\n| c | d |\\" @?= [(g "G0124", 30, 30)],
+          testCase "a row without its last | is still G0115" $
+            codes "| a | b |\n|---|---|\n| c | d \\\n" @?= [g "G0115"],
+          testCase "the message is the one of the hard break" $
+            messageOf "| a | b |\\\n|---|---|\n" (snd (labelCode (Just "hard_break")))
+        ],
       codeTests
     ]
 

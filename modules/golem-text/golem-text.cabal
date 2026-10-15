@@ -24,3 +24,19 @@ library
     , golem-syntax
     , text          >=2.0  && <2.2
   default-language: GHC2021
+
+test-suite golem-text-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  build-depends:
+    , base
+    , containers
+    , golem-doc
+    , golem-syntax
+    , golem-text
+    , tasty          >=1.4 && <1.6
+    , tasty-hunit    >=0.10 && <0.11
+    , text
+  default-language: GHC2021
