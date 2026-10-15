@@ -12,7 +12,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 cfg :: AssembleConfig
-cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}"
+cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty
 
 sp :: Int -> Int -> SrcSpan
 sp f s = mkSpan (FileId f) s (s + 1)
@@ -33,7 +33,8 @@ tests :: TestTree
 tests =
   testGroup
     "assembly, S1 (ADR 0002)"
-    [ testCase "kanji numerals" $ do
+    [ noticeTests,
+      testCase "kanji numerals" $ do
         map kanji [1, 10, 12, 120, 1000, 10000, 20005] @?= ["一", "十", "十二", "百二十", "千", "一万", "二万五"]
         kanjiDigits 120 @?= "一二〇",
       testCase "heading numbers across files, @number, @nonumber, section reset" $ do
@@ -155,3 +156,47 @@ diagnosticCodes =
 
 summary :: Diagnostic -> (Text, Severity, SrcSpan, Text, [(SrcSpan, Text)])
 summary d = let DiagnosticCode c = diagCode d in (c, diagSeverity d, diagSpan d, diagMessage d, diagRelated d)
+
+-- | The notices of the assembly (golem-syntax ADR 0002).
+noticeTests :: TestTree
+noticeTests =
+  testGroup
+    "notices (golem-syntax ADR 0002)"
+    [ testCase "G0407: @number on the first item of a list equal to 1" $ do
+        let ds = notices [Document (FileId 1) [olist 1 0 [Just 1, Nothing]]]
+        ds @?= [("G0407", "@number 1 は自動で振られる番号と同じです", sp 1 0)],
+      testCase "G0407: @number 3 on the third item, which continues the list before it" $ do
+        notices [Document (FileId 1) [olist 1 0 [Nothing, Nothing], olist 1 10 [Just 3]]] @?= [("G0407", "@number 3 は自動で振られる番号と同じです", sp 1 10)]
+        notices [Document (FileId 1) [olist 1 0 [Nothing, Nothing], olist 1 10 [Just 5]]] @?= []
+        -- a list after a paragraph starts from 1
+        notices [Document (FileId 1) [olist 1 0 [Nothing, Nothing], para 1 5 [], olist 1 10 [Just 3]]] @?= [],
+      testCase "G0407 points at the @number line when its span is known" $ do
+        let c = cfg {acNumberSites = Map.fromList [(sp 1 10, mkSpan (FileId 1) 6 9)]}
+            (_, ds) = assemble c noEval [Document (FileId 1) [olist 1 0 [Nothing, Nothing], olist 1 10 [Just 3]]]
+        [(diagCode d, diagSeverity d, diagSpan d) | d <- ds] @?= [(DiagnosticCode "G0407", Notice, mkSpan (FileId 1) 6 9)],
+      testCase "G0407: a heading whose @number is the automatic number" $ do
+        notices [Document (FileId 1) [heading 1 0 1 noHeadingAttrs {haNumber = Just 1} Nothing "一"]] @?= [("G0407", "@number 1 は自動で振られる番号と同じです", sp 1 0)]
+        notices [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", heading 1 5 1 noHeadingAttrs {haNumber = Just 5} Nothing "五"]] @?= []
+        -- @nonumber takes no number: the heading after it is 2 by itself
+        notices
+          [ Document
+              (FileId 1)
+              [ heading 1 0 1 noHeadingAttrs Nothing "一",
+                heading 1 5 1 noHeadingAttrs {haNoNumber = True} Nothing "間",
+                heading 1 10 1 noHeadingAttrs {haNumber = Just 2} Nothing "二"
+              ]
+          ]
+          @?= [("G0407", "@number 2 は自動で振られる番号と同じです", sp 1 10)]
+        -- across files
+        notices [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一"], Document (FileId 2) [heading 2 0 1 noHeadingAttrs {haNumber = Just 2} Nothing "二"]] @?= [("G0407", "@number 2 は自動で振られる番号と同じです", sp 2 0)],
+      testCase "G0408: page breaks at the end of the last file" $ do
+        notices [Document (FileId 1) [para 1 0 [], brk 1 5 BreakPage]] @?= [("G0408", "本の最後の改ページは効果がありません", sp 1 5)]
+        notices [Document (FileId 1) [para 1 0 [], brk 1 5 BreakPage], Document (FileId 2) [para 2 0 []]] @?= []
+        notices [Document (FileId 1) [para 1 0 [], brk 1 5 BreakPage, brk 1 10 BreakColumn]]
+          @?= [("G0408", "本の最後の改ページは効果がありません", sp 1 5), ("G0408", "本の最後の改ページは効果がありません", sp 1 10)]
+        notices [Document (FileId 1) [brk 1 0 BreakPage, para 1 5 []]] @?= []
+    ]
+  where
+    notices docs = [(c, diagMessage d, diagSpan d) | d <- snd (assemble cfg noEval docs), diagSeverity d == Notice, let DiagnosticCode c = diagCode d]
+    olist f s ns = Block (sp f s) Nothing (OrderedList [ListItem n [para f (s + 1) []] | n <- ns])
+    brk f s k = Block (sp f s) Nothing (ForcedBreak k)

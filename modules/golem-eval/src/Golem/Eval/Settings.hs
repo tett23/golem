@@ -167,7 +167,19 @@ fileStyles style header =
           { lsRegexStyles =
               Map.filter (not . null) (Map.mapWithKey (\n rs -> [r | (i, r) <- zip [0 ..] rs, (n, i) `notElem` wrongRegexes]) (lsRegexStyles withRegexes))
           }
-   in (final, ds1 <> ds2 <> ds3)
+      -- G0262: one notice for each definition that took effect over a style of style.toml or a built-in one
+      overrides =
+        [ notice "G0262" sp ("ファイルの中の定義が" <> kindName k <> "の " <> n <> " を上書きしています")
+        | Def sp k n _ <- defs,
+          let (inFile, inStyle) = case k of
+                CharacterKind -> (Map.member n (lsCharStyles final), Map.member n (stCharStyles style))
+                ParagraphKind -> (Map.member n (lsParaStyles final), Map.member n (stParaStyles style)),
+          inFile && inStyle
+        ]
+      kindName = \case
+        CharacterKind -> "文字スタイル"
+        ParagraphKind -> "段落スタイル"
+   in (final, ds1 <> ds2 <> ds3 <> overrides)
   where
     shape = "@style-def には種類（character、paragraph、regex）と名前を書きます"
     readDef (defs, ds) (sp, args, body) =

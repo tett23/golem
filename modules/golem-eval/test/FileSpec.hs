@@ -117,6 +117,7 @@ tests =
     [ verseTests,
       diagnosticTests,
       settingsTests,
+      noticeTests,
       styleTests,
       separatorTests,
       hardBreakTests,
@@ -200,7 +201,8 @@ verseTests =
     [ testCase "newlines in a paragraph produce nothing" $
         body "吾輩は猫である。\n名前はまだ無い。\n" @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 49) "吾輩は猫である。名前はまだ無い。"]],
       testCase "newlines are dropped before the tcy check" $
-        errs "[tcy: 1\n2]\n" @?= [],
+        -- no G0240; the digits make the notice G0263 (golem-syntax ADR 0002)
+        errs "[tcy: 1\n2]\n" @?= ["G0263"],
       testCase "lines and stanzas" $
         verseOf "@style verse\n  A\n  B\n\n  C\n" @?= [[["A"], ["B"]], [["C"]]],
       testCase "whitespace at the start of a line is ignored, the ideographic space is not" $ do
@@ -299,6 +301,45 @@ runS c src =
 codesS :: Text -> [Text]
 codesS src = let (_, ds, _) = runS sctx src in [x | d <- ds, let DiagnosticCode x = diagCode d]
 
+-- | The notices of the evaluation (golem-syntax ADR 0002).
+noticeTests :: TestTree
+noticeTests =
+  testGroup
+    "notices (golem-syntax ADR 0002)"
+    [ testCase "G0262: a @style-def over a style of style.toml or a built-in one" $ do
+        let at src = [(c, m, s) | (c, m, s, _) <- diagsWith sctx src, c == "G0262"]
+        at "@style-def paragraph body indent=1zw\n\nx\n" @?= [("G0262", "ファイルの中の定義が段落スタイルの body を上書きしています", 0)]
+        at "@style-def paragraph letter based-on=body\n\nx\n" @?= []
+        let headingStyle = either (error . show) id (parseStyle (FileId 9) "[fonts.heading]\nja = \"fonts/h.otf\"\n")
+            hctx = ctx {ctxStyle = headingStyle, ctxCharStyles = Map.keysSet (stCharStyles headingStyle), ctxParaStyles = paraLineBreaks headingStyle}
+        [c | (c, _, _, _) <- diagsWith hctx "@style-def character bold font=heading\n\n[bold: x]\n"] @?= ["G0262"]
+        at "@style-def paragraph letter indent=1zw\n@style-def paragraph quote indent=2zw\n\nx\n" @?= [("G0262", "ファイルの中の定義が段落スタイルの quote を上書きしています", 39)],
+      testCase "G0262 is a notice" $ do
+        let (_, ds, _) = runS sctx "@style-def paragraph body indent=1zw\n\nx\n"
+        map diagSeverity ds @?= [Notice],
+      testCase "G0263: [tcy: ...] of ASCII digits only" $ do
+        [(c, m, s, e) | (c, m, s, e) <- diags "a[tcy: 10]b\n", c == "G0263"] @?= [("G0263", "数の縦中横は [number-text 10 style=tcy] でも書けます", 1, 10)]
+        errs "[tcy: !?]\n" @?= []
+        errs "[tcy: 1a]\n" @?= []
+        errs "[number-text 10 style=tcy]\n" @?= [],
+      testCase "G0264: an escaped space at the start of a line of a paragraph that keeps its lines" $ do
+        [(c, m, s) | (c, m, s, _) <- diags "@style verse\n  a\n  \\ x\n", c == "G0264"]
+          @?= [("G0264", "行頭のエスケープした空白は無視されます。字下げには全角の空白を使います", 19)]
+        errs "@style verse\n  \\ x\n" @?= ["G0264"]
+        errs "@style quote\n  \\ x\n" @?= []
+        errs "\\ x\n" @?= []
+        errs "@style verse\n  a\\ b\n" @?= [],
+      testCase "G0265: @listing src=, and the content is the same" $ do
+        [(c, m, s, e) | (c, m, s, e) <- diags "@listing src=src/Main.hs\n", c == "G0265"]
+          @?= [("G0265", "@listing の src= は廃止予定です。パスを最初の引数に書きます", 9, 24)]
+        errs "@listing src/Main.hs\n" @?= []
+        body "@listing src=src/Main.hs lines=2-3\n" @?= body "@listing src/Main.hs lines=2-3\n",
+      testCase "the span of each @number by the span of its block" $ do
+        let (file, _, _) = parseAst (FileId 1) "+ a\n@number 3\n+ b\n\n@number 2\n# h\n"
+            r = evalFile ctx file
+        Map.toList (erNumberSites r) @?= [(mkSpan (FileId 1) 14 18, mkSpan (FileId 1) 4 14), (mkSpan (FileId 1) 29 33, mkSpan (FileId 1) 19 29)]
+    ]
+
 -- | The file settings: @manifest and @style-def (docs/adr ADR 0014).
 settingsTests :: TestTree
 settingsTests =
@@ -331,11 +372,13 @@ settingsTests =
         codesS "@style-def character note\n@style-def paragraph note\n\nx\n" @?= [],
       testCase "a name defined twice in a file is G0253" $ do
         codesS "@style-def paragraph a\n@style-def paragraph a\n" @?= ["G0253"]
-        codesS "@style-def paragraph quote\n@style-def paragraph quote indent=1zw\n" @?= ["G0253"],
+        -- the first overrides quote of style.toml (golem-syntax ADR 0002)
+        codesS "@style-def paragraph quote\n@style-def paragraph quote indent=1zw\n" @?= ["G0253", "G0262"],
       testCase "a style of style.toml or a built-in style may be overridden" $ do
         let ok src name = do
               let (_, ds, r) = runS sctx src
-              ds @?= []
+              -- G0262 tells the override (golem-syntax ADR 0002)
+              map diagCode ds @?= [DiagnosticCode "G0262"]
               assertBool (T.unpack name) (Map.member name (lsParaStyles (erStyles r)) || Map.member name (lsCharStyles (erStyles r)))
         ok "@style-def paragraph body indent=1zw\n\nx\n" "body"
         ok "@style-def character strong synthetic-italic=true\n\n[strong: x]\n" "strong"
@@ -686,7 +729,8 @@ diagnosticTests =
         diags "@table src=ragged.csv\n" @?= [("G0235", "CSV の行ごとのセルの数が一致しません", 0, 22)],
       testCase "G0236: @listing without a path" $ do
         msgs "@listing\n" @?= [("G0236", "@listing にはファイルのパスが必要です")]
-        errs "@listing src=src/Main.hs\n" @?= [],
+        -- src= is read, with the notice G0265 (golem-syntax ADR 0002)
+        errs "@listing src=src/Main.hs\n" @?= ["G0265"],
       testCase "G0238: the number of prose slots" $ do
         msgs "[strong]\n" @?= [("G0238", "strong には散文スロットが一つ必要です")]
         msgs "[strong: a|b]\n" @?= [("G0238", "strong には散文スロットが一つ必要です")]
