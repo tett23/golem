@@ -114,7 +114,7 @@ CI が生成した最新のゲラを URL で共有すれば、関係者は常に
 - **スポットカラー**：v1 はプロセスカラーのみ。色は名前で指定し、出力インテント[^intent]（Japan Color 2001 Coated）に束縛して解決する。トンボのレジストレーションの色（Separation の `All`）だけは例外とする（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
 - **改ページの大域の最適化**：v1 の改ページは、段落の行分割のような大域の最適化をせず、先頭から順に詰める方式とする。見開きの単位の最適化と段の高さの調整も行わない。いずれも v2 以降で扱う。
 - **雑誌級のレイアウトエンジン**：レイアウト IR はフレーム間制約（レベル 3）[^frame-levels]まで表現できる型を持つが、v1 のエンジンは単一フローと除外領域（レベル 1、図版の回り込み）のみ実装する。エンジンは未実装の制約に遭遇したらエラーで停止し、黙って無視しない。
-- **ユーザー定義の lint / fmt ルールと lint の抑制**：ルールは処理系が固定し、個別の箇所で警告を止める手段も持たない。ユーザー拡張を許すと、ルールの妥当性をめぐる合意コストが処理系の外に漏れ出すためである。
+- **ユーザー定義の lint / fmt ルールと lint の抑制**：ルールは処理系が固定し、個別の箇所で警告を止める手段も持たない。ユーザー拡張を許すと、ルールの妥当性をめぐる合意コストが処理系の外に漏れ出すためである。お知らせの抑制（`silence-notices` と `--no-notices`）は lint の警告の抑制ではなく、lint の規則はお知らせを出さない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 - **数式の組版**：v1 では扱わず、v2 以降に回す。EPUB と HTML は MathML で出せるが、PDF には数式の組版エンジンが必要であり、それだけで独立した大きな仕事になるためである。当面は、数式を画像にして図版として入れる。
 - **ソースファイルのプリアンブル**：初期の設計にあった `--- ... ---` によるファイル先頭のメタデータは廃止した。メタデータはマニフェストに一元化する。ただし、`[source]` のキーの上書き（`@manifest`）と、文字スタイルと段落スタイルの定義（`@style-def`）に限り、ファイルの先頭のブロックコマンドで書ける（[docs/adr/0014](adr/0014-in-file-settings.md)）。
 - **総ルビ**：全漢字への自動ルビ振りは組み込まない。将来のプラグイン（コンパイル時評価と辞書引き）に委ねる。
@@ -257,6 +257,17 @@ Golem はこの二つを別の仕組みで扱う。
 ロックファイルは手で編集せず、リポジトリにコミットする。
 同じ入力から同じ出力を得るには、使うプラグインのバイト列まで入力の一部として固定する必要があるためである。
 宣言の形式と取得の手順は「プラグイン」の節で定める。
+
+マニフェストの `[diagnostics]` の表は、診断の扱いを決める（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+`silence-notices` に並べたコードのお知らせは、`golem build`、`golem check`、`golem lint`、LSP のどれにも出ない。
+並べられるのはお知らせのコードだけであり、ほかのコードと形の誤ったコードはその要素の位置でエラー（G0324）とする。
+値が配列でない場合と、`[diagnostics]` の未知のキーは G0301 とする。
+すべてのお知らせを抑制する値は設けない。
+
+```toml
+[diagnostics]
+silence-notices = ["G0262", "G0407"]
+```
 
 定義の取り込みはソースファイルに `@import` で書く。
 v1 で取り込めるのは `@set` で定義した変数だけである。
@@ -1123,8 +1134,30 @@ LSP では、エディタで開いているファイルの BOM と CR も G0102 
 解析の段階の診断の位置は、誤りの文字から始まる（インデントの余分な空白、4 つ目の `#`、用語のない `=:`、本文の `[`）。
 Golem が書く `manifest.toml` と `style.toml` の誤りの文言は日本語とし、toml-parser 自身の文言（`missing key` など）は英語のまま出す。
 
+診断の重大度は、エラー、警告、お知らせの三つである（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+エラーはビルドを止め、警告は止めないが出荷する前に直すべきものを表す。
+お知らせは、誤りではないが書き手が知っておいたほうがよいことを表し、直さなくてよい。
+お知らせは終了コードに影響せず、プロファイルで重大度が変わらず、出力のバイト列を変えない。
+人が読む形式では重大度を `notice`、JSON の形式では `"severity":"notice"` と書き、LSP では `Information` に写す。
+お知らせのコードは `Golem.Syntax.Diagnostic.noticeCodes` に一箇所で並べ、docs/diagnostics.md の重大度が「お知らせ」のコードと一致することを golem-driver のテストが確かめる。
+lint の規則（G05xx）はお知らせを出さない。
+今のお知らせは、ファイルの中のスタイルの上書き（G0262）、数字だけの縦中横（G0263）、`keep` の段落の行頭のエスケープした空白（G0264）、`@listing` の `src=`（G0265、廃止予定）、`style.toml` のないプロジェクト（G0323）、自動の番号と同じ `@number`（G0407）、本の最後の改ページ（G0408）である。
+
+診断は、エラーと警告を先に、お知らせを後に並べる。
+エラーと警告のあいだは、ファイルの順、位置の順、コードの順で並べ、お知らせどうしも同じ規則で並べる。
+お知らせの多いプロジェクトで、ビルドを止めたエラーが画面の外に流れないようにするためである。
+人が読む形式と JSON の形式は同じ順で出す。
+
+抑制できるのはお知らせだけであり、エラーと警告を抑制する手段はどこにも設けない。
+抑制の手段は、マニフェストの `[diagnostics]` の `silence-notices`（プロジェクトの方針としてコードを並べる）と、`golem build`、`golem check`、`golem lint` の `--no-notices`（その実行に限り、すべてのお知らせを出さない）の二つである。
+原稿の中でお知らせを止める指示と、`style.toml` の設定は設けない。
+LSP は `silence-notices` に従い、抑制したお知らせを公開しない。
+LSP には `--no-notices` に当たる設定を設けない。
+記法と設定のキーを廃止するときは、まず廃止予定のお知らせを少なくとも一つの minor の版で出し、次の ADR でエラーにする（手順は [docs/diagnostics.md](diagnostics.md) の「お知らせ」の節）。
+
 人が読む形式で診断を出した後に、文書にあるコードが一つでもあれば、標準エラー出力に `コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）` の一行を加える。
 例のコードは、出した診断のうち文書にあるコードの最小のものである。
+お知らせのコードも数え、抑制した後に残った診断から作る。
 この行は一度だけ加え、`--format json` には加えない。
 LSP は、文書にあるコードの診断の `codeDescription` に、`main` の `docs/diagnostics.md` の節の URL（`…/docs/diagnostics.md#g0117` の形）を付ける。
 
@@ -1252,6 +1285,8 @@ v1 の規則の候補は次のとおりである。
 
 `golem lint` はエラーが一つでもあれば非ゼロで終了し、警告だけなら正常終了する。
 警告は表示されるが、抑制する手段はない。
+`golem lint` は評価と文書の組み立ての診断も出すので、その段階のお知らせも出る。
+お知らせは `--no-notices` と `silence-notices` で抑制できるが、lint の規則はお知らせを出さない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
 ## fmt
 
@@ -1268,7 +1303,7 @@ fmt は本文を折り返し直さず、構造だけを整形する。
 
 v1 の LSP は次の機能を持つ。
 
-- 診断（コンパイルエラーと lint）
+- 診断（コンパイルエラーと lint）。お知らせは `Information` として載せ、`silence-notices` に並べたコードのお知らせは公開しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 - 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。
 - ラベルの名前変更（章をまたいで一括で書き換える）
 - 補完（コマンド名、ラベル、import のパス）
@@ -1512,9 +1547,9 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | コマンド | 内容 |
 |---|---|
 | `golem new <dir> [--language ja\|en] [--no-fonts]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する |
-| `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
-| `golem check [--profile dev\|prod] [--marks japanese\|western\|none]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)） |
-| `golem lint` | lint を実行する |
+| `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
+| `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)） |
+| `golem lint [--profile dev\|prod] [--no-notices]` | lint を実行する |
 | `golem fmt [--check]` | 整形する |
 | `golem lsp` | LSP サーバーを起動する |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得し、キャッシュする |
@@ -1524,6 +1559,11 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | `golem --version` | `golem` に版を続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
 `golem new` での `id` の生成が、Golem が乱数を使う唯一の箇所である。
+
+`--no-notices` は、そのコマンドの実行に限り、すべてのお知らせを出さない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+人が読む形式と JSON の形式の両方に効き、エラーと警告は残す。
+出力のバイト列は変えない。
+`golem build`、`golem check`、`golem lint` だけが受け付け、`golem fmt` と `golem explain` に付けると使い方の誤りになる。
 
 `--marks` は PDF に付けるトンボの形を選ぶ（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
 値は `japanese`（日本式の二重のトンボ）、`western`（欧文の一重のトンボ）、`none`（トンボなし）で、既定は `none` である。
@@ -1726,6 +1766,8 @@ v1 のリリースまでに、次の項目を扱う。
 - **ルビの中の `/` のエスケープ**：記法の仕様はルビの中で `\/` と書けば `/` そのものになると定めているが、`[ruby: a\/b|えー]` が G0215 になる。マニュアルの付録 A を書くときに見つかった。
 - **表のセルの行末の `\`**：表のセルの行末に書いた `\` は、[docs/adr/0016](adr/0016-hard-line-breaks.md) の定める G0124 ではなく G0110 になる。行末が `\` の行は表の行になれず、やり直した試行の中の誤りを peg-hs が捨てるためである。見出しと用語では G0124 になる。直すには peg-hs の側の変更が要る。
 
+- **`@table` の位置引数のパス**：`@table` はファイルのパスを `src=` だけで受け付ける。`@listing` は位置引数を正とし `src=` を廃止予定にした（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）ので、`@table` でもパスを最初の引数に書けるようにするかを検討する。記法の追加が要るので ADR で決める。
+
 #### CLI と LSP
 
 - **プリフライト**：`golem preflight` で、印刷所に入稿する前の検査を行う。InDesign のプリフライトとおおむね同じことをする。たとえば、フォントの欠落と埋め込みの可否、原稿の文字に対応するグリフのない文字、図版のファイルの欠落、図版の実効の解像度の不足、出力インテントに合わない色空間の図版、塗り足しまで届かない図版、版面やページに収まらない要素、PDF/X-4 への適合を検査し、問題を一覧にする。`golem check` は原稿と設定の誤りを、`golem preflight` は組んだ結果が印刷に耐えるかを見る。検査の項目、しきい値（解像度など）、InDesign のプリフライトプロファイルにあたる設定の置き場所は ADR で決める。
@@ -1741,6 +1783,7 @@ v1 のリリースまでに、次の項目を扱う。
 - **縦組みのダッシュ**：縦組みの PDF を目で見ること、InDesign の縦組みとの比較、縦組みの HTML を Safari と Chrome で開いて向きが PDF と同じことの確かめが残っている（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 - **リストの字下げ**：入れ子のリストと 10 項目を超える番号付きリストを、横組みと縦組みで PDF と EPUB にして目で見ることと、決定性の検査の蟹工船とテンペストの出力が変わらないことの確かめが残っている（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
 - **段組みの脚注**：段組みの版面で、脚注がその段の下に組まれることを PDF で目で確かめていない。自動のテストでだけ確かめている（[docs/adr/0018](adr/0018-multi-column-layout.md)）。
+- **LSP のお知らせ**：Neovim で、お知らせが Information として表示され、問題の一覧に載ることと、`silence-notices` に加えると保存の後に消えることを確かめていない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 - **診断の説明へのリンク**：GitHub の上で `docs/diagnostics.md#g0117` を開き、G0117 の節に移ることを確かめていない（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
 
 ### 課題にしなかった事項
