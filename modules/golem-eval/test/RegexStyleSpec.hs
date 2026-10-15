@@ -103,7 +103,7 @@ tests =
         let a = Text (mkSpan (FileId 1) 0 2) "1"
             b = Text (mkSpan (FileId 1) 5 7) "2"
         para digits [a, Kenten (mkSpan (FileId 1) 3 8) Nothing [b]] @?= [CharStyle (mkSpan (FileId 1) 0 8) "n" [a, Kenten (mkSpan (FileId 1) 3 8) Nothing [b]]],
-      testCase "regexRules resolves based-on and leaves out empty lists" $ do
+      testCase "the regex styles of a paragraph style come through based-on, and an empty list has none" $ do
         let st =
               defaultStyle
                 { stParaStyles =

@@ -260,7 +260,7 @@ codeTests =
           ["a\r\nb\r\n", "a\rb\n"],
       testCase "a BOM after the start is accepted" $
         readSource fid "a\n\xEF\xBB\xBF\&b\n" @?= Right "a\n\xFEFF\&b\n",
-      testCase "checkText gives what readSource gives" $
+      testCase "checking a text gives the diagnostics of reading its bytes" $
         mapM_
           (\t -> checkText fid t @?= readDiags (TE.encodeUtf8 t))
           ["\xFEFF本文\n", "本文\r\n", "本文\n"],

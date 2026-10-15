@@ -7,6 +7,7 @@ import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Data.ByteString qualified as BS
 import Data.Either (isLeft)
+import ExternalTool (needsTool)
 import Gen
 import Golem.Doc.Cbor
 import Golem.Doc.IR
@@ -47,27 +48,24 @@ cbor :: TestTree
 cbor =
   testGroup
     "golem-doc (ADR 0001)"
-    [ testProperty "CBOR conforms to the CDDL (the cddl CLI, when installed)" $ withTests 60 $ property $ do
-        d <- forAll genDocument
-        validator <- evalIO cddlValidator
-        case validator of
-          Nothing -> success
-          Just exe -> do
-            (code, out, err) <- evalIO $ withSystemTempDirectory "golem-doc" $ \dir -> do
-              let path = dir </> "doc.cbor"
-              BS.writeFile path (encodeDocument d)
-              readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
-            annotate (out <> err)
-            code === ExitSuccess,
-      testCase "the cddl CLI rejects a document of another ABI version" $ do
-        validator <- cddlValidator
-        case validator of
-          Nothing -> pure ()
-          Just exe -> withSystemTempDirectory "golem-doc" $ \dir -> do
+    [ needsTool "cddl" cddlValidator $ \cddl ->
+        testProperty "CBOR conforms to the CDDL (the cddl CLI)" $ withTests 60 $ property $ do
+          d <- forAll genDocument
+          exe <- evalIO cddl
+          (code, out, err) <- evalIO $ withSystemTempDirectory "golem-doc" $ \dir -> do
+            let path = dir </> "doc.cbor"
+            BS.writeFile path (encodeDocument d)
+            readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
+          annotate (out <> err)
+          code === ExitSuccess,
+      needsTool "cddl" cddlValidator $ \cddl ->
+        testCase "the cddl CLI rejects a document of another ABI version" $ do
+          exe <- cddl
+          (code, _, _) <- withSystemTempDirectory "golem-doc" $ \dir -> do
             let path = dir </> "bad.cbor"
             BS.writeFile path (BS.pack [0x83, 0x01, 0x00, 0x80])
-            (code, _, _) <- readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
-            assertBool "rejected" (code /= ExitSuccess),
+            readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
+          assertBool "rejected" (code /= ExitSuccess),
       testProperty "CBOR round trip" $ withTests 300 $ property $ do
         d <- forAll genDocument
         decodeDocument (encodeDocument d) === Right d,

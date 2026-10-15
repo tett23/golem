@@ -88,14 +88,14 @@ escapeTests =
         other -> assertFailure (show other),
       testCase "\\%% is an escaped % and a text %" $
         paraTexts "a\\%%b\n" @?= [[Text "a", Escaped '%', Text "%b"]],
-      testCase "plainEscapes gives what the escapes were before" $ do
+      testCase "plain escapes read the escaped characters back as text" $ do
         plainParas "\\# 見出しではない \\[ x \\\\\n" @?= [[Text "# 見出しではない [ x \\"]]
         plainParas "a\\%%b\n" @?= [[Text "a%%b"]]
         plainParas "[bold: a\\/b]\n" @?= paraTexts "[bold: a\\/b]\n",
-      testCase "plainEscapes joins the spans as the text did" $ case ast "x\\[y\n" of
+      testCase "plain escapes join the text around them into one span" $ case ast "x\\[y\n" of
         [Paragraph is] -> plainEscapes is @?= [Located (mkSpan fid 0 4) (Text "x[y")]
         other -> assertFailure (show other),
-      testCase "plainEscapesIn makes only the characters that match text, in the whole file" $ do
+      testCase "escapes become plain text only for the selected characters, in the whole file" $ do
         let (f, _, _) = parseAst fid "\\あ\\/[bold: \\い\\/]\n"
             File _ bs1 = plainEscapesIn (== 'あ') f
             File _ bs2 = plainEscapesIn (== 'い') f

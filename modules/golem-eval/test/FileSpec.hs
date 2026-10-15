@@ -306,7 +306,7 @@ styleTests =
         map stripped (body "@style quote\nab\ncd\n") @?= [(Just "quote", ["abcd"])],
       testCase "body is no style" $
         map stripped (body "@style body\nx\n") @?= [(Nothing, ["x"])],
-      testCase "errors" $ do
+      testCase "a wrong @style block is a diagnostic: an unknown or missing name, an unknown command, a list or comment inside, no body" $ do
         errs "@style nope\nx\n" @?= ["G0247"]
         map stripped (body "@style nope\nx\n") @?= [(Nothing, ["x"])]
         errs "@style\n  x\n" @?= ["G0247"]
@@ -641,7 +641,7 @@ separatorTests =
         case map blockBody (blocksIn lineCtx "@figure images/a.png alt=a\n  c1\n  c2\n") of
           [FigureBlock f] -> map (shapeOf . blockBody) (figCaption f) @?= [(Nothing, ["c1"]), (Nothing, ["c2"])]
           other -> assertFailure (show other),
-      testCase "erSource is the settings of the context" $ do
+      testCase "an evaluated file records the paragraph separator of its context" $ do
         let (file, _, _) = parseAst (FileId 1) "a\n"
         erSource (evalFile lineCtx file) @?= SourceSettings LineSeparated
         erSource (evalFile ctx file) @?= defaultSourceSettings
@@ -693,7 +693,7 @@ hardBreakTests =
                 ["\\\na\n", "a\\\n\\\nb\n", "a\\\n%% c %%\nb\n"]
           )
           [ctx, lineCtx],
-      testCase "erSource of the line style stays" $ do
+      testCase "a file with a hard break still records the line-separated paragraphs" $ do
         let (file, _, _) = parseAst (FileId 1) "a\\\nb\n"
         erSource (evalFile lineCtx file) @?= SourceSettings LineSeparated
     ]

@@ -225,6 +225,11 @@ GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 cargo install cddl --version 0.10.7 --locked
 ```
 
+ほかに、PDF の構造の検査は qpdf を、プラグインの配布のテストは openssl を使う。
+これらの外部ツールがないと、それを使うテストは `SKIP` と表示されて飛ばされる。
+`GOLEM_REQUIRE_EXTERNAL_TOOLS=1` を付けると、ツールがないことがテストの失敗になる。
+CI はこれを付けて実行する。
+
 ### CLI のビルド
 
 `golem` コマンドの実行ファイルは、`golem-cli` パッケージの `exe:golem` である。

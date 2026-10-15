@@ -12,6 +12,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import ExternalTool (needsTool)
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf
 import Golem.Pdf.Writer (Mark (..))
@@ -1082,14 +1083,13 @@ marksTests =
           let framed = framePage Nothing b (w, h) []
               inside = framed {pageContent = [Translated b b [RegistrationRules [Rect 0 0 65536 65536]]]}
           checkRegistration [framed, inside] @?= [2],
-        testCase "registrationRects adds the moves of Translated" $
+        testCase "registration rules inside Translated are found at their moved positions" $
           registrationRects [Rule (Rect 0 0 1 1), Translated 10 20 [Saved [RegistrationRules [Rect 1 2 3 4]], Translated 100 200 [RegistrationRules [Rect 0 0 5 5]]]]
             @?= [Rect 11 22 3 4, Rect 110 220 5 5],
-        testCase "qpdf --check accepts a page with Japanese marks (when qpdf is installed)" $ do
-          qpdf <- findExecutable "qpdf"
-          case qpdf of
-            Nothing -> pure ()
-            Just exe -> withSystemTempDirectory "golem-pdf" $ \dir -> do
+        needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
+          testCase "qpdf --check accepts a page with Japanese marks" $ do
+            exe <- qpdf
+            withSystemTempDirectory "golem-pdf" $ \dir -> do
               let path = dir </> "marks.pdf"
                   framed = framePage (Just Japanese) b (w, h) [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]
               BS.writeFile path (writePdf (documentWith [framed]) {docPdfX = Just (PdfX "fake" "JC200103" [])})
@@ -1106,7 +1106,7 @@ producerTests =
       let pdf = writePdf sample {docPdfX = Just (PdfX "fake" "JC200103" [])}
       assertBool "Info" ("/Producer (Golem 0.0.0-test)" `BS.isInfixOf` infoDict pdf)
       assertBool "XMP" ("<pdf:Producer>Golem 0.0.0-test</pdf:Producer>" `BS.isInfixOf` pdf),
-    testCase "pdfTextString: printable ASCII as a literal string, otherwise UTF-16BE" $ do
+    testCase "a PDF text string is literal for printable ASCII, otherwise UTF-16BE with a byte order mark" $ do
       pdfTextString "Golem 0.1.0-rc1" @?= OStr "Golem 0.1.0-rc1"
       case pdfTextString "ゴーレム" of
         OHex b -> BS.take 2 b @?= BS.pack [0xFE, 0xFF]
@@ -1273,11 +1273,10 @@ tests =
         ],
       goldenVsString "XMP packet" "test/golden/xmp.xml" $
         pure (BL.fromStrict (xmpPacket (PdfX "" "JC200103" ["山田 太郎"]) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
-      testCase "qpdf --check accepts the output (when qpdf is installed)" $ do
-        qpdf <- findExecutable "qpdf"
-        case qpdf of
-          Nothing -> pure ()
-          Just exe -> withSystemTempDirectory "golem-pdf" $ \dir -> do
+      needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
+        testCase "qpdf --check accepts the output" $ do
+          exe <- qpdf
+          withSystemTempDirectory "golem-pdf" $ \dir -> do
             let path = dir </> "sample.pdf"
             BS.writeFile path (writePdf sample)
             (code, out, err) <- readProcessWithExitCode exe ["--check", path] ""

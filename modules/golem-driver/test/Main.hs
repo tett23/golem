@@ -14,6 +14,7 @@ import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import ExternalTool (needsTool, optionalTool)
 import Golem.Doc.Assemble (Book, HeadingInfo (..), IndexGroup (..), inlineText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
@@ -85,6 +86,12 @@ uuid0 = "00000000-0000-4000-8000-000000000000"
 templateText :: Language -> FilePath -> T.Text
 templateText lang file = fromMaybe "" (lookup file (templateFiles lang uuid0))
 
+-- | The page size, vertical writing and right binding the template's style.toml lays out.
+templatePage :: Language -> Either [Diagnostic] ((Integer, Integer), Bool, Bool)
+templatePage lang =
+  (\g -> (pgPageSize g, pgVertical g, pgBindingRight g))
+    <$> (parseStyle (FileId 0) (templateText lang "style.toml") >>= pageGeometry (FileId 0) False)
+
 templateFile :: Language -> FilePath -> IO BL.ByteString
 templateFile lang file = pure (BL.fromStrict (TE.encodeUtf8 (templateText lang file)))
 
@@ -101,7 +108,8 @@ tests :: TestTree
 tests =
   testGroup
     "golem-driver (ADR 0001)"
-    [ explainTests,
+    [ qpdfInstalled,
+      explainTests,
       noticeTests,
       testGroup "project diagnostics (golem-project ADR 0006)" projectDiagnosticTests,
       testGroup "reading stage (golem-parser ADR 0009)" readingTests,
@@ -174,10 +182,12 @@ tests =
           | (lang, tag) <- [(Japanese, "ja"), (English, "en")],
             (name, file) <- [("manifest.toml", "manifest.toml"), ("style.toml", "style.toml"), ("01.gm", "chapters/01.gm"), ("preflight.toml", "preflight.toml")]
           ]
-            <> [ testCase "the template lays out a page" $
-                   mapM_
-                     (\lang -> either (assertFailure . show) (const (pure ())) (parseStyle (FileId 0) (templateText lang "style.toml") >>= pageGeometry (FileId 0) False))
-                     [Japanese, English],
+            <> [ -- A6 is 105 x 148 mm, at 72/25.4 pt per mm and 65536 sp per pt (rounded);
+                 -- mass-market is 4.25 x 6.875 in, 306 x 495 pt
+                 testCase "the Japanese template lays out a vertical A6 page bound on the right" $
+                   templatePage Japanese @?= Right ((19505991, 27494158), True, True),
+                 testCase "the English template lays out a horizontal mass-market page bound on the left" $
+                   templatePage English @?= Right ((20054016, 32440320), False, False),
                  testCase "fonts come from tagged releases with fixed hashes" $ do
                    map fsPath (templateFonts Japanese) @?= ["fonts/NotoSerifJP-Regular.otf", "fonts/LICENSE-NotoSerifJP.txt"]
                    map fsPath (templateFonts English) @?= ["fonts/SourceSerif4-Regular.otf", "fonts/LICENSE-SourceSerif4.md"]
@@ -3167,15 +3177,26 @@ fakeFonts =
       _ -> 0
     adv c = if fromEnum c < 0x2000 then 1 / 2 else 1
 
+{- | qpdf --check accepts the PDF. Where qpdf is not installed the check is
+left out of the test that calls it, and 'qpdfInstalled' reports the SKIP;
+with GOLEM_REQUIRE_EXTERNAL_TOOLS=1 (CI) the test fails instead.
+-}
 qpdfCheck :: BS.ByteString -> IO ()
 qpdfCheck pdf = do
-  qpdf <- findExecutable "qpdf"
+  qpdf <- optionalTool "qpdf" (findExecutable "qpdf")
   case qpdf of
     Nothing -> pure ()
     Just exe -> withSystemTempDirectory "golem-pdf" $ \dir -> do
       BS.writeFile (dir </> "out.pdf") pdf
       (code, out, err) <- readProcessWithExitCode exe ["--check", dir </> "out.pdf"] ""
       assertEqual (out <> err) ExitSuccess code
+
+-- | Reports whether the qpdf checks of 'qpdfCheck' run: SKIP without qpdf.
+qpdfInstalled :: TestTree
+qpdfInstalled =
+  needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
+    testCase "qpdf is installed for the structure checks of the PDFs" $
+      qpdf >>= \exe -> assertBool exe (not (null exe))
 
 -- | Every Flate stream of a PDF, inflated (others as they are).
 inflateAll :: BS.ByteString -> IO [BS.ByteString]
@@ -3232,9 +3253,9 @@ codeSeverities r = [(diagCode d, diagSeverity d) | d <- brDiagnostics r]
 
 styleFileTests :: [TestTree]
 styleFileTests =
-  [ testCase "a missing font does not stop the evaluation" $ withStyleProject missingStyle [] $ \tmp -> do
-      e <- evaluateProject Dev tmp
-      either (assertFailure . show . pfDiagnostics) (const (pure ())) e,
+  [ testCase "a missing font does not stop the evaluation: the book is assembled with no diagnostics" $ withStyleProject missingStyle [] $ \tmp -> do
+      e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+      (isJust (evBook e), map diagCode (evDiagnostics e)) @?= (True, []),
     testCase "HTML, EPUB and plain text are written without the missing font, with one G0310 warning" $ withStyleProject missingStyle [] $ \tmp -> do
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub, TargetText]}
       codeSeverities r @?= [(DiagnosticCode "G0310", Warning)]
@@ -4195,7 +4216,7 @@ codeTests =
   [ testCase "leading spaces: the first glyph after four spaces is at the padding and four spaces" $ do
       (_, pl) <- layoutOk horizontalStyle "```\n    x\n```\n" []
       codeRows pl @?= [[(pad + 4 * sp, "x")]],
-    testCase "spaces in a line are kept as many as written" $ do
+    testCase "a code block of the source keeps the spaces in a line as many as written" $ do
       (_, pl) <- layoutOk horizontalStyle "```\na   b\n```\n" []
       codeRows pl @?= [[(pad, "a"), (pad + 4 * sp, "b")]],
     testCase "tabs go to the stops every two spaces; after a Japanese character too" $ do
@@ -4264,7 +4285,7 @@ codeTests =
       pdf <- miniPdf fakeProvider True (fiveLines <> codeBg) "一。\n\n二。\n\n三。\n\n```\na\nb\nc\nd\ne\n```\n" []
       contents <- pageContents pdf
       map (length . filledRects) contents @?= [1, 1],
-    testCase "a block whose first row and padding do not fit starts on the next page" $ do
+    testCase "a code block of the source whose first row and padding do not fit starts on the next page" $ do
       (_, pl) <- layoutOk fiveLines "一。\n\n二。\n\n三。\n\n四。\n\n```\na\n```\n" []
       codeSlots pl @?= [[], [(0, SCode 4 1 2)]],
     testCase "columns: the rows break at the end of a column as at a page" $ do

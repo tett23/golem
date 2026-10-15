@@ -16,11 +16,11 @@ import Data.Default (def)
 import Data.Either (isLeft)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import ExternalTool (needsTool)
 import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
 import Golem.Eval.Value (Value (..))
@@ -42,9 +42,9 @@ import System.Directory
     listDirectory,
   )
 import System.Environment (lookupEnv, setEnv, unsetEnv)
+import System.Exit (ExitCode (..))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcessWithExitCode)
-import System.Timeout (timeout)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Printf (printf)
@@ -290,57 +290,57 @@ lockTests =
     ]
 
 {- | A local HTTPS server with a self-signed certificate (made with the
-openssl CLI), serving files from an IORef, plus redirects.
+openssl CLI at the given path), serving files from an IORef, plus redirects.
 -}
-withHttpsServer :: IORef (Map.Map Text ByteString) -> (Int -> Fetcher -> IO ()) -> IO ()
-withHttpsServer files k = do
-  openssl <- findExecutable "openssl"
-  case openssl of
-    Nothing -> pure ()
-    Just exe -> withSystemTempDirectory "golem-https" $ \dir -> do
-      let cert = dir <> "/cert.pem"
-          key = dir <> "/key.pem"
-      _ <- readProcessWithExitCode exe ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "1", "-subj", "/CN=localhost"] ""
-      sock <- socket AF_INET Stream defaultProtocol
-      bind sock (SockAddrInet 0 (tupleToHostAddress (127, 0, 0, 1)))
-      listen sock 16
-      port <- fromIntegral <$> socketPort sock
-      let base = "https://127.0.0.1:" <> T.pack (show port)
-          app req respond = do
-            m <- readIORef files
-            let path = TE.decodeUtf8 (W.rawPathInfo req)
-            respond $ case path of
-              "/redirect" -> W.responseLBS (H.mkStatus 302 "Found") [(H.hLocation, TE.encodeUtf8 (base <> "/a.wasm"))] ""
-              "/to-http" -> W.responseLBS (H.mkStatus 302 "Found") [(H.hLocation, TE.encodeUtf8 ("http://127.0.0.1:" <> T.pack (show port) <> "/a.wasm"))] ""
-              _ -> case Map.lookup path m of
-                Just b -> W.responseLBS H.status200 [] (BL.fromStrict b)
-                Nothing -> W.responseLBS H.status404 [] ""
-      server <- async (WT.runTLSSocket (WT.tlsSettings cert key) Warp.defaultSettings sock app)
-      manager <- newManager (mkManagerSettings (TLSSettingsSimple True False False def) Nothing)
-      k port (httpsFetcherWith manager) `finally` cancel server
+withHttpsServer :: IO FilePath -> IORef (Map.Map Text ByteString) -> (Int -> Fetcher -> IO ()) -> IO ()
+withHttpsServer openssl files k = do
+  exe <- openssl
+  withSystemTempDirectory "golem-https" $ \dir -> do
+    let cert = dir <> "/cert.pem"
+        key = dir <> "/key.pem"
+    (code, _, err) <- readProcessWithExitCode exe ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "1", "-subj", "/CN=localhost"] ""
+    assertEqual ("openssl req: " <> err) ExitSuccess code
+    sock <- socket AF_INET Stream defaultProtocol
+    bind sock (SockAddrInet 0 (tupleToHostAddress (127, 0, 0, 1)))
+    listen sock 16
+    port <- fromIntegral <$> socketPort sock
+    let base = "https://127.0.0.1:" <> T.pack (show port)
+        app req respond = do
+          m <- readIORef files
+          let path = TE.decodeUtf8 (W.rawPathInfo req)
+          respond $ case path of
+            "/redirect" -> W.responseLBS (H.mkStatus 302 "Found") [(H.hLocation, TE.encodeUtf8 (base <> "/a.wasm"))] ""
+            "/to-http" -> W.responseLBS (H.mkStatus 302 "Found") [(H.hLocation, TE.encodeUtf8 ("http://127.0.0.1:" <> T.pack (show port) <> "/a.wasm"))] ""
+            _ -> case Map.lookup path m of
+              Just b -> W.responseLBS H.status200 [] (BL.fromStrict b)
+              Nothing -> W.responseLBS H.status404 [] ""
+    server <- async (WT.runTLSSocket (WT.tlsSettings cert key) Warp.defaultSettings sock app)
+    manager <- newManager (mkManagerSettings (TLSSettingsSimple True False False def) Nothing)
+    k port (httpsFetcherWith manager) `finally` cancel server
 
 httpsTests :: TestTree
 httpsTests =
-  testGroup
-    "distribution over a local HTTPS server (ADR 0002)"
-    [ testCase "lock from the server; a replaced artifact fails fetch; redirects stay on HTTPS" $ do
-        files <- newIORef (Map.fromList [("/a.wasm", "PLUGIN-A")])
-        withHttpsServer files $ \port fetch -> withSystemTempDirectory "cache" $ \cache -> do
-          let base = "https://127.0.0.1:" <> T.pack (show port)
-          Right lock <- lockPlugins fetch cache (Map.fromList [("a", base <> "/a.wasm")])
-          renderLock lock @?= "[plugins.a]\nurl = \"" <> base <> "/a.wasm\"\nsha256 = \"" <> hashHex "PLUGIN-A" <> "\"\n"
-          -- through an HTTPS redirect
-          fetch (base <> "/redirect") >>= (@?= Right "PLUGIN-A")
-          -- a redirect to HTTP is refused
-          r <- fetch (base <> "/to-http")
-          assertBool (show r) (isLeft r)
-          -- the server replaces the artifact: fetch into an empty cache fails
-          writeIORef files (Map.fromList [("/a.wasm", "EVIL")])
-          withSystemTempDirectory "cache2" $ \cache2 -> do
-            f <- fetchPlugins fetch cache2 lock
-            assertBool "mismatch" (isLeft f)
-            readCached cache2 (lock Map.! "a") >>= (@?= Left NotCached)
-    ]
+  needsTool "openssl" (findExecutable "openssl") $ \openssl ->
+    testGroup
+      "distribution over a local HTTPS server (ADR 0002)"
+      [ testCase "lock from the server; a replaced artifact fails fetch; redirects stay on HTTPS" $ do
+          files <- newIORef (Map.fromList [("/a.wasm", "PLUGIN-A")])
+          withHttpsServer openssl files $ \port fetch -> withSystemTempDirectory "cache" $ \cache -> do
+            let base = "https://127.0.0.1:" <> T.pack (show port)
+            Right lock <- lockPlugins fetch cache (Map.fromList [("a", base <> "/a.wasm")])
+            renderLock lock @?= "[plugins.a]\nurl = \"" <> base <> "/a.wasm\"\nsha256 = \"" <> hashHex "PLUGIN-A" <> "\"\n"
+            -- through an HTTPS redirect
+            fetch (base <> "/redirect") >>= (@?= Right "PLUGIN-A")
+            -- a redirect to HTTP is refused
+            r <- fetch (base <> "/to-http")
+            assertBool (show r) (isLeft r)
+            -- the server replaces the artifact: fetch into an empty cache fails
+            writeIORef files (Map.fromList [("/a.wasm", "EVIL")])
+            withSystemTempDirectory "cache2" $ \cache2 -> do
+              f <- fetchPlugins fetch cache2 lock
+              assertBool "mismatch" (isLeft f)
+              readCached cache2 (lock Map.! "a") >>= (@?= Left NotCached)
+      ]
 
 {- | With no root certificates, httpsFetcher fails before it connects and
 says how to fix it (docs/adr/0004).
@@ -364,11 +364,16 @@ rootCertTests =
               fetch ("https://127.0.0.1:" <> T.pack (show port) <> "/a.wasm")
           )
             `finally` maybe (unsetEnv "SSL_CERT_FILE") (setEnv "SSL_CERT_FILE") old
-        accepted <- timeout 200000 (accept sock)
-        mapM_ (close . fst) accepted
-        close sock
+        -- a connection of the test's own after the fetch: the listening
+        -- socket queues connections in order, so the first one accepted is
+        -- the fetcher's if it connected, without waiting for a timeout
+        own <- socket AF_INET Stream defaultProtocol
+        connect own (SockAddrInet port (tupleToHostAddress (127, 0, 0, 1)))
+        ownAddr <- getSocketName own
+        (conn, peer) <- accept sock
+        mapM_ close [conn, own, sock]
         case r of
           Left msg -> assertBool (T.unpack msg) ("SSL_CERT_FILE" `T.isInfixOf` msg && "ca-certificates" `T.isInfixOf` msg)
           Right _ -> assertFailure "fetched with no root certificates"
-        assertBool "the server was never connected to" (isNothing accepted)
+        assertEqual "the first connection to the server is the test's own" ownAddr peer
     ]

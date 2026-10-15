@@ -102,6 +102,11 @@ tests =
         lineEndOffset li 1 @?= Just 9
         lineEndOffset li 2 @?= Nothing
         lineEndOffset (mkLineIndex "a\n") 1 @?= Just 2,
+      -- The time limit is the one golem-lsp ADR 0002 sets. The test takes
+      -- about 0.06 s (2026-10), over 30 times below it, while a search
+      -- linear in the line count would make the 100001 round trips take
+      -- billions of steps; a count of steps would need a change to the
+      -- library, so the wall clock stays.
       localOption (mkTimeout 2000000) $
         testCase "positions on 100000 lines round-trip quickly (golem-lsp ADR 0002)" $ do
           let n = 100000 :: Int
@@ -211,13 +216,13 @@ noticeTests =
         sorted === sortDiagnostics perm
         let sevs = map diagSeverity sorted
         dropWhile (== Notice) (dropWhile (/= Notice) sevs) === [],
-      testCase "silenceNotices (Just s) drops the notices of s only" $ do
+      testCase "silencing some codes drops their notices only" $ do
         let n1 = notice "G0262" sp0 "a"
             n2 = notice "G0265" sp0 "b"
             e = diagnostic "G0262" Error sp0 "error with a silenced code"
             w = diagnostic "G0262" Warning sp0 "warning with a silenced code"
         silenceNotices (Just (Set.singleton (DiagnosticCode "G0262"))) [n1, n2, e, w] @?= [n2, e, w],
-      testProperty "silenceNotices Nothing drops every notice and keeps the rest" $ property $ do
+      testProperty "silencing every code drops every notice and keeps the rest" $ property $ do
         ds <- forAll (Gen.list (Range.linear 0 20) genDiagWithNotices)
         silenceNotices Nothing ds === filter ((/= Notice) . diagSeverity) ds,
       testCase "human rendering of a notice" $ do
