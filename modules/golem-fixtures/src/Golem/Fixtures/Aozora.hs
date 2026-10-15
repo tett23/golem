@@ -18,6 +18,7 @@ styles indent-F-R in prose, as full-width spaces in verse.
 -}
 module Golem.Fixtures.Aozora (AozoraMode (..), convertAozora, convertAozoraWith) where
 
+import Control.Applicative ((<|>))
 import Data.Char (chr, isAlphaNum, isAscii, isHexDigit)
 import Data.List (findIndex, intercalate, isPrefixOf, stripPrefix, tails)
 import Data.Map.Strict qualified as Map
@@ -380,7 +381,7 @@ readItems = go Nothing
           let (inside, rest) = break (isHeadingEnd size) ls
           (g, _) <- convertLineWith Extended (intercalate "　" [strip' x | x <- inside, not (null (strip' x))])
           (Heading (headingLevel size) g :) <$> go block (drop 1 rest)
-      | strip' l `elem` ["［＃改ページ］"] = (Break "@page-break" :) <$> go block ls
+      | strip' l == "［＃改ページ］" = (Break "@page-break" :) <$> go block ls
       | strip' l `elem` ["［＃改丁］", "［＃改見開き］"] = (Break "@page-break recto" :) <$> go block ls
       | Just indent <- blockStart (strip' l) = go (Just indent) ls
       | strip' l == "［＃ここで字下げ終わり］" = go Nothing ls
@@ -392,7 +393,7 @@ readItems = go Nothing
           let item = case level of
                 Just h -> [Heading h g]
                 Nothing
-                  | not (null (strip' g)) -> [Para (maybe block Just lineIndent) g]
+                  | not (null (strip' g)) -> [Para (lineIndent <|> block) g]
                   | null (strip' l) -> [Blank]
                   | otherwise -> []
           (item <>) <$> go block ls
