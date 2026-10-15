@@ -422,7 +422,7 @@ build opts = do
           -- G0702, and what style.toml decides of the layout (G0701, G0725; golem-driver ADR 0016)
           marksDiags =
             cropMarkDiagnostics opts e diagFid targets
-              <> (if TargetPdf `elem` targets then styleLayoutDiagnostics diagFid (evStyle e) (Map.elems (localStylesOf e)) else [])
+              <> (if TargetPdf `elem` targets then styleLayoutDiagnostics diagFid (isJust (markStyle (optMarks opts))) (evStyle e) (Map.elems (localStylesOf e)) else [])
       -- the files of style.toml, for the targets that use them (golem-project ADR 0004)
       missing <- missingStyleFiles (optRoot opts) (evStyle e)
       -- without code in the book, the role code is not used (golem-driver ADR 0017)
