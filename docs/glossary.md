@@ -74,6 +74,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **傍注**：版面の外の小口側に設けた傍注欄に置く注（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
 - **改ページ**：今のページを閉じ、次のページから続けること。原稿では `@page-break` で指定する（[markup.md](markup.md)、[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 - **改丁**：次の奇数ページから始めること。原稿では `@page-break recto`、見出しでは `style.toml` の `page-break = "recto"` で指定する（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
+- **隠しノンブル**：ノンブルの見えないページのノドの側に入れる、製本で綴じ込まれて見えなくなる小さなページ番号。印刷所と製本所がページの順を確かめるために使う。Golem はトンボを付けた PDF にだけ、白ページやマスターページに `folio` のないページへ、ページの通し番号を算用数字で縦に並べて入れる。`style.toml` の `[hidden-folio]` で止められる（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。
 - **白ページ**：改ページや改丁で中身のないまま閉じたページ。柱もノンブルも描かない（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 - **段**と**段間**：段組みの版面を等しい幅に分けた一つの領域と、段と段のあいだの空き。`style.toml` の `[page.grid]` の `columns`（段数）と `column-gap`（段間）で決める。本文は横組みでは左の段から右の段へ、縦組みでは上の段から下の段へ流れる（[docs/adr/0018](adr/0018-multi-column-layout.md)）。PDF の索引は、`[index]` の `columns` と `column-gap` で、版面と異なる段数の段（索引の段）で組める。索引の段は版面の文字の領域を等しい幅に分け、行の位置は版面の行の格子に置く（[docs/adr/0025](adr/0025-index-columns.md)）。
 - **改段**：今の段を閉じ、次の段から続けること。最後の段なら次のページの最初の段に進む。原稿では `@column-break` で指定する（[docs/adr/0017](adr/0017-forced-page-breaks.md)、[docs/adr/0018](adr/0018-multi-column-layout.md)）。
