@@ -29,6 +29,9 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import KnuthPlassReference
+import LineBreakingSpec (lineBreakingTests)
+import PaginateSpec (paginateTests)
+import PunctuationSpec (punctuationTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
@@ -224,6 +227,7 @@ tests =
   testGroup
     "golem-layout"
     [ testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
+      testGroup "boundaries and invariants" [paginateTests, punctuationTests, lineBreakingTests],
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
