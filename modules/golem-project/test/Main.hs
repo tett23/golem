@@ -837,11 +837,58 @@ codeStyleTests =
         s <- styleOf "[character-styles.path]\nbased-on = \"code\"\n"
         isCodeCharStyle s "path" @?= True
         isCodeCharStyle s "code" @?= True
-        isCodeCharStyle s "strong" @?= False
+        isCodeCharStyle s "strong" @?= False,
+      -- golem-driver ADR 0023
+      testCase "[code] and [code.colors]: every key is read" $ do
+        s <- styleOf (swatches <> "\n[code]\nnumber = \"リスト{n}\"\nline-numbers = true\nline-number-color = \"gray\"\nhighlight = \"hl\"\nadded = \"add\"\nremoved = \"del\"\nwrap-mark = \"↩\"\ncontinued = \"（次ページに続く）\"\n\n[code.colors]\nkeyword = \"kw\"\ncomment = \"gray\"\ndata-type = \"kw\"\n")
+        stCode s
+          @?= CodeStyle
+            { cdNumber = "リスト{n}",
+              cdLineNumbers = True,
+              cdLineNumberColor = Just "gray",
+              cdHighlight = Just "hl",
+              cdAdded = Just "add",
+              cdRemoved = Just "del",
+              cdWrapMark = "↩",
+              cdContinued = "（次ページに続く）",
+              cdColors = Map.fromList [("comment", "gray"), ("data-type", "kw"), ("keyword", "kw")]
+            },
+      testCase "[code]: the defaults" $ do
+        s <- styleOf ""
+        stCode s @?= defaultCodeStyle
+        cdNumber defaultCodeStyle @?= "リスト{chapter}-{n}"
+        cdLineNumbers defaultCodeStyle @?= False
+        (cdLineNumberColor defaultCodeStyle, cdHighlight defaultCodeStyle, cdAdded defaultCodeStyle, cdRemoved defaultCodeStyle) @?= (Nothing, Nothing, Nothing, Nothing)
+        (cdWrapMark defaultCodeStyle, cdContinued defaultCodeStyle) @?= ("", "")
+        cdColors defaultCodeStyle @?= Map.empty,
+      testCase "[code]: a wrong line-numbers, an unknown key, an unknown token kind and a number without a placeholder are G0306" $ do
+        codes (parseStyle (FileId 0) "[code]\nline-numbers = \"yes\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[code]\nnumbers = true\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) (swatches <> "\n[code.colors]\nkeywords = \"kw\"\n")) @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[code]\nnumber = \"リスト\"\n") @?= ["G0306"],
+      testCase "[code]: a swatch that is not there is G0313" $ do
+        codes (parseStyle (FileId 0) "[code]\nhighlight = \"nope\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[code.colors]\nkeyword = \"nope\"\n") @?= ["G0313"],
+      testCase "border and border-width of code; not in another style, not in zw" $ do
+        s <- styleOf (swatches <> "\n[paragraph-styles.code]\nborder = \"black\"\nborder-width = \"0.5pt\"\n")
+        let d = paraStyle s (Just "code")
+        (d >>= psBorder) @?= Just "black"
+        (d >>= psBorderWidth) @?= parseDim "0.5pt"
+        codes (parseStyle (FileId 0) (swatches <> "\n[paragraph-styles.quote]\nborder = \"black\"\n")) @?= ["G0306"]
+        codes (parseStyle (FileId 0) (swatches <> "\n[paragraph-styles.code]\nborder-width = \"1zw\"\n")) @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[paragraph-styles.code]\nborder = \"nope\"\n") @?= ["G0313"],
+      testCase "@style-def paragraph code takes border and border-width" $ do
+        base <- styleOf swatches
+        case localStyleDef ParagraphKind [("border", LocalWord "black"), ("border-width", LocalWord "1pt")] of
+          Right (Right d) -> do
+            [c | (c, _, _) <- checkLocalStyles base noLocalStyles {lsParaStyles = Map.fromList [("code", d)]}] @?= []
+            (paraStyle (withLocalStyles base noLocalStyles {lsParaStyles = Map.fromList [("code", d)]}) (Just "code") >>= psBorder) @?= Just "black"
+          other -> assertFailure (show other)
     ]
   where
     styleOf t = either (\ds -> assertFailure (show ds) >> pure defaultStyle) pure (parseStyle (FileId 0) t)
     messages = either (map diagMessage) (const [])
+    swatches = "[color.swatches]\ngray = { cmyk = [0, 0, 0, 60] }\nhl = { cmyk = [0, 0, 20, 0] }\nadd = { cmyk = [20, 0, 20, 0] }\ndel = { cmyk = [0, 20, 20, 0] }\nkw = { cmyk = [100, 50, 0, 0] }\nblack = { cmyk = [0, 0, 0, 100] }\n"
 
 characterFeatureTests :: TestTree
 characterFeatureTests =
@@ -1072,6 +1119,7 @@ localStyleTests =
               "baseline-shift" -> "1pt"
               "aki-set" -> "gyomatsu-yakumono-hankaku"
               "padding" -> "1zw"
+              "border-width" -> "1pt"
               _ -> "x"
             known k key = not (isLeftE (localStyleDef k [(key, LocalWord (valueOf key))]))
         assertBool "char" (all (known CharacterKind) charStyleKeys)

@@ -125,10 +125,15 @@ tests =
       testCase "a plugin of ABI version 2 is rejected (docs/adr ADR 0005)" $ do
         w <- fixed 2 (responseWith (TList []))
         void (loadPlugin w) @?= Left (AbiMismatch 2),
-      testCase "the ABI version is 5 and a plugin of version 4 is rejected (docs/adr ADR 0019)" $ do
-        (Golem.Plugin.abiVersion, Golem.Doc.IR.abiVersion) @?= (5, 5)
-        w <- fixed 4 (responseWith (TList []))
-        void (loadPlugin w) @?= Left (AbiMismatch 4),
+      testCase "the ABI version is 6 and a plugin of version 5 is rejected (golem-driver ADR 0023)" $ do
+        (Golem.Plugin.abiVersion, Golem.Doc.IR.abiVersion) @?= (6, 6)
+        w <- fixed 5 (responseWith (TList []))
+        void (loadPlugin w) @?= Left (AbiMismatch 5),
+      testCase "a code block survives a filter unchanged (golem-driver ADR 0023)" $ do
+        p <- load =<< compile =<< wat "identity.wat"
+        let code = Code (Just "haskell") (Just True) (Just "a.hs") (Just [Text callSpan "c"]) True [CodeLine "a" (Just 1) (Just DiffAdded) True [1], CodeLine "b" Nothing (Just DiffRemoved) False []]
+            doc = Document (FileId 1) [Block callSpan (Just "l") (CodeBlock code)]
+        fmap fst (applyFilter p "same" doc) @?= Right doc,
       testCase "a paragraph with aki survives a filter unchanged (docs/adr ADR 0019)" $ do
         p <- load =<< compile =<< wat "identity.wat"
         let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a", Aki callSpan (AkiZw (1 / 5)), Aki callSpan (AkiAbs 65536)])]

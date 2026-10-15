@@ -1561,17 +1561,27 @@ codeTests =
         assertBool (show (k, top, bottom)) (abs (top - bottom) <= 1),
     testCase "a code block breaks between rows; each part takes its own lines" $ do
       let g = CodeGeometry 10 10 10 10 0
-          ps = paginate 1 5 [FParagraph (ids 0 3), FCode g (ids 10 5)]
+          ps = paginate 1 5 [FParagraph (ids 0 3), FCode g 0 1 False (ids 10 5)]
       map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SCode 10 2 2)], [(0, SCode 12 3 3)]],
     testCase "a block whose first row and padding do not fit starts on the next page" $ do
       let g = CodeGeometry 10 10 10 10 3
-          ps = paginate 1 5 [FParagraph (ids 0 4), FCode g (ids 10 2)]
+          ps = paginate 1 5 [FParagraph (ids 0 4), FCode g 0 1 False (ids 10 2)]
       codeSpan g 1 @?= 2
       map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SCode 10 2 3)]],
     testCase "the columns of a page break a code block as pages do" $ do
       let g = CodeGeometry 10 10 10 10 0
-          ps = paginate 2 3 [FParagraph (ids 0 2), FCode g (ids 10 3)]
+          ps = paginate 2 3 [FParagraph (ids 0 2), FCode g 0 1 False (ids 10 3)]
       [(poNumber p, poColumn p, poSlots p) | p <- ps] @?= [(1, 0, [(0, SLine 0), (1, SLine 1), (2, SCode 10 1 1)]), (1, 1, [(0, SCode 11 2 2)])],
+    -- golem-driver ADR 0023
+    testCase "a code block: the caption with the first rows, the file row with the first code row" $ do
+      let g = CodeGeometry 10 10 10 10 0
+      map poSlots (paginate 1 5 [FParagraph (ids 0 3), FCode g 1 1 False (ids 10 3)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SCode 10 1 2)], [(0, SCode 11 2 2)]]
+      map poSlots (paginate 1 5 [FParagraph (ids 0 4), FCode g 1 1 False (ids 10 3)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SCode 10 3 4)]]
+      map poSlots (paginate 1 5 [FParagraph (ids 0 4), FCode g 0 2 False (ids 10 3)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 3)], [(0, SCode 10 3 3)]],
+    testCase "a code block that continues: a row more in each part before the last" $ do
+      let g = CodeGeometry 10 10 10 10 0
+      map poSlots (paginate 1 5 [FParagraph (ids 0 2), FCode g 0 1 True (ids 10 5)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SCode 10 2 3)], [(0, SCode 12 3 3)]]
+      map poSlots (paginate 1 5 [FParagraph (ids 0 2), FCode g 0 1 False (ids 10 5)]) @?= [[(0, SLine 0), (1, SLine 1), (2, SCode 10 3 3)], [(0, SCode 13 2 2)]],
     testCase "code: breaks only at spaces and after a slash, with no hyphen" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkCode = True}, cePatterns = Just englishUS}
           its = compose env "modules/golem-driver/Pdf.hs"

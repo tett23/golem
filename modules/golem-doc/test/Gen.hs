@@ -125,7 +125,7 @@ genBlock =
       Gen.choice
       [ Paragraph <$> Gen.maybe genText <*> inl,
         Heading <$> Gen.int (Range.linear 1 3) <*> attrs <*> inl,
-        CodeBlock <$> Gen.maybe genText <*> genText,
+        CodeBlock <$> genCode,
         ChannelOutput <$> Gen.element [TocOutput 2, IndexOutput, BibliographyOutput],
         Table <$> Gen.list (Range.singleton 2) Gen.enumBounded <*> Gen.list (Range.singleton 2) inl <*> Gen.list (Range.linear 0 2) (Gen.list (Range.singleton 2) inl)
       ]
@@ -137,6 +137,16 @@ genBlock =
   where
     inl = Gen.list (Range.linear 0 3) genInline
     attrs = HeadingAttrs <$> Gen.maybe inl <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool <*> Gen.bool
+
+genCode :: Gen Code
+genCode =
+  Code
+    <$> Gen.maybe genText
+    <*> Gen.maybe Gen.bool
+    <*> Gen.maybe genText
+    <*> Gen.maybe (Gen.list (Range.linear 0 2) genInline)
+    <*> Gen.bool
+    <*> Gen.list (Range.linear 0 3) (CodeLine <$> genText <*> Gen.maybe (Gen.integral (Range.linear 0 99)) <*> Gen.maybe Gen.enumBounded <*> Gen.bool <*> Gen.list (Range.linear 0 2) (Gen.int (Range.linear 1 50)))
 
 genDocument :: Gen Document
 genDocument = Document (FileId 0) <$> Gen.list (Range.linear 0 5) genTopBlock

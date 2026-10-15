@@ -70,7 +70,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii)
 import Data.Either (fromRight, isLeft)
-import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, zip4)
+import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, zip3, zip4)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, listToMaybe)
@@ -83,8 +83,9 @@ import Data.Time.Calendar (toGregorian)
 import Golem.Doc.Assemble
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers
-import Golem.Doc.Numerals (formatNumber)
+import Golem.Doc.Numerals (circled, formatNumber)
 import Golem.Driver.Version (golemVersion)
+import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
 import Golem.Layout.Code
 import Golem.Layout.Hyphenation.EnUs (englishUS)
@@ -567,14 +568,42 @@ data SetLine = SetLine
 
 {- | What a code block needs to be drawn (golem-driver ADR 0017): its
 geometry, where its background starts from the line start of the column,
-and the colour of its background.
+and the colour of its background. Its first row and the number of its
+rows, its caption, the text of a part that continues, the bands of its
+rows and its border (golem-driver ADR 0023).
 -}
 data CodeInfo = CodeInfo
   { ciGeometry :: !CodeGeometry,
     ciStart :: !Sp,
-    ciBackground :: !(Maybe P.Swatch)
+    ciBackground :: !(Maybe P.Swatch),
+    -- | the id of the first row
+    ciFirst :: !Int,
+    ciRows :: !Int,
+    -- | the lines of the caption, their size and pitch, and the grid lines they take
+    ciCaption :: ![Line],
+    ciCaptionSize :: !Sp,
+    ciCaptionPitch :: !Sp,
+    ciCaptionSpan :: !Int,
+    -- | the row at the end of a part before the last, with [code] continued
+    ciContinued :: !(Maybe Line),
+    -- | the bands: the first row from the first row of the block, how many rows and the colour
+    ciBands :: ![(Int, Int, P.Swatch)],
+    -- | the colour and the width of the border
+    ciBorder :: !(Maybe (P.Swatch, Sp)),
+    -- | where the rows start from the line start of the column, and the size of the code
+    ciIndent :: !Sp,
+    ciSize :: !Sp
   }
   deriving stock (Show)
+
+-- | The caption of a code block as set (golem-driver ADR 0023): its lines, size, pitch, grid lines and index marks.
+data CodeCaption = CodeCaption
+  { ccLines :: [Line],
+    ccSize :: Sp,
+    ccPitch :: Sp,
+    ccSpan :: Int,
+    ccMarks :: [SrcSpan]
+  }
 
 -- | A sidenote placed in the sidenote column (golem-driver ADR 0006).
 data PlacedSidenote = PlacedSidenote
@@ -1328,8 +1357,8 @@ data UnitKind
     UTocEntry Int SrcSpan
   | -- | a forced break (docs/adr ADR 0017)
     UBreak !BreakKind
-  | -- | a code block: how far it starts from the line start (in a list) and its text (golem-driver ADR 0017)
-    UCode !Sp Text
+  | -- | a code block: how far it starts from the line start (in a list) and its code (golem-driver ADR 0017, 0023)
+    UCode !Sp Code
   | -- | an entry of the index in its own columns, of their measure (docs/adr ADR 0025)
     UIndexEntry !Sp
   | -- | the start (with the set) and the end of the columns of the index
@@ -1435,7 +1464,7 @@ unitsOf book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bo
                in (n', concat uss)
             Table aligns h rows -> (n, [plainUnit (UTable aligns h rows) lbl []])
             -- always in the paragraph style code (golem-driver ADR 0017)
-            CodeBlock _ code -> (n, [unit (UCode 0 code) lbl [] (codeLook style geom)])
+            CodeBlock code -> (n, [unit (UCode 0 code) lbl [] (codeLook style geom)])
             FigureBlock fig -> (n, [plainUnit (UFigure fig) lbl []])
             -- the index marks of a title are counted at the heading, not in the table of contents
             ChannelOutput (TocOutput depth) -> (n, [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (maybe [] (\h -> [txt (h <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) | e <- bookToc book, teLevel e <= depth])
@@ -1792,9 +1821,11 @@ buildFlow inp geom fonts images assumed = do
               Nothing -> st
               Just cb ->
                 let ids = [nextId .. nextId + length (cbRows cb) - 1]
-                    boxes = [LineBox lid [] (if k == 0 then label u else []) [] | (k, lid) <- zip [0 :: Int ..] ids]
+                    -- the label and the index marks of the caption on the first row (golem-driver ADR 0023)
+                    boxes = [LineBox lid [] (if k == 0 then label u else []) (if k == 0 then cbMarks cb else []) | (k, lid) <- zip [0 :: Int ..] ids]
                     set = Map.fromList [(lid, SetLine l (cbSize cb) (cbIndent cb) [] []) | (lid, l) <- zip ids (cbRows cb)]
-                 in (nextId + length ids, flows <> [FCode (ciGeometry (cbInfo cb)) boxes], Map.union lineAcc set, figAcc, headAcc, errs)
+                    info = cbInfo cb
+                 in (nextId + length ids, flows <> [FCode (ciGeometry info) (ciCaptionSpan info) (cbFirstRows cb) (isJust (ciContinued info)) boxes], Map.union lineAcc set, figAcc, headAcc, errs)
             UBreak k -> (nextId, flows <> [FBreak k], lineAcc, figAcc, headAcc, errs)
             UColumns set -> (nextId, flows <> [maybe FRestoreColumns FSwitchColumns set], lineAcc, figAcc, headAcc, errs)
             _ ->
@@ -1815,7 +1846,21 @@ buildFlow inp geom fonts images assumed = do
                     _ -> (headAcc, errs)
                in (nextId + length ls, flows <> flowOf, Map.union lineAcc set, figAcc, headAcc', errs')
       -- code blocks, set line by line (golem-driver ADR 0017)
-      codeBlocks = Map.fromList [(i, codeBlockOf geom fonts measure capacity u lead code) | (i, u@Unit {uKind = UCode lead code}) <- units]
+      codeBlocks = Map.fromList [(i, codeBlockOf geom fonts measure capacity u lead code (codeCaptionOf u lead code)) | (i, u@Unit {uKind = UCode lead code}) <- units]
+      {- the caption of a code block: the listing number, an ideographic
+      space and the caption, set as the caption of a figure over the width of
+      the block (golem-driver ADR 0023) -}
+      codeCaptionOf u lead code = case codeCaption code of
+        Nothing -> CodeCaption [] fs pitch 0 []
+        Just is ->
+          let number = Map.lookup (uSpan u) (bookListings (piBook inp))
+              captionInlines = maybe [] (\num -> [Text (uSpan u) (num <> "　")]) number <> is
+              (captionRole, cs) = paraFace (uStyle u) geom "caption"
+              captionParams = params {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
+              (captionItems, captionAnchors) = composeInlines ((styledEnv (uStyle u) (envFor (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption")}) captionInlines
+              ls = brLines (breakParagraph captionParams (const (measure - lead)) captionItems)
+              cb = headingBlock fs pitch cs (length ls)
+           in CodeCaption ls cs (hbPitch cb) (if null ls then 0 else hbSpan cb) [sp | AnchorIndex _ sp _ <- captionAnchors]
       codeErrors = concatMap cbErrors (Map.elems codeBlocks)
       -- the text of a list item leaves 8 characters of the type area (golem-driver ADR 0013)
       listTooDeep sp = diagnostic "G0727" Error sp "リストの入れ子が深く、項目の本文の行長が足りません。行長を本文の文字の大きさの 8 字分以上残してください"
@@ -1836,7 +1881,7 @@ buildFlow inp geom fonts images assumed = do
          in (acc', if n1 > n0 then Map.insert n0 (spanFile (uSpan u)) files else files)
       ((_, flow, lineMap, figMap, headMap, errors, (tableLines, tableWidths), (headingSpans, tocLines)), lineFiles) = foldl stepFiles ((0, [], Map.empty, Map.empty, Map.empty, deepLists <> codeErrors, (Map.empty, Map.empty), (Map.empty, Map.empty)), Map.empty) units
       -- the code blocks of the flow are those of the units, in order
-      codeInfos = Map.fromList [(lbId b, cbInfo cb) | (bs, cb) <- zip [bs | FCode _ bs <- flow] (Map.elems codeBlocks), b <- bs]
+      codeInfos = Map.fromList [(lbId b, (cbInfo cb) {ciFirst = lbId b0}) | (bs@(b0 : _), cb) <- zip [fcRows f | f@FCode {} <- flow] (Map.elems codeBlocks), b <- bs]
       codeNotices = concatMap cbNotices (Map.elems codeBlocks)
   pure (Built flow lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines lineFiles codeInfos codeNotices)
 
@@ -1847,6 +1892,10 @@ data SetCode = SetCode
     -- | where the rows start from the line start of the column: the list and the padding
     cbIndent :: Sp,
     cbInfo :: CodeInfo,
+    -- | the rows the first part takes at least: the file name with the first line of code (golem-driver ADR 0023)
+    cbFirstRows :: Int,
+    -- | the index marks of the caption
+    cbMarks :: [SrcSpan],
     -- | G0743
     cbErrors :: [Diagnostic],
     -- | G0730
@@ -1857,12 +1906,20 @@ data SetCode = SetCode
 a column of @measure@ and @capacity@ grid lines (golem-driver ADR 0017):
 each line as 'layoutCodeLine' wraps it, from the clusters of shaping in
 the role of the paragraph style code, spaces of its Latin face.
+
+Inside the padding, the columns of the line numbers and of the diff marks
+come before the code; the file name is a row of its own; the callouts
+are lined up after the longest line that has one when they fit; the wrap
+mark ends the rows that continue; the tokens of [code.colors] are in
+their swatches (golem-driver ADR 0023).
 -}
-codeBlockOf :: PageGeometry -> LoadedFonts -> Sp -> Int -> Unit -> Sp -> Text -> SetCode
-codeBlockOf geom fonts measure capacity u lead code =
+codeBlockOf :: PageGeometry -> LoadedFonts -> Sp -> Int -> Unit -> Sp -> Code -> CodeCaption -> SetCode
+codeBlockOf geom fonts measure capacity u lead code caption =
   let lk = uLook u
       size = lkSize lk
       vertical = pgVertical geom
+      st = uStyle u
+      cs = stCode st
       toSp a = round (a * toRational size) :: Sp
       -- the shaping of each side: Latin, or Japanese ('漢')
       side latin = shapingOf vertical lk (if latin then 'a' else '\x6F22')
@@ -1872,33 +1929,120 @@ codeBlockOf geom fonts measure capacity u lead code =
             ends = drop 1 starts <> [T.length r]
          in [(T.take (e - c) (T.drop c r), sum [toSp (shAdvance x) | x <- gs, shCluster x == c]) | (c, e) <- zip starts ends]
       s = toSp (lfAdvance fonts (side True) ' ')
-      pad = codePadding (uStyle u) size
-      avail = measure - lead - 2 * pad
-      rowsOf l = layoutCodeLine s avail (codeAtoms shape l)
-      perLine = map rowsOf (T.splitOn "\n" code)
+      pad = codePadding st size
+      -- a text on one row, from 0, and its width
+      oneRow t = concatMap crPieces (take 1 (layoutCodeLine s (10 ^ (12 :: Int)) (codeAtoms shape t)))
+      endOf ps = case reverse ps of
+        (p : _) -> cpOffset p + cpWidth p
+        [] -> 0
+      widthOf = endOf . oneRow
+      ls = case codeLines code of
+        [] -> [CodeLine "" (Just 1) Nothing False []]
+        xs -> xs
+      numbered = fromMaybe (cdLineNumbers cs) (codeNumbers code)
+      numberWidth = maximum (0 : [widthOf (T.pack (show n)) | numbered, Just n <- map clNumber ls])
+      numberColumn = if numbered then numberWidth + 2 * s else 0
+      diffColumn = if codeDiff code then 2 * s else 0
+      codeStart = numberColumn + diffColumn
+      -- the code column, and the measure the lines wrap at: less the wrap mark
+      full = measure - lead - 2 * pad - codeStart
+      wrapMark = cdWrapMark cs
+      avail = full - (if T.null wrapMark then 0 else widthOf wrapMark)
+      swatchOf name = do
+        Swatch (cc, cm, cy, ck) <- Map.lookup name (stSwatches st)
+        pure (P.Swatch cc cm cy ck)
+      -- the tokens of each line in their swatches; the colour of the text without [code.colors]
+      tokens = case codeTokens (codeLang code) (T.intercalate "\n" (map clText ls)) of
+        Just tls
+          | not (Map.null (cdColors cs)),
+            length tls == length ls ->
+              [[(kind >>= (`Map.lookup` cdColors cs), t) | (kind, t) <- tl] | tl <- tls]
+        _ -> [[(Nothing, clText l)] | l <- ls]
+      atomsOf = map (codeAtomsColored shape) tokens
+      laid = map (layoutCodeLine s avail) atomsOf
+      marksOf ns = oneRow (T.intercalate " " (map circled ns))
+      -- the callouts: at one column when every line fits them, else after each line
+      withMarks = [(rows, ns) | (rows, l) <- zip laid ls, let ns = clCallouts l, not (null ns)]
+      lastEnd rows = maybe 0 (endOf . crPieces) (listToMaybe (reverse rows))
+      markColumn = maximum (0 : [lastEnd rows | (rows, _) <- withMarks]) + 2 * s
+      aligned = all (\(_, ns) -> markColumn + endOf (marksOf ns) <= full) withMarks
+      placed atoms rows ns
+        | null ns = [(r, Nothing) | r <- rows]
+        | aligned = [(r, Nothing) | r <- init rows] <> [(last rows, Just markColumn)]
+        | lastEnd rows + 2 * s + endOf (marksOf ns) <= full = [(r, Nothing) | r <- init rows] <> [(last rows, Just (lastEnd rows + 2 * s))]
+        | otherwise = [(r, Nothing) | r <- rows] <> [(CodeRow [], Just (codeContinuation s avail atoms))]
+      perLine = [placed atoms rows (clCallouts l) | (atoms, rows, l) <- zip3 atomsOf laid ls]
       wrapped = length (filter ((> 1) . length) perLine)
       tagOf latin = fromEnum (if vertical && latin then KindRotated else KindText)
+      lookOf col = lk {lkColor = col}
       emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [])
-      lineOf row =
+      -- pieces at offsets from the padding: (offset, text, width, Latin, swatch)
+      lineOf pieces =
         let go _ [] = []
-            go x (pc : rest) =
-              [emptyBox (cpOffset pc - x) | cpOffset pc > x]
-                <> [Box (cpWidth pc) (BoxContent (cpText pc) False 0 0 (tagOf (cpLatin pc)) lk 0 0 [])]
-                <> go (cpOffset pc + cpWidth pc) rest
-         in Line (go 0 (crPieces row)) 0 avail 0 (0, 0) False (0, 0)
+            go x ((o, t, w, latin, col) : rest) =
+              [emptyBox (o - x) | o > x]
+                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [])]
+                <> go (o + w) rest
+         in Line (go 0 (sortOn (\(o, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) False (0, 0)
+      at o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col) | p <- oneRow t]
+      lineNumberColor = cdLineNumberColor cs
+      rowLine l n (i, (row, markAt)) =
+        lineOf
+          ( concat [at (numberWidth - widthOf num) lineNumberColor num | i == 0, numbered, Just k <- [clNumber l], let num = T.pack (show k)]
+              <> concat [at numberColumn Nothing m | i == 0, Just m <- [diffMark (clDiff l)]]
+              <> [(codeStart + cpOffset p, cpText p, cpWidth p, cpLatin p, cpColor p) | p <- crPieces row]
+              <> concat [at (codeStart + avail) lineNumberColor wrapMark | i < n - 1, not (T.null wrapMark)]
+              <> [(codeStart + o + cpOffset p, cpText p, cpWidth p, cpLatin p, Nothing) | Just o <- [markAt], p <- marksOf (clCallouts l)]
+          )
+      diffMark = \case
+        Just DiffAdded -> Just "+"
+        Just DiffRemoved -> Just "-"
+        _ -> Nothing
+      fileRows = [lineOf (at codeStart Nothing f) | Just f <- [codeFile code]]
+      codeRows = concat [zipWith (curry (rowLine l (length rs))) [0 :: Int ..] rs | (l, rs) <- zip ls perLine]
+      -- the bands of the highlight (K 15% by default) and of the diff
+      bandOf l
+        | clHighlight l = Just (fromMaybe (P.Swatch 0 0 0 15) (cdHighlight cs >>= swatchOf))
+        | clDiff l == Just DiffAdded = cdAdded cs >>= swatchOf
+        | clDiff l == Just DiffRemoved = cdRemoved cs >>= swatchOf
+        | otherwise = Nothing
+      firsts = scanl (+) (length fileRows) (map length perLine)
+      bands = [(r0, length rs, sw) | (l, rs, r0) <- zip3 ls perLine firsts, Just sw <- [bandOf l]]
+      continued = cdContinued cs
+      continuedLine = if T.null continued then Nothing else Just (lineOf (at (codeStart + full - widthOf continued) Nothing continued))
       g = codeGeometry (pgFontSize geom) (pgLinePitch geom) size pad
-      background = do
-        name <- paraStyle (uStyle u) (Just "code") >>= psBackground
-        Swatch (cc, cm, cy, ck) <- Map.lookup name (stSwatches (uStyle u))
-        pure (P.Swatch cc cm cy ck)
+      codeStyle = paraStyle st (Just "code")
+      background = codeStyle >>= psBackground >>= swatchOf
+      border = do
+        sw <- codeStyle >>= psBorder >>= swatchOf
+        pure (sw, dimToSp size (fromMaybe (Abs 16384) (codeStyle >>= psBorderWidth)))
       errs =
         [diagnostic "G0743" Error (uSpan u) "コードブロックの行長が足りません" | avail < 8 * size]
-          <> [diagnostic "G0743" Error (uSpan u) "コードブロックの一行が一ページに収まりません" | codeSpan g 1 > capacity]
+          <> [diagnostic "G0743" Error (uSpan u) "コードブロックの一行が一ページに収まりません" | codeSpan g (if isJust continuedLine then 2 else 1) > capacity]
+      rows = fileRows <> codeRows
    in SetCode
-        { cbRows = map lineOf (concat perLine),
+        { cbRows = rows,
           cbSize = size,
           cbIndent = lead + pad,
-          cbInfo = CodeInfo g lead background,
+          cbInfo =
+            CodeInfo
+              { ciGeometry = g,
+                ciStart = lead,
+                ciBackground = background,
+                ciFirst = 0,
+                ciRows = length rows,
+                ciCaption = ccLines caption,
+                ciCaptionSize = ccSize caption,
+                ciCaptionPitch = ccPitch caption,
+                ciCaptionSpan = ccSpan caption,
+                ciContinued = continuedLine,
+                ciBands = bands,
+                ciBorder = border,
+                ciIndent = lead + pad,
+                ciSize = size
+              },
+          cbFirstRows = length fileRows + 1,
+          cbMarks = ccMarks caption,
           cbErrors = take 1 errs,
           cbNotices = [notice "G0730" (uSpan u) ("コードの行を折り返しました（" <> T.pack (show wrapped) <> " 行）") | wrapped > 0]
         }
@@ -2217,18 +2361,44 @@ writeDocument inp geom fonts layout intent =
                      (j, l) <- zip [0 ..] (pfCaption pf)
                    ]
                 -- the rows of code blocks (golem-driver ADR 0017)
-                <> [ drawLine ta (codeRowAt slot (ciGeometry ci) k j sl) sl
+                <> [ drawLine ta (codeRowAt codeSlot (ciGeometry ci) k' j sl) sl
                    | (slot, SCode lid k _) <- poSlots p,
                      Just ci <- [Map.lookup lid (plCodes layout)],
+                     let (_, codeSlot, k', _) = codePartOf slot lid k ci,
                      (j, Just sl) <- [(j, Map.lookup (lid + j) (plLines layout)) | j <- [0 .. k - 1]]
                    ]
-            -- the backgrounds of code blocks, drawn before everything
+                -- the text at the end of a part that continues, and the caption above the first part (golem-driver ADR 0023)
+                <> [ drawLine ta (codeRowAt codeSlot (ciGeometry ci) k' k sl) sl
+                   | (slot, SCode lid k _) <- poSlots p,
+                     Just ci <- [Map.lookup lid (plCodes layout)],
+                     let (_, codeSlot, k', cont) = codePartOf slot lid k ci,
+                     cont,
+                     Just l <- [ciContinued ci],
+                     let sl = SetLine l (ciSize ci) (ciIndent ci) [] []
+                   ]
+                <> [ drawLine ta (codeCaptionLineAt slot ci j) (SetLine l (ciCaptionSize ci) (ciStart ci) [] [])
+                   | (slot, SCode lid _ _) <- poSlots p,
+                     Just ci <- [Map.lookup lid (plCodes layout)],
+                     lid == ciFirst ci,
+                     (j, l) <- zip [0 ..] (ciCaption ci)
+                   ]
+            -- the backgrounds, the bands and the borders of code blocks, drawn before everything (golem-driver ADR 0017, 0023)
             backMarks =
-              [ P.Saved [P.SetColor sw, P.Rule (codeRect ta slot spanLines (ciStart ci))]
-              | (slot, SCode lid _ spanLines) <- poSlots p,
-                Just ci <- [Map.lookup lid (plCodes layout)],
-                Just sw <- [ciBackground ci]
-              ]
+              concat
+                [ [P.Saved [P.SetColor sw, P.Rule rect] | Just sw <- [ciBackground ci]]
+                    <> [ P.Saved [P.SetColor sw, P.Rule (codeBand ta codeSlot (ciGeometry ci) k' (from - here) (to - from) (ciStart ci))]
+                       | (r0, m, sw) <- ciBands ci,
+                         let from = max r0 here
+                             to = min (r0 + m) (here + k),
+                         to > from
+                       ]
+                    <> [P.Saved (P.SetColor sw : map P.Rule (borderRects rect w)) | Just (sw, w) <- [ciBorder ci]]
+                | (slot, SCode lid k spanLines) <- poSlots p,
+                  Just ci <- [Map.lookup lid (plCodes layout)],
+                  let (isFirst, codeSlot, k', _) = codePartOf slot lid k ci
+                      here = lid - ciFirst ci
+                      rect = codeRect ta codeSlot (spanLines - (if isFirst then ciCaptionSpan ci else 0)) (ciStart ci)
+                ]
             figMarks = [P.Image (P.ImageRef fid) (figureRect geom ta slot pf) | (slot, fid) <- placedFigures p, Just pf <- [Map.lookup fid (plFigures layout)]]
             -- one note's lines are in one line of the flow (golem-driver ADR 0018)
             noteLines = concat [take cnt (drop from (Map.findWithDefault [] nid noteBodies)) | (nid, from, cnt) <- poFootnotes p]
@@ -2292,6 +2462,33 @@ writeDocument inp geom fonts layout intent =
             areaTop = toInteger slot * pgLinePitch geom - (pgLinePitch geom - pgFontSize geom) `div` 2
             top = areaTop + codeRowsTop g k + toInteger j * cgPitch g
          in top + (if vertical then s `div` 2 else round (toRational s * baselineRatio))
+      {- a part of a code block from grid line slot with k rows (golem-driver
+      ADR 0023): whether it is the first part, the grid line of its rows
+      (after the caption), the rows it is centred as and whether it ends
+      with the text that it continues -}
+      codePartOf slot lid k ci =
+        let isFirst = lid == ciFirst ci
+            cont = isJust (ciContinued ci) && lid + k < ciFirst ci + ciRows ci
+         in (isFirst, slot + (if isFirst then ciCaptionSpan ci else 0), k + (if cont then 1 else 0), cont)
+      -- line j of the caption of a code block: from the top of its grid line, j caption pitches on
+      codeCaptionLineAt slot ci j =
+        let cs = ciCaptionSize ci
+            top = toInteger slot * pgLinePitch geom + toInteger (j :: Int) * ciCaptionPitch ci
+         in top + (if vertical then cs `div` 2 else round (toRational cs * baselineRatio))
+      -- the band of m rows from row j of the k rows of a part, a code pitch each, from start to the end of the line
+      codeBand ta slot g k j m start =
+        let p = pgLinePitch geom
+            areaTop = toInteger slot * p - (p - pgFontSize geom) `div` 2
+            top = areaTop + codeRowsTop g k + toInteger j * cgPitch g - (cgPitch g - cgSize g) `div` 2
+            depth = toInteger m * cgPitch g
+            measure = if vertical then rectH ta else rectW ta
+         in if vertical
+              then Rect (rectX ta + rectW ta - top - depth) (rectY ta + rectH ta - measure) depth (measure - start)
+              else Rect (rectX ta + start) (rectY ta + rectH ta - top - depth) (measure - start) depth
+      -- the lines of a border of width t, centred on the sides of a rectangle
+      borderRects (Rect x y w h) t =
+        let half = t `div` 2
+         in [Rect (x - half) (y + h - half) (w + t) t, Rect (x - half) (y - half) (w + t) t, Rect (x - half) (y - half) t (h + t), Rect (x + w - half) (y - half) t (h + t)]
       -- the area of a code block of n grid lines from grid line slot, from start to the end of the line
       codeRect ta slot n start =
         let p = pgLinePitch geom

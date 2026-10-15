@@ -43,6 +43,8 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **DeferredExpr**：S1 で初めて値が決まる式（`doc` 名前空間を参照する式）を、意味論 IR の中に評価を遅らせて保持したもの（[golem-eval ADR 0002](golem-eval/adr/0002-file-evaluation.md)）。
 - **チャネル**：文書の各所から項目を集め、別の位置に一覧として出す仕組み。目次、脚注、索引、参考文献がこの形をとる（[仕様書](specifications.md)）。
 - **ラベル**：`@label` でブロックに付ける名前。相互参照（章番号、章題、ページ番号）の参照先になる。
+- **リスト番号**：`@caption` でキャプションを付けたコードブロックに、章ごとに振る番号。図番号とは別に数え、表記は `style.toml` の `[code]` の `number`（既定 `リスト{chapter}-{n}`）で決める（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+- **注釈の印**：コードブロックの行末に置き、本文で同じ印を使って説明する丸数字（①）。原稿では `callouts=true` のコードブロックの行末に `<1>` と書く（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 
 ## 組版
 

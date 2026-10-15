@@ -42,7 +42,9 @@ data AssembleConfig = AssembleConfig
     acNoteNumbering :: !NoteNumbering,
     {- | the chapter of the manifest (from 0) of each document, in the order
     of the documents; a document past its end is a chapter of its own
-    -} acChapterOf :: ![Int]
+    -} acChapterOf :: ![Int],
+    -- | [code] number: the format of listing numbers (golem-driver ADR 0023)
+    acListingFormat :: !Text
   }
 
 {- | The range over which footnotes and sidenotes are numbered from 1
@@ -95,6 +97,8 @@ data Book = Book
   { bookDocs :: ![Document],
     bookHeadings :: !(Map SrcSpan HeadingInfo),
     bookFigures :: !(Map SrcSpan Text),
+    -- | the listing number of each code block with a caption (golem-driver ADR 0023)
+    bookListings :: !(Map SrcSpan Text),
     bookToc :: ![TocEntry],
     bookTocDepth :: !(Maybe Int),
     bookIndex :: ![IndexGroup],
@@ -133,11 +137,14 @@ data NumSt = NumSt
     nsFigure :: !Integer,
     nsHeadings :: !(Map SrcSpan HeadingInfo),
     nsFigures :: !(Map SrcSpan (Maybe Integer, Integer)),
+    -- | the counter of code blocks with a caption, apart from figures (golem-driver ADR 0023)
+    nsListing :: !Integer,
+    nsListings :: !(Map SrcSpan (Maybe Integer, Integer)),
     nsDiags :: ![Diagnostic]
   }
 
 numberDocs :: AssembleConfig -> [Document] -> NumSt
-numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.empty Map.empty [])
+numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.empty Map.empty 0 Map.empty [])
   where
     doc (Document fid bs) = mapM_ (blk fid) bs
     blk fid (Block sp lbl b) = case b of
@@ -158,12 +165,25 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.
             info = HeadingInfo l nums numText (fromMaybe is (haTocTitle a)) (headingAnchor lbl sp) fid
             -- G0407: @number equal to the number it would get without it (golem-syntax ADR 0002)
             redundant = [redundantNumber cfg sp n | not (haNoNumber a), Just n <- [haNumber a], n == cs !! (l - 1) + 1]
-        put st {nsDiags = nsDiags st <> redundant, nsCounters = cs', nsChapter = if l == 1 then chapter else nsChapter st, nsFigure = figureReset, nsHeadings = Map.insert sp info (nsHeadings st)}
+        put
+          st
+            { nsDiags = nsDiags st <> redundant,
+              nsCounters = cs',
+              nsChapter = if l == 1 then chapter else nsChapter st,
+              nsFigure = figureReset,
+              nsListing = if l == 1 then 0 else nsListing st,
+              nsHeadings = Map.insert sp info (nsHeadings st)
+            }
       FigureBlock f -> do
         st <- get
         let n = nsFigure st + 1
         put st {nsFigure = n, nsFigures = Map.insert sp (nsChapter st, n) (nsFigures st)}
         mapM_ (blk fid) (figCaption f)
+      -- a code block with a caption has a listing number (golem-driver ADR 0023)
+      CodeBlock Code {codeCaption = Just _} -> do
+        st <- get
+        let n = nsListing st + 1
+        put st {nsListing = n, nsListings = Map.insert sp (nsChapter st, n) (nsListings st)}
       BulletList items -> mapM_ (mapM_ (blk fid) . itemBlocks) items
       OrderedList items -> mapM_ (mapM_ (blk fid) . itemBlocks) items
       DefList gs -> mapM_ (mapM_ (mapM_ (blk fid)) . dgDefs) gs
@@ -185,11 +205,16 @@ assemble cfg evalDeferred docs =
       figureText sp = case Map.lookup sp (nsFigures ns) of
         Just (ch, n) -> Just (formatNumber (acFigureFormat cfg) [n] ch)
         Nothing -> Nothing
-      figureErrors =
-        [ diagnostic "G0404" Error sp "章の外にある図版には、章番号を使う図番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
-        | "{chapter}" `T.isInfixOf` acFigureFormat cfg,
-          (sp, (Nothing, _)) <- Map.toList (nsFigures ns)
+      listingText sp = case Map.lookup sp (nsListings ns) of
+        Just (ch, n) -> Just (formatNumber (acListingFormat cfg) [n] ch)
+        Nothing -> Nothing
+      -- G0404 for figures and code blocks (golem-driver ADR 0023)
+      outside fmt numbered =
+        [ diagnostic "G0404" Error sp "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
+        | "{chapter}" `T.isInfixOf` fmt,
+          (sp, (Nothing, _)) <- Map.toList numbered
         ]
+      figureErrors = outside (acFigureFormat cfg) (nsFigures ns) <> outside (acListingFormat cfg) (nsListings ns)
       (labels, labelDiags) = collectLabels ns docs
       chapterCount = toInteger (length [() | HeadingInfo {hiLevel = 1, hiNumbers = Just _} <- Map.elems (nsHeadings ns)])
       dv = DocValues chapterCount
@@ -213,6 +238,7 @@ assemble cfg evalDeferred docs =
           { bookDocs = renumberNotes cfg docs',
             bookHeadings = nsHeadings ns,
             bookFigures = Map.mapMaybeWithKey (\sp _ -> figureText sp) (nsFigures ns),
+            bookListings = Map.mapMaybeWithKey (\sp _ -> listingText sp) (nsListings ns),
             bookToc = toc,
             bookTocDepth = case tocs of
               ((d, _) : _) -> Just d
@@ -312,6 +338,10 @@ collectLabels ns docs = foldl add (Map.empty, []) targets
       FigureBlock f -> case Map.lookup sp (nsFigures ns) of
         Just (ch, n) -> (Just (Text sp (maybe "" (\c -> T.pack (show c) <> "-") ch <> T.pack (show n))), [Text sp (figAlt f)])
         Nothing -> (Nothing, [Text sp (figAlt f)])
+      -- the number and the caption of a code block (golem-driver ADR 0023)
+      CodeBlock c -> case Map.lookup sp (nsListings ns) of
+        Just (ch, n) -> (Just (Text sp (maybe "" (\x -> T.pack (show x) <> "-") ch <> T.pack (show n))), fromMaybe [] (codeCaption c))
+        Nothing -> (Nothing, fromMaybe [] (codeCaption c))
       _ -> (Nothing, [])
     add (m, ds) (l, t) = case Map.lookup l m of
       Just prev ->
@@ -338,6 +368,7 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
         DefList gs -> DefList <$> mapM (\(DefGroup ts ds) -> DefGroup <$> mapM inls ts <*> mapM (mapM blk) ds) gs
         Table al h rows -> Table al <$> mapM inls h <*> mapM (mapM inls) rows
         FigureBlock f -> (\c -> FigureBlock f {figCaption = c}) <$> mapM blk (figCaption f)
+        CodeBlock c -> (\cap -> CodeBlock c {codeCaption = cap}) <$> traverse inls (codeCaption c)
         other -> pure other
     item (ListItem n bs') = ListItem n <$> mapM blk bs'
     inls is = concat <$> mapM inl is
@@ -444,6 +475,7 @@ bodyInlines body = concatMap flatten $ case body of
   Heading _ _ is -> is
   DefList gs -> concat (concatMap dgTerms gs)
   Table _ h rows -> concat h <> concat (concat rows)
+  CodeBlock c -> fromMaybe [] (codeCaption c)
   _ -> []
   where
     flatten i =

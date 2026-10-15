@@ -22,6 +22,9 @@ module Golem.Project.Style
     featureKeys,
     LineBreaks (..),
     ParaStyleDef (..),
+    CodeStyle (..),
+    defaultCodeStyle,
+    codeTokenKinds,
     RegexStyleDef (..),
     regexStyleKeys,
     localRegexStyleDef,
@@ -235,9 +238,68 @@ data ParaStyleDef = ParaStyleDef
     {- | the swatch of the background and the padding inside it (golem-driver
     ADR 0017); v1 sets them only for the paragraph style code
     -} psBackground :: !(Maybe Text),
-    psPadding :: !(Maybe Dim)
+    psPadding :: !(Maybe Dim),
+    -- | the swatch and the width of the border, for code only (golem-driver ADR 0023)
+    psBorder :: !(Maybe Text),
+    psBorderWidth :: !(Maybe Dim)
   }
   deriving stock (Eq, Show)
+
+{- | [code] and [code.colors] (golem-driver ADR 0023): the format of the
+listing numbers, whether code blocks have line numbers, the swatches of
+the line numbers, the highlight and the diff, the wrap mark, the text of
+a block continued on the next page, and the swatch of each token kind.
+-}
+data CodeStyle = CodeStyle
+  { cdNumber :: !Text,
+    cdLineNumbers :: !Bool,
+    cdLineNumberColor :: !(Maybe Text),
+    cdHighlight :: !(Maybe Text),
+    cdAdded :: !(Maybe Text),
+    cdRemoved :: !(Maybe Text),
+    cdWrapMark :: !Text,
+    cdContinued :: !Text,
+    cdColors :: !(Map Text Text)
+  }
+  deriving stock (Eq, Show)
+
+defaultCodeStyle :: CodeStyle
+defaultCodeStyle = CodeStyle "リスト{chapter}-{n}" False Nothing Nothing Nothing Nothing "" "" Map.empty
+
+-- | The token kinds of [code.colors]: skylighting's TokenType in kebab-case.
+codeTokenKinds :: [Text]
+codeTokenKinds =
+  [ "keyword",
+    "data-type",
+    "dec-val",
+    "base-n",
+    "float",
+    "char",
+    "string",
+    "comment",
+    "other",
+    "alert",
+    "function",
+    "region-marker",
+    "error",
+    "constant",
+    "special-char",
+    "verbatim-string",
+    "special-string",
+    "import",
+    "documentation",
+    "annotation",
+    "comment-var",
+    "variable",
+    "control-flow",
+    "operator",
+    "built-in",
+    "extension",
+    "preprocessor",
+    "attribute",
+    "information",
+    "warning"
+  ]
 
 -- | A regex style: a pattern and the character style for its matches (docs/adr ADR 0015).
 data RegexStyleDef = RegexStyleDef
@@ -252,7 +314,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020).
 bodyDefaults :: ParaStyleDef
@@ -366,7 +428,7 @@ builtinParaStyles =
 
 -- | The keys the paragraph style code takes (golem-driver ADR 0017).
 codeParaKeys :: [Text]
-codeParaKeys = ["font", "size", "background", "padding"]
+codeParaKeys = ["font", "size", "background", "padding", "border", "border-width"]
 
 {- | Whether a character style is code or reaches code through based-on
 (golem-driver ADR 0017).
@@ -412,6 +474,8 @@ overPara u b =
     (psBaselineShift u <|> psBaselineShift b)
     (psBackground u <|> psBackground b)
     (psPadding u <|> psPadding b)
+    (psBorder u <|> psBorder b)
+    (psBorderWidth u <|> psBorderWidth b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -725,6 +789,8 @@ data Style = Style
     stAkiSets :: !(Map Text AkiSetDef),
     -- | [index]: the columns of the index (docs/adr ADR 0025)
     stIndex :: !(Maybe IndexStyle),
+    -- | [code] and [code.colors] (golem-driver ADR 0023)
+    stCode :: !CodeStyle,
     -- | [hidden-folio] (golem-driver ADR 0021)
     stHiddenFolio :: !HiddenFolio
   }
@@ -756,6 +822,7 @@ defaultStyle =
       stLists = defaultListStyle,
       stAkiSets = Map.empty,
       stIndex = Nothing,
+      stCode = defaultCodeStyle,
       stHiddenFolio = defaultHiddenFolio
     }
 
@@ -979,7 +1046,10 @@ instance FromValue ParaStyleDef where
     pad <- optKey "padding"
     -- a negative padding is read and reported by the checks (golem-driver ADR 0017)
     pad' <- traverse (\v -> maybe (fail ("長さの書き方が不正です: " <> T.unpack v <> "（0.5zw や 1mm のように書きます）")) pure (parseSignedDim v)) pad
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad')
+    -- the border of code; zw is reported by the checks (golem-driver ADR 0023)
+    border <- optKey "border"
+    bw <- dimKey "border-width"
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw)
 
 instance FromValue RegexStyleDef where
   fromValue = parseTableFromValue (RegexStyleDef <$> reqKey "pattern" <*> reqKey "style")
@@ -1160,6 +1230,26 @@ instance FromValue Notes where
         "book" -> NumberPerBook
         _ -> NumberPerChapter
 
+-- | [code] (golem-driver ADR 0023): an unknown key or kind is G0306.
+newtype CodeSec = CodeSec CodeStyle
+
+instance FromValue CodeSec where
+  fromValue = parseTableFromValue $ do
+    let d = defaultCodeStyle
+    number <- optKey "number"
+    ln <- optKey "line-numbers"
+    lnc <- optKey "line-number-color"
+    hl <- optKey "highlight"
+    added <- optKey "added"
+    removed <- optKey "removed"
+    wm <- optKey "wrap-mark"
+    cont <- optKey "continued"
+    colors <- fromMaybe Map.empty <$> optKey "colors"
+    case filter (`notElem` codeTokenKinds) (Map.keys colors) of
+      (k : _) -> fail (T.unpack ("[code.colors] に書けない字句の種類です: " <> k <> "。" <> T.intercalate "、" codeTokenKinds <> " を書けます"))
+      [] -> pure ()
+    pure (CodeSec (CodeStyle (fromMaybe (cdNumber d) number) (fromMaybe False ln) lnc hl added removed (fromMaybe "" wm) (fromMaybe "" cont) colors))
+
 data Figures = Figures (Maybe Text) (Maybe Dim)
 
 instance FromValue Figures where
@@ -1248,6 +1338,7 @@ instance FromValue Style where
     ListsSec lists <- fromMaybe (ListsSec defaultListStyle) <$> optKey "lists"
     akiSets <- fromMaybe Map.empty <$> optKey "aki-sets"
     index <- fmap (\(IndexSec ix) -> ix) <$> optKey "index"
+    CodeSec code <- fromMaybe (CodeSec defaultCodeStyle) <$> optKey "code"
     hidden <- fromMaybe defaultHiddenFolio <$> optKey "hidden-folio"
     -- the built-in sets cannot be defined again (docs/adr ADR 0019)
     case filter (`elem` builtinAkiSetNames) (Map.keys akiSets) of
@@ -1277,6 +1368,7 @@ instance FromValue Style where
           stLists = lists,
           stAkiSets = akiSets,
           stIndex = index,
+          stCode = code,
           stHiddenFolio = hidden
         }
     where
@@ -1388,6 +1480,18 @@ styleChecks owner s =
              isJust (psBackground d) || isJust (psPadding d)
            ]
         <> [("code", "padding は 0 以上の寸法です") | Just ParaStyleDef {psPadding = Just p} <- [Map.lookup "code" (stParaStyles s)], negativeDim p]
+        -- the border is for code only, its width an absolute dimension (golem-driver ADR 0023)
+        <> [ (n, "border と border-width は段落スタイル code にだけ書けます: " <> n)
+           | (n, d) <- Map.toList (stParaStyles s),
+             n /= "code",
+             isJust (psBorder d) || isJust (psBorderWidth d)
+           ]
+        <> [ ("code", "border-width は mm、pt、Q、H の寸法で書きます")
+           | Just ParaStyleDef {psBorderWidth = Just w} <- [Map.lookup "code" (stParaStyles s)],
+             case w of
+               Zw _ -> True
+               Abs x -> x < 0
+           ]
     writtenOtherKeys d =
       [ k
       | (k, written) <-
@@ -1439,6 +1543,9 @@ styleChecks owner s =
                ]
             -- the swatch of a background (golem-driver ADR 0017)
             <> [(n, "段落スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBackground = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
+            <> [(n, "段落スタイル " <> n <> " の border のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBorder = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
+            -- the swatches of [code] and [code.colors] (golem-driver ADR 0023)
+            <> [("", "[code] の " <> k <> " のスウォッチがありません: " <> c) | (k, c) <- codeSwatches, Map.notMember c (stSwatches s)]
             <> [(n, "段落スタイルの based-on が循環しています: " <> T.intercalate ", " paraCycle) | n <- paraCycle]
             -- aki sets: aki-set and based-on name a set, without a cycle (docs/adr ADR 0019)
             <> [ (n, "段落スタイル " <> n <> " の aki-set のアキ量のセットがありません: " <> a)
@@ -1473,9 +1580,15 @@ styleChecks owner s =
        in [n | n <- Map.keys (stParaStyles s), Just d <- [paraStyle s (Just n)], negative d]
     numberChecks =
       [ "番号の書式が不正です: " <> f
-      | f <- stFigureNumber s : [n | HeadingStyle {hsNumber = Just n} <- Map.elems (stHeadings s)],
+      | f <- stFigureNumber s : cdNumber (stCode s) : [n | HeadingStyle {hsNumber = Just n} <- Map.elems (stHeadings s)],
         not (validNumberFormat f)
       ]
+        -- a listing number has a placeholder (golem-driver ADR 0023)
+        <> ["[code] の number には {n} などの差し込みを書きます: " <> cdNumber (stCode s) | not ("{" `T.isInfixOf` cdNumber (stCode s))]
+    codeSwatches =
+      let c = stCode s
+       in [(k, v) | (k, Just v) <- [("line-number-color", cdLineNumberColor c), ("highlight", cdHighlight c), ("added", cdAdded c), ("removed", cdRemoved c)]]
+            <> [("colors." <> k, v) | (k, v) <- Map.toList (cdColors c)]
     checks =
       [ "explicit-hyphen-penalty は -9999 から 10000 までです: " <> T.pack (show p)
       | let p = compExplicitHyphenPenalty (stComposition s),
@@ -1513,7 +1626,7 @@ data LocalValue = LocalWord Text | LocalString Text
 -- | The keys @style-def takes, as style.toml's (for completion).
 charStyleKeys, paraStyleKeys, regexStyleKeys :: [Text]
 charStyleKeys = ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic"] <> featureKeys
-paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent", "aki-set"] <> featureKeys <> ["background", "padding"]
+paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent", "aki-set"] <> featureKeys <> ["background", "padding", "border", "border-width"]
 regexStyleKeys = ["pattern", "style"]
 
 {- | The keys of one @style-def as a TOML table, read with the 'FromValue'
