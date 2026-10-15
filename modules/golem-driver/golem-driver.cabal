@@ -65,7 +65,18 @@ test-suite golem-driver-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    ExternalTool
+  other-modules:
+    BuildSpec
+    CliSpec
+    DiagnosticsSpec
+    ExternalTool
+    PageElementsSpec
+    ParagraphSpec
+    PdfSpec
+    PluginsSpec
+    ReferencesSpec
+    StylesSpec
+    Support
   build-depends:
     , base
     , bytestring
