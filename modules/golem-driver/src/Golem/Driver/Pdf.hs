@@ -43,11 +43,13 @@ module Golem.Driver.Pdf
     bibliographyLines,
     Assumed (..),
     fixpoint,
+    labelSpans,
     TocGeometry (..),
     TocPage (..),
     tocPage,
     headingPages,
     headingsOnPages,
+    numberedTitle,
     runningHeadLines,
     runningHeads,
     runningMetadata,
@@ -87,6 +89,7 @@ import Data.Time.Calendar (toGregorian)
 import Golem.Doc.Assemble
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers
+import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals (circled, formatNumber)
 import Golem.Driver.Version (golemVersion)
 import Golem.Html (codeTokens)
@@ -240,6 +243,10 @@ data PdfInput = PdfInput
     as text, by their names with the namespace (golem-driver ADR 0022)
     -} piRunningVars :: !(Map FileId (Map [Text] Text))
   }
+
+-- | The language of the book, [metadata] language (golem-html ADR 0002).
+bookLanguage :: PdfInput -> Text
+bookLanguage = mdLanguage . manifestMetadata . projectManifest . piProject
 
 -- | The style of a document: style.toml with the styles its file defines (docs/adr ADR 0014).
 docStyle :: PdfInput -> FileId -> Style
@@ -961,9 +968,17 @@ runningHeadLines meta vars content start started = case content of
             short h = T.concat (map inlineText (hiTitle h))
             render h = case form of
               HeadShort -> Just (short h)
-              HeadNumbered -> Just (maybe (short h) (\n -> n <> "\x3000" <> short h) (hiNumberText h))
+              -- the separator of the language of the book (golem-html ADR 0002)
+              HeadNumbered -> Just (maybe (short h) (\n -> n <> numberSeparator (Map.findWithDefault "" "language" meta) n <> short h) (hiNumberText h))
               HeadNumber -> hiNumberText h
          in chosen >>= render
+
+{- | The inlines of a numbered title (golem-html ADR 0002): the number, the
+separator of the language of the book and the title; the title alone
+without a number.
+-}
+numberedTitle :: Text -> SrcSpan -> Maybe Text -> [Inline] -> [Inline]
+numberedTitle lang sp num is = maybe [] (\n -> [Text sp (n <> numberSeparator lang n)]) num <> is
 
 -- | The columns of each page, in order (docs/adr ADR 0018).
 pagesOf :: [PageOut] -> [[PageOut]]
@@ -1514,11 +1529,10 @@ with the styles its file defines (docs/adr ADR 0014). Lists are numbered
 in document order; the units inside a list know the lists around them
 (golem-driver ADR 0013).
 -}
-unitsOf :: Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
-unitsOf book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs book)))
+unitsOf :: Text -> Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
+unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs book)))
   where
     sp0 = mkSpan (FileId 0) 0 0
-    txt = Text sp0
     fs = pgFontSize geom
     doc n (Document fid bs) = blocks (styleOf fid) [] n bs
     {- a list of blocks inside the lists @ctx@, from the list number @n@:
@@ -1546,7 +1560,7 @@ unitsOf book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bo
                in (n, [(unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face) {uParaStyle = st} | (i, part) <- zip [0 :: Int ..] parts])
             Heading l attrs is ->
               let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
-                  title = maybe [] (\h -> [txt (h <> "　")]) (if haNoNumber attrs then Nothing else num) <> is
+                  title = numberedTitle lang sp0 (if haNoNumber attrs then Nothing else num) is
                   recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
                in (n, [unit (UHeading l (T.concat (map inlineText is)) recto) lbl title (uncurry (styleLook style Nothing) (headingFace style geom l))])
             BulletList items -> list style ctx n (map (Nothing,) items)
@@ -1561,7 +1575,7 @@ unitsOf book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bo
             CodeBlock code -> (n, [unit (UCode 0 code) lbl [] (codeLook style geom)])
             FigureBlock fig -> (n, [plainUnit (UFigure fig) lbl []])
             -- the index marks of a title are counted at the heading, not in the table of contents
-            ChannelOutput (TocOutput depth) -> (n, [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (maybe [] (\h -> [txt (h <> "　")]) (teNumber e) <> filter (not . isMark) (teTitle e)) | e <- bookToc book, teLevel e <= depth])
+            ChannelOutput (TocOutput depth) -> (n, [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (numberedTitle lang sp0 (teNumber e) (filter (not . isMark) (teTitle e))) | e <- bookToc book, teLevel e <= depth])
             ChannelOutput IndexOutput ->
               let entries kind = [plainUnit kind Nothing is | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
                in case indexSet of
@@ -1655,7 +1669,7 @@ buildFlow inp geom fonts images assumed = do
       tocIndent l = toInteger (l - 1) * fs
       -- a mark without an assumed page yet stands at page 1 in the first round
       markPage sp = Map.lookup sp (asMarks assumed) <|> (if Map.null (asMarks assumed) then Just 1 else Nothing)
-      rawUnits = unitsOf (piBook inp) geom (indexColumnSet style geom) (docStyle inp) markPage (piBibliography inp)
+      rawUnits = unitsOf (bookLanguage inp) (piBook inp) geom (indexColumnSet style geom) (docStyle inp) markPage (piBibliography inp)
       -- the character styles of the unit's document (docs/adr ADR 0014)
       styledEnv st e = e {ceRestyle = restyle st}
       -- the marker width M of each list, and the indents of the units in lists (golem-driver ADR 0013)
@@ -1739,7 +1753,7 @@ buildFlow inp geom fonts images assumed = do
             across = if vertical then alongSp * w `div` max 1 h else alongSp * h `div` max 1 w
             m = fromInteger ((across + pitch - 1) `div` pitch)
             number = Map.lookup (uSpan u) (bookFigures (piBook inp))
-            captionInlines = maybe [] (\num -> [Text (uSpan u) (num <> "　")]) number <> concat [is | Block _ _ (Paragraph _ is) <- figCaption fig]
+            captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number (concat [is | Block _ _ (Paragraph _ is) <- figCaption fig])
             -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
             (captionRole, cs) = paraFace (uStyle u) geom "caption"
             captionParams = params {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}

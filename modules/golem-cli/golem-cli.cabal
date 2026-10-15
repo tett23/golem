@@ -37,6 +37,7 @@ test-suite golem-cli-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    CommandsSpec
   ghc-options: -threaded -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
   default-extensions: DerivingStrategies LambdaCase OverloadedStrings
   build-tool-depends: golem-cli:golem

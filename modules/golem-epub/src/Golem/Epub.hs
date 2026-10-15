@@ -20,6 +20,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Calendar (Day, showGregorian)
 import Golem.Doc.Assemble
+import Golem.Doc.Numbering (numberSeparator)
 import Golem.Html
 import Golem.Syntax.Span
 import System.FilePath (takeExtension, (</>))
@@ -118,7 +119,7 @@ navDocument cfg ft book =
         <> "#"
         <> escapeXml (teAnchor e)
         <> "\">"
-        <> maybe "" (\n -> escapeXml n <> " ") (teNumber e)
+        <> maybe "" (\n -> escapeXml (n <> numberSeparator (epLanguage cfg) n)) (teNumber e)
         <> escapeXml (T.concat (map inlineText (teTitle e)))
         <> "</a>"
     nested [] = "<ol><li><a href=\"#toc\">" <> escapeXml (epTitle cfg) <> "</a></li></ol>"

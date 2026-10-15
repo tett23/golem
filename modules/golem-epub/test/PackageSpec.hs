@@ -129,6 +129,12 @@ tests =
           let book = emptyBook {bookToc = [entry 1 fidA "intro" "はじめに", entry 2 fidA "s1" "節", entry 1 fidB "second" "次の章"]}
            in linesWith "<ol>" (navDocument cfg0 ft book)
                 @?= ["<ol><li><a href=\"a.xhtml#intro\">はじめに</a><ol><li><a href=\"a.xhtml#s1\">節</a></li></ol></li><li><a href=\"b.xhtml#second\">次の章</a></li></ol>"],
+        testCase "a number and the separator of the language before the title (golem-html ADR 0002)" $ do
+          let numbered n = (entry 1 fidA "intro" "はじめに") {teNumber = Just n}
+          linesWith "<ol>" (navDocument cfg0 ft emptyBook {bookToc = [numbered "第一章"]})
+            @?= ["<ol><li><a href=\"a.xhtml#intro\">第一章\x3000はじめに</a></li></ol>"]
+          linesWith "<ol>" (navDocument cfg0 {epLanguage = "en"} ft emptyBook {bookToc = [numbered "1"]})
+            @?= ["<ol><li><a href=\"a.xhtml#intro\">1 はじめに</a></li></ol>"],
         testCase "the nav element is the toc" $
           linesWith "<nav" (navDocument cfg0 ft emptyBook) @?= ["<nav epub:type=\"toc\" id=\"toc\">"]
       ],
