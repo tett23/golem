@@ -276,6 +276,24 @@ HTML と EPUB には効きません。
 索引の一段の行長が、版面の文字の大きさで 8 字分に満たないと、エラー（G0744）になります。
 
 @nonumber
+## [code: \[hidden-folio\]]
+
+隠しノンブルです。
+トンボを付けた PDF（[code: --marks japanese] か [code: --marks western]）にだけ入ります。
+HTML と EPUB には効きません。
+
+| キー | 既定 | 意味 |
+|:---|:---|:---|
+| [code: enabled] | [code: true] | トンボを付けた PDF に隠しノンブルを入れるかどうかです。中綴じの本では [code: false] にします。 |
+| [code: pages] | [code: "unnumbered"] | 入れるページです。[code: "unnumbered"] はノンブルを組まないページ（白ページ、マスターページのないページ、[code: folio] のないマスターページのページ）、[code: "all"] はすべてのページです。 |
+| [code: size] | [code: "6pt"] | 数字の大きさです。 |
+| [code: gutter] | [code: "1.5mm"] | ノドの仕上がりの線から、数字の列の中心までの距離です。 |
+
+[code: size] と [code: gutter] には [code: zw] を使えません。
+[code: gutter] が [code: size] の半分より小さいと、数字が仕上がりの線を越えるので、エラー（G0306）になります。
+数字の列が版面か傍注欄に重なると、エラー（G0750）になります。
+
+@nonumber
 ## [code: \[lists\]]
 
 箇条書きの印と、番号付きのリストの番号の書式です。
