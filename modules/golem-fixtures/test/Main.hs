@@ -3,6 +3,7 @@ module Main (main) where
 import Data.ByteString qualified as BS
 import Data.Either (isLeft)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Encoding (encodeUtf8)
 import Golem.Fixtures
 import Test.Tasty
@@ -24,8 +25,111 @@ tests =
       testCase "a text that is not the expected one is an error" $ do
         assertBool "no Gutenberg markers" (isLeft (convertBytes GutenbergPlay "no markers\n"))
         assertBool "no dashed lines" (isLeft (convertBytes Aozora "title\nauthor\n"))
-        assertBool "not UTF-8" (isLeft (convertBytes Aozora (BS.pack [0x82, 0xa0])))
+        assertBool "not UTF-8" (isLeft (convertBytes Aozora (BS.pack [0x82, 0xa0]))),
+      testGroup "gutenberg-text (docs/adr/0026)" (map textCaseOf textCases),
+      testGroup "aozora-prose (docs/adr/0026)" (map (caseOf AozoraProse) aozoraProseCases),
+      testGroup "aozora-verse (docs/adr/0026)" (map (caseOf AozoraVerse) aozoraVerseCases),
+      testCase "the arguments of the converters (docs/adr/0026)" $ do
+        converterNamed "aozora-prose" @?= Just AozoraProse
+        converterNamed "aozora-verse" @?= Just AozoraVerse
+        converterNamed "gutenberg-text" @?= Just (GutenbergText defaultTextOptions)
+        parseArgs ["aozora", "in.txt", "out.gm"] @?= Right (Aozora, "in.txt", "out.gm")
+        parseArgs ["gutenberg-text", "--verse", "--heading", "Fit the", "--heading", "CHAPTER", "--caps-heading", "2", "--start", "PREFACE", "--end", "THE END", "--notes", "NOTES", "--speakers", "--two-columns", "--numbered-headings", "--bold-equals", "in.txt", "out.gm"]
+          @?= Right
+            ( GutenbergText
+                defaultTextOptions
+                  { optVerse = True,
+                    optHeadings = ["Fit the", "CHAPTER"],
+                    optCapsHeading = Just 2,
+                    optStart = Just "PREFACE",
+                    optEnd = Just "THE END",
+                    optNotes = Just "NOTES",
+                    optSpeakers = True,
+                    optTwoColumns = True,
+                    optNumberedHeadings = True,
+                    optBoldEquals = True
+                  },
+              "in.txt",
+              "out.gm"
+            )
+        assertBool "an unknown option" (isLeft (parseArgs ["gutenberg-text", "--frob", "in.txt", "out.gm"]))
+        assertBool "an option without its value" (isLeft (parseArgs ["gutenberg-text", "in.txt", "out.gm", "--heading"]))
+        assertBool "a level that is not a number" (isLeft (parseArgs ["gutenberg-text", "--caps-heading", "x", "in.txt", "out.gm"]))
+        assertBool "options of a converter without options" (isLeft (parseArgs ["aozora", "--verse", "in.txt", "out.gm"]))
+        assertBool "no output" (isLeft (parseArgs ["gutenberg-text", "in.txt"]))
+        assertBool "a start line that is not there" (isLeft (convertBytes (GutenbergText defaultTextOptions {optStart = Just "NOWHERE"}) (encodeUtf8 (gutenberg "Text.\n"))))
+        assertBool "a notes line that is not there" (isLeft (convertBytes (GutenbergText defaultTextOptions {optNotes = Just "NOWHERE"}) (encodeUtf8 (gutenberg "Text.\n"))))
     ]
+
+textCaseOf :: (String, TextOptions, Text, Text) -> TestTree
+textCaseOf (name, opts, body, expected) =
+  testCase name (convertBytes (GutenbergText opts) (encodeUtf8 (gutenberg body)) @?= Right (encodeUtf8 expected))
+
+-- | A Project Gutenberg text with the body between its markers.
+gutenberg :: Text -> Text
+gutenberg body =
+  "\65279\&The Project Gutenberg eBook of X\r\n\r\n*** START OF THE PROJECT GUTENBERG EBOOK X ***\r\n"
+    <> T.replace "\n" "\r\n" body
+    <> "*** END OF THE PROJECT GUTENBERG EBOOK X ***\r\nLicence\r\n"
+
+-- The expected outputs of gutenberg-text, aozora-prose and aozora-verse were
+-- written by hand from the rules of docs/adr/0026.
+textCases :: [(String, TextOptions, Text, Text)]
+textCases =
+  [ ( "headings, speakers and paragraphs",
+      defaultTextOptions {optStart = Just "CHAPTER I", optHeadings = ["CHAPTER"], optCapsHeading = Just 2, optSpeakers = True},
+      "Title page\n          \nCHAPTER I\n\nTHE LANDING\n\nSome prose that is\nwrapped over lines -- with a dash.\n\nDIO. What from?\n\nFR. and DIO. Brekekekex, ko-ax.\n\nXAN.\n\nO thrice unlucky\n",
+      "@nonumber\n# CHAPTER I\n\n@nonumber\n## THE LANDING\n\nSome prose that is wrapped over lines — with a dash.\n\n[strong: DIO.] What from?\n\n[strong: FR. and DIO.] Brekekekex, ko-ax.\n\n[strong: XAN.]\n\nO thrice unlucky\n"
+    ),
+    ( "verse of short or indented lines, its indents and wrapped lines",
+      defaultTextOptions {optVerse = True, optSpeakers = True},
+      "Girt with a boyish garb for boyish task,\n    Eager she wields her _spade: yet\nloves_ as well\n\n     \8220Just the place for a Snark!\8221 the Bellman cried,\n          As he landed his crew with care;\n\n  DIO. Hang you, and your ko-axing too! There's nothing but ko-ax with\n  you.\n  O tuneful race\n\n          \8220Then the bowsprit got mixed.\8221\n",
+      "@style verse\n  Girt with a boyish garb for boyish task,\n  [aki 2zw]Eager she wields her [italic: spade: yet]\n  [italic: loves] as well\n\n@style verse\n  \8220Just the place for a Snark!\8221 the Bellman cried,\n  [aki 2.5zw]As he landed his crew with care;\n\n@style verse\n  [strong: DIO.] Hang you, and your ko-axing too! There's nothing but ko-ax with you.\n  O tuneful race\n\n@style quote\n\8220Then the bowsprit got mixed.\8221\n"
+    ),
+    ( "verse guessed in prose, quotes, escapes and the end",
+      defaultTextOptions {optEnd = Just "STOP"},
+      "  There's a dark lantern of the spirit,\n  Which none see by but those who bear it,\n  BUTLER.\n\n  Nether Stowey, where Coleridge wrote _The Rime of the Ancient Long\n  Mariner_, is a few miles from Bridgewater.\n\n[Illustration: A boat]\n\n# not a heading, 50%% and back\\slash [x]\n\n  STOP  \n\nDropped.\n",
+      "@style verse\n  There's a dark lantern of the spirit,\n  Which none see by but those who bear it,\n  BUTLER.\n\n@style quote\nNether Stowey, where Coleridge wrote [italic: The Rime of the Ancient Long Mariner], is a few miles from Bridgewater.\n\n\\[Illustration: A boat]\n\n\\# not a heading, 50\\%% and back\\\\slash \\[x]\n"
+    ),
+    ( "two columns, numbered headings and bold",
+      defaultTextOptions {optTwoColumns = True, optNumberedHeadings = True, optBoldEquals = True, optCapsHeading = Just 1},
+      "II. ELEMENTARY RULES\n\n13. Omit needless words.\n\n    1. Indented rule    7\n\n=Participle for verbal noun.= See _here_.\n\n  Do you mind me asking\n  a question?\n\n    Do you mind my asking a | question?\n\n  the question as to whether\n\n    whether (the question whether)\n\nText after.\n",
+      "@nonumber\n# II. ELEMENTARY RULES\n\n@nonumber\n## 13. Omit needless words.\n\n@style quote\n1. Indented rule 7\n\n[bold: Participle for verbal noun.] See [italic: here].\n\n| | |\n|---|---|\n| Do you mind me asking a question? | Do you mind my asking a \\| question? |\n| the question as to whether | whether (the question whether) |\n\nText after.\n"
+    ),
+    ( "notes moved to their marks",
+      defaultTextOptions {optNotes = Just "NOTES"},
+      "Mr Flosky,[1] a gentleman _of note_.[2] And [3] stays.\n\nTHE END\n\nNOTES\n\nCHAPTER I\n\n[1] _Mr Flosky_: A corruption [Greek: philoschios],\na lover.\n\n[2] Two | bars.\n",
+      "Mr Flosky,[note: [italic: Mr Flosky]: A corruption \\[Greek: philoschios\\], a lover.] a gentleman [italic: of note].[note: Two \\| bars.] And \\[3] stays.\n\nTHE END\n"
+    )
+  ]
+
+-- | An Aozora Bunko text with its notation section and a colophon.
+aozora :: Text -> Text
+aozora body =
+  T.replace "\n" "\r\n" $
+    "題\n作者\n\n-------------------------------------------------------\n【テキスト中に現れる記号について】\n-------------------------------------------------------\n\n"
+      <> body
+      <> "\n底本：「本」\n"
+
+aozoraProseCases :: [(String, Text, Text)]
+aozoraProseCases =
+  [ ( "indents, emphasis, kunten, breaks and dropped annotations",
+      aozora "［＃５字下げ］一［＃「一」は中見出し］\n［＃ここから５字下げ］\nホテルの帳場。\n［＃ここで字下げ終わり］\n［＃ここから改行天付き、折り返して１字下げ］\nさと　　船はもう［＃「もう」に白丸傍点］著いた。\n［＃ここで字下げ終わり］\n［＃改行天付き、折り返して２字下げ］とみ　　ひゆう［＃「ひゆう」に傍点］。\n［＃３字下げ］三字［＃「三字」は太字］下げの行\n［＃ここから２字下げ、折り返して３字下げ］\n奉［＃レ］答［＃二］高季迪［＃一］と、｜奉［＃レ］答《こたえ》、一［＃（ト）］。\n［＃ここで字下げ終わり］\nたま／＼、／″＼、※［＃始め二重括弧、1-2-54］一※［＃終わり二重括弧、1-2-55］\n傍線［＃「傍線」に傍線］と［＃地付き］地付き、＊［＃「＊」は行右小書き］\n［＃改ページ］\n［＃ここから中見出し］\n春と修羅\n　　（mental sketch）\n［＃ここで中見出し終わり］\nパート五［＃「パート五」は同行小見出し］の行\n［＃改丁］\n最後\n",
+      "@nonumber\n# 一\n\n@style indent-5-5\nホテルの帳場。\n@style indent-0-1\nさと　　船は[kenten shape=open-circle: もう]著いた。\n@style indent-0-2\nとみ　　[kenten: ひゆう]。\n@style indent-3-3\n[bold: 三字]下げの行\n@style indent-2-3\n奉[style kunten: レ]答[style kunten: 二]高季迪[style kunten: 一]と、[ruby: 奉[style kunten: レ]答|こたえ]、一[style kunten: ト]。\nたま〳〵、〴〵、⦅一⦆\n傍線と地付き、＊\n@page-break\n\n@nonumber\n# 春と修羅　（mental sketch）\n\n[bold: パート五]の行\n@page-break recto\n最後\n\n@nonumber\n# 底本と作成者\n\n底本：「本」\n"
+    ),
+    ( "the shapes of kenten",
+      aozora "あ［＃「あ」に白ゴマ傍点］い［＃「い」に丸傍点］う［＃「う」に黒三角傍点］え［＃「え」に白三角傍点］お［＃「お」に二重丸傍点］か［＃「か」に蛇の目傍点］き［＃「き」に×傍点］く［＃「く」は斜体］\n",
+      "[kenten shape=open-sesame: あ][kenten shape=circle: い][kenten shape=triangle: う][kenten shape=open-triangle: え][kenten shape=open-double-circle: お][kenten shape=double-circle: か]き[italic: く]\n\n@nonumber\n# 底本と作成者\n\n底本：「本」\n"
+    )
+  ]
+
+aozoraVerseCases :: [(String, Text, Text)]
+aozoraVerseCases =
+  [ ( "stanzas, indents of full-width spaces, headings and breaks",
+      aozora "［＃ページの左右中央］\n　　心象スケツチ［＃「心象スケツチ」は１段階小さな文字］\n　　春と修羅\n［＃改丁］\n\n［＃２字下げ］序［＃「序」は大見出し］\n\nわたくしといふ現象は\n［＃２字下げ］仮定された\n［＃ここから３字下げ］\n有機交流電燈の\nひとつの\n［＃ここで字下げ終わり］\n\n東海《とうかい》の小島\n［＃地付き］（一九二二、一、六）\n#行頭\n",
+      "@style verse\n  　　心象スケツチ\n  　　春と修羅\n\n@page-break recto\n\n@nonumber\n# 序\n\n@style verse\n  わたくしといふ現象は\n  　　仮定された\n  　　　有機交流電燈の\n  　　　ひとつの\n\n@style verse\n  [ruby: 東海|とうかい]の小島\n  （一九二二、一、六）\n  \\#行頭\n\n@nonumber\n# 底本と作成者\n\n底本：「本」\n"
+    )
+  ]
 
 -- The expected outputs were made by applying the Python scripts that these
 -- converters replace (scripts/fixtures/gutenberg_play_to_gm.py and

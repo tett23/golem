@@ -4,7 +4,8 @@ version:            0.1.0
 synopsis:           Converters of the public-domain texts of the test fixtures
 description:
   Converts the texts that scripts/fixtures/fetch-public-domain.sh downloads
-  into Golem source (docs/adr/0023). Not part of the release archives.
+  into Golem source (docs/adr/0023, docs/adr/0026). Not part of the release
+  archives.
 license:            MIT
 author:             tett23
 maintainer:         tett23@gmail.com
@@ -22,6 +23,7 @@ library
     Golem.Fixtures
     Golem.Fixtures.Aozora
     Golem.Fixtures.Gutenberg
+    Golem.Fixtures.GutenbergText
     Golem.Fixtures.Python
   build-depends:
     , base          >=4.20 && <4.21
