@@ -1,6 +1,7 @@
 module Main (main) where
 
 import AssembleSpec qualified
+import BibliographySpec qualified
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Data.ByteString qualified as BS
@@ -39,7 +40,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, AssembleSpec.tests, ListMarkersSpec.tests]
+  testGroup "golem-doc" [cbor, AssembleSpec.tests, BibliographySpec.tests, ListMarkersSpec.tests]
 
 cbor :: TestTree
 cbor =
