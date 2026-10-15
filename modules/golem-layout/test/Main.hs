@@ -625,7 +625,7 @@ tests =
             let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FBreak BreakPage, FParagraph (lines' 10 1)]
             map poBlank ps @?= [False, False]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2)], [(0, SFigure 99), (3, SLine 10)]],
-          testCase "a column break on one column is a page break" $ do
+          testCase "on one column, two column breaks in a row and one at the start act as page breaks" $ do
             let flows k = [FParagraph (lines' 0 1), FBreak k, FBreak k, FParagraph (lines' 10 1)]
             paginate 1 5 (flows BreakColumn) @?= paginate 1 5 (flows BreakPage)
             paginate 1 5 [FBreak BreakColumn, FParagraph (lines' 0 1)] @?= paginate 1 5 [FBreak BreakPage, FParagraph (lines' 0 1)]
@@ -802,7 +802,7 @@ tests =
             let ps = paginate 2 3 [FBreak BreakColumn, FParagraph (lines' 0 1)]
             cols ps @?= [(1, 1)]
             slots ps @?= [[0]],
-          testCase "a column break on one column is a page break" $ do
+          testCase "on one column, a column break between paragraphs moves to the next page" $ do
             let flows k = [FParagraph (lines' 0 1), FBreak k, FParagraph (lines' 10 1)]
             paginate 1 3 (flows BreakColumn) @?= paginate 1 3 (flows BreakPage),
           testCase "one column: every part of the output is column 0 of its page" $ do

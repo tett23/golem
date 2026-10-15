@@ -40,25 +40,23 @@ tests =
         formatListNumber NsIroha 3 @?= Just "ハ"
         formatListNumber NsIroha 47 @?= Just "ス"
         formatListNumber NsIroha 48 @?= Nothing,
-      testCase "parseNumberFormat: one placeholder, literal braces doubled" $ do
+      testCase "a number format has one placeholder and doubles literal braces; each error names its reason" $ do
         parseNumberFormat "{n}." @?= Right (NumberFormat "" NsBook ".")
         parseNumberFormat "({a})" @?= Right (NumberFormat "(" NsLowerAlpha ")")
         parseNumberFormat "{{{n}}}" @?= Right (NumberFormat "{" NsBook "}")
         parseNumberFormat "第{一}" @?= Right (NumberFormat "第" NsKanji "")
-        assertLeft (parseNumberFormat "x")
-        assertLeft (parseNumberFormat "{n}{n}")
-        assertLeft (parseNumberFormat "{x}")
-        assertLeft (parseNumberFormat "{n")
-        assertLeft (parseNumberFormat "{n}}"),
+        parseNumberFormat "x" @?= Left "番号の差し込みがありません"
+        parseNumberFormat "{n}{n}" @?= Left "番号の差し込みが二つ以上あります"
+        parseNumberFormat "{x}" @?= Left "表にない差し込みです: {x}"
+        parseNumberFormat "{n" @?= Left "{ が閉じていません。差し込みでない { は {{ と書きます"
+        parseNumberFormat "{n}}" @?= Left "対応する { のない } があります。差し込みでない } は }} と書きます",
       testCase "renderNumberFormat writes a format back" $
         mapM_ (\f -> fmap renderNumberFormat (parseNumberFormat f) @?= Right f) ["{n}.", "({a})", "{{{n}}}", "{①}", "{イ}"],
-      testCase "atDepth keeps the last element for deeper lists" $
+      testCase "a list deeper than the given styles keeps the last style" $
         map (atDepth (pure 'a' <> pure 'b')) [1, 2, 3] @?= "abb",
-      testCase "listSites: the numbers and depths of numbered items, at their first block" $ do
+      testCase "numbered items are listed with their numbers and depths, at their first blocks" $ do
         let inner = Block sp Nothing (OrderedList [item (Just 5)])
             second = SrcSpan (FileId 0) 3 4
             outer = Block sp Nothing (OrderedList [item Nothing, ListItem Nothing [Block second Nothing (Paragraph Nothing []), inner]])
         listSites [outer] @?= [ListSite 1 1 sp, ListSite 1 2 second, ListSite 2 5 sp]
     ]
-  where
-    assertLeft = either (const (pure ())) (assertFailure . ("expected an error: " <>) . show)
