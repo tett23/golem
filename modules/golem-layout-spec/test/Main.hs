@@ -1,6 +1,7 @@
 module Main (main) where
 
 import Data.Either (isLeft)
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Golem.LayoutSpec
@@ -119,15 +120,33 @@ tests =
             assertBool "mentions columns" ("段組み" `T.isInfixOf` diagMessage d)
           other -> assertFailure (show other),
       testCase "running heads and folios: outside is the fore-edge, swapped on even pages" $ do
-        let s = (styleWith False False (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef "top-outside" (RunningHeading 1 HeadShort PickFirst) RunningTitle)) (Just ("bottom-center", "{n}")))]}
+        let s = (styleWith False False (grid 30 30 1 Nothing)) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef "top-outside" (oneLine (RefHeading 1 HeadShort PickFirst)) (oneLine (RefMeta "title")))) (Just ("bottom-center", "{n}")))]}
             g = geom s
             Rect ox oy ow oh = pgTypeArea g
             Rect ex _ _ _ = pgTypeAreaEven g
         case Map.lookup "body" (pgMasters g) of
           Just (MasterGeometry (Just (co, ce, ho, he)) (Just (_, fo, _))) -> do
-            (co, ce) @?= (RunningHeading 1 HeadShort PickFirst, RunningTitle)
+            (co, ce) @?= (oneLine (RefHeading 1 HeadShort PickFirst), oneLine (RefMeta "title"))
             ho @?= Anchor (ox + ow) ((oy + oh + a5H) `div` 2) AlignEnd
             he @?= Anchor ex ((oy + oh + a5H) `div` 2) AlignStart
             fo @?= Anchor (ox + ow `div` 2) (oy `div` 2) AlignCenter
-          other -> assertFailure (show other)
+          other -> assertFailure (show other),
+      testCase "a running head of more lines than the margin holds is G0752 (golem-driver ADR 0022)" $ do
+        -- 30 lines of 10pt at a 17pt pitch: the type area is 503pt deep; the margin is 1.5 pitches
+        let margin = pt 51 `div` 2
+            depth = pt 503
+            headGrid = (grid 30 30 1 Nothing) {gridTop = Abs margin}
+            footGrid = (grid 30 30 1 Nothing) {gridTop = Abs (a5H - depth - margin)}
+            withHead g pos n = (styleWith False False g) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef pos (lines' n) (lines' n))) Nothing)]}
+            lines' n = RunningLines ([PartText "柱"] :| replicate (n - 1) [PartText "柱"])
+            codeOf st = case pageGeometry (FileId 3) st of
+              Left [d] -> Just (diagCode d, diagSpan d)
+              Left ds -> error (show ds)
+              Right _ -> Nothing
+        codeOf (withHead headGrid "top-outside" 3) @?= Just (DiagnosticCode "G0752", mkSpan (FileId 3) 0 0)
+        codeOf (withHead headGrid "top-outside" 1) @?= Nothing
+        codeOf (withHead footGrid "bottom-center" 3) @?= Just (DiagnosticCode "G0752", mkSpan (FileId 3) 0 0)
+        codeOf (withHead footGrid "bottom-center" 1) @?= Nothing
     ]
+  where
+    oneLine r = RunningLines ([PartRef r False] :| [])

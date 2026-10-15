@@ -146,12 +146,12 @@ runningHeadTests =
     "running heads (golem-driver ADR 0014)"
     [ testCase "content is both pages" $
         runningHead "content = \"heading.1.short\""
-          @?= Right (Just (RunningHeadDef "top-outside" (RunningHeading 1 HeadShort PickFirst) (RunningHeading 1 HeadShort PickFirst))),
+          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 1 HeadShort PickFirst)]) (one [ref (RefHeading 1 HeadShort PickFirst)]))),
       testCase "even and odd" $ do
         runningHead "even = \"title\", odd = \"heading.2.numbered.last\""
-          @?= Right (Just (RunningHeadDef "top-outside" (RunningHeading 2 HeadNumbered PickLast) RunningTitle))
+          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 2 HeadNumbered PickLast)]) (one [ref (RefMeta "title")])))
         fmap (fmap rhOdd) (runningHead "content = \"none\"") @?= Right (Just RunningNone)
-        fmap (fmap rhEven) (runningHead "content = \"heading.3.short.last\"") @?= Right (Just (RunningHeading 3 HeadShort PickLast)),
+        fmap (fmap rhEven) (runningHead "content = \"heading.3.short.last\"") @?= Right (Just (one [ref (RefHeading 3 HeadShort PickLast)])),
       testCase "wrong values are G0314" $ do
         codes (runningHead "content = \"heading.0.short\"") @?= ["G0314"]
         codes (runningHead "content = \"heading.1.long\"") @?= ["G0314"]
@@ -165,6 +165,55 @@ runningHeadTests =
       testCase "the message names the value and the vocabulary" $ do
         let ms = messages (runningHead "content = \"chapter\"")
         assertBool (show ms) (any ("heading.<階層>.short" `T.isInfixOf`) ms && any ("chapter" `T.isInfixOf`) ms),
+      -- golem-driver ADR 0022: formats
+      testCase "a format of one line (ADR 0022)" $
+        fmap (fmap rhOdd) (runningHead "content = [\"{meta.title}　{heading.1.numbered}\"]")
+          @?= Right (Just (one [ref (RefMeta "title"), PartText "　", ref (RefHeading 1 HeadNumbered PickFirst)])),
+      testCase "a format of two lines (ADR 0022)" $
+        fmap (fmap rhOdd) (runningHead "content = [\"{meta.title}\", \"{heading.1.short}\"]")
+          @?= Right (Just (RunningLines ([ref (RefMeta "title")] :| [[ref (RefHeading 1 HeadShort PickFirst)]]))),
+      testCase "?, .last and number (ADR 0022)" $ do
+        parseRunningFormat "{heading.2.short.last?}" @?= Right [PartRef (RefHeading 2 HeadShort PickLast) True]
+        parseRunningFormat "{heading.1.number}" @?= Right [ref (RefHeading 1 HeadNumber PickFirst)]
+        parseRunningFormat "{heading.1.number.last}" @?= Right [ref (RefHeading 1 HeadNumber PickLast)],
+      testCase "variables (ADR 0022)" $ do
+        parseRunningFormat "{set.revision}" @?= Right [ref (RefVar ["revision"])]
+        parseRunningFormat "{set.values.price}" @?= Right [ref (RefVar ["values", "price"])],
+      testCase "{{ and }} are braces (ADR 0022)" $
+        fmap (fmap rhOdd) (runningHead "content = [\"{{書名}}\"]") @?= Right (Just (one [PartText "{書名}"])),
+      testCase "the vocabulary is read as formats (ADR 0022)" $ do
+        fmap (fmap rhOdd) (runningHead "content = \"heading.1.short\"") @?= Right (Just (RunningLines ([PartRef (RefHeading 1 HeadShort PickFirst) False] :| [])))
+        fmap (fmap rhOdd) (runningHead "content = \"title\"") @?= Right (Just (one [ref (RefMeta "title")]))
+        fmap (fmap rhOdd) (runningHead "content = \"none\"") @?= Right (Just RunningNone),
+      testCase "a string and an array together (ADR 0022)" $
+        runningHead "even = \"title\", odd = [\"{heading.1.short}\"]"
+          @?= Right (Just (RunningHeadDef "top-outside" (one [ref (RefHeading 1 HeadShort PickFirst)]) (one [ref (RefMeta "title")]))),
+      testCase "wrong formats are G0314 at the value (ADR 0022)" $
+        forM_
+          [ "[\"{heading.1.short\"]",
+            "[\"a}b\"]",
+            "[\"{}\"]",
+            "[\"{heading.0.short}\"]",
+            "[\"{heading.1.long}\"]",
+            "[\"{meta.author}\"]",
+            "[\"{meta.creators}\"]",
+            "[\"{chapter}\"]",
+            "[]",
+            "[\"\"]",
+            "[\"a\\nb\"]",
+            "[1]",
+            "\"{meta.title}　{heading.1.short}\""
+          ]
+          ( \v -> do
+              let src = "[masters.body]\nrunning-head = { position = \"top-outside\", content = " <> v <> " }\n"
+                  at = T.length "[masters.body]\nrunning-head = { position = \"top-outside\", content = "
+              case parseStyle (FileId 0) src of
+                Left [d] -> (diagCode d, spanStart (diagSpan d)) @?= (DiagnosticCode "G0314", at)
+                other -> assertFailure (T.unpack v <> ": " <> show (codes other))
+          ),
+      testCase "a format in a string points to arrays (ADR 0022)" $ do
+        let ms = messages (runningHead "content = \"{meta.title}　{heading.1.short}\"")
+        assertBool (show ms) (any ("配列" `T.isInfixOf`) ms),
       testCase "an unknown position of a running head or a folio is G0318 (golem-driver ADR 0016)" $ do
         let st = parseStyle (FileId 0) "[masters.body]\nrunning-head = { position = \"middle\", content = \"title\" }\n"
         codes st @?= ["G0318"]
@@ -186,6 +235,8 @@ runningHeadTests =
       (\s -> Map.lookup "body" (stMasters s) >>= mdRunningHead)
         <$> parseStyle (FileId 0) ("[masters.body]\nrunning-head = { position = \"top-outside\"" <> (if T.null kv then "" else ", " <> kv) <> " }\n")
     messages = either (map diagMessage) (const [])
+    one ps = RunningLines (ps :| [])
+    ref r = PartRef r False
 
 msgs :: Either [Diagnostic] a -> [Text]
 msgs = either (map diagMessage) (const [])
