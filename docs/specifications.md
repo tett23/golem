@@ -2247,6 +2247,22 @@ v1 のリリースまでに、次の項目を扱う。
 - **奥付のコミットの行**：コミットしていない変更がある状態でマニュアルを組むと、奥付のコミットの行が版面の右にはみ出す（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 - **段落スタイルの罫線**：段落スタイルに、段落の前と後に引く罫線（InDesign の段落境界線にあたるもの）を書けるようにする。見出しの下の罫線や、節の区切りの罫線に使う。長さ、太さ、間隔は、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md) の罫線の指定の形で書く。長さの既定は、当面は段の行長（段の最大の長さ）に固定する。罫線を持つ段落は改ページと改段で分けず、一つのページ（段）に置く。その段落の注のうち、そのページに収まらないものは、次のページ（見開きで扱う場合は次の見開き）に回す。間隔と行の格子の合わせ方は、未決事項の「段落の罫線の間隔と行の格子」で決める。
 - **罫線の色と線の種類**：罫線の指定（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）に、色と線の種類（実線、破線、点線、二重線など）を加える。色は名前の付いた色（「色」の節）で書く。罫線の指定を使うすべての罫線（脚注の区切り線、段落スタイルの罫線）に同時に加える。
+- **合字のテキスト層**：PDF の ToUnicode が合字のグリフを一字目だけに対応させるので、PDF から文字列を抜き出すと fi、fl、ff、ffi が f になる（`Golem.Driver.Fonts` の `clusterText`）。十冊の fixture の英語の本と、テンペストで起きる。
+- **書体にない字**：`golem build` は、書体にグリフがない字を誤りにせずに組み、PDF に .notdef の箱を描くか、何も描かない。`golem preflight` だけが G0902 で報告する。
+- **縦組みの字下げ**：縦組みで `indent=5zw`、`first-line-indent=0zw` の段落の一行目が、二行目以降より約 1.5 字下がり、行長も約 2 字短くなる（fixture の『牛山ホテル』のト書き）。ぶら下げ（`indent=0zw`、`first-line-indent=-1zw` の形）は正しく組まれる。
+- **ページの末尾の空き**：『高野聖』の fixture で、次の段落が入るはずのページの末尾に 3 行から 5 行の空きが残り、改ページされる。同じ版面の蟹工船と『平将門』では起きない。
+- **表の前後の空きと罫線**：表の上の罫が前の段落のベースラインに接し、下の罫が表の最後の行のディセンダーを横切る。表の前後に空きがない。見出しの行が空の表では、罫が二重になる（fixture の The Elements of Style）。
+- **明示したハイフンの前の行**：原稿に書いたハイフンで終わる行が、極端に間延びする（fixture の The Elements of Style の目次と本文）。
+- **本の中の別の言語の分綴**：原稿の一部の言語を指定する手段がないので、英語の本の中のフランス語の語も英語のパターンで分綴される（fixture の Nightmare Abbey の「prover-be」）。
+- **韻文の後の空き**：韻文の段落と、その直後の本文の段落とのあいだに空きがない（fixture の The Hunting of the Snark）。
+- **連の分割**：韻文の連が、ページの境で 2 行ずつに分かれる（fixture の The Hunting of the Snark）。
+- **脚注の多い本の組版の時間**：脚注を 14 件持つ Nightmare Abbey の fixture だけ、PDF の組版に 17 秒から 20 秒かかる。ほかの九冊は 1 秒から 6 秒である。
+- **既定の見出し**：段落スタイルを指定しない見出しが、本文と同じ大きさで組まれ、前後に空きがない。
+- **注の印の書式**：PDF の注の印は `*1` の形に固定である。[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md) は印の書式の設定を作らないと決めたが、どの一覧にも載っていなかった。印の書式を設定できるようにする。
+- **PDF のリンク**：原稿に外部の URL へのリンクを書く記法がなく、PDF にリンクの注釈を書かない。相互参照のリンクとしおりは v2 の「PDF の対話機能」で扱うが、外部の URL の記法はどの一覧にもなかった。
+- **改ページの手での制御**：原稿で、ここで改ページしない、この先にこれだけの空きが要る、このページの行を一行増やす、といった指定を書く手段がない（TeX の `\nopagebreak`、needspace、`\enlargethispage` にあたるもの）。
+- **タグ付き PDF と PDF/A**：PDF に構造のタグ（`/StructTreeRoot`）を書かず、PDF/UA と PDF/A に対応しない。
+
 
 #### 記法と設定
 
@@ -2257,6 +2273,9 @@ v1 のリリースまでに、次の項目を扱う。
 - **ADR とコードの食い違い**：`overridableCommands` に `code` が入っている。LSP の補完にプラグインのコマンドの名前が出ない。`golem inspect` のオプションの書き方が ADR と違う。ホストが `golem_dealloc` を一度も呼ばない。どちらに合わせるかを決めて直す。
 - **出力インテントの条件**：PDF/X-4 の出力インテントは `[color] intent` があるときにだけ書くが、仕様書にこの条件が書かれていない。
 - **keep の段落の行末のエスケープした空白**：keep の段落の行末に書いた `\ `（エスケープした空白）は、行の末尾の空白とともに除かれているように読める（golem-parser の `trimLine`）。[docs/markup.md](markup.md) は、エスケープした空白を行の先頭では無視すると書いており、行末では残ると読めるので、仕様と食い違っている可能性がある（コードを読んだ結果で、実際の出力では確かめていない）。
+- **原稿の中の言語の切り替え**：本の言語は manifest の `language` だけで決まり、原稿の一部の言語を指定する記法がない。分綴、引用符、和欧の扱いを、その部分の言語で切り替えられるようにする。
+- **見出しの 4 階層め以降**：意味論の IR の見出しは 3 階層までで、4 階層め以降の見出しを書けない。
+
 
 #### CLI と LSP
 
@@ -2283,6 +2302,14 @@ v1 のリリースまでに、次の項目を扱う。
 - **開発者向けのマニュアルの例**：プラグインの WebAssembly のテキスト形式（`.wat`）の例を、実際に組んで動かしていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 - **CI の決定性の検査**：索引の段組み、コードブロック、二冊のマニュアルを加えた後の CI の `determinism` ジョブで、x86-64 と aarch64 のハッシュが一致することを、ジョブの結果で確かめていない（[docs/adr/0025](adr/0025-index-columns.md)、[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)、[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 - **リリースの資産のマニュアル**：次のリリースで、資産に二冊の PDF と HTML が載り、`SHA256SUMS` と一致することを確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
+- **組版の新しい機能の見え方**：次の機能の PDF を目で見て確かめていない。環境に PDF を画像にする道具がなく、実装のプルリクエストでは確かめられなかった。
+  - 圏点の十の形を、横組みと縦組みで見ること。HTML を Safari と Chrome で見ることと、InDesign の圏点との比較（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。
+  - 隠しノンブルを、トンボを付けた PDF で Acrobat で見ること（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。
+  - `palt` と `vpal` の約物の位置と、二倍ダッシュが一本の線に見えること（[golem-driver ADR 0020](golem-driver/adr/0020-glyph-positioning-and-dash-kerning.md)）。
+  - ルビの親文字の一部を太字にしたマニュアルの見本（[golem-layout ADR 0011](golem-layout/adr/0011-ruby-base-character-styles.md)）。
+  - 縦組みの注の印と、マニュアルの付録の注（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。
+  - 参考文献の一件の中の空き（[golem-doc ADR 0004](golem-doc/adr/0004-bibliography-formatting.md)）。
+  - 技術書のコードブロックを Acrobat の出力プレビューで開くこと（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 
 ### 課題にしなかった事項
 
@@ -2307,6 +2334,22 @@ ADR と仕様が扱わないと決めたもので、課題として残さない�
 - **musl の malloc の速度**：GHC のヒープは RTS が自前で管理して影響が限られるので、問題になるまで扱わない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **utf-32 の交渉と、`lsp` パッケージを使わない LSP の実装**：UTF-16 で常に応えられ、`lsp` への細工は一か所に閉じ込められるので採らない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)）。
 - **診断と CLI の文言の多言語化**：v1 の診断と使い方の文言は日本語だけと決めたので扱わない（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
+
+## 既知の不具合
+
+自動のテストを足すときに見つかった、仕様や ADR とコードの食い違いをここにまとめる。
+どれも、該当する場合をテストに入れずに残している。
+直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
+
+- **見出しの後ろの改ページ**：見出しの直後で改ページしない規則が、一つ先のブロックしか見ない。見出し、見出し、段落と続くと、最初の見出しがページの末尾に残る（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
+- **見出しの脚注**：脚注がページに入らないとき、見出しは元のページに残り、注の本文だけが次のページに送られる。段落の行の場合は、行のほうが送られる（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
+- **ぶら下げの量**：ぶら下げの量を、字の幅ではなく語の箱全体の幅に対する割合で求めている。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は字の幅に対する割合と定めている。既存のテストも、語の幅を基準にした値を期待している。
+- **図版の順序**：ページに収まった図版が、それより前に次のページへ送られた図版より先に置かれ、図版の順序が入れ替わる。ADR はこれを禁じても許してもいない（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
+- **キーワード引数の後の `**[式]`**：`[f k=v **[h]]` が G0119 になる。`**[式]` はキーワード引数に展開されるので、キーワード引数の後に書けてよいはずである（[golem-parser ADR 0004](golem-parser/adr/0004-inline-grammar.md)）。
+- **IR の大きな整数**：CDDL は式の整数を `int`（CBOR の major type 0 と 1）と定めているが、絶対値が 2^64 以上の整数は bignum（tag 2 と 3）で書き出される。式の整数は任意精度なので、`@set n = 2 ** 70` のような値が IR に入りうる（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)）。
+- **浮動小数点数の桁あふれ**：`2.0 ** -1074` は表せる値だが、途中の計算があふれて 0 になる。`10 ** 309 > 1.0` は誤りにならないが、`10 ** 309 + 0.5` は G0204 になる。どちらの扱いも仕様は定めていない（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
+- **`golem inspect` の終了コードと文言**：構文の誤り（G0117 など）があっても終了コード 0 で終わり、診断を Haskell の `show` の形で出す。存在しないファイルを渡すと、英語の例外と GHC のバックトレースが出る（[golem-cli ADR 0001](golem-cli/adr/0001-command-line-interface.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
+- **LSP の古い診断**：見出しやラベルを変えずに、存在しないラベルへの参照を足しても G0403 が出ず、前の S1 の診断が残る。[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md) の再評価の規則どおりの振る舞いだが、利用者には誤りが見えない。
 
 ## 未決事項
 
