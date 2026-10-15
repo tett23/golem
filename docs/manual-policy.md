@@ -231,6 +231,11 @@ InDesign の操作の手順は説明しない。
 常体で書く。
 モジュールの名前、型の名前、ADR の番号は本文に出してよい。
 
+診断の重大度は、`error`、`warning`、`notice` の名前で書く。
+使い手のマニュアルと docs/diagnostics.md が使う「お知らせ」は、開発者のマニュアルでは使わない。
+開発者は「お知らせ」から重大度の `notice` を引きにくく、ログの水準の info と取り違えやすいためである。
+docs/diagnostics.md の重大度の欄の値を説明するときに限り、その値として「お知らせ」を引く。
+
 開発者のマニュアルは、docs/ の仕様書、各モジュールの仕様書、ADR、CONTRIBUTING.md をまとめ、その文書へリンクする。
 リンクは脚注に置き、リポジトリの文書は `https://github.com/tett23/golem/blob/main/` から始まる URL で書く。
 版やコミットを含む URL にはしない。
@@ -244,6 +249,8 @@ InDesign の操作の手順は説明しない。
 - 本文の中のファイル名、コマンド、パス、キーは `[code: ...]` で書く。`[style code: ...]` は使わない。
 - 書体の役割 `code` には、欧文に Source Code Pro の Regular、和文に Noto Sans JP の Regular を使う。
 - 書体はリポジトリに入れず、`scripts/manual/fetch-fonts.sh` が版を固定した URL から取得して SHA-256 を確かめる。どれも SIL Open Font License 1.1 である。
+- 本文が拠りどころにする規格と文献は、最初に出る箇所で `[cite キー]` で引用し、巻末の参考文献（`@bibliography`）に載せる。書誌のデータは、各マニュアルの `references.json` に置く。リンクは今までどおり脚注に置く。参考文献の一覧は引用した文献だけを並べるので、脚注にだけ書いた規格は一覧に載らない。
+- 開発者のマニュアルの図は、`manual-dev/images/src/` の SVG を原稿とし、`scripts/manual/render-figures.sh` で PNG にして、両方をコミットする。今の Golem は図版に PNG と JPEG を使い、SVG を扱わないためである。図の文字は、組版と同じ Noto Sans JP で描く。
 
 ## 更新の決まり
 

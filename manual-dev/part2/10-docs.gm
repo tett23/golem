@@ -64,7 +64,7 @@ ADR で仕様が変わったら、同じプルリクエストで [code: docs/spe
 
 - 見出しは [code: ##] とコードだけにする。GitHub の見出しの id がコードの小文字（[code: #g0701]）になり、LSP の [code: codeDescription] が節を直接指せる。
 - 見出しの次の段落が、一行の題になる。[code: golem explain] の一覧に使う。
-- 重大度は、エラー、警告、「dev では警告、prod ではエラー」、お知らせのどれかを書く。
+- 重大度は、「エラー」「警告」「dev では警告、prod ではエラー」「お知らせ」のどれかを書く。[code: golem explain] がこの文書を使い手に表示するので、notice は「お知らせ」と書く。
 - 状態は、使用中か廃止を書く。使わなくなったコードは、節を消さずに状態を廃止にし、代わりの書き方を書く。
 - 使用中のコードの節は、「意味」「主な原因」「直し方」の三つの小見出しをこの順に持ち、どれも空にしない。
 - 節はコードの昇順に並べる。
@@ -76,7 +76,7 @@ ADR で仕様が変わったら、同じプルリクエストで [code: docs/spe
 - 使用中の節のコードが、すべてソースで使われている。
 - 重大度が、[code: profileDependentCodes] と [code: noticeCodes] に合う。
 
-新しいお知らせを足すときは、[code: Golem.Syntax.Diagnostic.noticeCodes] にもコードを加える。
+新しい notice を足すときは、[code: Golem.Syntax.Diagnostic.noticeCodes] にもコードを加える。
 
 ## ビルドが読む文書
 

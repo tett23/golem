@@ -14,7 +14,7 @@ ADR はコミットした後に変えられないので、下の層から順に�
 
 | モジュール | 役割 |
 | --- | --- |
-| golem-syntax | 診断とソースの位置。すべてのモジュールが使う最下層 |
+| golem-syntax | 診断とソースの位置。golem-regex、golem-font、golem-fixtures を除くすべてのモジュールが使う最下層 |
 | golem-regex | 正規表現スタイルの照合器。base、text、containers、array だけに依存する |
 | golem-parser | PEG のパーサー。CST、AST |
 | golem-project | マニフェスト、[code: style.toml]、import の解決 |
@@ -35,10 +35,24 @@ ADR はコミットした後に変えられないので、下の層から順に�
 | golem-cli | [code: golem] コマンド |
 | golem-fixtures | テストのフィクスチャの変換（開発用） |
 
-依存の関係は、仕様書の「モジュール構成」の節の図にある。
-大まかには、golem-cli が golem-lsp と golem-driver を使い、golem-driver が出力の各モジュールと golem-lint と golem-plugin を束ねる。
-PDF の経路のモジュール（golem-layout-spec、golem-layout、golem-font、golem-pdf）だけが、レイアウト IR、シェイピング、フォントのサブセット化を扱う。
-HTML と EPUB は並列ではなく親子であり、golem-epub は golem-html の出力にパッケージングを加える薄い層である。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#モジュール構成]（仕様書の「モジュール構成」の節）]
+図[ref-number fig-modules]は、パッケージの依存の関係である。
+矢印は、元のパッケージが先のパッケージを使うこと（cabal のファイルの [code: build-depends]）を表す。
+ほかの依存を通して届く依存の矢印は省いた。
+たとえば golem-cli は golem-driver にも直接依存しているが、golem-lsp を通して届くので、矢印は golem-lsp への一本だけである。
+
+@label fig-modules
+@figure images/modules.png alt="golem- の接頭辞を省いたパッケージの名前を箱にし、依存を矢印で結んだ図。cli が lsp を、lsp が driver と fmt を、driver が text、epub、lint、plugin、layout、pdf、font を使い、下の層は project、doc、parser、syntax と続く。PDF 経路、Web 経路、テキスト経路のパッケージを色で分けている"
+  パッケージの依存（golem- の接頭辞を省いた）。
+
+上から読むと、golem-cli が golem-lsp を通して golem-driver を使い、golem-driver が出力の各パッケージと golem-lint と golem-plugin を束ねる。
+下の層は、golem-project、golem-doc、golem-parser、golem-syntax の順に積み重なる。
+golem-project が golem-doc に依存するのは、[code: style.toml] の [code: \[lists\]] の番号の書式を golem-doc の型で読むからである。
+golem-eval が golem-project に依存するのは、ファイルの中の [code: @style-def] と正規表現スタイルを [code: style.toml] の型で扱い、import の先を golem-project の関数で解決するからである。
+PDF の経路のパッケージ（golem-layout-spec、golem-layout、golem-font、golem-pdf）だけが、レイアウト IR、シェイピング、フォントのサブセット化を扱う。
+golem-layout は、段落を Knuth と Plass の方式で行に分け [cite knuth-plass]、和文は日本語組版処理の要件 [cite jlreq] に従って組む。
+golem-font は Golem のほかのパッケージに依存しない。
+HarfBuzz と FreeType を包み、フォントのサブセット化と埋め込みを行う。
+HTML と EPUB は並列ではなく親子であり、golem-epub は golem-html の出力に EPUB 3.3 [cite epub33] のパッケージングを加える薄い層である。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#モジュール構成]（仕様書の「モジュール構成」の節）]
 
 golem-fixtures は、テストのフィクスチャの原文を Golem の原稿に変換する開発用の実行ファイルを持つ。
 golem の実行ファイルはこのパッケージに依存せず、リリースの配布物にも入らない（第[ref-number fixtures]章）。
@@ -75,6 +89,8 @@ hyph-utf8 は英語（米国）のハイフネーションのパターンで、�
 + import のグラフのトポロジカル順序に従って、各ファイルを S0 で評価する。依存のないファイルは並列に評価する。
 + すべての S0 の結果をマニフェストの順に並べて、S1 を実行する。
 + ターゲットごとに出力を作る。ターゲットごとに並列に実行する。
+
+各段階を受け持つパッケージは第[ref-number ir]章の図[ref-number fig-pipeline]に、S0、S1、S2 の意味は「[ref-title stages]」（[ref-page stages] ページ）に示した。
 
 ある段階で一つでもエラーがあれば、その次の段階には進まない。
 ただし、同じ段階の中では、エラーのないファイルの処理を続け、診断をできるだけ多く集める。

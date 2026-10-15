@@ -1,6 +1,11 @@
 @import common/build-info.gm as build
 
 @nonumber
+# 参考文献
+
+@bibliography
+
+@nonumber
 # 索引
 
 @index

@@ -69,7 +69,7 @@ url = "https://example.com/golem-furigana/v1.0.0/furigana.wasm"
 sha256 = "..."
 ```
 
-[code: plugins.lock] は TOML で、プラグインの名前の順に並ぶ。
+[code: plugins.lock] は TOML [cite toml] で、プラグインの名前の順に並ぶ。
 処理系だけが書き、手で編集しない。
 リポジトリにコミットする。
 同じ入力から同じ出力を得るには、プラグインのバイト列まで入力の一部として固定する必要があるからである。
@@ -167,7 +167,7 @@ description = [commands: [* tstr], filters: [* tstr]]
 - コマンドの呼び出しでは、[code: golem_invoke] は [code: command-request] を受け取り、[code: output] がインラインの列（[code: inlines]）の [code: response] を返す。
 - フィルタの呼び出しでは、[code: filter-request] を受け取り、[code: output] がファイル一つ分の文書（[code: document]）の [code: response] を返す。
 - 引数の値に連想配列は渡せない。[code: value] にマップがないのはそのためである。
-- 応答の診断の重大度は、0 がエラー、1 が警告である。プラグインはお知らせを出せない。コードはプラグインが決め、Golem の [code: docs/diagnostics.md] の対象外である。
+- 応答の診断の重大度は、0 がエラー、1 が警告である。プラグインは notice を出せない。コードはプラグインが決め、Golem の [code: docs/diagnostics.md] の対象外である。
 
 たとえばファイルの先頭に書いた [code: \[furigana: 漢字\]] の呼び出しの要求は、CBOR の診断の表記（RFC 8949 が定める、CBOR を人が読むための表記）で次のような形になる。
 [code: span] は、ファイルの番号と、UTF-8 のバイトの範囲の組である。

@@ -30,7 +30,7 @@ a.gm:3:3: error[G0403]: 存在しないラベルへの参照です: nosuch
 ```
 
 位置は [code: パス:行:列] で、行と列は 1 から数える。
-列は Unicode の符号位置で数える。
+列は Unicode [cite unicode] の符号位置で数える。
 関連する位置は、[code: = ] で始まる行に [code: パス:行:列: メッセージ] の形で続く。
 最後の一行は、[code: golem explain] の案内である（この章の「診断のコードの説明」の節）。
 
@@ -73,7 +73,7 @@ golem-syntax の [code: Golem.Syntax.Render] の [code: renderJson] が文字列
 | [code: column] | 1 から数えた列（Unicode の符号位置） |
 
 [code: start] と [code: end] は、Golem の内部の位置の単位そのものである。
-原稿は UTF-8 で書かれ、パーサーも同じ単位で位置を持つので、変換なしにバイト列を切り出せる。
+原稿は UTF-8 [cite rfc3629] で書かれ、パーサーも同じ単位で位置を持つので、変換なしにバイト列を切り出せる。
 [code: line] と [code: column] は、人とエディタのために、ファイルの内容から計算した値である。
 マニフェストの先頭を指す診断（[code: style.toml] の欠けなど）は、[code: start] と [code: end] が 0 になる。
 
@@ -83,13 +83,13 @@ CR を含む原稿の G0103 に付く「golem fmt で LF に直す」がその�
 
 ## 並び順
 
-診断は、エラーと警告を先に、お知らせを後に並べる。[index reading="しんだんのならびじゅん": 診断の並び順]
-エラーと警告のあいだは、ファイルの順、位置の順、コードの順で並べ、お知らせどうしも同じ規則で並べる。
+診断は、error と warning を先に、notice を後に並べる。[index reading="しんだんのならびじゅん": 診断の並び順]
+error と warning のあいだは、ファイルの順、位置の順、コードの順で並べ、notice どうしも同じ規則で並べる。
 ファイルの順は、マニフェストの章の順とファイルを初めて読んだ順で決まり、実行ごとに変わらない。
 並び順が入力だけで決まるので、同じ原稿の JSON は毎回同じバイト列になる。
 CI で前回の診断と差分を取っても、順序の揺れによる偽の差分は出ない。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-syntax/adr/0002-notice-severity.md]（golem-syntax ADR 0002「重大度のお知らせ（notice）」）]
 
-お知らせを後に回すのは、お知らせの多いプロジェクトで、ビルドを止めたエラーが画面の外に流れないようにするためである。
+notice を後に回すのは、notice の多いプロジェクトで、ビルドを止めた error が画面の外に流れないようにするためである。
 人が読む形式と JSON の形式は同じ順で出す。
 
 ## 診断のコード
@@ -150,20 +150,27 @@ LSP は、文書にあるコードの診断の [code: codeDescription] に、[co
 ソースで使うコードと文書の節が一致することは golem-driver のテストが確かめる。
 この決まりは、Golem を開発する側から見ると、診断を一つ足すたびに文書の節も足す義務になる（第[ref-number docs]章）。
 
-## お知らせ
+## 重大度と notice
 
-重大度は、エラー、警告、お知らせの三つである。[index reading=おしらせ: お知らせ]
-エラーはビルドを止め、警告は止めないが出荷する前に直すべきものを表す。
-お知らせは、誤りではないが書き手が知っておいたほうがよいことを表し、直さなくてよい。
+重大度は、重いほうから error、warning、notice の三つである。[index reading=じゅうだいど: 重大度][index reading=のーてぃす: notice]
+error はビルドを止める。
+warning はビルドを止めないが、出荷する前に直すべきものを表す。
+notice は、誤りではないが書き手が知っておいたほうがよいことを表し、直さなくてよい。
 
-お知らせには、ほかの二つと違う性質が三つある。
+notice を、ログの水準の info（情報を流すだけの出力）と同じものと読むと、扱いを誤る。
+notice は、原稿か設定に理由があって出る診断であり、ほかの診断と同じくコードを持ち、[code: docs/diagnostics.md] に説明の節がある。
+Golem には info に当たる重大度はない。
+LSP の重大度には notice がないので、LSP では [code: Information] に写しているが、これは写す先の都合である。
+使い手のマニュアルと [code: docs/diagnostics.md] は、同じ重大度を「お知らせ」と書いている。
 
-- 終了コードに影響しない。お知らせしかないビルドは 0 で終わる。
+notice には、ほかの二つと違う性質が三つある。
+
+- 終了コードに影響しない。notice しかないビルドは 0 で終わる。
 - プロファイルで重大度が変わらない。
 - 出力のバイト列を変えない。抑制しても、しなくても、PDF は同じである。
 
-人が読む形式では [code: notice\[G0730\]] のように書き、JSON では [code: "severity":"notice"]、LSP では [code: Information] に写す。
-今のお知らせは次の九つである。
+人が読む形式では [code: notice\[G0730\]] のように書き、JSON では [code: "severity":"notice"] と書く。
+今の notice は次の九つである。
 
 | コード | 内容 |
 | --- | --- |
@@ -177,48 +184,48 @@ LSP は、文書にあるコードの診断の [code: codeDescription] に、[co
 | G0730 | コードブロックの行の折り返し |
 | G0808 | [code: \[fonts.code\]] のない本のコード |
 
-お知らせのコードは [code: Golem.Syntax.Diagnostic.noticeCodes] の一箇所に並べてある。
-lint の規則（G05xx）はお知らせを出さない。
+notice のコードは [code: Golem.Syntax.Diagnostic.noticeCodes] の一箇所に並べてある。
+lint の規則（G05xx）は notice を出さない。
 
-## お知らせを抑制する
+## notice を抑制する
 
-抑制できるのはお知らせだけである。
-エラーと警告を抑制する手段は、どこにも設けていない。
+抑制できるのは notice だけである。
+error と warning を抑制する手段は、どこにも設けていない。
 lint の警告を個別の箇所で止める手段がないのと同じ考え方で、誤りの可能性のある診断は消せない。
 
 抑制の手段は二つある。
 
 一つは、マニフェストの [code: \[diagnostics\]] の [code: silence-notices] である。[index reading="silence-notices": silence-notices]
-プロジェクトの方針として、出さないお知らせのコードを並べる。
+プロジェクトの方針として、出さない notice のコードを並べる。
 
 ```toml
 [diagnostics]
 silence-notices = ["G0262", "G0407"]
 ```
 
-並べたコードのお知らせは、[code: golem build]、[code: golem check]、[code: golem lint]、LSP のどれにも出ない。
-並べられるのはお知らせのコードだけで、ほかのコードと形の誤ったコードはその要素の位置でエラー（G0324）になる。
+並べたコードの notice は、[code: golem build]、[code: golem check]、[code: golem lint]、LSP のどれにも出ない。
+並べられるのは notice のコードだけで、ほかのコードと形の誤ったコードはその要素の位置でエラー（G0324）になる。
 値が配列でない場合と、[code: \[diagnostics\]] の未知のキーは G0301 になる。
-すべてのお知らせを抑制する値はない。
+すべての notice を抑制する値はない。
 
 もう一つは、コマンドの [code: --no-notices] である。[index reading="--no-notices": --no-notices]
-その実行に限り、すべてのお知らせを出さない。
-人が読む形式と JSON の両方に効き、エラーと警告は残す。
+その実行に限り、すべての notice を出さない。
+人が読む形式と JSON の両方に効き、error と warning は残す。
 [code: golem build]、[code: golem check]、[code: golem lint] だけが受け付け、[code: golem fmt] と [code: golem explain] に付けると使い方の誤りになる。
 LSP には [code: --no-notices] に当たる設定はなく、[code: silence-notices] だけに従う。
 
-原稿の中でお知らせを止める指示と、[code: style.toml] の設定はない。
+原稿の中で notice を止める指示と、[code: style.toml] の設定はない。
 抑制の理由がプロジェクトの方針なら [code: silence-notices] に書いてリポジトリに残し、その場かぎりなら [code: --no-notices] を使う、という分け方である。
 
-## 廃止予定のお知らせ
+## 廃止予定の notice
 
-記法と設定のキーを廃止するときは、まず廃止予定のお知らせを出す（G0265 がその例である）。[index reading="はいしよてい": 廃止予定]
+記法と設定のキーを廃止するときは、まず廃止予定の notice を出す（G0265 がその例である）。[index reading="はいしよてい": 廃止予定]
 手順は [code: docs/diagnostics.md] の「お知らせ」の節が決めている。
 
-+ 廃止を決める ADR で、廃止予定のお知らせのコードを決める。メッセージは「〜は廃止予定です」で始め、代わりの書き方を続ける。
-+ お知らせを出す版を、少なくとも一つの minor の版としてリリースする。プレリリースだけでは数えない。リリースノートの「変更」の項に、廃止予定の書き方を挙げる。
-+ 次の ADR で、その書き方をエラーにする。エラーには新しいコードを割り当て、お知らせのコードは状態を「廃止」にする。
++ 廃止を決める ADR で、廃止予定の notice のコードを決める。メッセージは「〜は廃止予定です」で始め、代わりの書き方を続ける。
++ notice を出す版を、少なくとも一つの minor の版としてリリースする。プレリリースだけでは数えない。リリースノートの「変更」の項に、廃止予定の書き方を挙げる。
++ 次の ADR で、その書き方をエラーにする。エラーには新しいコードを割り当て、notice のコードは状態を「廃止」にする。
 
-CI で [code: --no-notices] を付けていると、廃止予定のお知らせも見えなくなる。
+CI で [code: --no-notices] を付けていると、廃止予定の notice も見えなくなる。
 廃止予定の書き方は、一つの minor の版を経てエラーに変わる。
-お知らせを抑制する CI は、少なくとも版を上げるときに、抑制せずに一度組んで確かめておくとよい。
+notice を抑制する CI は、少なくとも版を上げるときに、抑制せずに一度組んで確かめておくとよい。

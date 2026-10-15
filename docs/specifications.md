@@ -138,7 +138,7 @@ EPUB と HTML はリフローであり、位置情報が意味論に混入した
 
 モジュールの依存の関係を次に示す。
 矢印は、元のモジュールが先のモジュールを使うことを表す。
-golem-syntax は golem-regex を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
+golem-syntax は golem-regex、golem-font、golem-fixtures を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
 golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
 ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
@@ -181,10 +181,9 @@ flowchart TD
     driver --> plugin
     driver --> text
     epub --> html
-    eval --> doc
+    eval --> project
     fmt --> parser
     html --> doc
-    layout --> doc
     layout --> layoutspec
     layoutspec --> project
     lint --> eval
@@ -192,8 +191,7 @@ flowchart TD
     lsp --> fmt
     pdf --> layoutspec
     plugin --> eval
-    plugin --> project
-    project --> parser
+    project --> doc
     project --> regex
     text --> doc
     parser --> syntax

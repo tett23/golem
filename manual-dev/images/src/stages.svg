@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="920" viewBox="0 0 1300 920">
+  <!-- 評価の三つの階層（docs/specifications.md の「目次と文書構造の参照」、golem-eval ADR 0002、golem-doc ADR 0002、golem-layout ADR 0003）。
+       scripts/manual/render-figures.sh で manual-dev/images/stages.png にする。 -->
+  <style>
+    @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
+    @font-face { font-family: "Fig Sans"; font-weight: bold; src: url("../../fonts/NotoSansJP-Bold.otf"); }
+    text { font-family: "Fig Sans", sans-serif; font-size: 24px; fill: #222; }
+    .c { text-anchor: middle; dominant-baseline: central; }
+    .band-name { font-size: 34px; font-weight: bold; }
+    .band-sub { font-size: 22px; fill: #444; }
+    .small { font-size: 21px; fill: #333; }
+    .v { writing-mode: tb; glyph-orientation-vertical: 0; font-size: 22px; text-anchor: middle; }
+    rect.band { stroke: none; }
+    .b0 { fill: #f4f4f4; }
+    .b1 { fill: #eaeff6; }
+    .b2 { fill: #dce8f5; }
+    rect.box { fill: #fff; stroke: #333; stroke-width: 2; rx: 8; }
+    rect.bar { fill: #fff; stroke: #555; stroke-width: 1.5; rx: 6; }
+    line, path.edge { stroke: #444; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    .dash { stroke-dasharray: 8 6; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#444"/>
+    </marker>
+  </defs>
+  <rect width="1300" height="920" fill="#fff"/>
+
+  <!-- bands -->
+  <rect class="band b2" x="10" y="30" width="970" height="230"/>
+  <rect class="band b1" x="10" y="280" width="970" height="250"/>
+  <rect class="band b0" x="10" y="550" width="970" height="320"/>
+  <text class="band-name" x="30" y="80">S2</text>
+  <text class="band-sub" x="30" y="118">レイアウト後</text>
+  <text class="band-sub" x="30" y="148">（PDF だけ）</text>
+  <text class="band-name" x="30" y="330">S1</text>
+  <text class="band-sub" x="30" y="368">文書構造</text>
+  <text class="band-name" x="30" y="600">S0</text>
+  <text class="band-sub" x="30" y="638">ファイル内</text>
+  <text class="band-sub" x="30" y="666">評価</text>
+
+  <!-- S2 -->
+  <rect class="box" x="200" y="60" width="640" height="150"/>
+  <text class="c" x="520" y="92">行分割と改ページ（golem-layout）</text>
+  <text class="c small" x="520" y="140">ページ番号への参照（ref-page）</text>
+  <text class="c small" x="520" y="174">目次と索引のページ番号</text>
+  <path class="edge" d="M840,105 C925,105 925,165 840,165"/>
+  <text class="small" x="545" y="240">変わらなくなるまで繰り返す（5 回まで）</text>
+
+  <!-- S1 -->
+  <line x1="520" y1="310" x2="520" y2="212"/>
+  <text class="small" x="535" y="276">Doc.Book（ページへの参照だけが決まっていない）</text>
+  <rect class="box" x="200" y="310" width="640" height="190"/>
+  <text class="c" x="520" y="342">全ファイルの結果の集約（golem-doc）</text>
+  <text class="c small" x="520" y="390">見出しと図の番号、目次</text>
+  <text class="c small" x="520" y="424">ラベルから引く番号と題（ref-number、ref-title）</text>
+  <text class="c small" x="520" y="458">doc の式、索引の並び、参考文献の番号</text>
+
+  <!-- S0 -->
+  <line x1="300" y1="610" x2="380" y2="502"/>
+  <line x1="560" y1="610" x2="560" y2="502"/>
+  <text class="small" x="575" y="566">マニフェストの章の順に集める</text>
+  <rect class="box" x="180" y="610" width="240" height="120"/>
+  <text class="c" x="300" y="640">01-intro.gm</text>
+  <text class="c small" x="300" y="680">変数、式、meta</text>
+  <text class="c small" x="300" y="710">見出しの文字列</text>
+  <rect class="box" x="440" y="610" width="240" height="120"/>
+  <text class="c" x="560" y="640">02-body.gm</text>
+  <text class="c small" x="560" y="680">脚注の番号</text>
+  <text class="c small" x="560" y="710">プラグインの出力</text>
+  <rect class="box" x="740" y="610" width="220" height="120"/>
+  <text class="c" x="850" y="640">values.gm</text>
+  <text class="c small" x="850" y="680">@set の変数</text>
+  <text class="c small" x="850" y="710">（import 先）</text>
+  <line class="dash" x1="680" y1="670" x2="738" y2="670"/>
+  <text class="small" x="30" y="772">ファイルごとに、そのファイルと import 先だけを見て評価する。</text>
+  <text class="small" x="30" y="806">見出しは S1 の入力なので、見出しの中で doc と相互参照は使えない（G0214）。</text>
+  <text class="small" x="30" y="840">S1、S2 の値は、意味論 IR に決まっていない値として残す。</text>
+
+  <!-- ranges -->
+  <rect class="bar" x="1000" y="560" width="50" height="300"/><text class="v" x="1025" y="710" dominant-baseline="central">プラグイン</text>
+  <rect class="bar" x="1065" y="290" width="50" height="570"/><text class="v" x="1090" y="575" dominant-baseline="central">golem check と LSP</text>
+  <rect class="bar" x="1130" y="290" width="50" height="570"/><text class="v" x="1155" y="575" dominant-baseline="central">HTML、EPUB、テキスト</text>
+  <rect class="bar" x="1195" y="40" width="50" height="820"/><text class="v" x="1220" y="450" dominant-baseline="central">golem build の PDF</text>
+  <text class="c small" x="1122" y="895">それぞれが使う階層</text>
+</svg>

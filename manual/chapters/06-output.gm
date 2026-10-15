@@ -32,13 +32,13 @@ PDF は [code: build/pdf/] のフォルダに書かれます。
 
 入稿用の PDF には、PDF/X の規格に従ったファイルを求める印刷所が多くあります。
 PDF/X は、印刷に要るものをすべてファイルの中に持ち、印刷に要らないもの（JavaScript や外部のファイルへの参照）を持たないことを定めた、PDF の約束事の集まりです。
-Golem が書くのは、そのうちの PDF/X-4 です[note: ISO 15930-7:2010（PDF/X-4）。規格の本文は有償です。[code: https://www.iso.org/standard/55843.html]]。
+Golem が書くのは、そのうちの PDF/X-4 です [cite pdfx4][note: ISO 15930-7:2010（PDF/X-4）。規格の本文は有償です。[code: https://www.iso.org/standard/55843.html]]。
 PDF/X-4 は PDF 1.6 を元にし、透明を平坦化せずにそのまま持てる版です。
 
 PDF/X が求めるものの一つに、出力インテント[index reading=しゅつりょくいんてんと: 出力インテント]があります。
 出力インテントは、その PDF をどの印刷の条件で刷る前提で作ったかを示す情報で、印刷の条件を記した ICC プロファイル[index reading=あいしーしーぷろふぁいる: ICC プロファイル]を PDF の中に埋め込んで表します。
-ICC プロファイルは、ある機械や印刷の条件で、色の値がどの色として再現されるかを記したファイルで、形式は ICC.1 の仕様が定めています[note: ICC.1:2022（ICC プロファイルの仕様）。[code: https://www.color.org/specification/ICC.1-2022-05.pdf]]。
-日本の枚葉のオフセット印刷でコート紙に刷る場合は、Japan Color 2001 Coated がよく使われます[note: Japan Color（日本印刷産業機械工業会の Japan Color 認証制度の案内）。[code: https://japancolor.jp/]]。
+ICC プロファイルは、ある機械や印刷の条件で、色の値がどの色として再現されるかを記したファイルで、形式は ICC.1 の仕様が定めています [cite icc][note: ICC.1:2022（ICC プロファイルの仕様）。[code: https://www.color.org/specification/ICC.1-2022-05.pdf]]。
+日本の枚葉のオフセット印刷でコート紙に刷る場合は、Japan Color 2001 Coated がよく使われます [cite japancolor][note: Japan Color（日本印刷産業機械工業会の Japan Color 認証制度の案内）。[code: https://japancolor.jp/]]。
 
 出力インテントは、[code: style.toml] の [code: \[color\]] の [code: intent] に、ICC プロファイルのファイルのパスを書いて指定します。
 
@@ -119,7 +119,7 @@ golem build --target html
 
 HTML は [code: build/html/] に、原稿のファイルごとに一つずつ書かれます。
 [code: index.xhtml] が入り口です。
-書き方は、HTML Living Standard の XML の書き方（XHTML）です[note: HTML Living Standard。[code: https://html.spec.whatwg.org/multipage/]]。
+書き方は、HTML Living Standard [cite html] の XML の書き方（XHTML）です[note: HTML Living Standard。[code: https://html.spec.whatwg.org/multipage/]]。
 EPUB の本文も XHTML でなければならないので、HTML と EPUB で同じ本文を使えるように、HTML も XHTML で書きます。
 書体のファイルとスタイルシートも同じフォルダに置くので、フォルダごと Web サーバーに置けば、そのまま読めます。
 書体のファイルを同梱するので、HTML を公開すると書体のファイルも配ることになります。
@@ -128,7 +128,7 @@ EPUB の本文も XHTML でなければならないので、HTML と EPUB で同
 HTML は、画面の幅に合わせて文章を流し込む形式なので、版面、柱、ノンブルはありません。
 [code: style.toml] からは、書体、文字スタイル、段落スタイル、色、番号の書式を使います。
 色は、印刷用の CMYK の値を画面の色に近づけたものです。
-行の分け方、禁則、和文と欧文のあいだの空きは、ブラウザーが CSS の規則で組みます[note: CSS Text Module Level 3。[code: https://www.w3.org/TR/css-text-3/]]。
+行の分け方、禁則、和文と欧文のあいだの空きは、ブラウザーが CSS の規則で組みます [cite css-text-3][note: CSS Text Module Level 3。[code: https://www.w3.org/TR/css-text-3/]]。
 アキ量のセットやぶら下げ組のような PDF の細かな組み方は、HTML には移りません。
 脚注は章の終わりにまとめ、本文の番号と相互にリンクします。
 傍注は、画面が広ければ余白に、狭ければ段落の直後に置きます。
@@ -145,7 +145,7 @@ golem build --target epub
 ```
 
 EPUB は [code: build/epub/book.epub] に書かれます。
-形式は EPUB 3.3 に従います[note: EPUB 3.3。[code: https://www.w3.org/TR/epub-33/]]。
+形式は EPUB 3.3 に従います [cite epub33][note: EPUB 3.3。[code: https://www.w3.org/TR/epub-33/]]。
 Golem の開発では、組んだ EPUB を、EPUB の検証の道具 epubcheck にかけ、エラーと警告が出ないことを確かめています。
 
 本文は HTML と同じ XHTML で、端末やアプリの画面の大きさに合わせて流し込むリフローの EPUB になります。
