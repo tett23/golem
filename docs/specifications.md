@@ -1201,7 +1201,9 @@ LSP は、これらの診断を位置の指すファイルに載せ、どのフ�
 LSP では、エディタで開いているファイルの BOM と CR も G0102 と G0103 にするが、プロジェクトの読み込みは止めない。
 プロジェクトの外のファイルに構文エラーがあるときは、構文の診断だけを出し、評価の診断を出さない。
 解析の段階の診断の位置は、誤りの文字から始まる（インデントの余分な空白、4 つ目の `#`、用語のない `=:`、本文の `[`）。
-Golem が書く `manifest.toml` と `style.toml` の誤りの文言は日本語とし、toml-parser 自身の文言（`missing key` など）は英語のまま出す。
+`manifest.toml`、`style.toml`、`plugins.lock` の誤りの文言は、toml-parser が作る文言も含めてすべて日本語にする（[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md)）。
+未知のキーは `知らないキーです: page.bindng`、値の型の誤りは `page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に `page.bindng` や `chapters[0]` の形の経路を書く。
+TOML の構文の誤りと意味の誤り（同じ表を二度書くなど）は、ファイルの先頭ではなく誤りのある行の位置で出す。
 
 診断の重大度は、エラー、警告、お知らせの三つである（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 エラーはビルドを止め、警告は止めないが出荷する前に直すべきものを表す。
@@ -1870,7 +1872,6 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### 記法と設定
 
-- **style.toml の未知のキーの診断**（未実装、[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md)）：`style.toml` の未知のキーと値の型の誤りの診断（G0306）は、toml-parser の英語の文言のままである（`unexpected key: bindng (.page)` など）。位置を表示しない問題は [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md) で直した。
 - **参考文献の書式**（未実装、[golem-doc ADR 0004](golem-doc/adr/0004-bibliography-formatting.md)）：CSL の `literal` の名前を使わない。和文の後のピリオドの前に空白が入る（`日本規格協会 . 1996.`）。
 - **参考文献の項目**：参考文献の一覧は、著者、題、発行元、発行の年しか組まない。CSL-JSON の誌名や書名（`container-title`）、巻と号（`volume`、`issue`）、ページ（`page`）、URL（`URL`）を読んでも組まないので、論文は誌名なしで出る。これらを組めるようにする。URL の文献には、最終閲覧日（CSL-JSON の `accessed`）を書けるようにする。
 - **HTML の見出しの番号**（未実装、[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）：HTML の見出しで、番号と題の間に空きがない（「第3章原稿の記法」）。
