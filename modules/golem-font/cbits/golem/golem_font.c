@@ -89,6 +89,13 @@ int golem_font_glyph_metrics(golem_font *f, uint32_t gid, int32_t *out) {
   return 0;
 }
 
+void golem_font_v_origin(golem_font *f, uint32_t gid, int32_t *x, int32_t *y) {
+  hb_position_t ox = 0, oy = 0;
+  hb_font_get_glyph_v_origin(f->hbfont, gid, &ox, &oy);
+  *x = (int32_t)ox;
+  *y = (int32_t)oy;
+}
+
 int golem_font_shape(golem_font *f, const char *utf8, int len, const char *script,
                      const char *lang, int vertical, const char *features,
                      uint32_t *out_gids, uint32_t *out_clusters, int32_t *out_pos,

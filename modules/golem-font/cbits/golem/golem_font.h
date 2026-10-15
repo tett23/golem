@@ -22,6 +22,10 @@ int golem_font_embox_central(golem_font *f);
 /* advance (h, v), bbox (xmin, ymin, xmax, ymax); font units. 0 on success. */
 int golem_font_glyph_metrics(golem_font *f, uint32_t gid, int32_t *out6);
 
+/* The vertical origin of a glyph (hb_font_get_glyph_v_origin): the point
+   that vertical shaping subtracts from each glyph's offsets; font units. */
+void golem_font_v_origin(golem_font *f, uint32_t gid, int32_t *x, int32_t *y);
+
 /* Shapes UTF-8 text. vertical: 0 or 1. features: comma-separated
    HarfBuzz feature strings or NULL. Returns the glyph count, or -1.
    The arrays must hold max_glyphs entries; out_pos holds 4 per glyph
