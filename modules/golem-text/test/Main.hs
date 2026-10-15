@@ -12,6 +12,7 @@ import Golem.Syntax
 import Golem.Text
 import Test.Tasty
 import Test.Tasty.HUnit
+import TextOutputSpec (textOutputTests)
 
 main :: IO ()
 main = defaultMain tests
@@ -83,5 +84,6 @@ tests =
           testCase "captions" $ do
             render "en" "{n}" [heading 0 noHeadingAttrs "A", figure 5 "Cap"] @?= ["1 A", "", "［図1-1 Cap］"]
             render "ja" "{n}" [heading 0 noHeadingAttrs "A", figure 5 "キャプション"] @?= ["1\x3000\&A", "", "［図1-1\x3000キャプション］"]
-        ]
+        ],
+      textOutputTests
     ]

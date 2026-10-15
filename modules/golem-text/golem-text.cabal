@@ -30,13 +30,16 @@ test-suite golem-text-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    TextOutputSpec
   build-depends:
     , base
     , containers
     , golem-doc
     , golem-syntax
     , golem-text
+    , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
+    , tasty-hedgehog >=1.4 && <1.5
     , tasty-hunit    >=0.10 && <0.11
     , text
   default-language: GHC2021

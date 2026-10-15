@@ -46,6 +46,7 @@ test-suite golem-lsp-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    EditingSpec
   ghc-options:      -threaded
   build-depends:
     , aeson
