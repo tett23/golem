@@ -1517,7 +1517,8 @@ lines の範囲が不正です
 
 ### 直し方
 
-`sesame`、`open-sesame`、`dot`、`open-dot`、`circle`、`open-circle` のどれかにする。
+`sesame`、`open-sesame`、`dot`、`open-dot`、`circle`、`open-circle`、`double-circle`、`open-double-circle`、`triangle`、`open-triangle` のどれかにする。
+形の一覧は [docs/markup.md](markup.md) の「圏点」にある（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。
 
 ## G0240
 
@@ -4074,6 +4075,37 @@ PDF を書かない。
 
 `[index]` の `columns` を減らすか、`column-gap` を狭める。
 
+## G0745
+
+ルビの親文字の圏点を PDF で描きません
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+ルビの親文字の中に圏点があるか、圏点の中にルビがある。
+圏点とルビは親文字の同じ側に置くので、PDF は、ルビの親文字に圏点を描かない。
+HTML と EPUB は圏点とルビの両方を出すので、PDF をターゲットに含むときだけ出す。
+PDF は書く。
+位置は、ルビの親文字の中の圏点ではその圏点の位置、圏点の中のルビではそのルビの位置である。
+お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+
+- メッセージ: `ルビの親文字の圏点は PDF では描きません`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)
+
+### 主な原因
+
+- `[ruby: [kenten: 漢]|かん]` のように、ルビの親文字に圏点を付けた。
+- `[kenten: [ruby: 漢|かん]]` のように、圏点の中にルビを書いた。
+
+### 直し方
+
+PDF で圏点を描くには、圏点を付ける語からルビを外す。
+PDF で圏点がなくてよければ、そのままでよい。
+`manifest.toml` の `[diagnostics]` の `silence-notices` に `"G0745"` を加えると、このお知らせを出さなくなる。
+
 ## G0801
 
 フォントを読まずに PDF を作ろうとしました
@@ -4296,3 +4328,32 @@ PDF はコードを本文の役割で組む。
 `style.toml` に `[fonts.code]` を書き、等幅の書体のファイルを `latin`（和文も載せるなら `ja`）に書く。
 本文の書体で組んでよければ、そのままでよい。
 `manifest.toml` の `[diagnostics]` の `silence-notices` に `"G0808"` を加えると、このお知らせを出さなくなる。
+
+## G0809
+
+圏点の字が書体にありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+圏点を付けた字の役割の和文の書体に、圏点の形の字（`sesame` なら U+FE45 の `﹅`）がない。
+書体にない字は `.notdef` の箱で描かれるので、PDF を書く前に止める。
+役割と形の組ごとに一つだけ出す。
+PDF を書かない。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+
+- メッセージ: `役割 <役割> の和文の書体に圏点の形 <形> の字（U+<符号位置>）がありません`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)
+
+### 主な原因
+
+- 和文の役割に、圏点の字を持たない書体（欧文の書体など）を指定した。
+- `[kenten ...]` の `shape` か `style.toml` の `[composition]` の `kenten` に、書体にない形を書いた。
+
+### 直し方
+
+`shape`（または `[composition]` の `kenten`）を、書体にある形に替える。
+または、圏点の字を持つ書体を、その役割の `ja` に指定する。
