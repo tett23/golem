@@ -126,11 +126,11 @@ err code sp msg = report (diagnostic code Error sp msg)
 
 builtinInlineCommands :: [Text]
 builtinInlineCommands =
-  ["strong", "bold", "italic", "ruby", "kenten", "color", "style", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "index", "cite", "aki"]
+  ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "index", "cite", "aki"]
 
 -- | Built-in commands a plugin may override when the manifest says so.
 overridableCommands :: [Text]
-overridableCommands = ["strong", "bold", "italic", "ruby", "kenten", "color", "style", "tcy", "number-text"]
+overridableCommands = ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "tcy", "number-text"]
 
 attributeCommands :: [Text]
 attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc", "style"]
@@ -553,9 +553,13 @@ validLabel l = not (T.null l) && T.all (\c -> c `elem` ("-_" :: String) || isAsc
 
 -- ------------------------------------------------------------------ paragraph styles
 
--- | The name of the paragraph style of @style; G0247 and body when it is not one name.
+{- | The name of the paragraph style of @style; G0247 and body when it is
+not one name. code is the style of code blocks: G0266 and body
+(golem-driver ADR 0017).
+-}
 styleName :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M (Maybe Text)
 styleName _ sp = \case
+  [A.Located _ (A.Positional (A.Word "code"))] -> err "G0266" sp "code はコードブロックの段落スタイルです。コードは ``` か @listing で書きます" >> pure Nothing
   [A.Located _ (A.Positional (A.Word n))] -> pure (Just n)
   _ -> err "G0247" sp "@style には段落スタイルの名前を一つ書きます" >> pure Nothing
 
@@ -898,6 +902,8 @@ builtinWith ctx inHeading sp name args slots = do
     "strong" -> oneSlot (pure . pure . CharStyle sp "strong")
     "bold" -> oneSlot (pure . pure . CharStyle sp "bold")
     "italic" -> oneSlot (pure . pure . CharStyle sp "italic")
+    -- [code: ...] is [style code: ...] (golem-driver ADR 0017)
+    "code" -> oneSlot (pure . pure . CharStyle sp "code")
     "kenten" -> do
       let shape = argText <$> lookup "shape" kw
       case shape of
