@@ -4,7 +4,9 @@
 module Main (main) where
 
 import Data.Aeson qualified as J
+import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
+import Data.Char (isHexDigit)
 import Data.List (isInfixOf, isPrefixOf, isSuffixOf)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
@@ -13,7 +15,8 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver.Explain (catalog)
 import Golem.Driver.Version (golemVersion)
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist)
+import Golem.Syntax.Sha256 (sha256)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -21,6 +24,7 @@ import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
+import Text.Printf (printf)
 
 main :: IO ()
 main = defaultMain tests
@@ -143,6 +147,7 @@ tests =
         readFile (tmp </> "a.gm") >>= (@?= "@verse\n  Full fathom five\n"),
       missingFontTests,
       marksTests,
+      preflightTests,
       explainTests,
       noticeTests
     ]
@@ -322,3 +327,81 @@ noticeTests =
   where
     -- the PDF needs a real font, so golem build writes the other targets
     build = ["build", "--target", "html", "--target", "text"]
+
+-- ------------------------------------------------------------------ golem preflight (golem-cli ADR 0006)
+
+-- | A Latin book with a real font, 3mm of bleed and an output intent, so that print passes.
+preflightProject :: String -> [(FilePath, String)]
+preflightProject body =
+  [ ("manifest.toml", "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.pdf]\n"),
+    ("style.toml", "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\nbleed = \"3mm\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 30\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"25mm\", gutter = \"20mm\" }\n\n[fonts.body]\nlatin = \"fonts/latin.otf\"\n\n[color]\nintent = \"intent.icc\"\n"),
+    ("intent.icc", "fake profile"),
+    ("a.gm", body)
+  ]
+
+-- | Runs golem in the project with the font copied in; stdout and stderr apart.
+golemPreflight :: [(FilePath, String)] -> [String] -> IO (ExitCode, String, String, FilePath -> IO BL.ByteString)
+golemPreflight files = golemPreflightWith files []
+
+golemPreflightWith :: [(FilePath, String)] -> [(FilePath, BL.ByteString)] -> [String] -> IO (ExitCode, String, String, FilePath -> IO BL.ByteString)
+golemPreflightWith files bins args = do
+  font <- BL.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf"
+  withSystemTempDirectory "golem-cli" $ \tmp -> do
+    createDirectoryIfMissing True (tmp </> "fonts")
+    BL.writeFile (tmp </> "fonts/latin.otf") font
+    mapM_ (\(p, c) -> BL.writeFile (tmp </> p) (BL.fromStrict (TE.encodeUtf8 (T.pack c)))) files
+    mapM_ (\(p, b) -> BL.writeFile (tmp </> p) b) bins
+    (code, out, err) <- readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
+    -- the PDF of golem build in the same project, read before the directory goes
+    pdf <- do
+      _ <- readCreateProcessWithExitCode (proc "golem" ["build", "--target", "pdf", "--profile", "prod"]) {cwd = Just tmp} ""
+      let pdfPath = tmp </> "build/pdf/urn-uuid-11111111-2222-4333-8444-555555555555.pdf"
+      exists <- doesFileExist pdfPath
+      if exists then BL.readFile pdfPath else pure ""
+    pure (code, out, err, const (pure pdf))
+
+preflightTests :: TestTree
+preflightTests =
+  testGroup
+    "golem preflight (golem-cli ADR 0006)"
+    [ testCase "no error: 0, and the summary names the PDF built with --profile prod" $ do
+        (code, _, err, built) <- golemPreflight (preflightProject "Body text.\n") ["preflight"]
+        assertEqual err ExitSuccess code
+        let summary = last (lines err)
+        assertBool summary ("プリフライト（" `isPrefixOf` summary)
+        let digest = takeWhile isHexDigit (T.unpack (T.drop (T.length "SHA-256: ") (snd (T.breakOn "SHA-256: " (T.pack summary)))))
+        length digest @?= 64
+        pdf <- built ""
+        digest @?= sha256Hex (BL.toStrict pdf),
+      testCase "warnings only: 0" $ do
+        (code, _, err, _) <- golemPreflight (("preflight.toml", "[bleed-size]\nseverity = \"warning\"\nmin = \"5mm\"\n") : preflightProject "Body text.\n") ["preflight"]
+        assertEqual err ExitSuccess code
+        assertBool err ("warning[G0910]" `isInfixOf` err),
+      testCase "G0902: 1" $ do
+        (code, _, err, _) <- golemPreflight (preflightProject "Body \xE000 text.\n") ["preflight"]
+        assertEqual err (ExitFailure 1) code
+        assertBool err ("error[G0902]" `isInfixOf` err),
+      exitsWith (ExitFailure 2) ["preflight", "--profile", "dev"],
+      exitsWith (ExitFailure 2) ["preflight", "--rules"],
+      testCase "--format json: valid, no summary, G0906 with ppi" $ do
+        img <- BL.readFile "../golem-pdf/test/fixtures/tiny.jpg"
+        let files = preflightProject "# Chapter\n\n@figure tiny.jpg alt=\"t\"\n\nBody text.\n"
+        (_, _, err, _) <- golemPreflightWith files [("tiny.jpg", img)] ["preflight", "--format", "json"]
+        case J.eitherDecode (BL.fromStrict (TE.encodeUtf8 (T.pack err))) :: Either String J.Value of
+          Left e -> assertFailure (e <> "\n" <> err)
+          Right _ -> pure ()
+        assertBool err (not ("プリフライト（" `isInfixOf` err))
+        assertBool err ("\"code\":\"G0906\"" `isInfixOf` err && "\"facts\":{" `isInfixOf` err && "\"ppi\":" `isInfixOf` err),
+      testCase "--rules reads a file out of the project, and a missing one is G0901" $ withSystemTempDirectory "golem-rules" $ \other -> do
+        writeFile (other </> "printer.toml") "based-on = \"none\"\nname = \"Printer\"\n"
+        (code, _, err, _) <- golemPreflight (preflightProject "Body \xE000 text.\n") ["preflight", "--rules", other </> "printer.toml"]
+        assertEqual err ExitSuccess code
+        assertBool err ("設定: Printer、基にした設定: none" `isInfixOf` err)
+        (code', _, err', _) <- golemPreflight (preflightProject "Body text.\n") ["preflight", "--rules", other </> "missing.toml"]
+        assertEqual err' (ExitFailure 1) code'
+        assertBool err' ("error[G0901]" `isInfixOf` err')
+    ]
+
+-- | Lower-case hexadecimal SHA-256.
+sha256Hex :: BS.ByteString -> String
+sha256Hex = concatMap (printf "%02x") . BS.unpack . sha256
