@@ -155,7 +155,7 @@ Golem は、機械に入っている書体を探しません。
 - [code: sidenote]：傍注の本文です。傍注には [code: font] と [code: size] だけが効きます。
 - [code: code]：コードブロックです。[code: font = "code"]、[code: padding = "0.5zw"] です。
 
-段落スタイル [code: code] に書けるキーは、次の四つだけです。
+段落スタイル [code: code] に書けるキーは、次の六つだけです。
 [code: based-on] は書けず、ほかの段落スタイルの [code: based-on] にも書けません。
 原稿の [code: @style code] もエラーです。
 
@@ -165,11 +165,13 @@ Golem は、機械に入っている書体を探しません。
 | [code: size] | 本文の大きさ | 文字の大きさです。本文の文字の大きさまでにします。 |
 | [code: background] | なし | 背景の色の名前です。[code: \[color.swatches\]] で付けた名前を書きます。書かなければ背景を塗りません。 |
 | [code: padding] | [code: "0.5zw"] | 背景の内側の余白です。[code: zw] はコードの文字の大きさを一字とします。上下と左右に同じ量を取ります。 |
+| [code: border] | なし | 枠の色の名前です。書かなければ枠を描きません。 |
+| [code: border-width] | [code: "0.25pt"] | 枠の線の太さです。[code: zw] は使えません。 |
 
 コードブロックは、行と上下の余白を収める行数を占め、その中の中央に組みます。
 後の本文は、行の格子からずれません。
-[code: background] と [code: padding] は、[code: code] のほかの段落スタイルには書けません。
-ファイルの先頭の [code: @style-def paragraph code] にも、同じ四つのキーだけを書けます。
+[code: background]、[code: padding]、[code: border]、[code: border-width] は、[code: code] のほかの段落スタイルには書けません。
+ファイルの先頭の [code: @style-def paragraph code] にも、同じ六つのキーだけを書けます。
 
 @nonumber
 ## [code: \[headings.階層\]]
@@ -254,6 +256,39 @@ Golem は、機械に入っている書体を探しません。
 |:---|:---|
 | [code: number] | 図番号の書式です。既定は [code: "図{chapter}-{n}"] で、「図2-1」のように組みます。 |
 | [code: wrap-gap] | 回り込ませた図版と本文のあいだの空きです。既定は [code: "1zw"] です。 |
+
+@nonumber
+## [code: \[code\]] と [code: \[code.colors\]]
+
+技術書のためのコードブロックの機能を決めます（第[ref-number markup]章「[ref-title code-book]」）。
+
+| キー | 意味 |
+|:---|:---|
+| [code: number] | キャプションを付けたコードブロックのリスト番号の書式です。[code: {n}] などの差し込みを必ず含めます。既定は「リスト2-1」のように組む書式です。 |
+| [code: line-numbers] | [code: true] にすると、[code: numbers] を書かないコードブロックにも行番号を付けます。既定は [code: false] です。 |
+| [code: line-number-color] | 行番号と折り返した行の印の色の名前です。書かなければ本文の文字の色です。 |
+| [code: highlight] | 強調する行の背景の色の名前です。書かなければ墨 15% の網にします。 |
+| [code: added] | 差分の追加した行の背景の色の名前です。書かなければ塗りません。 |
+| [code: removed] | 差分の削除した行の背景の色の名前です。書かなければ塗りません。 |
+| [code: wrap-mark] | PDF で、折り返した行の行末に描く印です。[code: "↩"] のように書きます。既定は空で、印を描きません。 |
+| [code: continued] | PDF で、ページをまたいだコードブロックの前の部分の末尾に描く文言です。「（次ページに続く）」のような文言を書きます。既定は空で、何も描きません。 |
+
+[code: number] の既定は [code: "リスト{chapter}-{n}"] です。
+
+[code: \[code.colors\]] は、字句の種類から色の名前への表で、PDF と HTML の構文に応じた色分けに使います。
+
+```toml
+[code.colors]
+keyword = "code-kw"
+comment = "code-cm"
+string = "code-st"
+```
+
+字句の種類は [code: keyword]、[code: data-type]、[code: dec-val]、[code: base-n]、[code: float]、[code: char]、[code: string]、[code: comment]、[code: other]、[code: alert]、[code: function]、[code: region-marker]、[code: error]、[code: constant]、[code: special-char]、[code: verbatim-string]、[code: special-string]、[code: import]、[code: documentation]、[code: annotation]、[code: comment-var]、[code: variable]、[code: control-flow]、[code: operator]、[code: built-in]、[code: extension]、[code: preprocessor]、[code: attribute]、[code: information]、[code: warning] です。
+[code: \[code.colors\]] を書かなければ、コードを色分けせず、本文の文字の色で組みます。
+墨一色で刷る本で、色を消す設定を書かずに済むようにするためです。
+色の名前は [code: \[color.swatches\]] で付けたものを書き、ないとエラー（G0313）になります。
+表にないキーと字句の種類は、エラー（G0306）になります。
 
 @nonumber
 ## [code: \[toc\]]

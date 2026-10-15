@@ -98,7 +98,7 @@ Haskell の型（golem-doc の [code: Golem.Doc.IR]）は手で書き、CDDL と
 - 直和型は [code: \[タグ番号, フィールド...\]] の配列で表す。タグ番号は一度割り当てたら変えず、使わなくなった番号も再利用しない。
 - マップを使わず、フィールドの順序で区別する。マップのキーの順序に依存しないためである。
 - CBOR は RFC 8949 [cite rfc8949] の決定的な符号化で書く。
-- スキーマの先頭に版を置き、ABI の版と一致させる。ノードやフィールドを足したら版を上げる。今の版は 5 である。
+- スキーマの先頭に版を置き、ABI の版と一致させる。ノードやフィールドを足したら版を上げる。今の版は 6 である。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0023-code-block-book-features.md]（golem-driver ADR 0023「技術書のためのコードブロックの機能」）がコードブロックの形を変えて 6 にした。]
 
 ## 文書とブロック
 
@@ -106,7 +106,7 @@ Haskell の型（golem-doc の [code: Golem.Doc.IR]）は手で書き、CDDL と
 ブロックは、ソースの位置、ラベル、本体の三つを持つ。
 
 ```cddl
-document = [abi-version: 5, file: uint, blocks: [* block]]
+document = [abi-version: 6, file: uint, blocks: [* block]]
 span = [file: uint, start: uint, end: uint]
 block = [span, label: tstr / null, body: block-body]
 ```
@@ -123,7 +123,7 @@ block = [span, label: tstr / null, body: block-body]
 | 3 | 番号付きリスト | 項目の列 |
 | 4 | 定義リスト | 用語と説明の組の列 |
 | 5 | 表 | 列の揃え、見出しの行、本体の行 |
-| 6 | コードブロック | 言語の名前、コードのテキスト |
+| 6 | コードブロック | コード（言語の名前、行番号の有無、ファイル名、キャプション、差分か、行の列） |
 | 7 | 図版 | パス、代替テキスト、キャプションなど |
 | 8 | チャネルの出力 | 目次、索引、参考文献のどれか |
 | 10 | 段落 | 段落スタイルの名前、インラインの列 |
@@ -132,6 +132,16 @@ block = [span, label: tstr / null, body: block-body]
 段落の段落スタイルの名前が [code: null] なら、[code: body] で組む段落である。
 タグの 0（段落スタイルのない段落）と 9（韻文）は廃止した番号である。
 段落が段落スタイルの名前を持つようになり、韻文も段落スタイル [code: verse] の段落になったので、使わなくなった。
+
+コードブロックの行は、差分の印と注釈の印を取り除いた文字列、行番号（削除した行は [code: null]）、差分の印（追加、削除、変わらないの 0 から 2、差分でなければ [code: null]）、強調するか、注釈の印の番号の列である。
+行番号、差分、注釈の印、強調は評価の段階で決め、PDF、HTML、プレーンテキストが同じ読み方を共有する。
+
+```cddl
+code = [lang: tstr / null, numbers: bool / null, file: tstr / null,
+        caption: inlines / null, diff: bool, lines: [* code-line]]
+code-line = [text: tstr, number: int / null, diff-mark: (0..2) / null,
+             highlight: bool, callouts: [* 1..50]]
+```
 
 見出しの属性は、短い題、[code: @number] の番号、[code: @nonumber]、[code: @notoc] の四つである。
 定義リストは、用語の列と説明の列の組を並べた形で、用語と説明の多対多の対応をそのまま表す。
