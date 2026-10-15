@@ -599,6 +599,11 @@ running-head = { position = "top-outside", content = "heading.1.short" }
 folio = { position = "bottom-outside", format = "{n}" }
 ```
 
+`[composition]` の `kenten` は、形を省いた圏点（`[kenten: ...]`）の形である（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。
+取れる値は `sesame`、`open-sesame`、`dot`、`open-dot`、`circle`、`open-circle`、`double-circle`、`open-double-circle`、`triangle`、`open-triangle` の十で、既定は `sesame` である。
+ほかの値は G0306 とする。
+形の一覧と字は [docs/markup.md](markup.md) の「圏点」にある。
+
 版面は、日本語組版の流儀に従い、文字の大きさ、一行の字数、一ページの行数、行送り、段数で定義する。
 余白は、版面をページのどこに置くかから決まる従属的な値である。
 字数と行数を整数で決めることで、行頭と行末が字送りの格子にそろう。
@@ -1894,7 +1899,6 @@ v1 のリリースまでに、次の項目を扱う。
 - **柱の内容の書式**（未実装、[golem-driver ADR 0022](golem-driver/adr/0022-running-head-formats.md)）：柱の内容は、見出しの題と書名の固定の語彙（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）だけを書ける。柱の内容に、任意の文字列と変数の参照を書けるようにする。たとえば書名と章の題を並べる柱（`"{meta.title}　{heading.1.short}"` のような書式）や、固定の文言だけの柱を作れるようにする。参照できる値は、`meta` のメタデータ（書名、著者など）、見出しの題と番号、`@set` の変数とする。柱は複数の行にできるようにする（書名の行と章の題の行を重ねる柱など）。書式の記法（差し込みの書き方と、`{` そのものの書き方、行の区切りの書き方）、複数の行の行送りと揃え、柱の行が増えたときの版面との間の空き、参照した値がないときの扱い、参照の誤りの診断は ADR で決める。
 - **PDF のコードブロックの技術書の機能**（未実装、[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）：コードの書体の役割、コードブロックの組み方（空白とタブの保持、折り返し、背景）、本文の中のコードの組み方は[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)で実装した。技術書で使うコードブロックの機能は、まだない。行番号（開始の番号の指定を含む）、ファイル名やキャプション、特定の行の強調、コードの中の注釈の印（①のような印を行末に置き、本文で説明するもの）、差分の表示（追加と削除の行）、PDF での構文に応じた色分け、枠、折り返した印、改ページした部分の続きの表示、`@listing` で取り込んだファイルへの同じ指定を含む。本文の中のコード（`[code: ...]`）の背景の色も扱っていない。記法、`style.toml` の設定、HTML と EPUB での表し方は ADR で決める。
 - **脚注の印**（未実装、[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）：PDF の脚注の印（`*1`）の幅を半角に固定しているので、印が次の字と重なる。ページの下の注の本文にも番号が付かない。
-- **PDF の圏点**（未実装、[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）：圏点の `shape` を PDF で使わず、常に `﹅` で描く。横組みでは圏点が右にずれ、字の上端に重なる。
 - **ルビの親文字の中の文字スタイル**（未実装、[golem-layout ADR 0011](golem-layout/adr/0011-ruby-base-character-styles.md)）：PDF は、ルビの親文字の中の文字スタイルを描き分けない（golem-layout の `rubyPieces` が親文字の中のスタイルを平らにする）。手で書いた `[style]` も、親文字の一部に一致した正規表現スタイル（[docs/adr/0015](adr/0015-regex-styles.md)）も、HTML では効くが PDF では見た目が変わらない。
 - **章末の注**：`[notes] placement = "chapter-end"` を読み込むが、どの出力も注の置き方を変えない。仕様書とマニュアルは章末に置けると書いていない形に直したが、章末の注そのものはまだない。
 - **図版の欠落の扱い**：PDF の図版のうち、置けない形式のものや壊れた画像を、`golem build` が誤りにせずに落としている可能性がある（コードを読んだ結果で、実際の出力では確かめていない）。
