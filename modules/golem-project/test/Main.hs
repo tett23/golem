@@ -599,9 +599,9 @@ tests =
       testCase "a heading font must name a font role (golem-driver ADR 0003)" $ do
         codes (parseStyle (FileId 0) "[headings.1]\nfont = \"nope\"\n") @?= ["G0308"]
         codes (parseStyle (FileId 0) "[fonts.heading]\nlatin = \"h.otf\"\n\n[headings.1]\nfont = \"heading\"\n") @?= [],
-      testCase "loadStyle does not look for the files it names (ADR 0004)" $
+      testCase "a style loads although the files it names do not exist (ADR 0004)" $
         void (loadStyle (FileId 0) (Just "[fonts.body]\nja = \"fonts/none.otf\"\n\n[color]\nintent = \"icc/none.icc\"\n")) @?= Right (),
-      testCase "fontFiles lists roles by name, Japanese before Latin (ADR 0004)" $
+      testCase "a style's font files are listed by role name, Japanese before Latin (ADR 0004)" $
         fmap fontFiles (loadStyle (FileId 0) (Just "[fonts.mono]\nlatin = \"m.otf\"\n\n[fonts.body]\nja = \"b.otf\"\nlatin = \"l.otf\"\n"))
           @?= Right [("body", "b.otf"), ("body", "l.otf"), ("mono", "m.otf")],
       testCase "character style fonts name font roles (golem-driver ADR 0004)" $
@@ -1070,7 +1070,7 @@ akiTests :: TestTree
 akiTests =
   testGroup
     "aki amounts and aki sets (docs/adr ADR 0019)"
-    [ testCase "parseAki reads the names, zw and percentages" $ do
+    [ testCase "an aki amount is a name, an amount in zw or a percentage" $ do
         map parseAki ["ベタ", "全角", "二分", "三分", "四分", "五分", "六分", "八分", "二分四分", "0.2zw", "12.5%"]
           @?= map Just [0, 1, 1 / 2, 1 / 3, 1 / 4, 1 / 5, 1 / 6, 1 / 8, 3 / 4, 1 / 5, 1 / 8]
         map parseAki ["-1zw", "1mm", "十分"] @?= [Nothing, Nothing, Nothing],
@@ -1188,10 +1188,10 @@ regexStyleTests =
         base <- styleOf body
         let ls = noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "a" "bold", RegexStyleDef "\\1" "bold", RegexStyleDef "b" "nope"]), ("nope", [RegexStyleDef "a" "bold"])]}
         [(n, i, c) | (n, i, c, _) <- checkLocalRegexStyles base ls] @?= [("body", 1, "G0315"), ("body", 2, "G0313"), ("nope", 0, "G0313")],
-      testCase "checkLocalStyles does not repeat the errors of the regex styles" $ do
+      testCase "the errors of a file's regex styles are not reported twice" $ do
         base <- styleOf body
         checkLocalStyles base noLocalStyles {lsRegexStyles = Map.fromList [("body", [RegexStyleDef "\\1" "bold"])]} @?= [],
-      testCase "localRegexStyleDef reads pattern and style" $ do
+      testCase "a regex style in a file takes exactly a pattern and a style" $ do
         localRegexStyleDef [("pattern", LocalString "[0-9]+"), ("style", LocalWord "bold")] @?= Right (RegexStyleDef "[0-9]+" "bold")
         assertBool "missing style" (isLeftE (localRegexStyleDef [("pattern", LocalString "a")]))
         assertBool "missing pattern" (isLeftE (localRegexStyleDef [("style", LocalWord "bold")]))
@@ -1211,7 +1211,7 @@ localStyleTests :: TestTree
 localStyleTests =
   testGroup
     "styles defined in a file (docs/adr ADR 0014)"
-    [ testCase "localStyleDef maps words and strings to TOML values" $ do
+    [ testCase "the words and strings of a style defined in a file are read as TOML values" $ do
         localStyleDef ParagraphKind [("based-on", LocalWord "body"), ("indent", LocalWord "2zw"), ("line-breaks", LocalWord "keep"), ("space-between", LocalWord "1")]
           @?= Right (Right noParaDef {psBasedOn = Just "body", psIndent = Just (Zw 2), psLineBreaks = Just KeepLines, psSpaceBetween = Just 1})
         localStyleDef CharacterKind [("synthetic-bold", LocalWord "true")] @?= Right (Left noCharDef {csSyntheticBold = Just True})
@@ -1247,7 +1247,7 @@ localStyleTests =
         let s = withLocalStyles base (localPara [("letter", noParaDef {psBasedOn = Just "quote"})])
         fmap psIndent (paraStyle s (Just "letter")) @?= Just (Just (Zw 3))
         fmap psSpaceBetween (paraStyle s (Just "letter")) @?= Just (Just 2),
-      testCase "checkLocalStyles reports the errors of style.toml's checks" $ do
+      testCase "styles defined in a file get the checks of style.toml" $ do
         base <- styleOf "[page]\nsize = \"A6\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 20\nlines = 10\nline-pitch = \"20H\"\nposition = { top = \"10mm\", gutter = \"10mm\" }\n\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n"
         let chk ls = [(c, n) | (c, n, _) <- checkLocalStyles base ls]
         chk (localPara [("Letter", noParaDef)]) @?= [("G0306", "Letter")]
@@ -1258,7 +1258,7 @@ localStyleTests =
         chk (localChar [("t", noCharDef {csColor = Just "accent"})]) @?= []
         chk (localPara [("a", noParaDef {psSize = Just (Zw 2)})]) @?= [("G0311", "a")]
         chk (localPara [("a", noParaDef {psIndent = Just (Zw 1), psFirstLineIndent = Just (Zw (-2))})]) @?= [("G0312", "a")],
-      testCase "checkLocalStyles leaves out the errors style.toml has by itself" $ do
+      testCase "errors style.toml has by itself are not reported for styles defined in a file" $ do
         let base = defaultStyle {stParaStyles = Map.insert "q" noParaDef {psBasedOn = Just "nope"} (stParaStyles defaultStyle)}
         [c | (c, _, _) <- checkLocalStyles base (localPara [("letter", noParaDef)])] @?= [],
       testCase "an override changes only the keys it writes, in its file" $ do
