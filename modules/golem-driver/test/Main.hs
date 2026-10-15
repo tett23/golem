@@ -25,7 +25,7 @@ import Golem.Driver.Pdf (Assumed (..), PdfInput (..), PdfLayout (..), PlacedFigu
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Kerning (..), Look (..), Synthetic (..), plainLook)
-import Golem.Layout.Paginate (Flow (..), LineBox (..), PageOut (..), Slotted (..), markPages, paginate)
+import Golem.Layout.Paginate (ColumnSet (..), Flow (..), LineBox (..), PageOut (..), Slotted (..), labelPages, markPages, paginate)
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, sidenoteAreaFor, typeAreaFor)
@@ -328,6 +328,7 @@ tests =
       testGroup "crop marks and bleed (golem-pdf ADR 0004)" marksTests,
       testGroup "forced breaks (docs/adr ADR 0017)" breakTests,
       testGroup "columns (docs/adr ADR 0018)" columnTests,
+      testGroup "index columns (docs/adr ADR 0025)" indexColumnTests,
       testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
       testGroup "kerning, proportional metrics and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "running heads (ADR 0014)" runningHeadTests,
@@ -3203,6 +3204,111 @@ columnTests =
       assertBool "no columns" (not ("columns" `BS.isInfixOf` css) && not ("column-count" `BS.isInfixOf` css))
   ]
 
+-- | A one-column style of 32 characters a line, the column gap 2zw (docs/adr ADR 0025).
+horizontal32 :: BS.ByteString
+horizontal32 = replaceIn "characters = 12" "characters = 32" (replaceIn "columns = 1" "columns = 1\ncolumn-gap = \"2zw\"" horizontalStyle)
+
+-- | A style with [index] of @n@ columns after it.
+withIndexColumns :: T.Text -> BS.ByteString -> BS.ByteString
+withIndexColumns n style = style <> "\n[index]\ncolumns = " <> BC.pack (T.unpack n) <> "\n"
+
+-- | Forty index marks, each on its own term, then a heading and the index.
+indexSource :: T.Text
+indexSource =
+  T.concat ["本文[index reading=" <> r <> ": 語" <> r <> "]。" | r <- indexReadings] <> "\n\n# 索引\n\n@index\n"
+
+indexReadings :: [T.Text]
+indexReadings = [a <> b | a <- ["あ", "い", "う", "え", "お"], b <- ["か", "き", "く", "け", "こ", "さ", "し", "す"]]
+
+-- | The lines of the index entries on a page.
+indexLinesOn :: PdfLayout -> PageOut -> [SetLine]
+indexLinesOn pl p = [sl | (_, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)], "語" `T.isPrefixOf` setLineText sl]
+
+indexColumnTests :: [TestTree]
+indexColumnTests =
+  [ testCase "PDF: one column of 32 characters, two index columns 2zw apart are 15 characters wide" $ do
+      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32)
+      (geom, pl) <- layoutOk style indexSource []
+      let entries = [sl | p <- plPages pl, sl <- indexLinesOn pl p]
+      assertBool "entries" (not (null entries))
+      nub [lineTarget (slLine sl) | sl <- entries] @?= [15 * 10 * pt]
+      nub [csMeasure (poColumnSet p) | p <- plPages pl, not (null (indexLinesOn pl p))] @?= [15 * 10 * pt]
+      content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
+      let ta = typeAreaFor geom 1
+          x1 = TE.encodeUtf8 (spToPt (rectX ta + 17 * 10 * pt))
+      assertBool "the second column starts 17 characters on" (any (any ((== x1) . dX) . drawnGlyphs) (take 1 content)),
+    testCase "PDF: the lines of the index columns are on the grid of the type area" $ do
+      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32)
+      (geom, _) <- layoutOk style indexSource []
+      content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
+      let ta = typeAreaFor geom 1
+          x1 = TE.encodeUtf8 (spToPt (rectX ta + 17 * 10 * pt))
+          grid = [TE.encodeUtf8 (spToPt (rectY ta + rectH ta - g)) | g <- pgLineGrid geom]
+          ys = [dY d | c <- content, d <- drawnGlyphs c, dX d == x1]
+      assertBool "lines" (not (null ys))
+      assertBool (show ys) (all (`elem` grid) ys),
+    testCase "PDF: the running head is drawn once on the page of the switch and on the index pages" $ do
+      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32) <> "\n[masters.body]\nrunning-head = { position = \"top-outside\", content = \"title\" }\n"
+      content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
+      assertBool "pages" (length content >= 2)
+      map (\c -> length [d | d <- drawnGlyphs c, dGlyph d == fromEnum 'T']) content @?= map (const 1) content,
+    testCase "PDF: without [index], or with as many columns as the page, the bytes are the same" $ do
+      let style = replaceIn "lines = 30" "lines = 10" horizontal32
+      a <- miniPdf fakeProvider True style indexSource []
+      b <- miniPdf fakeProvider True (withIndexColumns "1" style) indexSource []
+      c <- miniPdf fakeProvider True (withIndexColumns "1" style <> "column-gap = \"5zw\"\n") indexSource []
+      -- the instance ID is made from every input, style.toml among them (docs/adr/0004)
+      let body = fst . BS.breakSubstring "trailer"
+      body a @?= body b
+      body a @?= body c,
+    testCase "G0744: index columns under 8 characters, at the value of columns, also in golem check" $ do
+      let style = withIndexColumns "5" horizontalStyle
+          src = BC.unpack style
+          at = length (takeWhile (/= "[index]") (lines src))
+          offset = sum (map ((+ 1) . length) (take at (lines src))) + length ("[index]\ncolumns = " :: String)
+      b <- buildMarksFilesWith indexSource id (Just (style <> fakeBody)) fakeFontFiles
+      map diagMessage (ofCode "G0744" b) @?= ["索引の段の行長が足りません。columns を減らすか column-gap を狭めてください"]
+      map (whereIs b) (ofCode "G0744" b) @?= [(Just "style.toml", offset)]
+      bPdf b @?= Nothing
+      c <- buildMarksFilesWith indexSource (\o -> o {optCheckOnly = True}) (Just (style <> fakeBody)) fakeFontFiles
+      map diagCode (ofCode "G0744" c) @?= [DiagnosticCode "G0744"],
+    testCase "PDF: with a sidenote column, two index columns are not G0701 and leave the column out" $ do
+      let style = withIndexColumns "2" (replaceIn "characters = 12" "characters = 24" sidenoteStyle) <> "column-gap = \"2zw\"\n"
+      (_, pl) <- layoutOk style indexSource []
+      nub [lineTarget (slLine sl) | p <- plPages pl, sl <- indexLinesOn pl p] @?= [11 * 10 * pt],
+    testCase "PDF: a page reference after an index of fewer pages converges on the right page" $ do
+      let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32)
+          source = "参照は[ref-page later]ページ。\n\n" <> indexSource <> "\n@label later\n後。\n"
+      (_, pl) <- layoutOk style source []
+      later <- maybe (assertFailure "later") pure (Map.lookup "later" (labelPages (plPages pl)))
+      let refLine = [setLineText sl | sl <- Map.elems (plLines pl), "参照は" `T.isPrefixOf` setLineText sl]
+      refLine @?= ["参照は" <> T.pack (show later) <> "ページ。"]
+      let one = withIndexColumns "1" (replaceIn "lines = 30" "lines = 10" horizontal32)
+      (_, pl1) <- layoutOk one source []
+      assertBool "fewer pages" (Map.lookup "later" (labelPages (plPages pl1)) > Just later),
+    testCase "PDF: vertical, the index columns run from top to bottom" $ do
+      let style = withIndexColumns "2" pdfStyle <> "column-gap = \"2zw\"\n"
+      (geom, pl) <- layoutOk style indexSource []
+      nub [lineTarget (slLine sl) | p <- plPages pl, sl <- indexLinesOn pl p] @?= [20 * pgFontSize geom]
+      content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
+      let ta = typeAreaFor geom 1
+          ta2 = typeAreaFor geom 2
+          y1 r = TE.encodeUtf8 (spToPt (rectY r + rectH r - 22 * pgFontSize geom))
+      assertBool "a glyph at the top of the second column" (any (any (\d -> dY d `elem` [y1 ta, y1 ta2]) . drawnGlyphs) content),
+    testCase "HTML and EPUB: [index] columns change nothing" $ do
+      let out style = withSystemTempDirectory "golem-index-columns" $ \tmp -> do
+            BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
+            BS.writeFile (tmp </> "style.toml") style
+            BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 indexSource)
+            r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
+            assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+            buildFiles (tmp </> "build")
+      one <- out horizontalStyle
+      two <- out (withIndexColumns "2" horizontalStyle)
+      assertBool "files" (not (Map.null one))
+      two @?= one
+  ]
+
 -- | The fixture copied to @root@ with @src@ after its chapter 02.
 withChapter :: FilePath -> BS.ByteString -> IO Int
 withChapter root src = do
@@ -3279,7 +3385,7 @@ ofCode c b = [d | d <- bErrors b, diagCode d == DiagnosticCode c]
 
 -- | Pages with the labels and marks given, page n holding the nth list.
 pagesWith :: [[T.Text]] -> [PageOut]
-pagesWith ls = [PageOut n 0 False [] [] l [] [] | (n, l) <- zip [1 ..] ls]
+pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) | (n, l) <- zip [1 ..] ls]
 
 outputDiagnosticTests :: [TestTree]
 outputDiagnosticTests =
