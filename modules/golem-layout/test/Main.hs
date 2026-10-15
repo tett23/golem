@@ -1093,7 +1093,19 @@ characterFeatureTests =
     testCase "the baseline shift does not change the line breaks" $ do
       let at shift = (defaultComposeEnv fs) {ceLook = look0 {lkBaselineShift = shift}}
           breaksOf e = brPositions (breakParagraph defaultParams (const (10 * fs)) (compose e (T.replicate 25 "あい、")))
-      breaksOf (at (2 * 65536)) @?= breaksOf (at 0)
+      breaksOf (at (2 * 65536)) @?= breaksOf (at 0),
+    testCase "pairs with an inseparable character are not kerned, horizontal or vertical (golem-driver ADR 0020)" $ do
+      let kernAll v = (defaultComposeEnv fs) {ceKern = \_ _ _ -> -(88 / 1000), ceVertical = v}
+          plain v = (defaultComposeEnv fs) {ceVertical = v}
+          boxes e t = [(bcText c, w, bcEdgeEnd c) | Box w c <- compose e t]
+      sequence_
+        [ boxes (kernAll v) t @?= boxes (plain v) t
+        | v <- [False, True],
+          t <- ["あ\x2014\x2014い", "あ……い", "あ‥‥い", "漢\x2014", "\x2014漢"]
+        ]
+      sequence_ [assertBool (show (boxes (plain v) "あ\x2014\x2014い")) (all (\(_, _, e) -> e == 0) (boxes (plain v) "あ\x2014\x2014い")) | v <- [False, True]]
+      -- a Japanese pair is kerned as before
+      sequence_ [map (\(_, _, e) -> e) (boxes (kernAll v) "あい") @?= [round (toRational fs * 88 / 1000), 0] | v <- [False, True]]
   ]
   where
     tenth = fs `div` 10
@@ -1342,20 +1354,62 @@ akiTests =
       let env = (akiEnv defaultAkiSet) {ceRestyle = \lk -> \case CharStyle _ "big" _ -> lk {lkSize = 2 * fs}; _ -> lk}
           items = fst (composeInlines env [CharStyle sp "big" [sp0 "」"], sp0 "漢"])
       [g | g@Glue {} <- items, itemStretch g < filStretch] @?= [Glue fs 0 fs],
-    testCase "[aki] is a fixed glue with no break around it and no aki of the set" $ do
+    testCase "[aki] is an empty box of its width, with no break and no aki of the set (golem-layout ADR 0012)" $ do
       let items = fst (composeInlines (akiEnv defaultAkiSet) [sp0 "漢", Aki sp (AkiZw (1 / 5)), sp0 "A"])
-          boxText = \case
-            Box _ c -> Just (bcText c)
-            _ -> Nothing
-      map (\it -> maybe (Right it) Left (boxText it)) (take 4 items)
-        @?= [Left "漢", Right (Penalty 0 infPenalty NoHyphen), Right (Glue (fs `div` 5) 0 0), Left "A"]
-      length items @?= 7
+          shapeOf = \case
+            Box w c -> Left (bcText c, boxKind c, w)
+            it -> Right it
+      map shapeOf (takeWhile (not . isLineEnd) items)
+        @?= [Left ("漢", KindText, fs), Left ("", KindAki, fs `div` 5), Left ("A", KindText, fs `div` 2)]
+      length items @?= 6
       let absolute = fst (composeInlines (akiEnv defaultAkiSet) [sp0 "3", Aki sp (AkiAbs 65536), sp0 "kg"])
-      [g | g@Glue {} <- absolute, itemStretch g < filStretch] @?= [Glue 65536 0 0]
+      [(w, boxKind c) | Box w c <- absolute, boxKind c == KindAki] @?= [(65536, KindAki)]
+      [g | g@Glue {} <- absolute, itemStretch g < filStretch] @?= [],
+    testCase "a space of no advance is not taken for an [aki] (golem-layout ADR 0012)" $ do
+      let zeroSpace env = env {ceAdvance = \lk c -> if c == ' ' then 0 else ceAdvance env lk c}
+          base = akiEnv defaultAkiSet
+          glueless = map (\case Glue {} -> Glue 0 0 0; it -> it)
+      [g | g@Glue {} <- compose (zeroSpace base) "A 漢", itemStretch g < filStretch] @?= [Glue 0 0 0]
+      glueless (compose (zeroSpace base) "A 漢") @?= glueless (compose base "A 漢")
+      glueless (compose (zeroSpace base) "A 「漢") @?= glueless (compose base "A 「漢"),
+    testCase "the first character after an [aki] at the paragraph start is the paragraph's first (golem-layout ADR 0012)" $ do
+      let items = fst (composeInlines (akiEnv defaultAkiSet) [Aki sp (AkiZw 1), sp0 "「あ」"])
+      case items of
+        Box w a : Box _ c : _ -> do
+          (w, boxKind a, bcEdgeStart a, bcEdgeEnd a) @?= (fs, KindAki, 0, 0)
+          (bcText c, bcEdgeStart c) @?= ("「", 0)
+        _ -> assertFailure (show items),
+    testCase "an [aki] at the paragraph end is the last box of the line; the bracket gets no line-end space (golem-layout ADR 0012)" $ do
+      zenkaku <- maybe (assertFailure "no zenkaku" >> error "unreachable") pure (Map.lookup "gyomatsu-yakumono-zenkaku" builtinAkiSets)
+      let items = fst (composeInlines (akiEnv zenkaku) [sp0 "あ」", Aki sp (AkiZw 1)])
+      case brLines (breakParagraph defaultParams (const (10 * fs)) items) of
+        [l] -> do
+          map boxKind (take 1 (reverse [c | Box _ c <- lineItems l])) @?= [KindAki]
+          lineEdge l @?= (0, 0)
+          -- あ (1 em), 」 (a half em, no space after it) and the [aki] (1 em)
+          trailingRoom l @?= 10 * fs - (fs + fs `div` 2 + fs)
+        ls -> assertFailure (show ls),
+    testCase "an [aki] inside a line breaks as the penalty and the fixed glue did (golem-layout ADR 0012)" $ do
+      let asGlue = concatMap $ \case
+            Box w c | boxKind c == KindAki -> [Penalty 0 infPenalty NoHyphen, Glue w 0 0]
+            it -> [it]
+          texts l = T.concat [bcText c | Box _ c <- lineItems l]
+          outcome its w = [(texts l, lineRatio l, lineEdge l) | l <- brLines (breakParagraph defaultParams (const w) its)]
+          paras =
+            [ [sp0 "第一章", Aki sp (AkiZw 1), sp0 "吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。"],
+              [sp0 "重さは3", Aki sp (AkiZw (1 / 4)), sp0 "kgで、長さは12", Aki sp (AkiAbs 65536), sp0 "mmである。何でも薄暗いじめじめした所で泣いていた事だけは記憶している。"]
+            ]
+      forM_ paras $ \p -> forM_ [5 * fs, 7 * fs, 9 * fs + fs `div` 3, 12 * fs] $ \w -> do
+        let its = fst (composeInlines (akiEnv defaultAkiSet) p)
+        assertBool "has an [aki]" (not (null [() | Box _ c <- its, boxKind c == KindAki]))
+        outcome its w @?= outcome (asGlue its) w
   ]
   where
     sp = mkSpan (FileId 0) 0 0
     orderedAs xs order = [x | x <- order, x `elem` xs]
+    isLineEnd = \case
+      Penalty _ p _ -> p >= infPenalty
+      _ -> False
 
 -- | Code blocks and the character style code (golem-driver ADR 0017).
 codeTests :: [TestTree]
