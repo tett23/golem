@@ -832,7 +832,7 @@ layoutPdf inp0 geom fonts =
           let capacity = length (pgLineGrid geom)
               round' assumed = do
                 built <- buildFlow inp geom fonts figures assumed
-                pure (if null (bErrors built) then Right (built, paginateIn (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
+                pure (if null (bErrors built) then Right (built, paginateIn (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
               labels = labelSpans (piBook inp)
               labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
           result <- fixpoint labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
@@ -2404,7 +2404,9 @@ writeDocument inp geom fonts layout intent =
             noteLines = concat [take cnt (drop from (Map.findWithDefault [] nid noteBodies)) | (nid, from, cnt) <- poFootnotes p]
             bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
             noteParts = [drawLine ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] []) | (slot, l) <- zip bottomSlots noteLines]
-            ruleMarks = concat [tableRules ta seg w | seg <- poTables p, Just w <- [Map.lookup (tsTable seg) (plTables layout)]]
+            ruleMarks =
+              concat [tableRules ta seg w | seg <- poTables p, Just w <- [Map.lookup (tsTable seg) (plTables layout)]]
+                <> [noteRule ta rule (length grid - length noteLines) | not (null noteLines), Just rule <- [stNotesRule style]]
          in (lineParts <> noteParts, figMarks, ruleMarks, backMarks)
       -- the columns of a page, its sidenotes and, once, its running head and folio
       drawPage ps master = case ps of
@@ -2425,6 +2427,22 @@ writeDocument inp geom fonts layout intent =
                 ]
               allParts = concat [t | (t, _, _, _) <- columns] <> sidenoteParts <> masterParts
            in (concat [b | (_, _, _, b) <- columns] <> concatMap fst allParts <> concat [f | (_, f, _, _) <- columns] <> concat [r | (_, _, r, _) <- columns] <> concatMap fst hiddenParts, concatMap snd (allParts <> hiddenParts))
+      {- the rule before the footnotes from grid line first (golem-driver ADR
+      0024): without spaces through the middle of the em box of the line
+      before; with them space-after above the em box of the first
+      footnote line. From the start of the line of the column, its near
+      edge and far edge measured from the top (the right in vertical text). -}
+      noteRule ta rule first =
+        let p = pgLinePitch geom
+            fs = pgFontSize geom
+            w = rsWeight rule
+            len = maybe 0 (dimToSp fs) (rsLength rule)
+            far = case rsSpaceAfter rule of
+              Nothing -> toInteger (first - 1) * p + fs `div` 2 - w `div` 2
+              Just a -> toInteger first * p - dimToSp fs a - w
+         in if vertical
+              then P.Rule (Rect (rectX ta + rectW ta - far - w) (rectY ta + rectH ta - len) w len)
+              else P.Rule (Rect (rectX ta) (rectY ta + rectH ta - far - w) len w)
       -- the rules of a table on a page, centred in the space between grid lines (golem-driver ADR 0008)
       tableRules ta seg w =
         let p = pgLinePitch geom

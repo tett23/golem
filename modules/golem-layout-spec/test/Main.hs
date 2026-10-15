@@ -130,6 +130,27 @@ tests =
             he @?= Anchor ex ((oy + oh + a5H) `div` 2) AlignStart
             fo @?= Anchor (ox + ow `div` 2) (oy `div` 2) AlignCenter
           other -> assertFailure (show other),
+      testCase "G0701: the footnote rule longer than a line (golem-driver ADR 0024)" $ do
+        let small chars cols gap = Grid (Abs (pt 8)) chars 30 (Abs (pt 14)) cols gap (Abs mm18) (Abs mm20)
+            ruled len g = (styleWith False False g) {stNotesRule = Just (RuleSpec (Just len) 19661 Nothing Nothing)}
+            isG0701 = \case
+              Left [d] -> diagCode d == DiagnosticCode "G0701"
+              _ -> False
+        assertBool "41zw on 40 characters" (isG0701 (pageGeometry (FileId 0) False (ruled (Zw 41) (small 40 1 Nothing))))
+        assertBool "40zw on 40 characters" (not (isLeft (pageGeometry (FileId 0) False (ruled (Zw 40) (small 40 1 Nothing)))))
+        assertBool "21zw on columns of 20 characters" (isG0701 (pageGeometry (FileId 0) False (ruled (Zw 21) (small 20 2 (Just (Zw 2))))))
+        assertBool "20zw on columns of 20 characters" (not (isLeft (pageGeometry (FileId 0) False (ruled (Zw 20) (small 20 2 (Just (Zw 2))))))),
+      testCase "the lines of the footnote separator (golem-driver ADR 0024)" $ do
+        let base = styleWith False False (grid 30 30 1 Nothing)
+            withRule b w a = base {stNotesRule = Just (RuleSpec (Just (Zw 10)) w b a)}
+        pgNoteSeparator (geom base) @?= 1
+        pgNoteSeparator (geom (withRule Nothing 19661 Nothing)) @?= 1
+        -- 5.3pt fits in 7pt + 17pt
+        pgNoteSeparator (geom (withRule (Just (Abs 0)) 19661 (Just (Abs (pt 5))))) @?= 1
+        -- 25.3pt - 7pt = 18.3pt over 17pt, rounded up
+        pgNoteSeparator (geom (withRule (Just (Abs (pt 15))) 19661 (Just (Abs (pt 10))))) @?= 2
+        -- zw is the size of the grid
+        pgNoteSeparator (geom (withRule (Just (Zw 1.5)) 19661 (Just (Zw 1)))) @?= 2,
       testCase "G0750: a hidden folio on the type area, only with crop marks and when enabled (golem-driver ADR 0021)" $ do
         let mm15 = 2786570 -- 15mm
             mm15' = 278657 -- 1.5mm

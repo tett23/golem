@@ -10,6 +10,7 @@ import Golem.Syntax.Span
 import Golem.Text
 import Test.Tasty
 import Test.Tasty.HUnit
+import TextOutputSpec (textOutputTests)
 
 main :: IO ()
 main = defaultMain tests
@@ -64,5 +65,6 @@ tests =
           @?= [("a.txt", "リスト1-1　設定の読み込み\nsrc/Main.hs\n main = do\n-  old\n+  new ① ②\n \n")],
       testCase "a code block with none of them is its text (golem-driver ADR 0023)" $
         renderBlocks Map.empty [] Map.empty [CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a <1>" (Just 1) Nothing False [], CodeLine "b" (Just 2) Nothing False []])]
-          @?= [("a.txt", "a <1>\nb\n")]
+          @?= [("a.txt", "a <1>\nb\n")],
+      textOutputTests
     ]
