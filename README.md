@@ -73,11 +73,12 @@ golem new mybook
 
 | コマンド | 内容 |
 |---|---|
-| `golem new DIR [--language ja\|en] [--no-fonts]` | プロジェクトを作る。版面の設定と、配布元から取得したフォントを含む。`--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない） |
+| `golem new DIR [--language ja\|en] [--no-fonts]` | プロジェクトを作る。版面の設定と、配布元から取得したフォントと、プリフライトの設定 `preflight.toml` を含む。`--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない） |
 | `golem plugin lock` | マニフェストのプラグインを取得し、ハッシュを `plugins.lock` に書く |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
 | `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限りお知らせを出さない |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | 出力を書かずに検査する |
+| `golem preflight [--rules FILE] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、書かずに入稿の前の検査（プリフライト）を行う。設定は `--rules` のファイル、なければ `preflight.toml`、それもなければ組み込みの `print`。最後に検査した PDF の SHA-256 を出す |
 | `golem lint [--profile dev\|prod] [--no-notices]` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形する |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
@@ -111,10 +112,12 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注欄の幅、版面との間隔、本文側の印だけを書く。
 コードブロックは組み込みの段落スタイル `code` で組み、書体は `[fonts.code]` の役割、背景の色と内側の余白は `[paragraph-styles.code]` の `background` と `padding` で指定する（[golem-driver ADR 0017](./docs/golem-driver/adr/0017-pdf-code-blocks.md)）。
 PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折り返す。
+技術書のためには、```` ```haskell numbers=10 file="src/Main.hs" highlight=12 diff=true callouts=true ```` のように開始の行（と `@listing`）に書くキーワード引数で、行番号、ファイル名、強調、差分、注釈の印（①）を付けられ、`@caption` で付けたキャプションにはリスト番号が振られる。色分け、強調と差分の背景、折り返した印、改ページの続きの表示は `style.toml` の `[code]` と `[code.colors]` で、枠は `[paragraph-styles.code]` の `border` で指定する（[golem-driver ADR 0023](./docs/golem-driver/adr/0023-code-block-book-features.md)）。
 PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組みの本でも二段のように版面と異なる段数で組める（[docs/adr/0025](docs/adr/0025-index-columns.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
-PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には商用のプリフライト（Acrobat や pdfToolbox など）で確認する。
+PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には `golem preflight --marks japanese` を通し、その後に商用のプリフライト（Acrobat や pdfToolbox など）で確認する（[docs/golem-cli/adr/0006](docs/golem-cli/adr/0006-preflight.md)）。
+入稿する PDF は `golem build --target pdf --profile prod` で作る。`golem preflight` の要約の SHA-256 は、この PDF と一致する。
 
 日本の印刷所に入稿する PDF は、`style.toml` の `[page]` に `bleed = "3mm"` を書き、`golem build --target pdf --marks japanese` で作る。
 塗り足しのない日本式のトンボはエラー（G0702）になる。
@@ -221,6 +224,11 @@ GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 ```bash
 cargo install cddl --version 0.10.7 --locked
 ```
+
+ほかに、PDF の構造の検査は qpdf を、プラグインの配布のテストは openssl を使う。
+これらの外部ツールがないと、それを使うテストは `SKIP` と表示されて飛ばされる。
+`GOLEM_REQUIRE_EXTERNAL_TOOLS=1` を付けると、ツールがないことがテストの失敗になる。
+CI はこれを付けて実行する。
 
 ### CLI のビルド
 

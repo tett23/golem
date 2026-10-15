@@ -54,7 +54,7 @@ cfg0 =
       hcRubyBaseSpacing = "center",
       hcBreakKinds = Set.empty,
       hcLists = Nothing,
-      hcCode = HtmlCode Nothing Nothing Nothing "0.5em"
+      hcCode = HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty
     }
 
 -- | A book of one document, a.gm, with nothing assembled.
@@ -64,6 +64,7 @@ bookOf bs =
     { bookDocs = [Document fidA bs],
       bookHeadings = Map.empty,
       bookFigures = Map.empty,
+      bookListings = Map.empty,
       bookToc = [],
       bookTocDepth = Nothing,
       bookIndex = [],

@@ -42,7 +42,7 @@ test-suite golem-doc-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    Gen AssembleSpec BibliographySpec ListMarkersSpec CborExprSpec NumberingSpec
+  other-modules:    Gen AssembleSpec BibliographySpec CborExprSpec ExternalTool ListMarkersSpec NumberingSpec
   build-depends:
     , base
     , bytestring

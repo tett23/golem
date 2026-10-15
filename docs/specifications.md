@@ -158,6 +158,7 @@ flowchart TD
     eval["golem-eval<br/>式の評価とプラグインの展開"]
     doc["golem-doc<br/>意味論 IR と文書構造（S1）の集約"]
     syntax["golem-syntax<br/>診断とソース位置（最下層）"]
+    preflight["golem-preflight<br/>プリフライトの設定と検査"]
     subgraph pdfpath["PDF 経路"]
         layoutspec["golem-layout-spec<br/>レイアウト IR"]
         layout["golem-layout<br/>行分割、禁則、改ページ"]
@@ -179,6 +180,7 @@ flowchart TD
     driver --> lint
     driver --> pdf
     driver --> plugin
+    driver --> preflight
     driver --> text
     epub --> html
     eval --> project
@@ -191,6 +193,7 @@ flowchart TD
     lsp --> fmt
     pdf --> layoutspec
     plugin --> eval
+    preflight --> pdf
     project --> doc
     project --> regex
     text --> doc
@@ -434,7 +437,7 @@ S0 はソースファイルごとに独立して評価し、S1 は各ファイ�
 `@label` は直後のブロックに付き、直後にブロックがない場合はコンパイルエラーとする。
 ラベルや見出しの属性を指定するブロックコマンドが連続した場合は、それらがまとめて次のブロックに付く。
 章を参照するときは、題名ではなくラベルで指す。
-番号を持つのは `@nonumber` のない見出しと図版であり、題を持つのは見出しと図版（代替テキスト）である。
+番号を持つのは `@nonumber` のない見出し、図版、キャプションのあるコードブロックであり、題を持つのは見出し、図版（代替テキスト）、キャプションのあるコードブロック（キャプション）である。
 番号を持たない要素を `[ref-number ...]` で参照した場合と、題を持たない要素を `[ref-title ...]` で参照した場合は、コンパイルエラーとする（[golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)）。
 題名を識別子にすると、題を直すたびに参照が壊れるためである。
 
@@ -452,7 +455,7 @@ S0 はソースファイルごとに独立して評価し、S1 は各ファイ�
 見出しには次の属性を付けられる。
 属性もラベルと同じく、見出しの直前の行のブロックコマンドで指定する。
 
-- **短い題**：目次と柱には、本文の見出しより短い題を使えるようにする。指定がない場合は見出しの題を使う。柱には、マスターページの柱の内容が `heading.<階層>.short` か `heading.<階層>.numbered` のときに短い題が出る（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
+- **短い題**：目次と柱には、本文の見出しより短い題を使えるようにする。指定がない場合は見出しの題を使う。柱には、マスターページの柱の内容が `heading.<階層>.short` か `heading.<階層>.numbered`（書式では `{heading.<階層>.short}` などの差し込み）のときに短い題が出る（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)、[golem-driver ADR 0022](golem-driver/adr/0022-running-head-formats.md)）。
 - **番号の指定**：その見出しの番号を明示する。
 - **番号からの除外**：序文やあとがきのように、章番号を振らない見出しを指定する。
 - **目次からの除外**：目次に載せない見出しを指定する。
@@ -493,6 +496,13 @@ R は、ページ番号 999 を項目と同じ環境で組んだ幅 W に、二�
 そのため、目次のページ番号が目次の行数とページ数を変えることはなく、後ろのページの番号も動かさない。
 見出しのページは、S2 の繰り返しが収束した後に、最終回のページから一度だけ求める。
 HTML、EPUB、プレーンテキストの目次は、ページを持たないので、リンクの一覧と題の一覧のままである。
+
+キャプション（`@caption`）を付けたコードブロックには、リスト番号を振る（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+数え方は図番号と同じく、階層 1 の見出しで数え直し、文書構造（S1）で決める。
+図番号とは別に数え、キャプションのないコードブロックは数えない。
+表記は `style.toml` の `[code]` の `number`（既定 `リスト{chapter}-{n}`）で決める。
+章の外のコードブロックに `{chapter}` を使う書式を当てると、図版と同じくエラー（G0404）とする。
+`@label` を付けたキャプションのあるコードブロックは、`[ref-number ...]` で章の番号とリストの番号（`3-2` の形）を、`[ref-title ...]` でキャプションを参照できる。
 
 ## style.toml
 
@@ -913,7 +923,31 @@ HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS 
 ほかの段落スタイルに書くとエラー（G0306）とする。
 型は段落スタイルの全体に持たせ、実装を `code` に絞る（「設計原則」の「広い型、狭い実装」）。
 `background` のスウォッチが `[color.swatches]` にない場合は G0313、`padding` が負か寸法として読めない場合は G0306 とする。
-ファイルの先頭の `@style-def paragraph code` も、同じ四つのキーに限って書ける。
+ファイルの先頭の `@style-def paragraph code` も、同じキーに限って書ける。
+
+技術書のための枠のキーとして、`code` には `border`（スウォッチの名前、既定なし）と `border-width`（`mm`、`pt`、`Q`、`H` の寸法、既定 `"0.25pt"`）も書ける（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+`border` があれば、PDF では背景と同じ矩形の線を、線の中心を矩形の辺に置いて描き、改ページで分かれた部分ごとに閉じた矩形にする。
+HTML と EPUB では `pre` に `border` を書く。
+`border` と `border-width` も `code` にだけ書け、ほかの段落スタイルに書く場合と、`border-width` を `zw` で書く場合はエラー（G0306）、スウォッチがない場合は G0313 とする。
+
+`[code]` と `[code.colors]` の表は、技術書のためのコードブロックの機能を決める（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+
+| キー | 型 | 既定 | 意味 |
+| --- | --- | --- | --- |
+| `number` | 書式 | `"リスト{chapter}-{n}"` | リスト番号の表記 |
+| `line-numbers` | 真偽値 | `false` | `numbers` を書かないコードブロックに行番号を付けるか |
+| `line-number-color` | スウォッチの名前 | なし | 行番号と折り返した印の色。なければ本文の文字の色 |
+| `highlight` | スウォッチの名前 | なし | 強調する行の背景。なければ墨 15% の網 |
+| `added`、`removed` | スウォッチの名前 | なし | 差分の追加した行と削除した行の背景。なければ塗らない |
+| `wrap-mark` | 文字列 | `""` | 折り返した行の行末に描く印 |
+| `continued` | 文字列 | `""` | 改ページで分かれたコードブロックの、分かれる側の末尾に描く文言 |
+
+`[code.colors]` は、skylighting の `TokenType` を kebab-case にした字句の種類（`keyword`、`data-type`、`comment`、`string` など 30 種）から、スウォッチの名前への表であり、PDF と HTML の色分けに使う。
+表にない種類の字句と、`[code.colors]` を書かない本の字句は、本文の文字の色で組む。
+既定を色なしにするのは、本文を墨一色で刷る本が多いためである。
+強調の網の既定だけは、名前を持たないプロセスカラーの墨 15% とする。
+強調には行番号や印のような別の手がかりがなく、色を設定しない本で強調が見えなくなるのを避けるためである。
+`[code]` と `[code.colors]` の未知のキー、真偽値でない `line-numbers`、差し込みを含まない `number` は G0306、`[color.swatches]` にないスウォッチは G0313 とする。
 
 PDF では、コードブロックを次のように組む。
 
@@ -926,6 +960,21 @@ PDF では、コードブロックを次のように組む。
 - コードの行のあいだ（折り返した続きの行を含む）で改ページと段の改めをしてよい。ページに残る格子の行に一行と上下の `padding` が入らなければ、ブロックを次のページから始める。分けた部分ごとに格子の行を占め、背景を塗る。
 - 空行は、先頭と末尾のものも、中身のない一行として残す。
 - 縦組みの本では、ほかの本文と同じく縦組みで組み、欧文は UAX #50 で回転する。タブの位置と折り返しは天からの距離で測る。
+
+技術書の機能（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）は、PDF で次のように組む。
+コードブロックの領域は、行の始まりの側から、内側の余白、行番号の列、差分の印の列、コードの列、内側の余白に分ける。
+どの列も、コードの文字の大きさとコードの役割のフォントで組む。
+
+- 行番号の列の幅は、そのコードブロックの最大の行番号を組んだ幅とし、各番号を列の終わりにそろえ、列の後に空白の送りの 2 倍を空ける。折り返した続きの行には番号を置かない。縦組みでも行の方向に置く。
+- 差分の印の列の幅は空白の送りの 2 倍とし、`+` と `-` を列の始まりに置く。変わらない行には何も置かない。
+- G0743 の行長の不足は、行長から左右の `padding`、行番号の列と空き、差分の印の列、`wrap-mark` の幅を引いた幅で検査する。
+- `file` があれば、最初の部分の先頭に一行を足し、ファイル名をコードの列の始まりに置く。この行と最初のコードの一行は同じページに置き、改ページの後の部分には繰り返さない。
+- キャプションは、リスト番号、全角の空白、キャプションを、背景の外のコードブロックの上に、段落スタイル `caption` の `font` と `size` で、行送りの比を保って組む。キャプションは行の格子の上から始め、最後の行の後からコードブロックの格子の行を占める。キャプションと最初のコードの一行が同じページに収まらなければ、キャプションごと次のページに送る。
+- 強調する行と、`added` か `removed` の色を持つ差分の行は、その行（折り返した続きの行を含む）のコードの行送りの帯を背景の左右いっぱいに、背景の上、文字の下に塗る。強調と差分が重なれば強調の色で塗る。
+- 言語の名前が skylighting の構文にあれば、HTML と同じく字句に分け、`[code.colors]` の表にある種類の字句の文字の色だけを変える。構文にない言語と、字句に分けるのに失敗した場合は、色を付けずに組み、診断を出さない。
+- 注釈の印は丸数字（① は U+2460、㉑ は U+3251、㊱ は U+32B1 から）で描き、同じ行の複数の印は空白の送り一つ分を空けて並べる。印を持つ行の行末の最大に空白の送りの 2 倍を足した位置から並べて、どの印もコードの列に収まれば、すべての印をその位置にそろえる。収まらなければ各行の行末から空白の送りの 2 倍の後に置き、それでも収まらない行は印の前で折り返し、続きの行の始まりの位置に置く。
+- `wrap-mark` が空でなければ、次の行に続く各行の行末に、その文字列をコードの列の終わりにそろえて描き、その幅の分だけ折り返しの幅を狭める。
+- `continued` が空でなければ、改ページで分かれたコードブロックの最後の部分のほかの各部分の末尾に一行を足し、その文字列をコードの列の終わりにそろえて描く。この行もその部分が占める格子の行に数え、コードの一行、この行、上下の `padding` が一ページに収まらなければ G0743 とする。
 
 文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイルの文字は、PDF でハイフネーションとカーニングをかけず、改行してよい位置を空白と `/` の後に限る（`/` の後で改行してもハイフンを描かない）。
 中の文字のあいだにはアキ量のセットの空きを入れず、前後の文字との空きは端の文字のクラスで決める。
@@ -1099,6 +1148,12 @@ HTML と EPUB では、組み込みの文字スタイルを `strong`、`b`、`i`
 `pre` には `white-space: pre-wrap`、`overflow-wrap: anywhere`、`tab-size: 2`、`hyphens: none`、`font-kerning: none` を書き、`[paragraph-styles.code]` に `background` があれば、その RGB の近似の `background-color` と、`padding` を `em` にした `padding` を書く。
 `code` の `size` があれば、キャプションと同じく `pre` の `font-size` を書く。
 `code` を `based-on` で引き継ぐ文字スタイルの CSS には、`font-family`（最後に `monospace`）と `hyphens: none` を書く（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
+キャプションかファイル名のあるコードブロックは `<figure class="listing">` で包み、`<figcaption>` にリスト番号、全角の空白、キャプションを入れ、ファイル名を `<div class="code-file">` に入れて、どちらも `<pre>` の前に置く（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+行番号、強調、差分、注釈の印のどれかを持つコードブロックは、各行を `<span class="line">`（強調は `hl`、追加と削除は `add` と `del` の class を足す）で包み、行番号を `<span class="ln" aria-hidden="true">`、差分の印を `<span class="dm" aria-hidden="true">`、注釈の印を `<span class="callout">①</span>` にする。
+そのようなコードブロックのある本の `style.css` には、`.ln` と `.dm` の `user-select: none`、行番号の右揃えの幅（最大の桁数の `ch`）、強調と差分の背景の色（スウォッチの RGB の近似、強調の既定は墨 15% の近似）を書く。
+`[code.colors]` があれば `code span.<短い class>` の `color` を書き、なければ字句の色を書かない。
+`wrap-mark` と `continued` は HTML と EPUB には出さない。
+プレーンテキストには、キャプションの行、ファイル名の行、差分の印のついた行、行末に空白一つを空けた丸数字の注釈の印を出し、行番号、強調、色は出さない。
 文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between` を CSS に書き、`size` はキャプションと傍注のほかは CSS に書かない。
 
 PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組む。
@@ -1144,11 +1199,80 @@ l は 1 以上の整数である。
 内容の値が正しくない場合と、`content` と `even` または `odd` を一緒に書いた場合、`even` と `odd` の片方だけを書いた場合、どれも書かない場合は G0314 とする。
 柱に使う見出しの階層は内容の値で決めるので、見出しの側の `[headings.<階層>]` には `running-head` を書けない（G0319）。
 
+`content`、`even`、`odd` には、上の語彙の文字列のほかに、文字列の配列で柱の書式を書ける（[golem-driver ADR 0022](golem-driver/adr/0022-running-head-formats.md)）。
+配列の各要素が柱の一行であり、配列の順に天から地へ重ねる。
+文字列は語彙の名前、配列は書式と、値の型で読み方を分ける。
+綴りを誤った語彙の名前が、固定の文言として黙って柱に出ないようにするためである。
+`even` と `odd` の片方を文字列、もう片方を配列で書いてもよい。
+
+```toml
+[masters.body]
+# 書名と章の番号と題を一行に並べる
+running-head = { position = "top-outside", content = ["{meta.title}　{heading.1.numbered}"] }
+
+[masters.book]
+# 偶数ページに書名、奇数ページに章の題と節の題（節がなければ章の題だけ）
+running-head = { position = "top-outside", even = ["{meta.title}"], odd = ["{heading.1.short}　{heading.2.short?}"] }
+
+[masters.twoline]
+# 書名の行と章の題の行を重ねる
+running-head = { position = "top-outside", content = ["{meta.title}", "{heading.1.short}"] }
+```
+
+語彙の値は、読み込みで同じ意味の書式に直す。
+`"heading.<l>.short"` などは `["{heading.<l>.short}"]` などと、`"title"` は `["{meta.title}"]` と同じ意味である。
+`"none"` は書式では書かない。
+
+書式の各行は、文字と差し込みからなる。
+差し込みは `{` と `}` で囲み、差し込みでない `{` と `}` は `{{` と `}}` で書く。
+
+| 差し込み | 値 |
+|---|---|
+| `{heading.<l>.short}` | 階層 l の見出しの短い題 |
+| `{heading.<l>.numbered}` | 階層 l の見出しの番号の表記、本の言語で決まる区切り（[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）、短い題。番号のない見出しは短い題だけ |
+| `{heading.<l>.number}` | 階層 l の見出しの番号の表記だけ。番号のない見出しでは値がない |
+| 上の三つの末尾に `.last` | ページの中の見出しの選び方を「最後」にする |
+| `{meta.<キー>}` | マニフェストの `[metadata]` の値。キーは `title`、`title_reading`、`edition`、`publisher`、`date`、`language`、`id` |
+| `{set.<名前>}` | そのページのファイルで `@set` した変数 |
+| `{set.<名前空間>.<名前>}` | そのページのファイルが `@import ... as <名前空間>` で取り込んだ変数 |
+
+見出しの選び方は、上の語彙の値と同じである。
+`meta.creators` は配列なので書けない。
+著者名を柱に出す場合は、`@set` で文字列の変数を作る。
+`set` の変数は、そのページのファイル（マスターページを選ぶのに使うファイル）の変数である。
+本の全体で同じ値を出したい場合は、変数を一つのファイルに置き、各章のファイルで `@import` する。
+変数の値は、文字列はそのまま、数は式文脈 `[= ...]` で本文に埋め込んだときと同じ文字列にする。
+
+差し込みの値は、有効な見出しがない場合、`number` で見出しが番号を持たない場合、マニフェストにそのキーがない場合（`edition`、`publisher`、`title_reading`）、値が空の文字列の場合に「ない」とする。
+差し込みの名前の末尾に `?` を付けると（`{heading.2.short?}`）、値がないときに空の文字列として扱う。
+各行の柱は、次の順に決める。
+
+1. `?` のない差し込みのうち、一つでも値がなければ、その行を描かない。
+2. `?` を付けた差し込みのうち、値のないものは空の文字列にする。
+3. できた文字列の先頭と末尾の空白（U+0020 と U+3000）を取り除く。
+4. 取り除いた結果が空の文字列なら、その行を描かない。
+
+すべての行を描かない場合は、柱を描かない。
+3 の手順は、節の題がないときに章の題の後に全角の空白が残らないようにするためである。
+
+柱の各行は、本文の行送り（`[page.grid]` の行送り）で重ね、アンカーの揃え（`outside` なら小口の側、`inside` ならノドの側、`center` なら中央）にそろえる。
+行を重ねる向きは、版面との空きを変えないように決める。
+天の位置では、最後の行（版面に最も近い行）のベースラインを一行の柱と同じ位置に置き、それより前の行を行送りずつ天の側へ置く。
+地の位置では、最初の行のベースラインを一行の柱と同じ位置に置き、それより後の行を行送りずつ地の側へ置く。
+描かない行は詰め、残った行を版面の側から順に置く。
+
+書式の診断は次のとおりである。
+
+- 書式の誤りは G0314 とし、位置は誤りのある値とする。閉じていない `{`、対にならない `}`、空の差し込み `{}`、表にない差し込みと `{meta.creators}`、空の配列、空の文字列の要素、改行を含む要素、文字列でない要素、`{` を含む文字列の値（書式は配列で書く）が当たる。
+- `{set.<名前>}`（`?` なし）が、そのマスターページを使う章のファイルで定義されていない場合は G0267、参照する変数の値が文字列でも数でもない場合は G0268 とする。どちらも S0 の評価の後に章のファイルごとに検査し、位置はそのファイルの先頭とし、`style.toml` の先頭を関連する位置として添える。PDF をターゲットに含むビルドと `golem check` だけで検査する。
+- 描く柱の行の幅が、そのページの版面の幅を超える場合は G0751（警告）とする。柱は折り返さず、余白へ伸ばして組む。同じ行の文字列には一つだけ出す。
+- 書式の行の数の最大と行送りから、最も外側の行の字の外枠が仕上がりの判型の外に出る場合は G0752 とする。`style.toml` だけで決まるので `golem check` でも出る。
+
 次のページには柱を描かない。
 
 - 白ページ。ノンブルも描かない。
-- `page-break = "recto"` の見出しを置いたページ。章の始まりのページ（章扉を含む）に柱を出さない、和文と欧文の書籍の慣習に合わせる。
-- 内容の値が `none` のページと、有効な見出しがないページ（最初の章より前のページなど）。
+- `page-break = "recto"` の見出しを置いたページ。章の始まりのページ（章扉を含む）に柱を出さない、和文と欧文の書籍の慣習に合わせる。固定の文言だけの柱も描かない。
+- 内容の値が `none` のページと、すべての行を描かないページ（有効な見出しがない、最初の章より前のページなど）。
 - マスターページが `running-head` を持たないページ。
 
 各ページには、そのページの内容が属する章のファイルのマスターページを使う。
@@ -1325,7 +1449,9 @@ LSP は、これらの診断を位置の指すファイルに載せ、どのフ�
 LSP では、エディタで開いているファイルの BOM と CR も G0102 と G0103 にするが、プロジェクトの読み込みは止めない。
 プロジェクトの外のファイルに構文エラーがあるときは、構文の診断だけを出し、評価の診断を出さない。
 解析の段階の診断の位置は、誤りの文字から始まる（インデントの余分な空白、4 つ目の `#`、用語のない `=:`、本文の `[`）。
-Golem が書く `manifest.toml` と `style.toml` の誤りの文言は日本語とし、toml-parser 自身の文言（`missing key` など）は英語のまま出す。
+`manifest.toml`、`style.toml`、`plugins.lock` の誤りの文言は、toml-parser が作る文言も含めてすべて日本語にする（[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md)）。
+未知のキーは `知らないキーです: page.bindng`、値の型の誤りは `page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に `page.bindng` や `chapters[0]` の形の経路を書く。
+TOML の構文の誤りと意味の誤り（同じ表を二度書くなど）は、ファイルの先頭ではなく誤りのある行の位置で出す。
 
 診断の重大度は、エラー、警告、お知らせの三つである（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 エラーはビルドを止め、警告は止めないが出荷する前に直すべきものを表す。
@@ -1347,6 +1473,17 @@ lint の規則（G05xx）はお知らせを出さない。
 LSP は `silence-notices` に従い、抑制したお知らせを公開しない。
 LSP には `--no-notices` に当たる設定を設けない。
 記法と設定のキーを廃止するときは、まず廃止予定のお知らせを少なくとも一つの minor の版で出し、次の ADR でエラーにする（手順は [docs/diagnostics.md](diagnostics.md) の「お知らせ」の節）。
+
+診断は、機械が読む事実（`diagFacts`）を持てる（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+事実は名前と値（整数、文字列、整数の配列、文字列の配列）の組の並びで、今はプリフライトの診断だけが、ページ番号（`pdf-pages`）や測った値（`ppi` など）を持つ。
+JSON の形式では、事実を持つ診断にだけ、書いた順にキーを並べた `"facts"` のオブジェクトを `"fixes"` の後に加える。
+
+```json
+{"code":"G0906","severity":"warning","span":{...},"message":"…","related":[],"fixes":[],"facts":{"pdf-pages":[12],"ppi":212,"limit":300}}
+```
+
+事実のない診断の JSON は変わらない。
+人が読む形式は事実を表示せず、メッセージに同じことを書く。
 
 人が読む形式で診断を出した後に、文書にあるコードが一つでもあれば、標準エラー出力に `コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）` の一行を加える。
 例のコードは、出した診断のうち文書にあるコードの最小のものである。
@@ -1805,6 +1942,7 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | `golem new <dir> [--language ja\|en] [--no-fonts]` | プロジェクトを作る。マニフェストの `id` はここで一度だけ生成する |
 | `golem build [--target ...] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | ビルドする。`--target` を省くと四つのターゲットをすべて生成する（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。プロファイルの既定は dev |
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)） |
+| `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)） |
 | `golem lint [--profile dev\|prod] [--no-notices]` | lint を実行する |
 | `golem fmt [--check]` | 整形する |
 | `golem lsp` | LSP サーバーを起動する |
@@ -1839,6 +1977,10 @@ G0702 は PDF をターゲットに含むときにだけ出し、位置は `styl
 `golem lint`、`golem fmt`、LSP は `--marks` を持たない。
 
 `golem new` の雛形は、そのまま四つのターゲットをすべてビルドできる（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)）。
+雛形には、`manifest.toml`、`style.toml`、最初の章の原稿のほかに、プリフライトの設定 `preflight.toml` が入る（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+`preflight.toml` は `based-on = "print"` の一行と、`print` の主な値をコメントで書き写した例からなり、コメントの言語だけを雛形の言語に合わせる。
+`--no-fonts` を付けても作り、フォントの取得に失敗したときはほかのファイルと同じく書かない。
+雛形のプロジェクトは、そのままでは `print` のプリフライトを通らない（塗り足しの不足の G0910 と、出力インテントの欠けの G0914）。
 `--language` で日本語（既定）と英語を選び、言語に合わせて版面とフォントを決める。
 日本語は A6 判の縦組みで Noto Serif JP を、英語はマスマーケットのペーパーバック（4.25in × 6.875in、`mass-market`）の横組みで Source Serif 4 を使う。
 フォントとそのライセンスの文書は、配布元のタグで固定した版から取得し、Golem のソースに固定した SHA-256 で検査してから `fonts/` に置く。
@@ -1847,6 +1989,74 @@ G0702 は PDF をターゲットに含むときにだけ出し、位置は `styl
 `--no-fonts` を付けると取得せず、置くべきファイルを表示する。
 フォントを置く前でも、HTML、EPUB、プレーンテキストはビルドできる（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)）。
 PDF は、フォントを置くまで G0802 で止まる。
+
+### golem preflight
+
+`golem preflight` は、印刷所に入稿する前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+`golem build --target pdf` と同じ手順で PDF を組み、ファイルに書かずに、組んだ結果と PDF を検査する。
+プロファイルは常に prod で、`--profile` を付けると使い方の誤りになる。
+`manifest.toml` の `[targets.*]` の有無は見ず、常に PDF を組む。
+`--marks` は `golem build` と同じ意味で、入稿する PDF と同じトンボで検査するためにある。
+構文から出力までの段階の誤りは `golem build` と同じコードで出し、そのどれかのエラーで PDF を作れなければ、プリフライトの検査は行わない。
+LSP、`golem check`、`golem build` はプリフライトの検査を行わない。
+ビルドは原稿と設定の誤りで止まり、プリフライトは印刷の条件で止まる、という分け方である。
+
+InDesign のプリフライトプロファイルにあたるものを、プリフライトの設定と呼ぶ。
+プリフライトの設定は TOML のファイルに書き、`--rules` で指す（作業ディレクトリからの相対パスか絶対パスで、プロジェクトの外でもよい）。
+`--rules` を付けなければプロジェクトのルートの `preflight.toml` を読み、それもなければ組み込みの `print` を使う。
+最上位のキーは `based-on`（`basic`、`print`、`none` のどれか。省けば `print`）と `name`（要約に出す名前）と、検査の名前の表である。
+各検査の表は `severity`（`error`、`warning`、`off`）としきい値のキーを持ち、書かなかったキーは `based-on` の設定から引き継ぐ。
+お知らせは設定の値として選べない。
+長さは `style.toml` と同じ書き方で、`zw` は使えない。
+設定のファイルの誤りはすべて G0901 で、G0901 があれば PDF を組まずに終える。
+
+組み込みの設定は次のとおりである。
+`basic` は InDesign の [基本] にあたり、ビルドを止めない項目だけを検査する。
+`print` のしきい値は、日本の印刷所の入稿の案内でよく見る値から選んだもので、特定の規格の値ではない。
+`none` はすべての検査を `off` にした設定で、一から設定を書くときの基にする。
+
+| 検査 | コード | `basic` | `print` |
+| --- | --- | --- | --- |
+| `glyph-missing`（グリフのない文字） | G0902 | error | error |
+| `font-formats`（許さない形式のフォント） | G0903 | off | off |
+| `type-size`（小さすぎる文字） | G0904 | off | warning（5pt 未満、二版以上の色だけ） |
+| `image-unplaceable`（PDF に置けない図版） | G0905 | error | error |
+| `image-resolution`（実効の解像度の不足） | G0906 | なし | カラーとグレーは 150ppi 未満がエラー、300ppi 未満が警告。二値は 600ppi と 1200ppi |
+| `image-resolution-max`（実効の解像度の過剰） | G0907 | off | off |
+| `image-color-space`（許さない色空間の図版） | G0908 | off | warning（`cmyk` と `gray` を許す） |
+| `image-icc`（出力インテントと違うプロファイル） | G0909 | off | warning |
+| `bleed-size`（塗り足しの幅の不足） | G0910 | off | error（3mm 以上） |
+| `bleed-trim-hazard`（断裁の危険域の図版） | G0911 | off | error（3mm） |
+| `live-area`（断裁の危険域の文字と線） | G0912 | off | warning（3mm） |
+| `overfull-lines`（行長からはみ出す行） | G0913 | warning | warning |
+| `pdf-x`（PDF/X-4 の要件） | G0914 | error | error |
+| `ink-coverage`（総インキ量） | G0915 | off | warning（350%） |
+| `page-count`（ページ数） | G0916 | off | off |
+| `blank-pages`（空白のページ） | G0917 | off | off |
+| `stroke-weight`（細すぎる線） | G0918 | off | warning（0.1mm 未満） |
+
+同じ原因の診断は検査ごとの単位で一つにまとめ、最初のページの位置に出す。
+ページは PDF の何ページ目か（1 から数える）で示し、メッセージには最初の十ページまでを書き、それより多ければ `ほか <n> ページ` と添える。
+長さは mm で、小数点以下一桁に丸めて書く。
+検査は golem-preflight の純粋な関数（`Golem.Preflight.check`）が、golem-driver の PDF の書き手が作る組んだ結果の写し（`Golem.Preflight.View`）に対して行う。
+写しは `golem preflight` のときだけ作り、`golem build` の速さと出力を変えない。
+G0914 の検査は、golem-pdf の `Golem.Pdf.X4.verify` が書く前の PDF のオブジェクトに対して行う、Golem が生成しうる要素に限った自前の検査であり、PDF/X-4 の適合の判定ではない（[golem-pdf ADR 0003](golem-pdf/adr/0003-pdf-x-4-validator.md)）。
+入稿の前には、商用のプリフライトでも確かめる。
+
+終了コードはほかのコマンドと同じく、エラーの診断がなければ 0、あれば 1、使い方の誤りは 2 である。
+警告だけなら 0 で、警告でも止めたいときは設定で重大度を `error` にする。
+人が読む形式では、PDF を作れたときに、診断の後に要約の一行を標準エラー出力に加える。
+
+```
+プリフライト（設定: preflight.toml、基にした設定: print）: エラー 1、警告 3。PDF/X-4 の適合の判定ではないので、入稿の前に商用のプリフライトでも確かめます。検査した PDF の SHA-256: 3f2a…（64 桁）
+```
+
+設定の名前は、`name` があればそれ、なければファイル名、ファイルがなければ `組み込みの print` である。
+SHA-256 は検査した PDF のバイト列のもので、`golem build --target pdf --profile prod` に同じ `--marks` を付けて作った PDF と一致する。
+プロファイルは PDF のインスタンス ID の入力に入るので、`--profile prod` を付けずに作った PDF とは一致しない。
+`--format json` では要約の行を出さない。
+
+### 診断と終了コード
 
 診断は人が読む形で出力し、`--format json` を指定すると機械が読む形で出力する。
 終了コードは、成功が 0、診断によるエラーが 1、コマンドの使い方の誤りが 2 である。
@@ -2029,8 +2239,7 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### PDF
 
-- **柱の内容の書式**（未実装、[golem-driver ADR 0022](golem-driver/adr/0022-running-head-formats.md)）：柱の内容は、見出しの題と書名の固定の語彙（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）だけを書ける。柱の内容に、任意の文字列と変数の参照を書けるようにする。たとえば書名と章の題を並べる柱（`"{meta.title}　{heading.1.short}"` のような書式）や、固定の文言だけの柱を作れるようにする。参照できる値は、`meta` のメタデータ（書名、著者など）、見出しの題と番号、`@set` の変数とする。柱は複数の行にできるようにする（書名の行と章の題の行を重ねる柱など）。書式の記法（差し込みの書き方と、`{` そのものの書き方、行の区切りの書き方）、複数の行の行送りと揃え、柱の行が増えたときの版面との間の空き、参照した値がないときの扱い、参照の誤りの診断は ADR で決める。
-- **PDF のコードブロックの技術書の機能**（未実装、[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）：コードの書体の役割、コードブロックの組み方（空白とタブの保持、折り返し、背景）、本文の中のコードの組み方は[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)で実装した。技術書で使うコードブロックの機能は、まだない。行番号（開始の番号の指定を含む）、ファイル名やキャプション、特定の行の強調、コードの中の注釈の印（①のような印を行末に置き、本文で説明するもの）、差分の表示（追加と削除の行）、PDF での構文に応じた色分け、枠、折り返した印、改ページした部分の続きの表示、`@listing` で取り込んだファイルへの同じ指定を含む。本文の中のコード（`[code: ...]`）の背景の色も扱っていない。記法、`style.toml` の設定、HTML と EPUB での表し方は ADR で決める。
+- **本文の中のコードの背景の色**：コードの書体の役割、コードブロックの組み方は[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)で、技術書のためのコードブロックの機能は[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)で実装した。本文の中のコード（`[code: ...]`）の背景の色は扱っていない。
 - **章末の注**：`[notes] placement = "chapter-end"` を読み込むが、どの出力も注の置き方を変えない。仕様書とマニュアルは章末に置けると書いていない形に直したが、章末の注そのものはまだない。
 - **図版の欠落の扱い**：PDF の図版のうち、置けない形式のものや壊れた画像を、`golem build` が誤りにせずに落としている可能性がある（コードを読んだ結果で、実際の出力では確かめていない）。
 - **PDF の図版**：仕様は PDF（ベクター）の図版を置けると定めているが（「図版」の節）、実装（golem-pdf の `readImage`）は JPEG と PNG だけを受け付ける。マニュアルも PDF の図版を使えると書いている。仕様のとおり、PDF の図版を PDF の出力に置けるようにする。Web 用の代替画像の扱いも合わせて決める。
@@ -2041,7 +2250,6 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### 記法と設定
 
-- **style.toml の未知のキーの診断**（未実装、[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md)）：`style.toml` の未知のキーと値の型の誤りの診断（G0306）は、toml-parser の英語の文言のままである（`unexpected key: bindng (.page)` など）。位置を表示しない問題は [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md) で直した。
 - **参考文献の項目**：参考文献の一覧は、著者、題、発行元、発行の年しか組まない。CSL-JSON の誌名や書名（`container-title`）、巻と号（`volume`、`issue`）、ページ（`page`）、URL（`URL`）を読んでも組まないので、論文は誌名なしで出る。これらを組めるようにする。URL の文献には、最終閲覧日（CSL-JSON の `accessed`）を書けるようにする。
 
 - **`@table` の位置引数のパス**：`@table` はファイルのパスを `src=` だけで受け付ける。`@listing` は位置引数を正とし `src=` を廃止予定にした（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）ので、`@table` でもパスを最初の引数に書けるようにするかを検討する。記法の追加が要るので ADR で決める。
@@ -2052,8 +2260,7 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### CLI と LSP
 
-- **プリフライト**（未実装、[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）：`golem preflight` で、印刷所に入稿する前の検査を行う。InDesign のプリフライトとおおむね同じことをする。たとえば、フォントの欠落と埋め込みの可否、原稿の文字に対応するグリフのない文字、図版のファイルの欠落、図版の実効の解像度の不足、出力インテントに合わない色空間の図版、塗り足しまで届かない図版、版面やページに収まらない要素、PDF/X-4 への適合を検査し、問題を一覧にする。`golem check` は原稿と設定の誤りを、`golem preflight` は組んだ結果が印刷に耐えるかを見る。検査の項目、しきい値（解像度など）、InDesign のプリフライトプロファイルにあたる設定の置き場所は ADR で決める。
-- **雛形のプロジェクトとプリフライト**：`golem new` で作ったプロジェクトは、そのままではプリフライトを通らない。塗り足しが 0 であることと、出力インテント（`[color] intent`）がないことが誤りになる。ICC プロファイルは印刷所ごとに違うので雛形に入れられず、塗り足しだけを入れても出力インテントの誤りは残る。雛形の利用者が入稿までに何を足せばよいかを、どう案内するかを決める。
+- **PDF に置けない図版**：`golem build` は、JPEG と PNG として読めない `@figure` の画像（PDF の図版、壊れた画像）を、診断を出さずに PDF から落とす。`golem preflight` は G0905 で報告するが、`golem build` のエラーにするかどうかは決めていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 
 ### 手で確かめる項目
 
@@ -2062,6 +2269,7 @@ v1 のリリースまでに、次の項目を扱う。
 
 - **LSP の位置の扱い**：UTF-8 の位置の交渉と、行の長さを超える列の丸めを、実際のエディタ（Neovim）で確かめていない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)、[golem-lsp ADR 0003](golem-lsp/adr/0003-position-handling.md)）。
 - **CIDSystemInfo と異体字**：Adobe-Japan1 の ROS を持つフォント（小塚明朝 Pr6N など）で組んだ PDF を Acrobat のプリフライトにかけ、`CIDSystemInfo` がフォントの ROS になっていること、IVS の異体字が出ることを確かめていない。リポジトリにそうしたフォントがないためである（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。
+- **プリフライトと商用のプリフライトの差**：Golem の G0914 が出なかった PDF を Acrobat のプリフライト（PDF/X-4 の適合の検査）にかけ、Acrobat が PDF/X-4 の誤りを報告するかを確かめていない。差があれば `Golem.Pdf.X4.verify` に足す要件を ADR にし、結果は `docs/audits/` に残す。同じ条件の文書を InDesign のプリフライトにかけ、同じ種類の問題が両方で出るかも確かめていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 - **トンボのレジストレーションの色**：トンボを付けた PDF を Acrobat の出力プレビューとプリフライトで開き、トンボが全版に出ること、本文に特色が混ざらないこと、InDesign の書き出しと同じ形であることを確かめていない（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
 - **縦組みのダッシュ**：縦組みの PDF を目で見ること、InDesign の縦組みとの比較、縦組みの HTML を Safari と Chrome で開いて向きが PDF と同じことの確かめが残っている（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 - **リストの字下げ**：入れ子のリストと 10 項目を超える番号付きリストを、横組みと縦組みで PDF と EPUB にして目で見ることと、決定性の検査の蟹工船とテンペストの出力が変わらないことの確かめが残っている（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
@@ -2069,6 +2277,7 @@ v1 のリリースまでに、次の項目を扱う。
 - **LSP のお知らせ**：Neovim で、お知らせが Information として表示され、問題の一覧に載ることと、`silence-notices` に加えると保存の後に消えることを確かめていない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 - **診断の説明へのリンク**：GitHub の上で `docs/diagnostics.md#g0117` を開き、G0117 の節に移ることを確かめていない（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
 - **コードブロックの見え方**：コードブロックの PDF を Acrobat の出力プレビューで開き、背景の色が DeviceCMYK の版だけに出ることと、コードの書体が埋め込まれていることを確かめていない。HTML と EPUB の `pre` と `code` の見え方も、Safari と Chrome で確かめていない（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
+- **技術書のコードブロックの見え方**：行番号、キャプション、強調、注釈の印を付けたコードブロックを PDF と HTML で開き、技術書として読める見た目であることと、強調の網が墨の版だけに出ることを目で確かめていない。HTML で行番号と差分の印が選択とコピーに含まれないことも、Safari と Chrome で確かめていない（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 - **二冊のマニュアルの HTML と PDF**：利用者向けと開発者向けのマニュアルの HTML を、ブラウザで開いて確かめていない。PDF は、Acrobat でフォントの一覧と埋め込みを確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 - **マニュアルの中の InDesign の記述**：利用者向けのマニュアルの InDesign との対応と比較の記述（「はじめに」と付録 E）を、InDesign に詳しい人が確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 - **開発者向けのマニュアルの例**：プラグインの WebAssembly のテキスト形式（`.wat`）の例を、実際に組んで動かしていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。

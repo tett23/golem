@@ -27,6 +27,7 @@ ADR はコミットした後に変えられないので、下の層から順に�
 | golem-layout | 行分割、禁則、改ページ（S2） |
 | golem-font | シェイピング、サブセット化、埋め込み |
 | golem-pdf | PDF/X-4 の決定的な直列化 |
+| golem-preflight | プリフライトの設定（[code: preflight.toml]）と検査。I/O を持たない純粋な関数だけからなる |
 | golem-html | XHTML と CSS |
 | golem-epub | EPUB のパッケージ |
 | golem-text | プレーンテキスト（縦書きと横書き） |
@@ -41,10 +42,12 @@ ADR はコミットした後に変えられないので、下の層から順に�
 たとえば golem-cli は golem-driver にも直接依存しているが、golem-lsp を通して届くので、矢印は golem-lsp への一本だけである。
 
 @label fig-modules
-@figure images/modules.png alt="golem- の接頭辞を省いたパッケージの名前を箱にし、依存を矢印で結んだ図。cli が lsp を、lsp が driver と fmt を、driver が text、epub、lint、plugin、layout、pdf、font を使い、下の層は project、doc、parser、syntax と続く。PDF 経路、Web 経路、テキスト経路のパッケージを色で分けている"
+@figure images/modules.png alt="golem- の接頭辞を省いたパッケージの名前を箱にし、依存を矢印で結んだ図。cli が lsp を、lsp が driver と fmt を、driver が preflight、text、epub、lint、plugin、layout、pdf、font を使い、preflight が pdf を使い、下の層は project、doc、parser、syntax と続く。PDF 経路、Web 経路、テキスト経路のパッケージを色で分けている"
   パッケージの依存（golem- の接頭辞を省いた）。
 
 上から読むと、golem-cli が golem-lsp を通して golem-driver を使い、golem-driver が出力の各パッケージと golem-lint と golem-plugin を束ねる。
+golem-preflight は、golem-driver が PDF を書きながら作る組んだ結果の写し（[code: Golem.Preflight.View]）を、プリフライトの設定に従って検査する。
+PDF/X-4 の要件の検査は、golem-pdf の [code: Golem.Pdf.X4.verify] が書く前の PDF のオブジェクトに対して行う。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 下の層は、golem-project、golem-doc、golem-parser、golem-syntax の順に積み重なる。
 golem-project が golem-doc に依存するのは、[code: style.toml] の [code: \[lists\]] の番号の書式を golem-doc の型で読むからである。
 golem-eval が golem-project に依存するのは、ファイルの中の [code: @style-def] と正規表現スタイルを [code: style.toml] の型で扱い、import の先を golem-project の関数で解決するからである。

@@ -9,12 +9,17 @@ module Golem.Driver
     defaultOptions,
     BuildResult (..),
     build,
+    PreflightOptions (..),
+    defaultPreflightOptions,
+    PreflightResult (..),
+    preflight,
     evaluateProject,
     evaluateProjectWith,
     loadBibliography,
     Evaluated (..),
     localStylesOf,
     docStyles,
+    runningVars,
     missingStyleFiles,
     targetFileDiagnostics,
     sourceInfos,
@@ -30,6 +35,7 @@ module Golem.Driver
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
 import Control.Monad (forM, forM_, mfilter, when)
 import Data.Aeson qualified as J
@@ -42,7 +48,7 @@ import Data.Either (fromRight, lefts, rights)
 import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -67,13 +73,16 @@ import Golem.Parser.Read (ReadFailure (..), readInfo, readSourceFile)
 import Golem.Parser.SourceSettings (SourceSettings)
 import Golem.Pdf qualified as P
 import Golem.Plugin.Lock (defaultCacheDir)
+import Golem.Preflight (check)
+import Golem.Preflight.Rules (Rules (..), parseRules, printRules)
+import Golem.Preflight.View (View)
 import Golem.Project
 import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Text qualified as GT
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, removeDirectoryRecursive)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath (takeDirectory, takeFileName, (</>))
 
 data Target = TargetHtml | TargetEpub | TargetText | TargetPdf
   deriving stock (Eq, Ord, Show)
@@ -206,7 +215,7 @@ evaluateProjectWith overlay profile root = do
                   chapterDocs = map fst chapterRuns
                   -- where G0407 points (golem-syntax ADR 0002)
                   numberSites = Map.unions (map erNumberSites (Map.elems results))
-                  cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns)
+                  cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style))
                   pre = defaultStyleNotice <> masterDiags <> pluginDiags <> bibDiags <> s0Diags
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
               if hasErrors pre
@@ -288,18 +297,45 @@ keepStyles = Map.keysSet . Map.filter (== KeepLines) . paraLineBreaks
 builtinKeepStyles :: Set.Set Text
 builtinKeepStyles = keepStyles defaultStyle
 
+-- | @meta@: the text of the metadata a running head shows too, and the creators.
 metadataValues :: Metadata -> Map Text Value
 metadataValues md =
-  Map.fromList $
-    [ ("id", VString (mdId md)),
-      ("title", VString (mdTitle md)),
-      ("language", VString (mdLanguage md)),
-      ("date", VString (T.pack (show (mdDate md)))),
-      ("creators", VArray [VString (crName c) | c <- mdCreators md])
-    ]
-      <> [("title_reading", VString r) | Just r <- [mdTitleReading md]]
-      <> [("edition", VString e) | Just e <- [mdEdition md]]
-      <> [("publisher", VString p) | Just p <- [mdPublisher md]]
+  Map.insert "creators" (VArray [VString (crName c) | c <- mdCreators md]) (VString <$> runningMetadata md)
+
+{- | The variables the running heads show, as text, for each chapter file
+by its master page (golem-driver ADR 0022): its own (@{set.<name>}@) and
+those of its imports (@{set.<namespace>.<name>}@). G0267 for a variable
+without @?@ that the file does not have, G0268 for a value that is not a
+string or a number; at the top of the file, once for each file and name.
+-}
+runningVars :: Evaluated -> (Map FileId (Map [Text] Text), [Diagnostic])
+runningVars e =
+  let project = evProject e
+      style = evStyle e
+      masters = stMasters style
+      ImportGraph graph = projectImports project
+      masterOf name = (name >>= \n -> (n,) <$> Map.lookup n masters) <|> (("body",) <$> Map.lookup "body" masters) <|> Map.lookupMin masters
+      perFile (fid, name) = case (masterOf name, Map.lookup fid (evResults e)) of
+        (Just (mname, MasterDef (Just rh) _), Just r) ->
+          let refs = Map.fromListWith (&&) [(n, q) | c <- [rhOdd rh, rhEven rh], (RefVar n, q) <- runningRefs c]
+              lookupVar = \case
+                [v] -> Map.lookup v (erExports r)
+                [ns, v] -> listToMaybe [x | (tfid, site) <- Map.findWithDefault [] fid graph, isNamespace site == ns, Just tr <- [Map.lookup tfid (evResults e)], Just x <- [Map.lookup v (erExports tr)]]
+                _ -> Nothing
+              at = mkSpan fid 0 0
+              related = [(mkSpan (evStyleFile e) 0 0, "マスターページ " <> mname <> " の柱の書式")]
+              one (n, optional) = case lookupVar n of
+                Nothing
+                  | optional -> ([], [])
+                  | otherwise -> ([], [(diagnostic "G0267" Error at ("柱が参照する変数 " <> T.intercalate "." n <> " が、このファイルにありません（マスターページ " <> mname <> "）")) {diagRelated = related}])
+                -- strings and numbers as they are embedded in prose
+                Just v -> case embedValue at v of
+                  Right t -> ([(n, t)], [])
+                  Left _ -> ([], [(diagnostic "G0268" Error at ("柱に出せるのは文字列と数です: " <> T.intercalate "." n <> " は " <> typeName v)) {diagRelated = related}])
+              (vals, ds) = foldMap one (Map.toList refs)
+           in (Map.singleton fid (Map.fromList vals), ds)
+        _ -> (Map.empty, [])
+   in foldMap perFile (nub [(fid, name) | (fid, name) <- projectChapters project])
 
 {- | Files referenced by @figure, @table and @listing: text content for
 tables and listings, presence for images, and why a path cannot be used
@@ -407,10 +443,16 @@ targetsOf m =
    in [TargetHtml | tgHtml t] <> [TargetEpub | isJust (tgEpub t)] <> [TargetText | not (null (tgText t))] <> [TargetPdf | isJust (tgPdf t)]
 
 build :: BuildOptions -> IO BuildResult
-build opts = do
+build opts = fst <$> buildCore False opts
+
+{- | The build; with @inMemory@, the PDF is not written but returned with
+its view (golem preflight, golem-cli ADR 0006).
+-}
+buildCore :: Bool -> BuildOptions -> IO (BuildResult, Maybe (BS.ByteString, View))
+buildCore inMemory opts = do
   ev <- evaluateProject (optProfile opts) (optRoot opts)
   case ev of
-    Left f -> pure (BuildResult (finishWith Set.empty (pfDiagnostics f)) (pfSources f) [])
+    Left f -> pure (BuildResult (finishWith Set.empty (pfDiagnostics f)) (pfSources f) [], Nothing)
     Right e -> do
       let project = evProject e
           finish = finishWith (manifestSilencedNotices (projectManifest project))
@@ -435,20 +477,76 @@ build opts = do
           fileDiags = nub (concatMap snd perTarget)
           -- G0701, G0702 and G0725 stop the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
+          -- the variables of the running heads, after S0, only for the PDF (golem-driver ADR 0022)
+          evDiags = evDiagnostics e <> (if TargetPdf `elem` targets then snd (runningVars e) else [])
       case evBook e of
         Just book
-          | not (hasErrors (finish (evDiagnostics e))) && not (optCheckOnly opts) -> do
+          | not (hasErrors (finish evDiags)) && not (optCheckOnly opts) -> do
               -- a list number its format cannot write stops every target (golem-driver ADR 0013)
               let listDiags = listNumberDiagnostics (evStyle e) (maybe False pageVertical (stPage (evStyle e))) book
-              (written, outDiags) <-
+              (written, outDiags, pdf) <-
                 if null listDiags || null writable
-                  then writeTargets opts e diagFid book missing writable
-                  else pure ([], listDiags)
-              pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags <> outDiags)) infos written)
-        _ -> pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags)) infos [])
+                  then writeTargets inMemory opts e diagFid book missing writable
+                  else pure ([], listDiags, Nothing)
+              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> outDiags)) infos written, pdf)
+        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags)) infos [], Nothing)
   where
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002)
     finishWith silenced = sortDiagnostics . silenceNotices (if optNoNotices opts then Nothing else Just silenced) . map (adjustForProfile (optProfile opts))
+
+data PreflightOptions = PreflightOptions
+  { poRoot :: !FilePath,
+    -- | --rules: from the working directory, or absolute; preflight.toml of the root without it
+    poRules :: !(Maybe FilePath),
+    poMarks :: !CropMarks,
+    poFonts :: !FontProvider,
+    poParallel :: !Bool
+  }
+
+defaultPreflightOptions :: FilePath -> PreflightOptions
+defaultPreflightOptions root = PreflightOptions root Nothing NoMarks golemFontProvider True
+
+data PreflightResult = PreflightResult
+  { prDiagnostics :: ![Diagnostic],
+    prSources :: !(Map FileId SourceInfo),
+    -- | the PDF checked, when one was made
+    prPdf :: !(Maybe BS.ByteString),
+    prView :: !(Maybe View),
+    -- | the rules as the summary names them: their name, their file, or the built-in print
+    prRulesLabel :: !Text,
+    prBasedOn :: !Text
+  }
+
+{- | golem preflight (golem-cli ADR 0006): the rules first (G0901 stops
+here), then the PDF as golem build --target pdf --profile prod makes it,
+kept in memory, then the checks of the rules on its view.
+-}
+preflight :: PreflightOptions -> IO PreflightResult
+preflight po = do
+  let path = fromMaybe (poRoot po </> "preflight.toml") (poRules po)
+      rulesFid = FileId 0
+  exists <- doesFileExist path
+  rulesE <-
+    if not exists
+      then
+        pure $
+          if isJust (poRules po)
+            then Left ([diagnostic "G0901" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルがありません: " <> T.pack path)], "")
+            else Right (printRules, "組み込みの print")
+      else do
+        bytes <- BS.readFile path
+        pure $ case TE.decodeUtf8' bytes of
+          Left _ -> Left ([diagnostic "G0901" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルが UTF-8 として読めません: " <> T.pack path)], "")
+          Right src -> case parseRules rulesFid src of
+            Left ds -> Left (ds, src)
+            Right r -> Right (r, fromMaybe (T.pack (takeFileName path)) (ruName r))
+  case rulesE of
+    Left (ds, src) -> pure (PreflightResult (sortDiagnostics ds) (Map.singleton rulesFid (SourceInfo path (mkLineIndex src))) Nothing Nothing "" "")
+    Right (rules, label) -> do
+      let opts = (defaultOptions (poRoot po)) {optTargets = Just [TargetPdf], optProfile = Prod, optMarks = poMarks po, optFonts = poFonts po, optParallel = poParallel po}
+      (r, pdf) <- buildCore True opts
+      let checks = maybe [] (check rules . snd) pdf
+      pure (PreflightResult (sortDiagnostics (brDiagnostics r <> checks)) (brSources r) (fst <$> pdf) (snd <$> pdf) label (ruBasedOn rules))
 
 -- | Files of style.toml that cannot be used: path -> why (resolveInRoot).
 missingStyleFiles :: FilePath -> Style -> IO (Map FilePath PathError)
@@ -512,8 +610,8 @@ optionsInput opts =
     <> " profile="
     <> (case optProfile opts of Dev -> "dev"; Prod -> "prod")
 
-writeTargets :: BuildOptions -> Evaluated -> FileId -> Book -> Map FilePath PathError -> [Target] -> IO ([FilePath], [Diagnostic])
-writeTargets opts e diagFid book missing targets = do
+writeTargets :: Bool -> BuildOptions -> Evaluated -> FileId -> Book -> Map FilePath PathError -> [Target] -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
+writeTargets inMemory opts e diagFid book missing targets = do
   let root = optRoot opts
       project = evProject e
       style = evStyle e
@@ -565,7 +663,16 @@ writeTargets opts e diagFid book missing targets = do
                     { hcoFont = d >>= psFont,
                       hcoSize = cssFontSize style <$> (d >>= psSize),
                       hcoBackground = d >>= psBackground,
-                      hcoPadding = cssLength (fromMaybe (Zw 0.5) (d >>= psPadding))
+                      hcoPadding = cssLength (fromMaybe (Zw 0.5) (d >>= psPadding)),
+                      -- the border and [code] (golem-driver ADR 0023)
+                      hcoBorder = d >>= psBorder,
+                      hcoBorderWidth = cssLength (fromMaybe (Abs 16384) (d >>= psBorderWidth)),
+                      hcoLineNumbers = cdLineNumbers (stCode style),
+                      hcoLineNumberColor = cdLineNumberColor (stCode style),
+                      hcoHighlight = cdHighlight (stCode style),
+                      hcoAdded = cdAdded (stCode style),
+                      hcoRemoved = cdRemoved (stCode style),
+                      hcoColors = cdColors (stCode style)
                     },
             hcLists =
               if stLists style == defaultListStyle
@@ -586,7 +693,7 @@ writeTargets opts e diagFid book missing targets = do
       writeText (dir </> "style.css") (siteCss site)
       writeText (dir </> "index.xhtml") (indexPage hcfg ft book)
       copied <- forM (siteAssets site) $ \(o, src) -> copy (root </> src) (dir </> o) >> pure (dir </> o)
-      pure (map ((dir </>) . fst) (sitePages site) <> [dir </> "style.css", dir </> "index.xhtml"] <> copied, [])
+      pure (map ((dir </>) . fst) (sitePages site) <> [dir </> "style.css", dir </> "index.xhtml"] <> copied, [], Nothing)
     TargetEpub -> do
       let dir = root </> "build" </> "epub"
           out = dir </> "book.epub"
@@ -605,7 +712,7 @@ writeTargets opts e diagFid book missing targets = do
       clean dir
       createDirectoryIfMissing True dir
       writeEpub root out cfg ft book site
-      pure ([out], [])
+      pure ([out], [], Nothing)
     TargetText -> do
       let dir = root </> "build" </> "text"
           -- without [targets.text], both variants, as when variants is omitted (golem-cli ADR 0002)
@@ -622,24 +729,27 @@ writeTargets opts e diagFid book missing targets = do
         forM pages $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)
-      pure (concat files, [])
+      pure (concat files, [], Nothing)
     TargetPdf -> do
       let dir = root </> "build" </> "pdf"
           out = dir </> pdfFileName (mdId md)
           -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
           inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-      r <- renderPdf (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid)
+      r <- renderPdfView (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)))
       -- G0808: code in the body role without [fonts.code] (golem-driver ADR 0017)
       -- G0745: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
       let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
       case r of
-        Left ds -> pure ([], ds <> fontNotice)
-        Right (bytes, notices) -> do
-          clean dir
-          createDirectoryIfMissing True dir
-          BS.writeFile out bytes
-          pure ([out], notices <> fontNotice)
-  pure (concatMap fst results, concatMap snd results)
+        Left ds -> pure ([], ds <> fontNotice, Nothing)
+        Right (bytes, notices, view)
+          -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)
+          | inMemory -> pure ([], notices <> fontNotice, Just (bytes, view))
+          | otherwise -> do
+              clean dir
+              createDirectoryIfMissing True dir
+              BS.writeFile out bytes
+              pure ([out], notices <> fontNotice, Nothing)
+  pure (concat [w | (w, _, _) <- results], concat [d | (_, d, _) <- results], listToMaybe [x | (_, _, Just x) <- results])
   where
     clean dir = do
       ex <- doesDirectoryExist dir

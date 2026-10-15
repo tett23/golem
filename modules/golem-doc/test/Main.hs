@@ -7,6 +7,7 @@ import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Data.ByteString qualified as BS
 import Data.Either (isLeft)
+import ExternalTool (needsTool)
 import Gen
 import Golem.Doc.Cbor
 import Golem.Doc.IR
@@ -48,27 +49,24 @@ cbor :: TestTree
 cbor =
   testGroup
     "golem-doc (ADR 0001)"
-    [ testProperty "CBOR conforms to the CDDL (the cddl CLI, when installed)" $ withTests 60 $ property $ do
-        d <- forAll genDocument
-        validator <- evalIO cddlValidator
-        case validator of
-          Nothing -> success
-          Just exe -> do
-            (code, out, err) <- evalIO $ withSystemTempDirectory "golem-doc" $ \dir -> do
-              let path = dir </> "doc.cbor"
-              BS.writeFile path (encodeDocument d)
-              readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
-            annotate (out <> err)
-            code === ExitSuccess,
-      testCase "the cddl CLI rejects a document of another ABI version" $ do
-        validator <- cddlValidator
-        case validator of
-          Nothing -> pure ()
-          Just exe -> withSystemTempDirectory "golem-doc" $ \dir -> do
+    [ needsTool "cddl" cddlValidator $ \cddl ->
+        testProperty "CBOR conforms to the CDDL (the cddl CLI)" $ withTests 60 $ property $ do
+          d <- forAll genDocument
+          exe <- evalIO cddl
+          (code, out, err) <- evalIO $ withSystemTempDirectory "golem-doc" $ \dir -> do
+            let path = dir </> "doc.cbor"
+            BS.writeFile path (encodeDocument d)
+            readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
+          annotate (out <> err)
+          code === ExitSuccess,
+      needsTool "cddl" cddlValidator $ \cddl ->
+        testCase "the cddl CLI rejects a document of another ABI version" $ do
+          exe <- cddl
+          (code, _, _) <- withSystemTempDirectory "golem-doc" $ \dir -> do
             let path = dir </> "bad.cbor"
             BS.writeFile path (BS.pack [0x83, 0x01, 0x00, 0x80])
-            (code, _, _) <- readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
-            assertBool "rejected" (code /= ExitSuccess),
+            readProcessWithExitCode exe ["--ci", "validate", "--cddl", "schema/golem-doc.cddl", "--cbor", path] ""
+          assertBool "rejected" (code /= ExitSuccess),
       testProperty "CBOR round trip" $ withTests 300 $ property $ do
         d <- forAll genDocument
         decodeDocument (encodeDocument d) === Right d,
@@ -119,10 +117,26 @@ cbor =
         validateDocument size [] (para Nothing [a, br, br, a]) @?= ["改行は段落の最上位のインラインの間にだけ置けます"]
         validateDocument size [] (para (Just "body") [a]) @?= ["段落スタイル body は null で表します"]
         validateInlines size [] [a, br, a] @?= ["改行は段落の最上位のインラインの間にだけ置けます"],
-      testCase "the ABI version is 5 and version 4 is rejected (docs/adr ADR 0019)" $ do
-        abiVersion @?= 5
-        let bytes = toStrictByteString (encodeTerm (TList [TInt 4, TInt 0, TList []]))
+      testCase "the ABI version is 6 and version 5 is rejected (golem-driver ADR 0023)" $ do
+        abiVersion @?= 6
+        let bytes = toStrictByteString (encodeTerm (TList [TInt 5, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes)),
+      testCase "a code block survives the CBOR round trip (golem-driver ADR 0023)" $ do
+        let code =
+              Code
+                { codeLang = Just "haskell",
+                  codeNumbers = Just True,
+                  codeFile = Just "src/Main.hs",
+                  codeCaption = Just [Text sp "設定の", CharStyle sp "code" [Text sp "x"]],
+                  codeDiff = True,
+                  codeLines =
+                    [ CodeLine "a" (Just 10) (Just DiffAdded) True [1, 2],
+                      CodeLine "b" Nothing (Just DiffRemoved) False [],
+                      CodeLine "" (Just 11) (Just DiffContext) False [50]
+                    ]
+                }
+            doc = Document (FileId 0) [Block sp (Just "l") (CodeBlock code)]
+        decodeDocument (encodeDocument doc) @?= Right doc,
       testCase "aki survives the CBOR round trip as tag 18 (docs/adr ADR 0019)" $ do
         let is = [Aki sp (AkiZw (1 / 5)), Aki sp (AkiZw 0), Aki sp (AkiAbs 185795)]
         decodeInlines (encodeInlines is) @?= Right is

@@ -1,6 +1,6 @@
 @nonumber
 @label app-indesign
-# 付録E InDesign との対応
+# 付録F InDesign との対応
 
 InDesign を使ってきたかたは、Golem の設定を見て、どこかで見た名前だと感じるはずです。
 段落スタイルも、アキ量のセットも、スウォッチも、InDesign の考え方に合わせて名前を付けています。[index reading=いんでざいん/たいおう: InDesign/対応]
@@ -20,7 +20,9 @@ InDesign の操作の手順は説明しません。
 | プロジェクトの [code: fonts/] | Document Fonts フォルダー |
 | スウォッチ（[code: \[color.swatches\]]） | スウォッチ |
 | [code: golem build] | 書き出し |
-| [code: golem check] | プリフライトの一部（原稿と設定の検査に限る） |
+| [code: golem check] | 原稿と設定の検査（プリフライトの検査は含まない） |
+| [code: golem preflight] | プリフライト |
+| プリフライトの設定（[code: preflight.toml]） | プリフライトプロファイル |
 
 表の対応は、名前と役割が近いことを示すだけです。
 以下の節で、それぞれの違いを書きます。
@@ -120,7 +122,8 @@ InDesign の親ページ（InDesign 2022 より前はマスターページ）に
 
 Golem のマスターページに置けるのは、柱とノンブルだけです。
 図形やテキストフレームのような、ほかのものは置けません。
-柱に出す内容も、見出しの題、番号と題、書名のどれかから選びます。
+柱に出す内容は、見出しの題、番号と題、書名などの差し込みと固定の文言を、書式で組み合わせて決めます。
+柱の行を重ねることもできますが、行ごとに書体や大きさを変えることはできません。
 
 ページへの当て方も違います。
 マスターページは章のファイルごとに [code: manifest.toml] の [code: master] で選び、ページごとには選びません。
@@ -166,9 +169,18 @@ InDesign の書き出しに当たります。
 ## [code: golem check] とプリフライト
 
 [code: golem check] は、出力を作らずに、原稿と設定の誤りを探します。
-InDesign のプリフライトのうち、原稿と設定にかかわる部分に当たります。
+確かめるのは、記法の誤り、参照の誤り、[code: manifest.toml] と [code: style.toml] の誤り、書体などのファイルがあるかどうかです。
+組んだ結果が印刷に耐えるかどうかは確かめません。
 
-[code: golem check] が確かめるのは、記法の誤り、参照の誤り、[code: manifest.toml] と [code: style.toml] の誤り、書体などのファイルがあるかどうかです。
-組んだ結果が印刷に耐えるかどうか（図版の解像度、色空間、PDF/X-4 の規格への適合など）は確かめません[note: ISO 15930-7:2010（PDF/X-4）。[code: https://www.iso.org/standard/55843.html]]。
-Golem は PDF/X-4 を目指して PDF を作りますが、適合しているかを Golem 自身で判定することはできません。
-入稿の前には、商用のプリフライトの道具で確かめてください。
+組んだ結果の検査は、[code: golem preflight] が行います（第[ref-number output]章の「[ref-title preflight]」）。
+InDesign のプリフライトに当たり、プリフライトプロファイルに当たるものを、プリフライトの設定（[code: preflight.toml]）と呼びます。
+
+- InDesign の \[基本\] のプロファイルに当たるのが、組み込みの設定 [code: basic] です。ただし、リンクの欠けと書体の欠けは [code: golem build] のエラーになるので、[code: basic] は検査しません。
+- InDesign のように文書にプロファイルを埋め込むことはしません。設定はファイルのまま [code: preflight.toml] に置くか、[code: --rules] で指します。
+- InDesign のプロファイルのファイル（[code: .idpp]）は読めません。
+- InDesign のプリフライトは問題をすべてエラーとして一覧にしますが、Golem はエラーと警告を分けます。エラーがあれば終了コードが 1 になるので、CI で入稿の可否を決められます。
+- 結果は画面のパネルではなく、診断として出します。[code: --format json] で機械の読める形にもなります。
+- 透明、オーバープリント、特色は検査しません。Golem の PDF はこれらを使いません。
+
+[code: golem preflight] の PDF/X-4 の検査は、Golem が作りうる要素に限ったもので、規格への適合の判定ではありません[note: ISO 15930-7:2010（PDF/X-4）。[code: https://www.iso.org/standard/55843.html]]。
+入稿の前には、商用のプリフライトの道具でも確かめてください。

@@ -50,11 +50,15 @@ test-suite golem-layout-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    KnuthPlassReference
+                    LineBreakingSpec
+                    PaginateSpec
+                    PunctuationSpec
   build-depends:
     , base
     , containers
     , golem-doc
     , golem-layout
+    , golem-project
     , golem-syntax
     , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6

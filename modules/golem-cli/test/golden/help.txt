@@ -10,6 +10,7 @@
   new                      プロジェクトを作る
   build                    出力を build/ に書く
   check                    出力を書かずに検査する
+  preflight                入稿の前に PDF を検査する
   plugin                   プラグインを管理する
   lint                     lint の規則を適用する
   fmt                      原稿を整形する

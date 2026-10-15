@@ -112,7 +112,17 @@ block c ind (Block sp _ body) = case body of
       | DefGroup ts ds <- gs
       ]
   Table _ h rows -> T.intercalate "\n" (map (T.intercalate "\t" . map (inlines c)) (h : rows))
-  CodeBlock _ t -> t
+  -- the caption, the file name, the diff marks and the callouts (golem-driver ADR 0023)
+  CodeBlock code ->
+    let num = Map.lookup sp (bookListings (cBook c))
+        caption = [maybe "" (<> "　") num <> inlines c is | Just is <- [codeCaption code]]
+        mark l = case clDiff l of
+          Just DiffAdded -> "+"
+          Just DiffRemoved -> "-"
+          Just DiffContext -> " "
+          Nothing -> ""
+        line l = mark l <> clText l <> T.concat [" " <> circled n | n <- clCallouts l]
+     in T.intercalate "\n" (caption <> maybe [] pure (codeFile code) <> map line (codeLines code))
   FigureBlock f ->
     let num = Map.lookup sp (bookFigures (cBook c))
         cap = T.intercalate "" [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]

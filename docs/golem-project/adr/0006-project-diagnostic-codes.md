@@ -1,6 +1,6 @@
 # ADR 0006: プロジェクトの段階の診断のコード G0301 から G0309 を定める
 
-ステータス: 採択
+ステータス: 採択→toml-parser の文言の扱いは [ADR 0007](0007-toml-messages-in-japanese.md)
 
 ## 文脈
 

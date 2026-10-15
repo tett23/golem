@@ -73,7 +73,7 @@ tests =
         shown "1000000000000000000000.0" @?= Right "1000000000000000000000"
         shown "-0.0" @?= Right "0"
         shown "0.1 + 0.2" @?= Right "0.30000000000000004",
-      testCase "errors" $ do
+      testCase "an expression that cannot be evaluated reports its diagnostic code" $ do
         ev "1 / 0" @?= Left "G0203"
         ev "sqrt(-1)" @?= Left "G0204"
         ev "2 ** 0.5" @?= Left "G0206"
@@ -95,7 +95,7 @@ tests =
         ev "len(\"漢字\")" @?= Right (VInt 2)
         ev "max(1, 2.5, 2)" @?= Right (VFloat 2.5),
       testCase "embedding rejects non-text values" $ do
-        shown "true" @?= Left "Diagnostic {diagCode = DiagnosticCode \"G0208\", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 0, spanStart = 0, spanEnd = 0}, diagMessage = \"\\30495\\20605\\20516 \\12399\\26412\\25991\\12395\\22475\\12417\\36796\\12417\\12414\\12379\\12435\", diagRelated = [], diagFixes = []}"
+        shown "true" @?= Left "Diagnostic {diagCode = DiagnosticCode \"G0208\", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 0, spanStart = 0, spanEnd = 0}, diagMessage = \"\\30495\\20605\\20516 \\12399\\26412\\25991\\12395\\22475\\12417\\36796\\12417\\12414\\12379\\12435\", diagRelated = [], diagFixes = [], diagFacts = []}"
         either (const True) (const False) (shown "[1]") @?= True,
       testProperty "a == div(a, b) * b + a % b" $ property $ do
         a <- forAll (Gen.integral (Range.linearFrom 0 (-1000) 1000))

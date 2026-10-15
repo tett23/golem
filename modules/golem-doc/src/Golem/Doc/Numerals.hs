@@ -5,11 +5,23 @@ module Golem.Doc.Numerals
   ( kanji,
     kanjiDigits,
     formatNumber,
+    circled,
   )
 where
 
 import Data.Text (Text)
 import Data.Text qualified as T
+
+{- | A circled number from 1 to 50 (golem-driver ADR 0023): U+2460 for 1
+to 20, U+3251 for 21 to 35, U+32B1 for 36 to 50; another number in
+parentheses.
+-}
+circled :: Int -> Text
+circled n
+  | n >= 1 && n <= 20 = T.singleton (toEnum (0x2460 + n - 1))
+  | n >= 21 && n <= 35 = T.singleton (toEnum (0x3251 + n - 21))
+  | n >= 36 && n <= 50 = T.singleton (toEnum (0x32B1 + n - 36))
+  | otherwise = "(" <> T.pack (show n) <> ")"
 
 digitChar :: Integer -> Char
 digitChar d = T.index "〇一二三四五六七八九" (fromInteger d)

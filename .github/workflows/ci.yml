@@ -149,7 +149,12 @@ jobs:
         run: cargo install cddl --version "$CDDL_VERSION" --locked
       # peg-cli is built with the rest, for the check of the generated parser
       - run: cabal build all peg-cli:exe:peg-hs
+      # qpdf, cddl and openssl are installed above (openssl comes with the
+      # runner image): a test that needs one of them fails here instead of
+      # being skipped
       - run: cabal test all
+        env:
+          GOLEM_REQUIRE_EXTERNAL_TOOLS: "1"
       - name: Generated parser matches the grammar
         run: |
           scripts/gen-parser.sh
