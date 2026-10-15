@@ -3,6 +3,7 @@
 -}
 module Main (main) where
 
+import CommandsSpec (commandsTests)
 import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -151,6 +152,7 @@ tests =
       explainTests,
       tomlMessageTests,
       noticeTests,
+      commandsTests,
       -- golem-parser ADR 0010
       testCase "a backslash after the last | of a table row is G0124, not G0110" $
         mapM_
