@@ -74,6 +74,7 @@ test-suite golem-driver-test
     , filepath
     , golem-doc
     , golem-driver
+    , golem-epub
     , golem-layout
     , golem-layout-spec
     , golem-pdf

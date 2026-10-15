@@ -9,7 +9,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Assemble (Book (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..))
+import Golem.Doc.Assemble (Book (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..), TocEntry (..))
 import Golem.Doc.IR
 import Golem.Html
 import Golem.Syntax.Span
@@ -156,6 +156,29 @@ tests =
           book = (bookOf [Block (at 0) Nothing (Heading 1 (HeadingAttrs Nothing Nothing True False) [txt "はじめに"])]) {bookHeadings = Map.fromList [(at 0, info)]}
           page = fromMaybe "" (lookup "a.xhtml" (sitePages (renderXhtml cfg0 ft book)))
        in fst (T.breakOn "</title>" (T.drop 7 (snd (T.breakOn "<title>" page)))) @?= "はじめに",
+    testGroup
+      "the separator after a number (golem-html ADR 0002)"
+      [ testCase "an ideographic space after the number of a heading in a Japanese book" $
+          let info = HeadingInfo 1 (Just [1]) (Just "第一章") [txt "はじめに"] "intro" fidA
+              book = (bookOf [Block (at 0) (Just "intro") (Heading 1 noHeadingAttrs [txt "はじめに"])]) {bookHeadings = Map.fromList [(at 0, info)]}
+           in bodyA cfg0 book @?= "<h1 id=\"intro\"><span class=\"number\">第一章</span>\x3000はじめに</h1>\n",
+        testCase "a space after the number of a heading in an English book" $
+          let info = HeadingInfo 1 (Just [1]) (Just "1") [txt "Introduction"] "intro" fidA
+              book = (bookOf [Block (at 0) (Just "intro") (Heading 1 noHeadingAttrs [txt "Introduction"])]) {bookHeadings = Map.fromList [(at 0, info)]}
+           in bodyA cfg0 {hcLanguage = "en"} book @?= "<h1 id=\"intro\"><span class=\"number\">1</span> Introduction</h1>\n",
+        testCase "nothing more after a number that ends with a space" $
+          let info = HeadingInfo 1 (Just [1]) (Just "Chapter 1: ") [txt "Introduction"] "intro" fidA
+              book = (bookOf [Block (at 0) (Just "intro") (Heading 1 noHeadingAttrs [txt "Introduction"])]) {bookHeadings = Map.fromList [(at 0, info)]}
+           in bodyA cfg0 {hcLanguage = "en"} book @?= "<h1 id=\"intro\"><span class=\"number\">Chapter 1: </span>Introduction</h1>\n",
+        testCase "an ideographic space after the number of a caption, outside the span" $
+          let fig = Figure "images/a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]]
+              book = (bookOf [Block (at 0) Nothing (FigureBlock fig)]) {bookFigures = Map.fromList [(at 0, "図1-1")]}
+           in bodyA cfg0 book @?= "<figure>\n<img src=\"images/a.png\" alt=\"代替\"/>\n<figcaption><span class=\"number\">図1-1</span>\x3000キャプション</figcaption>\n</figure>\n",
+        testCase "the table of contents" $
+          let entry = TocEntry 1 (Just "第一章") [txt "はじめに"] "intro" fidA (at 9)
+              book = (bookOf [Block (at 0) Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry]}
+           in bodyA cfg0 book @?= "<nav epub:type=\"toc\" class=\"toc\">\n<ol>\n<li class=\"toc-1\"><a href=\"#intro\">第一章\x3000はじめに</a></li>\n</ol>\n</nav>\n"
+      ],
     testCase "a labelled paragraph has the label as id" $
       bodyA cfg0 (bookOf [Block (at 0) (Just "quote-1") (Paragraph Nothing [txt "引用"])]) @?= "<p id=\"quote-1\">引用</p>\n",
     testGroup

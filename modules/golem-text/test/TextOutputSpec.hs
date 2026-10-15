@@ -51,7 +51,7 @@ txt = Text (at 0)
 
 -- | The one text file of a book, as the given variant and profile.
 renderWith :: Bool -> TextVariant -> Book -> [(FilePath, Text)]
-renderWith dev variant = renderText "kanji" dev (const 0) (TextLists (pure "・") Nothing Nothing) Map.empty variant ft
+renderWith dev variant = renderText "ja" "kanji" dev (const 0) (TextLists (pure "・") Nothing Nothing) Map.empty variant ft
 
 horizontal, vertical :: Book -> [(FilePath, Text)]
 horizontal = renderWith False Horizontal

@@ -18,6 +18,7 @@ import Data.Text qualified as T
 import Golem.Doc.Assemble
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers
+import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals
 import Golem.Syntax.Span
 import System.FilePath (replaceExtension)
@@ -41,6 +42,8 @@ renderNumber Vertical def n st = case fromMaybe (styleOf def) st of
 
 data Ctx = Ctx
   { cVariant :: TextVariant,
+    -- | the language of the book, for the separator after a number (golem-html ADR 0002)
+    cLanguage :: Text,
     cNumberDefault :: Text,
     cBook :: Book,
     cProfileDev :: Bool,
@@ -70,13 +73,13 @@ data TextLists = TextLists
 extension. @firstLine@ gives the ideographic spaces that start the lines
 of a paragraph of a style (Nothing is body; docs/adr ADR 0006).
 -}
-renderText :: Text -> Bool -> (Maybe Text -> Int) -> TextLists -> Map Text Text -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
-renderText numberDefault dev firstLine lists bib variant ft book =
+renderText :: Text -> Text -> Bool -> (Maybe Text -> Int) -> TextLists -> Map Text Text -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
+renderText lang numberDefault dev firstLine lists bib variant ft book =
   [ (replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "txt", file ctx d)
   | d@(Document fid _) <- bookDocs book
   ]
   where
-    ctx = Ctx variant numberDefault book dev firstLine False lists bib 0
+    ctx = Ctx variant lang numberDefault book dev firstLine False lists bib 0
 
 file :: Ctx -> Document -> Text
 file c (Document _ bs) =
@@ -98,7 +101,7 @@ block c ind (Block sp _ body) = case body of
      in lead <> T.intercalate ("\n" <> lead) (map (inlines c) (splitLines is)) <> sidenotes is
   Heading _ _ is ->
     let num = Map.lookup sp (bookHeadings (cBook c)) >>= hiNumberText
-     in maybe "" (<> "　") num <> inlines c is
+     in numbered num <> inlines c is
   BulletList items -> T.intercalate "\n" [indentBy ind <> spaced (atDepth (tlBullets (cLists c)) depth) <> itemText (ind + 1) it | it <- items]
   OrderedList items ->
     T.intercalate "\n" [indentBy ind <> marker n <> itemText (ind + 1) it | (n, it) <- zip (itemNumbers items) items]
@@ -121,11 +124,11 @@ block c ind (Block sp _ body) = case body of
         line l = mark l <> clText l <> T.concat [" " <> circled n | n <- clCallouts l]
      in T.intercalate "\n" (caption <> maybe [] pure (codeFile code) <> map line (codeLines code))
   FigureBlock f ->
-    let num = fromMaybe "" (Map.lookup sp (bookFigures (cBook c)))
+    let num = Map.lookup sp (bookFigures (cBook c))
         cap = T.intercalate "" [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
-     in "［" <> T.strip (num <> "　" <> cap) <> "］"
+     in "［" <> T.strip (numbered num <> cap) <> "］"
   ChannelOutput (TocOutput d) ->
-    T.intercalate "\n" [maybe "" (<> "　") (teNumber e) <> inlines c (teTitle e) | e <- bookToc (cBook c), teLevel e <= d]
+    T.intercalate "\n" [numbered (teNumber e) <> inlines c (teTitle e) | e <- bookToc (cBook c), teLevel e <= d]
   ChannelOutput IndexOutput -> ""
   -- plain text has no pages (docs/adr ADR 0017)
   ForcedBreak _ -> ""
@@ -133,6 +136,8 @@ block c ind (Block sp _ body) = case body of
     -- the entry, or the key that has none (golem-doc ADR 0004)
     T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> Map.findWithDefault k k (cBibliography c) | (k, n) <- bookCitations (cBook c)]
   where
+    -- a number and the separator of the language (golem-html ADR 0002)
+    numbered = maybe "" (\n -> n <> numberSeparator (cLanguage c) n)
     -- the markers of [lists] by depth; without numbers, those of a book without [lists] (golem-driver ADR 0013)
     depth = cDepth c + 1
     marker n = case tlNumbers (cLists c) of

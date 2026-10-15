@@ -346,7 +346,7 @@ regex-styles = [
 @listing style.toml lines=55-68
 
 - [code: font]、[code: size]：書体の役割と文字の大きさです。
-- [code: number]：番号の書式です。[code: {n}] がその階層の番号、[code: {n:kanji}] が漢数字の番号、[code: {1}] と [code: {2}] が上の階層の番号になります。縦組みの本なら [code: "第{n:kanji}章"] で「第三章」のように組めます。
+- [code: number]：番号の書式です。[code: {n}] がその階層の番号、[code: {n:kanji}] が漢数字の番号、[code: {1}] と [code: {2}] が上の階層の番号になります。縦組みの本なら [code: "第{n:kanji}章"] で「第三章」のように組めます。番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式の末尾に [code: "Chapter {n}: "] のように空白を書けば、区切りは足しません。
 - [code: page-break]：[code: "recto"] にすると、その見出しを奇数ページから始めます。
 
 本文より大きい見出しも、行の格子からずらさずに置きます。
@@ -371,7 +371,7 @@ regex-styles = [
 [code: <階層>] は見出しの階層の数です。
 
 - [code: "heading.<階層>.short"]：その階層の見出しの題です。ページの中で始まった最初の見出しを使い、なければその前から続く見出しを使います。
-- [code: "heading.<階層>.numbered"]：番号と題を全角の空白でつないだものです（「第3章　原稿の記法」など）。
+- [code: "heading.<階層>.numbered"]：番号と題を、見出しの番号と同じ本の言語で決まる区切りでつないだものです（日本語の本なら「第3章　原稿の記法」など）。
 - [code: "heading.<階層>.short.last"]、[code: "heading.<階層>.numbered.last"]：ページの中で始まった最後の見出しを使います。辞書の柱のような使い方です。
 - [code: "title"]：[code: manifest.toml] の書名です。
 - [code: "none"]：柱を出しません。

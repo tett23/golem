@@ -23,8 +23,9 @@ import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescrip
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
-import Golem.Driver.Pdf (Assumed (..), CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, hiddenFolios, indexLines, instanceIdInputs, layoutPages, layoutPdf, offsetOrigin, producer, runningHeadLines, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
+import Golem.Driver.Pdf (Assumed (..), CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, hiddenFolios, indexLines, instanceIdInputs, layoutPages, layoutPdf, numberedTitle, offsetOrigin, producer, runningHeadLines, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
 import Golem.Driver.Version (golemVersion)
+import Golem.Epub (EpubConfig (..), navDocument)
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Kerning (..), Look (..), Synthetic (..), plainLook)
 import Golem.Layout.Paginate (ColumnSet (..), Flow (..), LineBox (..), PageOut (..), Slotted (..), labelPages, markPages, paginate)
@@ -38,6 +39,7 @@ import Golem.Plugin.Lock (defaultCacheDir, hashHex, lockPlugins, renderLock)
 import Golem.Preflight.Rules (Level (..), Rules (..), parseRules, printRules)
 import Golem.Preflight.View (GlyphView (..), ImageView (..), LineView (..), PageView (..), RuleView (..), View (..))
 import Golem.Project (Project (..), ProjectFailure (..))
+import Golem.Project.Manifest (Manifest (..), Metadata (..))
 import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), LocalStyles (..), ParaStyleDef (..), RunningContent (..), RunningPart (..), RunningRef (..), dimToSp, noLocalStyles, noParaDef, parseDim, parseRunningFormat, parseStyle)
 import Golem.Syntax
 import System.Directory (copyFile, createDirectoryIfMissing, createFileLink, doesDirectoryExist, doesFileExist, findExecutable, listDirectory)
@@ -117,6 +119,7 @@ tests =
       evalDiagnosticTests,
       testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
       testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
+      testGroup "the separator after a number (golem-html ADR 0002)" numberSeparatorTests,
       testGroup
         "version (docs/adr/0004)"
         [ testCase "golemVersion is the content of VERSION" $ do
@@ -1676,7 +1679,7 @@ runningHeadTests =
     asa = info 2 1 "一" "朝"
     hiru = info 2 2 "二" "昼"
     yama = info 1 2 "第二章" "山"
-    meta = Map.fromList [("title", "書名")]
+    meta = Map.fromList [("title", "書名"), ("language", "ja")]
     lines'' = runningHeadLines meta Map.empty
     heading l f p = RunningLines ([PartRef (RefHeading l f p) False] :| [])
     -- a format, read as style.toml reads it
@@ -4322,6 +4325,89 @@ buildAll = buildAllWith id
 
 codeOf :: BuildResult -> T.Text -> [Diagnostic]
 codeOf r c = [d | d <- brDiagnostics r, diagCode d == DiagnosticCode c]
+
+-- | The manifest of the one-chapter project in another language.
+langManifest :: T.Text -> BS.ByteString
+langManifest lang = replaceIn "language = \"ja\"" ("language = \"" <> lang <> "\"") miniManifest
+
+-- | A style with the number format of chapters and of figures.
+numberStyle :: T.Text -> BS.ByteString
+numberStyle format = horizontalStyle <> TE.encodeUtf8 ("\n[headings.1]\nnumber = \"" <> format <> "\"\n\n[figures]\nnumber = \"図{chapter}-{n}\"\n")
+
+{- | Builds the one-chapter project of the language to HTML; the chapter
+page and the table of contents page.
+-}
+sepHtml :: T.Text -> T.Text -> T.Text -> IO (T.Text, T.Text)
+sepHtml lang format source = withSystemTempDirectory "golem-sep" $ \tmp -> do
+  img <- tinyImage
+  BS.writeFile (tmp </> "manifest.toml") (langManifest lang <> "\n[targets.html]\n")
+  BS.writeFile (tmp </> "style.toml") (numberStyle format)
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  forM_ img $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+  assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+  (,) <$> TIO.readFile (tmp </> "build/html/a.xhtml") <*> TIO.readFile (tmp </> "build/html/index.xhtml")
+
+-- | The EPUB navigation document of the one-chapter project of the language.
+sepNav :: T.Text -> T.Text -> T.Text -> IO T.Text
+sepNav lang format source = withSystemTempDirectory "golem-sep" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (langManifest lang <> "\n[targets.epub]\n")
+  BS.writeFile (tmp </> "style.toml") (numberStyle format)
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+  book <- maybe (assertFailure "no book") pure (evBook e)
+  let md = manifestMetadata (projectManifest (evProject e))
+      cfg = EpubConfig (mdId md) (mdTitle md) Nothing (mdLanguage md) (mdDate md) Nothing [] False
+  pure (navDocument cfg (projectFiles (evProject e)) book)
+
+numberSeparatorTests :: [TestTree]
+numberSeparatorTests =
+  [ testCase "HTML: an ideographic space after the number of a heading and of a caption in a Japanese book" $ do
+      (page, _) <- sepHtml "ja" "第{n:kanji}章" "# 原稿の記法\n\n@figure images/tiny.jpg alt=\"t\"\n  キャプション。\n"
+      assertBool (T.unpack page) ("<span class=\"number\">第一章</span>\x3000原稿の記法</h1>" `T.isInfixOf` page)
+      assertBool (T.unpack page) ("<figcaption><span class=\"number\">図1-1</span>\x3000キャプション。</figcaption>" `T.isInfixOf` page),
+    testCase "HTML: a space in an English book" $ do
+      (page, _) <- sepHtml "en" "{n}" "# Introduction\n"
+      assertBool (T.unpack page) ("<span class=\"number\">1</span> Introduction</h1>" `T.isInfixOf` page),
+    testCase "HTML: @toc and the table of contents page" $ do
+      (ja, jaIndex) <- sepHtml "ja" "第{n:kanji}章" "@toc\n\n# 原稿\n"
+      assertBool (T.unpack ja) (">第一章\x3000原稿</a>" `T.isInfixOf` ja)
+      assertBool (T.unpack jaIndex) (">第一章\x3000原稿</a>" `T.isInfixOf` jaIndex)
+      (en, enIndex) <- sepHtml "en" "{n}" "@toc\n\n# Introduction\n"
+      assertBool (T.unpack en) (">1 Introduction</a>" `T.isInfixOf` en)
+      assertBool (T.unpack enIndex) (">1 Introduction</a>" `T.isInfixOf` enIndex),
+    testCase "EPUB: the navigation document" $ do
+      ja <- sepNav "ja" "第{n:kanji}章" "# 原稿\n"
+      assertBool (T.unpack ja) (">第一章\x3000原稿</a>" `T.isInfixOf` ja)
+      en <- sepNav "en" "{n}" "# Introduction\n"
+      assertBool (T.unpack en) (">1 Introduction</a>" `T.isInfixOf` en),
+    testCase "HTML: no separator on @nonumber" $ do
+      (page, _) <- sepHtml "ja" "第{n:kanji}章" "@nonumber\n# まえがき\n"
+      assertBool (T.unpack page) ("\">まえがき</h1>" `T.isInfixOf` page),
+    testCase "HTML and PDF: nothing more after a number format that ends with a space" $ do
+      (page, _) <- sepHtml "en" "Chapter {n}: " "# Introduction\n"
+      assertBool (T.unpack page) ("<span class=\"number\">Chapter 1: </span>Introduction</h1>" `T.isInfixOf` page)
+      rendered (numberedTitle "en" sp0 (Just "Chapter 1: ") [Text sp0 "Introduction"]) @?= "Chapter 1: Introduction",
+    testCase "PDF: the title of a heading unit" $ do
+      rendered (numberedTitle "en" sp0 (Just "1") [Text sp0 "Introduction"]) @?= "1 Introduction"
+      rendered (numberedTitle "ja" sp0 (Just "第一章") [Text sp0 "海"]) @?= "第一章\x3000海"
+      rendered (numberedTitle "en" sp0 Nothing [Text sp0 "Preface"]) @?= "Preface",
+    testCase "PDF: the running head heading.1.numbered" $ do
+      listToMaybe (runningHeadLines (Map.fromList [("title", "T"), ("language", "en")]) Map.empty (RunningLines ([PartRef (RefHeading 1 HeadNumbered PickFirst) False] :| [])) Map.empty [HeadingInfo 1 (Just [1]) (Just "1") [Text sp0 "Introduction"] "Introduction" (FileId 0)]) @?= Just "1 Introduction"
+      listToMaybe (runningHeadLines (Map.fromList [("title", "T"), ("language", "en")]) Map.empty (RunningLines ([PartRef (RefHeading 1 HeadNumbered PickFirst) False] :| [])) Map.empty [HeadingInfo 1 (Just [1]) (Just "Chapter 1: ") [Text sp0 "Introduction"] "Introduction" (FileId 0)]) @?= Just "Chapter 1: Introduction",
+    testCase "PDF: an English book has no ideographic space after the number" $ do
+      let style =
+            BS.concat
+              [ replaceIn "lines = 30\n" "lines = 6\n" horizontalStyle,
+                "\n[headings.1]\nnumber = \"{n}\"\n\n",
+                "[masters.body]\nrunning-head = { position = \"top-outside\", content = \"heading.1.numbered\" }\n"
+              ]
+      (heads, pl) <- layoutHeads (langManifest "en") style [("a.gm", "# Introduction\n\n" <> T.replicate (12 * 11) "あ" <> "\n")]
+      Map.lookup 2 heads @?= Just ["1 Introduction"]
+      assertBool (show (lineTexts pl)) (not (any (T.isInfixOf "\x3000") (lineTexts pl)))
+  ]
+  where
+    sp0 = mkSpan (FileId 0) 0 0
 
 codeTests :: [TestTree]
 codeTests =

@@ -23,6 +23,7 @@ library
     Golem.Doc.Collation
     Golem.Doc.IR
     Golem.Doc.ListMarkers
+    Golem.Doc.Numbering
     Golem.Doc.Numerals
     Golem.Doc.Validate
   build-depends:
@@ -41,7 +42,7 @@ test-suite golem-doc-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    Gen AssembleSpec BibliographySpec CborExprSpec ExternalTool ListMarkersSpec
+  other-modules:    Gen AssembleSpec BibliographySpec CborExprSpec ExternalTool ListMarkersSpec NumberingSpec
   build-depends:
     , base
     , bytestring
