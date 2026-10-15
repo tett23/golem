@@ -458,9 +458,28 @@ tests =
       testGroup "page size by dimensions (ADR 0005)" pageSizeTests,
       silenceTests,
       indexStyleTests,
+      hiddenFolioTests,
       testCase "marks is not a key of the manifest (golem-pdf ADR 0004)" $
         withProject [("manifest.toml", manifest ["\"a.gm\""] <> "\n[targets.pdf]\nmarks = \"japanese\"\n"), ("a.gm", "")] $ \root ->
           loadProject root >>= (@?= ["G0301"]) . codes
+    ]
+
+-- | [hidden-folio] (golem-driver ADR 0021).
+hiddenFolioTests :: TestTree
+hiddenFolioTests =
+  testGroup
+    "[hidden-folio] (golem-driver ADR 0021)"
+    [ testCase "the defaults without [hidden-folio]" $
+        fmap stHiddenFolio (parseStyle (FileId 0) "") @?= Right (HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs 278657)),
+      testCase "the four keys are read" $
+        fmap stHiddenFolio (parseStyle (FileId 0) "[hidden-folio]\nenabled = false\npages = \"all\"\nsize = \"8Q\"\ngutter = \"2mm\"\n")
+          @?= Right (HiddenFolio False HiddenAll (Abs 371543) (Abs 371543)),
+      testCase "zw, a size or gutter of 0 or less, an unknown pages and an unknown key are G0306" $
+        mapM_
+          (\body -> codes (parseStyle (FileId 0) ("[hidden-folio]\n" <> body <> "\n")) @?= ["G0306"])
+          ["size = \"1zw\"", "gutter = \"-1mm\"", "size = \"0pt\"", "pages = \"blank\"", "font = \"body\"", "gutter = \"1zw\"", "size = \"abc\""],
+      testCase "a gutter less than half the size is G0306" $
+        codes (parseStyle (FileId 0) "[hidden-folio]\nsize = \"6pt\"\ngutter = \"1mm\"\n") @?= ["G0306"]
     ]
 
 -- | [index] (docs/adr ADR 0025).
