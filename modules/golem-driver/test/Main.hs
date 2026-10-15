@@ -319,6 +319,7 @@ tests =
       testGroup "PDF captions (ADR 0010)" captionTests,
       testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
       testGroup "PDF index and bibliography (ADR 0007)" indexTests,
+      testGroup "bibliography entries and G0326 (golem-doc ADR 0004)" bibliographyFormatTests,
       testGroup "PDF tables (ADR 0008)" tableTests,
       testGroup "PDF table of contents (ADR 0009)" tocTests,
       testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
@@ -2450,6 +2451,67 @@ indexTests =
       a @?= b
       a @?= c
       qpdfCheck a
+  ]
+
+-- | A one-chapter project with a bibliography line and extra files.
+withBibProject :: T.Text -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withBibProject bibLine source files act = withSystemTempDirectory "golem-bib" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 bibLine <> "\n" <> miniManifest <> "[targets.html]\n")
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  forM_ files $ \(to, bytes) -> BS.writeFile (tmp </> to) bytes
+  act tmp
+
+-- | loadBibliography of a project: diagnostics, keys and entries.
+bibOf :: T.Text -> [(FilePath, BS.ByteString)] -> IO ([Diagnostic], Map.Map T.Text T.Text)
+bibOf bibLine files = withBibProject bibLine "本文。\n" files $ \tmp -> do
+  ev <- evaluateProject Dev tmp
+  case ev of
+    Left f -> assertFailure (show (pfDiagnostics f))
+    Right e -> do
+      (ds, _, m) <- loadBibliography tmp (projectManifest (evProject e))
+      pure (ds, m)
+
+-- | A Japanese entry, by a literal author, as CSL-JSON.
+jaRefsJson :: BS.ByteString
+jaRefsJson = TE.encodeUtf8 "[{\"id\": \"jisx4061\", \"title\": \"JIS X 4061:1996 日本語文字列照合順番\", \"publisher\": \"日本規格協会\", \"issued\": {\"date-parts\": [[1996]]}}, {\"id\": \"lit\", \"author\": [{\"literal\": \"日本規格協会\", \"family\": \"x\"}], \"title\": \"照合順番\", \"issued\": {\"literal\": \"n.d.\"}}]"
+
+bibliographyFormatTests :: [TestTree]
+bibliographyFormatTests =
+  [ testCase "a literal author and a literal date are in the entry" $ do
+      (ds, m) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", jaRefsJson)]
+      ds @?= []
+      Map.lookup "lit" m @?= Just "日本規格協会、照合順番、n.d.。"
+      Map.lookup "jisx4061" m @?= Just "JIS X 4061:1996 日本語文字列照合順番、日本規格協会、1996。",
+    testCase "a missing file is G0326 at the head of manifest.toml" $ do
+      (ds, m) <- bibOf "bibliography = [\"nope.json\"]" []
+      map (\d -> (diagCode d, diagSeverity d, diagSpan d, diagMessage d)) ds @?= [(DiagnosticCode "G0326", Error, mkSpan (FileId 0) 0 0, "参考文献のファイルがありません: nope.json")]
+      m @?= Map.empty,
+    testCase "a file that is not JSON, or not an array, is G0326" $ do
+      (ds1, _) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", "{")]
+      map diagCode ds1 @?= [DiagnosticCode "G0326"]
+      assertBool (show ds1) (all (("参考文献のファイルを JSON として読めません: refs.json（" `T.isPrefixOf`) . diagMessage) ds1)
+      (ds2, _) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", "{}")]
+      map diagMessage ds2 @?= ["参考文献のファイルは CSL-JSON の配列で書きます: refs.json"],
+    testCase "an absolute path is G0303" $ do
+      (ds, _) <- bibOf "bibliography = [\"/abs.json\"]" []
+      map diagCode ds @?= [DiagnosticCode "G0303"],
+    testCase "golem check reports G0326 before the G0221 it causes" $
+      withBibProject "bibliography = [\"nope.json\"]" "本文[cite jlreq]。\n" [] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optCheckOnly = True}
+        -- G0807 of the fontless PDF target comes after them
+        take 2 (map diagCode (filter isError (brDiagnostics r))) @?= [DiagnosticCode "G0326", DiagnosticCode "G0221"],
+    testCase "HTML lists a Japanese entry with 、 and 。" $
+      withBibProject "bibliography = [\"refs.json\"]" "本文[cite jisx4061]。\n\n@bibliography\n" [("refs.json", jaRefsJson)] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        assertBool (T.unpack page) ("JIS X 4061:1996 日本語文字列照合順番、日本規格協会、1996。</li>" `T.isInfixOf` page),
+    testCase "the PDF bibliography line has no space before a Latin period" $ do
+      (_, m) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", jaRefsJson)]
+      let ls = map rendered (bibliographyLines m [("jisx4061", 1)])
+      assertBool (show ls) (not (any ("日本規格協会 ." `T.isInfixOf`) ls))
+      assertBool (show ls) (any ("日本規格協会、" `T.isInfixOf`) ls)
   ]
 
 -- | A line of one box of a width (a page number in the tests of tocPage).
