@@ -132,11 +132,12 @@ codeBlock cs =
       lang = case [t | PT KWord _ t <- cs] of
         (t : _) -> Just t
         [] -> Nothing
-      ls = [stripIndent ind t | PT KCodeText _ t <- cs]
-      body = T.concat ls
-   in CodeBlock lang (fromMaybe body (T.stripSuffix "\n" body))
+      ls = [Located (withoutNewline sp t) (dropNewline (stripIndent ind t)) | PT KCodeText sp t <- cs]
+   in CodeBlock lang (arguments (significant cs)) ls
   where
     stripIndent n t = let (pre, rest) = T.splitAt n t in if T.all (== ' ') pre then rest else t
+    dropNewline t = fromMaybe t (T.stripSuffix "\n" t)
+    withoutNewline sp t = if "\n" `T.isSuffixOf` t then mkSpan (spanFile sp) (spanStart sp) (spanEnd sp - 1) else sp
 
 attributed :: P -> Located Block
 attributed (PN _ sp cs) =

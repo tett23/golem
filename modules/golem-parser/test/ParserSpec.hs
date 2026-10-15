@@ -106,6 +106,10 @@ tests =
         parseOk "```haskell\nmain = putStrLn \"[%%\\\"\n```\n"
         let (cst, _) = parse fid "```\n[x\n```\n"
         assertBool "no command inside code" (NInlineCommand `notElem` kinds cst),
+      -- golem-driver ADR 0023
+      testCase "code blocks take keyword arguments after the language" $ do
+        parseOk "```haskell numbers=10 file=\"src/Main.hs\" highlight=12,14-15 callouts=true\nmain = pure ()\n```\n"
+        parseOk "``` numbers=true\nx\n```\n",
       testCase "figure with caption body" $
         parseOk "@label fig-arch\n@figure images/arch.pdf web=images/arch.png alt=\"構成図\"\n  構成図のキャプション。\n",
       testCase "expressions" $ parseOk "[= -2 ** 2] [= round(2.675, 2)] [= [1, 2]] [= {a: 1, \"b\": true}] [= values.price >= 10]\n",

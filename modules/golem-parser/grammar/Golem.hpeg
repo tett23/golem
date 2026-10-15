@@ -591,7 +591,7 @@ Delim <- Sp ':'? '-'+ ':'? Sp { () }
 # ------------------------------------------------------------ code blocks
 
 CodeBlock(ind :: Int) :: ()
-CodeBlock <- Ind(ind) Fence Lang? Sp Nl
+CodeBlock <- Ind(ind) Fence Lang? Arguments Sp Nl
              (!CodeClose(ind) CodeLine)*
              (CodeClose(ind))^code_close { () }
 
