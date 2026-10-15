@@ -189,6 +189,7 @@ data Piece
   | PRubyBreak -- a break allowed between mono ruby bases
   | PForcedBreak -- a hard line break: the line ends as a paragraph does (docs/adr ADR 0016)
   | PAki !Look !AkiAmount -- [aki]: a fixed space, no break around it (docs/adr ADR 0019)
+  | PCode !Look !Text -- a run of code without spaces and tabs (golem-driver ADR 0017)
   | PAnchor (Int -> Anchor)
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
@@ -268,7 +269,9 @@ piecesOf env kenten inl = case inl of
     restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl} kenten)
 
 textPieces :: Look -> Bool -> Text -> [Piece]
-textPieces lk kenten t = reverse (foldl' attach [] (go (zip cs latinish)))
+textPieces lk kenten t
+  | lkCode lk = codePieces lk t
+  | otherwise = reverse (foldl' attach [] (go (zip cs latinish)))
   where
     -- variation selectors join the character or word before them (golem-pdf ADR 0006)
     attach acc p = case (acc, p) of
@@ -297,6 +300,20 @@ textPieces lk kenten t = reverse (foldl' attach [] (go (zip cs latinish)))
           let (w, rest') = span snd ((c, l) : rest)
            in PWord lk (T.pack (map fst w)) : go rest'
       | otherwise = PChar lk c "" kenten : go rest
+
+{- | The text of code (golem-driver ADR 0017): spaces as between words, a
+tab as other text has it, and each run of the rest as one piece.
+-}
+codePieces :: Look -> Text -> [Piece]
+codePieces lk = go
+  where
+    go t = case T.uncons t of
+      Nothing -> []
+      Just (' ', _) -> PSpace lk : go (T.dropWhile (== ' ') t)
+      Just ('\t', rest) -> PChar lk '\t' "" False : go rest
+      Just _ ->
+        let (run, rest) = T.break (\c -> c == ' ' || c == '\t') t
+         in PCode lk run : go rest
 
 numberPieces :: ComposeEnv -> Integer -> Maybe NumberStyle -> [Piece]
 numberPieces env n style
@@ -353,7 +370,8 @@ kernPairs env = \case
     | Just a <- single p,
       Just b <- single c,
       bcLook p == bcLook c,
-      lkKerning (bcLook p) == KernMetrics ->
+      lkKerning (bcLook p) == KernMetrics,
+      not (lkCode (bcLook p)) ->
         let k = round (ceKern env (bcLook p) a b * toRational (lkSize (bcLook p)))
          in Box (w + k) p {bcEdgeEnd = bcEdgeEnd p - k} : kernPairs env rest
   x : rest -> x : kernPairs env rest
@@ -449,7 +467,30 @@ itemsFor env prev p next = case p of
           AkiZw r -> round (r * toRational (lkSize lk))
           AkiAbs x -> x
      in [Penalty 0 infPenalty NoHyphen, Glue w 0 0]
+  PCode lk run -> codeItems env lk run
   PAnchor _ -> []
+
+{- | A run of code (golem-driver ADR 0017): a box for each part of Latin or
+other text, cut after each slash; 'normalize' allows a break after a
+slash and nothing else between the boxes. No hyphenation, protrusion or
+expansion.
+-}
+codeItems :: ComposeEnv -> Look -> Text -> [Item]
+codeItems env lk run =
+  [ Box (w + tr * toInteger (T.length seg)) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr))
+  | part <- slashParts run,
+    seg <- T.groupBy sameSide part,
+    let latin = maybe False ((== Western) . charClass . fst) (T.uncons seg)
+        w = round (ceWordAdvance env lk seg * toRational (lkSize lk))
+        tag = if ceVertical env && latin then KindRotated else KindText
+  ]
+  where
+    tr = tracking lk
+    sameSide a b = isVariationSelector b || (charClass a == Western) == (charClass b == Western)
+    slashParts t = case T.breakOn "/" t of
+      (a, rest)
+        | T.null rest -> [a | not (T.null a)]
+        | otherwise -> (a <> "/") : slashParts (T.drop 1 rest)
 
 {- | A Latin word: broken after its explicit hyphens and dashes, or else
 where the patterns allow. A word with a hyphen or dash in it gets no
@@ -512,6 +553,8 @@ normalize env = go AtStart True
     go before first (x : rest) = case x of
       Box w c ->
         let spacing = case before of
+              -- inside code: a break after a slash, no spacing (golem-driver ADR 0017)
+              AfterBox p | lkCode (bcLook p) && lkCode (bcLook c) -> [Penalty 0 0 NoHyphen | "/" `T.isSuffixOf` bcText p]
               AfterBox p -> between p c
               AtStart -> leading c
               AfterAki -> []

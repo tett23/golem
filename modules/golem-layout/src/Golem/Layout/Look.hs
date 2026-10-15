@@ -48,12 +48,16 @@ data Look = Look
     -- | palt (vpal in vertical text) on Japanese characters
     lkProportional :: !Bool,
     -- | in sp: up in horizontal text, right in vertical text
-    lkBaselineShift :: !Integer
+    lkBaselineShift :: !Integer,
+    {- | the text is code (golem-driver ADR 0017): breaks only at spaces and
+    after a slash, no hyphenation and no aki between its characters
+    -} lkCode :: !Bool
   }
   deriving stock (Eq, Ord, Show)
 
 {- | One role for both scripts at a size, upright, regular, default colour,
-metrics kerning, no tracking, no proportional metrics, no baseline shift.
+metrics kerning, no tracking, no proportional metrics, no baseline shift,
+not code.
 -}
 plainLook :: Text -> Integer -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False

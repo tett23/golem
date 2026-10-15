@@ -21,6 +21,7 @@ library
   exposed-modules:  Golem.Layout.KnuthPlass
                     Golem.Layout.Aki
                     Golem.Layout.CharClass
+                    Golem.Layout.Code
                     Golem.Layout.Hyphenation
                     Golem.Layout.Hyphenation.EnUs
                     Golem.Layout.Japanese
