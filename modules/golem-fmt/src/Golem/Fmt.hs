@@ -1,12 +1,16 @@
 {- | The formatter (golem-fmt ADR 0001). It rewrites the lossless CST and
 never changes the AST: every rule is checked against the AST of the
-original source and a rule that would change it is not applied.
+original source and a rule that would change it is not applied. The rule
+that removes escapes is checked with the escapes it may remove made text
+(golem-parser ADR 0010).
 -}
 module Golem.Fmt
   ( preprocess,
     format,
     FormatResult (..),
     astFingerprint,
+    astFingerprintWith,
+    removableEscape,
     rules,
   )
 where
@@ -16,6 +20,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Parser (parse, parseAst)
+import Golem.Parser.AST (plainEscapesIn)
 import Golem.Parser.CST
 import Golem.Syntax
 
@@ -40,9 +45,15 @@ preprocess t0 =
 
 -- | The AST without source positions.
 astFingerprint :: Text -> Text
-astFingerprint src =
+astFingerprint = astFingerprintWith (const False)
+
+{- | The AST without source positions, with the escaped characters that
+match made text (golem-parser ADR 0010).
+-}
+astFingerprintWith :: (Char -> Bool) -> Text -> Text
+astFingerprintWith p src =
   let (f, _, _) = parseAst (FileId 0) src
-   in eraseSpans (T.pack (show f))
+   in eraseSpans (T.pack (show (plainEscapesIn p f)))
   where
     eraseSpans t = case T.breakOn "SrcSpan {" t of
       (pre, rest)
@@ -58,18 +69,35 @@ format src0 =
       (root, diags) = parse (FileId 0) src
    in if hasErrors diags
         then Unformattable diags
-        else Formatted (foldl' (apply (astFingerprint src)) (render root) rules)
+        else Formatted (foldl' (apply src) (render root) rulesWith)
   where
-    apply fp cur rule =
+    -- the AST of the rule's result against the original's, compared with
+    -- the escapes the rule may remove made text (golem-parser ADR 0010)
+    apply orig cur (removable, rule) =
       let (r, _) = parse (FileId 0) cur
           next = render (rule r)
-       in if next /= cur && astFingerprint next == fp && not (hasErrors (snd (parse (FileId 0) next)))
+       in if next /= cur && astFingerprintWith removable next == astFingerprintWith removable orig && not (hasErrors (snd (parse (FileId 0) next)))
             then next
             else cur
 
 -- | The rules, in the order they are applied.
 rules :: [Node -> Node]
-rules = [blankLines, trailingWhitespace, commandSpacing, tableSpacing, escapes, finalNewline]
+rules = map snd rulesWith
+
+{- | The rules with the escaped characters each may remove. Only 'escapes'
+removes escapes, of the characters 'removableEscape' allows.
+-}
+rulesWith :: [(Char -> Bool, Node -> Node)]
+rulesWith =
+  [ (none, blankLines),
+    (none, trailingWhitespace),
+    (none, commandSpacing),
+    (none, tableSpacing),
+    (removableEscape, escapes),
+    (none, finalNewline)
+  ]
+  where
+    none = const False
 
 -- ------------------------------------------------------------------ helpers
 
@@ -201,11 +229,18 @@ escapes = mapChildren (map unescape)
     unescape e@(ElemToken t)
       | tokKind t == KEscape,
         Just (_, c) <- T.uncons (tokText t) >>= T.uncons . snd >>= \(c', r) -> if T.null r then Just ((), c') else Nothing,
-        not (special c) =
+        removableEscape c =
           token KText (T.singleton c)
       | otherwise = e
     unescape e = e
-    special c = isSpace c || (isAscii c && (isPunctuation c || isSymbol c || c `elem` ['0' .. '9']))
+
+{- | A character whose escape the formatter may remove: not a space, an
+ASCII punctuation or symbol, or a digit. Every character the evaluation
+tells apart by an escape (@/@, the space and the tab) must stay out of it,
+or formatting could change the meaning of a source (golem-parser ADR 0010).
+-}
+removableEscape :: Char -> Bool
+removableEscape c = not (isSpace c || (isAscii c && (isPunctuation c || isSymbol c || c `elem` ['0' .. '9'])))
 
 -- | The file ends with exactly one newline.
 finalNewline :: Node -> Node

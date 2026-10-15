@@ -1,6 +1,6 @@
 # ADR 0003: ブロック層の文法
 
-ステータス: 採択→回復のラベルの追加（table_row）は [ADR 0007](0007-grammar-label-safety.md)
+ステータス: 採択→回復のラベルの追加（table_row）は [ADR 0007](0007-grammar-label-safety.md)、表の行末の `\` は [ADR 0010](0010-ruby-slash-escape-and-table-cell-breaks.md)
 
 ## 文脈
 

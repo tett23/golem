@@ -1,6 +1,6 @@
 # ADR 0019: アキの量を文字のクラスの組ごとに設定し、原稿にアキを入れる
 
-ステータス: 採択
+ステータス: 採択→`[aki]` の行分割の項目の形は [golem-layout ADR 0012](../golem-layout/adr/0012-aki-glue-marker.md)
 
 ## 文脈
 
