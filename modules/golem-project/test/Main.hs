@@ -415,6 +415,12 @@ tests =
             (paraStyle s (Just "caption") >>= psSize) @?= Just (Abs (8 * 65536))
         codes (parseStyle (FileId 0) "[figures]\ncaption = \"x\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[figures.caption]\nfont = \"body\"\n") @?= ["G0306"],
+      testCase "[composition] kenten takes the ten shapes (golem-driver ADR 0019)" $ do
+        let kentenOf = fmap (compKenten . stComposition) . parseStyle (FileId 0)
+        kentenOf "" @?= Right "sesame"
+        kentenOf "[composition]\nkenten = \"triangle\"\n" @?= Right "triangle"
+        codes (parseStyle (FileId 0) "[composition]\nkenten = \"star\"\n") @?= ["G0306"]
+        kentenShapeNames @?= ["sesame", "open-sesame", "dot", "open-dot", "circle", "open-circle", "double-circle", "open-double-circle", "triangle", "open-triangle"],
       testCase "explicit-hyphen-penalty (golem-layout ADR 0008)" $ do
         fmap (compExplicitHyphenPenalty . stComposition) (parseStyle (FileId 0) "") @?= Right 50
         fmap (compExplicitHyphenPenalty . stComposition) (parseStyle (FileId 0) "[composition]\nexplicit-hyphen-penalty = 100\n") @?= Right 100

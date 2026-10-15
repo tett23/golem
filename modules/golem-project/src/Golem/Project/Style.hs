@@ -52,6 +52,7 @@ module Golem.Project.Style
     Composition (..),
     RubyStyleDef (..),
     defaultRubyStyleDef,
+    kentenShapeNames,
     SidenoteStyle (..),
     IndexStyle (..),
     HiddenFolio (..),
@@ -884,6 +885,13 @@ dimKey k = unDim <$> optKey k
 reqDim :: Text -> ParseTable l Dim
 reqDim k = (\(DimV d) -> d) <$> reqKey k
 
+{- | The names of the shapes of kenten, in [kenten shape=...] and in
+[composition] kenten (golem-driver ADR 0019): those of CSS
+text-emphasis-style.
+-}
+kentenShapeNames :: [Text]
+kentenShapeNames = ["sesame", "open-sesame", "dot", "open-dot", "circle", "open-circle", "double-circle", "open-double-circle", "triangle", "open-triangle"]
+
 enumKey :: Text -> [Text] -> ParseTable l (Maybe Text)
 enumKey k allowed = do
   v <- optKey k
@@ -1031,7 +1039,7 @@ instance FromValue Composition where
     k <- enumKey "kinsoku" ["strict", "loose"]
     h <- optKey "hanging-punctuation"
     r <- optKey "ruby"
-    kt <- optKey "kenten"
+    kt <- enumKey "kenten" kentenShapeNames
     pre <- optKey "pretolerance"
     tol <- optKey "tolerance"
     es <- dimKey "emergency-stretch"

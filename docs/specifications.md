@@ -607,6 +607,11 @@ running-head = { position = "top-outside", content = "heading.1.short" }
 folio = { position = "bottom-outside", format = "{n}" }
 ```
 
+`[composition]` の `kenten` は、形を省いた圏点（`[kenten: ...]`）の形である（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。
+取れる値は `sesame`、`open-sesame`、`dot`、`open-dot`、`circle`、`open-circle`、`double-circle`、`open-double-circle`、`triangle`、`open-triangle` の十で、既定は `sesame` である。
+ほかの値は G0306 とする。
+形の一覧と字は [docs/markup.md](markup.md) の「圏点」にある。
+
 版面は、日本語組版の流儀に従い、文字の大きさ、一行の字数、一ページの行数、行送り、段数で定義する。
 余白は、版面をページのどこに置くかから決まる従属的な値である。
 字数と行数を整数で決めることで、行頭と行末が字送りの格子にそろう。
@@ -2019,7 +2024,6 @@ v1 のリリースまでに、次の項目を扱う。
 
 - **柱の内容の書式**（未実装、[golem-driver ADR 0022](golem-driver/adr/0022-running-head-formats.md)）：柱の内容は、見出しの題と書名の固定の語彙（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）だけを書ける。柱の内容に、任意の文字列と変数の参照を書けるようにする。たとえば書名と章の題を並べる柱（`"{meta.title}　{heading.1.short}"` のような書式）や、固定の文言だけの柱を作れるようにする。参照できる値は、`meta` のメタデータ（書名、著者など）、見出しの題と番号、`@set` の変数とする。柱は複数の行にできるようにする（書名の行と章の題の行を重ねる柱など）。書式の記法（差し込みの書き方と、`{` そのものの書き方、行の区切りの書き方）、複数の行の行送りと揃え、柱の行が増えたときの版面との間の空き、参照した値がないときの扱い、参照の誤りの診断は ADR で決める。
 - **本文の中のコードの背景の色**：コードの書体の役割、コードブロックの組み方は[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)で、技術書のためのコードブロックの機能は[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)で実装した。本文の中のコード（`[code: ...]`）の背景の色は扱っていない。
-- **PDF の圏点**（未実装、[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）：圏点の `shape` を PDF で使わず、常に `﹅` で描く。横組みでは圏点が右にずれ、字の上端に重なる。
 - **章末の注**：`[notes] placement = "chapter-end"` を読み込むが、どの出力も注の置き方を変えない。仕様書とマニュアルは章末に置けると書いていない形に直したが、章末の注そのものはまだない。
 - **図版の欠落の扱い**：PDF の図版のうち、置けない形式のものや壊れた画像を、`golem build` が誤りにせずに落としている可能性がある（コードを読んだ結果で、実際の出力では確かめていない）。
 - **PDF の図版**：仕様は PDF（ベクター）の図版を置けると定めているが（「図版」の節）、実装（golem-pdf の `readImage`）は JPEG と PNG だけを受け付ける。マニュアルも PDF の図版を使えると書いている。仕様のとおり、PDF の図版を PDF の出力に置けるようにする。Web 用の代替画像の扱いも合わせて決める。

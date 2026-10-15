@@ -22,6 +22,7 @@ module Golem.Driver.Pdf
     bookHasCode,
     codeStyles,
     codeFontNotice,
+    kentenRubyNotices,
     syntheticStroke,
     syntheticStrokeJa,
     syntheticStrokeLatin,
@@ -105,6 +106,7 @@ import Golem.Project
 import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Syntax
+import Numeric (showHex)
 import System.FilePath (takeBaseName)
 
 {- | How a text is shaped (docs/adr/0020): the font role (golem-driver ADR
@@ -140,7 +142,10 @@ data LoadedFonts = LoadedFonts
     -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> P.Font,
     {- | the height of the centre of the ideographic em box above the
     baseline of a face number, in em (golem-driver ADR 0015)
-    -} lfEmBoxCentral :: Int -> Rational
+    -} lfEmBoxCentral :: Int -> Rational,
+    {- | the ink box of a glyph of a face number: xMin, yMin, xMax, yMax in
+    em (golem-driver ADR 0019)
+    -} lfInkBox :: Int -> Int -> Maybe (Rational, Rational, Rational, Rational)
   }
 
 -- | A glyph from shaping.
@@ -337,6 +342,79 @@ codeFontNotice fid style book =
     Map.notMember "code" (stFonts style),
     (paraStyle style (Just "code") >>= psFont) == Just "code" || (charStyle style "code" >>= csFont) == Just "code"
   ]
+
+{- | The glyphs of a kenten mark (golem-driver ADR 0019): the character of
+the shape in the Japanese face of a role, in the direction of the text.
+-}
+kentenShaped :: LoadedFonts -> Bool -> Text -> KentenShape -> [Shaped]
+kentenShaped fonts vertical role shape = lfShape fonts (Shaping role vertical []) (T.singleton (kentenChar shape))
+
+{- | G0809 (golem-driver ADR 0019): a role whose Japanese face has no glyph
+for a kenten shape used in it, once for each role and shape, at the top
+of @fid@.
+-}
+kentenGlyphDiagnostics :: FileId -> Bool -> LoadedFonts -> PdfLayout -> [Diagnostic]
+kentenGlyphDiagnostics fid vertical fonts layout =
+  [ diagnostic "G0809" Error (mkSpan fid 0 0) ("役割 " <> role <> " の和文の書体に圏点の形 " <> kentenShapeName shape <> " の字（U+" <> codePoint (kentenChar shape) <> "）がありません")
+  | (role, shape) <- Set.toAscList (Set.fromList [(lkFace (bcLook c), shape) | l <- layoutLines layout, Box _ c <- lineItems l, boxKind c == KindKenten, Just shape <- [lkKenten (bcLook c)]]),
+    let gs = kentenShaped fonts vertical role shape,
+    null gs || any ((== 0) . shGlyph) gs
+  ]
+  where
+    codePoint ch = T.justifyRight 4 '0' (T.toUpper (T.pack (showHex (fromEnum ch) "")))
+
+-- | Every line of a layout: of the text, notes, sidenotes, tables, captions and the table of contents.
+layoutLines :: PdfLayout -> [Line]
+layoutLines layout =
+  concat
+    [ concat [slLine sl : concatMap snd (slNotes sl) <> concatMap snd (slSidenotes sl) | sl <- Map.elems (plLines layout)],
+      [slLine sl | sls <- Map.elems (plTableLines layout), sl <- sls],
+      concatMap pfCaption (Map.elems (plFigures layout)),
+      concatMap psLines (concat (Map.elems (plSidenotes layout))),
+      concat [[tpLeader tp, tpNumber tp] | tp <- Map.elems (plTocPages layout)]
+    ]
+
+{- | G0745 (golem-driver ADR 0019): kenten in the base of a ruby, at the
+kenten, and ruby in kenten, at the ruby. The PDF draws no kenten there;
+HTML and EPUB draw both.
+-}
+kentenRubyNotices :: Book -> [Diagnostic]
+kentenRubyNotices book =
+  [ notice "G0745" sp "ルビの親文字の圏点は PDF では描きません"
+  | Document _ bs <- bookDocs book,
+    is <- concatMap blockInlineLists bs,
+    sp <- concatMap (sites False) is
+  ]
+  where
+    -- ruby inside kenten, and kenten in the bases of a ruby
+    sites :: Bool -> Inline -> [SrcSpan]
+    sites inKenten = \case
+      Kenten _ _ xs -> concatMap (sites True) xs
+      Ruby sp _ segs -> [sp | inKenten] <> concat [concatMap kentenIn b | RubySegment b _ <- segs]
+      Color _ _ xs -> concatMap (sites inKenten) xs
+      CharStyle _ _ xs -> concatMap (sites inKenten) xs
+      Note _ _ xs -> concatMap (sites False) xs
+      Sidenote _ _ xs -> concatMap (sites False) xs
+      _ -> []
+    -- the outermost kenten in a base
+    kentenIn :: InlineF r -> [SrcSpan]
+    kentenIn = \case
+      Kenten sp _ _ -> [sp]
+      Color _ _ xs -> concatMap kentenIn xs
+      CharStyle _ _ xs -> concatMap kentenIn xs
+      _ -> []
+
+-- | Every list of inlines of a block, captions and nested blocks included.
+blockInlineLists :: Block -> [[Inline]]
+blockInlineLists (Block _ _ body) = case body of
+  Paragraph _ is -> [is]
+  Heading _ _ is -> [is]
+  BulletList items -> concatMap (concatMap blockInlineLists . itemBlocks) items
+  OrderedList items -> concatMap (concatMap blockInlineLists . itemBlocks) items
+  DefList gs -> concat [dgTerms g <> concatMap (concatMap blockInlineLists) (dgDefs g) | g <- gs]
+  Table _ h rows -> h <> concat rows
+  FigureBlock fig -> concatMap blockInlineLists (figCaption fig)
+  _ -> []
 
 {- | The look inside an inline element (golem-driver ADR 0004, docs/adr ADR
 0005): a character style's role on the sides the role has, synthetic bold
@@ -713,7 +791,14 @@ renderPdf provider inp0 = case checkedGeometry inp of
         li <- loadIntent inp
         case li of
           Left ds -> pure (Left ds)
-          Right intent -> fmap (\layout -> (writeDocument inp geom fonts layout intent, plNotices layout)) <$> layoutPdf inp geom fonts
+          Right intent -> do
+            laid <- layoutPdf inp geom fonts
+            -- a kenten shape the font has no glyph for stops the PDF (G0809, golem-driver ADR 0019)
+            pure $ do
+              layout <- laid
+              case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
+                [] -> Right (writeDocument inp geom fonts layout intent, plNotices layout)
+                ds -> Left ds
   where
     inp = codeInput inp0
 
@@ -1043,21 +1128,12 @@ sidenoteDiagnostics geom book
   where
     blocks = concat [bs | Document _ bs <- bookDocs book]
     -- every list of inlines of the book, captions included
-    inlineLists = concatMap blockInlines blocks
-    blockInlines (Block _ _ body) = case body of
-      Paragraph _ is -> [is]
-      Heading _ _ is -> [is]
-      BulletList items -> concatMap (concatMap blockInlines . itemBlocks) items
-      OrderedList items -> concatMap (concatMap blockInlines . itemBlocks) items
-      DefList gs -> concat [dgTerms g <> concatMap (concatMap blockInlines) (dgDefs g) | g <- gs]
-      Table _ h rows -> h <> concat rows
-      FigureBlock fig -> concatMap blockInlines (figCaption fig)
-      _ -> []
+    inlineLists = concatMap blockInlineLists blocks
     -- each sidenote, and whether it is in the text flow
     sites = concatMap siteBlock blocks
     siteBlock b@(Block _ _ body) = case body of
-      FigureBlock fig -> [(sp, False) | is <- concatMap blockInlines (figCaption fig), (sp, _) <- concatMap (inlineSites True) is]
-      _ -> [x | is <- blockInlines b, x <- concatMap (inlineSites True) is]
+      FigureBlock fig -> [(sp, False) | is <- concatMap blockInlineLists (figCaption fig), (sp, _) <- concatMap (inlineSites True) is]
+      _ -> [x | is <- blockInlineLists b, x <- concatMap (inlineSites True) is]
     inlineSites flow = \case
       Sidenote sp _ xs -> (sp, flow) : concatMap (inlineSites flow) xs
       Note _ _ xs -> concatMap (inlineSites False) xs
@@ -2113,6 +2189,21 @@ writeDocument inp geom fonts layout intent =
               | otherwise = P.GlyphRun (ref ix False) size [(code ix g, gx, gy) | (g, _, off, o) <- xs, let (gx, gy) = moved turned o (x0 + off, y0)]
             code = lfCode fonts
          in ([mark k xs | (k, xs) <- Map.toList byFont], [(ref ix (v && not rotated && not tu), g, t) | (ix, g, t, _, tu, _, _) <- placed])
+      {- the mark of a kenten shape in a role at a size, the centre of the
+      ink box of its glyph at a point (golem-driver ADR 0019): horizontal,
+      in the vertical font (its glyph origin at (1/2, 0.88) em of the
+      glyph, as golem-pdf writes W2), or turned -}
+      kentenMark role shape d (cx, cy) =
+        let place Shaped {shFace = ix, shGlyph = g, shText = t, shTurned = tu} =
+              let (x0, y0, x1, y1) = fromMaybe (0, 0, 0, 0) (lfInkBox fonts ix g)
+                  (mx, my) = ((x0 + x1) / 2, (y0 + y1) / 2)
+                  code = lfCode fonts ix g
+               in case (vertical, tu) of
+                    (False, _) -> (P.GlyphRun (ref ix False) d [(code, cx - toSp d mx, cy - toSp d my)], (ref ix False, g, t))
+                    (True, False) -> (P.GlyphRun (ref ix True) d [(code, cx - toSp d (mx - 1 / 2), cy - toSp d (my - 88 / 100))], (ref ix True, g, t))
+                    -- turned 90 degrees clockwise: (x, y) of the glyph is (y, -x) on the page
+                    (True, True) -> (P.RotatedGlyphRun (ref ix False) d [(code, cx - toSp d my, cy + toSp d mx)], (ref ix False, g, t))
+         in unzip (map place (kentenShaped fonts vertical role shape))
       -- the face that sets the Japanese text of a look: that of an ideograph
       japaneseFace look = maybe 0 shFace (listToMaybe (lfShape fonts (Shaping (lkFace look) False []) "漢"))
       -- the swatch of a look, when it names one (golem-driver ADR 0004)
@@ -2174,10 +2265,21 @@ writeDocument inp geom fonts layout intent =
                                 placed2 = [runAt half vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
                              in (concatMap fst (placed1 <> placed2), concatMap snd (placed1 <> placed2))
                       KindKenten ->
-                        -- the character, and a sesame dot centred beside it
-                        let dsize = lkSize half
-                            (b1, u1) = runAt look vertical False 0 (origin off) (bcText c)
-                            (b2, u2) = runAt half vertical False 0 (beside (origin (off + (size - dsize) `div` 2)) (if vertical then size `div` 2 + dsize `div` 2 else size)) "﹅"
+                        {- the character, and the mark of its shape, half its size, the
+                        centre of its ink box beside the em box (golem-driver ADR 0019):
+                        above the middle of the advance in horizontal text, right of
+                        the middle of the box in vertical text -}
+                        let (b1, u1) = runAt look vertical False 0 (origin off) (bcText c)
+                            d = lkSize half
+                            shift = lkBaselineShift look
+                            parent = lfShape fonts (shapingOf vertical look (T.head (bcText c))) (bcText c)
+                            centre
+                              | vertical = beside (origin (off + size `div` 2)) (shift + size `div` 2 + d `div` 2)
+                              | otherwise =
+                                  let adv = toSp size (sum (map shAdvance parent))
+                                      central = maybe 0 (lfEmBoxCentral fonts . shFace) (listToMaybe parent)
+                                   in beside (origin (off + adv `div` 2)) (shift + toSp size (central + 1 / 2) + d `div` 2)
+                            (b2, u2) = maybe ([], []) (\sh -> kentenMark (lkFace look) sh d centre) (lkKenten look)
                          in (b1 <> b2, u1 <> u2)
                       KindNoteMark ->
                         {- a note mark at half the size, aligned to the em box of the

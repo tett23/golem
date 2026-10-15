@@ -934,6 +934,16 @@ diagnosticTests =
         diags "[cite knuth1981: x]\n" @?= [("G0238", "cite は散文スロットを取りません", 0, 19)]
         body "[cite knuth1981: x]\n" @?= [Paragraph Nothing []]
         errs "# [ref-number intro: x]\n" @?= ["G0214"],
+      testCase "kenten without a shape takes the default of style.toml (golem-driver ADR 0019)" $ do
+        let kentenOf c src = case fst (run c src) of
+              [Paragraph Nothing [Kenten _ sh _]] -> sh
+              other -> error (show other)
+        kentenOf ctx {ctxDefaultKenten = "circle"} "[kenten: 語]\n" @?= Just "circle"
+        kentenOf ctx "[kenten: 語]\n" @?= Just "sesame"
+        kentenOf ctx {ctxDefaultKenten = "circle"} "[kenten shape=dot: 語]\n" @?= Just "dot",
+      testCase "the four added kenten shapes (golem-driver ADR 0019)" $ do
+        mapM_ (\sh -> errs ("[kenten shape=" <> sh <> ": a]\n") @?= []) ["double-circle", "open-double-circle", "triangle", "open-triangle"]
+        kentenShapes @?= ["sesame", "open-sesame", "dot", "open-dot", "circle", "open-circle", "double-circle", "open-double-circle", "triangle", "open-triangle"],
       testCase "G0239, G0240, G0241, G0243" $ do
         msgs "[kenten shape=star: a]\n" @?= [("G0239", "未知の圏点の形です: star")]
         msgs "[tcy: [strong: 12]]\n" @?= [("G0240", "縦中横の中身は地の文に限ります")]

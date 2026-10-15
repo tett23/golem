@@ -10,6 +10,11 @@ strong { font-weight: bold; }
 .kenten-open-dot { text-emphasis-style: open dot; }
 .kenten-circle { text-emphasis-style: circle; }
 .kenten-open-circle { text-emphasis-style: open circle; }
+.kenten-sesame { text-emphasis-style: sesame; -epub-text-emphasis-style: sesame; }
+.kenten-double-circle { text-emphasis-style: double-circle; }
+.kenten-open-double-circle { text-emphasis-style: open double-circle; }
+.kenten-triangle { text-emphasis-style: triangle; }
+.kenten-open-triangle { text-emphasis-style: open triangle; }
 .align-left { text-align: left; }
 .align-center { text-align: center; }
 .align-right { text-align: right; }
