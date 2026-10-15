@@ -1965,7 +1965,7 @@ writeDocumentView inp geom fonts layout intent =
               | scale /= 0 = P.ScaledGlyphRun (ref ix False) size (1000 + scale) [(code ix g, x0 + off, y0) | (g, _, off) <- xs]
               | otherwise = P.GlyphRun (ref ix False) size [(code ix g, x0 + off, y0) | (g, _, off) <- xs]
             code = lfCode fonts
-         in ([mark k xs | (k, xs) <- Map.toList byFont], [GlyphUse (ref ix (v && not rotated && not tu)) g t ix size (lkColor look) (lkFace look) | (ix, g, t, _, tu, _) <- placed])
+         in ([mark k xs | (k, xs) <- Map.toList byFont], [(ref ix (v && not rotated && not tu), g, t) | (ix, g, t, _, tu, _) <- placed])
       -- the swatch of a look, when it names one (golem-driver ADR 0004)
       swatchOf look = do
         name <- lkColor look
@@ -1973,6 +1973,10 @@ writeDocumentView inp geom fonts layout intent =
         pure (P.Swatch cc cm cy ck)
       -- a line at a distance across the type area: the baseline from its
       -- top edge, or the centre line from its right edge
+      -- runAt with the face, size, swatch and role of each glyph, for the view (golem-cli ADR 0006)
+      runAtU look v rotated scale pt txt =
+        let (ms, us) = runAt look v rotated scale pt txt
+         in (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) (lkFace look) | (r@(P.FontRef k), g, t) <- us])
       lineStart ta cross
         | vertical = (rectX ta + rectW ta - cross, rectY ta + rectH ta)
         | otherwise = (rectX ta, rectY ta + rectH ta - cross)
@@ -2040,14 +2044,14 @@ writeDocumentView inp geom fonts layout intent =
                                 excess = max 0 (sum readAdv - w)
                                 rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (excess `div` 2, excess `div` 2)
                                 across = if vertical then size `div` 2 + rsize `div` 2 else size
-                                placed1 = [runAt look vertical False 0 (origin (off + pos)) (T.singleton ch) | (ch, pos) <- zip (T.unpack base) (rpBase rp)]
-                                placed2 = [runAt half vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
+                                placed1 = [runAtU look vertical False 0 (origin (off + pos)) (T.singleton ch) | (ch, pos) <- zip (T.unpack base) (rpBase rp)]
+                                placed2 = [runAtU half vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
                              in (concatMap fst (placed1 <> placed2), concatMap snd (placed1 <> placed2))
                       KindKenten ->
                         -- the character, and a sesame dot centred beside it
                         let dsize = lkSize half
-                            (b1, u1) = runAt look vertical False 0 (origin off) (bcText c)
-                            (b2, u2) = runAt half vertical False 0 (beside (origin (off + (size - dsize) `div` 2)) (if vertical then size `div` 2 + dsize `div` 2 else size)) "﹅"
+                            (b1, u1) = runAtU look vertical False 0 (origin off) (bcText c)
+                            (b2, u2) = runAtU half vertical False 0 (beside (origin (off + (size - dsize) `div` 2)) (if vertical then size `div` 2 + dsize `div` 2 else size)) "﹅"
                          in (b1 <> b2, u1 <> u2)
                       _ ->
                         let pre = case T.unpack (bcText c) of
@@ -2059,14 +2063,14 @@ writeDocumentView inp geom fonts layout intent =
                             pt
                               | vertical && rotated = (ox - size * 3 `div` 10, oy)
                               | otherwise = (ox, oy) -- Identity-V: the origin is the top centre of the em box
-                         in runAt look vertical rotated (if bcExpandable c then lineExpansion l else 0) pt (bcText c)
+                         in runAtU look vertical rotated (if bcExpandable c then lineExpansion l else 0) pt (bcText c)
               -- a word broken at the line end gets its hyphen
               Penalty hw _ PatternHyphen
                 | i == lastIx && hw > 0 ->
                     let (ox, oy) = origin off
                         look = lookBefore i
                         size = lkSize look
-                     in (lkColor look, runAt look vertical vertical 0 (if vertical then (ox - size * 3 `div` 10, oy) else (ox, oy)) "-")
+                     in (lkColor look, runAtU look vertical vertical 0 (if vertical then (ox - size * 3 `div` 10, oy) else (ox, oy)) "-")
               _ -> (Nothing, ([], []))
             parts = filter (not . null . fst . snd) (zipWith (curry boxRun) [0 ..] placed)
             -- boxes of the same swatch in a row share one saved colour
@@ -2083,7 +2087,7 @@ writeDocumentView inp geom fonts layout intent =
               LS.AlignCenter -> anX anchor - w `div` 2
               LS.AlignEnd -> anX anchor - w
             face = Rect x0 (anY anchor - (size - round (toRational size * baselineRatio))) w size
-         in (LineRec kind styleSpan (Just face) Nothing, runAt (plainLook body size) False False 0 (x0, anY anchor) txt)
+         in (LineRec kind styleSpan (Just face) Nothing, runAtU (plainLook body size) False False 0 (x0, anY anchor) txt)
       {- one column of a page, against the rectangle of the column (docs/adr
       ADR 0018): its text, its images and its rules -}
       drawColumn p =
