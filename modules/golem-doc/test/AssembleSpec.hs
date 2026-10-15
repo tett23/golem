@@ -12,7 +12,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 cfg :: AssembleConfig
-cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty
+cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty "リスト{chapter}-{n}"
 
 sp :: Int -> Int -> SrcSpan
 sp f s = mkSpan (FileId f) s (s + 1)
@@ -129,10 +129,48 @@ diagnosticCodes =
       testCase "G0404: figures outside a chapter, before the first and after a @nonumber chapter" $ do
         let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing []))
             docs = [Document (FileId 1) [fig 0, heading 1 2 1 noHeadingAttrs Nothing "一", fig 4, heading 1 6 1 noHeadingAttrs {haNoNumber = True} Nothing "あとがき", fig 8]]
-            msg = "章の外にある図版には、章番号を使う図番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
+            msg = "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
         map summary (snd (assemble cfg noEval docs))
           @?= [("G0404", Error, sp 1 0, msg, []), ("G0404", Error, sp 1 8, msg, [])]
         snd (assemble cfg {acFigureFormat = "{n}"} noEval docs) @?= [],
+      testCase "listing numbers: per chapter, apart from figures, only with a caption (golem-driver ADR 0023)" $ do
+        let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing []))
+            code s cap = Block (sp 1 s) Nothing (CodeBlock (Code Nothing Nothing Nothing cap False [CodeLine "x" (Just 1) Nothing False []]))
+            capt t = Just [Text (sp 1 0) t]
+            docs =
+              [ Document
+                  (FileId 1)
+                  [heading 1 0 1 noHeadingAttrs Nothing "一", fig 1, code 2 (capt "a"), code 3 Nothing, code 4 (capt "b"), heading 1 5 1 noHeadingAttrs Nothing "二", code 6 (capt "c")]
+              ]
+            (book, ds) = assemble cfg noEval docs
+        ds @?= []
+        Map.toAscList (bookListings book) @?= [(sp 1 2, "リスト1-1"), (sp 1 4, "リスト1-2"), (sp 1 6, "リスト2-1")]
+        Map.elems (bookFigures book) @?= ["図1-1"],
+      testCase "G0404: a captioned code block outside a chapter; not with a format without {chapter} (golem-driver ADR 0023)" $ do
+        let code = Block (sp 1 0) Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp 1 0) "a"]) False []))
+            plain = Block (sp 1 1) Nothing (CodeBlock (Code Nothing Nothing Nothing Nothing False []))
+        map summary (snd (assemble cfg noEval [Document (FileId 1) [code, plain]]))
+          @?= [("G0404", Error, sp 1 0, "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります", [])]
+        snd (assemble cfg {acListingFormat = "リスト{n}"} noEval [Document (FileId 1) [code]]) @?= []
+        Map.elems (bookListings (fst (assemble cfg {acListingFormat = "リスト{n}"} noEval [Document (FileId 1) [code]]))) @?= ["リスト1"],
+      testCase "references to a captioned code block; ref-number to one without a caption is G0405 (golem-driver ADR 0023)" $ do
+        let code s lbl cap = Block (sp 1 s) (Just lbl) (CodeBlock (Code Nothing Nothing Nothing cap False []))
+            docs =
+              [ Document
+                  (FileId 1)
+                  [ heading 1 0 1 noHeadingAttrs Nothing "一",
+                    code 1 "a" (Just [Text (sp 1 1) "設定"]),
+                    code 2 "b" Nothing,
+                    para 1 3 [Ref (sp 1 4) RefNumber "a", Ref (sp 1 5) RefTitle "a"]
+                  ]
+              ]
+            (book, ds) = assemble cfg noEval docs
+        ds @?= []
+        case bookDocs book of
+          [Document _ [_, _, _, Block _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 4) "1-1", Text (sp 1 5) "設定"]
+          other -> assertFailure (show other)
+        map summary (snd (assemble cfg noEval [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", code 2 "b" Nothing, para 1 3 [Ref (sp 1 4) RefNumber "b"]]]))
+          @?= [("G0405", Error, sp 1 4, "番号を持たない要素への参照です: b", [])],
       testCase "G0405: ref-number to an unnumbered heading; ref-title to it is fine" $ do
         let h = heading 1 0 1 noHeadingAttrs {haNoNumber = True} (Just "pre") "まえがき"
             (book, ds) = assemble cfg noEval [Document (FileId 1) [h, para 1 5 [Ref (sp 1 6) RefNumber "pre"]]]

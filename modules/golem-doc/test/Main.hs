@@ -117,10 +117,26 @@ cbor =
         validateDocument size [] (para Nothing [a, br, br, a]) @?= ["改行は段落の最上位のインラインの間にだけ置けます"]
         validateDocument size [] (para (Just "body") [a]) @?= ["段落スタイル body は null で表します"]
         validateInlines size [] [a, br, a] @?= ["改行は段落の最上位のインラインの間にだけ置けます"],
-      testCase "the ABI version is 5 and version 4 is rejected (docs/adr ADR 0019)" $ do
-        abiVersion @?= 5
-        let bytes = toStrictByteString (encodeTerm (TList [TInt 4, TInt 0, TList []]))
+      testCase "the ABI version is 6 and version 5 is rejected (golem-driver ADR 0023)" $ do
+        abiVersion @?= 6
+        let bytes = toStrictByteString (encodeTerm (TList [TInt 5, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes)),
+      testCase "a code block survives the CBOR round trip (golem-driver ADR 0023)" $ do
+        let code =
+              Code
+                { codeLang = Just "haskell",
+                  codeNumbers = Just True,
+                  codeFile = Just "src/Main.hs",
+                  codeCaption = Just [Text sp "設定の", CharStyle sp "code" [Text sp "x"]],
+                  codeDiff = True,
+                  codeLines =
+                    [ CodeLine "a" (Just 10) (Just DiffAdded) True [1, 2],
+                      CodeLine "b" Nothing (Just DiffRemoved) False [],
+                      CodeLine "" (Just 11) (Just DiffContext) False [50]
+                    ]
+                }
+            doc = Document (FileId 0) [Block sp (Just "l") (CodeBlock code)]
+        decodeDocument (encodeDocument doc) @?= Right doc,
       testCase "aki survives the CBOR round trip as tag 18 (docs/adr ADR 0019)" $ do
         let is = [Aki sp (AkiZw (1 / 5)), Aki sp (AkiZw 0), Aki sp (AkiAbs 185795)]
         decodeInlines (encodeInlines is) @?= Right is
