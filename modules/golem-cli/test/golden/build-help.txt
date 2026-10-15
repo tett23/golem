@@ -1,5 +1,6 @@
 使い方: golem build [--target html|epub|text|pdf] [--profile dev|prod] 
-                    [--marks japanese|western|none] [--format human|json]
+                    [--marks japanese|western|none] [--no-notices] 
+                    [--format human|json]
 
   出力を build/ に書く
 
@@ -9,5 +10,6 @@
   --profile dev|prod       ビルドのプロファイル（既定は dev）
   --marks japanese|western|none
                            PDF に付けるトンボ（既定は none）
+  --no-notices             お知らせを表示しない
   --format human|json      診断の出力形式（既定は human）
   -h,--help                このヘルプを表示する

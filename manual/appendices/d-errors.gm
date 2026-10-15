@@ -11,6 +11,7 @@
 ほとんどはエラーで、一つでもあれば出力を書きません。
 警告になるものは、項目の中にそう書いています。
 G0310 と G0504 は、[style code: --profile dev] では警告、[style code: --profile prod] ではエラーです。
+お知らせは最後の節にまとめています。
 この付録にない番号は、今の版の Golem では出ません。
 
 @nonumber
@@ -217,7 +218,7 @@ G0310 と G0504 は、[style code: --profile dev] では警告、[style code: --
 = [strong: G0235 [style code: CSV が空です]]、[strong: [style code: CSV の行ごとのセルの数が一致しません]]
   CSV のファイルの各行の列の数を、一行目にそろえてください。
 = [strong: G0236 [style code: @listing にはファイルのパスが必要です]]
-  位置引数か [style code: src=] で、載せるファイルを指定してください。
+  最初の引数に、載せるファイルのパスを書いてください。
 = [strong: G0237 [style code: lines の範囲が不正です: …]]
   [style code: lines=3-10] のように、1 からファイルの行数までの範囲を書いてください。
 = [strong: G0245 [style code: @style の本体には段落だけを置けます。段落は空行で区切ります]]
@@ -323,6 +324,10 @@ G0310 と G0504 は、[style code: --profile dev] では警告、[style code: --
   機械によって同じファイルと見なされるかどうかが変わるので、綴りをそろえてください。
 = [strong: G0307 [style code: style.toml にないマスターページです: …]]
   [style code: manifest.toml] の章に書いたマスターページの名前が、[style code: style.toml] の [style code: \[masters\]] にありません。
+= [strong: G0324 [style code: 抑制できるのはお知らせのコードだけです: …]] など
+  [style code: \[diagnostics\]] の [style code: silence-notices] に、お知らせでないコードを書いています。
+  エラーと警告は止められないので、そのコードを消して原因を直してください。
+  コードは大文字の [style code: G] と 4 桁の数字で書きます。
 
 @nonumber
 ## スタイルの設定（style.toml）
@@ -461,3 +466,34 @@ PDF を組むときに出るエラーです。
   [style code: overrides] に、置き換えられないコマンドか、そのプラグインにないコマンドを書いています。
 = [strong: G0610 [style code: 宣言されていないプラグインです: …]]、[strong: [style code: プラグインが提供していないフィルタです: …]]
   [style code: \[\[filters\]\]] の [style code: plugin] と [style code: filter] の名前を確かめてください。
+
+@nonumber
+## お知らせ
+
+お知らせは誤りではなく、出力を止めません。
+[style code: manifest.toml] の [style code: \[diagnostics\]] の [style code: silence-notices] にコードを並べると、そのお知らせを出さなくなります。
+[style code: --no-notices] を付けると、その実行ではすべてのお知らせを出しません。
+
+= [strong: G0262 [style code: ファイルの中の定義が段落スタイルの … を上書きしています]] など
+  ファイルの先頭の [style code: @style-def] が、[style code: style.toml] か組み込みのスタイルと同じ名前のスタイルを定義しています。
+  その章だけ体裁を変えるための使い方なら、そのままでかまいません。
+  新しいスタイルのつもりなら、別の名前を付け、[style code: based-on] で元のスタイルを継いでください。
+= [strong: G0263 [style code: 数の縦中横は \[number-text … style=tcy\] でも書けます]]
+  [style code: \[tcy: …\]] の中身が数字だけです。
+  数なら [style code: \[number-text 10 style=tcy\]] のように書くと、縦組みと横組みのそれぞれに合った表記で出ます。
+= [strong: G0264 [style code: 行頭のエスケープした空白は無視されます。字下げには全角の空白を使います]]
+  [style code: verse] のように改行をそのまま残す段落で、行の頭の空白の前にバックスラッシュを付けています。
+  行頭の空白は捨てられます。
+  字下げには全角の空白を使ってください。
+= [strong: G0265 [style code: @listing の src= は廃止予定です。パスを最初の引数に書きます]]
+  [style code: @listing src=src/Main.hs] は [style code: @listing src/Main.hs] と書き換えてください。
+  今の版では同じ内容を取り込みますが、今後の版では使えなくなります。
+= [strong: G0323 [style code: style.toml がないので、既定の体裁で組みます]]
+  プロジェクトのディレクトリに [style code: style.toml] がありません。
+  既定の体裁でよければ、そのままでかまいません。
+= [strong: G0407 [style code: @number … は自動で振られる番号と同じです]]
+  見出しやリストの項目の [style code: @number] が、書かなくても振られる番号と同じです。
+  項目を入れ替えたときに番号が固定されてしまうので、消してください。
+= [strong: G0408 [style code: 本の最後の改ページは効果がありません]]
+  本の最後のファイルの終わりにある [style code: @page-break] と [style code: @column-break] は捨てられます。
+  白ページは作られないので、消してください。

@@ -5,6 +5,9 @@ module Golem.Syntax.Diagnostic
     Fix (..),
     Profile (..),
     diagnostic,
+    notice,
+    noticeCodes,
+    silenceNotices,
     isError,
     hasErrors,
     adjustForProfile,
@@ -14,10 +17,16 @@ module Golem.Syntax.Diagnostic
 where
 
 import Data.List (sortOn)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Golem.Syntax.Span
 
-data Severity = Error | Warning
+{- | A notice is below a warning (golem-syntax ADR 0002): something the
+author may want to know, which needs no fixing. It does not change the exit
+code, and only notices can be silenced.
+-}
+data Severity = Error | Warning | Notice
   deriving stock (Eq, Ord, Show)
 
 {- | @G@ followed by four digits. The upper two digits name the source
@@ -49,6 +58,36 @@ data Profile = Dev | Prod
 diagnostic :: Text -> Severity -> SrcSpan -> Text -> Diagnostic
 diagnostic code sev sp msg = Diagnostic (DiagnosticCode code) sev sp msg [] []
 
+-- | A diagnostic of severity 'Notice'; its code must be in 'noticeCodes'.
+notice :: Text -> SrcSpan -> Text -> Diagnostic
+notice code = diagnostic code Notice
+
+{- | The codes of the notices (golem-syntax ADR 0002), in one place as
+'profileDependentCodes'. silence-notices of the manifest accepts these
+only, and docs/diagnostics.md must agree with them (a golem-driver test).
+-}
+noticeCodes :: [DiagnosticCode]
+noticeCodes =
+  map
+    DiagnosticCode
+    [ "G0262", -- a @style-def overrides a style of style.toml or a built-in one
+      "G0263", -- [tcy: ...] of ASCII digits only
+      "G0264", -- an escaped space at the start of a line in a paragraph that keeps its lines
+      "G0265", -- @listing src= (to be retired)
+      "G0323", -- no style.toml
+      "G0407", -- @number equal to the automatic number
+      "G0408" -- page breaks at the very end of the book
+    ]
+
+{- | The single place where notices are silenced: those whose codes are in
+the set, or every notice with 'Nothing' (--no-notices). Errors and warnings
+are always kept.
+-}
+silenceNotices :: Maybe (Set DiagnosticCode) -> [Diagnostic] -> [Diagnostic]
+silenceNotices codes = filter keep
+  where
+    keep d = diagSeverity d /= Notice || maybe False (not . Set.member (diagCode d)) codes
+
 isError :: Diagnostic -> Bool
 isError = (== Error) . diagSeverity
 
@@ -71,12 +110,15 @@ adjustForProfile prof d
       d {diagSeverity = if prof == Prod then Error else Warning}
   | otherwise = d
 
--- | Deterministic order: file, position, code, then the rest.
+{- | Deterministic order: errors and warnings first, notices after them
+(golem-syntax ADR 0002); within each, file, position, code, then the rest.
+-}
 sortDiagnostics :: [Diagnostic] -> [Diagnostic]
 sortDiagnostics =
   sortOn
     ( \d ->
-        ( spanFile (diagSpan d),
+        ( diagSeverity d == Notice,
+          spanFile (diagSpan d),
           spanStart (diagSpan d),
           spanEnd (diagSpan d),
           diagCode d,

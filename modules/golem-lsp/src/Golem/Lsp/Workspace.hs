@@ -239,7 +239,8 @@ diagnosticsFor ws =
         let p = evProject e
             ft = projectFiles p
             lintDiags = lintEvaluated e
-            all' = map (adjustForProfile Dev) (evDiagnostics e <> lintDiags)
+            -- the notices of silence-notices are not published (golem-syntax ADR 0002)
+            all' = silenceNotices (Just (manifestSilencedNotices (projectManifest p))) (map (adjustForProfile Dev) (evDiagnostics e <> lintDiags))
             byFile = Map.fromListWith (flip (<>)) [(fromMaybe "manifest.toml" (lookupPath (spanFile (diagSpan d)) ft), [d]) | d <- all']
             empties = Map.fromList [(sfPath sf, []) | sf <- Map.elems (projectSources p)]
          in Map.map (sortOn (spanStart . diagSpan)) (Map.union byFile empties)

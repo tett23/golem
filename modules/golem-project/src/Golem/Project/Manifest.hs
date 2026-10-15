@@ -18,9 +18,12 @@ module Golem.Project.Manifest
   )
 where
 
+import Data.Char (isDigit)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, isJust)
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (Day)
@@ -28,6 +31,8 @@ import Golem.Parser.SourceSettings
 import Golem.Syntax
 import Toml qualified
 import Toml.Schema
+import Toml.Schema.FromValue (typeError)
+import Toml.Schema.Matcher (inIndex)
 import Toml.Syntax (Position (..))
 
 data Manifest = Manifest
@@ -38,7 +43,9 @@ data Manifest = Manifest
     manifestFilters :: ![FilterDecl],
     manifestBibliography :: ![FilePath],
     -- | the [source] table (docs/adr ADR 0013)
-    manifestSource :: !SourceSettings
+    manifestSource :: !SourceSettings,
+    -- | [diagnostics] silence-notices: codes of notices not shown (golem-syntax ADR 0002)
+    manifestSilencedNotices :: !(Set DiagnosticCode)
   }
   deriving stock (Eq, Show)
 
@@ -124,6 +131,7 @@ instance FromValue Manifest where
     fl <- optKey "filters"
     bib <- optKey "bibliography"
     src <- optKey "source"
+    dg <- optKey "diagnostics"
     pure
       Manifest
         { manifestMetadata = md,
@@ -132,8 +140,40 @@ instance FromValue Manifest where
           manifestPlugins = fromMaybe Map.empty pl,
           manifestFilters = fromMaybe [] fl,
           manifestBibliography = maybe [] (map T.unpack) bib,
-          manifestSource = applyEdits (maybe [] sourceTableEdits src) defaultSourceSettings
+          manifestSource = applyEdits (maybe [] sourceTableEdits src) defaultSourceSettings,
+          manifestSilencedNotices = maybe Set.empty silenced dg
         }
+
+-- | The [diagnostics] table (golem-syntax ADR 0002).
+newtype DiagnosticsTable = DiagnosticsTable {silenced :: Set DiagnosticCode}
+
+instance FromValue DiagnosticsTable where
+  fromValue = parseTableFromValue (DiagnosticsTable . fromMaybe Set.empty <$> optKeyOf "silence-notices" silenceList)
+
+{- | The codes of silence-notices. An element that is not the code of a
+notice is reported at the element; the scope of the element makes it G0324
+('manifestCode'). Every such element is reported, not only the first.
+-}
+silenceList :: Value' l -> Matcher l (Set DiagnosticCode)
+silenceList = \case
+  List' _ xs -> Set.fromList . catMaybes <$> traverse (\(i, x) -> inIndex i (element x)) (zip [0 ..] xs)
+  v -> typeError "array" v
+  where
+    element = \case
+      Text' l t
+        | not (isCodeShape t) -> warnAt l ("診断のコードは G と 4 桁の数字で書きます: " <> T.unpack t) >> pure Nothing
+        | DiagnosticCode t `notElem` noticeCodes -> warnAt l ("抑制できるのはお知らせのコードだけです: " <> T.unpack t) >> pure Nothing
+        | otherwise -> pure (Just (DiagnosticCode t))
+      v -> warnAt (Toml.valueAnn v) "診断のコードは文字列で書きます" >> pure Nothing
+    isCodeShape t = T.length t == 5 && T.take 1 t == "G" && T.all isDigit (T.drop 1 t)
+
+{- | The code of a schema message of the manifest: G0324 for an element of
+silence-notices, G0301 otherwise.
+-}
+manifestCode :: [Scope] -> Text
+manifestCode = \case
+  [ScopeKey "diagnostics", ScopeKey "silence-notices", ScopeIndex _] -> "G0324"
+  _ -> "G0301"
 
 defaultTargets :: Targets
 defaultTargets = Targets Nothing Nothing True []
@@ -251,7 +291,7 @@ decodeStrictBy code codeAt fid src = case Toml.parse src of
 
 parseManifest :: FileId -> Text -> Either [Diagnostic] Manifest
 parseManifest fid src = do
-  m <- decodeStrict "G0301" fid src
+  m <- decodeStrictBy "G0301" manifestCode fid src
   let t = manifestTargets m
   if tgHtml t || not (null (tgText t)) || isJust (tgPdf t) || isJust (tgEpub t)
     then Right m

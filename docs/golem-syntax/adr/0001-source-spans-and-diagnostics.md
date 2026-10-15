@@ -1,6 +1,6 @@
 # ADR 0001: ソース位置と診断
 
-ステータス: 採択→コードの一覧は [golem-cli ADR 0005](../../golem-cli/adr/0005-explain-diagnostic-codes.md)
+ステータス: 採択→コードの一覧は [golem-cli ADR 0005](../../golem-cli/adr/0005-explain-diagnostic-codes.md)、重大度と並び順は [ADR 0002](0002-notice-severity.md)
 
 ## 文脈
 
