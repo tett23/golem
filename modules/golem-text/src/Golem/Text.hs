@@ -10,6 +10,7 @@ module Golem.Text
 where
 
 import Data.List.NonEmpty (NonEmpty)
+import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
@@ -52,6 +53,8 @@ data Ctx = Ctx
     cInList :: Bool,
     -- | the markers of [lists] (golem-driver ADR 0013)
     cLists :: TextLists,
+    -- | the formatted entries of the bibliography by key (golem-doc ADR 0004)
+    cBibliography :: Map Text Text,
     -- | the depth of the list around (0 outside lists)
     cDepth :: Int
   }
@@ -70,13 +73,13 @@ data TextLists = TextLists
 extension. @firstLine@ gives the ideographic spaces that start the lines
 of a paragraph of a style (Nothing is body; docs/adr ADR 0006).
 -}
-renderText :: Text -> Text -> Bool -> (Maybe Text -> Int) -> TextLists -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
-renderText lang numberDefault dev firstLine lists variant ft book =
+renderText :: Text -> Text -> Bool -> (Maybe Text -> Int) -> TextLists -> Map Text Text -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
+renderText lang numberDefault dev firstLine lists bib variant ft book =
   [ (replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "txt", file ctx d)
   | d@(Document fid _) <- bookDocs book
   ]
   where
-    ctx = Ctx variant lang numberDefault book dev firstLine False lists 0
+    ctx = Ctx variant lang numberDefault book dev firstLine False lists bib 0
 
 file :: Ctx -> Document -> Text
 file c (Document _ bs) =
@@ -120,7 +123,8 @@ block c ind (Block sp _ body) = case body of
   -- plain text has no pages (docs/adr ADR 0017)
   ForcedBreak _ -> ""
   ChannelOutput BibliographyOutput ->
-    T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> k | (k, n) <- bookCitations (cBook c)]
+    -- the entry, or the key that has none (golem-doc ADR 0004)
+    T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> Map.findWithDefault k k (cBibliography c) | (k, n) <- bookCitations (cBook c)]
   where
     -- a number and the separator of the language (golem-html ADR 0002)
     numbered = maybe "" (\n -> n <> numberSeparator (cLanguage c) n)

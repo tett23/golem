@@ -11,6 +11,7 @@ module Golem.Driver
     build,
     evaluateProject,
     evaluateProjectWith,
+    loadBibliography,
     Evaluated (..),
     localStylesOf,
     docStyles,
@@ -37,7 +38,7 @@ import Data.Aeson.KeyMap qualified as KM
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
-import Data.Either (fromRight)
+import Data.Either (fromRight, lefts, rights)
 import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -49,6 +50,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Data.Vector qualified as V
 import Golem.Doc.Assemble
+import Golem.Doc.Bibliography (CslDate (..), CslEntry (..), CslName (..), formatEntry)
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Doc.Numbering (numberSeparator)
@@ -177,8 +179,8 @@ evaluateProjectWith overlay profile root = do
         Right style
           | hasErrors synDiags -> do
               assets <- loadAssets root project
-              (citeKeys, _) <- loadBibliography root manifest0
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) Nothing Map.empty Nothing synDiags (reeval profile project style assets citeKeys noPlugins Map.empty)))
+              (bibDiags, citeKeys, _) <- loadBibliography root manifest0
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) Nothing Map.empty Nothing (synDiags <> bibDiags) (reeval profile project style assets citeKeys noPlugins Map.empty)))
           | otherwise -> do
               let manifest = manifest0
                   -- one G0307 for each name, in the order of the chapters (golem-project ADR 0006)
@@ -194,14 +196,15 @@ evaluateProjectWith overlay profile root = do
                   -- no G0222 after the plugins failed to load (golem-plugin ADR 0003)
                   quiet = if null pluginDiags then id else \r -> r {erDiagnostics = filter ((/= DiagnosticCode "G0222") . diagCode) (erDiagnostics r)}
               assets <- loadAssets root project
-              (citeKeys, _) <- loadBibliography root manifest
+              -- G0326 and G0303 of the bibliography, for every target (golem-doc ADR 0004)
+              (bibDiags, citeKeys, _) <- loadBibliography root manifest
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
                   chapterDocs = [erDocument r | (fid, _) <- projectChapters project, Just r <- [Map.lookup fid results]]
                   -- where G0407 points (golem-syntax ADR 0002)
                   numberSites = Map.unions (map erNumberSites (Map.elems results))
                   cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites
-                  pre = defaultStyleNotice <> masterDiags <> pluginDiags <> s0Diags
+                  pre = defaultStyleNotice <> masterDiags <> pluginDiags <> bibDiags <> s0Diags
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
               if hasErrors pre
                 then pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results Nothing pre again))
@@ -335,45 +338,64 @@ assetRefs (A.File _ bs) = concatMap blk bs
       A.StringLit t -> Just t
       _ -> Nothing
 
--- | CSL-JSON: keys, and entries formatted in the single built-in style.
-loadBibliography :: FilePath -> Manifest -> IO (Set.Set Text, Map Text Text)
+{- | CSL-JSON: G0326 and G0303 for the files of the bibliography that
+cannot be read, the keys, and the entries formatted by golem-doc
+(golem-doc ADR 0004). The diagnostics point at the head of manifest.toml,
+FileId 0, as G0302 does, because the manifest keeps no positions.
+-}
+loadBibliography :: FilePath -> Manifest -> IO ([Diagnostic], Set.Set Text, Map Text Text)
 loadBibliography root manifest = do
-  entries <- forM (manifestBibliography manifest) $ \p -> do
-    r <- try (BL.readFile (root </> p)) :: IO (Either SomeException BL.ByteString)
-    pure $ case r of
-      Right bytes -> case J.eitherDecode bytes of
-        Right (J.Array xs) -> mapMaybe entry (V.toList xs)
-        _ -> []
-      Left _ -> []
-  let m = Map.fromList (concat entries)
-  pure (Map.keysSet m, m)
+  results <- forM (manifestBibliography manifest) $ \p -> do
+    res <- resolveInRoot root p
+    case res of
+      Left Missing -> pure (Left (unreadable ("参考文献のファイルがありません: " <> T.pack p)))
+      Left e -> pure (Left (diagnostic "G0303" Error manifestHead (T.pack (pathErrorMessage e <> ": " <> p))))
+      Right rel -> do
+        r <- try (BL.readFile (root </> rel)) :: IO (Either SomeException BL.ByteString)
+        pure $ case J.eitherDecode <$> r of
+          Left _ -> Left (unreadable ("参考文献のファイルがありません: " <> T.pack p))
+          Right (Left err) -> Left (unreadable ("参考文献のファイルを JSON として読めません: " <> T.pack p <> "（" <> T.pack err <> "）"))
+          Right (Right (J.Array xs)) -> Right (mapMaybe cslEntry (V.toList xs))
+          Right (Right _) -> Left (unreadable ("参考文献のファイルは CSL-JSON の配列で書きます: " <> T.pack p))
+  let m = Map.fromList [(ceId c, formatEntry c) | c <- concat (rights results)]
+  pure (lefts results, Map.keysSet m, m)
   where
-    entry = \case
-      J.Object o -> do
-        J.String k <- KM.lookup "id" o
-        let str key = case KM.lookup (JK.fromText key) o of
-              Just (J.String s) -> Just s
-              _ -> Nothing
-            authors = case KM.lookup "author" o of
-              Just (J.Array as) -> T.intercalate ", " [nameOf a | a <- V.toList as]
-              _ -> ""
-            year = case KM.lookup "issued" o of
-              Just (J.Object i) -> case KM.lookup "date-parts" i of
-                Just (J.Array ps) -> case V.toList ps of
-                  (J.Array y : _) -> case V.toList y of
-                    (J.Number n : _) -> T.pack (show (round n :: Integer))
-                    _ -> ""
-                  _ -> ""
-                _ -> ""
-              _ -> ""
-            parts = filter (not . T.null) [authors, fromMaybe "" (str "title"), fromMaybe "" (str "publisher"), year]
-        pure (k, T.intercalate ". " parts <> ".")
-      _ -> Nothing
-    nameOf = \case
-      J.Object a -> T.strip (fromMaybe "" (txt "family" a) <> " " <> fromMaybe "" (txt "given" a))
-      _ -> ""
-    txt k a = case KM.lookup k a of
+    manifestHead = mkSpan (FileId 0) 0 0
+    unreadable = diagnostic "G0326" Error manifestHead
+
+-- | The fields of a CSL-JSON item that the bibliography shows; Nothing without a string id.
+cslEntry :: J.Value -> Maybe CslEntry
+cslEntry = \case
+  J.Object o -> do
+    J.String k <- KM.lookup "id" o
+    pure
+      CslEntry
+        { ceId = k,
+          ceLanguage = str "language" o,
+          ceAuthors = case KM.lookup "author" o of
+            Just (J.Array as) -> mapMaybe name (V.toList as)
+            _ -> [],
+          ceTitle = str "title" o,
+          cePublisher = str "publisher" o,
+          ceIssued = KM.lookup "issued" o >>= date
+        }
+  _ -> Nothing
+  where
+    str k o = case KM.lookup (JK.fromText k) o of
       Just (J.String s) -> Just s
+      _ -> Nothing
+    -- literal first; a name with neither family nor given is left out
+    name = \case
+      J.Object a -> case (str "literal" a, str "family" a, str "given" a) of
+        (Just l, _, _) -> Just (LiteralName l)
+        (_, Nothing, Nothing) -> Nothing
+        (_, f, g) -> Just (PersonalName f g)
+      _ -> Nothing
+    -- the first number of the first date-parts, or else the literal
+    date = \case
+      J.Object i -> case KM.lookup "date-parts" i of
+        Just (J.Array ps) | (J.Array y : _) <- V.toList ps, (J.Number n : _) <- V.toList y -> Just (DateYear (round n))
+        _ -> DateLiteral <$> str "literal" i
       _ -> Nothing
 
 targetsOf :: Manifest -> [Target]
@@ -497,7 +519,7 @@ writeTargets opts e diagFid book missing targets = do
       ft = projectFiles project
       dev = optProfile opts == Dev
       vertical = maybe False pageVertical (stPage style)
-  (_, bib) <- loadBibliography root manifest
+  (_, _, bib) <- loadBibliography root manifest
   let hcfg =
         HtmlConfig
           { hcTitle = mdTitle md,
@@ -593,7 +615,7 @@ writeTargets opts e diagFid book missing targets = do
               TextVertical -> ("vertical", GT.Vertical)
               TextHorizontal -> ("horizontal", GT.Horizontal)
         -- each document with the indents of its style (docs/adr ADR 0014)
-        let pages = concat [GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textFirstLine (docStyles e fid)) (textLists style) gv ft book {bookDocs = [d]} | d@(Document fid _) <- bookDocs book]
+        let pages = concat [GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textFirstLine (docStyles e fid)) (textLists style) bib gv ft book {bookDocs = [d]} | d@(Document fid _) <- bookDocs book]
         forM pages $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)

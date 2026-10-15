@@ -1,7 +1,9 @@
 module Main (main) where
 
 import Data.List.NonEmpty (NonEmpty (..))
+import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble
@@ -13,6 +15,27 @@ import Test.Tasty.HUnit
 
 main :: IO ()
 main = defaultMain tests
+
+lists :: TextLists
+lists = TextLists ("・" :| []) Nothing Nothing
+
+-- | One file, a.gm, whose only block is @bibliography, citing @cites@.
+renderBibliography :: Map Text Text -> [(Text, Int)] -> [(FilePath, Text)]
+renderBibliography bib cites =
+  let (fid, ft) = registerFile "a.gm" emptyFileTable
+      book =
+        Book
+          { bookDocs = [Document fid [Block (mkSpan fid 0 13) Nothing (ChannelOutput BibliographyOutput)]],
+            bookHeadings = Map.empty,
+            bookFigures = Map.empty,
+            bookToc = [],
+            bookTocDepth = Nothing,
+            bookIndex = [],
+            bookCitations = cites,
+            bookLabels = Map.empty,
+            bookReferenced = Set.empty
+          }
+   in renderText "ja" "kanji" False (const 0) lists bib Horizontal ft book
 
 sp :: Int -> SrcSpan
 sp s = mkSpan (FileId 0) s (s + 1)
@@ -35,14 +58,16 @@ render lang format bs =
   let cfg = AssembleConfig (Map.fromList [(1, format)]) "図{chapter}-{n}" Map.empty
       (book, _) = assemble cfg noEval [Document (FileId 0) bs]
       (_, ft) = registerFile "a.gm" emptyFileTable
-      lists = TextLists ("・" :| []) Nothing Nothing
-   in concatMap (T.lines . snd) (renderText lang "kanji" False (const 0) lists Horizontal ft book)
+   in concatMap (T.lines . snd) (renderText lang "kanji" False (const 0) lists Map.empty Horizontal ft book)
 
 tests :: TestTree
 tests =
   testGroup
     "golem-text"
-    [ testGroup
+    [ testCase "@bibliography lists the entries, or the key without one (golem-doc ADR 0004)" $
+        renderBibliography (Map.fromList [("jlreq", "日本語組版処理の要件、W3C、2020。")]) [("jlreq", 1), ("missing", 2)]
+          @?= [("a.txt", "[1] 日本語組版処理の要件、W3C、2020。\n[2] missing\n")],
+      testGroup
         "the separator after a number (golem-html ADR 0002)"
         [ testCase "a space in an English book" $
             render "en" "{n}" [heading 0 noHeadingAttrs "Introduction"] @?= ["1 Introduction"],

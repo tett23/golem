@@ -18,6 +18,7 @@ library
   hs-source-dirs:   src
   exposed-modules:
     Golem.Doc.Assemble
+    Golem.Doc.Bibliography
     Golem.Doc.Cbor
     Golem.Doc.Collation
     Golem.Doc.IR
@@ -41,7 +42,7 @@ test-suite golem-doc-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    Gen AssembleSpec ListMarkersSpec NumberingSpec
+  other-modules:    Gen AssembleSpec BibliographySpec ListMarkersSpec NumberingSpec
   build-depends:
     , base
     , bytestring
