@@ -10,3 +10,4 @@ cabal.project.local
 /manual-dev/build/
 /manual/common/build-info.gm
 /manual-dev/common/build-info.gm
+/modules/golem-driver/test/fixtures/pd/*/fonts/
