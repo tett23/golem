@@ -51,6 +51,7 @@ import Data.Vector qualified as V
 import Golem.Doc.Assemble
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers (defaultNumberFormat)
+import Golem.Doc.Numbering (numberSeparator)
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Pdf
 import Golem.Driver.Plugins (loadPlugins)
@@ -592,7 +593,7 @@ writeTargets opts e diagFid book missing targets = do
               TextVertical -> ("vertical", GT.Vertical)
               TextHorizontal -> ("horizontal", GT.Horizontal)
         -- each document with the indents of its style (docs/adr ADR 0014)
-        let pages = concat [GT.renderText (stNumbersVertical style) dev (textFirstLine (docStyles e fid)) (textLists style) gv ft book {bookDocs = [d]} | d@(Document fid _) <- bookDocs book]
+        let pages = concat [GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textFirstLine (docStyles e fid)) (textLists style) gv ft book {bookDocs = [d]} | d@(Document fid _) <- bookDocs book]
         forM pages $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)
@@ -729,7 +730,7 @@ indexPage cfg ft book =
               <> "#"
               <> escapeXml (teAnchor te)
               <> "\">"
-              <> maybe "" (\n -> escapeXml n <> " ") (teNumber te)
+              <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage cfg) n)) (teNumber te)
               <> escapeXml (T.concat (map inlineText (teTitle te)))
               <> "</a></li>\n"
           | te <- bookToc book

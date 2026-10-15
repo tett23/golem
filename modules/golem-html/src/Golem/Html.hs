@@ -33,6 +33,7 @@ import Data.Text qualified as T
 import Golem.Doc.Assemble
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers
+import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals
 import Golem.Syntax.Span
 import Skylighting qualified as S
@@ -300,7 +301,7 @@ block c (Block sp lbl body) = case body of
     let tag = "h" <> T.pack (show l)
         info = Map.lookup sp (bookHeadings (cBook c))
         anchor = maybe (headingAnchor lbl sp) hiAnchor info
-        num = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</span>") (info >>= hiNumberText)
+        num = numberSpan c (info >>= hiNumberText)
      in "<" <> tag <> " id=\"" <> escapeXml anchor <> "\">" <> num <> inlines c is <> "</" <> tag <> ">\n"
   BulletList items -> "<ul" <> idAttr lbl <> listClass (NE.length . hlBullets) <> ">\n" <> T.concat (map (item inList Nothing) items) <> "</ul>\n"
   OrderedList items ->
@@ -328,7 +329,7 @@ block c (Block sp lbl body) = case body of
   CodeBlock lang t ->
     "<pre" <> idAttr lbl <> "><code" <> maybe "" (\l -> " class=\"sourceCode language-" <> escapeXml l <> "\"") lang <> ">" <> highlighted lang t <> "</code></pre>\n"
   FigureBlock f ->
-    let num = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</span>") (Map.lookup sp (bookFigures (cBook c)))
+    let num = numberSpan c (Map.lookup sp (bookFigures (cBook c)))
         cap = T.concat [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
      in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> relLink (cHere c) (T.unpack (webSource f)) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
   ChannelOutput (TocOutput d) -> toc c (Just d)
@@ -349,6 +350,12 @@ block c (Block sp lbl body) = case body of
       Just ls -> " class=\"list-" <> tshow (min depth (count ls)) <> "\""
       Nothing -> ""
 
+{- | The number of a heading or a caption in its span, and the separator
+of the language of the book after it as text (golem-html ADR 0002).
+-}
+numberSpan :: Ctx -> Maybe Text -> Text
+numberSpan c = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</span>" <> escapeXml (numberSeparator (hcLanguage (cCfg c)) n))
+
 item :: Ctx -> Maybe Integer -> ListItem -> Text
 item c value (ListItem _ bs) =
   "<li" <> maybe "" (\n -> " value=\"" <> T.pack (show n) <> "\"") value <> ">" <> case bs of
@@ -368,7 +375,7 @@ toc c depth =
           <> "\"><a href=\""
           <> linkTo c (teFile e) (teAnchor e)
           <> "\">"
-          <> maybe "" (\n -> escapeXml n <> " ") (teNumber e)
+          <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage (cCfg c)) n)) (teNumber e)
           <> inlines c (teTitle e)
           <> "</a></li>\n"
       | e <- bookToc (cBook c),
