@@ -25,6 +25,7 @@ module Golem.Font
     ShapedGlyph (..),
     shape,
     shapeUnits,
+    glyphVerticalOrigin,
     unitsToSp,
     GlyphMetrics (..),
     glyphMetrics,
@@ -70,6 +71,8 @@ foreign import capi unsafe "golem_font.h golem_font_extents" c_extents :: Ptr CF
 foreign import capi unsafe "golem_font.h golem_font_embox_central" c_emboxCentral :: Ptr CFont -> IO CInt
 
 foreign import capi unsafe "golem_font.h golem_font_glyph_metrics" c_metrics :: Ptr CFont -> Word32 -> Ptr Int32 -> IO CInt
+
+foreign import capi unsafe "golem_font.h golem_font_v_origin" c_vOrigin :: Ptr CFont -> Word32 -> Ptr Int32 -> Ptr Int32 -> IO ()
 
 foreign import capi unsafe "golem_font.h golem_font_shape"
   c_shape :: Ptr CFont -> CString -> CInt -> CString -> CString -> CInt -> CString -> Ptr Word32 -> Ptr Word32 -> Ptr Int32 -> CInt -> IO CInt
@@ -230,6 +233,19 @@ shapeUnits f req = unsafePerformIO $ withForeignPtr (fontPtr f) $ \p ->
           case r of
             Right xs -> pure xs
             Left needed -> fromRight [] <$> attempt needed
+
+{- | The vertical origin (x, y) of a glyph in font units, as
+@hb_font_get_glyph_v_origin@ gives it (golem-driver ADR 0020): vertical
+shaping subtracts it from the offsets of each glyph, so adding it back
+gives the GPOS placement alone.
+-}
+glyphVerticalOrigin :: Font -> Int -> (Int, Int)
+glyphVerticalOrigin f gid = unsafePerformIO $ withForeignPtr (fontPtr f) $ \p ->
+  alloca $ \px -> alloca $ \py -> do
+    c_vOrigin p (fromIntegral gid) px py
+    x <- peek px
+    y <- peek py
+    pure (fromIntegral x, fromIntegral y)
 
 {- | Shaping with positions in sp. In vertical text the advance is the
 downward advance.

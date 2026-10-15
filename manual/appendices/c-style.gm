@@ -195,7 +195,7 @@ Golem は、機械に入っている書体を探しません。
 |:---|:---|:---|
 | [code: kinsoku] | [code: "strict"] | 禁則の強さです。[code: "loose"] にすると、小書きの仮名と長音記号の行頭を許します。 |
 | [code: hanging-punctuation] | [code: false] | [code: true] にすると、行末の句読点のぶら下げを許します。 |
-| [code: kenten] | [code: "sesame"] | 圏点の形の既定です。値は [code: \[kenten: ...\]] の [code: shape] と同じです（付録A）。今の版では HTML と EPUB でだけ効きます。 |
+| [code: kenten] | [code: "sesame"] | 圏点の形の既定です。値は [code: \[kenten: ...\]] の [code: shape] と同じです（付録A）。 |
 | [code: pretolerance] | [code: 100] | 欧文の段落を、ハイフンを入れずに行に分けるときの、語間の伸び縮みの許容度です。 |
 | [code: tolerance] | [code: 200] | ハイフンを入れて行に分けるときの許容度です。 |
 | [code: emergency-stretch] | [code: "0pt"] | どうしても行に分けられないときに、最後に足す語間の伸びです。 |
@@ -233,6 +233,7 @@ Golem は、機械に入っている書体を探しません。
 | キー | 既定 | 意味 |
 |:---|:---|:---|
 | [code: placement] | [code: "page-foot"] | 脚注の位置です。[code: "page-foot"] か [code: "chapter-end"] を書けますが、今の版の Golem は値を読むだけで、どちらでも置き方は同じです（PDF はページの下、HTML とプレーンテキストは章の終わり）。 |
+| [code: numbering] | [code: "chapter"] | 脚注と傍注の番号を 1 から振り直す範囲です。[code: "chapter"]（マニフェストの章ごと）、[code: "file"]（ファイルごと）、[code: "book"]（本の全体で通し番号）から選びます。 |
 
 @nonumber
 ## [code: \[sidenotes\]]
@@ -274,6 +275,24 @@ HTML と EPUB には効きません。
 | [code: column-gap] | [code: \[page.grid\]] の [code: column-gap] | 索引の段と段のあいだの空きです。[code: zw] は版面の文字の大きさを一字とします。 |
 
 索引の一段の行長が、版面の文字の大きさで 8 字分に満たないと、エラー（G0744）になります。
+
+@nonumber
+## [code: \[hidden-folio\]]
+
+隠しノンブルです。
+トンボを付けた PDF（[code: --marks japanese] か [code: --marks western]）にだけ入ります。
+HTML と EPUB には効きません。
+
+| キー | 既定 | 意味 |
+|:---|:---|:---|
+| [code: enabled] | [code: true] | トンボを付けた PDF に隠しノンブルを入れるかどうかです。中綴じの本では [code: false] にします。 |
+| [code: pages] | [code: "unnumbered"] | 入れるページです。[code: "unnumbered"] はノンブルを組まないページ（白ページ、マスターページのないページ、[code: folio] のないマスターページのページ）、[code: "all"] はすべてのページです。 |
+| [code: size] | [code: "6pt"] | 数字の大きさです。 |
+| [code: gutter] | [code: "1.5mm"] | ノドの仕上がりの線から、数字の列の中心までの距離です。 |
+
+[code: size] と [code: gutter] には [code: zw] を使えません。
+[code: gutter] が [code: size] の半分より小さいと、数字が仕上がりの線を越えるので、エラー（G0306）になります。
+数字の列が版面か傍注欄に重なると、エラー（G0750）になります。
 
 @nonumber
 ## [code: \[lists\]]

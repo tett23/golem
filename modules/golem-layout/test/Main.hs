@@ -40,7 +40,7 @@ fs :: Sp
 fs = 10 * 65536
 
 box :: Sp -> Item
-box w = Box w (BoxContent "x" False 0 0 0 look0 0 0)
+box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [])
 
 -- | The original look of 'defaultComposeEnv'.
 look0 :: Look
@@ -51,7 +51,7 @@ paragraph :: [Sp] -> [Item]
 paragraph ws = concat [box w : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 refBox :: Text -> Sp -> Item
-refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0)
+refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [])
 
 knuthPlassWords, knuthPlassLog :: FilePath
 knuthPlassWords = "test/data/knuth-plass/frog-king.words"
@@ -177,6 +177,57 @@ legal items =
   where
     isBox = \case Box {} -> True; _ -> False
 
+-- | A note key for tests: the note at offset k of file 0.
+nid :: Int -> NoteId
+nid k = NoteId (mkSpan (FileId 0) k (k + 1)) 0
+
+noteMarkTests :: [TestTree]
+noteMarkTests =
+  [ testCase "a note mark joins the character before it, without spacing" $ do
+      let items = fst (composeInlines (defaultComposeEnv fs) [sp0 "漢", note 1, sp0 "字"])
+      case items of
+        (Box _ a : Penalty 0 p NoHyphen : Box _ m : rest) -> do
+          bcText a @?= "漢"
+          p @?= infPenalty
+          bcText m @?= "*1"
+          boxKind m @?= KindNoteMark
+          [bcText c | Box _ c <- rest] @?= ["字"]
+          -- after the mark, what comes between 漢 and 字 without it: no spacing of Latin text
+          rest @?= drop 1 (compose (defaultComposeEnv fs) "漢字")
+        other -> assertFailure (show other),
+    testCase "the width of a mark: its advance at half the size across, half the size down" $ do
+      let env = (defaultComposeEnv fs) {ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == fs `div` 2 then 3 / 5 else 1)}
+          markWidth e = [w | Box w c <- fst (composeInlines e [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark]
+      markWidth env @?= [round (2 * 3 / 5 * toRational (fs `div` 2) :: Rational)]
+      markWidth env {ceVertical = True} @?= [fs `div` 2],
+    testCase "the spacing of the pair around the mark comes after it" $ do
+      let env = defaultComposeEnv fs
+          without = compose env "」あ"
+          with = fst (composeInlines env [sp0 "」", note 1, sp0 "あ"])
+          afterMark = drop 1 (dropWhile (\case Box _ c -> boxKind c /= KindNoteMark; _ -> True) with)
+      afterMark @?= drop 1 without,
+    testCase "the mark of a paragraph start has no leading space, its line end edge is 0" $ do
+      let with = fst (composeInlines (defaultComposeEnv fs) [note 1, sp0 "「あ」"])
+          without = compose (defaultComposeEnv fs) "「あ」"
+      case [c | Box _ c <- with] of
+        (m : _) -> (boxKind m, bcEdgeStart m, bcEdgeEnd m) @?= (KindNoteMark, 0, 0)
+        [] -> assertFailure "no boxes"
+      [w | Box w c <- with, boxKind c /= KindNoteMark] @?= [w | Box w _ <- without],
+    testCase "a numbered sidenote marker is a note mark of the number alone" $ do
+      let sn = Sidenote (mkSpan (FileId 0) 3 9) 1 [sp0 "注"]
+      [(bcText c, boxKind c) | Box _ c <- fst (composeInlines (defaultComposeEnv fs) [sp0 "本", sn]), boxKind c /= KindText] @?= [("1", KindNoteMark)],
+    testCase "two notes of a paragraph have anchors of different spans" $ do
+      let anchors = snd (composeInlines (defaultComposeEnv fs) [sp0 "あ", Note (mkSpan (FileId 0) 1 5) 1 [sp0 "注"], sp0 "い", Note (mkSpan (FileId 0) 6 9) 2 [sp0 "注"]])
+      [s | AnchorNote _ _ s _ <- anchors] @?= [mkSpan (FileId 0) 1 5, mkSpan (FileId 0) 6 9],
+    testCase "two notes 1 of different keys on one page are two footnotes" $ do
+      let a = NoteId (mkSpan (FileId 1) 0 5) 0
+          b = NoteId (mkSpan (FileId 2) 0 5) 0
+          ps = paginate 1 10 [FParagraph [LineBox 0 [NoteBody a 1] [] [], LineBox 1 [NoteBody b 2] [] []]]
+      map poFootnotes ps @?= [[(a, 0, 1), (b, 0, 2)]]
+  ]
+  where
+    note n = Note (mkSpan (FileId 0) 1 2) n [sp0 "注"]
+
 sp0 :: Text -> Inline
 sp0 = Text (mkSpan (FileId 0) 0 0)
 
@@ -223,7 +274,9 @@ tests :: TestTree
 tests =
   testGroup
     "golem-layout"
-    [ testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
+    [ testGroup "kenten shapes (golem-driver ADR 0019)" kentenTests,
+      testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
+      testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
@@ -496,6 +549,7 @@ tests =
             [bcText c | Box _ c <- fst (composeInlines env [Number (mkSpan (FileId 0) 0 0) 120 Nothing])] @?= ["百", "二", "十"]
         ],
       testGroup "ruby placement (ADR 0009)" rubyTests,
+      testGroup "ruby base character styles (ADR 0011)" rubyBaseTests,
       testGroup
         "microtypography (ADR 0005)"
         [ testCase "protrusion of hyphens and full stops follows the table" $ do
@@ -509,12 +563,12 @@ tests =
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
             ws <- forAll (Gen.list (Range.linear 3 12) (Gen.integral (Range.linear 20 70)))
-            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0) | w <- ws] `interleave` Glue 6 3 2 <> finish
+            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 []) | w <- ws] `interleave` Glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
           testCase "expansion lowers the spread of adjustment ratios" $ do
             let ws = [23, 41, 37, 19, 52, 33, 28, 45, 31, 26, 39, 22, 48, 35, 29, 41]
-                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0) | w <- ws] `interleave` Glue 600 300 200 <> finish
+                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 []) | w <- ws] `interleave` Glue 600 300 200 <> finish
                 variance ps =
                   let rs = map glueRatio (init (brLines (breakParagraph ps (const 15000) items)))
                       m = sum rs / fromIntegral (length rs)
@@ -542,11 +596,11 @@ tests =
             let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 10), (4, SLine 11)], [(0, SFigure 99)]],
           testCase "footnotes sit on the page of their marker and continue when too long" $ do
-            let withNote i n = LineBox i [NoteBody (100 + i) n] [] []
+            let withNote i n = LineBox i [NoteBody (nid (100 + i)) n] [] []
                 ps = paginate 1 6 [FParagraph [LineBox 0 [] [] [], withNote 1 2, LineBox 2 [] [] [], withNote 3 1, LineBox 4 [] [] []]]
-            map poFootnotes ps @?= [[(101, 0, 2)], [(103, 0, 1)]]
+            map poFootnotes ps @?= [[(nid 101, 0, 2)], [(nid 103, 0, 1)]]
             let long = paginate 1 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
-            map poFootnotes long @?= [[(100, 0, 2)], [(100, 2, 2)], [(100, 4, 1)]],
+            map poFootnotes long @?= [[(nid 100, 0, 2)], [(nid 100, 2, 2)], [(nid 100, 4, 1)]],
           testCase "index marks go to the page of their line (golem-driver ADR 0007)" $ do
             let m = mkSpan (FileId 0) 10 20
                 ps = paginate 1 1 [FParagraph [LineBox 0 [] [] [], LineBox 1 [] [] [m], LineBox 2 [] [] []]]
@@ -774,13 +828,13 @@ tests =
             map poBlank ps @?= [False, False, True, False]
             slots ps @?= [[0, 1, 2], [3, 4], [], [20]],
           testCase "footnotes sit in the column of their marker and continue in the next column" $ do
-            let withNote i n = LineBox i [NoteBody (100 + i) n] [] []
+            let withNote i n = LineBox i [NoteBody (nid (100 + i)) n] [] []
                 ps = paginate 2 4 [FParagraph [withNote 0 1, LineBox 1 [] [] [], LineBox 2 [] [] [], LineBox 3 [] [] [], LineBox 4 [] [] []]]
             cols ps @?= [(1, 0), (1, 1)]
-            map poFootnotes ps @?= [[(100, 0, 1)], []]
+            map poFootnotes ps @?= [[(nid 100, 0, 1)], []]
             let long = paginate 2 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
             cols long @?= [(1, 0), (1, 1), (2, 0)]
-            map poFootnotes long @?= [[(100, 0, 2)], [(100, 2, 2)], [(100, 4, 1)]],
+            map poFootnotes long @?= [[(nid 100, 0, 2)], [(nid 100, 2, 2)], [(nid 100, 4, 1)]],
           testCase "a figure that does not fit goes to the top of the next column; text moves up" $ do
             let ps = paginate 2 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
             cols ps @?= [(1, 0), (1, 1)]
@@ -835,12 +889,12 @@ tests =
             sets ps @?= [(1, 0, 1, 0), (2, 0, 2, 0)]
             map (map fst . poSlots) ps @?= [[0], [0 .. 2]],
           testCase "footnotes on the page of the switch: the columns leave their lines" $ do
-            let withNote i n = LineBox i [NoteBody (500 + i) n] [] []
+            let withNote i n = LineBox i [NoteBody (nid (500 + i)) n] [] []
                 -- a note of 1 line and its separator: 2 grid lines
                 ps = paginate 1 10 ([FParagraph [withNote 0 1, LineBox 1 [] [] []], FSwitchColumns index2] <> entries 100 12 <> [FRestoreColumns])
             sets ps @?= [(1, 0, 1, 0), (1, 0, 2, 2), (1, 1, 2, 2)]
             map (map fst . poSlots) ps @?= [[0, 1], [2 .. 7], [2 .. 7]]
-            map poFootnotes ps @?= [[(500, 0, 1)], [], []],
+            map poFootnotes ps @?= [[(nid 500, 0, 1)], [], []],
           testCase "two columns: the page is closed and three columns start at line 0 of the next page" $ do
             let ps = paginate 2 10 ([FParagraph (lines' 0 3), FSwitchColumns index3 {csColumns = 3}] <> entries 100 4 <> [FRestoreColumns])
             sets ps @?= [(1, 0, 2, 0), (2, 0, 3, 0)]
@@ -864,10 +918,10 @@ tests =
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 11, SLine 12], [SLine 0, SLine 13, SLine 14]]
             map poTables ps @?= [[TableSegment 100 0 0 3], [TableSegment 100 0 0 2]],
           testCase "the header's label and note are counted once" $ do
-            let header = [LineBox 0 [NoteBody 900 1] ["tbl"] []]
+            let header = [LineBox 0 [NoteBody (nid 900) 1] ["tbl"] []]
                 ps = paginate 1 4 [FTable 100 header [lines' (10 + i) 1 | i <- [0 .. 4]]]
             map poLabels ps @?= ["tbl"] : replicate (length ps - 1) []
-            [(poNumber p, n) | p <- ps, (n, _, _) <- poFootnotes p] @?= [(1, 900)],
+            [(poNumber p, n) | p <- ps, (n, _, _) <- poFootnotes p] @?= [(1, nid 900)],
           testCase "a table that cannot start with its header and first row goes to the next page" $ do
             let ps = paginate 1 4 [FParagraph (lines' 0 3), FTable 100 (lines' 20 1) [lines' 30 1]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SLine 20, SLine 30]],
@@ -914,7 +968,7 @@ tests =
           testCase "an anchor indexes its marker among the composed items, spacing included" $ do
             let (items, anchors) = composeInlines (defaultComposeEnv fs) [sp0 "あいうえお", Note (mkSpan (FileId 0) 0 1) 1 [sp0 "注"], sp0 "かき"]
             case anchors of
-              [AnchorNote i 1 _] -> case drop i items of
+              [AnchorNote i 1 _ _] -> case drop i items of
                 (Box _ c : _) -> bcText c @?= "*1"
                 other -> assertFailure (show (take 1 other))
               other -> assertFailure (show other),
@@ -1041,16 +1095,120 @@ characterFeatureTests =
     testCase "the baseline shift does not change the line breaks" $ do
       let at shift = (defaultComposeEnv fs) {ceLook = look0 {lkBaselineShift = shift}}
           breaksOf e = brPositions (breakParagraph defaultParams (const (10 * fs)) (compose e (T.replicate 25 "あい、")))
-      breaksOf (at (2 * 65536)) @?= breaksOf (at 0)
+      breaksOf (at (2 * 65536)) @?= breaksOf (at 0),
+    testCase "pairs with an inseparable character are not kerned, horizontal or vertical (golem-driver ADR 0020)" $ do
+      let kernAll v = (defaultComposeEnv fs) {ceKern = \_ _ _ -> -(88 / 1000), ceVertical = v}
+          plain v = (defaultComposeEnv fs) {ceVertical = v}
+          boxes e t = [(bcText c, w, bcEdgeEnd c) | Box w c <- compose e t]
+      sequence_
+        [ boxes (kernAll v) t @?= boxes (plain v) t
+        | v <- [False, True],
+          t <- ["あ\x2014\x2014い", "あ……い", "あ‥‥い", "漢\x2014", "\x2014漢"]
+        ]
+      sequence_ [assertBool (show (boxes (plain v) "あ\x2014\x2014い")) (all (\(_, _, e) -> e == 0) (boxes (plain v) "あ\x2014\x2014い")) | v <- [False, True]]
+      -- a Japanese pair is kerned as before
+      sequence_ [map (\(_, _, e) -> e) (boxes (kernAll v) "あい") @?= [round (toRational fs * 88 / 1000), 0] | v <- [False, True]]
   ]
   where
     tenth = fs `div` 10
     kernEnv = (defaultComposeEnv fs) {ceKern = \_ a b -> if (a, b) == ('あ', 'い') then -(1 / 10) else 0}
 
+{- | Ruby base character styles (golem-layout ADR 0011): an advance of 1
+in the body role and 1.2 in the heading role; the character style h sets
+the heading role, a colour its swatch.
+-}
+rubyBaseTests :: [TestTree]
+rubyBaseTests =
+  [ testCase "a character style in a group ruby base: the looks of the base and the width" $ do
+      let (looks, ws) = baseOf [rubyIn [([t "漢", CharStyle sp "h" [t "字"]], Just "か")]]
+      looks @?= [[outer, heading]]
+      ws @?= [2200],
+    testCase "no character style: every base character has the outer look, the width is as before" $ do
+      let (looks, ws) = baseOf [rubyIn [([t "漢字"], Just "か")]]
+      looks @?= [[outer, outer]]
+      ws @?= [2000],
+    testCase "a colour in the base: the character has its swatch" $ do
+      let (looks, _) = baseOf [rubyIn [([t "漢", Color sp "red" [t "字"]], Just "かんじ")]]
+      looks @?= [[outer, outer {lkColor = Just "red"}]],
+    testCase "kenten in the base: the character's look is the look around it, without kenten" $ do
+      let (looks, _) = baseOf [rubyIn [([Kenten sp Nothing [t "漢"], t "字"], Just "かんじ")]]
+      looks @?= [[outer, outer]],
+    testCase "mono ruby: the allowance onto the neighbour is measured in the neighbour's base looks" $ do
+      let style = rubyStyle R.AlignCenter
+          env' = env {ceRuby = style}
+          boxesOf segs = rubyBoxes env' [rubyIn segs, t "の"]
+          -- the first base in the heading role is 1200 wide: 350 free beside its reading of 500
+          expected room = let p = placeRuby style MonoRuby [1000] [500, 500, 500, 500] (room, 500) in (rpWidth p, (rpOverhang p, rpOverhang p))
+      drop 1 (boxesOf [([CharStyle sp "h" [t "東"]], Just "ひ"), ([t "京"], Just "きょうと")]) @?= [expected 350]
+      assertBool "the look matters" (expected 350 /= expected 250),
+    testCase "boxes other than ruby have no base looks" $ do
+      let items = fst (composeInlines env [t "前", rubyIn [([t "字"], Just "じ")], CharStyle sp "h" [t "後"], Tcy sp "12"])
+      [bcBaseLooks c | Box _ c <- items, boxKind c `notElem` [KindRuby, KindGroupRuby]] @?= [[], [], []]
+  ]
+  where
+    sp = mkSpan (FileId 0) 0 0
+    t = Text sp
+    env =
+      (defaultComposeEnv 1000)
+        { ceAdvance = \lk _ -> if lkFace lk == "heading" then 6 / 5 else 1,
+          ceRestyle = \lk -> \case
+            CharStyle _ "h" _ -> lk {lkFace = "heading", lkLatinFace = "heading"}
+            Color _ c _ -> lk {lkColor = Just c}
+            _ -> lk
+        }
+    outer = ceLook env
+    heading = outer {lkFace = "heading", lkLatinFace = "heading"}
+    rubyIn segs = Ruby sp () [RubySegment base r | (base, r) <- segs]
+    baseOf is = unzip [(bcBaseLooks c, w) | Box w c <- fst (composeInlines env is), boxKind c `elem` [KindRuby, KindGroupRuby]]
+
 rubyStyle :: R.RubyAlign -> RubyStyle
 rubyStyle a = RubyStyle a a a 500 True
 
--- | Ruby boxes of composed inlines at 1000sp: their width and their edges.
+{- | Ruby boxes of composed inlines at 1000sp: their width and their edges.
+| The boxes of one-character text: the character, its kind and its kenten shape.
+-}
+kentenBoxes :: [Inline] -> [(Text, BoxKind, Maybe KentenShape)]
+kentenBoxes is = [(bcText c, boxKind c, lkKenten (bcLook c)) | Box _ c <- fst (composeInlines (defaultComposeEnv 1000) is)]
+
+kentenTests :: [TestTree]
+kentenTests =
+  [ testCase "the ten shapes and their characters" $
+      map kentenChar [minBound .. maxBound] @?= "\xFE45\xFE46\x2022\x25E6\x25CF\x25CB\x25C9\x25CE\x25B2\x25B3",
+    testCase "the names of the shapes" $ do
+      map kentenShapeName [minBound .. maxBound] @?= ["sesame", "open-sesame", "dot", "open-dot", "circle", "open-circle", "double-circle", "open-double-circle", "triangle", "open-triangle"]
+      map (kentenShapeFromName . kentenShapeName) [minBound .. maxBound] @?= map Just [minBound .. maxBound]
+      kentenShapeFromName "star" @?= Nothing,
+    testCase "plainLook has no kenten" $
+      lkKenten (plainLook "body" 1000) @?= Nothing,
+    testCase "punctuation in kenten is punctuation; ideographs and the long vowel mark get the shape" $
+      kentenBoxes [Kenten sp00 (Just "circle") [sp0 "漢、「字」ー"]]
+        @?= [ ("漢", KindKenten, Just KentenCircle),
+              ("、", KindPunctuation, Just KentenCircle),
+              ("「", KindPunctuation, Just KentenCircle),
+              ("字", KindKenten, Just KentenCircle),
+              ("」", KindPunctuation, Just KentenCircle),
+              ("ー", KindKenten, Just KentenCircle)
+            ],
+    testCase "a space and an iteration mark in kenten" $
+      [(t, k) | (t, k, _) <- kentenBoxes [Kenten sp00 (Just "dot") [sp0 "々\x3000"]]] @?= [("々", KindKenten), ("\x3000", KindText)],
+    testCase "the inner kenten wins" $
+      kentenBoxes [Kenten sp00 (Just "dot") [sp0 "あ", Kenten sp00 (Just "circle") [sp0 "い"]]]
+        @?= [("あ", KindKenten, Just KentenDot), ("い", KindKenten, Just KentenCircle)],
+    testCase "kenten without a shape is sesame" $
+      kentenBoxes [Kenten sp00 Nothing [sp0 "あ"]] @?= [("あ", KindKenten, Just KentenSesame)],
+    testCase "a Latin word in kenten stays text" $
+      [k | (t, k, _) <- kentenBoxes [Kenten sp00 (Just "circle") [sp0 "Golem"]], t == "Golem"] @?= [KindText],
+    testCase "text outside kenten has no shape" $
+      kentenBoxes [sp0 "字"] @?= [("字", KindText, Nothing)],
+    testCase "a ruby base has no kenten, inside kenten or with kenten in it (golem-layout ADR 0011)" $ do
+      let rubyLooks is = [map lkKenten (bcLook c : bcBaseLooks c) | Box _ c <- fst (composeInlines (defaultComposeEnv 1000) is), boxKind c `elem` [KindRuby, KindGroupRuby]]
+          kentenIn = Kenten sp00 (Just "circle") [Text sp00 "漢"]
+      rubyLooks [Ruby sp00 () [RubySegment [kentenIn] (Just "かん")]] @?= [[Nothing, Nothing]]
+      rubyLooks [Kenten sp00 (Just "circle") [Ruby sp00 () [RubySegment [Text sp00 "漢"] (Just "かん")]]] @?= [[Nothing, Nothing]]
+  ]
+  where
+    sp00 = mkSpan (FileId 0) 0 0
+
 rubyBoxes :: ComposeEnv -> [Inline] -> [(Sp, (Sp, Sp))]
 rubyBoxes env is = [(w, (bcEdgeStart c, bcEdgeEnd c)) | Box w c <- fst (composeInlines env is), boxKind c `elem` [KindRuby, KindGroupRuby]]
 
@@ -1059,7 +1217,7 @@ rubyOf segs = Ruby (mkSpan (FileId 0) 0 0) () [RubySegment [Text (mkSpan (FileId
 
 -- | A box with edges (the overhang of a ruby).
 edgeBox :: Sp -> (Sp, Sp) -> Item
-edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b)
+edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [])
 
 -- | The start and end of each box of a set line.
 boxSpans :: Line -> [(Sp, Sp)]
@@ -1290,20 +1448,62 @@ akiTests =
       let env = (akiEnv defaultAkiSet) {ceRestyle = \lk -> \case CharStyle _ "big" _ -> lk {lkSize = 2 * fs}; _ -> lk}
           items = fst (composeInlines env [CharStyle sp "big" [sp0 "」"], sp0 "漢"])
       [g | g@Glue {} <- items, itemStretch g < filStretch] @?= [Glue fs 0 fs],
-    testCase "[aki] is a fixed glue with no break around it and no aki of the set" $ do
+    testCase "[aki] is an empty box of its width, with no break and no aki of the set (golem-layout ADR 0012)" $ do
       let items = fst (composeInlines (akiEnv defaultAkiSet) [sp0 "漢", Aki sp (AkiZw (1 / 5)), sp0 "A"])
-          boxText = \case
-            Box _ c -> Just (bcText c)
-            _ -> Nothing
-      map (\it -> maybe (Right it) Left (boxText it)) (take 4 items)
-        @?= [Left "漢", Right (Penalty 0 infPenalty NoHyphen), Right (Glue (fs `div` 5) 0 0), Left "A"]
-      length items @?= 7
+          shapeOf = \case
+            Box w c -> Left (bcText c, boxKind c, w)
+            it -> Right it
+      map shapeOf (takeWhile (not . isLineEnd) items)
+        @?= [Left ("漢", KindText, fs), Left ("", KindAki, fs `div` 5), Left ("A", KindText, fs `div` 2)]
+      length items @?= 6
       let absolute = fst (composeInlines (akiEnv defaultAkiSet) [sp0 "3", Aki sp (AkiAbs 65536), sp0 "kg"])
-      [g | g@Glue {} <- absolute, itemStretch g < filStretch] @?= [Glue 65536 0 0]
+      [(w, boxKind c) | Box w c <- absolute, boxKind c == KindAki] @?= [(65536, KindAki)]
+      [g | g@Glue {} <- absolute, itemStretch g < filStretch] @?= [],
+    testCase "a space of no advance is not taken for an [aki] (golem-layout ADR 0012)" $ do
+      let zeroSpace env = env {ceAdvance = \lk c -> if c == ' ' then 0 else ceAdvance env lk c}
+          base = akiEnv defaultAkiSet
+          glueless = map (\case Glue {} -> Glue 0 0 0; it -> it)
+      [g | g@Glue {} <- compose (zeroSpace base) "A 漢", itemStretch g < filStretch] @?= [Glue 0 0 0]
+      glueless (compose (zeroSpace base) "A 漢") @?= glueless (compose base "A 漢")
+      glueless (compose (zeroSpace base) "A 「漢") @?= glueless (compose base "A 「漢"),
+    testCase "the first character after an [aki] at the paragraph start is the paragraph's first (golem-layout ADR 0012)" $ do
+      let items = fst (composeInlines (akiEnv defaultAkiSet) [Aki sp (AkiZw 1), sp0 "「あ」"])
+      case items of
+        Box w a : Box _ c : _ -> do
+          (w, boxKind a, bcEdgeStart a, bcEdgeEnd a) @?= (fs, KindAki, 0, 0)
+          (bcText c, bcEdgeStart c) @?= ("「", 0)
+        _ -> assertFailure (show items),
+    testCase "an [aki] at the paragraph end is the last box of the line; the bracket gets no line-end space (golem-layout ADR 0012)" $ do
+      zenkaku <- maybe (assertFailure "no zenkaku" >> error "unreachable") pure (Map.lookup "gyomatsu-yakumono-zenkaku" builtinAkiSets)
+      let items = fst (composeInlines (akiEnv zenkaku) [sp0 "あ」", Aki sp (AkiZw 1)])
+      case brLines (breakParagraph defaultParams (const (10 * fs)) items) of
+        [l] -> do
+          map boxKind (take 1 (reverse [c | Box _ c <- lineItems l])) @?= [KindAki]
+          lineEdge l @?= (0, 0)
+          -- あ (1 em), 」 (a half em, no space after it) and the [aki] (1 em)
+          trailingRoom l @?= 10 * fs - (fs + fs `div` 2 + fs)
+        ls -> assertFailure (show ls),
+    testCase "an [aki] inside a line breaks as the penalty and the fixed glue did (golem-layout ADR 0012)" $ do
+      let asGlue = concatMap $ \case
+            Box w c | boxKind c == KindAki -> [Penalty 0 infPenalty NoHyphen, Glue w 0 0]
+            it -> [it]
+          texts l = T.concat [bcText c | Box _ c <- lineItems l]
+          outcome its w = [(texts l, lineRatio l, lineEdge l) | l <- brLines (breakParagraph defaultParams (const w) its)]
+          paras =
+            [ [sp0 "第一章", Aki sp (AkiZw 1), sp0 "吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。"],
+              [sp0 "重さは3", Aki sp (AkiZw (1 / 4)), sp0 "kgで、長さは12", Aki sp (AkiAbs 65536), sp0 "mmである。何でも薄暗いじめじめした所で泣いていた事だけは記憶している。"]
+            ]
+      forM_ paras $ \p -> forM_ [5 * fs, 7 * fs, 9 * fs + fs `div` 3, 12 * fs] $ \w -> do
+        let its = fst (composeInlines (akiEnv defaultAkiSet) p)
+        assertBool "has an [aki]" (not (null [() | Box _ c <- its, boxKind c == KindAki]))
+        outcome its w @?= outcome (asGlue its) w
   ]
   where
     sp = mkSpan (FileId 0) 0 0
     orderedAs xs order = [x | x <- order, x `elem` xs]
+    isLineEnd = \case
+      Penalty _ p _ -> p >= infPenalty
+      _ -> False
 
 -- | Code blocks and the character style code (golem-driver ADR 0017).
 codeTests :: [TestTree]

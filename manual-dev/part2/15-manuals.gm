@@ -137,7 +137,8 @@ sh scripts/manual/build-info.sh manual-dev
 URL のようなコードは、空白と [code: /] の後でだけ行を改め、字間を伸ばさない。
 文書の名前を先に書くと、名前の和文だけの短い行ができ、その行の字間が大きく伸びる。
 URL を先に書けば、URL の行はそろわないまま残り、和文の名前は次の行を埋める。
-脚注の印を句点の前に置くと、今の PDF では印が次の字と重なるので、段落の末尾に置いている。
+脚注の印は前の字に付けて組まれ、次の字に重ならないので、句点の前にも置ける。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0018-footnote-marks-and-numbers.md]（golem-driver ADR 0018「脚注の印と番号」）]
+この本は、注を段落の全体に対するものとして扱い、段落の末尾に置いている。
 
 脚注の中は散文スロットなので、[code: \]]、[code: \|]、[code: \[] は [code: \\] でエスケープする。
 

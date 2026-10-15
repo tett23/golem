@@ -247,7 +247,8 @@ tracking = -50
 
 和文のフォントがカーニングの情報を持っていると、既定の [code: metrics] では和文の字間が字の組ごとに変わり、字送りの格子からずれる行が出ます。
 格子にそろえたい本文は、[code: \[paragraph-styles.body\]] に [code: kerning = "japanese-equal-width"] と書いてください。
-約物（括弧類、句読点、中点類）を含む字の組には、和文のカーニングをかけません。
+約物（括弧類、句読点、中点類）と、分離禁止文字（二倍ダッシュの [code: —]、三点リーダーの [code: …] など）を含む字の組には、和文のカーニングをかけません。
+二倍ダッシュの二本の線が重なったり、リーダーの点の間隔が不揃いになったりしないためです。
 
 InDesign と違う点もあります。
 トラッキングの空きは、行の最後の文字の後ろには入りません。
@@ -310,6 +311,7 @@ regex-styles = [
 正規表現は [code: '...'] で囲むと、[code: \\] をそのまま書けます。
 同じ文字に二つの組が一致した場合は、後の組が勝ちます。
 原稿で手で付けた文字スタイルは、正規表現スタイルより優先されます。
+ルビの親文字の一部に一致した場合も、一致した字にだけ文字スタイルが当たり、読みには当たりません。
 
 [code: regex-styles] は [code: based-on] で引き継がれます。
 引き継いだ段落スタイルで [code: regex-styles = \[\]] と書くと、引き継がなくなります。
@@ -389,6 +391,9 @@ odd = "heading.1.numbered"
 目次のページなどで柱を消したいときは、[code: running-head] のないマスターページを指定します。
 見出しの [code: \[headings.<階層>\]] には [code: running-head] を書けません。
 
+マスターページが [code: folio] を持たないページと白ページには、ノンブルを組みません。
+トンボを付けた入稿用の PDF では、このようなページに隠しノンブルが入ります（「[ref-title print-pdf]」、[ref-page print-pdf] ページ）。
+
 InDesign の親ページとの違いは、置けるものが柱とノンブルの二つだけであることです。
 親ページのように、罫線や画像やテキストフレームを置くことはできません。
 マスターページはページごとではなく章のファイルごとに選び、ページごとに親ページの項目を上書きすることもありません。
@@ -401,6 +406,7 @@ InDesign の親ページとの違いは、置けるものが柱とノンブル�
 ```toml
 [notes]
 placement = "page-foot"
+numbering = "chapter"
 
 [sidenotes]
 width = "6zw"
@@ -414,6 +420,7 @@ leader = "dots"
 ```
 
 - [code: \[notes\]] の [code: placement]：注の置き場所の指定です。[code: "page-foot"]（ページの下）と [code: "chapter-end"]（章の終わり）を書けますが、今の版の Golem はこの値で置き方を変えません。PDF では常にページの下に、HTML とプレーンテキストでは章の終わりに置きます。
+- [code: \[notes\]] の [code: numbering]：注の番号を 1 から振り直す範囲です。[code: "chapter"]（マニフェストの章ごと）、[code: "file"]（ファイルごと）、[code: "book"]（本の全体で通し番号）から選べます。省くと [code: "chapter"] です。傍注の番号も、脚注と別に同じ範囲で振ります。
 - [code: \[sidenotes\]]：傍注欄を、小口側の余白に設けます。[code: width] が傍注欄の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。
 - [code: \[figures\]] の [code: number]：図番号の書式です。[code: {chapter}] が章の番号、[code: {n}] が章の中の図の番号です。[code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。
 - [code: \[toc\]] の [code: leader]：目次のリーダーを点線（[code: "dots"]）にするか、なし（[code: "none"]）にするかです。
