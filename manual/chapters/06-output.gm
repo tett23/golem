@@ -102,6 +102,7 @@ golem build --target pdf --marks japanese
 入稿用の PDF を作る手順をまとめると、次のようになります。
 
 + [code: style.toml] の [code: \[page\]] に [code: bleed] を、[code: \[color\]] に [code: intent] を書く。
++ [code: golem preflight --marks japanese] で検査する（次の節）。
 + [code: --marks japanese] と [code: --profile prod] を付けて PDF を組む（[code: --profile prod] は「[ref-title profiles]」、[ref-page profiles] ページ）。
 + 組んだ PDF を商用のプリフライトで検査する。
 
@@ -110,6 +111,141 @@ golem build --target pdf --marks japanese
   塗り足しと日本式のトンボを付けたページ。
 
 図[ref-number fig-crop-marks]は、[code: golem new] で作った本に [code: bleed = "3mm"] を書き、[code: --marks japanese] を付けて組んだページです。
+
+@label preflight
+## 入稿の前の検査
+
+組んだ PDF をそのまま印刷所に渡してよいとは限りません。
+解像度の足りない写真、出力インテントと違う色の画像、仕上がりの線の近くに置いた文字は、組むことはできても、刷り上がりを損ないます。
+こうした問題を入稿の前に探すのが、プリフライト[index reading=ぷりふらいと: プリフライト]です。
+InDesign のプリフライトに当たり、Golem では [code: golem preflight] のコマンドが行います。
+
+[code: golem preflight] は、[code: golem build --target pdf --profile prod] と同じ手順で PDF を組み、ファイルには書かずに検査します。
+[code: --profile] は付けられず、いつも出荷する本として（prod で）組みます。
+原稿や設定に誤りがあって PDF を組めないときは、[code: golem build] と同じエラーだけを出し、検査はしません。
+[code: golem build] と [code: golem check] は、この検査をしません。
+組めるかどうかは原稿と設定で決まり、入稿できるかどうかは印刷所の条件で決まるので、二つを分けています。
+
+### 雛形のプロジェクトを検査する
+
+[code: golem new] で作ったプロジェクトに、[code: golem preflight] を実行してみます。
+
+```sh
+golem preflight
+```
+
+雛形のままでは、次の二つのエラーが出ます。
+どちらも位置は [code: style.toml] の先頭です。
+
+- G0910：[code: 塗り足しの幅が足りません: 0.0mm（3.0mm 以上にします）]
+- G0914：[code: PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の \[color\] に intent を書きます）]
+
+最後の行には、[code: プリフライト（設定: preflight.toml、基にした設定: print）: エラー 2、警告 0。] で始まる要約が出ます。
+
+G0910 は塗り足しがないこと、G0914 は出力インテントがないことを示します。
+どちらも、前の節で説明した入稿の手順の一つ目（[code: bleed] と [code: intent] を書く）をまだしていないためです。
+雛形に [code: bleed] と [code: intent] が書かれていないのは、出力インテントの ICC プロファイルが印刷所ごとに違い、塗り足しを入れると画面で読むための PDF にも余白が付くからです。
+
+最初の実行に [code: --marks japanese] を付けなかったのは、塗り足しのない雛形では、日本式のトンボのエラー（G0702）で PDF を組めず、検査まで進まないからです。
+[code: style.toml] の [code: \[page\]] に [code: bleed = "3mm"] を、[code: \[color\]] に [code: intent] を書いてから、入稿する PDF と同じトンボを付けて検査し直します。
+
+```sh
+golem preflight --marks japanese
+```
+
+今度は診断が出ず、要約の行だけが [code: エラー 0、警告 0] と出ます。
+エラーがなければ、終了コードは 0 です。
+警告だけのときも 0 になります。
+CI で警告も止めたいときは、下で説明する設定で、その検査の重大度を [code: error] にします。
+
+### 要約の行と SHA-256
+
+[code: golem preflight] は、最後に要約の一行を出します。
+要約には、使った設定、エラーと警告の数、検査した PDF の SHA-256 が並びます。
+SHA-256 は、ファイルの中身から計算する 64 桁の値で、中身が一バイトでも違えば別の値になります。
+
+Golem は、同じ原稿と同じ設定とオプションから、いつも同じバイト列の PDF を作ります。
+このため、[code: golem build --target pdf --profile prod] に同じ [code: --marks] を付けて作った PDF は、検査した PDF と同じ SHA-256 になります。
+入稿するファイルが検査したものと同じであることを、この値で確かめられます。
+
+[strong: 入稿する PDF は、必ず [code: --profile prod] を付けて作ってください。]
+[code: golem build] のプロファイルの既定は dev で、プロファイルは PDF の中の識別子の計算に入るので、[code: --profile prod] を付けずに作った PDF は SHA-256 が一致しません。
+
+[strong: [code: golem preflight] の検査は、PDF/X-4 に適合しているかの判定ではありません。]
+Golem が作りうる要素に限って、PDF/X-4 の要件を自分で確かめているだけです。
+入稿の前には、これまでどおり商用のプリフライトでも確かめてください。
+
+### preflight.toml
+
+どの検査を、どの重さで、どのしきい値で行うかを、プリフライトの設定と呼びます。
+InDesign のプリフライトプロファイルに当たります。
+Golem では「プロファイル」の語を dev と prod に使っているので、この名前にしています。
+
+プリフライトの設定は、プロジェクトのルートの [code: preflight.toml] に書きます。
+[code: golem new] が作る [code: preflight.toml] は、次のようになっています。
+
+```toml
+based-on = "print"
+# name = "○○印刷 オフセット"
+
+# [image-resolution]
+# color = { error-below = 150, warning-below = 300 }
+# gray = { error-below = 150, warning-below = 300 }
+
+# [page-count]
+# severity = "error"
+# multiple-of = 16
+```
+
+ここでは、使い方を説明するコメントの行と、例の一部を略しています。
+
+効いているのは [code: based-on = "print"] の一行だけです。
+[code: based-on] は、元にする組み込みの設定を選びます。
+書かなかった値は、すべて [code: based-on] の設定から引き継ぎます。
+
+[code: #] で始まる行はコメントで、[code: print] の主な値を書き写した例です。
+行頭の [code: #] を外しても、値が [code: print] と同じなので結果は変わりません。
+印刷所の求める値に合わせるときは、その行の [code: #] を外して、値だけを書き換えます。
+たとえば、カラーの画像に 350ppi を求める印刷所なら、次のように書きます。
+
+```toml
+based-on = "print"
+
+[image-resolution]
+color = { warning-below = 350 }
+```
+
+表の中のキーも、一つずつ引き継ぎます。
+この例では、カラーの画像の [code: error-below] は [code: print] の 150 のままで、[code: warning-below] だけが 350 になります。
+最後の段落の [code: \[page-count\]] は、[code: print] では検査しない項目なので、[code: #] を外すと検査が有効になります。
+書けるキーと値は、付録D「[ref-title app-preflight]」（[ref-page app-preflight] ページ）にまとめています。
+
+組み込みの設定は三つあります。
+
+| 設定 | 内容 |
+|---|---|
+| [code: basic] | InDesign の \[基本\] に当たる。グリフのない文字、PDF に置けない図版、行長からはみ出す行、PDF/X-4 の要件だけを検査する |
+| [code: print] | 日本の印刷所の入稿の案内でよく見る値で、解像度、色空間、塗り足し、仕上がりの線の近くの文字と図版、総インキ量、線の太さまで検査する。[code: preflight.toml] がないときもこれを使う |
+| [code: none] | すべての検査をしない。一から設定を書くときの元にする |
+
+[code: print] の値は、特定の規格の値ではありません。
+正しい値は印刷所ごとに違うので、印刷所の案内を確かめてください。
+
+### 印刷所から受け取った設定を使う
+
+InDesign のプリフライトプロファイルと同じく、プリフライトの設定はファイルごと受け渡せます。
+印刷所から設定のファイルを受け取ったら、[code: preflight.toml] をそれに置き換えます。
+プロジェクトに入れずに使いたいときは、[code: --rules] でファイルを指します。
+
+```sh
+golem preflight --rules ../printer.toml
+```
+
+[code: --rules] のパスは、コマンドを実行したフォルダからの相対パスか、絶対パスで書きます。
+[code: --marks japanese] も、いっしょに付けられます。
+同じ本を別の印刷所に出すときは、[code: --rules] だけを替えれば済みます。
+設定のファイルに誤りがあると、G0901 のエラーになり、PDF を組まずに終わります。
+設定に [code: name] を書くと、要約の行の「設定」にその名前が出ます。
 
 ## HTML
 

@@ -18,6 +18,7 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 | [code: golem new DIR] | プロジェクトを作る |
 | [code: golem build] | 出力を [code: build/] に書く |
 | [code: golem check] | 出力を書かずに検査する |
+| [code: golem preflight] | PDF を prod で組み、書かずに入稿の前の検査をする |
 | [code: golem lint] | lint の規則を適用する |
 | [code: golem fmt] | 原稿を整形する |
 | [code: golem lsp] | 標準入出力で LSP を話す |
@@ -34,9 +35,10 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 | --- | --- | --- |
 | [code: --target] | [code: build] | [code: html]、[code: epub]、[code: text]、[code: pdf]。何度でも書ける |
 | [code: --profile] | [code: build]、[code: check]、[code: lint] | [code: dev]（既定）、[code: prod] |
-| [code: --marks] | [code: build]、[code: check] | [code: none]（既定）、[code: japanese]、[code: western] |
+| [code: --marks] | [code: build]、[code: check]、[code: preflight] | [code: none]（既定）、[code: japanese]、[code: western] |
 | [code: --no-notices] | [code: build]、[code: check]、[code: lint] | なし |
-| [code: --format] | [code: build]、[code: check]、[code: lint] | [code: human]（既定）、[code: json] |
+| [code: --format] | [code: build]、[code: check]、[code: lint]、[code: preflight] | [code: human]（既定）、[code: json] |
+| [code: --rules] | [code: preflight] | プリフライトの設定のファイル |
 | [code: --check] | [code: fmt] | なし |
 | [code: --as] | [code: inspect] | [code: cst]（既定）、[code: ast]、[code: ir] |
 | [code: --language] | [code: new] | [code: ja]（既定）、[code: en] |
@@ -50,6 +52,14 @@ CI で PDF だけが要るなら、[code: --target pdf] を明示する。[note:
 [code: golem check] は出力を作らず、構文、評価、文書構造（S1）までを検査する。[index reading="golem check": golem check]
 四つのターゲットが使う [code: style.toml] のファイルの存在も確かめ、版面の誤り（G0701）、トンボと塗り足しの誤り（G0702）、段落スタイルの字下げの誤り（G0725）、本文のフォントの欠け（G0807）も報告する。
 行分割と改ページ（S2）はしないので、ページに収まらないことによる誤りは [code: golem build] でしか見つからない。
+
+[code: golem preflight] は、[code: golem build --target pdf --profile prod] と同じ手順で PDF を組み、ファイルに書かずに、組んだ結果を検査する。[index reading="golem preflight": golem preflight][note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
+プロファイルは常に [code: prod] で、[code: --profile] は使い方の誤りになる。
+[code: \[targets.*\]] の有無は見ず、常に PDF を組む。
+検査の項目、重大度、しきい値はプリフライトの設定で決まり、設定は [code: --rules] のファイル、なければプロジェクトの根の [code: preflight.toml]、それもなければ組み込みの [code: print] である。
+設定の誤りは G0901 で、PDF を組まずに終わる。
+構文から出力までの段階のエラーで PDF を組めないときは、[code: golem build] と同じ診断だけを出し、検査はしない。
+LSP、[code: golem check]、[code: golem build] は、プリフライトの検査をしない。
 
 ## 出力先
 
@@ -108,6 +118,7 @@ $ echo $?
 コマンドごとの成功と失敗の決まりは次のとおりである。
 
 - [code: golem build] と [code: golem check] は、エラーの診断が一つでもあれば 1 で終わる。PDF のフォントがなくてエラーになっても、ほかのターゲットの出力は書く。
+- [code: golem preflight] は、エラーの診断が一つでもあれば 1、警告だけなら 0 で終わる。警告でも止めたいときは、プリフライトの設定でその検査の [code: severity] を [code: error] にする。
 - [code: golem lint] は、エラーが一つでもあれば 1、警告だけなら 0 で終わる。
 - [code: golem fmt --check] は、整形されていないファイルがあればそのパスを標準出力に書き、1 で終わる。
 - [code: golem explain] は、文書にないコードを渡すと使い方の誤りとして 2 で終わる。
@@ -148,11 +159,15 @@ PDF を書かないビルドでは何も変えない。[note: [code: https://git
 
 ## プロジェクトの雛形
 
-[code: golem new DIR] は、[code: manifest.toml]、[code: style.toml]、章のファイル、[code: .gitignore] を作る。[index reading="golem new": golem new]
+[code: golem new DIR] は、[code: manifest.toml]、[code: style.toml]、章のファイル、[code: preflight.toml]、[code: .gitignore] を作る。[index reading="golem new": golem new]
 [code: --language ja] は A6 判の縦組みで Noto Serif JP を、[code: --language en] はマスマーケットのペーパーバックの横組みで Source Serif 4 を使う。
 フォントは配布元のタグで固定した版から HTTPS で取得し、Golem のソースに固定した SHA-256 で検査してから [code: fonts/] に置く。
 取得に失敗すると、プロジェクトのファイルを一つも書かない。
 [code: --no-fonts] では取得せず、置くべきファイルと URL を表示する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0003-new-project-page-and-fonts.md]（golem-cli ADR 0003「golem new の雛形に版面とフォントを入れる」）]
+[code: preflight.toml] は [code: based-on = "print"] の一行と、[code: print] の主な値をコメントで書き写した例からなる。
+コメントだけが雛形の言語で、キーと値は言語によらない。
+[code: --no-fonts] でも作り、フォントの取得に失敗したときはほかのファイルと同じく書かない。
+雛形は [code: \[page\] bleed] と [code: \[color\] intent] を持たないので、そのままでは [code: print] のプリフライトで G0910 と G0914 のエラーになる。
 
 マニフェストの [code: id] は、[code: golem new] が UUID の v4 で一度だけ生成する。
 これが Golem が乱数を使う唯一の箇所である。
