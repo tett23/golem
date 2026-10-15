@@ -80,6 +80,11 @@ tests :: TestTree
 tests =
   testGroup "label safety (ADR 0007)" $
     [ testCase "every concatenation of up to three fragments" $ allAgree upToThree,
+      -- golem-parser ADR 0010: RowBreak? matches nothing without the label
+      testCase "a backslash after the last | of a table row" $ do
+        let rows = ["| a | b |\\\n|---|---|\n| c | d |\n", "| a | b |\n|---|---|\n| c | d |\\\n| e | f |\n", "| a | b |\n|---|---|\n| c | d |\\", "| a | b |\n|---|---|\n| c | d \\\n"]
+        allAgree rows
+        mapM_ (\src -> assertBool (show src) (not (isRight (Stripped.parse src)))) rows,
       testProperty "arbitrary fragments" $ withTests 500 $ property $ do
         src <- forAll (T.concat <$> Gen.list (Range.linear 0 30) fragment)
         assert (agree src),

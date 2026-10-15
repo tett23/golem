@@ -21,6 +21,10 @@ inl = map locValue
 paraTexts :: Text -> [[Inline]]
 paraTexts src = [inl is | Paragraph is <- ast src]
 
+-- | The paragraphs with their escapes made text (golem-parser ADR 0010).
+plainParas :: Text -> [[Inline]]
+plainParas src = [inl (plainEscapes is) | Paragraph is <- ast src]
+
 stripE :: Located Expr -> Expr
 stripE (Located _ e) = case e of
   EBinary o a b -> EBinary o (Located dummy (stripE a)) (Located dummy (stripE b))
@@ -61,9 +65,46 @@ whitespaceTests =
       testCase "the end of prose slots" $
         shape "[ruby 漢字: かん | じ]\n" @?= shape "[ruby 漢字: かん|じ]\n",
       testCase "escaped and ideographic spaces stay" $ do
-        paraTexts "a\\ \n" @?= [[Text "a "]]
+        plainParas "a\\ \n" @?= [[Text "a "]]
         paraTexts "a\x3000\n" @?= [[Text "a\x3000"]]
         shape "| \\ a |\n|---|\n" /= shape "| a |\n|---|\n" @?= True
+    ]
+
+-- | golem-parser ADR 0010.
+escapeTests :: TestTree
+escapeTests =
+  testGroup
+    "escaped characters stay in the AST (ADR 0010)"
+    [ testCase "an escape is Escaped, and the text around it is not joined to it" $
+        paraTexts "\\# 見出しではない \\[ x \\\\\n" @?= [[Escaped '#', Text " 見出しではない ", Escaped '[', Text " x ", Escaped '\\']],
+      testCase "\\/ in the base of a ruby, with the span of its two bytes" $ case ast "[ruby: a\\/b|えー]\n" of
+        [Paragraph [Located _ (Command _ [] [base, reading])]] -> do
+          inl base @?= [Text "a", Escaped '/', Text "b"]
+          [(spanStart sp, spanEnd sp) | Located sp (Escaped _) <- base] @?= [(8, 10)]
+          inl reading @?= [Text "えー"]
+        other -> assertFailure (show other),
+      testCase "the name of the command does not matter" $ case paraTexts "[bold: a\\/b]\n" of
+        [[Command _ [] [slot]]] -> inl slot @?= [Text "a", Escaped '/', Text "b"]
+        other -> assertFailure (show other),
+      testCase "\\%% is an escaped % and a text %" $
+        paraTexts "a\\%%b\n" @?= [[Text "a", Escaped '%', Text "%b"]],
+      testCase "plainEscapes gives what the escapes were before" $ do
+        plainParas "\\# 見出しではない \\[ x \\\\\n" @?= [[Text "# 見出しではない [ x \\"]]
+        plainParas "a\\%%b\n" @?= [[Text "a%%b"]]
+        plainParas "[bold: a\\/b]\n" @?= paraTexts "[bold: a\\/b]\n",
+      testCase "plainEscapes joins the spans as the text did" $ case ast "x\\[y\n" of
+        [Paragraph is] -> plainEscapes is @?= [Located (mkSpan fid 0 4) (Text "x[y")]
+        other -> assertFailure (show other),
+      testCase "plainEscapesIn makes only the characters that match text, in the whole file" $ do
+        let (f, _, _) = parseAst fid "\\あ\\/[bold: \\い\\/]\n"
+            File _ bs1 = plainEscapesIn (== 'あ') f
+            File _ bs2 = plainEscapesIn (== 'い') f
+        case map locValue bs1 of
+          [Paragraph is] -> take 2 (inl is) @?= [Text "あ", Escaped '/']
+          other -> assertFailure (show other)
+        case map locValue bs2 of
+          [Paragraph [_, _, Located _ (Command _ _ [slot])]] -> inl slot @?= [Text "い", Escaped '/']
+          other -> assertFailure (show other)
     ]
 
 tests :: TestTree
@@ -98,9 +139,9 @@ tests =
             paraTexts "a\t\\\n\tb\n" @?= [[Text "a", HardBreak, Text "b"]]
             paraTexts "a\\\n\x3000\&b\n" @?= [[Text "a", HardBreak, Text "\x3000\&b"]],
           testCase "an escaped space is not a hard break" $
-            paraTexts "a\\ \nb\n" @?= [[Text "a ", SoftBreak, Text "b"]],
+            plainParas "a\\ \nb\n" @?= [[Text "a ", SoftBreak, Text "b"]],
           testCase "an escaped backslash is not a hard break" $
-            paraTexts "a\\\\\nb\n" @?= [[Text "a\\", SoftBreak, Text "b"]],
+            plainParas "a\\\\\nb\n" @?= [[Text "a\\", SoftBreak, Text "b"]],
           testCase "a hard break in a prose slot stays in the slot" $ case paraTexts "[note: a\\\nb]\n" of
             [[Command _ [] [slot]]] -> inl slot @?= [Text "a", HardBreak, Text "b"]
             other -> assertFailure (show other),
@@ -110,8 +151,7 @@ tests =
             [Paragraph [_, Located sp HardBreak, _]] -> (spanStart sp, spanEnd sp) @?= (1, 3)
             other -> assertFailure (show other)
         ],
-      testCase "escapes are resolved" $
-        paraTexts "\\# 見出しではない \\[ x \\\\\n" @?= [[Text "# 見出しではない [ x \\"]],
+      escapeTests,
       testCase "comments vanish, proofreading comments stay" $
         paraTexts "本文。%% 消える %%続き。%%= 校正 %%\n" @?= [[Text "本文。続き。", ProofComment "校正"]],
       testCase "a paragraph of only a comment is dropped" $

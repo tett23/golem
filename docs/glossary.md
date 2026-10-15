@@ -37,7 +37,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 ## 評価と文書構造
 
 - **CST**：原稿を、空白とコメントまで含めて失わずに表す具象構文木（Concrete Syntax Tree）。元のテキストを一字一句復元でき、整形と LSP が使う（[golem-parser ADR 0001](golem-parser/adr/0001-cst-types-and-invariants.md)）。
-- **AST**：CST から空白、コメント、エスケープを取り除き、意味だけを残した抽象構文木。評価器は AST だけを読む（[golem-parser ADR 0005](golem-parser/adr/0005-cst-to-ast.md)）。
+- **AST**：CST から空白とコメントを取り除き、意味だけを残した抽象構文木。エスケープした文字は印を付けて残し、評価が地の文に戻す。評価器は AST だけを読む（[golem-parser ADR 0005](golem-parser/adr/0005-cst-to-ast.md)、[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。
 - **意味論 IR**：評価が済んだ文書の表現。幾何を持たず、全媒体の出力がここから分かれる。正典は CDDL で書いたスキーマであり、CBOR で直列化する（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)）。
 - **評価の段階（S0、S1、S2）**：値がいつ決まるかによる三つの段階。**S0** はファイルの中だけで決まる値（変数、import した定義、見出しの文字列）、**S1** は全ファイルから決まる文書構造（目次、章番号、ラベルの章題と番号）、**S2** はレイアウトの後に決まる値（ページ番号）である（[仕様書](specifications.md)、[golem-eval ADR 0002](golem-eval/adr/0002-file-evaluation.md)）。
 - **DeferredExpr**：S1 で初めて値が決まる式（`doc` 名前空間を参照する式）を、意味論 IR の中に評価を遅らせて保持したもの（[golem-eval ADR 0002](golem-eval/adr/0002-file-evaluation.md)）。
@@ -61,7 +61,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **和欧間**：和文と欧文の文字が隣り合う位置。既定では四分の空きを置き、量はアキ量のセットで変えられる（[docs/adr/0019](adr/0019-aki-settings.md)）。
 - **アキ**と**アキ量のセット**：文字と文字の間の空きと、その量を文字のクラスの組ごとに最小、最適、最大で決めた設定。InDesign の文字組みアキ量設定に当たる。`style.toml` の `[aki-sets.<名前>]` で定義し、段落スタイルの `aki-set` で選ぶ。組み込みのセットは `gyomatsu-yakumono-hankaku`（行末約物半角、既定）と `gyomatsu-yakumono-zenkaku`（行末約物全角）である。量は全角、二分、四分、五分などの名前、`zw`、百分率で書く。原稿の任意の位置には `[aki 五分]` のように固定の空きを置ける（[docs/adr/0019](adr/0019-aki-settings.md)）。
 - **ぶら下げ組**：行末の句読点を版面の外に出すことを許す組み方。
-- **カーニング**：隣り合う二字のあいだの空きを、字の組ごとに詰めたり広げたりすること。Golem はフォントの持つペアカーニングの情報を使う方式（メトリクス）を既定とし、欧文だけにかける方式（和文等幅、`japanese-equal-width`）と、かけない方式（`none`）を文字スタイルと段落スタイルの `kerning` で選べる。和文のペアカーニングは約物を含む組にはかけない（[docs/adr/0020](adr/0020-indesign-character-features.md)）。
+- **カーニング**：隣り合う二字のあいだの空きを、字の組ごとに詰めたり広げたりすること。Golem はフォントの持つペアカーニングの情報を使う方式（メトリクス）を既定とし、欧文だけにかける方式（和文等幅、`japanese-equal-width`）と、かけない方式（`none`）を文字スタイルと段落スタイルの `kerning` で選べる。和文のペアカーニングは約物を含む組にはかけない（[docs/adr/0020](adr/0020-indesign-character-features.md)）。分離禁止文字（二倍ダッシュの `—`、三点リーダーの `…` など）を含む組にもかけない（[golem-driver ADR 0020](golem-driver/adr/0020-glyph-positioning-and-dash-kerning.md)）。
 - **トラッキング**：文字ごとに一定の空きを足して、字間をそろえて広げたり詰めたりすること。文字スタイルと段落スタイルの `tracking` で、文字の大きさの 1/1000 を単位に指定する。PDF では行の最後の文字の後ろには足さない（[docs/adr/0020](adr/0020-indesign-character-features.md)）。
 - **プロポーショナルメトリクス**：和文の字を、全角の送りではなく字面に合わせた送りで組むこと。OpenType の `palt`（縦組みでは `vpal`）を使い、文字スタイルと段落スタイルの `proportional-metrics` で指定する（[docs/adr/0020](adr/0020-indesign-character-features.md)）。
 - **ベースラインシフト**：文字を、行分割と行送りを変えずに、横組みでは上へ、縦組みでは右へずらすこと。文字スタイルと段落スタイルの `baseline-shift` で指定する（[docs/adr/0020](adr/0020-indesign-character-features.md)）。
@@ -76,6 +76,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **傍注**：版面の外の小口側に設けた傍注欄に置く注（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
 - **改ページ**：今のページを閉じ、次のページから続けること。原稿では `@page-break` で指定する（[markup.md](markup.md)、[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 - **改丁**：次の奇数ページから始めること。原稿では `@page-break recto`、見出しでは `style.toml` の `page-break = "recto"` で指定する（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
+- **隠しノンブル**：ノンブルの見えないページのノドの側に入れる、製本で綴じ込まれて見えなくなる小さなページ番号。印刷所と製本所がページの順を確かめるために使う。Golem はトンボを付けた PDF にだけ、白ページやマスターページに `folio` のないページへ、ページの通し番号を算用数字で縦に並べて入れる。`style.toml` の `[hidden-folio]` で止められる（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。
 - **白ページ**：改ページや改丁で中身のないまま閉じたページ。柱もノンブルも描かない（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 - **段**と**段間**：段組みの版面を等しい幅に分けた一つの領域と、段と段のあいだの空き。`style.toml` の `[page.grid]` の `columns`（段数）と `column-gap`（段間）で決める。本文は横組みでは左の段から右の段へ、縦組みでは上の段から下の段へ流れる（[docs/adr/0018](adr/0018-multi-column-layout.md)）。PDF の索引は、`[index]` の `columns` と `column-gap` で、版面と異なる段数の段（索引の段）で組める。索引の段は版面の文字の領域を等しい幅に分け、行の位置は版面の行の格子に置く（[docs/adr/0025](adr/0025-index-columns.md)）。
 - **改段**：今の段を閉じ、次の段から続けること。最後の段なら次のページの最初の段に進む。原稿では `@column-break` で指定する（[docs/adr/0017](adr/0017-forced-page-breaks.md)、[docs/adr/0018](adr/0018-multi-column-layout.md)）。

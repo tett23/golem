@@ -14,6 +14,7 @@ module Golem.Layout.Japanese
     Anchor (..),
     BoxKind (..),
     boxKind,
+    noteMarkSize,
     composeInlines,
     lineStartProhibited,
     lineEndProhibited,
@@ -162,7 +163,7 @@ withoutSelectors t = case T.dropWhileEnd isVariationSelector t of
 
 -- | Things the pagination must know about, at an item index.
 data Anchor
-  = AnchorNote !Int !Int [Inline] -- item index, note number, body
+  = AnchorNote !Int !Int !SrcSpan [Inline] -- item index, note number, span, body
   | AnchorSidenote !Int !Int !SrcSpan [Inline] -- item index, sidenote number, span, body
   | AnchorPageRef !Int !Text
   | AnchorIndex !Int !SrcSpan IndexEntry -- item index, the mark, the entry
@@ -170,8 +171,11 @@ data Anchor
 
 {- | What a box shows (kept in 'bcTag').
 'KindRuby' is a mono ruby, 'KindGroupRuby' a group ruby (golem-layout ADR 0009).
+'KindAki' is the empty box of an [aki] (golem-layout ADR 0012) and
+'KindNoteMark' the mark of a note (golem-driver ADR 0018); they come last
+so that the values before them keep their 'fromEnum'.
 -}
-data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby
+data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby | KindAki | KindNoteMark
   deriving stock (Eq, Show, Enum, Bounded)
 
 boxKind :: BoxContent -> BoxKind
@@ -185,7 +189,7 @@ data Piece
   | PWord !Look !Text -- a Latin word (no spaces)
   | PSpace !Look -- an inter-word space
   | PBox !Look !Text !BoxKind !Sp -- ruby, tcy, …: an unbreakable box of a given width
-  | PRuby !Look !RubyKind !Text !(Maybe Text) -- ruby: the base and the reading (none for a segment without one)
+  | PRuby !Look !RubyKind !Text ![Look] !(Maybe Text) -- ruby: the base, the look of each base character (golem-layout ADR 0011) and the reading (none for a segment without one)
   | PRubyBreak -- a break allowed between mono ruby bases
   | PForcedBreak -- a hard line break: the line ends as a paragraph does (docs/adr ADR 0016)
   | PAki !Look !AkiAmount -- [aki]: a fixed space, no break around it (docs/adr ADR 0019)
@@ -250,10 +254,10 @@ piecesOf env kenten inl = case inl of
      in PAnchor (`AnchorPageRef` l) : textPieces lk False (T.pack (show n))
   Ref _ _ l -> textPieces lk False l
   Deferred {} -> []
-  Note _ n body -> [PAnchor (\i -> AnchorNote i n body), PBox lk ("*" <> T.pack (show n)) KindText (lkSize lk `div` 2)]
+  Note sp n body -> [PAnchor (\i -> AnchorNote i n sp body), markPiece ("*" <> T.pack (show n))]
   Sidenote sp n body ->
     PAnchor (\i -> AnchorSidenote i n sp body) : case ceSidenoteMarker env of
-      MarkerNumber -> [PBox lk (T.pack (show n)) KindText (lkSize lk `div` 2)]
+      MarkerNumber -> [markPiece (T.pack (show n))]
       MarkerSymbol -> [PBox lk "※" KindText (lkSize lk)]
       MarkerNone -> []
   IndexMark sp e -> [PAnchor (\i -> AnchorIndex i sp e)]
@@ -267,6 +271,19 @@ piecesOf env kenten inl = case inl of
     lk = ceLook env
     -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
     restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl} kenten)
+    {- the mark of a note or a numbered sidenote (golem-driver ADR 0018):
+    set at half the size, as wide as its advance across, half the size
+    down; the box keeps the look of its place -}
+    markPiece t =
+      let m = noteMarkSize (lkSize lk)
+          w
+            | ceVertical env = m
+            | otherwise = round (ceWordAdvance env lk {lkSize = m} t * toRational m)
+       in PBox lk t KindNoteMark w
+
+-- | The size of a note mark in text of a size (golem-driver ADR 0018).
+noteMarkSize :: Sp -> Sp
+noteMarkSize s = s `div` 2
 
 textPieces :: Look -> Bool -> Text -> [Piece]
 textPieces lk kenten t
@@ -338,17 +355,47 @@ rubyPieces env segs = concat (zipWith piece [0 :: Int ..] segs)
   where
     lk = ceLook env
     piece i (RubySegment base reading) =
-      let baseText = T.concat (map plain base)
+      let chars = concatMap (baseChars env lk) base
+          baseText = T.pack (map fst chars)
           kind = if length segs >= 2 || T.length baseText == 1 then MonoRuby else GroupRuby
-       in [PRubyBreak | i > 0] <> [PRuby lk kind baseText reading]
-    plain = \case
-      Text _ t -> t
-      Color _ _ xs -> T.concat (map plain xs)
-      CharStyle _ _ xs -> T.concat (map plain xs)
-      Kenten _ _ xs -> T.concat (map plain xs)
-      Tcy _ t -> t
-      Number _ n _ -> T.pack (show n)
-      _ -> ""
+       in [PRubyBreak | i > 0] <> [PRuby lk kind baseText (map snd chars) reading]
+
+{- | The characters of a ruby base, each with its look (golem-layout ADR
+0011): a character style or colour inside restyles its characters as
+outside a ruby; kenten, tate-chu-yoko and numbers keep the look around
+them; notes, index marks and the rest give no characters.
+-}
+baseChars :: ComposeEnv -> Look -> InlineNoRuby -> [(Char, Look)]
+baseChars env lk inl = case inl of
+  Text _ t -> each t
+  Color _ _ xs -> inner xs
+  CharStyle _ _ xs -> inner xs
+  Kenten _ _ xs -> concatMap (baseChars env lk) xs
+  Tcy _ t -> each t
+  Number _ n _ -> each (T.pack (show n))
+  _ -> []
+  where
+    each t = [(c, lk) | c <- T.unpack t]
+    inner = concatMap (baseChars env (ceRestyle env lk (withRuby inl)))
+
+-- | An inline without ruby as an inline: the 'Ruby' constructor cannot occur.
+withRuby :: InlineNoRuby -> Inline
+withRuby = \case
+  Text s t -> Text s t
+  Kenten s sh xs -> Kenten s sh (map withRuby xs)
+  Color s c xs -> Color s c (map withRuby xs)
+  CharStyle s c xs -> CharStyle s c (map withRuby xs)
+  Tcy s t -> Tcy s t
+  Number s n st -> Number s n st
+  Ref s k l -> Ref s k l
+  Deferred s e -> Deferred s e
+  Note s n xs -> Note s n (map withRuby xs)
+  Sidenote s n xs -> Sidenote s n (map withRuby xs)
+  IndexMark s e -> IndexMark s e
+  Cite s k -> Cite s k
+  ProofComment s t -> ProofComment s t
+  LineBreak s -> LineBreak s
+  Aki s a -> Aki s a
 
 -- | The advance of a character in a look, in sp.
 advance :: ComposeEnv -> Look -> Char -> Sp
@@ -360,7 +407,8 @@ tracking lk = round (toInteger (lkTracking lk) * lkSize lk % 1000)
 
 {- | The pair kerning of Japanese characters (docs/adr/0020): two boxes of
 one Japanese character each, side by side, of the same look with metrics
-kerning and neither of them punctuation, whose spacing the rules of
+kerning and neither of them punctuation or an inseparable character
+(golem-driver ADR 0020), whose spacing the rules of
 JLReq decide. The kerning widens (narrows) the first box and is given
 back at its end edge, so that it does not count at the end of a line.
 -}
@@ -380,7 +428,7 @@ kernPairs env = \case
     single c = case T.unpack (withoutSelectors (bcText c)) of
       [ch]
         | boxKind c `elem` [KindText, KindKenten],
-          charClass ch `notElem` [Western, Opening, Closing, FullStop, Comma, MiddleDot] ->
+          charClass ch `notElem` [Western, Opening, Closing, FullStop, Comma, MiddleDot, Inseparable] ->
             Just ch
       _ -> Nothing
 
@@ -402,9 +450,11 @@ punctSpace = \case
 isKanaClass :: CharClass -> Bool
 isKanaClass cls = cls `elem` [Kana, SmallKana, ProlongedSound]
 
--- | The advances of the base characters of a ruby, in the look of the paragraph.
-baseAdvances :: ComposeEnv -> Look -> Text -> [Sp]
-baseAdvances env lk = map (advance env lk) . T.unpack
+{- | The advances of the base characters of a ruby, each in its own look
+(golem-layout ADR 0011); characters without one take the ruby's look.
+-}
+baseAdvances :: ComposeEnv -> Look -> [Look] -> Text -> [Sp]
+baseAdvances env lk looks = zipWith (advance env) (looks <> repeat lk) . T.unpack
 
 -- | The advances of the reading characters: half the size of the base, as drawn.
 readingAdvances :: ComposeEnv -> Look -> Maybe Text -> [Sp]
@@ -429,26 +479,27 @@ itemsFor env prev p next = case p of
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
-     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t))]
+     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [])]
   PWord lk word -> wordItems env lk word
   PSpace lk ->
     let sw = advance env lk ' '
      in [Glue (sw + tracking lk) (sw `div` 2) (sw `div` 3)]
-  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0)]
-  PRuby lk kind base reading ->
+  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [])]
+  PRuby lk kind base looks reading ->
     let style = ceRuby env
-        rp = placeRuby style kind (baseAdvances env lk base) (readingAdvances env lk reading) (allowance True prev, allowance False next)
+        rp = placeRuby style kind (baseAdvances env lk looks base) (readingAdvances env lk reading) (allowance True prev, allowance False next)
         -- how far the reading may overhang a neighbour: kana up to half its
-        -- advance, the free space of a neighbouring reading, nothing else
+        -- advance, the free space of a neighbouring reading, nothing else;
+        -- a neighbouring base is measured in the looks of its characters
         allowance before = \case
           _ | not (rsOverhangOntoKana style) -> 0
           Just (PChar lk' c _ False) | isKanaClass (charClass c) -> min (rsOverhang style) (advance env lk' c `div` 2)
-          Just (PRuby lk' _ b Nothing) -> case (if before then T.unsnoc b else (\(h, t) -> (t, h)) <$> T.uncons b) of
-            Just (_, c) | isKanaClass (charClass c) -> min (rsOverhang style) (advance env lk' c `div` 2)
+          Just (PRuby lk' _ b ls Nothing) -> case (if before then reverse else id) (zip (T.unpack b) (ls <> repeat lk')) of
+            (c, lc) : _ | isKanaClass (charClass c) -> min (rsOverhang style) (advance env lc c `div` 2)
             _ -> 0
-          Just (PRuby lk' k b r@(Just _)) ->
+          Just (PRuby lk' k b ls r@(Just _)) ->
             let ras = readingAdvances env lk' r
-                p = placeRuby style k (baseAdvances env lk' b) ras (0, 0)
+                p = placeRuby style k (baseAdvances env lk' ls b) ras (0, 0)
                 room = case (rpReading p, reverse (zip (rpReading p) ras)) of
                   (firstPos : _, (lastPos, lastAdv) : _) -> if before then rpWidth p - (lastPos + lastAdv) else firstPos
                   _ -> 0
@@ -457,16 +508,16 @@ itemsFor env prev p next = case p of
         tag = case kind of
           MonoRuby -> KindRuby
           GroupRuby -> KindGroupRuby
-     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp))]
+     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks)]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   -- normalize sees no box next to these items: the spacing is that of the line's edge
   PForcedBreak -> lineEnd
-  -- zw is the size of the type at its place; the penalty and the glue after it keep the line whole
+  -- zw is the size of the type at its place; an empty box: no break between it and a neighbouring box (golem-layout ADR 0012)
   PAki lk a ->
     let w = case a of
           AkiZw r -> round (r * toRational (lkSize lk))
           AkiAbs x -> x
-     in [Penalty 0 infPenalty NoHyphen, Glue w 0 0]
+     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [])]
   PCode lk run -> codeItems env lk run
   PAnchor _ -> []
 
@@ -477,7 +528,7 @@ expansion.
 -}
 codeItems :: ComposeEnv -> Look -> Text -> [Item]
 codeItems env lk run =
-  [ Box (w + tr * toInteger (T.length seg)) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr))
+  [ Box (w + tr * toInteger (T.length seg)) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [])
   | part <- slashParts run,
     seg <- T.groupBy sameSide part,
     let latin = maybe False ((== Western) . charClass . fst) (T.uncons seg)
@@ -512,7 +563,7 @@ wordItems env lk word =
             (ps, _) = maybe (0, 0) (protrusionRatio . fst) (T.uncons t)
             (_, pe) = maybe (0, 0) (protrusionRatio . snd) (T.unsnoc t)
             prot r = if ceProtrusion env then min w (w * r `div` 1000) else 0
-         in Box (w + tr * toInteger (T.length t)) (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk 0 (negate tr))
+         in Box (w + tr * toInteger (T.length t)) (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk 0 (negate tr) [])
       prot' r t f = if T.null t then 0 else f r
    in concat [box part : [pen | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]
 
@@ -535,7 +586,9 @@ explicitParts word = go [] (zip [0 :: Int ..] groups)
 data Before
   = -- | the start of the paragraph, or an item that is neither a box nor an [aki]
     AtStart
-  | -- | the glue of an [aki] (docs/adr ADR 0019)
+  | -- | a note mark at the start of the paragraph (golem-driver ADR 0018)
+    AfterStartMark
+  | -- | the box of an [aki] (docs/adr ADR 0019, golem-layout ADR 0012)
     AfterAki
   | AfterBox !BoxContent
 
@@ -543,7 +596,8 @@ data Before
 no break where a prohibition applies (golem-layout ADR 0002), and the
 spacing of the aki set of the paragraph (docs/adr ADR 0019). The spaces
 of the line start and the line end are the edges of the boxes. An [aki]
-is the space between its neighbours: the set adds none there.
+is an empty box between its neighbours: the set adds no space there, and
+it has no edges (golem-layout ADR 0012).
 -}
 normalize :: ComposeEnv -> [Item] -> [Item]
 normalize env = go AtStart True
@@ -551,16 +605,29 @@ normalize env = go AtStart True
     set = ceAkiSet env
     go _ _ [] = []
     go before first (x : rest) = case x of
+      -- an [aki]: no spacing around it, no edges; the paragraph's first character is still to come
+      Box _ c | boxKind c == KindAki -> x : go AfterAki first rest
+      {- a note mark joins the box before it (golem-driver ADR 0018): no
+      break and no spacing before it, and the spacing of the pair around
+      it after it; it has no edges -}
+      Box w c
+        | boxKind c == KindNoteMark ->
+            let before' = case before of
+                  AtStart -> AfterStartMark
+                  other -> other
+             in Penalty 0 infPenalty NoHyphen : Box w c {bcEdgeStart = 0, bcEdgeEnd = 0} : go before' first rest
       Box w c ->
         let spacing = case before of
               -- inside code: a break after a slash, no spacing (golem-driver ADR 0017)
               AfterBox p | lkCode (bcLook p) && lkCode (bcLook c) -> [Penalty 0 0 NoHyphen | "/" `T.isSuffixOf` bcText p]
               AfterBox p -> between p c
               AtStart -> leading c
+              -- the space of the paragraph start, after the mark: no break there
+              AfterStartMark -> case leading c of
+                [] -> []
+                l -> Penalty 0 infPenalty NoHyphen : l
               AfterAki -> []
          in spacing <> [Box w (withEdges first c)] <> go (AfterBox c) False rest
-      -- the glue of an [aki], after its penalty
-      Glue _ 0 0 -> x : go AfterAki first rest
       _ -> x : go AtStart first rest
     sizeOf = lkSize . bcLook
     glueOf base (A.Aki n o m) =

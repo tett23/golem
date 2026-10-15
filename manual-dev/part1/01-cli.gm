@@ -163,6 +163,8 @@ PDF を書かないビルドでは何も変えない。[note: [code: https://git
 
 [code: golem inspect FILE --as cst] は、ファイルの CST を人が読める形で表示する。[index reading="golem inspect": golem inspect]
 [code: --as ast] は AST を、[code: --as ir] はプロジェクトを評価した意味論 IR と、その CBOR のバイト数を表示する。
+AST の表示では、[code: \\/] のようにエスケープした文字が [code: Escaped] として現れる。
+意味論 IR では、エスケープした文字は地の文に戻っている。
 [code: --as ir] は作業中のディレクトリのプロジェクトを評価するので、プロジェクトの根で実行する。
 プラグインの作者が、受け取る IR の形を確かめるのに使える。
 意味論 IR と CBOR の形は第[ref-number ir]章で説明する。

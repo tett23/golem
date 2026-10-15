@@ -144,7 +144,16 @@ tests =
       missingFontTests,
       marksTests,
       explainTests,
-      noticeTests
+      noticeTests,
+      -- golem-parser ADR 0010
+      testCase "a backslash after the last | of a table row is G0124, not G0110" $
+        mapM_
+          ( \src -> do
+              (code, err) <- golemIn [(p, if p == "a.gm" then src else c) | (p, c) <- syntaxErrorFiles] ["check"]
+              assertEqual err (ExitFailure 1) code
+              assertBool err ("error[G0124]" `isInfixOf` err && not ("error[G0110]" `isInfixOf` err))
+          )
+          ["| a | b |\\\n|---|---|\n| c | d |\n", "| a | b |\n|---|---|\n| c | d |\\\n| e | f |\n"]
     ]
 
 -- | Runs golem in a project whose body font is missing (golem-project ADR 0004).

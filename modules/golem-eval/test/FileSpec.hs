@@ -116,6 +116,53 @@ paraOf src = case body src of
   [Paragraph Nothing is] -> stripSpans is
   other -> error (show other)
 
+-- | The rubies of a paragraph: the base and the reading of each segment.
+rubiesOf :: Text -> [[([Text], Maybe Text)]]
+rubiesOf src = case body src of
+  [Paragraph Nothing is] -> [[(baseText b, r) | RubySegment b r <- segs] | Ruby _ _ segs <- is]
+  other -> error (show other)
+  where
+    baseText :: [InlineNoRuby] -> [Text]
+    baseText = concatMap $ \case
+      Text _ t -> [t]
+      CharStyle _ n xs -> ("<" <> n <> ">") : baseText xs
+      other -> [T.pack (show other)]
+
+-- | The index entries of a paragraph.
+indexOf :: Text -> [IndexEntry]
+indexOf src = case body src of
+  [Paragraph Nothing is] -> [e | IndexMark _ e <- is]
+  other -> error (show other)
+
+-- | Escaped characters (golem-parser ADR 0010).
+escapeTests :: TestTree
+escapeTests =
+  testGroup
+    "escaped characters (golem-parser ADR 0010)"
+    [ testCase "\\/ in the base of a ruby is no separator" $ do
+        rubiesOf "[ruby: a\\/b|えー]\n" @?= [[(["a/b"], Just "えー")]]
+        errs "[ruby: a\\/b|えー]\n" @?= [],
+      testCase "\\/ in the reading is a / of the reading" $
+        rubiesOf "[ruby: 漢字|かん\\/じ]\n" @?= [[(["漢字"], Just "かん/じ")]],
+      testCase "the reading of one segment against a base of two is G0215" $
+        errs "[ruby: 漢/字|かん\\/じ]\n" @?= ["G0215"],
+      testCase "the separators written in the source are as before" $ do
+        errs "[ruby: 東京|とう/きょう]\n" @?= ["G0215"]
+        rubiesOf "[ruby: 漢/字|かん/]\n" @?= [[(["漢"], Just "かん"), (["字"], Nothing)]]
+        rubiesOf "[ruby: [bold: 漢/字]|かんじ]\n" @?= [[(["<bold>", "漢/字"], Just "かんじ")]],
+      testCase "a / in the value of an expression is no separator" $ do
+        rubiesOf "[ruby: [= \"a/b\"]|えー]\n" @?= [[(["a/b"], Just "えー")]]
+        errs "[ruby: [= \"a/b\"]|えー]\n" @?= [],
+      testCase "\\/ in the term of an index is no separator" $ do
+        indexOf "[index reading=えー: a\\/b]\n" @?= [IndexEntry ["a/b"] ["えー"]]
+        errs "[index reading=えー: a\\/b]\n" @?= []
+        indexOf "[index reading=くみはん/わぶん: 組版/和文]\n" @?= [IndexEntry ["組版", "和文"] ["くみはん", "わぶん"]],
+      testCase "the IR of escaped text is as before: one text, one span" $
+        case body "a\\[b\\\\c\n" of
+          [Paragraph Nothing [Text sp t]] -> (t, spanStart sp, spanEnd sp) @?= ("a[b\\c", 0, 7)
+          other -> assertFailure (show other)
+    ]
+
 tests :: TestTree
 tests =
   testGroup
@@ -129,6 +176,7 @@ tests =
       hardBreakTests,
       breakTests,
       codeTests,
+      escapeTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
@@ -344,7 +392,9 @@ noticeTests =
         errs "@style verse\n  \\ x\n" @?= ["G0264"]
         errs "@style quote\n  \\ x\n" @?= []
         errs "\\ x\n" @?= []
-        errs "@style verse\n  a\\ b\n" @?= [],
+        errs "@style verse\n  a\\ b\n" @?= []
+        -- the escaped space is dropped as before (golem-parser ADR 0010)
+        verseOf "@style verse\n  a\n  \\ x\n" @?= [[["a"], ["x"]]],
       testCase "G0265: @listing src=, and the content is the same" $ do
         [(c, m, s, e) | (c, m, s, e) <- diags "@listing src=src/Main.hs\n", c == "G0265"]
           @?= [("G0265", "@listing の src= は廃止予定です。パスを最初の引数に書きます", 9, 24)]

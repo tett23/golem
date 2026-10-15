@@ -562,7 +562,13 @@ TableBodyRow(ind :: Int, h :: Int) :: ()
 TableBodyRow <- Nl r:TableRow(ind) (&{ r == h })^table_cells { () }
 
 TableRow(ind :: Int) :: Int
-TableRow <- Ind(ind) cs:TableCellAndPipe+ Pipe Sp { length cs }
+TableRow <- Ind(ind) cs:TableCellAndPipe+ Pipe Sp RowBreak? { length cs }
+
+# a backslash at the end of a table row: tables have no hard breaks
+# (docs/adr ADR 0016); it throws hard_break so that the row stays a row
+# (golem-parser ADR 0010)
+RowBreak :: ()
+RowBreak <- &('\\' ('\n' / !.)) BadBreak { () }
 
 TableCellAndPipe :: ()
 TableCellAndPipe <- Pipe TableCell &(Pipe) { () }

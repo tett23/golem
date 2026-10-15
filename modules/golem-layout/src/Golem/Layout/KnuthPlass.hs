@@ -52,7 +52,10 @@ data BoxContent = BoxContent
     bcLook :: !Look,
     -- | at the line start (end), the space added inside the line: a ruby's overhang taken back (golem-layout ADR 0009)
     bcEdgeStart :: !Sp,
-    bcEdgeEnd :: !Sp
+    bcEdgeEnd :: !Sp,
+    {- | the look of each base character of a ruby box (golem-layout ADR
+    0011); empty for any other box. The algorithm does not read it.
+    -} bcBaseLooks :: ![Look]
   }
   deriving stock (Eq, Show)
 

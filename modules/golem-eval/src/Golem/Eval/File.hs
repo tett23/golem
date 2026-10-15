@@ -20,7 +20,6 @@ where
 
 import Control.Monad (forM, unless)
 import Control.Monad.State.Strict
-import Data.ByteString qualified as BS
 import Data.Char (isAscii, isAsciiLower, isDigit)
 import Data.Either (fromLeft)
 import Data.List (mapAccumL, partition)
@@ -31,7 +30,6 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Golem.Doc.IR
 import Golem.Eval.Expr
 import Golem.Eval.RegexStyle (applyRegexStyles, regexRules)
@@ -312,7 +310,8 @@ splitParagraph = concatMap paragraph . chunks
     chunks xs = case break isSoftBreak xs of
       (l, []) -> [l]
       (l, _ : rest) -> l : chunks rest
-    paragraph l = case trimStart l of
+    -- the escapes are text before the spaces are dropped (golem-parser ADR 0010)
+    paragraph l = case trimStart (A.plainEscapes l) of
       [] -> []
       is@(A.Located first _ : _) ->
         let A.Located lastSp _ = last is
@@ -640,20 +639,18 @@ styledParagraph ctx sp mname is = case mname of
     Just JoinLines -> joined (styleOf name)
     Just KeepLines -> do
       mapM_ escapedIndent (linesOf Nothing is)
-      ls <- filter (not . null . snd) <$> mapM (\(bsp, l) -> (bsp,) <$> evalInlines ctx False (trimLine l)) (linesOf Nothing is)
+      ls <- filter (not . null . snd) <$> mapM (\(bsp, l) -> (bsp,) <$> evalInlines ctx False (trimLine (A.plainEscapes l))) (linesOf Nothing is)
       pure $ case ls of
         [] -> []
         ((_, first) : rest) -> [block sp (Paragraph (styleOf name) (first <> concat [LineBreak bsp : l | (bsp, l) <- rest]))]
   where
     styleOf n = if n == "body" then Nothing else Just n
     {- G0264: an escaped space or tab at the start of a line is dropped
-    as the plain ones are (golem-syntax ADR 0002). The escape is merged
-    into the text, which is then a byte longer than its span says. -}
+    as the plain ones are (golem-syntax ADR 0002). The line starts with
+    the escape (golem-parser ADR 0010). -}
     escapedIndent = \case
-      (_, A.Located tsp (A.Text t) : _)
-        | Just (c, _) <- T.uncons t,
-          c == ' ' || c == '\t',
-          spanEnd tsp - spanStart tsp > BS.length (TE.encodeUtf8 t) ->
+      (_, A.Located tsp (A.Escaped c) : _)
+        | c == ' ' || c == '\t' ->
             report (notice "G0264" (mkSpan (spanFile tsp) (spanStart tsp) (spanStart tsp + 1)) "行頭のエスケープした空白は無視されます。字下げには全角の空白を使います")
       _ -> pure ()
     joined st = (\x -> [block sp (Paragraph st x)]) <$> hardLines ctx sp is
@@ -1009,7 +1006,7 @@ noteRefs e = do
       _ -> Map.empty
 
 evalInlines :: EvalContext -> Bool -> [A.Located A.Inline] -> M [Inline]
-evalInlines ctx inHeading is = mergeText . concat <$> mapM (evalInline ctx inHeading) is
+evalInlines ctx inHeading is = mergeText . concat <$> mapM (evalInline ctx inHeading) (A.plainEscapes is)
 
 mergeText :: [Inline] -> [Inline]
 mergeText (Text a x : Text b y : rest) = mergeText (Text (mkSpan (spanFile a) (spanStart a) (spanEnd b)) (x <> y) : rest)
@@ -1035,6 +1032,8 @@ substitute en le@(A.Located sp e) = case e of
 evalInline :: EvalContext -> Bool -> A.Located A.Inline -> M [Inline]
 evalInline ctx inHeading (A.Located sp i) = case i of
   A.Text t -> pure [Text sp t]
+  -- evalInlines has made it text already; this is for safety (golem-parser ADR 0010)
+  A.Escaped c -> pure [Text sp (T.singleton c)]
   A.SoftBreak -> pure []
   -- the hard breaks of a paragraph are split off before; this one is in a prose slot
   A.HardBreak -> err "G0256" sp "強制改行は段落の中にだけ書けます。コマンドの中では使えません" >> pure []
@@ -1143,13 +1142,13 @@ builtinWith ctx inHeading sp name args slots = do
       pure [Sidenote sp n body]
     "index" -> case slots of
       [s] -> do
-        body <- evalInlines ctx inHeading s
-        case (plainText body, argText <$> lookup "reading" kw) of
+        -- the levels are split at the / written in the slot (golem-parser ADR 0010)
+        levels <- mapM (evalInlines ctx inHeading) (splitSlot '/' s)
+        case (traverse plainText levels, argText <$> lookup "reading" kw) of
           (_, Nothing) -> err "G0220" sp "索引には reading が必要です" >> pure []
           (Nothing, _) -> err "G0241" sp "索引の語は地の文に限ります" >> pure []
-          (Just term, Just reading) ->
-            let ts = T.splitOn "/" term
-                rs = T.splitOn "/" reading
+          (Just ts, Just reading) ->
+            let rs = T.splitOn "/" reading
              in if length ts > 2 || length ts /= length rs || any T.null (ts <> rs)
                   then err "G0242" sp "索引の語と読みの段の数が不正です" >> pure []
                   else pure [IndexMark sp (IndexEntry ts rs)]
@@ -1194,33 +1193,30 @@ plainText is = T.concat <$> traverse (\case Text _ t -> Just t; _ -> Nothing) is
 ruby :: EvalContext -> SrcSpan -> [[A.Located A.Inline]] -> M [Inline]
 ruby ctx sp = \case
   [baseSlot, readingSlot] -> do
-    base <- evalInlines ctx False baseSlot
-    reading <- evalInlines ctx False readingSlot
-    case (traverse noRuby base, plainText reading) of
+    -- the segments are split at the / written in the slots, before they
+    -- are evaluated (golem-parser ADR 0010)
+    base <- mapM (evalInlines ctx False) (splitSlot '/' baseSlot)
+    reading <- mapM (evalInlines ctx False) (splitSlot '/' readingSlot)
+    case (traverse (traverse noRuby) base, traverse plainText reading) of
       (Nothing, _) -> err "G0216" sp "ルビの中にルビは入れられません" >> pure []
       (_, Nothing) -> err "G0243" sp "ルビの読みは地の文に限ります" >> pure []
-      (Just nb, Just r) -> do
-        let baseSegs = splitSegments nb
-            readSegs = T.splitOn "/" r
+      (Just baseSegs, Just readSegs)
         -- a reading split by '/' needs a base split as many times (golem-eval ADR 0003)
-        if length baseSegs /= length readSegs
-          then err "G0215" sp "モノルビの対象と読みのセグメントの数が一致しません" >> pure []
-          else
-            if length baseSegs == 1
-              then pure [Ruby sp () [RubySegment nb (Just r)]]
-              else pure [Ruby sp () [RubySegment b (if T.null rd then Nothing else Just rd) | (b, rd) <- zip baseSegs readSegs]]
+        | length baseSegs /= length readSegs -> err "G0215" sp "モノルビの対象と読みのセグメントの数が一致しません" >> pure []
+        | [nb] <- baseSegs, [r] <- readSegs -> pure [Ruby sp () [RubySegment nb (Just r)]]
+        | otherwise -> pure [Ruby sp () [RubySegment b (if T.null rd then Nothing else Just rd) | (b, rd) <- zip baseSegs readSegs]]
   _ -> err "G0238" sp "ruby には散文スロットが二つ必要です" >> pure []
 
--- | Split a ruby base at '/' inside its top-level text.
-splitSegments :: [InlineNoRuby] -> [[InlineNoRuby]]
-splitSegments = foldr step [[]]
+{- | A slot split at a character in its top-level text; escaped characters
+and nested commands are not split (golem-parser ADR 0010). A piece keeps
+the span of the text it was cut from.
+-}
+splitSlot :: Char -> [A.Located A.Inline] -> [[A.Located A.Inline]]
+splitSlot c = foldr step [[]]
   where
-    step (Text s t) (cur : rest) =
-      let parts = T.splitOn "/" t
-          pieces = [[Text s p | not (T.null p)] | p <- parts]
-       in case pieces of
-            [] -> cur : rest
-            _ -> init pieces <> [last pieces <> cur] <> rest
+    step (A.Located s (A.Text t)) (cur : rest) =
+      let pieces = [[A.Located s (A.Text p) | not (T.null p)] | p <- T.split (== c) t]
+       in init pieces <> [last pieces <> cur] <> rest
     step x (cur : rest) = (x : cur) : rest
     step _ [] = [[]]
 

@@ -54,6 +54,9 @@ module Golem.Project.Style
     defaultRubyStyleDef,
     SidenoteStyle (..),
     IndexStyle (..),
+    HiddenFolio (..),
+    HiddenFolioPages (..),
+    defaultHiddenFolio,
     MasterDef (..),
     RunningHeadDef (..),
     RunningContent (..),
@@ -84,6 +87,7 @@ import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Doc.Assemble (NoteNumbering (..))
 import Golem.Doc.ListMarkers (NumberFormat, parseNumberFormat)
 import Golem.Project.Manifest (decodeStrictBy)
 import Golem.Regex (RegexError (..), compile)
@@ -580,6 +584,59 @@ data IndexStyle = IndexStyle
   }
   deriving stock (Eq, Show)
 
+-- | The pages that get a hidden folio (golem-driver ADR 0021).
+data HiddenFolioPages = HiddenUnnumbered | HiddenAll
+  deriving stock (Eq, Show)
+
+{- | [hidden-folio] (golem-driver ADR 0021): the page number in the gutter
+of a PDF with crop marks.
+-}
+data HiddenFolio = HiddenFolio
+  { hfEnabled :: !Bool,
+    hfPages :: !HiddenFolioPages,
+    -- | the size of the digits, absolute
+    hfSize :: !Dim,
+    -- | from the trim line of the gutter to the centre line of the column, absolute
+    hfGutter :: !Dim
+  }
+  deriving stock (Eq, Show)
+
+-- | Without [hidden-folio]: enabled, on the pages without a folio, 6pt, 1.5mm.
+defaultHiddenFolio :: HiddenFolio
+defaultHiddenFolio = HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs (mmToSp (3 % 2)))
+
+{- | Every error of [hidden-folio] is G0306: a dimension in zw, of 0 or
+less or unreadable, a value of pages outside the table, an unknown key,
+and a gutter less than half the size (golem-driver ADR 0021).
+-}
+instance FromValue HiddenFolio where
+  fromValue = parseTableFromValue $ do
+    let d = defaultHiddenFolio
+    enabled <- fromMaybe (hfEnabled d) <$> optKey "enabled"
+    pages <-
+      optKeyOf
+        "pages"
+        ( fromValue >=> \case
+            "unnumbered" -> pure HiddenUnnumbered
+            "all" -> pure HiddenAll
+            v -> fail ("[hidden-folio] の pages に使えない値です: " <> T.unpack v <> "（unnumbered, all のどれか）")
+        )
+    let len k = optKeyOf k $ \case
+          Text' _ t -> case parseDim t of
+            Just (Abs x) | x > 0 -> pure (Abs x)
+            Just (Abs _) -> fail ("[hidden-folio] の " <> T.unpack k <> " は 0 より大きい寸法です: " <> T.unpack t)
+            -- not relative to the size of the type, as the page size (golem-driver ADR 0021)
+            Just (Zw _) -> fail ("[hidden-folio] の " <> T.unpack k <> " には zw を使えません")
+            Nothing -> fail ("[hidden-folio] の " <> T.unpack k <> " の長さの書き方が不正です: " <> T.unpack t)
+          _ -> fail ("[hidden-folio] の " <> T.unpack k <> " は文字列で書きます")
+    size <- fromMaybe (hfSize d) <$> len "size"
+    gutter <- fromMaybe (hfGutter d) <$> len "gutter"
+    -- half the size stands for half the advance of a digit, which the font decides
+    case (size, gutter) of
+      (Abs s, Abs g) | 2 * g < s -> fail "[hidden-folio] の gutter が size の半分より小さいため、隠しノンブルが仕上がりの線を越えます"
+      _ -> pure ()
+    pure (HiddenFolio enabled (fromMaybe (hfPages d) pages) size gutter)
+
 -- | How a heading is shown in a running head (golem-driver ADR 0014).
 data HeadForm = HeadShort | HeadNumbered
   deriving stock (Eq, Show)
@@ -661,6 +718,8 @@ data Style = Style
     stComposition :: !Composition,
     stNumbersVertical :: !Text,
     stNotesPlacement :: !Text,
+    -- | [notes] numbering: the range over which notes are numbered (golem-driver ADR 0018)
+    stNotesNumbering :: !NoteNumbering,
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
     stWrapGap :: !Dim,
@@ -676,7 +735,9 @@ data Style = Style
     -- | [index]: the columns of the index (docs/adr ADR 0025)
     stIndex :: !(Maybe IndexStyle),
     -- | [code] and [code.colors] (golem-driver ADR 0023)
-    stCode :: !CodeStyle
+    stCode :: !CodeStyle,
+    -- | [hidden-folio] (golem-driver ADR 0021)
+    stHiddenFolio :: !HiddenFolio
   }
   deriving stock (Eq, Show)
 
@@ -694,6 +755,7 @@ defaultStyle =
       stComposition = defaultComposition,
       stNumbersVertical = "kanji",
       stNotesPlacement = "page-foot",
+      stNotesNumbering = NumberPerChapter,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
       stWrapGap = Zw 1,
@@ -704,7 +766,8 @@ defaultStyle =
       stLists = defaultListStyle,
       stAkiSets = Map.empty,
       stIndex = Nothing,
-      stCode = defaultCodeStyle
+      stCode = defaultCodeStyle,
+      stHiddenFolio = defaultHiddenFolio
     }
 
 -- | JIS B series, A series, 四六判, 菊判, 新書判 and mass-market, in millimetres.
@@ -1085,10 +1148,16 @@ instance FromValue EmphasisV where
     fail
       "[emphasis] は廃止しました。strong = \"italic\" は [character-styles.strong] の based-on = \"italic\" に、bold-font は [character-styles.bold] の font に、italic-font は [character-styles.italic] の font に書き換えます"
 
-newtype Notes = Notes (Maybe Text)
+data Notes = Notes (Maybe Text) (Maybe NoteNumbering)
 
 instance FromValue Notes where
-  fromValue = parseTableFromValue (Notes <$> enumKey "placement" ["page-foot", "chapter-end"])
+  fromValue = parseTableFromValue (Notes <$> enumKey "placement" ["page-foot", "chapter-end"] <*> (fmap numbering <$> enumKey "numbering" ["chapter", "file", "book"]))
+    where
+      -- the range over which notes are numbered (golem-driver ADR 0018)
+      numbering = \case
+        "file" -> NumberPerFile
+        "book" -> NumberPerBook
+        _ -> NumberPerChapter
 
 -- | [code] (golem-driver ADR 0023): an unknown key or kind is G0306.
 newtype CodeSec = CodeSec CodeStyle
@@ -1188,7 +1257,7 @@ instance FromValue Style where
     Numbers nv <- fromMaybe (Numbers Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
     (_ :: Maybe EmphasisV) <- optKey "emphasis"
-    Notes np <- fromMaybe (Notes Nothing) <$> optKey "notes"
+    Notes np nn <- fromMaybe (Notes Nothing Nothing) <$> optKey "notes"
     side <- optKey "sidenotes"
     Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
@@ -1199,6 +1268,7 @@ instance FromValue Style where
     akiSets <- fromMaybe Map.empty <$> optKey "aki-sets"
     index <- fmap (\(IndexSec ix) -> ix) <$> optKey "index"
     CodeSec code <- fromMaybe (CodeSec defaultCodeStyle) <$> optKey "code"
+    hidden <- fromMaybe defaultHiddenFolio <$> optKey "hidden-folio"
     -- the built-in sets cannot be defined again (docs/adr ADR 0019)
     case filter (`elem` builtinAkiSetNames) (Map.keys akiSets) of
       (n : _) -> liftMatcher (inKey "aki-sets" (inKey n (fail (T.unpack (akiError ("組み込みのアキ量のセットと同じ名前です。based-on で引き継いだ別の名前のセットを作ります: " <> n))))))
@@ -1215,6 +1285,7 @@ instance FromValue Style where
           stComposition = comp,
           stNumbersVertical = fromMaybe (stNumbersVertical d) nv,
           stNotesPlacement = fromMaybe (stNotesPlacement d) np,
+          stNotesNumbering = fromMaybe (stNotesNumbering d) nn,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
           stWrapGap = fromMaybe (stWrapGap d) fgap,
@@ -1225,7 +1296,8 @@ instance FromValue Style where
           stLists = lists,
           stAkiSets = akiSets,
           stIndex = index,
-          stCode = code
+          stCode = code,
+          stHiddenFolio = hidden
         }
     where
       headingLevel (k, v) = case k of
