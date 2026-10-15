@@ -11,6 +11,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Golem.Doc.Assemble (NoteNumbering (..))
 import Golem.Doc.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Parser.SourceSettings
 import Golem.Project hiding (loadProject)
@@ -431,6 +432,13 @@ tests =
         codes (parseStyle (FileId 0) "[composition.ruby]\noverhang = \"-1zw\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[composition.ruby]\nposition = \"mono-center\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[composition]\nruby = { position = \"mono-center\", overhang = \"1zw\" }\n") @?= ["G0306"],
+      testCase "[notes] numbering (golem-driver ADR 0018)" $ do
+        fmap stNotesNumbering (parseStyle (FileId 0) "") @?= Right NumberPerChapter
+        fmap stNotesNumbering (parseStyle (FileId 0) "[notes]\nplacement = \"page-foot\"\n") @?= Right NumberPerChapter
+        fmap stNotesNumbering (parseStyle (FileId 0) "[notes]\nnumbering = \"file\"\n") @?= Right NumberPerFile
+        fmap stNotesNumbering (parseStyle (FileId 0) "[notes]\nnumbering = \"chapter\"\n") @?= Right NumberPerChapter
+        fmap stNotesNumbering (parseStyle (FileId 0) "[notes]\nnumbering = \"book\"\n") @?= Right NumberPerBook
+        codes (parseStyle (FileId 0) "[notes]\nnumbering = \"page\"\n") @?= ["G0306"],
       testCase "[toc] leader (golem-driver ADR 0009)" $ do
         fmap stTocLeader (parseStyle (FileId 0) "[toc]\nleader = \"none\"\n") @?= Right "none"
         fmap stTocLeader (parseStyle (FileId 0) "") @?= Right "dots"

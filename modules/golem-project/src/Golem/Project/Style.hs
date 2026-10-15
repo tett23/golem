@@ -81,6 +81,7 @@ import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Doc.Assemble (NoteNumbering (..))
 import Golem.Doc.ListMarkers (NumberFormat, parseNumberFormat)
 import Golem.Project.Manifest (decodeStrictBy)
 import Golem.Regex (RegexError (..), compile)
@@ -597,6 +598,8 @@ data Style = Style
     stComposition :: !Composition,
     stNumbersVertical :: !Text,
     stNotesPlacement :: !Text,
+    -- | [notes] numbering: the range over which notes are numbered (golem-driver ADR 0018)
+    stNotesNumbering :: !NoteNumbering,
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
     stWrapGap :: !Dim,
@@ -628,6 +631,7 @@ defaultStyle =
       stComposition = defaultComposition,
       stNumbersVertical = "kanji",
       stNotesPlacement = "page-foot",
+      stNotesNumbering = NumberPerChapter,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
       stWrapGap = Zw 1,
@@ -1015,10 +1019,16 @@ instance FromValue EmphasisV where
     fail
       "[emphasis] は廃止しました。strong = \"italic\" は [character-styles.strong] の based-on = \"italic\" に、bold-font は [character-styles.bold] の font に、italic-font は [character-styles.italic] の font に書き換えます"
 
-newtype Notes = Notes (Maybe Text)
+data Notes = Notes (Maybe Text) (Maybe NoteNumbering)
 
 instance FromValue Notes where
-  fromValue = parseTableFromValue (Notes <$> enumKey "placement" ["page-foot", "chapter-end"])
+  fromValue = parseTableFromValue (Notes <$> enumKey "placement" ["page-foot", "chapter-end"] <*> (fmap numbering <$> enumKey "numbering" ["chapter", "file", "book"]))
+    where
+      -- the range over which notes are numbered (golem-driver ADR 0018)
+      numbering = \case
+        "file" -> NumberPerFile
+        "book" -> NumberPerBook
+        _ -> NumberPerChapter
 
 data Figures = Figures (Maybe Text) (Maybe Dim)
 
@@ -1098,7 +1108,7 @@ instance FromValue Style where
     Numbers nv <- fromMaybe (Numbers Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
     (_ :: Maybe EmphasisV) <- optKey "emphasis"
-    Notes np <- fromMaybe (Notes Nothing) <$> optKey "notes"
+    Notes np nn <- fromMaybe (Notes Nothing Nothing) <$> optKey "notes"
     side <- optKey "sidenotes"
     Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
@@ -1124,6 +1134,7 @@ instance FromValue Style where
           stComposition = comp,
           stNumbersVertical = fromMaybe (stNumbersVertical d) nv,
           stNotesPlacement = fromMaybe (stNotesPlacement d) np,
+          stNotesNumbering = fromMaybe (stNotesNumbering d) nn,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
           stWrapGap = fromMaybe (stWrapGap d) fgap,

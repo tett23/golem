@@ -14,6 +14,7 @@ module Golem.Layout.Japanese
     Anchor (..),
     BoxKind (..),
     boxKind,
+    noteMarkSize,
     composeInlines,
     lineStartProhibited,
     lineEndProhibited,
@@ -162,7 +163,7 @@ withoutSelectors t = case T.dropWhileEnd isVariationSelector t of
 
 -- | Things the pagination must know about, at an item index.
 data Anchor
-  = AnchorNote !Int !Int [Inline] -- item index, note number, body
+  = AnchorNote !Int !Int !SrcSpan [Inline] -- item index, note number, span, body
   | AnchorSidenote !Int !Int !SrcSpan [Inline] -- item index, sidenote number, span, body
   | AnchorPageRef !Int !Text
   | AnchorIndex !Int !SrcSpan IndexEntry -- item index, the mark, the entry
@@ -170,10 +171,11 @@ data Anchor
 
 {- | What a box shows (kept in 'bcTag').
 'KindRuby' is a mono ruby, 'KindGroupRuby' a group ruby (golem-layout ADR 0009).
-'KindAki' is the empty box of an [aki] (golem-layout ADR 0012); it is last
-so that the values before it keep their 'fromEnum'.
+'KindAki' is the empty box of an [aki] (golem-layout ADR 0012) and
+'KindNoteMark' the mark of a note (golem-driver ADR 0018); they come last
+so that the values before them keep their 'fromEnum'.
 -}
-data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby | KindAki
+data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby | KindAki | KindNoteMark
   deriving stock (Eq, Show, Enum, Bounded)
 
 boxKind :: BoxContent -> BoxKind
@@ -252,10 +254,10 @@ piecesOf env kenten inl = case inl of
      in PAnchor (`AnchorPageRef` l) : textPieces lk False (T.pack (show n))
   Ref _ _ l -> textPieces lk False l
   Deferred {} -> []
-  Note _ n body -> [PAnchor (\i -> AnchorNote i n body), PBox lk ("*" <> T.pack (show n)) KindText (lkSize lk `div` 2)]
+  Note sp n body -> [PAnchor (\i -> AnchorNote i n sp body), markPiece ("*" <> T.pack (show n))]
   Sidenote sp n body ->
     PAnchor (\i -> AnchorSidenote i n sp body) : case ceSidenoteMarker env of
-      MarkerNumber -> [PBox lk (T.pack (show n)) KindText (lkSize lk `div` 2)]
+      MarkerNumber -> [markPiece (T.pack (show n))]
       MarkerSymbol -> [PBox lk "※" KindText (lkSize lk)]
       MarkerNone -> []
   IndexMark sp e -> [PAnchor (\i -> AnchorIndex i sp e)]
@@ -269,6 +271,19 @@ piecesOf env kenten inl = case inl of
     lk = ceLook env
     -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
     restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl} kenten)
+    {- the mark of a note or a numbered sidenote (golem-driver ADR 0018):
+    set at half the size, as wide as its advance across, half the size
+    down; the box keeps the look of its place -}
+    markPiece t =
+      let m = noteMarkSize (lkSize lk)
+          w
+            | ceVertical env = m
+            | otherwise = round (ceWordAdvance env lk {lkSize = m} t * toRational m)
+       in PBox lk t KindNoteMark w
+
+-- | The size of a note mark in text of a size (golem-driver ADR 0018).
+noteMarkSize :: Sp -> Sp
+noteMarkSize s = s `div` 2
 
 textPieces :: Look -> Bool -> Text -> [Piece]
 textPieces lk kenten t
@@ -538,6 +553,8 @@ explicitParts word = go [] (zip [0 :: Int ..] groups)
 data Before
   = -- | the start of the paragraph, or an item that is neither a box nor an [aki]
     AtStart
+  | -- | a note mark at the start of the paragraph (golem-driver ADR 0018)
+    AfterStartMark
   | -- | the box of an [aki] (docs/adr ADR 0019, golem-layout ADR 0012)
     AfterAki
   | AfterBox !BoxContent
@@ -557,12 +574,25 @@ normalize env = go AtStart True
     go before first (x : rest) = case x of
       -- an [aki]: no spacing around it, no edges; the paragraph's first character is still to come
       Box _ c | boxKind c == KindAki -> x : go AfterAki first rest
+      {- a note mark joins the box before it (golem-driver ADR 0018): no
+      break and no spacing before it, and the spacing of the pair around
+      it after it; it has no edges -}
+      Box w c
+        | boxKind c == KindNoteMark ->
+            let before' = case before of
+                  AtStart -> AfterStartMark
+                  other -> other
+             in Penalty 0 infPenalty NoHyphen : Box w c {bcEdgeStart = 0, bcEdgeEnd = 0} : go before' first rest
       Box w c ->
         let spacing = case before of
               -- inside code: a break after a slash, no spacing (golem-driver ADR 0017)
               AfterBox p | lkCode (bcLook p) && lkCode (bcLook c) -> [Penalty 0 0 NoHyphen | "/" `T.isSuffixOf` bcText p]
               AfterBox p -> between p c
               AtStart -> leading c
+              -- the space of the paragraph start, after the mark: no break there
+              AfterStartMark -> case leading c of
+                [] -> []
+                l -> Penalty 0 infPenalty NoHyphen : l
               AfterAki -> []
          in spacing <> [Box w (withEdges first c)] <> go (AfterBox c) False rest
       _ -> x : go AtStart first rest

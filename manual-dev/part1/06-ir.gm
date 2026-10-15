@@ -55,14 +55,15 @@ Golem は、この循環を、評価を三つの階層に分けることで断�
 = [strong: S0（ファイル内評価）]
   変数、式の結果、[code: meta]、見出しの文字列、脚注の番号、プラグインの出力が決まる。golem-eval が受け持つ。
 = [strong: S1（文書構造）]
-  見出しと図の番号、目次、ラベルから引く番号と題、[code: doc] の式、索引の並び、参考文献の番号が決まる。golem-doc が受け持つ。
+  見出しと図の番号、脚注と傍注の番号、目次、ラベルから引く番号と題、[code: doc] の式、索引の並び、参考文献の番号が決まる。golem-doc が受け持つ。
 = [strong: S2（レイアウト後）]
   ページ番号への参照と、目次と索引のページ番号が決まる。golem-layout が組み、golem-driver が繰り返しを回す。
 
 S0 は、ファイルを一つずつ、そのファイルと import 先だけを見て評価する。[index reading="S0": S0（ファイル内評価）]
 ほかの章のファイルは見ない。
 このため、各ファイルは単独で検査でき、依存のないファイルは並列に評価でき、LSP は変わったファイルだけを評価し直せる。
-脚注の番号がファイルごとに振り直されるのも、番号をそのファイルだけで決める S0 の値にしているからである。
+S0 は脚注の番号もファイルごとに振るが、これは [code: golem check] と LSP のための仮の番号である。
+出力の番号は、章ごとのように本の構成に依存する範囲で振るので、S1 が振り直す。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0018-footnote-marks-and-numbers.md]（golem-driver ADR 0018「脚注の印と番号」）]
 [code: meta] はマニフェストだけで決まるので、S0 の値として見出しの中でも使える。
 S0 で決められない値（[code: doc] を使う式と、ラベルへの参照）は、評価せずに意味論 IR に残す（後の「[ref-title deferred]」の節）。
 S0 は、意味論 IR に加えて、S1 が集める情報（見出し、ラベル、チャネルへの項目、属性）をファイルの順に並べた [code: FileIndex] を出す。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0002-file-evaluation.md]（golem-eval ADR 0002「ファイル内評価（S0）」）]
