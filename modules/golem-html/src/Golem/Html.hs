@@ -409,7 +409,8 @@ inline c = \case
     (if length segs >= 2 || T.length (T.concat [foldMap inlineText b | RubySegment b _ <- segs]) == 1 then "<ruby class=\"mono\">" else "<ruby>")
       <> T.concat [inlines c b <> "<rp>（</rp><rt>" <> maybe "" escapeXml r <> "</rt><rp>）</rp>" | RubySegment b r <- segs]
       <> "</ruby>"
-  Kenten _ sh xs -> "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "default" sh) <> "\">" <> inlines c xs <> "</span>"
+  -- the shape of the IR; none (from a plugin) is sesame (golem-driver ADR 0019)
+  Kenten _ sh xs -> "<span class=\"kenten kenten-" <> escapeXml (fromMaybe "sesame" sh) <> "\">" <> inlines c xs <> "</span>"
   Color _ s xs -> "<span class=\"swatch-" <> escapeXml s <> "\">" <> inlines c xs <> "</span>"
   -- the built-in character styles keep their elements (docs/adr ADR 0005)
   CharStyle _ "strong" xs -> "<strong>" <> inlines c xs <> "</strong>"
@@ -631,6 +632,12 @@ css cfg book =
            ".kenten-open-dot { text-emphasis-style: open dot; }",
            ".kenten-circle { text-emphasis-style: circle; }",
            ".kenten-open-circle { text-emphasis-style: open circle; }",
+           -- golem-driver ADR 0019
+           ".kenten-sesame { text-emphasis-style: sesame; -epub-text-emphasis-style: sesame; }",
+           ".kenten-double-circle { text-emphasis-style: double-circle; }",
+           ".kenten-open-double-circle { text-emphasis-style: open double-circle; }",
+           ".kenten-triangle { text-emphasis-style: triangle; }",
+           ".kenten-open-triangle { text-emphasis-style: open triangle; }",
            ".align-left { text-align: left; }",
            ".align-center { text-align: center; }",
            ".align-right { text-align: right; }",

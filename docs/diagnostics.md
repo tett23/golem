@@ -535,24 +535,26 @@ LSP では、エディタで開いているファイルにも出す。
 
 行末の `\`（強制改行）の次の行が、同じ段落の続きの行ではない。
 空行、ファイルの末尾、ブロックの始まりの文字（`#`、`- ` など）で始まる行が続いた。
-見出し、定義リストの用語、表のセルの行末の `\` も、このコードになる。
+見出しと定義リストの用語の行末の `\` も、このコードになる。
+表の行の閉じる `|` の後に書いた `\` も、このコードになる（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。
 これらは一行で書く記法なので、強制改行を書けない。
 
 - メッセージ: `行末の \ は段落の中の強制改行です。次の行に段落の続きが要ります。本文の \ は \\ と書きます`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: [docs/adr/0016](adr/0016-hard-line-breaks.md)
+- ADR: [docs/adr/0016](adr/0016-hard-line-breaks.md)、[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)
 
 ### 主な原因
 
 - 段落の最後の行の末尾に `\` を書いた。
 - 本文の文字として、行末に `\` を置こうとした。
 - 見出しや定義リストの用語の中で、行を改めようとした。
+- 表の行の末尾に `\` を書いた。
 
 ### 直し方
 
 段落の最後の行の `\` を消す。
 本文の `\` を行末に置くときは、`\\` と書く。
-見出しと用語は一行で書く。
+見出し、用語、表の行は一行で書く。
 
 ## G0129
 
@@ -926,10 +928,11 @@ dev では出力に残し、診断は出さない。
 
 `/` で区切ったルビの対象と読みのセグメントの数が合わない。
 対象を区切らず、読みだけを `/` で区切った場合も、このコードになる。
+区切りになるのは原稿に書いた `/` だけであり、`\/` と書いた `/` と、式の値の中の `/` は区切りにならない（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。
 
 - メッセージ: `モノルビの対象と読みのセグメントの数が一致しません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)、[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)
 
 ### 主な原因
 
@@ -939,6 +942,7 @@ dev では出力に残し、診断は出さない。
 ### 直し方
 
 対象と読みの `/` の数をそろえる。
+区切りでない `/` を対象や読みに書くときは、`\/` と書く。
 
 ## G0216
 
@@ -1517,7 +1521,8 @@ lines の範囲が不正です
 
 ### 直し方
 
-`sesame`、`open-sesame`、`dot`、`open-dot`、`circle`、`open-circle` のどれかにする。
+`sesame`、`open-sesame`、`dot`、`open-dot`、`circle`、`open-circle`、`double-circle`、`open-double-circle`、`triangle`、`open-triangle` のどれかにする。
+形の一覧は [docs/markup.md](markup.md) の「圏点」にある（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。
 
 ## G0240
 
@@ -1575,6 +1580,7 @@ lines の範囲が不正です
 ### 意味
 
 `/` で区切った索引の語の段が 3 段以上あるか、語と読みの段の数が違うか、空の段がある。
+語の中の `\/` と、式の値の中の `/` は段の区切りにならない（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。
 
 - メッセージ: `索引の語と読みの段の数が不正です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
@@ -1589,6 +1595,7 @@ lines の範囲が不正です
 ### 直し方
 
 段は 2 段までとし、語と読みの `/` の数をそろえる。
+区切りでない `/` を語に書くときは、`\/` と書く。
 
 ## G0243
 
@@ -2393,7 +2400,7 @@ style.toml の誤りです
 
 - メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置、読み込んだ後の検査では `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md) である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md) である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした
 
 ### 主な原因
 
@@ -2403,6 +2410,7 @@ style.toml の誤りです
 - 廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）を書いた。
 - 段落スタイル `code` に、`font`、`size`、`background`、`padding` のほかのキー（`based-on` を含む）を書いた（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 - `background` か `padding` を、`code` のほかの段落スタイルに書いた。`padding` が負であるか、寸法として読めない。
+- `[hidden-folio]` の `size` か `gutter` を `zw` で書いたか、0 以下にしたか、寸法として読めない値にした。`pages` に `unnumbered` と `all` のほかの値を書いた。`gutter` が `size` の半分より小さい（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。
 
 ### 直し方
 
@@ -4074,6 +4082,66 @@ PDF を書かない。
 
 `[index]` の `columns` を減らすか、`column-gap` を狭める。
 
+## G0745
+
+ルビの親文字の圏点を PDF で描きません
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+ルビの親文字の中に圏点があるか、圏点の中にルビがある。
+圏点とルビは親文字の同じ側に置くので、PDF は、ルビの親文字に圏点を描かない。
+HTML と EPUB は圏点とルビの両方を出すので、PDF をターゲットに含むときだけ出す。
+PDF は書く。
+位置は、ルビの親文字の中の圏点ではその圏点の位置、圏点の中のルビではそのルビの位置である。
+お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+
+- メッセージ: `ルビの親文字の圏点は PDF では描きません`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)
+
+### 主な原因
+
+- `[ruby: [kenten: 漢]|かん]` のように、ルビの親文字に圏点を付けた。
+- `[kenten: [ruby: 漢|かん]]` のように、圏点の中にルビを書いた。
+
+### 直し方
+
+PDF で圏点を描くには、圏点を付ける語からルビを外す。
+PDF で圏点がなくてよければ、そのままでよい。
+`manifest.toml` の `[diagnostics]` の `silence-notices` に `"G0745"` を加えると、このお知らせを出さなくなる。
+
+## G0750
+
+隠しノンブルが版面に重なります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+トンボを付けた PDF に入れる隠しノンブルの数字の列の左右の範囲（ノドの仕上がりの線から `[hidden-folio]` の `gutter` の距離にある中心線から、`size` の半分ずつ）が、そのページの版面か傍注欄に、左右の方向で重なる。
+`style.toml` と `--marks` だけで決まるので、PDF をターゲットに含み、`--marks` が `japanese` か `western` のときは、ビルドと `golem check` の両方で、レイアウトの前に報告する。
+`[hidden-folio]` の `enabled` が `false` のときと、`--marks none` のときは検査しない。
+PDF を書かない。
+位置は `style.toml` の先頭である。
+
+- メッセージ: `隠しノンブルが版面に重なります。[hidden-folio] の gutter を小さくするか、ノドの余白を広げてください`
+- 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`、golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)
+
+### 主な原因
+
+- `[page.grid]` の `position` の `gutter`（ノドの余白）が数ミリしかない。
+- `[hidden-folio]` の `gutter` か `size` が大きい。
+
+### 直し方
+
+`[hidden-folio]` の `gutter` を小さくするか、`[page.grid]` の `position` の `gutter` を広げる。
+中綴じの本のように隠しノンブルが要らない場合は、`[hidden-folio]` に `enabled = false` を書く。
+
 ## G0801
 
 フォントを読まずに PDF を作ろうとしました
@@ -4296,3 +4364,32 @@ PDF はコードを本文の役割で組む。
 `style.toml` に `[fonts.code]` を書き、等幅の書体のファイルを `latin`（和文も載せるなら `ja`）に書く。
 本文の書体で組んでよければ、そのままでよい。
 `manifest.toml` の `[diagnostics]` の `silence-notices` に `"G0808"` を加えると、このお知らせを出さなくなる。
+
+## G0809
+
+圏点の字が書体にありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+圏点を付けた字の役割の和文の書体に、圏点の形の字（`sesame` なら U+FE45 の `﹅`）がない。
+書体にない字は `.notdef` の箱で描かれるので、PDF を書く前に止める。
+役割と形の組ごとに一つだけ出す。
+PDF を書かない。
+位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
+
+- メッセージ: `役割 <役割> の和文の書体に圏点の形 <形> の字（U+<符号位置>）がありません`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)
+
+### 主な原因
+
+- 和文の役割に、圏点の字を持たない書体（欧文の書体など）を指定した。
+- `[kenten ...]` の `shape` か `style.toml` の `[composition]` の `kenten` に、書体にない形を書いた。
+
+### 直し方
+
+`shape`（または `[composition]` の `kenten`）を、書体にある形に替える。
+または、圏点の字を持つ書体を、その役割の `ja` に指定する。

@@ -96,7 +96,12 @@ provide fonts body roles =
       lfShape = shapeText,
       lfCode = glyphCid . fontAt,
       lfEmbed = embed,
-      lfEmBoxCentral = \ix -> let f = fontAt ix in toInteger (fontEmBoxCentral f) % toInteger (fontUnitsPerEm f)
+      lfEmBoxCentral = \ix -> let f = fontAt ix in toInteger (fontEmBoxCentral f) % toInteger (fontUnitsPerEm f),
+      -- the ink box of a glyph from FreeType, in em (golem-driver ADR 0019)
+      lfInkBox = \ix g ->
+        let f = fontAt ix
+            em v = toInteger v % toInteger (fontUnitsPerEm f)
+         in (\m -> let (x0, y0, x1, y1) = gmBBox m in (em x0, em y0, em x1, em y1)) <$> glyphMetrics f g
     }
   where
     advance = curry (memo (\(s, c) -> sum (map shAdvance (shapeText s (T.singleton c)))))
@@ -120,8 +125,13 @@ provide fonts body roles =
       let (_, la, roleFeatures) = roleOf role
           features = roleFeatures <> extra
           shapeIn f r dir = shapeUnits f ((shapeRequest 1000 r) {srDirection = dir, srFeatures = features})
-          glyph ix f r turned dir (g, c, (xa, ya, _, _)) =
-            Shaped ix g (toInteger (if dir == Vertical then negate ya else xa) % toInteger (fontUnitsPerEm f)) (clusterText r c) turned c
+          em f u = toInteger u % toInteger (fontUnitsPerEm f)
+          {- the offsets as HarfBuzz gives them in horizontal shaping; vertical
+          shaping subtracts the vertical origin, added back here (golem-driver
+          ADR 0020) -}
+          glyph ix f r turned dir (g, c, (xa, ya, xo, yo)) =
+            let (ox, oy) = if dir == Vertical then glyphVerticalOrigin f g else (0, 0)
+             in Shaped ix g (em f (if dir == Vertical then negate ya else xa)) (clusterText r c) turned c (em f (xo + ox), em f (yo + oy))
           clusters gs = [(c, [x | x@(_, c', _) <- gs, c' == c]) | c <- nubOrd [c | (_, c, _) <- gs]]
           gids = map (\(g, _, _) -> g)
           run (ix, r)

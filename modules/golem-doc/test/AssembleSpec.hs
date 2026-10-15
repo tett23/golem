@@ -12,7 +12,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 cfg :: AssembleConfig
-cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty
+cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty NumberPerFile []
 
 sp :: Int -> Int -> SrcSpan
 sp f s = mkSpan (FileId f) s (s + 1)
@@ -34,6 +34,7 @@ tests =
   testGroup
     "assembly, S1 (ADR 0002)"
     [ noticeTests,
+      noteNumberTests,
       testCase "kanji numerals" $ do
         map kanji [1, 10, 12, 120, 1000, 10000, 20005] @?= ["一", "十", "十二", "百二十", "千", "一万", "二万五"]
         kanjiDigits 120 @?= "一二〇",
@@ -200,3 +201,55 @@ noticeTests =
     notices docs = [(c, diagMessage d, diagSpan d) | d <- snd (assemble cfg noEval docs), diagSeverity d == Notice, let DiagnosticCode c = diagCode d]
     olist f s ns = Block (sp f s) Nothing (OrderedList [ListItem n [para f (s + 1) []] | n <- ns])
     brk f s k = Block (sp f s) Nothing (ForcedBreak k)
+
+-- | Renumbering notes in S1 (golem-driver ADR 0018).
+noteNumberTests :: TestTree
+noteNumberTests =
+  testGroup
+    "note numbers (golem-driver ADR 0018)"
+    [ testCase "per file" $ numbers NumberPerFile three @?= [1, 2, 1, 2, 1, 2],
+      testCase "per chapter of the manifest" $ numbers NumberPerChapter three @?= [1, 2, 3, 4, 1, 2],
+      testCase "through the book" $ numbers NumberPerBook three @?= [1 .. 6],
+      testCase "footnotes and sidenotes count apart" $ do
+        let mixed =
+              [ Document (FileId 1) [para 1 0 [note 1 1 1, side 1 2 1, note 1 3 2]],
+                Document (FileId 2) [para 2 0 [side 2 1 1, note 2 2 1]]
+              ]
+        marks NumberPerBook [0, 0] mixed @?= [("n", 1), ("s", 1), ("n", 2), ("s", 2), ("n", 3)]
+        marks NumberPerFile [0, 0] mixed @?= [("n", 1), ("s", 1), ("n", 2), ("s", 1), ("n", 1)],
+      testCase "the span and the body stay" $ do
+        let out = allNotes NumberPerBook [0, 0, 1] three
+        [(s', b) | Note s' _ b <- out] @?= [(s', b) | Note s' _ b <- allNotes NumberPerFile [0, 0, 1] three]
+        [s' | Note s' _ _ <- out] @?= [sp f s | f <- [1, 2, 3], s <- [1, 2]]
+        [b | Note _ _ b <- out] @?= [[Text (sp f s) "注"] | f <- [1, 2, 3], s <- [1, 2]],
+      testCase "notes inside containers and list items are renumbered" $ do
+        let docs =
+              [ Document (FileId 1) [para 1 0 [note 1 1 1]],
+                Document (FileId 2) [Block (sp 2 0) Nothing (BulletList [ListItem Nothing [para 2 1 [Kenten (sp 2 2) (Just "sesame") [note 2 3 1]]]])]
+              ]
+        numbersOf NumberPerBook [0, 0] docs @?= [1, 2]
+    ]
+  where
+    note f s n = Note (sp f s) n [Text (sp f s) "注"]
+    side f s n = Sidenote (sp f s) n [Text (sp f s) "傍"]
+    three = [Document (FileId f) [para f 0 [note f 1 1, note f 2 2]] | f <- [1, 2, 3]]
+    numbers m = numbersOf m [0, 0, 1]
+    numbersOf m ch docs = [n | Note _ n _ <- allNotes m ch docs]
+    allNotes m ch docs = [i | (k, i) <- collect m ch docs, k == "n"]
+    marks m ch docs = [(k, numOf i) | (k, i) <- collect m ch docs]
+    numOf = \case
+      Note _ n _ -> n
+      Sidenote _ n _ -> n
+      _ -> 0
+    collect m ch docs =
+      let book = fst (assemble cfg {acNoteNumbering = m, acChapterOf = ch} noEval docs)
+       in concatMap (\(Document _ bs) -> concatMap blockNotes bs) (bookDocs book)
+    blockNotes (Block _ _ body) = case body of
+      Paragraph _ is -> concatMap inl is
+      BulletList items -> concatMap (concatMap blockNotes . itemBlocks) items
+      _ -> []
+    inl i = case i of
+      Note {} -> [("n" :: Text, i)]
+      Sidenote {} -> [("s", i)]
+      Kenten _ _ xs -> concatMap inl xs
+      _ -> []
