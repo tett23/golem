@@ -502,7 +502,7 @@ itemsFor env prev p next = case p of
     let w = case a of
           AkiZw r -> round (r * toRational (lkSize lk))
           AkiAbs x -> x
-     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0)]
+     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [])]
   PCode lk run -> codeItems env lk run
   PAnchor _ -> []
 
