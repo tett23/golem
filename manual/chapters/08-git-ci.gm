@@ -25,7 +25,7 @@ Golem のプロジェクトは、原稿も [code: manifest.toml] も [code: styl
 @label git-setup
 ## Git を入れてリポジトリを作る
 
-版の管理の道具として最も広く使われているのが、[strong: Git][index reading=ぎっと: Git] です[note: Git の公式の文書。[code: https://git-scm.com/doc]]。
+版の管理の道具として最も広く使われているのが、[strong: Git][index reading=ぎっと: Git] です [cite git][note: Git の公式の文書。[code: https://git-scm.com/doc]]。
 macOS では、ターミナルで次のコマンドを実行すると、Git を含む開発の道具が入ります。
 
 ```sh

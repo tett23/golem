@@ -262,6 +262,11 @@ GOLEM="$(cabal list-bin golem)" sh scripts/manual/build.sh manual-dev  # 一冊�
 Git のリポジトリの外で組むときは、環境変数 `GOLEM_MANUAL_COMMIT` と `GOLEM_MANUAL_TAG` で値を渡す。
 スクリプトのテストは `scripts/manual/test.sh` にある。
 
+開発者のマニュアルの図は、`manual-dev/images/src/` の SVG が原稿である。
+SVG を直したら、`sh scripts/manual/render-figures.sh` で `manual-dev/images/` の PNG を作り直し、両方をコミットする。
+このスクリプトはヘッドレスの Chrome を使う（`CHROME` で実行ファイルを選べる）。
+組むときには実行しないので、マニュアルを組むだけなら Chrome は要らない。
+
 ### 整形と検査
 
 Haskell のコードは fourmolu 0.21.0.0 で整形し（設定は `fourmolu.yaml`）、hlint 3.10 で検査する。

@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="960" viewBox="0 0 1300 960">
+  <!-- 原稿から出力までの処理の流れと、各段階を受け持つパッケージ（docs/specifications.md の「処理の流れ」、golem-driver ADR 0001）。
+       scripts/manual/render-figures.sh で manual-dev/images/pipeline.png にする。 -->
+  <style>
+    @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
+    @font-face { font-family: "Fig Sans"; font-weight: bold; src: url("../../fonts/NotoSansJP-Bold.otf"); }
+    text { font-family: "Fig Sans", sans-serif; font-size: 25px; fill: #222; }
+    .c { text-anchor: middle; dominant-baseline: central; }
+    .mod { font-size: 21px; fill: #555; }
+    .label { font-size: 21px; fill: #333; }
+    rect.proc { stroke: #333; stroke-width: 2; rx: 8; }
+    rect.data { fill: #fff; stroke: #333; stroke-width: 1.5; }
+    .core { fill: #f2f2f2; }
+    .pdf { fill: #dce8f5; }
+    .web { fill: #e0f0da; }
+    .txt { fill: #f6ecd2; }
+    line, path.edge { stroke: #444; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    .dash { stroke-dasharray: 8 6; }
+    .cut { stroke: #888; stroke-width: 1.5; stroke-dasharray: 4 6; fill: none; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#444"/>
+    </marker>
+  </defs>
+  <rect width="1300" height="960" fill="#fff"/>
+
+  <!-- inputs -->
+  <rect class="data" x="210" y="35" width="240" height="50"/><text class="c" x="330" y="60">原稿（.gm）</text>
+  <rect class="data" x="770" y="35" width="360" height="50"/><text class="c" x="950" y="60">manifest.toml、style.toml</text>
+
+  <!-- parse, project -->
+  <line x1="330" y1="85" x2="330" y2="142"/>
+  <line x1="950" y1="85" x2="950" y2="142"/>
+  <rect class="proc core" x="180" y="142" width="300" height="76"/>
+  <text class="c" x="330" y="166">構文解析</text><text class="c mod" x="330" y="198">golem-parser</text>
+  <rect class="proc core" x="770" y="142" width="360" height="76"/>
+  <text class="c" x="950" y="166">プロジェクトの読み込み</text><text class="c mod" x="950" y="198">golem-project</text>
+
+  <!-- S0 -->
+  <line x1="330" y1="218" x2="330" y2="284"/>
+  <text class="label" x="318" y="258" text-anchor="end">CST → AST</text>
+  <path class="edge" d="M900,218 V250 H440 V284"/>
+  <text class="label" x="560" y="238">マニフェスト、import のグラフ</text>
+  <rect class="proc core" x="196" y="284" width="300" height="76"/>
+  <rect class="proc core" x="188" y="292" width="300" height="76"/>
+  <rect class="proc core" x="180" y="300" width="300" height="76"/>
+  <text class="c" x="330" y="324">ファイル内評価（S0）</text><text class="c mod" x="330" y="356">golem-eval</text>
+  <rect class="proc core" x="800" y="300" width="300" height="76"/>
+  <text class="c" x="950" y="324">プラグイン（wasm）</text><text class="c mod" x="950" y="356">golem-plugin</text>
+  <line class="dash" x1="800" y1="338" x2="498" y2="338"/>
+
+  <!-- S1 -->
+  <line x1="330" y1="376" x2="330" y2="442"/>
+  <text class="label" x="345" y="414">ファイルごとの意味論 IR を、マニフェストの順に集める</text>
+  <rect class="proc core" x="180" y="442" width="300" height="76"/>
+  <text class="c" x="330" y="466">文書構造の確定（S1）</text><text class="c mod" x="330" y="498">golem-doc</text>
+  <path class="cut" d="M20,540 H640"/>
+  <text class="label" x="495" y="530" style="fill:#777">golem check はここまで</text>
+
+  <!-- layout IR, fonts -->
+  <path class="edge" d="M1130,180 H1260 V480 H1200"/>
+  <rect class="proc pdf" x="900" y="442" width="300" height="76"/>
+  <text class="c" x="1050" y="466">レイアウト IR</text><text class="c mod" x="1050" y="498">golem-layout-spec</text>
+  <rect class="data" x="680" y="455" width="170" height="50"/><text class="c" x="765" y="480">フォント</text>
+
+  <!-- branches -->
+  <path class="edge" d="M330,518 V590 H140 V612"/>
+  <path class="edge" d="M330,590 H480 V612" style="marker-end:url(#arrow)"/>
+  <path class="edge" d="M480,590 H820 V612"/>
+  <text class="label" x="345" y="575">Doc.Book</text>
+  <line x1="1020" y1="518" x2="960" y2="612"/>
+  <line x1="765" y1="505" x2="765" y2="612"/>
+
+  <rect class="proc txt" x="20" y="612" width="240" height="76"/>
+  <text class="c" x="140" y="636">テキストの出力</text><text class="c mod" x="140" y="668">golem-text</text>
+  <rect class="proc web" x="350" y="612" width="260" height="76"/>
+  <text class="c" x="480" y="636">XHTML と CSS</text><text class="c mod" x="480" y="668">golem-html</text>
+  <rect class="proc pdf" x="690" y="612" width="360" height="76"/>
+  <text class="c" x="870" y="636">行分割と改ページ（S2）</text><text class="c mod" x="870" y="668">golem-layout、golem-font</text>
+  <path class="edge" d="M1050,632 C1120,632 1120,668 1050,668"/>
+  <text class="label" x="1130" y="625">ページ番号が</text>
+  <text class="label" x="1130" y="653">変わらなくなる</text>
+  <text class="label" x="1130" y="681">まで繰り返す</text>
+
+  <!-- second step -->
+  <line x1="480" y1="688" x2="480" y2="752"/>
+  <line x1="870" y1="688" x2="870" y2="752"/>
+  <rect class="proc web" x="350" y="752" width="260" height="76"/>
+  <text class="c" x="480" y="776">EPUB のパッケージ</text><text class="c mod" x="480" y="808">golem-epub</text>
+  <rect class="proc pdf" x="720" y="752" width="300" height="76"/>
+  <text class="c" x="870" y="776">PDF/X-4 の直列化</text><text class="c mod" x="870" y="808">golem-pdf</text>
+
+  <!-- outputs -->
+  <line x1="140" y1="688" x2="140" y2="882"/>
+  <path class="edge" d="M380,688 V720 H320 V882"/>
+  <line x1="480" y1="828" x2="480" y2="882"/>
+  <line x1="870" y1="828" x2="870" y2="882"/>
+  <rect class="data" x="30" y="882" width="220" height="50"/><text class="c" x="140" y="907">プレーンテキスト</text>
+  <rect class="data" x="265" y="882" width="110" height="50"/><text class="c" x="320" y="907">HTML</text>
+  <rect class="data" x="415" y="882" width="130" height="50"/><text class="c" x="480" y="907">EPUB</text>
+  <rect class="data" x="805" y="882" width="130" height="50"/><text class="c" x="870" y="907">PDF</text>
+</svg>

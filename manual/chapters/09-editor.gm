@@ -2,7 +2,7 @@
 # エディタと LSP
 
 Golem には、エディタに Golem の原稿のための機能を足す部品が入っています。
-この部品は、多くのエディタが対応している LSP（Language Server Protocol）[index reading=えるえすぴー: LSP]という共通の取り決めに従っています[note: Language Server Protocol Specification 3.17。[code: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/]]。
+この部品は、多くのエディタが対応している LSP（Language Server Protocol）[index reading=えるえすぴー: LSP]という共通の取り決めに従っています [cite lsp][note: Language Server Protocol Specification 3.17。[code: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/]]。
 
 LSP は、エディタと、ある言語の知識を持つプログラム（言語サーバー）とのあいだのやりとりを決めた取り決めです。
 エディタは、開いているファイルの中身を言語サーバーに送り、言語サーバーは誤りの位置や補完の候補を返します。

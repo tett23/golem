@@ -97,13 +97,13 @@ InDesign は、Document Fonts フォルダーにない書体を機械に入っ�
 その代わり、プロジェクトを人に渡すと、書体のファイルも一緒に渡すことになります。
 HTML と EPUB にも書体のファイルを同梱するので、それらを公開すれば書体を配ることになります。
 書体のライセンスが、この使い方を許しているかを確かめてください。
-このマニュアルで使っている書体は、どれも SIL Open Font License 1.1 で配布されていて、文書への埋め込みと、ほかのソフトウェアと一緒に配ることを許しています[note: SIL Open Font License 1.1。[code: https://openfontlicense.org/]]。
+このマニュアルで使っている書体は、どれも SIL Open Font License 1.1 で配布されていて、文書への埋め込みと、ほかのソフトウェアと一緒に配ることを許しています [cite ofl][note: SIL Open Font License 1.1。[code: https://openfontlicense.org/]]。
 
 ### 埋め込みのライセンス
 
 PDF には、使った文字だけを含む形（サブセット）で書体を埋め込みます。
 書体のファイルには、作り手が埋め込みを許すかどうかを記した欄があります。
-OpenType の書体の OS/2 という表の [code: fsType] の欄です[note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
+OpenType の書体の OS/2 という表の [code: fsType] の欄です [cite opentype-os2][note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
 Golem はこの欄を仕様のとおりに読み、次のどれかに当たる書体を埋め込まず、エラー（G0804）にします。
 
 - 制限付きのライセンス（埋め込みを許さない）の印があり、閲覧や編集のための埋め込みを許す印がない。
@@ -117,7 +117,7 @@ Golem はこの欄を仕様のとおりに読み、次のどれかに当たる�
 ### OpenType の機能
 
 OpenType の書体は、字形の置き換えや字送りの調整を、機能という単位で持っています。
-機能には [code: palt] や [code: vert] のような四文字のタグが付いていて、その一覧は OpenType の仕様が定めています[note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。
+機能には [code: palt] や [code: vert] のような四文字のタグが付いていて、その一覧は OpenType の仕様が定めています [cite opentype-features][note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。
 どの機能を持つかは書体によって違います。
 
 役割ごとに使う機能を、[code: features = \["palt"\]] のように指定できます。
@@ -126,7 +126,7 @@ OpenType の書体は、字形の置き換えや字送りの調整を、機能�
 
 縦組みの本では、書体の縦書き用の字形（[code: vert]）を使います。
 縦書き用の字形を持たないダッシュ（U+2014）などの記号は、PDF では横組みの字形を 90 度回して、縦の線として組みます。
-どの文字を回すかは、Unicode の縦組みの字の向きの規則（UAX #50）で決めています[note: UAX #50（Unicode Vertical Text Layout）。[code: https://www.unicode.org/reports/tr50/]]。
+どの文字を回すかは、Unicode の縦組みの字の向きの規則（UAX #50 [cite uax50]）で決めています[note: UAX #50（Unicode Vertical Text Layout）。[code: https://www.unicode.org/reports/tr50/]]。
 HTML と EPUB では、ブラウザーやリーダーが同じ規則で記号を回して表示します。
 
 ### 異体字
@@ -485,7 +485,7 @@ ICC プロファイルと出力インテントについては、「[ref-title pd
 
 行の分け方と、和文の組み方の細部は、[code: \[composition\]] で変えられます。
 何も書かなければ、W3C の日本語組版処理の要件（JLReq）が一般的な処理として示す組み方になります[note: W3C, Requirements for Japanese Text Layout（JLReq）。[code: https://www.w3.org/TR/jlreq/]]。
-JLReq は、日本語の組版の規格 JIS X 4051 と、組版の現場の慣行をもとにまとめられた文書です[note: JIS X 4051:2004（日本産業標準調査会の JIS の検索）。[code: https://www.jisc.go.jp/app/jis/general/GnrJISSearch.html]]。
+JLReq は、日本語の組版の規格 JIS X 4051 [cite jisx4051] と、組版の現場の慣行をもとにまとめられた文書です[note: JIS X 4051:2004（日本産業標準調査会の JIS の検索）。[code: https://www.jisc.go.jp/app/jis/general/GnrJISSearch.html]]。
 
 @listing style.toml lines=70-71
 
@@ -495,6 +495,7 @@ JLReq は、日本語の組版の規格 JIS X 4051 と、組版の現場の慣�
 
 段落は、一行ずつ先頭から分けるのではなく、段落の全体を見て、語間や字間の伸び縮みが全体として最も少なくなる位置で行に分けます。
 InDesign の段落コンポーザーに近い考え方です。
+この分け方は Knuth と Plass が論文で示した方式で [cite knuth-plass]、TeX も同じ方式で行を分けます。
 
 ルビの配置は [code: \[composition.ruby\]] で変えます（ルビの書き方は「[ref-title ruby]」、[ref-page ruby] ページ）。
 

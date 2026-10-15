@@ -138,7 +138,7 @@ EPUB と HTML はリフローであり、位置情報が意味論に混入した
 
 モジュールの依存の関係を次に示す。
 矢印は、元のモジュールが先のモジュールを使うことを表す。
-golem-syntax は golem-regex を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
+golem-syntax は golem-regex、golem-font、golem-fixtures を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
 golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
 ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
@@ -181,10 +181,9 @@ flowchart TD
     driver --> plugin
     driver --> text
     epub --> html
-    eval --> doc
+    eval --> project
     fmt --> parser
     html --> doc
-    layout --> doc
     layout --> layoutspec
     layoutspec --> project
     lint --> eval
@@ -192,8 +191,7 @@ flowchart TD
     lsp --> fmt
     pdf --> layoutspec
     plugin --> eval
-    plugin --> project
-    project --> parser
+    project --> doc
     project --> regex
     text --> doc
     parser --> syntax
@@ -1809,7 +1807,6 @@ v1 の範囲から外した事項と、v1 の実装で次の段階以降に回�
 - **改ページの大域の最適化**：見開きの単位の最適化と、段組みの段の高さの調整を含む（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 - **フレーム**：レベル 2 と 3 のフレーム。型は定義してあり、v1 では値を書くとエラーになる（[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)）。
 - **段組みの拡張**：v1 で実装する段組み（「style.toml」の節の段組み、[docs/adr/0018](adr/0018-multi-column-layout.md)）を超える部分。段抜きの見出し、索引のほかで一冊の中で段数を切り替えること、段組みの版面での回り込みと段をまたぐ除外領域を含む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。段の高さの調整は「改ページの大域の最適化」に、段組みの版面での傍注欄は「傍注の拡張」に含める。索引の段組みは [docs/adr/0025](adr/0025-index-columns.md) で v1 に入れた。
-- **SVG の図版**：PDF へ変換する処理が重いため、v1 では PDF、PNG、JPEG に限る。
 - **図版とキャプションの拡張**：版面より大きい図版を縮小する、複数のページに分ける、見開きに置くといった扱い（v1 は空のページにそのまま置く）、回り込ませない図版の幅の指定、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。
 - **複数段落の注**：v1 の注は一つの段落に限る。
 - **目次の拡張**：章ごとの小目次（v1 の `@toc` は文書に一つだけ）、`[toc]` の `font` と `size` による項目の書体と大きさ、階層ごとの書体の切り替え、字下げ、空き、リーダーの字の設定、折り返した題のぶら下げ、図目次と表目次（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
@@ -1864,6 +1861,8 @@ v1 のリリースまでに、次の項目を扱う。
 - **`[aki]` の空きの見分け方**（未実装、[golem-layout ADR 0012](golem-layout/adr/0012-aki-glue-marker.md)）：行の組み方は、`[aki]` の空きを「伸び縮みしない空き（`Glue w 0 0`）」という形で見分けている（[docs/adr/0019](adr/0019-aki-settings.md)）。今は同じ形の空きがほかに出ないが、幅 0 の語間の空白が出ると `[aki]` と取り違える。印を付けて見分ける形に改める。
 - **章末の注**：`[notes] placement = "chapter-end"` を読み込むが、どの出力も注の置き方を変えない。仕様書とマニュアルは章末に置けると書いていない形に直したが、章末の注そのものはまだない。
 - **図版の欠落の扱い**：PDF の図版のうち、置けない形式のものや壊れた画像を、`golem build` が誤りにせずに落としている可能性がある（コードを読んだ結果で、実際の出力では確かめていない）。
+- **PDF の図版**：仕様は PDF（ベクター）の図版を置けると定めているが（「図版」の節）、実装（golem-pdf の `readImage`）は JPEG と PNG だけを受け付ける。マニュアルも PDF の図版を使えると書いている。仕様のとおり、PDF の図版を PDF の出力に置けるようにする。Web 用の代替画像の扱いも合わせて決める。
+- **SVG の図版**：仕様は SVG を v1 では扱わないと定めているが（「図版」の節）、v1 で扱えるようにする。開発者向けのマニュアルの図は、SVG を原稿にして PNG に描いたものを置いている。PDF の出力での描き方（ベクターのまま描くか、変換するか）と、HTML と EPUB でそのまま使うかを決める。
 - **奥付のコミットの行**：コミットしていない変更がある状態でマニュアルを組むと、奥付のコミットの行が版面の右にはみ出す（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 - **脚注の区切り線**（未実装、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）：PDF のページ下の脚注の前に罫線を引けない。`[notes.rule]` で長さ、太さ、前後の間隔を書けるようにする。二つのマニュアルの脚注の前に罫線を入れる。
 - **段落スタイルの罫線**：段落スタイルに、段落の前と後に引く罫線（InDesign の段落境界線にあたるもの）を書けるようにする。見出しの下の罫線や、節の区切りの罫線に使う。長さ、太さ、間隔は、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md) の罫線の指定の形で書く。長さの既定は、当面は段の行長（段の最大の長さ）に固定する。罫線を持つ段落は改ページと改段で分けず、一つのページ（段）に置く。その段落の注のうち、そのページに収まらないものは、次のページ（見開きで扱う場合は次の見開き）に回す。間隔と行の格子の合わせ方は、未決事項の「段落の罫線の間隔と行の格子」で決める。
@@ -1873,6 +1872,7 @@ v1 のリリースまでに、次の項目を扱う。
 
 - **style.toml の未知のキーの診断**（未実装、[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md)）：`style.toml` の未知のキーと値の型の誤りの診断（G0306）は、toml-parser の英語の文言のままである（`unexpected key: bindng (.page)` など）。位置を表示しない問題は [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md) で直した。
 - **参考文献の書式**（未実装、[golem-doc ADR 0004](golem-doc/adr/0004-bibliography-formatting.md)）：CSL の `literal` の名前を使わない。和文の後のピリオドの前に空白が入る（`日本規格協会 . 1996.`）。
+- **参考文献の項目**：参考文献の一覧は、著者、題、発行元、発行の年しか組まない。CSL-JSON の誌名や書名（`container-title`）、巻と号（`volume`、`issue`）、ページ（`page`）、URL（`URL`）を読んでも組まないので、論文は誌名なしで出る。これらを組めるようにする。URL の文献には、最終閲覧日（CSL-JSON の `accessed`）を書けるようにする。
 - **HTML の見出しの番号**（未実装、[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）：HTML の見出しで、番号と題の間に空きがない（「第3章原稿の記法」）。
 - **ルビの中の `/` のエスケープ**（未実装、[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）：記法の仕様はルビの中で `\/` と書けば `/` そのものになると定めているが、`[ruby: a\/b|えー]` が G0215 になる。マニュアルの付録 A を書くときに見つかった。
 - **表のセルの行末の `\`**（未実装、[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）：表のセルの行末に書いた `\` は、[docs/adr/0016](adr/0016-hard-line-breaks.md) の定める G0124 ではなく G0110 になる。行末が `\` の行は表の行になれず、やり直した試行の中の誤りを peg-hs が捨てるためである。見出しと用語では G0124 になる。peg-hs が試行とともに誤りを捨てるのは誤報を避けるための正しい振る舞いなので、Golem の文法の側で直す。

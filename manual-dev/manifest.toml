@@ -20,6 +20,7 @@ chapters = [
   "part2/15-manuals.gm",
   "back.gm",
 ]
+bibliography = ["references.json"]
 
 [metadata]
 id = "urn:uuid:3b7e9c41-52d8-4a6f-8e1b-9d0c7a2f4e58"

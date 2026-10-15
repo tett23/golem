@@ -157,8 +157,8 @@ variants = ["horizontal"]
 ## 参考文献のデータ
 
 参考文献の書式とデータには、学術の分野で広く使われている決まりがあります。
-CSL（Citation Style Language）は、引用と参考文献の一覧の書式を記述するための言語で、その仕様は CSL 1.0.2 です[note: Citation Style Language 1.0.2 の仕様。[code: https://docs.citationstyles.org/en/stable/specification.html]]。
-CSL-JSON[index reading=しーえすえるじぇいそん: CSL-JSON] は、CSL が書式を当てる対象の文献のデータを、JSON という形式で書いたものです[note: CSL-JSON のスキーマ。[code: https://github.com/citation-style-language/schema]]。
+CSL（Citation Style Language）は、引用と参考文献の一覧の書式を記述するための言語で、その仕様は CSL 1.0.2 です [cite csl][note: Citation Style Language 1.0.2 の仕様。[code: https://docs.citationstyles.org/en/stable/specification.html]]。
+CSL-JSON[index reading=しーえすえるじぇいそん: CSL-JSON] は、CSL が書式を当てる対象の文献のデータを、JSON という形式で書いたものです [cite csl-json][note: CSL-JSON のスキーマ。[code: https://github.com/citation-style-language/schema]]。
 Zotero のような文献管理のソフトウェアの多くが、文献の一覧を CSL-JSON で書き出せます。
 
 Golem が読むのは、このうち CSL-JSON の文献のデータだけです。
