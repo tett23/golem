@@ -24,6 +24,10 @@ latin = "fonts/SourceSerif4-Regular.otf"
 ja = "fonts/NotoSansJP-Bold.otf"
 latin = "fonts/SourceSans3-Bold.otf"
 
+[fonts.code]
+ja = "fonts/NotoSansJP-Regular.otf"
+latin = "fonts/SourceCodePro-Regular.otf"
+
 [character-styles.bold]
 font = "heading"
 
@@ -43,6 +47,10 @@ size = "11Q"
 
 [paragraph-styles.sidenote]
 size = "10Q"
+
+[paragraph-styles.code]
+size = "11Q"
+background = "code-bg"
 
 [headings.1]
 font = "heading"
@@ -69,7 +77,11 @@ gap = "1zw"
 [color.swatches]
 accent = { cmyk = [0, 80, 100, 0] }
 code = { cmyk = [90, 50, 0, 20] }
+code-bg = { cmyk = [0, 0, 0, 8] }
 
 [masters.body]
-running-head = { position = "top-outside", content = "heading.1.short" }
 folio = { position = "bottom-outside", format = "{n}" }
+
+[masters.body.running-head]
+position = "top-outside"
+content = "heading.1.short"

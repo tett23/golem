@@ -1,16 +1,16 @@
 @label manifest
 # プロジェクトの設定
 
-[style code: manifest.toml] は、一冊の本の構成を書くファイル（マニフェスト[index reading=まにふぇすと: マニフェスト]）です。
+[code: manifest.toml] は、一冊の本の構成を書くファイル（マニフェスト[index reading=まにふぇすと: マニフェスト]）です。
 どのファイルをどの順に並べるか、書名や著者は何か、どの形式に何を書き込むかをここに書きます。
 書き方は、TOML という設定ファイルの形式です。
 書けるキーの一覧は、[ref-title app-manifest]（[ref-page app-manifest] ページ）にあります。
-[style code: manifest.toml] と [style code: style.toml] も、原稿と同じく文字コードは UTF-8、改行は LF とし、BOM を付けません。
+[code: manifest.toml] と [code: style.toml] も、原稿と同じく文字コードは UTF-8、改行は LF とし、BOM を付けません。
 BOM や CR があると、原稿と同じエラー（G0102、G0103）が出ます。
 
 ## マニフェストの全体
 
-このマニュアル自身の [style code: manifest.toml] は、次のとおりです。
+このマニュアル自身の [code: manifest.toml] は、次のとおりです。
 
 @listing manifest.toml
 
@@ -19,7 +19,7 @@ BOM や CR があると、原稿と同じエラー（G0102、G0103）が出ま�
 
 ## 章を並べる
 
-[style code: chapters] に、原稿のファイルを本の順に並べます。
+[code: chapters] に、原稿のファイルを本の順に並べます。
 パスはプロジェクトのディレクトリから書きます。
 
 一つの章をいくつかのファイルに分けて書くときは、配列を入れ子にします。
@@ -35,23 +35,23 @@ chapters = [
 脚注の番号は、ファイルごとに 1 から振り直します。
 
 一つの原稿のファイルが、別の原稿のファイルの中身を取り込むことはできません。
-章の構成は、[style code: manifest.toml] の [style code: chapters] だけで決まります。
+章の構成は、[code: manifest.toml] の [code: chapters] だけで決まります。
 
 @label source-settings
 ## 原稿の読み方
 
-[style code: \[source\]] には、原稿の読み方を書きます。
-今は、段落の区切り方を選ぶ [style code: paragraph-separator] だけがあります。
+[code: \[source\]] には、原稿の読み方を書きます。
+今は、段落の区切り方を選ぶ [code: paragraph-separator] だけがあります。
 
 ```toml
 [source]
 paragraph-separator = "line"
 ```
 
-- [style code: "blank-line"]：空行で段落を区切ります。段落の中の改行は文字を生みません。書かなければこちらになります。
-- [style code: "line"]：改行ひとつで段落を区切ります。一行が一つの段落になります。
+- [code: "blank-line"]：空行で段落を区切ります。段落の中の改行は文字を生みません。書かなければこちらになります。
+- [code: "line"]：改行ひとつで段落を区切ります。一行が一つの段落になります。
 
-[style code: "line"] は、青空文庫の形式のように、一行を一つの段落として書く和文の原稿に向いています。
+[code: "line"] は、青空文庫の形式のように、一行を一つの段落として書く和文の原稿に向いています。
 
 ```
 　吾輩は猫である。
@@ -65,42 +65,42 @@ paragraph-separator = "line"
 一つの段落は一行で書きます。
 段落の途中で改行して折り返す書き方はありません。
 
-[style code: @style verse] の段落では、[style code: "line"] でも改行は行の区切りになり、連は空行で区切ります。
-属性の形で [style code: @style verse] を付けると、直後の一行ではなく、次の空行までの行がまとめて一つの連になります。
+[code: @style verse] の段落では、[code: "line"] でも改行は行の区切りになり、連は空行で区切ります。
+属性の形で [code: @style verse] を付けると、直後の一行ではなく、次の空行までの行がまとめて一つの連になります。
 
-章ごとに区切り方を変えるときは、[style code: chapters] の項目に書きます。
+章ごとに区切り方を変えるときは、[code: chapters] の項目に書きます。
 
 ```toml
 chapters = [
   "chapters/01.gm",
-  { file = "chapters/02-en.gm", paragraph-separator = "blank-line" },
+  { file = "en/02.gm", paragraph-separator = "blank-line" },
 ]
 ```
 
-章の項目に書いた値は、[style code: \[source\]] の値より優先します。
-[style code: @import] でだけ取り込むファイルには、[style code: \[source\]] の値が効きます。
+章の項目に書いた値は、[code: \[source\]] の値より優先します。
+[code: @import] でだけ取り込むファイルには、[code: \[source\]] の値が効きます。
 
-ファイルの先頭に [style code: @manifest paragraph-separator=line] と書くと、そのファイルの区切り方を、そのファイルの中で決められます。
-ファイルの中に書いた値は、章の項目と [style code: \[source\]] の値より優先します。
+ファイルの先頭に [code: @manifest paragraph-separator=line] と書くと、そのファイルの区切り方を、そのファイルの中で決められます。
+ファイルの中に書いた値は、章の項目と [code: \[source\]] の値より優先します。
 ファイルを別の本に移しても、区切り方が一緒に付いていきます。
-[style code: @manifest] で変えられるのは [style code: \[source\]] の設定だけで、書名などを書くとエラーになります。
+[code: @manifest] で変えられるのは [code: \[source\]] の設定だけで、書名などを書くとエラーになります。
 
-[style code: "blank-line"] と [style code: "line"] のほかの値を書くと、エラーになります。
+[code: "blank-line"] と [code: "line"] のほかの値を書くと、エラーになります。
 
 ## 本の情報を書く
 
-[style code: \[metadata\]] に、書名や著者などの本の情報を書きます。
+[code: \[metadata\]] に、書名や著者などの本の情報を書きます。
 ここに書いた値は、PDF、EPUB、HTML のそれぞれの形式で決まった場所に書き込まれます。
 
-- [style code: id]：本の識別子です。[style code: golem new] が一度だけ作ります。後から変えないでください。
-- [style code: title]：書名です。
-- [style code: title-reading]：書名の読みです。電子書店での並べ替えに使われます。
-- [style code: language]：本の言語です。日本語なら [style code: "ja"]、英語なら [style code: "en"] です。
-- [style code: date]：発行日です。PDF の作成日などは、組んだ日時ではなく、この日付から作ります。版を改めるときに書き換えます。
-- [style code: edition]：版です。
-- [style code: publisher]：発行者です。
+- [code: id]：本の識別子です。[code: golem new] が一度だけ作ります。後から変えないでください。
+- [code: title]：書名です。
+- [code: title-reading]：書名の読みです。電子書店での並べ替えに使われます。
+- [code: language]：本の言語です。日本語なら [code: "ja"]、英語なら [code: "en"] です。
+- [code: date]：発行日です。PDF の作成日などは、組んだ日時ではなく、この日付から作ります。版を改めるときに書き換えます。
+- [code: edition]：版です。
+- [code: publisher]：発行者です。
 
-著者などの関係者は、[style code: \[\[metadata.creators\]\]] を人数分並べて書きます。
+著者などの関係者は、[code: \[\[metadata.creators\]\]] を人数分並べて書きます。
 
 ```toml
 [[metadata.creators]]
@@ -109,11 +109,11 @@ reading = "なつめ そうせき"
 role = "aut"
 ```
 
-[style code: role] には、著者なら [style code: "aut"]、編者なら [style code: "edt"]、訳者なら [style code: "trl"] のように、EPUB と同じ役割の符号を書きます。
+[code: role] には、著者なら [code: "aut"]、編者なら [code: "edt"]、訳者なら [code: "trl"] のように、EPUB と同じ役割の符号を書きます。
 
 ## 出力の設定
 
-[style code: \[targets.<形式>\]] には、形式ごとの設定を書きます。
+[code: \[targets.<形式>\]] には、形式ごとの設定を書きます。
 少なくとも一つの形式を書いておく必要があります。
 
 ```toml
@@ -130,15 +130,15 @@ variants = ["horizontal"]
 ```
 
 - 紙の本と電子書籍では ISBN が違うので、ISBN は形式ごとに書きます。
-- [style code: \[targets.text\]] の [style code: variants] で、プレーンテキストを縦書き用（[style code: "vertical"]）と横書き用（[style code: "horizontal"]）のどちらで作るかを選びます。省けば両方を作ります。
+- [code: \[targets.text\]] の [code: variants] で、プレーンテキストを縦書き用（[code: "vertical"]）と横書き用（[code: "horizontal"]）のどちらで作るかを選びます。省けば両方を作ります。
 
-[style code: golem build] は、[style code: --target] を指定しなければ、ここに書いていない形式も含めて四つの形式をすべて作ります。
-このマニュアルは PDF と HTML だけを使うので、[style code: golem build --target pdf --target html] で組んでいます。
+[code: golem build] は、[code: --target] を指定しなければ、ここに書いていない形式も含めて四つの形式をすべて作ります。
+このマニュアルは PDF と HTML だけを使うので、[code: golem build --target pdf --target html] で組んでいます。
 
 @label bibliography-data
 ## 参考文献のデータ
 
-[style code: bibliography] には、文献のデータを書いた CSL-JSON のファイルを並べます。
+[code: bibliography] には、文献のデータを書いた CSL-JSON のファイルを並べます。
 
 ```toml
 bibliography = ["references.json"]
@@ -149,5 +149,5 @@ CSL-JSON は、文献を一件ずつ JSON のオブジェクトにした配列�
 
 @listing references.json lines=1-9
 
-本文では、[style code: id] の値を使って [style code: \[cite jlreq\]] のように引用します（[ref-number toc-index]「[ref-title toc-index]」）。
-一覧には、著者（[style code: author] の [style code: family] と [style code: given]）、題（[style code: title]）、発行者（[style code: publisher]）、発行の年（[style code: issued]）を、この順に並べて組みます。
+本文では、[code: id] の値を使って [code: \[cite jlreq\]] のように引用します（[ref-number toc-index]「[ref-title toc-index]」）。
+一覧には、著者（[code: author] の [code: family] と [code: given]）、題（[code: title]）、発行者（[code: publisher]）、発行の年（[code: issued]）を、この順に並べて組みます。

@@ -2,7 +2,7 @@
 @label app-style
 # 付録C style.toml のリファレンス
 
-この付録は、[style code: style.toml] に書ける表とキーをすべて並べたものです。
+この付録は、[code: style.toml] に書ける表とキーをすべて並べたものです。
 書き方の流れは、第[ref-number style]章「[ref-title style]」で説明しています。[index reading=すたいる/きーのいちらん: スタイル/キーの一覧]
 ここに載せていないキーを書くと、エラーになります。
 表の「既定」の欄と、説明の中の「既定は」は、キーを省いたときの値です。
@@ -15,329 +15,346 @@
 
 | 単位 | 意味 |
 |:---|:---|
-| [style code: mm] | ミリメートルです。 |
-| [style code: pt] | ポイントです。1in の 72 分の 1 です。 |
-| [style code: Q] | 級です。0.25mm です。文字の大きさに使います。 |
-| [style code: H] | 歯です。0.25mm です。行送りに使います。 |
-| [style code: zw] | 全角一字分です。その場所の文字の大きさを一字とします。 |
+| [code: mm] | ミリメートルです。 |
+| [code: pt] | ポイントです。1in の 72 分の 1 です。 |
+| [code: Q] | 級です。0.25mm です。文字の大きさに使います。 |
+| [code: H] | 歯です。0.25mm です。行送りに使います。 |
+| [code: zw] | 全角一字分です。その場所の文字の大きさを一字とします。 |
 
 見出しの番号、図番号、ノンブルの書式には、次の差し込みを書けます。
 
 | 差し込み | 意味 |
 |:---|:---|
-| [style code: {n}] | その見出しや図の番号、ノンブルではページ番号です。 |
-| [style code: {n:kanji}] | [style code: {n}] を漢数字にしたものです。 |
-| [style code: {1}]、[style code: {2}] | 1 と 2 の階層の見出しの番号です。 |
-| [style code: {chapter}] | 図番号の書式で、章の番号です。 |
+| [code: {n}] | その見出しや図の番号、ノンブルではページ番号です。 |
+| [code: {n:kanji}] | [code: {n}] を漢数字にしたものです。 |
+| [code: {1}]、[code: {2}] | 1 と 2 の階層の見出しの番号です。 |
+| [code: {chapter}] | 図番号の書式で、章の番号です。 |
 
 @nonumber
-## [style code: \[page\]]
+## [code: \[page\]]
 
 判型と組み方向です。
 PDF を作るには必須です。
-HTML と EPUB は [style code: writing-mode] だけを使います。
+HTML と EPUB は [code: writing-mode] だけを使います。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [style code: size] | （必須） | 判型です。[style code: "A4"]、[style code: "A5"]、[style code: "A6"]、[style code: "B5"]、[style code: "B6"]、[style code: "四六判"]、[style code: "菊判"]、[style code: "新書判"]、[style code: "mass-market"] のどれかか、[style code: { width = "148mm", height = "210mm" }] のように幅と高さで書きます。幅と高さに [style code: zw] は使えません。 |
-| [style code: binding] | [style code: "left"] | 綴じる側です。[style code: "right"]（右綴じ）か [style code: "left"]（左綴じ）です。 |
-| [style code: writing-mode] | [style code: "horizontal"] | [style code: "vertical"]（縦組み）か [style code: "horizontal"]（横組み）です。 |
-| [style code: bleed] | [style code: "0mm"] | 塗り足しの幅です。[style code: zw] は使えません。 |
+| [code: size] | （必須） | 判型です。[code: "A4"]、[code: "A5"]、[code: "A6"]、[code: "B5"]、[code: "B6"]、[code: "四六判"]、[code: "菊判"]、[code: "新書判"]、[code: "mass-market"] のどれかか、[code: { width = "148mm", height = "210mm" }] のように幅と高さで書きます。幅と高さに [code: zw] は使えません。 |
+| [code: binding] | [code: "left"] | 綴じる側です。[code: "right"]（右綴じ）か [code: "left"]（左綴じ）です。 |
+| [code: writing-mode] | [code: "horizontal"] | [code: "vertical"]（縦組み）か [code: "horizontal"]（横組み）です。 |
+| [code: bleed] | [code: "0mm"] | 塗り足しの幅です。[code: zw] は使えません。 |
 
 @nonumber
-## [style code: \[page.grid\]]
+## [code: \[page.grid\]]
 
 版面です。
 PDF を作るには必須です。
-[style code: columns] と [style code: column-gap] のほかのキーも必須です。
+[code: columns] と [code: column-gap] のほかのキーも必須です。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: font-size] | 本文の文字の大きさです。[style code: zw] は使えません。 |
-| [style code: characters] | 一行の字数です。段組みでは一段の字数です。 |
-| [style code: lines] | 一ページの行数です。段組みでは一段の行数です。 |
-| [style code: columns] | 段数です。省くと 1 段です。2 以上にすると段組みになり、傍注と図版の回り込みは使えなくなります。 |
-| [style code: column-gap] | 段と段のあいだの空き（段間）です。[style code: columns] が 2 以上なら必須です。 |
-| [style code: line-pitch] | 行送りです。文字の大きさ以上にします。 |
-| [style code: position] | 版面の位置です。[style code: { top = "22mm", gutter = "14mm" }] のように、天からの距離（[style code: top]）とノドからの距離（[style code: gutter]）を書きます。 |
+| [code: font-size] | 本文の文字の大きさです。[code: zw] は使えません。 |
+| [code: characters] | 一行の字数です。段組みでは一段の字数です。 |
+| [code: lines] | 一ページの行数です。段組みでは一段の行数です。 |
+| [code: columns] | 段数です。省くと 1 段です。2 以上にすると段組みになり、傍注と図版の回り込みは使えなくなります。 |
+| [code: column-gap] | 段と段のあいだの空き（段間）です。[code: columns] が 2 以上なら必須です。 |
+| [code: line-pitch] | 行送りです。文字の大きさ以上にします。 |
+| [code: position] | 版面の位置です。[code: { top = "22mm", gutter = "14mm" }] のように、天からの距離（[code: top]）とノドからの距離（[code: gutter]）を書きます。 |
 
 @nonumber
-## [style code: \[fonts.役割\]]
+## [code: \[fonts.役割\]]
 
 書体を、役割の名前を付けて指定します。
-役割の名前は自由ですが、[style code: body] は本文の書体で、PDF を作るには必須です。
+役割の名前は自由ですが、[code: body] は本文の書体で、PDF を作るには必須です。
 書体のファイルはプロジェクトの中に置き、プロジェクトのディレクトリからの相対パスで書きます。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: ja] | 和文の書体のファイルです。 |
-| [style code: latin] | 欧文の書体のファイルです。 |
-| [style code: features] | OpenType の機能の名前の配列です。たとえば [style code: \["palt"\]] で、和文の約物や仮名を詰めて組みます。省くと、書体の標準の機能だけを使います。 |
+| [code: ja] | 和文の書体のファイルです。 |
+| [code: latin] | 欧文の書体のファイルです。 |
+| [code: features] | OpenType の機能の名前の配列です。たとえば [code: \["palt"\]] で、和文の約物や仮名を詰めて組みます。省くと、書体の標準の機能だけを使います。 |
 
 @nonumber
-## [style code: \[character-styles.名前\]]
+## [code: \[character-styles.名前\]]
 
 文字スタイルです。
-名前は英小文字で始め、英小文字、数字、[style code: -] だけで付けます。
-[style code: bold]、[style code: italic]、[style code: strong] ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
+名前は英小文字で始め、英小文字、数字、[code: -] だけで付けます。
+[code: bold]、[code: italic]、[code: strong]、[code: code] ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [style code: based-on] | なし | 引き継ぐ文字スタイルの名前です。書かなかったキーは、引き継いだスタイルの値になります。 |
-| [style code: font] | なし | 書体の役割の名前です。その役割が持つ側（和文か欧文）の文字だけを、その書体で組みます。 |
-| [style code: size] | なし | 文字の大きさです。PDF でだけ効きます。 |
-| [style code: color] | なし | [style code: \[color.swatches\]] で付けた色の名前です。 |
-| [style code: synthetic-bold] | [style code: false] | [style code: true] にすると、書体の輪郭を太らせて太字にします。 |
-| [style code: synthetic-italic] | [style code: false] | [style code: true] にすると、字形を傾けて斜体にします。 |
+| [code: based-on] | なし | 引き継ぐ文字スタイルの名前です。書かなかったキーは、引き継いだスタイルの値になります。 |
+| [code: font] | なし | 書体の役割の名前です。その役割が持つ側（和文か欧文）の文字だけを、その書体で組みます。 |
+| [code: size] | なし | 文字の大きさです。PDF でだけ効きます。 |
+| [code: color] | なし | [code: \[color.swatches\]] で付けた色の名前です。 |
+| [code: synthetic-bold] | [code: false] | [code: true] にすると、書体の輪郭を太らせて太字にします。 |
+| [code: synthetic-italic] | [code: false] | [code: true] にすると、字形を傾けて斜体にします。 |
 
 文字の送りを決める次の四つのキーも書けます。
 文字スタイルで書かなかったキーは、外側の文字の値のままです。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [style code: kerning] | [style code: "metrics"] | カーニング（字の組ごとの字間の調整）の方式です。[style code: "metrics"] は書体のペアカーニングの情報で調整し、[style code: "japanese-equal-width"] は欧文だけを調整し、[style code: "none"] は調整しません。[style code: "optical"] はまだ使えません。 |
-| [style code: tracking] | [style code: 0] | 文字ごとに足す空きです。文字の大きさの 1000 分の 1 を単位に、-1000 から 10000 までの整数で書きます。 |
-| [style code: proportional-metrics] | [style code: false] | [style code: true] にすると、和文を字面に合わせた送りで組みます。 |
-| [style code: baseline-shift] | [style code: "0pt"] | 文字を、横組みでは上へ、縦組みでは右へずらす量です。[style code: "-0.25zw"] のように負の値も書けます。 |
+| [code: kerning] | [code: "metrics"] | カーニング（字の組ごとの字間の調整）の方式です。[code: "metrics"] は書体のペアカーニングの情報で調整し、[code: japanese-equal-width] は欧文だけを調整し、[code: "none"] は調整しません。[code: "optical"] はまだ使えません。 |
+| [code: tracking] | [code: 0] | 文字ごとに足す空きです。文字の大きさの 1000 分の 1 を単位に、-1000 から 10000 までの整数で書きます。 |
+| [code: proportional-metrics] | [code: false] | [code: true] にすると、和文を字面に合わせた送りで組みます。 |
+| [code: baseline-shift] | [code: "0pt"] | 文字を、横組みでは上へ、縦組みでは右へずらす量です。[code: "-0.25zw"] のように負の値も書けます。 |
 
-組み込みの文字スタイルは、[style code: bold] が [style code: synthetic-bold = true]、[style code: italic] が [style code: synthetic-italic = true]、[style code: strong] が [style code: based-on = "bold"] です。
+組み込みの文字スタイルは、[code: bold] が [code: synthetic-bold = true]、[code: italic] が [code: synthetic-italic = true]、[code: strong] が [code: based-on = "bold"]、[code: code] が [code: font = "code"] です。
+[code: code] と、[code: based-on] で [code: code] を引き継ぐ文字スタイルの文字は、PDF で語の途中で分けず、空白と [code: /] の後でだけ行を改めます。
 
 @nonumber
-## [style code: \[paragraph-styles.名前\]]
+## [code: \[paragraph-styles.名前\]]
 
 段落スタイルです。
 名前の付け方は文字スタイルと同じです。
-[style code: body]、[style code: verse]、[style code: caption]、[style code: sidenote] ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
+[code: body]、[code: verse]、[code: caption]、[code: sidenote]、[code: code] ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: based-on] | 引き継ぐ段落スタイルの名前です。[style code: body] には書けません。既定は [style code: "body"] です。 |
-| [style code: font] | 書体の役割の名前です。 |
-| [style code: size] | 文字の大きさです。本文の文字の大きさまでにします。 |
-| [style code: indent] | すべての行の始まりの字下げです。既定は [style code: "0zw"] です。 |
-| [style code: first-line-indent] | 最初の行に [style code: indent] へ加える字下げです。負の値はぶら下げになります。[style code: indent] との和は 0 以上にします。既定は [style code: "0zw"] です。 |
-| [style code: line-breaks] | [style code: "keep"] にすると、段落の中の改行を行の区切りにします。既定は [style code: "join"] です。 |
-| [style code: space-between] | 同じ段落スタイルの段落が続くときに、あいだに空ける行の数です。既定は [style code: 0] です。 |
-| [style code: aki-set] | 字間の空きを決めるアキ量のセットの名前です。[style code: \[aki-sets.名前\]] で定義したものか、組み込みのセットを書きます。書かなければ [style code: body] と同じセットです。 |
-| [style code: regex-styles] | 正規表現に一致した文字に文字スタイルを当てる組の配列です。[style code: { pattern = '\[0-9\]+', style = "bold" }] のように書きます。既定は [style code: \[\]] です。 |
+| [code: based-on] | 引き継ぐ段落スタイルの名前です。[code: body] には書けません。既定は [code: "body"] です。 |
+| [code: font] | 書体の役割の名前です。 |
+| [code: size] | 文字の大きさです。本文の文字の大きさまでにします。 |
+| [code: indent] | すべての行の始まりの字下げです。既定は [code: "0zw"] です。 |
+| [code: first-line-indent] | 最初の行に [code: indent] へ加える字下げです。負の値はぶら下げになります。[code: indent] との和は 0 以上にします。既定は [code: "0zw"] です。 |
+| [code: line-breaks] | [code: "keep"] にすると、段落の中の改行を行の区切りにします。既定は [code: "join"] です。 |
+| [code: space-between] | 同じ段落スタイルの段落が続くときに、あいだに空ける行の数です。既定は [code: 0] です。 |
+| [code: aki-set] | 字間の空きを決めるアキ量のセットの名前です。[code: \[aki-sets.名前\]] で定義したものか、組み込みのセットを書きます。書かなければ [code: body] と同じセットです。 |
+| [code: regex-styles] | 正規表現に一致した文字に文字スタイルを当てる組の配列です。[code: { pattern = '\[0-9\]+', style = "bold" }] のように書きます。既定は [code: \[\]] です。 |
 
-段落スタイルには、文字スタイルと同じ [style code: kerning]、[style code: tracking]、[style code: proportional-metrics]、[style code: baseline-shift] も書けます。
-[style code: \[paragraph-styles.body\]] に書くと、本の全体の既定になります。
-[style code: aki-set] は [style code: body] から引き継ぐので、[style code: body] に書けば本の全体が変わります。
-[style code: body] で書かなければ、組み込みのセット [style code: gyomatsu-yakumono-hankaku] になります。
+段落スタイルには、文字スタイルと同じ [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift] も書けます。
+[code: \[paragraph-styles.body\]] に書くと、本の全体の既定になります。
+[code: aki-set] は [code: body] から引き継ぐので、[code: body] に書けば本の全体が変わります。
+[code: body] で書かなければ、組み込みのセット [code: gyomatsu-yakumono-hankaku] になります。
 
-[style code: regex-styles] の組は、[style code: pattern]（正規表現）と [style code: style]（文字スタイルの名前）を持ちます。
+[code: regex-styles] の組は、[code: pattern]（正規表現）と [code: style]（文字スタイルの名前）を持ちます。
 同じ文字に二つの組が一致したときは、後の組が勝ちます。
 原稿で付けた文字スタイルは、正規表現スタイルより優先されます。
-正規表現は [style code: '…'] で囲むと、[style code: \\] をそのまま書けます。
-後方参照、[style code: \\p{Han}] のような文字の種類の指定、長さの決まらない後読みは使えません。
+正規表現は [code: '…'] で囲むと、[code: \\] をそのまま書けます。
+後方参照、[code: \\p{Han}] のような文字の種類の指定、長さの決まらない後読みは使えません。
 
 組み込みの段落スタイルの値は次のとおりです。
 
-- [style code: body]：本文です。ほかの段落スタイルの既定の引き継ぎ先です。
-- [style code: verse]：韻文です。[style code: line-breaks = "keep"]、[style code: space-between = 1]、[style code: indent = "2zw"]、[style code: first-line-indent = "-2zw"] です。
-- [style code: caption]：図版のキャプションです。キャプションには [style code: font] と [style code: size] だけが効きます。
-- [style code: sidenote]：傍注の本文です。傍注には [style code: font] と [style code: size] だけが効きます。
+- [code: body]：本文です。ほかの段落スタイルの既定の引き継ぎ先です。
+- [code: verse]：韻文です。[code: line-breaks = "keep"]、[code: space-between = 1]、[code: indent = "2zw"]、[code: first-line-indent = "-2zw"] です。
+- [code: caption]：図版のキャプションです。キャプションには [code: font] と [code: size] だけが効きます。
+- [code: sidenote]：傍注の本文です。傍注には [code: font] と [code: size] だけが効きます。
+- [code: code]：コードブロックです。[code: font = "code"]、[code: padding = "0.5zw"] です。
 
-@nonumber
-## [style code: \[headings.階層\]]
-
-見出しの体裁を、階層（[style code: 1]、[style code: 2]、[style code: 3]）ごとに書きます。
-
-| キー | 意味 |
-|:---|:---|
-| [style code: font] | 書体の役割の名前です。書かなければ本文の書体です。 |
-| [style code: size] | 文字の大きさです。書かなければ本文の大きさです。 |
-| [style code: number] | 番号の書式です。[style code: "第{n}章"]、[style code: "{1}.{n}"] のように書きます。省くと番号を組みません。 |
-| [style code: page-break] | [style code: "recto"] にすると、その見出しを奇数ページから始めます。既定は [style code: "any"] です。 |
-
-柱に出す見出しは、ここではなく [style code: \[masters.名前\]] の [style code: running-head] で決めます。
-
-@nonumber
-## [style code: \[composition\]]
-
-行の分け方と、和文の組み方です。
-[style code: kenten] のほかは、PDF でだけ効きます。
+段落スタイル [code: code] に書けるキーは、次の四つだけです。
+[code: based-on] は書けず、ほかの段落スタイルの [code: based-on] にも書けません。
+原稿の [code: @style code] もエラーです。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [style code: kinsoku] | [style code: "strict"] | 禁則の強さです。[style code: "loose"] にすると、小書きの仮名と長音記号の行頭を許します。 |
-| [style code: hanging-punctuation] | [style code: false] | [style code: true] にすると、行末の句読点のぶら下げを許します。 |
-| [style code: kenten] | [style code: "sesame"] | 圏点の形の既定です。値は [style code: \[kenten: ...\]] の [style code: shape] と同じです（付録A）。今の版では HTML と EPUB でだけ効きます。 |
-| [style code: pretolerance] | [style code: 100] | 欧文の段落を、ハイフンを入れずに行に分けるときの、語間の伸び縮みの許容度です。 |
-| [style code: tolerance] | [style code: 200] | ハイフンを入れて行に分けるときの許容度です。 |
-| [style code: emergency-stretch] | [style code: "0pt"] | どうしても行に分けられないときに、最後に足す語間の伸びです。 |
-| [style code: protrusion] | [style code: false] | [style code: true] にすると、行末と行頭の欧文のハイフンや句読点を、版面の外にわずかに出して、行の端をそろえて見せます。 |
-| [style code: expansion] | なし | 欧文の字の幅をわずかに伸び縮みさせて、語間のむらを減らします。[style code: { limit = 20, step = 5 }] のように、限度と刻みを千分率で書きます（20 は 2%）。 |
-| [style code: explicit-hyphen-penalty] | [style code: 50] | 欧文の語に書かれたハイフンやダッシュの後ろで行を分けるときの、避けたさの度合いです。-9999 から 10000 までで、10000 にするとそこでは分けません。 |
+| [code: font] | [code: "code"] | 書体の役割の名前です。 |
+| [code: size] | 本文の大きさ | 文字の大きさです。本文の文字の大きさまでにします。 |
+| [code: background] | なし | 背景の色の名前です。[code: \[color.swatches\]] で付けた名前を書きます。書かなければ背景を塗りません。 |
+| [code: padding] | [code: "0.5zw"] | 背景の内側の余白です。[code: zw] はコードの文字の大きさを一字とします。上下と左右に同じ量を取ります。 |
+
+コードブロックは、行と上下の余白を収める行数を占め、その中の中央に組みます。
+後の本文は、行の格子からずれません。
+[code: background] と [code: padding] は、[code: code] のほかの段落スタイルには書けません。
 
 @nonumber
-## [style code: \[composition.ruby\]]
+## [code: \[headings.階層\]]
+
+見出しの体裁を、階層（[code: 1]、[code: 2]、[code: 3]）ごとに書きます。
+
+| キー | 意味 |
+|:---|:---|
+| [code: font] | 書体の役割の名前です。書かなければ本文の書体です。 |
+| [code: size] | 文字の大きさです。書かなければ本文の大きさです。 |
+| [code: number] | 番号の書式です。[code: "第{n}章"]、[code: "{1}.{n}"] のように書きます。省くと番号を組みません。 |
+| [code: page-break] | [code: "recto"] にすると、その見出しを奇数ページから始めます。既定は [code: "any"] です。 |
+
+柱に出す見出しは、ここではなく [code: \[masters.名前\]] の [code: running-head] で決めます。
+
+@nonumber
+## [code: \[composition\]]
+
+行の分け方と、和文の組み方です。
+[code: kenten] のほかは、PDF でだけ効きます。
+
+| キー | 既定 | 意味 |
+|:---|:---|:---|
+| [code: kinsoku] | [code: "strict"] | 禁則の強さです。[code: "loose"] にすると、小書きの仮名と長音記号の行頭を許します。 |
+| [code: hanging-punctuation] | [code: false] | [code: true] にすると、行末の句読点のぶら下げを許します。 |
+| [code: kenten] | [code: "sesame"] | 圏点の形の既定です。値は [code: \[kenten: ...\]] の [code: shape] と同じです（付録A）。今の版では HTML と EPUB でだけ効きます。 |
+| [code: pretolerance] | [code: 100] | 欧文の段落を、ハイフンを入れずに行に分けるときの、語間の伸び縮みの許容度です。 |
+| [code: tolerance] | [code: 200] | ハイフンを入れて行に分けるときの許容度です。 |
+| [code: emergency-stretch] | [code: "0pt"] | どうしても行に分けられないときに、最後に足す語間の伸びです。 |
+| [code: protrusion] | [code: false] | [code: true] にすると、行末と行頭の欧文のハイフンや句読点を、版面の外にわずかに出して、行の端をそろえて見せます。 |
+| [code: expansion] | なし | 欧文の字の幅をわずかに伸び縮みさせて、語間のむらを減らします。[code: { limit = 20, step = 5 }] のように、限度と刻みを千分率で書きます（20 は 2%）。 |
+| [code: explicit-hyphen-penalty] | [code: 50] | 欧文の語に書かれたハイフンやダッシュの後ろで行を分けるときの、避けたさの度合いです。-9999 から 10000 までで、10000 にするとそこでは分けません。 |
+
+@nonumber
+## [code: \[composition.ruby\]]
 
 ルビの配置です。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [style code: mono-align] | [style code: "center"] | モノルビの読みが親文字より短いときの位置です。[style code: "center"]（中付き）か [style code: "start"]（肩付き）です。 |
-| [style code: group-align] | [style code: "1:2:1"] | グループルビの読みが親文字より短いときの配置です。[style code: "1:2:1"]、[style code: "0:1:0"]、[style code: "center"]、[style code: "start"] から選びます。 |
-| [style code: base-spacing] | [style code: "1:2:1"] | 読みが親文字より長いときの、親文字の字間の空け方です。[style code: "1:2:1"]、[style code: "0:1:0"]、[style code: "center"] から選びます。 |
-| [style code: overhang] | [style code: "0.5zw"] | 読みを隣の文字にかけてよい量の上限です。 |
-| [style code: overhang-onto] | [style code: "kana"] | [style code: "kana"] は仮名にだけかけ、[style code: "none"] はかけません。 |
+| [code: mono-align] | [code: "center"] | モノルビの読みが親文字より短いときの位置です。[code: "center"]（中付き）か [code: "start"]（肩付き）です。 |
+| [code: group-align] | [code: "1:2:1"] | グループルビの読みが親文字より短いときの配置です。[code: "1:2:1"]、[code: "0:1:0"]、[code: "center"]、[code: "start"] から選びます。 |
+| [code: base-spacing] | [code: "1:2:1"] | 読みが親文字より長いときの、親文字の字間の空け方です。[code: "1:2:1"]、[code: "0:1:0"]、[code: "center"] から選びます。 |
+| [code: overhang] | [code: "0.5zw"] | 読みを隣の文字にかけてよい量の上限です。 |
+| [code: overhang-onto] | [code: "kana"] | [code: "kana"] は仮名にだけかけ、[code: "none"] はかけません。 |
 
-[style code: "1:2:1"] は、字のあいだに等しい空きを入れ、両端にその半分を置きます。
-[style code: "0:1:0"] は、最初と最後の字を両端にそろえ、残りを字のあいだに等しく配ります。
-[style code: "center"] は詰めて中央に、[style code: "start"] は詰めて始まりの側に置きます。
+[code: "1:2:1"] は、字のあいだに等しい空きを入れ、両端にその半分を置きます。
+[code: "0:1:0"] は、最初と最後の字を両端にそろえ、残りを字のあいだに等しく配ります。
+[code: "center"] は詰めて中央に、[code: "start"] は詰めて始まりの側に置きます。
 
 @nonumber
-## [style code: \[numbers\]]
+## [code: \[numbers\]]
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [style code: vertical] | [style code: "kanji"] | 縦組みでの [style code: \[number-text ...\]] の表記です。[style code: "kanji"]（十）、[style code: "kanji-digits"]（一〇）、[style code: "tcy"]（縦中横の 10）から選びます。 |
+| [code: vertical] | [code: "kanji"] | 縦組みでの [code: \[number-text ...\]] の表記です。[code: "kanji"]（十）、[code: "kanji-digits"]（一〇）、[code: "tcy"]（縦中横の 10）から選びます。 |
 
 @nonumber
-## [style code: \[notes\]]
+## [code: \[notes\]]
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [style code: placement] | [style code: "page-foot"] | 脚注の位置です。[style code: "page-foot"]（ページの下）か [style code: "chapter-end"]（章の終わり）です。 |
+| [code: placement] | [code: "page-foot"] | 脚注の位置です。[code: "page-foot"]（ページの下）か [code: "chapter-end"]（章の終わり）です。 |
 
 @nonumber
-## [style code: \[sidenotes\]]
+## [code: \[sidenotes\]]
 
 傍注欄です。
 傍注を使う横組みの本で、PDF を作るには必須です。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [style code: width] | （必須） | 傍注欄の幅です。 |
-| [style code: gap] | （必須） | 版面と傍注欄のあいだの空きです。 |
-| [style code: marker] | [style code: "number"] | 本文の側の印です。[style code: "number"]（番号）、[style code: "symbol"]（※）、[style code: "none"]（なし）から選びます。 |
-| [style code: side] | [style code: "outside"] | 傍注欄を置く側です。今は [style code: "outside"]（小口の側）だけを書けます。 |
+| [code: width] | （必須） | 傍注欄の幅です。 |
+| [code: gap] | （必須） | 版面と傍注欄のあいだの空きです。 |
+| [code: marker] | [code: "number"] | 本文の側の印です。[code: "number"]（番号）、[code: "symbol"]（※）、[code: "none"]（なし）から選びます。 |
+| [code: side] | [code: "outside"] | 傍注欄を置く側です。今は [code: "outside"]（小口の側）だけを書けます。 |
 
 @nonumber
-## [style code: \[figures\]]
+## [code: \[figures\]]
 
 | キー | 意味 |
 |:---|:---|
-| [style code: number] | 図番号の書式です。既定は [style code: "図{chapter}-{n}"] で、「図2-1」のように組みます。 |
-| [style code: wrap-gap] | 回り込ませた図版と本文のあいだの空きです。既定は [style code: "1zw"] です。 |
+| [code: number] | 図番号の書式です。既定は [code: "図{chapter}-{n}"] で、「図2-1」のように組みます。 |
+| [code: wrap-gap] | 回り込ませた図版と本文のあいだの空きです。既定は [code: "1zw"] です。 |
 
 @nonumber
-## [style code: \[toc\]]
+## [code: \[toc\]]
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [style code: leader] | [style code: "dots"] | PDF の目次のリーダーです。[style code: "dots"]（点線）か [style code: "none"]（なし）です。 |
+| [code: leader] | [code: "dots"] | PDF の目次のリーダーです。[code: "dots"]（点線）か [code: "none"]（なし）です。 |
 
 @nonumber
-## [style code: \[lists\]]
+## [code: \[lists\]]
 
 箇条書きの印と、番号付きのリストの番号の書式です。
 PDF、HTML、EPUB、プレーンテキストのどれにも効きます。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: bullets] | 箇条書きの印の配列です。一段目のリストに最初の要素を、二段目に二つ目の要素を使い、入れ子が配列より深ければ最後の要素を使い続けます。既定は [style code: \["・"\]] です。 |
-| [style code: numbers] | 番号の書式の配列です。使い方は [style code: bullets] と同じです。書式には、番号の差し込みをちょうど一つ書きます。書かなければ、組み方向で決まる書式になります（下の説明）。 |
-| [style code: gap] | 印と項目の本文のあいだの空きです。書かなければ、印の最後の文字から決まります。 |
+| [code: bullets] | 箇条書きの印の配列です。一段目のリストに最初の要素を、二段目に二つ目の要素を使い、入れ子が配列より深ければ最後の要素を使い続けます。既定は [code: \["・"\]] です。 |
+| [code: numbers] | 番号の書式の配列です。使い方は [code: bullets] と同じです。書式には、番号の差し込みをちょうど一つ書きます。書かなければ、組み方向で決まる書式になります（下の説明）。 |
+| [code: gap] | 印と項目の本文のあいだの空きです。書かなければ、印の最後の文字から決まります。 |
 
-[style code: numbers] を書かなければ、横組みの本では [style code: 1.]、縦組みの本では [style code: 一、] の形になります。
+[code: numbers] を書かなければ、横組みの本では [code: 1.]、縦組みの本では [code: 一、] の形になります。
 番号の差し込みは次のとおりです。
-差し込みでない波括弧は、[style code: {{] と [style code: }}] のように重ねて書きます。
+差し込みでない波括弧は、[code: {{] と [code: }}] のように重ねて書きます。
 
 | 差し込み | 番号の表し方 |
 |:---|:---|
-| [style code: {n}] | 本の数の表記（横組みでは算用数字、縦組みでは [style code: \[numbers\]] の表記）です。 |
-| [style code: {1}] | 算用数字です。 |
-| [style code: {一}] | 漢数字です。 |
-| [style code: {①}] | 丸数字です。50 までです。 |
-| [style code: {a}]、[style code: {A}] | ラテン文字の小文字と大文字です。 |
-| [style code: {i}]、[style code: {I}] | ローマ数字の小文字と大文字です。3999 までです。 |
-| [style code: {ア}]、[style code: {イ}] | 片仮名のアイウエオ順（46 まで）とイロハ順（47 まで）です。 |
+| [code: {n}] | 本の数の表記（横組みでは算用数字、縦組みでは [code: \[numbers\]] の表記）です。 |
+| [code: {1}] | 算用数字です。 |
+| [code: {一}] | 漢数字です。 |
+| [code: {①}] | 丸数字です。50 までです。 |
+| [code: {a}]、[code: {A}] | ラテン文字の小文字と大文字です。 |
+| [code: {i}]、[code: {I}] | ローマ数字の小文字と大文字です。3999 までです。 |
+| [code: {ア}]、[code: {イ}] | 片仮名のアイウエオ順（46 まで）とイロハ順（47 まで）です。 |
 
 @nonumber
-## [style code: \[aki-sets.名前\]]
+## [code: \[aki-sets.名前\]]
 
 和文の字間の空き（アキ）の量を、文字の組み合わせごとに決めるセットです。
 InDesign の文字組みアキ量設定に当たります。
-段落スタイルの [style code: aki-set] で選びます。
+段落スタイルの [code: aki-set] で選びます。
 PDF でだけ効きます。
 
 組み込みのセットは二つあります。
-[style code: gyomatsu-yakumono-hankaku]（行末約物半角）が既定で、和欧間は四分、括弧と句読点は二分の空きを持ち、行末の括弧と句読点は半角にします。
-[style code: gyomatsu-yakumono-zenkaku]（行末約物全角）は、行末の括弧と句読点の後ろにも二分を残します。
+[code: gyomatsu-yakumono-hankaku]（行末約物半角）が既定で、和欧間は四分、括弧と句読点は二分の空きを持ち、行末の括弧と句読点は半角にします。
+[code: gyomatsu-yakumono-zenkaku]（行末約物全角）は、行末の括弧と句読点の後ろにも二分を残します。
 組み込みのセットと同じ名前のセットは定義できません。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: based-on] | 基準にするセットの名前です。書かなければ [style code: gyomatsu-yakumono-hankaku] です。 |
-| [style code: rules] | 基準のセットに足す規則の配列です。後に書いた規則が、同じ組み合わせの前の規則を上書きします。既定は [style code: \[\]] です。 |
+| [code: based-on] | 基準にするセットの名前です。書かなければ [code: gyomatsu-yakumono-hankaku] です。 |
+| [code: rules] | 基準のセットに足す規則の配列です。後に書いた規則が、同じ組み合わせの前の規則を上書きします。既定は [code: \[\]] です。 |
 
 規則には、次のキーを書きます。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: before] | 前の文字のクラスです（必須）。クラスの名前か、その配列で書きます。 |
-| [style code: after] | 後ろの文字のクラスです（必須）。書き方は [style code: before] と同じです。 |
-| [style code: optimum] | 空きの最適の量です（必須）。 |
-| [style code: minimum] | 空きの最小の量です。省くと [style code: optimum] と同じです。 |
-| [style code: maximum] | 空きの最大の量です。省くと [style code: optimum] と同じです。 |
+| [code: before] | 前の文字のクラスです（必須）。クラスの名前か、その配列で書きます。 |
+| [code: after] | 後ろの文字のクラスです（必須）。書き方は [code: before] と同じです。 |
+| [code: optimum] | 空きの最適の量です（必須）。 |
+| [code: minimum] | 空きの最小の量です。省くと [code: optimum] と同じです。 |
+| [code: maximum] | 空きの最大の量です。省くと [code: optimum] と同じです。 |
 
-量は、[style code: "四分"] のような名前（[style code: ベタ]、[style code: 全角]、[style code: 二分]、[style code: 三分]、[style code: 四分]、[style code: 五分]、[style code: 六分]、[style code: 八分]、[style code: 二分四分]）か、[style code: "0.25zw"] か、[style code: "25%"] で書きます。
-[style code: minimum]、[style code: optimum]、[style code: maximum] の順に小さくない値にします。
+量は、[code: "四分"] のような名前（[code: ベタ]、[code: 全角]、[code: 二分]、[code: 三分]、[code: 四分]、[code: 五分]、[code: 六分]、[code: 八分]、[code: 二分四分]）か、[code: "0.25zw"] か、[code: "25%"] で書きます。
+[code: minimum]、[code: optimum]、[code: maximum] の順に小さくない値にします。
 
 クラスの名前は次のとおりです。
 
-- [style code: opening]：始め括弧類です。
-- [style code: closing]：終わり括弧類です。
-- [style code: hyphen]：ハイフン類です。
-- [style code: dividing]：区切り約物（？や！）です。
-- [style code: middle-dot]：中点類です。
-- [style code: full-stop]：句点類です。
-- [style code: comma]：読点類です。
-- [style code: inseparable]：分離禁止文字（…や‥）です。
-- [style code: iteration]：繰返し記号です。
-- [style code: prolonged-sound]：長音記号です。
-- [style code: small-kana]：小書きの仮名です。
-- [style code: ideographic-space]：全角の空白です。
-- [style code: kana]：平仮名と片仮名です。
-- [style code: ideograph]：漢字などです。
-- [style code: western]：欧文です。
-- [style code: japanese]：欧文のほかのすべてです。
-- [style code: paragraph-start]、[style code: line-start]：段落の最初と、行頭です。[style code: before] にだけ書けます。
-- [style code: line-end]：行末です。[style code: after] にだけ書けます。
+- [code: opening]：始め括弧類です。
+- [code: closing]：終わり括弧類です。
+- [code: hyphen]：ハイフン類です。
+- [code: dividing]：区切り約物（？や！）です。
+- [code: middle-dot]：中点類です。
+- [code: full-stop]：句点類です。
+- [code: comma]：読点類です。
+- [code: inseparable]：分離禁止文字（…や‥）です。
+- [code: iteration]：繰返し記号です。
+- [code: prolonged-sound]：長音記号です。
+- [code: small-kana]：小書きの仮名です。
+- [code: ideographic-space]：全角の空白です。
+- [code: kana]：平仮名と片仮名です。
+- [code: ideograph]：漢字などです。
+- [code: western]：欧文です。
+- [code: japanese]：欧文のほかのすべてです。
+- [code: paragraph-start]、[code: line-start]：段落の最初と、行頭です。[code: before] にだけ書けます。
+- [code: line-end]：行末です。[code: after] にだけ書けます。
 
 @nonumber
-## [style code: \[color\]] と [style code: \[color.swatches\]]
+## [code: \[color\]] と [code: \[color.swatches\]]
 
 | キー | 意味 |
 |:---|:---|
-| [style code: intent] | 印刷所から指定された印刷の色の条件のファイル（ICC プロファイル）です。書けば PDF に埋め込みます。 |
-| [style code: \[color.swatches\]] | 色に名前を付けます。[style code: accent = { cmyk = \[0, 80, 100, 0\] }] のように、C、M、Y、K の網点の割合を 0 から 100 の整数で書きます。 |
+| [code: intent] | 印刷所から指定された印刷の色の条件のファイル（ICC プロファイル）です。書けば PDF に埋め込みます。 |
+| [code: \[color.swatches\]] | 色に名前を付けます。[code: accent = { cmyk = \[0, 80, 100, 0\] }] のように、C、M、Y、K の網点の割合を 0 から 100 の整数で書きます。 |
 
 @nonumber
-## [style code: \[masters.名前\]]
+## [code: \[masters.名前\]]
 
 柱とノンブルを置くマスターページです。
 PDF でだけ効きます。
-章は [style code: body] という名前のマスターページを使い、[style code: manifest.toml] の章の項目の [style code: master] で別のものを選べます。
+章は [code: body] という名前のマスターページを使い、[code: manifest.toml] の章の項目の [code: master] で別のものを選べます。
 
 | キー | 意味 |
 |:---|:---|
-| [style code: running-head] | 柱です。[style code: { position = "top-outside", content = "heading.1.short" }] のように、位置と内容を書きます。左右のページで変えるときは、[style code: content] の代わりに [style code: even]（偶数ページ）と [style code: odd]（奇数ページ）の両方を書きます。書かなければ柱を組みません。 |
-| [style code: folio] | ノンブルです。[style code: { position = "bottom-outside", format = "{n}" }] のように、位置と書式を書きます。書かなければノンブルを組みません。 |
+| [code: running-head] | 柱です。[code: { position = "top-outside", content = "heading.1.short" }] のように、位置と内容を書きます。左右のページで変えるときは、[code: content] の代わりに [code: even]（偶数ページ）と [code: odd]（奇数ページ）の両方を書きます。書かなければ柱を組みません。 |
+| [code: folio] | ノンブルです。[code: { position = "bottom-outside", format = "{n}" }] のように、位置と書式を書きます。書かなければノンブルを組みません。 |
 
-位置には、[style code: "top-outside"]、[style code: "top-center"]、[style code: "top-inside"]、[style code: "bottom-outside"]、[style code: "bottom-center"]、[style code: "bottom-inside"] のどれかを書きます。
-[style code: top] は天、[style code: bottom] は地、[style code: outside] は小口の側、[style code: inside] はノドの側、[style code: center] は中央です。
+位置には、[code: "top-outside"]、[code: "top-center"]、[code: "top-inside"]、[code: "bottom-outside"]、[code: "bottom-center"]、[code: "bottom-inside"] のどれかを書きます。
+[code: top] は天、[code: bottom] は地、[code: outside] は小口の側、[code: inside] はノドの側、[code: center] は中央です。
 
 柱の内容には、次のどれかを書きます。
-[style code: <階層>] には見出しの階層の数を書きます。
+[code: <階層>] には見出しの階層の数を書きます。
 
-- [style code: "heading.<階層>.short"]：その階層の見出しの題です。[style code: @toc-title] があれば、その短い題です。ページの中で始まった最初の見出しを使い、なければ前から続く見出しを使います。
-- [style code: "heading.<階層>.numbered"]：番号と題を並べたものです（「第3章　原稿の記法」など）。
-- [style code: "heading.<階層>.short.last"]、[style code: "heading.<階層>.numbered.last"]：ページの中で始まった最後の見出しを使います。
-- [style code: "title"]：書名です。
-- [style code: "none"]：柱を出しません。
+- [code: "heading.<階層>.short"]：その階層の見出しの題です。[code: @toc-title] があれば、その短い題です。ページの中で始まった最初の見出しを使い、なければ前から続く見出しを使います。
+- [code: "heading.<階層>.numbered"]：番号と題を並べたものです（「第3章　原稿の記法」など）。
+- [code: "heading.<階層>.short.last"]、[code: "heading.<階層>.numbered.last"]：ページの中で始まった最後の見出しを使います。
+- [code: "title"]：書名です。
+- [code: "none"]：柱を出しません。
 
 章の始まりのページと白ページには、柱を出しません。

@@ -7,30 +7,30 @@
 
 ## エラーと警告の読み方
 
-モノルビの区切りの数を誤ると、次のエラーが出ます。
+コマンドの名前を誤ると、次のエラーが出ます。
 
 ```
-chapters/01.gm:3:1: error[G0215]: モノルビの対象と読みのセグメントの数が一致しません
-  | [ruby: 東/京|とう]
+chapters/01.gm:3:2: error[G0222]: 未知のコマンドです: rubi
+  | [rubi: 東京|とうきょう]
 ```
 
 一行目は、左から次のように読みます。
 
-- [style code: chapters/01.gm:3:1]：ファイルと、行と、その行の何文字めかです。
-- [style code: error]：重大度です。[style code: error]（エラー）か [style code: warning]（警告）です。
-- [style code: G0215]：エラーと警告のコードです。版が変わっても同じ誤りには同じコードが付くので、検索や記録に使えます。コードごとの意味と直し方は、[ref-title app-errors]（[ref-page app-errors] ページ）にまとめています。
+- [code: chapters/01.gm:3:2]：ファイルと、行と、その行の何文字めかです。
+- [code: error]：重大度です。[code: error]（エラー）か [code: warning]（警告）です。
+- [code: G0222]：エラーと警告のコードです。版が変わっても同じ誤りには同じコードが付くので、検索や記録に使えます。コードごとの意味と直し方は、[ref-title app-errors]（[ref-page app-errors] ページ）にまとめています。
 - その後が、誤りの説明です。
 
 二行目は、誤りのある行の中身です。
-この例では、親文字を [style code: 東/京] の二つに区切ったのに、読みを [style code: とう] の一つしか書いていません。
-[style code: \[ruby: 東/京\|とう/きょう\]] と直せば、エラーは消えます。
+この例では、ルビのコマンドの名前 [code: ruby] を [code: rubi] と書いています。
+[code: \[ruby: 東京\|とうきょう\]] と直せば、エラーは消えます。
 
-エラーが一つでもあると、[style code: golem build] はその形式の出力を書きません。
+エラーが一つでもあると、[code: golem build] はその形式の出力を書きません。
 警告だけなら出力を書きます。
 スクリプトから成否を確かめるときは、コマンドの終了コードを見ます。
 エラーがあれば 1、警告だけなら 0、コマンドの使い方を誤ったときは 2 です。
 
-[style code: --format json] を付けると、エラーと警告を、プログラムで読みやすい JSON の形式で出力します。
+[code: --format json] を付けると、エラーと警告を、プログラムで読みやすい JSON の形式で出力します。
 ほかのツールに読ませるときに使います。
 
 ```sh
@@ -39,40 +39,36 @@ golem check --format json
 
 ## エラーのコードを調べる
 
-[style code: golem explain] にコードを渡すと、そのコードの意味、主な原因、直し方を表示します。
+[code: golem explain] にコードを渡すと、そのコードの意味、主な原因、直し方を表示します。
 コードは小文字で書いてもかまいません。
 
 ```sh
-golem explain G0215
+golem explain G0222
 ```
 
 コードを省くと、すべてのコードを題とともに一行ずつ表示します。
 使わなくなったコードには、題の後に「（廃止）」が付きます。
 
-エラーや警告を出したときは、最後に次の一行を加えて、このコマンドを案内します。
+エラーや警告を出したときは、最後に「[code: コードの説明は golem explain <コード> で表示できます（例: golem explain G0222）]」の一行を加えて、このコマンドを案内します。
 
-```
-コードの説明は golem explain <コード> で表示できます（例: golem explain G0215）
-```
-
-同じ説明は、Golem のリポジトリの [style code: docs/diagnostics.md] でも読めます。
+同じ説明は、Golem のリポジトリの [code: docs/diagnostics.md] でも読めます。
 プラグインが出すエラーと警告のコードは、プラグインの文書を参照してください。
 
 ## 出力を作らずに検査する
 
-[style code: golem check] は、PDF や HTML を書かずに、原稿と設定を検査します。
+[code: golem check] は、PDF や HTML を書かずに、原稿と設定を検査します。
 
 ```sh
 golem check
 ```
 
-記法の誤り、存在しないラベルへの参照、[style code: style.toml] の誤り、書体のファイルの有無などを確かめます。
+記法の誤り、存在しないラベルへの参照、[code: style.toml] の誤り、書体のファイルの有無などを確かめます。
 PDF を作る設定なら、版面が判型に収まるか、段落スタイルの字下げが行を残すか、本文の書体を設定してあるかも確かめます。
 組むよりも早く終わるので、原稿を書いている途中の確認に向いています。
 
 ## 誤りやすい書き方を探す（lint）
 
-[style code: golem lint][index reading=りんと: lint] は、記法としては正しくても、ほぼ確実に誤りである書き方を探します。
+[code: golem lint][index reading=りんと: lint] は、記法としては正しくても、ほぼ確実に誤りである書き方を探します。
 
 ```sh
 golem lint
@@ -80,9 +76,9 @@ golem lint
 
 見つけるのは次のものです。
 
-- 段落の中の改行の前後がどちらも欧文の文字である箇所。単語が空白なしにつながってしまいます。改行ひとつで段落を区切る書き方（[style code: paragraph-separator = "line"]）では、段落の区切りの改行は対象になりません。
-- 使われていない [style code: @set] の変数と [style code: @import]。
-- どこからも参照されていない [style code: @label]。
+- 段落の中の改行の前後がどちらも欧文の文字である箇所。単語が空白なしにつながってしまいます。改行ひとつで段落を区切る書き方（[code: paragraph-separator = "line"]）では、段落の区切りの改行は対象になりません。
+- 使われていない [code: @set] の変数と [code: @import]。
+- どこからも参照されていない [code: @label]。
 
 lint の規則は、変えることも止めることもできません。
 誰が見ても誤りと言えるものだけを規則にしているからです。
@@ -91,7 +87,7 @@ lint の規則は、変えることも止めることもできません。
 
 ## 整形
 
-[style code: golem fmt] は、原稿の書き方を整えます。
+[code: golem fmt] は、原稿の書き方を整えます。
 
 ```sh
 golem fmt
@@ -101,24 +97,24 @@ golem fmt
 本文の改行の位置は変えません。
 整形の前と後で、組んだ結果は変わりません。
 
-[style code: golem fmt --check] は、ファイルを書き換えずに、整形が必要なファイルの名前を表示します。
+[code: golem fmt --check] は、ファイルを書き換えずに、整形が必要なファイルの名前を表示します。
 自動の検査（CI）で、整形していない原稿が入っていないかを確かめるのに使います。
 
 @label profiles
 ## 書きかけと出荷
 
-[style code: golem build]、[style code: golem check]、[style code: golem lint] では、[style code: --profile] で、原稿を書きかけとして扱うか、出荷する本として扱うかを選べます。
+[code: golem build]、[code: golem check]、[code: golem lint] では、[code: --profile] で、原稿を書きかけとして扱うか、出荷する本として扱うかを選べます。
 この選択をプロファイルと呼びます。
 
-- [style code: dev]：書きかけの原稿として扱います。既定はこれです。
-- [style code: prod]：出荷する本として扱います。
+- [code: dev]：書きかけの原稿として扱います。既定はこれです。
+- [code: prod]：出荷する本として扱います。
 
-[style code: prod] では、いくつかの警告がエラーになり、出力が止まります。
-たとえば、参照されていないラベルは、[style code: dev] では警告、[style code: prod] ではエラーです。
-校正のためのコメント（[style code: \%%= ... \%%]）は、[style code: dev] では紙面に出て、[style code: prod] に残っていると警告になります。
-書体のファイルが見つからないとき、HTML と EPUB は [style code: dev] では書体を同梱せずに出力し、[style code: prod] ではエラーになります。
+[code: prod] では、いくつかの警告がエラーになり、出力が止まります。
+たとえば、参照されていないラベルは、[code: dev] では警告、[code: prod] ではエラーです。
+校正のためのコメント（[code: \%%= ... \%%]）は、[code: dev] では紙面に出て、[code: prod] に残っていると警告になります。
+書体のファイルが見つからないとき、HTML と EPUB は [code: dev] では書体を同梱せずに出力し、[code: prod] ではエラーになります。
 
-印刷所に渡す PDF や、公開する HTML は、[style code: --profile prod] で組んでください。
+印刷所に渡す PDF や、公開する HTML は、[code: --profile prod] で組んでください。
 
 ## よく出るエラー
 
@@ -127,18 +123,18 @@ golem fmt
 
 | コード | メッセージの例 | 直し方 |
 |---|---|---|
-| G0121 | \[ の後にはコマンド名か = が必要です | 本文の [style code: \[] を [style code: \\\[] と書きます |
-| G0215 | モノルビの対象と読みのセグメントの数が一致しません | 親文字と読みの [style code: /] の数をそろえます |
-| G0220 | 索引には reading が必要です | [style code: \[index reading=読み: 語\]] と書きます |
+| G0121 | \[ の後にはコマンド名か = が必要です | 本文の [code: \[] を [code: \\\[] と書きます |
+| G0215 | モノルビの対象と読みのセグメントの数が一致しません | 親文字と読みの [code: /] の数をそろえます |
+| G0220 | 索引には reading が必要です | [code: \[index reading=読み: 語\]] と書きます |
 | G0222 | 未知のコマンドです | コマンドの名前の綴りを確かめます |
-| G0247 | style.toml にない段落スタイルです | [style code: style.toml] に段落スタイルを定義します |
-| G0302 | ファイルがありません | 章や [style code: @import] のパスの綴りとファイルの置き場所を確かめます |
-| G0306 | （[style code: style.toml] の誤り） | メッセージに示されたキーや値を直します |
-| G0316 | manifest.toml がありません | プロジェクトのディレクトリで [style code: golem] を実行します |
-| G0403 | 存在しないラベルへの参照です | [style code: @label] の名前と参照の名前をそろえます |
+| G0247 | style.toml にない段落スタイルです | [code: style.toml] に段落スタイルを定義します |
+| G0302 | ファイルがありません | 章や [code: @import] のパスの綴りとファイルの置き場所を確かめます |
+| G0306 | （[code: style.toml] の誤り） | メッセージに示されたキーや値を直します |
+| G0316 | manifest.toml がありません | プロジェクトのディレクトリで [code: golem] を実行します |
+| G0403 | 存在しないラベルへの参照です | [code: @label] の名前と参照の名前をそろえます |
 | G0501 | 改行の前後が欧文なので、単語が空白なしにつながります | 欧文の語句を一行に書きます |
-| G0504 | 参照されていないラベルです | 参照するか、[style code: @label] を消します |
-| G0701 | 版面がページからはみ出しています | 字数、行数、[style code: position] を見直します |
-| G0702 | 日本式のトンボには塗り足しが要ります | [style code: \[page\]] に [style code: bleed] を書きます |
-| G0802 | フォントのファイルがありません | [style code: style.toml] に書いた書体のファイルを置きます |
-| G0807 | style.toml に本文のフォントがありません | [style code: style.toml] に [style code: \[fonts.body\]] を書きます |
+| G0504 | 参照されていないラベルです | 参照するか、[code: @label] を消します |
+| G0701 | 版面がページからはみ出しています | 字数、行数、[code: position] を見直します |
+| G0702 | 日本式のトンボには塗り足しが要ります | [code: \[page\]] に [code: bleed] を書きます |
+| G0802 | フォントのファイルがありません | [code: style.toml] に書いた書体のファイルを置きます |
+| G0807 | style.toml に本文のフォントがありません | [code: style.toml] に [code: \[fonts.body\]] を書きます |

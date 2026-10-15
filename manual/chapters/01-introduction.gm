@@ -5,8 +5,8 @@
 組版のソフトウェアでこの作業をすると、同じ原稿から同じ紙面が出てくるかどうかは、操作した人の手元の状態に左右されます。
 
 Golem は、この作業をテキストとコマンドで行う[ruby: 組/版 | くみ/はん]システムです。[index reading=ごーれむ: Golem]
-原稿は [style code: .gm] のファイルに、本の構成は [style code: manifest.toml] に、紙面の体裁は [style code: style.toml] に書きます。
-[style code: golem build] を実行すると、同じ版の Golem は、同じ入力から、いつでも、どの機械でも、中身が一バイトも違わない同じ PDF を作ります。
+原稿は [code: .gm] のファイルに、本の構成は [code: manifest.toml] に、紙面の体裁は [code: style.toml] に書きます。
+[code: golem build] を実行すると、同じ版の Golem は、同じ入力から、いつでも、どの機械でも、中身が一バイトも違わない同じ PDF を作ります。
 
 ## Golem でできること
 
@@ -27,12 +27,12 @@ PDF は、日本語の組版の規則（[ruby: 禁/則 | きん/そく]、ルビ
 ## このマニュアルについて
 
 このマニュアルは、[strong: Golem 自身で組んでいます]。
-リリースに付いている PDF と HTML は、リポジトリの [style code: manual/] にある原稿を [style code: golem build] で組んだものです。
+リリースに付いている PDF と HTML は、リポジトリの [code: manual/] にある原稿を [code: golem build] で組んだものです。
 手元の PDF の紙面が、そのまま Golem の組版の見本になります。
 
 各節では、その節で説明する機能を、その節の中で実際に使っています。
 振り仮名の節には振り仮名が、注の節には注が、表の節には表が組まれています。
-同じ内容を Markdown で書いたものが、リポジトリの [style code: docs/manual.md] にあります。
+同じ内容を Markdown で書いたものが、リポジトリの [code: docs/manual.md] にあります。
 
 はじめて使う場合は、次の第[ref-number first-book]章「[ref-title first-book]」で一冊組んでみてください。
 そのあとは、やりたいことに合わせて、必要な章を引いてください。

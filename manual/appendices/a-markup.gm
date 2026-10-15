@@ -10,7 +10,7 @@
 ## ファイルの決まり
 
 = [strong: 拡張子]
-  原稿のファイルの名前は [style code: .gm] で終えます。
+  原稿のファイルの名前は [code: .gm] で終えます。
 = [strong: 文字コード]
   UTF-8 で保存します。
   UTF-8 は、いまのテキストエディタの多くが標準で使う文字コードです。
@@ -18,18 +18,18 @@
 = [strong: BOM]
   ファイルの先頭に BOM（文字コードを示すために先頭に付ける数バイトの目印）を付けないでください。
   BOM のあるファイルはエラーになります。
-  [style code: golem fmt] で取り除けます。
+  [code: golem fmt] で取り除けます。
 = [strong: 改行]
   改行の文字は LF にします。
   Windows で使われる CRLF の改行を含むファイルはエラーになります。
-  [style code: golem fmt] で LF に直せます。
+  [code: golem fmt] で LF に直せます。
 = [strong: 字下げ]
   行頭の字下げは、半角の空白二つを単位にします。
   タブは使えません。
 = [strong: 空白]
   行末の半角の空白は無視します。
   全角の空白は、どこにあっても本文の文字として残ります。
-  行末などに半角の空白を残したいときは、[style code: \\\ ] のように前にバックスラッシュを置きます。
+  行末などに半角の空白を残したいときは、[code: \\\ ] のように前にバックスラッシュを置きます。
 = [strong: 異体字]
   Golem は文字を置き換えません。
   CJK 互換漢字のような異体字も、書いたとおりに組みます。
@@ -46,42 +46,42 @@
   記号で始まらない行のまとまりです。
   空行までが一つの段落になります。
   段落の中の改行は文字を生まず、前後は空白なしでつながります。
-  [style code: manifest.toml] の [style code: \[source\]] に [style code: paragraph-separator = "line"] と書くと、一行が一つの段落になります（付録B）。
-= [strong: 行末の [style code: \\]]
+  [code: manifest.toml] の [code: \[source\]] に [code: paragraph-separator = "line"] と書くと、一行が一つの段落になります（付録B）。
+= [strong: 行末の [code: \\]]
   段落を分けずに、その位置で行を改めます（強制改行）。
-  [style code: \\] は行の最後の文字にし、次の行に同じ段落の続きを書きます。
+  [code: \\] は行の最後の文字にし、次の行に同じ段落の続きを書きます。
   見出し、表のセル、角括弧の中には書けません。
-= [strong: [style code: # 題]、[style code: ## 題]、[style code: ### 題]]
+= [strong: [code: # 題]、[code: ## 題]、[code: ### 題]]
   見出しです。
-  [style code: #] の数が階層で、三つまで使えます。
-  番号は書かず、[style code: style.toml] の [style code: \[headings\]] の書式で自動で振ります。
-  見出しの中では、[style code: doc] を使う式と相互参照は使えません。
-= [strong: [style code: - 項目]]
+  [code: #] の数が階層で、三つまで使えます。
+  番号は書かず、[code: style.toml] の [code: \[headings\]] の書式で自動で振ります。
+  見出しの中では、[code: doc] を使う式と相互参照は使えません。
+= [strong: [code: - 項目]]
   箇条書きの項目です。
   空白二つで字下げすると入れ子になります。
   項目の中に、字下げした段落やリストを続けられます。
-= [strong: [style code: + 項目]]
+= [strong: [code: + 項目]]
   番号付きのリストの項目です。
   番号は 1 から自動で振ります。
-  途中の番号から始めるときは、最初の項目の直前の行に [style code: @number 4] と書きます。
-= [strong: [style code: = 用語]]
+  途中の番号から始めるときは、最初の項目の直前の行に [code: @number 4] と書きます。
+= [strong: [code: = 用語]]
   定義リストの用語です。
   次の行から空白二つで字下げして説明を書きます。
   説明には段落、リスト、コードブロックを置けます。
-  [style code: =] の行を続けると、それらの用語が一つの説明を共有します。
-  [style code: =:] の行は、直前の用語のまま二つめの説明を始めます。
-= [strong: [style code: \| セル \| セル \|]]
+  [code: =] の行を続けると、それらの用語が一つの説明を共有します。
+  [code: =:] の行は、直前の用語のまま二つめの説明を始めます。
+= [strong: [code: \| セル \| セル \|]]
   表の行です。
-  一行目が見出しの行、二行目が [style code: \|---\|] の形の区切りの行です。
-  区切りの行の [style code: :] で、列を左寄せ（[style code: :---]）、中央（[style code: :---:]）、右寄せ（[style code: ---:]）にします。
-  どの行も [style code: \|] で始めて [style code: \|] で終え、セルの数を見出しの行にそろえます。
-= [strong: [style code: ```]]
+  一行目が見出しの行、二行目が [code: \|---\|] の形の区切りの行です。
+  区切りの行の [code: :] で、列を左寄せ（[code: :---]）、中央（[code: :---:]）、右寄せ（[code: ---:]）にします。
+  どの行も [code: \|] で始めて [code: \|] で終え、セルの数を見出しの行にそろえます。
+= [strong: [code: ```]]
   コードブロックの始まりと終わりの行です。
-  始まりの行に言語の名前（[style code: toml] など）を書くと、HTML で構文に応じて色分けします。
+  始まりの行に言語の名前（[code: toml] など）を書くと、HTML で構文に応じて色分けします。
   中ではコマンド、コメント、エスケープを解釈しません。
-= [strong: [style code: @名前]]
+= [strong: [code: @名前]]
   ブロックコマンドです。
-  行頭の [style code: @] に続けてコマンドの名前を書き、空白で区切って引数を並べます。
+  行頭の [code: @] に続けてコマンドの名前を書き、空白で区切って引数を並べます。
   次の節で一つずつ説明します。
 
 ```
@@ -100,70 +100,70 @@
 @nonumber
 ## ブロックコマンド
 
-ブロックコマンド[index reading=ぶろっくこまんど: ブロックコマンド]は、行頭の [style code: @] で始まる一行の指定です。
+ブロックコマンド[index reading=ぶろっくこまんど: ブロックコマンド]は、行頭の [code: @] で始まる一行の指定です。
 引数の書き方は、段落の中のコマンドと同じです（この付録の「段落の中のコマンド」）。
 
-= [strong: [style code: @set 名前 = 式]]
+= [strong: [code: @set 名前 = 式]]
   変数を定義します。
   式の書き方は、この付録の「式」のとおりです。
   同じファイルで同じ名前を二度定義すると、エラーになります。
-  [style code: doc]、[style code: meta]、[style code: true]、[style code: false]、[style code: nil] は名前に使えません。
-  例：[style code: @set price = 1800]
-= [strong: [style code: @import パス as 名前]]
-  別のファイルの [style code: @set] の変数を、名前を付けて取り込みます。
-  取り込んだ変数は [style code: 名前.変数] で参照します。
-  [style code: as] と名前は省けません。
+  [code: doc]、[code: meta]、[code: true]、[code: false]、[code: nil] は名前に使えません。
+  例：[code: @set price = 1800]
+= [strong: [code: @import パス as 名前]]
+  別のファイルの [code: @set] の変数を、名前を付けて取り込みます。
+  取り込んだ変数は [code: 名前.変数] で参照します。
+  [code: as] と名前は省けません。
   パスはプロジェクトのディレクトリからの相対パスで書きます。
-  例：[style code: @import common/values.gm as values]
-= [strong: [style code: @toc depth=N]]
+  例：[code: @import common/values.gm as values]
+= [strong: [code: @toc depth=N]]
   その位置に目次を組みます。
-  [style code: depth] は目次に載せる見出しの階層で、1 から 3 です。
+  [code: depth] は目次に載せる見出しの階層で、1 から 3 です。
   省くと 2 になります。
   本に一つだけ置けます。
-= [strong: [style code: @index]]
+= [strong: [code: @index]]
   その位置に索引を組みます。
-= [strong: [style code: @bibliography]]
+= [strong: [code: @bibliography]]
   その位置に、引用した文献の一覧を組みます。
-= [strong: [style code: @figure 画像 alt="…"]]
+= [strong: [code: @figure 画像 alt="…"]]
   図版を置きます。
   次の行から空白二つで字下げして、キャプションを書きます。
   キーワードの引数は次のとおりです。
-  - [style code: alt]：代替テキストです。省けません。
-  - [style code: web]：PDF の画像を使うときの、HTML と EPUB のための PNG か JPEG の画像です。PDF の画像では省けません。
-  - [style code: wrap]：[style code: start] か [style code: end] を書くと、図版を版面の端に寄せ、本文を脇に回り込ませます。PDF だけで効きます。
-  - [style code: width]：回り込ませる図版の幅です。[style code: wrap] を書くときは省けません。
-= [strong: [style code: @table src=ファイル]]
+  - [code: alt]：代替テキストです。省けません。
+  - [code: web]：PDF の画像を使うときの、HTML と EPUB のための PNG か JPEG の画像です。PDF の画像では省けません。
+  - [code: wrap]：[code: start] か [code: end] を書くと、図版を版面の端に寄せ、本文を脇に回り込ませます。PDF だけで効きます。
+  - [code: width]：回り込ませる図版の幅です。[code: wrap] を書くときは省けません。
+= [strong: [code: @table src=ファイル]]
   CSV のファイルから表を作ります。
   一行目が見出しの行になります。
   各行のセルの数をそろえます。
-= [strong: [style code: @listing ファイル lines=N-M]]
+= [strong: [code: @listing ファイル lines=N-M]]
   ファイルの中身をコードブロックとして載せます。
-  ファイルは位置引数か [style code: src=] で指定します。
-  [style code: lines] で載せる行の範囲を選べ、省くとファイルの全体を載せます。
-= [strong: [style code: @style 名前]]
+  ファイルは位置引数か [code: src=] で指定します。
+  [code: lines] で載せる行の範囲を選べ、省くとファイルの全体を載せます。
+= [strong: [code: @style 名前]]
   段落に段落スタイルを付けます。
   インデントのない次の行に段落を書くと、その段落一つに付きます。
   次の行から空白二つで字下げして段落を並べると、それらの段落のすべてに付きます。
   字下げした本体には段落だけを置けます。
-= [strong: [style code: @page-break]]
+= [strong: [code: @page-break]]
   次のページから続けます（改ページ）。
-  [style code: @page-break recto] は次の奇数ページから（改丁）、[style code: @page-break verso] は次の偶数ページから続けます。
+  [code: @page-break recto] は次の奇数ページから（改丁）、[code: @page-break verso] は次の偶数ページから続けます。
   リストの項目や図版のキャプションの中には書けません。
-= [strong: [style code: @column-break]]
+= [strong: [code: @column-break]]
   段組みの版面で、次の段から続けます（改段）。
-  一段組みの版面では [style code: @page-break] と同じです。
-= [strong: [style code: @manifest キー=値]]
+  一段組みの版面では [code: @page-break] と同じです。
+= [strong: [code: @manifest キー=値]]
   そのファイルにだけ効く原稿の読み方を書きます。
-  書けるのは [style code: manifest.toml] の [style code: \[source\]] のキー（[style code: paragraph-separator]）だけです。
-  例：[style code: @manifest paragraph-separator=line]
-= [strong: [style code: @style-def 種類 名前 キー=値…]]
+  書けるのは [code: manifest.toml] の [code: \[source\]] のキー（[code: paragraph-separator]）だけです。
+  例：[code: @manifest paragraph-separator=line]
+= [strong: [code: @style-def 種類 名前 キー=値…]]
   そのファイルにだけ効くスタイルを定義します。
-  種類は [style code: paragraph]（段落スタイル）、[style code: character]（文字スタイル）、[style code: regex]（正規表現スタイル）のどれかです。
-  キーは [style code: style.toml] と同じで、値は [style code: 2zw] や [style code: keep] のように引用符なしで書けます。
-  [style code: style.toml] にある名前を書くと、そのファイルの中でだけ、書いたキーが置き換わります。
-  [style code: regex] では、二つ目の語に組を足す段落スタイルの名前を、キーに [style code: pattern] と [style code: style] を書きます。
+  種類は [code: paragraph]（段落スタイル）、[code: character]（文字スタイル）、[code: regex]（正規表現スタイル）のどれかです。
+  キーは [code: style.toml] と同じで、値は [code: 2zw] や [code: keep] のように引用符なしで書けます。
+  [code: style.toml] にある名前を書くと、そのファイルの中でだけ、書いたキーが置き換わります。
+  [code: regex] では、二つ目の語に組を足す段落スタイルの名前を、キーに [code: pattern] と [code: style] を書きます。
 
-[style code: @manifest] と [style code: @style-def] は、ファイルの最初に置きます。
+[code: @manifest] と [code: @style-def] は、ファイルの最初に置きます。
 前に置けるのは、コメントと空行だけです。
 一つのスタイルは一行で定義します。
 
@@ -173,7 +173,7 @@
 @style-def regex body pattern="\\d+" style=bold
 ```
 
-[style code: @figure]、[style code: @table]、[style code: @listing] が指すファイルも、プロジェクトのディレクトリからの相対パスで書きます。
+[code: @figure]、[code: @table]、[code: @listing] が指すファイルも、プロジェクトのディレクトリからの相対パスで書きます。
 絶対パス、URL、プロジェクトの外を指すパスは使えません。
 
 @nonumber
@@ -183,25 +183,25 @@
 対象のブロックの直前の行に書き、あいだに空行を入れません。
 いくつも重ねて書けますが、同じ指定を二度は書けません。
 
-= [strong: [style code: @label 名前]]
+= [strong: [code: @label 名前]]
   ブロックにラベルを付けます。
   相互参照で、この名前を使います。
-  名前には、英小文字、数字、[style code: -]、[style code: _] を使えます。
+  名前には、英小文字、数字、[code: -]、[code: _] を使えます。
   本の全体で同じ名前は一度しか使えません。
   見出し、図版、段落などに付けられます。
-= [strong: [style code: @nonumber]]
+= [strong: [code: @nonumber]]
   見出しに番号を振りません。
   この見出しは番号を数えません。
-= [strong: [style code: @notoc]]
+= [strong: [code: @notoc]]
   見出しを目次に載せません。
-= [strong: [style code: @toc-title 短い題]]
+= [strong: [code: @toc-title 短い題]]
   目次に載せる題を、見出しの題と別にします。
-= [strong: [style code: @number N]]
-  見出しの番号を [style code: N] にします。
-  後の見出しは [style code: N] から続けて数えます。
-  番号付きのリストの最初の項目に付けると、リストを [style code: N] から始めます。
-= [strong: [style code: @style 名前]]
-  上の節の [style code: @style] です。
+= [strong: [code: @number N]]
+  見出しの番号を [code: N] にします。
+  後の見出しは [code: N] から続けて数えます。
+  番号付きのリストの最初の項目に付けると、リストを [code: N] から始めます。
+= [strong: [code: @style 名前]]
+  上の節の [code: @style] です。
   段落にだけ付けられます。
 
 ```
@@ -221,82 +221,82 @@
 [名前 位置引数 キー=値: 本文 | 本文]
 ```
 
-- コマンドの名前の後に、空白で区切って引数を並べます。名前のすぐ後に置く引数が位置引数、[style code: キー=値] の形が名前付きの引数（エラーのメッセージではキーワード引数）です。位置引数を先に、名前付きの引数を後に書きます。
-- 空白を含む値は [style code: "…"] で囲みます。中の [style code: "] は [style code: \\"] と書きます。
-- 引数の値に [style code: \[= 式\]] を書くと、式の値を渡せます。
-- [style code: :] の後が、コマンドがかかる本文です。エラーのメッセージでは、この部分を「散文スロット」と呼びます。ルビのように本文を二つ取るコマンドでは、[style code: \|] で区切ります。
+- コマンドの名前の後に、空白で区切って引数を並べます。名前のすぐ後に置く引数が位置引数、[code: キー=値] の形が名前付きの引数（エラーのメッセージではキーワード引数）です。位置引数を先に、名前付きの引数を後に書きます。
+- 空白を含む値は [code: "…"] で囲みます。中の [code: "] は [code: \\"] と書きます。
+- 引数の値に [code: \[= 式\]] を書くと、式の値を渡せます。
+- [code: :] の後が、コマンドがかかる本文です。エラーのメッセージでは、この部分を「散文スロット」と呼びます。ルビのように本文を二つ取るコマンドでは、[code: \|] で区切ります。
 - 本文の中には、ほかのコマンドを入れられます。
 
 組み込みのコマンドは次のとおりです。
 
-= [strong: [style code: \[strong: 語\]]]
+= [strong: [code: \[strong: 語\]]]
   意味の上での強調です。
-  見た目は [style code: style.toml] の文字スタイル [style code: strong] で決まります。
-= [strong: [style code: \[bold: 語\]]]、[strong: [style code: \[italic: 語\]]]
+  見た目は [code: style.toml] の文字スタイル [code: strong] で決まります。
+= [strong: [code: \[bold: 語\]]]、[strong: [code: \[italic: 語\]]]
   太字と斜体です。
-  文字スタイル [style code: bold] と [style code: italic] を付けます。
-= [strong: [style code: \[style 名前: 語\]]]
-  [style code: style.toml] で定義した文字スタイルを付けます。
-  [style code: \[strong: 語\]] は [style code: \[style strong: 語\]] と同じ意味です。
-= [strong: [style code: \[color 名前: 語\]]]
-  [style code: style.toml] の [style code: \[color.swatches\]] で名前を付けた色を付けます。
-= [strong: [style code: \[kenten: 語\]]]
+  文字スタイル [code: bold] と [code: italic] を付けます。
+= [strong: [code: \[style 名前: 語\]]]
+  [code: style.toml] で定義した文字スタイルを付けます。
+  [code: \[strong: 語\]] は [code: \[style strong: 語\]] と同じ意味です。
+= [strong: [code: \[color 名前: 語\]]]
+  [code: style.toml] の [code: \[color.swatches\]] で名前を付けた色を付けます。
+= [strong: [code: \[kenten: 語\]]]
   圏点を打ちます。
-  [style code: shape=] で形を選べます。
-  形は [style code: sesame]（ゴマ）、[style code: open-sesame]（白ゴマ）、[style code: dot]（小さい黒丸）、[style code: open-dot]（小さい白丸）、[style code: circle]（大きい黒丸）、[style code: open-circle]（大きい白丸）のどれかで、省くと [style code: style.toml] の [style code: \[composition\]] の [style code: kenten] になります。
+  [code: shape=] で形を選べます。
+  形は [code: sesame]（ゴマ）、[code: open-sesame]（白ゴマ）、[code: dot]（小さい黒丸）、[code: open-dot]（小さい白丸）、[code: circle]（大きい黒丸）、[code: open-circle]（大きい白丸）のどれかで、省くと [code: style.toml] の [code: \[composition\]] の [code: kenten] になります。
   今の版では、形の指定は HTML と EPUB でだけ効き、PDF では常にゴマで組みます。
-= [strong: [style code: \[tcy: 文字\]]]
+= [strong: [code: \[tcy: 文字\]]]
   縦組みで、短い文字列を横に並べて一字分の幅に組みます（縦中横）。
   中には文字だけを書けます。
-= [strong: [style code: \[ruby: 親文字\|読み\]]]
+= [strong: [code: \[ruby: 親文字\|読み\]]]
   ルビを振ります。
-  [style code: /] を使わなければグループルビ、親文字と読みを同じ数の [style code: /] で区切ればモノルビです。
+  [code: /] を使わなければグループルビ、親文字と読みを同じ数の [code: /] で区切ればモノルビです。
   読みの区切りを空にすると、その文字には読みを振りません。
   読みには文字だけを書けます。
   ルビの中にルビは入れられません。
-  今の版では、親文字と読みに [style code: /] という文字そのものは書けません。
-= [strong: [style code: \[number-text 数\]]]
+  今の版では、親文字と読みに [code: /] という文字そのものは書けません。
+= [strong: [code: \[number-text 数\]]]
   書き方を決めていない数です。
-  横組みでは算用数字に、縦組みでは [style code: style=] か [style code: style.toml] の [style code: \[numbers\]] で選んだ表記になります。
-  [style code: style=] には [style code: kanji]（十）、[style code: kanji-digits]（一〇）、[style code: tcy]（縦中横の 10）を書けます。
+  横組みでは算用数字に、縦組みでは [code: style=] か [code: style.toml] の [code: \[numbers\]] で選んだ表記になります。
+  [code: style=] には [code: kanji]（十）、[code: kanji-digits]（一〇）、[code: tcy]（縦中横の 10）を書けます。
   整数だけを渡せます。
-= [strong: [style code: \[note: 注の本文\]]]
+= [strong: [code: \[note: 注の本文\]]]
   脚注です。
   注の本文には段落の中の要素だけを書けます。
   番号はファイルごとに 1 から振ります。
-= [strong: [style code: \[sidenote: 傍注の本文\]]]
+= [strong: [code: \[sidenote: 傍注の本文\]]]
   傍注です。
   横組みの本でだけ使えます。
-  PDF では [style code: style.toml] に [style code: \[sidenotes\]] が要り、脚注の本文と図版のキャプションの中には置けません。
-= [strong: [style code: \[aki 量\]]]
+  PDF では [code: style.toml] に [code: \[sidenotes\]] が要り、脚注の本文と図版のキャプションの中には置けません。
+= [strong: [code: \[aki 量\]]]
   その位置に、決まった幅の空きを入れます。
-  量は [style code: 全角]、[style code: 二分]、[style code: 三分]、[style code: 四分]、[style code: 五分]、[style code: 六分]、[style code: 八分]、[style code: 二分四分]、[style code: ベタ] のような名前か、[style code: 0.2zw]、[style code: 25%]、[style code: 1mm] のように書きます。
-  [style code: \[aki\]] の前後では行を分けません。
+  量は [code: 全角]、[code: 二分]、[code: 三分]、[code: 四分]、[code: 五分]、[code: 六分]、[code: 八分]、[code: 二分四分]、[code: ベタ] のような名前か、[code: 0.2zw]、[code: 25%]、[code: 1mm] のように書きます。
+  [code: \[aki\]] の前後では行を分けません。
   本文は取りません。
-= [strong: [style code: \[ref-number ラベル\]]]
+= [strong: [code: \[ref-number ラベル\]]]
   ラベルを付けた章、節、図の番号になります。
   番号のない見出しや段落を指すとエラーになります。
-= [strong: [style code: \[ref-title ラベル\]]]
+= [strong: [code: \[ref-title ラベル\]]]
   ラベルを付けた見出しの題か、図版の代替テキストになります。
   段落や表のような題のない箇所を指すとエラーになります。
-= [strong: [style code: \[ref-page ラベル\]]]
+= [strong: [code: \[ref-page ラベル\]]]
   PDF では、ラベルを付けた箇所のページ番号になります。
   HTML と EPUB では、その箇所へのリンクになります。
-  相互参照の三つのコマンドには、[style code: :] の後の本文を書けません。
-= [strong: [style code: \[index reading=読み: 語\]]]
+  相互参照の三つのコマンドには、[code: :] の後の本文を書けません。
+= [strong: [code: \[index reading=読み: 語\]]]
   索引の項目の印です。
   紙面には何も出しません。
-  [style code: reading] は省けません。
-  [style code: 語/副項目] と [style code: よみ/ふくこうもく] のように [style code: /] で区切ると、二段の項目になります。
+  [code: reading] は省けません。
+  [code: 語/副項目] と [code: よみ/ふくこうもく] のように [code: /] で区切ると、二段の項目になります。
   語と読みには文字だけを書けます。
-= [strong: [style code: \[cite キー\]]]
+= [strong: [code: \[cite キー\]]]
   文献を引用します。
-  キーは、[style code: manifest.toml] の [style code: bibliography] に並べたファイルの [style code: id] です。
+  キーは、[code: manifest.toml] の [code: bibliography] に並べたファイルの [code: id] です。
 
 プラグインのコマンドも、同じ形で呼び出します（第[ref-number plugins]章「[ref-title plugins]」）。
 
 ```
-[ruby: 東/京|とう/きょう]の[kenten shape=dot: 下町]。[note: 注の本文。]
+[ruby: 東/京|とう/きょう]の[kenten shape=dot: 下町]。[note: 注]
 図[ref-number fig-new]は[ref-page fig-new]ページにあります。
 ```
 
@@ -307,79 +307,79 @@ PDF と HTML の版では、この例の一行めのうち、ルビと圏点を�
 @nonumber
 ## 式
 
-[style code: \[= 式\]] と書くと、式[index reading=しき: 式]の値を本文に埋め込みます。
+[code: \[= 式\]] と書くと、式[index reading=しき: 式]の値を本文に埋め込みます。
 本文に埋め込めるのは、数と文字列の値です。
 
 = [strong: 数]
-  [style code: 1800]、[style code: -3]、[style code: 2.5] のように書きます。
+  [code: 1800]、[code: -3]、[code: 2.5] のように書きます。
   整数と小数を区別し、整数はいくら大きくても正確に計算します。
 = [strong: 文字列]
-  [style code: "第2版"] のように [style code: "] で囲みます。
-  中の [style code: "] は [style code: \\"]、[style code: \\] は [style code: \\\\] と書きます。
+  [code: "第2版"] のように [code: "] で囲みます。
+  中の [code: "] は [code: \\"]、[code: \\] は [code: \\\\] と書きます。
 = [strong: 真偽値と空の値]
-  正しいか誤りかを表す真偽値の [style code: true] と [style code: false]、値がないことを表す [style code: nil] です。
+  正しいか誤りかを表す真偽値の [code: true] と [code: false]、値がないことを表す [code: nil] です。
   本文には埋め込めません。
 = [strong: 配列と連想配列]
-  値の並び（配列）は [style code: \[1, 2, 3\]]、名前と値の組の集まり（連想配列）は [style code: {price: 1800, tax: 10}] のように書きます。
+  値の並び（配列）は [code: \[1, 2, 3\]]、名前と値の組の集まり（連想配列）は [code: {price: 1800, tax: 10}] のように書きます。
   本文には埋め込めません。
 = [strong: 名前]
-  [style code: @set] の変数は名前で、[style code: @import] で取り込んだ変数は [style code: 名前.変数] で参照します。
-  [style code: pi] と [style code: e] は円周率と自然対数の底です。
+  [code: @set] の変数は名前で、[code: @import] で取り込んだ変数は [code: 名前.変数] で参照します。
+  [code: pi] と [code: e] は円周率と自然対数の底です。
 = [strong: 本の情報]
-  [style code: meta.title]、[style code: meta.date]、[style code: meta.id]、[style code: meta.language] と、書いてあれば [style code: meta.edition]、[style code: meta.publisher]、[style code: meta.title_reading] で、[style code: manifest.toml] の [style code: \[metadata\]] の値を参照します。
+  [code: meta.title]、[code: meta.date]、[code: meta.id]、[code: meta.language] と、書いてあれば [code: meta.edition]、[code: meta.publisher]、[code: meta.title_reading] で、[code: manifest.toml] の [code: \[metadata\]] の値を参照します。
 = [strong: 本の構成]
-  [style code: doc.chapters.count] は本の章の数です。
+  [code: doc.chapters.count] は本の章の数です。
   見出しの中では使えません。
 = [strong: 演算子]
-  [style code: +]、[style code: -]、[style code: *]、[style code: /]、[style code: **]（べき乗）、[style code: %]（剰余）と、比べる演算子の [style code: ==]、[style code: !=]、[style code: <]、[style code: <=]、[style code: >]、[style code: >=] です。
+  [code: +]、[code: -]、[code: *]、[code: /]、[code: **]（べき乗）、[code: %]（剰余）と、比べる演算子の [code: ==]、[code: !=]、[code: <]、[code: <=]、[code: >]、[code: >=] です。
   比べた結果は真偽値です。
   文字列どうしも比べられます。
   丸括弧で計算の順を変えられます。
 = [strong: 関数]
-  [style code: round(x, 桁数)]（四捨五入）、[style code: fixed(x, 桁数)]（小数点以下の桁をそろえた文字列）、[style code: floor]（切り捨て）、[style code: ceil]（切り上げ）、[style code: abs]（絶対値）、[style code: min]、[style code: max]、[style code: sqrt]（平方根）、[style code: len]（文字列の字数か配列の要素の数）、[style code: div(a, b)]（整数の割り算）です。
+  [code: round(x, 桁数)]（四捨五入）、[code: fixed(x, 桁数)]（小数点以下の桁をそろえた文字列）、[code: floor]（切り捨て）、[code: ceil]（切り上げ）、[code: abs]（絶対値）、[code: min]、[code: max]、[code: sqrt]（平方根）、[code: len]（文字列の字数か配列の要素の数）、[code: div(a, b)]（整数の割り算）です。
 
 計算の規則は、どの機械で組んでも同じ結果になるように決めています。
 
-- [style code: /] の結果は常に小数です。整数の割り算には [style code: div] を使います。[style code: div] と [style code: %] は整数にだけ使えます。
-- [style code: **] の指数は整数に限ります。
+- [code: /] の結果は常に小数です。整数の割り算には [code: div] を使います。[code: div] と [code: %] は整数にだけ使えます。
+- [code: **] の指数は整数に限ります。
 - 0 で割る計算や、負の数の平方根はエラーになります。
-- [style code: round] は十進数として四捨五入します。[style code: round(2.675, 2)] は 2.68 です。[style code: round(x)]、[style code: floor]、[style code: ceil] は整数を返します。
-- 小数を本文に埋め込むときは、指数を使わず位取りで書き、桁区切りを付けません。整数になる小数は小数点を付けません（[style code: \[= 10 / 2\]] は「5」）。
+- [code: round] は十進数として四捨五入します。[code: round(2.675, 2)] は 2.68 です。[code: round(x)]、[code: floor]、[code: ceil] は整数を返します。
+- 小数を本文に埋め込むときは、指数を使わず位取りで書き、桁区切りを付けません。整数になる小数は小数点を付けません（[code: \[= 10 / 2\]] は「5」）。
 
 ```
 @set price = 1800
 
-税込みで[= fixed(price * 1.1, 0)]円、本書は全[= doc.chapters.count]章です。
+税込み[= fixed(price * 1.1, 0)]円、全[= doc.chapters.count]章。
 ```
 
 PDF と HTML の版では、この例も次の段落で実際に組んでいます。
 
 @set price = 1800
 
-税込みで[= fixed(price * 1.1, 0)]円、本書は全[= doc.chapters.count]章です。
+税込み[= fixed(price * 1.1, 0)]円、全[= doc.chapters.count]章。
 
 @nonumber
 ## コメントとエスケープ
 
-= [strong: [style code: \%% … \%%]]
+= [strong: [code: \%% … \%%]]
   コメントです。
   出力されません。
   空行を越えられません。
-= [strong: [style code: \%%= … \%%]]
+= [strong: [code: \%%= … \%%]]
   校正のためのコメントです。
-  [style code: --profile dev] では紙面に出て、[style code: --profile prod] では出力から落とし、残っていると警告になります。
-= [strong: [style code: \\]]
+  [code: --profile dev] では紙面に出て、[code: --profile prod] では出力から落とし、残っていると警告になります。
+= [strong: [code: \\]]
   後ろの一文字を、記法の文字ではなく本文の文字にします（エスケープ[index reading=えすけーぷ: エスケープ]）。
 
 バックスラッシュが要るのは、次の文字です。
 
-- 本文の [style code: \[]（[style code: \\\[]）。
-- 角括弧の中の本文の [style code: \]] と [style code: \|]（[style code: \\\]]、[style code: \\\|]）。
-- 段落の行頭の [style code: #]、[style code: -]、[style code: +]、[style code: =]、[style code: @]、[style code: \|]（[style code: \\#] など）。
-- 本文の [style code: \%%]（[style code: \\\%%]）。
-- [style code: \\] そのもの（[style code: \\\\]）。行末の [style code: \\] は強制改行になるので、本文の [style code: \\] を行末に置くときも [style code: \\\\] と書きます。
-- 行末に残したい半角の空白（[style code: \\\ ]）。
+- 本文の [code: \[]（[code: \\\[]）。
+- 角括弧の中の本文の [code: \]] と [code: \|]（[code: \\\]]、[code: \\\|]）。
+- 段落の行頭の [code: #]、[code: -]、[code: +]、[code: =]、[code: @]、[code: \|]（[code: \\#] など）。
+- 本文の [code: \%%]（[code: \\\%%]）。
+- [code: \\] そのもの（[code: \\\\]）。行末の [code: \\] は強制改行になるので、本文の [code: \\] を行末に置くときも [code: \\\\] と書きます。
+- 行末に残したい半角の空白（[code: \\\ ]）。
 
-[style code: %] が一つだけなら、そのまま書けます。
+[code: %] が一つだけなら、そのまま書けます。
 
-[style code: \[!] で始まる書き方は、将来のために取ってあり、今は使えません。
+[code: \[!] で始まる書き方は、将来のために取ってあり、今は使えません。
