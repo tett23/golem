@@ -1,0 +1,23 @@
+[page]
+size = "A5"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "10pt"
+characters = 30
+lines = 33
+line-pitch = "14pt"
+columns = 1
+position = { top = "18mm", gutter = "20mm" }
+
+[masters.body]
+folio = { position = "bottom-outside", format = "{n}" }
+
+[fonts.body]
+# Source Serif (variable, default instance), SIL Open Font License 1.1
+latin = "fonts/SourceSerifVariable-Roman.ttf"
+
+[paragraph-styles.quote]
+indent = "2zw"
+first-line-indent = "0zw"

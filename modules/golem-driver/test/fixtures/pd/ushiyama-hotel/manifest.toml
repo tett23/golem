@@ -1,0 +1,22 @@
+chapters = ["ushiyama-hotel.gm"]
+
+[metadata]
+id = "urn:uuid:74982f10-6c20-40b3-b876-951df290efa4"
+title = "牛山ホテル"
+title-reading = "うしやまホテル"
+language = "ja"
+date = 2026-10-16
+
+[[metadata.creators]]
+name = "岸田國士"
+reading = "きしだ くにお"
+role = "aut"
+
+[source]
+paragraph-separator = "line"
+
+[targets.html]
+[targets.epub]
+[targets.text]
+variants = ["vertical"]
+[targets.pdf]

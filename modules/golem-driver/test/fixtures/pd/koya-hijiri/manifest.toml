@@ -1,0 +1,22 @@
+chapters = ["koya-hijiri.gm"]
+
+[metadata]
+id = "urn:uuid:14ac5f69-134c-43a0-be23-68fb5ee74613"
+title = "高野聖"
+title-reading = "こうやひじり"
+language = "ja"
+date = 2026-10-16
+
+[[metadata.creators]]
+name = "泉鏡花"
+reading = "いずみ きょうか"
+role = "aut"
+
+[source]
+paragraph-separator = "line"
+
+[targets.html]
+[targets.epub]
+[targets.text]
+variants = ["vertical"]
+[targets.pdf]

@@ -1,0 +1,17 @@
+chapters = ["merry-wives.gm"]
+
+[metadata]
+id = "urn:uuid:e86b9b66-3494-49cd-a26b-3ada75479486"
+title = "The Merry Wives of Windsor"
+language = "en"
+date = 2026-10-16
+
+[[metadata.creators]]
+name = "William Shakespeare"
+role = "aut"
+
+[targets.html]
+[targets.epub]
+[targets.text]
+variants = ["horizontal"]
+[targets.pdf]

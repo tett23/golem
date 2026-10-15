@@ -1,0 +1,17 @@
+chapters = ["elements-of-style.gm"]
+
+[metadata]
+id = "urn:uuid:1b9d362b-e9cc-4194-9e7d-7376ba16df9d"
+title = "The Elements of Style"
+language = "en"
+date = 2026-10-16
+
+[[metadata.creators]]
+name = "William Strunk, Jr."
+role = "aut"
+
+[targets.html]
+[targets.epub]
+[targets.text]
+variants = ["horizontal"]
+[targets.pdf]
