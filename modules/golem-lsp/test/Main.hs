@@ -14,7 +14,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Lsp.Features
-import Golem.Lsp.Server (rewriteInitializeResponse, runGolemLspWithHandles)
+import Golem.Lsp.Server (lspSeverity, rewriteInitializeResponse, runGolemLspWithHandles)
 import Golem.Lsp.Workspace
 import Golem.Syntax
 import Hedgehog hiding (assert)
@@ -223,6 +223,20 @@ tests =
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
         codesIn "style.toml" @?= ["G0306"]
         codesIn "manifest.toml" @?= [],
+      testCase "a notice is published as Information (golem-syntax ADR 0002)" $ do
+        lspSeverity Notice @?= L.DiagnosticSeverity_Information
+        lspSeverity Warning @?= L.DiagnosticSeverity_Warning
+        lspSeverity Error @?= L.DiagnosticSeverity_Error,
+      testCase "the notices of silence-notices are not published, the others are (golem-syntax ADR 0002)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
+            codes ws = [(c, diagSeverity d) | d <- concat (Map.elems (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
+        BS.writeFile (tmp </> "a.gm") "[tcy: 10]\n\n@number 1\n# A\n"
+        BS.writeFile (tmp </> "manifest.toml") manifest
+        ws0 <- openWorkspace tmp
+        codes ws0 @?= [("G0263", Notice), ("G0407", Notice), ("G0323", Notice)]
+        BS.writeFile (tmp </> "manifest.toml") (manifest <> "\n[diagnostics]\nsilence-notices = [\"G0263\"]\n")
+        ws1 <- openWorkspace tmp
+        codes ws1 @?= [("G0407", Notice), ("G0323", Notice)],
       testCase "G0501 is not reported for the newlines of the line style (docs/adr ADR 0013)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
             g0501 ws = [c | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d, c == "G0501"]

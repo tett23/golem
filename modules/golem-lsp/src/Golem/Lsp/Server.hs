@@ -13,6 +13,7 @@ module Golem.Lsp.Server
     runGolemLspWithHandles,
     rewriteInitializeResponse,
     findRoot,
+    lspSeverity,
   )
 where
 
@@ -285,13 +286,22 @@ fromPosition (Position l c) = S.LineCol (fromIntegral l) (fromIntegral c)
 byteLength :: Text -> Int
 byteLength = BS.length . TE.encodeUtf8
 
+{- | A notice is Information, not Hint: editors list Information among the
+problems, and a notice is meant to be read (golem-syntax ADR 0002).
+-}
+lspSeverity :: S.Severity -> DiagnosticSeverity
+lspSeverity = \case
+  S.Error -> DiagnosticSeverity_Error
+  S.Warning -> DiagnosticSeverity_Warning
+  S.Notice -> DiagnosticSeverity_Information
+
 toDiagnostic :: F.Encoding -> S.LineIndex -> S.Diagnostic -> Diagnostic
 toDiagnostic enc li d =
   let sp = S.diagSpan d
       S.DiagnosticCode code = S.diagCode d
    in Diagnostic
         (Range (toPosition (F.toLineCol enc li (S.spanStart sp))) (toPosition (F.toLineCol enc li (S.spanEnd sp))))
-        (Just (if S.diagSeverity d == S.Error then DiagnosticSeverity_Error else DiagnosticSeverity_Warning))
+        (Just (lspSeverity (S.diagSeverity d)))
         (Just (InR code))
         -- the section of docs/diagnostics.md on main (golem-cli ADR 0005)
         (CodeDescription . Uri <$> codeDescriptionUrl (S.diagCode d))

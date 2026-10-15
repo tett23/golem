@@ -38,7 +38,7 @@ data Explanation = Explanation
 
 -- | The values of @- 重大度: @.
 severities :: [Text]
-severities = ["エラー", "警告", "dev では警告、prod ではエラー"]
+severities = ["エラー", "警告", "dev では警告、prod ではエラー", "お知らせ"]
 
 -- | A line with its number, counted from 1.
 type Numbered = (Int, Text)

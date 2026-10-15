@@ -2,7 +2,7 @@ module Main (main) where
 
 import Codec.Compression.Zlib qualified as Z
 import Control.Exception (SomeException, evaluate, try)
-import Control.Monad (filterM, forM_)
+import Control.Monad (filterM, forM, forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
@@ -100,6 +100,7 @@ tests =
   testGroup
     "golem-driver (ADR 0001)"
     [ explainTests,
+      noticeTests,
       testGroup "project diagnostics (golem-project ADR 0006)" projectDiagnosticTests,
       testGroup "reading stage (golem-parser ADR 0009)" readingTests,
       evalDiagnosticTests,
@@ -1084,11 +1085,11 @@ inFileTests =
         T.count "<p>" p1 @?= 1,
     testCase "lint: two Latin lines of a file in the line style are not G0501" $
       withChapters "" [("c1.gm", "@manifest paragraph-separator=line\n\nFull fathom five\nOf his bones\n"), ("c2.gm", "Full fathom five\nOf his bones\n")] [] $ \tmp -> do
-        (infos, ds) <- lintProject Dev tmp
+        (infos, ds) <- lintProject Dev False tmp
         [p | d <- ds, diagCode d == DiagnosticCode "G0501", Just (SourceInfo p _) <- [Map.lookup (spanFile (diagSpan d)) infos]] @?= ["c2.gm"],
     testCase "lint: a style of the file that keeps its lines is not G0501" $
       withChapters "" [("c1.gm", "@style-def paragraph letter line-breaks=keep\n\n@style letter\n  Full fathom five\n  Of his bones\n"), ("c2.gm", "Full fathom five\nOf his bones\n")] [] $ \tmp -> do
-        (infos, ds) <- lintProject Dev tmp
+        (infos, ds) <- lintProject Dev False tmp
         [p | d <- ds, diagCode d == DiagnosticCode "G0501", Just (SourceInfo p _) <- [Map.lookup (spanFile (diagSpan d)) infos]] @?= ["c2.gm"]
   ]
   where
@@ -2934,6 +2935,97 @@ turnedTests =
         other -> assertFailure (show other)
   ]
 
+-- * notices (golem-syntax ADR 0002)
+
+-- | What a build of a project left: the diagnostics and the files written.
+data Notified = Notified
+  { nDiagnostics :: ![Diagnostic],
+    -- | the files written, by their paths under build/
+    nOutputs :: ![(FilePath, BS.ByteString)]
+  }
+
+-- | Builds a project of the given files with the options.
+buildNotified :: [(FilePath, BS.ByteString)] -> (BuildOptions -> BuildOptions) -> IO Notified
+buildNotified files f = withSystemTempDirectory "golem-notice" $ \tmp -> do
+  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  r <- build (f (defaultOptions tmp) {optFonts = fakeProvider})
+  outs <- forM (sort (brWritten r)) $ \p -> (drop (length (tmp </> "build/")) p,) <$> BS.readFile p
+  pure (Notified (brDiagnostics r) outs)
+
+-- | The manifest of 'noticeProject' with the four targets and more text after it.
+noticeManifest :: BS.ByteString -> BS.ByteString
+noticeManifest extra = miniManifest <> "\n[targets.html]\n\n[targets.epub]\n\n[targets.text]\n" <> extra
+
+-- | A source that gives every notice but G0323.
+noticeSource :: BS.ByteString
+noticeSource =
+  "@style-def paragraph body indent=1zw\n\n# A\n\n[tcy: 10]\n\n@style verse\n  \\ x\n  y\n\n@listing src=code.hs\n\n@number 1\n+ a\n+ b\n\n@page-break\n"
+
+noticeProject :: BS.ByteString -> BS.ByteString -> [(FilePath, BS.ByteString)]
+noticeProject extra source =
+  [("manifest.toml", noticeManifest extra), ("style.toml", withBodyFont horizontalStyle), ("a.gm", source), ("code.hs", "main = pure ()\n")] <> fakeFontFiles
+
+-- | The PDF without its instance ID, which is computed from the text of manifest.toml.
+withoutInstanceId :: (FilePath, BS.ByteString) -> (FilePath, BS.ByteString)
+withoutInstanceId (p, b)
+  | ".pdf" `isSuffixOf` p =
+      let (before, rest) = BS.breakSubstring "/ID [" b
+       in (p, before <> BS.drop 1 (BC.dropWhile (/= ']') rest))
+  | otherwise = (p, b)
+
+codesOf :: [Diagnostic] -> [T.Text]
+codesOf ds = [c | DiagnosticCode c <- map diagCode ds]
+
+noticeTests :: TestTree
+noticeTests =
+  testGroup
+    "notices (golem-syntax ADR 0002)"
+    [ testCase "the notices of a project" $ do
+        n <- buildNotified (noticeProject "" noticeSource) id
+        codesOf (nDiagnostics n) @?= ["G0262", "G0263", "G0264", "G0265", "G0407", "G0408"]
+        map diagSeverity (nDiagnostics n) @?= replicate 6 Notice,
+      testCase "silence-notices drops those notices only" $ do
+        n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G0263\", \"G0408\"]\n" noticeSource) id
+        codesOf (nDiagnostics n) @?= ["G0262", "G0264", "G0265", "G0407"],
+      testCase "--no-notices drops every notice and keeps the errors" $ do
+        n <- buildNotified (noticeProject "" (noticeSource <> "\n[unknown: x]\n")) (\o -> o {optNoNotices = True})
+        codesOf (nDiagnostics n) @?= ["G0222"]
+        n' <- buildNotified (noticeProject "" (noticeSource <> "\n[unknown: x]\n")) id
+        take 1 (codesOf (nDiagnostics n')) @?= ["G0222"]
+        assertBool "notices after the error" (length (nDiagnostics n') > 1),
+      testCase "the notices do not change the outputs of the four targets" $ do
+        let silenced = "\n[diagnostics]\nsilence-notices = [\"G0262\", \"G0263\", \"G0264\", \"G0265\", \"G0407\", \"G0408\"]\n"
+        loud <- buildNotified (noticeProject "" noticeSource) id
+        quiet <- buildNotified (noticeProject silenced noticeSource) id
+        codesOf (nDiagnostics quiet) @?= []
+        assertBool "four targets" (all (\ext -> any ((ext `isSuffixOf`) . fst) (nOutputs loud)) [".pdf", ".epub", ".xhtml", ".txt"])
+        map withoutInstanceId (nOutputs quiet) @?= map withoutInstanceId (nOutputs loud)
+        quiet' <- buildNotified (noticeProject "" noticeSource) (\o -> o {optNoNotices = True})
+        nOutputs quiet' @?= nOutputs loud,
+      testCase "the path of @listing as the first argument gives the same outputs as src=" $ do
+        let (pre, post) = BS.breakSubstring "src=code.hs" noticeSource
+            positional = pre <> "code.hs" <> BS.drop (BS.length "src=code.hs") post
+        a <- buildNotified (noticeProject "" noticeSource) id
+        b <- buildNotified (noticeProject "" positional) id
+        map withoutInstanceId (nOutputs b) @?= map withoutInstanceId (nOutputs a)
+        assertBool "no G0265" ("G0265" `notElem` codesOf (nDiagnostics b)),
+      testCase "G0323: no style.toml, at the start of manifest.toml" $ do
+        let files = [("manifest.toml", "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n\n[targets.epub]\n\n[targets.text]\n"), ("a.gm", "x\n")]
+        n <- buildNotified files id
+        [(diagCode d, diagSeverity d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- nDiagnostics n] @?= [(DiagnosticCode "G0323", Notice, 0, 0)]
+        q <- buildNotified files (\o -> o {optNoNotices = True})
+        nDiagnostics q @?= []
+        nOutputs q @?= nOutputs n
+        withStyle <- buildNotified (("style.toml", "") : files) id
+        codesOf (nDiagnostics withStyle) @?= [],
+      testCase "G0323 comes with G0807 when the PDF has no fonts" $ do
+        n <- buildNotified [("manifest.toml", miniManifest), ("a.gm", "x\n")] id
+        -- no page either (G0701); the notice comes after the errors
+        let cs = codesOf (nDiagnostics n)
+        assertBool (show cs) ("G0807" `elem` cs)
+        drop (length cs - 1) cs @?= ["G0323"]
+    ]
+
 -- * golem explain (golem-cli ADR 0005)
 
 explainTests :: TestTree
@@ -2961,6 +3053,9 @@ explainTests =
                 isDependent e = "- 重大度: dev では警告、prod ではエラー" `elem` T.lines (exBody e)
             assertBool "some profile-dependent codes" (not (null dependent))
             sort [c | (c, e) <- Map.toList catalog, isDependent e] @?= sort dependent,
+          testCase "the notices of the catalog are noticeCodes (golem-syntax ADR 0002)" $ do
+            let isNotice e = "- 重大度: お知らせ" `elem` T.lines (exBody e)
+            sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isNotice e] @?= sort [c | DiagnosticCode c <- noticeCodes],
           testCase "the catalog has G0244 retired" $
             fmap exStatus (lookupExplanation "G0244") @?= Just Retired
         ],
@@ -2978,6 +3073,9 @@ explainTests =
           bad "no title" (preamble <> inUse "G0101" <> without "G0102 の題" (inUse "G0102")) "## G0102",
           bad "no status" (preamble <> inUse "G0101" <> without "- 状態: 使用中" (inUse "G0102")) "## G0102",
           bad "a bad severity" (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: 致命的" else l) (inUse "G0102")) "- 重大度: 致命的",
+          testCase "お知らせ is a severity (golem-syntax ADR 0002)" $
+            fmap (map exCode) (parseCatalog (T.unlines (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: お知らせ" else l) (inUse "G0102")))) @?= Right ["G0101", "G0102"],
+          bad "a severity that is none of the four" (preamble <> inUse "G0101" <> map (\l -> if l == "- 重大度: エラー" then "- 重大度: 情報" else l) (inUse "G0102")) "- 重大度: 情報",
           bad "out of order" (preamble <> inUse "G0102" <> inUse "G0101") "## G0101",
           bad "a code twice" (preamble <> inUse "G0101" <> inUse "G0101") "## G0101",
           testCase "a retired section without 主な原因 is accepted" $
