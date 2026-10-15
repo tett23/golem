@@ -1979,6 +1979,8 @@ writeDocument inp geom fonts layout intent =
                             (b1, u1) = runAt look vertical False 0 (origin off) (bcText c)
                             (b2, u2) = runAt half vertical False 0 (beside (origin (off + (size - dsize) `div` 2)) (if vertical then size `div` 2 + dsize `div` 2 else size)) "﹅"
                          in (b1 <> b2, u1 <> u2)
+                      -- the empty box of an [aki] draws nothing (golem-layout ADR 0012)
+                      KindAki -> ([], [])
                       _ ->
                         let pre = case T.unpack (bcText c) of
                               [ch] | boxKind c == KindPunctuation -> toSp size (fst (punctSpace (charClass ch)))

@@ -170,8 +170,10 @@ data Anchor
 
 {- | What a box shows (kept in 'bcTag').
 'KindRuby' is a mono ruby, 'KindGroupRuby' a group ruby (golem-layout ADR 0009).
+'KindAki' is the empty box of an [aki] (golem-layout ADR 0012); it is last
+so that the values before it keep their 'fromEnum'.
 -}
-data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby
+data BoxKind = KindText | KindRuby | KindTcy | KindRotated | KindKenten | KindPunctuation | KindGroupRuby | KindAki
   deriving stock (Eq, Show, Enum, Bounded)
 
 boxKind :: BoxContent -> BoxKind
@@ -462,12 +464,12 @@ itemsFor env prev p next = case p of
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   -- normalize sees no box next to these items: the spacing is that of the line's edge
   PForcedBreak -> lineEnd
-  -- zw is the size of the type at its place; the penalty and the glue after it keep the line whole
+  -- zw is the size of the type at its place; an empty box: no break between it and a neighbouring box (golem-layout ADR 0012)
   PAki lk a ->
     let w = case a of
           AkiZw r -> round (r * toRational (lkSize lk))
           AkiAbs x -> x
-     in [Penalty 0 infPenalty NoHyphen, Glue w 0 0]
+     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0)]
   PCode lk run -> codeItems env lk run
   PAnchor _ -> []
 
@@ -536,7 +538,7 @@ explicitParts word = go [] (zip [0 :: Int ..] groups)
 data Before
   = -- | the start of the paragraph, or an item that is neither a box nor an [aki]
     AtStart
-  | -- | the glue of an [aki] (docs/adr ADR 0019)
+  | -- | the box of an [aki] (docs/adr ADR 0019, golem-layout ADR 0012)
     AfterAki
   | AfterBox !BoxContent
 
@@ -544,7 +546,8 @@ data Before
 no break where a prohibition applies (golem-layout ADR 0002), and the
 spacing of the aki set of the paragraph (docs/adr ADR 0019). The spaces
 of the line start and the line end are the edges of the boxes. An [aki]
-is the space between its neighbours: the set adds none there.
+is an empty box between its neighbours: the set adds no space there, and
+it has no edges (golem-layout ADR 0012).
 -}
 normalize :: ComposeEnv -> [Item] -> [Item]
 normalize env = go AtStart True
@@ -552,6 +555,8 @@ normalize env = go AtStart True
     set = ceAkiSet env
     go _ _ [] = []
     go before first (x : rest) = case x of
+      -- an [aki]: no spacing around it, no edges; the paragraph's first character is still to come
+      Box _ c | boxKind c == KindAki -> x : go AfterAki first rest
       Box w c ->
         let spacing = case before of
               -- inside code: a break after a slash, no spacing (golem-driver ADR 0017)
@@ -560,8 +565,6 @@ normalize env = go AtStart True
               AtStart -> leading c
               AfterAki -> []
          in spacing <> [Box w (withEdges first c)] <> go (AfterBox c) False rest
-      -- the glue of an [aki], after its penalty
-      Glue _ 0 0 -> x : go AfterAki first rest
       _ -> x : go AtStart first rest
     sizeOf = lkSize . bcLook
     glueOf base (A.Aki n o m) =
