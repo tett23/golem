@@ -48,8 +48,10 @@ module Golem.Driver.Pdf
     tocPage,
     headingPages,
     headingsOnPages,
-    runningHeadText,
+    runningHeadLines,
     runningHeads,
+    runningMetadata,
+    runningHeadNotices,
     hiddenFolios,
     drawsFolio,
     figureRect,
@@ -65,12 +67,13 @@ where
 import Control.Applicative ((<|>))
 import Control.Concurrent.Async (mapConcurrently)
 import Control.Exception (evaluate)
-import Control.Monad (join)
+import Control.Monad (join, mfilter)
 import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii)
 import Data.Either (fromRight, isLeft)
+import Data.Foldable (toList)
 import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, zip3, zip4)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -100,7 +103,7 @@ import Golem.Layout.Ruby qualified as R
 import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
 import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutTable)
 import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
-import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, gutterSide, pageGeometry, sidenoteAreaFor, typeAreaFor)
+import Golem.LayoutSpec (Anchor (..), HiddenFolioGeometry (..), MasterGeometry (..), PageGeometry (..), Rect (..), Side (..), baselineRatio, columnsFor, gutterSide, pageGeometry, runningHeadBaselines, sidenoteAreaFor, typeAreaFor)
 import Golem.LayoutSpec qualified as LS
 import Golem.Pdf qualified as P
 import Golem.Preflight.View qualified as V
@@ -232,7 +235,10 @@ data PdfInput = PdfInput
     piMasters :: !(Map FileId Text),
     {- | where diagnostics about style.toml point: style.toml, or the
     manifest without one (golem-driver ADR 0016)
-    -} piStyleFile :: !FileId
+    -} piStyleFile :: !FileId,
+    {- | the variables of each chapter file that its running heads show,
+    as text, by their names with the namespace (golem-driver ADR 0022)
+    -} piRunningVars :: !(Map FileId (Map [Text] Text))
   }
 
 -- | The style of a document: style.toml with the styles its file defines (docs/adr ADR 0014).
@@ -816,7 +822,7 @@ renderPdfView provider inp0 = case checkedGeometry inp of
             pure $ do
               layout <- laid
               case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
-                [] -> let (bytes, view) = writeDocumentView inp geom fonts layout intent in Right (bytes, plNotices layout, view {V.vwUnplaceable = unplaceable})
+                [] -> let (bytes, view) = writeDocumentView inp geom fonts layout intent in Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout, view {V.vwUnplaceable = unplaceable})
                 ds -> Left ds
   where
     inp = codeInput inp0
@@ -906,25 +912,58 @@ and the levels below it have none.
 activeAfter :: Map Int (Maybe HeadingInfo) -> HeadingInfo -> Map Int (Maybe HeadingInfo)
 activeAfter m h = Map.insert (hiLevel h) (Just h) (Map.mapWithKey (\l v -> if l > hiLevel h then Nothing else v) m)
 
-{- | The text of a running head (golem-driver ADR 0014) from the title of
-the book, the content, the headings in effect at the start of the page
-by level, and the headings that start on the page.
+{- | The text of the keys of [metadata] a running head can show
+(golem-driver ADR 0022): the keys of @meta@ but creators, an array.
 -}
-runningHeadText :: Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> Maybe Text
-runningHeadText title content start started = case content of
-  RunningNone -> Nothing
-  RunningTitle -> if T.null title then Nothing else Just title
-  RunningHeading l form pick ->
-    let here = [h | h <- started, hiLevel h == l]
-        atEnd = foldl' activeAfter start started
-        chosen = case pick of
-          PickFirst -> listToMaybe here <|> join (Map.lookup l start)
-          PickLast -> listToMaybe (reverse here) <|> join (Map.lookup l atEnd)
-        short h = T.concat (map inlineText (hiTitle h))
-        render h = case form of
-          HeadShort -> short h
-          HeadNumbered -> maybe (short h) (\n -> n <> "\x3000" <> short h) (hiNumberText h)
-     in render <$> chosen
+runningMetadata :: Metadata -> Map Text Text
+runningMetadata md =
+  Map.fromList $
+    [ ("id", mdId md),
+      ("title", mdTitle md),
+      ("language", mdLanguage md),
+      ("date", T.pack (show (mdDate md)))
+    ]
+      <> [("title_reading", r) | Just r <- [mdTitleReading md]]
+      <> [("edition", e) | Just e <- [mdEdition md]]
+      <> [("publisher", p) | Just p <- [mdPublisher md]]
+
+{- | The lines of a running head drawn on a page (golem-driver ADR 0014,
+0022), from the text of the metadata, the variables of the page's file,
+the content, the headings in effect at the start of the page by level,
+and the headings that start on the page. A line with a slot without @?@
+and without a value is left out; a slot with @?@ and without a value is
+empty; a line is trimmed of spaces (U+0020, U+3000) and left out when
+nothing is left.
+-}
+runningHeadLines :: Map Text Text -> Map [Text] Text -> RunningContent -> Map Int (Maybe HeadingInfo) -> [HeadingInfo] -> [Text]
+runningHeadLines meta vars content start started = case content of
+  RunningNone -> []
+  RunningLines ls -> mapMaybe line (toList ls)
+  where
+    line parts = do
+      pieces <- traverse piece parts
+      let t = T.dropAround (`elem` [' ', '\x3000']) (T.concat pieces)
+      if T.null t then Nothing else Just t
+    piece = \case
+      PartText t -> Just t
+      PartRef r optional -> case mfilter (not . T.null) (value r) of
+        Just v -> Just v
+        Nothing -> if optional then Just "" else Nothing
+    value = \case
+      RefMeta k -> Map.lookup k meta
+      RefVar n -> Map.lookup n vars
+      RefHeading l form pick ->
+        let here = [h | h <- started, hiLevel h == l]
+            atEnd = foldl' activeAfter start started
+            chosen = case pick of
+              PickFirst -> listToMaybe here <|> join (Map.lookup l start)
+              PickLast -> listToMaybe (reverse here) <|> join (Map.lookup l atEnd)
+            short h = T.concat (map inlineText (hiTitle h))
+            render h = case form of
+              HeadShort -> Just (short h)
+              HeadNumbered -> Just (maybe (short h) (\n -> n <> "\x3000" <> short h) (hiNumberText h))
+              HeadNumber -> hiNumberText h
+         in chosen >>= render
 
 -- | The columns of each page, in order (docs/adr ADR 0018).
 pagesOf :: [PageOut] -> [[PageOut]]
@@ -954,25 +993,47 @@ pageMasters inp geom layout = map masterOf (pageFiles inp layout)
         <|> Map.lookup "body" ms
         <|> fmap snd (Map.lookupMin ms)
 
-{- | The running head drawn on each page, by page number (golem-driver ADR
-0014). None on blank pages, on pages where a recto heading starts, and
-on pages whose master page has no running head.
+{- | The lines of the running head drawn on each page, by page number
+(golem-driver ADR 0014, 0022). None on blank pages, on pages where a
+recto heading starts, and on pages whose master page has no running head.
 -}
-runningHeads :: PdfInput -> PageGeometry -> PdfLayout -> Map Int (Maybe Text)
+runningHeads :: PdfInput -> PageGeometry -> PdfLayout -> Map Int [Text]
 runningHeads inp geom layout =
   let pages = [p | (p : _) <- pagesOf (plPages layout)]
       infoOf lid = Map.lookup lid (plHeadingSpans layout) >>= (`Map.lookup` bookHeadings (piBook inp))
       started = headingsOnPages infoOf (plPages layout)
       startedOn p = Map.findWithDefault [] (poNumber p) started
       starts = scanl (foldl' activeAfter) Map.empty (map startedOn pages)
-      title = mdTitle (manifestMetadata (projectManifest (piProject inp)))
+      meta = runningMetadata (manifestMetadata (projectManifest (piProject inp)))
       recto h = maybe False hsRectoBreak (Map.lookup (hiLevel h) (stHeadings (piStyle inp)))
-      one p st m
-        | poBlank p || any recto (startedOn p) = Nothing
-        | otherwise = do
-            (co, ce, _, _) <- m >>= mgRunningHead
-            runningHeadText title (if odd (poNumber p) then co else ce) st (startedOn p)
-   in Map.fromList [(poNumber p, one p st m) | (p, st, m) <- zip3 pages starts (pageMasters inp geom layout)]
+      one p st m fid
+        | poBlank p || any recto (startedOn p) = []
+        | otherwise = case m >>= mgRunningHead of
+            Nothing -> []
+            Just (co, ce, _, _) ->
+              runningHeadLines meta (Map.findWithDefault Map.empty fid (piRunningVars inp)) (if odd (poNumber p) then co else ce) st (startedOn p)
+   in Map.fromList [(poNumber p, one p st m fid) | (p, st, m, fid) <- zip4 pages starts (pageMasters inp geom layout) (pageFiles inp layout)]
+
+{- | G0751 (golem-driver ADR 0022): a line of a running head wider than the
+type area of its page, once for each text, at the top of style.toml. The
+line is drawn as it is, out into the margin.
+-}
+runningHeadNotices :: PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> [Diagnostic]
+runningHeadNotices inp geom fonts layout =
+  [ diagnostic "G0751" Warning (mkSpan (piStyleFile inp) 0 0) ("柱の行が版面の幅を超えています（" <> T.pack (show n) <> " ページ）: " <> t)
+  | (n, t) <- sortOn id [(n, t) | (t, n) <- Map.toList (Map.fromListWith min wide)]
+  ]
+  where
+    wide =
+      [ (t, n)
+      | (n, ls) <- Map.toList (runningHeads inp geom layout),
+        t <- ls,
+        plainWidth fonts (bodyRole (piStyle inp)) (pgFontSize geom) t > rectW (typeAreaFor geom n)
+      ]
+
+-- | The width of a text set in a role at a size, unjustified.
+plainWidth :: LoadedFonts -> Text -> Sp -> Text -> Sp
+plainWidth fonts role size txt = sum [round (shAdvance g * toRational size) | g <- lfShape fonts (Shaping role False []) txt]
 
 {- | Whether a page gets its folio (golem-driver ADR 0021): not a blank
 page, and its master page has a folio. 'masterMarks' and 'hiddenFolios'
@@ -2426,7 +2487,7 @@ writeDocumentView inp geom fonts layout intent =
               _ -> concatMap (fst . snd) grp
          in (concatMap marksOf coloured, concatMap (snd . snd) parts)
       textAt kind anchor size txt =
-        let w = sum [toSp size (shAdvance g) | g <- lfShape fonts (Shaping body False []) txt]
+        let w = plainWidth fonts body size txt
             x0 = case anAlign anchor of
               LS.AlignStart -> anX anchor
               LS.AlignCenter -> anX anchor - w `div` 2
@@ -2518,7 +2579,7 @@ writeDocumentView inp geom fonts layout intent =
         (p : _) ->
           let n = poNumber p
               columns = map drawColumn ps
-              masterParts = masterMarks n (poBlank p) master (join (Map.lookup n heads))
+              masterParts = masterMarks n (poBlank p) master (Map.findWithDefault [] n heads)
               -- the hidden folio, after everything else of the page (golem-driver ADR 0021)
               hiddenParts = hiddenMarks n
               -- sidenotes in the sidenote column of the page (golem-driver ADR 0006)
@@ -2642,13 +2703,20 @@ writeDocumentView inp geom fonts layout intent =
           let txt = T.singleton c
               w = sum [toSp size (shAdvance g) | g <- lfShape fonts (Shaping body False []) txt]
         ]
-      masterMarks n blank master heading = case master of
+      masterMarks n blank master headLines = case master of
         Nothing -> []
         Just m ->
           let pick a1 a2 = if odd n then a1 else a2
               size = pgFontSize geom
               folio = [textAt "ノンブル" (pick a1 a2) size (formatNumber fmt [toInteger n] Nothing) | drawsFolio blank master, Just (fmt, a1, a2) <- [mgFolio m]]
-              runningHead = [textAt "柱" (pick a1 a2) size h | not blank, Just (_, _, a1, a2) <- [mgRunningHead m], Just h <- [heading]]
+              -- the lines of the running head from the type area out (golem-driver ADR 0022)
+              runningHead =
+                [ textAt "柱" a {anY = hy} size h
+                | not blank,
+                  Just (_, _, a1, a2) <- [mgRunningHead m],
+                  let a = pick a1 a2,
+                  (h, hy) <- zip headLines (runningHeadBaselines ph (pgLinePitch geom) a (length headLines))
+                ]
            in runningHead <> folio
       -- the columns of a page come together from 'paginate' (docs/adr ADR 0018)
       drawn = zipWith drawPage (pagesOf (plPages layout)) masters

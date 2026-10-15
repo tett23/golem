@@ -19,6 +19,7 @@ module Golem.Driver
     Evaluated (..),
     localStylesOf,
     docStyles,
+    runningVars,
     missingStyleFiles,
     targetFileDiagnostics,
     sourceInfos,
@@ -34,6 +35,7 @@ module Golem.Driver
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
 import Control.Monad (forM, forM_, mfilter, when)
 import Data.Aeson qualified as J
@@ -294,18 +296,45 @@ keepStyles = Map.keysSet . Map.filter (== KeepLines) . paraLineBreaks
 builtinKeepStyles :: Set.Set Text
 builtinKeepStyles = keepStyles defaultStyle
 
+-- | @meta@: the text of the metadata a running head shows too, and the creators.
 metadataValues :: Metadata -> Map Text Value
 metadataValues md =
-  Map.fromList $
-    [ ("id", VString (mdId md)),
-      ("title", VString (mdTitle md)),
-      ("language", VString (mdLanguage md)),
-      ("date", VString (T.pack (show (mdDate md)))),
-      ("creators", VArray [VString (crName c) | c <- mdCreators md])
-    ]
-      <> [("title_reading", VString r) | Just r <- [mdTitleReading md]]
-      <> [("edition", VString e) | Just e <- [mdEdition md]]
-      <> [("publisher", VString p) | Just p <- [mdPublisher md]]
+  Map.insert "creators" (VArray [VString (crName c) | c <- mdCreators md]) (VString <$> runningMetadata md)
+
+{- | The variables the running heads show, as text, for each chapter file
+by its master page (golem-driver ADR 0022): its own (@{set.<name>}@) and
+those of its imports (@{set.<namespace>.<name>}@). G0267 for a variable
+without @?@ that the file does not have, G0268 for a value that is not a
+string or a number; at the top of the file, once for each file and name.
+-}
+runningVars :: Evaluated -> (Map FileId (Map [Text] Text), [Diagnostic])
+runningVars e =
+  let project = evProject e
+      style = evStyle e
+      masters = stMasters style
+      ImportGraph graph = projectImports project
+      masterOf name = (name >>= \n -> (n,) <$> Map.lookup n masters) <|> (("body",) <$> Map.lookup "body" masters) <|> Map.lookupMin masters
+      perFile (fid, name) = case (masterOf name, Map.lookup fid (evResults e)) of
+        (Just (mname, MasterDef (Just rh) _), Just r) ->
+          let refs = Map.fromListWith (&&) [(n, q) | c <- [rhOdd rh, rhEven rh], (RefVar n, q) <- runningRefs c]
+              lookupVar = \case
+                [v] -> Map.lookup v (erExports r)
+                [ns, v] -> listToMaybe [x | (tfid, site) <- Map.findWithDefault [] fid graph, isNamespace site == ns, Just tr <- [Map.lookup tfid (evResults e)], Just x <- [Map.lookup v (erExports tr)]]
+                _ -> Nothing
+              at = mkSpan fid 0 0
+              related = [(mkSpan (evStyleFile e) 0 0, "マスターページ " <> mname <> " の柱の書式")]
+              one (n, optional) = case lookupVar n of
+                Nothing
+                  | optional -> ([], [])
+                  | otherwise -> ([], [(diagnostic "G0267" Error at ("柱が参照する変数 " <> T.intercalate "." n <> " が、このファイルにありません（マスターページ " <> mname <> "）")) {diagRelated = related}])
+                -- strings and numbers as they are embedded in prose
+                Just v -> case embedValue at v of
+                  Right t -> ([(n, t)], [])
+                  Left _ -> ([], [(diagnostic "G0268" Error at ("柱に出せるのは文字列と数です: " <> T.intercalate "." n <> " は " <> typeName v)) {diagRelated = related}])
+              (vals, ds) = foldMap one (Map.toList refs)
+           in (Map.singleton fid (Map.fromList vals), ds)
+        _ -> (Map.empty, [])
+   in foldMap perFile (nub [(fid, name) | (fid, name) <- projectChapters project])
 
 {- | Files referenced by @figure, @table and @listing: text content for
 tables and listings, presence for images, and why a path cannot be used
@@ -447,17 +476,19 @@ buildCore inMemory opts = do
           fileDiags = nub (concatMap snd perTarget)
           -- G0701, G0702 and G0725 stop the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
+          -- the variables of the running heads, after S0, only for the PDF (golem-driver ADR 0022)
+          evDiags = evDiagnostics e <> (if TargetPdf `elem` targets then snd (runningVars e) else [])
       case evBook e of
         Just book
-          | not (hasErrors (finish (evDiagnostics e))) && not (optCheckOnly opts) -> do
+          | not (hasErrors (finish evDiags)) && not (optCheckOnly opts) -> do
               -- a list number its format cannot write stops every target (golem-driver ADR 0013)
               let listDiags = listNumberDiagnostics (evStyle e) (maybe False pageVertical (stPage (evStyle e))) book
               (written, outDiags, pdf) <-
                 if null listDiags || null writable
                   then writeTargets inMemory opts e diagFid book missing writable
                   else pure ([], listDiags, Nothing)
-              pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags <> outDiags)) infos written, pdf)
-        _ -> pure (BuildResult (finish (evDiagnostics e <> fileDiags <> marksDiags)) infos [], Nothing)
+              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> outDiags)) infos written, pdf)
+        _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags)) infos [], Nothing)
   where
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002)
     finishWith silenced = sortDiagnostics . silenceNotices (if optNoNotices opts then Nothing else Just silenced) . map (adjustForProfile (optProfile opts))
@@ -703,7 +734,7 @@ writeTargets inMemory opts e diagFid book missing targets = do
           out = dir </> pdfFileName (mdId md)
           -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
           inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
-      r <- renderPdfView (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid)
+      r <- renderPdfView (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)))
       -- G0808: code in the body role without [fonts.code] (golem-driver ADR 0017)
       -- G0745: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
       let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book

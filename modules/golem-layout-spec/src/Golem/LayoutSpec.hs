@@ -17,6 +17,7 @@ module Golem.LayoutSpec
     columnsFor,
     sidenoteAreaFor,
     baselineRatio,
+    runningHeadBaselines,
   )
 where
 
@@ -190,6 +191,7 @@ pageGeometry fid marks style = case stPage style of
                   | maybe 0 (dimToSp fs) (rsLength rule) > columnLength -> Left [err "脚注の区切り線の length が行長を超えます"]
                   | otherwise -> Right (separatorLines fs pitch rule)
               let masters = Map.map (masterGeometry ph bindingRight odd' even') (stMasters style)
+              runningHeadFits fid ph fs pitch masters
               hidden <- hiddenFolioGeometry fid marks style pw bindingRight [(1, odd' : maybe [] (pure . fst) sidenotes), (2, even' : maybe [] (pure . snd) sidenotes)]
               Right
                 PageGeometry
@@ -208,6 +210,40 @@ pageGeometry fid marks style = case stPage style of
                     pgHiddenFolio = hidden,
                     pgNoteSeparator = separator
                   }
+
+{- | Whether the anchor of a running head is in the head margin rather than
+the foot margin: the middle of the head margin is above the middle of
+the page, the middle of the foot margin below it.
+-}
+anchorAtHead :: Sp -> Anchor -> Bool
+anchorAtHead ph a = 2 * anY a > ph
+
+{- | The baselines of the lines of a running head (golem-driver ADR 0022),
+in their order, at a pitch: the line nearest the type area is on the
+anchor, the others go out towards the edge of the page.
+-}
+runningHeadBaselines :: Sp -> Sp -> Anchor -> Int -> [Sp]
+runningHeadBaselines ph pitch a n
+  | anchorAtHead ph a = [anY a + toInteger (n - 1 - i) * pitch | i <- [0 .. n - 1]]
+  | otherwise = [anY a - toInteger i * pitch | i <- [0 .. n - 1]]
+
+{- | G0752 (golem-driver ADR 0022): the em box of the outermost line of a
+running head (the size times 'baselineRatio' above the baseline, the
+rest below) out of the trimmed page, for the most lines a format has.
+-}
+runningHeadFits :: FileId -> Sp -> Sp -> Sp -> Map Text MasterGeometry -> Either [Diagnostic] ()
+runningHeadFits fid ph fs pitch masters =
+  if any outside [(a, n) | MasterGeometry (Just (co, ce, a1, a2)) _ <- Map.elems masters, (c, a) <- [(co, a1), (ce, a2)], let n = linesOf c, n > 0]
+    then Left [diagnostic "G0752" Error (mkSpan fid 0 0) "柱の行がページからはみ出しています。行の数を減らすか、天（または地）の余白を広げてください"]
+    else Right ()
+  where
+    above = round (fromInteger fs * baselineRatio)
+    linesOf = \case
+      RunningLines ls -> length ls
+      RunningNone -> 0
+    outside (a, n) =
+      let bs = runningHeadBaselines ph pitch a n
+       in maximum bs + above > ph || minimum bs - (fs - above) < 0
 
 {- | The grid lines between the text and the footnotes (golem-driver ADR
 0024): one without spaces; with them, the fewest lines n for which the

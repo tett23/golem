@@ -1,6 +1,6 @@
 # ADR 0014: 柱の内容
 
-ステータス: 採択
+ステータス: 採択→内容の書式は [golem-driver ADR 0022](0022-running-head-formats.md)
 
 ## 文脈
 

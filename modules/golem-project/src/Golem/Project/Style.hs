@@ -61,9 +61,13 @@ module Golem.Project.Style
     MasterDef (..),
     RunningHeadDef (..),
     RunningContent (..),
+    RunningRef (..),
+    RunningPart (..),
     HeadForm (..),
     HeadPick (..),
     parseRunningContent,
+    parseRunningFormat,
+    runningRefs,
     Swatch (..),
     ListStyle (..),
     defaultListStyle,
@@ -81,7 +85,8 @@ where
 import Control.Applicative ((<|>))
 import Control.Monad (unless, when, (>=>))
 import Data.Bifunctor (bimap)
-import Data.Char (isAsciiLower, isDigit)
+import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
+import Data.Foldable (toList)
 import Data.List (nub)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
@@ -640,22 +645,44 @@ instance FromValue HiddenFolio where
       _ -> pure ()
     pure (HiddenFolio enabled (fromMaybe (hfPages d) pages) size gutter)
 
--- | How a heading is shown in a running head (golem-driver ADR 0014).
-data HeadForm = HeadShort | HeadNumbered
+-- | How a heading is shown in a running head (golem-driver ADR 0014, 0022).
+data HeadForm = HeadShort | HeadNumbered | HeadNumber
   deriving stock (Eq, Show)
 
 -- | Which heading of a page a running head takes: the first or the last.
 data HeadPick = PickFirst | PickLast
   deriving stock (Eq, Show)
 
--- | What a running head shows.
-data RunningContent
+-- | What a slot of a running head format refers to (golem-driver ADR 0022).
+data RunningRef
   = -- | a heading of a level
-    RunningHeading !Int !HeadForm !HeadPick
-  | -- | the title of the book
-    RunningTitle
+    RefHeading !Int !HeadForm !HeadPick
+  | -- | a key of [metadata]: title, title_reading and so on
+    RefMeta !Text
+  | -- | a variable of the page's file, with its namespace when imported
+    RefVar ![Text]
+  deriving stock (Eq, Show)
+
+-- | A piece of a line of a running head: text, or a slot (True with @?@).
+data RunningPart
+  = PartText !Text
+  | PartRef !RunningRef !Bool
+  deriving stock (Eq, Show)
+
+{- | What a running head shows: lines, from the head to the foot of the
+page, or nothing. The vocabulary of golem-driver ADR 0014 is read into
+lines (golem-driver ADR 0022).
+-}
+data RunningContent
+  = RunningLines !(NonEmpty [RunningPart])
   | RunningNone
   deriving stock (Eq, Show)
+
+-- | The slots of a running head, with whether each has @?@.
+runningRefs :: RunningContent -> [(RunningRef, Bool)]
+runningRefs = \case
+  RunningLines ls -> [(r, q) | l <- toList ls, PartRef r q <- l]
+  RunningNone -> []
 
 -- | The running head of a master page: its position and the contents of odd and even pages.
 data RunningHeadDef = RunningHeadDef
@@ -688,24 +715,79 @@ defaultListStyle = ListStyle ("・" :| []) Nothing Nothing
 
 {- | A content value of a running head: @heading.<l>.short@,
 @heading.<l>.numbered@ (either with @.last@), @title@ or @none@
-(golem-driver ADR 0014).
+(golem-driver ADR 0014), as a format of one line (golem-driver ADR 0022).
 -}
 parseRunningContent :: Text -> Maybe RunningContent
 parseRunningContent = \case
-  "title" -> Just RunningTitle
+  "title" -> Just (oneRef (RefMeta "title"))
   "none" -> Just RunningNone
   t -> case T.splitOn "." t of
-    ["heading", l, f] -> heading l f PickFirst
-    ["heading", l, f, "last"] -> heading l f PickLast
+    ["heading", l, f] | f /= "number" -> oneRef <$> headingRef l f PickFirst
+    ["heading", l, f, "last"] | f /= "number" -> oneRef <$> headingRef l f PickLast
     _ -> Nothing
   where
-    heading l f pick = do
-      level <- if not (T.null l) && T.all isDigit l then Just (read (T.unpack l)) else Nothing
-      form <- case f of
-        "short" -> Just HeadShort
-        "numbered" -> Just HeadNumbered
-        _ -> Nothing
-      if level >= 1 then Just (RunningHeading level form pick) else Nothing
+    oneRef r = RunningLines ([PartRef r False] :| [])
+
+-- | @heading.<l>.<form>@ of a level of 1 or more.
+headingRef :: Text -> Text -> HeadPick -> Maybe RunningRef
+headingRef l f pick = do
+  level <- if not (T.null l) && T.all isDigit l then Just (read (T.unpack l)) else Nothing
+  form <- case f of
+    "short" -> Just HeadShort
+    "numbered" -> Just HeadNumbered
+    "number" -> Just HeadNumber
+    _ -> Nothing
+  if level >= 1 then Just (RefHeading level form pick) else Nothing
+
+-- | The keys of [metadata] a running head can show (golem-driver ADR 0022).
+runningMetaKeys :: [Text]
+runningMetaKeys = ["title", "title_reading", "edition", "publisher", "date", "language", "id"]
+
+{- | One line of a running head format (golem-driver ADR 0022): text and
+slots in braces, @{{@ and @}}@ for braces. 'Left' is the reason of G0314.
+-}
+parseRunningFormat :: Text -> Either Text [RunningPart]
+parseRunningFormat t0
+  | T.null t0 = Left "空の行があります"
+  | T.any (== '\n') t0 = Left "行の中に改行があります。行は配列の要素で分けてください"
+  | otherwise = merge <$> go t0
+  where
+    go t = case T.uncons t of
+      Nothing -> Right []
+      Just ('{', r)
+        | Just r' <- T.stripPrefix "{" r -> (PartText "{" :) <$> go r'
+        | otherwise ->
+            let (name, rest) = T.break (`elem` ['{', '}']) r
+             in case T.uncons rest of
+                  Just ('}', r') -> (:) <$> slot name <*> go r'
+                  _ -> Left "閉じていない { があります"
+      Just ('}', r)
+        | Just r' <- T.stripPrefix "}" r -> (PartText "}" :) <$> go r'
+        | otherwise -> Left "対にならない } があります。文字の } は }} と書きます"
+      Just _ ->
+        let (txt, rest) = T.break (`elem` ['{', '}']) t
+         in (PartText txt :) <$> go rest
+    slot name0 =
+      let (name, optional) = maybe (name0, False) (,True) (T.stripSuffix "?" name0)
+          unknown = Left ("未知の差し込みです: {" <> name0 <> "}")
+          ref r = Right (PartRef r optional)
+       in if T.null name0
+            then Left "空の差し込み {} があります"
+            else case T.splitOn "." name of
+              ["heading", l, f] -> maybe unknown ref (headingRef l f PickFirst)
+              ["heading", l, f, "last"] -> maybe unknown ref (headingRef l f PickLast)
+              ["meta", "creators"] -> Left "meta.creators は配列なので、柱に書けません。@set で文字列の変数を作ってください"
+              ["meta", k] | k `elem` runningMetaKeys -> ref (RefMeta k)
+              ("set" : ns@(_ : _)) | length ns <= 2 && all varName ns -> ref (RefVar ns)
+              _ -> unknown
+    varName n = case T.uncons n of
+      Just (c, r) -> (isAsciiLetter c || c == '_') && T.all (\x -> isAsciiLetter x || isDigit x || x == '_') r
+      Nothing -> False
+    isAsciiLetter c = isAsciiLower c || isAsciiUpper c
+    merge = \case
+      PartText a : PartText b : r -> merge (PartText (a <> b) : r)
+      x : r -> x : merge r
+      [] -> []
 
 {- | A rule of style.toml (golem-driver ADR 0024): the same keys and
 checks wherever a rule is written; the user decides whether the length
@@ -1161,6 +1243,32 @@ runningContentMessage :: Text -> String
 runningContentMessage v =
   T.unpack ("柱の内容が正しくありません: " <> v <> "。heading.<階層>.short か heading.<階層>.numbered（末尾に .last を付けられます）、title、none のどれかを、content に一つ、または even と odd の両方に書いてください")
 
+-- | The message of G0314 for a format (golem-driver ADR 0022).
+runningFormatMessage :: Text -> String
+runningFormatMessage why = T.unpack ("柱の書式が正しくありません: " <> why)
+
+{- | A content of a running head: a word of the vocabulary as a string
+(golem-driver ADR 0014), or a format as an array of lines (golem-driver
+ADR 0022); with what was written, for the message of a wrong combination.
+A string with @{@ is a format written as a string: G0314 that points to
+arrays, so that a misspelt word never shows as fixed text.
+-}
+runningContentOf :: Value' l -> Matcher l (Text, RunningContent)
+runningContentOf v = case v of
+  Text' l t
+    | T.any (== '{') t -> failAt l (runningFormatMessage ("書式は文字列の配列で書いてください（[\"" <> t <> "\"]）"))
+    | otherwise -> maybe (failAt l (runningContentMessage t)) (pure . ("\"" <> t <> "\"",)) (parseRunningContent t)
+  List' l xs -> do
+    ls <- traverse (line l) xs
+    case ls of
+      [] -> failAt l (runningFormatMessage "空の配列です。行を一つ以上書いてください")
+      (x : rest) -> pure ("[…]", RunningLines (x :| rest))
+  _ -> failAt (valueAnn v) (runningContentMessage "（文字列でも配列でもない値）")
+  where
+    line l = \case
+      Text' _ t -> either (failAt l . runningFormatMessage) pure (parseRunningFormat t)
+      _ -> failAt l (runningFormatMessage "配列の要素は文字列です")
+
 {- | A running head: @position@, and @content@ or both @even@ and @odd@.
 Errors of the contents are reported under their key, which makes them
 G0314.
@@ -1168,13 +1276,10 @@ G0314.
 instance FromValue RunningHeadDef where
   fromValue = parseTableFromValue $ do
     p <- reqPosition
-    let contentOf v = do
-          t <- fromValue v
-          maybe (failAt (valueAnn v) (runningContentMessage t)) (pure . (t,)) (parseRunningContent t)
-    c <- optKeyOf "content" contentOf
-    e <- optKeyOf "even" contentOf
-    o <- optKeyOf "odd" contentOf
-    let written = T.intercalate ", " [k <> " = \"" <> t <> "\"" | (k, Just (t, _)) <- [("content", c), ("even", e), ("odd", o)]]
+    c <- optKeyOf "content" runningContentOf
+    e <- optKeyOf "even" runningContentOf
+    o <- optKeyOf "odd" runningContentOf
+    let written = T.intercalate ", " [k <> " = " <> t | (k, Just (t, _)) <- [("content", c), ("even", e), ("odd", o)]]
         wrong k = liftMatcher (inKey k (fail (runningContentMessage (if T.null written then "（なし）" else written))))
     case (c, e, o) of
       (Just (_, x), Nothing, Nothing) -> pure (RunningHeadDef p x x)
