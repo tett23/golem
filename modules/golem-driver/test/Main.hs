@@ -336,6 +336,7 @@ tests =
       testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,
       testGroup "kerning, proportional metrics and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "running heads (ADR 0014)" runningHeadTests,
+      testGroup "footnote marks and numbers (ADR 0018)" footnoteTests,
       testGroup
         "public-domain books"
         [ testCase "The Tempest builds horizontally to every target" $ do
@@ -1335,6 +1336,86 @@ pdfStyle =
       -- UTF-8: a literal ByteString keeps only the low byte of each character
       TE.encodeUtf8 "[headings.1]\nnumber = \"第{n:kanji}章\"\n\n[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
     ]
+
+-- | Footnote marks, note bodies and note numbers (golem-driver ADR 0018).
+footnoteTests :: [TestTree]
+footnoteTests =
+  [ testCase "PDF: notes 1 of two files each set the body of their own file" $ do
+      content <- projectPdf twoFiles (horizontalStyle <> "\n[notes]\nnumbering = \"file\"\n") [("a.gm", "一[note: 甲。]\n"), ("b.gm", "二[note: 乙。]\n")]
+      let count c = length [() | d <- drawnGlyphs content, dGlyph d == fromEnum c]
+      (count '甲', count '乙') @?= (1, 1),
+    testCase "PDF: the first line of a note body starts with its mark and a space" $ do
+      (_, pl) <- layoutHeads twoFiles horizontalStyle [("a.gm", "一[note: 甲。]\n"), ("b.gm", "二[note: 乙。]\n")]
+      let firsts = [l | sl <- Map.elems (plLines pl), (_, l : _) <- slNotes sl]
+          start l = case lineItems l of
+            (Box _ c : Glue {} : Box _ d : _) -> Just (bcText c, bcText d)
+            _ -> Nothing
+      map start firsts @?= [Just ("*1", "甲"), Just ("*1", "乙")],
+    testCase "PDF: horizontal, the mark is half the size, raised to the top of the em box, before the next character" $ do
+      content <- miniPdf fakeProvider True horizontalStyle "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          s = 10 :: Rational
+          m = 5
+          small = [d | d <- ds, ptToRational (dSize d) == m]
+          at c xs = [(ptToRational (dX d), ptToRational (dY d)) | d <- xs, dGlyph d == fromEnum c]
+      case (at '*' small, at '1' small, at '漢' ds, at '字' ds) of
+        ([(_, ys)], [(x1, _)], [(_, yk)], [(xj, _)]) -> do
+          -- the fake fonts: the centre of the em box at 0.38, Latin half an em wide
+          assertBool (show (ys - yk)) (abs (ys - yk - (38 / 100 + 1 / 2) * (s - m)) < 1 / 100)
+          assertBool (show (x1, xj)) (xj >= x1 + m / 2)
+        other -> assertFailure (show other),
+    testCase "PDF: vertical, the mark is horizontal text whose right end is half the size right of the centre line" $ do
+      content <- miniPdf fakeProvider True pdfStyle "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          s = toRational (maybe 0 (dimToSp 0) (parseDim "13Q")) / 65536
+          m = toRational (maybe 0 (dimToSp 0) (parseDim "13Q") `div` 2) / 65536
+          near a b = abs (a - b) < 1 / 100
+          markOf c = [d | d <- ds, dGlyph d == fromEnum c, near (ptToRational (dSize d)) m]
+      case (markOf '*', markOf '1', [d | d <- ds, dGlyph d == fromEnum '漢']) of
+        ([star], [one], [kan]) -> do
+          assertBool "the horizontal font" (dFont star /= dFont kan)
+          dMatrix star @?= ["1", "0", "0", "1"]
+          let right = ptToRational (dX one) + m / 2
+          assertBool (show (right, ptToRational (dX kan) + s / 2)) (near right (ptToRational (dX kan) + s / 2))
+        other -> assertFailure (show other),
+    testCase "by default the notes of a chapter in two files count on, in the PDF, HTML and plain text" $
+      withSystemTempDirectory "golem-notes" $ \tmp -> do
+        BS.writeFile (tmp </> "manifest.toml") (replaceIn "chapters = [\"a.gm\"]" "chapters = [[\"a.gm\", \"b.gm\"]]" miniManifest <> "\n[targets.html]\n\n[targets.text]\nvariants = [\"horizontal\"]\n")
+        BS.writeFile (tmp </> "style.toml") (withBodyFont horizontalStyle)
+        forM_ (bodyFontFiles horizontalStyle) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+        BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "一[note: 甲。]\n")
+        BS.writeFile (tmp </> "b.gm") (TE.encodeUtf8 "二[note: 乙。]\n")
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml, TargetText], optFonts = fakeProvider}
+        filter isError (brDiagnostics r) @?= []
+        let written = brWritten r
+            readAll suffix = mconcat <$> mapM TIO.readFile (filter (suffix `isSuffixOf`) written)
+        html <- readAll ".xhtml"
+        txt <- readAll ".txt"
+        assertBool (T.unpack html) ("href=\"#note-2\"" `T.isInfixOf` html)
+        assertBool (T.unpack txt) ("*2" `T.isInfixOf` txt)
+        pdf <- maybe (assertFailure "no PDF") BS.readFile (listToMaybe' (filter (".pdf" `isSuffixOf`) written))
+        content <- BS.concat <$> inflateAll pdf
+        let drawn = [dGlyph d | d <- drawnGlyphs content]
+        assertBool "the mark *2" (fromEnum '2' `elem` drawn)
+  ]
+  where
+    twoFiles = replaceIn "chapters = [\"a.gm\"]" "chapters = [\"a.gm\", \"b.gm\"]" miniManifest
+    listToMaybe' = \case
+      (x : _) -> Just x
+      [] -> Nothing
+
+-- | Builds a project of several files to PDF with the fake fonts and returns its content streams.
+projectPdf :: BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -> IO BS.ByteString
+projectPdf manifest style sources = withSystemTempDirectory "golem-project" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") manifest
+  BS.writeFile (tmp </> "style.toml") (withBodyFont style)
+  forM_ (bodyFontFiles style) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  forM_ sources $ \(to, src) -> BS.writeFile (tmp </> to) (TE.encodeUtf8 src)
+  r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
+  filter isError (brDiagnostics r) @?= []
+  case filter (".pdf" `isSuffixOf`) (brWritten r) of
+    [p] -> BS.readFile p >>= fmap BS.concat . inflateAll
+    _ -> assertFailure "no PDF"
 
 -- | The running head tests (ADR 0014).
 runningHeadTests :: [TestTree]

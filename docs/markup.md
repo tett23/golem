@@ -912,7 +912,7 @@ HTML と EPUB では、論理方向の余白を持つ空の `span`（`class="aki
 ```
 
 注の本文はインラインの要素に限る。
-番号はファイルごとに振られる。
+番号は `style.toml` の `[notes]` の `numbering` の範囲（既定はマニフェストの章）ごとに 1 から振られる（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。
 注を出力する位置（ページ下か章末か）は `style.toml` のスタイルで決まる。
 
 ### 傍注
@@ -922,7 +922,7 @@ HTML と EPUB では、論理方向の余白を持つ空の `span`（`class="aki
 ```
 
 注の本文はインラインの要素に限る。
-番号はファイルごとに振られる。
+番号は脚注と別に、脚注と同じ範囲ごとに振られる。
 PDF では版面の外の傍注欄に置かれ、ほかの媒体では段落の直後などに置かれる。
 v1 では横組みでだけ使え、縦組みで使うとコンパイルエラーになる。
 PDF では、`style.toml` に `[sidenotes]` がない場合と、脚注の本文や図版のキャプションの中に置いた場合もコンパイルエラーになる（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。

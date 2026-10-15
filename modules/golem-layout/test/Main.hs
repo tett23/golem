@@ -177,6 +177,57 @@ legal items =
   where
     isBox = \case Box {} -> True; _ -> False
 
+-- | A note key for tests: the note at offset k of file 0.
+nid :: Int -> NoteId
+nid k = NoteId (mkSpan (FileId 0) k (k + 1)) 0
+
+noteMarkTests :: [TestTree]
+noteMarkTests =
+  [ testCase "a note mark joins the character before it, without spacing" $ do
+      let items = fst (composeInlines (defaultComposeEnv fs) [sp0 "漢", note 1, sp0 "字"])
+      case items of
+        (Box _ a : Penalty 0 p NoHyphen : Box _ m : rest) -> do
+          bcText a @?= "漢"
+          p @?= infPenalty
+          bcText m @?= "*1"
+          boxKind m @?= KindNoteMark
+          [bcText c | Box _ c <- rest] @?= ["字"]
+          -- after the mark, what comes between 漢 and 字 without it: no spacing of Latin text
+          rest @?= drop 1 (compose (defaultComposeEnv fs) "漢字")
+        other -> assertFailure (show other),
+    testCase "the width of a mark: its advance at half the size across, half the size down" $ do
+      let env = (defaultComposeEnv fs) {ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == fs `div` 2 then 3 / 5 else 1)}
+          markWidth e = [w | Box w c <- fst (composeInlines e [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark]
+      markWidth env @?= [round (2 * 3 / 5 * toRational (fs `div` 2) :: Rational)]
+      markWidth env {ceVertical = True} @?= [fs `div` 2],
+    testCase "the spacing of the pair around the mark comes after it" $ do
+      let env = defaultComposeEnv fs
+          without = compose env "」あ"
+          with = fst (composeInlines env [sp0 "」", note 1, sp0 "あ"])
+          afterMark = drop 1 (dropWhile (\case Box _ c -> boxKind c /= KindNoteMark; _ -> True) with)
+      afterMark @?= drop 1 without,
+    testCase "the mark of a paragraph start has no leading space, its line end edge is 0" $ do
+      let with = fst (composeInlines (defaultComposeEnv fs) [note 1, sp0 "「あ」"])
+          without = compose (defaultComposeEnv fs) "「あ」"
+      case [c | Box _ c <- with] of
+        (m : _) -> (boxKind m, bcEdgeStart m, bcEdgeEnd m) @?= (KindNoteMark, 0, 0)
+        [] -> assertFailure "no boxes"
+      [w | Box w c <- with, boxKind c /= KindNoteMark] @?= [w | Box w _ <- without],
+    testCase "a numbered sidenote marker is a note mark of the number alone" $ do
+      let sn = Sidenote (mkSpan (FileId 0) 3 9) 1 [sp0 "注"]
+      [(bcText c, boxKind c) | Box _ c <- fst (composeInlines (defaultComposeEnv fs) [sp0 "本", sn]), boxKind c /= KindText] @?= [("1", KindNoteMark)],
+    testCase "two notes of a paragraph have anchors of different spans" $ do
+      let anchors = snd (composeInlines (defaultComposeEnv fs) [sp0 "あ", Note (mkSpan (FileId 0) 1 5) 1 [sp0 "注"], sp0 "い", Note (mkSpan (FileId 0) 6 9) 2 [sp0 "注"]])
+      [s | AnchorNote _ _ s _ <- anchors] @?= [mkSpan (FileId 0) 1 5, mkSpan (FileId 0) 6 9],
+    testCase "two notes 1 of different keys on one page are two footnotes" $ do
+      let a = NoteId (mkSpan (FileId 1) 0 5) 0
+          b = NoteId (mkSpan (FileId 2) 0 5) 0
+          ps = paginate 1 10 [FParagraph [LineBox 0 [NoteBody a 1] [] [], LineBox 1 [NoteBody b 2] [] []]]
+      map poFootnotes ps @?= [[(a, 0, 1), (b, 0, 2)]]
+  ]
+  where
+    note n = Note (mkSpan (FileId 0) 1 2) n [sp0 "注"]
+
 sp0 :: Text -> Inline
 sp0 = Text (mkSpan (FileId 0) 0 0)
 
@@ -224,6 +275,7 @@ tests =
   testGroup
     "golem-layout"
     [ testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
+      testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
@@ -543,11 +595,11 @@ tests =
             let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 10), (4, SLine 11)], [(0, SFigure 99)]],
           testCase "footnotes sit on the page of their marker and continue when too long" $ do
-            let withNote i n = LineBox i [NoteBody (100 + i) n] [] []
+            let withNote i n = LineBox i [NoteBody (nid (100 + i)) n] [] []
                 ps = paginate 1 6 [FParagraph [LineBox 0 [] [] [], withNote 1 2, LineBox 2 [] [] [], withNote 3 1, LineBox 4 [] [] []]]
-            map poFootnotes ps @?= [[(101, 0, 2)], [(103, 0, 1)]]
+            map poFootnotes ps @?= [[(nid 101, 0, 2)], [(nid 103, 0, 1)]]
             let long = paginate 1 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
-            map poFootnotes long @?= [[(100, 0, 2)], [(100, 2, 2)], [(100, 4, 1)]],
+            map poFootnotes long @?= [[(nid 100, 0, 2)], [(nid 100, 2, 2)], [(nid 100, 4, 1)]],
           testCase "index marks go to the page of their line (golem-driver ADR 0007)" $ do
             let m = mkSpan (FileId 0) 10 20
                 ps = paginate 1 1 [FParagraph [LineBox 0 [] [] [], LineBox 1 [] [] [m], LineBox 2 [] [] []]]
@@ -775,13 +827,13 @@ tests =
             map poBlank ps @?= [False, False, True, False]
             slots ps @?= [[0, 1, 2], [3, 4], [], [20]],
           testCase "footnotes sit in the column of their marker and continue in the next column" $ do
-            let withNote i n = LineBox i [NoteBody (100 + i) n] [] []
+            let withNote i n = LineBox i [NoteBody (nid (100 + i)) n] [] []
                 ps = paginate 2 4 [FParagraph [withNote 0 1, LineBox 1 [] [] [], LineBox 2 [] [] [], LineBox 3 [] [] [], LineBox 4 [] [] []]]
             cols ps @?= [(1, 0), (1, 1)]
-            map poFootnotes ps @?= [[(100, 0, 1)], []]
+            map poFootnotes ps @?= [[(nid 100, 0, 1)], []]
             let long = paginate 2 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
             cols long @?= [(1, 0), (1, 1), (2, 0)]
-            map poFootnotes long @?= [[(100, 0, 2)], [(100, 2, 2)], [(100, 4, 1)]],
+            map poFootnotes long @?= [[(nid 100, 0, 2)], [(nid 100, 2, 2)], [(nid 100, 4, 1)]],
           testCase "a figure that does not fit goes to the top of the next column; text moves up" $ do
             let ps = paginate 2 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
             cols ps @?= [(1, 0), (1, 1)]
@@ -836,12 +888,12 @@ tests =
             sets ps @?= [(1, 0, 1, 0), (2, 0, 2, 0)]
             map (map fst . poSlots) ps @?= [[0], [0 .. 2]],
           testCase "footnotes on the page of the switch: the columns leave their lines" $ do
-            let withNote i n = LineBox i [NoteBody (500 + i) n] [] []
+            let withNote i n = LineBox i [NoteBody (nid (500 + i)) n] [] []
                 -- a note of 1 line and its separator: 2 grid lines
                 ps = paginate 1 10 ([FParagraph [withNote 0 1, LineBox 1 [] [] []], FSwitchColumns index2] <> entries 100 12 <> [FRestoreColumns])
             sets ps @?= [(1, 0, 1, 0), (1, 0, 2, 2), (1, 1, 2, 2)]
             map (map fst . poSlots) ps @?= [[0, 1], [2 .. 7], [2 .. 7]]
-            map poFootnotes ps @?= [[(500, 0, 1)], [], []],
+            map poFootnotes ps @?= [[(nid 500, 0, 1)], [], []],
           testCase "two columns: the page is closed and three columns start at line 0 of the next page" $ do
             let ps = paginate 2 10 ([FParagraph (lines' 0 3), FSwitchColumns index3 {csColumns = 3}] <> entries 100 4 <> [FRestoreColumns])
             sets ps @?= [(1, 0, 2, 0), (2, 0, 3, 0)]
@@ -865,10 +917,10 @@ tests =
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 11, SLine 12], [SLine 0, SLine 13, SLine 14]]
             map poTables ps @?= [[TableSegment 100 0 0 3], [TableSegment 100 0 0 2]],
           testCase "the header's label and note are counted once" $ do
-            let header = [LineBox 0 [NoteBody 900 1] ["tbl"] []]
+            let header = [LineBox 0 [NoteBody (nid 900) 1] ["tbl"] []]
                 ps = paginate 1 4 [FTable 100 header [lines' (10 + i) 1 | i <- [0 .. 4]]]
             map poLabels ps @?= ["tbl"] : replicate (length ps - 1) []
-            [(poNumber p, n) | p <- ps, (n, _, _) <- poFootnotes p] @?= [(1, 900)],
+            [(poNumber p, n) | p <- ps, (n, _, _) <- poFootnotes p] @?= [(1, nid 900)],
           testCase "a table that cannot start with its header and first row goes to the next page" $ do
             let ps = paginate 1 4 [FParagraph (lines' 0 3), FTable 100 (lines' 20 1) [lines' 30 1]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SLine 20, SLine 30]],
@@ -915,7 +967,7 @@ tests =
           testCase "an anchor indexes its marker among the composed items, spacing included" $ do
             let (items, anchors) = composeInlines (defaultComposeEnv fs) [sp0 "あいうえお", Note (mkSpan (FileId 0) 0 1) 1 [sp0 "注"], sp0 "かき"]
             case anchors of
-              [AnchorNote i 1 _] -> case drop i items of
+              [AnchorNote i 1 _ _] -> case drop i items of
                 (Box _ c : _) -> bcText c @?= "*1"
                 other -> assertFailure (show (take 1 other))
               other -> assertFailure (show other),

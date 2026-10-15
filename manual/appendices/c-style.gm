@@ -233,6 +233,7 @@ Golem は、機械に入っている書体を探しません。
 | キー | 既定 | 意味 |
 |:---|:---|:---|
 | [code: placement] | [code: "page-foot"] | 脚注の位置です。[code: "page-foot"] か [code: "chapter-end"] を書けますが、今の版の Golem は値を読むだけで、どちらでも置き方は同じです（PDF はページの下、HTML とプレーンテキストは章の終わり）。 |
+| [code: numbering] | [code: "chapter"] | 脚注と傍注の番号を 1 から振り直す範囲です。[code: "chapter"]（マニフェストの章ごと）、[code: "file"]（ファイルごと）、[code: "book"]（本の全体で通し番号）から選びます。 |
 
 @nonumber
 ## [code: \[sidenotes\]]
