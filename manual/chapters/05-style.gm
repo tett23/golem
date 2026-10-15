@@ -384,6 +384,41 @@ even = "title"
 odd = "heading.1.numbered"
 ```
 
+書名と章の題を並べたり、固定の文言を入れたりするときは、内容を文字列の配列で書きます。
+配列で書いたものを書式と呼びます。
+書式では、[code: {] と [code: }] で囲んだ差し込みに、値が入ります。
+
+```toml
+[masters.body.running-head]
+position = "top-outside"
+content = ["{meta.title}　{heading.1.short}"]
+```
+
+この柱は「書名　章の題」の一行になります。
+配列の要素を二つにすると、柱は二行になります。
+
+```toml
+[masters.body.running-head]
+position = "top-outside"
+content = ["{meta.title}", "{heading.1.short}"]
+```
+
+二行の柱は、版面に近い行を一行の柱と同じ位置に置き、ほかの行を本文の行送りずつ余白の側へ重ねます。
+天の柱なら、二行目が一行の柱の位置に来て、一行目がその上に来ます。
+
+差し込みには、次のものを書けます。
+
+- [code: {heading.<階層>.short}]、[code: {heading.<階層>.numbered}]：上の値と同じ、見出しの題と、番号と題です。末尾に [code: .last] を付けられます。
+- [code: {heading.<階層>.number}]：見出しの番号だけです（「第3章」など）。
+- [code: {meta.title}]：[code: manifest.toml] の書名です。[code: title] のほかに [code: title_reading]、[code: edition]、[code: publisher]、[code: date]、[code: language]、[code: id] を書けます。
+- [code: {set.名前}]：そのページの章のファイルで [code: @set] した変数です。[code: @import ... as 名前空間] で取り込んだ変数は [code: {set.名前空間.名前}] と書きます。
+
+値のない差し込みがあると、その行は描きません。
+たとえば [code: \["{meta.title}　{heading.1.short}"\]] は、最初の章より前のページには出ません。
+差し込みの末尾に [code: ?] を付けると（[code: {heading.2.short?}]）、値がないときに空になり、行の前後の空白は取り除かれます。
+[code: \["{heading.1.short}　{heading.2.short?}"\]] は、節のないページでは章の題だけになります。
+[code: {] や [code: }] そのものは、[code: {{] と [code: }}] と書きます。
+
 章の始まりのページ（[code: page-break = "recto"] の見出しのあるページ）と白ページには、柱を出しません。
 章ごとに別のマスターページを使うときは、[code: manifest.toml] の章の項目に [code: { file = "front.gm", master = "front" }] のように [code: master] を書きます。
 [code: master] のない章は [code: \[masters.body\]] を使います。
