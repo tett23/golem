@@ -17,36 +17,57 @@ Golem のテストは、実際の本に近い入力を必要とする。
 - 取得するスクリプトでは、取得したファイルの SHA-256 を固定して検証する。
 - 取得した原文を Golem の原稿に変換する処理は、Python で書かない。
 
-golem-driver のフィクスチャ（[code: modules/golem-driver/test/fixtures/]）には、三つのプロジェクトがある。
+golem-driver のフィクスチャ（[code: modules/golem-driver/test/fixtures/]）には、三つのプロジェクトと、[code: pd/] の下の十冊がある。
 
 | ディレクトリ | 内容 |
 | --- | --- |
 | [code: sample/] | テストのために書いた小さなプロジェクト |
 | [code: tempest/] | シェイクスピアの『テンペスト』。横組み |
 | [code: kanikosen/] | 小林多喜二の『蟹工船』。縦組み |
+| [code: pd/] | 組みにくい公有の作品の十冊。英語の五冊は横組み、日本語の五冊は縦組み |
 
 『テンペスト』は Project Gutenberg の eBook #23042（ケンブリッジ版）から、『蟹工船』は青空文庫の図書カード No.1465 から作る。
 どちらも著作権の保護期間が満了している。
 各プロジェクトは、使うフォントとそのライセンスを [code: fonts/] に持ち、そのディレクトリで [code: golem build] を実行すれば組める。
 
+[code: pd/] の十冊は、二冊では足りない組版の難所を集めたものである。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0026-ten-public-domain-fixtures.md]（docs/adr の ADR 0026「組みにくい公有の作品を fixture に十作加える」）]
+英語は、散文が主の戯曲、韻文の戯曲、字下げした詩、二段組の例文を持つ教科書、巻末の注を持つ小説の五冊で、Project Gutenberg から作る。
+日本語は、ルビの多い小説、短歌、字下げの深い詩、返り点を含む史伝、戯曲の五冊で、青空文庫から作る。
+どれも日本と米国で著作権の保護期間が満了している。
+作品ごとの出典、版、選んだ理由、変換で失われるものは、[code: modules/golem-driver/test/fixtures/README.md] にある。
+
+十冊はフォントをコミットしない。
+同じフォントを十冊に置くと 34 MB が増えるうえ、Golem はプロジェクトルートの外のフォントを読まず、シンボリックリンクで外を指すこともできないからである。
+組む前に [code: scripts/fixtures/copy-fonts.sh] で、『蟹工船』と『テンペスト』のフォントを写す。
+golem-driver のテストは十冊を出力を書かずに検査し、環境変数 [code: GOLEM_PD_BOOKS] があればすべてのターゲットに組む。
+十冊を組むと 35 秒ほどかかり、CI の時間を倍近くにするためである。
+
 ## 原文から原稿を作る
 
-[code: tempest.gm] と [code: kanikosen.gm] は手で編集しない。
+[code: tempest.gm]、[code: kanikosen.gm] と十冊の原稿は手で編集しない。
 原稿は [code: scripts/fixtures/fetch-public-domain.sh] が、原文を取得して SHA-256 を検査し、golem-fixtures で Golem の原稿に変換し、[code: golem fmt] で整形して作る。
 
 ```sh
 GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 ```
 
-変換の実行ファイル [code: golem-fixtures] は、二つの命令を持つ。[index reading="golem-fixtures": golem-fixtures][note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0023-fixture-converters-without-python.md]（docs/adr の ADR 0023「fixture の変換を Python から移す」）]
+変換の実行ファイル [code: golem-fixtures] は、五つの命令を持つ。[index reading="golem-fixtures": golem-fixtures][note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0023-fixture-converters-without-python.md]（docs/adr の ADR 0023「fixture の変換を Python から移す」）]
 
 ```text
 golem-fixtures gutenberg-play INPUT.txt OUTPUT.gm
+golem-fixtures gutenberg-text [OPTION...] INPUT.txt OUTPUT.gm
 golem-fixtures aozora INPUT.txt OUTPUT.gm
+golem-fixtures aozora-prose INPUT.txt OUTPUT.gm
+golem-fixtures aozora-verse INPUT.txt OUTPUT.gm
 ```
 
 [code: gutenberg-play] は、Project Gutenberg の戯曲の韻文を行の形から推し量って [code: @style verse] にし、話者の名前を [code: \[strong: …\]] にする。
 [code: aozora] は、青空文庫のルビ、傍点、縦中横、見出し、外字の注記を Golem の記法にする。
+[code: gutenberg-text] は戯曲以外の Project Gutenberg のテキストを、空行で区切ったまとまりの形から見出し、話者、韻文、引用、二段組の例文、注に分けて変換する。
+どの形をどう読むかは、[code: --verse] や [code: --notes NOTES] のような選択肢で作品ごとに指定する。
+[code: aozora-prose] と [code: aozora-verse] は、[code: aozora] の規則に、傍点の形、返り点、改ページ、くの字点、字下げなどの注記を足す。
+字下げは、[code: aozora-prose] では段落スタイル [code: indent-F-R] に、[code: aozora-verse] では韻文の行頭の全角の空白にする。
+傍線、地付き、小書きのように Golem に記法のない注記は、文字を残して注記を捨てる。
 
 この変換は、以前は Python のスクリプトだった。
 リポジトリの持ち主は Python を使わず、Python のスクリプトはコミットせずにできる限りシェルのスクリプトで書く、という方針がある。

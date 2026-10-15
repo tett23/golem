@@ -1,0 +1,19 @@
+[page]
+size = "B6"
+binding = "right"
+writing-mode = "vertical"
+
+[page.grid]
+font-size = "13Q"
+characters = 42
+lines = 16
+line-pitch = "22H"
+columns = 1
+position = { top = "18mm", gutter = "20mm" }
+
+[masters.body]
+folio = { position = "bottom-outside", format = "{n}" }
+
+[fonts.body]
+# Noto Serif CJK JP 2.003 (Subset OTF), SIL Open Font License 1.1
+ja = "fonts/NotoSerifJP-Regular.otf"

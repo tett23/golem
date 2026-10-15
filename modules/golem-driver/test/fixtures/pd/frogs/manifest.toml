@@ -1,0 +1,21 @@
+chapters = ["frogs.gm"]
+
+[metadata]
+id = "urn:uuid:5bcb3ee0-1e3e-4dfe-8673-33291105e875"
+title = "The Frogs"
+language = "en"
+date = 2026-10-16
+
+[[metadata.creators]]
+name = "Aristophanes"
+role = "aut"
+
+[[metadata.creators]]
+name = "Benjamin Bickley Rogers"
+role = "trl"
+
+[targets.html]
+[targets.epub]
+[targets.text]
+variants = ["horizontal"]
+[targets.pdf]

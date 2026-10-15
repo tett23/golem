@@ -1,0 +1,17 @@
+chapters = ["nightmare-abbey.gm"]
+
+[metadata]
+id = "urn:uuid:0dce62e5-1e3b-4d75-b831-dafa1593ad02"
+title = "Nightmare Abbey"
+language = "en"
+date = 2026-10-16
+
+[[metadata.creators]]
+name = "Thomas Love Peacock"
+role = "aut"
+
+[targets.html]
+[targets.epub]
+[targets.text]
+variants = ["horizontal"]
+[targets.pdf]

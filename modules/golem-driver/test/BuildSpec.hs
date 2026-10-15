@@ -1,6 +1,6 @@
 module BuildSpec (buildTests, allTargetsTests, versionTests, producerTests, publicDomainTests, numberSeparatorTests, styleFileTests) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.IORef (newIORef, readIORef)
@@ -23,7 +23,8 @@ import Golem.Project.Manifest (Manifest (..), Metadata (..))
 import Golem.Project.Style (HeadForm (..), HeadPick (..), RunningContent (..), RunningPart (..), RunningRef (..))
 import Golem.Syntax
 import Support
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
+import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory)
+import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -151,8 +152,54 @@ publicDomainTests =
         -- 「——漁夫は」: the dashes (CID 722) turned (golem-driver ADR 0015)
         content <- BS.concat <$> inflateAll pdf
         assertBool "turned dashes" (any (\d -> dGlyph d == 722 && dMatrix d == ["0", "-1", "1", "0"]) (drawnGlyphs content))
-        qpdfCheck pdf
+        qpdfCheck pdf,
+      testGroup "ten public-domain books (docs/adr/0026)" (map pdBookTest pdBooks)
     ]
+
+-- | The books of test/fixtures/pd (docs/adr/0026) and whether each is set vertically.
+pdBooks :: [(FilePath, Bool)]
+pdBooks =
+  [ ("merry-wives", False),
+    ("frogs", False),
+    ("snark", False),
+    ("elements-of-style", False),
+    ("nightmare-abbey", False),
+    ("koya-hijiri", True),
+    ("ichiaku-no-suna", True),
+    ("haru-to-shura", True),
+    ("taira-no-masakado", True),
+    ("ushiyama-hotel", True)
+  ]
+
+{- | A book of test/fixtures/pd is checked without errors. With GOLEM_PD_BOOKS
+set, it is built to every target too, which takes most of a minute for the
+ten (docs/adr/0026). The books do not commit their fonts; the fonts of
+蟹工船 and The Tempest are copied in, as scripts/fixtures/copy-fonts.sh does.
+-}
+pdBookTest :: (FilePath, Bool) -> TestTree
+pdBookTest (name, vertical) = testCase name $ withSystemTempDirectory "golem-pd" $ \tmp -> do
+  let src = "test/fixtures/pd" </> name
+  entries <- listDirectory src
+  forM_ entries $ \e -> do
+    isDir <- doesDirectoryExist (src </> e)
+    unless isDir (copyFile (src </> e) (tmp </> e))
+  let (fonts, font) =
+        if vertical
+          then ("test/fixtures/kanikosen/fonts", "NotoSerifJP-Regular.otf")
+          else ("test/fixtures/tempest/fonts", "SourceSerifVariable-Roman.ttf")
+  createDirectoryIfMissing True (tmp </> "fonts")
+  copyFile (fonts </> font) (tmp </> "fonts" </> font)
+  full <- isJust <$> lookupEnv "GOLEM_PD_BOOKS"
+  r <- build (defaultOptions tmp) {optCheckOnly = not full}
+  assertEqual "no errors" [] [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
+  when full $ do
+    let written = brWritten r
+    assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"])
+    pdf <- case filter (".pdf" `isSuffixOf`) written of
+      [p] -> BS.readFile p
+      other -> assertFailure (show other)
+    assertBool "the writing mode" (vertical == ("/Identity-V" `BS.isInfixOf` pdf))
+    qpdfCheck pdf
 
 -- | The fixture with style.toml replaced and extra files written (golem-project ADR 0004).
 withStyleProject :: BS.ByteString -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a

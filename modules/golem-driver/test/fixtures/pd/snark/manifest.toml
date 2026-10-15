@@ -1,0 +1,17 @@
+chapters = ["snark.gm"]
+
+[metadata]
+id = "urn:uuid:9d24e3be-14fd-4743-b98c-9201094acba2"
+title = "The Hunting of the Snark"
+language = "en"
+date = 2026-10-16
+
+[[metadata.creators]]
+name = "Lewis Carroll"
+role = "aut"
+
+[targets.html]
+[targets.epub]
+[targets.text]
+variants = ["horizontal"]
+[targets.pdf]

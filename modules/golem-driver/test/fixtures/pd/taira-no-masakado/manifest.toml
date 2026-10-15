@@ -1,0 +1,22 @@
+chapters = ["taira-no-masakado.gm"]
+
+[metadata]
+id = "urn:uuid:496f7cab-5218-4ad0-ba58-82456cb42b87"
+title = "平将門"
+title-reading = "たいらのまさかど"
+language = "ja"
+date = 2026-10-16
+
+[[metadata.creators]]
+name = "幸田露伴"
+reading = "こうだ ろはん"
+role = "aut"
+
+[source]
+paragraph-separator = "line"
+
+[targets.html]
+[targets.epub]
+[targets.text]
+variants = ["vertical"]
+[targets.pdf]

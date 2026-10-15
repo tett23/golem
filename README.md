@@ -210,12 +210,21 @@ cabal test all
 scripts/gen-parser.sh
 ```
 
-テストの fixture の『テンペスト』と『蟹工船』は、`scripts/fixtures/fetch-public-domain.sh` が原文を取得して作る。
+テストの fixture の『テンペスト』と『蟹工船』、`modules/golem-driver/test/fixtures/pd/` の十冊は、`scripts/fixtures/fetch-public-domain.sh` が原文を取得して作る。
 原文の変換は `modules/golem-fixtures` の実行ファイル `golem-fixtures` が行う。
 このパッケージはリリースの配布物に入らない（[docs/adr/0023](./docs/adr/0023-fixture-converters-without-python.md)）。
 
 ```bash
 GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
+```
+
+十冊はフォントをコミットしない。
+そのディレクトリで `golem build` を実行する前に、`scripts/fixtures/copy-fonts.sh` で『蟹工船』と『テンペスト』のフォントを写す（[docs/adr/0026](./docs/adr/0026-ten-public-domain-fixtures.md)）。
+golem-driver のテストは十冊をエラーなしに検査し、環境変数 `GOLEM_PD_BOOKS` があればすべてのターゲットに組む。
+
+```bash
+scripts/fixtures/copy-fonts.sh
+GOLEM_PD_BOOKS=1 cabal test golem-driver --test-options='-p 0026'
 ```
 
 テストのうち CDDL のスキーマへの適合の検査は、Rust の `cddl` クレートの CLI（0.10.7）を使う。

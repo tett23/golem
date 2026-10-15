@@ -1,0 +1,22 @@
+chapters = ["haru-to-shura.gm"]
+
+[metadata]
+id = "urn:uuid:e8585b21-67c1-409f-91ad-d6d450e690e6"
+title = "春と修羅"
+title-reading = "はるとしゅら"
+language = "ja"
+date = 2026-10-16
+
+[[metadata.creators]]
+name = "宮沢賢治"
+reading = "みやざわ けんじ"
+role = "aut"
+
+[source]
+paragraph-separator = "line"
+
+[targets.html]
+[targets.epub]
+[targets.text]
+variants = ["vertical"]
+[targets.pdf]

@@ -1,0 +1,22 @@
+chapters = ["ichiaku-no-suna.gm"]
+
+[metadata]
+id = "urn:uuid:a8e9c855-661b-4554-9614-8ae8a18bd9ba"
+title = "一握の砂"
+title-reading = "いちあくのすな"
+language = "ja"
+date = 2026-10-16
+
+[[metadata.creators]]
+name = "石川啄木"
+reading = "いしかわ たくぼく"
+role = "aut"
+
+[source]
+paragraph-separator = "line"
+
+[targets.html]
+[targets.epub]
+[targets.text]
+variants = ["vertical"]
+[targets.pdf]
