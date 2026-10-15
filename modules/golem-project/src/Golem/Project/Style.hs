@@ -60,6 +60,8 @@ module Golem.Project.Style
     Swatch (..),
     ListStyle (..),
     defaultListStyle,
+    RuleSpec (..),
+    parseRuleSpec,
     defaultStyle,
     parseStyle,
     loadStyle,
@@ -584,6 +586,56 @@ parseRunningContent = \case
         _ -> Nothing
       if level >= 1 then Just (RunningHeading level form pick) else Nothing
 
+{- | A rule of style.toml (golem-driver ADR 0024): the same keys and
+checks wherever a rule is written; the user decides whether the length
+is required, how the spaces are measured and the size zw is resolved by.
+-}
+data RuleSpec = RuleSpec
+  { -- | length, greater than 0
+    rsLength :: !(Maybe Dim),
+    -- | weight in sp, greater than 0; 0.3pt by default
+    rsWeight :: !Sp,
+    -- | the space before the rule (above it, right of it in vertical text), not negative
+    rsSpaceBefore :: !(Maybe Dim),
+    -- | the space after the rule (below it, left of it in vertical text), not negative
+    rsSpaceAfter :: !(Maybe Dim)
+  }
+  deriving stock (Eq, Show)
+
+{- | Reads a rule spec from its table; every error is at the value or,
+for an unknown key, at the table (G0306 by the path of its user).
+-}
+instance FromValue RuleSpec where
+  fromValue = parseTableFromValue $ do
+    len <- optKeyOf "length" $ ruleDim "length" $ \l d ->
+      if positiveDim d then pure d else failAt l "罫線の length は 0 より大きい寸法です"
+    weight <- optKeyOf "weight" $ ruleDim "weight" $ \l -> \case
+      -- the weight does not follow the size of the type
+      Zw _ -> failAt l "罫線の weight には zw を使えません"
+      Abs x
+        | x > 0 -> pure x
+        | otherwise -> failAt l "罫線の weight は 0 より大きい寸法です"
+    let space key = optKeyOf key $ ruleDim key $ \l d ->
+          if negativeDim d then failAt l (T.unpack ("罫線の " <> key <> " は 0 以上の寸法です")) else pure d
+    before <- space "space-before"
+    after <- space "space-after"
+    pure (RuleSpec len (fromMaybe defaultRuleWeight weight) before after)
+    where
+      ruleDim key check v = case v of
+        Text' l t -> maybe (failAt l (T.unpack ("罫線の " <> key <> " を寸法として読めません: " <> t))) (check l) (parseSignedDim t)
+        _ -> failAt (valueAnn v) (T.unpack ("罫線の " <> key <> " は \"0.3pt\" のように文字列で書きます"))
+      positiveDim = \case
+        Abs x -> x > 0
+        Zw r -> r > 0
+
+-- | 0.3pt.
+defaultRuleWeight :: Sp
+defaultRuleWeight = round (3 / 10 * 65536 :: Rational)
+
+-- | A TOML document that is one rule spec, read by its 'FromValue'; errors are G0306.
+parseRuleSpec :: FileId -> Text -> Either [Diagnostic] RuleSpec
+parseRuleSpec = decodeStrictBy "G0306" (const "G0306")
+
 newtype Swatch = Swatch (Int, Int, Int, Int)
   deriving stock (Eq, Show)
 
@@ -600,6 +652,8 @@ data Style = Style
     stNotesPlacement :: !Text,
     -- | [notes] numbering: the range over which notes are numbered (golem-driver ADR 0018)
     stNotesNumbering :: !NoteNumbering,
+    -- | [notes.rule]: the rule before footnotes in the PDF, its length always there (golem-driver ADR 0024)
+    stNotesRule :: !(Maybe RuleSpec),
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
     stWrapGap :: !Dim,
@@ -632,6 +686,7 @@ defaultStyle =
       stNumbersVertical = "kanji",
       stNotesPlacement = "page-foot",
       stNotesNumbering = NumberPerChapter,
+      stNotesRule = Nothing,
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
       stWrapGap = Zw 1,
@@ -1019,11 +1074,19 @@ instance FromValue EmphasisV where
     fail
       "[emphasis] は廃止しました。strong = \"italic\" は [character-styles.strong] の based-on = \"italic\" に、bold-font は [character-styles.bold] の font に、italic-font は [character-styles.italic] の font に書き換えます"
 
-data Notes = Notes (Maybe Text) (Maybe NoteNumbering)
+data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec)
 
 instance FromValue Notes where
-  fromValue = parseTableFromValue (Notes <$> enumKey "placement" ["page-foot", "chapter-end"] <*> (fmap numbering <$> enumKey "numbering" ["chapter", "file", "book"]))
+  fromValue = parseTableFromValue (Notes <$> enumKey "placement" ["page-foot", "chapter-end"] <*> (fmap numbering <$> enumKey "numbering" ["chapter", "file", "book"]) <*> optKeyOf "rule" noteRule)
     where
+      {- the rule before footnotes (golem-driver ADR 0024): length is
+      required; a space not written is 0 when the other is written -}
+      noteRule v = do
+        r <- fromValue v
+        when (isNothing (rsLength r)) $ failAt (valueAnn v) "[notes.rule] には length が要ります"
+        pure $ case (rsSpaceBefore r, rsSpaceAfter r) of
+          (Nothing, Nothing) -> r
+          (b, a) -> r {rsSpaceBefore = Just (fromMaybe (Abs 0) b), rsSpaceAfter = Just (fromMaybe (Abs 0) a)}
       -- the range over which notes are numbered (golem-driver ADR 0018)
       numbering = \case
         "file" -> NumberPerFile
@@ -1108,7 +1171,7 @@ instance FromValue Style where
     Numbers nv <- fromMaybe (Numbers Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
     (_ :: Maybe EmphasisV) <- optKey "emphasis"
-    Notes np nn <- fromMaybe (Notes Nothing Nothing) <$> optKey "notes"
+    Notes np nn nr <- fromMaybe (Notes Nothing Nothing Nothing) <$> optKey "notes"
     side <- optKey "sidenotes"
     Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
@@ -1135,6 +1198,7 @@ instance FromValue Style where
           stNumbersVertical = fromMaybe (stNumbersVertical d) nv,
           stNotesPlacement = fromMaybe (stNotesPlacement d) np,
           stNotesNumbering = fromMaybe (stNotesNumbering d) nn,
+          stNotesRule = nr,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
           stWrapGap = fromMaybe (stWrapGap d) fgap,
