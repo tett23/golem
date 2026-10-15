@@ -141,6 +141,8 @@ occurrences (File _ bs) = concatMap block bs
         )
           <> concatMap (concatMap inline) slots
       SoftBreak -> []
+      -- an escaped character refers to nothing (golem-parser ADR 0010)
+      Escaped _ -> []
       _ -> []
     argument (Located _ a) = case a of
       Positional v -> value v
@@ -442,6 +444,8 @@ outline ws path = case sourceOf ws path of
     title src is = T.strip (T.concat (map (piece src) is))
     piece src (Located sp i) = case i of
       Text t -> t
+      -- the character, not the source with its backslash (golem-parser ADR 0010)
+      Escaped c -> T.singleton c
       SoftBreak -> ""
       _ -> TE.decodeUtf8Lenient (BS.take (spanLength sp) (BS.drop (spanStart sp) (TE.encodeUtf8 (srcText src))))
     nest [] = []

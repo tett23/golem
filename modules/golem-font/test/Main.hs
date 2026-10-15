@@ -18,7 +18,9 @@ main = do
   han <- load "SourceHanSans-Regular_subset.otf"
   sans <- load "SourceSansPro-Regular.otf"
   serif <- BS.readFile "test/fonts/SourceSerifVariable-Roman.ttf"
-  defaultMain (tests han sans serif)
+  -- the subset of Source Han Sans has no palt; Noto Serif JP of golem-driver's 蟹工船 fixture has
+  noto <- BS.readFile "../golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" >>= either (fail . show) pure . loadFont
+  defaultMain (tests han sans serif noto)
 
 load :: FilePath -> IO Font
 load name = do
@@ -42,8 +44,8 @@ render gs = T.unlines [T.pack (show g <> " @" <> show c <> " " <> show p) | (g, 
 goldenShape :: String -> Font -> ShapeRequest -> TestTree
 goldenShape name f req = goldenVsString name ("test/golden/" <> name <> ".txt") (pure (BL.fromStrict (TE.encodeUtf8 (render (shapeUnits f req)))))
 
-tests :: Font -> Font -> ByteString -> TestTree
-tests han sans serif =
+tests :: Font -> Font -> ByteString -> Font -> TestTree
+tests han sans serif noto =
   testGroup
     "golem-font (ADR 0001, 0002)"
     [ testGroup
@@ -55,6 +57,18 @@ tests han sans serif =
             let h = [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "「、ー")]
                 v = [g | (g, _, _) <- shapeUnits han ((shapeRequest 1000 "「、ー") {srDirection = Vertical})]
             assertBool (show (h, v)) (and (zipWith (/=) h v)),
+          testCase "palt moves a bracket within its narrowed box; without palt it has no offset (golem-driver ADR 0020)" $ do
+            let offsets feats = [(xo, yo) | (_, _, (_, _, xo, yo)) <- shapeUnits noto ((shapeRequest 1000 "「") {srFeatures = feats})]
+            case offsets ["palt"] of
+              [(xo, _)] -> assertBool "x offset with palt" (xo /= 0)
+              other -> assertFailure (show other)
+            offsets ["-palt"] @?= [(0, 0)],
+          testCase "vertical shaping gives offsets less the vertical origin (golem-driver ADR 0020)" $ do
+            let vertical feats t = [(xo + ox, yo + oy) | (g, _, (_, _, xo, yo)) <- shapeUnits han ((shapeRequest 1000 t) {srDirection = Vertical, srFeatures = feats}), let (ox, oy) = glyphVerticalOrigin han g]
+            vertical [] "漢" @?= [(0, 0)]
+            case vertical ["vpal"] "「" of
+              [(_, yo)] -> assertBool "y offset with vpal" (yo /= 0)
+              other -> assertFailure (show other),
           testCase "the ff ligature is one glyph whose cluster covers two letters" $ do
             let gs = shape sans (shapeRequest (10 * 65536) "office")
             length gs @?= 5

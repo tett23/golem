@@ -21,7 +21,7 @@ import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescrip
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
-import Golem.Driver.Pdf (Assumed (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, runningHeadText, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
+import Golem.Driver.Pdf (Assumed (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, offsetOrigin, producer, runningHeadText, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Kerning (..), Look (..), Synthetic (..), plainLook)
@@ -435,6 +435,66 @@ characterFeatureTests =
               other -> assertFailure (show other)
       at dY horizontalStyle >>= (@?= 2)
       at dX pdfStyle >>= (@?= 2),
+    testCase "shaping without palt or vpal gives no offsets, horizontal or vertical (golem-driver ADR 0020)" $ do
+      noto <- notoFonts
+      han <- featureFonts
+      let txt = "漢「字」、。ー\x2014 AVa"
+      sequence_
+        [ assertEqual (show (fonts', v)) [] [g | g <- lfShape fonts (Shaping "body" v []) txt, shOffset g /= (0, 0)]
+        | (fonts, fonts') <- [(noto, "noto" :: String), (han, "han")],
+          v <- [False, True]
+        ],
+    testCase "palt and vpal move a bracket within its box (golem-driver ADR 0020)" $ do
+      noto <- notoPaltFonts
+      han <- featureFonts
+      case lfShape noto (Shaping "body" False ["palt"]) "「" of
+        [g] -> assertBool (show g) (fst (shOffset g) /= 0)
+        other -> assertFailure (show other)
+      case lfShape han (Shaping "body" True ["vpal"]) "「" of
+        [g] -> assertBool (show g) (snd (shOffset g) /= 0)
+        other -> assertFailure (show other),
+    testCase "PDF: a glyph is drawn at its box moved by its offset; other glyphs stay (golem-driver ADR 0020)" $ do
+      -- a bracket gets palt or vpal from a role's features (proportional-metrics leaves punctuation to the aki)
+      let style feature = fakeBody <> "\n[fonts.palt]\nja = \"fonts/h.otf\"\nfeatures = [\"" <> feature <> "\"]\n\n[character-styles.p]\nfont = \"palt\"\n"
+          -- the bracket of the role palt moved as palt (horizontal) or vpal (vertical) would; the advances stay
+          moved =
+            fakeFonts
+              { lfShape = \s t ->
+                  [ if shText g == "「" && shRole s == "palt" then g {shOffset = if shVertical s then (0, 1 / 4) else (-(1 / 4), 0)} else g
+                  | g <- lfShape fakeFonts s t
+                  ]
+              }
+          drawn fonts base feature = miniPdf (FontProvider (\_ _ _ _ -> pure (Right fonts))) True (base <> style feature) "[style p: 漢「字」]\n" fakeFontFiles >>= fmap (drawnGlyphs . BS.concat) . inflateAll
+          diff base feature = do
+            plain <- drawn fakeFonts base feature
+            off <- drawn moved base feature
+            assertEqual "the same glyphs" (map dGlyph plain) (map dGlyph off)
+            pure [(dGlyph a, ptToRational (dX b) - ptToRational (dX a), ptToRational (dY b) - ptToRational (dY a)) | (a, b) <- zip plain off, dX a /= dX b || dY a /= dY b]
+          near expected got = assertBool (show (expected, got)) (abs (expected - got) < 1 / 100)
+      horizontal <- diff horizontalStyle "palt"
+      case horizontal of
+        [(g, dx', dy')] -> do
+          g @?= fromEnum '「'
+          near (-(10 / 4)) dx'
+          dy' @?= 0
+        other -> assertFailure (show other)
+      vertical <- diff pdfStyle "vpal"
+      case vertical of
+        -- 13Q is 3.25mm: a quarter of it upward
+        [(g, dx', dy')] -> do
+          g @?= fromEnum '「'
+          dx' @?= 0
+          near (13 / 4 / 4 * 72 / 25.4) dy'
+        other -> assertFailure (show other),
+    testCase "the offset of a glyph by how it is drawn; a scaled run scales the x offset (golem-driver ADR 0020)" $ do
+      let size = 655360
+      offsetOrigin size (FrameHorizontal 0) (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + 65536, 2000 + 131072)
+      offsetOrigin size (FrameHorizontal 50) (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + round (65536 * 1050 / 1000 :: Rational), 2000 + 131072)
+      offsetOrigin size (FrameHorizontal (-30)) (1 / 10, 0) (0, 0) @?= (round (65536 * 970 / 1000 :: Rational), 0)
+      offsetOrigin size FrameUpright (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + 65536, 2000 + 131072)
+      -- turned 90° clockwise: the glyph's x runs down the page, its y to the right
+      offsetOrigin size FrameTurned (1 / 10, 1 / 5) (1000, 2000) @?= (1000 + 131072, 2000 - 65536)
+      offsetOrigin size (FrameHorizontal 50) (0, 0) (1000, 2000) @?= (1000, 2000),
     testCase "HTML: the CSS of the keys; a key with the value of body's default is not written" $ do
       let styles =
             BS.concat
@@ -2779,7 +2839,7 @@ fakeFonts =
       lfWordAdvance = \s -> sum . map (advOf (shRole s)) . T.unpack,
       lfPairKern = \_ _ _ -> 0,
       lfCode = \_ g -> g,
-      lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i | (i, c) <- zip [0 ..] (T.unpack t)],
+      lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i (0, 0) | (i, c) <- zip [0 ..] (T.unpack t)],
       lfEmBoxCentral = const (38 / 100),
       lfInkBox = \_ _ -> Just (1 / 10, -1 / 10, 9 / 10, 8 / 10),
       lfEmbed = \_ vertical used ->
