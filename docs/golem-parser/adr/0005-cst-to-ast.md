@@ -1,6 +1,6 @@
 # ADR 0005: CST から AST への変換
 
-ステータス: 採択→段落内の改行の扱いは [docs/adr/0003](../../adr/0003-verse-line-breaks.md)
+ステータス: 採択→段落内の改行の扱いは [docs/adr/0003](../../adr/0003-verse-line-breaks.md)、エスケープの表し方は [ADR 0010](0010-ruby-slash-escape-and-table-cell-breaks.md)
 
 ## 文脈
 

@@ -535,24 +535,26 @@ LSP では、エディタで開いているファイルにも出す。
 
 行末の `\`（強制改行）の次の行が、同じ段落の続きの行ではない。
 空行、ファイルの末尾、ブロックの始まりの文字（`#`、`- ` など）で始まる行が続いた。
-見出し、定義リストの用語、表のセルの行末の `\` も、このコードになる。
+見出しと定義リストの用語の行末の `\` も、このコードになる。
+表の行の閉じる `|` の後に書いた `\` も、このコードになる（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。
 これらは一行で書く記法なので、強制改行を書けない。
 
 - メッセージ: `行末の \ は段落の中の強制改行です。次の行に段落の続きが要ります。本文の \ は \\ と書きます`
 - 段階とモジュール: 構文（golem-parser）
-- ADR: [docs/adr/0016](adr/0016-hard-line-breaks.md)
+- ADR: [docs/adr/0016](adr/0016-hard-line-breaks.md)、[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)
 
 ### 主な原因
 
 - 段落の最後の行の末尾に `\` を書いた。
 - 本文の文字として、行末に `\` を置こうとした。
 - 見出しや定義リストの用語の中で、行を改めようとした。
+- 表の行の末尾に `\` を書いた。
 
 ### 直し方
 
 段落の最後の行の `\` を消す。
 本文の `\` を行末に置くときは、`\\` と書く。
-見出しと用語は一行で書く。
+見出し、用語、表の行は一行で書く。
 
 ## G0129
 
@@ -926,10 +928,11 @@ dev では出力に残し、診断は出さない。
 
 `/` で区切ったルビの対象と読みのセグメントの数が合わない。
 対象を区切らず、読みだけを `/` で区切った場合も、このコードになる。
+区切りになるのは原稿に書いた `/` だけであり、`\/` と書いた `/` と、式の値の中の `/` は区切りにならない（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。
 
 - メッセージ: `モノルビの対象と読みのセグメントの数が一致しません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)、[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)
 
 ### 主な原因
 
@@ -939,6 +942,7 @@ dev では出力に残し、診断は出さない。
 ### 直し方
 
 対象と読みの `/` の数をそろえる。
+区切りでない `/` を対象や読みに書くときは、`\/` と書く。
 
 ## G0216
 
@@ -1575,6 +1579,7 @@ lines の範囲が不正です
 ### 意味
 
 `/` で区切った索引の語の段が 3 段以上あるか、語と読みの段の数が違うか、空の段がある。
+語の中の `\/` と、式の値の中の `/` は段の区切りにならない（[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）。
 
 - メッセージ: `索引の語と読みの段の数が不正です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
@@ -1589,6 +1594,7 @@ lines の範囲が不正です
 ### 直し方
 
 段は 2 段までとし、語と読みの `/` の数をそろえる。
+区切りでない `/` を語に書くときは、`\/` と書く。
 
 ## G0243
 

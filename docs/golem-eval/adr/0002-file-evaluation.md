@@ -1,6 +1,6 @@
 # ADR 0002: ファイル内評価（S0）
 
-ステータス: 採択
+ステータス: 採択→`ruby` と `index` の `/` の区切りは [golem-parser ADR 0010](../../golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)
 
 ## 文脈
 
