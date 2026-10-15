@@ -1862,6 +1862,9 @@ v1 のリリースまでに、次の項目を扱う。
 - **二倍ダッシュのカーニング**：`——` はペアカーニングを止める約物の一覧（[docs/adr/0020](adr/0020-indesign-character-features.md)）に入っていないので、`kerning = "metrics"` でフォントのカーニングがかかる。蟹工船の縦組みでは 319 か所に −0.088em かかる。
 - **ルビの親文字の中の文字スタイル**：PDF は、ルビの親文字の中の文字スタイルを描き分けない（golem-layout の `rubyPieces` が親文字の中のスタイルを平らにする）。手で書いた `[style]` も、親文字の一部に一致した正規表現スタイル（[docs/adr/0015](adr/0015-regex-styles.md)）も、HTML では効くが PDF では見た目が変わらない。
 - **`[aki]` の空きの見分け方**：行の組み方は、`[aki]` の空きを「伸び縮みしない空き（`Glue w 0 0`）」という形で見分けている（[docs/adr/0019](adr/0019-aki-settings.md)）。今は同じ形の空きがほかに出ないが、幅 0 の語間の空白が出ると `[aki]` と取り違える。印を付けて見分ける形に改める。
+- **章末の注**：`[notes] placement = "chapter-end"` を読み込むが、どの出力も注の置き方を変えない。仕様書とマニュアルは章末に置けると書いていない形に直したが、章末の注そのものはまだない。
+- **図版の欠落の扱い**：PDF の図版のうち、置けない形式のものや壊れた画像を、`golem build` が誤りにせずに落としている可能性がある（コードを読んだ結果で、実際の出力では確かめていない）。
+- **奥付のコミットの行**：コミットしていない変更がある状態でマニュアルを組むと、奥付のコミットの行が版面の右にはみ出す（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 
 #### 記法と設定
 
@@ -1872,6 +1875,9 @@ v1 のリリースまでに、次の項目を扱う。
 - **表のセルの行末の `\`**：表のセルの行末に書いた `\` は、[docs/adr/0016](adr/0016-hard-line-breaks.md) の定める G0124 ではなく G0110 になる。行末が `\` の行は表の行になれず、やり直した試行の中の誤りを peg-hs が捨てるためである。見出しと用語では G0124 になる。直すには peg-hs の側の変更が要る。
 
 - **`@table` の位置引数のパス**：`@table` はファイルのパスを `src=` だけで受け付ける。`@listing` は位置引数を正とし `src=` を廃止予定にした（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）ので、`@table` でもパスを最初の引数に書けるようにするかを検討する。記法の追加が要るので ADR で決める。
+- **`*[式]` の展開とプラグインへの引数**：パーサーは `*[式]` を読むが、評価はそれを展開しない。プラグインのコマンドに渡すキーワード引数は、キーを落として `[0, value]` で送っている。
+- **ADR とコードの食い違い**：`overridableCommands` に `code` が入っている。LSP の補完にプラグインのコマンドの名前が出ない。`golem inspect` のオプションの書き方が ADR と違う。ホストが `golem_dealloc` を一度も呼ばない。どちらに合わせるかを決めて直す。
+- **出力インテントの条件**：PDF/X-4 の出力インテントは `[color] intent` があるときにだけ書くが、仕様書にこの条件が書かれていない。
 
 #### CLI と LSP
 
@@ -1890,6 +1896,12 @@ v1 のリリースまでに、次の項目を扱う。
 - **段組みの脚注**：段組みの版面で、脚注がその段の下に組まれることを PDF で目で確かめていない。自動のテストでだけ確かめている（[docs/adr/0018](adr/0018-multi-column-layout.md)）。
 - **LSP のお知らせ**：Neovim で、お知らせが Information として表示され、問題の一覧に載ることと、`silence-notices` に加えると保存の後に消えることを確かめていない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 - **診断の説明へのリンク**：GitHub の上で `docs/diagnostics.md#g0117` を開き、G0117 の節に移ることを確かめていない（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
+- **コードブロックの見え方**：コードブロックの PDF を Acrobat の出力プレビューで開き、背景の色が DeviceCMYK の版だけに出ることと、コードの書体が埋め込まれていることを確かめていない。HTML と EPUB の `pre` と `code` の見え方も、Safari と Chrome で確かめていない（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
+- **二冊のマニュアルの HTML と PDF**：利用者向けと開発者向けのマニュアルの HTML を、ブラウザで開いて確かめていない。PDF は、Acrobat でフォントの一覧と埋め込みを確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
+- **マニュアルの中の InDesign の記述**：利用者向けのマニュアルの InDesign との対応と比較の記述（「はじめに」と付録 E）を、InDesign に詳しい人が確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
+- **開発者向けのマニュアルの例**：プラグインの WebAssembly のテキスト形式（`.wat`）の例を、実際に組んで動かしていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
+- **CI の決定性の検査**：索引の段組み、コードブロック、二冊のマニュアルを加えた後の CI の `determinism` ジョブで、x86-64 と aarch64 のハッシュが一致することを、ジョブの結果で確かめていない（[docs/adr/0025](adr/0025-index-columns.md)、[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)、[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
+- **リリースの資産のマニュアル**：次のリリースで、資産に二冊の PDF と HTML が載り、`SHA256SUMS` と一致することを確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 
 ### 課題にしなかった事項
 
