@@ -3,6 +3,7 @@ whole document. Page numbers (S2) remain as 'Ref' 'RefPage'.
 -}
 module Golem.Doc.Assemble
   ( AssembleConfig (..),
+    NoteNumbering (..),
     DocValues (..),
     Book (..),
     HeadingInfo (..),
@@ -15,12 +16,13 @@ module Golem.Doc.Assemble
   )
 where
 
+import Control.Monad (when, zipWithM)
 import Control.Monad.State.Strict
 import Data.Bifunctor (first)
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isNothing)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -35,8 +37,19 @@ data AssembleConfig = AssembleConfig
     acFigureFormat :: !Text,
     {- | the line of each @number by the span of the block it numbers,
     where G0407 points; a block not in it is pointed at itself
-    -} acNumberSites :: !(Map SrcSpan SrcSpan)
+    -} acNumberSites :: !(Map SrcSpan SrcSpan),
+    -- | the range over which notes are numbered (golem-driver ADR 0018)
+    acNoteNumbering :: !NoteNumbering,
+    {- | the chapter of the manifest (from 0) of each document, in the order
+    of the documents; a document past its end is a chapter of its own
+    -} acChapterOf :: ![Int]
   }
+
+{- | The range over which footnotes and sidenotes are numbered from 1
+(golem-driver ADR 0018): a file, a chapter of the manifest, or the book.
+-}
+data NoteNumbering = NumberPerFile | NumberPerChapter | NumberPerBook
+  deriving stock (Eq, Show)
 
 -- | The values of the @doc@ namespace.
 newtype DocValues = DocValues {dvChapterCount :: Integer}
@@ -197,7 +210,7 @@ assemble cfg evalDeferred docs =
         ]
       citations = numberCitations docs
    in ( Book
-          { bookDocs = docs',
+          { bookDocs = renumberNotes cfg docs',
             bookHeadings = nsHeadings ns,
             bookFigures = Map.mapMaybeWithKey (\sp _ -> figureText sp) (nsFigures ns),
             bookToc = toc,
@@ -356,6 +369,50 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
       Note sp n xs -> pure . Note sp n <$> inls xs
       Sidenote sp n xs -> pure . Sidenote sp n <$> inls xs
       other -> pure [other]
+
+{- | The notes and the sidenotes numbered again over the range of
+'acNoteNumbering', in the order of the documents and of the notes in them
+(golem-driver ADR 0018). Footnotes and sidenotes count apart. S0 numbered
+both per file.
+-}
+renumberNotes :: AssembleConfig -> [Document] -> [Document]
+renumberNotes cfg docs = evalState (zipWithM doc restarts docs) (0, 0)
+  where
+    chapters = map Just (acChapterOf cfg) <> repeat Nothing
+    restarts = zipWith3 restart [0 :: Int ..] chapters (Nothing : chapters)
+    restart i ch prev = case acNoteNumbering cfg of
+      NumberPerFile -> True
+      NumberPerBook -> i == 0
+      NumberPerChapter -> i == 0 || isNothing ch || ch /= prev
+    doc fresh (Document fid bs) = do
+      when fresh (put (0, 0))
+      Document fid <$> mapM blk bs
+    blk (Block sp l body) =
+      Block sp l <$> case body of
+        Paragraph st is -> Paragraph st <$> inls is
+        Heading lv a is -> Heading lv a <$> inls is
+        BulletList items -> BulletList <$> mapM item items
+        OrderedList items -> OrderedList <$> mapM item items
+        DefList gs -> DefList <$> mapM (\(DefGroup ts ds) -> DefGroup <$> mapM inls ts <*> mapM (mapM blk) ds) gs
+        Table al h rows -> Table al <$> mapM inls h <*> mapM (mapM inls) rows
+        FigureBlock f -> (\c -> FigureBlock f {figCaption = c}) <$> mapM blk (figCaption f)
+        other -> pure other
+    item (ListItem n bs) = ListItem n <$> mapM blk bs
+    inls = mapM inl
+    inl :: Inline -> State (Int, Int) Inline
+    inl = \case
+      Note sp _ xs -> do
+        (n, m) <- get
+        put (n + 1, m)
+        Note sp (n + 1) <$> inls xs
+      Sidenote sp _ xs -> do
+        (n, m) <- get
+        put (n, m + 1)
+        Sidenote sp (m + 1) <$> inls xs
+      Kenten sp s xs -> Kenten sp s <$> inls xs
+      Color sp c xs -> Color sp c <$> inls xs
+      CharStyle sp c xs -> CharStyle sp c <$> inls xs
+      other -> pure other
 
 -- | Give copied inlines the span of the reference that produced them.
 relocate :: SrcSpan -> Inline -> Inline

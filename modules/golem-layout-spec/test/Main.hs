@@ -30,7 +30,7 @@ styleWith :: Bool -> Bool -> Grid -> Style
 styleWith bindingRight vertical g = defaultStyle {stPage = Just (Page (NamedSize "A5") bindingRight vertical (Just g) 0)}
 
 geom :: Style -> PageGeometry
-geom s = either (error . show) id (pageGeometry (FileId 0) s)
+geom s = either (error . show) id (pageGeometry (FileId 0) False s)
 
 tests :: TestTree
 tests =
@@ -77,8 +77,8 @@ tests =
         let gv = geom (styleWith True True (grid 40 20 1 Nothing))
         take 2 (pgLineGrid gv) @?= [pt 5, pt 22],
       testCase "a type area larger than the page is an error" $ do
-        assertBool "too wide" (isLeft (pageGeometry (FileId 0) (styleWith False False (grid 40 30 1 Nothing))))
-        assertBool "too many lines" (isLeft (pageGeometry (FileId 0) (styleWith False False (grid 30 60 1 Nothing)))),
+        assertBool "too wide" (isLeft (pageGeometry (FileId 0) False (styleWith False False (grid 40 30 1 Nothing))))
+        assertBool "too many lines" (isLeft (pageGeometry (FileId 0) False (styleWith False False (grid 30 60 1 Nothing)))),
       testCase "sidenote column on the fore-edge side; errors when vertical or too wide" $ do
         let sn w = SidenoteStyle (Abs (pt w)) (Abs (pt 10)) "{n}"
             s = (styleWith False False (grid 25 30 1 Nothing)) {stSidenotes = Just (sn 60)}
@@ -87,8 +87,8 @@ tests =
             Rect ex _ _ _ = pgTypeAreaEven g
         sidenoteAreaFor g 1 @?= Just (Rect (ox + pt 250 + pt 10) oy (pt 60) oh)
         sidenoteAreaFor g 2 @?= Just (Rect (ex - pt 10 - pt 60) oy (pt 60) oh)
-        assertBool "too wide" (isLeft (pageGeometry (FileId 0) s {stSidenotes = Just (sn 200)}))
-        assertBool "vertical" (isLeft (pageGeometry (FileId 0) ((styleWith True True (grid 40 20 1 Nothing)) {stSidenotes = Just (sn 20)}))),
+        assertBool "too wide" (isLeft (pageGeometry (FileId 0) False s {stSidenotes = Just (sn 200)}))
+        assertBool "vertical" (isLeft (pageGeometry (FileId 0) False ((styleWith True True (grid 40 20 1 Nothing)) {stSidenotes = Just (sn 20)}))),
       testCase "G0701: one diagnostic per failed condition, at the top of the given file (golem-driver ADR 0016)" $ do
         let sn w = SidenoteStyle (Abs (pt w)) (Abs (pt 10)) "{n}"
             base = styleWith False False (grid 30 30 1 Nothing)
@@ -104,7 +104,7 @@ tests =
                 ("sidenotes overflow", base {stSidenotes = Just (sn 200)}, "版面と傍注欄の合計がページからはみ出しています")
               ]
         mapM_
-          ( \(name, st, msg) -> case pageGeometry (FileId 7) st of
+          ( \(name, st, msg) -> case pageGeometry (FileId 7) False st of
               Left [d] -> do
                 assertEqual name (DiagnosticCode "G0701") (diagCode d)
                 assertEqual name msg (diagMessage d)
@@ -114,7 +114,7 @@ tests =
           cases,
       testCase "a sidenote column on a page of two columns is G0701 (docs/adr ADR 0018)" $ do
         let sn = SidenoteStyle (Abs (pt 20)) (Abs (pt 10)) "{n}"
-        case pageGeometry (FileId 0) ((styleWith False False (grid 12 30 2 (Just (Abs (pt 20))))) {stSidenotes = Just sn}) of
+        case pageGeometry (FileId 0) False ((styleWith False False (grid 12 30 2 (Just (Abs (pt 20))))) {stSidenotes = Just sn}) of
           Left [d] -> do
             diagCode d @?= DiagnosticCode "G0701"
             assertBool "mentions columns" ("段組み" `T.isInfixOf` diagMessage d)
@@ -139,14 +139,34 @@ tests =
             footGrid = (grid 30 30 1 Nothing) {gridTop = Abs (a5H - depth - margin)}
             withHead g pos n = (styleWith False False g) {stMasters = Map.fromList [("body", MasterDef (Just (RunningHeadDef pos (lines' n) (lines' n))) Nothing)]}
             lines' n = RunningLines ([PartText "柱"] :| replicate (n - 1) [PartText "柱"])
-            codeOf st = case pageGeometry (FileId 3) st of
+            codeOf st = case pageGeometry (FileId 3) False st of
               Left [d] -> Just (diagCode d, diagSpan d)
               Left ds -> error (show ds)
               Right _ -> Nothing
         codeOf (withHead headGrid "top-outside" 3) @?= Just (DiagnosticCode "G0752", mkSpan (FileId 3) 0 0)
         codeOf (withHead headGrid "top-outside" 1) @?= Nothing
         codeOf (withHead footGrid "bottom-center" 3) @?= Just (DiagnosticCode "G0752", mkSpan (FileId 3) 0 0)
-        codeOf (withHead footGrid "bottom-center" 1) @?= Nothing
+        codeOf (withHead footGrid "bottom-center" 1) @?= Nothing,
+      testCase "G0750: a hidden folio on the type area, only with crop marks and when enabled (golem-driver ADR 0021)" $ do
+        let mm15 = 2786570 -- 15mm
+            mm15' = 278657 -- 1.5mm
+            withGutter gt = defaultStyle {stPage = Just (Page (NamedSize "A5") False False (Just ((grid 30 30 1 Nothing) {gridGutter = Abs gt})) 0)}
+            codesOf marks st = either (map diagCode) (const []) (pageGeometry (FileId 3) marks st)
+        codesOf True (withGutter mm15') @?= [DiagnosticCode "G0750"]
+        case pageGeometry (FileId 3) True (withGutter mm15') of
+          Left [d] -> do
+            diagMessage d @?= "隠しノンブルが版面に重なります。[hidden-folio] の gutter を小さくするか、ノドの余白を広げてください"
+            diagSpan d @?= mkSpan (FileId 3) 0 0
+          other -> assertFailure (show other)
+        codesOf False (withGutter mm15') @?= []
+        codesOf True ((withGutter mm15') {stHiddenFolio = (stHiddenFolio defaultStyle) {hfEnabled = False}}) @?= []
+        codesOf True (withGutter mm15) @?= [],
+      testCase "the hidden folio geometry is there only with crop marks and when enabled (golem-driver ADR 0021)" $ do
+        let s = styleWith False False (grid 30 30 1 Nothing)
+        pgHiddenFolio (either (error . show) id (pageGeometry (FileId 0) True s)) @?= Just (HiddenFolioGeometry (pt 6) 278657 False)
+        pgHiddenFolio (geom s) @?= Nothing
+        pgHiddenFolio (either (error . show) id (pageGeometry (FileId 0) True s {stHiddenFolio = (stHiddenFolio s) {hfEnabled = False}})) @?= Nothing
+        pgHiddenFolio (either (error . show) id (pageGeometry (FileId 0) True s {stHiddenFolio = (stHiddenFolio s) {hfPages = HiddenAll}})) @?= Just (HiddenFolioGeometry (pt 6) 278657 True)
     ]
   where
     oneLine r = RunningLines ([PartRef r False] :| [])
