@@ -10,7 +10,7 @@
 [code: golem preflight] は、[code: --rules] で指したファイルを読みます。
 [code: --rules] を付けなければプロジェクトのルートの [code: preflight.toml] を読み、それもなければ組み込みの [code: print] を使います。
 書かなかったキーは、[code: based-on] の設定から一つずつ引き継ぎます。
-長さは [code: style.toml] と同じく [code: "3mm"] や [code: "0.25pt"] のように書き、[code: zw] は使えません（付録C「[ref-title app-style]」）。
+長さは [code: style.toml] と同じく [code: "3mm"] や [code: "0.25pt"] のように書き、[code: zw] は使えません（[ref-title app-style]）。
 
 @nonumber
 ## 全体

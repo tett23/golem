@@ -242,7 +242,7 @@ color = { warning-below = 350 }
 表の中のキーも、一つずつ引き継ぎます。
 この例では、カラーの画像の [code: error-below] は [code: print] の 150 のままで、[code: warning-below] だけが 350 になります。
 最後の段落の [code: \[page-count\]] は、[code: print] では検査しない項目なので、[code: #] を外すと検査が有効になります。
-書けるキーと値は、付録D「[ref-title app-preflight]」（[ref-page app-preflight] ページ）にまとめています。
+書けるキーと値は、[ref-title app-preflight]（[ref-page app-preflight] ページ）にまとめています。
 
 組み込みの設定は三つあります。
 

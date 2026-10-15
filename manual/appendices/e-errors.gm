@@ -501,7 +501,7 @@ PDF を組むときに出るエラーです。
 この節の診断は、[code: golem preflight] だけが出します（第[ref-number output]章の「[ref-title preflight]」）。
 G0901 のほかは、エラーか警告か、出すかどうかをプリフライトの設定で決めます。
 括弧の中は、組み込みの設定 [code: print] での重さです。
-設定のキーは、付録D「[ref-title app-preflight]」にあります。
+設定のキーは、[ref-title app-preflight]にあります。
 
 = [strong: G0901 [code: … の値が正しくありません: …（…）]]
   プリフライトの設定のファイル（[code: preflight.toml] か [code: --rules] のファイル）に誤りがあります。

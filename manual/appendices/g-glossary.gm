@@ -235,16 +235,16 @@
 = [strong: プリフライトの設定]
   プリフライトでどの検査をどの重さとしきい値で行うかを書いたファイルです。InDesign のプリフライトプロファイルに当たります。
   既定は [code: preflight.toml] で、組み込みの [code: basic]、[code: print]、[code: none] のどれかを元にします。
-  付録D「[ref-title app-preflight]」。
+  [ref-title app-preflight]。
 = [strong: 実効の解像度]
   紙面に置いた画像の解像度です。画像の画素の数を、置いた大きさ（インチ）で割った値で、ppi で表します。
   「[ref-title preflight]」（[ref-page preflight] ページ）。
 = [strong: 断裁の危険域]
   断裁のずれで切れたり白い縁が出たりする、仕上がりの線のまわりの範囲です。
-  付録D「[ref-title app-preflight]」。
+  [ref-title app-preflight]。
 = [strong: 安全域]
   仕上がりの線から一定の幅だけ内側の範囲です。文字と線をこの中に収めれば、断裁のずれで切れません。
-  付録D「[ref-title app-preflight]」。
+  [ref-title app-preflight]。
 = [strong: 出力インテントと ICC プロファイル]
   印刷の色の条件を表すファイルが ICC プロファイルで、PDF に埋め込んだそれを出力インテントと呼びます。[index reading=しゅつりょくいんてんと: 出力インテント][note: ICC.1:2022（ICC プロファイルの仕様）。[code: https://www.color.org/specification/ICC.1-2022-05.pdf]]
   [code: style.toml] の [code: \[color\]] の [code: intent] に書きます。
