@@ -40,7 +40,7 @@ fs :: Sp
 fs = 10 * 65536
 
 box :: Sp -> Item
-box w = Box w (BoxContent "x" False 0 0 0 look0 0 0)
+box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [])
 
 -- | The original look of 'defaultComposeEnv'.
 look0 :: Look
@@ -51,7 +51,7 @@ paragraph :: [Sp] -> [Item]
 paragraph ws = concat [box w : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 refBox :: Text -> Sp -> Item
-refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0)
+refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [])
 
 knuthPlassWords, knuthPlassLog :: FilePath
 knuthPlassWords = "test/data/knuth-plass/frog-king.words"
@@ -496,6 +496,7 @@ tests =
             [bcText c | Box _ c <- fst (composeInlines env [Number (mkSpan (FileId 0) 0 0) 120 Nothing])] @?= ["百", "二", "十"]
         ],
       testGroup "ruby placement (ADR 0009)" rubyTests,
+      testGroup "ruby base character styles (ADR 0011)" rubyBaseTests,
       testGroup
         "microtypography (ADR 0005)"
         [ testCase "protrusion of hyphens and full stops follows the table" $ do
@@ -509,12 +510,12 @@ tests =
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
             ws <- forAll (Gen.list (Range.linear 3 12) (Gen.integral (Range.linear 20 70)))
-            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0) | w <- ws] `interleave` Glue 6 3 2 <> finish
+            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 []) | w <- ws] `interleave` Glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
           testCase "expansion lowers the spread of adjustment ratios" $ do
             let ws = [23, 41, 37, 19, 52, 33, 28, 45, 31, 26, 39, 22, 48, 35, 29, 41]
-                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0) | w <- ws] `interleave` Glue 600 300 200 <> finish
+                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 []) | w <- ws] `interleave` Glue 600 300 200 <> finish
                 variance ps =
                   let rs = map glueRatio (init (brLines (breakParagraph ps (const 15000) items)))
                       m = sum rs / fromIntegral (length rs)
@@ -1047,6 +1048,54 @@ characterFeatureTests =
     tenth = fs `div` 10
     kernEnv = (defaultComposeEnv fs) {ceKern = \_ a b -> if (a, b) == ('あ', 'い') then -(1 / 10) else 0}
 
+{- | Ruby base character styles (golem-layout ADR 0011): an advance of 1
+in the body role and 1.2 in the heading role; the character style h sets
+the heading role, a colour its swatch.
+-}
+rubyBaseTests :: [TestTree]
+rubyBaseTests =
+  [ testCase "a character style in a group ruby base: the looks of the base and the width" $ do
+      let (looks, ws) = baseOf [rubyIn [([t "漢", CharStyle sp "h" [t "字"]], Just "か")]]
+      looks @?= [[outer, heading]]
+      ws @?= [2200],
+    testCase "no character style: every base character has the outer look, the width is as before" $ do
+      let (looks, ws) = baseOf [rubyIn [([t "漢字"], Just "か")]]
+      looks @?= [[outer, outer]]
+      ws @?= [2000],
+    testCase "a colour in the base: the character has its swatch" $ do
+      let (looks, _) = baseOf [rubyIn [([t "漢", Color sp "red" [t "字"]], Just "かんじ")]]
+      looks @?= [[outer, outer {lkColor = Just "red"}]],
+    testCase "kenten in the base: the character's look is the look around it, without kenten" $ do
+      let (looks, _) = baseOf [rubyIn [([Kenten sp Nothing [t "漢"], t "字"], Just "かんじ")]]
+      looks @?= [[outer, outer]],
+    testCase "mono ruby: the allowance onto the neighbour is measured in the neighbour's base looks" $ do
+      let style = rubyStyle R.AlignCenter
+          env' = env {ceRuby = style}
+          boxesOf segs = rubyBoxes env' [rubyIn segs, t "の"]
+          -- the first base in the heading role is 1200 wide: 350 free beside its reading of 500
+          expected room = let p = placeRuby style MonoRuby [1000] [500, 500, 500, 500] (room, 500) in (rpWidth p, (rpOverhang p, rpOverhang p))
+      drop 1 (boxesOf [([CharStyle sp "h" [t "東"]], Just "ひ"), ([t "京"], Just "きょうと")]) @?= [expected 350]
+      assertBool "the look matters" (expected 350 /= expected 250),
+    testCase "boxes other than ruby have no base looks" $ do
+      let items = fst (composeInlines env [t "前", rubyIn [([t "字"], Just "じ")], CharStyle sp "h" [t "後"], Tcy sp "12"])
+      [bcBaseLooks c | Box _ c <- items, boxKind c `notElem` [KindRuby, KindGroupRuby]] @?= [[], [], []]
+  ]
+  where
+    sp = mkSpan (FileId 0) 0 0
+    t = Text sp
+    env =
+      (defaultComposeEnv 1000)
+        { ceAdvance = \lk _ -> if lkFace lk == "heading" then 6 / 5 else 1,
+          ceRestyle = \lk -> \case
+            CharStyle _ "h" _ -> lk {lkFace = "heading", lkLatinFace = "heading"}
+            Color _ c _ -> lk {lkColor = Just c}
+            _ -> lk
+        }
+    outer = ceLook env
+    heading = outer {lkFace = "heading", lkLatinFace = "heading"}
+    rubyIn segs = Ruby sp () [RubySegment base r | (base, r) <- segs]
+    baseOf is = unzip [(bcBaseLooks c, w) | Box w c <- fst (composeInlines env is), boxKind c `elem` [KindRuby, KindGroupRuby]]
+
 rubyStyle :: R.RubyAlign -> RubyStyle
 rubyStyle a = RubyStyle a a a 500 True
 
@@ -1059,7 +1108,7 @@ rubyOf segs = Ruby (mkSpan (FileId 0) 0 0) () [RubySegment [Text (mkSpan (FileId
 
 -- | A box with edges (the overhang of a ruby).
 edgeBox :: Sp -> (Sp, Sp) -> Item
-edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b)
+edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [])
 
 -- | The start and end of each box of a set line.
 boxSpans :: Line -> [(Sp, Sp)]
