@@ -104,6 +104,7 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 段落スタイルの `regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` のような正規表現スタイルは、段落の中で正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル、[docs/adr/0015](./docs/adr/0015-regex-styles.md)）。
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注欄の幅、版面との間隔、本文側の印だけを書く。
+PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組みの本でも二段のように版面と異なる段数で組める（[docs/adr/0025](docs/adr/0025-index-columns.md)）。
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には商用のプリフライト（Acrobat や pdfToolbox など）で確認する。
 

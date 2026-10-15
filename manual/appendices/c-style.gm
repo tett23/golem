@@ -231,6 +231,17 @@ PDF を作るには必須です。
 | [style code: leader] | [style code: "dots"] | PDF の目次のリーダーです。[style code: "dots"]（点線）か [style code: "none"]（なし）です。 |
 
 @nonumber
+## [style code: \[index\]]
+
+PDF の索引の段組みです。
+HTML と EPUB には効きません。
+
+| キー | 既定 | 意味 |
+|:---|:---|:---|
+| [style code: columns] | 版面の段数 | 索引を組む段数です。1 以上の整数で書きます。 |
+| [style code: column-gap] | [style code: \[page.grid\]] の [style code: column-gap] | 索引の段と段のあいだの空きです。 |
+
+@nonumber
 ## [style code: \[lists\]]
 
 箇条書きの印と、番号付きのリストの番号の書式です。

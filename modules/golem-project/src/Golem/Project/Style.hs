@@ -48,6 +48,7 @@ module Golem.Project.Style
     RubyStyleDef (..),
     defaultRubyStyleDef,
     SidenoteStyle (..),
+    IndexStyle (..),
     MasterDef (..),
     RunningHeadDef (..),
     RunningContent (..),
@@ -82,10 +83,12 @@ import Golem.Doc.ListMarkers (NumberFormat, parseNumberFormat)
 import Golem.Project.Manifest (decodeStrictBy)
 import Golem.Regex (RegexError (..), compile)
 import Golem.Syntax
+import Toml qualified
 import Toml.Schema
 import Toml.Schema.FromValue (typeError)
 import Toml.Schema.Matcher (inKey)
 import Toml.Semantics (valueAnn)
+import Toml.Syntax (Position (..))
 
 -- | Scaled points: 1pt = 65536sp.
 type Sp = Integer
@@ -474,6 +477,18 @@ data SidenoteStyle = SidenoteStyle
   }
   deriving stock (Eq, Show)
 
+{- | [index] (docs/adr ADR 0025): the columns of the index and their gap.
+Without columns, the index is set in the columns of the page; without
+column-gap, the gap is the column-gap of [page.grid].
+-}
+data IndexStyle = IndexStyle
+  { ixColumns :: !(Maybe Int),
+    ixColumnGap :: !(Maybe Dim),
+    -- | where the value of columns starts in style.toml, for G0744
+    ixColumnsAt :: !Int
+  }
+  deriving stock (Eq, Show)
+
 -- | How a heading is shown in a running head (golem-driver ADR 0014).
 data HeadForm = HeadShort | HeadNumbered
   deriving stock (Eq, Show)
@@ -566,7 +581,9 @@ data Style = Style
     -- | [lists]: the markers of lists, for the whole book (golem-driver ADR 0013)
     stLists :: !ListStyle,
     -- | [aki-sets.<name>]: the user's aki sets, not the built-in ones (docs/adr ADR 0019)
-    stAkiSets :: !(Map Text AkiSetDef)
+    stAkiSets :: !(Map Text AkiSetDef),
+    -- | [index]: the columns of the index (docs/adr ADR 0025)
+    stIndex :: !(Maybe IndexStyle)
   }
   deriving stock (Eq, Show)
 
@@ -592,7 +609,8 @@ defaultStyle =
       stMasters = Map.empty,
       stTocLeader = "dots",
       stLists = defaultListStyle,
-      stAkiSets = Map.empty
+      stAkiSets = Map.empty,
+      stIndex = Nothing
     }
 
 -- | JIS B series, A series, 四六判, 菊判, 新書判 and mass-market, in millimetres.
@@ -1013,6 +1031,21 @@ instance FromValue ListsSec where
           | otherwise -> pure (Just d)
     pure (ListsSec (ListStyle (fromMaybe (lsBullets defaultListStyle) bs) fmts g))
 
+{- | [index] (docs/adr ADR 0025): every error is at its value, G0325 by
+its path. The position of columns is filled in by 'parseStyle'.
+-}
+newtype IndexSec = IndexSec IndexStyle
+
+instance FromValue IndexSec where
+  fromValue = parseTableFromValue $ do
+    cs <- optKeyOf "columns" $ \v -> case v of
+      Integer' _ n | n >= 1 && n <= toInteger (maxBound :: Int) -> pure (fromInteger n)
+      _ -> failAt (valueAnn v) "[index] の columns は 1 以上の整数です"
+    gap <- optKeyOf "column-gap" $ \v -> case v of
+      Text' _ t | Just d <- parseSignedDim t, not (negativeDim d) -> pure d
+      _ -> failAt (valueAnn v) "[index] の column-gap が正しくありません"
+    pure (IndexSec (IndexStyle cs gap 0))
+
 newtype TocSec = TocSec (Maybe Text)
 
 instance FromValue TocSec where
@@ -1043,6 +1076,7 @@ instance FromValue Style where
     TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
     ListsSec lists <- fromMaybe (ListsSec defaultListStyle) <$> optKey "lists"
     akiSets <- fromMaybe Map.empty <$> optKey "aki-sets"
+    index <- fmap (\(IndexSec ix) -> ix) <$> optKey "index"
     -- the built-in sets cannot be defined again (docs/adr ADR 0019)
     case filter (`elem` builtinAkiSetNames) (Map.keys akiSets) of
       (n : _) -> liftMatcher (inKey "aki-sets" (inKey n (fail (T.unpack (akiError ("組み込みのアキ量のセットと同じ名前です。based-on で引き継いだ別の名前のセットを作ります: " <> n))))))
@@ -1067,7 +1101,8 @@ instance FromValue Style where
           stMasters = masters,
           stTocLeader = fromMaybe (stTocLeader d) leader,
           stLists = lists,
-          stAkiSets = akiSets
+          stAkiSets = akiSets,
+          stIndex = index
         }
     where
       headingLevel (k, v) = case k of
@@ -1099,11 +1134,21 @@ filesystem.
 -}
 parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
-  s <- either (Left . map akiCode) Right (decodeStrictBy "G0306" codeAt fid src)
+  s0 <- either (Left . map akiCode) Right (decodeStrictBy "G0306" codeAt fid src)
+  let s = s0 {stIndex = (\ix -> ix {ixColumnsAt = columnsAt}) <$> stIndex s0}
   case nub [(code, m) | (code, _, m) <- styleChecks "style.toml の" s] of
     [] -> Right s
     ds -> Left [diagnostic code Error (mkSpan fid 0 0) m | (code, m) <- ds]
   where
+    -- where the value of [index] columns starts, for G0744 (docs/adr ADR 0025)
+    columnsAt = case Toml.parse src of
+      Right (MkTable top)
+        | Just (_, Table' _ (MkTable ix)) <- Map.lookup "index" top,
+          Just (_, v) <- Map.lookup "columns" ix,
+          Position _ l c <- valueAnn v,
+          Just off <- lineColToOffset (mkLineIndex src) (LineCol (l - 1) (c - 1)) ->
+            off
+      _ -> 0
     -- an aki amount wrong in any key is G0320 (docs/adr ADR 0019)
     akiCode d
       | akiError "" `T.isPrefixOf` diagMessage d = d {diagCode = DiagnosticCode "G0320"}
@@ -1115,6 +1160,8 @@ parseStyle fid src = do
       ScopeKey "lists" : _ -> "G0322"
       -- errors of [aki-sets] are G0320 (docs/adr ADR 0019)
       ScopeKey "aki-sets" : _ -> "G0320"
+      -- the values of [index] are G0325, an unknown key G0306 (docs/adr ADR 0025)
+      ScopeKey "index" : ScopeKey k : _ | k `elem` ["columns", "column-gap"] -> "G0325"
       -- the contents of a running head are G0314, the retired running-head of a heading G0319 (golem-driver ADR 0014)
       ScopeKey "masters" : _ : ScopeKey "running-head" : ScopeKey k : _ | k `elem` ["content", "even", "odd"] -> "G0314"
       -- an unknown position of a running head or a folio is G0318 (golem-driver ADR 0016)

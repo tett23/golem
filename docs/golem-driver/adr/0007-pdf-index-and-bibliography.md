@@ -1,6 +1,6 @@
 # ADR 0007: PDF に索引と参考文献を出力する
 
-ステータス: 採択→索引の段組みは [docs/adr/0018](../../adr/0018-multi-column-layout.md)
+ステータス: 採択→索引の段組みは [docs/adr/0018](../../adr/0018-multi-column-layout.md) と [docs/adr/0025](../../adr/0025-index-columns.md)
 
 ## 文脈
 

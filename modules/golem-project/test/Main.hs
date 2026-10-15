@@ -423,9 +423,36 @@ tests =
         fmap (fmap pageBleed . stPage) (parseStyle (FileId 0) "[page]\nsize = \"A6\"\n") @?= Right (Just 0)
         codes (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"1zw\"\n") @?= ["G0306"],
       testGroup "page size by dimensions (ADR 0005)" pageSizeTests,
+      indexStyleTests,
       testCase "marks is not a key of the manifest (golem-pdf ADR 0004)" $
         withProject [("manifest.toml", manifest ["\"a.gm\""] <> "\n[targets.pdf]\nmarks = \"japanese\"\n"), ("a.gm", "")] $ \root ->
           loadProject root >>= (@?= ["G0301"]) . codes
+    ]
+
+-- | [index] (docs/adr ADR 0025).
+indexStyleTests :: TestTree
+indexStyleTests =
+  testGroup
+    "[index] (docs/adr ADR 0025)"
+    [ testCase "columns and column-gap are read" $ do
+        let src = "[index]\ncolumns = 2\ncolumn-gap = \"2zw\"\n"
+        fmap stIndex (parseStyle (FileId 0) src) @?= Right (Just (IndexStyle (Just 2) (Just (Zw 2)) (T.length "[index]\ncolumns = ")))
+        fmap (fmap ixColumnGap . stIndex) (parseStyle (FileId 0) "[index]\ncolumns = 2\n") @?= Right (Just Nothing)
+        fmap stIndex (parseStyle (FileId 0) "") @?= Right Nothing,
+      testCase "a columns that is not an integer of 1 or more is G0325 at the value" $
+        mapM_
+          ( \v -> do
+              let src = "[index]\ncolumns = " <> v <> "\n"
+                  r = parseStyle (FileId 0) src
+              codes r @?= ["G0325"]
+              either (map (spanStart . diagSpan)) (const []) r @?= [T.length "[index]\ncolumns = "]
+          )
+          ["0", "-1", "1.5", "\"2\""],
+      testCase "a column-gap that is negative or not a dimension is G0325" $ do
+        codes (parseStyle (FileId 0) "[index]\ncolumns = 2\ncolumn-gap = \"-1zw\"\n") @?= ["G0325"]
+        codes (parseStyle (FileId 0) "[index]\ncolumns = 2\ncolumn-gap = \"abc\"\n") @?= ["G0325"],
+      testCase "an unknown key of [index] is G0306" $
+        codes (parseStyle (FileId 0) "[index]\ncolums = 2\n") @?= ["G0306"]
     ]
 
 -- | Character and paragraph styles (docs/adr ADR 0005).
