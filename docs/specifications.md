@@ -1868,11 +1868,11 @@ v1 のリリースまでに、次の項目を扱う。
 
 #### 記法と設定
 
-- **style.toml の未知のキーの診断**：`style.toml` の未知のキーと値の型の誤りの診断（G0306）は、toml-parser の英語の文言のままである（`unexpected key: bindng (.page)` など）。位置を表示しない問題は [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md) で直した。
-- **参考文献の書式**：CSL の `literal` の名前を使わない。和文の後のピリオドの前に空白が入る（`日本規格協会 . 1996.`）。
-- **HTML の見出しの番号**：HTML の見出しで、番号と題の間に空きがない（「第3章原稿の記法」）。
-- **ルビの中の `/` のエスケープ**：記法の仕様はルビの中で `\/` と書けば `/` そのものになると定めているが、`[ruby: a\/b|えー]` が G0215 になる。マニュアルの付録 A を書くときに見つかった。
-- **表のセルの行末の `\`**：表のセルの行末に書いた `\` は、[docs/adr/0016](adr/0016-hard-line-breaks.md) の定める G0124 ではなく G0110 になる。行末が `\` の行は表の行になれず、やり直した試行の中の誤りを peg-hs が捨てるためである。見出しと用語では G0124 になる。直すには peg-hs の側の変更が要る。
+- **style.toml の未知のキーの診断**（未実装、[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md)）：`style.toml` の未知のキーと値の型の誤りの診断（G0306）は、toml-parser の英語の文言のままである（`unexpected key: bindng (.page)` など）。位置を表示しない問題は [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md) で直した。
+- **参考文献の書式**（未実装、[golem-doc ADR 0004](golem-doc/adr/0004-bibliography-formatting.md)）：CSL の `literal` の名前を使わない。和文の後のピリオドの前に空白が入る（`日本規格協会 . 1996.`）。
+- **HTML の見出しの番号**（未実装、[golem-html ADR 0002](golem-html/adr/0002-heading-number-spacing.md)）：HTML の見出しで、番号と題の間に空きがない（「第3章原稿の記法」）。
+- **ルビの中の `/` のエスケープ**（未実装、[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）：記法の仕様はルビの中で `\/` と書けば `/` そのものになると定めているが、`[ruby: a\/b|えー]` が G0215 になる。マニュアルの付録 A を書くときに見つかった。
+- **表のセルの行末の `\`**（未実装、[golem-parser ADR 0010](golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)）：表のセルの行末に書いた `\` は、[docs/adr/0016](adr/0016-hard-line-breaks.md) の定める G0124 ではなく G0110 になる。行末が `\` の行は表の行になれず、やり直した試行の中の誤りを peg-hs が捨てるためである。見出しと用語では G0124 になる。peg-hs が試行とともに誤りを捨てるのは誤報を避けるための正しい振る舞いなので、Golem の文法の側で直す。
 
 - **`@table` の位置引数のパス**：`@table` はファイルのパスを `src=` だけで受け付ける。`@listing` は位置引数を正とし `src=` を廃止予定にした（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）ので、`@table` でもパスを最初の引数に書けるようにするかを検討する。記法の追加が要るので ADR で決める。
 - **`*[式]` の展開とプラグインへの引数**：パーサーは `*[式]` を読むが、評価はそれを展開しない。プラグインのコマンドに渡すキーワード引数は、キーを落として `[0, value]` で送っている。
