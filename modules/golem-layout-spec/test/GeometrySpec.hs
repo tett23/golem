@@ -35,11 +35,11 @@ sized :: Sp -> Sp -> Grid -> Style
 sized w h g = defaultStyle {stPage = Just (Page (CustomSize w h) False False (Just g) 0)}
 
 geom :: Style -> PageGeometry
-geom s = either (error . show) id (pageGeometry (FileId 0) s)
+geom s = either (error . show) id (pageGeometry (FileId 0) False s)
 
 -- | The message of the one G0701, or what came instead.
 g0701 :: Style -> Either Text [Sp]
-g0701 s = case pageGeometry (FileId 0) s of
+g0701 s = case pageGeometry (FileId 0) False s of
   Left [d] | diagCode d == DiagnosticCode "G0701" -> Left (diagMessage d)
   Left ds -> Left (T.pack (show ds))
   Right g -> Right (pgLineGrid g)

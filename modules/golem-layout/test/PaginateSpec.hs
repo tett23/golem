@@ -14,6 +14,7 @@ import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..))
 import Golem.Layout.Paginate
+import Golem.Syntax (FileId (..), mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -83,22 +84,26 @@ keepWithNextTests =
   ]
 
 -- | The ids of the notes on each page.
-notesByPage :: [PageOut] -> [(Int, [Int])]
+notesByPage :: [PageOut] -> [(Int, [NoteId])]
 notesByPage ps = [(poNumber p, [i | (i, _, _) <- poFootnotes p]) | p <- ps]
 
 -- | A heading of one line whose line has a footnote of one line.
-headingWithNote :: Int -> Int -> Flow
+headingWithNote :: Int -> NoteId -> Flow
 headingWithNote i note = FHeading 2 False 1 [LineBox i [NoteBody note 1] [] []]
+
+-- | The note of the marker at offset k of a source file.
+nid :: Int -> NoteId
+nid k = NoteId (mkSpan (FileId 0) k (k + 1)) 0
 
 headingNoteTests :: [TestTree]
 headingNoteTests =
   [ testCase "the note of a heading is on the page of the heading" $ do
-      let ps = paginate 1 8 [headingWithNote 20 900, FParagraph (lines' 30 2)]
-      notesByPage ps @?= [(1, [900])],
+      let ps = paginate 1 8 [headingWithNote 20 (nid 900), FParagraph (lines' 30 2)]
+      notesByPage ps @?= [(1, [nid 900])],
     testCase "a heading sent to the next page takes its note with it" $ do
       -- 2 free after six lines: heading 1 + two lines = 3 > 2
-      let ps = paginate 1 8 [FParagraph (lines' 0 6), headingWithNote 20 900, FParagraph (lines' 30 2)]
-      notesByPage ps @?= [(1, []), (2, [900])],
+      let ps = paginate 1 8 [FParagraph (lines' 0 6), headingWithNote 20 (nid 900), FParagraph (lines' 30 2)]
+      notesByPage ps @?= [(1, []), (2, [nid 900])],
     testCase "the label of a heading sent to the next page is on that page" $ do
       let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 2 False 1 [LineBox 20 [] ["sec"] []], FParagraph (lines' 30 2)]
       labelPages ps @?= Map.fromList [("sec", 2)]
