@@ -202,7 +202,7 @@ evaluateProjectWith overlay profile root = do
                   chapterDocs = [erDocument r | (fid, _) <- projectChapters project, Just r <- [Map.lookup fid results]]
                   -- where G0407 points (golem-syntax ADR 0002)
                   numberSites = Map.unions (map erNumberSites (Map.elems results))
-                  cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites
+                  cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (cdNumber (stCode style))
                   pre = defaultStyleNotice <> masterDiags <> pluginDiags <> bibDiags <> s0Diags
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
               if hasErrors pre
@@ -561,7 +561,16 @@ writeTargets opts e diagFid book missing targets = do
                     { hcoFont = d >>= psFont,
                       hcoSize = cssFontSize style <$> (d >>= psSize),
                       hcoBackground = d >>= psBackground,
-                      hcoPadding = cssLength (fromMaybe (Zw 0.5) (d >>= psPadding))
+                      hcoPadding = cssLength (fromMaybe (Zw 0.5) (d >>= psPadding)),
+                      -- the border and [code] (golem-driver ADR 0023)
+                      hcoBorder = d >>= psBorder,
+                      hcoBorderWidth = cssLength (fromMaybe (Abs 16384) (d >>= psBorderWidth)),
+                      hcoLineNumbers = cdLineNumbers (stCode style),
+                      hcoLineNumberColor = cdLineNumberColor (stCode style),
+                      hcoHighlight = cdHighlight (stCode style),
+                      hcoAdded = cdAdded (stCode style),
+                      hcoRemoved = cdRemoved (stCode style),
+                      hcoColors = cdColors (stCode style)
                     },
             hcLists =
               if stLists style == defaultListStyle

@@ -12,6 +12,8 @@ module Golem.Html
     Face (..),
     noFace,
     HtmlCode (..),
+    tokenKind,
+    codeTokens,
     XhtmlSite (..),
     renderXhtml,
     pagePath,
@@ -20,6 +22,7 @@ module Golem.Html
   )
 where
 
+import Data.Char (isAsciiUpper)
 import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
@@ -72,13 +75,25 @@ data HtmlConfig = HtmlConfig
 
 {- | The paragraph style code for pre (golem-driver ADR 0017): its font
 role, its size and its padding as CSS lengths, and the swatch of its
-background.
+background; its border and [code] (golem-driver ADR 0023).
 -}
 data HtmlCode = HtmlCode
   { hcoFont :: !(Maybe Text),
     hcoSize :: !(Maybe Text),
     hcoBackground :: !(Maybe Text),
-    hcoPadding :: !Text
+    hcoPadding :: !Text,
+    -- | the swatch and the CSS width of the border
+    hcoBorder :: !(Maybe Text),
+    hcoBorderWidth :: !Text,
+    -- | [code] line-numbers
+    hcoLineNumbers :: !Bool,
+    -- | the swatches of [code]
+    hcoLineNumberColor :: !(Maybe Text),
+    hcoHighlight :: !(Maybe Text),
+    hcoAdded :: !(Maybe Text),
+    hcoRemoved :: !(Maybe Text),
+    -- | [code.colors]: token kind to swatch
+    hcoColors :: !(Map Text Text)
   }
   deriving stock (Eq)
 
@@ -325,8 +340,34 @@ block c (Block sp lbl body) = case body of
           AlignDefault -> ""
         row tag cells = "<tr>" <> T.concat (zipWith (\a x -> "<" <> tag <> cls a <> ">" <> inlines c x <> "</" <> tag <> ">") (al <> repeat AlignDefault) cells) <> "</tr>\n"
      in "<table" <> idAttr lbl <> ">\n<thead>\n" <> row "th" h <> "</thead>\n<tbody>\n" <> T.concat (map (row "td") rows) <> "</tbody>\n</table>\n"
-  CodeBlock lang t ->
-    "<pre" <> idAttr lbl <> "><code" <> maybe "" (\l -> " class=\"sourceCode language-" <> escapeXml l <> "\"") lang <> ">" <> highlighted lang t <> "</code></pre>\n"
+  CodeBlock code ->
+    let co = hcCode (cCfg c)
+        lang = codeLang code
+        ls = codeLines code
+        -- a caption or a file name: a figure (golem-driver ADR 0023)
+        wrapped = isJust (codeCaption code) || isJust (codeFile code)
+        caption =
+          [ "<figcaption>" <> maybe "" (\n -> escapeXml n <> "　") (Map.lookup sp (bookListings (cBook c))) <> inlines c is <> "</figcaption>"
+          | Just is <- [codeCaption code]
+          ]
+        file = ["<div class=\"code-file\">" <> escapeXml f <> "</div>" | Just f <- [codeFile code]]
+        numbered = fromMaybe (hcoLineNumbers co) (codeNumbers code)
+        -- a block with line numbers, highlights, a diff or callouts: a span per line
+        perLine = numbered || codeDiff code || any (\l -> clHighlight l || not (null (clCallouts l))) ls
+        texts = highlightedLines lang (codeText code)
+        line l h =
+          let classes = T.unwords (["line"] <> ["hl" | clHighlight l] <> ["add" | clDiff l == Just DiffAdded] <> ["del" | clDiff l == Just DiffRemoved])
+              ln = ["<span class=\"ln\" aria-hidden=\"true\">" <> maybe "" tshow (clNumber l) <> "</span>" | numbered]
+              dm = ["<span class=\"dm\" aria-hidden=\"true\">" <> diffMark (clDiff l) <> "</span>" | codeDiff code]
+              callouts = [" <span class=\"callout\">" <> circled n <> "</span>" | n <- clCallouts l]
+           in "<span class=\"" <> classes <> "\">" <> T.concat (ln <> dm) <> h <> T.concat callouts <> "</span>"
+        content
+          | perLine = T.intercalate "\n" (zipWith line ls (if length texts == length ls then texts else map (escapeXml . clText) ls))
+          | otherwise = highlighted lang (codeText code)
+        pre = "<pre" <> (if wrapped then "" else idAttr lbl) <> "><code" <> maybe "" (\l -> " class=\"sourceCode language-" <> escapeXml l <> "\"") lang <> ">" <> content <> "</code></pre>"
+     in if wrapped
+          then "<figure class=\"listing\"" <> idAttr lbl <> ">" <> T.concat (caption <> file) <> pre <> "</figure>\n"
+          else pre <> "\n"
   FigureBlock f ->
     let num = maybe "" (\n -> "<span class=\"number\">" <> escapeXml n <> "</span>") (Map.lookup sp (bookFigures (cBook c)))
         cap = T.concat [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
@@ -512,14 +553,82 @@ blockNotes (Block _ _ body) = case body of
 unknown language, or text the highlighter rejects, stays plain.
 -}
 highlighted :: Maybe Text -> Text -> Text
-highlighted lang code = case lang >>= \l -> S.lookupSyntax l S.defaultSyntaxMap of
-  Nothing -> escapeXml code
+highlighted lang code = T.intercalate "\n" (highlightedLines lang code)
+
+-- | The lines of 'highlighted', each its own.
+highlightedLines :: Maybe Text -> Text -> [Text]
+highlightedLines lang code = case lang >>= \l -> S.lookupSyntax l S.defaultSyntaxMap of
+  Nothing -> escaped
   Just syntax -> case S.tokenize (S.TokenizerConfig S.defaultSyntaxMap False) syntax code of
-    Left _ -> escapeXml code
-    Right ls -> T.intercalate "\n" (map (T.concat . map tok) ls)
+    Left _ -> escaped
+    Right ls -> map (T.concat . map tok) ls
   where
+    escaped = map escapeXml (T.splitOn "\n" code)
     tok (S.NormalTok, t) = escapeXml t
     tok (ty, t) = "<span class=\"" <> shortClass ty <> "\">" <> escapeXml t <> "</span>"
+
+{- | The tokens of each line of code as the HTML colours them, with their
+token kinds (golem-driver ADR 0023): Nothing for a language skylighting
+does not know and for text it rejects. Normal text has no kind.
+-}
+codeTokens :: Maybe Text -> Text -> Maybe [[(Maybe Text, Text)]]
+codeTokens lang code = do
+  syntax <- lang >>= \l -> S.lookupSyntax l S.defaultSyntaxMap
+  ls <- either (const Nothing) Just (S.tokenize (S.TokenizerConfig S.defaultSyntaxMap False) syntax code)
+  pure [[(if ty == S.NormalTok then Nothing else Just (tokenKind ty), t) | (ty, t) <- l] | l <- ls]
+
+-- | The mark of a line of a diff (golem-driver ADR 0023).
+diffMark :: Maybe DiffMark -> Text
+diffMark = \case
+  Just DiffAdded -> "+"
+  Just DiffRemoved -> "-"
+  _ -> " "
+
+-- | Every token type of skylighting.
+tokenTypes :: [S.TokenType]
+tokenTypes =
+  [ S.KeywordTok,
+    S.DataTypeTok,
+    S.DecValTok,
+    S.BaseNTok,
+    S.FloatTok,
+    S.CharTok,
+    S.StringTok,
+    S.CommentTok,
+    S.OtherTok,
+    S.AlertTok,
+    S.FunctionTok,
+    S.RegionMarkerTok,
+    S.ErrorTok,
+    S.ConstantTok,
+    S.SpecialCharTok,
+    S.VerbatimStringTok,
+    S.SpecialStringTok,
+    S.ImportTok,
+    S.DocumentationTok,
+    S.AnnotationTok,
+    S.CommentVarTok,
+    S.VariableTok,
+    S.ControlFlowTok,
+    S.OperatorTok,
+    S.BuiltInTok,
+    S.ExtensionTok,
+    S.PreprocessorTok,
+    S.AttributeTok,
+    S.InformationTok,
+    S.WarningTok
+  ]
+
+{- | The token kind of [code.colors] (golem-driver ADR 0023): the name of
+skylighting's TokenType in kebab-case, without Tok.
+-}
+tokenKind :: S.TokenType -> Text
+tokenKind ty = T.intercalate "-" (map T.toLower (words' (fromMaybe name (T.stripSuffix "Tok" name))))
+  where
+    name = T.pack (show ty)
+    words' t = case T.uncons t of
+      Nothing -> []
+      Just (h, rest) -> let (w, more) = T.break isAsciiUpper rest in T.cons h w : words' more
 
 -- | skylighting's short class names.
 shortClass :: S.TokenType -> Text
@@ -555,6 +664,49 @@ shortClass = \case
   S.InformationTok -> "in"
   S.WarningTok -> "wa"
   S.NormalTok -> ""
+
+{- | The rules of the lines of code blocks and the colours of tokens
+(golem-driver ADR 0023): the line numbers and the diff marks out of a
+selection, the line numbers as wide as the most digits of the book, the
+backgrounds of the highlight (K 15% by default) and of the diff, written
+when the book has a block with lines; the colour of each token kind of
+[code.colors].
+-}
+codeRules :: HtmlConfig -> Book -> [Text]
+codeRules cfg book =
+  ( if null withLines
+      then []
+      else
+        [ "pre .line { display: inline-block; width: 100%; }",
+          ".ln, .dm { user-select: none; -webkit-user-select: none; }",
+          ".ln { display: inline-block; width: " <> tshow digits <> "ch; margin-inline-end: 2ch; text-align: right;" <> maybe "" (\col -> " color: " <> col <> ";") (rgbOf =<< hcoLineNumberColor co) <> " }",
+          ".dm { display: inline-block; width: 2ch; }"
+        ]
+          <> ["pre .add { background-color: " <> col <> "; }" | Just col <- [rgbOf =<< hcoAdded co]]
+          <> ["pre .del { background-color: " <> col <> "; }" | Just col <- [rgbOf =<< hcoRemoved co]]
+          -- the highlight wins over the diff
+          <> ["pre .hl { background-color: " <> fromMaybe (rgb (cmykToRgb (0, 0, 0, 15))) (rgbOf =<< hcoHighlight co) <> "; }"]
+  )
+    <> [ "code span." <> shortClass ty <> " { color: " <> col <> "; }"
+       | ty <- tokenTypes,
+         Just sw <- [Map.lookup (tokenKind ty) (hcoColors co)],
+         Just col <- [rgbOf sw]
+       ]
+  where
+    co = hcCode cfg
+    codes = [c | Document _ bs <- bookDocs book, c <- concatMap codesIn bs]
+    codesIn (Block _ _ body) = case body of
+      CodeBlock c -> [c]
+      BulletList items -> concatMap (concatMap codesIn . itemBlocks) items
+      OrderedList items -> concatMap (concatMap codesIn . itemBlocks) items
+      DefList gs -> concatMap (concatMap (concatMap codesIn) . dgDefs) gs
+      FigureBlock f -> concatMap codesIn (figCaption f)
+      _ -> []
+    numberedCode c = fromMaybe (hcoLineNumbers co) (codeNumbers c)
+    withLines = [c | c <- codes, numberedCode c || codeDiff c || any (\l -> clHighlight l || not (null (clCallouts l))) (codeLines c)]
+    digits = maximum (1 : [T.length (tshow n) | c <- withLines, numberedCode c, CodeLine {clNumber = Just n} <- codeLines c])
+    rgb (r, g, b) = "rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> ")"
+    rgbOf sw = rgb . cmykToRgb <$> Map.lookup sw (hcSwatches cfg)
 
 {- | A @counter-style for the bullet and the number format of each depth,
 and the list-style-type of the lists of that class (golem-driver ADR 0013).
@@ -638,8 +790,7 @@ css cfg book =
            -- ruby: the base, a group reading and a mono reading (golem-layout ADR 0009)
            "ruby { ruby-align: " <> hcRubyBaseSpacing cfg <> "; }",
            "rt { ruby-align: " <> hcRubyGroupAlign cfg <> "; }",
-           "ruby.mono rt { ruby-align: " <> hcRubyMonoAlign cfg <> "; }",
-           T.strip (T.pack (S.styleToCss S.pygments))
+           "ruby.mono rt { ruby-align: " <> hcRubyMonoAlign cfg <> "; }"
          ]
       -- the caption's font and size (golem-driver ADR 0010)
       <> [faceRule "figcaption" (hcCaptionFace cfg) | isJust (faFont (hcCaptionFace cfg)) || isJust (faSize (hcCaptionFace cfg))]
@@ -655,6 +806,8 @@ css cfg book =
       <> [ ".line { display: block; }",
            ".line + br { display: none; }"
          ]
+      -- the lines of code blocks and the colours of code (golem-driver ADR 0023)
+      <> codeRules cfg book
       <> [ ".swatch-" <> name <> " { color: rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> "); }"
          | (name, cmyk) <- Map.toAscList (hcSwatches cfg),
            let (r, g, b) = cmykToRgb cmyk
@@ -682,6 +835,11 @@ css cfg book =
             d <- ["background-color: rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> ")", "padding: " <> hcoPadding co]
           ]
             <> ["font-size: " <> sz | Just sz <- [hcoSize co]]
+            <> [ "border: " <> hcoBorderWidth co <> " solid rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> ")"
+               | Just sw <- [hcoBorder co],
+                 Just cmyk <- [Map.lookup sw (hcSwatches cfg)],
+                 let (r, g, b) = cmykToRgb cmyk
+               ]
     -- a role a bold (italic) character style sets: its font is declared bold (italic)
     allCharStyles = Map.elems (hcCharStyles cfg) <> concatMap (Map.elems . hlCharStyles) (Map.elems (hcLocalStyles cfg))
     boldRoles = [r | HtmlCharStyle {hcsFont = Just r, hcsBold = True} <- allCharStyles]

@@ -10,7 +10,7 @@ import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.List (isSuffixOf, nub, sort, sortOn)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
@@ -21,7 +21,7 @@ import Golem.Driver.Explain (Explanation (..), Status (..), catalog, codeDescrip
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
-import Golem.Driver.Pdf (Assumed (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, runningHeadText, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
+import Golem.Driver.Pdf (Assumed (..), CodeInfo (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), Shaped (..), Shaping (..), TocGeometry (..), TocPage (..), bibliographyLines, figureRect, fixpoint, flowLines, indexLines, instanceIdInputs, layoutPages, layoutPdf, producer, runningHeadText, runningHeads, shapingOf, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, tocPage, usedRoles)
 import Golem.Driver.Version (golemVersion)
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Kerning (..), Look (..), Synthetic (..), plainLook)
@@ -3858,7 +3858,157 @@ codeTests =
           other -> assertFailure (show other),
     testCase "HTML: without [fonts.code], monospace only" $
       withCode horizontalStyle "```\nx\n```\n" $ \css _ ->
-        rulesOf "pre, code" css @?= ["pre, code { font-family: monospace; }"]
+        rulesOf "pre, code" css @?= ["pre, code { font-family: monospace; }"],
+    -- golem-driver ADR 0023
+    testCase "line numbers: a column of two digits, the numbers end together, none on a wrapped row" $ do
+      (_, pl) <- layoutOk horizontalStyle "``` numbers=9\na\nabcdefghijklmnopqrstuvwxyz\nc\n```\n" []
+      codeRows pl
+        @?= [ [(pad + 5 * pt, "9"), (pad + 20 * pt, "a")],
+              [(pad, "10"), (pad + 20 * pt, "abcdefghijklmnopqr")],
+              [(pad + 30 * pt, "stuvwxyz")],
+              [(pad, "11"), (pad + 20 * pt, "c")]
+            ],
+    testCase "[code] line-numbers = true numbers every block; numbers=false turns it off" $ do
+      let style = horizontalStyle <> "\n[code]\nline-numbers = true\n"
+      (_, pl) <- layoutOk style "```\na\n```\n\n``` numbers=false\nb\n```\n" []
+      codeRows pl @?= [[(pad, "1"), (pad + 15 * pt, "a")], [(pad, "b")]],
+    testCase "G0743: line numbers and diff marks leave too little measure in a list" $ do
+      let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
+      r <- buildAll style "- a\n  - b\n\n    ``` numbers=100 diff=true\n    +x\n    ```\n" []
+      map diagMessage (codeOf r "G0743") @?= ["コードブロックの行長が足りません"]
+      ok <- buildAll style "- a\n  - b\n\n    ```\n    +x\n    ```\n" []
+      codeOf ok "G0743" @?= [],
+    testCase "file: one more row with the file name first, not repeated after a page break" $ do
+      (_, plain) <- layoutOk horizontalStyle "```\na\nb\n```\n" []
+      (_, named) <- layoutOk horizontalStyle "``` file=a.hs\na\nb\n```\n" []
+      codeSlots plain @?= [[(0, SCode 0 2 3)]]
+      codeSlots named @?= [[(0, SCode 0 3 4)]]
+      take 1 (codeRows named) @?= [[(pad, "a.hs")]]
+      (_, split) <- layoutOk fiveLines "一。\n\n二。\n\n``` file=a.hs\na\nb\nc\nd\ne\n```\n" []
+      codeSlots split @?= [[(2, SCode 2 2 3)], [(0, SCode 4 4 5)]]
+      map (map snd) (codeRows split) @?= [["a.hs"], ["a"], ["b"], ["c"], ["d"], ["e"]],
+    testCase "caption: above the block, in the caption size, outside the background" $ do
+      let style = horizontalStyle <> codeBg <> "\n[code]\nnumber = \"L{n}\"\n\n[paragraph-styles.caption]\nsize = \"8pt\"\n"
+      (geom, pl) <- layoutOk style "@caption 設定\n```\na\n```\n" []
+      codeSlots pl @?= [[(0, SCode 0 1 3)]]
+      case Map.elems (plCodes pl) of
+        (ci : _) -> do
+          ciCaptionSize ci @?= 8 * pt
+          ciCaptionSpan ci @?= 1
+          [T.concat [bcText c | Box _ c <- lineItems l] | l <- ciCaption ci] @?= ["L1　設定"]
+        [] -> assertFailure "no code"
+      contents <- miniPdf fakeProvider True style "@caption 設定\n```\na\n```\n" [] >>= pageContents
+      let ta = firstColumn geom
+          top = rectY ta + rectH ta + (15 - 10) * pt `div` 2 - 15 * pt
+      case concatMap filledRects contents of
+        [[_, y, _, h]] -> do
+          assertBool (show (y, h, toPt top)) (abs (y + h - toPt top) < 0.001)
+          assertBool (show h) (abs (h - 30) < 0.001)
+        other -> assertFailure (show other),
+    testCase "caption: with the first row on the next page when they do not fit" $ do
+      (_, pl) <- layoutOk (fiveLines <> "\n[code]\nnumber = \"L{n}\"\n") "一。\n\n二。\n\n三。\n\n@caption 設定\n```\na\n```\n" []
+      codeSlots pl @?= [[], [(0, SCode 3 1 3)]],
+    testCase "highlight: a K 15% band of the row, after the background and before the text" $ do
+      contents <- miniPdf fakeProvider True (horizontalStyle <> codeBg) "``` highlight=2\na\nb\n```\n" [] >>= pageContents
+      case contents of
+        (c : _) -> do
+          case filledRects c of
+            [_, [_, _, w, h]] -> do
+              assertBool (show w) (abs (w - 120) < 0.001)
+              assertBool (show h) (abs (h - 15) < 0.001)
+            other -> assertFailure (show other)
+          let (before, _) = BS.breakSubstring "BT" c
+              (bg, band) = BS.breakSubstring "0 0 0 0.15 k" before
+          assertBool "the background first" ("0 0 0 0.08 k" `BS.isInfixOf` bg)
+          assertBool "the band before the text" (" re f" `BS.isInfixOf` band)
+        [] -> assertFailure "no page"
+      named <- miniPdf fakeProvider True (horizontalStyle <> "\n[color.swatches]\nhl = { cmyk = [0, 0, 30, 0] }\n\n[code]\nhighlight = \"hl\"\n") "``` highlight=2\na\nb\n```\n" [] >>= pageContents
+      assertBool "the swatch" (any ("0 0 0.3 0 k" `BS.isInfixOf`) named)
+      wrapped <- miniPdf fakeProvider True horizontalStyle "``` highlight=2\na\nabcdefghijklmnopqrstuvwxyzabcd\n```\n" [] >>= pageContents
+      case concatMap filledRects wrapped of
+        [[_, _, _, h]] -> assertBool (show h) (abs (h - 30) < 0.001)
+        other -> assertFailure (show other),
+    testCase "diff: the marks in their column; bands only with added and removed" $ do
+      (_, pl) <- layoutOk horizontalStyle "``` diff=true\n+a\n-b\n c\n```\n" []
+      codeRows pl @?= [[(pad, "+"), (pad + 10 * pt, "a")], [(pad, "-"), (pad + 10 * pt, "b")], [(pad + 10 * pt, "c")]]
+      plain <- miniPdf fakeProvider True horizontalStyle "``` diff=true\n+a\n-b\n c\n```\n" [] >>= pageContents
+      map filledRects plain @?= [[]]
+      coloured <- miniPdf fakeProvider True (horizontalStyle <> "\n[color.swatches]\nadd = { cmyk = [20, 0, 20, 0] }\ndel = { cmyk = [0, 20, 20, 0] }\n\n[code]\nadded = \"add\"\nremoved = \"del\"\n") "``` diff=true\n+a\n-b\n c\n```\n" [] >>= pageContents
+      map (length . filledRects) coloured @?= [2],
+    testCase "colours: a keyword of Haskell in its swatch, the rest in the colour of the text" $ do
+      let style = horizontalStyle <> "\n[color.swatches]\nkw = { cmyk = [100, 50, 0, 0] }\n\n[code.colors]\nkeyword = \"kw\"\n"
+      (_, pl) <- layoutOk style "```haskell\nf x = y where y = x\n```\n" []
+      let looks = [(bcText c, lkColor (bcLook c)) | sl <- Map.elems (plLines pl), Box _ c <- lineItems (slLine sl), not (T.null (bcText c))]
+      [t | (t, Just "kw") <- looks] @?= ["where"]
+      assertBool (show looks) (all (\(t, col) -> t == "where" || isNothing col) looks)
+      plain <- miniPdf fakeProvider True horizontalStyle "```haskell\nf x = y where y = x\n```\n" [] >>= pageContents
+      assertBool "no colour" (not (any (" K\n" `BS.isInfixOf`) plain))
+      r <- buildAll style "```nosuchlanguage\nwhere\n```\n" []
+      [diagCode d | d <- brDiagnostics r, diagSeverity d /= Notice] @?= [],
+    testCase "callouts: aligned at two spaces after the longest line" $ do
+      (_, pl) <- layoutOk horizontalStyle "``` callouts=true\nab <1>\nabcd <2>\n```\n" []
+      codeRows pl @?= [[(pad, "ab"), (pad + 30 * pt, "①")], [(pad, "abcd"), (pad + 30 * pt, "②")]],
+    testCase "callouts: each line on its own when aligning does not fit; before the mark when the line does not" $ do
+      (_, pl) <- layoutOk horizontalStyle "``` callouts=true\na <1>\nabcdefghijklmnopqrs <2>\n```\n" []
+      codeRows pl @?= [[(pad, "a"), (pad + 15 * pt, "①")], [(pad, "abcdefghijklmnopqrs")], [(pad + 10 * pt, "②")]],
+    testCase "wrap-mark: at the end of the column on the rows that continue" $ do
+      let style = horizontalStyle <> TE.encodeUtf8 "\n[code]\nwrap-mark = \"↩\"\n"
+      (_, pl) <- layoutOk style "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n" []
+      codeRows pl @?= [[(pad, "abcdefghijklmnopqrst"), (pad + 100 * pt, "↩")], [(pad + 10 * pt, "uvwxyzabcd")]],
+    testCase "continued: the text at the end of the parts before the last, one row less in them" $ do
+      let style = fiveLines <> TE.encodeUtf8 "\n[code]\ncontinued = \"（続く）\"\n"
+          src = "一。\n\n二。\n\n```\na\nb\nc\nd\ne\n```\n"
+      (_, plain) <- layoutOk fiveLines src []
+      codeSlots plain @?= [[(2, SCode 2 2 3)], [(0, SCode 4 3 4)]]
+      (_, cont) <- layoutOk style src []
+      codeSlots cont @?= [[(2, SCode 2 1 3)], [(0, SCode 3 4 5)]]
+      case Map.elems (plCodes cont) of
+        (ci : _) -> fmap (\l -> T.concat [bcText c | Box _ c <- lineItems l]) (ciContinued ci) @?= Just "（続く）"
+        [] -> assertFailure "no code",
+    testCase "border: a rectangle of lines of border-width around each part" $ do
+      let style = fiveLines <> "\n[color.swatches]\nline = { cmyk = [0, 0, 0, 100] }\n\n[paragraph-styles.code]\nborder = \"line\"\nborder-width = \"1pt\"\n"
+      contents <- miniPdf fakeProvider True style "一。\n\n二。\n\n```\na\nb\nc\nd\ne\n```\n" [] >>= pageContents
+      map (length . filledRects) contents @?= [4, 4]
+      case contents of
+        (c : _) -> assertBool "thin" (any (any (\x -> abs (x - 1) < 0.001) . drop 2) (filledRects c))
+        [] -> assertFailure "no page",
+    testCase "vertical: the line numbers before the code along the line" $ do
+      (_, pl) <- layoutOk pdfStyle "``` numbers=true\nx\n```\n" []
+      case codeRows pl of
+        [[(a, "1"), (b, "x")]] -> assertBool (show (a, b)) (a < b)
+        other -> assertFailure (show other),
+    testCase "@listing with the same arguments is set as the code block" $ do
+      let file = [("src/a.txt", "a\nb\nc\n")]
+      (_, a) <- layoutOk horizontalStyle "@listing src/a.txt numbers=true highlight=2 file=a.txt\n" file
+      (_, b) <- layoutOk horizontalStyle "``` numbers=true highlight=2 file=a.txt\na\nb\nc\n```\n" []
+      codeRows a @?= codeRows b,
+    testCase "the features in parallel and in sequence give the same bytes" $ do
+      let style = horizontalStyle <> codeBg <> "\n[code]\nnumber = \"L{n}\"\n"
+          src = "@caption c\n``` numbers=true highlight=1 diff=true callouts=true file=a\n+a <1>\n-b\n c\n```\n"
+      a <- miniPdf fakeProvider True style src []
+      b <- miniPdf fakeProvider False style src []
+      a @?= b,
+    testCase "HTML: a caption and a file wrap the block in a figure" $
+      withCode (horizontalStyle <> "\n[code]\nnumber = \"L{n}\"\n") "@caption 設定\n```haskell file=a.hs\nx\n```\n\n```\ny\n```\n" $ \_ page -> do
+        assertBool (T.unpack page) ("<figure class=\"listing\"><figcaption>L1　設定</figcaption><div class=\"code-file\">a.hs</div><pre>" `T.isInfixOf` page)
+        assertBool (T.unpack page) ("<pre><code>y</code></pre>" `T.isInfixOf` page),
+    testCase "HTML: the lines, the line numbers, the highlight, the diff and the callouts" $
+      withCode horizontalStyle "``` numbers=true highlight=1 diff=true callouts=true\n+a <1>\n-b\n c\n```\n" $ \css page -> do
+        assertBool (T.unpack page) ("<span class=\"line hl add\"><span class=\"ln\" aria-hidden=\"true\">1</span><span class=\"dm\" aria-hidden=\"true\">+</span>a <span class=\"callout\">①</span></span>\n" `T.isInfixOf` page)
+        assertBool (T.unpack page) ("<span class=\"line del\"><span class=\"ln\" aria-hidden=\"true\"></span><span class=\"dm\" aria-hidden=\"true\">-</span>b</span>\n" `T.isInfixOf` page)
+        assertBool (T.unpack page) ("<span class=\"line\"><span class=\"ln\" aria-hidden=\"true\">2</span><span class=\"dm\" aria-hidden=\"true\"> </span>c</span>" `T.isInfixOf` page)
+        assertBool (T.unpack css) (any ("user-select: none" `T.isInfixOf`) (rulesOf ".ln, .dm" css))
+        assertBool (T.unpack css) (any ("background-color" `T.isInfixOf`) (rulesOf "pre .hl" css)),
+    testCase "HTML: the colours of [code.colors] only when it is written" $ do
+      withCode (horizontalStyle <> "\n[color.swatches]\nkw = { cmyk = [100, 50, 0, 0] }\n\n[code.colors]\nkeyword = \"kw\"\n") "```haskell\nx where\n```\n" $ \css _ ->
+        assertBool (T.unpack css) (any ("color: rgb(" `T.isInfixOf`) (rulesOf "code span.kw" css))
+      withCode horizontalStyle "```haskell\nx where\n```\n" $ \css _ ->
+        rulesOf "code span.kw" css @?= [],
+    testCase "HTML: the border of pre" $
+      withCode (horizontalStyle <> "\n[color.swatches]\nline = { cmyk = [0, 0, 0, 100] }\n\n[paragraph-styles.code]\nborder = \"line\"\n") "```\nx\n```\n" $ \css _ ->
+        case rulesOf "pre" css of
+          [r] -> assertBool (T.unpack r) ("border: 0.25pt solid rgb(" `T.isInfixOf` r)
+          other -> assertFailure (show other)
   ]
   where
     -- the fake fonts: a space is half an em of 10pt; the padding is 0.5zw
