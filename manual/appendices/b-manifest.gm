@@ -8,7 +8,7 @@
 [code: manifest.toml] は TOML の形式で書きます[note: TOML v1.0.0。[code: https://toml.io/en/v1.0.0]]。
 TOML の書き方は、第[ref-number basics]章「[ref-title toml]」で説明しています。
 
-表の説明の括弧の中には、値の種類と、省けないキー（必須）を示します。
+説明の括弧の中には、値の種類と、省けないキー（必須）を示します。
 値の種類は、次のように呼びます。
 
 = [strong: 文字列]
@@ -17,30 +17,30 @@ TOML の書き方は、第[ref-number basics]章「[ref-title toml]」で説明�
   [code: 2026-10-13] のように、引用符を付けずに書く日付です。
 = [strong: 配列]
   [code: \[ … \]] で囲んで、カンマで区切った値の並びです。
-= [strong: 表]
+= [strong: テーブル]
   [code: \[名前\]] の見出しで始める、キーのまとまりです。
 
 @nonumber
 ## 全体
 
-ファイルの先頭（どの [code: \[ \]] の見出しよりも前）に書くキーと、ファイルの中の表です。
+ファイルの先頭（どの [code: \[ \]] の見出しよりも前）に書くキーと、ファイルの中のテーブルです。
 
 | キー | 意味 |
 |:---|:---|
 | [code: chapters] | 原稿のファイルを本の順に並べます（配列、必須）。 |
 | [code: bibliography] | 文献のデータ（CSL-JSON）のファイルです（文字列の配列）。省くと文献を引用できません[note: CSL-JSON のスキーマ。[code: https://github.com/citation-style-language/schema]]。 |
-| [code: \[metadata\]] | 書名などの本の情報です（表、必須）。 |
+| [code: \[metadata\]] | 書名などの本の情報です（テーブル、必須）。 |
 | [code: \[targets\]] | 出力の形式ごとの設定です。 |
-| [code: \[plugins.名前\]] | 使うプラグインの宣言です（表）。 |
-| [code: \[\[filters\]\]] | フィルタのプラグインを当てるファイルです（表の並び）。 |
-| [code: \[source\]] | 原稿の読み方です（表）。 |
-| [code: \[diagnostics\]] | 診断の扱いです（表）。 |
+| [code: \[plugins.名前\]] | 使うプラグインの宣言です（テーブル）。 |
+| [code: \[\[filters\]\]] | フィルタのプラグインを当てるファイルです（テーブルの並び）。 |
+| [code: \[source\]] | 原稿の読み方です（テーブル）。 |
+| [code: \[diagnostics\]] | 診断の扱いです（テーブル）。 |
 
 [code: chapters] の要素には、ファイルのパスを書きます。
 パスはプロジェクトのフォルダからの相対パスで、プロジェクトの外や、[code: /] で始まる絶対パス、URL は書けません。
 要素を配列にすると、いくつかのファイルを一つの章として続けて組みます。
-要素を [code: { file = "chapters/02.gm", paragraph-separator = "blank-line" }] のような表にすると、その章だけ原稿の読み方を変えられます。
-表に書けるのは、[code: file]（必須）と、[code: \[source\]] と同じキーと、[code: master] です。
+要素を [code: { file = "chapters/02.gm", paragraph-separator = "blank-line" }] のようなテーブルにすると、その章だけ原稿の読み方を変えられます。
+テーブルに書けるのは、[code: file]（必須）と、[code: \[source\]] と同じキーと、[code: master] です。
 [code: master] には、その章で使う [code: style.toml] のマスターページの名前を書きます（付録C の [code: \[masters.名前\]]）。
 書かなければ [code: body] のマスターページを使います。
 同じファイルを、読み方を変えて二度並べることはできません。
@@ -68,7 +68,7 @@ chapters = [
 | [code: date] | 発行日です（日付、必須）。PDF の作成日などに書き込みます。 |
 | [code: edition] | 版です（文字列）。 |
 | [code: publisher] | 発行者です（文字列）。 |
-| [code: \[\[metadata.creators\]\]] | 著者などの関係者です（表の並び）。一人ごとに一つ書きます。 |
+| [code: \[\[metadata.creators\]\]] | 著者などの関係者です（テーブルの並び）。一人ごとに一つ書きます。 |
 
 [code: \[\[metadata.creators\]\]] のキーは次のとおりです。
 
@@ -82,7 +82,7 @@ chapters = [
 ## [code: \[targets\]]
 
 出力の形式ごとの設定です。
-形式の表は中身が空でもかまいません。
+形式のテーブルは中身が空でもかまいません。
 [code: \[targets\]] を書くときは、少なくとも一つの形式を置きます。
 
 | キー | 意味 |
@@ -92,7 +92,7 @@ chapters = [
 | [code: \[targets.html\]] | HTML の設定です。書けるキーはありません。 |
 | [code: \[targets.text\]] | プレーンテキストの設定です。[code: variants] に [code: "vertical"]（縦書き用）と [code: "horizontal"]（横書き用）の一方か両方を並べます。省くと両方を作ります。 |
 
-[code: golem build] は、[code: --target] を指定しなければ、この表にかかわらず四つの形式をすべて作ります。
+[code: golem build] は、[code: --target] を指定しなければ、このテーブルにかかわらず四つの形式をすべて作ります。
 
 @nonumber
 ## [code: \[source\]]
@@ -123,7 +123,7 @@ chapters = [
 
 | キー | 意味 |
 |:---|:---|
-| [code: url] | 配布物の URL です（文字列、必須）。[code: https://] で始め、版を固定した URL を書きます。 |
+| [code: url] | 配布物の URL です（文字列、必須）。[code: https://] で始め、バージョンを固定した URL を書きます。 |
 | [code: overrides] | このプラグインで置き換える組み込みのコマンドの名前です（文字列の配列）。 |
 
 [code: overrides] に書けるのは、[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text] です。

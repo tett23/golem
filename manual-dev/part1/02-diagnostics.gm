@@ -67,7 +67,7 @@ golem-syntax の [code: Golem.Syntax.Render] の [code: renderJson] が文字列
 
 | 鍵 | 内容 |
 | --- | --- |
-| [code: file] | プロジェクトの根からのパス |
+| [code: file] | プロジェクトのルートからのパス |
 | [code: start] | ファイルの先頭からの UTF-8 のバイト数（範囲の始まり） |
 | [code: end] | 範囲の終わり（この位置を含まない） |
 | [code: line] | 1 から数えた行 |
@@ -146,9 +146,9 @@ Golem の文書の対象外であり、[code: golem explain] も説明を持た�
 [code: golem explain] は、この文書の節をそのまま表示する。[index reading="golem explain": golem explain][note: [code: https://github.com/tett23/golem/blob/main/docs/diagnostics.md]（診断のコード）、[code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0005-explain-diagnostic-codes.md]（golem-cli ADR 0005「診断のコードの説明を golem explain で表示する」）]
 
 ```sh
-golem explain G0730    # 一つのコードの説明
-golem explain g0730    # 大文字と小文字は区別しない
-golem explain          # すべてのコードと題を一行ずつ
+$ golem explain G0730    # 一つのコードの説明
+$ golem explain g0730    # 大文字と小文字は区別しない
+$ golem explain          # すべてのコードと題を一行ずつ
 ```
 
 一覧の形式は [code: G0701  版面を計算できません] のように、コード、空白二つ、題である。

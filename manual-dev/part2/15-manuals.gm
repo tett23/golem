@@ -36,8 +36,8 @@ B5 は和文の技術書で広く使われる判型である。
 ## 組み方
 
 ```sh
-GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh
-GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev
+$ GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh
+$ GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev
 ```
 
 [code: build.sh] は、引数を省くと二冊を、[code: manual] か [code: manual-dev] を渡すとその一冊だけを組む。
@@ -46,12 +46,12 @@ GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev
 
 + マニフェストに [code: silence-notices] があれば、組む前に失敗する。
 + [code: scripts/manual/build-info.sh] で [code: common/build-info.gm] を書く。
-+ [code: scripts/manual/fetch-fonts.sh] で書体を [code: fonts/] に取得する。すでにあれば SHA-256 を検査するだけである。
++ [code: scripts/manual/fetch-fonts.sh] でフォントを [code: fonts/] に取得する。すでにあれば SHA-256 を検査するだけである。
 + [code: build/] を消し、[code: golem build --target pdf --target html] で組む。
 + [code: golem] が終了コード 0 以外で終わるか、何か一つでも出力すれば失敗する。
 
 最後の規則は、error と warning だけでなく、notice も失敗にする。
-マニュアルは見本なので、notice の原因（コードの書体の欠け、折り返したコードの行、勧めない記法など）も原稿の側で取り除く。
+マニュアルは見本なので、notice の原因（コードのフォントの役割の欠け、折り返したコードの行、勧めない記法など）も原稿の側で取り除く。
 [code: silence-notices] と [code: --no-notices] で消すことは認めない。
 勧めない書き方を例として見せたいときは、コードブロックの中に書く。
 コードブロックの中身は解釈されないので、notice も出ない。
@@ -92,8 +92,8 @@ Golem の原稿は、コミットのハッシュを読む手段を持たず、�
 マニュアルを編集する前に、一度次を実行する。
 
 ```sh
-sh scripts/manual/build-info.sh manual
-sh scripts/manual/build-info.sh manual-dev
+$ sh scripts/manual/build-info.sh manual
+$ sh scripts/manual/build-info.sh manual-dev
 ```
 
 リリースのワークフローは、[code: GOLEM_MANUAL_TAG] にリリースのタグを渡して組むので、奥付の版はタグになる。
@@ -150,13 +150,13 @@ URL を先に書けば、URL の行はそろわないまま残り、和文の名
 - 奥付は版とコミットの二行を載せる。
 - コードブロックは組み込みの段落スタイル [code: code] で組み、背景のスウォッチ（[code: { cmyk = \[0, 0, 0, 8\] }] を出発点にする）と内側の余白を付ける。墨だけのごく薄い色にするのは、本文の文字の色と重ならず、モノクロで印刷しても沈まないようにするためである。
 - 本文の中のファイル名、コマンド、パス、キーは [code: \[code: ...\]] で書く。[code: \[style code: ...\]] は使わない。
-- 書体の役割 [code: code] には、欧文に Source Code Pro の Regular、和文に Noto Sans JP の Regular を使う。
+- フォントの役割 [code: code] には、欧文に Source Code Pro の Regular、和文に Noto Sans JP の Regular を使う。
 
-書体はリポジトリに入れない。
+フォントはリポジトリに入れない。
 組むときに [code: scripts/manual/fetch-fonts.sh] が、配布元のタグで固定した URL から取得し、SHA-256 を確かめて [code: fonts/] に置く。
-六つの書体はどれも SIL Open Font License 1.1 [cite ofl] である。
+六つのフォントはどれも SIL Open Font License 1.1 [cite ofl] である。
 
-| 書体 | 役割 |
+| フォント | 役割 |
 | --- | --- |
 | Noto Serif JP、Source Serif 4 | 本文 |
 | Noto Sans JP の Bold、Source Sans 3 の Bold | 見出し |

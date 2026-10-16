@@ -18,6 +18,8 @@ chapters = [
   "appendices/e-errors.gm",
   "appendices/f-indesign.gm",
   "appendices/g-glossary.gm",
+  "appendices/h-roadmap.gm",
+  "appendices/i-known-issues.gm",
   "back.gm",
 ]
 bibliography = ["references.json"]
