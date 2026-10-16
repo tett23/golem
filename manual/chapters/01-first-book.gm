@@ -24,8 +24,19 @@ Golem の実行ファイルは、GitHub Releases[note: Golem の配布のペー�
 | [code: aarch64-linux] | Linux（aarch64） |
 | [code: aarch64-macos] | macOS 14 以降（Apple Silicon） |
 
+[strong: Linux][index reading=りなっくす: Linux] は、Windows や macOS と同じく、コンピューターを動かす土台のソフトウェア（OS）の一つです。
+サーバー（ネットワークにつながって動き続け、ほかのコンピューターからの求めに応じるコンピューター）や、ソフトウェアの開発の場で広く使われています。
+Linux には、同じ Linux を元にして、一緒に入れるソフトウェアの組み合わせを変えた種類がいくつもあり、その一つ一つを[strong: ディストリビューション][index reading=でぃすとりびゅーしょん: ディストリビューション]と呼びます。
+Ubuntu はその一つです。
+Golem の Linux のアーカイブは、ディストリビューションを問わずに動きます。
+
+Golem が Linux の配布物を用意しているのは、本を組む作業を Linux のコンピューターに任せられるようにするためです。
+第[ref-number git-ci]章では、原稿を変えるたびに、インターネットの向こうにある Linux のコンピューターで自動で組む仕組みを説明します。
+Golem の開発でも、同じ原稿から同じ出力が得られることを、Linux のコンピューターで確かめています。
+
 アーカイブの名前は、バージョンと、対象の OS と CPU を並べた [code: golem-v0.1.0-x86_64-linux.tar.gz] のような形です。
-Windows では、WSL2（Windows の中で Linux を動かす仕組み）の上で Linux のアーカイブを使います。
+Windows では、Windows の中で Linux を動かす仕組みを使い、その上で Linux のアーカイブを使います。
+その概略は、この章の「[ref-title wsl]」で説明します。
 Intel の CPU の macOS には対応していません。
 
 アーカイブと一緒に [code: SHA256SUMS] というファイルを取得し、アーカイブが壊れていないかを確かめてから展開します。
@@ -37,9 +48,9 @@ Intel の CPU の macOS には対応していません。
 この印を[strong: プロンプト][index reading=ぷろんぷと: プロンプト]と呼びます。
 このマニュアルでは、打ち込むコマンドの行を、プロンプトに見立てた [code: $] と空白に続けて書きます。
 
-```sh
+```console
 $ golem --version
-$ golem 0.1.0
+golem 0.1.0
 ```
 
 この例では、打ち込むのは [code: golem --version] だけです。
@@ -88,6 +99,84 @@ $ shasum -a 256 --ignore-missing -c SHA256SUMS
 最後の [code: golem --version] が [code: golem 0.1.0] のようにバージョンを表示すれば、インストールは終わりです。
 [code: command not found] と表示されたら、[code: ~/.local/bin] がコマンドを探す場所に入っていません。
 その直し方は、第[ref-number basics]章の「[ref-title terminal]」で説明します。
+
+@label wsl
+## Windows で使う
+
+今の Golem には、Windows でそのまま動く配布物がありません（今後の予定は[ref-title app-roadmap]、[ref-page app-roadmap] ページ）。
+Windows のコンピューターでは、[strong: WSL][index reading=だぶりゅーえすえる: WSL]（Windows Subsystem for Linux）という Windows の機能を使います。
+WSL は、Windows の中で Linux（「[ref-title install]」で説明した OS）を動かす仕組みです [cite ms-wsl-about][note: Microsoft「Windows Subsystem for Linux とは」。[code: https://learn.microsoft.com/ja-jp/windows/wsl/about]]。
+WSL を入れると、Windows のアプリケーションと並んで、Linux のターミナルを開けるようになります。
+Golem の Linux のアーカイブは、そのターミナルの中で動きます。
+
+この節では、手順の流れだけを示します。
+画面の操作や、うまくいかないときの対処は、Windows のバージョンや設定によって変わります。
+細かな手順は、脚注に示した Microsoft の文書で確かめてください。
+
+### WSL を入れる
+
+WSL は、Windows 10 のバージョン 2004 以降か Windows 11 なら、一つのコマンドで入れられます [cite ms-wsl-install][note: Microsoft「WSL のインストール」。[code: https://learn.microsoft.com/ja-jp/windows/wsl/install]]。
+それより前の Windows での入れ方は、同じ文書からたどれます。
+Windows に付いている PowerShell というターミナルを、右クリックのメニューの「管理者として実行」で開き、次のコマンドを打ち込みます。
+打ち込んだ後、コンピューターを再起動します。
+
+```sh
+$ wsl --install
+```
+
+このコマンドは、WSL を使えるようにし、Ubuntu というディストリビューションを入れます。
+
+### Linux のターミナルを開く
+
+入れた Ubuntu は、Windows のスタートメニューで「Ubuntu」と打ち込めば開けます。
+初めて開いたときは、Linux で使うユーザー名とパスワードを決めるように求められます [cite ms-wsl-environment][note: Microsoft「WSL 開発環境を設定する」の「Linux のユーザー名とパスワードを設定する」。[code: https://learn.microsoft.com/ja-jp/windows/wsl/setup/environment]]。
+これは Windows のユーザー名とパスワードとは別のものです。
+パスワードを打ち込んでいるあいだ、画面には何も表示されませんが、入力は受け付けられています。
+
+この後の Golem の作業は、すべてこの Linux のターミナルで行います。
+PowerShell を使うのは、WSL を入れるときだけです。
+
+### Golem を入れる
+
+Linux のターミナルで、前の節の Linux の手順をそのまま打ち込みます。
+アーカイブは、コンピューターの CPU に合わせて選びます。
+次のコマンドが [code: x86_64] と表示すれば [code: x86_64-linux] を、[code: aarch64] と表示すれば [code: aarch64-linux] を使います。
+
+```sh
+$ uname -m
+```
+
+WSL の Linux のホームのフォルダは、[code: /home/ユーザー名] です。
+ここでのユーザー名は、Linux のターミナルを初めて開いたときに決めたものです。
+[code: golem --version] が [code: command not found] と表示したときは、第[ref-number basics]章の「[ref-title terminal]」の直し方に従います。
+Ubuntu では、設定のファイルは [code: ~/.bashrc] です。
+
+### プロジェクトのフォルダの置き場所
+
+本の原稿と設定をまとめるフォルダ（次の節「[ref-title new-project]」で作るプロジェクトのフォルダ）は、Linux の側のフォルダ（ホームのフォルダの中）に作ります。
+Linux のターミナルからは、Windows の C ドライブも [code: /mnt/c] として見えます。
+しかし Microsoft は、Linux のコマンドで扱うファイルを Linux の側に置くことを勧めています。
+Windows の側に置いたファイルを Linux のコマンドで扱うと、遅くなるためです [cite ms-wsl-filesystems][note: Microsoft「ファイル システム間での作業」の「ファイル システム全体のファイル ストレージとパフォーマンス」。[code: https://learn.microsoft.com/ja-jp/windows/wsl/filesystems]]。
+
+Linux の側のフォルダは、Windows のエクスプローラーで開けます。
+Linux のターミナルでプロジェクトのフォルダに移り（移り方は「[ref-title first-build]」で説明します）、次のコマンドを打ち込むと、そのフォルダがエクスプローラーで開きます。
+
+```sh
+$ explorer.exe .
+```
+
+最後の [code: .] は、ターミナルが今いるフォルダを表します。
+エクスプローラーのアドレスバーに [code: \\\\wsl$] と打ち込むと、WSL に入れた Linux のファイルの全体を見られます。
+組んだ PDF は、このエクスプローラーから Windows のアプリケーションで開けます。
+原稿を Windows のアプリケーションで編集するときは、行の終わりの文字の形式に気を付けます。
+Windows の慣例の形式で保存すると、Golem はエラーにします（第[ref-number basics]章の「[ref-title text-files]」）。
+
+### フォント
+
+Golem は、プロジェクトの中のフォントだけで組みます。
+Windows に入っているフォントも、Linux に入っているフォントも使いません（第[ref-number style]章の「[ref-title fonts]」）。
+プロジェクトを作るコマンド [code: golem new] が、フォントをプロジェクトの [code: fonts/] に置くので、WSL のためにフォントを用意する必要はありません。
+ほかのフォントを使うときも、そのファイルをプロジェクトの中に置きます。
 
 @label new-project
 ## プロジェクトを作る
