@@ -33,7 +33,7 @@ import System.Directory (doesFileExist)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath ((</>))
-import System.IO (hPutStrLn, stderr, stdout)
+import System.IO (hPutStrLn, hSetEncoding, stderr, stdout, utf8)
 import Text.Printf (printf)
 
 data Format = Human | Json
@@ -55,6 +55,8 @@ data Command
 
 main :: IO ()
 main = do
+  -- stdout and stderr are UTF-8 whatever the locale (docs/adr/0002-determinism.md)
+  mapM_ (`hSetEncoding` utf8) [stdout, stderr]
   args <- getArgs
   -- no backtracking: the options of golem (--version) are not options of
   -- its commands, so golem build --version is a usage error (docs/adr/0004)
@@ -343,7 +345,7 @@ pluginLock = do
       r <- lockPlugins fetcher cache (Map.map pdUrl (manifestPlugins m))
       case r of
         Left es -> mapM_ (TIO.hPutStrLn stderr) es >> pure (ExitFailure 1)
-        Right lock -> TIO.writeFile "plugins.lock" (renderLock lock) >> pure ExitSuccess
+        Right lock -> BS.writeFile "plugins.lock" (TE.encodeUtf8 (renderLock lock)) >> pure ExitSuccess
 
 -- | golem plugin fetch (golem-plugin ADR 0002).
 pluginFetch :: IO ExitCode
