@@ -56,7 +56,7 @@ test-suite golem-plugin-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    ExternalTool, ResponseSpec
+  other-modules:    ResponseSpec
   ghc-options:      -threaded
   build-depends:
     , async
@@ -80,6 +80,7 @@ test-suite golem-plugin-test
     , golem-parser
     , golem-plugin
     , golem-syntax
+    , golem-test-support
     , tasty          >=1.4 && <1.6
     , tasty-hunit    >=0.10 && <0.11
     , temporary

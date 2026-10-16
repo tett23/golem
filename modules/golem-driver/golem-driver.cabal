@@ -70,7 +70,6 @@ test-suite golem-driver-test
     CliSpec
     DiagnosticSitesSpec
     DiagnosticsSpec
-    ExternalTool
     PageElementsSpec
     ParagraphSpec
     PdfSpec
@@ -95,6 +94,7 @@ test-suite golem-driver-test
     , golem-preflight
     , golem-project
     , golem-syntax
+    , golem-test-support
     , process
     , zlib
     , tasty          >=1.4 && <1.6

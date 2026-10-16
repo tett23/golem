@@ -315,6 +315,54 @@ if grep -qx '| `build (ubuntu-24.04)` | `Run haskell-actions/setup@v2` | 143 | 1
 run timings --bogus
 expect "timings: an unknown option" 2
 
+# ---------------------------------------------------------------- test-only-deps.sh
+
+PLANS=$HERE/testdata/test-only-deps
+test_only_deps() { sh "$HERE/test-only-deps.sh" "$@"; }
+
+# deps NAME CODE PLAN [COMPONENT...]: the exit code, and the components
+# named on stderr (exactly these, when the code is 1)
+deps() {
+  name=$1 code=$2 plan=$3
+  shift 3
+  : >"$WORK/in"
+  run test_only_deps "$plan"
+  if [ "$CODE" != "$code" ]; then
+    ng "test-only-deps: $name (exit code $CODE, expected $code)"
+    return 0
+  fi
+  if [ "$code" = 1 ]; then
+    for c in "$@"; do
+      if ! grep -qF " $c " "$WORK/err"; then
+        ng "test-only-deps: $name ($c is not on stderr)"
+        return 0
+      fi
+    done
+    if [ "$(wc -l <"$WORK/err" | tr -d ' ')" != $# ]; then
+      ng "test-only-deps: $name (stderr has not $# lines)"
+      return 0
+    fi
+  fi
+  ok
+}
+
+deps "only test suites depend" 0 "$PLANS/test-only.json"
+deps "an executable depends directly" 1 "$PLANS/exe-direct.json" golem-cli:exe:golem
+deps "an executable depends through a library" 1 "$PLANS/exe-transitive.json" golem-cli:exe:golem golem-driver:lib
+deps "a library no executable uses depends" 1 "$PLANS/lib-only.json" golem-lsp:lib:golem-lsp-internal
+deps "the lib of a per-package element depends" 1 "$PLANS/package-components.json" golem-custom:lib
+deps "only through exe-depends and setup" 0 "$PLANS/exe-depends.json"
+deps "a package that is not local depends" 0 "$PLANS/not-local.json"
+deps "golem-test-support is not in the plan" 0 "$PLANS/absent.json"
+deps "no such file" 2 "$WORK/no-such-plan.json"
+printf 'not json\n' >"$WORK/bad.json"
+deps "not JSON" 2 "$WORK/bad.json"
+printf '{"cabal-version":"3.16.1.0"}\n' >"$WORK/no-plan.json"
+deps "no install-plan" 2 "$WORK/no-plan.json"
+: >"$WORK/in"
+run test_only_deps
+expect "test-only-deps: no argument" 2
+
 # ----------------------------------------------------------------
 printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"
 [ "$FAILURES" -eq 0 ]

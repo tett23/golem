@@ -238,6 +238,7 @@ cargo install cddl --version 0.10.7 --locked
 これらの外部ツールがないと、それを使うテストは `SKIP` と表示されて飛ばされる。
 `GOLEM_REQUIRE_EXTERNAL_TOOLS=1` を付けると、ツールがないことがテストの失敗になる。
 CI はこれを付けて実行する。
+この振る舞いを持つテストの補助は、テストスイートだけが使うパッケージ `modules/golem-test-support` にある（[docs/adr/0028](docs/adr/0028-shared-test-support-package.md)）。
 
 ### CLI のビルド
 

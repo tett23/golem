@@ -86,6 +86,7 @@ CDDL のスキーマへの適合のテスト（golem-doc）は、外部の検証
 [code: PATH] にあるか、環境変数 [code: GOLEM_CDDL] でパスを指定したときだけ実行し、なければ飛ばす。
 CI では必ず実行する。
 Haskell には成熟した CDDL の検証器がないので、テストにだけ外部の道具を使うと決めている。
+外部の道具を使うテストは、テストスイートだけが使うパッケージ golem-test-support の [code: needsTool] か [code: optionalTool] で書き、道具がなければ [code: SKIP] と表示される。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0028-shared-test-support-package.md]（ADR 0028「テストの補助を共有するパッケージ」）]
 
 テストのうち、[code: docs/diagnostics.md] の節とソースのコードの一致を確かめるのは golem-driver のテストである（第[ref-number docs]章）。
 

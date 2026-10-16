@@ -1,5 +1,4 @@
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE LambdaCase #-}
 
 {- | Tests that need an external tool (qpdf, cddl, openssl).
 
@@ -8,23 +7,32 @@ reason, instead of passing as if it had checked something. With
 @GOLEM_REQUIRE_EXTERNAL_TOOLS=1@, which CI sets, a missing tool is a
 failure, so that a runner without the tool cannot pass the check.
 
-The same module is in the test directory of each package that uses it
-(golem-doc, golem-pdf, golem-driver, golem-plugin).
+The test suites of golem-doc, golem-pdf, golem-driver and golem-plugin
+use it (docs/adr/0028).
 -}
-module ExternalTool (needsTool, optionalTool, toolsRequired) where
+module Golem.TestSupport.ExternalTool
+  ( needsTool,
+    optionalTool,
+    toolsRequired,
+    needsToolWith,
+    optionalToolWith,
+    missingTool,
+    toolsRequiredBy,
+  )
+where
 
 import System.Environment (lookupEnv)
 import Test.Tasty.Providers (IsTest (..), testFailed, testPassed)
 import Test.Tasty.Runners (Result (..), TestTree (..))
 
 -- | A test that runs only where its tool is found.
-data NeedsTool = forall t. (IsTest t) => NeedsTool String (IO (Maybe FilePath)) t
+data NeedsTool = forall t. (IsTest t) => NeedsTool (IO Bool) String (IO (Maybe FilePath)) t
 
 instance IsTest NeedsTool where
-  run opts (NeedsTool name locate t) progress =
+  run opts (NeedsTool required name locate t) progress =
     locate >>= \case
       Just _ -> run opts t progress
-      Nothing -> missingTool name <$> toolsRequired
+      Nothing -> missingTool name <$> required
   testOptions = pure []
 
 {- | @needsTool name locate tests@: every test of @tests@ runs where
@@ -32,11 +40,17 @@ instance IsTest NeedsTool where
 required) where it does not. The tests get the path of the tool.
 -}
 needsTool :: String -> IO (Maybe FilePath) -> (IO FilePath -> TestTree) -> TestTree
-needsTool name locate mk = wrap (mk path)
+needsTool = needsToolWith toolsRequired
+
+{- | 'needsTool' with whether a missing tool fails the test given as the
+first argument instead of read from the environment.
+-}
+needsToolWith :: IO Bool -> String -> IO (Maybe FilePath) -> (IO FilePath -> TestTree) -> TestTree
+needsToolWith required name locate mk = wrap (mk path)
   where
     path = locate >>= maybe (ioError (userError (notInstalled name))) pure
     wrap = \case
-      SingleTest n t -> SingleTest n (NeedsTool name locate t)
+      SingleTest n t -> SingleTest n (NeedsTool required name locate t)
       TestGroup n ts -> TestGroup n (map wrap ts)
       other -> other
 
@@ -45,24 +59,38 @@ not required. For a check inside a test that checks other things too;
 a missing tool that is required throws, and fails the test.
 -}
 optionalTool :: String -> IO (Maybe FilePath) -> IO (Maybe FilePath)
-optionalTool name locate =
+optionalTool = optionalToolWith toolsRequired
+
+{- | 'optionalTool' with whether a missing tool fails the test given as
+the first argument instead of read from the environment.
+-}
+optionalToolWith :: IO Bool -> String -> IO (Maybe FilePath) -> IO (Maybe FilePath)
+optionalToolWith required name locate =
   locate >>= \case
     Just p -> pure (Just p)
-    Nothing -> do
-      required <- toolsRequired
-      if required then ioError (userError (notInstalled name <> requiredBy)) else pure Nothing
+    Nothing ->
+      required >>= \case
+        True -> ioError (userError (notInstalled name <> requiresIt))
+        False -> pure Nothing
 
 -- | Whether a missing tool fails the test: @GOLEM_REQUIRE_EXTERNAL_TOOLS=1@.
 toolsRequired :: IO Bool
-toolsRequired = (== Just "1") <$> lookupEnv "GOLEM_REQUIRE_EXTERNAL_TOOLS"
+toolsRequired = toolsRequiredBy <$> lookupEnv "GOLEM_REQUIRE_EXTERNAL_TOOLS"
 
+-- | Whether the value of @GOLEM_REQUIRE_EXTERNAL_TOOLS@ requires the tools.
+toolsRequiredBy :: Maybe String -> Bool
+toolsRequiredBy = (== Just "1")
+
+{- | The result of a test whose tool is @name@ and is missing: a failure
+where tools are required, a SKIP where they are not.
+-}
 missingTool :: String -> Bool -> Result
 missingTool name = \case
-  True -> testFailed (notInstalled name <> requiredBy)
+  True -> testFailed (notInstalled name <> requiresIt)
   False -> (testPassed (notInstalled name <> "; GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes this a failure")) {resultShortDescription = "SKIP"}
 
 notInstalled :: String -> String
 notInstalled name = name <> " is not installed"
 
-requiredBy :: String
-requiredBy = ", and GOLEM_REQUIRE_EXTERNAL_TOOLS=1 requires it"
+requiresIt :: String
+requiresIt = ", and GOLEM_REQUIRE_EXTERNAL_TOOLS=1 requires it"
