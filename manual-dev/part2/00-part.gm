@@ -14,5 +14,5 @@ ADR を書き換えられないのは、モジュールを並行して実装す�
 
 第[ref-number modules]章でモジュールの構成と処理の流れを見て、第[ref-number build-test]章でビルドとテストの手順を説明する。
 第[ref-number adr]章から第[ref-number docs]章は、ADR とドキュメントの決まりである。
-第[ref-number ci-jobs]章は CI のジョブ、第[ref-number determinism]章は決定性を守るための注意、第[ref-number release]章はリリースの手順を扱う。
+第[ref-number ci-jobs]章は CI のジョブ、第[ref-number determinism]章は決定性を守るための注意、第[ref-number purity]章は決定性と純粋性の関係、第[ref-number release]章はリリースの手順を扱う。
 第[ref-number fixtures]章はフィクスチャとライセンス、第[ref-number manuals]章は二つのマニュアルの方針である。
