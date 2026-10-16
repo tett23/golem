@@ -36,8 +36,8 @@ B5 は和文の技術書で広く使われる判型である。
 ## 組み方
 
 ```sh
-GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh
-GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev
+$ GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh
+$ GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev
 ```
 
 [code: build.sh] は、引数を省くと二冊を、[code: manual] か [code: manual-dev] を渡すとその一冊だけを組む。
@@ -92,8 +92,8 @@ Golem の原稿は、コミットのハッシュを読む手段を持たず、�
 マニュアルを編集する前に、一度次を実行する。
 
 ```sh
-sh scripts/manual/build-info.sh manual
-sh scripts/manual/build-info.sh manual-dev
+$ sh scripts/manual/build-info.sh manual
+$ sh scripts/manual/build-info.sh manual-dev
 ```
 
 リリースのワークフローは、[code: GOLEM_MANUAL_TAG] にリリースのタグを渡して組むので、奥付の版はタグになる。

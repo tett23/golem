@@ -13,7 +13,7 @@ InDesign の書き出しと違い、形式ごとの設定を書き出すたび�
 ## PDF
 
 ```sh
-golem build --target pdf
+$ golem build --target pdf
 ```
 
 PDF は [code: build/pdf/] のフォルダに書かれます。
@@ -24,7 +24,7 @@ PDF は [code: build/pdf/] のフォルダに書かれます。
 色は、[code: style.toml] のスウォッチの CMYK の値をそのまま書き、RGB への変換も特色も使いません。
 写真などの画像は、色を変換せず、画像の色の情報（ICC プロファイル）を付けたまま埋め込みます。
 色の情報を持たない RGB の画像は、sRGB の画像として扱い、sRGB のプロファイルを付けます。
-印刷用の色への変換は、印刷所の出力の機械（RIP）に任せる形です。
+印刷用の色への変換は、印刷所の出力機（RIP）に任せる形です。
 印刷所が CMYK の画像での入稿を求めているときは、画像を前もって CMYK に変換しておいてください。
 
 @label pdf-x4
@@ -33,11 +33,11 @@ PDF は [code: build/pdf/] のフォルダに書かれます。
 入稿用の PDF には、PDF/X の規格に従ったファイルを求める印刷所が多くあります。
 PDF/X は、印刷に要るものをすべてファイルの中に持ち、印刷に要らないもの（JavaScript や外部のファイルへの参照）を持たないことを定めた、PDF の約束事の集まりです。
 Golem が書くのは、そのうちの PDF/X-4 です [cite pdfx4][note: ISO 15930-7:2010（PDF/X-4）。規格の本文は有償です。[code: https://www.iso.org/standard/55843.html]]。
-PDF/X-4 は PDF 1.6 を元にし、透明を平坦化せずにそのまま持てる版です。
+PDF/X-4 は PDF 1.6 を元にし、透明を平坦化せずにそのまま持てる規格です。
 
 PDF/X が求めるものの一つに、出力インテント[index reading=しゅつりょくいんてんと: 出力インテント]があります。
 出力インテントは、その PDF をどの印刷の条件で刷る前提で作ったかを示す情報で、印刷の条件を記した ICC プロファイル[index reading=あいしーしーぷろふぁいる: ICC プロファイル]を PDF の中に埋め込んで表します。
-ICC プロファイルは、ある機械や印刷の条件で、色の値がどの色として再現されるかを記したファイルで、形式は ICC.1 の仕様が定めています [cite icc][note: ICC.1:2022（ICC プロファイルの仕様）。[code: https://www.color.org/specification/ICC.1-2022-05.pdf]]。
+ICC プロファイルは、ある機器や印刷の条件で、色の値がどの色として再現されるかを記したファイルで、形式は ICC.1 の仕様が定めています [cite icc][note: ICC.1:2022（ICC プロファイルの仕様）。[code: https://www.color.org/specification/ICC.1-2022-05.pdf]]。
 日本の枚葉のオフセット印刷でコート紙に刷る場合は、Japan Color 2001 Coated がよく使われます [cite japancolor][note: Japan Color（日本印刷産業機械工業会の Japan Color 認証制度の案内）。[code: https://japancolor.jp/]]。
 
 出力インテントは、[code: style.toml] の [code: \[color\]] の [code: intent] に、ICC プロファイルのファイルのパスを書いて指定します。
@@ -60,9 +60,9 @@ Golem は、[code: intent] があるときにだけ、出力インテントと�
 Golem は、スウォッチの値を、出力インテントの印刷の条件で刷るための値として、そのまま PDF に書きます。
 
 [strong: Golem は、自分の書いた PDF が PDF/X-4 に適合しているかを判定できません。]
-Golem の開発では、PDF/X-4 の要件のうち Golem が書く要素（出力インテント、XMP、各ページの仕上がりの寸法の指定、書体の埋め込み、暗号化や JavaScript がないこと）を自動のテストで確かめ、PDF の構造を qpdf という道具で検査しています[note: 仕様書の「成果物」の節。[code: https://github.com/tett23/golem/blob/main/docs/specifications.md]]。
-しかし、PDF/X-4 への適合を判定できる自由に使える検証の道具はなく、規格の要件のすべてを確かめているわけではありません。
-入稿の前には、Acrobat のプリフライトのような商用の道具で PDF/X-4 として検査し、印刷所の指示にも合っているかを確かめてください。
+Golem の開発では、PDF/X-4 の要件のうち Golem が書く要素（出力インテント、XMP、各ページの仕上がりの寸法の指定、書体の埋め込み、暗号化や JavaScript がないこと）を自動のテストで確かめ、PDF の構造を qpdf というツールで検査しています[note: 仕様書の「成果物」の節。[code: https://github.com/tett23/golem/blob/main/docs/specifications.md]]。
+しかし、PDF/X-4 への適合を判定できる自由に使える検証のツールはなく、規格の要件のすべてを確かめているわけではありません。
+入稿の前には、Acrobat のプリフライトのような商用のツールで PDF/X-4 として検査し、印刷所の指示にも合っているかを確かめてください。
 
 @label print-pdf
 ## 塗り足しとトンボ
@@ -80,14 +80,14 @@ bleed = "3mm"
 ```
 
 [code: bleed] を書くと、PDF のページは仕上がりの寸法の外側に塗り足しの幅だけ広がります。
-PDF の中では、仕上がりの寸法を TrimBox、塗り足しを含めた寸法を BleedBox という名前の枠で記録し、印刷所の機械はこの枠を読んで断裁の位置を知ります。
+PDF の中では、仕上がりの寸法を TrimBox、塗り足しを含めた寸法を BleedBox という名前の枠で記録し、印刷所の出力機はこの枠を読んで断裁の位置を知ります。
 今の Golem は仕上がりの寸法の外側に何も描かないので、塗り足しの領域は空のままです。
 ページの端まで伸ばす図版は置けません。
 
 トンボは、[code: style.toml] ではなく、[code: golem build] の [code: --marks] のオプションで付けます。
 
 ```sh
-golem build --target pdf --marks japanese
+$ golem build --target pdf --marks japanese
 ```
 
 - [code: --marks japanese]：日本式のトンボ（仕上がりの線と塗り足しの線の二重）を付けます。
@@ -155,7 +155,7 @@ InDesign のプリフライトに当たり、Golem では [code: golem preflight
 [code: golem new] で作ったプロジェクトに、[code: golem preflight] を実行してみます。
 
 ```sh
-golem preflight
+$ golem preflight
 ```
 
 雛形のままでは、次の二つのエラーが出ます。
@@ -174,7 +174,7 @@ G0910 は塗り足しがないこと、G0914 は出力インテントがない�
 [code: style.toml] の [code: \[page\]] に [code: bleed = "3mm"] を、[code: \[color\]] に [code: intent] を書いてから、入稿する PDF と同じトンボを付けて検査し直します。
 
 ```sh
-golem preflight --marks japanese
+$ golem preflight --marks japanese
 ```
 
 今度は診断が出ず、要約の行だけが [code: エラー 0、警告 0] と出ます。
@@ -205,7 +205,7 @@ Golem が作りうる要素に限って、PDF/X-4 の要件を自分で確かめ
 InDesign のプリフライトプロファイルに当たります。
 Golem では「プロファイル」の語を dev と prod に使っているので、この名前にしています。
 
-プリフライトの設定は、プロジェクトのルートの [code: preflight.toml] に書きます。
+プリフライトの設定は、プロジェクトのフォルダの直下の [code: preflight.toml] に書きます。
 [code: golem new] が作る [code: preflight.toml] は、次のようになっています。
 
 ```toml
@@ -239,7 +239,7 @@ based-on = "print"
 color = { warning-below = 350 }
 ```
 
-表の中のキーも、一つずつ引き継ぎます。
+テーブルの中のキーも、一つずつ引き継ぎます。
 この例では、カラーの画像の [code: error-below] は [code: print] の 150 のままで、[code: warning-below] だけが 350 になります。
 最後の段落の [code: \[page-count\]] は、[code: print] では検査しない項目なので、[code: #] を外すと検査が有効になります。
 書けるキーと値は、[ref-title app-preflight]（[ref-page app-preflight] ページ）にまとめています。
@@ -262,7 +262,7 @@ InDesign のプリフライトプロファイルと同じく、プリフライ�
 プロジェクトに入れずに使いたいときは、[code: --rules] でファイルを指します。
 
 ```sh
-golem preflight --rules ../printer.toml
+$ golem preflight --rules ../printer.toml
 ```
 
 [code: --rules] のパスは、コマンドを実行したフォルダからの相対パスか、絶対パスで書きます。
@@ -274,7 +274,7 @@ golem preflight --rules ../printer.toml
 ## HTML
 
 ```sh
-golem build --target html
+$ golem build --target html
 ```
 
 HTML は [code: build/html/] に、原稿のファイルごとに一つずつ書かれます。
@@ -301,12 +301,12 @@ HTML の見た目を、スタイルシートを直接書いて変える方法は
 ## EPUB
 
 ```sh
-golem build --target epub
+$ golem build --target epub
 ```
 
 EPUB は [code: build/epub/book.epub] に書かれます。
 形式は EPUB 3.3 に従います [cite epub33][note: EPUB 3.3。[code: https://www.w3.org/TR/epub-33/]]。
-Golem の開発では、組んだ EPUB を、EPUB の検証の道具 epubcheck にかけ、エラーと警告が出ないことを確かめています。
+Golem の開発では、組んだ EPUB を、EPUB の検証のツール epubcheck にかけ、エラーと警告が出ないことを確かめています。
 
 本文は HTML と同じ XHTML で、端末やアプリの画面の大きさに合わせて流し込むリフローの EPUB になります。
 固定レイアウトの EPUB は作れません。
@@ -322,7 +322,7 @@ Golem の開発では、組んだ EPUB を、EPUB の検証の道具 epubcheck �
 ## プレーンテキスト
 
 ```sh
-golem build --target text
+$ golem build --target text
 ```
 
 プレーンテキストは、ブログなどに文章を転載するための形式です。
@@ -336,21 +336,21 @@ golem build --target text
 @label same-output
 ## 同じ原稿から同じ出力
 
-Golem は、同じ入力から、いつでも、どの機械でも、中身が一バイトも違わない同じファイルを出力します。[index reading=おなじげんこうからおなじしゅつりょく: 同じ原稿から同じ出力]
+Golem は、同じ入力から、いつでも、どのコンピューターでも、中身が一バイトも違わない同じファイルを出力します。[index reading=おなじげんこうからおなじしゅつりょく: 同じ原稿から同じ出力]
 この性質を決定性[index reading=けっていせい: 決定性]と呼びます。
-入力とは、原稿、[code: manifest.toml]、[code: style.toml]、画像、書体のファイル、ICC プロファイル、プラグイン、[code: --marks] と [code: --profile] の指定、それに Golem 自身の版です。
+入力とは、原稿、[code: manifest.toml]、[code: style.toml]、画像、書体のファイル、ICC プロファイル、プラグイン、[code: --marks] と [code: --profile] の指定、それに Golem 自身のバージョンです。
 
-決定性を保つために、Golem は出力が機械や時刻に左右される入力を読みません。
-機械に入っている書体を探さないのは、そのためです（「[ref-title fonts]」、[ref-page fonts] ページ）。
+決定性を保つために、Golem は出力がコンピューターや時刻に左右される入力を読みません。
+コンピューターに入っている書体を探さないのは、そのためです（「[ref-title fonts]」、[ref-page fonts] ページ）。
 組んだ日時も、出力に入りません。
 PDF の作成日などには、[code: manifest.toml] の [code: date] を書き込みます。
 組むたびに日時が変わると、紙面が同じでも PDF のファイルの中身が変わってしまうからです。
 
 この性質があると、原稿や設定を変えたときに、変わったページだけを見つけられます。
-前の版の PDF と新しい PDF をページの画像にして比べると、中身の変わらないページは画像も同じになるので、違いが出たページだけを見ればよくなります。
+前に組んだ PDF と新しく組んだ PDF をページの画像にして比べると、中身の変わらないページは画像も同じになるので、違いが出たページだけを見ればよくなります。
 原稿を変えるたびに自動で組み直して確かめる方法は、第[ref-number git-ci]章の「[ref-title ci-determinism]」（[ref-page ci-determinism] ページ）で説明します。
 
 同じ出力を保証しているのは、PDF、HTML、プレーンテキストです。
 EPUB は、中にまとめるファイルの記録の仕方（日時と順序）をまだ決めていないので、同じ中身になることを保証していません。
-Golem の版を上げると、同じ原稿からでも出力は変わることがあります。
-版は入力の一部だからです。
+Golem のバージョンを上げると、同じ原稿からでも出力は変わることがあります。
+バージョンも入力の一部だからです。

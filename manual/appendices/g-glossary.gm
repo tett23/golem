@@ -7,15 +7,19 @@
 組版の用語（版面、行送り、禁則、ルビ、トンボ、塗り足しなど）は載せていません。
 
 @nonumber
-## コンピュータと版の管理の言葉
+## コンピューターとバージョン管理の言葉
 
 = [strong: ターミナル]
-  文字でコンピュータに指示を出すためのアプリケーションです。[index reading=たーみなる: ターミナル]
+  文字でコンピューターに指示を出すためのアプリケーションです。[index reading=たーみなる: ターミナル]
   macOS では「ターミナル」、Windows では「ターミナル」や「PowerShell」が使えます。
   「[ref-title install]」（[ref-page install] ページ）、「[ref-title terminal]」（[ref-page terminal] ページ）。
 = [strong: コマンド]
   ターミナルに打ち込む指示です。[index reading=こまんど/たーみなるの: コマンド/ターミナルの]
   [code: golem build] のように、プログラムの名前と、何をするかを並べて書きます。
+  「[ref-title install]」（[ref-page install] ページ）、「[ref-title terminal]」（[ref-page terminal] ページ）。
+= [strong: プロンプト]
+  ターミナルがコマンドの入力を待っているときに、行の始まりに出す [code: %] や [code: $] のような印です。[index reading=ぷろんぷと: プロンプト]
+  このマニュアルのコードの例では、打ち込む行の始まりに [code: $] と空白を付けて示します。打ち込むのは、その後ろの部分だけです。
   「[ref-title install]」（[ref-page install] ページ）、「[ref-title terminal]」（[ref-page terminal] ページ）。
 = [strong: オプション]
   コマンドの振る舞いを変える指定です。[index reading=おぷしょん: オプション]
@@ -35,6 +39,10 @@
   コマンドは、このフォルダを起点にファイルを探します。
   [code: golem] は、プロジェクトのフォルダを作業中のフォルダにして実行します。
   「[ref-title folders]」（[ref-page folders] ページ）。
+= [strong: ホームのフォルダ（[code: ~]）]
+  コンピューターを使う人ごとに用意されるフォルダです。macOS では [code: /Users/あなたの名前] です。[index reading=ほーむのふぉるだ: ホームのフォルダ]
+  コマンドの中では [code: ~]（チルダ）と書けます。[code: ~/.local/bin] は、ホームのフォルダの中の [code: .local] の中の [code: bin] のフォルダです。
+  「[ref-title install]」（[ref-page install] ページ）、「[ref-title folders]」（[ref-page folders] ページ）。
 = [strong: パス]
   ファイルやフォルダの場所を、フォルダの名前を [code: /] でつないで表したものです。[index reading=ぱす: パス]
   [code: chapters/01.gm] のように、あるフォルダを起点に書いたものを相対パスと呼びます。
@@ -84,8 +92,8 @@
   設定を書くためのテキストの形式です。[index reading=とむる: TOML][note: TOML v1.0.0。[code: https://toml.io/en/v1.0.0]]
   [code: manifest.toml] と [code: style.toml] は、この形式で書きます。
   「[ref-title toml]」（[ref-page toml] ページ）。
-= [strong: 表（TOML の）]
-  TOML で、[code: \[page\]] のような見出しの下にまとめたキーと値の集まりです。[index reading=ひょう/とむるの: 表/TOML の]
+= [strong: テーブル（TOML の）]
+  TOML で、[code: \[page\]] のような見出しの下にまとめたキーと値の集まりです。[index reading=てーぶる/とむるの: テーブル/TOML の]
   [code: { width = "148mm", height = "210mm" }] のように一行でも書けます。
   「[ref-title toml]」（[ref-page toml] ページ）。
 = [strong: 配列]
@@ -97,11 +105,11 @@
   中身が一バイトでも違えば、ほぼ確実に違う値になります。
   取得したファイルが壊れたり差し替えられたりしていないかを、公開された値と比べて確かめます。
   「[ref-title install]」（[ref-page install] ページ）。
-= [strong: 版の管理]
-  ファイルの変更を、いつ、誰が、何のために行ったかとともに記録し、前の状態に戻したり比べたりできるようにすることです。[index reading=はんのかんり: 版の管理]
+= [strong: バージョン管理]
+  ファイルの変更を、いつ、誰が、何のために行ったかとともに記録し、前の状態に戻したり比べたりできるようにすることです。[index reading=ばーじょんかんり: バージョン管理]
   「[ref-title git-why]」（[ref-page git-why] ページ）。
 = [strong: Git]
-  版の管理に使う道具です。[index reading=ぎっと: Git][note: Git の公式の文書。[code: https://git-scm.com/doc]]
+  バージョン管理に使うツールです。[index reading=ぎっと: Git][note: Git の公式の文書。[code: https://git-scm.com/doc]]
   Golem のプロジェクトはテキストのファイルなので、Git で変更を一行ずつ追えます。
   「[ref-title git-setup]」（[ref-page git-setup] ページ）。
 = [strong: リポジトリ]
@@ -113,13 +121,13 @@
   コミットごとに、それを指すハッシュ（コミットのハッシュ）が付きます。
   「[ref-title git-commit]」（[ref-page git-commit] ページ）。
 = [strong: 差分]
-  二つの版のあいだで、どの行がどう変わったかを示したものです。[index reading=さぶん: 差分]
+  二つの時点のあいだで、どの行がどう変わったかを示したものです。[index reading=さぶん: 差分]
   「[ref-title git-diff]」（[ref-page git-diff] ページ）。
 = [strong: ブランチ]
   本流の履歴から分かれて、別の変更を進めるための履歴の枝です。[index reading=ぶらんち: ブランチ]
   「[ref-title git-branch]」（[ref-page git-branch] ページ）。
 = [strong: クローン]
-  ほかの場所にあるリポジトリを、履歴ごと手元に写したものです。[index reading=くろーん: クローン]
+  ほかの場所にあるリポジトリを、履歴ごと手元にコピーしたものです。[index reading=くろーん: クローン]
   「[ref-title git-share]」（[ref-page git-share] ページ）。
 = [strong: プッシュ]
   手元のリポジトリに記録したコミットを、共有の置き場所へ送ることです。[index reading=ぷっしゅ: プッシュ]
@@ -133,11 +141,11 @@
   Golem のプロジェクトでは、プッシュのたびに本を組み、誤りがないかを確かめます。
   「[ref-title ci]」（[ref-page ci] ページ）。
 = [strong: 決定性]
-  同じ入力から、いつ、どの機械で処理しても、同じ出力が得られる性質です。[index reading=けっていせい: 決定性]
-  同じ版の Golem は、同じ原稿から同じバイト列の PDF を作ります。
+  同じ入力から、いつ、どのコンピューターで処理しても、同じ出力が得られる性質です。[index reading=けっていせい: 決定性]
+  同じバージョンの Golem は、同じ原稿から同じバイト列の PDF を作ります。
   「[ref-title same-output]」（[ref-page same-output] ページ）、「[ref-title ci-determinism]」（[ref-page ci-determinism] ページ）。
 = [strong: LSP]
-  エディタと、言語ごとの道具とのあいだの共通の取り決め（Language Server Protocol）です。[index reading=えるえすぴー: LSP][note: Language Server Protocol 3.17。[code: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/]]
+  エディタと、言語ごとのプログラムとのあいだのやりとりを決めた共通の規格（Language Server Protocol）です。[index reading=えるえすぴー: LSP][note: Language Server Protocol 3.17。[code: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/]]
   [code: golem lsp] をエディタにつなぐと、書いている途中の原稿に誤りの印や補完が出ます。
   第[ref-number editor]章「[ref-title editor]」。
 

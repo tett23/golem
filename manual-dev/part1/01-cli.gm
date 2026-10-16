@@ -56,14 +56,14 @@ CI で PDF だけが要るなら、[code: --target pdf] を明示する。[note:
 [code: golem preflight] は、[code: golem build --target pdf --profile prod] と同じ手順で PDF を組み、ファイルに書かずに、組んだ結果を検査する。[index reading="golem preflight": golem preflight][note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 プロファイルは常に [code: prod] で、[code: --profile] は使い方の誤りになる。
 [code: \[targets.*\]] の有無は見ず、常に PDF を組む。
-検査の項目、重大度、しきい値はプリフライトの設定で決まり、設定は [code: --rules] のファイル、なければプロジェクトの根の [code: preflight.toml]、それもなければ組み込みの [code: print] である。
+検査の項目、重大度、しきい値はプリフライトの設定で決まり、設定は [code: --rules] のファイル、なければプロジェクトのルートの [code: preflight.toml]、それもなければ組み込みの [code: print] である。
 設定の誤りは G0901 で、PDF を組まずに終わる。
 構文から出力までの段階のエラーで PDF を組めないときは、[code: golem build] と同じ診断だけを出し、検査はしない。
 LSP、[code: golem check]、[code: golem build] は、プリフライトの検査をしない。
 
 ## 出力先
 
-[code: golem build] は、プロジェクトの根の [code: build/<ターゲット>/] に書く。
+[code: golem build] は、プロジェクトのルートの [code: build/<ターゲット>/] に書く。
 書く前に、そのターゲットのディレクトリを空にする。
 前回のビルドの古いファイルが残って、今回の出力の一部と誤解されるのを防ぐためである。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0001-build-pipeline.md]（golem-driver ADR 0001「ビルドのパイプライン」）]
 
@@ -130,7 +130,7 @@ $ echo $?
 CI で JSON を受け取るときは、標準エラー出力をファイルに向ける。
 
 ```sh
-golem build --target pdf --format json 2> diagnostics.json
+$ golem build --target pdf --format json 2> diagnostics.json
 ```
 
 [code: golem inspect] の表示、[code: golem explain] の説明、[code: golem fmt --check] のパスの一覧は標準出力に出る。
@@ -180,6 +180,6 @@ PDF を書かないビルドでは何も変えない。[note: [code: https://git
 [code: --as ast] は AST を、[code: --as ir] はプロジェクトを評価した意味論 IR と、その CBOR のバイト数を表示する。
 AST の表示では、[code: \\/] のようにエスケープした文字が [code: Escaped] として現れる。
 意味論 IR では、エスケープした文字は地の文に戻っている。
-[code: --as ir] は作業中のディレクトリのプロジェクトを評価するので、プロジェクトの根で実行する。
+[code: --as ir] は作業中のディレクトリのプロジェクトを評価するので、プロジェクトのルートで実行する。
 プラグインの作者が、受け取る IR の形を確かめるのに使える。
 意味論 IR と CBOR の形は第[ref-number ir]章で説明する。

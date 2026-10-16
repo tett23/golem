@@ -110,9 +110,9 @@ exec adr-guard pre-commit --allow-status --allow-links
 adr-guard には、一覧を出す命令と直す命令がある。
 
 ```sh
-adr-guard links          # リンクのない ADR の参照の一覧
-adr-guard links --fix    # リンクを付ける
-adr-guard check-status   # ステータスの行の数が誤った ADR の一覧
+$ adr-guard links          # リンクのない ADR の参照の一覧
+$ adr-guard links --fix    # リンクを付ける
+$ adr-guard check-status   # ステータスの行の数が誤った ADR の一覧
 ```
 
 ADR を書いた後と、仕様書や README を直した後は、[code: adr-guard links --fix] を実行してから確かめる。

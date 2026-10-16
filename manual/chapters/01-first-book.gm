@@ -1,7 +1,7 @@
 @label first-book
 # インストールと最初の一冊
 
-この章では、Golem を手元の機械に入れ、ひな形のプロジェクトから一冊の本を組むところまでを進めます。
+この章では、Golem を手元のコンピューターに入れ、ひな形のプロジェクトから一冊の本を組むところまでを進めます。
 ここで出てくるターミナルやフォルダの扱いは、次の第[ref-number basics]章で詳しく説明します。
 この章では、書いてあるとおりに打ち込めば進められるようにしています。
 
@@ -16,7 +16,7 @@ macOS では「アプリケーション」の「ユーティリティ」にあ�
 たとえば [code: golem build --target pdf] は、[code: golem] というプログラムに [code: build] という引数と、[code: --target pdf] というオプションを渡すコマンドです。
 
 Golem の実行ファイルは、GitHub Releases[note: Golem の配布のページ。[code: https://github.com/tett23/golem/releases]]で配布しています。
-使う機械に合うアーカイブ（ファイルをまとめて圧縮したもの）を選んでください。
+使うコンピューターに合うアーカイブ（ファイルをまとめて圧縮したもの）を選んでください。
 
 | 名前 | 対象 |
 |---|---|
@@ -24,7 +24,7 @@ Golem の実行ファイルは、GitHub Releases[note: Golem の配布のペー�
 | [code: aarch64-linux] | Linux（aarch64） |
 | [code: aarch64-macos] | macOS 14 以降（Apple Silicon） |
 
-アーカイブの名前は、版とプラットフォームを並べた [code: golem-v0.1.0-x86_64-linux.tar.gz] のような形です。
+アーカイブの名前は、バージョンと、対象の OS と CPU を並べた [code: golem-v0.1.0-x86_64-linux.tar.gz] のような形です。
 Windows では、WSL2（Windows の中で Linux を動かす仕組み）の上で Linux のアーカイブを使います。
 Intel の CPU の macOS には対応していません。
 
@@ -33,38 +33,59 @@ Intel の CPU の macOS には対応していません。
 この値を[strong: ハッシュ][index reading=はっしゅ: ハッシュ]と呼び、ファイルが一バイトでも違えばまったく別の値になります。
 手元で計算したハッシュが [code: SHA256SUMS] の値と合えば、ファイルは配布元と同じものです。
 
-次の例は、x86-64 の Linux で版 [code: v0.1.0] を入れる場合です。
+ターミナルは、コマンドを受け付けられる状態になると、行の始まりに [code: %] や [code: $] のような短い印を表示して、入力を待ちます。
+この印を[strong: プロンプト][index reading=ぷろんぷと: プロンプト]と呼びます。
+このマニュアルでは、打ち込むコマンドの行を、プロンプトに見立てた [code: $] と空白に続けて書きます。
+
+```sh
+$ golem --version
+$ golem 0.1.0
+```
+
+この例では、打ち込むのは [code: golem --version] だけです。
+行の始まりの [code: $] と、その後の空白は打ち込みません。
+[code: $] の付いていない行（この例の [code: golem 0.1.0]）は、コマンドが表示する結果です。
+
+次の例は、x86-64 の Linux で Golem のバージョン [code: v0.1.0] を入れる場合です。
 一行ずつターミナルに打ち込み、行の終わりで Return キーを押します。
 
 ```sh
-TAG=v0.1.0
-URL=https://github.com/tett23/golem/releases/download/$TAG
-DIR=golem-$TAG-x86_64-linux
-curl -LO "$URL/$DIR.tar.gz"
-curl -LO "$URL/SHA256SUMS"
-sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf "$DIR.tar.gz"
-mkdir -p ~/.local/bin
-install -m 755 "$DIR/golem" ~/.local/bin/
-golem --version
+$ TAG=v0.1.0
+$ URL=https://github.com/tett23/golem/releases/download/$TAG
+$ DIR=golem-$TAG-x86_64-linux
+$ curl -LO "$URL/$DIR.tar.gz"
+$ curl -LO "$URL/SHA256SUMS"
+$ sha256sum --ignore-missing -c SHA256SUMS
+$ tar -xzf "$DIR.tar.gz"
+$ mkdir -p ~/.local/bin
+$ install -m 755 "$DIR/golem" ~/.local/bin/
+$ golem --version
 ```
 
 最初の三行は、後の行で使う値に名前を付けています。
+行の途中の [code: $TAG] のような [code: $] は、プロンプトではなく、名前を付けた値を呼び出す書き方なので、そのまま打ち込みます。
 [code: curl] はファイルを取得するコマンド、[code: sha256sum] はハッシュを計算して照合するコマンド、[code: tar] はアーカイブを展開するコマンドです。
 照合が合えば、[code: sha256sum] は [code: OK] と表示します。
-[code: install] は、取り出した [code: golem] を、コマンドとして呼べる場所（[code: ~/.local/bin]）に置きます。
+[code: install] は、取り出した [code: golem] を、コマンドとして呼べる場所に置きます。
+
+置く場所は [code: ~/.local/bin] です。
+[code: ~]（チルダ）は、ホームのフォルダを表す書き方です。
+ホームのフォルダは、コンピューターを使う人ごとに用意されるフォルダで、macOS では [code: /Users/あなたの名前] です。
+Finder のサイドバーで、家の形のアイコンが付いているフォルダがそれに当たります。
+[code: ~/.local/bin] は、ホームのフォルダの中の [code: .local] のフォルダの中の [code: bin] のフォルダを指します。
+名前が [code: .] で始まるフォルダは、Finder では隠れていて表示されません。
 
 macOS では、[code: sha256sum] の代わりに次のコマンドを使います。
 
 ```sh
-shasum -a 256 --ignore-missing -c SHA256SUMS
+$ shasum -a 256 --ignore-missing -c SHA256SUMS
 ```
 
 ブラウザで取得したアーカイブから取り出した [code: golem] は、初回の起動を macOS に止められます。
 その場合は、[code: xattr -d com.apple.quarantine golem] を実行してから起動してください。
 これは、インターネットから取得したしるしを取り除くコマンドです。
 
-最後の [code: golem --version] が [code: golem 0.1.0] のように版を表示すれば、インストールは終わりです。
+最後の [code: golem --version] が [code: golem 0.1.0] のようにバージョンを表示すれば、インストールは終わりです。
 [code: command not found] と表示されたら、[code: ~/.local/bin] がコマンドを探す場所に入っていません。
 その直し方は、第[ref-number basics]章の「[ref-title terminal]」で説明します。
 
@@ -76,7 +97,7 @@ shasum -a 256 --ignore-missing -c SHA256SUMS
 InDesign のドキュメントとブックを合わせたものに当たります。
 
 ```sh
-golem new mybook
+$ golem new mybook
 ```
 
 このコマンドは、[code: mybook] というディレクトリ（Finder やエクスプローラーで見るフォルダのことです）を作ります。[index reading=でぃれくとり: ディレクトリ][index reading=ふぉるだ: フォルダ]
@@ -90,9 +111,9 @@ golem new mybook
 - [code: chapters/01.gm]：最初の章の原稿
 - [code: preflight.toml]：入稿の前の検査の設定。第[ref-number output]章で使います。
 - [code: fonts/]：本文の書体（Noto Serif JP）と、そのライセンスの文書
-- [code: .gitignore]：版の管理の道具に、組んだ結果を記録しないように伝える設定（第[ref-number git-ci]章で使います）
+- [code: .gitignore]：バージョン管理のツールに、組んだ結果を記録しないように伝える設定（第[ref-number git-ci]章で使います）
 
-書体は、配布元から版を固定して取得し、ハッシュでファイルが壊れていないかを確かめてから置きます。
+書体は、配布元からバージョンを固定して取得し、ハッシュでファイルが壊れていないかを確かめてから置きます。
 このため [code: golem new] はインターネットに接続します。
 接続できない環境では [code: golem new --no-fonts mybook] とし、表示されたファイルを手で [code: fonts/] に置いてください。
 
@@ -100,7 +121,7 @@ golem new mybook
 英語の本を作るときは、[code: --language en] のオプションを付けます。
 
 ```sh
-golem new --language en mybook
+$ golem new --language en mybook
 ```
 
 こちらは、ペーパーバックの判型の横組みで、欧文の書体（Source Serif 4）を使う本になります。
@@ -112,8 +133,8 @@ golem new --language en mybook
 [code: cd] は、作業の場所をほかのフォルダに移すコマンドです。
 
 ```sh
-cd mybook
-golem build
+$ cd mybook
+$ golem build
 ```
 
 何も表示されずに次の入力を待つ状態に戻れば、成功です。

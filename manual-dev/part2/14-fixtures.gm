@@ -48,7 +48,7 @@ golem-driver のテストは十冊を出力を書かずに検査し、環境変�
 原稿は [code: scripts/fixtures/fetch-public-domain.sh] が、原文を取得して SHA-256 を検査し、golem-fixtures で Golem の原稿に変換し、[code: golem fmt] で整形して作る。
 
 ```sh
-GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
+$ GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 ```
 
 変換の実行ファイル [code: golem-fixtures] は、五つの命令を持つ。[index reading="golem-fixtures": golem-fixtures][note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0023-fixture-converters-without-python.md]（docs/adr の ADR 0023「fixture の変換を Python から移す」）]

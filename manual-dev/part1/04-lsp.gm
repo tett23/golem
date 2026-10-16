@@ -36,9 +36,9 @@ LSP はレイアウト（S2）とバックエンドを実行しない。
 
 - 起動のコマンド：[code: golem lsp]
 - 対象のファイル：拡張子 [code: .gm]
-- プロジェクトの根を決める印：[code: manifest.toml]
+- プロジェクトのルートを決める印：[code: manifest.toml]
 
-[code: manifest.toml] のあるディレクトリが、プロジェクトの根になる。
+[code: manifest.toml] のあるディレクトリが、プロジェクトのルートになる。
 マニフェストから到達しないファイルを開いた場合は、構文解析とファイル内評価（S0）だけを行い、文書構造（S1）の診断は出さない。
 
 Neovim の組み込みのクライアント（ADR が挙動を調べたのは 0.12.5）なら、次の設定でつながる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-lsp/adr/0003-position-handling.md]（golem-lsp ADR 0003「行の長さを超える列を行末に丸め、位置の交渉をエディタで確かめる」）]

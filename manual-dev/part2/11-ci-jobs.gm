@@ -58,7 +58,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 分岐点からの差分にするのは、ベースのブランチの先端がほかのプルリクエストのマージで進むからである。
 二点の差分では、ほかのプルリクエストの変更まで数えてしまう。
 
-[code: needs-build.sh] は、変更が [code: docs/] の下のファイルとリポジトリの根の Markdown のファイルだけなら [code: false] を、それ以外なら [code: true] を書く。
+[code: needs-build.sh] は、変更が [code: docs/] の下のファイルとリポジトリのルートの Markdown のファイルだけなら [code: false] を、それ以外なら [code: true] を書く。
 ビルドが読む文書（今は [code: docs/diagnostics.md]）の変更は [code: true] になる。
 [code: manual/] と [code: manual-dev/] は [code: docs/] の外にあるので、マニュアルの変更はビルドする側になる。
 [code: docs/manual-policy.md] は Golem の振る舞いを定めないので、その変更だけならビルドしない。

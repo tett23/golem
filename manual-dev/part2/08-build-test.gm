@@ -24,8 +24,8 @@ GHC の版を上げるときは ADR を書く。
 - fourmolu 0.21.0.0 と hlint 3.10。整形と検査に使う。
 
 ```sh
-cargo install --git https://github.com/tett23/adr-guard --tag v0.8.1
-cargo install cddl --version 0.10.7 --locked
+$ cargo install --git https://github.com/tett23/adr-guard --tag v0.8.1
+$ cargo install cddl --version 0.10.7 --locked
 ```
 
 ## クローンした後の設定
@@ -33,7 +33,7 @@ cargo install cddl --version 0.10.7 --locked
 クローンしたら、まず Git のフックを有効にする。
 
 ```sh
-git config core.hooksPath .githooks
+$ git config core.hooksPath .githooks
 ```
 
 [code: core.hooksPath] はクローンごとのローカルの設定で、リポジトリには保存されない。
@@ -46,7 +46,7 @@ git config core.hooksPath .githooks
 最初に wasmtime の C API を取得する。
 
 ```sh
-scripts/fetch-wasmtime.sh
+$ scripts/fetch-wasmtime.sh
 ```
 
 このスクリプトは、プラットフォームに合う wasmtime 49.0.2 の C API の配布物を取得し、SHA-256 を検証して [code: third_party/wasmtime] に置く。[index reading="fetch-wasmtime.sh": fetch-wasmtime.sh]
@@ -54,8 +54,8 @@ scripts/fetch-wasmtime.sh
 [code: third_party/] と [code: cabal.project.local] は [code: .gitignore] に入っている。
 
 ```sh
-cabal build all
-cabal test all
+$ cabal build all
+$ cabal test all
 ```
 
 [code: cabal.project] は [code: tests: True] なので、[code: cabal build all] はテストスイートもビルドする。
@@ -65,9 +65,9 @@ peg-hs は [code: source-repository-package] でコミットを固定してあ�
 手元で使うには、次のどちらかにする。
 
 ```sh
-cabal install exe:golem --installdir="$HOME/.local/bin" \
+$ cabal install exe:golem --installdir="$HOME/.local/bin" \
   --install-method=copy --overwrite-policy=always
-cabal list-bin golem    # インストールせずにパスを調べる
+$ cabal list-bin golem    # インストールせずにパスを調べる
 ```
 
 HarfBuzz、FreeType、wasmtime、zlib は静的にリンクする。
@@ -96,7 +96,7 @@ Haskell には成熟した CDDL の検証器がないので、テストにだけ
 文法を変えたら、生成し直して生成物もコミットする。
 
 ```sh
-scripts/gen-parser.sh
+$ scripts/gen-parser.sh
 ```
 
 このスクリプトは peg-hs の CLI をビルドして実行し、ラベルを外した文法（[code: modules/golem-parser/test/StrippedGrammar.hs]）も生成する。[index reading="gen-parser.sh": gen-parser.sh]
@@ -117,7 +117,7 @@ CI の [code: format] ジョブは、hlint を次のように呼ぶ。
 手元で同じ検査をするときも、この形で実行すればよい。
 
 ```sh
-hlint modules \
+$ hlint modules \
   --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" \
   --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs"
 ```
@@ -147,8 +147,8 @@ CI の [code: changes] ジョブが前の二つを、[code: release-scripts] ジ
 二つのマニュアルは、[code: scripts/manual/build.sh] で組む。
 
 ```sh
-GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh
-GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev
+$ GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh
+$ GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev
 ```
 
 マニュアルを編集する前に、[code: sh scripts/manual/build-info.sh manual-dev] を一度実行する。
@@ -161,5 +161,5 @@ GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev
 原文の変換は golem-fixtures の実行ファイルが行う（第[ref-number fixtures]章）。
 
 ```sh
-GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
+$ GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 ```
