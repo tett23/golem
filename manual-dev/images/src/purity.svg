@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="860" viewBox="0 0 1300 860">
+  <!-- 純粋なカーネルと IO のエッジ（docs/adr/0002、golem-driver ADR 0001、golem-font ADR 0001、golem-plugin ADR 0001）。
+       scripts/manual/render-figures.sh で manual-dev/images/purity.png にする。 -->
+  <style>
+    @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
+    @font-face { font-family: "Fig Sans"; font-weight: bold; src: url("../../fonts/NotoSansJP-Bold.otf"); }
+    text { font-family: "Fig Sans", sans-serif; font-size: 24px; fill: #222; }
+    .c { text-anchor: middle; dominant-baseline: central; }
+    .mod { font-size: 20px; fill: #555; }
+    .band { font-size: 26px; font-weight: bold; }
+    .label { font-size: 20px; fill: #333; }
+    rect.proc { stroke: #333; stroke-width: 2; rx: 8; fill: #fff; }
+    rect.ffi { stroke: #333; stroke-width: 2; stroke-dasharray: 8 6; rx: 8; fill: #dce8f5; }
+    rect.io { fill: #fff; stroke: #333; stroke-width: 1.5; }
+    .ioband { fill: #f6ecd2; }
+    .coreband { fill: #e0f0da; }
+    line, path.edge { stroke: #444; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    .dash { stroke-dasharray: 8 6; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#444"/>
+    </marker>
+  </defs>
+  <rect width="1300" height="860" fill="#fff"/>
+
+  <!-- bands -->
+  <rect class="ioband" x="10" y="10" width="330" height="610" rx="10"/>
+  <rect class="coreband" x="360" y="10" width="620" height="610" rx="10"/>
+  <rect class="ioband" x="1000" y="10" width="290" height="610" rx="10"/>
+  <text class="c band" x="175" y="45">読むエッジ（IO）</text>
+  <text class="c band" x="670" y="45">純粋なカーネル</text>
+  <text class="c band" x="1145" y="45">書くエッジ（IO）</text>
+
+  <!-- inputs -->
+  <rect class="io" x="30" y="80" width="290" height="76"/>
+  <text class="c" x="175" y="104">原稿、manifest.toml</text><text class="c mod" x="175" y="136">golem-project（バイト列）</text>
+  <rect class="io" x="30" y="190" width="290" height="76"/>
+  <text class="c" x="175" y="214">プラグインの配布物</text><text class="c mod" x="175" y="246">ハッシュで照合</text>
+  <rect class="io" x="30" y="300" width="290" height="76"/>
+  <text class="c" x="175" y="324">図版、書誌、CSV</text><text class="c mod" x="175" y="356">golem-driver</text>
+  <rect class="io" x="30" y="410" width="290" height="76"/>
+  <text class="c" x="175" y="434">フォント</text><text class="c mod" x="175" y="466">Golem.Driver.Fonts</text>
+
+  <!-- the pure core: main column -->
+  <rect class="proc" x="670" y="80" width="280" height="76"/>
+  <text class="c" x="810" y="104">構文解析</text><text class="c mod" x="810" y="136">golem-parser</text>
+  <rect class="proc" x="670" y="190" width="280" height="76"/>
+  <text class="c" x="810" y="214">S0：evalFile</text><text class="c mod" x="810" y="246">golem-eval</text>
+  <rect class="proc" x="670" y="300" width="280" height="76"/>
+  <text class="c" x="810" y="324">S1：assemble</text><text class="c mod" x="810" y="356">golem-doc</text>
+  <rect class="proc" x="670" y="410" width="270" height="76"/>
+  <text class="c" x="805" y="434">S2：行分割と改ページ</text><text class="c mod" x="805" y="466">golem-layout</text>
+  <rect class="proc" x="670" y="520" width="280" height="76"/>
+  <text class="c" x="810" y="544">直列化</text><text class="c mod" x="810" y="576">writePdf、renderXhtml ほか</text>
+  <line x1="810" y1="156" x2="810" y2="190"/>
+  <line x1="810" y1="266" x2="810" y2="300"/>
+  <line x1="805" y1="376" x2="805" y2="410"/>
+  <line x1="805" y1="486" x2="805" y2="520"/>
+  <path class="edge dash" d="M950,350 H968 V540 H950"/>
+
+  <!-- the pure core: C libraries wrapped as pure functions -->
+  <rect class="ffi" x="380" y="190" width="250" height="76"/>
+  <text class="c" x="505" y="214">wasmtime</text><text class="c mod" x="505" y="246">Golem.Plugin</text>
+  <rect class="ffi" x="380" y="410" width="250" height="76"/>
+  <text class="c" x="505" y="434">HarfBuzz、FreeType</text><text class="c mod" x="505" y="466">Golem.Font</text>
+  <line class="dash" x1="630" y1="228" x2="670" y2="228"/>
+  <line class="dash" x1="630" y1="448" x2="670" y2="448"/>
+  <text class="label" x="505" y="516" text-anchor="middle">点線の枠：C のライブラリを</text>
+  <text class="label" x="505" y="544" text-anchor="middle">純粋な関数として包んだもの</text>
+  <text class="label" x="505" y="580" text-anchor="middle">右の点線の矢印：</text>
+  <text class="label" x="505" y="608" text-anchor="middle">PDF 以外は S2 を通らない</text>
+
+  <!-- input edges -->
+  <path class="edge" d="M320,118 H670"/>
+  <line x1="320" y1="228" x2="380" y2="228"/>
+  <path class="edge" d="M320,338 H670"/>
+  <line x1="320" y1="448" x2="380" y2="448"/>
+
+  <!-- output -->
+  <rect class="io" x="1015" y="520" width="260" height="76"/>
+  <text class="c" x="1145" y="544">build/ の下の出力</text><text class="c mod" x="1145" y="576">PDF、HTML ほか</text>
+  <line x1="950" y1="558" x2="1015" y2="558"/>
+
+  <!-- what is not read -->
+  <rect x="10" y="650" width="1280" height="200" rx="10" fill="#f2f2f2" stroke="#888" stroke-width="1.5" stroke-dasharray="4 6"/>
+  <text class="band" x="40" y="692">入力の外にあり、出力に影響させないもの</text>
+  <text x="40" y="740">時計（日時は metadata.date から作る）　乱数（golem new の id だけが golem-cli で使う）</text>
+  <text x="40" y="782">環境変数、ロケール、タイムゾーン　ディレクトリの列挙　ネットワーク　システムのフォント</text>
+  <text x="40" y="824" class="label">XDG_CACHE_HOME はプラグインのキャッシュの場所を決めるだけで、中身はハッシュで照合する</text>
+</svg>

@@ -1,0 +1,401 @@
+@label purity
+# 決定性と純粋性
+
+Golem は Haskell で書いてあり、Haskell の関数はふつう純粋である。
+そうであれば、決定性は言語から無料で手に入るように思える。
+半分は正しい。
+純粋な関数の中には時計も乱数も環境変数も入り込めないので、第[ref-number determinism]章の規則の多くは、型が守ってくれる。
+しかし、残りの半分は型の外にある。
+二つのアーキテクチャで同じバイト列が出ることは、純粋性からは出てこない。
+逆に、Golem のコードにも [code: IO] と [code: unsafePerformIO] は何か所もあり、それでも出力は決定的である。
+
+この章は、二つの性質がどこで重なり、どこでずれるかを、実際のモジュールと関数で確かめる。
+
+## 副作用と二つの性質
+
+[strong: 決定性]は、プログラムを実行したときの性質である。[index reading=けっていせい: 決定性]
+docs/adr の ADR 0002 が列挙した入力が同じなら、どの機械で、何回実行しても、出力のバイト列が同じになる。
+確かめるには、実際に実行して出力を比べる。
+
+プログラムがすることは、計算と副作用の二つに分けられる。
+[strong: 計算]は、値から値を導くことである。[index reading=けいさん: 計算]
+二つの sp の値を足す、段落の箱の並びから改行の位置を選ぶ、ページの記述から PDF のバイト列を組み立てる、といった処理は計算である。
+同じ値を渡せば同じ値が出て、計算の外では何も変わらない。
+これに対して[strong: 副作用]は、計算の外の世界を観察すること、または変えることである。[index reading=ふくさよう: 副作用]
+原稿のファイルを読む、PDF をディスクに書く、時刻を問い合わせる、がこれにあたる。
+
+計算の外の世界とは、多くの場合、OS が管理する状態である。
+プログラムは、ファイルの中身も、ディレクトリの一覧も、時刻も、自分では持っていない。
+ファイルを読むには [code: open] と [code: read] の、時刻を知るには [code: clock_gettime] の、乱数を得るには [code: getentropy] のようなシステムコールで、OS に頼む。
+環境変数は、プロセスを起動したときに OS が渡した値（[code: execve] の引数）であり、メモリの確保、ファイルのメモリへの割り当て（[code: mmap]）、子プロセスの起動も、OS への依頼である。
+OS の状態はプログラムの外にあり、実行のたびに、また機械ごとに違いうる。
+同じ実行ファイルに同じ原稿を渡しても、時刻、ディレクトリの列挙の順、環境変数、ファイルシステムの性質は、実行ごとに変わる。
+副作用が決定性を脅かすのは、副作用がこの違いをプログラムの中に値として持ち込む入り口だからである。
+システムコールの結果がプログラムの中の値になれば、その値に依存する出力も揺れる。
+
+Haskell のプログラムも、実行時にはシステムコールを出している。
+GHC のランタイムは、メモリの確保とガベージコレクション、スレッドのスケジューリング、ファイルの入出力の仕組みを持ち、そのために OS を呼ぶ。
+ただし、これらはプログラムの値に現れない。
+ガベージコレクションがいつ走っても、スレッドがどの順に動いても、純粋な関数の結果は変わらない。
+ランタイムと OS の状態が値に入る道は、[code: IO] の型を持つ操作（ファイルの読み書き、時刻や環境変数の読み取り）に限られる。
+[code: mapConcurrently] のスレッドが終わる順はランタイムと OS が決めるが、結果を入力の順に並べ直すので、値には入らない（後の「並列の組版」の節）。
+
+FFI で呼ぶ C のライブラリは、Haskell の型の検査の外にあり、システムコールを直接出せる。
+HarfBuzz と FreeType は、Golem が渡したメモリの上のフォントのバイト列を読み、計算して結果を返す（golem-font の [code: golem_font_open] は、フォントを [code: FT_New_Memory_Face] と [code: hb_blob_create] でメモリから開く）。
+ファイルも時刻も読まない。
+同梱した HarfBuzz のソースで環境変数を読むのは [code: HB_FACE_LOADER] の一か所だけで、それを使う関数（[code: hb_face_create_or_fail_using] など）を Golem は呼ばない。
+C の側の OS への依頼は作業用のメモリの確保と解放だけで、これは結果の値に影響しない。
+wasmtime は事情が違う。
+wasm のコードを機械語にコンパイルし、実行用のメモリを OS から割り当てて動かすので、OS を盛んに呼ぶ。
+それでも、プラグインに import を一つも渡さないので、プラグインのコードの側にはシステムコールに届く手段がない。
+OS とのやりとりはホストの wasmtime の中で閉じ、プラグインの計算の結果は、渡した入力だけで決まる。
+この二つの事情が、後の「C のライブラリを純粋な関数として包む」の節で [code: unsafePerformIO] を使ってよい根拠になる。
+
+[strong: 純粋性]は、プログラムの中の一つの関数の性質であり、副作用の有無で決まる。[index reading=じゅんすいせい: 純粋性]
+関数について言えば、副作用とは、結果の値を返すことのほかに、関数が計算の外の世界と行うやりとりである。
+Golem のコードに現れるものを挙げると、次のようになる。
+
+- 入出力：ファイル、ネットワーク、端末への読み書き。golem-driver の [code: buildCore] が [code: build/] に PDF を書くのは副作用である。
+- 状態の書き換え：呼び出しの後まで残る変数や表の中身を変えること。[code: Golem.Driver.Fonts] の [code: memo] が [code: IORef] の表に値を足すのは、これにあたる。
+- 時刻を読むこと：time ライブラリの [code: getCurrentTime] は、同じ引数で呼んでも、呼んだ時刻で結果が変わる（Golem のビルドは使わない）。
+- 乱数を引くこと：golem-cli が [code: golem new] で使う [code: UUID.nextRandom]。
+- グローバルな状態を読むこと：環境変数、ロケール、作業中のディレクトリ、ほかのスレッドが書き換える変数。
+
+読むだけの副作用（時刻、乱数、グローバルな状態）は、外の世界を変えないので無害に見える。
+しかし、結果が引数の外の値に依存するので、同じ引数で呼んでも結果が変わりうる。
+この点で、書く副作用と同じく純粋性を壊す。
+
+副作用を持たず、結果が引数だけで決まる関数を、[strong: 純粋]な関数という。
+純粋な関数の呼び出しは、その結果の値と置き換えても、プログラムの意味が変わらない。
+この性質を[strong: 参照透過性]という。[index reading=さんしょうとうかせい: 参照透過性]
+たとえば golem-layout の [code: breakParagraph params measure items] は、同じ三つの引数にいつも同じ [code: Breaks] を返す。
+一度計算した結果を使い回しても、二度計算しても、プログラムの振る舞いは変わらない。
+逆に [code: getCurrentTime] の呼び出しは、呼ぶたびに違う値を返しうるので、一つの値に置き換えられない。
+
+Haskell は、副作用を型で区別する。
+副作用を持つ計算は [code: IO a] のような型を持ち、型に [code: IO] を持たない関数の中からは [code: IO] の計算を実行できない（例外は [code: unsafePerformIO] で、後の「C のライブラリを純粋な関数として包む」の節で扱う）。
+このため、型に [code: IO] が現れない関数はふつう純粋であり、それを確かめるのはコンパイラの型の検査である。
+golem-eval の [code: evalFile :: EvalContext -> A.File -> EvalResult] は、型の上で時計も環境変数も読めない。
+[code: evalFile] が使う値は、import 先の評価の結果、マニフェストの値、図版と CSV の中身、プラグインの関数まで、すべて [code: EvalContext] の欄として渡されている。
+
+純粋性と決定性は、副作用を通してつながっている。
+出力が入力の外の値で揺れるのは、どこかで読む副作用（時刻、乱数、環境、列挙の順）が値を持ち込んだときである。
+副作用のない関数をつないだ計算は、入力の外の値を持ち込めないので、一回の実行の中では、同じ入力から必ず同じ値を作る。
+ADR 0002 の規則の多くは、読む副作用を置いてよい場所を限る規則として読める。
+
+| | 決定性 | 純粋性 |
+| --- | --- | --- |
+| 対象 | 実行ファイルと入力の全体 | 一つの関数 |
+| 主張 | 入力が同じなら出力のバイト列が同じ | 引数が同じなら結果が同じで、作用がない |
+| 範囲 | 機械、OS、実行の回、時刻をまたぐ | 一つのプログラムの一回の実行の中 |
+| 確かめ方 | 出力のハッシュを比べる（CI の [code: determinism] ジョブ） | 型の検査 |
+
+表の「範囲」の行に、ずれの元がある。
+純粋性は、同じプログラムの中で同じ式が同じ値になることしか言わない。
+別の機械で別のコンパイラが作った実行ファイルの中の「同じ関数」が、同じ値を返すとは言わない。
+一方で決定性は、関数の一つ一つが純粋であることまでは求めない。
+求めるのは、外から観察できる出力が入力だけで決まることである。
+
+## 純粋なカーネルと IO のエッジ
+
+Golem の構成は、IO を処理の両端に寄せ、そのあいだを純粋な関数でつなぐ形をしている（図[ref-number fig-purity]）。
+この章では、純粋な関数だけからなる中央の部分を[strong: カーネル]、IO を行う両端を[strong: エッジ]と呼ぶ。
+
+@label fig-purity
+@figure images/purity.png alt="左に読む側の IO のエッジ（原稿と manifest.toml、プラグインの配布物、図版と書誌と CSV、フォント）、中央に純粋なカーネル（構文解析、S0 の evalFile、S1 の assemble、S2 の行分割と改ページ、直列化）、右に書く側の IO のエッジ（build/ の下の出力）を置いた図。中央には、wasmtime と HarfBuzz と FreeType を純粋な関数として包んだ箱が点線で描かれ、下の帯に、時計、乱数、環境変数、ロケール、タイムゾーン、ディレクトリの列挙、ネットワーク、システムのフォントを出力に影響させないことが書かれている"
+  純粋なカーネルと、読む側と書く側の IO のエッジ。
+
+IO を持つのは、golem-driver の [code: evaluateProjectWith] と [code: buildCore]、golem-project の [code: loadProjectWith] と [code: resolveInRoot]、golem-plugin の [code: Golem.Plugin.Lock] のキャッシュの読み書き、golem-epub の [code: writeEpub]、それに golem-cli と golem-lsp である。
+開発用の golem-fixtures と golem-test-support を除き、ほかのライブラリのモジュールは、公開する関数の型に [code: IO] を持たない。
+処理の各段階は、読み込みの済んだ値を受け取る純粋な関数として書いてある。
+主な関数の型は次のとおりである。
+
+```haskell
+-- golem-parser（構文解析）
+parseFile :: FileId -> ByteString
+          -> Either [Diagnostic] (Node, [Diagnostic])
+-- golem-project（style.toml の読み込み）
+loadStyle :: FileId -> Maybe Text -> Either [Diagnostic] Style
+-- golem-eval（S0）
+evalFile :: EvalContext -> A.File -> EvalResult
+-- golem-doc（S1）
+assemble :: AssembleConfig
+         -> (DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text)
+         -> [Document] -> (Book, [Diagnostic])
+-- golem-layout（S2 の行分割、改ページ、ページ番号の解決）
+breakParagraph :: Params -> (Int -> Sp) -> [Item] -> Breaks
+paginate :: Int -> Int -> [Flow] -> [PageOut]
+resolvePageRefs :: (Map Text Integer -> [PageOut])
+                -> Either [Text] [PageOut]
+-- golem-html、golem-pdf（出力の形への直列化）
+renderXhtml :: HtmlConfig -> FileTable -> Book -> XhtmlSite
+writePdf :: Document -> ByteString
+-- golem-preflight（プリフライトの検査）
+check :: Rules -> View -> [Diagnostic]
+```
+
+S0 で全ファイルを評価する [code: evalAll] も、import の順（[code: projectOrder]）に [code: evalFile] を [code: foldl'] で畳み込む純粋な関数である。
+S1 の [code: assemble] は、S0 の結果をマニフェストの章の順に並べたリストを受け取る。
+評価が純粋なので、同じファイルを複数のファイルが import しても、一度評価した結果をそのまま共有できる。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#プロジェクトの構成と-import]（仕様書の「プロジェクトの構成と import」の節）]
+LSP が編集されたファイルだけを評価し直せるのも同じ理由で、[code: Evaluated] の [code: evReevaluate] は、前回の評価の文脈を閉じ込めた純粋な関数である。
+
+この形にしておくと、第[ref-number determinism]章の「入力の外から値を持ち込まない」という規則を確かめる場所が狭まる。
+純粋な段階に外の値が入る道は引数しかなく、引数を作るのは IO のエッジだけだからである。
+レビューで見るべきなのは、エッジで何を読み、それをどう並べてカーネルに渡しているかである。
+
+### 入力はバイト列で読む
+
+原稿、[code: manifest.toml]、[code: style.toml] は、[code: Data.ByteString.readFile] でバイト列として読み、UTF-8 として明示的に復号する。
+[code: Data.Text.IO.readFile] は使わない。
+こちらは実行時のロケールの文字コードで復号するので、同じファイルがロケールによって別の文字列になりうる。
+
+### 読むファイルは原稿の記述で決まる
+
+図版、取り込むコード、CSV は、golem-driver の [code: loadAssets] が、各ファイルの AST から [code: assetRefs] で集めたパスだけを読む。
+パスは golem-project の [code: normalizeRelative] で字句の上で正規化し、[code: resolveInRoot] でプロジェクトルートの外を指していないことを確かめる。
+ディレクトリを列挙する [code: listDirectory] は、[code: golem new] が作る先のディレクトリが空かどうかを見る箇所と、LSP がワークスペースを探す箇所にしか現れない。
+どちらも出力の中身を決めない。
+
+### 環境変数で変わるのは場所だけ
+
+ビルドが環境変数に触れる箇所が一つある。
+golem-plugin の [code: defaultCacheDir] は、[code: getXdgDirectory] でプラグインのキャッシュのディレクトリを決めるので、[code: XDG_CACHE_HOME] の値に従う。
+それでも出力は変わらない。
+[code: readCached] は、キャッシュから読んだバイト列の SHA-256 を [code: plugins.lock] のハッシュと照合し、一致しなければ G0604 のエラーにする。
+環境変数が決めるのはどこから読むかだけで、何を読むかは [code: plugins.lock] が決めている。
+
+## カーネルの中に置いた IO
+
+純粋なカーネルの中にも、実装の都合で IO を使う箇所が四つある。
+どれも、外から見た振る舞いが純粋な関数と区別できないように囲ってある。
+
+### C のライブラリを純粋な関数として包む
+
+golem-font の [code: Golem.Font] は、HarfBuzz と FreeType の呼び出しを [code: unsafePerformIO] で包み、[code: loadFont :: ByteString -> Either FontError Font] や [code: shapeUnits]、[code: glyphMetrics]、[code: subsetFont] を純粋な関数として公開している。
+golem-font ADR 0001 が、FFI の呼び出しを純粋な関数として見えるように包むと決めている。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-font/adr/0001-shaping-and-metrics.md]（golem-font ADR 0001「シェイピングとメトリクス」）]
+
+[code: unsafePerformIO] は、型の検査を黙らせるだけで、純粋性を作りはしない。
+包んだ関数を純粋と呼んでよいのは、次の三つが成り立つときに限る。
+
++ 結果が引数だけで決まる。フォントは常にバイト列から読み（パスからは読まない）、C の側は呼び出しのあいだで結果に効く状態を持たない。
++ 作用が外から観察できない。C の側のオブジェクトは [code: ForeignPtr] のファイナライザが解放し、例外は外に漏らさない。
++ 境界を越える値が環境に依存しない。C の側からは整数のフォントの単位を受け取り、[code: unitsToSp] が有理数で sp に換算して、最近接偶数丸めで一度だけ丸める。
+
+三つめは決定性のための条件でもある。
+HarfBuzz と FreeType は同梱したソースからビルドし、[code: golem-font.cabal] の [code: cc-options] と [code: cxx-options] に [code: -ffp-contract=off] を付けて、積和演算の融合を止めている。
+融合した積和演算は丸めを一回省くので、使う機械と使わない機械で結果の最後の桁がずれうる。
+
+golem-plugin の [code: Golem.Plugin] も、wasmtime の呼び出しを同じ形で包んでいる。
+[code: callCommand] と [code: applyFilter] の型は [code: Either PluginError ...] を返す純粋な関数である。
+これが成り立つ根拠は、wasmtime の設定にある。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0001-wasm-host-and-abi.md]（golem-plugin ADR 0001「wasm のホストと ABI」）]
+
+- import を一つも渡さない。import を要求するモジュールは、読み込みの時点で [code: HasImports] のエラーにする。プラグインは時計、乱数、ファイル、環境変数に触れられない。
+- 呼び出しごとに新しいストアとインスタンスを作る（[code: cbits/golem_plugin.c] の [code: golem_plugin_call]）。前の呼び出しの状態が次の呼び出しに残らない。
+- スレッドと relaxed SIMD を止め、NaN を正規化する。
+- 実行の上限を、時間ではなく命令の数（fuel）とメモリの量で決める。
+
+最後の項目は、純粋性と決定性の両方に効いている。
+上限を時間で決めれば、同じプラグインが速い機械では通り、遅い機械では打ち切られる。
+命令の数で決めれば、打ち切られるかどうかも入力だけで決まり、[code: OutOfFuel] のエラーも決定的になる。
+呼び出しごとにインスタンスを作り直すのも同じ考えによる。
+状態を持ち越すと、呼び出しの順で結果が変わり、[code: callCommand] は関数ではなくなる。
+
+### メモ化
+
+golem-driver の [code: Golem.Driver.Fonts] は、字の送りの計算を [code: memo] でメモ化している。
+[code: memo] は [code: unsafePerformIO] で [code: IORef] の表を作り、[code: NOINLINE] でその表が複製されないようにする。
+並列の組版から同時に呼ばれると、二つのスレッドが同じ値を二度計算することはある。
+包んだ関数が純粋なので、どちらの結果が表に残っても値は同じであり、外からは計算の回数の違いしか見えない。
+
+### 並列の組版
+
+PDF の経路の [code: buildFlow]（[code: Golem.Driver.Pdf]）は IO の関数で、段落の組版を [code: mapConcurrently] で並列に実行する。
+並列にするかどうかは [code: optParallel] で決まり、[code: defaultOptions] では並列にする。
+各スレッドが実行するのは純粋な組版（[code: breakParagraph] など）で、[code: evaluate] で結果を評価しきってから返す。
+[code: mapConcurrently] は、結果を完了の順ではなく入力のリストの順に並べて返す。
+このため、どのスレッドが先に終わっても、組版の結果のリストは同じになる。
+golem-driver のテストは、並列と逐次で組んだ PDF のバイト列が一致することを、機能ごとに確かめている（[code: PdfSpec] の「the features in parallel and in sequence give the same bytes」など）。
+
+S2 の繰り返しも同じ構造をしている。
+golem-layout の [code: resolvePageRefs] は、仮のページ番号から組んだページへの関数を受け取り、ページ番号が変わらなくなるまで繰り返す純粋な関数である。
+golem-driver の [code: fixpoint] が同じ繰り返しを IO の中で回しているのは、一回の組版が [code: mapConcurrently] を使うからで、繰り返しの判定は仮の値と組んだ結果だけで決まる。
+上限は 5 回で、収束しなければ G0721 のエラーにする。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-layout/adr/0003-pagination-and-s2.md]（golem-layout ADR 0003「改ページ、脚注、ページ番号の解決」）]
+
+### コンパイルの時点の IO
+
+Template Haskell の [code: runIO] は、コンパイルの時点でファイルを読み、その中身を実行ファイルに埋め込む。
+golem-driver の [code: Golem.Driver.Version] はリポジトリの [code: VERSION] を、golem-layout の [code: Golem.Layout.Hyphenation.EnUs] は hyph-utf8 のパターンを、[code: Golem.Driver.Explain] は診断のコードの説明を埋め込んでいる。
+実行の時点では、これらは定数である。
+その値は ADR 0002 の言う「Golem 自身の版」に含まれ、[code: addDependentFile] によって、ファイルが変わればモジュールがコンパイルし直される。
+
+## 出力の値を入力から作る
+
+出力のバイト列には、ふつうのプログラムなら時計や乱数から作る値が入る。
+Golem はこれらを入力から純粋に計算する。
+
+- PDF の [code: CreationDate] と [code: ModDate] は、マニフェストの [code: metadata.date] の日付から [code: pdfDate] が [code: D:YYYYMMDD000000Z] の形で作る。時刻は常に 0 時で、タイムゾーンは常に UTC なので、実行した機械のタイムゾーンは入らない。
+- PDF の文書 ID は、本の識別子から名前に基づく UUID（版 5）を [code: documentId] で作る。
+- インスタンス ID は、[code: instanceId] が入力の各要素の長さとバイト列を連結した SHA-256 の先頭 16 バイトから作る。要素は、マニフェスト、[code: style.toml]、原稿、出力を変える CLI のオプション、埋め込むフォントのプログラム、Golem の版である（[code: instanceIdInputs]）。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0001-deterministic-pdf-writer.md]（golem-pdf ADR 0001「決定的な PDF の直列化」）]
+- EPUB の zip のエントリには、時刻として 0 を渡している（[code: writeEpub]）。EPUB の決定性は v2 で扱う事項だが、今の実装も時計を読まない。
+
+乱数を使うのは [code: golem new] だけで、その乱数も golem-cli の [code: app/Main.hs] が [code: UUID.nextRandom] で作る。
+golem-driver の [code: templateFiles] は、その UUID を引数の文字列として受け取る純粋な関数である。
+乱数はコマンドの入口で一度だけ作り、ライブラリの側には値として渡している。
+
+## 純粋性が保証しないこと
+
+ここまでの仕組みで、一つの実行の中では、入力の外の値が出力に入る道はほぼ塞がる。
+それでも、x86-64 の Linux と aarch64 の macOS が同じバイト列を出すことは、まだ言えていない。
+
+### 同じ名前の関数が、別の実行ファイルでは別の関数になる
+
+純粋な関数 [code: f] について、型の検査が保証するのは、一つの実行ファイルの中で [code: f x] がいつも同じ値になることである。
+別の機械のためにコンパイルした実行ファイルの [code: f] は、ソースが同じでも、機械語としては別の関数である。
+両者が同じ値を返すかどうかは、次の三つで決まる。
+
+= [strong: 浮動小数点数]
+  同じソースの浮動小数点数の計算でも、演算の列が変われば結果のビット列が変わる。Golem がどこでどの数の型を使い、これをどう抑えているかは、後の「数の表し方」の節で述べる。
+= [strong: C のライブラリ]
+  HarfBuzz、FreeType、zlib、wasmtime の結果は、版とコンパイルの設定で変わりうる。版を固定して同梱し、版を上げるときは ADR を書く（第[ref-number modules]章）。
+= [strong: コンパイラと Haskell のライブラリ]
+  GHC の版は CI の [code: GHC_VERSION]（9.10.3）で固定し、依存のライブラリの版とフラグは [code: cabal.project.freeze] で固定している。
+
+最後の項目には、純粋性と決定性のずれがよく表れた例がある。
+hashable には [code: random-initial-seed] というフラグがあり、これを有効にすると、ハッシュの関数の種が実行ファイルを起動するたびに乱数で決まる。
+このとき [code: Data.HashMap.Strict.toList] は、型の上では純粋なままだが、返すリストの順は起動のたびに変わる。
+一回の実行の中では純粋性が成り立ち、実行をまたぐと決定性が崩れるわけである。
+[code: cabal.project.freeze] は [code: hashable -random-initial-seed] と書いてこのフラグを止め、さらに Golem のモジュールは走査の順が出力に効く集合に [code: Data.Map] を使う（第[ref-number determinism]章）。
+同じ理由で、aeson も [code: +ordered-keymap] で固定し、JSON のオブジェクトのキーの集合を順序の定まった表で持たせている。
+
+### 順序と照合は値の一部である
+
+純粋な関数がリストを返すとき、その順序も結果の値の一部である。
+[code: Data.Map.toList] はキーの順に並べ、[code: Text] の [code: Ord] は符号位置の順に比べる。
+どちらも、C の [code: strcoll] のようにロケールで順序が変わることはない。
+索引の読みの並べ替えは、golem-doc の [code: Golem.Doc.Collation.collationKey] が作るキーで行い、ロケールの照合の規則には頼らない。
+
+## 数の表し方
+
+浮動小数点数の計算は、純粋な関数の中でも、機械による違いが出やすい。
+理由は、浮動小数点数が実数を近似する方法にある。
+
+### 浮動小数点数の何が揺れるか
+
+Haskell の [code: Double] は IEEE 754 の倍精度（binary64）の値で、64 ビットのビット列で表す。
+ビット列は符号の 1 ビット、指数の 11 ビット、仮数の 52 ビットに分かれ、表せる値は二進の有限小数に限られる。
+十進の 0.1 は二進では循環小数になるので、[code: Double] の 0.1 は、0.1 に最も近い倍精度の値であって、0.1 そのものではない。
+演算の結果も、表せる値に丸められる。
+[code: 0.1 + 0.2] の結果は、0.3 に最も近い倍精度の値とは別のビット列になる。
+
+IEEE 754 は、四則演算と平方根の結果を、真の値を最近接偶数丸めで丸めた値と定めている。
+このため、同じ二つのビット列に同じ演算をすれば、どの機械でも結果のビット列は一つに定まる。
+揺れが出るのは、演算の列そのものが変わるときである。
+
+- 積和演算の融合（FMA）：[code: a * b + c] を一回の丸めで計算する命令を使うと、二回丸めた場合とビット列が変わる。
+- 演算の順序：浮動小数点数の足し算は結合法則を満たさないので、[code: (a + b) + c] と [code: a + (b + c)] は一般に違う値になる。最適化や並列の集計で順序が変われば、結果が変わる。
+- 十進との変換：文字列から値を読むときと、値を文字列に書くときの丸め方が実装で違えば、同じ値が違う文字列になる。
+
+浮動小数点数の計算を決定的にするには、演算の列を固定し、十進との変換の方法を一つに決める必要がある。
+整数と有理数の計算には、この問題がない。
+結果が厳密に定まるので、丸めが起きるのは、プログラムが丸めると書いた箇所だけである。
+
+### Golem が使う数の型
+
+Golem は、長さと位置の計算に浮動小数点数を使わない。
+値の種類ごとに、次の型を使っている。
+
+| 値 | 型 | 場所 |
+| --- | --- | --- |
+| 長さと位置（版面、行、ページの上の座標） | 整数の sp（[code: type Sp = Integer]、1pt = 65536sp） | golem-project、golem-layout-spec、golem-layout |
+| [code: style.toml] の寸法 | sp の整数か、字の大きさに対する比（[code: Zw !Rational]） | golem-project の [code: parseDim] |
+| フォントの送り、カーニング、字面の位置 | フォントの単位の整数を、有理数で sp に換算 | golem-font の [code: unitsToSp]、golem-driver |
+| 行の伸縮の比、デメリット | [code: Rational]（[code: lineRatio]）、[code: Integer] | golem-layout |
+| PDF に書く座標 | sp から pt への換算を整数で計算し、小数点以下 4 桁の十進で書く | golem-pdf |
+| 式の言語の数 | [code: Integer]（[code: VInt]）と [code: Double]（[code: VFloat]） | golem-eval |
+
+Haskell の [code: Integer] は桁数に上限のない整数で、桁あふれしない。
+[code: Rational] は [code: Integer] の分子と分母の組で、四則演算の結果が厳密に定まる。
+[code: style.toml] の [code: "10.5pt"] のような十進の寸法も、[code: parseDim] が有理数として読み、sp への換算で一度だけ最近接偶数丸めで丸める。
+
+HarfBuzz と FreeType についても、Golem が受け取る値は整数である。
+golem-font の C の側（[code: cbits/golem/golem_font.c]）は、HarfBuzz のフォントの拡大率をフォントの 1em の単位数（upem）に設定し、グリフの位置をフォントの単位の整数で受け取る。
+FreeType のグリフは [code: FT_LOAD_NO_SCALE] で読み、拡大しない整数のメトリクスを得る。
+字の大きさへの拡大は、Haskell の側の [code: unitsToSp] が有理数で行う。
+ライブラリの内部の計算は Golem からは見えないので、C のソースを [code: -ffp-contract=off] でコンパイルし、版を固定して同梱している。
+
+[code: Double] を使うのは、式の言語だけである。
+書き手は [code: \[= 1.5 * 2\]] のように小数を書くので、小数を値として持つ型が要る。
+golem-eval ADR 0001 は、式の言語の数を [code: Integer] と倍精度の [code: Double] の二つにし、記法の仕様の「数の規則」で計算と表記を固定した。[note: [code: https://github.com/tett23/golem/blob/main/docs/markup.md#数の規則]（記法の仕様の「数の規則」の節）]
+
+- 丸めは最近接偶数丸めとし、整数と浮動小数点数の演算では整数を浮動小数点数に変換する。
+- 十進のリテラルは、最も近い倍精度の値へ正しく丸めて読む。
+- [code: **] の指数は整数に限り、決まった順序の掛け算で計算する（[code: powInt]）。
+- NaN と無限大になる演算はエラーにし、負のゼロは正のゼロにする（[code: finite]）。
+- [code: round(x, n)] は、[code: x] を最短の十進表記に直してから、十進数として丸める。
+- 本文に埋め込む表記は、最短の往復表記の数字列から、指数表記を使わずに作る（[code: renderDouble]）。
+
+この規則で、演算の列と十進との変換が一つに決まり、結果のビット列と本文に出る文字列が、機械によらず一つになる。
+プラグインとの受け渡しでは、golem-doc の [code: Golem.Doc.Cbor] が倍精度の値を、値を失わない最も短い CBOR の浮動小数点数（半精度、単精度、倍精度のどれか）で書く。
+
+### 決定性にとっての意味
+
+長さと位置を整数と有理数で計算するので、組版の結果は、CPU の浮動小数点数の実装にも、コンパイラの最適化にも左右されない。
+同じ入力から同じ sp の値が出れば、PDF の座標の文字列も同じになる。
+浮動小数点数による揺れの余地が残るのは、式の言語の [code: Double] の計算と、C のライブラリの内部である。
+前者は数の規則で演算の列と変換を固定し、後者は版とコンパイルの設定を固定している。
+どちらも、最後は CI の [code: determinism] ジョブが二つのアーキテクチャの出力を比べて確かめる。
+
+## 決定性が純粋性に求めること
+
+逆向きに見ると、決定性は、すべての関数が純粋であることまでは求めていない。
+golem-driver は IO の関数であり、[code: fixpoint] も [code: buildFlow] も IO の中で動くが、出力は決定的である。
+決定性に要るのは、IO が次の三つを満たすことである。
+
++ 読むものが ADR 0002 の入力の一覧に収まる。
++ 結果を並べる順が、完了の順や列挙の順ではなく、入力から決まる。
++ 時計、乱数、環境変数、ロケールの値を、出力に流さない。
+
+純粋性は、この三つを確かめる範囲を IO のエッジに絞るための道具として働いている。
+ADR 0002 の各規則が、どこで、どの仕組みで守られているかをまとめると、次のようになる。
+
+| 規則 | 守る場所 | 仕組み |
+| --- | --- | --- |
+| 時計を読まない | golem-pdf、golem-epub | 日時は [code: metadata.date] から作り、zip の時刻には 0 を渡す |
+| 乱数を使わない | golem-cli | [code: golem new] の id だけ。ライブラリには引数で渡す |
+| 環境変数、ロケール | golem-project、golem-plugin | 原稿はバイト列で読む。[code: XDG_CACHE_HOME] は場所だけを決める |
+| ディレクトリを列挙しない | golem-driver | 読むファイルは [code: assetRefs] が原稿から集める |
+| 走査の順を固定する | すべて | [code: Data.Map]。freeze のフラグ |
+| 並列の結果の順 | golem-driver | [code: mapConcurrently] は入力の順で返す |
+| 浮動小数点数 | golem-eval、golem-layout、golem-font | 超越関数を持たない。sp と有理数。[code: -ffp-contract=off] |
+| ネイティブライブラリ | golem-font、golem-plugin、golem-pdf | 同梱して版を固定する。純粋な関数として包む。wasmtime の設定 |
+
+## 変更するときの点検
+
+決定性に反する処理を静的に検出する仕組みは作らないと決めている（第[ref-number determinism]章）。
+その代わり、差分の型を手がかりにレビューできる。
+
+- 公開する関数の型に [code: IO] を持たなかったモジュールに [code: IO] が増えたら、その IO が何を読み、それが入力の一覧に含まれるかを確かめる。
+- [code: unsafePerformIO] が増えたら、上の三つの条件（結果が引数だけで決まる、作用が観察できない、境界の値が環境に依存しない）を確かめる。
+- 依存のライブラリを足したら、[code: cabal.project.freeze] に書かれるフラグに、乱数の種や走査の順を変えるものがないかを確かめる。
+- 並列の処理を足したら、結果を入力の順で集めているかを確かめ、並列と逐次でバイト列が一致するテストを足す。
+
+手元では、[code: scripts/determinism.sh] を二回実行して比べると、同じ機械の上での揺れを見つけられる。
+
+```sh
+$ export GOLEM=$(cabal list-bin -v0 golem)
+$ sh scripts/determinism.sh > /tmp/a.txt
+$ sh scripts/determinism.sh > /tmp/b.txt
+$ diff /tmp/a.txt /tmp/b.txt
+```
+
+環境変数で出力が変わらないことも、同じように比べて確かめられる。
+
+```sh
+$ golem build --target html
+$ mv build build-a
+$ TZ=Pacific/Kiritimati LANG=C golem build --target html
+$ diff -r build-a build
+```
+
+機械をまたぐ揺れは、手元では見つからない。
+それは CI の [code: determinism] ジョブが x86-64 と aarch64 の結果を比べて見つけ、リリースのワークフローが三つの配布物で同じ比較を繰り返す（第[ref-number ci-jobs]章、第[ref-number release]章）。
