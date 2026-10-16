@@ -26,7 +26,7 @@ Golem には二つのマニュアルがある。
 
 原稿は [code: .gm] のファイルだけで、Markdown の版は持たない。
 [code: .gm] もテキストなので、差分はそのまま読める。
-組んだものは、CI の [code: build] ジョブの成果物（[code: manual] と [code: manual-dev]）と、リリースの資産で読める。
+組んだものは、CI の [code: build] ジョブの成果物（[code: manual] と [code: manual-dev]）と、リリースのアセットで読める。
 
 開発者のマニュアルを B5 にしたのは、コードを多く載せるからである。
 B5 は和文の技術書で広く使われる判型である。
