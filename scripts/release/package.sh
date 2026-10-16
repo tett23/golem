@@ -43,6 +43,9 @@ AFTER=$(wc -c <"$STAGE/golem" | tr -d ' ')
 echo "golem: $BEFORE bytes before strip, $AFTER bytes after"
 
 cp "$ROOT/LICENSE" "$STAGE/LICENSE"
+# golem does not link golem-test-support, which only the test suites use
+# (docs/adr/0028-shared-test-support-package.md)
+sh "$ROOT/scripts/ci/test-only-deps.sh" "$ROOT/dist-newstyle/cache/plan.json"
 LINK_MAP=${LINK_MAP:-} WASMTIME_NM=${WASMTIME_NM:-} WASMTIME_STRINGS=${WASMTIME_STRINGS:-} WASMTIME_AR=${WASMTIME_AR:-} \
   APK_DB=${APK_DB:-/lib/apk/db/installed} APK_ROOT=${APK_ROOT:-/} APK_LICENSES=${APK_LICENSES:-/usr/share/licenses} \
   sh "$HERE/licenses.sh" "$ROOT/dist-newstyle/cache/plan.json" "$STAGE/THIRD_PARTY_LICENSES" "$TAG"

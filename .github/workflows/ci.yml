@@ -149,6 +149,10 @@ jobs:
         run: cargo install cddl --version "$CDDL_VERSION" --locked
       # peg-cli is built with the rest, for the check of the generated parser
       - run: cabal build all peg-cli:exe:peg-hs
+      # in the plan of the build above, no library nor executable depends
+      # on golem-test-support, which only the test suites use (docs/adr/0028)
+      - name: Only the test suites depend on golem-test-support (docs/adr/0028)
+        run: sh scripts/ci/test-only-deps.sh dist-newstyle/cache/plan.json
       # qpdf, cddl and openssl are installed above (openssl comes with the
       # runner image): a test that needs one of them fails here instead of
       # being skipped

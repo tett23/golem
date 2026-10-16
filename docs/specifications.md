@@ -138,7 +138,7 @@ EPUB と HTML はリフローであり、位置情報が意味論に混入した
 
 モジュールの依存の関係を次に示す。
 矢印は、元のモジュールが先のモジュールを使うことを表す。
-golem-syntax は golem-regex、golem-font、golem-fixtures を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
+golem-syntax は golem-regex、golem-font、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
 golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
 ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
@@ -202,6 +202,11 @@ flowchart TD
 
 `modules/golem-fixtures` は、テストの fixture の原文を Golem の原稿に変換する開発用の実行ファイルなので、図に含めない。
 golem の実行ファイルはこのパッケージに依存せず、このパッケージはリリースの配布物にも入らない（[docs/adr/0023](adr/0023-fixture-converters-without-python.md)）。
+
+`modules/golem-test-support` は、テストスイートだけが使うテストの補助のパッケージなので、図に含めない。
+外部ツールを使うテストの補助 `Golem.TestSupport.ExternalTool` を持ち、`base` と `tasty` だけに依存する。
+golem の実行ファイルはこのパッケージに依存せず、このパッケージはリリースの配布物にも入らない。
+リポジトリのライブラリと実行ファイルがこのパッケージに依存しないことは、cabal が解決した計画を読む `scripts/ci/test-only-deps.sh` が CI の `build` ジョブとリリースの `package.sh` で確かめる（[docs/adr/0028](adr/0028-shared-test-support-package.md)）。
 
 処理は `parse → eval → 意味論 IR → 各バックエンド` の順に流れ、分岐点は意味論 IR である（「処理の流れ」の節を参照）。
 

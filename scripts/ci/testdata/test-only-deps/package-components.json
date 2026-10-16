@@ -1,0 +1,5 @@
+{"cabal-version":"3.16.1.0","install-plan":[
+ {"type":"pre-existing","id":"base-4.20.2.0-754f","pkg-name":"base","pkg-version":"4.20.2.0","depends":[]},
+ {"type":"configured","id":"golem-test-support-0.1.0-inplace","pkg-name":"golem-test-support","pkg-version":"0.1.0","style":"local","components":{"lib":{"depends":["base-4.20.2.0-754f"],"exe-depends":[]}}},
+ {"type":"configured","id":"golem-custom-0.1.0-inplace","pkg-name":"golem-custom","pkg-version":"0.1.0","style":"local","components":{"lib":{"depends":["base-4.20.2.0-754f","golem-test-support-0.1.0-inplace"],"exe-depends":[]},"test:golem-custom-test":{"depends":["base-4.20.2.0-754f","golem-test-support-0.1.0-inplace"],"exe-depends":[]}}}
+]}

@@ -10,7 +10,6 @@ import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import ExternalTool (needsTool)
 import Golem.Driver
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Pdf (CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
@@ -24,6 +23,7 @@ import Golem.Pdf qualified as P
 import Golem.Project (ProjectFailure (..))
 import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
+import Golem.TestSupport.ExternalTool (needsTool)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, findExecutable)
 import System.FilePath (takeDirectory, (</>))

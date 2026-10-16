@@ -89,6 +89,10 @@ ADR はレビューを受けるまでコミットしない。
 ADR のテスト設計に書いたテストを先に書き、失敗することを確かめてから実装する。
 設定の値のように自動テストを書けない変更は、テスト設計に確かめ方を書いておき、実装したあとに実際に動かして確かめる。
 
+外部ツール（`cddl`、`qpdf`、`openssl` など）を使うテストは、`modules/golem-test-support` の `Golem.TestSupport.ExternalTool` にある `needsTool` か `optionalTool` で書く（[docs/adr/0028](./docs/adr/0028-shared-test-support-package.md)）。
+ツールがなければ `SKIP` と表示され、`GOLEM_REQUIRE_EXTERNAL_TOOLS=1` のもとでは失敗になる。
+golem-test-support に依存してよいのはテストスイートだけであり、ライブラリと実行ファイルが依存すると CI の `build` ジョブの `scripts/ci/test-only-deps.sh` が失敗する。
+
 Golem は、同じ入力から常に同じバイト列を出力する。
 出力を変える変更は、x86-64 と aarch64 で同じ結果になることを CI の `determinism` ジョブで確かめる。
 時刻、乱数、ハッシュ表の走査順、ロケールのように、環境で変わるものを出力に混ぜないよう注意する。

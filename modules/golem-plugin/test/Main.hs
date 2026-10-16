@@ -20,7 +20,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import ExternalTool (needsTool)
 import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
 import Golem.Eval.Value (Value (..))
@@ -28,6 +27,7 @@ import Golem.Parser.AST qualified as A
 import Golem.Plugin
 import Golem.Plugin.Lock
 import Golem.Syntax
+import Golem.TestSupport.ExternalTool (needsTool)
 import Network.Connection (TLSSettings (..))
 import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (mkManagerSettings)
