@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1300" height="860" viewBox="0 0 1300 860">
-  <!-- 純粋な核と I/O の縁（docs/adr/0002、golem-driver ADR 0001、golem-font ADR 0001、golem-plugin ADR 0001）。
+  <!-- 純粋なカーネルと IO のエッジ（docs/adr/0002、golem-driver ADR 0001、golem-font ADR 0001、golem-plugin ADR 0001）。
        scripts/manual/render-figures.sh で manual-dev/images/purity.png にする。 -->
   <style>
     @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
@@ -28,9 +28,9 @@
   <rect class="ioband" x="10" y="10" width="330" height="610" rx="10"/>
   <rect class="coreband" x="360" y="10" width="620" height="610" rx="10"/>
   <rect class="ioband" x="1000" y="10" width="290" height="610" rx="10"/>
-  <text class="c band" x="175" y="45">読む（IO）</text>
-  <text class="c band" x="670" y="45">純粋な関数</text>
-  <text class="c band" x="1145" y="45">書く（IO）</text>
+  <text class="c band" x="175" y="45">読むエッジ（IO）</text>
+  <text class="c band" x="670" y="45">純粋なカーネル</text>
+  <text class="c band" x="1145" y="45">書くエッジ（IO）</text>
 
   <!-- inputs -->
   <rect class="io" x="30" y="80" width="290" height="76"/>
