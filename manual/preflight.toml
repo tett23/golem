@@ -1,0 +1,19 @@
+# The manuals are read on screen as PDF and HTML and carry no print setup
+# (docs/manual-policy.md): print-only checks are off.
+name = "manual"
+based-on = "print"
+
+[image-color-space]
+severity = "off"
+
+[image-icc]
+severity = "off"
+
+[bleed-size]
+severity = "off"
+
+[bleed-trim-hazard]
+severity = "off"
+
+[pdf-x]
+severity = "off"
