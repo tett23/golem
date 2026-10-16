@@ -7,13 +7,13 @@ import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Data.ByteString qualified as BS
 import Data.Either (isLeft)
-import ExternalTool (needsTool)
 import Gen
 import Golem.Doc.Cbor
 import Golem.Doc.IR
 import Golem.Doc.Validate
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
+import Golem.TestSupport.ExternalTool (needsTool)
 import Hedgehog
 import ListMarkersSpec qualified
 import NumberingSpec qualified

@@ -13,7 +13,6 @@ import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import ExternalTool (optionalTool)
 import Golem.Doc.Assemble (inlineText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
@@ -24,6 +23,7 @@ import Golem.LayoutSpec (PageGeometry (..), pageGeometry)
 import Golem.Pdf (Font (..), FontProgram (..))
 import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Syntax
+import Golem.TestSupport.ExternalTool (optionalTool)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
