@@ -2,7 +2,7 @@
 @label app-style
 # 付録C style.toml のリファレンス
 
-この付録は、[code: style.toml] に書ける表とキーをすべて並べたものです。
+この付録は、[code: style.toml] に書けるテーブルとキーをすべて並べたものです。
 書き方の流れは、第[ref-number style]章「[ref-title style]」で説明しています。[index reading=すたいる/きーのいちらん: スタイル/キーの一覧]
 ここに載せていないキーを書くと、エラーになります。
 [code: style.toml] も、[code: manifest.toml] と同じく TOML の形式で書きます（第[ref-number basics]章「[ref-title toml]」）。
@@ -65,21 +65,21 @@ PDF を作るには必須です。
 @nonumber
 ## [code: \[fonts.役割\]]
 
-書体を、役割の名前を付けて指定します。
+フォントを、役割の名前を付けて指定します。
 役割の名前は自由ですが、次の二つは決まった使い方をします。
 
 - [code: body]：本文の書体です。PDF を作るには必須です。
 - [code: code]：コードの書体です。コードブロックと [code: \[code: ...\]] の文字を組みます。書かなければ本文の書体で組み、本にコードがあればお知らせ（G0808）を出します。
 
-書体のファイルはプロジェクトの中に置き、プロジェクトのフォルダからの相対パスで書きます。
-Golem は、機械に入っている書体を探しません。
-書体のライセンスが PDF への埋め込みを禁じていれば、エラー（G0804）になります[note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
+フォントのファイルはプロジェクトの中に置き、プロジェクトのフォルダからの相対パスで書きます。
+Golem は、コンピューターに入っているフォントを探しません。
+フォントのライセンスが PDF への埋め込みを禁じていれば、エラー（G0804）になります[note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
 
 | キー | 意味 |
 |:---|:---|
-| [code: ja] | 和文の書体のファイルです。 |
-| [code: latin] | 欧文の書体のファイルです。 |
-| [code: features] | OpenType の機能の名前の配列です。たとえば [code: \["palt"\]] で、和文の約物や仮名を詰めて組みます。省くと、書体の標準の機能だけを使います[note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。 |
+| [code: ja] | 和文のフォントのファイルです。 |
+| [code: latin] | 欧文のフォントのファイルです。 |
+| [code: features] | OpenType の機能の名前の配列です。たとえば [code: \["palt"\]] で、和文の約物や仮名を詰めて組みます。省くと、フォントの標準の機能だけを使います[note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。 |
 
 @nonumber
 ## [code: \[character-styles.名前\]]
@@ -91,10 +91,10 @@ Golem は、機械に入っている書体を探しません。
 | キー | 既定 | 意味 |
 |:---|:---|:---|
 | [code: based-on] | なし | 引き継ぐ文字スタイルの名前です。書かなかったキーは、引き継いだスタイルの値になります。 |
-| [code: font] | なし | 書体の役割の名前です。その役割が持つ側（和文か欧文）の文字だけを、その書体で組みます。 |
+| [code: font] | なし | フォントの役割の名前です。その役割が持つ側（和文か欧文）の文字だけを、その役割の書体で組みます。 |
 | [code: size] | なし | 文字の大きさです。PDF でだけ効きます。 |
 | [code: color] | なし | [code: \[color.swatches\]] で付けた色の名前です。 |
-| [code: synthetic-bold] | [code: false] | [code: true] にすると、書体の輪郭を太らせて太字にします。 |
+| [code: synthetic-bold] | [code: false] | [code: true] にすると、字形の輪郭を太らせて太字にします。 |
 | [code: synthetic-italic] | [code: false] | [code: true] にすると、字形を傾けて斜体にします。 |
 
 文字の送りを決める次の四つのキーも書けます。
@@ -110,7 +110,7 @@ Golem は、機械に入っている書体を探しません。
 [code: kerning] の値は次の三つです。
 [code: "optical"] はまだ使えません。
 
-- [code: "metrics"]：書体のペアカーニングの情報で、欧文と和文を調整します。
+- [code: "metrics"]：フォントのペアカーニングの情報で、欧文と和文を調整します。
 - [code: "japanese-equal-width"]：欧文だけを調整し、和文を全角の送りで組みます。
 - [code: "none"]：調整しません。
 
@@ -127,7 +127,7 @@ Golem は、機械に入っている書体を探しません。
 | キー | 意味 |
 |:---|:---|
 | [code: based-on] | 引き継ぐ段落スタイルの名前です。[code: body] には書けません。既定は [code: "body"] です。 |
-| [code: font] | 書体の役割の名前です。 |
+| [code: font] | フォントの役割の名前です。 |
 | [code: size] | 文字の大きさです。本文の文字の大きさまでにします。 |
 | [code: indent] | すべての行の始まりの字下げです。既定は [code: "0zw"] です。 |
 | [code: first-line-indent] | 最初の行に [code: indent] へ加える字下げです。負の値はぶら下げになります。[code: indent] との和は 0 以上にします。既定は [code: "0zw"] です。 |
@@ -161,7 +161,7 @@ Golem は、機械に入っている書体を探しません。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [code: font] | [code: "code"] | 書体の役割の名前です。 |
+| [code: font] | [code: "code"] | フォントの役割の名前です。 |
 | [code: size] | 本文の大きさ | 文字の大きさです。本文の文字の大きさまでにします。 |
 | [code: background] | なし | 背景の色の名前です。[code: \[color.swatches\]] で付けた名前を書きます。書かなければ背景を塗りません。 |
 | [code: padding] | [code: "0.5zw"] | 背景の内側の余白です。[code: zw] はコードの文字の大きさを一字とします。上下と左右に同じ量を取ります。 |
@@ -180,7 +180,7 @@ Golem は、機械に入っている書体を探しません。
 
 | キー | 意味 |
 |:---|:---|
-| [code: font] | 書体の役割の名前です。書かなければ本文の書体です。 |
+| [code: font] | フォントの役割の名前です。書かなければ本文の書体です。 |
 | [code: size] | 文字の大きさです。書かなければ本文の大きさです。 |
 | [code: number] | 番号の書式です。[code: "第{n}章"]、[code: "{1}.{n}"] のように書きます。省くと番号を組みません。番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式が空白で終われば、区切りは足しません。 |
 | [code: page-break] | [code: "recto"] にすると、その見出しを奇数ページから始めます。既定は [code: "any"] です。 |
@@ -234,14 +234,14 @@ Golem は、機械に入っている書体を探しません。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [code: placement] | [code: "page-foot"] | 脚注の位置です。[code: "page-foot"] か [code: "chapter-end"] を書けますが、今の版の Golem は値を読むだけで、どちらでも置き方は同じです（PDF はページの下、HTML とプレーンテキストは章の終わり）。 |
+| [code: placement] | [code: "page-foot"] | 脚注の位置です。[code: "page-foot"] か [code: "chapter-end"] を書けますが、今のバージョンの Golem は値を読むだけで、どちらでも置き方は同じです（PDF はページの下、HTML とプレーンテキストは章の終わり）。 |
 | [code: numbering] | [code: "chapter"] | 脚注と傍注の番号を 1 から振り直す範囲です。[code: "chapter"]（マニフェストの章ごと）、[code: "file"]（ファイルごと）、[code: "book"]（本の全体で通し番号）から選びます。 |
 
 @nonumber
 ## [code: \[notes.rule\]]
 
 PDF のページの下の脚注の前に引く区切り線です。
-この表を書いたときだけ線を引きます。
+このテーブルを書いたときだけ線を引きます。
 HTML、EPUB、プレーンテキストには線を出しません。
 
 | キー | 既定 | 意味 |
@@ -295,7 +295,7 @@ HTML、EPUB、プレーンテキストには線を出しません。
 
 [code: number] の既定は [code: "リスト{chapter}-{n}"] です。
 
-[code: \[code.colors\]] は、字句の種類から色の名前への表で、PDF と HTML の構文に応じた色分けに使います。
+[code: \[code.colors\]] は、字句の種類から色の名前へのテーブルで、PDF と HTML の構文に応じた色分けに使います。
 
 ```toml
 [code.colors]
@@ -308,7 +308,7 @@ string = "code-st"
 [code: \[code.colors\]] を書かなければ、コードを色分けせず、本文の文字の色で組みます。
 墨一色で刷る本で、色を消す設定を書かずに済むようにするためです。
 色の名前は [code: \[color.swatches\]] で付けたものを書き、ないとエラー（G0313）になります。
-表にないキーと字句の種類は、エラー（G0306）になります。
+一覧にないキーと字句の種類は、エラー（G0306）になります。
 
 @nonumber
 ## [code: \[toc\]]
@@ -435,7 +435,7 @@ PDF でだけ効きます。
 | [code: \[color.swatches\]] | 色に名前を付けます。[code: accent = { cmyk = \[0, 80, 100, 0\] }] のように、C、M、Y、K の網点の割合を 0 から 100 の整数で書きます。 |
 
 PDF の色は、プロセスカラー（CMYK）だけです。
-特色の版は作りません。
+特色の版は作らず、二色刷りのためのデータも作れません（今後の予定は付録H）。
 HTML と EPUB では、CMYK の値を RGB に近似して使います。
 
 @nonumber

@@ -48,7 +48,7 @@ golem-driver のテストは十冊を出力を書かずに検査し、環境変�
 原稿は [code: scripts/fixtures/fetch-public-domain.sh] が、原文を取得して SHA-256 を検査し、golem-fixtures で Golem の原稿に変換し、[code: golem fmt] で整形して作る。
 
 ```sh
-GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
+$ GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 ```
 
 変換の実行ファイル [code: golem-fixtures] は、五つの命令を持つ。[index reading="golem-fixtures": golem-fixtures][note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0023-fixture-converters-without-python.md]（docs/adr の ADR 0023「fixture の変換を Python から移す」）]
@@ -80,11 +80,11 @@ golem-fixtures は [code: base]、[code: text]、[code: containers]、[code: byt
 
 ## テスト用のフォント
 
-golem-font のテストが使う書体は、[code: modules/golem-font/test/fonts/] に置いてある。
+golem-font のテストが使うフォントは、[code: modules/golem-font/test/fonts/] に置いてある。
 PDF の決定性の検査（[code: scripts/determinism.sh]）も、ここの Source Han Sans のサブセットと Source Sans Pro で組む。
 ライセンスの文書（[code: OFL.txt]）と出典の README が同じディレクトリにある。
 
-二つのマニュアルの書体は、リポジトリに入れない。
+二つのマニュアルのフォントは、リポジトリに入れない。
 組む前に [code: scripts/manual/fetch-fonts.sh] が、配布元のタグで固定した URL から取得し、SHA-256 を検査して置く（第[ref-number manuals]章）。
 
 ## 配布物のライセンス

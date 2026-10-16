@@ -24,21 +24,21 @@ Linux の配布物は musl で完全に静的にリンクしてあり、ディ�
 アーカイブは [code: SHA256SUMS] で検証してから展開する。
 
 ```sh
-TAG=v0.1.0
-BASE=https://github.com/tett23/golem/releases/download/$TAG
-curl -LO "$BASE/golem-$TAG-x86_64-linux.tar.gz"
-curl -LO "$BASE/SHA256SUMS"
-sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf "golem-$TAG-x86_64-linux.tar.gz"
-install -m 755 "golem-$TAG-x86_64-linux/golem" "$HOME/.local/bin/golem"
-golem --version
+$ TAG=v0.1.0
+$ BASE=https://github.com/tett23/golem/releases/download/$TAG
+$ curl -LO "$BASE/golem-$TAG-x86_64-linux.tar.gz"
+$ curl -LO "$BASE/SHA256SUMS"
+$ sha256sum --ignore-missing -c SHA256SUMS
+$ tar -xzf "golem-$TAG-x86_64-linux.tar.gz"
+$ install -m 755 "golem-$TAG-x86_64-linux/golem" "$HOME/.local/bin/golem"
+$ golem --version
 ```
 
 ビルドの来歴は [code: gh attestation verify] で検証できる。[index reading="らいれきのしょうめい": 来歴の証明]
 どのワークフローがどのコミットから作ったかを、GitHub の来歴の証明で確かめる仕組みである。
 
 ```sh
-gh attestation verify "golem-$TAG-x86_64-linux.tar.gz" --repo tett23/golem
+$ gh attestation verify "golem-$TAG-x86_64-linux.tar.gz" --repo tett23/golem
 ```
 
 CI で使う [code: golem] の版は、タグで固定する。
@@ -52,10 +52,10 @@ ca-certificates のない最小構成のコンテナで [code: golem new] やプ
 
 ## 組んで、結果を読む
 
-組む手順は、プロジェクトの根で [code: golem build] を実行するだけである。
+組む手順は、プロジェクトのルートで [code: golem build] を実行するだけである。
 
 ```sh
-golem build --target pdf --profile prod --format json 2> diag.json
+$ golem build --target pdf --profile prod --format json 2> diag.json
 ```
 
 出荷する本なら [code: --profile prod] を付ける。
@@ -73,13 +73,13 @@ CI の成果物として上げるのは、このディレクトリである。
 入稿の前の CI では、組む前に [code: golem preflight] を走らせる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 
 ```sh
-golem preflight --marks japanese --format json \
+$ golem preflight --marks japanese --format json \
   2> preflight.json
-golem preflight --marks japanese 2> preflight.txt
-tail -n 1 preflight.txt
-golem build --target pdf --profile prod \
+$ golem preflight --marks japanese 2> preflight.txt
+$ tail -n 1 preflight.txt
+$ golem build --target pdf --profile prod \
   --marks japanese
-sha256sum build/pdf/*.pdf
+$ sha256sum build/pdf/*.pdf
 ```
 
 [code: golem preflight] は PDF を書かず、[code: golem build --target pdf --profile prod] と同じ手順で組んだ PDF を、プリフライトの設定（既定は [code: preflight.toml]）に従って検査する。
@@ -98,7 +98,7 @@ Golem は同じ入力とオプションから同じバイト列の PDF を作る
 
 PDF を組むには、[code: style.toml] の指すフォントのファイルが要る。
 Golem はシステムにインストールされたフォントを探さないので、CI のランナーに入っているフォントは使われない。
-フォントのファイルはプロジェクトの中（ふつうは [code: fonts/]）に置き、[code: style.toml] からプロジェクトの根からのパスで指す。
+フォントのファイルはプロジェクトの中（ふつうは [code: fonts/]）に置き、[code: style.toml] からプロジェクトのルートからのパスで指す。
 ライセンスがリポジトリへの同梱を許さないフォントは、CI の中で取得してから組む。
 取得したファイルの SHA-256 を確かめておくと、配布元の差し替えに気付ける。
 Golem のマニュアル自身がこの形で組まれている（第[ref-number manuals]章）。
@@ -109,8 +109,8 @@ PDF だけが G0802 で止まる。
 プラグインを使うプロジェクトでは、[code: plugins.lock] をリポジトリにコミットし、CI で組む前に [code: golem plugin fetch] を実行する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0002-distribution-and-lock.md]（golem-plugin ADR 0002「プラグインの取得とロックファイル」）]
 
 ```sh
-golem plugin fetch
-golem build --target pdf
+$ golem plugin fetch
+$ golem build --target pdf
 ```
 
 [code: golem plugin fetch] は [code: plugins.lock] のとおりに配布物を取得し、SHA-256 を検証してキャッシュに置く。
@@ -146,7 +146,7 @@ EPUB（zip のエントリの時刻と順序）の決定性は v2 で扱うと�
 しかし、たとえばリポジトリの README だけを直したコミットで PDF のハッシュが変われば、それは入力の外から何かが入り込んだ証拠になる。
 
 ```sh
-cd build && find pdf html text -type f | LC_ALL=C sort |
+$ cd build && find pdf html text -type f | LC_ALL=C sort |
   xargs sha256sum > ../hashes.txt
 ```
 
@@ -170,9 +170,9 @@ Golem の責務は、差分が意味を持つ決定的な出力を作るとこ�
 たとえば Poppler の [code: pdftoppm] でページを PNG にし、ImageMagick の [code: compare] で画素の差を数えられる。
 
 ```sh
-pdftoppm -r 100 -png old.pdf old/p
-pdftoppm -r 100 -png new.pdf new/p
-for f in old/*.png; do
+$ pdftoppm -r 100 -png old.pdf old/p
+$ pdftoppm -r 100 -png new.pdf new/p
+$ for f in old/*.png; do
   g=new/${f#old/}
   n=$(compare -metric AE "$f" "$g" null: 2>&1) || true
   [ "$n" = 0 ] || echo "${f#old/}: $n"
@@ -194,9 +194,9 @@ Golem のマニュアルは、組んだときに Golem が何かを出力すれ�
 同じ方針を自分の本の CI に取り入れるなら、終了コードに加えて、標準エラー出力が空であることを確かめる。
 
 ```sh
-golem build --target pdf > out.log 2>&1
-code=$?
-if [ "$code" -ne 0 ] || [ -s out.log ]; then cat out.log; exit 1; fi
+$ golem build --target pdf > out.log 2>&1
+$ code=$?
+$ if [ "$code" -ne 0 ] || [ -s out.log ]; then cat out.log; exit 1; fi
 ```
 
 この方針では、[code: silence-notices] と [code: --no-notices] で notice を消すことも認めないのが筋である。

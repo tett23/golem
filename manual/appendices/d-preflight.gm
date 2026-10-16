@@ -2,13 +2,13 @@
 @label app-preflight
 # 付録D preflight.toml のリファレンス
 
-この付録は、プリフライトの設定（[code: preflight.toml]）に書ける表とキーをすべて並べたものです。
+この付録は、プリフライトの設定（[code: preflight.toml]）に書けるテーブルとキーをすべて並べたものです。
 使い方の流れは、第[ref-number output]章の「[ref-title preflight]」（[ref-page preflight] ページ）で説明しています。[index reading=ぷりふらいと/せってい: プリフライト/設定]
 ここに載せていないキーを書くと、エラー（G0901）になります。
 [code: preflight.toml] も、[code: manifest.toml] と同じく TOML の形式で書きます（第[ref-number basics]章「[ref-title toml]」）。
 
 [code: golem preflight] は、[code: --rules] で指したファイルを読みます。
-[code: --rules] を付けなければプロジェクトのルートの [code: preflight.toml] を読み、それもなければ組み込みの [code: print] を使います。
+[code: --rules] を付けなければプロジェクトのフォルダの直下の [code: preflight.toml] を読み、それもなければ組み込みの [code: print] を使います。
 書かなかったキーは、[code: based-on] の設定から一つずつ引き継ぎます。
 長さは [code: style.toml] と同じく [code: "3mm"] や [code: "0.25pt"] のように書き、[code: zw] は使えません（[ref-title app-style]）。
 
@@ -20,12 +20,12 @@
 | [code: based-on] | [code: "print"] | 元にする組み込みの設定です。[code: "basic"]、[code: "print"]、[code: "none"] のどれかです。 |
 | [code: name] | ファイル名 | 要約の行の「設定」に出す名前です。 |
 
-ほかの最上位のキーは、下の検査の名前の表です。
+ほかの最上位のキーは、下の検査の名前のテーブルです。
 
 @nonumber
-## 検査の表
+## 検査のテーブル
 
-各検査の表は、[code: severity] と、その検査のしきい値のキーを持ちます。
+各検査のテーブルは、[code: severity] と、その検査のしきい値のキーを持ちます。
 [code: severity] は [code: "error"]（エラー）、[code: "warning"]（警告）、[code: "off"]（検査しない）のどれかです。
 お知らせは選べません。
 [code: image-resolution] だけは [code: severity] を持たず、しきい値で重さを決めます。
@@ -34,9 +34,9 @@
 
 次の検査は、[code: severity] だけを持ちます。
 
-| 表 | print の既定 | 検査 |
+| テーブル | print の既定 | 検査 |
 |:---|:---|:---|
-| [code: \[glyph-missing\]] | [code: "error"] | 書体にグリフのない文字（G0902） |
+| [code: \[glyph-missing\]] | [code: "error"] | フォントにグリフのない文字（G0902） |
 | [code: \[image-unplaceable\]] | [code: "error"] | PDF に置けない図版（G0905） |
 | [code: \[image-icc\]] | [code: "warning"] | 出力インテントと違う ICC プロファイルを持つ CMYK の図版（G0909） |
 | [code: \[overfull-lines\]] | [code: "warning"] | 行長からはみ出す行（G0913） |
@@ -46,7 +46,7 @@
 @nonumber
 ## [code: \[font-formats\]]
 
-許さない形式の書体（G0903）です。
+許さない形式のフォント（G0903）です。
 
 | キー | print の既定 | 意味 |
 |:---|:---|:---|
@@ -108,7 +108,7 @@ color = { error-below = 150, warning-below = 300 }
 @nonumber
 ## 塗り足しと仕上がりの線
 
-| 表 | キー | print の既定 | 意味 |
+| テーブル | キー | print の既定 | 意味 |
 |:---|:---|:---|:---|
 | [code: \[bleed-size\]] | [code: severity] | [code: "error"] | 塗り足しの幅の不足（G0910） |
 | [code: \[bleed-size\]] | [code: min] | [code: "3mm"] | 塗り足しの最小の幅です。 |
@@ -120,7 +120,7 @@ color = { error-below = 150, warning-below = 300 }
 @nonumber
 ## そのほかの検査
 
-| 表 | キー | print の既定 | 意味 |
+| テーブル | キー | print の既定 | 意味 |
 |:---|:---|:---|:---|
 | [code: \[ink-coverage\]] | [code: severity] | [code: "warning"] | 色の総インキ量（G0915） |
 | [code: \[ink-coverage\]] | [code: max] | [code: 350] | C、M、Y、K の和の上限（%）です。 |

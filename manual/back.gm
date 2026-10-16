@@ -24,9 +24,9 @@
 
 この本は Golem で組みました。
 本文の書体は Noto Serif JP と Source Serif 4、見出しの書体は Noto Sans JP と Source Sans 3、コードの書体は Source Code Pro と Noto Sans JP です。
-どれも SIL Open Font License 1.1 の書体です。
+どれも SIL Open Font License 1.1 のフォントです。
 
-版は、組んだときの Golem の版です。
-リリースのために組んだものはリリースのタグ（[code: v0.1.0] など）を、それ以外は「の開発版」を付けた版を示します。
+版の欄は、組んだときの Golem のバージョンです。
+リリースのために組んだものはリリースのタグ（[code: v0.1.0] など）を、それ以外はバージョンに「の開発版」を付けたものを示します。
 コミットは、組んだ原稿を Git で記録したときの識別子です（[ref-page git-commit] ページの「[ref-title git-commit]」）。
 手元の PDF がどの時点の原稿から組まれたかは、この二つで突き合わせられます。

@@ -19,7 +19,7 @@ Golem では、それらがすべて [code: style.toml] という一つのテキ
 書き方は TOML です（「[ref-title toml]」、[ref-page toml] ページ）。
 [code: manifest.toml] と同じく、知らないキーを書くとエラーになります。
 綴りを誤ったキーが黙って無視されると、その誤りは組み上がりの崩れとしてしか見えないからです。
-書ける表とキーの一覧は、[ref-title app-style]（[ref-page app-style] ページ）にあります。
+書けるテーブルとキーの一覧は、[ref-title app-style]（[ref-page app-style] ページ）にあります。
 
 ## 判型と版面
 
@@ -69,62 +69,67 @@ Golem には、テキストフレームを描いて置く操作がありませ�
 HTML と EPUB は、段組みにしません。
 
 @label fonts
-## 書体
+## 書体とフォント
 
-書体[index reading=しょたい: 書体]は、役割ごとに [code: \[fonts.<役割>\]] で指定します。
+このマニュアルでは、二つの語を使い分けます。
+書体は、明朝体やゴシック体のような文字のデザインのことです。
+フォントは、その書体をコンピューターで使うためのファイルとデータのことで、取得し、置き、埋め込み、ライセンスの条件が付くのはフォントです。
+
+書体[index reading=しょたい: 書体]は、役割ごとに [code: \[fonts.<役割>\]] でフォント[index reading=ふぉんと: フォント]のファイルを指定して決めます。
+この役割を、フォントの役割と呼びます。
 役割の名前は自由に付けられますが、[code: body] が本文の書体、[code: code] がコードの書体になります。
 
 @listing style.toml lines=19-29
 
-[code: ja] に和文の書体を、[code: latin] に欧文の書体を書きます。
+[code: ja] に和文のフォントのファイルを、[code: latin] に欧文のフォントのファイルを書きます。
 和文と欧文で別の書体を組み合わせるのは、日本語の組版の普通のやり方です。
 このマニュアルは、本文を Noto Serif JP と Source Serif 4 で、見出しを Noto Sans JP と Source Sans 3 の太字で、コードを Source Code Pro と Noto Sans JP で組んでいます。
 
 コードブロックと [code: \[code: ...\]] は、役割 [code: code] の書体で組みます。
 [code: \[fonts.code\]] がなければ本文の書体で組み、お知らせ G0808 で知らせます（「[ref-title notices]」、[ref-page notices] ページ）。
 
-### 書体をプロジェクトの中に置く理由
+### フォントをプロジェクトの中に置く理由
 
-書体のファイルは、プロジェクトのフォルダの中に置き、[code: style.toml] にはプロジェクトのフォルダからのパスを書きます。
+フォントのファイルは、プロジェクトのフォルダの中に置き、[code: style.toml] にはプロジェクトのフォルダからのパスを書きます。
 InDesign の Document Fonts フォルダー[index reading=どきゅめんとふぉんつふぉるだー: Document Fonts フォルダー]と同じ考え方です。
-違いは、Golem が機械にインストールされている書体を一切探さないことです。
-InDesign は、Document Fonts フォルダーにない書体を機械に入っている書体から探しますが、Golem では、プロジェクトの中にない書体はエラー（G0802）になります。
+違いは、Golem がコンピューターにインストールされているフォントを一切探さないことです。
+InDesign は、Document Fonts フォルダーにないフォントをコンピューターに入っているフォントから探しますが、Golem では、プロジェクトの中にないフォントはエラー（G0802）になります。
 
-こうしているのは、機械ごとに入っている書体とその版が違うと、同じ原稿から同じ紙面が得られなくなるからです。
-同じ名前の書体でも、版が違えば字形や字幅や詰めの情報が変わることがあります。
-書体をプロジェクトに置けば、誰がどの機械で組んでも、同じファイルの書体で組まれます（「[ref-title same-output]」、[ref-page same-output] ページ）。
+こうしているのは、コンピューターごとに入っているフォントとそのバージョンが違うと、同じ原稿から同じ紙面が得られなくなるからです。
+同じ名前のフォントでも、バージョンが違えば字形や字幅や詰めの情報が変わることがあります。
+フォントをプロジェクトに置けば、誰がどのコンピューターで組んでも、同じフォントのファイルで組まれます（「[ref-title same-output]」、[ref-page same-output] ページ）。
 
-その代わり、プロジェクトを人に渡すと、書体のファイルも一緒に渡すことになります。
-HTML と EPUB にも書体のファイルを同梱するので、それらを公開すれば書体を配ることになります。
-書体のライセンスが、この使い方を許しているかを確かめてください。
-このマニュアルで使っている書体は、どれも SIL Open Font License 1.1 で配布されていて、文書への埋め込みと、ほかのソフトウェアと一緒に配ることを許しています [cite ofl][note: SIL Open Font License 1.1。[code: https://openfontlicense.org/]]。
+その代わり、プロジェクトを人に渡すと、フォントのファイルも一緒に渡すことになります。
+HTML と EPUB にもフォントのファイルを同梱するので、それらを公開すればフォントを配ることになります。
+フォントのライセンスが、この使い方を許しているかを確かめてください。
+このマニュアルで使っているフォントは、どれも SIL Open Font License 1.1 で配布されていて、文書への埋め込みと、ほかのソフトウェアと一緒に配ることを許しています [cite ofl][note: SIL Open Font License 1.1。[code: https://openfontlicense.org/]]。
 
 ### 埋め込みのライセンス
 
-PDF には、使った文字だけを含む形（サブセット）で書体を埋め込みます。
-書体のファイルには、作り手が埋め込みを許すかどうかを記した欄があります。
-OpenType の書体の OS/2 という表の [code: fsType] の欄です [cite opentype-os2][note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
-Golem はこの欄を仕様のとおりに読み、次のどれかに当たる書体を埋め込まず、エラー（G0804）にします。
+PDF には、使った文字だけを含む形（サブセット）でフォントを埋め込みます。
+フォントのファイルには、作り手が埋め込みを許すかどうかを記した欄があります。
+OpenType のフォントの OS/2 という表の [code: fsType] の欄です [cite opentype-os2][note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
+Golem はこの欄を仕様のとおりに読み、次のどれかに当たるフォントを埋め込まず、エラー（G0804）にします。
 
 - 制限付きのライセンス（埋め込みを許さない）の印があり、閲覧や編集のための埋め込みを許す印がない。
 - サブセットにすることを禁じる印がある。Golem は常にサブセットで埋め込むからです。
 - ビットマップだけの埋め込みを許す印がある。
 
-エラーになった書体は、ライセンスの条件を変えて使うことはできないので、埋め込みを許す書体に替えてください。
-この欄は機械が読める印にすぎず、ライセンスの契約の全体ではありません。
-欄が埋め込みを許していても、書体の使用許諾の契約に別の条件がないかは、契約の文書で確かめてください。
+エラーになったフォントは、ライセンスの条件を変えて使うことはできないので、埋め込みを許すフォントに替えてください。
+この欄はプログラムが読み取るための目印にすぎず、ライセンスの契約の全体ではありません。
+欄が埋め込みを許していても、フォントの使用許諾の契約に別の条件がないかは、契約の文書で確かめてください。
 
 ### OpenType の機能
 
-OpenType の書体は、字形の置き換えや字送りの調整を、機能という単位で持っています。
+OpenType のフォントは、字形の置き換えや字送りの調整を、機能という単位で持っています。
 機能には [code: palt] や [code: vert] のような四文字のタグが付いていて、その一覧は OpenType の仕様が定めています [cite opentype-features][note: OpenType の機能のタグの一覧。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/featurelist]]。
-どの機能を持つかは書体によって違います。
+どの機能を持つかはフォントによって違います。
 
 役割ごとに使う機能を、[code: features = \["palt"\]] のように指定できます。
 [code: palt] は、和文の約物や仮名を字面に合わせて詰めて組む機能です。
 同じ詰めは、文字スタイルと段落スタイルの [code: proportional-metrics] でも指定できます（「[ref-title kerning]」、[ref-page kerning] ページ）。
 
-縦組みの本では、書体の縦書き用の字形（[code: vert]）を使います。
+縦組みの本では、フォントの縦書き用の字形（[code: vert]）を使います。
 縦書き用の字形を持たないダッシュ（U+2014）などの記号は、PDF では横組みの字形を 90 度回して、縦の線として組みます。
 どの文字を回すかは、Unicode の縦組みの字の向きの規則（UAX #50 [cite uax50]）で決めています[note: UAX #50（Unicode Vertical Text Layout）。[code: https://www.unicode.org/reports/tr50/]]。
 HTML と EPUB では、ブラウザーやリーダーが同じ規則で記号を回して表示します。
@@ -133,9 +138,9 @@ HTML と EPUB では、ブラウザーやリーダーが同じ規則で記号を
 
 原稿の漢字の後に異体字セレクタ（IVS）を書くと、PDF ではその字形で組みます。
 異体字セレクタと字形の組は、Ideographic Variation Database に登録されています[note: Ideographic Variation Database。[code: https://unicode.org/ivd/]]。
-書体がその異体字を持たない場合は、もとの字の字形になります。
+フォントがその異体字を持たない場合は、もとの字の字形になります。
 PDF から文字を検索したり複写したりすると、異体字はもとの字として扱われます。
-HTML、EPUB、プレーンテキストには異体字セレクタをそのまま書き、字形の選択は閲覧する環境の書体に任せます。
+HTML、EPUB、プレーンテキストには異体字セレクタをそのまま書き、字形の選択は閲覧する環境のフォントに任せます。
 
 ## 本文の字下げ
 
@@ -186,10 +191,10 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 
 文字スタイル（[code: \[character-styles.<名前>\]]）に書けるキーは次のとおりです。
 
-- [code: font]：書体の役割です。
+- [code: font]：フォントの役割です。
 - [code: size]：文字の大きさです。
 - [code: color]：色の名前（スウォッチ）です。
-- [code: synthetic-bold]、[code: synthetic-italic]：書体の輪郭を太らせた太字と、傾けた斜体です。
+- [code: synthetic-bold]、[code: synthetic-italic]：字形の輪郭を太らせた太字と、傾けた斜体です。
 - [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]：文字の送りです（「[ref-title kerning]」、[ref-page kerning] ページ）。
 - [code: based-on]：引き継ぐ文字スタイルです。
 
@@ -200,7 +205,7 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 
 段落スタイル（[code: \[paragraph-styles.<名前>\]]）に書けるキーは次のとおりです。
 
-- [code: font]、[code: size]：書体の役割と文字の大きさです。大きさは本文の文字の大きさまでです。
+- [code: font]、[code: size]：フォントの役割と文字の大きさです。大きさは本文の文字の大きさまでです。
 - [code: indent]、[code: first-line-indent]：字下げです。
 - [code: space-between]：同じ段落スタイルの段落が続くときに、あいだに空ける行の数です。
 - [code: line-breaks]：[code: "keep"] にすると、段落の中の改行を行の区切りにします。
@@ -345,7 +350,7 @@ regex-styles = [
 
 @listing style.toml lines=55-68
 
-- [code: font]、[code: size]：書体の役割と文字の大きさです。
+- [code: font]、[code: size]：フォントの役割と文字の大きさです。
 - [code: number]：番号の書式です。[code: {n}] がその階層の番号、[code: {n:kanji}] が漢数字の番号、[code: {1}] と [code: {2}] が上の階層の番号になります。縦組みの本なら [code: "第{n:kanji}章"] で「第三章」のように組めます。番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式の末尾に [code: "Chapter {n}: "] のように空白を書けば、区切りは足しません。
 - [code: page-break]：[code: "recto"] にすると、その見出しを奇数ページから始めます。
 
@@ -355,7 +360,7 @@ regex-styles = [
 ## [ruby: 柱 | はしら]とノンブル
 
 柱[index reading=はしら: 柱]（ページの余白に置く章の題）とノンブル[index reading=のんぶる: ノンブル]（ページ番号）は、マスターページの [code: \[masters.body\]] で置きます。
-マスターページ[index reading=ますたーぺーじ: マスターページ]は、InDesign の親ページ（InDesign 2022 より前の版ではマスターページ）に当たります。
+マスターページ[index reading=ますたーぺーじ: マスターページ]は、InDesign の親ページ（InDesign 2022 より前のバージョンではマスターページ）に当たります。
 
 @listing style.toml lines=87-92
 
@@ -436,7 +441,7 @@ InDesign の親ページとの違いは、置けるものが柱とノンブル�
 @label notes-style
 ## 注と図の設定
 
-注、傍注、図番号、目次の体裁は、それぞれの表で決めます。
+注、傍注、図番号、目次の体裁は、それぞれのテーブルで決めます。
 
 ```toml
 [notes]
@@ -459,9 +464,9 @@ number = "図{chapter}-{n}"
 leader = "dots"
 ```
 
-- [code: \[notes\]] の [code: placement]：注の置き場所の指定です。[code: "page-foot"]（ページの下）と [code: "chapter-end"]（章の終わり）を書けますが、今の版の Golem はこの値で置き方を変えません。PDF では常にページの下に、HTML とプレーンテキストでは章の終わりに置きます。
+- [code: \[notes\]] の [code: placement]：注の置き場所の指定です。[code: "page-foot"]（ページの下）と [code: "chapter-end"]（章の終わり）を書けますが、今のバージョンの Golem はこの値で置き方を変えません。PDF では常にページの下に、HTML とプレーンテキストでは章の終わりに置きます。
 - [code: \[notes\]] の [code: numbering]：注の番号を 1 から振り直す範囲です。[code: "chapter"]（マニフェストの章ごと）、[code: "file"]（ファイルごと）、[code: "book"]（本の全体で通し番号）から選べます。省くと [code: "chapter"] です。傍注の番号も、脚注と別に同じ範囲で振ります。
-- [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。この表がなければ線は引きません。
+- [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。このテーブルがなければ線は引きません。
 - [code: \[sidenotes\]]：傍注欄を、小口側の余白に設けます。[code: width] が傍注欄の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。
 - [code: \[figures\]] の [code: number]：図番号の書式です。[code: {chapter}] が章の番号、[code: {n}] が章の中の図の番号です。[code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。
 - [code: \[toc\]] の [code: leader]：目次のリーダーを点線（[code: "dots"]）にするか、なし（[code: "none"]）にするかです。
@@ -524,6 +529,7 @@ InDesign のスウォッチ[index reading=すうぉっち: スウォッチ]に�
 
 InDesign のスウォッチとの違いは、色がプロセスカラーの CMYK だけであることです。
 特色（スポットカラー）、RGB や Lab のスウォッチ、濃淡（平網）のスウォッチは作れません。
+二色刷り（墨と特色のように、二つの版で刷る印刷）のためのデータも、今の Golem では作れません（今後の予定は付録H）。
 PDF には、スウォッチの CMYK の値をそのまま書きます。
 HTML と EPUB では、その値を画面の色に近づけて表示します。
 

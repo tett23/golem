@@ -24,7 +24,7 @@
 
 この本は Golem で組んだ。
 本文の書体は Noto Serif JP と Source Serif 4、見出しの書体は Noto Sans JP と Source Sans 3、コードの書体は Source Code Pro と Noto Sans JP である。
-どれも SIL Open Font License 1.1 の書体である。
+どれも SIL Open Font License 1.1 のフォントである。
 
 版は、組んだときの Golem の版である。
 リリースのために組んだものはリリースのタグ（[code: v0.1.0] など）を、それ以外は「の開発版」を付けた版を示す。

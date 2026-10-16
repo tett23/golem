@@ -10,7 +10,7 @@ Golem の実行ファイルは、GitHub Releases で配布する。[index readin
 Golem の版は [code: X.Y.Z] か、プレリリースの識別子を付けた [code: X.Y.Z-<識別子>]（例：[code: 0.1.0-rc1]）で表す。
 1.0.0 までは、原稿の記法、CLI、出力の互換性を壊す変更で [code: Y] を、それ以外の変更で [code: Z] を上げる。
 
-リポジトリの根のファイル [code: VERSION] が、版の正本である。[index reading="VERSION": VERSION]
+リポジトリのルートのファイル [code: VERSION] が、版の正本である。[index reading="VERSION": VERSION]
 この値は golem-driver の [code: Golem.Driver.Version] がコンパイルの時点に埋め込み、[code: golem --version] と PDF の Producer が使う。
 全パッケージの cabal ファイルの [code: version] は、[code: VERSION] から識別子を除いた [code: X.Y.Z] と同じにする。
 [code: scripts/release/check-version.sh] が、この一致と、タグと [code: VERSION] の一致を検査する。
@@ -28,7 +28,7 @@ Golem の版は [code: X.Y.Z] か、プレリリースの識別子を付けた [
 - コードを変えずに直る失敗（ランナーの不調、ネットワークの一時的な失敗、API の制限）は、タグを変えずにワークフローをやり直す。
 
 ```sh
-gh run rerun <実行の ID> --failed
+$ gh run rerun <実行の ID> --failed
 ```
 
 ## 手順
@@ -46,7 +46,7 @@ gh run rerun <実行の ID> --failed
 このときはリリースを作らない。
 
 ```sh
-gh workflow run release.yml --ref <ブランチ>
+$ gh workflow run release.yml --ref <ブランチ>
 ```
 
 ## release.yml のジョブ

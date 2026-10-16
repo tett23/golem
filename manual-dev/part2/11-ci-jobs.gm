@@ -58,7 +58,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 分岐点からの差分にするのは、ベースのブランチの先端がほかのプルリクエストのマージで進むからである。
 二点の差分では、ほかのプルリクエストの変更まで数えてしまう。
 
-[code: needs-build.sh] は、変更が [code: docs/] の下のファイルとリポジトリの根の Markdown のファイルだけなら [code: false] を、それ以外なら [code: true] を書く。
+[code: needs-build.sh] は、変更が [code: docs/] の下のファイルとリポジトリのルートの Markdown のファイルだけなら [code: false] を、それ以外なら [code: true] を書く。
 ビルドが読む文書（今は [code: docs/diagnostics.md]）の変更は [code: true] になる。
 [code: manual/] と [code: manual-dev/] は [code: docs/] の外にあるので、マニュアルの変更はビルドする側になる。
 [code: docs/manual-policy.md] は Golem の振る舞いを定めないので、その変更だけならビルドしない。
@@ -77,7 +77,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 + [code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
 + [code: cabal build all] と [code: cabal test all] を実行する。
 + [code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
-+ 二つのマニュアルの書体をキャッシュから戻し、[code: scripts/manual/build.sh] で二つのマニュアルを組む。何か一つでも診断が出れば失敗する。
++ 二つのマニュアルのフォントをキャッシュから戻し、[code: scripts/manual/build.sh] で二つのマニュアルを組む。何か一つでも診断が出れば失敗する。
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
 + [code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。
 + x86-64 では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。
@@ -85,8 +85,8 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 キャッシュの鍵は、[code: cabal.project] と [code: cabal.project.freeze] のハッシュ、ランナーの OS とアーキテクチャ、GHC の版から作る。
 [code: dist-newstyle] のキャッシュは、[code: main] への push のときだけ保存する。
 プルリクエストのキャッシュはそのプルリクエストにしか使えず、しかもコミットごとに鍵が変わるからである。
-マニュアルの書体のキャッシュの鍵は、[code: scripts/manual/fetch-fonts.sh] のハッシュである。
-書体の URL と SHA-256 はこのスクリプトに書いてあるので、書体を変えれば鍵も変わる。
+マニュアルのフォントのキャッシュの鍵は、[code: scripts/manual/fetch-fonts.sh] のハッシュである。
+フォントの URL と SHA-256 はこのスクリプトに書いてあるので、フォントを変えれば鍵も変わる。
 
 aarch64 のランナーで同じことをするのは、時間がかかっても省けない。
 浮動小数点数の計算とネイティブライブラリの結果が二つのアーキテクチャで一致することが、決定性の主張の根拠そのものだからである。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0001-haskell-workspace-and-ci.md]（docs/adr の ADR 0001「Haskell のワークスペースと CI」）]
@@ -101,7 +101,7 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 
 - [code: scripts/determinism/] の式の評価のプロジェクト（HTML、EPUB、テキスト）
 - golem-driver のテストのサンプルのプロジェクト（HTML、EPUB、テキスト）
-- 同じサンプルを golem-font のテスト用の書体で組んだ PDF
+- 同じサンプルを golem-font のテスト用のフォントで組んだ PDF
 - 二つのマニュアル（PDF と HTML）
 
 ファイルの一覧は [code: LC_ALL=C] で並べてからハッシュを取るので、一覧の順もファイルシステムに左右されない。
