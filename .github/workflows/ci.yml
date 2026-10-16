@@ -38,6 +38,8 @@ jobs:
         run: sh scripts/manual/test.sh
       - name: The documents that the build reads are listed (docs/adr/0021)
         run: sh scripts/ci/docs-refs.sh
+      - name: Every package errors on incomplete patterns (docs/adr/0027)
+        run: sh scripts/ci/incomplete-patterns.sh
       - id: decide
         name: Paths of the change
         env:

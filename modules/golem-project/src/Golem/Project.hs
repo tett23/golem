@@ -18,6 +18,8 @@ import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.Char (toLower)
 import Data.Either (fromRight, lefts, rights)
+import Data.List.NonEmpty (NonEmpty (..))
+import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
@@ -119,15 +121,13 @@ loadProjectWith overlay root = do
 sourceInfoOf :: SourceFile -> SourceInfo
 sourceInfoOf sf = SourceInfo (sfPath sf) (mkLineIndex (sfText sf))
 
-cycleDiagnostic :: FileTable -> [(FileId, ImportSite)] -> Diagnostic
-cycleDiagnostic ft path = case path of
-  ((_, s0) : _) ->
-    (diagnostic "G0305" Error (isSpan s0) ("import が循環しています: " <> T.intercalate " → " (map name path <> take 1 (map name path))))
-      { diagRelated = [(isSpan s, "@import " <> isPath s) | (_, s) <- path]
-      }
-  -- findCycles returns no empty path; this keeps the function total (FileId 0 is manifest.toml)
-  [] -> diagnostic "G0305" Error (mkSpan (FileId 0) 0 0) "import が循環しています"
+cycleDiagnostic :: FileTable -> NonEmpty (FileId, ImportSite) -> Diagnostic
+cycleDiagnostic ft path@((_, s0) :| _) =
+  (diagnostic "G0305" Error (isSpan s0) ("import が循環しています: " <> T.intercalate " → " (map name edges <> take 1 (map name edges))))
+    { diagRelated = [(isSpan s, "@import " <> isPath s) | (_, s) <- edges]
+    }
   where
+    edges = NE.toList path
     name (f, _) = maybe "?" T.pack (lookupPath f ft)
 
 type Loaded = (FileTable, [(FileId, Maybe Text)], Map FileId SourceFile, ImportGraph, Map FileId SourceSettings)

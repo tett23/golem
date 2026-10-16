@@ -11,7 +11,7 @@ build-type:         Simple
 executable golem
   hs-source-dirs:   app
   main-is:          Main.hs
-  ghc-options: -threaded -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  ghc-options: -threaded -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
   default-extensions: DerivingStrategies LambdaCase OverloadedStrings
   build-depends:
     , base                  >=4.20 && <4.21
@@ -38,7 +38,7 @@ test-suite golem-cli-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    CommandsSpec
-  ghc-options: -threaded -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  ghc-options: -threaded -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
   default-extensions: DerivingStrategies LambdaCase OverloadedStrings
   build-tool-depends: golem-cli:golem
   build-depends:

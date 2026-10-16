@@ -9,8 +9,12 @@ import Data.Maybe (isJust)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Driver
+import Golem.Driver.Plugins (loadPlugins)
+import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
+import Golem.Eval.File (PluginHook (..))
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
+import Golem.Project.Manifest (parseManifest)
 import Golem.Syntax
 import Support
 import System.Directory (listDirectory)
@@ -160,6 +164,18 @@ pluginTests =
       withPluginProject (pluginDeclOf "identity" "" <> filterDecl "identity" "nope") $ \tmp -> do
         r <- build (defaultOptions tmp)
         atManifestTop r >>= (@?= [(DiagnosticCode "G0610", "プラグインが提供していないフィルタです: identity.nope")]),
+    testCase "the hook keeps overrides by type and other commands by name (docs/adr ADR 0027)" $ do
+      -- (all names, the names of the overrides): the commands of the plugins
+      -- and the overrides they declare
+      let keysOf plugins extra = withPlugins plugins extra $ \tmp -> do
+            cache <- defaultCacheDir
+            lockText <- TIO.readFile (tmp </> "plugins.lock")
+            m <- TIO.readFile (tmp </> "manifest.toml") >>= either (assertFailure . show) pure . parseManifest (FileId 0)
+            hook <- loadPlugins cache (FileId 0) (FileId 1) lockText m >>= either (assertFailure . show) pure
+            let overrides = map (builtinName . Overridable) (Map.keys (phOverrides hook))
+            pure (sort (overrides <> map unPluginCommandName (Map.keys (phCommands hook))), sort overrides)
+      keysOf [("ov", "override-ruby.wat")] (pluginDeclOf "ov" "overrides = [\"ruby\"]\n") >>= (@?= (["greet", "ruby"], ["ruby"]))
+      keysOf [("identity", "identity.wat")] (pluginDeclOf "identity" "") >>= (@?= (["broken"], [])),
     testCase "G0611: plugins.lock that cannot be read points into plugins.lock" $
       withPluginProject pluginDecl $ \tmp -> do
         BS.writeFile (tmp </> "plugins.lock") "[plugins.identity\nurl = 1\n"

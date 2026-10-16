@@ -4,6 +4,7 @@ import Control.Monad (forM_, void)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.List.NonEmpty (NonEmpty (..))
+import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -16,6 +17,7 @@ import Golem.Doc.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Parser.SourceSettings
 import Golem.Project hiding (loadProject)
 import Golem.Project qualified as P
+import Golem.Project.Imports (ImportGraph (..), ImportSite (..), findCycles)
 import Golem.Project.Paths
 import Golem.Project.Style
 import Golem.Syntax
@@ -619,10 +621,31 @@ tests =
       silenceTests,
       indexStyleTests,
       hiddenFolioTests,
+      findCycleTests,
       testCase "marks is not a key of the manifest (golem-pdf ADR 0004)" $
         withProject [("manifest.toml", manifest ["\"a.gm\""] <> "\n[targets.pdf]\nmarks = \"japanese\"\n"), ("a.gm", "")] $ \root ->
           loadProject root >>= (@?= ["G0301"]) . codes
     ]
+
+-- | The paths findCycles returns are non-empty (docs/adr ADR 0027).
+findCycleTests :: TestTree
+findCycleTests =
+  testGroup
+    "findCycles (docs/adr ADR 0027)"
+    [ testCase "a self-import is one path of length 1" $
+        paths [(1, [1])] @?= [[1]],
+      testCase "a -> b -> a is one path of length 2" $
+        paths [(1, [2]), (2, [1])] @?= [[1, 2]],
+      testCase "a -> b -> c -> a is one path of length 3" $
+        paths [(1, [2]), (2, [3]), (3, [1])] @?= [[1, 2, 3]],
+      testCase "a graph without cycles has none" $
+        paths [(1, [2, 3]), (2, [3]), (3, [])] @?= []
+    ]
+  where
+    site t = ImportSite (T.pack (show t)) "x" (mkSpan (FileId 0) 0 0)
+    graph es = ImportGraph (Map.fromList [(FileId f, [(FileId t, site t) | t <- ts]) | (f, ts) <- es])
+    paths :: [(Int, [Int])] -> [[Int]]
+    paths = map (map (\(FileId f, _) -> f) . NE.toList) . findCycles . graph
 
 -- | [hidden-folio] (golem-driver ADR 0021).
 hiddenFolioTests :: TestTree

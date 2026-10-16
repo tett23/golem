@@ -147,6 +147,10 @@ A document not in the list counts as documentation only, and changing it does no
 In the code, write the path of the document as one string (like `"../../docs/diagnostics.md"`).
 The `changes` job of CI picks up such strings and checks them against the list ([docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)).
 
+Every package turns an incomplete `case` or function definition into an error with `-Werror=incomplete-patterns` ([docs/adr/0027](./docs/adr/0027-exhaustive-command-dispatch-by-types.md)).
+When you add a package under `modules/`, put the flag in the `ghc-options` of the `common warnings` stanza of its cabal file, and write `import: warnings` in each component.
+Without it, the `changes` job of CI (`scripts/ci/incomplete-patterns.sh`) fails.
+
 Audit records and performance snapshots go under `docs/`, in a directory for each purpose.
 These are also not changed once committed.
 Records under `docs/audit/`, `docs/audits/`, `docs/benchmarks/`, and `docs/benchmark/` are enforced: the hook and the `adr` job in CI reject changes, deletions, and moves of committed ones ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md), [docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)).

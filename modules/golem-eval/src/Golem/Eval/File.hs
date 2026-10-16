@@ -6,6 +6,7 @@ module Golem.Eval.File
   ( EvalContext (..),
     Asset (..),
     PluginHook (..),
+    PluginCommand (..),
     noPlugins,
     Usage (..),
     EvalResult (..),
@@ -31,6 +32,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
+import Golem.Eval.Builtin
 import Golem.Eval.Expr
 import Golem.Eval.RegexStyle (applyRegexStyles, regexRules)
 import Golem.Eval.Settings
@@ -42,17 +44,23 @@ import Golem.Project.Paths (PathError (..), pathErrorMessage)
 import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Style, kentenShapeNames, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
 import Golem.Syntax
 
--- | Plugin commands and filters, provided by golem-plugin.
+-- | The call of one plugin command.
+newtype PluginCommand = PluginCommand
+  { -- | the output and the plugin's own diagnostics, or errors
+    pcCall :: [Value] -> [[Inline]] -> SrcSpan -> Either [Diagnostic] ([Inline], [Diagnostic])
+  }
+
+{- | Plugin commands and filters, provided by golem-plugin. The keys tell an
+override of a built-in command from a command of its own (docs/adr ADR 0027).
+-}
 data PluginHook = PluginHook
-  { phCommands :: !(Set Text),
-    phOverrides :: !(Set Text),
-    -- | the output and the plugin's own diagnostics, or errors
-    phCallCommand :: Text -> [Value] -> [[Inline]] -> SrcSpan -> Either [Diagnostic] ([Inline], [Diagnostic]),
+  { phOverrides :: !(Map OverridableBuiltin PluginCommand),
+    phCommands :: !(Map PluginCommandName PluginCommand),
     phApplyFilters :: FilePath -> Document -> Either [Diagnostic] (Document, [Diagnostic])
   }
 
 noPlugins :: PluginHook
-noPlugins = PluginHook Set.empty Set.empty (\n _ _ sp -> Left [diagnostic "G0222" Error sp ("未知のコマンドです: " <> n)]) (\_ d -> Right (d, []))
+noPlugins = PluginHook Map.empty Map.empty (\_ d -> Right (d, []))
 
 data EvalContext = EvalContext
   { ctxFile :: !FileId,
@@ -130,12 +138,11 @@ err :: Text -> SrcSpan -> Text -> M ()
 err code sp msg = report (diagnostic code Error sp msg)
 
 builtinInlineCommands :: [Text]
-builtinInlineCommands =
-  ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "index", "cite", "aki"]
+builtinInlineCommands = map builtinName allBuiltins
 
 -- | Built-in commands a plugin may override when the manifest says so.
 overridableCommands :: [Text]
-overridableCommands = ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "tcy", "number-text"]
+overridableCommands = [builtinName b | b@(Overridable _) <- allBuiltins]
 
 attributeCommands :: [Text]
 attributeCommands = ["label", "toc-title", "number", "nonumber", "notoc", "style", "caption"]
@@ -1054,12 +1061,13 @@ evalInline ctx inHeading (A.Located sp i) = case i of
         Left d -> report d >> pure []
         Right t -> pure [Text sp t]
   A.Command (A.Located nsp name) args slots
-    | name `Set.member` phOverrides (ctxPlugins ctx) -> plugin
-    | name `elem` builtinInlineCommands -> builtin ctx inHeading sp name args slots
-    | name `Set.member` phCommands (ctxPlugins ctx) -> plugin
+    | Just (Overridable o) <- parsed, Just pc <- Map.lookup o (phOverrides (ctxPlugins ctx)) -> plugin pc
+    | Just b <- parsed -> builtin ctx inHeading sp b args slots
+    | Just pc <- pluginCommandName name >>= (`Map.lookup` phCommands (ctxPlugins ctx)) -> plugin pc
     | otherwise -> err "G0222" nsp ("未知のコマンドです: " <> name) >> pure []
     where
-      plugin = do
+      parsed = parseBuiltin name
+      plugin pc = do
         vals <- forM args $ \(A.Located _ a) -> case a of
           A.Positional v -> argValue ctx v
           A.Keyword _ v -> argValue ctx v
@@ -1067,59 +1075,56 @@ evalInline ctx inHeading (A.Located sp i) = case i of
         slots' <- mapM (evalInlines ctx inHeading) slots
         case sequence vals of
           Left d -> report d >> pure []
-          Right vs -> case phCallCommand (ctxPlugins ctx) name vs slots' sp of
+          Right vs -> case pcCall pc vs slots' sp of
             Left ds -> mapM_ report ds >> pure []
             Right (out, ds) -> mapM_ report ds >> pure out
 
-{- | Commands that take no prose slot (golem-eval ADR 0003): a slot is G0238,
-reported before the arguments, and after G0214 for a reference in a heading.
+{- | A built-in command. A command that takes no prose slot ('takesNoSlot',
+golem-eval ADR 0003) reports a slot as G0238, before the arguments, and
+after G0214 for a reference in a heading.
 -}
-noSlotCommands :: [Text]
-noSlotCommands = ["number-text", "ref-number", "ref-title", "ref-page", "cite"]
+builtin :: EvalContext -> Bool -> SrcSpan -> BuiltinInline -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+builtin ctx inHeading sp b args slots
+  | inHeading && b `elem` map Fixed [BRefNumber, BRefTitle, BRefPage] = err "G0214" sp "見出しの中では相互参照を使えません" >> pure []
+  | takesNoSlot b && not (null slots) = err "G0238" sp (builtinName b <> " は散文スロットを取りません") >> pure []
+  | otherwise = builtinWith ctx inHeading sp b args slots
 
-builtin :: EvalContext -> Bool -> SrcSpan -> Text -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
-builtin ctx inHeading sp name args slots
-  | name == "aki" = aki sp args slots
-  | inHeading && name `elem` ["ref-number", "ref-title", "ref-page"] = err "G0214" sp "見出しの中では相互参照を使えません" >> pure []
-  | name `elem` noSlotCommands && not (null slots) = err "G0238" sp (name <> " は散文スロットを取りません") >> pure []
-  | otherwise = builtinWith ctx inHeading sp name args slots
-
-builtinWith :: EvalContext -> Bool -> SrcSpan -> Text -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
-builtinWith ctx inHeading sp name args slots = do
+builtinWith :: EvalContext -> Bool -> SrcSpan -> BuiltinInline -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+builtinWith ctx inHeading sp b args slots = do
   kw <- keywords ctx args
   let pos = [v | A.Located _ (A.Positional v) <- args]
       oneSlot k = case slots of
         [s] -> evalInlines ctx inHeading s >>= k
-        _ -> err "G0238" sp (name <> " には散文スロットが一つ必要です") >> pure []
-  case name of
+        _ -> err "G0238" sp (builtinName b <> " には散文スロットが一つ必要です") >> pure []
+  case b of
     -- the built-in character styles (docs/adr ADR 0005)
-    "strong" -> oneSlot (pure . pure . CharStyle sp "strong")
-    "bold" -> oneSlot (pure . pure . CharStyle sp "bold")
-    "italic" -> oneSlot (pure . pure . CharStyle sp "italic")
+    Overridable BStrong -> oneSlot (pure . pure . CharStyle sp "strong")
+    Overridable BBold -> oneSlot (pure . pure . CharStyle sp "bold")
+    Overridable BItalic -> oneSlot (pure . pure . CharStyle sp "italic")
     -- [code: ...] is [style code: ...] (golem-driver ADR 0017)
-    "code" -> oneSlot (pure . pure . CharStyle sp "code")
-    "kenten" -> do
+    Overridable BCode -> oneSlot (pure . pure . CharStyle sp "code")
+    Overridable BKenten -> do
       let shape = argText <$> lookup "shape" kw
       case shape of
         Just s | s `notElem` kentenShapes -> err "G0239" sp ("未知の圏点の形です: " <> s) >> pure []
         -- without a shape, the default of style.toml (golem-driver ADR 0019)
         _ -> oneSlot (pure . pure . Kenten sp (Just (fromMaybe (ctxDefaultKenten ctx) shape)))
-    "color" -> case pos of
+    Overridable BColor -> case pos of
       [v] | Just n <- nameArg v, n `Set.member` ctxSwatches ctx -> oneSlot (pure . pure . Color sp n)
       [v] | Just n <- nameArg v -> err "G0217" sp ("style.toml にないスウォッチです: " <> n) >> pure []
       _ -> err "G0217" sp "color にはスウォッチの名前を一つ書きます" >> pure []
-    "style" -> case pos of
+    Overridable BStyle -> case pos of
       [v] | Just n <- nameArg v, n `Set.member` ctxCharStyles ctx -> oneSlot (pure . pure . CharStyle sp n)
       [v] | Just n <- nameArg v -> err "G0218" sp ("定義されていない文字スタイルです: " <> n) >> pure []
       _ -> err "G0218" sp "style には文字スタイルの名前を一つ書きます" >> pure []
-    "tcy" -> oneSlot $ \case
+    Overridable BTcy -> oneSlot $ \case
       [Text _ t]
         -- G0263: a number reads better as a number (golem-syntax ADR 0002)
         | not (T.null t) && T.all isDigit t && T.all isAscii t -> report (notice "G0263" sp ("数の縦中横は [number-text " <> t <> " style=tcy] でも書けます")) >> pure [Tcy sp t]
         | otherwise -> pure [Tcy sp t]
       [] -> pure []
       _ -> err "G0240" sp "縦中横の中身は地の文に限ります" >> pure []
-    "number-text" -> case pos of
+    Overridable BNumberText -> case pos of
       [v] -> do
         val <- argValue ctx v
         let st = argText <$> lookup "style" kw
@@ -1131,18 +1136,18 @@ builtinWith ctx inHeading sp name args slots = do
           (Left d, _) -> report d >> pure []
           _ -> err "G0219" sp "number-text に渡せるのは整数だけです" >> pure []
       _ -> err "G0219" sp "number-text には整数を一つ書きます" >> pure []
-    "ref-number" -> refTo RefNumber pos
-    "ref-title" -> refTo RefTitle pos
-    "ref-page" -> refTo RefPage pos
-    "note" -> oneSlot $ \body -> do
+    Fixed BRefNumber -> refTo RefNumber pos
+    Fixed BRefTitle -> refTo RefTitle pos
+    Fixed BRefPage -> refTo RefPage pos
+    Fixed BNote -> oneSlot $ \body -> do
       n <- gets ((+ 1) . stNote)
       modify' (\s -> s {stNote = n})
       pure [Note sp n body]
-    "sidenote" -> oneSlot $ \body -> do
+    Fixed BSidenote -> oneSlot $ \body -> do
       n <- gets ((+ 1) . stSidenote)
       modify' (\s -> s {stSidenote = n})
       pure [Sidenote sp n body]
-    "index" -> case slots of
+    Fixed BIndex -> case slots of
       [s] -> do
         -- the levels are split at the / written in the slot (golem-parser ADR 0010)
         levels <- mapM (evalInlines ctx inHeading) (splitSlot '/' s)
@@ -1155,12 +1160,12 @@ builtinWith ctx inHeading sp name args slots = do
                   then err "G0242" sp "索引の語と読みの段の数が不正です" >> pure []
                   else pure [IndexMark sp (IndexEntry ts rs)]
       _ -> err "G0238" sp "index には散文スロットが一つ必要です" >> pure []
-    "cite" -> case pos of
+    Fixed BCite -> case pos of
       [v] | Just n <- nameArg v, n `Set.member` ctxCiteKeys ctx -> pure [Cite sp n]
       [v] | Just n <- nameArg v -> err "G0221" sp ("書誌データにないキーです: " <> n) >> pure []
       _ -> err "G0221" sp "cite には書誌データのキーを一つ書きます" >> pure []
-    "ruby" -> ruby ctx sp slots
-    _ -> err "G0222" sp ("未知のコマンドです: " <> name) >> pure []
+    Overridable BRuby -> ruby ctx sp slots
+    Fixed BAki -> aki sp args slots
   where
     refTo k = \case
       [v] | validLabel (argText v) -> pure [Ref sp k (argText v)]

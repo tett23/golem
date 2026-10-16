@@ -8,14 +8,15 @@ module Golem.Driver.Plugins
   )
 where
 
-import Data.Either (rights)
+import Data.Either (partitionEithers, rights)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
-import Data.Set qualified as Set
+import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR (Document (..))
-import Golem.Eval.File (PluginHook (..), builtinInlineCommands, noPlugins, overridableCommands)
+import Golem.Eval.Builtin (BuiltinInline (..), OverridableBuiltin, PluginCommandName, parseBuiltin, pluginCommandName)
+import Golem.Eval.File (PluginCommand (..), PluginHook (..), noPlugins)
 import Golem.Plugin
 import Golem.Plugin.Lock
 import Golem.Project.Manifest
@@ -54,11 +55,17 @@ loadPlugins cacheDir mfid lfid lockText manifest
           overrides = [(o, name, p) | (name, decl, p) <- plugins, o <- pdOverrides decl]
           providers = Map.fromListWith (<>) [(c, [n]) | (c, n) <- provided]
           collisions = [(c, sort ns) | (c, ns) <- Map.toList providers, length ns > 1]
-          undeclared = [(c, n) | (c, n) <- provided, c `elem` builtinInlineCommands, c `notElem` [o | (o, n', _) <- overrides, n' == n]]
-          badOverride (o, n, p)
-            | o `notElem` pluginCommands p = Just ("プラグインが提供していないコマンドを overrides に書いています: " <> n <> "." <> o)
-            | o `notElem` overridableCommands = Just ("上書きできる組み込みのコマンドではありません: " <> n <> "." <> o)
-            | otherwise = Nothing
+          -- each name in overrides as the built-in command it overrides, or G0608
+          checkedOverrides = [((n, o), overrideTarget o n p) | (o, n, p) <- overrides]
+          overrideTarget o n p
+            | o `notElem` pluginCommands p = Left ("プラグインが提供していないコマンドを overrides に書いています: " <> n <> "." <> o)
+            | Just (Overridable b) <- parseBuiltin o = Right b
+            | otherwise = Left ("上書きできる組み込みのコマンドではありません: " <> n <> "." <> o)
+          -- each command a plugin provides as a key of the hook (docs/adr ADR 0027):
+          -- a name of its own, a declared override, or G0607 for an undeclared
+          -- built-in name; a declared name that is not overridable is G0608 above
+          (undeclared, keyed) = partitionEithers (mapMaybe (commandKey checkedOverrides) plugins')
+          plugins' = [(c, name, p) | (name, _, p) <- plugins, c <- pluginCommands p]
           filterError f = case lookupPlugin (fdPlugin f) of
             Nothing -> Just ("宣言されていないプラグインです: " <> fdPlugin f <> "（フィルタ " <> fdPlugin f <> "." <> fdFilter f <> "）")
             Just (_, _, p)
@@ -68,17 +75,15 @@ loadPlugins cacheDir mfid lfid lockText manifest
             (x : _) -> Just x
             [] -> Nothing
           collisionMessage (c, n)
-            | c `elem` overridableCommands = "組み込みのコマンドと衝突しています（overrides で宣言してください）: " <> n <> "." <> c
+            | Just (Overridable _) <- parseBuiltin c = "組み込みのコマンドと衝突しています（overrides で宣言してください）: " <> n <> "." <> c
             | otherwise = "上書きできない組み込みのコマンドと衝突しています: " <> n <> "." <> c
           diags =
             [err "G0606" ("複数のプラグインが同じコマンドを提供しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- collisions]
               <> [err "G0607" (collisionMessage u) | u <- undeclared]
-              <> [err "G0608" m | Just m <- map badOverride overrides]
+              <> [err "G0608" m | (_, Left m) <- checkedOverrides]
               <> [err "G0610" m | Just m <- map filterError (manifestFilters manifest)]
-          commandOwner = Map.fromList [(c, (name, p)) | (name, _, p) <- plugins, c <- pluginCommands p, (c, name) `notElem` undeclared]
-          call name vals slots sp = case Map.lookup name commandOwner of
-            Nothing -> Left [diagnostic "G0222" Error sp ("未知のコマンドです: " <> name)]
-            Just (pname, p) -> either (\pe -> Left [diagnostic "G0609" Error sp (qualified pname name pe)]) Right (callCommand p name vals slots sp)
+          call pname p name = PluginCommand $ \vals slots sp ->
+            either (\pe -> Left [diagnostic "G0609" Error sp (qualified pname name pe)]) Right (callCommand p name vals slots sp)
           -- a filter that fails points at the top of the file (golem-plugin ADR 0003)
           applyFilters path doc0 =
             foldl
@@ -98,12 +103,27 @@ loadPlugins cacheDir mfid lfid lockText manifest
             then
               Right
                 PluginHook
-                  { phCommands = Map.keysSet commandOwner,
-                    phOverrides = Set.fromList [o | (o, _, _) <- overrides],
-                    phCallCommand = call,
+                  { phOverrides = Map.fromList [(o, call pname p c) | (Left o, (c, pname, p)) <- keyed],
+                    phCommands = Map.fromList [(k, call pname p c) | (Right k, (c, pname, p)) <- keyed],
                     phApplyFilters = applyFilters
                   }
             else Left diags
+
+{- | The key of a command a plugin provides: Right with the key, Left with
+(command, plugin) for an undeclared built-in name (G0607), or Nothing for a
+declared name that is not an overridable built-in command, which G0608
+reports.
+-}
+commandKey ::
+  [((Text, Text), Either Text OverridableBuiltin)] ->
+  (Text, Text, p) ->
+  Maybe (Either (Text, Text) (Either OverridableBuiltin PluginCommandName, (Text, Text, p)))
+commandKey checked x@(c, n, _) = case pluginCommandName c of
+  Just k -> Just (Right (Right k, x))
+  Nothing -> case lookup (n, c) checked of
+    Just (Right o) -> Just (Right (Left o, x))
+    Just (Left _) -> Nothing
+    Nothing -> Just (Left (c, n))
 
 -- | @plugin.name: reason@, the message of G0609.
 qualified :: Text -> Text -> PluginError -> Text
