@@ -16,7 +16,7 @@ import Data.ByteString qualified as BS
 import Data.Either (lefts, rights)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Data.Text.IO qualified as TIO
+import Data.Text.Encoding qualified as TE
 import Golem.Plugin.Lock (Fetcher, hashHex)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.FilePath (takeDirectory, (</>))
@@ -193,7 +193,8 @@ createProject dir files fonts = do
       case lefts fetched of
         es@(_ : _) -> pure (Left es)
         [] -> do
-          forM_ files $ \(p, t) -> write (dir </> p) >> TIO.writeFile (dir </> p) t
+          -- UTF-8 whatever the locale (docs/adr/0002-determinism.md)
+          forM_ files $ \(p, t) -> write (dir </> p) >> BS.writeFile (dir </> p) (TE.encodeUtf8 t)
           forM_ (rights fetched) $ \(p, b) -> write (dir </> p) >> BS.writeFile (dir </> p) b
           pure (Right ())
   where

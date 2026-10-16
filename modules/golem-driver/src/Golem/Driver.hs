@@ -53,7 +53,6 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Data.Text.IO qualified as TIO
 import Data.Vector qualified as V
 import Golem.Doc.Assemble
 import Golem.Doc.Bibliography (CslDate (..), CslEntry (..), CslName (..), formatEntry)
@@ -754,7 +753,8 @@ writeTargets inMemory opts e diagFid book missing targets = do
     clean dir = do
       ex <- doesDirectoryExist dir
       when ex (removeDirectoryRecursive dir)
-    writeText p t = createDirectoryIfMissing True (takeDirectory p) >> TIO.writeFile p t
+    -- UTF-8 whatever the locale (docs/adr/0002-determinism.md)
+    writeText p t = createDirectoryIfMissing True (takeDirectory p) >> BS.writeFile p (TE.encodeUtf8 t)
     copy src dst = createDirectoryIfMissing True (takeDirectory dst) >> BS.readFile src >>= BS.writeFile dst
 
 {- | The markers of [lists] in plain text (golem-driver ADR 0013): a gap is
