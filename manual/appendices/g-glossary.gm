@@ -110,7 +110,7 @@
   設定を書くためのテキストの形式です。[index reading=とむる: TOML][note: TOML v1.0.0。[code: https://toml.io/en/v1.0.0]]
   [code: manifest.toml] と [code: style.toml] は、この形式で書きます。
   「[ref-title toml]」（[ref-page toml] ページ）。
-= [strong: テーブル（TOML の）]
+= [strong: TOML のテーブル]
   TOML で、[code: \[page\]] のような見出しの下にまとめたキーと値の集まりです。[index reading=てーぶる/とむるの: テーブル/TOML の]
   [code: { width = "148mm", height = "210mm" }] のように一行でも書けます。
   「[ref-title toml]」（[ref-page toml] ページ）。
@@ -118,7 +118,7 @@
   [code: \[ "a.gm", "b.gm" \]] のように、角括弧で囲んで値を並べたものです。[index reading=はいれつ: 配列]
   TOML でも、原稿の式でも使います。
   「[ref-title toml]」（[ref-page toml] ページ）。
-= [strong: ハッシュ（ファイルの）]
+= [strong: ファイルのハッシュ]
   ファイルの中身から計算する短い文字列です。[index reading=はっしゅ: ハッシュ]
   中身が一バイトでも違えば、ほぼ確実に違う値になります。
   取得したファイルが壊れたり差し替えられたりしていないかを、公開された値と比べて確かめます。
