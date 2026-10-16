@@ -14,6 +14,7 @@ module Golem.Project.Imports
 where
 
 import Data.List (sort)
+import Data.List.NonEmpty (NonEmpty, prependList)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -56,8 +57,10 @@ importSite sp = \case
 
 {- | Cycles found by a depth-first search over files and edges in order,
 each as the import sites along it. A self-import is a cycle of length 1.
+A path ends with the edge that closes it, so it is never empty (docs/adr
+ADR 0027).
 -}
-findCycles :: ImportGraph -> [[(FileId, ImportSite)]]
+findCycles :: ImportGraph -> [NonEmpty (FileId, ImportSite)]
 findCycles (ImportGraph g) = snd (foldl visitRoot (Map.empty, []) (Map.keys g))
   where
     visitRoot (colors, acc) f
@@ -67,7 +70,7 @@ findCycles (ImportGraph g) = snd (foldl visitRoot (Map.empty, []) (Map.keys g))
     visit colors stack f =
       let colors0 = Map.insert f Gray colors
           step (cs, acc) (t, site) = case Map.lookup t cs of
-            Just Gray -> (cs, acc <> [dropWhile ((/= t) . fst) stack <> [(f, site)]])
+            Just Gray -> (cs, acc <> [prependList (dropWhile ((/= t) . fst) stack) (pure (f, site))])
             Just Black -> (cs, acc)
             Nothing ->
               let (cs', found) = visit cs (stack <> [(f, site)]) t
