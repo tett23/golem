@@ -2305,8 +2305,6 @@ v1 のリリースまでに、次の項目を扱う。
 - **二冊のマニュアルの HTML と PDF**：利用者向けと開発者向けのマニュアルの HTML を、ブラウザで開いて確かめていない。PDF は、Acrobat でフォントの一覧と埋め込みを確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 - **マニュアルの中の InDesign の記述**：利用者向けのマニュアルの InDesign との対応と比較の記述（「はじめに」と付録 E）を、InDesign に詳しい人が確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 - **開発者向けのマニュアルの例**：プラグインの WebAssembly のテキスト形式（`.wat`）の例を、実際に組んで動かしていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
-- **CI の決定性の検査**：索引の段組み、コードブロック、二冊のマニュアルを加えた後の CI の `determinism` ジョブで、x86-64 と aarch64 のハッシュが一致することを、ジョブの結果で確かめていない（[docs/adr/0025](adr/0025-index-columns.md)、[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)、[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
-- **リリースの資産のマニュアル**：次のリリースで、資産に二冊の PDF と HTML が載り、`SHA256SUMS` と一致することを確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
 - **組版の新しい機能の見え方**：次の機能の PDF を目で見て確かめていない。環境に PDF を画像にする道具がなく、実装のプルリクエストでは確かめられなかった。
   - 圏点の十の形を、横組みと縦組みで見ること。HTML を Safari と Chrome で見ることと、InDesign の圏点との比較（[golem-driver ADR 0019](golem-driver/adr/0019-pdf-kenten-shapes.md)）。
   - 隠しノンブルを、トンボを付けた PDF で Acrobat で見ること（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。
