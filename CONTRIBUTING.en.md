@@ -18,7 +18,7 @@ After cloning, enable the Git hooks first.
 git config core.hooksPath .githooks
 ```
 
-The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.8.1 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.1`).
+The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.8.2 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.2`).
 This setting is not stored in the repository, so run it in every clone.
 `.githooks/pre-push` stops the push of a branch that changes the specification without updating the manual (see Documentation).
 
@@ -74,7 +74,7 @@ When a later ADR replaces part of one, the status names it, as in "採択→○�
 
 Once committed, an ADR cannot be changed except for its status line.
 `.githooks/pre-commit` and the `adr` job in CI reject edits, deletions, and renames.
-Changes to the status line (`--allow-status`) and changes that only add, remove, or retarget links of ADR references (`--allow-links`) are allowed ([docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md)).
+Changes to the status line (`--allow-status`) and changes that only add, remove, or retarget links (`--allow-links`) are allowed ([docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md), [docs/adr/0032](./docs/adr/0032-update-adr-guard-to-v0.8.2.md)); changes to link text are not.
 Every ADR must have exactly one status line starting with `ステータス:`; the hook and the `adr` job in CI reject ADRs with none or more than one, and `adr-guard check-status` lists them ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)).
 ADR references in documents must link to the ADR file; the `adr` job in CI rejects unlinked ones, and `adr-guard links --fix` fixes them.
 
