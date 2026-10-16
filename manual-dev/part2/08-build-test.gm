@@ -19,12 +19,12 @@ GHC の版を上げるときは ADR を書く。
 
 ほかに、次のものを入れておく。
 
-- adr-guard の v0.8.1 以降。Git のフックが呼ぶ（第[ref-number adr]章）。
+- adr-guard の v0.8.2 以降。Git のフックが呼ぶ（第[ref-number adr]章）。
 - Rust の [code: cddl] クレートの CLI の 0.10.7。CDDL のスキーマへの適合のテストに使う。
 - fourmolu 0.21.0.0 と hlint 3.10。整形と検査に使う。
 
 ```sh
-$ cargo install --git https://github.com/tett23/adr-guard --tag v0.8.1
+$ cargo install --git https://github.com/tett23/adr-guard --tag v0.8.2
 $ cargo install cddl --version 0.10.7 --locked
 ```
 

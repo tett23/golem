@@ -1,6 +1,6 @@
 # ADR 0012: adr-guard を v0.8.1 に上げ、ADR と記録のディレクトリ名の別名も保護する
 
-ステータス: 採択
+ステータス: 採択→CI の action の版は [ADR 0032](0032-update-adr-guard-to-v0.8.2.md)
 
 ## 文脈
 
