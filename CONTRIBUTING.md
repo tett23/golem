@@ -123,7 +123,7 @@ Haskell のコードは fourmolu 0.21.0.0 で整形し、hlint 3.10 の指摘を
 ADR で仕様が変わったら、同じプルリクエストで [docs/specifications.md](./docs/specifications.md) と [README.md](./README.md) も更新する。
 この二つは、`main` で常に最新でなければならない。
 モジュールの実装の詳細は `docs/<モジュール>/specifications.md` に書く。
-どの版で何を扱うか、まだ実装していない項目、手で確かめる項目、課題にしなかった事項は [docs/roadmap.md](./docs/roadmap.md) に書き、仕様書には書かない。
+どの版で何を扱うか、まだ実装していない項目、手で確かめる項目、未決事項、課題にしなかった事項は [docs/roadmap.md](./docs/roadmap.md) に書き、仕様書には書かない。
 実装を終えたら、その項目を roadmap.md から消し、振る舞いを仕様書に書く。
 
 仕様書から ADR を参照するときは、ADR のファイルへのリンクを付ける。

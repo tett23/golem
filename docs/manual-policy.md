@@ -55,7 +55,7 @@ Git のリポジトリの外で組むときは、`GOLEM_MANUAL_COMMIT` と `GOLE
 ## 内容の範囲
 
 二つのマニュアルに書くのは、採択して実装を終えた仕様だけである。
-[docs/roadmap.md](roadmap.md) に載っている事項、提案の ADR、未決事項は書かない。
+[docs/roadmap.md](roadmap.md) に載っている事項（未決事項を含む）と、提案の ADR は書かない。
 
 決定の正は ADR と仕様書である。
 マニュアルは新しい決定をしない。

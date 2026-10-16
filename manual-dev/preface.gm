@@ -41,7 +41,7 @@ Golem の開発の約束ごとの多くは、その二つの性質を守るた�
 どのコミットから組んだ本かは、奥付の版とコミットのハッシュで確かめられる。[note: [code: https://github.com/tett23/golem/blob/main/docs/manual-policy.md]（マニュアルの方針）]
 
 書いてあるのは、採択して実装を終えた仕様だけである。
-[code: docs/roadmap.md] に載っている事項、提案の段階の ADR、未決事項は書かない。
+[code: docs/roadmap.md] に載っている事項（未決事項を含む）と、提案の段階の ADR は書かない。
 今の Golem で動かないものを、動くかのように読ませないためである。
 
 @nonumber

@@ -123,7 +123,7 @@ When adding a label to the grammar, make sure that removing it does not change t
 When an ADR changes the specification, update [docs/specifications.md](./docs/specifications.md) and [README.md](./README.md) in the same pull request.
 These two must always be up to date on `main`.
 Implementation details of a module go in `docs/<module>/specifications.md`.
-Which version handles what, items not implemented yet, items awaiting a check by hand, and matters not taken up go in [docs/roadmap.md](./docs/roadmap.md), not in the specification.
+Which version handles what, items not implemented yet, items awaiting a check by hand, open questions, and matters not taken up go in [docs/roadmap.md](./docs/roadmap.md), not in the specification.
 When an item is implemented, remove it from roadmap.md and describe the behavior in the specification.
 
 References to ADRs from the specification must link to the ADR file.

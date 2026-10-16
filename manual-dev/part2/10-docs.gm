@@ -12,7 +12,7 @@ Golem のリポジトリの [code: docs/] には、性質の違う文書が並�
 | --- | --- | --- |
 | [code: docs/specifications.md] | Golem の能力、ワークフロー、採用しなかったもの、モジュール構成 | ADR に合わせて直す。[code: main] で常に最新 |
 | [code: docs/markup.md] | 原稿の記法の仕様 | 同上 |
-| [code: docs/roadmap.md] | どの版で何を扱うか、まだ実装していない項目、手で確かめる項目、課題にしなかった事項 | 版の予定が決まったら足し、実装を終えたら消す |
+| [code: docs/roadmap.md] | どの版で何を扱うか、まだ実装していない項目、手で確かめる項目、未決事項、課題にしなかった事項 | 版の予定が決まったら足し、実装を終えたら消す |
 | [code: docs/<モジュール>/specifications.md] | モジュールの実装の詳細 | 同上 |
 | [code: docs/glossary.md] | 用語集 | 新しい用語を導入したら足す |
 | [code: docs/diagnostics.md] | 診断のコードの説明 | コードを足すときに同じ変更で足す |
