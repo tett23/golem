@@ -14,11 +14,12 @@ import Data.ByteString qualified as BS
 import Golem.Fixtures (convertBytes, parseArgs)
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
-import System.IO (hPutStrLn, stderr)
+import System.IO (hPutStrLn, hSetEncoding, stderr, utf8)
 
 main :: IO ()
 main =
-  getArgs >>= \args -> case parseArgs args of
+  -- stderr is UTF-8 whatever the locale (docs/adr/0002-determinism.md)
+  hSetEncoding stderr utf8 >> getArgs >>= \args -> case parseArgs args of
     Right (conv, input, output) -> do
       src <- BS.readFile input
       either (die' . ((input <> ": ") <>)) (BS.writeFile output) (convertBytes conv src)

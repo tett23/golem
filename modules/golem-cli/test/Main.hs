@@ -17,6 +17,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver.Explain (catalog)
 import Golem.Driver.Version (golemVersion)
 import Golem.Syntax.Sha256 (sha256)
+import LocaleSpec (localeTests)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -153,6 +154,7 @@ tests =
       tomlMessageTests,
       noticeTests,
       commandsTests,
+      localeTests,
       -- golem-parser ADR 0010
       testCase "a backslash after the last | of a table row is G0124, not G0110" $
         mapM_

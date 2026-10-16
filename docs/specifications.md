@@ -398,6 +398,9 @@ CLI のオプションは呼び出しに明示されるので、同じオプシ�
 v1 で決定性を保証するのは PDF、HTML、プレーンテキストである。
 EPUB はパッケージである zip の中に時刻や並び順の揺れを含みうるので、EPUB の決定性はまだ保証しない（予定は [docs/roadmap.md](roadmap.md)）。
 
+ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
+対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く診断や説明である。
+
 PDF の Producer には Golem の版を書く。
 Producer は `Golem ` に `VERSION` の内容を続けた文字列（例：`Golem 0.1.0-rc1`）とし、文書情報辞書の `Producer` と XMP の `pdf:Producer` の両方に書く（[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。
 Git のコミットやビルドの環境は含めない。
