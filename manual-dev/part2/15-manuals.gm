@@ -12,7 +12,7 @@ Golem には二つのマニュアルがある。
 
 マニュアルを書く人とレビューする人の基準は、[code: docs/manual-policy.md] にある。
 最初の中身は docs/adr の ADR 0024 が決めた。
-読み手、内容の範囲、更新の検査、判型を変えるときは新しい ADR を書き、言い回しの例や規格の一覧への追加は方針の文書を直接直してよい。[note: [code: https://github.com/tett23/golem/blob/main/docs/manual-policy.md]（マニュアルの方針）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0024-manual-audiences-and-policy.md]（docs/adr の ADR 0024「マニュアルの読み手と方針」）]
+マニュアルと方針の文書の変更は、読み手や内容の範囲を変えるときも含めて、ADR を書かずにプルリクエストで決める。ADR を書くのは、メンテナーが求めたときだけである。[note: [code: https://github.com/tett23/golem/blob/main/docs/manual-policy.md]（マニュアルの方針）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0024-manual-audiences-and-policy.md]（docs/adr の ADR 0024「マニュアルの読み手と方針」）]
 
 ## 二つのマニュアル
 

@@ -32,6 +32,7 @@ git config core.hooksPath .githooks
 6. CI が通ったら、`main` に no-ff でマージする。
 
 誤字の修正や、仕様に影響しないドキュメントの修正には ADR は要らない。
+二つのマニュアルと [docs/manual-policy.md](./docs/manual-policy.md) の変更も、メンテナーが求めない限り ADR を書かず、プルリクエストで決める。
 迷ったら ADR を書く。
 
 ## ADR
