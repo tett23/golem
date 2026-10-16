@@ -81,7 +81,7 @@ ADR で仕様が変わったら、同じプルリクエストで [code: docs/spe
 ## ビルドが読む文書
 
 [code: docs/] の下の文書の多くは、ビルドもテストも読まない。
-CI は、変更が [code: docs/] の下のファイルとリポジトリの根の Markdown のファイルだけなら、ビルドとテストを省く（第[ref-number ci-jobs]章）。
+CI は、変更が [code: docs/] の下のファイルとリポジトリのルートの Markdown のファイルだけなら、ビルドとテストを省く（第[ref-number ci-jobs]章）。
 
 例外は、ビルドやテストが読む文書である。
 今は [code: docs/diagnostics.md] がそれに当たり、[code: scripts/ci/needs-build.sh] の一覧に載っている。
@@ -121,7 +121,7 @@ CI の所要時間の記録は [code: docs/ci-timings/] に置き、[code: scrip
 仕様が変わったのにマニュアルが古いまま、という状態を防ぐために、[code: scripts/manual/check-updated.sh] がブランチの変更を検査する。[index reading=まにゅあるのこうしんのけんさ: マニュアルの更新の検査][index reading="check-updated.sh": check-updated.sh][note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0024-manual-audiences-and-policy.md]（docs/adr の ADR 0024「マニュアルの読み手と方針」）]
 
 ```sh
-sh scripts/manual/check-updated.sh BASE HEAD
+$ sh scripts/manual/check-updated.sh BASE HEAD
 ```
 
 [code: BASE...HEAD] の変更のパス（分岐点からの差分）と、[code: BASE..HEAD] のコミットのメッセージを読み、次の規則で判定する。

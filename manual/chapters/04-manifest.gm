@@ -6,7 +6,7 @@
 書き方は TOML という設定ファイルの形式です（「[ref-title toml]」、[ref-page toml] ページ）。
 書けるキーの一覧は、[ref-title app-manifest]（[ref-page app-manifest] ページ）にあります。
 
-プロジェクト[index reading=ぷろじぇくと: プロジェクト]（[code: manifest.toml]、原稿、[code: style.toml]、図版、書体をまとめたフォルダ）は、InDesign のドキュメントとブックに当たります。
+プロジェクト[index reading=ぷろじぇくと: プロジェクト]（[code: manifest.toml]、原稿、[code: style.toml]、図版、フォントをまとめたフォルダ）は、InDesign のドキュメントとブックに当たります。
 [code: manifest.toml] が章のファイルを並べる役は、ブックが個々のドキュメントを並べる役に近いものです。
 違いは、体裁の置き場所です。
 InDesign のブックでは個々のドキュメントがそれぞれスタイルを持ち、それらをそろえる操作が要りますが、Golem の一冊の本は [code: style.toml] を一つだけ持ちます。
@@ -118,7 +118,7 @@ PDF の作成日と更新日には、組んだ日時ではなく [code: date] �
 電子書店と読書のアプリは、識別子で同じ本かどうかを見分けるので、版を改めた本の識別子が変わると、別の本として扱われることがあります。
 
 著者などの関係者は、[code: \[\[metadata.creators\]\]] を人数分並べて書きます。
-二重の角括弧は、同じ名前の表を配列として何度も書く TOML の書き方です。
+二重の角括弧は、同じ名前のテーブルを配列として何度も書く TOML の書き方です。
 
 ```toml
 [[metadata.creators]]
@@ -127,8 +127,8 @@ reading = "なつめ そうせき"
 role = "aut"
 ```
 
-[code: role] には、著者なら [code: "aut"]、編者なら [code: "edt"]、訳者なら [code: "trl"] のように、役割の符号を書きます。
-これは、EPUB の仕様が著者の役割の表し方として参照している MARC の役割の符号（MARC Relator）です[note: EPUB 3.3。[code: https://www.w3.org/TR/epub-33/]]。
+[code: role] には、著者なら [code: "aut"]、編者なら [code: "edt"]、訳者なら [code: "trl"] のように、役割のコードを書きます。
+これは、EPUB の仕様が著者の役割の表し方として参照している MARC の役割のコード（MARC Relator）です[note: EPUB 3.3。[code: https://www.w3.org/TR/epub-33/]]。
 
 ## 出力の設定
 

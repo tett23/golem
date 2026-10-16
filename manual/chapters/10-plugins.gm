@@ -13,7 +13,7 @@ Golem の組み込みのコマンドでは足りないとき、プラグイン[i
 - フィルタ：原稿のファイル一つ分の中身を受け取り、書き換えて返します。本文の全体を対象にする処理に使います。
 
 プラグインは、WebAssembly（wasm）という形式のファイルで配布されます。
-wasm は、どの機械でも同じように動き、Golem が渡したもの以外には触れられないプログラムの形式です。
+wasm は、どのコンピューターでも同じように動き、Golem が渡したもの以外には触れられないプログラムの形式です。
 プラグインを作る側の決まり（受け渡すデータの形と呼び出し方）は、開発者向けのマニュアルで説明しています。
 
 ## プラグインを使う
@@ -26,25 +26,26 @@ url = "https://example.com/furigana/v1.0.0/furigana.wasm"
 ```
 
 URL は HTTPS に限ります。
-版を固定した URL（リリースごとの配布物の URL など）を書いてください。
+バージョンを固定した URL（リリースごとの配布物の URL など）を書いてください。
 
 宣言したら、[code: golem plugin lock] を実行します。
 
 ```sh
-golem plugin lock
+$ golem plugin lock
 ```
 
 このコマンドは、配布物を取得し、そのハッシュ（第[ref-number first-book]章の「[ref-title install]」で説明した、中身から計算する値）をプロジェクトの [code: plugins.lock] に書き込みます。
 [code: plugins.lock] は手で編集せず、原稿と一緒にコミットします（第[ref-number git-ci]章）。
 同じ URL の中身が後から差し替えられても、ハッシュが合わなければエラーにして、知らないプラグインを動かさないためです。
 
-取得した配布物は、利用者ごとの置き場所（キャッシュ、[code: ~/.cache/golem/plugins] など）に置きます。
+取得した配布物は、コンピューターを使う人ごとに用意された、キャッシュと呼ぶ置き場所に置きます。
+Linux では、ふつうはホームのフォルダの中の [code: .cache/golem/plugins] のフォルダです。
 [code: golem build] はキャッシュからだけ読み、ネットワークには接続しません。
-別の機械でプロジェクトを取り出したときは、[code: golem plugin fetch] で [code: plugins.lock] のとおりに配布物を取得してから組みます。
+別のコンピューターでプロジェクトを取り出したときは、[code: golem plugin fetch] で [code: plugins.lock] のとおりに配布物を取得してから組みます。
 
 ```sh
-golem plugin fetch
-golem build
+$ golem plugin fetch
+$ golem build
 ```
 
 プラグインを読み込めないときは、[code: plugins.lock] やキャッシュの問題を示すエラー（G0602 から G0611。付録E）だけを出します。

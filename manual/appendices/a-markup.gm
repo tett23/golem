@@ -34,7 +34,7 @@
   Golem は Unicode の正規化をせず、文字を置き換えません[note: The Unicode Standard。[code: https://www.unicode.org/versions/latest/]]。
   CJK 互換漢字のような異体字も、書いたとおりに組みます。
   漢字の後に異体字セレクタ（IVS）を書くと、PDF ではその字形で組みます[note: Ideographic Variation Database。[code: https://unicode.org/ivd/]]。
-  書体がその字形を持たなければ、もとの字の字形になります。
+  フォントがその字形を持たなければ、もとの字の字形になります。
   HTML、EPUB、プレーンテキストには、異体字セレクタを原稿のまま書き出します。
 
 @nonumber
@@ -273,7 +273,7 @@
   [code: shape=] で形を選べます。
   形は [code: sesame]（ゴマ）、[code: open-sesame]（白ゴマ）、[code: dot]（小さい黒丸）、[code: open-dot]（小さい白丸）、[code: circle]（大きい黒丸）、[code: open-circle]（大きい白丸）、[code: double-circle]（蛇の目）、[code: open-double-circle]（二重丸）、[code: triangle]（黒三角）、[code: open-triangle]（白三角）のどれかで、省くと [code: style.toml] の [code: \[composition\]] の [code: kenten] になります。
   句読点や括弧などの約物と空白には、圏点の中でも圏点を打ちません。
-  PDF では、本文の和文の書体にある圏点の字を使います。
+  PDF では、本文の和文のフォントにある圏点の字を使います。
 = [strong: [code: \[tcy: 文字\]]]
   縦組みで、短い文字列を横に並べて一字分の幅に組みます（縦中横）。
   中には文字だけを書けます。
@@ -334,7 +334,7 @@
 図[ref-number fig-new]は[ref-page fig-new]ページにあります。
 ```
 
-PDF と HTML の版では、この例の一行めのうち、ルビと圏点を次の段落で実際に組んでいます。
+PDF と HTML では、この例の一行めのうち、ルビと圏点を次の段落で実際に組んでいます。
 
 [ruby: 東/京 | とう/きょう]の[kenten shape=dot: 下町]。
 
@@ -376,7 +376,7 @@ PDF と HTML の版では、この例の一行めのうち、ルビと圏点を�
 = [strong: 関数]
   [code: round(x, 桁数)]（四捨五入）、[code: fixed(x, 桁数)]（小数点以下の桁をそろえた文字列）、[code: floor]（切り捨て）、[code: ceil]（切り上げ）、[code: abs]（絶対値）、[code: min]、[code: max]、[code: sqrt]（平方根）、[code: len]（文字列の字数か配列の要素の数）、[code: div(a, b)]（整数の割り算）です。
 
-計算の規則は、どの機械で組んでも同じ結果になるように決めています。
+計算の規則は、どのコンピューターで組んでも同じ結果になるように決めています。
 
 - [code: /] の結果は常に小数です。整数の割り算には [code: div] を使います。[code: div] と [code: %] は整数にだけ使えます。
 - [code: **] の指数は整数に限ります。
@@ -390,7 +390,7 @@ PDF と HTML の版では、この例の一行めのうち、ルビと圏点を�
 税込み[= fixed(price * 1.1, 0)]円、全[= doc.chapters.count]章。
 ```
 
-PDF と HTML の版では、この例も次の段落で実際に組んでいます。
+PDF と HTML では、この例も次の段落で実際に組んでいます。
 
 @set price = 1800
 
