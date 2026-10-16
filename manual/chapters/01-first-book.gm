@@ -38,9 +38,9 @@ Intel の CPU の macOS には対応していません。
 この印を[strong: プロンプト][index reading=ぷろんぷと: プロンプト]と呼びます。
 このマニュアルでは、打ち込むコマンドの行を、プロンプトに見立てた [code: $] と空白に続けて書きます。
 
-```sh
+```console
 $ golem --version
-$ golem 0.1.0
+golem 0.1.0
 ```
 
 この例では、打ち込むのは [code: golem --version] だけです。
