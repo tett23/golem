@@ -60,6 +60,7 @@ Golem のどの版で何を扱うかを、この文書にまとめる。
 
 - **総ルビのプラグイン**：本文のすべての漢字にルビを振るプラグインを作る。読みの決め方、配布の形、Golem の本体に要る変更は ADR で決める。
 - **初出の語にルビを振るプラグイン**：指定した語に、章ごとの最初の出現でだけルビを振るプラグインを作る。語と読みの指定の仕方、章の境の判定、配布の形は ADR で決める。
+- **diagnostic の info**：diagnostic の重大度に、notice より下の info を加える。info は `--verbose` を付けたときにだけ出力し、ふだんの出力と `golem check` の結果、終了コードには影響しない。何を info にするか、`--verbose` を持つコマンド、LSP での扱い（Information と Hint のどちらに写すか）、JSON の出力、notice の抑制の設定（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）との関係は ADR で決める。開発者向けのマニュアルの「Golem に info はない」という説明も、このとき改める。
 
 ### PDF
 
