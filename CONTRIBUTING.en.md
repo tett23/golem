@@ -221,6 +221,10 @@ This package is not part of the release archives.
 Use the latest LTS of Node.
 Use the latest major version of each action that runs on Node 24 or later.
 
+Keep CI within 5 minutes.
+When CI on a pull request exceeds 5 minutes, optimize CI (split jobs, cache, skip checks of unchanged modules, and so on).
+Record the times before and after the optimization in `docs/ci-timings/`.
+
 ## License
 
 Contributed code and documentation are distributed under the [MIT License](./LICENSE).
