@@ -25,7 +25,7 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 | [code: golem plugin fetch] | プラグインを取得する |
 | [code: golem plugin lock] | [code: plugins.lock] を更新する |
 | [code: golem inspect FILE] | CST、AST、IR を表示する |
-| [code: golem explain] | 診断のコードの説明を表示する |
+| [code: golem explain] | diagnostic のコードの説明を表示する |
 | [code: golem --version] | 版を表示する |
 
 オプションはコマンドごとに決まっている。
@@ -58,7 +58,7 @@ CI で PDF だけが要るなら、[code: --target pdf] を明示する。[note:
 [code: \[targets.*\]] の有無は見ず、常に PDF を組む。
 検査の項目、重大度、しきい値はプリフライトの設定で決まり、設定は [code: --rules] のファイル、なければプロジェクトのルートの [code: preflight.toml]、それもなければ組み込みの [code: print] である。
 設定の誤りは G0901 で、PDF を組まずに終わる。
-構文から出力までの段階のエラーで PDF を組めないときは、[code: golem build] と同じ診断だけを出し、検査はしない。
+構文から出力までの段階のエラーで PDF を組めないときは、[code: golem build] と同じ diagnostics だけを出し、検査はしない。
 LSP、[code: golem check]、[code: golem build] は、プリフライトの検査をしない。
 
 ## 出力先
@@ -85,7 +85,7 @@ CI で PDF を拾うときは、[code: build/pdf/*.pdf] のように一つだけ
 | コード | 意味 |
 | --- | --- |
 | 0 | 成功。warning と notice があっても 0 |
-| 1 | 診断によるエラーがある |
+| 1 | エラーの diagnosticがある |
 | 2 | 使い方の誤り（未知のオプション、未知のコマンド、列挙にない値、値の欠け） |
 
 CI で Golem を使う人は、1 と 2 で「原稿の誤り」と「呼び出し方の誤り」を見分けられる。
@@ -117,16 +117,16 @@ $ echo $?
 
 コマンドごとの成功と失敗の決まりは次のとおりである。
 
-- [code: golem build] と [code: golem check] は、エラーの診断が一つでもあれば 1 で終わる。PDF のフォントがなくてエラーになっても、ほかのターゲットの出力は書く。
-- [code: golem preflight] は、エラーの診断が一つでもあれば 1、警告だけなら 0 で終わる。警告でも止めたいときは、プリフライトの設定でその検査の [code: severity] を [code: error] にする。
+- [code: golem build] と [code: golem check] は、エラーの diagnostic が一つでもあれば 1 で終わる。PDF のフォントがなくてエラーになっても、ほかのターゲットの出力は書く。
+- [code: golem preflight] は、エラーの diagnostic が一つでもあれば 1、警告だけなら 0 で終わる。警告でも止めたいときは、プリフライトの設定でその検査の [code: severity] を [code: error] にする。
 - [code: golem lint] は、エラーが一つでもあれば 1、警告だけなら 0 で終わる。
 - [code: golem fmt --check] は、整形されていないファイルがあればそのパスを標準出力に書き、1 で終わる。
 - [code: golem explain] は、文書にないコードを渡すと使い方の誤りとして 2 で終わる。
 
 ## 標準出力と標準エラー出力
 
-診断は標準エラー出力に、それ以外の出力は標準出力に書く。[index reading="ひょうじゅんえらーしゅつりょく": 標準エラー出力]
-[code: --format json] の診断も標準エラー出力に出る。
+diagnostics は標準エラー出力に、それ以外の出力は標準出力に書く。[index reading="ひょうじゅんえらーしゅつりょく": 標準エラー出力]
+[code: --format json] の diagnostics も標準エラー出力に出る。
 CI で JSON を受け取るときは、標準エラー出力をファイルに向ける。
 
 ```sh
@@ -138,7 +138,7 @@ $ golem build --target pdf --format json 2> diagnostics.json
 ## プロファイル
 
 [code: --profile] は [code: dev] と [code: prod] の二つで、既定は [code: dev] である。[index reading=ぷろふぁいる: プロファイル]
-プロファイルが変えるのは、校正用のコメント（[code: \%%= ... \%%]）の扱いと、診断の重大度の二つだけである。
+プロファイルが変えるのは、校正用のコメント（[code: \%%= ... \%%]）の扱いと、diagnostic の重大度の二つだけである。
 
 - 校正用のコメントは、[code: dev] では出力に現れ、[code: prod] では出力されず警告（G0205）になる。
 - 参照されていないラベル（G0504）と、HTML と EPUB のフォントの欠け（G0310）は、[code: dev] では警告、[code: prod] ではエラーになる。

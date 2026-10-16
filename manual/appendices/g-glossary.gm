@@ -74,7 +74,7 @@
   ビットは、0 か 1 のどちらかを表す、コンピューターが扱う最小の単位です。[index reading=びっと: ビット][index reading=ばいと: バイト]
   バイトは、ビットを八つまとめた単位で、ファイルの大きさや中身はバイトで数えます。ファイルは、バイトを順に並べたもの（バイト列）です。
   「一ビットの白黒の画像」は、一つの点を 1 ビット（白か黒か）で表す画像です。
-  「はじめに」の「[ref-title preface-golem]」（[ref-page preface-golem] ページ）。
+  「はじめに」の「[ref-title preface-benefits]」（[ref-page preface-benefits] ページ）。
 = [strong: 文字コード]
   文字をバイトの並びとしてファイルに保存するときの決まりです。[index reading=もじこーど: 文字コード]
   Shift_JIS や UTF-8 があります。
@@ -122,7 +122,7 @@
   ファイルの中身から計算する短い文字列です。[index reading=はっしゅ: ハッシュ]
   中身が一バイトでも違えば、ほぼ確実に違う値になります。
   取得したファイルが壊れたり差し替えられたりしていないかを、公開された値と比べて確かめます。
-  「[ref-title install]」（[ref-page install] ページ）。
+  「[ref-title verify-download]」（[ref-page verify-download] ページ）。
 = [strong: バージョン管理]
   ファイルの変更を、いつ、誰が、何のために行ったかとともに記録し、前の状態に戻したり比べたりできるようにすることです。[index reading=ばーじょんかんり: バージョン管理]
   「[ref-title git-why]」（[ref-page git-why] ページ）。

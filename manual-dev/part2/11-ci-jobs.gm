@@ -77,7 +77,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 + [code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
 + [code: cabal build all] と [code: cabal test all] を実行する。
 + [code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
-+ 二つのマニュアルのフォントをキャッシュから戻し、[code: scripts/manual/build.sh] で二つのマニュアルを組む。何か一つでも診断が出れば失敗する。
++ 二つのマニュアルのフォントをキャッシュから戻し、[code: scripts/manual/build.sh] で二つのマニュアルを組む。diagnostic が一つでも出れば失敗する。
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
 + [code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。
 + x86-64 では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。

@@ -15,7 +15,7 @@ Golem のリポジトリの [code: docs/] には、性質の違う文書が並�
 | [code: docs/roadmap.md] | どの版で何を扱うか、まだ実装していない項目、手で確かめる項目、未決事項、課題にしなかった事項 | 版の予定が決まったら足し、実装を終えたら消す |
 | [code: docs/<モジュール>/specifications.md] | モジュールの実装の詳細 | 同上 |
 | [code: docs/glossary.md] | 用語集 | 新しい用語を導入したら足す |
-| [code: docs/diagnostics.md] | 診断のコードの説明 | コードを足すときに同じ変更で足す |
+| [code: docs/diagnostics.md] | diagnostic のコードの説明 | コードを足すときに同じ変更で足す |
 | [code: docs/adr/]、[code: docs/<モジュール>/adr/] | ADR | ステータスの行を除き変えない |
 | [code: docs/audits/] など | 監査と性能計測の記録 | コミットした後は変えない |
 | [code: docs/manual-policy.md] | 二つのマニュアルの方針 | 第[ref-number manuals]章 |
@@ -42,11 +42,11 @@ ADR で仕様が変わったら、同じプルリクエストで [code: docs/spe
 [code: docs/roadmap.md] の「手で確かめる項目」は、実装もテストも終わったが ADR の求める手作業の確かめが残っている項目である。
 確かめたら、結果をプルリクエストか [code: docs/audits/] の記録に書き、一覧から消す。
 
-## 用語集と診断の文書
+## 用語集と diagnostic のコードの文書
 
 新しい用語を導入したら、[code: docs/glossary.md] にも加える。
 
-診断のコードを足すときは、同じ変更で [code: docs/diagnostics.md] に節を足す。[index reading="diagnostics.md": diagnostics.md]
+diagnostic のコードを足すときは、同じ変更で [code: docs/diagnostics.md] に節を足す。[index reading="diagnostics.md": diagnostics.md]
 節の形は決まっている。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0005-explain-diagnostic-codes.md]（golem-cli ADR 0005「診断のコードの説明を golem explain で表示する」）]
 
 ```markdown

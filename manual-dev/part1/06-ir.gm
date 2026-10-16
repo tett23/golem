@@ -115,7 +115,7 @@ block = [span, label: tstr / null, body: block-body]
 ```
 
 [code: span] の [code: start] と [code: end] は、ファイルの先頭からの UTF-8 のバイト数である。
-診断の位置と同じ単位で、プラグインの出力の位置の検査にも使う。
+diagnostic の位置と同じ単位で、プラグインの出力の位置の検査にも使う。
 
 ブロックの本体は、先頭のタグで種類が決まる。
 

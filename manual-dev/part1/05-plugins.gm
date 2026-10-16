@@ -167,9 +167,9 @@ description = [commands: [* tstr], filters: [* tstr]]
 - コマンドの呼び出しでは、[code: golem_invoke] は [code: command-request] を受け取り、[code: output] がインラインの列（[code: inlines]）の [code: response] を返す。
 - フィルタの呼び出しでは、[code: filter-request] を受け取り、[code: output] がファイル一つ分の文書（[code: document]）の [code: response] を返す。
 - 引数の値に連想配列は渡せない。[code: value] にマップがないのはそのためである。
-- 応答の診断の重大度は、0 がエラー、1 が警告である。プラグインは notice を出せない。コードはプラグインが決め、Golem の [code: docs/diagnostics.md] の対象外である。
+- 応答の diagnostic の重大度は、0 がエラー、1 が警告である。プラグインは notice を出せない。コードはプラグインが決め、Golem の [code: docs/diagnostics.md] の対象外である。
 
-たとえばファイルの先頭に書いた [code: \[furigana: 漢字\]] の呼び出しの要求は、CBOR の診断の表記（RFC 8949 が定める、CBOR を人が読むための表記）で次のような形になる。
+たとえばファイルの先頭に書いた [code: \[furigana: 漢字\]] の呼び出しの要求は、CBOR の diagnostic notation（RFC 8949 が定める、CBOR を人が読むための表記）で次のような形になる。
 [code: span] は、ファイルの番号と、UTF-8 のバイトの範囲の組である。
 最後の [code: \[0, 0, 18\]] が呼び出しの全体の位置で、プラグインが新しく作るノードにはこの位置を付ける。
 
@@ -192,7 +192,7 @@ description = [commands: [* tstr], filters: [* tstr]]
 処理系の内部では型で守っている不変条件も、wasm の境界を越えると保証されなくなる。
 違反はエラーにし、黙って直したり、該当の部分を捨てたりはしない。
 
-## プラグインの診断
+## プラグインの diagnostic
 
 プラグインの読み込みと実行の誤りは、G0602 から G0611 で報告する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0003-plugin-diagnostic-codes.md]（golem-plugin ADR 0003「プラグインの診断のコード（G0602 から G0610）」）]
 
@@ -209,7 +209,7 @@ description = [commands: [* tstr], filters: [* tstr]]
 | G0610 | [code: \[\[filters\]\]] が誤ったプラグインかフィルタを指す |
 | G0611 | [code: plugins.lock] が TOML として読めない |
 
-診断の位置は、ほとんどが [code: manifest.toml] の先頭である。
+diagnostic の位置は、ほとんどが [code: manifest.toml] の先頭である。
 マニフェストはプラグインの宣言の位置を持たないので、メッセージにプラグインの名前を書いて、宣言を見つけられるようにしている。
 例外は二つで、G0609 はコマンドを呼んだ箇所か、フィルタを適用したファイルの先頭を指し、G0611 は [code: plugins.lock] の中の位置を指す。
 

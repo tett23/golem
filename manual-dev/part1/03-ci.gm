@@ -60,11 +60,11 @@ $ golem build --target pdf --profile prod --format json 2> diag.json
 
 出荷する本なら [code: --profile prod] を付ける。
 参照されていないラベルと HTML と EPUB のフォントの欠けがエラーになり、校正用のコメントの残りが警告になる。
-終了コードは、成功が 0、エラーの診断があれば 1、使い方の誤りが 2 である（第[ref-number cli]章）。
+終了コードは、成功が 0、エラーの diagnostic があれば 1、使い方の誤りが 2 である（第[ref-number cli]章）。
 
-診断を CI の画面に出すなら人が読む形式、集計やコメントへの転記をするなら JSON の形式を選ぶ。
+diagnostics を CI の画面に出すなら人が読む形式、集計やコメントへの転記をするなら JSON の形式を選ぶ。
 JSON は標準エラー出力に出るので、ファイルに向ける。
-並び順は入力だけで決まるので、前回の [code: diag.json] と比べた差分は、診断の増減そのものになる。
+並び順は入力だけで決まるので、前回の [code: diag.json] と比べた差分は、diagnostics の増減そのものになる。
 JSON の形は第[ref-number diagnostics]章で説明した。
 
 出力は [code: build/<ターゲット>/] に書かれる。
@@ -86,7 +86,7 @@ $ sha256sum build/pdf/*.pdf
 エラーがあれば 1 で終わるので、そこで CI の回を止められる。
 この例は、機械が読む JSON と、要約の行を含む人が読む形式を得るために、二度検査している。
 どちらか一方でよければ、一度で済む。
-JSON の診断のうち、プリフライトの診断は [code: facts] を持つ（第[ref-number diagnostics]章）。
+JSON の diagnostics のうち、プリフライトの diagnostic は [code: facts] を持つ（第[ref-number diagnostics]章）。
 [code: facts] の [code: pdf-pages] で該当するページを、[code: ppi] や [code: limit] で測った値としきい値を、メッセージを解析せずに読める。
 
 人が読む形式では、最後の一行が要約で、検査した PDF の SHA-256 を含む。
@@ -187,7 +187,7 @@ Golem を更新するときは、更新だけのコミットを作って差分�
 原稿の途中で一行増えて改ページの位置がずれれば、本の後半がすべて差分になる。
 これは改ページが先頭から順に詰める方式であることの帰結であり、差分の道具の側でページの対応を取る工夫が要る。
 
-## 診断を残さずに組む
+## diagnostic を残さずに組む
 
 Golem のマニュアルは、組んだときに Golem が何かを出力すれば、それが notice 一つでも失敗とする（第[ref-number manuals]章）。
 見本として配る本では、notice の原因（折り返したコードの行など）も原稿の側で取り除くからである。

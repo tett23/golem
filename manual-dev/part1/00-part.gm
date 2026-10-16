@@ -2,12 +2,12 @@
 # 第一部　Golem で仕組みを作る
 
 第一部は、Golem を部品として使う人に向けている。
-CI で原稿を自動で組む人、診断を集計する人、エディタに LSP をつなぐ人、プラグインを書く人である。
+CI で原稿を自動で組む人、diagnostics を集計する人、エディタに LSP をつなぐ人、プラグインを書く人である。
 
 Golem を部品として扱うときに頼れるのは、外から見える約束だけである。
-コマンドの引数と終了コード、診断の JSON の形、診断のコードの意味、LSP の位置の数え方、プラグインと受け渡す CBOR の形がそれに当たる。
+コマンドの引数と終了コード、diagnostics の JSON の形、diagnostic のコードの意味、LSP の位置の数え方、プラグインと受け渡す CBOR の形がそれに当たる。
 どれも ADR と仕様書で決まっており、変えるときは新しい ADR を書く。
 第一部の各章は、この約束を一つずつ取り上げ、実際の値と例で示す。
 
-最初の第[ref-number cli]章で CLI の全体を見て、第[ref-number diagnostics]章で診断の読み方を、第[ref-number ci]章で CI での組み方を説明する。
+最初の第[ref-number cli]章で CLI の全体を見て、第[ref-number diagnostics]章で diagnostics の読み方を、第[ref-number ci]章で CI での組み方を説明する。
 第[ref-number lsp]章は LSP、第[ref-number plugins]章はプラグイン、第[ref-number ir]章は意味論 IR とレイアウト IR を扱う。
