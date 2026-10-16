@@ -53,7 +53,7 @@ files = ["chapters/01.gm", "chapters/02.gm"]
 
 上書きできるのは、表示だけに関わるインラインのコマンドである。
 golem-eval ADR 0002 は [code: strong]、[code: bold]、[code: italic]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text] を挙げ、今の実装は [code: code] も同じ一覧に入れている。
-ブロックコマンドと、文書構造、注、チャネルに関わるコマンド（[code: ref-number]、[code: ref-title]、[code: note]、[code: sidenote]、[code: index]、[code: cite]）は上書きできない。
+ブロックコマンドと、文書構造、注、チャネル（目次、脚注、索引、参考文献のように、文書の各所から項目を集めて別の位置に一覧として出す仕組み。第[ref-number ir]章の「[ref-title channels]」の節）に関わるコマンド（[code: ref-number]、[code: ref-title]、[code: note]、[code: sidenote]、[code: index]、[code: cite]）は上書きできない。
 これらは S1 の集約が前提にする情報を作るので、プラグインが置き換えると、番号やチャネルの不変条件を処理系が保証できなくなる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0002-file-evaluation.md]（golem-eval ADR 0002「ファイル内評価（S0）」）]
 
 コマンドの名前は、上書きを宣言したプラグインのコマンド、組み込みのコマンド、プラグインのコマンドの順に探す。[index reading="overrides": overrides]
