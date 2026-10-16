@@ -2,7 +2,7 @@
 
 この文書は、Golem の二つのマニュアル（使い手のマニュアル `manual/` と開発者のマニュアル `manual-dev/`）を書く人とレビューする人の基準である。
 最初の中身は [ADR 0024](adr/0024-manual-audiences-and-policy.md) が決めた。
-[ADR 0022](adr/0022-manual-as-typesetting-sample.md) のうち、Golem 自身で組むこと、フォントをリポジトリに入れないこと、CI で組んで決定性を確かめること、リリースの資産に加えること、内容の範囲は、今も効いている。
+[ADR 0022](adr/0022-manual-as-typesetting-sample.md) のうち、Golem 自身で組むこと、フォントをリポジトリに入れないこと、CI で組んで決定性を確かめること、リリースのアセットに加えること、内容の範囲は、今も効いている。
 
 この文書の変え方は次のとおりである。
 
@@ -20,11 +20,11 @@
 | 版面 | 本文 13Q、行送り 22H、一行 32 字、29 行 | 本文 13Q、行送り 22H、一行 40 字、34 行 |
 | 文体 | 敬体（です、ます） | 常体（である） |
 | 出力 | PDF と HTML | PDF と HTML |
-| リリースの資産 | `golem-manual-<タグ>.pdf`、`golem-manual-<タグ>-html.tar.gz` | `golem-dev-manual-<タグ>.pdf`、`golem-dev-manual-<タグ>-html.tar.gz` |
+| リリースのアセット | `golem-manual-<タグ>.pdf`、`golem-manual-<タグ>-html.tar.gz` | `golem-dev-manual-<タグ>.pdf`、`golem-dev-manual-<タグ>-html.tar.gz` |
 
 原稿は `.gm` のファイルだけである。
 Markdown の版は持たない。
-組んだものは、CI の `build` ジョブの成果物（`manual` と `manual-dev`）と、リリースの資産で読める。
+組んだものは、CI の `build` ジョブの成果物（`manual` と `manual-dev`）と、リリースのアセットで読める。
 
 ## 組み方
 
