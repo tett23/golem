@@ -4,6 +4,7 @@ import BuildSpec
 import CliSpec
 import DiagnosticSitesSpec
 import DiagnosticsSpec
+import LocaleSpec
 import PageElementsSpec
 import ParagraphSpec
 import PdfSpec
@@ -68,6 +69,7 @@ tests =
              testGroup "golem preflight (golem-cli ADR 0006)" preflightTests,
              testGroup "footnote marks and numbers (ADR 0018)" footnoteTests,
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
+             localeTests,
              publicDomainTests,
              diagnosticSiteTests
            ]
