@@ -123,6 +123,8 @@ When adding a label to the grammar, make sure that removing it does not change t
 When an ADR changes the specification, update [docs/specifications.md](./docs/specifications.md) and [README.md](./README.md) in the same pull request.
 These two must always be up to date on `main`.
 Implementation details of a module go in `docs/<module>/specifications.md`.
+Which version handles what, items not implemented yet, items awaiting a check by hand, open questions, and matters not taken up go in [docs/roadmap.md](./docs/roadmap.md), not in the specification.
+When an item is implemented, remove it from roadmap.md and describe the behavior in the specification.
 
 References to ADRs from the specification must link to the ADR file.
 When introducing a new term, add it to [docs/glossary.md](./docs/glossary.md).
@@ -139,7 +141,7 @@ Do not hide notices with `silence-notices` or `--no-notices`.
 - a branch that changes docs/markup.md or docs/specifications.md without changing `manual/` or `manual-dev/`;
 - a branch that changes CONTRIBUTING.md or CONTRIBUTING.en.md without changing `manual-dev/`.
 
-When a change does not change what the manuals describe, such as adding an item for v2, end the message of one of the commits of the branch with the trailer line `Manual: unchanged`.
+When a change does not change what the manuals describe, such as adding a known bug to the specification, end the message of one of the commits of the branch with the trailer line `Manual: unchanged`.
 The hook checks from the merge base with your local `origin/main`; if it stops a push because of changes already on `main`, run `git fetch` and push again.
 
 When the build or the tests start to read a document under `docs/`, add it to the list in `scripts/ci/needs-build.sh`.

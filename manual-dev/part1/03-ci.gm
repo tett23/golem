@@ -164,7 +164,7 @@ Golem の開発の CI も、[code: scripts/determinism.sh] で同じ形の一覧
 
 Golem 自身は、ページ画像の差分を取る仕組みを持たない。[index reading="ぺーじがぞうのさぶん": ページ画像の差分]
 Golem の責務は、差分が意味を持つ決定的な出力を作るところまでであり、差分は外部の道具に任せると決めている。
-差分の仕組みを自前で持つ可能性はあるが、GUI を作るより後になる。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#golem-が強いるワークフロー]（仕様書の「Golem が強いるワークフロー」の節）]
+差分の仕組みを自前で持つ可能性はあるが、GUI を作るより後になる。[note: [code: https://github.com/tett23/golem/blob/main/docs/roadmap.md]（docs/roadmap.md の v3 の「GUI」）]
 
 外部の道具の組み合わせは自由である。
 たとえば Poppler の [code: pdftoppm] でページを PNG にし、ImageMagick の [code: compare] で画素の差を数えられる。

@@ -103,7 +103,7 @@ $ sh scripts/manual/build-info.sh manual-dev
 ## 内容の範囲
 
 二つのマニュアルに書くのは、採択して実装を終えた仕様だけである。
-[code: docs/specifications.md] の「今後の実装項目」に残っている事項、提案の ADR、未決事項は書かない。
+[code: docs/roadmap.md] に載っている事項（未決事項を含む）と、提案の ADR は書かない。
 
 決定の正は ADR と仕様書である。
 マニュアルは新しい決定をしない。
