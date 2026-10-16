@@ -2209,6 +2209,8 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **浮動小数点数の桁あふれ**：`2.0 ** -1074` は表せる値だが、途中の計算があふれて 0 になる。`10 ** 309 > 1.0` は誤りにならないが、`10 ** 309 + 0.5` は G0204 になる。どちらの扱いも仕様は定めていない（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
 - **`golem inspect` の終了コードと文言**：構文の誤り（G0117 など）があっても終了コード 0 で終わり、診断を Haskell の `show` の形で出す。存在しないファイルを渡すと、英語の例外と GHC のバックトレースが出る（[golem-cli ADR 0001](golem-cli/adr/0001-command-line-interface.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
 - **`golem inspect --as ir` の対象と形**：`golem inspect --as ir <file>` は、引数のファイルではなく、作業中のディレクトリのプロジェクト全体の IR を、Haskell の `show` の形で出す。仕様の「`golem inspect <file>`」は、引数のファイルを人が読める形で表示すると定めている（[golem-cli ADR 0001](golem-cli/adr/0001-command-line-interface.md)）。
+- **三点リーダーの後の句点の行頭禁則**：fixture の『牛山ホテル』の 12 ページで、「……」の直後の「。」が行頭に置かれている。句点は行頭禁則の文字なので、行頭禁則に反している可能性がある（原因は確かめていない）。
+- **結合文字**：U+0301 のような結合文字を、前の字と一つにせず、別の箱として組む。
 - **LSP の古い診断**：見出しやラベルを変えずに、存在しないラベルへの参照を足しても G0403 が出ず、前の S1 の診断が残る。[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md) の再評価の規則どおりの振る舞いだが、利用者には誤りが見えない。
 
 ## 仕様が不明瞭な場合
