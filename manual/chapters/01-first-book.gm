@@ -110,10 +110,10 @@ $ golem new mybook
 - [code: style.toml]：紙面の体裁（判型、版面、書体）。第[ref-number style]章で説明します。
 - [code: chapters/01.gm]：最初の章の原稿
 - [code: preflight.toml]：入稿の前の検査の設定。第[ref-number output]章で使います。
-- [code: fonts/]：本文の書体（Noto Serif JP）と、そのライセンスの文書
+- [code: fonts/]：本文のフォント（Noto Serif JP）のファイルと、そのライセンスの文書
 - [code: .gitignore]：バージョン管理のツールに、組んだ結果を記録しないように伝える設定（第[ref-number git-ci]章で使います）
 
-書体は、配布元からバージョンを固定して取得し、ハッシュでファイルが壊れていないかを確かめてから置きます。
+フォントは、配布元からバージョンを固定して取得し、ハッシュでファイルが壊れていないかを確かめてから置きます。
 このため [code: golem new] はインターネットに接続します。
 接続できない環境では [code: golem new --no-fonts mybook] とし、表示されたファイルを手で [code: fonts/] に置いてください。
 

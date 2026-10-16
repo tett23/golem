@@ -388,7 +388,7 @@ PDF では、行頭と行の途中の空白をそのまま残し、タブは空�
 両端揃えにせず、語をハイフンで分けず、和文と欧文のあいだも空けません。
 版面に収まらない長い行は折り返し、続きを元の行の字下げより空白二つ分深い位置から始めます。
 折り返したときは、お知らせ G0730 で知らせます。
-書体は役割 [code: code] で（「[ref-title fonts]」、[ref-page fonts] ページ）、大きさと背景の色は段落スタイル [code: code] で決めます（「[ref-title styles]」、[ref-page styles] ページ）。
+書体はフォントの役割 [code: code] で（「[ref-title fonts]」、[ref-page fonts] ページ）、大きさと背景の色は段落スタイル [code: code] で決めます（「[ref-title styles]」、[ref-page styles] ページ）。
 
 本文の中のファイル名やコマンドは、[code: \[code: manifest.toml\]] のように [code: \[code: ...\]] で書きます。
 PDF では、語の途中で分けず、行は空白と [code: /] の後でだけ改めます。

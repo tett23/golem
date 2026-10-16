@@ -6,7 +6,7 @@
 書き方は TOML という設定ファイルの形式です（「[ref-title toml]」、[ref-page toml] ページ）。
 書けるキーの一覧は、[ref-title app-manifest]（[ref-page app-manifest] ページ）にあります。
 
-プロジェクト[index reading=ぷろじぇくと: プロジェクト]（[code: manifest.toml]、原稿、[code: style.toml]、図版、書体をまとめたフォルダ）は、InDesign のドキュメントとブックに当たります。
+プロジェクト[index reading=ぷろじぇくと: プロジェクト]（[code: manifest.toml]、原稿、[code: style.toml]、図版、フォントをまとめたフォルダ）は、InDesign のドキュメントとブックに当たります。
 [code: manifest.toml] が章のファイルを並べる役は、ブックが個々のドキュメントを並べる役に近いものです。
 違いは、体裁の置き場所です。
 InDesign のブックでは個々のドキュメントがそれぞれスタイルを持ち、それらをそろえる操作が要りますが、Golem の一冊の本は [code: style.toml] を一つだけ持ちます。

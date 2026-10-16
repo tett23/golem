@@ -34,7 +34,7 @@
   Golem は Unicode の正規化をせず、文字を置き換えません[note: The Unicode Standard。[code: https://www.unicode.org/versions/latest/]]。
   CJK 互換漢字のような異体字も、書いたとおりに組みます。
   漢字の後に異体字セレクタ（IVS）を書くと、PDF ではその字形で組みます[note: Ideographic Variation Database。[code: https://unicode.org/ivd/]]。
-  書体がその字形を持たなければ、もとの字の字形になります。
+  フォントがその字形を持たなければ、もとの字の字形になります。
   HTML、EPUB、プレーンテキストには、異体字セレクタを原稿のまま書き出します。
 
 @nonumber
@@ -273,7 +273,7 @@
   [code: shape=] で形を選べます。
   形は [code: sesame]（ゴマ）、[code: open-sesame]（白ゴマ）、[code: dot]（小さい黒丸）、[code: open-dot]（小さい白丸）、[code: circle]（大きい黒丸）、[code: open-circle]（大きい白丸）、[code: double-circle]（蛇の目）、[code: open-double-circle]（二重丸）、[code: triangle]（黒三角）、[code: open-triangle]（白三角）のどれかで、省くと [code: style.toml] の [code: \[composition\]] の [code: kenten] になります。
   句読点や括弧などの約物と空白には、圏点の中でも圏点を打ちません。
-  PDF では、本文の和文の書体にある圏点の字を使います。
+  PDF では、本文の和文のフォントにある圏点の字を使います。
 = [strong: [code: \[tcy: 文字\]]]
   縦組みで、短い文字列を横に並べて一字分の幅に組みます（縦中横）。
   中には文字だけを書けます。

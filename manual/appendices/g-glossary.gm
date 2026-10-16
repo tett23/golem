@@ -81,7 +81,7 @@
   「[ref-title text-files]」（[ref-page text-files] ページ）。
 = [strong: 異体字セレクタ]
   漢字の直後に置いて、その字の字形を指定する目に見えない文字です。[index reading=いたいじせれくた: 異体字セレクタ][note: Ideographic Variation Database。[code: https://unicode.org/ivd/]]
-  書体がその字形を持っていれば、PDF ではその字形で組みます。
+  フォントがその字形を持っていれば、PDF ではその字形で組みます。
   「[ref-title text-files]」（[ref-page text-files] ページ）。
 = [strong: テキストエディタ]
   文字だけのファイル（テキストのファイル）を編集するアプリケーションです。[index reading=てきすとえでぃた: テキストエディタ]
@@ -154,7 +154,7 @@
 
 = [strong: プロジェクト]
   一冊の本を作るためのフォルダです。[index reading=ぷろじぇくと: プロジェクト]
-  [code: manifest.toml]、[code: style.toml]、原稿、書体、図版を入れます。
+  [code: manifest.toml]、[code: style.toml]、原稿、フォント、図版を入れます。
   InDesign のブックに近いものです（付録F）。
   「[ref-title new-project]」（[ref-page new-project] ページ）。
 = [strong: マニフェスト]
@@ -172,9 +172,13 @@
   [code: style.toml] の [code: \[page.grid\]] で、文字の大きさ、字数、行数、行送り、段数から決める本文の領域です。[index reading=はんめん/ごーれむの: 版面/Golem の]
   本文は、常に版面の行の格子に載ります。
   第[ref-number style]章「[ref-title style]」。
-= [strong: 書体の役割]
-  [code: body] や [code: code] のように、[code: style.toml] の [code: \[fonts\]] で書体の組み合わせに付ける名前です。[index reading=しょたいのやくわり: 書体の役割]
-  和文と欧文の書体を一つの役割にまとめます。
+= [strong: 書体とフォント]
+  書体は、明朝体やゴシック体のような文字のデザインです。[index reading=しょたい: 書体][index reading=ふぉんと: フォント]
+  フォントは、その書体をコンピューターで使うためのファイルとデータです。プロジェクトに置き、PDF に埋め込み、ライセンスの条件が付くのはフォントです。
+  「[ref-title fonts]」（[ref-page fonts] ページ）。
+= [strong: フォントの役割]
+  [code: body] や [code: code] のように、[code: style.toml] の [code: \[fonts\]] で、和文と欧文のフォントの組み合わせに付ける名前です。[index reading=ふぉんとのやくわり: フォントの役割]
+  段落スタイルや文字スタイルの [code: font] には、この名前を書きます。
   第[ref-number style]章「[ref-title style]」。
 = [strong: 段落スタイル]
   段落の体裁（書体、大きさ、字下げなど）に名前を付けたものです。[index reading=だんらくすたいる: 段落スタイル]

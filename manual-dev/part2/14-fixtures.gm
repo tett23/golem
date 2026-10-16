@@ -80,11 +80,11 @@ golem-fixtures は [code: base]、[code: text]、[code: containers]、[code: byt
 
 ## テスト用のフォント
 
-golem-font のテストが使う書体は、[code: modules/golem-font/test/fonts/] に置いてある。
+golem-font のテストが使うフォントは、[code: modules/golem-font/test/fonts/] に置いてある。
 PDF の決定性の検査（[code: scripts/determinism.sh]）も、ここの Source Han Sans のサブセットと Source Sans Pro で組む。
 ライセンスの文書（[code: OFL.txt]）と出典の README が同じディレクトリにある。
 
-二つのマニュアルの書体は、リポジトリに入れない。
+二つのマニュアルのフォントは、リポジトリに入れない。
 組む前に [code: scripts/manual/fetch-fonts.sh] が、配布元のタグで固定した URL から取得し、SHA-256 を検査して置く（第[ref-number manuals]章）。
 
 ## 配布物のライセンス

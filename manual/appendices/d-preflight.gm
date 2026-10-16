@@ -36,7 +36,7 @@
 
 | テーブル | print の既定 | 検査 |
 |:---|:---|:---|
-| [code: \[glyph-missing\]] | [code: "error"] | 書体にグリフのない文字（G0902） |
+| [code: \[glyph-missing\]] | [code: "error"] | フォントにグリフのない文字（G0902） |
 | [code: \[image-unplaceable\]] | [code: "error"] | PDF に置けない図版（G0905） |
 | [code: \[image-icc\]] | [code: "warning"] | 出力インテントと違う ICC プロファイルを持つ CMYK の図版（G0909） |
 | [code: \[overfull-lines\]] | [code: "warning"] | 行長からはみ出す行（G0913） |
@@ -46,7 +46,7 @@
 @nonumber
 ## [code: \[font-formats\]]
 
-許さない形式の書体（G0903）です。
+許さない形式のフォント（G0903）です。
 
 | キー | print の既定 | 意味 |
 |:---|:---|:---|

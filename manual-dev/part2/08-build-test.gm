@@ -135,7 +135,7 @@ Golem の方針として、小さな道具を組み合わせ、Python のスク�
 | テスト | 対象 |
 | --- | --- |
 | [code: scripts/ci/test.sh] | [code: scripts/ci/] のスクリプト（変更のパス、ビルドの要否、判定のジョブ） |
-| [code: scripts/manual/test.sh] | [code: scripts/manual/] のスクリプト（組み方、版の情報、更新の検査、書体の取得） |
+| [code: scripts/manual/test.sh] | [code: scripts/manual/] のスクリプト（組み方、版の情報、更新の検査、フォントの取得） |
 | [code: scripts/release/test.sh] | [code: scripts/release/] のスクリプト（版の検査、リリースノート、ライセンス） |
 
 どれも一時ディレクトリに Git のリポジトリや偽の [code: golem] を作り、スクリプトの終了コードと出力を確かめる。
