@@ -130,7 +130,7 @@ InDesign の書き出しに当たる操作ですが、形式ごとに書き出�
 [code: --target] は何度でも書けます。
 
 @label fig-new-project
-@figure images/new-project.png alt="golem new で作ったプロジェクトをそのまま組んだ PDF の最初のページ" wrap=end width=11zw
+@figure images/new-project.png alt="golem new で作ったプロジェクトをそのまま組んだ PDF の最初のページ" wrap=end width=9zw
   golem new で作ったプロジェクトをそのまま組んだ PDF の最初のページ。
 
 PDF を開くと、「第一章　はじめに」という見出しと「本文。」という一行が、縦組みで組まれています（図[ref-number fig-new-project]）。
