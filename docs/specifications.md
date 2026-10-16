@@ -2203,6 +2203,7 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **見出しの後ろの改ページ**：見出しの直後で改ページしない規則が、一つ先のブロックしか見ない。見出し、見出し、段落と続くと、最初の見出しがページの末尾に残る（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 - **見出しの脚注**：脚注がページに入らないとき、見出しは元のページに残り、注の本文だけが次のページに送られる。段落の行の場合は、行のほうが送られる（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 - **ぶら下げの量**：ぶら下げの量を、字の幅ではなく語の箱全体の幅に対する割合で求めている。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は字の幅に対する割合と定めている。既存のテストも、語の幅を基準にした値を期待している。
+- **分綴のハイフンの突き出し**：パターンで分綴したときに行末に足すハイフンを、突き出さない。行分割の突き出しの量は、行の最後の箱の終わりの字だけを見て求めるので、分綴で足したハイフンを数えない。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は、行末のハイフンも突き出すと定めている。
 - **図版の順序**：ページに収まった図版が、それより前に次のページへ送られた図版より先に置かれ、図版の順序が入れ替わる。ADR はこれを禁じても許してもいない（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 - **キーワード引数の後の `**[式]`**：`[f k=v **[h]]` が G0119 になる。`**[式]` はキーワード引数に展開されるので、キーワード引数の後に書けてよいはずである（[golem-parser ADR 0004](golem-parser/adr/0004-inline-grammar.md)）。
 - **IR の大きな整数**：CDDL は式の整数を `int`（CBOR の major type 0 と 1）と定めているが、絶対値が 2^64 以上の整数は bignum（tag 2 と 3）で書き出される。式の整数は任意精度なので、`@set n = 2 ** 70` のような値が IR に入りうる（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)）。
