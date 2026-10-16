@@ -149,5 +149,33 @@
     "type": "document",
     "title": "SIL Open Font License 1.1",
     "URL": "https://openfontlicense.org/"
+  },
+  {
+    "id": "ms-wsl-about",
+    "type": "webpage",
+    "title": "Windows Subsystem for Linux とは",
+    "publisher": "Microsoft",
+    "URL": "https://learn.microsoft.com/ja-jp/windows/wsl/about"
+  },
+  {
+    "id": "ms-wsl-install",
+    "type": "webpage",
+    "title": "WSL のインストール",
+    "publisher": "Microsoft",
+    "URL": "https://learn.microsoft.com/ja-jp/windows/wsl/install"
+  },
+  {
+    "id": "ms-wsl-environment",
+    "type": "webpage",
+    "title": "WSL 開発環境を設定する",
+    "publisher": "Microsoft",
+    "URL": "https://learn.microsoft.com/ja-jp/windows/wsl/setup/environment"
+  },
+  {
+    "id": "ms-wsl-filesystems",
+    "type": "webpage",
+    "title": "ファイル システム間での作業",
+    "publisher": "Microsoft",
+    "URL": "https://learn.microsoft.com/ja-jp/windows/wsl/filesystems"
   }
 ]

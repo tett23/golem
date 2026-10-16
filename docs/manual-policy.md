@@ -137,6 +137,10 @@ PDF/X-4 は、Golem 自身では適合を判定できず、入稿の前に商用
 | エディタ | Language Server Protocol 3.17 | https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/ |
 | フォントのライセンス | SIL Open Font License 1.1 | https://openfontlicense.org/ |
 | バージョン管理 | Git の公式の文書 | https://git-scm.com/doc |
+| Windows での使い方 | Microsoft「Windows Subsystem for Linux とは」 | https://learn.microsoft.com/ja-jp/windows/wsl/about |
+| Windows での使い方 | Microsoft「WSL のインストール」 | https://learn.microsoft.com/ja-jp/windows/wsl/install |
+| Windows での使い方 | Microsoft「WSL 開発環境を設定する」 | https://learn.microsoft.com/ja-jp/windows/wsl/setup/environment |
+| Windows での使い方 | Microsoft「ファイル システム間での作業」 | https://learn.microsoft.com/ja-jp/windows/wsl/filesystems |
 
 ### 言葉の選び方
 
@@ -174,6 +178,7 @@ PDF/X-4 は、Golem 自身では適合を判定できず、入稿の前に商用
 | TOML、テーブル、配列 | 第 2 章「TOML の書き方」 |
 | ビット、バイト、バイト列 | はじめに「Golem とは」 |
 | ハッシュ（ファイルの） | 第 1 章「配布物を取得する」 |
+| WSL、ディストリビューション | 第 1 章「Windows で使う」 |
 | バージョン管理 | 第 8 章「バージョン管理をする理由」 |
 | Git、リポジトリ | 第 8 章「Git を入れてリポジトリを作る」 |
 | コミット、コミットのハッシュ | 第 8 章「変更を記録する」 |
