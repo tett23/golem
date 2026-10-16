@@ -202,7 +202,7 @@ golem-doc の [code: assemble] は、全ファイルの S0 の結果をマニフ
 値は [code: style.toml] に書かれ、golem-project が読み込んで [code: Style] にする。
 寸法は、この時点で整数の sp に変換する。
 1pt は 65536sp であり、レイアウトの計算は浮動小数点数を使わない。
-浮動小数点数の結果は、計算の順序や機械の命令によって最後の桁が変わりうるからである。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-project/adr/0002-style-toml.md]（golem-project ADR 0002「style.toml の読み込み」）]
+浮動小数点数の結果は、計算の順序や計算機の命令によって最後の桁が変わりうるからである。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-project/adr/0002-style-toml.md]（golem-project ADR 0002「style.toml の読み込み」）]
 
 golem-layout-spec は、[code: Style] からページの幾何を計算し、[code: PageGeometry] にする。[index reading="PageGeometry": PageGeometry][note: [code: https://github.com/tett23/golem/blob/main/docs/golem-layout-spec/adr/0001-page-geometry.md]（golem-layout-spec ADR 0001「ページの幾何」）]
 

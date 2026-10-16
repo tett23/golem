@@ -3,7 +3,7 @@
 
 Golem をソースからビルドする手順は、README の Development の節にある。
 この章はその手順を、なぜその順序なのかと一緒に並べ直す。
-手順の多くは、依存の版を固定して、どの機械でも同じ実行ファイルの振る舞いを得るためにある。[note: [code: https://github.com/tett23/golem/blob/main/README.md#development]（README の Development の節）]
+手順の多くは、依存の版を固定して、どのマシンでも同じ実行ファイルの振る舞いを得るためにある。[note: [code: https://github.com/tett23/golem/blob/main/README.md#development]（README の Development の節）]
 
 ## 道具をそろえる
 

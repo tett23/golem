@@ -61,7 +61,7 @@ golem-syntax の [code: Golem.Syntax.Render] の [code: renderJson] が文字列
 | [code: message] | 文字列 | 一行のメッセージ |
 | [code: related] | 配列 | [code: span] と [code: message] を持つオブジェクトの列 |
 | [code: fixes] | 配列 | [code: title] と [code: edits] を持つ修正案の列 |
-| [code: facts] | オブジェクト | 機械が読む事実。持つ diagnostic にだけある（下を参照） |
+| [code: facts] | オブジェクト | プログラムが読む事実。持つ diagnostic にだけある（下を参照） |
 
 [code: span] は次の五つの鍵を持つ。
 
@@ -83,7 +83,7 @@ golem-syntax の [code: Golem.Syntax.Render] の [code: renderJson] が文字列
 CR を含む原稿の G0103 に付く「golem fmt で LF に直す」がその例である。
 
 一部の diagnostic は、[code: fixes] の後に [code: facts] のオブジェクトを持つ。[index reading=facts: facts][note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
-ページ番号や測った値のように、メッセージに書いたことを機械が読める形にしたもので、鍵はdiagnostic ごとに決まった順に並ぶ。
+ページ番号や測った値のように、メッセージに書いたことをプログラムが読める形にしたもので、鍵はdiagnostic ごとに決まった順に並ぶ。
 値は整数、文字列、整数の配列、文字列の配列のどれかである。
 今は [code: golem preflight] の diagnostic（G0902 から G0918）だけが持ち、ほかの diagnostic の JSON に [code: facts] の鍵は現れない。
 
