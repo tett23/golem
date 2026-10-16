@@ -1111,8 +1111,8 @@ number-text の引数が不正です
 位置はコマンドの名前である。
 
 - メッセージ: `未知のコマンドです: <名前>`
-- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`。プラグインのコマンドの呼び出しでは golem-driver の `Golem.Driver.Plugins`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)、[ADR 0027](adr/0027-exhaustive-command-dispatch-by-types.md)
 
 ### 主な原因
 
