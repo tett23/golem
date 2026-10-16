@@ -284,7 +284,7 @@ docs/diagnostics.md の重大度の欄の値を説明するときに限り、そ
 - 開発者のマニュアルの図は、`manual-dev/images/src/` の SVG を原稿とし、`scripts/manual/render-figures.sh` で PNG にして、両方をコミットする。今の Golem は図版に PNG と JPEG を使い、SVG を扱わないためである。図の文字は、組版と同じ Noto Sans JP で描く。
 - マニュアルは画面で読む PDF と HTML として配るので、印刷用の設定（塗り足しと出力インテント）を持たせない。出力インテントに要る ICC プロファイルは配布の条件のためリポジトリに入れられず、塗り足しだけを持たせても PDF/X-4 の要件は満たせない。
 - 各マニュアルのルートの `preflight.toml` は、組み込みの `print` を元にして、印刷のための検査（図版の色空間と ICC プロファイル、塗り足し、PDF/X-4 の要件）を `off` にする。はみ出し、グリフの欠け、図版の解像度は検査に残す。
-- 図版は、今は RGB の PNG のままにする。PDF と SVG の図版（[docs/roadmap.md](roadmap.md) の v1.0.0 の「PDF の図版」と「SVG の図版」）が使えるようになったら、図をベクターのまま置く形に改める。
+- 図版は、今は RGB の PNG のままにする。PDF と SVG の図版（[docs/roadmap.md](roadmap.md) の v0.1.0-rc3 の「PDF の図版」と「SVG の図版」）が使えるようになったら、図をベクターのまま置く形に改める。
 
 ## 更新の決まり
 
