@@ -13,7 +13,7 @@ category:           Text
 build-type:         Simple
 
 common warnings
-  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
   default-extensions: DerivingStrategies LambdaCase OverloadedStrings
 
 library

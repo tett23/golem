@@ -134,6 +134,57 @@ printf -- '-- docs/adr/0001-x.md\nmain = readFile "../../docs/diagnostics.md"\n'
 run docs_refs "$R"
 expect "docs-refs: an ADR and a listed document" 0
 
+# ---------------------------------------------------------------- incomplete-patterns.sh
+
+incomplete_patterns() { sh "$HERE/incomplete-patterns.sh" "$@"; }
+: >"$WORK/in"
+run incomplete_patterns "$HERE/../.."
+expect "incomplete-patterns: the repository" 0
+P=$WORK/patterns
+mkdir -p "$P/modules/a" "$P/modules/b"
+# cabal NAME TEXT: modules/NAME/NAME.cabal
+cabal() { printf '%s' "$2" >"$P/modules/$1/$1.cabal"; }
+COMMON_OK='common warnings
+  ghc-options: -Wall -Werror=incomplete-patterns
+
+library
+  import:           warnings
+
+test-suite a-test
+  import:           warnings
+  ghc-options: -threaded
+'
+cabal a "$COMMON_OK"
+cabal b 'executable b
+  ghc-options: -threaded -Wall -Werror=incomplete-patterns
+'
+run incomplete_patterns "$P"
+expect "incomplete-patterns: through the common stanza or its own ghc-options" 0
+cabal b 'common warnings
+  ghc-options: -Wall
+
+library
+  import:           warnings
+'
+run incomplete_patterns "$P"
+expect "incomplete-patterns: a common stanza without the flag" 1
+if grep -qx 'modules/b/b.cabal: library' "$WORK/err"; then ok; else ng "incomplete-patterns: the component is named"; fi
+cabal b 'common warnings
+  ghc-options: -Wall -Werror=incomplete-patterns
+
+library
+  import:           warnings
+
+executable b
+  ghc-options: -Wall
+'
+run incomplete_patterns "$P"
+expect "incomplete-patterns: a component that does not import the stanza" 1
+if grep -qx 'modules/b/b.cabal: executable b' "$WORK/err" && ! grep -q 'library' "$WORK/err"; then ok; else ng "incomplete-patterns: only the component without the flag is named"; fi
+rm "$P/modules/b/b.cabal"
+run incomplete_patterns "$P"
+expect "incomplete-patterns: a package without a .cabal file" 1
+
 # ---------------------------------------------------------------- gate.sh
 
 gate() { sh "$HERE/gate.sh" "$@"; }

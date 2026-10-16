@@ -143,6 +143,10 @@ v2 以降の課題を足すときのように、変更がマニュアルに書�
 コードの中では、文書のパスを一つの文字列（`"../../docs/diagnostics.md"` のような形）で書く。
 CI の `changes` ジョブは、そうした文字列を拾って一覧と照らし合わせる（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
 
+すべてのパッケージは、網羅していない `case` と関数の定義を `-Werror=incomplete-patterns` でエラーにする（[docs/adr/0027](./docs/adr/0027-exhaustive-command-dispatch-by-types.md)）。
+`modules/` にパッケージを足したときは、cabal ファイルの `common warnings` の `ghc-options` にこのフラグを書き、各コンポーネントで `import: warnings` とする。
+付け忘れると、CI の `changes` ジョブ（`scripts/ci/incomplete-patterns.sh`）が失敗する。
+
 監査の記録や性能計測のスナップショットは、`docs/` の下に用途ごとのディレクトリを作って置く。
 これらもコミットしたあとは変更しない。
 `docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/` に置いた記録は、フックと CI の `adr` ジョブがコミット後の変更、削除、移動を拒否する（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)）。
