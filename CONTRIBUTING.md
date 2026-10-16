@@ -18,7 +18,7 @@ Golem への変更は、どれも ADR（Architecture Decision Record）から始
 git config core.hooksPath .githooks
 ```
 
-フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.8.1 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.1`）。
+フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.8.2 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.2`）。
 `.githooks/pre-push` は、仕様を変えたのにマニュアルを直していないブランチの push を止める（「ドキュメント」の節）。
 この設定はリポジトリに保存されないため、クローンのたびに実行する。
 
@@ -74,7 +74,7 @@ ADR は日本語で書く。
 
 コミットした ADR は、ステータスの行を除いて変更できない。
 `.githooks/pre-commit` と CI の `adr` ジョブが、変更、削除、リネームを拒否する。
-ステータスの行の変更（`--allow-status`）と、ADR の参照のリンクだけを変える変更（`--allow-links`）は許す（[docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md)）。
+ステータスの行の変更（`--allow-status`）と、リンクを付ける、外す、リンク先を変えるだけの変更（`--allow-links`）は許す（[docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md)、[docs/adr/0032](./docs/adr/0032-update-adr-guard-to-v0.8.2.md)）。リンクのテキストの変更は許さない。
 ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持つ。無い ADR と二つ以上ある ADR は、フックと CI の `adr` ジョブが拒否する。`adr-guard check-status` で一覧にできる（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)）。
 文書の中の ADR の参照にはリンクを付ける。リンクのない参照は CI の `adr` ジョブが拒否する。`adr-guard links --fix` で直せる。
 

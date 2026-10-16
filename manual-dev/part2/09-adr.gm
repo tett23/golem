@@ -84,7 +84,7 @@ ADR はレビューを受けるまでコミットしない。
 ## adr-guard
 
 この規則は、adr-guard が機械で強制する。[index reading=adr-guard: adr-guard]
-今使っている版は v0.8.1 である。[note: [code: https://github.com/tett23/adr-guard]（adr-guard）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0012-update-adr-guard-to-v0.8.1.md]（docs/adr の ADR 0012「adr-guard を v0.8.1 に上げ、ADR と記録のディレクトリ名の別名も保護する」）]
+今使っている版は v0.8.2 である。[note: [code: https://github.com/tett23/adr-guard]（adr-guard）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0032-update-adr-guard-to-v0.8.2.md]（docs/adr の ADR 0032「adr-guard を v0.8.2 に上げ、コミット済みの ADR のリンクだけの変更を許す」）]
 
 [code: .githooks/pre-commit] の中身は一行である。
 
@@ -94,13 +94,14 @@ exec adr-guard pre-commit --allow-status --allow-links
 ```
 
 このフックは、コミット済みの ADR（[code: docs/adr/] と [code: docs/<モジュール>/adr/] の下）への変更、削除、リネームを含むコミットを拒む。
-例外は二つで、ステータスの行の変更（[code: --allow-status]）と、ADR の参照のリンクを付ける、外す、リンク先を変えるだけの変更（[code: --allow-links]）である。
+例外は二つで、ステータスの行の変更（[code: --allow-status]）と、リンクを付ける、外す、リンク先を変えるだけの変更（[code: --allow-links]）である。
+リンクは ADR の参照に限らない。リンクのテキストの変更は拒む。
 ステータスの行のない ADR と、二つ以上ある ADR も拒む。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0010-update-adr-guard-to-v0.5.0.md]（docs/adr の ADR 0010「adr-guard を v0.5.0 に上げ、ステータスの行の変更を --allow-status で許可する」）]
 
 監査の記録（[code: docs/audit/]、[code: docs/audits/]）と性能計測の記録（[code: docs/benchmarks/]、[code: docs/benchmark/]）も、コミットした後の変更、削除、移動を拒む。
 記録には、[code: --allow-status] と [code: --allow-links] の例外も効かない。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0011-update-adr-guard-to-v0.8.0.md]（docs/adr の ADR 0011「adr-guard を v0.8.0 に上げ、ステータスの行の数と記録の保護も検査する」）]
 
-同じ検査は、CI の [code: docs.yml] の [code: adr] ジョブでも、adr-guard の v0.8.1 の action に [code: allow-status: true] と [code: allow-links: true] を付けて行う。
+同じ検査は、CI の [code: docs.yml] の [code: adr] ジョブでも、adr-guard の v0.8.2 の action に [code: allow-status: true] と [code: allow-links: true] を付けて行う。
 フックは手元の設定なので外せるが、CI の検査は外せない。
 
 ## ADR の参照にはリンクを付ける
