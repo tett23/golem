@@ -123,6 +123,8 @@ Haskell のコードは fourmolu 0.21.0.0 で整形し、hlint 3.10 の指摘を
 ADR で仕様が変わったら、同じプルリクエストで [docs/specifications.md](./docs/specifications.md) と [README.md](./README.md) も更新する。
 この二つは、`main` で常に最新でなければならない。
 モジュールの実装の詳細は `docs/<モジュール>/specifications.md` に書く。
+どの版で何を扱うか、まだ実装していない項目、手で確かめる項目、課題にしなかった事項は [docs/roadmap.md](./docs/roadmap.md) に書き、仕様書には書かない。
+実装を終えたら、その項目を roadmap.md から消し、振る舞いを仕様書に書く。
 
 仕様書から ADR を参照するときは、ADR のファイルへのリンクを付ける。
 新しい用語を導入したら、[docs/glossary.md](./docs/glossary.md) にも加える。
@@ -139,7 +141,7 @@ ADR を実装して使い手から見える振る舞いが変わるときは同�
 - docs/markup.md か docs/specifications.md を変えて、`manual/` も `manual-dev/` も変えていないブランチ
 - CONTRIBUTING.md か CONTRIBUTING.en.md を変えて、`manual-dev/` を変えていないブランチ
 
-v2 以降の課題を足すときのように、変更がマニュアルに書いた事柄を変えない場合は、ブランチのコミットのどれかのメッセージの末尾に `Manual: unchanged` というトレーラーの行を書く。
+既知の不具合を足すときのように、変更がマニュアルに書いた事柄を変えない場合は、ブランチのコミットのどれかのメッセージの末尾に `Manual: unchanged` というトレーラーの行を書く。
 フックは手元の `origin/main` との分岐点から検査するので、`main` に入った変更で止まったときは `git fetch` をしてから push し直す。
 
 ビルドやテストが `docs/` の下の文書を読むようにしたときは、その文書を `scripts/ci/needs-build.sh` の一覧に加える。

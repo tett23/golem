@@ -12,6 +12,7 @@ Golem のリポジトリの [code: docs/] には、性質の違う文書が並�
 | --- | --- | --- |
 | [code: docs/specifications.md] | Golem の能力、ワークフロー、採用しなかったもの、モジュール構成 | ADR に合わせて直す。[code: main] で常に最新 |
 | [code: docs/markup.md] | 原稿の記法の仕様 | 同上 |
+| [code: docs/roadmap.md] | どの版で何を扱うか、まだ実装していない項目、手で確かめる項目、課題にしなかった事項 | 版の予定が決まったら足し、実装を終えたら消す |
 | [code: docs/<モジュール>/specifications.md] | モジュールの実装の詳細 | 同上 |
 | [code: docs/glossary.md] | 用語集 | 新しい用語を導入したら足す |
 | [code: docs/diagnostics.md] | 診断のコードの説明 | コードを足すときに同じ変更で足す |
@@ -34,10 +35,11 @@ ADR で仕様が変わったら、同じプルリクエストで [code: docs/spe
 実装だけを先にマージして、仕様書を後で直す、という進め方をすると、そのあいだの [code: main] では仕様書が実装と食い違う。
 [code: main] のどのコミットを取り出しても、そのコミットの振る舞いが仕様書に書いてある、という状態を保つ。
 
-仕様書の「今後の実装項目」は、v1 の範囲から外した事項と、まだ実装していない項目の一覧である。
+どの版で何を扱うかと、まだ実装していない項目は、仕様書ではなく [code: docs/roadmap.md] に書く。
+仕様書は今の振る舞いだけを書き、予定を書かないためである。
 採択済みの ADR があってまだ実装していない項目には「（未実装）」と書き、その ADR へリンクする。
 実装を終えたら、その項目を一覧から消す。
-「手で確かめる項目」は、実装もテストも終わったが ADR の求める手作業の確かめが残っている項目である。
+[code: docs/roadmap.md] の「手で確かめる項目」は、実装もテストも終わったが ADR の求める手作業の確かめが残っている項目である。
 確かめたら、結果をプルリクエストか [code: docs/audits/] の記録に書き、一覧から消す。
 
 ## 用語集と診断の文書
@@ -135,10 +137,10 @@ sh scripts/manual/check-updated.sh BASE HEAD
 どちらを直すべきかはレビューで確かめる。
 規則 2 は、この本の第二部が [code: CONTRIBUTING.md] をまとめているので、開発の手順の変更が第二部に届くようにするためである。
 
-v2 以降の課題を足すときのように、仕様書を変えてもマニュアルに書いた振る舞いが変わらない場合は、コミットのメッセージの末尾にトレーラーを書く。[index reading="Manual: unchanged": Manual: unchanged]
+既知の不具合を足すときのように、仕様書を変えてもマニュアルに書いた振る舞いが変わらない場合は、コミットのメッセージの末尾にトレーラーを書く。[index reading="Manual: unchanged": Manual: unchanged]
 
 ```text
-Add the plain-text targets to the v2 items
+List a known bug of the line breaking
 
 Manual: unchanged
 ```
