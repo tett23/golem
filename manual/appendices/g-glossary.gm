@@ -14,17 +14,18 @@
   macOS では「ターミナル」を使います。Windows では、WSL で入れた Linux のターミナルを使います。
   「[ref-title install]」（[ref-page install] ページ）、「[ref-title terminal]」（[ref-page terminal] ページ）、「[ref-title wsl]」（[ref-page wsl] ページ）。
 = [strong: Linux]
-  macOS や Windows と同じく、コンピューターを動かす土台のソフトウェア（OS）の一つです。[index reading=りなっくす: Linux]
-  Golem の配布物には、Linux 向けのものと macOS 向けのものがあります。
+  Windows や macOS と同じく、コンピューターを動かす土台のソフトウェア（OS）の一つです。[index reading=りなっくす: Linux]
+  サーバーやソフトウェアの開発の場で広く使われ、Ubuntu のようなディストリビューションに分かれています。
+  Golem は、本を組む作業を Linux のコンピューターに任せられるように、Linux 向けの配布物を用意しています。Windows では、WSL の Linux をターミナルで使います。
   「[ref-title install]」（[ref-page install] ページ）、「[ref-title wsl]」（[ref-page wsl] ページ）。
 = [strong: WSL]
   Windows Subsystem for Linux の略で、Windows の中で Linux を動かす Windows の機能です。[index reading=だぶりゅーえすえる: WSL]
   Windows では、WSL の Linux の上で Golem を使います。
   「[ref-title wsl]」（[ref-page wsl] ページ）。
 = [strong: ディストリビューション]
-  Linux の種類の一つ一つです。同じ土台に組み合わせるソフトウェアが違います。[index reading=でぃすとりびゅーしょん: ディストリビューション]
-  WSL を入れると、Ubuntu というディストリビューションが入ります。
-  「[ref-title wsl]」（[ref-page wsl] ページ）。
+  Linux の種類の一つ一つです。同じ Linux を元にして、一緒に入れるソフトウェアの組み合わせを変えたものです。[index reading=でぃすとりびゅーしょん: ディストリビューション]
+  Ubuntu はその一つで、WSL を入れると Ubuntu が入ります。
+  「[ref-title install]」（[ref-page install] ページ）、「[ref-title wsl]」（[ref-page wsl] ページ）。
 = [strong: コマンド]
   ターミナルに打ち込む指示です。[index reading=こまんど/たーみなるの: コマンド/ターミナルの]
   [code: golem build] のように、プログラムの名前と、何をするかを並べて書きます。

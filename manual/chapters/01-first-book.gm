@@ -24,6 +24,16 @@ Golem の実行ファイルは、GitHub Releases[note: Golem の配布のペー�
 | [code: aarch64-linux] | Linux（aarch64） |
 | [code: aarch64-macos] | macOS 14 以降（Apple Silicon） |
 
+[strong: Linux][index reading=りなっくす: Linux] は、Windows や macOS と同じく、コンピューターを動かす土台のソフトウェア（OS）の一つです。
+サーバー（ネットワークにつながって動き続け、ほかのコンピューターからの求めに応じるコンピューター）や、ソフトウェアの開発の場で広く使われています。
+Linux には、同じ Linux を元にして、一緒に入れるソフトウェアの組み合わせを変えた種類がいくつもあり、その一つ一つを[strong: ディストリビューション][index reading=でぃすとりびゅーしょん: ディストリビューション]と呼びます。
+Ubuntu はその一つです。
+Golem の Linux のアーカイブは、ディストリビューションを問わずに動きます。
+
+Golem が Linux の配布物を用意しているのは、本を組む作業を Linux のコンピューターに任せられるようにするためです。
+第[ref-number git-ci]章では、原稿を変えるたびに、インターネットの向こうにある Linux のコンピューターで自動で組む仕組みを説明します。
+Golem の開発でも、同じ原稿から同じ出力が得られることを、Linux のコンピューターで確かめています。
+
 アーカイブの名前は、バージョンと、対象の OS と CPU を並べた [code: golem-v0.1.0-x86_64-linux.tar.gz] のような形です。
 Windows では、Windows の中で Linux を動かす仕組みを使い、その上で Linux のアーカイブを使います。
 その概略は、この章の「[ref-title wsl]」で説明します。
@@ -95,8 +105,7 @@ $ shasum -a 256 --ignore-missing -c SHA256SUMS
 
 今の Golem には、Windows でそのまま動く配布物がありません（今後の予定は[ref-title app-roadmap]、[ref-page app-roadmap] ページ）。
 Windows のコンピューターでは、[strong: WSL][index reading=だぶりゅーえすえる: WSL]（Windows Subsystem for Linux）という Windows の機能を使います。
-WSL は、Windows の中で Linux を動かす仕組みです [cite ms-wsl-about][note: Microsoft「Windows Subsystem for Linux とは」。[code: https://learn.microsoft.com/ja-jp/windows/wsl/about]]。
-[strong: Linux][index reading=りなっくす: Linux] は、macOS や Windows と同じく、コンピューターを動かす土台のソフトウェア（OS）の一つです。
+WSL は、Windows の中で Linux（「[ref-title install]」で説明した OS）を動かす仕組みです [cite ms-wsl-about][note: Microsoft「Windows Subsystem for Linux とは」。[code: https://learn.microsoft.com/ja-jp/windows/wsl/about]]。
 WSL を入れると、Windows のアプリケーションと並んで、Linux のターミナルを開けるようになります。
 Golem の Linux のアーカイブは、そのターミナルの中で動きます。
 
@@ -115,10 +124,7 @@ Windows に付いている PowerShell というターミナルを、右クリッ
 $ wsl --install
 ```
 
-このコマンドは、WSL を使えるようにし、Ubuntu という Linux を入れます。
-Linux には、同じ土台に組み合わせるソフトウェアを変えた種類がいくつもあり、その一つ一つを[strong: ディストリビューション][index reading=でぃすとりびゅーしょん: ディストリビューション]と呼びます。
-Ubuntu はその一つです。
-Golem の Linux のアーカイブは、ディストリビューションを問わずに動きます。
+このコマンドは、WSL を使えるようにし、Ubuntu というディストリビューションを入れます。
 
 ### Linux のターミナルを開く
 
