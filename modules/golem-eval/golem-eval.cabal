@@ -16,6 +16,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:
+    Golem.Eval.Builtin
     Golem.Eval.Expr
     Golem.Eval.File
     Golem.Eval.Number
@@ -39,7 +40,7 @@ test-suite golem-eval-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    DeferredSpec DiagnosticSitesSpec ExprSpec FileSpec OperatorSpec RegexStyleSpec
+  other-modules:    BuiltinSpec DeferredSpec DiagnosticSitesSpec ExprSpec FileSpec OperatorSpec RegexStyleSpec
   build-depends:
     , base
     , containers

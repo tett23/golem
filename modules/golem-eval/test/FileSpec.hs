@@ -6,6 +6,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Doc.Validate (validateDocument)
+import Golem.Eval.Builtin (OverridableBuiltin (..), pluginCommandName)
 import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
@@ -75,6 +76,10 @@ diagsWith c src =
 -- | The code and message of each diagnostic.
 msgs :: Text -> [(Text, Text)]
 msgs src = [(c, m) | (c, m, _, _) <- diags src]
+
+-- | A plugin command that answers PLUGIN at the call.
+pluginOutput :: PluginCommand
+pluginOutput = PluginCommand (\_ _ sp -> Right ([Text sp "PLUGIN"], []))
 
 paraInlines :: BlockBody -> Maybe [Inline]
 paraInlines = \case
@@ -240,13 +245,13 @@ tests =
         errs "本文%%= メモ %%\n" @?= []
         snd (run ctx {ctxProfile = Prod} "本文%%= メモ %%\n") @?= ["G0205"],
       testCase "a plugin may override a built-in command when declared" $ do
-        let hook =
-              noPlugins
-                { phCommands = Set.fromList ["strong"],
-                  phOverrides = Set.fromList ["strong"],
-                  phCallCommand = \_ _ _ sp -> Right ([Text sp "PLUGIN"], [])
-                }
-        fst (run ctx {ctxPlugins = hook} "[strong: x]\n") @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 11) "PLUGIN"]]
+        let hook = noPlugins {phOverrides = Map.fromList [(BStrong, pluginOutput)]}
+        fst (run ctx {ctxPlugins = hook} "[strong: x]\n") @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 11) "PLUGIN"]],
+      testCase "a plugin command with a name of its own (docs/adr ADR 0027)" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let hook = noPlugins {phCommands = Map.fromList [(greet, pluginOutput)]}
+        fst (run ctx {ctxPlugins = hook} "[greet: x]\n") @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 10) "PLUGIN"]]
+        diagsWith ctx {ctxPlugins = hook} "[nope: x]\n" @?= [("G0222", "未知のコマンドです: nope", 1, 5)]
     ]
 
 verseTests :: TestTree
@@ -994,10 +999,7 @@ diagnosticTests =
         msgs "[number-text 1.5]\n" @?= [("G0219", "number-text に渡せるのは整数だけです")]
         errs "[number-text [= 1 / 0]]\n" @?= ["G0203"],
       testCase "G0222: the position is the name" $ do
-        diags "[nope: x]\n" @?= [("G0222", "未知のコマンドです: nope", 1, 5)]
-        case phCallCommand noPlugins "nope" [] [] (mkSpan (FileId 1) 0 3) of
-          Left [d] -> diagCode d @?= DiagnosticCode "G0222"
-          other -> assertFailure (show (fmap fst other)),
+        diags "[nope: x]\n" @?= [("G0222", "未知のコマンドです: nope", 1, 5)],
       testCase "G0233: missing files" $ do
         msgs "@listing images/none.txt\n" @?= [("G0233", "ファイルがありません: images/none.txt")]
         msgs "@table src=none.csv\n" @?= [("G0233", "ファイルがありません: none.csv")]
