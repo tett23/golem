@@ -84,7 +84,7 @@ ADR はレビューを受けるまでコミットしない。
 
 ## adr-guard
 
-この規則は、adr-guard が機械で強制する。[index reading=adr-guard: adr-guard]
+この規則は、adr-guard が自動で強制する。[index reading=adr-guard: adr-guard]
 今使っている版は v0.8.2 である。[note: [code: https://github.com/tett23/adr-guard]（adr-guard）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0032-update-adr-guard-to-v0.8.2.md]（docs/adr の ADR 0032「adr-guard を v0.8.2 に上げ、コミット済みの ADR のリンクだけの変更を許す」）]
 
 [code: .githooks/pre-commit] の中身は一行である。

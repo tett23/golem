@@ -84,7 +84,7 @@ $ sha256sum build/pdf/*.pdf
 
 [code: golem preflight] は PDF を書かず、[code: golem build --target pdf --profile prod] と同じ手順で組んだ PDF を、プリフライトの設定（既定は [code: preflight.toml]）に従って検査する。
 エラーがあれば 1 で終わるので、そこで CI の回を止められる。
-この例は、機械が読む JSON と、要約の行を含む人が読む形式を得るために、二度検査している。
+この例は、プログラムが読む JSON と、要約の行を含む人が読む形式を得るために、二度検査している。
 どちらか一方でよければ、一度で済む。
 JSON の diagnostics のうち、プリフライトの diagnostic は [code: facts] を持つ（第[ref-number diagnostics]章）。
 [code: facts] の [code: pdf-pages] で該当するページを、[code: ppi] や [code: limit] で測った値としきい値を、メッセージを解析せずに読める。
