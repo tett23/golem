@@ -39,11 +39,6 @@ Windows では、Windows の中で Linux を動かす仕組みを使い、その
 その概略は、この章の「[ref-title wsl]」で説明します。
 Intel の CPU の macOS には対応していません。
 
-アーカイブと一緒に [code: SHA256SUMS] というファイルを取得し、アーカイブが壊れていないかを確かめてから展開します。
-[code: SHA256SUMS] には、各ファイルの中身から計算した 64 桁の値が書いてあります。
-この値を[strong: ハッシュ][index reading=はっしゅ: ハッシュ]と呼び、ファイルが一バイトでも違えばまったく別の値になります。
-手元で計算したハッシュが [code: SHA256SUMS] の値と合えば、ファイルは配布元と同じものです。
-
 ターミナルは、コマンドを受け付けられる状態になると、行の始まりに [code: %] や [code: $] のような短い印を表示して、入力を待ちます。
 この印を[strong: プロンプト][index reading=ぷろんぷと: プロンプト]と呼びます。
 このマニュアルでは、打ち込むコマンドの行を、プロンプトに見立てた [code: $] と空白に続けて書きます。
@@ -65,8 +60,6 @@ $ TAG=v0.1.0
 $ URL=https://github.com/tett23/golem/releases/download/$TAG
 $ DIR=golem-$TAG-x86_64-linux
 $ curl -LO "$URL/$DIR.tar.gz"
-$ curl -LO "$URL/SHA256SUMS"
-$ sha256sum --ignore-missing -c SHA256SUMS
 $ tar -xzf "$DIR.tar.gz"
 $ mkdir -p ~/.local/bin
 $ install -m 755 "$DIR/golem" ~/.local/bin/
@@ -75,8 +68,7 @@ $ golem --version
 
 最初の三行は、後の行で使う値に名前を付けています。
 行の途中の [code: $TAG] のような [code: $] は、プロンプトではなく、名前を付けた値を呼び出す書き方なので、そのまま打ち込みます。
-[code: curl] はファイルを取得するコマンド、[code: sha256sum] はハッシュを計算して照合するコマンド、[code: tar] はアーカイブを展開するコマンドです。
-照合が合えば、[code: sha256sum] は [code: OK] と表示します。
+[code: curl] はファイルを取得するコマンド、[code: tar] はアーカイブを展開するコマンドです。
 [code: install] は、取り出した [code: golem] を、コマンドとして呼べる場所に置きます。
 
 置く場所は [code: ~/.local/bin] です。
@@ -86,11 +78,9 @@ Finder のサイドバーで、家の形のアイコンが付いているフォ�
 [code: ~/.local/bin] は、ホームのフォルダの中の [code: .local] のフォルダの中の [code: bin] のフォルダを指します。
 名前が [code: .] で始まるフォルダは、Finder では隠れていて表示されません。
 
-macOS では、[code: sha256sum] の代わりに次のコマンドを使います。
-
-```sh
-$ shasum -a 256 --ignore-missing -c SHA256SUMS
-```
+取得したアーカイブが途中で壊れていないか、配布元のものと同じかは、展開する前に確かめられます。
+確かめ方は、この章の最後の「[ref-title verify-download]」にまとめました。
+展開の前に確かめるときは、[code: curl] の行の後に、そちらの手順を挟んでください。
 
 ブラウザで取得したアーカイブから取り出した [code: golem] は、初回の起動を macOS に止められます。
 その場合は、[code: xattr -d com.apple.quarantine golem] を実行してから起動してください。
@@ -202,7 +192,7 @@ $ golem new mybook
 - [code: fonts/]：本文のフォント（Noto Serif JP）のファイルと、そのライセンスの文書
 - [code: .gitignore]：バージョン管理のツールに、組んだ結果を記録しないように伝える設定（第[ref-number git-ci]章で使います）
 
-フォントは、配布元からバージョンを固定して取得し、ハッシュでファイルが壊れていないかを確かめてから置きます。
+フォントは、配布元からバージョンを固定して取得し、ファイルが壊れていないかを確かめてから置きます（確かめ方の仕組みは「[ref-title verify-download]」と同じです）。
 このため [code: golem new] はインターネットに接続します。
 接続できない環境では [code: golem new --no-fonts mybook] とし、表示されたファイルを手で [code: fonts/] に置いてください。
 
@@ -275,3 +265,32 @@ chapters = ["chapters/01.gm", "chapters/02.gm"]
 
 並べた順に章が続きます。
 もう一度 [code: golem build] を実行すれば、二つの章を含む本ができます。
+
+@label verify-download
+## 配布物が壊れていないかを確かめる
+
+「[ref-title install]」で取得したアーカイブは、展開する前に、壊れていないか、配布元のものと同じかを確かめられます。
+GitHub Releases には、アーカイブと一緒に [code: SHA256SUMS] というファイルを置いています。
+[code: SHA256SUMS] には、各ファイルの中身から計算した 64 桁の値が書いてあります。
+この値を[strong: ハッシュ][index reading=はっしゅ: ハッシュ]と呼び、ファイルが一バイトでも違えばまったく別の値になります。
+手元で計算したハッシュが [code: SHA256SUMS] の値と合えば、ファイルは配布元と同じものです。
+
+次の例は、「[ref-title install]」の例と同じ、x86-64 の Linux で [code: v0.1.0] を入れる場合です。
+アーカイブを [code: curl] で取得した後、[code: tar] で展開する前に、同じフォルダで打ち込みます。
+
+```sh
+$ TAG=v0.1.0
+$ URL=https://github.com/tett23/golem/releases/download/$TAG
+$ curl -LO "$URL/SHA256SUMS"
+$ sha256sum --ignore-missing -c SHA256SUMS
+```
+
+[code: sha256sum] は、ハッシュを計算して照合するコマンドです。
+照合が合えば、アーカイブの名前に続けて [code: OK] と表示します。
+合わなければ、そのアーカイブは展開せずに消し、取得し直してください。
+
+macOS では、[code: sha256sum] の代わりに次のコマンドを使います。
+
+```sh
+$ shasum -a 256 --ignore-missing -c SHA256SUMS
+```

@@ -224,7 +224,7 @@ golem-driver の [code: fixpoint] が同じ繰り返しを IO の中で回して
 ### コンパイルの時点の IO
 
 Template Haskell の [code: runIO] は、コンパイルの時点でファイルを読み、その中身を実行ファイルに埋め込む。
-golem-driver の [code: Golem.Driver.Version] はリポジトリの [code: VERSION] を、golem-layout の [code: Golem.Layout.Hyphenation.EnUs] は hyph-utf8 のパターンを、[code: Golem.Driver.Explain] は診断のコードの説明を埋め込んでいる。
+golem-driver の [code: Golem.Driver.Version] はリポジトリの [code: VERSION] を、golem-layout の [code: Golem.Layout.Hyphenation.EnUs] は hyph-utf8 のパターンを、[code: Golem.Driver.Explain] はdiagnostic のコードの説明を埋め込んでいる。
 実行の時点では、これらは定数である。
 その値は ADR 0002 の言う「Golem 自身の版」に含まれ、[code: addDependentFile] によって、ファイルが変わればモジュールがコンパイルし直される。
 

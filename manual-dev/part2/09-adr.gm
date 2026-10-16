@@ -6,6 +6,7 @@ ADR（Architecture Decision Record）は、設計の決定を一件ずつ記録�
 仕様を決めてからテストを書き、テストを失敗させてから実装する、という順番を守る。[note: [code: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md）]
 
 誤字の修正や、仕様に影響しないドキュメントの修正には ADR は要らない。
+二つのマニュアルと方針の文書の変更も、メンテナーが求めない限り ADR を書かず、プルリクエストで決める（第[ref-number manuals]章）。
 迷ったら ADR を書く、というのが [code: CONTRIBUTING.md] の基準である。
 
 ## 変更の流れ

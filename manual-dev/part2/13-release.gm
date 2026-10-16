@@ -58,7 +58,7 @@ $ gh workflow run release.yml --ref <ブランチ>
 | [code: build] | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクし、macOS では [code: macos-15] でビルドしてアーカイブを作る |
 | [code: smoke] | アーカイブを別のランナーと、[code: alpine] と [code: debian:stable-slim] のコンテナの中で展開して動かす |
 | [code: determinism] | 三つの配布物と CI のビルドの、[code: scripts/determinism.sh] の出力を比べる |
-| [code: release] | タグの push のときだけ、資産をそろえて下書きのリリースを作る |
+| [code: release] | タグの push のときだけ、アセットをそろえて下書きのリリースを作る |
 
 [code: smoke] は、ca-certificates のある [code: debian:stable-slim] と、ないものの両方で動かす。
 配布物はルート証明書を同梱せず OS の証明書のストアを読むので、ストアがない環境で正しく失敗し、[code: SSL_CERT_FILE] で救えることも確かめる必要がある。
@@ -66,11 +66,11 @@ $ gh workflow run release.yml --ref <ブランチ>
 [code: determinism] は、CI のビルドの出力と三つの配布物の出力が、一行も違わないことを確かめる。
 配布物は CI とは別の環境（Alpine の musl、macOS）でビルドするので、そこで出力が変わらないことを、ここで初めて確かめられる。
 
-## 資産
+## アセット
 
-[code: release] ジョブが下書きのリリースに付ける資産は次のとおりである。
+[code: release] ジョブが下書きのリリースに付けるアセット（GitHub の Releases の assets）は次のとおりである。
 
-| 資産 | 内容 |
+| アセット | 内容 |
 | --- | --- |
 | [code: golem-<タグ>-<プラットフォーム>.tar.gz] | 三つのプラットフォームの配布物 |
 | [code: SHA256SUMS] | アーカイブとマニュアルの SHA-256 |

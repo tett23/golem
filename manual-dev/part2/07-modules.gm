@@ -7,14 +7,14 @@ Golem のソースは、リポジトリの [code: modules/] の下に、モジ�
 
 モジュールを細かく分けたのは、モジュールのあいだのインターフェースを先に ADR で定め、各モジュールを並行して実装するためである。
 ADR はコミットした後に変えられないので、下の層から順に作った。
-ソースの位置と診断、CST と AST、意味論 IR、[code: style.toml] とレイアウト IR、レイアウトの出力とフォントの処理と PDF の直列化、の順である。
+ソースの位置と diagnostic、CST と AST、意味論 IR、[code: style.toml] とレイアウト IR、レイアウトの出力とフォントの処理と PDF の直列化、の順である。
 上の層を先に固めると、下の層の変更に追随できなくなるからである。
 
 ## モジュールの一覧
 
 | モジュール | 役割 |
 | --- | --- |
-| golem-syntax | 診断とソースの位置。golem-regex、golem-font、golem-fixtures、golem-test-support を除くすべてのモジュールが使う最下層 |
+| golem-syntax | diagnostic とソースの位置。golem-regex、golem-font、golem-fixtures、golem-test-support を除くすべてのモジュールが使う最下層 |
 | golem-regex | 正規表現スタイルの照合器。base、text、containers、array だけに依存する |
 | golem-parser | PEG のパーサー。CST、AST |
 | golem-project | マニフェスト、[code: style.toml]、import の解決 |
@@ -97,7 +97,7 @@ hyph-utf8 は英語（米国）のハイフネーションのパターンで、�
 各段階を受け持つパッケージは第[ref-number ir]章の図[ref-number fig-pipeline]に、S0、S1、S2 の意味は「[ref-title stages]」（[ref-page stages] ページ）に示した。
 
 ある段階で一つでもエラーがあれば、その次の段階には進まない。
-ただし、同じ段階の中では、エラーのないファイルの処理を続け、診断をできるだけ多く集める。
+ただし、同じ段階の中では、エラーのないファイルの処理を続け、diagnostics をできるだけ多く集める。
 並列に実行した結果は、完了の順ではなく、マニフェストの章の順とファイルの中の位置で並べ直してから次の段階に渡す。
 並列化が出力の順序を変えないようにするためである。
 
@@ -114,7 +114,7 @@ golem-lsp も golem-driver に依存し、ファイルの変更ごとに S0 と�
 この分け方のおかげで、内容の循環は構造の上で起こりえず、各ファイルは単独で検査できる単位になる。
 この単位が、並列のビルドと LSP の再評価の土台である。
 import は AST の段階で解決し、テキストとして展開しない。
-診断の位置をファイルごとに保つためである。
+diagnostic の位置をファイルごとに保つためである。
 import のグラフに循環があればエラーにし、同じファイルを複数のファイルが import したときは一度だけ評価して結果を共有する。
 
 ## 開発の順序

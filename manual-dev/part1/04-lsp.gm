@@ -16,7 +16,7 @@ v1 の LSP は次の機能を持つ。[note: [code: https://github.com/tett23/go
 
 | 機能 | 内容 |
 | --- | --- |
-| 診断 | 構文エラー、コンパイルエラー、lint。lint の重大度は dev のプロファイルで決める |
+| diagnostics | 構文エラー、コンパイルエラー、lint。lint の重大度は dev のプロファイルで決める |
 | 定義への移動 | [code: @import] のパス、名前空間を通した変数、ラベル、ファイルの中で定義したスタイル |
 | 参照の検索 | 変数とラベル。ラベルはファイルをまたいで検索する |
 | 名前の変更 | ラベルの名前を、定義とすべての参照で書き換える。既存のラベルと重なる名前は拒否する |
@@ -39,7 +39,7 @@ LSP はレイアウト（S2）とバックエンドを実行しない。
 - プロジェクトのルートを決める印：[code: manifest.toml]
 
 [code: manifest.toml] のあるディレクトリが、プロジェクトのルートになる。
-マニフェストから到達しないファイルを開いた場合は、構文解析とファイル内評価（S0）だけを行い、文書構造（S1）の診断は出さない。
+マニフェストから到達しないファイルを開いた場合は、構文解析とファイル内評価（S0）だけを行い、文書構造（S1）の diagnostics は出さない。
 
 Neovim の組み込みのクライアント（ADR が挙動を調べたのは 0.12.5）なら、次の設定でつながる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-lsp/adr/0003-position-handling.md]（golem-lsp ADR 0003「行の長さを超える列を行末に丸め、位置の交渉をエディタで確かめる」）]
 
@@ -72,7 +72,7 @@ UTF-8 なら、列とバイト位置の変換に行の走査が要らない。
 
 日本語の原稿では、単位の違いがそのまま列のずれになる。
 「漢」は UTF-8 で 3 バイト、UTF-16 で 1 単位であり、絵文字は UTF-8 で 4 バイト、UTF-16 で 2 単位である。
-クライアントの実装が交渉の結果を正しく使わないと、診断の下線や定義への移動の位置がずれる。
+クライアントの実装が交渉の結果を正しく使わないと、diagnostic の下線や定義への移動の位置がずれる。
 エディタで位置がずれたときは、まずクライアントがどの単位に決まったかを確かめる。
 Neovim なら次の式で表示できる。
 
@@ -97,19 +97,19 @@ Neovim なら次の式で表示できる。
 LSP は最後の変更から一定の時間を待ってから、変わったファイルを構文解析し、S0 で評価し直す。
 見出し、ラベル、import される変数が変わったときだけ、S1 と、影響を受けるほかのファイルを評価し直す。
 
-## 診断の載せ方
+## diagnostics の載せ方
 
-LSP の診断の重大度は、error が [code: Error]、warning が [code: Warning]、notice が [code: Information] になる。
+LSP の diagnostic の重大度は、error が [code: Error]、warning が [code: Warning]、notice が [code: Information] になる。
 notice を [code: Hint] にしないのは、エディタの多くが [code: Information] を問題の一覧に載せるからである。
 マニフェストの [code: silence-notices] に並べたコードの notice は、公開しない（第[ref-number diagnostics]章）。
 
-プロジェクトの段階の診断のうち、どのファイルも指さないものは [code: manifest.toml] に載せる。
-文書にあるコードの診断には、[code: codeDescription] に [code: docs/diagnostics.md] の節の URL が付く。
+プロジェクトの段階の diagnostics のうち、どのファイルも指さないものは [code: manifest.toml] に載せる。
+文書にあるコードの diagnostic には、[code: codeDescription] に [code: docs/diagnostics.md] の節の URL が付く。
 エディタによっては、この URL を開くリンクとして表示する。
 
 ## プラグインと LSP
 
 プラグインのコマンドを含むファイルの評価には、プラグインのキャッシュを使う。
 LSP はネットワークに接続しない。
-キャッシュにないプラグインは、[code: golem plugin fetch] を求める診断になり、そのコマンドを含む部分だけを評価しない。
+キャッシュにないプラグインは、[code: golem plugin fetch] を求める diagnostic になり、そのコマンドを含む部分だけを評価しない。
 プラグインを使うプロジェクトをエディタで開く前に、一度 [code: golem plugin fetch] を実行しておく。

@@ -228,7 +228,7 @@ hanging-punctuation = true
 ### テーブル
 
 キーは、[code: \[page\]] のような見出しの行でまとめます。
-この見出しから次の見出しまでのまとまりを、[strong: テーブル][index reading=てーぶる: テーブル（TOML）]と呼びます。
+この見出しから次の見出しまでのまとまりを、[strong: テーブル][index reading=てーぶる/とむるの: テーブル/TOML の]と呼びます。
 原稿に書く表（第[ref-number markup]章）とは別のもので、TOML の仕様の言葉です。
 見出しの名前は [code: .] で区切って入れ子にできます。
 

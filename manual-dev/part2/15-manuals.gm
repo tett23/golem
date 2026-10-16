@@ -12,7 +12,7 @@ Golem には二つのマニュアルがある。
 
 マニュアルを書く人とレビューする人の基準は、[code: docs/manual-policy.md] にある。
 最初の中身は docs/adr の ADR 0024 が決めた。
-読み手、内容の範囲、更新の検査、判型を変えるときは新しい ADR を書き、言い回しの例や規格の一覧への追加は方針の文書を直接直してよい。[note: [code: https://github.com/tett23/golem/blob/main/docs/manual-policy.md]（マニュアルの方針）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0024-manual-audiences-and-policy.md]（docs/adr の ADR 0024「マニュアルの読み手と方針」）]
+マニュアルと方針の文書の変更は、読み手や内容の範囲を変えるときも含めて、ADR を書かずにプルリクエストで決める。ADR を書くのは、メンテナーが求めたときだけである。[note: [code: https://github.com/tett23/golem/blob/main/docs/manual-policy.md]（マニュアルの方針）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0024-manual-audiences-and-policy.md]（docs/adr の ADR 0024「マニュアルの読み手と方針」）]
 
 ## 二つのマニュアル
 
@@ -26,7 +26,7 @@ Golem には二つのマニュアルがある。
 
 原稿は [code: .gm] のファイルだけで、Markdown の版は持たない。
 [code: .gm] もテキストなので、差分はそのまま読める。
-組んだものは、CI の [code: build] ジョブの成果物（[code: manual] と [code: manual-dev]）と、リリースの資産で読める。
+組んだものは、CI の [code: build] ジョブの成果物（[code: manual] と [code: manual-dev]）と、リリースのアセットで読める。
 
 開発者のマニュアルを B5 にしたのは、コードを多く載せるからである。
 B5 は和文の技術書で広く使われる判型である。
@@ -104,6 +104,7 @@ $ sh scripts/manual/build-info.sh manual-dev
 
 二つのマニュアルに書くのは、採択して実装を終えた仕様だけである。
 [code: docs/roadmap.md] に載っている事項（未決事項を含む）と、提案の ADR は書かない。
+例外は方針の文書が列挙している（使い手のマニュアルの付録 H と付録 I、この本の「はじめに」のプロジェクトの目標と、「見た目の回帰テスト」の節）。
 
 決定の正は ADR と仕様書である。
 マニュアルは新しい決定をしない。
@@ -123,6 +124,7 @@ $ sh scripts/manual/build-info.sh manual-dev
 
 この本は常体で書き、モジュールの名前、型の名前、ADR の番号を本文に出してよい。
 読み手が開発者であり、[code: docs/] と [code: CONTRIBUTING.md] と同じ文体のほうが、引用とリンクの行き来で文体が揺れないからである。
+Golem が報告する誤りや注意は、使い手のマニュアルの「診断」ではなく、LSP やコンパイラの慣例に合わせて diagnostic（まとまりを指すときは diagnostics）と書く。
 
 この本は、[code: docs/] の仕様書、各モジュールの仕様書、ADR、[code: CONTRIBUTING.md] をまとめ、その文書へリンクする。
 リンクは脚注に置き、リポジトリの文書は [code: https://github.com/tett23/golem/blob/main/] から始まる URL で書く。

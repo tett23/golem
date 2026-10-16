@@ -32,6 +32,7 @@ This setting is not stored in the repository, so run it in every clone.
 6. Once CI passes, merge it into `main` with no-ff.
 
 Fixing typos, or documentation that does not affect the specification, needs no ADR.
+Changes to the two manuals and to [docs/manual-policy.md](./docs/manual-policy.md) are decided in pull requests and need no ADR unless the maintainer asks for one.
 When in doubt, write an ADR.
 
 ## ADRs
