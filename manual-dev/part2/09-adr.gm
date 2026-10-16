@@ -85,7 +85,7 @@ ADR はレビューを受けるまでコミットしない。
 ## adr-guard
 
 この規則は、adr-guard が自動で強制する。[index reading=adr-guard: adr-guard]
-今使っている版は v0.8.2 である。[note: [code: https://github.com/tett23/adr-guard]（adr-guard）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0032-update-adr-guard-to-v0.8.2.md]（docs/adr の ADR 0032「adr-guard を v0.8.2 に上げ、コミット済みの ADR のリンクだけの変更を許す」）]
+今使っているバージョンは v0.8.2 である。[note: [code: https://github.com/tett23/adr-guard]（adr-guard）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0032-update-adr-guard-to-v0.8.2.md]（docs/adr の ADR 0032「adr-guard を v0.8.2 に上げ、コミット済みの ADR のリンクだけの変更を許す」）]
 
 [code: .githooks/pre-commit] の中身は一行である。
 
@@ -140,5 +140,5 @@ ADR や仕様書が日本語でも、コミットのメッセージ、リリー�
 必要な機能が限られているなら、その機能だけを実装してよい。
 正規表現スタイルの照合器 golem-regex は、この方針で作ったモジュールである。
 
-固定したネイティブライブラリ（HarfBuzz、FreeType、wasmtime、zlib、hyph-utf8）の版を上げるときは ADR を書く。
-wasmtime の版を上げるときは、ライセンスの文書も作り直す（第[ref-number fixtures]章）。
+固定したネイティブライブラリ（HarfBuzz、FreeType、wasmtime、zlib、hyph-utf8）のバージョンを上げるときは ADR を書く。
+wasmtime のバージョンを上げるときは、ライセンスの文書も作り直す（第[ref-number fixtures]章）。

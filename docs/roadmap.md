@@ -134,7 +134,7 @@ v1 の範囲から外し、v2 以降に送ると決めた事項である。
 - **特色（スポットカラー）**：Separation と DeviceN の色空間。今の Golem はプロセスカラーだけを扱う（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。
 - **PDF のしおりとリンク**：アウトライン、文書の中のリンク、注釈（[golem-pdf ADR 0001](golem-pdf/adr/0001-deterministic-pdf-writer.md)）。
 - **プラグインの配布機構**：レジストリと版の解決、配布されたバイナリがどのソースから作られたかの検証、キャッシュの削除と整理のコマンド（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。
-- **配布の拡張**：Windows と x86-64 の macOS の実行ファイル、macOS の実行ファイルの署名（Developer ID）と公証、Homebrew の tap とインストール用のスクリプト、再現可能なビルド、`-split-sections` による実行ファイルの縮小（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+- **配布の拡張**：macOS の実行ファイルの署名（Developer ID）と公証、Homebrew の tap とインストール用のスクリプト、再現可能なビルド、`-split-sections` による実行ファイルの縮小（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **ビルドと LSP の速度**：インクリメンタルなビルドと結果のキャッシュ、ファイルの変更の監視、ページへの配置の並列化、LSP の差分の同期とインクリメンタルな再解析、コンパイルでの回復しない解析、プラグインの初期化済みのメモリの複製。いずれも速度が問題になってから ADR で検討する（[golem-driver ADR 0001](golem-driver/adr/0001-build-pipeline.md)、[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)、[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md)、[golem-parser ADR 0002](golem-parser/adr/0002-parser-on-peg-hs.md)、[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
 - **見出しの行取りの指定**：「3 行取り」のように、見出しが占める行数と、行取りの中の位置を `style.toml` で指定する設定。v1 の PDF は、見出しの大きさから行数を自動で決め、領域の中央に置く（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
 - **可変フォント**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。v1 は可変フォントを既定のインスタンスとして扱う（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
@@ -208,6 +208,7 @@ ADR と仕様が扱わないと決めたもので、課題として残さない�
 扱う必要が出てきた場合は、新しい ADR で決め直す。
 
 - **macOS と Windows での CI、stack によるビルド**：決定性の検査は Linux の二つのアーキテクチャで足り、依存の版は cabal と freeze ファイルで固定できるので採らない（[docs/adr/0001](adr/0001-haskell-workspace-and-ci.md)）。
+- **Windows と Intel の CPU の macOS の実行ファイル**：Windows では、WSL の上で Linux の静的な実行ファイルを使えば足りる。Windows でそのまま動く実行ファイルは、CI、リンク、改行の扱い、`scripts/` の検査を Windows のために保守する費用に見合わず、担当する人が現れても貢献が続く保証はないので作らない。Intel の CPU の macOS は、Apple が Intel の CPU の Mac のサポートを 2027 年に終えるので作らない。どちらも v2 の「配布の拡張」から移した（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **異なる版の Golem の間での出力の一致**：Golem の版は入力の一部であり、版が変われば出力が変わってよいので求めない（[docs/adr/0002](adr/0002-determinism.md)）。
 - **決定性に反する処理の静的な検出**：決定性の規則はレビューとテストで守ると決めたので作らない（[docs/adr/0002](adr/0002-determinism.md)）。
 - **リリースの運用の自動化**：リリースの自動公開、リリースで確かめる項目の自動化、監査の記録を仕組みで変更できなくすることは、公開を人が行い、確かめは繰り返しが重くなってから自動化を考え、記録は約束とレビューで守ると決めたので扱わない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)、[docs/adr/0008](adr/0008-first-release-verification.md)、[docs/adr/0011](adr/0011-update-adr-guard-to-v0.8.0.md)）。

@@ -34,7 +34,7 @@ wasm を選んだ理由の一つは、決定性と隔離を、プラグインの
 ## マニフェストでの宣言
 
 使うプラグインは、マニフェストに配布物の URL で宣言する。
-v1 には、レジストリも版の解決もない。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0002-distribution-and-lock.md]（golem-plugin ADR 0002「プラグインの取得とロックファイル」）]
+v1 には、レジストリもバージョンの解決もない。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0002-distribution-and-lock.md]（golem-plugin ADR 0002「プラグインの取得とロックファイル」）]
 
 ```toml
 [plugins.furigana]
@@ -47,7 +47,7 @@ filter = "total-ruby"
 files = ["chapters/01.gm", "chapters/02.gm"]
 ```
 
-- [code: url] は HTTPS に限る。GitHub のリリースのような、版ごとに固定された URL を書く。
+- [code: url] は HTTPS に限る。GitHub のリリースのような、バージョンごとに固定された URL を書く。
 - [code: overrides] は、プラグインが組み込みのコマンドを上書きするときに、そのコマンドの名前を並べる。宣言のない上書きはエラーになる。プラグインを足しただけで既存の原稿の意味が黙って変わるのを防ぐためである。
 - [code: \[\[filters\]\]] は、どのファイルにどのフィルタを適用するかを宣言する。複数のフィルタは宣言の順に適用する。
 
@@ -85,14 +85,14 @@ HTTPS のリダイレクトには従うが、HTTPS から HTTP へのリダイ�
 取得したバイト列は、ハッシュを検証するまでプラグインとして扱わない。
 
 同じ URL の中身が差し替えられていれば、ハッシュが一致しないので、[code: fetch] もビルドもエラーになる。
-新しい版のプラグインに移るときは、マニフェストの URL を書き換えて [code: golem plugin lock] を実行する。
+新しいバージョンのプラグインに移るときは、マニフェストの URL を書き換えて [code: golem plugin lock] を実行する。
 v1 は、配布されたバイナリがどのソースから作られたかを検証しない。
 利用者は配布元を信用して使うことになり、隔離で被害の範囲を限ることで、その信用の必要を小さくしている。
 
 ## ホストが与えるもの、与えないもの
 
 ホストは wasmtime の C API を FFI で呼ぶ。[index reading=wasmtime: wasmtime]
-版は 49.0.2 に固定してあり、上げるときは ADR を書く。
+バージョンは 49.0.2 に固定してあり、上げるときは ADR を書く。
 FFI は golem-plugin の中に閉じ、ほかのモジュールは golem-plugin の Haskell の API だけを使う。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0001-wasm-host-and-abi.md]（golem-plugin ADR 0001「wasm のホストと ABI」）]
 
 ホストの設定は次のとおりである。
@@ -120,7 +120,7 @@ WASI がないので、標準入出力やファイルを使うライブラリは
 | 名前 | 型 | 役割 |
 | --- | --- | --- |
 | [code: memory] | メモリ | 入力と出力を置く線形メモリ |
-| [code: golem_abi_version] | [code: () -> u32] | ABI の版 |
+| [code: golem_abi_version] | [code: () -> u32] | ABI のバージョン |
 | [code: golem_describe] | [code: () -> u64] | コマンドとフィルタの名前の一覧を CBOR で返す |
 | [code: golem_alloc] | [code: (len: u32) -> u32] | 入力を書く領域を確保し、その位置を返す |
 | [code: golem_invoke] | [code: (ptr: u32, len: u32) -> u64] | CBOR の要求を受け取り、CBOR の応答を返す |
@@ -139,8 +139,8 @@ ADR は領域を解放する [code: golem_dealloc(ptr: u32, len: u32)] も挙げ
 + 返った [code: u64] から応答の位置と長さを取り出し、応答の CBOR を読む。
 + インスタンスを捨てる。
 
-読み込みの時点で、ホストは [code: golem_abi_version] を呼び、ホストの ABI の版と比べる。
-今の ABI の版は 6 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
+読み込みの時点で、ホストは [code: golem_abi_version] を呼び、ホストの ABI のバージョンと比べる。
+今の ABI のバージョンは 6 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
 一致しなければ、読み込みの時点でエラー（G0605）になる。
 続けて [code: golem_describe] を呼び、プラグインが提供するコマンドとフィルタの名前を得る。
 
@@ -201,7 +201,7 @@ description = [commands: [* tstr], filters: [* tstr]]
 | G0602 | [code: plugins.lock] にないか、URL がマニフェストと違う |
 | G0603 | キャッシュにない（[code: golem plugin fetch] を求める） |
 | G0604 | キャッシュの配布物のハッシュが一致しない |
-| G0605 | wasm として読み込めない（import、ABI の版、関数の欠けを含む） |
+| G0605 | wasm として読み込めない（import、ABI のバージョン、関数の欠けを含む） |
 | G0606 | 二つ以上のプラグインが同じコマンドを提供する |
 | G0607 | 組み込みのコマンドとの衝突に [code: overrides] の宣言がない |
 | G0608 | [code: overrides] の名前が誤っている |
