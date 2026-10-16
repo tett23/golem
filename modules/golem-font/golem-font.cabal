@@ -74,12 +74,17 @@ test-suite golem-font-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    ConcurrencySpec
+  -- ConcurrencySpec shapes one font from several capabilities at once
+  ghc-options:      -threaded
   build-depends:
     , base
     , bytestring
     , containers
     , golem-font
+    , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
+    , tasty-hedgehog >=1.4 && <1.5
     , tasty-golden   >=2.3 && <2.4
     , tasty-hunit    >=0.10 && <0.11
     , text
