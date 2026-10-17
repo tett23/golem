@@ -83,7 +83,7 @@ tests =
         assertBool (show content) ("0 0 0 SC 1 w 0 J 0 j 4 M [] 0 d" `BS.isInfixOf` content)
         assertBool (show content) ("5 5 c" `BS.isInfixOf` content && "\nB\n" `BS.isInfixOf` content),
       testCase "X4.verify finds nothing in a drawing" $
-        verify (documentObjects (doc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, DrawnForm redSquare)] Map.empty) {docPdfX = Just (PdfX "fake-cmyk-profile" "JC200103" [])}) @?= [],
+        verify (documentObjects (doc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, DrawnForm redSquare)] Map.empty) {docPdfX = Just (PdfX "fake-cmyk-profile" "JC200103" [] [])}) @?= [],
       testCase "the sRGB profile is written once for images, PDF figures and drawings" $ do
         img <- either (assertFailure . show) pure (readImage rgbPng)
         page <- either (assertFailure . show) pure (importPage 1 rgbFigure)
