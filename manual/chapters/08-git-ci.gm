@@ -189,7 +189,7 @@ jobs:
 
 [code: golem build] の終了コードが 0 でなければ、CI はその回を失敗として記録し、置き場所の画面に印を付けます。
 原稿の誤りで本が組めなくなったことに、プッシュした直後に気付けます。
-[code: --profile prod] は、出荷の前の検査を厳しくする指定です（第[ref-number check]章）。
+[code: --profile prod] は、入稿やデリバリーの前の検査を厳しくする指定です（第[ref-number check]章）。
 組んだ結果は、その回の成果物として置き場所に保存され、画面から取得できます。
 
 入稿の前の時期には、同じ手順に [code: golem preflight] を足しておくと、印刷所の条件に合わない変更にもプッシュの直後に気付けます（「[ref-title preflight]」、[ref-page preflight] ページ）。

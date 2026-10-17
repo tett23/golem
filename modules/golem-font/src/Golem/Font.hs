@@ -7,7 +7,10 @@ ToUnicode mappings. The FFI is confined here. Loading and subsetting are
 IO, called at the edges; what is fixed once a font is open is read while
 loading. Only the queries that the pure layout makes as it goes
 ('shapeUnits', 'glyphVerticalOrigin', 'glyphMetrics') are wrapped as pure
-functions with unsafePerformIO (docs/adr ADR 0034).
+functions with unsafePerformIO (docs/adr ADR 0034). Pure functions may be
+evaluated on any capability at once, so the C layer holds a lock per font
+around FreeType, whose face one thread may use at a time; HarfBuzz's
+objects are only read and need none.
 -}
 module Golem.Font
   ( Font,

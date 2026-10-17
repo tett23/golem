@@ -1,8 +1,17 @@
 /* A thin C layer over HarfBuzz and FreeType for golem-font
-   (ADR 0001, 0002). All values are integers in font units. */
+   (ADR 0001, 0002). All values are integers in font units.
+
+   Threads: Golem calls these functions from several OS threads at once
+   (the Haskell side looks pure). The HarfBuzz objects (blob, face, font)
+   are only read after golem_font_open, and HarfBuzz allows that from
+   any number of threads; each shaping has its own buffer. An FT_Face may
+   be used by one thread at a time (FT_Load_Glyph writes its one glyph
+   slot), so every function that touches the face holds the font's
+   ft_lock. */
 #include "golem_font.h"
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 #include <hb.h>
 #include <hb-ot.h>
 #include <hb-subset.h>
@@ -16,6 +25,8 @@ struct golem_font {
   size_t len;
   FT_Library lib;
   FT_Face face;
+  /* held while the face is used; the HarfBuzz objects need no lock */
+  pthread_mutex_t ft_lock;
   hb_blob_t *blob;
   hb_face_t *hbface;
   hb_font_t *hbfont;
@@ -32,6 +43,7 @@ golem_font *golem_font_open(const uint8_t *data, size_t len) {
   if (FT_New_Memory_Face(f->lib, f->bytes, (FT_Long)len, 0, &f->face)) {
     FT_Done_FreeType(f->lib); free(f->bytes); free(f); return NULL;
   }
+  pthread_mutex_init(&f->ft_lock, NULL);
   f->blob = hb_blob_create((const char *)f->bytes, (unsigned)len, HB_MEMORY_MODE_READONLY, NULL, NULL);
   f->hbface = hb_face_create(f->blob, 0);
   f->hbfont = hb_font_create(f->hbface);
@@ -47,13 +59,28 @@ void golem_font_close(golem_font *f) {
   hb_blob_destroy(f->blob);
   FT_Done_Face(f->face);
   FT_Done_FreeType(f->lib);
+  pthread_mutex_destroy(&f->ft_lock);
   free(f->bytes);
   free(f);
 }
 
 int golem_font_upem(golem_font *f) { return (int)hb_face_get_upem(f->hbface); }
-int golem_font_fstype(golem_font *f) { return (int)FT_Get_FSType_Flags(f->face); }
-int golem_font_num_glyphs(golem_font *f) { return (int)f->face->num_glyphs; }
+#define LOCK_FT(f) pthread_mutex_lock(&(f)->ft_lock)
+#define UNLOCK_FT(f) pthread_mutex_unlock(&(f)->ft_lock)
+
+int golem_font_fstype(golem_font *f) {
+  LOCK_FT(f);
+  int r = (int)FT_Get_FSType_Flags(f->face);
+  UNLOCK_FT(f);
+  return r;
+}
+
+int golem_font_num_glyphs(golem_font *f) {
+  LOCK_FT(f);
+  int r = (int)f->face->num_glyphs;
+  UNLOCK_FT(f);
+  return r;
+}
 
 int golem_font_is_cff(golem_font *f) {
   hb_blob_t *b = hb_face_reference_table(f->hbface, HB_TAG('C','F','F',' '));
@@ -63,10 +90,12 @@ int golem_font_is_cff(golem_font *f) {
 }
 
 void golem_font_extents(golem_font *f, int32_t *asc, int32_t *desc, int32_t *cap) {
+  LOCK_FT(f);
   *asc = f->face->ascender;
   *desc = f->face->descender;
   TT_OS2 *os2 = (TT_OS2 *)FT_Get_Sfnt_Table(f->face, FT_SFNT_OS2);
   *cap = (os2 && os2->version >= 2) ? os2->sCapHeight : f->face->ascender;
+  UNLOCK_FT(f);
 }
 
 int golem_font_embox_central(golem_font *f) {
@@ -77,8 +106,11 @@ int golem_font_embox_central(golem_font *f) {
   return (int)coord;
 }
 
+/* FT_Load_Glyph loads into the face's one glyph slot: the lock is held
+   until the metrics are read from it. */
 int golem_font_glyph_metrics(golem_font *f, uint32_t gid, int32_t *out) {
-  if (FT_Load_Glyph(f->face, gid, FT_LOAD_NO_SCALE | FT_LOAD_NO_HINTING)) return -1;
+  LOCK_FT(f);
+  if (FT_Load_Glyph(f->face, gid, FT_LOAD_NO_SCALE | FT_LOAD_NO_HINTING)) { UNLOCK_FT(f); return -1; }
   FT_Glyph_Metrics *m = &f->face->glyph->metrics;
   out[0] = (int32_t)m->horiAdvance;
   out[1] = (int32_t)m->vertAdvance;
@@ -86,6 +118,7 @@ int golem_font_glyph_metrics(golem_font *f, uint32_t gid, int32_t *out) {
   out[3] = (int32_t)(m->horiBearingY - m->height);
   out[4] = (int32_t)(m->horiBearingX + m->width);
   out[5] = (int32_t)m->horiBearingY;
+  UNLOCK_FT(f);
   return 0;
 }
 
@@ -158,10 +191,11 @@ uint8_t *golem_font_subset(golem_font *f, const uint32_t *gids, int n, size_t *o
 uint32_t golem_font_cid(golem_font *f, uint32_t gid) {
   FT_UInt cid = 0;
   FT_Bool is_cid = 0;
-  if (FT_Get_CID_Is_Internally_CID_Keyed(f->face, &is_cid) == 0 && is_cid &&
-      FT_Get_CID_From_Glyph_Index(f->face, gid, &cid) == 0)
-    return cid;
-  return gid;
+  LOCK_FT(f);
+  int found = FT_Get_CID_Is_Internally_CID_Keyed(f->face, &is_cid) == 0 && is_cid &&
+              FT_Get_CID_From_Glyph_Index(f->face, gid, &cid) == 0;
+  UNLOCK_FT(f);
+  return found ? cid : gid;
 }
 
 /* Whether the font is a CID-keyed CFF font, whose glyphs have CIDs
@@ -177,18 +211,21 @@ int golem_font_ros(golem_font *f, const char **registry, const char **ordering,
   FT_Bool is_cid = 0;
   const char *r = NULL, *o = NULL;
   FT_Int s = 0;
-  if (FT_Get_CID_Is_Internally_CID_Keyed(f->face, &is_cid) == 0 && is_cid &&
-      FT_Get_CID_Registry_Ordering_Supplement(f->face, &r, &o, &s) == 0 && r && o) {
-    *registry = r;
-    *ordering = o;
-    *supplement = (int)s;
-    return 0;
-  }
-  return -1;
+  LOCK_FT(f);
+  int found = FT_Get_CID_Is_Internally_CID_Keyed(f->face, &is_cid) == 0 && is_cid &&
+              FT_Get_CID_Registry_Ordering_Supplement(f->face, &r, &o, &s) == 0 && r && o;
+  UNLOCK_FT(f);
+  if (!found) return -1;
+  *registry = r;
+  *ordering = o;
+  *supplement = (int)s;
+  return 0;
 }
 
 char *golem_font_postscript_name(golem_font *f) {
+  LOCK_FT(f);
   const char *n = FT_Get_Postscript_Name(f->face);
+  UNLOCK_FT(f);
   return (char *)(n ? n : "");
 }
 

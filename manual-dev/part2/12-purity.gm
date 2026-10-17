@@ -189,15 +189,27 @@ golem-font ADR 0001 は、FFI の呼び出しを純粋な関数として見え�
 [code: scripts/ci/unsafe-io.sh] が、使っている定義を [code: scripts/ci/unsafe-io-allowed.txt] の一覧と照らし合わせ、増えても減っても CI を失敗させる。
 
 [code: unsafePerformIO] は、型の検査を黙らせるだけで、純粋性を作りはしない。
-包んだ関数を純粋と呼んでよいのは、次の三つが成り立つときに限る。
+包んだ関数を純粋と呼んでよいのは、次の四つが成り立つときに限る。
 
 + 結果が引数だけで決まる。フォントは常にバイト列から読み（パスからは読まない）、C の側は呼び出しのあいだで結果に効く状態を持たない。
 + 作用が外から観察できない。C の側のオブジェクトは [code: ForeignPtr] のファイナライザが解放し、例外は外に漏らさない。
 + 境界を越える値が環境に依存しない。C の側からは整数のフォントの単位を受け取り、[code: unitsToSp] が有理数で sp に換算して、最近接偶数丸めで一度だけ丸める。
++ 複数のスレッドから同時に呼んでも、一つずつ呼んだときと同じ結果になる。純粋な関数は、どの OS のスレッドで、いくつ同時に評価されてもよいからである。
 
 三つめは決定性のための条件でもある。
 HarfBuzz と FreeType は同梱したソースからビルドし、[code: golem-font.cabal] の [code: cc-options] と [code: cxx-options] に [code: -ffp-contract=off] を付けて、積和演算の融合を止めている。
 融合した積和演算は丸めを一回省くので、使う計算機と使わない計算機で結果の最後の桁がずれうる。
+
+四つめは、型からも単体のテストからも見えにくい。
+FreeType のフェイス（[code: FT_Face]）は、一度に一つのスレッドしか使えない。
+[code: glyphMetrics] が呼ぶ [code: FT_Load_Glyph] は、フェイスに一つしかないグリフのスロットに字形を読み込み、Golem はそこからメトリクスを読む。
+二つのスレッドが同じフォントで同時にこれを行うと、互いの字形を読むか、プロセスが落ちる。
+実際に、8 個のスレッドから同じフォントの [code: glyphMetrics] を呼ぶと、毎回セグメンテーション違反で落ちた。
+そこで [code: cbits/golem/golem_font.c] は、フォントごとに一つのミューテックス（一度に一つのスレッドだけが取れるロック、[code: ft_lock]）を持ち、フェイスに触れる関数はすべて、そのあいだロックを取る。
+HarfBuzz のオブジェクト（blob、face、font）は開いた後は読むだけで、HarfBuzz は複数のスレッドからの同時の利用を許しているので、シェイピングはロックを取らずに並列に進む。
+シェイピングのバッファは呼び出しごとに作る。
+この性質は、別の実行ファイルのテスト [code: golem-font-race-test] が確かめる。
+落ちるかもしれないテストを独立したプロセスで動かすのは、落ちたときにほかのテストを道連れにせず、そのテストの失敗として報告させるためである。
 
 プラグインの呼び出しを包めるのは、wasmtime の設定による。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0001-wasm-host-and-abi.md]（golem-plugin ADR 0001「wasm のホストと ABI」）]
 
@@ -232,6 +244,12 @@ PDF の経路の [code: buildFlow]（[code: Golem.Driver.Pdf]）は IO の関数
 このため、どのスレッドが先に終わっても、組版の結果のリストは同じになる。
 golem-driver のテストは、並列と逐次で組んだ PDF のバイト列が一致することを、機能ごとに確かめている（[code: PdfSpec] の「the features in parallel and in sequence give the same bytes」など）。
 
+ただし、これらのテストは一つの capability（GHC のランタイムが Haskell のコードを実行する OS のスレッドの枠）の上で動く。
+一つの capability では、[code: mapConcurrently] のスレッドは交互に動くだけで、C の関数の呼び出しが重なることはない。
+本当に同時に動かすのは、[code: -threaded] でビルドし capability を 8 個に増やすテストのスイート [code: golem-driver-parallel-test] である。
+生成した原稿と [code: tempest]、[code: kanikosen] の見本を並列と逐次で組み、バイト列と診断が一致することを確かめる。
+[code: golem] の実行ファイルは [code: -with-rtsopts=-N] でリンクし、計算機のすべてのプロセッサを capability にする。
+
 S2 の繰り返しも同じ構造をしている。
 golem-layout の [code: resolvePageRefs] は、仮のページ番号から組んだページへの関数を受け取り、ページ番号が変わらなくなるまで繰り返す純粋な関数である。
 golem-driver の [code: fixpoint] が同じ繰り返しを IO の中で回しているのは、一回の組版が [code: mapConcurrently] を使うからで、繰り返しの判定は仮の値と組んだ結果だけで決まる。
@@ -242,7 +260,7 @@ golem-driver の [code: fixpoint] が同じ繰り返しを IO の中で回して
 Template Haskell の [code: runIO] は、コンパイルの時点でファイルを読み、その中身を実行ファイルに埋め込む。
 golem-driver の [code: Golem.Driver.Version] はリポジトリの [code: VERSION] を、golem-layout の [code: Golem.Layout.Hyphenation.EnUs] は hyph-utf8 のパターンを、[code: Golem.Driver.Explain] はdiagnostic のコードの説明を埋め込んでいる。
 実行の時点では、これらは定数である。
-その値は ADR 0002 の言う「Golem 自身の版」に含まれ、[code: addDependentFile] によって、ファイルが変わればモジュールがコンパイルし直される。
+その値は ADR 0002 の言う「Golem 自身の版」（Golem 自身のバージョン）に含まれ、[code: addDependentFile] によって、ファイルが変わればモジュールがコンパイルし直される。
 
 ## 出力の値を入力から作る
 
@@ -250,8 +268,8 @@ golem-driver の [code: Golem.Driver.Version] はリポジトリの [code: VERSI
 Golem はこれらを入力から純粋に計算する。
 
 - PDF の [code: CreationDate] と [code: ModDate] は、マニフェストの [code: metadata.date] の日付から [code: pdfDate] が [code: D:YYYYMMDD000000Z] の形で作る。時刻は常に 0 時で、タイムゾーンは常に UTC なので、実行したマシンのタイムゾーンは入らない。
-- PDF の文書 ID は、本の識別子から名前に基づく UUID（版 5）を [code: documentId] で作る。
-- インスタンス ID は、[code: instanceId] が入力の各要素の長さとバイト列を連結した SHA-256 の先頭 16 バイトから作る。要素は、マニフェスト、[code: style.toml]、原稿、出力を変える CLI のオプション、埋め込むフォントのプログラム、Golem の版である（[code: instanceIdInputs]）。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0001-deterministic-pdf-writer.md]（golem-pdf ADR 0001「決定的な PDF の直列化」）]
+- PDF の文書 ID は、本の識別子から名前に基づく UUID（バージョン 5）を [code: documentId] で作る。
+- インスタンス ID は、[code: instanceId] が入力の各要素の長さとバイト列を連結した SHA-256 の先頭 16 バイトから作る。要素は、マニフェスト、[code: style.toml]、原稿、出力を変える CLI のオプション、埋め込むフォントのプログラム、Golem のバージョンである（[code: instanceIdInputs]）。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0001-deterministic-pdf-writer.md]（golem-pdf ADR 0001「決定的な PDF の直列化」）]
 - EPUB の zip のエントリには、時刻として 0 を渡している（[code: writeEpub]）。EPUB の決定性は v2 で扱う事項だが、今の実装も時計を読まない。
 
 乱数を使うのは [code: golem new] だけで、その乱数も golem-cli の [code: app/Main.hs] が [code: UUID.nextRandom] で作る。
@@ -272,9 +290,9 @@ golem-driver の [code: templateFiles] は、その UUID を引数の文字列�
 = [strong: 浮動小数点数]
   同じソースの浮動小数点数の計算でも、演算の列が変われば結果のビット列が変わる。Golem がどこでどの数の型を使い、これをどう抑えているかは、後の「数の表し方」の節で述べる。
 = [strong: C のライブラリ]
-  HarfBuzz、FreeType、zlib、wasmtime の結果は、版とコンパイルの設定で変わりうる。版を固定して同梱し、版を上げるときは ADR を書く（第[ref-number modules]章）。
+  HarfBuzz、FreeType、zlib、wasmtime の結果は、バージョンとコンパイルの設定で変わりうる。バージョンを固定して同梱し、バージョンを上げるときは ADR を書く（第[ref-number modules]章）。
 = [strong: コンパイラと Haskell のライブラリ]
-  GHC の版は CI の [code: GHC_VERSION]（9.10.3）で固定し、依存のライブラリの版とフラグは [code: cabal.project.freeze] で固定している。
+  GHC のバージョンは CI の [code: GHC_VERSION]（9.10.3）で固定し、依存のライブラリのバージョンとフラグは [code: cabal.project.freeze] で固定している。
 
 最後の項目には、純粋性と決定性のずれがよく表れた例がある。
 hashable には [code: random-initial-seed] というフラグがあり、これを有効にすると、ハッシュの関数の種が実行ファイルを起動するたびに乱数で決まる。
@@ -337,7 +355,7 @@ HarfBuzz と FreeType についても、Golem が受け取る値は整数であ�
 golem-font の C の側（[code: cbits/golem/golem_font.c]）は、HarfBuzz のフォントの拡大率をフォントの 1em の単位数（upem）に設定し、グリフの位置をフォントの単位の整数で受け取る。
 FreeType のグリフは [code: FT_LOAD_NO_SCALE] で読み、拡大しない整数のメトリクスを得る。
 字の大きさへの拡大は、Haskell の側の [code: unitsToSp] が有理数で行う。
-ライブラリの内部の計算は Golem からは見えないので、C のソースを [code: -ffp-contract=off] でコンパイルし、版を固定して同梱している。
+ライブラリの内部の計算は Golem からは見えないので、C のソースを [code: -ffp-contract=off] でコンパイルし、バージョンを固定して同梱している。
 
 [code: Double] を使うのは、式の言語だけである。
 書き手は [code: \[= 1.5 * 2\]] のように小数を書くので、小数を値として持つ型が要る。
@@ -358,7 +376,7 @@ golem-eval ADR 0001 は、式の言語の数を [code: Integer] と倍精度の 
 長さと位置を整数と有理数で計算するので、組版の結果は、CPU の浮動小数点数の実装にも、コンパイラの最適化にも左右されない。
 同じ入力から同じ sp の値が出れば、PDF の座標の文字列も同じになる。
 浮動小数点数による揺れの余地が残るのは、式の言語の [code: Double] の計算と、C のライブラリの内部である。
-前者は数の規則で演算の列と変換を固定し、後者は版とコンパイルの設定を固定している。
+前者は数の規則で演算の列と変換を固定し、後者はバージョンとコンパイルの設定を固定している。
 どちらも、最後は CI の [code: determinism] ジョブが二つのアーキテクチャの出力を比べて確かめる。
 
 ## 決定性が純粋性に求めること
@@ -383,7 +401,7 @@ ADR 0002 の各規則が、どこで、どの仕組みで守られているか�
 | 走査の順を固定する | すべて | [code: Data.Map]。freeze のフラグ |
 | 並列の結果の順 | golem-driver | [code: mapConcurrently] は入力の順で返す |
 | 浮動小数点数 | golem-eval、golem-layout、golem-font | 超越関数を持たない。sp と有理数。[code: -ffp-contract=off] |
-| ネイティブライブラリ | golem-font、golem-plugin、golem-pdf | 同梱して版を固定する。純粋な関数として包む。wasmtime の設定 |
+| ネイティブライブラリ | golem-font、golem-plugin、golem-pdf | 同梱してバージョンを固定する。純粋な関数として包む。wasmtime の設定 |
 
 ## 変更するときの点検
 
@@ -391,7 +409,7 @@ ADR 0002 の各規則が、どこで、どの仕組みで守られているか�
 その代わり、差分の型を手がかりにレビューできる。
 
 - 公開する関数の型に [code: IO] を持たなかったモジュールに [code: IO] が増えたら、その IO が何を読み、それが入力の一覧に含まれるかを確かめる。
-- [code: unsafePerformIO] が増えたら、まず IO のエッジに出せないかを考える。出せないときは、上の三つの条件（結果が引数だけで決まる、作用が観察できない、境界の値が環境に依存しない）を確かめ、[code: scripts/ci/unsafe-io-allowed.txt] に定義と残す理由を書き足す。
+- [code: unsafePerformIO] が増えたら、まず IO のエッジに出せないかを考える。出せないときは、上の四つの条件（結果が引数だけで決まる、作用が観察できない、境界の値が環境に依存しない、同時に呼んでも結果が変わらない）を確かめ、[code: scripts/ci/unsafe-io-allowed.txt] に定義と残す理由を書き足す。
 - 依存のライブラリを足したら、[code: cabal.project.freeze] に書かれるフラグに、乱数の種や走査の順を変えるものがないかを確かめる。
 - 並列の処理を足したら、結果を入力の順で集めているかを確かめ、並列と逐次でバイト列が一致するテストを足す。
 

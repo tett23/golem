@@ -24,7 +24,7 @@ golem-driver のフィクスチャ（[code: modules/golem-driver/test/fixtures/]
 | [code: sample/] | テストのために書いた小さなプロジェクト |
 | [code: tempest/] | シェイクスピアの『テンペスト』。横組み |
 | [code: kanikosen/] | 小林多喜二の『蟹工船』。縦組み |
-| [code: pd/] | 組みにくい公有の作品の十冊。英語の五冊は横組み、日本語の五冊は縦組み |
+| [code: pd/] | 組みにくいパブリックドメインの作品の十冊。英語の五冊は横組み、日本語の五冊は縦組み |
 
 『テンペスト』は Project Gutenberg の eBook #23042（ケンブリッジ版）から、『蟹工船』は青空文庫の図書カード No.1465 から作る。
 どちらも著作権の保護期間が満了している。
@@ -104,16 +104,16 @@ Haskell のパッケージ、GHC のランタイム、GMP、HarfBuzz、FreeType�
 
 - Alpine のパッケージの文書は、そのパッケージの [code: -doc] から取る。入っていないものだけを [code: licenses/alpine/] に置く。
 - Linux の GHC がランタイムに同梱する libffi（[code: libCffi.a]）は、構成要素 [code: ghc-libffi] として、[code: licenses/ghc-libffi/] にコミットした文書を使う。
-- [code: libwasmtime.a] に入った Rust のクレート、Rust の標準ライブラリ、compiler-rt の文書は、wasmtime の版ごとに [code: scripts/wasmtime-licenses.sh] で [code: licenses/wasmtime-v<版>/] に生成してコミットする。
+- [code: libwasmtime.a] に入った Rust のクレート、Rust の標準ライブラリ、compiler-rt の文書は、wasmtime のバージョンごとに [code: scripts/wasmtime-licenses.sh] で [code: licenses/wasmtime-v<バージョン>/] に生成してコミットする。
 
 リリースのたびに、[code: libwasmtime.a] のシンボルとパニックの位置から取り出したクレートの一覧と、C のオブジェクトの一覧を、コミットした文書と照合する。
 載っていないものがあれば止まる。
 リンクマップと照合に使った [code: nm]、[code: strings]、[code: ar] の出力は配布物に入れず、リリースのワークフローの成果物として残す。
 
-## wasmtime の版を上げるとき
+## wasmtime のバージョンを上げるとき
 
-wasmtime の版を上げるときは、ADR を書き、ライセンスの文書も作り直す。
-文書は [code: scripts/wasmtime-licenses.sh] が [code: licenses/wasmtime-v<版>/] に生成するので、生成物もコミットする。
+wasmtime のバージョンを上げるときは、ADR を書き、ライセンスの文書も作り直す。
+文書は [code: scripts/wasmtime-licenses.sh] が [code: licenses/wasmtime-v<バージョン>/] に生成するので、生成物もコミットする。
 このスクリプトはネットワークに接続し、[code: cargo] と [code: rustup] を要する。
 [code: c-objects.tsv] の構成要素の列は、スクリプトが埋めないので手で埋める。
 

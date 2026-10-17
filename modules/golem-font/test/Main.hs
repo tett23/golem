@@ -1,5 +1,6 @@
 module Main (main) where
 
+import ConcurrencySpec (concurrencyTests)
 import Control.Monad (void)
 import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
@@ -152,7 +153,8 @@ tests han sans serif noto =
             glyphCid han 0 @?= 0,
           testCase "a font that is not CID-keyed gives the glyph id as the CID" $
             map (glyphCid sans) [0, 1, 2, fontNumGlyphs sans + 3] @?= [0, 1, 2, fontNumGlyphs sans + 3]
-        ]
+        ],
+      concurrencyTests han noto
     ]
   where
     head' (x : _) = x

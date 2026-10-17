@@ -145,7 +145,7 @@ enabled = false
 InDesign のプリフライトに当たり、Golem では [code: golem preflight] のコマンドが行います。
 
 [code: golem preflight] は、[code: golem build --target pdf --profile prod] と同じ手順で PDF を組み、ファイルには書かずに検査します。
-[code: --profile] は付けられず、いつも出荷する本として（prod で）組みます。
+[code: --profile] は付けられず、いつも入稿する本として（prod で）組みます。
 原稿や設定に誤りがあって PDF を組めないときは、[code: golem build] と同じエラーだけを出し、検査はしません。
 [code: golem build] と [code: golem check] は、この検査をしません。
 組めるかどうかは原稿と設定で決まり、入稿できるかどうかは印刷所の条件で決まるので、二つを分けています。
@@ -177,7 +177,7 @@ G0910 は塗り足しがないこと、G0914 は出力インテントがない�
 $ golem preflight --marks japanese
 ```
 
-今度は診断が出ず、要約の行だけが [code: エラー 0、警告 0] と出ます。
+今度はエラーも警告も出ず、要約の行だけが [code: エラー 0、警告 0] と出ます。
 エラーがなければ、終了コードは 0 です。
 警告だけのときも 0 になります。
 CI で警告も止めたいときは、下で説明する設定で、その検査の重大度を [code: error] にします。

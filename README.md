@@ -6,7 +6,7 @@ Golem は、コマンドラインと CI で動く組版システムである。
 原稿は `.gm` のテキストで書き、同じ入力から常に同じバイト列の PDF、EPUB、HTML、テキストを出力する。
 仕様は [docs/specifications.md](./docs/specifications.md) と [docs/markup.md](./docs/markup.md) にある。
 用語は [docs/glossary.md](./docs/glossary.md) にまとめている。
-どの版で何を扱うかは [docs/roadmap.md](./docs/roadmap.md) にある。
+どのバージョンで何を扱うかは [docs/roadmap.md](./docs/roadmap.md) にある。
 
 マニュアルは二つあり、どちらも Golem 自身で組んで、リリースの資産に添えている（[docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md)、[docs/adr/0024](./docs/adr/0024-manual-audiences-and-policy.md)）。
 
@@ -85,7 +85,7 @@ golem new mybook
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
 | `golem inspect FILE --as cst\|ast\|ir` | 構文木と IR を表示する |
 | `golem explain [CODE]` | 診断のコードの説明を表示する。コードを省くと一覧を表示する |
-| `golem --version` | 版を表示する（例：`golem 0.1.0`） |
+| `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 
 原稿の段落は、既定では空行で区切る。
 一行を一つの段落として書く和文の原稿は、`manifest.toml` の `[source]` に `paragraph-separator = "line"` と書くと、改行ひとつで段落を区切って読む。
@@ -163,10 +163,10 @@ ADR はコミット後に変更しない規約であり、変更が必要な場�
 
 ### 固定しているネイティブライブラリ
 
-出力の決定性を保つため、次のライブラリは版を固定して使う。
-版を上げるときは ADR を作成する。
+出力の決定性を保つため、次のライブラリはバージョンを固定して使う。
+バージョンを上げるときは ADR を作成する。
 
-| ライブラリ | 版 |
+| ライブラリ | バージョン |
 |---|---|
 | HarfBuzz | 14.6.0 |
 | FreeType | 2.14.3 |
@@ -175,7 +175,7 @@ ADR はコミット後に変更しない規約であり、変更が必要な場�
 | hyph-utf8（英語（米国）のハイフネーションのパターン） | コミット 5684c0f |
 
 HarfBuzz と FreeType は、ソースを `modules/golem-font/cbits/` に同梱して静的にリンクする。
-zlib は Hackage の `zlib-clib` 1.3.2 を同梱版として使う（`cabal.project` で固定）。
+zlib は Hackage の `zlib-clib` 1.3.2 を同梱するバージョンとして使う（`cabal.project` で固定）。
 wasmtime はプラットフォームごとの C API の配布物を `scripts/fetch-wasmtime.sh` で取得する（SHA-256 を検証し、`third_party/wasmtime` に置く）。
 `licenses/` には、配布物の `THIRD_PARTY_LICENSES/` に写すライセンスの文書のうち、ビルドの環境から取れないもの（`libwasmtime.a` に入った Rust のクレートなどの文書と、Alpine のパッケージが入れない文書）を置く（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
 
@@ -200,8 +200,8 @@ cabal build all
 cabal test all
 ```
 
-依存の版は `cabal.project.freeze` で固定している。
-このファイルを消してビルドすると、依存の版が変わりうる。
+依存のバージョンは `cabal.project.freeze` で固定している。
+このファイルを消してビルドすると、依存のバージョンが変わりうる。
 
 パーサーは `modules/golem-parser/grammar/Golem.hpeg` から生成し、生成物をコミットする。
 文法を変えたら生成し直す。
@@ -259,8 +259,8 @@ cabal install exe:golem --installdir="$HOME/.local/bin" --install-method=copy --
 HarfBuzz、FreeType、wasmtime、zlib は静的にリンクする。
 macOS でビルドした実行ファイルは OS 標準のライブラリだけに依存するので、同じアーキテクチャの macOS であれば、実行ファイルだけをコピーして使える。
 
-Golem の版の正本はリポジトリの根の `VERSION` である。
-版を変えるときは、`VERSION` と全パッケージの cabal ファイルの `version` を一緒に書き換える（手順は [CONTRIBUTING.md](./CONTRIBUTING.md) の「タグとリリース」）。
+Golem のバージョンの正本はリポジトリの根の `VERSION` である。
+バージョンを変えるときは、`VERSION` と全パッケージの cabal ファイルの `version` を一緒に書き換える（手順は [CONTRIBUTING.md](./CONTRIBUTING.md) の「タグとリリース」）。
 
 ### マニュアル
 
@@ -273,7 +273,7 @@ GOLEM="$(cabal list-bin golem)" sh scripts/manual/build.sh             # 二冊�
 GOLEM="$(cabal list-bin golem)" sh scripts/manual/build.sh manual-dev  # 一冊だけ
 ```
 
-このスクリプトは、プロジェクトごとに、奥付の版とコミットのハッシュを `common/build-info.gm` に書き（`scripts/manual/build-info.sh`）、マニュアルの書体（Noto Serif JP、Noto Sans JP、Source Serif 4、Source Sans 3、Source Code Pro。どれも SIL Open Font License 1.1）を、版を固定した配布元から取得して SHA-256 を検査し、`fonts/` に置く（`scripts/manual/fetch-fonts.sh`。二回目からは検査だけを行う）。
+このスクリプトは、プロジェクトごとに、奥付の版とコミットのハッシュを `common/build-info.gm` に書き（`scripts/manual/build-info.sh`）、マニュアルの書体（Noto Serif JP、Noto Sans JP、Source Serif 4、Source Sans 3、Source Code Pro。どれも SIL Open Font License 1.1）を、バージョンを固定した配布元から取得して SHA-256 を検査し、`fonts/` に置く（`scripts/manual/fetch-fonts.sh`。二回目からは検査だけを行う）。
 そのあと `golem build --target pdf --target html` で組み、出力を `build/` に書く。
 エラー、警告、お知らせのどれか一つでも出れば失敗し、マニフェストに `silence-notices` があれば組む前に失敗する。
 `GOLEM` を省くと、`PATH` にある `golem` を使う。
@@ -307,7 +307,7 @@ CI は二つのワークフローからなる。
 | `ci.yml` | `changes` | `scripts/ci/` と `scripts/manual/` のスクリプトのテスト（`scripts/ci/test.sh`、`scripts/manual/test.sh`）を実行し、ビルドが読む `docs/` の下の文書が一覧にあることと、全パッケージが `-Werror=incomplete-patterns` でビルドされること（`scripts/ci/incomplete-patterns.sh`、[docs/adr/0027](./docs/adr/0027-exhaustive-command-dispatch-by-types.md)）と、`unsafePerformIO` の使用が一覧のとおりであること（`scripts/ci/unsafe-io.sh`、[docs/adr/0034](./docs/adr/0034-fewer-unsafe-perform-io.md)）を確かめ、変更のパスからビルドが要るかを決める |
 | `ci.yml` | `build` | x86-64 と aarch64 の Linux でビルドとテストを行い、生成したパーサーが文法と一致することを確かめる。`manual/` と `manual-dev/` をお知らせも含めて診断なしで組む。x86-64 では EPUB が epubcheck を通ることを確かめ、組んだ二つのマニュアルの PDF と HTML を成果物 `manual` と `manual-dev` として上げる |
 | `ci.yml` | `determinism` | 決まった入力（`scripts/determinism.sh`。二つのマニュアルを含む）の出力のハッシュを、二つのアーキテクチャで比べる |
-| `ci.yml` | `release-scripts` | `VERSION` と全パッケージの版の一致を検査し、`scripts/release/` のスクリプトのテスト（`scripts/release/test.sh`）を実行する |
+| `ci.yml` | `release-scripts` | `VERSION` と全パッケージのバージョンの一致を検査し、`scripts/release/` のスクリプトのテスト（`scripts/release/test.sh`）を実行する |
 | `ci.yml` | `format` | fourmolu と hlint で検査する |
 | `ci.yml` | `ci` | `ci.yml` のほかのジョブがすべて成功したか、省かれたことを確かめる（`scripts/ci/gate.sh`） |
 

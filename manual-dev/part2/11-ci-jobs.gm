@@ -27,7 +27,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 | [code: changes] | スクリプトのテスト、ビルドが読む文書の一覧の検査、不完全なパターンをエラーにするフラグの検査、ビルドの要否の判定 |
 | [code: build] | x86-64 と aarch64 でのビルドとテスト、生成したパーサーの検査、二つのマニュアル |
 | [code: determinism] | 二つのアーキテクチャの出力のハッシュの比較 |
-| [code: release-scripts] | [code: VERSION] と全パッケージの版の一致、リリースのスクリプトのテスト |
+| [code: release-scripts] | [code: VERSION] と全パッケージのバージョンの一致、リリースのスクリプトのテスト |
 | [code: format] | fourmolu と hlint |
 | [code: ci] | ほかのジョブがすべて成功したか、省かれたことの確認 |
 
@@ -83,7 +83,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 + [code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。
 + x86-64 では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。
 
-キャッシュの鍵は、[code: cabal.project] と [code: cabal.project.freeze] のハッシュ、ランナーの OS とアーキテクチャ、GHC の版から作る。
+キャッシュの鍵は、[code: cabal.project] と [code: cabal.project.freeze] のハッシュ、ランナーの OS とアーキテクチャ、GHC のバージョンから作る。
 [code: dist-newstyle] のキャッシュは、[code: main] への push のときだけ保存する。
 プルリクエストのキャッシュはそのプルリクエストにしか使えず、しかもコミットごとに鍵が変わるからである。
 マニュアルのフォントのキャッシュの鍵は、[code: scripts/manual/fetch-fonts.sh] のハッシュである。
@@ -110,8 +110,8 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 
 ## release-scripts と format
 
-[code: release-scripts] は、[code: scripts/release/check-version.sh] で [code: VERSION] と全パッケージの cabal ファイルの版の一致を検査し、[code: scripts/release/test.sh] でリリースのスクリプトのテストを実行する。
-版を上げるプルリクエストは、ここで一致を確かめられる（第[ref-number release]章）。
+[code: release-scripts] は、[code: scripts/release/check-version.sh] で [code: VERSION] と全パッケージの cabal ファイルのバージョンの一致を検査し、[code: scripts/release/test.sh] でリリースのスクリプトのテストを実行する。
+バージョンを上げるプルリクエストは、ここで一致を確かめられる（第[ref-number release]章）。
 
 [code: format] は、fourmolu 0.21.0.0 で整形済みであることと、hlint 3.10 の指摘がないことを確かめる（第[ref-number build-test]章）。
 
@@ -144,8 +144,8 @@ CI を待つ時間は変更を一つ入れるたびにかかるので、CI が�
 プルリクエストの CI が 5 分を超えたら、ほかの作業を止めて、まず CI を改善する。
 ジョブの分割、キャッシュ、変更のないモジュールの検査を省くことなどで速くし、前後の時間を記録する。
 
-## Actions の版
+## Actions のバージョン
 
-GitHub Actions のアクションは、Node 24 以降で動く最新のメジャー版を使う。
+GitHub Actions のアクションは、Node 24 以降で動く最新のメジャーバージョンを使う。
 Node を使う手順では、最新の LTS を使う。
 リリースのワークフローがリリースノートを書く道具を入れる手順も、[code: actions/setup-node] に [code: lts/*] を渡している。

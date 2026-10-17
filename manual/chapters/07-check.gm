@@ -32,7 +32,7 @@ chapters/01.gm:3:2: error[G0222]: 未知のコマンドです: rubi
 | 重大度 | 出力 | 直す必要 |
 |---|---|---|
 | エラー | その形式を書かない | 直すまで組めない |
-| 警告 | 書く | 出荷の前に直す |
+| 警告 | 書く | 入稿やデリバリーの前に直す |
 | お知らせ | 書く | 直さなくてよい |
 
 診断は、エラーと警告を先に、お知らせを後に並べます。
@@ -162,6 +162,7 @@ PDF を作る設定なら、版面が判型に収まるか、段落スタイル�
 組んだ結果を見る検査（図版の解像度、図版の色空間、PDF/X-4 の要件）は、InDesign のプリフライト[index reading=ぷりふらいと: プリフライト]に当たる [code: golem preflight] が行います（「[ref-title preflight]」、[ref-page preflight] ページ）。
 入稿の前には、その後に商用のプリフライトでも確かめてください（「[ref-title pdf-x4]」、[ref-page pdf-x4] ページ）。
 
+@label lint
 ## 誤りやすい書き方を探す（lint）
 
 [code: golem lint][index reading=りんと: lint] は、記法としては正しくても、ほぼ確実に誤りである書き方を探します。
@@ -199,13 +200,13 @@ $ golem fmt
 原稿を変えるたびに自動で検査する仕組み（「[ref-title ci]」、[ref-page ci] ページ）で、整形していない原稿が入っていないかを確かめるのに使います。
 
 @label profiles
-## 書きかけと出荷
+## 書きかけの原稿と仕上げた本
 
-[code: golem build]、[code: golem check]、[code: golem lint] では、[code: --profile] で、原稿を書きかけとして扱うか、出荷する本として扱うかを選べます。
+[code: golem build]、[code: golem check]、[code: golem lint] では、[code: --profile] で、原稿を書きかけとして扱うか、入稿やデリバリーのために仕上げた本として扱うかを選べます。
 この選択をプロファイルと呼びます。
 
 - [code: dev]：書きかけの原稿として扱います。既定はこれです。
-- [code: prod]：出荷する本として扱います。
+- [code: prod]：入稿やデリバリーのために仕上げた本として扱います。
 
 [code: prod] では、いくつかの警告がエラーになり、出力が止まります。
 たとえば、参照されていないラベルは、[code: dev] では警告、[code: prod] ではエラーです。

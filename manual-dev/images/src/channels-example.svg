@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="980" viewBox="0 0 1300 980">
+  <!-- 例のプロジェクトで、印が集められ、一覧になるまで（manual-dev の「チャネル」の節の例。出力はプレーンテキストと HTML で組んだ結果）。
+       scripts/manual/render-figures.sh で manual-dev/images/channels-example.png にする。 -->
+  <style>
+    @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
+    @font-face { font-family: "Fig Sans"; font-weight: bold; src: url("../../fonts/NotoSansJP-Bold.otf"); }
+    text { font-family: "Fig Sans", sans-serif; font-size: 20px; fill: #222; }
+    .c { text-anchor: middle; dominant-baseline: central; }
+    .head { font-size: 23px; font-weight: bold; }
+    .sub { font-size: 18px; fill: #555; }
+    .file { font-size: 21px; font-weight: bold; }
+    rect.box { fill: #fff; stroke: #333; stroke-width: 1.5; rx: 6; }
+    rect.chip { stroke: none; }
+    .toc { fill: #c9d9ee; }
+    .note { fill: #ecd9a8; }
+    .idx { fill: #c3e2b8; }
+    .bib { fill: #dcc4e2; }
+    .ltoc { fill: #e3ecf7; }
+    .lnote { fill: #f6ecd2; }
+    .lidx { fill: #e0f0da; }
+    .lbib { fill: #efe2f2; }
+    line, path.edge { stroke: #444; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#444"/>
+    </marker>
+  </defs>
+  <rect width="1300" height="980" fill="#fff"/>
+
+  <text class="c head" x="225" y="30">S0：各ファイルの印</text>
+  <text class="c head" x="665" y="30">S1：Doc.Book</text>
+  <text class="c head" x="1090" y="30">出力</text>
+
+  <!-- chapters/01.gm -->
+  <rect class="box" x="20" y="60" width="410" height="372"/>
+  <text class="file" x="40" y="95">chapters/01.gm（章 1）</text>
+  <rect class="chip toc" x="40" y="117" width="16" height="30"/><text x="68" y="140">見出し「行分割」（階層 1）</text>
+  <rect class="chip idx" x="40" y="161" width="16" height="30"/><text x="68" y="184">索引の印：行分割</text>
+  <rect class="chip bib" x="40" y="205" width="16" height="30"/><text x="68" y="228">引用：knuth1981</text>
+  <rect class="chip note" x="40" y="249" width="16" height="30"/><text x="68" y="272">脚注（仮の番号 1）</text>
+  <rect class="chip toc" x="40" y="293" width="16" height="30"/><text x="68" y="316">見出し「禁則」（階層 2）</text>
+  <rect class="chip idx" x="40" y="337" width="16" height="30"/><text x="68" y="360">索引の印：禁則</text>
+  <rect class="chip bib" x="40" y="381" width="16" height="30"/><text x="68" y="404">引用：jlreq</text>
+
+  <!-- chapters/02.gm -->
+  <rect class="box" x="20" y="452" width="410" height="284"/>
+  <text class="file" x="40" y="487">chapters/02.gm（章 2）</text>
+  <rect class="chip toc" x="40" y="509" width="16" height="30"/><text x="68" y="532">見出し「ルビ」（階層 1）</text>
+  <rect class="chip idx" x="40" y="553" width="16" height="30"/><text x="68" y="576">索引の印：ルビ</text>
+  <rect class="chip idx" x="40" y="597" width="16" height="30"/><text x="68" y="620">索引の印：行分割</text>
+  <rect class="chip bib" x="40" y="641" width="16" height="30"/><text x="68" y="664">引用：jlreq</text>
+  <rect class="chip note" x="40" y="685" width="16" height="30"/><text x="68" y="708">脚注（仮の番号 1）</text>
+
+  <!-- front/back -->
+  <rect class="box" x="20" y="756" width="410" height="120"/>
+  <text class="file" x="40" y="791">front.gm と back.gm</text>
+  <text class="sub" x="40" y="826">@toc depth=2、@bibliography、@index</text>
+  <text class="sub" x="40" y="856">見出し「参考文献」「索引」（@nonumber）</text>
+
+  <!-- S1 arrow -->
+  <line x1="436" y1="470" x2="474" y2="470"/>
+  <text class="sub" x="40" y="920">S1 は、マニフェストの順（front、01、02、back）に、</text>
+  <text class="sub" x="40" y="948">すべてのファイルの印を集める。</text>
+
+  <!-- Doc.Book -->
+  <rect class="ltoc" x="480" y="60" width="370" height="240" rx="6"/>
+  <text class="file" x="500" y="95">bookToc</text>
+  <text x="500" y="135">1　行分割</text>
+  <text x="500" y="168">1.1　禁則</text>
+  <text x="500" y="201">2　ルビ</text>
+  <text x="500" y="234">参考文献</text>
+  <text x="500" y="267">索引</text>
+
+  <rect class="lbib" x="480" y="310" width="370" height="140" rx="6"/>
+  <text class="file" x="500" y="345">bookCitations</text>
+  <text x="500" y="385">knuth1981 → 1</text>
+  <text x="500" y="418">jlreq → 2（二度目の引用も 2）</text>
+
+  <rect class="lidx" x="480" y="470" width="370" height="200" rx="6"/>
+  <text class="file" x="500" y="505">bookIndex（読みの順）</text>
+  <text x="500" y="545">行分割：01.gm、02.gm</text>
+  <text x="500" y="578">禁則：01.gm</text>
+  <text x="500" y="611">ルビ：02.gm</text>
+  <text class="sub" x="500" y="646">「ぎょう」は「きよう」として比べる</text>
+
+  <rect class="lnote" x="480" y="690" width="370" height="150" rx="6"/>
+  <text class="file" x="500" y="725">脚注（その場で振り直す）</text>
+  <text x="500" y="765">01.gm の脚注 → 1</text>
+  <text x="500" y="798">02.gm の脚注 → 1</text>
+  <text class="sub" x="500" y="828">既定の numbering は章ごと</text>
+
+  <!-- outputs -->
+  <rect class="box" x="900" y="60" width="380" height="240"/>
+  <text class="file" x="920" y="95">front.txt</text>
+  <text x="920" y="130">目次</text>
+  <text x="920" y="160">1　行分割</text>
+  <text x="920" y="190">1.1　禁則</text>
+  <text x="920" y="220">2　ルビ</text>
+  <text x="920" y="250">参考文献</text>
+  <text x="920" y="280">索引</text>
+  <line x1="850" y1="175" x2="898" y2="175"/>
+
+  <rect class="box" x="900" y="310" width="380" height="140"/>
+  <text class="file" x="920" y="345">back.txt</text>
+  <text x="920" y="385">[1] Knuth Donald. Breaking …</text>
+  <text x="920" y="418">[2] 日本語組版処理の要件、…</text>
+  <line x1="850" y1="380" x2="898" y2="380"/>
+
+  <rect class="box" x="900" y="470" width="380" height="200"/>
+  <text class="file" x="920" y="505">back.xhtml の索引</text>
+  <text x="920" y="545">行分割 1, 2</text>
+  <text x="920" y="578">禁則 1</text>
+  <text x="920" y="611">ルビ 1</text>
+  <text class="sub" x="920" y="646">数は出現位置へのリンク</text>
+  <line x1="850" y1="570" x2="898" y2="570"/>
+
+  <rect class="box" x="900" y="690" width="380" height="150"/>
+  <text class="file" x="920" y="725">01.txt と 02.txt の末尾</text>
+  <text x="920" y="765">*1 一行ずつ決めるより…</text>
+  <text x="920" y="798">*1 親文字との対応を保つ。</text>
+  <line x1="850" y1="765" x2="898" y2="765"/>
+  <text class="sub" x="900" y="880">back.txt の「索引」の見出しの下は空。</text>
+  <text class="sub" x="900" y="908">プレーンテキストは索引を出さない。</text>
+</svg>

@@ -81,7 +81,7 @@ helpOption = helperWith (long "help" <> short 'h' <> help "このヘルプを表
 simpleVersioner is not used because its help is in English.
 -}
 versionOption :: Parser (a -> a)
-versionOption = infoOption ("golem " <> T.unpack golemVersion) (long "version" <> hidden <> help "版を表示する")
+versionOption = infoOption ("golem " <> T.unpack golemVersion) (long "version" <> hidden <> help "バージョンを表示する")
 
 -- | Reads one of the given words.
 choice :: String -> [(String, a)] -> ReadM a
