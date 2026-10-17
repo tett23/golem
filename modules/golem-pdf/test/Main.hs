@@ -1177,11 +1177,11 @@ tests =
         "showRationalDigits, the numbers of figure matrices (golem-pdf ADR 0008)"
         [ testCase (show n <> " digits of " <> show r <> " is " <> T.unpack t) $ showRationalDigits n r @?= t
         | (n, r, t) <-
-            [ (6, -1 / 3, "-0.333333"),
+            [ (6, -(1 / 3), "-0.333333"),
               (2, 1 / 8, "0.12"), -- 12.5 hundredths: half to the even 12
               (2, 3 / 8, "0.38"), -- 37.5 hundredths: half to the even 38
-              (2, -1 / 8, "-0.12"), -- half to even on the negative side too
-              (2, -1 / 1000, "0"), -- rounds to zero: no minus sign
+              (2, -(1 / 8), "-0.12"), -- half to even on the negative side too
+              (2, -(1 / 1000), "0"), -- rounds to zero: no minus sign
               (10, 1 / 20, "0.05"),
               (0, 5 / 2, "2"),
               (3, 2, "2")
