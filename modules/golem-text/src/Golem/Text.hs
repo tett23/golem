@@ -71,24 +71,31 @@ data TextLists = TextLists
   }
 
 {- | One text file per source file, named after the source with a .txt
-extension. @firstLine@ gives the ideographic spaces that start the lines
-of a paragraph of a style (Nothing is body; docs/adr ADR 0006).
+extension. @firstLine@ gives, for a file, the ideographic spaces that
+start the lines of a paragraph of a style (Nothing is body; docs/adr ADR
+0006, 0014). The notes of a chapter of the manifest follow its last file,
+after a title (golem-driver ADR 0026).
 -}
-renderText :: Text -> Text -> Bool -> (Maybe Text -> Int) -> TextLists -> Map Text [EntryPart] -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
+renderText :: Text -> Text -> Bool -> (FileId -> Maybe Text -> Int) -> TextLists -> Map Text [EntryPart] -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
 renderText lang numberDefault dev firstLine lists bib variant ft book =
-  [ (replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "txt", file ctx d)
-  | d@(Document fid _) <- bookDocs book
+  [ (replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "txt", file (ctxOf fid) d (if isLast then chapter else []))
+  | chapter <- bookChapters book,
+    (isLast, d@(Document fid _)) <- zip (map (== length chapter) [1 ..]) chapter
   ]
   where
-    ctx = Ctx variant lang numberDefault book dev firstLine False lists bib 0
+    ctxOf fid = Ctx variant lang numberDefault book dev (firstLine fid) False lists bib 0
 
-file :: Ctx -> Document -> Text
-file c (Document _ bs) =
+-- | A file and, after it, the notes of the documents of its chapter.
+file :: Ctx -> Document -> [Document] -> Text
+file c (Document _ bs) chapter =
   let body = T.intercalate "\n\n" (filter (not . T.null) (map (block c 0) bs))
-      notes = [(n, xs) | Note _ n xs <- concatMap blockInlines bs]
+      notes = [(n, xs) | Document _ cbs <- chapter, Note _ n xs <- concatMap blockInlines cbs]
       noteMark n = (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
-      noteText = T.intercalate "\n" [noteMark n <> " " <> inlines c xs | (n, xs) <- notes]
-      full = if null notes then body else body <> "\n\n" <> noteText
+      noteText = T.intercalate "\n" (notesTitle (cLanguage c) : [noteMark n <> " " <> inlines c xs | (n, xs) <- notes])
+      full
+        | null notes = body
+        | T.null body = noteText
+        | otherwise = body <> "\n\n" <> noteText
    in if T.null full then "" else full <> "\n"
 
 indentBy :: Int -> Text

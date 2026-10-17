@@ -3276,6 +3276,34 @@ G0326 はそれらより先に並ぶ。
 
 パスとファイルの置き場所を確かめ、ファイルを CSL-JSON の配列（`[{"id": ...}, ...]`）で書く。
 
+## G0327
+
+章末の注の番号が章の中で重なります
+
+- 重大度: 警告
+- 状態: 使用中
+
+### 意味
+
+注を章の末尾にまとめる出力で、章の注の一覧の中に同じ番号が二度現れる。
+`[notes]` の `numbering` が `"file"` で、マニフェストの二つ以上のファイルからなる章の、二つ以上のファイルに注があるときに出る。
+注を章の末尾にまとめる出力は、`placement = "chapter-end"` の PDF と、`placement` によらず HTML、EPUB、プレーンテキストである。
+ターゲットが PDF だけで `placement` が `"page-foot"` なら出さない。
+出力は止めず、重なった番号のまま組む。
+HTML と EPUB では、注の id に章の中のファイルの順番を入れて（`note-2-1` など）、一つの文書の中で id が重ならないようにする。
+
+- メッセージ: `章末の注の番号が章の中で重なります（<章の最初のファイル>）。[notes] の numbering を "chapter" にしてください`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.chapterNoteDiagnostics`）。位置は、その章で注を持つ二つ目のファイルの最初の注である。`golem check` とビルドが出す
+- ADR: [golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)
+
+### 主な原因
+
+- 一つの章を複数のファイルに分け、`[notes]` の `numbering` を `"file"` にした。
+
+### 直し方
+
+`[notes]` の `numbering` を `"chapter"`（既定）か `"book"` にする。
+
 ## G0401
 
 ラベルが重複しています

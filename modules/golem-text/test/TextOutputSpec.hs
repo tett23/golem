@@ -40,7 +40,8 @@ bookOf bs =
       bookIndex = [],
       bookCitations = [],
       bookLabels = Map.empty,
-      bookReferenced = Set.empty
+      bookReferenced = Set.empty,
+      bookChapterOf = []
     }
 
 para :: Int -> [Inline] -> Block
@@ -51,7 +52,7 @@ txt = Text (at 0)
 
 -- | The one text file of a book, as the given variant and profile.
 renderWith :: Bool -> TextVariant -> Book -> [(FilePath, Text)]
-renderWith dev variant = renderText "ja" "kanji" dev (const 0) (TextLists (pure "・") Nothing Nothing) Map.empty variant ft
+renderWith dev variant = renderText "ja" "kanji" dev (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty variant ft
 
 horizontal, vertical :: Book -> [(FilePath, Text)]
 horizontal = renderWith False Horizontal
@@ -61,9 +62,29 @@ vertical = renderWith False Vertical
 only :: [(FilePath, Text)] -> Text
 only = T.concat . map snd
 
+fidB :: FileId
+ft2 :: FileTable
+(fidB, ft2) = registerFile "chapters/b.gm" ft
+
+-- | a.gm and b.gm with one note each, in the chapters given.
+twoFiles :: Text -> Int -> Int -> [Int] -> [(FilePath, Text)]
+twoFiles lang na nb chapters =
+  renderText lang "kanji" False (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft2 $
+    (bookOf [])
+      { bookDocs =
+          [ Document fid [para 0 [txt "甲", Note (at 1) na [txt "注甲。"]]],
+            Document fidB [Block (mkSpan fidB 0 1) Nothing (Paragraph Nothing [txt "乙", Note (mkSpan fidB 1 2) nb [txt "注乙。"]])]
+          ],
+        bookChapterOf = chapters
+      }
+
 tests :: [TestTree]
 tests =
-  [ testCase "the file is named after the source with .txt and ends with one newline" $
+  [ testCase "a chapter of two files: its notes at the end of the second, after a title (golem-driver ADR 0026)" $
+      twoFiles "ja" 1 2 [0, 0] @?= [("chapters/a.txt", "甲*1\n"), ("chapters/b.txt", "乙*2\n\n注\n*1 注甲。\n*2 注乙。\n")],
+    testCase "two chapters each have their notes; Notes in English (golem-driver ADR 0026)" $
+      twoFiles "en" 1 1 [0, 1] @?= [("chapters/a.txt", "甲*1\n\nNotes\n*1 注甲。\n"), ("chapters/b.txt", "乙*1\n\nNotes\n*1 注乙。\n")],
+    testCase "the file is named after the source with .txt and ends with one newline" $
       horizontal (bookOf [para 0 [txt "本文。"]]) @?= [("chapters/a.txt", "本文。\n")],
     testCase "blocks are separated by one blank line" $
       only (horizontal (bookOf [para 0 [txt "一つ目。"], para 5 [txt "二つ目。"]])) @?= "一つ目。\n\n二つ目。\n",
@@ -78,15 +99,15 @@ tests =
        in only (horizontal book) @?= "文献[2]による。\n",
     testCase "a footnote is *n in horizontal text, its body at the end of the file" $
       let book = bookOf [para 0 [txt "本文", Note (at 1) 1 [txt "注の本文。"], txt "。"], para 5 [txt "次の段落。"]]
-       in only (horizontal book) @?= "本文*1。\n\n次の段落。\n\n*1 注の本文。\n",
+       in only (horizontal book) @?= "本文*1。\n\n次の段落。\n\n注\n*1 注の本文。\n",
     testCase "a footnote is ※n in vertical text" $
-      only (vertical (bookOf [para 0 [txt "本文", Note (at 1) 1 [txt "注の本文。"]]])) @?= "本文※1\n\n※1 注の本文。\n",
+      only (vertical (bookOf [para 0 [txt "本文", Note (at 1) 1 [txt "注の本文。"]]])) @?= "本文※1\n\n注\n※1 注の本文。\n",
     testCase "the footnotes of several paragraphs are gathered in order at the end" $
       let book = bookOf [para 0 [txt "甲", Note (at 1) 1 [txt "一"]], para 5 [txt "乙", Note (at 6) 2 [txt "二"]]]
-       in only (horizontal book) @?= "甲*1\n\n乙*2\n\n*1 一\n*2 二\n",
+       in only (horizontal book) @?= "甲*1\n\n乙*2\n\n注\n*1 一\n*2 二\n",
     testCase "a footnote inside emphasis is still gathered at the end" $
       let book = bookOf [para 0 [CharStyle (at 1) "strong" [txt "強", Note (at 2) 1 [txt "注"]]]]
-       in only (horizontal book) @?= "強*1\n\n*1 注\n",
+       in only (horizontal book) @?= "強*1\n\n注\n*1 注\n",
     testCase "a sidenote is marked ※n and its body follows the paragraph" $
       let book = bookOf [para 0 [txt "本文", Sidenote (at 1) 1 [txt "補足。"], txt "。"], para 5 [txt "次。"]]
        in only (horizontal book) @?= "本文※1。\n※1 補足。\n\n次。\n",
