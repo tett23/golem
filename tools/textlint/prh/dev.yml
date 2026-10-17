@@ -1,0 +1,18 @@
+# Terms for the documents read by developers: the developer manual
+# (manual-dev/), the specifications, README, CONTRIBUTING and new ADRs
+# (docs/manual-policy.md, "開発者のマニュアル").
+# Words whose replacement depends on the meaning (機械, 診断, 版, 書体) are not
+# here: the review-words rule of textlint-rule-preset-golem reports them
+# without a fix.
+version: 1
+imports:
+  - ./common.yml
+rules:
+  - expected: アセット
+    pattern: /資産(?![^「」\n]*」)/
+    prh: ファイルを指す asset は「資産」と書かず、アセットと書く（docs/manual-policy.md）
+    specs:
+      - from: リリースの資産
+        to: リリースのアセット
+      - from: 「資産」と書かず
+        to: 「資産」と書かず
