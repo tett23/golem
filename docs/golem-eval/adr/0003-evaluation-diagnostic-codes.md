@@ -1,6 +1,6 @@
 # ADR 0003: 評価の診断コード G0201 から G0243
 
-ステータス: 採択→到達しない G0222 の枝の扱いは [ADR 0027](../../adr/0027-exhaustive-command-dispatch-by-types.md)、G0277 は [golem-parser ADR 0013](../../golem-parser/adr/0013-splat-after-keyword-arguments.md)、G0233 と G0234 の `@table` の条件の改めと G0235 の廃止は [golem-eval ADR 0004](0004-tsv-tables.md)
+ステータス: 採択→到達しない G0222 の枝の扱いは [ADR 0027](../../adr/0027-exhaustive-command-dispatch-by-types.md)、G0277 は [golem-parser ADR 0013](../../golem-parser/adr/0013-splat-after-keyword-arguments.md)、G0233 と G0234 の `@table` の条件の改めと G0235 の廃止は [golem-eval ADR 0004](0004-tsv-tables.md)、G0278 は [golem-parser ADR 0011](../../golem-parser/adr/0011-number-shorthand.md)
 
 ## 文脈
 

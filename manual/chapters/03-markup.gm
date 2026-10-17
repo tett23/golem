@@ -265,9 +265,15 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 [code: \[= doc.chapters.count\]] は、本の章の数になります。
 このマニュアルの書名は「[= meta.title]」、発行日は [= meta.date] で、[= doc.chapters.count] の章からなります。
 
-数を書くときは、[code: \[number-text 10\]] という書き方もあります。
-横組みでは「[number-text 10]」と組み、縦組みでは「十」や「一〇」のような漢数字か、縦中横の「10」で組みます。
-縦組みでどの表記にするかは、[code: \[number-text 10 style=kanji\]] のように個別に選ぶか、[code: style.toml] の [code: \[numbers\]] で決めます。
+数は、[code: ##10##] のように [code: ##] と [code: ##] で算用数字を挟んで書けます。
+横組みでは「##10##」と組み、縦組みでは「十」や「一〇」のような漢数字か、縦中横の「10」で組みます。
+縦組みでどの表記にするかは、[code: style.toml] の [code: \[numbers\]] で本ごとに決めます（第[ref-number style]章）。
+[code: ##] と [code: ##] のあいだに書けるのは算用数字だけです。
+小数や全角の数字を書くとエラーになります。
+[code: \[code: ...\]] の中では、この書き方は使えず、書いたとおりの文字になります。
+
+一つの数だけ表記を変えるときは、[code: \[number-text 10 style=kanji\]] のように書きます。
+[code: style=] には [code: kanji]（十）、[code: kanji-digits]（一〇）、[code: tcy]（縦中横の 10）を書けます。
 
 ## 空きを入れる
 
@@ -729,6 +735,7 @@ HTML と EPUB では、[code: @no-page-break] の後の段落の前で改ペー�
 - 本文の [code: \[] は [code: \\\[] と書きます。
 - 段落を [code: #]、[code: -]、[code: +]、[code: =]、[code: @]、[code: \|] で始めるときは、その文字の前に [code: \\] を置きます。
 - 本文の [code: \%%] は [code: \\\%%] と書きます。
+- [code: ##] の直後に算用数字を続けて本文に書くときは、[code: \\##1##] のように最初の [code: #] の前に [code: \\] を置きます。
 - 角括弧の中の [code: \]] と [code: \|] は [code: \\\]]、[code: \\\|] と書きます。
 - ルビの親文字と読み、索引の語の中の、区切りでない [code: /] は [code: \\/] と書きます。
 - [code: \\] 自身は [code: \\\\] と書きます。

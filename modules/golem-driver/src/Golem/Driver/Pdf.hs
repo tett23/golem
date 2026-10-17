@@ -1497,10 +1497,7 @@ composeEnv style geom fonts assumed look =
           ceProtrusion = compProtrusion comp,
           ceExplicitHyphenPenalty = compExplicitHyphenPenalty comp,
           ceRuby = rubyStyleOf style (lkSize look),
-          ceVerticalNumbers = case stNumbersVertical style of
-            "kanji-digits" -> Just StyleKanjiDigits
-            "tcy" -> Just StyleTcy
-            _ -> Just StyleKanji,
+          ceVerticalNumbers = verticalNumbersNamed (stNumbersVertical style),
           cePageOf = (`Map.lookup` asLabels assumed),
           ceSidenoteMarker = case snMarker <$> stSidenotes style of
             Just "symbol" -> MarkerSymbol

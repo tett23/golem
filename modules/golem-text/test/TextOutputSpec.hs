@@ -132,7 +132,15 @@ tests =
         testCase "a tate-chu-yoko number is kanji in vertical text" $
           only (vertical (bookOf [para 0 [Number (at 1) 12 (Just StyleTcy)]])) @?= "十二\n",
         testCase "kanji-digits is kept in vertical text" $
-          only (vertical (bookOf [para 0 [Number (at 1) 2026 (Just StyleKanjiDigits)]])) @?= "二〇二六\n"
+          only (vertical (bookOf [para 0 [Number (at 1) 2026 (Just StyleKanjiDigits)]])) @?= "二〇二六\n",
+        -- golem-parser ADR 0011
+        testCase "vertical = auto: kanji, as plain text has no tate-chu-yoko" $ do
+          let num def variant n = only (renderText "ja" def False (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty variant ft (bookOf [para 0 [Number (at 1) n Nothing]]))
+          num "auto" Vertical 9 @?= "九\n"
+          num "auto" Vertical 99 @?= "九十九\n"
+          num "auto" Vertical 100 @?= "百\n"
+          num "auto-digits" Vertical 100 @?= "一〇〇\n"
+          num "auto" Horizontal 100 @?= "100\n"
       ],
     testCase "a proof comment is written in the dev profile" $
       only (renderWith True Horizontal (bookOf [para 0 [txt "本文", ProofComment (at 1) "要確認"]])) @?= "本文【校正：要確認】\n",

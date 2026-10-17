@@ -412,7 +412,15 @@ tests :: TestTree
 tests =
   testGroup
     "golem-project"
-    [ testCase "normalisation" $ do
+    [ -- golem-parser ADR 0011
+      testCase "[numbers] vertical takes auto and auto-digits" $ do
+        let vertical src = stNumbersVertical <$> parseStyle (FileId 0) src
+        vertical "[numbers]\nvertical = \"auto\"\n" @?= Right "auto"
+        vertical "[numbers]\nvertical = \"auto-digits\"\n" @?= Right "auto-digits"
+        case vertical "[numbers]\nvertical = \"automatic\"\n" of
+          Left _ -> pure ()
+          Right v -> assertFailure (show v),
+      testCase "normalisation" $ do
         normalizeRelative "./a/../b/c.gm" @?= Right "b/c.gm"
         normalizeRelative "../x.gm" @?= Left EscapesRoot
         normalizeRelative "/etc/passwd" @?= Left Absolute

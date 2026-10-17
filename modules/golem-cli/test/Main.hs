@@ -260,6 +260,11 @@ explainTests =
         assertEqual err (ExitFailure 1) code
         last (lines err) @?= "コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）"
         assertEqual err 1 (length (filter ("golem explain" `isInfixOf`) (lines err))),
+      -- golem-parser ADR 0011
+      testCase "golem check reports ##1.5## as G0278" $ do
+        (code, err) <- golemIn [(p, if p == "a.gm" then "数は ##1.5## です。\n" else c) | (p, c) <- syntaxErrorFiles] ["check"]
+        assertEqual err (ExitFailure 1) code
+        assertBool err ("error[G0278]" `isInfixOf` err),
       testCase "golem check --format json writes only JSON" $ do
         (code, err) <- golemIn syntaxErrorFiles ["check", "--format", "json"]
         assertEqual err (ExitFailure 1) code

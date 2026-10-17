@@ -1344,6 +1344,10 @@ evalInline ctx inHeading (A.Located sp i) = case i of
   -- evalInlines has made it text already; this is for safety (golem-parser ADR 0010)
   A.Escaped c -> pure [Text sp (T.singleton c)]
   A.SoftBreak -> pure []
+  -- ##N## is [number-text N] (golem-parser ADR 0011)
+  A.NumberShorthand t -> case shorthandDigits t of
+    Just n -> evalCommand ctx inHeading sp (A.Located sp "number-text") [A.Located sp (A.Positional (A.Word n))] []
+    Nothing -> err "G0278" sp "## と ## のあいだには算用数字だけを書きます。本文の ## は \\## と書きます" >> pure []
   -- the hard breaks of a paragraph are split off before; this one is in a prose slot
   A.HardBreak -> err "G0256" sp "強制改行は段落の中にだけ書けます。コマンドの中では使えません" >> pure []
   A.ErrorInline -> pure []
@@ -1361,7 +1365,31 @@ evalInline ctx inHeading (A.Located sp i) = case i of
       else case evalExpr en e >>= embedValue sp of
         Left d -> report d >> pure []
         Right t -> pure [Text sp t]
-  A.Command n args slots -> uniqueKeys args >>= \args' -> evalCommand ctx inHeading sp n args' slots
+  A.Command n args slots -> uniqueKeys args >>= \args' -> evalCommand ctx inHeading sp n args' (codeSlots n args' slots)
+
+{- | The digits of ##N##: ASCII digits between the two ##, without a
+leading zero but 0 itself (golem-parser ADR 0011).
+-}
+shorthandDigits :: Text -> Maybe Text
+shorthandDigits t = do
+  inner <- T.stripPrefix "##" t >>= T.stripSuffix "##"
+  case T.unpack inner of
+    "0" -> Just inner
+    (c : _) | c /= '0' && T.all isDigit inner && T.all isAscii inner -> Just inner
+    _ -> Nothing
+
+{- | The slots of [code: ...] and [style code: ...] with every ##…## made
+the text it was written with (golem-parser ADR 0011), before the command
+is resolved, so a plugin over code gets the text too.
+-}
+codeSlots :: A.Located A.Name -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> [[A.Located A.Inline]]
+codeSlots (A.Located _ name) args slots
+  | name == "code" || (name == "style" && isCode args) = map A.shorthandsAsText slots
+  | otherwise = slots
+  where
+    isCode = \case
+      (A.Located _ (A.Positional (A.Word "code")) : _) -> True
+      _ -> False
 
 -- | An inline command, its repeated keys dropped (golem-parser ADR 0013).
 evalCommand :: EvalContext -> Bool -> SrcSpan -> A.Located A.Name -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]

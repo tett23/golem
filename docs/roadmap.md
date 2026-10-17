@@ -17,7 +17,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ## v0.1.0-rc3
 
-- **数の糖衣構文 `##1##`**（未実装、[golem-parser ADR 0011](golem-parser/adr/0011-number-shorthand.md)）：数を `##1##` の形で書ける記法を加える。意味は ADR で決める。`[number-text ...]`（[docs/markup.md](markup.md)）と、数の抽象値との関係もその ADR で決める。
 
 ### 記法と設定
 

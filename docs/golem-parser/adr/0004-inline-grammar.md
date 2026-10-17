@@ -1,6 +1,6 @@
 # ADR 0004: インライン層の文法
 
-ステータス: 採択→`**[式]` の位置は [ADR 0013](0013-splat-after-keyword-arguments.md)
+ステータス: 採択→`**[式]` の位置は [ADR 0013](0013-splat-after-keyword-arguments.md)、数の糖衣構文は [ADR 0011](0011-number-shorthand.md)
 
 ## 文脈
 

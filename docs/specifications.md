@@ -762,6 +762,20 @@ folio = { position = "bottom-outside", format = "{n}" }
 HTML と EPUB は版面を無視するので、段組みを出力せず、CSS の `columns` も `column-count` も書かない。
 プレーンテキストも段組みを出力しない。
 
+`[numbers]` の `vertical` は、縦組みで表記を決めていない数（`style` 引数のない `[number-text ...]`、`##N##`、ページ番号、リストの `{n}`）の表記を決める（[golem-parser ADR 0011](golem-parser/adr/0011-number-shorthand.md)）。
+
+| 値 | 縦組みの表記 |
+| --- | --- |
+| `kanji` | 位取りをする漢数字（既定） |
+| `kanji-digits` | 数字を一字ずつ漢数字にする |
+| `tcy` | 算用数字の縦中横 |
+| `auto` | 0 以上 99 以下の数は縦中横、ほかは位取りをする漢数字 |
+| `auto-digits` | 0 以上 99 以下の数は縦中横、ほかは数字を一字ずつ漢数字にする |
+
+`auto` と `auto-digits` は本の既定にだけ使え、`[number-text ...]` の `style` には書けない。
+プレーンテキストには縦中横がないので、縦中横になる数は位取りをする漢数字で書く。
+HTML と EPUB のリストの番号は CSS のカウンターで書くので、`auto` は位取りをする漢数字、`auto-digits` は一字ずつの漢数字になる。
+
 `[notes]` の `numbering` は、脚注と傍注の番号を 1 から振り直す範囲を決める（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。
 
 | 値 | 意味 |

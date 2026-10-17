@@ -57,6 +57,7 @@ kindForRule = \case
   "TableDelimiter" -> Just NTableDelimiter
   "CodeBlock" -> Just NCodeBlock
   "HardBreak" -> Just NHardBreak
+  "NumberShorthand" -> Just NNumberShorthand
   "ERROR" -> Just NErrorNode
   _ -> Nothing
 
@@ -67,6 +68,8 @@ kindForToken = \case
   "CellText" -> KText
   "Escape" -> KEscape
   "Backslash" -> KBackslash
+  "NumberMark" -> KNumberMark
+  "NumberBody" -> KNumberBody
   "Ws" -> KWhitespace
   "Ind" -> KWhitespace
   "Nl" -> KNewline
