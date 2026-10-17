@@ -1,6 +1,6 @@
 # ADR 0004: インライン層の文法
 
-ステータス: 採択
+ステータス: 採択→`**[式]` の位置は [ADR 0013](0013-splat-after-keyword-arguments.md)
 
 ## 文脈
 

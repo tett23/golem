@@ -4,6 +4,7 @@ import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.List (isSuffixOf, sort)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -183,6 +184,20 @@ preflightTests =
         p <- preflightIn tmp
         v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
         [(rvKind r, rvWeight r) | r <- concatMap pvRules (vwPages v)] @?= [("脚注の罫線", round (0.2 * 65536 :: Rational))],
+    testCase "the view: the weight of a rule is its thinnest part, its colour a swatch used (golem-driver ADR 0028)" $ do
+      let weightOf st = withPreflightProject (horizontalStyle <> "\n[notes.rule]\nlength = \"5zw\"\nweight = \"1.2pt\"\nstyle = \"" <> st <> "\"\n") "# 章\n\n漢[note: 注。]字\n" [] $ \tmp -> do
+            p <- preflightIn tmp
+            v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+            pure (map rvWeight (concatMap pvRules (vwPages v)))
+          w = round (1.2 * 65536 :: Rational)
+      weightOf "thin-thin" >>= (@?= [w `div` 3])
+      weightOf "wavy" >>= (@?= [w `div` 4])
+      weightOf "dotted" >>= (@?= [w])
+      withPreflightProject (horizontalStyle <> "\n[color.swatches]\nheavy = { cmyk = [100, 100, 100, 100] }\n\n[notes.rule]\nlength = \"5zw\"\ncolor = \"heavy\"\n") "# 章\n\n漢[note: 注。]字\n" [] $ \tmp -> do
+        p <- preflightIn tmp
+        v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+        Map.keys (vwSwatchesUsed v) @?= ["heavy"]
+        assertBool (show (prDiagnostics p)) (DiagnosticCode "G0915" `elem` map diagCode (prDiagnostics p)),
     testCase "a character the font has not is glyph 0 in the view (with real fonts)" $ withSystemTempDirectory "golem-preflight" $ \tmp -> do
       copyTree fixture tmp
       createDirectoryIfMissing True (tmp </> "fonts")

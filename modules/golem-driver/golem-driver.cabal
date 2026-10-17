@@ -31,6 +31,7 @@ library
                     Golem.Driver.New
                     Golem.Driver.Pdf
                     Golem.Driver.Plugins
+                    Golem.Driver.RuleShape
                     Golem.Driver.Version
   build-depends:
     , aeson         >=2.1  && <2.3
@@ -80,6 +81,7 @@ test-suite golem-driver-test
     PdfSpec
     PluginsSpec
     ReferencesSpec
+    RuleShapeSpec
     SecuritySpec
     StylesSpec
     Support

@@ -16,6 +16,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble
+import Golem.Doc.Bibliography (EntryPart, entryText)
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers
 import Golem.Doc.Numbering (numberSeparator)
@@ -53,8 +54,8 @@ data Ctx = Ctx
     cInList :: Bool,
     -- | the markers of [lists] (golem-driver ADR 0013)
     cLists :: TextLists,
-    -- | the formatted entries of the bibliography by key (golem-doc ADR 0004)
-    cBibliography :: Map Text Text,
+    -- | the formatted entries of the bibliography by key (golem-doc ADR 0004, 0005)
+    cBibliography :: Map Text [EntryPart],
     -- | the depth of the list around (0 outside lists)
     cDepth :: Int
   }
@@ -73,7 +74,7 @@ data TextLists = TextLists
 extension. @firstLine@ gives the ideographic spaces that start the lines
 of a paragraph of a style (Nothing is body; docs/adr ADR 0006).
 -}
-renderText :: Text -> Text -> Bool -> (Maybe Text -> Int) -> TextLists -> Map Text Text -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
+renderText :: Text -> Text -> Bool -> (Maybe Text -> Int) -> TextLists -> Map Text [EntryPart] -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
 renderText lang numberDefault dev firstLine lists bib variant ft book =
   [ (replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "txt", file ctx d)
   | d@(Document fid _) <- bookDocs book
@@ -133,8 +134,8 @@ block c ind (Block sp _ body) = case body of
   -- plain text has no pages (docs/adr ADR 0017)
   ForcedBreak _ -> ""
   ChannelOutput BibliographyOutput ->
-    -- the entry, or the key that has none (golem-doc ADR 0004)
-    T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> Map.findWithDefault k k (cBibliography c) | (k, n) <- bookCitations (cBook c)]
+    -- the entry, or the key that has none (golem-doc ADR 0004, 0005)
+    T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> maybe k entryText (Map.lookup k (cBibliography c)) | (k, n) <- bookCitations (cBook c)]
   where
     -- a number and the separator of the language (golem-html ADR 0002)
     numbered = maybe "" (\n -> n <> numberSeparator (cLanguage c) n)

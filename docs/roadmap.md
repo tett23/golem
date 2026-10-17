@@ -25,16 +25,13 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **章末の注**（未実装、[golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)）：`[notes] placement = "chapter-end"` を読み込むが、どの出力も注の置き方を変えない。仕様書とマニュアルは章末に置けると書いていない形に直したが、章末の注そのものはまだない。
 - **SVG の図版**（未実装、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）：仕様は SVG を v1 では扱わないと定めているが（仕様書の [「図版」の節](specifications.md#図版)）、v1 で扱えるようにする。開発者向けのマニュアルの図は、SVG を原稿にして PNG に描いたものを置いている。PDF の出力での描き方（ベクターのまま描くか、変換するか）と、HTML と EPUB でそのまま使うかを決める。
 - **段落スタイルの罫線**（未実装、[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）：段落スタイルに、段落の前と後に引く罫線（InDesign の段落境界線にあたるもの）を書けるようにする。見出しの下の罫線や、節の区切りの罫線に使う。長さ、太さ、間隔は、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md) の罫線の指定の形で書く。長さの既定は、当面は段の行長（段の最大の長さ）に固定する。罫線を持つ段落は改ページと改段で分けず、一つのページ（段）に置く。その段落の注のうち、そのページに収まらないものは、次のページ（見開きで扱う場合は次の見開き）に回す。間隔と行の格子の合わせ方は、[未決事項](#未決事項) の「段落の罫線の間隔と行の格子」で決める。
-- **罫線の色と線の種類**（未実装、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）：罫線の指定（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）に、色と線の種類（実線、破線、点線、二重線など）を加える。色は名前の付いた色（仕様書の [「色」の節](specifications.md#色)）で書く。罫線の指定を使うすべての罫線（脚注の区切り線、段落スタイルの罫線）に同時に加える。
 - **合字のテキスト層**（未実装、[golem-driver ADR 0030](golem-driver/adr/0030-ligature-text-layer.md)）：PDF の ToUnicode が合字のグリフを一字目だけに対応させるので、PDF から文字列を抜き出すと fi、fl、ff、ffi が f になる（`Golem.Driver.Fonts` の `clusterText`）。十冊の fixture の英語の本と、テンペストで起きる。
 - **表の前後の空きと罫線**（未実装、[golem-driver ADR 0031](golem-driver/adr/0031-table-spacing-and-rules.md)）：表の上の罫が前の段落のベースラインに接し、下の罫が表の最後の行のディセンダーを横切る。表の前後に空きがない。見出しの行が空の表では、罫が二重になる（fixture の The Elements of Style）。
-- **既定の見出し**（未実装、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）：段落スタイルを指定しない見出しが、本文と同じ大きさで組まれ、前後に空きがない。
 - **注の印の書式**（未実装、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）：PDF の注の印は `*1` の形に固定である。[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md) は印の書式の設定を作らないと決めたが、どの一覧にも載っていなかった。印の書式を設定できるようにする。
 - **改ページの手での制御**（未実装、[docs/adr 0030](adr/0030-manual-page-break-control.md)）：原稿で、ここで改ページしない、この先にこれだけの空きが要る、このページの行を一行増やす、といった指定を書く手段がない（TeX の `\nopagebreak`、needspace、`\enlargethispage` にあたるもの）。
 
 ### 記法と設定
 
-- **参考文献の項目**（未実装、[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）：参考文献の一覧は、著者、題、発行元、発行の年しか組まない。CSL-JSON の誌名や書名（`container-title`）、巻と号（`volume`、`issue`）、ページ（`page`）、URL（`URL`）を読んでも組まないので、論文は誌名なしで出る。これらを組めるようにする。URL の文献には、最終閲覧日（CSL-JSON の `accessed`）を書けるようにする。
 - **ADR とコードの食い違い**（未実装、[docs/adr 0031](adr/0031-adr-code-mismatches.md)）：`overridableCommands` に `code` が入っている。LSP の補完にプラグインのコマンドの名前が出ない。`golem inspect` のオプションの書き方が ADR と違う。ホストが `golem_dealloc` を一度も呼ばない。どちらに合わせるかを決めて直す。
 - **奥付の関係者と刷**（未実装、[docs/adr 0033](adr/0033-colophon-contributors-and-printings.md)）：マニフェストの `[metadata]` が持つのは、著者（`creators`）、発行者（`publisher`）、版（`edition`）、発行の日（`date`）だけである。奥付に載せる編集者、印刷所、製本所を書く欄がない。版とは別に刷（同じ版を刷り直した回）を書く欄もなく、版と刷ごとの発行の日の履歴（「2026 年 10 月 16 日初版第 1 刷発行」の形の行）も書けない。関係者を役割とともに書けるようにし、版と刷とその日付を書けるようにして、本文から `meta` で参照できるようにする。役割の語彙、EPUB と PDF のメタデータへの写し方、組み込みの奥付を用意するかどうかは ADR で決める。
 - **keep の段落の行末のエスケープした空白**（未実装、[golem-parser ADR 0012](golem-parser/adr/0012-keep-trailing-escaped-space.md)）：keep の段落の行末に書いた `\ `（エスケープした空白）は、行の末尾の空白とともに除かれているように読める（golem-parser の `trimLine`）。[docs/markup.md](markup.md) は、エスケープした空白を行の先頭では無視すると書いており、行末では残ると読めるので、仕様と食い違っている可能性がある（コードを読んだ結果で、実際の出力では確かめていない）。
@@ -46,11 +43,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合を直す。
 次の直し方は案であり、着手するときに ADR で決める。
 
-- **見出しの後ろの改ページ**（未実装、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）：見出しが続く範囲と、その後の本文の最初の行までを一つのまとまりとして先を見る。golem-driver の「既定の見出し」の ADR の草稿が、この直し方を含む。
-- **見出しの脚注**（未実装、[golem-layout ADR 0013](golem-layout/adr/0013-heading-footnotes.md)）：脚注がページに入らないときは、段落と同じく見出しのほうを次のページに送る（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md) の注の規則に合わせる）。
 - **ぶら下げの量**（未実装、[golem-layout ADR 0014](golem-layout/adr/0014-protrusion-amount.md)）：[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) のとおり、行の端の字の送りに比を掛ける。既存のテストの期待値を ADR の表から計算し直し、fixture の出力の変化を決定性の検査の基準に反映する。
-- **図版の順序**（未実装、[golem-layout ADR 0015](golem-layout/adr/0015-figure-order.md)）：送った図版が待っているあいだは、後の図版もその後に並べ、図版の順序を保つ。[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md) を改める ADR で定める。
-- **キーワード引数の後の `**[式]`**（未実装、[golem-parser ADR 0013](golem-parser/adr/0013-splat-after-keyword-arguments.md)）：文法の引数の並びを改め、`**[式]` をキーワード引数と同じ位置に書けるようにする。同じキーが二度出たときは、後に書いたほうを採る。
 - **`golem inspect` の終了コード、文言、対象**（未実装、[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）：ほかのコマンドと同じ diagnostics の出力を通し、誤りがあれば終了コード 1 にする。ないファイルは日本語の誤りにする。`--as ir` は引数のファイルの IR を、人が読める形で出す。二つの不具合を一つの ADR で直す。
 - **LSP の古い diagnostics**（未実装、[golem-lsp ADR 0004](golem-lsp/adr/0004-stale-s1-diagnostics.md)）：ラベルを参照する箇所の集合が変わったときにも S1 を評価し直す。[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md) の再評価の規則を改める ADR が要る。
 
@@ -75,7 +68,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 ### 記法と設定
 
 - **`@table` の位置引数のパス**：`@table` はファイルのパスを `src=` だけで受け付ける。`@listing` は位置引数を正とし `src=` を廃止予定にした（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）ので、`@table` でもパスを最初の引数に書けるようにするかを検討する。記法の追加が要るので ADR で決める。
-- **`*[式]` の展開とプラグインへの引数**：パーサーは `*[式]` を読むが、評価はそれを展開しない。プラグインのコマンドに渡すキーワード引数は、キーを落として `[0, value]` で送っている。
+- **`*[式]` の展開とプラグインへの引数**：パーサーは `*[式]` を読むが、評価はそれを展開しない。プラグインのコマンドに渡すキーワード引数は、キーを落として `[0, value]` で送っている。展開したキーがほかのキーワード引数と重なれば G0277 とする（[golem-parser ADR 0013](golem-parser/adr/0013-splat-after-keyword-arguments.md)）。
 - **出力インテントの条件**：PDF/X-4 の出力インテントは `[color] intent` があるときにだけ書くが、仕様書にこの条件が書かれていない。
 - **原稿の中の言語の切り替え**：本の言語は manifest の `language` だけで決まり、原稿の一部の言語を指定する記法がない。原稿の一部の言語を指定する記法を加え、引用符と和欧の扱いを、その部分の言語で切り替えられるようにする。その部分の言語で分綴することは、v1.0.0 の「本の中の別の言語の分綴」で扱う。
 - **見出しの 4 階層め以降**：意味論の IR の見出しは 3 階層までで、4 階層め以降の見出しを書けない。
@@ -109,7 +102,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 
 - **本の中の別の言語の分綴**：原稿の一部の言語を指定する手段がないので、英語の本の中のフランス語の語も英語のパターンで分綴される（fixture の Nightmare Abbey の「prover-be」）。原稿の一部の言語を指定する記法は、v0.1.0-rc4 の「原稿の中の言語の切り替え」で扱う。この項目は、その記法で指定した部分を、その言語の分綴のパターンで分綴することを扱う。
 - **発行の履歴の書式**：v0.1.0-rc3 の「奥付の関係者と刷」では、奥付の発行の履歴の行（`2026年10月16日　初版第1刷発行` の形）を、日本語の一つの書式に固定して組む予定である。この書式を `style.toml` で変えられるようにする（`第1版第1刷` と書く本、日付と版の順を変える本など）。日本語でない本の書式も合わせて扱う。
-- **参考文献のスタイル**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、参考文献のスタイルを選び、定められるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 の「参考文献の項目」が欄を増やした後に扱う。着手するときに ADR を作成する。
+- **参考文献のスタイル**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、参考文献のスタイルを選び、定められるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。
 - **時間のかかる `unsafe` の FFI の呼び出し**：プラグインのコンパイル（`golem_plugin_load`）と WAT から wasm への変換（`golem_wat2wasm`）は、`modules/golem-plugin/src/Golem/Plugin.hs` で `unsafe` として呼んでいる。`unsafe` の呼び出しは、終わるまで capability を手放さないので、そのあいだ GC の同期でほかのすべての capability が待たされる。この二つを `safe` の呼び出しにする。デッドロックにはならず遅れるだけであり、出力も変わらない（2026-10-17 のテストが止まる件の調査で見つかった）。
 
 ### LaTeX との差を埋める項目
@@ -168,7 +161,7 @@ v1 の範囲から外し、v2 以降に送ると決めた事項である。
 - **プラグインの配布機構**：レジストリとバージョンの解決、配布されたバイナリがどのソースから作られたかの検証、キャッシュの削除と整理のコマンド（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。
 - **配布の拡張**：macOS の実行ファイルの署名（Developer ID）と公証、Homebrew の tap とインストール用のスクリプト、再現可能なビルド、`-split-sections` による実行ファイルの縮小（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **ビルドと LSP の速度**：インクリメンタルなビルドと結果のキャッシュ、ファイルの変更の監視、ページへの配置の並列化、LSP の差分の同期とインクリメンタルな再解析、コンパイルでの回復しない解析、プラグインの初期化済みのメモリの複製。いずれも速度が問題になってから ADR で検討する（[golem-driver ADR 0001](golem-driver/adr/0001-build-pipeline.md)、[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)、[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md)、[golem-parser ADR 0002](golem-parser/adr/0002-parser-on-peg-hs.md)、[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
-- **見出しの行取りの指定**：「3 行取り」のように、見出しが占める行数と、行取りの中の位置を `style.toml` で指定する設定。v1 の PDF は、見出しの大きさから行数を自動で決め、領域の中央に置く（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
+- **見出しの行取りの中の位置**：見出しを行取りの領域の中央のほかに、前寄せや後ろ寄せで置く設定。行取りの行数は `[headings.<階層>]` の `lines` で指定できるが（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）、見出しはいつも領域の中央に置く（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
 - **可変フォント**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。v1 は可変フォントを既定のインスタンスとして扱う（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 - **傍注の拡張**：段組みの版面での傍注欄、収まらない傍注を脚注に回すことと傍注のために本文の行を次のページに送ること、脚注の本文とキャプションの中の傍注の配置（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。
 - **表の拡張**：罫線の色と種類（縦の罫、本体の行のあいだの罫を含む）、表のための `style.toml` の設定（文字の大きさ、罫線の太さ、列の間隔、表の寄せ）、本文より小さい文字の表、列の幅の指定、セルの結合とセルの中のブロック、縦組みの本の中の横組みの表、表の行の途中での改ページ、表の番号とキャプション、表の続きを示す文言（[golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)）。
@@ -225,6 +218,7 @@ v1 の範囲から外し、v2 以降に送ると決めた事項である。
   - 縦組みの注の印と、マニュアルの付録の注（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）。
   - 参考文献の一件の中の空き（[golem-doc ADR 0004](golem-doc/adr/0004-bibliography-formatting.md)）。
   - 技術書のコードブロックを Acrobat の出力プレビューで開くこと（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+  - 12 の線の種類と色を付けた脚注の区切り線を Acrobat の出力プレビューで開き、破線と点線の両端、点の丸さ、波線のつながり、色が DeviceCMYK の版だけに出ることを見ること。同じ太さと長さの線を InDesign で引いて並べ、多重線の比、点の間隔、和文の点線の形を比べること（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
 
 ## 未決事項
 

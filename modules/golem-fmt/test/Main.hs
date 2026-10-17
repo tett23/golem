@@ -119,6 +119,11 @@ tests =
         case format "[strong: a\n" of
           Unformattable ds -> assertBool "diagnostics" (not (null ds))
           Formatted r -> assertFailure ("formatted: " <> show r),
+      -- golem-parser ADR 0013
+      testCase "**[...] after a keyword argument is formatted" $
+        case format "[f k=v **[h]]\n" of
+          Formatted _ -> pure ()
+          Unformattable ds -> assertFailure (show ds),
       testGroup
         "@verse is not rewritten (ADR 0002)"
         [ testCase "@verse keeps its name" $

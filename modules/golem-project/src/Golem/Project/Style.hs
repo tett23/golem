@@ -36,6 +36,7 @@ module Golem.Project.Style
     charStyle,
     paraStyle,
     isCodeCharStyle,
+    isUrlCharStyle,
     codeParaKeys,
     paraLineBreaks,
     validStyleName,
@@ -72,6 +73,8 @@ module Golem.Project.Style
     ListStyle (..),
     defaultListStyle,
     RuleSpec (..),
+    RuleStyle (..),
+    ruleStyleNames,
     parseRuleSpec,
     defaultStyle,
     parseStyle,
@@ -410,14 +413,15 @@ decimalOf s = case T.splitOn "." s of
   [i, f] | not (T.null i), not (T.null f), T.all isDigit (i <> f) -> Just (read (T.unpack (i <> f)) % (10 ^ T.length f))
   _ -> Nothing
 
--- | The built-in character styles: bold, italic, strong and code (golem-driver ADR 0017).
+-- | The built-in character styles: bold, italic, strong, code (golem-driver ADR 0017) and url (golem-doc ADR 0005).
 builtinCharStyles :: Map Text CharStyleDef
 builtinCharStyles =
   Map.fromList
     [ ("bold", noCharDef {csSyntheticBold = Just True}),
       ("code", noCharDef {csFont = Just "code"}),
       ("italic", noCharDef {csSyntheticItalic = Just True}),
-      ("strong", noCharDef {csBasedOn = Just "bold"})
+      ("strong", noCharDef {csBasedOn = Just "bold"}),
+      ("url", noCharDef)
     ]
 
 -- | The built-in paragraph styles: body, verse, caption, sidenote and code (golem-driver ADR 0017).
@@ -439,10 +443,20 @@ codeParaKeys = ["font", "size", "background", "padding", "border", "border-width
 (golem-driver ADR 0017).
 -}
 isCodeCharStyle :: Style -> Text -> Bool
-isCodeCharStyle style = go []
+isCodeCharStyle = reachesCharStyle "code"
+
+{- | Whether a character style is url or reaches url through based-on
+(golem-doc ADR 0005): the PDF breaks it as code, but it loads no font.
+-}
+isUrlCharStyle :: Style -> Text -> Bool
+isUrlCharStyle = reachesCharStyle "url"
+
+-- | Whether a character style is a built-in one or reaches it through based-on.
+reachesCharStyle :: Text -> Style -> Text -> Bool
+reachesCharStyle builtin style = go []
   where
     go seen name
-      | name == "code" = Map.member "code" (stCharStyles style)
+      | name == builtin = Map.member builtin (stCharStyles style)
       | name `elem` seen = False
       | otherwise = maybe False (go (name : seen)) (Map.lookup name (stCharStyles style) >>= csBasedOn)
 
@@ -532,7 +546,9 @@ data HeadingStyle = HeadingStyle
   { hsFont :: !(Maybe Text),
     hsSize :: !(Maybe Dim),
     hsNumber :: !(Maybe Text),
-    hsRectoBreak :: !Bool
+    hsRectoBreak :: !Bool,
+    -- | the least grid lines the heading takes (golem-driver ADR 0032)
+    hsLines :: !(Maybe Int)
   }
   deriving stock (Eq, Show)
 
@@ -792,6 +808,8 @@ parseRunningFormat t0
 {- | A rule of style.toml (golem-driver ADR 0024): the same keys and
 checks wherever a rule is written; the user decides whether the length
 is required, how the spaces are measured and the size zw is resolved by.
+The colour and the line style are the same for every user (golem-driver
+ADR 0028).
 -}
 data RuleSpec = RuleSpec
   { -- | length, greater than 0
@@ -801,12 +819,50 @@ data RuleSpec = RuleSpec
     -- | the space before the rule (above it, right of it in vertical text), not negative
     rsSpaceBefore :: !(Maybe Dim),
     -- | the space after the rule (below it, left of it in vertical text), not negative
-    rsSpaceAfter :: !(Maybe Dim)
+    rsSpaceAfter :: !(Maybe Dim),
+    -- | the swatch of the rule; none draws it without setting a colour
+    rsColor :: !(Maybe Text),
+    -- | the line style, its lengths resolved from the weight
+    rsStyle :: !RuleStyle
   }
   deriving stock (Eq, Show)
 
+-- | The line style of a rule (golem-driver ADR 0028); lengths in sp.
+data RuleStyle
+  = RuleSolid
+  | -- | the proportions, line, gap, line, ... from the before side
+    RuleMulti ![Int]
+  | -- | dash, gap
+    RuleDashed !Sp !Sp
+  | -- | gap
+    RuleDotted !Sp
+  | -- | gap
+    RuleJapaneseDots !Sp
+  | RuleWavy
+  deriving stock (Eq, Show)
+
+{- | The values of the key style and the proportions of the styles of
+several lines (golem-driver ADR 0028), in the order of the table of the ADR.
+-}
+ruleStyleNames :: [(Text, Maybe [Int])]
+ruleStyleNames =
+  [ ("solid", Nothing),
+    ("thin-thin", Just [1, 1, 1]),
+    ("thick-thick", Just [2, 1, 2]),
+    ("thick-thin", Just [2, 1, 1]),
+    ("thin-thick", Just [1, 1, 2]),
+    ("thick-thin-thick", Just [2, 1, 1, 1, 2]),
+    ("thin-thick-thin", Just [1, 1, 2, 1, 1]),
+    ("triple", Just [1, 1, 1, 1, 1]),
+    ("dashed", Nothing),
+    ("dotted", Nothing),
+    ("japanese-dots", Nothing),
+    ("wavy", Nothing)
+  ]
+
 {- | Reads a rule spec from its table; every error is at the value or,
-for an unknown key, at the table (G0306 by the path of its user).
+for an unknown key, at the table (G0306 by the path of its user). The
+swatch of color is checked by the user of the style (G0313).
 -}
 instance FromValue RuleSpec where
   fromValue = parseTableFromValue $ do
@@ -820,9 +876,40 @@ instance FromValue RuleSpec where
         | otherwise -> failAt l "罫線の weight は 0 より大きい寸法です"
     let space key = optKeyOf key $ ruleDim key $ \l d ->
           if negativeDim d then failAt l (T.unpack ("罫線の " <> key <> " は 0 以上の寸法です")) else pure d
+        -- a length of a dash or a gap: absolute, greater than 0 (golem-driver ADR 0028)
+        dashLength key = optKeyOf key $ ruleDim key $ \l -> \case
+          Zw _ -> failAt l (T.unpack ("罫線の " <> key <> " には zw を使えません"))
+          Abs x
+            | x > 0 -> pure (l, x)
+            | otherwise -> failAt l (T.unpack ("罫線の " <> key <> " は 0 より大きい寸法です"))
     before <- space "space-before"
     after <- space "space-after"
-    pure (RuleSpec len (fromMaybe defaultRuleWeight weight) before after)
+    color <- optKeyOf "color" $ \case
+      Text' _ t -> pure t
+      v -> failAt (valueAnn v) "罫線の color はスウォッチの名前を文字列で書きます"
+    styleName <- optKeyOf "style" $ \case
+      Text' l t
+        | Just multi <- lookup t ruleStyleNames -> pure (l, t, multi)
+        | otherwise -> failAt l (T.unpack ("罫線の style に使えない値です: " <> t <> "（" <> T.intercalate ", " (map fst ruleStyleNames) <> " のどれか）"))
+      v -> failAt (valueAnn v) "罫線の style は \"solid\" のように文字列で書きます"
+    dash <- dashLength "dash"
+    gap <- dashLength "gap"
+    let w = fromMaybe defaultRuleWeight weight
+        name = maybe "solid" (\(_, t, _) -> t) styleName
+        -- a key without effect on the style is an error (golem-driver ADR 0028)
+        refuse key = \case
+          Just (l, _) -> liftMatcher (failAt l (T.unpack ("罫線の " <> key <> " は style が " <> name <> " のときには書けません")))
+          Nothing -> pure ()
+        orDefault x = maybe x snd
+    style <- case styleName of
+      Just (_, _, Just multi) -> refuse "dash" dash >> refuse "gap" gap >> pure (RuleMulti multi)
+      _ -> case name of
+        "dashed" -> pure (RuleDashed (orDefault (3 * w) dash) (orDefault (2 * w) gap))
+        "dotted" -> refuse "dash" dash >> pure (RuleDotted (orDefault (2 * w) gap))
+        "japanese-dots" -> refuse "dash" dash >> pure (RuleJapaneseDots (orDefault w gap))
+        "wavy" -> refuse "dash" dash >> refuse "gap" gap >> pure RuleWavy
+        _ -> refuse "dash" dash >> refuse "gap" gap >> pure RuleSolid
+    pure (RuleSpec len w before after color style)
     where
       ruleDim key check v = case v of
         Text' l t -> maybe (failAt l (T.unpack ("罫線の " <> key <> " を寸法として読めません: " <> t))) (check l) (parseSignedDim t)
@@ -1142,12 +1229,13 @@ instance FromValue HeadingStyle where
     s <- dimKey "size"
     n <- optKey "number"
     pb <- enumKey "page-break" ["recto", "any"]
+    ls <- optKeyOf "lines" $ fromValue >=> \l -> if l < (1 :: Int) then fail ("lines は 1 以上の整数です: " <> show l) else pure l
     -- retired (golem-driver ADR 0014): G0319
     pickKey
       [ Key "running-head" (\v -> failAt (valueAnn v) "[headings.<l>] の running-head は廃止しました。柱に使う見出しは [masters.<名前>] の running-head の content で指定してください"),
         Else (pure ())
       ]
-    pure (HeadingStyle f s n (pb == Just "recto"))
+    pure (HeadingStyle f s n (pb == Just "recto") ls)
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
@@ -1649,6 +1737,8 @@ styleChecks owner s =
             -- the swatch of a background (golem-driver ADR 0017)
             <> [(n, "段落スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBackground = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
             <> [(n, "段落スタイル " <> n <> " の border のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBorder = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
+            -- the swatch of a rule (golem-driver ADR 0028)
+            <> [("", "[notes.rule] の color のスウォッチがありません: " <> c) | Just RuleSpec {rsColor = Just c} <- [stNotesRule s], Map.notMember c (stSwatches s)]
             -- the swatches of [code] and [code.colors] (golem-driver ADR 0023)
             <> [("", "[code] の " <> k <> " のスウォッチがありません: " <> c) | (k, c) <- codeSwatches, Map.notMember c (stSwatches s)]
             <> [(n, "段落スタイルの based-on が循環しています: " <> T.intercalate ", " paraCycle) | n <- paraCycle]

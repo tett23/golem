@@ -9,6 +9,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Doc.Assemble (IndexGroup (..))
+import Golem.Doc.Bibliography (EntryPart (..), entryText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLines, tocPage)
@@ -63,7 +64,7 @@ indexTests =
           rendered l @?= "組版　3、12"
         other -> assertFailure (show other),
     testCase "bibliography lines: number and entry, or the key when it is unknown" $
-      map rendered (bibliographyLines (Map.fromList [("knuth1981", "Knuth Donald. Breaking.")]) [("knuth1981", 1), ("missing", 2)]) @?= ["[1] Knuth Donald. Breaking.", "[2] missing"],
+      map rendered (bibliographyLines (Map.fromList [("knuth1981", [EntryText "Knuth Donald. Breaking."])]) [("knuth1981", 1), ("missing", 2)]) @?= ["[1] Knuth Donald. Breaking.", "[2] missing"],
     testCase "the index of a book shows the pages of its marks" $ do
       let source =
             "# 一\n\n本文[index reading=くみはん: 組版]。\n\n"
@@ -71,7 +72,7 @@ indexTests =
               <> "# 二\n\n"
               <> fillers 4
               <> "本文[index reading=わぶん: 和文]。\n\n@index\n"
-      r <- pagesMini "" fiveLines source [] Map.empty
+      r <- pagesMini "" (fiveLines <> flatHeadings) source [] Map.empty
       pages <- either (assertFailure . show) pure r
       let at t = [n | (n, ls) <- zip [1 :: Int ..] pages, any (t `T.isInfixOf`) ls]
       take 1 (at "本文") @?= [1]
@@ -82,7 +83,7 @@ indexTests =
       pages <- either (assertFailure . show) pure r
       assertBool (show (drop 9 pages)) (any ("組版　10" `elem`) pages),
     testCase "citations show their number; the bibliography lists the entry" $ do
-      r <- pagesMini "bibliography = [\"refs.json\"]\n" horizontalStyle "本文[cite knuth1981]。\n\n@bibliography\n" [("refs.json", refsJson)] (Map.fromList [("knuth1981", "Knuth Donald. Breaking Paragraphs into Lines. 1981.")])
+      r <- pagesMini "bibliography = [\"refs.json\"]\n" horizontalStyle "本文[cite knuth1981]。\n\n@bibliography\n" [("refs.json", refsJson)] (Map.fromList [("knuth1981", [EntryText "Knuth Donald. Breaking Paragraphs into Lines. 1981."])])
       ls <- concat <$> either (assertFailure . show) pure r
       assertBool (show ls) (any ("[1]" `T.isInfixOf`) ls)
       assertBool (show ls) (not (any ("knuth1981" `T.isInfixOf`) ls))
@@ -124,7 +125,11 @@ withBibProject bibLine source files act = withSystemTempDirectory "golem-bib" $ 
 
 -- | loadBibliography of a project: diagnostics, keys and entries.
 bibOf :: T.Text -> [(FilePath, BS.ByteString)] -> IO ([Diagnostic], Map.Map T.Text T.Text)
-bibOf bibLine files = withBibProject bibLine "本文。\n" files $ \tmp -> do
+bibOf bibLine files = fmap (Map.map entryText) <$> bibPartsOf bibLine files
+
+-- | loadBibliography of a project: diagnostics, keys and entries as parts.
+bibPartsOf :: T.Text -> [(FilePath, BS.ByteString)] -> IO ([Diagnostic], Map.Map T.Text [EntryPart])
+bibPartsOf bibLine files = withBibProject bibLine "本文。\n" files $ \tmp -> do
   ev <- evaluateProject Dev tmp
   case ev of
     Left f -> assertFailure (show (pfDiagnostics f))
@@ -169,10 +174,49 @@ bibliographyFormatTests =
         assertBool (T.unpack page) ("JIS X 4061:1996 日本語文字列照合順番、日本規格協会、1996。</li>" `T.isInfixOf` page),
     testCase "the PDF bibliography line has no space before a Latin period" $ do
       (_, m) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", jaRefsJson)]
-      let ls = map rendered (bibliographyLines m [("jisx4061", 1)])
+      let ls = map rendered (bibliographyLines (Map.map (pure . EntryText) m) [("jisx4061", 1)])
       assertBool (show ls) (not (any ("日本規格協会 ." `T.isInfixOf`) ls))
-      assertBool (show ls) (any ("日本規格協会、" `T.isInfixOf`) ls)
+      assertBool (show ls) (any ("日本規格協会、" `T.isInfixOf`) ls),
+    -- golem-doc ADR 0005
+    testCase "a type that is not a string is no type" $ do
+      (ds, m) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", TE.encodeUtf8 "[{\"id\": \"a\", \"type\": 1, \"title\": \"組版\"}, {\"id\": \"b\", \"title\": \"組版\"}, {\"id\": \"c\", \"type\": \"book\", \"title\": \"組版\"}]")]
+      ds @?= []
+      Map.lookup "a" m @?= Map.lookup "b" m
+      Map.lookup "c" m @?= Just "『組版』。",
+    testCase "a volume as a number or a string is the same; a number that is not an integer is not read" $ do
+      (_, m) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", "[{\"id\": \"n\", \"title\": \"T\", \"container-title\": \"J\", \"volume\": 11}, {\"id\": \"s\", \"title\": \"T\", \"container-title\": \"J\", \"volume\": \"11\"}, {\"id\": \"f\", \"title\": \"T\", \"container-title\": \"J\", \"volume\": 11.5}, {\"id\": \"e\", \"title\": \"T\", \"container-title\": \" \", \"page\": \"\"}]")]
+      Map.lookup "n" m @?= Just "T. J, vol. 11."
+      Map.lookup "s" m @?= Just "T. J, vol. 11."
+      Map.lookup "f" m @?= Just "T. J."
+      Map.lookup "e" m @?= Just "T.",
+    testCase "the date-parts of accessed as strings are the same as numbers" $ do
+      let item d = "{\"id\": \"" <> d <> "\", \"title\": \"T\", \"URL\": \"https://example.com/\", \"accessed\": {\"date-parts\": [" <> (if d == "s" then "[\"2026\", \"10\", \"16\"]" else "[2026, 10, 16]") <> "]}}"
+      (_, m) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", "[" <> item "s" <> ", " <> item "n" <> "]")]
+      Map.lookup "s" m @?= Just "T. https://example.com/ (accessed October 16, 2026)."
+      Map.lookup "n" m @?= Map.lookup "s" m,
+    testCase "HTML: a URL of https is a link of class cs-url; javascript: is a span" $
+      withBibProject "bibliography = [\"refs.json\"]" "本文[cite jlreq][cite js]。\n\n@bibliography\n" [("refs.json", urlRefsJson)] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        page <- TIO.readFile (tmp </> "build/html/a.xhtml")
+        assertBool (T.unpack page) ("<a class=\"cs-url\" href=\"https://www.w3.org/TR/jlreq/\">https://www.w3.org/TR/jlreq/</a>" `T.isInfixOf` page)
+        assertBool (T.unpack page) ("<span class=\"cs-url\">javascript:alert(1)</span>" `T.isInfixOf` page)
+        assertBool (T.unpack page) (not ("href=\"javascript" `T.isInfixOf` page))
+        css' <- TIO.readFile (tmp </> "build/html/style.css")
+        assertBool (T.unpack css') (not ("cs-url" `T.isInfixOf` css')),
+    testCase "PDF: the URL of an entry is in the character style url" $ do
+      (_, m) <- bibPartsOf "bibliography = [\"refs.json\"]" [("refs.json", urlRefsJson)]
+      case bibliographyLines m [("jlreq", 1)] of
+        [[Text _ before, CharStyle _ "url" [Text _ u], Text _ after]] -> do
+          before @?= "[1] 「日本語組版処理の要件」、W3C、2020、"
+          u @?= "https://www.w3.org/TR/jlreq/"
+          after @?= "（2026年10月16日閲覧）。"
+        other -> assertFailure (show other)
   ]
+
+-- | A Japanese web page with a URL and a date of access, and an entry with a URL of javascript:.
+urlRefsJson :: BS.ByteString
+urlRefsJson = TE.encodeUtf8 "[{\"id\": \"jlreq\", \"type\": \"webpage\", \"title\": \"日本語組版処理の要件\", \"publisher\": \"W3C\", \"issued\": {\"date-parts\": [[2020]]}, \"URL\": \"https://www.w3.org/TR/jlreq/\", \"accessed\": {\"date-parts\": [[2026, 10, 16]]}}, {\"id\": \"js\", \"title\": \"Script\", \"URL\": \"javascript:alert(1)\"}]"
 
 -- | A line of one box of a width (a page number in the tests of tocPage).
 oneBoxLine :: Integer -> Line
@@ -263,7 +307,7 @@ tocTests =
       (_, pl) <- layoutOk fiveLines "@toc depth=2\n\n# 一\n\n## 節\n\n### 項\n\n本文。\n\n# 二\n\n## 節二\n\n本文。\n" []
       Map.size (plTocPages pl) @?= 4,
     testCase "leader = none draws no leader but the page" $ do
-      r <- pagesMini "" (fiveLines <> "\n[toc]\nleader = \"none\"\n") "@toc\n\n# 一\n\n本文。\n" [] Map.empty
+      r <- pagesMini "" (fiveLines <> flatHeadings <> "\n[toc]\nleader = \"none\"\n") "@toc\n\n# 一\n\n本文。\n" [] Map.empty
       pages <- either (assertFailure . show) pure r
       case concat pages of
         (l : _) -> do
