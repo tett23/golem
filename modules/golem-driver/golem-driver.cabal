@@ -29,6 +29,7 @@ library
                     Golem.Driver.Lint
                     Golem.Driver.Memo
                     Golem.Driver.New
+                    Golem.Driver.Overhang
                     Golem.Driver.Pdf
                     Golem.Driver.Plugins
                     Golem.Driver.RuleShape

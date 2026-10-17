@@ -96,6 +96,7 @@ import Golem.Doc.IR
 import Golem.Doc.ListMarkers
 import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals (circled, formatNumber)
+import Golem.Driver.Overhang (kentenAcross, lineOverhang, reachesBackground, rubyAcross)
 import Golem.Driver.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
 import Golem.Driver.Version (golemVersion)
 import Golem.Html (codeTokens)
@@ -1912,10 +1913,32 @@ buildFlow inp geom fonts images assumed = do
             noteLines = Map.fromListWith (flip (<>)) [(lineOfItem (i + cShift c), [(k, nls)]) | ((i, _, _, _), (k, nls)) <- zip (noteAnchors (cAnchors c)) (cNotes c)]
             sidenoteLinesOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [(sp, sls)]) | (i, sp, sls) <- cSidenotes c]
             marksOf = Map.fromListWith (flip (<>)) [(lineOfItem i, [sp]) | (i, sp) <- cMarks c]
-            boxes = [LineBox lid [NoteBody key (length nls) | (key, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) | (k, lid) <- zip [0 ..] ids]
+            boxes = [LineBox lid [NoteBody key (length nls) | (key, nls) <- Map.findWithDefault [] k noteLines] (if k == 0 then label u else []) (Map.findWithDefault [] k marksOf) (overhangOf l) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
             set = Map.fromList [(lid, SetLine l size (indentOf k) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
          in (boxes, set)
       emptyLine = Line [] 0 0 0 (0, 0) False (0, 0)
+      -- how far the ruby and kenten of a line reach toward the line before (golem-driver ADR 0033)
+      overhangOf = lineOverhang vertical fs (emBoxCentralOf fonts)
+      {- a grid line of space after a code block with a background, a band or
+      a border whose next line reaches it with ruby or kenten (golem-driver
+      ADR 0033); the code blocks of the flow are those of the units, in order -}
+      spaceAfterCode infos = \case
+        f@FCode {} : rest -> case infos of
+          ci : more -> f : [FSpace 1 | painted ci, reaches ci rest] <> spaceAfterCode more rest
+          [] -> f : spaceAfterCode [] rest
+        f : rest -> f : spaceAfterCode infos rest
+        [] -> []
+        where
+          painted ci = isJust (ciBackground ci) || not (null (ciBands ci)) || isJust (ciBorder ci)
+          reaches ci rest = case rest of
+            next : _ | Just l <- firstLineOf next -> reachesBackground pitch fs (maybe 0 snd (ciBorder ci)) (lbOverhang l)
+            _ -> False
+          firstLineOf = \case
+            FParagraph (l : _) -> Just l
+            FHeading {fhLines = l : _} -> Just l
+            FDefTerm (l : _) -> Just l
+            FTable {ftSpaceBefore = 0, ftHeader = l : _} -> Just l
+            _ -> Nothing
       mm sp = let tenths = round (toRational sp * 254 / (72 * 65536)) :: Integer in T.pack (show (tenths `div` 10) <> "." <> show (tenths `mod` 10))
       step (nextId, flows, lineAcc, figAcc, headAcc, errs, tabAcc, ext) (i, u) = case uKind u of
         UTable {} -> case Map.lookup i tables of
@@ -1928,7 +1951,9 @@ buildFlow inp geom fonts images assumed = do
                 let heights = stHeaderLines t : stRowLines t
                     starts = scanl (+) nextId heights
                     rowsOut =
-                      [ ( [LineBox lid [NoteBody key (length nls) | (key, nls) <- ns] (if lid == nextId then label u else []) ms | (lid, (ns, _, ms)) <- zip ids att],
+                      [ ( [ LineBox lid [NoteBody key (length nls) | (key, nls) <- ns] (if lid == nextId then label u else []) ms (maximum (0 : [overhangOf l | c <- cells, (j, l) <- zip [0 :: Int ..] (scLines c), j == k]))
+                          | (k, (lid, (ns, _, ms))) <- zip [0 ..] (zip ids att)
+                          ],
                           Map.fromList [(lid, SetLine emptyLine fs 0 ns sn) | (lid, (ns, sn, _)) <- zip ids att],
                           Map.fromList [(lid, [SetLine l fs (scOffset c + sh) [] [] | c <- cells, (j, (l, sh)) <- zip [0 :: Int ..] (zip (scLines c) (scShifts c)), j == k]) | (k, lid) <- zip [0 ..] ids]
                         )
@@ -2005,7 +2030,7 @@ buildFlow inp geom fonts images assumed = do
               Just cb ->
                 let ids = [nextId .. nextId + length (cbRows cb) - 1]
                     -- the label and the index marks of the caption on the first row (golem-driver ADR 0023)
-                    boxes = [LineBox lid [] (if k == 0 then label u else []) (if k == 0 then cbMarks cb else []) | (k, lid) <- zip [0 :: Int ..] ids]
+                    boxes = [LineBox lid [] (if k == 0 then label u else []) (if k == 0 then cbMarks cb else []) 0 | (k, lid) <- zip [0 :: Int ..] ids]
                     set = Map.fromList [(lid, SetLine l (cbSize cb) (cbIndent cb) [] []) | (lid, l) <- zip ids (cbRows cb)]
                     info = cbInfo cb
                  in (nextId + length ids, flows <> [FCode (ciGeometry info) (ciCaptionSpan info) (cbFirstRows cb) (isJust (ciContinued info)) boxes], Map.union lineAcc set, figAcc, headAcc, errs)
@@ -2070,7 +2095,7 @@ buildFlow inp geom fonts images assumed = do
       -- the code blocks of the flow are those of the units, in order
       codeInfos = Map.fromList [(lbId b, (cbInfo cb) {ciFirst = lbId b0}) | (bs@(b0 : _), cb) <- zip [fcRows f | f@FCode {} <- flow] (Map.elems codeBlocks), b <- bs]
       codeNotices = concatMap cbNotices (Map.elems codeBlocks)
-  pure (Built flow lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines lineFiles codeInfos codeNotices lineSpans)
+  pure (Built (spaceAfterCode (map cbInfo (Map.elems codeBlocks)) flow) lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines lineFiles codeInfos codeNotices lineSpans)
 
 -- | A code block set (golem-driver ADR 0017).
 data SetCode = SetCode
@@ -2574,7 +2599,7 @@ writeDocumentView inp geom fonts layout intent =
                                 rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (excess `div` 2, excess `div` 2)
                                 -- the reading sits beside the largest base character
                                 big = if null baseLooks then size else maximum (map lkSize baseLooks)
-                                across = if vertical then big `div` 2 + rsize `div` 2 else big
+                                across = rubyAcross vertical big rsize
                                 -- a base character of another colour than the box is drawn in its own
                                 inColour lk (marks, glyphs)
                                   | lkColor lk /= lkColor look, Just sw <- swatchOf lk = ([P.Saved (P.SetColor sw : marks)], glyphs)
@@ -2592,11 +2617,11 @@ writeDocumentView inp geom fonts layout intent =
                             shift = lkBaselineShift look
                             parent = lfShape fonts (shapingOf vertical look (T.head (bcText c))) (bcText c)
                             centre
-                              | vertical = beside (origin (off + size `div` 2)) (shift + size `div` 2 + d `div` 2)
+                              | vertical = beside (origin (off + size `div` 2)) (shift + kentenAcross True size 0 d)
                               | otherwise =
                                   let adv = toSp size (sum (map shAdvance parent))
                                       central = maybe 0 (lfEmBoxCentral fonts . shFace) (listToMaybe parent)
-                                   in beside (origin (off + adv `div` 2)) (shift + toSp size (central + 1 / 2) + d `div` 2)
+                                   in beside (origin (off + adv `div` 2)) (shift + kentenAcross False size central d)
                             (b2, u2) = maybe ([], []) (\sh -> usesOf (look {lkSize = d}) (kentenMark (lkFace look) sh d centre)) (lkKenten look)
                          in (b1 <> b2, u1 <> u2)
                       KindNoteMark ->
@@ -2987,6 +3012,10 @@ writeDocumentView inp geom fonts layout intent =
                 }
          in (bytes, view)
    in (used, finish)
+
+-- | The centre of the em box of the Japanese characters of a look above the baseline, in em (golem-driver ADR 0033).
+emBoxCentralOf :: LoadedFonts -> Look -> Rational
+emBoxCentralOf fonts look = lfEmBoxCentral fonts (maybe 0 shFace (listToMaybe (lfShape fonts (Shaping (lkFace look) False []) "漢")))
 
 -- | Groups of neighbours: a new group starts where the predicate fails between two neighbours.
 groupWhen :: (a -> a -> Bool) -> [a] -> [[a]]
