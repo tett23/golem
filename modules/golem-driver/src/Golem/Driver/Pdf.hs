@@ -1521,6 +1521,8 @@ noIndent = Indent 0 0
 data UnitKind
   = UPara !Indent
   | UHeading Int Text Bool
+  | -- | the title of the notes at the end of a chapter, set as a heading of level 2 (golem-driver ADR 0026)
+    UNotesTitle Text
   | -- | a term of a definition list; indented in a list item (golem-driver ADR 0013)
     UTerm !Indent
   | UFigure Figure
@@ -1595,11 +1597,33 @@ in document order; the units inside a list know the lists around them
 (golem-driver ADR 0013).
 -}
 unitsOf :: Text -> Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) -> (SrcSpan -> Maybe Integer) -> Map Text [EntryPart] -> [Unit]
-unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs book)))
+unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chapter 0 (bookChapters book)))
   where
     sp0 = mkSpan (FileId 0) 0 0
     fs = pgFontSize geom
     doc n (Document fid bs) = blocks (styleOf fid) [] n bs
+    {- the documents of a chapter of the manifest; at the end of the chapter,
+    before the breaks that end its last file, its notes when they are set
+    there (golem-driver ADR 0026) -}
+    chapter n docs =
+      let (n', uss) = mapAccumL doc n docs
+          us = concat uss
+       in (n',) $ case reverse docs of
+            (Document fid _ : _)
+              | stNotesPlacement (styleOf fid) == PlaceChapterEnd ->
+                  let (breaks, body) = span isBreakUnit (reverse us)
+                   in reverse body <> notesList (styleOf fid) docs <> reverse breaks
+            _ -> us
+    isBreakUnit u = case uKind u of
+      UBreak _ -> True
+      _ -> False
+    -- the title and a paragraph for each note, its mark first, as at the foot of a page
+    notesList style docs = case concatMap documentNotes docs of
+      [] -> []
+      ns@((sp, _, _) : _) ->
+        let title = notesTitle lang
+         in Unit (UNotesTitle title) Nothing [Text sp0 title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing
+              : [Unit (UPara noIndent) Nothing (withNoteMark (stNotesMarkFormat style) n xs) nsp (bodyLook style fs) style [] Nothing Nothing | (nsp, n, xs) <- ns]
     {- a list of blocks inside the lists @ctx@, from the list number @n@:
     paragraphs of the same style in a row are apart by its space-between
     (docs/adr ADR 0005); in a list item, paragraphs are not indented by
@@ -1723,6 +1747,8 @@ buildFlow inp geom fonts images assumed = do
       pitch = pgLinePitch geom
       capacity = length (pgLineGrid geom)
       vertical = pgVertical geom
+      -- notes at the end of the chapter, not at the foot of the page (golem-driver ADR 0026)
+      atEnd = stNotesPlacement style == PlaceChapterEnd
       cites = Map.fromList (bookCitations (piBook inp))
       -- citations show their numbers (golem-driver ADR 0007)
       envFor lk = (composeEnv style geom fonts assumed lk) {ceCiteNumber = (`Map.lookup` cites)}
@@ -1783,11 +1809,12 @@ buildFlow inp geom fonts images assumed = do
             (textItems, anchors) = composeInlines env (uInlines u)
             items = marker <> textItems
             lines' = brLines (breakParagraph params lineWidth items)
-            notes = [(k, brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv' (withNoteMark (stNotesMarkFormat (uStyle u)) n nbody))))) | (_, k, n, nbody) <- noteAnchors anchors]
+            -- notes at the end of the chapter are paragraphs of their own (golem-driver ADR 0026)
+            notes = [(k, brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv' (withNoteMark (stNotesMarkFormat (uStyle u)) n nbody))))) | not atEnd, (_, k, n, nbody) <- noteAnchors anchors]
             sidenotes = [(i + shift, sp, sidenoteLines (uStyle u) n snBody) | AnchorSidenote i n sp snBody <- anchors]
             marks =
               [(i + shift, sp) | AnchorIndex i sp _ <- anchors]
-                <> [(i + shift, sp) | AnchorNote i _ _ nbody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv' nbody)]
+                <> [(i + shift, sp) | not atEnd, AnchorNote i _ _ nbody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv' nbody)]
                 <> [(i + shift, sp) | AnchorSidenote i _ _ snBody <- anchors, AnchorIndex _ sp _ <- snd (composeInlines bodyEnv' snBody)]
          in Composed lines' notes sidenotes marks anchors items shift
       -- sidenote bodies: their size, the column width, the marker first (golem-driver ADR 0006)
@@ -1875,9 +1902,9 @@ buildFlow inp geom fonts images assumed = do
             env = styledEnv st bodyEnv
             noteBody n b = brLines (breakParagraph params (const measure) (fst (composeInlines env (withNoteMark (stNotesMarkFormat style) n b))))
             marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines env b)]
-         in ( Map.fromListWith (flip (<>)) [(lineOf i, [(k, noteBody n b)]) | (i, k, n, b) <- noteAnchors anchors],
+         in ( Map.fromListWith (flip (<>)) [(lineOf i, [(k, noteBody n b)]) | not atEnd, (i, k, n, b) <- noteAnchors anchors],
               Map.fromListWith (flip (<>)) [(lineOf i, [(sp, sidenoteLines st n b)]) | AnchorSidenote i n sp b <- anchors],
-              Map.fromListWith (flip (<>)) ([(lineOf i, [sp]) | AnchorIndex i sp _ <- anchors] <> [(lineOf i, sps) | AnchorNote i _ _ b <- anchors, let { sps = marksIn b }, not (null sps)] <> [(lineOf i, sps) | AnchorSidenote i _ _ b <- anchors, let sps = marksIn b, not (null sps)])
+              Map.fromListWith (flip (<>)) ([(lineOf i, [sp]) | AnchorIndex i sp _ <- anchors] <> [(lineOf i, sps) | not atEnd, AnchorNote i _ _ b <- anchors, let { sps = marksIn b }, not (null sps)] <> [(lineOf i, sps) | AnchorSidenote i _ _ b <- anchors, let sps = marksIn b, not (null sps)])
             )
       -- a table: every cell at the body size, no hanging punctuation (golem-driver ADR 0008)
       composeTable st aligns h rows =
@@ -2043,16 +2070,23 @@ buildFlow inp geom fonts images assumed = do
                   (_, size) = faceOf u
                   least = case uKind u of
                     UHeading l _ _ -> headingLines (bookLanguage inp) (uStyle u) capacity l
+                    UNotesTitle _ -> headingLines (bookLanguage inp) (uStyle u) capacity 2
                     _ -> 1
                   hb = headingBlock fs pitch size (length ls) least
                   flowOf = case uKind u of
                     UHeading l _ recto -> [FHeading l recto (hbSpan hb) boxes]
+                    UNotesTitle _ -> [FHeading 2 False (hbSpan hb) boxes]
                     UTerm _ -> [FDefTerm boxes]
                     _ -> [FParagraph boxes]
                   (headAcc', errs') = case uKind u of
                     UHeading l short _ ->
                       ( Map.insert nextId hb headAcc,
                         errs <> [diagnostic "G0724" Error (uSpan u) ("見出しが版面に入りません（" <> T.pack (show l) <> " の見出し: " <> short <> "）") | hbSpan hb > capacity]
+                      )
+                    -- the title of the notes is in neither the headings nor the running heads (golem-driver ADR 0026)
+                    UNotesTitle title ->
+                      ( Map.insert nextId hb headAcc,
+                        errs <> [diagnostic "G0724" Error (uSpan u) ("見出しが版面に入りません（注の一覧の見出し: " <> title <> "）") | hbSpan hb > capacity]
                       )
                     _ -> (headAcc, errs)
                in (nextId + length ls, flows <> flowOf, Map.union lineAcc set, figAcc, headAcc', errs')

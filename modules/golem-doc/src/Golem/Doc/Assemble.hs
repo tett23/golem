@@ -11,6 +11,10 @@ module Golem.Doc.Assemble
     TocEntry (..),
     IndexGroup (..),
     assemble,
+    bookChapters,
+    notesTitle,
+    blockNotes,
+    documentNotes,
     headingAnchor,
     inlineText,
   )
@@ -104,8 +108,55 @@ data Book = Book
     bookIndex :: ![IndexGroup],
     bookCitations :: ![(Text, Int)],
     bookLabels :: !(Map Text LabelTarget),
-    bookReferenced :: !(Set Text)
+    bookReferenced :: !(Set Text),
+    {- | the chapter of the manifest of each document, in the order of
+    'bookDocs' (golem-driver ADR 0018, 0026); a document past its end is a
+    chapter of its own
+    -} bookChapterOf :: ![Int]
   }
+
+{- | The documents of the book by chapter of the manifest, in order
+(golem-driver ADR 0026).
+-}
+bookChapters :: Book -> [[Document]]
+bookChapters book = map (map snd) (groupOn fst (zip chapterKeys (bookDocs book)))
+  where
+    chapterKeys = map Just (bookChapterOf book) <> map (const Nothing) [length (bookChapterOf book) ..]
+    groupOn _ [] = []
+    groupOn f (x : xs) = case f x of
+      Nothing -> [x] : groupOn f xs
+      k -> let (same, rest) = span ((== k) . f) xs in (x : same) : groupOn f rest
+
+{- | The title of the list of notes at the end of a chapter (golem-driver
+ADR 0026): 注 in a book whose language starts with ja, Notes otherwise.
+-}
+notesTitle :: Text -> Text
+notesTitle lang = if "ja" `T.isPrefixOf` T.toLower lang then "注" else "Notes"
+
+{- | The inlines of a block, the notes among them, in order, through lists,
+definition lists, tables and captions (golem-driver ADR 0018, 0026).
+-}
+blockNotes :: Block -> [Inline]
+blockNotes (Block _ _ body) = case body of
+  Paragraph _ is -> deep is
+  Heading _ _ is -> deep is
+  BulletList items -> concatMap (concatMap blockNotes . itemBlocks) items
+  OrderedList items -> concatMap (concatMap blockNotes . itemBlocks) items
+  DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockNotes) ds) gs
+  Table _ h rows -> concatMap deep h <> concatMap (concatMap deep) rows
+  FigureBlock f -> concatMap blockNotes (figCaption f)
+  _ -> []
+  where
+    deep = concatMap (\i -> i : nested i)
+    nested = \case
+      Kenten _ _ xs -> deep xs
+      Color _ _ xs -> deep xs
+      CharStyle _ _ xs -> deep xs
+      _ -> []
+
+-- | The notes of a document in order: their spans, numbers and bodies (golem-driver ADR 0026).
+documentNotes :: Document -> [(SrcSpan, Int, [Inline])]
+documentNotes (Document _ bs) = [(sp, n, xs) | Note sp n xs <- concatMap blockNotes bs]
 
 headingAnchor :: Maybe Text -> SrcSpan -> Text
 headingAnchor (Just l) _ = l
@@ -246,7 +297,8 @@ assemble cfg evalDeferred docs =
             bookIndex = indexGroups docs,
             bookCitations = citations,
             bookLabels = labels,
-            bookReferenced = refd
+            bookReferenced = refd,
+            bookChapterOf = acChapterOf cfg
           },
         sortDiagnostics (nsDiags ns <> figureErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs)
       )

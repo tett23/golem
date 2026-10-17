@@ -28,7 +28,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -223,13 +223,42 @@ data Ctx = Ctx
     -- | the paragraph styles of the page: those of its file over those of style.toml (docs/adr ADR 0014)
     cParaStyles :: Map Text HtmlParaStyle,
     -- | the depth of the list around (0 outside lists; golem-driver ADR 0013)
-    cListDepth :: Int
+    cListDepth :: Int,
+    -- | the notes of the chapter of the page (golem-driver ADR 0026)
+    cNotes :: ChapterNotes
   }
+
+{- | Where the notes of a page go (golem-driver ADR 0026): the file whose
+page ends the chapter, the id of a note of the page by its number, and
+the chapter's documents with the ids of their notes when the page ends
+the chapter.
+-}
+data ChapterNotes = ChapterNotes
+  { cnHome :: FileId,
+    cnKey :: Int -> Text,
+    cnList :: [(FileId, Int -> Text, Document)]
+  }
+
+{- | The notes of each document of a chapter (golem-driver ADR 0026): the
+id of a note is its number, or the place of its file in the chapter and
+its number when the numbers of the chapter meet.
+-}
+chapterNotes :: [Document] -> [(Document, ChapterNotes)]
+chapterNotes docs =
+  let home = case reverse docs of
+        (Document f _ : _) -> f
+        [] -> FileId 0
+      numbers d = [n | (_, n, _) <- documentNotes d]
+      allNumbers = concatMap numbers docs
+      meet = length allNumbers /= Set.size (Set.fromList allNumbers)
+      keyOf k n = if meet then tshow k <> "-" <> tshow n else tshow n
+      keyed = [(f, keyOf k, d) | (k, d@(Document f _)) <- zip [1 :: Int ..] docs]
+   in [(d, ChapterNotes home key (if f == home then keyed else [])) | (f, key, d) <- keyed]
 
 renderXhtml :: HtmlConfig -> FileTable -> Book -> XhtmlSite
 renderXhtml cfg ft book =
   XhtmlSite
-    { sitePages = [(pagePath ft fid, page cfg ft book d) | d@(Document fid _) <- bookDocs book],
+    { sitePages = [(pagePath ft fid, page cfg ft book notes d) | chapter <- bookChapters book, (d@(Document fid _), notes) <- chapterNotes chapter],
       siteCss = css cfg book,
       siteAssets =
         sortOn fst
@@ -260,14 +289,14 @@ relLink from to =
   let depth = length (splitDirectories (takeDirectory from)) - (if takeDirectory from == "." then 1 else 0)
    in T.pack (concat (replicate depth "../") <> makeRelative "." to)
 
-page :: HtmlConfig -> FileTable -> Book -> Document -> Text
-page cfg ft book d@(Document fid bs) =
+page :: HtmlConfig -> FileTable -> Book -> ChapterNotes -> Document -> Text
+page cfg ft book notes (Document fid bs) =
   let here = pagePath ft fid
       local = Map.lookup fid (hcLocalStyles cfg)
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
-      body = topBlocks c bs <> notesSection c d
+      body = topBlocks c bs <> notesSection c
       title = case [hiTitle h | Block sp _ (Heading 1 _ _) <- bs, Just h <- [Map.lookup sp (bookHeadings book)]] of
         (t : _) -> T.concat (map plain t)
         [] -> hcTitle cfg
@@ -501,7 +530,9 @@ inline c = \case
     Just t -> "<a href=\"" <> linkTo c (ltFile t) (ltAnchor t) <> "\">" <> inlines c (ltTitle t) <> "</a>"
     Nothing -> ""
   Deferred {} -> ""
-  Note _ n _ -> "<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-" <> tshow n <> "\" id=\"noteref-" <> tshow n <> "\">" <> tshow n <> "</a>"
+  Note _ n _ ->
+    let key = cnKey (cNotes c) n
+     in "<a epub:type=\"noteref\" class=\"noteref\" href=\"" <> linkTo c (cnHome (cNotes c)) ("note-" <> key) <> "\" id=\"noteref-" <> key <> "\">" <> tshow n <> "</a>"
   Sidenote _ n _ -> "<sup class=\"sidenote-ref\">" <> tshow n <> "</sup>"
   IndexMark sp _ -> "<span id=\"" <> spanAnchor sp <> "\"></span>"
   Cite _ k -> case lookup k (bookCitations (cBook c)) of
@@ -547,39 +578,22 @@ splitLines is = case break isLineBreak is of
 sidenotes :: Ctx -> [Inline] -> Text
 sidenotes c is = T.concat ["<aside class=\"sidenote\"><span class=\"number\">" <> tshow n <> "</span>" <> inlines c xs <> "</aside>\n" | Sidenote _ n xs <- is]
 
-notesSection :: Ctx -> Document -> Text
-notesSection c (Document _ bs) =
-  case concatMap (mapMaybe noteOf . blockNotes) bs of
+{- | The notes of the chapter at the end of its last page, after a title
+(golem-driver ADR 0026); each links back to its mark, on whichever page.
+-}
+notesSection :: Ctx -> Text
+notesSection c =
+  case [(f, key, n, xs) | (f, key, d) <- cnList (cNotes c), (_, n, xs) <- documentNotes d] of
     [] -> ""
     ns ->
-      "<section class=\"notes\">\n"
+      "<section class=\"notes\">\n<h2>"
+        <> escapeXml (notesTitle (hcLanguage (cCfg c)))
+        <> "</h2>\n"
         <> T.concat
-          [ "<aside epub:type=\"footnote\" id=\"note-" <> tshow n <> "\"><a href=\"#noteref-" <> tshow n <> "\">" <> tshow n <> "</a> " <> inlines c xs <> "</aside>\n"
-          | (n, xs) <- ns
+          [ "<aside epub:type=\"footnote\" id=\"note-" <> key n <> "\"><a href=\"" <> linkTo c f ("noteref-" <> key n) <> "\">" <> tshow n <> "</a> " <> inlines c xs <> "</aside>\n"
+          | (f, key, n, xs) <- ns
           ]
         <> "</section>\n"
-  where
-    noteOf = \case
-      Note _ n xs -> Just (n, xs)
-      _ -> Nothing
-
-blockNotes :: Block -> [Inline]
-blockNotes (Block _ _ body) = case body of
-  Paragraph _ is -> deep is
-  Heading _ _ is -> deep is
-  BulletList items -> concatMap (concatMap blockNotes . itemBlocks) items
-  OrderedList items -> concatMap (concatMap blockNotes . itemBlocks) items
-  DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockNotes) ds) gs
-  Table _ h rows -> concatMap deep h <> concatMap (concatMap deep) rows
-  FigureBlock f -> concatMap blockNotes (figCaption f)
-  _ -> []
-  where
-    deep = concatMap (\i -> i : nested i)
-    nested = \case
-      Kenten _ _ xs -> deep xs
-      Color _ _ xs -> deep xs
-      CharStyle _ _ xs -> deep xs
-      _ -> []
 
 {- | Code coloured with skylighting's classes (golem-html ADR 0001). An
 unknown language, or text the highlighter rejects, stays plain.

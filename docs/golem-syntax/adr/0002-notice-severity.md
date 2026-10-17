@@ -1,6 +1,6 @@
 # ADR 0002: 重大度のお知らせ（notice）
 
-ステータス: 採択
+ステータス: 採択→G0279 は [golem-parser ADR 0012](../../golem-parser/adr/0012-keep-trailing-escaped-space.md)
 
 ## 文脈
 
