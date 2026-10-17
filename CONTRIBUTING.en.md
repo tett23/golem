@@ -154,6 +154,10 @@ Every package turns an incomplete `case` or function definition into an error wi
 When you add a package under `modules/`, put the flag in the `ghc-options` of the `common warnings` stanza of its cabal file, and write `import: warnings` in each component.
 Without it, the `changes` job of CI (`scripts/ci/incomplete-patterns.sh`) fails.
 
+`unsafePerformIO` and its kin (`unsafeDupablePerformIO`, `unsafeInterleaveIO` and others) are used only in the definitions listed in `scripts/ci/unsafe-io-allowed.txt` ([docs/adr/0034](./docs/adr/0034-fewer-unsafe-perform-io.md)).
+Work that can be written in IO goes to the IO edges; only when a pure function must call a C library from inside, add the definition and the reason it is kept to the list.
+When the list and the sources differ, the `changes` job of CI (`scripts/ci/unsafe-io.sh`) fails.
+
 Audit records and performance snapshots go under `docs/`, in a directory for each purpose.
 These are also not changed once committed.
 Records under `docs/audit/`, `docs/audits/`, `docs/benchmarks/`, and `docs/benchmark/` are enforced: the hook and the `adr` job in CI reject changes, deletions, and moves of committed ones ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md), [docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)).

@@ -154,6 +154,10 @@ CI の `changes` ジョブは、そうした文字列を拾って一覧と照ら
 `modules/` にパッケージを足したときは、cabal ファイルの `common warnings` の `ghc-options` にこのフラグを書き、各コンポーネントで `import: warnings` とする。
 付け忘れると、CI の `changes` ジョブ（`scripts/ci/incomplete-patterns.sh`）が失敗する。
 
+`unsafePerformIO` とその仲間（`unsafeDupablePerformIO`、`unsafeInterleaveIO` など）は、`scripts/ci/unsafe-io-allowed.txt` に書いた定義でだけ使う（[docs/adr/0034](./docs/adr/0034-fewer-unsafe-perform-io.md)）。
+IO で書ける処理は IO のエッジに置き、どうしても純粋な関数の内側から C のライブラリを呼ぶときだけ、一覧に定義と残す理由を足す。
+一覧とソースが食い違うと、CI の `changes` ジョブ（`scripts/ci/unsafe-io.sh`）が失敗する。
+
 監査の記録や性能計測のスナップショットは、`docs/` の下に用途ごとのディレクトリを作って置く。
 これらもコミットしたあとは変更しない。
 `docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/` に置いた記録は、フックと CI の `adr` ジョブがコミット後の変更、削除、移動を拒否する（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)）。
