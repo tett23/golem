@@ -25,6 +25,7 @@ import Golem.Layout.Ruby qualified as R (RubyAlign (..))
 import Golem.Layout.Sidenotes
 import Golem.Layout.Table
 import Golem.Layout.Wrap
+import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (FileId (..), mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
@@ -204,6 +205,25 @@ noteMarkTests =
           markWidth e = [w | Box w c <- fst (composeInlines e [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark]
       markWidth env @?= [round (2 * 3 / 5 * toRational (fs `div` 2) :: Rational)]
       markWidth env {ceVertical = True} @?= [fs `div` 2],
+    testCase "mark-size 0.65zw: the box is the advance at that size across, the size down (golem-driver ADR 0025)" $ do
+      let m = dimToSp fs (Zw (65 % 100))
+          env = (defaultComposeEnv fs) {ceNoteMarkSize = Zw (65 % 100), ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == m then 3 / 5 else 1)}
+          markWidth e = [w | Box w c <- fst (composeInlines e [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark]
+      markWidth env @?= [round (2 * 3 / 5 * toRational m :: Rational)]
+      markWidth env {ceVertical = True} @?= [m],
+    testCase "an absolute mark size is kept, but not above the size of the text (golem-driver ADR 0025)" $ do
+      let q11 = round (11 / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Sp
+      noteMarkSize (Abs (6 * 65536)) q11 @?= 6 * 65536
+      noteMarkSize (Abs (20 * 65536)) q11 @?= q11
+      noteMarkSize (Zw (1 % 2)) fs @?= fs `div` 2,
+    testCase "mark-format 注{n}: the box of the mark reads 注1 (golem-driver ADR 0025)" $ do
+      let env = (defaultComposeEnv fs) {ceNoteMarkFormat = "注{n}"}
+      [bcText c | Box _ c <- fst (composeInlines env [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark] @?= ["注1"],
+    testCase "a numbered sidenote mark takes mark-size and only its number (golem-driver ADR 0025)" $ do
+      let m = dimToSp fs (Zw (65 % 100))
+          env = (defaultComposeEnv fs) {ceNoteMarkSize = Zw (65 % 100), ceNoteMarkFormat = "注{n}", ceSidenoteMarker = MarkerNumber, ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == m then 3 / 5 else 1)}
+          sn = Sidenote (mkSpan (FileId 0) 3 9) 2 [sp0 "注"]
+      [(bcText c, w) | Box w c <- fst (composeInlines env [sp0 "漢", sn, sp0 "字"]), boxKind c == KindNoteMark] @?= [("2", round (3 / 5 * toRational m :: Rational))],
     testCase "the spacing of the pair around the mark comes after it" $ do
       let env = defaultComposeEnv fs
           without = compose env "」あ"
@@ -357,7 +377,7 @@ tests =
                 r = breakParagraph defaultParams (const 30) (items ExplicitHyphen)
             brPass r @?= 1
             brPositions r @?= [1, length (items ExplicitHyphen) - 1]
-            assertBool "pattern hyphens wait for the second pass" (brPass (breakParagraph defaultParams (const 30) (items PatternHyphen)) /= 1)
+            assertBool "pattern hyphens wait for the second pass" (brPass (breakParagraph defaultParams (const 30) (items (PatternHyphen 0))) /= 1)
             case brLines r of
               (l : _) -> do
                 [w | Penalty w _ _ <- lineItems l] @?= [w | Penalty w _ _ <- lineItems l, w == 0]
@@ -371,15 +391,15 @@ tests =
             brPass r @?= 4
             assertBool "overfull" (any lineOverfull (brLines r)),
           testCase "a penalty inside a line takes no width; at the line end it does" $ do
-            let items = [box 30, Penalty 5 50 PatternHyphen, box 30, Glue 6 3 2, box 30, Penalty 5 50 PatternHyphen, box 30] <> finish
+            let items = [box 30, Penalty 5 50 (PatternHyphen 0), box 30, Glue 6 3 2, box 30, Penalty 5 50 (PatternHyphen 0), box 30] <> finish
                 r = breakParagraph defaultParams (const 1000) items
             case brLines r of
               [l] -> [x | (Box {}, x) <- placeLine l] @?= [0, 30, 66, 96]
               ls -> assertFailure (show (length ls))
-            let r2 = breakParagraph noPretol (const 70) ([box 30, Glue 6 3 2, box 30, Penalty 5 50 PatternHyphen, box 30] <> finish)
+            let r2 = breakParagraph noPretol (const 70) ([box 30, Glue 6 3 2, box 30, Penalty 5 50 (PatternHyphen 0), box 30] <> finish)
             case brLines r2 of
               (l : _) -> case reverse (lineItems l) of
-                (Penalty 5 _ PatternHyphen : _) -> pure ()
+                (Penalty 5 _ (PatternHyphen _) : _) -> pure ()
                 other -> assertFailure ("the break penalty should end the line: " <> show (take 1 other))
               [] -> assertFailure "no lines",
           testCase "set lines fill the target exactly" $ do
@@ -479,7 +499,7 @@ tests =
             hyphenate englishUS "associates" @?= ["as", "so", "ciates"],
           testCase "composition offers flagged hyphen penalties inside words" $ do
             let env = (defaultComposeEnv fs) {cePatterns = Just englishUS}
-            length [() | Penalty _ 50 PatternHyphen <- compose env "hyphenation"] @?= 2
+            length [() | Penalty _ 50 (PatternHyphen _) <- compose env "hyphenation"] @?= 2
         ],
       testGroup
         "explicit hyphens (golem-layout ADR 0008)"
@@ -559,11 +579,12 @@ tests =
         "microtypography (ADR 0005)"
         [ testCase "protrusion of hyphens and full stops follows the table" $ do
             let env = (defaultComposeEnv fs) {ceProtrusion = True}
-            case [(w, c) | Box w c <- compose env "end."] of
-              [(w, c)] -> do
-                bcProtrudeEnd c @?= w * 700 `div` 1000 -- the full stop: 70% of… the word box
+            case [c | Box _ c <- compose env "end."] of
+              [c] -> do
+                bcProtrudeEnd c @?= 229376 -- the full stop: 70% of its advance, 327680 (golem-layout ADR 0014)
                 bcExpandable c @?= True
               other -> assertFailure (show other),
+          testGroup "the amount of protrusion (golem-layout ADR 0014)" protrusionAmountTests,
           testCase "Japanese glyphs never expand" $
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
@@ -1682,4 +1703,59 @@ codeTests =
     ids from n = [LineBox i [] [] [] | i <- [from .. from + n - 1]]
     isFinalPenalty = \case
       Penalty _ p _ -> p >= infPenalty
+      _ -> False
+
+-- | The amount of protrusion from the advance of the character at the line end (golem-layout ADR 0014).
+protrusionAmountTests :: [TestTree]
+protrusionAmountTests =
+  [ testCase "a. and end. protrude by the same amount" $ do
+      ends env "a." @?= [229376]
+      ends env "end." @?= [229376],
+    testCase "a semicolon protrudes by half its advance" $
+      ends env "a;" @?= [163840],
+    testCase "the box before an explicit hyphen protrudes by 70% of the hyphen" $
+      take 1 (ends env "well-known") @?= [229376],
+    testCase "the advance of the character at the end, not of the box, is the base" $ do
+      let narrow = env {ceAdvance = \lk c -> if c == '.' then 1 / 4 else ceAdvance env lk c}
+      ends narrow "end." @?= [114688],
+    testCase "a quote at the start of a word protrudes by its share of its advance" $
+      -- U+201C is an opening bracket of Japanese text and never starts a Latin word box, so the straight quote stands in
+      [bcProtrudeStart c | Box _ c <- compose env "\"end"] @?= [163840],
+    testCase "tracking is not counted in the amount" $
+      ends env {ceLook = look0 {lkTracking = 100}} "end." @?= [229376],
+    testCase "without protrusion no box protrudes" $
+      [(bcProtrudeStart c, bcProtrudeEnd c) | Box _ c <- compose (defaultComposeEnv fs) "\x201Cend. well-known"] @?= replicate 4 (0, 0),
+    testCase "a pattern hyphen carries 70% of the hyphen's advance, 0 without protrusion" $ do
+      [q | Penalty _ 50 (PatternHyphen q) <- compose hyphEnv "hyphenation"] @?= [229376, 229376]
+      [q | Penalty _ 50 (PatternHyphen q) <- compose hyphEnv {ceProtrusion = False} "hyphenation"] @?= [0, 0],
+    testCase "a line broken at a pattern hyphen protrudes by the amount of the hyphen" $ do
+      let l = patternLine True
+      snd (lineProtrusion l) @?= 229376,
+    testCase "the hyphen drawn at a pattern break ends outside the measure by the amount" $ do
+      let l = patternLine True
+      case reverse (placeLine l) of
+        (Penalty w _ _, off) : _ -> assertBool (show (off + w, lineTarget l)) (abs (off + w - lineTarget l - 229376) <= 1)
+        other -> assertFailure (show (take 1 other)),
+    testCase "an added hyphen protrudes as much as an explicit one" $ do
+      let explicit = brLines (breakParagraph defaultParams {pProtrusion = True} (const (3 * fs)) (compose env "well-known well-known"))
+      [snd (lineProtrusion l) | l <- explicit, lastText l == Just "well-"]
+        @?= [snd (lineProtrusion (patternLine True)), snd (lineProtrusion (patternLine True))],
+    testCase "without protrusion in the breaking a line at a pattern hyphen does not protrude" $
+      snd (lineProtrusion (patternLine False)) @?= 0
+  ]
+  where
+    env = (defaultComposeEnv fs) {ceProtrusion = True}
+    hyphEnv = env {cePatterns = Just englishUS}
+    ends e t = [bcProtrudeEnd c | Box _ c <- compose e t]
+    -- the first line with a space that ends at a pattern hyphen, in a measure of five ems
+    patternLine prot =
+      let ls = brLines (breakParagraph defaultParams {pProtrusion = prot} (const (5 * fs)) (compose hyphEnv (T.unwords (replicate 6 "hyphenation"))))
+       in case [l | l <- ls, isPatternEnd (lineItems l), not (null [() | Glue {} <- lineItems l])] of
+            l : _ -> l
+            [] -> error "no line ends at a pattern hyphen"
+    lastText l = case [c | Box _ c <- reverse (lineItems l)] of
+      c : _ -> Just (bcText c)
+      [] -> Nothing
+    isPatternEnd its = case reverse its of
+      Penalty _ _ (PatternHyphen _) : _ -> True
       _ -> False

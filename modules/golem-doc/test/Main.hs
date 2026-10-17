@@ -118,10 +118,14 @@ cbor =
         validateDocument size [] (para Nothing [a, br, br, a]) @?= ["改行は段落の最上位のインラインの間にだけ置けます"]
         validateDocument size [] (para (Just "body") [a]) @?= ["段落スタイル body は null で表します"]
         validateInlines size [] [a, br, a] @?= ["改行は段落の最上位のインラインの間にだけ置けます"],
-      testCase "the ABI version is 6 and version 5 is rejected (golem-driver ADR 0023)" $ do
-        abiVersion @?= 6
-        let bytes = toStrictByteString (encodeTerm (TList [TInt 5, TInt 0, TList []]))
+      testCase "the ABI version is 7 and version 6 is rejected (golem-pdf ADR 0008)" $ do
+        abiVersion @?= 7
+        let bytes = toStrictByteString (encodeTerm (TList [TInt 6, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes)),
+      testCase "a figure with its page survives the CBOR round trip (golem-pdf ADR 0008)" $ do
+        let fig = Figure "images/a.pdf" (Just "images/a.png") "alt" Nothing Nothing [] (Just 3)
+            doc = Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing (FigureBlock fig)]
+        decodeDocument (encodeDocument doc) @?= Right doc,
       testCase "a code block survives the CBOR round trip (golem-driver ADR 0023)" $ do
         let code =
               Code
@@ -168,7 +172,7 @@ cbor =
         validateDocument size [] (doc [brk]) @?= []
         validateDocument size [] (doc [Block sp Nothing (BulletList [ListItem Nothing [brk]])]) @?= [msgNested]
         validateDocument size [] (doc [Block sp Nothing (DefList [DefGroup [[]] [[brk]]])]) @?= [msgNested]
-        validateDocument size [] (doc [Block sp Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing [brk]))]) @?= [msgNested]
+        validateDocument size [] (doc [Block sp Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing [brk] Nothing))]) @?= [msgNested]
         validateDocument size [] (doc [Block sp (Just "x") (ForcedBreak BreakRecto)]) @?= [msgLabel],
       testCase "trailing bytes are rejected" $
         assertBool "rejected" (isLeft (decodeInlines (encodeInlines [] <> "\0"))),

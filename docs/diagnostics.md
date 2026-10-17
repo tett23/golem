@@ -2360,6 +2360,87 @@ PDF をターゲットに含むビルドと `golem check` で出す。
 注釈の印が 50 を超えるときは、コードブロックを分ける。
 `<数>` で終わるコードを `callouts=true` で書いていないかを確かめる。
 
+## G0273
+
+web の代替画像の形式が使えません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@figure` の `web` に、PNG と JPEG のほかの形式のファイルを書いた。
+形式は拡張子で決める（`.png`、`.jpg`、`.jpeg` を、大文字と小文字を区別せずに受け付ける）。
+どの出力を組むときも同じ規則で調べるので、HTML だけを組むときにも出る。
+位置は、その `@figure` のブロックである。
+
+- メッセージ: `web の代替画像は PNG か JPEG です: <パス>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
+
+### 主な原因
+
+- `web` に PDF や SVG のファイルを書いた。
+
+### 直し方
+
+`web` の画像を PNG か JPEG に書き出し、そのファイルを指す。
+
+## G0274
+
+図版の形式が使えません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@figure` の画像に、PDF、PNG、JPEG のほかの形式のファイルを書いた。
+形式は拡張子で決める（`.pdf`、`.png`、`.jpg`、`.jpeg` を、大文字と小文字を区別せずに受け付ける）。
+中身は見ないので、拡張子と中身が食い違うファイルは、PDF を組むときに [G0810](#g0810) になる。
+位置は、その `@figure` のブロックである。
+
+- メッセージ: `図版の形式は PDF、PNG、JPEG です: <パス>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
+
+### 主な原因
+
+- GIF、TIFF、SVG などの画像を `@figure` に書いた。
+- 拡張子のないファイルを書いた。
+
+### 直し方
+
+図を PDF、PNG、JPEG のどれかに書き出し、そのファイルを指す。
+
+## G0275
+
+page の値が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@figure` の `page` に、1 以上の整数でない値を書いたか、PDF でない図版に `page` を書いた。
+`page` は、PDF の図版の何ページ目を置くかを 1 から数えた整数で表す。
+ページの数を超える値は、評価の段階ではファイルを読まないので、PDF を組むときに [G0810](#g0810) になる。
+位置は、その `@figure` のブロックである。
+
+- メッセージ: `page は PDF の図版のページを 1 から数えた整数で書きます: <値>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
+
+### 主な原因
+
+- `page=0` や `page=x` と書いた。
+- PNG や JPEG の図版に `page` を書いた。
+
+### 直し方
+
+PDF の図版なら、`page` を 1 以上の整数にする。
+PNG と JPEG の図版からは、`page` を消す。
+
 ## G0277
 
 同じキーを二度書いています
@@ -2559,9 +2640,9 @@ style.toml の誤りです
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
 
-- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
+- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format には {n} をちょうど一つ書きます: <書式>`、`lines は 1 以上の整数です: <値>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置、読み込んだ後の検査では `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md) である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md) である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした
 
 ### 主な原因
 
@@ -4645,6 +4726,52 @@ PDF を書かない。
 
 `shape`（または `[composition]` の `kenten`）を、書体にある形に替える。
 あるいは、圏点の字を持つ書体を、その役割の `ja` に指定する。
+## G0810
+
+図版を PDF に置けません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@figure` の画像のファイルはあるが、PDF に置ける形で読めない。
+PNG と JPEG の図版は画像として読めないとき、PDF の図版は Golem が取り込めないときに出す。
+PDF の図版を取り込めないのは、次のどれかの場合である。
+
+- 相互参照などが壊れている。
+- 暗号化されている。
+- `page` のページがない。
+- 扱わない圧縮（`LZWDecode`、`JBIG2Decode`、`JPXDecode` など）を使っている。
+- 埋め込んでいないフォントがある。
+- 特色（Separation か DeviceN）がある。
+- RGB のインライン画像がある。
+- レイヤー（オプショナルコンテンツ）がある。
+- `UserUnit` が 1 でない。
+
+`@figure` ごとに一つ出し、PDF を書かない。
+dev と prod の両方でエラーである。
+PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出す。
+HTML、EPUB、プレーンテキストは画像を読まないので出さない。
+位置は、その `@figure` のブロックである。
+
+- メッセージ: `図版を PDF に置けません: <パス>（<理由>）`
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`）
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
+
+### 主な原因
+
+- 画像のファイルが壊れている。
+- インターレースの PNG を使った。
+- 拡張子と中身の形式が食い違っている（中身が PDF の `.png` など）。
+- PDF の図版の書き出しの設定で、フォントを埋め込んでいないか、特色やレイヤーを残している。
+
+### 直し方
+
+理由に合わせて図版を書き出し直す。
+PDF の図版なら、フォントを埋め込み、特色をプロセスカラーに直し、レイヤーを統合して書き出す。
+PNG はインターレースを外して書き出す。
+
 ## G0813
 
 出力先がシンボリックリンクです
@@ -4794,28 +4921,23 @@ PDF に埋め込んだフォントの形式が、プリフライトの設定の 
 図版を PDF に置けません
 
 - 重大度: プリフライトの設定による（print の既定はエラー）
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
-`@figure` の画像のファイルはあるが、JPEG か PNG として読めない。
-`golem build` は、この図版を PDF に描かず、診断も出さない。
-`@figure` ごとに一つ出す。
-位置は、その `@figure` のブロックである。
+廃止した。
+`@figure` の画像のファイルはあるが、JPEG か PNG として読めない図版を `golem preflight` が報告するコードだった。
+置けない図版は `golem build` と `golem preflight` のどちらでも [G0810](#g0810) のエラーになり、PDF を作れなければプリフライトは何も検査しないので、このコードは出なくなった。
+`preflight.toml` の `image-unplaceable` は、知らないキー（[G0901](#g0901)）になった。
 
 - メッセージ: `図版を PDF に置けません: <パス>（<理由>）`
-- 段階とモジュール: プリフライト（golem-driver の `Golem.Driver.Pdf`、golem-preflight の `Golem.Preflight`）
-- ADR: [golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)
-
-### 主な原因
-
-- PDF や TIFF の図版を `@figure` に書いた。
-- 画像のファイルが壊れている。
-- インターレースの PNG を使った。
+- 段階とモジュール: プリフライト（golem-preflight）
+- ADR: [golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)（定めた）、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)（使わなくした）
 
 ### 直し方
 
-図版を JPEG か PNG に書き出し直す。
+[G0810](#g0810) を見る。
+`preflight.toml` に `image-unplaceable` を書いていれば消す。
 
 ## G0906
 

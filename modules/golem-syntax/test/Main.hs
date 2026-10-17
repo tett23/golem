@@ -166,8 +166,8 @@ tests =
         renderJson files [d]
           @?= "[{\"code\":\"G0906\",\"severity\":\"warning\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"m\",\"related\":[],\"fixes\":[],\"facts\":{\"pdf-pages\":[12,13],\"ppi\":212,\"font\":\"f\\\"x\",\"names\":[\"a\",\"b\"]}}]\n"
         renderHuman files [d] @?= renderHuman files [d {diagFacts = []}],
-      testCase "preflightCodes are G0902 to G0918, apart from notices and the profile" $ do
-        preflightCodes @?= [DiagnosticCode (T.pack ("G09" <> (if n < 10 then "0" else "") <> show n)) | n <- [2 .. 18 :: Int]]
+      testCase "preflightCodes are G0902 to G0918 but the retired G0905, apart from notices and the profile" $ do
+        preflightCodes @?= [DiagnosticCode (T.pack ("G09" <> (if n < 10 then "0" else "") <> show n)) | n <- [2 .. 18 :: Int], n /= 5]
         assertBool "no notice" (not (any (`elem` noticeCodes) preflightCodes))
         assertBool "no profile" (not (any (`elem` profileDependentCodes) preflightCodes)),
       testCase "human rendering" $ do

@@ -7,6 +7,7 @@ module Golem.Layout.KnuthPlass
   ( Sp,
     Item (..),
     Hyphen (..),
+    isPatternHyphen,
     itemFlagged,
     BoxContent (..),
     Params (..),
@@ -68,11 +69,19 @@ data BoxContent = BoxContent
 data Hyphen
   = -- | a prohibition, a break between mono ruby bases, the paragraph end
     NoHyphen
-  | -- | a break found by Liang's patterns; the line ends with a hyphen drawn
-    PatternHyphen
+  | {- | a break found by Liang's patterns; the line ends with a hyphen
+    drawn, which protrudes by the amount given (golem-layout ADR 0014)
+    -}
+    PatternHyphen !Sp
   | -- | the break after a hyphen or dash written in the word; nothing is added
     ExplicitHyphen
   deriving stock (Eq, Show)
+
+-- | Whether a break is one found by the patterns.
+isPatternHyphen :: Hyphen -> Bool
+isPatternHyphen = \case
+  PatternHyphen _ -> True
+  _ -> False
 
 data Item
   = Box {itemWidth :: !Sp, itemContent :: !BoxContent}
@@ -316,14 +325,18 @@ breakParagraph ps lineWidth items =
        in Eval bad fit d (not overfull && bad <= tol) (not overfull)
     flaggedAt i = itemFlagged (at i)
     patternAt i = case at i of
-      Penalty _ _ PatternHyphen -> True
+      Penalty _ _ (PatternHyphen _) -> True
       _ -> False
     protrusionOf s b
       | not (pProtrusion ps) = (0, 0)
       | otherwise =
           let firstBox = listToMaybe [c | j <- [s .. b - 1], Box _ c <- [at j]]
               lastBox = listToMaybe [c | j <- [b - 1, b - 2 .. s], Box _ c <- [at j]]
-           in (maybe 0 bcProtrudeStart firstBox, maybe 0 bcProtrudeEnd lastBox)
+              -- a line ending at a pattern hyphen protrudes by the hyphen (golem-layout ADR 0014)
+              end = case at b of
+                Penalty _ _ (PatternHyphen q) -> q
+                _ -> maybe 0 bcProtrudeEnd lastBox
+           in (maybe 0 bcProtrudeStart firstBox, end)
     -- the edges of the first and last boxes count whether or not protrusion is on
     edgesOf s b =
       let firstBox = listToMaybe [c | j <- [s .. b - 1], Box _ c <- [at j]]

@@ -73,6 +73,7 @@ test-suite golem-driver-test
     CliSpec
     DiagnosticSitesSpec
     DiagnosticsSpec
+    FigureSpec
     LocaleSpec
     MemoSpec
     PageElementsSpec

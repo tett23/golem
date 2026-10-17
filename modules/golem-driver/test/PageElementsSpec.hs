@@ -15,6 +15,7 @@ import Golem.Doc.Assemble (HeadingInfo (..))
 import Golem.Doc.IR (InlineF (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, headingDefaults, runningHeadLines, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
+import Golem.Layout.Japanese (BoxKind (..), boxKind)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (HeadingBlock (..), PageOut (..), Slotted (..))
 import Golem.Layout.Wrap (Exclusion (..))
@@ -70,6 +71,45 @@ footnoteTests =
           let right = ptToRational (dX one) + m / 2
           assertBool (show (right, ptToRational (dX kan) + s / 2)) (near right (ptToRational (dX kan) + s / 2))
         other -> assertFailure (show other),
+    testCase "PDF: horizontal, mark-size 0.65zw sets the mark at that size, raised to the top of the em box (golem-driver ADR 0025)" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> "\n[notes]\nmark-size = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          s = 10 :: Rational
+          m = toRational (dimToSp (10 * 65536) (Zw (65 % 100))) / 65536
+          near a b = abs (a - b) < 1 / 100
+          small = [d | d <- ds, near (ptToRational (dSize d)) m]
+          at c xs = [(ptToRational (dX d), ptToRational (dY d)) | d <- xs, dGlyph d == fromEnum c]
+      case (at '*' small, at '1' small, at '漢' ds, at '字' ds) of
+        ([(_, ys)], [(x1, _)], [(_, yk)], [(xj, _)]) -> do
+          assertBool (show (ys - yk)) (abs (ys - yk - (38 / 100 + 1 / 2) * (s - m)) < 1 / 100)
+          assertBool (show (x1, xj)) (xj >= x1 + m / 2)
+        other -> assertFailure (show other),
+    testCase "PDF: vertical, mark-size 0.65zw keeps the right end of the mark half the size right of the centre line (golem-driver ADR 0025)" $ do
+      content <- miniPdf fakeProvider True (pdfStyle <> "\n[notes]\nmark-size = \"0.65zw\"\n") "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          sSp = maybe 0 (dimToSp 0) (parseDim "13Q")
+          s = toRational sSp / 65536
+          m = toRational (dimToSp sSp (Zw (65 % 100))) / 65536
+          near a b = abs (a - b) < 1 / 100
+          markOf c = [d | d <- ds, dGlyph d == fromEnum c, near (ptToRational (dSize d)) m]
+      case (markOf '*', markOf '1', [d | d <- ds, dGlyph d == fromEnum '漢']) of
+        ([_], [one], [kan]) -> do
+          let right = ptToRational (dX one) + m / 2
+          assertBool (show (right, ptToRational (dX kan) + s / 2)) (near right (ptToRational (dX kan) + s / 2))
+        other -> assertFailure (show other),
+    testCase "PDF: mark-format {n}) gives the mark 1) in the text and at the start of the note (golem-driver ADR 0025)" $ do
+      (_, pl) <- layoutOk (horizontalStyle <> "\n[notes]\nmark-format = \"{n})\"\n") "一[note: 甲。]\n" []
+      let marks = [bcText c | sl <- Map.elems (plLines pl), Box _ c <- lineItems (slLine sl), boxKind c == KindNoteMark]
+          firsts = [l | sl <- Map.elems (plLines pl), (_, l : _) <- slNotes sl]
+          start l = case lineItems l of
+            (Box _ c : Glue {} : Box _ d : _) -> Just (bcText c, bcText d)
+            _ -> Nothing
+      marks @?= ["1)"]
+      map start firsts @?= [Just ("1)", "甲")],
+    testCase "PDF: the default values written give the same page contents as none (golem-driver ADR 0025)" $ do
+      a <- miniPdf fakeProvider True horizontalStyle "漢[note: 注。]字\n" [] >>= inflateAll
+      b <- miniPdf fakeProvider True (horizontalStyle <> "\n[notes]\nmark-size = \"0.5zw\"\nmark-format = \"*{n}\"\n") "漢[note: 注。]字\n" [] >>= inflateAll
+      a @?= b,
     testCase "by default the notes of a chapter in two files count on, in the PDF, HTML and plain text" $
       withSystemTempDirectory "golem-notes" $ \tmp -> do
         BS.writeFile (tmp </> "manifest.toml") (replaceIn "chapters = [\"a.gm\"]" "chapters = [[\"a.gm\", \"b.gm\"]]" miniManifest <> "\n[targets.html]\n\n[targets.text]\nvariants = [\"horizontal\"]\n")

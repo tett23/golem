@@ -9,6 +9,7 @@ module Golem.Pdf.Image
     ColorSpace (..),
     readImage,
     unfilterPng,
+    inflateUpTo,
   )
 where
 
