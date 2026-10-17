@@ -320,6 +320,18 @@ run bg start a/b true
 expect "bg: a name with a slash" 2
 run bg stop ok
 expect "bg: an unknown subcommand" 2
+run bg start .hidden true
+expect "bg: a name that starts with a dot" 2
+run bg start "" true
+expect "bg: an empty name" 2
+run bg wait ok extra
+expect "bg: wait with more than a name" 2
+# a name started again: wait waits for the new command, not the code of the old one
+run bg start again sh -c 'exit 3'
+run bg wait again
+run bg start again sh -c 'sleep 1; echo second'
+run bg wait again
+expect "bg: a name started again is waited for anew" 0 "second"
 unset BG_DIR
 
 # ---------------------------------------------------------------- apt-install.sh
