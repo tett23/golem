@@ -60,6 +60,7 @@ mediaType p = case map toLower (takeExtension p) of
   ".png" -> "image/png"
   ".jpg" -> "image/jpeg"
   ".jpeg" -> "image/jpeg"
+  ".svg" -> "image/svg+xml"
   ".otf" -> "font/otf"
   ".ttf" -> "font/ttf"
   ".woff2" -> "font/woff2"

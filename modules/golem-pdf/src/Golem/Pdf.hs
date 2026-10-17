@@ -1,6 +1,7 @@
 -- | PDF output (golem-pdf ADR 0001).
 module Golem.Pdf
   ( module Golem.Pdf.Writer,
+    module Golem.Pdf.Drawing,
     module Golem.Pdf.Image,
     module Golem.Pdf.Import,
     module Golem.Pdf.Marks,
@@ -11,6 +12,7 @@ module Golem.Pdf
   )
 where
 
+import Golem.Pdf.Drawing
 import Golem.Pdf.Image
 import Golem.Pdf.Import
 import Golem.Pdf.Marks

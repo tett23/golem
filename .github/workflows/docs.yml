@@ -53,6 +53,9 @@ jobs:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: sh scripts/manual/check-updated.sh "$PR_BASE" "$PR_HEAD"
+      # the outlined figures of the developer manual were made from their sources (golem-pdf ADR 0009)
+      - name: The outlined figures match their sources
+        run: sh scripts/manual/check-figures.sh
 
   # The Japanese writing rules of the documents: textlint with the pinned
   # rules of tools/textlint/ over docs/, README.md, CONTRIBUTING.md, the ADRs

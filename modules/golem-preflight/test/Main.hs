@@ -6,7 +6,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.LayoutSpec (Rect (..))
-import Golem.Pdf (ColorSpace (..), ColorUse (..), FigureContent (..), ImageData (..), ImportedPage (..), Obj (..), X4Problem (..))
+import Golem.Pdf (ColorSpace (..), ColorUse (..), Drawing (..), FigureContent (..), ImageData (..), ImportedPage (..), Obj (..), X4Problem (..))
 import Golem.Preflight
 import Golem.Preflight.Rules
 import Golem.Preflight.View
@@ -195,6 +195,13 @@ checkTests =
       only "G0908" (check printRules (imagePage [vector [UseCmyk, UseIcc 4 "intent"]])) @?= []
       map diagMessage (only "G0908" (check printRules (imagePage [vector [UseRgb, UseLab, UseIcc 3 "srgb"]])))
         @?= ["この設定では使えない色空間の図版です: images/figure.pdf（rgb、lab）。Golem は画像の色を変換しないので、CMYK に変換した画像に替えます"],
+    testCase "an SVG figure is rgb for G0908 and not checked by G0906, G0907 and G0909 (golem-pdf ADR 0009)" $ do
+      let iv = ImageView (Rect (mm 20) (mm 20) (inch 100) (inch 100)) (SvgFigure (Drawing (10, 10) [])) srcSpan "images/a.svg"
+          r = printRules {ruImageResolutionMax = LevelWarning, ruColorMax = 1}
+      map (lookup "color-space" . diagFacts) (only "G0908" (check printRules (imagePage [iv]))) @?= [Just (FactText "rgb")]
+      only "G0906" (check printRules (imagePage [iv])) @?= []
+      only "G0907" (check r (imagePage [iv])) @?= []
+      only "G0909" (check printRules (imagePage [iv])) @?= [],
     testCase "G0909: a PDF figure with a CMYK profile other than the intent (golem-pdf ADR 0008)" $ do
       length (only "G0909" (check printRules (imagePage [vector [UseIcc 4 "other"]]))) @?= 1
       length (only "G0909" (check printRules (imagePage [vector [UseIcc 4 "intent"], vector [UseIcc 3 "other"]]))) @?= 0,
