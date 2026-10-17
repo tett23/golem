@@ -1,6 +1,6 @@
 module ReferencesSpec (indexTests, bibliographyFormatTests, tableTests, tocTests, indexColumnTests) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, zipWithM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.List (isSuffixOf, nub, sort)
@@ -220,7 +220,7 @@ urlRefsJson = TE.encodeUtf8 "[{\"id\": \"jlreq\", \"type\": \"webpage\", \"title
 
 -- | A line of one box of a width (a page number in the tests of tocPage).
 oneBoxLine :: Integer -> Line
-oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0 [])] 0 w 0 (0, 0) False (0, 0)
+oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0 [] 0 0)] 0 w 0 (0, 0) False (0, 0)
 
 -- | fs = 10pt, measure = 120pt, W = 15pt, g = 5pt, u = 10pt.
 tocGeom :: Bool -> TocGeometry
@@ -374,6 +374,59 @@ tableTests =
       content <- miniPdf fakeProvider True horizontalStyle "@table src=data.csv\n" [("data.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] >>= fmap BS.concat . inflateAll
       length (rulesIn content) @?= 3
       assertBool "cells" (fromEnum '幅' `elem` map dGlyph (drawnGlyphs content)),
+    testCase "a table has a grid line of space before and after it (golem-driver ADR 0031)" $ do
+      content <- miniPdf fakeProvider True horizontalStyle ("前。\n\n" <> smallTable <> "\n後。\n") [] >>= fmap BS.concat . inflateAll
+      [mae, kou, taka, ato] <- mapM (baselineOf content) "前項高後"
+      approx (mae - kou) 30
+      approx (taka - ato) 30,
+    testCase "the rules are c outside the ink of the table: a + c above, d + c below (golem-driver ADR 0031)" $ do
+      -- the fake font: ink from 0.8 above to 0.1 below the baseline; a = 8pt, d = 1pt, c = (15 - 9) / 2 = 3pt
+      content <- miniPdf fakeProvider True horizontalStyle ("前。\n\n" <> smallTable <> "\n後。\n") [] >>= fmap BS.concat . inflateAll
+      [kou, haba, taka] <- mapM (baselineOf content) "項幅高"
+      let centres = sort [ptToRational y + ptToRational h / 2 | [_, y, _, h] <- rulesIn content]
+      length centres @?= 3
+      zipWithM_ approx centres (sort [kou + 11, kou - 4, taka - 4])
+      approx haba (kou - 15),
+    testCase "an empty header row: two rules, the body after the space (golem-driver ADR 0031)" $ do
+      content <- miniPdf fakeProvider True horizontalStyle ("前。\n\n" <> emptyHeaderTable 2 <> "\n後。\n") [] >>= fmap BS.concat . inflateAll
+      length (rulesIn content) @?= 2
+      [mae, first] <- mapM (baselineOf content) "前行"
+      approx (mae - first) 30,
+    testCase "an empty header row across pages: two rules on each page, no header (golem-driver ADR 0031)" $ do
+      pdf <- miniPdf fakeProvider True fiveLines (emptyHeaderTable 7) []
+      pages <- pageContents pdf
+      map (length . rulesIn) pages @?= [2, 2],
+    testCase "a book that starts with a table: its first row on the first grid line (golem-driver ADR 0031)" $ do
+      table <- miniPdf fakeProvider True horizontalStyle smallTable [] >>= fmap BS.concat . inflateAll
+      para <- miniPdf fakeProvider True horizontalStyle "項目。\n" [] >>= fmap BS.concat . inflateAll
+      a <- baselineOf table '項'
+      b <- baselineOf para '項'
+      approx a b,
+    testCase "vertical: the rules midway between the em boxes, and a line of space before and after (golem-driver ADR 0031)" $ do
+      content <- miniPdf fakeProvider True pdfStyle "前。\n\n| 項目 | 値 |\n|---|---|\n| 幅 | 広い |\n\n後。\n" [] >>= fmap BS.concat . inflateAll
+      let pitch = 22 / 4 * 72 / 25.4
+          xOf c = case [ptToRational (dX d) | d <- drawnGlyphs content, dGlyph d == fromEnum c] of
+            (x : _) -> pure x
+            [] -> assertFailure (show c)
+          near a b = assertBool (show (fromRational a :: Double, fromRational b :: Double)) (abs (a - b) < 1 / 100)
+      [mae, kou, haba, ato] <- mapM xOf "前項幅後"
+      near (mae - kou) (2 * pitch)
+      near (haba - ato) (2 * pitch)
+      let centres = sort [ptToRational x + ptToRational w / 2 | [x, _, w, _] <- rulesIn content]
+      case centres of
+        [c1, c2, c3] -> do
+          near c1 (haba - pitch / 2)
+          near c2 (kou - pitch / 2)
+          near c3 (kou + pitch / 2)
+        other -> assertFailure (show other),
+    testCase "two tables in a row are a grid line apart (golem-driver ADR 0031)" $ do
+      let second = "| 名前 | 数 |\n|---|---|\n| 長 | 1 |\n"
+      content <- miniPdf fakeProvider True horizontalStyle ("前。\n\n" <> smallTable <> "\n" <> second <> "\n後。\n") [] >>= fmap BS.concat . inflateAll
+      [taka, na] <- mapM (baselineOf content) "高名"
+      approx (taka - na) 30,
+    testCase "HTML keeps an empty header row as an empty row of the head (golem-driver ADR 0031)" $ do
+      (html, _) <- htmlMini horizontalStyle (emptyHeaderTable 2)
+      assertBool (T.unpack html) ("<thead>" `T.isInfixOf` html),
     testCase "tables: parallel and sequential, and two builds, give the same bytes" $ do
       let source = "前。\n\n" <> smallTable <> "\n後。\n\n" <> smallTable
       a <- miniPdf fakeProvider True horizontalStyle source []
@@ -383,6 +436,20 @@ tableTests =
       a @?= c
       qpdfCheck a
   ]
+
+-- | A table whose header row has only empty cells, with n body rows 行1, 行2, ...
+emptyHeaderTable :: Int -> T.Text
+emptyHeaderTable n = "| | |\n|---|---|\n" <> T.concat ["| 行" <> T.pack (show i) <> " | " <> T.pack (show i) <> " |\n" | i <- [1 .. n]]
+
+-- | Two lengths in pt within 1/100pt.
+approx :: Rational -> Rational -> Assertion
+approx a b = assertBool (show (fromRational a :: Double, fromRational b :: Double)) (abs (a - b) < 1 / 100)
+
+-- | The baseline in pt of the first glyph of a character drawn.
+baselineOf :: BS.ByteString -> Char -> IO Rational
+baselineOf content c = case [ptToRational (dY d) | d <- drawnGlyphs content, dGlyph d == fromEnum c] of
+  (y : _) -> pure y
+  [] -> assertFailure ("no " <> [c])
 
 -- | A one-column style of 32 characters a line, the column gap 2zw (docs/adr ADR 0025).
 horizontal32 :: BS.ByteString

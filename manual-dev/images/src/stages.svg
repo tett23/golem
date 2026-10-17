@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1300" height="920" viewBox="0 0 1300 920">
   <!-- 評価の三つの階層（docs/specifications.md の「目次と文書構造の参照」、golem-eval ADR 0002、golem-doc ADR 0002、golem-layout ADR 0003）。
-       scripts/manual/render-figures.sh で manual-dev/images/stages.png にする。 -->
+       scripts/manual/outline-figures.sh で、文字を輪郭にした manual-dev/images/stages.svg にする。 -->
   <style>
     @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
     @font-face { font-family: "Fig Sans"; font-weight: bold; src: url("../../fonts/NotoSansJP-Bold.otf"); }
@@ -9,7 +9,7 @@
     .band-name { font-size: 34px; font-weight: bold; }
     .band-sub { font-size: 22px; fill: #444; }
     .small { font-size: 21px; fill: #333; }
-    .v { writing-mode: tb; glyph-orientation-vertical: 0; font-size: 22px; text-anchor: middle; }
+    .v { writing-mode: tb; glyph-orientation-vertical: 0; text-orientation: upright; font-size: 22px; text-anchor: middle; }
     rect.band { stroke: none; }
     .b0 { fill: #f4f4f4; }
     .b1 { fill: #eaeff6; }

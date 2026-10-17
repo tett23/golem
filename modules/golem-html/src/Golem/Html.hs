@@ -6,6 +6,7 @@ module Golem.Html
     HtmlLists (..),
     HtmlCharStyle (..),
     HtmlParaStyle (..),
+    HtmlRule (..),
     HtmlFeatures (..),
     noFeatures,
     HtmlLocalStyles (..),
@@ -28,7 +29,7 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -75,8 +76,25 @@ data HtmlConfig = HtmlConfig
     -- | the markers of [lists], when the book has it (golem-driver ADR 0013)
     hcLists :: !(Maybe HtmlLists),
     -- | the paragraph style code: pre (golem-driver ADR 0017)
-    hcCode :: !HtmlCode
+    hcCode :: !HtmlCode,
+    -- | the rules before and after the headings of each level (golem-driver ADR 0027)
+    hcHeadingRules :: !(Map Int (Maybe HtmlRule, Maybe HtmlRule))
   }
+
+{- | A rule before or after a paragraph or a heading as CSS (golem-driver
+ADR 0027, 0028): the width (none lets the block fill the rest of the
+line), the indents at the start and the end, the border (weight, style
+and colour) and the spaces before and after it as CSS lengths.
+-}
+data HtmlRule = HtmlRule
+  { hrWidth :: !(Maybe Text),
+    hrStartIndent :: !(Maybe Text),
+    hrEndIndent :: !(Maybe Text),
+    hrBorder :: !Text,
+    hrOuter :: !Text,
+    hrInner :: !Text
+  }
+  deriving stock (Eq)
 
 {- | The paragraph style code for pre (golem-driver ADR 0017): its font
 role, its size and its padding as CSS lengths, and the swatch of its
@@ -133,7 +151,11 @@ data HtmlCharStyle = HtmlCharStyle
     -- | kerning, tracking, proportional metrics and baseline shift (docs/adr/0020)
     hcsFeatures :: !HtmlFeatures,
     -- | code or based on it (golem-driver ADR 0017)
-    hcsCode :: !Bool
+    hcsCode :: !Bool,
+    {- | the swatch of the background and the padding along the line as a
+    CSS length, of code only (golem-driver ADR 0029)
+    -} hcsBackground :: !(Maybe Text),
+    hcsPadding :: !(Maybe Text)
   }
   deriving stock (Eq)
 
@@ -164,7 +186,10 @@ data HtmlParaStyle = HtmlParaStyle
     -- | a CSS length; may be negative
     hpsFirstLineIndent :: !Text,
     -- | kerning, tracking, proportional metrics and baseline shift (docs/adr/0020)
-    hpsFeatures :: !HtmlFeatures
+    hpsFeatures :: !HtmlFeatures,
+    -- | the rules before and after (golem-driver ADR 0027)
+    hpsRuleBefore :: !(Maybe HtmlRule),
+    hpsRuleAfter :: !(Maybe HtmlRule)
   }
   deriving stock (Eq)
 
@@ -221,13 +246,42 @@ data Ctx = Ctx
     -- | the paragraph styles of the page: those of its file over those of style.toml (docs/adr ADR 0014)
     cParaStyles :: Map Text HtmlParaStyle,
     -- | the depth of the list around (0 outside lists; golem-driver ADR 0013)
-    cListDepth :: Int
+    cListDepth :: Int,
+    -- | the notes of the chapter of the page (golem-driver ADR 0026)
+    cNotes :: ChapterNotes
   }
+
+{- | Where the notes of a page go (golem-driver ADR 0026): the file whose
+page ends the chapter, the id of a note of the page by its number, and
+the chapter's documents with the ids of their notes when the page ends
+the chapter.
+-}
+data ChapterNotes = ChapterNotes
+  { cnHome :: FileId,
+    cnKey :: Int -> Text,
+    cnList :: [(FileId, Int -> Text, Document)]
+  }
+
+{- | The notes of each document of a chapter (golem-driver ADR 0026): the
+id of a note is its number, or the place of its file in the chapter and
+its number when the numbers of the chapter meet.
+-}
+chapterNotes :: [Document] -> [(Document, ChapterNotes)]
+chapterNotes docs =
+  let home = case reverse docs of
+        (Document f _ : _) -> f
+        [] -> FileId 0
+      numbers d = [n | (_, n, _) <- documentNotes d]
+      allNumbers = concatMap numbers docs
+      meet = length allNumbers /= Set.size (Set.fromList allNumbers)
+      keyOf k n = if meet then tshow k <> "-" <> tshow n else tshow n
+      keyed = [(f, keyOf k, d) | (k, d@(Document f _)) <- zip [1 :: Int ..] docs]
+   in [(d, ChapterNotes home key (if f == home then keyed else [])) | (f, key, d) <- keyed]
 
 renderXhtml :: HtmlConfig -> FileTable -> Book -> XhtmlSite
 renderXhtml cfg ft book =
   XhtmlSite
-    { sitePages = [(pagePath ft fid, page cfg ft book d) | d@(Document fid _) <- bookDocs book],
+    { sitePages = [(pagePath ft fid, page cfg ft book notes d) | chapter <- bookChapters book, (d@(Document fid _), notes) <- chapterNotes chapter],
       siteCss = css cfg book,
       siteAssets =
         sortOn fst
@@ -258,14 +312,14 @@ relLink from to =
   let depth = length (splitDirectories (takeDirectory from)) - (if takeDirectory from == "." then 1 else 0)
    in T.pack (concat (replicate depth "../") <> makeRelative "." to)
 
-page :: HtmlConfig -> FileTable -> Book -> Document -> Text
-page cfg ft book d@(Document fid bs) =
+page :: HtmlConfig -> FileTable -> Book -> ChapterNotes -> Document -> Text
+page cfg ft book notes (Document fid bs) =
   let here = pagePath ft fid
       local = Map.lookup fid (hcLocalStyles cfg)
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
-      body = topBlocks c bs <> notesSection c d
+      body = topBlocks c bs <> notesSection c
       title = case [hiTitle h | Block sp _ (Heading 1 _ _) <- bs, Just h <- [Map.lookup sp (bookHeadings book)]] of
         (t : _) -> T.concat (map plain t)
         [] -> hcTitle cfg
@@ -504,7 +558,9 @@ inline c = \case
     Just t -> "<a href=\"" <> linkTo c (ltFile t) (ltAnchor t) <> "\">" <> inlines c (ltTitle t) <> "</a>"
     Nothing -> ""
   Deferred {} -> ""
-  Note _ n _ -> "<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-" <> tshow n <> "\" id=\"noteref-" <> tshow n <> "\">" <> tshow n <> "</a>"
+  Note _ n _ ->
+    let key = cnKey (cNotes c) n
+     in "<a epub:type=\"noteref\" class=\"noteref\" href=\"" <> linkTo c (cnHome (cNotes c)) ("note-" <> key) <> "\" id=\"noteref-" <> key <> "\">" <> tshow n <> "</a>"
   Sidenote _ n _ -> "<sup class=\"sidenote-ref\">" <> tshow n <> "</sup>"
   IndexMark sp _ -> "<span id=\"" <> spanAnchor sp <> "\"></span>"
   Cite _ k -> case lookup k (bookCitations (cBook c)) of
@@ -550,39 +606,22 @@ splitLines is = case break isLineBreak is of
 sidenotes :: Ctx -> [Inline] -> Text
 sidenotes c is = T.concat ["<aside class=\"sidenote\"><span class=\"number\">" <> tshow n <> "</span>" <> inlines c xs <> "</aside>\n" | Sidenote _ n xs <- is]
 
-notesSection :: Ctx -> Document -> Text
-notesSection c (Document _ bs) =
-  case concatMap (mapMaybe noteOf . blockNotes) bs of
+{- | The notes of the chapter at the end of its last page, after a title
+(golem-driver ADR 0026); each links back to its mark, on whichever page.
+-}
+notesSection :: Ctx -> Text
+notesSection c =
+  case [(f, key, n, xs) | (f, key, d) <- cnList (cNotes c), (_, n, xs) <- documentNotes d] of
     [] -> ""
     ns ->
-      "<section class=\"notes\">\n"
+      "<section class=\"notes\">\n<h2>"
+        <> escapeXml (notesTitle (hcLanguage (cCfg c)))
+        <> "</h2>\n"
         <> T.concat
-          [ "<aside epub:type=\"footnote\" id=\"note-" <> tshow n <> "\"><a href=\"#noteref-" <> tshow n <> "\">" <> tshow n <> "</a> " <> inlines c xs <> "</aside>\n"
-          | (n, xs) <- ns
+          [ "<aside epub:type=\"footnote\" id=\"note-" <> key n <> "\"><a href=\"" <> linkTo c f ("noteref-" <> key n) <> "\">" <> tshow n <> "</a> " <> inlines c xs <> "</aside>\n"
+          | (f, key, n, xs) <- ns
           ]
         <> "</section>\n"
-  where
-    noteOf = \case
-      Note _ n xs -> Just (n, xs)
-      _ -> Nothing
-
-blockNotes :: Block -> [Inline]
-blockNotes (Block _ _ body) = case body of
-  Paragraph _ is -> deep is
-  Heading _ _ is -> deep is
-  BulletList items -> concatMap (concatMap blockNotes . itemBlocks) items
-  OrderedList items -> concatMap (concatMap blockNotes . itemBlocks) items
-  DefList gs -> concatMap (\(DefGroup ts ds) -> concatMap deep ts <> concatMap (concatMap blockNotes) ds) gs
-  Table _ h rows -> concatMap deep h <> concatMap (concatMap deep) rows
-  FigureBlock f -> concatMap blockNotes (figCaption f)
-  _ -> []
-  where
-    deep = concatMap (\i -> i : nested i)
-    nested = \case
-      Kenten _ _ xs -> deep xs
-      Color _ _ xs -> deep xs
-      CharStyle _ _ xs -> deep xs
-      _ -> []
 
 {- | Code coloured with skylighting's classes (golem-html ADR 0001). An
 unknown language, or text the highlighter rejects, stays plain.
@@ -841,6 +880,9 @@ css cfg book =
          ]
       -- paragraph styles (docs/adr ADR 0005); body is the plain p
       <> concat [paraRules name ps | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
+      -- the rules of paragraph styles and headings as pseudo-elements (golem-driver ADR 0027)
+      <> concat [ruleRules (if name == "body" then "p:not([class])" else "p.ps-" <> name) (hpsRuleBefore ps) (hpsRuleAfter ps) | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
+      <> concat [ruleRules ("h" <> tshow l) b a | (l, (b, a)) <- Map.toAscList (hcHeadingRules cfg)]
       -- no indent in list items (docs/adr ADR 0006); li p[class] is stronger than p.ps-name
       <> ["li p, li p[class] { padding-inline-start: 0; text-indent: 0; }" | any (uncurry indentRule) (Map.toList (hcParaStyles cfg))]
       -- the lines of a paragraph that keeps them; br is for readers without CSS
@@ -920,6 +962,9 @@ css cfg book =
              let (r, g, b) = cmykToRgb cmyk
            ]
         <> featureDecls (hcsFeatures cs)
+        -- the background and the padding of inline code, along the line only (golem-driver ADR 0029)
+        <> ["background-color: " <> rgbOf cmyk | Just sw <- [hcsBackground cs], Just cmyk <- [Map.lookup sw (hcSwatches cfg)]]
+        <> ["padding-inline: " <> p | Just p <- [hcsPadding cs]]
       where
         fallback = if hcsCode cs then ["monospace"] else families "body" <> ["serif"]
     {- the keys of the spacing of characters whose values differ from the
@@ -937,7 +982,21 @@ css cfg book =
       let (q, r) = abs n `divMod` 1000
           frac = T.dropWhileEnd (== '0') (T.justifyRight 3 '0' (tshow r))
        in (if n < 0 then "-" else "") <> tshow q <> (if T.null frac then "" else "." <> frac)
+    rgbOf cmyk = let (r, g, b) = cmykToRgb cmyk in "rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> ")"
     rule sel ds = sel <> " { " <> T.concat [d <> "; " | d <- ds] <> "}"
+    -- the rule before as ::before, after as ::after; space-before above, space-after below (golem-driver ADR 0027)
+    ruleRules sel before after =
+      [ruleOf (sel <> "::before") r (hrOuter r <> " " <> hrInner r) | Just r <- [before]]
+        <> [ruleOf (sel <> "::after") r (hrOuter r <> " " <> hrInner r) | Just r <- [after]]
+    ruleOf sel r margins =
+      rule
+        sel
+        ( ["content: \"\"", "display: block"]
+            <> ["width: " <> w | Just w <- [hrWidth r]]
+            <> ["border-block-start: " <> hrBorder r, "margin-block: " <> margins]
+            <> ["margin-inline-start: " <> i | Just i <- [hrStartIndent r]]
+            <> ["margin-inline-end: " <> i | Just i <- [hrEndIndent r]]
+        )
     faceRule sel f = rule sel (["font-family: " <> fontStack role | Just role <- [faFont f]] <> ["font-size: " <> s | Just s <- [faSize f]])
     charRule name cs = rule (selectorOf name) (declsOf name cs)
     -- a rule that says only what the element shows anyway is not written
@@ -985,6 +1044,14 @@ css cfg book =
                     "color: " <> colorOf cs
                   ]
                     <> featureDecls (hcsFeatures cs)
+                    -- the background and the padding of inline code (golem-driver ADR 0029)
+                    <> ( if hcsCode cs
+                           then
+                             [ "background-color: " <> maybe "transparent" rgbOf (hcsBackground cs >>= (`Map.lookup` hcSwatches cfg)),
+                               "padding-inline: " <> fromMaybe "0" (hcsPadding cs)
+                             ]
+                           else []
+                       )
                 )
             | (name, cs) <- Map.toAscList (hlCharStyles l)
             ]

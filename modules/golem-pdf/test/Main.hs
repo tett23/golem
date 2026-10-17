@@ -12,6 +12,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import DrawingSpec qualified
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf
 import Golem.Pdf.Writer (Mark (..))
@@ -976,7 +977,7 @@ verifyTests =
       map x4Requirement ps @?= ["TrimBox"]
   ]
   where
-    x4px = PdfX "fake-japan-color-profile" "JC200103" []
+    x4px = PdfX "fake-japan-color-profile" "JC200103" [] []
     x4Sample = sample {docPdfX = Just x4px}
     one name f = testCase name $ do
       let ps = verify (f (documentObjects x4Sample))
@@ -1104,7 +1105,7 @@ marksTests =
             withSystemTempDirectory "golem-pdf" $ \dir -> do
               let path = dir </> "marks.pdf"
                   framed = framePage (Just Japanese) b (w, h) [GlyphRun (FontRef 7) (10 * 65536) [(1, 72 * 65536, 700 * 65536)]]
-              BS.writeFile path (writePdf (documentWith [framed]) {docPdfX = Just (PdfX "fake" "JC200103" [])})
+              BS.writeFile path (writePdf (documentWith [framed]) {docPdfX = Just (PdfX "fake" "JC200103" [] [])})
               (code, out, err) <- readProcessWithExitCode exe ["--check", path] ""
               assertEqual (out <> err) ExitSuccess code
       ]
@@ -1115,7 +1116,7 @@ producerTests =
       let info = infoDict (writePdf sample)
       assertBool (show info) ("/Producer (Golem 0.0.0-test)" `BS.isInfixOf` info),
     testCase "with an output intent, the information dictionary and XMP both have the Producer" $ do
-      let pdf = writePdf sample {docPdfX = Just (PdfX "fake" "JC200103" [])}
+      let pdf = writePdf sample {docPdfX = Just (PdfX "fake" "JC200103" [] [])}
       assertBool "Info" ("/Producer (Golem 0.0.0-test)" `BS.isInfixOf` infoDict pdf)
       assertBool "XMP" ("<pdf:Producer>Golem 0.0.0-test</pdf:Producer>" `BS.isInfixOf` pdf),
     testCase "a PDF text string is literal for printable ASCII, otherwise UTF-16BE with a byte order mark" $ do
@@ -1124,10 +1125,16 @@ producerTests =
         OHex b -> BS.take 2 b @?= BS.pack [0xFE, 0xFF]
         other -> assertFailure (show other),
     testCase "the Producer is escaped in XMP" $ do
-      let x = xmpPacket (PdfX "" "JC200103" []) "t" "a<b&c" (2026, 10, 11) (documentId "x") (instanceId ["a"])
+      let x = xmpPacket (PdfX "" "JC200103" [] []) "t" "a<b&c" (2026, 10, 11) (documentId "x") (instanceId ["a"])
       assertBool (show x) ("<pdf:Producer>a&lt;b&amp;c</pdf:Producer>" `BS.isInfixOf` x),
+    -- docs/adr ADR 0033
+    testCase "contributors are a dc:contributor Bag in XMP, none without them" $ do
+      let x = xmpPacket (PdfX "" "JC200103" ["著者"] ["編集 & 者", "装丁者"]) "t" "p" (2026, 10, 11) (documentId "x") (instanceId ["a"])
+      assertBool (show x) (TE.encodeUtf8 "   <dc:contributor><rdf:Bag><rdf:li>編集 &amp; 者</rdf:li><rdf:li>装丁者</rdf:li></rdf:Bag></dc:contributor>\n" `BS.isInfixOf` x)
+      let y = xmpPacket (PdfX "" "JC200103" ["著者"] []) "t" "p" (2026, 10, 11) (documentId "x") (instanceId ["a"])
+      assertBool (show y) (not ("dc:contributor" `BS.isInfixOf` y)),
     testCase "the information dictionary and XMP agree" $ do
-      let pdf = writePdf sample {docPdfX = Just (PdfX "fake" "JC200103" ["山田 太郎"])}
+      let pdf = writePdf sample {docPdfX = Just (PdfX "fake" "JC200103" ["山田 太郎"] [])}
           info = infoDict pdf
           infoStr k = fromMaybe "" (between ("/" <> k <> " (") ")" info)
           xmp k = maybe "" TE.decodeUtf8 (between ("<" <> k <> ">") ("</" <> k <> ">") pdf)
@@ -1252,7 +1259,7 @@ tests =
         pdf === writePdf (documentWith [page marks])
         assert (xrefConsistent pdf),
       testCase "PDF/X-4: output intent, XMP version, Trapped, boxes, embedded fonts, nothing forbidden" $ do
-        let px = PdfX "fake-japan-color-profile" "JC200103" ["山田 太郎"]
+        let px = PdfX "fake-japan-color-profile" "JC200103" ["山田 太郎"] []
             pdf = writePdf sample {docPdfX = Just px}
         BS.take 9 pdf @?= "%PDF-1.6\n"
         assertBool "output intent" ("/S /GTS_PDFX" `BS.isInfixOf` pdf && "/DestOutputProfile" `BS.isInfixOf` pdf)
@@ -1273,6 +1280,7 @@ tests =
       testGroup "Producer (ADR 0005)" producerTests,
       ImageSpec.tests,
       ImportSpec.tests,
+      DrawingSpec.tests,
       testGroup
         "CIDSystemInfo (ADR 0006)"
         [ testCase "the CIDFont carries the ROS of the font" $ do
@@ -1285,7 +1293,7 @@ tests =
             assertBool "Identity" ("/CIDSystemInfo << /Ordering (Identity) /Registry (Adobe) /Supplement 0 >>" `BS.isInfixOf` writePdf sample)
         ],
       goldenVsString "XMP packet" "test/golden/xmp.xml" $
-        pure (BL.fromStrict (xmpPacket (PdfX "" "JC200103" ["山田 太郎"]) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
+        pure (BL.fromStrict (xmpPacket (PdfX "" "JC200103" ["山田 太郎"] []) "見本 & <題>" testProducer (2026, 10, 11) (documentId "urn:uuid:11111111-2222-4333-8444-555555555555") (instanceId ["a"]))),
       needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
         testCase "qpdf --check accepts the output" $ do
           exe <- qpdf

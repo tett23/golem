@@ -83,7 +83,7 @@ golem new mybook
 | `golem lint [--profile dev\|prod] [--no-notices]` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形する |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
-| `golem inspect FILE --as cst\|ast\|ir` | 構文木と IR を表示する |
+| `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
 | `golem explain [CODE]` | diagnostic のコードの説明を表示する。コードを省くと一覧を表示する |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 
@@ -293,9 +293,10 @@ Git のリポジトリの外で組むときは、環境変数 `GOLEM_MANUAL_COMM
 スクリプトのテストは `scripts/manual/test.sh` にある。
 
 開発者のマニュアルの図は、`manual-dev/images/src/` の SVG が原稿である。
-SVG を直したら、`sh scripts/manual/render-figures.sh` で `manual-dev/images/` の PNG を作り直し、両方をコミットする。
-このスクリプトはヘッドレスの Chrome を使う（`CHROME` で実行ファイルを選べる）。
-組むときには実行しないので、マニュアルを組むだけなら Chrome は要らない。
+SVG を直したら、`sh scripts/manual/outline-figures.sh` で、文字を輪郭にした `manual-dev/images/` の SVG を作り直し、両方をコミットする。
+このスクリプトは Inkscape 1.x を使うので、図を直すときだけ Inkscape を入れておく（`INKSCAPE` で実行ファイルを選べる）。
+組むときには実行しないので、マニュアルを組むだけなら Inkscape は要らない。
+輪郭の SVG が原稿から作られたことは、`sh scripts/manual/check-figures.sh` で確かめられる（CI も確かめる）。
 
 ### 整形と検査
 

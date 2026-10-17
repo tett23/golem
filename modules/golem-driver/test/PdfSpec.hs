@@ -1,4 +1,4 @@
-module PdfSpec (qpdfInstalled, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests) where
+module PdfSpec (qpdfInstalled, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
@@ -12,7 +12,9 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.Fonts (golemFontProvider)
+import Golem.Driver.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
 import Golem.Driver.Pdf (CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
+import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Kerning (..), Look (..), plainLook)
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
@@ -874,9 +876,10 @@ codeTests =
     testCase "tabs go to the stops every two spaces; after a Japanese character too" $ do
       (_, pl) <- layoutOk horizontalStyle "```\n\tx\nab\tx\nabcd\tx\n漢\tx\n```\n" []
       codeRows pl @?= [[(pad + 2 * sp, "x")], [(pad, "ab"), (pad + 4 * sp, "x")], [(pad, "abcd"), (pad + 6 * sp, "x")], [(pad, "漢"), (pad + 4 * sp, "x")]],
+    -- the padding of 0.25zw before the first box and after the last (golem-driver ADR 0029)
     testCase "a tab in [code: ...] of a paragraph is set as before, not at a stop" $ do
       (_, pl) <- layoutOk horizontalStyle "[code: a\tb]\n" []
-      [(off, bcText c) | sl <- Map.elems (plLines pl), (Box _ c, off) <- placeLine (slLine sl), not (T.null (bcText c))] @?= [(0, "a"), (sp, "\t"), (2 * sp, "b")],
+      [(off, bcText c) | sl <- Map.elems (plLines pl), (Box _ c, off) <- placeLine (slLine sl), not (T.null (bcText c))] @?= [(0, "a"), (sp + pad `div` 2, "\t"), (2 * sp + pad `div` 2, "b")],
     testCase "no justification: two short words keep one space between them" $ do
       (_, pl) <- layoutOk horizontalStyle "```\nab cd\n```\n" []
       codeRows pl @?= [[(pad, "ab"), (pad + 3 * sp, "cd")]],
@@ -1208,3 +1211,224 @@ codeTests =
       css <- TIO.readFile (tmp </> "build/html/style.css")
       page <- TIO.readFile (tmp </> "build/html/a.xhtml")
       k css page
+
+-- ------------------------------------------------------------------ the background of inline code (golem-driver ADR 0029)
+
+{- | The runs of boxes with a background on each line of a layout, in the
+order of the lines: the start of the first box and the end of the last,
+from the line start.
+-}
+backgroundRuns :: PdfLayout -> [(Integer, Integer)]
+backgroundRuns pl =
+  [ (slIndent sl + s0, slIndent sl + e0)
+  | sl <- Map.elems (plLines pl),
+    let bs = [(off, off + w) | (Box w c, off) <- placeLine (slLine sl), isJust (lkBackground (bcLook c))],
+    not (null bs),
+    let s0 = minimum (map fst bs)
+        e0 = maximum (map snd bs)
+  ]
+
+-- | The em box of a horizontal glyph of a size drawn at a baseline point: x0, y0, x1, y1 in pt.
+emBox :: Drawn -> (Double, Double, Double, Double)
+emBox d =
+  let x = read (BC.unpack (dX d))
+      y = read (BC.unpack (dY d))
+      s = read (BC.unpack (dSize d))
+   in (x, y - 0.12 * s, x + s, y + 0.88 * s)
+
+-- | Whether the em box of a glyph and a filled rectangle overlap.
+overlaps :: (Double, Double, Double, Double) -> [Double] -> Bool
+overlaps (a0, b0, a1, b1) r = case r of
+  [x, y, w, h] -> a0 < x + w - 0.001 && x < a1 - 0.001 && b0 < y + h - 0.001 && y < b1 - 0.001
+  _ -> False
+
+inlineCodeBackgroundTests :: [TestTree]
+inlineCodeBackgroundTests =
+  [ testCase "horizontal: one rectangle of the swatch from the first box to the end of the last, the face of the line, before the text" $ do
+      let src = "あ[code: manifest.toml]い\n"
+      (geom, pl) <- layoutOk (horizontalStyle <> cbg) src []
+      contents <- miniPdf fakeProvider True (horizontalStyle <> cbg) src [] >>= pageContents
+      case (contents, backgroundRuns pl) of
+        (c : _, [(s0, e0)]) -> do
+          case filledRects c of
+            [[x, y, w, h]] -> do
+              approx x (toPt (rectX (firstColumn geom) + s0))
+              approx w (toPt (e0 - s0))
+              -- 13 characters of 5pt and the padding of 0.25zw on both sides
+              approx w 70
+              approx h 10
+              case [d | d <- drawnGlyphs c, dGlyph d == fromEnum 'm'] of
+                (d : _) -> approx y (read (BC.unpack (dY d)) - 1.2)
+                [] -> assertFailure "no m"
+            other -> assertFailure (show other)
+          assertBool "the colour" ("0 0 0 0.08 k" `BS.isInfixOf` c)
+          let (before, _) = BS.breakSubstring "<3042>" c
+          assertBool "before the text" (" re f" `BS.isInfixOf` before)
+        (cs, runs) -> assertFailure (show (length cs, runs)),
+    testCase "the space inside the code is painted" $ do
+      contents <- miniPdf fakeProvider True (horizontalStyle <> cbg) "[code: a b]\n" [] >>= pageContents
+      case concatMap filledRects contents of
+        [[_, _, w, _]] -> approx w 20
+        other -> assertFailure (show other),
+    testCase "code broken after a slash: a rectangle on each line, cut at the boxes without padding" $ do
+      let src = T.replicate 6 "あ" <> "[code: modules/golem-driver/src]\n"
+      (_, pl) <- layoutOk (horizontalStyle <> cbg) src []
+      contents <- miniPdf fakeProvider True (horizontalStyle <> cbg) src [] >>= pageContents
+      let runs = backgroundRuns pl
+          rects = concatMap filledRects contents
+          bgBoxes = [[c | Box _ c <- lineItems (slLine sl), isJust (lkBackground (bcLook c))] | sl <- Map.elems (plLines pl)]
+      length runs @?= 2
+      length rects @?= 2
+      [round (w * 1000) | [_, _, w, _] <- rects] @?= [round (toPt (e - s) * 1000) | (s, e) <- runs]
+      case filter (not . null) bgBoxes of
+        [l1@(f : _), l2] -> do
+          map bcPadEnd l1 @?= map (const 0) l1
+          map bcPadStart l2 @?= map (const 0) l2
+          bcPadStart f @?= 2 * pt + pt `div` 2
+          map bcPadEnd (take 1 (reverse l2)) @?= [2 * pt + pt `div` 2]
+        other -> assertFailure (show (length other)),
+    testCase "vertical: centred on the line, as wide as its size, from the top along the line" $ do
+      let src = "あ[code: abc]い\n"
+      (_, pl) <- layoutOk (pdfStyle <> cbg) src []
+      contents <- miniPdf fakeProvider True (pdfStyle <> cbg) src [] >>= pageContents
+      let s13 = toPt (maybe 0 (dimToSp 0) (parseDim "13Q"))
+      case (concatMap filledRects contents, backgroundRuns pl, concatMap drawnGlyphs contents) of
+        ([[x, _, w, h]], [(s0, e0)], ds) -> do
+          approx w s13
+          approx h (toPt (e0 - s0))
+          case [d | d <- ds, dGlyph d == fromEnum 'あ'] of
+            (d : _) -> approx (x + w / 2) (read (BC.unpack (dX d)))
+            [] -> assertFailure "no あ"
+        other -> assertFailure (show other),
+    testCase "ruby on the code: the reading outside the rectangle and drawn after it" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> cbg) "あ[code: [ruby: 値|あたい]x]\n" [] >>= fmap BS.concat . inflateAll
+      let rects = filledRects content
+          readings = [d | d <- drawnGlyphs content, dSize d == "5"]
+      length rects @?= 1
+      assertBool "readings" (length readings == 3)
+      assertBool (show (rects, map emBox readings)) (not (any (\d -> any (overlaps (emBox d)) rects) readings))
+      let (before, _) = BS.breakSubstring "<3042>" content
+      assertBool "the rectangle first" (" re f" `BS.isInfixOf` before),
+    testCase "ruby before and after the code: the readings do not touch the rectangle" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> cbg) "[ruby: 漢|かんじかん][code: ab][ruby: 字|じじじじ]\n" [] >>= fmap BS.concat . inflateAll
+      let rects = filledRects content
+          readings = [d | d <- drawnGlyphs content, dSize d == "5"]
+      length rects @?= 1
+      assertBool "readings" (length readings == 9)
+      assertBool (show (rects, map emBox readings)) (not (any (\d -> any (overlaps (emBox d)) rects) readings)),
+    testCase "kenten on the code and beside it: the marks do not touch the rectangle" $ do
+      content <- miniPdf fakeProvider True (horizontalStyle <> cbg) "[kenten: あ[code: abc]い]\n" [] >>= fmap BS.concat . inflateAll
+      let rects = filledRects content
+          marks = [d | d <- drawnGlyphs content, dSize d == "5"]
+      length rects @?= 1
+      assertBool "marks" (length marks >= 2)
+      assertBool (show (rects, map emBox marks)) (not (any (\d -> any (overlaps (emBox d)) rects) marks)),
+    testCase "ruby on the next line does not touch the rectangle" $ do
+      let style = replaceIn "lines = 30" "lines = 20" (replaceIn "line-pitch = \"15pt\"" "line-pitch = \"20pt\"" horizontalStyle) <> cbg
+      content <- miniPdf fakeProvider True style ("[code: abcdefghijklmnopqrstuvw]\n\n[ruby: 漢|かん]" <> T.replicate 10 "字" <> "\n") [] >>= fmap BS.concat . inflateAll
+      let rects = filledRects content
+          readings = [d | d <- drawnGlyphs content, dSize d == "5"]
+      assertBool (show rects) (not (null rects))
+      assertBool "readings" (length readings == 2)
+      assertBool (show (rects, map emBox readings)) (not (any (\d -> any (overlaps (emBox d)) rects) readings)),
+    testCase "code in a footnote and in a table cell has a rectangle" $ do
+      contents <- miniPdf fakeProvider True (horizontalStyle <> cbg) "本文[note: 注の[code: x]。]。\n\n| a | b |\n|---|---|\n| [code: c] | d |\n" [] >>= pageContents
+      -- the rules of the table are filled rectangles too
+      plain <- miniPdf fakeProvider True (horizontalStyle <> cbg) "本文[note: 注のx。]。\n\n| a | b |\n|---|---|\n| c | d |\n" [] >>= pageContents
+      length (concatMap filledRects contents) - length (concatMap filledRects plain) @?= 2,
+    testCase "a book without inline code draws no rectangle" $ do
+      contents <- miniPdf fakeProvider True (horizontalStyle <> cbg) "本文。\n" [] >>= pageContents
+      concatMap filledRects contents @?= [],
+    testCase "HTML: the background and the padding of code" $
+      withCodeHtml (horizontalStyle <> cbg) "[code: y]\n" $ \css ->
+        rulesOf "code" css @?= ["code { background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"]
+  ]
+  where
+    cbg = "\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[character-styles.code]\nbackground = \"code-bg\"\n"
+    toPt x = fromIntegral x / 65536 :: Double
+    approx a b = assertBool (show (a, b)) (abs (a - b) < 0.001)
+    firstColumn geom = case columnsFor geom 1 of
+      (r : _) -> r
+      [] -> typeAreaFor geom 1
+    withCodeHtml style src k = withSystemTempDirectory "golem-code-html" $ \tmp -> do
+      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
+      BS.writeFile (tmp </> "style.toml") (withBodyFont style)
+      BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 src)
+      r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+      assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+      TIO.readFile (tmp </> "build/html/style.css") >>= k
+
+-- ------------------------------------------------------------------ ruby and kenten after a code block (golem-driver ADR 0033)
+
+codeBlockRubyTests :: [TestTree]
+codeBlockRubyTests =
+  [ testCase "the overhang of a reading of 10pt type: 5.6pt above the face" $
+      rubyOverhang False (10 * pt) (10 * pt) (5 * pt) 0 @?= round (5.6 * 65536 :: Rational),
+    testCase "10pt on 17pt: no ruby does not reach, a reading of 10pt type does; on 25pt it does not" $ do
+      let reading = rubyOverhang False (10 * pt) (10 * pt) (5 * pt) 0
+      reachesBackground (17 * pt) (10 * pt) 0 (lineOverhang False (10 * pt) (const 0) plainLine) @?= False
+      reachesBackground (17 * pt) (10 * pt) 0 reading @?= True
+      reachesBackground (25 * pt) (10 * pt) 0 reading @?= False,
+    testCase "a border of 1pt: 3.1pt reaches, 2.9pt does not" $ do
+      reachesBackground (17 * pt) (10 * pt) pt (round (3.1 * 65536 :: Rational)) @?= True
+      reachesBackground (17 * pt) (10 * pt) pt (round (2.9 * 65536 :: Rational)) @?= False,
+    testCase "kenten reaches half the size of its character out of the face" $ do
+      let central = baselineRatio - 1 / 2
+      kentenOverhang False (10 * pt) (10 * pt) central 0 @?= 5 * pt
+      reachesBackground (17 * pt) (10 * pt) 0 (kentenOverhang False (10 * pt) (10 * pt) central 0) @?= True,
+    testCase "a line with a ruby box: the overhang of its reading" $ do
+      let look = plainLook "body" (10 * pt)
+          w = 10 * pt
+          ruby = Line [Box w (BoxContent "漢|かん" False 0 0 (fromEnum KindRuby) look 0 0 [] 0 0)] 0 w 0 (0, 0) False (0, 0)
+      lineOverhang False (10 * pt) (const 0) ruby @?= rubyOverhang False (10 * pt) (10 * pt) (5 * pt) 0,
+    testCase "a paragraph with ruby after a code block with a background: one grid line between, the reading off the background" $ do
+      let src = "```\na\n```\n\n[ruby: 漢|かん]字。\n"
+      (_, pl) <- layoutOk (horizontalStyle <> codeBg) src []
+      firstLineSlot pl @?= Just (codeEnd pl + 1)
+      content <- miniPdf fakeProvider True (horizontalStyle <> codeBg) src [] >>= fmap BS.concat . inflateAll
+      let readings = [d | d <- drawnGlyphs content, dSize d == "5"]
+      assertBool "readings" (length readings == 2)
+      assertBool (show (filledRects content, map emBox readings)) (not (any (\d -> any (overlaps (emBox d)) (filledRects content)) readings)),
+    testCase "without ruby the paragraph follows the code block on the next grid line" $ do
+      (_, pl) <- layoutOk (horizontalStyle <> codeBg) "```\na\n```\n\n漢字。\n" []
+      firstLineSlot pl @?= Just (codeEnd pl),
+    testCase "a code block without background, band or border takes no space line" $ do
+      (_, pl) <- layoutOk horizontalStyle "```\na\n```\n\n[ruby: 漢|かん]字。\n" []
+      firstLineSlot pl @?= Just (codeEnd pl),
+    testCase "kenten after a code block with a background takes a space line too" $ do
+      (_, pl) <- layoutOk (horizontalStyle <> codeBg) "```\na\n```\n\n[kenten: 漢]字。\n" []
+      firstLineSlot pl @?= Just (codeEnd pl + 1),
+    testCase "vertical: the reading after a code block is off the background" $ do
+      let src = "```\na\n```\n\n[ruby: 漢|かん]字。\n"
+      content <- miniPdf fakeProvider True (pdfStyle <> codeBg) src [] >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          sizeOf d = read (BC.unpack (dSize d)) :: Double
+          big = maximum (map sizeOf ds)
+          readings = [d | d <- ds, sizeOf d < big * 0.6]
+          vbox d =
+            let x = read (BC.unpack (dX d))
+                y = read (BC.unpack (dY d))
+                s = sizeOf d
+             in (x - s / 2, y - s, x + s / 2, y)
+      assertBool "readings" (not (null readings))
+      assertBool (show (filledRects content, map vbox readings)) (not (any (\d -> any (overlaps (vbox d)) (filledRects content)) readings)),
+    testCase "a code block that ends a column: the paragraph with ruby starts the next one, with no space line" $ do
+      (_, pl) <- layoutOk (fiveLines <> codeBg) "一。\n\n二。\n\n三。\n\n```\na\n```\n\n[ruby: 漢|かん]字。\n" []
+      case plPages pl of
+        [_, p2] -> take 1 [s | (s, SLine _) <- poSlots p2] @?= [0]
+        ps -> assertFailure (show (map poSlots ps)),
+    testCase "two builds with ruby after a code block give the same bytes" $ do
+      let src = "```\na\n```\n\n[ruby: 漢|かん]字。\n"
+      a <- miniPdf fakeProvider True (horizontalStyle <> codeBg) src []
+      b <- miniPdf fakeProvider False (horizontalStyle <> codeBg) src []
+      assertBool "the same bytes" (a == b)
+  ]
+  where
+    codeBg = "\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.code]\nbackground = \"code-bg\"\n"
+    plainLine = Line [] 0 0 0 (0, 0) False (0, 0)
+    firstPage pl = take 1 (plPages pl)
+    -- the grid line after the code block of the first page
+    codeEnd pl = sum (take 1 [s + n | p <- firstPage pl, (s, SCode _ _ n) <- poSlots p])
+    firstLineSlot pl = case [s | p <- firstPage pl, (s, SLine _) <- poSlots p] of
+      (s : _) -> Just s
+      [] -> Nothing

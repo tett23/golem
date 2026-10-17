@@ -13,6 +13,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import RenderSpec qualified
+import ShowTreeSpec qualified
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
@@ -176,7 +177,8 @@ tests =
         renderHuman files [diagnostic "G0201" Error (mkSpan (FileId 0) 5 6) "msg"]
           @?= "x.gm:2:2: error[G0201]: msg\n  | def\n",
       noticeTests,
-      RenderSpec.tests
+      RenderSpec.tests,
+      ShowTreeSpec.tests
     ]
 
 -- | The notices (golem-syntax ADR 0002).
@@ -199,7 +201,7 @@ noticeTests =
       testCase "no code is a notice and profile-dependent" $
         [c | c <- noticeCodes, c `elem` profileDependentCodes] @?= [],
       testCase "the initial notice codes" $
-        noticeCodes @?= map DiagnosticCode ["G0262", "G0263", "G0264", "G0265", "G0323", "G0407", "G0408", "G0730", "G0745", "G0808"],
+        noticeCodes @?= map DiagnosticCode ["G0262", "G0263", "G0264", "G0265", "G0279", "G0323", "G0407", "G0408", "G0730", "G0745", "G0746", "G0808"],
       testCase "a notice early in the file comes after an error late in it" $ do
         let n = notice "G0265" (mkSpan (FileId 0) 0 1) "n"
             e = diagnostic "G0201" Error (mkSpan (FileId 1) 50 51) "e"

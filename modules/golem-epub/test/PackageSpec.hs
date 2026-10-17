@@ -42,6 +42,7 @@ cfg0 =
       epDate = fromGregorian 2026 10 11,
       epPublisher = Just "出版社",
       epCreators = [EpubCreator "著者" (Just "ちょしゃ") "aut"],
+      epContributors = [],
       epVertical = False
     }
 
@@ -64,7 +65,8 @@ emptyBook =
       bookIndex = [],
       bookCitations = [],
       bookLabels = Map.empty,
-      bookReferenced = Set.empty
+      bookReferenced = Set.empty,
+      bookChapterOf = []
     }
 
 entry :: Int -> FileId -> Text -> Text -> TocEntry
@@ -72,7 +74,7 @@ entry l fid anchor title = TocEntry l Nothing [Text (mkSpan fid 0 1) title] anch
 
 htmlConfig :: HtmlConfig
 htmlConfig =
-  HtmlConfig "書名" "ja" False "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False "center" "space-between" "center" Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty)
+  HtmlConfig "書名" "ja" False "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False "center" "space-between" "center" Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty
 
 -- | The archive writeEpub writes for a book of two empty files.
 written :: IO Archive
@@ -100,6 +102,18 @@ tests =
                     "<meta refines=\"#creator1\" property=\"file-as\">ちょしゃ</meta>"
                   ]
                 ),
+        -- docs/adr ADR 0033
+        testCase "contributors are dc:contributor with their role and reading, numbered from contributor1" $
+          let cfg = cfg0 {epContributors = [EpubCreator "編集者" (Just "へんしゅうしゃ") "edt", EpubCreator "装丁者" Nothing "bkd"]}
+           in (linesWith "<dc:contributor" (opf cfg), linesWith "<meta refines=\"#contributor" (opf cfg))
+                @?= ( ["<dc:contributor id=\"contributor1\">編集者</dc:contributor>", "<dc:contributor id=\"contributor2\">装丁者</dc:contributor>"],
+                      [ "<meta refines=\"#contributor1\" property=\"role\" scheme=\"marc:relators\">edt</meta>",
+                        "<meta refines=\"#contributor1\" property=\"file-as\">へんしゅうしゃ</meta>",
+                        "<meta refines=\"#contributor2\" property=\"role\" scheme=\"marc:relators\">bkd</meta>"
+                      ]
+                    ),
+        testCase "without contributors there is no dc:contributor" $
+          linesWith "<dc:contributor" (opf cfg0) @?= [],
         testCase "the publisher and the language are written" $
           (linesWith "<dc:publisher" (opf cfg0), linesWith "<dc:language" (opf cfg0)) @?= (["<dc:publisher>出版社</dc:publisher>"], ["<dc:language>ja</dc:language>"]),
         testCase "dcterms:modified is the date at 00:00:00 UTC" $
@@ -111,6 +125,9 @@ tests =
         testCase "the spine lists the pages in the order of the book, not the other items" $
           linesWith "<itemref" (packageDocument cfg0 ["b.xhtml", "a.xhtml"] ["style.css", "images/a.png"])
             @?= ["<itemref idref=\"item1\"/>", "<itemref idref=\"item2\"/>"],
+        testCase "an SVG figure is image/svg+xml (golem-pdf ADR 0009)" $
+          linesWith "<item id=\"item2\"" (packageDocument cfg0 ["a.xhtml"] ["images/a.svg"])
+            @?= ["<item id=\"item2\" href=\"images/a.svg\" media-type=\"image/svg+xml\"/>"],
         testCase "the manifest has the navigation document and each item with its media type" $
           linesWith "<item " (packageDocument cfg0 ["b.xhtml"] ["style.css", "images/a.png", "images/b.JPG", "fonts/x.otf"])
             @?= [ "<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/>",

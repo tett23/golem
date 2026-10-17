@@ -26,7 +26,9 @@ data PdfX = PdfX
   { -- | the ICC profile of color.intent (Japan Color 2001 Coated in v1)
     pxProfile :: !ByteString,
     pxCondition :: !Text,
-    pxCreators :: ![Text]
+    pxCreators :: ![Text],
+    -- | dc:contributor, names without roles (docs/adr ADR 0033)
+    pxContributors :: ![Text]
   }
   deriving stock (Eq, Show)
 
@@ -49,6 +51,9 @@ xmpPacket px title producer (y, m, d) docId inst =
         [ "   <dc:creator><rdf:Seq>" <> T.concat ["<rdf:li>" <> escapeXml c <> "</rdf:li>" | c <- pxCreators px] <> "</rdf:Seq></dc:creator>"
         | not (null (pxCreators px))
         ]
+          <> [ "   <dc:contributor><rdf:Bag>" <> T.concat ["<rdf:li>" <> escapeXml c <> "</rdf:li>" | c <- pxContributors px] <> "</rdf:Bag></dc:contributor>"
+             | not (null (pxContributors px))
+             ]
    in TE.encodeUtf8 . T.unlines $
         [ "<?xpacket begin=\"\xFEFF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>",
           "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">",

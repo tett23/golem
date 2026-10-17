@@ -40,12 +40,12 @@ ctx =
             ("images/b.pdf", AssetPresent),
             ("images/b.svg", AssetPresent),
             ("images/b.jpg", AssetPresent),
-            ("data.csv", AssetText "a,b\n1,\"x,y\"\n"),
-            ("src/Main.hs", AssetText "l1\nl2\nl3\n"),
-            ("x.hs", AssetText (T.unlines ["line " <> T.pack (show i) | i <- [1 :: Int .. 25]])),
-            ("empty.csv", AssetText ""),
-            ("blank.csv", AssetText "\n\n"),
-            ("ragged.csv", AssetText "a,b\n1\n"),
+            ("data.csv", AssetText (FileId 21) "a,b\n1,\"x,y\"\n"),
+            ("src/Main.hs", AssetText (FileId 22) "l1\nl2\nl3\n"),
+            ("x.hs", AssetText (FileId 23) (T.unlines ["line " <> T.pack (show i) | i <- [1 :: Int .. 25]])),
+            ("empty.csv", AssetText (FileId 24) ""),
+            ("blank.csv", AssetText (FileId 25) "\n\n"),
+            ("ragged.csv", AssetText (FileId 26) "a,b\n1\n"),
             ("/tmp/a.png", AssetInvalid Absolute),
             ("https://example.com/a.png", AssetInvalid Url),
             ("../outside.txt", AssetInvalid EscapesRoot),
@@ -127,6 +127,20 @@ paraOf src = case body src of
   [Paragraph Nothing is] -> stripSpans is
   other -> error (show other)
 
+-- | The texts of each paragraph of a verse, with their spans.
+verseTexts :: Text -> [[(Text, Int, Int)]]
+verseTexts src = [[(t, spanStart tsp, spanEnd tsp) | Text tsp t <- is] | Paragraph (Just "verse") is <- body src]
+
+-- | The notices of a source: code, message, start and end.
+notices :: Text -> [(Text, Text, Int, Int)]
+notices src = [d | d@(c, _, _, _) <- diags src, c `elem` ["G0264", "G0279"]]
+
+fst3 :: (a, b, c) -> a
+fst3 (a, _, _) = a
+
+fst4 :: (a, b, c, d) -> a
+fst4 (a, _, _, _) = a
+
 -- | The rubies of a paragraph: the base and the reading of each segment.
 rubiesOf :: Text -> [[([Text], Maybe Text)]]
 rubiesOf src = case body src of
@@ -179,6 +193,7 @@ tests =
   testGroup
     "file evaluation, S0 (ADR 0002)"
     [ verseTests,
+      printingsTests,
       diagnosticTests,
       settingsTests,
       noticeTests,
@@ -244,14 +259,17 @@ tests =
         errs "@figure images/none.png alt=x\n" @?= ["G0233"]
         errs "@figure images/a.png alt=x wrap=end\n" @?= ["G0231"],
       testCase "the formats of a figure and its web image (golem-pdf ADR 0008)" $ do
-        msgs "@figure images/a.gif alt=\"x\"\n" @?= [("G0274", "図版の形式は PDF、PNG、JPEG です: images/a.gif")]
+        msgs "@figure images/a.gif alt=\"x\"\n" @?= [("G0274", "図版の形式は PDF、PNG、JPEG、SVG です: images/a.gif")]
         errs "@figure images/a.PDF web=images/a.png alt=\"x\"\n" @?= []
-        msgs "@figure images/a.pdf web=images/b.pdf alt=\"x\"\n" @?= [("G0273", "web の代替画像は PNG か JPEG です: images/b.pdf")]
-        errs "@figure images/a.pdf web=images/b.svg alt=\"x\"\n" @?= ["G0273"]
+        msgs "@figure images/a.pdf web=images/b.pdf alt=\"x\"\n" @?= [("G0273", "web の代替画像は PNG、JPEG、SVG です: images/b.pdf")]
         errs "@figure images/a.png web=images/b.jpg alt=\"x\"\n" @?= []
         case body "@figure images/a.png web=images/b.jpg alt=\"x\"\n" of
           [FigureBlock f] -> (figWeb f, figPage f) @?= (Just "images/b.jpg", Nothing)
           other -> assertFailure (show other),
+      testCase "SVG figures and web images (golem-pdf ADR 0009)" $ do
+        errs "@figure images/b.svg alt=\"x\"\n" @?= []
+        errs "@figure images/a.pdf web=images/b.svg alt=\"x\"\n" @?= []
+        errs "@figure images/b.svg page=1 alt=\"x\"\n" @?= ["G0275"],
       testCase "the page of a PDF figure (golem-pdf ADR 0008)" $ do
         case body "@figure images/a.pdf page=2 web=images/a.png alt=\"x\"\n" of
           [FigureBlock f] -> figPage f @?= Just 2
@@ -448,6 +466,34 @@ noticeTests =
         errs "[tcy: !?]\n" @?= []
         errs "[tcy: 1a]\n" @?= []
         errs "[number-text 10 style=tcy]\n" @?= [],
+      -- golem-parser ADR 0012
+      testCase "G0279: an escaped space at the end of a line of a paragraph that keeps its lines" $ do
+        -- "@style verse\n" is 13 bytes; "ab\\ " starts at 13
+        verseTexts "@style verse\nab\\ \n" @?= [[("ab", 13, 15)]]
+        notices "@style verse\nab\\ \n" @?= [("G0279", "行末のエスケープした空白は無視されます", 15, 16)]
+        verseTexts "@style verse\ncd\\ \\ \n" @?= [[("cd", 13, 15)]]
+        notices "@style verse\ncd\\ \\ \n" @?= [("G0279", "行末のエスケープした空白は無視されます", 15, 16)]
+        map (map fst3) (verseTexts "@style verse\nef\\\t\n") @?= [["ef"]]
+        map fst4 (notices "@style verse\nef\\\t\n") @?= ["G0279"],
+      testCase "G0279: plain spaces after the escape" $ do
+        map (map fst3) (verseTexts "@style verse\ngh\\    \n") @?= [["gh"]]
+        map fst4 (notices "@style verse\ngh\\    \n") @?= ["G0279"],
+      testCase "no G0279 for plain spaces at the end of a line" $ do
+        map (map fst3) (verseTexts "@style verse\nij  \n") @?= [["ij"]]
+        notices "@style verse\nij  \n" @?= [],
+      testCase "an escaped indent: G0264 only, and the text starts at its first letter" $ do
+        verseTexts "@style verse\n\\ gh\n" @?= [[("gh", 15, 17)]]
+        map fst4 (notices "@style verse\n\\ gh\n") @?= ["G0264"]
+        map (map fst3) (verseTexts "@style verse\n\\ \\ gh\n") @?= [["gh"]]
+        map fst4 (notices "@style verse\n\\ \\ gh\n") @?= ["G0264"]
+        map (map fst3) (verseTexts "@style verse\n\\  \\ gh\n") @?= [["gh"]]
+        map fst4 (notices "@style verse\n\\  \\ gh\n") @?= ["G0264"],
+      testCase "an escaped space inside a line stays" $ do
+        map (map fst3) (verseTexts "@style verse\na\\ b\n") @?= [["a b"]]
+        notices "@style verse\na\\ b\n" @?= [],
+      testCase "a paragraph that joins its lines keeps the escaped space" $ do
+        paraOf "ij\\ \nkl\n" @?= ["ij kl"]
+        errs "ij\\ \nkl\n" @?= [],
       testCase "G0264: an escaped space at the start of a line of a paragraph that keeps its lines" $ do
         [(c, m, s) | (c, m, s, _) <- diags "@style verse\n  a\n  \\ x\n", c == "G0264"]
           @?= [("G0264", "行頭のエスケープした空白は無視されます。字下げには全角の空白を使います", 19)]
@@ -1013,10 +1059,10 @@ diagnosticTests =
         msgs "@figure alt=x\n" @?= [("G0232", "@figure には画像のパスを一つ書きます")]
         errs "@figure images/a.png images/b.png alt=x\n" @?= ["G0232"]
         msgs "@table data.csv\n" @?= [("G0234", "@table には src が必要です")],
-      testCase "G0235: CSV that is not a table" $ do
-        msgs "@table src=empty.csv\n" @?= [("G0235", "CSV が空です")]
-        msgs "@table src=blank.csv\n" @?= [("G0235", "CSV が空です")]
-        diags "@table src=ragged.csv\n" @?= [("G0235", "CSV の行ごとのセルの数が一致しません", 0, 22)],
+      testCase "G0285: CSV that is not a table, in the file (golem-eval ADR 0004)" $ do
+        msgs "@table src=empty.csv\n" @?= [("G0285", "CSV が空です")]
+        msgs "@table src=blank.csv\n" @?= [("G0285", "CSV が空です")]
+        diags "@table src=ragged.csv\n" @?= [("G0285", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
       testCase "G0236: @listing without a path" $ do
         msgs "@listing\n" @?= [("G0236", "@listing にはファイルのパスが必要です")]
         -- src= is read, with the notice G0265 (golem-syntax ADR 0002)
@@ -1121,4 +1167,48 @@ diagnosticTests =
         msgs "@figure /tmp/a.png alt=x\n" @?= [("G0260", "絶対パスは使えません: /tmp/a.png")]
         msgs "@figure images/a.png web=\"https://example.com/a.png\" alt=x\n" @?= [("G0260", "URL は使えません: https://example.com/a.png")]
         diags "@listing ../outside.txt\n" @?= [("G0260", "プロジェクトルートの外を指しています: ../outside.txt", 0, 24)]
+    ]
+
+-- | A printing as meta.printings has it (docs/adr ADR 0033).
+printingValue :: Integer -> Integer -> (Integer, Integer, Integer) -> Value
+printingValue e n (y, m, d) =
+  VHash (Map.fromList [("edition", VInt e), ("number", VInt n), ("year", VInt y), ("month", VInt m), ("day", VInt d), ("date", VString "")])
+
+-- | The context of a book of a language with three printings.
+printingsCtx :: Text -> EvalContext
+printingsCtx lang =
+  ctx
+    { ctxMeta =
+        Map.fromList
+          [ ("language", VString lang),
+            ("printings", VArray [printingValue 1 1 (2026, 10, 16), printingValue 1 2 (2027, 4, 1), printingValue 2 1 (2028, 1, 10)])
+          ]
+    }
+
+-- | The text of a paragraph with its numbers in digits.
+plainOf :: [Inline] -> Text
+plainOf = T.concat . map (\case Text _ t -> t; Number _ n _ -> T.pack (show n); _ -> "")
+
+printingsTests :: TestTree
+printingsTests =
+  testGroup
+    "@printings (docs/adr ADR 0033)"
+    [ testCase "three printings are three paragraphs; edition 1 is 初版, 2 is 第2版" $ do
+        let (bs, es) = run (printingsCtx "ja") "@printings\n"
+        es @?= []
+        [plainOf is | Paragraph Nothing is <- bs] @?= ["2026年10月16日\x3000初版第1刷発行", "2027年4月1日\x3000初版第2刷発行", "2028年1月10日\x3000第2版第1刷発行"],
+      testCase "the year is kanji-digits, the other numbers follow the default" $
+        case run (printingsCtx "ja") "@printings\n" of
+          (Paragraph _ is : _, _) -> [(n, st) | Number _ n st <- is] @?= [(2026, Just StyleKanjiDigits), (10, Nothing), (16, Nothing), (1, Nothing)]
+          other -> assertFailure (show other),
+      testCase "@style applies to every paragraph" $
+        [st | Paragraph st _ <- fst (run (printingsCtx "ja") "@style quote\n@printings\n")] @?= [Just "quote", Just "quote", Just "quote"],
+      testCase "a book not in Japanese, or without printings, is G0276 and sets nothing" $ do
+        run (printingsCtx "en") "@printings\n" @?= ([], ["G0276"])
+        run (printingsCtx "ja") {ctxMeta = Map.fromList [("language", VString "ja")]} "@printings\n" @?= ([], ["G0276"])
+        [m | (_, m, _, _) <- diagsWith (printingsCtx "en") "@printings\n"] @?= ["@printings は日本語の本（language = \"ja\"）でだけ使えます"]
+        [m | (_, m, _, _) <- diagsWith (printingsCtx "ja") {ctxMeta = Map.fromList [("language", VString "ja")]} "@printings\n"] @?= ["マニフェストに [[metadata.printings]] がありません"],
+      testCase "an argument or a body is an error and sets nothing" $ do
+        run (printingsCtx "ja") "@printings 1\n" @?= ([], ["G0276"])
+        run (printingsCtx "ja") "@printings\n  本文\n" @?= ([], ["G0276"])
     ]

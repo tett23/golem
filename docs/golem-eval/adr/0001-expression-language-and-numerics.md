@@ -1,6 +1,6 @@
 # ADR 0001: 式の言語と数の規則
 
-ステータス: 採択
+ステータス: 採択→組み込み関数の `join` は [docs/adr ADR 0033](../../adr/0033-colophon-contributors-and-printings.md)
 
 ## 文脈
 

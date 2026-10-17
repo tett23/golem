@@ -85,11 +85,13 @@ noticeCodes =
       "G0263", -- [tcy: ...] of ASCII digits only
       "G0264", -- an escaped space at the start of a line in a paragraph that keeps its lines
       "G0265", -- @listing src= (to be retired)
+      "G0279", -- an escaped space at the end of a line in a paragraph that keeps its lines
       "G0323", -- no style.toml
       "G0407", -- @number equal to the automatic number
       "G0408", -- page breaks at the very end of the book
       "G0730", -- a line of a code block wrapped (golem-driver ADR 0017)
       "G0745", -- kenten with ruby, not drawn in the PDF (golem-driver ADR 0019)
+      "G0746", -- a block with rules broken or a heading rule left out (golem-driver ADR 0027)
       "G0808" -- code in the body role without [fonts.code] (golem-driver ADR 0017)
     ]
 

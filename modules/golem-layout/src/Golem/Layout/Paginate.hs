@@ -24,6 +24,8 @@ module Golem.Layout.Paginate
     PageOut (..),
     Unmet (..),
     TableSegment (..),
+    RuledBody (..),
+    PlacedRule (..),
     HeadingBlock (..),
     headingBlock,
     paginate,
@@ -38,11 +40,12 @@ where
 
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (listToMaybe)
+import Data.Maybe (isJust, listToMaybe)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry, codeSpan)
+import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..), ruleAfter, ruleAfterAtEnd, ruleBefore, ruleBeforeAtStart, rulesJoined)
 import Golem.Syntax (SrcSpan)
 
 {- | A footnote in the book (golem-driver ADR 0018): the span of the note,
@@ -60,7 +63,11 @@ data LineBox = LineBox
     lbNotes :: ![NoteBody],
     lbLabels :: ![Text],
     -- | index marks on the line (golem-driver ADR 0007)
-    lbMarks :: ![SrcSpan]
+    lbMarks :: ![SrcSpan],
+    {- | how far the ruby and kenten of the line reach out of the face of
+    the line toward the line before it, in sp (golem-driver ADR 0033);
+    pagination does not read it
+    -} lbOverhang :: !Integer
   }
   deriving stock (Eq, Show)
 
@@ -77,8 +84,11 @@ data Flow
     figure: no orphan rule for its first line (golem-driver ADR 0005)
     -}
     FContinued [LineBox]
-  | -- | a table: its header row and body rows, in grid lines (golem-driver ADR 0008)
-    FTable {ftId :: !Int, ftHeader :: ![LineBox], ftRows :: ![[LineBox]]}
+  | {- | a table: the grid lines of space before it (not at the first line
+    of a column), its header row (none when empty) and body rows, in grid
+    lines (golem-driver ADR 0008, 0031)
+    -}
+    FTable {ftId :: !Int, ftSpaceBefore :: !Int, ftHeader :: ![LineBox], ftRows :: ![[LineBox]]}
   | {- | empty grid lines, as between stanzas of verse (docs/adr ADR 0003);
     nothing at the top of a page
     -}
@@ -98,6 +108,22 @@ data Flow
         fcContinued :: !Bool,
         fcRows :: [LineBox]
       }
+  | {- | a paragraph or a heading with rules (golem-driver ADR 0027): the
+    areas of its rules, its lines and the areas are placed as one block,
+    not broken between columns. 'frId' names its rules in 'PlacedRule';
+    with 'frJoined', its rule before shares one area with the rule after
+    of the ruled block just before it; 'frNextOverhang' is the overhang of
+    the first line after it.
+    -}
+    FRuled
+      { frId :: !Int,
+        frBefore :: !(Maybe RuleSide),
+        frAfter :: !(Maybe RuleSide),
+        frJoined :: !Bool,
+        frGrid :: !RuleGrid,
+        frNextOverhang :: !Integer,
+        frBody :: !RuledBody
+      }
   | -- | the start of the index in its own columns (docs/adr ADR 0025)
     FSwitchColumns !ColumnSet
   | -- | the end of the index: the next page, in the columns of the page
@@ -108,6 +134,22 @@ data Flow
     FNeedLines !SrcSpan !Int
   | -- | change the grid lines of the current column
     FAdjustLines !SrcSpan !Int
+  deriving stock (Eq, Show)
+
+{- | What a ruled block holds (golem-driver ADR 0027): the lines of a
+paragraph, or a heading (recto, grid lines, lines) as 'FHeading'.
+-}
+data RuledBody
+  = RuledLines ![LineBox]
+  | RuledHeading {rhRecto :: !Bool, rhSpan :: !Int, rhLines :: ![LineBox]}
+  deriving stock (Eq, Show)
+
+{- | A rule placed in a column (golem-driver ADR 0027): the block it
+belongs to, whether it is the rule before, and the place of the start of
+its weight across the lines in sp from the start of the em box of the
+first grid line of the page (negative out of the column).
+-}
+data PlacedRule = PlacedRule {prId :: !Int, prBefore :: !Bool, prAt :: !Integer}
   deriving stock (Eq, Show)
 
 {- | A set of columns (docs/adr ADR 0025): from which grid line of the
@@ -177,6 +219,8 @@ data PageOut = PageOut
     poTables :: ![TableSegment],
     -- | the set of columns the column belongs to (docs/adr ADR 0025)
     poColumnSet :: !ColumnSet,
+    -- | the rules of paragraphs and headings in the column (golem-driver ADR 0027)
+    poRules :: ![PlacedRule],
     -- | the grid lines of the column, changed by 'FAdjustLines' (docs/adr ADR 0030)
     poLines :: !Int,
     -- | the manual controls of page breaks not met in the column
@@ -197,8 +241,8 @@ data Unmet
 data TableSegment = TableSegment
   { tsTable :: !Int,
     tsFirst :: !Int,
-    -- | the last grid line of the header row
-    tsHeaderEnd :: !Int,
+    -- | the last grid line of the header row; none for a table without one (golem-driver ADR 0031)
+    tsHeaderEnd :: !(Maybe Int),
     tsLast :: !Int
   }
   deriving stock (Eq, Show)
@@ -223,6 +267,11 @@ data St = St
     sSet :: !ColumnSet,
     -- | footnote lines that every column of the set leaves at the foot of this page
     sReserved :: !Int,
+    -- | the rules placed in the column (golem-driver ADR 0027)
+    sRules :: ![PlacedRule],
+    {- | the rule after of the ruled block just placed, waiting for the
+    block after it to share its area: id, grid, rule and last grid line
+    -} sJoin :: !(Maybe (Int, RuleGrid, RuleSide, Int)),
     -- | the largest need-lines not applied yet (docs/adr ADR 0030)
     sNeed :: !(Maybe (SrcSpan, Int)),
     -- | the grid lines the current column is changed by
@@ -257,13 +306,13 @@ paginateIn = paginateWithin maxBound
 -}
 paginateWithin :: Int -> Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
 paginateWithin maxLines separatorLines base capacity flows =
-  let st0 = St 1 0 0 0 [] [] [] [] [] [] [] [] [] base {csFirstLine = 0} 0 Nothing 0 [] Nothing False False
+  let st0 = St 1 0 0 0 [] [] [] [] [] [] [] [] [] base {csFirstLine = 0} 0 [] Nothing Nothing 0 [] Nothing False False
       final = closePage (go st0 flows)
       done = reverse (sDone final)
       -- controls not met in a column that made no output go with the last column
       leftover = sUnmet final
    in case reverse done of
-        [] -> [PageOut 1 0 False [] [] [] [] [] base capacity leftover]
+        [] -> [PageOut 1 0 False [] [] [] [] [] base [] capacity leftover]
         lastPage : earlier -> reverse (lastPage {poUnmet = poUnmet lastPage <> leftover} : earlier)
   where
     columns = csColumns base
@@ -281,9 +330,9 @@ paginateWithin maxLines separatorLines base capacity flows =
         | otherwise -> go st {sNoBreak = Just (sp, sPage st, sColumn st, length (sSlots st))} rest
       FNeedLines sp n -> go st {sNeed = Just (maybe (sp, n) (\(s0, n0) -> if n > n0 then (sp, n) else (s0, n0)) (sNeed st))} rest
       FAdjustLines sp k -> go (adjustLines (applyBreaks st) sp k) rest
-      FBreak _ -> go (place st f 0) rest
+      FBreak _ -> go (place st f rest) rest
       -- the space between paragraphs is not the flow a no-break waits for
-      FSpace _ -> go (place (ready st) f 0) rest
+      FSpace _ -> go (place (ready st) f rest) rest
       _ ->
         let st1 = checkNoBreak (placeFlow (ready st) f rest)
             deferred = case f of
@@ -314,7 +363,7 @@ paginateWithin maxLines separatorLines base capacity flows =
       (FParagraph ls, Just n) -> placeKept st True ls n
       (FContinued ls, Just n) -> placeKept st False ls n
       (FDefTerm ls, Just n) -> placeKept (keep st (length ls + nextNeed rest)) True ls n
-      _ -> place st f (nextNeed rest)
+      _ -> place st f rest
     keptNeed rest = case dropWhile soft rest of
       FNoBreak _ : more -> Just (nextNeed (dropWhile soft more))
       _ -> Nothing
@@ -361,7 +410,7 @@ paginateWithin maxLines separatorLines base capacity flows =
     nextNeed = \case
       (FParagraph ls : _) -> min 2 (length ls)
       (FContinued ls : _) -> min 2 (length ls)
-      (FTable _ h rows : _) -> length h + maybe 0 length (listToMaybe rows)
+      (FTable _ sp h rows : _) -> sp + length h + maybe 0 length (listToMaybe rows)
       (FDefTerm ls : _) -> length ls
       -- a heading keeps what follows it, a heading after it too (golem-driver ADR 0032)
       (FHeading _ _ n _ : rest) -> n + nextNeed rest
@@ -380,14 +429,21 @@ paginateWithin maxLines separatorLines base capacity flows =
       (FSwitchColumns _ : rest) | columns == 1 -> nextNeed rest
       (FSwitchColumns _ : _) -> 0
       (FRestoreColumns : _) -> 0
+      -- a ruled block keeps whole, its areas counted inside a column (golem-driver ADR 0027)
+      (fr@FRuled {} : _) -> fst (insideBefore fr) + bodySize (frBody fr) + fst (insideAfter fr)
       [] -> 0
     free st = cap st - sUsed st - sNoteLines st
     isEmpty st = sUsed st == top st && null (sNotes st)
-    place st f need = case f of
+    place st f rest = case f of
+      FRuled {} -> placeRuled st f rest
       FParagraph ls -> placeLines st True ls
       FContinued ls -> placeLines st False ls
-      FTable i h rows ->
-        let st1 = if length h + maybe 0 length (listToMaybe rows) > free st && not (isEmpty st) then nextColumn st else st
+      -- the space before a table only below the first line of a column (golem-driver ADR 0031)
+      FTable i sp0 h rows ->
+        let sp = if sUsed st == top st then 0 else sp0
+            st1
+              | sp + length h + maybe 0 length (listToMaybe rows) <= free st || isEmpty st = st {sUsed = sUsed st + min sp (free st)}
+              | otherwise = nextColumn st
          in placeTable st1 i h rows
       FDefTerm ls -> placeLines (keep st (length ls + need)) True ls
       -- the notes of a heading count as the notes of a line do (golem-layout ADR 0013)
@@ -423,6 +479,8 @@ paginateWithin maxLines separatorLines base capacity flows =
       FNoBreak _ -> st
       FNeedLines _ _ -> st
       FAdjustLines _ _ -> st
+      where
+        need = nextNeed rest
     -- the set starts at line @first@ of the page, above the footnotes already there
     startSet st set first =
       (closePage st)
@@ -434,7 +492,9 @@ paginateWithin maxLines separatorLines base capacity flows =
           sNotes = [],
           sLabels = [],
           sMarks = [],
-          sTables = []
+          sTables = [],
+          sRules = [],
+          sJoin = Nothing
         }
     -- the grid lines of a heading, the lines of its notes and the separator if they are the first notes
     headingNeed st n ls =
@@ -467,7 +527,7 @@ paginateWithin maxLines separatorLines base capacity flows =
     parityStart p st =
       let st1 = if isEmpty st && sColumn st == 0 then st else nextPage st
        in if p (sPage st1) then st1 else blankPage st1
-    blankPage st = st {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} capacity [] : sDone st, sPage = sPage st + 1}
+    blankPage st = st {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] capacity [] : sDone st, sPage = sPage st + 1}
     putSlot st n s labels marks = st {sSlots = sSlots st <> [(sUsed st, s)], sUsed = sUsed st + n, sLabels = sLabels st <> labels, sMarks = sMarks st <> marks}
     -- lines of one paragraph; orphans and widows are moved
     placeLines st _ [] = st
@@ -492,20 +552,145 @@ paginateWithin maxLines separatorLines base capacity flows =
               nl' = nl + noteLines + sep
               ok = u' + nl' <= cap st && (null acc || last acc)
            in ((u', nl'), acc <> [ok])
-    putLine st l =
+    putLine = putLineKeeping 0
+    -- a line, its notes in the room left after @reserve@ more grid lines of its block
+    putLineKeeping reserve st l =
       let noteLines = sum (map nbLines (lbNotes l))
           sep = if sNoteLines st == 0 && noteLines > 0 then separator else 0
-          room = cap st - sUsed st - 1 - sNoteLines st - sep
+          room = cap st - sUsed st - 1 - reserve - sNoteLines st - sep
           (shown, pending) = splitNotes room (lbNotes l)
        in st
             { sSlots = sSlots st <> [(sUsed st, SLine (lbId l))],
               sUsed = sUsed st + 1,
-              sNoteLines = sNoteLines st + sep + sum [c | (_, _, c) <- shown],
+              sNoteLines = sNoteLines st + (if null shown && reserve > 0 then 0 else sep) + sum [c | (_, _, c) <- shown],
               sNotes = sNotes st <> shown,
               sPendingNotes = sPendingNotes st <> pending,
               sLabels = sLabels st <> lbLabels l,
               sMarks = sMarks st <> lbMarks l
             }
+    {- a paragraph or heading with rules (golem-driver ADR 0027): the area of
+    its rule before, its lines and the area of its rule after as one block.
+    A paragraph's block fits by its grid lines alone, its notes go on when
+    they do not fit; a heading's counts its notes (golem-layout ADR 0013).
+    A block that ends at the end of the column counts its rule after at
+    the edge; one that does not fit an empty column is broken. -}
+    placeRuled st fr rest = case sJoin st of
+      Just j
+        | frJoined fr,
+          Just b <- frBefore fr,
+          not (isRecto (frBody fr)),
+          let plan = planOf st fr rest (Just (j, b)),
+          planNeed st fr plan <= free st ->
+            commitRuled st fr plan
+      Just _ -> placeRuled (flushJoin st) fr rest
+      Nothing ->
+        let st1 = if isRecto (frBody fr) then parityStart odd st else st
+            st2 = if isHeadingBody (frBody fr) && not (isRecto (frBody fr)) then keep st1 (planNeed st1 fr (planOf st1 fr rest Nothing) + nextNeed rest) else st1
+            plan2 = planOf st2 fr rest Nothing
+         in if planNeed st2 fr plan2 <= free st2
+              then commitRuled st2 fr plan2
+              else
+                if isEmpty st2
+                  then splitRuled st2 fr rest
+                  else
+                    let st3 = nextColumn st2
+                        plan3 = planOf st3 fr rest Nothing
+                     in if planNeed st3 fr plan3 <= free st3 then commitRuled st3 fr plan3 else splitRuled st3 fr rest
+    isRecto = \case
+      RuledHeading True _ _ -> True
+      _ -> False
+    isHeadingBody = \case
+      RuledHeading {} -> True
+      _ -> False
+    bodyLines = \case
+      RuledLines ls -> ls
+      RuledHeading _ _ ls -> ls
+    bodySize = \case
+      RuledLines ls -> length ls
+      RuledHeading _ n _ -> n
+    firstOverhang fr = maybe 0 lbOverhang (listToMaybe (bodyLines (frBody fr)))
+    -- the areas inside a column, for nextNeed
+    insideBefore fr = maybe (0, 0) (\b -> ruleBefore (frGrid fr) b (firstOverhang fr)) (frBefore fr)
+    insideAfter fr = maybe (0, 0) (\a -> ruleAfter (frGrid fr) a (frNextOverhang fr)) (frAfter fr)
+    -- whether the rule after waits for the next block to share its area
+    joinsNext fr rest =
+      isJust (frAfter fr) && case rest of
+        (FRuled {frJoined = True, frBefore = Just _} : _) -> True
+        _ -> False
+    {- the plan of a block at the place of the column: the lines of its
+    areas, its rules placed before and after it, and the rule after that
+    waits for the next block -}
+    planOf st fr rest joined =
+      let g@(RuleGrid p h) = frGrid fr
+          u = sUsed st
+          n = bodySize (frBody fr)
+          r1 = firstOverhang fr
+          (k1, before) = case (joined, frBefore fr) of
+            (Just ((aid, ga, a, aLast), b), _) ->
+              let (k, offA, offB) = rulesJoined ga a b r1
+                  base = toInteger aLast * p + h
+               in (k, [PlacedRule aid False (base + offA), PlacedRule (frId fr) True (base + offB)])
+            (Nothing, Just b)
+              | u == top st ->
+                  let (k, off) = ruleBeforeAtStart g b {rsdOutside = if top st == 0 then rsdOutside b else Nothing} r1
+                   in (k, [PlacedRule (frId fr) True (toInteger u * p + off)])
+              | otherwise ->
+                  let (k, off) = ruleBefore g b r1
+                   in (k, [PlacedRule (frId fr) True (toInteger (u - 1) * p + h + off)])
+            (Nothing, Nothing) -> (0, [])
+          lastLine = u + k1 + n - 1
+          (k2, after) = case frAfter fr of
+            Just a
+              | not (joinsNext fr rest) ->
+                  let (ki, offi) = ruleAfter g a (frNextOverhang fr)
+                      notes = sNoteLines st > 0 || not (all (null . lbNotes) (bodyLines (frBody fr)))
+                      (k, off)
+                        | lastLine + 1 + ki >= cap st - sNoteLines st = ruleAfterAtEnd g a {rsdOutside = if notes then Nothing else rsdOutside a}
+                        | otherwise = (ki, offi)
+                   in (k, [PlacedRule (frId fr) False (toInteger lastLine * p + h + off)])
+            _ -> (0, [])
+          waiting = case frAfter fr of
+            Just a | joinsNext fr rest -> Just (frId fr, g, a, lastLine)
+            _ -> Nothing
+       in (k1, before, k2, after, waiting)
+    planNeed st fr (k1, _, k2, _, _) = case frBody fr of
+      RuledLines ls -> k1 + length ls + k2
+      RuledHeading _ n ls -> k1 + headingNeed st n ls + k2
+    commitRuled st fr (k1, before, k2, after, waiting) =
+      let st1 = st {sRules = sRules st <> before, sUsed = sUsed st + k1, sJoin = Nothing}
+          st2 = case frBody fr of
+            RuledLines ls -> foldl' (\s' (j, l) -> putLineKeeping (length ls - 1 - j + k2) s' l) st1 (zip [0 ..] ls)
+            RuledHeading _ n ls -> putBlock st1 n ls
+       in st2 {sRules = sRules st2 <> after, sUsed = min (sUsed st2 + k2) (max (sUsed st2) (cap st2 - sNoteLines st2)), sJoin = waiting}
+    {- a block that does not fit an empty column (golem-driver ADR 0027): the
+    lines of a paragraph are broken as any paragraph's, the rule before at
+    the start of the first part and the rule after the last; a heading
+    drops its rule after, then its rule before, until it fits -}
+    splitRuled st0 fr rest =
+      let st = if isEmpty st0 then st0 else nextColumn st0
+          (k1, before, _, _, _) = planOf st fr rest Nothing
+       in case frBody fr of
+            RuledLines ls ->
+              let st1 = placeLines st {sRules = sRules st <> before, sUsed = sUsed st + k1} True ls
+                  (_, _, k2, after, _) = planOf st1 {sUsed = sUsed st1 - length ls} fr {frBefore = Nothing} [] Nothing
+               in if k2 <= free st1 then st1 {sRules = sRules st1 <> after, sUsed = sUsed st1 + k2} else st1
+            RuledHeading _ n ls ->
+              let (_, _, k2, after, _) = planOf st fr [] Nothing
+               in if k1 + headingNeed st n ls + k2 <= free st
+                    then commitRuled st fr (k1, before, k2, after, Nothing)
+                    else
+                      if k1 + headingNeed st n ls <= free st
+                        then commitRuled st fr (k1, before, 0, [], Nothing)
+                        else putBlock st n ls
+    -- the rule after of the block before, in its own area: nothing shares it
+    flushJoin st = case sJoin st of
+      Nothing -> st
+      Just (aid, g@(RuleGrid p h), a, aLast) ->
+        let (ki, offi) = ruleAfter g a 0
+            (k, off)
+              | aLast + 1 + ki >= cap st - sNoteLines st = ruleAfterAtEnd g a {rsdOutside = if sNoteLines st > 0 then Nothing else rsdOutside a}
+              | otherwise = (ki, offi)
+         in st {sRules = sRules st <> [PlacedRule aid False (toInteger aLast * p + h + off)], sUsed = sUsed st + min k (free st), sJoin = Nothing}
     -- a table: rows whole, a page break between rows repeats the header
     -- without its labels, notes and marks (golem-driver ADR 0008)
     placeTable st i h rows =
@@ -519,7 +704,8 @@ paginateWithin maxLines separatorLines base capacity flows =
                     fresh = nextColumn closed
                     repeated = foldl' putLine fresh [l {lbNotes = [], lbLabels = [], lbMarks = []} | l <- h]
                  in go repeated (sUsed fresh) (r : rest)
-          segment stc first = stc {sTables = sTables stc <> [TableSegment i first (first + length h - 1) (sUsed stc - 1)]}
+          headerEnd first = if null h then Nothing else Just (first + length h - 1)
+          segment stc first = stc {sTables = sTables stc <> [TableSegment i first (headerEnd first) (sUsed stc - 1)]}
        in go st1 start rows
     -- a heading: one block of n grid lines; the notes of its lines as in putLine
     putBlock st _ [] = st
@@ -550,7 +736,7 @@ paginateWithin maxLines separatorLines base capacity flows =
     closePage st =
       if null (sSlots st) && null (sNotes st)
         then st
-        else st {sDone = PageOut (sPage st) (sColumn st) False (sSlots st) (sNotes st) (sLabels st) (sMarks st) (sTables st) (sSet st) (cap st) (sUnmet st) : sDone st, sUnmet = []}
+        else st {sDone = PageOut (sPage st) (sColumn st) False (sSlots st) (sNotes st) (sLabels st) (sMarks st) (sTables st) (sSet st) (sRules st) (cap st) (sUnmet st) : sDone st, sUnmet = []}
     -- the next column of the page, or column 0 of the next page
     nextColumn st = advance (sColumn st + 1 >= csColumns (sSet st)) st
     nextPage = advance True
@@ -558,7 +744,7 @@ paginateWithin maxLines separatorLines base capacity flows =
       let closed = closePage st
           -- a page left with nothing in any column is blank
           written = any ((== sPage st) . poNumber) (sDone closed)
-          closed' = if toPage && not written then closed {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} capacity [] : sDone closed} else closed
+          closed' = if toPage && not written then closed {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] capacity [] : sDone closed} else closed
           fresh =
             closed'
               { sPage = if toPage then sPage st + 1 else sPage st,
@@ -573,6 +759,8 @@ paginateWithin maxLines separatorLines base capacity flows =
                 sLabels = [],
                 sMarks = [],
                 sTables = [],
+                sRules = [],
+                sJoin = Nothing,
                 sPendingNotes = []
               }
           withNotes = foldl' carryNote fresh (sPendingNotes st)

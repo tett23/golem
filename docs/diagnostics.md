@@ -101,6 +101,7 @@ silence-notices = ["G0262", "G0407"]
 次の番号は、ソースで使っていない。
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。下に節を置く。
+- **廃止**：G0235。[golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md) が `@table` のコマンドを指す CSV の誤りに定めたが、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md) で表のファイルの中を指す G0285 に置き換えた。下に節を置く。
 - **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。下に節を置く。
 - **空き**：G0104 から G0109、G0125 から G0128、G0601、G0703 から G0720、G0731、G0736、G0738 から G0740。各区分の最後に使った番号より後も空いている。
 
@@ -113,12 +114,13 @@ UTF-8 として不正なバイト列があります
 
 ### 意味
 
-原稿のファイル（章と import したファイル）、`manifest.toml`、`style.toml` のどれかに、UTF-8 として読めないバイト列がある。
+原稿のファイル（章と import したファイル）、`manifest.toml`、`style.toml`、`@table` の表のファイル（CSV と TSV）のどれかに、UTF-8 として読めないバイト列がある。
 位置は最初の不正なバイトである。
+表のファイルの誤りは、そのファイルの位置で表示し、そのファイルからは表を作らない。
 
 - メッセージ: `UTF-8 として不正なバイト列があります`
 - 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
-- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)（表のファイル）
 
 ### 主な原因
 
@@ -141,6 +143,7 @@ UTF-8 で保存し直す。
 位置はバイト 0 から 3 である。
 先頭以外の BOM（U+FEFF）は拒まない。
 LSP では、エディタで開いているファイルにも出す。
+`@table` の表のファイル（CSV と TSV）の先頭の BOM は読み飛ばすので、このコードにならない（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 
 - メッセージ: `ファイルの先頭に BOM があります。BOM を取り除いてください`
 - 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
@@ -600,13 +603,14 @@ G0110 から G0123 に当たらない構文エラーの既定のコードであ�
 
 式の演算や関数に、使えない型の値を渡した。
 
-- メッセージ: 型の誤りを述べる文言。たとえば `- は <型> に使えません`、`<型> と <型> にこの演算子は使えません`、`<型> は数ではありません`、`<型> の要素は参照できません`、`% は整数にだけ使えます`、`div は整数にだけ使えます`。
+- メッセージ: 型の誤りを述べる文言。たとえば `- は <型> に使えません`、`<型> と <型> にこの演算子は使えません`、`<型> は数ではありません`、`<型> の要素は参照できません`、`% は整数にだけ使えます`、`div は整数にだけ使えます`、`join の配列には文字列だけを並べます`、`join は文字列の配列と区切りの文字列に使えます`。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)。[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md) が `join` の誤りを加えた
 
 ### 主な原因
 
 - 文字列と数の演算など、型の合わない値を演算子や関数に渡した。
+- `join` に、文字列でない要素を持つ配列か、配列でない値を渡した。区切りに文字列でない値を渡した。
 
 ### 直し方
 
@@ -625,12 +629,13 @@ G0110 から G0123 に当たらない構文エラーの既定のコードであ�
 
 - メッセージ: `未定義の名前 <名前> です`、`未定義の名前空間 <名前空間> です`、`名前がありません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)。[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md) が `meta.roles` などの例を加えた
 
 ### 主な原因
 
 - 名前の綴りを誤った。
 - `@set` や `@import` を書き忘れた。
+- マニフェストにない値を `meta` で引いた。その役割の項目がない `meta.roles.binder`、`printings` のない本の `meta.printing`、`publisher-person` のない本の `meta.publisher_person` などである。
 
 ### 直し方
 
@@ -1410,31 +1415,28 @@ wrap は start か end です
 
 ### 直し方
 
-`src=` で CSV のファイルを指す。
+`src=` で CSV か TSV のファイルを指す。
 
 ## G0235
 
 CSV が空か、行ごとのセルの数が一致しません
 
 - 重大度: エラー
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
-`@table` の CSV が空か、行ごとのセルの数がそろっていない。
+廃止した。
+`@table` の CSV が空か、行ごとのセルの数がそろっていないことを、`@table` のコマンドの位置で報告するコードだった。
+今は同じ誤りを、表のファイルの中の位置で [G0285](#g0285) として報告する。
 
 - メッセージ: `CSV が空です`、`CSV の行ごとのセルの数が一致しません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
-
-### 主な原因
-
-- `@table` の CSV のファイルが空である。
-- CSV の行によって列の数が違う。
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（定めた）、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)（廃止した）
 
 ### 直し方
 
-CSV の各行の列の数を見出しの行にそろえる。
+[G0285](#g0285) の直し方に従う。
 
 ## G0236
 
@@ -2452,22 +2454,22 @@ web の代替画像の形式が使えません
 
 ### 意味
 
-`@figure` の `web` に、PNG と JPEG のほかの形式のファイルを書いた。
-形式は拡張子で決める（`.png`、`.jpg`、`.jpeg` を、大文字と小文字を区別せずに受け付ける）。
+`@figure` の `web` に、PNG、JPEG、SVG のほかの形式のファイルを書いた。
+形式は拡張子で決める（`.png`、`.jpg`、`.jpeg`、`.svg` を、大文字と小文字を区別せずに受け付ける）。
 どの出力を組むときも同じ規則で調べるので、HTML だけを組むときにも出る。
 位置は、その `@figure` のブロックである。
 
-- メッセージ: `web の代替画像は PNG か JPEG です: <パス>`
+- メッセージ: `web の代替画像は PNG、JPEG、SVG です: <パス>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)
 
 ### 主な原因
 
-- `web` に PDF や SVG のファイルを書いた。
+- `web` に PDF のファイルを書いた。
 
 ### 直し方
 
-`web` の画像を PNG か JPEG に書き出し、そのファイルを指す。
+`web` の画像を PNG、JPEG、SVG のどれかに書き出し、そのファイルを指す。
 
 ## G0274
 
@@ -2478,23 +2480,23 @@ web の代替画像の形式が使えません
 
 ### 意味
 
-`@figure` の画像に、PDF、PNG、JPEG のほかの形式のファイルを書いた。
-形式は拡張子で決める（`.pdf`、`.png`、`.jpg`、`.jpeg` を、大文字と小文字を区別せずに受け付ける）。
+`@figure` の画像に、PDF、PNG、JPEG、SVG のほかの形式のファイルを書いた。
+形式は拡張子で決める（`.pdf`、`.png`、`.jpg`、`.jpeg`、`.svg` を、大文字と小文字を区別せずに受け付ける）。
 中身は見ないので、拡張子と中身が食い違うファイルは、PDF を組むときに [G0810](#g0810) になる。
 位置は、その `@figure` のブロックである。
 
-- メッセージ: `図版の形式は PDF、PNG、JPEG です: <パス>`
+- メッセージ: `図版の形式は PDF、PNG、JPEG、SVG です: <パス>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)
 
 ### 主な原因
 
-- GIF、TIFF、SVG などの画像を `@figure` に書いた。
+- GIF や TIFF などの画像を `@figure` に書いた。
 - 拡張子のないファイルを書いた。
 
 ### 直し方
 
-図を PDF、PNG、JPEG のどれかに書き出し、そのファイルを指す。
+図を PDF、PNG、JPEG、SVG のどれかに書き出し、そのファイルを指す。
 
 ## G0275
 
@@ -2524,6 +2526,36 @@ page の値が正しくありません
 PDF の図版なら、`page` を 1 以上の整数にする。
 PNG と JPEG の図版からは、`page` を消す。
 
+## G0276
+
+@printings を組めません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@printings` を、日本語でない本か、`[[metadata.printings]]` のない本に書いた。
+`@printings` に引数か本体を書いた場合も、この誤りとする。
+どの場合も、`@printings` は何も組まない。
+位置は `@printings` の行である。
+
+- メッセージ: `@printings は日本語の本（language = "ja"）でだけ使えます`、`マニフェストに [[metadata.printings]] がありません`、`@printings は引数も本体も取りません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)
+
+### 主な原因
+
+- `[metadata] language` が `ja` でない本に `@printings` を書いた。発行の履歴の書式は、今は日本語の一つだけである。
+- `manifest.toml` に `[[metadata.printings]]` を書いていない。
+- `@printings` の後に引数を書いたか、字下げした本体を書いた。
+
+### 直し方
+
+`[[metadata.printings]]` に版、刷、日付を書く。
+日本語でない本では、`meta.printing` の値から発行の履歴を一行ずつ書く。
+`@printings` の引数と本体を消す。
+
 ## G0277
 
 同じキーを二度書いています
@@ -2551,6 +2583,204 @@ PNG と JPEG の図版からは、`page` を消す。
 ### 直し方
 
 どちらか片方を消す。
+
+## G0279
+
+行末のエスケープした空白は無視されます
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+`line-breaks = "keep"` の段落スタイル（`verse` など）の段落で、行末の空白とタブの並びに、エスケープした空白かタブ（`\ `）がある。
+`keep` の段落は、行末の空白とタブを、エスケープしたものも含めて無視する。
+書き手が残したつもりの空白が残らないので知らせる。
+一行に一つだけ出し、位置はその並びの中の最初のエスケープの `\` である。
+行の途中のエスケープした空白（`a\ b`）は空白として残り、このお知らせは出ない。
+
+- メッセージ: `行末のエスケープした空白は無視されます`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-parser ADR 0012](golem-parser/adr/0012-keep-trailing-escaped-space.md)
+
+### 主な原因
+
+- `verse` の段落の行末に空白を残すつもりで、`\ ` を書いた。
+
+### 直し方
+
+`\ ` を消す。
+見える空きが要るなら、全角の空白（`　`）を使う。
+
+## G0280
+
+@table の format の値が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の `format` の値が `csv` でも `tsv` でもない。
+表は作らない。
+位置は `format` の引数の全体である。
+
+- メッセージ: `format は csv か tsv です: <値>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- `format=xlsx` のように、ほかの形式の名前を書いた。
+- `format=TSV` のように、大文字で書いた。
+
+### 直し方
+
+`format=csv` か `format=tsv` と書く。
+拡張子が `.tsv` のファイルは TSV、それ以外は CSV として読むので、拡張子どおりの形式なら `format` を省ける。
+
+## G0281
+
+@table の align の値が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の `align` の値が、`left`、`center`、`right`、`default` のどれでもないか、値の数が表の列の数と違う。
+表は作らない。
+位置は `align` の引数の全体である。
+値の数の検査は、表のファイルを読んで見出しの行を得た後に行う。
+
+- メッセージ: `align の値は left、center、right、default のどれかです: <値>`、`align の値の数が表の列の数と違います（列は <m>、align は <n>）`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- `align=left,,right` のように、空の値を書いた。
+- `align=Left` や `align=middle` のように、ほかの名前を書いた。
+- 表に列を足したが、`align` に値を足していない。
+- `align=[= ...]` のように、式で書いた。
+
+### 直し方
+
+列の揃えを `left`、`center`、`right`、`default` で、左の列から順にカンマで区切って書く。
+すべての列を同じ揃えにするなら、値を一つだけ書く（`align=right`）。
+
+## G0282
+
+表のファイルに単独の CR があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の表のファイル（CSV と TSV）に、LF の前にない CR（単独の CR）がある。
+CRLF は誤りにしない。
+表は作らない。
+位置は表のファイルの最初の単独の CR である。
+同じファイルを複数の `@table` から参照しても、一度だけ出す。
+
+- メッセージ: `単独の CR があります。表のファイルの改行は LF か CRLF に限ります`
+- 段階とモジュール: 読み込み（golem-driver の `Golem.Driver`、golem-parser の `Golem.Parser.Read`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- 古い Mac の改行（CR だけ）でファイルを書き出した。
+- セルの中に CR が紛れ込んだ。
+
+### 直し方
+
+表のファイルの改行を LF か CRLF にして保存し直す。
+
+## G0283
+
+CSV の引用符が閉じていません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の CSV のファイルで、`"` で始めたセルの引用符を閉じずにファイルが終わる。
+表は作らない。
+位置は開いた引用符である。
+
+- メッセージ: `CSV の引用符が閉じていません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- セルの中の `"` を `""` と二つ重ねていない。
+- 書き出しの途中でファイルが切れた。
+
+### 直し方
+
+引用符を閉じる。
+セルの中の `"` は `""` と書く。
+
+## G0284
+
+@table の cells の値が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の `cells` が `text` でない。
+`cells=markup` は将来セルをインラインの記法として読むために予約した値であり、まだ実装していない。
+表は作らない。
+位置は `cells` の引数の全体である。
+
+- メッセージ: `cells=markup はまだ実装していません`、`cells は text です: <値>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- セルの中の記法を解釈させようとして `cells=markup` を書いた。
+- `cells` をほかの意味で書いた。
+
+### 直し方
+
+`cells` を消すか、`cells=text` と書く。
+セルの中身は地の文として扱われる。
+
+## G0285
+
+表のファイルが表になりません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の表のファイル（CSV と TSV）が空か、行のセルの数が見出しの行と違う。
+表は作らない。
+空のときの位置は表のファイルのバイト 0 から 0、セルの数の違うときの位置は最初のその行（行頭から行の終わりの前まで。CSV では引用符の中の改行をまたぐレコードの全体）である。
+空とは、最後の行の終わりを捨てた後（CSV では空の行を除いた後）に行が一つもないことである。
+
+- メッセージ: `CSV が空です`、`TSV が空です`、`CSV の行のセルの数が見出しの行と違います（見出しの行は <m>、この行は <n>）`、`TSV の行のセルの数が見出しの行と違います（見出しの行は <m>、この行は <n>）`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- 表のファイルが空である。
+- 行によって列の数が違う。
+- TSV の途中に空の行がある（TSV の空の行は、一つの空のセルを持つ行になる）。
+- CSV のセルの中のカンマを `"` で囲んでいない。
+
+### 直し方
+
+各行のセルの数を見出しの行にそろえる。
+TSV の途中の空の行は消す。
 
 ## G0286
 
@@ -2589,10 +2819,11 @@ manifest.toml の誤りです
 
 `manifest.toml` が TOML として読めないか、スキーマに合わないか、出力ターゲットが一つもない。
 `[source]` と章の項目の `[source]` のキー（`paragraph-separator` など）の未知のキーと不正な値、同じファイルを章の配列に二度並べて効く `[source]` の値が異なる場合も、この誤りとする。
+`[metadata]` の `creators` と `contributors` の `role` が役割の表の語でない場合、`name` が空の文字列の場合、`publisher-person` が空の文字列か改行を含む場合、`printings` の版か刷が 1 より小さい場合、`printings` が版と刷の順に狭義に増えていない場合、`printings` の `date` が前の項目より前の場合も、この誤りとする。
 
-- メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、`章は、ファイルのパス、表、配列のどれかで書きます`、または TOML のスキーマの誤りの文言（`知らないキーです: <経路>.<キー>`、`必須のキーがありません: <経路>.<キー>`、`<経路> には<型>を書きます（<型>が書かれています）`、`[source]` の不正な値など）。TOML の誤りの詳細は、`文字列が閉じていません`、`閉じた表にキーを足しています: <キー>` などの日本語の文言である。経路は `metadata.title` や `chapters[0]` の形で書く。Golem の検査の文言には、`(chapters[0])` のように経路を後ろに添える。経路が空のとき（ファイルの最上位の誤り）は添えない。
+- メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、`章は、ファイルのパス、表、配列のどれかで書きます`、`役割は語で書きます。"<符号>" は "<語>" です`、`役割は <語の一覧> のどれかです: <値>`、`発行所は [metadata] の publisher に、発行人は publisher-person に書きます`、`name に空の文字列は書けません`、`publisher-person に空の文字列は書けません`、`publisher-person に改行は書けません`、`版と刷の番号は 1 以上の整数です`、`printings は版と刷の順に、同じ版と刷を二度書かずに並べます`、`printings の date が前の項目の date より前です`、または TOML のスキーマの誤りの文言（`知らないキーです: <経路>.<キー>`、`必須のキーがありません: <経路>.<キー>`、`<経路> には<型>を書きます（<型>が書かれています）`、`[source]` の不正な値など）。TOML の誤りの詳細は、`文字列が閉じていません`、`閉じた表にキーを足しています: <キー>` などの日本語の文言である。経路は `metadata.title` や `chapters[0]` の形で書く。Golem の検査の文言には、`(chapters[0])` のように経路を後ろに添える。経路が空のとき（ファイルの最上位の誤り）は添えない。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）。位置は、スキーマの誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置、それ以外では `manifest.toml` の先頭である
-- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えた。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えた。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md) が役割、名前、発行人、刷の検査を加えた
 
 ### 主な原因
 
@@ -2600,6 +2831,9 @@ manifest.toml の誤りです
 - キーの綴りか値の型を誤った。未知のキーは無視せずエラーにする。
 - 出力ターゲット（`[targets.*]`）を一つも書いていない。
 - `[source]` の値を誤った。`paragraph-separator` は `"blank-line"` か `"line"` と書く。
+- `role` に MARC relator の符号（`aut` など）を書いた。役割は `author` のような語で書く。
+- `role = "publisher"` と書いた。発行所は `[metadata]` の `publisher` に、発行人は `publisher-person` に書く。
+- `printings` の項目の順を誤ったか、同じ版と刷を二度書いた。
 
 ### 直し方
 
@@ -2616,6 +2850,8 @@ manifest.toml の誤りです
 ### 意味
 
 章や `@import` が指すファイルがない。
+`golem inspect` と `golem fmt` の引数のファイルがないか、通常のファイルでない（ディレクトリなど）ときも、この誤りとする（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）。
+このときの位置は引数のファイルの先頭である。
 プロジェクトのルートに `manifest.toml` がないときは、この誤りではなく [G0316](#g0316) とする。
 
 - メッセージ: `ファイルがありません: <パス>`
@@ -2625,6 +2861,7 @@ manifest.toml の誤りです
 ### 主な原因
 
 - 章や `@import` のパスの綴りを誤ったか、ファイルを置いていない。
+- `golem inspect` か `golem fmt` に渡したパスの綴りを誤った。
 
 ### 直し方
 
@@ -2723,7 +2960,7 @@ style.toml の誤りです
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
 
-- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format には {n} をちょうど一つ書きます: <書式>`、`lines は 1 以上の整数です: <値>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
+- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format には {n} をちょうど一つ書きます: <書式>`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置、読み込んだ後の検査では `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
 - ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md) である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした
 
@@ -2736,10 +2973,12 @@ style.toml の誤りです
 - 段落スタイル `code` に、`font`、`size`、`background`、`padding` のほかのキー（`based-on` を含む）を書いた（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 - `background` か `padding` を、`code` のほかの段落スタイルに書いた。`padding` が負であるか、寸法として読めない。
 - `border` か `border-width` を、`code` のほかの段落スタイルに書いた。`border-width` を zw で書いた（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+- 文字スタイルの `background` か `padding` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。文字スタイルの `background` に `true` を書いた。文字スタイルの `padding` が負であるか、寸法として読めない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 - `[code]` か `[code.colors]` に未知のキーを書いた。`[code]` の `line-numbers` が真偽値でない。`[code]` の `number` が `{n}` などの差し込みを含まない。
 - `[hidden-folio]` の `size` か `gutter` を `zw` で書いたか、0 以下にしたか、寸法として読めない値にした。`pages` に `unnumbered` と `all` のほかの値を書いた。`gutter` が `size` の半分より小さい（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。
 - 罫線の指定（`[notes.rule]`）で、`length` が寸法として読めないか 0 以下、`weight` が寸法として読めないか 0 以下か `zw`、`space-before` か `space-after` が寸法として読めないか負である。未知のキーを書いた。`[notes.rule]` に `length` を書いていない（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 - 罫線の指定で、`style` に線の種類の表にない値を書いた。`dash` か `gap` が寸法として読めないか、0 以下か、`zw` である。`dash` を `"dashed"` のほかの線の種類に、`gap` を `"dashed"`、`"dotted"`、`"japanese-dots"` のほかの線の種類に書いた。`color` を文字列で書いていない（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
+- 段落スタイルか `[headings.N]` の `rule-before`、`rule-after` に、表と `false` のほかの値（`true` を含む）を書いた。組み込みの段落スタイル `caption`、`sidenote`、`code` に書いた。`@style-def` に書いた。`length` と `end-indent` を一緒に書いた。`start-indent` と `end-indent` を引くと罫線の長さが 0 以下になる。`[notes.rule]` に `start-indent`、`end-indent`、`keep-in-column` を書いた（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 
 ### 直し方
 
@@ -2921,6 +3160,7 @@ style.toml のスタイルの参照が不正です
 - `based-on` が循環する。
 - `body` に `based-on` を書いた。
 - 文字スタイルの `color` が `[color.swatches]` にない。
+- 文字スタイルの `background` が `[color.swatches]` にない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 - 正規表現スタイルの `style` に、組み込みにも `style.toml` にも同じファイルの `@style-def character` にもない文字スタイルを書いた。
 - `@style-def regex` の二つ目の引数に、ない段落スタイルを書いた。
 - 段落スタイルの `aki-set` か、`[aki-sets.<名前>]` の `based-on` が、存在しないセットを指す。
@@ -2929,6 +3169,7 @@ style.toml のスタイルの参照が不正です
 - 段落スタイル `code` の `background` が `[color.swatches]` にない。
 - 段落スタイル `code` の `border`、`[code]` の `line-number-color`、`highlight`、`added`、`removed`、`[code.colors]` の値が `[color.swatches]` にない（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 - 罫線の指定（`[notes.rule]`）の `color` が `[color.swatches]` にない。メッセージの理由は `[notes.rule] の color のスウォッチがありません: <名前>` である（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
+- 段落スタイルか見出しの罫線の `color` が `[color.swatches]` にない。理由は `段落スタイル <名前> の罫線の color のスウォッチがありません: <名前>` か `見出し <階層> の罫線の color のスウォッチがありません: <名前>` である（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
 
 ### 直し方
 
@@ -3320,6 +3561,34 @@ G0326 はそれらより先に並ぶ。
 ### 直し方
 
 パスとファイルの置き場所を確かめ、ファイルを CSL-JSON の配列（`[{"id": ...}, ...]`）で書く。
+
+## G0327
+
+章末の注の番号が章の中で重なります
+
+- 重大度: 警告
+- 状態: 使用中
+
+### 意味
+
+注を章の末尾にまとめる出力で、章の注の一覧の中に同じ番号が二度現れる。
+`[notes]` の `numbering` が `"file"` で、マニフェストの二つ以上のファイルからなる章の、二つ以上のファイルに注があるときに出る。
+注を章の末尾にまとめる出力は、`placement = "chapter-end"` の PDF と、`placement` によらず HTML、EPUB、プレーンテキストである。
+ターゲットが PDF だけで `placement` が `"page-foot"` なら出さない。
+出力は止めず、重なった番号のまま組む。
+HTML と EPUB では、注の id に章の中のファイルの順番を入れて（`note-2-1` など）、一つの文書の中で id が重ならないようにする。
+
+- メッセージ: `章末の注の番号が章の中で重なります（<章の最初のファイル>）。[notes] の numbering を "chapter" にしてください`
+- 段階とモジュール: プロジェクト（golem-driver の `Golem.Driver.chapterNoteDiagnostics`）。位置は、その章で注を持つ二つ目のファイルの最初の注である。`golem check` とビルドが出す
+- ADR: [golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)
+
+### 主な原因
+
+- 一つの章を複数のファイルに分け、`[notes]` の `numbering` を `"file"` にした。
+
+### 直し方
+
+`[notes]` の `numbering` を `"chapter"`（既定）か `"book"` にする。
 
 ## G0401
 
@@ -3918,6 +4187,7 @@ plugins.lock を読めません
 7. 段組みの版面に `[sidenotes]` がある。
 8. 傍注欄が判型からはみ出す。
 9. `[notes.rule]` の `length` が行長（段組みでは段の行長）より長い。
+10. 段落スタイル（名前の順）と見出し（階層の順）の罫線が、仕上がりの線を超えるか、段組みの版面で段間の半分を超える（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。行の方向では、`start-indent`、`end-indent`、`length` で段の外に出る量を、左右（縦組みでは天地）の余白と比べる。行に直交する方向では、`keep-in-column = false` の罫線の内側の間隔と太さを、天地（縦組みでは左右）の余白と比べる。余白は奇数ページと偶数ページの狭いほうである。
 
 PDF をターゲットに含むときは、ビルドと `golem check` の両方で、レイアウトの前に報告する。
 PDF を書かない。
@@ -3925,9 +4195,9 @@ LSP は出さない。
 位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
 未知の判型は [G0317](#g0317)、マスターページの未知の位置は [G0318](#g0318) である。
 
-- メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注欄を設けられません`、`段組みの版面には傍注欄を設けられません`、`版面と傍注欄の合計がページからはみ出しています`、`脚注の区切り線の length が行長を超えます`
+- メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注欄を設けられません`、`段組みの版面には傍注欄を設けられません`、`版面と傍注欄の合計がページからはみ出しています`、`脚注の区切り線の length が行長を超えます`、`段落スタイル <名前> の罫線が仕上がりの線を超えます`、`段落スタイル <名前> の罫線が段間の半分を超えます`、`見出し <階層> の罫線が仕上がりの線を超えます`、`見出し <階層> の罫線が段間の半分を超えます`
 - 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`、golem-driver の `Golem.Driver`）
-- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[docs/adr/0018](adr/0018-multi-column-layout.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md) も触れる）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[docs/adr/0018](adr/0018-multi-column-layout.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md) も触れる）
 
 ### 主な原因
 
@@ -3938,11 +4208,13 @@ LSP は出さない。
 - 縦組みの版面に傍注欄を設けた。
 - `[page.grid]` の `columns` が 2 以上の版面に傍注欄（`[sidenotes]`）を設けた。
 - 脚注の区切り線（`[notes.rule]`）の `length` が、一行の長さ（段組みでは一段の行長）より長い。
+- 段落スタイルか見出しの罫線を、`start-indent`、`end-indent`、`length`、`keep-in-column = false` で、余白の幅か段間の半分を超えて段の外に出した。
 
 ### 直し方
 
 `[page]` と `[page.grid]` を書き、字数、行数、文字の大きさ、余白を判型に収まる値にする。
 区切り線の `length` は行長以下にする。
+段落と見出しの罫線は、段の外に出す量を余白の幅と段間の半分以下にする。
 
 ## G0702
 
@@ -4500,6 +4772,40 @@ PDF で圏点を描くには、圏点を付ける語からルビを外す。
 PDF で圏点がなくてよければ、そのままでよい。
 `manifest.toml` の `[diagnostics]` の `silence-notices` に `"G0745"` を加えると、このお知らせを出さなくなる。
 
+## G0746
+
+罫線を持つ段落か見出しが版面に入りません
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+罫線を持つ段落か見出し（段落スタイルか `[headings.N]` の `rule-before`、`rule-after`）が、前の罫線の領域、行、後の罫線の領域を合わせて、空の段にも入らない。
+罫線を持つ段落は、罫線を持たない段落と同じく、孤立行と泣き別れの規則で行を段に分けて組む。
+前の罫線は最初の部分の前に、後の罫線は最後の部分の後にだけ引き、分けた箇所には罫線を引かない。
+罫線を持つ見出しは、行を分けず、後の罫線を省き、それでも入らなければ前の罫線も省く。
+PDF は書く。
+見出しの行だけで空の段に入らない場合は、[G0724](#g0724) である。
+位置は、段落か見出しの位置である。
+お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+
+- メッセージ: `罫線を持つ段落が版面に入らないため、分けて組みました（段落スタイル <名前>）`、`罫線を持つ見出しが版面に入らないため、罫線を省きました（見出し <階層>）`
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)
+
+### 主な原因
+
+- 罫線を持つ段落スタイルを、一ページ（段）より長い段落に当てた。
+- 見出しの罫線の間隔が大きく、見出しの行と罫線の領域が一ページ（段）に入らない。
+
+### 直し方
+
+罫線を持つ段落を短くするか、罫線を持たない段落スタイルにする。
+見出しの罫線の間隔を狭める。
+分けて組んでよければ、そのままでよい。
+`manifest.toml` の `[diagnostics]` の `silence-notices` に `"G0746"` を加えると、このお知らせを出さなくなる。
+
 ## G0750
 
 隠しノンブルが版面に重なります
@@ -4848,6 +5154,8 @@ PDF を書かない。
 
 `@figure` の画像のファイルはあるが、PDF に置ける形で読めない。
 PNG と JPEG の図版は画像として読めないとき、PDF の図版は Golem が取り込めないときに出す。
+SVG の図版は、XML として読めないとき、UTF-8 でないとき、内部サブセットを持つ `DOCTYPE` があるとき、大きさ（ルートの `width` と `height` か `viewBox`）がないときに出す（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+SVG の範囲の外のものは [G0811](#g0811) である。
 PDF の図版を取り込めないのは、次のどれかの場合である。
 
 - 相互参照などが壊れている。
@@ -4867,7 +5175,7 @@ HTML、EPUB、プレーンテキストは画像を読まないので出さない
 位置は、その `@figure` のブロックである。
 
 - メッセージ: `図版を PDF に置けません: <パス>（<理由>）`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`）
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`、golem-svg の `Golem.Svg`）
 - ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
 
 ### 主な原因
@@ -4882,6 +5190,41 @@ HTML、EPUB、プレーンテキストは画像を読まないので出さない
 理由に合わせて図版を書き出し直す。
 PDF の図版なら、フォントを埋め込み、特色をプロセスカラーに直し、レイヤーを統合して書き出す。
 PNG はインターレースを外して書き出す。
+
+## G0811
+
+SVG の図版に扱えないものがあります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+SVG の図版に、Golem が PDF に描ける範囲の外の要素、属性、プロパティの値がある。
+範囲は [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md) の表のとおりで、パス、基本の図形、変換、塗りと線、マーカーなどである。
+輪郭にしていない文字（`text`、`tspan`、`textPath` の要素と `@font-face`）も範囲の外である。
+範囲の外のものを黙って無視せず、文書の順にすべて集め、最初のものの名前と位置（SVG のファイルの中の行と桁）を書き、残りの件数を添える。
+最初のものが文字なら、輪郭にして書き出すよう案内する。
+`@figure` ごとに一つ出し、PDF を書かない。
+dev と prod の両方でエラーである。
+PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出し、HTML、EPUB、プレーンテキストは SVG を読まないので出さない。
+位置は、その `@figure` のブロックである。
+
+- メッセージ: `SVG の図版に扱えないものがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。文字なら `（<名前>: 文字は輪郭にして書き出してください）`。ほかになければ `ほか <n> 件` を書かない。
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
+- ADR: [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)
+
+### 主な原因
+
+- 文字を輪郭にせずに書き出した。
+- グラデーション、`use`、クリップ、フィルター、1 でない不透明度などを使った。
+- 子孫の結合子などの、扱わない CSS のセレクターを使った。
+
+### 直し方
+
+図の作成ツールで、文字を輪郭（アウトライン）にして書き出す。
+範囲の外の機能は、ツールの側で範囲の中に収めて書き出し直す。
+SVG で収まらない図は、PDF で書き出して PDF の図版として置く。
 
 ## G0813
 
@@ -5227,6 +5570,7 @@ v1 の図版は版面の中に置くので、版面の余白が `distance` 以�
 
 - `[masters]` の柱かノンブルの位置が、仕上がりの線に近い。
 - 版面の余白が狭い。
+- 段落スタイルか見出しの罫線を、`start-indent`、`end-indent`、`keep-in-column = false` で仕上がりの線の近くまで出した（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 
 ### 直し方
 

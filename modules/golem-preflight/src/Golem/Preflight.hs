@@ -109,6 +109,7 @@ raster :: ImageView -> Maybe ImageData
 raster iv = case ivContent iv of
   RasterFigure img -> Just img
   VectorFigure _ -> Nothing
+  SvgFigure _ -> Nothing
 
 images :: View -> [(Int, ImageView)]
 images v = [(pvIndex p, iv) | p <- vwPages v, iv <- pvImages p]
@@ -242,6 +243,8 @@ imageColorSpace r v =
     spacesOf iv = case ivContent iv of
       RasterFigure img -> [colorSpaceName (imgColor img)]
       VectorFigure page -> nub (map colorUseName (ipColors page))
+      -- an SVG figure is sRGB (golem-pdf ADR 0009)
+      SvgFigure _ -> ["rgb"]
 
 -- | G0909: a CMYK image with a profile other than the output intent's.
 imageIcc :: Rules -> View -> [Diagnostic]
@@ -261,6 +264,7 @@ imageIcc r v = case vwIntentProfile v of
       VectorFigure page
         | any (\case UseIcc 4 p -> p /= intent; _ -> False) (ipColors page) -> Just ()
         | otherwise -> Nothing
+      SvgFigure _ -> Nothing
 
 -- | G0910: [page] bleed below min.
 bleedSize :: Rules -> View -> [Diagnostic]

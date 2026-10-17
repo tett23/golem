@@ -21,6 +21,7 @@ module Golem.LayoutSpec
   )
 where
 
+import Control.Monad (join)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -190,6 +191,13 @@ pageGeometry fid marks style = case stPage style of
                 Just rule
                   | maybe 0 (dimToSp fs) (rsLength rule) > columnLength -> Left [err "脚注の区切り線の length が行長を超えます"]
                   | otherwise -> Right (separatorLines fs pitch rule)
+              -- paragraph and heading rules inside the trim and half the gap (golem-driver ADR 0027)
+              let margins =
+                    let side (Rect x y w h) = (x, pw - x - w, ph - y - h, y)
+                        (l1, r1, t1, b1) = side odd'
+                        (l2, r2, t2, b2) = side even'
+                     in (min l1 l2, min r1 r2, min t1 t2, min b1 b2)
+              mapM_ (\m -> Left [err m]) (take 1 (ruleChecks style fs columnLength (cols > 1) gap vertical margins))
               let masters = Map.map (masterGeometry ph bindingRight odd' even') (stMasters style)
               runningHeadFits fid ph fs pitch masters
               hidden <- hiddenFolioGeometry fid marks style pw bindingRight [(1, odd' : maybe [] (pure . fst) sidenotes), (2, even' : maybe [] (pure . snd) sidenotes)]
@@ -210,6 +218,54 @@ pageGeometry fid marks style = case stPage style of
                     pgHiddenFolio = hidden,
                     pgNoteSeparator = separator
                   }
+
+{- | The messages of the paragraph and heading rules that go out of the
+trim or over half the column gap (golem-driver ADR 0027): the paragraph
+styles by name, then the headings by level. Along the line, the start
+and the end of a rule from its indents and length, zw at the size of the
+style; across the lines, a rule out of its column (keep-in-column =
+false) takes its inner space and weight from the margin. Margins are
+the narrower of the odd and even pages: left, right, top, bottom.
+-}
+ruleChecks :: Style -> Sp -> Sp -> Bool -> Sp -> Bool -> (Sp, Sp, Sp, Sp) -> [Text]
+ruleChecks style fs measure columned gap vertical (ml, mr, mt, mb) =
+  [ owner <> " の罫線が" <> problem
+  | (owner, size, before, r) <- rules,
+    Just problem <- [check size before r]
+  ]
+  where
+    rules =
+      [ ("段落スタイル " <> n, maybe fs (dimToSp fs) (psSize d), True, r)
+      | n <- Map.keys (stParaStyles style),
+        Just d <- [paraStyle style (Just n)],
+        Just r <- [join (psRuleBefore d)]
+      ]
+        <> [ ("段落スタイル " <> n, maybe fs (dimToSp fs) (psSize d), False, r)
+           | n <- Map.keys (stParaStyles style),
+             Just d <- [paraStyle style (Just n)],
+             Just r <- [join (psRuleAfter d)]
+           ]
+        <> [ ("見出し " <> T.pack (show l), maybe fs (dimToSp fs) (hsSize h), b, r)
+           | (l, h) <- Map.toList (stHeadings style),
+             (b, Just r) <- [(True, hsRuleBefore h), (False, hsRuleAfter h)]
+           ]
+    -- along the lines: the start and end margins; across: the margin before or after the lines
+    (startRoom, endRoom) = if vertical then (mt, mb) else (ml, mr)
+    (beforeRoom, afterRoom) = if vertical then (mr, ml) else (mt, mb)
+    check size before r =
+      let start = dimToSp size (rsStartIndent r)
+          len = maybe (measure - start - maybe 0 (dimToSp size) (rsEndIndent r)) (dimToSp size) (rsLength r)
+          outStart = max 0 (negate start)
+          outEnd = max 0 (start + len - measure)
+          inner = maybe 0 (dimToSp fs) (if before then rsSpaceAfter r else rsSpaceBefore r)
+          across = inner + rsWeight r
+          room = if before then beforeRoom else afterRoom
+       in if outStart > startRoom || outEnd > endRoom || (not (rsKeepInColumn r) && across > room)
+            then Just "仕上がりの線を超えます"
+            else
+              if columned && 2 * max outStart outEnd > gap
+                then Just "段間の半分を超えます"
+                else Nothing
 
 {- | Whether the anchor of a running head is in the head margin rather than
 the foot margin: the middle of the head margin is above the middle of

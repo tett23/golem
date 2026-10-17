@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1300" height="980" viewBox="0 0 1300 980">
   <!-- 例のプロジェクトで、印が集められ、一覧になるまで（manual-dev の「チャネル」の節の例。出力はプレーンテキストと HTML で組んだ結果）。
-       scripts/manual/render-figures.sh で manual-dev/images/channels-example.png にする。 -->
+       scripts/manual/outline-figures.sh で、文字を輪郭にした manual-dev/images/channels-example.svg にする。 -->
   <style>
     @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
     @font-face { font-family: "Fig Sans"; font-weight: bold; src: url("../../fonts/NotoSansJP-Bold.otf"); }

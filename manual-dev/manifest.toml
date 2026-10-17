@@ -33,7 +33,7 @@ publisher = "Golem プロジェクト"
 
 [[metadata.creators]]
 name = "Golem プロジェクト"
-role = "aut"
+role = "author"
 
 [targets.pdf]
 

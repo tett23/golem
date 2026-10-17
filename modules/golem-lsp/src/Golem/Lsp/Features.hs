@@ -33,7 +33,7 @@ import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.Driver (Evaluated (..))
+import Golem.Driver (Evaluated (..), metadataValues)
 import Golem.Eval.Expr (Env (..), embedValue, evalExpr)
 import Golem.Eval.File (EvalResult (..), Usage (..), builtinInlineCommands)
 import Golem.Eval.Value (Value (..), typeName)
@@ -291,6 +291,11 @@ completions ws path off = case sourceOf ws path of
         paraNames = filter (/= "code") (nub (Map.keys (stParaStyles style) <> Map.keys (lsParaStyles local) <> defined ParagraphKind))
         charNames = nub (Map.keys (stCharStyles style) <> Map.keys (lsCharStyles local) <> defined CharacterKind)
         labels = nub [l | s <- allSources ws, (_, OccLabelDef l) <- occurrences (srcAst s)]
+        -- the dotted name before the cursor in an expression
+        metaPath = case T.stripPrefix "=" (T.stripStart lastOpen) of
+          Just _ -> Just (T.splitOn "." (T.takeWhileEnd (\c -> c == '.' || c == '_' || c `elem` ['a' .. 'z'] || c `elem` ['0' .. '9']) lastOpen))
+          Nothing -> Nothing
+        meta = maybe Map.empty (metadataValues . manifestMetadata . projectManifest . evProject) (wsEvaluated ws)
      in if "@import " `T.isPrefixOf` T.stripStart lineBefore
           then [Completion (T.pack p) CkPath | p <- wsSourceFiles ws, p /= path]
           else case (T.stripPrefix "@manifest " (T.stripStart lineBefore), T.stripPrefix "@style-def " (T.stripStart lineBefore)) of
@@ -310,14 +315,18 @@ completions ws path off = case sourceOf ws path of
                         else
                           if not hasOpen || T.isInfixOf "]" lastOpen
                             then []
-                            else case ws' of
-                              [] -> commandNames
-                              [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
-                              (cmd : _)
-                                | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
-                                | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
-                                | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
-                              _ -> []
+                            else case metaPath of
+                              -- the keys of meta and of meta.roles (docs/adr ADR 0033)
+                              Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
+                              Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
+                              _ -> case ws' of
+                                [] -> commandNames
+                                [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
+                                (cmd : _)
+                                  | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
+                                  | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
+                                  | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
+                                _ -> []
   where
     commandNames = [Completion c CkCommand | c <- builtinInlineCommands]
 

@@ -29,9 +29,11 @@ library
                     Golem.Driver.Lint
                     Golem.Driver.Memo
                     Golem.Driver.New
+                    Golem.Driver.Overhang
                     Golem.Driver.Pdf
                     Golem.Driver.Plugins
                     Golem.Driver.RuleShape
+                    Golem.Driver.Svg
                     Golem.Driver.Version
   build-depends:
     , aeson         >=2.1  && <2.3
@@ -54,6 +56,7 @@ library
     , golem-parser
     , golem-preflight
     , golem-project
+    , golem-svg
     , golem-syntax
     , golem-text
     , scientific    >=0.3  && <0.4
@@ -70,6 +73,8 @@ test-suite golem-driver-test
   main-is:          Main.hs
   other-modules:
     BuildSpec
+    ChapterNotesSpec
+    ColophonSpec
     CliSpec
     DiagnosticSitesSpec
     DiagnosticsSpec
@@ -77,6 +82,7 @@ test-suite golem-driver-test
     LocaleSpec
     MemoSpec
     PageElementsSpec
+    ParagraphRuleSpec
     ParagraphSpec
     PdfSpec
     PluginsSpec
@@ -84,6 +90,7 @@ test-suite golem-driver-test
     RuleShapeSpec
     SecuritySpec
     StylesSpec
+    TableFilesSpec
     Support
   build-depends:
     , base
@@ -97,6 +104,7 @@ test-suite golem-driver-test
     , golem-eval
     , golem-layout
     , golem-layout-spec
+    , golem-parser
     , golem-pdf
     , golem-plugin
     , golem-preflight

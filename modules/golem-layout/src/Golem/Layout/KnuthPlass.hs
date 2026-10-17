@@ -56,7 +56,12 @@ data BoxContent = BoxContent
     bcEdgeEnd :: !Sp,
     {- | the look of each base character of a ruby box (golem-layout ADR
     0011); empty for any other box. The algorithm does not read it.
-    -} bcBaseLooks :: ![Look]
+    -} bcBaseLooks :: ![Look],
+    {- | the padding of inline code before and after its characters
+    (golem-driver ADR 0029), inside the width: the glyphs start
+    'bcPadStart' after the start of the box. The algorithm does not read it.
+    -} bcPadStart :: !Sp,
+    bcPadEnd :: !Sp
   }
   deriving stock (Eq, Show)
 

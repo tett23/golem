@@ -10,7 +10,7 @@ date = 2026-10-16
 [[metadata.creators]]
 name = "宮沢賢治"
 reading = "みやざわ けんじ"
-role = "aut"
+role = "author"
 
 [source]
 paragraph-separator = "line"

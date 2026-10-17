@@ -3,6 +3,11 @@ module Golem.Project.Manifest
   ( Manifest (..),
     Metadata (..),
     Creator (..),
+    Role (..),
+    roleWord,
+    marcRelator,
+    inMetadata,
+    Printing (..),
     ChapterEntry (..),
     SourceEdit (..),
     Targets (..),
@@ -18,6 +23,7 @@ module Golem.Project.Manifest
   )
 where
 
+import Control.Monad (zipWithM_)
 import Data.Char (isDigit)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -34,7 +40,11 @@ import Toml qualified
 import Toml.Schema
 import Toml.Schema.FromValue (typeError)
 import Toml.Schema.Matcher (inIndex)
-import Toml.Semantics (SemanticError (..), semantics)
+import Toml.Semantics
+  ( SemanticError (..),
+    semantics,
+    valueAnn,
+  )
 import Toml.Syntax (Located (..), Position (..), parseRawToml)
 
 data Manifest = Manifest
@@ -59,14 +69,75 @@ data Metadata = Metadata
     mdDate :: !Day,
     mdEdition :: !(Maybe Text),
     mdPublisher :: !(Maybe Text),
-    mdCreators :: ![Creator]
+    mdCreators :: ![Creator],
+    -- | the publisher person of the colophon, not in the metadata of the outputs (docs/adr ADR 0033)
+    mdPublisherPerson :: !(Maybe Text),
+    -- | the secondary contributors (docs/adr ADR 0033)
+    mdContributors :: ![Creator],
+    -- | the history of editions and printings, the last the current one (docs/adr ADR 0033)
+    mdPrintings :: ![Printing]
   }
   deriving stock (Eq, Show)
 
+-- | A creator or a contributor (docs/adr ADR 0033).
 data Creator = Creator
   { crName :: !Text,
     crReading :: !(Maybe Text),
-    crRole :: !Text
+    crRole :: !Role
+  }
+  deriving stock (Eq, Show)
+
+-- | The roles of creators and contributors, a closed vocabulary (docs/adr ADR 0033).
+data Role
+  = Author
+  | Translator
+  | Editor
+  | Illustrator
+  | BookDesigner
+  | CoverDesigner
+  | Typesetter
+  | Printer
+  | Binder
+  deriving stock (Eq, Ord, Show, Enum, Bounded)
+
+-- | The word of a role that manifest.toml takes.
+roleWord :: Role -> Text
+roleWord = \case
+  Author -> "author"
+  Translator -> "translator"
+  Editor -> "editor"
+  Illustrator -> "illustrator"
+  BookDesigner -> "book-designer"
+  CoverDesigner -> "cover-designer"
+  Typesetter -> "typesetter"
+  Printer -> "printer"
+  Binder -> "binder"
+
+-- | The MARC relator code of a role, for the outputs that need it.
+marcRelator :: Role -> Text
+marcRelator = \case
+  Author -> "aut"
+  Translator -> "trl"
+  Editor -> "edt"
+  Illustrator -> "ill"
+  BookDesigner -> "bkd"
+  CoverDesigner -> "cov"
+  Typesetter -> "cmt"
+  Printer -> "prt"
+  Binder -> "bnd"
+
+-- | Whether a role is written in the metadata of EPUB and XMP: not the printer and the binder.
+inMetadata :: Role -> Bool
+inMetadata = \case
+  Printer -> False
+  Binder -> False
+  _ -> True
+
+-- | One edition and printing and its date (docs/adr ADR 0033).
+data Printing = Printing
+  { prEdition :: !Int,
+    prNumber :: !Int,
+    prDate :: !Day
   }
   deriving stock (Eq, Show)
 
@@ -190,10 +261,55 @@ instance FromValue Metadata where
     e <- optKey "edition"
     p <- optKey "publisher"
     cs <- optKey "creators"
-    pure (Metadata i t tr l d e p (fromMaybe [] cs))
+    pp <- optKeyOf "publisher-person" publisherPerson
+    co <- optKey "contributors"
+    ps <- optKeyOf "printings" printings
+    pure (Metadata i t tr l d e p (fromMaybe [] cs) pp (fromMaybe [] co) (fromMaybe [] ps))
+    where
+      publisherPerson = \case
+        Text' l v
+          | T.null v -> failAt l "publisher-person に空の文字列は書けません"
+          | T.any (`elem` ("\n\r" :: String)) v -> failAt l "publisher-person に改行は書けません"
+          | otherwise -> pure v
+        v -> typeError "string" v
 
 instance FromValue Creator where
-  fromValue = parseTableFromValue (Creator <$> reqKey "name" <*> optKey "reading" <*> reqKey "role")
+  fromValue = parseTableFromValue (Creator <$> reqKeyOf "name" name <*> optKey "reading" <*> reqKeyOf "role" role)
+    where
+      name = \case
+        Text' l v | T.null v -> failAt l "name に空の文字列は書けません"
+        v -> fromValue v
+      role = \case
+        Text' l v
+          | Just r <- lookup v [(roleWord r, r) | r <- [minBound .. maxBound]] -> pure r
+          | Just r <- lookup v [(marcRelator r, r) | r <- [minBound .. maxBound]] ->
+              failAt l (T.unpack ("役割は語で書きます。\"" <> v <> "\" は \"" <> roleWord r <> "\" です"))
+          | v == "publisher" -> failAt l "発行所は [metadata] の publisher に、発行人は publisher-person に書きます"
+          | otherwise -> failAt l (T.unpack ("役割は " <> T.intercalate "、" (map roleWord [minBound .. maxBound]) <> " のどれかです: " <> v))
+        v -> typeError "string" v
+
+{- | The printings: editions and printings from 1, increasing strictly in
+(edition, printing), dates not going back (docs/adr ADR 0033).
+-}
+printings :: Value' l -> Matcher l [Printing]
+printings = \case
+  List' _ xs -> do
+    ps <- traverse (\(i, x) -> inIndex i ((valueAnn x,) <$> fromValue x)) (zip [0 ..] xs)
+    zipWithM_ ordered ps (drop 1 ps)
+    pure (map snd ps)
+  v -> typeError "array" v
+  where
+    ordered (_, a) (l, b)
+      | (prEdition b, prNumber b) <= (prEdition a, prNumber a) = failAt l "printings は版と刷の順に、同じ版と刷を二度書かずに並べます"
+      | prDate b < prDate a = failAt l "printings の date が前の項目の date より前です"
+      | otherwise = pure ()
+
+instance FromValue Printing where
+  fromValue = parseTableFromValue (Printing <$> reqKeyOf "edition" atLeastOne <*> reqKeyOf "printing" atLeastOne <*> reqKey "date")
+    where
+      atLeastOne = \case
+        Integer' l n | n < 1 -> failAt l "版と刷の番号は 1 以上の整数です"
+        v -> fromValue v
 
 instance FromValue ChapterEntry where
   fromValue = \case

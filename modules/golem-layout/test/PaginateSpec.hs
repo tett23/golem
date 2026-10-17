@@ -14,6 +14,7 @@ import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..))
 import Golem.Layout.Paginate
+import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
@@ -32,12 +33,13 @@ paginateTests =
       testGroup "page references that do not settle (S2)" pageRefTests,
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
       testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
+      testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
       testGroup "invariants" propertyTests
     ]
 
 -- | n plain lines numbered from base.
 lines' :: Int -> Int -> [LineBox]
-lines' base n = [LineBox (base + i) [] [] [] | i <- [0 .. n - 1]]
+lines' base n = [LineBox (base + i) [] [] [] 0 | i <- [0 .. n - 1]]
 
 -- | A heading of one line, on one grid line, not at a recto.
 heading :: Int -> Flow
@@ -65,7 +67,7 @@ keepWithNextTests =
       contents ps @?= [[SLine 0, SLine 1, SLine 2, SHeading 20 1, SFigure 99]],
     testCase "a heading before a table keeps the header and the first row, not only the header" $ do
       -- 3 free: heading 1 + header 1 + first row 2 = 4 > 3
-      let ps = paginate 1 6 [FParagraph (lines' 0 3), heading 20, FTable 100 (lines' 30 1) [lines' 40 2]]
+      let ps = paginate 1 6 [FParagraph (lines' 0 3), heading 20, FTable 100 0 (lines' 30 1) [lines' 40 2]]
       contents ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 40, SLine 41]],
     testCase "a heading before a code block keeps the grid lines of its first row with padding" $ do
       -- 2 free: heading 1 + one row with padding 2 = 3 > 2; three rows take 4 lines
@@ -91,7 +93,7 @@ notesByPage ps = [(poNumber p, [i | (i, _, _) <- poFootnotes p]) | p <- ps]
 
 -- | A heading of one line whose line has a footnote of one line.
 headingWithNote :: Int -> NoteId -> Flow
-headingWithNote i note = FHeading 2 False 1 [LineBox i [NoteBody note 1] [] []]
+headingWithNote i note = FHeading 2 False 1 [LineBox i [NoteBody note 1] [] [] 0]
 
 -- | The note of the marker at offset k of a source file.
 nid :: Int -> NoteId
@@ -107,7 +109,7 @@ headingNoteTests =
       let ps = paginate 1 8 [FParagraph (lines' 0 6), headingWithNote 20 (nid 900), FParagraph (lines' 30 2)]
       notesByPage ps @?= [(1, []), (2, [nid 900])],
     testCase "a heading whose note does not fit goes to the next page with its note (golem-layout ADR 0013)" $ do
-      let ps = paginate 1 8 [FParagraph (lines' 0 5), FHeading 2 False 1 [LineBox 20 [NoteBody (nid 900) 3] [] []], FParagraph (lines' 30 2)]
+      let ps = paginate 1 8 [FParagraph (lines' 0 5), FHeading 2 False 1 [LineBox 20 [NoteBody (nid 900) 3] [] [] 0], FParagraph (lines' 30 2)]
       notesByPage ps @?= [(1, []), (2, [nid 900])]
       contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 3, SLine 4], [SHeading 20 1, SLine 30, SLine 31]],
     testCase "the note of a heading counts in keeping it with what follows (golem-layout ADR 0013)" $ do
@@ -119,15 +121,15 @@ headingNoteTests =
       let ps = paginate 1 10 [FParagraph (lines' 0 2), headingWithNote 20 (nid 900), FParagraph (lines' 30 2)]
       notesByPage ps @?= [(1, [nid 900])],
     testCase "a heading in an empty page keeps its place and its note continues on the next page" $ do
-      let ps = paginate 1 5 [FHeading 2 False 1 [LineBox 20 [NoteBody (nid 900) 6] [] []]]
+      let ps = paginate 1 5 [FHeading 2 False 1 [LineBox 20 [NoteBody (nid 900) 6] [] [] 0]]
       notesByPage ps @?= [(1, [nid 900]), (2, [nid 900])]
       contents ps @?= [[SHeading 20 1], []],
     testCase "in two columns, a heading whose note does not fit goes to the next column (golem-layout ADR 0013)" $ do
-      let ps = paginate 2 8 [FParagraph (lines' 0 5), FHeading 2 False 1 [LineBox 20 [NoteBody (nid 900) 3] [] []], FParagraph (lines' 30 2)]
+      let ps = paginate 2 8 [FParagraph (lines' 0 5), FHeading 2 False 1 [LineBox 20 [NoteBody (nid 900) 3] [] [] 0], FParagraph (lines' 30 2)]
       [(poNumber p, poColumn p, [i | (i, _, _) <- poFootnotes p]) | p <- ps] @?= [(1, 0, []), (1, 1, [nid 900])]
       contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 3, SLine 4], [SHeading 20 1, SLine 30, SLine 31]],
     testCase "the label of a heading sent to the next page is on that page" $ do
-      let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 2 False 1 [LineBox 20 [] ["sec"] []], FParagraph (lines' 30 2)]
+      let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 2 False 1 [LineBox 20 [] ["sec"] [] 0], FParagraph (lines' 30 2)]
       labelPages ps @?= Map.fromList [("sec", 2)]
   ]
 
@@ -171,7 +173,7 @@ the page assumed for "x" capped at cap: the page of "x" is k + 1.
 creeping :: Integer -> Map.Map Text Integer -> [PageOut]
 creeping cap assumed =
   let k = fromInteger (min cap (Map.findWithDefault 0 "x" assumed))
-   in paginate 1 1 ([FParagraph [LineBox i [] [] []] | i <- [0 .. k - 1]] <> [FParagraph [LineBox 999 [] ["x"] []]])
+   in paginate 1 1 ([FParagraph [LineBox i [] [] [] 0] | i <- [0 .. k - 1]] <> [FParagraph [LineBox 999 [] ["x"] [] 0]])
 
 pageRefTests :: [TestTree]
 pageRefTests =
@@ -186,9 +188,9 @@ pageRefTests =
       let layout assumed =
             let fillers = if Map.findWithDefault 1 "a" assumed < 10 then 9 else 1
              in paginate 1 5 $
-                  FParagraph (LineBox 0 [] ["stable"] [] : lines' 1 4)
+                  FParagraph (LineBox 0 [] ["stable"] [] 0 : lines' 1 4)
                     : replicate fillers (FParagraph (lines' 10 5))
-                      <> [FParagraph [LineBox 999 [] ["b", "a"] []]]
+                      <> [FParagraph [LineBox 999 [] ["b", "a"] [] 0]]
       resolvePageRefs layout @?= Left ["a", "b"]
   ]
 
@@ -292,7 +294,7 @@ pageControlTests =
       unmets ps @?= [UnmetAdjust mk (-2)],
     testCase "the footnotes of a column of page-lines +1 use its last line" $ do
       -- nine lines, the separator and a note of one line take eleven lines
-      let flow = [FAdjustLines mk 1, FParagraph (LineBox 0 [NoteBody (nid 900) 1] [] [] : lines' 1 8)]
+      let flow = [FAdjustLines mk 1, FParagraph (LineBox 0 [NoteBody (nid 900) 1] [] [] 0 : lines' 1 8)]
           ps = paginate 1 10 flow
       map poLines ps @?= [11]
       notesByPage ps @?= [(1, [nid 900])]
@@ -379,4 +381,68 @@ propertyTests =
       capacity <- forAll (Gen.int (Range.linear 2 9))
       let starts = [k | p <- paginate 1 capacity (flowsOf blocks), (k, _) <- poSlots p]
       filter (\k -> k < 0 || k >= capacity) starts === []
+  ]
+
+-- | Size 10pt, pitch 17pt, in sp.
+ruleGrid :: RuleGrid
+ruleGrid = RuleGrid (17 * 65536) (10 * 65536)
+
+-- | A rule of 0.5pt with an inner and an outer space in pt.
+spaced :: Integer -> Integer -> RuleSide
+spaced i o = RuleSide (i * 65536) (o * 65536) 32768 True Nothing
+
+-- | A rule of 0.3pt without spaces: no grid line inside a column.
+bare :: RuleSide
+bare = RuleSide 0 0 19661 False Nothing
+
+-- | A paragraph with rules: its id is that of its first line.
+ruled :: Maybe RuleSide -> Maybe RuleSide -> [LineBox] -> Flow
+ruled b a ls = FRuled (maybe 0 lbId (listToMaybe' ls)) b a False ruleGrid 0 (RuledLines ls)
+  where
+    listToMaybe' = foldr (const . Just) Nothing
+
+-- | The slots of each page.
+gridLines :: [PageOut] -> [[Int]]
+gridLines = map (map fst . poSlots)
+
+ruledTests :: [TestTree]
+ruledTests =
+  [ testCase "a ruled paragraph that does not fit goes whole to the next column, its rule counted at the start" $ do
+      -- 3 free; a line of area before (inner 5pt, outer 10pt) and 3 lines
+      let ps = paginate 1 5 [FParagraph (lines' 0 2), ruled (Just (spaced 5 10)) Nothing (lines' 10 3)]
+      gridLines ps @?= [[0, 1], [1, 2, 3]]
+      map poRules ps @?= [[], [PlacedRule 10 True (17 * 65536 - 5 * 65536 - 32768)]],
+    testCase "a paragraph is split at the column end, a ruled one is not" $ do
+      gridLines (paginate 1 8 [FParagraph (lines' 0 4), FParagraph (lines' 10 6)]) @?= [[0 .. 7], [0, 1]]
+      gridLines (paginate 1 8 [FParagraph (lines' 0 4), ruled Nothing (Just bare) (lines' 10 6)]) @?= [[0 .. 3], [0 .. 5]],
+    testCase "a ruled paragraph stays where it is; the note that does not fit goes to the next page" $ do
+      let withNote = LineBox 10 [NoteBody (nid 900) 4] [] [] 0
+          ps = paginate 1 6 [FParagraph (lines' 0 2), ruled (Just bare) Nothing (withNote : lines' 11 1)]
+      gridLines ps @?= [[0, 1, 2, 3], []]
+      -- the rest of the note is on the next page
+      map poFootnotes ps @?= [[(nid 900, 0, 1)], [(nid 900, 1, 3)]],
+    testCase "a ruled heading whose note does not fit goes on with its note and its rule (golem-layout ADR 0013)" $ do
+      let h = FRuled 20 (Just (spaced 5 10)) Nothing False ruleGrid 0 (RuledHeading False 1 [LineBox 20 [NoteBody (nid 900) 2] [] [] 0])
+          ps = paginate 1 6 [FParagraph (lines' 0 3), h, FParagraph (lines' 30 1)]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30]]
+      gridLines ps @?= [[0, 1, 2], [1, 2]]
+      notesByPage ps @?= [(1, []), (2, [nid 900])],
+    testCase "a heading before a ruled paragraph of 5 lines goes on with it" $ do
+      let ps = paginate 1 8 [FParagraph (lines' 0 3), heading 20, ruled (Just bare) Nothing (lines' 30 5)]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2], SHeading 20 1 : map SLine [30 .. 34]],
+    testCase "a rule after and a rule before in a row share one area; with space-between they do not" $ do
+      let a = ruled Nothing (Just (spaced 2 3)) (lines' 0 2)
+          b = FRuled 10 (Just (spaced 2 6)) Nothing True ruleGrid 0 (RuledLines (lines' 10 2))
+          b' = FRuled 10 (Just (spaced 2 6)) Nothing False ruleGrid 0 (RuledLines (lines' 10 2))
+          p = 17 * 65536
+          face = 10 * 65536
+      let joined = paginate 1 20 [a, b]
+      gridLines joined @?= [[0, 1, 3, 4]]
+      map poRules joined @?= [[PlacedRule 0 False (p + face + 2 * 65536), PlacedRule 10 True (p + face + 24 * 65536 - 2 * 65536 - 32768)]]
+      gridLines (paginate 1 20 [a, FSpace 1, b']) @?= [[0, 1, 4, 5]],
+    testCase "a ruled paragraph that ends at the column end counts its rule at the edge" $ do
+      -- inside: inner 5pt, outer 30pt take 2 lines; at the end 1 line
+      let ps = paginate 1 4 [ruled Nothing (Just (spaced 5 30)) (lines' 0 3)]
+      gridLines ps @?= [[0, 1, 2]]
+      map poRules ps @?= [[PlacedRule 0 False (2 * 17 * 65536 + 10 * 65536 + 5 * 65536)]]
   ]

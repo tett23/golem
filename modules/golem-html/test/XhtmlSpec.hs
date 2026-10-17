@@ -56,7 +56,8 @@ cfg0 =
       hcBreakKinds = Set.empty,
       hcNoBreak = False,
       hcLists = Nothing,
-      hcCode = HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty
+      hcCode = HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty,
+      hcHeadingRules = Map.empty
     }
 
 -- | A book of one document, a.gm, with nothing assembled.
@@ -72,7 +73,8 @@ bookOf bs =
       bookIndex = [],
       bookCitations = [],
       bookLabels = Map.empty,
-      bookReferenced = Set.empty
+      bookReferenced = Set.empty,
+      bookChapterOf = []
     }
 
 para :: Int -> [Inline] -> Block
@@ -95,6 +97,54 @@ bodyA cfg book = maybe "" bodyOf (lookup "a.xhtml" (sitePages (renderXhtml cfg f
 cssLines :: Text -> HtmlConfig -> [Text]
 cssLines prefix cfg = filter (T.isPrefixOf prefix) (T.lines (siteCss (renderXhtml cfg ft (bookOf []))))
 
+-- | A span in b.gm.
+atB :: Int -> SrcSpan
+atB n = mkSpan fidB n (n + 1)
+
+-- | a.gm and b.gm with one note each, in the chapters given.
+twoFileBook :: Int -> Int -> [Int] -> Book
+twoFileBook na nb chapters =
+  (bookOf [])
+    { bookDocs =
+        [ Document fidA [para 0 [txt "甲", Note (at 1) na [txt "注甲。"]]],
+          Document fidB [Block (atB 0) Nothing (Paragraph Nothing [txt "乙", Note (atB 1) nb [txt "注乙。"]])]
+        ],
+      bookChapterOf = chapters
+    }
+
+pageOf :: FilePath -> HtmlConfig -> Book -> Text
+pageOf p cfg book = maybe "" bodyOf (lookup p (sitePages (renderXhtml cfg ft book)))
+
+chapterNoteTests :: [TestTree]
+chapterNoteTests =
+  [ testCase "a chapter of two files: the notes of both at the end of the second, linked across" $ do
+      let book = twoFileBook 1 2 [0, 0]
+      pageOf "a.xhtml" cfg0 book @?= "<p>甲<a epub:type=\"noteref\" class=\"noteref\" href=\"b.xhtml#note-1\" id=\"noteref-1\">1</a></p>\n"
+      pageOf "b.xhtml" cfg0 book
+        @?= T.concat
+          [ "<p>乙<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-2\" id=\"noteref-2\">2</a></p>\n",
+            "<section class=\"notes\">\n<h2>注</h2>\n",
+            "<aside epub:type=\"footnote\" id=\"note-1\"><a href=\"a.xhtml#noteref-1\">1</a> 注甲。</aside>\n",
+            "<aside epub:type=\"footnote\" id=\"note-2\"><a href=\"#noteref-2\">2</a> 注乙。</aside>\n",
+            "</section>\n"
+          ],
+    testCase "two chapters of a file each keep their notes" $ do
+      let book = twoFileBook 1 1 [0, 1]
+      assertBool "a has its notes" ("id=\"note-1\"><a href=\"#noteref-1\">" `T.isInfixOf` pageOf "a.xhtml" cfg0 book)
+      assertBool "b has its notes" ("id=\"note-1\"><a href=\"#noteref-1\">" `T.isInfixOf` pageOf "b.xhtml" cfg0 book),
+    testCase "numbers that meet in a chapter take the place of the file in their ids" $ do
+      let book = twoFileBook 1 1 [0, 0]
+      assertBool "a" ("href=\"b.xhtml#note-1-1\" id=\"noteref-1-1\"" `T.isInfixOf` pageOf "a.xhtml" cfg0 book)
+      let b = pageOf "b.xhtml" cfg0 book
+      assertBool "b ref" ("href=\"#note-2-1\" id=\"noteref-2-1\"" `T.isInfixOf` b)
+      assertBool "b note 1" ("id=\"note-1-1\"><a href=\"a.xhtml#noteref-1-1\">1</a>" `T.isInfixOf` b)
+      assertBool "b note 2" ("id=\"note-2-1\"><a href=\"#noteref-2-1\">1</a>" `T.isInfixOf` b),
+    testCase "the title of the notes is Notes in an English book" $
+      assertBool "Notes" ("<h2>Notes</h2>" `T.isInfixOf` pageOf "b.xhtml" cfg0 {hcLanguage = "en"} (twoFileBook 1 2 [0, 0])),
+    testCase "the title is not in the navigation of the page" $
+      assertBool "no nav" (not ("注" `T.isInfixOf` T.concat [t | (_, t) <- sitePages (renderXhtml cfg0 ft (twoFileBook 1 2 [0, 0])), "<nav" `T.isInfixOf` t]))
+  ]
+
 tests :: [TestTree]
 tests =
   [ testGroup
@@ -107,9 +157,22 @@ tests =
           -- 255 × 0.2 = 51
           cssLines ".swatch-" cfg0 {hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))]} @?= [".swatch-accent { color: rgb(255, 51, 0); }"],
         testCase "a character style with a swatch has its rgb() colour" $
-          let term = HtmlCharStyle Nothing False False (Just "accent") noFeatures False
+          let term = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing
               cfg = cfg0 {hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))], hcCharStyles = Map.fromList [("term", term)]}
            in cssLines ".cs-term" cfg @?= [".cs-term { color: rgb(255, 51, 0); }"],
+        -- the background and the padding of inline code (golem-driver ADR 0029)
+        testCase "code with a background: background-color and padding-inline" $
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em")
+              cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcCharStyles = Map.fromList [("code", code)]}
+           in cssLines "code {" cfg @?= ["code { background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
+        testCase "a style based on code with a background: the same two in its cs- rule" $
+          let path = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em")
+              cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcCharStyles = Map.fromList [("path", path)]}
+           in cssLines ".cs-path" cfg @?= [".cs-path { hyphens: none; background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
+        testCase "code without a background: padding-inline only" $
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing (Just "0.25em")
+              cfg = cfg0 {hcCharStyles = Map.fromList [("code", code)]}
+           in cssLines "code {" cfg @?= ["code { padding-inline: 0.25em; }"],
         testCase "coloured text is a span with the class of its swatch" $
           bodyA cfg0 (bookOf [para 0 [Color (at 1) "accent" [txt "赤"]]]) @?= "<p><span class=\"swatch-accent\">赤</span></p>\n"
       ],
@@ -128,10 +191,11 @@ tests =
         @?= T.concat
           [ "<p>本文<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-1\" id=\"noteref-1\">1</a></p>\n",
             "<p>次。</p>\n",
-            "<section class=\"notes\">\n",
+            "<section class=\"notes\">\n<h2>注</h2>\n",
             "<aside epub:type=\"footnote\" id=\"note-1\"><a href=\"#noteref-1\">1</a> 注の本文。</aside>\n",
             "</section>\n"
           ],
+    testGroup "notes at the end of the chapter (golem-driver ADR 0026)" chapterNoteTests,
     testGroup
       "ruby"
       [ testCase "group ruby is one rt between rp" $

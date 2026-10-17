@@ -62,7 +62,7 @@ checkedInt at i
   | otherwise = pure (VInt i)
 
 builtinNames :: [Name]
-builtinNames = ["pi", "e", "sqrt", "floor", "ceil", "round", "fixed", "abs", "min", "max", "len", "div"]
+builtinNames = ["pi", "e", "sqrt", "floor", "ceil", "round", "fixed", "abs", "min", "max", "len", "div", "join"]
 
 -- | Names referenced by an expression (first segment of each variable).
 freeNames :: Located Expr -> [Name]
@@ -196,6 +196,11 @@ call le f args = case (f, args) of
   ("div", [VInt _, VInt 0]) -> err "G0203" le "0 で割っています"
   ("div", [VInt a, VInt b]) -> pure (VInt (floorDiv a b))
   ("div", [_, _]) -> typeErr le "div は整数にだけ使えます"
+  -- the strings of an array with a separator between them (docs/adr ADR 0033)
+  ("join", [VArray xs, VString s])
+    | Just ts <- traverse (\case VString t -> Just t; _ -> Nothing) xs -> pure (VString (T.intercalate s ts))
+    | otherwise -> typeErr le "join の配列には文字列だけを並べます"
+  ("join", [_, _]) -> typeErr le "join は文字列の配列と区切りの文字列に使えます"
   _
     | f `elem` builtinNames -> err "G0207" le (f <> " の引数が不正です")
     | otherwise -> err "G0261" le ("未定義の関数 " <> f <> " です")

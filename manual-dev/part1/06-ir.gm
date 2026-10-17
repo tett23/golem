@@ -17,7 +17,7 @@ EPUB と HTML はリフローの媒体であり、行もページも読者の側
 原稿は、図[ref-number fig-pipeline]の順に処理される。
 
 @label fig-pipeline
-@figure images/pipeline.png alt="原稿と manifest.toml、style.toml から、構文解析、ファイル内評価（S0）、文書構造の確定（S1）を経て、テキスト、HTML と EPUB、PDF の三つの経路に分かれる処理の流れ。各段階に受け持つパッケージの名前を添えている"
+@figure images/pipeline.svg alt="原稿と manifest.toml、style.toml から、構文解析、ファイル内評価（S0）、文書構造の確定（S1）を経て、テキスト、HTML と EPUB、PDF の三つの経路に分かれる処理の流れ。各段階に受け持つパッケージの名前を添えている"
   原稿から出力までの処理の流れと、各段階を受け持つパッケージ。
 
 + 原稿を構文解析し、CST（具象構文木）を作る。CST は空白とコメントまで含めて原稿を失わずに持ち、整形と LSP が使う。
@@ -45,7 +45,7 @@ Golem は、この循環を、評価を三つの階層に分けることで断�
 仕様書は、S0 から S2 を「階層」とも「段階」とも呼んでいる。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#目次と文書構造の参照]（仕様書の「目次と文書構造の参照」の節）]
 
 @label fig-stages
-@figure images/stages.png alt="下から S0（ファイル内評価）、S1（文書構造）、S2（レイアウト後）の三つの帯を重ね、S0 の各ファイルの結果が S1 に集まり、S1 の結果が S2 に渡ることと、プラグイン、golem check と LSP、HTML と EPUB とテキスト、golem build の PDF がそれぞれどの階層まで使うかを示した図"
+@figure images/stages.svg alt="下から S0（ファイル内評価）、S1（文書構造）、S2（レイアウト後）の三つの帯を重ね、S0 の各ファイルの結果が S1 に集まり、S1 の結果が S2 に渡ることと、プラグイン、golem check と LSP、HTML と EPUB とテキスト、golem build の PDF がそれぞれどの階層まで使うかを示した図"
   評価の三つの階層と、それぞれの処理が使う階層。
 
 図[ref-number fig-stages]では、下の帯ほど早く決まる。
@@ -237,7 +237,7 @@ S0 の時点では、一覧の中身は決まらない。
   ブロックコマンド（[code: @toc]、[code: @index]、[code: @bibliography]）が、置いた位置に一覧を出す。ページ番号は、PDF の経路の S2 で入る。
 
 @label fig-channels
-@figure images/channels.png alt="目次、脚注、索引、参考文献の四つのチャネルを行に、送る記法、S0 の意味論 IR に残る印、S1 の集約の結果、出す位置を列にした表の形の図。下に、出力の経路ごとに一覧がどう書かれるかを示す"
+@figure images/channels.svg alt="目次、脚注、索引、参考文献の四つのチャネルを行に、送る記法、S0 の意味論 IR に残る印、S1 の集約の結果、出す位置を列にした表の形の図。下に、出力の経路ごとに一覧がどう書かれるかを示す"
   四つのチャネルが、原稿の印から出力の一覧になるまで。
 
 図[ref-number fig-channels]の四つの行が、今の Golem にあるチャネルのすべてである。
@@ -329,7 +329,7 @@ data ChannelBlock = TocOutput !Int | IndexOutput | BibliographyOutput
 ```
 
 @label fig-channels-example
-@figure images/channels-example.png alt="左に二つの章のファイルの見出しと印を書いた順に並べ、中央に S1 が作る bookToc、bookCitations、bookIndex と、振り直した脚注の番号を、右にプレーンテキストと HTML の出力を示す。印と集約の結果と出力を、チャネルごとの色で結んでいる"
+@figure images/channels-example.svg alt="左に二つの章のファイルの見出しと印を書いた順に並べ、中央に S1 が作る bookToc、bookCitations、bookIndex と、振り直した脚注の番号を、右にプレーンテキストと HTML の出力を示す。印と集約の結果と出力を、チャネルごとの色で結んでいる"
   例のプロジェクトで、印が集められ、一覧になるまで。
 
 図[ref-number fig-channels-example]の左は、S0 が二つの章のファイルに残す印を、書いた順に並べたものである。

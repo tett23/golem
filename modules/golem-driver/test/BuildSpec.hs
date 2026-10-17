@@ -11,7 +11,7 @@ import Data.Maybe (isJust, listToMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
-import Golem.Doc.Assemble (HeadingInfo (..))
+import Golem.Doc.Assemble (Book (..), HeadingInfo (..))
 import Golem.Doc.IR (InlineF (..))
 import Golem.Driver
 import Golem.Driver.New
@@ -85,6 +85,12 @@ buildTests =
       c <- buildAndRead Dev "build/text/vertical/chapters/01.txt"
       d <- buildAndRead Dev "build/text/vertical/chapters/01.txt"
       c @?= d,
+    testCase "S1 again from the results gives the same book and diagnostics (golem-lsp ADR 0004)" $ do
+      e <- evaluateProject Dev fixture >>= either (assertFailure . show . pfDiagnostics) pure
+      let (book, s1) = evReassemble e (evResults e)
+      s1 @?= evS1Diagnostics e
+      fmap bookDocs book @?= fmap bookDocs (evBook e)
+      assertBool "a book" (isJust book),
     testCase "prod drops proofreading comments and warns" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
       copyTree fixture tmp
       r <- build (defaultOptions tmp) {optProfile = Prod}
@@ -316,7 +322,7 @@ sepNav lang format source = withSystemTempDirectory "golem-sep" $ \tmp -> do
   e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
   book <- maybe (assertFailure "no book") pure (evBook e)
   let md = manifestMetadata (projectManifest (evProject e))
-      cfg = EpubConfig (mdId md) (mdTitle md) Nothing (mdLanguage md) (mdDate md) Nothing [] False
+      cfg = EpubConfig (mdId md) (mdTitle md) Nothing (mdLanguage md) (mdDate md) Nothing [] [] False
   pure (navDocument cfg (projectFiles (evProject e)) book)
 
 numberSeparatorTests :: [TestTree]

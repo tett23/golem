@@ -1,5 +1,6 @@
 module Main (main) where
 
+import ColophonSpec qualified
 import Control.Monad (forM_, void)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
@@ -489,6 +490,7 @@ tests =
       diagnosticCodeTests,
       tomlMessageTests,
       TomlMessageSpec.tests,
+      ColophonSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))
@@ -519,6 +521,10 @@ tests =
         mapM_
           (\v -> codes (parseStyle (FileId 0) ("[headings.2]\nlines = " <> v <> "\n")) @?= ["G0306"])
           ["0", "-1", "1.5", "\"3\""],
+      testCase "the placement of notes (golem-driver ADR 0026)" $ do
+        fmap stNotesPlacement (parseStyle (FileId 0) "") @?= Right PlaceFoot
+        fmap stNotesPlacement (parseStyle (FileId 0) "[notes]\nplacement = \"chapter-end\"\n") @?= Right PlaceChapterEnd
+        codes (parseStyle (FileId 0) "[notes]\nchapter-end-title = \"注\"\n") @?= ["G0306"],
       testCase "the size and format of note marks (golem-driver ADR 0025)" $ do
         let notes src = either (const Nothing) (\s -> Just (stNotesMarkSize s, stNotesMarkFormat s)) (parseStyle (FileId 0) src)
             sizeOf v = fst <$> notes ("[notes]\nmark-size = \"" <> v <> "\"\n")
@@ -585,11 +591,11 @@ tests =
         fmap stNotesNumbering (parseStyle (FileId 0) "[notes]\nnumbering = \"book\"\n") @?= Right NumberPerBook
         codes (parseStyle (FileId 0) "[notes]\nnumbering = \"page\"\n") @?= ["G0306"],
       testCase "the rule spec, read apart from its users (golem-driver ADR 0024)" $ do
-        parseRuleSpec (FileId 0) "length = \"30mm\"\nweight = \"0.5pt\"\n" @?= Right (RuleSpec (parseDim "30mm") 32768 Nothing Nothing Nothing RuleSolid)
+        parseRuleSpec (FileId 0) "length = \"30mm\"\nweight = \"0.5pt\"\n" @?= Right (RuleSpec (parseDim "30mm") 32768 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True)
         -- whether length is required is for the user to decide
-        parseRuleSpec (FileId 0) "weight = \"1pt\"\n" @?= Right (RuleSpec Nothing 65536 Nothing Nothing Nothing RuleSolid)
-        parseRuleSpec (FileId 0) "" @?= Right (RuleSpec Nothing 19661 Nothing Nothing Nothing RuleSolid)
-        parseRuleSpec (FileId 0) "space-before = \"0pt\"\nspace-after = \"1zw\"\n" @?= Right (RuleSpec Nothing 19661 (Just (Abs 0)) (Just (Zw 1)) Nothing RuleSolid)
+        parseRuleSpec (FileId 0) "weight = \"1pt\"\n" @?= Right (RuleSpec Nothing 65536 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True)
+        parseRuleSpec (FileId 0) "" @?= Right (RuleSpec Nothing 19661 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True)
+        parseRuleSpec (FileId 0) "space-before = \"0pt\"\nspace-after = \"1zw\"\n" @?= Right (RuleSpec Nothing 19661 (Just (Abs 0)) (Just (Zw 1)) Nothing RuleSolid (Zw 0) Nothing True)
         codes (parseRuleSpec (FileId 0) "weight = \"1zw\"\n") @?= ["G0306"]
         codes (parseRuleSpec (FileId 0) "weight = \"0pt\"\n") @?= ["G0306"]
         codes (parseRuleSpec (FileId 0) "space-before = \"-1pt\"\n") @?= ["G0306"]
@@ -598,13 +604,13 @@ tests =
         let ruleOf = fmap stNotesRule . parseStyle (FileId 0)
         ruleOf "" @?= Right Nothing
         ruleOf "[notes]\nplacement = \"page-foot\"\n" @?= Right Nothing
-        ruleOf "[notes.rule]\nlength = \"10zw\"\n" @?= Right (Just (RuleSpec (Just (Zw 10)) 19661 Nothing Nothing Nothing RuleSolid))
-        ruleOf "[notes.rule]\nlength = \"30mm\"\nweight = \"0.5pt\"\n" @?= Right (Just (RuleSpec (parseDim "30mm") 32768 Nothing Nothing Nothing RuleSolid))
-        ruleOf "[notes.rule]\nlength = \"10zw\"\nspace-before = \"1zw\"\nspace-after = \"0.5zw\"\n" @?= Right (Just (RuleSpec (Just (Zw 10)) 19661 (Just (Zw 1)) (Just (Zw 0.5)) Nothing RuleSolid))
+        ruleOf "[notes.rule]\nlength = \"10zw\"\n" @?= Right (Just (RuleSpec (Just (Zw 10)) 19661 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True))
+        ruleOf "[notes.rule]\nlength = \"30mm\"\nweight = \"0.5pt\"\n" @?= Right (Just (RuleSpec (parseDim "30mm") 32768 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True))
+        ruleOf "[notes.rule]\nlength = \"10zw\"\nspace-before = \"1zw\"\nspace-after = \"0.5zw\"\n" @?= Right (Just (RuleSpec (Just (Zw 10)) 19661 (Just (Zw 1)) (Just (Zw 0.5)) Nothing RuleSolid (Zw 0) Nothing True))
         -- the side not written is 0
-        ruleOf "[notes.rule]\nlength = \"10zw\"\nspace-after = \"5pt\"\n" @?= Right (Just (RuleSpec (Just (Zw 10)) 19661 (Just (Abs 0)) (Just (Abs (5 * 65536))) Nothing RuleSolid))
+        ruleOf "[notes.rule]\nlength = \"10zw\"\nspace-after = \"5pt\"\n" @?= Right (Just (RuleSpec (Just (Zw 10)) 19661 (Just (Abs 0)) (Just (Abs (5 * 65536))) Nothing RuleSolid (Zw 0) Nothing True))
         -- a rule with chapter-end notes is not an error
-        ruleOf "[notes]\nplacement = \"chapter-end\"\n\n[notes.rule]\nlength = \"10zw\"\n" @?= Right (Just (RuleSpec (Just (Zw 10)) 19661 Nothing Nothing Nothing RuleSolid))
+        ruleOf "[notes]\nplacement = \"chapter-end\"\n\n[notes.rule]\nlength = \"10zw\"\n" @?= Right (Just (RuleSpec (Just (Zw 10)) 19661 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True))
         codes (parseStyle (FileId 0) "[notes.rule]\nweight = \"0.3pt\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[notes.rule]\nlength = \"abc\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[notes.rule]\nlength = \"0mm\"\n") @?= ["G0306"]
@@ -650,6 +656,46 @@ tests =
         fmap (fmap rsColor . stNotesRule) (parseStyle (FileId 0) (swatch <> "[notes.rule]\nlength = \"10zw\"\ncolor = \"accent\"\n")) @?= Right (Just (Just "accent"))
         codes (parseStyle (FileId 0) "[notes.rule]\nlength = \"10zw\"\ncolor = \"accent\"\n") @?= ["G0313"]
         codes (parseStyle (FileId 0) "[notes.rule]\nlength = \"10zw\"\nstyle = \"double\"\n") @?= ["G0306"],
+      testCase "paragraph style rules (golem-driver ADR 0027)" $ do
+        let rulesOf n src = fmap (\st -> paraRules st (Just n)) (parseStyle (FileId 0) src)
+            plain w = RuleSpec Nothing w Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True
+        rulesOf "section" "[paragraph-styles.section]\nrule-before = { weight = \"0.5pt\" }\n" @?= Right (Just (plain 32768), Nothing)
+        rulesOf "lead" "[paragraph-styles.lead]\nrule-after = { length = \"10zw\", space-before = \"0.5zw\" }\n"
+          @?= Right (Nothing, Just (plain 19661) {rsLength = Just (Zw 10), rsSpaceBefore = Just (Zw 0.5)})
+        let parent = "[paragraph-styles.section]\nrule-before = { weight = \"0.5pt\", space-before = \"1zw\" }\n\n"
+        fmap fst (rulesOf "sub" (parent <> "[paragraph-styles.sub]\nbased-on = \"section\"\n")) @?= Right (Just (plain 32768) {rsSpaceBefore = Just (Zw 1)})
+        fmap fst (rulesOf "sub" (parent <> "[paragraph-styles.sub]\nbased-on = \"section\"\nrule-before = { weight = \"1pt\" }\n")) @?= Right (Just (plain 65536))
+        fmap fst (rulesOf "sub" (parent <> "[paragraph-styles.sub]\nbased-on = \"section\"\nrule-before = false\n")) @?= Right Nothing
+        forM_
+          [ "[paragraph-styles.a]\nrule-before = true\n",
+            "[paragraph-styles.a]\nrule-before = { weight = \"1zw\" }\n",
+            "[paragraph-styles.a]\nrule-before = { colour = \"x\" }\n",
+            "[paragraph-styles.caption]\nrule-before = { weight = \"1pt\" }\n",
+            "[paragraph-styles.sidenote]\nrule-after = { weight = \"1pt\" }\n",
+            "[paragraph-styles.code]\nrule-before = { weight = \"1pt\" }\n",
+            "[paragraph-styles.a]\nrule-before = { length = \"10zw\", end-indent = \"1zw\" }\n",
+            "[notes.rule]\nlength = \"10zw\"\nkeep-in-column = false\n",
+            "[notes.rule]\nlength = \"10zw\"\nstart-indent = \"1zw\"\n",
+            "[notes.rule]\nlength = \"10zw\"\nend-indent = \"1zw\"\n"
+          ]
+          $ \src -> codes (parseStyle (FileId 0) src) @?= ["G0306"]
+        -- 40 characters a line: 30zw from the start and 10zw from the end leave nothing
+        let grid = "[page]\nsize = \"A5\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 40\nlines = 30\nline-pitch = \"17pt\"\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n"
+        codes (parseStyle (FileId 0) (grid <> "[paragraph-styles.a]\nrule-before = { start-indent = \"30zw\", end-indent = \"10zw\" }\n")) @?= ["G0306"]
+        codes (parseStyle (FileId 0) (grid <> "[paragraph-styles.a]\nrule-before = { start-indent = \"29zw\", end-indent = \"10zw\" }\n")) @?= []
+        rulesOf "a" "[paragraph-styles.a]\nrule-before = { start-indent = \"-2zw\", end-indent = \"-2zw\", keep-in-column = false }\n"
+          @?= Right (Just (plain 19661) {rsStartIndent = Zw (-2), rsEndIndent = Just (Zw (-2)), rsKeepInColumn = False}, Nothing)
+        -- the colour and the style of ADR 0028 on paragraph rules
+        let swatch = "[color.swatches]\naccent = { cmyk = [0, 100, 100, 0] }\n\n"
+        fmap (fmap rsColor . fst) (rulesOf "a" (swatch <> "[paragraph-styles.a]\nrule-before = { color = \"accent\", style = \"dotted\" }\n")) @?= Right (Just (Just "accent"))
+        codes (parseStyle (FileId 0) "[paragraph-styles.a]\nrule-before = { color = \"accent\" }\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[headings.1]\nrule-after = { color = \"accent\" }\n") @?= ["G0313"],
+      testCase "heading rules (golem-driver ADR 0027)" $ do
+        let headingOf src = fmap (Map.lookup 2 . stHeadings) (parseStyle (FileId 0) src)
+        fmap (fmap hsRuleAfter) (headingOf "[headings.2]\nrule-after = { space-before = \"0.25zw\" }\n")
+          @?= Right (Just (Just (RuleSpec Nothing 19661 (Just (Zw 0.25)) Nothing Nothing RuleSolid (Zw 0) Nothing True)))
+        fmap (fmap hsRuleBefore) (headingOf "[headings.2]\nrule-before = false\n") @?= Right (Just Nothing)
+        codes (parseStyle (FileId 0) "[headings.2]\nrule-before = true\n") @?= ["G0306"],
       testCase "[toc] leader (golem-driver ADR 0009)" $ do
         fmap stTocLeader (parseStyle (FileId 0) "[toc]\nleader = \"none\"\n") @?= Right "none"
         fmap stTocLeader (parseStyle (FileId 0) "") @?= Right "dots"
@@ -1035,6 +1081,45 @@ codeStyleTests =
         isCodeCharStyle s "path" @?= True
         isCodeCharStyle s "code" @?= True
         isCodeCharStyle s "strong" @?= False,
+      -- the background and the padding of inline code (golem-driver ADR 0029)
+      testCase "[character-styles.code] background and the default padding 0.25zw" $ do
+        s <- styleOf "[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[character-styles.code]\nbackground = \"code-bg\"\n"
+        (charStyle s "code" >>= csBackground) @?= Just (Just "code-bg")
+        charStyleBackground s "code" @?= Just "code-bg"
+        (charStyle s "code" >>= csPadding) @?= Just (Zw 0.25),
+      testCase "the background of character style code defaults to that of paragraph style code" $ do
+        s <- styleOf "[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.code]\nbackground = \"code-bg\"\n"
+        charStyleBackground s "code" @?= Just "code-bg"
+        s' <- styleOf ""
+        charStyleBackground s' "code" @?= Nothing,
+      testCase "background = false: no background; true is G0306" $ do
+        s <- styleOf "[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.code]\nbackground = \"code-bg\"\n\n[character-styles.code]\nbackground = false\n"
+        charStyleBackground s "code" @?= Nothing
+        codes (parseStyle (FileId 0) "[character-styles.code]\nbackground = true\n") @?= ["G0306"],
+      testCase "a padding without a background is no diagnostic" $ do
+        s <- styleOf "[character-styles.code]\npadding = \"0.5zw\"\n"
+        (charStyle s "code" >>= csPadding) @?= Just (Zw 0.5),
+      testCase "a style based on code inherits background and padding and may override them" $ do
+        s <- styleOf "[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\nother = { cmyk = [0, 0, 0, 20] }\n\n[character-styles.code]\nbackground = \"code-bg\"\n\n[character-styles.path]\nbased-on = \"code\"\n\n[character-styles.file]\nbased-on = \"code\"\nbackground = \"other\"\n"
+        charStyleBackground s "path" @?= Just "code-bg"
+        charStyleBackground s "file" @?= Just "other"
+        (charStyle s "path" >>= csPadding) @?= Just (Zw 0.25),
+      testCase "background and padding on a style that is not code are G0306" $ do
+        codes (parseStyle (FileId 0) "[color.swatches]\nbg = { cmyk = [0, 0, 0, 8] }\n\n[character-styles.term]\nbackground = \"bg\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[character-styles.term]\npadding = \"1zw\"\n") @?= ["G0306"],
+      testCase "a missing background swatch is G0313; a negative or unreadable padding G0306" $ do
+        codes (parseStyle (FileId 0) "[character-styles.code]\nbackground = \"none-such\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[character-styles.code]\npadding = \"-1pt\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[character-styles.code]\npadding = \"abc\"\n") @?= ["G0306"],
+      testCase "@style-def character code background=code-bg" $ do
+        base <- styleOf "[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n"
+        case localStyleDef CharacterKind [("background", LocalWord "code-bg"), ("padding", LocalWord "0.5zw")] of
+          Right (Left d) -> do
+            let ls = noLocalStyles {lsCharStyles = Map.fromList [("code", d)]}
+            [c | (c, _, _) <- checkLocalStyles base ls] @?= []
+            charStyleBackground (withLocalStyles base ls) "code" @?= Just "code-bg"
+            (charStyle (withLocalStyles base ls) "code" >>= csPadding) @?= Just (Zw 0.5)
+          other -> assertFailure (show other),
       -- golem-doc ADR 0005
       testCase "the built-in url has no keys; a user's font overrides only the font" $ do
         s <- styleOf ""
@@ -1154,6 +1239,8 @@ characterFeatureTests =
         [c | (c, _, _) <- checkLocalStyles defaultStyle noLocalStyles {lsCharStyles = Map.fromList [("a", noCharDef {csKerning = Just KernOptical})]}] @?= ["G0321"]
         either (map fst) (const []) (localStyleDef CharacterKind [("tracking", LocalWord "20000")]) @?= ["G0321"]
         either (map fst) (const []) (localStyleDef CharacterKind [("colour", LocalWord "x")]) @?= ["G0306"]
+        -- a rule is a table, which @style-def cannot write (golem-driver ADR 0027)
+        either (map fst) (const []) (localStyleDef ParagraphKind [("rule-before", LocalWord "x")]) @?= ["G0306"]
     ]
 
 -- | Aki amounts and aki sets (docs/adr ADR 0019).

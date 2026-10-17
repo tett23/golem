@@ -131,19 +131,27 @@
   その位置に索引を組みます。
 = [strong: [code: @bibliography]]
   その位置に、引用した文献の一覧を組みます。
+= [strong: [code: @printings]]
+  [code: manifest.toml] の [code: \[\[metadata.printings\]\]] から、発行の履歴を「2026年10月16日　初版第1刷発行」のような段落にして、項目ごとに組みます。
+  引数は取りません。
+  日本語の本でだけ使えます。
 = [strong: [code: @figure 画像 alt="…"]]
   図版を置きます。
   次の行から空白二つで字下げして、キャプションを書きます。
   キーワードの引数は次のとおりです。
   - [code: alt]：代替テキストです。省けません。
-  - [code: web]：PDF の画像を使うときの、HTML と EPUB のための PNG か JPEG の画像です。PDF の画像では省けません。
+  - [code: web]：HTML と EPUB のための PNG、JPEG、SVG の画像です。PDF の画像では省けません。SVG の画像の文字は、輪郭にして書き出します（PDF に文字を描かないためです）。
   - [code: page]：PDF の画像の、置くページです。1 から数えた整数で、省けば 1 です。PDF の画像にだけ書けます。
   - [code: wrap]：[code: start] か [code: end] を書くと、図版を版面の端に寄せ、本文を脇に回り込ませます。PDF だけで効きます。
   - [code: width]：回り込ませる図版の幅です。[code: wrap] を書くときは省けません。
 = [strong: [code: @table src=ファイル]]
-  CSV のファイルから表を作ります。
+  CSV か TSV のファイルから表を作ります。
   一行目が見出しの行になります。
   各行のセルの数をそろえます。
+  キーワードの引数は次のとおりです。
+  - [code: format]：[code: csv] か [code: tsv] です。省くと、拡張子が [code: .tsv] のファイルは TSV、ほかは CSV として読みます。
+  - [code: align]：列の揃えを [code: left]、[code: center]、[code: right]、[code: default] で、左の列から順にカンマで区切って書きます。一つだけ書くと、すべての列に当てます。
+  - [code: cells]：セルの読み方です。今は [code: text] だけを書けます。
 = [strong: [code: @listing ファイル lines=N-M]]
   ファイルの中身をコードブロックとして載せます。
   ファイルは最初の引数に書きます。
@@ -372,8 +380,11 @@ PDF と HTML では、この例の一行めのうち、ルビと圏点を次の�
   [code: pi] と [code: e] は円周率と自然対数の底です。
 = [strong: 本の情報]
   [code: meta.title]、[code: meta.date]、[code: meta.id]、[code: meta.language] と、書いてあれば [code: meta.edition]、[code: meta.publisher]、[code: meta.title_reading] で、[code: manifest.toml] の [code: \[metadata\]] の値を参照します。
-  [code: meta.creators] は関係者の名前の配列です。
-  本文には埋め込めませんが、[code: len(meta.creators)] で人数を数えられます。
+  [code: meta.creators] は主な著作者の名前の配列です。
+  本文には埋め込めませんが、[code: len(meta.creators)] で人数を数えられ、[code: join(meta.creators, "、")] で一つの文字列にできます。
+  [code: meta.roles.editor] のように、役割ごとの名前の配列も参照できます。
+  [code: meta.printing] は今の刷で、[code: meta.printing.edition]（版）、[code: meta.printing.number]（刷）、[code: meta.printing.year] などを持ちます。
+  [code: meta.publisher_person] は発行人です。
   [code: meta] は見出しの中でも使えます。
 = [strong: 本の構成]
   [code: doc.chapters.count] は本の章の数です。
@@ -384,7 +395,7 @@ PDF と HTML では、この例の一行めのうち、ルビと圏点を次の�
   文字列どうしも比べられます。
   丸括弧で計算の順を変えられます。
 = [strong: 関数]
-  [code: round(x, 桁数)]（四捨五入）、[code: fixed(x, 桁数)]（小数点以下の桁をそろえた文字列）、[code: floor]（切り捨て）、[code: ceil]（切り上げ）、[code: abs]（絶対値）、[code: min]、[code: max]、[code: sqrt]（平方根）、[code: len]（文字列の字数か配列の要素の数）、[code: div(a, b)]（整数の割り算）です。
+  [code: round(x, 桁数)]（四捨五入）、[code: fixed(x, 桁数)]（小数点以下の桁をそろえた文字列）、[code: floor]（切り捨て）、[code: ceil]（切り上げ）、[code: abs]（絶対値）、[code: min]、[code: max]、[code: sqrt]（平方根）、[code: len]（文字列の字数か配列の要素の数）、[code: div(a, b)]（整数の割り算）、[code: join(配列, 区切り)]（文字列の配列をつないだ文字列）です。
 
 計算の規則は、どのコンピューターで組んでも同じ結果になるように決めています。
 
@@ -428,7 +439,7 @@ PDF と HTML では、この例も次の段落で実際に組んでいます。
 - 本文の [code: \%%]（[code: \\\%%]）。
 - ルビの親文字と読み、索引の語の中の、区切りでない [code: /]（[code: \\/]）。
 - [code: \\] そのもの（[code: \\\\]）。行末の [code: \\] は強制改行になるので、本文の [code: \\] を行末に置くときも [code: \\\\] と書きます。
-- 行末に残したい半角の空白（[code: \\\ ]）。
+- 行末に残したい半角の空白（[code: \\\ ]）。ただし、[code: verse] の段落の行末では残りません。
 
 [code: %] が一つだけなら、そのまま書けます。
 
