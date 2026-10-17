@@ -12,11 +12,15 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Text.IO qualified as TIO
 import EditingSpec (editingTests)
 import Golem.Driver.Explain (codeDescriptionUrl)
+import Golem.Eval.File (builtinInlineCommands)
 import Golem.Lsp.Features
 import Golem.Lsp.Server (lspSeverity, rewriteInitializeResponse, runGolemLspWithHandles)
 import Golem.Lsp.Workspace
+import Golem.Plugin (watToWasm)
+import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
 import Golem.Syntax
 import Hedgehog hiding (assert)
 import Hedgehog qualified as H
@@ -26,7 +30,8 @@ import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
 import StaleS1Spec (staleS1Tests)
-import System.Directory (copyFile, createDirectoryIfMissing, makeAbsolute)
+import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory, makeAbsolute)
+import System.Environment (setEnv)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
 import System.IO.Temp (withSystemTempDirectory)
@@ -96,6 +101,20 @@ tests =
         assertBool "commands" ("color" `elem` names (offsetIn src "[co" 3))
         names (offsetIn src "[color " 7) @?= ["accent"]
         assertBool "paths" ("common/values.gm" `elem` names (offsetIn src "@import " 8)),
+      -- docs/adr ADR 0031
+      testCase "completion: the commands of the plugins after the built-in ones, with a syntax error too" $
+        withIdentityPlugin $ \tmp -> do
+          ws0 <- openWorkspace tmp
+          ws <- updateFile ws0 "b.gm" "本文。\n\n["
+          let names = map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[")))
+          names @?= builtinInlineCommands <> ["broken"]
+          ws' <- updateFile ws0 "b.gm" "本文。\n\n[b"
+          assertBool "broken" ("broken" `elem` map cmpLabel (completions ws' "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[b")))),
+      testCase "completion: a project without plugins has the built-in names only" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "本文。\n\n["
+        map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n["))) @?= builtinInlineCommands
+        length builtinInlineCommands @?= 18,
       testCase "completion: paragraph and character styles (docs/adr ADR 0005)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@style \n本文。\n\n[style \n"
@@ -511,3 +530,22 @@ session spec = do
 -- | The codes of the diagnostics of a file.
 codesOf :: Workspace -> FilePath -> [Text]
 codesOf ws p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
+
+{- | The LSP fixture with the identity plugin of golem-plugin's tests
+declared, locked and cached (docs/adr ADR 0031).
+-}
+withIdentityPlugin :: (FilePath -> IO a) -> IO a
+withIdentityPlugin k = withSystemTempDirectory "golem-lsp-plugin" $ \tmp -> do
+  let copyDir from to = do
+        createDirectoryIfMissing True to
+        entries <- listDirectory from
+        mapM_ (\e -> doesDirectoryExist (from </> e) >>= \d -> if d then copyDir (from </> e) (to </> e) else copyFile (from </> e) (to </> e)) entries
+  copyDir root tmp
+  BS.appendFile (tmp </> "manifest.toml") "\n[plugins.identity]\nurl = \"https://example.com/identity.wasm\"\n"
+  src <- TIO.readFile "../golem-plugin/test/plugins/identity.wat"
+  wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
+  setEnv "XDG_CACHE_HOME" (tmp </> "cache")
+  cache <- defaultCacheDir
+  r <- lockPlugins (\u -> pure (if u == "https://example.com/identity.wasm" then Right wasm else Left "404")) cache (Map.fromList [("identity", "https://example.com/identity.wasm")])
+  either (assertFailure . show) (TIO.writeFile (tmp </> "plugins.lock") . renderLock) r
+  k tmp

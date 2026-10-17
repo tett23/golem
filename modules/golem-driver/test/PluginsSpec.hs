@@ -11,9 +11,10 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.Plugins (loadPlugins)
 import Golem.Eval.Builtin (BuiltinInline (..), builtinName, unPluginCommandName)
-import Golem.Eval.File (PluginHook (..))
+import Golem.Eval.File (EvalResult (..), PluginHook (..))
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
+import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
 import Golem.Project.Manifest (parseManifest)
 import Golem.Syntax
 import Support
@@ -157,6 +158,38 @@ pluginTests =
       withPlugins [("names", "builtin-names.wat")] (pluginDeclOf "names" "overrides = [\"note\", \"ruby\"]\n") $ \tmp -> do
         r <- build (defaultOptions tmp)
         atManifestTop r >>= (@?= g0608 "上書きできる組み込みのコマンドではありません: names.note"),
+    -- docs/adr ADR 0031
+    testCase "overrides = [\"code\"] loads; overrides = [\"aki\"] is G0608" $ do
+      withPlugins [("cd", "override-code.wat")] (pluginDeclOf "cd" "overrides = [\"code\"]\n") $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        brDiagnostics r @?= []
+      withPlugins [("ak", "override-aki.wat")] (pluginDeclOf "ak" "overrides = [\"aki\"]\n") $ \tmp -> do
+        r <- build (defaultOptions tmp)
+        atManifestTop r >>= (@?= [(DiagnosticCode "G0608", "上書きできる組み込みのコマンドではありません: ak.aki")]),
+    testCase "evPluginCommands: the names of the commands of the plugins" $
+      withPlugins [("identity", "identity.wat")] (pluginDeclOf "identity" "") $ \tmp -> do
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        evPluginCommands e @?= ["broken"],
+    testCase "with a syntax error the plugins are loaded: their names, the hook of evReevaluate and their diagnostics" $ do
+      withPlugins [("identity", "identity.wat")] (pluginDeclOf "identity" "") $ \tmp -> do
+        TIO.appendFile (tmp </> "chapters/01.gm") "\n[broken: x]\n"
+        TIO.appendFile (tmp </> "chapters/02.gm") "\n本文の [b\n"
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        evPluginCommands e @?= ["broken"]
+        case [(fid, sf) | (fid, sf) <- Map.toList (projectSources (evProject e)), sfPath sf == "chapters/01.gm"] of
+          [(fid, sf)] -> do
+            let codes = map diagCode (erDiagnostics (evReevaluate e fid sf))
+            assertBool (show codes) (DiagnosticCode "G0222" `notElem` codes)
+            assertBool (show codes) (not (null codes))
+          other -> assertFailure (show (map fst other))
+      withPlugins [("identity", "identity.wat")] (pluginDeclOf "identity" "") $ \tmp -> do
+        TIO.appendFile (tmp </> "chapters/02.gm") "\n本文の [b\n"
+        BS.writeFile (tmp </> "plugins.lock") ""
+        e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
+        let codes = map diagCode (evDiagnostics e)
+        assertBool (show codes) (DiagnosticCode "G0602" `elem` codes)
+        assertBool (show codes) (any (\(DiagnosticCode c) -> "G01" `T.isPrefixOf` c) codes)
+        evPluginCommands e @?= [],
     testCase "G0610: a filter of an undeclared plugin, or one the plugin does not provide" $ do
       withPluginProject (pluginDeclOf "identity" "" <> filterDecl "ghost" "x") $ \tmp -> do
         r <- build (defaultOptions tmp)

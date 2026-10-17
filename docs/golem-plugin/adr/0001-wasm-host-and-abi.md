@@ -1,6 +1,6 @@
 # ADR 0001: wasm のホストと ABI
 
-ステータス: 採択
+ステータス: 採択→`golem_dealloc` は [docs/adr/0031](../../adr/0031-adr-code-mismatches.md)
 
 ## 文脈
 
