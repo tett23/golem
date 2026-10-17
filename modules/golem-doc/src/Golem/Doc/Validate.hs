@@ -29,6 +29,14 @@ validateDocument fileSize allowed (Document _ bs) = concatMap (blockAt True) bs
         ForcedBreak _ ->
           ["改ページは文書の最上位にだけ置けます" | not top]
             <> ["改ページはラベルを持てません" | Just _ <- [lbl]]
+        -- a page control likewise, with a valid count (docs/adr ADR 0030)
+        PageControl c ->
+          ["改ページの制御は文書の最上位にだけ置けます" | not top]
+            <> ["改ページの制御はラベルを持てません" | Just _ <- [lbl]]
+            <> case c of
+              NeedLines n | n < 1 -> ["@need-lines の行数は 1 以上です"]
+              AdjustLines 0 -> ["@page-lines の増減は 0 でない整数です"]
+              _ -> []
         _ -> bodyErrors body
     inl is = concatMap (inlineErrors fileSize allowed) is <> breakErrors False is
     bodyErrors = \case
@@ -55,6 +63,7 @@ validateDocument fileSize allowed (Document _ bs) = concatMap (blockAt True) bs
       FigureBlock f -> concatMap blockErrors (figCaption f)
       ChannelOutput _ -> []
       ForcedBreak _ -> []
+      PageControl _ -> []
 
 {- | A line break stands only between two inlines at the top of a
 paragraph, never two in a row (docs/adr ADR 0005).
