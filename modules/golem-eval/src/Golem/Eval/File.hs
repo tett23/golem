@@ -822,25 +822,26 @@ csvTable ctx sp args = do
   case src of
     Nothing -> err "G0234" sp "@table には src が必要です" >> pure []
     Just path -> case (format, align) of
-      (Just (Right fmt), Just al) | cells ->
-        asset ctx sp path >>= \case
-          Just (AssetText fid content) ->
-            let (rows, cell) = case fmt of
-                  TableCsv -> (parseCsv fid content, \t -> [Text sp t])
-                  -- an empty cell of a TSV has no inlines, as in a | table
-                  TableTsv -> (parseTsv fid content, \t -> [Text sp t | not (T.null t)])
-             in case rows of
-                  Left d -> report d >> pure []
-                  Right [] -> pure []
-                  Right (h : body) -> case al of
-                    Nothing -> pure [table (map (const AlignDefault) h) cell h body]
-                    Just (_, [a]) -> pure [table (map (const a) h) cell h body]
-                    Just (asp, as)
-                      | length as == length h -> pure [table as cell h body]
-                      | otherwise -> err "G0281" asp ("align の値の数が表の列の数と違います（列は " <> tshow (length h) <> "、align は " <> tshow (length as) <> "）") >> pure []
-          Just (AssetTableUnreadable _ _) -> pure []
-          Just _ -> missing sp path >> pure []
-          Nothing -> pure []
+      (Just (Right fmt), Just al)
+        | cells ->
+            asset ctx sp path >>= \case
+              Just (AssetText fid content) ->
+                let (rows, cell) = case fmt of
+                      TableCsv -> (parseCsv fid content, \t -> [Text sp t])
+                      -- an empty cell of a TSV has no inlines, as in a | table
+                      TableTsv -> (parseTsv fid content, \t -> [Text sp t | not (T.null t)])
+                 in case rows of
+                      Left d -> report d >> pure []
+                      Right [] -> pure []
+                      Right (h : body) -> case al of
+                        Nothing -> pure [table (map (const AlignDefault) h) cell h body]
+                        Just (_, [a]) -> pure [table (map (const a) h) cell h body]
+                        Just (asp, as)
+                          | length as == length h -> pure [table as cell h body]
+                          | otherwise -> err "G0281" asp ("align の値の数が表の列の数と違います（列は " <> tshow (length h) <> "、align は " <> tshow (length as) <> "）") >> pure []
+              Just (AssetTableUnreadable _ _) -> pure []
+              Just _ -> missing sp path >> pure []
+              Nothing -> pure []
       _ -> pure []
   where
     table as cell h body = block sp (Table as (map cell h) (map (map cell) body))

@@ -13,7 +13,6 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import EditingSpec (editingTests)
-import TableWatchSpec (tableWatchTests)
 import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Lsp.Features
 import Golem.Lsp.Server (lspSeverity, rewriteInitializeResponse, runGolemLspWithHandles)
@@ -31,6 +30,7 @@ import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (createPipe)
+import TableWatchSpec (tableWatchTests)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
