@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1300" height="960" viewBox="0 0 1300 960">
   <!-- 原稿から出力までの処理の流れと、各段階を受け持つパッケージ（docs/specifications.md の「処理の流れ」、golem-driver ADR 0001）。
-       scripts/manual/render-figures.sh で manual-dev/images/pipeline.png にする。 -->
+       scripts/manual/outline-figures.sh で、文字を輪郭にした manual-dev/images/pipeline.svg にする。 -->
   <style>
     @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
     @font-face { font-family: "Fig Sans"; font-weight: bold; src: url("../../fonts/NotoSansJP-Bold.otf"); }

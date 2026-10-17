@@ -12,6 +12,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import DrawingSpec qualified
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf
 import Golem.Pdf.Writer (Mark (..))
@@ -1279,6 +1280,7 @@ tests =
       testGroup "Producer (ADR 0005)" producerTests,
       ImageSpec.tests,
       ImportSpec.tests,
+      DrawingSpec.tests,
       testGroup
         "CIDSystemInfo (ADR 0006)"
         [ testCase "the CIDFont carries the ROS of the font" $ do

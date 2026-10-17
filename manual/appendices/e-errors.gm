@@ -263,12 +263,12 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0260 [code: 絶対パスは使えません: …]] など
   [code: @figure]、[code: @table]、[code: @listing] のパスが、絶対パス、URL、プロジェクトの外のどれかを指しています。
   ファイルをプロジェクトの中に置き、そこからの相対パスで書いてください。
-= [strong: G0273 [code: web の代替画像は PNG か JPEG です: …]]
-  [code: web=] に PNG と JPEG のほかの形式の画像を書いています。
-  画面用の画像を PNG か JPEG に書き出し、そのファイルを指してください。
-= [strong: G0274 [code: 図版の形式は PDF、PNG、JPEG です: …]]
-  [code: @figure] の画像の拡張子が [code: .pdf]、[code: .png]、[code: .jpg]、[code: .jpeg] のどれでもありません。
-  図を PDF、PNG、JPEG のどれかに書き出し、そのファイルを指してください。
+= [strong: G0273 [code: web の代替画像は PNG、JPEG、SVG です: …]]
+  [code: web=] に PNG、JPEG、SVG のほかの形式の画像を書いています。
+  画面用の画像を PNG、JPEG、SVG のどれかに書き出し、そのファイルを指してください。
+= [strong: G0274 [code: 図版の形式は PDF、PNG、JPEG、SVG です: …]]
+  [code: @figure] の画像の拡張子が [code: .pdf]、[code: .png]、[code: .jpg]、[code: .jpeg]、[code: .svg] のどれでもありません。
+  図を PDF、PNG、JPEG、SVG のどれかに書き出し、そのファイルを指してください。
 = [strong: G0275 [code: page は PDF の図版のページを 1 から数えた整数で書きます: …]]
   [code: page=] の値が 1 以上の整数でないか、PDF でない画像に [code: page] を書いています。
   PDF の画像なら [code: page=3] のように書き、PNG と JPEG の画像からは [code: page] を消してください。
@@ -533,6 +533,11 @@ PDF を組むときに出るエラーです。
   PNG や JPEG のファイルが壊れている、インターレースの PNG である、拡張子と中身が違う、といった場合と、PDF の画像が暗号化されている、フォントを埋め込んでいない、特色やレイヤーを含む、[code: page] のページがない、といった場合です。
   メッセージの括弧の中の理由を見て、画像を書き出し直してください。
   PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
+= [strong: G0811 [code: SVG の図版に扱えないものがあります: …]]
+  SVG の図版に、PDF に描けないものがあります。
+  メッセージには、最初に見つかったものの名前と、SVG のファイルの中の行と桁が出ます。
+  [code: 文字は輪郭にして書き出してください] と出たら、図の作成ツールで文字を輪郭（アウトライン）にして書き出し直してください。
+  グラデーション、透明、[code: use] などは、使わずに書き出すか、PDF で書き出して PDF の画像として置いてください。
 = [strong: G0813 [code: 出力先がシンボリックリンクかディレクトリではないので、消すことも書くこともしません: …]]
   [code: build] か、その下の [code: html] などのディレクトリが、シンボリックリンクになっています。
   Golem は出力の前にこれらのディレクトリを消すので、リンクの先のファイルを消さないように止めます。
