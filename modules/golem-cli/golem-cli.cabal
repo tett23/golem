@@ -54,7 +54,10 @@ test-suite golem-cli-test
     , containers
     , directory
     , filepath
+    , golem-doc
     , golem-driver
+    , golem-eval
+    , golem-project
     , golem-syntax
     , process
     , tasty          >=1.4 && <1.6
