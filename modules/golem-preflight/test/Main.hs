@@ -195,6 +195,24 @@ checkTests =
       only "G0908" (check printRules (imagePage [vector [UseCmyk, UseIcc 4 "intent"]])) @?= []
       map diagMessage (only "G0908" (check printRules (imagePage [vector [UseRgb, UseLab, UseIcc 3 "srgb"]])))
         @?= ["この設定では使えない色空間の図版です: images/figure.pdf（rgb、lab）。Golem は画像の色を変換しないので、CMYK に変換した画像に替えます"],
+    testGroup
+      "G0908 names each colour space of a PDF figure; an ICC profile by its components (golem-pdf ADR 0008)"
+      [ testCase (show use <> " is " <> T.unpack name) $
+          map (lookup "color-space" . diagFacts) (only "G0908" (check printRules {ruColorSpacesAllowed = []} (imagePage [vector [use]])))
+            @?= [Just (FactText name)]
+      | (use, name) <-
+          [ (UseGray, "gray"),
+            (UseRgb, "rgb"),
+            (UseCmyk, "cmyk"),
+            (UseIcc 1 "p", "gray"),
+            (UseIcc 3 "p", "rgb"),
+            (UseIcc 4 "p", "cmyk"),
+            (UseIcc 2 "p", "icc"),
+            (UseLab, "lab")
+          ]
+      ],
+    testCase "G0908: a gray ICC profile is allowed where gray is" $
+      only "G0908" (check printRules (imagePage [vector [UseIcc 1 "p", UseCmyk]])) @?= [],
     testCase "an SVG figure is rgb for G0908 and not checked by G0906, G0907 and G0909 (golem-pdf ADR 0009)" $ do
       let iv = ImageView (Rect (mm 20) (mm 20) (inch 100) (inch 100)) (SvgFigure (Drawing (10, 10) [])) srcSpan "images/a.svg"
           r = printRules {ruImageResolutionMax = LevelWarning, ruColorMax = 1}
