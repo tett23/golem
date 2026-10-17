@@ -13,6 +13,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import RenderSpec qualified
+import ShowTreeSpec qualified
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
@@ -176,7 +177,8 @@ tests =
         renderHuman files [diagnostic "G0201" Error (mkSpan (FileId 0) 5 6) "msg"]
           @?= "x.gm:2:2: error[G0201]: msg\n  | def\n",
       noticeTests,
-      RenderSpec.tests
+      RenderSpec.tests,
+      ShowTreeSpec.tests
     ]
 
 -- | The notices (golem-syntax ADR 0002).
