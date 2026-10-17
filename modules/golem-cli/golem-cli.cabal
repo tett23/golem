@@ -39,6 +39,7 @@ test-suite golem-cli-test
   main-is:          Main.hs
   other-modules:    CommandsSpec
                     LocaleSpec
+                    RtsSpec
   ghc-options: -threaded -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
   default-extensions: DerivingStrategies LambdaCase OverloadedStrings
   build-tool-depends: golem-cli:golem
