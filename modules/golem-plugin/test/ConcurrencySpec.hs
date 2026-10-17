@@ -4,12 +4,13 @@ A plugin is compiled once and every call gets a fresh instance with its
 own fuel and memory (ADR 0001), so calls on several capabilities must
 not see each other: each answers for its own input, and running out of
 fuel in one call does not affect the others. The calls are pinned to
-eight capabilities (the suite is built with -threaded); every call has
-its own input, so that no two calls can be shared as one thunk.
+every capability (the suite is built with -threaded and -N, one
+capability per processor); every call has its own input, so that no two
+calls can be shared as one thunk.
 -}
 module ConcurrencySpec (concurrencyTests) where
 
-import Control.Concurrent (forkOn, getNumCapabilities, setNumCapabilities)
+import Control.Concurrent (forkOn)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, readMVar, takeMVar)
 import Control.Exception (SomeException, evaluate, try)
 import Data.ByteString (ByteString)
@@ -21,9 +22,6 @@ import Golem.Plugin
 import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit
-
-capabilities :: Int
-capabilities = 8
 
 {- | Runs the actions at once, the i-th pinned to capability i (mod the
 count), and returns their fully evaluated results in the order given.
@@ -41,16 +39,6 @@ inParallel acts = do
       v <- newEmptyMVar
       _ <- forkOn i (readMVar gate >> try (act >>= \x -> evaluate (length (show x)) >> pure x) >>= putMVar v . either (\e -> Left (show (e :: SomeException))) Right)
       pure v
-
-{- | Runs with at least n capabilities. The count is only raised, never
-restored: tasty may run other tests at the same time, and lowering it
-under them would take their capabilities away.
--}
-withCapabilities :: Int -> IO a -> IO a
-withCapabilities n act = do
-  current <- getNumCapabilities
-  setNumCapabilities (max n current)
-  act
 
 loadWat :: FilePath -> IO Plugin
 loadWat name = do
@@ -72,10 +60,10 @@ concurrencyTests :: TestTree
 concurrencyTests =
   testGroup
     "one plugin from many threads (Medium)"
-    [ testCase "64 filter calls on eight capabilities each return their own document" $ do
+    [ testCase "64 filter calls on every capability each return their own document" $ do
         p <- loadWat "identity.wat"
         let docs = map numbered [1 .. 64]
-        results <- withCapabilities capabilities (inParallel [pure (fst <$> applyFilter p "same" d) | d <- docs])
+        results <- inParallel [pure (fst <$> applyFilter p "same" d) | d <- docs]
         results @?= map (Right . Right) docs,
       testCase "calls that run out of fuel beside calls that finish do not change either" $ do
         identity <- loadWat "identity.wat"
@@ -84,6 +72,6 @@ concurrencyTests =
             run = \case
               Left i -> Left (outOfFuel (invokeRaw loop (TE.encodeUtf8 (T.pack (show i)))))
               Right i -> Right (fst <$> applyFilter identity "same" (numbered i))
-        results <- withCapabilities capabilities (inParallel [pure (run c) | c <- calls])
+        results <- inParallel [pure (run c) | c <- calls]
         results @?= concat [[Right (Left True), Right (Right (Right (numbered i)))] | i <- [1 .. 16]]
     ]

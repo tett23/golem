@@ -116,7 +116,9 @@ test-suite golem-driver-parallel-test
   other-modules:
     ParallelSpec
     Support
-  ghc-options:      -threaded
+  -- -N: one capability per processor from the start, so that the count
+  -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
+  ghc-options:      -threaded "-with-rtsopts=-N"
   build-depends:
     , base
     , bytestring
