@@ -213,6 +213,7 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 - [code: line-breaks]：[code: "keep"] にすると、段落の中の改行を行の区切りにします。
 - [code: regex-styles]：正規表現スタイルです（「[ref-title regex-styles]」、[ref-page regex-styles] ページ）。
 - [code: aki-set]：アキ量のセットです（「[ref-title aki-sets]」、[ref-page aki-sets] ページ）。
+- [code: rule-before]、[code: rule-after]：段落の前と後に引く罫線です。次の段落で説明します。
 - 文字の送りの四つのキーも書けます。
 - [code: based-on]：引き継ぐ段落スタイルです。省くと [code: body] を引き継ぎます。
 
@@ -224,6 +225,27 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 本文の字下げやアキ量のセットがコードに及ばないようにするためです。
 背景か枠のあるコードブロックの直後の行に、背景に届くルビか圏点があれば、そのあいだに空きの行を一行入れて、読みと圏点が網に重ならないようにします。
 原稿で [code: @style code] とは書けず、コードは [code: ```] か [code: @listing] で書きます（「[ref-title code-blocks]」、[ref-page code-blocks] ページ）。
+
+[code: rule-before] と [code: rule-after] には、脚注の区切り線と同じ形の表を書きます（「[ref-title notes-style]」、[ref-page notes-style] ページ）。
+InDesign の段落境界線に当たり、節の区切りの罫線に使います。
+
+```toml
+[paragraph-styles.section.rule-before]
+weight = "0.5pt"
+space-before = "1zw"
+space-after = "0.5zw"
+```
+
+[code: length] を省くと、罫線は一段の行の長さいっぱいに引かれます。
+[code: start-indent] と [code: end-indent] で、段の行の始まりと終わりから罫線の端までの距離を変えられます。
+負の値にすると、罫線は段の外の余白に出ます。
+罫線と段落のあいだ（前の罫線の [code: space-after]、後の罫線の [code: space-before]）は書いたとおりに空き、罫線の外側の空きは行の格子に合わせて広がります。
+本文の行が格子からずれないようにするためです。
+罫線を持つ段落は、罫線とともに一つの段に置き、ページの境で分けません。
+ページの頭の罫線は段の中に収まりますが、[code: keep-in-column = false] と書くと天の余白に出ます。
+[code: false] を書くと、引き継いだ罫線を引きません。
+見出しの [code: \[headings.階層\]] にも同じ二つのキーを書けます（付録C）。
+HTML と EPUB では、段落の前後の線として出ます。
 
 InDesign の段落スタイルとの違いは、次のとおりです。
 

@@ -10,6 +10,7 @@ import FigureSpec
 import LocaleSpec
 import MemoSpec
 import PageElementsSpec
+import ParagraphRuleSpec
 import ParagraphSpec
 import PdfSpec
 import PluginsSpec
@@ -17,6 +18,7 @@ import ReferencesSpec
 import RuleShapeSpec
 import SecuritySpec
 import StylesSpec
+import TableFilesSpec
 import Test.Tasty
 
 main :: IO ()
@@ -41,6 +43,7 @@ tests =
         memoTests,
         producerTests,
         securityTests,
+        tableFileTests,
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
@@ -58,6 +61,7 @@ tests =
              testGroup "PDF wrapped figures (ADR 0005)" wrapTests,
              testGroup "PDF captions (ADR 0010)" captionTests,
              testGroup "PDF figures (golem-pdf ADR 0008)" pdfFigureTests,
+             testGroup "SVG figures (golem-pdf ADR 0009)" svgFigureTests,
              testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
              testGroup "PDF index and bibliography (ADR 0007)" indexTests,
              testGroup "bibliography entries and G0326 (golem-doc ADR 0004)" bibliographyFormatTests,
@@ -83,6 +87,7 @@ tests =
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
              testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
+             testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
              localeTests,
              publicDomainTests,
              diagnosticSiteTests

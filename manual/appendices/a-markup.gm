@@ -140,14 +140,18 @@
   次の行から空白二つで字下げして、キャプションを書きます。
   キーワードの引数は次のとおりです。
   - [code: alt]：代替テキストです。省けません。
-  - [code: web]：PDF の画像を使うときの、HTML と EPUB のための PNG か JPEG の画像です。PDF の画像では省けません。
+  - [code: web]：HTML と EPUB のための PNG、JPEG、SVG の画像です。PDF の画像では省けません。SVG の画像の文字は、輪郭にして書き出します（PDF に文字を描かないためです）。
   - [code: page]：PDF の画像の、置くページです。1 から数えた整数で、省けば 1 です。PDF の画像にだけ書けます。
   - [code: wrap]：[code: start] か [code: end] を書くと、図版を版面の端に寄せ、本文を脇に回り込ませます。PDF だけで効きます。
   - [code: width]：回り込ませる図版の幅です。[code: wrap] を書くときは省けません。
 = [strong: [code: @table src=ファイル]]
-  CSV のファイルから表を作ります。
+  CSV か TSV のファイルから表を作ります。
   一行目が見出しの行になります。
   各行のセルの数をそろえます。
+  キーワードの引数は次のとおりです。
+  - [code: format]：[code: csv] か [code: tsv] です。省くと、拡張子が [code: .tsv] のファイルは TSV、ほかは CSV として読みます。
+  - [code: align]：列の揃えを [code: left]、[code: center]、[code: right]、[code: default] で、左の列から順にカンマで区切って書きます。一つだけ書くと、すべての列に当てます。
+  - [code: cells]：セルの読み方です。今は [code: text] だけを書けます。
 = [strong: [code: @listing ファイル lines=N-M]]
   ファイルの中身をコードブロックとして載せます。
   ファイルは最初の引数に書きます。

@@ -124,7 +124,7 @@ CI のキャッシュの鍵を [code: plugins.lock] のハッシュにすれば�
 入力は次のものに限る。
 
 - [code: manifest.toml]、[code: style.toml]、[code: plugins.lock]
-- マニフェストから到達できる原稿のファイル、import されるファイル、図版、CSV、書誌データ、取り込むコードのファイル
+- マニフェストから到達できる原稿のファイル、import されるファイル、図版、CSV と TSV、書誌データ、取り込むコードのファイル
 - [code: style.toml] が指すフォントと ICC プロファイル
 - [code: plugins.lock] のハッシュで固定したプラグインの配布物
 - Golem 自身のバージョンと、Golem に同梱してバージョンを固定したネイティブライブラリ

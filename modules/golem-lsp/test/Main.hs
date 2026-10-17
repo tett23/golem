@@ -25,11 +25,13 @@ import Hedgehog.Range qualified as Range
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
+import StaleS1Spec (staleS1Tests)
 import System.Directory (copyFile, createDirectoryIfMissing, makeAbsolute)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (createPipe)
+import TableWatchSpec (tableWatchTests)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
@@ -380,7 +382,9 @@ tests =
                 uncurry (@?=) (srClampHover r16)
                 uncurry (@?=) (srClampHover r8)
             ],
-      editingTests
+      editingTests,
+      tableWatchTests,
+      staleS1Tests
     ]
 
 data SessionSpec = SessionSpec

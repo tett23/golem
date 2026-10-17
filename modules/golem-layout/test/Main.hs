@@ -34,6 +34,7 @@ import KnuthPlassReference
 import LineBreakingSpec (lineBreakingTests)
 import PaginateSpec (paginateTests)
 import PunctuationSpec (punctuationTests)
+import RuleAreaSpec (ruleAreaTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
@@ -302,6 +303,7 @@ tests =
       testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
       testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
       testGroup "boundaries and invariants" [paginateTests, punctuationTests, lineBreakingTests],
+      testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,

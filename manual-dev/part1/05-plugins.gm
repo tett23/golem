@@ -271,3 +271,4 @@ golem-plugin のテストは、テスト用のプラグインを wat（wasm の�
 CBOR の配列の頭のバイト（[code: 0x82] は要素が二つの配列、[code: 0x80] は空の配列）を手で書けば、この程度のプラグインは解析器なしで作れる。
 実際のプラグインは、使う言語の CBOR のライブラリで要求を読み、応答を組み立てることになる。
 受け取る IR の中身は [code: golem inspect FILE --as ir] で確かめられる。
+プラグインに渡る CBOR のバイト列そのものは、[code: golem inspect FILE --as cbor] で取り出せる。

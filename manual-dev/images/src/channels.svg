@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1010" viewBox="0 0 1300 1010">
   <!-- 四つのチャネルが、原稿の印から出力の一覧になるまで（docs/specifications.md の「チャネル」、golem-eval ADR 0002、golem-doc ADR 0001、0002）。
-       scripts/manual/render-figures.sh で manual-dev/images/channels.png にする。 -->
+       scripts/manual/outline-figures.sh で、文字を輪郭にした manual-dev/images/channels.svg にする。 -->
   <style>
     @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
     @font-face { font-family: "Fig Sans"; font-weight: bold; src: url("../../fonts/NotoSansJP-Bold.otf"); }

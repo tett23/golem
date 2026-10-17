@@ -29,6 +29,7 @@ library
                     Golem.Layout.Orientation
                     Golem.Layout.Paginate
                     Golem.Layout.Ruby
+                    Golem.Layout.RuleArea
                     Golem.Layout.Sidenotes
                     Golem.Layout.Table
                     Golem.Layout.Wrap
@@ -53,6 +54,7 @@ test-suite golem-layout-test
                     LineBreakingSpec
                     PaginateSpec
                     PunctuationSpec
+                    RuleAreaSpec
   build-depends:
     , base
     , containers

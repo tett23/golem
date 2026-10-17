@@ -1,3 +1,5 @@
+{-# LANGUAGE MultiWayIf #-}
+
 {- | The PDF pipeline (golem-driver ADR 0002): page geometry, fonts,
 composition and line breaking per paragraph (optionally in parallel),
 pagination with page references resolved to a fixed point (S2), font
@@ -81,6 +83,7 @@ import Data.Either (fromRight, isLeft)
 import Data.Foldable (toList)
 import Data.Function (on)
 import Data.List (groupBy, intercalate, mapAccumL, nub, nubBy, sortOn, zip3, zip4)
+import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
@@ -98,6 +101,7 @@ import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals (circled, formatNumber)
 import Golem.Driver.Overhang (kentenAcross, lineOverhang, reachesBackground, rubyAcross)
 import Golem.Driver.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
+import Golem.Driver.Svg (svgDrawing, unsupportedMessage)
 import Golem.Driver.Version (golemVersion)
 import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
@@ -110,6 +114,7 @@ import Golem.Layout.Look qualified as L
 import Golem.Layout.Paginate
 import Golem.Layout.Ruby (RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.Layout.Ruby qualified as R
+import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Layout.Sidenotes (SidenoteError (..), placeSidenotes)
 import Golem.Layout.Table (SetCell (..), SetTable (..), TableError (..), layoutTable)
 import Golem.Layout.Wrap (Exclusion (..), exclusion, wrappedLineWidth)
@@ -120,6 +125,7 @@ import Golem.Preflight.View qualified as V
 import Golem.Project
 import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
+import Golem.Svg qualified as S
 import Golem.Syntax
 import Numeric (showHex)
 import System.FilePath (takeBaseName)
@@ -732,7 +738,9 @@ data PdfLayout = PdfLayout
     -- | the notices of the layout (G0730)
     plNotices :: ![Diagnostic],
     -- | the block of the unit of each first line (golem-cli ADR 0006)
-    plLineSpans :: !(Map Int SrcSpan)
+    plLineSpans :: !(Map Int SrcSpan),
+    -- | the rules of each ruled block by its first line (golem-driver ADR 0027)
+    plRules :: !(Map Int RuledInfo)
   }
 
 data Built = Built
@@ -756,7 +764,9 @@ data Built = Built
     -- | notices (G0730)
     bNotices :: [Diagnostic],
     -- | the block of each unit by the id of its first line (golem-cli ADR 0006)
-    bLineSpans :: Map Int SrcSpan
+    bLineSpans :: Map Int SrcSpan,
+    -- | the rules of each ruled block by its first line (golem-driver ADR 0027)
+    bRules :: Map Int RuledInfo
   }
 
 {- | What style.toml alone decides before the layout (golem-driver ADR
@@ -945,8 +955,28 @@ layoutFigures inp geom fonts figures = do
           env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyLook (piStyle inp) (pgFontSize geom))
           tocPages = Map.fromList [(lid, tocPage tg e (pageNumberLine env n)) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
        in case concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built) (bLineSpans built))
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages) (bLineSpans built) (bRules built))
             ds -> Left ds
+
+{- | G0746 (golem-driver ADR 0027): a ruled paragraph broken between
+columns, or a ruled heading that lost a rule, because an empty column
+could not hold its block.
+-}
+ruledNotices :: [Flow] -> Map Int RuledInfo -> [PageOut] -> [Diagnostic]
+ruledNotices flow infos pages =
+  [ if riHeading info
+      then notice "G0746" (riSpan info) ("罫線を持つ見出しが版面に入らないため、罫線を省きました（" <> riOwner info <> "）")
+      else notice "G0746" (riSpan info) ("罫線を持つ段落が版面に入らないため、分けて組みました（" <> riOwner info <> "）")
+  | f@FRuled {} <- flow,
+    let ids = case frBody f of
+          RuledLines ls -> map lbId ls
+          RuledHeading {} -> []
+        columns = length [() | p <- pages, any (\case (_, SLine l) -> l `elem` ids; _ -> False) (poSlots p)]
+        placed b = any (any (\r -> prId r == frId f && prBefore r == b) . poRules) pages
+        lost = (isJust (frBefore f) && not (placed True)) || (isJust (frAfter f) && not (placed False)),
+    columns > 1 || lost,
+    Just info <- [Map.lookup (frId f) infos]
+  ]
 
 {- | The page of each heading (golem-driver ADR 0009): the page where the
 first line of its block is placed, keyed by the span of the block.
@@ -1505,7 +1535,9 @@ data Unit = Unit
     -- | the marker of the first paragraph of a list item
     uMarker :: Maybe [Inline],
     -- | the paragraph style of a paragraph, whose aki set it is set with; Nothing is body (docs/adr ADR 0019)
-    uParaStyle :: Maybe Text
+    uParaStyle :: Maybe Text,
+    -- | the rules before and after a paragraph or a heading (golem-driver ADR 0027)
+    uRules :: (Maybe RuleSpec, Maybe RuleSpec)
   }
 
 -- | The indent of the lines of a paragraph in sp (docs/adr ADR 0006). inFirst may be negative; inStart + inFirst >= 0.
@@ -1619,8 +1651,8 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       [] -> []
       ns@((sp, _, _) : _) ->
         let title = notesTitle lang
-         in Unit (UNotesTitle title) Nothing [Text sp0 title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing
-              : [Unit (UPara noIndent) Nothing (withNoteMark (stNotesMarkFormat style) n xs) nsp (bodyLook style fs) style [] Nothing Nothing | (nsp, n, xs) <- ns]
+         in Unit (UNotesTitle title) Nothing [Text sp0 title] sp (uncurry (styleLook style Nothing) (headingFace lang style geom 2)) style [] Nothing Nothing (Nothing, Nothing)
+              : [Unit (UPara noIndent) Nothing (withNoteMark (stNotesMarkFormat style) n xs) nsp (bodyLook style fs) style [] Nothing Nothing (Nothing, Nothing) | (nsp, n, xs) <- ns]
     {- a list of blocks inside the lists @ctx@, from the list number @n@:
     paragraphs of the same style in a row are apart by its space-between
     (docs/adr ADR 0005); in a list item, paragraphs are not indented by
@@ -1629,10 +1661,10 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
       let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx prev b <>) <$> block style ctx k b) n (zip (Nothing : map Just bs) bs)
        in (n', concat uss)
     gapBefore style ctx (Just (Block _ _ (Paragraph s1 _))) (Block sp _ (Paragraph s2 _))
-      | s1 == s2, Just g <- paraStyle style s2 >>= psSpaceBetween, g > 0 = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing]
+      | s1 == s2, Just g <- paraStyle style s2 >>= psSpaceBetween, g > 0 = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing)]
     gapBefore _ _ _ _ = []
     block style ctx n (Block sp lbl body) =
-      let unit kind l is face = Unit kind l is sp face style ctx Nothing Nothing
+      let unit kind l is face = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing)
           plainUnit kind l is = unit kind l is (bodyLook style fs)
        in case body of
             -- a style that keeps its lines: a unit for each line, each indented as a
@@ -1643,12 +1675,16 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
               let (face, ind) = paraLook style geom st
                   keeps = (paraStyle style st >>= psLineBreaks) == Just KeepLines
                   parts = if keeps then splitBreaks is else [is]
-               in (n, [(unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face) {uParaStyle = st} | (i, part) <- zip [0 :: Int ..] parts])
+                  -- a paragraph in a list has no rules (golem-driver ADR 0027)
+                  (rb, ra) = if null ctx then paraRules style st else (Nothing, Nothing)
+                  rulesOf i = (if i == 0 then rb else Nothing, if i == length parts - 1 then ra else Nothing)
+               in (n, [(unit (UPara (if null ctx then ind else noIndent)) (if i == 0 then lbl else Nothing) part face) {uParaStyle = st, uRules = rulesOf i} | (i, part) <- zip [0 :: Int ..] parts])
             Heading l attrs is ->
               let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
                   title = numberedTitle lang sp0 (if haNoNumber attrs then Nothing else num) is
                   recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
-               in (n, [unit (UHeading l (T.concat (map inlineText is)) recto) lbl title (uncurry (styleLook style Nothing) (headingFace lang style geom l))])
+                  rules = maybe (Nothing, Nothing) (\h -> (hsRuleBefore h, hsRuleAfter h)) (Map.lookup l (stHeadings style))
+               in (n, [(unit (UHeading l (T.concat (map inlineText is)) recto) lbl title (uncurry (styleLook style Nothing) (headingFace lang style geom l))) {uRules = rules}])
             BulletList items -> list style ctx n (map (Nothing,) items)
             OrderedList items -> list style ctx n (zip (map Just (itemNumbers items)) items)
             DefList gs ->
@@ -1871,7 +1907,8 @@ buildFlow inp geom fonts images assumed = do
         where
           go j offset
             | offset >= exLines ex = pure []
-            | Just u@Unit {uKind = UPara _} <- Map.lookup j unitAt = do
+            -- a paragraph with rules is not set beside a figure (golem-driver ADR 0027)
+            | Just u@Unit {uKind = UPara _, uRules = (Nothing, Nothing)} <- Map.lookup j unitAt = do
                 c <- force (compose (\k -> wrappedLineWidth measure ex offset k - lineIndent (uKind u) k) u)
                 ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c))
             | otherwise = pure []
@@ -1941,6 +1978,15 @@ buildFlow inp geom fonts images assumed = do
             set = Map.fromList [(lid, SetLine l size (indentOf k) (Map.findWithDefault [] k noteLines) (Map.findWithDefault [] k sidenoteLinesOf)) | (k, (lid, l)) <- zip [0 ..] (zip ids ls)]
          in (boxes, set)
       emptyLine = Line [] 0 0 0 (0, 0) False (0, 0)
+      {- a rule of a paragraph or heading for pagination (golem-driver ADR
+      0027): the spaces at the size of the grid, the inner space next to the
+      paragraph, and the room out of the column when it may go out -}
+      ruleSide before spec =
+        let sp = maybe 0 (dimToSp fs)
+            (inner, outer)
+              | before = (sp (rsSpaceAfter spec), sp (rsSpaceBefore spec))
+              | otherwise = (sp (rsSpaceBefore spec), sp (rsSpaceAfter spec))
+         in RuleSide inner outer (rsWeight spec) (isJust (rsSpaceBefore spec) || isJust (rsSpaceAfter spec)) (if rsKeepInColumn spec then Nothing else Just (marginAcross geom before))
       -- how far the ruby and kenten of a line reach toward the line before (golem-driver ADR 0033)
       overhangOf = lineOverhang vertical fs (emBoxCentralOf fonts)
       {- a grid line of space after a code block with a background, a band or
@@ -1958,6 +2004,8 @@ buildFlow inp geom fonts images assumed = do
             next : _ | Just l <- firstLineOf next -> reachesBackground pitch fs (maybe 0 snd (ciBorder ci)) (lbOverhang l)
             _ -> False
           firstLineOf = \case
+            FRuled {frBody = RuledLines (l : _)} -> Just l
+            FRuled {frBody = RuledHeading _ _ (l : _)} -> Just l
             FParagraph (l : _) -> Just l
             FHeading {fhLines = l : _} -> Just l
             FDefTerm (l : _) -> Just l
@@ -1992,6 +2040,7 @@ buildFlow inp geom fonts images assumed = do
                     after a heading, one between two tables (golem-driver ADR 0031) -}
                     spaceBefore = case reverse flows of
                       (FHeading {} : _) -> 0
+                      (FRuled {frBody = RuledHeading {}} : _) -> 0
                       (FSpace _ : FTable {} : _) -> 0
                       _ -> 1
                  in ( nextId + sum heights,
@@ -2070,7 +2119,10 @@ buildFlow inp geom fonts images assumed = do
                     UNotesTitle _ -> headingLines (bookLanguage inp) (uStyle u) capacity 2
                     _ -> 1
                   hb = headingBlock fs pitch size (length ls) least
+                  ruledOf = FRuled nextId (ruleSide True <$> fst (uRules u)) (ruleSide False <$> snd (uRules u)) False (RuleGrid pitch fs) 0
                   flowOf = case uKind u of
+                    UHeading _ _ recto | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledHeading recto (hbSpan hb) boxes)]
+                    UPara _ | uRules u /= (Nothing, Nothing) -> [ruledOf (RuledLines boxes)]
                     UHeading l _ recto -> [FHeading l recto (hbSpan hb) boxes]
                     UNotesTitle _ -> [FHeading 2 False (hbSpan hb) boxes]
                     UTerm _ -> [FDefTerm boxes]
@@ -2126,7 +2178,66 @@ buildFlow inp geom fonts images assumed = do
       -- the code blocks of the flow are those of the units, in order
       codeInfos = Map.fromList [(lbId b, (cbInfo cb) {ciFirst = lbId b0}) | (bs@(b0 : _), cb) <- zip [fcRows f | f@FCode {} <- flow] (Map.elems codeBlocks), b <- bs]
       codeNotices = concatMap cbNotices (Map.elems codeBlocks)
-  pure (Built (spaceAfterCode (map cbInfo (Map.elems codeBlocks)) flow) lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines lineFiles codeInfos codeNotices lineSpans)
+      flow' = ruledLinks (spaceAfterCode (map cbInfo (Map.elems codeBlocks)) flow)
+      -- the rules of each ruled block by its first line, from the unit of its block (golem-driver ADR 0027)
+      rulesBySpan = Map.fromList [(uSpan u, ruledInfoOf u) | (_, u) <- units, uRules u /= (Nothing, Nothing)]
+      ruledInfos = Map.fromList [(frId f, info) | f@FRuled {} <- flow', Just sp <- [Map.lookup (frId f) lineSpans], Just info <- [Map.lookup sp rulesBySpan]]
+      ruledInfoOf u = case uKind u of
+        UHeading l _ _ -> uncurry (RuledInfo "見出しの罫線" ("見出し " <> T.pack (show l)) True (lkSize (uLook u))) (uRules u) (uSpan u)
+        _ -> uncurry (RuledInfo "段落の罫線" ("段落スタイル " <> fromMaybe "body" (uParaStyle u)) False (lkSize (uLook u))) (uRules u) (uSpan u)
+  pure (Built flow' lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines lineFiles codeInfos codeNotices lineSpans ruledInfos)
+
+{- | The links between ruled blocks (golem-driver ADR 0027): a block whose
+rule before follows right after a block with a rule after shares its
+area; each block knows the overhang of the first line after it.
+-}
+ruledLinks :: [Flow] -> [Flow]
+ruledLinks = go Nothing
+  where
+    go prev = \case
+      f@FRuled {} : rest ->
+        let joined = case prev of
+              Just FRuled {frAfter = Just _} -> isJust (frBefore f)
+              _ -> False
+            f' = f {frJoined = joined, frNextOverhang = maybe 0 lbOverhang (listToMaybe rest >>= firstLine)}
+         in f' : go (Just f') rest
+      f : rest -> f : go (Just f) rest
+      [] -> []
+    firstLine = \case
+      FRuled {frBody = RuledLines (l : _)} -> Just l
+      FRuled {frBody = RuledHeading _ _ (l : _)} -> Just l
+      FParagraph (l : _) -> Just l
+      FContinued (l : _) -> Just l
+      FHeading {fhLines = l : _} -> Just l
+      FDefTerm (l : _) -> Just l
+      _ -> Nothing
+
+{- | The room out of the type area across the lines on the side of a rule
+(golem-driver ADR 0027): before the lines (the head, the right in
+vertical text) or after them; the narrower of odd and even pages.
+-}
+marginAcross :: PageGeometry -> Bool -> Sp
+marginAcross geom before =
+  let (pw, ph) = pgPageSize geom
+      side (Rect x y w h)
+        | pgVertical geom = if before then pw - x - w else x
+        | otherwise = if before then ph - y - h else y
+   in min (side (pgTypeArea geom)) (side (pgTypeAreaEven geom))
+
+{- | The rules of a ruled block (golem-driver ADR 0027): the kind for golem
+preflight, whose rules they are for G0746, whether it is a heading, the
+size zw is resolved by, the rules and the block.
+-}
+data RuledInfo = RuledInfo
+  { riKind :: !Text,
+    riOwner :: !Text,
+    riHeading :: !Bool,
+    riSize :: !Sp,
+    riBefore :: !(Maybe RuleSpec),
+    riAfter :: !(Maybe RuleSpec),
+    riSpan :: !SrcSpan
+  }
+  deriving stock (Eq, Show)
 
 -- | A code block set (golem-driver ADR 0017).
 data SetCode = SetCode
@@ -2308,12 +2419,17 @@ figureProportions :: P.FigureContent -> (Rational, Rational)
 figureProportions = \case
   P.RasterFigure img -> (fromIntegral (max 1 (P.imgWidth img)), fromIntegral (max 1 (P.imgHeight img)))
   P.VectorFigure ip -> let (w, h) = P.ipSize ip in (max (1 / 65536) w, max (1 / 65536) h)
+  P.SvgFigure d -> let (w, h) = P.drSize d in (max (1 / 65536) w, max (1 / 65536) h)
+
+-- | Why a figure cannot be placed: G0810 with the reason, or G0811 (golem-pdf ADR 0008, 0009).
+data Unplaced = Unplaced !Text | UnsupportedSvg !(NonEmpty S.Unsupported)
 
 {- | The figures, read once by file and page; why one cannot be placed
 (golem-pdf ADR 0008). The format follows the extension, as golem-eval
-checked it: a PDF page, or a PNG or JPEG image.
+checked it: a PDF page, an SVG drawing (golem-pdf ADR 0009), or a PNG or
+JPEG image.
 -}
-loadFigures :: PdfInput -> IO (Map (Text, Int) (Either Text P.FigureContent))
+loadFigures :: PdfInput -> IO (Map (Text, Int) (Either Unplaced P.FigureContent))
 loadFigures inp = do
   let keys = nub [figureKey f | (_, f) <- figureBlocks (piBook inp)]
   pairs <- mapM (\k -> (k,) <$> loadOne k) keys
@@ -2322,18 +2438,27 @@ loadFigures inp = do
     loadOne (s, page) = do
       bytes <- BS.readFile (piRoot inp <> "/" <> T.unpack s)
       pure $
-        if ".pdf" `T.isSuffixOf` T.toLower s
-          then either (Left . P.importErrorText) (Right . P.VectorFigure) (P.importPage page bytes)
-          else either (Left . T.pack) (Right . P.RasterFigure) (P.readImage bytes)
+        if
+          | ".pdf" `T.isSuffixOf` T.toLower s -> either (Left . Unplaced . P.importErrorText) (Right . P.VectorFigure) (P.importPage page bytes)
+          | ".svg" `T.isSuffixOf` T.toLower s -> case S.readSvg bytes of
+              Left (S.SvgMalformed why) -> Left (Unplaced why)
+              Left (S.SvgUnsupported us) -> Left (UnsupportedSvg us)
+              Right svg -> Right (P.SvgFigure (svgDrawing svg))
+          | otherwise -> either (Left . Unplaced . T.pack) (Right . P.RasterFigure) (P.readImage bytes)
 
 -- | The @figure blocks of a book, with their spans.
 figureBlocks :: Book -> [(SrcSpan, Figure)]
 figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ (FigureBlock f) <- bs]
 
--- | G0810: a figure that cannot be placed in the PDF, one per @figure (golem-pdf ADR 0008).
-figureDiagnostics :: PdfInput -> Map (Text, Int) (Either Text P.FigureContent) -> [Diagnostic]
+{- | G0810: a figure that cannot be placed in the PDF, and G0811: an SVG
+figure with things outside the subset; one per @figure (golem-pdf ADR
+0008, 0009).
+-}
+figureDiagnostics :: PdfInput -> Map (Text, Int) (Either Unplaced P.FigureContent) -> [Diagnostic]
 figureDiagnostics inp loaded =
-  [ diagnostic "G0810" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> why <> "）")
+  [ case why of
+      Unplaced reason -> diagnostic "G0810" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> reason <> "）")
+      UnsupportedSvg us -> diagnostic "G0811" Error sp (unsupportedMessage (figSource f) us)
   | (sp, f) <- figureBlocks (piBook inp),
     Just (Left why) <- [Map.lookup (figureKey f) loaded]
   ]
@@ -2787,6 +2912,14 @@ writeDocumentView inp geom fonts layout intent =
             marks and its swatch (golem-driver ADR 0028) -}
             rules =
               [("表の罫線", r, t, [P.Rule r], Nothing) | seg <- poTables p, Just tg <- [Map.lookup (tsTable seg) tableInks], (r, t) <- tableRules ta seg tg]
+                -- the rules of paragraphs and headings (golem-driver ADR 0027, 0028)
+                <> [ (riKind info, band, ruleThinnest (rsWeight spec) (rsStyle spec), ruleMarks sw (ruleShapes vertical band (rsStyle spec)), sw)
+                   | pr <- poRules p,
+                     Just info <- [Map.lookup (prId pr) (plRules layout)],
+                     Just spec <- [if prBefore pr then riBefore info else riAfter info],
+                     let band = paragraphRule ta (riSize info) spec (prAt pr)
+                         sw = ruleSwatch spec
+                   ]
                 <> [ ("脚注の罫線", r, ruleThinnest t (rsStyle rule), ruleMarks sw (ruleShapes vertical r (rsStyle rule)), sw)
                    | not (null noteLines),
                      Just rule <- [stNotesRule style],
@@ -2831,6 +2964,18 @@ writeDocumentView inp geom fonts layout intent =
                   pdNumber = n,
                   pdBackgrounds = concat [snd b | (_, _, _, b) <- columns] <> concat [lrBackgrounds rec | (rec, _) <- allParts]
                 }
+      {- the band of a paragraph or heading rule in a column (golem-driver ADR
+      0027): along the line from the start of the column and start-indent,
+      its length or the rest of the measure; across from the start of the
+      em box of the first grid line -}
+      paragraphRule ta size spec at =
+        let measure = if vertical then rectH ta else rectW ta
+            start = dimToSp size (rsStartIndent spec)
+            len = maybe (measure - start - maybe 0 (dimToSp size) (rsEndIndent spec)) (dimToSp size) (rsLength spec)
+            w = rsWeight spec
+         in if vertical
+              then Rect (rectX ta + rectW ta - at - w) (rectY ta + rectH ta - start - len) w len
+              else Rect (rectX ta + start) (rectY ta + rectH ta - at - w) len w
       -- the swatch of a rule, if it has one (golem-driver ADR 0028)
       ruleSwatch rule = do
         name <- rsColor rule
@@ -2974,11 +3119,15 @@ writeDocumentView inp geom fonts layout intent =
       -- the columns of a page come together from 'paginate' (docs/adr ADR 0018)
       drawn = zipWith drawPage (pagesOf (plPages layout)) masters
       -- one Form XObject per file and page of the PDF figures (golem-pdf ADR 0008)
-      formKeys = nubBy ((==) `on` fst) [((pfSource pf, pfPage pf), ip) | pf@PlacedFigure {pfContent = P.VectorFigure ip} <- Map.elems (plFigures layout)]
+      formKeys = nubBy ((==) `on` fst) [((pfSource pf, pfPage pf), fc) | pf <- Map.elems (plFigures layout), Just fc <- [formOf (pfContent pf)]]
+      formOf = \case
+        P.VectorFigure ip -> Just (P.ImportedForm ip)
+        P.SvgFigure d -> Just (P.DrawnForm d)
+        P.RasterFigure _ -> Nothing
       formRefs = Map.fromList [(k, P.FormRef n) | ((k, _), n) <- zip formKeys [1 ..]]
       figureMark fid r pf = case pfContent pf of
         P.RasterFigure _ -> P.Image (P.ImageRef fid) r
-        P.VectorFigure _ -> P.Form (Map.findWithDefault (P.FormRef 0) (pfSource pf, pfPage pf) formRefs) r
+        _ -> P.Form (Map.findWithDefault (P.FormRef 0) (pfSource pf, pfPage pf) formRefs) r
       -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
       bleed = maybe 0 pageBleed (stPage style)
       pdfPages = [P.framePage (piMarks inp) bleed (pw, ph) (pdMarks pd) | pd <- drawn]

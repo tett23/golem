@@ -44,12 +44,12 @@ ctx =
             ("images/b.pdf", AssetPresent),
             ("images/b.svg", AssetPresent),
             ("images/b.jpg", AssetPresent),
-            ("data.csv", AssetText "a,b\n1,\"x,y\"\n"),
-            ("src/Main.hs", AssetText "l1\nl2\nl3\n"),
-            ("x.hs", AssetText (T.unlines ["line " <> T.pack (show i) | i <- [1 :: Int .. 25]])),
-            ("empty.csv", AssetText ""),
-            ("blank.csv", AssetText "\n\n"),
-            ("ragged.csv", AssetText "a,b\n1\n"),
+            ("data.csv", AssetText (FileId 21) "a,b\n1,\"x,y\"\n"),
+            ("src/Main.hs", AssetText (FileId 22) "l1\nl2\nl3\n"),
+            ("x.hs", AssetText (FileId 23) (T.unlines ["line " <> T.pack (show i) | i <- [1 :: Int .. 25]])),
+            ("empty.csv", AssetText (FileId 24) ""),
+            ("blank.csv", AssetText (FileId 25) "\n\n"),
+            ("ragged.csv", AssetText (FileId 26) "a,b\n1\n"),
             ("/tmp/a.png", AssetInvalid Absolute),
             ("https://example.com/a.png", AssetInvalid Url),
             ("../outside.txt", AssetInvalid EscapesRoot),
@@ -263,14 +263,17 @@ tests =
         errs "@figure images/none.png alt=x\n" @?= ["G0233"]
         errs "@figure images/a.png alt=x wrap=end\n" @?= ["G0231"],
       testCase "the formats of a figure and its web image (golem-pdf ADR 0008)" $ do
-        msgs "@figure images/a.gif alt=\"x\"\n" @?= [("G0274", "図版の形式は PDF、PNG、JPEG です: images/a.gif")]
+        msgs "@figure images/a.gif alt=\"x\"\n" @?= [("G0274", "図版の形式は PDF、PNG、JPEG、SVG です: images/a.gif")]
         errs "@figure images/a.PDF web=images/a.png alt=\"x\"\n" @?= []
-        msgs "@figure images/a.pdf web=images/b.pdf alt=\"x\"\n" @?= [("G0273", "web の代替画像は PNG か JPEG です: images/b.pdf")]
-        errs "@figure images/a.pdf web=images/b.svg alt=\"x\"\n" @?= ["G0273"]
+        msgs "@figure images/a.pdf web=images/b.pdf alt=\"x\"\n" @?= [("G0273", "web の代替画像は PNG、JPEG、SVG です: images/b.pdf")]
         errs "@figure images/a.png web=images/b.jpg alt=\"x\"\n" @?= []
         case body "@figure images/a.png web=images/b.jpg alt=\"x\"\n" of
           [FigureBlock f] -> (figWeb f, figPage f) @?= (Just "images/b.jpg", Nothing)
           other -> assertFailure (show other),
+      testCase "SVG figures and web images (golem-pdf ADR 0009)" $ do
+        errs "@figure images/b.svg alt=\"x\"\n" @?= []
+        errs "@figure images/a.pdf web=images/b.svg alt=\"x\"\n" @?= []
+        errs "@figure images/b.svg page=1 alt=\"x\"\n" @?= ["G0275"],
       testCase "the page of a PDF figure (golem-pdf ADR 0008)" $ do
         case body "@figure images/a.pdf page=2 web=images/a.png alt=\"x\"\n" of
           [FigureBlock f] -> figPage f @?= Just 2
@@ -1052,10 +1055,10 @@ diagnosticTests =
         msgs "@figure alt=x\n" @?= [("G0232", "@figure には画像のパスを一つ書きます")]
         errs "@figure images/a.png images/b.png alt=x\n" @?= ["G0232"]
         msgs "@table data.csv\n" @?= [("G0234", "@table には src が必要です")],
-      testCase "G0235: CSV that is not a table" $ do
-        msgs "@table src=empty.csv\n" @?= [("G0235", "CSV が空です")]
-        msgs "@table src=blank.csv\n" @?= [("G0235", "CSV が空です")]
-        diags "@table src=ragged.csv\n" @?= [("G0235", "CSV の行ごとのセルの数が一致しません", 0, 22)],
+      testCase "G0285: CSV that is not a table, in the file (golem-eval ADR 0004)" $ do
+        msgs "@table src=empty.csv\n" @?= [("G0285", "CSV が空です")]
+        msgs "@table src=blank.csv\n" @?= [("G0285", "CSV が空です")]
+        diags "@table src=ragged.csv\n" @?= [("G0285", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
       testCase "G0236: @listing without a path" $ do
         msgs "@listing\n" @?= [("G0236", "@listing にはファイルのパスが必要です")]
         -- src= is read, with the notice G0265 (golem-syntax ADR 0002)
