@@ -185,10 +185,13 @@ URL を先に書けば、URL の行はそろわないまま残り、和文の名
 脚注のリンクは、引用とは別に今までどおり置く。
 
 この本の図は、[code: manual-dev/images/src/] の SVG を原稿にしている。[index reading=ず: 図]
-今の Golem は図版に PNG と JPEG を使い、SVG を扱わない。
-そこで、SVG を直したら [code: scripts/manual/render-figures.sh] で PNG を作り直し、SVG と PNG の両方をコミットする。
-このスクリプトは、ヘッドレスの Chrome で SVG を描き、図の文字には組版と同じ Noto Sans JP を使う。
-組むときには実行しないので、マニュアルを組むだけなら Chrome は要らない。
+Golem は SVG の図版の文字を描かないので、原稿の文字を輪郭にした SVG を [code: manual-dev/images/] に置き、それを図版にする。
+原稿の SVG を直したら [code: scripts/manual/outline-figures.sh] で輪郭の SVG を作り直し、両方をコミットする。
+このスクリプトは Inkscape 1.x で文字を輪郭にし、図の文字には組版と同じ Noto Sans JP だけを使う（マシンのフォントは使わない）。
+輪郭の SVG は手で直さない。
+その先頭のコメントには原稿の SHA-256 があり、[code: scripts/manual/check-figures.sh] が CI でそれを原稿と比べる。
+組むときには実行しないので、マニュアルを組むだけなら Inkscape は要らない。
+輪郭の SVG はフォントを読み込まないので、HTML と EPUB の [code: <img>] でも PDF と同じ形に描かれる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0009-svg-figures.md]（golem-pdf ADR 0009「SVG の図版」）]
 
 ## 更新の検査との関係
 

@@ -5,6 +5,8 @@ module Golem.Parser.Read
     ReadFailure (..),
     readSourceFile,
     readInfo,
+    readTableSource,
+    checkTableText,
   )
 where
 
@@ -39,6 +41,34 @@ readSource fid bs
       Right t -> case checkText fid t of
         [] -> Right t
         ds -> Left ds
+
+{- | The reading stage of a table file, a CSV or a TSV (golem-eval ADR
+0004): invalid UTF-8 is G0101, as in a source file; a BOM at the start is
+not an error, and stays in the text (the table readers skip it, and count
+its bytes); a CR not before an LF is G0282. CRLF is not an error.
+-}
+readTableSource :: FileId -> ByteString -> Either [Diagnostic] Text
+readTableSource fid bs = case decodeUtf8' bs of
+  Left _ ->
+    let bad = invalidOffset bs
+     in Left [diagnostic "G0101" Error (mkSpan fid bad (bad + 1)) "UTF-8 として不正なバイト列があります"]
+  Right t -> case checkTableText fid t of
+    [] -> Right t
+    ds -> Left ds
+
+{- | The check of 'readTableSource' left after decoding: the first CR that
+is not before an LF, G0282 (golem-eval ADR 0004). At most one diagnostic.
+-}
+checkTableText :: FileId -> Text -> [Diagnostic]
+checkTableText fid = go 0
+  where
+    go off t = case T.breakOn "\r" t of
+      (pre, rest)
+        | T.null rest -> []
+        | "\r\n" `T.isPrefixOf` rest -> go (off + BS.length (encodeUtf8 pre) + 2) (T.drop 2 rest)
+        | otherwise ->
+            let i = off + BS.length (encodeUtf8 pre)
+             in [diagnostic "G0282" Error (mkSpan fid i (i + 1)) "単独の CR があります。表のファイルの改行は LF か CRLF に限ります"]
 
 {- | 'readSource' for the file at @path@: on failure, the diagnostics and
 the file's entry in the source table.

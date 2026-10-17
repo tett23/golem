@@ -8,15 +8,23 @@ module CommandsSpec (commandsTests) where
 
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
-import Data.List (isInfixOf, isPrefixOf, sort)
+import Data.Char (isDigit)
+import Data.List (isInfixOf, isPrefixOf, sort, stripPrefix)
+import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Doc.Cbor (encodeDocument)
+import Golem.Driver (Evaluated (..), evaluateProject)
+import Golem.Eval.File (EvalResult (..))
+import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
+import Golem.Syntax (Diagnostic (..), FileId (..), Profile (..))
+import Golem.Syntax.ShowTree (showTree)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
-import System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
+import System.Process (CreateProcess (..), StdStream (..), createProcess, proc, readCreateProcessWithExitCode, waitForProcess)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -62,6 +70,32 @@ filesUnder root = sort <$> go ""
               if isDir then go p else pure [p]
           )
           names
+
+-- | Runs golem in a directory; exit code and the bytes of stdout.
+golemBytesAt :: FilePath -> [String] -> IO (ExitCode, BS.ByteString)
+golemBytesAt dir args = do
+  (_, Just hout, _, ph) <- createProcess (proc "golem" args) {cwd = Just dir, std_out = CreatePipe}
+  out <- BS.hGetContents hout
+  code <- waitForProcess ph
+  pure (code, out)
+
+{- | The leaves of the 'show' of a value: every run of digits, and the
+pieces of every string literal between characters that are escaped.
+-}
+leaves :: String -> [T.Text]
+leaves = \case
+  [] -> []
+  s@(c : _) | isDigit c -> let (d, r) = span isDigit s in T.pack d : leaves r
+  s@('"' : _) | [(str, r)] <- (reads s :: [(String, String)]) -> map T.pack (filter (not . null) (splitEscaped str)) <> leaves r
+  _ : r -> leaves r
+  where
+    splitEscaped str = case break (\x -> x `elem` ("\"\\" :: String) || x < ' ') str of
+      (a, []) -> [a]
+      (a, _ : r) -> a : splitEscaped r
+
+-- | A project of two chapters, a.gm and b.gm (golem-cli ADR 0007).
+twoChapters :: [(FilePath, String)]
+twoChapters = [("manifest.toml", manifestWith "[\"a.gm\", \"b.gm\"]"), ("style.toml", ""), ("a.gm", "一章。\n"), ("b.gm", "二章。\n")]
 
 manifestWith :: String -> String
 manifestWith chapters =
@@ -169,17 +203,101 @@ inspectTests =
         (code, cst, _) <- golemAt tmp ["inspect", "a.gm", "--as", "cst"]
         code @?= ExitSuccess
         cst @?= byDefault,
-      testCase "--as ast shows the AST of the file" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+      testCase "--as ast shows the AST of the file as a tree" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
         writeFiles tmp [("a.gm", "本文。\n")]
         (code, out, _) <- golemAt tmp ["inspect", "a.gm", "--as", "ast"]
         code @?= ExitSuccess
-        assertBool out ("File {fileId = FileId 0, fileBlocks = [" `isPrefixOf` out && "Paragraph" `isInfixOf` out),
-      testCase "--as ir shows the IR of the project and the size of its CBOR" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
-        writeFiles tmp [("manifest.toml", manifestWith "[\"a.gm\"]"), ("a.gm", "本文。\n")]
-        (code, out, _) <- golemAt tmp ["inspect", "a.gm", "--as", "ir"]
+        assertBool out ("File" `isPrefixOf` out && "Paragraph" `isInfixOf` out && "本文。" `isInfixOf` out && not ("SrcSpan" `isInfixOf` out)),
+      testCase "syntax errors are written as the other commands write them, with 1 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        writeFiles tmp [("a.gm", "[strong: x\n")]
+        (code, out, err) <- golemAt tmp ["inspect", "a.gm"]
+        code @?= ExitFailure 1
+        assertBool out ("NFile@" `isPrefixOf` out)
+        assertBool err ("a.gm:2:1: error[G0117]: " `isPrefixOf` err && "golem explain" `isInfixOf` err && not ("Diagnostic {" `isInfixOf` err))
+        (code', out', _) <- golemAt tmp ["inspect", "a.gm", "--as", "ast"]
+        code' @?= ExitFailure 1
+        assertBool out' ("File" `isPrefixOf` out'),
+      testCase "a file that is not there is G0302 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        (code, out, err) <- golemAt tmp ["inspect", "nope.gm"]
+        (code, out) @?= (ExitFailure 1, "")
+        take 1 (lines err) @?= ["nope.gm:1:1: error[G0302]: ファイルがありません: nope.gm"]
+        assertBool err (not ("withBinaryFile" `isInfixOf` err) && not ("backtrace" `isInfixOf` err)),
+      testCase "a directory is G0302 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        createDirectoryIfMissing True (tmp </> "d.gm")
+        (code, _, err) <- golemAt tmp ["inspect", "d.gm"]
+        code @?= ExitFailure 1
+        assertBool err ("error[G0302]" `isInfixOf` err),
+      testCase "a file that is not UTF-8 is G0101 in the human format (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        BS.writeFile (tmp </> "b.gm") (BS.pack [0x61, 0xff, 0x0a])
+        (code, _, err) <- golemAt tmp ["inspect", "b.gm"]
+        code @?= ExitFailure 1
+        assertBool err ("b.gm:1:2: error[G0101]: " `isPrefixOf` err),
+      testCase "--as ir shows the document of the file, without the CBOR line (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        writeFiles tmp twoChapters
+        (code, out, err) <- golemAt tmp ["inspect", "b.gm", "--as", "ir"]
+        (code, err) @?= (ExitSuccess, "")
+        assertBool out ("Document" `isPrefixOf` out && "二章" `isInfixOf` out && not ("一章" `isInfixOf` out) && not ("CBOR:" `isInfixOf` out))
+        (_, dotted, _) <- golemAt tmp ["inspect", "./b.gm", "--as", "ir"]
+        dotted @?= out,
+      testCase "--as ir of a file that is not a chapter evaluates it in the project (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        writeFiles tmp (twoChapters <> [("c.gm", "三章の[style note: 注]。\n"), ("style.toml", "[character-styles.note]\n")])
+        (code, out, err) <- golemAt tmp ["inspect", "c.gm", "--as", "ir"]
+        (code, err) @?= (ExitSuccess, "")
+        assertBool out ("三章" `isInfixOf` out && "CharStyle" `isInfixOf` out && "\"note\"" `isInfixOf` out)
+        e <- evaluateProject Dev tmp >>= either (const (assertFailure "project")) pure
+        let used = [n | FileId n <- Map.keys (projectSources (evProject e))]
+            docFile = [read (takeWhile isDigit rest) :: Int | l <- lines out, Just rest <- [stripPrefix "docFile = FileId " (dropWhile (== ' ') l)]]
+        assertBool (show (docFile, used)) (length docFile == 1 && all (> maximum used) docFile),
+      testCase "the errors of the other chapters are not written for a file that is not a chapter (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        writeFiles tmp (twoChapters <> [("a.gm", "一章の[nosuch: x]。\n"), ("c.gm", "三章。\n")])
+        (code, _, err) <- golemAt tmp ["inspect", "c.gm", "--as", "ir"]
+        (code, err) @?= (ExitSuccess, ""),
+      testCase "the errors of a file that is not a chapter (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        writeFiles tmp (twoChapters <> [("c.gm", "三章の[nosuch: x]。\n")])
+        (code, out, err) <- golemAt tmp ["inspect", "c.gm", "--as", "ir"]
+        code @?= ExitFailure 1
+        assertBool err ("c.gm:1:" `isPrefixOf` err && "error[G0222]" `isInfixOf` err)
+        assertBool out ("Document" `isPrefixOf` out),
+      testCase "--as ir without manifest.toml evaluates the file alone (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        writeFiles tmp [("x.gm", "単独。\n")]
+        (code, out, err) <- golemAt tmp ["inspect", "x.gm", "--as", "ir"]
+        (code, err) @?= (ExitSuccess, "")
+        assertBool out ("Document" `isPrefixOf` out && "単独。" `isInfixOf` out),
+      testCase "--as ir of a project that cannot be loaded writes its errors and nothing else (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        writeFiles tmp (twoChapters <> [("style.toml", "[page\n")])
+        (code, out, err) <- golemAt tmp ["inspect", "b.gm", "--as", "ir"]
+        (code, out) @?= (ExitFailure 1, "")
+        assertBool err ("style.toml:" `isInfixOf` err && "error[" `isInfixOf` err),
+      testCase "--as ir of a chapter writes the errors of the project (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        writeFiles tmp (twoChapters <> [("a.gm", "一章の[ref-title nolabel]。\n")])
+        (code, out, err) <- golemAt tmp ["inspect", "b.gm", "--as", "ir"]
+        code @?= ExitFailure 1
+        assertBool err ("error[G0403]" `isInfixOf` err)
+        assertBool out ("二章" `isInfixOf` out),
+      testCase "--as cbor writes the CBOR of the document (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        writeFiles tmp twoChapters
+        (code, out) <- golemBytesAt tmp ["inspect", "b.gm", "--as", "cbor"]
         code @?= ExitSuccess
-        assertBool out ("Document {" `isPrefixOf` out)
-        last (lines out) @?= "CBOR: 30 bytes"
+        e <- evaluateProject Dev tmp >>= either (const (assertFailure "project")) pure
+        let docs = [encodeDocument (erDocument r) | (fid, sf) <- Map.toList (projectSources (evProject e)), sfPath sf == "b.gm", Just r <- [Map.lookup fid (evResults e)]]
+        docs @?= [out],
+      testCase "the AST and the IR of a fixture are read as trees, with every leaf in them (golem-cli ADR 0007)" $ do
+        e <- evaluateProject Dev "../golem-driver/test/fixtures/sample" >>= either (assertFailure . show . map diagMessage . pfDiagnostics) pure
+        let shown =
+              [show (sfAst sf) | sf <- Map.elems (projectSources (evProject e))]
+                <> [show (erDocument r) | r <- Map.elems (evResults e)]
+        assertBool (show (length shown)) (length shown >= 4)
+        mapM_
+          ( \s -> do
+              let t = showTree (FileId 1) s
+              assertBool (take 200 s) (length s <= 100 || T.unpack t /= s)
+              mapM_ (\leaf -> assertBool (T.unpack leaf) (leaf `T.isInfixOf` t)) (leaves s)
+          )
+          shown,
+      testCase "--as with an unknown value is a usage error" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        writeFiles tmp [("a.gm", "本文。\n")]
+        (code, _, _) <- golemAt tmp ["inspect", "a.gm", "--as", "nope"]
+        code @?= ExitFailure 2
     ]
 
 -- ------------------------------------------------------------------ golem fmt over the project (golem-fmt ADR 0001)
@@ -226,7 +344,23 @@ fmtTests =
         BS.writeFile (tmp </> "b.gm") (BS.pack [0xff, 0xfe])
         (code, _, err) <- golemAt tmp ["fmt", "b.gm"]
         (code, err) @?= (ExitFailure 1, "b.gm: UTF-8 として読めないため整形しません\n")
-        BS.readFile (tmp </> "b.gm") >>= (@?= BS.pack [0xff, 0xfe])
+        BS.readFile (tmp </> "b.gm") >>= (@?= BS.pack [0xff, 0xfe]),
+      testCase "a file that is not there is G0302 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+        (code, _, err) <- golemAt tmp ["fmt", "nope.gm"]
+        code @?= ExitFailure 1
+        take 1 (lines err) @?= ["nope.gm:1:1: error[G0302]: ファイルがありません: nope.gm"]
+        assertBool err (not ("withBinaryFile" `isInfixOf` err) && not ("backtrace" `isInfixOf` err)),
+      testCase "the other files are formatted after a file that is not there (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+        writeFiles tmp [("ok.gm", "本文。  \n")]
+        (code, _, err) <- golemAt tmp ["fmt", "nope.gm", "ok.gm"]
+        code @?= ExitFailure 1
+        assertBool err ("error[G0302]" `isInfixOf` err)
+        readUtf8 (tmp </> "ok.gm") >>= (@?= "本文。\n"),
+      testCase "a directory is G0302 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+        createDirectoryIfMissing True (tmp </> "d.gm")
+        (code, _, err) <- golemAt tmp ["fmt", "--check", "d.gm"]
+        code @?= ExitFailure 1
+        assertBool err ("error[G0302]" `isInfixOf` err)
     ]
 
 -- ------------------------------------------------------------------ golem plugin lock / fetch (golem-plugin ADR 0002)

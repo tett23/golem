@@ -204,6 +204,17 @@ preflightTests =
         v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
         Map.keys (vwSwatchesUsed v) @?= ["heavy"]
         assertBool (show (prDiagnostics p)) (DiagnosticCode "G0915" `elem` map diagCode (prDiagnostics p)),
+    testCase "the view: paragraph rules are of their own kind; one near the trim is G0912 (golem-driver ADR 0027)" $ do
+      let ruled extra = horizontalStyle <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\"" <> extra <> " }\n"
+          source = "前。\n\n@style sec\n  節。\n"
+      withPreflightProject (ruled "") source [] $ \tmp -> do
+        p <- preflightIn tmp
+        v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+        [rvKind r | r <- concatMap pvRules (vwPages v)] @?= ["段落の罫線"]
+        assertBool (show (prDiagnostics p)) (DiagnosticCode "G0912" `notElem` map diagCode (prDiagnostics p))
+      withPreflightProject (ruled ", start-indent = \"-19mm\"") source [] $ \tmp -> do
+        p <- preflightIn tmp
+        assertBool (show (prDiagnostics p)) (DiagnosticCode "G0912" `elem` map diagCode (prDiagnostics p)),
     testCase "a character the font has not is glyph 0 in the view (with real fonts)" $ withSystemTempDirectory "golem-preflight" $ \tmp -> do
       copyTree fixture tmp
       createDirectoryIfMissing True (tmp </> "fonts")
@@ -223,6 +234,11 @@ preflightTests =
         assertBool (show codes) (DiagnosticCode "G0905" `notElem` codes && DiagnosticCode "G0810" `notElem` codes)
         v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
         map ivPath (concatMap pvImages (vwPages v)) @?= ["images/a.pdf"],
+    testCase "an SVG figure is G0908 (rgb) in print, and not G0906 (golem-pdf ADR 0009)" $
+      withPreflightProject horizontalStyle "# 章\n\n@figure images/a.svg alt=\"t\"\n\n本文。\n" [("images/a.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect width=\"5\" height=\"5\" fill=\"red\"/></svg>")] $ \tmp -> do
+        p <- preflightIn tmp
+        let codes = map diagCode (prDiagnostics p)
+        assertBool (show codes) (DiagnosticCode "G0908" `elem` codes && DiagnosticCode "G0906" `notElem` codes),
     testCase "a figure that cannot be placed stops golem preflight with G0810 before the checks (golem-pdf ADR 0008)" $
       withPreflightProject horizontalStyle "# 章\n\n@figure images/a.png alt=\"t\"\n\n本文。\n" [("images/a.png", "\x89PNG\r\n\x1a\n")] $ \tmp -> do
         p <- preflightIn tmp

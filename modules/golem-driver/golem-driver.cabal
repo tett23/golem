@@ -33,6 +33,7 @@ library
                     Golem.Driver.Pdf
                     Golem.Driver.Plugins
                     Golem.Driver.RuleShape
+                    Golem.Driver.Svg
                     Golem.Driver.TextLayer
                     Golem.Driver.Version
   build-depends:
@@ -56,6 +57,7 @@ library
     , golem-parser
     , golem-preflight
     , golem-project
+    , golem-svg
     , golem-syntax
     , golem-text
     , scientific    >=0.3  && <0.4
@@ -81,6 +83,7 @@ test-suite golem-driver-test
     LocaleSpec
     MemoSpec
     PageElementsSpec
+    ParagraphRuleSpec
     ParagraphSpec
     PdfSpec
     PluginsSpec
@@ -88,6 +91,7 @@ test-suite golem-driver-test
     RuleShapeSpec
     SecuritySpec
     StylesSpec
+    TableFilesSpec
     Support
   build-depends:
     , base

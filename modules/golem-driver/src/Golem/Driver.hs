@@ -15,6 +15,7 @@ module Golem.Driver
     preflight,
     evaluateProject,
     evaluateProjectWith,
+    evaluateLoose,
     loadBibliography,
     metadataValues,
     epubConfig,
@@ -25,7 +26,9 @@ module Golem.Driver
     missingStyleFiles,
     targetFileDiagnostics,
     sourceInfos,
-    withLockSource,
+    withEvaluatedSources,
+    assetRefs,
+    AssetUse (..),
     FontProvider (..),
     LoadedFonts (..),
     noFontProvider,
@@ -39,7 +42,7 @@ where
 
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
-import Control.Monad (filterM, forM, forM_, mfilter, when)
+import Control.Monad (filterM, forM, forM_, join, mfilter, when)
 import Data.Aeson qualified as J
 import Data.Aeson.Key qualified as JK
 import Data.Aeson.KeyMap qualified as KM
@@ -72,9 +75,10 @@ import Golem.Eval.Expr (Env (..), embedValue, evalExpr)
 import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Html
+import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
-import Golem.Parser.Read (ReadFailure (..), readInfo, readSourceFile)
-import Golem.Parser.SourceSettings (SourceSettings)
+import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
+import Golem.Parser.SourceSettings (SourceSettings, defaultSourceSettings)
 import Golem.Pdf qualified as P
 import Golem.Plugin.Lock (defaultCacheDir)
 import Golem.Preflight (check)
@@ -136,6 +140,18 @@ data Evaluated = Evaluated
     evResults :: !(Map FileId EvalResult),
     evBook :: !(Maybe Book),
     evDiagnostics :: ![Diagnostic],
+    -- | the files read as text for @table and @listing, where their diagnostics point (golem-eval ADR 0004)
+    evAssetSources :: !(Map FileId SourceInfo),
+    -- | the table files the evaluation read, relative to the root, for the LSP to watch (golem-eval ADR 0004)
+    evTableFiles :: !(Set.Set FilePath),
+    -- | the diagnostics of the project stage: G0307, G0323, plugins, the bibliography, table files (golem-lsp ADR 0004)
+    evProjectDiagnostics :: ![Diagnostic],
+    -- | the diagnostics of S1 (golem-lsp ADR 0004)
+    evS1Diagnostics :: ![Diagnostic],
+    {- | S1 again from the S0 results of every file, in the context of the
+    last evaluation; without S1 when there is an error among the
+    diagnostics of the project stage and of S0 (golem-lsp ADR 0004).
+    -} evReassemble :: Map FileId EvalResult -> (Maybe Book, [Diagnostic]),
     {- | S0 of one file again, in the context of the last evaluation
     (the LSP re-evaluates the edited file alone when nothing that other
     files depend on has changed).
@@ -156,9 +172,13 @@ the one after style.toml's.
 lockFileId :: Project -> FileId
 lockFileId p = let FileId n = styleFileId p in FileId (n + 1)
 
--- | Adds plugins.lock, when there is one, to the files of diagnostics.
-withLockSource :: Evaluated -> Map FileId SourceInfo -> Map FileId SourceInfo
-withLockSource e = maybe id (Map.insert (lockFileId (evProject e)) . SourceInfo "plugins.lock" . mkLineIndex) (evLockText e)
+{- | Adds plugins.lock, when there is one, and the files read for @table
+and @listing (golem-eval ADR 0004) to the files of diagnostics.
+-}
+withEvaluatedSources :: Evaluated -> Map FileId SourceInfo -> Map FileId SourceInfo
+withEvaluatedSources e =
+  Map.union (evAssetSources e)
+    . maybe id (Map.insert (lockFileId (evProject e)) . SourceInfo "plugins.lock" . mkLineIndex) (evLockText e)
 
 -- | Line indexes for rendering diagnostics.
 sourceInfos :: Project -> Map FileId SourceInfo
@@ -191,9 +211,10 @@ evaluateProjectWith overlay profile root = do
         Left ds -> pure (Left (ProjectFailure ds (Map.insert styleFid (maybe (SourceInfo "style.toml" (mkLineIndex "")) (readInfo "style.toml") styleBytes) (sourceInfos project))))
         Right style
           | hasErrors synDiags -> do
-              assets <- loadAssets root project
+              loaded <- loadAssets overlay root project
+              let assets = laAssets loaded
               (bibDiags, citeKeys, _) <- loadBibliography root manifest0
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) Nothing Map.empty Nothing (synDiags <> bibDiags) (reeval profile project style assets citeKeys noPlugins Map.empty)))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) Nothing Map.empty Nothing (synDiags <> laDiagnostics loaded <> bibDiags) (laSources loaded) (laTableFiles loaded) (laDiagnostics loaded <> bibDiags) [] (const (Nothing, [])) (reeval profile project style assets citeKeys noPlugins Map.empty)))
           | otherwise -> do
               let manifest = manifest0
                   -- one G0307 for each name, in the order of the chapters (golem-project ADR 0006)
@@ -208,25 +229,34 @@ evaluateProjectWith overlay profile root = do
               let (pluginDiags, hook) = either (,noPlugins) ([],) hookE
                   -- no G0222 after the plugins failed to load (golem-plugin ADR 0003)
                   quiet = if null pluginDiags then id else \r -> r {erDiagnostics = filter ((/= DiagnosticCode "G0222") . diagCode) (erDiagnostics r)}
-              assets <- loadAssets root project
+              loaded <- loadAssets overlay root project
+              let assets = laAssets loaded
               -- G0326 and G0303 of the bibliography, for every target (golem-doc ADR 0004)
               (bibDiags, citeKeys, _) <- loadBibliography root manifest
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
-                  -- the chapter of the manifest of each file: a top-level entry, a nested array as one (golem-driver ADR 0018)
-                  chapterOfFile = [i | (i, e) <- zip [0 :: Int ..] (manifestChapters manifest), _ <- chapterFiles [e]] <> [length (manifestChapters manifest) ..]
-                  chapterRuns = [(erDocument r, ch) | ((fid, _), ch) <- zip (projectChapters project) chapterOfFile, Just r <- [Map.lookup fid results]]
-                  chapterDocs = map fst chapterRuns
-                  -- where G0407 points (golem-syntax ADR 0002)
-                  numberSites = Map.unions (map erNumberSites (Map.elems results))
-                  cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style))
-                  pre = defaultStyleNotice <> masterDiags <> pluginDiags <> bibDiags <> s0Diags
+                  projectDiags = defaultStyleNotice <> masterDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
+                  reassemble = assembleResults style manifest project projectDiags
+                  (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
-              if hasErrors pre
-                then pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results Nothing pre again))
-                else do
-                  let (book, s1Diags) = assemble cfg evalDeferred chapterDocs
-                  pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results (Just book) (pre <> s1Diags) again))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded) (laTableFiles loaded) projectDiags s1Diags reassemble again))
+
+{- | S1 from the S0 results of the files (golem-lsp ADR 0004): the book
+and the diagnostics of S1; nothing when the diagnostics of the project
+stage or of S0 have an error.
+-}
+assembleResults :: Style -> Manifest -> Project -> [Diagnostic] -> Map FileId EvalResult -> (Maybe Book, [Diagnostic])
+assembleResults style manifest project projectDiags results
+  | hasErrors (projectDiags <> concatMap erDiagnostics (Map.elems results)) = (Nothing, [])
+  | otherwise =
+      let -- the chapter of the manifest of each file: a top-level entry, a nested array as one (golem-driver ADR 0018)
+          chapterOfFile = [i | (i, e) <- zip [0 :: Int ..] (manifestChapters manifest), _ <- chapterFiles [e]] <> [length (manifestChapters manifest) ..]
+          chapterRuns = [(erDocument r, ch) | ((fid, _), ch) <- zip (projectChapters project) chapterOfFile, Just r <- [Map.lookup fid results]]
+          -- where G0407 points (golem-syntax ADR 0002)
+          numberSites = Map.unions (map erNumberSites (Map.elems results))
+          cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style))
+          (book, s1Diags) = assemble cfg evalDeferred (map fst chapterRuns)
+       in (Just book, s1Diags)
 
 readMaybeText :: FilePath -> IO (Maybe Text)
 readMaybeText p = do
@@ -288,6 +318,23 @@ reeval profile project style assets citeKeys hook acc fid sf =
             ctxStyle = style
           }
    in evalFile ctx (sfAst sf)
+
+{- | S0 of a file outside any project, FileId 0, with the built-in styles
+and no plugins (golem-cli ADR 0007): what the LSP shows of an open file
+the manifest does not reach, and what golem inspect --as ir shows without
+manifest.toml. The diagnostics are a BOM or CR of the text and the syntax;
+the evaluation of a file with syntax errors is not reported (golem-parser
+ADR 0009).
+-}
+evaluateLoose :: FilePath -> Text -> EvalResult
+evaluateLoose path text =
+  let fid = FileId 0
+      (ast, _, synDiags) = parseAst fid text
+      -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
+      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle
+      res = evalFile ctx ast
+      syntax = checkText fid text <> synDiags
+   in res {erDiagnostics = if hasErrors syntax then syntax else syntax <> erDiagnostics res}
 
 -- | How a file of the project is read (docs/adr ADR 0013).
 sourceSettingsOf :: Project -> FileId -> SourceSettings
@@ -389,24 +436,62 @@ runningVars e =
         _ -> (Map.empty, [])
    in foldMap perFile (nub [(fid, name) | (fid, name) <- projectChapters project])
 
+-- | How a file is referred to: by @figure, @table or @listing (golem-eval ADR 0004).
+data AssetUse = UseImage | UseTable | UseListing
+  deriving stock (Eq, Ord, Show)
+
+-- | What 'loadAssets' read (golem-eval ADR 0004).
+data LoadedAssets = LoadedAssets
+  { laAssets :: !(Map FilePath Asset),
+    -- | the files read as text, where their diagnostics point
+    laSources :: !(Map FileId SourceInfo),
+    -- | the reading stage of the table files: G0101 and G0282
+    laDiagnostics :: ![Diagnostic],
+    -- | the table files the last evaluation read, for the LSP to watch (golem-eval ADR 0004)
+    laTableFiles :: !(Set.Set FilePath)
+  }
+
 {- | Files referenced by @figure, @table and @listing: text content for
 tables and listings, presence for images, and why a path cannot be used
-(golem-eval ADR 0003). A path any reference reads as text is read as text.
+(golem-eval ADR 0003). A path any reference reads as text is read as
+text, from @overlay@ when the editor has it open. Each file read as text
+has a FileId, from the one after plugins.lock's, in the order of the paths
+(golem-eval ADR 0004). A table file passes the reading stage of table
+files ('readTableSource'); a listing is read as before.
 -}
-loadAssets :: FilePath -> Project -> IO (Map FilePath Asset)
-loadAssets root project = do
-  let refs = Map.fromListWith (||) (concatMap (assetRefs . sfAst) (Map.elems (projectSources project)))
-  Map.traverseWithKey load refs
+loadAssets :: Map FilePath Text -> FilePath -> Project -> IO LoadedAssets
+loadAssets overlay root project = do
+  let refs = Map.fromListWith Set.union [(p, Set.singleton u) | sf <- Map.elems (projectSources project), (p, u) <- assetRefs (sfAst sf)]
+      FileId lock = lockFileId project
+      textPaths = [p | (p, us) <- Map.toList refs, any (`Set.member` us) [UseTable, UseListing]]
+      fids = Map.fromList (zip textPaths (map FileId [lock + 1 ..]))
+  loaded <- Map.traverseWithKey (load fids) refs
+  pure
+    LoadedAssets
+      { laAssets = Map.map (\(a, _, _, _) -> a) loaded,
+        laSources = Map.fromList [s | (_, Just s, _, _) <- Map.elems loaded],
+        laDiagnostics = concat [ds | (_, _, ds, _) <- Map.elems loaded],
+        laTableFiles = Set.fromList [rel | (_, _, _, Just rel) <- Map.elems loaded]
+      }
   where
-    load path wantText = do
+    load fids path uses = do
       r <- resolveInRoot root path
-      case r of
-        Left e -> pure (AssetInvalid e)
-        Right rel
-          | wantText -> AssetText . TE.decodeUtf8Lenient <$> BS.readFile (root </> rel)
-          | otherwise -> pure AssetPresent
+      case (r, Map.lookup path fids) of
+        (Left e, _) -> pure (AssetInvalid e, Nothing, [], Nothing)
+        (Right rel, Just fid) -> do
+          bytes <- maybe (BS.readFile (root </> rel)) (pure . TE.encodeUtf8) (Map.lookup rel overlay <|> Map.lookup path overlay)
+          let source = Just (fid, readInfo rel bytes)
+              lenient = TE.decodeUtf8Lenient bytes
+          pure $
+            if Set.member UseTable uses
+              then case readTableSource fid bytes of
+                Right t -> (AssetText fid t, source, [], Just rel)
+                Left ds -> (AssetTableUnreadable fid lenient, source, ds, Just rel)
+              else (AssetText fid lenient, source, [], Nothing)
+        (Right _, Nothing) -> pure (AssetPresent, Nothing, [], Nothing)
 
-assetRefs :: A.File -> [(FilePath, Bool)]
+-- | The paths a file refers to by @figure, @table and @listing, as written.
+assetRefs :: A.File -> [(FilePath, AssetUse)]
 assetRefs (A.File _ bs) = concatMap blk bs
   where
     blk (A.Located _ b) = case b of
@@ -420,9 +505,9 @@ assetRefs (A.File _ bs) = concatMap blk bs
       let pos = [t | A.Located _ (A.Positional v) <- args, Just t <- [txt v]]
           kw k = [t | A.Located _ (A.Keyword (A.Located _ k') v) <- args, k' == k, Just t <- [txt v]]
        in case name of
-            "figure" -> [(T.unpack p, False) | p <- take 1 pos <> kw "web"]
-            "table" -> [(T.unpack p, True) | p <- kw "src"]
-            "listing" -> [(T.unpack p, True) | p <- take 1 pos <> kw "src"]
+            "figure" -> [(T.unpack p, UseImage) | p <- take 1 pos <> kw "web"]
+            "table" -> [(T.unpack p, UseTable) | p <- kw "src"]
+            "listing" -> [(T.unpack p, UseListing) | p <- take 1 pos <> kw "src"]
             _ -> []
     txt = \case
       A.Word t -> Just t
@@ -565,7 +650,7 @@ buildCore inMemory opts = do
           -- style.toml is a source of diagnostics (golem-project ADR 0004, G0702) when it exists
           infos =
             (if hasStyle then Map.insert styleFid (SourceInfo "style.toml" (mkLineIndex (evStyleText e))) else id)
-              (withLockSource e (sourceInfos project))
+              (withEvaluatedSources e (sourceInfos project))
           -- where diagnostics about style.toml point (golem-driver ADR 0016)
           diagFid = if hasStyle then styleFid else projectManifestFile project
           -- G0702, and what style.toml decides of the layout (G0701, G0725; golem-driver ADR 0016)
@@ -831,7 +916,14 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
             hcLists =
               if stLists style == defaultListStyle
                 then Nothing
-                else Just (HtmlLists (lsBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style)))
+                else Just (HtmlLists (lsBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style))),
+            -- the rules of headings (golem-driver ADR 0027)
+            hcHeadingRules =
+              Map.fromList
+                [ (l, (htmlRule style <$> hsRuleBefore h, htmlRule style <$> hsRuleAfter h))
+                | (l, h) <- Map.toList (stHeadings style),
+                  isJust (hsRuleBefore h) || isJust (hsRuleAfter h)
+                ]
           }
       present = mfilter (`Map.notMember` missing)
       changed a b = if a == b then Nothing else Just a
@@ -938,10 +1030,47 @@ htmlParaStyles style =
           (cssLength (fromMaybe (Zw 0) (psIndent d)))
           (cssLength (fromMaybe (Zw 0) (psFirstLineIndent d)))
           (htmlFeatures (psKerning d) (psTracking d) (psProportional d) (psBaselineShift d))
+          (htmlRule style <$> join (psRuleBefore d))
+          (htmlRule style <$> join (psRuleAfter d))
       )
     | n <- Map.keys (stParaStyles style),
       Just d <- [paraStyle style (Just n)]
     ]
+
+{- | A rule of a paragraph style or a heading for CSS (golem-driver ADR
+0027, 0028): zw as em, the line style as one of the border styles of CSS
+and the swatch as its RGB; a rule without a colour takes the colour of
+the text. Without a length the block is as wide as the line, or as the
+rest of the line when an indent is written.
+-}
+htmlRule :: Style -> RuleSpec -> HtmlRule
+htmlRule style r =
+  let start = case rsStartIndent r of
+        Zw 0 -> Nothing
+        d -> Just (cssLength d)
+      end = cssLength <$> rsEndIndent r
+      width = case rsLength r of
+        Just l -> Just (cssLength l)
+        Nothing -> if isJust start || isJust end then Nothing else Just "100%"
+      border = case rsStyle r of
+        RuleSolid -> "solid"
+        RuleMulti _ -> "double"
+        RuleDashed _ _ -> "dashed"
+        RuleDotted _ -> "dotted"
+        RuleJapaneseDots _ -> "dotted"
+        RuleWavy -> "solid"
+      colour = case rsColor r >>= (`Map.lookup` stSwatches style) of
+        Just (Swatch cmyk) -> let (cr, cg, cb) = cmykToRgb cmyk in " rgb(" <> T.pack (show cr) <> ", " <> T.pack (show cg) <> ", " <> T.pack (show cb) <> ")"
+        Nothing -> ""
+      space = maybe "0" cssLength
+   in HtmlRule
+        { hrWidth = width,
+          hrStartIndent = start,
+          hrEndIndent = end,
+          hrBorder = cssLength (Abs (rsWeight r)) <> " " <> border <> colour,
+          hrOuter = space (rsSpaceBefore r),
+          hrInner = space (rsSpaceAfter r)
+        }
 
 -- | The keys of the spacing of characters for CSS (docs/adr/0020).
 htmlFeatures :: Maybe Kerning -> Maybe Int -> Maybe Bool -> Maybe Dim -> HtmlFeatures

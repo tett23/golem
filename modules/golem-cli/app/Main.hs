@@ -17,28 +17,30 @@ import Golem.Driver.Explain (Explanation (..), Status (..), catalog, explainHint
 import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
 import Golem.Driver.Version (golemVersion)
-import Golem.Eval.File (erDocument)
+import Golem.Eval.File (EvalResult (..))
 import Golem.Fmt (FormatResult (..), format)
 import Golem.Lsp.Server (runGolemLsp)
 import Golem.Parser (parseAst, parseFile)
 import Golem.Parser.CST (pretty)
+import Golem.Parser.Read (readInfo)
 import Golem.Plugin.Lock (defaultCacheDir, fetchPlugins, httpsFetcher, lockPlugins, parseLock, renderLock)
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..), loadProject)
 import Golem.Project.Manifest (Manifest (..), PluginDecl (..), parseManifest)
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
+import Golem.Syntax.ShowTree (showTree)
 import Options.Applicative
 import Options.Applicative.Extra (helperWith)
-import System.Directory (doesFileExist)
+import System.Directory (doesFileExist, getCurrentDirectory)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
-import System.FilePath ((</>))
+import System.FilePath (joinPath, makeRelative, splitDirectories, (</>))
 import System.IO (hPutStrLn, hSetEncoding, stderr, stdout, utf8)
 import Text.Printf (printf)
 
 data Format = Human | Json
 
-data InspectAs = AsCst | AsAst | AsIr
+data InspectAs = AsCst | AsAst | AsIr | AsCbor
 
 data Command
   = New FilePath Language Bool
@@ -126,8 +128,8 @@ marksOpt =
 inspectAsOpt :: Parser InspectAs
 inspectAsOpt =
   option
-    (choice "表示の種類" [("cst", AsCst), ("ast", AsAst), ("ir", AsIr)])
-    (long "as" <> value AsCst <> metavar "cst|ast|ir" <> help "表示するもの（既定は cst）")
+    (choice "表示の種類" [("cst", AsCst), ("ast", AsAst), ("ir", AsIr), ("cbor", AsCbor)])
+    (long "as" <> value AsCst <> metavar "cst|ast|ir|cbor" <> help "表示するもの（既定は cst）")
 
 {- | A diagnostic code documented in docs/diagnostics.md, in any case
 (golem-cli ADR 0005). Anything else is a usage error, as in ADR 0004.
@@ -268,24 +270,101 @@ preflightRun rules marks fmt = do
             <> T.pack (concatMap (printf "%02x") (BS.unpack (sha256 pdf)))
   pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
 
+{- | golem inspect (golem-cli ADR 0001, ADR 0007): the CST, the AST or
+the semantic IR of one file on stdout, and the diagnostics in the human
+format on stderr; 1 when there is an error among them.
+-}
 inspect :: FilePath -> InspectAs -> IO ExitCode
-inspect path mode = do
-  bytes <- BS.readFile path
-  case parseFile (FileId 0) bytes of
-    Left ds -> TIO.hPutStr stderr (T.pack (show ds)) >> pure (ExitFailure 1)
-    Right (cst, ds) -> do
-      case mode of
-        AsCst -> TIO.putStr (pretty cst)
-        AsAst -> do
-          let (ast, _, _) = parseAst (FileId 0) (TE.decodeUtf8Lenient bytes)
-          print ast
-        AsIr -> do
-          ev <- evaluateProject Dev "."
-          case ev of
-            Left f -> TIO.hPutStr stderr (T.pack (show (pfDiagnostics f)))
-            Right e -> forM_ (Map.elems (evResults e)) $ \res -> print (erDocument res) >> printf "CBOR: %d bytes\n" (BS.length (encodeDocument (erDocument res)))
-      unless (null ds) $ TIO.hPutStr stderr (T.pack (show ds))
-      pure ExitSuccess
+inspect path mode =
+  readArgument path >>= \case
+    Nothing -> missingArgument path
+    Just bytes -> case mode of
+      AsCst -> syntaxTree bytes
+      AsAst -> syntaxTree bytes
+      AsIr -> semantic bytes
+      AsCbor -> semantic bytes
+  where
+    fileInfo bytes = Map.singleton (FileId 0) (readInfo path bytes)
+    syntaxTree bytes = case parseFile (FileId 0) bytes of
+      Left ds -> putHuman (fileInfo bytes) ds >> pure (ExitFailure 1)
+      Right (cst, ds) -> do
+        case mode of
+          AsCst -> TIO.putStr (pretty cst)
+          _ -> let (ast, _, _) = parseAst (FileId 0) (TE.decodeUtf8Lenient bytes) in TIO.putStrLn (showTree (FileId 0) (show ast))
+        finishWith (fileInfo bytes) ds
+    semantic bytes = do
+      hasManifest <- doesFileExist "manifest.toml"
+      if hasManifest then inProject bytes else outsideProject bytes
+    -- the file alone, with the built-in styles (no manifest.toml)
+    outsideProject bytes = case parseFile (FileId 0) bytes of
+      Left ds -> putHuman (fileInfo bytes) ds >> pure (ExitFailure 1)
+      Right (_, ds)
+        | hasErrors ds -> finishWith (fileInfo bytes) ds
+        | otherwise -> do
+            let res = evaluateLoose path (TE.decodeUtf8Lenient bytes)
+            showDocument (FileId 0) (erDocument res)
+            finishWith (fileInfo bytes) (erDiagnostics res)
+    inProject bytes =
+      evaluateProject Dev "." >>= \case
+        Left f -> putHuman (pfSources f) (pfDiagnostics f) >> pure (ExitFailure 1)
+        Right e -> do
+          rel <- relativePath path
+          let project = evProject e
+              sources = Map.insert (evStyleFile e) (SourceInfo "style.toml" (mkLineIndex (evStyleText e))) (withEvaluatedSources e (sourceInfos project))
+              finish = sortDiagnostics . silenceNotices (Just (manifestSilencedNotices (projectManifest project))) . map (adjustForProfile Dev)
+          case [(fid, sf) | (fid, sf) <- Map.toList (projectSources project), sfPath sf == rel] of
+            -- a file of the project: its document of the evaluation, and every diagnostic of it
+            (fid, _) : _ -> do
+              mapM_ (showDocument fid . erDocument) (Map.lookup fid (evResults e))
+              finishWith sources (finish (evDiagnostics e))
+            -- another file: S0 in the context of the project, with a FileId of its own
+            [] -> do
+              let FileId top = maximum (nextFile (evStyleFile e) : Map.keys sources)
+                  fid = FileId (top + 1)
+                  projectStage = [d | d <- evDiagnostics e, spanFile (diagSpan d) `elem` [projectManifestFile project, evStyleFile e, nextFile (evStyleFile e)]]
+                  sources' = Map.insert fid (readInfo path bytes) sources
+              case parseFile fid bytes of
+                Left ds -> finishWith sources' (finish (projectStage <> ds))
+                Right (cst, synDiags)
+                  | hasErrors synDiags -> finishWith sources' (finish (projectStage <> synDiags))
+                  | otherwise -> do
+                      let text = TE.decodeUtf8Lenient bytes
+                          (ast, _, _) = parseAst fid text
+                          res = evReevaluate e fid (SourceFile rel text cst ast [] synDiags)
+                      showDocument fid (erDocument res)
+                      finishWith sources' (finish (projectStage <> synDiags <> erDiagnostics res))
+    nextFile (FileId n) = FileId (n + 1)
+    showDocument fid doc = case mode of
+      AsCbor -> BS.putStr (encodeDocument doc)
+      _ -> TIO.putStrLn (showTree fid (show doc))
+    finishWith sources ds = do
+      putHuman sources ds
+      pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
+
+{- | The bytes of a file named on the command line; Nothing when it is not
+there or is not a regular file (golem-cli ADR 0007).
+-}
+readArgument :: FilePath -> IO (Maybe BS.ByteString)
+readArgument path = do
+  exists <- doesFileExist path
+  if exists then Just <$> BS.readFile path else pure Nothing
+
+-- | G0302 for a file named on the command line that is not there (golem-cli ADR 0007).
+missingArgument :: FilePath -> IO ExitCode
+missingArgument path = do
+  putHuman (Map.singleton (FileId 0) (SourceInfo path (mkLineIndex ""))) [diagnostic "G0302" Error (mkSpan (FileId 0) 0 0) ("ファイルがありません: " <> T.pack path)]
+  pure (ExitFailure 1)
+
+-- | A path relative to the working directory, without @.@ and with @..@ resolved.
+relativePath :: FilePath -> IO FilePath
+relativePath p = do
+  cwd <- getCurrentDirectory
+  let resolve acc = \case
+        "." -> acc
+        ".." -> drop 1 acc
+        s -> s : acc
+      parts = reverse (foldl resolve [] (splitDirectories (cwd </> p)))
+  pure (makeRelative cwd (joinPath parts))
 
 -- | golem new (golem-cli ADR 0003).
 newProject :: FilePath -> Language -> Bool -> IO ExitCode
@@ -318,11 +397,13 @@ formatFiles check files0 = do
       results <- mapM one fs
       pure (if and results then ExitSuccess else ExitFailure 1)
   where
-    one path = do
-      bytes <- BS.readFile path
-      case TE.decodeUtf8' bytes of
-        Left _ -> TIO.hPutStrLn stderr (T.pack path <> ": UTF-8 として読めないため整形しません") >> pure False
-        Right src -> formatOne path bytes src
+    -- a file that is not there is G0302, and the others are formatted (golem-cli ADR 0007)
+    one path =
+      readArgument path >>= \case
+        Nothing -> missingArgument path >> pure False
+        Just bytes -> case TE.decodeUtf8' bytes of
+          Left _ -> TIO.hPutStrLn stderr (T.pack path <> ": UTF-8 として読めないため整形しません") >> pure False
+          Right src -> formatOne path bytes src
     formatOne path bytes src =
       case format src of
         Unformattable ds -> do

@@ -367,7 +367,7 @@ withFsType v font =
 
 -- | Pages with the labels and marks given, page n holding the nth list.
 pagesWith :: [[T.Text]] -> [PageOut]
-pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) | (n, l) <- zip [1 ..] ls]
+pagesWith ls = [PageOut n 0 False [] [] l [] [] (ColumnSet 1 0 0 0) [] | (n, l) <- zip [1 ..] ls]
 
 outputDiagnosticTests :: [TestTree]
 outputDiagnosticTests =
