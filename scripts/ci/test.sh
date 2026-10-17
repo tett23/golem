@@ -291,6 +291,60 @@ if command -v timeout >/dev/null 2>&1; then
   if grep -qx 'sleep: did not finish in 1 seconds' "$WORK/err"; then ok; else ng "suite-timeout: the suite that did not finish is named"; fi
 fi
 
+# ---------------------------------------------------------------- bg.sh
+# (docs/adr/0037-ci-build-job-speedup.md)
+
+export BG_DIR="$WORK/bg"
+bg() { sh "$HERE/bg.sh" "$@"; }
+: >"$WORK/in"
+run bg start ok sh -c 'echo out; echo err >&2'
+expect "bg: start" 0 ""
+run bg wait ok
+expect "bg: wait prints the output of the command" 0 "out
+err"
+run bg start three sh -c 'exit 3'
+run bg wait three
+expect "bg: wait exits with the code of the command" 3
+run bg start slow sh -c 'sleep 2; echo done'
+if [ "$CODE" = 0 ] && [ ! -f "$BG_DIR/slow.code" ]; then ok; else ng "bg: start returns while the command runs"; fi
+run bg wait slow
+expect "bg: wait waits for the command" 0 "done"
+run bg start stdin cat
+run bg wait stdin
+expect "bg: the command reads no standard input" 0 ""
+run bg wait never
+expect "bg: wait for a name that was not started" 2
+run bg start nothing
+expect "bg: start without a command" 2
+run bg start a/b true
+expect "bg: a name with a slash" 2
+run bg stop ok
+expect "bg: an unknown subcommand" 2
+unset BG_DIR
+
+# ---------------------------------------------------------------- apt-install.sh
+
+apt_install() { sh "$HERE/apt-install.sh" "$@"; }
+: >"$WORK/in"
+run apt_install
+expect "apt-install: no package" 2
+
+# ---------------------------------------------------------------- ci.yml and cabal
+# (docs/adr/0037-ci-build-job-speedup.md)
+
+# Every cabal command of the build job reads the same configuration: the
+# test wrapper is in cabal.project.local, not on the command line of one
+# command. A flag that changes the configuration of the local packages on
+# one command (cabal test --test-wrapper, say) makes the next command
+# configure them again, and golem-font compile HarfBuzz again.
+CI_YML=$HERE/../../.github/workflows/ci.yml
+if grep -nE '\bcabal +(build|test|run|install|list-bin)\b.*--(test-|benchmark-|enable-|disable-|ghc-options|constraint|flags|haddock-)' "$CI_YML" >"$WORK/out"; then
+  ng "ci.yml: a cabal command sets the configuration on its command line"
+else
+  ok
+fi
+if grep -qE "test-wrapper: .*scripts/ci/suite-timeout\.sh.*cabal\.project\.local" "$CI_YML"; then ok; else ng "ci.yml: the test wrapper is written to cabal.project.local"; fi
+
 # ---------------------------------------------------------------- gate.sh
 
 gate() { sh "$HERE/gate.sh" "$@"; }
