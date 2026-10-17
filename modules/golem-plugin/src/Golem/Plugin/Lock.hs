@@ -25,6 +25,7 @@ import Control.Exception (SomeException, try)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
+import Data.Char (isDigit)
 import Data.Either (lefts, rights)
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
@@ -59,8 +60,18 @@ instance FromValue LockEntry where
 instance FromValue LockFile where
   fromValue = parseTableFromValue (LockFile . fromMaybe Map.empty <$> optKey "plugins")
 
+{- | The lock, whose every sha256 is 64 lowercase hexadecimal digits: the
+hash names a file in the cache, so it must not be a path (docs/adr ADR
+0035). A bad one is G0611 at the top of plugins.lock.
+-}
 parseLock :: FileId -> Text -> Either [Diagnostic] Lock
-parseLock fid src = (\(LockFile m) -> m) <$> decodeStrict "G0611" fid src
+parseLock fid src = do
+  lock <- (\(LockFile m) -> m) <$> decodeStrict "G0611" fid src
+  case [name | (name, e) <- Map.toList lock, not (isHash (leSha256 e))] of
+    [] -> Right lock
+    bad -> Left [diagnostic "G0611" Error (mkSpan fid 0 0) ("plugins." <> name <> ".sha256 は 64 文字の小文字の 16 進数で書きます") | name <- bad]
+  where
+    isHash h = T.length h == 64 && T.all (\c -> isDigit c || (c >= 'a' && c <= 'f')) h
 
 -- | Sorted by plugin name; written only by Golem.
 renderLock :: Lock -> Text

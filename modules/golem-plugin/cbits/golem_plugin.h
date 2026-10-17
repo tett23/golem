@@ -12,6 +12,8 @@ typedef struct golem_plugin golem_plugin;
 #define GOLEM_MISSING_EXPORT 3
 #define GOLEM_BAD_RESULT 4
 #define GOLEM_INSTANTIATE 5
+/* a function returned a value of another type than the ABI says (docs/adr ADR 0035) */
+#define GOLEM_BAD_TYPE 6
 
 /* Compiles a module. On failure returns NULL and a malloc'd message. */
 golem_plugin *golem_plugin_load(const uint8_t *wasm, size_t len, char **err);
