@@ -13,12 +13,13 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 
 ## ジョブの一覧
 
-[code: docs.yml] のジョブは次の二つである。
+[code: docs.yml] のジョブは次の三つである。
 
 | ジョブ | 内容 |
 | --- | --- |
 | [code: adr] | コミット済みの ADR と記録が変わっていないこと、ADR の参照にリンクがあること、ステータスの行がちょうど一つであること |
 | [code: manual] | プルリクエストで、仕様書や [code: CONTRIBUTING.md] の変更にマニュアルが追随していること |
+| [code: textlint] | 文書とマニュアルの原稿が、表記の規則（一文ごとの改行、ダッシュと中黒、用語）を守っていること |
 
 [code: ci.yml] のジョブは次の六つである。
 
@@ -31,7 +32,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 | [code: format] | fourmolu と hlint |
 | [code: ci] | ほかのジョブがすべて成功したか、省かれたことの確認 |
 
-[code: main] の保護の規則が必須とする検査は、[code: ci] と [code: adr] の二つだけである。
+[code: main] の保護の規則が必須とする検査は、[code: ci]、[code: adr]、[code: manual]、[code: textlint] の四つである。
 以前は、[code: ci.yml] のジョブを名前で七つ、必須の検査に並べていた。[index reading="ciのじょぶ": ci のジョブ]
 ジョブを足す、名前を変える、マトリクスを変えるたびに保護の規則も直す必要があり、直し忘れると存在しない検査を待ち続けるか、新しいジョブが必須から漏れる。
 そこで、ジョブの結果をまとめて判定する [code: ci] ジョブを一つ置き、保護の規則はそれだけを見るようにした。
@@ -58,14 +59,15 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 分岐点からの差分にするのは、ベースのブランチの先端がほかのプルリクエストのマージで進むからである。
 二点の差分では、ほかのプルリクエストの変更まで数えてしまう。
 
-[code: needs-build.sh] は、変更が [code: docs/] の下のファイルとリポジトリのルートの Markdown のファイルだけなら [code: false] を、それ以外なら [code: true] を書く。
+[code: needs-build.sh] は、変更が [code: docs/] の下のファイル、[code: tools/textlint/] の下のファイル、リポジトリのルートの Markdown のファイルだけなら [code: false] を、それ以外なら [code: true] を書く。
 ビルドが読む文書（今は [code: docs/diagnostics.md]）の変更は [code: true] になる。
 [code: manual/] と [code: manual-dev/] は [code: docs/] の外にあるので、マニュアルの変更はビルドする側になる。
 [code: docs/manual-policy.md] は Golem の振る舞いを定めないので、その変更だけならビルドしない。
+[code: tools/textlint/] は文書を検査する道具であり、ビルドもテストも読まないので、その変更だけならビルドしない。
 変更のパスが空のときと、パスを取れなかったときも、検査を飛ばさないように [code: true] にする。
 
 [code: changes] が [code: false] を出すと、[code: build]、[code: determinism]、[code: release-scripts]、[code: format] は省かれる。
-[code: docs.yml] の [code: adr] は、変更のパスにかかわらず常に走る。
+[code: docs.yml] の [code: adr] と [code: textlint] は、変更のパスにかかわらず常に走る。
 
 ## build
 
@@ -122,12 +124,19 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 [code: ci.yml] に新しいジョブを足すときは、[code: ci] ジョブの [code: needs] と、[code: gate.sh] の [code: NAMES] の両方に加える。
 片方だけに加えると、新しいジョブが失敗しても [code: ci] が成功してしまうか、[code: ci] が新しいジョブの欠けで常に失敗する。
 
-## adr と manual
+## adr、manual、textlint
 
 [code: docs.yml] の [code: adr] は、adr-guard の v0.8.2 の action で、コミット済みの ADR と記録の保護、ADR の参照のリンク、ステータスの行の数を検査する（第[ref-number adr]章）。
 プルリクエストではベースからヘッドまで、[code: main] への push では push の前から後までの変更を見る。
 
 [code: manual] は、プルリクエストのときだけ、[code: scripts/manual/check-updated.sh] でマニュアルの更新を検査する（第[ref-number docs]章）。
+
+[code: textlint] は、[code: scripts/ci/textlint.sh] で文書の表記を検査する（第[ref-number docs]章）。
+[code: actions/setup-node] で Node の最新の LTS を入れ、[code: tools/textlint/node_modules/] を [code: package-lock.json] のハッシュを鍵にしてキャッシュする。
+キャッシュが当たれば [code: npm ci] を省く。
+先に、Golem の規則と辞書のテスト（[code: node --test]）を走らせる。
+ベースからヘッドまでに加わった ADR も検査し、コミット済みの ADR は検査しない。
+このジョブは、[code: main] の保護の規則の必須の検査には入っていない。
 
 ## 取り消しと時間
 

@@ -12,7 +12,8 @@ Golem には二つのマニュアルがある。
 
 マニュアルを書く人とレビューする人の基準は、[code: docs/manual-policy.md] にある。
 最初の中身は docs/adr の ADR 0024 が決めた。
-マニュアルと方針の文書の変更は、読み手や内容の範囲を変えるときも含めて、ADR を書かずにプルリクエストで決める。ADR を書くのは、メンテナーが求めたときだけである。[note: [code: https://github.com/tett23/golem/blob/main/docs/manual-policy.md]（マニュアルの方針）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0024-manual-audiences-and-policy.md]（docs/adr の ADR 0024「マニュアルの読み手と方針」）]
+マニュアルと方針の文書の変更は、読み手や内容の範囲を変えるときも含めて、ADR を書かずにプルリクエストで決める。
+ADR を書くのは、メンテナーが求めたときだけである。[note: [code: https://github.com/tett23/golem/blob/main/docs/manual-policy.md]（マニュアルの方針）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0024-manual-audiences-and-policy.md]（docs/adr の ADR 0024「マニュアルの読み手と方針」）]
 
 ## 二つのマニュアル
 
@@ -175,7 +176,9 @@ URL を先に書けば、URL の行はそろわないまま残り、和文の名
 参照されていないラベルは dev のプロファイルでも警告になり、マニュアルの組版は失敗する。
 
 原稿は一文ごとに改行する。
+箇条書きの項目と表のセルは、複数の文を含んでよい。
 地の文では、ダッシュ（——）と、並列を表す中黒（・）を使わない。
+この三つと用語の一部は、textlint が原稿を平文として読んで検査する（第[ref-number docs]章）。
 
 本文が拠りどころにする規格と文献は、最初に出る箇所で [code: \[cite キー\]] で引用し、書誌のデータを [code: references.json] に書く。[index reading=さんこうぶんけん: 参考文献]
 巻末の参考文献は引用した文献だけを並べるので、脚注に URL を書いただけの規格は一覧に載らない。

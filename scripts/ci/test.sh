@@ -75,6 +75,11 @@ paths "a document that the tests read" true docs/diagnostics.md
 paths "it with another document" true docs/diagnostics.md docs/specifications.md
 paths "the policy of the manuals (docs/adr/0024)" false docs/manual-policy.md
 paths "the developer manual (docs/adr/0024)" true manual-dev/style.toml
+paths "the textlint tool (docs/adr/0036)" false tools/textlint/package-lock.json tools/textlint/rules/scan.js
+paths "the textlint tool and docs (docs/adr/0036)" false tools/textlint/config/docs.js docs/specifications.md
+paths "the textlint tool and a module (docs/adr/0036)" true tools/textlint/package.json modules/golem-font/src/Golem/Font.hs
+paths "the textlint script (docs/adr/0036)" true scripts/ci/textlint.sh
+paths "a directory that starts with tools/textlint" true tools/textlintx/a.js
 
 needs_build_list() { sh "$HERE/needs-build.sh" --list; }
 : >"$WORK/in"

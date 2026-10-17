@@ -1,0 +1,11 @@
+# Terms for the user manual (manual/; docs/manual-policy.md, "言葉の選び方").
+version: 1
+imports:
+  - ./common.yml
+rules:
+  - expected: ツール
+    pattern: /道具(?![^「」\n]*」)/
+    prh: tool は「道具」と書かず、ツールと書く（docs/manual-policy.md）
+    specs:
+      - from: 外部の道具
+        to: 外部のツール

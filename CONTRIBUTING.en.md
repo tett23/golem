@@ -159,8 +159,26 @@ These are also not changed once committed.
 Records under `docs/audit/`, `docs/audits/`, `docs/benchmarks/`, and `docs/benchmark/` are enforced: the hook and the `adr` job in CI reject changes, deletions, and moves of committed ones ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md), [docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)).
 Records in directories with other names, such as `docs/ci-timings/`, are not checked and are kept by convention and review.
 
+### Japanese prose
+
 Japanese prose puts each sentence on its own line.
-It does not use dashes (——) or the middle dot (・) for lists.
+A list item or a table cell may hold several sentences.
+Prose does not use dashes (——).
+The middle dot (・) is not used to list things in parallel; join them with 、 or と instead.
+Other uses of the middle dot, such as separating the words of a loanword, are allowed.
+
+Terms follow the rules of [docs/manual-policy.md](./docs/manual-policy.md).
+The rules of the developer manual (diagnostic, not 診断; アセット, not 資産; マシン or 計算機, not 機械) and the rules common to the two manuals (書体 and フォント kept apart; バージョン, not 版, for a version; パブリックドメイン, not 公有) also apply to the specifications under `docs/`, README, CONTRIBUTING, and new ADRs.
+Committed ADRs cannot change and keep their old terms.
+
+textlint checks the rules that can be decided from the characters and the lines ([docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)).
+The rules, the term dictionaries, and the pinned npm packages are in `tools/textlint/` ([tools/textlint/README.md](./tools/textlint/README.md)).
+Install Node and run `sh scripts/ci/textlint.sh`.
+The first run installs the packages.
+With `TEXTLINT_ARGS=--fix`, it fixes what can be fixed.
+It checks the Markdown under `docs/` (but the ADRs and records such as `docs/audits/`), README.md, CONTRIBUTING.md, the ADRs that the branch adds, and the sources of the two manuals.
+The `textlint` job of CI (`docs.yml`) runs the same script.
+Words chosen by meaning (版 and バージョン, 書体 and フォント) and the length of sentences are not checked; review them.
 
 ## Git
 
