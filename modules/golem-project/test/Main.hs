@@ -1,5 +1,6 @@
 module Main (main) where
 
+import ColophonSpec qualified
 import Control.Monad (forM_, void)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
@@ -489,6 +490,7 @@ tests =
       diagnosticCodeTests,
       tomlMessageTests,
       TomlMessageSpec.tests,
+      ColophonSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))

@@ -2,6 +2,7 @@ module Main (main) where
 
 import BuildSpec
 import CliSpec
+import ColophonSpec
 import DiagnosticSitesSpec
 import DiagnosticsSpec
 import FigureSpec
@@ -36,7 +37,8 @@ tests =
         versionTests,
         memoTests,
         producerTests,
-        securityTests
+        securityTests,
+        testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
         <> [ newProjectTests,

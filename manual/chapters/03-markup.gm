@@ -248,6 +248,7 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 - [code: round(x, 桁数)]：四捨五入します。[code: round(2.675, 2)] は [= round(2.675, 2)] です。
 - [code: fixed(x, 桁数)]：小数点以下の桁をそろえた文字列にします。[code: fixed(1.5, 2)] は [= fixed(1.5, 2)] です。価格の表示に使います。
 - [code: floor]、[code: ceil]、[code: abs]、[code: min]、[code: max]、[code: sqrt]、[code: len]、[code: div]（整数の割り算）
+- [code: join(配列, 区切り)]：文字列の配列を、区切りをはさんでつないだ文字列にします。[code: join(\["a", "b"\], "、")] は [= join(["a", "b"], "、")] です。
 
 小数の計算は、どのコンピューターで組んでも同じ結果になるように決めています。
 
@@ -260,6 +261,7 @@ Markdown を書いたことがあれば、ブロックの書き方はほぼ同�
 ```
 
 使える名前は [code: title]、[code: date]、[code: id]、[code: language] と、マニフェストに書いた場合の [code: edition]、[code: publisher]、[code: title_reading] です。
+編集者や印刷所、版と刷も参照でき、発行の履歴は [code: @printings] で組めます（「[ref-title colophon]」、[ref-page colophon] ページ）。
 [code: \[= doc.chapters.count\]] は、本の章の数になります。
 このマニュアルの書名は「[= meta.title]」、発行日は [= meta.date] で、[= doc.chapters.count] の章からなります。
 

@@ -43,6 +43,7 @@ module Golem.Driver.Pdf
     layoutPages,
     indexLines,
     bibliographyLines,
+    pdfXPeople,
     Assumed (..),
     fixpoint,
     labelSpans,
@@ -2301,6 +2302,14 @@ figureRect geom ta slot pf =
 styleFileId :: Project -> FileId
 styleFileId p = FileId (length (fileTableEntries (projectFiles p)))
 
+{- | The names XMP takes as dc:creator and dc:contributor: without the
+printer and the binder, without roles (docs/adr ADR 0033).
+-}
+pdfXPeople :: Metadata -> ([Text], [Text])
+pdfXPeople md = (names (mdCreators md), names (mdContributors md))
+  where
+    names cs = [crName c | c <- cs, inMetadata (crRole c)]
+
 -- | The output intent; a profile that cannot be read is G0806 (golem-project ADR 0004).
 loadIntent :: PdfInput -> IO (Either [Diagnostic] (Maybe P.PdfX))
 loadIntent inp = case stIntent (piStyle inp) of
@@ -2313,7 +2322,7 @@ loadIntent inp = case stIntent (piStyle inp) of
         bytes <- BS.readFile (piRoot inp <> "/" <> rel)
         let md = manifestMetadata (projectManifest (piProject inp))
             condition = if "JapanColor2001Coated" `T.isInfixOf` T.pack path then "JC200103" else T.pack (takeBaseName path)
-        pure (Right (Just (P.PdfX bytes condition [crName c | c <- mdCreators md])))
+        pure (Right (Just (uncurry (P.PdfX bytes condition) (pdfXPeople md))))
   where
     intentMessage = \case
       Missing -> "出力インテントの ICC プロファイルがありません"

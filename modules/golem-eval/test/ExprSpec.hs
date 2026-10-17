@@ -73,6 +73,13 @@ tests =
         shown "1000000000000000000000.0" @?= Right "1000000000000000000000"
         shown "-0.0" @?= Right "0"
         shown "0.1 + 0.2" @?= Right "0.30000000000000004",
+      -- docs/adr ADR 0033
+      testCase "join joins strings with a separator; anything else is G0201" $ do
+        ev "join([\"a\", \"b\"], \"、\")" @?= Right (VString "a、b")
+        ev "join([], \"、\")" @?= Right (VString "")
+        ev "join([1], \"、\")" @?= Left "G0201"
+        ev "join(\"a\", \"、\")" @?= Left "G0201"
+        ev "join([\"a\"], 1)" @?= Left "G0201",
       testCase "an expression that cannot be evaluated reports its diagnostic code" $ do
         ev "1 / 0" @?= Left "G0203"
         ev "sqrt(-1)" @?= Left "G0204"
