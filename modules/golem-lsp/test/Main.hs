@@ -13,6 +13,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import EditingSpec (editingTests)
+import TableWatchSpec (tableWatchTests)
 import Golem.Driver.Explain (codeDescriptionUrl)
 import Golem.Lsp.Features
 import Golem.Lsp.Server (lspSeverity, rewriteInitializeResponse, runGolemLspWithHandles)
@@ -371,7 +372,8 @@ tests =
                 uncurry (@?=) (srClampHover r16)
                 uncurry (@?=) (srClampHover r8)
             ],
-      editingTests
+      editingTests,
+      tableWatchTests
     ]
 
 data SessionSpec = SessionSpec
