@@ -18,7 +18,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 | ジョブ | 内容 |
 | --- | --- |
 | [code: adr] | コミット済みの ADR と記録が変わっていないこと、ADR の参照にリンクがあること、ステータスの行がちょうど一つであること |
-| [code: manual] | プルリクエストで、仕様書や [code: CONTRIBUTING.md] の変更にマニュアルが追随していること |
+| [code: manual] | プルリクエストで、仕様書や [code: CONTRIBUTING.md] の変更にマニュアルが追随していること、この本の図が原稿から作られていること |
 | [code: textlint] | 文書とマニュアルの原稿が、表記の規則（一文ごとの改行、ダッシュと中黒、用語）を守っていること |
 
 [code: ci.yml] のジョブは次の六つである。
@@ -88,7 +88,7 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 + GHC 9.10.3 と cabal-install 3.16.1.0 を用意する。GHC のディレクトリ、Hackage の索引、cabal の store、[code: dist-newstyle] をキャッシュから戻す。
 + [code: scripts/fetch-wasmtime.sh] で wasmtime を取得する。
 + [code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
-+ [code: cabal build all] と [code: cabal test all] を実行する。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。
++ [code: cabal build all] と [code: cabal test all] を実行する。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることを確かめる。
 + [code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
 + 二つのマニュアルのフォントをキャッシュから戻す。
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
@@ -155,13 +155,13 @@ hlint は [code: -j] でランナーのすべてのコアを使う。
 プルリクエストではベースからヘッドまで、[code: main] への push では push の前から後までの変更を見る。
 
 [code: manual] は、プルリクエストのときだけ、[code: scripts/manual/check-updated.sh] でマニュアルの更新を検査する（第[ref-number docs]章）。
+続けて [code: scripts/manual/check-figures.sh] で、この本の輪郭の SVG の図が原稿の SVG から作られたままであることを確かめる（第[ref-number manuals]章）。
 
 [code: textlint] は、[code: scripts/ci/textlint.sh] で文書の表記を検査する（第[ref-number docs]章）。
 [code: actions/setup-node] で Node の最新の LTS を入れ、[code: tools/textlint/node_modules/] を [code: package-lock.json] のハッシュを鍵にしてキャッシュする。
 キャッシュが当たれば [code: npm ci] を省く。
 先に、Golem の規則と辞書のテスト（[code: node --test]）を走らせる。
 ベースからヘッドまでに加わった ADR も検査し、コミット済みの ADR は検査しない。
-このジョブは、[code: main] の保護の規則の必須の検査には入っていない。
 
 ## 取り消しと時間
 

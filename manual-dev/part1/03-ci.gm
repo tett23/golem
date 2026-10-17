@@ -128,9 +128,10 @@ CI のキャッシュの鍵を [code: plugins.lock] のハッシュにすれば�
 - [code: style.toml] が指すフォントと ICC プロファイル
 - [code: plugins.lock] のハッシュで固定したプラグインの配布物
 - Golem 自身のバージョンと、Golem に同梱してバージョンを固定したネイティブライブラリ
-- 出力を変えるコマンドのオプション（[code: --marks]）
+- 出力を変えるコマンドのオプション（[code: --marks] と [code: --profile]）
 
 Golem は時計を読まず、乱数を使わず（[code: golem new] の [code: id] だけが例外）、環境変数、ロケール、タイムゾーンを出力に影響させない。
+Golem の CI は、タイムゾーン、ロケール、[code: HOME]、プロジェクトの置き場所、ファイルの時刻などを変えて組み直し、出力が変わらないことを確かめている（第[ref-number determinism]章）。
 成果物の日時は、マニフェストの [code: metadata.date] だけから作る。
 [code: SOURCE_DATE_EPOCH] も読まない。
 CI で何度組んでも同じ日時が書かれるのは、この規則の帰結である。

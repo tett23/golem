@@ -115,11 +115,12 @@
   <text class="sub" x="920" y="646">数は出現位置へのリンク</text>
   <line x1="850" y1="570" x2="898" y2="570"/>
 
-  <rect class="box" x="900" y="690" width="380" height="150"/>
+  <rect class="box" x="900" y="690" width="380" height="175"/>
   <text class="file" x="920" y="725">01.txt と 02.txt の末尾</text>
-  <text x="920" y="765">*1 一行ずつ決めるより…</text>
-  <text x="920" y="798">*1 親文字との対応を保つ。</text>
+  <text class="sub" x="920" y="760">それぞれ見出し「注」の下に</text>
+  <text x="920" y="798">*1 一行ずつ決めるより…</text>
+  <text x="920" y="831">*1 親文字との対応を保つ。</text>
   <line x1="850" y1="765" x2="898" y2="765"/>
-  <text class="sub" x="900" y="880">back.txt の「索引」の見出しの下は空。</text>
-  <text class="sub" x="900" y="908">プレーンテキストは索引を出さない。</text>
+  <text class="sub" x="900" y="905">back.txt の「索引」の見出しの下は空。</text>
+  <text class="sub" x="900" y="933">プレーンテキストは索引を出さない。</text>
 </svg>
