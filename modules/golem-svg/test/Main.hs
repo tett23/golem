@@ -144,6 +144,15 @@ drawingTests =
               [MoveTo (0, 0), LineTo (5, 5)],
               [MoveTo (10, 10), LineTo (15, 10), LineTo (20, 10), LineTo (20, 15), LineTo (0, 15), LineTo (0, 1), ClosePath]
             ],
+    testCase "numbers: a fraction without digits before it, a second point that starts a new number, exponents" $ do
+      ops <- drawing "<path d=\"M.5.5L1e1-1E0l+2-.5e1\"/>"
+      map snd (paths ops) @?= [[MoveTo (1 / 2, 1 / 2), LineTo (10, -1), LineTo (12, -6)]],
+    testCase "the flags of an arc are one digit each, with or without a separator (SVG 1.1 path grammar)" $ do
+      compact <- drawing "<path d=\"M0 0A5 5 0 1010 0a5 5 0 0110 0\"/>"
+      spaced <- drawing "<path d=\"M0 0A5 5 0 1 0 10 0a5 5 0 0 1 10 0\"/>"
+      map snd (paths compact) @?= map snd (paths spaced),
+    testCase "an arc flag that is not 0 or 1 is unsupported" $
+      map unName (unsupported (svg "<path d=\"M0 0A5 5 0 2 0 10 0\"/>")) @?= ["d"],
     testCase "curves: C, S, Q and T, relative and absolute" $ do
       ops <- drawing "<path d=\"M0 0 C 1 1 2 1 3 0 S 5 -1 6 0 q 1 1 2 0 t 2 0\"/>"
       case map snd (paths ops) of
