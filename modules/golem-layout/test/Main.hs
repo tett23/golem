@@ -246,7 +246,7 @@ noteMarkTests =
     testCase "two notes 1 of different keys on one page are two footnotes" $ do
       let a = NoteId (mkSpan (FileId 1) 0 5) 0
           b = NoteId (mkSpan (FileId 2) 0 5) 0
-          ps = paginate 1 10 [FParagraph [LineBox 0 [NoteBody a 1] [] [], LineBox 1 [NoteBody b 2] [] []]]
+          ps = paginate 1 10 [FParagraph [LineBox 0 [NoteBody a 1] [] [] 0, LineBox 1 [NoteBody b 2] [] [] 0]]
       map poFootnotes ps @?= [[(a, 0, 1), (b, 0, 2)]]
   ]
   where
@@ -622,14 +622,14 @@ tests =
             let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 99 3 ["fig"] [], FParagraph (lines' 10 2)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 10), (4, SLine 11)], [(0, SFigure 99)]],
           testCase "footnotes sit on the page of their marker and continue when too long" $ do
-            let withNote i n = LineBox i [NoteBody (nid (100 + i)) n] [] []
-                ps = paginate 1 6 [FParagraph [LineBox 0 [] [] [], withNote 1 2, LineBox 2 [] [] [], withNote 3 1, LineBox 4 [] [] []]]
+            let withNote i n = LineBox i [NoteBody (nid (100 + i)) n] [] [] 0
+                ps = paginate 1 6 [FParagraph [LineBox 0 [] [] [] 0, withNote 1 2, LineBox 2 [] [] [] 0, withNote 3 1, LineBox 4 [] [] [] 0]]
             map poFootnotes ps @?= [[(nid 101, 0, 2)], [(nid 103, 0, 1)]]
-            let long = paginate 1 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
+            let long = paginate 1 4 [FParagraph [withNote 0 5, LineBox 1 [] [] [] 0]]
             map poFootnotes long @?= [[(nid 100, 0, 2)], [(nid 100, 2, 2)], [(nid 100, 4, 1)]],
           testCase "a separator of two lines leaves one line less on a page of footnotes (golem-driver ADR 0024)" $ do
-            let withNote i = LineBox i [NoteBody (nid (100 + i)) 1] [] []
-                flow = [FParagraph (withNote 0 : [LineBox i [] [] [] | i <- [1 .. 9]])]
+            let withNote i = LineBox i [NoteBody (nid (100 + i)) 1] [] [] 0
+                flow = [FParagraph (withNote 0 : [LineBox i [] [] [] 0 | i <- [1 .. 9]])]
                 lay sep = paginateIn sep (ColumnSet 1 0 0 0) 6 flow
             map (length . poSlots) (lay 1) @?= [4, 6]
             map (length . poSlots) (lay 2) @?= [3, 5, 2]
@@ -640,7 +640,7 @@ tests =
             paginateIn 1 (ColumnSet 1 0 0 0) 6 plain @?= paginate 1 6 plain,
           testCase "index marks go to the page of their line (golem-driver ADR 0007)" $ do
             let m = mkSpan (FileId 0) 10 20
-                ps = paginate 1 1 [FParagraph [LineBox 0 [] [] [], LineBox 1 [] [] [m], LineBox 2 [] [] []]]
+                ps = paginate 1 1 [FParagraph [LineBox 0 [] [] [] 0, LineBox 1 [] [] [m] 0, LineBox 2 [] [] [] 0]]
             map poNumber ps @?= [1, 2, 3]
             markPages ps @?= Map.fromList [(m, 2)],
           testCase "the marks of a figure go with it to the next page" $ do
@@ -651,12 +651,12 @@ tests =
             -- the reference sits before the label; at three digits the reference line wraps
             let layout assumed =
                   let refWidthLines = if Map.findWithDefault 1 "end" assumed >= 100 then 2 else 1
-                   in paginate 1 5 (FParagraph (lines' 0 refWidthLines) : [FParagraph (lines' (1000 + i * 10) 2) | i <- [0 .. 196]] <> [FParagraph [LineBox 9999 [] ["end"] []]])
+                   in paginate 1 5 (FParagraph (lines' 0 refWidthLines) : [FParagraph (lines' (1000 + i * 10) 2) | i <- [0 .. 196]] <> [FParagraph [LineBox 9999 [] ["end"] [] 0]])
             case resolvePageRefs layout of
               Right ps -> Map.lookup "end" (labelPages ps) @?= Just (toInteger (poNumber (last ps)))
               Left ls -> assertFailure (show ls),
           testCase "references that never settle are an error" $ do
-            let layout assumed = paginate 1 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"] []]])
+            let layout assumed = paginate 1 5 (replicate (fromInteger (if Map.findWithDefault 1 "x" assumed < 10 then 9 else 1)) (FParagraph (lines' 0 5)) <> [FParagraph [LineBox 1 [] ["x"] [] 0]])
             resolvePageRefs layout @?= Left ["x"],
           testCase "a space between stanzas takes grid lines (docs/adr ADR 0003)" $ do
             let ps = paginate 1 5 [FParagraph (lines' 0 4), FSpace 1, FParagraph (lines' 10 1)]
@@ -902,11 +902,11 @@ tests =
             map poBlank ps @?= [False, False, True, False]
             slots ps @?= [[0, 1, 2], [3, 4], [], [20]],
           testCase "footnotes sit in the column of their marker and continue in the next column" $ do
-            let withNote i n = LineBox i [NoteBody (nid (100 + i)) n] [] []
-                ps = paginate 2 4 [FParagraph [withNote 0 1, LineBox 1 [] [] [], LineBox 2 [] [] [], LineBox 3 [] [] [], LineBox 4 [] [] []]]
+            let withNote i n = LineBox i [NoteBody (nid (100 + i)) n] [] [] 0
+                ps = paginate 2 4 [FParagraph [withNote 0 1, LineBox 1 [] [] [] 0, LineBox 2 [] [] [] 0, LineBox 3 [] [] [] 0, LineBox 4 [] [] [] 0]]
             cols ps @?= [(1, 0), (1, 1)]
             map poFootnotes ps @?= [[(nid 100, 0, 1)], []]
-            let long = paginate 2 4 [FParagraph [withNote 0 5, LineBox 1 [] [] []]]
+            let long = paginate 2 4 [FParagraph [withNote 0 5, LineBox 1 [] [] [] 0]]
             cols long @?= [(1, 0), (1, 1), (2, 0)]
             map poFootnotes long @?= [[(nid 100, 0, 2)], [(nid 100, 2, 2)], [(nid 100, 4, 1)]],
           testCase "a figure that does not fit goes to the top of the next column; text moves up" $ do
@@ -919,7 +919,7 @@ tests =
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 11, SLine 12], [SLine 0, SLine 13, SLine 14]]
             map poTables ps @?= [[TableSegment 100 0 (Just 0) 3], [TableSegment 100 0 (Just 0) 2]],
           testCase "a label in the second column is on the page of that column" $ do
-            let ps = paginate 2 3 [FParagraph (lines' 0 3), FParagraph [LineBox 50 [] ["x"] []]]
+            let ps = paginate 2 3 [FParagraph (lines' 0 3), FParagraph [LineBox 50 [] ["x"] [] 0]]
             cols ps @?= [(1, 0), (1, 1)]
             labelPages ps @?= Map.fromList [("x", 1)],
           testCase "a column break goes to the next column, then to the next page" $ do
@@ -963,9 +963,9 @@ tests =
             sets ps @?= [(1, 0, 1, 0), (2, 0, 2, 0)]
             map (map fst . poSlots) ps @?= [[0], [0 .. 2]],
           testCase "footnotes on the page of the switch: the columns leave their lines" $ do
-            let withNote i n = LineBox i [NoteBody (nid (500 + i)) n] [] []
+            let withNote i n = LineBox i [NoteBody (nid (500 + i)) n] [] [] 0
                 -- a note of 1 line and its separator: 2 grid lines
-                ps = paginate 1 10 ([FParagraph [withNote 0 1, LineBox 1 [] [] []], FSwitchColumns index2] <> entries 100 12 <> [FRestoreColumns])
+                ps = paginate 1 10 ([FParagraph [withNote 0 1, LineBox 1 [] [] [] 0], FSwitchColumns index2] <> entries 100 12 <> [FRestoreColumns])
             sets ps @?= [(1, 0, 1, 0), (1, 0, 2, 2), (1, 1, 2, 2)]
             map (map fst . poSlots) ps @?= [[0, 1], [2 .. 7], [2 .. 7]]
             map poFootnotes ps @?= [[(nid 500, 0, 1)], [], []],
@@ -992,7 +992,7 @@ tests =
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 11, SLine 12], [SLine 0, SLine 13, SLine 14]]
             map poTables ps @?= [[TableSegment 100 0 (Just 0) 3], [TableSegment 100 0 (Just 0) 2]],
           testCase "the header's label and note are counted once" $ do
-            let header = [LineBox 0 [NoteBody (nid 900) 1] ["tbl"] []]
+            let header = [LineBox 0 [NoteBody (nid 900) 1] ["tbl"] [] 0]
                 ps = paginate 1 4 [FTable 100 0 header [lines' (10 + i) 1 | i <- [0 .. 4]]]
             map poLabels ps @?= ["tbl"] : replicate (length ps - 1) []
             [(poNumber p, n) | p <- ps, (n, _, _) <- poFootnotes p] @?= [(1, nid 900)],
@@ -1125,14 +1125,14 @@ tests =
       [] -> Nothing
       bs -> Just (last bs)
     last' xs = if null xs then "" else last xs
-    lines' base n = [LineBox (base + i) [] [] [] | i <- [0 .. n - 1]]
+    lines' base n = [LineBox (base + i) [] [] [] 0 | i <- [0 .. n - 1]]
     slots = map (\p -> [i | (_, s) <- poSlots p, i <- slotLines s] <> [i | (_, SFigure i) <- poSlots p])
     cols = map (\p -> (poNumber p, poColumn p))
     -- page, column, columns of the set and its first line (docs/adr ADR 0025)
     sets = map (\p -> (poNumber p, poColumn p, csColumns (poColumnSet p), csFirstLine (poColumnSet p)))
     index2 = ColumnSet 2 (15 * 65536) (2 * 65536) 0
     index3 = index2
-    entries base n = [FParagraph [LineBox (base + i) [] [] []] | i <- [0 .. n - 1]]
+    entries base n = [FParagraph [LineBox (base + i) [] [] [] 0] | i <- [0 .. n - 1]]
     slotLines = \case
       SLine i -> [i]
       SHeading i n -> [i .. i + n - 1]
@@ -1728,7 +1728,7 @@ codeTests =
     rowsWith = layoutCodeLine s
     rows1 = rowsWith 1000 . atomsOf
     offsets rs = [[(cpOffset p, cpText p) | p <- crPieces r] | r <- rs]
-    ids from n = [LineBox i [] [] [] | i <- [from .. from + n - 1]]
+    ids from n = [LineBox i [] [] [] 0 | i <- [from .. from + n - 1]]
     isFinalPenalty = \case
       Penalty _ p _ -> p >= infPenalty
       _ -> False

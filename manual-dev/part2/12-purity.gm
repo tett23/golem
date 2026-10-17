@@ -76,7 +76,7 @@ Haskell は、副作用を型で区別する。
 副作用を持つ計算は [code: IO a] のような型を持ち、型に [code: IO] を持たない関数の中からは [code: IO] の計算を実行できない（例外は [code: unsafePerformIO] で、後の「C のライブラリを純粋な関数として包む」の節で扱う）。
 このため、型に [code: IO] が現れない関数はふつう純粋であり、それを確かめるのはコンパイラの型の検査である。
 golem-eval の [code: evalFile :: EvalContext -> A.File -> EvalResult] は、型の上で時計も環境変数も読めない。
-[code: evalFile] が使う値は、import 先の評価の結果、マニフェストの値、図版と CSV の中身、プラグインの関数まで、すべて [code: EvalContext] の欄として渡されている。
+[code: evalFile] が使う値は、import 先の評価の結果、マニフェストの値、図版と CSV と TSV の中身、プラグインの関数まで、すべて [code: EvalContext] の欄として渡されている。
 
 純粋性と決定性は、副作用を通してつながっている。
 出力が入力の外の値で揺れるのは、どこかで読む副作用（時刻、乱数、環境、列挙の順）が値を持ち込んだときである。
@@ -102,7 +102,7 @@ Golem の構成は、IO を処理の両端に寄せ、そのあいだを純粋�
 この章では、純粋な関数だけからなる中央の部分を[strong: カーネル]、IO を行う両端を[strong: エッジ]と呼ぶ。
 
 @label fig-purity
-@figure images/purity.svg alt="左に読む側の IO のエッジ（原稿と manifest.toml、プラグインの配布物、図版と書誌と CSV、フォント）、中央に純粋なカーネル（構文解析、S0 の evalFile、S1 の assemble、S2 の行分割と改ページ、直列化）、右に書く側の IO のエッジ（build/ の下の出力）を置いた図。中央には、wasmtime と HarfBuzz と FreeType を純粋な関数として包んだ箱が点線で描かれ、下の帯に、時計、乱数、環境変数、ロケール、タイムゾーン、ディレクトリの列挙、ネットワーク、システムのフォントを出力に影響させないことが書かれている"
+@figure images/purity.svg alt="左に読む側の IO のエッジ（原稿と manifest.toml、プラグインの配布物、図版と書誌と CSV と TSV、フォント）、中央に純粋なカーネル（構文解析、S0 の evalFile、S1 の assemble、S2 の行分割と改ページ、直列化）、右に書く側の IO のエッジ（build/ の下の出力）を置いた図。中央には、wasmtime と HarfBuzz と FreeType を純粋な関数として包んだ箱が点線で描かれ、下の帯に、時計、乱数、環境変数、ロケール、タイムゾーン、ディレクトリの列挙、ネットワーク、システムのフォントを出力に影響させないことが書かれている"
   純粋なカーネルと、読む側と書く側の IO のエッジ。
 
 IO を持つのは、golem-driver の [code: evaluateProjectWith] と [code: buildCore]、golem-project の [code: loadProjectWith] と [code: resolveInRoot]、golem-font のフォントを開く [code: loadFont] とサブセットを作る [code: subsetFont]、golem-plugin のプラグインを読み込む [code: loadPlugin] と [code: Golem.Plugin.Lock] のキャッシュの読み書き、golem-epub の [code: writeEpub]、それに golem-cli と golem-lsp である。
@@ -151,7 +151,7 @@ LSP が編集されたファイルだけを評価し直せるのも同じ理由�
 
 ### 読むファイルは原稿の記述で決まる
 
-図版、取り込むコード、CSV は、golem-driver の [code: loadAssets] が、各ファイルの AST から [code: assetRefs] で集めたパスだけを読む。
+図版、取り込むコード、CSV と TSV は、golem-driver の [code: loadAssets] が、各ファイルの AST から [code: assetRefs] で集めたパスだけを読む。
 パスは golem-project の [code: normalizeRelative] で字句の上で正規化し、[code: resolveInRoot] でプロジェクトルートの外を指していないことを確かめる。
 ディレクトリを列挙する [code: listDirectory] は、[code: golem new] が作る先のディレクトリが空かどうかを見る箇所と、LSP がワークスペースを探す箇所にしか現れない。
 どちらも出力の中身を決めない。

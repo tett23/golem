@@ -38,7 +38,7 @@
   <rect class="io" x="30" y="190" width="290" height="76"/>
   <text class="c" x="175" y="214">プラグインの配布物</text><text class="c mod" x="175" y="246">ハッシュで照合</text>
   <rect class="io" x="30" y="300" width="290" height="76"/>
-  <text class="c" x="175" y="324">図版、書誌、CSV</text><text class="c mod" x="175" y="356">golem-driver</text>
+  <text class="c" x="175" y="324">図版、書誌、CSV、TSV</text><text class="c mod" x="175" y="356">golem-driver</text>
   <rect class="io" x="30" y="410" width="290" height="76"/>
   <text class="c" x="175" y="434">フォント</text><text class="c mod" x="175" y="466">Golem.Driver.Fonts</text>
 

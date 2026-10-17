@@ -81,7 +81,7 @@ hardBreakTests =
       [length bs | FParagraph bs <- flow] @?= [3]
       -- one line left on a page: the paragraph moves whole rather than leave its first line alone
       case flow of
-        [p@(FParagraph _)] -> map (map fst . poSlots) (paginate 1 4 [FParagraph [LineBox i [] [] [] | i <- [100, 101, 102]], p]) @?= [[0, 1, 2], [0, 1, 2]]
+        [p@(FParagraph _)] -> map (map fst . poSlots) (paginate 1 4 [FParagraph [LineBox i [] [] [] 0 | i <- [100, 101, 102]], p]) @?= [[0, 1, 2], [0, 1, 2]]
         other -> assertFailure (show (length other)),
     testCase "HTML: a hard break is br inside the p; verse keeps its lines" $ do
       withVerseProject "" "a\\\nb\n\n- c\\\n  d\n" $ \tmp -> do

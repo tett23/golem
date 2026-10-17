@@ -19,12 +19,13 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 ## ファイルの文字コードと改行
 
 = [strong: G0101 [code: UTF-8 として不正なバイト列があります]]
-  原稿のファイル、[code: manifest.toml]、[code: style.toml] のどれかが UTF-8 で保存されていません。
+  原稿のファイル、[code: manifest.toml]、[code: style.toml]、[code: @table] の表のファイルのどれかが UTF-8 で保存されていません。
   Shift_JIS などで保存したファイルで起きます。
   テキストエディタで文字コードに UTF-8 を選んで保存し直してください。
 = [strong: G0102 [code: ファイルの先頭に BOM があります。BOM を取り除いてください]]
   ファイルの先頭に BOM（文字コードを示す目印）が付いています。
   BOM なしの UTF-8 で保存し直すか、[code: golem fmt] を実行してください。
+  [code: @table] の表のファイルの先頭の BOM は読み飛ばすので、このエラーになりません。
 = [strong: G0103 [code: 改行に CR が含まれています。改行は LF に限ります]]
   Windows の形式の改行（CRLF）で保存されています。
   [code: golem fmt] を実行すると直ります。
@@ -228,9 +229,7 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   パスはプロジェクトのフォルダから書きます。
   綴りと置き場所を確かめてください。
 = [strong: G0234 [code: @table には src が必要です]]
-  [code: src=] で CSV のファイルを指定してください。
-= [strong: G0235 [code: CSV が空です]]、[strong: [code: CSV の行ごとのセルの数が一致しません]]
-  CSV のファイルの各行の列の数を、一行目にそろえてください。
+  [code: src=] で CSV か TSV のファイルを指定してください。
 = [strong: G0236 [code: @listing にはファイルのパスが必要です]]
   最初の引数に、載せるファイルのパスを書いてください。
 = [strong: G0237 [code: lines の範囲が不正です: …]]
@@ -273,6 +272,24 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0275 [code: page は PDF の図版のページを 1 から数えた整数で書きます: …]]
   [code: page=] の値が 1 以上の整数でないか、PDF でない画像に [code: page] を書いています。
   PDF の画像なら [code: page=3] のように書き、PNG と JPEG の画像からは [code: page] を消してください。
+= [strong: G0280 [code: format は csv か tsv です: …]]
+  [code: @table] の [code: format] には、[code: csv] か [code: tsv] を書いてください。
+= [strong: G0281 [code: align の値は left、center、right、default のどれかです: …]] など
+  [code: @table] の [code: align] の値に誤りがあるか、値の数が表の列の数と合いません。
+  値を一つだけ書くか、列の数と同じ数を書いてください。
+= [strong: G0282 [code: 単独の CR があります。表のファイルの改行は LF か CRLF に限ります]]
+  表のファイルに、LF の前にない CR があります。
+  改行を LF か CRLF にして保存し直してください。
+= [strong: G0283 [code: CSV の引用符が閉じていません]]
+  CSV のファイルで、[code: "] で始めたセルの引用符が閉じていません。
+  セルの中の [code: "] は [code: ""] と二つ重ねて書いてください。
+= [strong: G0284 [code: cells=markup はまだ実装していません]] など
+  [code: @table] の [code: cells] には、今は [code: text] だけを書けます。
+  [code: cells] を消してください。
+= [strong: G0285 [code: TSV の行のセルの数が見出しの行と違います（…）]] など
+  表のファイルが空か、セルの数が一行目と違う行があります。
+  メッセージの示す行のセルの数を、一行目にそろえてください。
+  TSV の途中の空の行も、セルが一つの行として数えます。
 
 @nonumber
 ## ファイルの中の設定（[code: @manifest] と [code: @style-def]）
