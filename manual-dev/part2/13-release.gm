@@ -33,12 +33,18 @@ $ gh run rerun <実行の ID> --failed
 
 ## 手順
 
++ セキュリティ監査をする。前の監査からの変更を中心に、信頼できない入力（原稿、TOML、画像、フォント、CSL-JSON、プラグイン、シンボリックリンク）と CI のワークフローを調べ、結果を [code: docs/audits/<日付>-security-audit.md] に記録して [code: main] に入れる。
 + バージョンを上げるプルリクエストを作る。[code: VERSION] を新しいバージョン（例：[code: 0.1.0-rc1]）に書き換え、識別子を除いた [code: X.Y.Z] を全パッケージの cabal ファイルの [code: version] に書く。CI の [code: release-scripts] ジョブが、二つの一致を検査する。
 + プルリクエストを [code: main] にマージする。
 + マージしたコミットに、[code: v] に [code: VERSION] の内容を続けたタグ（例：[code: v0.1.0-rc1]）を付けて push する。
 + [code: release.yml] が、配布物を作って検査し、下書きのリリースを作る。プレリリースのタグでは、プレリリースの印が付く。
 + 下書きのリリースノートを読み、分類やまとめ方がおかしければ手で直す。
 + GitHub の Releases の画面で、下書きを公開する。
+
+監査は、プレリリース（[code: rc] などの識別子が付くタグ）を含め、[code: v] で始まるタグのリリースのたびにする。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0035-security-hardening.md]（docs/adr の ADR 0035「信頼できない入力に対する防御を固める」）]
+監査の記録は、ほかの記録と同じく、コミットしたあとは変更しない。
+見つかった問題は、失敗するテストを先に書いてから直し、仕様を変える修正には ADR を書く。
+監査の記録と修正が [code: main] に入るまで、タグを付けない。
 
 タグと [code: VERSION] が一致しないとき、タグのコミットが [code: main] に含まれないときは、ワークフローの [code: version] ジョブが失敗し、リリースは作られない。
 

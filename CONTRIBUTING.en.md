@@ -189,12 +189,13 @@ Group the changes under headings such as Added, Changed, Removed, and Fixed, and
 
 A release goes as follows ([docs/adr/0004](./docs/adr/0004-binary-distribution-and-release.md)).
 
-1. Open a pull request that raises the version. Write the new version (for example `0.1.0-rc1`) into `VERSION` at the root of the repository, and its `X.Y.Z` without the identifier into the `version` of every package's cabal file. The `release-scripts` job of CI checks that the two agree.
-2. Merge the pull request into `main`.
-3. Tag the merge commit with `v` followed by the content of `VERSION` (for example `v0.1.0-rc1`) and push the tag. When the tag does not match `VERSION`, or its commit is not on `main`, the `version` job of the workflow fails and no release is made.
-4. `.github/workflows/release.yml` builds and checks the archives and makes a draft release. A pre-release tag makes a draft marked as a pre-release.
-5. Read the draft release notes. Fix by hand what the AI classified or summarized badly. When the AI or the check failed, the notes are the list of changes with a `## Unsorted` section; classify and rewrite them. The summary of the workflow says why it failed.
-6. Publish the draft on the GitHub Releases page. The workflow never publishes.
+1. Run a security audit ([docs/adr/0035](./docs/adr/0035-security-hardening.md)). It is done for every release of a tag starting with `v`, pre-releases (tags with an identifier such as `rc`) included. Look at untrusted input (sources, TOML, images, fonts, CSL-JSON, plugins, symbolic links) and the CI workflows, mainly what changed since the previous audit. Record the results in `docs/audits/<date>-security-audit.md`, in Japanese, and merge it into `main` through a pull request; the record is not changed once committed. Fix each problem found with a failing test first; a fix that changes the specification needs an ADR. Do not tag before the record and the fixes are on `main`.
+2. Open a pull request that raises the version. Write the new version (for example `0.1.0-rc1`) into `VERSION` at the root of the repository, and its `X.Y.Z` without the identifier into the `version` of every package's cabal file. The `release-scripts` job of CI checks that the two agree.
+3. Merge the pull request into `main`.
+4. Tag the merge commit with `v` followed by the content of `VERSION` (for example `v0.1.0-rc1`) and push the tag. When the tag does not match `VERSION`, or its commit is not on `main`, the `version` job of the workflow fails and no release is made.
+5. `.github/workflows/release.yml` builds and checks the archives and makes a draft release. A pre-release tag makes a draft marked as a pre-release.
+6. Read the draft release notes. Fix by hand what the AI classified or summarized badly. When the AI or the check failed, the notes are the list of changes with a `## Unsorted` section; classify and rewrite them. The summary of the workflow says why it failed.
+7. Publish the draft on the GitHub Releases page. The workflow never publishes.
 
 To try the build and the checks without a release, run `gh workflow run release.yml --ref <branch>`, which starts the workflow through `workflow_dispatch`.
 It makes no release.
