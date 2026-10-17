@@ -37,7 +37,6 @@
 | テーブル | print の既定 | 検査 |
 |:---|:---|:---|
 | [code: \[glyph-missing\]] | [code: "error"] | フォントにグリフのない文字（G0902） |
-| [code: \[image-unplaceable\]] | [code: "error"] | PDF に置けない図版（G0905） |
 | [code: \[image-icc\]] | [code: "warning"] | 出力インテントと違う ICC プロファイルを持つ CMYK の図版（G0909） |
 | [code: \[overfull-lines\]] | [code: "warning"] | 行長からはみ出す行（G0913） |
 | [code: \[pdf-x\]] | [code: "error"] | PDF/X-4 の要件（G0914） |
@@ -137,7 +136,6 @@ color = { error-below = 150, warning-below = 300 }
 | [code: glyph-missing] | error | error |
 | [code: font-formats] | off | off |
 | [code: type-size] | off | warning（5pt 未満、二つ以上の版の色だけ） |
-| [code: image-unplaceable] | error | error |
 | [code: image-resolution] | 検査しない | 上の表の値 |
 | [code: image-resolution-max] | off | off |
 | [code: image-color-space] | off | warning（[code: cmyk] と [code: gray] を許す） |

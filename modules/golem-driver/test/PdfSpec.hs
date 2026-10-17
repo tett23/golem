@@ -1197,7 +1197,7 @@ codeTests =
           texts = [T.concat [bcText c | Box _ c <- l] | l <- ls]
       assertBool (show texts) (length texts > 1 && all (\t -> "/" `T.isSuffixOf` t || maybe False ((> '\x7f') . snd) (T.unsnoc t)) (take (length texts - 1) texts))
       assertBool (show texts) (T.concat texts == "あいうえおmodules/golem-driver/src/Golem/Driver/Pdf.hs")
-      assertBool "no hyphen" (null [() | l <- ls, Penalty w _ PatternHyphen <- take 1 (reverse l), w > 0])
+      assertBool "no hyphen" (null [() | l <- ls, Penalty w _ (PatternHyphen _) <- take 1 (reverse l), w > 0])
     withCode style src k = withSystemTempDirectory "golem-code-html" $ \tmp -> do
       BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
       BS.writeFile (tmp </> "style.toml") (withBodyFont style)
