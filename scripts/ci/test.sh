@@ -185,6 +185,68 @@ rm "$P/modules/b/b.cabal"
 run incomplete_patterns "$P"
 expect "incomplete-patterns: a package without a .cabal file" 1
 
+# ---------------------------------------------------------------- rts-capabilities.sh
+
+rts_capabilities() { sh "$HERE/rts-capabilities.sh" "$@"; }
+: >"$WORK/in"
+run rts_capabilities "$HERE/../.."
+expect "rts-capabilities: the repository" 0
+Q=$WORK/capabilities
+mkdir -p "$Q/modules/a/test" "$Q/modules/b"
+# qcabal NAME TEXT: modules/NAME/NAME.cabal
+qcabal() { printf '%s' "$2" >"$Q/modules/$1/$1.cabal"; }
+qcabal a 'common rts
+  ghc-options: -threaded "-with-rtsopts=-N -A64m"
+
+library
+
+executable a
+  ghc-options: -threaded "-with-rtsopts=-N"
+
+test-suite a-test
+  import:           rts
+
+test-suite a-plain
+  ghc-options: -Wall
+'
+qcabal b 'test-suite b-test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
+'
+printf 'main = getNumCapabilities >>= print\n' >"$Q/modules/a/test/Main.hs"
+run rts_capabilities "$Q"
+expect "rts-capabilities: -N in quotes, unquoted, through a common stanza; no -threaded" 0
+qcabal b 'test-suite b-test
+  ghc-options: -threaded "-with-rtsopts=-N8"
+
+executable b
+  ghc-options: -threaded
+'
+run rts_capabilities "$Q"
+expect "rts-capabilities: -threaded without -N" 1
+if grep -qx 'modules/b/b.cabal: test-suite b-test' "$WORK/err" && grep -qx 'modules/b/b.cabal: executable b' "$WORK/err" && ! grep -q 'modules/a' "$WORK/err"; then ok; else ng "rts-capabilities: the components without -N are named"; fi
+qcabal b 'library
+'
+printf 'main = setNumCapabilities 8\n' >"$Q/modules/a/test/Main.hs"
+run rts_capabilities "$Q"
+expect "rts-capabilities: a call of setNumCapabilities" 1
+if grep -qx 'modules/a/test/Main.hs:1' "$WORK/err"; then ok; else ng "rts-capabilities: the call is named by file and line"; fi
+
+# ---------------------------------------------------------------- suite-timeout.sh
+
+# GNU timeout is on the runners; macOS has none unless coreutils is installed
+if command -v timeout >/dev/null 2>&1; then
+  suite_timeout() { SUITE_TIMEOUT=1 sh "$HERE/suite-timeout.sh" "$@"; }
+  : >"$WORK/in"
+  run suite_timeout true
+  expect "suite-timeout: a suite that passes" 0
+  run suite_timeout sh -c 'exit 3'
+  expect "suite-timeout: a suite that fails keeps its exit code" 3
+  if [ ! -s "$WORK/err" ]; then ok; else ng "suite-timeout: nothing is said of a suite that finished"; fi
+  run suite_timeout sleep 30
+  expect "suite-timeout: a suite that does not finish is stopped" 124
+  if grep -qx 'sleep: did not finish in 1 seconds' "$WORK/err"; then ok; else ng "suite-timeout: the suite that did not finish is named"; fi
+fi
+
 # ---------------------------------------------------------------- gate.sh
 
 gate() { sh "$HERE/gate.sh" "$@"; }

@@ -42,7 +42,9 @@ test-suite golem-cli-test
   other-modules:    CommandsSpec
                     LocaleSpec
                     RtsSpec
-  ghc-options: -threaded -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
+  -- -N: one capability per processor from the start, so that the count
+  -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
+  ghc-options: -threaded "-with-rtsopts=-N" -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
   default-extensions: DerivingStrategies LambdaCase OverloadedStrings
   build-tool-depends: golem-cli:golem
   build-depends:

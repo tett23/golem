@@ -361,36 +361,42 @@ httpsTests =
 
 {- | With no root certificates, httpsFetcher fails before it connects and
 says how to fix it (docs/adr/0004).
+
+The test sets SSL_CERT_FILE, and changing the environment while another
+thread starts a process can break the start (posix_spawnp read the
+environment as it changed: "Bad address"). tasty runs tests at once, so
+this one waits for the HTTPS tests, which start openssl.
 -}
 rootCertTests :: TestTree
 rootCertTests =
-  testGroup
-    "TLS root certificates (docs/adr/0004)"
-    [ testCase "an empty certificate store fails before connecting" $ withSystemTempDirectory "golem-certs" $ \dir -> do
-        let empty = dir <> "/empty.pem"
-        BS.writeFile empty ""
-        sock <- socket AF_INET Stream defaultProtocol
-        bind sock (SockAddrInet 0 (tupleToHostAddress (127, 0, 0, 1)))
-        listen sock 16
-        port <- socketPort sock
-        old <- lookupEnv "SSL_CERT_FILE"
-        r <-
-          ( do
-              setEnv "SSL_CERT_FILE" empty
-              fetch <- httpsFetcher
-              fetch ("https://127.0.0.1:" <> T.pack (show port) <> "/a.wasm")
-          )
-            `finally` maybe (unsetEnv "SSL_CERT_FILE") (setEnv "SSL_CERT_FILE") old
-        -- a connection of the test's own after the fetch: the listening
-        -- socket queues connections in order, so the first one accepted is
-        -- the fetcher's if it connected, without waiting for a timeout
-        own <- socket AF_INET Stream defaultProtocol
-        connect own (SockAddrInet port (tupleToHostAddress (127, 0, 0, 1)))
-        ownAddr <- getSocketName own
-        (conn, peer) <- accept sock
-        mapM_ close [conn, own, sock]
-        case r of
-          Left msg -> assertBool (T.unpack msg) ("SSL_CERT_FILE" `T.isInfixOf` msg && "ca-certificates" `T.isInfixOf` msg)
-          Right _ -> assertFailure "fetched with no root certificates"
-        assertEqual "the first connection to the server is the test's own" ownAddr peer
-    ]
+  after AllFinish "/local HTTPS server/" $
+    testGroup
+      "TLS root certificates (docs/adr/0004)"
+      [ testCase "an empty certificate store fails before connecting" $ withSystemTempDirectory "golem-certs" $ \dir -> do
+          let empty = dir <> "/empty.pem"
+          BS.writeFile empty ""
+          sock <- socket AF_INET Stream defaultProtocol
+          bind sock (SockAddrInet 0 (tupleToHostAddress (127, 0, 0, 1)))
+          listen sock 16
+          port <- socketPort sock
+          old <- lookupEnv "SSL_CERT_FILE"
+          r <-
+            ( do
+                setEnv "SSL_CERT_FILE" empty
+                fetch <- httpsFetcher
+                fetch ("https://127.0.0.1:" <> T.pack (show port) <> "/a.wasm")
+            )
+              `finally` maybe (unsetEnv "SSL_CERT_FILE") (setEnv "SSL_CERT_FILE") old
+          -- a connection of the test's own after the fetch: the listening
+          -- socket queues connections in order, so the first one accepted is
+          -- the fetcher's if it connected, without waiting for a timeout
+          own <- socket AF_INET Stream defaultProtocol
+          connect own (SockAddrInet port (tupleToHostAddress (127, 0, 0, 1)))
+          ownAddr <- getSocketName own
+          (conn, peer) <- accept sock
+          mapM_ close [conn, own, sock]
+          case r of
+            Left msg -> assertBool (T.unpack msg) ("SSL_CERT_FILE" `T.isInfixOf` msg && "ca-certificates" `T.isInfixOf` msg)
+            Right _ -> assertFailure "fetched with no root certificates"
+          assertEqual "the first connection to the server is the test's own" ownAddr peer
+      ]
