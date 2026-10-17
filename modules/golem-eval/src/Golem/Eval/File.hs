@@ -22,7 +22,7 @@ where
 import Control.Monad (forM, unless)
 import Control.Monad.State.Strict
 import Data.Char (isAscii, isAsciiLower, isDigit)
-import Data.Either (fromLeft)
+import Data.Either (fromLeft, fromRight, isLeft)
 import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -740,14 +740,28 @@ figure ctx sp args body = do
       let path = argText src
           web = look "web"
           ok = and <$> sequence [check path, maybe (pure True) check web]
-          isPdf = ".pdf" `T.isSuffixOf` T.toLower path
-      fine <- ok
+          isPdf = extension path == ".pdf"
+      -- the formats by the extension, the same for every output (golem-pdf ADR 0008)
+      formats <-
+        and
+          <$> sequence
+            [ if extension path `elem` [".pdf", ".png", ".jpg", ".jpeg"] then pure True else err "G0274" sp ("図版の形式は PDF、PNG、JPEG です: " <> path) >> pure False,
+              case web of
+                Just w | extension w `notElem` [".png", ".jpg", ".jpeg"] -> err "G0273" sp ("web の代替画像は PNG か JPEG です: " <> w) >> pure False
+                _ -> pure True
+            ]
+      page <- case look "page" of
+        Nothing -> pure (Right Nothing)
+        Just p
+          | isPdf, not (T.null p), T.all isDigit p, T.length p <= 9, let n = read (T.unpack p), n >= 1 -> pure (Right (Just n))
+          | otherwise -> err "G0275" sp ("page は PDF の図版のページを 1 から数えた整数で書きます: " <> p) >> pure (Left ())
+      fine <- (&& formats) <$> ok
       caption <- evalBlocks ctx . concat =<< mapM unstyled body
       case look "alt" of
         Nothing -> err "G0228" sp "図版には alt の代替テキストが必要です" >> pure []
         Just alt
           | isPdf && isNothing web -> err "G0229" sp "PDF の図版には web の代替画像が必要です" >> pure []
-          | not fine -> pure []
+          | not fine || isLeft page -> pure []
           | otherwise -> do
               wrap <- case look "wrap" of
                 Nothing -> pure (Right Nothing)
@@ -758,10 +772,14 @@ figure ctx sp args body = do
                 Left w -> err "G0230" sp ("wrap は start か end です: " <> w) >> pure []
                 Right wr
                   | isJust wr && isNothing (look "width") -> err "G0231" sp "回り込む図版には width が必要です" >> pure []
-                  | otherwise -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption))]
+                  | otherwise -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page)))]
     _ -> err "G0232" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
     check p = isJust <$> asset ctx sp p
+    -- the extension in lower case, with its dot
+    extension p = case T.breakOnEnd "." p of
+      (before, after) | not (T.null before), not ("/" `T.isInfixOf` after) -> "." <> T.toLower after
+      _ -> ""
     -- a caption has no paragraph style of its own (docs/adr ADR 0005, golem-driver ADR 0010)
     noStyle csp = err "G0213" csp "@style は図版のキャプションには付けられません"
     unstyled = \case
