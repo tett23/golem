@@ -114,7 +114,8 @@ EPUB の決定性（zip のエントリの時刻と順序の固定）は v2 で�
 
 逆に、画像の比較で見えないものもある。
 PDF のテキスト層（ToUnicode）、メタデータ、PDF/X-4 の要件、しおり、文書の構造は、画像には現れない。
-合字を一字めだけに対応させる ToUnicode の誤りは、画面では正しく見える。
+Golem はかつて、合字のグリフを一字めだけに対応させる ToUnicode を書いていた。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0030-ligature-text-layer.md]（golem-driver ADR 0030「合字のテキスト層」で直した）]
+この誤りは、画面では正しく見えた。
 見た目を変えない変更でバイト列が変わることもあるので、バイト列の比較は見た目の変化の判定には使えない。
 二つの検査は、互いの代わりにならない。
 

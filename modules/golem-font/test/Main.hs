@@ -125,13 +125,7 @@ tests han sans serif noto =
             subsetTag [3, 1, 2] @?= subsetTag [1, 2, 3, 3]
             assertBool "differs" (subsetTag [1, 2, 3] /= subsetTag [1, 2, 4])
             T.length (subsetTag [1]) @?= 6
-            assertBool "upper case" (T.all (`elem` ['A' .. 'Z']) (subsetTag [1, 2])),
-          testCase "ToUnicode: ligatures map to their text, the first mapping wins" $ do
-            let run t = (t, shape sans (shapeRequest 65536 t))
-                m = toUnicode [run "office", run "fit"]
-                ff = head' [sgGlyphId g | g <- snd (run "office"), sgCluster g == 1]
-            lookup ff m @?= Just "ff"
-            lookup (head' [sgGlyphId g | g <- snd (run "office")]) m @?= Just "o"
+            assertBool "upper case" (T.all (`elem` ['A' .. 'Z']) (subsetTag [1, 2]))
         ],
       testGroup
         "CIDSystemInfo (golem-pdf ADR 0006)"

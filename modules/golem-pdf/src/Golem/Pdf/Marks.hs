@@ -130,6 +130,7 @@ registrationRects = concatMap (go 0 0)
     go dx dy = \case
       RegistrationRules rs -> [Rect (x + dx) (y + dy) w h | Rect x y w h <- rs]
       Saved ms -> concatMap (go dx dy) ms
+      ActualText _ ms -> concatMap (go dx dy) ms
       Translated x y ms -> concatMap (go (dx + x) (dy + y)) ms
       _ -> []
 

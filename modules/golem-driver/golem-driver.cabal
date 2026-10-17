@@ -34,6 +34,7 @@ library
                     Golem.Driver.Plugins
                     Golem.Driver.RuleShape
                     Golem.Driver.Svg
+                    Golem.Driver.TextLayer
                     Golem.Driver.Version
   build-depends:
     , aeson         >=2.1  && <2.3
