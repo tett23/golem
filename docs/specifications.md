@@ -603,6 +603,8 @@ vertical = "kanji"
 [notes]
 placement = "page-foot"
 numbering = "chapter"
+mark-size = "0.65zw"
+mark-format = "*{n}"
 
 [notes.rule]
 length = "10zw"
@@ -1795,12 +1797,21 @@ Golem は決定性を重視する[note: 同じ入力からバイト単位で同�
 PDF、HTML、EPUB、プレーンテキストは、S1 で振り直した同じ番号を使う。
 ページごとに番号を振り直す方式はページが決まるまで番号が決まらないので、v1 では採らない。
 
-PDF の本文の印は、`*` と番号（`*1`）を本文の文字の半分の大きさで組み、前の字に付ける。
+PDF の本文の印は、`[notes]` の `mark-format` の `{n}` を番号（算用数字）に置き換えた文字列を、`mark-size` の大きさで組み、前の字に付ける（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
+既定は `mark-format = "*{n}"`、`mark-size = "0.5zw"` であり、印は `*1` の形で、本文の文字の半分の大きさになる。
+`mark-size` の `zw` は印の位置の文字の大きさに対する比であり、0 より大きく 1 以下とする。
+絶対の寸法（`"6pt"` など）も書け、印の位置の文字の大きさを超える場合はその大きさで組む。
+`mark-format` は `{n}` をちょうど一つ含む。
+`mark-size` と `mark-format` の誤りは G0306 とする。
+二つのキーは PDF にだけ効き、HTML、EPUB、プレーンテキストの印は変わらない。
 印の前では行を分けず、空きも入れない。
 印の後ろには、印がないときに前の字と次の字のあいだに入る空きが入る。
 横組みでは、印の字面の枠の上端を本文の字面の枠の上端にそろえる。
 縦組みでは、印を横書きの向きで行の中に置き、印の右端を本文の字面の枠の右端にそろえる。
 ページの下の注の本文の先頭には、本文の印と同じ文字列と半角の空白を付ける（`*1 注の本文`）。
+この印は注の本文の大きさで組み、上げない。
+縦組みでは、印の幅が本文の文字の大きさを超えると、印が行の外にはみ出す。
+大きい `mark-size` や字の多い `mark-format` では、短い印でも起きる。
 
 注の配置は、ページ下（脚注）か章末（章末注）かをスタイルで選ぶ。
 媒体ごとの出力は次のとおりである。
@@ -1870,7 +1881,7 @@ PDF では、さらに次の二つをコンパイルエラーとする（[golem-
 傍注は、本文のページと行が確定した後に傍注欄に置き、傍注の量で本文の改ページを変えない。
 傍注の本文は、段落スタイル `sidenote` の `font` の役割の書体と `size` の大きさで組み、省略すれば本文の役割と版面の文字の大きさで組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 傍注の行送りは本文の行送りを文字の大きさの比で縮めた値とし、傍注どうしの間には本文の行送りの半分を空ける。
-本文側の印は、番号の印（`marker = "number"`）なら脚注の印と同じく本文の半分の大きさで組み（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）、「※」は本文の書体と大きさのまま組む。
+本文側の印は、番号の印（`marker = "number"`）なら脚注の印と同じく `[notes]` の `mark-size` の大きさで番号だけを組み（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）、「※」は本文の書体と大きさのまま組む。
 傍注の本文の先頭には、本文側の印と同じ番号か「※」を付け、印なしでは何も付けない。
 
 ### 索引
@@ -2349,7 +2360,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 
 - **ぶら下げの量**：ぶら下げの量を、字の幅ではなく語の箱全体の幅に対する割合で求めている。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は字の幅に対する割合と定めている。既存のテストも、語の幅を基準にした値を期待している。
 - **分綴のハイフンの突き出し**：パターンで分綴したときに行末に足すハイフンを、突き出さない。行分割の突き出しの量は、行の最後の箱の終わりの字だけを見て求めるので、分綴で足したハイフンを数えない。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は、行末のハイフンも突き出すと定めている。
-- **キーワード引数の後の `**[式]`**：`[f k=v **[h]]` が G0119 になる。`**[式]` はキーワード引数に展開されるので、キーワード引数の後に書けてよいはずである（[golem-parser ADR 0004](golem-parser/adr/0004-inline-grammar.md)）。
 - **IR の大きな整数**：CDDL は式の整数を `int`（CBOR の major type 0 と 1）と定めているが、絶対値が 2^64 以上の整数は bignum（tag 2 と 3）で書き出される。式の整数は任意精度なので、`@set n = 2 ** 70` のような値が IR に入りうる（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)）。
 - **浮動小数点数の桁あふれ**：`2.0 ** -1074` は表せる値だが、途中の計算があふれて 0 になる。`10 ** 309 > 1.0` は誤りにならないが、`10 ** 309 + 0.5` は G0204 になる。どちらの扱いも仕様は定めていない（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
 - **`golem inspect` の終了コードと文言**：構文の誤り（G0117 など）があっても終了コード 0 で終わり、diagnostics を Haskell の `show` の形で出す。存在しないファイルを渡すと、英語の例外と GHC のバックトレースが出る（[golem-cli ADR 0001](golem-cli/adr/0001-command-line-interface.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。

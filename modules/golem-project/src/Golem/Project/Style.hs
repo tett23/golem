@@ -944,6 +944,10 @@ data Style = Style
     stNotesNumbering :: !NoteNumbering,
     -- | [notes.rule]: the rule before footnotes in the PDF, its length always there (golem-driver ADR 0024)
     stNotesRule :: !(Maybe RuleSpec),
+    -- | [notes] mark-size: the size of note marks in the PDF (golem-driver ADR 0025)
+    stNotesMarkSize :: !Dim,
+    -- | [notes] mark-format: the text of note marks in the PDF, {n} the number (golem-driver ADR 0025)
+    stNotesMarkFormat :: !Text,
     stSidenotes :: !(Maybe SidenoteStyle),
     stFigureNumber :: !Text,
     stWrapGap :: !Dim,
@@ -981,6 +985,8 @@ defaultStyle =
       stNotesPlacement = "page-foot",
       stNotesNumbering = NumberPerChapter,
       stNotesRule = Nothing,
+      stNotesMarkSize = Zw (1 % 2),
+      stNotesMarkFormat = "*{n}",
       stSidenotes = Nothing,
       stFigureNumber = "図{chapter}-{n}",
       stWrapGap = Zw 1,
@@ -1404,11 +1410,29 @@ instance FromValue EmphasisV where
     fail
       "[emphasis] は廃止しました。strong = \"italic\" は [character-styles.strong] の based-on = \"italic\" に、bold-font は [character-styles.bold] の font に、italic-font は [character-styles.italic] の font に書き換えます"
 
-data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec)
+data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe Text)
 
 instance FromValue Notes where
-  fromValue = parseTableFromValue (Notes <$> enumKey "placement" ["page-foot", "chapter-end"] <*> (fmap numbering <$> enumKey "numbering" ["chapter", "file", "book"]) <*> optKeyOf "rule" noteRule)
+  fromValue =
+    parseTableFromValue
+      ( Notes
+          <$> enumKey "placement" ["page-foot", "chapter-end"]
+          <*> (fmap numbering <$> enumKey "numbering" ["chapter", "file", "book"])
+          <*> optKeyOf "rule" noteRule
+          <*> (dimKey "mark-size" >>= traverse markSize)
+          <*> (optKey "mark-format" >>= traverse markFormat)
+      )
     where
+      {- the size of note marks (golem-driver ADR 0025): above 0, and at
+      most the size of the text in zw -}
+      markSize d = case d of
+        Abs n | n > 0 -> pure d
+        Zw r | r > 0 && r <= 1 -> pure d
+        _ -> fail "[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です"
+      -- the format of note marks: {n} exactly once (golem-driver ADR 0025)
+      markFormat f
+        | T.count "{n}" f == 1 = pure f
+        | otherwise = fail ("[notes] の mark-format には {n} をちょうど一つ書きます: " <> T.unpack f)
       {- the rule before footnotes (golem-driver ADR 0024): length is
       required; a space not written is 0 when the other is written -}
       noteRule v = do
@@ -1521,7 +1545,7 @@ instance FromValue Style where
     Numbers nv <- fromMaybe (Numbers Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
     (_ :: Maybe EmphasisV) <- optKey "emphasis"
-    Notes np nn nr <- fromMaybe (Notes Nothing Nothing Nothing) <$> optKey "notes"
+    Notes np nn nr nms nmf <- fromMaybe (Notes Nothing Nothing Nothing Nothing Nothing) <$> optKey "notes"
     side <- optKey "sidenotes"
     Figures fnum fgap <- fromMaybe (Figures Nothing Nothing) <$> optKey "figures"
     ColorSec intent swatches <- fromMaybe (ColorSec Nothing Map.empty) <$> optKey "color"
@@ -1551,6 +1575,8 @@ instance FromValue Style where
           stNotesPlacement = fromMaybe (stNotesPlacement d) np,
           stNotesNumbering = fromMaybe (stNotesNumbering d) nn,
           stNotesRule = nr,
+          stNotesMarkSize = fromMaybe (stNotesMarkSize d) nms,
+          stNotesMarkFormat = fromMaybe (stNotesMarkFormat d) nmf,
           stSidenotes = side,
           stFigureNumber = fromMaybe (stFigureNumber d) fnum,
           stWrapGap = fromMaybe (stWrapGap d) fgap,

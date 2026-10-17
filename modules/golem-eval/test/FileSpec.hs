@@ -183,6 +183,7 @@ tests =
       breakTests,
       codeTests,
       escapeTests,
+      duplicateKeyTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
@@ -353,7 +354,40 @@ settingsStyle :: Style
 settingsStyle =
   either (error . show) id (parseStyle (FileId 9) "[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n\n[paragraph-styles.quote]\nindent = \"1zw\"\n")
 
--- | A context whose styles are those of 'settingsStyle'.
+{- | A context whose styles are those of 'settingsStyle'.
+| The same key twice among the keyword arguments (golem-parser ADR 0013).
+-}
+duplicateKeyTests :: TestTree
+duplicateKeyTests =
+  testGroup
+    "the same key twice is G0277 (golem-parser ADR 0013)"
+    [ testCase "a built-in command keeps the first" $ do
+        -- "[number-text 10 style=kanji style=tcy]": the second style=tcy is bytes 28 to 37
+        [d | d@(c, _, _, _) <- diags "[number-text 10 style=kanji style=tcy]\n", c == "G0277"]
+          @?= [("G0277", "同じキーを二度書いています: style", 28, 37)]
+        paraOf "[number-text 10 style=kanji style=tcy]\n" @?= ["<number 10 Just StyleKanji>"],
+      testCase "a block command keeps the first" $ do
+        let (bs, ds) = run ctx "@toc depth=1 depth=3\n"
+        ds @?= ["G0277"]
+        bs @?= [ChannelOutput (TocOutput 1)],
+      testCase "the line that opens a code block" $
+        do
+          -- "``` text" would make text a positional argument (G0269); the language follows the fence
+          errs "```text numbers=true numbers=false\na\n```\n" @?= ["G0277"]
+          filter (== "G0277") (errs "``` text numbers=true numbers=false\na\n```\n") @?= ["G0277"],
+      testCase "a plugin command" $ do
+        broken <- maybe (assertFailure "broken is built in") pure (pluginCommandName "broken")
+        let hook = noPlugins {phCommands = Map.fromList [(broken, pluginOutput)]}
+        snd (run ctx {ctxPlugins = hook} "[broken k=1 k=2]\n") @?= ["G0277"],
+      testCase "every key after the first" $
+        [(s, e) | (c, _, s, e) <- diags "[f k=1 k=2 k=3]\n", c == "G0277"] @?= [(7, 10), (11, 14)],
+      testCase "different keys and an unexpanded **[...] are not" $ do
+        filter (== "G0277") (errs "[f k=1 j=1]\n") @?= []
+        filter (== "G0277") (errs "[f k=1 **[h]]\n") @?= [],
+      testCase "@style-def keeps G0252" $
+        codesS "@style-def character x weight=bold weight=normal\n" @?= ["G0252"]
+    ]
+
 sctx :: EvalContext
 sctx =
   ctx
