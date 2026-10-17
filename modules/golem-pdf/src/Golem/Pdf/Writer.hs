@@ -44,6 +44,7 @@ import Data.Text.Encoding qualified as TE
 import Data.UUID qualified as UUID
 import Data.UUID.V5 qualified as V5
 import Golem.LayoutSpec (Rect (..))
+import Golem.Pdf.Drawing
 import Golem.Pdf.Image
 import Golem.Pdf.Import
 import Golem.Pdf.Number
@@ -338,8 +339,15 @@ documentObjects doc =
       imageSizes = [(i, imageObjCount i) | i <- imageOrder]
       imageBase = Map.fromList (zip imageOrder (scanl (+) afterFonts (map snd imageSizes)))
       afterImages0 = afterFonts + sum (map snd imageSizes)
-      -- the Form XObjects of PDF figures, each followed by the objects it brings that are not yet written (ADR 0008)
-      (formBase, formObjsAll, afterImages) = formObjects afterImages0 [(f, ip) | f <- formOrder, Just ip <- [Map.lookup f (docForms doc)]]
+      forms = [(f, fc) | f <- formOrder, Just fc <- [Map.lookup f (docForms doc)]]
+      -- one sRGB profile for images without a profile, PDF figures and drawings (ADR 0009)
+      needSrgb =
+        any defaultSrgb [img | i <- imageOrder, Just img <- [Map.lookup i (docImages doc)]]
+          || any (\case (_, DrawnForm _) -> True; (_, ImportedForm ip) -> any ((== 0) . fst) (ipObjects ip)) forms
+      srgbRef = afterImages0
+      srgbObjs = [OStream [("N", OInt 3), ("Filter", OName "FlateDecode")] (flate srgbProfile) | needSrgb]
+      -- the Form XObjects of PDF figures and drawings, each followed by the objects it brings that are not yet written (ADR 0008)
+      (formBase, formObjsAll, afterImages) = formObjects srgbRef (afterImages0 + length srgbObjs) forms
       -- PDF/X-4: the output profile and the XMP metadata come last before the information dictionary
       (xObjs, xCatalog) = case docPdfX doc of
         Nothing -> ([], [])
@@ -361,7 +369,7 @@ documentObjects doc =
             ]
           )
       infoObj = afterImages + length xObjs
-      imageObjCount i = case withDefaultProfile <$> Map.lookup i (docImages doc) of
+      imageObjCount i = case Map.lookup i (docImages doc) of
         Just img -> 1 + maybe 0 (const 1) (imgIcc img) + maybe 0 (const 1) (imgAlpha img)
         Nothing -> 1
       resources =
@@ -395,7 +403,7 @@ documentObjects doc =
           | (i, p) <- zip [0 ..] pages
           ]
       fontObjsAll = concat [fontObjects (fontBase Map.! f) (docFonts doc Map.! f) | f <- fontOrder, Map.member f (docFonts doc)]
-      imageObjsAll = concat [imageObjects (imageBase Map.! i) img | i <- imageOrder, Just img <- [Map.lookup i (docImages doc)]]
+      imageObjsAll = concat [imageObjects srgbRef (imageBase Map.! i) img | i <- imageOrder, Just img <- [Map.lookup i (docImages doc)]]
       info =
         ODict
           [ ("Title", utf16Hex (docTitle doc)),
@@ -406,7 +414,7 @@ documentObjects doc =
           `addInfo` [("Trapped", OName "False"), ("GTS_PDFXVersion", OStr "PDF/X-4")]
       addInfo (ODict kvs) extra = ODict (kvs <> (if isJust (docPdfX doc) then extra else []))
       addInfo o _ = o
-      objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> formObjsAll <> xObjs <> [info]
+      objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> srgbObjs <> formObjsAll <> xObjs <> [info]
       size = length objects + 1
    in PdfObjects "1.6" objects (ODict [("Size", OInt (fromIntegral size)), ("Root", ORef 1), ("Info", ORef infoObj), ("ID", OArr [OHex (docId doc), OHex (docInstanceId doc)])])
   where
@@ -437,12 +445,14 @@ page. Pages of one file share their objects (by the key of each object in
 the file). Returns the number of each form, the objects and the next
 number.
 -}
-formObjects :: Int -> [(FormRef, ImportedPage)] -> (Map FormRef Int, [Obj], Int)
-formObjects base forms =
-  let step (fm, nums, acc, next) (f, ip) =
-        let new = nub [k | (k, _) <- ipObjects ip, Map.notMember (ipFile ip, k) nums]
+formObjects :: Int -> Int -> [(FormRef, FormContent)] -> (Map FormRef Int, [Obj], Int)
+formObjects srgbRef base forms =
+  let step (fm, nums, acc, next) (f, DrawnForm d) = (Map.insert f next fm, nums, acc <> [[drawnObject srgbRef d]], next + 1)
+      step (fm, nums, acc, next) (f, ImportedForm ip) =
+        -- key 0 is the sRGB profile, written once for the whole document
+        let new = nub [k | (k, _) <- ipObjects ip, k /= 0, Map.notMember (ipFile ip, k) nums]
             nums' = Map.union nums (Map.fromList [((ipFile ip, k), i) | (k, i) <- zip new [next + 1 ..]])
-            remap = renumber (\k -> Map.lookup (ipFile ip, k) nums')
+            remap = renumber (\k -> if k == 0 then Just srgbRef else Map.lookup (ipFile ip, k) nums')
             objs = formObject remap ip : [remap o | k <- new, Just o <- [lookup k (ipObjects ip)]]
          in (Map.insert f next fm, nums', acc <> [objs], next + 1 + length new)
       (formNums, _, objss, after) = foldl step (Map.empty, Map.empty :: Map (ByteString, Int) Int, [], base) forms
@@ -456,6 +466,22 @@ renumber f = \case
   OArr xs -> OArr (map (renumber f) xs)
   OStream kvs b -> OStream [(k, renumber f v) | (k, v) <- kvs] b
   o -> o
+
+{- | The Form XObject of a drawing (ADR 0009): its size as BBox, a Matrix
+that maps it to the unit square, and GolemSRGB as its only resource.
+-}
+drawnObject :: Int -> Drawing -> Obj
+drawnObject srgbRef d =
+  let (w, h) = drSize d
+   in OStream
+        [ ("Type", OName "XObject"),
+          ("Subtype", OName "Form"),
+          ("BBox", OArr [OInt 0, OInt 0, OReal (showRationalDigits 6 w), OReal (showRationalDigits 6 h)]),
+          ("Matrix", OArr [OReal (showRationalDigits 10 v) | v <- [1 / w, 0, 0, 1 / h, 0, 0]]),
+          ("Resources", ODict [("ColorSpace", ODict [("GolemSRGB", OArr [OName "ICCBased", ORef srgbRef])])]),
+          ("Filter", OName "FlateDecode")
+        ]
+        (flate (drawingContent d))
 
 {- | The Form XObject of a page of a PDF figure (ADR 0008): its crop box as
 BBox, and a Matrix that turns it by Rotate and maps it to the unit square.
@@ -578,28 +604,26 @@ toUnicodeCMap entries =
           <> "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n"
 
 {- | RGB without a profile gets sRGB (ADR 0001); colours are never
-converted. Both the object count and the objects use it, so that the
-profile has its own object number.
+converted. The profile is the document's one sRGB profile (ADR 0009).
 -}
-withDefaultProfile :: ImageData -> ImageData
-withDefaultProfile img = case (imgIcc img, imgColor img) of
-  (Nothing, CsRgb) -> img {imgIcc = Just srgbProfile}
-  (Nothing, CsIndexed _) -> img {imgIcc = Just srgbProfile}
-  _ -> img
+defaultSrgb :: ImageData -> Bool
+defaultSrgb img = case (imgIcc img, imgColor img) of
+  (Nothing, CsRgb) -> True
+  (Nothing, CsIndexed _) -> True
+  _ -> False
 
-imageObjects :: Int -> ImageData -> [Obj]
-imageObjects base img0 =
-  let img = withDefaultProfile img0
-      iccObj = OStream [("N", OInt (components img)), ("Filter", OName "FlateDecode")] . flate <$> imgIcc img
+imageObjects :: Int -> Int -> ImageData -> [Obj]
+imageObjects srgbRef base img =
+  let iccObj = OStream [("N", OInt (components img)), ("Filter", OName "FlateDecode")] . flate <$> imgIcc img
       iccRef = base + 1
       smaskRef = base + 1 + maybe 0 (const 1) (imgIcc img)
       colorSpace = case (imgIcc img, imgColor img) of
         (Just _, CsIndexed p) -> OArr [OName "Indexed", OArr [OName "ICCBased", ORef iccRef], OInt (fromIntegral (BS.length p `div` 3 - 1)), OHex p]
         (Just _, _) -> OArr [OName "ICCBased", ORef iccRef]
         (Nothing, CsGray) -> OName "DeviceGray"
-        (Nothing, CsRgb) -> OName "DeviceRGB"
+        (Nothing, CsRgb) -> OArr [OName "ICCBased", ORef srgbRef]
         (Nothing, CsCmyk) -> OName "DeviceCMYK"
-        (Nothing, CsIndexed p) -> OArr [OName "Indexed", OName "DeviceRGB", OInt (fromIntegral (BS.length p `div` 3 - 1)), OHex p]
+        (Nothing, CsIndexed p) -> OArr [OName "Indexed", OArr [OName "ICCBased", ORef srgbRef], OInt (fromIntegral (BS.length p `div` 3 - 1)), OHex p]
       common =
         [ ("Type", OName "XObject"),
           ("Subtype", OName "Image"),

@@ -17,6 +17,7 @@ module Golem.Pdf.Import
     ImportError (..),
     ColorUse (..),
     FigureContent (..),
+    FormContent (..),
     importPage,
     importErrorText,
   )
@@ -43,6 +44,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
+import Golem.Pdf.Drawing (Drawing)
 import Golem.Pdf.Image (ImageData, inflateUpTo, unfilterPng)
 import Golem.Pdf.Object
 import Golem.Pdf.Sha256 (sha256)
@@ -104,10 +106,17 @@ data ImportError
   | UnsupportedUserUnit
   deriving stock (Eq, Show)
 
--- | What a figure placed in a PDF is (golem-pdf ADR 0008).
+-- | What a figure placed in a PDF is (golem-pdf ADR 0008, 0009).
 data FigureContent
   = RasterFigure !ImageData
   | VectorFigure !ImportedPage
+  | SvgFigure !Drawing
+  deriving stock (Eq, Show)
+
+-- | What a Form XObject is: a page of a PDF figure, or the drawing of an SVG figure (ADR 0009).
+data FormContent
+  = ImportedForm !ImportedPage
+  | DrawnForm !Drawing
   deriving stock (Eq, Show)
 
 -- | The wording shown to the user (golem-pdf ADR 0008).

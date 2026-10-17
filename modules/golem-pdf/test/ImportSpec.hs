@@ -306,7 +306,7 @@ formDoc :: [Mark] -> [(FormRef, ImportedPage)] -> Document
 formDoc marks forms =
   golemDoc
     { docPages = [Page box box box marks],
-      docForms = Map.fromList forms
+      docForms = Map.fromList [(r, ImportedForm p) | (r, p) <- forms]
     }
   where
     box = Rect 0 0 (100 * 65536) (100 * 65536)

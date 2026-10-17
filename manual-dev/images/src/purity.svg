@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1300" height="860" viewBox="0 0 1300 860">
   <!-- 純粋なカーネルと IO のエッジ（docs/adr/0002、golem-driver ADR 0001、golem-font ADR 0001、golem-plugin ADR 0001）。
-       scripts/manual/render-figures.sh で manual-dev/images/purity.png にする。 -->
+       scripts/manual/outline-figures.sh で、文字を輪郭にした manual-dev/images/purity.svg にする。 -->
   <style>
     @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
     @font-face { font-family: "Fig Sans"; font-weight: bold; src: url("../../fonts/NotoSansJP-Bold.otf"); }

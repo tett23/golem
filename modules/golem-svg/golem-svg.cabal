@@ -1,0 +1,45 @@
+cabal-version:      3.0
+name:               golem-svg
+version:            0.1.0
+synopsis:           The static subset of SVG that Golem draws in PDF
+license:            MIT
+author:             tett23
+maintainer:         tett23@gmail.com
+category:           Graphics
+build-type:         Simple
+
+common warnings
+  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns
+  default-extensions: DerivingStrategies LambdaCase OverloadedStrings
+
+library
+  import:           warnings
+  hs-source-dirs:   src
+  exposed-modules:  Golem.Svg
+                    Golem.Svg.Colors
+                    Golem.Svg.Css
+                    Golem.Svg.Number
+                    Golem.Svg.Xml
+  build-depends:
+    , base          >=4.20 && <4.21
+    , bytestring    >=0.11 && <0.13
+    , containers    >=0.6  && <0.8
+    , text          >=2.0  && <2.2
+  default-language: GHC2021
+
+test-suite golem-svg-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Main.hs
+  build-depends:
+    , base
+    , bytestring
+    , directory
+    , filepath
+    , golem-svg
+    , tasty          >=1.4 && <1.6
+    , tasty-golden   >=2.3 && <2.4
+    , tasty-hunit    >=0.10 && <0.11
+    , text
+  default-language: GHC2021

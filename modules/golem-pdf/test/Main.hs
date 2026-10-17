@@ -19,6 +19,7 @@ import Golem.TestSupport.ExternalTool (needsTool)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import DrawingSpec qualified
 import ImageSpec qualified
 import ImportSpec qualified
 import Numeric (readHex)
@@ -1273,6 +1274,7 @@ tests =
       testGroup "Producer (ADR 0005)" producerTests,
       ImageSpec.tests,
       ImportSpec.tests,
+      DrawingSpec.tests,
       testGroup
         "CIDSystemInfo (ADR 0006)"
         [ testCase "the CIDFont carries the ROS of the font" $ do
