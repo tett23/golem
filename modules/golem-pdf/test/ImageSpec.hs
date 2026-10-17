@@ -73,6 +73,7 @@ document marks =
     { docPages = [Page box box box marks],
       docFonts = Map.empty,
       docImages = Map.empty,
+      docForms = Map.empty,
       docTitle = "t",
       docDate = (2026, 10, 16),
       docId = documentId "urn:uuid:11111111-2222-4333-8444-555555555555",

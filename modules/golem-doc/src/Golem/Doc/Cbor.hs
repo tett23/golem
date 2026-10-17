@@ -118,8 +118,8 @@ itemT :: ListItem -> Term
 itemT (ListItem n bs) = TList [opt int n, list blockT bs]
 
 figureT :: Figure -> Term
-figureT (Figure src web alt wr w cap) =
-  TList [text src, opt text web, text alt, opt (int . fromEnum) wr, opt text w, list blockT cap]
+figureT (Figure src web alt wr w cap pg) =
+  TList [text src, opt text web, text alt, opt (int . fromEnum) wr, opt text w, list blockT cap, opt int pg]
 
 channelT :: ChannelBlock -> Term
 channelT = \case
@@ -318,8 +318,8 @@ termGroup t =
 termFigure :: Term -> D Figure
 termFigure t =
   asList t >>= \case
-    [src, web, alt, wr, w, cap] ->
-      Figure <$> asText src <*> asOpt asText web <*> asText alt <*> asOpt asEnum wr <*> asOpt asText w <*> (asList cap >>= traverse termBlock)
+    [src, web, alt, wr, w, cap, pg] ->
+      Figure <$> asText src <*> asOpt asText web <*> asText alt <*> asOpt asEnum wr <*> asOpt asText w <*> (asList cap >>= traverse termBlock) <*> asOpt asIntI pg
     _ -> bad "図版"
 
 termChannel :: Term -> D ChannelBlock

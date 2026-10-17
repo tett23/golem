@@ -43,7 +43,7 @@ import Golem.Syntax.Span
 
 -- | The ABI version shared with plugins. Bump on any change to the IR.
 abiVersion :: Int
-abiVersion = 6
+abiVersion = 7
 
 data Document = Document
   { docFile :: !FileId,
@@ -160,7 +160,9 @@ data Figure = Figure
     figAlt :: !Text,
     figWrap :: !(Maybe Wrap),
     figWidth :: !(Maybe Text),
-    figCaption :: ![Block]
+    figCaption :: ![Block],
+    -- | the page of a PDF figure, from 1 (golem-pdf ADR 0008)
+    figPage :: !(Maybe Int)
   }
   deriving stock (Eq, Show)
 
