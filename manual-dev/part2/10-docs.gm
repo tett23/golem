@@ -113,7 +113,28 @@ CI の所要時間の記録は [code: docs/ci-timings/] に置き、[code: scrip
 
 ドキュメントは日本語で書き、一文ごとに改行する。
 差分が文の単位で出るので、レビューで変更を追いやすい。
-地の文では、ダッシュ（——）と、並列を表す中黒（・）を使わない。
+箇条書きの項目と表のセルは、一つの項目やセルに複数の文を書いてよい。
+地の文では、ダッシュ（——）を使わない。
+中黒（・）は並列を表すことにだけ使わず、並べるときは読点か「と」でつなぐ。
+外来語の区切りのような、並列でない中黒は使ってよい。
+
+用語は、マニュアルの方針の文書（[code: docs/manual-policy.md]）の規則に従う。
+開発者のマニュアルのための規則（diagnostic、アセット、マシンと計算機）は、仕様書と新しい ADR にも当てはめる。
+コミット済みの ADR は変えられないので、古い用語のまま残す。
+
+これらの規則のうち文字と行で判定できるものは、textlint が検査する。[index reading=textlint: textlint][note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0036-textlint-for-documents.md]（docs/adr の ADR 0036「文書の表記を textlint で検査する」）]
+規則と辞書は [code: tools/textlint/] にあり、バージョンを固定した npm のパッケージを使う。
+手元では、Node を入れてから次を実行する。
+初めての実行で、パッケージを [code: tools/textlint/node_modules/] に入れる。
+
+```sh
+$ sh scripts/ci/textlint.sh
+$ TEXTLINT_ARGS=--fix sh scripts/ci/textlint.sh   # 直せるものを直す
+```
+
+対象は、[code: docs/] の Markdown（ADR と記録を除く）、[code: README.md]、[code: CONTRIBUTING.md]、ブランチで加えた ADR、二つのマニュアルの原稿である。
+CI では [code: docs.yml] の [code: textlint] ジョブが同じスクリプトを走らせる。
+意味で選ぶ語（「版」と「バージョン」、「書体」と「フォント」）は検査できないので、レビューで確かめる。
 
 日本語の [code: CONTRIBUTING.md] を正とし、英語の [code: CONTRIBUTING.en.md] はその翻訳である。
 内容が食い違うときは日本語のほうに従う。

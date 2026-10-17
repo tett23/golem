@@ -1,0 +1,8 @@
+{
+  "name": "textlint-rule-preset-golem",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The writing rules of the Golem documents that the published textlint rules do not cover",
+  "license": "MIT",
+  "main": "index.js"
+}

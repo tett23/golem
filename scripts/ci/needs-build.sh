@@ -1,8 +1,9 @@
 #!/bin/sh
 # Reads the changed paths, one per line, and writes "true" if the change
 # needs the build, the tests and the other checks, "false" if it does not
-# (docs/adr/0009-ci-speed.md). Only the files under docs/ and the Markdown
-# files at the root of the repository need no build; Markdown under modules/
+# (docs/adr/0009-ci-speed.md). Only the files under docs/ and tools/textlint/
+# and the Markdown files at the root of the repository need no build;
+# Markdown under modules/
 # is test data. An empty input writes "true", so that a missing diff never
 # skips the checks.
 #
@@ -12,6 +13,8 @@
 # The manuals are built from manual/ and manual-dev/, outside docs/; the
 # policy of the manuals (manual-policy.md under docs/) is docs only
 # (docs/adr/0024).
+# tools/textlint/ holds the checker of the documents, which the textlint job
+# of docs.yml runs; the build never reads it (docs/adr/0036).
 #
 #   needs-build.sh < paths
 #   needs-build.sh --list     the documents that the build reads
@@ -28,6 +31,7 @@ awk -v docs="$BUILD_DOCS" '
   $0 in read { build = 1; next }
   /^docs\// { next }
   /^[^\/]+\.md$/ { next }
+  /^tools\/textlint\// { next }
   { build = 1 }
   END { print ((n == 0 || build) ? "true" : "false") }
 '

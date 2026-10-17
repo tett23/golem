@@ -11,3 +11,4 @@ cabal.project.local
 /manual/common/build-info.gm
 /manual-dev/common/build-info.gm
 /modules/golem-driver/test/fixtures/pd/*/fonts/
+/tools/textlint/node_modules/

@@ -75,9 +75,14 @@ ADR は日本語で書く。
 
 コミットした ADR は、ステータスの行を除いて変更できない。
 `.githooks/pre-commit` と CI の `adr` ジョブが、変更、削除、リネームを拒否する。
-ステータスの行の変更（`--allow-status`）と、リンクを付ける、外す、リンク先を変えるだけの変更（`--allow-links`）は許す（[docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md)、[docs/adr/0032](./docs/adr/0032-update-adr-guard-to-v0.8.2.md)）。リンクのテキストの変更は許さない。
-ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持つ。無い ADR と二つ以上ある ADR は、フックと CI の `adr` ジョブが拒否する。`adr-guard check-status` で一覧にできる（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)）。
-文書の中の ADR の参照にはリンクを付ける。リンクのない参照は CI の `adr` ジョブが拒否する。`adr-guard links --fix` で直せる。
+ステータスの行の変更（`--allow-status`）と、リンクを付ける、外す、リンク先を変えるだけの変更（`--allow-links`）は許す（[docs/adr/0010](./docs/adr/0010-update-adr-guard-to-v0.5.0.md)、[docs/adr/0032](./docs/adr/0032-update-adr-guard-to-v0.8.2.md)）。
+リンクのテキストの変更は許さない。
+ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持つ。
+無い ADR と二つ以上ある ADR は、フックと CI の `adr` ジョブが拒否する。
+`adr-guard check-status` で一覧にできる（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)）。
+文書の中の ADR の参照にはリンクを付ける。
+リンクのない参照は CI の `adr` ジョブが拒否する。
+`adr-guard links --fix` で直せる。
 
 仕様を変えたくなったら、元の ADR を書き換えずに、新しい連番の ADR を書く。
 ADR をやめる場合は、ステータスを破棄にして、理由を [docs/specifications.md](./docs/specifications.md) に書く。
@@ -115,7 +120,8 @@ Haskell のコードは fourmolu 0.21.0.0 で整形し、hlint 3.10 の指摘を
 生成したパーサー（`modules/golem-parser/src/Golem/Parser/Generated.hs`）と、ラベルを外した文法（`modules/golem-parser/test/StrippedGrammar.hs`）は対象外である。
 
 文法（`modules/golem-parser/grammar/Golem.hpeg`）を変えたら、`scripts/gen-parser.sh` で生成し直して、生成物もコミットする。
-このスクリプトは、ラベルを外した文法も生成する。golem-parser のテストは、二つの文法が同じ入力を受理することを確かめる。
+このスクリプトは、ラベルを外した文法も生成する。
+golem-parser のテストは、二つの文法が同じ入力を受理することを確かめる。
 文法にラベルを足すときは、ラベルを外しても受理する言語が変わらないことを確かめ、理由のコメントを添えて `%safe` を書く。
 `scripts/gen-parser.sh` は peg-hs の警告を誤りとして扱うので、`%safe` のないラベルがあると生成が失敗する（[golem-parser ADR 0007](./docs/golem-parser/adr/0007-grammar-label-safety.md)）。
 
@@ -169,8 +175,27 @@ tasty 1.5.4 も、capability がプロセッサより少ないと起動の時点
 `docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/` に置いた記録は、フックと CI の `adr` ジョブがコミット後の変更、削除、移動を拒否する（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)）。
 `docs/ci-timings/` のようにほかの名前のディレクトリに置いた記録は検査されないので、約束とレビューで守る。
 
+### 日本語の文章
+
 日本語の文章は、一文ごとに改行する。
-地の文では、ダッシュ（——）と、並列を表す中黒（・）を使わない。
+箇条書きの項目と表のセルは、一つの項目やセルに複数の文を書いてよい。
+地の文では、ダッシュ（——）を使わない。
+中黒（・）は、並列を表すことにだけ使わない。
+並べるときは、読点か「と」でつなぐ。
+外来語の区切りのような、並列でない中黒は使ってよい。
+
+用語は [docs/manual-policy.md](./docs/manual-policy.md) の規則に従う。
+開発者のマニュアルの規則（「診断」ではなく diagnostic、「資産」ではなくアセット、「機械」ではなくマシンか計算機）と、二つのマニュアルに共通する規則（「書体」と「フォント」の使い分け、version は「版」ではなくバージョン、public domain は「公有」ではなくパブリックドメイン）は、`docs/` の仕様書、README、CONTRIBUTING、新しい ADR にも当てはめる。
+コミット済みの ADR は変えられないので、古い用語のまま残す。
+
+文字と行で判定できる規則は、textlint で検査する（[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。
+規則、用語の辞書、バージョンを固定した npm のパッケージは `tools/textlint/` にある（[tools/textlint/README.md](./tools/textlint/README.md)）。
+Node を入れてから `sh scripts/ci/textlint.sh` を実行する。
+初めての実行でパッケージを入れる。
+`TEXTLINT_ARGS=--fix` を付けると、直せる違反を直す。
+対象は、`docs/` の Markdown（ADR、`docs/audits/` のような記録を除く）、README.md、CONTRIBUTING.md、ブランチで加えた ADR、二つのマニュアルの原稿である。
+CI の `textlint` ジョブ（`docs.yml`）も同じスクリプトを走らせる。
+意味で選ぶ語（「版」と「バージョン」、「書体」と「フォント」）と、文の長さは検査しないので、レビューで確かめる。
 
 ## Git
 
@@ -242,4 +267,4 @@ CI を待つ時間は、変更を一つ入れるたびにかかるので、CI �
 
 ## ライセンス
 
-貢献したコードとドキュメントは、[MIT ライセンス](./LICENSE)のもとで配布される。
+貢献したコードとドキュメントは、[MIT ライセンス](./LICENSE) のもとで配布される。
