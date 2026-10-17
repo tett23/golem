@@ -123,6 +123,30 @@ cssTests =
       ops <- drawing "<g fill=\"red\" stroke=\"#123\" stroke-width=\"3\"><g><rect width=\"1\" height=\"1\"/></g></g>"
       fillOf ops @?= [Just (Color 255 0 0)]
       map (fmap stWidth . paStroke . fst) (paths ops) @?= [Just 3],
+    testCase "a style sheet: comments, a list of selectors, the universal selector, an id" $
+      parseStylesheet "/* a comment */ rect, .a { fill: red } *{stroke:blue;} #x { FILL : #000 }"
+        @?= ( [ Rule [Selector (Just "rect") [] Nothing, Selector Nothing ["a"] Nothing] [("fill", "red")],
+                Rule [Selector Nothing [] Nothing] [("stroke", "blue")],
+                Rule [Selector Nothing [] (Just "x")] [("fill", "#000")]
+              ],
+              []
+            ),
+    testCase "problems are at their offset in the text, comments counted" $
+      -- "/* xx */ " is 9 characters; the selector starts after it
+      snd (parseStylesheet "/* xx */ g rect { fill: red }") @?= [CssProblem 9 "g rect" False],
+    testCase "an at-rule with nested blocks is skipped as a whole; the rule after it is read" $
+      parseStylesheet "@media print { rect { fill: red } } circle { fill: blue }"
+        @?= ([Rule [Selector (Just "circle") [] Nothing] [("fill", "blue")]], [CssProblem 0 "@media" False]),
+    testCase "a rule without a block is a problem" $
+      snd (parseStylesheet "rect") @?= [CssProblem 0 "CSS の規則" False],
+    testCase "a declaration without a colon is a problem at its offset; empty ones are skipped" $
+      parseDeclarations "fill: red;; stroke" @?= ([("fill", "red")], [CssProblem 12 "stroke" False]),
+    testCase "selects: the type, every class and the id must match" $ do
+      selects (Selector (Just "rect") ["a"] Nothing) "rect" ["a", "b"] Nothing @?= True
+      selects (Selector (Just "rect") ["a", "c"] Nothing) "rect" ["a", "b"] Nothing @?= False
+      selects (Selector (Just "rect") [] Nothing) "circle" [] Nothing @?= False
+      selects (Selector Nothing [] (Just "x")) "rect" [] (Just "y") @?= False
+      selects (Selector Nothing [] Nothing) "rect" [] Nothing @?= True,
     testCase "specificity: an id over classes over types" $ do
       specificity (Selector (Just "rect") ["a", "b"] Nothing) @?= (0, 2, 1)
       specificity (Selector Nothing [] (Just "x")) @?= (1, 0, 0),
