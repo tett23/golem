@@ -24,7 +24,7 @@ import Control.Applicative ((<|>))
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -208,7 +208,6 @@ updateFile ws0 path text = do
                 summaryOf ast (Just res) == summaryOf (sfAst old) oldRes
                   && not (hasErrors synDiags)
                   && not (hasErrors (sfSyntaxDiagnostics old))
-                  && isJust (evBook e)
                   -- the files it reads are read again (golem-eval ADR 0004)
                   && assetRefs ast == assetRefs (sfAst old)
            in if unchanged
@@ -227,19 +226,29 @@ findSource e path = case [(fid, sf) | (fid, sf) <- Map.toList (projectSources (e
   (x : _) -> Just x
   [] -> Nothing
 
-{- | Replaces one file's parse and S0 result. Diagnostics of S0 for that
-file are recomputed; S1 diagnostics are kept.
+{- | Replaces one file's parse and S0 result, and assembles S1 again from
+the S0 results of every file (golem-lsp ADR 0004). The S0 and syntax
+diagnostics of that file and every S1 diagnostic are replaced.
 -}
 replaceFile :: Evaluated -> FileId -> SourceFile -> EvalResult -> Evaluated
 replaceFile e fid sf res =
   let p = evProject e
       oldS0 = maybe [] erDiagnostics (Map.lookup fid (evResults e))
       oldSyn = maybe [] sfSyntaxDiagnostics (Map.lookup fid (projectSources p))
-      kept = [d | d <- evDiagnostics e, not (spanFile (diagSpan d) == fid && (d `elem` oldS0 || d `elem` oldSyn))]
+      results = Map.insert fid res (evResults e)
+      (book, s1) = evReassemble e results
+      kept =
+        [ d
+        | d <- evDiagnostics e,
+          not (spanFile (diagSpan d) == fid && (d `elem` oldS0 || d `elem` oldSyn)),
+          d `notElem` evS1Diagnostics e
+        ]
    in e
         { evProject = p {projectSources = Map.insert fid sf (projectSources p)},
-          evResults = Map.insert fid res (evResults e),
-          evDiagnostics = sortDiagnostics (kept <> sfSyntaxDiagnostics sf <> erDiagnostics res)
+          evResults = results,
+          evBook = book,
+          evS1Diagnostics = s1,
+          evDiagnostics = sortDiagnostics (kept <> sfSyntaxDiagnostics sf <> erDiagnostics res <> s1)
         }
 
 sourceOf :: Workspace -> FilePath -> Maybe Source
