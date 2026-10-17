@@ -224,9 +224,16 @@ jobs:
       - name: Japanese locales for the environment check
         if: matrix.runner == 'ubuntu-24.04'
         run: sudo locale-gen ja_JP.UTF-8 ja_JP.EUC-JP
-      - name: The outputs do not change with the environment (docs/adr/0029)
+      - name: The outputs do not change with the environment (docs/adr/0029, docs/adr/0038)
         if: matrix.runner == 'ubuntu-24.04'
-        run: GOLEM_REQUIRE_LOCALES=1 GOLEM_REQUIRE_FONTS=1 GOLEM="$(cabal list-bin -v0 golem)" sh scripts/env-determinism/check.sh
+        env:
+          # pull requests check the small inputs; pushes to main and the
+          # calls from release.yml check every input (docs/adr/0038)
+          QUICK: ${{ github.event_name == 'pull_request' && '--quick' || '' }}
+        run: |
+          # QUICK is empty or one word
+          # shellcheck disable=SC2086
+          GOLEM_REQUIRE_LOCALES=1 GOLEM_REQUIRE_FONTS=1 GOLEM="$(cabal list-bin -v0 golem)" sh scripts/env-determinism/check.sh $QUICK
       # the PDF and the HTML of the manuals; those of aarch64 are the same,
       # by the determinism job (docs/adr/0022, docs/adr/0024)
       - name: The user manual (docs/adr/0022)
