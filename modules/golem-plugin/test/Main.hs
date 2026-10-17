@@ -8,7 +8,7 @@ import Control.Concurrent.Async
     mapConcurrently,
   )
 import Control.Exception (finally)
-import Control.Monad (void)
+import Control.Monad (forM_, void)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -166,6 +166,21 @@ tests =
         case invokeRaw p "x" of
           Left (Trapped _) -> pure ()
           other -> assertFailure (show other),
+      testCase "a table beyond the limit on table elements cannot be instantiated (docs/adr ADR 0035)" $ do
+        w <- compile =<< wat "table.wat"
+        case loadPlugin w of
+          Left (InstantiateFailed _) -> pure ()
+          other -> assertFailure (show (void other)),
+      testCase "a result of the wrong type is bad output, every time (docs/adr ADR 0035)" $ do
+        w <- compile =<< wat "describe-i32.wat"
+        void (loadPlugin w) @?= Left (BadOutput "golem_describe の戻り値の型が不正です"),
+      testCase "a sha256 that is not 64 lowercase hexadecimal digits is G0611 (docs/adr ADR 0035)" $
+        forM_ ["../../../../tmp/x", "00", T.toUpper (hashHex "AAA"), hashHex "AAA" <> "0"] $ \h ->
+          case parseLock (FileId 0) ("[plugins.a]\nurl = \"https://example.com/a.wasm\"\nsha256 = \"" <> h <> "\"\n") of
+            Left ds -> do
+              map diagCode ds @?= [DiagnosticCode "G0611"]
+              map diagMessage ds @?= ["plugins.a.sha256 は 64 文字の小文字の 16 進数で書きます"]
+            Right m -> assertFailure (show m),
       testCase "NaN results are the same bytes on every run" $ do
         w <- compile =<< wat "nan.wat"
         p <- load w
