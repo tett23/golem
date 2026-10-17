@@ -10,6 +10,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble (Book (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..), TocEntry (..))
+import Golem.Doc.Bibliography (EntryPart (..))
 import Golem.Doc.IR
 import Golem.Html
 import Golem.Syntax.Span
@@ -217,9 +218,18 @@ tests =
             (bookOf [para 0 [txt "文献", Cite (at 1) "knuth1981"], Block (at 5) Nothing (ChannelOutput BibliographyOutput)])
               { bookCitations = [("knuth1981", 1)]
               }
-          cfg = cfg0 {hcBibliography = Map.fromList [("knuth1981", "Knuth, Breaking Paragraphs into Lines.")]}
+          cfg = cfg0 {hcBibliography = Map.fromList [("knuth1981", [EntryText "Knuth, Breaking Paragraphs into Lines."])]}
        in bodyA cfg book
             @?= "<p>文献<a class=\"cite\" href=\"#cite-knuth1981\">[1]</a></p>\n<ol class=\"bibliography\">\n<li id=\"cite-knuth1981\">Knuth, Breaking Paragraphs into Lines.</li>\n</ol>\n",
+    -- golem-doc ADR 0005
+    testCase "a URL of http or https in the bibliography is a link of class cs-url; another is a span" $
+      let book =
+            (bookOf [para 0 [Cite (at 1) "a", Cite (at 2) "b"], Block (at 5) Nothing (ChannelOutput BibliographyOutput)])
+              { bookCitations = [("a", 1), ("b", 2)]
+              }
+          cfg = cfg0 {hcBibliography = Map.fromList [("a", [EntryText "A. ", EntryUrl "HTTPS://example.com/?a=1&b=2"]), ("b", [EntryText "B. ", EntryUrl "javascript:alert(1)"])]}
+       in bodyA cfg book
+            @?= "<p><a class=\"cite\" href=\"#cite-a\">[1]</a><a class=\"cite\" href=\"#cite-b\">[2]</a></p>\n<ol class=\"bibliography\">\n<li id=\"cite-a\">A. <a class=\"cs-url\" href=\"HTTPS://example.com/?a=1&amp;b=2\">HTTPS://example.com/?a=1&amp;b=2</a></li>\n<li id=\"cite-b\">B. <span class=\"cs-url\">javascript:alert(1)</span></li>\n</ol>\n",
     testCase "a figure uses its web image and copies it as an asset" $
       let fig = Figure "images/a.pdf" (Just "images/a.png") "代替" Nothing Nothing [para 3 [txt "キャプション"]]
           site = renderXhtml cfg0 ft (bookOf [Block (at 0) Nothing (FigureBlock fig)])

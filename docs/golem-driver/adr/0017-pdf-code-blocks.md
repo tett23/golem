@@ -1,6 +1,6 @@
 # ADR 0017: コードの書体とコードブロックの組み方
 
-ステータス: 採択→本文の中のコードの背景は [ADR 0029](0029-inline-code-background.md)
+ステータス: 採択→本文の中のコードの背景は [ADR 0029](0029-inline-code-background.md)、コードの改行の規則を文字スタイル `url` にも当てることは [golem-doc ADR 0005](../../golem-doc/adr/0005-bibliography-fields.md)
 
 ## 文脈
 

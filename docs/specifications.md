@@ -609,6 +609,8 @@ length = "10zw"
 weight = "0.3pt"
 space-before = "1zw"
 space-after = "0.5zw"
+style = "solid"
+color = "accent"
 
 [sidenotes]
 side = "outside"
@@ -700,11 +702,58 @@ HTML と EPUB は版面を無視するので、段組みを出力せず、CSS �
 | `weight` | 寸法 | 罫線の太さ。既定は `"0.3pt"` |
 | `space-before` | 寸法 | 罫線の前（横組みでは上、縦組みでは右）の間隔 |
 | `space-after` | 寸法 | 罫線の後（横組みでは下、縦組みでは左）の間隔 |
+| `color` | スウォッチの名前 | 罫線の色。既定はなし（色を設定せずに描く） |
+| `style` | 文字列 | 線の種類（次の表）。既定は `"solid"` |
+| `dash` | 寸法 | 破線の一つの線分の長さ。既定は `weight` の 3 倍 |
+| `gap` | 寸法 | 破線の線分と線分のあいだ、点線の点と点のあいだの間隔。既定は線の種類による |
+
+`color`、`style`、`dash`、`gap` は [golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md) で加えた。
+線の種類は、InDesign の線の種類のうち罫線として意味のある 12 種である。
+
+| `style` | InDesign の種類 | 形 | `gap` の既定 |
+| --- | --- | --- | --- |
+| `"solid"` | 実線 | 一本の線 | 書けない |
+| `"thin-thin"` | 細線 - 細線 | 二本の線。線、間隔、線の比が 1:1:1 | 書けない |
+| `"thick-thick"` | 太線 - 太線 | 二本の線。比が 2:1:2 | 書けない |
+| `"thick-thin"` | 太線 - 細線 | 二本の線。比が 2:1:1 | 書けない |
+| `"thin-thick"` | 細線 - 太線 | 二本の線。比が 1:1:2 | 書けない |
+| `"thick-thin-thick"` | 太線 - 細線 - 太線 | 三本の線。比が 2:1:1:1:2 | 書けない |
+| `"thin-thick-thin"` | 細線 - 太線 - 細線 | 三本の線。比が 1:1:2:1:1 | 書けない |
+| `"triple"` | 三重線 | 三本の線。比が 1:1:1:1:1 | 書けない |
+| `"dashed"` | 破線 | 線分の並び | `weight` の 2 倍 |
+| `"dotted"` | 点線 | 丸い点の並び | `weight` の 2 倍 |
+| `"japanese-dots"` | 和文の点線 | 四角い点の並び | `weight` と同じ |
+| `"wavy"` | 波線 | 波の形の線 | 書けない |
 
 値の検査は、どの使い手でも同じである。
 `length` が寸法として読めない場合と 0 以下の場合、`weight` が寸法として読めない場合と 0 以下の場合と `zw` の場合、`space-before` と `space-after` が寸法として読めない場合と負の場合は、その値の位置で G0306 とする。
+`style` が表の値のどれでもない場合と、`dash` と `gap` が寸法として読めない場合、0 以下の場合、`zw` の場合も、その値の位置で G0306 とする。
+`dash` は `"dashed"` のときだけ、`gap` は `"dashed"`、`"dotted"`、`"japanese-dots"` のときだけ書ける。
+ほかの線の種類に書くと G0306 とする。
+`color` が `[color.swatches]` にない場合は G0313 とする。
 未知のキーは G0306 とする。
 `length` が必須か、間隔を何から測るか、`zw` をどの字の大きさで解決するかは、使い手ごとに決める。
+四つのキーの意味は、どの使い手でも同じである。
+
+罫線は、長さ `L`、太さ `w` の帯の中に描き、帯の外には描かない。
+帯の位置は使い手が決め、帯の「前」は横組みでは上、縦組みでは右である。
+どの計算も sp の整数で行う。
+
+- **実線**：帯の全体を一つの矩形で塗る。
+- **多重線**：帯を表の比で前から順に線と間隔に分け、線の部分を塗る。比の和を U、前から j 番目の境目までの比の和を c_j とすると、境目の位置は `(c_j × w) div U` である。
+- **破線**：両端を線分で終えるよう、線分と間隔の両方の長さを変える（InDesign の「線分と間隔を調整」）。線分の数 n は、`(L + g)` を `(d + g)` で割って四捨五入した値と 1 の大きいほうである（`d` は `dash`、`g` は `gap`）。`T = n × d + (n − 1) × g` とし、i 番目の線分を帯の始まりから `(i × (d + g) × L) div T` から `((i × (d + g) + d) × L) div T` まで塗る。
+- **点線**：直径 `w` の丸い点を並べる。点の数 n は、`(L − w)` を `(w + g)` で割って四捨五入した値に 1 を足し、1 との大きいほうである。i 番目の点の中心は、帯の始まりから `w/2 + (i × (L − w)) div (n − 1)` にある。n が 1 なら帯の中央に一つ置く。
+- **和文の点線**：一辺 `w` の四角い点を、点線と同じ規則で並べる。
+- **波線**：太さ `t = w div 4`、振幅 `a = (w − t) div 2` の波を塗る。半周期の数 m は、`L` を `2 × w` で割って四捨五入した値と 1 の大きいほうである。各半周期の山と谷は一つの 3 次ベジエ曲線であり、制御点を半周期の長さ `h` の `h/3` と `2h/3`、中心線から `4a/3` に置く。
+
+PDF では、罫線をすべて塗りで描く。
+実線、多重線、破線、和文の点線は塗った矩形、点線の点は四つの 3 次ベジエ曲線で書いた円（制御点は中心から半径の 0.5523 倍）、波線は 3 次ベジエ曲線の閉じた道である。
+線を引く演算子（`S`）、線の端の形（`J`）、破線のパターン（`d`）は使わない。
+`color` があれば、罫線をスウォッチの CMYK で DeviceCMYK として塗る。
+`color` がなければ色を設定せずに描き、PDF の既定の塗りの色（DeviceGray の黒）になる。
+golem preflight は、罫線の太さとして線の種類の最も細い部分の太さを検査する（G0918）。
+実線、破線、点線、和文の点線では `w`、多重線では最も細い線の太さ、波線では `t` である。
+罫線の色のスウォッチは、総インキ量の検査（G0915）の対象になる。
 
 `[index]` は、PDF の索引だけを版面と異なる段数で組む（[docs/adr/0025](adr/0025-index-columns.md)）。
 
@@ -899,7 +948,12 @@ CSS では、和文と欧文で別のカーニングを指定できない。
 `letter-spacing` は行の最後の文字の後ろにも空きを足すが、PDF との差として受け入れる。
 プレーンテキストは、どのキーも使わない。
 
-組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`）の四つである。
+組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`）、`url`（キーなし）の五つである。
+`url` は参考文献の URL を組む文字スタイルであり、書体、大きさ、色は周りの文字のまま組む（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
+PDF では、`url` と、`based-on` をたどって `url` に行き着く文字スタイルの文字に、ハイフネーションをかけず、改行してよい位置を空白と `/` の後に限り、中の文字のあいだにアキ量のセットの空きを入れない。
+`/` の後で改行してもハイフンを描かず、`//` のような連なりは最後の `/` の後でだけ改行する。
+`code` と違い、カーニングは止めず、`code` の役割の書体を読み込む理由にもならない。
+`url` には `[url: ...]` のような別名はなく、原稿では `[style url: ...]` と書く。
 原稿の `[strong: ...]`、`[bold: ...]`、`[italic: ...]`、`[code: ...]` は、これらを付ける `[style 名前: ...]` の別名である。
 利用者が組み込みと同じ名前の表を書くと、書いたキーだけが組み込みの定義の同じキーを上書きする。
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
@@ -1184,7 +1238,7 @@ Golem の文字列の中では `\` の後の文字はその文字になるので
 廃止した `[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size` はエラー（G0306）とし、メッセージで書き換え先を示す。
 `[verse]` の `indent = I`、`hang = H` は、`[paragraph-styles.verse]` の `indent = I + H`、`first-line-indent = -H` に書き換える。
 
-HTML と EPUB では、組み込みの文字スタイルを `strong`、`b`、`i`、`code` の要素に、ほかの文字スタイルを `cs-名前` の class に、段落スタイルを `ps-名前` の class に対応させる。
+HTML と EPUB では、組み込みの文字スタイルのうち `strong`、`bold`、`italic`、`code` を `strong`、`b`、`i`、`code` の要素に、ほかの文字スタイル（組み込みの `url` を含む）を `cs-名前` の class に、段落スタイルを `ps-名前` の class に対応させる。
 コードブロックは `<pre><code>` で出し、`style.css` の `pre` と `code` の `font-family` を `code` の役割の書体の並びと `monospace` にする（`code` の役割がなければ `monospace` だけ）。
 `pre` には `white-space: pre-wrap`、`overflow-wrap: anywhere`、`tab-size: 2`、`hyphens: none`、`font-kerning: none` を書き、`[paragraph-styles.code]` に `background` があれば、その RGB の近似の `background-color` と、`padding` を `em` にした `padding` を書く。
 `code` の `size` があれば、キャプションと同じく `pre` の `font-size` を書く。
@@ -1393,6 +1447,7 @@ CSS を書けると、媒体契約の外で見た目を変える抜け道にな�
 EPUB と HTML の色は、印刷用の色を RGB に近似したものになる。
 PDF の文字の色（`[color スウォッチ: ...]`）は、スウォッチの CMYK の値をそのまま DeviceCMYK のプロセスカラーとして書き、RGB への変換も特色の色空間も使わない（[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 色を指定しない文字は、色を設定せずに描く。
+罫線の色（罫線の指定の `color`）も、スウォッチの CMYK を DeviceCMYK で塗る（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
 PDF の色はプロセスカラーだけであり、例外はトンボのレジストレーションの色（Separation の `All`）だけである（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
 レジストレーションの色は golem-pdf の中でトンボだけが使え、`style.toml` のスウォッチから使う手段はない。
 
@@ -1799,6 +1854,11 @@ PDF のページ下の脚注は、本文とのあいだに区切りの領域を�
 ページ下の脚注は、脚注の分量がページに入る本文の量を変え、それが改ページを変え、改ページが脚注を置くページを変えるという相互依存を持つ。
 レイアウトエンジンでは独立した重い項目として扱う。
 
+PDF のページ下の脚注は、注の印を含む行か見出しと同じページ（段）に置く（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)、[golem-layout ADR 0013](golem-layout/adr/0013-heading-footnotes.md)）。
+行か見出しを置くと注の本文と区切りの領域がページの残りに入らない場合は、その行か見出しを注とともに次のページ（段）に送る。
+見出しの直後で改ページしない規則も、見出しの注の本文と区切りの領域を見出しの量に数えて判定する。
+注の本文を分けて次のページに続けるのは、ページ（段）の先頭に置いても注の本文が収まらない場合に限る。
+
 ### 傍注
 
 ```
@@ -1895,8 +1955,10 @@ v1 の引用の書式は、処理系が持つ一種類だけとする。
 引用の書式は数千種類あり、それを解釈する処理系の実装は独立した大きな仕事になるためである。
 書式の選択は後のバージョンで扱う。
 
-参考文献の一件は、著者、題、発行者、発行の年の順に、空でない欄を並べる（[golem-doc ADR 0004](golem-doc/adr/0004-bibliography-formatting.md)）。
+参考文献の一件は、著者、題、掲載先（誌名、巻と号、ページ）、発行者、発行の年、URL と閲覧日の順に、空でない欄を並べる（[golem-doc ADR 0004](golem-doc/adr/0004-bibliography-formatting.md)、[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
 書式は golem-doc の `Golem.Doc.Bibliography` が決め、HTML、EPUB、PDF、プレーンテキストが同じ文字列を使う。
+一件は文字列と URL の部分の列であり、URL の部分だけを出力が区別して組む。
+参考文献のスタイル（誌ごとの書式、TeX と互換の書式）は v1.0.0 で扱う予定であり、今の書式はそのときの既定のスタイルになる。
 書誌データにないキーは、キーをそのまま出す。
 
 項目ごとに、和文の項目か欧文の項目かを決める。
@@ -1919,6 +1981,48 @@ v1 の引用の書式は、処理系が持つ一種類だけとする。
 片方しかなければ、その片方だけを書く。
 発行の年は `issued` の `date-parts` の最初の数とし、それがなく `literal` が文字列なら、その文字列を書く。
 絶対値が 10^15 以上の数は年として使わない（[docs/adr/0035](adr/0035-security-hardening.md)）。
+`date-parts` の年、月、日は、整数の数か ASCII の数字だけの文字列のとき読む。
+`issued` は月と日まで読むが、一覧に出すのは年だけである。
+
+掲載先と URL の欄は次のように書く（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
+
+| 欄 | 欧文の項目 | 和文の項目 |
+| --- | --- | --- |
+| 掲載先 | 誌名、巻、号、ページを `, ` でつないだ一つの欄 | 誌名、巻と号、ページを別々の欄にする |
+| 巻 | `vol. 11` | `第11巻` |
+| 号 | `no. 3` | `第3号`（巻と号の両方があれば `第11巻第3号` の一つの欄） |
+| ページの範囲 | `pp. 1119–1184` | `1119–1184頁` |
+| 一ページ | `p. 5` | `5頁` |
+| URL と閲覧日 | `URL (accessed October 16, 2026)` | `URL（2026年10月16日閲覧）` |
+
+巻と号は、値が ASCII の数字だけのときに印を付け、ほかの値（`Suppl. 2` など）はそのまま書く。
+ページは、数字と数字のあいだの ASCII のハイフンの連なりを en dash（U+2013）一つに置き換える。
+数字と数字のあいだに en dash かハイフンがあるとき、または `,` を含むとき、範囲とする。
+閲覧日（`accessed`）は URL があるときだけ組み、URL のない項目の `accessed` は組まない。
+閲覧日は年月日、年月、年、`literal` の形で書き、欧文の月の名前は処理系が持つ表（`January` から `December`）で書く。
+月が 1 から 12 の外なら年だけを、日が 1 から 31 の外なら年と月だけを書く。
+
+和文の項目では、題と誌名を項目の種類（CSL-JSON の `type`）で括る。
+欧文の項目は括らない。
+
+| 種類 | 題 | 誌名 |
+| --- | --- | --- |
+| `article`、`article-journal`、`article-magazine`、`article-newspaper`、`chapter`、`entry`、`entry-dictionary`、`entry-encyclopedia`、`paper-conference`、`review`、`review-book` | 「」 | 『』 |
+| `webpage`、`post`、`post-weblog` | 「」 | 括らない |
+| `book`、`thesis`、`report`、`manuscript`、`pamphlet` | 『』 | 括らない |
+| ほかの種類と、`type` のない項目 | 括らない | 括らない |
+
+題や誌名が、すでに同じ括弧の開きで始まり閉じで終わるときは、括弧を足さない。
+欧文の項目が閲覧日のない URL で終わるときは、末尾の `.` を付けない。
+和文の項目は、URL で終わるときも `。` を付ける。
+
+`type`、`container-title`、`URL` は文字列のとき読む。
+`volume`、`issue`、`page` は文字列か整数の数のとき読み、整数でない数は読まない。
+空の文字列と空白だけの文字列は、ない欄として扱う。
+
+URL の部分は、PDF では文字スタイル `url` で組む（「style.toml」の節）。
+HTML と EPUB では、scheme が `http` か `https`（大文字と小文字を区別しない）の URL を `<a class="cs-url" href="URL">` に、ほかの URL を `<span class="cs-url">` にする。
+プレーンテキストは、部分をつないだ文字列を書く。
 
 `manifest.toml` の `bibliography` に並べたファイルがない、JSON として読めない、最上位が配列でないときは、G0326 のエラーを `manifest.toml` の先頭に出す。
 パスの形の誤り（URL、絶対パス、ルートの外）は、章のパスと同じく G0303 とする。
@@ -2275,10 +2379,8 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
-- **見出しの脚注**：脚注がページに入らないとき、見出しは元のページに残り、注の本文だけが次のページに送られる。段落の行の場合は、行のほうが送られる（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 - **ぶら下げの量**：ぶら下げの量を、字の幅ではなく語の箱全体の幅に対する割合で求めている。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は字の幅に対する割合と定めている。既存のテストも、語の幅を基準にした値を期待している。
 - **分綴のハイフンの突き出し**：パターンで分綴したときに行末に足すハイフンを、突き出さない。行分割の突き出しの量は、行の最後の箱の終わりの字だけを見て求めるので、分綴で足したハイフンを数えない。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は、行末のハイフンも突き出すと定めている。
-- **キーワード引数の後の `**[式]`**：`[f k=v **[h]]` が G0119 になる。`**[式]` はキーワード引数に展開されるので、キーワード引数の後に書けてよいはずである（[golem-parser ADR 0004](golem-parser/adr/0004-inline-grammar.md)）。
 - **IR の大きな整数**：CDDL は式の整数を `int`（CBOR の major type 0 と 1）と定めているが、絶対値が 2^64 以上の整数は bignum（tag 2 と 3）で書き出される。式の整数は任意精度なので、`@set n = 2 ** 70` のような値が IR に入りうる（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)）。
 - **浮動小数点数の桁あふれ**：`2.0 ** -1074` は表せる値だが、途中の計算があふれて 0 になる。`10 ** 309 > 1.0` は誤りにならないが、`10 ** 309 + 0.5` は G0204 になる。どちらの扱いも仕様は定めていない（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
 - **`golem inspect` の終了コードと文言**：構文の誤り（G0117 など）があっても終了コード 0 で終わり、diagnostics を Haskell の `show` の形で出す。存在しないファイルを渡すと、英語の例外と GHC のバックトレースが出る（[golem-cli ADR 0001](golem-cli/adr/0001-command-line-interface.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。

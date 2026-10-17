@@ -88,10 +88,12 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Calendar (toGregorian)
 import Golem.Doc.Assemble
+import Golem.Doc.Bibliography (EntryPart (..))
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers
 import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals (circled, formatNumber)
+import Golem.Driver.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
 import Golem.Driver.Version (golemVersion)
 import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
@@ -231,7 +233,7 @@ data PdfInput = PdfInput
     -- | bytes of every input, for the instance ID
     piInputs :: ![ByteString],
     -- | the formatted entries of the bibliography by key (golem-driver ADR 0007)
-    piBibliography :: !(Map Text Text),
+    piBibliography :: !(Map Text [EntryPart]),
     -- | the crop marks (golem-pdf ADR 0004)
     piMarks :: !(Maybe P.MarkStyle),
     -- | the styles each file defines (docs/adr ADR 0014)
@@ -480,7 +482,9 @@ restyle style lk = \case
               lkCode = lkCode lk || code,
               -- the background and the padding of inline code; zw is the size of the style (golem-driver ADR 0029)
               lkBackground = if code then charStyleBackground style name else lkBackground lk,
-              lkPadding = if code then maybe 0 (max 0 . dimToSp size) (csPadding cs) else lkPadding lk
+              lkPadding = if code then maybe 0 (max 0 . dimToSp size) (csPadding cs) else lkPadding lk,
+              -- a URL breaks as code, after the last slash of a run (golem-doc ADR 0005)
+              lkUrl = lkUrl lk || isUrlCharStyle style name
             }
       where
         code = isCodeCharStyle style name
@@ -1243,10 +1247,21 @@ indexLines vertical pageOf = go Nothing
     entry prefix term ps =
       prefix <> [txt term] <> (if null ps then [] else txt "　" : intercalate [txt (if vertical then "、" else ", ")] [[Number sp0 n Nothing] | n <- ps])
 
--- | The lines of the bibliography: @[n] @ and the entry, or the key when it has none.
-bibliographyLines :: Map Text Text -> [(Text, Int)] -> [[Inline]]
+{- | The lines of the bibliography: @[n] @ and the entry, or the key when
+it has none; a URL is in the character style url (golem-doc ADR 0005).
+-}
+bibliographyLines :: Map Text [EntryPart] -> [(Text, Int)] -> [[Inline]]
 bibliographyLines bib cites =
-  [[Text (mkSpan (FileId 0) 0 0) ("[" <> T.pack (show n) <> "] " <> fromMaybe k (Map.lookup k bib))] | (k, n) <- cites]
+  [ merged (EntryText ("[" <> T.pack (show n) <> "] ") : fromMaybe [EntryText k] (Map.lookup k bib))
+  | (k, n) <- cites
+  ]
+  where
+    sp0 = mkSpan (FileId 0) 0 0
+    merged = \case
+      EntryText a : EntryText b : rest -> merged (EntryText (a <> b) : rest)
+      EntryText a : rest -> Text sp0 a : merged rest
+      EntryUrl u : rest -> CharStyle sp0 "url" [Text sp0 u] : merged rest
+      [] -> []
 
 {- | The role, size and line pitch of sidenotes: the role and size of the
 paragraph style sidenote (golem-driver ADR 0011), the body pitch scaled
@@ -1562,7 +1577,7 @@ with the styles its file defines (docs/adr ADR 0014). Lists are numbered
 in document order; the units inside a list know the lists around them
 (golem-driver ADR 0013).
 -}
-unitsOf :: Text -> Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
+unitsOf :: Text -> Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) -> (SrcSpan -> Maybe Integer) -> Map Text [EntryPart] -> [Unit]
 unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs book)))
   where
     sp0 = mkSpan (FileId 0) 0 0
@@ -2647,10 +2662,21 @@ writeDocumentView inp geom fonts layout intent =
             noteLines = concat [[(nid, l) | l <- take cnt (drop from (Map.findWithDefault [] nid noteBodies))] | (nid, from, cnt) <- poFootnotes p]
             bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
             noteParts = [entry "脚注の行" (noteSpan nid) ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] []) | (slot, (nid, l)) <- zip bottomSlots noteLines]
+            {- each rule with its band, the weight of its thinnest part, its
+            marks and its swatch (golem-driver ADR 0028) -}
             rules =
-              [("表の罫線", r, t) | seg <- poTables p, Just w <- [Map.lookup (tsTable seg) (plTables layout)], (r, t) <- tableRules ta seg w]
-                <> [("脚注の罫線", r, t) | not (null noteLines), Just rule <- [stNotesRule style], let (r, t) = noteRule ta rule (length grid - length noteLines)]
-         in (lineParts <> noteParts, (figMarks, [(r, pf) | (_, r, pf) <- figures]), ([P.Rule r | (_, r, _) <- rules], rules), (map snd backgrounds, map fst backgrounds))
+              [("表の罫線", r, t, [P.Rule r], Nothing) | seg <- poTables p, Just w <- [Map.lookup (tsTable seg) (plTables layout)], (r, t) <- tableRules ta seg w]
+                <> [ ("脚注の罫線", r, ruleThinnest t (rsStyle rule), ruleMarks sw (ruleShapes vertical r (rsStyle rule)), sw)
+                   | not (null noteLines),
+                     Just rule <- [stNotesRule style],
+                     let (r, t) = noteRule ta rule (length grid - length noteLines)
+                         sw = ruleSwatch rule
+                   ]
+         in ( lineParts <> noteParts,
+              (figMarks, [(r, pf) | (_, r, pf) <- figures]),
+              (concat [ms | (_, _, _, ms, _) <- rules], [(k, r, t) | (k, r, t, _, _) <- rules]),
+              (map snd backgrounds, map fst backgrounds <> [sw | (_, _, _, _, Just sw) <- rules])
+            )
       -- the columns of a page, its sidenotes and, once, its running head and folio
       drawPage ps master = case ps of
         [] -> PageDrawn [] [] [] [] [] True 0 []
@@ -2684,6 +2710,11 @@ writeDocumentView inp geom fonts layout intent =
                   pdNumber = n,
                   pdBackgrounds = concat [snd b | (_, _, _, b) <- columns] <> concat [lrBackgrounds rec | (rec, _) <- allParts]
                 }
+      -- the swatch of a rule, if it has one (golem-driver ADR 0028)
+      ruleSwatch rule = do
+        name <- rsColor rule
+        Swatch (c, m, y, k) <- Map.lookup name (stSwatches style)
+        pure (P.Swatch c m y k)
       {- the rule before the footnotes from grid line first (golem-driver ADR
       0024): without spaces through the middle of the em box of the line
       before; with them space-after above the em box of the first

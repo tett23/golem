@@ -288,7 +288,7 @@ noteMarkSize s = s `div` 2
 
 textPieces :: Look -> Text -> [Piece]
 textPieces lk t
-  | lkCode lk = codePieces lk t
+  | breaksAsCode lk = codePieces lk t
   | otherwise = reverse (foldl' attach [] (go (zip cs latinish)))
   where
     -- variation selectors join the character or word before them (golem-pdf ADR 0006)
@@ -564,10 +564,18 @@ codeItems env lk run padStart padEnd =
   where
     tr = tracking lk
     sameSide a b = isVariationSelector b || (charClass a == Western) == (charClass b == Western)
+    -- a URL breaks only after the last slash of a run (golem-doc ADR 0005)
+    slashRun = if lkUrl lk then T.takeWhile (== '/') else T.take 1
     slashParts t = case T.breakOn "/" t of
       (a, rest)
         | T.null rest -> [a | not (T.null a)]
-        | otherwise -> (a <> "/") : slashParts (T.drop 1 rest)
+        | otherwise -> let s = slashRun rest in (a <> s) : slashParts (T.drop (T.length s) rest)
+
+{- | Whether text breaks as code: only at spaces and after a slash, with
+no hyphenation and no aki inside (golem-driver ADR 0017, golem-doc ADR 0005).
+-}
+breaksAsCode :: Look -> Bool
+breaksAsCode lk = lkCode lk || lkUrl lk
 
 {- | The padding of inline code (golem-driver ADR 0029): in each run of
 pieces of code with the same background and padding (spaces, tabs, note
@@ -683,7 +691,7 @@ normalize env = go AtStart True
       Box w c ->
         let spacing = case before of
               -- inside code: a break after a slash, no spacing (golem-driver ADR 0017)
-              AfterBox p | lkCode (bcLook p) && lkCode (bcLook c) -> [Penalty 0 0 NoHyphen | "/" `T.isSuffixOf` bcText p]
+              AfterBox p | breaksAsCode (bcLook p) && breaksAsCode (bcLook c) -> [Penalty 0 0 NoHyphen | "/" `T.isSuffixOf` bcText p]
               AfterBox p -> between p c
               AtStart -> leading c
               -- the space of the paragraph start, after the mark: no break there

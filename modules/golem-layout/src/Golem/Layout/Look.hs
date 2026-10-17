@@ -104,6 +104,9 @@ data Look = Look
     {- | the text is code (golem-driver ADR 0017): breaks only at spaces and
     after a slash, no hyphenation and no aki between its characters
     -} lkCode :: !Bool,
+    {- | the text is a URL (golem-doc ADR 0005): broken as code, but only
+    after the last slash of a run of slashes, and kerned
+    -} lkUrl :: !Bool,
     -- | the shape of kenten (golem-driver ADR 0019); Nothing is no kenten
     lkKenten :: !(Maybe KentenShape),
     {- | the swatch of the background of inline code (golem-driver ADR
@@ -116,7 +119,7 @@ data Look = Look
 
 {- | One role for both scripts at a size, upright, regular, default colour,
 metrics kerning, no tracking, no proportional metrics, no baseline shift,
-not code, no kenten, no background and no padding.
+not code, not a URL, no kenten, no background and no padding.
 -}
 plainLook :: Text -> Integer -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False Nothing Nothing 0
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False False Nothing Nothing 0

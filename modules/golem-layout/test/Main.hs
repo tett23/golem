@@ -1645,7 +1645,23 @@ codeTests =
       assertBool (show (between "code")) (any (\case Glue w _ _ -> w == 250; _ -> False) (between "code")),
     testCase "inline code: no break between the padding and the first character" $ do
       let its = fst (composeInlines padEnv [Text sp "漢", CharStyle sp "code" [Text sp "ab"]])
-      [bcText c | Box _ c <- its] @?= ["漢", "ab"]
+      [bcText c | Box _ c <- its] @?= ["漢", "ab"],
+    -- golem-doc ADR 0005
+    testCase "url: breaks after the last slash of a run and at spaces, no hyphenation" $ do
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}, cePatterns = Just englishUS}
+          its = compose env "https://example.com/a/b"
+      [t | Box _ c <- its, let { t = bcText c }] @?= ["https://", "example.com/", "a/", "b"]
+      [h | Penalty _ p h <- its, abs p < infPenalty] @?= [NoHyphen, NoHyphen, NoHyphen]
+      [h | Penalty _ p h <- compose env "typesetting", abs p < infPenalty, h /= NoHyphen] @?= []
+      [w | Glue w _ _ <- takeWhile (not . isFinalPenalty) (compose env "a漢b")] @?= [],
+    testCase "url: a narrow paragraph breaks after a slash and draws no hyphen" $ do
+      let env = (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}, cePatterns = Just englishUS}
+          its = compose env "https://example.com/abcdefgh/ijklmnop"
+          ls = brLines (breakParagraph defaultParams (const (12 * fs)) its)
+          lastBox l = [bcText c | Box _ c <- reverse (lineItems l)]
+      assertBool (show ls) (length ls > 1)
+      [h | Penalty _ _ h <- its, h /= NoHyphen] @?= []
+      assertBool (show (map lastBox ls)) (all (any ("/" `T.isSuffixOf`) . take 1 . lastBox) (init ls))
   ]
   where
     sp = mkSpan (FileId 0) 0 0
