@@ -345,6 +345,14 @@ else
 fi
 if grep -qE "test-wrapper: .*scripts/ci/suite-timeout\.sh.*cabal\.project\.local" "$CI_YML"; then ok; else ng "ci.yml: the test wrapper is written to cabal.project.local"; fi
 
+# ---------------------------------------------------------------- ci.yml and the environment check
+# (docs/adr/0038-env-determinism-quick-on-pull-requests.md)
+
+# pull requests check the small inputs (--quick); pushes to main and the
+# calls from release.yml check every input
+if grep -qE 'scripts/env-determinism/check\.sh +\$QUICK *$' "$CI_YML"; then ok; else ng "ci.yml: check.sh takes the argument of the event"; fi
+if grep -qF "QUICK: \${{ github.event_name == 'pull_request' && '--quick' || '' }}" "$CI_YML"; then ok; else ng "ci.yml: --quick on pull requests only"; fi
+
 # ---------------------------------------------------------------- gate.sh
 
 gate() { sh "$HERE/gate.sh" "$@"; }
