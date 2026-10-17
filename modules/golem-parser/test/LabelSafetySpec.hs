@@ -36,7 +36,7 @@ allAgree inputs = case filter (not . agree) inputs of
 
 -- | The fragments of ParserSpec and the ones that reach the fixed rules.
 pieces :: [Text]
-pieces = fragments <> ["*", "[= ", "x", "|", "| 1 |", "|abc", "\n  ", "**[= 1]"]
+pieces = fragments <> ["*", "[= ", "x", "|", "| 1 |", "|abc", "\n  ", "**[= 1]", "k=v", "**[h]", "*[g]"]
 
 -- | Every concatenation of up to three pieces.
 upToThree :: [Text]

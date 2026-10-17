@@ -140,14 +140,15 @@ data HeadingBlock = HeadingBlock
 
 {- | The pitch, span and offset of a heading of size @s@ and @m@ lines on
 a grid of font size @fs@ and pitch @p@: the body's ratio of pitch to
-size is kept, the span is the fewest grid lines that hold it, and the
-heading is centred in them. Integer sp; one rounding.
+size is kept, the span is the fewest grid lines that hold it but at
+least @least@ (golem-driver ADR 0032), and the heading is centred in
+them. Integer sp; one rounding.
 -}
-headingBlock :: Integer -> Integer -> Integer -> Int -> HeadingBlock
-headingBlock fs p s m =
+headingBlock :: Integer -> Integer -> Integer -> Int -> Int -> HeadingBlock
+headingBlock fs p s m least =
   let hp = round (p * s % fs)
       extent = toInteger (max 1 m - 1) * hp + s
-      n = max 1 ((extent + p - fs + p - 1) `div` p)
+      n = max (toInteger (max 1 least)) ((extent + p - fs + p - 1) `div` p)
       area = (n - 1) * p + fs
    in HeadingBlock hp (fromInteger n) ((area - extent) `div` 2)
 
@@ -250,7 +251,8 @@ paginateIn separatorLines base capacity flows =
       (FContinued ls : _) -> min 2 (length ls)
       (FTable _ h rows : _) -> length h + maybe 0 length (listToMaybe rows)
       (FDefTerm ls : _) -> length ls
-      (FHeading _ _ n _ : _) -> n
+      -- a heading keeps what follows it, a heading after it too (golem-driver ADR 0032)
+      (FHeading _ _ n _ : rest) -> n + nextNeed rest
       (FFigure _ n _ _ : _) -> min n capacity
       (FWrapped _ n _ _ ls : _) -> max n (length ls)
       (FSpace _ : _) -> 0
@@ -272,16 +274,20 @@ paginateIn separatorLines base capacity flows =
         let st1 = if length h + maybe 0 length (listToMaybe rows) > free st && not (isEmpty st) then nextColumn st else st
          in placeTable st1 i h rows
       FDefTerm ls -> placeLines (keep st (length ls + need)) True ls
+      -- the notes of a heading count as the notes of a line do (golem-layout ADR 0013)
       FHeading _ recto n ls ->
-        let st1 = if recto then parityStart odd st else keep st (n + need)
-            st2 = if n <= free st1 || isEmpty st1 then st1 else nextColumn st1
+        let st1 = if recto then parityStart odd st else keep st (headingNeed st n ls + need)
+            st2 = if headingNeed st1 n ls <= free st1 || isEmpty st1 then st1 else nextColumn st1
          in putBlock st2 n ls
+      -- figures keep the order written: after a figure sent on, the next ones wait too (golem-layout ADR 0015)
       FFigure i n labels marks
+        | not (null (sDeferred st)) -> st {sDeferred = sDeferred st <> [f]}
         | n <= free st || isEmpty st -> putSlot st n (SFigure i) labels marks
         | otherwise -> st {sDeferred = sDeferred st <> [f]}
       FWrapped i n labels marks beside ->
-        let size = max n (length beside)
-            st1 = if size <= free st || isEmpty st then st else nextColumn st
+        let st0 = flushFigures st
+            size = max n (length beside)
+            st1 = if size <= free st0 || isEmpty st0 then st0 else nextColumn st0
             st2 = putSlot st1 0 (SWrapped i) labels marks
          in (placeLines st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines st2 False beside))}
       FBreak k -> st {sBreaks = sBreaks st <> [k]}
@@ -310,6 +316,11 @@ paginateIn separatorLines base capacity flows =
           sMarks = [],
           sTables = []
         }
+    -- the grid lines of a heading, the lines of its notes and the separator if they are the first notes
+    headingNeed st n ls =
+      let noteLines = sum (map nbLines (concatMap lbNotes ls))
+          sep = if sNoteLines st == 0 && noteLines > 0 then separator else 0
+       in n + noteLines + sep
     keep st n = if n > free st && not (isEmpty st) then nextColumn st else st
     {- a code block: as many rows as their grid lines fit in the column, the
     rest in the next column; at least one row in an empty column (golem-driver ADR 0017).
@@ -462,6 +473,10 @@ paginateIn separatorLines base capacity flows =
     flushDeferred st
       | null (sDeferred st) && null (sPendingNotes st) = st
       | otherwise = flushDeferred (nextColumn st)
+    -- the figures sent on are placed, the continued notes may go on beside them (golem-layout ADR 0015)
+    flushFigures st
+      | null (sDeferred st) = st
+      | otherwise = flushFigures (nextColumn st)
 
 -- | The page of each label.
 labelPages :: [PageOut] -> Map Text Integer

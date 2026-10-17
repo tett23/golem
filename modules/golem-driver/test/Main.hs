@@ -11,6 +11,7 @@ import ParagraphSpec
 import PdfSpec
 import PluginsSpec
 import ReferencesSpec
+import RuleShapeSpec
 import SecuritySpec
 import StylesSpec
 import Test.Tasty
@@ -73,6 +74,7 @@ tests =
              testGroup "golem preflight (golem-cli ADR 0006)" preflightTests,
              testGroup "footnote marks and numbers (ADR 0018)" footnoteTests,
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
+             testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
              localeTests,
              publicDomainTests,
              diagnosticSiteTests

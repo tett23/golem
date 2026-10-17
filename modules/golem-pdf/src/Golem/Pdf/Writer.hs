@@ -87,6 +87,12 @@ data Mark
     -}
     RotatedGlyphRun !FontRef !Sp ![(GlyphId, Sp, Sp)]
   | Rule !Rect
+  | -- | a filled disc: the x and y of its centre and its radius (golem-driver ADR 0028)
+    Disc !Sp !Sp !Sp
+  | {- | a filled closed path of cubic curves: the start and, for each
+    curve, its two control points and its end (golem-driver ADR 0028)
+    -}
+    CurveFill !(Sp, Sp) ![((Sp, Sp), (Sp, Sp), (Sp, Sp))]
   | Image !ImageRef !Rect
   | SetColor !Swatch
   | -- | a glyph run slanted or emboldened (golem-driver ADR 0004)
@@ -190,6 +196,19 @@ contentStream fontNames imageNames marks = BL.toStrict (B.toLazyByteString (mcon
       RotatedGlyphRun f size gs ->
         "BT " <> fontName' f <> sp <> num size <> " Tf" <> nl <> mconcat ["0 -1 1 0 " <> num x <> sp <> num y <> " Tm <" <> hex4 g <> "> Tj" <> nl | (g, x, y) <- gs] <> "ET" <> nl
       Rule (Rect x y w h) -> num x <> sp <> num y <> sp <> num w <> sp <> num h <> " re f" <> nl
+      Disc x y r ->
+        -- four quarters counterclockwise from the right; the control points 0.5523 of the radius away
+        let k = round (toRational r * 5523 / 10000)
+         in point (x + r, y)
+              <> " m"
+              <> nl
+              <> curve ((x + r, y + k), (x + k, y + r), (x, y + r))
+              <> curve ((x - k, y + r), (x - r, y + k), (x - r, y))
+              <> curve ((x - r, y - k), (x - k, y - r), (x, y - r))
+              <> curve ((x + k, y - r), (x + r, y - k), (x + r, y))
+              <> "f"
+              <> nl
+      CurveFill start cs -> point start <> " m" <> nl <> mconcat (map curve cs) <> "h f" <> nl
       Image i (Rect x y w h) ->
         "q " <> num w <> " 0 0 " <> num h <> sp <> num x <> sp <> num y <> " cm /Im" <> B.intDec (Map.findWithDefault 0 i imageNames) <> " Do Q" <> nl
       SetColor (Swatch c m y k) ->
@@ -214,6 +233,8 @@ contentStream fontNames imageNames marks = BL.toStrict (B.toLazyByteString (mcon
       Translated x y ms -> "q 1 0 0 1 " <> num x <> sp <> num y <> " cm" <> nl <> mconcat (map mark ms) <> "Q" <> nl
       RegistrationRules rs -> "q" <> nl <> "/Reg cs 1 scn" <> nl <> mconcat (map (mark . Rule) rs) <> "Q" <> nl
     hex4 g = B.string7 (printf "%04X" g)
+    point (x, y) = num x <> sp <> num y
+    curve (a, b, c) = point a <> sp <> point b <> sp <> point c <> " c" <> nl
 
 -- ------------------------------------------------------------------ serialization
 

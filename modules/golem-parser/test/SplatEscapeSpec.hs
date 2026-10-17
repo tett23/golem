@@ -61,6 +61,11 @@ splats =
         [bare e | SplatPositional e <- argsOf "[f *[xs]]\n"] @?= [EVar ["xs"]],
       testCase "splats keep their places among the other arguments" $
         map kind (argsOf "[f a *[xs] **[h] k=v]\n") @?= ["positional", "splat", "keyword splat", "keyword"],
+      -- golem-parser ADR 0013
+      testCase "**[h] may follow a keyword argument" $
+        map kind (argsOf "[f k=v **[h]]\n") @?= ["keyword", "keyword splat"],
+      testCase "keyword arguments and **[...] mix in any order" $
+        map kind (argsOf "[f k=1 **[h] j=2 **[i]]\n") @?= ["keyword", "keyword splat", "keyword", "keyword splat"],
       testCase "the expression of a keyword splat is at its source" $
         -- "[f **[h]]": h is byte 6
         [at e | SplatKeyword e <- argsOf "[f **[h]]\n"] @?= [(6, 7)],
