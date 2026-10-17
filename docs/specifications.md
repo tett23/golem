@@ -2303,15 +2303,27 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | 出力を作らず、構文、評価、文書構造（S1）までを検査する。四つのターゲットが使う `style.toml` のファイルの存在も検査する（[golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)） |
 | `golem preflight [--rules <ファイル>] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、ファイルに書かずに、入稿の前の検査（プリフライト）を行う（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)） |
 | `golem lint [--profile dev\|prod] [--no-notices]` | lint を実行する |
-| `golem fmt [--check]` | 整形する |
+| `golem fmt [--check] [<file>...]` | 整形する。引数のファイルがないか通常のファイルでなければ G0302 とし、そのファイルを飛ばして残りを整形し、終了コードを 1 とする（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)） |
 | `golem lsp` | LSP サーバーを起動する |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得し、キャッシュする |
 | `golem plugin lock` | `plugins.lock` を更新する |
-| `golem inspect <file>` | CST、AST、プラグインとの CBOR を人が読める形で表示する |
+| `golem inspect <file> [--as cst\|ast\|ir\|cbor]` | CST、AST、意味論 IR を人が読む木の形で、または意味論 IR の CBOR を表示する（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)） |
 | `golem explain [CODE]` | diagnostic のコードの説明を表示する。コードを省くと、すべてのコードと題を一行ずつ表示する。未知のコードと形の誤りは使い方の誤りとする（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)） |
 | `golem --version` | `golem` にバージョンを続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
 `golem new` での `id` の生成が、Golem が乱数を使う唯一の箇所である。
+
+`golem inspect` は、diagnostics をほかのコマンドと同じく人が読む形で標準エラー出力に書き、エラーがあれば終了コード 1 とする（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）。
+表示は、diagnostics があっても作れる限り標準出力に書く。
+引数のファイルがないか通常のファイルでなければ、G0302 とし、何も表示しない。
+`--as cst` と `--as ast` は、引数のファイルだけを構文解析する。
+`--as ir` と `--as cbor` は、作業中のディレクトリをルートとして `golem check --profile dev` と同じく評価し、引数のファイルの文書を出す。
+引数のファイルがプロジェクトの原稿なら、その S0 の結果の文書と、評価のすべての diagnostics を出す。
+原稿でないファイルは、プロジェクトの文脈（体裁、プラグイン、マニフェスト）で S0 まで評価し、プロジェクトの段階の diagnostics とそのファイルの diagnostics だけを出す。
+`manifest.toml` がなければ、LSP がマニフェストから到達しないファイルを扱うのと同じく、組み込みの体裁だけで S0 まで評価する。
+`--as ast` と `--as ir` は、導出した `Show` の文字列を、100 桁に収まらない節を字下げした木に組み直して出す（golem-syntax の `Golem.Syntax.ShowTree`）。
+文字列の日本語はそのまま書き、位置は `@開始..終わり` の形で書く。
+`--as cbor` は、文書の CBOR のバイト列をそのまま書く。
 
 `golem` は計算機のすべてのプロセッサの上で動く（GHC のランタイムの `-N`）。
 PDF の段落の組版は複数の OS のスレッドで同時に進む（[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)）。
@@ -2567,8 +2579,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 
 - **IR の大きな整数**：CDDL は式の整数を `int`（CBOR の major type 0 と 1）と定めているが、絶対値が 2^64 以上の整数は bignum（tag 2 と 3）で書き出される。式の整数は任意精度なので、`@set n = 2 ** 70` のような値が IR に入りうる（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)）。
 - **浮動小数点数の桁あふれ**：`2.0 ** -1074` は表せる値だが、途中の計算があふれて 0 になる。`10 ** 309 > 1.0` は誤りにならないが、`10 ** 309 + 0.5` は G0204 になる。どちらの扱いも仕様は定めていない（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
-- **`golem inspect` の終了コードと文言**：構文の誤り（G0117 など）があっても終了コード 0 で終わり、diagnostics を Haskell の `show` の形で出す。存在しないファイルを渡すと、英語の例外と GHC のバックトレースが出る（[golem-cli ADR 0001](golem-cli/adr/0001-command-line-interface.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
-- **`golem inspect --as ir` の対象と形**：`golem inspect --as ir <file>` は、引数のファイルではなく、作業中のディレクトリのプロジェクト全体の IR を、Haskell の `show` の形で出す。仕様の「`golem inspect <file>`」は、引数のファイルを人が読める形で表示すると定めている（[golem-cli ADR 0001](golem-cli/adr/0001-command-line-interface.md)）。
 - **三点リーダーの後の句点の行頭禁則**：fixture の『牛山ホテル』の 12 ページで、「……」の直後の「。」が行頭に置かれている。句点は行頭禁則の文字なので、行頭禁則に反している可能性がある（原因は確かめていない）。
 - **結合文字**：U+0301 のような結合文字を、前の字と一つにせず、別の箱として組む。
 - **LSP の古い diagnostics**：見出しやラベルを変えずに、存在しないラベルへの参照を足しても G0403 が出ず、前の S1 の diagnostics が残る。[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md) の再評価の規則どおりの振る舞いだが、利用者には誤りが見えない。

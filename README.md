@@ -83,7 +83,7 @@ golem new mybook
 | `golem lint [--profile dev\|prod] [--no-notices]` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形する |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
-| `golem inspect FILE --as cst\|ast\|ir` | 構文木と IR を表示する |
+| `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
 | `golem explain [CODE]` | diagnostic のコードの説明を表示する。コードを省くと一覧を表示する |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 

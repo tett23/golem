@@ -36,7 +36,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合を直す。
 次の直し方は案であり、着手するときに ADR で決める。
 
-- **`golem inspect` の終了コード、文言、対象**（未実装、[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）：ほかのコマンドと同じ diagnostics の出力を通し、誤りがあれば終了コード 1 にする。ないファイルは日本語の誤りにする。`--as ir` は引数のファイルの IR を、人が読める形で出す。二つの不具合を一つの ADR で直す。
 - **LSP の古い diagnostics**（未実装、[golem-lsp ADR 0004](golem-lsp/adr/0004-stale-s1-diagnostics.md)）：ラベルを参照する箇所の集合が変わったときにも S1 を評価し直す。[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md) の再評価の規則を改める ADR が要る。
 
 ## v0.1.0-rc4

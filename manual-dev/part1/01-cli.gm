@@ -40,7 +40,7 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 | [code: --format] | [code: build]、[code: check]、[code: lint]、[code: preflight] | [code: human]（既定）、[code: json] |
 | [code: --rules] | [code: preflight] | プリフライトの設定のファイル |
 | [code: --check] | [code: fmt] | なし |
-| [code: --as] | [code: inspect] | [code: cst]（既定）、[code: ast]、[code: ir] |
+| [code: --as] | [code: inspect] | [code: cst]（既定）、[code: ast]、[code: ir]、[code: cbor] |
 | [code: --language] | [code: new] | [code: ja]（既定）、[code: en] |
 | [code: --no-fonts] | [code: new] | なし |
 
@@ -177,9 +177,26 @@ PDF を書かないビルドでは何も変えない。[note: [code: https://git
 ## 構文木と IR を見る
 
 [code: golem inspect FILE --as cst] は、ファイルの CST を人が読める形で表示する。[index reading="golem inspect": golem inspect]
-[code: --as ast] は AST を、[code: --as ir] はプロジェクトを評価した意味論 IR と、その CBOR のバイト数を表示する。
+[code: --as ast] は引数のファイルの AST を、[code: --as ir] はその意味論 IR を表示する。
 AST の表示では、[code: \\/] のようにエスケープした文字が [code: Escaped] として現れる。
 意味論 IR では、エスケープした文字は地の文に戻っている。
-[code: --as ir] は作業中のディレクトリのプロジェクトを評価するので、プロジェクトのルートで実行する。
-プラグインの作者が、受け取る IR の形を確かめるのに使える。
+
+[code: --as ir] は、作業中のディレクトリをプロジェクトのルートとして [code: golem check --profile dev] と同じく評価し、引数のファイルの文書を出す。
+引数のファイルが章か、章から [code: @import] したファイルなら、評価の結果のそのファイルの文書を出し、diagnostics は評価のすべてを出す。
+原稿でないファイル（下書きやメモ）は誤りにせず、プロジェクトの体裁、プラグイン、マニフェストの設定で S0 まで評価して出す。
+このときの diagnostics は、プロジェクトの段階のものとそのファイルのものだけである。
+S1 を行わないので、相互参照と [code: doc] を参照する式は解決されないまま残る。
+[code: manifest.toml] のないディレクトリでは、LSP がマニフェストから到達しないファイルを扱うのと同じく、組み込みの体裁だけで評価する。
+
+AST と IR は、型の導出した [code: Show] の文字列を、字下げした木に組み直して表示する。
+一つの節を一行に書いて 100 桁に収まれば一行で書き、収まらなければ構築子の名前の下に引数を二つ深く字下げして並べる。
+レコードの欄は [code: 欄の名前 = 値]、リストの要素は [code: - 値] の形になる。
+文字列の日本語はそのまま書き、位置は CST と同じく [code: @開始..終わり]（ほかのファイルなら [code: @ファイル:開始..終わり]）と書く。
+
+[code: --as cbor] は、[code: --as ir] と同じ文書の CBOR のバイト列を、そのまま標準出力に書く。
+プラグインの作者が、受け取る IR の形を確かめ、単体テストの入力にするのに使える。
+
+diagnostics は、ほかのコマンドと同じく人が読む形で標準エラー出力に書き、エラーがあれば終了コードは 1 になる。
+閉じていない [code: \[] を含むファイルの CST のように、エラーがあっても、表示は作れる限り標準出力に書く。
+引数のファイルがないときは、G0302 になる。
 意味論 IR と CBOR の形は第[ref-number ir]章で説明する。
