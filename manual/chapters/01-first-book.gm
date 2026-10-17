@@ -226,6 +226,9 @@ $ golem build
 - [code: build/epub/book.epub]：EPUB
 - [code: build/text/]：プレーンテキスト
 
+組むたびに、これらのフォルダの前の中身は消えます。
+[code: build] やその下のフォルダがシンボリックリンクになっていると、リンクの先を消さないように、何も書かずにエラー（G0813）で止まります。
+
 [code: golem build] は、何も指定しなければ四つの形式をすべて作ります。
 InDesign の書き出しに当たる操作ですが、形式ごとに書き出しの設定を選ぶ画面はなく、設定は [code: manifest.toml] と [code: style.toml] に書いておきます。
 一つの形式だけを作るときは、[code: golem build --target pdf] のように [code: --target] で選びます。

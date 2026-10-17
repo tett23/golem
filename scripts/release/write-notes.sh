@@ -63,7 +63,10 @@ EOF
 [ -n "${CLAUDE_MODEL:-}" ] || fallback "CLAUDE_MODEL is not set"
 [ -n "${ANTHROPIC_API_KEY:-}" ] || fallback "ANTHROPIC_API_KEY is not set"
 command -v claude >/dev/null 2>&1 || fallback "Claude Code is not installed"
-if ! claude -p --model "$CLAUDE_MODEL" "Write the release notes as the input says." <"$WORK/prompt.md" >"$WORK/ai.md" 2>"$WORK/ai.err"; then
+# The prompt holds the bodies of pull requests, which anyone can write:
+# Claude Code runs without the tokens of the job (docs/adr/0035)
+if ! env -u GH_TOKEN -u GITHUB_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL \
+  claude -p --model "$CLAUDE_MODEL" "Write the release notes as the input says." <"$WORK/prompt.md" >"$WORK/ai.md" 2>"$WORK/ai.err"; then
   fallback "Claude Code failed: $(head -c 500 "$WORK/ai.err")"
 fi
 if ! sh "$HERE/check-notes.sh" "$WORK/ai.md" "$WORK/list.md" 2>"$WORK/check.err"; then

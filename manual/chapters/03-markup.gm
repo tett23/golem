@@ -487,6 +487,8 @@ main = do
 [code: @figure] の次の行から、空白二つで字下げして書いたのがキャプションです。
 
 画像の形式は PNG、JPEG、PDF です。
+PNG は、展開した画素のデータが 512 MiB まで、埋め込んだ ICC プロファイルが 32 MiB までのものを使えます。
+それより大きい画像や壊れた画像は PDF に描かれず、[code: golem preflight] が G0905 で理由を知らせます。
 PDF の画像は HTML と EPUB では表示できないので、[code: web=images/arch.png] のように画面用の画像も指定します。
 
 画像のパスは、プロジェクトのフォルダからのパスで書きます（「[ref-title folders]」、[ref-page folders] ページ）。

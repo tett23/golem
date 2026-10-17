@@ -11,6 +11,7 @@ import ParagraphSpec
 import PdfSpec
 import PluginsSpec
 import ReferencesSpec
+import SecuritySpec
 import StylesSpec
 import Test.Tasty
 
@@ -32,7 +33,8 @@ tests =
         testGroup "the separator after a number (golem-html ADR 0002)" numberSeparatorTests,
         versionTests,
         memoTests,
-        producerTests
+        producerTests,
+        securityTests
       ]
         <> buildTests
         <> [ newProjectTests,

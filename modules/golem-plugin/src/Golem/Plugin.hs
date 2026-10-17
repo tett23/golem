@@ -180,6 +180,8 @@ callMode plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
         2 -> Left (OutOfFuel msg)
         3 -> Left (MissingExport msg)
         4 -> Left (BadOutput msg)
+        -- the ABI's type of a result, checked by the host (docs/adr ADR 0035)
+        6 -> Left (BadOutput (msg <> " の戻り値の型が不正です"))
         5 -> Left (InstantiateFailed msg)
         _ -> Left (Trapped msg)
 

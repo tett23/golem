@@ -950,7 +950,8 @@ codeOf ca start lang ls = do
     Nothing -> pure Set.empty
     Just (asp, rs) -> do
       mapM_ (\n -> err "G0269" asp ("highlight の行 " <> T.pack (show n) <> " はこのコードにありません")) [n | (a, b) <- rs, n <- take 1 [x | x <- [a .. b], x `Set.notMember` present]]
-      pure (Set.fromList [n | (a, b) <- rs, n <- [a .. b]])
+      -- only the lines the code has, however wide a range is (docs/adr ADR 0035)
+      pure (Set.filter (\n -> any (\(a, b) -> a <= n && n <= b) rs) present)
   pure
     Code
       { codeLang = lang,

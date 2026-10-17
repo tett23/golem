@@ -145,6 +145,22 @@ diagnosticTests =
         evm "min()" @?= Left ("G0207", "min の引数が不正です")
         evm "max()" @?= Left ("G0207", "max の引数が不正です")
         evm "round(1.5, -1)" @?= Left ("G0207", "round の引数が不正です"),
+      localOption (mkTimeout 10000000) $ testCase "G0286: integers below 2^4096 and at most 1000 digits (docs/adr ADR 0035)" $ do
+        let big = ("G0286", "整数が大きすぎます（絶対値は 2 の 4096 乗未満に限ります）")
+            digits = ("G0286", "小数の桁数が多すぎます（1000 桁までです）")
+        evm "10 ** 100000000" @?= Left big
+        evm "2 ** 4096" @?= Left big
+        evm "(-2) ** 4097" @?= Left big
+        evm "(2 ** 4095) * (2 ** 4095)" @?= Left big
+        evm "2 ** 4095 + 2 ** 4095" @?= Left big
+        evm "-(2 ** 4095) - 2 ** 4095" @?= Left big
+        ev "2 ** 4095 - 1 + 2 ** 4095" @?= Right (VInt (2 ^ (4096 :: Int) - 1))
+        ev "1 ** 100000000000" @?= Right (VInt 1)
+        ev "(-1) ** 100000000001" @?= Right (VInt (-1))
+        ev "0 ** 100000000000" @?= Right (VInt 0)
+        evm "round(1.5, 100000000)" @?= Left digits
+        evm "fixed(1.5, 1001)" @?= Left digits
+        either (const (assertFailure "fixed(1.5, 1000)")) (const (pure ())) (evm "fixed(1.5, 1000)"),
       testCase "G0261: an undefined function" $
         evm "nope(1)" @?= Left ("G0261", "未定義の関数 nope です"),
       testCase "G0208" $ do
