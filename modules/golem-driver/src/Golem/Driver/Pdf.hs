@@ -2536,7 +2536,7 @@ writeDocumentView inp geom fonts layout intent =
                               | otherwise = (ox, oy) -- Identity-V: the origin is the top centre of the em box
                          in runAtU look vertical rotated (if bcExpandable c then lineExpansion l else 0) pt (bcText c)
               -- a word broken at the line end gets its hyphen
-              Penalty hw _ PatternHyphen
+              Penalty hw _ (PatternHyphen _)
                 | i == lastIx && hw > 0 ->
                     let (ox, oy) = origin off
                         look = lookBefore i
