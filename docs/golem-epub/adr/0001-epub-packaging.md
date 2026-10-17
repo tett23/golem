@@ -1,6 +1,6 @@
 # ADR 0001: EPUB のパッケージング
 
-ステータス: 採択
+ステータス: 採択→`dc:contributor` と役割の写し方は [docs/adr ADR 0033](../../adr/0033-colophon-contributors-and-printings.md)
 
 ## 文脈
 

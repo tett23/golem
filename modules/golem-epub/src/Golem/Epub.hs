@@ -39,6 +39,8 @@ data EpubConfig = EpubConfig
     epDate :: !Day,
     epPublisher :: !(Maybe Text),
     epCreators :: ![EpubCreator],
+    -- | dc:contributor, with the role as a MARC relator code (docs/adr ADR 0033)
+    epContributors :: ![EpubCreator],
     epVertical :: !Bool
   }
 
@@ -70,7 +72,13 @@ itemId i = "item" <> T.pack (show i)
 packageDocument :: EpubConfig -> [FilePath] -> [FilePath] -> Text
 packageDocument cfg pages others =
   let items = zip [1 :: Int ..] (pages <> others)
-      creators = zip [1 :: Int ..] (epCreators cfg)
+      -- dc:creator or dc:contributor, its role and its reading (docs/adr ADR 0033)
+      person element prefix (i, c) =
+        let ident = prefix <> T.pack (show i)
+         in [ "<dc:" <> element <> " id=\"" <> ident <> "\">" <> escapeXml (ecName c) <> "</dc:" <> element <> ">",
+              "<meta refines=\"#" <> ident <> "\" property=\"role\" scheme=\"marc:relators\">" <> escapeXml (ecRole c) <> "</meta>"
+            ]
+              <> ["<meta refines=\"#" <> ident <> "\" property=\"file-as\">" <> escapeXml r <> "</meta>" | Just r <- [ecReading c]]
    in T.unlines $
         [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
           "<package xmlns=\"http://www.idpf.org/2007/opf\" version=\"3.0\" unique-identifier=\"bookid\" xml:lang=\"" <> escapeXml (epLanguage cfg) <> "\">",
@@ -80,11 +88,8 @@ packageDocument cfg pages others =
         ]
           <> ["<meta refines=\"#title\" property=\"file-as\">" <> escapeXml r <> "</meta>" | Just r <- [epTitleReading cfg]]
           <> ["<dc:language>" <> escapeXml (epLanguage cfg) <> "</dc:language>"]
-          <> concat
-            [ ["<dc:creator id=\"creator" <> T.pack (show i) <> "\">" <> escapeXml (ecName c) <> "</dc:creator>", "<meta refines=\"#creator" <> T.pack (show i) <> "\" property=\"role\" scheme=\"marc:relators\">" <> escapeXml (ecRole c) <> "</meta>"]
-                <> ["<meta refines=\"#creator" <> T.pack (show i) <> "\" property=\"file-as\">" <> escapeXml r <> "</meta>" | Just r <- [ecReading c]]
-            | (i, c) <- creators
-            ]
+          <> concatMap (person "creator" "creator") (zip [1 :: Int ..] (epCreators cfg))
+          <> concatMap (person "contributor" "contributor") (zip [1 :: Int ..] (epContributors cfg))
           <> ["<dc:publisher>" <> escapeXml p <> "</dc:publisher>" | Just p <- [epPublisher cfg]]
           <> [ "<meta property=\"dcterms:modified\">" <> T.pack (showGregorian (epDate cfg)) <> "T00:00:00Z</meta>",
                "</metadata>",
