@@ -7,6 +7,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble
+import Golem.Doc.Bibliography (EntryPart (..))
 import Golem.Doc.IR
 import Golem.Syntax
 import Golem.Text
@@ -21,11 +22,11 @@ lists :: TextLists
 lists = TextLists ("・" :| []) Nothing Nothing
 
 -- | One file, a.gm, whose only block is @bibliography, citing @cites@.
-renderBibliography :: Map Text Text -> [(Text, Int)] -> [(FilePath, Text)]
+renderBibliography :: Map Text [EntryPart] -> [(Text, Int)] -> [(FilePath, Text)]
 renderBibliography bib cites = renderBlocks bib cites Map.empty [ChannelOutput BibliographyOutput]
 
 -- | One file, a.gm, of blocks at offsets 0, 1, ... with the listing numbers by offset.
-renderBlocks :: Map Text Text -> [(Text, Int)] -> Map Int Text -> [BlockBody] -> [(FilePath, Text)]
+renderBlocks :: Map Text [EntryPart] -> [(Text, Int)] -> Map Int Text -> [BlockBody] -> [(FilePath, Text)]
 renderBlocks bib cites listings bodies =
   let (fid, ft) = registerFile "a.gm" emptyFileTable
       book =
@@ -71,8 +72,11 @@ tests =
   testGroup
     "golem-text"
     [ testCase "@bibliography lists the entries, or the key without one (golem-doc ADR 0004)" $
-        renderBibliography (Map.fromList [("jlreq", "日本語組版処理の要件、W3C、2020。")]) [("jlreq", 1), ("missing", 2)]
+        renderBibliography (Map.fromList [("jlreq", [EntryText "日本語組版処理の要件、W3C、2020。"])]) [("jlreq", 1), ("missing", 2)]
           @?= [("a.txt", "[1] 日本語組版処理の要件、W3C、2020。\n[2] missing\n")],
+      testCase "@bibliography writes the URL and the date of access as text (golem-doc ADR 0005)" $
+        renderBibliography (Map.fromList [("jlreq", [EntryText "「日本語組版処理の要件」、W3C、2020、", EntryUrl "https://www.w3.org/TR/jlreq/", EntryText "（2026年10月16日閲覧）。"])]) [("jlreq", 1)]
+          @?= [("a.txt", "[1] 「日本語組版処理の要件」、W3C、2020、https://www.w3.org/TR/jlreq/（2026年10月16日閲覧）。\n")],
       testGroup
         "the separator after a number (golem-html ADR 0002)"
         [ testCase "a space in an English book" $
