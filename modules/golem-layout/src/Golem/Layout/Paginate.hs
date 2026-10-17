@@ -75,8 +75,11 @@ data Flow
     figure: no orphan rule for its first line (golem-driver ADR 0005)
     -}
     FContinued [LineBox]
-  | -- | a table: its header row and body rows, in grid lines (golem-driver ADR 0008)
-    FTable {ftId :: !Int, ftHeader :: ![LineBox], ftRows :: ![[LineBox]]}
+  | {- | a table: the grid lines of space before it (not at the first line
+    of a column), its header row (none when empty) and body rows, in grid
+    lines (golem-driver ADR 0008, 0031)
+    -}
+    FTable {ftId :: !Int, ftSpaceBefore :: !Int, ftHeader :: ![LineBox], ftRows :: ![[LineBox]]}
   | {- | empty grid lines, as between stanzas of verse (docs/adr ADR 0003);
     nothing at the top of a page
     -}
@@ -176,8 +179,8 @@ data PageOut = PageOut
 data TableSegment = TableSegment
   { tsTable :: !Int,
     tsFirst :: !Int,
-    -- | the last grid line of the header row
-    tsHeaderEnd :: !Int,
+    -- | the last grid line of the header row; none for a table without one (golem-driver ADR 0031)
+    tsHeaderEnd :: !(Maybe Int),
     tsLast :: !Int
   }
   deriving stock (Eq, Show)
@@ -249,7 +252,7 @@ paginateIn separatorLines base capacity flows =
     nextNeed = \case
       (FParagraph ls : _) -> min 2 (length ls)
       (FContinued ls : _) -> min 2 (length ls)
-      (FTable _ h rows : _) -> length h + maybe 0 length (listToMaybe rows)
+      (FTable _ sp h rows : _) -> sp + length h + maybe 0 length (listToMaybe rows)
       (FDefTerm ls : _) -> length ls
       -- a heading keeps what follows it, a heading after it too (golem-driver ADR 0032)
       (FHeading _ _ n _ : rest) -> n + nextNeed rest
@@ -270,8 +273,12 @@ paginateIn separatorLines base capacity flows =
     place st f need = case f of
       FParagraph ls -> placeLines st True ls
       FContinued ls -> placeLines st False ls
-      FTable i h rows ->
-        let st1 = if length h + maybe 0 length (listToMaybe rows) > free st && not (isEmpty st) then nextColumn st else st
+      -- the space before a table only below the first line of a column (golem-driver ADR 0031)
+      FTable i sp0 h rows ->
+        let sp = if sUsed st == top st then 0 else sp0
+            st1
+              | sp + length h + maybe 0 length (listToMaybe rows) <= free st || isEmpty st = st {sUsed = sUsed st + min sp (free st)}
+              | otherwise = nextColumn st
          in placeTable st1 i h rows
       FDefTerm ls -> placeLines (keep st (length ls + need)) True ls
       FHeading _ recto n ls ->
@@ -393,7 +400,8 @@ paginateIn separatorLines base capacity flows =
                     fresh = nextColumn closed
                     repeated = foldl' putLine fresh [l {lbNotes = [], lbLabels = [], lbMarks = []} | l <- h]
                  in go repeated (sUsed fresh) (r : rest)
-          segment stc first = stc {sTables = sTables stc <> [TableSegment i first (first + length h - 1) (sUsed stc - 1)]}
+          headerEnd first = if null h then Nothing else Just (first + length h - 1)
+          segment stc first = stc {sTables = sTables stc <> [TableSegment i first (headerEnd first) (sUsed stc - 1)]}
        in go st1 start rows
     -- a heading: one block of n grid lines; the notes of its lines as in putLine
     putBlock st _ [] = st

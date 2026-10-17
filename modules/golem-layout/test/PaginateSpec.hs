@@ -64,7 +64,7 @@ keepWithNextTests =
       contents ps @?= [[SLine 0, SLine 1, SLine 2, SHeading 20 1, SFigure 99]],
     testCase "a heading before a table keeps the header and the first row, not only the header" $ do
       -- 3 free: heading 1 + header 1 + first row 2 = 4 > 3
-      let ps = paginate 1 6 [FParagraph (lines' 0 3), heading 20, FTable 100 (lines' 30 1) [lines' 40 2]]
+      let ps = paginate 1 6 [FParagraph (lines' 0 3), heading 20, FTable 100 0 (lines' 30 1) [lines' 40 2]]
       contents ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 40, SLine 41]],
     testCase "a heading before a code block keeps the grid lines of its first row with padding" $ do
       -- 2 free: heading 1 + one row with padding 2 = 3 > 2; three rows take 4 lines

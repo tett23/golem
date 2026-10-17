@@ -120,7 +120,8 @@ layoutTable params measure gap aligns header rows = do
          in SetCell (positions !! c + first) ls [s - first | s <- shifts]
       setRow r = [setCell r c | c <- [0 .. ncols - 1]]
       height cs = maximum (1 : map (length . scLines) cs)
-      headerCells = setRow header
+      -- an empty header is a table without a header row (golem-driver ADR 0031)
+      headerCells = if null header then [] else setRow header
       rowCells = map setRow rows
   pure
     SetTable
@@ -128,7 +129,7 @@ layoutTable params measure gap aligns header rows = do
         stWidth = sum widths + gap * toInteger (max 0 (ncols - 1)),
         stHeader = headerCells,
         stRows = rowCells,
-        stHeaderLines = height headerCells,
+        stHeaderLines = if null header then 0 else height headerCells,
         stRowLines = map height rowCells
       }
 
