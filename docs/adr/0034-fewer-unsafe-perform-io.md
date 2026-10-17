@@ -66,7 +66,8 @@ PDF の書体の記述（`subsetFont`）は、組版の後に一度だけ呼ぶ�
 - `Golem.Font` の `shapeUnits`、`glyphVerticalOrigin`、`glyphMetrics`：組版の内側から、問い合わせが決まるたびに呼ぶ。C の側は、フォントを開いた後は結果に効く状態を持たない。
 - `Golem.Plugin` の `invokeRaw`（`callMode` の IO 版を包む）：評価器の内側から呼ぶ。呼び出しごとに新しいストアとインスタンスを作るので、呼び出しのあいだに状態が残らない。
 
-`callMode` は IO の関数にし、`loadPluginWith` は IO の中からそれを呼ぶ。`invokeRaw` だけがそれを `unsafePerformIO` で包む。
+`callMode` は IO の関数にし、`loadPluginWith` は IO の中からそれを呼ぶ。
+`invokeRaw` だけがそれを `unsafePerformIO` で包む。
 
 ### 検査
 
@@ -105,7 +106,7 @@ PDF の書体の記述（`subsetFont`）は、組版の後に一度だけ呼ぶ�
 - golem-plugin の既存のテストを IO の型に合わせ、同じ値を確かめる。
 - 出力が変わらないことを、次で確かめる。
   - 変更の前と後の `golem` で `scripts/determinism.sh` を実行し（`GOLEM_MANUAL_COMMIT` と `GOLEM_MANUAL_TAG` を固定する）、SHA-256 の一覧が一致する。
-  - 二つのマニュアルが診断なしで組める。
+  - 二つのマニュアルが diagnostics なしで組める。
 - 速度が落ちていないことを、開発者向けマニュアルの PDF を組む時間で、変更の前と後を比べて確かめる。
 
 ## トレードオフ
