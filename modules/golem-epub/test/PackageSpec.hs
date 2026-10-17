@@ -111,6 +111,9 @@ tests =
         testCase "the spine lists the pages in the order of the book, not the other items" $
           linesWith "<itemref" (packageDocument cfg0 ["b.xhtml", "a.xhtml"] ["style.css", "images/a.png"])
             @?= ["<itemref idref=\"item1\"/>", "<itemref idref=\"item2\"/>"],
+        testCase "an SVG figure is image/svg+xml (golem-pdf ADR 0009)" $
+          linesWith "<item id=\"item2\"" (packageDocument cfg0 ["a.xhtml"] ["images/a.svg"])
+            @?= ["<item id=\"item2\" href=\"images/a.svg\" media-type=\"image/svg+xml\"/>"],
         testCase "the manifest has the navigation document and each item with its media type" $
           linesWith "<item " (packageDocument cfg0 ["b.xhtml"] ["style.css", "images/a.png", "images/b.JPG", "fonts/x.otf"])
             @?= [ "<item id=\"nav\" href=\"nav.xhtml\" media-type=\"application/xhtml+xml\" properties=\"nav\"/>",

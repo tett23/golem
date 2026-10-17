@@ -158,8 +158,8 @@ data Document = Document
   { docPages :: ![Page],
     docFonts :: !(Map FontRef Font),
     docImages :: !(Map ImageRef ImageData),
-    -- | the pages of PDF figures (ADR 0008)
-    docForms :: !(Map FormRef ImportedPage),
+    -- | the pages of PDF figures and the drawings of SVG figures (ADR 0008, 0009)
+    docForms :: !(Map FormRef FormContent),
     docTitle :: !Text,
     -- | year, month, day of metadata.date
     docDate :: !(Integer, Int, Int),

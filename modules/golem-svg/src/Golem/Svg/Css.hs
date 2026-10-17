@@ -18,6 +18,7 @@ module Golem.Svg.Css
 where
 
 import Data.Char (isAlphaNum, isSpace)
+import Data.Maybe (isJust, isNothing)
 import Data.Text (Text)
 import Data.Text qualified as T
 
@@ -120,11 +121,11 @@ selectorList off prelude =
       | otherwise = go (Selector Nothing [] Nothing) t
     go s t = case T.uncons t of
       Nothing -> Just s
-      Just ('*', r) | selType s == Nothing -> go s r
+      Just ('*', r) | isNothing (selType s) -> go s r
       Just ('.', r) -> let (n, r') = T.span isIdent r in if T.null n then Nothing else go s {selClasses = selClasses s <> [n]} r'
-      Just ('#', r) -> let (n, r') = T.span isIdent r in if T.null n || selId s /= Nothing then Nothing else go s {selId = Just n} r'
+      Just ('#', r) -> let (n, r') = T.span isIdent r in if T.null n || isJust (selId s) then Nothing else go s {selId = Just n} r'
       Just (c, _)
-        | isIdent c && selType s == Nothing && null (selClasses s) && selId s == Nothing ->
+        | isIdent c && isNothing (selType s) && null (selClasses s) && isNothing (selId s) ->
             let (n, r') = T.span isIdent t in go s {selType = Just n} r'
       _ -> Nothing
 

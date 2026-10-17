@@ -46,7 +46,6 @@ numberPrefix t0 =
       (frac, t3) = case T.uncons t2 of
         Just ('.', r) -> T.span isDigit r
         _ -> ("", t2)
-      hasDot = "." `T.isPrefixOf` t2
       (ex, t4) = case T.uncons t3 of
         Just (e, r)
           | e == 'e' || e == 'E',
@@ -66,7 +65,7 @@ numberPrefix t0 =
               mant = if T.null digits then 0 else read (T.unpack digits) :: Integer
               scale = toInteger (T.length frac)
               v = (mant % 1) * (10 ^^ (ex - scale))
-           in Just (sign * v, if hasDot || not (T.null frac) then t4 else t4)
+           in Just (sign * v, t4)
 
 -- | The square root, by the integer square root of the value scaled.
 sqrtR :: Rational -> Rational

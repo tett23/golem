@@ -102,7 +102,7 @@ Golem の構成は、IO を処理の両端に寄せ、そのあいだを純粋�
 この章では、純粋な関数だけからなる中央の部分を[strong: カーネル]、IO を行う両端を[strong: エッジ]と呼ぶ。
 
 @label fig-purity
-@figure images/purity.png alt="左に読む側の IO のエッジ（原稿と manifest.toml、プラグインの配布物、図版と書誌と CSV、フォント）、中央に純粋なカーネル（構文解析、S0 の evalFile、S1 の assemble、S2 の行分割と改ページ、直列化）、右に書く側の IO のエッジ（build/ の下の出力）を置いた図。中央には、wasmtime と HarfBuzz と FreeType を純粋な関数として包んだ箱が点線で描かれ、下の帯に、時計、乱数、環境変数、ロケール、タイムゾーン、ディレクトリの列挙、ネットワーク、システムのフォントを出力に影響させないことが書かれている"
+@figure images/purity.svg alt="左に読む側の IO のエッジ（原稿と manifest.toml、プラグインの配布物、図版と書誌と CSV、フォント）、中央に純粋なカーネル（構文解析、S0 の evalFile、S1 の assemble、S2 の行分割と改ページ、直列化）、右に書く側の IO のエッジ（build/ の下の出力）を置いた図。中央には、wasmtime と HarfBuzz と FreeType を純粋な関数として包んだ箱が点線で描かれ、下の帯に、時計、乱数、環境変数、ロケール、タイムゾーン、ディレクトリの列挙、ネットワーク、システムのフォントを出力に影響させないことが書かれている"
   純粋なカーネルと、読む側と書く側の IO のエッジ。
 
 IO を持つのは、golem-driver の [code: evaluateProjectWith] と [code: buildCore]、golem-project の [code: loadProjectWith] と [code: resolveInRoot]、golem-font のフォントを開く [code: loadFont] とサブセットを作る [code: subsetFont]、golem-plugin のプラグインを読み込む [code: loadPlugin] と [code: Golem.Plugin.Lock] のキャッシュの読み書き、golem-epub の [code: writeEpub]、それに golem-cli と golem-lsp である。

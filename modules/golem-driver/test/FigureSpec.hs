@@ -1,10 +1,11 @@
 -- | PDF figures and figures that cannot be placed (golem-pdf ADR 0008).
-module FigureSpec (pdfFigureTests) where
+module FigureSpec (pdfFigureTests, svgFigureTests) where
 
 import Control.Monad (forM_)
 import Data.Bits (shiftR)
 import Data.ByteString qualified as BS
 import Data.List (isSuffixOf)
+import Data.Maybe (isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
@@ -90,4 +91,62 @@ pdfFigureTests =
     testCase "HTML does not read the images: a broken PNG is not G0810" $ do
       (codes, _) <- buildIn Dev [TargetHtml] "@figure images/a.png alt=\"t\"\n" [("images/a.png", BS.take 20 (png False))]
       codes @?= []
+  ]
+
+-- | An SVG of 200 by 100 with a red square (golem-pdf ADR 0009).
+redSvg :: BS.ByteString
+redSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"100\"><rect x=\"10\" y=\"10\" width=\"50\" height=\"50\" fill=\"#ff0000\"/></svg>"
+
+-- | The PDF of a one-chapter project with files, or the error codes.
+pdfWith :: Profile -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Maybe BS.ByteString, [T.Text])
+pdfWith profile source files = withSystemTempDirectory "golem-svg" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
+  BS.writeFile (tmp </> "style.toml") (withBodyFont (figStyle horizontalStyle))
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  forM_ (bodyFontFiles horizontalStyle <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = profile}
+  pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
+    [p] -> Just <$> BS.readFile p
+    _ -> pure Nothing
+  let errs = filter isError (brDiagnostics r)
+  pure (map diagCode errs, pdf, map diagMessage errs)
+
+svgFigureTests :: [TestTree]
+svgFigureTests =
+  [ testCase "an SVG figure fills the measure, its height in the proportion of its root, as one Form XObject" $ do
+      (_, pl) <- layoutOk horizontal24 "@figure images/f.svg alt=\"t\"\n  キャプション。\n" [("images/f.svg", redSvg)]
+      (_, pf, _, _) <- theFigure pl
+      (pfAlong pf, pfAcross pf) @?= (240 * pt, 120 * pt)
+      (codes, pdf, _) <- pdfWith Dev "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", redSvg)]
+      codes @?= []
+      bytes <- maybe (assertFailure "no PDF") pure pdf
+      count "/Subtype /Form" bytes @?= 1
+      count "DeviceRGB" bytes @?= 0,
+    testCase "two builds of an SVG figure give the same bytes" $ do
+      (_, a, _) <- pdfWith Dev "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", redSvg)]
+      (_, b, _) <- pdfWith Dev "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", redSvg)]
+      assertBool "same" (a == b && isJust a),
+    testCase "a gradient is G0811 and no PDF is written, in dev and prod; a broken SVG is G0810" $ do
+      forM_ [Dev, Prod] $ \profile -> do
+        (codes, pdf, _) <- pdfWith profile "@figure images/g.svg alt=\"t\"\n" [("images/g.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><linearGradient id=\"g\"/></svg>")]
+        (codes, pdf) @?= ([DiagnosticCode "G0811"], Nothing)
+      (codes, _, _) <- pdfWith Dev "@figure images/b.svg alt=\"t\"\n" [("images/b.svg", "<svg")]
+      codes @?= [DiagnosticCode "G0810"],
+    testCase "text is G0811, asking for outlines" $ do
+      (codes, _, msgs) <- pdfWith Dev "@figure images/t.svg alt=\"t\"\n" [("images/t.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n<text>a</text><use/></svg>")]
+      codes @?= [DiagnosticCode "G0811"]
+      msgs @?= ["SVG の図版に扱えないものがあります: images/t.svg:2:1（text: 文字は輪郭にして書き出してください）ほか 1 件"],
+    testCase "HTML and EPUB place an SVG with text as it is, or its web image" $ withSystemTempDirectory "golem-svg" $ \tmp -> do
+      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
+      BS.writeFile (tmp </> "style.toml") (figStyle horizontalStyle)
+      BS.writeFile (tmp </> "a.gm") "@figure images/t.svg alt=\"t\"\n\n@figure images/u.svg web=images/u.png alt=\"u\"\n"
+      createDirectoryIfMissing True (tmp </> "images")
+      BS.writeFile (tmp </> "images/t.svg") "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><text>a</text></svg>"
+      BS.writeFile (tmp </> "images/u.svg") "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><text>b</text></svg>"
+      BS.writeFile (tmp </> "images/u.png") (png False)
+      r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
+      brDiagnostics r @?= []
+      page <- BS.readFile (tmp </> "build/html/a.xhtml")
+      assertBool "t.svg" ("src=\"images/t.svg\"" `BS.isInfixOf` page)
+      assertBool "u.png" ("src=\"images/u.png\"" `BS.isInfixOf` page)
   ]

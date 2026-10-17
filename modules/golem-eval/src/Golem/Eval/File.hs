@@ -747,13 +747,13 @@ figure ctx sp args body = do
           web = look "web"
           ok = and <$> sequence [check path, maybe (pure True) check web]
           isPdf = extension path == ".pdf"
-      -- the formats by the extension, the same for every output (golem-pdf ADR 0008)
+      -- the formats by the extension, the same for every output (golem-pdf ADR 0008, 0009)
       formats <-
         and
           <$> sequence
-            [ if extension path `elem` [".pdf", ".png", ".jpg", ".jpeg"] then pure True else err "G0274" sp ("図版の形式は PDF、PNG、JPEG です: " <> path) >> pure False,
+            [ if extension path `elem` [".pdf", ".png", ".jpg", ".jpeg", ".svg"] then pure True else err "G0274" sp ("図版の形式は PDF、PNG、JPEG、SVG です: " <> path) >> pure False,
               case web of
-                Just w | extension w `notElem` [".png", ".jpg", ".jpeg"] -> err "G0273" sp ("web の代替画像は PNG か JPEG です: " <> w) >> pure False
+                Just w | extension w `notElem` [".png", ".jpg", ".jpeg", ".svg"] -> err "G0273" sp ("web の代替画像は PNG、JPEG、SVG です: " <> w) >> pure False
                 _ -> pure True
             ]
       page <- case look "page" of

@@ -138,8 +138,10 @@ EPUB と HTML はリフローであり、位置情報が意味論に混入した
 
 モジュールの依存の関係を次に示す。
 矢印は、元のモジュールが先のモジュールを使うことを表す。
-golem-syntax は golem-regex、golem-font、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
+golem-syntax は golem-regex、golem-font、golem-svg、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
 golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
+golem-svg は base、bytestring、containers、text だけに依存し、SVG の図版を PDF に描ける形に読む（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画に直す。
 ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
 プラグイン[^wasm]は wasm のモジュールとして配布し、取得した配布物のハッシュをロックファイルに記録する。
@@ -164,6 +166,7 @@ flowchart TD
         layout["golem-layout<br/>行分割、禁則、改ページ"]
         font["golem-font<br/>シェイピング、サブセット化、埋め込み"]
         pdf["golem-pdf<br/>PDF/X-4 の決定的な直列化"]
+        svg["golem-svg<br/>SVG の図版の読み込み"]
     end
     subgraph webpath["Web 経路"]
         html["golem-html<br/>XHTML と CSS"]
@@ -181,6 +184,7 @@ flowchart TD
     driver --> pdf
     driver --> plugin
     driver --> preflight
+    driver --> svg
     driver --> text
     epub --> html
     eval --> project
@@ -1430,6 +1434,7 @@ PDF/X-4 はこの形の画像を許している。
 プロファイルのない RGB の画像には、sRGB のプロファイルを付けて埋め込む。
 PDF の図版の DeviceRGB も同じ考え方で、sRGB のプロファイルの ICCBased に置き換える（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 PDF の図版の DeviceCMYK は、変換せずにそのまま書くので、本の出力インテントの値として印刷される。
+SVG の図版の色も sRGB のまま、sRGB のプロファイルの ICCBased で書き、CMYK に変換しない（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
 
 ## フォント
 
@@ -1482,8 +1487,8 @@ HarfBuzz のフォントは開いた後は読むだけで、HarfBuzz が複数�
 記法は言語仕様に定める。
 
 - 代替テキストは必須とし、欠けていればエラーとする。EPUB のアクセシビリティの要件を満たすためである。
-- 画像の形式は、v1 では PDF（ベクター）、PNG、JPEG とする。PDF の図は EPUB と HTML では表示できないので、PDF の図には Web 用の代替画像の指定を必須とする。SVG は、PDF へ変換する処理が重いので v1 では扱わない。
-- 形式は拡張子で決め、どの出力を組むときも同じ規則で調べる（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。図版は `.pdf`、`.png`、`.jpg`、`.jpeg`（大文字と小文字を区別しない）で、ほかは G0274 になる。Web 用の代替画像（`web`）は PNG か JPEG で、ほかは G0273 になる。`web` は PNG と JPEG の図版にも書け、HTML と EPUB は `web` があればそれを、なければ図版のファイルを使う。PDF は常に図版のファイルを使う。
+- 画像の形式は、v1 では PDF（ベクター）、SVG（ベクター）、PNG、JPEG とする。PDF の図は EPUB と HTML では表示できないので、PDF の図には Web 用の代替画像の指定を必須とする。SVG の図は EPUB と HTML でもそのまま表示できるので、`web` を省ける。
+- 形式は拡張子で決め、どの出力を組むときも同じ規則で調べる（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。図版は `.pdf`、`.svg`、`.png`、`.jpg`、`.jpeg`（大文字と小文字を区別しない）で、ほかは G0274 になる。Web 用の代替画像（`web`）は PNG、JPEG、SVG で、ほかは G0273 になる。`web` は PNG と JPEG の図版にも書け、HTML と EPUB は `web` があればそれを、なければ図版のファイルを使う。PDF は常に図版のファイルを使う。
 - PDF の図版は `page` で何ページ目を置くかを選べる。1 以上の整数で、省けば 1 である。整数でない値、0 以下の値、PDF でない図版の `page` は G0275 になる。
 - 図番号は章ごとに振り、文書構造（S1）で決める。図番号は「図 3-2」のように章番号と組み合わせて使うので、章を複数のファイルに分けても章の中で番号が続く必要があるためである。
 - ICC プロファイルを持たない RGB の画像は sRGB とみなし、sRGB のプロファイルを付けて埋め込む。
@@ -1501,6 +1506,18 @@ PDF を読む処理は golem-pdf の `Golem.Pdf.Import` に Haskell で書き、
 - DeviceRGB は、sRGB のプロファイルの ICCBased に置き換える。内容のストリームの `r g b rg` は `/GolemSRGB cs r g b sc` に、`RG` は `CS` と `SC` の組に書き換える。
 - フォントは埋め込んだものだけを受け付け、取り込んだフォントを本文のフォントとまとめない。
 - 次の PDF は拒み、G0810 の理由に示す：暗号化された PDF、`page` のページがない PDF、`LZWDecode`、`JBIG2Decode`、`JPXDecode` などの扱わない圧縮を使う PDF、埋め込んでいないフォントを使う PDF、特色（Separation と DeviceN）を使う PDF、RGB のインライン画像を持つ PDF、レイヤー（オプショナルコンテンツ）を持つ PDF、`UserUnit` が 1 でないページ。
+
+SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子で Form XObject に描く（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+外部の変換器もほかのライブラリも使わない。
+
+- 扱うのは SVG 1.1 と SVG 2 の静的な部分のうち、ADR の表にあるものだけである。構造の要素（`svg`、`g`、`defs`、`style`、`marker`）、図形の要素（`rect`、`circle`、`ellipse`、`line`、`polyline`、`polygon`、`path`）、パスのすべての命令、`transform`、塗りと線、マーカー、CSS の色、`<style>` と `style` の属性の単純なセレクターである。
+- 表にない要素、属性、値は無視せず、文書の順にすべて集めて G0811 のエラーにする。グラデーション、`use`、クリップ、フィルター、1 でない不透明度などは扱わない。
+- 輪郭にしていない文字（`text`、`tspan`、`textPath` と `@font-face`）は G0811 である。文字は図の作成ツールで輪郭にして書き出す。文字だけに効くプロパティ（`font-family` など）と、`aria-` で始まる属性は読み飛ばす。
+- XML として読めない SVG、UTF-8 でない SVG、内部サブセットを持つ `DOCTYPE`、大きさのない SVG は G0810 である。
+- 図版の大きさは、ルートの `width` と `height`（なければ `viewBox`）の縦横の比で決める。`viewBox` と `preserveAspectRatio` は Form XObject の中の行列で表す。
+- 数は有理数で計算し、三角関数と平方根は有理数の級数を決まった項数で打ち切って求める。座標と行列の値は、PDF に書くときに 1/65536 に丸める。x86-64 と aarch64 で同じ出力にするためである（[docs/adr/0002](adr/0002-determinism.md)）。
+- 色は sRGB の ICCBased の色空間（`/GolemSRGB`）で書き、DeviceRGB と CMYK への変換は使わない。sRGB のプロファイルは、画像、PDF の図版、SVG の図版で共有し、PDF に一度だけ書く。
+- HTML と EPUB は、SVG の図版をそのまま写して `<img>` で置き（`web` があればそれを置く）、中身を検査しない。EPUB の `media-type` は `image/svg+xml` である。
 
 PDF では、図番号とキャプションを、画像の下（縦組みでは左）に、段落スタイル `caption` の `font` と `size` で組む（[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 指定がなければ本文と同じ書体と大きさになる。
@@ -2228,6 +2245,7 @@ G0908 は、PDF の図版が使う色空間のうち許さないものをすべ�
 sRGB に置き換えた DeviceRGB は `rgb` とし、ICCBased は成分の数で `gray`、`rgb`、`cmyk` とする。
 G0909 は、PDF の図版の CMYK の ICCBased のプロファイルが出力インテントと違えば出す。
 G0911 は、PDF の図版もその矩形で検査する。
+SVG の図版は、G0908 では `rgb` とし、G0906、G0907、G0909 では検査せず、G0911 ではその矩形で検査する（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
 
 同じ原因の diagnostics は検査ごとの単位で一つにまとめ、最初のページの位置に出す。
 ページは PDF の何ページ目か（1 から数える）で示し、メッセージには最初の十ページまでを書き、それより多ければ `ほか <n> ページ` と添える。

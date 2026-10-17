@@ -30,13 +30,14 @@ module Golem.Svg
   )
 where
 
+import Data.Bifunctor (bimap)
 import Data.ByteString (ByteString)
 import Data.Char (isAlpha, isDigit, isSpace, toLower)
 import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty, nonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (catMaybes, fromMaybe, isJust, isNothing, listToMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Svg.Colors (namedColor)
@@ -155,7 +156,7 @@ readSvg bytes = do
   (size, rootMatrix, rootClip, rootProbs) <- rootGeometry root
   let (probs, ops) = elementChildren env0 (cascade env0 defaultStyle root) root
       allProbs = rootProbs <> probs
-      body = if rootMatrix == identity && rootClip == Nothing then ops else [DGroup rootMatrix rootClip ops]
+      body = if rootMatrix == identity && isNothing rootClip then ops else [DGroup rootMatrix rootClip ops]
   case nonEmpty allProbs of
     Just us -> Left (SvgUnsupported us)
     Nothing -> Right (Svg size body)
@@ -262,7 +263,7 @@ propertyProblems env e =
   | (p, v, pos) <- specified env e,
     not (isSkipped p),
     v /= "inherit",
-    not (p `elem` handled) || not (valueOk p v)
+    p `notElem` handled || not (valueOk p v)
   ]
     <> [ unsupportedAt (cpName pr) (atPos a)
        | a <- elAttrs e,
@@ -346,9 +347,7 @@ rootLength :: Text -> Maybe Rational
 rootLength v0 =
   let v = T.strip v0
       unit u k = (* k) <$> (T.stripSuffix u v >>= parseNumber)
-   in case [x | Just x <- [unit "pt" (4 / 3), unit "pc" 16, unit "mm" (96 / 254 * 10), unit "cm" (96 / 254 * 100), unit "in" 96, lengthPx v]] of
-        x : _ -> Just x
-        [] -> Nothing
+   in listToMaybe (catMaybes [unit "pt" (4 / 3), unit "pc" 16, unit "mm" (96 / 254 * 10), unit "cm" (96 / 254 * 100), unit "in" 96, lengthPx v])
 
 -- | A list of numbers separated by white space and commas.
 numberList :: Text -> Maybe [Rational]
@@ -368,7 +367,7 @@ paintOf st =
   let get k = Map.findWithDefault (Map.findWithDefault "" k defaultStyle) k st
       current = color Nothing (get "color")
       num k = fromMaybe 0 (lengthPx (get k))
-      fillC = color current =<< (join' (paint (get "fill")))
+      fillC = color current =<< join' (paint (get "fill"))
       strokeC = color current =<< join' (paint (get "stroke"))
       width = num "stroke-width"
       dash = case get "stroke-dasharray" of
@@ -448,7 +447,7 @@ elementChildren env st e =
   let results = [node c | NElement c <- elChildren e, elNs c == svgNs]
    in (concatMap fst results, concatMap snd results)
   where
-    node c = elementOps env st c
+    node = elementOps env st
 
 -- | One element: its problems and what it draws.
 elementOps :: Env -> Style -> Element -> ([Unsupported], [DrawOp])
@@ -542,7 +541,7 @@ shape env st e = case elName e of
     attrPos k = case [atPos a | a <- elAttrs e, atName a == k] of
       q : _ -> q
       [] -> elPos e
-    geometry ks ops = ([unsupportedAt k (attrPos k) | k <- ks, Just v <- [attr k e], lengthPx v == Nothing], ops)
+    geometry ks ops = ([unsupportedAt k (attrPos k) | k <- ks, Just v <- [attr k e], isNothing (lengthPx v)], ops)
     poly closed = case attr "points" e >>= numberList of
       Just ns | even (length ns), (x0 : y0 : rest) <- ns -> ([], drawMarked (MoveTo (x0, y0) : map LineTo (pairs rest) <> [ClosePath | closed]))
       Just [] -> ([], [])
@@ -735,11 +734,12 @@ rootGeometry root = do
   let attrPos k = case [atPos a | a <- elAttrs root, atName a == k] of
         q : _ -> q
         [] -> elPos root
-      lenProb k = [unsupportedAt k (attrPos k) | Just v <- [attr k root], rootLength v == Nothing]
-      vb = attr "viewBox" root >>= numberList >>= \case
-        [x, y, w, h] | w > 0 && h > 0 -> Just (x, y, w, h)
-        _ -> Nothing
-      vbProb = [unsupportedAt "viewBox" (attrPos "viewBox") | isJust (attr "viewBox" root), vb == Nothing]
+      lenProb k = [unsupportedAt k (attrPos k) | Just v <- [attr k root], isNothing (rootLength v)]
+      vb =
+        attr "viewBox" root >>= numberList >>= \case
+          [x, y, w, h] | w > 0 && h > 0 -> Just (x, y, w, h)
+          _ -> Nothing
+      vbProb = [unsupportedAt "viewBox" (attrPos "viewBox") | isJust (attr "viewBox" root), isNothing vb]
       w0 = attr "width" root >>= rootLength
       h0 = attr "height" root >>= rootLength
       allowed = ["width", "height", "viewBox", "preserveAspectRatio", "version", "x", "y"]
@@ -828,13 +828,13 @@ markers env st segs =
           dirIn = unit <$> din
           dirOut = unit <$> dout
           tangent = case (dirIn, dirOut) of
-            (Just a, Just b) -> let s = unit (fst a + fst b, snd a + snd b) in if s == (0, 0) then b else s
+            (Just a, Just b) -> let s = unit (bimap (fst a +) (snd a +) b) in if s == (0, 0) then b else s
             (Just a, Nothing) -> a
             (Nothing, Just b) -> b
             _ -> (1, 0)
           (dx, dy) = case orient of
             "auto" -> tangent
-            "auto-start-reverse" -> if i == 0 then (negate (fst tangent), negate (snd tangent)) else tangent
+            "auto-start-reverse" -> if i == 0 then bimap negate negate tangent else tangent
             o -> let a = fromMaybe 0 (parseNumber (fromMaybe o (T.stripSuffix "deg" o))) in (cosDeg a, sinDeg a)
           rot = if (dx, dy) == (0, 0) then identity else Matrix dx dy (negate dy) dx 0 0
           len k d = fromMaybe d (attr k m >>= lengthPx)
@@ -845,6 +845,6 @@ markers env st segs =
             Just [x, y, w, h] | w > 0 && h > 0 -> fst (viewBoxMatrix (fromMaybe "" (attr "preserveAspectRatio" m)) (x, y, w, h) (mw, mh))
             _ -> identity
           (rx, ry) = apply vb (len "refX" 0, len "refY" 0)
-          outer = translate (fst p) (snd p) `mul` rot `mul` scaleM s s `mul` translate (negate rx) (negate ry)
+          outer = uncurry translate p `mul` rot `mul` scaleM s s `mul` translate (negate rx) (negate ry)
           (_, inner) = elementChildren env mst m
        in [DGroup outer (Just (ClipRect 0 0 mw mh)) [DGroup vb Nothing inner] | not (null inner)]

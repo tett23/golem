@@ -1,3 +1,5 @@
+{-# LANGUAGE MultiWayIf #-}
+
 {- | The PDF pipeline (golem-driver ADR 0002): page geometry, fonts,
 composition and line breaking per paragraph (optionally in parallel),
 pagination with page references resolved to a fixed point (S2), font
@@ -80,6 +82,7 @@ import Data.Either (fromRight, isLeft)
 import Data.Foldable (toList)
 import Data.Function (on)
 import Data.List (groupBy, intercalate, mapAccumL, nub, nubBy, sortOn, zip3, zip4)
+import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
@@ -96,6 +99,7 @@ import Golem.Doc.ListMarkers
 import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals (circled, formatNumber)
 import Golem.Driver.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
+import Golem.Driver.Svg (svgDrawing, unsupportedMessage)
 import Golem.Driver.Version (golemVersion)
 import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
@@ -118,6 +122,7 @@ import Golem.Preflight.View qualified as V
 import Golem.Project
 import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
+import Golem.Svg qualified as S
 import Golem.Syntax
 import Numeric (showHex)
 import System.FilePath (takeBaseName)
@@ -2248,12 +2253,17 @@ figureProportions :: P.FigureContent -> (Rational, Rational)
 figureProportions = \case
   P.RasterFigure img -> (fromIntegral (max 1 (P.imgWidth img)), fromIntegral (max 1 (P.imgHeight img)))
   P.VectorFigure ip -> let (w, h) = P.ipSize ip in (max (1 / 65536) w, max (1 / 65536) h)
+  P.SvgFigure d -> let (w, h) = P.drSize d in (max (1 / 65536) w, max (1 / 65536) h)
+
+-- | Why a figure cannot be placed: G0810 with the reason, or G0811 (golem-pdf ADR 0008, 0009).
+data Unplaced = Unplaced !Text | UnsupportedSvg !(NonEmpty S.Unsupported)
 
 {- | The figures, read once by file and page; why one cannot be placed
 (golem-pdf ADR 0008). The format follows the extension, as golem-eval
-checked it: a PDF page, or a PNG or JPEG image.
+checked it: a PDF page, an SVG drawing (golem-pdf ADR 0009), or a PNG or
+JPEG image.
 -}
-loadFigures :: PdfInput -> IO (Map (Text, Int) (Either Text P.FigureContent))
+loadFigures :: PdfInput -> IO (Map (Text, Int) (Either Unplaced P.FigureContent))
 loadFigures inp = do
   let keys = nub [figureKey f | (_, f) <- figureBlocks (piBook inp)]
   pairs <- mapM (\k -> (k,) <$> loadOne k) keys
@@ -2262,18 +2272,27 @@ loadFigures inp = do
     loadOne (s, page) = do
       bytes <- BS.readFile (piRoot inp <> "/" <> T.unpack s)
       pure $
-        if ".pdf" `T.isSuffixOf` T.toLower s
-          then either (Left . P.importErrorText) (Right . P.VectorFigure) (P.importPage page bytes)
-          else either (Left . T.pack) (Right . P.RasterFigure) (P.readImage bytes)
+        if
+          | ".pdf" `T.isSuffixOf` T.toLower s -> either (Left . Unplaced . P.importErrorText) (Right . P.VectorFigure) (P.importPage page bytes)
+          | ".svg" `T.isSuffixOf` T.toLower s -> case S.readSvg bytes of
+              Left (S.SvgMalformed why) -> Left (Unplaced why)
+              Left (S.SvgUnsupported us) -> Left (UnsupportedSvg us)
+              Right svg -> Right (P.SvgFigure (svgDrawing svg))
+          | otherwise -> either (Left . Unplaced . T.pack) (Right . P.RasterFigure) (P.readImage bytes)
 
 -- | The @figure blocks of a book, with their spans.
 figureBlocks :: Book -> [(SrcSpan, Figure)]
 figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ (FigureBlock f) <- bs]
 
--- | G0810: a figure that cannot be placed in the PDF, one per @figure (golem-pdf ADR 0008).
-figureDiagnostics :: PdfInput -> Map (Text, Int) (Either Text P.FigureContent) -> [Diagnostic]
+{- | G0810: a figure that cannot be placed in the PDF, and G0811: an SVG
+figure with things outside the subset; one per @figure (golem-pdf ADR
+0008, 0009).
+-}
+figureDiagnostics :: PdfInput -> Map (Text, Int) (Either Unplaced P.FigureContent) -> [Diagnostic]
 figureDiagnostics inp loaded =
-  [ diagnostic "G0810" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> why <> "）")
+  [ case why of
+      Unplaced reason -> diagnostic "G0810" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> reason <> "）")
+      UnsupportedSvg us -> diagnostic "G0811" Error sp (unsupportedMessage (figSource f) us)
   | (sp, f) <- figureBlocks (piBook inp),
     Just (Left why) <- [Map.lookup (figureKey f) loaded]
   ]
@@ -2881,11 +2900,15 @@ writeDocumentView inp geom fonts layout intent =
       -- the columns of a page come together from 'paginate' (docs/adr ADR 0018)
       drawn = zipWith drawPage (pagesOf (plPages layout)) masters
       -- one Form XObject per file and page of the PDF figures (golem-pdf ADR 0008)
-      formKeys = nubBy ((==) `on` fst) [((pfSource pf, pfPage pf), ip) | pf@PlacedFigure {pfContent = P.VectorFigure ip} <- Map.elems (plFigures layout)]
+      formKeys = nubBy ((==) `on` fst) [((pfSource pf, pfPage pf), fc) | pf <- Map.elems (plFigures layout), Just fc <- [formOf (pfContent pf)]]
+      formOf = \case
+        P.VectorFigure ip -> Just (P.ImportedForm ip)
+        P.SvgFigure d -> Just (P.DrawnForm d)
+        P.RasterFigure _ -> Nothing
       formRefs = Map.fromList [(k, P.FormRef n) | ((k, _), n) <- zip formKeys [1 ..]]
       figureMark fid r pf = case pfContent pf of
         P.RasterFigure _ -> P.Image (P.ImageRef fid) r
-        P.VectorFigure _ -> P.Form (Map.findWithDefault (P.FormRef 0) (pfSource pf, pfPage pf) formRefs) r
+        _ -> P.Form (Map.findWithDefault (P.FormRef 0) (pfSource pf, pfPage pf) formRefs) r
       -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
       bleed = maybe 0 pageBleed (stPage style)
       pdfPages = [P.framePage (piMarks inp) bleed (pw, ph) (pdMarks pd) | pd <- drawn]

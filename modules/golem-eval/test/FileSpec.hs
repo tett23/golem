@@ -243,14 +243,17 @@ tests =
         errs "@figure images/none.png alt=x\n" @?= ["G0233"]
         errs "@figure images/a.png alt=x wrap=end\n" @?= ["G0231"],
       testCase "the formats of a figure and its web image (golem-pdf ADR 0008)" $ do
-        msgs "@figure images/a.gif alt=\"x\"\n" @?= [("G0274", "図版の形式は PDF、PNG、JPEG です: images/a.gif")]
+        msgs "@figure images/a.gif alt=\"x\"\n" @?= [("G0274", "図版の形式は PDF、PNG、JPEG、SVG です: images/a.gif")]
         errs "@figure images/a.PDF web=images/a.png alt=\"x\"\n" @?= []
-        msgs "@figure images/a.pdf web=images/b.pdf alt=\"x\"\n" @?= [("G0273", "web の代替画像は PNG か JPEG です: images/b.pdf")]
-        errs "@figure images/a.pdf web=images/b.svg alt=\"x\"\n" @?= ["G0273"]
+        msgs "@figure images/a.pdf web=images/b.pdf alt=\"x\"\n" @?= [("G0273", "web の代替画像は PNG、JPEG、SVG です: images/b.pdf")]
         errs "@figure images/a.png web=images/b.jpg alt=\"x\"\n" @?= []
         case body "@figure images/a.png web=images/b.jpg alt=\"x\"\n" of
           [FigureBlock f] -> (figWeb f, figPage f) @?= (Just "images/b.jpg", Nothing)
           other -> assertFailure (show other),
+      testCase "SVG figures and web images (golem-pdf ADR 0009)" $ do
+        errs "@figure images/b.svg alt=\"x\"\n" @?= []
+        errs "@figure images/a.pdf web=images/b.svg alt=\"x\"\n" @?= []
+        errs "@figure images/b.svg page=1 alt=\"x\"\n" @?= ["G0275"],
       testCase "the page of a PDF figure (golem-pdf ADR 0008)" $ do
         case body "@figure images/a.pdf page=2 web=images/a.png alt=\"x\"\n" of
           [FigureBlock f] -> figPage f @?= Just 2

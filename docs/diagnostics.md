@@ -2369,22 +2369,22 @@ web の代替画像の形式が使えません
 
 ### 意味
 
-`@figure` の `web` に、PNG と JPEG のほかの形式のファイルを書いた。
-形式は拡張子で決める（`.png`、`.jpg`、`.jpeg` を、大文字と小文字を区別せずに受け付ける）。
+`@figure` の `web` に、PNG、JPEG、SVG のほかの形式のファイルを書いた。
+形式は拡張子で決める（`.png`、`.jpg`、`.jpeg`、`.svg` を、大文字と小文字を区別せずに受け付ける）。
 どの出力を組むときも同じ規則で調べるので、HTML だけを組むときにも出る。
 位置は、その `@figure` のブロックである。
 
-- メッセージ: `web の代替画像は PNG か JPEG です: <パス>`
+- メッセージ: `web の代替画像は PNG、JPEG、SVG です: <パス>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)
 
 ### 主な原因
 
-- `web` に PDF や SVG のファイルを書いた。
+- `web` に PDF のファイルを書いた。
 
 ### 直し方
 
-`web` の画像を PNG か JPEG に書き出し、そのファイルを指す。
+`web` の画像を PNG、JPEG、SVG のどれかに書き出し、そのファイルを指す。
 
 ## G0274
 
@@ -2395,23 +2395,23 @@ web の代替画像の形式が使えません
 
 ### 意味
 
-`@figure` の画像に、PDF、PNG、JPEG のほかの形式のファイルを書いた。
-形式は拡張子で決める（`.pdf`、`.png`、`.jpg`、`.jpeg` を、大文字と小文字を区別せずに受け付ける）。
+`@figure` の画像に、PDF、PNG、JPEG、SVG のほかの形式のファイルを書いた。
+形式は拡張子で決める（`.pdf`、`.png`、`.jpg`、`.jpeg`、`.svg` を、大文字と小文字を区別せずに受け付ける）。
 中身は見ないので、拡張子と中身が食い違うファイルは、PDF を組むときに [G0810](#g0810) になる。
 位置は、その `@figure` のブロックである。
 
-- メッセージ: `図版の形式は PDF、PNG、JPEG です: <パス>`
+- メッセージ: `図版の形式は PDF、PNG、JPEG、SVG です: <パス>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)
 
 ### 主な原因
 
-- GIF、TIFF、SVG などの画像を `@figure` に書いた。
+- GIF や TIFF などの画像を `@figure` に書いた。
 - 拡張子のないファイルを書いた。
 
 ### 直し方
 
-図を PDF、PNG、JPEG のどれかに書き出し、そのファイルを指す。
+図を PDF、PNG、JPEG、SVG のどれかに書き出し、そのファイルを指す。
 
 ## G0275
 
@@ -4735,6 +4735,7 @@ PDF を書かない。
 
 `@figure` の画像のファイルはあるが、PDF に置ける形で読めない。
 PNG と JPEG の図版は画像として読めないとき、PDF の図版は Golem が取り込めないときに出す。
+SVG の図版は、XML として読めないとき、UTF-8 でないとき、内部サブセットを持つ `DOCTYPE` があるとき、大きさ（ルートの `width` と `height` か `viewBox`）がないときに出す（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。SVG の範囲の外のものは [G0811](#g0811) である。
 PDF の図版を取り込めないのは、次のどれかの場合である。
 
 - 相互参照などが壊れている。
@@ -4754,7 +4755,7 @@ HTML、EPUB、プレーンテキストは画像を読まないので出さない
 位置は、その `@figure` のブロックである。
 
 - メッセージ: `図版を PDF に置けません: <パス>（<理由>）`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`）
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`、golem-svg の `Golem.Svg`）
 - ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
 
 ### 主な原因
@@ -4769,6 +4770,41 @@ HTML、EPUB、プレーンテキストは画像を読まないので出さない
 理由に合わせて図版を書き出し直す。
 PDF の図版なら、フォントを埋め込み、特色をプロセスカラーに直し、レイヤーを統合して書き出す。
 PNG はインターレースを外して書き出す。
+
+## G0811
+
+SVG の図版に扱えないものがあります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+SVG の図版に、Golem が PDF に描ける範囲の外の要素、属性、プロパティの値がある。
+範囲は [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md) の表のとおりで、パス、基本の図形、変換、塗りと線、マーカーなどである。
+輪郭にしていない文字（`text`、`tspan`、`textPath` の要素と `@font-face`）も範囲の外である。
+範囲の外のものを黙って無視せず、文書の順にすべて集め、最初のものの名前と位置（SVG のファイルの中の行と桁）を書き、残りの件数を添える。
+最初のものが文字なら、輪郭にして書き出すよう案内する。
+`@figure` ごとに一つ出し、PDF を書かない。
+dev と prod の両方でエラーである。
+PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出し、HTML、EPUB、プレーンテキストは SVG を読まないので出さない。
+位置は、その `@figure` のブロックである。
+
+- メッセージ: `SVG の図版に扱えないものがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。文字なら `（<名前>: 文字は輪郭にして書き出してください）`。ほかになければ `ほか <n> 件` を書かない。
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
+- ADR: [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)
+
+### 主な原因
+
+- 文字を輪郭にせずに書き出した。
+- グラデーション、`use`、クリップ、フィルター、1 でない不透明度などを使った。
+- 子孫の結合子などの、扱わない CSS のセレクターを使った。
+
+### 直し方
+
+図の作成ツールで、文字を輪郭（アウトライン）にして書き出す。
+範囲の外の機能は、ツールの側で範囲の中に収めて書き出し直す。
+SVG で収まらない図は、PDF で書き出して PDF の図版として置く。
 
 ## G0813
 
