@@ -12,5 +12,5 @@ Alpine の `libffi.a` ではないので、`licenses/alpine/` からは文書を
 - **取得元**：GHC の `ghc-9.10.3-release` のタグが指すサブモジュール [ghc/libffi-tarballs](https://gitlab.haskell.org/ghc/libffi-tarballs) のコミット `89a9b01c5647c8f0d3899435b99df690f582e9f1` の `LICENSE`。
 - **SHA-256**：`67894089811f93fca47a76f85e017da6f8582d4ba0905963c6e0f1ad6df7a195`。
 
-GHC の版を上げたら、その版が同梱する libffi を確かめ、`LICENSE` と `GHC_VERSION` を更新する。
-`GHC_VERSION` が使っている GHC の版と食い違うと、`licenses.sh` は失敗する。
+GHC のバージョンを上げたら、そのバージョンが同梱する libffi を確かめ、`LICENSE` と `GHC_VERSION` を更新する。
+`GHC_VERSION` が使っている GHC のバージョンと食い違うと、`licenses.sh` は失敗する。
