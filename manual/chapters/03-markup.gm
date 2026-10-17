@@ -375,6 +375,21 @@ CSV の一行目が見出しの行になります。
 
 @table src=data/sizes.csv
 
+タブで区切ったファイル（TSV）からも表を作れます。
+拡張子が [code: .tsv] のファイルは TSV として読み、ほかの拡張子のファイルは CSV として読みます。
+拡張子が [code: .txt] の TSV のように、拡張子と形式が合わないときは、[code: format=tsv] を書きます。
+[code: align] には、列の揃えを左の列から順にカンマで区切って書きます。
+値は [code: left]（左寄せ）、[code: center]（中央）、[code: right]（右寄せ）、[code: default]（既定）です。
+値を一つだけ書くと、すべての列がその揃えになります。
+次の表は、このマニュアルの原稿にある TSV のファイルから、[code: @table src=data/units.tsv align=left,left,right] で作っています。
+
+@table src=data/units.tsv align=left,left,right
+
+表計算のソフトから書き出したファイルは、UTF-8 で保存してください。
+改行は LF でも CRLF でもかまいません。
+Excel の「CSV UTF-8」のように、先頭に BOM の付いたファイルもそのまま読めます。
+表のファイルの誤りは、そのファイルの行と列で知らせます。
+
 PDF では、表は本文の行に合わせて組み、ページをまたぐ表は次のページの先頭に見出しの行を繰り返します。
 
 @label code-blocks
