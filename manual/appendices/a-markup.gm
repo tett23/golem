@@ -165,6 +165,15 @@
 = [strong: [code: @column-break]]
   段組みの版面で、次の段から続けます（改段）。
   一段組みの版面では [code: @page-break] と同じです。
+= [strong: [code: @no-page-break]]
+  前のブロックと次のブロックのあいだで、改ページも改段もしません。
+  二つがページの境にかかり、前が段落なら、その最後の 2 行を次のページに送ります。
+= [strong: [code: @need-lines 行数]]
+  ページ（段）の残りがその行数に足りなければ、次のページ（段）から続けます。
+  行数は 1 以上の整数です。
+= [strong: [code: @page-lines +行数]]、[strong: [code: @page-lines -行数]]
+  そのページ（段）の行数を、そのページに限り増やします（減らします）。
+  符号を付けて書きます。
 = [strong: [code: @manifest キー=値]]
   そのファイルにだけ効く原稿の読み方を書きます。
   書けるのは [code: manifest.toml] の [code: \[source\]] のキー（[code: paragraph-separator]）だけです。
