@@ -24,6 +24,7 @@ module Golem.Driver.Pdf
     codeFontNotice,
     kentenRubyNotices,
     syntheticStroke,
+    headingDefaults,
     syntheticStrokeJa,
     syntheticStrokeLatin,
     styleFileId,
@@ -544,11 +545,34 @@ syntheticStrokeLatin = 1 / 60
 syntheticStroke :: Rational -> Sp -> Sp
 syntheticStroke r size = floor (toRational size * r)
 
--- | The role and size of the headings of a level (golem-driver ADR 0003).
-headingFace :: Style -> PageGeometry -> Int -> (Text, Sp)
-headingFace style geom level =
+{- | The role and size of the headings of a level (golem-driver ADR 0003):
+the size of the book's language by default (golem-driver ADR 0032).
+-}
+headingFace :: Text -> Style -> PageGeometry -> Int -> (Text, Sp)
+headingFace lang style geom level =
   let hs = Map.lookup level (stHeadings style)
-   in faceFor style geom (hs >>= hsFont) (hs >>= hsSize)
+   in faceFor style geom (hs >>= hsFont) (Just (fromMaybe (fst (headingDefaults lang level)) (hs >>= hsSize)))
+
+{- | The least grid lines the headings of a level take: @lines@ of
+style.toml, or the default of the book's language cut to the grid lines
+of a page (golem-driver ADR 0032).
+-}
+headingLines :: Text -> Style -> Int -> Int -> Int
+headingLines lang style capacity level =
+  fromMaybe (min capacity (snd (headingDefaults lang level))) (Map.lookup level (stHeadings style) >>= hsLines)
+
+{- | The default size and least grid lines of a heading by the book's
+language and the level (golem-driver ADR 0032): a book whose language
+starts with ja takes fewer lines, its pitch being farther from its size.
+-}
+headingDefaults :: Text -> Int -> (Dim, Int)
+headingDefaults lang level = case level of
+  1 -> (Zw (3 % 2), if ja then 5 else 6)
+  2 -> (Zw (5 % 4), if ja then 3 else 4)
+  3 -> (Zw 1, 2)
+  _ -> (Zw 1, 1)
+  where
+    ja = "ja" `T.isPrefixOf` T.toLower lang
 
 {- | The role and size of a font role and a size of style.toml: the body
 role and the size of the grid when they are not given (golem-driver ADR
@@ -1568,7 +1592,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL doc 
               let num = Map.lookup sp (bookHeadings book) >>= hiNumberText
                   title = numberedTitle lang sp0 (if haNoNumber attrs then Nothing else num) is
                   recto = maybe False hsRectoBreak (Map.lookup l (stHeadings style))
-               in (n, [unit (UHeading l (T.concat (map inlineText is)) recto) lbl title (uncurry (styleLook style Nothing) (headingFace style geom l))])
+               in (n, [unit (UHeading l (T.concat (map inlineText is)) recto) lbl title (uncurry (styleLook style Nothing) (headingFace lang style geom l))])
             BulletList items -> list style ctx n (map (Nothing,) items)
             OrderedList items -> list style ctx n (zip (map Just (itemNumbers items)) items)
             DefList gs ->
@@ -1768,7 +1792,7 @@ buildFlow inp geom fonts images assumed = do
             captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
             n = length caption
             -- its pitch keeps the body's ratio of pitch to size; it takes the fewest grid lines that hold it
-            cb = headingBlock fs pitch cs n
+            cb = headingBlock fs pitch cs n 1
             (cp, span') = if n == 0 then (pitch, 0) else (hbPitch cb, hbSpan cb)
             depth = if n > 0 then toInteger m * pitch + toInteger (n - 1) * cp + cs else across
             gap = dimToSp fs (stWrapGap style)
@@ -1947,7 +1971,10 @@ buildFlow inp geom fonts images assumed = do
                   ls = cLines c
                   (boxes, set) = numbered nextId u c (lineIndent (uKind u))
                   (_, size) = faceOf u
-                  hb = headingBlock fs pitch size (length ls)
+                  least = case uKind u of
+                    UHeading l _ _ -> headingLines (bookLanguage inp) (uStyle u) capacity l
+                    _ -> 1
+                  hb = headingBlock fs pitch size (length ls) least
                   flowOf = case uKind u of
                     UHeading l _ recto -> [FHeading l recto (hbSpan hb) boxes]
                     UTerm _ -> [FDefTerm boxes]
@@ -1973,7 +2000,7 @@ buildFlow inp geom fonts images assumed = do
               captionParams = params {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
               (captionItems, captionAnchors) = composeInlines ((styledEnv (uStyle u) (envFor (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption")}) captionInlines
               ls = brLines (breakParagraph captionParams (const (measure - lead)) captionItems)
-              cb = headingBlock fs pitch cs (length ls)
+              cb = headingBlock fs pitch cs (length ls) 1
            in CodeCaption ls cs (hbPitch cb) (if null ls then 0 else hbSpan cb) [sp | AnchorIndex _ sp _ <- captionAnchors]
       codeErrors = concatMap cbErrors (Map.elems codeBlocks)
       -- the text of a list item leaves 8 characters of the type area (golem-driver ADR 0013)

@@ -5,6 +5,7 @@ import Data.List (isPrefixOf, maximumBy, subsequences)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Ord (Down (..), comparing)
+import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
@@ -763,12 +764,40 @@ tests =
                   let e = toInteger (m - 1) * hp + s
                       n = max 1 ((e + bp - bfs + bp - 1) `div` bp)
                    in HeadingBlock hp (fromInteger n) (((n - 1) * bp + bfs - e) `div` 2)
-            headingBlock bfs bp s 1 @?= expect (1 :: Int)
-            headingBlock bfs bp s 2 @?= expect (2 :: Int)
-            hbSpan (headingBlock bfs bp s 1) @?= 2
-            hbSpan (headingBlock bfs bp s 2) @?= 3,
+            headingBlock bfs bp s 1 1 @?= expect (1 :: Int)
+            headingBlock bfs bp s 2 1 @?= expect (2 :: Int)
+            hbSpan (headingBlock bfs bp s 1 1) @?= 2
+            hbSpan (headingBlock bfs bp s 2 1) @?= 3,
           testCase "a heading of the body size sits on the grid" $
-            mapM_ (\m -> headingBlock fs (fs * 3 `div` 2) fs m @?= HeadingBlock (fs * 3 `div` 2) m 0) [1, 2, 3],
+            mapM_ (\m -> headingBlock fs (fs * 3 `div` 2) fs m 1 @?= HeadingBlock (fs * 3 `div` 2) m 0) [1, 2, 3],
+          testProperty "a least span of one gives the block of golem-driver ADR 0003 (golem-driver ADR 0032)" $ property $ do
+            bfs <- forAll (Gen.integral (Range.linear 65536 (40 * 65536)))
+            bp <- forAll (Gen.integral (Range.linear bfs (3 * bfs)))
+            s <- forAll (Gen.integral (Range.linear (bfs `div` 2) (4 * bfs)))
+            m <- forAll (Gen.int (Range.linear 1 5))
+            let hp = round (bp * s % bfs)
+                e = toInteger (m - 1) * hp + s
+                n = max 1 ((e + bp - bfs + bp - 1) `div` bp)
+            headingBlock bfs bp s m 1 === HeadingBlock hp (fromInteger n) (((n - 1) * bp + bfs - e) `div` 2),
+          testCase "a heading of the body size with a least span of three sits in the middle line (golem-driver ADR 0032)" $ do
+            let q x = round (x / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Sp
+                hb = headingBlock (q 13) (q 22) (q 13) 1 3
+            hbSpan hb @?= 3
+            hbOffset hb @?= q 22,
+          testCase "a large heading takes the span of its size, not the least span (golem-driver ADR 0032)" $ do
+            let q x = round (x / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Sp
+            assertBool "span from the size" (hbSpan (headingBlock (q 13) (q 22) (q 40) 2 2) > 2)
+            hbSpan (headingBlock (q 13) (q 22) (q 40) 2 2) @?= hbSpan (headingBlock (q 13) (q 22) (q 40) 2 1),
+          testCase "a heading followed by a heading keeps both and two lines of the paragraph (golem-driver ADR 0032)" $ do
+            let ps = paginate 1 10 [FParagraph (lines' 0 6), FHeading 1 False 2 (lines' 20 1), FHeading 2 False 2 (lines' 21 1), FParagraph (lines' 30 5)]
+            map poSlots ps
+              @?= [ [(i, SLine i) | i <- [0 .. 5]],
+                    [(0, SHeading 20 1), (2, SHeading 21 1), (4, SLine 30), (5, SLine 31), (6, SLine 32), (7, SLine 33), (8, SLine 34)]
+                  ],
+          testCase "headings taller together than the column stay in an empty column (golem-driver ADR 0032)" $ do
+            let ps = paginate 1 3 [FHeading 1 False 2 (lines' 20 1), FHeading 2 False 2 (lines' 21 1), FParagraph (lines' 30 2)]
+            take 1 (map poSlots ps) @?= [[(0, SHeading 20 1)]]
+            length ps @?= 3,
           testCase "a heading block takes its span; the next paragraph starts after it" $ do
             let ps = paginate 1 10 [FHeading 1 False 3 (lines' 20 1), FParagraph (lines' 30 3)]
             map poSlots ps @?= [[(0, SHeading 20 1), (3, SLine 30), (4, SLine 31), (5, SLine 32)]],

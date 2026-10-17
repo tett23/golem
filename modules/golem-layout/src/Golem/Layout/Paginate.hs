@@ -140,14 +140,15 @@ data HeadingBlock = HeadingBlock
 
 {- | The pitch, span and offset of a heading of size @s@ and @m@ lines on
 a grid of font size @fs@ and pitch @p@: the body's ratio of pitch to
-size is kept, the span is the fewest grid lines that hold it, and the
-heading is centred in them. Integer sp; one rounding.
+size is kept, the span is the fewest grid lines that hold it but at
+least @least@ (golem-driver ADR 0032), and the heading is centred in
+them. Integer sp; one rounding.
 -}
-headingBlock :: Integer -> Integer -> Integer -> Int -> HeadingBlock
-headingBlock fs p s m =
+headingBlock :: Integer -> Integer -> Integer -> Int -> Int -> HeadingBlock
+headingBlock fs p s m least =
   let hp = round (p * s % fs)
       extent = toInteger (max 1 m - 1) * hp + s
-      n = max 1 ((extent + p - fs + p - 1) `div` p)
+      n = max (toInteger (max 1 least)) ((extent + p - fs + p - 1) `div` p)
       area = (n - 1) * p + fs
    in HeadingBlock hp (fromInteger n) ((area - extent) `div` 2)
 
@@ -250,7 +251,8 @@ paginateIn separatorLines base capacity flows =
       (FContinued ls : _) -> min 2 (length ls)
       (FTable _ h rows : _) -> length h + maybe 0 length (listToMaybe rows)
       (FDefTerm ls : _) -> length ls
-      (FHeading _ _ n _ : _) -> n
+      -- a heading keeps what follows it, a heading after it too (golem-driver ADR 0032)
+      (FHeading _ _ n _ : rest) -> n + nextNeed rest
       (FFigure _ n _ _ : _) -> min n capacity
       (FWrapped _ n _ _ ls : _) -> max n (length ls)
       (FSpace _ : _) -> 0

@@ -511,6 +511,13 @@ tests =
         codes (parseStyle (FileId 0) "[color.swatches]\na = { cmyk = [0, 0, 0, 101] }\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[figures]\nnumber = \"{x}\"\n") @?= ["G0306"]
         codes (parseStyle (FileId 0) "[frames]\nx = 1\n") @?= ["G0306"],
+      testCase "the lines of a heading (golem-driver ADR 0032)" $ do
+        let linesOf src = either (const Nothing) (\s -> Just (hsLines <$> Map.lookup 2 (stHeadings s))) (parseStyle (FileId 0) src)
+        linesOf "[headings.2]\nlines = 3\n" @?= Just (Just (Just 3))
+        linesOf "[headings.2]\nnumber = \"{n}\"\n" @?= Just (Just Nothing)
+        mapM_
+          (\v -> codes (parseStyle (FileId 0) ("[headings.2]\nlines = " <> v <> "\n")) @?= ["G0306"])
+          ["0", "-1", "1.5", "\"3\""],
       indentTests,
       listTests,
       characterFeatureTests,
