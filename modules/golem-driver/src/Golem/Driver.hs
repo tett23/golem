@@ -44,19 +44,20 @@ import Data.Aeson.KeyMap qualified as KM
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
+import Data.Char (isDigit)
 import Data.Either (fromRight, lefts, rights)
 import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
-import Data.Scientific (Scientific, base10Exponent, coefficient)
+import Data.Scientific (Scientific, base10Exponent, coefficient, toBoundedInteger)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Vector qualified as V
 import Golem.Doc.Assemble
-import Golem.Doc.Bibliography (CslDate (..), CslEntry (..), CslName (..), formatEntry)
+import Golem.Doc.Bibliography (CslDate (..), CslEntry (..), CslName (..), EntryPart, formatEntry)
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Doc.Numbering (numberSeparator)
@@ -379,10 +380,10 @@ assetRefs (A.File _ bs) = concatMap blk bs
 
 {- | CSL-JSON: G0326 and G0303 for the files of the bibliography that
 cannot be read, the keys, and the entries formatted by golem-doc
-(golem-doc ADR 0004). The diagnostics point at the head of manifest.toml,
+(golem-doc ADR 0004, 0005). The diagnostics point at the head of manifest.toml,
 FileId 0, as G0302 does, because the manifest keeps no positions.
 -}
-loadBibliography :: FilePath -> Manifest -> IO ([Diagnostic], Set.Set Text, Map Text Text)
+loadBibliography :: FilePath -> Manifest -> IO ([Diagnostic], Set.Set Text, Map Text [EntryPart])
 loadBibliography root manifest = do
   results <- forM (manifestBibliography manifest) $ \p -> do
     res <- resolveInRoot root p
@@ -402,7 +403,10 @@ loadBibliography root manifest = do
     manifestHead = mkSpan (FileId 0) 0 0
     unreadable = diagnostic "G0326" Error manifestHead
 
--- | The fields of a CSL-JSON item that the bibliography shows; Nothing without a string id.
+{- | The fields of a CSL-JSON item that the bibliography shows; Nothing
+without a string id (golem-doc ADR 0004, 0005). An empty string, or one
+of spaces only, is a field that is not there.
+-}
 cslEntry :: J.Value -> Maybe CslEntry
 cslEntry = \case
   J.Object o -> do
@@ -410,18 +414,31 @@ cslEntry = \case
     pure
       CslEntry
         { ceId = k,
+          ceType = str "type" o,
           ceLanguage = str "language" o,
           ceAuthors = case KM.lookup "author" o of
             Just (J.Array as) -> mapMaybe name (V.toList as)
             _ -> [],
           ceTitle = str "title" o,
+          ceContainerTitle = str "container-title" o,
+          ceVolume = strOrInt "volume" o,
+          ceIssue = strOrInt "issue" o,
+          cePage = strOrInt "page" o,
           cePublisher = str "publisher" o,
-          ceIssued = KM.lookup "issued" o >>= date
+          ceIssued = KM.lookup "issued" o >>= date,
+          ceUrl = str "URL" o,
+          ceAccessed = KM.lookup "accessed" o >>= date
         }
   _ -> Nothing
   where
+    present s = if T.null (T.strip s) then Nothing else Just s
     str k o = case KM.lookup (JK.fromText k) o of
-      Just (J.String s) -> Just s
+      Just (J.String s) -> present s
+      _ -> Nothing
+    -- a string, or an integer as its decimal digits; a number that is not an integer is not read
+    strOrInt k o = case KM.lookup (JK.fromText k) o of
+      Just (J.String s) -> present s
+      Just (J.Number n) -> T.pack . show <$> (toBoundedInteger n :: Maybe Int)
       _ -> Nothing
     -- literal first; a name with neither family nor given is left out
     name = \case
@@ -430,12 +447,32 @@ cslEntry = \case
         (_, Nothing, Nothing) -> Nothing
         (_, f, g) -> Just (PersonalName f g)
       _ -> Nothing
-    -- the first number of the first date-parts, or else the literal
+    -- the year, month and day of the first date-parts, or else the literal
     date = \case
       J.Object i -> case KM.lookup "date-parts" i of
-        Just (J.Array ps) | (J.Array y : _) <- V.toList ps, (J.Number n : _) <- V.toList y, Just yr <- cslYear n -> Just (DateYear yr)
+        Just (J.Array ps)
+          | (J.Array y : _) <- V.toList ps,
+            (yv : rest) <- V.toList y,
+            Just yr <- dateYear yv ->
+              let mo = case rest of
+                    (m : _) -> datePart m
+                    [] -> Nothing
+                  dy = case rest of
+                    (_ : d : _) | Just _ <- mo -> datePart d
+                    _ -> Nothing
+               in Just (DateParts yr mo dy)
         _ -> DateLiteral <$> str "literal" i
       _ -> Nothing
+    -- a number, or a string of ASCII digits
+    dateYear = \case
+      J.Number n -> cslYear n
+      J.String s | Just t <- digits s, T.length t <= 15 -> Just (read (T.unpack t))
+      _ -> Nothing
+    datePart = \case
+      J.Number n -> toBoundedInteger n
+      J.String s | Just t <- digits s, T.length t <= 9 -> Just (read (T.unpack t))
+      _ -> Nothing
+    digits s = if not (T.null s) && T.all isDigit s then Just s else Nothing
 
 {- | The year of a CSL-JSON number (docs/adr ADR 0035): Nothing from 10^15
 up, 0 below 0.1, and otherwise the number rounded. It is judged from the

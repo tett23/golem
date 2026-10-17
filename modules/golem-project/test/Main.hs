@@ -710,7 +710,7 @@ styleTests =
         noBase (paraStyle s (Just "caption")) @?= noBase (paraStyle s Nothing)
         noBase (paraStyle s (Just "sidenote")) @?= noBase (paraStyle s Nothing)
         Map.keys (stParaStyles s) @?= ["body", "caption", "code", "sidenote", "verse"]
-        Map.keys (stCharStyles s) @?= ["bold", "code", "italic", "strong"],
+        Map.keys (stCharStyles s) @?= ["bold", "code", "italic", "strong", "url"],
       testCase "a user definition overrides the keys it writes" $ do
         s <- parsed "[paragraph-styles.caption]\nsize = \"0.8zw\"\n"
         (paraStyle s (Just "caption") >>= psSize) @?= Just (Zw (4 / 5))
@@ -978,6 +978,17 @@ codeStyleTests =
         isCodeCharStyle s "path" @?= True
         isCodeCharStyle s "code" @?= True
         isCodeCharStyle s "strong" @?= False,
+      -- golem-doc ADR 0005
+      testCase "the built-in url has no keys; a user's font overrides only the font" $ do
+        s <- styleOf ""
+        Map.lookup "url" (stCharStyles s) @?= Just noCharDef
+        isUrlCharStyle s "url" @?= True
+        isCodeCharStyle s "url" @?= False
+        u <- styleOf "[fonts.code]\nlatin = \"m.otf\"\n\n[character-styles.url]\nfont = \"code\"\n\n[character-styles.link]\nbased-on = \"url\"\n"
+        Map.lookup "url" (stCharStyles u) @?= Just noCharDef {csFont = Just "code"}
+        isUrlCharStyle u "link" @?= True
+        isUrlCharStyle u "code" @?= False
+        isCodeCharStyle u "url" @?= False,
       -- golem-driver ADR 0023
       testCase "[code] and [code.colors]: every key is read" $ do
         s <- styleOf (swatches <> "\n[code]\nnumber = \"リスト{n}\"\nline-numbers = true\nline-number-color = \"gray\"\nhighlight = \"hl\"\nadded = \"add\"\nremoved = \"del\"\nwrap-mark = \"↩\"\ncontinued = \"（次ページに続く）\"\n\n[code.colors]\nkeyword = \"kw\"\ncomment = \"gray\"\ndata-type = \"kw\"\n")

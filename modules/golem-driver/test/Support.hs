@@ -14,6 +14,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Doc.Assemble (inlineText)
+import Golem.Doc.Bibliography (EntryPart)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), Shaped (..), Shaping (..), flowLines, layoutPages, layoutPdf, runningHeads)
@@ -388,7 +389,7 @@ rendered = T.concat . map (\case Number _ n _ -> T.pack (show n); i -> inlineTex
 {- | Lays out a one-chapter project (with extra manifest lines before
 [metadata]) and returns the text of the lines of each page.
 -}
-pagesMini :: T.Text -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> Map.Map T.Text T.Text -> IO (Either [Diagnostic] [[T.Text]])
+pagesMini :: T.Text -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> Map.Map T.Text [EntryPart] -> IO (Either [Diagnostic] [[T.Text]])
 pagesMini manifestExtra style source files bib = withSystemTempDirectory "golem-pages" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 manifestExtra <> miniManifest)
   BS.writeFile (tmp </> "style.toml") style
