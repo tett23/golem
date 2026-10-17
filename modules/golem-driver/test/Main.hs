@@ -35,6 +35,7 @@ tests =
         testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
         testGroup "the background of inline code (golem-driver ADR 0029)" inlineCodeBackgroundTests,
+        testGroup "ruby and kenten after a code block (golem-driver ADR 0033)" codeBlockRubyTests,
         testGroup "the separator after a number (golem-html ADR 0002)" numberSeparatorTests,
         versionTests,
         memoTests,

@@ -58,7 +58,11 @@ data LineBox = LineBox
     lbNotes :: ![NoteBody],
     lbLabels :: ![Text],
     -- | index marks on the line (golem-driver ADR 0007)
-    lbMarks :: ![SrcSpan]
+    lbMarks :: ![SrcSpan],
+    {- | how far the ruby and kenten of the line reach out of the face of
+    the line toward the line before it, in sp (golem-driver ADR 0033);
+    pagination does not read it
+    -} lbOverhang :: !Integer
   }
   deriving stock (Eq, Show)
 

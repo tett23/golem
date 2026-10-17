@@ -1,4 +1,4 @@
-module PdfSpec (qpdfInstalled, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests) where
+module PdfSpec (qpdfInstalled, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
@@ -12,7 +12,9 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.Fonts (golemFontProvider)
+import Golem.Driver.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
 import Golem.Driver.Pdf (CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
+import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Kerning (..), Look (..), plainLook)
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
@@ -1355,3 +1357,78 @@ inlineCodeBackgroundTests =
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
       assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
       TIO.readFile (tmp </> "build/html/style.css") >>= k
+
+-- ------------------------------------------------------------------ ruby and kenten after a code block (golem-driver ADR 0033)
+
+codeBlockRubyTests :: [TestTree]
+codeBlockRubyTests =
+  [ testCase "the overhang of a reading of 10pt type: 5.6pt above the face" $
+      rubyOverhang False (10 * pt) (10 * pt) (5 * pt) 0 @?= round (5.6 * 65536 :: Rational),
+    testCase "10pt on 17pt: no ruby does not reach, a reading of 10pt type does; on 25pt it does not" $ do
+      let reading = rubyOverhang False (10 * pt) (10 * pt) (5 * pt) 0
+      reachesBackground (17 * pt) (10 * pt) 0 (lineOverhang False (10 * pt) (const 0) plainLine) @?= False
+      reachesBackground (17 * pt) (10 * pt) 0 reading @?= True
+      reachesBackground (25 * pt) (10 * pt) 0 reading @?= False,
+    testCase "a border of 1pt: 3.1pt reaches, 2.9pt does not" $ do
+      reachesBackground (17 * pt) (10 * pt) pt (round (3.1 * 65536 :: Rational)) @?= True
+      reachesBackground (17 * pt) (10 * pt) pt (round (2.9 * 65536 :: Rational)) @?= False,
+    testCase "kenten reaches half the size of its character out of the face" $ do
+      let central = baselineRatio - 1 / 2
+      kentenOverhang False (10 * pt) (10 * pt) central 0 @?= 5 * pt
+      reachesBackground (17 * pt) (10 * pt) 0 (kentenOverhang False (10 * pt) (10 * pt) central 0) @?= True,
+    testCase "a line with a ruby box: the overhang of its reading" $ do
+      let look = plainLook "body" (10 * pt)
+          w = 10 * pt
+          ruby = Line [Box w (BoxContent "漢|かん" False 0 0 (fromEnum KindRuby) look 0 0 [] 0 0)] 0 w 0 (0, 0) False (0, 0)
+      lineOverhang False (10 * pt) (const 0) ruby @?= rubyOverhang False (10 * pt) (10 * pt) (5 * pt) 0,
+    testCase "a paragraph with ruby after a code block with a background: one grid line between, the reading off the background" $ do
+      let src = "```\na\n```\n\n[ruby: 漢|かん]字。\n"
+      (_, pl) <- layoutOk (horizontalStyle <> codeBg) src []
+      firstLineSlot pl @?= Just (codeEnd pl + 1)
+      content <- miniPdf fakeProvider True (horizontalStyle <> codeBg) src [] >>= fmap BS.concat . inflateAll
+      let readings = [d | d <- drawnGlyphs content, dSize d == "5"]
+      assertBool "readings" (length readings == 2)
+      assertBool (show (filledRects content, map emBox readings)) (not (any (\d -> any (overlaps (emBox d)) (filledRects content)) readings)),
+    testCase "without ruby the paragraph follows the code block on the next grid line" $ do
+      (_, pl) <- layoutOk (horizontalStyle <> codeBg) "```\na\n```\n\n漢字。\n" []
+      firstLineSlot pl @?= Just (codeEnd pl),
+    testCase "a code block without background, band or border takes no space line" $ do
+      (_, pl) <- layoutOk horizontalStyle "```\na\n```\n\n[ruby: 漢|かん]字。\n" []
+      firstLineSlot pl @?= Just (codeEnd pl),
+    testCase "kenten after a code block with a background takes a space line too" $ do
+      (_, pl) <- layoutOk (horizontalStyle <> codeBg) "```\na\n```\n\n[kenten: 漢]字。\n" []
+      firstLineSlot pl @?= Just (codeEnd pl + 1),
+    testCase "vertical: the reading after a code block is off the background" $ do
+      let src = "```\na\n```\n\n[ruby: 漢|かん]字。\n"
+      content <- miniPdf fakeProvider True (pdfStyle <> codeBg) src [] >>= fmap BS.concat . inflateAll
+      let ds = drawnGlyphs content
+          sizeOf d = read (BC.unpack (dSize d)) :: Double
+          big = maximum (map sizeOf ds)
+          readings = [d | d <- ds, sizeOf d < big * 0.6]
+          vbox d =
+            let x = read (BC.unpack (dX d))
+                y = read (BC.unpack (dY d))
+                s = sizeOf d
+             in (x - s / 2, y - s, x + s / 2, y)
+      assertBool "readings" (not (null readings))
+      assertBool (show (filledRects content, map vbox readings)) (not (any (\d -> any (overlaps (vbox d)) (filledRects content)) readings)),
+    testCase "a code block that ends a column: the paragraph with ruby starts the next one, with no space line" $ do
+      (_, pl) <- layoutOk (fiveLines <> codeBg) "一。\n\n二。\n\n三。\n\n```\na\n```\n\n[ruby: 漢|かん]字。\n" []
+      case plPages pl of
+        [_, p2] -> take 1 [s | (s, SLine _) <- poSlots p2] @?= [0]
+        ps -> assertFailure (show (map poSlots ps)),
+    testCase "two builds with ruby after a code block give the same bytes" $ do
+      let src = "```\na\n```\n\n[ruby: 漢|かん]字。\n"
+      a <- miniPdf fakeProvider True (horizontalStyle <> codeBg) src []
+      b <- miniPdf fakeProvider False (horizontalStyle <> codeBg) src []
+      assertBool "the same bytes" (a == b)
+  ]
+  where
+    codeBg = "\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.code]\nbackground = \"code-bg\"\n"
+    plainLine = Line [] 0 0 0 (0, 0) False (0, 0)
+    firstPage pl = take 1 (plPages pl)
+    -- the grid line after the code block of the first page
+    codeEnd pl = sum (take 1 [s + n | p <- firstPage pl, (s, SCode _ _ n) <- poSlots p])
+    firstLineSlot pl = case [s | p <- firstPage pl, (s, SLine _) <- poSlots p] of
+      (s : _) -> Just s
+      [] -> Nothing
