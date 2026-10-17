@@ -6,6 +6,7 @@ module Golem.Html
     HtmlLists (..),
     HtmlCharStyle (..),
     HtmlParaStyle (..),
+    HtmlRule (..),
     HtmlFeatures (..),
     noFeatures,
     HtmlLocalStyles (..),
@@ -73,8 +74,25 @@ data HtmlConfig = HtmlConfig
     -- | the markers of [lists], when the book has it (golem-driver ADR 0013)
     hcLists :: !(Maybe HtmlLists),
     -- | the paragraph style code: pre (golem-driver ADR 0017)
-    hcCode :: !HtmlCode
+    hcCode :: !HtmlCode,
+    -- | the rules before and after the headings of each level (golem-driver ADR 0027)
+    hcHeadingRules :: !(Map Int (Maybe HtmlRule, Maybe HtmlRule))
   }
+
+{- | A rule before or after a paragraph or a heading as CSS (golem-driver
+ADR 0027, 0028): the width (none lets the block fill the rest of the
+line), the indents at the start and the end, the border (weight, style
+and colour) and the spaces before and after it as CSS lengths.
+-}
+data HtmlRule = HtmlRule
+  { hrWidth :: !(Maybe Text),
+    hrStartIndent :: !(Maybe Text),
+    hrEndIndent :: !(Maybe Text),
+    hrBorder :: !Text,
+    hrOuter :: !Text,
+    hrInner :: !Text
+  }
+  deriving stock (Eq)
 
 {- | The paragraph style code for pre (golem-driver ADR 0017): its font
 role, its size and its padding as CSS lengths, and the swatch of its
@@ -166,7 +184,10 @@ data HtmlParaStyle = HtmlParaStyle
     -- | a CSS length; may be negative
     hpsFirstLineIndent :: !Text,
     -- | kerning, tracking, proportional metrics and baseline shift (docs/adr/0020)
-    hpsFeatures :: !HtmlFeatures
+    hpsFeatures :: !HtmlFeatures,
+    -- | the rules before and after (golem-driver ADR 0027)
+    hpsRuleBefore :: !(Maybe HtmlRule),
+    hpsRuleAfter :: !(Maybe HtmlRule)
   }
   deriving stock (Eq)
 
@@ -852,6 +873,9 @@ css cfg book =
          ]
       -- paragraph styles (docs/adr ADR 0005); body is the plain p
       <> concat [paraRules name ps | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
+      -- the rules of paragraph styles and headings as pseudo-elements (golem-driver ADR 0027)
+      <> concat [ruleRules (if name == "body" then "p:not([class])" else "p.ps-" <> name) (hpsRuleBefore ps) (hpsRuleAfter ps) | (name, ps) <- Map.toAscList (hcParaStyles cfg), name /= "code"]
+      <> concat [ruleRules ("h" <> tshow l) b a | (l, (b, a)) <- Map.toAscList (hcHeadingRules cfg)]
       -- no indent in list items (docs/adr ADR 0006); li p[class] is stronger than p.ps-name
       <> ["li p, li p[class] { padding-inline-start: 0; text-indent: 0; }" | any (uncurry indentRule) (Map.toList (hcParaStyles cfg))]
       -- the lines of a paragraph that keeps them; br is for readers without CSS
@@ -951,6 +975,19 @@ css cfg book =
        in (if n < 0 then "-" else "") <> tshow q <> (if T.null frac then "" else "." <> frac)
     rgbOf cmyk = let (r, g, b) = cmykToRgb cmyk in "rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> ")"
     rule sel ds = sel <> " { " <> T.concat [d <> "; " | d <- ds] <> "}"
+    -- the rule before as ::before, after as ::after; space-before above, space-after below (golem-driver ADR 0027)
+    ruleRules sel before after =
+      [ruleOf (sel <> "::before") r (hrOuter r <> " " <> hrInner r) | Just r <- [before]]
+        <> [ruleOf (sel <> "::after") r (hrOuter r <> " " <> hrInner r) | Just r <- [after]]
+    ruleOf sel r margins =
+      rule
+        sel
+        ( ["content: \"\"", "display: block"]
+            <> ["width: " <> w | Just w <- [hrWidth r]]
+            <> ["border-block-start: " <> hrBorder r, "margin-block: " <> margins]
+            <> ["margin-inline-start: " <> i | Just i <- [hrStartIndent r]]
+            <> ["margin-inline-end: " <> i | Just i <- [hrEndIndent r]]
+        )
     faceRule sel f = rule sel (["font-family: " <> fontStack role | Just role <- [faFont f]] <> ["font-size: " <> s | Just s <- [faSize f]])
     charRule name cs = rule (selectorOf name) (declsOf name cs)
     -- a rule that says only what the element shows anyway is not written

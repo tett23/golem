@@ -74,7 +74,7 @@ entry l fid anchor title = TocEntry l Nothing [Text (mkSpan fid 0 1) title] anch
 
 htmlConfig :: HtmlConfig
 htmlConfig =
-  HtmlConfig "書名" "ja" False "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False "center" "space-between" "center" Set.empty Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty)
+  HtmlConfig "書名" "ja" False "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False "center" "space-between" "center" Set.empty Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty
 
 -- | The archive writeEpub writes for a book of two empty files.
 written :: IO Archive

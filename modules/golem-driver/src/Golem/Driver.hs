@@ -39,7 +39,7 @@ where
 
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
-import Control.Monad (filterM, forM, forM_, mfilter, when)
+import Control.Monad (filterM, forM, forM_, join, mfilter, when)
 import Data.Aeson qualified as J
 import Data.Aeson.Key qualified as JK
 import Data.Aeson.KeyMap qualified as KM
@@ -831,7 +831,14 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
             hcLists =
               if stLists style == defaultListStyle
                 then Nothing
-                else Just (HtmlLists (lsBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style)))
+                else Just (HtmlLists (lsBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style))),
+            -- the rules of headings (golem-driver ADR 0027)
+            hcHeadingRules =
+              Map.fromList
+                [ (l, (htmlRule style <$> hsRuleBefore h, htmlRule style <$> hsRuleAfter h))
+                | (l, h) <- Map.toList (stHeadings style),
+                  isJust (hsRuleBefore h) || isJust (hsRuleAfter h)
+                ]
           }
       present = mfilter (`Map.notMember` missing)
       changed a b = if a == b then Nothing else Just a
@@ -938,10 +945,47 @@ htmlParaStyles style =
           (cssLength (fromMaybe (Zw 0) (psIndent d)))
           (cssLength (fromMaybe (Zw 0) (psFirstLineIndent d)))
           (htmlFeatures (psKerning d) (psTracking d) (psProportional d) (psBaselineShift d))
+          (htmlRule style <$> join (psRuleBefore d))
+          (htmlRule style <$> join (psRuleAfter d))
       )
     | n <- Map.keys (stParaStyles style),
       Just d <- [paraStyle style (Just n)]
     ]
+
+{- | A rule of a paragraph style or a heading for CSS (golem-driver ADR
+0027, 0028): zw as em, the line style as one of the border styles of CSS
+and the swatch as its RGB; a rule without a colour takes the colour of
+the text. Without a length the block is as wide as the line, or as the
+rest of the line when an indent is written.
+-}
+htmlRule :: Style -> RuleSpec -> HtmlRule
+htmlRule style r =
+  let start = case rsStartIndent r of
+        Zw 0 -> Nothing
+        d -> Just (cssLength d)
+      end = cssLength <$> rsEndIndent r
+      width = case rsLength r of
+        Just l -> Just (cssLength l)
+        Nothing -> if isJust start || isJust end then Nothing else Just "100%"
+      border = case rsStyle r of
+        RuleSolid -> "solid"
+        RuleMulti _ -> "double"
+        RuleDashed _ _ -> "dashed"
+        RuleDotted _ -> "dotted"
+        RuleJapaneseDots _ -> "dotted"
+        RuleWavy -> "solid"
+      colour = case rsColor r >>= (`Map.lookup` stSwatches style) of
+        Just (Swatch cmyk) -> let (cr, cg, cb) = cmykToRgb cmyk in " rgb(" <> T.pack (show cr) <> ", " <> T.pack (show cg) <> ", " <> T.pack (show cb) <> ")"
+        Nothing -> ""
+      space = maybe "0" cssLength
+   in HtmlRule
+        { hrWidth = width,
+          hrStartIndent = start,
+          hrEndIndent = end,
+          hrBorder = cssLength (Abs (rsWeight r)) <> " " <> border <> colour,
+          hrOuter = space (rsSpaceBefore r),
+          hrInner = space (rsSpaceAfter r)
+        }
 
 -- | The keys of the spacing of characters for CSS (docs/adr/0020).
 htmlFeatures :: Maybe Kerning -> Maybe Int -> Maybe Bool -> Maybe Dim -> HtmlFeatures

@@ -55,7 +55,8 @@ cfg0 =
       hcRubyBaseSpacing = "center",
       hcBreakKinds = Set.empty,
       hcLists = Nothing,
-      hcCode = HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty
+      hcCode = HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty,
+      hcHeadingRules = Map.empty
     }
 
 -- | A book of one document, a.gm, with nothing assembled.
