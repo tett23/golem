@@ -2541,6 +2541,7 @@ style.toml の誤りです
 - 段落スタイル `code` に、`font`、`size`、`background`、`padding` のほかのキー（`based-on` を含む）を書いた（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 - `background` か `padding` を、`code` のほかの段落スタイルに書いた。`padding` が負であるか、寸法として読めない。
 - `border` か `border-width` を、`code` のほかの段落スタイルに書いた。`border-width` を zw で書いた（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+- 文字スタイルの `background` か `padding` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。文字スタイルの `background` に `true` を書いた。文字スタイルの `padding` が負であるか、寸法として読めない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 - `[code]` か `[code.colors]` に未知のキーを書いた。`[code]` の `line-numbers` が真偽値でない。`[code]` の `number` が `{n}` などの差し込みを含まない。
 - `[hidden-folio]` の `size` か `gutter` を `zw` で書いたか、0 以下にしたか、寸法として読めない値にした。`pages` に `unnumbered` と `all` のほかの値を書いた。`gutter` が `size` の半分より小さい（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。
 - 罫線の指定（`[notes.rule]`）で、`length` が寸法として読めないか 0 以下、`weight` が寸法として読めないか 0 以下か `zw`、`space-before` か `space-after` が寸法として読めないか負である。未知のキー（`color` など）を書いた。`[notes.rule]` に `length` を書いていない（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
@@ -2724,6 +2725,7 @@ style.toml のスタイルの参照が不正です
 - `based-on` が循環する。
 - `body` に `based-on` を書いた。
 - 文字スタイルの `color` が `[color.swatches]` にない。
+- 文字スタイルの `background` が `[color.swatches]` にない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 - 正規表現スタイルの `style` に、組み込みにも `style.toml` にも同じファイルの `@style-def character` にもない文字スタイルを書いた。
 - `@style-def regex` の二つ目の引数に、ない段落スタイルを書いた。
 - 段落スタイルの `aki-set` か、`[aki-sets.<名前>]` の `based-on` が、存在しないセットを指す。

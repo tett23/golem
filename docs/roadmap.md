@@ -21,7 +21,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ### PDF
 
-- **本文の中のコードの背景の色**（未実装、[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）：コードの書体の役割、コードブロックの組み方は [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md) で、技術書のためのコードブロックの機能は [golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md) で実装した。本文の中のコード（`[code: ...]`）の背景の色は扱っていない。
 - **章末の注**（未実装、[golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)）：`[notes] placement = "chapter-end"` を読み込むが、どの出力も注の置き方を変えない。仕様書とマニュアルは章末に置けると書いていない形に直したが、章末の注そのものはまだない。
 - **PDF の図版**（未実装、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）：仕様は PDF（ベクター）の図版を置けると定めているが（仕様書の [「図版」の節](specifications.md#図版)）、実装（golem-pdf の `readImage`）は JPEG と PNG だけを受け付ける。マニュアルも PDF の図版を使えると書いている。仕様のとおり、PDF の図版を PDF の出力に置けるようにする。Web 用の代替画像の扱いも合わせて決める。
 - **SVG の図版**（未実装、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）：仕様は SVG を v1 では扱わないと定めているが（仕様書の [「図版」の節](specifications.md#図版)）、v1 で扱えるようにする。開発者向けのマニュアルの図は、SVG を原稿にして PNG に描いたものを置いている。PDF の出力での描き方（ベクターのまま描くか、変換するか）と、HTML と EPUB でそのまま使うかを決める。
