@@ -137,6 +137,11 @@ CODE=0
 env GOLEM="$WORK/fixed" sh "$CHECK" --only tz-east --input no-such-input >"$WORK/out" 2>&1 || CODE=$?
 expect "an unknown input" 2 "unknown input no-such-input"
 
+# an unknown change for --only: an error, not a check that applies nothing and passes
+CODE=0
+env GOLEM="$WORK/fixed" sh "$CHECK" --only tz-esat --input exprs >"$WORK/out" 2>&1 || CODE=$?
+expect "an unknown change for --only" 2 "unknown change tz-esat"
+
 # locales that are not installed: a SKIP, or a failure with GOLEM_REQUIRE_LOCALES=1 only
 for req in "" GOLEM_REQUIRE_LOCALES=0 GOLEM_REQUIRE_LOCALES=yes GOLEM_REQUIRE_EXTERNAL_TOOLS=1 GOLEM_REQUIRE_FONTS=1; do
   run GOLEM="$WORK/fixed" GOLEM_LOCALE_CANDIDATES_EUCJP="$NOLOCALE" GOLEM_LOCALE_CANDIDATES_JA="$NOLOCALE" $req
