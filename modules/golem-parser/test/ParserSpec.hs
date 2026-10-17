@@ -219,7 +219,74 @@ tests =
           testCase "the message is the one of the hard break" $
             messageOf "| a | b |\\\n|---|---|\n" (snd (labelCode (Just "hard_break")))
         ],
-      codeTests
+      codeTests,
+      numberShorthandTests
+    ]
+
+-- | The tokens of each ##…## of a source (golem-parser ADR 0011).
+shorthandNodes :: Text -> [[(SyntaxKind, Text)]]
+shorthandNodes src = go (fst (parse fid src))
+  where
+    go n
+      | nodeKind n == NNumberShorthand = [[(tokKind t, tokText t) | ElemToken t <- nodeChildren n]]
+      | otherwise = concat [go m | ElemNode m <- nodeChildren n]
+
+-- | The kinds of the children of the first node of a kind, without whitespace.
+childKindsOf :: SyntaxKind -> Text -> [SyntaxKind]
+childKindsOf k src = case go (fst (parse fid src)) of
+  (cs : _) -> cs
+  [] -> []
+  where
+    go n
+      | nodeKind n == k = [filter (/= KWhitespace) (map elemKind (nodeChildren n))]
+      | otherwise = concat [go m | ElemNode m <- nodeChildren n]
+    elemKind = \case
+      ElemNode m -> nodeKind m
+      ElemToken t -> tokKind t
+
+numberShorthandTests :: TestTree
+numberShorthandTests =
+  testGroup
+    "number shorthand ##…## (golem-parser ADR 0011)"
+    [ testCase "in the middle of text" $ do
+        parseOk "本文##12##本文\n"
+        childKindsOf NParagraph "本文##12##本文\n" @?= [KText, NNumberShorthand, KText, KNewline]
+        shorthandNodes "本文##12##本文\n" @?= [[(KNumberMark, "##"), (KNumberBody, "12"), (KNumberMark, "##")]],
+      testCase "a line that starts with ##1## is a paragraph" $ do
+        parseOk "##1##年\n"
+        take 1 (childKindsOf NParagraph "##1##年\n") @?= [NNumberShorthand],
+      testCase "a heading with a number in its title" $ do
+        parseOk "## 第##1##節\n"
+        case astOf "## 第##1##節\n" of
+          [Golem.Parser.AST.Located _ (Golem.Parser.AST.Heading 2 is)] ->
+            map Golem.Parser.AST.locValue is @?= [Golem.Parser.AST.Text "第", Golem.Parser.AST.NumberShorthand "##1##", Golem.Parser.AST.Text "節"]
+          other -> assertFailure (show other),
+      testCase "###1## and #1 are G0110, #### is G0112 as before" $ do
+        codes "###1##\n" @?= [DiagnosticCode "G0110"]
+        codes "#1\n" @?= [DiagnosticCode "G0110"]
+        codes "#### x\n" @?= [DiagnosticCode "G0112"],
+      testCase "the contents are not checked by the grammar" $ do
+        mapM_ (\src -> (src, codes src, length (shorthandNodes src)) @?= (src, [], 1)) ["##0##\n", "##007##\n", "##1.5##\n", "##1,000##\n", "##1 2##\n", "##12年\n"]
+        shorthandNodes "##12年\n" @?= [[(KNumberMark, "##"), (KNumberBody, "12年")]],
+      testCase "the contents stop at | in a cell and a slot" $ do
+        parseOk "| ##12|x |\n|---|---|\n| a | b |\n"
+        shorthandNodes "| ##12|x |\n|---|---|\n| a | b |\n" @?= [[(KNumberMark, "##"), (KNumberBody, "12")]]
+        parseOk "[ruby: ##12|じゅうに]\n"
+        shorthandNodes "[ruby: ##12|じゅうに]\n" @?= [[(KNumberMark, "##"), (KNumberBody, "12")]],
+      testCase "## not followed by an ASCII digit is text" $
+        mapM_
+          (\src -> (src, codes src, shorthandNodes src) @?= (src, [], []))
+          ["C##\n", "a##]\n", "a####\n", "a##見出し##\n", "a##１２##\n", "a##-3##\n", "\\##1##\n"],
+      testCase "in items, definitions, cells and slots" $
+        mapM_
+          (\src -> (src, codes src, length (shorthandNodes src)) @?= (src, [], 1))
+          ["- ##1##つ目\n", "= ##1##\n  説明\n", "| ##1## | a |\n|---|---|\n| b | c |\n", "[ruby: ##12##|じゅうに]\n", "[note: ##1##]\n", "[code: ##1##]\n"],
+      testCase "not in arguments, expressions, strings, comments and code blocks" $ do
+        case astOf "[number-text ##1##]\n" of
+          [Golem.Parser.AST.Located _ (Golem.Parser.AST.Paragraph [Golem.Parser.AST.Located _ (Golem.Parser.AST.Command _ [Golem.Parser.AST.Located _ a] _)])] ->
+            a @?= Golem.Parser.AST.Positional (Golem.Parser.AST.Word "##1##")
+          other -> assertFailure (show other)
+        mapM_ (\src -> (src, shorthandNodes src) @?= (src, [])) ["[= \"##1##\"]\n", "a %% ##1## %%\n", "```\n##1##\n```\n"]
     ]
 
 -- | (code, start, end) of each diagnostic.

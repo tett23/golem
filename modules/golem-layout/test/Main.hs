@@ -573,7 +573,17 @@ tests =
             boxes [Tcy (mkSpan (FileId 0) 0 0) "12"] @?= [(fs, KindTcy)]
             boxes [Number (mkSpan (FileId 0) 0 0) 10 (Just StyleTcy)] @?= [(fs, KindTcy)]
             map snd (boxes [sp0 "ab"]) @?= [KindRotated]
-            [bcText c | Box _ c <- fst (composeInlines env [Number (mkSpan (FileId 0) 0 0) 120 Nothing])] @?= ["百", "二", "十"]
+            [bcText c | Box _ c <- fst (composeInlines env [Number (mkSpan (FileId 0) 0 0) 120 Nothing])] @?= ["百", "二", "十"],
+          -- golem-parser ADR 0011
+          testCase "vertical = auto: two digits or fewer in tate-chu-yoko, the others in kanji" $ do
+            let number e n = [(bcText c, boxKind c) | Box _ c <- fst (composeInlines e [Number (mkSpan (FileId 0) 0 0) n Nothing])]
+                auto = (defaultComposeEnv fs) {ceVertical = True, ceVerticalNumbers = VerticalAuto StyleKanji}
+                autoDigits = auto {ceVerticalNumbers = VerticalAuto StyleKanjiDigits}
+            number auto 9 @?= [("9", KindTcy)]
+            number auto 99 @?= [("99", KindTcy)]
+            map fst (number auto 100) @?= ["百"]
+            map fst (number autoDigits 100) @?= ["一", "〇", "〇"]
+            map fst (number auto {ceVertical = False} 99) @?= ["99"]
         ],
       testGroup "ruby placement (ADR 0009)" rubyTests,
       testGroup "ruby base character styles (ADR 0011)" rubyBaseTests,

@@ -21,6 +21,7 @@ module Golem.Parser.AST
     BinaryOp (..),
     plainEscapes,
     plainEscapesIn,
+    shorthandsAsText,
   )
 where
 
@@ -73,6 +74,10 @@ data Inline
   | Expr (Located Expr)
   | Command (Located Name) [Located Argument] [[Located Inline]]
   | ProofComment Text
+  | {- | ##…## (golem-parser ADR 0011): the source text from the opening
+    ## to the closing ## or to where it stopped without one
+    -}
+    NumberShorthand Text
   | ErrorInline
   deriving stock (Eq, Show)
 
@@ -120,6 +125,25 @@ plainEscapes = joinText . map plain
   where
     plain = \case
       Located sp (Escaped c) -> Located sp (Text (T.singleton c))
+      other -> other
+
+{- | Every ##…## in the inlines, in the prose slots of the commands in
+them and in their command arguments, as the text it was written with
+(golem-parser ADR 0011), joined with the text around it.
+-}
+shorthandsAsText :: [Located Inline] -> [Located Inline]
+shorthandsAsText = joinText . map (fmap inline)
+  where
+    inline = \case
+      NumberShorthand t -> Text t
+      Command n args slots -> Command n (map (fmap argument) args) (map shorthandsAsText slots)
+      other -> other
+    argument = \case
+      Positional v -> Positional (value v)
+      Keyword k v -> Keyword k (value v)
+      other -> other
+    value = \case
+      CommandArg i -> CommandArg (fmap inline i)
       other -> other
 
 -- | Neighbouring 'Text' joined into one, whose span covers both.
