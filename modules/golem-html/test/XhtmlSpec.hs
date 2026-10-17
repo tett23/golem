@@ -211,6 +211,15 @@ tests =
       bodyA cfg0 {hcVertical = True} (bookOf [para 0 [Number (at 1) 12 Nothing]]) @?= "<p>十二</p>\n",
     testCase "a number is arabic in a horizontal book" $
       bodyA cfg0 (bookOf [para 0 [Number (at 1) 12 Nothing]]) @?= "<p>12</p>\n",
+    -- golem-parser ADR 0011
+    testCase "vertical = auto: two digits or fewer in tate-chu-yoko, the others in kanji" $ do
+      let num cfg n = bodyA cfg (bookOf [para 0 [Number (at 1) n Nothing]])
+          auto = cfg0 {hcVertical = True, hcNumberDefault = "auto"}
+      num auto 9 @?= "<p><span class=\"tcy\">9</span></p>\n"
+      num auto 99 @?= "<p><span class=\"tcy\">99</span></p>\n"
+      num auto 100 @?= "<p>百</p>\n"
+      num auto {hcNumberDefault = "auto-digits"} 100 @?= "<p>一〇〇</p>\n"
+      num auto {hcVertical = False} 100 @?= "<p>100</p>\n",
     testCase "a heading is h1 with the anchor of the heading as id" $
       let info = HeadingInfo 1 Nothing Nothing [txt "はじめに"] "intro" fidA
           book = (bookOf [Block (at 0) (Just "intro") (Heading 1 (HeadingAttrs Nothing Nothing True False) [txt "はじめに"])]) {bookHeadings = Map.fromList [(at 0, info)]}

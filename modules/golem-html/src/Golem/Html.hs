@@ -522,7 +522,7 @@ inline c = \case
   Tcy _ t -> "<span class=\"tcy\">" <> escapeXml t <> "</span>"
   Number _ n st
     | not (hcVertical (cCfg c)) -> T.pack (show n)
-    | otherwise -> case fromMaybe (styleOf (hcNumberDefault (cCfg c))) st of
+    | otherwise -> case fromMaybe (verticalStyleOf (verticalNumbersNamed (hcNumberDefault (cCfg c))) n) st of
         StyleKanji -> kanji n
         StyleKanjiDigits -> kanjiDigits n
         StyleTcy -> "<span class=\"tcy\">" <> T.pack (show n) <> "</span>"
@@ -542,11 +542,6 @@ inline c = \case
   LineBreak _ -> "<br/>"
   -- an empty span with a margin; word joiners keep the line from breaking around it (docs/adr ADR 0019)
   Aki _ a -> "&#x2060;<span class=\"aki\" style=\"margin-inline-start: " <> akiLength a <> "\"></span>&#x2060;"
-  where
-    styleOf = \case
-      "kanji-digits" -> StyleKanjiDigits
-      "tcy" -> StyleTcy
-      _ -> StyleKanji
 
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
@@ -779,9 +774,11 @@ listRules cfg book ls =
     largest k = maximum (1 : [lsiNumber s | s <- listSites (concat [bs | Document _ bs <- bookDocs book]), min (lsiDepth s) count == k])
     system k st = case st of
       NsBook
-        | hcVertical cfg -> case hcNumberDefault cfg of
-            "kanji-digits" -> extends "cjk-decimal"
-            "tcy" -> extends "decimal"
+        -- auto and auto-digits name the style of the numbers above 99; a counter style cannot change by the number
+        | hcVertical cfg -> case verticalNumbersNamed (hcNumberDefault cfg) of
+            VerticalFixed StyleKanjiDigits -> extends "cjk-decimal"
+            VerticalAuto StyleKanjiDigits -> extends "cjk-decimal"
+            VerticalFixed StyleTcy -> extends "decimal"
             _ -> extends "japanese-informal"
         | otherwise -> extends "decimal"
       NsArabic -> extends "decimal"

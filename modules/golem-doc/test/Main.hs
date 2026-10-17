@@ -43,7 +43,24 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, AssembleSpec.tests, BibliographySpec.tests, ListMarkersSpec.tests, CborExprSpec.tests, NumberingSpec.tests]
+  testGroup "golem-doc" [cbor, AssembleSpec.tests, BibliographySpec.tests, ListMarkersSpec.tests, CborExprSpec.tests, NumberingSpec.tests, verticalNumbers]
+
+-- | The vertical style of the numbers of a book (golem-parser ADR 0011).
+verticalNumbers :: TestTree
+verticalNumbers =
+  testGroup
+    "verticalStyleOf (golem-parser ADR 0011)"
+    [ testCase "auto: two digits or fewer in tate-chu-yoko, the others in kanji" $ do
+        map (verticalStyleOf (VerticalAuto StyleKanji)) [0, 9, 10, 99] @?= replicate 4 StyleTcy
+        map (verticalStyleOf (VerticalAuto StyleKanji)) [100, -1] @?= [StyleKanji, StyleKanji],
+      testCase "auto-digits: three digits in kanji digits" $
+        verticalStyleOf (VerticalAuto StyleKanjiDigits) 100 @?= StyleKanjiDigits,
+      testCase "a fixed style for every number" $
+        mapM_ (\st -> map (verticalStyleOf (VerticalFixed st)) [-1, 0, 9, 99, 100, 12345] @?= replicate 6 st) [minBound .. maxBound],
+      testCase "the names of [numbers] vertical" $
+        map verticalNumbersNamed ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
+          @?= [VerticalFixed StyleKanji, VerticalFixed StyleKanjiDigits, VerticalFixed StyleTcy, VerticalAuto StyleKanji, VerticalAuto StyleKanjiDigits]
+    ]
 
 cbor :: TestTree
 cbor =

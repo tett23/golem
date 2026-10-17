@@ -32,14 +32,9 @@ in plain text), arabic in horizontal text.
 -}
 renderNumber :: TextVariant -> Text -> Integer -> Maybe NumberStyle -> Text
 renderNumber Horizontal _ n _ = T.pack (show n)
-renderNumber Vertical def n st = case fromMaybe (styleOf def) st of
+renderNumber Vertical def n st = case fromMaybe (verticalStyleOf (verticalNumbersNamed def) n) st of
   StyleKanjiDigits -> kanjiDigits n
   _ -> kanji n
-  where
-    styleOf = \case
-      "kanji-digits" -> StyleKanjiDigits
-      "tcy" -> StyleTcy
-      _ -> StyleKanji
 
 data Ctx = Ctx
   { cVariant :: TextVariant,
