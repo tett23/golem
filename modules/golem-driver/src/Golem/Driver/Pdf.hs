@@ -13,6 +13,7 @@ module Golem.Driver.Pdf
   ( FontProvider (..),
     LoadedFonts (..),
     Shaped (..),
+    ClusterPart (..),
     GlyphFrame (..),
     offsetOrigin,
     Shaping (..),
@@ -102,6 +103,7 @@ import Golem.Doc.Numerals (circled, formatNumber)
 import Golem.Driver.Overhang (kentenAcross, lineOverhang, reachesBackground, rubyAcross)
 import Golem.Driver.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
 import Golem.Driver.Svg (svgDrawing, unsupportedMessage)
+import Golem.Driver.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import Golem.Driver.Version (golemVersion)
 import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
@@ -187,7 +189,9 @@ data Shaped = Shaped
     shCluster :: !Int,
     {- | the GPOS offset (x, y) in em, in the coordinates of the direction the
     glyph is drawn in, y up (golem-driver ADR 0020)
-    -} shOffset :: !(Rational, Rational)
+    -} shOffset :: !(Rational, Rational),
+    -- | which glyph of its cluster the glyph is, for ToUnicode (golem-driver ADR 0030)
+    shPart :: !ClusterPart
   }
   deriving stock (Eq, Show)
 
@@ -2578,7 +2582,9 @@ data GlyphUse = GlyphUse
     guFace :: !Int,
     guSize :: !Sp,
     guColor :: !(Maybe Text),
-    guRole :: !Text
+    guRole :: !Text,
+    -- | which glyph of its cluster the glyph is (golem-driver ADR 0030)
+    guPart :: !ClusterPart
   }
 
 {- | A line drawn, for the view of golem preflight (golem-cli ADR 0006): what
@@ -2660,15 +2666,37 @@ writeDocumentView inp geom fonts layout intent =
               | otherwise = 0
             gs =
               concat
-                [ [(ix, g, a, t, (synSlant s, strokeOf latin s), tu, extra, o) | (Shaped ix g a t tu _ o, extra) <- zip shaped (trackingAfter r shaped)]
+                [ [(ix, g, a, t, (synSlant s, strokeOf latin s), tu, extra, o, part) | (Shaped ix g a t tu _ o part, extra) <- zip shaped (trackingAfter r shaped)]
                 | (role, r, latin) <- runsOf look txt,
                   let s = syntheticOf look latin
                       shaped = lfShape fonts (shapingFor role r) r
                 ]
-            advs = scanl (+) 0 [toSp size a + extra | (_, _, a, _, _, _, extra, _) <- gs]
+            advs = scanl (+) 0 [toSp size a + extra | (_, _, a, _, _, _, extra, _, _) <- gs]
             -- a glyph turned in vertical text: drawn with the horizontal font (golem-driver ADR 0015)
-            placed = [(ix, g, t, sb, tu && v && not rotated, off, o) | ((ix, g, _, t, sb, tu, _, o), off) <- zip gs advs]
-            byFont = Map.fromListWith (flip (<>)) [((ix, sb, tu), [(g, t, off, o)]) | (ix, g, t, sb, tu, off, o) <- placed]
+            placed = [(ix, g, t, sb, tu && v && not rotated, off, o, part) | ((ix, g, _, t, sb, tu, _, o, part), off) <- zip gs advs]
+            byFont seg = Map.fromListWith (flip (<>)) [((ix, sb, tu), [(g, t, off, o)]) | (ix, g, t, sb, tu, off, o, _) <- seg]
+            marksOf seg = [mark k xs | (k, xs) <- Map.toList (byFont seg)]
+            refOf ix tu = ref ix (v && not rotated && not tu)
+            {- the occurrences of the clusters drawn, each with its text when the
+            ToUnicode entries of its font do not give it back: such a cluster
+            is drawn alone inside ActualText (golem-driver ADR 0030) -}
+            occurrences = \case
+              [] -> []
+              x@(_, _, _, _, _, _, _, ClusterLead) : rest ->
+                let (more, rest') = span (\(_, _, _, _, _, _, _, part) -> part == ClusterRest) rest
+                 in (x : more) : occurrences rest'
+              x : rest -> [x] : occurrences rest
+            replacement occ = case occ of
+              (ix, _, _, _, tu, _, _, _) : _
+                | [(_, Just t)] <- actualTextOf (Map.findWithDefault Map.empty (refOf ix tu) textEntries) [(g, t', part) | (_, g, t', _, _, _, _, part) <- occ] -> Just t
+              _ -> Nothing
+            segments = \case
+              [] -> []
+              occ : rest
+                | Just t <- replacement occ -> [P.ActualText t (marksOf occ)] <> segments rest
+                | otherwise ->
+                    let (plain, rest') = break (isJust . replacement) rest
+                     in marksOf (concat (occ : plain)) <> segments rest'
             -- each glyph moved by its GPOS offset, by how it is drawn (golem-driver ADR 0020)
             frameOf turned
               | v && (rotated || turned) = FrameTurned
@@ -2689,7 +2717,7 @@ writeDocumentView inp geom fonts layout intent =
               | scale /= 0 = P.ScaledGlyphRun (ref ix False) size (1000 + scale) [(code ix g, gx, gy) | (g, _, off, o) <- xs, let (gx, gy) = moved turned o (x0 + off, y0)]
               | otherwise = P.GlyphRun (ref ix False) size [(code ix g, gx, gy) | (g, _, off, o) <- xs, let (gx, gy) = moved turned o (x0 + off, y0)]
             code = lfCode fonts
-         in ([mark k xs | (k, xs) <- Map.toList byFont], [(ref ix (v && not rotated && not tu), g, t) | (ix, g, t, _, tu, _, _) <- placed])
+         in (segments (occurrences placed), [(refOf ix tu, g, t, part) | (ix, g, t, _, tu, _, _, part) <- placed])
       {- the mark of a kenten shape in a role at a size, the centre of the
       ink box of its glyph at a point (golem-driver ADR 0019): horizontal,
       in the vertical font (its glyph origin at (1/2, 0.88) em of the
@@ -2699,11 +2727,19 @@ writeDocumentView inp geom fonts layout intent =
               let (x0, y0, x1, y1) = fromMaybe (0, 0, 0, 0) (lfInkBox fonts ix g)
                   (mx, my) = ((x0 + x1) / 2, (y0 + y1) / 2)
                   code = lfCode fonts ix g
+                  -- the mark is a cluster of one glyph; in ActualText when its entry is another text (golem-driver ADR 0030)
+                  -- the use does not wait for the entries, which come from the uses of every page
+                  withText r m =
+                    ( case actualTextOf (Map.findWithDefault Map.empty r textEntries) [(g, t, ClusterWhole)] of
+                        [(_, Just t')] -> P.ActualText t' [m]
+                        _ -> m,
+                      (r, g, t, ClusterWhole)
+                    )
                in case (vertical, tu) of
-                    (False, _) -> (P.GlyphRun (ref ix False) d [(code, cx - toSp d mx, cy - toSp d my)], (ref ix False, g, t))
-                    (True, False) -> (P.GlyphRun (ref ix True) d [(code, cx - toSp d (mx - 1 / 2), cy - toSp d (my - 88 / 100))], (ref ix True, g, t))
+                    (False, _) -> withText (ref ix False) (P.GlyphRun (ref ix False) d [(code, cx - toSp d mx, cy - toSp d my)])
+                    (True, False) -> withText (ref ix True) (P.GlyphRun (ref ix True) d [(code, cx - toSp d (mx - 1 / 2), cy - toSp d (my - 88 / 100))])
                     -- turned 90 degrees clockwise: (x, y) of the glyph is (y, -x) on the page
-                    (True, True) -> (P.RotatedGlyphRun (ref ix False) d [(code, cx - toSp d my, cy + toSp d mx)], (ref ix False, g, t))
+                    (True, True) -> withText (ref ix False) (P.RotatedGlyphRun (ref ix False) d [(code, cx - toSp d my, cy + toSp d mx)])
          in unzip (map place (kentenShaped fonts vertical role shape))
       -- the face that sets the Japanese text of a look: that of an ideograph
       japaneseFace look = maybe 0 shFace (listToMaybe (lfShape fonts (Shaping (lkFace look) False []) "漢"))
@@ -2716,7 +2752,7 @@ writeDocumentView inp geom fonts layout intent =
       -- top edge, or the centre line from its right edge
       -- runAt with the face, size, swatch and role of each glyph, for the view (golem-cli ADR 0006)
       runAtU look v rotated scale pt txt = usesOf look (runAt look v rotated scale pt txt)
-      usesOf look (ms, us) = (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) (lkFace look) | (r@(P.FontRef k), g, t) <- us])
+      usesOf look (ms, us) = (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) (lkFace look) part | (r@(P.FontRef k), g, t, part) <- us])
       lineStart ta cross
         | vertical = (rectX ta + rectW ta - cross, rectY ta + rectH ta)
         | otherwise = (rectX ta, rectY ta + rectH ta - cross)
@@ -2867,7 +2903,8 @@ writeDocumentView inp geom fonts layout intent =
                         size = lkSize look
                      in (lkColor look, runAtU look vertical vertical 0 (if vertical then (ox - size * 3 `div` 10, oy) else (ox, oy)) "-")
               _ -> (Nothing, ([], []))
-            parts = filter (not . null . fst . snd) (zipWith (curry boxRun) [0 ..] placed)
+            -- by the glyphs used, not the marks: the marks need the ToUnicode entries of every page (golem-driver ADR 0030)
+            parts = filter (not . null . snd . snd) (zipWith (curry boxRun) [0 ..] placed)
             -- boxes of the same swatch in a row share one saved colour
             coloured = groupBy (\a b -> fst a == fst b) parts
             marksOf grp = case grp of
@@ -3184,8 +3221,11 @@ writeDocumentView inp geom fonts layout intent =
       -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
       bleed = maybe 0 pageBleed (stPage style)
       pdfPages = [P.framePage (piMarks inp) bleed (pw, ph) (pdMarks pd) | pd <- drawn]
-      -- each glyph once per font, with the text of its first occurrence (golem-font ADR 0002)
-      used = Map.map Map.toList (Map.fromListWith (Map.unionWith (\_ old -> old)) [(guRef u, Map.singleton (guGlyph u) (guText u)) | pd <- reverse drawn, u <- reverse (pdUses pd)])
+      {- each glyph once per font, with the text of its cluster; a whole
+      cluster wins, then the first drawn (golem-driver ADR 0030) -}
+      used = Map.map toUnicodeOf (Map.fromListWith (<>) [(guRef u, [(guGlyph u, guText u, guPart u)]) | pd <- reverse drawn, u <- reverse (pdUses pd)])
+      -- the ToUnicode entries the marks are checked against for ActualText (golem-driver ADR 0030)
+      textEntries = Map.map Map.fromList used
       -- the PDF and its view from the fonts embedded (docs/adr ADR 0034)
       finish fontsUsed =
         let programs = [case P.fontProgram f of P.TrueTypeProgram b -> b; P.CffProgram b -> b; P.OpenTypeProgram b -> b | f <- Map.elems fontsUsed]

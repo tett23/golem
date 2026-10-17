@@ -17,7 +17,7 @@ import Golem.Doc.Assemble (inlineText)
 import Golem.Doc.Bibliography (EntryPart)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
-import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), Shaped (..), Shaping (..), flowLines, layoutPages, layoutPdf, runningHeads)
+import Golem.Driver.Pdf (ClusterPart (..), PdfInput (..), PdfLayout (..), PlacedFigure (..), SetLine (..), Shaped (..), Shaping (..), flowLines, layoutPages, layoutPdf, runningHeads)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..))
 import Golem.LayoutSpec (PageGeometry (..), pageGeometry)
@@ -472,7 +472,7 @@ fakeFonts =
       lfWordAdvance = \s -> sum . map (advOf (shRole s)) . T.unpack,
       lfPairKern = \_ _ _ -> 0,
       lfCode = \_ g -> g,
-      lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i (0, 0) | (i, c) <- zip [0 ..] (T.unpack t)],
+      lfShape = \s t -> [Shaped (faceOf (shRole s)) (fromEnum c `mod` 65536) (advOf (shRole s) c) (T.singleton c) False i (0, 0) ClusterWhole | (i, c) <- zip [0 ..] (T.unpack t)],
       lfEmBoxCentral = const (38 / 100),
       lfFaceFile = const ("fonts/b.otf", "truetype"),
       lfInkBox = \_ _ -> Just (1 / 10, -(1 / 10), 9 / 10, 8 / 10),

@@ -5,6 +5,8 @@ ADR 0002 and 0003, golem-font ADR 0001 and 0002).
 -}
 module Golem.Driver.Fonts
   ( golemFontProvider,
+    toUnicodeOf,
+    actualTextOf,
   )
 where
 
@@ -14,11 +16,13 @@ import Data.Containers.ListUtils (nubOrd)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Ratio ((%))
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver.Memo (fromShapingTextKey, memoWith, shapingTextKey)
 import Golem.Driver.Pdf (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, usedRoles)
+import Golem.Driver.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import Golem.Font
 import Golem.Layout.Japanese (CharClass (..), charClass, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
@@ -136,25 +140,28 @@ provide faces body roles =
           {- the offsets as HarfBuzz gives them in horizontal shaping; vertical
           shaping subtracts the vertical origin, added back here (golem-driver
           ADR 0020) -}
-          glyph ix f r turned dir (g, c, (xa, ya, xo, yo)) =
+          glyph ix f r starts turned dir (g, c, (xa, ya, xo, yo)) =
             let (ox, oy) = if dir == Vertical then glyphVerticalOrigin f g else (0, 0)
-             in Shaped ix g (em f (if dir == Vertical then negate ya else xa)) (clusterText r c) turned c (em f (xo + ox), em f (yo + oy))
+             in Shaped ix g (em f (if dir == Vertical then negate ya else xa)) (clusterText r starts c) turned c (em f (xo + ox), em f (yo + oy)) ClusterWhole
           clusters gs = [(c, [x | x@(_, c', _) <- gs, c' == c]) | c <- nubOrd [c | (_, c, _) <- gs]]
           gids = map (\(g, _, _) -> g)
-          run (ix, r)
-            | not vertical = map (glyph ix f r False Horizontal) (shapeIn f r Horizontal)
-            | latinRun = map (glyph ix f r False Vertical) (shapeIn f r Vertical)
-            | otherwise =
-                let across = Map.fromList (clusters (shapeIn f r Horizontal))
-                 in concat
-                      [ case Map.lookup c across of
-                          Just hs
-                            | gids hs == gids vs,
-                              maybe False (turnsInVertical . fst) (T.uncons (clusterText r c)) ->
-                                map (glyph ix f r True Horizontal) hs
-                          _ -> map (glyph ix f r False Vertical) vs
-                      | (c, vs) <- clusters (shapeIn f r Vertical)
-                      ]
+          run (ix, r) = withParts $ case () of
+            _
+              | not vertical -> let gs = shapeIn f r Horizontal in map (glyph ix f r (startsOf gs) False Horizontal) gs
+              | latinRun -> let gs = shapeIn f r Vertical in map (glyph ix f r (startsOf gs) False Vertical) gs
+              | otherwise ->
+                  let across = Map.fromList (clusters (shapeIn f r Horizontal))
+                      vgs = shapeIn f r Vertical
+                      starts = startsOf vgs
+                   in concat
+                        [ case Map.lookup c across of
+                            Just hs
+                              | gids hs == gids vs,
+                                maybe False (turnsInVertical . fst) (T.uncons (clusterText r starts c)) ->
+                                  map (glyph ix f r starts True Horizontal) hs
+                            _ -> map (glyph ix f r starts False Vertical) vs
+                        | (c, vs) <- clusters vgs
+                        ]
             where
               f = fontAt ix
               -- a run for which fontFor chose the Latin face
@@ -163,11 +170,27 @@ provide faces body roles =
           offsets = scanl (+) 0 [T.length r | (_, r) <- runs role t]
           inText r start sh = sh {shCluster = start + T.length (TE.decodeUtf8Lenient (BS.take (shCluster sh) (TE.encodeUtf8 r)))}
        in concat [map (inText r start) (run (ix, r)) | ((ix, r), start) <- zip (runs role t) offsets]
-    -- the text of a glyph for ToUnicode: without variation selectors, so
-    -- that a variant is found by its base character (golem-pdf ADR 0006)
-    clusterText r c =
+    {- the text of a glyph for ToUnicode: its whole cluster, from its byte
+    offset to the start of the next cluster of the run (golem-driver ADR
+    0030), without variation selectors, so that a variant is found by its
+    base character (golem-pdf ADR 0006) -}
+    clusterText r starts c =
       let bytes = TE.encodeUtf8 r
-       in T.filter (not . isVariationSelector) (maybe "" (T.singleton . fst) (T.uncons (TE.decodeUtf8Lenient (BS.drop c bytes))))
+          end = fromMaybe (BS.length bytes) (Set.lookupGT c starts)
+       in T.filter (not . isVariationSelector) (TE.decodeUtf8Lenient (BS.take (end - c) (BS.drop c bytes)))
+    -- the byte offsets of the clusters of a run
+    startsOf gs = Set.fromList [c | (_, c, _) <- gs]
+    {- the part of each glyph in its cluster: the only glyph, or the first or
+    a later one of several, in glyph order (golem-driver ADR 0030) -}
+    withParts gs = concat [parts grp | grp <- groupOn shCluster gs]
+      where
+        parts = \case
+          [g] -> [g {shPart = ClusterWhole}]
+          g : rest -> g {shPart = ClusterLead} : [x {shPart = ClusterRest} | x <- rest]
+          [] -> []
+        groupOn k = \case
+          [] -> []
+          x : xs -> let (same, rest) = span ((== k x) . k) xs in (x : same) : groupOn k rest
     -- IO: the subset is made as the PDF is written (docs/adr ADR 0034)
     embed ix vertical used = do
       let f = fontAt ix

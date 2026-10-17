@@ -27,9 +27,6 @@
 = [strong: フォントにない字を [code: golem build] が知らせない]
   フォントにない字があっても、[code: golem build] はエラーにせずに組み、PDF には四角い箱を描くか、何も描きません。
   対処：[code: golem preflight] を実行します。フォントにない字は G0902 で報告されます（「[ref-title preflight]」、[ref-page preflight] ページ）。
-= [strong: PDF からコピーした文字の合字]
-  欧文の fi、fl、ff、ffi が合字で組まれた箇所を、PDF から文字としてコピーしたり検索したりすると、f の一字になります。
-  紙面の見た目には影響しません。
 
 @nonumber
 ## 目次、索引、参考文献
