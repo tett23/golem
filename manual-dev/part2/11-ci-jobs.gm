@@ -82,14 +82,16 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 [code: build] は、[code: ubuntu-24.04]（x86-64）と [code: ubuntu-24.04-arm]（aarch64）の二つのランナーで同じ手順を実行する。
 主な手順は次のとおりである。
 
++ qpdf を裏で入れ始める（x86-64 では epubcheck も）。入れ終わるのを待つのは、テストの直前である。
++ テストのラッパー [code: scripts/ci/suite-timeout.sh] を [code: cabal.project.local] に書く。
 + GHC 9.10.3 と cabal-install 3.16.1.0 を用意する。GHC のディレクトリ、Hackage の索引、cabal の store、[code: dist-newstyle] をキャッシュから戻す。
-+ [code: scripts/fetch-wasmtime.sh] で wasmtime を取得し、qpdf を入れる（x86-64 では epubcheck も）。
++ [code: scripts/fetch-wasmtime.sh] で wasmtime を取得する。
 + [code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
-+ [code: cabal build all] と [code: cabal test all] を実行する。テストのスイートはそれぞれ [code: scripts/ci/suite-timeout.sh] を通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。
++ [code: cabal build all] と [code: cabal test all] を実行する。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。
 + [code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
-+ 二つのマニュアルのフォントをキャッシュから戻し、[code: scripts/manual/build.sh] で二つのマニュアルを組む。diagnostic が一つでも出れば失敗する。
++ 二つのマニュアルのフォントをキャッシュから戻す。
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
-+ [code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。
++ [code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。このスクリプトは [code: scripts/manual/build.sh] で二つのマニュアルも組むので、diagnostic が一つでも出ればここで失敗する。
 + x86-64 では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。
 
 キャッシュの鍵は、[code: cabal.project] と [code: cabal.project.freeze] のハッシュ、ランナーの OS とアーキテクチャ、GHC のバージョンから作る。
@@ -97,6 +99,18 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 プルリクエストのキャッシュはそのプルリクエストにしか使えず、しかもコミットごとに鍵が変わるからである。
 マニュアルのフォントのキャッシュの鍵は、[code: scripts/manual/fetch-fonts.sh] のハッシュである。
 フォントの URL と SHA-256 はこのスクリプトに書いてあるので、フォントを変えれば鍵も変わる。
+
+テストのラッパーを [code: cabal test] の引数でなく [code: cabal.project.local] に書くのは、[code: dist-newstyle] のキャッシュを生かすためである。
+テストのラッパーは、ローカルのパッケージの設定の一部である。
+[code: cabal test] にだけ引数で渡すと、[code: cabal build] と [code: cabal test] のあいだで設定が変わり、どちらのコマンドもすべてのパッケージを設定し直す。
+設定し直したパッケージの C と C++ のソースは、更新時刻で再コンパイルの要否が決まる。
+チェックアウトしたソースは更新時刻が新しいので、golem-font は HarfBuzz と FreeType をすべてコンパイルし直し、それだけで 3 分ほどかかる。
+[code: cabal.project.local] に書けば、CI の中のすべての [code: cabal] のコマンドが同じ設定を読む。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0037-ci-build-job-speedup.md]（docs/adr の ADR 0037「CI の build ジョブの手戻りをなくす」）]
+[code: cabal] のコマンドに設定を変える引数を付けないことは、[code: scripts/ci/test.sh] が [code: ci.yml] を読んで確かめる。
+
+qpdf と epubcheck の導入には 20 秒ほどかかるが、使うのはテストと epubcheck だけである。
+そこで [code: scripts/ci/bg.sh] で裏で走らせ、キャッシュの復元とビルドのあいだに済ませる。
+ミラーが止まったときは、5 分で失敗にする。
 
 aarch64 のランナーで同じことをするのは、時間がかかっても省けない。
 浮動小数点数の計算とネイティブライブラリの結果が二つのアーキテクチャで一致することが、決定性の主張の根拠そのものだからである。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0001-haskell-workspace-and-ci.md]（docs/adr の ADR 0001「Haskell のワークスペースと CI」）]
@@ -123,6 +137,7 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 バージョンを上げるプルリクエストは、ここで一致を確かめられる（第[ref-number release]章）。
 
 [code: format] は、fourmolu 0.21.0.0 で整形済みであることと、hlint 3.10 の指摘がないことを確かめる（第[ref-number build-test]章）。
+hlint は [code: -j] でランナーのすべてのコアを使う。
 
 ## ci
 
