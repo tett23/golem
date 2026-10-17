@@ -599,18 +599,18 @@ wordItems env lk word =
       (parts, pen)
         | T.any (`elem` ("-‐‑–—" :: String)) word =
             (if explicitP >= infPenalty then [word] else explicitParts word, Penalty 0 explicitP ExplicitHyphen)
-        | otherwise = (maybe [word] (`hyphenate` word) (cePatterns env), Penalty (advance env lk '-') 50 PatternHyphen)
+        | otherwise = (maybe [word] (`hyphenate` word) (cePatterns env), Penalty (advance env lk '-') 50 (PatternHyphen (protAt snd '-')))
       rotated = ceVertical env
       tag = fromEnum (if rotated then KindRotated else KindText)
       tr = tracking lk
       -- the tracking after each character, given back at the line end (docs/adr/0020)
       box t =
         let w = round (ceWordAdvance env lk t * toRational (lkSize lk))
-            (ps, _) = maybe (0, 0) (protrusionRatio . fst) (T.uncons t)
-            (_, pe) = maybe (0, 0) (protrusionRatio . snd) (T.unsnoc t)
-            prot r = if ceProtrusion env then min w (w * r `div` 1000) else 0
-         in Box (w + tr * toInteger (T.length t)) (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk 0 (negate tr) [])
-      prot' r t f = if T.null t then 0 else f r
+            ps = maybe 0 (min w . protAt fst . fst) (T.uncons t)
+            pe = maybe 0 (min w . protAt snd . snd) (T.unsnoc t)
+         in Box (w + tr * toInteger (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [])
+      -- the advance of the character at the line end, without tracking, by its ratio (golem-layout ADR 0014)
+      protAt pick c = if ceProtrusion env then advance env lk c * pick (protrusionRatio c) `div` 1000 else 0
    in concat [box part : [pen | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]
 
 {- | A word cut after each run of hyphens and dashes that has a character
