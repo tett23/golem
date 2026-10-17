@@ -208,10 +208,24 @@ preflightTests =
       v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
       assertBool "glyph 0 of U+E000" (any (any (\g -> gvGlyph g == 0 && gvText g == "\xE000") . pvGlyphs) (vwPages v))
       assertBool "G0902" (DiagnosticCode "G0902" `elem` errorCodes (prDiagnostics p)),
-    testCase "a PDF as a figure is G0905" $
-      withPreflightProject horizontalStyle "# 章\n\n@figure images/a.pdf web=images/a.png alt=\"t\"\n\n本文。\n" [("images/a.pdf", "%PDF-1.4\n"), ("images/a.png", "png")] $ \tmp -> do
+    testCase "a PDF as a figure is placed, with neither G0905 nor G0810 (golem-pdf ADR 0008)" $ do
+      fig <- miniPdf fakeProvider False horizontalStyle "図。\n" []
+      img <- tinyImage
+      withPreflightProject horizontalStyle "# 章\n\n@figure images/a.pdf web=images/tiny.jpg alt=\"t\"\n\n本文。\n" (("images/a.pdf", fig) : img) $ \tmp -> do
         p <- preflightIn tmp
-        assertEqual (show (prDiagnostics p)) [DiagnosticCode "G0905"] (map diagCode (filter ((== DiagnosticCode "G0905") . diagCode) (prDiagnostics p))),
+        let codes = map diagCode (prDiagnostics p)
+        assertBool (show codes) (DiagnosticCode "G0905" `notElem` codes && DiagnosticCode "G0810" `notElem` codes)
+        v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+        map ivPath (concatMap pvImages (vwPages v)) @?= ["images/a.pdf"],
+    testCase "a figure that cannot be placed stops golem preflight with G0810 before the checks (golem-pdf ADR 0008)" $
+      withPreflightProject horizontalStyle "# 章\n\n@figure images/a.png alt=\"t\"\n\n本文。\n" [("images/a.png", "\x89PNG\r\n\x1a\n")] $ \tmp -> do
+        p <- preflightIn tmp
+        errorCodes (prDiagnostics p) @?= [DiagnosticCode "G0810"]
+        assertBool "no view" (isNothing (prView p)),
+    testCase "image-unplaceable in preflight.toml is G0901 (golem-pdf ADR 0008)" $
+      withPreflightProject horizontalStyle "本文。\n" [("preflight.toml", "[image-unplaceable]\nseverity = \"off\"\n")] $ \tmp -> do
+        p <- preflightIn tmp
+        map diagCode (prDiagnostics p) @?= [DiagnosticCode "G0901"],
     {- the profile is prod: G0205 is reported in prod only. G0504, the
     example of the ADR, is a diagnostic of golem lint, which neither golem
     build nor golem preflight runs. -}

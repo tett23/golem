@@ -48,7 +48,6 @@ data Rules = Rules
     ruTypeSize :: !Level,
     ruTypeSizeMin :: !Sp,
     ruTypeSizeMultiInkOnly :: !Bool,
-    ruImageUnplaceable :: !Level,
     ruResolutionColor :: !Tier,
     ruResolutionGray :: !Tier,
     ruResolutionBitmap :: !Tier,
@@ -97,7 +96,6 @@ printRules =
       ruTypeSize = LevelWarning,
       ruTypeSizeMin = len "5pt",
       ruTypeSizeMultiInkOnly = True,
-      ruImageUnplaceable = LevelError,
       ruResolutionColor = Tier 150 300,
       ruResolutionGray = Tier 150 300,
       ruResolutionBitmap = Tier 600 1200,
@@ -151,7 +149,6 @@ noneRules =
   basicRules
     { ruBasedOn = "none",
       ruGlyphMissing = LevelOff,
-      ruImageUnplaceable = LevelOff,
       ruOverfullLines = LevelOff,
       ruPdfX = LevelOff
     }
@@ -186,8 +183,7 @@ instance FromValue RulesFile where
       a <- levelKey r ruTypeSize (\x -> r {ruTypeSize = x})
       b <- lengthKey "min-size" a ruTypeSizeMin (\x -> a {ruTypeSizeMin = x})
       maybe b (\x -> b {ruTypeSizeMultiInkOnly = x}) <$> optKey "multi-ink-only"
-    r5 <- check "image-unplaceable" r4 $ \r -> levelKey r ruImageUnplaceable (\x -> r {ruImageUnplaceable = x})
-    r6 <- check "image-resolution" r5 $ \r -> do
+    r6 <- check "image-resolution" r4 $ \r -> do
       a <- tierKey "color" r ruResolutionColor (\x -> r {ruResolutionColor = x})
       b <- tierKey "gray" a ruResolutionGray (\x -> a {ruResolutionGray = x})
       tierKey "bitmap" b ruResolutionBitmap (\x -> b {ruResolutionBitmap = x})

@@ -65,7 +65,7 @@ foreign import capi unsafe "golem_plugin.h golem_wat2wasm" c_wat2wasm :: CString
 
 -- | The ABI version of this host.
 abiVersion :: Word32
-abiVersion = 6
+abiVersion = 7
 
 -- | The fuel of one call: about this many wasm instructions.
 defaultFuel :: Word64
