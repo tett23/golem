@@ -50,6 +50,7 @@ module Golem.Project.Style
     charStyleKeys,
     paraStyleKeys,
     HeadingStyle (..),
+    NotesPlacement (..),
     Composition (..),
     RubyStyleDef (..),
     defaultRubyStyleDef,
@@ -939,7 +940,8 @@ data Style = Style
     stHeadings :: !(Map Int HeadingStyle),
     stComposition :: !Composition,
     stNumbersVertical :: !Text,
-    stNotesPlacement :: !Text,
+    -- | [notes] placement: the foot of the page or the end of the chapter, in the PDF (golem-driver ADR 0026)
+    stNotesPlacement :: !NotesPlacement,
     -- | [notes] numbering: the range over which notes are numbered (golem-driver ADR 0018)
     stNotesNumbering :: !NoteNumbering,
     -- | [notes.rule]: the rule before footnotes in the PDF, its length always there (golem-driver ADR 0024)
@@ -982,7 +984,7 @@ defaultStyle =
       stHeadings = Map.empty,
       stComposition = defaultComposition,
       stNumbersVertical = "kanji",
-      stNotesPlacement = "page-foot",
+      stNotesPlacement = PlaceFoot,
       stNotesNumbering = NumberPerChapter,
       stNotesRule = Nothing,
       stNotesMarkSize = Zw (1 % 2),
@@ -1410,6 +1412,10 @@ instance FromValue EmphasisV where
     fail
       "[emphasis] は廃止しました。strong = \"italic\" は [character-styles.strong] の based-on = \"italic\" に、bold-font は [character-styles.bold] の font に、italic-font は [character-styles.italic] の font に書き換えます"
 
+-- | Where the notes of the PDF are set (golem-driver ADR 0026).
+data NotesPlacement = PlaceFoot | PlaceChapterEnd
+  deriving stock (Eq, Show)
+
 data Notes = Notes (Maybe Text) (Maybe NoteNumbering) (Maybe RuleSpec) (Maybe Dim) (Maybe Text)
 
 instance FromValue Notes where
@@ -1572,7 +1578,7 @@ instance FromValue Style where
           stHeadings = Map.fromList hs,
           stComposition = comp,
           stNumbersVertical = fromMaybe (stNumbersVertical d) nv,
-          stNotesPlacement = fromMaybe (stNotesPlacement d) np,
+          stNotesPlacement = maybe (stNotesPlacement d) (\p -> if p == "chapter-end" then PlaceChapterEnd else PlaceFoot) np,
           stNotesNumbering = fromMaybe (stNotesNumbering d) nn,
           stNotesRule = nr,
           stNotesMarkSize = fromMaybe (stNotesMarkSize d) nms,

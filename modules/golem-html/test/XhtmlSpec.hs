@@ -71,7 +71,8 @@ bookOf bs =
       bookIndex = [],
       bookCitations = [],
       bookLabels = Map.empty,
-      bookReferenced = Set.empty
+      bookReferenced = Set.empty,
+      bookChapterOf = []
     }
 
 para :: Int -> [Inline] -> Block
@@ -93,6 +94,54 @@ bodyA cfg book = maybe "" bodyOf (lookup "a.xhtml" (sitePages (renderXhtml cfg f
 -- | The lines of the style sheet that start with a prefix.
 cssLines :: Text -> HtmlConfig -> [Text]
 cssLines prefix cfg = filter (T.isPrefixOf prefix) (T.lines (siteCss (renderXhtml cfg ft (bookOf []))))
+
+-- | A span in b.gm.
+atB :: Int -> SrcSpan
+atB n = mkSpan fidB n (n + 1)
+
+-- | a.gm and b.gm with one note each, in the chapters given.
+twoFileBook :: Int -> Int -> [Int] -> Book
+twoFileBook na nb chapters =
+  (bookOf [])
+    { bookDocs =
+        [ Document fidA [para 0 [txt "甲", Note (at 1) na [txt "注甲。"]]],
+          Document fidB [Block (atB 0) Nothing (Paragraph Nothing [txt "乙", Note (atB 1) nb [txt "注乙。"]])]
+        ],
+      bookChapterOf = chapters
+    }
+
+pageOf :: FilePath -> HtmlConfig -> Book -> Text
+pageOf p cfg book = maybe "" bodyOf (lookup p (sitePages (renderXhtml cfg ft book)))
+
+chapterNoteTests :: [TestTree]
+chapterNoteTests =
+  [ testCase "a chapter of two files: the notes of both at the end of the second, linked across" $ do
+      let book = twoFileBook 1 2 [0, 0]
+      pageOf "a.xhtml" cfg0 book @?= "<p>甲<a epub:type=\"noteref\" class=\"noteref\" href=\"b.xhtml#note-1\" id=\"noteref-1\">1</a></p>\n"
+      pageOf "b.xhtml" cfg0 book
+        @?= T.concat
+          [ "<p>乙<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-2\" id=\"noteref-2\">2</a></p>\n",
+            "<section class=\"notes\">\n<h2>注</h2>\n",
+            "<aside epub:type=\"footnote\" id=\"note-1\"><a href=\"a.xhtml#noteref-1\">1</a> 注甲。</aside>\n",
+            "<aside epub:type=\"footnote\" id=\"note-2\"><a href=\"#noteref-2\">2</a> 注乙。</aside>\n",
+            "</section>\n"
+          ],
+    testCase "two chapters of a file each keep their notes" $ do
+      let book = twoFileBook 1 1 [0, 1]
+      assertBool "a has its notes" ("id=\"note-1\"><a href=\"#noteref-1\">" `T.isInfixOf` pageOf "a.xhtml" cfg0 book)
+      assertBool "b has its notes" ("id=\"note-1\"><a href=\"#noteref-1\">" `T.isInfixOf` pageOf "b.xhtml" cfg0 book),
+    testCase "numbers that meet in a chapter take the place of the file in their ids" $ do
+      let book = twoFileBook 1 1 [0, 0]
+      assertBool "a" ("href=\"b.xhtml#note-1-1\" id=\"noteref-1-1\"" `T.isInfixOf` pageOf "a.xhtml" cfg0 book)
+      let b = pageOf "b.xhtml" cfg0 book
+      assertBool "b ref" ("href=\"#note-2-1\" id=\"noteref-2-1\"" `T.isInfixOf` b)
+      assertBool "b note 1" ("id=\"note-1-1\"><a href=\"a.xhtml#noteref-1-1\">1</a>" `T.isInfixOf` b)
+      assertBool "b note 2" ("id=\"note-2-1\"><a href=\"#noteref-2-1\">1</a>" `T.isInfixOf` b),
+    testCase "the title of the notes is Notes in an English book" $
+      assertBool "Notes" ("<h2>Notes</h2>" `T.isInfixOf` pageOf "b.xhtml" cfg0 {hcLanguage = "en"} (twoFileBook 1 2 [0, 0])),
+    testCase "the title is not in the navigation of the page" $
+      assertBool "no nav" (not ("注" `T.isInfixOf` T.concat [t | (_, t) <- sitePages (renderXhtml cfg0 ft (twoFileBook 1 2 [0, 0])), "<nav" `T.isInfixOf` t]))
+  ]
 
 tests :: [TestTree]
 tests =
@@ -127,10 +176,11 @@ tests =
         @?= T.concat
           [ "<p>本文<a epub:type=\"noteref\" class=\"noteref\" href=\"#note-1\" id=\"noteref-1\">1</a></p>\n",
             "<p>次。</p>\n",
-            "<section class=\"notes\">\n",
+            "<section class=\"notes\">\n<h2>注</h2>\n",
             "<aside epub:type=\"footnote\" id=\"note-1\"><a href=\"#noteref-1\">1</a> 注の本文。</aside>\n",
             "</section>\n"
           ],
+    testGroup "notes at the end of the chapter (golem-driver ADR 0026)" chapterNoteTests,
     testGroup
       "ruby"
       [ testCase "group ruby is one rt between rp" $

@@ -519,6 +519,10 @@ tests =
         mapM_
           (\v -> codes (parseStyle (FileId 0) ("[headings.2]\nlines = " <> v <> "\n")) @?= ["G0306"])
           ["0", "-1", "1.5", "\"3\""],
+      testCase "the placement of notes (golem-driver ADR 0026)" $ do
+        fmap stNotesPlacement (parseStyle (FileId 0) "") @?= Right PlaceFoot
+        fmap stNotesPlacement (parseStyle (FileId 0) "[notes]\nplacement = \"chapter-end\"\n") @?= Right PlaceChapterEnd
+        codes (parseStyle (FileId 0) "[notes]\nchapter-end-title = \"注\"\n") @?= ["G0306"],
       testCase "the size and format of note marks (golem-driver ADR 0025)" $ do
         let notes src = either (const Nothing) (\s -> Just (stNotesMarkSize s, stNotesMarkFormat s)) (parseStyle (FileId 0) src)
             sizeOf v = fst <$> notes ("[notes]\nmark-size = \"" <> v <> "\"\n")

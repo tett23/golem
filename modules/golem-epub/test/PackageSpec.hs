@@ -64,7 +64,8 @@ emptyBook =
       bookIndex = [],
       bookCitations = [],
       bookLabels = Map.empty,
-      bookReferenced = Set.empty
+      bookReferenced = Set.empty,
+      bookChapterOf = []
     }
 
 entry :: Int -> FileId -> Text -> Text -> TocEntry
