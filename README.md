@@ -8,7 +8,7 @@ Golem は、コマンドラインと CI で動く組版システムである。
 用語は [docs/glossary.md](./docs/glossary.md) にまとめている。
 どのバージョンで何を扱うかは [docs/roadmap.md](./docs/roadmap.md) にある。
 
-マニュアルは二つあり、どちらも Golem 自身で組んで、リリースの資産に添えている（[docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md)、[docs/adr/0024](./docs/adr/0024-manual-audiences-and-policy.md)）。
+マニュアルは二つあり、どちらも Golem 自身で組んで、リリースのアセットに添えている（[docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md)、[docs/adr/0024](./docs/adr/0024-manual-audiences-and-policy.md)）。
 
 - 使い手のマニュアル：PDF（`golem-manual-<タグ>.pdf`）と HTML（`golem-manual-<タグ>-html.tar.gz`）。原稿は [`manual/`](./manual/)。
 - 開発者のマニュアル：PDF（`golem-dev-manual-<タグ>.pdf`）と HTML（`golem-dev-manual-<タグ>-html.tar.gz`）。原稿は [`manual-dev/`](./manual-dev/)。
@@ -27,7 +27,7 @@ Golem は、コマンドラインと CI で動く組版システムである。
 | `golem-<タグ>-aarch64-macos.tar.gz` | macOS 14 以降の Apple Silicon |
 
 Windows では、WSL2 の上で Linux のアーカイブを使う。
-x86-64 の macOS 向けの配布物はないので、[CLI のビルド](#cli-のビルド)の手順でソースからビルドする。
+x86-64 の macOS 向けの配布物はないので、[CLI のビルド](#cli-のビルド) の手順でソースからビルドする。
 
 アーカイブと `SHA256SUMS` を取得し、検証してから展開する。
 次の例は x86-64 の Linux の場合である。
@@ -113,12 +113,14 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注欄の幅、版面との間隔、本文側の印だけを書く。
 コードブロックは組み込みの段落スタイル `code` で組み、書体は `[fonts.code]` の役割、背景の色と内側の余白は `[paragraph-styles.code]` の `background` と `padding` で指定する（[golem-driver ADR 0017](./docs/golem-driver/adr/0017-pdf-code-blocks.md)）。
 PDF では空白とタブ（幅は空白 2 字分）を残し、長い行は折り返す。
-技術書のためには、```` ```haskell numbers=10 file="src/Main.hs" highlight=12 diff=true callouts=true ```` のように開始の行（と `@listing`）に書くキーワード引数で、行番号、ファイル名、強調、差分、注釈の印（①）を付けられ、`@caption` で付けたキャプションにはリスト番号が振られる。色分け、強調と差分の背景、折り返した印、改ページの続きの表示は `style.toml` の `[code]` と `[code.colors]` で、枠は `[paragraph-styles.code]` の `border` で指定する（[golem-driver ADR 0023](./docs/golem-driver/adr/0023-code-block-book-features.md)）。
+技術書のためには、```` ```haskell numbers=10 file="src/Main.hs" highlight=12 diff=true callouts=true ```` のように開始の行（と `@listing`）に書くキーワード引数で、行番号、ファイル名、強調、差分、注釈の印（①）を付けられ、`@caption` で付けたキャプションにはリスト番号が振られる。
+色分け、強調と差分の背景、折り返した印、改ページの続きの表示は `style.toml` の `[code]` と `[code.colors]` で、枠は `[paragraph-styles.code]` の `border` で指定する（[golem-driver ADR 0023](./docs/golem-driver/adr/0023-code-block-book-features.md)）。
 PDF の索引は、`[index]` の `columns` と `column-gap` で、一段組みの本でも二段のように版面と異なる段数で組める（[docs/adr/0025](docs/adr/0025-index-columns.md)）。
 PDF のページ下の脚注の前には、`[notes.rule]` に `length`、`weight`、`space-before`、`space-after` を書けば区切り線を引ける（[golem-driver ADR 0024](./docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 文字の色はスウォッチの CMYK のプロセスカラーで書く。
 PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿する前には `golem preflight --marks japanese` を通し、その後に商用のプリフライト（Acrobat や pdfToolbox など）で確認する（[docs/golem-cli/adr/0006](docs/golem-cli/adr/0006-preflight.md)）。
-入稿する PDF は `golem build --target pdf --profile prod` で作る。`golem preflight` の要約の SHA-256 は、この PDF と一致する。
+入稿する PDF は `golem build --target pdf --profile prod` で作る。
+`golem preflight` の要約の SHA-256 は、この PDF と一致する。
 
 日本の印刷所に入稿する PDF は、`style.toml` の `[page]` に `bleed = "3mm"` を書き、`golem build --target pdf --marks japanese` で作る。
 塗り足しのない日本式のトンボはエラー（G0702）になる。
@@ -150,10 +152,15 @@ git config core.hooksPath .githooks
 ソースからは `cargo install --git https://github.com/tett23/adr-guard --tag v0.8.2` で入る。
 `.githooks/pre-commit` は、コミット済みの ADR（`docs/adr/` と `docs/<モジュール>/adr/` の配下）への変更、削除、リネームを含むコミットを拒否する。
 例外は `ステータス:` で始まる行で、この行だけは変更できる（`--allow-status`）。
-リンクを付ける、外す、リンク先を変えるだけの変更も許す（`--allow-links`）。ADR の参照に限らず、画像のリンク先とリンクの参照定義の行（`[1]: URL`）も含む。リンクのテキスト、画像の追加と削除、自動リンク（`<URL>`）と本文の URL の変更は拒否する。
-ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持たねばならない。無い ADR と二つ以上ある ADR はフックが拒否し、`adr-guard check-status` で一覧にできる。
-監査の記録（`docs/audit/`、`docs/audits/`）と性能計測の記録（`docs/benchmarks/`、`docs/benchmark/`）も、コミット済みのものは変更、削除、移動を拒否する。記録には `--allow-status` と `--allow-links` の例外も効かない。
-文書の中の ADR の参照（`ADR 0001` の形）には、ADR のファイルへのリンクを付ける。リンクのない参照は `adr-guard links` で一覧にでき、`adr-guard links --fix` で直せる。
+リンクを付ける、外す、リンク先を変えるだけの変更も許す（`--allow-links`）。
+ADR の参照に限らず、画像のリンク先とリンクの参照定義の行（`[1]: URL`）も含む。
+リンクのテキスト、画像の追加と削除、自動リンク（`<URL>`）と本文の URL の変更は拒否する。
+ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持たねばならない。
+無い ADR と二つ以上ある ADR はフックが拒否し、`adr-guard check-status` で一覧にできる。
+監査の記録（`docs/audit/`、`docs/audits/`）と性能計測の記録（`docs/benchmarks/`、`docs/benchmark/`）も、コミット済みのものは変更、削除、移動を拒否する。
+記録には `--allow-status` と `--allow-links` の例外も効かない。
+文書の中の ADR の参照（`ADR 0001` の形）には、ADR のファイルへのリンクを付ける。
+リンクのない参照は `adr-guard links` で一覧にでき、`adr-guard links --fix` で直せる。
 ADR はコミット後に変更しない規約であり、変更が必要な場合は新しい連番の ADR を作成する（詳細は [CLAUDE.md](./CLAUDE.md)）。
 `.githooks/pre-push` は、`docs/markup.md` か `docs/specifications.md` を変えたのに `manual/` と `manual-dev/` のどちらも変えていないブランチと、`CONTRIBUTING.md` か `CONTRIBUTING.en.md` を変えたのに `manual-dev/` を変えていないブランチの push を止める（`scripts/manual/check-updated.sh`、[docs/adr/0024](./docs/adr/0024-manual-audiences-and-policy.md)）。
 マニュアルの変わらない変更では、コミットのメッセージの末尾に `Manual: unchanged` のトレーラーを書く。
@@ -205,7 +212,8 @@ cabal test all
 
 パーサーは `modules/golem-parser/grammar/Golem.hpeg` から生成し、生成物をコミットする。
 文法を変えたら生成し直す。
-同じスクリプトが、ラベルを外した文法（`modules/golem-parser/test/StrippedGrammar.hs`）も生成する。テストは、二つの文法が同じ入力を受理することを確かめる（[golem-parser ADR 0007](./docs/golem-parser/adr/0007-grammar-label-safety.md)）。
+同じスクリプトが、ラベルを外した文法（`modules/golem-parser/test/StrippedGrammar.hs`）も生成する。
+テストは、二つの文法が同じ入力を受理することを確かめる（[golem-parser ADR 0007](./docs/golem-parser/adr/0007-grammar-label-safety.md)）。
 
 ```bash
 scripts/gen-parser.sh
@@ -295,6 +303,13 @@ Haskell のコードは fourmolu 0.21.0.0 で整形し（設定は `fourmolu.yam
 どちらも CI の `format` ジョブで検査する。
 CI の hlint は、GHC でビルドせず、hlint のリリースの x86-64 Linux 向けの配布物を `scripts/ci/fetch-hlint.sh` で取得して使う（[docs/adr/0009](./docs/adr/0009-ci-speed.md)）。
 
+文書とマニュアルの原稿の表記（一文ごとの改行、ダッシュと中黒、用語）は、textlint で検査する（[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。
+Node を入れてから `sh scripts/ci/textlint.sh` を実行する。
+初めての実行で、`tools/textlint/package-lock.json` が固定したパッケージを `tools/textlint/node_modules/` に入れる。
+`TEXTLINT_ARGS=--fix` を付けると、直せる違反を直す。
+規則と、止めた規則の理由は [tools/textlint/README.md](./tools/textlint/README.md) にある。
+Golem のビルドとテストは Node を使わない。
+
 ### CI
 
 CI は二つのワークフローからなる。
@@ -304,6 +319,7 @@ CI は二つのワークフローからなる。
 |---|---|---|
 | `docs.yml` | `adr` | コミット済みの ADR と記録（`docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/`）が変更されていないこと、文書の中の ADR の参照にリンクがあること、各 ADR がステータスの行をちょうど一つ持つことを検査する |
 | `docs.yml` | `manual` | プルリクエストで、`docs/markup.md` か `docs/specifications.md` を変えたのに `manual/` も `manual-dev/` も変えていないこと、`CONTRIBUTING.md` か `CONTRIBUTING.en.md` を変えたのに `manual-dev/` を変えていないことを検査する（`scripts/manual/check-updated.sh`）。`main` への push では省く |
+| `docs.yml` | `textlint` | `tools/textlint/` の規則のテストを実行し、`docs/` の文書（ADR と記録を除く）、README.md、CONTRIBUTING.md、変更で加わった ADR、二つのマニュアルの原稿の表記を textlint で検査する（`scripts/ci/textlint.sh`、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)） |
 | `ci.yml` | `changes` | `scripts/ci/` と `scripts/manual/` のスクリプトのテスト（`scripts/ci/test.sh`、`scripts/manual/test.sh`）を実行し、ビルドが読む `docs/` の下の文書が一覧にあることと、全パッケージが `-Werror=incomplete-patterns` でビルドされること（`scripts/ci/incomplete-patterns.sh`、[docs/adr/0027](./docs/adr/0027-exhaustive-command-dispatch-by-types.md)）と、`modules/` のプログラムが実行中に capability の数を変えないこと（`scripts/ci/rts-capabilities.sh`）を確かめ、変更のパスからビルドが要るかを決める |
 | `ci.yml` | `build` | x86-64 と aarch64 の Linux でビルドとテストを行い（10 分で終わらないテストのスイートは `scripts/ci/suite-timeout.sh` が止めて失敗にする）、生成したパーサーが文法と一致することを確かめる。`manual/` と `manual-dev/` をお知らせも含めて診断なしで組む。x86-64 では EPUB が epubcheck を通ることを確かめ、組んだ二つのマニュアルの PDF と HTML を成果物 `manual` と `manual-dev` として上げる |
 | `ci.yml` | `determinism` | 決まった入力（`scripts/determinism.sh`。二つのマニュアルを含む）の出力のハッシュを、二つのアーキテクチャで比べる |
@@ -311,11 +327,11 @@ CI は二つのワークフローからなる。
 | `ci.yml` | `format` | fourmolu と hlint で検査する |
 | `ci.yml` | `ci` | `ci.yml` のほかのジョブがすべて成功したか、省かれたことを確かめる（`scripts/ci/gate.sh`） |
 
-変更が `docs/` の下のファイルとリポジトリの根の Markdown のファイルだけの場合、`build`、`determinism`、`format`、`release-scripts` は省かれる（[docs/adr/0009](./docs/adr/0009-ci-speed.md)）。
+変更が `docs/` の下のファイル、`tools/textlint/` の下のファイル、リポジトリの根の Markdown のファイルだけの場合、`build`、`determinism`、`format`、`release-scripts` は省かれる（[docs/adr/0009](./docs/adr/0009-ci-speed.md)、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。
 判定は `scripts/ci/needs-build.sh` が行い、プルリクエストの変更のパスは分岐点からの差分で取る（`scripts/ci/changed-paths.sh`）。
 ただし、ビルドやテストが読む文書（今は `docs/diagnostics.md`）を変えた場合はビルドする（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
-`adr` は、変更のパスにかかわらず常に走る。
-`main` の保護の規則が必須とする検査は、`ci` と `adr` の二つである。
+`adr` と `textlint` は、変更のパスにかかわらず常に走る。
+`main` の保護の規則が必須とする検査は、`ci`、`adr`、`manual`、`textlint` の四つである。
 同じプルリクエストに新しいコミットを push すると、走っている前の実行は取り消される。
 CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timings.sh` で作る。
 

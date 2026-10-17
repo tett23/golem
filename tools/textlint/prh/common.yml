@@ -1,0 +1,15 @@
+# Terms for every document (docs/manual-policy.md).
+# A word inside 「」 is a quoted title or the word named as a word, and is not
+# replaced: the negative lookahead skips a match followed by 」 on the line
+# with no 「 or 」 between.
+# The specs run when the dictionary loads; a failing spec fails textlint.
+version: 1
+rules:
+  - expected: パブリックドメイン
+    pattern: /公有(?![^「」\n]*」)/
+    prh: public domain は「公有」と書かず、パブリックドメインと書く（docs/manual-policy.md）
+    specs:
+      - from: 公有の作品
+        to: パブリックドメインの作品
+      - from: ADR 0026「組みにくい公有の作品を fixture に十作加える」
+        to: ADR 0026「組みにくい公有の作品を fixture に十作加える」

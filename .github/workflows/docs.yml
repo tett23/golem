@@ -53,3 +53,34 @@ jobs:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: sh scripts/manual/check-updated.sh "$PR_BASE" "$PR_HEAD"
+
+  # The Japanese writing rules of the documents: textlint with the pinned
+  # rules of tools/textlint/ over docs/, README.md, CONTRIBUTING.md, the ADRs
+  # that the change adds, and the sources of the two manuals
+  # (docs/adr/0036-textlint-for-documents.md). Developers run the same script.
+  textlint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # the merge base with the base finds the ADRs that the change adds
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      # node_modules itself is cached, so that a hit skips npm ci; the rules of
+      # tools/textlint/rules/ are linked, not copied, and need no new key
+      - id: cache
+        uses: actions/cache@v6
+        with:
+          path: tools/textlint/node_modules
+          key: textlint-${{ runner.os }}-${{ hashFiles('tools/textlint/package-lock.json') }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: npm ci --prefix tools/textlint --no-fund --no-audit
+      - name: The tests of the Golem rules and the dictionaries
+        run: node --test tools/textlint/test/*.test.js
+      - name: textlint
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: sh scripts/ci/textlint.sh "$BASE"
