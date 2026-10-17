@@ -44,13 +44,13 @@ fixedPlugin describe response = do
           . T.replace "{{RESPONSE}}" (escape response)
           . T.replace "{{RESPONSE_LEN}}" (T.pack (show (BS.length response)))
           $ src
-  either (assertFailure . T.unpack) pure (watToWasm filled)
+  watToWasm filled >>= either (assertFailure . T.unpack) pure
 
 -- | A plugin that answers every call with the response.
 answering :: ByteString -> IO Plugin
 answering response = do
   wasm <- fixedPlugin shoutAndUpper response
-  either (assertFailure . show) pure (loadPlugin wasm)
+  loadPlugin wasm >>= either (assertFailure . show) pure
 
 callSpan :: SrcSpan
 callSpan = mkSpan (FileId 1) 10 20
@@ -138,13 +138,13 @@ malformedDescriptionTests =
     "a malformed golem_describe is rejected when loading"
     [ testCase "a description of one list" $ do
         wasm <- fixedPlugin (cbor (TList [TList [TString "shout"]])) (withDiagnostics [])
-        void (loadPlugin wasm) @?= Left (BadOutput "golem_describe の形が不正です"),
+        loadPlugin wasm >>= (@?= Left (BadOutput "golem_describe の形が不正です")) . void,
       testCase "a command name that is not a string" $ do
         wasm <- fixedPlugin (cbor (TList [TList [TInt 1], TList []])) (withDiagnostics [])
-        void (loadPlugin wasm) @?= Left (BadOutput "名前が文字列ではありません"),
+        loadPlugin wasm >>= (@?= Left (BadOutput "名前が文字列ではありません")) . void,
       testCase "a filter name that is not a string" $ do
         wasm <- fixedPlugin (cbor (TList [TList [], TList [TBool True]])) (withDiagnostics [])
-        void (loadPlugin wasm) @?= Left (BadOutput "名前が文字列ではありません")
+        loadPlugin wasm >>= (@?= Left (BadOutput "名前が文字列ではありません")) . void
     ]
 
 -- | The reasons of G0605 and G0609 as golem-plugin ADR 0003 writes them.

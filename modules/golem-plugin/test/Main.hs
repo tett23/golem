@@ -61,7 +61,7 @@ wat :: FilePath -> IO Text
 wat name = TIO.readFile ("test/plugins/" <> name)
 
 compile :: Text -> IO ByteString
-compile src = either (assertFailure . T.unpack) pure (watToWasm src)
+compile src = watToWasm src >>= either (assertFailure . T.unpack) pure
 
 escape :: ByteString -> Text
 escape = T.pack . concatMap (printf "\\%02x") . BS.unpack
@@ -88,7 +88,7 @@ fixed ver response = do
   compile filled
 
 load :: ByteString -> IO Plugin
-load wasm = either (assertFailure . show) pure (loadPlugin wasm)
+load wasm = loadPlugin wasm >>= either (assertFailure . show) pure
 
 -- | A response whose output is the given inlines.
 responseWith :: Term -> ByteString
@@ -120,17 +120,17 @@ tests =
         fmap fst (shout p) @?= Right [Text callSpan "SLOT"],
       testCase "a module that asks for imports is rejected when loading" $ do
         w <- compile =<< wat "imports.wat"
-        void (loadPlugin w) @?= Left (HasImports ["env.now"]),
+        loadPlugin w >>= (@?= Left (HasImports ["env.now"])) . void,
       testCase "a different ABI version is rejected when loading" $ do
         w <- fixed 1 (responseWith (TList []))
-        void (loadPlugin w) @?= Left (AbiMismatch 1),
+        loadPlugin w >>= (@?= Left (AbiMismatch 1)) . void,
       testCase "a plugin of ABI version 2 is rejected (docs/adr ADR 0005)" $ do
         w <- fixed 2 (responseWith (TList []))
-        void (loadPlugin w) @?= Left (AbiMismatch 2),
+        loadPlugin w >>= (@?= Left (AbiMismatch 2)) . void,
       testCase "the ABI version is 6 and a plugin of version 5 is rejected (golem-driver ADR 0023)" $ do
         (Golem.Plugin.abiVersion, Golem.Doc.IR.abiVersion) @?= (6, 6)
         w <- fixed 5 (responseWith (TList []))
-        void (loadPlugin w) @?= Left (AbiMismatch 5),
+        loadPlugin w >>= (@?= Left (AbiMismatch 5)) . void,
       testCase "a code block survives a filter unchanged (golem-driver ADR 0023)" $ do
         p <- load =<< compile =<< wat "identity.wat"
         let code = Code (Just "haskell") (Just True) (Just "a.hs") (Just [Text callSpan "c"]) True [CodeLine "a" (Just 1) (Just DiffAdded) True [1], CodeLine "b" Nothing (Just DiffRemoved) False []]
@@ -154,7 +154,7 @@ tests =
           other -> assertFailure (show other),
       testCase "an endless loop runs out of fuel, at the same place every time" $ do
         w <- compile =<< wat "loop.wat"
-        p <- either (assertFailure . show) pure (loadPluginWith 100000 defaultMemoryLimit w)
+        p <- loadPluginWith 100000 defaultMemoryLimit w >>= either (assertFailure . show) pure
         let r1 = invokeRaw p "x"
             r2 = invokeRaw p "x"
         case r1 of
@@ -163,18 +163,18 @@ tests =
         r1 @?= r2,
       testCase "memory beyond the limit is an error" $ do
         w <- compile =<< wat "memory.wat"
-        p <- either (assertFailure . show) pure (loadPluginWith defaultFuel (4 * 1024 * 1024) w)
+        p <- loadPluginWith defaultFuel (4 * 1024 * 1024) w >>= either (assertFailure . show) pure
         case invokeRaw p "x" of
           Left (Trapped _) -> pure ()
           other -> assertFailure (show other),
       testCase "a table beyond the limit on table elements cannot be instantiated (docs/adr ADR 0035)" $ do
         w <- compile =<< wat "table.wat"
-        case loadPlugin w of
+        loadPlugin w >>= \case
           Left (InstantiateFailed _) -> pure ()
           other -> assertFailure (show (void other)),
       testCase "a result of the wrong type is bad output, every time (docs/adr ADR 0035)" $ do
         w <- compile =<< wat "describe-i32.wat"
-        void (loadPlugin w) @?= Left (BadOutput "golem_describe の戻り値の型が不正です"),
+        loadPlugin w >>= (@?= Left (BadOutput "golem_describe の戻り値の型が不正です")) . void,
       testCase "a sha256 that is not 64 lowercase hexadecimal digits is G0611 (docs/adr ADR 0035)" $
         forM_ ["../../../../tmp/x", "00", T.toUpper (hashHex "AAA"), hashHex "AAA" <> "0"] $ \h ->
           case parseLock (FileId 0) ("[plugins.a]\nurl = \"https://example.com/a.wasm\"\nsha256 = \"" <> h <> "\"\n") of

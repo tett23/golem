@@ -27,6 +27,7 @@ library
                     Golem.Driver.Explain.Catalog
                     Golem.Driver.Fonts
                     Golem.Driver.Lint
+                    Golem.Driver.Memo
                     Golem.Driver.New
                     Golem.Driver.Pdf
                     Golem.Driver.Plugins
@@ -72,6 +73,7 @@ test-suite golem-driver-test
     DiagnosticSitesSpec
     DiagnosticsSpec
     LocaleSpec
+    MemoSpec
     PageElementsSpec
     ParagraphSpec
     PdfSpec

@@ -1,0 +1,10 @@
+# The uses of unsafePerformIO and its kin that are kept, each with the
+# reason (docs/adr/0034-fewer-unsafe-perform-io.md); scripts/ci/unsafe-io.sh
+# checks that the sources have exactly these. Every one must give a result
+# that depends on its arguments alone, have no effect that can be observed,
+# and pass no value across the boundary that depends on the environment
+# (the purity chapter of the developer manual).
+modules/golem-font/src/Golem/Font.hs:glyphMetrics # the pure layout asks for ink boxes as it goes; FreeType reads the font bytes only
+modules/golem-font/src/Golem/Font.hs:glyphVerticalOrigin # the pure layout asks for it per glyph in vertical text; HarfBuzz reads the font bytes only
+modules/golem-font/src/Golem/Font.hs:shapeUnits # the pure layout shapes texts as it goes; HarfBuzz keeps no state between calls
+modules/golem-plugin/src/Golem/Plugin.hs:invokeRaw # the pure evaluator calls plugins; a fresh wasm instance per call, no imports, fuel and memory limits

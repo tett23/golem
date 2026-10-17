@@ -160,6 +160,10 @@ CI の `changes` ジョブは、そうした文字列を拾って一覧と照ら
 `modules/` にパッケージを足したときは、cabal ファイルの `common warnings` の `ghc-options` にこのフラグを書き、各コンポーネントで `import: warnings` とする。
 付け忘れると、CI の `changes` ジョブ（`scripts/ci/incomplete-patterns.sh`）が失敗する。
 
+`unsafePerformIO` とその仲間（`unsafeDupablePerformIO`、`unsafeInterleaveIO` など）は、`scripts/ci/unsafe-io-allowed.txt` に書いた定義でだけ使う（[docs/adr/0034](./docs/adr/0034-fewer-unsafe-perform-io.md)）。
+IO で書ける処理は IO のエッジに置き、どうしても純粋な関数の内側から C のライブラリを呼ぶときだけ、一覧に定義と残す理由を足す。
+一覧とソースが食い違うと、CI の `changes` ジョブ（`scripts/ci/unsafe-io.sh`）が失敗する。
+
 `-threaded` でビルドする実行ファイルとテストのスイートは、`-with-rtsopts=-N` でもリンクし、起動のときから capability をプロセッサの数だけ持たせる。
 コードの中では `setNumCapabilities` を呼ばない。
 二つの呼び出しが同時に capability を増やすと、GHC 9.10.3 のランタイムが止まる。

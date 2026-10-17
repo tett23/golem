@@ -42,12 +42,13 @@ loadPlugins cacheDir mfid lfid lockText manifest
     loadOne lock (name, decl) = case Map.lookup name lock of
       Just e | leUrl e == pdUrl decl -> do
         cached <- readCached cacheDir e
-        pure $ case cached of
-          Left NotCached -> Left [err "G0603" ("キャッシュにないプラグインです。golem plugin fetch を実行してください: " <> name)]
-          Left HashMismatch -> Left [err "G0604" ("キャッシュの配布物のハッシュが plugins.lock と一致しません: " <> name)]
-          Right bytes -> case loadPlugin bytes of
-            Left pe -> Left [err "G0605" (name <> ": " <> describePluginError pe)]
-            Right p -> Right (name, decl, p)
+        case cached of
+          Left NotCached -> pure (Left [err "G0603" ("キャッシュにないプラグインです。golem plugin fetch を実行してください: " <> name)])
+          Left HashMismatch -> pure (Left [err "G0604" ("キャッシュの配布物のハッシュが plugins.lock と一致しません: " <> name)])
+          Right bytes ->
+            loadPlugin bytes >>= \case
+              Left pe -> pure (Left [err "G0605" (name <> ": " <> describePluginError pe)])
+              Right p -> pure (Right (name, decl, p))
       Just _ -> pure (Left [err "G0602" ("plugins.lock の URL が manifest.toml と違います。golem plugin lock を実行してください: " <> name)])
       Nothing -> pure (Left [err "G0602" ("plugins.lock にないプラグインです。golem plugin lock を実行してください: " <> name)])
     hook plugins =

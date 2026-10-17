@@ -3,7 +3,10 @@
 {- | Plugins as wasm modules run by wasmtime 49.0.2 (golem-plugin ADR 0001).
 No imports, no WASI, no threads, canonical NaNs, no relaxed SIMD, fuel
 and memory limits, a fresh instance per call. Requests and responses
-are CBOR (golem-doc.cddl); every response is validated.
+are CBOR (golem-doc.cddl); every response is validated. Compiling and
+checking a plugin is IO, called where its bytes are read; only a call
+('invokeRaw', which 'callCommand' and 'applyFilter' use) is wrapped as a
+pure function, since the evaluator makes it (docs/adr ADR 0034).
 -}
 module Golem.Plugin
   ( Plugin,
@@ -111,8 +114,8 @@ withMessage k = alloca $ \errPtr -> do
   pure (r, msg)
 
 -- | The text format to the binary format (for test plugins written in wat).
-watToWasm :: Text -> Either Text ByteString
-watToWasm wat = unsafePerformIO $
+watToWasm :: Text -> IO (Either Text ByteString)
+watToWasm wat =
   withCStringLen (T.unpack wat) $ \(p, n) ->
     alloca $ \lenPtr -> do
       (out, msg) <- withMessage (c_wat2wasm p (fromIntegral n) lenPtr)
@@ -124,14 +127,14 @@ watToWasm wat = unsafePerformIO $
           c_freeBytes out
           pure (Right b)
 
-loadPlugin :: ByteString -> Either PluginError Plugin
+loadPlugin :: ByteString -> IO (Either PluginError Plugin)
 loadPlugin = loadPluginWith defaultFuel defaultMemoryLimit
 
 {- | Compiles a module and checks it: no imports, the ABI version, the
 description of its commands and filters.
 -}
-loadPluginWith :: Word64 -> Int64 -> ByteString -> Either PluginError Plugin
-loadPluginWith fuel memory wasm = unsafePerformIO $ do
+loadPluginWith :: Word64 -> Int64 -> ByteString -> IO (Either PluginError Plugin)
+loadPluginWith fuel memory wasm = do
   (p, msg) <- BU.unsafeUseAsCStringLen wasm $ \(ptr, len) -> withMessage (c_load (castPtr ptr) (fromIntegral len))
   if p == nullPtr
     then pure (Left (CompileFailed msg))
@@ -140,20 +143,23 @@ loadPluginWith fuel memory wasm = unsafePerformIO $ do
       n <- c_importCount p
       names <- mapM (\i -> c_importName p i >>= \c -> T.pack <$> peekCString c <* c_freeBytes c) [0 .. n - 1]
       let plugin = Plugin fp fuel memory [] []
-      pure $
-        if not (null names)
-          then Left (HasImports names)
-          else do
-            (_, v) <- callMode plugin 0 BS.empty
-            if v /= abiVersion
-              then Left (AbiMismatch v)
-              else do
-                (bytes, _) <- callMode plugin 1 BS.empty
-                (cmds, filts) <- decodeDescription bytes
-                Right plugin {pluginCommands = cmds, pluginFilters = filts}
+      if not (null names)
+        then pure (Left (HasImports names))
+        else do
+          version <- callMode plugin 0 BS.empty
+          case version of
+            Left e -> pure (Left e)
+            Right (_, v)
+              | v /= abiVersion -> pure (Left (AbiMismatch v))
+              | otherwise -> do
+                  described <- callMode plugin 1 BS.empty
+                  pure $ do
+                    (bytes, _) <- described
+                    (cmds, filts) <- decodeDescription bytes
+                    Right plugin {pluginCommands = cmds, pluginFilters = filts}
 
-callMode :: Plugin -> CInt -> ByteString -> Either PluginError (ByteString, Word32)
-callMode plugin mode input = unsafePerformIO $ withForeignPtr (plPtr plugin) $ \p ->
+callMode :: Plugin -> CInt -> ByteString -> IO (Either PluginError (ByteString, Word32))
+callMode plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
   BU.unsafeUseAsCStringLen input $ \(inPtr, inLen) ->
     alloca $ \outPtr -> alloca $ \outLen -> alloca $ \u32 -> do
       poke outPtr nullPtr
@@ -179,9 +185,14 @@ callMode plugin mode input = unsafePerformIO $ withForeignPtr (plPtr plugin) $ \
         5 -> Left (InstantiateFailed msg)
         _ -> Left (Trapped msg)
 
--- | One call of @golem_invoke@ with raw CBOR.
+{- | One call of @golem_invoke@ with raw CBOR. The one unsafePerformIO of
+this module (docs/adr ADR 0034): the evaluator, a pure function, calls
+it. It is a function of the plugin and the input alone, since each call
+gets a fresh store and instance, the plugin has no imports, and its
+limits are counted in instructions and bytes, not in time (ADR 0001).
+-}
 invokeRaw :: Plugin -> ByteString -> Either PluginError ByteString
-invokeRaw plugin input = fst <$> callMode plugin 2 input
+invokeRaw plugin input = fst <$> unsafePerformIO (callMode plugin 2 input)
 
 decodeTermBytes :: ByteString -> Either PluginError Term
 decodeTermBytes b = case deserialiseFromBytes decodeTerm (BL.fromStrict b) of

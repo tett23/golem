@@ -198,6 +198,16 @@ uint32_t golem_font_cid(golem_font *f, uint32_t gid) {
   return found ? cid : gid;
 }
 
+/* Whether the font is a CID-keyed CFF font, whose glyphs have CIDs
+   (docs/adr ADR 0034: Golem reads them all when it opens the font). */
+int golem_font_is_cid_keyed(golem_font *f) {
+  FT_Bool is_cid = 0;
+  LOCK_FT(f);
+  int r = FT_Get_CID_Is_Internally_CID_Keyed(f->face, &is_cid) == 0 && is_cid;
+  UNLOCK_FT(f);
+  return r;
+}
+
 /* The ROS of a CID-keyed CFF font (golem-pdf ADR 0006). */
 int golem_font_ros(golem_font *f, const char **registry, const char **ordering,
                    int *supplement) {
