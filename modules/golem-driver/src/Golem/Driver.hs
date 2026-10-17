@@ -37,7 +37,7 @@ where
 
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
-import Control.Monad (forM, forM_, mfilter, when)
+import Control.Monad (filterM, forM, forM_, mfilter, when)
 import Data.Aeson qualified as J
 import Data.Aeson.Key qualified as JK
 import Data.Aeson.KeyMap qualified as KM
@@ -49,6 +49,7 @@ import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.Scientific (Scientific, base10Exponent, coefficient)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -80,7 +81,7 @@ import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Text qualified as GT
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, removeDirectoryRecursive)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 
 data Target = TargetHtml | TargetEpub | TargetText | TargetPdf
@@ -432,9 +433,24 @@ cslEntry = \case
     -- the first number of the first date-parts, or else the literal
     date = \case
       J.Object i -> case KM.lookup "date-parts" i of
-        Just (J.Array ps) | (J.Array y : _) <- V.toList ps, (J.Number n : _) <- V.toList y -> Just (DateYear (round n))
+        Just (J.Array ps) | (J.Array y : _) <- V.toList ps, (J.Number n : _) <- V.toList y, Just yr <- cslYear n -> Just (DateYear yr)
         _ -> DateLiteral <$> str "literal" i
       _ -> Nothing
+
+{- | The year of a CSL-JSON number (docs/adr ADR 0035): Nothing from 10^15
+up, 0 below 0.1, and otherwise the number rounded. It is judged from the
+coefficient and the exponent, so that 1e1000000000 does not become an
+integer of a billion digits.
+-}
+cslYear :: Scientific -> Maybe Integer
+cslYear n
+  | c == 0 = Just 0
+  | magnitude > 15 = Nothing
+  | magnitude < 0 = Just 0
+  | otherwise = Just (round n)
+  where
+    c = coefficient n
+    magnitude = length (show (abs c)) + base10Exponent n
 
 targetsOf :: Manifest -> [Target]
 targetsOf m =
@@ -609,8 +625,37 @@ optionsInput opts =
     <> " profile="
     <> (case optProfile opts of Dev -> "dev"; Prod -> "prod")
 
+{- | Writes the targets, after G0813 (docs/adr ADR 0035): @build@ and the
+folder of each target that is written must be real folders or missing, not
+symbolic links nor other files, or nothing is removed nor written.
+-}
 writeTargets :: Bool -> BuildOptions -> Evaluated -> FileId -> Book -> Map FilePath PathError -> [Target] -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
 writeTargets inMemory opts e diagFid book missing targets = do
+  let written = [t | t <- targets, not (inMemory && t == TargetPdf)]
+  unsafe <- if null written then pure [] else unsafeOutputDirs (optRoot opts) written
+  case unsafe of
+    [] -> writeTargetsChecked inMemory opts e diagFid book missing targets
+    ps -> pure ([], [diagnostic "G0813" Error (mkSpan diagFid 0 0) ("出力先がシンボリックリンクかディレクトリではないので、消すことも書くこともしません: " <> T.pack p) | p <- ps], Nothing)
+
+{- | The output folders, relative to the root, that are symbolic links (to
+anywhere, or nowhere) or files that are not folders: @build@ and the folder
+of each target.
+-}
+unsafeOutputDirs :: FilePath -> [Target] -> IO [FilePath]
+unsafeOutputDirs root targets = filterM unsafe ("build" : nub (map targetDir targets))
+  where
+    targetDir = \case
+      TargetHtml -> "build/html"
+      TargetEpub -> "build/epub"
+      TargetText -> "build/text"
+      TargetPdf -> "build/pdf"
+    unsafe rel = do
+      let p = root </> rel
+      link <- fromRight False <$> (try (pathIsSymbolicLink p) :: IO (Either SomeException Bool))
+      if link then pure True else doesFileExist p
+
+writeTargetsChecked :: Bool -> BuildOptions -> Evaluated -> FileId -> Book -> Map FilePath PathError -> [Target] -> IO ([FilePath], [Diagnostic], Maybe (BS.ByteString, View))
+writeTargetsChecked inMemory opts e diagFid book missing targets = do
   let root = optRoot opts
       project = evProject e
       style = evStyle e
