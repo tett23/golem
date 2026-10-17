@@ -88,6 +88,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Time.Calendar (toGregorian)
 import Golem.Doc.Assemble
+import Golem.Doc.Bibliography (EntryPart (..))
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers
 import Golem.Doc.Numbering (numberSeparator)
@@ -232,7 +233,7 @@ data PdfInput = PdfInput
     -- | bytes of every input, for the instance ID
     piInputs :: ![ByteString],
     -- | the formatted entries of the bibliography by key (golem-driver ADR 0007)
-    piBibliography :: !(Map Text Text),
+    piBibliography :: !(Map Text [EntryPart]),
     -- | the crop marks (golem-pdf ADR 0004)
     piMarks :: !(Maybe P.MarkStyle),
     -- | the styles each file defines (docs/adr ADR 0014)
@@ -478,7 +479,9 @@ restyle style lk = \case
               lkProportional = fromMaybe (lkProportional lk) (csProportional cs),
               lkBaselineShift = maybe (lkBaselineShift lk) (dimToSp size) (csBaselineShift cs),
               -- code breaks at spaces and after a slash (golem-driver ADR 0017)
-              lkCode = lkCode lk || code
+              lkCode = lkCode lk || code,
+              -- a URL breaks as code, after the last slash of a run (golem-doc ADR 0005)
+              lkUrl = lkUrl lk || isUrlCharStyle style name
             }
       where
         code = isCodeCharStyle style name
@@ -1241,10 +1244,21 @@ indexLines vertical pageOf = go Nothing
     entry prefix term ps =
       prefix <> [txt term] <> (if null ps then [] else txt "　" : intercalate [txt (if vertical then "、" else ", ")] [[Number sp0 n Nothing] | n <- ps])
 
--- | The lines of the bibliography: @[n] @ and the entry, or the key when it has none.
-bibliographyLines :: Map Text Text -> [(Text, Int)] -> [[Inline]]
+{- | The lines of the bibliography: @[n] @ and the entry, or the key when
+it has none; a URL is in the character style url (golem-doc ADR 0005).
+-}
+bibliographyLines :: Map Text [EntryPart] -> [(Text, Int)] -> [[Inline]]
 bibliographyLines bib cites =
-  [[Text (mkSpan (FileId 0) 0 0) ("[" <> T.pack (show n) <> "] " <> fromMaybe k (Map.lookup k bib))] | (k, n) <- cites]
+  [ merged (EntryText ("[" <> T.pack (show n) <> "] ") : fromMaybe [EntryText k] (Map.lookup k bib))
+  | (k, n) <- cites
+  ]
+  where
+    sp0 = mkSpan (FileId 0) 0 0
+    merged = \case
+      EntryText a : EntryText b : rest -> merged (EntryText (a <> b) : rest)
+      EntryText a : rest -> Text sp0 a : merged rest
+      EntryUrl u : rest -> CharStyle sp0 "url" [Text sp0 u] : merged rest
+      [] -> []
 
 {- | The role, size and line pitch of sidenotes: the role and size of the
 paragraph style sidenote (golem-driver ADR 0011), the body pitch scaled
@@ -1560,7 +1574,7 @@ with the styles its file defines (docs/adr ADR 0014). Lists are numbered
 in document order; the units inside a list know the lists around them
 (golem-driver ADR 0013).
 -}
-unitsOf :: Text -> Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) -> (SrcSpan -> Maybe Integer) -> Map Text Text -> [Unit]
+unitsOf :: Text -> Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) -> (SrcSpan -> Maybe Integer) -> Map Text [EntryPart] -> [Unit]
 unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL doc 0 (bookDocs book)))
   where
     sp0 = mkSpan (FileId 0) 0 0

@@ -36,6 +36,7 @@ module Golem.Project.Style
     charStyle,
     paraStyle,
     isCodeCharStyle,
+    isUrlCharStyle,
     codeParaKeys,
     paraLineBreaks,
     validStyleName,
@@ -412,14 +413,15 @@ decimalOf s = case T.splitOn "." s of
   [i, f] | not (T.null i), not (T.null f), T.all isDigit (i <> f) -> Just (read (T.unpack (i <> f)) % (10 ^ T.length f))
   _ -> Nothing
 
--- | The built-in character styles: bold, italic, strong and code (golem-driver ADR 0017).
+-- | The built-in character styles: bold, italic, strong, code (golem-driver ADR 0017) and url (golem-doc ADR 0005).
 builtinCharStyles :: Map Text CharStyleDef
 builtinCharStyles =
   Map.fromList
     [ ("bold", noCharDef {csSyntheticBold = Just True}),
       ("code", noCharDef {csFont = Just "code"}),
       ("italic", noCharDef {csSyntheticItalic = Just True}),
-      ("strong", noCharDef {csBasedOn = Just "bold"})
+      ("strong", noCharDef {csBasedOn = Just "bold"}),
+      ("url", noCharDef)
     ]
 
 -- | The built-in paragraph styles: body, verse, caption, sidenote and code (golem-driver ADR 0017).
@@ -441,10 +443,20 @@ codeParaKeys = ["font", "size", "background", "padding", "border", "border-width
 (golem-driver ADR 0017).
 -}
 isCodeCharStyle :: Style -> Text -> Bool
-isCodeCharStyle style = go []
+isCodeCharStyle = reachesCharStyle "code"
+
+{- | Whether a character style is url or reaches url through based-on
+(golem-doc ADR 0005): the PDF breaks it as code, but it loads no font.
+-}
+isUrlCharStyle :: Style -> Text -> Bool
+isUrlCharStyle = reachesCharStyle "url"
+
+-- | Whether a character style is a built-in one or reaches it through based-on.
+reachesCharStyle :: Text -> Style -> Text -> Bool
+reachesCharStyle builtin style = go []
   where
     go seen name
-      | name == "code" = Map.member "code" (stCharStyles style)
+      | name == builtin = Map.member builtin (stCharStyles style)
       | name `elem` seen = False
       | otherwise = maybe False (go (name : seen)) (Map.lookup name (stCharStyles style) >>= csBasedOn)
 

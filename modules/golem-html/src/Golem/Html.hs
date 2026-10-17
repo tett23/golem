@@ -34,6 +34,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.Assemble
+import Golem.Doc.Bibliography (EntryPart (..))
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers
 import Golem.Doc.Numbering (numberSeparator)
@@ -61,7 +62,7 @@ data HtmlConfig = HtmlConfig
     hcCaptionFace :: !Face,
     -- | the font and size of sidenotes (golem-driver ADR 0011)
     hcSidenoteFace :: !Face,
-    hcBibliography :: !(Map Text Text), -- key -> formatted entry
+    hcBibliography :: !(Map Text [EntryPart]), -- key -> formatted entry (golem-doc ADR 0005)
     hcDev :: !Bool,
     -- | [composition.ruby] as CSS ruby-align values (golem-layout ADR 0009)
     hcRubyMonoAlign :: !Text,
@@ -390,12 +391,18 @@ block c (Block sp lbl body) = case body of
   ChannelOutput BibliographyOutput ->
     "<ol class=\"bibliography\">\n"
       <> T.concat
-        [ "<li id=\"cite-" <> escapeXml k <> "\">" <> escapeXml (fromMaybe k (Map.lookup k (hcBibliography (cCfg c)))) <> "</li>\n"
+        [ "<li id=\"cite-" <> escapeXml k <> "\">" <> maybe (escapeXml k) (T.concat . map entryPart) (Map.lookup k (hcBibliography (cCfg c))) <> "</li>\n"
         | (k, _) <- bookCitations (cBook c)
         ]
       <> "</ol>\n"
   ForcedBreak _ -> ""
   where
+    -- a URL of http or https is a link; another URL is not (golem-doc ADR 0005)
+    entryPart = \case
+      EntryText t -> escapeXml t
+      EntryUrl u
+        | any (`T.isPrefixOf` T.toLower u) ["http:", "https:"] -> "<a class=\"cs-url\" href=\"" <> escapeXml u <> "\">" <> escapeXml u <> "</a>"
+        | otherwise -> "<span class=\"cs-url\">" <> escapeXml u <> "</span>"
     -- the lists inside count one deeper; with [lists], the class of the depth (golem-driver ADR 0013)
     depth = cListDepth c + 1
     inList = c {cListDepth = depth}
