@@ -145,9 +145,39 @@ chapterNoteTests =
       assertBool "no nav" (not ("注" `T.isInfixOf` T.concat [t | (_, t) <- sitePages (renderXhtml cfg0 ft (twoFileBook 1 2 [0, 0])), "<nav" `T.isInfixOf` t]))
   ]
 
+-- | A paragraph style that sets nothing but its rules.
+ruled :: Maybe HtmlRule -> Maybe HtmlRule -> HtmlParaStyle
+ruled = HtmlParaStyle Nothing False 0 "0" "0" noFeatures
+
+-- | A solid rule of 0.5pt as wide as the line, 1em above and nothing below.
+solid :: HtmlRule
+solid = HtmlRule (Just "100%") Nothing Nothing "0.5pt solid" "1em" "0"
+
+ruleTests :: [TestTree]
+ruleTests =
+  [ testCase "the rule before a paragraph style is its ::before, a block with a border, space-before above and space-after below" $
+      cssLines "p.ps-sec::" cfg0 {hcParaStyles = Map.fromList [("sec", ruled (Just solid) Nothing)]}
+        @?= ["p.ps-sec::before { content: \"\"; display: block; width: 100%; border-block-start: 0.5pt solid; margin-block: 1em 0; }"],
+    testCase "the rule after is ::after with the same order of spaces" $
+      cssLines "p.ps-sec::" cfg0 {hcParaStyles = Map.fromList [("sec", ruled Nothing (Just solid {hrOuter = "2pt", hrInner = "3pt"}))]}
+        @?= ["p.ps-sec::after { content: \"\"; display: block; width: 100%; border-block-start: 0.5pt solid; margin-block: 2pt 3pt; }"],
+    testCase "indents without a width are margin-inline-start and margin-inline-end, and no width" $
+      cssLines "p.ps-sec::" cfg0 {hcParaStyles = Map.fromList [("sec", ruled (Just (HtmlRule Nothing (Just "-2em") (Just "1em") "1pt dashed rgb(255, 0, 0)" "0" "0")) Nothing)]}
+        @?= ["p.ps-sec::before { content: \"\"; display: block; border-block-start: 1pt dashed rgb(255, 0, 0); margin-block: 0 0; margin-inline-start: -2em; margin-inline-end: 1em; }"],
+    testCase "the rules of the body style go to the paragraphs without a class" $
+      map (T.takeWhile (/= ' ')) (cssLines "p:not([class])::" cfg0 {hcParaStyles = Map.fromList [("body", ruled (Just solid) (Just solid))]})
+        @?= ["p:not([class])::before", "p:not([class])::after"],
+    testCase "the code style writes no rules" $
+      filter ("::" `T.isInfixOf`) (cssLines "p" cfg0 {hcParaStyles = Map.fromList [("code", ruled (Just solid) (Just solid))]}) @?= [],
+    testCase "the rules of a heading level are h<level>::before and ::after; a level without rules writes none" $
+      map (T.takeWhile (/= ' ')) (cssLines "h" cfg0 {hcHeadingRules = Map.fromList [(1, (Nothing, Nothing)), (3, (Just solid, Just solid))]})
+        @?= ["h3::before", "h3::after"]
+  ]
+
 tests :: [TestTree]
 tests =
-  [ testGroup
+  [ testGroup "the rules of paragraph styles and headings (golem-driver ADR 0027)" ruleTests,
+    testGroup
       "colours: R = 255 × (1 − C) × (1 − K), rounded"
       [ testCase "white for no ink" $ cmykToRgb (0, 0, 0, 0) @?= (255, 255, 255),
         testCase "black for full K" $ cmykToRgb (0, 0, 0, 100) @?= (0, 0, 0),
@@ -169,6 +199,25 @@ tests =
           let path = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em")
               cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcCharStyles = Map.fromList [("path", path)]}
            in cssLines ".cs-path" cfg @?= [".cs-path { hyphens: none; background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
+        testCase "a file's code style without a background resets them: transparent and 0" $
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing Nothing
+              cfg = cfg0 {hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("code", code)]) Map.empty Nothing Nothing)]}
+           in cssLines "body.file-1 code" cfg
+                @?= ["body.file-1 code { font-family: inherit; font-weight: normal; font-style: normal; color: inherit; background-color: transparent; padding-inline: 0; }"],
+        testCase "a file's code style with a background has its rgb() and padding" $
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em")
+              cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("code", code)]) Map.empty Nothing Nothing)]}
+           in cssLines "body.file-1 code" cfg
+                @?= ["body.file-1 code { font-family: inherit; font-weight: normal; font-style: normal; color: inherit; background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
+        testCase "a file's character style that is not code has no background" $
+          let term = HtmlCharStyle Nothing False False Nothing noFeatures False (Just "code-bg") (Just "0.25em")
+              cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcLocalStyles = Map.fromList [(fidA, HtmlLocalStyles (Map.fromList [("term", term)]) Map.empty Nothing Nothing)]}
+           in cssLines "body.file-1 .cs-term" cfg
+                @?= ["body.file-1 .cs-term { font-family: inherit; font-weight: normal; font-style: normal; color: inherit; }"],
+        testCase "a background swatch that is not defined writes no background-color" $
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "nowhere") (Just "0.25em")
+              cfg = cfg0 {hcCharStyles = Map.fromList [("code", code)]}
+           in cssLines "code {" cfg @?= ["code { padding-inline: 0.25em; }"],
         testCase "code without a background: padding-inline only" $
           let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing (Just "0.25em")
               cfg = cfg0 {hcCharStyles = Map.fromList [("code", code)]}

@@ -128,6 +128,11 @@ headingNoteTests =
       let ps = paginate 2 8 [FParagraph (lines' 0 5), FHeading 2 False 1 [LineBox 20 [NoteBody (nid 900) 3] [] [] 0], FParagraph (lines' 30 2)]
       [(poNumber p, poColumn p, [i | (i, _, _) <- poFootnotes p]) | p <- ps] @?= [(1, 0, []), (1, 1, [nid 900])]
       contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 3, SLine 4], [SHeading 20 1, SLine 30, SLine 31]],
+    testCase "a heading on a page that has notes counts no second separator for its note (golem-layout ADR 0013)" $ do
+      -- separator 1: three lines, the separator and a note take 5 of 9; heading 1 + its note 1 + two lines = 4 fit
+      let ps = paginateIn 1 (ColumnSet 1 0 0 0) 9 [FParagraph (LineBox 0 [NoteBody (nid 800) 1] [] [] 0 : lines' 1 2), headingWithNote 20 (nid 900), FParagraph (lines' 30 2)]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2, SHeading 20 1, SLine 30, SLine 31]]
+      notesByPage ps @?= [(1, [nid 800, nid 900])],
     testCase "the label of a heading sent to the next page is on that page" $ do
       let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 2 False 1 [LineBox 20 [] ["sec"] [] 0], FParagraph (lines' 30 2)]
       labelPages ps @?= Map.fromList [("sec", 2)]

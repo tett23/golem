@@ -165,6 +165,28 @@ drawingTests =
           length ends @?= 2 + 2
           (ends !! 1, last ends) @?= ((20, 0), (20, 10))
         other -> assertFailure (show other),
+    testCase "an arc to its own start draws nothing" $ do
+      ops <- drawing "<path d=\"M 5 5 A 1 1 0 0 1 5 5 L 6 6\"/>"
+      map snd (paths ops) @?= [[MoveTo (5, 5), LineTo (6, 6)]],
+    testCase "an arc with a radius of 0 is a straight line" $ do
+      ops <- drawing "<path d=\"M 0 0 A 0 5 0 0 1 10 0\"/>"
+      map snd (paths ops) @?= [[MoveTo (0, 0), LineTo (10, 0)]],
+    testGroup
+      "radii too small are scaled up to a half circle; the sweep flag picks its side"
+      [ testCase (name <> " passes near " <> show (fromRational (fst mid) :: Double, fromRational (snd mid) :: Double)) $ do
+          ops <- drawing ("<path d=\"M 0 0 A " <> radii <> " 0 0 " <> flag <> " 10 0\"/>")
+          case map snd (paths ops) of
+            [[MoveTo (0, 0), CurveTo _ _ (mx, my), CurveTo _ _ end]] -> do
+              -- a radius of 5 from the centre (5, 0): the middle of the arc is 5 above or below it
+              assertBool (show (mx, my)) (abs (mx - fst mid) < 1 / 10000 && abs (my - snd mid) < 1 / 10000)
+              end @?= (10, 0)
+            other -> assertFailure (show other)
+      | (name, radii, flag, mid) <-
+          [ ("sweep 1", "1 1", "1", (5, -5)),
+            ("sweep 0", "1 1", "0", (5, 5)),
+            ("negative radii", "-1 -1", "1", (5, -5))
+          ]
+      ],
     goldenVsString "rotate(30) and an arc" "test/golden/rotate-arc.txt" $ do
       let doc = svg "<g transform=\"rotate(30) translate(1,2)\"><path d=\"M0 0 A 5 3 20 0 1 7 4\"/></g>"
       pure (BL.fromStrict (TE.encodeUtf8 (T.pack (either show (show . svgDrawing) (readSvg doc)) <> "\n"))),
