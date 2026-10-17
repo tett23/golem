@@ -4735,7 +4735,8 @@ PDF を書かない。
 
 `@figure` の画像のファイルはあるが、PDF に置ける形で読めない。
 PNG と JPEG の図版は画像として読めないとき、PDF の図版は Golem が取り込めないときに出す。
-SVG の図版は、XML として読めないとき、UTF-8 でないとき、内部サブセットを持つ `DOCTYPE` があるとき、大きさ（ルートの `width` と `height` か `viewBox`）がないときに出す（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。SVG の範囲の外のものは [G0811](#g0811) である。
+SVG の図版は、XML として読めないとき、UTF-8 でないとき、内部サブセットを持つ `DOCTYPE` があるとき、大きさ（ルートの `width` と `height` か `viewBox`）がないときに出す（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+SVG の範囲の外のものは [G0811](#g0811) である。
 PDF の図版を取り込めないのは、次のどれかの場合である。
 
 - 相互参照などが壊れている。
