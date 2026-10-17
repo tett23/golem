@@ -6,6 +6,7 @@ samples can be worked out by hand.
 module ImageSpec (tests) where
 
 import Codec.Compression.Zlib qualified as Z
+import Control.Exception (SomeException, evaluate, try)
 import Data.Bits (shiftR)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -13,6 +14,7 @@ import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Map.Strict qualified as Map
 import Data.Word (Word8)
+import GHC.Stats (allocated_bytes, getRTSStats, getRTSStatsEnabled)
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf
 import Test.Tasty
@@ -235,4 +237,74 @@ scaledRunTests =
     ]
 
 tests :: TestTree
-tests = testGroup "images and scaled runs (golem-pdf ADR 0001)" [filterTests, pngTests, jpegTests, rejectionTests, scaledRunTests]
+tests = testGroup "images and scaled runs (golem-pdf ADR 0001)" [filterTests, pngTests, jpegTests, rejectionTests, hostileTests, scaledRunTests]
+
+-- ------------------------------------------------------------------ hostile images
+
+-- | The result of reading, fully evaluated; an exception is a failure.
+total :: ByteString -> IO (Either String ByteString)
+total b = do
+  r <- try (evaluate (forceResult (readImage b)))
+  case r of
+    Left (e :: SomeException) -> assertFailure ("readImage threw: " <> show e)
+    Right x -> pure x
+  where
+    forceResult = \case
+      Left e -> length e `seq` Left e
+      Right img -> BS.length (imgData img) `seq` maybe () (`seq` ()) (imgIcc img) `seq` Right (imgData img)
+
+-- | A zlib stream of n zero bytes, made lazily.
+zeros :: Int -> ByteString
+zeros n = BL.toStrict (Z.compress (BL.replicate (fromIntegral n) 0))
+
+-- | Bytes allocated by an action (GHC.Stats; the suite runs with -T).
+allocatedBy :: IO a -> IO (a, Integer)
+allocatedBy act = do
+  enabled <- getRTSStatsEnabled
+  if not enabled
+    then assertFailure "the test suite needs +RTS -T"
+    else do
+      before <- allocated_bytes <$> getRTSStats
+      x <- act
+      after <- allocated_bytes <$> getRTSStats
+      pure (x, toInteger (after - before))
+
+hostileTests :: TestTree
+hostileTests =
+  testGroup
+    "hostile images end, without exceptions and within limits (docs/adr ADR 0035)"
+    [ localOption (mkTimeout 5000000)
+        $ testCase "alpha with a bit depth under 8 is an error, not an endless list"
+        $ total (png [ihdr 2 1 4 6 0, idat [0, 0, 0, 0, 0]]) >>= (@?= Left "PNG のビット深度が色の種類に合いません"),
+      testCase "a bit depth the colour type does not allow is an error" $
+        total (png [ihdr 1 1 16 3 0, chunk "PLTE" (BS.pack [1, 2, 3]), idat [0, 0, 0]]) >>= (@?= Left "PNG のビット深度が色の種類に合いません"),
+      testCase "an IHDR shorter than 13 bytes is an error" $
+        total (png [chunk "IHDR" (be32 1 <> be32 1 <> BS.pack [8]), idat [0, 0]]) >>= (@?= Left "PNG の IHDR が壊れています"),
+      testCase "a width or height of 0 is an error" $
+        total (png [ihdr 0 1 8 0 0, idat [0]]) >>= (@?= Left "PNG の IHDR が壊れています"),
+      localOption (mkTimeout 5000000)
+        $ testCase "a size that overflows Int is too large, at once"
+        $ total (png [ihdr 0x7FFFFFFF 0x7FFFFFFF 16 6 0, idat [0, 0]]) >>= (@?= Left "PNG の画像が大きすぎます"),
+      testCase "more than 512 MiB of samples is too large" $
+        total (png [ihdr 30000 30000 16 6 0, idat [0, 0]]) >>= (@?= Left "PNG の画像が大きすぎます"),
+      testCase "an IDAT that is not zlib is an error" $
+        total (png [ihdr 1 1 8 0 0, chunk "IDAT" "not zlib at all"]) >>= (@?= Left "PNG の画素のデータを展開できません"),
+      testCase "an IDAT that inflates to 64 MiB is read only as far as the image needs" $ do
+        let bomb = png [ihdr 1 1 8 0 0, chunk "IDAT" (zeros (64 * 1024 * 1024))]
+        _ <- evaluate (BS.length bomb)
+        (r, bytes) <- allocatedBy (total bomb)
+        r @?= Right (BS.pack [0])
+        assertBool ("allocated " <> show bytes) (bytes < 16 * 1024 * 1024),
+      testCase "an ICC profile that inflates beyond 32 MiB is an error" $ do
+        let iccp = chunk "iCCP" ("p\0\0" <> zeros (64 * 1024 * 1024))
+        total (png [ihdr 1 1 8 0 0, iccp, idat [0, 0]]) >>= (@?= Left "PNG の ICC プロファイルが大きすぎます"),
+      testCase "an ICC profile that is not zlib is an error" $
+        total (png [ihdr 1 1 8 0 0, chunk "iCCP" "p\0\0garbage", idat [0, 0]]) >>= (@?= Left "PNG の ICC プロファイルを展開できません"),
+      testCase "a JPEG SOF shorter than 6 bytes is an error" $
+        total (jpegOf [(0xC0, BS.pack [8, 0, 1])]) >>= (@?= Left "JPEG の SOF が壊れています"),
+      testCase "a JPEG APP2 ICC piece shorter than 14 bytes is left out" $ do
+        r <- try (evaluate (fmap imgIcc (readImage (jpegOf [(0xE2, "ICC_PROFILE\0"), sof 3]))))
+        case r of
+          Left (e :: SomeException) -> assertFailure ("readImage threw: " <> show e)
+          Right x -> x @?= Right Nothing
+    ]

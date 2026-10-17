@@ -42,6 +42,8 @@ test-suite golem-pdf-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    ImageSpec
+  -- GHC.Stats measures what reading a hostile image allocates (docs/adr ADR 0035)
+  ghc-options:      -rtsopts -with-rtsopts=-T
   build-depends:
     , base
     , bytestring
