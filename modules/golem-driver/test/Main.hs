@@ -13,6 +13,7 @@ import PluginsSpec
 import ReferencesSpec
 import SecuritySpec
 import StylesSpec
+import TableFilesSpec
 import Test.Tasty
 
 main :: IO ()
@@ -34,7 +35,8 @@ tests =
         versionTests,
         memoTests,
         producerTests,
-        securityTests
+        securityTests,
+        tableFileTests
       ]
         <> buildTests
         <> [ newProjectTests,

@@ -26,7 +26,7 @@ lintProject profile noNotices root = do
   ev <- evaluateProject profile root
   pure $ case ev of
     Left f -> (pfSources f, finish Set.empty (pfDiagnostics f))
-    Right e -> (withLockSource e (sourceInfos (evProject e)), finish (manifestSilencedNotices (projectManifest (evProject e))) (evDiagnostics e <> lintEvaluated e))
+    Right e -> (withEvaluatedSources e (sourceInfos (evProject e)), finish (manifestSilencedNotices (projectManifest (evProject e))) (evDiagnostics e <> lintEvaluated e))
   where
     finish silenced = sortDiagnostics . silenceNotices (if noNotices then Nothing else Just silenced) . map (adjustForProfile profile)
 

@@ -81,6 +81,7 @@ test-suite golem-driver-test
     ReferencesSpec
     SecuritySpec
     StylesSpec
+    TableFilesSpec
     Support
   build-depends:
     , base
