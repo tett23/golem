@@ -47,7 +47,9 @@ test-suite golem-lsp-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    EditingSpec
-  ghc-options:      -threaded
+  -- -N: one capability per processor from the start, so that the count
+  -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
+  ghc-options:      -threaded "-with-rtsopts=-N"
   build-depends:
     , aeson
     , base

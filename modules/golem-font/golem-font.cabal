@@ -76,8 +76,10 @@ test-suite golem-font-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    ConcurrencySpec
-  -- ConcurrencySpec shapes one font from several capabilities at once
-  ghc-options:      -threaded
+  -- ConcurrencySpec shapes one font from several capabilities at once;
+  -- -N: one capability per processor from the start, so that the count
+  -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
+  ghc-options:      -threaded "-with-rtsopts=-N"
   build-depends:
     , base
     , bytestring
@@ -98,7 +100,8 @@ test-suite golem-font-race-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test/race
   main-is:          Main.hs
-  ghc-options:      -threaded
+  -- -N: as golem-font-test
+  ghc-options:      -threaded "-with-rtsopts=-N"
   build-depends:
     , base
     , bytestring
