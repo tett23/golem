@@ -89,7 +89,8 @@ cbor =
         assertBool "rejected" (isLeft (decodeInlines bytes)),
       testCase "wrong ABI version is rejected" $ do
         let bytes = toStrictByteString (encodeTerm (TList [TInt 99, TInt 0, TList []]))
-        assertBool "rejected" (isLeft (decodeDocument bytes)),
+        assertBool "rejected" (isLeft (decodeDocument bytes))
+        either id (const "") (decodeDocument bytes) @?= "ABI のバージョンが異なります: 99",
       testCase "a document of ABI version 2 is rejected (docs/adr ADR 0005)" $ do
         let bytes = toStrictByteString (encodeTerm (TList [TInt 2, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes)),

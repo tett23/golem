@@ -26,7 +26,7 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 | [code: golem plugin lock] | [code: plugins.lock] を更新する |
 | [code: golem inspect FILE] | CST、AST、IR を表示する |
 | [code: golem explain] | diagnostic のコードの説明を表示する |
-| [code: golem --version] | 版を表示する |
+| [code: golem --version] | バージョンを表示する |
 
 オプションはコマンドごとに決まっている。
 主なものを次に示す。

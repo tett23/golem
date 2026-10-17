@@ -120,7 +120,7 @@ WASI がないので、標準入出力やファイルを使うライブラリは
 | 名前 | 型 | 役割 |
 | --- | --- | --- |
 | [code: memory] | メモリ | 入力と出力を置く線形メモリ |
-| [code: golem_abi_version] | [code: () -> u32] | ABI の版 |
+| [code: golem_abi_version] | [code: () -> u32] | ABI のバージョン |
 | [code: golem_describe] | [code: () -> u64] | コマンドとフィルタの名前の一覧を CBOR で返す |
 | [code: golem_alloc] | [code: (len: u32) -> u32] | 入力を書く領域を確保し、その位置を返す |
 | [code: golem_invoke] | [code: (ptr: u32, len: u32) -> u64] | CBOR の要求を受け取り、CBOR の応答を返す |
@@ -139,8 +139,8 @@ ADR は領域を解放する [code: golem_dealloc(ptr: u32, len: u32)] も挙げ
 + 返った [code: u64] から応答の位置と長さを取り出し、応答の CBOR を読む。
 + インスタンスを捨てる。
 
-読み込みの時点で、ホストは [code: golem_abi_version] を呼び、ホストの ABI の版と比べる。
-今の ABI の版は 6 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
+読み込みの時点で、ホストは [code: golem_abi_version] を呼び、ホストの ABI のバージョンと比べる。
+今の ABI のバージョンは 6 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
 一致しなければ、読み込みの時点でエラー（G0605）になる。
 続けて [code: golem_describe] を呼び、プラグインが提供するコマンドとフィルタの名前を得る。
 
@@ -201,7 +201,7 @@ description = [commands: [* tstr], filters: [* tstr]]
 | G0602 | [code: plugins.lock] にないか、URL がマニフェストと違う |
 | G0603 | キャッシュにない（[code: golem plugin fetch] を求める） |
 | G0604 | キャッシュの配布物のハッシュが一致しない |
-| G0605 | wasm として読み込めない（import、ABI の版、関数の欠けを含む） |
+| G0605 | wasm として読み込めない（import、ABI のバージョン、関数の欠けを含む） |
 | G0606 | 二つ以上のプラグインが同じコマンドを提供する |
 | G0607 | 組み込みのコマンドとの衝突に [code: overrides] の宣言がない |
 | G0608 | [code: overrides] の名前が誤っている |
@@ -213,7 +213,7 @@ diagnostic の位置は、ほとんどが [code: manifest.toml] の先頭であ�
 マニフェストはプラグインの宣言の位置を持たないので、メッセージにプラグインの名前を書いて、宣言を見つけられるようにしている。
 例外は二つで、G0609 はコマンドを呼んだ箇所か、フィルタを適用したファイルの先頭を指し、G0611 は [code: plugins.lock] の中の位置を指す。
 
-G0605 と G0609 のメッセージには、理由が続く（[code: プラグインの ABI の版が異なります: 4] など）。
+G0605 と G0609 のメッセージには、理由が続く（[code: プラグインの ABI のバージョンが異なります: 4] など）。
 G0609 のメッセージは [code: <プラグイン>.<コマンド>: <理由>] の形で、どのプラグインのどのコマンドが失敗したかを示す。
 読み込みか検査で誤りが出たときは、そのプラグインのコマンドを未知のコマンド（G0222）として報告しない。
 読み込めなかったプラグインのコマンドがすべて G0222 になり、本当の原因を埋もれさせるのを防ぐためである。

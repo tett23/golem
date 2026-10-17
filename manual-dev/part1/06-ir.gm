@@ -101,11 +101,11 @@ Haskell の型（golem-doc の [code: Golem.Doc.IR]）は手で書き、CDDL と
 - 直和型は [code: \[タグ番号, フィールド...\]] の配列で表す。タグ番号は一度割り当てたら変えず、使わなくなった番号も再利用しない。
 - マップを使わず、フィールドの順序で区別する。マップのキーの順序に依存しないためである。
 - CBOR は RFC 8949 [cite rfc8949] の決定的な符号化で書く。
-- スキーマの先頭に版を置き、ABI の版と一致させる。ノードやフィールドを足したら版を上げる。今の版は 6 である。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0023-code-block-book-features.md]（golem-driver ADR 0023「技術書のためのコードブロックの機能」）がコードブロックの形を変えて 6 にした。]
+- スキーマの先頭にバージョンを置き、ABI のバージョンと一致させる。ノードやフィールドを足したらバージョンを上げる。今のバージョンは 6 である。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0023-code-block-book-features.md]（golem-driver ADR 0023「技術書のためのコードブロックの機能」）がコードブロックの形を変えて 6 にした。]
 
 ## 文書とブロック
 
-ファイル一つ分の文書は、ABI の版、ファイルの番号、ブロックの列である。
+ファイル一つ分の文書は、ABI のバージョン、ファイルの番号、ブロックの列である。
 ブロックは、ソースの位置、ラベル、本体の三つを持つ。
 
 ```cddl

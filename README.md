@@ -85,7 +85,7 @@ golem new mybook
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
 | `golem inspect FILE --as cst\|ast\|ir` | 構文木と IR を表示する |
 | `golem explain [CODE]` | 診断のコードの説明を表示する。コードを省くと一覧を表示する |
-| `golem --version` | 版を表示する（例：`golem 0.1.0`） |
+| `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 
 原稿の段落は、既定では空行で区切る。
 一行を一つの段落として書く和文の原稿は、`manifest.toml` の `[source]` に `paragraph-separator = "line"` と書くと、改行ひとつで段落を区切って読む。
