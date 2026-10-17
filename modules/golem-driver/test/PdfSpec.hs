@@ -1,10 +1,10 @@
 module PdfSpec (qpdfInstalled, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests, ligatureTests) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.IORef (newIORef, readIORef)
-import Data.List (isSuffixOf, nub)
+import Data.List (isSuffixOf, nub, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
@@ -1272,6 +1272,16 @@ inlineCodeBackgroundTests =
           let (before, _) = BS.breakSubstring "<3042>" c
           assertBool "before the text" (" re f" `BS.isInfixOf` before)
         (cs, runs) -> assertFailure (show (length cs, runs)),
+    testCase "code with padding after it ends its rectangle before code of the same swatch without padding" $ do
+      -- ab: two characters of 5pt and 2.5pt on both sides; cd of the style kw, based on code, without padding
+      let kw = "\n[character-styles.kw]\nbased-on = \"code\"\npadding = \"0zw\"\n"
+      contents <- miniPdf fakeProvider True (horizontalStyle <> cbg <> kw) "[code: ab][style kw: cd]\n" [] >>= pageContents
+      case concatMap filledRects contents of
+        [[x1, _, w1, _], [x2, _, w2, _]] -> do
+          approx w1 15
+          approx w2 10
+          approx x2 (x1 + w1)
+        other -> assertFailure (show other),
     testCase "the space inside the code is painted" $ do
       contents <- miniPdf fakeProvider True (horizontalStyle <> cbg) "[code: a b]\n" [] >>= pageContents
       case concatMap filledRects contents of
@@ -1506,9 +1516,43 @@ extractedText tu content = go (BC.lines content)
       [w] | "Tj" `BS.isSuffixOf` l -> Just (hexInt (BC.filter (`notElem` ("<>" :: String)) w))
       _ -> Nothing
 
+{- | Every list of up to three glyphs drawn from glyph IDs 0 to 2 (0 is
+.notdef), the texts "", "a" and "ffi", and the three parts: 27^3 + 27^2 +
+27 + 1 = 20440 lists, checked exhaustively.
+-}
+allDrawn :: [[(Int, T.Text, ClusterPart)]]
+allDrawn = concatMap (`replicateM` one) [0 .. 3]
+  where
+    one = [(g, t, p) | g <- [0 .. 2], t <- ["", "a", "ffi"], p <- [ClusterWhole, ClusterLead, ClusterRest]]
+
 ligatureTests :: [TestTree]
 ligatureTests =
-  [ testCase "toUnicodeOf: a ligature maps to its whole cluster" $
+  [ testCase "toUnicodeOf, for every short drawing: each glyph once, in order, with the text of its first candidate of the best part" $ do
+      let expected drawn =
+            -- the candidates of a glyph: not glyph 0, not an empty text, not the rest of a cluster;
+            -- of the best part (ClusterWhole before ClusterLead), the first drawn: sortOn is stable
+            let candidates g = [(part, t) | (g', t, part) <- drawn, g' == g, g /= 0, not (T.null t), part /= ClusterRest]
+             in [(g, t) | g <- [0 .. 2], (_, t) : _ <- [sortOn fst (candidates g)]]
+      take 1 [(drawn, toUnicodeOf drawn) | drawn <- allDrawn, toUnicodeOf drawn /= expected drawn] @?= [],
+    testCase "actualTextOf, for every short drawing: the occurrences cut the glyphs in order, a first glyph with all the rest that follow it" $ do
+      let entries = Map.fromList [(1, "a"), (2, "ffi")]
+          -- the parts drawn, cut as the occurrences cut the glyphs
+          cut = \case
+            [] -> const []
+            n : ns -> \xs -> take n xs : cut ns (drop n xs)
+          wellFormed = \case
+            [_] -> True
+            ClusterLead : rest -> all (== ClusterRest) rest
+            _ -> False
+          bad drawn =
+            let occurrences = actualTextOf entries drawn
+                groups = cut (map (length . fst) occurrences) [p | (_, _, p) <- drawn]
+             in concatMap fst occurrences /= [g | (g, _, _) <- drawn]
+                  || not (all wellFormed groups)
+                  -- the rest of a cluster is never cut from the glyph that leads it
+                  || or [True | (ClusterLead : _, ClusterRest : _) <- zip groups (drop 1 groups)]
+      take 1 [(drawn, actualTextOf entries drawn) | drawn <- allDrawn, bad drawn] @?= [],
+    testCase "toUnicodeOf: a ligature maps to its whole cluster" $
       toUnicodeOf [(7, "ffi", ClusterWhole)] @?= [(7, "ffi")],
     testCase "toUnicodeOf: the cluster of two glyphs goes to the first only" $
       toUnicodeOf [(3, "é", ClusterLead), (4, "é", ClusterRest)] @?= [(3, "é")],
