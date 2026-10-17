@@ -25,6 +25,7 @@ import Hedgehog.Range qualified as Range
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
+import StaleS1Spec (staleS1Tests)
 import System.Directory (copyFile, createDirectoryIfMissing, makeAbsolute)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
@@ -382,7 +383,8 @@ tests =
                 uncurry (@?=) (srClampHover r8)
             ],
       editingTests,
-      tableWatchTests
+      tableWatchTests,
+      staleS1Tests
     ]
 
 data SessionSpec = SessionSpec
