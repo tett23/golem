@@ -251,11 +251,32 @@ HTML、EPUB、プレーンテキストには線を出しません。
 | [code: weight] | [code: "0.3pt"] | 線の太さです。[code: zw] では書けません。 |
 | [code: space-before] | なし | 本文の最後の行の字面の下端から線までの、少なくとも空ける間隔です。 |
 | [code: space-after] | なし | 線から脚注の一行目の字面の上端までの間隔です。 |
+| [code: color] | なし | 線の色のスウォッチの名前です。省くと色を設定せずに描き、黒になります。 |
+| [code: style] | [code: "solid"] | 線の種類です（次の表）。 |
+| [code: dash] | [code: weight] の 3 倍 | 破線の一つの線分の長さです。[code: "dashed"] のときだけ書けます。 |
+| [code: gap] | 線の種類による | 破線の線分のあいだ、点線の点のあいだの間隔です。[code: "dashed"]、[code: "dotted"]、[code: "japanese-dots"] のときだけ書けます。 |
 
 [code: space-before] と [code: space-after] のどちらか一方だけを書くと、もう一方は 0 になります。
 どちらも書かなければ、本文と脚注のあいだの一行の中央に線を引きます。
 間隔を書くと、本文と脚注のあいだの行の数が、間隔と線の太さが収まるまで増えます。
 [code: length] がないとき、値が 0 以下か負のとき、未知のキーを書いたときはエラー（G0306）です。
+[code: style] に表にない値を書いたとき、[code: dash] と [code: gap] を [code: zw] で書いたとき、0 以下のとき、その線の種類に書けないときもエラー（G0306）です。
+[code: color] のスウォッチが [code: \[color.swatches\]] にないときはエラー（G0313）です。
+
+| [code: style] | 形 | [code: gap] の既定 |
+|:---|:---|:---|
+| [code: "solid"] | 一本の線です。 | 書けません。 |
+| [code: "thin-thin"] | 二本の線です。線、間隔、線の太さの比が 1:1:1 です。 | 書けません。 |
+| [code: "thick-thick"] | 二本の線です。比が 2:1:2 です。 | 書けません。 |
+| [code: "thick-thin"] | 二本の線です。比が 2:1:1 です。 | 書けません。 |
+| [code: "thin-thick"] | 二本の線です。比が 1:1:2 です。 | 書けません。 |
+| [code: "thick-thin-thick"] | 三本の線です。比が 2:1:1:1:2 です。 | 書けません。 |
+| [code: "thin-thick-thin"] | 三本の線です。比が 1:1:2:1:1 です。 | 書けません。 |
+| [code: "triple"] | 三本の線です。比が 1:1:1:1:1 です。 | 書けません。 |
+| [code: "dashed"] | 線分の並びです。 | [code: weight] の 2 倍です。 |
+| [code: "dotted"] | 丸い点の並びです。 | [code: weight] の 2 倍です。 |
+| [code: "japanese-dots"] | 四角い点の並びです。 | [code: weight] と同じです。 |
+| [code: "wavy"] | 波の形の線です。 | 書けません。 |
 
 @nonumber
 ## [code: \[sidenotes\]]

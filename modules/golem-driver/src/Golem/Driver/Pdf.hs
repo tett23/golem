@@ -92,6 +92,7 @@ import Golem.Doc.IR
 import Golem.Doc.ListMarkers
 import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals (circled, formatNumber)
+import Golem.Driver.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
 import Golem.Driver.Version (golemVersion)
 import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
@@ -2619,10 +2620,21 @@ writeDocumentView inp geom fonts layout intent =
             noteLines = concat [[(nid, l) | l <- take cnt (drop from (Map.findWithDefault [] nid noteBodies))] | (nid, from, cnt) <- poFootnotes p]
             bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
             noteParts = [entry "脚注の行" (noteSpan nid) ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] []) | (slot, (nid, l)) <- zip bottomSlots noteLines]
+            {- each rule with its band, the weight of its thinnest part, its
+            marks and its swatch (golem-driver ADR 0028) -}
             rules =
-              [("表の罫線", r, t) | seg <- poTables p, Just w <- [Map.lookup (tsTable seg) (plTables layout)], (r, t) <- tableRules ta seg w]
-                <> [("脚注の罫線", r, t) | not (null noteLines), Just rule <- [stNotesRule style], let (r, t) = noteRule ta rule (length grid - length noteLines)]
-         in (lineParts <> noteParts, (figMarks, [(r, pf) | (_, r, pf) <- figures]), ([P.Rule r | (_, r, _) <- rules], rules), (map snd backgrounds, map fst backgrounds))
+              [("表の罫線", r, t, [P.Rule r], Nothing) | seg <- poTables p, Just w <- [Map.lookup (tsTable seg) (plTables layout)], (r, t) <- tableRules ta seg w]
+                <> [ ("脚注の罫線", r, ruleThinnest t (rsStyle rule), ruleMarks sw (ruleShapes vertical r (rsStyle rule)), sw)
+                   | not (null noteLines),
+                     Just rule <- [stNotesRule style],
+                     let (r, t) = noteRule ta rule (length grid - length noteLines)
+                         sw = ruleSwatch rule
+                   ]
+         in ( lineParts <> noteParts,
+              (figMarks, [(r, pf) | (_, r, pf) <- figures]),
+              (concat [ms | (_, _, _, ms, _) <- rules], [(k, r, t) | (k, r, t, _, _) <- rules]),
+              (map snd backgrounds, map fst backgrounds <> [sw | (_, _, _, _, Just sw) <- rules])
+            )
       -- the columns of a page, its sidenotes and, once, its running head and folio
       drawPage ps master = case ps of
         [] -> PageDrawn [] [] [] [] [] True 0 []
@@ -2656,6 +2668,11 @@ writeDocumentView inp geom fonts layout intent =
                   pdNumber = n,
                   pdBackgrounds = concat [snd b | (_, _, _, b) <- columns]
                 }
+      -- the swatch of a rule, if it has one (golem-driver ADR 0028)
+      ruleSwatch rule = do
+        name <- rsColor rule
+        Swatch (c, m, y, k) <- Map.lookup name (stSwatches style)
+        pure (P.Swatch c m y k)
       {- the rule before the footnotes from grid line first (golem-driver ADR
       0024): without spaces through the middle of the em box of the line
       before; with them space-after above the em box of the first

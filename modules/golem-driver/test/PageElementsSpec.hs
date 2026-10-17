@@ -158,6 +158,27 @@ noteRuleTests =
     testCase "a rule longer than the line is G0701" $ do
       (errs, pdf) <- buildMini fakeProvider True (horizontalStyle <> "\n[notes.rule]\nlength = \"13zw\"\n") "漢[note: 注。]字\n" []
       (errs, pdf) @?= ([DiagnosticCode "G0701"], Nothing),
+    testCase "a coloured rule is filled with the CMYK of its swatch inside q and Q (golem-driver ADR 0028)" $ do
+      let style = horizontalStyle <> "\n[color.swatches]\naccent = { cmyk = [0, 100, 100, 0] }\n" <> "\n[notes.rule]\nlength = \"5zw\"\nweight = \"0.3pt\"\ncolor = \"accent\"\n"
+      content <- miniPdf fakeProvider True style "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+      let ls = BC.lines content
+          rule = [i | (i, l) <- zip [0 :: Int ..] ls, drop 4 (BC.words l) == ["re", "f"]]
+      case rule of
+        [i] -> map (ls !!) [i - 2, i - 1, i + 1] @?= ["q", "0 1 1 0 k 0 1 1 0 K", "Q"]
+        other -> assertFailure (show other),
+    testCase "a dotted rule is a disc per dot, drawn without stroking (golem-driver ADR 0028)" $ do
+      let style = horizontalStyle <> "\n[notes.rule]\nlength = \"5zw\"\nweight = \"1pt\"\nstyle = \"dotted\"\n"
+      content <- miniPdf fakeProvider True style "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+      let ls = map BC.words (BC.lines content)
+      -- 5zw of 10pt: (50 - 1) / 3 rounded, and one more
+      length [l | l <- ls, l == ["f"]] @?= 17
+      rulesIn content @?= []
+      [l | l <- ls, lastIs ["S", "J", "d"] l] @?= [],
+    testCase "the line styles draw no stroke, line cap nor dash pattern (golem-driver ADR 0028)" $
+      forM_ ["dashed", "wavy", "thick-thin", "japanese-dots"] $ \st -> do
+        let style = horizontalStyle <> "\n[notes.rule]\nlength = \"5zw\"\nweight = \"1pt\"\nstyle = \"" <> st <> "\"\n"
+        content <- miniPdf fakeProvider True style "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
+        [l | l <- map BC.words (BC.lines content), lastIs ["S", "J", "d"] l] @?= [],
     testCase "parallel and sequential builds with a rule agree" $ do
       let style = ruled fiveLines "space-before = \"15pt\"\nspace-after = \"5pt\"\n"
           source = "漢[note: " <> T.replicate 40 "注" <> "]字\n"
@@ -168,6 +189,9 @@ noteRuleTests =
   ]
   where
     ruled style extra = style <> "\n[notes.rule]\nlength = \"5zw\"\nweight = \"0.3pt\"\n" <> extra
+    lastIs ops l = case reverse l of
+      (o : _) -> o `elem` ops
+      [] -> False
     near a b = assertBool (show (fromRational a :: Double, fromRational b :: Double)) (abs (a - b) < 1 / 100)
     mmPt mm = mm * 72 / 25.4
     glyphsOf c content = [(ptToRational (dX d), ptToRational (dY d)) | d <- drawnGlyphs content, dGlyph d == fromEnum c]

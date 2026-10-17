@@ -151,7 +151,7 @@ tests =
         codeOf (withHead footGrid "bottom-center" 1) @?= Nothing,
       testCase "G0701: the footnote rule longer than a line (golem-driver ADR 0024)" $ do
         let small chars cols gap = Grid (Abs (pt 8)) chars 30 (Abs (pt 14)) cols gap (Abs mm18) (Abs mm20)
-            ruled len g = (styleWith False False g) {stNotesRule = Just (RuleSpec (Just len) 19661 Nothing Nothing)}
+            ruled len g = (styleWith False False g) {stNotesRule = Just (RuleSpec (Just len) 19661 Nothing Nothing Nothing RuleSolid)}
             isG0701 = \case
               Left [d] -> diagCode d == DiagnosticCode "G0701"
               _ -> False
@@ -161,7 +161,7 @@ tests =
         assertBool "20zw on columns of 20 characters" (not (isLeft (pageGeometry (FileId 0) False (ruled (Zw 20) (small 20 2 (Just (Zw 2))))))),
       testCase "the lines of the footnote separator (golem-driver ADR 0024)" $ do
         let base = styleWith False False (grid 30 30 1 Nothing)
-            withRule b w a = base {stNotesRule = Just (RuleSpec (Just (Zw 10)) w b a)}
+            withRule b w a = base {stNotesRule = Just (RuleSpec (Just (Zw 10)) w b a Nothing RuleSolid)}
         pgNoteSeparator (geom base) @?= 1
         pgNoteSeparator (geom (withRule Nothing 19661 Nothing)) @?= 1
         -- 5.3pt fits in 7pt + 17pt
