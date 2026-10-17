@@ -9,6 +9,9 @@ module Golem.Lsp.Workspace
     openWorkspace,
     updateFile,
     closeFile,
+    reloadWorkspace,
+    tablesToWatch,
+    tableFilesChanged,
     sourceOf,
     lineIndexOf,
     diagnosticsFor,
@@ -17,14 +20,15 @@ module Golem.Lsp.Workspace
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust)
+import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Driver (Evaluated (..), builtinKeepStyles, evaluateProjectWith, keepStyles, paraLineBreaks)
+import Golem.Driver (Evaluated (..), assetRefs, builtinKeepStyles, evaluateLoose, evaluateProjectWith, keepStyles)
 import Golem.Driver.Lint (lintEvaluated)
 import Golem.Eval.File
 import Golem.Eval.Settings (isSettingCommand)
@@ -36,7 +40,7 @@ import Golem.Parser.CST (Node)
 import Golem.Parser.Read (checkText)
 import Golem.Parser.SourceSettings
 import Golem.Project
-import Golem.Project.Style (Style (..), defaultStyle, withLocalStyles)
+import Golem.Project.Style (defaultStyle, withLocalStyles)
 import Golem.Syntax
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath (makeRelative, (</>))
@@ -67,7 +71,9 @@ data Workspace = Workspace
     -- | every .gm file under the root, for @import completion
     wsSourceFiles :: ![FilePath],
     -- | the line index of every known file, for position conversion (ADR 0002)
-    wsLines :: !(Map FilePath LineIndex)
+    wsLines :: !(Map FilePath LineIndex),
+    -- | the table files the client has been asked to watch (golem-eval ADR 0004)
+    wsWatchedTables :: !(Set.Set FilePath)
   }
 
 {- | What other files depend on: imports, exported variables, headings and
@@ -100,7 +106,7 @@ summaryOf ast res =
 openWorkspace :: FilePath -> IO Workspace
 openWorkspace root = do
   files <- listSources root
-  fullEvaluate (Workspace root Map.empty Nothing [] Map.empty Map.empty 0 files Map.empty)
+  fullEvaluate (Workspace root Map.empty Nothing [] Map.empty Map.empty 0 files Map.empty Set.empty)
 
 listSources :: FilePath -> IO [FilePath]
 listSources root = map (makeRelative root) <$> go root
@@ -126,13 +132,39 @@ fullEvaluate ws = do
     Left f -> refreshLoose ws' {wsEvaluated = Nothing, wsProjectErrors = pfDiagnostics f, wsProjectSources = pfSources f}
     Right e -> refreshLoose ws' {wsEvaluated = Just e, wsProjectErrors = [], wsProjectSources = Map.empty}
 
--- | Line indexes of the project's sources and of every edited file.
+{- | The project evaluated again, after a table file it reads changed on
+disk (golem-eval ADR 0004).
+-}
+reloadWorkspace :: Workspace -> IO Workspace
+reloadWorkspace = fullEvaluate
+
+-- | Line indexes of the project's sources, of every edited file, and of the files read for @table and @listing.
 rebuildLines :: Workspace -> Workspace
 rebuildLines ws =
   let projectTexts = case wsEvaluated ws of
         Just e -> Map.fromList [(sfPath sf, sfText sf) | sf <- Map.elems (projectSources (evProject e))]
         Nothing -> Map.empty
-   in ws {wsLines = Map.map mkLineIndex (Map.union (wsOverlay ws) projectTexts)}
+      assetLines = Map.fromList [(siPath si, siLines si) | si <- Map.elems (assetSources ws)]
+   in ws {wsLines = Map.union (Map.map mkLineIndex (Map.union (wsOverlay ws) projectTexts)) assetLines}
+
+-- | The files the last evaluation read for @table and @listing (golem-eval ADR 0004).
+assetSources :: Workspace -> Map FileId SourceInfo
+assetSources = maybe Map.empty evAssetSources . wsEvaluated
+
+assetPaths :: Workspace -> Set.Set FilePath
+assetPaths = Set.fromList . map siPath . Map.elems . assetSources
+
+-- | The table files the last evaluation read, which the client is to watch (golem-eval ADR 0004).
+tablesToWatch :: Workspace -> Set.Set FilePath
+tablesToWatch = maybe Set.empty evTableFiles . wsEvaluated
+
+{- | Whether a notification of changed files asks for evaluating the project
+again: one of them is a watched table file that the editor does not have
+open, since the editor's text of an open file comes first (golem-eval ADR
+0004).
+-}
+tableFilesChanged :: Workspace -> [FilePath] -> Bool
+tableFilesChanged ws = any (\p -> Set.member p (wsWatchedTables ws) && not (Map.member p (wsOverlay ws)))
 
 -- | The line index of a file; an unknown file has the index of empty text.
 lineIndexOf :: Workspace -> FilePath -> LineIndex
@@ -146,20 +178,13 @@ projectPaths ws = case wsEvaluated ws of
 -- | Open files outside the project: syntax and S0 only.
 refreshLoose :: Workspace -> Workspace
 refreshLoose ws =
-  ws {wsLoose = Map.fromList [(p, loose p t) | (p, t) <- Map.toList (wsOverlay ws), not (p `Set.member` projectPaths ws)]}
+  ws {wsLoose = Map.fromList [(p, loose p t) | (p, t) <- Map.toList (wsOverlay ws), not (p `Set.member` projectPaths ws), not (p `Set.member` assetPaths ws)]}
 
 loose :: FilePath -> Text -> Source
 loose path text =
   let fid = FileId 0
-      (ast, cst, synDiags) = parseAst fid text
-      -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
-      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle
-      res = evalFile ctx ast
-      -- a BOM or CR in the buffer, then the syntax; the evaluation of a
-      -- file with syntax errors is not reported (golem-parser ADR 0009)
-      syntax = checkText fid text <> synDiags
-      shown = if hasErrors syntax then syntax else syntax <> erDiagnostics res
-   in Source path fid text cst ast (Just res {erDiagnostics = shown}) False
+      (ast, cst, _) = parseAst fid text
+   in Source path fid text cst ast (Just (evaluateLoose path text)) False
 
 {- | An edit. The edited file alone is evaluated again; the project is
 evaluated again only when its summary changed.
@@ -183,10 +208,13 @@ updateFile ws0 path text = do
                 summaryOf ast (Just res) == summaryOf (sfAst old) oldRes
                   && not (hasErrors synDiags)
                   && not (hasErrors (sfSyntaxDiagnostics old))
-                  && isJust (evBook e)
+                  -- the files it reads are read again (golem-eval ADR 0004)
+                  && assetRefs ast == assetRefs (sfAst old)
            in if unchanged
                 then pure ws {wsEvaluated = Just (replaceFile e fid sf res)}
                 else fullEvaluate ws
+    -- a file read for @table or @listing, open in the editor (golem-eval ADR 0004)
+    Just _ | path `Set.member` assetPaths ws -> fullEvaluate ws
     Just _ -> pure (refreshLoose ws)
     Nothing -> fullEvaluate ws
 
@@ -198,19 +226,29 @@ findSource e path = case [(fid, sf) | (fid, sf) <- Map.toList (projectSources (e
   (x : _) -> Just x
   [] -> Nothing
 
-{- | Replaces one file's parse and S0 result. Diagnostics of S0 for that
-file are recomputed; S1 diagnostics are kept.
+{- | Replaces one file's parse and S0 result, and assembles S1 again from
+the S0 results of every file (golem-lsp ADR 0004). The S0 and syntax
+diagnostics of that file and every S1 diagnostic are replaced.
 -}
 replaceFile :: Evaluated -> FileId -> SourceFile -> EvalResult -> Evaluated
 replaceFile e fid sf res =
   let p = evProject e
       oldS0 = maybe [] erDiagnostics (Map.lookup fid (evResults e))
       oldSyn = maybe [] sfSyntaxDiagnostics (Map.lookup fid (projectSources p))
-      kept = [d | d <- evDiagnostics e, not (spanFile (diagSpan d) == fid && (d `elem` oldS0 || d `elem` oldSyn))]
+      results = Map.insert fid res (evResults e)
+      (book, s1) = evReassemble e results
+      kept =
+        [ d
+        | d <- evDiagnostics e,
+          not (spanFile (diagSpan d) == fid && (d `elem` oldS0 || d `elem` oldSyn)),
+          d `notElem` evS1Diagnostics e
+        ]
    in e
         { evProject = p {projectSources = Map.insert fid sf (projectSources p)},
-          evResults = Map.insert fid res (evResults e),
-          evDiagnostics = sortDiagnostics (kept <> sfSyntaxDiagnostics sf <> erDiagnostics res)
+          evResults = results,
+          evBook = book,
+          evS1Diagnostics = s1,
+          evDiagnostics = sortDiagnostics (kept <> sfSyntaxDiagnostics sf <> erDiagnostics res <> s1)
         }
 
 sourceOf :: Workspace -> FilePath -> Maybe Source
@@ -241,6 +279,8 @@ diagnosticsFor ws =
             lintDiags = lintEvaluated e
             -- the notices of silence-notices are not published (golem-syntax ADR 0002)
             all' = silenceNotices (Just (manifestSilencedNotices (projectManifest p))) (map (adjustForProfile Dev) (evDiagnostics e <> lintDiags))
-            byFile = Map.fromListWith (flip (<>)) [(fromMaybe "manifest.toml" (lookupPath (spanFile (diagSpan d)) ft), [d]) | d <- all']
-            empties = Map.fromList [(sfPath sf, []) | sf <- Map.elems (projectSources p)]
+            -- a file read for @table or @listing is where its diagnostics point too (golem-eval ADR 0004)
+            pathOf fid = lookupPath fid ft <|> (siPath <$> Map.lookup fid (evAssetSources e))
+            byFile = Map.fromListWith (flip (<>)) [(fromMaybe "manifest.toml" (pathOf (spanFile (diagSpan d))), [d]) | d <- all']
+            empties = Map.fromList ([(sfPath sf, []) | sf <- Map.elems (projectSources p)] <> [(t, []) | t <- Set.toList (evTableFiles e)])
          in Map.map (sortOn (spanStart . diagSpan)) (Map.union byFile empties)

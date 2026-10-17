@@ -19,12 +19,13 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 ## ファイルの文字コードと改行
 
 = [strong: G0101 [code: UTF-8 として不正なバイト列があります]]
-  原稿のファイル、[code: manifest.toml]、[code: style.toml] のどれかが UTF-8 で保存されていません。
+  原稿のファイル、[code: manifest.toml]、[code: style.toml]、[code: @table] の表のファイルのどれかが UTF-8 で保存されていません。
   Shift_JIS などで保存したファイルで起きます。
   テキストエディタで文字コードに UTF-8 を選んで保存し直してください。
 = [strong: G0102 [code: ファイルの先頭に BOM があります。BOM を取り除いてください]]
   ファイルの先頭に BOM（文字コードを示す目印）が付いています。
   BOM なしの UTF-8 で保存し直すか、[code: golem fmt] を実行してください。
+  [code: @table] の表のファイルの先頭の BOM は読み飛ばすので、このエラーになりません。
 = [strong: G0103 [code: 改行に CR が含まれています。改行は LF に限ります]]
   Windows の形式の改行（CRLF）で保存されています。
   [code: golem fmt] を実行すると直ります。
@@ -228,9 +229,7 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   パスはプロジェクトのフォルダから書きます。
   綴りと置き場所を確かめてください。
 = [strong: G0234 [code: @table には src が必要です]]
-  [code: src=] で CSV のファイルを指定してください。
-= [strong: G0235 [code: CSV が空です]]、[strong: [code: CSV の行ごとのセルの数が一致しません]]
-  CSV のファイルの各行の列の数を、一行目にそろえてください。
+  [code: src=] で CSV か TSV のファイルを指定してください。
 = [strong: G0236 [code: @listing にはファイルのパスが必要です]]
   最初の引数に、載せるファイルのパスを書いてください。
 = [strong: G0237 [code: lines の範囲が不正です: …]]
@@ -264,15 +263,33 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0260 [code: 絶対パスは使えません: …]] など
   [code: @figure]、[code: @table]、[code: @listing] のパスが、絶対パス、URL、プロジェクトの外のどれかを指しています。
   ファイルをプロジェクトの中に置き、そこからの相対パスで書いてください。
-= [strong: G0273 [code: web の代替画像は PNG か JPEG です: …]]
-  [code: web=] に PNG と JPEG のほかの形式の画像を書いています。
-  画面用の画像を PNG か JPEG に書き出し、そのファイルを指してください。
-= [strong: G0274 [code: 図版の形式は PDF、PNG、JPEG です: …]]
-  [code: @figure] の画像の拡張子が [code: .pdf]、[code: .png]、[code: .jpg]、[code: .jpeg] のどれでもありません。
-  図を PDF、PNG、JPEG のどれかに書き出し、そのファイルを指してください。
+= [strong: G0273 [code: web の代替画像は PNG、JPEG、SVG です: …]]
+  [code: web=] に PNG、JPEG、SVG のほかの形式の画像を書いています。
+  画面用の画像を PNG、JPEG、SVG のどれかに書き出し、そのファイルを指してください。
+= [strong: G0274 [code: 図版の形式は PDF、PNG、JPEG、SVG です: …]]
+  [code: @figure] の画像の拡張子が [code: .pdf]、[code: .png]、[code: .jpg]、[code: .jpeg]、[code: .svg] のどれでもありません。
+  図を PDF、PNG、JPEG、SVG のどれかに書き出し、そのファイルを指してください。
 = [strong: G0275 [code: page は PDF の図版のページを 1 から数えた整数で書きます: …]]
   [code: page=] の値が 1 以上の整数でないか、PDF でない画像に [code: page] を書いています。
   PDF の画像なら [code: page=3] のように書き、PNG と JPEG の画像からは [code: page] を消してください。
+= [strong: G0280 [code: format は csv か tsv です: …]]
+  [code: @table] の [code: format] には、[code: csv] か [code: tsv] を書いてください。
+= [strong: G0281 [code: align の値は left、center、right、default のどれかです: …]] など
+  [code: @table] の [code: align] の値に誤りがあるか、値の数が表の列の数と合いません。
+  値を一つだけ書くか、列の数と同じ数を書いてください。
+= [strong: G0282 [code: 単独の CR があります。表のファイルの改行は LF か CRLF に限ります]]
+  表のファイルに、LF の前にない CR があります。
+  改行を LF か CRLF にして保存し直してください。
+= [strong: G0283 [code: CSV の引用符が閉じていません]]
+  CSV のファイルで、[code: "] で始めたセルの引用符が閉じていません。
+  セルの中の [code: "] は [code: ""] と二つ重ねて書いてください。
+= [strong: G0284 [code: cells=markup はまだ実装していません]] など
+  [code: @table] の [code: cells] には、今は [code: text] だけを書けます。
+  [code: cells] を消してください。
+= [strong: G0285 [code: TSV の行のセルの数が見出しの行と違います（…）]] など
+  表のファイルが空か、セルの数が一行目と違う行があります。
+  メッセージの示す行のセルの数を、一行目にそろえてください。
+  TSV の途中の空の行も、セルが一つの行として数えます。
 
 @nonumber
 ## ファイルの中の設定（[code: @manifest] と [code: @style-def]）
@@ -353,6 +370,7 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   新しいプロジェクトは [code: golem new] で作ります。
 = [strong: G0302 [code: ファイルがありません: …]]
   [code: chapters] や [code: @import] のパスの綴りと、ファイルの置き場所を確かめてください。
+  [code: golem fmt] に渡したファイルのパスも確かめてください。
 = [strong: G0303 [code: 絶対パスは使えません: …]]、[strong: [code: URL は使えません: …]]、[strong: [code: プロジェクトルートの外を指しています: …]]
   ファイルはプロジェクトのフォルダの中に置き、そこからの相対パスで書いてください。
 = [strong: G0326 [code: 参考文献のファイルがありません: …]]、[strong: [code: 参考文献のファイルを JSON として読めません: …]]、[strong: [code: 参考文献のファイルは CSL-JSON の配列で書きます: …]]
@@ -516,6 +534,11 @@ PDF を組むときに出るエラーです。
   PNG や JPEG のファイルが壊れている、インターレースの PNG である、拡張子と中身が違う、といった場合と、PDF の画像が暗号化されている、フォントを埋め込んでいない、特色やレイヤーを含む、[code: page] のページがない、といった場合です。
   メッセージの括弧の中の理由を見て、画像を書き出し直してください。
   PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
+= [strong: G0811 [code: SVG の図版に扱えないものがあります: …]]
+  SVG の図版に、PDF に描けないものがあります。
+  メッセージには、最初に見つかったものの名前と、SVG のファイルの中の行と桁が出ます。
+  [code: 文字は輪郭にして書き出してください] と出たら、図の作成ツールで文字を輪郭（アウトライン）にして書き出し直してください。
+  グラデーション、透明、[code: use] などは、使わずに書き出すか、PDF で書き出して PDF の画像として置いてください。
 = [strong: G0813 [code: 出力先がシンボリックリンクかディレクトリではないので、消すことも書くこともしません: …]]
   [code: build] か、その下の [code: html] などのディレクトリが、シンボリックリンクになっています。
   Golem は出力の前にこれらのディレクトリを消すので、リンクの先のファイルを消さないように止めます。

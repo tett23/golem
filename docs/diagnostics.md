@@ -101,6 +101,7 @@ silence-notices = ["G0262", "G0407"]
 次の番号は、ソースで使っていない。
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。下に節を置く。
+- **廃止**：G0235。[golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md) が `@table` のコマンドを指す CSV の誤りに定めたが、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md) で表のファイルの中を指す G0285 に置き換えた。下に節を置く。
 - **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。下に節を置く。
 - **空き**：G0104 から G0109、G0125 から G0128、G0601、G0703 から G0720、G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
 
@@ -113,12 +114,13 @@ UTF-8 として不正なバイト列があります
 
 ### 意味
 
-原稿のファイル（章と import したファイル）、`manifest.toml`、`style.toml` のどれかに、UTF-8 として読めないバイト列がある。
+原稿のファイル（章と import したファイル）、`manifest.toml`、`style.toml`、`@table` の表のファイル（CSV と TSV）のどれかに、UTF-8 として読めないバイト列がある。
 位置は最初の不正なバイトである。
+表のファイルの誤りは、そのファイルの位置で表示し、そのファイルからは表を作らない。
 
 - メッセージ: `UTF-8 として不正なバイト列があります`
 - 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
-- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)（表のファイル）
 
 ### 主な原因
 
@@ -141,6 +143,7 @@ UTF-8 で保存し直す。
 位置はバイト 0 から 3 である。
 先頭以外の BOM（U+FEFF）は拒まない。
 LSP では、エディタで開いているファイルにも出す。
+`@table` の表のファイル（CSV と TSV）の先頭の BOM は読み飛ばすので、このコードにならない（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 
 - メッセージ: `ファイルの先頭に BOM があります。BOM を取り除いてください`
 - 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
@@ -1412,31 +1415,28 @@ wrap は start か end です
 
 ### 直し方
 
-`src=` で CSV のファイルを指す。
+`src=` で CSV か TSV のファイルを指す。
 
 ## G0235
 
 CSV が空か、行ごとのセルの数が一致しません
 
 - 重大度: エラー
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
-`@table` の CSV が空か、行ごとのセルの数がそろっていない。
+廃止した。
+`@table` の CSV が空か、行ごとのセルの数がそろっていないことを、`@table` のコマンドの位置で報告するコードだった。
+今は同じ誤りを、表のファイルの中の位置で [G0285](#g0285) として報告する。
 
 - メッセージ: `CSV が空です`、`CSV の行ごとのセルの数が一致しません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
-
-### 主な原因
-
-- `@table` の CSV のファイルが空である。
-- CSV の行によって列の数が違う。
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（定めた）、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)（廃止した）
 
 ### 直し方
 
-CSV の各行の列の数を見出しの行にそろえる。
+[G0285](#g0285) の直し方に従う。
 
 ## G0236
 
@@ -2371,22 +2371,22 @@ web の代替画像の形式が使えません
 
 ### 意味
 
-`@figure` の `web` に、PNG と JPEG のほかの形式のファイルを書いた。
-形式は拡張子で決める（`.png`、`.jpg`、`.jpeg` を、大文字と小文字を区別せずに受け付ける）。
+`@figure` の `web` に、PNG、JPEG、SVG のほかの形式のファイルを書いた。
+形式は拡張子で決める（`.png`、`.jpg`、`.jpeg`、`.svg` を、大文字と小文字を区別せずに受け付ける）。
 どの出力を組むときも同じ規則で調べるので、HTML だけを組むときにも出る。
 位置は、その `@figure` のブロックである。
 
-- メッセージ: `web の代替画像は PNG か JPEG です: <パス>`
+- メッセージ: `web の代替画像は PNG、JPEG、SVG です: <パス>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)
 
 ### 主な原因
 
-- `web` に PDF や SVG のファイルを書いた。
+- `web` に PDF のファイルを書いた。
 
 ### 直し方
 
-`web` の画像を PNG か JPEG に書き出し、そのファイルを指す。
+`web` の画像を PNG、JPEG、SVG のどれかに書き出し、そのファイルを指す。
 
 ## G0274
 
@@ -2397,23 +2397,23 @@ web の代替画像の形式が使えません
 
 ### 意味
 
-`@figure` の画像に、PDF、PNG、JPEG のほかの形式のファイルを書いた。
-形式は拡張子で決める（`.pdf`、`.png`、`.jpg`、`.jpeg` を、大文字と小文字を区別せずに受け付ける）。
+`@figure` の画像に、PDF、PNG、JPEG、SVG のほかの形式のファイルを書いた。
+形式は拡張子で決める（`.pdf`、`.png`、`.jpg`、`.jpeg`、`.svg` を、大文字と小文字を区別せずに受け付ける）。
 中身は見ないので、拡張子と中身が食い違うファイルは、PDF を組むときに [G0810](#g0810) になる。
 位置は、その `@figure` のブロックである。
 
-- メッセージ: `図版の形式は PDF、PNG、JPEG です: <パス>`
+- メッセージ: `図版の形式は PDF、PNG、JPEG、SVG です: <パス>`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)
 
 ### 主な原因
 
-- GIF、TIFF、SVG などの画像を `@figure` に書いた。
+- GIF や TIFF などの画像を `@figure` に書いた。
 - 拡張子のないファイルを書いた。
 
 ### 直し方
 
-図を PDF、PNG、JPEG のどれかに書き出し、そのファイルを指す。
+図を PDF、PNG、JPEG、SVG のどれかに書き出し、そのファイルを指す。
 
 ## G0275
 
@@ -2529,6 +2529,176 @@ PNG と JPEG の図版からは、`page` を消す。
 `\ ` を消す。
 見える空きが要るなら、全角の空白（`　`）を使う。
 
+## G0280
+
+@table の format の値が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の `format` の値が `csv` でも `tsv` でもない。
+表は作らない。
+位置は `format` の引数の全体である。
+
+- メッセージ: `format は csv か tsv です: <値>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- `format=xlsx` のように、ほかの形式の名前を書いた。
+- `format=TSV` のように、大文字で書いた。
+
+### 直し方
+
+`format=csv` か `format=tsv` と書く。
+拡張子が `.tsv` のファイルは TSV、それ以外は CSV として読むので、拡張子どおりの形式なら `format` を省ける。
+
+## G0281
+
+@table の align の値が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の `align` の値が、`left`、`center`、`right`、`default` のどれでもないか、値の数が表の列の数と違う。
+表は作らない。
+位置は `align` の引数の全体である。
+値の数の検査は、表のファイルを読んで見出しの行を得た後に行う。
+
+- メッセージ: `align の値は left、center、right、default のどれかです: <値>`、`align の値の数が表の列の数と違います（列は <m>、align は <n>）`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- `align=left,,right` のように、空の値を書いた。
+- `align=Left` や `align=middle` のように、ほかの名前を書いた。
+- 表に列を足したが、`align` に値を足していない。
+- `align=[= ...]` のように、式で書いた。
+
+### 直し方
+
+列の揃えを `left`、`center`、`right`、`default` で、左の列から順にカンマで区切って書く。
+すべての列を同じ揃えにするなら、値を一つだけ書く（`align=right`）。
+
+## G0282
+
+表のファイルに単独の CR があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の表のファイル（CSV と TSV）に、LF の前にない CR（単独の CR）がある。
+CRLF は誤りにしない。
+表は作らない。
+位置は表のファイルの最初の単独の CR である。
+同じファイルを複数の `@table` から参照しても、一度だけ出す。
+
+- メッセージ: `単独の CR があります。表のファイルの改行は LF か CRLF に限ります`
+- 段階とモジュール: 読み込み（golem-driver の `Golem.Driver`、golem-parser の `Golem.Parser.Read`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- 古い Mac の改行（CR だけ）でファイルを書き出した。
+- セルの中に CR が紛れ込んだ。
+
+### 直し方
+
+表のファイルの改行を LF か CRLF にして保存し直す。
+
+## G0283
+
+CSV の引用符が閉じていません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の CSV のファイルで、`"` で始めたセルの引用符を閉じずにファイルが終わる。
+表は作らない。
+位置は開いた引用符である。
+
+- メッセージ: `CSV の引用符が閉じていません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- セルの中の `"` を `""` と二つ重ねていない。
+- 書き出しの途中でファイルが切れた。
+
+### 直し方
+
+引用符を閉じる。
+セルの中の `"` は `""` と書く。
+
+## G0284
+
+@table の cells の値が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の `cells` が `text` でない。
+`cells=markup` は将来セルをインラインの記法として読むために予約した値であり、まだ実装していない。
+表は作らない。
+位置は `cells` の引数の全体である。
+
+- メッセージ: `cells=markup はまだ実装していません`、`cells は text です: <値>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- セルの中の記法を解釈させようとして `cells=markup` を書いた。
+- `cells` をほかの意味で書いた。
+
+### 直し方
+
+`cells` を消すか、`cells=text` と書く。
+セルの中身は地の文として扱われる。
+
+## G0285
+
+表のファイルが表になりません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の表のファイル（CSV と TSV）が空か、行のセルの数が見出しの行と違う。
+表は作らない。
+空のときの位置は表のファイルのバイト 0 から 0、セルの数の違うときの位置は最初のその行（行頭から行の終わりの前まで。CSV では引用符の中の改行をまたぐレコードの全体）である。
+空とは、最後の行の終わりを捨てた後（CSV では空の行を除いた後）に行が一つもないことである。
+
+- メッセージ: `CSV が空です`、`TSV が空です`、`CSV の行のセルの数が見出しの行と違います（見出しの行は <m>、この行は <n>）`、`TSV の行のセルの数が見出しの行と違います（見出しの行は <m>、この行は <n>）`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- 表のファイルが空である。
+- 行によって列の数が違う。
+- TSV の途中に空の行がある（TSV の空の行は、一つの空のセルを持つ行になる）。
+- CSV のセルの中のカンマを `"` で囲んでいない。
+
+### 直し方
+
+各行のセルの数を見出しの行にそろえる。
+TSV の途中の空の行は消す。
+
 ## G0286
 
 整数が大きすぎます
@@ -2597,6 +2767,8 @@ manifest.toml の誤りです
 ### 意味
 
 章や `@import` が指すファイルがない。
+`golem inspect` と `golem fmt` の引数のファイルがないか、通常のファイルでない（ディレクトリなど）ときも、この誤りとする（[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）。
+このときの位置は引数のファイルの先頭である。
 プロジェクトのルートに `manifest.toml` がないときは、この誤りではなく [G0316](#g0316) とする。
 
 - メッセージ: `ファイルがありません: <パス>`
@@ -2606,6 +2778,7 @@ manifest.toml の誤りです
 ### 主な原因
 
 - 章や `@import` のパスの綴りを誤ったか、ファイルを置いていない。
+- `golem inspect` か `golem fmt` に渡したパスの綴りを誤った。
 
 ### 直し方
 
@@ -4868,6 +5041,8 @@ PDF を書かない。
 
 `@figure` の画像のファイルはあるが、PDF に置ける形で読めない。
 PNG と JPEG の図版は画像として読めないとき、PDF の図版は Golem が取り込めないときに出す。
+SVG の図版は、XML として読めないとき、UTF-8 でないとき、内部サブセットを持つ `DOCTYPE` があるとき、大きさ（ルートの `width` と `height` か `viewBox`）がないときに出す（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+SVG の範囲の外のものは [G0811](#g0811) である。
 PDF の図版を取り込めないのは、次のどれかの場合である。
 
 - 相互参照などが壊れている。
@@ -4887,7 +5062,7 @@ HTML、EPUB、プレーンテキストは画像を読まないので出さない
 位置は、その `@figure` のブロックである。
 
 - メッセージ: `図版を PDF に置けません: <パス>（<理由>）`
-- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`）
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`、golem-svg の `Golem.Svg`）
 - ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)
 
 ### 主な原因
@@ -4902,6 +5077,41 @@ HTML、EPUB、プレーンテキストは画像を読まないので出さない
 理由に合わせて図版を書き出し直す。
 PDF の図版なら、フォントを埋め込み、特色をプロセスカラーに直し、レイヤーを統合して書き出す。
 PNG はインターレースを外して書き出す。
+
+## G0811
+
+SVG の図版に扱えないものがあります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+SVG の図版に、Golem が PDF に描ける範囲の外の要素、属性、プロパティの値がある。
+範囲は [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md) の表のとおりで、パス、基本の図形、変換、塗りと線、マーカーなどである。
+輪郭にしていない文字（`text`、`tspan`、`textPath` の要素と `@font-face`）も範囲の外である。
+範囲の外のものを黙って無視せず、文書の順にすべて集め、最初のものの名前と位置（SVG のファイルの中の行と桁）を書き、残りの件数を添える。
+最初のものが文字なら、輪郭にして書き出すよう案内する。
+`@figure` ごとに一つ出し、PDF を書かない。
+dev と prod の両方でエラーである。
+PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出し、HTML、EPUB、プレーンテキストは SVG を読まないので出さない。
+位置は、その `@figure` のブロックである。
+
+- メッセージ: `SVG の図版に扱えないものがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。文字なら `（<名前>: 文字は輪郭にして書き出してください）`。ほかになければ `ほか <n> 件` を書かない。
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
+- ADR: [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)
+
+### 主な原因
+
+- 文字を輪郭にせずに書き出した。
+- グラデーション、`use`、クリップ、フィルター、1 でない不透明度などを使った。
+- 子孫の結合子などの、扱わない CSS のセレクターを使った。
+
+### 直し方
+
+図の作成ツールで、文字を輪郭（アウトライン）にして書き出す。
+範囲の外の機能は、ツールの側で範囲の中に収めて書き出し直す。
+SVG で収まらない図は、PDF で書き出して PDF の図版として置く。
 
 ## G0813
 

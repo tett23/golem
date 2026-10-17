@@ -33,6 +33,7 @@ library
                     Golem.Driver.Pdf
                     Golem.Driver.Plugins
                     Golem.Driver.RuleShape
+                    Golem.Driver.Svg
                     Golem.Driver.Version
   build-depends:
     , aeson         >=2.1  && <2.3
@@ -55,6 +56,7 @@ library
     , golem-parser
     , golem-preflight
     , golem-project
+    , golem-svg
     , golem-syntax
     , golem-text
     , scientific    >=0.3  && <0.4
@@ -88,6 +90,7 @@ test-suite golem-driver-test
     RuleShapeSpec
     SecuritySpec
     StylesSpec
+    TableFilesSpec
     Support
   build-depends:
     , base
