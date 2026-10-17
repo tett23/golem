@@ -278,12 +278,15 @@ paginateIn separatorLines base capacity flows =
         let st1 = if recto then parityStart odd st else keep st (n + need)
             st2 = if n <= free st1 || isEmpty st1 then st1 else nextColumn st1
          in putBlock st2 n ls
+      -- figures keep the order written: after a figure sent on, the next ones wait too (golem-layout ADR 0015)
       FFigure i n labels marks
+        | not (null (sDeferred st)) -> st {sDeferred = sDeferred st <> [f]}
         | n <= free st || isEmpty st -> putSlot st n (SFigure i) labels marks
         | otherwise -> st {sDeferred = sDeferred st <> [f]}
       FWrapped i n labels marks beside ->
-        let size = max n (length beside)
-            st1 = if size <= free st || isEmpty st then st else nextColumn st
+        let st0 = flushFigures st
+            size = max n (length beside)
+            st1 = if size <= free st0 || isEmpty st0 then st0 else nextColumn st0
             st2 = putSlot st1 0 (SWrapped i) labels marks
          in (placeLines st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines st2 False beside))}
       FBreak k -> st {sBreaks = sBreaks st <> [k]}
@@ -464,6 +467,10 @@ paginateIn separatorLines base capacity flows =
     flushDeferred st
       | null (sDeferred st) && null (sPendingNotes st) = st
       | otherwise = flushDeferred (nextColumn st)
+    -- the figures sent on are placed, the continued notes may go on beside them (golem-layout ADR 0015)
+    flushFigures st
+      | null (sDeferred st) = st
+      | otherwise = flushFigures (nextColumn st)
 
 -- | The page of each label.
 labelPages :: [PageOut] -> Map Text Integer
