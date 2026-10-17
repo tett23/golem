@@ -125,6 +125,18 @@ Golem は、コンピューターに入っているフォントを探しませ�
 [code: \[character-styles.url\]] に [code: font = "code"] と書けば参考文献の URL を等幅の書体で組め、[code: color] を書けば色を付けられます。
 原稿では [code: \[style url: ...\]] と書いて使えます。
 
+[code: code] と、[code: based-on] で [code: code] を引き継ぐ文字スタイルには、本文の中のコードの背景と余白を決める次の二つのキーも書けます。
+ほかの文字スタイルに書くとエラーです。
+
+| キー | 既定 | 意味 |
+|:---|:---|:---|
+| [code: background] | 段落スタイル [code: code] の [code: background] | 背景の色の名前です。[code: false] にすると背景を塗りません。 |
+| [code: padding] | [code: "0.25zw"] | コードの前後に取る、行の方向の余白です。[code: zw] はその文字スタイルの文字の大きさを一字とします。背景がなくても効きます。 |
+
+背景は、PDF ではその行の字面の高さだけを塗り、ルビと圏点に重なりません。
+コードが行をまたぐと、行ごとに塗り、分かれた側には余白を付けません。
+[code: color] と [code: background] は一緒に書けます。
+
 @nonumber
 ## [code: \[paragraph-styles.名前\]]
 

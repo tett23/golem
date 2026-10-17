@@ -43,6 +43,7 @@ module Golem.Driver.Pdf
     layoutPages,
     indexLines,
     bibliographyLines,
+    pdfXPeople,
     Assumed (..),
     fixpoint,
     labelSpans,
@@ -482,6 +483,9 @@ restyle style lk = \case
               lkBaselineShift = maybe (lkBaselineShift lk) (dimToSp size) (csBaselineShift cs),
               -- code breaks at spaces and after a slash (golem-driver ADR 0017)
               lkCode = lkCode lk || code,
+              -- the background and the padding of inline code; zw is the size of the style (golem-driver ADR 0029)
+              lkBackground = if code then charStyleBackground style name else lkBackground lk,
+              lkPadding = if code then maybe 0 (max 0 . dimToSp size) (csPadding cs) else lkPadding lk,
               -- a URL breaks as code, after the last slash of a run (golem-doc ADR 0005)
               lkUrl = lkUrl lk || isUrlCharStyle style name
             }
@@ -1174,7 +1178,7 @@ tocPage tg e number =
       le = tgMeasure tg - max (tgReserve tg) w - g
       k0 = if tgLeaders tg && u > 0 then max 0 ((le - (e + g)) `div` u) else 0
       (ns, k) = if ns0 < e + g then (e + g, 0) else (ns0, k0)
-      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 []) | _ <- [1 .. k]] 0 (k * u) 0 (0, 0) False (0, 0)
+      leader = Line [Box u (BoxContent "…" False 0 0 (fromEnum KindText) (tgLook tg) 0 0 [] 0 0) | _ <- [1 .. k]] 0 (k * u) 0 (0, 0) False (0, 0)
    in TocPage (le - k * u) leader ns number
 
 -- | The measure of a column of the page.
@@ -1768,7 +1772,7 @@ buildFlow inp geom fonts images assumed = do
         Just m ->
           let boxes = [b | b@Box {} <- fst (composeInlines env m)]
               w = sum (map itemWidth boxes)
-           in boxes <> [Box (innerOf u - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0 [])]
+           in boxes <> [Box (innerOf u - w) (BoxContent "" False 0 0 (fromEnum KindText) (ceLook env) 0 0 [] 0 0)]
       compose lineWidth u =
         let env = (styledEnv (uStyle u) (envFor (uLook u))) {ceAkiSet = akiSetOf (uStyle u) (uParaStyle u)}
             bodyEnv' = (styledEnv (uStyle u) (envFor (bodyLook (uStyle u) fs))) {ceAkiSet = akiSetOf (uStyle u) Nothing}
@@ -2158,13 +2162,13 @@ codeBlockOf geom fonts measure capacity u lead code caption =
       wrapped = length (filter ((> 1) . length) perLine)
       tagOf latin = fromEnum (if vertical && latin then KindRotated else KindText)
       lookOf col = lk {lkColor = col}
-      emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [])
+      emptyBox w = Box w (BoxContent "" False 0 0 (fromEnum KindText) lk 0 0 [] 0 0)
       -- pieces at offsets from the padding: (offset, text, width, Latin, swatch)
       lineOf pieces =
         let go _ [] = []
             go x ((o, t, w, latin, col) : rest) =
               [emptyBox (o - x) | o > x]
-                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [])]
+                <> [Box w (BoxContent t False 0 0 (tagOf latin) (lookOf col) 0 0 [] 0 0)]
                 <> go (o + w) rest
          in Line (go 0 (sortOn (\(o, _, _, _, _) -> o) pieces)) 0 (measure - lead - 2 * pad) 0 (0, 0) False (0, 0)
       at o col t = [(o + cpOffset p, cpText p, cpWidth p, cpLatin p, col) | p <- oneRow t]
@@ -2301,6 +2305,14 @@ figureRect geom ta slot pf =
 styleFileId :: Project -> FileId
 styleFileId p = FileId (length (fileTableEntries (projectFiles p)))
 
+{- | The names XMP takes as dc:creator and dc:contributor: without the
+printer and the binder, without roles (docs/adr ADR 0033).
+-}
+pdfXPeople :: Metadata -> ([Text], [Text])
+pdfXPeople md = (names (mdCreators md), names (mdContributors md))
+  where
+    names cs = [crName c | c <- cs, inMetadata (crRole c)]
+
 -- | The output intent; a profile that cannot be read is G0806 (golem-project ADR 0004).
 loadIntent :: PdfInput -> IO (Either [Diagnostic] (Maybe P.PdfX))
 loadIntent inp = case stIntent (piStyle inp) of
@@ -2313,7 +2325,7 @@ loadIntent inp = case stIntent (piStyle inp) of
         bytes <- BS.readFile (piRoot inp <> "/" <> rel)
         let md = manifestMetadata (projectManifest (piProject inp))
             condition = if "JapanColor2001Coated" `T.isInfixOf` T.pack path then "JC200103" else T.pack (takeBaseName path)
-        pure (Right (Just (P.PdfX bytes condition [crName c | c <- mdCreators md])))
+        pure (Right (Just (uncurry (P.PdfX bytes condition) (pdfXPeople md))))
   where
     intentMessage = \case
       Missing -> "出力インテントの ICC プロファイルがありません"
@@ -2341,7 +2353,9 @@ data LineRec = LineRec
   { lrKind :: !Text,
     lrSpan :: !SrcSpan,
     lrRect :: !(Maybe Rect),
-    lrOverfull :: !(Maybe Sp)
+    lrOverfull :: !(Maybe Sp),
+    -- | the swatches of the backgrounds of inline code on the line (golem-driver ADR 0029)
+    lrBackgrounds :: ![P.Swatch]
   }
 
 -- | What one page draws.
@@ -2475,7 +2489,27 @@ writeDocumentView inp geom fonts layout intent =
         | otherwise = (rectX ta, rectY ta + rectH ta - cross)
       -- a line drawn with its record for the view (golem-cli ADR 0006)
       entry kind sp ta cross = entryAt kind sp (lineStart ta cross)
-      entryAt kind sp start sl = (LineRec kind sp (lineFace start sl) (overfullOf sl), drawLineAt start sl)
+      entryAt kind sp start sl = (LineRec kind sp (lineFace start sl) (overfullOf sl) (map fst (codeBackgrounds start sl)), drawLineAt start sl)
+      {- the backgrounds of inline code on a line (golem-driver ADR 0029): each
+      run of boxes of one swatch, with the spaces between them, from the
+      start of its first box to the end of its last, across the face of the
+      line; a run of code ends at a box with padding after it or before
+      the next one -}
+      codeBackgrounds (x0, y0) sl =
+        let size = slSize sl
+            boxes = [(off, w, c) | (Box w c, off) <- placeLine (slLine sl)]
+            breaksBefore (_, _, p) (_, _, c) = bcPadEnd p > 0 || bcPadStart c > 0 || lkBackground (bcLook p) /= lkBackground (bcLook c)
+            runs = groupWhen (\a b -> not (breaksBefore a b)) boxes
+            rectOf s0 e0
+              | vertical = Rect (x0 - size `div` 2) (y0 - e0) size (e0 - s0)
+              | otherwise = Rect (x0 + s0) (y0 - (size - round (toRational size * baselineRatio))) (e0 - s0) size
+         in [ (sw, rectOf (slIndent sl + s0) (slIndent sl + e0))
+            | run@((s0, _, c) : _) <- runs,
+              Just name <- [lkBackground (bcLook c)],
+              Just (Swatch (cc, cm, cy, ck)) <- [Map.lookup name (stSwatches style)],
+              let sw = P.Swatch cc cm cy ck
+                  e0 = maximum [o + w | (o, w, _) <- run]
+            ]
       -- the face of a line: from its first box to the end of its last, the height of its size
       lineFace (x0, y0) sl =
         let boxes = [(off, w) | (Box w _, off) <- placeLine (slLine sl)]
@@ -2585,7 +2619,8 @@ writeDocumentView inp geom fonts layout intent =
                               [ch] | boxKind c == KindPunctuation -> toSp size (fst (punctSpace (charClass ch)))
                               _ -> 0
                             rotated = boxKind c == KindRotated
-                            (ox, oy) = origin (off - pre)
+                            -- the glyphs of inline code after its padding (golem-driver ADR 0029)
+                            (ox, oy) = origin (off + bcPadStart c - pre)
                             -- vertical glyph origins sit on the centre line; rotated Latin sits on a baseline beside it
                             pt
                               | vertical && rotated = (ox - size * 3 `div` 10, oy)
@@ -2606,7 +2641,9 @@ writeDocumentView inp geom fonts layout intent =
               ((Just name, _) : _)
                 | Just sw <- swatchOf (plainLook body 0) {lkColor = Just name} -> [P.Saved (P.SetColor sw : concatMap (fst . snd) grp)]
               _ -> concatMap (fst . snd) grp
-         in (concatMap marksOf coloured, concatMap (snd . snd) parts)
+            -- the backgrounds of inline code before the text of the line (golem-driver ADR 0029)
+            backs = [P.Saved [P.SetColor sw, P.Rule r] | (sw, r) <- codeBackgrounds (x0, y0) sl]
+         in (backs <> concatMap marksOf coloured, concatMap (snd . snd) parts)
       textAt kind anchor size txt =
         let w = plainWidth fonts body size txt
             x0 = case anAlign anchor of
@@ -2614,7 +2651,7 @@ writeDocumentView inp geom fonts layout intent =
               LS.AlignCenter -> anX anchor - w `div` 2
               LS.AlignEnd -> anX anchor - w
             face = Rect x0 (anY anchor - (size - round (toRational size * baselineRatio))) w size
-         in (LineRec kind styleSpan (Just face) Nothing, runAtU (plainLook body size) False False 0 (x0, anY anchor) txt)
+         in (LineRec kind styleSpan (Just face) Nothing [], runAtU (plainLook body size) False False 0 (x0, anY anchor) txt)
       -- the lines of each footnote by its key (golem-driver ADR 0018)
       noteBodies = Map.fromList [note | sl <- Map.elems (plLines layout), note <- slNotes sl]
       {- one column of a page, against the rectangle of the column (docs/adr
@@ -2736,7 +2773,7 @@ writeDocumentView inp geom fonts layout intent =
                   -- nothing but the master page (golem-cli ADR 0006)
                   pdBlank = null columnParts && null sidenoteParts && null images && null rules && null backs,
                   pdNumber = n,
-                  pdBackgrounds = concat [snd b | (_, _, _, b) <- columns]
+                  pdBackgrounds = concat [snd b | (_, _, _, b) <- columns] <> concat [lrBackgrounds rec | (rec, _) <- allParts]
                 }
       -- the swatch of a rule, if it has one (golem-driver ADR 0028)
       ruleSwatch rule = do
@@ -2950,3 +2987,11 @@ writeDocumentView inp geom fonts layout intent =
                 }
          in (bytes, view)
    in (used, finish)
+
+-- | Groups of neighbours: a new group starts where the predicate fails between two neighbours.
+groupWhen :: (a -> a -> Bool) -> [a] -> [[a]]
+groupWhen same = foldr step []
+  where
+    step x = \case
+      (g@(y : _) : gs) | same x y -> (x : g) : gs
+      gs -> [x] : gs

@@ -197,10 +197,12 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 - [code: synthetic-bold]、[code: synthetic-italic]：字形の輪郭を太らせた太字と、傾けた斜体です。
 - [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift]：文字の送りです（「[ref-title kerning]」、[ref-page kerning] ページ）。
 - [code: based-on]：引き継ぐ文字スタイルです。
+- [code: background]、[code: padding]：本文の中のコードの背景の色と、前後の余白です。[code: code] と、それを引き継ぐ文字スタイルにだけ書けます。[code: background] を書かなければ、段落スタイル [code: code] の背景を使います。
 
 [code: bold]、[code: italic]、[code: strong]、[code: code] の四つは、はじめから定義されています。
 同じ名前で書くと、書いたキーだけが置き換わります。
 このマニュアルは、[code: bold] の書体を見出しの太いゴシック体にし、[code: code] に色を付けています。
+本文の中のコードには、コードブロックと同じ網がかかります。
 [code: strong] は [code: bold] を引き継ぐので、[code: \[strong: ...\]] も同じ書体で組まれます。
 
 段落スタイル（[code: \[paragraph-styles.<名前>\]]）に書けるキーは次のとおりです。

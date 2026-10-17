@@ -67,16 +67,32 @@ chapters = [
 | [code: language] | 本の言語です（文字列、必須）。日本語は [code: "ja"]、英語は [code: "en"] です。 |
 | [code: date] | 発行日です（日付、必須）。PDF の作成日などに書き込みます。 |
 | [code: edition] | 版です（文字列）。 |
-| [code: publisher] | 発行者です（文字列）。 |
-| [code: \[\[metadata.creators\]\]] | 著者などの関係者です（テーブルの並び）。一人ごとに一つ書きます。 |
+| [code: publisher] | 発行所です（文字列）。 |
+| [code: publisher-person] | 発行人です（文字列）。空の文字列と改行は書けません。 |
+| [code: \[\[metadata.creators\]\]] | 著者や訳者のような主な著作者です（テーブルの並び）。一人ごとに一つ書きます。 |
+| [code: \[\[metadata.contributors\]\]] | 編集者、装丁者、印刷所、製本所のようなそのほかの関係者です（テーブルの並び）。 |
+| [code: \[\[metadata.printings\]\]] | 版と刷の履歴です（テーブルの並び）。古い順に、刷ごとに一つ書きます。 |
 
-[code: \[\[metadata.creators\]\]] のキーは次のとおりです。
+[code: \[\[metadata.creators\]\]] と [code: \[\[metadata.contributors\]\]] のキーは次のとおりです。
 
 | キー | 意味 |
 |:---|:---|
 | [code: name] | 名前です（文字列、必須）。 |
 | [code: reading] | 名前の読みです（文字列）。 |
-| [code: role] | 役割の符号です（文字列、必須）。著者は [code: "aut"]、編者は [code: "edt"]、訳者は [code: "trl"] のように、EPUB と同じ符号を書きます。 |
+| [code: role] | 役割です（文字列、必須）。[code: author]、[code: translator]、[code: editor]、[code: illustrator]、[code: book-designer]、[code: cover-designer]、[code: typesetter]、[code: printer]、[code: binder] のどれかを書きます。 |
+
+[code: name] に空の文字列は書けません。
+[code: printer] と [code: binder] の人は、EPUB と PDF の本の情報に書き込みません。
+
+[code: \[\[metadata.printings\]\]] のキーは次のとおりです。
+項目は版と刷の順に並べ、同じ版と刷を二度書かず、日付が前の項目より前にならないようにします。
+最後の項目が、今の版と刷です。
+
+| キー | 意味 |
+|:---|:---|
+| [code: edition] | 版の番号です（1 以上の整数、必須）。 |
+| [code: printing] | 刷の番号です（1 以上の整数、必須）。 |
+| [code: date] | その刷の発行の日です（日付、必須）。 |
 
 @nonumber
 ## [code: \[targets\]]

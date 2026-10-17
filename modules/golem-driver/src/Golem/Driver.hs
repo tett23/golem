@@ -16,6 +16,8 @@ module Golem.Driver
     evaluateProject,
     evaluateProjectWith,
     loadBibliography,
+    metadataValues,
+    epubConfig,
     Evaluated (..),
     localStylesOf,
     docStyles,
@@ -55,6 +57,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Time.Calendar (showGregorian, toGregorian)
 import Data.Vector qualified as V
 import Golem.Doc.Assemble
 import Golem.Doc.Bibliography (CslDate (..), CslEntry (..), CslName (..), EntryPart, formatEntry)
@@ -301,7 +304,55 @@ builtinKeepStyles = keepStyles defaultStyle
 -- | @meta@: the text of the metadata a running head shows too, and the creators.
 metadataValues :: Metadata -> Map Text Value
 metadataValues md =
-  Map.insert "creators" (VArray [VString (crName c) | c <- mdCreators md]) (VString <$> runningMetadata md)
+  Map.fromList
+    ( [("creators", VArray [VString (crName c) | c <- mdCreators md])]
+        <> [("publisher_person", VString p) | Just p <- [mdPublisherPerson md]]
+        <> [("roles", VHash roles) | not (Map.null roles)]
+        <> [("printing", printingValue p) | Just p <- [lastMaybe (mdPrintings md)]]
+        <> [("printings", VArray (map printingValue (mdPrintings md))) | not (null (mdPrintings md))]
+    )
+    <> (VString <$> runningMetadata md)
+  where
+    -- the names by role, creators first, each in the order of the manifest (docs/adr ADR 0033)
+    roles =
+      Map.fromListWith
+        (flip (<>))
+        [(T.replace "-" "_" (roleWord (crRole c)), [c]) | c <- mdCreators md <> mdContributors md]
+        & Map.map (\cs -> VArray [VString (crName c) | c <- cs])
+    printingValue p =
+      let (y, m, d) = toGregorian (prDate p)
+       in VHash
+            ( Map.fromList
+                [ ("edition", VInt (toInteger (prEdition p))),
+                  ("number", VInt (toInteger (prNumber p))),
+                  ("year", VInt y),
+                  ("month", VInt (toInteger m)),
+                  ("day", VInt (toInteger d)),
+                  ("date", VString (T.pack (showGregorian (prDate p))))
+                ]
+            )
+    lastMaybe xs = if null xs then Nothing else Just (last xs)
+    x & f = f x
+
+{- | The configuration of the EPUB: creators as dc:creator, contributors as
+dc:contributor, both without the printer and the binder, the roles as
+MARC relator codes (docs/adr ADR 0033).
+-}
+epubConfig :: Metadata -> Maybe Text -> Bool -> EpubConfig
+epubConfig md isbn vertical =
+  EpubConfig
+    { epIdentifier = maybe (mdId md) ("urn:isbn:" <>) isbn,
+      epTitle = mdTitle md,
+      epTitleReading = mdTitleReading md,
+      epLanguage = mdLanguage md,
+      epDate = mdDate md,
+      epPublisher = mdPublisher md,
+      epCreators = people (mdCreators md),
+      epContributors = people (mdContributors md),
+      epVertical = vertical
+    }
+  where
+    people cs = [EpubCreator (crName c) (crReading c) (marcRelator (crRole c)) | c <- cs, inMetadata (crRole c)]
 
 {- | The variables the running heads show, as text, for each chapter file
 by its master page (golem-driver ADR 0022): its own (@{set.<name>}@) and
@@ -779,17 +830,7 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
       let dir = root </> "build" </> "epub"
           out = dir </> "book.epub"
           isbn = fromMaybe Nothing (tgEpub (manifestTargets manifest))
-          cfg =
-            EpubConfig
-              { epIdentifier = maybe (mdId md) ("urn:isbn:" <>) isbn,
-                epTitle = mdTitle md,
-                epTitleReading = mdTitleReading md,
-                epLanguage = mdLanguage md,
-                epDate = mdDate md,
-                epPublisher = mdPublisher md,
-                epCreators = [EpubCreator (crName c) (crReading c) (crRole c) | c <- mdCreators md],
-                epVertical = vertical
-              }
+          cfg = epubConfig md isbn vertical
       clean dir
       createDirectoryIfMissing True dir
       writeEpub root out cfg ft book site
@@ -854,9 +895,13 @@ textLists style =
 htmlCharStyles :: Style -> Map Text HtmlCharStyle
 htmlCharStyles style =
   Map.fromList
-    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d)) (isCodeCharStyle style n))
+    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d)) code background padding)
     | n <- Map.keys (stCharStyles style),
-      Just d <- [charStyle style n]
+      Just d <- [charStyle style n],
+      let code = isCodeCharStyle style n
+          -- the background and the padding of inline code (golem-driver ADR 0029)
+          background = if code then charStyleBackground style n else Nothing
+          padding = if code then cssLength <$> csPadding d else Nothing
     ]
 
 -- | The paragraph styles of a style, resolved for CSS (docs/adr ADR 0005, 0006).

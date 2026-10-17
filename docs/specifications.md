@@ -350,11 +350,25 @@ language = "ja"
 date = 2026-10-11
 edition = "1.0"
 publisher = "..."
+publisher-person = "佐藤 一郎"
 
 [[metadata.creators]]
 name = "山田 太郎"
 reading = "やまだ たろう"
-role = "aut"
+role = "author"
+
+[[metadata.contributors]]
+name = "鈴木 花子"
+role = "editor"
+
+[[metadata.contributors]]
+name = "株式会社〇〇印刷"
+role = "printer"
+
+[[metadata.printings]]
+edition = 1
+printing = 1
+date = 2026-10-16
 
 [targets.pdf]
 isbn = "978-..."
@@ -365,8 +379,57 @@ isbn = "978-..."
 
 `id` は本の識別子であり、必須とする。
 プロジェクトを作るときに一度だけ生成し、以後は変えない。
-著者の役割（`role`）には、EPUB と共通の語彙である MARC relator の符号を使う。
 書名と著者の読み（`title-reading`、`reading`）は任意の項目であり、EPUB では電子書店での並べ替えや検索に使われる。
+
+### 関係者と刷
+
+`creators` は主たる著作者（著者、訳者など）を、`contributors` はそのほかの関係者（編集者、印刷所、製本所、装丁者など）を書く表の配列である（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。
+どちらも項目のキーは `name`（必須）、`reading`（任意）、`role`（必須）である。
+この区別は、EPUB の `dc:creator` と `dc:contributor` の区別にそのまま対応する。
+
+`role` は次の表の語で書く。
+表は Golem が持つ閉じた語彙であり、MARC relator の符号は出力の形式が求める場所でだけ Golem が内部で使う。
+
+| 語 | 奥付の項目 | MARC relator の符号 | 出力のメタデータ |
+| --- | --- | --- | --- |
+| `author` | 著者 | `aut` | 書く |
+| `translator` | 訳者 | `trl` | 書く |
+| `editor` | 編集 | `edt` | 書く |
+| `illustrator` | 挿絵 | `ill` | 書く |
+| `book-designer` | 装丁 | `bkd` | 書く |
+| `cover-designer` | カバーのデザイン | `cov` | 書く |
+| `typesetter` | 組版 | `cmt` | 書く |
+| `printer` | 印刷所 | `prt` | 書かない |
+| `binder` | 製本所 | `bnd` | 書かない |
+
+発行所は `publisher` に、発行人（奥付に発行者として載せる個人）は文字列のキー `publisher-person` に書く。
+`publisher` がなくても `publisher-person` だけを書ける。
+
+`printings` は版と刷の履歴であり、項目のキーは `edition`（1 以上の整数）、`printing`（1 以上の整数）、`date`（TOML の日付）で、どれも必須とする。
+最後の項目を、この出力の版と刷（現在の刷）とする。
+刷の番号は飛んでもよい。
+`edition`（自由な文字列）と `date` は `printings` とは独立の値であり、出力の日時は `printings` ではなく `date` から作る。
+
+次のどれも、マニフェストのほかの誤りと同じく G0301 とし、位置は誤った値とする。
+
+- `role` が表の語でない。表の符号（`aut` など）を書いた場合は、語を示すメッセージにする。
+- `role = "publisher"`。
+- `publisher-person` が空の文字列か、改行を含む。
+- `name` が空の文字列である。
+- `printings` の `edition` か `printing` が 1 より小さい。
+- `printings` の項目が、（`edition`、`printing`）の辞書式の順で狭義に増えていない。
+- `printings` の `date` が、前の項目の `date` より前である。
+
+出力のメタデータへの写し方は次のとおりである。
+
+- **EPUB**：`creators` を `dc:creator` に、`contributors` を `dc:contributor`（`id` は `contributor1` からの連番）に書き、役割を表の符号にして `refines` の `role`（`scheme="marc:relators"`）で、読みを `file-as` で付ける。
+- **PDF**：XMP を書く場合、`creators` を `dc:creator`（`rdf:Seq`）に、`contributors` を `dc:contributor`（`rdf:Bag`）に、名前だけを並べる。
+- **HTML**：書かない。
+
+役割が `printer` と `binder` の項目は、`creators` と `contributors` のどちらに書いても、EPUB と XMP に書かない。
+印刷所と製本所は紙の本の製造の記録であり、電子書籍と PDF の文書の書誌ではないためである。
+連番の `id` は、書く項目だけで振る。
+`publisher-person` と `printings` も、出力のメタデータに書かない。
 
 媒体ごとに異なるのは ISBN などの識別子だけであり、これはターゲットの節に書く。
 紙の本と電子書籍では ISBN が別の番号になるためである。
@@ -414,6 +477,27 @@ Git のコミットやビルドの環境は含めない。
 奥付のように、メタデータを本文に並べるページをマニフェストと二重に書かずに済ませるためである。
 メタデータはマニフェストだけで決まり評価の前に確定しているので、`meta` はファイル内評価（S0）の値であり、見出しの中でも使える。
 `meta` は `doc` と同じく予約語であり、import の名前空間には使えない。
+
+`meta` が持つ値は次のとおりである。
+マニフェストのキーの `-` は、`meta` では `_` になる。
+マニフェストにない値は鍵もなく、引くと G0202 になる。
+
+- `id`、`title`、`language`、`date`（`2026-10-16` の形の文字列）と、あれば `title_reading`、`edition`、`publisher`、`publisher_person`
+- `creators`：`creators` の名前の配列
+- `roles.<役割>`：`creators` と `contributors` のうち役割が `<役割>` である項目の名前の配列。`<役割>` は役割の語の `-` を `_` にしたもの（`meta.roles.cover_designer`）である。`creators` を先に、それぞれマニフェストの順に並べ、印刷所と製本所も含む（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）
+- `printing`：現在の刷の連想配列であり、`edition`、`number`、`year`、`month`、`day` を整数で、`date` を `2026-10-16` の形の文字列で持つ
+- `printings`：`printings` の全項目を、`printing` と同じ形の連想配列の配列にしたもの
+
+配列は本文に直接埋め込めないので、組み込み関数 `join(配列, 区切り)` で文字列にする（`[= join(meta.roles.editor, "、")]`）。
+
+発行の履歴は、ブロックコマンド `@printings` で組む。
+`printings` の全項目を、マニフェストの順に、一項目を一つの段落にして組み、`@style` などの属性はすべての段落に効く。
+一つの段落は `2026年10月16日　初版第1刷発行` の形であり、版の番号が 1 なら「初版」、2 以上なら `第2版` のように番号を入れた形とする。
+年、月、日と版、刷の番号は数の値として組むので、縦組みでは漢数字になる。
+年は一字ずつの漢数字（`kanji-digits`、二〇二六）とし、ほかは `[numbers]` の `vertical` の既定に従う。
+書式はこの一つに固定し、日本語でない本（`language` が `ja` でない本）と `printings` のない本では G0276 とする。
+引数か本体を書いた場合も G0276 とする。
+書式を変える設定は、v0.1.0-rc4 か v1.0.0 で扱う予定である（[docs/roadmap.md](roadmap.md) の「発行の履歴の書式」）。
 
 ## 目次と文書構造の参照
 
@@ -890,6 +974,7 @@ LSP と `golem lint` はファイルを検査しないので、フォントを�
 スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
 
 文字スタイルのキーは `based-on`、`font`（フォントの役割）、`size`、`color`（スウォッチの名前）、`synthetic-bold`、`synthetic-italic` である。
+コードの文字スタイルは、本文の中のコードの背景と余白のキー `background` と `padding` も持つ（後述）。
 `font` の役割は、役割が持つ側（和文か欧文）の文字だけをその役割で組み、持たない側の文字は外側の書体のまま組む。
 `synthetic-bold` が真なら、`font` の役割が持たない側の文字を合成の太字（輪郭を線で太らせる）にし、`font` がなければ両側を太らせる。
 PDF の合成の太字の線の幅は、和文で文字の大きさの 1/80、欧文で 1/60 とする（[golem-driver ADR 0012](golem-driver/adr/0012-synthetic-bold-weight.md)）。
@@ -1050,6 +1135,35 @@ PDF では、コードブロックを次のように組む。
 
 文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイルの文字は、PDF でハイフネーションとカーニングをかけず、改行してよい位置を空白と `/` の後に限る（`/` の後で改行してもハイフンを描かない）。
 中の文字のあいだにはアキ量のセットの空きを入れず、前後の文字との空きは端の文字のクラスで決める。
+
+本文の中のコードの背景と余白は、コードの文字スタイルの二つのキーで決める（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
+
+| キー | 型 | 既定 | 意味 |
+| --- | --- | --- | --- |
+| `background` | スウォッチの名前か `false` | 段落スタイル `code` の `background` | 背景の色。`false` は背景を塗らない |
+| `padding` | 寸法 | `"0.25zw"` | コードの前後に取る、行の方向の余白。`zw` はその文字スタイルの文字の大きさを一字とする |
+
+二つのキーは、文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイルにだけ書ける。
+ほかの文字スタイルに書くとエラー（G0306）とする。
+型は文字スタイルの全体に持たせ、実装をコードに絞る（「設計原則」の「広い型、狭い実装」）。
+二つのキーは、ほかのキーと同じく `based-on` でキーごとに引き継ぐ。
+`background` を書かなければ段落スタイル `code` の `background` を使い、そこにもなければ背景を塗らない。
+`background = false` は、段落スタイルの背景を引き継がないことを表し、`true` はエラー（G0306）とする。
+`background` のスウォッチが `[color.swatches]` にない場合は G0313、`padding` が負か寸法として読めない場合は G0306 とする。
+`padding` は背景の有無によらず効き、背景がなければコードの前後の空きとして見える。
+`color`（文字の色）と `background` は一緒に書ける。
+ファイルの先頭の `@style-def character` にも、同じ条件で書ける。
+余白の既定 `0.25zw` は、本文の中のコードを持つすべての本の行の分け方を変えうる。
+
+PDF では、本文の中のコードの背景と余白を次のように扱う。
+
+- 一つの `[code: ...]`（同じ背景と余白のコードの文字が続く範囲）の最初の箱の前と最後の箱の後に、`padding` の幅を足す。足した幅は箱の送りと行分割の幅に入り、箱の中の字は前の余白の分だけ後ろから描く。余白とコードの文字のあいだでは改行しない。
+- コードの前後の空き（アキ量のセットの空き、和欧間の空き）は、端の文字のクラスで決め、余白の外に置く。ルビの読みは、コードの字にも余白にもかけない。
+- 背景は、行ごとに、同じ背景を持つ箱の並びを一つの矩形で塗る。行の方向は、並びの最初の箱の始まり（前の余白を含む）から最後の箱の終わり（後の余白を含む）までで、並びの中の空白も塗る。行と直交する方向は、その行の字面（横組みでは行の大きさの字面の上端から下端、縦組みでは中心線から左右に行の大きさの半分）である。
+- コードが空白か `/` の後で次の行に分かれた場合は、行ごとに別の矩形を塗る。前の余白は最初の行の始まりにだけ、後の余白は最後の行の終わりにだけあり、分かれた側は箱の端で切る。
+- 背景はその行の文字より先に、スウォッチの CMYK を DeviceCMYK で塗る。ルビの読みと圏点は字面の外に描くので、背景と重ならない。
+- 背景は、本文の段落、見出し、キャプション、表のセル、脚注、傍注の行の中のコードに効く。柱とノンブルは文字スタイルで組まないので、背景を持たない。
+- 背景のスウォッチは、golem preflight の使ったスウォッチに入り、総インキ量の検査（G0915）の対象になる。
 
 段落スタイルの `indent` はすべての行の始まりの字下げ（InDesign の左インデント）、`first-line-indent` は最初の行に `indent` へ加える量（1 行目左インデント）であり、負ならぶら下げになる（[docs/adr/0006](adr/0006-paragraph-indent.md)）。
 どちらも行の始まりの側から測るので、縦組みでは天からの距離になる。
@@ -1220,6 +1334,10 @@ HTML と EPUB では、組み込みの文字スタイルのうち `strong`、`bo
 `pre` には `white-space: pre-wrap`、`overflow-wrap: anywhere`、`tab-size: 2`、`hyphens: none`、`font-kerning: none` を書き、`[paragraph-styles.code]` に `background` があれば、その RGB の近似の `background-color` と、`padding` を `em` にした `padding` を書く。
 `code` の `size` があれば、キャプションと同じく `pre` の `font-size` を書く。
 `code` を `based-on` で引き継ぐ文字スタイルの CSS には、`font-family`（最後に `monospace`）と `hyphens: none` を書く（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
+文字スタイル `code` の `code` の規則と、`code` を引き継ぐ文字スタイルの `cs-名前` の規則には、解決した背景のスウォッチの RGB の近似の `background-color`（背景がなければ書かない）と、`padding` を `em` にした `padding-inline`（背景の有無によらず書く）を書く（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
+縦組みの本でも行の方向になるよう、余白は `padding-inline` で書き、行と直交する方向の余白と `box-decoration-break` は書かない。
+行をまたぐ `<code>` の分かれた側には、CSS の既定のとおり余白が付かず、PDF と同じ形になる。
+網の行と直交する方向の範囲は、ブラウザーの行の内容の領域で決まり、PDF の字面とは一致しない。
 キャプションかファイル名のあるコードブロックは `<figure class="listing">` で包み、`<figcaption>` にリスト番号、全角の空白、キャプションを入れ、ファイル名を `<div class="code-file">` に入れて、どちらも `<pre>` の前に置く（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 行番号、強調、差分、注釈の印のどれかを持つコードブロックは、各行を `<span class="line">`（強調は `hl`、追加と削除は `add` と `del` の class を足す）で包み、行番号を `<span class="ln" aria-hidden="true">`、差分の印を `<span class="dm" aria-hidden="true">`、注釈の印を `<span class="callout">①</span>` にする。
 そのようなコードブロックのある本の `style.css` には、`.ln` と `.dm` の `user-select: none`、行番号の右揃えの幅（最大の桁数の `ch`）、強調と差分の背景の色（スウォッチの RGB の近似、強調の既定は墨 15% の近似）を書く。
