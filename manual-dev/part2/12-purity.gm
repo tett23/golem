@@ -175,15 +175,27 @@ golem-font の [code: Golem.Font] は、HarfBuzz と FreeType の呼び出しを
 golem-font ADR 0001 が、FFI の呼び出しを純粋な関数として見えるように包むと決めている。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-font/adr/0001-shaping-and-metrics.md]（golem-font ADR 0001「シェイピングとメトリクス」）]
 
 [code: unsafePerformIO] は、型の検査を黙らせるだけで、純粋性を作りはしない。
-包んだ関数を純粋と呼んでよいのは、次の三つが成り立つときに限る。
+包んだ関数を純粋と呼んでよいのは、次の四つが成り立つときに限る。
 
 + 結果が引数だけで決まる。フォントは常にバイト列から読み（パスからは読まない）、C の側は呼び出しのあいだで結果に効く状態を持たない。
 + 作用が外から観察できない。C の側のオブジェクトは [code: ForeignPtr] のファイナライザが解放し、例外は外に漏らさない。
 + 境界を越える値が環境に依存しない。C の側からは整数のフォントの単位を受け取り、[code: unitsToSp] が有理数で sp に換算して、最近接偶数丸めで一度だけ丸める。
++ 複数のスレッドから同時に呼んでも、一つずつ呼んだときと同じ結果になる。純粋な関数は、どの OS のスレッドで、いくつ同時に評価されてもよいからである。
 
 三つめは決定性のための条件でもある。
 HarfBuzz と FreeType は同梱したソースからビルドし、[code: golem-font.cabal] の [code: cc-options] と [code: cxx-options] に [code: -ffp-contract=off] を付けて、積和演算の融合を止めている。
 融合した積和演算は丸めを一回省くので、使う計算機と使わない計算機で結果の最後の桁がずれうる。
+
+四つめは、型からも単体のテストからも見えにくい。
+FreeType のフェイス（[code: FT_Face]）は、一度に一つのスレッドしか使えない。
+[code: glyphMetrics] が呼ぶ [code: FT_Load_Glyph] は、フェイスに一つしかないグリフのスロットに字形を読み込み、Golem はそこからメトリクスを読む。
+二つのスレッドが同じフォントで同時にこれを行うと、互いの字形を読むか、プロセスが落ちる。
+実際に、8 個のスレッドから同じフォントの [code: glyphMetrics] を呼ぶと、毎回セグメンテーション違反で落ちた。
+そこで [code: cbits/golem/golem_font.c] は、フォントごとに一つのミューテックス（一度に一つのスレッドだけが取れるロック、[code: ft_lock]）を持ち、フェイスに触れる関数はすべて、そのあいだロックを取る。
+HarfBuzz のオブジェクト（blob、face、font）は開いた後は読むだけで、HarfBuzz は複数のスレッドからの同時の利用を許しているので、シェイピングはロックを取らずに並列に進む。
+シェイピングのバッファは呼び出しごとに作る。
+この性質は、別の実行ファイルのテスト [code: golem-font-race-test] が確かめる。
+落ちるかもしれないテストを独立したプロセスで動かすのは、落ちたときにほかのテストを道連れにせず、そのテストの失敗として報告させるためである。
 
 golem-plugin の [code: Golem.Plugin] も、wasmtime の呼び出しを同じ形で包んでいる。
 [code: callCommand] と [code: applyFilter] の型は [code: Either PluginError ...] を返す純粋な関数である。
@@ -215,6 +227,12 @@ PDF の経路の [code: buildFlow]（[code: Golem.Driver.Pdf]）は IO の関数
 [code: mapConcurrently] は、結果を完了の順ではなく入力のリストの順に並べて返す。
 このため、どのスレッドが先に終わっても、組版の結果のリストは同じになる。
 golem-driver のテストは、並列と逐次で組んだ PDF のバイト列が一致することを、機能ごとに確かめている（[code: PdfSpec] の「the features in parallel and in sequence give the same bytes」など）。
+
+ただし、これらのテストは一つの capability（GHC のランタイムが Haskell のコードを実行する OS のスレッドの枠）の上で動く。
+一つの capability では、[code: mapConcurrently] のスレッドは交互に動くだけで、C の関数の呼び出しが重なることはない。
+本当に同時に動かすのは、[code: -threaded] でビルドし capability を 8 個に増やすテストのスイート [code: golem-driver-parallel-test] である。
+生成した原稿と [code: tempest]、[code: kanikosen] の見本を並列と逐次で組み、バイト列と診断が一致することを確かめる。
+[code: golem] の実行ファイルは [code: -with-rtsopts=-N] でリンクし、計算機のすべてのプロセッサを capability にする。
 
 S2 の繰り返しも同じ構造をしている。
 golem-layout の [code: resolvePageRefs] は、仮のページ番号から組んだページへの関数を受け取り、ページ番号が変わらなくなるまで繰り返す純粋な関数である。
@@ -375,7 +393,7 @@ ADR 0002 の各規則が、どこで、どの仕組みで守られているか�
 その代わり、差分の型を手がかりにレビューできる。
 
 - 公開する関数の型に [code: IO] を持たなかったモジュールに [code: IO] が増えたら、その IO が何を読み、それが入力の一覧に含まれるかを確かめる。
-- [code: unsafePerformIO] が増えたら、上の三つの条件（結果が引数だけで決まる、作用が観察できない、境界の値が環境に依存しない）を確かめる。
+- [code: unsafePerformIO] が増えたら、上の四つの条件（結果が引数だけで決まる、作用が観察できない、境界の値が環境に依存しない、同時に呼んでも結果が変わらない）を確かめる。
 - 依存のライブラリを足したら、[code: cabal.project.freeze] に書かれるフラグに、乱数の種や走査の順を変えるものがないかを確かめる。
 - 並列の処理を足したら、結果を入力の順で集めているかを確かめ、並列と逐次でバイト列が一致するテストを足す。
 
