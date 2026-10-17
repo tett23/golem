@@ -350,11 +350,25 @@ language = "ja"
 date = 2026-10-11
 edition = "1.0"
 publisher = "..."
+publisher-person = "佐藤 一郎"
 
 [[metadata.creators]]
 name = "山田 太郎"
 reading = "やまだ たろう"
-role = "aut"
+role = "author"
+
+[[metadata.contributors]]
+name = "鈴木 花子"
+role = "editor"
+
+[[metadata.contributors]]
+name = "株式会社〇〇印刷"
+role = "printer"
+
+[[metadata.printings]]
+edition = 1
+printing = 1
+date = 2026-10-16
 
 [targets.pdf]
 isbn = "978-..."
@@ -365,8 +379,57 @@ isbn = "978-..."
 
 `id` は本の識別子であり、必須とする。
 プロジェクトを作るときに一度だけ生成し、以後は変えない。
-著者の役割（`role`）には、EPUB と共通の語彙である MARC relator の符号を使う。
 書名と著者の読み（`title-reading`、`reading`）は任意の項目であり、EPUB では電子書店での並べ替えや検索に使われる。
+
+### 関係者と刷
+
+`creators` は主たる著作者（著者、訳者など）を、`contributors` はそのほかの関係者（編集者、印刷所、製本所、装丁者など）を書く表の配列である（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。
+どちらも項目のキーは `name`（必須）、`reading`（任意）、`role`（必須）である。
+この区別は、EPUB の `dc:creator` と `dc:contributor` の区別にそのまま対応する。
+
+`role` は次の表の語で書く。
+表は Golem が持つ閉じた語彙であり、MARC relator の符号は出力の形式が求める場所でだけ Golem が内部で使う。
+
+| 語 | 奥付の項目 | MARC relator の符号 | 出力のメタデータ |
+| --- | --- | --- | --- |
+| `author` | 著者 | `aut` | 書く |
+| `translator` | 訳者 | `trl` | 書く |
+| `editor` | 編集 | `edt` | 書く |
+| `illustrator` | 挿絵 | `ill` | 書く |
+| `book-designer` | 装丁 | `bkd` | 書く |
+| `cover-designer` | カバーのデザイン | `cov` | 書く |
+| `typesetter` | 組版 | `cmt` | 書く |
+| `printer` | 印刷所 | `prt` | 書かない |
+| `binder` | 製本所 | `bnd` | 書かない |
+
+発行所は `publisher` に、発行人（奥付に発行者として載せる個人）は文字列のキー `publisher-person` に書く。
+`publisher` がなくても `publisher-person` だけを書ける。
+
+`printings` は版と刷の履歴であり、項目のキーは `edition`（1 以上の整数）、`printing`（1 以上の整数）、`date`（TOML の日付）で、どれも必須とする。
+最後の項目を、この出力の版と刷（現在の刷）とする。
+刷の番号は飛んでもよい。
+`edition`（自由な文字列）と `date` は `printings` とは独立の値であり、出力の日時は `printings` ではなく `date` から作る。
+
+次のどれも、マニフェストのほかの誤りと同じく G0301 とし、位置は誤った値とする。
+
+- `role` が表の語でない。表の符号（`aut` など）を書いた場合は、語を示すメッセージにする。
+- `role = "publisher"`。
+- `publisher-person` が空の文字列か、改行を含む。
+- `name` が空の文字列である。
+- `printings` の `edition` か `printing` が 1 より小さい。
+- `printings` の項目が、（`edition`、`printing`）の辞書式の順で狭義に増えていない。
+- `printings` の `date` が、前の項目の `date` より前である。
+
+出力のメタデータへの写し方は次のとおりである。
+
+- **EPUB**：`creators` を `dc:creator` に、`contributors` を `dc:contributor`（`id` は `contributor1` からの連番）に書き、役割を表の符号にして `refines` の `role`（`scheme="marc:relators"`）で、読みを `file-as` で付ける。
+- **PDF**：XMP を書く場合、`creators` を `dc:creator`（`rdf:Seq`）に、`contributors` を `dc:contributor`（`rdf:Bag`）に、名前だけを並べる。
+- **HTML**：書かない。
+
+役割が `printer` と `binder` の項目は、`creators` と `contributors` のどちらに書いても、EPUB と XMP に書かない。
+印刷所と製本所は紙の本の製造の記録であり、電子書籍と PDF の文書の書誌ではないためである。
+連番の `id` は、書く項目だけで振る。
+`publisher-person` と `printings` も、出力のメタデータに書かない。
 
 媒体ごとに異なるのは ISBN などの識別子だけであり、これはターゲットの節に書く。
 紙の本と電子書籍では ISBN が別の番号になるためである。
@@ -414,6 +477,27 @@ Git のコミットやビルドの環境は含めない。
 奥付のように、メタデータを本文に並べるページをマニフェストと二重に書かずに済ませるためである。
 メタデータはマニフェストだけで決まり評価の前に確定しているので、`meta` はファイル内評価（S0）の値であり、見出しの中でも使える。
 `meta` は `doc` と同じく予約語であり、import の名前空間には使えない。
+
+`meta` が持つ値は次のとおりである。
+マニフェストのキーの `-` は、`meta` では `_` になる。
+マニフェストにない値は鍵もなく、引くと G0202 になる。
+
+- `id`、`title`、`language`、`date`（`2026-10-16` の形の文字列）と、あれば `title_reading`、`edition`、`publisher`、`publisher_person`
+- `creators`：`creators` の名前の配列
+- `roles.<役割>`：`creators` と `contributors` のうち役割が `<役割>` である項目の名前の配列。`<役割>` は役割の語の `-` を `_` にしたもの（`meta.roles.cover_designer`）である。`creators` を先に、それぞれマニフェストの順に並べ、印刷所と製本所も含む（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）
+- `printing`：現在の刷の連想配列であり、`edition`、`number`、`year`、`month`、`day` を整数で、`date` を `2026-10-16` の形の文字列で持つ
+- `printings`：`printings` の全項目を、`printing` と同じ形の連想配列の配列にしたもの
+
+配列は本文に直接埋め込めないので、組み込み関数 `join(配列, 区切り)` で文字列にする（`[= join(meta.roles.editor, "、")]`）。
+
+発行の履歴は、ブロックコマンド `@printings` で組む。
+`printings` の全項目を、マニフェストの順に、一項目を一つの段落にして組み、`@style` などの属性はすべての段落に効く。
+一つの段落は `2026年10月16日　初版第1刷発行` の形であり、版の番号が 1 なら「初版」、2 以上なら `第2版` のように番号を入れた形とする。
+年、月、日と版、刷の番号は数の値として組むので、縦組みでは漢数字になる。
+年は一字ずつの漢数字（`kanji-digits`、二〇二六）とし、ほかは `[numbers]` の `vertical` の既定に従う。
+書式はこの一つに固定し、日本語でない本（`language` が `ja` でない本）と `printings` のない本では G0276 とする。
+引数か本体を書いた場合も G0276 とする。
+書式を変える設定は、v0.1.0-rc4 か v1.0.0 で扱う予定である（[docs/roadmap.md](roadmap.md) の「発行の履歴の書式」）。
 
 ## 目次と文書構造の参照
 

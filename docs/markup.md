@@ -264,6 +264,7 @@ v1 で定めるブロックコマンドは次のとおりである。
 - `@toc depth=N`：目次を出力する。文書に一つだけ置ける。PDF では、各項目に見出しのページ番号をリーダーとともに出す（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
 - `@index`：索引を出力する。
 - `@bibliography`：参考文献の一覧を出力する。
+- `@printings`：マニフェストの `[[metadata.printings]]` から、発行の履歴（`2026年10月16日　初版第1刷発行` の形の段落）を一項目一段落で組む。引数と本体は取らない。日本語の本でだけ使える（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。
 - `@figure`：図版を置く（「図版」の節を参照）。
 - `@table src=path`：CSV のファイルから表を作る（「表」の節を参照）。
 - `@listing path lines=N-M lang=言語`：Golem 以外のファイルの内容をコードとして取り込む（「コードブロック」の節を参照）。パスは最初の引数に書く。`lang` は色分けの言語の名前である。コードブロックの開始の行と同じキーワード引数も書ける。`src=path` とも書けるが廃止予定であり、お知らせ（G0265）を出す（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
@@ -740,6 +741,7 @@ HTML と EPUB では、ファイルの中のスタイルを持つ章の `<body>`
 - 長さ：`len`（文字列と配列）
 - 割り算：`div`
 - 表示：`fixed`
+- 文字列：`join(配列, 区切り)`。文字列の配列の要素を、区切りの文字列をはさんでつなぐ。空の配列は空の文字列になる（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）
 
 三角関数、指数関数、対数関数などの超越関数は、v1 では持たない。
 これらの結果は実行環境の数学ライブラリによって最後の桁が変わることがあり、決定性を保つ実装方法を v2 で決めるためである。
@@ -788,7 +790,7 @@ NaN と無限大は、式の値として存在しない。
 
 予約された名前空間が二つある。
 
-- `meta`：マニフェストのメタデータ。ファイル内評価（S0）の値であり、どこでも参照できる。
+- `meta`：マニフェストのメタデータ。ファイル内評価（S0）の値であり、どこでも参照できる。書名などのほか、役割ごとの関係者の名前の配列 `meta.roles.<役割>`、現在の刷 `meta.printing`、刷の履歴 `meta.printings`、発行人 `meta.publisher_person` を持つ（[仕様書の「本文からの参照」](specifications.md#本文からの参照)）。
 - `doc`：文書構造の値（章の数など）。文書構造（S1）の値であり、見出しの中では参照できない。
 
 `meta` と `doc` は import の名前空間には使えない。
