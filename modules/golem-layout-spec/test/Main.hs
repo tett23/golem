@@ -159,6 +159,54 @@ tests =
         assertBool "40zw on 40 characters" (not (isLeft (pageGeometry (FileId 0) False (ruled (Zw 40) (small 40 1 Nothing)))))
         assertBool "21zw on columns of 20 characters" (isG0701 (pageGeometry (FileId 0) False (ruled (Zw 21) (small 20 2 (Just (Zw 2))))))
         assertBool "20zw on columns of 20 characters" (not (isLeft (pageGeometry (FileId 0) False (ruled (Zw 20) (small 20 2 (Just (Zw 2))))))),
+      testCase "G0701: paragraph and heading rules out of the trim or over half the column gap (golem-driver ADR 0027)" $ do
+        let mm x = round (x * 72 / 25.4 * 65536 :: Rational) :: Integer
+            a5W = mm 148
+            gridOf size chars cols gap top gutter = Grid (Abs (pt size)) chars 30 (Abs (pt (size + 6))) cols gap (Abs top) (Abs gutter)
+            rule = RuleSpec Nothing 19661 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True
+            withRule g size r = (styleWith False False g) {stParaStyles = Map.insert "a" noParaDef {psSize = size, psRuleBefore = Just (Just r)} (stParaStyles defaultStyle)}
+            onPage w st = st {stPage = fmap (\p -> p {pageSizeSpec = CustomSize w a5H}) (stPage st)}
+            result = pageGeometry (FileId 0) False
+            isG0701 = \case
+              Left [d] -> diagCode d == DiagnosticCode "G0701"
+              _ -> False
+            ok = not . isLeft
+            -- 40 characters of 9pt on A5 from a gutter of 20mm: 2.84pt to the right edge
+            g40 = gridOf 9 40 1 Nothing mm18 mm20
+        assertBool "41zw" (isG0701 (result (withRule g40 Nothing rule {rsLength = Just (Zw 41)})))
+        assertBool "40zw" (ok (result (withRule g40 Nothing rule {rsLength = Just (Zw 40)})))
+        assertBool "80zw of half size" (ok (result (withRule g40 (Just (Zw 0.5)) rule {rsLength = Just (Zw 80)})))
+        assertBool "81zw of half size" (isG0701 (result (withRule g40 (Just (Zw 0.5)) rule {rsLength = Just (Zw 81)})))
+        -- two columns of 20 characters of 8pt: 21zw goes 8pt into the gap from the left column
+        let g20 gap = gridOf 8 20 2 (Just gap) mm18 mm20
+        assertBool "half a gap of 1zw" (isG0701 (result (withRule (g20 (Zw 1)) Nothing rule {rsLength = Just (Zw 21)})))
+        assertBool "half a gap of 4zw" (ok (result (withRule (g20 (Zw 4)) Nothing rule {rsLength = Just (Zw 21)})))
+        -- margins of 15mm on both sides of 40 characters of 8pt
+        let g15 = gridOf 8 40 1 Nothing mm18 (mm 15)
+            w15 = mm 30 + 40 * pt 8
+        assertBool "-14mm" (ok (result (onPage w15 (withRule g15 Nothing rule {rsStartIndent = Abs (negate (mm 14))}))))
+        assertBool "-16mm" (isG0701 (result (onPage w15 (withRule g15 Nothing rule {rsStartIndent = Abs (negate (mm 16))}))))
+        -- a gutter of 10mm and a fore-edge of 20mm: the narrower is checked
+        let g10 = gridOf 8 40 1 Nothing mm18 (mm 10)
+            w10 = mm 30 + 40 * pt 8
+        assertBool "-9mm" (ok (result (onPage w10 (withRule g10 Nothing rule {rsStartIndent = Abs (negate (mm 9))}))))
+        assertBool "-11mm" (isG0701 (result (onPage w10 (withRule g10 Nothing rule {rsStartIndent = Abs (negate (mm 11))}))))
+        -- a head margin of 10mm: out of the column across the lines
+        let gTop = gridOf 8 40 1 Nothing (mm 10) mm20
+            out a = rule {rsKeepInColumn = False, rsWeight = 32768, rsSpaceAfter = Just (Abs (mm a))}
+        assertBool "9mm" (ok (result (withRule gTop Nothing (out 9))))
+        assertBool "10mm" (isG0701 (result (withRule gTop Nothing (out 10))))
+        -- a heading rule is checked too, after the paragraph styles
+        let heading = (styleWith False False g40) {stHeadings = Map.fromList [(1, HeadingStyle Nothing Nothing Nothing False Nothing Nothing (Just rule {rsLength = Just (Zw 41)}))]}
+        case result heading of
+          Left [d] -> diagMessage d @?= "見出し 1 の罫線が仕上がりの線を超えます"
+          other -> assertFailure (show (fmap (const ()) other))
+        case result (withRule g40 Nothing rule {rsLength = Just (Zw 41)}) of
+          Left [d] -> diagMessage d @?= "段落スタイル a の罫線が仕上がりの線を超えます"
+          other -> assertFailure (show (fmap (const ()) other))
+        case result (withRule (g20 (Zw 1)) Nothing rule {rsLength = Just (Zw 21)}) of
+          Left [d] -> diagMessage d @?= "段落スタイル a の罫線が段間の半分を超えます"
+          other -> assertFailure (show (fmap (const ()) other)),
       testCase "the lines of the footnote separator (golem-driver ADR 0024)" $ do
         let base = styleWith False False (grid 30 30 1 Nothing)
             withRule b w a = base {stNotesRule = Just (RuleSpec (Just (Zw 10)) w b a Nothing RuleSolid (Zw 0) Nothing True)}
