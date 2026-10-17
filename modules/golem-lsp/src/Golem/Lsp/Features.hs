@@ -328,7 +328,8 @@ completions ws path off = case sourceOf ws path of
                                   | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
                                 _ -> []
   where
-    commandNames = [Completion c CkCommand | c <- builtinInlineCommands]
+    -- the built-in commands, then those of the plugins (docs/adr ADR 0031)
+    commandNames = [Completion c CkCommand | c <- builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws)]
 
 {- | Completion after @manifest (docs/adr ADR 0014): the keys of [source]
 (docs/adr ADR 0013), then the values of a key.

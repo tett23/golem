@@ -23,6 +23,9 @@ tests =
         builtinInlineCommands @?= ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "index", "cite", "aki"],
       testCase "overridableCommands keeps its names and order" $
         overridableCommands @?= ["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "tcy", "number-text"],
+      -- docs/adr ADR 0031
+      testCase "the commands a plugin may not override" $
+        [builtinName (Fixed f) | f <- [minBound .. maxBound]] @?= ["ref-number", "ref-title", "ref-page", "note", "sidenote", "index", "cite", "aki"],
       testCase "takesNoSlot marks the commands without a prose slot" $
         [builtinName b | b <- allBuiltins, takesNoSlot b] @?= ["number-text", "ref-number", "ref-title", "ref-page", "cite"],
       testCase "pluginCommandName refuses every built-in name" $ do

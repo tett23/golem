@@ -75,8 +75,12 @@ abi = fromIntegral Golem.Plugin.abiVersion
 
 -- | The fixed-response plugin with a response and an ABI version.
 fixed :: Int -> ByteString -> IO ByteString
-fixed ver response = do
-  src <- wat "fixed.wat"
+fixed = fixedFrom "fixed.wat"
+
+-- | A fixed-response plugin of a file with a response and an ABI version.
+fixedFrom :: FilePath -> Int -> ByteString -> IO ByteString
+fixedFrom file ver response = do
+  src <- wat file
   let describe = cbor (TList [TList [TString "shout"], TList [TString "upper"]])
       filled =
         T.replace "{{ABI}}" (T.pack (show ver))
@@ -117,6 +121,10 @@ tests =
     [ testCase "a valid plugin describes itself and answers" $ do
         p <- load =<< fixed abi (responseWith (inlinesTerm [Text callSpan "SLOT"]))
         (pluginCommands p, pluginFilters p) @?= (["shout"], ["upper"])
+        fmap fst (shout p) @?= Right [Text callSpan "SLOT"],
+      -- docs/adr ADR 0031
+      testCase "a plugin without golem_dealloc loads and answers" $ do
+        p <- load =<< fixedFrom "no-dealloc.wat" abi (responseWith (inlinesTerm [Text callSpan "SLOT"]))
         fmap fst (shout p) @?= Right [Text callSpan "SLOT"],
       testCase "a module that asks for imports is rejected when loading" $ do
         w <- compile =<< wat "imports.wat"

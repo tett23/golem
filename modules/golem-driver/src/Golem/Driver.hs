@@ -51,7 +51,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (isDigit)
 import Data.Either (fromRight, lefts, rights)
-import Data.List (nub)
+import Data.List (nub, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
@@ -71,6 +71,7 @@ import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Pdf
 import Golem.Driver.Plugins (loadPlugins)
 import Golem.Epub
+import Golem.Eval.Builtin (unPluginCommandName)
 import Golem.Eval.Expr (Env (..), embedValue, evalExpr)
 import Golem.Eval.File
 import Golem.Eval.Value
@@ -155,7 +156,10 @@ data Evaluated = Evaluated
     {- | S0 of one file again, in the context of the last evaluation
     (the LSP re-evaluates the edited file alone when nothing that other
     files depend on has changed).
-    -} evReevaluate :: FileId -> SourceFile -> EvalResult
+    -} evReevaluate :: FileId -> SourceFile -> EvalResult,
+    {- | the names of the commands of the plugins, in order, for completion;
+    empty when the plugins failed to load (docs/adr ADR 0031)
+    -} evPluginCommands :: ![Text]
   }
 
 -- | The styles each file defines, of the files that define any (docs/adr ADR 0014).
@@ -209,13 +213,25 @@ evaluateProjectWith overlay profile root = do
       case first (map noFix . rfDiagnostics) styleRead >>= loadStyle styleFid of
         -- style.toml is where its errors point (golem-project ADR 0006)
         Left ds -> pure (Left (ProjectFailure ds (Map.insert styleFid (maybe (SourceInfo "style.toml" (mkLineIndex "")) (readInfo "style.toml") styleBytes) (sourceInfos project))))
-        Right style
-          | hasErrors synDiags -> do
+        Right style -> do
+          {- the plugins are loaded with or without a syntax error: loading
+          reads the manifest, plugins.lock and the cache, not the sources
+          (docs/adr ADR 0031) -}
+          cacheDir <- defaultCacheDir
+          lockText <- readMaybeText (root </> "plugins.lock")
+          hookE <- loadPlugins cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) manifest0
+          let (pluginDiags, hook) = either (,noPlugins) ([],) hookE
+              pluginCommands = sort (map unPluginCommandName (Map.keys (phCommands hook)))
+              -- no G0222 after the plugins failed to load (golem-plugin ADR 0003)
+              quiet = if null pluginDiags then id else \r -> r {erDiagnostics = filter ((/= DiagnosticCode "G0222") . diagCode) (erDiagnostics r)}
+          if hasErrors synDiags
+            then do
               loaded <- loadAssets overlay root project
               let assets = laAssets loaded
               (bibDiags, citeKeys, _) <- loadBibliography root manifest0
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) Nothing Map.empty Nothing (synDiags <> laDiagnostics loaded <> bibDiags) (laSources loaded) (laTableFiles loaded) (laDiagnostics loaded <> bibDiags) [] (const (Nothing, [])) (reeval profile project style assets citeKeys noPlugins Map.empty)))
-          | otherwise -> do
+              let projectDiags = pluginDiags <> laDiagnostics loaded <> bibDiags
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded) (laTableFiles loaded) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook Map.empty f sf)) pluginCommands))
+            else do
               let manifest = manifest0
                   -- one G0307 for each name, in the order of the chapters (golem-project ADR 0006)
                   masterDiags =
@@ -223,12 +239,6 @@ evaluateProjectWith overlay profile root = do
                     | m <- nub [m | (_, Just m) <- projectChapters project],
                       not (Map.member m (stMasters style))
                     ]
-              cacheDir <- defaultCacheDir
-              lockText <- readMaybeText (root </> "plugins.lock")
-              hookE <- loadPlugins cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) manifest
-              let (pluginDiags, hook) = either (,noPlugins) ([],) hookE
-                  -- no G0222 after the plugins failed to load (golem-plugin ADR 0003)
-                  quiet = if null pluginDiags then id else \r -> r {erDiagnostics = filter ((/= DiagnosticCode "G0222") . diagCode) (erDiagnostics r)}
               loaded <- loadAssets overlay root project
               let assets = laAssets loaded
               -- G0326 and G0303 of the bibliography, for every target (golem-doc ADR 0004)
@@ -239,7 +249,7 @@ evaluateProjectWith overlay profile root = do
                   reassemble = assembleResults style manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
-              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded) (laTableFiles loaded) projectDiags s1Diags reassemble again))
+              pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded) (laTableFiles loaded) projectDiags s1Diags reassemble again pluginCommands))
 
 {- | S1 from the S0 results of the files (golem-lsp ADR 0004): the book
 and the diagnostics of S1; nothing when the diagnostics of the project
