@@ -311,6 +311,7 @@ docs/diagnostics.md の重大度の欄の値を説明するときに限り、そ
 - 「出荷」は使わない。文脈に合わせて、印刷所にデータを渡すことは「入稿」、Web やサーバーに置くことは「デプロイ」と書く。使い手のマニュアルでは、PDF と HTML や EPUB をまとめて言うとき「入稿やデリバリー」と書き、開発者のマニュアルでは「入稿やデプロイ」と書く。
 - public domain は「公有」と書かず、「パブリックドメイン」と書く。ADR の題を「」で引くときは、元の語のまま書く。
 - 前付けの順（番号のない「はじめに」、目次）、索引の二段組み、奥付の版の表示をそろえる。
+- 注の印を `style.toml` の `[notes]` の `mark-size = "0.65zw"` で組む。二つのマニュアルの本文は 13Q なので、印はおよそ 6pt になる。JLReq の 4.2.3「合印の処理」が合印の大きさを 6 ポイント前後としているのに合わせる（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
 - 脚注の前に区切り線を引く。`style.toml` の `[notes.rule]` に、一行の字数の 4 分の 1 ほどの `length` と、前後の 0.5zw の間隔を書く（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 - 奥付は `@import common/build-info.gm as build` で読み、`版：[= build.edition]` と `コミット：[code: [= build.commit]]` の二行を載せる。
 - コードブロックは組み込みの段落スタイル `code` で組み、背景のスウォッチ（`{ cmyk = [0, 0, 0, 8] }` を出発点にする）と内側の余白を付ける。

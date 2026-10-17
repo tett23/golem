@@ -469,6 +469,8 @@ InDesign の親ページとの違いは、置けるものが柱とノンブル�
 [notes]
 placement = "page-foot"
 numbering = "chapter"
+mark-size = "0.65zw"
+mark-format = "*{n}"
 
 [notes.rule]
 length = "8zw"
@@ -488,6 +490,8 @@ leader = "dots"
 
 - [code: \[notes\]] の [code: placement]：注の置き場所の指定です。[code: "page-foot"]（ページの下）と [code: "chapter-end"]（章の終わり）を書けますが、今のバージョンの Golem はこの値で置き方を変えません。PDF では常にページの下に、HTML とプレーンテキストでは章の終わりに置きます。
 - [code: \[notes\]] の [code: numbering]：注の番号を 1 から振り直す範囲です。[code: "chapter"]（マニフェストの章ごと）、[code: "file"]（ファイルごと）、[code: "book"]（本の全体で通し番号）から選べます。省くと [code: "chapter"] です。傍注の番号も、脚注と別に同じ範囲で振ります。
+- [code: \[notes\]] の [code: mark-size]：PDF の本文の注の印の大きさです。[code: zw] は印の位置の文字の大きさに対する比で、0 より大きく 1 以下の値を書きます。[code: "6pt"] のような寸法も書けますが、印の位置の文字より大きくはなりません。省くと [code: "0.5zw"]（本文の文字の半分）です。このマニュアルは [code: "0.65zw"] で組んでいます。
+- [code: \[notes\]] の [code: mark-format]：PDF の注の印の書式です。[code: {n}] が注の番号になり、ちょうど一つ書きます。[code: "{n})"] なら [code: 1)]、[code: "注{n}"] なら [code: 注1] の形になります。注の本文の先頭にも同じ印が付きます。省くと [code: "*{n}"] です。HTML、EPUB、プレーンテキストの印は変わりません。
 - [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。このテーブルがなければ線は引きません。
 - [code: \[sidenotes\]]：傍注欄を、小口側の余白に設けます。[code: width] が傍注欄の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。
 - [code: \[figures\]] の [code: number]：図番号の書式です。[code: {chapter}] が章の番号、[code: {n}] が章の中の図の番号です。[code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。

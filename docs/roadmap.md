@@ -29,7 +29,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **罫線の色と線の種類**（未実装、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）：罫線の指定（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）に、色と線の種類（実線、破線、点線、二重線など）を加える。色は名前の付いた色（仕様書の [「色」の節](specifications.md#色)）で書く。罫線の指定を使うすべての罫線（脚注の区切り線、段落スタイルの罫線）に同時に加える。
 - **合字のテキスト層**（未実装、[golem-driver ADR 0030](golem-driver/adr/0030-ligature-text-layer.md)）：PDF の ToUnicode が合字のグリフを一字目だけに対応させるので、PDF から文字列を抜き出すと fi、fl、ff、ffi が f になる（`Golem.Driver.Fonts` の `clusterText`）。十冊の fixture の英語の本と、テンペストで起きる。
 - **表の前後の空きと罫線**（未実装、[golem-driver ADR 0031](golem-driver/adr/0031-table-spacing-and-rules.md)）：表の上の罫が前の段落のベースラインに接し、下の罫が表の最後の行のディセンダーを横切る。表の前後に空きがない。見出しの行が空の表では、罫が二重になる（fixture の The Elements of Style）。
-- **注の印の書式**（未実装、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）：PDF の注の印は `*1` の形に固定である。[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md) は印の書式の設定を作らないと決めたが、どの一覧にも載っていなかった。印の書式を設定できるようにする。
 - **改ページの手での制御**（未実装、[docs/adr 0030](adr/0030-manual-page-break-control.md)）：原稿で、ここで改ページしない、この先にこれだけの空きが要る、このページの行を一行増やす、といった指定を書く手段がない（TeX の `\nopagebreak`、needspace、`\enlargethispage` にあたるもの）。
 - **PDF に置けない図版**（未実装、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）：`golem build` は、JPEG と PNG として読めない `@figure` の画像（PDF の図版、壊れた画像）を、diagnostic を出さず、終了コード 0 のまま PDF から落とす。2026-10-16 の main の `golem build` で、`%PDF-1.4` だけのファイルと PNG でないファイルを `@figure` に置いて確かめた（PDF に画像は一つも入らなかった）。`golem preflight` は同じ二つを G0905 で報告する。置けない形式と壊れた画像のほかに落とす場合があるかは確かめていない。`golem build` のエラーにするかどうかは決めていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 
@@ -58,7 +57,8 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **総ルビのプラグイン**：本文のすべての漢字にルビを振るプラグインを作る。読みの決め方、配布の形、Golem の本体に要る変更は ADR で決める。
 - **初出の語にルビを振るプラグイン**：指定した語に、章ごとの最初の出現でだけルビを振るプラグインを作る。語と読みの指定の仕方、章の境の判定、配布の形は ADR で決める。
 - **diagnostic の info**：diagnostic の重大度に、notice より下の info を加える。info は `--verbose` を付けたときにだけ出力し、ふだんの出力と `golem check` の結果、終了コードには影響しない。何を info にするか、`--verbose` を持つコマンド、LSP での扱い（Information と Hint のどちらに写すか）、JSON の出力、notice の抑制の設定（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）との関係は ADR で決める。開発者向けのマニュアルの「Golem に info はない」という説明も、このとき改める。
-- **注の印の文字スタイル**：注の印に文字スタイル（`mark-style`）を当てられるようにする。印の大きさと書式は v0.1.0-rc3 の「注の印の書式」で扱い、文字スタイルはこのバージョンで足す。
+- **注の印の文字スタイル**：注の印に文字スタイル（`[notes]` の `mark-style`）を当てられるようにする。印の大きさと書式は `mark-size` と `mark-format` で指定できる（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
+- **注の印の数字の表記**：注の印の番号を、算用数字のほかに、漢数字や記号の連なり（JLReq の 4.2.2 が挙げる形）で組めるようにする。今の `mark-format` は算用数字の番号だけを置き換える（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
 
 ### PDF
 
