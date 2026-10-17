@@ -55,6 +55,7 @@ tests outlined sources =
     [ testGroup "XML" xmlTests,
       testGroup "CSS" cssTests,
       testGroup "drawing" drawingTests,
+      testGroup "transforms" transformTests,
       testGroup "colours" colourTests,
       testGroup "strokes" strokeTests,
       testGroup "the size and the viewBox" sizeTests,
@@ -383,4 +384,31 @@ sizeTests =
            size @?= (30, 40),
          testCase "a viewBox of width 0 is unsupported" $
            map unName (unsupported "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\" viewBox=\"0 0 0 1\"/>") @?= ["viewBox"]
+       ]
+
+transformTests :: [TestTree]
+transformTests =
+  [ testCase (T.unpack t) $ do
+      ops <- drawing ("<path transform=\"" <> t <> "\" d=\"M0 0 L1 1\"/>")
+      groups ops @?= [m]
+  | (t, m) <-
+      [ ("translate(5)", Matrix 1 0 0 1 5 0),
+        ("translate(1, 2)", Matrix 1 0 0 1 1 2),
+        ("scale(2)", Matrix 2 0 0 2 0 0),
+        ("scale(2 3)", Matrix 2 0 0 3 0 0),
+        ("matrix(1,2,3,4,5,6)", Matrix 1 2 3 4 5 6),
+        -- exact at multiples of 90 degrees: cos 90 = 0, sin 90 = 1
+        ("rotate(90)", Matrix 0 1 (-1) 0 0 0),
+        ("rotate(-90)", Matrix 0 (-1) 1 0 0 0),
+        ("rotate(450)", Matrix 0 1 (-1) 0 0 0),
+        -- about (10, 0): the origin goes to (10, -10)
+        ("rotate(90 10 0)", Matrix 0 1 (-1) 0 10 (-10)),
+        -- the first applies last: a point is scaled, then moved
+        ("translate(1,2) scale(2)", Matrix 2 0 0 2 1 2),
+        ("scale(2) translate(1,2)", Matrix 2 0 0 2 2 4)
+      ]
+  ]
+    <> [ testCase (T.unpack t <> " is unsupported") $
+           map unName (unsupported (svg ("<path transform=\"" <> t <> "\" d=\"M0 0 L1 1\"/>"))) @?= ["transform"]
+       | t <- ["rotate(1 2)", "skew(10)", "translate(1,2", "matrix(1 2 3)"]
        ]
