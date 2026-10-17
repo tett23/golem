@@ -68,5 +68,17 @@ ruleAreaTests =
     testCase "at the start of a column with ruby: 11.1pt over 17pt is one line" $
       fst (ruleBeforeAtStart grid (side 0.5 (Just 5) Nothing) (pt 5.6)) @?= 1,
     testCase "the rule after at the end of a column counts no ruby" $
-      ruleAfterAtEnd grid (side 0.5 (Just 5) Nothing) @?= (1, pt 5)
+      ruleAfterAtEnd grid (side 0.5 (Just 5) Nothing) @?= (1, pt 5),
+    testCase "an area that needs exactly one line takes one, not two" $
+      -- 13.5pt + 0.5pt + 10pt - 7pt = 17pt, one pitch; the rule 24pt - 13.5pt - 0.5pt from the em box before
+      ruleBefore grid (side 0.5 (Just 13.5) (Just 10)) 0 @?= (1, pt 10),
+    testCase "out of the column when the room is exactly the inner space and the weight" $ do
+      ruleBeforeAtStart grid (side 0.5 (Just 5) Nothing) {rsdOutside = Just (pt 5.5)} 0 @?= (0, negate (pt 5.5))
+      ruleBeforeAtStart grid (side 0.5 (Just 5) Nothing) {rsdOutside = Just (pt 5.5 - 1)} 0 @?= (1, pt 17 - pt 5 - pt 0.5),
+    testCase "out of the column at the end when the room is exactly the inner space and the weight" $ do
+      ruleAfterAtEnd grid (side 0.5 (Just 5) Nothing) {rsdOutside = Just (pt 5.5)} @?= (0, pt 5)
+      ruleAfterAtEnd grid (side 0.5 (Just 5) Nothing) {rsdOutside = Just (pt 5.5 - 1)} @?= (1, pt 5),
+    testCase "the ruby of the first line counts in the room out of the column" $
+      -- 5pt + 0.5pt + 5.6pt = 11.1pt does not fit in 10pt: kept in the column, one line
+      ruleBeforeAtStart grid (side 0.5 (Just 5) Nothing) {rsdOutside = Just (pt 10)} (pt 5.6) @?= (1, pt 17 - pt 5.6 - pt 5 - pt 0.5)
   ]
