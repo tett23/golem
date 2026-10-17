@@ -26,7 +26,7 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 | [code: golem plugin lock] | [code: plugins.lock] を更新する |
 | [code: golem inspect FILE] | CST、AST、IR を表示する |
 | [code: golem explain] | diagnostic のコードの説明を表示する |
-| [code: golem --version] | 版を表示する |
+| [code: golem --version] | バージョンを表示する |
 
 オプションはコマンドごとに決まっている。
 主なものを次に示す。
@@ -113,7 +113,7 @@ $ echo $?
 
 [code: --version] は [code: golem] 自身のオプションである。
 [code: golem build --version] のようにコマンドに付けると使い方の誤りになる。
-出力は [code: golem 0.1.0-rc1] のように、[code: golem] に版を続けた一行である。
+出力は [code: golem 0.1.0-rc1] のように、[code: golem] にバージョンを続けた一行である。
 
 コマンドごとの成功と失敗の決まりは次のとおりである。
 
@@ -145,7 +145,7 @@ $ golem build --target pdf --format json 2> diagnostics.json
 
 重大度の変更は、golem-syntax の [code: adjustForProfile] の一箇所で行う。
 対象のコードは [code: Golem.Syntax.Diagnostic.profileDependentCodes] に並んでいる。
-出荷する本を組む CI では [code: --profile prod] を付け、書きかけの原稿を組む CI では既定の [code: dev] を使うのが、この分け方の意図である。
+入稿する PDF やデプロイする HTML を組む CI では [code: --profile prod] を付け、書きかけの原稿を組む CI では既定の [code: dev] を使うのが、この分け方の意図である。
 
 ## トンボ
 
@@ -161,7 +161,7 @@ PDF を書かないビルドでは何も変えない。[note: [code: https://git
 
 [code: golem new DIR] は、[code: manifest.toml]、[code: style.toml]、章のファイル、[code: preflight.toml]、[code: .gitignore] を作る。[index reading="golem new": golem new]
 [code: --language ja] は A6 判の縦組みで Noto Serif JP を、[code: --language en] はマスマーケットのペーパーバックの横組みで Source Serif 4 を使う。
-フォントは配布元のタグで固定した版から HTTPS で取得し、Golem のソースに固定した SHA-256 で検査してから [code: fonts/] に置く。
+フォントは配布元のタグで固定したバージョンから HTTPS で取得し、Golem のソースに固定した SHA-256 で検査してから [code: fonts/] に置く。
 取得に失敗すると、プロジェクトのファイルを一つも書かない。
 [code: --no-fonts] では取得せず、置くべきファイルと URL を表示する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0003-new-project-page-and-fonts.md]（golem-cli ADR 0003「golem new の雛形に版面とフォントを入れる」）]
 [code: preflight.toml] は [code: based-on = "print"] の一行と、[code: print] の主な値をコメントで書き写した例からなる。

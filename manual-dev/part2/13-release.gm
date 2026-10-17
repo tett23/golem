@@ -5,12 +5,12 @@ Golem の実行ファイルは、GitHub Releases で配布する。[index readin
 配布物を作り、検査し、下書きのリリースを作るところまでは [code: .github/workflows/release.yml] が自動で行う。
 リリースノートを読んで直し、公開するのは人である。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0004-binary-distribution-and-release.md]（docs/adr の ADR 0004「実行ファイルの配布とリリースの自動化」）]
 
-## 版
+## バージョン
 
-Golem の版は [code: X.Y.Z] か、プレリリースの識別子を付けた [code: X.Y.Z-<識別子>]（例：[code: 0.1.0-rc1]）で表す。
+Golem のバージョンは [code: X.Y.Z] か、プレリリースの識別子を付けた [code: X.Y.Z-<識別子>]（例：[code: 0.1.0-rc1]）で表す。
 1.0.0 までは、原稿の記法、CLI、出力の互換性を壊す変更で [code: Y] を、それ以外の変更で [code: Z] を上げる。
 
-リポジトリのルートのファイル [code: VERSION] が、版の正本である。[index reading="VERSION": VERSION]
+リポジトリのルートのファイル [code: VERSION] が、バージョンの正本である。[index reading="VERSION": VERSION]
 この値は golem-driver の [code: Golem.Driver.Version] がコンパイルの時点に埋め込み、[code: golem --version] と PDF の Producer が使う。
 全パッケージの cabal ファイルの [code: version] は、[code: VERSION] から識別子を除いた [code: X.Y.Z] と同じにする。
 [code: scripts/release/check-version.sh] が、この一致と、タグと [code: VERSION] の一致を検査する。
@@ -18,7 +18,7 @@ Golem の版は [code: X.Y.Z] か、プレリリースの識別子を付けた [
 ## タグ
 
 [code: v] で始まるタグをリリースとして扱う。
-[code: v0.1.0-rc1] のように版の後に識別子が付くタグは、プレリリースとする。
+[code: v0.1.0-rc1] のようにバージョンの後に識別子が付くタグは、プレリリースとする。
 
 タグは次のとおり扱う。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0008-first-release-verification.md]（docs/adr の ADR 0008「最初のプレリリース v0.1.0-rc1 でリリースのワークフローを確かめる」）]
 
@@ -33,7 +33,7 @@ $ gh run rerun <実行の ID> --failed
 
 ## 手順
 
-+ 版を上げるプルリクエストを作る。[code: VERSION] を新しい版（例：[code: 0.1.0-rc1]）に書き換え、識別子を除いた [code: X.Y.Z] を全パッケージの cabal ファイルの [code: version] に書く。CI の [code: release-scripts] ジョブが、二つの一致を検査する。
++ バージョンを上げるプルリクエストを作る。[code: VERSION] を新しいバージョン（例：[code: 0.1.0-rc1]）に書き換え、識別子を除いた [code: X.Y.Z] を全パッケージの cabal ファイルの [code: version] に書く。CI の [code: release-scripts] ジョブが、二つの一致を検査する。
 + プルリクエストを [code: main] にマージする。
 + マージしたコミットに、[code: v] に [code: VERSION] の内容を続けたタグ（例：[code: v0.1.0-rc1]）を付けて push する。
 + [code: release.yml] が、配布物を作って検査し、下書きのリリースを作る。プレリリースのタグでは、プレリリースの印が付く。

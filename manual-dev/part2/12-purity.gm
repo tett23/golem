@@ -244,7 +244,7 @@ golem-driver の [code: fixpoint] が同じ繰り返しを IO の中で回して
 Template Haskell の [code: runIO] は、コンパイルの時点でファイルを読み、その中身を実行ファイルに埋め込む。
 golem-driver の [code: Golem.Driver.Version] はリポジトリの [code: VERSION] を、golem-layout の [code: Golem.Layout.Hyphenation.EnUs] は hyph-utf8 のパターンを、[code: Golem.Driver.Explain] はdiagnostic のコードの説明を埋め込んでいる。
 実行の時点では、これらは定数である。
-その値は ADR 0002 の言う「Golem 自身の版」に含まれ、[code: addDependentFile] によって、ファイルが変わればモジュールがコンパイルし直される。
+その値は ADR 0002 の言う「Golem 自身の版」（Golem 自身のバージョン）に含まれ、[code: addDependentFile] によって、ファイルが変わればモジュールがコンパイルし直される。
 
 ## 出力の値を入力から作る
 
@@ -252,8 +252,8 @@ golem-driver の [code: Golem.Driver.Version] はリポジトリの [code: VERSI
 Golem はこれらを入力から純粋に計算する。
 
 - PDF の [code: CreationDate] と [code: ModDate] は、マニフェストの [code: metadata.date] の日付から [code: pdfDate] が [code: D:YYYYMMDD000000Z] の形で作る。時刻は常に 0 時で、タイムゾーンは常に UTC なので、実行したマシンのタイムゾーンは入らない。
-- PDF の文書 ID は、本の識別子から名前に基づく UUID（版 5）を [code: documentId] で作る。
-- インスタンス ID は、[code: instanceId] が入力の各要素の長さとバイト列を連結した SHA-256 の先頭 16 バイトから作る。要素は、マニフェスト、[code: style.toml]、原稿、出力を変える CLI のオプション、埋め込むフォントのプログラム、Golem の版である（[code: instanceIdInputs]）。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0001-deterministic-pdf-writer.md]（golem-pdf ADR 0001「決定的な PDF の直列化」）]
+- PDF の文書 ID は、本の識別子から名前に基づく UUID（バージョン 5）を [code: documentId] で作る。
+- インスタンス ID は、[code: instanceId] が入力の各要素の長さとバイト列を連結した SHA-256 の先頭 16 バイトから作る。要素は、マニフェスト、[code: style.toml]、原稿、出力を変える CLI のオプション、埋め込むフォントのプログラム、Golem のバージョンである（[code: instanceIdInputs]）。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0001-deterministic-pdf-writer.md]（golem-pdf ADR 0001「決定的な PDF の直列化」）]
 - EPUB の zip のエントリには、時刻として 0 を渡している（[code: writeEpub]）。EPUB の決定性は v2 で扱う事項だが、今の実装も時計を読まない。
 
 乱数を使うのは [code: golem new] だけで、その乱数も golem-cli の [code: app/Main.hs] が [code: UUID.nextRandom] で作る。
@@ -274,9 +274,9 @@ golem-driver の [code: templateFiles] は、その UUID を引数の文字列�
 = [strong: 浮動小数点数]
   同じソースの浮動小数点数の計算でも、演算の列が変われば結果のビット列が変わる。Golem がどこでどの数の型を使い、これをどう抑えているかは、後の「数の表し方」の節で述べる。
 = [strong: C のライブラリ]
-  HarfBuzz、FreeType、zlib、wasmtime の結果は、版とコンパイルの設定で変わりうる。版を固定して同梱し、版を上げるときは ADR を書く（第[ref-number modules]章）。
+  HarfBuzz、FreeType、zlib、wasmtime の結果は、バージョンとコンパイルの設定で変わりうる。バージョンを固定して同梱し、バージョンを上げるときは ADR を書く（第[ref-number modules]章）。
 = [strong: コンパイラと Haskell のライブラリ]
-  GHC の版は CI の [code: GHC_VERSION]（9.10.3）で固定し、依存のライブラリの版とフラグは [code: cabal.project.freeze] で固定している。
+  GHC のバージョンは CI の [code: GHC_VERSION]（9.10.3）で固定し、依存のライブラリのバージョンとフラグは [code: cabal.project.freeze] で固定している。
 
 最後の項目には、純粋性と決定性のずれがよく表れた例がある。
 hashable には [code: random-initial-seed] というフラグがあり、これを有効にすると、ハッシュの関数の種が実行ファイルを起動するたびに乱数で決まる。
@@ -339,7 +339,7 @@ HarfBuzz と FreeType についても、Golem が受け取る値は整数であ�
 golem-font の C の側（[code: cbits/golem/golem_font.c]）は、HarfBuzz のフォントの拡大率をフォントの 1em の単位数（upem）に設定し、グリフの位置をフォントの単位の整数で受け取る。
 FreeType のグリフは [code: FT_LOAD_NO_SCALE] で読み、拡大しない整数のメトリクスを得る。
 字の大きさへの拡大は、Haskell の側の [code: unitsToSp] が有理数で行う。
-ライブラリの内部の計算は Golem からは見えないので、C のソースを [code: -ffp-contract=off] でコンパイルし、版を固定して同梱している。
+ライブラリの内部の計算は Golem からは見えないので、C のソースを [code: -ffp-contract=off] でコンパイルし、バージョンを固定して同梱している。
 
 [code: Double] を使うのは、式の言語だけである。
 書き手は [code: \[= 1.5 * 2\]] のように小数を書くので、小数を値として持つ型が要る。
@@ -360,7 +360,7 @@ golem-eval ADR 0001 は、式の言語の数を [code: Integer] と倍精度の 
 長さと位置を整数と有理数で計算するので、組版の結果は、CPU の浮動小数点数の実装にも、コンパイラの最適化にも左右されない。
 同じ入力から同じ sp の値が出れば、PDF の座標の文字列も同じになる。
 浮動小数点数による揺れの余地が残るのは、式の言語の [code: Double] の計算と、C のライブラリの内部である。
-前者は数の規則で演算の列と変換を固定し、後者は版とコンパイルの設定を固定している。
+前者は数の規則で演算の列と変換を固定し、後者はバージョンとコンパイルの設定を固定している。
 どちらも、最後は CI の [code: determinism] ジョブが二つのアーキテクチャの出力を比べて確かめる。
 
 ## 決定性が純粋性に求めること
@@ -385,7 +385,7 @@ ADR 0002 の各規則が、どこで、どの仕組みで守られているか�
 | 走査の順を固定する | すべて | [code: Data.Map]。freeze のフラグ |
 | 並列の結果の順 | golem-driver | [code: mapConcurrently] は入力の順で返す |
 | 浮動小数点数 | golem-eval、golem-layout、golem-font | 超越関数を持たない。sp と有理数。[code: -ffp-contract=off] |
-| ネイティブライブラリ | golem-font、golem-plugin、golem-pdf | 同梱して版を固定する。純粋な関数として包む。wasmtime の設定 |
+| ネイティブライブラリ | golem-font、golem-plugin、golem-pdf | 同梱してバージョンを固定する。純粋な関数として包む。wasmtime の設定 |
 
 ## 変更するときの点検
 
