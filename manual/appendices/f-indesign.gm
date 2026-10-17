@@ -153,6 +153,34 @@ Golem の [code: fonts/] も、プロジェクトの中にフォントを置く�
 - HTML と EPUB では、CMYK の値を RGB に近似した色になります。
 
 @nonumber
+## 線の種類
+
+脚注の区切り線（[code: \[notes.rule\]]）の [code: style] は、InDesign の線パネルの種類に当たります。
+対応は次のとおりです。
+
+| InDesign の種類 | [code: style] |
+|:---|:---|
+| 実線 | [code: "solid"] |
+| 細線 - 細線 | [code: "thin-thin"] |
+| 太線 - 太線 | [code: "thick-thick"] |
+| 太線 - 細線 | [code: "thick-thin"] |
+| 細線 - 太線 | [code: "thin-thick"] |
+| 太線 - 細線 - 太線 | [code: "thick-thin-thick"] |
+| 細線 - 太線 - 細線 | [code: "thin-thick-thin"] |
+| 三重線 | [code: "triple"] |
+| 破線、破線（3 と 2） | [code: "dashed"] |
+| 点線 | [code: "dotted"] |
+| 和文の点線 | [code: "japanese-dots"] |
+| 波線 | [code: "wavy"] |
+
+違いは次のとおりです。
+
+- 斜線、縦線、白抜きの菱形の種類はありません。罫線の太さでは形が読み取れないためです。
+- 破線（4 と 4）は、[code: style = "dashed"] に [code: dash] と [code: gap] を書いて表します。
+- 破線の割り付けは、InDesign の「角」の既定の「線分と間隔を調整」と同じく、両端が線分で終わるように線分と間隔を調整します。ほかの割り付けは選べません。
+- 自作の線のスタイル、間隔のカラー、線の端の形、多重線の比と波線の形の変更は、書けません。
+
+@nonumber
 ## [code: golem build] と書き出し
 
 [code: golem build] は、組んだ結果をファイルに書きます。
