@@ -105,6 +105,26 @@ headingNoteTests =
       -- 2 free after six lines: heading 1 + two lines = 3 > 2
       let ps = paginate 1 8 [FParagraph (lines' 0 6), headingWithNote 20 (nid 900), FParagraph (lines' 30 2)]
       notesByPage ps @?= [(1, []), (2, [nid 900])],
+    testCase "a heading whose note does not fit goes to the next page with its note (golem-layout ADR 0013)" $ do
+      let ps = paginate 1 8 [FParagraph (lines' 0 5), FHeading 2 False 1 [LineBox 20 [NoteBody (nid 900) 3] [] []], FParagraph (lines' 30 2)]
+      notesByPage ps @?= [(1, []), (2, [nid 900])]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 3, SLine 4], [SHeading 20 1, SLine 30, SLine 31]],
+    testCase "the note of a heading counts in keeping it with what follows (golem-layout ADR 0013)" $ do
+      -- 3 free: heading 1 + note 1 + separator, then no room for two lines
+      let ps = paginate 1 8 [FParagraph (lines' 0 5), headingWithNote 20 (nid 900), FParagraph (lines' 30 2)]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 3, SLine 4], [SHeading 20 1, SLine 30, SLine 31]]
+      notesByPage ps @?= [(1, []), (2, [nid 900])],
+    testCase "a heading whose note fits stays on the page" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 2), headingWithNote 20 (nid 900), FParagraph (lines' 30 2)]
+      notesByPage ps @?= [(1, [nid 900])],
+    testCase "a heading in an empty page keeps its place and its note continues on the next page" $ do
+      let ps = paginate 1 5 [FHeading 2 False 1 [LineBox 20 [NoteBody (nid 900) 6] [] []]]
+      notesByPage ps @?= [(1, [nid 900]), (2, [nid 900])]
+      contents ps @?= [[SHeading 20 1], []],
+    testCase "in two columns, a heading whose note does not fit goes to the next column (golem-layout ADR 0013)" $ do
+      let ps = paginate 2 8 [FParagraph (lines' 0 5), FHeading 2 False 1 [LineBox 20 [NoteBody (nid 900) 3] [] []], FParagraph (lines' 30 2)]
+      [(poNumber p, poColumn p, [i | (i, _, _) <- poFootnotes p]) | p <- ps] @?= [(1, 0, []), (1, 1, [nid 900])]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 3, SLine 4], [SHeading 20 1, SLine 30, SLine 31]],
     testCase "the label of a heading sent to the next page is on that page" $ do
       let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 2 False 1 [LineBox 20 [] ["sec"] []], FParagraph (lines' 30 2)]
       labelPages ps @?= Map.fromList [("sec", 2)]

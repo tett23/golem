@@ -864,8 +864,9 @@ NaN と無限大は、式の値として存在しない。
 そのファイルでだけ使う文字スタイルは、ファイルの先頭の `@style-def character` でも定義できる（「ファイルの設定」の節を参照）。
 `style.toml` にもそのファイルの `@style-def` にもない名前はエラーになる。
 
-組み込みの文字スタイルは `strong`、`bold`、`italic`、`code` の四つである。
-`bold` は合成の太字、`italic` は合成の斜体、`strong` は `bold` を基準にした文字スタイル、`code` は書体の役割 `code` で組む文字スタイルである。
+組み込みの文字スタイルは `strong`、`bold`、`italic`、`code`、`url` の五つである。
+`bold` は合成の太字、`italic` は合成の斜体、`strong` は `bold` を基準にした文字スタイル、`code` は書体の役割 `code` で組む文字スタイル、`url` は参考文献の URL を組む文字スタイルである（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
+`url` には別名がなく、原稿では `[style url: ...]` と書く。
 利用者が組み込みと同じ名前の表を書くと、書いたキーだけが組み込みの定義を上書きする。
 
 ### 圏点

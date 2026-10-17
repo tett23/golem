@@ -274,9 +274,10 @@ paginateIn separatorLines base capacity flows =
         let st1 = if length h + maybe 0 length (listToMaybe rows) > free st && not (isEmpty st) then nextColumn st else st
          in placeTable st1 i h rows
       FDefTerm ls -> placeLines (keep st (length ls + need)) True ls
+      -- the notes of a heading count as the notes of a line do (golem-layout ADR 0013)
       FHeading _ recto n ls ->
-        let st1 = if recto then parityStart odd st else keep st (n + need)
-            st2 = if n <= free st1 || isEmpty st1 then st1 else nextColumn st1
+        let st1 = if recto then parityStart odd st else keep st (headingNeed st n ls + need)
+            st2 = if headingNeed st1 n ls <= free st1 || isEmpty st1 then st1 else nextColumn st1
          in putBlock st2 n ls
       -- figures keep the order written: after a figure sent on, the next ones wait too (golem-layout ADR 0015)
       FFigure i n labels marks
@@ -315,6 +316,11 @@ paginateIn separatorLines base capacity flows =
           sMarks = [],
           sTables = []
         }
+    -- the grid lines of a heading, the lines of its notes and the separator if they are the first notes
+    headingNeed st n ls =
+      let noteLines = sum (map nbLines (concatMap lbNotes ls))
+          sep = if sNoteLines st == 0 && noteLines > 0 then separator else 0
+       in n + noteLines + sep
     keep st n = if n > free st && not (isEmpty st) then nextColumn st else st
     {- a code block: as many rows as their grid lines fit in the column, the
     rest in the next column; at least one row in an empty column (golem-driver ADR 0017).
