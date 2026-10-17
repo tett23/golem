@@ -965,6 +965,10 @@ verifyTests =
     one "encryption" (\o -> o {pdfTrailer = case pdfTrailer o of ODict kvs -> ODict (kvs <> [("Encrypt", ORef 1)]); t -> t}),
     one "JavaScript" (mapObjs (onDict isCatalog (<> [("Names", ODict [("JavaScript", ORef 1)])]))),
     one "a version after 1.6" (\o -> o {pdfVersion = "1.7"}),
+    testCase "the version problems say バージョン, not 版" $ do
+      verify ((documentObjects x4Sample) {pdfVersion = "1.7"}) @?= [X4Problem "PDF のバージョン" "1.7（1.6 以下にします）"]
+      map x4Detail (verify (mapObjs (onStream isMetadata (cut "   <pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>\n")) (documentObjects x4Sample)))
+        @?= ["XMP に PDF/X-4 のバージョンがありません"],
     testCase "a problem names its requirement" $ do
       let ps = verify (mapFirst isPage (onDict (const True) (dropKey "TrimBox")) (documentObjects x4Sample))
       map x4Requirement ps @?= ["TrimBox"]

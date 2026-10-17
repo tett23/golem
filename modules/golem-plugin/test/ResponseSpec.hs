@@ -154,7 +154,7 @@ describeErrorTests =
     "describePluginError (golem-plugin ADR 0003)"
     [ testCase "CompileFailed" $ describePluginError (CompileFailed "d") @?= "プラグインを読み込めません: d",
       testCase "HasImports" $ describePluginError (HasImports ["env.now", "env.rand"]) @?= "プラグインが import を要求しています: env.now, env.rand",
-      testCase "AbiMismatch" $ describePluginError (AbiMismatch 5) @?= "プラグインの ABI の版が異なります: 5",
+      testCase "AbiMismatch" $ describePluginError (AbiMismatch 5) @?= "プラグインの ABI のバージョンが異なります: 5",
       testCase "MissingExport" $ describePluginError (MissingExport "golem_invoke") @?= "プラグインが関数を公開していません: golem_invoke",
       testCase "OutOfFuel" $ describePluginError (OutOfFuel "detail") @?= "プラグインの実行が命令数の上限を超えました",
       testCase "Trapped" $ describePluginError (Trapped "d") @?= "プラグインの実行が失敗しました（メモリの上限を超えた場合を含む）: d",

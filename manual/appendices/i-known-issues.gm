@@ -54,6 +54,22 @@
   紙面の見た目には影響しません。
 
 @nonumber
+## 目次、索引、参考文献
+
+= [strong: HTML で引用の番号のリンクが切れる]
+  HTML では、[code: \[cite キー\]] の番号のリンクが、同じページの中の参考文献を指します。
+  [code: @bibliography] を引用と別のファイルに書くと、リンクを押しても参考文献に移りません。
+= [strong: EPUB の目次が [code: @toc] の深さに従わない]
+  EPUB のリーダーが表示する目次には、[code: @toc] の [code: depth] より深い見出しも載ります。
+  [code: @notoc] を付けた見出しは載りません。
+  対処：目次に載せたくない見出しに [code: @notoc] を付けます。
+  その見出しは、[code: @toc] の目次からも外れます。
+= [strong: [code: @index] と [code: @bibliography] を二つ書いてもエラーにならない]
+  [code: @index] や [code: @bibliography] を二つ以上書いても、エラーにならず、書いた場所ごとに一覧の全体が組まれます。
+  [code: @toc] は二つ以上書くとエラー（G0402）になります。
+  対処：それぞれ一つだけ書きます。
+
+@nonumber
 ## 計算とエディタ
 
 = [strong: 非常に大きな数と小さな数の計算]

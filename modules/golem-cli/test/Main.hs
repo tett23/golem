@@ -89,7 +89,7 @@ versionTests =
           found -> assertFailure (show found <> "\n" <> out <> err),
       testCase "golem --help shows --version" $ do
         (_, out) <- golem ["--help"]
-        assertBool out ("--version" `isInfixOf` out && "版を表示する" `isInfixOf` out),
+        assertBool out ("--version" `isInfixOf` out && "バージョンを表示する" `isInfixOf` out),
       exitsWith (ExitFailure 2) ["build", "--version"]
     ]
 
