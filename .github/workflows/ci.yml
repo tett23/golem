@@ -88,6 +88,25 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # apt-get takes about 20 seconds; it runs while the caches are
+      # restored and cabal builds, and the step before the tests waits for
+      # it. A stalled mirror fails it in 5 minutes (docs/adr/0009,
+      # docs/adr/0037)
+      - name: qpdf, and epubcheck on x86-64, in the background (golem-pdf ADR 0001, golem-epub ADR 0001)
+        env:
+          PACKAGES: ${{ matrix.runner == 'ubuntu-24.04' && 'qpdf epubcheck' || 'qpdf' }}
+        run: |
+          # PACKAGES is a list of package names
+          # shellcheck disable=SC2086
+          sh scripts/ci/bg.sh start apt timeout -k 10 300 sh scripts/ci/apt-install.sh $PACKAGES
+      # Every cabal command below reads the test wrapper from
+      # cabal.project.local. Given on the command line of cabal test
+      # alone, it changed the configuration of the local packages between
+      # cabal build and cabal test, so that each of them configured every
+      # package again, and golem-font compiled HarfBuzz again (docs/adr/0037)
+      - name: The test wrapper for every cabal command (docs/adr/0037)
+        run: |
+          printf -- '-- written by ci.yml (docs/adr/0037)\ntest-wrapper: %s/scripts/ci/suite-timeout.sh\n' "$PWD" >> cabal.project.local
       - name: Image and GHC directory for the cache keys (docs/adr/0009)
         run: |
           # ImageOS is set on the runner, not in the env context
@@ -139,16 +158,6 @@ jobs:
           restore-keys: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-
       - name: wasmtime C API (golem-plugin ADR 0001)
         run: scripts/fetch-wasmtime.sh
-      - name: qpdf, and epubcheck on x86-64 (golem-pdf ADR 0001, golem-epub ADR 0001)
-        timeout-minutes: 5
-        env:
-          PACKAGES: ${{ matrix.runner == 'ubuntu-24.04' && 'qpdf epubcheck' || 'qpdf' }}
-        run: |
-          echo 'man-db man-db/auto-update boolean false' | sudo debconf-set-selections
-          sudo apt-get update
-          # PACKAGES is a list of package names
-          # shellcheck disable=SC2086
-          sudo apt-get install -y --no-install-recommends $PACKAGES
       - id: cddl
         name: Cache the cddl CLI (docs/adr/0009)
         uses: actions/cache@v6
@@ -164,13 +173,16 @@ jobs:
       # on golem-test-support, which only the test suites use (docs/adr/0028)
       - name: Only the test suites depend on golem-test-support (docs/adr/0028)
         run: sh scripts/ci/test-only-deps.sh dist-newstyle/cache/plan.json
+      - name: qpdf, and epubcheck on x86-64, are installed
+        timeout-minutes: 5
+        run: sh scripts/ci/bg.sh wait apt
       # qpdf, cddl and openssl are installed above (openssl comes with the
       # runner image): a test that needs one of them fails here instead of
       # being skipped. A suite that does not finish in 10 minutes is
-      # stopped and fails (scripts/ci/suite-timeout.sh); the step itself
-      # stops after 20, so that a hang fails in minutes, not at the job's
-      # timeout
-      - run: cabal test all --test-wrapper="$PWD/scripts/ci/suite-timeout.sh"
+      # stopped and fails (the test wrapper scripts/ci/suite-timeout.sh in
+      # cabal.project.local); the step itself stops after 20, so that a
+      # hang fails in minutes, not at the job's timeout
+      - run: cabal test all
         timeout-minutes: 20
         env:
           GOLEM_REQUIRE_EXTERNAL_TOOLS: "1"
@@ -178,9 +190,6 @@ jobs:
         run: |
           scripts/gen-parser.sh
           git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs
-      # the two manuals build without a single diagnostic, notices
-      # included; the determinism step below builds them again and lists
-      # their hashes (docs/adr/0022, docs/adr/0024)
       - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
         uses: actions/cache@v6
         with:
@@ -188,8 +197,6 @@ jobs:
             manual/fonts
             manual-dev/fonts
           key: manual-fonts-${{ hashFiles('scripts/manual/fetch-fonts.sh') }}
-      - name: The manuals build without diagnostics (docs/adr/0022, docs/adr/0024)
-        run: GOLEM="$(cabal list-bin -v0 golem)" sh scripts/manual/build.sh
       # the EPUB of aarch64 is the same, by the determinism job
       - name: The EPUB passes epubcheck
         if: matrix.runner == 'ubuntu-24.04'
@@ -197,7 +204,12 @@ jobs:
         run: |
           "$(cabal list-bin -v0 golem)" build --target epub
           epubcheck build/epub/book.epub
-      - name: Outputs for the determinism check
+      # scripts/determinism.sh builds the two manuals with
+      # scripts/manual/build.sh, which fails on a single diagnostic,
+      # notices included, and lists the hashes of their outputs; the
+      # manuals are built once, here, on both architectures (docs/adr/0002,
+      # docs/adr/0022, docs/adr/0024, docs/adr/0037)
+      - name: Outputs for the determinism check; the manuals build without diagnostics
         run: GOLEM="$(cabal list-bin -v0 golem)" scripts/determinism.sh > determinism-${{ matrix.runner }}.txt
       - uses: actions/upload-artifact@v7
         with:
@@ -273,7 +285,8 @@ jobs:
       # the release of hlint, not a build of it with GHC (docs/adr/0009)
       - name: hlint 3.10
         run: sh scripts/ci/fetch-hlint.sh
-      - run: '"$HOME/.local/bin/hlint" modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs"'
+      # -j checks the files on every core of the runner (docs/adr/0037)
+      - run: '"$HOME/.local/bin/hlint" -j modules --ignore-glob="modules/golem-parser/src/Golem/Parser/Generated.hs" --ignore-glob="modules/golem-parser/test/StrippedGrammar.hs"'
 
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
