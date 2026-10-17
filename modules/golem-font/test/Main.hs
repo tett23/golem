@@ -1,5 +1,6 @@
 module Main (main) where
 
+import ConcurrencySpec (concurrencyTests)
 import Control.Monad (void)
 import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
@@ -144,7 +145,8 @@ tests han sans serif noto =
             f <- either (assertFailure . show) pure (loadFont sub)
             fontCidSystemInfo f @?= fontCidSystemInfo han
             map (glyphCid f) used @?= map (glyphCid han) used
-        ]
+        ],
+      concurrencyTests han noto
     ]
   where
     head' (x : _) = x

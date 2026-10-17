@@ -2,6 +2,7 @@ module Main (main) where
 
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
+import ConcurrencySpec (concurrencyTests)
 import Control.Concurrent.Async
   ( async,
     cancel,
@@ -51,7 +52,7 @@ import Test.Tasty.HUnit
 import Text.Printf (printf)
 
 main :: IO ()
-main = defaultMain (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests])
+main = defaultMain (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests])
 
 callSpan :: SrcSpan
 callSpan = mkSpan (FileId 1) 10 20
