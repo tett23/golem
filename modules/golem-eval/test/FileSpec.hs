@@ -35,6 +35,11 @@ ctx =
         Map.fromList
           [ ("images/a.png", AssetPresent),
             ("images/a.pdf", AssetPresent),
+            ("images/a.PDF", AssetPresent),
+            ("images/a.gif", AssetPresent),
+            ("images/b.pdf", AssetPresent),
+            ("images/b.svg", AssetPresent),
+            ("images/b.jpg", AssetPresent),
             ("data.csv", AssetText "a,b\n1,\"x,y\"\n"),
             ("src/Main.hs", AssetText "l1\nl2\nl3\n"),
             ("x.hs", AssetText (T.unlines ["line " <> T.pack (show i) | i <- [1 :: Int .. 25]])),
@@ -197,6 +202,7 @@ tests =
       breakTests,
       codeTests,
       escapeTests,
+      duplicateKeyTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
@@ -250,6 +256,22 @@ tests =
         errs "@figure images/a.pdf alt=x\n" @?= ["G0229"]
         errs "@figure images/none.png alt=x\n" @?= ["G0233"]
         errs "@figure images/a.png alt=x wrap=end\n" @?= ["G0231"],
+      testCase "the formats of a figure and its web image (golem-pdf ADR 0008)" $ do
+        msgs "@figure images/a.gif alt=\"x\"\n" @?= [("G0274", "図版の形式は PDF、PNG、JPEG です: images/a.gif")]
+        errs "@figure images/a.PDF web=images/a.png alt=\"x\"\n" @?= []
+        msgs "@figure images/a.pdf web=images/b.pdf alt=\"x\"\n" @?= [("G0273", "web の代替画像は PNG か JPEG です: images/b.pdf")]
+        errs "@figure images/a.pdf web=images/b.svg alt=\"x\"\n" @?= ["G0273"]
+        errs "@figure images/a.png web=images/b.jpg alt=\"x\"\n" @?= []
+        case body "@figure images/a.png web=images/b.jpg alt=\"x\"\n" of
+          [FigureBlock f] -> (figWeb f, figPage f) @?= (Just "images/b.jpg", Nothing)
+          other -> assertFailure (show other),
+      testCase "the page of a PDF figure (golem-pdf ADR 0008)" $ do
+        case body "@figure images/a.pdf page=2 web=images/a.png alt=\"x\"\n" of
+          [FigureBlock f] -> figPage f @?= Just 2
+          other -> assertFailure (show other)
+        msgs "@figure images/a.pdf page=0 web=images/a.png alt=\"x\"\n" @?= [("G0275", "page は PDF の図版のページを 1 から数えた整数で書きます: 0")]
+        errs "@figure images/a.pdf page=x web=images/a.png alt=\"x\"\n" @?= ["G0275"]
+        errs "@figure images/a.png page=1 alt=\"x\"\n" @?= ["G0275"],
       testCase "csv tables and listings" $ do
         case body "@table src=data.csv\n" of
           [Table _ h [r]] -> (map stripSpans h, map stripSpans r) @?= ([["a"], ["b"]], [["1"], ["x,y"]])
@@ -367,7 +389,40 @@ settingsStyle :: Style
 settingsStyle =
   either (error . show) id (parseStyle (FileId 9) "[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n\n[paragraph-styles.quote]\nindent = \"1zw\"\n")
 
--- | A context whose styles are those of 'settingsStyle'.
+{- | A context whose styles are those of 'settingsStyle'.
+| The same key twice among the keyword arguments (golem-parser ADR 0013).
+-}
+duplicateKeyTests :: TestTree
+duplicateKeyTests =
+  testGroup
+    "the same key twice is G0277 (golem-parser ADR 0013)"
+    [ testCase "a built-in command keeps the first" $ do
+        -- "[number-text 10 style=kanji style=tcy]": the second style=tcy is bytes 28 to 37
+        [d | d@(c, _, _, _) <- diags "[number-text 10 style=kanji style=tcy]\n", c == "G0277"]
+          @?= [("G0277", "同じキーを二度書いています: style", 28, 37)]
+        paraOf "[number-text 10 style=kanji style=tcy]\n" @?= ["<number 10 Just StyleKanji>"],
+      testCase "a block command keeps the first" $ do
+        let (bs, ds) = run ctx "@toc depth=1 depth=3\n"
+        ds @?= ["G0277"]
+        bs @?= [ChannelOutput (TocOutput 1)],
+      testCase "the line that opens a code block" $
+        do
+          -- "``` text" would make text a positional argument (G0269); the language follows the fence
+          errs "```text numbers=true numbers=false\na\n```\n" @?= ["G0277"]
+          filter (== "G0277") (errs "``` text numbers=true numbers=false\na\n```\n") @?= ["G0277"],
+      testCase "a plugin command" $ do
+        broken <- maybe (assertFailure "broken is built in") pure (pluginCommandName "broken")
+        let hook = noPlugins {phCommands = Map.fromList [(broken, pluginOutput)]}
+        snd (run ctx {ctxPlugins = hook} "[broken k=1 k=2]\n") @?= ["G0277"],
+      testCase "every key after the first" $
+        [(s, e) | (c, _, s, e) <- diags "[f k=1 k=2 k=3]\n", c == "G0277"] @?= [(7, 10), (11, 14)],
+      testCase "different keys and an unexpanded **[...] are not" $ do
+        filter (== "G0277") (errs "[f k=1 j=1]\n") @?= []
+        filter (== "G0277") (errs "[f k=1 **[h]]\n") @?= [],
+      testCase "@style-def keeps G0252" $
+        codesS "@style-def character x weight=bold weight=normal\n" @?= ["G0252"]
+    ]
+
 sctx :: EvalContext
 sctx =
   ctx

@@ -340,9 +340,10 @@ evalDiagnosticTests =
         ds <- evalDiags root
         [(c, m) | (c, m, _, _) <- ds] @?= [("G0260", "プロジェクトルートの外を指しています: link.txt")],
       testCase "a path both a figure and a listing refer to is read as text" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
-        _ <- withChapter tmp "@listing notes.txt\n\n@figure notes.txt alt=x\n"
-        BS.writeFile (tmp </> "notes.txt") "hello listing\n"
-        r <- build (defaultOptions tmp)
+        -- a figure is PDF, PNG or JPEG by its extension (golem-pdf ADR 0008); plain text does not read images
+        _ <- withChapter tmp "@listing notes.png\n\n@figure notes.png alt=x\n"
+        BS.writeFile (tmp </> "notes.png") "hello listing\n"
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
         map diagCode (filter isError (brDiagnostics r)) @?= []
         t <- BS.readFile (tmp </> "build/text/horizontal/chapters/02.txt")
         assertBool "the listing" ("hello listing" `BS.isInfixOf` t),

@@ -6,6 +6,7 @@ module Golem.Pdf.Number
   ( spToPt,
     showDecimal4,
     showRational4,
+    showRationalDigits,
   )
 where
 
@@ -38,3 +39,19 @@ roundHalfEven r =
         LT -> q
         GT -> q + 1
         EQ -> if even q then q else q + 1
+
+{- | A rational to at most @n@ decimals, rounded half to even with integer
+arithmetic, trailing zeros removed: the matrices of PDF figures, whose
+entries are small (golem-pdf ADR 0008).
+-}
+showRationalDigits :: Int -> Rational -> Text
+showRationalDigits n r
+  | q < 0 = "-" <> digitsOf (negate q)
+  | otherwise = digitsOf q
+  where
+    scale = 10 ^ n :: Integer
+    q = roundHalfEven (r * fromInteger scale)
+    digitsOf x =
+      let (i, f) = x `quotRem` scale
+          frac = T.dropWhileEnd (== '0') (T.justifyRight n '0' (T.pack (show f)))
+       in T.pack (show i) <> (if T.null frac then "" else "." <> frac)

@@ -21,6 +21,7 @@ data Obj
   | ORef !Int
   | OBool !Bool
   | OStream ![(Text, Obj)] !ByteString
+  | ONull
   deriving stock (Eq, Show)
 
 {- | A whole PDF as objects: the version of the header, the objects

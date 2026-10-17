@@ -26,7 +26,7 @@ ADR はコミットした後に変えられないので、下の層から順に�
 | golem-layout-spec | レイアウト IR（ページの幾何） |
 | golem-layout | 行分割、禁則、改ページ（S2） |
 | golem-font | シェイピング、サブセット化、埋め込み |
-| golem-pdf | PDF/X-4 の決定的な直列化 |
+| golem-pdf | PDF/X-4 の決定的な直列化と、PDF の図版の読み込み |
 | golem-preflight | プリフライトの設定（[code: preflight.toml]）と検査。I/O を持たない純粋な関数だけからなる |
 | golem-html | XHTML と CSS |
 | golem-epub | EPUB のパッケージ |
@@ -56,6 +56,9 @@ PDF の経路のパッケージ（golem-layout-spec、golem-layout、golem-font�
 golem-layout は、段落を Knuth と Plass の方式で行に分け [cite knuth-plass]、和文は日本語組版処理の要件 [cite jlreq] に従って組む。
 golem-font は Golem のほかのパッケージに依存しない。
 HarfBuzz と FreeType を包み、フォントのサブセット化と埋め込みを行う。
+golem-pdf は PDF を書くだけでなく、PDF の図版を読む処理（[code: Golem.Pdf.Import]）も持つ。
+相互参照、オブジェクト、三つの復号（Flate、ASCIIHex、ASCII85）、ページの木だけを Haskell で書き、ほかのライブラリには依存しない。
+図版のページを Form XObject として取り込み、DeviceRGB を sRGB の ICCBased に置き換え、特色、レイヤー、埋め込んでいないフォントを持つ PDF を拒む。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0008-pdf-figures.md]（golem-pdf ADR 0008「PDF の図版と置けない図版の診断」）]
 HTML と EPUB は並列ではなく親子であり、golem-epub は golem-html の出力に EPUB 3.3 [cite epub33] のパッケージングを加える薄い層である。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#モジュール構成]（仕様書の「モジュール構成」の節）]
 
 golem-fixtures は、テストのフィクスチャの原文を Golem の原稿に変換する開発用の実行ファイルを持つ。

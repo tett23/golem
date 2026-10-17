@@ -118,12 +118,13 @@ profileDependentCodes =
     DiagnosticCode "G0310" -- a font missing from HTML and EPUB (golem-project ADR 0004)
   ]
 
-{- | The codes of golem preflight whose severity the preflight rules decide
+{- | The codes of golem preflight whose severity the preflight rules decide,
+but G0905, retired (golem-pdf ADR 0008)
 (golem-cli ADR 0006). They are neither notices nor profile-dependent, and
 docs/diagnostics.md must agree with them (a golem-driver test).
 -}
 preflightCodes :: [DiagnosticCode]
-preflightCodes = [DiagnosticCode (T.pack ("G09" <> pad n)) | n <- [2 .. 18 :: Int]]
+preflightCodes = [DiagnosticCode (T.pack ("G09" <> pad n)) | n <- [2 .. 18 :: Int], n /= 5]
   where
     pad n = (if n < 10 then "0" else "") <> show n
 

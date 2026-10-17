@@ -603,6 +603,8 @@ vertical = "kanji"
 [notes]
 placement = "page-foot"
 numbering = "chapter"
+mark-size = "0.65zw"
+mark-format = "*{n}"
 
 [notes.rule]
 length = "10zw"
@@ -1421,6 +1423,8 @@ PDF の色はプロセスカラーだけであり、例外はトンボのレジ�
 Golem は画像の色を変換せず、ICC プロファイルを付けたまま PDF に埋め込み、印刷用の色への変換は印刷所の RIP[^rip] に任せる。
 PDF/X-4 はこの形の画像を許している。
 プロファイルのない RGB の画像には、sRGB のプロファイルを付けて埋め込む。
+PDF の図版の DeviceRGB も同じ考え方で、sRGB のプロファイルの ICCBased に置き換える（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
+PDF の図版の DeviceCMYK は、変換せずにそのまま書くので、本の出力インテントの値として印刷される。
 
 ## フォント
 
@@ -1474,9 +1478,24 @@ HarfBuzz のフォントは開いた後は読むだけで、HarfBuzz が複数�
 
 - 代替テキストは必須とし、欠けていればエラーとする。EPUB のアクセシビリティの要件を満たすためである。
 - 画像の形式は、v1 では PDF（ベクター）、PNG、JPEG とする。PDF の図は EPUB と HTML では表示できないので、PDF の図には Web 用の代替画像の指定を必須とする。SVG は、PDF へ変換する処理が重いので v1 では扱わない。
+- 形式は拡張子で決め、どの出力を組むときも同じ規則で調べる（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。図版は `.pdf`、`.png`、`.jpg`、`.jpeg`（大文字と小文字を区別しない）で、ほかは G0274 になる。Web 用の代替画像（`web`）は PNG か JPEG で、ほかは G0273 になる。`web` は PNG と JPEG の図版にも書け、HTML と EPUB は `web` があればそれを、なければ図版のファイルを使う。PDF は常に図版のファイルを使う。
+- PDF の図版は `page` で何ページ目を置くかを選べる。1 以上の整数で、省けば 1 である。整数でない値、0 以下の値、PDF でない図版の `page` は G0275 になる。
 - 図番号は章ごとに振り、文書構造（S1）で決める。図番号は「図 3-2」のように章番号と組み合わせて使うので、章を複数のファイルに分けても章の中で番号が続く必要があるためである。
 - ICC プロファイルを持たない RGB の画像は sRGB とみなし、sRGB のプロファイルを付けて埋め込む。
-- PNG は、フィルタの前の画素のデータが 512 MiB 以下、ICC プロファイルが 32 MiB 以下のものに限る。画素のデータは画像に要るバイト数までしか展開しない。読めない画像は、PDF に描かず、`golem preflight` が理由とともに G0905 にする（[docs/adr/0035](adr/0035-security-hardening.md)）。
+- PNG は、フィルタの前の画素のデータが 512 MiB 以下、ICC プロファイルが 32 MiB 以下のものに限る。画素のデータは画像に要るバイト数までしか展開しない（[docs/adr/0035](adr/0035-security-hardening.md)）。
+- PDF に置けない図版（読めない画像と、取り込めない PDF）は、PDF を組むとき（`golem build` の PDF と `golem preflight`）に `@figure` ごとに G0810 のエラーとし、PDF を書かない。dev と prod の両方でエラーである。HTML、EPUB、プレーンテキストは画像を読まないので、G0810 を出さない（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
+
+PDF の図版は、そのページを Form XObject として PDF に取り込み、ベクターのまま描く（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
+PDF を読む処理は golem-pdf の `Golem.Pdf.Import` に Haskell で書き、ほかのライブラリを使わない。
+
+- 相互参照の表と相互参照のストリーム、オブジェクトのストリーム、`/Prev` と `/XRefStm` を読む。後の改訂の項目が前の改訂に勝つ。壊れた相互参照は直さない。
+- ページの `Resources`、`MediaBox`、`CropBox`、`Rotate` はページの木の親から引き継ぐ。切り抜きの枠は、CropBox（なければ MediaBox）を MediaBox との共通部分にしたものとする。`Rotate` は Form XObject の `Matrix` で表す。
+- 図版の大きさは、PNG と JPEG では画素の縦横の比、PDF では回転した後の切り抜きの枠の縦横の比で決める。
+- 資源から参照をたどって届くオブジェクトだけを、ファイルの中の順にたどって一度ずつ写す。ページの注釈、`Metadata`、しおり、出力インテントは写さない。同じファイルの同じページは Form XObject を一つだけ書き、同じファイルの別のページは共通のオブジェクトを一度だけ写す。
+- 内容のストリームは復号し、DeviceRGB を書き換えてから Flate で圧縮し直す。画像などのストリームはそのまま写す。
+- DeviceRGB は、sRGB のプロファイルの ICCBased に置き換える。内容のストリームの `r g b rg` は `/GolemSRGB cs r g b sc` に、`RG` は `CS` と `SC` の組に書き換える。
+- フォントは埋め込んだものだけを受け付け、取り込んだフォントを本文のフォントとまとめない。
+- 次の PDF は拒み、G0810 の理由に示す：暗号化された PDF、`page` のページがない PDF、`LZWDecode`、`JBIG2Decode`、`JPXDecode` などの扱わない圧縮を使う PDF、埋め込んでいないフォントを使う PDF、特色（Separation と DeviceN）を使う PDF、RGB のインライン画像を持つ PDF、レイヤー（オプショナルコンテンツ）を持つ PDF、`UserUnit` が 1 でないページ。
 
 PDF では、図番号とキャプションを、画像の下（縦組みでは左）に、段落スタイル `caption` の `font` と `size` で組む（[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 指定がなければ本文と同じ書体と大きさになる。
@@ -1793,12 +1812,21 @@ Golem は決定性を重視する[note: 同じ入力からバイト単位で同�
 PDF、HTML、EPUB、プレーンテキストは、S1 で振り直した同じ番号を使う。
 ページごとに番号を振り直す方式はページが決まるまで番号が決まらないので、v1 では採らない。
 
-PDF の本文の印は、`*` と番号（`*1`）を本文の文字の半分の大きさで組み、前の字に付ける。
+PDF の本文の印は、`[notes]` の `mark-format` の `{n}` を番号（算用数字）に置き換えた文字列を、`mark-size` の大きさで組み、前の字に付ける（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
+既定は `mark-format = "*{n}"`、`mark-size = "0.5zw"` であり、印は `*1` の形で、本文の文字の半分の大きさになる。
+`mark-size` の `zw` は印の位置の文字の大きさに対する比であり、0 より大きく 1 以下とする。
+絶対の寸法（`"6pt"` など）も書け、印の位置の文字の大きさを超える場合はその大きさで組む。
+`mark-format` は `{n}` をちょうど一つ含む。
+`mark-size` と `mark-format` の誤りは G0306 とする。
+二つのキーは PDF にだけ効き、HTML、EPUB、プレーンテキストの印は変わらない。
 印の前では行を分けず、空きも入れない。
 印の後ろには、印がないときに前の字と次の字のあいだに入る空きが入る。
 横組みでは、印の字面の枠の上端を本文の字面の枠の上端にそろえる。
 縦組みでは、印を横書きの向きで行の中に置き、印の右端を本文の字面の枠の右端にそろえる。
 ページの下の注の本文の先頭には、本文の印と同じ文字列と半角の空白を付ける（`*1 注の本文`）。
+この印は注の本文の大きさで組み、上げない。
+縦組みでは、印の幅が本文の文字の大きさを超えると、印が行の外にはみ出す。
+大きい `mark-size` や字の多い `mark-format` では、短い印でも起きる。
 
 注の配置は、ページ下（脚注）か章末（章末注）かをスタイルで選ぶ。
 媒体ごとの出力は次のとおりである。
@@ -1868,7 +1896,7 @@ PDF では、さらに次の二つをコンパイルエラーとする（[golem-
 傍注は、本文のページと行が確定した後に傍注欄に置き、傍注の量で本文の改ページを変えない。
 傍注の本文は、段落スタイル `sidenote` の `font` の役割の書体と `size` の大きさで組み、省略すれば本文の役割と版面の文字の大きさで組む（[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 傍注の行送りは本文の行送りを文字の大きさの比で縮めた値とし、傍注どうしの間には本文の行送りの半分を空ける。
-本文側の印は、番号の印（`marker = "number"`）なら脚注の印と同じく本文の半分の大きさで組み（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)）、「※」は本文の書体と大きさのまま組む。
+本文側の印は、番号の印（`marker = "number"`）なら脚注の印と同じく `[notes]` の `mark-size` の大きさで番号だけを組み（[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）、「※」は本文の書体と大きさのまま組む。
 傍注の本文の先頭には、本文側の印と同じ番号か「※」を付け、印なしでは何も付けない。
 
 ### 索引
@@ -2171,7 +2199,6 @@ InDesign のプリフライトプロファイルにあたるものを、プリ�
 | `glyph-missing`（グリフのない文字） | G0902 | error | error |
 | `font-formats`（許さない形式のフォント） | G0903 | off | off |
 | `type-size`（小さすぎる文字） | G0904 | off | warning（5pt 未満、二版以上の色だけ） |
-| `image-unplaceable`（PDF に置けない図版） | G0905 | error | error |
 | `image-resolution`（実効の解像度の不足） | G0906 | なし | カラーとグレーは 150ppi 未満がエラー、300ppi 未満が警告。二値は 600ppi と 1200ppi |
 | `image-resolution-max`（実効の解像度の過剰） | G0907 | off | off |
 | `image-color-space`（許さない色空間の図版） | G0908 | off | warning（`cmyk` と `gray` を許す） |
@@ -2185,6 +2212,15 @@ InDesign のプリフライトプロファイルにあたるものを、プリ�
 | `page-count`（ページ数） | G0916 | off | off |
 | `blank-pages`（空白のページ） | G0917 | off | off |
 | `stroke-weight`（細すぎる線） | G0918 | off | warning（0.1mm 未満） |
+
+PDF に置けない図版は、プリフライトの検査ではなく G0810 のエラーで、PDF を作れないのでプリフライトは何も検査しない。
+`image-unplaceable` の検査（G0905）は廃止し、`preflight.toml` に書くと知らないキー（G0901）になる（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
+PDF の図版も、ページの図版の一覧に載せて検査する。
+G0906 と G0907 は PNG と JPEG の図版だけを検査し、PDF の図版の中の画像の解像度は検査しない。
+G0908 は、PDF の図版が使う色空間のうち許さないものをすべて並べて一つの diagnostic にする。
+sRGB に置き換えた DeviceRGB は `rgb` とし、ICCBased は成分の数で `gray`、`rgb`、`cmyk` とする。
+G0909 は、PDF の図版の CMYK の ICCBased のプロファイルが出力インテントと違えば出す。
+G0911 は、PDF の図版もその矩形で検査する。
 
 同じ原因の diagnostics は検査ごとの単位で一つにまとめ、最初のページの位置に出す。
 ページは PDF の何ページ目か（1 から数える）で示し、メッセージには最初の十ページまでを書き、それより多ければ `ほか <n> ページ` と添える。
@@ -2347,7 +2383,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 
 - **ぶら下げの量**：ぶら下げの量を、字の幅ではなく語の箱全体の幅に対する割合で求めている。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は字の幅に対する割合と定めている。既存のテストも、語の幅を基準にした値を期待している。
 - **分綴のハイフンの突き出し**：パターンで分綴したときに行末に足すハイフンを、突き出さない。行分割の突き出しの量は、行の最後の箱の終わりの字だけを見て求めるので、分綴で足したハイフンを数えない。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は、行末のハイフンも突き出すと定めている。
-- **キーワード引数の後の `**[式]`**：`[f k=v **[h]]` が G0119 になる。`**[式]` はキーワード引数に展開されるので、キーワード引数の後に書けてよいはずである（[golem-parser ADR 0004](golem-parser/adr/0004-inline-grammar.md)）。
 - **IR の大きな整数**：CDDL は式の整数を `int`（CBOR の major type 0 と 1）と定めているが、絶対値が 2^64 以上の整数は bignum（tag 2 と 3）で書き出される。式の整数は任意精度なので、`@set n = 2 ** 70` のような値が IR に入りうる（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)）。
 - **浮動小数点数の桁あふれ**：`2.0 ** -1074` は表せる値だが、途中の計算があふれて 0 になる。`10 ** 309 > 1.0` は誤りにならないが、`10 ** 309 + 0.5` は G0204 になる。どちらの扱いも仕様は定めていない（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
 - **`golem inspect` の終了コードと文言**：構文の誤り（G0117 など）があっても終了コード 0 で終わり、diagnostics を Haskell の `show` の形で出す。存在しないファイルを渡すと、英語の例外と GHC のバックトレースが出る（[golem-cli ADR 0001](golem-cli/adr/0001-command-line-interface.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
