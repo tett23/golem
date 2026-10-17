@@ -100,6 +100,29 @@ xmlTests =
       case readSvg "<svg><g></svg>" of
         Left (SvgMalformed _) -> pure ()
         other -> assertFailure (show other),
+    testGroup
+      "documents that are not well formed are refused"
+      [ testCase name $ case parseXml doc of
+          Left _ -> pure ()
+          Right e -> assertFailure ("read as " <> show e)
+      | (name, doc) <-
+          [ ("an attribute twice", "<svg a=\"1\" a=\"2\"/>"),
+            ("an attribute value without quotes", "<svg a=1/>"),
+            ("an unknown entity reference", "<svg>&nbsp;</svg>"),
+            ("a reference without its semicolon", "<svg>&amp</svg>"),
+            ("a character reference to 0", "<svg>&#0;</svg>"),
+            ("a character reference to a surrogate", "<svg>&#xD800;</svg>"),
+            ("a character reference beyond U+10FFFF", "<svg>&#x110000;</svg>"),
+            ("an end tag of another element", "<svg><g></h></svg>"),
+            ("something after the root", "<svg/><svg/>"),
+            ("a comment that is not closed", "<svg><!-- c</svg>"),
+            ("bytes that are not UTF-8", "<svg>\xff</svg>")
+          ]
+      ],
+    testCase "a byte order mark, references in attribute values and the largest character reference are read" $
+      case parseXml "\xEF\xBB\xBF<svg a=\"&lt;&#x10FFFF;\"/>" of
+        Right e -> map atValue (elAttrs e) @?= ["<\x10FFFF"]
+        Left err -> assertFailure (T.unpack err),
     testCase "Inkscape's elements and attributes are skipped" $ do
       let doc =
             "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:sodipodi=\"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd\" xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\" width=\"10\" height=\"10\">"
