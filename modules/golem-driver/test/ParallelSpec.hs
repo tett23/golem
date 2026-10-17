@@ -1,0 +1,221 @@
+{- | Parallel composition on several OS threads (Medium tests).
+
+The PDF pipeline composes paragraphs, figure captions and tables with
+'Control.Concurrent.Async.mapConcurrently' when 'optParallel' is set
+(golem-driver ADR 0001 and 0002). The other tests of this suite compare
+parallel and sequential builds on one capability, where the green threads
+never run at the same time and the foreign calls into HarfBuzz and
+FreeType never overlap. These tests raise the capabilities to eight (the
+suite is built with -threaded), so that the threads really run at once,
+and check what ADR 0001 requires of parallel runs: the output and the
+diagnostics equal those of a sequential run (docs/adr/0002 determinism),
+and the diagnostics are in the order of the files, the positions and the
+codes.
+
+GOLEM_PARALLEL_REPEAT=n repeats the builds of the fixture books n times
+(once by default).
+-}
+module ParallelSpec (parallelTests) where
+
+import Control.Concurrent (forkOn, getNumCapabilities, setNumCapabilities)
+import Control.Concurrent.MVar (newEmptyMVar, putMVar, readMVar, takeMVar)
+import Control.Exception (SomeException, evaluate, try)
+import Control.Monad (forM_, replicateM)
+import Data.ByteString qualified as BS
+import Data.List (isSuffixOf)
+import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
+import Data.Text (Text)
+import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
+import Data.Text.IO qualified as TIO
+import Golem.Driver
+import Golem.Driver.Pdf (Shaping (..))
+import Golem.Project.Style (parseStyle)
+import Golem.Syntax
+import Hedgehog
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
+import Support
+import System.Directory (createDirectoryIfMissing)
+import System.Environment (lookupEnv)
+import System.FilePath (takeDirectory, takeFileName, (</>))
+import System.IO.Temp (withSystemTempDirectory)
+import Test.Tasty
+import Test.Tasty.HUnit
+import Test.Tasty.Hedgehog (testPropertyNamed)
+import Text.Read (readMaybe)
+
+-- | The number of capabilities the parallel builds run on.
+capabilities :: Int
+capabilities = 8
+
+{- | Runs with at least n capabilities. The count is only raised, never
+restored: tasty may run other tests at the same time, and lowering it
+under them would take their capabilities away.
+-}
+withCapabilities :: Int -> IO a -> IO a
+withCapabilities n act = do
+  current <- getNumCapabilities
+  setNumCapabilities (max n current)
+  act
+
+{- | Runs the actions at once, the i-th pinned to capability i (mod the
+count), and returns their fully evaluated results in the order given.
+The threads wait at a gate until all are started, so that they begin
+together.
+-}
+inParallel :: (Show a) => [IO a] -> IO [Either String a]
+inParallel acts = do
+  gate <- newEmptyMVar
+  vars <- traverse (start gate) (zip [0 ..] acts)
+  putMVar gate ()
+  traverse takeMVar vars
+  where
+    start gate (i, act) = do
+      v <- newEmptyMVar
+      _ <- forkOn i (readMVar gate >> try (act >>= \x -> evaluate (length (show x)) >> pure x) >>= putMVar v . either (\e -> Left (show (e :: SomeException))) Right)
+      pure v
+
+-- | What a build left: each diagnostic as (file path, code, start, message), and the PDF.
+type Outcome = ([(FilePath, DiagnosticCode, Int, Text)], Maybe BS.ByteString)
+
+{- | Builds a project of chapters, in the order given, to PDF. The style is
+written with its files; the fake body font is added when the style names
+no font.
+-}
+buildChapters :: FontProvider -> Bool -> BS.ByteString -> [(FilePath, BS.ByteString)] -> [(FilePath, Text)] -> IO Outcome
+buildChapters fonts parallel style files chapters = withSystemTempDirectory "golem-parallel" $ \tmp -> do
+  let names = T.intercalate ", " [T.pack (show name) | (name, _) <- chapters]
+  TIO.writeFile (tmp </> "manifest.toml") ("chapters = [" <> names <> "]\n" <> T.dropWhile (/= '\n') (TE.decodeUtf8 miniManifest))
+  writeStyleWithFont tmp style
+  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  forM_ chapters $ \(name, src) -> TIO.writeFile (tmp </> name) src
+  r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fonts, optParallel = parallel}
+  pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
+    [p] -> Just <$> BS.readFile p
+    _ -> pure Nothing
+  let path d = maybe "?" (takeFileName . siPath) (Map.lookup (spanFile (diagSpan d)) (brSources r))
+  pure ([(path d, diagCode d, spanStart (diagSpan d), diagMessage d) | d <- brDiagnostics r], pdf)
+
+-- | The same build in sequence, then in parallel on eight capabilities.
+sequentialAndParallel :: FontProvider -> BS.ByteString -> [(FilePath, BS.ByteString)] -> [(FilePath, Text)] -> IO (Outcome, Outcome)
+sequentialAndParallel fonts style files chapters = do
+  s <- buildChapters fonts False style files chapters
+  p <- withCapabilities capabilities (buildChapters fonts True style files chapters)
+  pure (s, p)
+
+-- * generated manuscripts
+
+-- | Japanese prose with punctuation, brackets and a few Latin letters.
+genProse :: Gen Text
+genProse = Gen.text (Range.linear 1 160) (Gen.element ("吾輩は猫である。名前はまだ無い、どこで生れたかとんと見当がつかぬ。「何でも薄暗い」——じめじめした所でニャーニャー泣いていた事だけは記憶しているAB12" :: String))
+
+-- | One block: a paragraph (most often), a heading, a list or a small table.
+genBlock :: Gen Text
+genBlock =
+  Gen.frequency
+    [ (6, genProse),
+      (1, ("# " <>) <$> Gen.text (Range.linear 1 8) (Gen.element ("見出しの章節" :: String))),
+      (1, T.unlines . map ("- " <>) <$> Gen.list (Range.linear 1 4) genProse),
+      (1, pure "| 項目 | 値 |\n|:---|---:|\n| 幅 | 10 |\n| 高さ | 20 |\n")
+    ]
+
+genChapter :: Gen Text
+genChapter = T.intercalate "\n\n" <$> Gen.list (Range.linear 1 12) genBlock
+
+-- | Chapters of different sizes, named c1.gm.., listed in a shuffled order.
+genChapters :: Gen [(FilePath, Text)]
+genChapters = do
+  bodies <- Gen.list (Range.linear 1 5) genChapter
+  Gen.shuffle [("c" <> show i <> ".gm", b) | (i, b) <- zip [1 :: Int ..] bodies]
+
+-- | Noto Serif JP of the 蟹工船 fixture as the body font, set horizontally or vertically.
+notoStyle :: Bool -> BS.ByteString
+notoStyle vertical =
+  (if vertical then replaceIn "writing-mode = \"horizontal\"" "writing-mode = \"vertical\"" horizontalStyle else horizontalStyle)
+    <> "\n[fonts.body]\nja = \"fonts/noto.otf\"\n"
+
+-- * the tests
+
+parallelTests :: TestTree
+parallelTests =
+  testGroup
+    "parallel composition on eight capabilities (golem-driver ADR 0001, 0002; Medium)"
+    [ testPropertyNamed
+        "a generated manuscript with the fake fonts gives the bytes and diagnostics of a sequential build"
+        "prop_parallelFakeFontsMatchSequential"
+        ( withTests 25 . property $ do
+            chapters <- forAll genChapters
+            (s, p) <- evalIO (sequentialAndParallel fakeProvider horizontalStyle [] chapters)
+            p === s
+        ),
+      testPropertyNamed
+        "a generated manuscript shaped by HarfBuzz gives the bytes and diagnostics of a sequential build"
+        "prop_parallelRealFontsMatchSequential"
+        ( withTests 8 . property $ do
+            chapters <- forAll genChapters
+            vertical <- forAll Gen.bool
+            noto <- evalIO notoBytes
+            (s, p) <- evalIO (sequentialAndParallel realProvider (notoStyle vertical) [("fonts/noto.otf", noto)] chapters)
+            p === s
+        ),
+      testCase "layout errors of three chapters come in the order of the manifest, the positions and the codes" $ do
+        let wide = "| " <> T.intercalate " | " (replicate 13 "字") <> " |\n|" <> T.replicate 13 "---|" <> "\n| " <> T.intercalate " | " (replicate 13 "字") <> " |\n"
+            -- the fourth level leaves less than 8 characters of 12 (G0727); the passes that
+            -- find it and the table errors are not the order of the files
+            deep = "- 一\n  - 二\n    - 三\n      - 四\n        - 五の項目。\n"
+            chapters = [("z.gm", wide), ("a.gm", "前。\n\n" <> wide), ("m.gm", deep <> "\n" <> wide <> "\n" <> wide)]
+        (ds, pdf) <- withCapabilities capabilities (buildChapters fakeProvider True horizontalStyle [] chapters)
+        -- byte offsets: "前。" is 6 bytes and two newlines; the items of deep are 6, 8, 10
+        -- and 12 bytes before "四", 62 bytes in all, then a newline; a table is 214 bytes
+        -- (two rows of 80 and a rule of 54), then a newline
+        (pdf, [(f, c, at) | (f, c, at, _) <- ds])
+          @?= ( Nothing,
+                [ ("z.gm", DiagnosticCode "G0741", 0),
+                  ("a.gm", DiagnosticCode "G0741", 8),
+                  ("m.gm", DiagnosticCode "G0727", 36),
+                  ("m.gm", DiagnosticCode "G0741", 63),
+                  ("m.gm", DiagnosticCode "G0741", 278)
+                ]
+              ),
+      testPropertyNamed
+        "advances and pair kerns asked from eight capabilities at once are those asked in sequence"
+        "prop_memoConcurrentMatchesSequential"
+        ( withTests 10 . property $ do
+            pairs <- forAll (Gen.list (Range.linear 32 128) ((,,) <$> Gen.bool <*> Gen.element ("漢字「」、。ーabAV1" :: String) <*> Gen.element ("漢字「」、。ーabAV1" :: String)))
+            -- two loads: the sequential answers must not warm the cache the threads use
+            alone <- evalIO notoFonts
+            shared <- evalIO notoFonts
+            let ask fonts (v, a, b) = (lfAdvance fonts (Shaping "body" v []) a, lfPairKern fonts (Shaping "body" v []) a b)
+            together <- evalIO (withCapabilities capabilities (inParallel [pure (ask shared k) | k <- pairs]))
+            together === map (Right . ask alone) pairs
+        ),
+      testGroup "fixture books" [bookTest "tempest", bookTest "kanikosen"]
+    ]
+
+notoFonts :: IO LoadedFonts
+notoFonts = do
+  src <- TIO.readFile "test/fixtures/kanikosen/style.toml"
+  style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
+  loadFonts realProvider "test/fixtures/kanikosen" (FileId 0) style [] >>= either (assertFailure . show) pure
+
+{- | A fixture book built in parallel on eight capabilities gives the PDF of
+a sequential build, GOLEM_PARALLEL_REPEAT times.
+-}
+bookTest :: FilePath -> TestTree
+bookTest name = testCase (name <> ": parallel builds on eight capabilities give the bytes of a sequential build") $ do
+  n <- fromMaybe 1 . (>>= readMaybe) <$> lookupEnv "GOLEM_PARALLEL_REPEAT"
+  sequential <- buildBookWith False name
+  parallel <- withCapabilities capabilities (replicateM n (buildBookWith True name))
+  map (== sequential) parallel @?= replicate n True
+
+-- | Builds a copy of a book fixture to PDF; no errors allowed.
+buildBookWith :: Bool -> FilePath -> IO BS.ByteString
+buildBookWith parallel name = withSystemTempDirectory "golem-book" $ \tmp -> do
+  copyTree ("test/fixtures" </> name) tmp
+  r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optParallel = parallel}
+  assertEqual "no errors" [] [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
+  case filter (".pdf" `isSuffixOf`) (brWritten r) of
+    [p] -> BS.readFile p
+    other -> assertFailure (show other)

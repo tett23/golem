@@ -4,7 +4,9 @@
 and 0002): loading from bytes, the embedding licence check, shaping,
 metrics, subsetting with retained glyph ids, subset name tags and
 ToUnicode mappings. The FFI is confined here and wrapped as pure
-functions.
+functions. Pure functions may be evaluated on any capability at once, so
+the C layer holds a lock per font around FreeType, whose face one thread
+may use at a time; HarfBuzz's objects are only read and need none.
 -}
 module Golem.Font
   ( Font,
