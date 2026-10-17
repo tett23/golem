@@ -423,13 +423,10 @@ $ sh scripts/determinism.sh > /tmp/b.txt
 $ diff /tmp/a.txt /tmp/b.txt
 ```
 
-環境変数で出力が変わらないことも、同じように比べて確かめられる。
+環境変数やロケールで出力が変わらないことは、[code: scripts/env-determinism/check.sh] で確かめる（第[ref-number determinism]章）。
 
 ```sh
-$ golem build --target html
-$ mv build build-a
-$ TZ=Pacific/Kiritimati LANG=C golem build --target html
-$ diff -r build-a build
+$ sh scripts/env-determinism/check.sh --quick
 ```
 
 マシンをまたぐ揺れは、手元では見つからない。
