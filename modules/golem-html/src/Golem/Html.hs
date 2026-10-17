@@ -39,6 +39,7 @@ import Golem.Doc.ListMarkers
 import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals
 import Golem.Syntax.Span
+import Numeric (showHex)
 import Skylighting qualified as S
 import System.FilePath (makeRelative, replaceExtension, splitDirectories, takeDirectory, takeFileName, (</>))
 
@@ -190,6 +191,17 @@ escapeXml = T.concatMap $ \case
   '<' -> "&lt;"
   '>' -> "&gt;"
   '"' -> "&quot;"
+  c -> T.singleton c
+
+{- | The inside of a CSS string in double quotes (docs/adr ADR 0035): a
+quote or a backslash after a backslash, a control character as a
+backslash, its hexadecimal code and a space. Other characters stay.
+-}
+cssString :: Text -> Text
+cssString = T.concatMap $ \case
+  '"' -> "\\\""
+  '\\' -> "\\\\"
+  c | c < ' ' || c == '\DEL' -> "\\" <> T.pack (showHex (fromEnum c) "") <> " "
   c -> T.singleton c
 
 -- | The naive conversion: screen colours are an approximation of print.
@@ -372,7 +384,7 @@ block c (Block sp lbl body) = case body of
   FigureBlock f ->
     let num = numberSpan c (Map.lookup sp (bookFigures (cBook c)))
         cap = T.concat [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
-     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> relLink (cHere c) (T.unpack (webSource f)) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
+     in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webSource f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c
   ChannelOutput BibliographyOutput ->
@@ -427,7 +439,8 @@ toc c depth =
 linkTo :: Ctx -> FileId -> Text -> Text
 linkTo c fid anchor =
   let target = pagePath (cFt c) fid
-      file = if target == cHere c then "" else relLink (cHere c) target
+      -- a path is escaped like any attribute value (docs/adr ADR 0035)
+      file = if target == cHere c then "" else escapeXml (relLink (cHere c) target)
    in file <> "#" <> escapeXml anchor
 
 index :: Ctx -> Text
@@ -766,9 +779,9 @@ css :: HtmlConfig -> Book -> Text
 css cfg book =
   T.unlines $
     [ "@font-face { font-family: \""
-        <> family role kind
+        <> cssString (family role kind)
         <> "\"; src: url(\""
-        <> T.pack (fontOut p)
+        <> cssString (T.pack (fontOut p))
         <> "\");"
         <> (if role `elem` boldRoles then " font-weight: bold;" else "")
         <> (if role `elem` italicRoles then " font-style: italic;" else "")
@@ -935,7 +948,7 @@ css cfg book =
                ]
             <> [rule sel ds | let ds = featureDecls (hpsFeatures ps), not (null ds)]
     families role = case Map.lookup role (hcFonts cfg) of
-      Just (ja, la) -> ["\"" <> family role "latin" <> "\"" | Just _ <- [la]] <> ["\"" <> family role "ja" <> "\"" | Just _ <- [ja]]
+      Just (ja, la) -> ["\"" <> cssString (family role "latin") <> "\"" | Just _ <- [la]] <> ["\"" <> cssString (family role "ja") <> "\"" | Just _ <- [ja]]
       Nothing -> []
     family role kind = "golem-" <> role <> "-" <> kind
     fontStack role = T.intercalate ", " (families role <> ["serif"])
