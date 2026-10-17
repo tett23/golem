@@ -89,7 +89,7 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   綴りを確かめてください。
   プラグインのコマンドなら、[code: manifest.toml] にプラグインを宣言してください。
 = [strong: G0238 [code: … には散文スロットが一つ必要です]]、[strong: [code: … は散文スロットを取りません]] など
-  コマンドの [code: :] の後の本文（散文スロット）の数が違います。
+  コマンドの [code: :] の後の本文（散文スロット。「[ref-title inline-commands]」、[ref-page inline-commands] ページ）の数が違います。
   ルビは [code: \[ruby: 親文字\|読み\]] のように、[code: \|] で区切って二つ書きます。
   相互参照のコマンドには [code: :] の後の本文を書けません。
 = [strong: G0256 [code: 強制改行は段落の中にだけ書けます。コマンドの中では使えません]]

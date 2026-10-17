@@ -69,7 +69,7 @@ Golem の文法は [code: modules/golem-parser/grammar/Golem.hpeg] に書き、[
 
 C のライブラリは、それぞれを担当するモジュールの中に閉じ込め、ほかのモジュールからは直接呼ばない。
 
-| ライブラリ | 版 | 担当 |
+| ライブラリ | バージョン | 担当 |
 | --- | --- | --- |
 | HarfBuzz | 14.6.0 | golem-font |
 | FreeType | 2.14.3 | golem-font |
@@ -79,10 +79,10 @@ C のライブラリは、それぞれを担当するモジュールの中に閉
 
 HarfBuzz と FreeType は、ソースを [code: modules/golem-font/cbits/] に同梱して静的にリンクする。
 wasmtime は、プラットフォームごとの C API の配布物を [code: scripts/fetch-wasmtime.sh] で取得する。
-zlib は、Hackage の [code: zlib-clib] の 1.3.2 を同梱版として使う。
-hyph-utf8 は英語（米国）のハイフネーションのパターンで、版はコミットで固定している。
+zlib は、Hackage の [code: zlib-clib] の 1.3.2 を同梱するバージョンとして使う。
+hyph-utf8 は英語（米国）のハイフネーションのパターンで、バージョンはコミットで固定している。
 
-どれも出力の決定性のために版を固定しており、版を上げるときは ADR を書く（第[ref-number determinism]章）。
+どれも出力の決定性のためにバージョンを固定しており、バージョンを上げるときは ADR を書く（第[ref-number determinism]章）。
 
 ## 処理の流れ
 

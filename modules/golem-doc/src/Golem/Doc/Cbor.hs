@@ -252,7 +252,7 @@ termDocument t =
     [v, f, bs] -> do
       v' <- asIntI v
       when (v' /= abiVersion) $
-        Left ("ABI の版が異なります: " <> T.pack (show v'))
+        Left ("ABI のバージョンが異なります: " <> T.pack (show v'))
       Document . FileId <$> asIntI f <*> (asList bs >>= traverse termBlock)
     _ -> bad "文書"
 
