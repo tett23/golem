@@ -2704,7 +2704,7 @@ style.toml の誤りです
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
 
-- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format には {n} をちょうど一つ書きます: <書式>`、`lines は 1 以上の整数です: <値>` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
+- メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format には {n} をちょうど一つ書きます: <書式>`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置、読み込んだ後の検査では `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
 - ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md) である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした
 
@@ -2722,6 +2722,7 @@ style.toml の誤りです
 - `[hidden-folio]` の `size` か `gutter` を `zw` で書いたか、0 以下にしたか、寸法として読めない値にした。`pages` に `unnumbered` と `all` のほかの値を書いた。`gutter` が `size` の半分より小さい（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。
 - 罫線の指定（`[notes.rule]`）で、`length` が寸法として読めないか 0 以下、`weight` が寸法として読めないか 0 以下か `zw`、`space-before` か `space-after` が寸法として読めないか負である。未知のキーを書いた。`[notes.rule]` に `length` を書いていない（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 - 罫線の指定で、`style` に線の種類の表にない値を書いた。`dash` か `gap` が寸法として読めないか、0 以下か、`zw` である。`dash` を `"dashed"` のほかの線の種類に、`gap` を `"dashed"`、`"dotted"`、`"japanese-dots"` のほかの線の種類に書いた。`color` を文字列で書いていない（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
+- 段落スタイルか `[headings.N]` の `rule-before`、`rule-after` に、表と `false` のほかの値（`true` を含む）を書いた。組み込みの段落スタイル `caption`、`sidenote`、`code` に書いた。`@style-def` に書いた。`length` と `end-indent` を一緒に書いた。`start-indent` と `end-indent` を引くと罫線の長さが 0 以下になる。`[notes.rule]` に `start-indent`、`end-indent`、`keep-in-column` を書いた（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 
 ### 直し方
 
@@ -2912,6 +2913,7 @@ style.toml のスタイルの参照が不正です
 - 段落スタイル `code` の `background` が `[color.swatches]` にない。
 - 段落スタイル `code` の `border`、`[code]` の `line-number-color`、`highlight`、`added`、`removed`、`[code.colors]` の値が `[color.swatches]` にない（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 - 罫線の指定（`[notes.rule]`）の `color` が `[color.swatches]` にない。メッセージの理由は `[notes.rule] の color のスウォッチがありません: <名前>` である（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
+- 段落スタイルか見出しの罫線の `color` が `[color.swatches]` にない。理由は `段落スタイル <名前> の罫線の color のスウォッチがありません: <名前>` か `見出し <階層> の罫線の color のスウォッチがありません: <名前>` である（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
 
 ### 直し方
 
@@ -3929,6 +3931,7 @@ plugins.lock を読めません
 7. 段組みの版面に `[sidenotes]` がある。
 8. 傍注欄が判型からはみ出す。
 9. `[notes.rule]` の `length` が行長（段組みでは段の行長）より長い。
+10. 段落スタイル（名前の順）と見出し（階層の順）の罫線が、仕上がりの線を超えるか、段組みの版面で段間の半分を超える（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。行の方向では、`start-indent`、`end-indent`、`length` で段の外に出る量を、左右（縦組みでは天地）の余白と比べる。行に直交する方向では、`keep-in-column = false` の罫線の内側の間隔と太さを、天地（縦組みでは左右）の余白と比べる。余白は奇数ページと偶数ページの狭いほうである。
 
 PDF をターゲットに含むときは、ビルドと `golem check` の両方で、レイアウトの前に報告する。
 PDF を書かない。
@@ -3936,9 +3939,9 @@ LSP は出さない。
 位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
 未知の判型は [G0317](#g0317)、マスターページの未知の位置は [G0318](#g0318) である。
 
-- メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注欄を設けられません`、`段組みの版面には傍注欄を設けられません`、`版面と傍注欄の合計がページからはみ出しています`、`脚注の区切り線の length が行長を超えます`
+- メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注欄を設けられません`、`段組みの版面には傍注欄を設けられません`、`版面と傍注欄の合計がページからはみ出しています`、`脚注の区切り線の length が行長を超えます`、`段落スタイル <名前> の罫線が仕上がりの線を超えます`、`段落スタイル <名前> の罫線が段間の半分を超えます`、`見出し <階層> の罫線が仕上がりの線を超えます`、`見出し <階層> の罫線が段間の半分を超えます`
 - 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`、golem-driver の `Golem.Driver`）
-- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[docs/adr/0018](adr/0018-multi-column-layout.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md) も触れる）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[docs/adr/0018](adr/0018-multi-column-layout.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md) も触れる）
 
 ### 主な原因
 
@@ -3949,11 +3952,13 @@ LSP は出さない。
 - 縦組みの版面に傍注欄を設けた。
 - `[page.grid]` の `columns` が 2 以上の版面に傍注欄（`[sidenotes]`）を設けた。
 - 脚注の区切り線（`[notes.rule]`）の `length` が、一行の長さ（段組みでは一段の行長）より長い。
+- 段落スタイルか見出しの罫線を、`start-indent`、`end-indent`、`length`、`keep-in-column = false` で、余白の幅か段間の半分を超えて段の外に出した。
 
 ### 直し方
 
 `[page]` と `[page.grid]` を書き、字数、行数、文字の大きさ、余白を判型に収まる値にする。
 区切り線の `length` は行長以下にする。
+段落と見出しの罫線は、段の外に出す量を余白の幅と段間の半分以下にする。
 
 ## G0702
 
@@ -4480,6 +4485,40 @@ PDF は書く。
 PDF で圏点を描くには、圏点を付ける語からルビを外す。
 PDF で圏点がなくてよければ、そのままでよい。
 `manifest.toml` の `[diagnostics]` の `silence-notices` に `"G0745"` を加えると、このお知らせを出さなくなる。
+
+## G0746
+
+罫線を持つ段落か見出しが版面に入りません
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+罫線を持つ段落か見出し（段落スタイルか `[headings.N]` の `rule-before`、`rule-after`）が、前の罫線の領域、行、後の罫線の領域を合わせて、空の段にも入らない。
+罫線を持つ段落は、罫線を持たない段落と同じく、孤立行と泣き別れの規則で行を段に分けて組む。
+前の罫線は最初の部分の前に、後の罫線は最後の部分の後にだけ引き、分けた箇所には罫線を引かない。
+罫線を持つ見出しは、行を分けず、後の罫線を省き、それでも入らなければ前の罫線も省く。
+PDF は書く。
+見出しの行だけで空の段に入らない場合は、[G0724](#g0724) である。
+位置は、段落か見出しの位置である。
+お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+
+- メッセージ: `罫線を持つ段落が版面に入らないため、分けて組みました（段落スタイル <名前>）`、`罫線を持つ見出しが版面に入らないため、罫線を省きました（見出し <階層>）`
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)
+
+### 主な原因
+
+- 罫線を持つ段落スタイルを、一ページ（段）より長い段落に当てた。
+- 見出しの罫線の間隔が大きく、見出しの行と罫線の領域が一ページ（段）に入らない。
+
+### 直し方
+
+罫線を持つ段落を短くするか、罫線を持たない段落スタイルにする。
+見出しの罫線の間隔を狭める。
+分けて組んでよければ、そのままでよい。
+`manifest.toml` の `[diagnostics]` の `silence-notices` に `"G0746"` を加えると、このお知らせを出さなくなる。
 
 ## G0750
 
@@ -5208,6 +5247,7 @@ v1 の図版は版面の中に置くので、版面の余白が `distance` 以�
 
 - `[masters]` の柱かノンブルの位置が、仕上がりの線に近い。
 - 版面の余白が狭い。
+- 段落スタイルか見出しの罫線を、`start-indent`、`end-indent`、`keep-in-column = false` で仕上がりの線の近くまで出した（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 
 ### 直し方
 

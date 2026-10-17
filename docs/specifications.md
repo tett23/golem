@@ -644,6 +644,9 @@ size = "0.9zw"
 space-between = 1
 indent = "2zw"
 
+[paragraph-styles.section]
+rule-before = { weight = "0.5pt", space-before = "1zw", space-after = "0.5zw" }
+
 [paragraph-styles.verse]
 indent = "2zw"
 first-line-indent = "-2zw"
@@ -664,6 +667,7 @@ page-break = "recto"
 [headings.2]
 number = "{1}.{n}"
 lines = 3
+rule-after = { space-before = "0.25zw", style = "thick-thin", weight = "1pt" }
 
 [composition]
 kinsoku = "strict"
@@ -786,7 +790,7 @@ HTML、EPUB、プレーンテキストは、`placement` によらず注を章末
 区切り線の位置は「脚注」の節に書く。
 
 罫線の指定は、`style.toml` で罫線を書くための共通の値の形である（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
-今の使い手は `[notes.rule]` だけである。
+今の使い手は、`[notes.rule]` と、段落スタイルと見出しの `rule-before`、`rule-after`（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）である。
 
 | キー | 型 | 意味 |
 | --- | --- | --- |
@@ -798,6 +802,9 @@ HTML、EPUB、プレーンテキストは、`placement` によらず注を章末
 | `style` | 文字列 | 線の種類（次の表）。既定は `"solid"` |
 | `dash` | 寸法 | 破線の一つの線分の長さ。既定は `weight` の 3 倍 |
 | `gap` | 寸法 | 破線の線分と線分のあいだ、点線の点と点のあいだの間隔。既定は線の種類による |
+| `start-indent` | 寸法 | 段落と見出しの罫線だけ。段の行の始まりから罫線の始まりまでの距離。既定は `"0zw"`。負の値は段の外に出す |
+| `end-indent` | 寸法 | 段落と見出しの罫線だけ。段の行の終わりから罫線の終わりまでの距離。既定はなし。負の値は段の外に出す |
+| `keep-in-column` | 真偽値 | 段落と見出しの罫線だけ。段の端の罫線を段の中に収めるか。既定は `true` |
 
 `color`、`style`、`dash`、`gap` は [golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md) で加えた。
 線の種類は、InDesign の線の種類のうち罫線として意味のある 12 種である。
@@ -1051,7 +1058,21 @@ PDF では、`url` と、`based-on` をたどって `url` に行き着く文字�
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
 `[character-styles.strong] based-on = "italic"` は、`[strong: ...]` を斜体で表す。
 
-段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift` である。
+段落スタイルのキーは `based-on`（書かなければ `body`）、`font`、`size`、`line-breaks`（`"join"` か `"keep"`）、`space-between`（同じ段落スタイルの段落が続くときに空ける行の数）、`aki-set`（アキ量のセットの名前）と、文字スタイルと同じ `kerning`、`tracking`、`proportional-metrics`、`baseline-shift`、段落の前と後に引く罫線の `rule-before` と `rule-after` である。
+
+`rule-before` と `rule-after` は、「罫線の指定」の表か `false` をとる（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
+InDesign の段落境界線にあたる。
+前の罫線は段落の一行目の前に、後の罫線は最後の行の後に引く。
+`based-on` では表ごとに引き継ぎ、書けば親の表を置き換える。
+`false` は親の罫線を引き継がないことを表し、`true` は G0306 とする。
+組み込みの `caption`、`sidenote`、`code` と、`@style-def` には書けない（G0306）。
+リストの項目、表のセル、注の本文、定義リストの中の段落には罫線を引かない。
+段落の罫線では、`length` は書かなくてよく、書かなければ段の行長から `start-indent` と `end-indent` を引いた長さになる。
+`length` の `zw` は段落スタイルの文字の大きさで解決する。
+`length` と `end-indent` を一緒に書く場合と、求めた長さが 0 以下の場合は G0306 とする。
+罫線は段の行の始まりから `start-indent` の位置から引き、段落の字下げには合わせない。
+罫線と段落のあいだの間隔（前の罫線の `space-after`、後の罫線の `space-before`）を内側の間隔、罫線と前後の要素のあいだの間隔を外側の間隔と呼ぶ。
+間隔は、段落の行が載る格子の行の字面（`[page.grid]` の `font-size` の高さ）から測る。
 段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G0311）とする。
 行送りの欄は設けない。
 PDF の本文を行の格子に載せるので、段落ごとに行送りを変えると見開きの行の位置がそろわなくなるためである。
@@ -1347,6 +1368,14 @@ HTML と EPUB では、組み込みの文字スタイルのうち `strong`、`bo
 `wrap-mark` と `continued` は HTML と EPUB には出さない。
 プレーンテキストには、キャプションの行、ファイル名の行、差分の印のついた行、行末に空白一つを空けた丸数字の注釈の印を出し、行番号、強調、色は出さない。
 文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between` を CSS に書き、`size` はキャプションと傍注のほかは CSS に書かない。
+段落スタイルと見出しの罫線は、前の罫線を `::before`、後の罫線を `::after` の擬似要素として書く（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
+`content: ""`、`display: block`、`border-block-start`、`margin-block`（`space-before` と `space-after`、書かなければ 0）を書き、`width` は `length` があればその寸法、`start-indent` か `end-indent` を書けば書かず、どちらもなければ `100%` とする。
+`start-indent` と `end-indent` は `margin-inline-start` と `margin-inline-end` に書く。
+`zw` は `em` にする。
+線の種類は `border-style` に写し、`"solid"` と `"wavy"` は `solid`、`"dashed"` は `dashed`、`"dotted"` と `"japanese-dots"` は `dotted`、多重線は `double` とする（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
+色はスウォッチの RGB の近似で書き、`color` がなければ書かない（文字の色になる）。
+`keep-in-column`、`dash`、`gap` と行の格子への切り上げは、HTML と EPUB では使わない。
+プレーンテキストには罫線を出力しない。
 
 PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組む。
 `font` を省けば本文の役割になる。
@@ -1357,6 +1386,21 @@ PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と
 見出しの大きさが版面の文字の大きさと同じで `lines` が 1 なら、見出しの各行は本文と同じ格子の位置に来る。
 行取りの空きは、ページや段の先頭でも削らない。
 見出しはページをまたいで分けず、一ページの行数を超える見出しはエラー（G0724）とする（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
+`[headings.<階層>]` にも、段落スタイルと同じ `rule-before` と `rule-after` を書ける（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
+`length` の `zw` は見出しの文字の大きさで解決し、間隔は見出しが占める格子の行の領域（最初の格子の行の字面の上端から、最後の格子の行の字面の下端まで）から測る。
+見出しの階層どうしは引き継がないので、`false` は書けるが効果はない。
+
+PDF では、段落と見出しの罫線を、格子の行を単位とする罫線の領域に引く（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
+行の格子は変えない。
+`p` を格子の行送り、`h` を格子の字面の高さ、`w` を太さ、`i` を内側の間隔、`o` を外側の間隔、`r` を領域の後の行（前の罫線では段落の一行目、後の罫線では次の要素の最初の行）のルビと圏点の張り出しとし、書かなかった間隔は 0 とする。
+張り出しは、コードブロックの直後の行と同じ関数で求める（[golem-driver ADR 0033](golem-driver/adr/0033-ruby-after-code-block.md)）。
+
+- 段の中の罫線の領域の行の数は `k = max(0, ceil((i + w + o + r - (p - h)) / p))` である。罫線は段落の字面（前の罫線では一行目の字面を `r` だけ延ばした端）から `i` だけ離して引き、切り上げで余った距離は外側の間隔に入れる。どちらの間隔も書かなければ、距離 `k × p + (p - h)` から `r` を除いた範囲の中央に引く。
+- 段の始まりの前の罫線と、段の終わりの後の罫線は、外側の間隔を数えず、`k = max(1, ceil((i + w + r) / p))` とする。段の終わりの後の罫線では `r` は 0 である。段の終わりで終わるかは、段の中の `k` で置いたときにまとまりの終わりが段の終わりに達するかで決める。
+- 後の罫線を持つ段落の直後に前の罫線を持つ段落が続くと、二つの罫線を一つの領域に置く。`k = max(0, ceil((iA + wA + max(oA, oB) + wB + iB + rB - (p - h)) / p))` である。四つの間隔のどれも書かなければ、距離から `rB` を除いた範囲を三つに等しく分け、余りは真ん中に入れる。`space-between` の空きの行があれば、二つの領域は別に数える。
+- `keep-in-column = false` の罫線は、版面の上端（縦組みでは右端）に接する段の始まりと、段の終わりで、領域の行を取らずに版面の外の余白に引く。段の終わりの後の罫線は、その段に脚注があれば段の中に収める。組んだ一行目の張り出しを足すと余白を超える段落も、段の中に収める。
+- 罫線は版面の外（余白）に出してよいが、仕上がりの線と、段組みの版面での段間の半分を超えると、版面を計算できないエラー（G0701）とする。行の方向では `start-indent`、`end-indent`、`length` で出る量を左右（縦組みでは天地）の余白と比べ、行に直交する方向では `keep-in-column = false` の罫線の `i + w` を天地（縦組みでは左右）の余白と比べる。余白は奇数ページと偶数ページの狭いほうである。塗り足しには出さない。安全域は golem preflight の G0912 が検査する。
+- 罫線は、罫線の指定の線の種類と色で、塗った矩形、円、曲線として描く。golem preflight には、種類「段落の罫線」と「見出しの罫線」の罫線として渡す。
 
 `size` と `lines` を省いた見出しは、キーごとに次の既定の値で組む（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）。
 本の言語（マニフェストの `language`）が `ja` で始まる本と、ほかの言語の本とで、`lines` の既定が違う。
@@ -1783,6 +1827,14 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 見出しの直後では改ページしない。
 見出しは、続く見出しのすべてと、その後の段落の最初の 2 行までと同じ段に置く（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）。
 それらを合わせて段に収まらないときも、空の段からは送らない。
+
+罫線を持つ段落と見出しは、前の罫線の領域、行、後の罫線の領域を合わせて一つのまとまりとして置き、改ページと改段で分けない（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
+
+- 今の段に入らなければ、次の段から置く。罫線を持つ段落のまとまりが段に入るかは格子の行の数だけで決め、注の本文の行を数えない。段落はその位置に留まり、入らない注の本文を次のページに送る。
+- 罫線を持つ見出しは、見出しの行と注の本文と区切りの行に、罫線の領域を足して判定し、入らなければ注と罫線とともに次の段に送る。
+- 見出しの直後で改ページしない規則は、続く要素が罫線のまとまりなら、その全体の行の数を数える。
+- 空の段にも入らないまとまりは、お知らせ（G0746）を出して組む。段落は罫線を持たない段落と同じ規則で行を段に分け、前の罫線は最初の部分の前に、後の罫線は最後の部分の後にだけ引く。見出しは、後の罫線を省き、それでも入らなければ前の罫線も省く。
+- 回り込む図版の脇には、罫線を持つ段落を組まない。その段落は図版の後から置き、図版の脇の残りの行は空ける。
 
 原稿からは、`@page-break`（改ページ）、`@page-break recto`（改丁）、`@page-break verso`（次の偶数ページから始める）、`@column-break`（改段）で改められる（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 記法と置ける位置は [markup.md](markup.md) の「改ページ」の節で定める。
