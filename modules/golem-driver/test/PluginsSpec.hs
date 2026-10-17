@@ -46,7 +46,7 @@ withPlugins plugins manifestExtra k = withSystemTempDirectory "golem-driver" $ \
     pluginUrl name = "https://example.com/" <> name <> ".wasm"
     serve (name, wat) = do
       src <- TIO.readFile ("../golem-plugin/test/plugins" </> wat)
-      wasm <- either (assertFailure . T.unpack) pure (watToWasm src)
+      wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
       pure (pluginUrl name, wasm)
 
 -- | The declaration of a plugin as withPlugins serves it.

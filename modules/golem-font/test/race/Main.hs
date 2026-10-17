@@ -19,7 +19,7 @@ import Test.Tasty.HUnit
 
 main :: IO ()
 main = do
-  noto <- BS.readFile "../golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" >>= either (fail . show) pure . loadFont
+  noto <- BS.readFile "../golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" >>= loadFont >>= either (fail . show) pure
   defaultMain (raceTests noto)
 
 -- | The number of threads.

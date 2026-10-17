@@ -40,6 +40,8 @@ jobs:
         run: sh scripts/ci/docs-refs.sh
       - name: Every package errors on incomplete patterns (docs/adr/0027)
         run: sh scripts/ci/incomplete-patterns.sh
+      - name: The uses of unsafePerformIO are the listed ones (docs/adr/0034)
+        run: sh scripts/ci/unsafe-io.sh
       - name: No program changes its number of capabilities while it runs
         run: sh scripts/ci/rts-capabilities.sh
       - id: decide

@@ -3,10 +3,14 @@
 {- | Fonts through HarfBuzz 14.6.0 and FreeType 2.14.3 (golem-font ADR 0001
 and 0002): loading from bytes, the embedding licence check, shaping,
 metrics, subsetting with retained glyph ids, subset name tags and
-ToUnicode mappings. The FFI is confined here and wrapped as pure
-functions. Pure functions may be evaluated on any capability at once, so
-the C layer holds a lock per font around FreeType, whose face one thread
-may use at a time; HarfBuzz's objects are only read and need none.
+ToUnicode mappings. The FFI is confined here. Loading and subsetting are
+IO, called at the edges; what is fixed once a font is open is read while
+loading. Only the queries that the pure layout makes as it goes
+('shapeUnits', 'glyphVerticalOrigin', 'glyphMetrics') are wrapped as pure
+functions with unsafePerformIO (docs/adr ADR 0034). Pure functions may be
+evaluated on any capability at once, so the C layer holds a lock per font
+around FreeType, whose face one thread may use at a time; HarfBuzz's
+objects are only read and need none.
 -}
 module Golem.Font
   ( Font,
@@ -39,6 +43,7 @@ module Golem.Font
 where
 
 import Control.Exception (bracket)
+import Data.Array.Unboxed (UArray, bounds, inRange, listArray, (!))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Unsafe qualified as BU
@@ -85,6 +90,8 @@ foreign import capi unsafe "golem_font.h golem_font_postscript_name" c_psName ::
 
 foreign import capi unsafe "golem_font.h golem_font_cid" c_cid :: Ptr CFont -> Word32 -> IO Word32
 
+foreign import capi unsafe "golem_font.h golem_font_is_cid_keyed" c_isCidKeyed :: Ptr CFont -> IO CInt
+
 foreign import capi unsafe "golem_font.h golem_font_ros" c_ros :: Ptr CFont -> Ptr (ConstPtr CChar) -> Ptr (ConstPtr CChar) -> Ptr CInt -> IO CInt
 
 foreign import capi unsafe "golem_font.h golem_free" c_free :: Ptr Word8 -> IO ()
@@ -99,7 +106,14 @@ data Font = Font
     fontExtents :: !(Int, Int, Int),
     fontPostScriptName :: !Text,
     -- | the ROS of a CID-keyed CFF font; Nothing for any other font (golem-pdf ADR 0006)
-    fontCidSystemInfo :: !(Maybe CidSystemInfo)
+    fontCidSystemInfo :: !(Maybe CidSystemInfo),
+    {- | The height of the centre of the ideographic em box above the
+    baseline, in font units (golem-driver ADR 0015): the ideoEmboxCentral
+    baseline of HarfBuzz for horizontal Han text, from the BASE table or
+    HarfBuzz's fallback when the font has none.
+    -} fontEmBoxCentral :: !Int,
+    -- | the CID of every glyph of a CID-keyed font, read while loading (docs/adr ADR 0034)
+    fontCids :: !(Maybe (UArray Int Int))
   }
 
 -- | The Registry, Ordering and Supplement of a CID-keyed font.
@@ -116,9 +130,11 @@ data FontError
     EmbeddingRestricted !Int
   deriving stock (Eq, Show)
 
--- | Reads a font from its bytes (never from a path, ADR 0001).
-loadFont :: ByteString -> Either FontError Font
-loadFont bytes = unsafePerformIO $ do
+{- | Reads a font from its bytes (never from a path, ADR 0001). IO, called
+where the bytes are read (docs/adr ADR 0034).
+-}
+loadFont :: ByteString -> IO (Either FontError Font)
+loadFont bytes = do
   p <- BU.unsafeUseAsCStringLen bytes $ \(ptr, len) -> c_open (castPtr ptr) (fromIntegral len)
   if p == nullPtr
     then pure (Left Unreadable)
@@ -142,10 +158,17 @@ loadFont bytes = unsafePerformIO $ do
             ordering <- peek op >>= peekCString . unConstPtr
             supplement <- fromIntegral <$> peek sp
             pure (cidSystemInfo registry ordering supplement)
+      central <- fromIntegral <$> c_emboxCentral p
+      cidKeyed <- (/= 0) <$> c_isCidKeyed p
+      cids <-
+        if cidKeyed && n > 0
+          then Just . listArray (0, n - 1) <$> mapM (fmap fromIntegral . c_cid p . fromIntegral) [0 .. n - 1]
+          else pure Nothing
+      touchForeignPtr fp
       pure $
         if embeddingRestricted fsType
           then Left (EmbeddingRestricted fsType)
-          else Right (Font fp bytes upem cff n ext ps ros)
+          else Right (Font fp bytes upem cff n ext ps ros central cids)
 
 {- | Whether fsType forbids Golem to embed the font (golem-driver ADR 0016),
 as the OpenType specification reads it: bits 0 to 3 are usage permissions
@@ -169,14 +192,6 @@ cidSystemInfo registry ordering supplement
   | otherwise = Nothing
   where
     printable c = c >= ' ' && c <= '~'
-
-{- | The height of the centre of the ideographic em box above the baseline,
-in font units (golem-driver ADR 0015): the ideoEmboxCentral baseline of
-HarfBuzz for horizontal Han text, from the BASE table or HarfBuzz's
-fallback when the font has none.
--}
-fontEmBoxCentral :: Font -> Int
-fontEmBoxCentral f = unsafePerformIO $ withForeignPtr (fontPtr f) (fmap fromIntegral . c_emboxCentral)
 
 data Direction = Horizontal | Vertical
   deriving stock (Eq, Show)
@@ -280,14 +295,19 @@ glyphMetrics f gid = unsafePerformIO $ withForeignPtr (fontPtr f) $ \p ->
         pure (Just (GlyphMetrics h v (x0, y0, x1, y1)))
 
 {- | The CID of a glyph in a CID-keyed CFF font (the character code in the
-PDF with Identity encodings); the glyph id in any other font.
+PDF with Identity encodings); the glyph id in any other font, and for a
+glyph id outside the font, as a 32-bit glyph id (FreeType's answer).
 -}
 glyphCid :: Font -> Int -> Int
-glyphCid f gid = unsafePerformIO $ withForeignPtr (fontPtr f) $ \p -> fromIntegral <$> c_cid p (fromIntegral gid)
+glyphCid f gid = case fontCids f of
+  Just cids | inRange (bounds cids) gid -> cids ! gid
+  _ -> fromIntegral (fromIntegral gid :: Word32)
 
--- | A subset with only the glyphs (and .notdef), glyph ids kept (ADR 0002).
-subsetFont :: Font -> [Int] -> Maybe ByteString
-subsetFont f gids = unsafePerformIO $ withForeignPtr (fontPtr f) $ \p ->
+{- | A subset with only the glyphs (and .notdef), glyph ids kept (ADR 0002).
+IO, called when the PDF is written (docs/adr ADR 0034).
+-}
+subsetFont :: Font -> [Int] -> IO (Maybe ByteString)
+subsetFont f gids = withForeignPtr (fontPtr f) $ \p ->
   withArrayLen (map fromIntegral (Map.keys (Map.fromList [(g, ()) | g <- 0 : gids]))) $ \n arr ->
     alloca $ \lenPtr -> do
       out <- c_subset p arr (fromIntegral n) lenPtr

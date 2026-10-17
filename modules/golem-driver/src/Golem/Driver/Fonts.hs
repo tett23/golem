@@ -11,13 +11,13 @@ where
 import Control.Applicative ((<|>))
 import Data.ByteString qualified as BS
 import Data.Containers.ListUtils (nubOrd)
-import Data.IORef (atomicModifyIORef', newIORef, readIORef)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Driver.Memo (fromShapingTextKey, memoWith, shapingTextKey)
 import Golem.Driver.Pdf (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, usedRoles)
 import Golem.Font
 import Golem.Layout.Japanese (CharClass (..), charClass, isVariationSelector)
@@ -27,7 +27,6 @@ import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Syntax
 import System.FilePath ((</>))
-import System.IO.Unsafe (unsafePerformIO)
 import Text.Printf (printf)
 
 {- | Every file that cannot be loaded is reported, once per path (G0802,
@@ -45,7 +44,8 @@ golemFontProvider = FontProvider $ \root fid style locals ->
           Left e -> pure (Left (err "G0802" (T.pack ((if e == Missing then "フォントのファイルがありません" else pathErrorMessage e) <> ": " <> path))))
           Right rel -> do
             bytes <- BS.readFile (root </> rel)
-            pure $ case loadFont bytes of
+            loaded <- loadFont bytes
+            pure $ case loaded of
               Right f -> Right (bytes, f, path)
               Left Unreadable -> Left (err "G0803" ("フォントを読み込めません: " <> T.pack path))
               Left (EmbeddingRestricted t) -> Left (err "G0804" ("ライセンスが埋め込みを禁じているフォントです（fsType " <> T.pack (printf "0x%04X" t) <> "）: " <> T.pack path))
@@ -92,7 +92,7 @@ provide faces body roles =
     { lfAdvance = advance,
       lfWordAdvance = \s t -> sum (map shAdvance (shapeText s t)),
       -- the pair shaped together less the two shaped apart (docs/adr/0020)
-      lfPairKern = \s a b -> pairKern (s, a, b),
+      lfPairKern = \s a b -> pairKern (s, T.pack [a, b]),
       lfShape = shapeText,
       lfCode = glyphCid . fontAt,
       lfEmbed = embed,
@@ -106,8 +106,11 @@ provide faces body roles =
          in (\m -> let (x0, y0, x1, y1) = gmBBox m in (em x0, em y0, em x1, em y1)) <$> glyphMetrics f g
     }
   where
-    advance = curry (memo (\(s, c) -> sum (map shAdvance (shapeText s (T.singleton c)))))
-    pairKern = memo (\(s, a, b) -> sum (map shAdvance (shapeText s (T.pack [a, b]))) - advance s a - advance s b)
+    {- advances are asked for again and again while composing; they are
+    remembered in a lazy trie, without state (docs/adr ADR 0034) -}
+    advanceOf = memoWith shapingTextKey fromShapingTextKey (\(s, t) -> sum (map shAdvance (shapeText s t)))
+    advance s c = advanceOf (s, T.singleton c)
+    pairKern = memoWith shapingTextKey fromShapingTextKey (\(s, t) -> sum (map shAdvance (shapeText s t)) - sum [advance s c | c <- T.unpack t])
     fonts = map fst faces
     faceAt i = faces !! max 0 (min (length faces - 1) i)
     fontAt = fst . faceAt
@@ -165,7 +168,8 @@ provide faces body roles =
     clusterText r c =
       let bytes = TE.encodeUtf8 r
        in T.filter (not . isVariationSelector) (maybe "" (T.singleton . fst) (T.uncons (TE.decodeUtf8Lenient (BS.drop c bytes))))
-    embed ix vertical used =
+    -- IO: the subset is made as the PDF is written (docs/adr ADR 0034)
+    embed ix vertical used = do
       let f = fontAt ix
           upem = toInteger (fontUnitsPerEm f)
           per1000 v = fromInteger (round (toInteger v * 1000 % upem))
@@ -173,37 +177,25 @@ provide faces body roles =
           cid = glyphCid f
           metrics = [(g, m) | g <- gids, Just m <- [glyphMetrics f g]]
           (asc, desc, cap) = fontExtents f
-          program = fromMaybe (fontBytes f) (subsetFont f gids)
           name = subsetTag gids <> "+" <> (if T.null (fontPostScriptName f) then "GolemFont" else fontPostScriptName f)
           (bx0, by0, bx1, by1) = foldr (\(_, m) (a, b, c, d) -> let (x0, y0, x1, y1) = gmBBox m in (min a x0, min b y0, max c x1, max d y1)) (0, 0, 0, 0) metrics
-       in P.Font
-            { P.fontName = name,
-              P.fontProgram = if fontIsCff f then maybe (P.OpenTypeProgram program) P.CffProgram (sfntTable "CFF " program) else P.TrueTypeProgram program,
-              P.fontVertical = vertical,
-              P.fontWidths = [(cid g, per1000 (gmAdvance m)) | (g, m) <- metrics],
-              P.fontVerticalAdvances = [(cid g, per1000 (gmVerticalAdvance m)) | vertical, (g, m) <- metrics],
-              P.fontAscent = per1000 asc,
-              P.fontDescent = per1000 desc,
-              P.fontCapHeight = per1000 cap,
-              P.fontStemV = 80,
-              P.fontBBox = (per1000 bx0, per1000 by0, per1000 bx1, per1000 by1),
-              P.fontItalicAngle = 0,
-              P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0, not (T.null t)]),
-              P.fontCidSystemInfo = maybe ("Adobe", "Identity", 0) (\c -> (csiRegistry c, csiOrdering c, csiSupplement c)) (fontCidSystemInfo f)
-            }
-
--- | Advances are asked for again and again while composing; cache them.
-memo :: (Ord k) => (k -> Rational) -> k -> Rational
-memo f = unsafePerformIO $ do
-  ref <- newIORef Map.empty
-  pure $ \c -> unsafePerformIO $ do
-    m <- readIORef ref
-    case Map.lookup c m of
-      Just v -> pure v
-      Nothing -> do
-        let v = f c
-        atomicModifyIORef' ref (\m' -> (Map.insert c v m', v))
-{-# NOINLINE memo #-}
+      program <- fromMaybe (fontBytes f) <$> subsetFont f gids
+      pure
+        P.Font
+          { P.fontName = name,
+            P.fontProgram = if fontIsCff f then maybe (P.OpenTypeProgram program) P.CffProgram (sfntTable "CFF " program) else P.TrueTypeProgram program,
+            P.fontVertical = vertical,
+            P.fontWidths = [(cid g, per1000 (gmAdvance m)) | (g, m) <- metrics],
+            P.fontVerticalAdvances = [(cid g, per1000 (gmVerticalAdvance m)) | vertical, (g, m) <- metrics],
+            P.fontAscent = per1000 asc,
+            P.fontDescent = per1000 desc,
+            P.fontCapHeight = per1000 cap,
+            P.fontStemV = 80,
+            P.fontBBox = (per1000 bx0, per1000 by0, per1000 bx1, per1000 by1),
+            P.fontItalicAngle = 0,
+            P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0, not (T.null t)]),
+            P.fontCidSystemInfo = maybe ("Adobe", "Identity", 0) (\c -> (csiRegistry c, csiOrdering c, csiSupplement c)) (fontCidSystemInfo f)
+          }
 
 {- | The bytes of one table of an sfnt (OpenType) font. A CFF font is embedded
 as its bare CFF table (FontFile3 with the subtype CIDFontType0C): PDFium
