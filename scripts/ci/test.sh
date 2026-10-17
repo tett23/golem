@@ -190,6 +190,45 @@ rm "$P/modules/b/b.cabal"
 run incomplete_patterns "$P"
 expect "incomplete-patterns: a package without a .cabal file" 1
 
+# ---------------------------------------------------------------- unsafe-io.sh
+
+unsafe_io() { sh "$HERE/unsafe-io.sh" "$@"; }
+: >"$WORK/in"
+run unsafe_io "$HERE/../.."
+expect "unsafe-io: the repository" 0
+U=$WORK/unsafe
+mkdir -p "$U/modules/x/src/X" "$U/scripts/ci"
+printf 'modules/x/src/X/A.hs:kept # a reason\n' >"$U/scripts/ci/unsafe-io-allowed.txt"
+cat >"$U/modules/x/src/X/A.hs" <<'EOF'
+module X.A (kept, pure') where
+
+import System.IO.Unsafe (unsafePerformIO)
+
+-- | unsafePerformIO in a comment is not counted
+kept :: Int -> Int
+kept n = unsafePerformIO $ do
+  pure n
+
+pure' :: Int
+pure' = 1 -- unsafePerformIO here neither
+EOF
+run unsafe_io "$U"
+expect "unsafe-io: the allowed use, an import and comments" 0
+cat >>"$U/modules/x/src/X/A.hs" <<'EOF'
+
+added :: Int -> Int
+added n =
+  let k = unsafeDupablePerformIO (pure n)
+   in k
+EOF
+run unsafe_io "$U"
+expect "unsafe-io: a use not in the list" 1
+if grep -q 'modules/x/src/X/A.hs:added' "$WORK/err"; then ok; else ng "unsafe-io: the new use is named"; fi
+printf 'modules/x/src/X/A.hs:kept # a reason\nmodules/x/src/X/A.hs:added # another\nmodules/x/src/X/A.hs:gone # removed\n' >"$U/scripts/ci/unsafe-io-allowed.txt"
+run unsafe_io "$U"
+expect "unsafe-io: a listed use that is gone" 1
+if grep -q 'modules/x/src/X/A.hs:gone' "$WORK/err"; then ok; else ng "unsafe-io: the gone use is named"; fi
+
 # ---------------------------------------------------------------- rts-capabilities.sh
 
 rts_capabilities() { sh "$HERE/rts-capabilities.sh" "$@"; }

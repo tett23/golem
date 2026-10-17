@@ -60,9 +60,9 @@ concurrencyTests han noto =
         ),
       testCase "subsetting one font from every capability gives the bytes subsetting alone gives" $ do
         let glyphSets = [[g | (g, _, _) <- shapeUnits han (shapeRequest 1000 (T.take n "「日本語の組版」、ー。"))] | n <- [1 .. 11]]
-            alone = map (Right . subsetFont han) glyphSets
-        together <- inParallel [pure (subsetFont han gs) | gs <- glyphSets]
-        together @?= alone,
+        alone <- mapM (subsetFont han) glyphSets
+        together <- inParallel [subsetFont han gs | gs <- glyphSets]
+        together @?= map Right alone,
       testCase "vertical origins from every capability are those asked alone" $ do
         let gids = concat (replicate 8 [1 .. 500])
             alone = map (Right . glyphVerticalOrigin noto) gids

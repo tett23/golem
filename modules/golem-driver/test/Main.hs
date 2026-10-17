@@ -5,6 +5,7 @@ import CliSpec
 import DiagnosticSitesSpec
 import DiagnosticsSpec
 import LocaleSpec
+import MemoSpec
 import PageElementsSpec
 import ParagraphSpec
 import PdfSpec
@@ -30,6 +31,7 @@ tests =
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
         testGroup "the separator after a number (golem-html ADR 0002)" numberSeparatorTests,
         versionTests,
+        memoTests,
         producerTests
       ]
         <> buildTests

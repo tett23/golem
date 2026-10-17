@@ -154,6 +154,10 @@ Every package turns an incomplete `case` or function definition into an error wi
 When you add a package under `modules/`, put the flag in the `ghc-options` of the `common warnings` stanza of its cabal file, and write `import: warnings` in each component.
 Without it, the `changes` job of CI (`scripts/ci/incomplete-patterns.sh`) fails.
 
+`unsafePerformIO` and its kin (`unsafeDupablePerformIO`, `unsafeInterleaveIO` and others) are used only in the definitions listed in `scripts/ci/unsafe-io-allowed.txt` ([docs/adr/0034](./docs/adr/0034-fewer-unsafe-perform-io.md)).
+Work that can be written in IO goes to the IO edges; only when a pure function must call a C library from inside, add the definition and the reason it is kept to the list.
+When the list and the sources differ, the `changes` job of CI (`scripts/ci/unsafe-io.sh`) fails.
+
 An executable or a test suite built with `-threaded` is also linked with `-with-rtsopts=-N`, so that it has one capability per processor from the start.
 The code does not call `setNumCapabilities`.
 Two calls that raise the number of capabilities at the same time stop the runtime of GHC 9.10.3.

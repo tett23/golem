@@ -43,8 +43,8 @@ inParallel acts = do
 loadWat :: FilePath -> IO Plugin
 loadWat name = do
   src <- TIO.readFile ("test/plugins/" <> name)
-  wasm <- either (assertFailure . T.unpack) pure (watToWasm src)
-  either (assertFailure . show) pure (loadPluginWith 200000 defaultMemoryLimit wasm)
+  wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
+  loadPluginWith 200000 defaultMemoryLimit wasm >>= either (assertFailure . show) pure
 
 -- | A one-paragraph document whose text is the number.
 numbered :: Int -> Document

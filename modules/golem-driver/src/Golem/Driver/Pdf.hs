@@ -146,8 +146,9 @@ data LoadedFonts = LoadedFonts
     -- | the character code of a glyph in the PDF (its CID in a CID-keyed font)
     lfCode :: Int -> Int -> Int,
     {- | the embedded (subset) font of a face number, for horizontal or
-    vertical use, with the glyphs used and their text
-    -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> P.Font,
+    vertical use, with the glyphs used and their text; IO, since the
+    subset is made as the PDF is written (docs/adr ADR 0034)
+    -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> IO P.Font,
     {- | the height of the centre of the ideographic em box above the
     baseline of a face number, in em (golem-driver ADR 0015)
     -} lfEmBoxCentral :: Int -> Rational,
@@ -826,11 +827,16 @@ renderPdfView provider inp0 = case checkedGeometry inp of
             unplaceable <- unplaceableFigures inp
             laid <- layoutPdf inp geom fonts
             -- a kenten shape the font has no glyph for stops the PDF (G0809, golem-driver ADR 0019)
-            pure $ do
-              layout <- laid
-              case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
-                [] -> let (bytes, view) = writeDocumentView inp geom fonts layout intent in Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout, view {V.vwUnplaceable = unplaceable})
-                ds -> Left ds
+            case laid of
+              Left ds -> pure (Left ds)
+              Right layout -> case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
+                [] -> do
+                  let (used, finish) = writeDocumentView inp geom fonts layout intent
+                  -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
+                  embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
+                  let (bytes, view) = finish embedded
+                  pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout, view {V.vwUnplaceable = unplaceable}))
+                ds -> pure (Left ds)
   where
     inp = codeInput inp0
 
@@ -2253,9 +2259,12 @@ data PageDrawn = PageDrawn
   }
 
 {- | The PDF and its view for golem preflight (golem-cli ADR 0006), from the
-values drawn; the view costs nothing until it is used.
+values drawn; the view costs nothing until it is used. The fonts are
+embedded in IO between the two halves (docs/adr ADR 0034): the glyphs
+used in each font and their text, then the PDF and its view from the
+embedded fonts.
 -}
-writeDocumentView :: PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (ByteString, V.View)
+writeDocumentView :: PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> Maybe P.PdfX -> (Map P.FontRef [(Int, Text)], Map P.FontRef P.Font -> (ByteString, V.View))
 writeDocumentView inp geom fonts layout intent =
   let md = manifestMetadata (projectManifest (piProject inp))
       (pw, ph) = pgPageSize geom
@@ -2739,60 +2748,62 @@ writeDocumentView inp geom fonts layout intent =
       pdfPages = [P.framePage (piMarks inp) bleed (pw, ph) (pdMarks pd) | pd <- drawn]
       -- each glyph once per font, with the text of its first occurrence (golem-font ADR 0002)
       used = Map.map Map.toList (Map.fromListWith (Map.unionWith (\_ old -> old)) [(guRef u, Map.singleton (guGlyph u) (guText u)) | pd <- reverse drawn, u <- reverse (pdUses pd)])
-      fontsUsed = Map.fromList [(r, lfEmbed fonts ix (odd k) gts) | (r@(P.FontRef k), gts) <- Map.toList used, let ix = k `div` 2]
-      programs = [case P.fontProgram f of P.TrueTypeProgram b -> b; P.CffProgram b -> b; P.OpenTypeProgram b -> b | f <- Map.elems fontsUsed]
-      (y, mo, d) = toGregorian (mdDate md)
-      doc =
-        P.Document
-          { P.docPages = pdfPages,
-            P.docFonts = fontsUsed,
-            P.docImages = Map.fromList [(P.ImageRef i, pfImage pf) | (i, pf) <- Map.toList (plFigures layout)],
-            P.docTitle = mdTitle md,
-            P.docDate = (y, mo, d),
-            P.docId = P.documentId (mdId md),
-            P.docInstanceId = P.instanceId (instanceIdInputs (piInputs inp) programs),
-            P.docProducer = producer,
-            P.docPdfX = intent
-          }
-      bytes = P.writePdf doc
-      -- the view of golem preflight (golem-cli ADR 0006)
-      swatchOfName name = (\(Swatch c) -> (name, c)) <$> Map.lookup name (stSwatches style)
-      faceFile = fst . lfFaceFile fonts
-      glyphView sp u =
-        V.GlyphView
-          { V.gvText = guText u,
-            V.gvFont = T.pack (faceFile (guFace u)),
-            V.gvGlyph = guGlyph u,
-            V.gvSize = guSize u,
-            V.gvColor = guColor u >>= swatchOfName,
-            V.gvStyle = guRole u <> " " <> T.pack (show (guSize u)),
-            V.gvSpan = sp
-          }
-      bindingRight = maybe False pageBindingRight (stPage style)
-      pageView i pd =
-        V.PageView
-          { V.pvIndex = i,
-            V.pvTrim = Rect 0 0 pw ph,
-            V.pvImages = [V.ImageView r (pfImage pf) (pfSpan pf) (pfSource pf) | (r, pf) <- pdImages pd],
-            V.pvLines = [V.LineView r (lrKind rec) (lrSpan rec) (lrOverfull rec) | (rec, _) <- pdLines pd, Just r <- [lrRect rec]],
-            V.pvGlyphs = [glyphView (lrSpan rec) u | (rec, us) <- pdLines pd, u <- us],
-            V.pvRules = [V.RuleView k t r | (k, r, t) <- pdRules pd],
-            V.pvBlank = pdBlank pd,
-            V.pvGutterLeft = gutterSide bindingRight (pdNumber pd) == SideLeft
-          }
-      swatchName sw = listToMaybe [n | (n, Swatch (c, m, y', k)) <- Map.toList (stSwatches style), P.Swatch c m y' k == sw]
-      used' = nub ([c | pd <- drawn, u <- pdUses pd, Just c <- [guColor u]] <> [n | pd <- drawn, sw <- pdBackgrounds pd, Just n <- [swatchName sw]])
-      view =
-        V.View
-          { V.vwPages = zipWith pageView [1 ..] drawn,
-            V.vwFonts = [let (path, form) = lfFaceFile fonts ix in V.FontView (T.pack path) form | ix <- nub [k `div` 2 | P.FontRef k <- Map.keys fontsUsed]],
-            V.vwSwatchesUsed = Map.fromList (mapMaybe swatchOfName used'),
-            V.vwBleed = bleed,
-            V.vwIntentProfile = P.pxProfile <$> intent,
-            V.vwX4 = P.verify (P.documentObjects doc),
-            V.vwPdf = bytes,
-            V.vwUnplaceable = [],
-            V.vwStyleSpan = styleSpan,
-            V.vwManifestSpan = mkSpan (projectManifestFile (piProject inp)) 0 0
-          }
-   in (bytes, view)
+      -- the PDF and its view from the fonts embedded (docs/adr ADR 0034)
+      finish fontsUsed =
+        let programs = [case P.fontProgram f of P.TrueTypeProgram b -> b; P.CffProgram b -> b; P.OpenTypeProgram b -> b | f <- Map.elems fontsUsed]
+            (y, mo, d) = toGregorian (mdDate md)
+            doc =
+              P.Document
+                { P.docPages = pdfPages,
+                  P.docFonts = fontsUsed,
+                  P.docImages = Map.fromList [(P.ImageRef i, pfImage pf) | (i, pf) <- Map.toList (plFigures layout)],
+                  P.docTitle = mdTitle md,
+                  P.docDate = (y, mo, d),
+                  P.docId = P.documentId (mdId md),
+                  P.docInstanceId = P.instanceId (instanceIdInputs (piInputs inp) programs),
+                  P.docProducer = producer,
+                  P.docPdfX = intent
+                }
+            bytes = P.writePdf doc
+            -- the view of golem preflight (golem-cli ADR 0006)
+            swatchOfName name = (\(Swatch c) -> (name, c)) <$> Map.lookup name (stSwatches style)
+            faceFile = fst . lfFaceFile fonts
+            glyphView sp u =
+              V.GlyphView
+                { V.gvText = guText u,
+                  V.gvFont = T.pack (faceFile (guFace u)),
+                  V.gvGlyph = guGlyph u,
+                  V.gvSize = guSize u,
+                  V.gvColor = guColor u >>= swatchOfName,
+                  V.gvStyle = guRole u <> " " <> T.pack (show (guSize u)),
+                  V.gvSpan = sp
+                }
+            bindingRight = maybe False pageBindingRight (stPage style)
+            pageView i pd =
+              V.PageView
+                { V.pvIndex = i,
+                  V.pvTrim = Rect 0 0 pw ph,
+                  V.pvImages = [V.ImageView r (pfImage pf) (pfSpan pf) (pfSource pf) | (r, pf) <- pdImages pd],
+                  V.pvLines = [V.LineView r (lrKind rec) (lrSpan rec) (lrOverfull rec) | (rec, _) <- pdLines pd, Just r <- [lrRect rec]],
+                  V.pvGlyphs = [glyphView (lrSpan rec) u | (rec, us) <- pdLines pd, u <- us],
+                  V.pvRules = [V.RuleView k t r | (k, r, t) <- pdRules pd],
+                  V.pvBlank = pdBlank pd,
+                  V.pvGutterLeft = gutterSide bindingRight (pdNumber pd) == SideLeft
+                }
+            swatchName sw = listToMaybe [n | (n, Swatch (c, m, y', k)) <- Map.toList (stSwatches style), P.Swatch c m y' k == sw]
+            used' = nub ([c | pd <- drawn, u <- pdUses pd, Just c <- [guColor u]] <> [n | pd <- drawn, sw <- pdBackgrounds pd, Just n <- [swatchName sw]])
+            view =
+              V.View
+                { V.vwPages = zipWith pageView [1 ..] drawn,
+                  V.vwFonts = [let (path, form) = lfFaceFile fonts ix in V.FontView (T.pack path) form | ix <- nub [k `div` 2 | P.FontRef k <- Map.keys fontsUsed]],
+                  V.vwSwatchesUsed = Map.fromList (mapMaybe swatchOfName used'),
+                  V.vwBleed = bleed,
+                  V.vwIntentProfile = P.pxProfile <$> intent,
+                  V.vwX4 = P.verify (P.documentObjects doc),
+                  V.vwPdf = bytes,
+                  V.vwUnplaceable = [],
+                  V.vwStyleSpan = styleSpan,
+                  V.vwManifestSpan = mkSpan (projectManifestFile (piProject inp)) 0 0
+                }
+         in (bytes, view)
+   in (used, finish)
