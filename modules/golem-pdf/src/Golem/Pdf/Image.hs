@@ -1,6 +1,8 @@
 {- | Images for PDF (golem-pdf ADR 0001). JPEG is embedded as is
 (DCTDecode); PNG pixels are taken out and compressed again with Flate.
-ICC profiles are kept; Golem never converts image colours.
+ICC profiles are kept; Golem never converts image colours. Reading is
+total and bounded (docs/adr ADR 0035): no input makes it throw or run
+without end, and nothing is inflated beyond what the image needs.
 -}
 module Golem.Pdf.Image
   ( ImageData (..),
@@ -10,7 +12,7 @@ module Golem.Pdf.Image
   )
 where
 
-import Codec.Compression.Zlib qualified as Z
+import Codec.Compression.Zlib.Internal qualified as ZI
 import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
@@ -70,11 +72,12 @@ readJpeg b = go 2 Nothing [] False
                   let len = be16 b (i + 2)
                       seg = BS.take (len - 2) (BS.drop (i + 4) b)
                       sof' = if isSof m then Just seg else sof
-                      iccs' = if m == 0xE2 && BS.take 12 seg == "ICC_PROFILE\0" then (BS.index seg 12, BS.drop 14 seg) : iccs else iccs
+                      iccs' = if m == 0xE2 && BS.length seg >= 14 && BS.take 12 seg == "ICC_PROFILE\0" then (BS.index seg 12, BS.drop 14 seg) : iccs else iccs
                       adobe' = adobe || (m == 0xEE && BS.take 5 seg == "Adobe")
                    in go (i + 2 + len) sof' iccs' adobe'
     isSof m = m >= 0xC0 && m <= 0xCF && m `notElem` [0xC4, 0xC8, 0xCC]
     finish Nothing _ _ = Left "JPEG の SOF が見つかりません"
+    finish (Just sof) _ _ | BS.length sof < 6 = Left "JPEG の SOF が壊れています"
     finish (Just sof) iccs adobe = do
       let bits = fromIntegral (BS.index sof 0)
           h = be16 sof 1
@@ -90,20 +93,36 @@ readJpeg b = go 2 Nothing [] False
 
 -- ------------------------------------------------------------------ PNG
 
+-- | The most bytes of filtered samples a PNG may have: 512 MiB (docs/adr ADR 0035).
+maxPngBytes :: Integer
+maxPngBytes = 2 ^ (29 :: Int)
+
+-- | The most bytes an ICC profile in iCCP may inflate to: 32 MiB (docs/adr ADR 0035).
+maxIccBytes :: Int
+maxIccBytes = 32 * 1024 * 1024
+
 readPng :: ByteString -> Either String ImageData
 readPng b = do
   chunks <- pngChunks (BS.drop 8 b)
   ihdr <- maybe (Left "PNG の IHDR がありません") Right (lookup "IHDR" chunks)
+  if BS.length ihdr < 13 || be32 ihdr 0 == 0 || be32 ihdr 4 == 0 || be32 ihdr 0 > 0x7FFFFFFF || be32 ihdr 4 > 0x7FFFFFFF
+    then Left "PNG の IHDR が壊れています"
+    else Right ()
   let w = be32 ihdr 0
       h = be32 ihdr 4
       depth = fromIntegral (BS.index ihdr 8) :: Int
       ctype = BS.index ihdr 9
       interlace = BS.index ihdr 12
       idat = BS.concat [d | (n, d) <- chunks, n == "IDAT"]
-      icc = do
-        c <- lookup "iCCP" chunks
-        let rest = BS.drop 1 (BS.dropWhile (/= 0) c)
-        Just (BL.toStrict (Z.decompress (BL.fromStrict (BS.drop 1 rest))))
+  icc <- case lookup "iCCP" chunks of
+    Nothing -> Right Nothing
+    Just c ->
+      let rest = BS.drop 1 (BS.dropWhile (/= 0) c)
+       in case inflateUpTo (maxIccBytes + 1) (BS.drop 1 rest) of
+            Left _ -> Left "PNG の ICC プロファイルを展開できません"
+            Right p
+              | BS.length p > maxIccBytes -> Left "PNG の ICC プロファイルが大きすぎます"
+              | otherwise -> Right (Just p)
   if interlace /= 0
     then Left "インターレースの PNG は使えません"
     else do
@@ -114,9 +133,19 @@ readPng b = do
         4 -> Right (2, CsGray)
         6 -> Right (4, CsRgb)
         _ -> Left "PNG の色の種類が不正です"
-      let raw = BL.toStrict (Z.decompress (BL.fromStrict idat))
-          rowBytes = (w * channels * depth + 7) `div` 8
+      if depth `notElem` allowedDepths ctype
+        then Left "PNG のビット深度が色の種類に合いません"
+        else Right ()
+      -- the size in Integer, so that it cannot overflow (docs/adr ADR 0035)
+      let rowBytesI = (toInteger w * toInteger channels * toInteger depth + 7) `div` 8
+          needed = toInteger h * (rowBytesI + 1)
+      if needed > maxPngBytes
+        then Left "PNG の画像が大きすぎます"
+        else Right ()
+      let rowBytes = fromInteger rowBytesI
           bpp = max 1 ((channels * depth) `div` 8)
+      -- only as many bytes as the rows need are inflated
+      raw <- either (const (Left "PNG の画素のデータを展開できません")) Right (inflateUpTo (fromInteger needed) idat)
       pixels <- unfilterPng bpp rowBytes h raw
       let hasAlpha = ctype == 4 || ctype == 6
           sampleBytes = depth `div` 8
@@ -129,6 +158,39 @@ readPng b = do
                  in (BS.concat (map fst parts), Just (BS.concat (map snd parts)))
             | otherwise = (pixels, Nothing)
       Right (ImageData w h depth cs icc color False False alpha)
+
+-- | The bit depths the PNG specification allows for each colour type.
+allowedDepths :: Word8 -> [Int]
+allowedDepths = \case
+  0 -> [1, 2, 4, 8, 16]
+  2 -> [8, 16]
+  3 -> [1, 2, 4, 8]
+  4 -> [8, 16]
+  6 -> [8, 16]
+  _ -> []
+
+{- | At most @limit@ bytes of a zlib stream, inflating no further; Left when
+the stream is broken before that. A stream that ends early gives what it
+has.
+-}
+inflateUpTo :: Int -> ByteString -> Either String ByteString
+inflateUpTo limit input = go 0 [] stream
+  where
+    stream =
+      ZI.foldDecompressStreamWithInput
+        Chunk
+        (const End)
+        (Broken . show)
+        (ZI.decompressST ZI.zlibFormat ZI.defaultDecompressParams)
+        (BL.fromStrict input)
+    go n acc = \case
+      _ | n >= limit -> Right (BS.take limit (BS.concat (reverse acc)))
+      Chunk c rest -> go (n + BS.length c) (c : acc) rest
+      End -> Right (BS.concat (reverse acc))
+      Broken e -> Left e
+
+-- | The output of inflating, as far as it is read.
+data Inflated = Chunk !ByteString Inflated | End | Broken String
 
 pngChunks :: ByteString -> Either String [(ByteString, ByteString)]
 pngChunks b
