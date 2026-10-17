@@ -20,6 +20,7 @@ import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import ImageSpec qualified
+import ImportSpec qualified
 import Numeric (readHex)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (..))
@@ -858,6 +859,7 @@ documentWith ps =
     { docPages = ps,
       docFonts = Map.fromList [(FontRef 7, font)],
       docImages = Map.fromList [(ImageRef 1, either error id (readImage jpeg))],
+      docForms = Map.empty,
       docTitle = "見本",
       docDate = (2026, 10, 11),
       docId = documentId "urn:uuid:11111111-2222-4333-8444-555555555555",
@@ -1264,6 +1266,7 @@ tests =
       testGroup "crop marks and bleed (ADR 0004)" marksTests,
       testGroup "Producer (ADR 0005)" producerTests,
       ImageSpec.tests,
+      ImportSpec.tests,
       testGroup
         "CIDSystemInfo (ADR 0006)"
         [ testCase "the CIDFont carries the ROS of the font" $ do

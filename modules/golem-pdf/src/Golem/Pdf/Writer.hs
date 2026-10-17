@@ -7,6 +7,7 @@ module Golem.Pdf.Writer
     GlyphId,
     FontRef (..),
     ImageRef (..),
+    FormRef (..),
     Swatch (..),
     RunStyle (..),
     Mark (..),
@@ -44,6 +45,7 @@ import Data.UUID qualified as UUID
 import Data.UUID.V5 qualified as V5
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf.Image
+import Golem.Pdf.Import
 import Golem.Pdf.Number
 import Golem.Pdf.Object
 import Golem.Pdf.Sha256 (sha256)
@@ -59,6 +61,10 @@ newtype FontRef = FontRef Int
   deriving stock (Eq, Ord, Show)
 
 newtype ImageRef = ImageRef Int
+  deriving stock (Eq, Ord, Show)
+
+-- | A Form XObject: a page of a PDF figure (ADR 0008).
+newtype FormRef = FormRef Int
   deriving stock (Eq, Ord, Show)
 
 -- | Process colour in percent.
@@ -100,6 +106,10 @@ data Mark
     writes a Separation; Golem.Pdf does not export it.
     -}
     RegistrationRules ![Rect]
+  | {- | a page of a PDF figure, its crop box fitted to the rectangle
+    without keeping its proportions (ADR 0008)
+    -}
+    Form !FormRef !Rect
   deriving stock (Eq, Show)
 
 data Page = Page
@@ -141,6 +151,8 @@ data Document = Document
   { docPages :: ![Page],
     docFonts :: !(Map FontRef Font),
     docImages :: !(Map ImageRef ImageData),
+    -- | the pages of PDF figures (ADR 0008)
+    docForms :: !(Map FormRef ImportedPage),
     docTitle :: !Text,
     -- | year, month, day of metadata.date
     docDate :: !(Integer, Int, Int),
@@ -177,7 +189,11 @@ ratio = B.byteString . TE.encodeUtf8 . showRational4
 
 -- | The content stream of a page, with resource names already assigned.
 contentStream :: Map FontRef Int -> Map ImageRef Int -> [Mark] -> ByteString
-contentStream fontNames imageNames marks = BL.toStrict (B.toLazyByteString (mconcat (map mark marks)))
+contentStream fontNames imageNames = contentStreamWith fontNames imageNames Map.empty
+
+-- | 'contentStream' with the names of the Form XObjects of PDF figures (ADR 0008).
+contentStreamWith :: Map FontRef Int -> Map ImageRef Int -> Map FormRef Int -> [Mark] -> ByteString
+contentStreamWith fontNames imageNames formNames marks = BL.toStrict (B.toLazyByteString (mconcat (map mark marks)))
   where
     sp = B.char7 ' '
     nl = B.char7 '\n'
@@ -213,6 +229,9 @@ contentStream fontNames imageNames marks = BL.toStrict (B.toLazyByteString (mcon
       Saved ms -> "q" <> nl <> mconcat (map mark ms) <> "Q" <> nl
       Translated x y ms -> "q 1 0 0 1 " <> num x <> sp <> num y <> " cm" <> nl <> mconcat (map mark ms) <> "Q" <> nl
       RegistrationRules rs -> "q" <> nl <> "/Reg cs 1 scn" <> nl <> mconcat (map (mark . Rule) rs) <> "Q" <> nl
+      -- the form maps its crop box to the unit square (its Matrix), so it is placed as an image is
+      Form f (Rect x y w h) ->
+        "q " <> num w <> " 0 0 " <> num h <> sp <> num x <> sp <> num y <> " cm /Fm" <> B.intDec (Map.findWithDefault 0 f formNames) <> " Do Q" <> nl
     hex4 g = B.string7 (printf "%04X" g)
 
 -- ------------------------------------------------------------------ serialization
@@ -231,6 +250,7 @@ serialize = \case
   OHex s -> "<" <> mconcat [B.word8HexFixed w | w <- BS.unpack s] <> ">"
   ORef n -> B.intDec n <> " 0 R"
   OBool b -> if b then "true" else "false"
+  ONull -> "null"
   OStream d body -> serialize (ODict (("Length", OInt (fromIntegral (BS.length body))) : d)) <> "\nstream\n" <> B.byteString body <> "\nendstream"
   where
     escape = BS.concatMap (\w -> if w `elem` [40, 41, 92] then BS.pack [92, w] else BS.singleton w)
@@ -286,6 +306,8 @@ documentObjects doc =
       imageOrder = nub [i | p <- pages, m <- pageContent p, i <- imagesOf m]
       fontNames = Map.fromList (zip fontOrder [1 ..])
       imageNames = Map.fromList (zip imageOrder [1 ..])
+      formOrder = filter (`Map.member` docForms doc) (nub [f | p <- pages, m <- pageContent p, f <- formsOf m])
+      formNames = Map.fromList (zip formOrder [1 ..])
       nPages = length pages
       pageObj i = 3 + 2 * i
       afterPages = 3 + 2 * nPages
@@ -294,7 +316,9 @@ documentObjects doc =
       afterFonts = afterPages + fontObjs * length fontOrder
       imageSizes = [(i, imageObjCount i) | i <- imageOrder]
       imageBase = Map.fromList (zip imageOrder (scanl (+) afterFonts (map snd imageSizes)))
-      afterImages = afterFonts + sum (map snd imageSizes)
+      afterImages0 = afterFonts + sum (map snd imageSizes)
+      -- the Form XObjects of PDF figures, each followed by the objects it brings that are not yet written (ADR 0008)
+      (formBase, formObjsAll, afterImages) = formObjects afterImages0 [(f, ip) | f <- formOrder, Just ip <- [Map.lookup f (docForms doc)]]
       -- PDF/X-4: the output profile and the XMP metadata come last before the information dictionary
       (xObjs, xCatalog) = case docPdfX doc of
         Nothing -> ([], [])
@@ -322,7 +346,14 @@ documentObjects doc =
       resources =
         ODict
           ( [("Font", ODict [("F" <> tshow n, ORef (fontBase Map.! f)) | (f, n) <- Map.toList fontNames]) | not (null fontOrder)]
-              <> [("XObject", ODict [("Im" <> tshow n, ORef (imageBase Map.! i)) | (i, n) <- Map.toList imageNames]) | not (null imageOrder)]
+              <> [ ( "XObject",
+                     ODict
+                       ( [("Im" <> tshow n, ORef (imageBase Map.! i)) | (i, n) <- Map.toList imageNames]
+                           <> [("Fm" <> tshow n, ORef (formBase Map.! f)) | (f, n) <- Map.toList formNames]
+                       )
+                   )
+                 | not (null imageOrder && null formOrder)
+                 ]
               <> [("ColorSpace", ODict [("Reg", registrationColorSpace)]) | any usesRegistration [m | p <- pages, m <- pageContent p]]
           )
       catalog = ODict ([("Type", OName "Catalog"), ("Pages", ORef 2)] <> xCatalog)
@@ -338,7 +369,7 @@ documentObjects doc =
                   ("Resources", resources),
                   ("Contents", ORef (pageObj i + 1))
                 ],
-              OStream [("Filter", OName "FlateDecode")] (flate (contentStream fontNames imageNames (pageContent p)))
+              OStream [("Filter", OName "FlateDecode")] (flate (contentStreamWith fontNames imageNames formNames (pageContent p)))
             ]
           | (i, p) <- zip [0 ..] pages
           ]
@@ -354,7 +385,7 @@ documentObjects doc =
           `addInfo` [("Trapped", OName "False"), ("GTS_PDFXVersion", OStr "PDF/X-4")]
       addInfo (ODict kvs) extra = ODict (kvs <> (if isJust (docPdfX doc) then extra else []))
       addInfo o _ = o
-      objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> xObjs <> [info]
+      objects = [catalog, pageTree] <> pageObjs <> fontObjsAll <> imageObjsAll <> formObjsAll <> xObjs <> [info]
       size = length objects + 1
    in PdfObjects "1.6" objects (ODict [("Size", OInt (fromIntegral size)), ("Root", ORef 1), ("Info", ORef infoObj), ("ID", OArr [OHex (docId doc), OHex (docInstanceId doc)])])
   where
@@ -373,6 +404,62 @@ documentObjects doc =
       Saved ms -> concatMap imagesOf ms
       Translated _ _ ms -> concatMap imagesOf ms
       _ -> []
+    formsOf = \case
+      Form f _ -> [f]
+      Saved ms -> concatMap formsOf ms
+      Translated _ _ ms -> concatMap formsOf ms
+      _ -> []
+
+{- | The Form XObjects of PDF figures from object @base@ (ADR 0008): each
+form, then the objects of its page not yet written, in the order of the
+page. Pages of one file share their objects (by the key of each object in
+the file). Returns the number of each form, the objects and the next
+number.
+-}
+formObjects :: Int -> [(FormRef, ImportedPage)] -> (Map FormRef Int, [Obj], Int)
+formObjects base forms =
+  let step (fm, nums, acc, next) (f, ip) =
+        let new = nub [k | (k, _) <- ipObjects ip, Map.notMember (ipFile ip, k) nums]
+            nums' = Map.union nums (Map.fromList [((ipFile ip, k), i) | (k, i) <- zip new [next + 1 ..]])
+            remap = renumber (\k -> Map.lookup (ipFile ip, k) nums')
+            objs = formObject remap ip : [remap o | k <- new, Just o <- [lookup k (ipObjects ip)]]
+         in (Map.insert f next fm, nums', acc <> [objs], next + 1 + length new)
+      (formNums, _, objss, after) = foldl step (Map.empty, Map.empty :: Map (ByteString, Int) Int, [], base) forms
+   in (formNums, concat objss, after)
+
+-- | The references of an object renumbered; one with no number becomes null.
+renumber :: (Int -> Maybe Int) -> Obj -> Obj
+renumber f = \case
+  ORef k -> maybe ONull ORef (f k)
+  ODict kvs -> ODict [(k, renumber f v) | (k, v) <- kvs]
+  OArr xs -> OArr (map (renumber f) xs)
+  OStream kvs b -> OStream [(k, renumber f v) | (k, v) <- kvs] b
+  o -> o
+
+{- | The Form XObject of a page of a PDF figure (ADR 0008): its crop box as
+BBox, and a Matrix that turns it by Rotate and maps it to the unit square.
+-}
+formObject :: (Obj -> Obj) -> ImportedPage -> Obj
+formObject remap ip =
+  let (x0, y0, x1, y1) = ipBox ip
+      w = x1 - x0
+      h = y1 - y0
+      matrix = case ipRotate ip of
+        90 -> [0, -(1 / w), 1 / h, 0, -(y0 / h), x1 / w]
+        180 -> [-(1 / w), 0, 0, -(1 / h), x1 / w, y1 / h]
+        270 -> [0, 1 / w, -(1 / h), 0, y1 / h, -(x0 / w)]
+        _ -> [1 / w, 0, 0, 1 / h, -(x0 / w), -(y0 / h)]
+   in OStream
+        ( [ ("Type", OName "XObject"),
+            ("Subtype", OName "Form"),
+            ("BBox", OArr [OReal (showRationalDigits 6 v) | v <- [x0, y0, x1, y1]]),
+            ("Matrix", OArr [OReal (showRationalDigits 10 v) | v <- matrix]),
+            ("Resources", remap (ipResources ip)),
+            ("Filter", OName "FlateDecode")
+          ]
+            <> [("Group", remap g) | Just g <- [ipGroup ip]]
+        )
+        (flate (ipContent ip))
 
 {- | Whether a mark is or contains 'RegistrationRules', which needs the
 @/Reg@ colour space resource (ADR 0007).
