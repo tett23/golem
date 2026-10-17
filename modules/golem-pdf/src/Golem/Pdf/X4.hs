@@ -106,9 +106,9 @@ conformance (golem-pdf ADR 0003).
 verify :: PdfObjects -> [X4Problem]
 verify (PdfObjects version objects trailer) =
   concat
-    [ [X4Problem "PDF の版" (version <> "（1.6 以下にします）") | not (versionOk version)],
+    [ [X4Problem "PDF のバージョン" (version <> "（1.6 以下にします）") | not (versionOk version)],
       intentProblems,
-      [X4Problem "GTS_PDFXVersion" "XMP に PDF/X-4 の版がありません" | not ("<pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>" `BS.isInfixOf` xmp)],
+      [X4Problem "GTS_PDFXVersion" "XMP に PDF/X-4 のバージョンがありません" | not ("<pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>" `BS.isInfixOf` xmp)],
       [X4Problem "Trapped" "XMP と文書情報の両方に Trapped が要ります" | not (trappedInXmp && trappedInInfo)],
       [X4Problem "TrimBox" (pagesText noTrim <> " ページ目に TrimBox がありません") | not (null noTrim)],
       [X4Problem "ページのボックス" (pagesText badBoxes <> " ページ目の TrimBox が BleedBox の、BleedBox が MediaBox の外にはみ出しています") | not (null badBoxes)],

@@ -107,11 +107,11 @@ Golem は、同じ入力から常に同じバイト列を出力する。
 その場合は、本家のテストを参考にして、テストを十分に厚く書く。
 必要な機能が限られているなら、その機能だけを実装してよい。
 
-[README.md](./README.md) にある固定したネイティブライブラリ（HarfBuzz、FreeType、wasmtime、zlib、hyph-utf8）の版を上げるときは、ADR を書く。
-wasmtime の版を上げるときは、`scripts/wasmtime-licenses.sh` で `licenses/wasmtime-v<版>/`（`libwasmtime.a` に入った Rust のクレートなどのライセンスの文書）を作り直し、生成物もコミットする（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
+[README.md](./README.md) にある固定したネイティブライブラリ（HarfBuzz、FreeType、wasmtime、zlib、hyph-utf8）のバージョンを上げるときは、ADR を書く。
+wasmtime のバージョンを上げるときは、`scripts/wasmtime-licenses.sh` で `licenses/wasmtime-v<バージョン>/`（`libwasmtime.a` に入った Rust のクレートなどのライセンスの文書）を作り直し、生成物もコミットする（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
 このスクリプトはネットワークに接続し、`cargo` と `rustup` を要する。
 `c-objects.tsv` の構成要素の列は、スクリプトが埋めないので手で埋める。
-`cabal.project.freeze` で固定した依存の版を変えるときも、変更の理由をプルリクエストに書く。
+`cabal.project.freeze` で固定した依存のバージョンを変えるときも、変更の理由をプルリクエストに書く。
 
 ## 整形と検査
 
@@ -130,7 +130,7 @@ golem-parser のテストは、二つの文法が同じ入力を受理するこ�
 ADR で仕様が変わったら、同じプルリクエストで [docs/specifications.md](./docs/specifications.md) と [README.md](./README.md) も更新する。
 この二つは、`main` で常に最新でなければならない。
 モジュールの実装の詳細は `docs/<モジュール>/specifications.md` に書く。
-どの版で何を扱うか、まだ実装していない項目、手で確かめる項目、未決事項、課題にしなかった事項は [docs/roadmap.md](./docs/roadmap.md) に書き、仕様書には書かない。
+どのバージョンで何を扱うか、まだ実装していない項目、手で確かめる項目、未決事項、課題にしなかった事項は [docs/roadmap.md](./docs/roadmap.md) に書き、仕様書には書かない。
 実装を終えたら、その項目を roadmap.md から消し、振る舞いを仕様書に書く。
 
 仕様書から ADR を参照するときは、ADR のファイルへのリンクを付ける。
@@ -208,13 +208,13 @@ CI の `textlint` ジョブ（`docs.yml`）も同じスクリプトを走らせ�
 ### タグとリリース
 
 `v` で始まるタグをリリースとして扱う。
-`v0.0.1-rc` のように版のあとに識別子が付くタグは、プレリリースとする。
+`v0.0.1-rc` のようにバージョンのあとに識別子が付くタグは、プレリリースとする。
 リリースノートは GitHub の Releases に英語で書く。
 変更点は、追加、変更、削除、修正のように項目を分けて書き、できれば各変更のコミットまたはプルリクエストと ADR を絶対リンクで添える。
 
 リリースの手順は次のとおりである（[docs/adr/0004](./docs/adr/0004-binary-distribution-and-release.md)）。
 
-1. 版を上げるプルリクエストを作る。リポジトリの根の `VERSION` を新しい版（例：`0.1.0-rc1`）に書き換え、識別子を除いた `X.Y.Z` を全パッケージの cabal ファイルの `version` に書く。CI の `release-scripts` ジョブが、二つの一致を検査する。
+1. バージョンを上げるプルリクエストを作る。リポジトリの根の `VERSION` を新しいバージョン（例：`0.1.0-rc1`）に書き換え、識別子を除いた `X.Y.Z` を全パッケージの cabal ファイルの `version` に書く。CI の `release-scripts` ジョブが、二つの一致を検査する。
 2. プルリクエストを `main` にマージする。
 3. マージしたコミットに、`v` に `VERSION` の内容を続けたタグ（例：`v0.1.0-rc1`）を付けて push する。タグと `VERSION` が一致しないとき、タグのコミットが `main` に含まれないときは、ワークフローの `version` ジョブが失敗し、リリースは作られない。
 4. `.github/workflows/release.yml` が、配布物を作って検査し、下書きのリリースを作る。プレリリースのタグでは、プレリリースの印が付く。
@@ -247,7 +247,7 @@ CI の `textlint` ジョブ（`docs.yml`）も同じスクリプトを走らせ�
 ## GitHub Actions
 
 Node は最新の LTS を使う。
-アクションは、Node 24 以降で動く最新のメジャー版を使う。
+アクションは、Node 24 以降で動く最新のメジャーバージョンを使う。
 
 CI の実行時間は 5 分以内を保つ。
 CI を待つ時間は、変更を一つ入れるたびにかかるので、CI が遅いと開発そのものが遅くなる。

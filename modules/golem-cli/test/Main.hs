@@ -18,6 +18,7 @@ import Golem.Driver.Explain (catalog)
 import Golem.Driver.Version (golemVersion)
 import Golem.Syntax.Sha256 (sha256)
 import LocaleSpec (localeTests)
+import RtsSpec (rtsTests)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -88,7 +89,7 @@ versionTests =
           found -> assertFailure (show found <> "\n" <> out <> err),
       testCase "golem --help shows --version" $ do
         (_, out) <- golem ["--help"]
-        assertBool out ("--version" `isInfixOf` out && "版を表示する" `isInfixOf` out),
+        assertBool out ("--version" `isInfixOf` out && "バージョンを表示する" `isInfixOf` out),
       exitsWith (ExitFailure 2) ["build", "--version"]
     ]
 
@@ -155,6 +156,7 @@ tests =
       noticeTests,
       commandsTests,
       localeTests,
+      rtsTests,
       -- golem-parser ADR 0010
       testCase "a backslash after the last | of a table row is G0124, not G0110" $
         mapM_
