@@ -391,7 +391,7 @@ regex-styles = [
 [code: lines] の既定は、本の言語（[code: manifest.toml] の [code: language]）で変わります。
 欧文の本は行送りが文字の大きさに近いので、行を多めに取ります。
 
-| 階層 | [code: size] | [code: lines]（日本語の本） | [code: lines]（ほかの言語の本） |
+| 階層 | [code: size] | [code: lines]（日本語） | [code: lines]（ほかの言語） |
 |:---|:---|:---|:---|
 | 1 | [code: "1.5zw"] | 5 | 6 |
 | 2 | [code: "1.25zw"] | 3 | 4 |
@@ -410,7 +410,7 @@ regex-styles = [
 柱[index reading=はしら: 柱]（ページの余白に置く章の題）とノンブル[index reading=のんぶる: ノンブル]（ページ番号）は、マスターページの [code: \[masters.body\]] で置きます。
 マスターページ[index reading=ますたーぺーじ: マスターページ]は、InDesign の親ページ（InDesign 2022 より前のバージョンではマスターページ）に当たります。
 
-@listing style.toml lines=87-92
+@listing style.toml lines=93-98
 
 [code: position] には、[code: "top-outside"]、[code: "top-center"]、[code: "top-inside"]、[code: "bottom-outside"]、[code: "bottom-center"]、[code: "bottom-inside"] のどれかを書きます。
 [code: top] と [code: bottom] は天と地の余白、[code: outside] は小口の側、[code: inside] はノドの側です。
@@ -586,7 +586,7 @@ HTML と EPUB は、索引を段組みにしません。
 色は、名前を付けて [code: \[color.swatches\]] に定義します。
 InDesign のスウォッチ[index reading=すうぉっち: スウォッチ]に当たります。
 
-@listing style.toml lines=82-85
+@listing style.toml lines=88-91
 
 値は、CMYK の各色の網点の割合（0 から 100）です。
 原稿や文字スタイルからは、この名前で色を指します。
