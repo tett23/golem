@@ -8,6 +8,11 @@ on:
   # release (docs/adr/0004)
   workflow_call:
 
+# The jobs only read the repository; caches and artifacts need no token
+# scope (docs/adr/0035)
+permissions:
+  contents: read
+
 # A new push to a pull request cancels its running checks; pushes to main and
 # calls from release.yml each get a group of their own, so that every commit
 # of main is checked (docs/adr/0009)
