@@ -21,7 +21,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ### PDF
 
-- **本文の中のコードの背景の色**（未実装、[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）：コードの書体の役割、コードブロックの組み方は [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md) で、技術書のためのコードブロックの機能は [golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md) で実装した。本文の中のコード（`[code: ...]`）の背景の色は扱っていない。
 - **SVG の図版**（未実装、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）：仕様は SVG を v1 では扱わないと定めているが（仕様書の [「図版」の節](specifications.md#図版)）、v1 で扱えるようにする。開発者向けのマニュアルの図は、SVG を原稿にして PNG に描いたものを置いている。PDF の出力での描き方（ベクターのまま描くか、変換するか）と、HTML と EPUB でそのまま使うかを決める。
 - **段落スタイルの罫線**（未実装、[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）：段落スタイルに、段落の前と後に引く罫線（InDesign の段落境界線にあたるもの）を書けるようにする。見出しの下の罫線や、節の区切りの罫線に使う。長さ、太さ、間隔は、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md) の罫線の指定の形で書く。長さの既定は、当面は段の行長（段の最大の長さ）に固定する。罫線を持つ段落は改ページと改段で分けず、一つのページ（段）に置く。その段落の注のうち、そのページに収まらないものは、次のページ（見開きで扱う場合は次の見開き）に回す。間隔と行の格子の合わせ方は、[未決事項](#未決事項) の「段落の罫線の間隔と行の格子」で決める。
 - **合字のテキスト層**（未実装、[golem-driver ADR 0030](golem-driver/adr/0030-ligature-text-layer.md)）：PDF の ToUnicode が合字のグリフを一字目だけに対応させるので、PDF から文字列を抜き出すと fi、fl、ff、ffi が f になる（`Golem.Driver.Fonts` の `clusterText`）。十冊の fixture の英語の本と、テンペストで起きる。
@@ -30,7 +29,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 ### 記法と設定
 
 - **ADR とコードの食い違い**（未実装、[docs/adr 0031](adr/0031-adr-code-mismatches.md)）：`overridableCommands` に `code` が入っている。LSP の補完にプラグインのコマンドの名前が出ない。`golem inspect` のオプションの書き方が ADR と違う。ホストが `golem_dealloc` を一度も呼ばない。どちらに合わせるかを決めて直す。
-- **奥付の関係者と刷**（未実装、[docs/adr 0033](adr/0033-colophon-contributors-and-printings.md)）：マニフェストの `[metadata]` が持つのは、著者（`creators`）、発行者（`publisher`）、版（`edition`）、発行の日（`date`）だけである。奥付に載せる編集者、印刷所、製本所を書く欄がない。版とは別に刷（同じ版を刷り直した回）を書く欄もなく、版と刷ごとの発行の日の履歴（「2026 年 10 月 16 日初版第 1 刷発行」の形の行）も書けない。関係者を役割とともに書けるようにし、版と刷とその日付を書けるようにして、本文から `meta` で参照できるようにする。役割の語彙、EPUB と PDF のメタデータへの写し方、組み込みの奥付を用意するかどうかは ADR で決める。
 - **keep の段落の行末のエスケープした空白**（未実装、[golem-parser ADR 0012](golem-parser/adr/0012-keep-trailing-escaped-space.md)）：keep の段落の行末に書いた `\ `（エスケープした空白）は、行の末尾の空白とともに除かれているように読める（golem-parser の `trimLine`）。[docs/markup.md](markup.md) は、エスケープした空白を行の先頭では無視すると書いており、行末では残ると読めるので、仕様と食い違っている可能性がある（コードを読んだ結果で、実際の出力では確かめていない）。
 - **マニュアルのライセンス**：二つのマニュアルの原稿（`.gm`）と、組んだ PDF と HTML を CC0 にする。リポジトリのほかの部分は今のとおり MIT とする。PDF に埋め込むフォントは SIL Open Font License 1.1 のままで、CC0 の対象にならないことを、マニュアルの奥付とライセンスの表示に書く。ライセンスの表示の置き場所（`manual/` と `manual-dev/` の LICENSE、奥付、README）を決める。
 - **TSV の表**（未実装、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）：`@table` は CSV（RFC 4180）のファイルからしか表を作れない（golem-eval の `Golem.Eval.File` の `csvTable`）。タブで区切った TSV のファイルからも表を作れるようにする。形式の見分け方（拡張子か、引数で明示するか）、セルの中のタブと改行の書き方、見出しの行と揃え、セルの中身をインラインの記法として読むかどうか、誤りの位置（ファイルの行と列）の報告は ADR で決める。
@@ -98,7 +96,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 仕様や機能を変える項目は、着手するときに ADR を作成する。
 
 - **本の中の別の言語の分綴**：原稿の一部の言語を指定する手段がないので、英語の本の中のフランス語の語も英語のパターンで分綴される（fixture の Nightmare Abbey の「prover-be」）。原稿の一部の言語を指定する記法は、v0.1.0-rc4 の「原稿の中の言語の切り替え」で扱う。この項目は、その記法で指定した部分を、その言語の分綴のパターンで分綴することを扱う。
-- **発行の履歴の書式**：v0.1.0-rc3 の「奥付の関係者と刷」では、奥付の発行の履歴の行（`2026年10月16日　初版第1刷発行` の形）を、日本語の一つの書式に固定して組む予定である。この書式を `style.toml` で変えられるようにする（`第1版第1刷` と書く本、日付と版の順を変える本など）。日本語でない本の書式も合わせて扱う。
+- **発行の履歴の書式**：`@printings` は、奥付の発行の履歴の行（`2026年10月16日　初版第1刷発行` の形）を、日本語の一つの書式に固定して組む（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。この書式を `style.toml` で変えられるようにする（`第1版第1刷` と書く本、日付と版の順を変える本など）。日本語でない本の書式も合わせて扱う。
 - **参考文献のスタイル**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、参考文献のスタイルを選び、定められるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。
 - **時間のかかる `unsafe` の FFI の呼び出し**：プラグインのコンパイル（`golem_plugin_load`）と WAT から wasm への変換（`golem_wat2wasm`）は、`modules/golem-plugin/src/Golem/Plugin.hs` で `unsafe` として呼んでいる。`unsafe` の呼び出しは、終わるまで capability を手放さないので、そのあいだ GC の同期でほかのすべての capability が待たされる。この二つを `safe` の呼び出しにする。デッドロックにはならず遅れるだけであり、出力も変わらない（2026-10-17 のテストが止まる件の調査で見つかった）。
 

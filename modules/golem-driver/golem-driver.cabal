@@ -71,6 +71,7 @@ test-suite golem-driver-test
   other-modules:
     BuildSpec
     ChapterNotesSpec
+    ColophonSpec
     CliSpec
     DiagnosticSitesSpec
     DiagnosticsSpec
@@ -98,6 +99,7 @@ test-suite golem-driver-test
     , golem-eval
     , golem-layout
     , golem-layout-spec
+    , golem-parser
     , golem-pdf
     , golem-plugin
     , golem-preflight

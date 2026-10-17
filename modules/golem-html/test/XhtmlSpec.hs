@@ -155,9 +155,22 @@ tests =
           -- 255 × 0.2 = 51
           cssLines ".swatch-" cfg0 {hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))]} @?= [".swatch-accent { color: rgb(255, 51, 0); }"],
         testCase "a character style with a swatch has its rgb() colour" $
-          let term = HtmlCharStyle Nothing False False (Just "accent") noFeatures False
+          let term = HtmlCharStyle Nothing False False (Just "accent") noFeatures False Nothing Nothing
               cfg = cfg0 {hcSwatches = Map.fromList [("accent", (0, 80, 100, 0))], hcCharStyles = Map.fromList [("term", term)]}
            in cssLines ".cs-term" cfg @?= [".cs-term { color: rgb(255, 51, 0); }"],
+        -- the background and the padding of inline code (golem-driver ADR 0029)
+        testCase "code with a background: background-color and padding-inline" $
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em")
+              cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcCharStyles = Map.fromList [("code", code)]}
+           in cssLines "code {" cfg @?= ["code { background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
+        testCase "a style based on code with a background: the same two in its cs- rule" $
+          let path = HtmlCharStyle Nothing False False Nothing noFeatures True (Just "code-bg") (Just "0.25em")
+              cfg = cfg0 {hcSwatches = Map.fromList [("code-bg", (0, 0, 0, 8))], hcCharStyles = Map.fromList [("path", path)]}
+           in cssLines ".cs-path" cfg @?= [".cs-path { hyphens: none; background-color: rgb(235, 235, 235); padding-inline: 0.25em; }"],
+        testCase "code without a background: padding-inline only" $
+          let code = HtmlCharStyle Nothing False False Nothing noFeatures True Nothing (Just "0.25em")
+              cfg = cfg0 {hcCharStyles = Map.fromList [("code", code)]}
+           in cssLines "code {" cfg @?= ["code { padding-inline: 0.25em; }"],
         testCase "coloured text is a span with the class of its swatch" $
           bodyA cfg0 (bookOf [para 0 [Color (at 1) "accent" [txt "赤"]]]) @?= "<p><span class=\"swatch-accent\">赤</span></p>\n"
       ],

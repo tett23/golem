@@ -131,7 +131,11 @@ data HtmlCharStyle = HtmlCharStyle
     -- | kerning, tracking, proportional metrics and baseline shift (docs/adr/0020)
     hcsFeatures :: !HtmlFeatures,
     -- | code or based on it (golem-driver ADR 0017)
-    hcsCode :: !Bool
+    hcsCode :: !Bool,
+    {- | the swatch of the background and the padding along the line as a
+    CSS length, of code only (golem-driver ADR 0029)
+    -} hcsBackground :: !(Maybe Text),
+    hcsPadding :: !(Maybe Text)
   }
   deriving stock (Eq)
 
@@ -925,6 +929,9 @@ css cfg book =
              let (r, g, b) = cmykToRgb cmyk
            ]
         <> featureDecls (hcsFeatures cs)
+        -- the background and the padding of inline code, along the line only (golem-driver ADR 0029)
+        <> ["background-color: " <> rgbOf cmyk | Just sw <- [hcsBackground cs], Just cmyk <- [Map.lookup sw (hcSwatches cfg)]]
+        <> ["padding-inline: " <> p | Just p <- [hcsPadding cs]]
       where
         fallback = if hcsCode cs then ["monospace"] else families "body" <> ["serif"]
     {- the keys of the spacing of characters whose values differ from the
@@ -942,6 +949,7 @@ css cfg book =
       let (q, r) = abs n `divMod` 1000
           frac = T.dropWhileEnd (== '0') (T.justifyRight 3 '0' (tshow r))
        in (if n < 0 then "-" else "") <> tshow q <> (if T.null frac then "" else "." <> frac)
+    rgbOf cmyk = let (r, g, b) = cmykToRgb cmyk in "rgb(" <> tshow r <> ", " <> tshow g <> ", " <> tshow b <> ")"
     rule sel ds = sel <> " { " <> T.concat [d <> "; " | d <- ds] <> "}"
     faceRule sel f = rule sel (["font-family: " <> fontStack role | Just role <- [faFont f]] <> ["font-size: " <> s | Just s <- [faSize f]])
     charRule name cs = rule (selectorOf name) (declsOf name cs)
@@ -990,6 +998,14 @@ css cfg book =
                     "color: " <> colorOf cs
                   ]
                     <> featureDecls (hcsFeatures cs)
+                    -- the background and the padding of inline code (golem-driver ADR 0029)
+                    <> ( if hcsCode cs
+                           then
+                             [ "background-color: " <> maybe "transparent" rgbOf (hcsBackground cs >>= (`Map.lookup` hcSwatches cfg)),
+                               "padding-inline: " <> fromMaybe "0" (hcsPadding cs)
+                             ]
+                           else []
+                       )
                 )
             | (name, cs) <- Map.toAscList (hlCharStyles l)
             ]

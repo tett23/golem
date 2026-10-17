@@ -45,7 +45,7 @@ fs :: Sp
 fs = 10 * 65536
 
 box :: Sp -> Item
-box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [])
+box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [] 0 0)
 
 -- | The original look of 'defaultComposeEnv'.
 look0 :: Look
@@ -56,7 +56,7 @@ paragraph :: [Sp] -> [Item]
 paragraph ws = concat [box w : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 refBox :: Text -> Sp -> Item
-refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [])
+refBox t w = Box w (BoxContent t False 0 0 0 referenceLook 0 0 [] 0 0)
 
 knuthPlassWords, knuthPlassLog :: FilePath
 knuthPlassWords = "test/data/knuth-plass/frog-king.words"
@@ -589,12 +589,12 @@ tests =
             [bcExpandable c | Box _ c <- compose (defaultComposeEnv fs) "日本語"] @?= [False, False, False],
           testProperty "expansion is within the limit and a multiple of the step" $ property $ do
             ws <- forAll (Gen.list (Range.linear 3 12) (Gen.integral (Range.linear 20 70)))
-            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 []) | w <- ws] `interleave` Glue 6 3 2 <> finish
+            let items = [Box w (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0) | w <- ws] `interleave` Glue 6 3 2 <> finish
                 r = breakParagraph defaultParams {pExpansion = Just (20, 5)} (const 150) items
             mapM_ (\l -> assert (abs (lineExpansion l) <= 20 && lineExpansion l `mod` 5 == 0)) (brLines r),
           testCase "expansion lowers the spread of adjustment ratios" $ do
             let ws = [23, 41, 37, 19, 52, 33, 28, 45, 31, 26, 39, 22, 48, 35, 29, 41]
-                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 []) | w <- ws] `interleave` Glue 600 300 200 <> finish
+                items = [Box (w * 100) (BoxContent "w" True 0 0 0 look0 0 0 [] 0 0) | w <- ws] `interleave` Glue 600 300 200 <> finish
                 variance ps =
                   let rs = map glueRatio (init (brLines (breakParagraph ps (const 15000) items)))
                       m = sum rs / fromIntegral (length rs)
@@ -1310,7 +1310,7 @@ rubyOf segs = Ruby (mkSpan (FileId 0) 0 0) () [RubySegment [Text (mkSpan (FileId
 
 -- | A box with edges (the overhang of a ruby).
 edgeBox :: Sp -> (Sp, Sp) -> Item
-edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [])
+edgeBox w (a, b) = Box w (BoxContent "r" False 0 0 0 look0 a b [] 0 0)
 
 -- | The start and end of each box of a set line.
 boxSpans :: Line -> [(Sp, Sp)]
@@ -1671,6 +1671,30 @@ codeTests =
           its = compose env "a漢b"
       [w | Glue w _ _ <- takeWhile (not . isFinalPenalty) its] @?= []
       sum [w | Box w _ <- its] @?= fs `div` 2 + fs + fs `div` 2,
+    -- the padding of inline code (golem-driver ADR 0029)
+    testCase "inline code: the padding is added to the first and the last box, with or without a background" $
+      forM_ ["code", "plain"] $ \name -> do
+        let its = fst (composeInlines padEnv [CharStyle sp name [Text sp "a/b"]])
+        [(bcText c, w, bcPadStart c, bcPadEnd c) | Box w c <- its] @?= [("a/", 1000 + 250, 250, 0), ("b", 500 + 250, 0, 250)],
+    testCase "inline code: one box keeps both paddings; a space inside does not add any" $ do
+      [(w, bcPadStart c, bcPadEnd c) | Box w c <- fst (composeInlines padEnv [CharStyle sp "code" [Text sp "ab"]])] @?= [(1000 + 500, 250, 250)]
+      [(bcText c, bcPadStart c, bcPadEnd c) | Box _ c <- fst (composeInlines padEnv [CharStyle sp "code" [Text sp "a b"]])] @?= [("a", 250, 0), ("b", 0, 250)],
+    testCase "inline code: a longer reading before it does not overhang the code" $ do
+      let style = rubyStyle R.AlignCenter
+          env' = padEnv {ceRuby = style}
+          expected = let p = placeRuby style MonoRuby [1000] [500, 500, 500] (0, 0) in (rpWidth p, (rpOverhang p, rpOverhang p))
+          ruby = Ruby sp () [RubySegment [Text sp "漢"] (Just "かんじ")]
+      rubyBoxes env' [ruby, CharStyle sp "code" [Text sp "ab"]] @?= [expected],
+    testCase "inline code: the space between Japanese and code is as without a background, outside the padding" $ do
+      let between name = [x | x <- fst (composeInlines padEnv [Text sp "漢", CharStyle sp name [Text sp "ab"], Text sp "字"]), not (isBox x)]
+          isBox = \case
+            Box {} -> True
+            _ -> False
+      between "code" @?= between "plain"
+      assertBool (show (between "code")) (any (\case Glue w _ _ -> w == 250; _ -> False) (between "code")),
+    testCase "inline code: no break between the padding and the first character" $ do
+      let its = fst (composeInlines padEnv [Text sp "漢", CharStyle sp "code" [Text sp "ab"]])
+      [bcText c | Box _ c <- its] @?= ["漢", "ab"],
     -- golem-doc ADR 0005
     testCase "url: breaks after the last slash of a run and at spaces, no hyphenation" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}, cePatterns = Just englishUS}
@@ -1689,6 +1713,14 @@ codeTests =
       assertBool (show (map lastBox ls)) (all (any ("/" `T.isSuffixOf`) . take 1 . lastBox) (init ls))
   ]
   where
+    sp = mkSpan (FileId 0) 0 0
+    padEnv =
+      (defaultComposeEnv 1000)
+        { ceRestyle = \lk -> \case
+            CharStyle _ "code" _ -> lk {lkCode = True, lkBackground = Just "bg", lkPadding = 250}
+            CharStyle _ "plain" _ -> lk {lkCode = True, lkPadding = 250}
+            _ -> lk
+        }
     s = 100
     -- every character s wide but Japanese ones, which are 3s
     shapeOf _ t = [(T.singleton c, if c < '\x2000' then s else 3 * s) | c <- T.unpack t]

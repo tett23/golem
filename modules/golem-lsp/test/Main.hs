@@ -238,6 +238,15 @@ tests =
         BS.writeFile (tmp </> "manifest.toml") (manifest <> "\n[diagnostics]\nsilence-notices = [\"G0263\"]\n")
         ws1 <- openWorkspace tmp
         codes ws1 @?= [("G0407", Notice), ("G0323", Notice)],
+      testCase "completion: the keys of meta and the roles of the manifest (docs/adr ADR 0033)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[[metadata.creators]]\nname = \"A\"\nrole = \"author\"\n\n[[metadata.contributors]]\nname = \"B\"\nrole = \"cover-designer\"\n\n[[metadata.printings]]\nedition = 1\nprinting = 1\ndate = 2026-10-16\n\n[targets.html]\n"
+            src = "[= meta.]\n\n[= join(meta.roles., \"、\")]\n" :: Text
+        BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 src)
+        BS.writeFile (tmp </> "manifest.toml") manifest
+        ws <- openWorkspace tmp
+        let names o = map cmpLabel (completions ws "a.gm" o)
+        names (offsetIn src "[= meta." 8) @?= ["creators", "date", "id", "language", "printing", "printings", "roles", "title"]
+        names (offsetIn src "meta.roles." 11) @?= ["author", "cover_designer"],
       testCase "G0501 is not reported for the newlines of the line style (docs/adr ADR 0013)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
             g0501 ws = [c | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d, c == "G0501"]

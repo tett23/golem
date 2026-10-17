@@ -8,11 +8,11 @@ date = 2026-10-16
 
 [[metadata.creators]]
 name = "Aristophanes"
-role = "aut"
+role = "author"
 
 [[metadata.creators]]
 name = "Benjamin Bickley Rogers"
-role = "trl"
+role = "translator"
 
 [targets.html]
 [targets.epub]

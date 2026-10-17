@@ -36,6 +36,7 @@ module Golem.Project.Style
     charStyle,
     paraStyle,
     isCodeCharStyle,
+    charStyleBackground,
     isUrlCharStyle,
     codeParaKeys,
     paraLineBreaks,
@@ -216,7 +217,13 @@ data CharStyleDef = CharStyleDef
     -- | palt (vpal in vertical text) on Japanese characters
     csProportional :: !(Maybe Bool),
     -- | up in horizontal text, right in vertical text
-    csBaselineShift :: !(Maybe Dim)
+    csBaselineShift :: !(Maybe Dim),
+    {- | the swatch of the background of inline code (golem-driver ADR
+    0029): Nothing is not written (the background of the paragraph style
+    code), Just Nothing is false; for code styles only
+    -} csBackground :: !(Maybe (Maybe Text)),
+    -- | the padding before and after inline code along the line (golem-driver ADR 0029)
+    csPadding :: !(Maybe Dim)
   }
   deriving stock (Eq, Show)
 
@@ -319,7 +326,7 @@ data RegexStyleDef = RegexStyleDef
 
 -- | A character style with no key written.
 noCharDef :: CharStyleDef
-noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
@@ -419,7 +426,8 @@ builtinCharStyles :: Map Text CharStyleDef
 builtinCharStyles =
   Map.fromList
     [ ("bold", noCharDef {csSyntheticBold = Just True}),
-      ("code", noCharDef {csFont = Just "code"}),
+      -- the padding of inline code (golem-driver ADR 0029)
+      ("code", noCharDef {csFont = Just "code", csPadding = Just (Zw (1 % 4))}),
       ("italic", noCharDef {csSyntheticItalic = Just True}),
       ("strong", noCharDef {csBasedOn = Just "bold"}),
       ("url", noCharDef)
@@ -461,6 +469,15 @@ reachesCharStyle builtin style = go []
       | name `elem` seen = False
       | otherwise = maybe False (go (name : seen)) (Map.lookup name (stCharStyles style) >>= csBasedOn)
 
+{- | The background of a character style, resolved (golem-driver ADR
+0029): its background through based-on, or else the background of the
+paragraph style code; false is none.
+-}
+charStyleBackground :: Style -> Text -> Maybe Text
+charStyleBackground style name = case charStyle style name >>= csBackground of
+  Just b -> b
+  Nothing -> paraStyle style (Just "code") >>= psBackground
+
 -- | A user definition over a built-in one: the keys written win.
 overChar :: CharStyleDef -> CharStyleDef -> CharStyleDef
 overChar u b =
@@ -475,6 +492,8 @@ overChar u b =
     (csTracking u <|> csTracking b)
     (csProportional u <|> csProportional b)
     (csBaselineShift u <|> csBaselineShift b)
+    (csBackground u <|> csBackground b)
+    (csPadding u <|> csPadding b)
 
 overPara :: ParaStyleDef -> ParaStyleDef -> ParaStyleDef
 overPara u b =
@@ -1177,7 +1196,16 @@ instance FromValue CharStyleDef where
     sb <- optKey "synthetic-bold"
     si <- optKey "synthetic-italic"
     (k, t, p, bs) <- featureKeysOf
-    pure (CharStyleDef b f s c sb si k t p bs)
+    -- a swatch or false (golem-driver ADR 0029)
+    bg <-
+      optKeyOf "background" $ \v -> case v of
+        Bool' _ False -> pure Nothing
+        Bool' _ True -> failAt (valueAnn v) "background にはスウォッチの名前か false を書きます"
+        _ -> Just <$> fromValue v
+    -- a negative padding is read and reported by the checks (golem-driver ADR 0029)
+    pad <- optKey "padding"
+    pad' <- traverse (\v -> maybe (fail ("長さの書き方が不正です: " <> T.unpack v <> "（0.25zw や 1mm のように書きます）")) pure (parseSignedDim v)) pad
+    pure (CharStyleDef b f s c sb si k t p bs bg pad')
 
 {- | kerning, tracking, proportional-metrics and baseline-shift
 (docs/adr/0020). Every error is under its key, which makes it G0321.
@@ -1705,6 +1733,13 @@ styleChecks owner s =
              isJust (psBackground d) || isJust (psPadding d)
            ]
         <> [("code", "padding は 0 以上の寸法です") | Just ParaStyleDef {psPadding = Just p} <- [Map.lookup "code" (stParaStyles s)], negativeDim p]
+        -- the background and the padding of inline code are for code styles only (golem-driver ADR 0029)
+        <> [ (n, "文字スタイルの background と padding は code と based-on で code に行き着く文字スタイルにだけ書けます: " <> n)
+           | (n, d) <- Map.toList (stCharStyles s),
+             not (isCodeCharStyle s n),
+             isJust (csBackground d) || isJust (csPadding d)
+           ]
+        <> [(n, "文字スタイル " <> n <> " の padding は 0 以上の寸法です") | (n, CharStyleDef {csPadding = Just p}) <- Map.toList (stCharStyles s), negativeDim p]
         -- the border is for code only, its width an absolute dimension (golem-driver ADR 0023)
         <> [ (n, "border と border-width は段落スタイル code にだけ書けます: " <> n)
            | (n, d) <- Map.toList (stParaStyles s),
@@ -1755,6 +1790,7 @@ styleChecks owner s =
           ]
             <> [(n, "文字スタイルの based-on が循環しています: " <> T.intercalate ", " charCycle) | n <- charCycle]
             <> [(n, "文字スタイル " <> n <> " の color のスウォッチがありません: " <> c) | (n, CharStyleDef {csColor = Just c}) <- Map.toList cs, Map.notMember c (stSwatches s)]
+            <> [(n, "文字スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, CharStyleDef {csBackground = Just (Just c)}) <- Map.toList cs, Map.notMember c (stSwatches s)]
             <> [("body", "段落スタイル body には based-on を書けません") | Just ParaStyleDef {psBasedOn = Just _} <- [Map.lookup "body" ps]]
             <> [ (n, "段落スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, ParaStyleDef {psBasedOn = Just b}) <- Map.toList ps,
@@ -1852,7 +1888,7 @@ data LocalValue = LocalWord Text | LocalString Text
 
 -- | The keys @style-def takes, as style.toml's (for completion).
 charStyleKeys, paraStyleKeys, regexStyleKeys :: [Text]
-charStyleKeys = ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic"] <> featureKeys
+charStyleKeys = ["based-on", "font", "size", "color", "synthetic-bold", "synthetic-italic"] <> featureKeys <> ["background", "padding"]
 paraStyleKeys = ["based-on", "font", "size", "line-breaks", "space-between", "indent", "first-line-indent", "aki-set"] <> featureKeys <> ["background", "padding", "border", "border-width"]
 regexStyleKeys = ["pattern", "style"]
 

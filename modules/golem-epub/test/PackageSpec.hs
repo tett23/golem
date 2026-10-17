@@ -42,6 +42,7 @@ cfg0 =
       epDate = fromGregorian 2026 10 11,
       epPublisher = Just "出版社",
       epCreators = [EpubCreator "著者" (Just "ちょしゃ") "aut"],
+      epContributors = [],
       epVertical = False
     }
 
@@ -101,6 +102,18 @@ tests =
                     "<meta refines=\"#creator1\" property=\"file-as\">ちょしゃ</meta>"
                   ]
                 ),
+        -- docs/adr ADR 0033
+        testCase "contributors are dc:contributor with their role and reading, numbered from contributor1" $
+          let cfg = cfg0 {epContributors = [EpubCreator "編集者" (Just "へんしゅうしゃ") "edt", EpubCreator "装丁者" Nothing "bkd"]}
+           in (linesWith "<dc:contributor" (opf cfg), linesWith "<meta refines=\"#contributor" (opf cfg))
+                @?= ( ["<dc:contributor id=\"contributor1\">編集者</dc:contributor>", "<dc:contributor id=\"contributor2\">装丁者</dc:contributor>"],
+                      [ "<meta refines=\"#contributor1\" property=\"role\" scheme=\"marc:relators\">edt</meta>",
+                        "<meta refines=\"#contributor1\" property=\"file-as\">へんしゅうしゃ</meta>",
+                        "<meta refines=\"#contributor2\" property=\"role\" scheme=\"marc:relators\">bkd</meta>"
+                      ]
+                    ),
+        testCase "without contributors there is no dc:contributor" $
+          linesWith "<dc:contributor" (opf cfg0) @?= [],
         testCase "the publisher and the language are written" $
           (linesWith "<dc:publisher" (opf cfg0), linesWith "<dc:language" (opf cfg0)) @?= (["<dc:publisher>出版社</dc:publisher>"], ["<dc:language>ja</dc:language>"]),
         testCase "dcterms:modified is the date at 00:00:00 UTC" $

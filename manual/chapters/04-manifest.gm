@@ -109,7 +109,8 @@ chapters = [
 - [code: language]：本の言語です。日本語なら [code: "ja"]、英語なら [code: "en"] です。
 - [code: date]：発行日です。版を改めるときに書き換えます。
 - [code: edition]：版です。
-- [code: publisher]：発行者です。
+- [code: publisher]：発行所です。
+- [code: publisher-person]：発行人（奥付に発行者として載せる人）です。
 
 PDF の作成日と更新日には、組んだ日時ではなく [code: date] の日付を書き込みます。
 組んだ日時を書くと、同じ原稿から組んでも組むたびに PDF の中身が変わってしまうからです（「[ref-title same-output]」、[ref-page same-output] ページ）。
@@ -124,11 +125,94 @@ PDF の作成日と更新日には、組んだ日時ではなく [code: date] �
 [[metadata.creators]]
 name = "夏目 漱石"
 reading = "なつめ そうせき"
-role = "aut"
+role = "author"
 ```
 
-[code: role] には、著者なら [code: "aut"]、編者なら [code: "edt"]、訳者なら [code: "trl"] のように、役割のコードを書きます。
-これは、EPUB の仕様が著者の役割の表し方として参照している MARC の役割のコード（MARC Relator）です[note: EPUB 3.3。[code: https://www.w3.org/TR/epub-33/]]。
+[code: role] には、次の表の語で役割を書きます。
+EPUB には、Golem がこの語を MARC の役割のコード（MARC Relator）に直して書き込みます[note: EPUB 3.3。[code: https://www.w3.org/TR/epub-33/]]。
+[code: "aut"] のようなコードを書くと、エラー（G0301）になり、代わりに書く語がメッセージに出ます。
+
+| 語 | 役割 |
+|:---|:---|
+| [code: author] | 著者 |
+| [code: translator] | 訳者 |
+| [code: editor] | 編集 |
+| [code: illustrator] | 挿絵 |
+| [code: book-designer] | 装丁 |
+| [code: cover-designer] | カバーのデザイン |
+| [code: typesetter] | 組版 |
+| [code: printer] | 印刷所 |
+| [code: binder] | 製本所 |
+
+[code: \[\[metadata.creators\]\]] には著者や訳者のような主な著作者を、[code: \[\[metadata.contributors\]\]] には編集者、装丁者、印刷所、製本所のようなそのほかの関係者を書きます。
+書けるキーは同じです。
+EPUB では、前者は著者として、後者は協力者として書き込まれます。
+印刷所と製本所は紙の本を作った者なので、EPUB と PDF の本の情報には書き込まず、奥付に組むためだけに使います。
+
+```toml
+[[metadata.contributors]]
+name = "鈴木 花子"
+role = "editor"
+
+[[metadata.contributors]]
+name = "株式会社〇〇印刷"
+role = "printer"
+```
+
+版と刷の履歴は、[code: \[\[metadata.printings\]\]] を刷ごとに古い順に並べて書きます。
+刷は、同じ版を内容を変えずに刷り直した回です。
+版を改めると、刷は 1 に戻ります。
+
+```toml
+[[metadata.printings]]
+edition = 1
+printing = 1
+date = 2026-10-16
+
+[[metadata.printings]]
+edition = 1
+printing = 2
+date = 2027-04-01
+```
+
+[code: edition] は版の番号、[code: printing] は刷の番号で、どちらも 1 以上の整数です。
+版と刷の順に並べ、日付が前の項目より前にならないようにします。
+最後の項目が、今組んでいる本の版と刷になります。
+[code: date] とは別の値なので、刷を重ねるときは両方を書き換えます。
+
+@label colophon
+## 奥付を組む
+
+これらの値は、原稿から [code: meta] で参照できます（「[ref-title app-markup]」）。
+[code: meta.roles.editor] は役割が [code: editor] の人の名前の配列で、[code: join] で一つの文字列にして組みます。
+[code: cover-designer] のように [code: -] を含む役割は、[code: meta.roles.cover_designer] と [code: _] に変えて書きます。
+発行の履歴は [code: @printings] が組みます。
+
+```
+@style colophon
+@printings
+
+@style colophon
+著者　[= join(meta.creators, "、")]
+
+@style colophon
+編集　[= join(meta.roles.editor, "、")]
+
+@style colophon
+発行人　[= meta.publisher_person]
+
+@style colophon
+発行所　[= meta.publisher]
+
+@style colophon
+印刷所　[= join(meta.roles.printer, "、")]
+```
+
+[code: @printings] は、[code: \[\[metadata.printings\]\]] の項目ごとに「2026年10月16日　初版第1刷発行」のような段落を組みます。
+版の番号が 1 なら「初版」、2 以上なら「第2版」のようになります。
+縦組みでは数が漢数字になり、年は「二〇二六」のように一字ずつの漢数字になります。
+この書式は、今は日本語の本の一つだけです。
+マニフェストに書いていない値を [code: meta] で参照すると、エラー（G0202）になります。
 
 ## 出力の設定
 

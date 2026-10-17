@@ -3,6 +3,7 @@ module Main (main) where
 import BuildSpec
 import ChapterNotesSpec
 import CliSpec
+import ColophonSpec
 import DiagnosticSitesSpec
 import DiagnosticsSpec
 import FigureSpec
@@ -33,11 +34,13 @@ tests =
         evalDiagnosticTests,
         testGroup "output and layout diagnostic codes (golem-driver ADR 0016)" outputDiagnosticTests,
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
+        testGroup "the background of inline code (golem-driver ADR 0029)" inlineCodeBackgroundTests,
         testGroup "the separator after a number (golem-html ADR 0002)" numberSeparatorTests,
         versionTests,
         memoTests,
         producerTests,
-        securityTests
+        securityTests,
+        testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
         <> [ newProjectTests,

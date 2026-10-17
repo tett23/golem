@@ -600,13 +600,14 @@ G0110 から G0123 に当たらない構文エラーの既定のコードであ�
 
 式の演算や関数に、使えない型の値を渡した。
 
-- メッセージ: 型の誤りを述べる文言。たとえば `- は <型> に使えません`、`<型> と <型> にこの演算子は使えません`、`<型> は数ではありません`、`<型> の要素は参照できません`、`% は整数にだけ使えます`、`div は整数にだけ使えます`。
+- メッセージ: 型の誤りを述べる文言。たとえば `- は <型> に使えません`、`<型> と <型> にこの演算子は使えません`、`<型> は数ではありません`、`<型> の要素は参照できません`、`% は整数にだけ使えます`、`div は整数にだけ使えます`、`join の配列には文字列だけを並べます`、`join は文字列の配列と区切りの文字列に使えます`。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)。[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md) が `join` の誤りを加えた
 
 ### 主な原因
 
 - 文字列と数の演算など、型の合わない値を演算子や関数に渡した。
+- `join` に、文字列でない要素を持つ配列か、配列でない値を渡した。区切りに文字列でない値を渡した。
 
 ### 直し方
 
@@ -625,12 +626,13 @@ G0110 から G0123 に当たらない構文エラーの既定のコードであ�
 
 - メッセージ: `未定義の名前 <名前> です`、`未定義の名前空間 <名前空間> です`、`名前がありません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)。[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md) が `meta.roles` などの例を加えた
 
 ### 主な原因
 
 - 名前の綴りを誤った。
 - `@set` や `@import` を書き忘れた。
+- マニフェストにない値を `meta` で引いた。その役割の項目がない `meta.roles.binder`、`printings` のない本の `meta.printing`、`publisher-person` のない本の `meta.publisher_person` などである。
 
 ### 直し方
 
@@ -2441,6 +2443,36 @@ page の値が正しくありません
 PDF の図版なら、`page` を 1 以上の整数にする。
 PNG と JPEG の図版からは、`page` を消す。
 
+## G0276
+
+@printings を組めません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@printings` を、日本語でない本か、`[[metadata.printings]]` のない本に書いた。
+`@printings` に引数か本体を書いた場合も、この誤りとする。
+どの場合も、`@printings` は何も組まない。
+位置は `@printings` の行である。
+
+- メッセージ: `@printings は日本語の本（language = "ja"）でだけ使えます`、`マニフェストに [[metadata.printings]] がありません`、`@printings は引数も本体も取りません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)
+
+### 主な原因
+
+- `[metadata] language` が `ja` でない本に `@printings` を書いた。発行の履歴の書式は、今は日本語の一つだけである。
+- `manifest.toml` に `[[metadata.printings]]` を書いていない。
+- `@printings` の後に引数を書いたか、字下げした本体を書いた。
+
+### 直し方
+
+`[[metadata.printings]]` に版、刷、日付を書く。
+日本語でない本では、`meta.printing` の値から発行の履歴を一行ずつ書く。
+`@printings` の引数と本体を消す。
+
 ## G0277
 
 同じキーを二度書いています
@@ -2506,10 +2538,11 @@ manifest.toml の誤りです
 
 `manifest.toml` が TOML として読めないか、スキーマに合わないか、出力ターゲットが一つもない。
 `[source]` と章の項目の `[source]` のキー（`paragraph-separator` など）の未知のキーと不正な値、同じファイルを章の配列に二度並べて効く `[source]` の値が異なる場合も、この誤りとする。
+`[metadata]` の `creators` と `contributors` の `role` が役割の表の語でない場合、`name` が空の文字列の場合、`publisher-person` が空の文字列か改行を含む場合、`printings` の版か刷が 1 より小さい場合、`printings` が版と刷の順に狭義に増えていない場合、`printings` の `date` が前の項目より前の場合も、この誤りとする。
 
-- メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、`章は、ファイルのパス、表、配列のどれかで書きます`、または TOML のスキーマの誤りの文言（`知らないキーです: <経路>.<キー>`、`必須のキーがありません: <経路>.<キー>`、`<経路> には<型>を書きます（<型>が書かれています）`、`[source]` の不正な値など）。TOML の誤りの詳細は、`文字列が閉じていません`、`閉じた表にキーを足しています: <キー>` などの日本語の文言である。経路は `metadata.title` や `chapters[0]` の形で書く。Golem の検査の文言には、`(chapters[0])` のように経路を後ろに添える。経路が空のとき（ファイルの最上位の誤り）は添えない。
+- メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、`章は、ファイルのパス、表、配列のどれかで書きます`、`役割は語で書きます。"<符号>" は "<語>" です`、`役割は <語の一覧> のどれかです: <値>`、`発行所は [metadata] の publisher に、発行人は publisher-person に書きます`、`name に空の文字列は書けません`、`publisher-person に空の文字列は書けません`、`publisher-person に改行は書けません`、`版と刷の番号は 1 以上の整数です`、`printings は版と刷の順に、同じ版と刷を二度書かずに並べます`、`printings の date が前の項目の date より前です`、または TOML のスキーマの誤りの文言（`知らないキーです: <経路>.<キー>`、`必須のキーがありません: <経路>.<キー>`、`<経路> には<型>を書きます（<型>が書かれています）`、`[source]` の不正な値など）。TOML の誤りの詳細は、`文字列が閉じていません`、`閉じた表にキーを足しています: <キー>` などの日本語の文言である。経路は `metadata.title` や `chapters[0]` の形で書く。Golem の検査の文言には、`(chapters[0])` のように経路を後ろに添える。経路が空のとき（ファイルの最上位の誤り）は添えない。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）。位置は、スキーマの誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置、それ以外では `manifest.toml` の先頭である
-- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えた。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えた。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md) が役割、名前、発行人、刷の検査を加えた
 
 ### 主な原因
 
@@ -2517,6 +2550,9 @@ manifest.toml の誤りです
 - キーの綴りか値の型を誤った。未知のキーは無視せずエラーにする。
 - 出力ターゲット（`[targets.*]`）を一つも書いていない。
 - `[source]` の値を誤った。`paragraph-separator` は `"blank-line"` か `"line"` と書く。
+- `role` に MARC relator の符号（`aut` など）を書いた。役割は `author` のような語で書く。
+- `role = "publisher"` と書いた。発行所は `[metadata]` の `publisher` に、発行人は `publisher-person` に書く。
+- `printings` の項目の順を誤ったか、同じ版と刷を二度書いた。
 
 ### 直し方
 
@@ -2653,6 +2689,7 @@ style.toml の誤りです
 - 段落スタイル `code` に、`font`、`size`、`background`、`padding` のほかのキー（`based-on` を含む）を書いた（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 - `background` か `padding` を、`code` のほかの段落スタイルに書いた。`padding` が負であるか、寸法として読めない。
 - `border` か `border-width` を、`code` のほかの段落スタイルに書いた。`border-width` を zw で書いた（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+- 文字スタイルの `background` か `padding` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。文字スタイルの `background` に `true` を書いた。文字スタイルの `padding` が負であるか、寸法として読めない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 - `[code]` か `[code.colors]` に未知のキーを書いた。`[code]` の `line-numbers` が真偽値でない。`[code]` の `number` が `{n}` などの差し込みを含まない。
 - `[hidden-folio]` の `size` か `gutter` を `zw` で書いたか、0 以下にしたか、寸法として読めない値にした。`pages` に `unnumbered` と `all` のほかの値を書いた。`gutter` が `size` の半分より小さい（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。
 - 罫線の指定（`[notes.rule]`）で、`length` が寸法として読めないか 0 以下、`weight` が寸法として読めないか 0 以下か `zw`、`space-before` か `space-after` が寸法として読めないか負である。未知のキーを書いた。`[notes.rule]` に `length` を書いていない（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
@@ -2838,6 +2875,7 @@ style.toml のスタイルの参照が不正です
 - `based-on` が循環する。
 - `body` に `based-on` を書いた。
 - 文字スタイルの `color` が `[color.swatches]` にない。
+- 文字スタイルの `background` が `[color.swatches]` にない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 - 正規表現スタイルの `style` に、組み込みにも `style.toml` にも同じファイルの `@style-def character` にもない文字スタイルを書いた。
 - `@style-def regex` の二つ目の引数に、ない段落スタイルを書いた。
 - 段落スタイルの `aki-set` か、`[aki-sets.<名前>]` の `based-on` が、存在しないセットを指す。
