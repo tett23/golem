@@ -2202,11 +2202,12 @@ InDesign のプリフライトプロファイルにあたるものを、プリ�
 | `blank-pages`（空白のページ） | G0917 | off | off |
 | `stroke-weight`（細すぎる線） | G0918 | off | warning（0.1mm 未満） |
 
-PDF に置けない図版は、プリフライトの検査ではなく G0810 のエラーで、PDF を作れないのでプリフライトの検査を行わない。
+PDF に置けない図版は、プリフライトの検査ではなく G0810 のエラーで、PDF を作れないのでプリフライトは何も検査しない。
 `image-unplaceable` の検査（G0905）は廃止し、`preflight.toml` に書くと知らないキー（G0901）になる（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 PDF の図版も、ページの図版の一覧に載せて検査する。
 G0906 と G0907 は PNG と JPEG の図版だけを検査し、PDF の図版の中の画像の解像度は検査しない。
-G0908 は、PDF の図版が使う色空間のうち許さないものをすべて並べて一つの diagnostic にする。sRGB に置き換えた DeviceRGB は `rgb` とし、ICCBased は成分の数で `gray`、`rgb`、`cmyk` とする。
+G0908 は、PDF の図版が使う色空間のうち許さないものをすべて並べて一つの diagnostic にする。
+sRGB に置き換えた DeviceRGB は `rgb` とし、ICCBased は成分の数で `gray`、`rgb`、`cmyk` とする。
 G0909 は、PDF の図版の CMYK の ICCBased のプロファイルが出力インテントと違えば出す。
 G0911 は、PDF の図版もその矩形で検査する。
 
