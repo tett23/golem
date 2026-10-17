@@ -917,6 +917,7 @@ CMYK の値を直接書くことはできない。
 PDF では、ハイフネーションとカーニングをかけず、行は空白と `/` の後でだけ改める。
 `/` の後で改めてもハイフンは描かない。
 HTML と EPUB では `<code>` の要素になる。
+`style.toml` の文字スタイル `code` の `background` と `padding` で、本文の中のコードに背景の色と前後の余白を付けられる（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 
 ### ルビ
 

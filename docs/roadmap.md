@@ -21,7 +21,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ### PDF
 
-- **本文の中のコードの背景の色**（未実装、[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）：コードの書体の役割、コードブロックの組み方は [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md) で、技術書のためのコードブロックの機能は [golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md) で実装した。本文の中のコード（`[code: ...]`）の背景の色は扱っていない。
 - **章末の注**（未実装、[golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)）：`[notes] placement = "chapter-end"` を読み込むが、どの出力も注の置き方を変えない。仕様書とマニュアルは章末に置けると書いていない形に直したが、章末の注そのものはまだない。
 - **SVG の図版**（未実装、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）：仕様は SVG を v1 では扱わないと定めているが（仕様書の [「図版」の節](specifications.md#図版)）、v1 で扱えるようにする。開発者向けのマニュアルの図は、SVG を原稿にして PNG に描いたものを置いている。PDF の出力での描き方（ベクターのまま描くか、変換するか）と、HTML と EPUB でそのまま使うかを決める。
 - **段落スタイルの罫線**（未実装、[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）：段落スタイルに、段落の前と後に引く罫線（InDesign の段落境界線にあたるもの）を書けるようにする。見出しの下の罫線や、節の区切りの罫線に使う。長さ、太さ、間隔は、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md) の罫線の指定の形で書く。長さの既定は、当面は段の行長（段の最大の長さ）に固定する。罫線を持つ段落は改ページと改段で分けず、一つのページ（段）に置く。その段落の注のうち、そのページに収まらないものは、次のページ（見開きで扱う場合は次の見開き）に回す。間隔と行の格子の合わせ方は、[未決事項](#未決事項) の「段落の罫線の間隔と行の格子」で決める。

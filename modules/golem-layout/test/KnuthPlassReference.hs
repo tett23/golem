@@ -120,10 +120,10 @@ paragraphItems ws =
         (WordBox {} : _) -> [Glue w y z]
         _ -> []
       items = \case
-        (WordBox word n : rest) -> Box n (BoxContent word False 0 0 0 referenceLook 0 0 []) : between rest <> items rest
+        (WordBox word n : rest) -> Box n (BoxContent word False 0 0 0 referenceLook 0 0 [] 0 0) : between rest <> items rest
         (WordExHyphen : rest) -> Penalty 0 50 ExplicitHyphen : items rest
         [] -> []
-   in Box (wParindent ws) (BoxContent "" False 0 0 0 referenceLook 0 0 []) : items (wBoxes ws) <> finish
+   in Box (wParindent ws) (BoxContent "" False 0 0 0 referenceLook 0 0 [] 0 0) : items (wBoxes ws) <> finish
 
 -- ------------------------------------------------------------------ the log
 

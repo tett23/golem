@@ -895,9 +895,13 @@ textLists style =
 htmlCharStyles :: Style -> Map Text HtmlCharStyle
 htmlCharStyles style =
   Map.fromList
-    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d)) (isCodeCharStyle style n))
+    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d)) code background padding)
     | n <- Map.keys (stCharStyles style),
-      Just d <- [charStyle style n]
+      Just d <- [charStyle style n],
+      let code = isCodeCharStyle style n
+          -- the background and the padding of inline code (golem-driver ADR 0029)
+          background = if code then charStyleBackground style n else Nothing
+          padding = if code then cssLength <$> csPadding d else Nothing
     ]
 
 -- | The paragraph styles of a style, resolved for CSS (docs/adr ADR 0005, 0006).
