@@ -854,6 +854,15 @@ tests =
                 stWidths t @?= [3 * fs, fs]
                 (stHeaderLines t, stRowLines t) @?= (1, [2])
               Left e -> assertFailure (show e),
+          testCase "an empty header makes a table without a header row (golem-driver ADR 0031)" $ do
+            let env = defaultComposeEnv fs
+            case layoutTable defaultParams (5 * fs) fs [AlignDefault, AlignDefault] [] [[compose env "あ", compose env "い"]] of
+              Right t -> do
+                stHeader t @?= []
+                stHeaderLines t @?= 0
+                stRowLines t @?= [1]
+                length (concat (stRows t)) @?= 2
+              Left e -> assertFailure (show e),
           testCase "right and centre alignment shift a cell by the room it leaves" $ do
             let env = defaultComposeEnv fs
                 table al = layoutTable defaultParams (10 * fs) fs [AlignLeft, al] [compose env "見出し", compose env "数"] [[compose env "あ", compose env "1"]]
@@ -905,10 +914,10 @@ tests =
             cols ps @?= [(1, 0), (1, 1)]
             map poSlots ps @?= [[(0, SLine 0), (1, SLine 1), (2, SLine 2), (3, SLine 10), (4, SLine 11)], [(0, SFigure 99)]],
           testCase "a table across a column boundary repeats its header" $ do
-            let ps = paginate 2 4 [FTable 100 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
+            let ps = paginate 2 4 [FTable 100 0 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
             cols ps @?= [(1, 0), (1, 1)]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 11, SLine 12], [SLine 0, SLine 13, SLine 14]]
-            map poTables ps @?= [[TableSegment 100 0 0 3], [TableSegment 100 0 0 2]],
+            map poTables ps @?= [[TableSegment 100 0 (Just 0) 3], [TableSegment 100 0 (Just 0) 2]],
           testCase "a label in the second column is on the page of that column" $ do
             let ps = paginate 2 3 [FParagraph (lines' 0 3), FParagraph [LineBox 50 [] ["x"] []]]
             cols ps @?= [(1, 0), (1, 1)]
@@ -979,23 +988,42 @@ tests =
       testGroup
         "table pagination (golem-driver ADR 0008)"
         [ testCase "a table breaks between rows and repeats its header" $ do
-            let ps = paginate 1 4 [FTable 100 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
+            let ps = paginate 1 4 [FTable 100 0 (lines' 0 1) [lines' (10 + i) 1 | i <- [0 .. 4]]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 11, SLine 12], [SLine 0, SLine 13, SLine 14]]
-            map poTables ps @?= [[TableSegment 100 0 0 3], [TableSegment 100 0 0 2]],
+            map poTables ps @?= [[TableSegment 100 0 (Just 0) 3], [TableSegment 100 0 (Just 0) 2]],
           testCase "the header's label and note are counted once" $ do
             let header = [LineBox 0 [NoteBody (nid 900) 1] ["tbl"] []]
-                ps = paginate 1 4 [FTable 100 header [lines' (10 + i) 1 | i <- [0 .. 4]]]
+                ps = paginate 1 4 [FTable 100 0 header [lines' (10 + i) 1 | i <- [0 .. 4]]]
             map poLabels ps @?= ["tbl"] : replicate (length ps - 1) []
             [(poNumber p, n) | p <- ps, (n, _, _) <- poFootnotes p] @?= [(1, nid 900)],
           testCase "a table that cannot start with its header and first row goes to the next page" $ do
-            let ps = paginate 1 4 [FParagraph (lines' 0 3), FTable 100 (lines' 20 1) [lines' 30 1]]
+            let ps = paginate 1 4 [FParagraph (lines' 0 3), FTable 100 0 (lines' 20 1) [lines' 30 1]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SLine 20, SLine 30]],
           testCase "a row is never split across pages" $ do
-            let ps = paginate 1 4 [FTable 100 (lines' 0 1) [lines' 10 1, lines' 20 1, lines' 30 2]]
+            let ps = paginate 1 4 [FTable 100 0 (lines' 0 1) [lines' 10 1, lines' 20 1, lines' 30 2]]
             map (map snd . poSlots) ps @?= [[SLine 0, SLine 10, SLine 20], [SLine 0, SLine 30, SLine 31]],
           testCase "a heading before a table stays with its header and first row" $ do
-            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 1 False 1 (lines' 20 1), FTable 100 (lines' 30 1) [lines' 40 2]]
-            map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 40, SLine 41]]
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 1 False 1 (lines' 20 1), FTable 100 0 (lines' 30 1) [lines' 40 2]]
+            map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 40, SLine 41]],
+          testCase "a table in the middle of a column leaves a grid line before it (golem-driver ADR 0031)" $ do
+            let ps = paginate 1 10 [FParagraph (lines' 0 2), FTable 100 1 (lines' 20 1) [lines' 30 1]]
+            map poTables ps @?= [[TableSegment 100 3 (Just 3) 4]]
+            map (map fst . poSlots) ps @?= [[0, 1, 3, 4]],
+          testCase "a table at the first line of a column leaves no line before it (golem-driver ADR 0031)" $ do
+            let ps = paginate 1 10 [FTable 100 1 (lines' 20 1) [lines' 30 1]]
+            map poTables ps @?= [[TableSegment 100 0 (Just 0) 1]],
+          testCase "a table that does not fit with its space starts the next column without it (golem-driver ADR 0031)" $ do
+            let ps = paginate 1 5 [FParagraph (lines' 0 3), FTable 100 1 (lines' 20 1) [lines' 30 1]]
+            map poTables ps @?= [[], [TableSegment 100 0 (Just 0) 1]]
+            map (map fst . poSlots) ps @?= [[0, 1, 2], [0, 1]],
+          testCase "a heading before a table counts the space before the table (golem-driver ADR 0031)" $ do
+            -- 3 free: heading 1 + space 1 + header 1 + first row 1 = 4 > 3
+            let ps = paginate 1 6 [FParagraph (lines' 0 3), FHeading 1 False 1 (lines' 20 1), FTable 100 1 (lines' 30 1) [lines' 40 1]]
+            map (map snd . poSlots) ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 40]],
+          testCase "a table without a header across pages: every part starts with body rows (golem-driver ADR 0031)" $ do
+            let ps = paginate 1 4 [FTable 100 0 [] [lines' (10 + i) 1 | i <- [0 .. 5]]]
+            map poTables ps @?= [[TableSegment 100 0 Nothing 3], [TableSegment 100 0 Nothing 1]]
+            map (map snd . poSlots) ps @?= [[SLine 10, SLine 11, SLine 12, SLine 13], [SLine 14, SLine 15]]
         ],
       testGroup
         "wrapped figures (ADR 0004)"
