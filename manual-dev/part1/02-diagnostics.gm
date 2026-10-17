@@ -143,7 +143,7 @@ Golem の文書の対象外であり、[code: golem explain] も説明を持た�
 ## diagnostic のコードの説明
 
 コードごとの意味、主な原因、直し方は、[code: docs/diagnostics.md] の一つの Markdown のファイルにまとめてある。
-[code: golem explain] は、この文書の節をそのまま表示する。[index reading="golem explain": golem explain][note: [code: https://github.com/tett23/golem/blob/main/docs/diagnostics.md]（docs/diagnostics.md「診断のコード」）、[code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0005-explain-diagnostic-codes.md]（golem-cli ADR 0005「診断のコードの説明を golem explain で表示する」）]
+[code: golem explain] は、この文書の節をそのまま表示する。[index reading="golem explain": golem explain][note: [code: https://github.com/tett23/golem/blob/main/docs/diagnostics.md]（docs/diagnostics.md「diagnostic のコード」）、[code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0005-explain-diagnostic-codes.md]（golem-cli ADR 0005「診断のコードの説明を golem explain で表示する」）]
 
 ```sh
 $ golem explain G0730    # 一つのコードの説明

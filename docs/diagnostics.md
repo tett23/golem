@@ -1,12 +1,12 @@
-# 診断のコード
+# diagnostic のコード
 
-この文書は、Golem が出す診断のコード（`G0101` など）を一つずつ説明する。
-診断は、コードと一行のメッセージだけを出す。
+この文書は、Golem が出す diagnostic のコード（`G0101` など）を一つずつ説明する。
+diagnostic は、コードと一行のメッセージだけを出す。
 コードが何を表し、どう直せばよいかを、ここで引けるようにする。
 `golem explain <コード>` は、この文書の節をそのまま表示する（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
-LSP の診断の `codeDescription` は、GitHub の上のこの文書の節を指す。
+LSP の diagnostic の `codeDescription` は、GitHub の上のこの文書の節を指す。
 
-プラグインが出す診断のコードは、この文書の対象外である。
+プラグインが出す diagnostic のコードは、この文書の対象外である。
 プラグインのコードはプラグインが決めるので、プラグインの文書を参照する。
 
 ## 節の形
@@ -33,7 +33,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 ## 番号の区分
 
 コードは `G` と 4 桁の数字からなる。
-上 2 桁が、診断を出す段階を表す（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)）。
+上 2 桁が、diagnostic を出す段階を表す（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)）。
 一度使った番号は、ほかの意味に使い回さない。
 
 | 上 2 桁 | 段階 | 主なモジュール |
