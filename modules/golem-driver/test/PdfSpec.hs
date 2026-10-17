@@ -1266,6 +1266,16 @@ inlineCodeBackgroundTests =
           let (before, _) = BS.breakSubstring "<3042>" c
           assertBool "before the text" (" re f" `BS.isInfixOf` before)
         (cs, runs) -> assertFailure (show (length cs, runs)),
+    testCase "code with padding after it ends its rectangle before code of the same swatch without padding" $ do
+      -- ab: two characters of 5pt and 2.5pt on both sides; cd of the style kw, based on code, without padding
+      let kw = "\n[character-styles.kw]\nbased-on = \"code\"\npadding = \"0zw\"\n"
+      contents <- miniPdf fakeProvider True (horizontalStyle <> cbg <> kw) "[code: ab][style kw: cd]\n" [] >>= pageContents
+      case concatMap filledRects contents of
+        [[x1, _, w1, _], [x2, _, w2, _]] -> do
+          approx w1 15
+          approx w2 10
+          approx x2 (x1 + w1)
+        other -> assertFailure (show other),
     testCase "the space inside the code is painted" $ do
       contents <- miniPdf fakeProvider True (horizontalStyle <> cbg) "[code: a b]\n" [] >>= pageContents
       case concatMap filledRects contents of
