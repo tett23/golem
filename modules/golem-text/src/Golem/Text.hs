@@ -133,6 +133,7 @@ block c ind (Block sp _ body) = case body of
   ChannelOutput IndexOutput -> ""
   -- plain text has no pages (docs/adr ADR 0017)
   ForcedBreak _ -> ""
+  PageControl _ -> ""
   ChannelOutput BibliographyOutput ->
     -- the entry, or the key that has none (golem-doc ADR 0004, 0005)
     T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> maybe k entryText (Map.lookup k (cBibliography c)) | (k, n) <- bookCitations (cBook c)]
