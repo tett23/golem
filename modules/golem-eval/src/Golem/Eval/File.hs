@@ -647,7 +647,8 @@ styledParagraph ctx sp mname is = case mname of
     Just JoinLines -> joined (styleOf name)
     Just KeepLines -> do
       mapM_ escapedIndent (linesOf Nothing is)
-      ls <- filter (not . null . snd) <$> mapM (\(bsp, l) -> (bsp,) <$> evalInlines ctx False (trimLine (A.plainEscapes l))) (linesOf Nothing is)
+      mapM_ (escapedTrailing . snd) (linesOf Nothing is)
+      ls <- filter (not . null . snd) <$> mapM (\(bsp, l) -> (bsp,) <$> evalInlines ctx False (A.plainEscapes (trimLine l))) (linesOf Nothing is)
       pure $ case ls of
         [] -> []
         ((_, first) : rest) -> [block sp (Paragraph (styleOf name) (first <> concat [LineBreak bsp : l | (bsp, l) <- rest]))]
@@ -660,6 +661,12 @@ styledParagraph ctx sp mname is = case mname of
       (_, A.Located tsp (A.Escaped c) : _)
         | c == ' ' || c == '\t' ->
             report (notice "G0264" (mkSpan (spanFile tsp) (spanStart tsp) (spanStart tsp + 1)) "行頭のエスケープした空白は無視されます。字下げには全角の空白を使います")
+      _ -> pure ()
+    {- G0279: an escaped space or tab among the spaces and tabs at the end
+    of a line is dropped as well (golem-parser ADR 0012); one notice at
+    the first such escape. A line of blanks only is the indent of G0264. -}
+    escapedTrailing l = case [tsp | A.Located tsp (A.Escaped _) <- reverse (takeWhile blankEnd (reverse l))] of
+      (tsp : _) | not (all blankEnd l) -> report (notice "G0279" (mkSpan (spanFile tsp) (spanStart tsp) (spanStart tsp + 1)) "行末のエスケープした空白は無視されます")
       _ -> pure ()
     joined st = (\x -> [block sp (Paragraph st x)]) <$> hardLines ctx sp is
     -- lines with the span of the newline before each (the first has none);
@@ -710,23 +717,38 @@ unknownParaStyles ctx (Document _ bs) = concatMap go bs
       FigureBlock f -> concatMap go (figCaption f)
       _ -> []
 
--- | Spaces and tabs at the start and the end of a line are not text.
+{- | Spaces and tabs at the start and the end of a line are not text,
+escaped ones included (golem-parser ADR 0012). It runs before
+'A.plainEscapes', so that the 'A.Text' it cuts has no escape in it and its
+span shrinks by the characters cut.
+-}
 trimLine :: [A.Located A.Inline] -> [A.Located A.Inline]
 trimLine = trimEnd . trimStart
   where
     trimStart = \case
+      (x : rest) | blankEnd x -> trimStart rest
       (A.Located tsp (A.Text t) : rest) ->
         let t' = T.dropWhile isSpaceTab t
             tsp' = mkSpan (spanFile tsp) (spanStart tsp + T.length t - T.length t') (spanEnd tsp)
          in [A.Located tsp' (A.Text t') | not (T.null t')] <> rest
       is -> is
     trimEnd is = case reverse is of
+      (x : rest) | blankEnd x -> trimEnd (reverse rest)
       (A.Located tsp (A.Text t) : rest) ->
         let t' = T.dropWhileEnd isSpaceTab t
             tsp' = mkSpan (spanFile tsp) (spanStart tsp) (spanEnd tsp - (T.length t - T.length t'))
          in reverse rest <> [A.Located tsp' (A.Text t') | not (T.null t')]
       _ -> is
-    isSpaceTab c = c == ' ' || c == '\t'
+
+-- | A text of spaces and tabs only, or an escaped space or tab.
+blankEnd :: A.Located A.Inline -> Bool
+blankEnd = \case
+  A.Located _ (A.Text t) -> T.all isSpaceTab t
+  A.Located _ (A.Escaped c) -> isSpaceTab c
+  _ -> False
+
+isSpaceTab :: Char -> Bool
+isSpaceTab c = c == ' ' || c == '\t'
 
 -- ------------------------------------------------------------------ figures, tables, listings
 

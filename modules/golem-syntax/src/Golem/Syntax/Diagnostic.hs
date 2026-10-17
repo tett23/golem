@@ -85,6 +85,7 @@ noticeCodes =
       "G0263", -- [tcy: ...] of ASCII digits only
       "G0264", -- an escaped space at the start of a line in a paragraph that keeps its lines
       "G0265", -- @listing src= (to be retired)
+      "G0279", -- an escaped space at the end of a line in a paragraph that keeps its lines
       "G0323", -- no style.toml
       "G0407", -- @number equal to the automatic number
       "G0408", -- page breaks at the very end of the book
