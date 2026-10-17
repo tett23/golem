@@ -1,5 +1,6 @@
 module Main (main) where
 
+import ColophonSpec qualified
 import Control.Monad (forM_, void)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
@@ -489,6 +490,7 @@ tests =
       diagnosticCodeTests,
       tomlMessageTests,
       TomlMessageSpec.tests,
+      ColophonSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))
@@ -1035,6 +1037,45 @@ codeStyleTests =
         isCodeCharStyle s "path" @?= True
         isCodeCharStyle s "code" @?= True
         isCodeCharStyle s "strong" @?= False,
+      -- the background and the padding of inline code (golem-driver ADR 0029)
+      testCase "[character-styles.code] background and the default padding 0.25zw" $ do
+        s <- styleOf "[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[character-styles.code]\nbackground = \"code-bg\"\n"
+        (charStyle s "code" >>= csBackground) @?= Just (Just "code-bg")
+        charStyleBackground s "code" @?= Just "code-bg"
+        (charStyle s "code" >>= csPadding) @?= Just (Zw 0.25),
+      testCase "the background of character style code defaults to that of paragraph style code" $ do
+        s <- styleOf "[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.code]\nbackground = \"code-bg\"\n"
+        charStyleBackground s "code" @?= Just "code-bg"
+        s' <- styleOf ""
+        charStyleBackground s' "code" @?= Nothing,
+      testCase "background = false: no background; true is G0306" $ do
+        s <- styleOf "[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.code]\nbackground = \"code-bg\"\n\n[character-styles.code]\nbackground = false\n"
+        charStyleBackground s "code" @?= Nothing
+        codes (parseStyle (FileId 0) "[character-styles.code]\nbackground = true\n") @?= ["G0306"],
+      testCase "a padding without a background is no diagnostic" $ do
+        s <- styleOf "[character-styles.code]\npadding = \"0.5zw\"\n"
+        (charStyle s "code" >>= csPadding) @?= Just (Zw 0.5),
+      testCase "a style based on code inherits background and padding and may override them" $ do
+        s <- styleOf "[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\nother = { cmyk = [0, 0, 0, 20] }\n\n[character-styles.code]\nbackground = \"code-bg\"\n\n[character-styles.path]\nbased-on = \"code\"\n\n[character-styles.file]\nbased-on = \"code\"\nbackground = \"other\"\n"
+        charStyleBackground s "path" @?= Just "code-bg"
+        charStyleBackground s "file" @?= Just "other"
+        (charStyle s "path" >>= csPadding) @?= Just (Zw 0.25),
+      testCase "background and padding on a style that is not code are G0306" $ do
+        codes (parseStyle (FileId 0) "[color.swatches]\nbg = { cmyk = [0, 0, 0, 8] }\n\n[character-styles.term]\nbackground = \"bg\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[character-styles.term]\npadding = \"1zw\"\n") @?= ["G0306"],
+      testCase "a missing background swatch is G0313; a negative or unreadable padding G0306" $ do
+        codes (parseStyle (FileId 0) "[character-styles.code]\nbackground = \"none-such\"\n") @?= ["G0313"]
+        codes (parseStyle (FileId 0) "[character-styles.code]\npadding = \"-1pt\"\n") @?= ["G0306"]
+        codes (parseStyle (FileId 0) "[character-styles.code]\npadding = \"abc\"\n") @?= ["G0306"],
+      testCase "@style-def character code background=code-bg" $ do
+        base <- styleOf "[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n"
+        case localStyleDef CharacterKind [("background", LocalWord "code-bg"), ("padding", LocalWord "0.5zw")] of
+          Right (Left d) -> do
+            let ls = noLocalStyles {lsCharStyles = Map.fromList [("code", d)]}
+            [c | (c, _, _) <- checkLocalStyles base ls] @?= []
+            charStyleBackground (withLocalStyles base ls) "code" @?= Just "code-bg"
+            (charStyle (withLocalStyles base ls) "code" >>= csPadding) @?= Just (Zw 0.5)
+          other -> assertFailure (show other),
       -- golem-doc ADR 0005
       testCase "the built-in url has no keys; a user's font overrides only the font" $ do
         s <- styleOf ""

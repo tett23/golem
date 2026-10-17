@@ -367,7 +367,7 @@ writingTests =
       Right p @?= importPage 1 rgbPdf,
     testCase "X4.verify finds nothing in a PDF figure with RGB" $ do
       p <- importOk 1 rgbPdf
-      let doc = (formDoc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, p)]) {docPdfX = Just (PdfX "fake-cmyk-profile" "JC200103" [])}
+      let doc = (formDoc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, p)]) {docPdfX = Just (PdfX "fake-cmyk-profile" "JC200103" [] [])}
       verify (documentObjects doc) @?= [],
     needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
       testCase "qpdf --check accepts a PDF figure" $ do

@@ -179,6 +179,7 @@ tests =
   testGroup
     "file evaluation, S0 (ADR 0002)"
     [ verseTests,
+      printingsTests,
       diagnosticTests,
       settingsTests,
       noticeTests,
@@ -1074,4 +1075,48 @@ diagnosticTests =
         msgs "@figure /tmp/a.png alt=x\n" @?= [("G0260", "絶対パスは使えません: /tmp/a.png")]
         msgs "@figure images/a.png web=\"https://example.com/a.png\" alt=x\n" @?= [("G0260", "URL は使えません: https://example.com/a.png")]
         diags "@listing ../outside.txt\n" @?= [("G0260", "プロジェクトルートの外を指しています: ../outside.txt", 0, 24)]
+    ]
+
+-- | A printing as meta.printings has it (docs/adr ADR 0033).
+printingValue :: Integer -> Integer -> (Integer, Integer, Integer) -> Value
+printingValue e n (y, m, d) =
+  VHash (Map.fromList [("edition", VInt e), ("number", VInt n), ("year", VInt y), ("month", VInt m), ("day", VInt d), ("date", VString "")])
+
+-- | The context of a book of a language with three printings.
+printingsCtx :: Text -> EvalContext
+printingsCtx lang =
+  ctx
+    { ctxMeta =
+        Map.fromList
+          [ ("language", VString lang),
+            ("printings", VArray [printingValue 1 1 (2026, 10, 16), printingValue 1 2 (2027, 4, 1), printingValue 2 1 (2028, 1, 10)])
+          ]
+    }
+
+-- | The text of a paragraph with its numbers in digits.
+plainOf :: [Inline] -> Text
+plainOf = T.concat . map (\case Text _ t -> t; Number _ n _ -> T.pack (show n); _ -> "")
+
+printingsTests :: TestTree
+printingsTests =
+  testGroup
+    "@printings (docs/adr ADR 0033)"
+    [ testCase "three printings are three paragraphs; edition 1 is 初版, 2 is 第2版" $ do
+        let (bs, es) = run (printingsCtx "ja") "@printings\n"
+        es @?= []
+        [plainOf is | Paragraph Nothing is <- bs] @?= ["2026年10月16日\x3000初版第1刷発行", "2027年4月1日\x3000初版第2刷発行", "2028年1月10日\x3000第2版第1刷発行"],
+      testCase "the year is kanji-digits, the other numbers follow the default" $
+        case run (printingsCtx "ja") "@printings\n" of
+          (Paragraph _ is : _, _) -> [(n, st) | Number _ n st <- is] @?= [(2026, Just StyleKanjiDigits), (10, Nothing), (16, Nothing), (1, Nothing)]
+          other -> assertFailure (show other),
+      testCase "@style applies to every paragraph" $
+        [st | Paragraph st _ <- fst (run (printingsCtx "ja") "@style quote\n@printings\n")] @?= [Just "quote", Just "quote", Just "quote"],
+      testCase "a book not in Japanese, or without printings, is G0276 and sets nothing" $ do
+        run (printingsCtx "en") "@printings\n" @?= ([], ["G0276"])
+        run (printingsCtx "ja") {ctxMeta = Map.fromList [("language", VString "ja")]} "@printings\n" @?= ([], ["G0276"])
+        [m | (_, m, _, _) <- diagsWith (printingsCtx "en") "@printings\n"] @?= ["@printings は日本語の本（language = \"ja\"）でだけ使えます"]
+        [m | (_, m, _, _) <- diagsWith (printingsCtx "ja") {ctxMeta = Map.fromList [("language", VString "ja")]} "@printings\n"] @?= ["マニフェストに [[metadata.printings]] がありません"],
+      testCase "an argument or a body is an error and sets nothing" $ do
+        run (printingsCtx "ja") "@printings 1\n" @?= ([], ["G0276"])
+        run (printingsCtx "ja") "@printings\n  本文\n" @?= ([], ["G0276"])
     ]

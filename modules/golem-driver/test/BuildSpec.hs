@@ -316,7 +316,7 @@ sepNav lang format source = withSystemTempDirectory "golem-sep" $ \tmp -> do
   e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
   book <- maybe (assertFailure "no book") pure (evBook e)
   let md = manifestMetadata (projectManifest (evProject e))
-      cfg = EpubConfig (mdId md) (mdTitle md) Nothing (mdLanguage md) (mdDate md) Nothing [] False
+      cfg = EpubConfig (mdId md) (mdTitle md) Nothing (mdLanguage md) (mdDate md) Nothing [] [] False
   pure (navDocument cfg (projectFiles (evProject e)) book)
 
 numberSeparatorTests :: [TestTree]
