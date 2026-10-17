@@ -193,12 +193,12 @@ data Piece
   | PRubyBreak -- a break allowed between mono ruby bases
   | PForcedBreak -- a hard line break: the line ends as a paragraph does (docs/adr ADR 0016)
   | PAki !Look !AkiAmount -- [aki]: a fixed space, no break around it (docs/adr ADR 0019)
-  | PCode !Look !Text -- a run of code without spaces and tabs (golem-driver ADR 0017)
+  | PCode !Look !Text !Sp !Sp -- a run of code without spaces and tabs (golem-driver ADR 0017), the padding before and after it (golem-driver ADR 0029)
   | PAnchor (Int -> Anchor)
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
 composeInlines env inls =
-  let pieces = concatMap (piecesOf env) inls
+  let pieces = padCode (concatMap (piecesOf env) inls)
       (items, anchors) = foldl' emit ([], []) (zip3 prevs pieces nexts)
       emit (acc, as) (_, PAnchor f, _) = (acc, (length acc, f) : as)
       emit (acc, as) (pv, p, nx) = (acc <> itemsFor env pv p nx, as)
@@ -331,7 +331,7 @@ codePieces lk = go
       Just ('\t', rest) -> PChar lk '\t' "" : go rest
       Just _ ->
         let (run, rest) = T.break (\c -> c == ' ' || c == '\t') t
-         in PCode lk run : go rest
+         in PCode lk run 0 0 : go rest
 
 numberPieces :: ComposeEnv -> Integer -> Maybe NumberStyle -> [Piece]
 numberPieces env n style
@@ -502,12 +502,12 @@ itemsFor env prev p next = case p of
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
-     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [])]
+     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0)]
   PWord lk word -> wordItems env lk word
   PSpace lk ->
     let sw = advance env lk ' '
      in [Glue (sw + tracking lk) (sw `div` 2) (sw `div` 3)]
-  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [])]
+  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0)]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
         rp = placeRuby style kind (baseAdvances env lk looks base) (readingAdvances env lk reading) (allowance True prev, allowance False next)
@@ -531,7 +531,7 @@ itemsFor env prev p next = case p of
         tag = case kind of
           MonoRuby -> KindRuby
           GroupRuby -> KindGroupRuby
-     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks)]
+     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks 0 0)]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   -- normalize sees no box next to these items: the spacing is that of the line's edge
   PForcedBreak -> lineEnd
@@ -540,8 +540,8 @@ itemsFor env prev p next = case p of
     let w = case a of
           AkiZw r -> round (r * toRational (lkSize lk))
           AkiAbs x -> x
-     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [])]
-  PCode lk run -> codeItems env lk run
+     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0)]
+  PCode lk run ps pe -> codeItems env lk run ps pe
   PAnchor _ -> []
 
 {- | A run of code (golem-driver ADR 0017): a box for each part of Latin or
@@ -549,14 +549,17 @@ other text, cut after each slash; 'normalize' allows a break after a
 slash and nothing else between the boxes. No hyphenation, protrusion or
 expansion.
 -}
-codeItems :: ComposeEnv -> Look -> Text -> [Item]
-codeItems env lk run =
-  [ Box (w + tr * toInteger (T.length seg)) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [])
-  | part <- slashParts run,
-    seg <- T.groupBy sameSide part,
+codeItems :: ComposeEnv -> Look -> Text -> Sp -> Sp -> [Item]
+codeItems env lk run padStart padEnd =
+  [ Box (w + tr * toInteger (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe)
+  | let segs = [seg | part <- slashParts run, seg <- T.groupBy sameSide part]
+        lastIx = length segs - 1,
+    (i, seg) <- zip [0 :: Int ..] segs,
     let latin = maybe False ((== Western) . charClass . fst) (T.uncons seg)
         w = round (ceWordAdvance env lk seg * toRational (lkSize lk))
         tag = if ceVertical env && latin then KindRotated else KindText
+        ps = if i == 0 then padStart else 0
+        pe = if i == lastIx then padEnd else 0
   ]
   where
     tr = tracking lk
@@ -565,6 +568,44 @@ codeItems env lk run =
       (a, rest)
         | T.null rest -> [a | not (T.null a)]
         | otherwise -> (a <> "/") : slashParts (T.drop 1 rest)
+
+{- | The padding of inline code (golem-driver ADR 0029): in each run of
+pieces of code with the same background and padding (spaces, tabs, note
+marks and ruby included, anchors skipped), the first piece takes the
+padding before it and the last the padding after it when they are runs
+of code.
+-}
+padCode :: [Piece] -> [Piece]
+padCode = \case
+  [] -> []
+  p : rest
+    | Just k <- codeKey p ->
+        let (run, rest') = span (\q -> transparent q || codeKey q == Just k) rest
+         in padded (p : run) <> padCode rest'
+    | otherwise -> p : padCode rest
+  where
+    codeKey = \case
+      PCode l _ _ _ -> key l
+      PSpace l -> key l
+      PChar l _ _ -> key l
+      PBox l _ KindNoteMark _ -> key l
+      PRuby l _ _ _ _ -> key l
+      PRubyBreak -> Nothing
+      _ -> Nothing
+    key l = if lkCode l then Just (lkBackground l, lkPadding l) else Nothing
+    transparent = \case
+      PAnchor _ -> True
+      PRubyBreak -> True
+      _ -> False
+    -- the padding goes on the first and the last piece when they are code
+    padded run = case [i | (i, q) <- zip [0 :: Int ..] run, not (transparent q)] of
+      [] -> run
+      ixs@(firstIx : _) ->
+        let lastIx = last ixs
+            set i = \case
+              PCode l t _ _ -> PCode l t (if i == firstIx then lkPadding l else 0) (if i == lastIx then lkPadding l else 0)
+              q -> q
+         in zipWith set [0 ..] run
 
 {- | A Latin word: broken after its explicit hyphens and dashes, or else
 where the patterns allow. A word with a hyphen or dash in it gets no
@@ -586,7 +627,7 @@ wordItems env lk word =
             (ps, _) = maybe (0, 0) (protrusionRatio . fst) (T.uncons t)
             (_, pe) = maybe (0, 0) (protrusionRatio . snd) (T.unsnoc t)
             prot r = if ceProtrusion env then min w (w * r `div` 1000) else 0
-         in Box (w + tr * toInteger (T.length t)) (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk 0 (negate tr) [])
+         in Box (w + tr * toInteger (T.length t)) (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk 0 (negate tr) [] 0 0)
       prot' r t f = if T.null t then 0 else f r
    in concat [box part : [pen | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]
 

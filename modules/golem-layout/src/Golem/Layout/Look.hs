@@ -105,13 +105,18 @@ data Look = Look
     after a slash, no hyphenation and no aki between its characters
     -} lkCode :: !Bool,
     -- | the shape of kenten (golem-driver ADR 0019); Nothing is no kenten
-    lkKenten :: !(Maybe KentenShape)
+    lkKenten :: !(Maybe KentenShape),
+    {- | the swatch of the background of inline code (golem-driver ADR
+    0029); Nothing is no background
+    -} lkBackground :: !(Maybe Text),
+    -- | the padding before and after a run of code along the line, in sp (golem-driver ADR 0029)
+    lkPadding :: !Integer
   }
   deriving stock (Eq, Ord, Show)
 
 {- | One role for both scripts at a size, upright, regular, default colour,
 metrics kerning, no tracking, no proportional metrics, no baseline shift,
-not code, no kenten.
+not code, no kenten, no background and no padding.
 -}
 plainLook :: Text -> Integer -> Look
-plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False Nothing
+plainLook role size = Look role role size noSynthetic noSynthetic Nothing KernMetrics 0 False 0 False Nothing Nothing 0
