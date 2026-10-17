@@ -138,6 +138,7 @@ S0 で全ファイルを評価する [code: evalAll] も、import の順（[code
 S1 の [code: assemble] は、S0 の結果をマニフェストの章の順に並べたリストを受け取る。
 評価が純粋なので、同じファイルを複数のファイルが import しても、一度評価した結果をそのまま共有できる。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#プロジェクトの構成と-import]（仕様書の「プロジェクトの構成と import」の節）]
 LSP が編集されたファイルだけを評価し直せるのも同じ理由で、[code: Evaluated] の [code: evReevaluate] は、前回の評価の文脈を閉じ込めた純粋な関数である。
+S0 の結果から S1 を組み直す [code: evReassemble] も、同じ形の純粋な関数である。
 
 この形にしておくと、第[ref-number determinism]章の「入力の外から値を持ち込まない」という規則を確かめる場所が狭まる。
 純粋な段階に外の値が入る道は引数しかなく、引数を作るのは IO のエッジだけだからである。
