@@ -16,6 +16,7 @@ module Golem.Eval.File
     kentenShapes,
     joinSoftBreaks,
     splitLines,
+    duplicateKeys,
   )
 where
 
@@ -352,7 +353,8 @@ evalBlock ctx (A.Located sp b) = case b of
     h' <- mapM (evalInlines ctx False) h
     rows' <- mapM (mapM (evalInlines ctx False)) rows
     pure [block sp (Table (map alignment al) h' rows')]
-  A.CodeBlock lang args ls -> do
+  A.CodeBlock lang args0 ls -> do
+    args <- uniqueKeys args0
     ca <- codeArgs ctx sp [] args
     c <- codeOf ca Nothing lang [(lsp, t) | A.Located lsp t <- ls]
     pure [block sp (CodeBlock c)]
@@ -370,7 +372,10 @@ evalBlock ctx (A.Located sp b) = case b of
               Left d -> report d
               Right v -> modify' (\s -> s {stVars = Map.insert n v (stVars s), stDefined = stDefined s <> [(n, nsp)]})
     pure []
-  A.BlockCommand name args body -> standalone ctx sp name args body
+  A.BlockCommand name@(A.Located _ n) args body
+    -- @manifest and @style-def read their own arguments (G0252)
+    | n `elem` settingCommands -> standalone ctx sp name args body
+    | otherwise -> uniqueKeys args >>= \args' -> standalone ctx sp name args' body
   A.Attributed cmds target -> attributed ctx sp cmds target
   A.ErrorBlock -> pure []
   where
@@ -483,7 +488,8 @@ attributedGroup ctx sp cmds target = case target of
       A.Located _ (A.BlockCommand {}) -> True
       _ -> False
     foldM' f z = foldl (\acc x -> acc >>= \a -> f a x) (pure z)
-    withAttrs attrs t = do
+    withAttrs attrs0 t = do
+      attrs <- mapM uniqueAttrKeys attrs0
       -- every line of an attribute already given (golem-eval ADR 0003)
       let named = [(n, asp) | A.Located asp (A.BlockCommand (A.Located _ n) _ _) <- attrs]
           repeated = [asp | (i, (n, asp)) <- zip [0 :: Int ..] named, n `elem` map fst (take i named)]
@@ -1061,24 +1067,28 @@ evalInline ctx inHeading (A.Located sp i) = case i of
       else case evalExpr en e >>= embedValue sp of
         Left d -> report d >> pure []
         Right t -> pure [Text sp t]
-  A.Command (A.Located nsp name) args slots
-    | Just (Overridable o) <- parsed, Just pc <- Map.lookup o (phOverrides (ctxPlugins ctx)) -> plugin pc
-    | Just b <- parsed -> builtin ctx inHeading sp b args slots
-    | Just pc <- pluginCommandName name >>= (`Map.lookup` phCommands (ctxPlugins ctx)) -> plugin pc
-    | otherwise -> err "G0222" nsp ("未知のコマンドです: " <> name) >> pure []
-    where
-      parsed = parseBuiltin name
-      plugin pc = do
-        vals <- forM args $ \(A.Located _ a) -> case a of
-          A.Positional v -> argValue ctx v
-          A.Keyword _ v -> argValue ctx v
-          _ -> pure (Right VNil)
-        slots' <- mapM (evalInlines ctx inHeading) slots
-        case sequence vals of
-          Left d -> report d >> pure []
-          Right vs -> case pcCall pc vs slots' sp of
-            Left ds -> mapM_ report ds >> pure []
-            Right (out, ds) -> mapM_ report ds >> pure out
+  A.Command n args slots -> uniqueKeys args >>= \args' -> evalCommand ctx inHeading sp n args' slots
+
+-- | An inline command, its repeated keys dropped (golem-parser ADR 0013).
+evalCommand :: EvalContext -> Bool -> SrcSpan -> A.Located A.Name -> [A.Located A.Argument] -> [[A.Located A.Inline]] -> M [Inline]
+evalCommand ctx inHeading sp (A.Located nsp name) args slots
+  | Just (Overridable o) <- parsed, Just pc <- Map.lookup o (phOverrides (ctxPlugins ctx)) = plugin pc
+  | Just b <- parsed = builtin ctx inHeading sp b args slots
+  | Just pc <- pluginCommandName name >>= (`Map.lookup` phCommands (ctxPlugins ctx)) = plugin pc
+  | otherwise = err "G0222" nsp ("未知のコマンドです: " <> name) >> pure []
+  where
+    parsed = parseBuiltin name
+    plugin pc = do
+      vals <- forM args $ \(A.Located _ a) -> case a of
+        A.Positional v -> argValue ctx v
+        A.Keyword _ v -> argValue ctx v
+        _ -> pure (Right VNil)
+      slots' <- mapM (evalInlines ctx inHeading) slots
+      case sequence vals of
+        Left d -> report d >> pure []
+        Right vs -> case pcCall pc vs slots' sp of
+          Left ds -> mapM_ report ds >> pure []
+          Right (out, ds) -> mapM_ report ds >> pure out
 
 {- | A built-in command. A command that takes no prose slot ('takesNoSlot',
 golem-eval ADR 0003) reports a slot as G0238, before the arguments, and
@@ -1229,6 +1239,34 @@ splitSlot c = foldr step [[]]
     step _ [] = [[]]
 
 -- ------------------------------------------------------------------ arguments
+
+{- | G0277 for each keyword argument whose key a keyword argument before it
+already has (golem-parser ADR 0013). A keyword splat is not expanded yet,
+so it has no keys.
+-}
+duplicateKeys :: [A.Located A.Argument] -> [Diagnostic]
+duplicateKeys args = [diagnostic "G0277" Error asp ("同じキーを二度書いています: " <> k) | (asp, k) <- repeatedKeys args]
+
+-- | The keyword arguments whose key comes before them, with their keys.
+repeatedKeys :: [A.Located A.Argument] -> [(SrcSpan, Text)]
+repeatedKeys args = [(asp, k) | (i, (asp, k)) <- zip [0 :: Int ..] keyed, k `elem` map snd (take i keyed)]
+  where
+    keyed = [(asp, k) | A.Located asp (A.Keyword (A.Located _ k) _) <- args]
+
+{- | The arguments with 'duplicateKeys' reported and every repeated keyword
+argument dropped: the first of each key is used.
+-}
+uniqueKeys :: [A.Located A.Argument] -> M [A.Located A.Argument]
+uniqueKeys args = do
+  mapM_ report (duplicateKeys args)
+  let repeated = map fst (repeatedKeys args)
+  pure [a | a@(A.Located asp _) <- args, asp `notElem` repeated]
+
+-- | 'uniqueKeys' on the arguments of an attribute.
+uniqueAttrKeys :: A.Located A.Block -> M (A.Located A.Block)
+uniqueAttrKeys = \case
+  A.Located sp (A.BlockCommand n args body) -> (\args' -> A.Located sp (A.BlockCommand n args' body)) <$> uniqueKeys args
+  other -> pure other
 
 keywords :: EvalContext -> [A.Located A.Argument] -> M [(Text, A.ArgValue)]
 keywords _ args = pure [(k, v) | A.Located _ (A.Keyword (A.Located _ k) v) <- args]
