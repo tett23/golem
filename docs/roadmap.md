@@ -19,9 +19,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - **数の糖衣構文 `##1##`**（未実装、[golem-parser ADR 0011](golem-parser/adr/0011-number-shorthand.md)）：数を `##1##` の形で書ける記法を加える。意味は ADR で決める。`[number-text ...]`（[docs/markup.md](markup.md)）と、数の抽象値との関係もその ADR で決める。
 
-### PDF
-
-
 ### 記法と設定
 
 - **ADR とコードの食い違い**（未実装、[docs/adr 0031](adr/0031-adr-code-mismatches.md)）：`overridableCommands` に `code` が入っている。LSP の補完にプラグインのコマンドの名前が出ない。`golem inspect` のオプションの書き方が ADR と違う。ホストが `golem_dealloc` を一度も呼ばない。どちらに合わせるかを決めて直す。
