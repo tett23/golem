@@ -1,6 +1,6 @@
 # ADR 0017: コードの書体とコードブロックの組み方
 
-ステータス: 採択
+ステータス: 採択→コードの改行の規則を文字スタイル `url` にも当てることは [golem-doc ADR 0005](../../golem-doc/adr/0005-bibliography-fields.md)
 
 ## 文脈
 
