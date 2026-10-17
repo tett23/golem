@@ -942,7 +942,7 @@ layoutFigures inp geom fonts figures = do
   let capacity = length (pgLineGrid geom)
       round' assumed = do
         built <- buildFlow inp geom fonts figures assumed
-        pure (if null (bErrors built) then Right (built, paginateIn (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
+        pure (if null (bErrors built) then Right (built, paginateWithin (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
       labels = labelSpans (piBook inp)
       labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
   result <- fixpoint labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
@@ -959,8 +959,45 @@ layoutFigures inp geom fonts figures = do
           env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyLook (piStyle inp) (pgFontSize geom))
           tocPages = Map.fromList [(lid, tocPage tg e (pageNumberLine env n)) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
        in case concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages) (bLineSpans built) (bRules built))
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings pages) (bLineSpans built) (bRules built))
             ds -> Left ds
+
+{- | The most grid lines a column may have with @page-lines (docs/adr ADR
+0030): the grid goes on past the type area in the direction of the
+lines, as long as the face of a line stays inside the trimmed page.
+-}
+adjustLimit :: PageGeometry -> Int
+adjustLimit geom =
+  let n = length (pgLineGrid geom)
+      fs = pgFontSize geom
+      at = gridLine geom
+      areas = [pgTypeArea geom, pgTypeAreaEven geom]
+      inside k
+        | pgVertical geom = all (\r -> rectX r + rectW r - at k - fs `div` 2 >= 0) areas
+        | otherwise = all (\r -> rectY r + rectH r - at k - (fs - round (toRational fs * baselineRatio)) >= 0) areas
+   in n + length (takeWhile inside [n .. n + 999])
+
+{- | The position of grid line @k@ from the type area, past its last line
+too (docs/adr ADR 0030).
+-}
+gridLine :: PageGeometry -> Int -> Sp
+gridLine geom k = case (drop k grid, grid) of
+  (g : _, _) -> g
+  (_, g0 : _) -> g0 + toInteger k * pgLinePitch geom
+  _ -> toInteger k * pgLinePitch geom
+  where
+    grid = pgLineGrid geom
+
+-- | G0737: the manual controls of page breaks not met (docs/adr ADR 0030).
+unmetWarnings :: [PageOut] -> [Diagnostic]
+unmetWarnings pages =
+  [ case u of
+      UnmetNoBreak sp -> diagnostic "G0737" Warning sp "ここで改ページを止められませんでした"
+      UnmetNeedLines sp k -> diagnostic "G0737" Warning sp ("@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (poLines p)) <> " を超えます")
+      UnmetAdjust sp k -> diagnostic "G0737" Warning sp ("@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")
+  | p <- pages,
+    u <- poUnmet p
+  ]
 
 {- | G0746 (golem-driver ADR 0027): a ruled paragraph broken between
 columns, or a ruled heading that lost a rule, because an empty column
@@ -1572,6 +1609,8 @@ data UnitKind
     UIndexEntry !Sp
   | -- | the start (with the set) and the end of the columns of the index
     UColumns !(Maybe ColumnSet)
+  | -- | a manual control of page breaks (docs/adr ADR 0030)
+    UPageControl !PageControl
 
 {- | The look and the indent of a paragraph style (docs/adr ADR 0005, 0006):
 its role, its size, and its kerning, tracking, proportional metrics and
@@ -1662,11 +1701,15 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
     (docs/adr ADR 0005); in a list item, paragraphs are not indented by
     their style (docs/adr ADR 0006) but by the lists (golem-driver ADR 0013) -}
     blocks style ctx n bs =
-      let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx prev b <>) <$> block style ctx k b) n (zip (Nothing : map Just bs) bs)
+      let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx prev b <>) <$> block style ctx k b) n (zip (scanl before Nothing bs) bs)
        in (n', concat uss)
     gapBefore style ctx (Just (Block _ _ (Paragraph s1 _))) (Block sp _ (Paragraph s2 _))
       | s1 == s2, Just g <- paraStyle style s2 >>= psSpaceBetween, g > 0 = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing)]
     gapBefore _ _ _ _ = []
+    -- the block before, past the controls of page breaks (docs/adr ADR 0030)
+    before prev b = case blockBody b of
+      PageControl _ -> prev
+      _ -> Just b
     block style ctx n (Block sp lbl body) =
       let unit kind l is face = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing)
           plainUnit kind l is = unit kind l is (bodyLook style fs)
@@ -1710,6 +1753,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
                     Just set -> (n, [plainUnit (UColumns (Just set)) Nothing []] <> entries (UIndexEntry (csMeasure set)) <> [plainUnit (UColumns Nothing) Nothing []])
             ChannelOutput BibliographyOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bookCitations book)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
+            PageControl c -> (n, [plainUnit (UPageControl c) Nothing []])
     {- the items of the list numbered n: their units are inside it, the first
     unit of an item that starts with a paragraph carries the marker -}
     list style ctx n items =
@@ -1924,6 +1968,7 @@ buildFlow inp geom fonts images assumed = do
       isGap u = case uKind u of
         UGap _ -> True
         UBreak _ -> True
+        UPageControl _ -> True
         -- code blocks are set by codeBlocks (golem-driver ADR 0017)
         UCode {} -> True
         UColumns _ -> True
@@ -2112,6 +2157,12 @@ buildFlow inp geom fonts images assumed = do
                     info = cbInfo cb
                  in (nextId + length ids, flows <> [FCode (ciGeometry info) (ciCaptionSpan info) (cbFirstRows cb) (isJust (ciContinued info)) boxes], Map.union lineAcc set, figAcc, headAcc, errs)
             UBreak k -> (nextId, flows <> [FBreak k], lineAcc, figAcc, headAcc, errs)
+            UPageControl c ->
+              let flow = case c of
+                    NoBreak -> FNoBreak (uSpan u)
+                    NeedLines k -> FNeedLines (uSpan u) k
+                    AdjustLines k -> FAdjustLines (uSpan u) k
+               in (nextId, flows <> [flow], lineAcc, figAcc, headAcc, errs)
             UColumns set -> (nextId, flows <> [maybe FRestoreColumns FSwitchColumns set], lineAcc, figAcc, headAcc, errs)
             _ ->
               let c = singles Map.! i
@@ -2573,9 +2624,7 @@ writeDocumentView inp geom fonts layout intent =
       heads = runningHeads inp geom layout
       grid = pgLineGrid geom
       baseSet = pageColumnSet (piStyle inp) geom
-      gridAt sl = case drop sl grid of
-        (g : _) -> g
-        [] -> 0
+      gridAt = gridLine geom
       -- font index × direction: even refs horizontal, odd refs vertical
       ref ix v = P.FontRef (2 * ix + (if v then 1 else 0))
       toSp size a = round (a * toRational size) :: Integer
@@ -2943,7 +2992,8 @@ writeDocumentView inp geom fonts layout intent =
             figMarks = [figureMark fid r pf | (fid, r, pf) <- figures]
             -- one note's lines are in one line of the flow (golem-driver ADR 0018)
             noteLines = concat [[(nid, l) | l <- take cnt (drop from (Map.findWithDefault [] nid noteBodies))] | (nid, from, cnt) <- poFootnotes p]
-            bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
+            -- the foot of the column, of its lines with @page-lines (docs/adr ADR 0030)
+            bottomSlots = drop (poLines p - length noteLines) [0 .. poLines p - 1]
             noteParts = [entry "脚注の行" (noteSpan nid) ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] []) | (slot, (nid, l)) <- zip bottomSlots noteLines]
             {- each rule with its band, the weight of its thinnest part, its
             marks and its swatch (golem-driver ADR 0028) -}
@@ -2960,7 +3010,7 @@ writeDocumentView inp geom fonts layout intent =
                 <> [ ("脚注の罫線", r, ruleThinnest t (rsStyle rule), ruleMarks sw (ruleShapes vertical r (rsStyle rule)), sw)
                    | not (null noteLines),
                      Just rule <- [stNotesRule style],
-                     let (r, t) = noteRule ta rule (length grid - length noteLines)
+                     let (r, t) = noteRule ta rule (poLines p - length noteLines)
                          sw = ruleSwatch rule
                    ]
          in ( lineParts <> noteParts,

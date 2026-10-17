@@ -16,6 +16,7 @@ InDesign の操作の手順は説明しません。
 | 正規表現スタイル | 正規表現スタイル（GREP スタイル） |
 | アキ量のセット | 文字組みアキ量設定 |
 | [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift] | カーニング、トラッキング、プロポーショナルメトリクス、ベースラインシフト |
+| [code: @no-page-break] | 段落分離禁止オプションの「次の段落と連動」 |
 | マスターページ（[code: \[masters\]]） | 親ページ（InDesign 2022 より前はマスターページ） |
 | プロジェクトの [code: fonts/] | Document Fonts フォルダー |
 | スウォッチ（[code: \[color.swatches\]]） | スウォッチ |

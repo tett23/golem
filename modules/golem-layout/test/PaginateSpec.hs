@@ -15,7 +15,7 @@ import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..))
 import Golem.Layout.Paginate
 import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
-import Golem.Syntax (FileId (..), mkSpan)
+import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -32,6 +32,7 @@ paginateTests =
       testGroup "widows, orphans and the page end" widowOrphanTests,
       testGroup "page references that do not settle (S2)" pageRefTests,
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
+      testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
       testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
       testGroup "invariants" propertyTests
     ]
@@ -222,6 +223,82 @@ placedIds ps =
       SLine l -> [l]
       SHeading l m -> [l .. l + m - 1]
       _ -> []
+  ]
+
+-- | The span of a marker.
+mk :: SrcSpan
+mk = mkSpan (FileId 0) 0 1
+
+-- | The unmet controls of all columns.
+unmets :: [PageOut] -> [Unmet]
+unmets = concatMap poUnmet
+
+-- | Page, column and line ids of each column.
+columnsOf :: [PageOut] -> [(Int, Int, [Int])]
+columnsOf ps = [(poNumber p, poColumn p, [i | (_, SLine i) <- poSlots p]) | p <- ps]
+
+pageControlTests :: [TestTree]
+pageControlTests =
+  [ testCase "no-break: the last two lines go on with the paragraph after" $ do
+      lineIds (paginate 1 10 [FParagraph (lines' 0 9), FParagraph (lines' 10 5)]) @?= [[0 .. 8], [10 .. 14]]
+      let ps = paginate 1 10 [FParagraph (lines' 0 9), FNoBreak mk, FParagraph (lines' 10 5)]
+      lineIds ps @?= [[0 .. 6], [7, 8, 10, 11, 12, 13, 14]]
+      unmets ps @?= [],
+    testCase "no-break: a paragraph of two lines, or of three, goes whole" $ do
+      lineIds (paginate 1 10 [FParagraph (lines' 0 7), FParagraph (lines' 20 2), FNoBreak mk, FParagraph (lines' 30 5)])
+        @?= [[0 .. 6], [20, 21, 30, 31, 32, 33, 34]]
+      lineIds (paginate 1 10 [FParagraph (lines' 0 6), FParagraph (lines' 20 3), FNoBreak mk, FParagraph (lines' 30 5)])
+        @?= [[0 .. 5], [20, 21, 22, 30, 31, 32, 33, 34]],
+    testCase "no-break: nothing is sent from an empty column, and the control is unmet" $ do
+      let ps = paginate 1 3 [FParagraph (lines' 0 3), FNoBreak mk, FParagraph (lines' 10 5)]
+      lineIds ps @?= [[0, 1, 2], [10, 11, 12], [13, 14]]
+      unmets ps @?= [UnmetNoBreak mk],
+    testCase "no-break after a figure sent on is unmet" $
+      unmets (paginate 1 5 [FParagraph (lines' 0 4), FFigure 99 3 [] [], FNoBreak mk, FParagraph (lines' 10 2)]) @?= [UnmetNoBreak mk],
+    testCase "the controls after a heading do not change keeping it with what follows" $ do
+      let plain = [FParagraph (lines' 0 3), heading 20, FParagraph (lines' 30 2)]
+          marked = [FParagraph (lines' 0 3), heading 20, FNeedLines mk 1, FNoBreak mk, FParagraph (lines' 30 2)]
+      contents (paginate 1 5 marked) @?= contents (paginate 1 5 plain)
+      unmets (paginate 1 5 marked) @?= [],
+    testCase "need-lines goes to the next column only when the column is short" $ do
+      lineIds (paginate 1 10 [FParagraph (lines' 0 6), FNeedLines mk 5, FParagraph (lines' 10 2)]) @?= [[0 .. 5], [10, 11]]
+      lineIds (paginate 1 10 [FParagraph (lines' 0 6), FNeedLines mk 4, FParagraph (lines' 10 2)]) @?= [[0, 1, 2, 3, 4, 5, 10, 11]]
+      lineIds (paginate 1 10 [FNeedLines mk 5, FParagraph (lines' 0 2)]) @?= [[0, 1]],
+    testCase "need-lines in two columns goes to the next column" $
+      columnsOf (paginate 2 10 [FParagraph (lines' 0 6), FNeedLines mk 5, FParagraph (lines' 10 2)]) @?= [(1, 0, [0 .. 5]), (1, 1, [10, 11])],
+    testCase "need-lines beyond the column is unmet and goes to the next column" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 6), FNeedLines mk 20, FParagraph (lines' 10 2)]
+      lineIds ps @?= [[0 .. 5], [10, 11]]
+      unmets ps @?= [UnmetNeedLines mk 20],
+    testCase "controls at the end of the book make no page; the last no-break is unmet" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 2), FNeedLines mk 3, FNoBreak mk]
+      lineIds ps @?= [[0, 1]]
+      unmets ps @?= [UnmetNoBreak mk],
+    testCase "page-lines +1 gives the column one more line, and the next column its own" $ do
+      let ps = paginate 1 10 [FAdjustLines mk 1, FParagraph (lines' 0 11), FParagraph (lines' 20 3)]
+      lineIds ps @?= [[0 .. 10], [20, 21, 22]]
+      map poLines ps @?= [11, 10]
+      unmets ps @?= [],
+    testCase "page-lines -1 leaves the column a line short" $ do
+      let ps = paginate 1 10 [FAdjustLines mk (-1), FParagraph (lines' 0 12)]
+      lineIds ps @?= [[0 .. 8], [9, 10, 11]]
+      map poLines ps @?= [9, 10],
+    testCase "page-lines beyond the limit is cut to it and unmet" $ do
+      let ps = paginateWithin 11 1 (ColumnSet 1 0 0 0) 10 [FAdjustLines mk 1, FAdjustLines mk 1, FParagraph (lines' 0 12)]
+      map poLines ps @?= [11, 10]
+      unmets ps @?= [UnmetAdjust mk 1],
+    testCase "page-lines below the lines placed is cut to them and unmet" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 8), FAdjustLines mk (-5), FParagraph (lines' 10 2)]
+      lineIds ps @?= [[0 .. 7], [10, 11]]
+      map poLines ps @?= [8, 10]
+      unmets ps @?= [UnmetAdjust mk (-2)],
+    testCase "the footnotes of a column of page-lines +1 use its last line" $ do
+      -- nine lines, the separator and a note of one line take eleven lines
+      let flow = [FAdjustLines mk 1, FParagraph (LineBox 0 [NoteBody (nid 900) 1] [] [] 0 : lines' 1 8)]
+          ps = paginate 1 10 flow
+      map poLines ps @?= [11]
+      notesByPage ps @?= [(1, [nid 900])]
+      lineIds ps @?= [[0 .. 8]]
   ]
 
 figureOrderTests :: [TestTree]

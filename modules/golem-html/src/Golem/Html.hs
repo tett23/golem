@@ -71,6 +71,8 @@ data HtmlConfig = HtmlConfig
     hcRubyBaseSpacing :: !Text,
     -- | the kinds of forced break the book uses (docs/adr ADR 0017)
     hcBreakKinds :: !(Set BreakKind),
+    -- | whether the book uses @no-page-break (docs/adr ADR 0030)
+    hcNoBreak :: !Bool,
     -- | the markers of [lists], when the book has it (golem-driver ADR 0013)
     hcLists :: !(Maybe HtmlLists),
     -- | the paragraph style code: pre (golem-driver ADR 0017)
@@ -347,15 +349,19 @@ idAttr = maybe "" (\l -> " id=\"" <> escapeXml l <> "\"")
 {- | The blocks at the top of a document: the block after forced breaks
 carries the kind of the last of them on its outermost element; a break
 at the end writes nothing, and a column break nothing (docs/adr ADR 0017).
+The block after a no-break carries avoid; need-lines and page-lines write
+nothing (docs/adr ADR 0030).
 -}
 topBlocks :: Ctx -> [Block] -> Text
 topBlocks c = go Nothing
   where
     go _ [] = ""
-    go _ (Block _ _ (ForcedBreak k) : rest) = go (Just k) rest
+    go _ (Block _ _ (ForcedBreak k) : rest) = go (breakName k) rest
+    go _ (Block _ _ (PageControl NoBreak) : rest) = go (Just "avoid") rest
+    go pending (Block _ _ (PageControl _) : rest) = go pending rest
     go pending (b : rest) = withBreak pending (block c b) <> go Nothing rest
     -- the attribute goes at the end of the first start tag
-    withBreak pending html = case pending >>= breakName of
+    withBreak pending html = case pending of
       Nothing -> html
       Just name ->
         let (open, after) = T.breakOn ">" html
@@ -450,6 +456,7 @@ block c (Block sp lbl body) = case body of
         ]
       <> "</ol>\n"
   ForcedBreak _ -> ""
+  PageControl _ -> ""
   where
     -- a URL of http or https is a link; another URL is not (golem-doc ADR 0005)
     entryPart = \case
@@ -893,6 +900,8 @@ css cfg book =
          | k <- Set.toAscList (hcBreakKinds cfg),
            Just name <- [breakName k]
          ]
+      -- avoiding a break, only when the book uses @no-page-break (docs/adr ADR 0030)
+      <> ["[data-break-before=\"avoid\"] { page-break-before: avoid; break-before: avoid; }" | hcNoBreak cfg]
       -- the styles of the files, last, under the class of their pages (docs/adr ADR 0014)
       <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
   where

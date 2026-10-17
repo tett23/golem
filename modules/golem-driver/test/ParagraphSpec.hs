@@ -1,4 +1,4 @@
-module ParagraphSpec (verseTests, indentTests, listTests, separatorTests, hardBreakTests, akiTests, breakTests, columnTests) where
+module ParagraphSpec (verseTests, indentTests, listTests, separatorTests, hardBreakTests, akiTests, breakTests, pageControlTests, columnTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
@@ -342,6 +342,55 @@ listTests =
       t' <- listText "" "- 一\n\n+ 一\n" "horizontal"
       t' @?= "・一\n\n1. 一\n"
   ]
+
+-- | Manual control of page breaks (docs/adr ADR 0030).
+pageControlTests :: [TestTree]
+pageControlTests =
+  [ testCase "PDF: page-lines +1 puts a line one pitch past the last line of the grid, horizontal and vertical" $
+      forM_ [(fiveLines, dY), (verticalFive, dX)] $ \(style, axis) -> do
+        pdf <- miniPdf fakeProvider True style (T.concat ["@page-lines +1\n\n"] <> T.intercalate "\n\n" ["一", "二", "三", "四", "五", "六"] <> "\n") []
+        streams <- inflateAll pdf
+        case filter (not . null) (map drawnGlyphs streams) of
+          first : _ -> do
+            let ps = sort (nub [read (T.unpack (TE.decodeUtf8 (axis d))) :: Double | d <- first])
+                steps = zipWith (-) (drop 1 ps) ps
+            length ps @?= 6
+            assertBool (show steps) (all (\s -> abs (s - 15) < 0.01) steps)
+          [] -> assertFailure "no glyphs",
+    testCase "PDF: page-lines +1 past the trimmed page is G0737 and changes nothing" $ do
+      let style = replaceIn "lines = 30" "lines = 36" horizontalStyle
+      r <- layoutMini style "@page-lines +1\n\n一\n" []
+      (_, layout) <- either (assertFailure . show) pure r
+      map poLines (plPages layout) @?= [36]
+      map diagCode (plNotices layout) @?= [DiagnosticCode "G0737"],
+    testCase "PDF: a no-break that cannot be met and need-lines past the column are G0737, and the PDF is written" $ do
+      r <- layoutMini fiveLines "@no-page-break\n\n一\n\n@need-lines 9\n\n二\n" []
+      (_, layout) <- either (assertFailure . show) pure r
+      map diagCode (plNotices layout) @?= [DiagnosticCode "G0737", DiagnosticCode "G0737"]
+      _ <- miniPdf fakeProvider True fiveLines "@no-page-break\n\n一\n" []
+      pure (),
+    testCase "PDF: the same bytes in parallel and in sequence with the controls" $ do
+      let src = "一\n\n@no-page-break\n\n二\n\n@need-lines 3\n\n三\n\n@page-lines -1\n\n四\n"
+      a <- miniPdf fakeProvider True fiveLines src []
+      b <- miniPdf fakeProvider False fiveLines src []
+      a @?= b,
+    testCase "HTML: the paragraph after a no-break avoids a break; need-lines and page-lines write nothing" $ do
+      (page, css) <- htmlMini horizontalStyle "a\n\n@no-page-break\n\nb\n"
+      assertBool (T.unpack page) ("<p>a</p>\n<p data-break-before=\"avoid\">b</p>\n" `T.isInfixOf` page)
+      assertBool "avoid rule" ("[data-break-before=\"avoid\"] { page-break-before: avoid; break-before: avoid; }" `T.isInfixOf` css)
+      (page', css') <- htmlMini horizontalStyle "a\n\n@need-lines 3\n\n@page-lines +1\n\nb\n"
+      assertBool (T.unpack page') ("<p>a</p>\n<p>b</p>\n" `T.isInfixOf` page')
+      assertBool "no rule" (not ("data-break-before" `T.isInfixOf` css')),
+    testCase "plain text: the controls write nothing" $ do
+      let text src = withVerseProject "" src $ \tmp -> do
+            _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            TIO.readFile (tmp </> "build/text/horizontal/v.txt")
+      marked <- text "a\n\n@no-page-break\n\nb\n"
+      plain <- text "a\n\nb\n"
+      marked @?= plain
+  ]
+  where
+    verticalFive = replaceIn "binding = \"left\"" "binding = \"right\"" (replaceIn "writing-mode = \"horizontal\"" "writing-mode = \"vertical\"" fiveLines)
 
 breakTests :: [TestTree]
 breakTests =

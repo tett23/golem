@@ -54,6 +54,7 @@ cfg0 =
       hcRubyGroupAlign = "space-between",
       hcRubyBaseSpacing = "center",
       hcBreakKinds = Set.empty,
+      hcNoBreak = False,
       hcLists = Nothing,
       hcCode = HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty,
       hcHeadingRules = Map.empty
