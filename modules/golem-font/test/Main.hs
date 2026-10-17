@@ -19,13 +19,13 @@ main = do
   sans <- load "SourceSansPro-Regular.otf"
   serif <- BS.readFile "test/fonts/SourceSerifVariable-Roman.ttf"
   -- the subset of Source Han Sans has no palt; Noto Serif JP of golem-driver's 蟹工船 fixture has
-  noto <- BS.readFile "../golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" >>= either (fail . show) pure . loadFont
+  noto <- BS.readFile "../golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" >>= loadFont >>= either (fail . show) pure
   defaultMain (tests han sans serif noto)
 
 load :: FilePath -> IO Font
 load name = do
   b <- BS.readFile ("test/fonts/" <> name)
-  either (fail . show) pure (loadFont b)
+  loadFont b >>= either (fail . show) pure
 
 -- | A copy of the font with the OS/2 fsType set.
 withFsType :: Int -> ByteString -> ByteString
@@ -77,13 +77,13 @@ tests han sans serif noto =
       testGroup
         "licence and units"
         [ testCase "a font whose fsType forbids embedding is an error" $ do
-            void (loadFont serif) @?= Right ()
-            void (loadFont (withFsType 0x0002 serif)) @?= Left (EmbeddingRestricted 0x0002)
-            void (loadFont (withFsType 0x0200 serif)) @?= Left (EmbeddingRestricted 0x0200)
-            void (loadFont (withFsType 0x0008 serif)) @?= Right (),
+            loadFont serif >>= (@?= Right ()) . void
+            loadFont (withFsType 0x0002 serif) >>= (@?= Left (EmbeddingRestricted 0x0002)) . void
+            loadFont (withFsType 0x0200 serif) >>= (@?= Left (EmbeddingRestricted 0x0200)) . void
+            loadFont (withFsType 0x0008 serif) >>= (@?= Right ()) . void,
           testCase "fsType as the OpenType specification reads it: the least restrictive usage, no subsetting (golem-driver ADR 0016)" $ do
-            sequence_ [void (loadFont (withFsType v serif)) @?= Left (EmbeddingRestricted v) | v <- [0x0102, 0x0100, 0x0302]]
-            sequence_ [void (loadFont (withFsType v serif)) @?= Right () | v <- [0x0000, 0x0004, 0x0008, 0x0006, 0x000A]],
+            sequence_ [loadFont (withFsType v serif) >>= (@?= Left (EmbeddingRestricted v)) . void | v <- [0x0102, 0x0100, 0x0302]]
+            sequence_ [loadFont (withFsType v serif) >>= (@?= Right ()) . void | v <- [0x0000, 0x0004, 0x0008, 0x0006, 0x000A]],
           testCase "units are converted to sp with a single rounding" $ do
             -- 333 units of 1000 at 10.5pt: 333 × 688128 / 1000 = 229146.624
             unitsToSp 1000 688128 333 @?= 229147
@@ -108,13 +108,15 @@ tests han sans serif noto =
         "subsetting (ADR 0002)"
         [ testCase "the same glyph set gives the same bytes" $ do
             let gids = [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "日本語の組版")]
-            subsetFont han gids @?= subsetFont han (reverse gids)
-            assertBool "non-empty" (maybe False ((> 100) . BS.length) (subsetFont han gids)),
+            a <- subsetFont han gids
+            b <- subsetFont han (reverse gids)
+            a @?= b
+            assertBool "non-empty" (maybe False ((> 100) . BS.length) a),
           testCase "used glyphs stay with their ids; unused ones are emptied" $ do
             let used = [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "日本")]
                 unused = head' [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "語")]
-            sub <- maybe (assertFailure "subset failed") pure (subsetFont han used)
-            f <- either (assertFailure . show) pure (loadFont sub)
+            sub <- subsetFont han used >>= maybe (assertFailure "subset failed") pure
+            f <- loadFont sub >>= either (assertFailure . show) pure
             [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "日本")] @?= used
             mapM_ (assertBool "outline kept" . maybe False ((/= (0, 0, 0, 0)) . gmBBox) . glyphMetrics f) used
             assertBool "outline dropped" (maybe True ((== (0, 0, 0, 0)) . gmBBox) (glyphMetrics f unused)),
@@ -136,14 +138,20 @@ tests han sans serif noto =
             fontCidSystemInfo han @?= Just (CidSystemInfo "Adobe" "Identity" 0),
           testCase "a name-keyed CFF font and a TrueType font have none" $ do
             fontCidSystemInfo sans @?= Nothing
-            f <- either (assertFailure . show) pure (loadFont serif)
+            f <- loadFont serif >>= either (assertFailure . show) pure
             fontCidSystemInfo f @?= Nothing,
           testCase "a subset keeps the ROS and the CIDs of the glyphs used" $ do
             let used = [g | (g, _, _) <- shapeUnits han (shapeRequest 1000 "「日本語の組版」、ー。")]
-            sub <- maybe (assertFailure "subset failed") pure (subsetFont han used)
-            f <- either (assertFailure . show) pure (loadFont sub)
+            sub <- subsetFont han used >>= maybe (assertFailure "subset failed") pure
+            f <- loadFont sub >>= either (assertFailure . show) pure
             fontCidSystemInfo f @?= fontCidSystemInfo han
-            map (glyphCid f) used @?= map (glyphCid han) used
+            map (glyphCid f) used @?= map (glyphCid han) used,
+          testCase "a glyph id outside a CID-keyed font is its own CID (docs/adr ADR 0034)" $ do
+            let n = fontNumGlyphs han
+            map (glyphCid han) [n, n + 1, n + 1000] @?= [n, n + 1, n + 1000]
+            glyphCid han 0 @?= 0,
+          testCase "a font that is not CID-keyed gives the glyph id as the CID" $
+            map (glyphCid sans) [0, 1, 2, fontNumGlyphs sans + 3] @?= [0, 1, 2, fontNumGlyphs sans + 3]
         ]
     ]
   where
