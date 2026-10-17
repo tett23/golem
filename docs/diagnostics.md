@@ -101,6 +101,7 @@ silence-notices = ["G0262", "G0407"]
 次の番号は、ソースで使っていない。
 
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。下に節を置く。
+- **廃止**：G0235。[golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md) が `@table` のコマンドを指す CSV の誤りに定めたが、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md) で表のファイルの中を指す G0285 に置き換えた。下に節を置く。
 - **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。下に節を置く。
 - **空き**：G0104 から G0109、G0125 から G0128、G0601、G0703 から G0720、G0731、G0736 から G0740。各区分の最後に使った番号より後も空いている。
 
@@ -113,12 +114,13 @@ UTF-8 として不正なバイト列があります
 
 ### 意味
 
-原稿のファイル（章と import したファイル）、`manifest.toml`、`style.toml` のどれかに、UTF-8 として読めないバイト列がある。
+原稿のファイル（章と import したファイル）、`manifest.toml`、`style.toml`、`@table` の表のファイル（CSV と TSV）のどれかに、UTF-8 として読めないバイト列がある。
 位置は最初の不正なバイトである。
+表のファイルの誤りは、そのファイルの位置で表示し、そのファイルからは表を作らない。
 
 - メッセージ: `UTF-8 として不正なバイト列があります`
 - 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
-- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)
+- ADR: [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md)、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)（表のファイル）
 
 ### 主な原因
 
@@ -141,6 +143,7 @@ UTF-8 で保存し直す。
 位置はバイト 0 から 3 である。
 先頭以外の BOM（U+FEFF）は拒まない。
 LSP では、エディタで開いているファイルにも出す。
+`@table` の表のファイル（CSV と TSV）の先頭の BOM は読み飛ばすので、このコードにならない（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
 
 - メッセージ: `ファイルの先頭に BOM があります。BOM を取り除いてください`
 - 段階とモジュール: 構文（golem-parser の `Golem.Parser.Read`）
@@ -1412,31 +1415,28 @@ wrap は start か end です
 
 ### 直し方
 
-`src=` で CSV のファイルを指す。
+`src=` で CSV か TSV のファイルを指す。
 
 ## G0235
 
 CSV が空か、行ごとのセルの数が一致しません
 
 - 重大度: エラー
-- 状態: 使用中
+- 状態: 廃止
 
 ### 意味
 
-`@table` の CSV が空か、行ごとのセルの数がそろっていない。
+廃止した。
+`@table` の CSV が空か、行ごとのセルの数がそろっていないことを、`@table` のコマンドの位置で報告するコードだった。
+今は同じ誤りを、表のファイルの中の位置で [G0285](#g0285) として報告する。
 
 - メッセージ: `CSV が空です`、`CSV の行ごとのセルの数が一致しません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
-
-### 主な原因
-
-- `@table` の CSV のファイルが空である。
-- CSV の行によって列の数が違う。
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)（定めた）、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)（廃止した）
 
 ### 直し方
 
-CSV の各行の列の数を見出しの行にそろえる。
+[G0285](#g0285) の直し方に従う。
 
 ## G0236
 
@@ -2528,6 +2528,176 @@ PNG と JPEG の図版からは、`page` を消す。
 
 `\ ` を消す。
 見える空きが要るなら、全角の空白（`　`）を使う。
+
+## G0280
+
+@table の format の値が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の `format` の値が `csv` でも `tsv` でもない。
+表は作らない。
+位置は `format` の引数の全体である。
+
+- メッセージ: `format は csv か tsv です: <値>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- `format=xlsx` のように、ほかの形式の名前を書いた。
+- `format=TSV` のように、大文字で書いた。
+
+### 直し方
+
+`format=csv` か `format=tsv` と書く。
+拡張子が `.tsv` のファイルは TSV、それ以外は CSV として読むので、拡張子どおりの形式なら `format` を省ける。
+
+## G0281
+
+@table の align の値が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の `align` の値が、`left`、`center`、`right`、`default` のどれでもないか、値の数が表の列の数と違う。
+表は作らない。
+位置は `align` の引数の全体である。
+値の数の検査は、表のファイルを読んで見出しの行を得た後に行う。
+
+- メッセージ: `align の値は left、center、right、default のどれかです: <値>`、`align の値の数が表の列の数と違います（列は <m>、align は <n>）`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- `align=left,,right` のように、空の値を書いた。
+- `align=Left` や `align=middle` のように、ほかの名前を書いた。
+- 表に列を足したが、`align` に値を足していない。
+- `align=[= ...]` のように、式で書いた。
+
+### 直し方
+
+列の揃えを `left`、`center`、`right`、`default` で、左の列から順にカンマで区切って書く。
+すべての列を同じ揃えにするなら、値を一つだけ書く（`align=right`）。
+
+## G0282
+
+表のファイルに単独の CR があります
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の表のファイル（CSV と TSV）に、LF の前にない CR（単独の CR）がある。
+CRLF は誤りにしない。
+表は作らない。
+位置は表のファイルの最初の単独の CR である。
+同じファイルを複数の `@table` から参照しても、一度だけ出す。
+
+- メッセージ: `単独の CR があります。表のファイルの改行は LF か CRLF に限ります`
+- 段階とモジュール: 読み込み（golem-driver の `Golem.Driver`、golem-parser の `Golem.Parser.Read`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- 古い Mac の改行（CR だけ）でファイルを書き出した。
+- セルの中に CR が紛れ込んだ。
+
+### 直し方
+
+表のファイルの改行を LF か CRLF にして保存し直す。
+
+## G0283
+
+CSV の引用符が閉じていません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の CSV のファイルで、`"` で始めたセルの引用符を閉じずにファイルが終わる。
+表は作らない。
+位置は開いた引用符である。
+
+- メッセージ: `CSV の引用符が閉じていません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- セルの中の `"` を `""` と二つ重ねていない。
+- 書き出しの途中でファイルが切れた。
+
+### 直し方
+
+引用符を閉じる。
+セルの中の `"` は `""` と書く。
+
+## G0284
+
+@table の cells の値が正しくありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の `cells` が `text` でない。
+`cells=markup` は将来セルをインラインの記法として読むために予約した値であり、まだ実装していない。
+表は作らない。
+位置は `cells` の引数の全体である。
+
+- メッセージ: `cells=markup はまだ実装していません`、`cells は text です: <値>`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- セルの中の記法を解釈させようとして `cells=markup` を書いた。
+- `cells` をほかの意味で書いた。
+
+### 直し方
+
+`cells` を消すか、`cells=text` と書く。
+セルの中身は地の文として扱われる。
+
+## G0285
+
+表のファイルが表になりません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@table` の表のファイル（CSV と TSV）が空か、行のセルの数が見出しの行と違う。
+表は作らない。
+空のときの位置は表のファイルのバイト 0 から 0、セルの数の違うときの位置は最初のその行（行頭から行の終わりの前まで。CSV では引用符の中の改行をまたぐレコードの全体）である。
+空とは、最後の行の終わりを捨てた後（CSV では空の行を除いた後）に行が一つもないことである。
+
+- メッセージ: `CSV が空です`、`TSV が空です`、`CSV の行のセルの数が見出しの行と違います（見出しの行は <m>、この行は <n>）`、`TSV の行のセルの数が見出しの行と違います（見出しの行は <m>、この行は <n>）`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)
+
+### 主な原因
+
+- 表のファイルが空である。
+- 行によって列の数が違う。
+- TSV の途中に空の行がある（TSV の空の行は、一つの空のセルを持つ行になる）。
+- CSV のセルの中のカンマを `"` で囲んでいない。
+
+### 直し方
+
+各行のセルの数を見出しの行にそろえる。
+TSV の途中の空の行は消す。
 
 ## G0286
 

@@ -17,6 +17,7 @@ import ReferencesSpec
 import RuleShapeSpec
 import SecuritySpec
 import StylesSpec
+import TableFilesSpec
 import Test.Tasty
 
 main :: IO ()
@@ -41,6 +42,7 @@ tests =
         memoTests,
         producerTests,
         securityTests,
+        tableFileTests,
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests

@@ -16,10 +16,18 @@ module Golem.Eval.File
     kentenShapes,
     joinSoftBreaks,
     splitLines,
+    TableFormat (..),
+    CellReading (..),
+    AlignError (..),
+    tableFormat,
+    tableAlign,
+    parseCsv,
+    parseTsv,
     duplicateKeys,
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Monad (forM, unless)
 import Control.Monad.State.Strict
 import Data.Char (isAscii, isAsciiLower, isDigit)
@@ -27,7 +35,7 @@ import Data.Either (fromLeft, fromRight, isLeft)
 import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -39,6 +47,7 @@ import Golem.Eval.RegexStyle (applyRegexStyles, regexRules)
 import Golem.Eval.Settings
 import Golem.Eval.Value
 import Golem.Parser.AST qualified as A
+import Golem.Parser.Read (checkTableText)
 import Golem.Parser.SourceSettings
 import Golem.Project.Imports (ImportSite (..), importSite)
 import Golem.Project.Paths (PathError (..), pathErrorMessage)
@@ -87,8 +96,13 @@ data EvalContext = EvalContext
 
 -- | A file referenced by @figure, @table or @listing (golem-eval ADR 0003).
 data Asset
-  = -- | read as text, for a table or a listing
-    AssetText !Text
+  = -- | read as text, for a table or a listing, with the file it was read from (golem-eval ADR 0004)
+    AssetText !FileId !Text
+  | {- | a table file that failed the reading stage, whose diagnostics were
+    reported when it was read: no table is made of it, and a listing reads
+    the text as before (golem-eval ADR 0004)
+    -}
+    AssetTableUnreadable !FileId !Text
   | -- | present, and not read
     AssetPresent
   | -- | a path that cannot be used: absolute, a URL, outside the root, or missing
@@ -855,22 +869,198 @@ figure ctx sp args body = do
       A.Located psp (A.Paragraph is) -> A.Located psp (A.Paragraph (joinSoftBreaks is))
       other -> other
 
+-- ------------------------------------------------------------------ tables (golem-eval ADR 0004)
+
+{- | @table: a table of a CSV or a TSV file. The arguments are checked
+before the file is read: format= (G0280), align= (G0281) and cells=
+(G0284); the number of align= values is checked against the header row.
+-}
 csvTable :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
 csvTable ctx sp args = do
   kw <- keywords ctx args
-  case argText <$> lookup "src" kw of
+  let arg k = listToMaybe [(asp, v) | A.Located asp (A.Keyword (A.Located _ k') v) <- args, k' == k]
+      src = argText <$> lookup "src" kw
+  format <- case arg "format" of
+    Nothing -> pure (Just (tableFormat Nothing (fromMaybe "" src)))
+    Just (asp, v) -> case tableFormat (Just (argText v)) (fromMaybe "" src) of
+      Left bad -> err "G0280" asp ("format は csv か tsv です: " <> bad) >> pure Nothing
+      Right f -> pure (Just (Right f))
+  align <- case arg "align" of
+    Nothing -> pure (Just Nothing)
+    Just (asp, v) -> case maybe (Left (AlignBadValue "[= ...]")) tableAlign (nameArg v) of
+      Left (AlignBadValue bad) -> err "G0281" asp ("align の値は left、center、right、default のどれかです: " <> bad) >> pure Nothing
+      Right al -> pure (Just (Just (asp, al)))
+  cells <- case arg "cells" of
+    Nothing -> pure True
+    Just (asp, v) -> case cellReading (argText v) of
+      Right CellsText -> pure True
+      Right CellsMarkup -> err "G0284" asp "cells=markup はまだ実装していません" >> pure False
+      Left bad -> err "G0284" asp ("cells は text です: " <> bad) >> pure False
+  case src of
     Nothing -> err "G0234" sp "@table には src が必要です" >> pure []
-    Just src ->
-      asset ctx sp src >>= \case
-        Just (AssetText content) -> case parseCsv content of
-          (h : rows)
-            | all ((== length h) . length) rows ->
-                let cell t = [Text sp t]
-                 in pure [block sp (Table (map (const AlignDefault) h) (map cell h) (map (map cell) rows))]
-          [] -> err "G0235" sp "CSV が空です" >> pure []
-          _ -> err "G0235" sp "CSV の行ごとのセルの数が一致しません" >> pure []
-        Just _ -> missing sp src >> pure []
-        Nothing -> pure []
+    Just path -> case (format, align) of
+      (Just (Right fmt), Just al)
+        | cells ->
+            asset ctx sp path >>= \case
+              Just (AssetText fid content) ->
+                let (rows, cell) = case fmt of
+                      TableCsv -> (parseCsv fid content, \t -> [Text sp t])
+                      -- an empty cell of a TSV has no inlines, as in a | table
+                      TableTsv -> (parseTsv fid content, \t -> [Text sp t | not (T.null t)])
+                 in case rows of
+                      Left d -> report d >> pure []
+                      Right [] -> pure []
+                      Right (h : body) -> case al of
+                        Nothing -> pure [table (map (const AlignDefault) h) cell h body]
+                        Just (_, [a]) -> pure [table (map (const a) h) cell h body]
+                        Just (asp, as)
+                          | length as == length h -> pure [table as cell h body]
+                          | otherwise -> err "G0281" asp ("align の値の数が表の列の数と違います（列は " <> tshow (length h) <> "、align は " <> tshow (length as) <> "）") >> pure []
+              Just (AssetTableUnreadable _ _) -> pure []
+              Just _ -> missing sp path >> pure []
+              Nothing -> pure []
+      _ -> pure []
+  where
+    table as cell h body = block sp (Table as (map cell h) (map (map cell) body))
+    tshow = T.pack . show
+
+-- | The format of a table file (golem-eval ADR 0004).
+data TableFormat = TableCsv | TableTsv
+  deriving stock (Eq, Show)
+
+-- | the reserved cells= values; only CellsText is implemented (golem-eval ADR 0004)
+data CellReading = CellsText | CellsMarkup
+  deriving stock (Eq, Show)
+
+-- | A value of align= that is not an alignment, as written (G0281).
+newtype AlignError = AlignBadValue Text
+  deriving stock (Eq, Show)
+
+{- | The format of a table: format= when written (Left, the value, when it
+is neither csv nor tsv), otherwise TSV for a path ending in .tsv in any
+case, otherwise CSV.
+-}
+tableFormat :: Maybe Text -> Text -> Either Text TableFormat
+tableFormat (Just "csv") _ = Right TableCsv
+tableFormat (Just "tsv") _ = Right TableTsv
+tableFormat (Just other) _ = Left other
+tableFormat Nothing path
+  | ".tsv" `T.isSuffixOf` T.toLower path = Right TableTsv
+  | otherwise = Right TableCsv
+
+{- | The alignments of align=, by column, separated by commas, with the
+spaces around each value removed. One value is for every column; the
+caller repeats it.
+-}
+tableAlign :: Text -> Either AlignError [Alignment]
+tableAlign t = maybe (Left (AlignBadValue t)) Right (mapM (one . T.strip) (T.splitOn "," t))
+  where
+    one = \case
+      "left" -> Just AlignLeft
+      "center" -> Just AlignCenter
+      "right" -> Just AlignRight
+      "default" -> Just AlignDefault
+      _ -> Nothing
+
+-- | The value of cells=; Left is a value that is not reserved.
+cellReading :: Text -> Either Text CellReading
+cellReading = \case
+  "text" -> Right CellsText
+  "markup" -> Right CellsMarkup
+  other -> Left other
+
+{- | A TSV file as rows of cells (IANA text/tab-separated-values): LF or
+CRLF ends a line, one line end at the end of the file is dropped, tabs
+separate the cells and nothing else is special. Left is G0285 (an empty
+file, or a row with another number of cells than the header), or G0282.
+-}
+parseTsv :: FileId -> Text -> Either Diagnostic [[Text]]
+parseTsv fid t0 = do
+  noLoneCr fid t0
+  let (base, t) = skipBom t0
+      body = fromMaybe t (T.stripSuffix "\r\n" t <|> T.stripSuffix "\n" t)
+  tableShape fid "TSV" (if T.null body then [] else tsvLines base (T.splitOn "\n" body))
+  where
+    tsvLines _ [] = []
+    tsvLines off (l : ls) =
+      let content = fromMaybe l (T.stripSuffix "\r" l)
+       in (off, off + byteLen content, T.splitOn "\t" content) : tsvLines (off + byteLen l + 1) ls
+
+{- | A CSV file as rows of cells (RFC 4180): comma-separated, double-quoted
+fields with "" escapes, LF or CRLF ending a record; CRLF in quotes is LF
+in the cell, and empty lines are dropped. Left is G0285, G0282 or G0283
+(a quote not closed).
+-}
+parseCsv :: FileId -> Text -> Either Diagnostic [[Text]]
+parseCsv fid t0 = do
+  noLoneCr fid t0
+  let (base, t) = skipBom t0
+  recs <- records base (T.unpack t)
+  tableShape fid "CSV" (filter (\(_, _, cs) -> cs /= [""]) recs)
+  where
+    records _ [] = Right []
+    records off s = do
+      (cs, end, rest) <- record off s []
+      ((off, end, cs) :) <$> maybe (Right []) (uncurry records) rest
+    record off s acc = do
+      (f, off', rest) <- field off s
+      let acc' = f : acc
+      case rest of
+        ',' : r -> record (off' + 1) r acc'
+        '\n' : r -> Right (reverse acc', off', Just (off' + 1, r))
+        '\r' : '\n' : r -> Right (reverse acc', off', Just (off' + 2, r))
+        _ -> Right (reverse acc', off', Nothing)
+    field off = \case
+      '"' : s -> quoted off (off + 1) s ""
+      s -> plain off s ""
+    -- characters up to a comma or a line end; a quote is as written
+    plain off s acc = case s of
+      c : rest | c `notElem` (",\n\r" :: String) -> plain (off + charLen c) rest (c : acc)
+      _ -> Right (T.pack (reverse acc), off, s)
+    quoted open off s acc = case s of
+      [] -> Left (diagnostic "G0283" Error (mkSpan fid open (open + 1)) "CSV の引用符が閉じていません")
+      '"' : '"' : rest -> quoted open (off + 2) rest ('"' : acc)
+      '"' : rest -> plain (off + 1) rest acc
+      '\r' : '\n' : rest -> quoted open (off + 2) rest ('\n' : acc)
+      c : rest -> quoted open (off + charLen c) rest (c : acc)
+
+-- | The rows of a table file with their spans, as a table: G0285 when empty or ragged.
+tableShape :: FileId -> Text -> [(Int, Int, [Text])] -> Either Diagnostic [[Text]]
+tableShape fid name = \case
+  [] -> Left (diagnostic "G0285" Error (mkSpan fid 0 0) (name <> " が空です"))
+  rows@((_, _, h) : rest) -> case [r | r@(_, _, cs) <- rest, length cs /= length h] of
+    (s, e, cs) : _ -> Left (diagnostic "G0285" Error (mkSpan fid s e) (name <> " の行のセルの数が見出しの行と違います（見出しの行は " <> count h <> "、この行は " <> count cs <> "）"))
+    [] -> Right [cs | (_, _, cs) <- rows]
+  where
+    count = T.pack . show . length
+
+-- | G0282 for a lone CR, as the reading stage of a table file reports it.
+noLoneCr :: FileId -> Text -> Either Diagnostic ()
+noLoneCr fid t = maybe (Right ()) Left (listToMaybe (checkTableText fid t))
+
+-- | A BOM at the start is skipped; positions still count its 3 bytes.
+skipBom :: Text -> (Int, Text)
+skipBom t = maybe (0, t) (3,) (T.stripPrefix "\xFEFF" t)
+
+byteLen :: Text -> Int
+byteLen = sum . map charLen . T.unpack
+
+-- | The length of a character in UTF-8.
+charLen :: Char -> Int
+charLen c
+  | n < 0x80 = 1
+  | n < 0x800 = 2
+  | n < 0x10000 = 3
+  | otherwise = 4
+  where
+    n = fromEnum c
+
+-- | The text of a file read as text, for a listing.
+assetContent :: Asset -> Maybe Text
+assetContent = \case
+  AssetText _ t -> Just t
+  AssetTableUnreadable _ t -> Just t
+  _ -> Nothing
 
 {- | The file a path refers to. A path that cannot be used is reported, and
 gives nothing.
@@ -887,23 +1077,6 @@ asset ctx sp p = case Map.lookup (T.unpack p) (ctxAssets ctx) of
 missing :: SrcSpan -> Text -> M ()
 missing sp p = err "G0233" sp ("ファイルがありません: " <> p)
 
--- | RFC 4180: comma-separated, double-quoted fields with "" escapes.
-parseCsv :: Text -> [[Text]]
-parseCsv t = filter (/= [""]) (rows (T.unpack (T.replace "\r\n" "\n" t)))
-  where
-    rows s = case field s of
-      (f, ',' : rest) -> case rows rest of
-        (r : rs) -> (f : r) : rs
-        [] -> [[f]]
-      (f, '\n' : rest) -> [f] : rows rest
-      (f, _) -> [[f]]
-    field ('"' : s) = quoted s ""
-    field s = let (a, b) = break (`elem` (",\n" :: String)) s in (T.pack a, b)
-    quoted ('"' : '"' : s) acc = quoted s ('"' : acc)
-    quoted ('"' : s) acc = (T.pack (reverse acc), s)
-    quoted (c : s) acc = quoted s (c : acc)
-    quoted [] acc = (T.pack (reverse acc), [])
-
 listing :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
 listing ctx sp args = do
   kw <- keywords ctx args
@@ -918,7 +1091,7 @@ listing ctx sp args = do
     Nothing -> err "G0236" sp "@listing にはファイルのパスが必要です" >> pure []
     Just p ->
       asset ctx sp p >>= \case
-        Just (AssetText content) -> do
+        Just found | Just content <- assetContent found -> do
           let ls = T.lines content
               -- the arguments of a code block, and lang (golem-driver ADR 0023)
               codeArgsOf = [a | a@(A.Located _ (A.Keyword (A.Located _ k) _)) <- args, k `notElem` ["src", "lines"]]

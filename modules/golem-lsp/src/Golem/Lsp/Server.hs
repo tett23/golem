@@ -29,7 +29,8 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Builder.Extra (defaultChunkSize)
 import Data.ByteString.Lazy qualified as BSL
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -126,6 +127,7 @@ serverDefinition encVar initIdVar = do
   wsVar <- newTVarIO Nothing
   gen <- newTVarIO 0
   rootVar <- newTVarIO "."
+  watchVar <- newTVarIO Nothing
   pure $
     ServerDefinition
       { parseConfig = const (const (Right ())),
@@ -140,7 +142,7 @@ serverDefinition encVar initIdVar = do
             writeTVar encVar (F.chooseEncoding (offeredEncodings params))
             writeTVar initIdVar (Just lid)
           pure (Right env),
-        staticHandlers = \_ -> handlers encVar rootVar wsVar gen,
+        staticHandlers = \_ -> handlers encVar rootVar wsVar gen watchVar,
         interpretHandler = \env -> Iso (runLspT env) liftIO,
         options =
           defaultOptions
@@ -154,14 +156,16 @@ offeredEncodings :: InitializeParams -> Maybe [PositionEncodingKind]
 offeredEncodings (InitializeParams _ _ _ _ _ _ (ClientCapabilities _ _ _ _ general _) _ _ _) =
   general >>= \(GeneralClientCapabilities _ _ _ encs) -> encs
 
-handlers :: TVar F.Encoding -> TVar FilePath -> TVar (Maybe Workspace) -> TVar Int -> Handlers (LspM ())
-handlers encVar rootVar wsVar gen =
+-- | The registration of the watched table files (golem-eval ADR 0004).
+type WatchToken = RegistrationToken Method_WorkspaceDidChangeWatchedFiles
+
+handlers :: TVar F.Encoding -> TVar FilePath -> TVar (Maybe Workspace) -> TVar Int -> TVar (Maybe WatchToken) -> Handlers (LspM ())
+handlers encVar rootVar wsVar gen watchVar =
   mconcat
     [ notificationHandler SMethod_Initialized $ \_ -> do
         root <- liftIO (readTVarIO rootVar)
         ws <- liftIO (openWorkspace root)
-        liftIO (atomically (writeTVar wsVar (Just ws)))
-        publishAll Map.empty ws,
+        commit Map.empty ws,
       notificationHandler SMethod_TextDocumentDidOpen $ \(TNotificationMessage _ _ (DidOpenTextDocumentParams (TextDocumentItem uri _ _ _))) ->
         changed uri,
       notificationHandler SMethod_TextDocumentDidChange $ \(TNotificationMessage _ _ (DidChangeTextDocumentParams (VersionedTextDocumentIdentifier uri _) _)) ->
@@ -172,8 +176,7 @@ handlers encVar rootVar wsVar gen =
         st <- state
         forM_ (relPath st uri) $ \p -> withWs $ \ws -> do
           ws' <- liftIO (closeFile ws p)
-          liftIO (atomically (writeTVar wsVar (Just ws')))
-          publishAll (diagnosticsFor ws) ws',
+          commit (diagnosticsFor ws) ws',
       requestHandler SMethod_TextDocumentDefinition $ \(TRequestMessage _ _ _ (DefinitionParams doc pos _ _)) respond -> do
         enc <- encoding
         r <- atPosition doc pos $ \ws p off ->
@@ -238,8 +241,36 @@ handlers encVar rootVar wsVar gen =
             mvf <- getVirtualFile (toNormalizedUri uri)
             forM_ mvf $ \vf -> withWs $ \ws -> do
               ws' <- liftIO (updateFile ws p (virtualFileText vf))
-              liftIO (atomically (writeTVar wsVar (Just ws')))
-              publishAll (diagnosticsFor ws) ws'
+              commit (diagnosticsFor ws) ws'
+    {- the workspace after a change: the watched table files follow the
+    evaluation, then the diagnostics are published (golem-eval ADR 0004) -}
+    commit old ws = do
+      ws' <- syncWatches ws
+      liftIO (atomically (writeTVar wsVar (Just ws')))
+      publishAll old ws'
+    {- asks the client to watch the table files the evaluation read, when
+    they changed; a client without dynamic registration watches nothing -}
+    syncWatches ws
+      | tablesToWatch ws == wsWatchedTables ws = pure ws
+      | otherwise = do
+          old <- liftIO (readTVarIO watchVar)
+          forM_ old unregisterCapability
+          let want = tablesToWatch ws
+              watchers = [FileSystemWatcher (GlobPattern (InR (RelativePattern (baseUri ws) (Pattern (T.pack p))))) Nothing | p <- Set.toList want]
+          tok <-
+            if Set.null want
+              then pure Nothing
+              else registerCapability mempty SMethod_WorkspaceDidChangeWatchedFiles (DidChangeWatchedFilesRegistrationOptions watchers) watchedChanged
+          liftIO (atomically (writeTVar watchVar tok))
+          pure ws {wsWatchedTables = if isJust tok then want else Set.empty}
+    baseUri ws = InR (filePathToUri (wsRoot ws))
+    -- a watched table file changed on disk: the project is evaluated again
+    watchedChanged (TNotificationMessage _ _ (DidChangeWatchedFilesParams events)) = do
+      st <- state
+      withWs $ \ws ->
+        when (tableFilesChanged ws [p | FileEvent u _ <- events, Just p <- [relPath st u]]) $ do
+          ws' <- liftIO (reloadWorkspace ws)
+          commit (diagnosticsFor ws) ws'
     atPosition doc pos k = do
       st <- state
       enc <- encoding

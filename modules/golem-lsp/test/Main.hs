@@ -30,6 +30,7 @@ import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (createPipe)
+import TableWatchSpec (tableWatchTests)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
@@ -380,7 +381,8 @@ tests =
                 uncurry (@?=) (srClampHover r16)
                 uncurry (@?=) (srClampHover r8)
             ],
-      editingTests
+      editingTests,
+      tableWatchTests
     ]
 
 data SessionSpec = SessionSpec

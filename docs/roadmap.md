@@ -30,7 +30,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - **ADR とコードの食い違い**（未実装、[docs/adr 0031](adr/0031-adr-code-mismatches.md)）：`overridableCommands` に `code` が入っている。LSP の補完にプラグインのコマンドの名前が出ない。`golem inspect` のオプションの書き方が ADR と違う。ホストが `golem_dealloc` を一度も呼ばない。どちらに合わせるかを決めて直す。
 - **マニュアルのライセンス**：二つのマニュアルの原稿（`.gm`）と、組んだ PDF と HTML を CC0 にする。リポジトリのほかの部分は今のとおり MIT とする。PDF に埋め込むフォントは SIL Open Font License 1.1 のままで、CC0 の対象にならないことを、マニュアルの奥付とライセンスの表示に書く。ライセンスの表示の置き場所（`manual/` と `manual-dev/` の LICENSE、奥付、README）を決める。
-- **TSV の表**（未実装、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）：`@table` は CSV（RFC 4180）のファイルからしか表を作れない（golem-eval の `Golem.Eval.File` の `csvTable`）。タブで区切った TSV のファイルからも表を作れるようにする。形式の見分け方（拡張子か、引数で明示するか）、セルの中のタブと改行の書き方、見出しの行と揃え、セルの中身をインラインの記法として読むかどうか、誤りの位置（ファイルの行と列）の報告は ADR で決める。
 
 ### 既知の不具合の修正
 
