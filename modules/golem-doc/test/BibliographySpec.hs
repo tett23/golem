@@ -160,6 +160,27 @@ adr0005 =
         ja (DateLiteral "2026年秋") @?= "「日本語組版処理の要件」、W3C、2020、https://www.w3.org/TR/jlreq/（2026年秋閲覧）。"
         ja (DateParts 2026 (Just 13) (Just 1)) @?= "「日本語組版処理の要件」、W3C、2020、https://www.w3.org/TR/jlreq/（2026年閲覧）。"
         ja (DateParts 2026 (Just 10) (Just 32)) @?= "「日本語組版処理の要件」、W3C、2020、https://www.w3.org/TR/jlreq/（2026年10月閲覧）。",
+      testCase "the date of access at the bounds of month and day" $ do
+        let at d = fmt cssText {ceAccessed = Just d}
+            ja d = fmt jlreq {ceAccessed = Just d}
+        at (DateParts 2026 (Just 1) (Just 1)) @?= "CSS Text Module Level 3. W3C. https://www.w3.org/TR/css-text-3/ (accessed January 1, 2026)."
+        at (DateParts 2026 (Just 12) (Just 31)) @?= "CSS Text Module Level 3. W3C. https://www.w3.org/TR/css-text-3/ (accessed December 31, 2026)."
+        -- month 0 is not a month: the year alone, the day dropped with it
+        at (DateParts 2026 (Just 0) (Just 5)) @?= "CSS Text Module Level 3. W3C. https://www.w3.org/TR/css-text-3/ (accessed 2026)."
+        -- day 0 is not a day: the year and the month
+        at (DateParts 2026 (Just 10) (Just 0)) @?= "CSS Text Module Level 3. W3C. https://www.w3.org/TR/css-text-3/ (accessed October 2026)."
+        ja (DateParts 2026 (Just 12) (Just 31)) @?= "「日本語組版処理の要件」、W3C、2020、https://www.w3.org/TR/jlreq/（2026年12月31日閲覧）。"
+        ja (DateParts 2026 (Just 0) (Just 5)) @?= "「日本語組版処理の要件」、W3C、2020、https://www.w3.org/TR/jlreq/（2026年閲覧）。"
+        ja (DateParts 2026 (Just 10) (Just 0)) @?= "「日本語組版処理の要件」、W3C、2020、https://www.w3.org/TR/jlreq/（2026年10月閲覧）。",
+      testCase "a hyphen between a digit and a letter is kept and is not a range" $ do
+        fmt (titled "Title") {cePage = Just "1-A"} @?= "Title. p. 1-A."
+        fmt (titled "Title") {cePage = Just "12a-13"} @?= "Title. p. 12a-13.",
+      testCase "a Japanese volume that is not digits is as written" $
+        fmt (titled "題") {ceVolume = Just "別冊", ceIssue = Just "3"} @?= "題、別冊第3号。",
+      testCase "a title in kana alone, or with 々, decides a Japanese entry" $ do
+        fmt (titled "カタカナ") {ceIssued = Just (year 2020)} @?= "カタカナ、2020。"
+        fmt (titled "ひらがな") {ceIssued = Just (year 2020)} @?= "ひらがな、2020。"
+        fmt (titled "々") {ceIssued = Just (year 2020)} @?= "々、2020。",
       testCase "accessed without a URL is not shown" $ do
         fmt (titled "Title") {ceAccessed = Just oct16} @?= "Title."
         fmt (titled "題") {ceAccessed = Just oct16} @?= "題。",

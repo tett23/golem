@@ -122,6 +122,16 @@ svgFigureTests =
       bytes <- maybe (assertFailure "no PDF") pure pdf
       count "/Subtype /Form" bytes @?= 1
       count "DeviceRGB" bytes @?= 0,
+    testCase "the paint of an SVG reaches the PDF: sRGB sc and SC, caps, joins and the even-odd rule" $ do
+      let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><path d=\"M0 0 L10 10\" fill=\"none\" stroke=\"#ff0000\" stroke-linecap=\"round\" stroke-linejoin=\"bevel\"/><rect width=\"5\" height=\"5\" fill=\"#00ff00\" fill-rule=\"evenodd\" stroke=\"#0000ff\" stroke-linecap=\"square\" stroke-linejoin=\"round\"/></svg>"
+      (codes, pdf, _) <- pdfWith Dev "@figure images/p.svg alt=\"t\"\n" [("images/p.svg", svg)]
+      codes @?= []
+      streams <- maybe (assertFailure "no PDF") inflateAll pdf
+      let content = BS.concat streams
+      -- stroke colour, width 1, cap (round 1, square 2), join (bevel 2, round 1), miter limit 4, no dash
+      assertBool (show content) ("1 0 0 SC 1 w 1 J 2 j 4 M [] 0 d\n0 0 m\n10 10 l\nS\n" `BS.isInfixOf` content)
+      assertBool (show content) ("0 1 0 sc\n0 0 1 SC 1 w 2 J 1 j 4 M [] 0 d\n" `BS.isInfixOf` content)
+      assertBool (show content) ("h\nB*\n" `BS.isInfixOf` content),
     testCase "two builds of an SVG figure give the same bytes" $ do
       (_, a, _) <- pdfWith Dev "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", redSvg)]
       (_, b, _) <- pdfWith Dev "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", redSvg)]
@@ -136,6 +146,10 @@ svgFigureTests =
       (codes, _, msgs) <- pdfWith Dev "@figure images/t.svg alt=\"t\"\n" [("images/t.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n<text>a</text><use/></svg>")]
       codes @?= [DiagnosticCode "G0811"]
       msgs @?= ["SVG の図版に扱えないものがあります: images/t.svg:2:1（text: 文字は輪郭にして書き出してください）ほか 1 件"],
+    testCase "one problem that is not text is G0811 without the request for outlines and without ほか" $ do
+      (codes, _, msgs) <- pdfWith Dev "@figure images/g.svg alt=\"t\"\n" [("images/g.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n  <use/></svg>")]
+      codes @?= [DiagnosticCode "G0811"]
+      msgs @?= ["SVG の図版に扱えないものがあります: images/g.svg:2:3（use）"],
     testCase "HTML and EPUB place an SVG with text as it is, or its web image" $ withSystemTempDirectory "golem-svg" $ \tmp -> do
       BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
       BS.writeFile (tmp </> "style.toml") (figStyle horizontalStyle)

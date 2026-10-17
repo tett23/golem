@@ -55,6 +55,9 @@ tests outlined sources =
     [ testGroup "XML" xmlTests,
       testGroup "CSS" cssTests,
       testGroup "drawing" drawingTests,
+      testGroup "colours" colourTests,
+      testGroup "strokes" strokeTests,
+      testGroup "the size and the viewBox" sizeTests,
       testGroup
         "the figures of the developer manual"
         ( [ testCase ("the outlined " <> f <> " has nothing unsupported") $ do
@@ -198,3 +201,108 @@ drawingTests =
         Left (SvgMalformed _) -> pure ()
         other -> assertFailure (show other)
   ]
+
+colourTests :: [TestTree]
+colourTests =
+  [ testCase (T.unpack v <> " is " <> show c) $ do
+      ops <- drawing ("<rect fill=\"" <> v <> "\" width=\"1\" height=\"1\"/>")
+      fillOf ops @?= [c]
+  | (v, c) <-
+      [ ("#abc", Just (Color 170 187 204)),
+        ("#AbCdEf", Just (Color 171 205 239)),
+        ("rgb(255, 0, 10)", Just (Color 255 0 10)),
+        ("rgb(1 2 3)", Just (Color 1 2 3)),
+        -- 50% of 255 is 127.5, rounded half to even
+        ("rgb(100%, 50%, 0%)", Just (Color 255 128 0)),
+        ("rgb(300, 0, 0)", Just (Color 255 0 0)),
+        ("RED", Just (Color 255 0 0)),
+        ("none", Nothing),
+        ("transparent", Nothing)
+      ]
+  ]
+    <> [ testCase "currentColor is the color property" $ do
+           ops <- drawing "<g color=\"#010203\"><rect fill=\"currentColor\" width=\"1\" height=\"1\"/></g>"
+           fillOf ops @?= [Just (Color 1 2 3)],
+         testCase "the fill is black when nothing says otherwise" $ do
+           ops <- drawing "<rect width=\"1\" height=\"1\"/>"
+           fillOf ops @?= [Just (Color 0 0 0)]
+       ]
+    <> [ testCase (T.unpack v <> " is unsupported") $
+           map unName (unsupported (svg ("<rect fill=\"" <> v <> "\" width=\"1\" height=\"1\"/>"))) @?= ["fill"]
+       | v <- ["#12", "#12345", "#ggg", "rgb(1, 2)", "nocolour"]
+       ]
+
+strokeOf :: Text -> IO [Maybe Stroke]
+strokeOf attrs = map (paStroke . fst) . paths <$> drawing ("<path d=\"M0 0 L1 1\" " <> attrs <> "/>")
+
+strokeTests :: [TestTree]
+strokeTests =
+  [ testCase "a stroke has width 1, butt caps, miter joins, miter limit 4 and no dash by default" $ do
+      ss <- strokeOf "stroke=\"#000\""
+      ss @?= [Just (Stroke (Color 0 0 0) 1 CapButt JoinMiter 4 [] 0)],
+    testCase "caps, joins, the miter limit, the dash array and its offset are read" $ do
+      ss <- strokeOf "stroke=\"#000\" stroke-width=\"2px\" stroke-linecap=\"square\" stroke-linejoin=\"bevel\" stroke-miterlimit=\"10\" stroke-dasharray=\"1, 2\" stroke-dashoffset=\"3\""
+      ss @?= [Just (Stroke (Color 0 0 0) 2 CapSquare JoinBevel 10 [1, 2] 3)],
+    testCase "round caps and round joins" $ do
+      ss <- strokeOf "stroke=\"#000\" stroke-linecap=\"round\" stroke-linejoin=\"round\""
+      map (fmap (\st -> (stCap st, stJoin st))) ss @?= [Just (CapRound, JoinRound)],
+    testCase "a dash array of odd length is repeated to even length" $ do
+      ss <- strokeOf "stroke=\"#000\" stroke-dasharray=\"1 2 3\""
+      map (fmap stDash) ss @?= [Just [1, 2, 3, 1, 2, 3]],
+    testCase "a dash array of zeros is a solid line" $ do
+      ss <- strokeOf "stroke=\"#000\" stroke-dasharray=\"0 0\""
+      map (fmap stDash) ss @?= [Just []],
+    testCase "a stroke of width 0 is no stroke" $ do
+      ss <- strokeOf "stroke=\"#000\" stroke-width=\"0\""
+      ss @?= [Nothing],
+    testCase "a miter limit of 1 is read; one under 1 is unsupported" $ do
+      ss <- strokeOf "stroke=\"#000\" stroke-miterlimit=\"1\""
+      map (fmap stMiterLimit) ss @?= [Just 1]
+      map unName (unsupported (svg "<path d=\"M0 0 L1 1\" stroke=\"#000\" stroke-miterlimit=\"0.5\"/>")) @?= ["stroke-miterlimit"],
+    testCase "opacity 1 is read; opacity 0.99 is unsupported" $ do
+      ops <- drawing "<rect opacity=\"1\" fill-opacity=\"1\" stroke-opacity=\"1\" width=\"1\" height=\"1\"/>"
+      length (paths ops) @?= 1
+      map unName (unsupported (svg "<rect fill-opacity=\"0.99\" width=\"1\" height=\"1\"/>")) @?= ["fill-opacity"],
+    testCase "a negative dash is unsupported" $
+      map unName (unsupported (svg "<path d=\"M0 0 L1 1\" stroke=\"#000\" stroke-dasharray=\"1 -2\"/>")) @?= ["stroke-dasharray"]
+  ]
+
+-- | The size of a root with these attributes, and the matrices of its groups.
+rootOf :: Text -> IO ((Rational, Rational), [Matrix])
+rootOf attrs = case readSvg (TE.encodeUtf8 ("<svg xmlns=\"http://www.w3.org/2000/svg\" " <> attrs <> "><rect width=\"1\" height=\"1\"/></svg>")) of
+  Right s -> pure (svgSize s, groups (svgDrawing s))
+  Left e -> assertFailure (show e)
+
+sizeTests :: [TestTree]
+sizeTests =
+  [ testCase ("the root length " <> T.unpack v <> " is 96 px") $ do
+      (size, _) <- rootOf ("width=\"" <> v <> "\" height=\"" <> v <> "\"")
+      size @?= (96, 96)
+  | v <- ["96", "96px", "72pt", "6pc", "25.4mm", "2.54cm", "1in"]
+  ]
+    <> [ testCase "20mm by 10mm with the viewBox 0 0 200 100 scales by 0.378 px per unit" $ do
+           -- 20 mm = 20 * 96 / 25.4 px = 9600 / 127 px; over 200 units, 48 / 127 each
+           r <- rootOf "width=\"20mm\" height=\"10mm\" viewBox=\"0 0 200 100\""
+           r @?= ((9600 / 127, 4800 / 127), [Matrix (48 / 127) 0 0 (48 / 127) 0 0]),
+         testCase "a square viewBox in a wide root is centred (xMidYMid meet)" $ do
+           r <- rootOf "width=\"200\" height=\"100\" viewBox=\"0 0 100 100\""
+           r @?= ((200, 100), [Matrix 1 0 0 1 50 0]),
+         testCase "xMaxYMax meet puts the viewBox at the right" $ do
+           r <- rootOf "width=\"200\" height=\"100\" viewBox=\"0 0 100 100\" preserveAspectRatio=\"xMaxYMax meet\""
+           r @?= ((200, 100), [Matrix 1 0 0 1 100 0]),
+         testCase "xMinYMin slice fills the root and clips it" $
+           case readSvg "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"100\" viewBox=\"10 0 100 100\" preserveAspectRatio=\"xMinYMin slice\"><rect width=\"1\" height=\"1\"/></svg>" of
+             Right s -> [(m, c) | DGroup m c _ <- svgDrawing s] @?= [(Matrix 2 0 0 2 (-20) 0, Just (ClipRect 0 0 200 100))]
+             Left e -> assertFailure (show e),
+         testCase "none stretches the viewBox to the root" $ do
+           r <- rootOf "width=\"200\" height=\"100\" viewBox=\"0 0 100 100\" preserveAspectRatio=\"none\""
+           r @?= ((200, 100), [Matrix 2 0 0 1 0 0]),
+         testCase "a width alone takes the height from the ratio of the viewBox" $ do
+           (size, _) <- rootOf "width=\"50\" viewBox=\"0 0 100 20\""
+           size @?= (50, 10),
+         testCase "a viewBox alone is the size" $ do
+           (size, _) <- rootOf "viewBox=\"0 0 30 40\""
+           size @?= (30, 40),
+         testCase "a viewBox of width 0 is unsupported" $
+           map unName (unsupported "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\" viewBox=\"0 0 0 1\"/>") @?= ["viewBox"]
+       ]

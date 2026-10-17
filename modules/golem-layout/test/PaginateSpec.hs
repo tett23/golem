@@ -229,6 +229,10 @@ placedIds ps =
 mk :: SrcSpan
 mk = mkSpan (FileId 0) 0 1
 
+-- | The span of another marker.
+mk2 :: SrcSpan
+mk2 = mkSpan (FileId 0) 5 6
+
 -- | The unmet controls of all columns.
 unmets :: [PageOut] -> [Unmet]
 unmets = concatMap poUnmet
@@ -298,7 +302,33 @@ pageControlTests =
           ps = paginate 1 10 flow
       map poLines ps @?= [11]
       notesByPage ps @?= [(1, [nid 900])]
-      lineIds ps @?= [[0 .. 8]]
+      lineIds ps @?= [[0 .. 8]],
+    testCase "no-break at the start of the book has nothing before it and is unmet" $
+      unmets (paginate 1 10 [FNoBreak mk, FParagraph (lines' 0 2)]) @?= [UnmetNoBreak mk],
+    testCase "no-break before a figure that waits behind one sent on is unmet" $ do
+      -- 2 free: figure 98 of 4 lines is sent on, the line moves up, figure 99 waits behind 98
+      let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 98 4 [] [], FParagraph (lines' 10 1), FNoBreak mk, FFigure 99 1 [] []]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 10], [SFigure 98, SFigure 99]]
+      unmets ps @?= [UnmetNoBreak mk],
+    testCase "no-break keeps the last lines with what follows across need-lines and a space before it" $ do
+      lineIds (paginate 1 10 [FParagraph (lines' 0 9), FNeedLines mk 1, FNoBreak mk, FParagraph (lines' 10 5)]) @?= [[0 .. 6], [7, 8, 10, 11, 12, 13, 14]]
+      lineIds (paginate 1 10 [FParagraph (lines' 0 9), FSpace 1, FNoBreak mk, FParagraph (lines' 10 5)]) @?= [[0 .. 6], [7, 8, 10, 11, 12, 13, 14]],
+    testCase "page-lines after a heading does not change keeping it with what follows" $
+      -- 2 free: heading 1 + two lines = 3 > 2, as without page-lines
+      contents (paginate 1 5 [FParagraph (lines' 0 3), heading 20, FAdjustLines mk 1, FParagraph (lines' 30 2)])
+        @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30, SLine 31]],
+    testCase "of two need-lines in a row the larger applies" $ do
+      -- 4 free: 3 would stay, 5 goes to the next column, whichever comes first
+      lineIds (paginate 1 10 [FParagraph (lines' 0 6), FNeedLines mk 3, FNeedLines mk2 5, FParagraph (lines' 10 2)]) @?= [[0 .. 5], [10, 11]]
+      lineIds (paginate 1 10 [FParagraph (lines' 0 6), FNeedLines mk2 5, FNeedLines mk 3, FParagraph (lines' 10 2)]) @?= [[0 .. 5], [10, 11]],
+    testCase "need-lines of exactly the lines of a column is met" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 6), FNeedLines mk 10, FParagraph (lines' 10 2)]
+      lineIds ps @?= [[0 .. 5], [10, 11]]
+      unmets ps @?= [],
+    testCase "page-lines leaves a column at least one line" $ do
+      let ps = paginate 1 10 [FAdjustLines mk (-10), FParagraph (lines' 0 3)]
+      take 1 (map poLines ps) @?= [1]
+      unmets ps @?= [UnmetAdjust mk (-9)]
   ]
 
 figureOrderTests :: [TestTree]

@@ -251,8 +251,10 @@ S0 の時点では、一覧の中身は決まらない。
 | 参考文献 | [code: \[cite キー\]] | 引用（タグ 15） | [code: bookCitations]：最初に引用した順 | [code: @bibliography] |
 
 脚注だけは、出す位置をブロックコマンドで指定しない。
-PDF はページの下に、HTML、EPUB、プレーンテキストは脚注を書いたファイルの出力の末尾に置く。
-[code: style.toml] の [code: \[notes\]] の [code: placement] は読み込むが、今はどの出力も置き方を変えない。
+PDF は [code: style.toml] の [code: \[notes\]] の [code: placement] に従い、ページの下（[code: "page-foot"]、既定）か、マニフェストの章の終わり（[code: "chapter-end"]）に置く。
+HTML、EPUB、プレーンテキストは、[code: placement] によらず、章の最後のファイルの出力の末尾に、章のすべての注を見出し「注」（日本語でない本では「Notes」）の下にまとめる。
+章を複数のファイルに分けたとき、HTML と EPUB の本文の参照と注のあいだのリンクは、ファイルをまたぐ相対のリンクになる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0026-chapter-end-notes.md]（golem-driver ADR 0026「章末の注」）]
+章の一覧の見出しは意味論 IR に入らず、出力の経路が足すので、目次と見出しの番号には入らない。
 
 ### 意味論 IR の中のチャネル
 
@@ -363,7 +365,7 @@ HTML の経路と EPUB の経路は本文の XHTML を共有するので、本�
 | | PDF | HTML | EPUB | プレーンテキスト |
 | --- | --- | --- | --- | --- |
 | 目次 | 番号、題、リーダー、ページ番号 | 見出しへのリンクの列 | HTML と同じ。ほかにナビゲーション文書 | 番号と題の列 |
-| 脚注 | ページの下 | ファイルの末尾、本文と相互にリンク | HTML と同じ | ファイルの末尾に [code: *1] の形 |
+| 脚注 | ページの下か章の終わり | 章の末尾、本文と相互にリンク | HTML と同じ | 章の末尾に [code: *1] の形 |
 | 索引 | 語とページ番号 | 語と出現位置へのリンク | HTML と同じ | 出さない |
 | 参考文献 | [code: \[n\]] と書誌 | 番号付きのリスト | HTML と同じ | [code: \[n\]] と書誌 |
 
