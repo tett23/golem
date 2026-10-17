@@ -55,6 +55,7 @@ tests outlined sources =
     [ testGroup "XML" xmlTests,
       testGroup "CSS" cssTests,
       testGroup "drawing" drawingTests,
+      testGroup "shapes and what hides them" shapeTests,
       testGroup "colours" colourTests,
       testGroup "strokes" strokeTests,
       testGroup "the size and the viewBox" sizeTests,
@@ -384,3 +385,31 @@ sizeTests =
          testCase "a viewBox of width 0 is unsupported" $
            map unName (unsupported "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\" viewBox=\"0 0 0 1\"/>") @?= ["viewBox"]
        ]
+
+-- | The segments of the paths of a drawing.
+segmentsOf :: Text -> IO [[Segment]]
+segmentsOf body = map snd . paths <$> drawing body
+
+shapeTests :: [TestTree]
+shapeTests =
+  [ testCase "corner radii larger than half the rect are cut to half its width and height" $ do
+      big <- segmentsOf "<rect width=\"4\" height=\"2\" rx=\"10\"/>"
+      cut <- segmentsOf "<rect width=\"4\" height=\"2\" rx=\"2\" ry=\"1\"/>"
+      big @?= cut,
+    testCase "ry alone is also rx" $ do
+      alone <- segmentsOf "<rect width=\"4\" height=\"4\" ry=\"1\"/>"
+      both <- segmentsOf "<rect width=\"4\" height=\"4\" rx=\"1\" ry=\"1\"/>"
+      alone @?= both,
+    testCase "a rect, a circle and an ellipse of no size draw nothing" $
+      segmentsOf "<rect width=\"0\" height=\"1\"/><circle r=\"0\"/><ellipse rx=\"0\" ry=\"1\"/>" >>= (@?= []),
+    testCase "a polygon is closed, a polyline is not" $
+      segmentsOf "<polygon points=\"0,0 1,0 1,1\"/><polyline points=\"0 0, 1 0\" fill=\"none\" stroke=\"#000\"/>"
+        >>= (@?= [[MoveTo (0, 0), LineTo (1, 0), LineTo (1, 1), ClosePath], [MoveTo (0, 0), LineTo (1, 0)]]),
+    testCase "points of an odd count are unsupported" $
+      map unName (unsupported (svg "<polygon points=\"0 0 1\"/>")) @?= ["points"],
+    testCase "display none hides an element and its children, which cannot show again" $
+      segmentsOf "<g display=\"none\"><rect width=\"1\" height=\"1\" display=\"inline\"/></g><rect style=\"display:none\" width=\"1\" height=\"1\"/>" >>= (@?= []),
+    testCase "visibility hidden hides an element, but a child may be visible again" $
+      segmentsOf "<g visibility=\"hidden\"><rect width=\"1\" height=\"1\"/><rect visibility=\"visible\" x=\"2\" width=\"1\" height=\"1\"/></g>"
+        >>= (@?= [[MoveTo (2, 0), LineTo (3, 0), LineTo (3, 1), LineTo (2, 1), ClosePath]])
+  ]
