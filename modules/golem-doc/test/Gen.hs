@@ -156,5 +156,18 @@ genTopBlock :: Gen Block
 genTopBlock =
   Gen.frequency
     [ (5, genBlock),
-      (1, Block <$> genSpan <*> pure Nothing <*> (ForcedBreak <$> Gen.enumBounded))
+      (1, Block <$> genSpan <*> pure Nothing <*> (ForcedBreak <$> Gen.enumBounded)),
+      -- a manual control of page breaks (docs/adr ADR 0030)
+      ( 1,
+        Block
+          <$> genSpan
+          <*> pure Nothing
+          <*> ( PageControl
+                  <$> Gen.choice
+                    [ pure NoBreak,
+                      NeedLines <$> Gen.int (Range.linear 1 40),
+                      AdjustLines <$> Gen.filter (/= 0) (Gen.int (Range.linear (-5) 5))
+                    ]
+              )
+      )
     ]

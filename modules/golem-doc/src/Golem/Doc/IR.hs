@@ -8,6 +8,7 @@ module Golem.Doc.IR
     Block (..),
     BlockBody (..),
     BreakKind (..),
+    PageControl (..),
     ListItem (..),
     itemNumbers,
     DefGroup (..),
@@ -75,6 +76,15 @@ data BlockBody
   | ChannelOutput ChannelBlock
   | -- | a forced break before what follows (docs/adr ADR 0017)
     ForcedBreak !BreakKind
+  | -- | a manual control of page breaks (docs/adr ADR 0030)
+    PageControl !PageControl
+  deriving stock (Eq, Show)
+
+{- | A manual control of page breaks (docs/adr ADR 0030): no break
+between the blocks around, go on in the next column unless this many
+grid lines are free, or change the grid lines of the current column.
+-}
+data PageControl = NoBreak | NeedLines !Int | AdjustLines !Int
   deriving stock (Eq, Show)
 
 -- | The kind of a forced break (docs/adr ADR 0017).

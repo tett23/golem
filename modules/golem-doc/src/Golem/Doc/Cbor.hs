@@ -104,6 +104,13 @@ bodyT = \case
   FigureBlock fig -> tagged 7 [figureT fig]
   ChannelOutput c -> tagged 8 [channelT c]
   ForcedBreak k -> tagged 11 [int (fromEnum k)]
+  PageControl c -> tagged 12 [pageControlT c]
+
+pageControlT :: PageControl -> Term
+pageControlT = \case
+  NoBreak -> TList [int (0 :: Int)]
+  NeedLines n -> TList [int (1 :: Int), int n]
+  AdjustLines n -> TList [int (2 :: Int), int n]
 
 codeT :: Code -> Term
 codeT (Code lang nums file cap diff ls) =
@@ -282,9 +289,18 @@ termBody t =
         7 | [fig] <- fs -> FigureBlock <$> termFigure fig
         8 | [c] <- fs -> ChannelOutput <$> termChannel c
         11 | [k] <- fs -> ForcedBreak <$> asEnum k
+        12 | [c] <- fs -> PageControl <$> termPageControl c
         -- 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
         _ -> bad "ブロックの種類"
     [] -> bad "ブロックの種類"
+
+termPageControl :: Term -> D PageControl
+termPageControl t =
+  asList t >>= \case
+    [k] | Right 0 <- asIntI k -> Right NoBreak
+    [k, n] | Right 1 <- asIntI k -> NeedLines <$> asIntI n
+    [k, n] | Right 2 <- asIntI k -> AdjustLines <$> asIntI n
+    _ -> bad "改ページの制御"
 
 termCode :: Term -> D Code
 termCode t =
