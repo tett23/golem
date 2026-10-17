@@ -1388,6 +1388,11 @@ CID-keyed の CFF のフォントは CID を文字のコードとし、CIDFont �
 異体字を基底の文字で検索できるようにするためである。
 HTML、EPUB、プレーンテキストは、異体字セレクタを原稿のまま出力する（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。
 
+golem-font は HarfBuzz と FreeType の呼び出しを純粋な関数として包む（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)）。
+純粋な関数はどのスレッドからでも同時に評価されうるので、包んだ関数はスレッドから同時に呼んでも、一つずつ呼んだときと同じ結果を返す。
+FreeType のフェイスは一度に一つのスレッドしか使えない（グリフを一つのスロットに読み込む）ので、フォントごとに一つのロックを持ち、FreeType を呼ぶあいだはそれを取る。
+HarfBuzz のフォントは開いた後は読むだけで、HarfBuzz が複数のスレッドからの同時の利用を許しているので、ロックを取らない。
+
 ## 図版
 
 図版はブロックコマンドで置き、キャプションを付けられる。
@@ -1961,6 +1966,10 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | `golem --version` | `golem` にバージョンを続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
 `golem new` での `id` の生成が、Golem が乱数を使う唯一の箇所である。
+
+`golem` は計算機のすべてのプロセッサの上で動く（GHC のランタイムの `-N`）。
+PDF の段落の組版は複数の OS のスレッドで同時に進む（[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)）。
+出力のバイト列はプロセッサの数によらない（[docs/adr/0002](adr/0002-determinism.md)）。
 
 `--no-notices` は、そのコマンドの実行に限り、すべてのお知らせを出さない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 人が読む形式と JSON の形式の両方に効き、エラーと警告は残す。

@@ -56,7 +56,8 @@ test-suite golem-plugin-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    ResponseSpec
+  other-modules:    ConcurrencySpec
+                    ResponseSpec
   ghc-options:      -threaded
   build-depends:
     , async
