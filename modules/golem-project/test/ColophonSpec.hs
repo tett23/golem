@@ -49,6 +49,15 @@ contributor r = "[[metadata.contributors]]\nname = \"鈴木 花子\"\nrole = \""
 printing :: Int -> Int -> Text -> Text
 printing e p d = "[[metadata.printings]]\nedition = " <> T.pack (show e) <> "\nprinting = " <> T.pack (show p) <> "\ndate = " <> d <> "\n"
 
+{- | The byte offset of the second item of printings in a manifest whose
+tables are @t@: the key @printings@ of its header @[[metadata.printings]]@.
+-}
+secondPrinting :: Text -> Int
+secondPrinting t =
+  let whole = manifestOf "" t
+      second = snd (T.breakOn "[[metadata.printings]]" (T.drop 1 (snd (T.breakOn "[[metadata.printings]]" whole))))
+   in BS.length (TE.encodeUtf8 whole) - BS.length (TE.encodeUtf8 second) + T.length "[[metadata."
+
 tests :: TestTree
 tests =
   testGroup
@@ -121,6 +130,19 @@ tests =
                 two (printing 1 1 "2026-10-16") (printing 1 2 "2026-10-15")
               ]
         mapM_ (\t -> oneError "" t >>= \(_, at) -> assertBool (show at) (at > offsetOf "[[metadata.printings]]" "" t)) cases,
+      testCase "printings out of order: the message names the order, at the second item" $ do
+        let t = printing 1 2 "2026-10-16" <> "\n" <> printing 1 1 "2026-10-17"
+        (m, at) <- oneError "" t
+        (m, at) @?= ("printings は版と刷の順に、同じ版と刷を二度書かずに並べます (metadata.printings)", secondPrinting t),
+      testCase "a printing dated before the one before it: the message names the date, at the second item" $ do
+        let t = printing 1 1 "2026-10-16" <> "\n" <> printing 1 2 "2026-10-15"
+        (m, at) <- oneError "" t
+        (m, at) @?= ("printings の date が前の項目の date より前です (metadata.printings)", secondPrinting t),
+      testCase "two printings on the same date are not out of order" $
+        fmap (map prNumber . mdPrintings) (parsed "" (printing 1 1 "2026-10-16" <> "\n" <> printing 1 2 "2026-10-16")) @?= Right [1, 2],
+      testCase "a new edition starts its printings again from 1" $
+        fmap (map (\p -> (prEdition p, prNumber p)) . mdPrintings) (parsed "" (printing 1 3 "2026-10-16" <> "\n" <> printing 2 1 "2027-01-01"))
+          @?= Right [(1, 3), (2, 1)],
       testCase "a printing number may skip" $
         fmap (map prNumber . mdPrintings) (parsed "" (printing 1 1 "2026-10-16" <> "\n" <> printing 1 3 "2027-01-01")) @?= Right [1, 3],
       testCase "an unknown key of contributors is G0301" $ do

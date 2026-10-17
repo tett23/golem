@@ -4,14 +4,19 @@ module TableSpec (tests) where
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
+import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Eval.File
 import Golem.Parser (parseAst)
 import Golem.Parser.SourceSettings
 import Golem.Project.Style (defaultStyle, paraLineBreaks)
 import Golem.Syntax
+import Hedgehog
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Hedgehog
 
 fid :: FileId
 fid = FileId 9
@@ -79,7 +84,47 @@ codes :: Text -> [Text]
 codes src = [c | (c, _, _, _) <- snd (run src)]
 
 tests :: TestTree
-tests = testGroup "tables (golem-eval ADR 0004)" [tsvTests, csvTests, argTests]
+tests = testGroup "tables (golem-eval ADR 0004)" [tsvTests, csvTests, argTests, roundTrips]
+
+{- | Rows of the same number of cells, at least @minCols@, the first cell not empty (an empty
+file is G0285), from characters that a table file treats in different ways.
+-}
+genGrid :: Int -> [Char] -> Gen [[Text]]
+genGrid minCols cs = do
+  cols <- Gen.int (Range.linear minCols 4)
+  rows <- Gen.int (Range.linear 1 5)
+  let cell = T.pack <$> Gen.string (Range.linear 0 6) (Gen.element cs)
+  first <- T.pack <$> Gen.string (Range.linear 1 6) (Gen.element cs)
+  header <- (first :) <$> Gen.list (Range.singleton (cols - 1)) cell
+  (header :) <$> Gen.list (Range.singleton (rows - 1)) (Gen.list (Range.singleton cols) cell)
+
+-- | LF or CRLF, chosen for each line.
+genEol :: Gen Text
+genEol = Gen.element ["\n", "\r\n"]
+
+-- | A CSV field, quoted when it has a comma, a quote or a line feed.
+csvField :: Text -> Text
+csvField t
+  | T.any (`elem` (",\"\n" :: String)) t = "\"" <> T.replace "\"" "\"\"" t <> "\""
+  | otherwise = t
+
+roundTrips :: TestTree
+roundTrips =
+  testGroup
+    "written and read back"
+    [ testProperty "a TSV written with tabs and LF or CRLF reads back as its rows" $ property $ do
+        -- no tab, CR or LF in a cell; quotes, commas, backslashes and spaces are as written
+        g <- forAll (genGrid 1 "a 表\"\\,")
+        eols <- forAll (Gen.list (Range.singleton (length g)) genEol)
+        let file = T.concat (zipWith (\r e -> T.intercalate "\t" r <> e) g eols)
+        tsv file === Right g,
+      testProperty "a CSV written with quotes where needed reads back as its rows" $ property $ do
+        -- two columns at least, so that no row is an empty line, which CSV drops
+        g <- forAll (genGrid 2 "a 表\",\n\t")
+        eols <- forAll (Gen.list (Range.singleton (length g)) genEol)
+        let file = T.concat (zipWith (\r e -> T.intercalate "," (map csvField r) <> e) g eols)
+        csv file === Right g
+    ]
 
 tsvTests :: TestTree
 tsvTests =
