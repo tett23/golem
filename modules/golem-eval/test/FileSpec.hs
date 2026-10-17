@@ -534,6 +534,15 @@ noticeTests =
         map fst4 (notices "@style verse\n\\ \\ gh\n") @?= ["G0264"]
         map (map fst3) (verseTexts "@style verse\n\\  \\ gh\n") @?= [["gh"]]
         map fst4 (notices "@style verse\n\\  \\ gh\n") @?= ["G0264"],
+      testCase "a line of an escaped space alone is G0264 only, not G0279 too" $ do
+        -- "@style verse\na\n" is 15 bytes; the escape of the second line is at 15
+        notices "@style verse\na\n\\ \n" @?= [("G0264", "行頭のエスケープした空白は無視されます。字下げには全角の空白を使います", 15, 16)],
+      testCase "an escape at each end of one line is G0264 and G0279" $
+        -- "@style verse\n" is 13 bytes; "\\ gh\\ ": the escapes at 13 and 17
+        [(c, s) | (c, _, s, _) <- notices "@style verse\n\\ gh\\ \n"] @?= [("G0264", 13), ("G0279", 17)],
+      testCase "G0279 once for each line that ends in an escape" $
+        -- "@style verse\n" is 13 bytes; "ab\\ \n" is 5, so "cd\\ " starts at 18
+        [(c, s) | (c, _, s, _) <- notices "@style verse\nab\\ \ncd\\ \n"] @?= [("G0279", 15), ("G0279", 20)],
       testCase "an escaped space inside a line stays" $ do
         map (map fst3) (verseTexts "@style verse\na\\ b\n") @?= [["a b"]]
         notices "@style verse\na\\ b\n" @?= [],
