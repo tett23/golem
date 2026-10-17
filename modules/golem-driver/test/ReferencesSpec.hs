@@ -72,7 +72,7 @@ indexTests =
               <> "# 二\n\n"
               <> fillers 4
               <> "本文[index reading=わぶん: 和文]。\n\n@index\n"
-      r <- pagesMini "" fiveLines source [] Map.empty
+      r <- pagesMini "" (fiveLines <> flatHeadings) source [] Map.empty
       pages <- either (assertFailure . show) pure r
       let at t = [n | (n, ls) <- zip [1 :: Int ..] pages, any (t `T.isInfixOf`) ls]
       take 1 (at "本文") @?= [1]
@@ -307,7 +307,7 @@ tocTests =
       (_, pl) <- layoutOk fiveLines "@toc depth=2\n\n# 一\n\n## 節\n\n### 項\n\n本文。\n\n# 二\n\n## 節二\n\n本文。\n" []
       Map.size (plTocPages pl) @?= 4,
     testCase "leader = none draws no leader but the page" $ do
-      r <- pagesMini "" (fiveLines <> "\n[toc]\nleader = \"none\"\n") "@toc\n\n# 一\n\n本文。\n" [] Map.empty
+      r <- pagesMini "" (fiveLines <> flatHeadings <> "\n[toc]\nleader = \"none\"\n") "@toc\n\n# 一\n\n本文。\n" [] Map.empty
       pages <- either (assertFailure . show) pure r
       case concat pages of
         (l : _) -> do

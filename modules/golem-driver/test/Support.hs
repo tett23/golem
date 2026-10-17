@@ -285,8 +285,12 @@ bodyFontFiles style
 pages; the geometry comes with it.
 -}
 layoutMini :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO (Either [Diagnostic] (PageGeometry, PdfLayout))
-layoutMini style source files = withSystemTempDirectory "golem-layout" $ \tmp -> do
-  BS.writeFile (tmp </> "manifest.toml") miniManifest
+layoutMini = layoutMiniWith miniManifest
+
+-- | 'layoutMini' with another manifest.
+layoutMiniWith :: BS.ByteString -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO (Either [Diagnostic] (PageGeometry, PdfLayout))
+layoutMiniWith manifest style source files = withSystemTempDirectory "golem-layout" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") manifest
   BS.writeFile (tmp </> "style.toml") style
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
   forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
@@ -401,6 +405,12 @@ pagesMini manifestExtra style source files bib = withSystemTempDirectory "golem-
     Right e -> case (evBook e, filter isError (evDiagnostics e)) of
       (Just book, []) -> layoutPages fakeProvider (PdfInput tmp (evProject e) (evStyle e) book False [] bib Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty)
       (_, ds) -> pure (Left ds)
+
+{- | Headings of the body size on the body grid, as before the defaults of
+golem-driver ADR 0032: for the tests that are not about headings.
+-}
+flatHeadings :: BS.ByteString
+flatHeadings = BS.concat ["\n[headings." <> BC.pack (show l) <> "]\nsize = \"1zw\"\nlines = 1\n" | l <- [1 :: Int, 2, 3]]
 
 -- | horizontalStyle with five lines a page.
 fiveLines :: BS.ByteString

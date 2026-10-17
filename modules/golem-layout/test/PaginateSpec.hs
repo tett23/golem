@@ -30,6 +30,7 @@ paginateTests =
       testGroup "a heading with footnotes (golem-driver ADR 0003)" headingNoteTests,
       testGroup "widows, orphans and the page end" widowOrphanTests,
       testGroup "page references that do not settle (S2)" pageRefTests,
+      testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -201,9 +202,73 @@ placedIds ps =
       _ -> []
   ]
 
+figureOrderTests :: [TestTree]
+figureOrderTests =
+  [ testCase "a figure after a figure sent on is sent on after it" $ do
+      let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 98 3 [] [], FParagraph (lines' 10 1), FFigure 99 1 [] []]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 10], [SFigure 98, SFigure 99]],
+    testCase "in two columns, a figure after a figure sent on goes to the next column after it" $ do
+      let ps = paginate 2 5 [FParagraph (lines' 0 3), FFigure 98 3 [] [], FParagraph (lines' 10 1), FFigure 99 1 [] []]
+      [(poNumber p, poColumn p, map snd (poSlots p)) | p <- ps]
+        @?= [(1, 0, [SLine 0, SLine 1, SLine 2, SLine 10]), (1, 1, [SFigure 98, SFigure 99])],
+    testCase "a wrapped figure after a figure sent on goes with its lines after it" $ do
+      let ps = paginate 1 6 [FParagraph (lines' 0 3), FFigure 98 4 [] [], FWrapped 99 2 [] [] (lines' 10 2), FParagraph (lines' 20 1)]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2], [SFigure 98, SWrapped 99, SLine 10, SLine 11], [SLine 20]]
+  ]
+
+-- | A block of the generated flows with figures: a paragraph, a figure of n lines, or a wrapped figure of n lines with k lines beside it.
+data FigBlock = FPara !Int | FFig !Int | FWrap !Int !Int
+  deriving stock (Show)
+
+genFigBlocks :: Gen [FigBlock]
+genFigBlocks =
+  Gen.list
+    (Range.linear 1 30)
+    ( Gen.choice
+        [ FPara <$> Gen.int (Range.linear 1 7),
+          FFig <$> Gen.int (Range.linear 1 6),
+          do
+            n <- Gen.int (Range.linear 1 4)
+            FWrap n <$> Gen.int (Range.linear 1 n)
+        ]
+    )
+
+{- | The flows of the blocks: lines numbered in order from 0, figures
+numbered in order from 1000.
+-}
+figFlowsOf :: [FigBlock] -> [Flow]
+figFlowsOf = go 0 1000
+  where
+    go _ _ [] = []
+    go i j (FPara n : rest) = FParagraph (lines' i n) : go (i + n) j rest
+    go i j (FFig n : rest) = FFigure j n [] [] : go i (j + 1) rest
+    go i j (FWrap n k : rest) = FWrapped j n [] [] (lines' i k) : go (i + k) (j + 1) rest
+
+-- | The figures in the output, column by column, slot by slot.
+placedFigures :: [PageOut] -> [Int]
+placedFigures ps = [i | p <- ps, (_, s) <- poSlots p, i <- case s of SFigure f -> [f]; SWrapped f -> [f]; _ -> []]
+
+figBlockLines :: [FigBlock] -> Int
+figBlockLines = sum . map (\case FPara n -> n; FWrap _ k -> k; FFig _ -> 0)
+
+figBlockFigures :: [FigBlock] -> Int
+figBlockFigures = length . filter (\case FPara _ -> False; _ -> True)
+
 propertyTests :: [TestTree]
 propertyTests =
-  [ testProperty "every line of paragraphs and headings is placed once, in the order written" $ property $ do
+  [ testProperty "figures and wrapped figures are placed in the order written (golem-layout ADR 0015)" $ property $ do
+      blocks <- forAll genFigBlocks
+      capacity <- forAll (Gen.int (Range.linear 2 9))
+      columns <- forAll (Gen.int (Range.linear 1 2))
+      placedFigures (paginate columns capacity (figFlowsOf blocks)) === [1000 .. 1000 + figBlockFigures blocks - 1],
+    testProperty "every line and every figure is placed exactly once" $ property $ do
+      blocks <- forAll genFigBlocks
+      capacity <- forAll (Gen.int (Range.linear 2 9))
+      columns <- forAll (Gen.int (Range.linear 1 2))
+      let ps = paginate columns capacity (figFlowsOf blocks)
+      placedIds ps === [0 .. figBlockLines blocks - 1]
+      length (placedFigures ps) === figBlockFigures blocks,
+    testProperty "every line of paragraphs and headings is placed once, in the order written" $ property $ do
       blocks <- forAll genBlocks
       capacity <- forAll (Gen.int (Range.linear 2 9))
       placedIds (paginate 1 capacity (flowsOf blocks)) === [0 .. lineCount blocks - 1],

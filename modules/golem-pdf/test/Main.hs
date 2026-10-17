@@ -1048,6 +1048,12 @@ marksTests =
                   Rect (-8192) (-(o + l)) 16384 l,
                   Rect (-b - 8192) (-(o + l)) 16384 l
                 ],
+        testCase "a filled disc is four cubic curves, the control points 0.5523 of the radius away (golem-driver ADR 0028)" $
+          contentStream Map.empty Map.empty [Disc (10 * 65536) (10 * 65536) (2 * 65536)]
+            @?= "12 10 m\n12 11.1046 11.1046 12 10 12 c\n8.8954 12 8 11.1046 8 10 c\n8 8.8954 8.8954 8 10 8 c\n11.1046 8 12 8.8954 12 10 c\nf\n",
+        testCase "a filled closed curve is m, the curves, h and f (golem-driver ADR 0028)" $
+          contentStream Map.empty Map.empty [CurveFill (0, 0) [((65536, 65536), (131072, 65536), (196608, 0)), ((131072, -65536), (65536, -65536), (0, 0))]]
+            @?= "0 0 m\n1 1 2 1 3 0 c\n2 -1 1 -1 0 0 c\nh f\n",
         testCase "a translated mark moves the origin inside q and Q" $
           contentStream Map.empty Map.empty [Translated 65536 131072 [Rule (Rect 0 0 65536 65536)]] @?= "q 1 0 0 1 1 2 cm\n0 0 1 1 re f\nQ\n",
         testCase "images and fonts inside translated marks are page resources" $ do
