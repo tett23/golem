@@ -222,6 +222,15 @@ pageTests =
       case ipResources p of
         ODict kvs -> map fst kvs @?= ["ExtGState"]
         other -> assertFailure (show other),
+    testCase "objects are copied through nested references, each once, a cycle too" $ do
+      p <- importOk 1 (classicPdf "" (onePage "<< /ExtGState << /G1 5 0 R >> >>" "/G1 gs" <> [(5, "<< /Type /ExtGState /Next 6 0 R >>"), (6, "<< /Back 5 0 R >>")]))
+      map fst (ipObjects p) @?= [5, 6],
+    testCase "a reference to the page becomes null and is left out; the page is not copied" $ do
+      p <- importOk 1 (classicPdf "" (onePage "<< /ExtGState << /G1 5 0 R >> >>" "/G1 gs" <> [(5, "<< /Type /ExtGState /P 3 0 R >>")]))
+      ipObjects p @?= [(5, ODict [("Type", OName "ExtGState")])],
+    testCase "Metadata is not followed" $ do
+      p <- importOk 1 (classicPdf "" (onePage "<< /ExtGState << /G1 5 0 R >> >>" "/G1 gs" <> [(5, "<< /Type /ExtGState /Metadata 6 0 R >>"), (6, stream "/Type /Metadata /Subtype /XML" "<x/>")]))
+      ipObjects p @?= [(5, ODict [("Type", OName "ExtGState")])],
     testCase "the crop box is cut to the media box" $ do
       let pdf = classicPdf "" (onePage' "/MediaBox [0 0 200 100] /CropBox [-10 -10 100 50]")
       p <- importOk 1 pdf
