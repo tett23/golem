@@ -34,7 +34,7 @@ cellExtent items = (maximum (0 : segments), natural)
         | isBox prev -> acc : go 0 (Just x) xs
         | otherwise -> go (acc + w) (Just x) xs
       Penalty _ p h
-        | p < infPenalty && h /= PatternHyphen -> acc : go 0 (Just x) xs
+        | p < infPenalty && not (isPatternHyphen h) -> acc : go 0 (Just x) xs
         | otherwise -> go acc (Just x) xs
     isBox = \case
       Just Box {} -> True

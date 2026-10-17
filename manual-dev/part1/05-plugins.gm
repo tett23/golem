@@ -142,7 +142,7 @@ ADR は領域を解放する [code: golem_dealloc(ptr: u32, len: u32)] も挙げ
 + インスタンスを捨てる。
 
 読み込みの時点で、ホストは [code: golem_abi_version] を呼び、ホストの ABI のバージョンと比べる。
-今の ABI のバージョンは 6 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
+今の ABI のバージョンは 7 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
 一致しなければ、読み込みの時点でエラー（G0605）になる。
 続けて [code: golem_describe] を呼び、プラグインが提供するコマンドとフィルタの名前を得る。
 

@@ -6,7 +6,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.LayoutSpec (Rect (..))
-import Golem.Pdf (ColorSpace (..), ImageData (..), X4Problem (..))
+import Golem.Pdf (ColorSpace (..), ColorUse (..), FigureContent (..), ImageData (..), ImportedPage (..), Obj (..), X4Problem (..))
 import Golem.Preflight
 import Golem.Preflight.Rules
 import Golem.Preflight.View
@@ -46,7 +46,6 @@ emptyView =
       vwIntentProfile = Just "intent",
       vwX4 = [],
       vwPdf = "%PDF-1.6",
-      vwUnplaceable = [],
       vwStyleSpan = styleSpan,
       vwManifestSpan = manifestSpan
     }
@@ -58,7 +57,13 @@ image :: ColorSpace -> Int -> Int -> Int -> Maybe BS.ByteString -> ImageData
 image cs bits w h icc = ImageData w h bits cs icc "" False False Nothing
 
 placed :: ImageData -> Rect -> ImageView
-placed img r = ImageView r img srcSpan "images/photo.jpg"
+placed img r = ImageView r (RasterFigure img) srcSpan "images/photo.jpg"
+
+-- | A page of a PDF figure that uses the colour spaces given, placed well inside the page (golem-pdf ADR 0008).
+vector :: [ColorUse] -> ImageView
+vector cs = ImageView (Rect (mm 20) (mm 20) (inch 4) (inch 3)) (VectorFigure page) srcSpan "images/figure.pdf"
+  where
+    page = ImportedPage "file" 1 (0, 0, 288, 216) 0 (288, 216) (ODict []) Nothing "" [] cs
 
 -- | An image of w × h pixels placed at w' × h' inches well inside the page.
 placedAt :: ColorSpace -> Int -> Int -> Rational -> Rational -> ImageView
@@ -106,7 +111,6 @@ rulesTests =
               [ ruGlyphMissing r,
                 ruFontFormats r,
                 ruTypeSize r,
-                ruImageUnplaceable r,
                 ruImageResolutionMax r,
                 ruImageColorSpace r,
                 ruImageIcc r,
@@ -123,9 +127,9 @@ rulesTests =
             e = LevelError
             w = LevelWarning
             o = LevelOff
-        levels basicRules @?= [e, o, o, e, o, o, o, o, o, o, w, e, o, o, o, o]
-        levels printRules @?= [e, o, w, e, o, w, w, e, e, w, w, e, w, o, o, w]
-        levels noneRules @?= replicate 16 o
+        levels basicRules @?= [e, o, o, o, o, o, o, o, o, w, e, o, o, o, o]
+        levels printRules @?= [e, o, w, o, w, w, e, e, w, w, e, w, o, o, w]
+        levels noneRules @?= replicate 15 o
         (ruResolutionColor printRules, ruResolutionGray printRules, ruResolutionBitmap printRules) @?= (Tier 150 300, Tier 150 300, Tier 600 1200)
         (ruResolutionColor basicRules, ruResolutionBitmap noneRules) @?= (Tier 0 0, Tier 0 0)
         (ruTypeSizeMin printRules, ruTypeSizeMultiInkOnly printRules) @?= (pt 5, True)
@@ -143,6 +147,7 @@ rulesTests =
         ruName (parsed "name = \"A 印刷\"\n") @?= Just "A 印刷"
         parsed "based-on = \"basic\"\n" @?= basicRules
         parsed "based-on = \"none\"\n" @?= noneRules,
+      testCase "image-unplaceable is an unknown check (golem-pdf ADR 0008)" $ g0901 "[image-unplaceable]\nseverity = \"off\"\n" 0,
       testCase "an unknown top-level key is G0901 at its line" $ g0901 "based-on = \"print\"\nfoo = 1\n" 1,
       testCase "an unknown key of a check is G0901 at its line" $ g0901 "[bleed-size]\nseverity = \"error\"\nmaximum = \"3mm\"\n" 2,
       testCase "an unknown check is G0901" $ g0901 "[no-such-check]\nseverity = \"off\"\n" 0,
@@ -183,10 +188,23 @@ checkTests =
       count printRules [glyph 5 "あ" 5 rich] @?= 0
       count printRules {ruTypeSizeMultiInkOnly = False} [glyph 5 "あ" 4 k100] @?= 1
       count printRules {ruTypeSizeMultiInkOnly = False} [glyph 5 "あ" 4 k100, glyph 6 "い" 4 rich] @?= 2,
-    testCase "G0905: an image that cannot be placed" $ do
-      let v = emptyView {vwUnplaceable = [Unplaceable srcSpan "images/a.pdf" "JPEG と PNG 以外の画像は使えません"]}
-      map diagMessage (only "G0905" (check printRules v)) @?= ["図版を PDF に置けません: images/a.pdf（JPEG と PNG 以外の画像は使えません）"]
-      map diagSpan (only "G0905" (check printRules v)) @?= [srcSpan],
+    testCase "G0908: a PDF figure in DeviceRGB and DeviceCMYK is one diagnostic with rgb (golem-pdf ADR 0008)" $ do
+      let ds = only "G0908" (check printRules (imagePage [vector [UseRgb, UseCmyk, UseGray]]))
+      length ds @?= 1
+      assertBool (show ds) (all (("rgb" `T.isInfixOf`) . diagMessage) ds)
+      only "G0908" (check printRules (imagePage [vector [UseCmyk, UseIcc 4 "intent"]])) @?= []
+      map diagMessage (only "G0908" (check printRules (imagePage [vector [UseRgb, UseLab, UseIcc 3 "srgb"]])))
+        @?= ["この設定では使えない色空間の図版です: images/figure.pdf（rgb、lab）。Golem は画像の色を変換しないので、CMYK に変換した画像に替えます"],
+    testCase "G0909: a PDF figure with a CMYK profile other than the intent (golem-pdf ADR 0008)" $ do
+      length (only "G0909" (check printRules (imagePage [vector [UseIcc 4 "other"]]))) @?= 1
+      length (only "G0909" (check printRules (imagePage [vector [UseIcc 4 "intent"], vector [UseIcc 3 "other"]]))) @?= 0,
+    testCase "G0906 and G0907 do not look at a PDF figure (golem-pdf ADR 0008)" $ do
+      let tiny = (vector [UseCmyk]) {ivRect = Rect (mm 20) (mm 20) (inch 100) (inch 100)}
+          r = printRules {ruImageResolutionMax = LevelWarning, ruColorMax = 1}
+      only "G0906" (check printRules (imagePage [tiny])) @?= []
+      only "G0907" (check r (imagePage [tiny])) @?= [],
+    testCase "G0911: a PDF figure is checked by its rectangle (golem-pdf ADR 0008)" $
+      length (only "G0911" (check printRules emptyView {vwPages = [(emptyPage 1) {pvImages = [(vector [UseCmyk]) {ivRect = Rect (mm 30) (mm 30) (mm 128 - mm 30 - mm 2) (mm 100)}]}]})) @?= 1,
     testCase "G0906: 300ppi passes, 200ppi warns, 120ppi is an error" $ do
       let res w' h' = [(diagSeverity d, diagFacts d) | d <- only "G0906" (check printRules (imagePage [placedAt CsCmyk 1200 900 w' h']))]
       res 4 3 @?= []

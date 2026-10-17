@@ -12,7 +12,6 @@ module Golem.Preflight.View
     LineView (..),
     GlyphView (..),
     RuleView (..),
-    Unplaceable (..),
   )
 where
 
@@ -20,7 +19,7 @@ import Data.ByteString (ByteString)
 import Data.Map.Strict (Map)
 import Data.Text (Text)
 import Golem.LayoutSpec (Rect (..))
-import Golem.Pdf (ImageData, X4Problem)
+import Golem.Pdf (FigureContent, X4Problem)
 import Golem.Project.Style (Sp)
 import Golem.Syntax (SrcSpan)
 
@@ -41,8 +40,6 @@ data View = View
     vwX4 :: ![X4Problem],
     -- | the bytes of the PDF
     vwPdf :: !ByteString,
-    -- | the figures whose images cannot be placed (G0905)
-    vwUnplaceable :: ![Unplaceable],
     -- | where diagnostics about style.toml point: its top, or the manifest's
     vwStyleSpan :: !SrcSpan,
     -- | the top of manifest.toml
@@ -75,7 +72,8 @@ data PageView = PageView
 
 data ImageView = ImageView
   { ivRect :: !Rect,
-    ivImage :: !ImageData,
+    -- | the image, or the page of a PDF figure (golem-pdf ADR 0008)
+    ivContent :: !FigureContent,
     -- | the @figure block
     ivSpan :: !SrcSpan,
     ivPath :: !Text
@@ -113,13 +111,5 @@ data RuleView = RuleView
   { rvKind :: !Text,
     rvWeight :: !Sp,
     rvRect :: !Rect
-  }
-  deriving stock (Eq, Show)
-
--- | A figure whose file is there but cannot be read as an image.
-data Unplaceable = Unplaceable
-  { unSpan :: !SrcSpan,
-    unPath :: !Text,
-    unReason :: !Text
   }
   deriving stock (Eq, Show)
