@@ -240,12 +240,14 @@ oneLine cur = \case
   NSpan f s e -> spanText cur (f, s, e)
   NLocated sp v -> oneLine cur v <> " " <> spanText cur sp
 
--- | A node as the argument of a constructor, in parentheses when it has spaces.
+{- | A node as the argument of a constructor, in parentheses when it has
+spaces; a string or a character literal is one token, whatever it holds.
+-}
 arg :: Int -> Node -> String
 arg cur n = case n of
   NCon _ (_ : _) -> paren
   NLocated _ _ -> paren
-  NLeaf s | any isSpace s || take 1 s == "-" -> paren
+  NLeaf s | take 1 s `notElem` ["\"", "'"] && (any isSpace s || take 1 s == "-") -> paren
   _ -> oneLine cur n
   where
     paren = "(" <> oneLine cur n <> ")"
