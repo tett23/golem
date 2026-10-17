@@ -67,6 +67,10 @@ data SyntaxKind
   | KDelim
   | KKeyword
   | KBackslash
+  | -- | the ## of ##…## (golem-parser ADR 0011)
+    KNumberMark
+  | -- | what is between the ## of ##…##
+    KNumberBody
   | KError
   | -- nodes
     NFile
@@ -105,6 +109,8 @@ data SyntaxKind
   | NHashEntry
   | NParenExpr
   | NHardBreak
+  | -- | ##…## (golem-parser ADR 0011)
+    NNumberShorthand
   | NErrorNode
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 

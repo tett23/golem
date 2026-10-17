@@ -112,6 +112,19 @@ tests =
   testGroup
     "CST to AST (ADR 0005)"
     [ whitespaceTests,
+      -- golem-parser ADR 0011
+      testCase "##36## is a NumberShorthand of six bytes" $
+        case ast "##36##\n" of
+          [Paragraph [Located sp (NumberShorthand t)]] -> (t, spanStart sp, spanEnd sp) @?= ("##36##", 0, 6)
+          other -> assertFailure (show other),
+      testCase "##12年 is a NumberShorthand without its close" $
+        paraTexts "##12年\n" @?= [[NumberShorthand "##12年"]],
+      testCase "shorthandsAsText makes ##…## text, inside commands too" $ do
+        let at = mkSpan fid
+            src = [Located (at 0 1) (Text "a"), Located (at 1 6) (NumberShorthand "##1##"), Located (at 6 7) (Text "b")]
+        shorthandsAsText src @?= [Located (at 0 7) (Text "a##1##b")]
+        let cmd = Located (at 0 10) (Command (Located (at 1 7) "strong") [] [[Located (at 9 14) (NumberShorthand "##1##")]])
+        map locValue (shorthandsAsText [cmd]) @?= [Command (Located (at 1 7) "strong") [] [[Located (at 9 14) (Text "##1##")]]],
       testGroup
         "newlines in a paragraph become SoftBreak (docs/adr ADR 0003)"
         [ testCase "a paragraph" $
