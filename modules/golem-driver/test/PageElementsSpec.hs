@@ -7,15 +7,16 @@ import Data.List (isSuffixOf, nub, sort, sortOn)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, listToMaybe)
+import Data.Ratio ((%))
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Doc.Assemble (HeadingInfo (..))
 import Golem.Doc.IR (InlineF (..))
 import Golem.Driver
-import Golem.Driver.Pdf (PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, runningHeadLines, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
+import Golem.Driver.Pdf (PdfLayout (..), PlacedFigure (..), PlacedSidenote (..), SetLine (..), figureRect, headingDefaults, runningHeadLines, syntheticStroke, syntheticStrokeJa, syntheticStrokeLatin, usedRoles)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Paginate (PageOut (..), Slotted (..))
+import Golem.Layout.Paginate (HeadingBlock (..), PageOut (..), Slotted (..))
 import Golem.Layout.Wrap (Exclusion (..))
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, pageGeometry, sidenoteAreaFor, typeAreaFor)
 import Golem.Pdf (spToPt)
@@ -312,6 +313,7 @@ runningHeadTests =
           style =
             BS.concat
               [ shortGrid,
+                flatHeadings,
                 "[masters.appendix]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n\n",
                 "[masters.front]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n\n",
                 "[masters.body]\nrunning-head = { position = \"top-outside\", content = \"heading.1.short\" }\n"
@@ -369,7 +371,7 @@ runningHeadTests =
     headsStyleAt rh =
       BS.concat
         [ shortGrid,
-          "[headings.1]\npage-break = \"recto\"\n\n",
+          "[headings.1]\npage-break = \"recto\"\nsize = \"1zw\"\nlines = 1\n\n",
           "[masters.body]\nrunning-head = { ",
           rh,
           " }\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
@@ -411,7 +413,7 @@ headingTests =
       (big, sizes) <- miniPdf fakeProvider True (horizontalStyle <> "\n[headings.1]\nsize = \"20pt\"\n") source [] >>= headingYs
       length big @?= 2
       assertBool (show sizes) ("20" `elem` sizes)
-      (plain, _) <- miniPdf fakeProvider True horizontalStyle source [] >>= headingYs
+      (plain, _) <- miniPdf fakeProvider True (horizontalStyle <> flatHeadings) source [] >>= headingYs
       length plain @?= 1,
     testCase "a heading role with its own font embeds both fonts, each with its own glyphs" $ do
       (sans, serif) <- realLatinFonts
@@ -430,7 +432,7 @@ headingTests =
       (sans, _) <- realLatinFonts
       let base = horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n"
           files = [("fonts/sans.otf", sans)]
-      a <- miniPdf realProvider True base "# Zebra\n\nquick\n" files
+      a <- miniPdf realProvider True (base <> "\n[headings.1]\nsize = \"10pt\"\n") "# Zebra\n\nquick\n" files
       b <- miniPdf realProvider True (base <> "\n[headings.1]\nfont = \"body\"\nsize = \"10pt\"\n") "# Zebra\n\nquick\n" files
       -- style.toml is an input of the instance ID (golem-pdf ADR 0004), so the trailer differs
       let withoutId pdf = fst (BS.breakSubstring "/ID [" pdf)
@@ -456,8 +458,52 @@ headingTests =
       let style = BC.pack (T.unpack (T.replace "lines = 30" "lines = 3" (T.pack (BC.unpack horizontalStyle)))) <> "\n[headings.1]\nsize = \"60pt\"\n"
       (errs, pdf) <- buildMini fakeProvider True style "# A\n\nx\n" []
       errs @?= [DiagnosticCode "G0724"]
-      pdf @?= Nothing
+      pdf @?= Nothing,
+    testCase "the default size and lines of a heading by language and level (golem-driver ADR 0032)" $ do
+      headingDefaults "ja" 1 @?= (Zw (3 % 2), 5)
+      headingDefaults "ja-JP" 3 @?= (Zw 1, 2)
+      headingDefaults "en" 1 @?= (Zw (3 % 2), 6)
+      headingDefaults "fr" 2 @?= (Zw (5 % 4), 4),
+    testCase "a heading with only a number is 1.5 times the body and takes five lines in Japanese (golem-driver ADR 0032)" $ do
+      let style = horizontalStyle <> "\n[headings.1]\nnumber = \"{n}\"\n"
+          source = "# 見出し\n\n本文。\n"
+      content <- miniPdf fakeProvider True style source [] >>= fmap BS.concat . inflateAll
+      assertBool (show (tfSizes content)) ("15" `elem` tfSizes content)
+      (_, pl) <- layoutOk style source []
+      headingGap pl @?= [5],
+    testCase "the same heading takes six lines in an English book (golem-driver ADR 0032)" $ do
+      let style = horizontalStyle <> "\n[headings.1]\nnumber = \"{n}\"\n"
+          manifest = replaceIn "language = \"ja\"" "language = \"en\"" miniManifest
+      (_, pl) <- layoutMiniWith manifest style "# Heading\n\nbody.\n" [] >>= either (assertFailure . show) pure
+      headingGap pl @?= [6],
+    testCase "size 1zw and lines 1 keep each line of a heading on the body grid (golem-driver ADR 0032)" $ do
+      let style = horizontalStyle <> "\n[headings.1]\nsize = \"1zw\"\nlines = 1\n"
+      (_, pl) <- layoutOk style "# 見出し\n\n本文。\n" []
+      headingGap pl @?= [1]
+      map (\hb -> (hbSpan hb, hbOffset hb)) (Map.elems (plHeadings pl)) @?= [(1, 0)],
+    testCase "the default lines are cut to a page of three lines; lines = 4 is G0724 (golem-driver ADR 0032)" $ do
+      let three = replaceIn "lines = 30" "lines = 3" horizontalStyle
+      (ok, _) <- buildMini fakeProvider True three "# A\n\nx\n" []
+      ok @?= []
+      (errs, pdf) <- buildMini fakeProvider True (three <> "\n[headings.1]\nlines = 4\n") "# A\n\nx\n" []
+      errs @?= [DiagnosticCode "G0724"]
+      pdf @?= Nothing,
+    testCase "default headings: parallel and sequential, and two builds, give the same bytes (golem-driver ADR 0032)" $ do
+      let source = "# 一\n\n本文。\n\n## 二\n\n### 三\n\n本文。\n"
+      a <- miniPdf fakeProvider True horizontalStyle source []
+      b <- miniPdf fakeProvider False horizontalStyle source []
+      c <- miniPdf fakeProvider True horizontalStyle source []
+      a @?= b
+      a @?= c
   ]
+  where
+    -- the grid lines from each heading to the line after it on its page
+    headingGap pl =
+      [ next - h
+      | p <- plPages pl,
+        (h, SHeading {}) <- poSlots p,
+        next <- take 1 [l | (l, SLine _) <- poSlots p, l > h]
+      ]
 
 emphasisTests :: [TestTree]
 emphasisTests =

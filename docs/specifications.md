@@ -579,6 +579,7 @@ page-break = "recto"
 
 [headings.2]
 number = "{1}.{n}"
+lines = 3
 
 [composition]
 kinsoku = "strict"
@@ -1167,12 +1168,28 @@ HTML と EPUB では、組み込みの文字スタイルを `strong`、`b`、`i`
 文字スタイルの `font`、合成の太字と斜体、`color`、段落スタイルの `font`、行の字下げ、`space-between` を CSS に書き、`size` はキャプションと傍注のほかは CSS に書かない。
 
 PDF では、見出しを `[headings.<階層>]` の `font` の役割の書体と `size` の大きさで組む。
-`font` を省けば本文の役割、`size` を省けば版面の文字の大きさになる。
+`font` を省けば本文の役割になる。
 本文より大きい見出しは、行の格子からずらさずに置く（行取り）。
 見出しの行送りは、本文の行送りと文字の大きさの比を保った値とする。
 見出しは、その全体を収める最も少ない数の格子の行を占め、その領域の中央に置く。
-見出しの大きさが版面の文字の大きさと同じなら、見出しの各行は本文と同じ格子の位置に来る。
+`lines` を書いた見出しは、少なくともその数の格子の行を占める。
+見出しの大きさが版面の文字の大きさと同じで `lines` が 1 なら、見出しの各行は本文と同じ格子の位置に来る。
+行取りの空きは、ページや段の先頭でも削らない。
 見出しはページをまたいで分けず、一ページの行数を超える見出しはエラー（G0724）とする（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
+
+`size` と `lines` を省いた見出しは、キーごとに次の既定の値で組む（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）。
+本の言語（マニフェストの `language`）が `ja` で始まる本と、ほかの言語の本とで、`lines` の既定が違う。
+`zw` は版面の文字の大きさを一字とする。
+
+| 階層 | `size` | `lines`（`ja`） | `lines`（ほかの言語） |
+| --- | --- | --- | --- |
+| 1 | `"1.5zw"` | 5 | 6 |
+| 2 | `"1.25zw"` | 3 | 4 |
+| 3 | `"1zw"` | 2 | 2 |
+
+既定の `lines` が一ページの行数を超える版面では、既定の `lines` を一ページの行数に切り詰める。
+書いた `lines` は切り詰めず、一ページの行数を超えれば G0724 とする。
+見出しを本文と同じ大きさで、前後に空きを入れずに組むには、各階層に `size = "1zw"` と `lines = 1` を書く。
 
 柱[^running-head]とノンブルは、マスターページ（`[masters.<名前>]`）の `running-head` と `folio` で置く（[golem-driver ADR 0014](golem-driver/adr/0014-running-heads.md)）。
 `running-head` の `position` は柱の位置であり、`folio` の `position` と同じ値（`"top-outside"` など）をとる。
@@ -1562,6 +1579,9 @@ HTML と EPUB では `<br/>` にし、プレーンテキストでは改行にす
 
 PDF の改ページは、行を版面の格子に先頭から順に詰めて決める（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 見出しの `page-break = "recto"` は、その階層の見出しを奇数ページから始める。
+見出しの直後では改ページしない。
+見出しは、続く見出しのすべてと、その後の段落の最初の 2 行までと同じ段に置く（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）。
+それらを合わせて段に収まらないときも、空の段からは送らない。
 
 原稿からは、`@page-break`（改ページ）、`@page-break recto`（改丁）、`@page-break verso`（次の偶数ページから始める）、`@column-break`（改段）で改められる（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 記法と置ける位置は [markup.md](markup.md) の「改ページ」の節で定める。
@@ -2221,7 +2241,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
-- **見出しの後ろの改ページ**：見出しの直後で改ページしない規則が、一つ先のブロックしか見ない。見出し、見出し、段落と続くと、最初の見出しがページの末尾に残る（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 - **見出しの脚注**：脚注がページに入らないとき、見出しは元のページに残り、注の本文だけが次のページに送られる。段落の行の場合は、行のほうが送られる（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 - **ぶら下げの量**：ぶら下げの量を、字の幅ではなく語の箱全体の幅に対する割合で求めている。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は字の幅に対する割合と定めている。既存のテストも、語の幅を基準にした値を期待している。
 - **分綴のハイフンの突き出し**：パターンで分綴したときに行末に足すハイフンを、突き出さない。行分割の突き出しの量は、行の最後の箱の終わりの字だけを見て求めるので、分綴で足したハイフンを数えない。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は、行末のハイフンも突き出すと定めている。
