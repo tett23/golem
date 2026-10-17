@@ -305,7 +305,7 @@ err"
 run bg start three sh -c 'exit 3'
 run bg wait three
 expect "bg: wait exits with the code of the command" 3
-run bg start slow sh -c 'sleep 2; echo done'
+run bg start slow sh -c 'sleep 1; echo done'
 if [ "$CODE" = 0 ] && [ ! -f "$BG_DIR/slow.code" ]; then ok; else ng "bg: start returns while the command runs"; fi
 run bg wait slow
 expect "bg: wait waits for the command" 0 "done"

@@ -41,7 +41,8 @@ case "$ACTION" in
       echo "bg.sh: $NAME was not started" >&2
       exit 2
     fi
-    while [ ! -f "$DIR/$NAME.code" ]; do sleep 1; done
+    # GNU sleep and the sleep of macOS take a fraction of a second
+    while [ ! -f "$DIR/$NAME.code" ]; do sleep 0.2; done
     cat "$DIR/$NAME.log"
     exit "$(cat "$DIR/$NAME.code")"
     ;;
