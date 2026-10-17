@@ -396,7 +396,7 @@ hiddenFolioTests =
     headsStyle =
       BS.concat
         [ shortGrid,
-          "[headings.1]\npage-break = \"recto\"\n\n",
+          "[headings.1]\npage-break = \"recto\"\nsize = \"1zw\"\nlines = 1\n\n",
           "[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
         ]
 

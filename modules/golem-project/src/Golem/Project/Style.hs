@@ -551,7 +551,9 @@ data HeadingStyle = HeadingStyle
   { hsFont :: !(Maybe Text),
     hsSize :: !(Maybe Dim),
     hsNumber :: !(Maybe Text),
-    hsRectoBreak :: !Bool
+    hsRectoBreak :: !Bool,
+    -- | the least grid lines the heading takes (golem-driver ADR 0032)
+    hsLines :: !(Maybe Int)
   }
   deriving stock (Eq, Show)
 
@@ -1170,12 +1172,13 @@ instance FromValue HeadingStyle where
     s <- dimKey "size"
     n <- optKey "number"
     pb <- enumKey "page-break" ["recto", "any"]
+    ls <- optKeyOf "lines" $ fromValue >=> \l -> if l < (1 :: Int) then fail ("lines は 1 以上の整数です: " <> show l) else pure l
     -- retired (golem-driver ADR 0014): G0319
     pickKey
       [ Key "running-head" (\v -> failAt (valueAnn v) "[headings.<l>] の running-head は廃止しました。柱に使う見出しは [masters.<名前>] の running-head の content で指定してください"),
         Else (pure ())
       ]
-    pure (HeadingStyle f s n (pb == Just "recto"))
+    pure (HeadingStyle f s n (pb == Just "recto") ls)
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do

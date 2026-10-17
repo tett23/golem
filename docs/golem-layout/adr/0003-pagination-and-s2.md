@@ -1,6 +1,6 @@
 # ADR 0003: 改ページ、脚注、ページ番号の解決
 
-ステータス: 採択→原稿の改ページは [docs/adr/0017](../../adr/0017-forced-page-breaks.md)、柱の内容の決め方は [golem-driver ADR 0014](../../golem-driver/adr/0014-running-heads.md)、改ページの単位を段にすることは [docs/adr/0018](../../adr/0018-multi-column-layout.md)
+ステータス: 採択→原稿の改ページは [docs/adr/0017](../../adr/0017-forced-page-breaks.md)、柱の内容の決め方は [golem-driver ADR 0014](../../golem-driver/adr/0014-running-heads.md)、改ページの単位を段にすることは [docs/adr/0018](../../adr/0018-multi-column-layout.md)、図版の順序の規則は [golem-layout ADR 0015](0015-figure-order.md)、見出しが続くときの改ページは [golem-driver ADR 0032](../../golem-driver/adr/0032-default-heading-styles.md)
 
 ## 文脈
 
