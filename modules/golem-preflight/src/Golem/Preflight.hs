@@ -17,7 +17,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.LayoutSpec (Rect (..))
-import Golem.Pdf (ColorSpace (..), ImageData (..), X4Problem (..))
+import Golem.Pdf (ColorSpace (..), ColorUse (..), FigureContent (..), ImageData (..), ImportedPage (..), X4Problem (..))
 import Golem.Preflight.Rules
 import Golem.Preflight.View
 import Golem.Project.Style (Sp)
@@ -30,7 +30,6 @@ check r v =
     [ glyphMissing r v,
       fontFormats r v,
       typeSize r v,
-      imageUnplaceable r v,
       imageResolution r v,
       imageResolutionMax r v,
       imageColorSpace r v,
@@ -90,10 +89,9 @@ mmText s =
    in (if tenths < 0 then "-" else "") <> tshow i <> "." <> tshow f <> "mm"
 
 -- | The effective resolution: the pixels over the inches placed, the smaller of the two, cut down.
-ppiOf :: ImageView -> Integer
-ppiOf iv =
-  let img = ivImage iv
-      Rect _ _ w h = ivRect iv
+ppiOf :: ImageView -> ImageData -> Integer
+ppiOf iv img =
+  let Rect _ _ w h = ivRect iv
       per px sz = if sz <= 0 then 0 else toInteger px * 72 * 65536 `div` sz
    in min (per (imgWidth img) w) (per (imgHeight img) h)
 
@@ -105,6 +103,12 @@ kindOf img = case imgColor img of
   CsGray | imgBits img == 1 -> KBitmap
   CsGray -> KGray
   _ -> KColor
+
+-- | The image of a PNG or JPEG figure; a PDF figure has none (golem-pdf ADR 0008).
+raster :: ImageView -> Maybe ImageData
+raster iv = case ivContent iv of
+  RasterFigure img -> Just img
+  VectorFigure _ -> Nothing
 
 images :: View -> [(Int, ImageView)]
 images v = [(pvIndex p, iv) | p <- vwPages v, iv <- pvImages p]
@@ -165,46 +169,43 @@ typeSize r v =
       let msg = "文字が小さすぎます: " <> mmText (gvSize g) <> "（" <> mmText (ruTypeSizeMin r) <> " 未満、色 " <> maybe "なし" fst (gvColor g) <> "、" <> pagesPhrase ps <> "）"
     ]
 
--- | G0905: a figure whose image cannot be read.
-imageUnplaceable :: Rules -> View -> [Diagnostic]
-imageUnplaceable r v =
-  concat [at (ruImageUnplaceable r) "G0905" (unSpan u) ("図版を PDF に置けません: " <> unPath u <> "（" <> unReason u <> "）") [] | u <- vwUnplaceable v]
-
 -- | G0906: the effective resolution below a threshold of the kind of the image.
 imageResolution :: Rules -> View -> [Diagnostic]
 imageResolution r v =
   [ (diagnostic "G0906" sev (ivSpan iv) msg) {diagFacts = [("ppi", FactInt ppi), ("limit", FactInt (toInteger limit)), ("pixels", FactInts [toInteger (imgWidth img), toInteger (imgHeight img)]), pagesFact ps]}
-  | (iv, ps, (ppi, sev, limit)) <- perFigure v below,
-    let img = ivImage iv
-        msg = "図版の実効の解像度が足りません: " <> ivPath iv <> "（" <> tshow ppi <> "ppi、" <> tshow limit <> "ppi 未満、" <> pagesPhrase ps <> "）"
+  | (iv, ps, (img, ppi, sev, limit)) <- perFigure v below,
+    let msg = "図版の実効の解像度が足りません: " <> ivPath iv <> "（" <> tshow ppi <> "ppi、" <> tshow limit <> "ppi 未満、" <> pagesPhrase ps <> "）"
   ]
   where
-    below iv =
-      let ppi = ppiOf iv
-          Tier e w = case kindOf (ivImage iv) of
+    -- PNG and JPEG only: the images inside a PDF figure are not checked
+    below iv = do
+      img <- raster iv
+      let ppi = ppiOf iv img
+          Tier e w = case kindOf img of
             KColor -> ruResolutionColor r
             KGray -> ruResolutionGray r
             KBitmap -> ruResolutionBitmap r
-       in if e > 0 && ppi < toInteger e
-            then Just (ppi, Error, e)
-            else if w > 0 && ppi < toInteger w then Just (ppi, Warning, w) else Nothing
+      if e > 0 && ppi < toInteger e
+        then Just (img, ppi, Error, e)
+        else if w > 0 && ppi < toInteger w then Just (img, ppi, Warning, w) else Nothing
 
 -- | G0907: the effective resolution above the maximum of the kind of the image.
 imageResolutionMax :: Rules -> View -> [Diagnostic]
 imageResolutionMax r v =
   concat
-    [ at (ruImageResolutionMax r) "G0907" (ivSpan iv) msg [("ppi", FactInt ppi), ("limit", FactInt (toInteger limit)), ("pixels", FactInts [toInteger (imgWidth (ivImage iv)), toInteger (imgHeight (ivImage iv))]), pagesFact ps]
-    | (iv, ps, (ppi, limit)) <- perFigure v above,
+    [ at (ruImageResolutionMax r) "G0907" (ivSpan iv) msg [("ppi", FactInt ppi), ("limit", FactInt (toInteger limit)), ("pixels", FactInts [toInteger (imgWidth img), toInteger (imgHeight img)]), pagesFact ps]
+    | (iv, ps, (img, ppi, limit)) <- perFigure v above,
       let msg = "図版の実効の解像度が高すぎます: " <> ivPath iv <> "（" <> tshow ppi <> "ppi、" <> tshow limit <> "ppi 超）"
     ]
   where
-    above iv =
-      let ppi = ppiOf iv
-          limit = case kindOf (ivImage iv) of
+    above iv = do
+      img <- raster iv
+      let ppi = ppiOf iv img
+          limit = case kindOf img of
             KColor -> ruColorMax r
             KGray -> ruGrayMax r
             KBitmap -> ruBitmapMax r
-       in if limit > 0 && ppi > toInteger limit then Just (ppi, limit) else Nothing
+      if limit > 0 && ppi > toInteger limit then Just (img, ppi, limit) else Nothing
 
 colorSpaceName :: ColorSpace -> Text
 colorSpaceName = \case
@@ -213,13 +214,34 @@ colorSpaceName = \case
   CsIndexed _ -> "rgb"
   CsCmyk -> "cmyk"
 
--- | G0908: an image in a colour space the rules do not allow.
+{- | The name of a colour space of a PDF figure (golem-pdf ADR 0008): an
+ICC profile by its number of components, DeviceRGB replaced by sRGB is rgb.
+-}
+colorUseName :: ColorUse -> Text
+colorUseName = \case
+  UseGray -> "gray"
+  UseRgb -> "rgb"
+  UseCmyk -> "cmyk"
+  UseIcc 1 _ -> "gray"
+  UseIcc 3 _ -> "rgb"
+  UseIcc 4 _ -> "cmyk"
+  UseIcc _ _ -> "icc"
+  UseLab -> "lab"
+
+-- | G0908: an image in a colour space the rules do not allow; for a PDF figure, all of them in one.
 imageColorSpace :: Rules -> View -> [Diagnostic]
 imageColorSpace r v =
   concat
     [ at (ruImageColorSpace r) "G0908" (ivSpan iv) ("この設定では使えない色空間の図版です: " <> ivPath iv <> "（" <> cs <> "）。Golem は画像の色を変換しないので、CMYK に変換した画像に替えます") [("color-space", FactText cs), pagesFact ps]
-    | (iv, ps, cs) <- perFigure v (\iv -> let cs = colorSpaceName (imgColor (ivImage iv)) in if cs `elem` ruColorSpacesAllowed r then Nothing else Just cs)
+    | (iv, ps, cs) <- perFigure v disallowed
     ]
+  where
+    disallowed iv = case filter (`notElem` ruColorSpacesAllowed r) (spacesOf iv) of
+      [] -> Nothing
+      cs -> Just (T.intercalate "、" cs)
+    spacesOf iv = case ivContent iv of
+      RasterFigure img -> [colorSpaceName (imgColor img)]
+      VectorFigure page -> nub (map colorUseName (ipColors page))
 
 -- | G0909: a CMYK image with a profile other than the output intent's.
 imageIcc :: Rules -> View -> [Diagnostic]
@@ -232,9 +254,13 @@ imageIcc r v = case vwIntentProfile v of
       ]
   where
     differs :: ByteString -> ImageView -> Maybe ()
-    differs intent iv = case (imgColor (ivImage iv), imgIcc (ivImage iv)) of
-      (CsCmyk, Just p) | p /= intent -> Just ()
-      _ -> Nothing
+    differs intent iv = case ivContent iv of
+      RasterFigure img -> case (imgColor img, imgIcc img) of
+        (CsCmyk, Just p) | p /= intent -> Just ()
+        _ -> Nothing
+      VectorFigure page
+        | any (\case UseIcc 4 p -> p /= intent; _ -> False) (ipColors page) -> Just ()
+        | otherwise -> Nothing
 
 -- | G0910: [page] bleed below min.
 bleedSize :: Rules -> View -> [Diagnostic]
