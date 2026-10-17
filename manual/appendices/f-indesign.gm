@@ -73,7 +73,7 @@ Golem の一冊は、一つのフォルダにまとめたプロジェクトで�
 @nonumber
 ## 正規表現スタイル
 
-段落スタイルの [code: regex-styles] は、InDesign の正規表現スタイル（英語版の GREP スタイル）に当たります。
+段落スタイルの [code: regex-styles] は、InDesign の正規表現スタイル（英語の InDesign では GREP スタイル）に当たります。
 正規表現の書き方は、InDesign の書き方の一部です。
 
 使えない書き方があります。

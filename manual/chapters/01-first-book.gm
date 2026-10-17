@@ -35,9 +35,10 @@ Golem が Linux の配布物を用意しているのは、本を組む作業を 
 Golem の開発でも、同じ原稿から同じ出力が得られることを、Linux のコンピューターで確かめています。
 
 アーカイブの名前は、バージョンと、対象の OS と CPU を並べた [code: golem-v0.1.0-x86_64-linux.tar.gz] のような形です。
-Windows では、Windows の中で Linux を動かす仕組みを使い、その上で Linux のアーカイブを使います。
+Windows には、Windows の中で Linux を動かす仕組みを通して対応しています。
+Windows でそのまま動くアーカイブはなく、その仕組みの上で Linux のアーカイブを使います。
 その概略は、この章の「[ref-title wsl]」で説明します。
-Intel の CPU の macOS には対応していません。
+Intel の CPU の macOS には対応しておらず、そのためのアーカイブもありません。
 
 ターミナルは、コマンドを受け付けられる状態になると、行の始まりに [code: %] や [code: $] のような短い印を表示して、入力を待ちます。
 この印を[strong: プロンプト][index reading=ぷろんぷと: プロンプト]と呼びます。
@@ -93,11 +94,12 @@ Finder のサイドバーで、家の形のアイコンが付いているフォ�
 @label wsl
 ## Windows で使う
 
-今の Golem には、Windows でそのまま動く配布物がありません（今後の予定は[ref-title app-roadmap]、[ref-page app-roadmap] ページ）。
+Golem には、Windows でそのまま動く配布物がありません。
 Windows のコンピューターでは、[strong: WSL][index reading=だぶりゅーえすえる: WSL]（Windows Subsystem for Linux）という Windows の機能を使います。
 WSL は、Windows の中で Linux（「[ref-title install]」で説明した OS）を動かす仕組みです [cite ms-wsl-about][note: Microsoft「Windows Subsystem for Linux とは」。[code: https://learn.microsoft.com/ja-jp/windows/wsl/about]]。
 WSL を入れると、Windows のアプリケーションと並んで、Linux のターミナルを開けるようになります。
 Golem の Linux のアーカイブは、そのターミナルの中で動きます。
+Golem は、Windows にはこの WSL を通してだけ対応しています。
 
 この節では、手順の流れだけを示します。
 画面の操作や、うまくいかないときの対処は、Windows のバージョンや設定によって変わります。
