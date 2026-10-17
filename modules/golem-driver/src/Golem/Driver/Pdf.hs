@@ -78,7 +78,8 @@ import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii)
 import Data.Either (fromRight, isLeft)
 import Data.Foldable (toList)
-import Data.List (groupBy, intercalate, mapAccumL, nub, sortOn, zip3, zip4)
+import Data.Function (on)
+import Data.List (groupBy, intercalate, mapAccumL, nub, nubBy, sortOn, zip3, zip4)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
@@ -664,7 +665,8 @@ data PlacedSidenote = PlacedSidenote
 
 -- | A figure as placed: the image, its size and its caption lines (golem-driver ADR 0005).
 data PlacedFigure = PlacedFigure
-  { pfImage :: !P.ImageData,
+  { -- | the image, or the page of a PDF figure (golem-pdf ADR 0008)
+    pfContent :: !P.FigureContent,
     -- | along the lines
     pfAlong :: !Sp,
     -- | across the lines
@@ -683,6 +685,8 @@ data PlacedFigure = PlacedFigure
     pfExclusion :: !(Maybe Exclusion),
     -- | the path of the image and the @figure block (golem-cli ADR 0006)
     pfSource :: !Text,
+    -- | the page of a PDF figure, from 1 (golem-pdf ADR 0008)
+    pfPage :: !Int,
     pfSpan :: !SrcSpan
   }
 
@@ -853,7 +857,6 @@ renderPdfView provider inp0 = case checkedGeometry inp of
         case li of
           Left ds -> pure (Left ds)
           Right intent -> do
-            unplaceable <- unplaceableFigures inp
             laid <- layoutPdf inp geom fonts
             -- a kenten shape the font has no glyph for stops the PDF (G0809, golem-driver ADR 0019)
             case laid of
@@ -864,24 +867,10 @@ renderPdfView provider inp0 = case checkedGeometry inp of
                   -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
                   embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
                   let (bytes, view) = finish embedded
-                  pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout, view {V.vwUnplaceable = unplaceable}))
+                  pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout, view))
                 ds -> pure (Left ds)
   where
     inp = codeInput inp0
-
-{- | The figures whose files are there but cannot be read as images, with
-why (G0905, golem-cli ADR 0006); 'loadFigures' leaves them out.
--}
-unplaceableFigures :: PdfInput -> IO [V.Unplaceable]
-unplaceableFigures inp = do
-  let figs = [(sp, f) | Document _ bs <- bookDocs (piBook inp), Block sp _ (FigureBlock f) <- bs]
-  concat
-    <$> mapM
-      ( \(sp, f) -> do
-          bytes <- BS.readFile (piRoot inp <> "/" <> T.unpack (figSource f))
-          pure [V.Unplaceable sp (figSource f) (T.pack e) | Left e <- [P.readImage bytes]]
-      )
-      figs
 
 {- | The flow and its lines as (line length, indent), in order, laid out
 with no page numbers assumed (for tests).
@@ -894,7 +883,7 @@ flowLines provider inp0 = case checkedGeometry inp of
     case lf of
       Left ds -> pure (Left ds)
       Right fonts -> do
-        figures <- loadFigures inp
+        figures <- Map.mapMaybe (either (const Nothing) Just) <$> loadFigures inp
         built <- buildFlow inp geom fonts figures (Assumed Map.empty Map.empty)
         pure (Right (bFlow built, [(lineTarget (slLine sl), slIndent sl) | sl <- Map.elems (bLines built)]))
   where
@@ -907,31 +896,39 @@ layoutPdf inp0 geom fonts =
    in case sidenoteDiagnostics geom (piBook inp) <> listNumberDiagnostics (piStyle inp) (pgVertical geom) (piBook inp) of
         ds@(_ : _) -> pure (Left ds)
         [] -> do
-          figures <- loadFigures inp
-          -- S2: compose with assumed page numbers until they settle
-          let terms = Map.fromList [(sp, T.intercalate " / " (igTerms g)) | g <- bookIndex (piBook inp), (_, sp) <- igLocations g]
-          let capacity = length (pgLineGrid geom)
-              round' assumed = do
-                built <- buildFlow inp geom fonts figures assumed
-                pure (if null (bErrors built) then Right (built, paginateIn (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
-              labels = labelSpans (piBook inp)
-              labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
-          result <- fixpoint labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
-          pure $ case result of
-            Left ds -> Left ds
-            Right (built, pages) ->
-              -- sidenotes are placed once, on the settled pages (golem-driver ADR 0006)
-              -- in the size of the document of each sidenote (docs/adr ADR 0014)
-              let metricsOf sp = let (_, size, pitch) = sidenoteMetrics (docStyle inp (spanFile sp)) geom in (pitch, size)
-                  placed = [(poNumber p, placePageSidenotes geom metricsOf (bLines built) p) | p <- pages]
-                  -- the pages of the table of contents, once, on the settled pages (golem-driver ADR 0009)
-                  hPages = headingPages (bHeadingSpans built) pages
-                  tg = tocGeometry (piStyle inp) geom fonts
-                  env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyLook (piStyle inp) (pgFontSize geom))
-                  tocPages = Map.fromList [(lid, tocPage tg e (pageNumberLine env n)) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
-               in case concat [ds | (_, Left ds) <- placed] of
-                    [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built) (bLineSpans built))
-                    ds -> Left ds
+          loaded <- loadFigures inp
+          -- a figure that cannot be placed stops the PDF (G0810, golem-pdf ADR 0008)
+          case figureDiagnostics inp loaded of
+            ds@(_ : _) -> pure (Left ds)
+            [] -> layoutFigures inp geom fonts (Map.mapMaybe (either (const Nothing) Just) loaded)
+
+-- | 'layoutPdf' with the figures read.
+layoutFigures :: PdfInput -> PageGeometry -> LoadedFonts -> Map (Text, Int) P.FigureContent -> IO (Either [Diagnostic] PdfLayout)
+layoutFigures inp geom fonts figures = do
+  -- S2: compose with assumed page numbers until they settle
+  let terms = Map.fromList [(sp, T.intercalate " / " (igTerms g)) | g <- bookIndex (piBook inp), (_, sp) <- igLocations g]
+  let capacity = length (pgLineGrid geom)
+      round' assumed = do
+        built <- buildFlow inp geom fonts figures assumed
+        pure (if null (bErrors built) then Right (built, paginateIn (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
+      labels = labelSpans (piBook inp)
+      labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
+  result <- fixpoint labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
+  pure $ case result of
+    Left ds -> Left ds
+    Right (built, pages) ->
+      -- sidenotes are placed once, on the settled pages (golem-driver ADR 0006)
+      -- in the size of the document of each sidenote (docs/adr ADR 0014)
+      let metricsOf sp = let (_, size, pitch) = sidenoteMetrics (docStyle inp (spanFile sp)) geom in (pitch, size)
+          placed = [(poNumber p, placePageSidenotes geom metricsOf (bLines built) p) | p <- pages]
+          -- the pages of the table of contents, once, on the settled pages (golem-driver ADR 0009)
+          hPages = headingPages (bHeadingSpans built) pages
+          tg = tocGeometry (piStyle inp) geom fonts
+          env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyLook (piStyle inp) (pgFontSize geom))
+          tocPages = Map.fromList [(lid, tocPage tg e (pageNumberLine env n)) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
+       in case concat [ds | (_, Left ds) <- placed] of
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built) (bLineSpans built))
+            ds -> Left ds
 
 {- | The page of each heading (golem-driver ADR 0009): the page where the
 first line of its block is placed, keyed by the span of the block.
@@ -1423,7 +1420,10 @@ composeEnv style geom fonts assumed look =
           -- Latin words: US English patterns (golem-layout ADR 0001)
           cePatterns = Just englishUS,
           -- the set of body; a paragraph, a caption and a sidenote take their style's (docs/adr ADR 0019)
-          ceAkiSet = akiSetOf style Nothing
+          ceAkiSet = akiSetOf style Nothing,
+          -- the size and text of note marks (golem-driver ADR 0025)
+          ceNoteMarkSize = stNotesMarkSize style,
+          ceNoteMarkFormat = stNotesMarkFormat style
         }
 
 {- | The aki set of a paragraph style (docs/adr ADR 0019): its aki-set,
@@ -1444,10 +1444,11 @@ noteAnchors anchors = snd (mapAccumL key Map.empty [(i, n, sp, b) | AnchorNote i
        in (Map.insert sp (k + 1) seen, (i, NoteId sp k, n, b))
 
 {- | The body of a footnote after the mark of its number and a space
-(golem-driver ADR 0018), as a sidenote has its mark (ADR 0006).
+(golem-driver ADR 0018), as a sidenote has its mark (ADR 0006); the mark
+in the format of [notes] mark-format (golem-driver ADR 0025).
 -}
-withNoteMark :: Int -> [Inline] -> [Inline]
-withNoteMark n body = Text (mkSpan (FileId 0) 0 0) ("*" <> T.pack (show n) <> " ") : body
+withNoteMark :: Text -> Int -> [Inline] -> [Inline]
+withNoteMark format n body = Text (mkSpan (FileId 0) 0 0) (noteMarkText format n <> " ") : body
 
 {- | The placement of ruby from [composition.ruby] (golem-layout ADR
 0009); @zw@ is the size of the paragraph.
@@ -1697,7 +1698,7 @@ data Composed = Composed
     cShift :: Int
   }
 
-buildFlow :: PdfInput -> PageGeometry -> LoadedFonts -> Map Text (Maybe P.ImageData) -> Assumed -> IO Built
+buildFlow :: PdfInput -> PageGeometry -> LoadedFonts -> Map (Text, Int) P.FigureContent -> Assumed -> IO Built
 buildFlow inp geom fonts images assumed = do
   let style = piStyle inp
       fs = pgFontSize geom
@@ -1764,7 +1765,7 @@ buildFlow inp geom fonts images assumed = do
             (textItems, anchors) = composeInlines env (uInlines u)
             items = marker <> textItems
             lines' = brLines (breakParagraph params lineWidth items)
-            notes = [(k, brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv' (withNoteMark n nbody))))) | (_, k, n, nbody) <- noteAnchors anchors]
+            notes = [(k, brLines (breakParagraph params (const measure) (fst (composeInlines bodyEnv' (withNoteMark (stNotesMarkFormat (uStyle u)) n nbody))))) | (_, k, n, nbody) <- noteAnchors anchors]
             sidenotes = [(i + shift, sp, sidenoteLines (uStyle u) n snBody) | AnchorSidenote i n sp snBody <- anchors]
             marks =
               [(i + shift, sp) | AnchorIndex i sp _ <- anchors]
@@ -1787,16 +1788,15 @@ buildFlow inp geom fonts images assumed = do
       mapper :: (a -> IO b) -> [a] -> IO [b]
       mapper = if piParallel inp then mapConcurrently else mapM
       -- figures: the image, its size, its caption and its exclusion (golem-driver ADR 0005)
-      figureOf u fig = do
-        img <- join (Map.lookup (figSource fig) images)
-        pure (placeFigure u fig img)
-      placeFigure u fig img =
+      figureOf u fig = placeFigure u fig <$> Map.lookup (figureKey fig) images
+      placeFigure u fig content =
         let along = case figWrap fig of
               Nothing -> Right measure
               Just _ -> maybe (Left ()) (Right . dimToSp fs) (figWidth fig >>= parseDim)
             alongSp = fromRight measure along
-            (w, h) = (toInteger (P.imgWidth img), toInteger (P.imgHeight img))
-            across = if vertical then alongSp * w `div` max 1 h else alongSp * h `div` max 1 w
+            -- the pixels of an image, the crop box of a PDF figure after its rotation (golem-pdf ADR 0008)
+            (w, h) = figureProportions content
+            across = floor (fromInteger alongSp * (if vertical then w / h else h / w))
             m = fromInteger ((across + pitch - 1) `div` pitch)
             number = Map.lookup (uSpan u) (bookFigures (piBook inp))
             captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number (concat [is | Block _ _ (Paragraph _ is) <- figCaption fig])
@@ -1822,7 +1822,7 @@ buildFlow inp geom fonts images assumed = do
                     [diagnostic "G0722" Error (uSpan u) ("回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
                 | exLines e > capacity -> [diagnostic "G0723" Error (uSpan u) ("回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
               _ -> []
-         in (PlacedFigure img alongSp across (figWrap fig) m caption cs cp span' ex (figSource fig) (uSpan u), errs, captionMarks)
+         in (PlacedFigure content alongSp across (figWrap fig) m caption cs cp span' ex (figSource fig) (snd (figureKey fig)) (uSpan u), errs, captionMarks)
       figures = Map.fromList [(i, f) | (i, u@Unit {uKind = UFigure fig}) <- units, Just f <- [figureOf u fig]]
       -- 1. a job per wrapped figure: the paragraphs right after it, in order, beside the exclusion
       wrapJob i ex = go (i + 1) 0
@@ -1855,7 +1855,7 @@ buildFlow inp geom fonts images assumed = do
       attached st items anchors ls =
         let lineOf = lineIndexOfItems items ls
             env = styledEnv st bodyEnv
-            noteBody n b = brLines (breakParagraph params (const measure) (fst (composeInlines env (withNoteMark n b))))
+            noteBody n b = brLines (breakParagraph params (const measure) (fst (composeInlines env (withNoteMark (stNotesMarkFormat style) n b))))
             marksIn b = [sp | AnchorIndex _ sp _ <- snd (composeInlines env b)]
          in ( Map.fromListWith (flip (<>)) [(lineOf i, [(k, noteBody n b)]) | (i, k, n, b) <- noteAnchors anchors],
               Map.fromListWith (flip (<>)) [(lineOf i, [(sp, sidenoteLines st n b)]) | AnchorSidenote i n sp b <- anchors],
@@ -2211,17 +2211,47 @@ lineIndexOfItems _ ls i =
   let counts = scanl1 (+) (map (length . lineItems) ls)
    in length (takeWhile (<= i) counts) `min` max 0 (length ls - 1)
 
--- | The images of the figures, read once; sizes are worked out per figure.
-loadFigures :: PdfInput -> IO (Map Text (Maybe P.ImageData))
+-- | A figure by its file and its page (1 unless a PDF figure says otherwise).
+figureKey :: Figure -> (Text, Int)
+figureKey f = (figSource f, fromMaybe 1 (figPage f))
+
+{- | The width and the height of a figure, by which its size is worked out:
+the pixels of an image, the crop box of a PDF figure after its rotation
+(golem-pdf ADR 0008). Never zero.
+-}
+figureProportions :: P.FigureContent -> (Rational, Rational)
+figureProportions = \case
+  P.RasterFigure img -> (fromIntegral (max 1 (P.imgWidth img)), fromIntegral (max 1 (P.imgHeight img)))
+  P.VectorFigure ip -> let (w, h) = P.ipSize ip in (max (1 / 65536) w, max (1 / 65536) h)
+
+{- | The figures, read once by file and page; why one cannot be placed
+(golem-pdf ADR 0008). The format follows the extension, as golem-eval
+checked it: a PDF page, or a PNG or JPEG image.
+-}
+loadFigures :: PdfInput -> IO (Map (Text, Int) (Either Text P.FigureContent))
 loadFigures inp = do
-  let srcs = nub [figSource f | Document _ bs <- bookDocs (piBook inp), f <- figuresIn bs]
-  pairs <- mapM (\s -> (s,) <$> loadOne s) srcs
+  let keys = nub [figureKey f | (_, f) <- figureBlocks (piBook inp)]
+  pairs <- mapM (\k -> (k,) <$> loadOne k) keys
   pure (Map.fromList pairs)
   where
-    figuresIn = concatMap (\(Block _ _ b) -> case b of FigureBlock f -> [f]; _ -> [])
-    loadOne s = do
+    loadOne (s, page) = do
       bytes <- BS.readFile (piRoot inp <> "/" <> T.unpack s)
-      pure (either (const Nothing) Just (P.readImage bytes))
+      pure $
+        if ".pdf" `T.isSuffixOf` T.toLower s
+          then either (Left . P.importErrorText) (Right . P.VectorFigure) (P.importPage page bytes)
+          else either (Left . T.pack) (Right . P.RasterFigure) (P.readImage bytes)
+
+-- | The @figure blocks of a book, with their spans.
+figureBlocks :: Book -> [(SrcSpan, Figure)]
+figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ (FigureBlock f) <- bs]
+
+-- | G0810: a figure that cannot be placed in the PDF, one per @figure (golem-pdf ADR 0008).
+figureDiagnostics :: PdfInput -> Map (Text, Int) (Either Text P.FigureContent) -> [Diagnostic]
+figureDiagnostics inp loaded =
+  [ diagnostic "G0810" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> why <> "）")
+  | (sp, f) <- figureBlocks (piBook inp),
+    Just (Left why) <- [Map.lookup (figureKey f) loaded]
+  ]
 
 {- | The rectangle of a figure's image from grid line @slot@ (golem-driver
 ADR 0005): its top (in vertical writing its right) edge at the top of the
@@ -2519,10 +2549,10 @@ writeDocumentView inp geom fonts layout intent =
                             (b2, u2) = maybe ([], []) (\sh -> usesOf (look {lkSize = d}) (kentenMark (lkFace look) sh d centre)) (lkKenten look)
                          in (b1 <> b2, u1 <> u2)
                       KindNoteMark ->
-                        {- a note mark at half the size, aligned to the em box of the
+                        {- a note mark at the mark size, aligned to the em box of the
                         text: its top in horizontal text, its right end in vertical
                         text, where it is set across as horizontal text (golem-driver ADR 0018) -}
-                        let m = noteMarkSize size
+                        let m = noteMarkSize (stNotesMarkSize style) size
                             markLook = look {lkSize = m}
                             txt = bcText c
                             central = lfEmBoxCentral fonts (japaneseFace look)
@@ -2637,8 +2667,8 @@ writeDocumentView inp geom fonts layout intent =
                       here = lid - ciFirst ci
                       rect = codeRect ta codeSlot (spanLines - (if isFirst then ciCaptionSpan ci else 0)) (ciStart ci)
                 ]
-            figures = [(P.ImageRef fid, figureRect geom ta slot pf, pf) | (slot, fid) <- placedFigures p, Just pf <- [Map.lookup fid (plFigures layout)]]
-            figMarks = [P.Image ir r | (ir, r, _) <- figures]
+            figures = [(fid, figureRect geom ta slot pf, pf) | (slot, fid) <- placedFigures p, Just pf <- [Map.lookup fid (plFigures layout)]]
+            figMarks = [figureMark fid r pf | (fid, r, pf) <- figures]
             -- one note's lines are in one line of the flow (golem-driver ADR 0018)
             noteLines = concat [[(nid, l) | l <- take cnt (drop from (Map.findWithDefault [] nid noteBodies))] | (nid, from, cnt) <- poFootnotes p]
             bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
@@ -2810,6 +2840,12 @@ writeDocumentView inp geom fonts layout intent =
            in runningHead <> folio
       -- the columns of a page come together from 'paginate' (docs/adr ADR 0018)
       drawn = zipWith drawPage (pagesOf (plPages layout)) masters
+      -- one Form XObject per file and page of the PDF figures (golem-pdf ADR 0008)
+      formKeys = nubBy ((==) `on` fst) [((pfSource pf, pfPage pf), ip) | pf@PlacedFigure {pfContent = P.VectorFigure ip} <- Map.elems (plFigures layout)]
+      formRefs = Map.fromList [(k, P.FormRef n) | ((k, _), n) <- zip formKeys [1 ..]]
+      figureMark fid r pf = case pfContent pf of
+        P.RasterFigure _ -> P.Image (P.ImageRef fid) r
+        P.VectorFigure _ -> P.Form (Map.findWithDefault (P.FormRef 0) (pfSource pf, pfPage pf) formRefs) r
       -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
       bleed = maybe 0 pageBleed (stPage style)
       pdfPages = [P.framePage (piMarks inp) bleed (pw, ph) (pdMarks pd) | pd <- drawn]
@@ -2823,7 +2859,8 @@ writeDocumentView inp geom fonts layout intent =
               P.Document
                 { P.docPages = pdfPages,
                   P.docFonts = fontsUsed,
-                  P.docImages = Map.fromList [(P.ImageRef i, pfImage pf) | (i, pf) <- Map.toList (plFigures layout)],
+                  P.docImages = Map.fromList [(P.ImageRef i, img) | (i, PlacedFigure {pfContent = P.RasterFigure img}) <- Map.toList (plFigures layout)],
+                  P.docForms = Map.fromList [(P.FormRef n, ip) | ((_, ip), n) <- zip formKeys [1 ..]],
                   P.docTitle = mdTitle md,
                   P.docDate = (y, mo, d),
                   P.docId = P.documentId (mdId md),
@@ -2850,7 +2887,7 @@ writeDocumentView inp geom fonts layout intent =
               V.PageView
                 { V.pvIndex = i,
                   V.pvTrim = Rect 0 0 pw ph,
-                  V.pvImages = [V.ImageView r (pfImage pf) (pfSpan pf) (pfSource pf) | (r, pf) <- pdImages pd],
+                  V.pvImages = [V.ImageView r (pfContent pf) (pfSpan pf) (pfSource pf) | (r, pf) <- pdImages pd],
                   V.pvLines = [V.LineView r (lrKind rec) (lrSpan rec) (lrOverfull rec) | (rec, _) <- pdLines pd, Just r <- [lrRect rec]],
                   V.pvGlyphs = [glyphView (lrSpan rec) u | (rec, us) <- pdLines pd, u <- us],
                   V.pvRules = [V.RuleView k t r | (k, r, t) <- pdRules pd],
@@ -2868,7 +2905,6 @@ writeDocumentView inp geom fonts layout intent =
                   V.vwIntentProfile = P.pxProfile <$> intent,
                   V.vwX4 = P.verify (P.documentObjects doc),
                   V.vwPdf = bytes,
-                  V.vwUnplaceable = [],
                   V.vwStyleSpan = styleSpan,
                   V.vwManifestSpan = mkSpan (projectManifestFile (piProject inp)) 0 0
                 }

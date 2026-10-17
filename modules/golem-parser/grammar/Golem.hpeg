@@ -68,6 +68,7 @@
 %inline SlotInline
 %inline CellInline
 %inline PosArg
+%inline KwArg
 %inline ArgValue
 %inline Primary
 %inline ParaEnd
@@ -118,7 +119,7 @@
 %safe hard_break
 %safe arg_order
 # The same, and for the close of SplatArgument: after *[ fails, the checker
-# takes (Sp KeywordArgument)* to be able to go on. It uses the known *[ only
+# takes (Sp KwArg)* to be able to go on. It uses the known *[ only
 # against later alternatives, not after a repetition.
 %safe close
 # The same as the close of SplatArgument.
@@ -292,11 +293,17 @@ Ident :: ()
 Ident <- [a-z] [a-z0-9\-]* { () }
 
 Arguments :: ()
-Arguments <- (Sp PosArg)* (Sp KeywordArgument)* (!(Sp PosArg))^arg_order { () }
+Arguments <- (Sp PosArg)* (Sp KwArg)* (!(Sp PosArg))^arg_order { () }
 
+# Positional arguments and *[...] come first, then keyword arguments and
+# **[...] (golem-parser ADR 0013).
 PosArg :: ()
-PosArg <- !(Word Eq) SplatArgument { () }
+PosArg <- !(Word Eq) !'**[' SplatArgument { () }
         / !(Word Eq) !Splat Argument { () }
+
+KwArg :: ()
+KwArg <- KeywordArgument { () }
+       / &'**[' SplatArgument { () }
 
 Argument :: ()
 Argument <- ArgValue { () }

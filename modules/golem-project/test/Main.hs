@@ -8,6 +8,7 @@ import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
+import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -520,6 +521,18 @@ tests =
         mapM_
           (\v -> codes (parseStyle (FileId 0) ("[headings.2]\nlines = " <> v <> "\n")) @?= ["G0306"])
           ["0", "-1", "1.5", "\"3\""],
+      testCase "the size and format of note marks (golem-driver ADR 0025)" $ do
+        let notes src = either (const Nothing) (\s -> Just (stNotesMarkSize s, stNotesMarkFormat s)) (parseStyle (FileId 0) src)
+            sizeOf v = fst <$> notes ("[notes]\nmark-size = \"" <> v <> "\"\n")
+            formatOf v = snd <$> notes ("[notes]\nmark-format = \"" <> v <> "\"\n")
+        notes "" @?= Just (Zw (1 % 2), "*{n}")
+        sizeOf "0.65zw" @?= Just (Zw (65 % 100))
+        sizeOf "6pt" @?= parseDim "6pt"
+        sizeOf "8Q" @?= parseDim "8Q"
+        sizeOf "1zw" @?= Just (Zw 1)
+        mapM_ (\v -> codes (parseStyle (FileId 0) ("[notes]\nmark-size = \"" <> v <> "\"\n")) @?= ["G0306"]) ["0zw", "1.5zw", "abc", "0pt"]
+        mapM_ (\v -> formatOf v @?= Just v) ["注{n}", "{n})", "{n}"]
+        mapM_ (\v -> codes (parseStyle (FileId 0) ("[notes]\nmark-format = \"" <> v <> "\"\n")) @?= ["G0306"]) ["注", "{n}-{n}"],
       indentTests,
       listTests,
       characterFeatureTests,

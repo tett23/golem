@@ -17,6 +17,7 @@ library
   hs-source-dirs:   src
   exposed-modules:  Golem.Pdf
                     Golem.Pdf.Image
+                    Golem.Pdf.Import
                     Golem.Pdf.Marks
                     Golem.Pdf.Number
                     Golem.Pdf.Object
@@ -42,6 +43,7 @@ test-suite golem-pdf-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    ImageSpec
+                    ImportSpec
   -- GHC.Stats measures what reading a hostile image allocates (docs/adr ADR 0035)
   ghc-options:      -rtsopts -with-rtsopts=-T
   build-depends:
