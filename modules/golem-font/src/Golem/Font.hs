@@ -38,7 +38,6 @@ module Golem.Font
     glyphCid,
     subsetFont,
     subsetTag,
-    toUnicode,
   )
 where
 
@@ -325,21 +324,3 @@ subsetTag gids =
    in T.pack (take 6 (letters h))
   where
     letters x = toEnum (fromEnum 'A' + fromIntegral (x `mod` 26)) : letters (x `div` 26)
-
-{- | Glyph id → text from shaping results: a glyph gets the text of its
-cluster (a ligature the whole cluster); the first mapping in the
-document wins (ADR 0002).
--}
-toUnicode :: [(Text, [ShapedGlyph])] -> [(Int, Text)]
-toUnicode runs = Map.toList (foldl' add Map.empty runs)
-  where
-    add m (txt, gs) =
-      let bytes = TE.encodeUtf8 txt
-          starts = Map.keys (Map.fromList [(sgCluster g, ()) | g <- gs])
-          ends = drop 1 starts <> [BS.length bytes]
-          clusterText = Map.fromList [(s, TE.decodeUtf8Lenient (BS.take (e - s) (BS.drop s bytes))) | (s, e) <- zip starts ends]
-          firstOfCluster = Map.fromListWith (\_ old -> old) [(sgCluster g, sgGlyphId g) | g <- gs]
-       in foldl'
-            (\acc (c, gid) -> Map.insertWith (\_ old -> old) gid (Map.findWithDefault "" c clusterText) acc)
-            m
-            (Map.toList firstOfCluster)

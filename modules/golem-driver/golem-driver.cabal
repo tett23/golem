@@ -33,6 +33,7 @@ library
                     Golem.Driver.Pdf
                     Golem.Driver.Plugins
                     Golem.Driver.RuleShape
+                    Golem.Driver.TextLayer
                     Golem.Driver.Version
   build-depends:
     , aeson         >=2.1  && <2.3

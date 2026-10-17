@@ -1,4 +1,4 @@
-module PdfSpec (qpdfInstalled, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests) where
+module PdfSpec (qpdfInstalled, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests, ligatureTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
@@ -11,9 +11,9 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
-import Golem.Driver.Fonts (golemFontProvider)
+import Golem.Driver.Fonts (actualTextOf, golemFontProvider, toUnicodeOf)
 import Golem.Driver.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
-import Golem.Driver.Pdf (CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
+import Golem.Driver.Pdf (ClusterPart (..), CodeInfo (..), FontProvider (..), GlyphFrame (..), LoadedFonts (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Kerning (..), Look (..), plainLook)
@@ -26,6 +26,7 @@ import Golem.Project (ProjectFailure (..))
 import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (needsTool)
+import Numeric (readHex)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, findExecutable)
 import System.FilePath (takeDirectory, (</>))
@@ -1432,3 +1433,88 @@ codeBlockRubyTests =
     firstLineSlot pl = case [s | p <- firstPage pl, (s, SLine _) <- poSlots p] of
       (s : _) -> Just s
       [] -> Nothing
+
+-- ------------------------------------------------------------------ the text layer of ligatures (golem-driver ADR 0030)
+
+-- | The bfchar entries of every ToUnicode CMap of a PDF: code to text.
+toUnicodeEntries :: [BS.ByteString] -> Map.Map Int T.Text
+toUnicodeEntries streams =
+  Map.fromList
+    [ (hexInt (strip c), TE.decodeUtf16BE (unhex (strip t)))
+    | s <- streams,
+      "beginbfchar" `BS.isInfixOf` s,
+      l <- BC.lines s,
+      [c, t] <- [BC.words l],
+      "<" `BS.isPrefixOf` c,
+      "<" `BS.isPrefixOf` t
+    ]
+  where
+    strip = BC.filter (`notElem` ("<>" :: String))
+    unhex b = BS.pack [fromIntegral (hexInt (BS.take 2 (BS.drop i b))) | i <- [0, 2 .. BS.length b - 2]]
+
+-- | A hexadecimal number; 0 when it is not one.
+hexInt :: BS.ByteString -> Int
+hexInt b = case readHex (BC.unpack b) of
+  [(n, "")] -> n
+  _ -> 0
+
+{- | The text of a content stream as a reader that honours ActualText gets
+it: each glyph by the ToUnicode entries, a marked span by its replacement
+(ASCII literals only).
+-}
+extractedText :: Map.Map Int T.Text -> BS.ByteString -> T.Text
+extractedText tu content = go (BC.lines content)
+  where
+    go = \case
+      [] -> ""
+      l : rest
+        | "/Span << /ActualText (" `BS.isPrefixOf` l ->
+            let t = BC.takeWhile (/= ')') (BS.drop (BS.length "/Span << /ActualText (") l)
+             in TE.decodeUtf8 t <> go (drop 1 (dropWhile (/= "EMC") rest))
+        | Just g <- glyphOf l -> Map.findWithDefault "" g tu <> go rest
+        | otherwise -> go rest
+    glyphOf l = case [w | w <- BC.words l, "<" `BS.isPrefixOf` w, ">" `BS.isSuffixOf` w] of
+      [w] | "Tj" `BS.isSuffixOf` l -> Just (hexInt (BC.filter (`notElem` ("<>" :: String)) w))
+      _ -> Nothing
+
+ligatureTests :: [TestTree]
+ligatureTests =
+  [ testCase "toUnicodeOf: a ligature maps to its whole cluster" $
+      toUnicodeOf [(7, "ffi", ClusterWhole)] @?= [(7, "ffi")],
+    testCase "toUnicodeOf: the cluster of two glyphs goes to the first only" $
+      toUnicodeOf [(3, "é", ClusterLead), (4, "é", ClusterRest)] @?= [(3, "é")],
+    testCase "toUnicodeOf: a glyph of one-glyph clusters wins over a leading glyph seen before" $
+      toUnicodeOf [(3, "é", ClusterLead), (3, "e", ClusterWhole)] @?= [(3, "e")],
+    testCase "toUnicodeOf: of two candidates of the same part, the first" $
+      toUnicodeOf [(5, "a", ClusterWhole), (5, "b", ClusterWhole)] @?= [(5, "a")],
+    testCase "toUnicodeOf: no glyph 0, no empty text" $
+      toUnicodeOf [(0, "x", ClusterWhole), (6, "", ClusterWhole)] @?= [],
+    testCase "actualTextOf: a cluster the ToUnicode entries do not give back gets its text" $ do
+      actualTextOf (Map.fromList [(3, "e")]) [(3, "é", ClusterLead), (4, "é", ClusterRest)] @?= [([3, 4], Just "é")]
+      actualTextOf (Map.fromList [(3, "é")]) [(3, "é", ClusterLead), (4, "é", ClusterRest)] @?= [([3, 4], Nothing)]
+      actualTextOf (Map.fromList [(7, "ffi")]) [(7, "ffi", ClusterWhole)] @?= [([7], Nothing)]
+      actualTextOf (Map.fromList [(5, "a")]) [(5, "b", ClusterWhole)] @?= [([5], Just "b")],
+    testCase "actualTextOf: the occurrences of one-glyph and two-glyph clusters" $
+      actualTextOf (Map.fromList [(1, "a"), (3, "e")]) [(1, "a", ClusterWhole), (3, "é", ClusterLead), (4, "é", ClusterRest), (1, "a", ClusterWhole)]
+        @?= [([1], Nothing), ([3, 4], Just "é"), ([1], Nothing)],
+    testCase "Source Serif: the text drawn comes back without spaces, a ligature as two or more characters, no ActualText" $ do
+      (_, serif) <- realLatinFonts
+      noto <- BS.readFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
+      let style = replaceIn "characters = 12" "characters = 24" horizontalStyle <> "\n[fonts.body]\nja = \"fonts/noto.otf\"\nlatin = \"fonts/serif.ttf\"\n"
+      pdf <- miniPdf realProvider False style "office fluffy affix final left-hand\n" [("fonts/noto.otf", noto), ("fonts/serif.ttf", serif)]
+      streams <- inflateAll pdf
+      let tu = toUnicodeEntries streams
+          content = BS.concat [s | s <- streams, " Tf" `BS.isInfixOf` s]
+      extractedText tu content @?= "officefluffyaffixfinalleft-hand"
+      assertBool (show tu) (any ((>= 2) . T.length) (Map.elems tu))
+      assertBool "no BDC" (not ("BDC" `BS.isInfixOf` content)),
+    testCase "a glyph standing for two texts: the later one is in ActualText" $ do
+      let shapeXY s t = [(sh {shGlyph = if c == 'y' then fromEnum 'x' else shGlyph sh}) | (sh, c) <- zip (lfShape fakeFonts s t) (T.unpack t)]
+          provider = FontProvider (\_ _ _ _ -> pure (Right fakeFonts {lfShape = shapeXY}))
+      pdf <- miniPdf provider True horizontalStyle "xy\n" []
+      streams <- inflateAll pdf
+      let content = BS.concat [s | s <- streams, " Tf" `BS.isInfixOf` s]
+      length (occurrences "BDC" content) @?= 1
+      assertBool (show content) ("/Span << /ActualText (y) >> BDC" `BS.isInfixOf` content)
+      extractedText (toUnicodeEntries streams) content @?= "xy"
+  ]

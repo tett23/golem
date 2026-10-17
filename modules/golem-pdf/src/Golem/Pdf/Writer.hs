@@ -116,6 +116,10 @@ data Mark
     without keeping its proportions (ADR 0008)
     -}
     Form !FormRef !Rect
+  | {- | marks wrapped in a marked-content sequence with the replacement
+    text, outside BT and ET; not nested (golem-driver ADR 0030)
+    -}
+    ActualText !Text ![Mark]
   deriving stock (Eq, Show)
 
 data Page = Page
@@ -246,6 +250,8 @@ contentStreamWith fontNames imageNames formNames marks = BL.toStrict (B.toLazyBy
               <> "ET Q"
               <> nl
       Saved ms -> "q" <> nl <> mconcat (map mark ms) <> "Q" <> nl
+      -- a /Span with the replacement text written in the stream, no tag structure (golem-driver ADR 0030)
+      ActualText t ms -> "/Span << /ActualText " <> serialize (pdfTextString t) <> " >> BDC" <> nl <> mconcat (map mark ms) <> "EMC" <> nl
       Translated x y ms -> "q 1 0 0 1 " <> num x <> sp <> num y <> " cm" <> nl <> mconcat (map mark ms) <> "Q" <> nl
       RegistrationRules rs -> "q" <> nl <> "/Reg cs 1 scn" <> nl <> mconcat (map (mark . Rule) rs) <> "Q" <> nl
       -- the form maps its crop box to the unit square (its Matrix), so it is placed as an image is
@@ -418,16 +424,19 @@ documentObjects doc =
       RotatedGlyphRun f _ _ -> [f]
       StyledGlyphRun _ f _ _ -> [f]
       Saved ms -> concatMap fontsOf ms
+      ActualText _ ms -> concatMap fontsOf ms
       Translated _ _ ms -> concatMap fontsOf ms
       _ -> []
     imagesOf = \case
       Image i _ -> [i]
       Saved ms -> concatMap imagesOf ms
+      ActualText _ ms -> concatMap imagesOf ms
       Translated _ _ ms -> concatMap imagesOf ms
       _ -> []
     formsOf = \case
       Form f _ -> [f]
       Saved ms -> concatMap formsOf ms
+      ActualText _ ms -> concatMap formsOf ms
       Translated _ _ ms -> concatMap formsOf ms
       _ -> []
 
@@ -489,6 +498,7 @@ usesRegistration :: Mark -> Bool
 usesRegistration = \case
   RegistrationRules _ -> True
   Saved ms -> any usesRegistration ms
+  ActualText _ ms -> any usesRegistration ms
   Translated _ _ ms -> any usesRegistration ms
   _ -> False
 

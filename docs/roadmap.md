@@ -23,7 +23,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - **SVG の図版**（未実装、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）：仕様は SVG を v1 では扱わないと定めているが（仕様書の [「図版」の節](specifications.md#図版)）、v1 で扱えるようにする。開発者向けのマニュアルの図は、SVG を原稿にして PNG に描いたものを置いている。PDF の出力での描き方（ベクターのまま描くか、変換するか）と、HTML と EPUB でそのまま使うかを決める。
 - **段落スタイルの罫線**（未実装、[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）：段落スタイルに、段落の前と後に引く罫線（InDesign の段落境界線にあたるもの）を書けるようにする。見出しの下の罫線や、節の区切りの罫線に使う。長さ、太さ、間隔は、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md) の罫線の指定の形で書く。長さの既定は、当面は段の行長（段の最大の長さ）に固定する。罫線を持つ段落は改ページと改段で分けず、一つのページ（段）に置く。その段落の注のうち、そのページに収まらないものは、次のページ（見開きで扱う場合は次の見開き）に回す。間隔と行の格子の合わせ方は、[未決事項](#未決事項) の「段落の罫線の間隔と行の格子」で決める。
-- **合字のテキスト層**（未実装、[golem-driver ADR 0030](golem-driver/adr/0030-ligature-text-layer.md)）：PDF の ToUnicode が合字のグリフを一字目だけに対応させるので、PDF から文字列を抜き出すと fi、fl、ff、ffi が f になる（`Golem.Driver.Fonts` の `clusterText`）。十冊の fixture の英語の本と、テンペストで起きる。
 - **改ページの手での制御**（未実装、[docs/adr 0030](adr/0030-manual-page-break-control.md)）：原稿で、ここで改ページしない、この先にこれだけの空きが要る、このページの行を一行増やす、といった指定を書く手段がない（TeX の `\nopagebreak`、needspace、`\enlargethispage` にあたるもの）。
 
 ### 記法と設定
