@@ -160,6 +160,12 @@ CI の `changes` ジョブは、そうした文字列を拾って一覧と照ら
 `modules/` にパッケージを足したときは、cabal ファイルの `common warnings` の `ghc-options` にこのフラグを書き、各コンポーネントで `import: warnings` とする。
 付け忘れると、CI の `changes` ジョブ（`scripts/ci/incomplete-patterns.sh`）が失敗する。
 
+`-threaded` でビルドする実行ファイルとテストのスイートは、`-with-rtsopts=-N` でもリンクし、起動のときから capability をプロセッサの数だけ持たせる。
+コードの中では `setNumCapabilities` を呼ばない。
+二つの呼び出しが同時に capability を増やすと、GHC 9.10.3 のランタイムが止まる。
+tasty 1.5.4 も、capability がプロセッサより少ないと起動の時点でこれを呼ぶので、`-N` で呼ばせないようにする。
+どちらかを破ると、CI の `changes` ジョブ（`scripts/ci/rts-capabilities.sh`）が失敗する。
+
 監査の記録や性能計測のスナップショットは、`docs/` の下に用途ごとのディレクトリを作って置く。
 これらもコミットしたあとは変更しない。
 `docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/` に置いた記録は、フックと CI の `adr` ジョブがコミット後の変更、削除、移動を拒否する（[docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md)、[docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)）。

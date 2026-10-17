@@ -25,7 +25,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 
 | ジョブ | 内容 |
 | --- | --- |
-| [code: changes] | スクリプトのテスト、ビルドが読む文書の一覧の検査、不完全なパターンをエラーにするフラグの検査、ビルドの要否の判定 |
+| [code: changes] | スクリプトのテスト、ビルドが読む文書の一覧の検査、不完全なパターンをエラーにするフラグの検査、capability の数を実行中に変えないことの検査、ビルドの要否の判定 |
 | [code: build] | x86-64 と aarch64 でのビルドとテスト、生成したパーサーの検査、二つのマニュアル |
 | [code: determinism] | 二つのアーキテクチャの出力のハッシュの比較 |
 | [code: release-scripts] | [code: VERSION] と全パッケージのバージョンの一致、リリースのスクリプトのテスト |
@@ -40,12 +40,19 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 
 ## changes
 
-[code: changes] は、最初に次の四つを実行する。
+[code: changes] は、最初に次の五つを実行する。
 
 - [code: scripts/ci/test.sh]：CI のスクリプトのテスト。
 - [code: scripts/manual/test.sh]：マニュアルのスクリプトのテスト。
 - [code: scripts/ci/docs-refs.sh]：コードとスクリプトが名指す [code: docs/] の下の文書が、ビルドの読む文書の一覧にあること（第[ref-number docs]章）。
 - [code: scripts/ci/incomplete-patterns.sh]：[code: modules/] の下のすべてのパッケージのすべてのコンポーネントが、[code: -Werror=incomplete-patterns] でビルドされること。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0027-exhaustive-command-dispatch-by-types.md]（docs/adr の ADR 0027「到達しない診断の分岐を型で除く」）]
+- [code: scripts/ci/rts-capabilities.sh]：[code: modules/] の下の Haskell のコードが [code: setNumCapabilities] を呼ばないこと、[code: -threaded] でビルドする実行ファイルとテストのスイートが [code: -with-rtsopts=-N] でリンクされること。
+
+二つの [code: setNumCapabilities] が同時に capability を増やすと、GHC 9.10.3 のランタイムは止まる。
+先に増やした呼び出しが足した capability を、あとの呼び出しが手放さずに残し、次の GC がその capability を待ち続けるからである。
+以前は並列のテストが capability を 8 個に増やしており、tasty が同時に走らせたテストどうしでこれが起き、CI のテストが 30 分のタイムアウトまで止まることがあった。
+tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、起動の時点で [code: setNumCapabilities] を呼ぶ。
+[code: -N] でリンクすれば、capability の数は起動のときからプロセッサの数で、実行中に変わらない。
 
 そのあと、変更のパスから、ビルドが要るかを決める。
 パスは [code: scripts/ci/changed-paths.sh] が取り、判定は [code: scripts/ci/needs-build.sh] が行う。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0009-ci-speed.md]（docs/adr の ADR 0009「CI の高速化」）]
@@ -77,7 +84,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 + GHC 9.10.3 と cabal-install 3.16.1.0 を用意する。GHC のディレクトリ、Hackage の索引、cabal の store、[code: dist-newstyle] をキャッシュから戻す。
 + [code: scripts/fetch-wasmtime.sh] で wasmtime を取得し、qpdf を入れる（x86-64 では epubcheck も）。
 + [code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
-+ [code: cabal build all] と [code: cabal test all] を実行する。
++ [code: cabal build all] と [code: cabal test all] を実行する。テストのスイートはそれぞれ [code: scripts/ci/suite-timeout.sh] を通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。
 + [code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
 + 二つのマニュアルのフォントをキャッシュから戻し、[code: scripts/manual/build.sh] で二つのマニュアルを組む。diagnostic が一つでも出れば失敗する。
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。

@@ -154,6 +154,12 @@ Every package turns an incomplete `case` or function definition into an error wi
 When you add a package under `modules/`, put the flag in the `ghc-options` of the `common warnings` stanza of its cabal file, and write `import: warnings` in each component.
 Without it, the `changes` job of CI (`scripts/ci/incomplete-patterns.sh`) fails.
 
+An executable or a test suite built with `-threaded` is also linked with `-with-rtsopts=-N`, so that it has one capability per processor from the start.
+The code does not call `setNumCapabilities`.
+Two calls that raise the number of capabilities at the same time stop the runtime of GHC 9.10.3.
+tasty 1.5.4 also calls it at start when there are fewer capabilities than processors, and `-N` keeps it from doing so.
+If either rule is broken, the `changes` job of CI (`scripts/ci/rts-capabilities.sh`) fails.
+
 Audit records and performance snapshots go under `docs/`, in a directory for each purpose.
 These are also not changed once committed.
 Records under `docs/audit/`, `docs/audits/`, `docs/benchmarks/`, and `docs/benchmark/` are enforced: the hook and the `adr` job in CI reject changes, deletions, and moves of committed ones ([docs/adr/0011](./docs/adr/0011-update-adr-guard-to-v0.8.0.md), [docs/adr/0012](./docs/adr/0012-update-adr-guard-to-v0.8.1.md)).
