@@ -127,6 +127,20 @@ paraOf src = case body src of
   [Paragraph Nothing is] -> stripSpans is
   other -> error (show other)
 
+-- | The texts of each paragraph of a verse, with their spans.
+verseTexts :: Text -> [[(Text, Int, Int)]]
+verseTexts src = [[(t, spanStart tsp, spanEnd tsp) | Text tsp t <- is] | Paragraph (Just "verse") is <- body src]
+
+-- | The notices of a source: code, message, start and end.
+notices :: Text -> [(Text, Text, Int, Int)]
+notices src = [d | d@(c, _, _, _) <- diags src, c `elem` ["G0264", "G0279"]]
+
+fst3 :: (a, b, c) -> a
+fst3 (a, _, _) = a
+
+fst4 :: (a, b, c, d) -> a
+fst4 (a, _, _, _) = a
+
 -- | The rubies of a paragraph: the base and the reading of each segment.
 rubiesOf :: Text -> [[([Text], Maybe Text)]]
 rubiesOf src = case body src of
@@ -451,6 +465,34 @@ noticeTests =
         errs "[tcy: !?]\n" @?= []
         errs "[tcy: 1a]\n" @?= []
         errs "[number-text 10 style=tcy]\n" @?= [],
+      -- golem-parser ADR 0012
+      testCase "G0279: an escaped space at the end of a line of a paragraph that keeps its lines" $ do
+        -- "@style verse\n" is 13 bytes; "ab\\ " starts at 13
+        verseTexts "@style verse\nab\\ \n" @?= [[("ab", 13, 15)]]
+        notices "@style verse\nab\\ \n" @?= [("G0279", "行末のエスケープした空白は無視されます", 15, 16)]
+        verseTexts "@style verse\ncd\\ \\ \n" @?= [[("cd", 13, 15)]]
+        notices "@style verse\ncd\\ \\ \n" @?= [("G0279", "行末のエスケープした空白は無視されます", 15, 16)]
+        map (map fst3) (verseTexts "@style verse\nef\\\t\n") @?= [["ef"]]
+        map fst4 (notices "@style verse\nef\\\t\n") @?= ["G0279"],
+      testCase "G0279: plain spaces after the escape" $ do
+        map (map fst3) (verseTexts "@style verse\ngh\\    \n") @?= [["gh"]]
+        map fst4 (notices "@style verse\ngh\\    \n") @?= ["G0279"],
+      testCase "no G0279 for plain spaces at the end of a line" $ do
+        map (map fst3) (verseTexts "@style verse\nij  \n") @?= [["ij"]]
+        notices "@style verse\nij  \n" @?= [],
+      testCase "an escaped indent: G0264 only, and the text starts at its first letter" $ do
+        verseTexts "@style verse\n\\ gh\n" @?= [[("gh", 15, 17)]]
+        map fst4 (notices "@style verse\n\\ gh\n") @?= ["G0264"]
+        map (map fst3) (verseTexts "@style verse\n\\ \\ gh\n") @?= [["gh"]]
+        map fst4 (notices "@style verse\n\\ \\ gh\n") @?= ["G0264"]
+        map (map fst3) (verseTexts "@style verse\n\\  \\ gh\n") @?= [["gh"]]
+        map fst4 (notices "@style verse\n\\  \\ gh\n") @?= ["G0264"],
+      testCase "an escaped space inside a line stays" $ do
+        map (map fst3) (verseTexts "@style verse\na\\ b\n") @?= [["a b"]]
+        notices "@style verse\na\\ b\n" @?= [],
+      testCase "a paragraph that joins its lines keeps the escaped space" $ do
+        paraOf "ij\\ \nkl\n" @?= ["ij kl"]
+        errs "ij\\ \nkl\n" @?= [],
       testCase "G0264: an escaped space at the start of a line of a paragraph that keeps its lines" $ do
         [(c, m, s) | (c, m, s, _) <- diags "@style verse\n  a\n  \\ x\n", c == "G0264"]
           @?= [("G0264", "行頭のエスケープした空白は無視されます。字下げには全角の空白を使います", 19)]

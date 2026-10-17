@@ -72,6 +72,7 @@ test-suite golem-driver-test
   main-is:          Main.hs
   other-modules:
     BuildSpec
+    ChapterNotesSpec
     ColophonSpec
     CliSpec
     DiagnosticSitesSpec
