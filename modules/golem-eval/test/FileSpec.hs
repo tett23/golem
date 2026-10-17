@@ -1,5 +1,6 @@
 module FileSpec (tests) where
 
+import Control.Exception (evaluate)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -816,6 +817,13 @@ codeTests =
         msgs "``` highlight=9\na\nb\nc\n```\n" @?= [("G0269", "highlight の行 9 はこのコードにありません")]
         l <- oneCode "@listing x.hs lines=20-22 highlight=21\n"
         map clHighlight (codeLines l) @?= [False, True, False],
+      localOption (mkTimeout 10000000) $ testCase "a highlight range far beyond the code ends at once (docs/adr ADR 0035)" $ do
+        msgs "``` highlight=2-1000000000000\na\nb\nc\n```\n" @?= [("G0269", "highlight の行 4 はこのコードにありません")]
+        -- the blocks too, highlight and all, as the LSP keeps them
+        size <- evaluate (length (show (run ctx "``` highlight=2-1000000000000\na\nb\nc\n```\n")))
+        assertBool "evaluated" (size > 0)
+        c <- oneCode "``` highlight=2-3\na\nb\nc\n```\n"
+        map clHighlight (codeLines c) @?= [False, True, True],
       testCase "diff=true: +, -, space and an empty line" $ do
         c <- oneCode "``` diff=true\n+a\n-b\n c\n\n```\n"
         codeDiff c @?= True
