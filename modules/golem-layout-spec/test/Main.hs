@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Control.Monad (void)
 import Data.Either (isLeft)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
@@ -200,13 +201,13 @@ tests =
         let heading = (styleWith False False g40) {stHeadings = Map.fromList [(1, HeadingStyle Nothing Nothing Nothing False Nothing Nothing (Just rule {rsLength = Just (Zw 41)}))]}
         case result heading of
           Left [d] -> diagMessage d @?= "見出し 1 の罫線が仕上がりの線を超えます"
-          other -> assertFailure (show (fmap (const ()) other))
+          other -> assertFailure (show (void other))
         case result (withRule g40 Nothing rule {rsLength = Just (Zw 41)}) of
           Left [d] -> diagMessage d @?= "段落スタイル a の罫線が仕上がりの線を超えます"
-          other -> assertFailure (show (fmap (const ()) other))
+          other -> assertFailure (show (void other))
         case result (withRule (g20 (Zw 1)) Nothing rule {rsLength = Just (Zw 21)}) of
           Left [d] -> diagMessage d @?= "段落スタイル a の罫線が段間の半分を超えます"
-          other -> assertFailure (show (fmap (const ()) other)),
+          other -> assertFailure (show (void other)),
       testCase "the lines of the footnote separator (golem-driver ADR 0024)" $ do
         let base = styleWith False False (grid 30 30 1 Nothing)
             withRule b w a = base {stNotesRule = Just (RuleSpec (Just (Zw 10)) w b a Nothing RuleSolid (Zw 0) Nothing True)}

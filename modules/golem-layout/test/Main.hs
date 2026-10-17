@@ -33,8 +33,8 @@ import Hedgehog.Range qualified as Range
 import KnuthPlassReference
 import LineBreakingSpec (lineBreakingTests)
 import PaginateSpec (paginateTests)
-import RuleAreaSpec (ruleAreaTests)
 import PunctuationSpec (punctuationTests)
+import RuleAreaSpec (ruleAreaTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)

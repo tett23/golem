@@ -250,8 +250,7 @@ data St = St
     sRules :: ![PlacedRule],
     {- | the rule after of the ruled block just placed, waiting for the
     block after it to share its area: id, grid, rule and last grid line
-    -}
-    sJoin :: !(Maybe (Int, RuleGrid, RuleSide, Int))
+    -} sJoin :: !(Maybe (Int, RuleGrid, RuleSide, Int))
   }
 
 {- | Lays the flow out on pages of @columns@ columns of @capacity@ grid
@@ -524,7 +523,7 @@ paginateIn separatorLines base capacity flows =
             Just a
               | not (joinsNext fr rest) ->
                   let (ki, offi) = ruleAfter g a (frNextOverhang fr)
-                      notes = sNoteLines st > 0 || any (not . null . lbNotes) (bodyLines (frBody fr))
+                      notes = sNoteLines st > 0 || not (all (null . lbNotes) (bodyLines (frBody fr)))
                       (k, off)
                         | lastLine + 1 + ki >= capacity - sNoteLines st = ruleAfterAtEnd g a {rsdOutside = if notes then Nothing else rsdOutside a}
                         | otherwise = (ki, offi)

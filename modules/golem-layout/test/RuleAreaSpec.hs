@@ -1,6 +1,7 @@
 -- | The grid lines and the places of paragraph rules (golem-driver ADR 0027).
 module RuleAreaSpec (ruleAreaTests) where
 
+import Data.Maybe (isJust)
 import Golem.Layout.RuleArea
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -14,7 +15,7 @@ grid = RuleGrid (pt 17) (pt 10)
 
 -- | A rule of a weight with its inner and outer spaces, written or not.
 side :: Rational -> Maybe Rational -> Maybe Rational -> RuleSide
-side w i o = RuleSide (maybe 0 pt i) (maybe 0 pt o) (pt w) (i /= Nothing || o /= Nothing) Nothing
+side w i o = RuleSide (maybe 0 pt i) (maybe 0 pt o) (pt w) (isJust i || isJust o) Nothing
 
 ruleAreaTests :: [TestTree]
 ruleAreaTests =
