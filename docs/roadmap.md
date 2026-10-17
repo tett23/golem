@@ -32,7 +32,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **既定の見出し**（未実装、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）：段落スタイルを指定しない見出しが、本文と同じ大きさで組まれ、前後に空きがない。
 - **注の印の書式**（未実装、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）：PDF の注の印は `*1` の形に固定である。[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md) は印の書式の設定を作らないと決めたが、どの一覧にも載っていなかった。印の書式を設定できるようにする。
 - **改ページの手での制御**（未実装、[docs/adr 0030](adr/0030-manual-page-break-control.md)）：原稿で、ここで改ページしない、この先にこれだけの空きが要る、このページの行を一行増やす、といった指定を書く手段がない（TeX の `\nopagebreak`、needspace、`\enlargethispage` にあたるもの）。
-- **PDF に置けない図版**（未実装、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）：`golem build` は、JPEG と PNG として読めない `@figure` の画像（PDF の図版、壊れた画像）を、診断を出さず、終了コード 0 のまま PDF から落とす。2026-10-16 の main の `golem build` で、`%PDF-1.4` だけのファイルと PNG でないファイルを `@figure` に置いて確かめた（PDF に画像は一つも入らなかった）。`golem preflight` は同じ二つを G0905 で報告する。置けない形式と壊れた画像のほかに落とす場合があるかは確かめていない。`golem build` のエラーにするかどうかは決めていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+- **PDF に置けない図版**（未実装、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）：`golem build` は、JPEG と PNG として読めない `@figure` の画像（PDF の図版、壊れた画像）を、diagnostic を出さず、終了コード 0 のまま PDF から落とす。2026-10-16 の main の `golem build` で、`%PDF-1.4` だけのファイルと PNG でないファイルを `@figure` に置いて確かめた（PDF に画像は一つも入らなかった）。`golem preflight` は同じ二つを G0905 で報告する。置けない形式と壊れた画像のほかに落とす場合があるかは確かめていない。`golem build` のエラーにするかどうかは決めていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 
 ### 記法と設定
 
@@ -53,8 +53,8 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **ぶら下げの量**（未実装、[golem-layout ADR 0014](golem-layout/adr/0014-protrusion-amount.md)）：[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) のとおり、行の端の字の送りに比を掛ける。既存のテストの期待値を ADR の表から計算し直し、fixture の出力の変化を決定性の検査の基準に反映する。
 - **図版の順序**（未実装、[golem-layout ADR 0015](golem-layout/adr/0015-figure-order.md)）：送った図版が待っているあいだは、後の図版もその後に並べ、図版の順序を保つ。[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md) を改める ADR で定める。
 - **キーワード引数の後の `**[式]`**（未実装、[golem-parser ADR 0013](golem-parser/adr/0013-splat-after-keyword-arguments.md)）：文法の引数の並びを改め、`**[式]` をキーワード引数と同じ位置に書けるようにする。同じキーが二度出たときは、後に書いたほうを採る。
-- **`golem inspect` の終了コード、文言、対象**（未実装、[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）：ほかのコマンドと同じ診断の出力を通し、誤りがあれば終了コード 1 にする。ないファイルは日本語の誤りにする。`--as ir` は引数のファイルの IR を、人が読める形で出す。二つの不具合を一つの ADR で直す。
-- **LSP の古い診断**（未実装、[golem-lsp ADR 0004](golem-lsp/adr/0004-stale-s1-diagnostics.md)）：ラベルを参照する箇所の集合が変わったときにも S1 を評価し直す。[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md) の再評価の規則を改める ADR が要る。
+- **`golem inspect` の終了コード、文言、対象**（未実装、[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）：ほかのコマンドと同じ diagnostics の出力を通し、誤りがあれば終了コード 1 にする。ないファイルは日本語の誤りにする。`--as ir` は引数のファイルの IR を、人が読める形で出す。二つの不具合を一つの ADR で直す。
+- **LSP の古い diagnostics**（未実装、[golem-lsp ADR 0004](golem-lsp/adr/0004-stale-s1-diagnostics.md)）：ラベルを参照する箇所の集合が変わったときにも S1 を評価し直す。[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md) の再評価の規則を改める ADR が要る。
 
 ## v0.1.0-rc4
 
@@ -101,7 +101,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **段落の行揃え**：段落スタイルに行揃え（左、中央、右、均等配置と最終行の揃え）の欄を加える。縦組みでは天付き、中央、地付きと読む。今は両端揃えしかなく、扉、献辞、署名、奥付を組めない。値は InDesign の行揃えに合わせる。ノド側と小口側の揃えを作るかは ADR で決める。v2 の「段落スタイルの拡張」の行揃えを先に取り出す。
 - **段落の前後のアキ**：段落スタイルに、段落の前と後の空きの欄を加える。単位は `space-between` と同じく行の数とし、行の格子を崩さない。段の先頭で段落の前の空きを捨てるか（InDesign は捨てる）は ADR で決める。v2 の「段落スタイルの拡張」の段落の前後の空きを先に取り出す。
 - **行の終わりの側の字下げ**：段落スタイルに、行の終わりの側の字下げの欄を加え、引用を両側から字下げして組めるようにする。行揃えと段落の前後のアキと同じ ADR で決めてよい。v2 の「段落スタイルの拡張」の行の終わりの側の字下げを先に取り出す。
-- **回り込ませない図版の幅**：回り込ませない図版の幅を `@figure` の `width` で指定できるようにする。今は行長に固定し、`width` を書いても診断なしに無視する（golem-driver の `placeFigure`）。行の中の寄せと、行長より大きい図版の縮小も合わせて決める。v2 の「図版とキャプションの拡張」の図版の幅の指定を先に取り出す。
+- **回り込ませない図版の幅**：回り込ませない図版の幅を `@figure` の `width` で指定できるようにする。今は行長に固定し、`width` を書いても diagnostic を出さずに無視する（golem-driver の `placeFigure`）。行の中の寄せと、行長より大きい図版の縮小も合わせて決める。v2 の「図版とキャプションの拡張」の図版の幅の指定を先に取り出す。
 
 ## v1.0.0
 
@@ -186,7 +186,7 @@ v1 の範囲から外し、v2 以降に送ると決めた事項である。
 - **JAN コード**：奥付やカバーに置く JAN（EAN-13）のバーコードの扱い。生成と配置の仕方は ADR で決める。
 - **絵文字のレンダリング**：カラーの絵文字のフォント（COLR/CPAL、sbix、CBDT、OpenType の SVG）のグリフ、ZWJ でつないだ絵文字の並び、異体字セレクタによる絵文字の表示と文字の表示の切り替えを、PDF と HTML で組めるようにする。各形式の描き方、PDF/X-4 との関係、HTML でフォントに任せる範囲は ADR で決める。
 - **フォントのフォールバック**：役割のフォントにグリフがない字を、`style.toml` に役割ごとに宣言した代わりのフォントの列から順に探して組む。代わりのフォントの選び方は、環境によらず同じ結果になるように決める。`golem preflight` の G0902 との関係（代わりのフォントで組んだ字を報告するか）を ADR で決める。グリフがない字を `golem build` が誤りにしないことは v0.1.0-rc4 の「書体にない字」で扱い、この項目はその後に代わりのフォントで補う仕組みを扱う。カラーの絵文字のフォントを代わりのフォントに使う場合は、「絵文字のレンダリング」と合わせて決める。
-- **診断の英語化**：診断、ヒント、使い方の表示を英語でも出す。既定では実行時のロケールを読んで言語を選び、オプション（たとえば `--lang en`）と設定で指定できるようにする。出力するファイル（PDF、HTML、EPUB、テキスト）はロケールによらないという [docs/adr/0002](adr/0002-determinism.md) の規則は変えず、言語が変わるのは端末に出す文言だけとする。JSON の診断のコードと位置は言語によらない。着手するときに ADR を作成する。
+- **diagnostics の英語化**：diagnostics、ヒント、使い方の表示を英語でも出す。既定では実行時のロケールを読んで言語を選び、オプション（たとえば `--lang en`）と設定で指定できるようにする。出力するファイル（PDF、HTML、EPUB、テキスト）はロケールによらないという [docs/adr/0002](adr/0002-determinism.md) の規則は変えず、言語が変わるのは端末に出す文言だけとする。JSON の diagnostic のコードと位置は言語によらない。着手するときに ADR を作成する。
 - **見た目の回帰テスト**：Golem の PDF と HTML の出力を画像にして、前のコミットの出力と比べるテスト。今の検査は同じコミットのバイト列の一致だけを見るので、組版の見た目が崩れる変更でも通る。画像にするツールとそのバージョンの固定、比べ方、参照の画像の置き場所、CI の費用を ADR で決める。仕様書の [「Golem が強いるワークフロー」の節](specifications.md#golem-が強いるワークフロー) が外部のツールに任せるとした、利用者のための差分の仕組みとは別のもので、Golem 自身の開発のためのテストである。検討の材料は、開発者向けのマニュアルの「決定性を守る」の章にまとめている。
 - **章末の注の一覧の改ページと見出し**：v1 の章末の注の一覧は、前で改ページせず、見出しの文言は「注」（日本語以外は「Notes」）に固定する。一覧の前で改ページする設定と、見出しの文言を変える設定を加える。
 - **孤立行の規則の見直し**：段落の最初と最後の行をページの境に一つだけ残さない規則（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）は、ページの末尾に 1 行か 2 行の空きを残す。出版された本でもあまり気にされていないので今はこのままとし、必要になったら和文の本で緩めるかを検討する。利用者が行の数を指定する欄は v1.0.0 の「段落スタイルの分割禁止と連動」に移したので、この項目には、既定の規則を和文の本で緩めるかどうかだけが残る。
@@ -212,7 +212,7 @@ v1 の範囲から外し、v2 以降に送ると決めた事項である。
 - **リストの字下げ**：入れ子のリストと 10 項目を超える番号付きリストを、横組みと縦組みで PDF と EPUB にして目で見ることと、決定性の検査の蟹工船とテンペストの出力が変わらないことの確かめが残っている（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
 - **段組みの脚注**：段組みの版面で、脚注がその段の下に組まれることを PDF で目で確かめていない。自動のテストでだけ確かめている（[docs/adr/0018](adr/0018-multi-column-layout.md)）。
 - **LSP のお知らせ**：Neovim で、お知らせが Information として表示され、問題の一覧に載ることと、`silence-notices` に加えると保存の後に消えることを確かめていない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
-- **診断の説明へのリンク**：GitHub の上で `docs/diagnostics.md#g0117` を開き、G0117 の節に移ることを確かめていない（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
+- **diagnostic の説明へのリンク**：GitHub の上で `docs/diagnostics.md#g0117` を開き、G0117 の節に移ることを確かめていない（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
 - **コードブロックの見え方**：コードブロックの PDF を Acrobat の出力プレビューで開き、背景の色が DeviceCMYK の版だけに出ることと、コードの書体が埋め込まれていることを確かめていない。HTML と EPUB の `pre` と `code` の見え方も、Safari と Chrome で確かめていない（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 - **技術書のコードブロックの見え方**：行番号、キャプション、強調、注釈の印を付けたコードブロックを PDF と HTML で開き、技術書として読める見た目であることと、強調の網が墨の版だけに出ることを目で確かめていない。HTML で行番号と差分の印が選択とコピーに含まれないことも、Safari と Chrome で確かめていない（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 - **二冊のマニュアルの HTML と PDF**：利用者向けと開発者向けのマニュアルの HTML を、ブラウザで開いて確かめていない。PDF は、Acrobat でフォントの一覧と埋め込みを確かめていない（[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
@@ -263,4 +263,4 @@ ADR と仕様が扱わないと決めたもので、課題として残さない�
 - **ICC プロファイルによる Web の色変換**：画面の色は印刷の色の近似でよいと決めたので、差が問題になるまで扱わない（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)）。
 - **musl の malloc の速度**：GHC のヒープは RTS が自前で管理して影響が限られるので、問題になるまで扱わない（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **utf-32 の交渉と、`lsp` パッケージを使わない LSP の実装**：UTF-16 で常に応えられ、`lsp` への細工は一か所に閉じ込められるので採らない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)）。
-- **診断と CLI の文言の多言語化**：v1 の診断と使い方の文言は日本語だけと決めたので扱わない（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
+- **diagnostics と CLI の文言の多言語化**：v1 の diagnostics と使い方の文言は日本語だけと決めたので扱わない（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
