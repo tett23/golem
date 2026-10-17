@@ -14,6 +14,7 @@ import Data.Text (Text)
 import Golem.Doc.IR (BreakKind (..))
 import Golem.Layout.Code (CodeGeometry (..))
 import Golem.Layout.Paginate
+import Golem.Layout.RuleArea (RuleGrid (..), RuleSide (..))
 import Golem.Syntax (FileId (..), mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
@@ -31,6 +32,7 @@ paginateTests =
       testGroup "widows, orphans and the page end" widowOrphanTests,
       testGroup "page references that do not settle (S2)" pageRefTests,
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
+      testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -302,4 +304,68 @@ propertyTests =
       capacity <- forAll (Gen.int (Range.linear 2 9))
       let starts = [k | p <- paginate 1 capacity (flowsOf blocks), (k, _) <- poSlots p]
       filter (\k -> k < 0 || k >= capacity) starts === []
+  ]
+
+-- | Size 10pt, pitch 17pt, in sp.
+ruleGrid :: RuleGrid
+ruleGrid = RuleGrid (17 * 65536) (10 * 65536)
+
+-- | A rule of 0.5pt with an inner and an outer space in pt.
+spaced :: Integer -> Integer -> RuleSide
+spaced i o = RuleSide (i * 65536) (o * 65536) 32768 True Nothing
+
+-- | A rule of 0.3pt without spaces: no grid line inside a column.
+bare :: RuleSide
+bare = RuleSide 0 0 19661 False Nothing
+
+-- | A paragraph with rules: its id is that of its first line.
+ruled :: Maybe RuleSide -> Maybe RuleSide -> [LineBox] -> Flow
+ruled b a ls = FRuled (maybe 0 lbId (listToMaybe' ls)) b a False ruleGrid 0 (RuledLines ls)
+  where
+    listToMaybe' = foldr (const . Just) Nothing
+
+-- | The slots of each page.
+gridLines :: [PageOut] -> [[Int]]
+gridLines = map (map fst . poSlots)
+
+ruledTests :: [TestTree]
+ruledTests =
+  [ testCase "a ruled paragraph that does not fit goes whole to the next column, its rule counted at the start" $ do
+      -- 3 free; a line of area before (inner 5pt, outer 10pt) and 3 lines
+      let ps = paginate 1 5 [FParagraph (lines' 0 2), ruled (Just (spaced 5 10)) Nothing (lines' 10 3)]
+      gridLines ps @?= [[0, 1], [1, 2, 3]]
+      map poRules ps @?= [[], [PlacedRule 10 True (17 * 65536 - 5 * 65536 - 32768)]],
+    testCase "a paragraph is split at the column end, a ruled one is not" $ do
+      gridLines (paginate 1 8 [FParagraph (lines' 0 4), FParagraph (lines' 10 6)]) @?= [[0 .. 7], [0, 1]]
+      gridLines (paginate 1 8 [FParagraph (lines' 0 4), ruled Nothing (Just bare) (lines' 10 6)]) @?= [[0 .. 3], [0 .. 5]],
+    testCase "a ruled paragraph stays where it is; the note that does not fit goes to the next page" $ do
+      let withNote = LineBox 10 [NoteBody (nid 900) 4] [] [] 0
+          ps = paginate 1 6 [FParagraph (lines' 0 2), ruled (Just bare) Nothing (withNote : lines' 11 1)]
+      gridLines ps @?= [[0, 1, 2, 3], []]
+      -- the rest of the note is on the next page
+      map poFootnotes ps @?= [[(nid 900, 0, 1)], [(nid 900, 1, 3)]],
+    testCase "a ruled heading whose note does not fit goes on with its note and its rule (golem-layout ADR 0013)" $ do
+      let h = FRuled 20 (Just (spaced 5 10)) Nothing False ruleGrid 0 (RuledHeading False 1 [LineBox 20 [NoteBody (nid 900) 2] [] [] 0])
+          ps = paginate 1 6 [FParagraph (lines' 0 3), h, FParagraph (lines' 30 1)]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2], [SHeading 20 1, SLine 30]]
+      gridLines ps @?= [[0, 1, 2], [1, 2]]
+      notesByPage ps @?= [(1, []), (2, [nid 900])],
+    testCase "a heading before a ruled paragraph of 5 lines goes on with it" $ do
+      let ps = paginate 1 8 [FParagraph (lines' 0 3), heading 20, ruled (Just bare) Nothing (lines' 30 5)]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2], SHeading 20 1 : map SLine [30 .. 34]],
+    testCase "a rule after and a rule before in a row share one area; with space-between they do not" $ do
+      let a = ruled Nothing (Just (spaced 2 3)) (lines' 0 2)
+          b = FRuled 10 (Just (spaced 2 6)) Nothing True ruleGrid 0 (RuledLines (lines' 10 2))
+          b' = FRuled 10 (Just (spaced 2 6)) Nothing False ruleGrid 0 (RuledLines (lines' 10 2))
+          p = 17 * 65536
+          face = 10 * 65536
+      let joined = paginate 1 20 [a, b]
+      gridLines joined @?= [[0, 1, 3, 4]]
+      map poRules joined @?= [[PlacedRule 0 False (p + face + 2 * 65536), PlacedRule 10 True (p + face + 24 * 65536 - 2 * 65536 - 32768)]]
+      gridLines (paginate 1 20 [a, FSpace 1, b']) @?= [[0, 1, 4, 5]],
+    testCase "a ruled paragraph that ends at the column end counts its rule at the edge" $ do
+      -- inside: inner 5pt, outer 30pt take 2 lines; at the end 1 line
+      let ps = paginate 1 4 [ruled Nothing (Just (spaced 5 30)) (lines' 0 3)]
+      gridLines ps @?= [[0, 1, 2]]
+      map poRules ps @?= [[PlacedRule 0 False (2 * 17 * 65536 + 10 * 65536 + 5 * 65536)]]
   ]

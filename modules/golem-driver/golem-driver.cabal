@@ -82,6 +82,7 @@ test-suite golem-driver-test
     LocaleSpec
     MemoSpec
     PageElementsSpec
+    ParagraphRuleSpec
     ParagraphSpec
     PdfSpec
     PluginsSpec

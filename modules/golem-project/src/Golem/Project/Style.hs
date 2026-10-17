@@ -77,6 +77,7 @@ module Golem.Project.Style
     RuleSpec (..),
     RuleStyle (..),
     ruleStyleNames,
+    paraRules,
     parseRuleSpec,
     defaultStyle,
     parseStyle,
@@ -88,7 +89,7 @@ module Golem.Project.Style
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (unless, when, (>=>))
+import Control.Monad (join, unless, when, (>=>))
 import Data.Bifunctor (bimap)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Foldable (toList)
@@ -257,7 +258,11 @@ data ParaStyleDef = ParaStyleDef
     psPadding :: !(Maybe Dim),
     -- | the swatch and the width of the border, for code only (golem-driver ADR 0023)
     psBorder :: !(Maybe Text),
-    psBorderWidth :: !(Maybe Dim)
+    psBorderWidth :: !(Maybe Dim),
+    {- | the rules before and after the paragraph (golem-driver ADR 0027):
+    Nothing inherits, Just Nothing is false
+    -} psRuleBefore :: !(Maybe (Maybe RuleSpec)),
+    psRuleAfter :: !(Maybe (Maybe RuleSpec))
   }
   deriving stock (Eq, Show)
 
@@ -330,7 +335,7 @@ noCharDef = CharStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | A paragraph style with no key written.
 noParaDef :: ParaStyleDef
-noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+noParaDef = ParaStyleDef Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 -- | The keys body has without a definition (docs/adr ADR 0005, 0006, 0019; docs/adr/0020).
 bodyDefaults :: ParaStyleDef
@@ -515,6 +520,8 @@ overPara u b =
     (psPadding u <|> psPadding b)
     (psBorder u <|> psBorder b)
     (psBorderWidth u <|> psBorderWidth b)
+    (psRuleBefore u <|> psRuleBefore b)
+    (psRuleAfter u <|> psRuleAfter b)
 
 {- | The parent of a paragraph style: body and code have none (golem-driver
 ADR 0017), the others are based on body by default.
@@ -551,6 +558,14 @@ paraStyle style mname =
         [] -> Nothing
         chain@(d : _) -> Just (foldr overPara bodyDefaults chain) {psBasedOn = paraParent name d}
 
+{- | The rules before and after the paragraphs of a style, resolved
+through based-on (golem-driver ADR 0027).
+-}
+paraRules :: Style -> Maybe Text -> (Maybe RuleSpec, Maybe RuleSpec)
+paraRules style name = case paraStyle style name of
+  Just d -> (join (psRuleBefore d), join (psRuleAfter d))
+  Nothing -> (Nothing, Nothing)
+
 -- | Whether each paragraph style keeps its lines, resolved (docs/adr ADR 0005).
 paraLineBreaks :: Style -> Map Text LineBreaks
 paraLineBreaks style =
@@ -568,7 +583,10 @@ data HeadingStyle = HeadingStyle
     hsNumber :: !(Maybe Text),
     hsRectoBreak :: !Bool,
     -- | the least grid lines the heading takes (golem-driver ADR 0032)
-    hsLines :: !(Maybe Int)
+    hsLines :: !(Maybe Int),
+    -- | the rules before and after the heading (golem-driver ADR 0027)
+    hsRuleBefore :: !(Maybe RuleSpec),
+    hsRuleAfter :: !(Maybe RuleSpec)
   }
   deriving stock (Eq, Show)
 
@@ -843,7 +861,15 @@ data RuleSpec = RuleSpec
     -- | the swatch of the rule; none draws it without setting a colour
     rsColor :: !(Maybe Text),
     -- | the line style, its lengths resolved from the weight
-    rsStyle :: !RuleStyle
+    rsStyle :: !RuleStyle,
+    {- | from the start of the line of the column to the start of the rule;
+    negative out of the column (golem-driver ADR 0027), paragraph and
+    heading rules only
+    -} rsStartIndent :: !Dim,
+    -- | from the end of the rule to the end of the line of the column
+    rsEndIndent :: !(Maybe Dim),
+    -- | whether a rule at the edge of a column stays in it
+    rsKeepInColumn :: !Bool
   }
   deriving stock (Eq, Show)
 
@@ -914,6 +940,14 @@ instance FromValue RuleSpec where
       v -> failAt (valueAnn v) "罫線の style は \"solid\" のように文字列で書きます"
     dash <- dashLength "dash"
     gap <- dashLength "gap"
+    -- the place of a paragraph or heading rule (golem-driver ADR 0027); negative is out of the column
+    let indent key = optKeyOf key $ ruleDim key $ \_ d -> pure d
+    startIndent <- indent "start-indent"
+    endIndent <- indent "end-indent"
+    keepIn <- optKey "keep-in-column"
+    case (len, endIndent) of
+      (Just _, Just _) -> fail "罫線の length と end-indent は一緒に書けません"
+      _ -> pure ()
     let w = fromMaybe defaultRuleWeight weight
         name = maybe "solid" (\(_, t, _) -> t) styleName
         -- a key without effect on the style is an error (golem-driver ADR 0028)
@@ -929,7 +963,7 @@ instance FromValue RuleSpec where
         "japanese-dots" -> refuse "dash" dash >> pure (RuleJapaneseDots (orDefault w gap))
         "wavy" -> refuse "dash" dash >> refuse "gap" gap >> pure RuleWavy
         _ -> refuse "dash" dash >> refuse "gap" gap >> pure RuleSolid
-    pure (RuleSpec len w before after color style)
+    pure (RuleSpec len w before after color style (fromMaybe (Zw 0) startIndent) endIndent (fromMaybe True keepIn))
     where
       ruleDim key check v = case v of
         Text' l t -> maybe (failAt l (T.unpack ("罫線の " <> key <> " を寸法として読めません: " <> t))) (check l) (parseSignedDim t)
@@ -1254,7 +1288,18 @@ instance FromValue ParaStyleDef where
     -- the border of code; zw is reported by the checks (golem-driver ADR 0023)
     border <- optKey "border"
     bw <- dimKey "border-width"
-    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw)
+    rb <- optKeyOf "rule-before" ruleOrFalse
+    ra <- optKeyOf "rule-after" ruleOrFalse
+    pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw rb ra)
+
+{- | A paragraph or heading rule (golem-driver ADR 0027): a rule spec, or
+false for none; true is an error.
+-}
+ruleOrFalse :: Value' l -> Matcher l (Maybe RuleSpec)
+ruleOrFalse = \case
+  Bool' _ False -> pure Nothing
+  Bool' l True -> failAt l "罫線には表か false を書きます。true は書けません"
+  v -> Just <$> fromValue v
 
 instance FromValue RegexStyleDef where
   fromValue = parseTableFromValue (RegexStyleDef <$> reqKey "pattern" <*> reqKey "style")
@@ -1271,7 +1316,9 @@ instance FromValue HeadingStyle where
       [ Key "running-head" (\v -> failAt (valueAnn v) "[headings.<l>] の running-head は廃止しました。柱に使う見出しは [masters.<名前>] の running-head の content で指定してください"),
         Else (pure ())
       ]
-    pure (HeadingStyle f s n (pb == Just "recto") ls)
+    rb <- optKeyOf "rule-before" ruleOrFalse
+    ra <- optKeyOf "rule-after" ruleOrFalse
+    pure (HeadingStyle f s n (pb == Just "recto") ls (join rb) (join ra))
 
 instance FromValue RubyStyleDef where
   fromValue = parseTableFromValue $ do
@@ -1470,6 +1517,12 @@ instance FromValue Notes where
       {- the rule before footnotes (golem-driver ADR 0024): length is
       required; a space not written is 0 when the other is written -}
       noteRule v = do
+        -- the place of a rule in its column is for paragraphs and headings (golem-driver ADR 0027)
+        case v of
+          Table' l (MkTable m)
+            | (k : _) <- filter (`Map.member` m) ["start-indent", "end-indent", "keep-in-column"] ->
+                failAt l (T.unpack ("[notes.rule] には " <> k <> " を書けません。段落スタイルと見出しの罫線だけのキーです"))
+          _ -> pure ()
         r <- fromValue v
         when (isNothing (rsLength r)) $ failAt (valueAnn v) "[notes.rule] には length が要ります"
         pure $ case (rsSpaceBefore r, rsSpaceAfter r) of
@@ -1702,6 +1755,7 @@ styleChecks owner s =
     <> [("G0306", n, "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | n <- Map.keys (stCharStyles s) <> Map.keys (stParaStyles s), not (validStyleName n)]
     <> [("G0306", "", m) | m <- checks]
     <> [("G0306", n, m) | (n, m) <- codeChecks]
+    <> [("G0306", n, m) | (n, m) <- ruleChecks]
     <> [("G0308", n, "style.toml にないフォントの役割です: " <> r) | (n, r) <- roles, Map.notMember r (stFonts s)]
     <> [("G0313", n, owner <> "スタイルの参照が不正です: " <> m) | (n, m) <- referenceChecks]
     <> [(code, n, m) | (n, ParaStyleDef {psRegexStyles = Just rs}) <- Map.toList (stParaStyles s), (i, r) <- zip [0 ..] rs, (code, m) <- regexStyleErrors owner s n i r]
@@ -1769,6 +1823,25 @@ styleChecks owner s =
           ],
         written
       ]
+    {- paragraph rules (golem-driver ADR 0027): not on caption, sidenote and
+    code; with a grid, a length left by the indents greater than 0 -}
+    ruleChecks =
+      [ (n, "段落スタイル " <> n <> " には rule-before と rule-after を書けません")
+      | (n, d) <- Map.toList (stParaStyles s),
+        n `elem` ["caption", "sidenote", "code"],
+        isJust (psRuleBefore d) || isJust (psRuleAfter d)
+      ]
+        <> case stPage s >>= pageGrid of
+          Just Grid {gridFontSize = Abs fs, gridCharacters = chars} ->
+            [ (n, "段落スタイル " <> n <> " の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください")
+            | n <- Map.keys (stParaStyles s),
+              Just d <- [paraStyle s (Just n)],
+              let size = maybe fs (dimToSp fs) (psSize d),
+              Just r <- [join (psRuleBefore d), join (psRuleAfter d)],
+              isNothing (rsLength r),
+              toInteger chars * fs - dimToSp size (rsStartIndent r) - maybe 0 (dimToSp size) (rsEndIndent r) <= 0
+            ]
+          _ -> []
     -- based-on names an existing style without a cycle; body has none; colours exist (docs/adr ADR 0005)
     referenceChecks =
       let cs = stCharStyles s
@@ -1807,6 +1880,16 @@ styleChecks owner s =
             <> [(n, "段落スタイル " <> n <> " の border のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBorder = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
             -- the swatch of a rule (golem-driver ADR 0028)
             <> [("", "[notes.rule] の color のスウォッチがありません: " <> c) | Just RuleSpec {rsColor = Just c} <- [stNotesRule s], Map.notMember c (stSwatches s)]
+            <> [ (n, "段落スタイル " <> n <> " の罫線の color のスウォッチがありません: " <> c)
+               | (n, d) <- Map.toList ps,
+                 Just (Just RuleSpec {rsColor = Just c}) <- [psRuleBefore d, psRuleAfter d],
+                 Map.notMember c (stSwatches s)
+               ]
+            <> [ ("", "見出し " <> T.pack (show l) <> " の罫線の color のスウォッチがありません: " <> c)
+               | (l, h) <- Map.toList (stHeadings s),
+                 Just RuleSpec {rsColor = Just c} <- [hsRuleBefore h, hsRuleAfter h],
+                 Map.notMember c (stSwatches s)
+               ]
             -- the swatches of [code] and [code.colors] (golem-driver ADR 0023)
             <> [("", "[code] の " <> k <> " のスウォッチがありません: " <> c) | (k, c) <- codeSwatches, Map.notMember c (stSwatches s)]
             <> [(n, "段落スタイルの based-on が循環しています: " <> T.intercalate ", " paraCycle) | n <- paraCycle]

@@ -10,6 +10,7 @@ import FigureSpec
 import LocaleSpec
 import MemoSpec
 import PageElementsSpec
+import ParagraphRuleSpec
 import ParagraphSpec
 import PdfSpec
 import PluginsSpec
@@ -86,6 +87,7 @@ tests =
              testGroup "the footnote separator (ADR 0024)" noteRuleTests,
              testGroup "notes at the end of the chapter (ADR 0026)" chapterNoteTests,
              testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
+             testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
              localeTests,
              publicDomainTests,
              diagnosticSiteTests

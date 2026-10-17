@@ -204,6 +204,17 @@ preflightTests =
         v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
         Map.keys (vwSwatchesUsed v) @?= ["heavy"]
         assertBool (show (prDiagnostics p)) (DiagnosticCode "G0915" `elem` map diagCode (prDiagnostics p)),
+    testCase "the view: paragraph rules are of their own kind; one near the trim is G0912 (golem-driver ADR 0027)" $ do
+      let ruled extra = horizontalStyle <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\"" <> extra <> " }\n"
+          source = "前。\n\n@style sec\n  節。\n"
+      withPreflightProject (ruled "") source [] $ \tmp -> do
+        p <- preflightIn tmp
+        v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+        [rvKind r | r <- concatMap pvRules (vwPages v)] @?= ["段落の罫線"]
+        assertBool (show (prDiagnostics p)) (DiagnosticCode "G0912" `notElem` map diagCode (prDiagnostics p))
+      withPreflightProject (ruled ", start-indent = \"-19mm\"") source [] $ \tmp -> do
+        p <- preflightIn tmp
+        assertBool (show (prDiagnostics p)) (DiagnosticCode "G0912" `elem` map diagCode (prDiagnostics p)),
     testCase "a character the font has not is glyph 0 in the view (with real fonts)" $ withSystemTempDirectory "golem-preflight" $ \tmp -> do
       copyTree fixture tmp
       createDirectoryIfMissing True (tmp </> "fonts")
