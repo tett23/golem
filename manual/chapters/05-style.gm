@@ -331,6 +331,7 @@ regex-styles = [
 後方参照、[code: \\p{Han}] のような文字体系の指定、長さの決まらない後読み、InDesign の [code: ~] で始まる記号は使えず、エラー（G0315）になります。
 和文の文字の範囲は [code: \[\\x{4E00}-\\x{9FFF}\]] のように符号位置で書きます。
 縦中横と [code: \[number-text ...\]] の数は一字として扱うので、[code: \[0-9\]+] はその中の数字には一致しません。
+[code: ##10##] の数も同じです。
 
 一つの章でだけ使う正規表現スタイルは、[code: @style-def regex] で書けます。
 
@@ -619,8 +620,10 @@ overhang-onto = "kana"
 - [code: overhang]：読みが親文字より長いときに、隣の文字にかけてよい量です。
 - [code: overhang-onto]：[code: "kana"] なら仮名にだけかけ、[code: "none"] ならかけません。
 
-縦組みの本で [code: \[number-text ...\]] の数をどう組むかは、[code: \[numbers\]] の [code: vertical] で決めます。
+縦組みの本で [code: ##10##] や [code: \[number-text ...\]] の数をどう組むかは、[code: \[numbers\]] の [code: vertical] で決めます。
 [code: "kanji"]（十、百二十）、[code: "kanji-digits"]（一〇、一二〇）、[code: "tcy"]（縦中横の算用数字）から選べます。
+[code: "auto"] は 2 桁までの数を縦中横に、それより大きい数を位取りをする漢数字（百二十）にします。
+[code: "auto-digits"] は 2 桁までの数を縦中横に、それより大きい数を一字ずつの漢数字（二〇二六）にします。
 
 @label aki-sets
 ## 字間の空き

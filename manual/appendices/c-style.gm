@@ -248,7 +248,7 @@ Golem は、コンピューターに入っているフォントを探しませ�
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [code: vertical] | [code: "kanji"] | 縦組みでの [code: \[number-text ...\]] の表記です。[code: "kanji"]（十）、[code: "kanji-digits"]（一〇）、[code: "tcy"]（縦中横の 10）から選びます。 |
+| [code: vertical] | [code: "kanji"] | 縦組みでの [code: ##数##] と [code: \[number-text ...\]] の表記です。[code: "kanji"]（十）、[code: "kanji-digits"]（一〇）、[code: "tcy"]（縦中横の 10）、[code: "auto"]（2 桁までは縦中横、ほかは十）、[code: "auto-digits"]（2 桁までは縦中横、ほかは一〇〇）から選びます。 |
 
 @nonumber
 ## [code: \[notes\]]
