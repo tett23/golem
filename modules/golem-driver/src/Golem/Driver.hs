@@ -15,6 +15,7 @@ module Golem.Driver
     preflight,
     evaluateProject,
     evaluateProjectWith,
+    evaluateLoose,
     loadBibliography,
     metadataValues,
     epubConfig,
@@ -74,9 +75,10 @@ import Golem.Eval.Expr (Env (..), embedValue, evalExpr)
 import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Html
+import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
-import Golem.Parser.Read (ReadFailure (..), readInfo, readSourceFile, readTableSource)
-import Golem.Parser.SourceSettings (SourceSettings)
+import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile, readTableSource)
+import Golem.Parser.SourceSettings (SourceSettings, defaultSourceSettings)
 import Golem.Pdf qualified as P
 import Golem.Plugin.Lock (defaultCacheDir)
 import Golem.Preflight (check)
@@ -300,6 +302,23 @@ reeval profile project style assets citeKeys hook acc fid sf =
             ctxStyle = style
           }
    in evalFile ctx (sfAst sf)
+
+{- | S0 of a file outside any project, FileId 0, with the built-in styles
+and no plugins (golem-cli ADR 0007): what the LSP shows of an open file
+the manifest does not reach, and what golem inspect --as ir shows without
+manifest.toml. The diagnostics are a BOM or CR of the text and the syntax;
+the evaluation of a file with syntax errors is not reported (golem-parser
+ADR 0009).
+-}
+evaluateLoose :: FilePath -> Text -> EvalResult
+evaluateLoose path text =
+  let fid = FileId 0
+      (ast, _, synDiags) = parseAst fid text
+      -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
+      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle
+      res = evalFile ctx ast
+      syntax = checkText fid text <> synDiags
+   in res {erDiagnostics = if hasErrors syntax then syntax else syntax <> erDiagnostics res}
 
 -- | How a file of the project is read (docs/adr ADR 0013).
 sourceSettingsOf :: Project -> FileId -> SourceSettings
