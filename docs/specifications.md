@@ -224,7 +224,7 @@ EPUB の実体は XHTML+CSS にパッケージングを加えたものなので�
 ルビは「漢字（かんじ）」のように全角丸括弧で読みを併記し、圏点、強調、色は出力しない。
 数の表記は縦書き版で漢数字、横書き版で算用数字に解決する。
 
-レイアウト IR は意味論 IR と並ぶ第二の入力であり、これも版管理の対象である。
+レイアウト IR は意味論 IR と並ぶ第二の入力であり、これもバージョン管理の対象である。
 結合は内容主導を基本とし、レイアウト側から内容ストリームを参照する逆向きの結合点を型として用意する（CLI 用途では縮退する）。
 
 モジュール間のインターフェースは、実装に先立って ADR で定め、モジュールを並行して実装できるようにする。
@@ -382,16 +382,16 @@ isbn = "978-..."
 成果物に書き込む識別子は、乱数を使わずすべて導出する。
 
 - **文書 ID**（XMP の DocumentID と PDF のトレーラー `/ID` の第一要素）：マニフェストの `id` から名前ベースの UUID（v5）で導出する。文書 ID は同じ文書の版をまたいで変わらない値なので、本の識別子から作る。
-- **インスタンス ID**（XMP の InstanceID と `/ID` の第二要素）：入力全体のハッシュから導出する。入力全体とは、全ソースファイル、マニフェスト、`style.toml`、`plugins.lock`、使ったフォントのバイト列、出力を変える CLI のオプション（`--marks` と `--profile`）、Golem の版である。`style.toml` はマニフェストの直後に置き、ないときは空のバイト列とする。CLI のオプションは、ソースファイルの後に `options marks=<値> profile=<値>` の形の一つの要素として置き、既定の値も省かない（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。Golem の版は `golem-` に `VERSION` の内容を続けた文字列とし、入力の末尾に加える（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
+- **インスタンス ID**（XMP の InstanceID と `/ID` の第二要素）：入力全体のハッシュから導出する。入力全体とは、全ソースファイル、マニフェスト、`style.toml`、`plugins.lock`、使ったフォントのバイト列、出力を変える CLI のオプション（`--marks` と `--profile`）、Golem のバージョンである。`style.toml` はマニフェストの直後に置き、ないときは空のバイト列とする。CLI のオプションは、ソースファイルの後に `options marks=<値> profile=<値>` の形の一つの要素として置き、既定の値も省かない（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。Golem の版は `golem-` に `VERSION` の内容を続けた文字列とし、入力の末尾に加える（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **EPUB の識別子**：電子版の ISBN があればそれを使い、なければマニフェストの `id` を使う。
 
-シェイピングとフォントの処理に使う HarfBuzz と FreeType、プラグインの実行に使う wasmtime、PDF の圧縮に使う zlib は版を固定する。
-これらの版が変わるとグリフの配置が変わり、同じ入力から同じ出力が得られなくなるためである。
-使っている版は README に記載し、版を上げるときは ADR を作成する。
+シェイピングとフォントの処理に使う HarfBuzz と FreeType、プラグインの実行に使う wasmtime、PDF の圧縮に使う zlib はバージョンを固定する。
+これらのバージョンが変わるとグリフの配置が変わり、同じ入力から同じ出力が得られなくなるためである。
+使っているバージョンは README に記載し、バージョンを上げるときは ADR を作成する。
 
 式の評価、とくに浮動小数点数の計算は、x86-64 と aarch64 の両方の CI でテストし、結果が一致することを確かめる。
 
-出力は、ファイルの入力、Golem の版、出力を変える CLI のオプション（`--marks` と `--profile`）だけで決まる（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
+出力は、ファイルの入力、Golem のバージョン、出力を変える CLI のオプション（`--marks` と `--profile`）だけで決まる（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
 CLI のオプションは呼び出しに明示されるので、同じオプションで呼べば CI と手元で同じ出力が得られる。
 今後 CLI に出力を変えるオプションを加えるときは、インスタンス ID の入力に加える。
 
@@ -401,7 +401,7 @@ EPUB はパッケージである zip の中に時刻や並び順の揺れを含�
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
 対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く診断や説明である。
 
-PDF の Producer には Golem の版を書く。
+PDF の Producer には Golem のバージョンを書く。
 Producer は `Golem ` に `VERSION` の内容を続けた文字列（例：`Golem 0.1.0-rc1`）とし、文書情報辞書の `Producer` と XMP の `pdf:Producer` の両方に書く（[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。
 Git のコミットやビルドの環境は含めない。
 このため Golem を更新すると出力のバイト列は変わるが、処理系も入力の一部なので決定性には反しない。
@@ -1480,7 +1480,7 @@ lint の規則（G05xx）はお知らせを出さない。
 原稿の中でお知らせを止める指示と、`style.toml` の設定は設けない。
 LSP は `silence-notices` に従い、抑制したお知らせを公開しない。
 LSP には `--no-notices` に当たる設定を設けない。
-記法と設定のキーを廃止するときは、まず廃止予定のお知らせを少なくとも一つの minor の版で出し、次の ADR でエラーにする（手順は [docs/diagnostics.md](diagnostics.md) の「お知らせ」の節）。
+記法と設定のキーを廃止するときは、まず廃止予定のお知らせを少なくとも一つの minor のバージョンで出し、次の ADR でエラーにする（手順は [docs/diagnostics.md](diagnostics.md) の「お知らせ」の節）。
 
 診断は、機械が読む事実（`diagFacts`）を持てる（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 事実は名前と値（整数、文字列、整数の配列、文字列の配列）の組の並びで、今はプリフライトの診断だけが、ページ番号（`pdf-pages`）や測った値（`ppi` など）を持つ。
@@ -1825,7 +1825,7 @@ CSL-JSON は文献管理ソフトが書き出せる標準の形式である。
 
 v1 の引用の書式は、処理系が持つ一種類だけとする。
 引用の書式は数千種類あり、それを解釈する処理系の実装は独立した大きな仕事になるためである。
-書式の選択は後の版で扱う。
+書式の選択は後のバージョンで扱う。
 
 参考文献の一件は、著者、題、発行者、発行の年の順に、空でない欄を並べる（[golem-doc ADR 0004](golem-doc/adr/0004-bibliography-formatting.md)）。
 書式は golem-doc の `Golem.Doc.Bibliography` が決め、HTML、EPUB、PDF、プレーンテキストが同じ文字列を使う。
@@ -1874,7 +1874,7 @@ wasm を選んだ根拠は三つある。
 こうすればプラグインが何をしても出力は非決定的にならず、決定性を言語側の規律ではなく処理系の側で保証できる。
 三つ目は隔離である。
 プラグインは外部から取得したコードであり、wasm はホストが渡さない限りファイルシステムにもネットワークにも触れられない。
-配布物のハッシュをロックファイルに記録すれば、版の固定と改竄の検知を同時に満たせる。
+配布物のハッシュをロックファイルに記録すれば、バージョンの固定と改竄の検知を同時に満たせる。
 
 任意の言語でプラグインを書ける点は副次的な利点にとどまる。
 wasm の境界を越えて AST を受け渡すにはシリアライズ形式と各言語用の SDK が要り、実際に使える言語は SDK を保守する言語に限られるためである。
@@ -1921,10 +1921,10 @@ wasm の境界を越えて AST を受け渡すにはシリアライズ形式と�
 
 ### 配布
 
-v1 では、プラグインの配布機構（レジストリや版の解決）を持たない。
+v1 では、プラグインの配布機構（レジストリやバージョンの解決）を持たない。
 プラグインは、マニフェストに配布物の URL を直接書いて宣言する。
-想定する配布元は GitHub などのリリースであり、URL は版ごとに固定されたものを書く。
-許容する版の範囲を宣言して解決する方式は、配布機構を作る段階で導入する。
+想定する配布元は GitHub などのリリースであり、URL はバージョンごとに固定されたものを書く。
+許容するバージョンの範囲を宣言して解決する方式は、配布機構を作る段階で導入する。
 
 取得と検証は次の規則に従う。
 
@@ -1958,7 +1958,7 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | `golem plugin lock` | `plugins.lock` を更新する |
 | `golem inspect <file>` | CST、AST、プラグインとの CBOR を人が読める形で表示する |
 | `golem explain [CODE]` | 診断のコードの説明を表示する。コードを省くと、すべてのコードと題を一行ずつ表示する。未知のコードと形の誤りは使い方の誤りとする（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)） |
-| `golem --version` | `golem` に版を続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
+| `golem --version` | `golem` にバージョンを続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
 `golem new` での `id` の生成が、Golem が乱数を使う唯一の箇所である。
 
@@ -1991,7 +1991,7 @@ G0702 は PDF をターゲットに含むときにだけ出し、位置は `styl
 雛形のプロジェクトは、そのままでは `print` のプリフライトを通らない（塗り足しの不足の G0910 と、出力インテントの欠けの G0914）。
 `--language` で日本語（既定）と英語を選び、言語に合わせて版面とフォントを決める。
 日本語は A6 判の縦組みで Noto Serif JP を、英語はマスマーケットのペーパーバック（4.25in × 6.875in、`mass-market`）の横組みで Source Serif 4 を使う。
-フォントとそのライセンスの文書は、配布元のタグで固定した版から取得し、Golem のソースに固定した SHA-256 で検査してから `fonts/` に置く。
+フォントとそのライセンスの文書は、配布元のタグで固定したバージョンから取得し、Golem のソースに固定した SHA-256 で検査してから `fonts/` に置く。
 取得に失敗すると、プロジェクトのファイルを一つも書かない。
 ネットワークに接続するのは、この取得とプラグインの取得だけである。
 `--no-fonts` を付けると取得せず、置くべきファイルを表示する。
@@ -2086,11 +2086,11 @@ Windows と x86-64 の macOS は対象にしない。
 
 Linux を glibc にリンクしないのは、古い glibc の環境で起動できなくなることと、静的にリンクした glibc の名前解決が実行時に NSS のモジュールを読もうとすることを避けるためである。
 
-### 版
+### バージョン
 
-Golem の版は `X.Y.Z` か、プレリリースの識別子を付けた `X.Y.Z-<識別子>`（例：`0.1.0-rc1`）で表す。
+Golem のバージョンは `X.Y.Z` か、プレリリースの識別子を付けた `X.Y.Z-<識別子>`（例：`0.1.0-rc1`）で表す。
 1.0.0 までは、原稿の記法、CLI、出力の互換性を壊す変更で `Y` を、それ以外の変更で `Z` を上げる。
-版の正本はリポジトリの根の `VERSION` であり、golem-driver の `Golem.Driver.Version` がコンパイルの時点に埋め込む。
+バージョンの正本はリポジトリの根の `VERSION` であり、golem-driver の `Golem.Driver.Version` がコンパイルの時点に埋め込む。
 全パッケージの cabal ファイルの `version` は、`VERSION` から識別子を除いた `X.Y.Z` と同じにする。
 `scripts/release/check-version.sh` が、この一致と、タグと `VERSION` の一致を検査する。
 
@@ -2106,7 +2106,7 @@ GMP は LGPL-3.0 であり、三つの実行ファイルのどれにも静的に
 Linux の GHC が RTS に同梱する libffi（`libCffi.a`）は、構成要素 `ghc-libffi` として、`licenses/ghc-libffi/` にコミットした文書を使う。
 対応の付かないアーカイブが一つでもあれば、配布物を作らずに止まる。
 Alpine のパッケージの文書は、そのパッケージの `-doc` から取り、入っていないものだけをリポジトリの `licenses/alpine/` に置く。
-`libwasmtime.a` に入った Rust のクレート、Rust の標準ライブラリ、compiler-rt の文書は、wasmtime の版ごとに `scripts/wasmtime-licenses.sh` で `licenses/wasmtime-v<版>/` に生成してコミットする。
+`libwasmtime.a` に入った Rust のクレート、Rust の標準ライブラリ、compiler-rt の文書は、wasmtime のバージョンごとに `scripts/wasmtime-licenses.sh` で `licenses/wasmtime-v<バージョン>/` に生成してコミットする。
 リリースのたびに、`libwasmtime.a` のシンボルとパニックの位置から取り出したクレートの一覧と、C のオブジェクトの一覧をこれと照合し、載っていないものがあれば止まる。
 リンクマップと照合に使った `nm`、`strings`、`ar` の出力は配布物に入れず、リリースのワークフローの成果物として残す。
 
@@ -2124,14 +2124,14 @@ Alpine のパッケージの文書は、そのパッケージの `-doc` から�
 公開の操作はワークフローでは行わない。
 最初のプレリリース v0.1.0-rc1 で確かめた結果は、[docs/audits/releases/v0.1.0-rc1.md](audits/releases/v0.1.0-rc1.md) に記録した（[docs/adr/0008](adr/0008-first-release-verification.md)）。
 
-同じ版の Golem に同じ入力を与えれば、配布物でも同じ出力が得られる。
+同じバージョンの Golem に同じ入力を与えれば、配布物でも同じ出力が得られる。
 同じソースから同じバイト列の実行ファイルが得られること（再現可能なビルド）は、v1 では求めない。
 代わりに、`BUILDINFO` にビルドの環境を記録し、来歴の証明でどのワークフローがどのコミットから作ったかを検証できるようにする。
 
 ## マニュアル
 
 Golem には二つのマニュアルがあり、どちらも Golem 自身で組む（[docs/adr/0022](adr/0022-manual-as-typesetting-sample.md)、[docs/adr/0024](adr/0024-manual-audiences-and-policy.md)）。
-原稿は Golem のプロジェクトだけであり、Markdown の版は持たない。
+原稿は Golem のプロジェクトだけであり、同じ中身を Markdown で書いたものは持たない。
 
 - **manual/**：使い手のマニュアル。読み手は、一般的な組版の知識を持ち InDesign を使える編集者と DTP オペレーターである。A5 判の横組みで、敬体で書く。各節は、その節で説明する機能（ルビ、注、表、相互参照など）を実際に使って組む。
 - **manual-dev/**：開発者のマニュアル。第一部「Golem で仕組みを作る」はプラグインの作者、CI で自動の組版を組む人、エディタに LSP をつなぐ人に、第二部「Golem を開発する」は Golem そのものを開発する人に向ける。B5 判の横組みで、常体で書く。仕様書、各モジュールの仕様書、ADR、CONTRIBUTING.md をまとめてリンクし、新しい決定はしない。
@@ -2164,7 +2164,7 @@ Golem には二つのマニュアルがあり、どちらも Golem 自身で組�
 エラー、警告、お知らせのどれか一つでも出れば失敗とする。
 マニフェストに `silence-notices` があれば、組む前に失敗とする。
 `--no-notices` は付けない。
-書体（Noto Serif JP、Noto Sans JP の Regular と Bold、Source Serif 4、Source Sans 3 の Bold、Source Code Pro。どれも SIL Open Font License 1.1）はリポジトリに入れず、`fetch-fonts.sh` が版を固定した URL から取得し、SHA-256 を検査して各プロジェクトの `fonts/` に置く。
+書体（Noto Serif JP、Noto Sans JP の Regular と Bold、Source Serif 4、Source Sans 3 の Bold、Source Code Pro。どれも SIL Open Font License 1.1）はリポジトリに入れず、`fetch-fonts.sh` がバージョンを固定した URL から取得し、SHA-256 を検査して各プロジェクトの `fonts/` に置く。
 
 `scripts/manual/check-updated.sh` は、ブランチの分岐点からの変更を次の規則で検査する。
 
@@ -2190,7 +2190,7 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 
 ## ロードマップ
 
-どの版で何を扱うかは、[docs/roadmap.md](roadmap.md) にまとめる。
+どのバージョンで何を扱うかは、[docs/roadmap.md](roadmap.md) にまとめる。
 まだ実装していない項目、ADR が求める手作業の確かめが残っている項目、未決事項、課題にしなかった事項もそこに載せる。
 この仕様書は、今の Golem の振る舞いだけを書く。
 
