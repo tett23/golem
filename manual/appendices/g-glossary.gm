@@ -228,7 +228,7 @@
 = [strong: 散文スロット]
   段落の中のコマンドで、[code: :] の後に書く本文の部分です。[index reading=さんぶんすろっと: 散文スロット]
   エラーのメッセージに出てくる言葉です。
-  付録A。
+  第[ref-number markup]章「[ref-title inline-commands]」、付録A。
 = [strong: 診断]
   Golem が原稿と設定について報告することの総称です。[index reading=しんだん: 診断]
   重い順に、エラー、警告、お知らせがあり、どれも [code: G0215] のようなコードを持ちます。
@@ -247,7 +247,7 @@
   「[ref-title notices]」（[ref-page notices] ページ）。
 = [strong: プロファイル（dev と prod）]
   [code: --profile] で選ぶ、ビルドの二つの段階です。[index reading=ぷろふぁいる: プロファイル]
-  [code: dev] は書きかけの原稿のため、[code: prod] は出荷する本のためのもので、既定は [code: dev] です。
+  [code: dev] は書きかけの原稿のため、[code: prod] は入稿やデリバリーのために仕上げた本のためのもので、既定は [code: dev] です。
   [code: prod] では校正のためのコメントが出力から落ち、いくつかの警告がエラーになります。
   「[ref-title profiles]」（[ref-page profiles] ページ）。
 = [strong: lint]

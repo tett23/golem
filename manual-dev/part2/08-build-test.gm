@@ -3,19 +3,19 @@
 
 Golem をソースからビルドする手順は、README の Development の節にある。
 この章はその手順を、なぜその順序なのかと一緒に並べ直す。
-手順の多くは、依存の版を固定して、どのマシンでも同じ実行ファイルの振る舞いを得るためにある。[note: [code: https://github.com/tett23/golem/blob/main/README.md#development]（README の Development の節）]
+手順の多くは、依存のバージョンを固定して、どのマシンでも同じ実行ファイルの振る舞いを得るためにある。[note: [code: https://github.com/tett23/golem/blob/main/README.md#development]（README の Development の節）]
 
 ## 道具をそろえる
 
 Haskell の処理系は GHC 9.10.3、ビルドの道具は cabal-install 3.16.1.0 であり、どちらも ghcup で入れる。[index reading=cabal: cabal]
-版は [code: cabal.project] の [code: with-compiler: ghc-9.10.3] と [code: mise.toml] に書いてある。
-[code: mise.toml] は ghcup の [code: bin] を [code: PATH] に加え、二つの版を環境変数に記録する。
+バージョンは [code: cabal.project] の [code: with-compiler: ghc-9.10.3] と [code: mise.toml] に書いてある。
+[code: mise.toml] は ghcup の [code: bin] を [code: PATH] に加え、二つのバージョンを環境変数に記録する。
 HarfBuzz、FreeType、wasmtime の C の部分をビルドするので、C と C++ のコンパイラも要る。
-GHC の版を上げるときは ADR を書く。
+GHC のバージョンを上げるときは ADR を書く。
 
-依存のライブラリの版は、[code: cabal.project.freeze] で固定してコミットしてある。
-このファイルを消してビルドすると依存の版が変わりうるので、消さない。
-固定した版を変えるときは、変更の理由をプルリクエストに書く。[note: [code: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md の「テストと実装」の節）]
+依存のライブラリのバージョンは、[code: cabal.project.freeze] で固定してコミットしてある。
+このファイルを消してビルドすると依存のバージョンが変わりうるので、消さない。
+固定したバージョンを変えるときは、変更の理由をプルリクエストに書く。[note: [code: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md の「テストと実装」の節）]
 
 ほかに、次のものを入れておく。
 
@@ -135,8 +135,8 @@ Golem の方針として、小さな道具を組み合わせ、Python のスク�
 | テスト | 対象 |
 | --- | --- |
 | [code: scripts/ci/test.sh] | [code: scripts/ci/] のスクリプト（変更のパス、ビルドの要否、判定のジョブ） |
-| [code: scripts/manual/test.sh] | [code: scripts/manual/] のスクリプト（組み方、版の情報、更新の検査、フォントの取得） |
-| [code: scripts/release/test.sh] | [code: scripts/release/] のスクリプト（版の検査、リリースノート、ライセンス） |
+| [code: scripts/manual/test.sh] | [code: scripts/manual/] のスクリプト（組み方、奥付の版の情報、更新の検査、フォントの取得） |
+| [code: scripts/release/test.sh] | [code: scripts/release/] のスクリプト（バージョンの検査、リリースノート、ライセンス） |
 
 どれも一時ディレクトリに Git のリポジトリや偽の [code: golem] を作り、スクリプトの終了コードと出力を確かめる。
 CI の [code: changes] ジョブが前の二つを、[code: release-scripts] ジョブが最後の一つを実行する（第[ref-number ci-jobs]章）。

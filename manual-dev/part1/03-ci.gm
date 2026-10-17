@@ -41,10 +41,10 @@ $ golem --version
 $ gh attestation verify "golem-$TAG-x86_64-linux.tar.gz" --repo tett23/golem
 ```
 
-CI で使う [code: golem] の版は、タグで固定する。
-Golem の版は入力の一部であり、版が変われば出力のバイト列も変わってよいと決めているからである。
-PDF の Producer にも版が入る（[code: Golem 0.1.0-rc1] の形）。
-最新の版を毎回取ってくる CI は、Golem の更新だけで出力が変わり、差分の意味が崩れる。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0002-determinism.md]（docs/adr の ADR 0002「決定性の規則」）]
+CI で使う [code: golem] のバージョンは、タグで固定する。
+Golem のバージョンは入力の一部であり、バージョンが変われば出力のバイト列も変わってよいと決めているからである。
+PDF の Producer にもバージョンが入る（[code: Golem 0.1.0-rc1] の形）。
+最新のバージョンを毎回取ってくる CI は、Golem の更新だけで出力が変わり、差分の意味が崩れる。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0002-determinism.md]（docs/adr の ADR 0002「決定性の規則」）]
 
 配布物はルート証明書を同梱せず、OS の証明書のストアを読む。
 ca-certificates のない最小構成のコンテナで [code: golem new] やプラグインの取得をするときは、ca-certificates を入れるか、[code: SSL_CERT_FILE] で証明書のファイルを指定する。
@@ -58,7 +58,7 @@ ca-certificates のない最小構成のコンテナで [code: golem new] やプ
 $ golem build --target pdf --profile prod --format json 2> diag.json
 ```
 
-出荷する本なら [code: --profile prod] を付ける。
+入稿する PDF やデプロイする HTML を組むなら [code: --profile prod] を付ける。
 参照されていないラベルと HTML と EPUB のフォントの欠けがエラーになり、校正用のコメントの残りが警告になる。
 終了コードは、成功が 0、エラーの diagnostic があれば 1、使い方の誤りが 2 である（第[ref-number cli]章）。
 
@@ -120,14 +120,14 @@ CI のキャッシュの鍵を [code: plugins.lock] のハッシュにすれば�
 
 ## 決定性が保証する範囲
 
-決定性は、同じ版の Golem に同じ入力を与えたときの約束である。
+決定性は、同じバージョンの Golem に同じ入力を与えたときの約束である。
 入力は次のものに限る。
 
 - [code: manifest.toml]、[code: style.toml]、[code: plugins.lock]
 - マニフェストから到達できる原稿のファイル、import されるファイル、図版、CSV、書誌データ、取り込むコードのファイル
 - [code: style.toml] が指すフォントと ICC プロファイル
 - [code: plugins.lock] のハッシュで固定したプラグインの配布物
-- Golem 自身の版と、Golem に同梱して版を固定したネイティブライブラリ
+- Golem 自身のバージョンと、Golem に同梱してバージョンを固定したネイティブライブラリ
 - 出力を変えるコマンドのオプション（[code: --marks]）
 
 Golem は時計を読まず、乱数を使わず（[code: golem new] の [code: id] だけが例外）、環境変数、ロケール、タイムゾーンを出力に影響させない。
@@ -179,8 +179,8 @@ $ for f in old/*.png; do
 done
 ```
 
-この比較が意味を持つのは、二つの PDF を同じ版の Golem で組んだときに限る。
-版が違えば、原稿を変えていなくても、行分割や字形の位置が変わりうる。
+この比較が意味を持つのは、二つの PDF を同じバージョンの Golem で組んだときに限る。
+バージョンが違えば、原稿を変えていなくても、行分割や字形の位置が変わりうる。
 Golem を更新するときは、更新だけのコミットを作って差分を一度確かめ、原稿の変更と混ぜないとよい。
 
 ページの数が変わると、それより後のページはすべて「変わった」と出る。

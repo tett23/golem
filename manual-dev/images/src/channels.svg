@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1010" viewBox="0 0 1300 1010">
+  <!-- 四つのチャネルが、原稿の印から出力の一覧になるまで（docs/specifications.md の「チャネル」、golem-eval ADR 0002、golem-doc ADR 0001、0002）。
+       scripts/manual/render-figures.sh で manual-dev/images/channels.png にする。 -->
+  <style>
+    @font-face { font-family: "Fig Sans"; src: url("../../fonts/NotoSansJP-Regular.otf"); }
+    @font-face { font-family: "Fig Sans"; font-weight: bold; src: url("../../fonts/NotoSansJP-Bold.otf"); }
+    text { font-family: "Fig Sans", sans-serif; font-size: 21px; fill: #222; }
+    .c { text-anchor: middle; dominant-baseline: central; }
+    .head { font-size: 23px; font-weight: bold; }
+    .sub { font-size: 19px; fill: #555; }
+    .name { font-size: 24px; font-weight: bold; }
+    .code { font-family: "Fig Sans", monospace; }
+    rect.cell { fill: #fff; stroke: #333; stroke-width: 1.5; rx: 6; }
+    rect.lane { stroke: none; }
+    .toc { fill: #e3ecf7; }
+    .note { fill: #f6ecd2; }
+    .idx { fill: #e0f0da; }
+    .bib { fill: #efe2f2; }
+    rect.col { fill: #f4f4f4; stroke: none; }
+    rect.out { fill: #fff; stroke: #333; stroke-width: 2; rx: 8; }
+    line, path.edge { stroke: #444; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+    .dash { stroke-dasharray: 8 6; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#444"/>
+    </marker>
+  </defs>
+  <rect width="1300" height="1010" fill="#fff"/>
+
+  <!-- column heads -->
+  <text class="c head" x="225" y="30">送る</text>
+  <text class="c sub" x="225" y="60">原稿の記法（S0 が評価する）</text>
+  <text class="c head" x="545" y="30">印</text>
+  <text class="c sub" x="545" y="60">意味論 IR に残る形</text>
+  <text class="c head" x="865" y="30">集める（S1）</text>
+  <text class="c sub" x="865" y="60">assemble が作る Doc.Book</text>
+  <text class="c head" x="1170" y="30">出す位置</text>
+  <text class="c sub" x="1170" y="60">ブロック（タグ 8）</text>
+
+  <!-- lanes -->
+  <rect class="lane toc" x="10" y="80" width="1280" height="130"/>
+  <rect class="lane note" x="10" y="220" width="1280" height="130"/>
+  <rect class="lane idx" x="10" y="360" width="1280" height="130"/>
+  <rect class="lane bib" x="10" y="500" width="1280" height="130"/>
+
+  <!-- names -->
+  <text class="c name" x="55" y="145">目次</text>
+  <text class="c name" x="55" y="285">脚注</text>
+  <text class="c name" x="55" y="425">索引</text>
+  <text class="c name" x="55" y="550">参考</text>
+  <text class="c name" x="55" y="582">文献</text>
+
+  <!-- toc -->
+  <rect class="cell" x="100" y="95" width="250" height="100"/>
+  <text class="c" x="225" y="128"># 見出し</text>
+  <text class="c sub" x="225" y="164">自動で送る。@notoc で除く</text>
+  <rect class="cell" x="420" y="95" width="250" height="100"/>
+  <text class="c" x="545" y="128">見出しのブロック</text>
+  <text class="c sub" x="545" y="164">タグ 1</text>
+  <rect class="cell" x="740" y="95" width="250" height="100"/>
+  <text class="c" x="865" y="128">bookToc</text>
+  <text class="c sub" x="865" y="164">番号と題を文書の順に</text>
+  <rect class="cell" x="1060" y="95" width="220" height="100"/>
+  <text class="c" x="1170" y="128">@toc depth=N</text>
+  <text class="c sub" x="1170" y="164">TocOutput N</text>
+  <line x1="350" y1="145" x2="418" y2="145"/>
+  <line x1="670" y1="145" x2="738" y2="145"/>
+  <line class="dash" x1="990" y1="145" x2="1058" y2="145"/>
+
+  <!-- notes -->
+  <rect class="cell" x="100" y="235" width="250" height="100"/>
+  <text class="c" x="225" y="268">[note: 本文]</text>
+  <text class="c sub" x="225" y="304">印は番号を表示する</text>
+  <rect class="cell" x="420" y="235" width="250" height="100"/>
+  <text class="c" x="545" y="268">脚注のインライン</text>
+  <text class="c sub" x="545" y="304">タグ 12、仮の番号</text>
+  <rect class="cell" x="740" y="235" width="250" height="100"/>
+  <text class="c" x="865" y="268">番号を振り直す</text>
+  <text class="c sub" x="865" y="304">numbering の範囲ごと</text>
+  <rect class="cell" x="1060" y="235" width="220" height="100"/>
+  <text class="c" x="1170" y="268">ブロックなし</text>
+  <text class="c sub" x="1170" y="304">出力の経路が決める</text>
+  <line x1="350" y1="285" x2="418" y2="285"/>
+  <line x1="670" y1="285" x2="738" y2="285"/>
+  <line class="dash" x1="990" y1="285" x2="1058" y2="285"/>
+
+  <!-- index -->
+  <rect class="cell" x="100" y="375" width="250" height="100"/>
+  <text class="c" x="225" y="408">[index reading=…: 語]</text>
+  <text class="c sub" x="225" y="444">印は何も表示しない</text>
+  <rect class="cell" x="420" y="375" width="250" height="100"/>
+  <text class="c" x="545" y="408">索引の印</text>
+  <text class="c sub" x="545" y="444">タグ 14、語と読み</text>
+  <rect class="cell" x="740" y="375" width="250" height="100"/>
+  <text class="c" x="865" y="408">bookIndex</text>
+  <text class="c sub" x="865" y="444">同じ語をまとめ、読みの順</text>
+  <rect class="cell" x="1060" y="375" width="220" height="100"/>
+  <text class="c" x="1170" y="408">@index</text>
+  <text class="c sub" x="1170" y="444">IndexOutput</text>
+  <line x1="350" y1="425" x2="418" y2="425"/>
+  <line x1="670" y1="425" x2="738" y2="425"/>
+  <line class="dash" x1="990" y1="425" x2="1058" y2="425"/>
+
+  <!-- bibliography -->
+  <rect class="cell" x="100" y="515" width="250" height="100"/>
+  <text class="c" x="225" y="548">[cite キー]</text>
+  <text class="c sub" x="225" y="584">印は番号 [n] を表示する</text>
+  <rect class="cell" x="420" y="515" width="250" height="100"/>
+  <text class="c" x="545" y="548">引用</text>
+  <text class="c sub" x="545" y="584">タグ 15、文献のキー</text>
+  <rect class="cell" x="740" y="515" width="250" height="100"/>
+  <text class="c" x="865" y="548">bookCitations</text>
+  <text class="c sub" x="865" y="584">最初に引用した順に番号</text>
+  <rect class="cell" x="1060" y="515" width="220" height="100"/>
+  <text class="c" x="1170" y="548">@bibliography</text>
+  <text class="c sub" x="1170" y="584">BibliographyOutput</text>
+  <line x1="350" y1="565" x2="418" y2="565"/>
+  <line x1="670" y1="565" x2="738" y2="565"/>
+  <line class="dash" x1="990" y1="565" x2="1058" y2="565"/>
+
+  <!-- stage note -->
+  <text class="sub" x="100" y="664">S0 はファイルごとに印を残すだけで、ほかのファイルの印は見ない。</text>
+  <text class="sub" x="100" y="692">S1 がマニフェストの順に全ファイルの印を集める。点線は、出力の経路が出す位置で集約の結果を読むことを表す。</text>
+
+  <!-- outputs -->
+  <rect class="col" x="10" y="720" width="1280" height="280"/>
+  <text class="head" x="30" y="760">出力の経路がタグ 8 に出会うと、Doc.Book から一覧を書く</text>
+  <line x1="650" y1="772" x2="650" y2="800"/>
+  <line x1="650" y1="800" x2="185" y2="830"/>
+  <line x1="650" y1="800" x2="495" y2="830"/>
+  <line x1="650" y1="800" x2="805" y2="830"/>
+  <line x1="650" y1="800" x2="1115" y2="830"/>
+  <rect class="out" x="40" y="832" width="290" height="150"/>
+  <text class="c head" x="185" y="862">PDF</text>
+  <text class="c sub" x="185" y="900">S2 でページ番号を入れる</text>
+  <text class="c sub" x="185" y="930">目次と索引にページ番号</text>
+  <text class="c sub" x="185" y="960">脚注はページの下</text>
+  <rect class="out" x="350" y="832" width="290" height="150"/>
+  <text class="c head" x="495" y="862">HTML</text>
+  <text class="c sub" x="495" y="900">ページ番号の代わりにリンク</text>
+  <text class="c sub" x="495" y="930">脚注はファイルの末尾</text>
+  <rect class="out" x="660" y="832" width="290" height="150"/>
+  <text class="c head" x="805" y="862">EPUB</text>
+  <text class="c sub" x="805" y="900">本文は HTML と同じ</text>
+  <text class="c sub" x="805" y="930">目次のチャネルから</text>
+  <text class="c sub" x="805" y="960">ナビゲーション文書も作る</text>
+  <rect class="out" x="970" y="832" width="290" height="150"/>
+  <text class="c head" x="1115" y="862">プレーンテキスト</text>
+  <text class="c sub" x="1115" y="900">題と番号の一覧</text>
+  <text class="c sub" x="1115" y="930">索引は出さない</text>
+  <text class="c sub" x="1115" y="960">脚注はファイルの末尾</text>
+</svg>
