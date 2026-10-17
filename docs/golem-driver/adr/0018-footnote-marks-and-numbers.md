@@ -1,6 +1,6 @@
 # ADR 0018: 脚注の印と番号
 
-ステータス: 採択
+ステータス: 採択→章末の注（`placement = "chapter-end"`）は [golem-driver ADR 0026](0026-chapter-end-notes.md)
 
 ## 文脈
 

@@ -132,6 +132,15 @@ noticeTests =
       testCase "silence-notices drops those notices only" $ do
         n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G0263\", \"G0408\"]\n" noticeSource) id
         codesOf (nDiagnostics n) @?= ["G0262", "G0264", "G0265", "G0407", "G0808"],
+      -- golem-parser ADR 0012
+      testCase "G0279: an escaped space at the end of a verse line is dropped, and silence-notices drops G0279" $ do
+        let verse = "@style verse\n  ab\\ \n  cd\n"
+        n <- buildNotified (noticeProject "" verse) id
+        codesOf (nDiagnostics n) @?= ["G0279"]
+        let texts = [t | (fp, t) <- nOutputs n, ".txt" `isSuffixOf` fp]
+        assertBool (show texts) (not (null texts) && all ("ab\ncd" `BS.isInfixOf`) texts)
+        quiet <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G0279\"]\n" verse) id
+        codesOf (nDiagnostics quiet) @?= [],
       testCase "--no-notices drops every notice and keeps the errors" $ do
         n <- buildNotified (noticeProject "" (noticeSource <> "\n[unknown: x]\n")) (\o -> o {optNoNotices = True})
         codesOf (nDiagnostics n) @?= ["G0222"]

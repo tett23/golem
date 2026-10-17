@@ -631,7 +631,10 @@ buildCore inMemory opts = do
           -- G0701, G0702 and G0725 stop the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
           -- the variables of the running heads, after S0, only for the PDF (golem-driver ADR 0022)
-          evDiags = evDiagnostics e <> (if TargetPdf `elem` targets then snd (runningVars e) else [])
+          evDiags =
+            evDiagnostics e
+              <> (if TargetPdf `elem` targets then snd (runningVars e) else [])
+              <> maybe [] (chapterNoteDiagnostics (evStyle e) targets infos) (evBook e)
       case evBook e of
         Just book
           | not (hasErrors (finish evDiags)) && not (optCheckOnly opts) -> do
@@ -646,6 +649,25 @@ buildCore inMemory opts = do
   where
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002)
     finishWith silenced = sortDiagnostics . silenceNotices (if optNoNotices opts then Nothing else Just silenced) . map (adjustForProfile (optProfile opts))
+
+{- | G0327 (golem-driver ADR 0026): numbers per file meet in the list of a
+chapter of two files or more with notes in two of them, when a target
+gathers the notes at the end of the chapter: HTML, EPUB and plain text
+always, the PDF with placement = "chapter-end". It points at the first
+note of the second file with notes and names the first file of the
+chapter.
+-}
+chapterNoteDiagnostics :: Style -> [Target] -> Map FileId SourceInfo -> Book -> [Diagnostic]
+chapterNoteDiagnostics style targets infos book
+  | stNotesNumbering style /= NumberPerFile || not gathered = []
+  | otherwise =
+      [ diagnostic "G0327" Warning sp ("章末の注の番号が章の中で重なります（" <> pathOf f0 <> "）。[notes] の numbering を \"chapter\" にしてください")
+      | ch@(Document f0 _ : _ : _) <- bookChapters book,
+        (_ : ((sp, _, _) : _) : _) <- [filter (not . null) (map documentNotes ch)]
+      ]
+  where
+    gathered = any (`elem` targets) [TargetHtml, TargetEpub, TargetText] || (TargetPdf `elem` targets && stNotesPlacement style == PlaceChapterEnd)
+    pathOf f = maybe "" (T.pack . siPath) (Map.lookup f infos)
 
 data PreflightOptions = PreflightOptions
   { poRoot :: !FilePath,
@@ -897,7 +919,7 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
               TextVertical -> ("vertical", GT.Vertical)
               TextHorizontal -> ("horizontal", GT.Horizontal)
         -- each document with the indents of its style (docs/adr ADR 0014)
-        let pages = concat [GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textFirstLine (docStyles e fid)) (textLists style) bib gv ft book {bookDocs = [d]} | d@(Document fid _) <- bookDocs book]
+        let pages = GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textFirstLine . docStyles e) (textLists style) bib gv ft book
         forM pages $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)
