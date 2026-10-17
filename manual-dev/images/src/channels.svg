@@ -135,11 +135,11 @@
   <text class="c head" x="185" y="862">PDF</text>
   <text class="c sub" x="185" y="900">S2 でページ番号を入れる</text>
   <text class="c sub" x="185" y="930">目次と索引にページ番号</text>
-  <text class="c sub" x="185" y="960">脚注はページの下</text>
+  <text class="c sub" x="185" y="960">脚注はページの下か章末</text>
   <rect class="out" x="350" y="832" width="290" height="150"/>
   <text class="c head" x="495" y="862">HTML</text>
   <text class="c sub" x="495" y="900">ページ番号の代わりにリンク</text>
-  <text class="c sub" x="495" y="930">脚注はファイルの末尾</text>
+  <text class="c sub" x="495" y="930">脚注は章の末尾</text>
   <rect class="out" x="660" y="832" width="290" height="150"/>
   <text class="c head" x="805" y="862">EPUB</text>
   <text class="c sub" x="805" y="900">本文は HTML と同じ</text>
@@ -149,5 +149,5 @@
   <text class="c head" x="1115" y="862">プレーンテキスト</text>
   <text class="c sub" x="1115" y="900">題と番号の一覧</text>
   <text class="c sub" x="1115" y="930">索引は出さない</text>
-  <text class="c sub" x="1115" y="960">脚注はファイルの末尾</text>
+  <text class="c sub" x="1115" y="960">脚注は章の末尾</text>
 </svg>

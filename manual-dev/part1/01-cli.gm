@@ -24,7 +24,7 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 | [code: golem lsp] | 標準入出力で LSP を話す |
 | [code: golem plugin fetch] | プラグインを取得する |
 | [code: golem plugin lock] | [code: plugins.lock] を更新する |
-| [code: golem inspect FILE] | CST、AST、IR を表示する |
+| [code: golem inspect FILE] | CST、AST、IR を表示し、IR の CBOR を書き出す |
 | [code: golem explain] | diagnostic のコードの説明を表示する |
 | [code: golem --version] | バージョンを表示する |
 
