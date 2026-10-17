@@ -226,6 +226,9 @@ tests =
 located :: [Diagnostic] -> [(DiagnosticCode, Int, Int)]
 located = map (\d -> (diagCode d, spanStart (diagSpan d), spanEnd (diagSpan d)))
 
+g0119 :: Text
+g0119 = "位置引数と *[...] は、key=value と **[...] より前に書きます"
+
 parsed :: Text -> [(DiagnosticCode, Int, Int)]
 parsed = located . snd . parse fid
 
@@ -286,7 +289,21 @@ codeTests =
       testCase "G0118 at the end of the paragraph" $ do
         parsed "本文 %% x\n\n次\n" @?= [(g "G0118", 11, 11)]
         parsed "# 見出し %% x\n\n次\n" @?= [(g "G0118", 16, 16)],
-      testCase "G0119" $ parsed "[f a=1 b]\n" @?= [(g "G0119", 6, 8)],
+      testCase "G0119" $ do
+        parsed "[f a=1 b]\n" @?= [(g "G0119", 6, 8)]
+        messageOf "[f a=1 b]\n" g0119,
+      -- golem-parser ADR 0013
+      testCase "**[...] may follow keyword arguments" $ do
+        parsed "[f k=v **[h]]\n" @?= []
+        parsed "[f k=1 **[h] j=2 **[i]]\n" @?= [],
+      testCase "the same key twice is left to evaluation" $ parsed "[f k=1 k=2]\n" @?= [],
+      testCase "a positional argument after **[...] is G0119" $ do
+        parsed "[f **[h] x]\n" @?= [(g "G0119", 8, 10)]
+        messageOf "[f **[h] x]\n" g0119,
+      testCase "*[...] after **[...] is G0119" $ parsed "[f **[h] *[g]]\n" @?= [(g "G0119", 8, 13)],
+      testCase "**[...] after keyword arguments on block and code lines" $ do
+        parsed "@b k=v **[h]\n" @?= []
+        parsed "``` text k=v **[h]\ncode\n```\n" @?= [],
       testCase "G0120 where an expression is wanted" $ do
         parsed "[=]\n" @?= [(g "G0120", 2, 2)]
         parsed "[= ]\n" @?= [(g "G0120", 3, 3)]
