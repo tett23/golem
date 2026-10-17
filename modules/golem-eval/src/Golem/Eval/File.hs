@@ -26,7 +26,7 @@ import Data.Either (fromLeft)
 import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing)
+import Data.Maybe (fromMaybe, isJust, isNothing, mapMaybe)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -410,6 +410,7 @@ standalone ctx sp (A.Located nsp name) args body = case name of
       _ -> err "G0225" sp "@toc の depth は 1 から 3 の整数です" >> pure []
   "index" -> pure [block sp (ChannelOutput IndexOutput)]
   "bibliography" -> pure [block sp (ChannelOutput BibliographyOutput)]
+  "printings" -> printingsBlock ctx sp args body
   "page-break" -> forcedBreak sp name args body
   "column-break" -> forcedBreak sp name args body
   "figure" -> figure ctx sp args body
@@ -491,6 +492,13 @@ attributedGroup ctx sp cmds target = case target of
       targetBlocks <- case (t, [c | c <- attrs, isStyleCommand c]) of
         (A.Located psp (A.Paragraph is), A.Located csp (A.BlockCommand _ args _) : _) -> styleName ctx csp args >>= \n -> styledParagraph ctx psp n is
         (A.Located tsp (A.Paragraph is), []) -> evalBlock ctx (A.Located tsp (A.Paragraph is))
+        -- @style applies to every paragraph of @printings (docs/adr ADR 0033)
+        (A.Located _ (A.BlockCommand (A.Located _ "printings") _ _), A.Located csp (A.BlockCommand _ args _) : _) -> do
+          n <- styleName ctx csp args
+          let styled b = case blockBody b of
+                Paragraph _ is -> b {blockBody = Paragraph n is}
+                _ -> b
+          map styled <$> evalBlock ctx t
         (other, _) -> evalBlock ctx (joinTarget other)
       case targetBlocks of
         (Block bsp _ body : rest) -> do
@@ -505,6 +513,29 @@ attributedGroup ctx sp cmds target = case target of
     joinTarget = \case
       A.Located tsp (A.Paragraph is) -> A.Located tsp (A.Paragraph (joinSoftBreaks is))
       other -> other
+
+{- | @printings: one paragraph for each printing of meta.printings, as
+@2026年10月16日　初版第1刷発行@; the year in kanji-digits, the other
+numbers by the default of [numbers]. G0276 for a book not in Japanese,
+without printings, or with arguments or a body (docs/adr ADR 0033).
+-}
+printingsBlock :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+printingsBlock ctx sp args body
+  | not (null args) || not (null body) = err "G0276" sp "@printings は引数も本体も取りません" >> pure []
+  | Map.lookup "language" (ctxMeta ctx) /= Just (VString "ja") = err "G0276" sp "@printings は日本語の本（language = \"ja\"）でだけ使えます" >> pure []
+  | Just (VArray ps@(_ : _)) <- Map.lookup "printings" (ctxMeta ctx) = pure (mapMaybe line ps)
+  | otherwise = err "G0276" sp "マニフェストに [[metadata.printings]] がありません" >> pure []
+  where
+    line = \case
+      VHash h
+        | Just [e, n, y, m, d] <- traverse (\k -> case Map.lookup k h of Just (VInt i) -> Just i; _ -> Nothing) ["edition", "number", "year", "month", "day"] ->
+            Just . block sp . Paragraph Nothing $
+              [num y (Just StyleKanjiDigits), txt "年", num m Nothing, txt "月", num d Nothing, txt "日\x3000"]
+                <> (if e == 1 then [txt "初版"] else [txt "第", num e Nothing, txt "版"])
+                <> [txt "第", num n Nothing, txt "刷発行"]
+      _ -> Nothing
+    num = Number sp
+    txt = Text sp
 
 -- | @page-break and @column-break (docs/adr ADR 0017).
 forcedBreak :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
