@@ -29,7 +29,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **罫線の色と線の種類**（未実装、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）：罫線の指定（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）に、色と線の種類（実線、破線、点線、二重線など）を加える。色は名前の付いた色（仕様書の [「色」の節](specifications.md#色)）で書く。罫線の指定を使うすべての罫線（脚注の区切り線、段落スタイルの罫線）に同時に加える。
 - **合字のテキスト層**（未実装、[golem-driver ADR 0030](golem-driver/adr/0030-ligature-text-layer.md)）：PDF の ToUnicode が合字のグリフを一字目だけに対応させるので、PDF から文字列を抜き出すと fi、fl、ff、ffi が f になる（`Golem.Driver.Fonts` の `clusterText`）。十冊の fixture の英語の本と、テンペストで起きる。
 - **表の前後の空きと罫線**（未実装、[golem-driver ADR 0031](golem-driver/adr/0031-table-spacing-and-rules.md)）：表の上の罫が前の段落のベースラインに接し、下の罫が表の最後の行のディセンダーを横切る。表の前後に空きがない。見出しの行が空の表では、罫が二重になる（fixture の The Elements of Style）。
-- **既定の見出し**（未実装、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）：段落スタイルを指定しない見出しが、本文と同じ大きさで組まれ、前後に空きがない。
 - **注の印の書式**（未実装、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）：PDF の注の印は `*1` の形に固定である。[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md) は印の書式の設定を作らないと決めたが、どの一覧にも載っていなかった。印の書式を設定できるようにする。
 - **改ページの手での制御**（未実装、[docs/adr 0030](adr/0030-manual-page-break-control.md)）：原稿で、ここで改ページしない、この先にこれだけの空きが要る、このページの行を一行増やす、といった指定を書く手段がない（TeX の `\nopagebreak`、needspace、`\enlargethispage` にあたるもの）。
 - **PDF に置けない図版**（未実装、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）：`golem build` は、JPEG と PNG として読めない `@figure` の画像（PDF の図版、壊れた画像）を、diagnostic を出さず、終了コード 0 のまま PDF から落とす。2026-10-16 の main の `golem build` で、`%PDF-1.4` だけのファイルと PNG でないファイルを `@figure` に置いて確かめた（PDF に画像は一つも入らなかった）。`golem preflight` は同じ二つを G0905 で報告する。置けない形式と壊れた画像のほかに落とす場合があるかは確かめていない。`golem build` のエラーにするかどうかは決めていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
@@ -48,7 +47,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合を直す。
 次の直し方は案であり、着手するときに ADR で決める。
 
-- **見出しの後ろの改ページ**（未実装、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）：見出しが続く範囲と、その後の本文の最初の行までを一つのまとまりとして先を見る。golem-driver の「既定の見出し」の ADR の草稿が、この直し方を含む。
 - **見出しの脚注**（未実装、[golem-layout ADR 0013](golem-layout/adr/0013-heading-footnotes.md)）：脚注がページに入らないときは、段落と同じく見出しのほうを次のページに送る（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md) の注の規則に合わせる）。
 - **ぶら下げの量**（未実装、[golem-layout ADR 0014](golem-layout/adr/0014-protrusion-amount.md)）：[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) のとおり、行の端の字の送りに比を掛ける。既存のテストの期待値を ADR の表から計算し直し、fixture の出力の変化を決定性の検査の基準に反映する。
 - **図版の順序**（未実装、[golem-layout ADR 0015](golem-layout/adr/0015-figure-order.md)）：送った図版が待っているあいだは、後の図版もその後に並べ、図版の順序を保つ。[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md) を改める ADR で定める。
@@ -170,7 +168,7 @@ v1 の範囲から外し、v2 以降に送ると決めた事項である。
 - **プラグインの配布機構**：レジストリとバージョンの解決、配布されたバイナリがどのソースから作られたかの検証、キャッシュの削除と整理のコマンド（[golem-plugin ADR 0002](golem-plugin/adr/0002-distribution-and-lock.md)）。
 - **配布の拡張**：macOS の実行ファイルの署名（Developer ID）と公証、Homebrew の tap とインストール用のスクリプト、再現可能なビルド、`-split-sections` による実行ファイルの縮小（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)）。
 - **ビルドと LSP の速度**：インクリメンタルなビルドと結果のキャッシュ、ファイルの変更の監視、ページへの配置の並列化、LSP の差分の同期とインクリメンタルな再解析、コンパイルでの回復しない解析、プラグインの初期化済みのメモリの複製。いずれも速度が問題になってから ADR で検討する（[golem-driver ADR 0001](golem-driver/adr/0001-build-pipeline.md)、[golem-driver ADR 0002](golem-driver/adr/0002-pdf-pipeline.md)、[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md)、[golem-parser ADR 0002](golem-parser/adr/0002-parser-on-peg-hs.md)、[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
-- **見出しの行取りの指定**：「3 行取り」のように、見出しが占める行数と、行取りの中の位置を `style.toml` で指定する設定。v1 の PDF は、見出しの大きさから行数を自動で決め、領域の中央に置く（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
+- **見出しの行取りの中の位置**：見出しを行取りの領域の中央のほかに、前寄せや後ろ寄せで置く設定。行取りの行数は `[headings.<階層>]` の `lines` で指定できるが（[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）、見出しはいつも領域の中央に置く（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)）。
 - **可変フォント**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。v1 は可変フォントを既定のインスタンスとして扱う（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 - **傍注の拡張**：段組みの版面での傍注欄、収まらない傍注を脚注に回すことと傍注のために本文の行を次のページに送ること、脚注の本文とキャプションの中の傍注の配置（[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)）。
 - **表の拡張**：罫線の色と種類（縦の罫、本体の行のあいだの罫を含む）、表のための `style.toml` の設定（文字の大きさ、罫線の太さ、列の間隔、表の寄せ）、本文より小さい文字の表、列の幅の指定、セルの結合とセルの中のブロック、縦組みの本の中の横組みの表、表の行の途中での改ページ、表の番号とキャプション、表の続きを示す文言（[golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)）。
