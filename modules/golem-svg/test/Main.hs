@@ -409,6 +409,14 @@ shapeTests =
       map unName (unsupported (svg "<polygon points=\"0 0 1\"/>")) @?= ["points"],
     testCase "display none hides an element and its children, which cannot show again" $
       segmentsOf "<g display=\"none\"><rect width=\"1\" height=\"1\" display=\"inline\"/></g><rect style=\"display:none\" width=\"1\" height=\"1\"/>" >>= (@?= []),
+    testCase "marker-mid goes on the inner vertices, scaled by the stroke width" $ do
+      ops <- drawing "<defs><marker id=\"m\" markerWidth=\"2\" markerHeight=\"2\" orient=\"auto\"><path d=\"M0 0 L1 1\"/></marker></defs><path d=\"M0 0 L10 0 L20 0\" stroke=\"#000\" stroke-width=\"2\" marker-mid=\"url(#m)\"/>"
+      -- the tangent at (10, 0) is (1, 0); markerUnits strokeWidth scales by 2
+      [(m, c) | DGroup m c _ <- ops] @?= [(Matrix 2 0 0 2 10 0, Just (ClipRect 0 0 2 2))],
+    testCase "a fixed orient in degrees turns the marker; userSpaceOnUse does not scale it" $ do
+      ops <- drawing "<defs><marker id=\"m\" markerUnits=\"userSpaceOnUse\" orient=\"90deg\"><path d=\"M0 0 L1 1\"/></marker></defs><path d=\"M0 0 L10 0\" stroke=\"#000\" stroke-width=\"2\" marker-end=\"url(#m)\"/>"
+      -- cos 90 = 0 and sin 90 = 1 exactly; markerWidth and markerHeight are 3 by default
+      [(m, c) | DGroup m c _ <- ops] @?= [(Matrix 0 1 (-1) 0 10 0, Just (ClipRect 0 0 3 3))],
     testCase "visibility hidden hides an element, but a child may be visible again" $
       segmentsOf "<g visibility=\"hidden\"><rect width=\"1\" height=\"1\"/><rect visibility=\"visible\" x=\"2\" width=\"1\" height=\"1\"/></g>"
         >>= (@?= [[MoveTo (2, 0), LineTo (3, 0), LineTo (3, 1), LineTo (2, 1), ClosePath]])
