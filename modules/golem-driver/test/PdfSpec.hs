@@ -16,7 +16,7 @@ import Golem.Driver.Overhang (kentenOverhang, lineOverhang, reachesBackground, r
 import Golem.Driver.Pdf (ClusterPart (..), CodeInfo (..), FontProvider (..), GlyphFrame (..), LoadedFonts (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
-import Golem.Layout.Look (Kerning (..), Look (..), plainLook)
+import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), plainLook)
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, typeAreaFor)
@@ -1377,11 +1377,31 @@ codeBlockRubyTests =
       let central = baselineRatio - 1 / 2
       kentenOverhang False (10 * pt) (10 * pt) central 0 @?= 5 * pt
       reachesBackground (17 * pt) (10 * pt) 0 (kentenOverhang False (10 * pt) (10 * pt) central 0) @?= True,
-    testCase "a line with a ruby box: the overhang of its reading" $ do
-      let look = plainLook "body" (10 * pt)
-          w = 10 * pt
-          ruby = Line [Box w (BoxContent "漢|かん" False 0 0 (fromEnum KindRuby) look 0 0 [] 0 0)] 0 w 0 (0, 0) False (0, 0)
-      lineOverhang False (10 * pt) (const 0) ruby @?= rubyOverhang False (10 * pt) (10 * pt) (5 * pt) 0,
+    testCase "a border of 1pt: exactly 3pt, half the leading less half the border, does not reach" $
+      reachesBackground (17 * pt) (10 * pt) pt (3 * pt) @?= False,
+    testCase "vertical: the reading of 10pt type reaches 5pt right of the face" $
+      -- the centre of the reading 5pt + 2.5pt right of the centre line, its right edge 2.5pt further, less half the face
+      rubyOverhang True (10 * pt) (10 * pt) (5 * pt) 0 @?= 5 * pt,
+    testCase "vertical: kenten reaches half the size of its character right of the face" $
+      kentenOverhang True (10 * pt) (10 * pt) 0 0 @?= 5 * pt,
+    testCase "a line with a ruby box: the overhang of its reading, 5.6pt" $
+      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|かん" []]) @?= round (5.6 * 65536 :: Rational),
+    testCase "a group ruby box overhangs as a mono ruby box does" $
+      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindGroupRuby "漢字|かんじ" []]) @?= round (5.6 * 65536 :: Rational),
+    testCase "the largest base character sets the baseline of the reading" $
+      -- 20pt above the base, the reading's top 0.88 × 5pt above that, less the face 8.8pt: 15.6pt
+      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢字|かんじ" [plainLook "body" (10 * pt), plainLook "body" (20 * pt)]])
+        @?= round (15.6 * 65536 :: Rational),
+    testCase "a ruby box without a reading does not overhang" $
+      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|" []]) @?= 0,
+    testCase "a kenten box overhangs only when its look has a mark" $ do
+      let central = const (baselineRatio - 1 / 2)
+          kenten shape = Box (10 * pt) (BoxContent "漢" False 0 0 (fromEnum KindKenten) (plainLook "body" (10 * pt)) {lkKenten = shape} 0 0 [] 0 0)
+      lineOverhang False (10 * pt) central (lineOf [kenten (Just KentenSesame)]) @?= 5 * pt
+      lineOverhang False (10 * pt) central (lineOf [kenten Nothing]) @?= 0,
+    testCase "the overhang of a line is that of its highest box" $
+      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|かん" [], rubyBox KindRuby "字|じ" [plainLook "body" (20 * pt)]])
+        @?= round (15.6 * 65536 :: Rational),
     testCase "a paragraph with ruby after a code block with a background: one grid line between, the reading off the background" $ do
       let src = "```\na\n```\n\n[ruby: 漢|かん]字。\n"
       (_, pl) <- layoutOk (horizontalStyle <> codeBg) src []
@@ -1427,6 +1447,9 @@ codeBlockRubyTests =
   where
     codeBg = "\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.code]\nbackground = \"code-bg\"\n"
     plainLine = Line [] 0 0 0 (0, 0) False (0, 0)
+    lineOf items = Line items 0 0 0 (0, 0) False (0, 0)
+    -- a ruby box of the kind set at 10pt, its reading at half that; its base characters at 10pt unless given
+    rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0)
     firstPage pl = take 1 (plPages pl)
     -- the grid line after the code block of the first page
     codeEnd pl = sum (take 1 [s + n | p <- firstPage pl, (s, SCode _ _ n) <- poSlots p])
