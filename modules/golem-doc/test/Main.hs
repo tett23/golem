@@ -6,7 +6,7 @@ import CborExprSpec qualified
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Data.ByteString qualified as BS
-import Data.Either (isLeft)
+import Data.Either (fromLeft, isLeft)
 import Gen
 import Golem.Doc.Cbor
 import Golem.Doc.IR
@@ -90,7 +90,7 @@ cbor =
       testCase "wrong ABI version is rejected" $ do
         let bytes = toStrictByteString (encodeTerm (TList [TInt 99, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes))
-        either id (const "") (decodeDocument bytes) @?= "ABI のバージョンが異なります: 99",
+        fromLeft "" (decodeDocument bytes) @?= "ABI のバージョンが異なります: 99",
       testCase "a document of ABI version 2 is rejected (docs/adr ADR 0005)" $ do
         let bytes = toStrictByteString (encodeTerm (TList [TInt 2, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes)),
