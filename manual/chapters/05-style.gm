@@ -466,7 +466,7 @@ leader = "dots"
 
 - [code: \[notes\]] の [code: placement]：注の置き場所の指定です。[code: "page-foot"]（ページの下）と [code: "chapter-end"]（章の終わり）を書けますが、今のバージョンの Golem はこの値で置き方を変えません。PDF では常にページの下に、HTML とプレーンテキストでは章の終わりに置きます。
 - [code: \[notes\]] の [code: numbering]：注の番号を 1 から振り直す範囲です。[code: "chapter"]（マニフェストの章ごと）、[code: "file"]（ファイルごと）、[code: "book"]（本の全体で通し番号）から選べます。省くと [code: "chapter"] です。傍注の番号も、脚注と別に同じ範囲で振ります。
-- [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。このテーブルがなければ線は引きません。
+- [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。[code: style] で線の種類を、[code: color] でスウォッチの名前の色を選べます。このテーブルがなければ線は引きません。
 - [code: \[sidenotes\]]：傍注欄を、小口側の余白に設けます。[code: width] が傍注欄の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。
 - [code: \[figures\]] の [code: number]：図番号の書式です。[code: {chapter}] が章の番号、[code: {n}] が章の中の図の番号です。[code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。
 - [code: \[toc\]] の [code: leader]：目次のリーダーを点線（[code: "dots"]）にするか、なし（[code: "none"]）にするかです。
@@ -480,6 +480,20 @@ leader = "dots"
 行が増えると、脚注のあるページの本文はその分だけ短くなります。
 [code: length] は [code: zw] で書くと版面の文字の大きさを一字として数え、一行の長さ（段組みでは一段の長さ）より長いとエラーになります。
 このマニュアルは、脚注の前に 8 字分の区切り線を引いています。
+
+区切り線の種類は、InDesign の線の種類から罫線に使うものを選んであります。
+[code: style] に、実線（[code: "solid"]、省いたとき）、二重線と三重線（[code: "thin-thin"]、[code: "thick-thin"] など）、破線（[code: "dashed"]）、点線（[code: "dotted"]）、和文の点線（[code: "japanese-dots"]）、波線（[code: "wavy"]）を書けます。
+破線は [code: dash] で線分の長さを、破線と点線は [code: gap] で間隔を変えられます。
+破線と点線は、線の両端が線分か点で終わるように、Golem が線分と間隔の長さを少し調整します。
+[code: color] を省くと、線は黒（色を設定しない描き方）になります。
+
+```toml
+[notes.rule]
+length = "8zw"
+weight = "0.5pt"
+style = "dotted"
+color = "accent"
+```
 
 傍注欄の幅は、傍注を使うなら必ず決めてください。
 [code: \[sidenotes\]] がないまま傍注を使うと、PDF を組むときにエラーになります。
