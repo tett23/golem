@@ -646,6 +646,11 @@ folio = { position = "bottom-outside", format = "{n}" }
 ほかの値は G0306 とする。
 形の一覧と字は [docs/markup.md](markup.md) の「圏点」にある。
 
+`[composition]` の `protrusion` を `true` にすると、欧文の行の端のハイフン、ダッシュ、句読点、引用符を、版面の外に少し出す（[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md)、[golem-layout ADR 0014](golem-layout/adr/0014-protrusion-amount.md)）。
+出す量は、行の端になる字の送りに、字ごとの表の比（千分率）を掛け、1000 で切り捨てて割った値である。
+字の送りは、トラッキングと語の中のカーニングを含まない。
+パターンの分綴で行末に足したハイフンも、原稿に書いたハイフンと同じ量だけ出す。
+
 版面は、日本語組版の流儀に従い、文字の大きさ、一行の字数、一ページの行数、行送り、段数で定義する。
 余白は、版面をページのどこに置くかから決まる従属的な値である。
 字数と行数を整数で決めることで、行頭と行末が字送りの格子にそろう。
@@ -2381,8 +2386,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
-- **ぶら下げの量**：ぶら下げの量を、字の幅ではなく語の箱全体の幅に対する割合で求めている。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は字の幅に対する割合と定めている。既存のテストも、語の幅を基準にした値を期待している。
-- **分綴のハイフンの突き出し**：パターンで分綴したときに行末に足すハイフンを、突き出さない。行分割の突き出しの量は、行の最後の箱の終わりの字だけを見て求めるので、分綴で足したハイフンを数えない。[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) は、行末のハイフンも突き出すと定めている。
 - **IR の大きな整数**：CDDL は式の整数を `int`（CBOR の major type 0 と 1）と定めているが、絶対値が 2^64 以上の整数は bignum（tag 2 と 3）で書き出される。式の整数は任意精度なので、`@set n = 2 ** 70` のような値が IR に入りうる（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)）。
 - **浮動小数点数の桁あふれ**：`2.0 ** -1074` は表せる値だが、途中の計算があふれて 0 になる。`10 ** 309 > 1.0` は誤りにならないが、`10 ** 309 + 0.5` は G0204 になる。どちらの扱いも仕様は定めていない（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
 - **`golem inspect` の終了コードと文言**：構文の誤り（G0117 など）があっても終了コード 0 で終わり、diagnostics を Haskell の `show` の形で出す。存在しないファイルを渡すと、英語の例外と GHC のバックトレースが出る（[golem-cli ADR 0001](golem-cli/adr/0001-command-line-interface.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
