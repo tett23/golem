@@ -49,7 +49,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 次の直し方は案であり、着手するときに ADR で決める。
 
 - **見出しの後ろの改ページ**（未実装、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）：見出しが続く範囲と、その後の本文の最初の行までを一つのまとまりとして先を見る。golem-driver の「既定の見出し」の ADR の草稿が、この直し方を含む。
-- **見出しの脚注**（未実装、[golem-layout ADR 0013](golem-layout/adr/0013-heading-footnotes.md)）：脚注がページに入らないときは、段落と同じく見出しのほうを次のページに送る（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md) の注の規則に合わせる）。
 - **ぶら下げの量**（未実装、[golem-layout ADR 0014](golem-layout/adr/0014-protrusion-amount.md)）：[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) のとおり、行の端の字の送りに比を掛ける。既存のテストの期待値を ADR の表から計算し直し、fixture の出力の変化を決定性の検査の基準に反映する。
 - **キーワード引数の後の `**[式]`**（未実装、[golem-parser ADR 0013](golem-parser/adr/0013-splat-after-keyword-arguments.md)）：文法の引数の並びを改め、`**[式]` をキーワード引数と同じ位置に書けるようにする。同じキーが二度出たときは、後に書いたほうを採る。
 - **`golem inspect` の終了コード、文言、対象**（未実装、[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）：ほかのコマンドと同じ diagnostics の出力を通し、誤りがあれば終了コード 1 にする。ないファイルは日本語の誤りにする。`--as ir` は引数のファイルの IR を、人が読める形で出す。二つの不具合を一つの ADR で直す。

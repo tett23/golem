@@ -1,6 +1,6 @@
 # ADR 0003: PDF の見出しを見出しのスタイルの書体と大きさで組む
 
-ステータス: 採択
+ステータス: 採択→見出しの注を置く規則は [golem-layout ADR 0013](../../golem-layout/adr/0013-heading-footnotes.md)
 
 ## 文脈
 
