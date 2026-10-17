@@ -58,6 +58,13 @@ SMALL="exprs sample sample-pdf diagnostics"
 BOOKS="merry-wives frogs snark elements-of-style nightmare-abbey koya-hijiri ichiaku-no-suna haru-to-shura taira-no-masakado ushiyama-hotel"
 LARGE="tempest kanikosen $BOOKS manual manual-dev"
 CHANGES="tz-east tz-west tz-unset locale-c locale-eucjp locale-ja locale-unset sde-zero sde-future home-other home-unset xdg path-empty umask root-path mtime-past mtime-future decoys combined"
+# a name --only does not know would apply nothing and pass
+if [ -n "$ONLY" ]; then
+  case " $CHANGES " in
+    *" $ONLY "*) ;;
+    *) echo "check: unknown change $ONLY" >&2; exit 2 ;;
+  esac
+fi
 
 # ------------------------------------------------------------------ locales
 
