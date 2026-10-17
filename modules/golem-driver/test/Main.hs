@@ -10,6 +10,7 @@ import ParagraphSpec
 import PdfSpec
 import PluginsSpec
 import ReferencesSpec
+import SecuritySpec
 import StylesSpec
 import Test.Tasty
 
@@ -30,7 +31,8 @@ tests =
         testGroup "code blocks and code (golem-driver ADR 0017)" codeTests,
         testGroup "the separator after a number (golem-html ADR 0002)" numberSeparatorTests,
         versionTests,
-        producerTests
+        producerTests,
+        securityTests
       ]
         <> buildTests
         <> [ newProjectTests,
