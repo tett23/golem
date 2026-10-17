@@ -6,6 +6,7 @@ that are rejected or artifacts that are already in the cache.
 -}
 module CommandsSpec (commandsTests) where
 
+import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (isDigit)
@@ -203,6 +204,12 @@ inspectTests =
         (code, cst, _) <- golemAt tmp ["inspect", "a.gm", "--as", "cst"]
         code @?= ExitSuccess
         cst @?= byDefault,
+      -- docs/adr ADR 0031
+      testCase "--cst, --ast and --ir are no options: a usage error, 2" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        writeFiles tmp [("a.gm", "本文。\n")]
+        forM_ ["--cst", "--ast", "--ir"] $ \flag -> do
+          (code, _, _) <- golemAt tmp ["inspect", "a.gm", flag]
+          code @?= ExitFailure 2,
       testCase "--as ast shows the AST of the file as a tree" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
         writeFiles tmp [("a.gm", "本文。\n")]
         (code, out, _) <- golemAt tmp ["inspect", "a.gm", "--as", "ast"]

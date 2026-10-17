@@ -58,7 +58,9 @@ test-suite golem-lsp-test
     , directory
     , filepath
     , golem-driver
+    , golem-eval
     , golem-lsp
+    , golem-plugin
     , golem-syntax
     , hedgehog       >=1.4 && <1.6
     , lsp
