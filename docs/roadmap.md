@@ -17,29 +17,29 @@ Golem のどの版で何を扱うかを、この文書にまとめる。
 
 ## v0.1.0-rc3
 
-- **数の糖衣構文 `##1##`**：数を `##1##` の形で書ける記法を加える。意味は ADR で決める。`[number-text ...]`（[docs/markup.md](markup.md)）と、数の抽象値との関係もその ADR で決める。
+- **数の糖衣構文 `##1##`**（未実装、[golem-parser ADR 0011](golem-parser/adr/0011-number-shorthand.md)）：数を `##1##` の形で書ける記法を加える。意味は ADR で決める。`[number-text ...]`（[docs/markup.md](markup.md)）と、数の抽象値との関係もその ADR で決める。
 
 ### PDF
 
-- **本文の中のコードの背景の色**：コードの書体の役割、コードブロックの組み方は[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)で、技術書のためのコードブロックの機能は[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)で実装した。本文の中のコード（`[code: ...]`）の背景の色は扱っていない。
-- **章末の注**：`[notes] placement = "chapter-end"` を読み込むが、どの出力も注の置き方を変えない。仕様書とマニュアルは章末に置けると書いていない形に直したが、章末の注そのものはまだない。
-- **PDF の図版**：仕様は PDF（ベクター）の図版を置けると定めているが（仕様書の[「図版」の節](specifications.md#図版)）、実装（golem-pdf の `readImage`）は JPEG と PNG だけを受け付ける。マニュアルも PDF の図版を使えると書いている。仕様のとおり、PDF の図版を PDF の出力に置けるようにする。Web 用の代替画像の扱いも合わせて決める。
-- **SVG の図版**：仕様は SVG を v1 では扱わないと定めているが（仕様書の[「図版」の節](specifications.md#図版)）、v1 で扱えるようにする。開発者向けのマニュアルの図は、SVG を原稿にして PNG に描いたものを置いている。PDF の出力での描き方（ベクターのまま描くか、変換するか）と、HTML と EPUB でそのまま使うかを決める。
-- **段落スタイルの罫線**：段落スタイルに、段落の前と後に引く罫線（InDesign の段落境界線にあたるもの）を書けるようにする。見出しの下の罫線や、節の区切りの罫線に使う。長さ、太さ、間隔は、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md) の罫線の指定の形で書く。長さの既定は、当面は段の行長（段の最大の長さ）に固定する。罫線を持つ段落は改ページと改段で分けず、一つのページ（段）に置く。その段落の注のうち、そのページに収まらないものは、次のページ（見開きで扱う場合は次の見開き）に回す。間隔と行の格子の合わせ方は、[未決事項](#未決事項)の「段落の罫線の間隔と行の格子」で決める。
-- **罫線の色と線の種類**：罫線の指定（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）に、色と線の種類（実線、破線、点線、二重線など）を加える。色は名前の付いた色（仕様書の[「色」の節](specifications.md#色)）で書く。罫線の指定を使うすべての罫線（脚注の区切り線、段落スタイルの罫線）に同時に加える。
-- **合字のテキスト層**：PDF の ToUnicode が合字のグリフを一字目だけに対応させるので、PDF から文字列を抜き出すと fi、fl、ff、ffi が f になる（`Golem.Driver.Fonts` の `clusterText`）。十冊の fixture の英語の本と、テンペストで起きる。
-- **表の前後の空きと罫線**：表の上の罫が前の段落のベースラインに接し、下の罫が表の最後の行のディセンダーを横切る。表の前後に空きがない。見出しの行が空の表では、罫が二重になる（fixture の The Elements of Style）。
-- **既定の見出し**：段落スタイルを指定しない見出しが、本文と同じ大きさで組まれ、前後に空きがない。
-- **注の印の書式**：PDF の注の印は `*1` の形に固定である。[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md) は印の書式の設定を作らないと決めたが、どの一覧にも載っていなかった。印の書式を設定できるようにする。
-- **改ページの手での制御**：原稿で、ここで改ページしない、この先にこれだけの空きが要る、このページの行を一行増やす、といった指定を書く手段がない（TeX の `\nopagebreak`、needspace、`\enlargethispage` にあたるもの）。
-- **PDF に置けない図版**：`golem build` は、JPEG と PNG として読めない `@figure` の画像（PDF の図版、壊れた画像）を、診断を出さず、終了コード 0 のまま PDF から落とす。2026-10-16 の main の `golem build` で、`%PDF-1.4` だけのファイルと PNG でないファイルを `@figure` に置いて確かめた（PDF に画像は一つも入らなかった）。`golem preflight` は同じ二つを G0905 で報告する。置けない形式と壊れた画像のほかに落とす場合があるかは確かめていない。`golem build` のエラーにするかどうかは決めていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+- **本文の中のコードの背景の色**（未実装、[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）：コードの書体の役割、コードブロックの組み方は[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)で、技術書のためのコードブロックの機能は[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)で実装した。本文の中のコード（`[code: ...]`）の背景の色は扱っていない。
+- **章末の注**（未実装、[golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)）：`[notes] placement = "chapter-end"` を読み込むが、どの出力も注の置き方を変えない。仕様書とマニュアルは章末に置けると書いていない形に直したが、章末の注そのものはまだない。
+- **PDF の図版**（未実装、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）：仕様は PDF（ベクター）の図版を置けると定めているが（仕様書の[「図版」の節](specifications.md#図版)）、実装（golem-pdf の `readImage`）は JPEG と PNG だけを受け付ける。マニュアルも PDF の図版を使えると書いている。仕様のとおり、PDF の図版を PDF の出力に置けるようにする。Web 用の代替画像の扱いも合わせて決める。
+- **SVG の図版**（未実装、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）：仕様は SVG を v1 では扱わないと定めているが（仕様書の[「図版」の節](specifications.md#図版)）、v1 で扱えるようにする。開発者向けのマニュアルの図は、SVG を原稿にして PNG に描いたものを置いている。PDF の出力での描き方（ベクターのまま描くか、変換するか）と、HTML と EPUB でそのまま使うかを決める。
+- **段落スタイルの罫線**（未実装、[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）：段落スタイルに、段落の前と後に引く罫線（InDesign の段落境界線にあたるもの）を書けるようにする。見出しの下の罫線や、節の区切りの罫線に使う。長さ、太さ、間隔は、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md) の罫線の指定の形で書く。長さの既定は、当面は段の行長（段の最大の長さ）に固定する。罫線を持つ段落は改ページと改段で分けず、一つのページ（段）に置く。その段落の注のうち、そのページに収まらないものは、次のページ（見開きで扱う場合は次の見開き）に回す。間隔と行の格子の合わせ方は、[未決事項](#未決事項)の「段落の罫線の間隔と行の格子」で決める。
+- **罫線の色と線の種類**（未実装、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）：罫線の指定（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）に、色と線の種類（実線、破線、点線、二重線など）を加える。色は名前の付いた色（仕様書の[「色」の節](specifications.md#色)）で書く。罫線の指定を使うすべての罫線（脚注の区切り線、段落スタイルの罫線）に同時に加える。
+- **合字のテキスト層**（未実装、[golem-driver ADR 0030](golem-driver/adr/0030-ligature-text-layer.md)）：PDF の ToUnicode が合字のグリフを一字目だけに対応させるので、PDF から文字列を抜き出すと fi、fl、ff、ffi が f になる（`Golem.Driver.Fonts` の `clusterText`）。十冊の fixture の英語の本と、テンペストで起きる。
+- **表の前後の空きと罫線**（未実装、[golem-driver ADR 0031](golem-driver/adr/0031-table-spacing-and-rules.md)）：表の上の罫が前の段落のベースラインに接し、下の罫が表の最後の行のディセンダーを横切る。表の前後に空きがない。見出しの行が空の表では、罫が二重になる（fixture の The Elements of Style）。
+- **既定の見出し**（未実装、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）：段落スタイルを指定しない見出しが、本文と同じ大きさで組まれ、前後に空きがない。
+- **注の印の書式**（未実装、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）：PDF の注の印は `*1` の形に固定である。[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md) は印の書式の設定を作らないと決めたが、どの一覧にも載っていなかった。印の書式を設定できるようにする。
+- **改ページの手での制御**（未実装、[docs/adr 0030](adr/0030-manual-page-break-control.md)）：原稿で、ここで改ページしない、この先にこれだけの空きが要る、このページの行を一行増やす、といった指定を書く手段がない（TeX の `\nopagebreak`、needspace、`\enlargethispage` にあたるもの）。
+- **PDF に置けない図版**（未実装、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）：`golem build` は、JPEG と PNG として読めない `@figure` の画像（PDF の図版、壊れた画像）を、診断を出さず、終了コード 0 のまま PDF から落とす。2026-10-16 の main の `golem build` で、`%PDF-1.4` だけのファイルと PNG でないファイルを `@figure` に置いて確かめた（PDF に画像は一つも入らなかった）。`golem preflight` は同じ二つを G0905 で報告する。置けない形式と壊れた画像のほかに落とす場合があるかは確かめていない。`golem build` のエラーにするかどうかは決めていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 
 ### 記法と設定
 
-- **参考文献の項目**：参考文献の一覧は、著者、題、発行元、発行の年しか組まない。CSL-JSON の誌名や書名（`container-title`）、巻と号（`volume`、`issue`）、ページ（`page`）、URL（`URL`）を読んでも組まないので、論文は誌名なしで出る。これらを組めるようにする。URL の文献には、最終閲覧日（CSL-JSON の `accessed`）を書けるようにする。
-- **ADR とコードの食い違い**：`overridableCommands` に `code` が入っている。LSP の補完にプラグインのコマンドの名前が出ない。`golem inspect` のオプションの書き方が ADR と違う。ホストが `golem_dealloc` を一度も呼ばない。どちらに合わせるかを決めて直す。
-- **奥付の関係者と刷**：マニフェストの `[metadata]` が持つのは、著者（`creators`）、発行者（`publisher`）、版（`edition`）、発行の日（`date`）だけである。奥付に載せる編集者、印刷所、製本所を書く欄がない。版とは別に刷（同じ版を刷り直した回）を書く欄もなく、版と刷ごとの発行の日の履歴（「2026年10月16日 初版第1刷発行」の形の行）も書けない。関係者を役割とともに書けるようにし、版と刷とその日付を書けるようにして、本文から `meta` で参照できるようにする。役割の語彙、EPUB と PDF のメタデータへの写し方、組み込みの奥付を用意するかどうかは ADR で決める。
-- **keep の段落の行末のエスケープした空白**：keep の段落の行末に書いた `\ `（エスケープした空白）は、行の末尾の空白とともに除かれているように読める（golem-parser の `trimLine`）。[docs/markup.md](markup.md) は、エスケープした空白を行の先頭では無視すると書いており、行末では残ると読めるので、仕様と食い違っている可能性がある（コードを読んだ結果で、実際の出力では確かめていない）。
+- **参考文献の項目**（未実装、[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）：参考文献の一覧は、著者、題、発行元、発行の年しか組まない。CSL-JSON の誌名や書名（`container-title`）、巻と号（`volume`、`issue`）、ページ（`page`）、URL（`URL`）を読んでも組まないので、論文は誌名なしで出る。これらを組めるようにする。URL の文献には、最終閲覧日（CSL-JSON の `accessed`）を書けるようにする。
+- **ADR とコードの食い違い**（未実装、[docs/adr 0031](adr/0031-adr-code-mismatches.md)）：`overridableCommands` に `code` が入っている。LSP の補完にプラグインのコマンドの名前が出ない。`golem inspect` のオプションの書き方が ADR と違う。ホストが `golem_dealloc` を一度も呼ばない。どちらに合わせるかを決めて直す。
+- **奥付の関係者と刷**（未実装、[docs/adr 0033](adr/0033-colophon-contributors-and-printings.md)）：マニフェストの `[metadata]` が持つのは、著者（`creators`）、発行者（`publisher`）、版（`edition`）、発行の日（`date`）だけである。奥付に載せる編集者、印刷所、製本所を書く欄がない。版とは別に刷（同じ版を刷り直した回）を書く欄もなく、版と刷ごとの発行の日の履歴（「2026年10月16日 初版第1刷発行」の形の行）も書けない。関係者を役割とともに書けるようにし、版と刷とその日付を書けるようにして、本文から `meta` で参照できるようにする。役割の語彙、EPUB と PDF のメタデータへの写し方、組み込みの奥付を用意するかどうかは ADR で決める。
+- **keep の段落の行末のエスケープした空白**（未実装、[golem-parser ADR 0012](golem-parser/adr/0012-keep-trailing-escaped-space.md)）：keep の段落の行末に書いた `\ `（エスケープした空白）は、行の末尾の空白とともに除かれているように読める（golem-parser の `trimLine`）。[docs/markup.md](markup.md) は、エスケープした空白を行の先頭では無視すると書いており、行末では残ると読めるので、仕様と食い違っている可能性がある（コードを読んだ結果で、実際の出力では確かめていない）。
 - **マニュアルのライセンス**：二つのマニュアルの原稿（`.gm`）と、組んだ PDF と HTML を CC0 にする。リポジトリのほかの部分は今のとおり MIT とする。PDF に埋め込むフォントは SIL Open Font License 1.1 のままで、CC0 の対象にならないことを、マニュアルの奥付とライセンスの表示に書く。ライセンスの表示の置き場所（`manual/` と `manual-dev/` の LICENSE、奥付、README）を決める。
 
 ### 既知の不具合の修正
@@ -47,13 +47,13 @@ Golem のどの版で何を扱うかを、この文書にまとめる。
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合を直す。
 次の直し方は案であり、着手するときに ADR で決める。
 
-- **見出しの後ろの改ページ**：見出しが続く範囲と、その後の本文の最初の行までを一つのまとまりとして先を見る。golem-driver の「既定の見出し」の ADR の草稿が、この直し方を含む。
-- **見出しの脚注**：脚注がページに入らないときは、段落と同じく見出しのほうを次のページに送る（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md) の注の規則に合わせる）。
-- **ぶら下げの量**：[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) のとおり、行の端の字の送りに比を掛ける。既存のテストの期待値を ADR の表から計算し直し、fixture の出力の変化を決定性の検査の基準に反映する。
-- **図版の順序**：送った図版が待っているあいだは、後の図版もその後に並べ、図版の順序を保つ。[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md) を改める ADR で定める。
-- **キーワード引数の後の `**[式]`**：文法の引数の並びを改め、`**[式]` をキーワード引数と同じ位置に書けるようにする。同じキーが二度出たときは、後に書いたほうを採る。
-- **`golem inspect` の終了コード、文言、対象**：ほかのコマンドと同じ診断の出力を通し、誤りがあれば終了コード 1 にする。ないファイルは日本語の誤りにする。`--as ir` は引数のファイルの IR を、人が読める形で出す。二つの不具合を一つの ADR で直す。
-- **LSP の古い診断**：ラベルを参照する箇所の集合が変わったときにも S1 を評価し直す。[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md) の再評価の規則を改める ADR が要る。
+- **見出しの後ろの改ページ**（未実装、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）：見出しが続く範囲と、その後の本文の最初の行までを一つのまとまりとして先を見る。golem-driver の「既定の見出し」の ADR の草稿が、この直し方を含む。
+- **見出しの脚注**（未実装、[golem-layout ADR 0013](golem-layout/adr/0013-heading-footnotes.md)）：脚注がページに入らないときは、段落と同じく見出しのほうを次のページに送る（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md) の注の規則に合わせる）。
+- **ぶら下げの量**（未実装、[golem-layout ADR 0014](golem-layout/adr/0014-protrusion-amount.md)）：[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md) のとおり、行の端の字の送りに比を掛ける。既存のテストの期待値を ADR の表から計算し直し、fixture の出力の変化を決定性の検査の基準に反映する。
+- **図版の順序**（未実装、[golem-layout ADR 0015](golem-layout/adr/0015-figure-order.md)）：送った図版が待っているあいだは、後の図版もその後に並べ、図版の順序を保つ。[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md) を改める ADR で定める。
+- **キーワード引数の後の `**[式]`**（未実装、[golem-parser ADR 0013](golem-parser/adr/0013-splat-after-keyword-arguments.md)）：文法の引数の並びを改め、`**[式]` をキーワード引数と同じ位置に書けるようにする。同じキーが二度出たときは、後に書いたほうを採る。
+- **`golem inspect` の終了コード、文言、対象**（未実装、[golem-cli ADR 0007](golem-cli/adr/0007-inspect-output.md)）：ほかのコマンドと同じ診断の出力を通し、誤りがあれば終了コード 1 にする。ないファイルは日本語の誤りにする。`--as ir` は引数のファイルの IR を、人が読める形で出す。二つの不具合を一つの ADR で直す。
+- **LSP の古い診断**（未実装、[golem-lsp ADR 0004](golem-lsp/adr/0004-stale-s1-diagnostics.md)）：ラベルを参照する箇所の集合が変わったときにも S1 を評価し直す。[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md) の再評価の規則を改める ADR が要る。
 
 ## v0.1.0-rc4
 
