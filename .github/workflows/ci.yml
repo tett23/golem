@@ -41,6 +41,8 @@ jobs:
         run: sh scripts/ci/test.sh
       - name: Tests of the scripts of the manuals (docs/adr/0022, docs/adr/0024)
         run: sh scripts/manual/test.sh
+      - name: Tests of the environment check (docs/adr/0029)
+        run: sh scripts/env-determinism/test.sh
       - name: The documents that the build reads are listed (docs/adr/0021)
         run: sh scripts/ci/docs-refs.sh
       - name: Every package errors on incomplete patterns (docs/adr/0027)
@@ -215,6 +217,16 @@ jobs:
         with:
           name: determinism-${{ matrix.runner }}
           path: determinism-${{ matrix.runner }}.txt
+      # the outputs do not change with the time zone, the locale,
+      # SOURCE_DATE_EPOCH, HOME, XDG_*, PATH, the umask, the path of the
+      # project, the times of its files and files nothing refers to; the
+      # changes take the same paths on both architectures (docs/adr/0029)
+      - name: Japanese locales for the environment check
+        if: matrix.runner == 'ubuntu-24.04'
+        run: sudo locale-gen ja_JP.UTF-8 ja_JP.EUC-JP
+      - name: The outputs do not change with the environment (docs/adr/0029)
+        if: matrix.runner == 'ubuntu-24.04'
+        run: GOLEM_REQUIRE_LOCALES=1 GOLEM_REQUIRE_FONTS=1 GOLEM="$(cabal list-bin -v0 golem)" sh scripts/env-determinism/check.sh
       # the PDF and the HTML of the manuals; those of aarch64 are the same,
       # by the determinism job (docs/adr/0022, docs/adr/0024)
       - name: The user manual (docs/adr/0022)
