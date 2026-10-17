@@ -82,6 +82,44 @@ tests =
         assertBool (show content) ("1 0 0 sc" `BS.isInfixOf` content)
         assertBool (show content) ("0 0 0 SC 1 w 0 J 0 j 4 M [] 0 d" `BS.isInfixOf` content)
         assertBool (show content) ("5 5 c" `BS.isInfixOf` content && "\nB\n" `BS.isInfixOf` content),
+      testCase "drawingContent turns y upwards, then writes the group's matrix, its clip and the path in order" $
+        drawingContent
+          ( Drawing
+              (10, 20)
+              [ DrawGroup
+                  [1, 0, 0, 1, 2, 3]
+                  (Just (0, 0, 4, 5))
+                  [DrawPath (PathPaint (Just (128, 0, 255)) True Nothing) [SegMove (0, 0), SegLine (1 / 3, 1), SegClose]]
+              ]
+          )
+          -- 128/255 = 0.50196 to four decimals; 1/3 rounded to 1/65536 is 21845/65536 = 0.333328
+          @?= "1 0 0 -1 0 20 cm\n/GolemSRGB cs /GolemSRGB CS\nq 1 0 0 1 2 3 cm\n0 0 4 5 re W n\nq\n0.502 0 1 sc\n0 0 m\n0.333328 1 l\nh\nf*\nQ\nQ\n",
+      testCase "a group without a clip has no re W n" $
+        drawingContent (Drawing (1, 1) [DrawGroup [2, 0, 0, 2, 0, 0] Nothing []])
+          @?= "1 0 0 -1 0 1 cm\n/GolemSRGB cs /GolemSRGB CS\nq 2 0 0 2 0 0 cm\nQ\n",
+      testCase "a dashed stroke writes its colour, width, cap, join, miter limit and dash array" $
+        drawingContent (Drawing (1, 1) [DrawPath (PathPaint Nothing False (Just (PathStroke (0, 255, 0) (1 / 2) 1 2 10 [1, 2, 3] (1 / 2)))) [SegMove (0, 0), SegCurve (1, 0) (1, 1) (0, 1)]])
+          @?= "1 0 0 -1 0 1 cm\n/GolemSRGB cs /GolemSRGB CS\nq\n0 1 0 SC 0.5 w 1 J 2 j 10 M [1 2 3] 0.5 d\n0 0 m\n1 0 1 1 0 1 c\nS\nQ\n",
+      testGroup
+        "the painting operator follows the fill, the fill rule and the stroke"
+        [ testCase (name <> " paints with " <> show op) $
+            let content = drawingContent (Drawing (1, 1) [DrawPath (PathPaint fill evenOdd stroke) [SegMove (0, 0)]])
+             in assertBool (show content) (("0 0 m\n" <> op <> "\nQ\n") `BS.isSuffixOf` content)
+        | (name, fill, evenOdd, stroke, op) <-
+            [ ("a fill", Just (0, 0, 0), False, Nothing, "f"),
+              ("an even-odd fill", Just (0, 0, 0), True, Nothing, "f*"),
+              ("a fill and a stroke", Just (0, 0, 0), False, Just black, "B"),
+              ("an even-odd fill and a stroke", Just (0, 0, 0), True, Just black, "B*"),
+              ("a stroke", Nothing, False, Just black, "S"),
+              ("a stroke with the even-odd rule", Nothing, True, Just black, "S"),
+              ("neither", Nothing, False, Nothing, "n")
+            ]
+        ],
+      testCase "the Form XObject of a drawing has its size as BBox and a Matrix to the unit square" $ do
+        let pdf = writePdf (doc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, DrawnForm redSquare)] Map.empty)
+        -- redSquare is 20 by 10: the Matrix scales by 1/20 and 1/10
+        assertBool (show pdf) ("/BBox [0 0 20 10]" `BS.isInfixOf` pdf)
+        assertBool (show pdf) ("/Matrix [0.05 0 0 0.1 0 0]" `BS.isInfixOf` pdf),
       testCase "X4.verify finds nothing in a drawing" $
         verify (documentObjects (doc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, DrawnForm redSquare)] Map.empty) {docPdfX = Just (PdfX "fake-cmyk-profile" "JC200103" [] [])}) @?= [],
       testCase "the sRGB profile is written once for images, PDF figures and drawings" $ do
@@ -103,6 +141,7 @@ tests =
             assertEqual (out <> err) ExitSuccess code
     ]
   where
+    black = PathStroke (0, 0, 0) 1 0 0 4 [] 0
     -- a PDF figure in DeviceRGB, which gets the sRGB profile
     rgbFigure = minimalPdfWith "1 0 0 rg 0 0 1 1 re f"
 

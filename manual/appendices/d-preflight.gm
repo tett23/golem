@@ -33,6 +33,7 @@
 数のしきい値に負の値は書けません。
 
 次の検査は、[code: severity] だけを持ちます。
+[code: \[image-icc\]] は、CMYK の画像と、PDF の図版の中の CMYK の色の ICC プロファイルを検査します。
 
 | テーブル | print の既定 | 検査 |
 |:---|:---|:---|
@@ -67,6 +68,7 @@
 ## [code: \[image-resolution\]]
 
 画像の実効の解像度の不足（G0906）です。
+PNG と JPEG の図版だけを検査し、PDF の図版の中の画像と、SVG の図版は検査しません。
 画像の種類ごとに、[code: error-below] と [code: warning-below] の二つのしきい値（ppi の整数）を書きます。
 [code: error-below] 未満はエラー、[code: warning-below] 未満は警告になり、0 はその段の検査をしません。
 [code: error-below] は、[code: warning-below] 以下にします（[code: warning-below] が 0 のときを除きます）。
@@ -86,11 +88,13 @@ color = { error-below = 150, warning-below = 300 }
 ## [code: \[image-resolution-max\]]
 
 画像の実効の解像度の過剰（G0907）です。
+[code: \[image-resolution\]] と同じく、PNG と JPEG の図版だけを検査します。
+上限が 0 の種類の画像は、検査しません。
 
 | キー | print の既定 | 意味 |
 |:---|:---|:---|
 | [code: severity] | [code: "off"] | 重さです。 |
-| [code: color-max] | [code: 0] | カラーの画像の上限（ppi）です。0 は検査しません。 |
+| [code: color-max] | [code: 0] | カラーの画像の上限（ppi）です。 |
 | [code: gray-max] | [code: 0] | グレーの画像の上限です。 |
 | [code: bitmap-max] | [code: 0] | 白黒の画像の上限です。 |
 
@@ -98,35 +102,74 @@ color = { error-below = 150, warning-below = 300 }
 ## [code: \[image-color-space\]]
 
 許さない色空間の図版（G0908）です。
+PDF の図版では、中で使う色空間のうち許さないものを、まとめて一つの診断にします。
+PDF の図版の中の色の情報を持たない RGB の色と、SVG の図版は、[code: "rgb"] として扱います。
+[code: allowed] には、許す色空間を [code: "cmyk"]、[code: "gray"]、[code: "rgb"] から選んで並べます。
 
 | キー | print の既定 | 意味 |
 |:---|:---|:---|
 | [code: severity] | [code: "warning"] | 重さです。 |
-| [code: allowed] | [code: \["cmyk", "gray"\]] | 許す色空間です。[code: "cmyk"]、[code: "gray"]、[code: "rgb"] から選びます。 |
+| [code: allowed] | [code: \["cmyk", "gray"\]] | 許す色空間です。 |
 
 @nonumber
-## 塗り足しと仕上がりの線
+## [code: \[bleed-size\]]
 
-| テーブル | キー | print の既定 | 意味 |
-|:---|:---|:---|:---|
-| [code: \[bleed-size\]] | [code: severity] | [code: "error"] | 塗り足しの幅の不足（G0910） |
-| [code: \[bleed-size\]] | [code: min] | [code: "3mm"] | 塗り足しの最小の幅です。 |
-| [code: \[bleed-trim-hazard\]] | [code: severity] | [code: "error"] | 塗り足しまで届かない図版（G0911） |
-| [code: \[bleed-trim-hazard\]] | [code: distance] | [code: "3mm"] | 仕上がりの線の内側の危ない幅です。 |
-| [code: \[live-area\]] | [code: severity] | [code: "warning"] | 仕上がりの線に近い文字と線（G0912） |
-| [code: \[live-area\]] | [code: distance] | [code: "3mm"] | 文字と線を収める、仕上がりの線からの幅です。 |
+塗り足しの幅の不足（G0910）です。
+
+| キー | print の既定 | 意味 |
+|:---|:---|:---|
+| [code: severity] | [code: "error"] | 重さです。 |
+| [code: min] | [code: "3mm"] | 塗り足しの最小の幅です。 |
 
 @nonumber
-## そのほかの検査
+## [code: \[bleed-trim-hazard\]]
 
-| テーブル | キー | print の既定 | 意味 |
-|:---|:---|:---|:---|
-| [code: \[ink-coverage\]] | [code: severity] | [code: "warning"] | 色の総インキ量（G0915） |
-| [code: \[ink-coverage\]] | [code: max] | [code: 350] | C、M、Y、K の和の上限（%）です。 |
-| [code: \[page-count\]] | [code: severity] | [code: "off"] | ページ数（G0916） |
-| [code: \[page-count\]] | [code: multiple-of] | [code: 1] | この数の倍数にそろえます。 |
-| [code: \[stroke-weight\]] | [code: severity] | [code: "warning"] | 細すぎる線（G0918） |
-| [code: \[stroke-weight\]] | [code: min] | [code: "0.1mm"] | 線の最小の太さです。 |
+塗り足しまで届かない図版（G0911）です。
+
+| キー | print の既定 | 意味 |
+|:---|:---|:---|
+| [code: severity] | [code: "error"] | 重さです。 |
+| [code: distance] | [code: "3mm"] | 仕上がりの線の内側の危ない幅です。 |
+
+@nonumber
+## [code: \[live-area\]]
+
+仕上がりの線に近い文字と線（G0912）です。
+
+| キー | print の既定 | 意味 |
+|:---|:---|:---|
+| [code: severity] | [code: "warning"] | 重さです。 |
+| [code: distance] | [code: "3mm"] | 文字と線を収める、仕上がりの線からの幅です。 |
+
+@nonumber
+## [code: \[ink-coverage\]]
+
+色の総インキ量（G0915）です。
+
+| キー | print の既定 | 意味 |
+|:---|:---|:---|
+| [code: severity] | [code: "warning"] | 重さです。 |
+| [code: max] | [code: 350] | C、M、Y、K の和の上限（%）です。 |
+
+@nonumber
+## [code: \[page-count\]]
+
+ページ数（G0916）です。
+
+| キー | print の既定 | 意味 |
+|:---|:---|:---|
+| [code: severity] | [code: "off"] | 重さです。 |
+| [code: multiple-of] | [code: 1] | この数の倍数にそろえます。 |
+
+@nonumber
+## [code: \[stroke-weight\]]
+
+細すぎる線（G0918）です。
+
+| キー | print の既定 | 意味 |
+|:---|:---|:---|
+| [code: severity] | [code: "warning"] | 重さです。 |
+| [code: min] | [code: "0.1mm"] | 線の最小の太さです。 |
 
 @nonumber
 ## 組み込みの設定
