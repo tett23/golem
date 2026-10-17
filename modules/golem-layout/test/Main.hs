@@ -25,6 +25,7 @@ import Golem.Layout.Ruby qualified as R (RubyAlign (..))
 import Golem.Layout.Sidenotes
 import Golem.Layout.Table
 import Golem.Layout.Wrap
+import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (FileId (..), mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
@@ -204,6 +205,25 @@ noteMarkTests =
           markWidth e = [w | Box w c <- fst (composeInlines e [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark]
       markWidth env @?= [round (2 * 3 / 5 * toRational (fs `div` 2) :: Rational)]
       markWidth env {ceVertical = True} @?= [fs `div` 2],
+    testCase "mark-size 0.65zw: the box is the advance at that size across, the size down (golem-driver ADR 0025)" $ do
+      let m = dimToSp fs (Zw (65 % 100))
+          env = (defaultComposeEnv fs) {ceNoteMarkSize = Zw (65 % 100), ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == m then 3 / 5 else 1)}
+          markWidth e = [w | Box w c <- fst (composeInlines e [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark]
+      markWidth env @?= [round (2 * 3 / 5 * toRational m :: Rational)]
+      markWidth env {ceVertical = True} @?= [m],
+    testCase "an absolute mark size is kept, but not above the size of the text (golem-driver ADR 0025)" $ do
+      let q11 = round (11 / 4 * 72 * 65536 / (254 / 10) :: Rational) :: Sp
+      noteMarkSize (Abs (6 * 65536)) q11 @?= 6 * 65536
+      noteMarkSize (Abs (20 * 65536)) q11 @?= q11
+      noteMarkSize (Zw (1 % 2)) fs @?= fs `div` 2,
+    testCase "mark-format 注{n}: the box of the mark reads 注1 (golem-driver ADR 0025)" $ do
+      let env = (defaultComposeEnv fs) {ceNoteMarkFormat = "注{n}"}
+      [bcText c | Box _ c <- fst (composeInlines env [sp0 "漢", note 1, sp0 "字"]), boxKind c == KindNoteMark] @?= ["注1"],
+    testCase "a numbered sidenote mark takes mark-size and only its number (golem-driver ADR 0025)" $ do
+      let m = dimToSp fs (Zw (65 % 100))
+          env = (defaultComposeEnv fs) {ceNoteMarkSize = Zw (65 % 100), ceNoteMarkFormat = "注{n}", ceSidenoteMarker = MarkerNumber, ceWordAdvance = \lk t -> fromIntegral (T.length t) * (if lkSize lk == m then 3 / 5 else 1)}
+          sn = Sidenote (mkSpan (FileId 0) 3 9) 2 [sp0 "注"]
+      [(bcText c, w) | Box w c <- fst (composeInlines env [sp0 "漢", sn, sp0 "字"]), boxKind c == KindNoteMark] @?= [("2", round (3 / 5 * toRational m :: Rational))],
     testCase "the spacing of the pair around the mark comes after it" $ do
       let env = defaultComposeEnv fs
           without = compose env "」あ"
