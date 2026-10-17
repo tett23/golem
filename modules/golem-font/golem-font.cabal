@@ -74,13 +74,34 @@ test-suite golem-font-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    ConcurrencySpec
+  -- ConcurrencySpec shapes one font from several capabilities at once
+  ghc-options:      -threaded
   build-depends:
     , base
     , bytestring
     , containers
     , golem-font
+    , hedgehog       >=1.4 && <1.6
     , tasty          >=1.4 && <1.6
+    , tasty-hedgehog >=1.4 && <1.5
     , tasty-golden   >=2.3 && <2.4
     , tasty-hunit    >=0.10 && <0.11
     , text
+  default-language: GHC2021
+
+-- FreeType from many OS threads, in an executable of its own: a race
+-- there crashes the process, which then fails this suite alone.
+test-suite golem-font-race-test
+  import:           warnings
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test/race
+  main-is:          Main.hs
+  ghc-options:      -threaded
+  build-depends:
+    , base
+    , bytestring
+    , golem-font
+    , tasty          >=1.4 && <1.6
+    , tasty-hunit    >=0.10 && <0.11
   default-language: GHC2021
