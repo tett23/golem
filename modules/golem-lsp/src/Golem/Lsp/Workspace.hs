@@ -28,7 +28,7 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Driver (Evaluated (..), assetRefs, builtinKeepStyles, evaluateProjectWith, keepStyles, paraLineBreaks)
+import Golem.Driver (Evaluated (..), assetRefs, builtinKeepStyles, evaluateLoose, evaluateProjectWith, keepStyles)
 import Golem.Driver.Lint (lintEvaluated)
 import Golem.Eval.File
 import Golem.Eval.Settings (isSettingCommand)
@@ -40,7 +40,7 @@ import Golem.Parser.CST (Node)
 import Golem.Parser.Read (checkText)
 import Golem.Parser.SourceSettings
 import Golem.Project
-import Golem.Project.Style (Style (..), defaultStyle, withLocalStyles)
+import Golem.Project.Style (defaultStyle, withLocalStyles)
 import Golem.Syntax
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath (makeRelative, (</>))
@@ -183,15 +183,8 @@ refreshLoose ws =
 loose :: FilePath -> Text -> Source
 loose path text =
   let fid = FileId 0
-      (ast, cst, synDiags) = parseAst fid text
-      -- a file outside the project knows the built-in styles only (docs/adr ADR 0005)
-      ctx = EvalContext fid path Dev Map.empty Map.empty Set.empty (Map.keysSet (stCharStyles defaultStyle)) (paraLineBreaks defaultStyle) "sesame" Set.empty Map.empty noPlugins defaultSourceSettings defaultStyle
-      res = evalFile ctx ast
-      -- a BOM or CR in the buffer, then the syntax; the evaluation of a
-      -- file with syntax errors is not reported (golem-parser ADR 0009)
-      syntax = checkText fid text <> synDiags
-      shown = if hasErrors syntax then syntax else syntax <> erDiagnostics res
-   in Source path fid text cst ast (Just res {erDiagnostics = shown}) False
+      (ast, cst, _) = parseAst fid text
+   in Source path fid text cst ast (Just (evaluateLoose path text)) False
 
 {- | An edit. The edited file alone is evaluated again; the project is
 evaluated again only when its summary changed.

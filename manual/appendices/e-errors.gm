@@ -370,6 +370,7 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   新しいプロジェクトは [code: golem new] で作ります。
 = [strong: G0302 [code: ファイルがありません: …]]
   [code: chapters] や [code: @import] のパスの綴りと、ファイルの置き場所を確かめてください。
+  [code: golem fmt] に渡したファイルのパスも確かめてください。
 = [strong: G0303 [code: 絶対パスは使えません: …]]、[strong: [code: URL は使えません: …]]、[strong: [code: プロジェクトルートの外を指しています: …]]
   ファイルはプロジェクトのフォルダの中に置き、そこからの相対パスで書いてください。
 = [strong: G0326 [code: 参考文献のファイルがありません: …]]、[strong: [code: 参考文献のファイルを JSON として読めません: …]]、[strong: [code: 参考文献のファイルは CSL-JSON の配列で書きます: …]]

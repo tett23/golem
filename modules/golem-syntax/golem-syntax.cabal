@@ -22,6 +22,7 @@ library
     Golem.Syntax.Diagnostic
     Golem.Syntax.Render
     Golem.Syntax.Sha256
+    Golem.Syntax.ShowTree
   build-depends:
     , array         >=0.5  && <0.6
     , base        >=4.20 && <4.21
@@ -35,7 +36,7 @@ test-suite golem-syntax-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    RenderSpec
+  other-modules:    RenderSpec ShowTreeSpec
   -- a heap limit, so that a hash that keeps its state unevaluated fails
   ghc-options:      -rtsopts "-with-rtsopts=-M64m"
   build-depends:
