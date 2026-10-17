@@ -23,7 +23,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - **本文の中のコードの背景の色**（未実装、[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）：コードの書体の役割、コードブロックの組み方は [golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md) で、技術書のためのコードブロックの機能は [golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md) で実装した。本文の中のコード（`[code: ...]`）の背景の色は扱っていない。
 - **章末の注**（未実装、[golem-driver ADR 0026](golem-driver/adr/0026-chapter-end-notes.md)）：`[notes] placement = "chapter-end"` を読み込むが、どの出力も注の置き方を変えない。仕様書とマニュアルは章末に置けると書いていない形に直したが、章末の注そのものはまだない。
-- **PDF の図版**（未実装、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）：仕様は PDF（ベクター）の図版を置けると定めているが（仕様書の [「図版」の節](specifications.md#図版)）、実装（golem-pdf の `readImage`）は JPEG と PNG だけを受け付ける。マニュアルも PDF の図版を使えると書いている。仕様のとおり、PDF の図版を PDF の出力に置けるようにする。Web 用の代替画像の扱いも合わせて決める。
 - **SVG の図版**（未実装、[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）：仕様は SVG を v1 では扱わないと定めているが（仕様書の [「図版」の節](specifications.md#図版)）、v1 で扱えるようにする。開発者向けのマニュアルの図は、SVG を原稿にして PNG に描いたものを置いている。PDF の出力での描き方（ベクターのまま描くか、変換するか）と、HTML と EPUB でそのまま使うかを決める。
 - **段落スタイルの罫線**（未実装、[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）：段落スタイルに、段落の前と後に引く罫線（InDesign の段落境界線にあたるもの）を書けるようにする。見出しの下の罫線や、節の区切りの罫線に使う。長さ、太さ、間隔は、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md) の罫線の指定の形で書く。長さの既定は、当面は段の行長（段の最大の長さ）に固定する。罫線を持つ段落は改ページと改段で分けず、一つのページ（段）に置く。その段落の注のうち、そのページに収まらないものは、次のページ（見開きで扱う場合は次の見開き）に回す。間隔と行の格子の合わせ方は、[未決事項](#未決事項) の「段落の罫線の間隔と行の格子」で決める。
 - **罫線の色と線の種類**（未実装、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）：罫線の指定（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）に、色と線の種類（実線、破線、点線、二重線など）を加える。色は名前の付いた色（仕様書の [「色」の節](specifications.md#色)）で書く。罫線の指定を使うすべての罫線（脚注の区切り線、段落スタイルの罫線）に同時に加える。
@@ -32,7 +31,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **既定の見出し**（未実装、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md)）：段落スタイルを指定しない見出しが、本文と同じ大きさで組まれ、前後に空きがない。
 - **注の印の書式**（未実装、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）：PDF の注の印は `*1` の形に固定である。[golem-driver ADR 0018](golem-driver/adr/0018-footnote-marks-and-numbers.md) は印の書式の設定を作らないと決めたが、どの一覧にも載っていなかった。印の書式を設定できるようにする。
 - **改ページの手での制御**（未実装、[docs/adr 0030](adr/0030-manual-page-break-control.md)）：原稿で、ここで改ページしない、この先にこれだけの空きが要る、このページの行を一行増やす、といった指定を書く手段がない（TeX の `\nopagebreak`、needspace、`\enlargethispage` にあたるもの）。
-- **PDF に置けない図版**（未実装、[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）：`golem build` は、JPEG と PNG として読めない `@figure` の画像（PDF の図版、壊れた画像）を、diagnostic を出さず、終了コード 0 のまま PDF から落とす。2026-10-16 の main の `golem build` で、`%PDF-1.4` だけのファイルと PNG でないファイルを `@figure` に置いて確かめた（PDF に画像は一つも入らなかった）。`golem preflight` は同じ二つを G0905 で報告する。置けない形式と壊れた画像のほかに落とす場合があるかは確かめていない。`golem build` のエラーにするかどうかは決めていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 
 ### 記法と設定
 
@@ -208,6 +206,7 @@ v1 の範囲から外し、v2 以降に送ると決めた事項である。
 - **CIDSystemInfo と異体字**：Adobe-Japan1 の ROS を持つフォント（小塚明朝 Pr6N など）で組んだ PDF を Acrobat のプリフライトにかけ、`CIDSystemInfo` がフォントの ROS になっていること、IVS の異体字が出ることを確かめていない。リポジトリにそうしたフォントがないためである（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。
 - **プリフライトと商用のプリフライトの差**：Golem の G0914 が出なかった PDF を Acrobat のプリフライト（PDF/X-4 の適合の検査）にかけ、Acrobat が PDF/X-4 の誤りを報告するかを確かめていない。差があれば `Golem.Pdf.X4.verify` に足す要件を ADR にし、結果は `docs/audits/` に残す。同じ条件の文書を InDesign のプリフライトにかけ、同じ種類の問題が両方で出るかも確かめていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
 - **トンボのレジストレーションの色**：トンボを付けた PDF を Acrobat の出力プレビューとプリフライトで開き、トンボが全版に出ること、本文に特色が混ざらないこと、InDesign の書き出しと同じ形であることを確かめていない（[golem-pdf ADR 0007](golem-pdf/adr/0007-registration-crop-marks.md)）。
+- **PDF の図版の見た目と商用のプリフライト**：Illustrator、Inkscape、LibreOffice Draw、Chrome の印刷、matplotlib、TeX（pdfTeX と LuaTeX）で書き出した図の PDF を置いて組み、画面と印刷で元の PDF と同じに見えることを確かめていない。拒まれた場合に、理由が [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md) の表のどれかであることも確かめていない。sRGB に置き換えた DeviceRGB と透明のグループを含む図版を Acrobat の PDF/X-4 の検査に通し、結果を `docs/audits/` に残す（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 - **縦組みのダッシュ**：縦組みの PDF を目で見ること、InDesign の縦組みとの比較、縦組みの HTML を Safari と Chrome で開いて向きが PDF と同じことの確かめが残っている（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 - **リストの字下げ**：入れ子のリストと 10 項目を超える番号付きリストを、横組みと縦組みで PDF と EPUB にして目で見ることと、決定性の検査の蟹工船とテンペストの出力が変わらないことの確かめが残っている（[golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)）。
 - **段組みの脚注**：段組みの版面で、脚注がその段の下に組まれることを PDF で目で確かめていない。自動のテストでだけ確かめている（[docs/adr/0018](adr/0018-multi-column-layout.md)）。
