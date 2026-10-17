@@ -84,7 +84,7 @@ golem new mybook
 | `golem fmt [--check] [FILE...]` | 原稿を整形する |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
 | `golem inspect FILE --as cst\|ast\|ir` | 構文木と IR を表示する |
-| `golem explain [CODE]` | 診断のコードの説明を表示する。コードを省くと一覧を表示する |
+| `golem explain [CODE]` | diagnostic のコードの説明を表示する。コードを省くと一覧を表示する |
 | `golem --version` | バージョンを表示する（例：`golem 0.1.0`） |
 
 原稿の段落は、既定では空行で区切る。
@@ -132,9 +132,9 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 フォントの OS/2 の `fsType` が埋め込みかサブセット化を禁じている場合はエラーになる（[golem-driver ADR 0016](docs/golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 原稿の異体字セレクタ（IVS）は PDF では字形の選択に使い、ToUnicode には基底の文字だけを書く（[golem-pdf ADR 0006](docs/golem-pdf/adr/0006-cid-system-info.md)）。
 ビルドはプラグインをキャッシュからだけ読み、ネットワークに接続しない。
-診断は `--format json` で JSON にできる。
-診断のコード（`G0101` など）の意味と直し方は [docs/diagnostics.md](docs/diagnostics.md) にまとめてある。
-終了コードは、成功が 0、エラーの診断があれば 1、使い方の誤りが 2 である。
+diagnostics は `--format json` で JSON にできる。
+diagnostic のコード（`G0101` など）の意味と直し方は [docs/diagnostics.md](docs/diagnostics.md) にまとめてある。
+終了コードは、成功が 0、エラーの diagnostic があれば 1、使い方の誤りが 2 である。
 
 ## Development
 
@@ -321,7 +321,7 @@ CI は二つのワークフローからなる。
 | `docs.yml` | `manual` | プルリクエストで、`docs/markup.md` か `docs/specifications.md` を変えたのに `manual/` も `manual-dev/` も変えていないこと、`CONTRIBUTING.md` か `CONTRIBUTING.en.md` を変えたのに `manual-dev/` を変えていないことを検査する（`scripts/manual/check-updated.sh`）。`main` への push では省く |
 | `docs.yml` | `textlint` | `tools/textlint/` の規則のテストを実行し、`docs/` の文書（ADR と記録を除く）、README.md、CONTRIBUTING.md、変更で加わった ADR、二つのマニュアルの原稿の表記を textlint で検査する（`scripts/ci/textlint.sh`、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)） |
 | `ci.yml` | `changes` | `scripts/ci/` と `scripts/manual/` のスクリプトのテスト（`scripts/ci/test.sh`、`scripts/manual/test.sh`）を実行し、ビルドが読む `docs/` の下の文書が一覧にあることと、全パッケージが `-Werror=incomplete-patterns` でビルドされること（`scripts/ci/incomplete-patterns.sh`、[docs/adr/0027](./docs/adr/0027-exhaustive-command-dispatch-by-types.md)）と、`modules/` のプログラムが実行中に capability の数を変えないこと（`scripts/ci/rts-capabilities.sh`）を確かめ、変更のパスからビルドが要るかを決める |
-| `ci.yml` | `build` | x86-64 と aarch64 の Linux でビルドとテストを行い（10 分で終わらないテストのスイートは `scripts/ci/suite-timeout.sh` が止めて失敗にする）、生成したパーサーが文法と一致することを確かめる。`manual/` と `manual-dev/` をお知らせも含めて診断なしで組む。x86-64 では EPUB が epubcheck を通ることを確かめ、組んだ二つのマニュアルの PDF と HTML を成果物 `manual` と `manual-dev` として上げる |
+| `ci.yml` | `build` | x86-64 と aarch64 の Linux でビルドとテストを行い（10 分で終わらないテストのスイートは `scripts/ci/suite-timeout.sh` が止めて失敗にする）、生成したパーサーが文法と一致することを確かめる。`manual/` と `manual-dev/` をお知らせも含めて diagnostic を一つも出さずに組む。x86-64 では EPUB が epubcheck を通ることを確かめ、組んだ二つのマニュアルの PDF と HTML を成果物 `manual` と `manual-dev` として上げる |
 | `ci.yml` | `determinism` | 決まった入力（`scripts/determinism.sh`。二つのマニュアルを含む）の出力のハッシュを、二つのアーキテクチャで比べる |
 | `ci.yml` | `release-scripts` | `VERSION` と全パッケージのバージョンの一致を検査し、`scripts/release/` のスクリプトのテスト（`scripts/release/test.sh`）を実行する |
 | `ci.yml` | `format` | fourmolu と hlint で検査する |

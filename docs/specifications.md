@@ -84,7 +84,7 @@ flowchart TD
 **S0** は一つのファイルの中で決まる値、**S1** は全ファイルを集めて初めて決まる文書構造（目次や章番号）、**S2** はレイアウトの後に決まるページ番号である。
 詳細は「目次と文書構造の参照」の節で定める。
 
-どの段階で見つかった誤りも、原稿の位置と符号を付けた**診断**として報告する。
+どの段階で見つかった誤りも、原稿の位置と符号を付けた **diagnostic** として報告する。
 
 ## Golem が強いるワークフロー
 
@@ -157,7 +157,7 @@ flowchart TD
     parser["golem-parser<br/>PEG パーサー"]
     eval["golem-eval<br/>式の評価とプラグインの展開"]
     doc["golem-doc<br/>意味論 IR と文書構造（S1）の集約"]
-    syntax["golem-syntax<br/>診断とソース位置（最下層）"]
+    syntax["golem-syntax<br/>diagnostic とソース位置（最下層）"]
     preflight["golem-preflight<br/>プリフライトの設定と検査"]
     subgraph pdfpath["PDF 経路"]
         layoutspec["golem-layout-spec<br/>レイアウト IR"]
@@ -228,7 +228,7 @@ EPUB の実体は XHTML+CSS にパッケージングを加えたものなので�
 結合は内容主導を基本とし、レイアウト側から内容ストリームを参照する逆向きの結合点を型として用意する（CLI 用途では縮退する）。
 
 モジュール間のインターフェースは、実装に先立って ADR で定め、モジュールを並行して実装できるようにする。
-ADR は下の層から順に作る（ソース位置と診断、CST と AST、意味論 IR、style.toml とレイアウト IR、レイアウトの出力とフォント処理と PDF の直列化）。
+ADR は下の層から順に作る（ソース位置と diagnostic、CST と AST、意味論 IR、style.toml とレイアウト IR、レイアウトの出力とフォント処理と PDF の直列化）。
 ADR はコミット後に変更できないので、上の層を先に固めると、下の層の変更に追随できなくなるためである。
 
 意味論 IR の正典は CDDL[^cddl] で記述する。
@@ -264,7 +264,7 @@ Golem はこの二つを別の仕組みで扱う。
 同じ入力から同じ出力を得るには、使うプラグインのバイト列まで入力の一部として固定する必要があるためである。
 宣言の形式と取得の手順は「プラグイン」の節で定める。
 
-マニフェストの `[diagnostics]` の表は、診断の扱いを決める（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+マニフェストの `[diagnostics]` の表は、diagnostics の扱いを決める（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 `silence-notices` に並べたコードのお知らせは、`golem build`、`golem check`、`golem lint`、LSP のどれにも出ない。
 並べられるのはお知らせのコードだけであり、ほかのコードと形の誤ったコードはその要素の位置でエラー（G0324）とする。
 値が配列でない場合と、`[diagnostics]` の未知のキーは G0301 とする。
@@ -288,7 +288,7 @@ v1 で取り込めるのは `@set` で定義した変数だけである。
 
 import には次の規則を適用する。
 
-- **解決の段階**：import は AST の段階で解決し、テキストとして展開しない。診断のソース位置をファイルごとに保つためである。
+- **解決の段階**：import は AST の段階で解決し、テキストとして展開しない。diagnostic のソース位置をファイルごとに保つためである。
 - **循環**：評価に先立って import のグラフを作り、循環があればコンパイルエラーとする。エラーには循環の全経路と各 import 文の位置を示す。自分自身の import は長さ 1 の循環として扱う。
 - **ファイルの同一性**：ファイルはプロジェクトルートからの正規化パスで同一性を判定する。書き方の違い、大文字と小文字の違い、シンボリックリンクによって同じファイルが別物と扱われると、循環の検出漏れや二重評価が起きるためである。大文字と小文字だけが異なる二つのパスは、書いたパスで比べてエラー（G0304）とし、どのファイルシステムでも同じ結果にする（[golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)）。
 - **参照できる範囲**：プロジェクトルートの外、絶対パス、URL は import できない。外部のコードはプラグインの配布機構を通してのみ取り込む。決定性と隔離のためである。
@@ -399,7 +399,7 @@ v1 で決定性を保証するのは PDF、HTML、プレーンテキストであ
 EPUB はパッケージである zip の中に時刻や並び順の揺れを含みうるので、EPUB の決定性はまだ保証しない（予定は [docs/roadmap.md](roadmap.md)）。
 
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
-対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く診断や説明である。
+対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。
 
 PDF の Producer には Golem のバージョンを書く。
 Producer は `Golem ` に `VERSION` の内容を続けた文字列（例：`Golem 0.1.0-rc1`）とし、文書情報辞書の `Producer` と XMP の `pdf:Producer` の両方に書く（[golem-pdf ADR 0005](golem-pdf/adr/0005-producer.md)）。
@@ -822,8 +822,8 @@ HTML と EPUB は、欠けたフォントを同梱せず、`@font-face` も書�
 G0310 は dev のプロファイルでは警告、prod のプロファイルではエラーであり、prod では HTML と EPUB を書かない。
 プレーンテキストはファイルを検査しない。
 絶対パス、URL、プロジェクトルートの外を指すパスも、存在しないファイルと同じコードで報告する。
-診断の位置は `style.toml` の先頭とし、同じコードと同じパスの診断は一つだけ出す。
-LSP と `golem lint` はファイルを検査しないので、フォントを置く前でも原稿の診断を出す。
+diagnostic の位置は `style.toml` の先頭とし、同じコードと同じパスの diagnostic は一つだけ出す。
+LSP と `golem lint` はファイルを検査しないので、フォントを置く前でも原稿の diagnostics を出す。
 
 文字の見た目は文字スタイル（`[character-styles.<名前>]`）、段落の見た目は段落スタイル（`[paragraph-styles.<名前>]`）にまとめる（[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 考え方は Adobe InDesign の文字スタイルと段落スタイルに合わせ、スタイルは `based-on` で別のスタイルを引き継ぐ。
@@ -979,7 +979,7 @@ PDF では、コードブロックを次のように組む。
 - `file` があれば、最初の部分の先頭に一行を足し、ファイル名をコードの列の始まりに置く。この行と最初のコードの一行は同じページに置き、改ページの後の部分には繰り返さない。
 - キャプションは、リスト番号、全角の空白、キャプションを、背景の外のコードブロックの上に、段落スタイル `caption` の `font` と `size` で、行送りの比を保って組む。キャプションは行の格子の上から始め、最後の行の後からコードブロックの格子の行を占める。キャプションと最初のコードの一行が同じページに収まらなければ、キャプションごと次のページに送る。
 - 強調する行と、`added` か `removed` の色を持つ差分の行は、その行（折り返した続きの行を含む）のコードの行送りの帯を背景の左右いっぱいに、背景の上、文字の下に塗る。強調と差分が重なれば強調の色で塗る。
-- 言語の名前が skylighting の構文にあれば、HTML と同じく字句に分け、`[code.colors]` の表にある種類の字句の文字の色だけを変える。構文にない言語と、字句に分けるのに失敗した場合は、色を付けずに組み、診断を出さない。
+- 言語の名前が skylighting の構文にあれば、HTML と同じく字句に分け、`[code.colors]` の表にある種類の字句の文字の色だけを変える。構文にない言語と、字句に分けるのに失敗した場合は、色を付けずに組み、diagnostic を出さない。
 - 注釈の印は丸数字（① は U+2460、㉑ は U+3251、㊱ は U+32B1 から）で描き、同じ行の複数の印は空白の送り一つ分を空けて並べる。印を持つ行の行末の最大に空白の送りの 2 倍を足した位置から並べて、どの印もコードの列に収まれば、すべての印をその位置にそろえる。収まらなければ各行の行末から空白の送りの 2 倍の後に置き、それでも収まらない行は印の前で折り返し、続きの行の始まりの位置に置く。
 - `wrap-mark` が空でなければ、次の行に続く各行の行末に、その文字列をコードの列の終わりにそろえて描き、その幅の分だけ折り返しの幅を狭める。
 - `continued` が空でなければ、改ページで分かれたコードブロックの最後の部分のほかの各部分の末尾に一行を足し、その文字列をコードの列の終わりにそろえて描く。この行もその部分が占める格子の行に数え、コードの一行、この行、上下の `padding` が一ページに収まらなければ G0743 とする。
@@ -1133,7 +1133,7 @@ aki-set = "wide-waou"
 段落スタイルの `aki-set` とアキ量のセットの `based-on` が存在しないセットを指す場合と、セットの `based-on` が循環する場合も G0313 とする。
 
 文字スタイルと段落スタイルは、原稿のファイルの先頭の `@style-def` でも定義できる（[docs/adr/0014](adr/0014-in-file-settings.md)）。
-`@style-def character 名前 key=value...` と `@style-def paragraph 名前 key=value...` の形で一行に一つのスタイルを書き、キーと値の検査、名前の規則（英小文字で始まり、英小文字、数字、`-` だけからなる）、診断のコードは `style.toml` と同じである。
+`@style-def character 名前 key=value...` と `@style-def paragraph 名前 key=value...` の形で一行に一つのスタイルを書き、キーと値の検査、名前の規則（英小文字で始まり、英小文字、数字、`-` だけからなる）、diagnostic のコードは `style.toml` と同じである。
 ファイルの中の定義は、そのファイルにだけ効き、`@import` の先にも元にも及ばない。
 `style.toml` と組み込みのスタイルと同じ名前を定義すると、そのファイルの中でだけ、書いたキーが `style.toml` の定義の同じキーを上書きする。
 `based-on` はそのファイルから見た定義で解決するので、`body` を上書きすると、字下げなどを `body` から引き継ぐスタイルもそのファイルの中で変わる。
@@ -1269,7 +1269,7 @@ running-head = { position = "top-outside", content = ["{meta.title}", "{heading.
 地の位置では、最初の行のベースラインを一行の柱と同じ位置に置き、それより後の行を行送りずつ地の側へ置く。
 描かない行は詰め、残った行を版面の側から順に置く。
 
-書式の診断は次のとおりである。
+書式の diagnostics は次のとおりである。
 
 - 書式の誤りは G0314 とし、位置は誤りのある値とする。閉じていない `{`、対にならない `}`、空の差し込み `{}`、表にない差し込みと `{meta.creators}`、空の配列、空の文字列の要素、改行を含む要素、文字列でない要素、`{` を含む文字列の値（書式は配列で書く）が当たる。
 - `{set.<名前>}`（`?` なし）が、そのマスターページを使う章のファイルで定義されていない場合は G0267、参照する変数の値が文字列でも数でもない場合は G0268 とする。どちらも S0 の評価の後に章のファイルごとに検査し、位置はそのファイルの先頭とし、`style.toml` の先頭を関連する位置として添える。PDF をターゲットに含むビルドと `golem check` だけで検査する。
@@ -1431,19 +1431,19 @@ PDF では、表を行の格子の上に組む（[golem-driver ADR 0008](golem-d
 - 縦組みの本では表も縦組みで組み、セルの中の行は上から下へ進み、表の行は右から左へ並ぶ。左寄せは天寄せ、右寄せは地寄せになる。
 - セルの中の注、索引の印、ページ番号への参照は、そのセルの行が置かれる格子の行に付き、表のラベルは表の最初の格子の行に付く。
 
-## 構文木と診断
+## 構文木と diagnostics
 
 パーサーはロスレスな構文木（CST）を出力し、AST はそこから導出する。
 CST はコメント、空白、改行をトリビアとして保持する。
 fmt はコメントを含めて元のテキストを書き戻す必要があり、トリビアを捨てる AST からは書き戻せないためである。
 
 パーサーは構文エラーから回復し、エラーを含むファイルからも構文木を作る。
-LSP は書きかけのファイルを常に扱うので、最初の構文エラーで解析が止まると補完も診断も出せないためである。
+LSP は書きかけのファイルを常に扱うので、最初の構文エラーで解析が止まると補完も diagnostics も出せないためである。
 この二つ（トリビアの保持とエラーからの回復）は、別リポジトリで開発する PEG ライブラリへの要件になる。
 
-コンパイルエラー、lint の警告、LSP の診断は、すべて同じ診断の形式で表す。
-各診断は、安定した診断コード、重大度、ソース位置、可能な場合は修正案を持つ。
-診断のコードの一覧と、コードごとの意味、原因、直し方は [docs/diagnostics.md](diagnostics.md) にまとめる（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
+コンパイルエラー、lint の警告、LSP の diagnostics は、すべて同じ diagnostic の形式で表す。
+各 diagnostic は、安定したコード、重大度、ソース位置、可能な場合は修正案を持つ。
+diagnostic のコードの一覧と、コードごとの意味、原因、直し方は [docs/diagnostics.md](diagnostics.md) にまとめる（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)）。
 この文書は golem-driver に埋め込み、`golem explain <コード>` で節をそのまま表示する。
 節の形（題、重大度、状態、意味、主な原因、直し方）はコンパイルのときに検査し、形の崩れた文書では golem をビルドできない。
 新しいコードを足すときは、同じ変更でこの文書に説明を足す。
@@ -1451,22 +1451,22 @@ LSP は書きかけのファイルを常に扱うので、最初の構文エラ�
 評価の段階のコードのうち G0201 から G0243、G0260、G0261 は、出す条件、メッセージ、位置を [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md) が定める。
 図版、表、ソースコードのリストのパスが、絶対パス、URL、プロジェクトルートの外を指す場合は G0260、ファイルがない場合は G0233 とする。
 ソースで使うコードがすべて使用中の節を持ち、使用中の節のコードがすべてソースで使われていることは、golem-driver のテストが確かめる。
-プラグインが出す診断のコードは、この文書の対象外である。
+プラグインが出す diagnostic のコードは、この文書の対象外である。
 
-プロジェクトの段階の診断（G0301 から G0309、G0316 など）は、プロジェクトの読み込みに失敗したときも、それまでに読んだファイル（`manifest.toml`、原稿、`style.toml`）の位置で表示する（[golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)）。
+プロジェクトの段階の diagnostics（G0301 から G0309、G0316 など）は、プロジェクトの読み込みに失敗したときも、それまでに読んだファイル（`manifest.toml`、原稿、`style.toml`）の位置で表示する（[golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)）。
 `manifest.toml` がないときは G0316 とし、章や `@import` の指すファイルがないときの G0302 と分ける。
-LSP は、これらの診断を位置の指すファイルに載せ、どのファイルも指さない診断を `manifest.toml` に載せる。
+LSP は、これらの diagnostics を位置の指すファイルに載せ、どのファイルも指さない diagnostic を `manifest.toml` に載せる。
 構文の段階のコード（G0101 から G0103、G0110 から G0122、G0129）は、出す条件、メッセージ、位置を [golem-parser ADR 0009](golem-parser/adr/0009-syntax-diagnostic-codes.md) が定める。
 読み込みの段階（BOM、UTF-8、CR の検査）は、原稿のほかに `manifest.toml` と `style.toml` にも行い、失敗したファイルの位置で表示する。
 `style.toml` の G0103 には、`golem fmt` で直す修正案を付けない（`golem fmt` は `style.toml` を整形しない）。
 LSP では、エディタで開いているファイルの BOM と CR も G0102 と G0103 にするが、プロジェクトの読み込みは止めない。
-プロジェクトの外のファイルに構文エラーがあるときは、構文の診断だけを出し、評価の診断を出さない。
-解析の段階の診断の位置は、誤りの文字から始まる（インデントの余分な空白、4 つ目の `#`、用語のない `=:`、本文の `[`）。
+プロジェクトの外のファイルに構文エラーがあるときは、構文の diagnostics だけを出し、評価の diagnostics を出さない。
+解析の段階の diagnostic の位置は、誤りの文字から始まる（インデントの余分な空白、4 つ目の `#`、用語のない `=:`、本文の `[`）。
 `manifest.toml`、`style.toml`、`plugins.lock` の誤りの文言は、toml-parser が作る文言も含めてすべて日本語にする（[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md)）。
 未知のキーは `知らないキーです: page.bindng`、値の型の誤りは `page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に `page.bindng` や `chapters[0]` の形の経路を書く。
 TOML の構文の誤りと意味の誤り（同じ表を二度書くなど）は、ファイルの先頭ではなく誤りのある行の位置で出す。
 
-診断の重大度は、エラー、警告、お知らせの三つである（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+diagnostic の重大度は、エラー、警告、お知らせの三つである（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 エラーはビルドを止め、警告は止めないが入稿やデプロイの前に直すべきものを表す。
 お知らせは、誤りではないが書き手が知っておいたほうがよいことを表し、直さなくてよい。
 お知らせは終了コードに影響せず、プロファイルで重大度が変わらず、出力のバイト列を変えない。
@@ -1475,7 +1475,7 @@ TOML の構文の誤りと意味の誤り（同じ表を二度書くなど）は
 lint の規則（G05xx）はお知らせを出さない。
 今のお知らせは、ファイルの中のスタイルの上書き（G0262）、数字だけの縦中横（G0263）、`keep` の段落の行頭のエスケープした空白（G0264）、`@listing` の `src=`（G0265、廃止予定）、`style.toml` のないプロジェクト（G0323）、自動の番号と同じ `@number`（G0407）、本の最後の改ページ（G0408）、コードブロックの行の折り返し（G0730）、`[fonts.code]` のない本のコード（G0808）である。
 
-診断は、エラーと警告を先に、お知らせを後に並べる。
+diagnostics は、エラーと警告を先に、お知らせを後に並べる。
 エラーと警告のあいだは、ファイルの順、位置の順、コードの順で並べ、お知らせどうしも同じ規則で並べる。
 お知らせの多いプロジェクトで、ビルドを止めたエラーが画面の外に流れないようにするためである。
 人が読む形式と JSON の形式は同じ順で出す。
@@ -1487,22 +1487,22 @@ LSP は `silence-notices` に従い、抑制したお知らせを公開しない
 LSP には `--no-notices` に当たる設定を設けない。
 記法と設定のキーを廃止するときは、まず廃止予定のお知らせを少なくとも一つの minor のバージョンで出し、次の ADR でエラーにする（手順は [docs/diagnostics.md](diagnostics.md) の「お知らせ」の節）。
 
-診断は、プログラムが読む事実（`diagFacts`）を持てる（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
-事実は名前と値（整数、文字列、整数の配列、文字列の配列）の組の並びで、今はプリフライトの診断だけが、ページ番号（`pdf-pages`）や測った値（`ppi` など）を持つ。
-JSON の形式では、事実を持つ診断にだけ、書いた順にキーを並べた `"facts"` のオブジェクトを `"fixes"` の後に加える。
+diagnostic は、プログラムが読む事実（`diagFacts`）を持てる（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
+事実は名前と値（整数、文字列、整数の配列、文字列の配列）の組の並びで、今はプリフライトの diagnostics だけが、ページ番号（`pdf-pages`）や測った値（`ppi` など）を持つ。
+JSON の形式では、事実を持つ diagnostic にだけ、書いた順にキーを並べた `"facts"` のオブジェクトを `"fixes"` の後に加える。
 
 ```json
 {"code":"G0906","severity":"warning","span":{...},"message":"…","related":[],"fixes":[],"facts":{"pdf-pages":[12],"ppi":212,"limit":300}}
 ```
 
-事実のない診断の JSON は変わらない。
+事実のない diagnostic の JSON は変わらない。
 人が読む形式は事実を表示せず、メッセージに同じことを書く。
 
-人が読む形式で診断を出した後に、文書にあるコードが一つでもあれば、標準エラー出力に `コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）` の一行を加える。
-例のコードは、出した診断のうち文書にあるコードの最小のものである。
-お知らせのコードも数え、抑制した後に残った診断から作る。
+人が読む形式で diagnostics を出した後に、文書にあるコードが一つでもあれば、標準エラー出力に `コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）` の一行を加える。
+例のコードは、出した diagnostics のうち文書にあるコードの最小のものである。
+お知らせのコードも数え、抑制した後に残った diagnostics から作る。
 この行は一度だけ加え、`--format json` には加えない。
-LSP は、文書にあるコードの診断の `codeDescription` に、`main` の `docs/diagnostics.md` の節の URL（`…/docs/diagnostics.md#g0117` の形）を付ける。
+LSP は、文書にあるコードの diagnostic の `codeDescription` に、`main` の `docs/diagnostics.md` の節の URL（`…/docs/diagnostics.md#g0117` の形）を付ける。
 
 ## コメント
 
@@ -1546,7 +1546,7 @@ HTML と EPUB では `<br/>` にし、プレーンテキストでは改行にす
 様式は評価の段階で扱う。
 構文解析と AST はマニフェストを読まずに原稿のテキストだけで決まり、段落の中の改行は AST に `SoftBreak` として残る。
 評価の入口で、改行の様式のファイルの段落を最上位の `SoftBreak` で分けて複数の段落にする。
-このため、`golem fmt`、構文の診断、LSP の構文解析はマニフェストを知らずに済み、整形の不変条件も様式によらない。
+このため、`golem fmt`、構文の diagnostics、LSP の構文解析はマニフェストを知らずに済み、整形の不変条件も様式によらない。
 代わりに、改行の様式では AST の段落が出力の段落と一致しない。
 
 ## 改ページ
@@ -1628,7 +1628,7 @@ v1 の規則の候補は次のとおりである。
 
 `golem lint` はエラーが一つでもあれば非ゼロで終了し、警告だけなら正常終了する。
 警告は表示されるが、抑制する手段はない。
-`golem lint` は評価と文書の組み立ての診断も出すので、その段階のお知らせも出る。
+`golem lint` は評価と文書の組み立ての diagnostics も出すので、その段階のお知らせも出る。
 お知らせは `--no-notices` と `silence-notices` で抑制できるが、lint の規則はお知らせを出さない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
 ## fmt
@@ -1652,7 +1652,7 @@ AST はエスケープした文字を残すので、不要なエスケープを�
 
 v1 の LSP は次の機能を持つ。
 
-- 診断（コンパイルエラーと lint）。お知らせは `Information` として載せ、`silence-notices` に並べたコードのお知らせは公開しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+- diagnostics（コンパイルエラーと lint）。お知らせは `Information` として載せ、`silence-notices` に並べたコードのお知らせは公開しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 - 定義への移動と参照の検索（`@import`、変数、ラベル）。ラベルは文書単位なので、章をまたいで引ける。
 - ラベルの名前変更（章をまたいで一括で書き換える）
 - 補完（コマンド名、ラベル、import のパス）
@@ -1939,7 +1939,7 @@ v1 では、プラグインの配布機構（レジストリやバージョン�
 - 取得した配布物はハッシュをキーに手元にキャッシュし、キャッシュがあればビルドはネットワークに接続しない。
 - `plugins.lock` の更新は、ユーザーが明示的に指示したときだけ行う。
 
-プラグインの読み込みと検査の誤りは、G0602 から G0611 の診断で報告する（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)）。
+プラグインの読み込みと検査の誤りは、G0602 から G0611 の diagnostic で報告する（[golem-plugin ADR 0003](golem-plugin/adr/0003-plugin-diagnostic-codes.md)）。
 `plugins.lock` が TOML として読めない誤り（G0611）は `plugins.lock` の中の位置を指し、プラグインの実行の失敗（G0609）はコマンドを呼んだ箇所かフィルタを適用したファイルの先頭を指す。
 そのほかは `manifest.toml` の先頭を指し、メッセージにプラグインの名前を書く。
 プラグインの読み込みか検査が誤りを出したときは、評価で未知のコマンド（G0222）を報告しない。
@@ -1962,7 +1962,7 @@ v1 は、配布されたバイナリがどのソースから作られたかを�
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得し、キャッシュする |
 | `golem plugin lock` | `plugins.lock` を更新する |
 | `golem inspect <file>` | CST、AST、プラグインとの CBOR を人が読める形で表示する |
-| `golem explain [CODE]` | 診断のコードの説明を表示する。コードを省くと、すべてのコードと題を一行ずつ表示する。未知のコードと形の誤りは使い方の誤りとする（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)） |
+| `golem explain [CODE]` | diagnostic のコードの説明を表示する。コードを省くと、すべてのコードと題を一行ずつ表示する。未知のコードと形の誤りは使い方の誤りとする（[golem-cli ADR 0005](golem-cli/adr/0005-explain-diagnostic-codes.md)） |
 | `golem --version` | `golem` にバージョンを続けた一行（例：`golem 0.1.0-rc1`）を表示する（[docs/adr/0004](adr/0004-binary-distribution-and-release.md)） |
 
 `golem new` での `id` の生成が、Golem が乱数を使う唯一の箇所である。
@@ -2052,7 +2052,7 @@ InDesign のプリフライトプロファイルにあたるものを、プリ�
 | `blank-pages`（空白のページ） | G0917 | off | off |
 | `stroke-weight`（細すぎる線） | G0918 | off | warning（0.1mm 未満） |
 
-同じ原因の診断は検査ごとの単位で一つにまとめ、最初のページの位置に出す。
+同じ原因の diagnostics は検査ごとの単位で一つにまとめ、最初のページの位置に出す。
 ページは PDF の何ページ目か（1 から数える）で示し、メッセージには最初の十ページまでを書き、それより多ければ `ほか <n> ページ` と添える。
 長さは mm で、小数点以下が一桁になるように丸めて書く。
 検査は golem-preflight の純粋な関数（`Golem.Preflight.check`）が、golem-driver の PDF の書き手が作る組んだ結果の写し（`Golem.Preflight.View`）に対して行う。
@@ -2060,9 +2060,9 @@ InDesign のプリフライトプロファイルにあたるものを、プリ�
 G0914 の検査は、golem-pdf の `Golem.Pdf.X4.verify` が書く前の PDF のオブジェクトに対して行う、Golem が生成しうる要素に限った自前の検査であり、PDF/X-4 の適合の判定ではない（[golem-pdf ADR 0003](golem-pdf/adr/0003-pdf-x-4-validator.md)）。
 入稿の前には、商用のプリフライトでも確かめる。
 
-終了コードはほかのコマンドと同じく、エラーの診断がなければ 0、あれば 1、使い方の誤りは 2 である。
+終了コードはほかのコマンドと同じく、エラーの diagnostic がなければ 0、あれば 1、使い方の誤りは 2 である。
 警告だけなら 0 で、警告でも止めたいときは設定で重大度を `error` にする。
-人が読む形式では、PDF を作れたときに、診断の後に要約の一行を標準エラー出力に加える。
+人が読む形式では、PDF を作れたときに、diagnostics の後に要約の一行を標準エラー出力に加える。
 
 ```
 プリフライト（設定: preflight.toml、基にした設定: print）: エラー 1、警告 3。PDF/X-4 の適合の判定ではないので、入稿の前に商用のプリフライトでも確かめます。検査した PDF の SHA-256: 3f2a…（64 桁）
@@ -2073,10 +2073,10 @@ SHA-256 は検査した PDF のバイト列のもので、`golem build --target 
 プロファイルは PDF のインスタンス ID の入力に入るので、`--profile prod` を付けずに作った PDF とは一致しない。
 `--format json` では要約の行を出さない。
 
-### 診断と終了コード
+### diagnostics と終了コード
 
-診断は人が読む形で出力し、`--format json` を指定するとプログラムが読む形で出力する。
-終了コードは、成功が 0、診断によるエラーが 1、コマンドの使い方の誤りが 2 である。
+diagnostics は人が読む形で出力し、`--format json` を指定するとプログラムが読む形で出力する。
+終了コードは、成功が 0、diagnostic によるエラーが 1、コマンドの使い方の誤りが 2 である。
 使い方の誤り（未知のオプション、未知のコマンド、列挙にない値、値の欠け）とヘルプは、日本語で表示する（[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
 `--version` は `golem` 自身のオプションであり、`golem build --version` のようにコマンドに付けると使い方の誤りになる。
 コマンドに未知のオプションを付けたときは、そのコマンドの使い方を表示する。
@@ -2217,15 +2217,15 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **キーワード引数の後の `**[式]`**：`[f k=v **[h]]` が G0119 になる。`**[式]` はキーワード引数に展開されるので、キーワード引数の後に書けてよいはずである（[golem-parser ADR 0004](golem-parser/adr/0004-inline-grammar.md)）。
 - **IR の大きな整数**：CDDL は式の整数を `int`（CBOR の major type 0 と 1）と定めているが、絶対値が 2^64 以上の整数は bignum（tag 2 と 3）で書き出される。式の整数は任意精度なので、`@set n = 2 ** 70` のような値が IR に入りうる（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)）。
 - **浮動小数点数の桁あふれ**：`2.0 ** -1074` は表せる値だが、途中の計算があふれて 0 になる。`10 ** 309 > 1.0` は誤りにならないが、`10 ** 309 + 0.5` は G0204 になる。どちらの扱いも仕様は定めていない（[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
-- **`golem inspect` の終了コードと文言**：構文の誤り（G0117 など）があっても終了コード 0 で終わり、診断を Haskell の `show` の形で出す。存在しないファイルを渡すと、英語の例外と GHC のバックトレースが出る（[golem-cli ADR 0001](golem-cli/adr/0001-command-line-interface.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
+- **`golem inspect` の終了コードと文言**：構文の誤り（G0117 など）があっても終了コード 0 で終わり、diagnostics を Haskell の `show` の形で出す。存在しないファイルを渡すと、英語の例外と GHC のバックトレースが出る（[golem-cli ADR 0001](golem-cli/adr/0001-command-line-interface.md)、[golem-cli ADR 0004](golem-cli/adr/0004-usage-error-exit-code.md)）。
 - **`golem inspect --as ir` の対象と形**：`golem inspect --as ir <file>` は、引数のファイルではなく、作業中のディレクトリのプロジェクト全体の IR を、Haskell の `show` の形で出す。仕様の「`golem inspect <file>`」は、引数のファイルを人が読める形で表示すると定めている（[golem-cli ADR 0001](golem-cli/adr/0001-command-line-interface.md)）。
 - **三点リーダーの後の句点の行頭禁則**：fixture の『牛山ホテル』の 12 ページで、「……」の直後の「。」が行頭に置かれている。句点は行頭禁則の文字なので、行頭禁則に反している可能性がある（原因は確かめていない）。
 - **結合文字**：U+0301 のような結合文字を、前の字と一つにせず、別の箱として組む。
-- **LSP の古い診断**：見出しやラベルを変えずに、存在しないラベルへの参照を足しても G0403 が出ず、前の S1 の診断が残る。[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md) の再評価の規則どおりの振る舞いだが、利用者には誤りが見えない。
+- **LSP の古い diagnostics**：見出しやラベルを変えずに、存在しないラベルへの参照を足しても G0403 が出ず、前の S1 の diagnostics が残る。[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md) の再評価の規則どおりの振る舞いだが、利用者には誤りが見えない。
 - **HTML の引用の印のリンク**：`[cite ...]` の印のリンクは、同じページの `#cite-<キー>` を指す（`modules/golem-html/src/Golem/Html.hs` の `Cite` の分岐）。`@bibliography` を別のファイルに置くと、リンクの先がない。ラベルへの参照と索引のリンクは、参照先のファイルへの相対リンクにしている（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)、[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)）。
 - **EPUB のナビゲーション文書と `@toc` の深さ**：ナビゲーション文書は、`@toc` の `depth` を見ず、`@notoc` のない見出しをいつもすべて載せる。[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md) は `@toc` がない場合だけを定めており、`@toc` がある場合の振る舞いを定めていない。
 - **プラグインの独自の一覧**：「チャネル」の節は、用語集のような独自の一覧をプラグインで作れるとしている。しかし、チャネルを出力するブロック（IR の tag 8）は目次、索引、参考文献の三種類に固定されており、ほかに使えるチャネルは注だけである。プラグインが独自のチャネルに項目を送り、一覧として出す手段はない（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)、[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
-- **`@index` と `@bibliography` の重複**：`@index` と `@bibliography` を文書に二つ以上置いても診断は出ず、置いた場所ごとに一覧の全体を出す。HTML では、参考文献の項目の `id` も重複する。重複を誤りにするのは `@toc` の G0402 だけである（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)）。
+- **`@index` と `@bibliography` の重複**：`@index` と `@bibliography` を文書に二つ以上置いても diagnostic は出ず、置いた場所ごとに一覧の全体を出す。HTML では、参考文献の項目の `id` も重複する。重複を誤りにするのは `@toc` の G0402 だけである（[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)、[golem-doc ADR 0003](golem-doc/adr/0003-document-diagnostic-codes.md)）。
 
 ## 仕様が不明瞭な場合
 
