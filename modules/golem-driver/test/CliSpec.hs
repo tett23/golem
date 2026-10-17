@@ -4,6 +4,7 @@ import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.List (isSuffixOf, sort)
+import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -162,6 +163,12 @@ preflightTests =
         dev <- built Dev
         assertBool "prod" (pdf == prod)
         assertBool "dev" (pdf /= dev),
+    -- golem-driver ADR 0029
+    testCase "the view: the background of inline code is a swatch used" $
+      withPreflightProject (horizontalStyle <> "\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[character-styles.code]\nbackground = \"code-bg\"\n") "本文の[code: x]。\n" [] $ \tmp -> do
+        p <- preflightIn tmp
+        v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
+        Map.lookup "code-bg" (vwSwatchesUsed v) @?= Just (0, 0, 0, 8),
     testCase "the view: the trimmed page, the folio, the image and the table rules" $ do
       img <- tinyImage
       let source = "# 章\n\n@figure images/tiny.jpg alt=\"t\"\n  キャプション。\n\n| a | b |\n|---|---|\n| c | d |\n\n本文。\n"

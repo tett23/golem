@@ -30,3 +30,4 @@ p.ps-verse + p.ps-verse { margin-block-start: 1em; }
 li p, li p[class] { padding-inline-start: 0; text-indent: 0; }
 .line { display: block; }
 .line + br { display: none; }
+code { padding-inline: 0.25em; }
