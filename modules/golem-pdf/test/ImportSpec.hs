@@ -401,6 +401,22 @@ writingTests =
           out = writePdf (formDoc [Form (FormRef 1) r, Form (FormRef 2) r] [(FormRef 1, p1), (FormRef 2, p2)])
       count "/Subtype /Form" out @?= 2
       count "/Subtype /Image" out @?= 1,
+    testGroup
+      "the Matrix of a PDF figure maps its crop box, turned by Rotate, to the unit square"
+      -- the box (10, 20)-(110, 70) is 100 by 50; e.g. Rotate 90 maps (x, y) to ((y - 20) / 50, (110 - x) / 100),
+      -- so the lower left corner (10, 20) goes to (0, 1), the upper left of the turned figure
+      [ testCase ("Rotate " <> show r) $ do
+          p <- importOk 1 (classicPdf "" [catalog, (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), (3, "<< /Type /Page /Parent 2 0 R /MediaBox [10 20 110 70] /Rotate " <> BC.pack (show r) <> " /Resources << >> /Contents 4 0 R >>"), (4, stream "" "0 0 1 1 re f")])
+          let pdf = writePdf (formDoc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, p)])
+          assertBool (show pdf) ("/BBox [10 20 110 70]" `BS.isInfixOf` pdf)
+          assertBool (show pdf) (("/Matrix [" <> matrix <> "]") `BS.isInfixOf` pdf)
+      | (r, matrix) <-
+          [ (0 :: Int, "0.01 0 0 0.02 -0.1 -0.4"),
+            (90, "0 -0.01 0.02 0 -0.4 1.1"),
+            (180, "-0.01 0 0 -0.02 1.1 1.4"),
+            (270, "0 0.01 -0.02 0 1.4 -0.1")
+          ]
+      ],
     testCase "the same document gives the same bytes" $ do
       p <- importOk 1 rgbPdf
       let doc = formDoc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, p)]
