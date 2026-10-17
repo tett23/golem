@@ -119,6 +119,24 @@ fake extra '[ "${TZ-}" = UTC ] || printf x >build/extra.txt'
 run GOLEM="$WORK/extra"
 expect "an extra file" 1 "FAIL tz-east" "build/extra.txt"
 
+fake missing '[ "${TZ-}" = UTC ] && printf x >build/only-in-base.txt; printf fixed >build/out.txt'
+run GOLEM="$WORK/missing"
+expect "a file missing under a change" 1 "FAIL tz-east" "build/only-in-base.txt"
+
+# usage errors: exit code 2 before anything is built
+CODE=0
+env GOLEM=golem sh "$CHECK" --quick --input exprs >"$WORK/out" 2>&1 || CODE=$?
+expect "a GOLEM that is not an absolute path" 2 "absolute path"
+CODE=0
+env GOLEM="$WORK/no-such-golem" sh "$CHECK" --quick --input exprs >"$WORK/out" 2>&1 || CODE=$?
+expect "a GOLEM that is not an executable" 2 "not an executable"
+CODE=0
+env GOLEM="$WORK/fixed" sh "$CHECK" --no-such-option >"$WORK/out" 2>&1 || CODE=$?
+expect "an unknown option" 2 "usage"
+CODE=0
+env GOLEM="$WORK/fixed" sh "$CHECK" --only tz-east --input no-such-input >"$WORK/out" 2>&1 || CODE=$?
+expect "an unknown input" 2 "unknown input no-such-input"
+
 # locales that are not installed: a SKIP, or a failure with GOLEM_REQUIRE_LOCALES=1 only
 for req in "" GOLEM_REQUIRE_LOCALES=0 GOLEM_REQUIRE_LOCALES=yes GOLEM_REQUIRE_EXTERNAL_TOOLS=1 GOLEM_REQUIRE_FONTS=1; do
   run GOLEM="$WORK/fixed" GOLEM_LOCALE_CANDIDATES_EUCJP="$NOLOCALE" GOLEM_LOCALE_CANDIDATES_JA="$NOLOCALE" $req

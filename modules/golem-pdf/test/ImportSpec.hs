@@ -232,6 +232,23 @@ pageTests =
       p <- importOk 1 pdf
       ipRotate p @?= 90
       ipSize p @?= (100, 200),
+    testCase "Rotate -90 is 270 and swaps the width and the height" $ do
+      p <- importOk 1 (classicPdf "" (onePage' "/MediaBox [0 0 200 100] /Rotate -90"))
+      (ipRotate p, ipSize p) @?= (270, (100, 200)),
+    testCase "Rotate 180 keeps the width and the height" $ do
+      p <- importOk 1 (classicPdf "" (onePage' "/MediaBox [0 0 200 100] /Rotate 180"))
+      (ipRotate p, ipSize p) @?= (180, (200, 100)),
+    testCase "Rotate 45 is Malformed" $
+      case importPage 1 (classicPdf "" (onePage' "/MediaBox [0 0 200 100] /Rotate 45")) of
+        Left (Malformed _) -> pure ()
+        other -> assertFailure (show other),
+    testCase "a crop box inside the media box is the box" $ do
+      p <- importOk 1 (classicPdf "" (onePage' "/MediaBox [0 0 200 100] /CropBox [10 20 110 70]"))
+      (ipBox p, ipSize p) @?= ((10, 20, 110, 70), (100, 50)),
+    testCase "a crop box of no width is Malformed" $
+      case importPage 1 (classicPdf "" (onePage' "/MediaBox [0 0 200 100] /CropBox [100 0 100 100]")) of
+        Left (Malformed _) -> pure ()
+        other -> assertFailure (show other),
     testCase "the same input gives the same page" $
       importPage 1 rgbPdf @?= importPage 1 rgbPdf
   ]
@@ -289,13 +306,37 @@ colourTests =
       assertBool (show c) (not (" rg" `hasInfix` c) && not ("DeviceRGB" `hasInfix` c))
       case ipResources p of
         ODict kvs -> lookup "ColorSpace" kvs @?= Just (ODict [("GolemSRGB", OArr [OName "ICCBased", ORef 0])])
-        other -> assertFailure (show other)
-      fmap (\case OStream _ b -> b == srgbProfile || BS.length b < BS.length srgbProfile; _ -> False) (lookup 0 (ipObjects p)) @?= Just True,
+        other -> assertFailure (show other),
     testCase "an RGB image gets the sRGB ICCBased" $ do
       p <- importOk 1 rgbPdf
       case lookup 5 (ipObjects p) of
         Just (OStream d _) -> lookup "ColorSpace" d @?= Just (OArr [OName "ICCBased", ORef 0])
         other -> assertFailure (show other),
+    testCase "RG and /DeviceRGB CS of the stroke become GolemSRGB with CS and SC" $ do
+      p <- importOk 1 (classicPdf "" (onePage "<< >>" "0 1 0 RG /DeviceRGB CS 0 0 1 1 re S"))
+      ipContent p @?= "/GolemSRGB CS 0 1 0 SC /GolemSRGB CS 0 0 1 1 re S",
+    testCase "rg in a string or a comment is not an operator and stays as it is" $ do
+      let content = "BT (1 0 0 rg) Tj ET\n% 1 0 0 rg\n0 0 0 1 k"
+      p <- importOk 1 (classicPdf "" (onePage "<< >>" content))
+      ipContent p @?= content
+      ipColors p @?= [UseCmyk],
+    testCase "DeviceRGB in the content of a Form XObject is replaced, and its Resources gain GolemSRGB" $ do
+      p <- importOk 1 (classicPdf "" (onePage "<< /XObject << /X1 5 0 R >> >>" "/X1 Do" <> [(5, stream "/Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << >>" "1 0 0 rg 0 0 1 1 re f")]))
+      case lookup 5 (ipObjects p) of
+        Just (OStream d body) -> do
+          BL.toStrict (Z.decompress (BL.fromStrict body)) @?= "/GolemSRGB cs 1 0 0 sc 0 0 1 1 re f"
+          lookup "Resources" d @?= Just (ODict [("ColorSpace", ODict [("GolemSRGB", OArr [OName "ICCBased", ORef 0])])])
+        other -> assertFailure (show other),
+    testCase "the sRGB profile added is object 0: the whole profile, three components, Flate" $ do
+      p <- importOk 1 rgbPdf
+      case lookup 0 (ipObjects p) of
+        Just (OStream d body) -> do
+          d @?= [("N", OInt 3), ("Filter", OName "FlateDecode")]
+          BL.toStrict (Z.decompress (BL.fromStrict body)) @?= srgbProfile
+        other -> assertFailure (show other),
+    testCase "a page only in DeviceCMYK gets no sRGB profile" $ do
+      p <- importOk 1 minimalPdf
+      (lookup 0 (ipObjects p), ipResources p) @?= (Nothing, ODict []),
     testCase "the colour spaces used" $ do
       p <- importOk 1 rgbPdf
       ipColors p @?= [UseRgb, UseCmyk]
