@@ -90,7 +90,7 @@ tests =
        in renderText "ja" "kanji" False (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft3 ((bookOf []) {bookDocs = [noted fid 1 "甲", noted fidB 2 "乙", noted fidC 3 "丙"], bookChapterOf = [0]})
             @?= [("chapters/a.txt", "甲*1\n\n注\n*1 注甲\n"), ("chapters/b.txt", "乙*2\n\n注\n*2 注乙\n"), ("chapters/c.txt", "丙*3\n\n注\n*3 注丙\n")],
     testCase "the title of the notes is 注 for any language that starts with ja, in any case" $
-      map (lookup "chapters/b.txt") [twoFiles lang 1 1 [0, 1] | lang <- ["JA", "ja-JP"]]
+      [lookup "chapters/b.txt" (twoFiles lang 1 1 [0, 1]) | lang <- ["JA", "ja-JP"]]
         @?= replicate 2 (Just "乙*1\n\n注\n*1 注乙。\n"),
     testCase "the last file of a chapter with no text of its own has the title and the notes only" $
       renderText "ja" "kanji" False (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft2 ((bookOf []) {bookDocs = [Document fid [para 0 [txt "甲", Note (at 1) 1 [txt "注甲。"]]], Document fidB []], bookChapterOf = [0, 0]})
