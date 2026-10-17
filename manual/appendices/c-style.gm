@@ -86,7 +86,7 @@ Golem は、コンピューターに入っているフォントを探しませ�
 
 文字スタイルです。
 名前は英小文字で始め、英小文字、数字、[code: -] だけで付けます。
-[code: bold]、[code: italic]、[code: strong]、[code: code] ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
+[code: bold]、[code: italic]、[code: strong]、[code: code]、[code: url] ははじめから定義されていて、同じ名前で書くと、書いたキーだけが置き換わります。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
@@ -114,8 +114,16 @@ Golem は、コンピューターに入っているフォントを探しませ�
 - [code: "japanese-equal-width"]：欧文だけを調整し、和文を全角の送りで組みます。
 - [code: "none"]：調整しません。
 
-組み込みの文字スタイルは、[code: bold] が [code: synthetic-bold = true]、[code: italic] が [code: synthetic-italic = true]、[code: strong] が [code: based-on = "bold"]、[code: code] が [code: font = "code"] です。
+組み込みの文字スタイルは、[code: bold] が [code: synthetic-bold = true]、[code: italic] が [code: synthetic-italic = true]、[code: strong] が [code: based-on = "bold"]、[code: code] が [code: font = "code"] で、[code: url] はキーを持ちません。
 [code: code] と、[code: based-on] で [code: code] を引き継ぐ文字スタイルの文字は、PDF で語の途中で分けず、空白と [code: /] の後でだけ行を改めます。
+
+[code: url] は、参考文献の URL を組む文字スタイルです。
+書体、大きさ、色は周りの文字のままです。
+[code: url] と、[code: based-on] で [code: url] を引き継ぐ文字スタイルの文字も、PDF で語の途中で分けず、空白と [code: /] の後でだけ行を改めます。
+[code: //] のように [code: /] が続くところでは、最後の [code: /] の後でだけ行を改めます。
+[code: code] と違い、カーニングはかけたままです。
+[code: \[character-styles.url\]] に [code: font = "code"] と書けば参考文献の URL を等幅の書体で組め、[code: color] を書けば色を付けられます。
+原稿では [code: \[style url: ...\]] と書いて使えます。
 
 @nonumber
 ## [code: \[paragraph-styles.名前\]]

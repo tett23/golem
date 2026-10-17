@@ -897,7 +897,12 @@ CSS では、和文と欧文で別のカーニングを指定できない。
 `letter-spacing` は行の最後の文字の後ろにも空きを足すが、PDF との差として受け入れる。
 プレーンテキストは、どのキーも使わない。
 
-組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`）の四つである。
+組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`）、`url`（キーなし）の五つである。
+`url` は参考文献の URL を組む文字スタイルであり、書体、大きさ、色は周りの文字のまま組む（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
+PDF では、`url` と、`based-on` をたどって `url` に行き着く文字スタイルの文字に、ハイフネーションをかけず、改行してよい位置を空白と `/` の後に限り、中の文字のあいだにアキ量のセットの空きを入れない。
+`/` の後で改行してもハイフンを描かず、`//` のような連なりは最後の `/` の後でだけ改行する。
+`code` と違い、カーニングは止めず、`code` の役割の書体を読み込む理由にもならない。
+`url` には `[url: ...]` のような別名はなく、原稿では `[style url: ...]` と書く。
 原稿の `[strong: ...]`、`[bold: ...]`、`[italic: ...]`、`[code: ...]` は、これらを付ける `[style 名前: ...]` の別名である。
 利用者が組み込みと同じ名前の表を書くと、書いたキーだけが組み込みの定義の同じキーを上書きする。
 `[character-styles.bold] font = "gothic"` は、太字の書体を `gothic` の役割にする。
@@ -1153,7 +1158,7 @@ Golem の文字列の中では `\` の後の文字はその文字になるので
 廃止した `[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size` はエラー（G0306）とし、メッセージで書き換え先を示す。
 `[verse]` の `indent = I`、`hang = H` は、`[paragraph-styles.verse]` の `indent = I + H`、`first-line-indent = -H` に書き換える。
 
-HTML と EPUB では、組み込みの文字スタイルを `strong`、`b`、`i`、`code` の要素に、ほかの文字スタイルを `cs-名前` の class に、段落スタイルを `ps-名前` の class に対応させる。
+HTML と EPUB では、組み込みの文字スタイルのうち `strong`、`bold`、`italic`、`code` を `strong`、`b`、`i`、`code` の要素に、ほかの文字スタイル（組み込みの `url` を含む）を `cs-名前` の class に、段落スタイルを `ps-名前` の class に対応させる。
 コードブロックは `<pre><code>` で出し、`style.css` の `pre` と `code` の `font-family` を `code` の役割の書体の並びと `monospace` にする（`code` の役割がなければ `monospace` だけ）。
 `pre` には `white-space: pre-wrap`、`overflow-wrap: anywhere`、`tab-size: 2`、`hyphens: none`、`font-kerning: none` を書き、`[paragraph-styles.code]` に `background` があれば、その RGB の近似の `background-color` と、`padding` を `em` にした `padding` を書く。
 `code` の `size` があれば、キャプションと同じく `pre` の `font-size` を書く。
@@ -1835,8 +1840,10 @@ v1 の引用の書式は、処理系が持つ一種類だけとする。
 引用の書式は数千種類あり、それを解釈する処理系の実装は独立した大きな仕事になるためである。
 書式の選択は後のバージョンで扱う。
 
-参考文献の一件は、著者、題、発行者、発行の年の順に、空でない欄を並べる（[golem-doc ADR 0004](golem-doc/adr/0004-bibliography-formatting.md)）。
+参考文献の一件は、著者、題、掲載先（誌名、巻と号、ページ）、発行者、発行の年、URL と閲覧日の順に、空でない欄を並べる（[golem-doc ADR 0004](golem-doc/adr/0004-bibliography-formatting.md)、[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
 書式は golem-doc の `Golem.Doc.Bibliography` が決め、HTML、EPUB、PDF、プレーンテキストが同じ文字列を使う。
+一件は文字列と URL の部分の列であり、URL の部分だけを出力が区別して組む。
+参考文献のスタイル（誌ごとの書式、TeX と互換の書式）は v1.0.0 で扱う予定であり、今の書式はそのときの既定のスタイルになる。
 書誌データにないキーは、キーをそのまま出す。
 
 項目ごとに、和文の項目か欧文の項目かを決める。
@@ -1859,6 +1866,48 @@ v1 の引用の書式は、処理系が持つ一種類だけとする。
 片方しかなければ、その片方だけを書く。
 発行の年は `issued` の `date-parts` の最初の数とし、それがなく `literal` が文字列なら、その文字列を書く。
 絶対値が 10^15 以上の数は年として使わない（[docs/adr/0035](adr/0035-security-hardening.md)）。
+`date-parts` の年、月、日は、整数の数か ASCII の数字だけの文字列のとき読む。
+`issued` は月と日まで読むが、一覧に出すのは年だけである。
+
+掲載先と URL の欄は次のように書く（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
+
+| 欄 | 欧文の項目 | 和文の項目 |
+| --- | --- | --- |
+| 掲載先 | 誌名、巻、号、ページを `, ` でつないだ一つの欄 | 誌名、巻と号、ページを別々の欄にする |
+| 巻 | `vol. 11` | `第11巻` |
+| 号 | `no. 3` | `第3号`（巻と号の両方があれば `第11巻第3号` の一つの欄） |
+| ページの範囲 | `pp. 1119–1184` | `1119–1184頁` |
+| 一ページ | `p. 5` | `5頁` |
+| URL と閲覧日 | `URL (accessed October 16, 2026)` | `URL（2026年10月16日閲覧）` |
+
+巻と号は、値が ASCII の数字だけのときに印を付け、ほかの値（`Suppl. 2` など）はそのまま書く。
+ページは、数字と数字のあいだの ASCII のハイフンの連なりを en dash（U+2013）一つに置き換える。
+数字と数字のあいだに en dash かハイフンがあるとき、または `,` を含むとき、範囲とする。
+閲覧日（`accessed`）は URL があるときだけ組み、URL のない項目の `accessed` は組まない。
+閲覧日は年月日、年月、年、`literal` の形で書き、欧文の月の名前は処理系が持つ表（`January` から `December`）で書く。
+月が 1 から 12 の外なら年だけを、日が 1 から 31 の外なら年と月だけを書く。
+
+和文の項目では、題と誌名を項目の種類（CSL-JSON の `type`）で括る。
+欧文の項目は括らない。
+
+| 種類 | 題 | 誌名 |
+| --- | --- | --- |
+| `article`、`article-journal`、`article-magazine`、`article-newspaper`、`chapter`、`entry`、`entry-dictionary`、`entry-encyclopedia`、`paper-conference`、`review`、`review-book` | 「」 | 『』 |
+| `webpage`、`post`、`post-weblog` | 「」 | 括らない |
+| `book`、`thesis`、`report`、`manuscript`、`pamphlet` | 『』 | 括らない |
+| ほかの種類と、`type` のない項目 | 括らない | 括らない |
+
+題や誌名が、すでに同じ括弧の開きで始まり閉じで終わるときは、括弧を足さない。
+欧文の項目が閲覧日のない URL で終わるときは、末尾の `.` を付けない。
+和文の項目は、URL で終わるときも `。` を付ける。
+
+`type`、`container-title`、`URL` は文字列のとき読む。
+`volume`、`issue`、`page` は文字列か整数の数のとき読み、整数でない数は読まない。
+空の文字列と空白だけの文字列は、ない欄として扱う。
+
+URL の部分は、PDF では文字スタイル `url` で組む（「style.toml」の節）。
+HTML と EPUB では、scheme が `http` か `https`（大文字と小文字を区別しない）の URL を `<a class="cs-url" href="URL">` に、ほかの URL を `<span class="cs-url">` にする。
+プレーンテキストは、部分をつないだ文字列を書く。
 
 `manifest.toml` の `bibliography` に並べたファイルがない、JSON として読めない、最上位が配列でないときは、G0326 のエラーを `manifest.toml` の先頭に出す。
 パスの形の誤り（URL、絶対パス、ルートの外）は、章のパスと同じく G0303 とする。
