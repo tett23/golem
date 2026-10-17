@@ -230,7 +230,7 @@ golem-driver のテストは、並列と逐次で組んだ PDF のバイト列�
 
 ただし、これらのテストは一つの capability（GHC のランタイムが Haskell のコードを実行する OS のスレッドの枠）の上で動く。
 一つの capability では、[code: mapConcurrently] のスレッドは交互に動くだけで、C の関数の呼び出しが重なることはない。
-本当に同時に動かすのは、[code: -threaded] でビルドし capability を 8 個に増やすテストのスイート [code: golem-driver-parallel-test] である。
+本当に同時に動かすのは、[code: -threaded] と [code: -with-rtsopts=-N] でビルドし、計算機のすべてのプロセッサを capability にするテストのスイート [code: golem-driver-parallel-test] である。
 生成した原稿と [code: tempest]、[code: kanikosen] の見本を並列と逐次で組み、バイト列と診断が一致することを確かめる。
 [code: golem] の実行ファイルは [code: -with-rtsopts=-N] でリンクし、計算機のすべてのプロセッサを capability にする。
 

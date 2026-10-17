@@ -2,12 +2,12 @@
 
 The PDF pipeline composes paragraphs, figure captions and tables with
 'Control.Concurrent.Async.mapConcurrently' when 'optParallel' is set
-(golem-driver ADR 0001 and 0002). The other tests of this suite compare
+(golem-driver ADR 0001 and 0002). The tests of golem-driver-test compare
 parallel and sequential builds on one capability, where the green threads
 never run at the same time and the foreign calls into HarfBuzz and
-FreeType never overlap. These tests raise the capabilities to eight (the
-suite is built with -threaded), so that the threads really run at once,
-and check what ADR 0001 requires of parallel runs: the output and the
+FreeType never overlap. This suite is built with -threaded and -N (one
+capability per processor), so that the threads really run at once;
+its tests check what ADR 0001 requires of parallel runs: the output and the
 diagnostics equal those of a sequential run (docs/adr/0002 determinism),
 and the diagnostics are in the order of the files, the positions and the
 codes.
@@ -17,7 +17,7 @@ GOLEM_PARALLEL_REPEAT=n repeats the builds of the fixture books n times
 -}
 module ParallelSpec (parallelTests) where
 
-import Control.Concurrent (forkOn, getNumCapabilities, setNumCapabilities)
+import Control.Concurrent (forkOn)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, readMVar, takeMVar)
 import Control.Exception (SomeException, evaluate, try)
 import Control.Monad (forM_, replicateM)
@@ -45,20 +45,6 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testPropertyNamed)
 import Text.Read (readMaybe)
-
--- | The number of capabilities the parallel builds run on.
-capabilities :: Int
-capabilities = 8
-
-{- | Runs with at least n capabilities. The count is only raised, never
-restored: tasty may run other tests at the same time, and lowering it
-under them would take their capabilities away.
--}
-withCapabilities :: Int -> IO a -> IO a
-withCapabilities n act = do
-  current <- getNumCapabilities
-  setNumCapabilities (max n current)
-  act
 
 {- | Runs the actions at once, the i-th pinned to capability i (mod the
 count), and returns their fully evaluated results in the order given.
@@ -98,11 +84,11 @@ buildChapters fonts parallel style files chapters = withSystemTempDirectory "gol
   let path d = maybe "?" (takeFileName . siPath) (Map.lookup (spanFile (diagSpan d)) (brSources r))
   pure ([(path d, diagCode d, spanStart (diagSpan d), diagMessage d) | d <- brDiagnostics r], pdf)
 
--- | The same build in sequence, then in parallel on eight capabilities.
+-- | The same build in sequence, then in parallel on every capability.
 sequentialAndParallel :: FontProvider -> BS.ByteString -> [(FilePath, BS.ByteString)] -> [(FilePath, Text)] -> IO (Outcome, Outcome)
 sequentialAndParallel fonts style files chapters = do
   s <- buildChapters fonts False style files chapters
-  p <- withCapabilities capabilities (buildChapters fonts True style files chapters)
+  p <- buildChapters fonts True style files chapters
   pure (s, p)
 
 -- * generated manuscripts
@@ -141,7 +127,7 @@ notoStyle vertical =
 parallelTests :: TestTree
 parallelTests =
   testGroup
-    "parallel composition on eight capabilities (golem-driver ADR 0001, 0002; Medium)"
+    "parallel composition on every capability (golem-driver ADR 0001, 0002; Medium)"
     [ testPropertyNamed
         "a generated manuscript with the fake fonts gives the bytes and diagnostics of a sequential build"
         "prop_parallelFakeFontsMatchSequential"
@@ -166,7 +152,7 @@ parallelTests =
             -- find it and the table errors are not the order of the files
             deep = "- 一\n  - 二\n    - 三\n      - 四\n        - 五の項目。\n"
             chapters = [("z.gm", wide), ("a.gm", "前。\n\n" <> wide), ("m.gm", deep <> "\n" <> wide <> "\n" <> wide)]
-        (ds, pdf) <- withCapabilities capabilities (buildChapters fakeProvider True horizontalStyle [] chapters)
+        (ds, pdf) <- buildChapters fakeProvider True horizontalStyle [] chapters
         -- byte offsets: "前。" is 6 bytes and two newlines; the items of deep are 6, 8, 10
         -- and 12 bytes before "四", 62 bytes in all, then a newline; a table is 214 bytes
         -- (two rows of 80 and a rule of 54), then a newline
@@ -180,7 +166,7 @@ parallelTests =
                 ]
               ),
       testPropertyNamed
-        "advances and pair kerns asked from eight capabilities at once are those asked in sequence"
+        "advances and pair kerns asked from every capability at once are those asked in sequence"
         "prop_memoConcurrentMatchesSequential"
         ( withTests 10 . property $ do
             pairs <- forAll (Gen.list (Range.linear 32 128) ((,,) <$> Gen.bool <*> Gen.element ("漢字「」、。ーabAV1" :: String) <*> Gen.element ("漢字「」、。ーabAV1" :: String)))
@@ -188,7 +174,7 @@ parallelTests =
             alone <- evalIO notoFonts
             shared <- evalIO notoFonts
             let ask fonts (v, a, b) = (lfAdvance fonts (Shaping "body" v []) a, lfPairKern fonts (Shaping "body" v []) a b)
-            together <- evalIO (withCapabilities capabilities (inParallel [pure (ask shared k) | k <- pairs]))
+            together <- evalIO (inParallel [pure (ask shared k) | k <- pairs])
             together === map (Right . ask alone) pairs
         ),
       testGroup "fixture books" [bookTest "tempest", bookTest "kanikosen"]
@@ -200,14 +186,14 @@ notoFonts = do
   style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
   loadFonts realProvider "test/fixtures/kanikosen" (FileId 0) style [] >>= either (assertFailure . show) pure
 
-{- | A fixture book built in parallel on eight capabilities gives the PDF of
+{- | A fixture book built in parallel on every capability gives the PDF of
 a sequential build, GOLEM_PARALLEL_REPEAT times.
 -}
 bookTest :: FilePath -> TestTree
-bookTest name = testCase (name <> ": parallel builds on eight capabilities give the bytes of a sequential build") $ do
+bookTest name = testCase (name <> ": parallel builds on every capability give the bytes of a sequential build") $ do
   n <- fromMaybe 1 . (>>= readMaybe) <$> lookupEnv "GOLEM_PARALLEL_REPEAT"
   sequential <- buildBookWith False name
-  parallel <- withCapabilities capabilities (replicateM n (buildBookWith True name))
+  parallel <- replicateM n (buildBookWith True name)
   map (== sequential) parallel @?= replicate n True
 
 -- | Builds a copy of a book fixture to PDF; no errors allowed.

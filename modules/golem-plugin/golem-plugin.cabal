@@ -58,7 +58,9 @@ test-suite golem-plugin-test
   main-is:          Main.hs
   other-modules:    ConcurrencySpec
                     ResponseSpec
-  ghc-options:      -threaded
+  -- -N: one capability per processor from the start, so that the count
+  -- never changes while the suite runs (scripts/ci/rts-capabilities.sh)
+  ghc-options:      -threaded "-with-rtsopts=-N"
   build-depends:
     , async
     , base
