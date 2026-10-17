@@ -51,9 +51,42 @@ count needle hay = case BS.breakSubstring needle hay of
   (_, rest) | BS.null rest -> 0
   (_, rest) -> 1 + count needle (BS.drop (BS.length needle) rest)
 
+{- | A PDF of one page of 200 by 100 pt, turned by Rotate, built here as
+bytes: a catalog, a page tree, the page and its content.
+-}
+rotatedPdf :: Int -> BS.ByteString
+rotatedPdf r =
+  let content = "0 0 0 1 k 0 0 1 1 re f"
+      objs =
+        [ "<< /Type /Catalog /Pages 2 0 R >>",
+          "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+          "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Rotate " <> TE.encodeUtf8 (T.pack (show r)) <> " /Resources << >> /Contents 4 0 R >>",
+          "<< /Length " <> TE.encodeUtf8 (T.pack (show (BS.length content))) <> " >>\nstream\n" <> content <> "\nendstream"
+        ]
+      header = "%PDF-1.4\n"
+      bodies = [TE.encodeUtf8 (T.pack (show n)) <> " 0 obj\n" <> o <> "\nendobj\n" | (n, o) <- zip [1 :: Int ..] objs]
+      offsets = scanl (+) (BS.length header) (map BS.length bodies)
+      xrefAt = last offsets
+      entry o = TE.encodeUtf8 (T.justifyRight 10 '0' (T.pack (show o))) <> " 00000 n \n"
+   in header
+        <> BS.concat bodies
+        <> "xref\n0 5\n0000000000 65535 f \n"
+        <> BS.concat (map entry (init offsets))
+        <> "trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n"
+        <> TE.encodeUtf8 (T.pack (show xrefAt))
+        <> "\n%%EOF\n"
+
 pdfFigureTests :: [TestTree]
 pdfFigureTests =
-  [ testCase "a PDF figure fills the measure, its height in the proportion of its crop box" $ do
+  [ testGroup
+      "a PDF figure of 200 by 100 pt fills the measure of 240 pt, its height by its turned size"
+      [ testCase ("Rotate " <> show r) $ do
+          (_, pl) <- layoutOk horizontal24 "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", rotatedPdf r), ("images/f.png", png False)]
+          (_, pf, _, _) <- theFigure pl
+          (pfAlong pf, pfAcross pf) @?= (240 * pt, across * pt)
+      | (r, across) <- [(0 :: Int, 120), (90, 480), (180, 120), (270, 480)]
+      ],
+    testCase "a PDF figure fills the measure, its height in the proportion of its crop box" $ do
       fig <- golemPdf
       (_, pl) <- layoutOk horizontal24 "@figure images/f.pdf web=images/f.png alt=\"t\"\n  キャプション。\n" [("images/f.pdf", fig), ("images/f.png", png False)]
       (_, pf, _, _) <- theFigure pl
