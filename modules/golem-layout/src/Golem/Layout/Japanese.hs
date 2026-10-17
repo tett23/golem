@@ -15,6 +15,7 @@ module Golem.Layout.Japanese
     BoxKind (..),
     boxKind,
     noteMarkSize,
+    noteMarkText,
     composeInlines,
     lineStartProhibited,
     lineEndProhibited,
@@ -38,6 +39,7 @@ import Golem.Layout.Hyphenation
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look
 import Golem.Layout.Ruby
+import Golem.Project.Style (Dim (..), dimToSp)
 import Golem.Syntax (Diagnostic, Severity (..), SrcSpan, diagnostic)
 
 lineStartProhibited :: Bool -> CharClass -> Bool
@@ -112,7 +114,11 @@ data ComposeEnv = ComposeEnv
     10000 or more means no such break (golem-layout ADR 0008)
     -} ceExplicitHyphenPenalty :: !Int,
     -- | the aki set of the paragraph (docs/adr ADR 0019)
-    ceAkiSet :: !AkiSet
+    ceAkiSet :: !AkiSet,
+    -- | [notes] mark-size: the size of note marks (golem-driver ADR 0025)
+    ceNoteMarkSize :: !Dim,
+    -- | [notes] mark-format: the text of a note mark, {n} its number (golem-driver ADR 0025)
+    ceNoteMarkFormat :: !Text
   }
 
 -- | The mark of a sidenote in the text: its number, ※ or nothing.
@@ -139,7 +145,9 @@ defaultComposeEnv fs =
       ceSidenoteMarker = MarkerNumber,
       ceCiteNumber = const Nothing,
       ceExplicitHyphenPenalty = 50,
-      ceAkiSet = defaultAkiSet
+      ceAkiSet = defaultAkiSet,
+      ceNoteMarkSize = Zw (1 % 2),
+      ceNoteMarkFormat = "*{n}"
     }
   where
     defaultAdvance c
@@ -255,7 +263,7 @@ piecesOf env inl = case inl of
      in PAnchor (`AnchorPageRef` l) : textPieces lk (T.pack (show n))
   Ref _ _ l -> textPieces lk l
   Deferred {} -> []
-  Note sp n body -> [PAnchor (\i -> AnchorNote i n sp body), markPiece ("*" <> T.pack (show n))]
+  Note sp n body -> [PAnchor (\i -> AnchorNote i n sp body), markPiece (noteMarkText (ceNoteMarkFormat env) n)]
   Sidenote sp n body ->
     PAnchor (\i -> AnchorSidenote i n sp body) : case ceSidenoteMarker env of
       MarkerNumber -> [markPiece (T.pack (show n))]
@@ -273,18 +281,25 @@ piecesOf env inl = case inl of
     -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
     restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl})
     {- the mark of a note or a numbered sidenote (golem-driver ADR 0018):
-    set at half the size, as wide as its advance across, half the size
-    down; the box keeps the look of its place -}
+    set at the mark size (golem-driver ADR 0025), as wide as its advance
+    across, the mark size down; the box keeps the look of its place -}
     markPiece t =
-      let m = noteMarkSize (lkSize lk)
+      let m = noteMarkSize (ceNoteMarkSize env) (lkSize lk)
           w
             | ceVertical env = m
             | otherwise = round (ceWordAdvance env lk {lkSize = m} t * toRational m)
        in PBox lk t KindNoteMark w
 
--- | The size of a note mark in text of a size (golem-driver ADR 0018).
-noteMarkSize :: Sp -> Sp
-noteMarkSize s = s `div` 2
+{- | The size of a note mark in text of a size (golem-driver ADR 0018,
+0025): the mark size of style.toml, at least 1sp and at most the size of
+the text.
+-}
+noteMarkSize :: Dim -> Sp -> Sp
+noteMarkSize d s = max 1 (min s (dimToSp s d))
+
+-- | The text of a note mark: {n} of the format replaced by the number (golem-driver ADR 0025).
+noteMarkText :: Text -> Int -> Text
+noteMarkText format n = T.replace "{n}" (T.pack (show n)) format
 
 textPieces :: Look -> Text -> [Piece]
 textPieces lk t
@@ -584,18 +599,18 @@ wordItems env lk word =
       (parts, pen)
         | T.any (`elem` ("-‐‑–—" :: String)) word =
             (if explicitP >= infPenalty then [word] else explicitParts word, Penalty 0 explicitP ExplicitHyphen)
-        | otherwise = (maybe [word] (`hyphenate` word) (cePatterns env), Penalty (advance env lk '-') 50 PatternHyphen)
+        | otherwise = (maybe [word] (`hyphenate` word) (cePatterns env), Penalty (advance env lk '-') 50 (PatternHyphen (protAt snd '-')))
       rotated = ceVertical env
       tag = fromEnum (if rotated then KindRotated else KindText)
       tr = tracking lk
       -- the tracking after each character, given back at the line end (docs/adr/0020)
       box t =
         let w = round (ceWordAdvance env lk t * toRational (lkSize lk))
-            (ps, _) = maybe (0, 0) (protrusionRatio . fst) (T.uncons t)
-            (_, pe) = maybe (0, 0) (protrusionRatio . snd) (T.unsnoc t)
-            prot r = if ceProtrusion env then min w (w * r `div` 1000) else 0
-         in Box (w + tr * toInteger (T.length t)) (BoxContent t True (prot' ps t prot) (prot' pe t prot) tag lk 0 (negate tr) [])
-      prot' r t f = if T.null t then 0 else f r
+            ps = maybe 0 (min w . protAt fst . fst) (T.uncons t)
+            pe = maybe 0 (min w . protAt snd . snd) (T.unsnoc t)
+         in Box (w + tr * toInteger (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [])
+      -- the advance of the character at the line end, without tracking, by its ratio (golem-layout ADR 0014)
+      protAt pick c = if ceProtrusion env then advance env lk c * pick (protrusionRatio c) `div` 1000 else 0
    in concat [box part : [pen | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]
 
 {- | A word cut after each run of hyphens and dashes that has a character
