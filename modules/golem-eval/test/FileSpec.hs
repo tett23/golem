@@ -186,6 +186,7 @@ tests =
       separatorTests,
       hardBreakTests,
       breakTests,
+      pageControlTests,
       codeTests,
       escapeTests,
       duplicateKeyTests,
@@ -821,6 +822,55 @@ breakTests =
       OrderedList items -> any (any hasBreak . itemBlocks) items
       DefList gs -> any (any (any hasBreak) . dgDefs) gs
       FigureBlock f -> any hasBreak (figCaption f)
+      _ -> False
+
+-- | Manual control of page breaks (docs/adr ADR 0030).
+pageControlTests :: TestTree
+pageControlTests =
+  testGroup
+    "manual control of page breaks (docs/adr ADR 0030)"
+    [ testCase "each control is a block" $ do
+        run ctx "a\n\n@no-page-break\n\nb\n" @?= ([Paragraph Nothing [Text (mkSpan (FileId 1) 0 1) "a"], PageControl NoBreak, Paragraph Nothing [Text (mkSpan (FileId 1) 19 20) "b"]], [])
+        run ctx "@need-lines 5\n" @?= ([PageControl (NeedLines 5)], [])
+        run ctx "@page-lines +1\n" @?= ([PageControl (AdjustLines 1)], [])
+        run ctx "@page-lines -2\n" @?= ([PageControl (AdjustLines (-2))], []),
+      testCase "a label skips the control and goes to the block" $ do
+        let (file, _, pds) = parseAst (FileId 1) "@need-lines 3\n@label x\n# h\n"
+            r = evalFile ctx file
+        map diagCode (pds <> erDiagnostics r) @?= []
+        [(blockLabel b, isControl (blockBody b)) | b <- docBlocks (erDocument r)] @?= [(Nothing, True), (Just "x", False)],
+      testCase "wrong arguments are G0270" $
+        mapM_
+          (\src -> assertEqual (T.unpack src) ["G0270"] (errs src))
+          [ "@no-page-break x\n",
+            "@need-lines\n",
+            "@need-lines 0\n",
+            "@need-lines 2.5\n",
+            "@page-lines 1\n",
+            "@page-lines +0\n",
+            "@page-lines +1 +2\n",
+            "@need-lines 3\n  a\n"
+          ],
+      testCase "a control not at the top of the document is G0271 and dropped" $ do
+        let (bs, es) = run ctx "- a\n\n  @no-page-break\n"
+        es @?= ["G0271"]
+        assertBool "no control" (not (any hasControl bs)),
+      testCase "a control and a forced break at the same place are G0272" $ do
+        mapM_
+          (\src -> assertEqual (T.unpack src) ["G0272"] (errs src))
+          [ "@no-page-break\n@page-break\n",
+            "@column-break\n\n@no-page-break\n",
+            "@no-page-break\n@need-lines 2\n@page-break\n"
+          ]
+        errs "@no-page-break\n\na\n\n@page-break\n" @?= []
+    ]
+  where
+    isControl = \case
+      PageControl _ -> True
+      _ -> False
+    hasControl = \case
+      PageControl _ -> True
+      BulletList items -> any (any (hasControl . blockBody) . itemBlocks) items
       _ -> False
 
 -- | The code of a code block.

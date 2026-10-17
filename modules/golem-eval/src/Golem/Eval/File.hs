@@ -165,7 +165,8 @@ evalFile ctx0 (A.File fid blocks0) =
       blocks = map normalizeBlock (splitLines (ctxSource ctx) (ctxParaStyles ctx) rest)
       st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty
       (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
-      (bs, breakDiags) = nestedBreaks bs0
+      (bs, nestedDiags) = nestedBreaks bs0
+      breakDiags = nestedDiags <> conflictingBreaks bs
       doc0 = Document fid bs
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
         Left ds -> (doc0, ds)
@@ -417,6 +418,9 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "bibliography" -> pure [block sp (ChannelOutput BibliographyOutput)]
   "page-break" -> forcedBreak sp name args body
   "column-break" -> forcedBreak sp name args body
+  "no-page-break" -> pageControl sp name args body
+  "need-lines" -> pageControl sp name args body
+  "page-lines" -> pageControl sp name args body
   "figure" -> figure ctx sp args body
   "table" -> csvTable ctx sp args
   "listing" -> listing ctx sp args
@@ -460,7 +464,7 @@ attributedWith ctx sp cmds target
 
 isBreakCommand :: A.Located A.Block -> Bool
 isBreakCommand = \case
-  A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["page-break", "column-break"]
+  A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["page-break", "column-break", "no-page-break", "need-lines", "page-lines"]
   _ -> False
 
 attributedGroup :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
@@ -526,19 +530,65 @@ forcedBreak sp name args body
   where
     ok k = pure [block sp (ForcedBreak k)]
 
+-- | @no-page-break, @need-lines and @page-lines (docs/adr ADR 0030).
+pageControl :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+pageControl sp name args body
+  | not (null body) = bad ("@" <> name <> " は本体を持てません")
+  | otherwise = case (name, map A.locValue args) of
+      ("no-page-break", []) -> ok NoBreak
+      ("no-page-break", _) -> bad "@no-page-break は引数を取りません"
+      ("need-lines", [A.Positional (A.Word w)]) | Just n <- count w, n >= 1 -> ok (NeedLines n)
+      ("need-lines", _) -> bad "@need-lines の引数は 1 以上の整数です"
+      ("page-lines", [A.Positional (A.Word w)])
+        | Just (s, digits) <- T.uncons w,
+          s `elem` ['+', '-'],
+          Just n <- count digits,
+          n /= 0 ->
+            ok (AdjustLines (if s == '-' then negate n else n))
+      _ -> bad "@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です"
+  where
+    ok c = pure [block sp (PageControl c)]
+    bad m = err "G0270" sp m >> pure []
+    -- ASCII digits that fit in an Int
+    count w
+      | not (T.null w) && T.all isDigit w && T.length w <= 9 = Just (read (T.unpack w))
+      | otherwise = Nothing
+
+{- | G0272: a no-break next to a page or column break, with only need-lines
+and page-lines between them (docs/adr ADR 0030).
+-}
+conflictingBreaks :: [Block] -> [Diagnostic]
+conflictingBreaks bs =
+  [ diagnostic "G0272" Error sp ("@no-page-break と " <> breakName k <> " が同じ位置にあります")
+  | (i, Block sp _ (PageControl NoBreak)) <- zip [0 :: Int ..] bs,
+    side <- [reverse (take i bs), drop (i + 1) bs],
+    Block _ _ (ForcedBreak k) : _ <- [dropWhile soft side]
+  ]
+  where
+    soft b = case blockBody b of
+      PageControl (NeedLines _) -> True
+      PageControl (AdjustLines _) -> True
+      _ -> False
+    breakName = \case
+      BreakColumn -> "@column-break"
+      _ -> "@page-break"
+
 {- | Forced breaks below the top of the document are dropped with G0259
-(docs/adr ADR 0017).
+(docs/adr ADR 0017), and the controls of page breaks with G0271 (docs/adr
+ADR 0030).
 -}
 nestedBreaks :: [Block] -> ([Block], [Diagnostic])
 nestedBreaks bs = let (ds, bs') = concat <$> traverse top bs in (bs', ds)
   where
     top b = case blockBody b of
       ForcedBreak _ -> ([], [b])
+      PageControl _ -> ([], [b])
       _ -> inner b
     -- the diagnostics and what is left of a block below the top
     inner :: Block -> ([Diagnostic], [Block])
     inner b@(Block sp lbl body) = case body of
       ForcedBreak _ -> ([diagnostic "G0259" Error sp "@page-break と @column-break は文書の最上位にだけ置けます"], [])
+      PageControl _ -> ([diagnostic "G0271" Error sp "@no-page-break、@need-lines、@page-lines は文書の最上位にだけ置けます"], [])
       BulletList items -> rebuild BulletList <$> traverse item items
       OrderedList items -> rebuild OrderedList <$> traverse item items
       DefList gs -> rebuild DefList <$> traverse (\(DefGroup ts ds) -> DefGroup ts <$> traverse nested ds) gs

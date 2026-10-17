@@ -109,6 +109,13 @@ tests =
             found = completions ws "b.gm" (offsetIn src "@page-break " 12)
         map cmpLabel found @?= ["recto", "verso"]
         map cmpKind found @?= [CkSettingValue, CkSettingValue],
+      testCase "completion: the signs of page-lines (docs/adr ADR 0030)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n@page-lines \n"
+        let src = textOf ws "b.gm"
+            found = completions ws "b.gm" (offsetIn src "@page-lines " 12)
+        map cmpLabel found @?= ["+1", "-1"]
+        map cmpKind found @?= [CkSettingValue, CkSettingValue],
       testCase "completion: @style-def (docs/adr ADR 0014)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "@style-def paragraph letter\n@style-def paragraph memo\n\n@label second\n# 次の章\n\n@style-def \n\n@style-def paragraph letter \n\n@style-def paragraph letter based-on=\n\n@style \n\n@style-def character term font=\n"
