@@ -853,6 +853,10 @@ tests =
             cellExtent (compose env "日本語") @?= (fs, 3 * fs)
             let (mn, nat) = cellExtent (compose env "あ。")
             mn @?= nat,
+          testCase "cell extents: a pattern hyphen is no break, a written hyphen is (golem-layout ADR 0008, 0014)" $ do
+            -- eleven and ten Latin characters of 0.5em
+            cellExtent (compose enUS "hyphenation") @?= (11 * fs `div` 2, 11 * fs `div` 2)
+            cellExtent (compose (defaultComposeEnv fs) "well-known") @?= (5 * fs `div` 2, 5 * fs),
           testCase "column widths: natural when they fit" $
             columnWidths 100 [(10, 30), (20, 40)] @?= Right [30, 40],
           testCase "column widths: the rest shared in proportion, the remainder from the first column" $
@@ -1761,6 +1765,11 @@ protrusionAmountTests =
     testCase "a quote at the start of a word protrudes by its share of its advance" $
       -- U+201C is an opening bracket of Japanese text and never starts a Latin word box, so the straight quote stands in
       [bcProtrudeStart c | Box _ c <- compose env "\"end"] @?= [163840],
+    testCase "a box protrudes at most its own width" $ do
+      -- a word a tenth of an em wide: 65536sp, less than 70% of the full stop's advance (229376) or 50% of the quote's (163840)
+      let thin = env {ceWordAdvance = \_ _ -> 1 / 10}
+      ends thin "." @?= [65536]
+      [bcProtrudeStart c | Box _ c <- compose thin "\"a"] @?= [65536],
     testCase "tracking is not counted in the amount" $
       ends env {ceLook = look0 {lkTracking = 100}} "end." @?= [229376],
     testCase "without protrusion no box protrudes" $
