@@ -1482,7 +1482,7 @@ extractedText tu content = go (BC.lines content)
 27 + 1 = 20440 lists, checked exhaustively.
 -}
 allDrawn :: [[(Int, T.Text, ClusterPart)]]
-allDrawn = concatMap (\n -> replicateM n one) [0 .. 3]
+allDrawn = concatMap (`replicateM` one) [0 .. 3]
   where
     one = [(g, t, p) | g <- [0 .. 2], t <- ["", "a", "ffi"], p <- [ClusterWhole, ClusterLead, ClusterRest]]
 
