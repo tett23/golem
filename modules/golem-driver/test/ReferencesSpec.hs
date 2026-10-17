@@ -424,6 +424,18 @@ tableTests =
       content <- miniPdf fakeProvider True horizontalStyle ("前。\n\n" <> smallTable <> "\n" <> second <> "\n後。\n") [] >>= fmap BS.concat . inflateAll
       [taka, na] <- mapM (baselineOf content) "高名"
       approx (taka - na) 30,
+    testCase "a table right after a heading starts on the next grid line, with no line of space (golem-driver ADR 0031)" $ do
+      -- headings of one line on the body grid: the paragraph and the table both one pitch below
+      let style = horizontalStyle <> flatHeadings
+      toTable <- headingGap style smallTable '項'
+      toText <- headingGap style "本文。\n" '本'
+      approx toTable 15
+      approx toText 15,
+    testCase "a table after a heading with a rule after starts where a paragraph would (golem-driver ADR 0031)" $ do
+      let style = horizontalStyle <> "\n[headings.1]\nsize = \"1zw\"\nlines = 1\nrule-after = { weight = \"0.5pt\", space-before = \"2pt\", space-after = \"10pt\" }\n"
+      toTable <- headingGap style smallTable '項'
+      toText <- headingGap style "本文。\n" '本'
+      approx toTable toText,
     testCase "HTML keeps an empty header row as an empty row of the head (golem-driver ADR 0031)" $ do
       (html, _) <- htmlMini horizontalStyle (emptyHeaderTable 2)
       assertBool (T.unpack html) ("<thead>" `T.isInfixOf` html),
@@ -436,6 +448,12 @@ tableTests =
       a @?= c
       qpdfCheck a
   ]
+
+-- | How far below the heading 章 the first line after it is, by a character of that line, in pt.
+headingGap :: BS.ByteString -> T.Text -> Char -> IO Rational
+headingGap style after c = do
+  content <- miniPdf fakeProvider True style ("# 章\n\n" <> after) [] >>= fmap BS.concat . inflateAll
+  (-) <$> baselineOf content '章' <*> baselineOf content c
 
 -- | A table whose header row has only empty cells, with n body rows 行1, 行2, ...
 emptyHeaderTable :: Int -> T.Text
