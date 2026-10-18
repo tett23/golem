@@ -98,6 +98,10 @@ itemFlagged = \case
 infPenalty :: Int
 infPenalty = 10000
 
+-- | The badness of a line beyond the scale, TeX's inf_bad: the cap of 'badness'.
+infBad :: Int
+infBad = 10000
+
 {- | The stretch of the glue that ends a paragraph: large enough that the
 last line always has badness 0, standing in for TeX's fil.
 -}
@@ -214,7 +218,11 @@ breakParagraph ps lineWidth items =
     attempt pass =
       let tol = case pass of
             1 -> pPretolerance ps
-            4 -> 10000
+            {- the last pass takes any line of finite badness; a line beyond
+            the scale (TeX's inf_bad) is made only by pushing out what does
+            not fit ('pushOut'): its demerits are capped, so they cannot tell
+            a line of a few spaced-out characters from a nearly full one -}
+            4 -> infBad - 1
             _ -> pTolerance ps
           emergency = if pass >= 3 then pEmergencyStretch ps else 0
           -- the first pass, like TeX's, uses explicit hyphens but no pattern hyphens (ADR 0008)
@@ -274,14 +282,35 @@ breakParagraph ps lineWidth items =
                       )
                       Map.empty
                       feasible
-                next = survivors <> newNodes
-             in if null next && allowOverfull then overfullRescue actives b else next
+             in survivors <> newNodes
+          -- nothing is left at b when every line from the actives overflows there, or b is a forced break no feasible line reaches
+          go actives = \case
+            [] -> actives
+            b : rest -> case step actives b of
+              []
+                | allowOverfull -> case pushOut actives b of
+                    Just node -> go [node] [c | c <- candidates, c > nPos node]
+                    Nothing -> go (overfullRescue actives b) rest
+              next -> go next rest
+          {- what does not fit goes to the next line (JLReq 追い出し): from
+          the active whose line can end latest before b without overflowing,
+          the line ends there, however loose; the breaking starts over after it -}
+          pushOut actives b =
+            let options =
+                  [ (Down p, nDem a + d, Down (nPos a), Node p (nLine a + 1) fit (flaggedAt p) (nDem a + d) (Just a))
+                  | a <- actives,
+                    -- the line holds a box at least, and does not overflow
+                    (p, Eval _ fit d _ _) <- take 1 [(p, ev) | p <- reverse (takeWhile (< b) candidates), p > after (nPos a), ev@(Eval _ _ _ _ True) <- [evaluate tol emergency a p]]
+                  ]
+             in case sortOn (\(k1, k2, k3, _) -> (k1, k2, k3)) options of
+                  (_, _, _, node) : _ -> Just node
+                  [] -> Nothing
           overfullRescue actives b =
             case sortOn (overflow b) actives of
               (a : _) -> [Node b (nLine a + 1) 3 (flaggedAt b) (nDem a + overfullDemerits) (Just a)]
               [] -> []
           overflow b a = tW (sumsTo b) - tW (sumsTo (after (nPos a))) - lineWidth (nLine a)
-          finalActives = foldl' step [start] candidates
+          finalActives = go [start] candidates
           ends = [a | a <- finalActives, nPos a == n - 1]
           -- of the least demerits, the path whose last line is loosest (TeX's
           -- strict < at the end), then whose (position, fitness) from the

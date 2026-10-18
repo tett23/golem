@@ -1003,6 +1003,12 @@ codeTests =
     testCase "[code: manifest.toml] at the line end is not hyphenated: the whole goes to the next line" $ do
       ts <- listPages horizontalStyle "あいうえおかきくけ[code: manifest.toml]です。\n"
       assertBool (show ts) (any ("manifest.toml" `T.isPrefixOf`) ts),
+    testCase "code that does not fit after the text goes to the next line; the line before it is not left with a few characters" $ do
+      -- 30 characters a line, the first indented: the text and the code need 33
+      let style = horizontal30 "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n"
+          text = T.replicate 20 "あ"
+      ts <- listPages style (text <> " [code: \"severity\":\"notice123\"] と書く。\n")
+      ts @?= [text, "\"severity\":\"notice123\"と書く。"],
     testCase "a path in [code: ...] breaks after a slash, with no hyphen" $ do
       (_, pl) <- layoutOk horizontalStyle "あいうえお[code: modules/golem-driver/src/Golem/Driver/Pdf.hs]\n" []
       assertSlashBreaks pl,

@@ -392,6 +392,21 @@ tests =
                 r = breakParagraph defaultParams {pEmergencyStretch = 20} (const 100) items
             brPass r @?= 4
             assertBool "overfull" (any lineOverfull (brLines r)),
+          testCase "the last pass pushes out a box that does not fit, rather than leave a near-empty line (JLReq 追い出し)" $ do
+            -- five boxes and a box of 55: no line of 100 holds them within the tolerance; after
+            -- one box alone, the next line would be merely loose
+            let small = concat [[box 10, Glue 0 2 0] | _ <- [1 .. 5 :: Int]]
+                items = small <> [box 55, Glue 0 2 0, box 10] <> finish
+                r = breakParagraph defaultParams (const 100) items
+            brPass r @?= 4
+            [[w | Box w _ <- lineItems l] | l <- brLines r] @?= [replicate 5 10, [55, 10]]
+            assertBool "not overfull" (not (any lineOverfull (brLines r))),
+          testCase "the last pass still sets lines of finite badness by the demerits" $ do
+            -- loose but finite: each line of two boxes is stretched by three times its stretch
+            let items = paragraph [30, 30, 30, 30]
+                r = breakParagraph defaultParams (const 75) items
+            brPass r @?= 4
+            [[w | Box w _ <- lineItems l] | l <- brLines r] @?= [[30, 30], [30, 30]],
           testCase "a penalty inside a line takes no width; at the line end it does" $ do
             let items = [box 30, Penalty 5 50 (PatternHyphen 0), box 30, Glue 6 3 2, box 30, Penalty 5 50 (PatternHyphen 0), box 30] <> finish
                 r = breakParagraph defaultParams (const 1000) items
@@ -1711,6 +1726,21 @@ codeTests =
     testCase "inline code: no break between the padding and the first character" $ do
       let its = fst (composeInlines padEnv [Text sp "漢", CharStyle sp "code" [Text sp "ab"]])
       [bcText c | Box _ c <- its] @?= ["漢", "ab"],
+    testCase "inline code that fits no line: the text before it fills the line, not a few spaced-out characters" $ do
+      -- the code is 0.6em a character at 11/13 of the size, as in manual-dev
+      let env =
+            padEnv
+              { ceWordAdvance = \lk t -> if lkCode lk then 3 / 5 * fromIntegral (T.length t) else ceWordAdvance padEnv lk t,
+                ceRestyle = \lk -> \case
+                  CharStyle _ "code" _ -> lk {lkCode = True, lkBackground = Just "bg", lkPadding = 423, lkSize = 846}
+                  _ -> lk
+              }
+          code t = CharStyle sp "code" [Text sp t]
+          its = fst (composeInlines env [Text sp "人が読む形式では ", code "notice[G0730]", Text sp " のように書き、JSON では ", code "\"severity\":\"notice\"", Text sp " と書く。"])
+          -- 38zw, the first line indented by 1zw
+          r = breakParagraph defaultParams (\i -> if i == 0 then 37000 else 38000) its
+      [T.concat [bcText c | Box _ c <- lineItems l] | l <- brLines r] @?= ["人が読む形式ではnotice[G0730]のように書き、JSONでは", "\"severity\":\"notice\"と書く。"]
+      assertBool "not overfull" (not (any lineOverfull (brLines r))),
     -- golem-doc ADR 0005
     testCase "url: breaks after the last slash of a run and at spaces, no hyphenation" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}, cePatterns = Just englishUS}
