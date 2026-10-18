@@ -182,7 +182,7 @@ $ golem lint
 
 lint の規則は、変えることも止めることもできません。
 誰が見ても誤りと言えるものだけを規則にしているからです。
-lint はお知らせを出さないので、[code: silence-notices] と [code: --no-notices] は lint の警告には効きません。
+lint はお知らせを出さないので、[code: silence-notices] と [code: --no-notices] は lint の警告には適用されません。
 全角と半角の使い分けのような表記の揺れは、lint の対象にしていません。
 表記をそろえるには、校正のためのツールを併せて使ってください。
 
