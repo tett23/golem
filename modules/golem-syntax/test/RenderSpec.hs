@@ -88,5 +88,20 @@ escapeTests =
         T.filter (< ' ') (T.dropEnd 1 (jsonWithMessage m)) === ""
     ]
 
+-- | The human rendering is written to a terminal: no C0 control character but the newline may reach it.
+terminalTests :: TestTree
+terminalTests =
+  testGroup
+    "the human rendering and the terminal (security audit 2026-10-18, C13)"
+    [ testCase "an escape sequence in the source line is not written as it is" $ do
+        let fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex "x\ESC[31m\ESC]0;title\BELy\n"))]
+            out = renderHuman fs [diagnostic "G0101" Error (mkSpan (FileId 0) 0 1) "m"]
+        T.filter (\c -> c < ' ' && c /= '\n') out @?= "",
+      testCase "an escape sequence in the path and in the message is not written as it is" $ do
+        let fs = Map.fromList [(FileId 0, SourceInfo "a\ESC[2Jb.gm" (mkLineIndex "x"))]
+            d = (diagnostic "G0101" Error (mkSpan (FileId 0) 0 1) "m\ESC[0m") {diagRelated = [(mkSpan (FileId 0) 0 1, "r\SOH")]}
+        T.filter (\c -> c < ' ' && c /= '\n') (renderHuman fs [d]) @?= ""
+    ]
+
 tests :: TestTree
-tests = testGroup "rendering (golem-syntax ADR 0001)" [relatedTests, escapeTests]
+tests = testGroup "rendering (golem-syntax ADR 0001)" [relatedTests, escapeTests, terminalTests]

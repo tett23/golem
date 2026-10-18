@@ -1,7 +1,7 @@
 {- | Reading a page of a PDF as a Form XObject (golem-pdf ADR 0008). The
 PDFs are written by Golem itself or put together here as bytes.
 -}
-module ImportSpec (tests, minimalPdf, classicPdf) where
+module ImportSpec (tests, minimalPdf, classicPdf, stream, catalog, onePage, layout, objBytes, xrefTable) where
 
 import Codec.Compression.Zlib qualified as Z
 import Data.Bits (shiftR)

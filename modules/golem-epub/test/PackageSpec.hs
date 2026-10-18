@@ -144,7 +144,13 @@ tests =
            in (linesWith "<dc:creator" (opf cfg) <> linesWith "<dc:contributor" (opf cfg), linesWith "<meta refines=\"#creator1\" property=\"file-as\"" (opf cfg) <> linesWith "<meta refines=\"#contributor1\" property=\"file-as\"" (opf cfg))
                 @?= ( ["<dc:creator id=\"creator1\">A &amp; B</dc:creator>", "<dc:contributor id=\"contributor1\">C &lt;D&gt;</dc:contributor>"],
                       ["<meta refines=\"#creator1\" property=\"file-as\">&lt;a&gt;</meta>", "<meta refines=\"#contributor1\" property=\"file-as\">e &amp; f</meta>"]
-                    )
+                    ),
+        -- security audit 2026-10-18, C15: XML 1.0 allows no C0 control character but tab, newline and return
+        testCase "a control character in the metadata does not reach the package document or the navigation document" $ do
+          let cfg = cfg0 {epTitle = "t\SOHt", epTitleReading = Just "r\ESCr", epPublisher = Just "p\DELp\x1F", epCreators = [EpubCreator "c\x0Bc" (Just "k\x0Ck") "aut"]}
+              bad = T.filter (\c -> (c < ' ' && c `notElem` ("\t\n\r" :: String)) || c == '\DEL')
+          bad (opf cfg) @?= ""
+          bad (navDocument cfg ft emptyBook) @?= ""
       ],
     testGroup
       "navigation document"
