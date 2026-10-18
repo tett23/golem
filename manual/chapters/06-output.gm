@@ -223,7 +223,7 @@ based-on = "print"
 
 ここでは、使い方を説明するコメントの行と、例の一部を略しています。
 
-効いているのは [code: based-on = "print"] の一行だけです。
+有効な行は [code: based-on = "print"] の一行だけです。
 [code: based-on] は、元にする組み込みの設定を選びます。
 書かなかった値は、すべて [code: based-on] の設定から引き継ぎます。
 

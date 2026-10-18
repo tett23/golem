@@ -230,7 +230,7 @@ silence-notices = ["G0262", "G0407"]
 
 もう一つは、コマンドの [code: --no-notices] である。[index reading="--no-notices": --no-notices]
 その実行に限り、すべての notice を出さない。
-人が読む形式と JSON の両方に効き、error と warning は残す。
+人が読む形式と JSON の両方に適用され、error と warning は残す。
 [code: golem build]、[code: golem check]、[code: golem lint] だけが受け付け、[code: golem fmt] と [code: golem explain] に付けると使い方の誤りになる。
 LSP には [code: --no-notices] に当たる設定はなく、[code: silence-notices] だけに従う。
 

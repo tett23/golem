@@ -29,6 +29,13 @@ const words = {
     message:
       "Golem が報告する誤りや注意は「診断」と書かず、diagnostic（まとまりは diagnostics）と書く（docs/manual-policy.md）。",
   },
+  // 効く, 効いて, 効かない... but not 有効, 無効, 効果, 効率 (効 followed by
+  // a kana of the verb's endings).
+  kiku: {
+    pattern: "(?<![有無実発奏特即失])効[かきくけこい]",
+    message:
+      "マニュアルでは「効く」を使わない。文ごとに「有効」「適用される」「役に立つ」「働く」「左右する」などの正確な語を選ぶ（docs/manual-policy.md）。",
+  },
   notice: {
     pattern: "お知らせ",
     message: "開発者に向けた文書では重大度を notice と書く。「お知らせ」は docs/diagnostics.md の値を引くときだけ「」で囲んで使う（docs/manual-policy.md）。",

@@ -6,7 +6,7 @@ const { prh, words, golemRules, gmPlugin } = require("./common");
 module.exports = {
   plugins: gmPlugin,
   rules: {
-    ...golemRules([words.machine, words.diagnostic, words.notice]),
+    ...golemRules([words.machine, words.diagnostic, words.notice, words.kiku]),
     prh: prh("dev"),
   },
 };

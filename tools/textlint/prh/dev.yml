@@ -16,3 +16,11 @@ rules:
         to: リリースのアセット
       - from: 「資産」と書かず
         to: 「資産」と書かず
+  - expected: upstream
+    pattern: /本流(?![^「」\n]*」)/
+    prh: 変更を送り込む元のリポジトリは「本流」と書かず、upstream と書く（docs/manual-policy.md）
+    specs:
+      - from: 本流に送る
+        to: upstreamに送る
+      - from: 「本流」と書かず
+        to: 「本流」と書かず

@@ -48,15 +48,15 @@ Golem は、こうした仕事を仕組みの側で引き受ける[ruby: 組/版
 
 @nonumber
 @label preface-example
-## 青空文庫の「高野聖」を組む
+## 青空文庫の『高野聖』を組む
 
 約束だけでは、信じてもらえないでしょう。
 先に、Golem で組んだ本を一冊見てもらいます。
 
-題材は、泉鏡花の「高野聖」です[note: [code: https://www.aozora.gr.jp/cards/000050/card521.html]（青空文庫の図書カード No.521。底本と、入力と校正をした人は、第[ref-number first-book]章の「[ref-title first-aozora]」に記しています）]。
+題材は、泉鏡花の『高野聖』です[note: [code: https://www.aozora.gr.jp/cards/000050/card521.html]（青空文庫の図書カード No.521。底本と、入力と校正をした人は、第[ref-number first-book]章の「[ref-title first-aozora]」に記しています）]。
 明治 33 年に発表された短編で、著作権の保護期間はとうに満了しています。
 本文は、インターネットの図書館である青空文庫が、ボランティアの入力と校正で公開しているものを使います。
-「高野聖」には二千六百を超える振り仮名が付いていて、Golem の開発では、組みにくい作品の一つとして、テストの素材にしています[note: [code: https://github.com/tett23/golem/blob/main/modules/golem-driver/test/fixtures/README.md]（テストの素材にしている作品と、その出典の一覧）]。
+『高野聖』には二千六百を超える振り仮名が付いていて、Golem の開発では、組みにくい作品の一つとして、テストの素材にしています[note: [code: https://github.com/tett23/golem/blob/main/modules/golem-driver/test/fixtures/README.md]（テストの素材にしている作品と、その出典の一覧）]。
 
 冒頭の数行を、Golem の原稿に書くと次のようになります。
 
@@ -196,7 +196,7 @@ Golem の決定性があるので、原稿を変えていないページは、�
 
 Golem は、MIT License で公開している自由ソフトウェアです。
 MIT License は、ソフトウェアを使う条件（ライセンス）の一つで、著作権とライセンスの表示を残すことを条件に、誰もが無料で使い、改変し、配ることを認めています[note: リポジトリの [code: LICENSE]。[code: https://github.com/tett23/golem/blob/main/LICENSE]]。
-自由ソフトウェアは、このように、使うことだけでなく、プログラムの元になる文書（ソースコード）を読み、改変し、配ることまで誰にでも認めているソフトウェアです。
+自由ソフトウェアは、このように、使うことだけでなく、プログラムの元になる文書（ソースコード）を読み、改変し、配ることまで誰にでも認めているソフトウェアです[note: [code: https://www.gnu.org/philosophy/free-sw.ja.html]（GNU プロジェクトによる自由ソフトウェアの定義）]。
 これに対して、ライセンスで使い方や改変を制限し、ソースコードを公開しないソフトウェアを、プロプライエタリソフトウェアと呼びます。
 InDesign は後者です。
 
@@ -276,7 +276,7 @@ Golem は生まれたばかりで、そうした蓄積はありません。
 
 | 話題 | 説明している章 |
 | --- | --- |
-| Golem を入れて「高野聖」を組む | 第[ref-number first-book]章「[ref-title first-book]」 |
+| Golem を入れて『高野聖』を組む | 第[ref-number first-book]章「[ref-title first-book]」 |
 | ターミナル、テキストのファイル、設定の書き方 | 第[ref-number basics]章「[ref-title basics]」 |
 | 振り仮名、圏点、注、表の書き方 | 第[ref-number markup]章「[ref-title markup]」 |
 | 書名、作者、章の並び | 第[ref-number manifest]章「[ref-title manifest]」 |
