@@ -107,7 +107,7 @@ PDF のリストは項目の印をぶら下げ、入れ子のリストを外の�
 箇条書きの印と番号付きリストの番号の書式は、`[lists]` の `bullets` と `numbers` で入れ子の深さごとに変えられる。
 和欧間や括弧類の前後などの字間の空き（アキ）の量は、`[aki-sets.<名前>]` で文字のクラスの組ごとに定義したアキ量のセットを、段落スタイルの `aki-set` で選んで変えられる（既定は行末約物半角の `gyomatsu-yakumono-hankaku`）。
 原稿の任意の位置には、`3[aki 四分]kg` のように固定の空きを置ける。
-一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ効く（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
+一つの章でだけ使う文字スタイルと段落スタイルは、その章のファイルの先頭に `@style-def paragraph letter indent=2zw` のように書けば、そのファイルにだけ適用される（`style.toml` と同じ名前なら、そのファイルの中でだけ上書きになる）。
 段落スタイルの `regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` のような正規表現スタイルは、段落の中で正規表現に一致した文字に文字スタイルを当てる（InDesign の正規表現スタイル、[docs/adr/0015](./docs/adr/0015-regex-styles.md)）。
 図版のキャプションは組み込みの段落スタイル `caption` の `font` と `size` で組み、本文より小さいキャプションも行の格子を崩さずに置く。
 傍注は組み込みの段落スタイル `sidenote` の `font` と `size` で組み、`[sidenotes]` には傍注欄の幅、版面との間隔、本文側の印だけを書く。
@@ -158,7 +158,7 @@ ADR の参照に限らず、画像のリンク先とリンクの参照定義の�
 ADR は、行頭が `ステータス:` のステータスの行をちょうど一つ持たねばならない。
 無い ADR と二つ以上ある ADR はフックが拒否し、`adr-guard check-status` で一覧にできる。
 監査の記録（`docs/audit/`、`docs/audits/`）と性能計測の記録（`docs/benchmarks/`、`docs/benchmark/`）も、コミット済みのものは変更、削除、移動を拒否する。
-記録には `--allow-status` と `--allow-links` の例外も効かない。
+記録には `--allow-status` と `--allow-links` の例外も適用されない。
 文書の中の ADR の参照（`ADR 0001` の形）には、ADR のファイルへのリンクを付ける。
 リンクのない参照は `adr-guard links` で一覧にでき、`adr-guard links --fix` で直せる。
 ADR はコミット後に変更しない規約であり、変更が必要な場合は新しい連番の ADR を作成する（詳細は [CLAUDE.md](./CLAUDE.md)）。
