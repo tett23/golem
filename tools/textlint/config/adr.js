@@ -15,7 +15,7 @@ module.exports = {
       ...markdownRules["preset-ja-technical-writing"],
       "ja-no-mixed-period": false,
     },
-    ...golemRules([words.machine, words.diagnostic]),
+    ...golemRules([words.machine, words.diagnostic, words.kiku]),
     prh: prh("dev"),
   },
 };
