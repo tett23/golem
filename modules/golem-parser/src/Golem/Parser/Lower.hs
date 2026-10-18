@@ -239,6 +239,8 @@ inline = \case
           [] -> spanEnd sp
      in [Located (mkSpan (spanFile sp) (spanStart sp) end) HardBreak]
   PN NErrorNode sp _ -> [Located sp ErrorInline]
+  -- the source text, read by the evaluation (golem-parser ADR 0011)
+  PN NNumberShorthand sp cs -> [Located sp (NumberShorthand (T.concat [t | PT _ _ t <- cs]))]
   PN _ _ cs -> concatMap inline cs
 
 proofText :: Text -> Text

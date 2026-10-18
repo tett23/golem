@@ -591,17 +591,22 @@ roundedRect x y w h rx ry
 data PTok = PCmd !Char | PNum !Rational
   deriving stock (Eq, Show)
 
--- | The tokens of path data; flags of arcs are read as numbers of one digit.
+{- | The tokens of path data; flags of arcs are read as numbers of one digit,
+so that @1010@ after the angle of an arc is the two flags and 10. The
+command and the count of numbers after it say where the flags are: the
+fourth and fifth of each seven numbers of an arc.
+-}
 pathTokens :: Text -> Maybe [PTok]
-pathTokens t0 = go (T.dropWhile sep t0)
+pathTokens t0 = go ' ' (0 :: Int) (T.dropWhile sep t0)
   where
     sep c = isSpace c || c == ','
-    go t = case T.uncons t of
+    go cmd n t = case T.uncons t of
       Nothing -> Just []
       Just (c, r)
-        | isAlpha c && c `elem` ("MmLlHhVvCcSsQqTtAaZz" :: String) -> (PCmd c :) <$> go (T.dropWhile sep r)
+        | isAlpha c && c `elem` ("MmLlHhVvCcSsQqTtAaZz" :: String) -> (PCmd c :) <$> go c 0 (T.dropWhile sep r)
+        | toLower cmd == 'a' && n `mod` 7 `elem` [3, 4] && c `elem` ("01" :: String) -> (PNum (if c == '1' then 1 else 0) :) <$> go cmd (n + 1) (T.dropWhile sep r)
         | otherwise -> case numberPrefix t of
-            Just (v, r') -> (PNum v :) <$> go (T.dropWhile sep r')
+            Just (v, r') -> (PNum v :) <$> go cmd (n + 1) (T.dropWhile sep r')
             Nothing -> Nothing
 
 -- | Path data as absolute segments; arcs as curves.

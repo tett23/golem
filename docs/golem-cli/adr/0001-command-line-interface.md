@@ -1,6 +1,6 @@
 # ADR 0001: コマンドラインのインターフェース
 
-ステータス: 採択→`golem build` と `golem check` の `--marks` は[golem-pdf ADR 0004](../../golem-pdf/adr/0004-crop-marks-and-bleed.md)、`golem preflight` は[ADR 0006](0006-preflight.md)、`golem inspect` の診断、対象、表示の形は [ADR 0007](0007-inspect-output.md)
+ステータス: 採択→`golem build` と `golem check` の `--marks` は[golem-pdf ADR 0004](../../golem-pdf/adr/0004-crop-marks-and-bleed.md)、`golem preflight` は[ADR 0006](0006-preflight.md)、`golem inspect` の診断、対象、表示の形は [ADR 0007](0007-inspect-output.md)、`golem inspect` のオプションは [docs/adr/0031](../../adr/0031-adr-code-mismatches.md)
 
 ## 文脈
 

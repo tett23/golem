@@ -8,6 +8,7 @@ module Golem.Doc.IR
     Block (..),
     BlockBody (..),
     BreakKind (..),
+    PageControl (..),
     ListItem (..),
     itemNumbers,
     DefGroup (..),
@@ -27,6 +28,9 @@ module Golem.Doc.IR
     InlineNoRuby,
     RubySegment (..),
     NumberStyle (..),
+    VerticalNumbers (..),
+    verticalStyleOf,
+    verticalNumbersNamed,
     RefKind (..),
     IndexEntry (..),
     DeferredExpr (..),
@@ -72,6 +76,15 @@ data BlockBody
   | ChannelOutput ChannelBlock
   | -- | a forced break before what follows (docs/adr ADR 0017)
     ForcedBreak !BreakKind
+  | -- | a manual control of page breaks (docs/adr ADR 0030)
+    PageControl !PageControl
+  deriving stock (Eq, Show)
+
+{- | A manual control of page breaks (docs/adr ADR 0030): no break
+between the blocks around, go on in the next column unless this many
+grid lines are free, or change the grid lines of the current column.
+-}
+data PageControl = NoBreak | NeedLines !Int | AdjustLines !Int
   deriving stock (Eq, Show)
 
 -- | The kind of a forced break (docs/adr ADR 0017).
@@ -207,6 +220,32 @@ data RubySegment = RubySegment
 
 data NumberStyle = StyleKanji | StyleKanjiDigits | StyleTcy
   deriving stock (Eq, Show, Enum, Bounded)
+
+-- | The vertical style of the numbers of a book ([numbers] vertical, golem-parser ADR 0011).
+data VerticalNumbers
+  = VerticalFixed !NumberStyle
+  | -- | two digits or fewer in tate-chu-yoko, the others in the style
+    VerticalAuto !NumberStyle
+  deriving stock (Eq, Show)
+
+-- | The style of a number in vertical text by the default of the book.
+verticalStyleOf :: VerticalNumbers -> Integer -> NumberStyle
+verticalStyleOf v n = case v of
+  VerticalFixed s -> s
+  VerticalAuto s
+    | n >= 0 && n <= 99 -> StyleTcy
+    | otherwise -> s
+
+{- | The value of [numbers] vertical: kanji, kanji-digits, tcy, auto and
+auto-digits; anything else is kanji (style.toml checks the value).
+-}
+verticalNumbersNamed :: Text -> VerticalNumbers
+verticalNumbersNamed = \case
+  "kanji-digits" -> VerticalFixed StyleKanjiDigits
+  "tcy" -> VerticalFixed StyleTcy
+  "auto" -> VerticalAuto StyleKanji
+  "auto-digits" -> VerticalAuto StyleKanjiDigits
+  _ -> VerticalFixed StyleKanji
 
 data RefKind = RefNumber | RefTitle | RefPage
   deriving stock (Eq, Show, Enum, Bounded)

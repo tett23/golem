@@ -154,6 +154,7 @@ S0 の結果から S1 を組み直す [code: evReassemble] も、同じ形の純
 
 図版、取り込むコード、CSV と TSV は、golem-driver の [code: loadAssets] が、各ファイルの AST から [code: assetRefs] で集めたパスだけを読む。
 パスは golem-project の [code: normalizeRelative] で字句の上で正規化し、[code: resolveInRoot] でプロジェクトルートの外を指していないことを確かめる。
+PDF の経路は、図版のファイル（PNG、JPEG、PDF、SVG）を、golem-driver の [code: loadFigures] が S1 の結果の図版のブロックから集めたパスとページの組だけ読む。
 ディレクトリを列挙する [code: listDirectory] は、[code: golem new] が作る先のディレクトリが空かどうかを見る箇所と、LSP がワークスペースを探す箇所にしか現れない。
 どちらも出力の中身を決めない。
 
@@ -423,13 +424,10 @@ $ sh scripts/determinism.sh > /tmp/b.txt
 $ diff /tmp/a.txt /tmp/b.txt
 ```
 
-環境変数で出力が変わらないことも、同じように比べて確かめられる。
+環境変数やロケールで出力が変わらないことは、[code: scripts/env-determinism/check.sh] で確かめる（第[ref-number determinism]章）。
 
 ```sh
-$ golem build --target html
-$ mv build build-a
-$ TZ=Pacific/Kiritimati LANG=C golem build --target html
-$ diff -r build-a build
+$ sh scripts/env-determinism/check.sh --quick
 ```
 
 マシンをまたぐ揺れは、手元では見つからない。

@@ -22,6 +22,7 @@ module Golem.Layout.Paginate
     Flow (..),
     Slotted (..),
     PageOut (..),
+    Unmet (..),
     TableSegment (..),
     RuledBody (..),
     PlacedRule (..),
@@ -29,6 +30,7 @@ module Golem.Layout.Paginate
     headingBlock,
     paginate,
     paginateIn,
+    paginateWithin,
     labelPages,
     markPages,
     resolvePageRefs,
@@ -126,6 +128,12 @@ data Flow
     FSwitchColumns !ColumnSet
   | -- | the end of the index: the next page, in the columns of the page
     FRestoreColumns
+  | -- | no page or column break between the flows around (docs/adr ADR 0030)
+    FNoBreak !SrcSpan
+  | -- | go to the next column unless this many grid lines are free
+    FNeedLines !SrcSpan !Int
+  | -- | change the grid lines of the current column
+    FAdjustLines !SrcSpan !Int
   deriving stock (Eq, Show)
 
 {- | What a ruled block holds (golem-driver ADR 0027): the lines of a
@@ -212,8 +220,21 @@ data PageOut = PageOut
     -- | the set of columns the column belongs to (docs/adr ADR 0025)
     poColumnSet :: !ColumnSet,
     -- | the rules of paragraphs and headings in the column (golem-driver ADR 0027)
-    poRules :: ![PlacedRule]
+    poRules :: ![PlacedRule],
+    -- | the grid lines of the column, changed by 'FAdjustLines' (docs/adr ADR 0030)
+    poLines :: !Int,
+    -- | the manual controls of page breaks not met in the column
+    poUnmet :: ![Unmet]
   }
+  deriving stock (Eq, Show)
+
+-- | A manual control of page breaks that could not be met (docs/adr ADR 0030).
+data Unmet
+  = UnmetNoBreak !SrcSpan
+  | -- | the lines asked for
+    UnmetNeedLines !SrcSpan !Int
+  | -- | the lines the column was changed by
+    UnmetAdjust !SrcSpan !Int
   deriving stock (Eq, Show)
 
 -- | The part of a table on a page, in grid lines.
@@ -250,7 +271,19 @@ data St = St
     sRules :: ![PlacedRule],
     {- | the rule after of the ruled block just placed, waiting for the
     block after it to share its area: id, grid, rule and last grid line
-    -} sJoin :: !(Maybe (Int, RuleGrid, RuleSide, Int))
+    -} sJoin :: !(Maybe (Int, RuleGrid, RuleSide, Int)),
+    -- | the largest need-lines not applied yet (docs/adr ADR 0030)
+    sNeed :: !(Maybe (SrcSpan, Int)),
+    -- | the grid lines the current column is changed by
+    sAdjust :: !Int,
+    -- | the controls not met, for the next column closed
+    sUnmet :: ![Unmet],
+    -- | a no-break waiting for the next flow: page, column and slots before it
+    sNoBreak :: !(Maybe (SrcSpan, Int, Int, Int)),
+    -- | whether any flow has been placed
+    sSeen :: !Bool,
+    -- | whether the last flow was a figure sent on
+    sLastDeferred :: !Bool
   }
 
 {- | Lays the flow out on pages of @columns@ columns of @capacity@ grid
@@ -266,23 +299,102 @@ a page of one column or on the next page otherwise, and
 'FRestoreColumns' goes back to @base@ on the next page.
 -}
 paginateIn :: Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
-paginateIn separatorLines base capacity flows =
-  let st0 = St 1 0 0 0 [] [] [] [] [] [] [] [] [] base {csFirstLine = 0} 0 [] Nothing
+paginateIn = paginateWithin maxBound
+
+{- | 'paginateIn' with the most grid lines a column may have after
+'FAdjustLines' (docs/adr ADR 0030).
+-}
+paginateWithin :: Int -> Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
+paginateWithin maxLines separatorLines base capacity flows =
+  let st0 = St 1 0 0 0 [] [] [] [] [] [] [] [] [] base {csFirstLine = 0} 0 [] Nothing Nothing 0 [] Nothing False False
       final = closePage (go st0 flows)
       done = reverse (sDone final)
-   in if null done then [PageOut 1 0 False [] [] [] [] [] base []] else done
+      -- controls not met in a column that made no output go with the last column
+      leftover = sUnmet final
+   in case reverse done of
+        [] -> [PageOut 1 0 False [] [] [] [] [] base [] capacity leftover]
+        lastPage : earlier -> reverse (lastPage {poUnmet = poUnmet lastPage <> leftover} : earlier)
   where
     columns = csColumns base
     -- a footnote line always fits under the separator and one line of text
     separator = max 1 (min separatorLines (capacity - 2))
     top st = csFirstLine (sSet st)
-    -- breaks left at the end of the book are dropped (docs/adr ADR 0017)
-    go st [] = flushDeferred st {sBreaks = []}
-    go st (f : rest) = go (place (ready f st) f rest) rest
-    -- the breaks written so far apply before anything but another break
-    ready = \case
-      FBreak _ -> id
-      _ -> applyBreaks
+    -- breaks and need-lines left at the end of the book are dropped (docs/adr ADR 0017, 0030)
+    go st [] =
+      let st1 = maybe st (\(sp, _, _, _) -> addUnmet (UnmetNoBreak sp) st) (sNoBreak st)
+       in flushDeferred st1 {sBreaks = [], sNeed = Nothing, sNoBreak = Nothing}
+    go st (f : rest) = case f of
+      -- a no-break with nothing before it, or after a figure sent on, cannot be met
+      FNoBreak sp
+        | not (sSeen st) || sLastDeferred st -> go (addUnmet (UnmetNoBreak sp) st) rest
+        | otherwise -> go st {sNoBreak = Just (sp, sPage st, sColumn st, length (sSlots st))} rest
+      FNeedLines sp n -> go st {sNeed = Just (maybe (sp, n) (\(s0, n0) -> if n > n0 then (sp, n) else (s0, n0)) (sNeed st))} rest
+      FAdjustLines sp k -> go (adjustLines (applyBreaks st) sp k) rest
+      FBreak _ -> go (place st f rest) rest
+      -- the space between paragraphs is not the flow a no-break waits for
+      FSpace _ -> go (place (ready st) f rest) rest
+      _ ->
+        let st1 = checkNoBreak (placeFlow (ready st) f rest)
+            deferred = case f of
+              FFigure i _ _ _ -> any (\case FFigure j _ _ _ -> i == j; _ -> False) (sDeferred st1)
+              _ -> False
+         in go st1 {sSeen = True, sLastDeferred = deferred} rest
+    -- the breaks written so far, then the need-lines, apply before anything but another break
+    ready = applyNeed . applyBreaks
+    addUnmet u st = st {sUnmet = sUnmet st <> [u]}
+    -- the grid lines of the current column (docs/adr ADR 0030)
+    cap st = capacity + sAdjust st
+    applyNeed st = case sNeed st of
+      Nothing -> st
+      Just (sp, n)
+        | n > cap st ->
+            let st1 = addUnmet (UnmetNeedLines sp n) st {sNeed = Nothing}
+             in if isEmpty st1 then st1 else nextColumn st1
+        | free st < n && not (isEmpty st) -> nextColumn st {sNeed = Nothing}
+        | otherwise -> st {sNeed = Nothing}
+    -- at least one line and the lines placed, at most maxLines
+    adjustLines st sp k =
+      let want = sAdjust st + k
+          got = max (max 1 (sUsed st + sNoteLines st) - capacity) (min (maxLines - capacity) want)
+          st1 = st {sAdjust = got}
+       in if got /= want then addUnmet (UnmetAdjust sp got) st1 else st1
+    -- a paragraph before a no-break keeps its last lines with what follows
+    placeFlow st f rest = case (f, keptNeed rest) of
+      (FParagraph ls, Just n) -> placeKept st True ls n
+      (FContinued ls, Just n) -> placeKept st False ls n
+      (FDefTerm ls, Just n) -> placeKept (keep st (length ls + nextNeed rest)) True ls n
+      _ -> place st f rest
+    keptNeed rest = case dropWhile soft rest of
+      FNoBreak _ : more -> Just (nextNeed (dropWhile soft more))
+      _ -> Nothing
+    soft = \case
+      FNeedLines {} -> True
+      FAdjustLines {} -> True
+      FSpace _ -> True
+      _ -> False
+    -- the last two lines, or the whole paragraph of three lines or fewer, go to the next column, not from an empty one
+    placeKept st isStart ls n =
+      let st1 = placeLines st isStart ls
+          len = length ls
+          (front, back) = splitAt (len - (if len <= 3 then len else 2)) ls
+          stA = placeLines st isStart front
+          here = placeLines stA (isStart && null front) back
+          fitsHere = sPage here == sPage stA && sColumn here == sColumn stA && n <= free here
+       in if n <= free st1
+            then st1
+            else
+              if fitsHere
+                then here
+                else if isEmpty stA then st1 else placeLines (nextColumn stA) (isStart && null front) back
+    -- the flow after a no-break must start in the column where the flow before it ended
+    checkNoBreak st = case sNoBreak st of
+      Nothing -> st
+      Just (sp, p, c, n) ->
+        let grew po = poNumber po == p && poColumn po == c && length (poSlots po) > n
+            met
+              | (sPage st, sColumn st) == (p, c) = length (sSlots st) > n
+              | otherwise = any grew (sDone st)
+         in (if met then st else addUnmet (UnmetNoBreak sp) st) {sNoBreak = Nothing}
     applyBreaks st = foldl' applyBreak st {sBreaks = []} (sBreaks st)
     applyBreak st = \case
       BreakPage -> breakPage st
@@ -306,6 +418,10 @@ paginateIn separatorLines base capacity flows =
       (FWrapped _ n _ _ ls : _) -> max n (length ls)
       (FSpace _ : _) -> 0
       (FBreak _ : _) -> 0
+      -- the controls of page breaks are skipped (docs/adr ADR 0030)
+      (FNoBreak _ : rest) -> nextNeed rest
+      (FNeedLines _ _ : rest) -> nextNeed rest
+      (FAdjustLines _ _ : rest) -> nextNeed rest
       (FCode g cap first cont ls : _)
         | null ls -> 0
         | otherwise -> let k = min (length ls) (max 1 first) in cap + codeSpan g (k + (if cont && k < length ls then 1 else 0))
@@ -316,7 +432,7 @@ paginateIn separatorLines base capacity flows =
       -- a ruled block keeps whole, its areas counted inside a column (golem-driver ADR 0027)
       (fr@FRuled {} : _) -> fst (insideBefore fr) + bodySize (frBody fr) + fst (insideAfter fr)
       [] -> 0
-    free st = capacity - sUsed st - sNoteLines st
+    free st = cap st - sUsed st - sNoteLines st
     isEmpty st = sUsed st == top st && null (sNotes st)
     place st f rest = case f of
       FRuled {} -> placeRuled st f rest
@@ -359,6 +475,10 @@ paginateIn separatorLines base capacity flows =
       FSpace n
         | sUsed st == top st -> st
         | otherwise -> st {sUsed = sUsed st + max 0 (min n (free st))}
+      -- the controls of page breaks are handled in go (docs/adr ADR 0030)
+      FNoBreak _ -> st
+      FNeedLines _ _ -> st
+      FAdjustLines _ _ -> st
       where
         need = nextNeed rest
     -- the set starts at line @first@ of the page, above the footnotes already there
@@ -407,7 +527,7 @@ paginateIn separatorLines base capacity flows =
     parityStart p st =
       let st1 = if isEmpty st && sColumn st == 0 then st else nextPage st
        in if p (sPage st1) then st1 else blankPage st1
-    blankPage st = st {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] : sDone st, sPage = sPage st + 1}
+    blankPage st = st {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] capacity [] : sDone st, sPage = sPage st + 1}
     putSlot st n s labels marks = st {sSlots = sSlots st <> [(sUsed st, s)], sUsed = sUsed st + n, sLabels = sLabels st <> labels, sMarks = sMarks st <> marks}
     -- lines of one paragraph; orphans and widows are moved
     placeLines st _ [] = st
@@ -430,14 +550,14 @@ paginateIn separatorLines base capacity flows =
               sep = if nl == 0 && noteLines > 0 then separator else 0
               u' = u + 1
               nl' = nl + noteLines + sep
-              ok = u' + nl' <= capacity && (null acc || last acc)
+              ok = u' + nl' <= cap st && (null acc || last acc)
            in ((u', nl'), acc <> [ok])
     putLine = putLineKeeping 0
     -- a line, its notes in the room left after @reserve@ more grid lines of its block
     putLineKeeping reserve st l =
       let noteLines = sum (map nbLines (lbNotes l))
           sep = if sNoteLines st == 0 && noteLines > 0 then separator else 0
-          room = capacity - sUsed st - 1 - reserve - sNoteLines st - sep
+          room = cap st - sUsed st - 1 - reserve - sNoteLines st - sep
           (shown, pending) = splitNotes room (lbNotes l)
        in st
             { sSlots = sSlots st <> [(sUsed st, SLine (lbId l))],
@@ -525,7 +645,7 @@ paginateIn separatorLines base capacity flows =
                   let (ki, offi) = ruleAfter g a (frNextOverhang fr)
                       notes = sNoteLines st > 0 || not (all (null . lbNotes) (bodyLines (frBody fr)))
                       (k, off)
-                        | lastLine + 1 + ki >= capacity - sNoteLines st = ruleAfterAtEnd g a {rsdOutside = if notes then Nothing else rsdOutside a}
+                        | lastLine + 1 + ki >= cap st - sNoteLines st = ruleAfterAtEnd g a {rsdOutside = if notes then Nothing else rsdOutside a}
                         | otherwise = (ki, offi)
                    in (k, [PlacedRule (frId fr) False (toInteger lastLine * p + h + off)])
             _ -> (0, [])
@@ -541,7 +661,7 @@ paginateIn separatorLines base capacity flows =
           st2 = case frBody fr of
             RuledLines ls -> foldl' (\s' (j, l) -> putLineKeeping (length ls - 1 - j + k2) s' l) st1 (zip [0 ..] ls)
             RuledHeading _ n ls -> putBlock st1 n ls
-       in st2 {sRules = sRules st2 <> after, sUsed = min (sUsed st2 + k2) (max (sUsed st2) (capacity - sNoteLines st2)), sJoin = waiting}
+       in st2 {sRules = sRules st2 <> after, sUsed = min (sUsed st2 + k2) (max (sUsed st2) (cap st2 - sNoteLines st2)), sJoin = waiting}
     {- a block that does not fit an empty column (golem-driver ADR 0027): the
     lines of a paragraph are broken as any paragraph's, the rule before at
     the start of the first part and the rule after the last; a heading
@@ -568,7 +688,7 @@ paginateIn separatorLines base capacity flows =
       Just (aid, g@(RuleGrid p h), a, aLast) ->
         let (ki, offi) = ruleAfter g a 0
             (k, off)
-              | aLast + 1 + ki >= capacity - sNoteLines st = ruleAfterAtEnd g a {rsdOutside = if sNoteLines st > 0 then Nothing else rsdOutside a}
+              | aLast + 1 + ki >= cap st - sNoteLines st = ruleAfterAtEnd g a {rsdOutside = if sNoteLines st > 0 then Nothing else rsdOutside a}
               | otherwise = (ki, offi)
          in st {sRules = sRules st <> [PlacedRule aid False (toInteger aLast * p + h + off)], sUsed = sUsed st + min k (free st), sJoin = Nothing}
     -- a table: rows whole, a page break between rows repeats the header
@@ -593,7 +713,7 @@ paginateIn separatorLines base capacity flows =
       let notes = concatMap lbNotes ls
           noteLines = sum (map nbLines notes)
           sep = if sNoteLines st == 0 && noteLines > 0 then separator else 0
-          room = capacity - sUsed st - n - sNoteLines st - sep
+          room = cap st - sUsed st - n - sNoteLines st - sep
           (shown, pending) = splitNotes room notes
        in st
             { sSlots = sSlots st <> [(sUsed st, SHeading (lbId l0) (length ls))],
@@ -616,7 +736,7 @@ paginateIn separatorLines base capacity flows =
     closePage st =
       if null (sSlots st) && null (sNotes st)
         then st
-        else st {sDone = PageOut (sPage st) (sColumn st) False (sSlots st) (sNotes st) (sLabels st) (sMarks st) (sTables st) (sSet st) (sRules st) : sDone st}
+        else st {sDone = PageOut (sPage st) (sColumn st) False (sSlots st) (sNotes st) (sLabels st) (sMarks st) (sTables st) (sSet st) (sRules st) (cap st) (sUnmet st) : sDone st, sUnmet = []}
     -- the next column of the page, or column 0 of the next page
     nextColumn st = advance (sColumn st + 1 >= csColumns (sSet st)) st
     nextPage = advance True
@@ -624,13 +744,14 @@ paginateIn separatorLines base capacity flows =
       let closed = closePage st
           -- a page left with nothing in any column is blank
           written = any ((== sPage st) . poNumber) (sDone closed)
-          closed' = if toPage && not written then closed {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] : sDone closed} else closed
+          closed' = if toPage && not written then closed {sDone = PageOut (sPage st) 0 True [] [] [] [] [] (sSet st) {csFirstLine = 0} [] capacity [] : sDone closed} else closed
           fresh =
             closed'
               { sPage = if toPage then sPage st + 1 else sPage st,
                 sColumn = if toPage then 0 else sColumn st + 1,
                 sSet = if toPage then (sSet st) {csFirstLine = 0} else sSet st,
                 sReserved = if toPage then 0 else sReserved st,
+                sAdjust = 0,
                 sUsed = if toPage then 0 else top st,
                 sNoteLines = if toPage then 0 else sReserved st,
                 sSlots = [],
@@ -646,7 +767,7 @@ paginateIn separatorLines base capacity flows =
        in placeDeferred withNotes {sDeferred = []} (sDeferred st)
     carryNote st (i, from, len) =
       let sep = if sNoteLines st == 0 then separator else 0
-          room = capacity - sNoteLines st - sep - 1
+          room = cap st - sNoteLines st - sep - 1
           shown = min len room
        in st
             { sNotes = sNotes st <> [(i, from, shown)],

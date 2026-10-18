@@ -75,8 +75,12 @@ abi = fromIntegral Golem.Plugin.abiVersion
 
 -- | The fixed-response plugin with a response and an ABI version.
 fixed :: Int -> ByteString -> IO ByteString
-fixed ver response = do
-  src <- wat "fixed.wat"
+fixed = fixedFrom "fixed.wat"
+
+-- | A fixed-response plugin of a file with a response and an ABI version.
+fixedFrom :: FilePath -> Int -> ByteString -> IO ByteString
+fixedFrom file ver response = do
+  src <- wat file
   let describe = cbor (TList [TList [TString "shout"], TList [TString "upper"]])
       filled =
         T.replace "{{ABI}}" (T.pack (show ver))
@@ -118,6 +122,10 @@ tests =
         p <- load =<< fixed abi (responseWith (inlinesTerm [Text callSpan "SLOT"]))
         (pluginCommands p, pluginFilters p) @?= (["shout"], ["upper"])
         fmap fst (shout p) @?= Right [Text callSpan "SLOT"],
+      -- docs/adr ADR 0031
+      testCase "a plugin without golem_dealloc loads and answers" $ do
+        p <- load =<< fixedFrom "no-dealloc.wat" abi (responseWith (inlinesTerm [Text callSpan "SLOT"]))
+        fmap fst (shout p) @?= Right [Text callSpan "SLOT"],
       testCase "a module that asks for imports is rejected when loading" $ do
         w <- compile =<< wat "imports.wat"
         loadPlugin w >>= (@?= Left (HasImports ["env.now"])) . void,
@@ -145,6 +153,17 @@ tests =
         let blk k = Block callSpan Nothing (ForcedBreak k)
             doc = Document (FileId 1) ([blk k | k <- [minBound .. maxBound]] <> [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])])
         fmap fst (applyFilter p "same" doc) @?= Right doc,
+      testCase "a document with page controls survives a filter unchanged (docs/adr ADR 0030)" $ do
+        p <- load =<< compile =<< wat "identity.wat"
+        let doc = Document (FileId 1) ([Block callSpan Nothing (PageControl c) | c <- [NoBreak, NeedLines 3, AdjustLines (-1)]] <> [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])])
+        fmap fst (applyFilter p "same" doc) @?= Right doc,
+      testCase "a filter that puts a page control below the top gives bad output (docs/adr ADR 0030)" $ do
+        let para = Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])
+            nested = Document (FileId 1) [Block callSpan Nothing (BulletList [ListItem Nothing [Block callSpan Nothing (PageControl NoBreak)]])]
+        p <- load =<< fixed abi (responseWith (documentTerm nested))
+        case applyFilter p "upper" (Document (FileId 1) [para]) of
+          Left (BadOutput _) -> pure ()
+          other -> assertFailure (show other),
       testCase "a filter that puts a forced break below the top gives bad output (docs/adr ADR 0017)" $ do
         let para = Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])
             nested = Document (FileId 1) [Block callSpan Nothing (BulletList [ListItem Nothing [Block callSpan Nothing (ForcedBreak BreakPage)]])]

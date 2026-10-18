@@ -353,6 +353,7 @@ regex-styles = [
 後方参照、[code: \\p{Han}] のような文字体系の指定、長さの決まらない後読み、InDesign の [code: ~] で始まる記号は使えず、エラー（G0315）になります。
 和文の文字の範囲は [code: \[\\x{4E00}-\\x{9FFF}\]] のように符号位置で書きます。
 縦中横と [code: \[number-text ...\]] の数は一字として扱うので、[code: \[0-9\]+] はその中の数字には一致しません。
+[code: ##10##] の数も同じです。
 
 一つの章でだけ使う正規表現スタイルは、[code: @style-def regex] で書けます。
 
@@ -390,7 +391,7 @@ regex-styles = [
 [code: lines] の既定は、本の言語（[code: manifest.toml] の [code: language]）で変わります。
 欧文の本は行送りが文字の大きさに近いので、行を多めに取ります。
 
-| 階層 | [code: size] | [code: lines]（日本語の本） | [code: lines]（ほかの言語の本） |
+| 階層 | [code: size] | [code: lines]（日本語） | [code: lines]（ほかの言語） |
 |:---|:---|:---|:---|
 | 1 | [code: "1.5zw"] | 5 | 6 |
 | 2 | [code: "1.25zw"] | 3 | 4 |
@@ -409,7 +410,7 @@ regex-styles = [
 柱[index reading=はしら: 柱]（ページの余白に置く章の題）とノンブル[index reading=のんぶる: ノンブル]（ページ番号）は、マスターページの [code: \[masters.body\]] で置きます。
 マスターページ[index reading=ますたーぺーじ: マスターページ]は、InDesign の親ページ（InDesign 2022 より前のバージョンではマスターページ）に当たります。
 
-@listing style.toml lines=87-92
+@listing style.toml lines=93-98
 
 [code: position] には、[code: "top-outside"]、[code: "top-center"]、[code: "top-inside"]、[code: "bottom-outside"]、[code: "bottom-center"]、[code: "bottom-inside"] のどれかを書きます。
 [code: top] と [code: bottom] は天と地の余白、[code: outside] は小口の側、[code: inside] はノドの側です。
@@ -585,7 +586,7 @@ HTML と EPUB は、索引を段組みにしません。
 色は、名前を付けて [code: \[color.swatches\]] に定義します。
 InDesign のスウォッチ[index reading=すうぉっち: スウォッチ]に当たります。
 
-@listing style.toml lines=82-85
+@listing style.toml lines=88-91
 
 値は、CMYK の各色の網点の割合（0 から 100）です。
 原稿や文字スタイルからは、この名前で色を指します。
@@ -641,8 +642,10 @@ overhang-onto = "kana"
 - [code: overhang]：読みが親文字より長いときに、隣の文字にかけてよい量です。
 - [code: overhang-onto]：[code: "kana"] なら仮名にだけかけ、[code: "none"] ならかけません。
 
-縦組みの本で [code: \[number-text ...\]] の数をどう組むかは、[code: \[numbers\]] の [code: vertical] で決めます。
+縦組みの本で [code: ##10##] や [code: \[number-text ...\]] の数をどう組むかは、[code: \[numbers\]] の [code: vertical] で決めます。
 [code: "kanji"]（十、百二十）、[code: "kanji-digits"]（一〇、一二〇）、[code: "tcy"]（縦中横の算用数字）から選べます。
+[code: "auto"] は 2 桁までの数を縦中横に、それより大きい数を位取りをする漢数字（百二十）にします。
+[code: "auto-digits"] は 2 桁までの数を縦中横に、それより大きい数を一字ずつの漢数字（二〇二六）にします。
 
 @label aki-sets
 ## 字間の空き

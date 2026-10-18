@@ -1,22 +1,22 @@
-module PdfSpec (qpdfInstalled, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests) where
+module PdfSpec (qpdfInstalled, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests, ligatureTests) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.IORef (newIORef, readIORef)
-import Data.List (isSuffixOf, nub)
+import Data.List (isSuffixOf, nub, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
-import Golem.Driver.Fonts (golemFontProvider)
+import Golem.Driver.Fonts (actualTextOf, golemFontProvider, toUnicodeOf)
 import Golem.Driver.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
-import Golem.Driver.Pdf (CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
+import Golem.Driver.Pdf (ClusterPart (..), CodeInfo (..), FontProvider (..), GlyphFrame (..), LoadedFonts (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
-import Golem.Layout.Look (Kerning (..), Look (..), plainLook)
+import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), plainLook)
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, typeAreaFor)
@@ -26,6 +26,7 @@ import Golem.Project (ProjectFailure (..))
 import Golem.Project.Style (dimToSp, parseDim, parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (needsTool)
+import Numeric (readHex)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, findExecutable)
 import System.FilePath (takeDirectory, (</>))
@@ -1002,6 +1003,12 @@ codeTests =
     testCase "[code: manifest.toml] at the line end is not hyphenated: the whole goes to the next line" $ do
       ts <- listPages horizontalStyle "あいうえおかきくけ[code: manifest.toml]です。\n"
       assertBool (show ts) (any ("manifest.toml" `T.isPrefixOf`) ts),
+    testCase "code that does not fit after the text goes to the next line; the line before it is not left with a few characters" $ do
+      -- 30 characters a line, the first indented: the text and the code need 33
+      let style = horizontal30 "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n"
+          text = T.replicate 20 "あ"
+      ts <- listPages style (text <> " [code: \"severity\":\"notice123\"] と書く。\n")
+      ts @?= [text, "\"severity\":\"notice123\"と書く。"],
     testCase "a path in [code: ...] breaks after a slash, with no hyphen" $ do
       (_, pl) <- layoutOk horizontalStyle "あいうえお[code: modules/golem-driver/src/Golem/Driver/Pdf.hs]\n" []
       assertSlashBreaks pl,
@@ -1265,6 +1272,16 @@ inlineCodeBackgroundTests =
           let (before, _) = BS.breakSubstring "<3042>" c
           assertBool "before the text" (" re f" `BS.isInfixOf` before)
         (cs, runs) -> assertFailure (show (length cs, runs)),
+    testCase "code with padding after it ends its rectangle before code of the same swatch without padding" $ do
+      -- ab: two characters of 5pt and 2.5pt on both sides; cd of the style kw, based on code, without padding
+      let kw = "\n[character-styles.kw]\nbased-on = \"code\"\npadding = \"0zw\"\n"
+      contents <- miniPdf fakeProvider True (horizontalStyle <> cbg <> kw) "[code: ab][style kw: cd]\n" [] >>= pageContents
+      case concatMap filledRects contents of
+        [[x1, _, w1, _], [x2, _, w2, _]] -> do
+          approx w1 15
+          approx w2 10
+          approx x2 (x1 + w1)
+        other -> assertFailure (show other),
     testCase "the space inside the code is painted" $ do
       contents <- miniPdf fakeProvider True (horizontalStyle <> cbg) "[code: a b]\n" [] >>= pageContents
       case concatMap filledRects contents of
@@ -1376,11 +1393,31 @@ codeBlockRubyTests =
       let central = baselineRatio - 1 / 2
       kentenOverhang False (10 * pt) (10 * pt) central 0 @?= 5 * pt
       reachesBackground (17 * pt) (10 * pt) 0 (kentenOverhang False (10 * pt) (10 * pt) central 0) @?= True,
-    testCase "a line with a ruby box: the overhang of its reading" $ do
-      let look = plainLook "body" (10 * pt)
-          w = 10 * pt
-          ruby = Line [Box w (BoxContent "漢|かん" False 0 0 (fromEnum KindRuby) look 0 0 [] 0 0)] 0 w 0 (0, 0) False (0, 0)
-      lineOverhang False (10 * pt) (const 0) ruby @?= rubyOverhang False (10 * pt) (10 * pt) (5 * pt) 0,
+    testCase "a border of 1pt: exactly 3pt, half the leading less half the border, does not reach" $
+      reachesBackground (17 * pt) (10 * pt) pt (3 * pt) @?= False,
+    testCase "vertical: the reading of 10pt type reaches 5pt right of the face" $
+      -- the centre of the reading 5pt + 2.5pt right of the centre line, its right edge 2.5pt further, less half the face
+      rubyOverhang True (10 * pt) (10 * pt) (5 * pt) 0 @?= 5 * pt,
+    testCase "vertical: kenten reaches half the size of its character right of the face" $
+      kentenOverhang True (10 * pt) (10 * pt) 0 0 @?= 5 * pt,
+    testCase "a line with a ruby box: the overhang of its reading, 5.6pt" $
+      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|かん" []]) @?= round (5.6 * 65536 :: Rational),
+    testCase "a group ruby box overhangs as a mono ruby box does" $
+      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindGroupRuby "漢字|かんじ" []]) @?= round (5.6 * 65536 :: Rational),
+    testCase "the largest base character sets the baseline of the reading" $
+      -- 20pt above the base, the reading's top 0.88 × 5pt above that, less the face 8.8pt: 15.6pt
+      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢字|かんじ" [plainLook "body" (10 * pt), plainLook "body" (20 * pt)]])
+        @?= round (15.6 * 65536 :: Rational),
+    testCase "a ruby box without a reading does not overhang" $
+      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|" []]) @?= 0,
+    testCase "a kenten box overhangs only when its look has a mark" $ do
+      let central = const (baselineRatio - 1 / 2)
+          kenten shape = Box (10 * pt) (BoxContent "漢" False 0 0 (fromEnum KindKenten) (plainLook "body" (10 * pt)) {lkKenten = shape} 0 0 [] 0 0)
+      lineOverhang False (10 * pt) central (lineOf [kenten (Just KentenSesame)]) @?= 5 * pt
+      lineOverhang False (10 * pt) central (lineOf [kenten Nothing]) @?= 0,
+    testCase "the overhang of a line is that of its highest box" $
+      lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|かん" [], rubyBox KindRuby "字|じ" [plainLook "body" (20 * pt)]])
+        @?= round (15.6 * 65536 :: Rational),
     testCase "a paragraph with ruby after a code block with a background: one grid line between, the reading off the background" $ do
       let src = "```\na\n```\n\n[ruby: 漢|かん]字。\n"
       (_, pl) <- layoutOk (horizontalStyle <> codeBg) src []
@@ -1426,9 +1463,131 @@ codeBlockRubyTests =
   where
     codeBg = "\n[color.swatches]\ncode-bg = { cmyk = [0, 0, 0, 8] }\n\n[paragraph-styles.code]\nbackground = \"code-bg\"\n"
     plainLine = Line [] 0 0 0 (0, 0) False (0, 0)
+    lineOf items = Line items 0 0 0 (0, 0) False (0, 0)
+    -- a ruby box of the kind set at 10pt, its reading at half that; its base characters at 10pt unless given
+    rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0)
     firstPage pl = take 1 (plPages pl)
     -- the grid line after the code block of the first page
     codeEnd pl = sum (take 1 [s + n | p <- firstPage pl, (s, SCode _ _ n) <- poSlots p])
     firstLineSlot pl = case [s | p <- firstPage pl, (s, SLine _) <- poSlots p] of
       (s : _) -> Just s
       [] -> Nothing
+
+-- ------------------------------------------------------------------ the text layer of ligatures (golem-driver ADR 0030)
+
+-- | The bfchar entries of every ToUnicode CMap of a PDF: code to text.
+toUnicodeEntries :: [BS.ByteString] -> Map.Map Int T.Text
+toUnicodeEntries streams =
+  Map.fromList
+    [ (hexInt (strip c), TE.decodeUtf16BE (unhex (strip t)))
+    | s <- streams,
+      "beginbfchar" `BS.isInfixOf` s,
+      l <- BC.lines s,
+      [c, t] <- [BC.words l],
+      "<" `BS.isPrefixOf` c,
+      "<" `BS.isPrefixOf` t
+    ]
+  where
+    strip = BC.filter (`notElem` ("<>" :: String))
+    unhex b = BS.pack [fromIntegral (hexInt (BS.take 2 (BS.drop i b))) | i <- [0, 2 .. BS.length b - 2]]
+
+-- | A hexadecimal number; 0 when it is not one.
+hexInt :: BS.ByteString -> Int
+hexInt b = case readHex (BC.unpack b) of
+  [(n, "")] -> n
+  _ -> 0
+
+{- | The text of a content stream as a reader that honours ActualText gets
+it: each glyph by the ToUnicode entries, a marked span by its replacement
+(ASCII literals only).
+-}
+extractedText :: Map.Map Int T.Text -> BS.ByteString -> T.Text
+extractedText tu content = go (BC.lines content)
+  where
+    go = \case
+      [] -> ""
+      l : rest
+        | "/Span << /ActualText (" `BS.isPrefixOf` l ->
+            let t = BC.takeWhile (/= ')') (BS.drop (BS.length "/Span << /ActualText (") l)
+             in TE.decodeUtf8 t <> go (drop 1 (dropWhile (/= "EMC") rest))
+        | Just g <- glyphOf l -> Map.findWithDefault "" g tu <> go rest
+        | otherwise -> go rest
+    glyphOf l = case [w | w <- BC.words l, "<" `BS.isPrefixOf` w, ">" `BS.isSuffixOf` w] of
+      [w] | "Tj" `BS.isSuffixOf` l -> Just (hexInt (BC.filter (`notElem` ("<>" :: String)) w))
+      _ -> Nothing
+
+{- | Every list of up to three glyphs drawn from glyph IDs 0 to 2 (0 is
+.notdef), the texts "", "a" and "ffi", and the three parts: 27^3 + 27^2 +
+27 + 1 = 20440 lists, checked exhaustively.
+-}
+allDrawn :: [[(Int, T.Text, ClusterPart)]]
+allDrawn = concatMap (`replicateM` one) [0 .. 3]
+  where
+    one = [(g, t, p) | g <- [0 .. 2], t <- ["", "a", "ffi"], p <- [ClusterWhole, ClusterLead, ClusterRest]]
+
+ligatureTests :: [TestTree]
+ligatureTests =
+  [ testCase "toUnicodeOf, for every short drawing: each glyph once, in order, with the text of its first candidate of the best part" $ do
+      let expected drawn =
+            -- the candidates of a glyph: not glyph 0, not an empty text, not the rest of a cluster;
+            -- of the best part (ClusterWhole before ClusterLead), the first drawn: sortOn is stable
+            let candidates g = [(part, t) | (g', t, part) <- drawn, g' == g, g /= 0, not (T.null t), part /= ClusterRest]
+             in [(g, t) | g <- [0 .. 2], (_, t) : _ <- [sortOn fst (candidates g)]]
+      take 1 [(drawn, toUnicodeOf drawn) | drawn <- allDrawn, toUnicodeOf drawn /= expected drawn] @?= [],
+    testCase "actualTextOf, for every short drawing: the occurrences cut the glyphs in order, a first glyph with all the rest that follow it" $ do
+      let entries = Map.fromList [(1, "a"), (2, "ffi")]
+          -- the parts drawn, cut as the occurrences cut the glyphs
+          cut = \case
+            [] -> const []
+            n : ns -> \xs -> take n xs : cut ns (drop n xs)
+          wellFormed = \case
+            [_] -> True
+            ClusterLead : rest -> all (== ClusterRest) rest
+            _ -> False
+          bad drawn =
+            let occurrences = actualTextOf entries drawn
+                groups = cut (map (length . fst) occurrences) [p | (_, _, p) <- drawn]
+             in concatMap fst occurrences /= [g | (g, _, _) <- drawn]
+                  || not (all wellFormed groups)
+                  -- the rest of a cluster is never cut from the glyph that leads it
+                  || or [True | (ClusterLead : _, ClusterRest : _) <- zip groups (drop 1 groups)]
+      take 1 [(drawn, actualTextOf entries drawn) | drawn <- allDrawn, bad drawn] @?= [],
+    testCase "toUnicodeOf: a ligature maps to its whole cluster" $
+      toUnicodeOf [(7, "ffi", ClusterWhole)] @?= [(7, "ffi")],
+    testCase "toUnicodeOf: the cluster of two glyphs goes to the first only" $
+      toUnicodeOf [(3, "é", ClusterLead), (4, "é", ClusterRest)] @?= [(3, "é")],
+    testCase "toUnicodeOf: a glyph of one-glyph clusters wins over a leading glyph seen before" $
+      toUnicodeOf [(3, "é", ClusterLead), (3, "e", ClusterWhole)] @?= [(3, "e")],
+    testCase "toUnicodeOf: of two candidates of the same part, the first" $
+      toUnicodeOf [(5, "a", ClusterWhole), (5, "b", ClusterWhole)] @?= [(5, "a")],
+    testCase "toUnicodeOf: no glyph 0, no empty text" $
+      toUnicodeOf [(0, "x", ClusterWhole), (6, "", ClusterWhole)] @?= [],
+    testCase "actualTextOf: a cluster the ToUnicode entries do not give back gets its text" $ do
+      actualTextOf (Map.fromList [(3, "e")]) [(3, "é", ClusterLead), (4, "é", ClusterRest)] @?= [([3, 4], Just "é")]
+      actualTextOf (Map.fromList [(3, "é")]) [(3, "é", ClusterLead), (4, "é", ClusterRest)] @?= [([3, 4], Nothing)]
+      actualTextOf (Map.fromList [(7, "ffi")]) [(7, "ffi", ClusterWhole)] @?= [([7], Nothing)]
+      actualTextOf (Map.fromList [(5, "a")]) [(5, "b", ClusterWhole)] @?= [([5], Just "b")],
+    testCase "actualTextOf: the occurrences of one-glyph and two-glyph clusters" $
+      actualTextOf (Map.fromList [(1, "a"), (3, "e")]) [(1, "a", ClusterWhole), (3, "é", ClusterLead), (4, "é", ClusterRest), (1, "a", ClusterWhole)]
+        @?= [([1], Nothing), ([3, 4], Just "é"), ([1], Nothing)],
+    testCase "Source Serif: the text drawn comes back without spaces, a ligature as two or more characters, no ActualText" $ do
+      (_, serif) <- realLatinFonts
+      noto <- BS.readFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
+      let style = replaceIn "characters = 12" "characters = 24" horizontalStyle <> "\n[fonts.body]\nja = \"fonts/noto.otf\"\nlatin = \"fonts/serif.ttf\"\n"
+      pdf <- miniPdf realProvider False style "office fluffy affix final left-hand\n" [("fonts/noto.otf", noto), ("fonts/serif.ttf", serif)]
+      streams <- inflateAll pdf
+      let tu = toUnicodeEntries streams
+          content = BS.concat [s | s <- streams, " Tf" `BS.isInfixOf` s]
+      extractedText tu content @?= "officefluffyaffixfinalleft-hand"
+      assertBool (show tu) (any ((>= 2) . T.length) (Map.elems tu))
+      assertBool "no BDC" (not ("BDC" `BS.isInfixOf` content)),
+    testCase "a glyph standing for two texts: the later one is in ActualText" $ do
+      let shapeXY s t = [(sh {shGlyph = if c == 'y' then fromEnum 'x' else shGlyph sh}) | (sh, c) <- zip (lfShape fakeFonts s t) (T.unpack t)]
+          provider = FontProvider (\_ _ _ _ -> pure (Right fakeFonts {lfShape = shapeXY}))
+      pdf <- miniPdf provider True horizontalStyle "xy\n" []
+      streams <- inflateAll pdf
+      let content = BS.concat [s | s <- streams, " Tf" `BS.isInfixOf` s]
+      length (occurrences "BDC" content) @?= 1
+      assertBool (show content) ("/Span << /ActualText (y) >> BDC" `BS.isInfixOf` content)
+      extractedText (toUnicodeEntries streams) content @?= "xy"
+  ]

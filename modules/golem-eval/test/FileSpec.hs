@@ -15,8 +15,12 @@ import Golem.Parser.SourceSettings
 import Golem.Project.Paths (PathError (..))
 import Golem.Project.Style (LineBreaks (..), LocalStyles (..), RegexStyleDef (..), Style (..), defaultStyle, dimToSp, paraLineBreaks, parseDim, parseStyle)
 import Golem.Syntax
+import Hedgehog (forAll, property, (===))
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Range qualified as Range
 import Test.Tasty
 import Test.Tasty.HUnit
+import Test.Tasty.Hedgehog (testProperty)
 
 ctx :: EvalContext
 ctx =
@@ -201,9 +205,11 @@ tests =
       separatorTests,
       hardBreakTests,
       breakTests,
+      pageControlTests,
       codeTests,
       escapeTests,
       duplicateKeyTests,
+      shorthandTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
@@ -393,9 +399,49 @@ settingsStyle :: Style
 settingsStyle =
   either (error . show) id (parseStyle (FileId 9) "[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n\n[paragraph-styles.quote]\nindent = \"1zw\"\n")
 
-{- | A context whose styles are those of 'settingsStyle'.
-| The same key twice among the keyword arguments (golem-parser ADR 0013).
--}
+-- | The number shorthand ##…## (golem-parser ADR 0011).
+shorthandTests :: TestTree
+shorthandTests =
+  testGroup
+    "the number shorthand ##…## (golem-parser ADR 0011)"
+    [ testProperty "##N## is [number-text N]" $ property $ do
+        n <- forAll (Gen.integral (Range.linear 0 (10 ^ (15 :: Int))))
+        let t = T.pack (show (n :: Integer))
+        paraOf ("##" <> t <> "##\n") === paraOf ("[number-text " <> t <> "]\n")
+        errs ("##" <> t <> "##\n") === [],
+      testCase "##10## is a Number at the whole shorthand" $
+        body "a##10##b\n" @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 1) "a", Number (mkSpan (FileId 1) 1 7) 10 Nothing, Text (mkSpan (FileId 1) 7 8) "b"]],
+      testCase "anything but ASCII digits is G0278 at the whole shorthand" $ do
+        let msg = "## と ## のあいだには算用数字だけを書きます。本文の ## は \\## と書きます"
+        mapM_
+          (\(src, e) -> (src, diags src) @?= (src, [("G0278", msg, 0, e)]))
+          [("##007##\n", 7), ("##1.5##\n", 7), ("##1,000##\n", 9), ("##1 2##\n", 7), ("##12年\n", 7)]
+        body "##1.5##\n" @?= [Paragraph Nothing []],
+      testCase "inside [code: ...] it is text" $ do
+        let c = ctx {ctxCharStyles = Set.fromList ["code", "strong", "note"]}
+        fst (run c "[code: ##1##]\n") @?= [Paragraph Nothing [CharStyle (mkSpan (FileId 1) 0 13) "code" [Text (mkSpan (FileId 1) 7 12) "##1##"]]]
+        snd (run c "[code: ##1.5##]\n") @?= []
+        snd (run c "[code: [strong: ##12年]]\n") @?= []
+        map (fmap stripSpans . paraInlines) (fst (run c "[style code: ##1##]\n")) @?= [Just ["<code>", "##1##"]]
+        map (fmap stripSpans . paraInlines) (fst (run c "[style note: ##1##]\n")) @?= [Just ["<note>", "<number 1 Nothing>"]],
+      testCase "a plugin over code gets the text; a plugin over number-text gets the call" $ do
+        let slotText = PluginCommand (\_ slots sp -> Right ([Text sp (T.concat [t | Text _ t <- concat slots])], []))
+            overCode = noPlugins {phOverrides = Map.fromList [(BCode, slotText)]}
+            overNumber = noPlugins {phOverrides = Map.fromList [(BNumberText, pluginOutput)]}
+        map (fmap stripSpans . paraInlines) (fst (run ctx {ctxPlugins = overCode} "[code: ##1##]\n")) @?= [Just ["##1##"]]
+        map (fmap stripSpans . paraInlines) (fst (run ctx {ctxPlugins = overNumber} "a##1##\n")) @?= [Just ["aPLUGIN"]],
+      testCase "a ruby base takes a number; a reading does not, as [number-text 1]" $ do
+        case body "[ruby: 第##1##|だいいち]\n" of
+          [Paragraph Nothing [Ruby _ _ segs]] -> assertBool (show segs) (or [True | RubySegment b _ <- segs, Number {} <- b])
+          other -> assertFailure (show other)
+        errs "[ruby: 一|##1##]\n" @?= errs "[ruby: 一|[number-text 1]]\n"
+        assertBool "G0243" ("G0243" `elem` errs "[ruby: 一|##1##]\n"),
+      testCase "[tcy: ##10##] is G0240 as [tcy: [number-text 10]]" $ do
+        errs "[tcy: ##10##]\n" @?= errs "[tcy: [number-text 10]]\n"
+        assertBool "G0240" ("G0240" `elem` errs "[tcy: ##10##]\n")
+    ]
+
+-- | The same key twice among the keyword arguments (golem-parser ADR 0013).
 duplicateKeyTests :: TestTree
 duplicateKeyTests =
   testGroup
@@ -427,6 +473,7 @@ duplicateKeyTests =
         codesS "@style-def character x weight=bold weight=normal\n" @?= ["G0252"]
     ]
 
+-- | A context whose styles are those of 'settingsStyle'.
 sctx :: EvalContext
 sctx =
   ctx
@@ -487,6 +534,15 @@ noticeTests =
         map fst4 (notices "@style verse\n\\ \\ gh\n") @?= ["G0264"]
         map (map fst3) (verseTexts "@style verse\n\\  \\ gh\n") @?= [["gh"]]
         map fst4 (notices "@style verse\n\\  \\ gh\n") @?= ["G0264"],
+      testCase "a line of an escaped space alone is G0264 only, not G0279 too" $ do
+        -- "@style verse\na\n" is 15 bytes; the escape of the second line is at 15
+        notices "@style verse\na\n\\ \n" @?= [("G0264", "行頭のエスケープした空白は無視されます。字下げには全角の空白を使います", 15, 16)],
+      testCase "an escape at each end of one line is G0264 and G0279" $
+        -- "@style verse\n" is 13 bytes; "\\ gh\\ ": the escapes at 13 and 17
+        [(c, s) | (c, _, s, _) <- notices "@style verse\n\\ gh\\ \n"] @?= [("G0264", 13), ("G0279", 17)],
+      testCase "G0279 once for each line that ends in an escape" $
+        -- "@style verse\n" is 13 bytes; "ab\\ \n" is 5, so "cd\\ " starts at 18
+        [(c, s) | (c, _, s, _) <- notices "@style verse\nab\\ \ncd\\ \n"] @?= [("G0279", 15), ("G0279", 20)],
       testCase "an escaped space inside a line stays" $ do
         map (map fst3) (verseTexts "@style verse\na\\ b\n") @?= [["a b"]]
         notices "@style verse\na\\ b\n" @?= [],
@@ -867,6 +923,55 @@ breakTests =
       OrderedList items -> any (any hasBreak . itemBlocks) items
       DefList gs -> any (any (any hasBreak) . dgDefs) gs
       FigureBlock f -> any hasBreak (figCaption f)
+      _ -> False
+
+-- | Manual control of page breaks (docs/adr ADR 0030).
+pageControlTests :: TestTree
+pageControlTests =
+  testGroup
+    "manual control of page breaks (docs/adr ADR 0030)"
+    [ testCase "each control is a block" $ do
+        run ctx "a\n\n@no-page-break\n\nb\n" @?= ([Paragraph Nothing [Text (mkSpan (FileId 1) 0 1) "a"], PageControl NoBreak, Paragraph Nothing [Text (mkSpan (FileId 1) 19 20) "b"]], [])
+        run ctx "@need-lines 5\n" @?= ([PageControl (NeedLines 5)], [])
+        run ctx "@page-lines +1\n" @?= ([PageControl (AdjustLines 1)], [])
+        run ctx "@page-lines -2\n" @?= ([PageControl (AdjustLines (-2))], []),
+      testCase "a label skips the control and goes to the block" $ do
+        let (file, _, pds) = parseAst (FileId 1) "@need-lines 3\n@label x\n# h\n"
+            r = evalFile ctx file
+        map diagCode (pds <> erDiagnostics r) @?= []
+        [(blockLabel b, isControl (blockBody b)) | b <- docBlocks (erDocument r)] @?= [(Nothing, True), (Just "x", False)],
+      testCase "wrong arguments are G0270" $
+        mapM_
+          (\src -> assertEqual (T.unpack src) ["G0270"] (errs src))
+          [ "@no-page-break x\n",
+            "@need-lines\n",
+            "@need-lines 0\n",
+            "@need-lines 2.5\n",
+            "@page-lines 1\n",
+            "@page-lines +0\n",
+            "@page-lines +1 +2\n",
+            "@need-lines 3\n  a\n"
+          ],
+      testCase "a control not at the top of the document is G0271 and dropped" $ do
+        let (bs, es) = run ctx "- a\n\n  @no-page-break\n"
+        es @?= ["G0271"]
+        assertBool "no control" (not (any hasControl bs)),
+      testCase "a control and a forced break at the same place are G0272" $ do
+        mapM_
+          (\src -> assertEqual (T.unpack src) ["G0272"] (errs src))
+          [ "@no-page-break\n@page-break\n",
+            "@column-break\n\n@no-page-break\n",
+            "@no-page-break\n@need-lines 2\n@page-break\n"
+          ]
+        errs "@no-page-break\n\na\n\n@page-break\n" @?= []
+    ]
+  where
+    isControl = \case
+      PageControl _ -> True
+      _ -> False
+    hasControl = \case
+      PageControl _ -> True
+      BulletList items -> any (any (hasControl . blockBody) . itemBlocks) items
       _ -> False
 
 -- | The code of a code block.

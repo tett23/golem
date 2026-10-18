@@ -74,7 +74,7 @@ entry l fid anchor title = TocEntry l Nothing [Text (mkSpan fid 0 1) title] anch
 
 htmlConfig :: HtmlConfig
 htmlConfig =
-  HtmlConfig "書名" "ja" False "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False "center" "space-between" "center" Set.empty Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty
+  HtmlConfig "書名" "ja" False "kanji" Map.empty Map.empty Map.empty Map.empty Map.empty noFace noFace Map.empty False "center" "space-between" "center" Set.empty False Nothing (HtmlCode Nothing Nothing Nothing "0.5em" Nothing "0.25pt" False Nothing Nothing Nothing Nothing Map.empty) Map.empty
 
 -- | The archive writeEpub writes for a book of two empty files.
 written :: IO Archive
@@ -138,7 +138,13 @@ tests =
                   "<item id=\"item5\" href=\"fonts/x.otf\" media-type=\"font/otf\"/>"
                 ],
         testCase "metadata is escaped for XML" $
-          linesWith "<dc:title" (opf cfg0 {epTitle = "A & B <C>"}) @?= ["<dc:title id=\"title\">A &amp; B &lt;C&gt;</dc:title>"]
+          linesWith "<dc:title" (opf cfg0 {epTitle = "A & B <C>"}) @?= ["<dc:title id=\"title\">A &amp; B &lt;C&gt;</dc:title>"],
+        testCase "the names and readings of creators and contributors are escaped for XML (docs/adr ADR 0033)" $
+          let cfg = cfg0 {epCreators = [EpubCreator "A & B" (Just "<a>") "aut"], epContributors = [EpubCreator "C <D>" (Just "e & f") "edt"]}
+           in (linesWith "<dc:creator" (opf cfg) <> linesWith "<dc:contributor" (opf cfg), linesWith "<meta refines=\"#creator1\" property=\"file-as\"" (opf cfg) <> linesWith "<meta refines=\"#contributor1\" property=\"file-as\"" (opf cfg))
+                @?= ( ["<dc:creator id=\"creator1\">A &amp; B</dc:creator>", "<dc:contributor id=\"contributor1\">C &lt;D&gt;</dc:contributor>"],
+                      ["<meta refines=\"#creator1\" property=\"file-as\">&lt;a&gt;</meta>", "<meta refines=\"#contributor1\" property=\"file-as\">e &amp; f</meta>"]
+                    )
       ],
     testGroup
       "navigation document"

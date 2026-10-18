@@ -20,7 +20,7 @@ v1 の LSP は次の機能を持つ。[note: [code: https://github.com/tett23/go
 | 定義への移動 | [code: @import] のパス、名前空間を通した変数、ラベル、ファイルの中で定義したスタイル |
 | 参照の検索 | 変数とラベル。ラベルはファイルをまたいで検索する |
 | 名前の変更 | ラベルの名前を、定義とすべての参照で書き換える。既存のラベルと重なる名前は拒否する |
-| 補完 | 組み込みのコマンドの名前、ラベル、[code: @import] のパス、スウォッチ、スタイルの名前、[code: @manifest] と [code: @style-def] のキーと値 |
+| 補完 | 組み込みとプラグインのコマンドの名前、ラベル、[code: @import] のパス、スウォッチ、スタイルの名前、[code: @manifest] と [code: @style-def] のキーと値 |
 | ホバー | [code: \[= ...\]] の評価の結果 |
 | 整形 | [code: golem fmt] と同じ整形 |
 | アウトライン | 見出しの階層 |
@@ -98,6 +98,16 @@ LSP は最後の変更から一定の時間を待ってから、変わったフ�
 見出し、ラベル、import される変数が変わったときは、影響を受けるほかのファイルも評価し直す。
 それ以外の編集でも、すべてのファイルの S0 の結果から S1 を毎回組み直し、古い S1 の diagnostics を捨てる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-lsp/adr/0004-stale-s1-diagnostics.md]（golem-lsp ADR 0004「編集のたびに S1 を組み直し、古い S1 の診断を残さない」）]
 存在しないラベルへの参照を足したときの G0403 や、二つめの [code: @toc] の G0402 が、全体を評価し直さずにすぐ出る。
+
+[code: @table] が読む表のファイル（CSV と TSV）は、エディタの外で書き換えられることが多い。
+表計算のソフトから書き出し直すのが普通だからである。
+クライアントが [code: workspace/didChangeWatchedFiles] の動的な登録を申し出れば、LSP は最後の評価で読んだ表のファイルを、プロジェクトのルートを基準にした [code: RelativePattern] で監視に登録する。[index reading="didchangewatchedfiles": didChangeWatchedFiles]
+登録し直すのは、参照する表のファイルの集合が変わったときだけである。
+監視しているファイルの変更が通知されると、プロジェクトを評価し直して diagnostics を公開し直す。
+エディタで開いている表のファイルはエディタの内容を読み、その通知は無視する。
+動的な登録を申し出ないクライアントでは監視せず、原稿を編集したときに評価し直す。
+図版と [code: @listing] のファイルは監視しない。
+表のファイルの誤り（G0282 など）は、原稿ではなく、位置の指す表のファイルに載せる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0004-tsv-tables.md]（golem-eval ADR 0004「TSV の表、表のファイルの誤りの位置、表の列の揃え」）]
 
 ## diagnostics の載せ方
 

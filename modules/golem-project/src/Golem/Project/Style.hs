@@ -1477,7 +1477,7 @@ instance FromValue Swatch where
 newtype Numbers = Numbers (Maybe Text)
 
 instance FromValue Numbers where
-  fromValue = parseTableFromValue (Numbers <$> enumKey "vertical" ["kanji", "kanji-digits", "tcy"])
+  fromValue = parseTableFromValue (Numbers <$> enumKey "vertical" ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"])
 
 -- | The retired [emphasis] (docs/adr ADR 0005): an error that names its replacement.
 data EmphasisV

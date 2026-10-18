@@ -1,6 +1,6 @@
 # ADR 0006: CIDSystemInfo と異体字の選択
 
-ステータス: 採択
+ステータス: 採択→ToUnicode で表せないクラスタに ActualText を使うことは [golem-driver ADR 0030](../../golem-driver/adr/0030-ligature-text-layer.md) で加えた
 
 ## 文脈
 

@@ -71,6 +71,8 @@ data HtmlConfig = HtmlConfig
     hcRubyBaseSpacing :: !Text,
     -- | the kinds of forced break the book uses (docs/adr ADR 0017)
     hcBreakKinds :: !(Set BreakKind),
+    -- | whether the book uses @no-page-break (docs/adr ADR 0030)
+    hcNoBreak :: !Bool,
     -- | the markers of [lists], when the book has it (golem-driver ADR 0013)
     hcLists :: !(Maybe HtmlLists),
     -- | the paragraph style code: pre (golem-driver ADR 0017)
@@ -347,15 +349,19 @@ idAttr = maybe "" (\l -> " id=\"" <> escapeXml l <> "\"")
 {- | The blocks at the top of a document: the block after forced breaks
 carries the kind of the last of them on its outermost element; a break
 at the end writes nothing, and a column break nothing (docs/adr ADR 0017).
+The block after a no-break carries avoid; need-lines and page-lines write
+nothing (docs/adr ADR 0030).
 -}
 topBlocks :: Ctx -> [Block] -> Text
 topBlocks c = go Nothing
   where
     go _ [] = ""
-    go _ (Block _ _ (ForcedBreak k) : rest) = go (Just k) rest
+    go _ (Block _ _ (ForcedBreak k) : rest) = go (breakName k) rest
+    go _ (Block _ _ (PageControl NoBreak) : rest) = go (Just "avoid") rest
+    go pending (Block _ _ (PageControl _) : rest) = go pending rest
     go pending (b : rest) = withBreak pending (block c b) <> go Nothing rest
     -- the attribute goes at the end of the first start tag
-    withBreak pending html = case pending >>= breakName of
+    withBreak pending html = case pending of
       Nothing -> html
       Just name ->
         let (open, after) = T.breakOn ">" html
@@ -450,6 +456,7 @@ block c (Block sp lbl body) = case body of
         ]
       <> "</ol>\n"
   ForcedBreak _ -> ""
+  PageControl _ -> ""
   where
     -- a URL of http or https is a link; another URL is not (golem-doc ADR 0005)
     entryPart = \case
@@ -543,7 +550,7 @@ inline c = \case
   Tcy _ t -> "<span class=\"tcy\">" <> escapeXml t <> "</span>"
   Number _ n st
     | not (hcVertical (cCfg c)) -> T.pack (show n)
-    | otherwise -> case fromMaybe (styleOf (hcNumberDefault (cCfg c))) st of
+    | otherwise -> case fromMaybe (verticalStyleOf (verticalNumbersNamed (hcNumberDefault (cCfg c))) n) st of
         StyleKanji -> kanji n
         StyleKanjiDigits -> kanjiDigits n
         StyleTcy -> "<span class=\"tcy\">" <> T.pack (show n) <> "</span>"
@@ -563,11 +570,6 @@ inline c = \case
   LineBreak _ -> "<br/>"
   -- an empty span with a margin; word joiners keep the line from breaking around it (docs/adr ADR 0019)
   Aki _ a -> "&#x2060;<span class=\"aki\" style=\"margin-inline-start: " <> akiLength a <> "\"></span>&#x2060;"
-  where
-    styleOf = \case
-      "kanji-digits" -> StyleKanjiDigits
-      "tcy" -> StyleTcy
-      _ -> StyleKanji
 
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
@@ -800,9 +802,11 @@ listRules cfg book ls =
     largest k = maximum (1 : [lsiNumber s | s <- listSites (concat [bs | Document _ bs <- bookDocs book]), min (lsiDepth s) count == k])
     system k st = case st of
       NsBook
-        | hcVertical cfg -> case hcNumberDefault cfg of
-            "kanji-digits" -> extends "cjk-decimal"
-            "tcy" -> extends "decimal"
+        -- auto and auto-digits name the style of the numbers above 99; a counter style cannot change by the number
+        | hcVertical cfg -> case verticalNumbersNamed (hcNumberDefault cfg) of
+            VerticalFixed StyleKanjiDigits -> extends "cjk-decimal"
+            VerticalAuto StyleKanjiDigits -> extends "cjk-decimal"
+            VerticalFixed StyleTcy -> extends "decimal"
             _ -> extends "japanese-informal"
         | otherwise -> extends "decimal"
       NsArabic -> extends "decimal"
@@ -896,6 +900,8 @@ css cfg book =
          | k <- Set.toAscList (hcBreakKinds cfg),
            Just name <- [breakName k]
          ]
+      -- avoiding a break, only when the book uses @no-page-break (docs/adr ADR 0030)
+      <> ["[data-break-before=\"avoid\"] { page-break-before: avoid; break-before: avoid; }" | hcNoBreak cfg]
       -- the styles of the files, last, under the class of their pages (docs/adr ADR 0014)
       <> concat [localRules n l | (n, fid) <- zip [1 :: Int ..] docs, Just l <- [Map.lookup fid (hcLocalStyles cfg)]]
   where

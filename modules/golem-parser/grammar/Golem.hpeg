@@ -59,6 +59,8 @@
 %token Rest
 %token SkippedArgs
 %token SkippedExpr
+%token NumberMark
+%token NumberBody
 
 %inline Sp
 %inline ES
@@ -200,7 +202,7 @@ ParaEnd <- Nl (BlankLine / !.) { () }
 
 # Characters that start a block at the beginning of a line.
 BlockStart :: ()
-BlockStart <- '#' { () }
+BlockStart <- !NumberOpen '#' { () }
             / '-' [ \t] { () }
             / '+' [ \t] { () }
             / '=' [ \t:] { () }
@@ -224,6 +226,7 @@ HeadInline <- Escape { () }
             / InlineCommand(ind) { () }
             / BadBracket { () }
             / BadBreak { () }
+            / NumberShorthand { () }
             / Text { () }
 
 HashMark :: ()
@@ -246,11 +249,29 @@ Inline <- Escape { () }
         / InlineCommand(ind) { () }
         / BadBracket { () }
         / BadBreak { () }
+        / NumberShorthand { () }
         / Text { () }
         / LineContinuation(ind) { () }
 
 Text :: ()
-Text <- (![\[\\\n] !'%%' .)+ { () }
+Text <- (![\[\\\n] !'%%' !NumberOpen .)+ { () }
+
+# The number shorthand ##N## (golem-parser ADR 0011): ## followed by an
+# ASCII digit opens it wherever text may be written. The grammar reads up
+# to the closing ## or to a character that cannot be inside; the
+# evaluation checks the contents. It never fails after the open, so it
+# needs no label.
+NumberOpen :: ()
+NumberOpen <- '##' [0-9] { () }
+
+NumberShorthand :: ()
+NumberShorthand <- &NumberOpen NumberMark NumberBody NumberMark? { () }
+
+NumberMark :: ()
+NumberMark <- '##' { () }
+
+NumberBody :: ()
+NumberBody <- (![#\n\[\]|\\] !'%%' .)+ { () }
 
 Escape :: ()
 Escape <- '\\' ![\n] . { () }
@@ -353,11 +374,12 @@ SlotInline <- Escape { () }
             / InlineCommand(ind) { () }
             / BadBracket { () }
             / BadBreak { () }
+            / NumberShorthand { () }
             / SlotText { () }
             / LineContinuation(ind) { () }
 
 SlotText :: ()
-SlotText <- (![\[\\\n|\]] !'%%' .)+ { () }
+SlotText <- (![\[\\\n|\]] !'%%' !NumberOpen .)+ { () }
 
 # ------------------------------------------------------------ expressions
 
@@ -590,10 +612,11 @@ CellInline <- Escape { () }
             / InlineCommand(0) { () }
             / BadBracket { () }
             / BadBreak { () }
+            / NumberShorthand { () }
             / CellText { () }
 
 CellText :: ()
-CellText <- (![\[\\\n|] !'%%' .)+ { () }
+CellText <- (![\[\\\n|] !'%%' !NumberOpen .)+ { () }
 
 TableDelimiter(ind :: Int) :: ()
 TableDelimiter <- Ind(ind) (Pipe Delim)+ Pipe Sp { () }

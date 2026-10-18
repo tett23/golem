@@ -64,7 +64,9 @@ overrides = ["ruby"]
 ```
 
 書いていない名前は置き換わりません。
-目次、注、索引、相互参照のように、本の構造に関わるコマンドは置き換えられません。
+置き換えられるのは、見た目に関わる十のコマンド（[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text]）です。
+注、傍注、索引、引用、相互参照のように本の構造に関わるコマンドと、[code: aki] は置き換えられません。
+[code: overrides] にこれらの名前を書くと、エラー（G0608）になります。
 
 ## フィルタを適用する
 

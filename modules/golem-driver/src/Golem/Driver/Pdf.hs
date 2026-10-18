@@ -13,6 +13,7 @@ module Golem.Driver.Pdf
   ( FontProvider (..),
     LoadedFonts (..),
     Shaped (..),
+    ClusterPart (..),
     GlyphFrame (..),
     offsetOrigin,
     Shaping (..),
@@ -102,6 +103,7 @@ import Golem.Doc.Numerals (circled, formatNumber)
 import Golem.Driver.Overhang (kentenAcross, lineOverhang, reachesBackground, rubyAcross)
 import Golem.Driver.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
 import Golem.Driver.Svg (svgDrawing, unsupportedMessage)
+import Golem.Driver.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import Golem.Driver.Version (golemVersion)
 import Golem.Html (codeTokens)
 import Golem.Layout.Aki (AkiSet, resolveAkiSet)
@@ -187,7 +189,9 @@ data Shaped = Shaped
     shCluster :: !Int,
     {- | the GPOS offset (x, y) in em, in the coordinates of the direction the
     glyph is drawn in, y up (golem-driver ADR 0020)
-    -} shOffset :: !(Rational, Rational)
+    -} shOffset :: !(Rational, Rational),
+    -- | which glyph of its cluster the glyph is, for ToUnicode (golem-driver ADR 0030)
+    shPart :: !ClusterPart
   }
   deriving stock (Eq, Show)
 
@@ -938,7 +942,7 @@ layoutFigures inp geom fonts figures = do
   let capacity = length (pgLineGrid geom)
       round' assumed = do
         built <- buildFlow inp geom fonts figures assumed
-        pure (if null (bErrors built) then Right (built, paginateIn (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
+        pure (if null (bErrors built) then Right (built, paginateWithin (adjustLimit geom) (pgNoteSeparator geom) (pageColumnSet (piStyle inp) geom) capacity (bFlow built)) else Left (bErrors built))
       labels = labelSpans (piBook inp)
       labelSpan l = Map.findWithDefault (mkSpan (piStyleFile inp) 0 0) l labels
   result <- fixpoint labelSpan (\sp -> Map.findWithDefault "" sp terms) round'
@@ -955,8 +959,45 @@ layoutFigures inp geom fonts figures = do
           env = composeEnv (piStyle inp) geom fonts (Assumed Map.empty Map.empty) (bodyLook (piStyle inp) (pgFontSize geom))
           tocPages = Map.fromList [(lid, tocPage tg e (pageNumberLine env n)) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
        in case concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages) (bLineSpans built) (bRules built))
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings pages) (bLineSpans built) (bRules built))
             ds -> Left ds
+
+{- | The most grid lines a column may have with @page-lines (docs/adr ADR
+0030): the grid goes on past the type area in the direction of the
+lines, as long as the face of a line stays inside the trimmed page.
+-}
+adjustLimit :: PageGeometry -> Int
+adjustLimit geom =
+  let n = length (pgLineGrid geom)
+      fs = pgFontSize geom
+      at = gridLine geom
+      areas = [pgTypeArea geom, pgTypeAreaEven geom]
+      inside k
+        | pgVertical geom = all (\r -> rectX r + rectW r - at k - fs `div` 2 >= 0) areas
+        | otherwise = all (\r -> rectY r + rectH r - at k - (fs - round (toRational fs * baselineRatio)) >= 0) areas
+   in n + length (takeWhile inside [n .. n + 999])
+
+{- | The position of grid line @k@ from the type area, past its last line
+too (docs/adr ADR 0030).
+-}
+gridLine :: PageGeometry -> Int -> Sp
+gridLine geom k = case (drop k grid, grid) of
+  (g : _, _) -> g
+  (_, g0 : _) -> g0 + toInteger k * pgLinePitch geom
+  _ -> toInteger k * pgLinePitch geom
+  where
+    grid = pgLineGrid geom
+
+-- | G0737: the manual controls of page breaks not met (docs/adr ADR 0030).
+unmetWarnings :: [PageOut] -> [Diagnostic]
+unmetWarnings pages =
+  [ case u of
+      UnmetNoBreak sp -> diagnostic "G0737" Warning sp "ここで改ページを止められませんでした"
+      UnmetNeedLines sp k -> diagnostic "G0737" Warning sp ("@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (poLines p)) <> " を超えます")
+      UnmetAdjust sp k -> diagnostic "G0737" Warning sp ("@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")
+  | p <- pages,
+    u <- poUnmet p
+  ]
 
 {- | G0746 (golem-driver ADR 0027): a ruled paragraph broken between
 columns, or a ruled heading that lost a rule, because an empty column
@@ -1456,10 +1497,7 @@ composeEnv style geom fonts assumed look =
           ceProtrusion = compProtrusion comp,
           ceExplicitHyphenPenalty = compExplicitHyphenPenalty comp,
           ceRuby = rubyStyleOf style (lkSize look),
-          ceVerticalNumbers = case stNumbersVertical style of
-            "kanji-digits" -> Just StyleKanjiDigits
-            "tcy" -> Just StyleTcy
-            _ -> Just StyleKanji,
+          ceVerticalNumbers = verticalNumbersNamed (stNumbersVertical style),
           cePageOf = (`Map.lookup` asLabels assumed),
           ceSidenoteMarker = case snMarker <$> stSidenotes style of
             Just "symbol" -> MarkerSymbol
@@ -1571,6 +1609,8 @@ data UnitKind
     UIndexEntry !Sp
   | -- | the start (with the set) and the end of the columns of the index
     UColumns !(Maybe ColumnSet)
+  | -- | a manual control of page breaks (docs/adr ADR 0030)
+    UPageControl !PageControl
 
 {- | The look and the indent of a paragraph style (docs/adr ADR 0005, 0006):
 its role, its size, and its kerning, tracking, proportional metrics and
@@ -1661,11 +1701,15 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
     (docs/adr ADR 0005); in a list item, paragraphs are not indented by
     their style (docs/adr ADR 0006) but by the lists (golem-driver ADR 0013) -}
     blocks style ctx n bs =
-      let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx prev b <>) <$> block style ctx k b) n (zip (Nothing : map Just bs) bs)
+      let (n', uss) = mapAccumL (\k (prev, b) -> (gapBefore style ctx prev b <>) <$> block style ctx k b) n (zip (scanl before Nothing bs) bs)
        in (n', concat uss)
     gapBefore style ctx (Just (Block _ _ (Paragraph s1 _))) (Block sp _ (Paragraph s2 _))
       | s1 == s2, Just g <- paraStyle style s2 >>= psSpaceBetween, g > 0 = [Unit (UGap g) Nothing [] sp (bodyLook style fs) style ctx Nothing Nothing (Nothing, Nothing)]
     gapBefore _ _ _ _ = []
+    -- the block before, past the controls of page breaks (docs/adr ADR 0030)
+    before prev b = case blockBody b of
+      PageControl _ -> prev
+      _ -> Just b
     block style ctx n (Block sp lbl body) =
       let unit kind l is face = Unit kind l is sp face style ctx Nothing Nothing (Nothing, Nothing)
           plainUnit kind l is = unit kind l is (bodyLook style fs)
@@ -1709,6 +1753,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
                     Just set -> (n, [plainUnit (UColumns (Just set)) Nothing []] <> entries (UIndexEntry (csMeasure set)) <> [plainUnit (UColumns Nothing) Nothing []])
             ChannelOutput BibliographyOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bookCitations book)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
+            PageControl c -> (n, [plainUnit (UPageControl c) Nothing []])
     {- the items of the list numbered n: their units are inside it, the first
     unit of an item that starts with a paragraph carries the marker -}
     list style ctx n items =
@@ -1923,6 +1968,7 @@ buildFlow inp geom fonts images assumed = do
       isGap u = case uKind u of
         UGap _ -> True
         UBreak _ -> True
+        UPageControl _ -> True
         -- code blocks are set by codeBlocks (golem-driver ADR 0017)
         UCode {} -> True
         UColumns _ -> True
@@ -2111,6 +2157,12 @@ buildFlow inp geom fonts images assumed = do
                     info = cbInfo cb
                  in (nextId + length ids, flows <> [FCode (ciGeometry info) (ciCaptionSpan info) (cbFirstRows cb) (isJust (ciContinued info)) boxes], Map.union lineAcc set, figAcc, headAcc, errs)
             UBreak k -> (nextId, flows <> [FBreak k], lineAcc, figAcc, headAcc, errs)
+            UPageControl c ->
+              let flow = case c of
+                    NoBreak -> FNoBreak (uSpan u)
+                    NeedLines k -> FNeedLines (uSpan u) k
+                    AdjustLines k -> FAdjustLines (uSpan u) k
+               in (nextId, flows <> [flow], lineAcc, figAcc, headAcc, errs)
             UColumns set -> (nextId, flows <> [maybe FRestoreColumns FSwitchColumns set], lineAcc, figAcc, headAcc, errs)
             _ ->
               let c = singles Map.! i
@@ -2527,7 +2579,9 @@ data GlyphUse = GlyphUse
     guFace :: !Int,
     guSize :: !Sp,
     guColor :: !(Maybe Text),
-    guRole :: !Text
+    guRole :: !Text,
+    -- | which glyph of its cluster the glyph is (golem-driver ADR 0030)
+    guPart :: !ClusterPart
   }
 
 {- | A line drawn, for the view of golem preflight (golem-cli ADR 0006): what
@@ -2570,9 +2624,7 @@ writeDocumentView inp geom fonts layout intent =
       heads = runningHeads inp geom layout
       grid = pgLineGrid geom
       baseSet = pageColumnSet (piStyle inp) geom
-      gridAt sl = case drop sl grid of
-        (g : _) -> g
-        [] -> 0
+      gridAt = gridLine geom
       -- font index × direction: even refs horizontal, odd refs vertical
       ref ix v = P.FontRef (2 * ix + (if v then 1 else 0))
       toSp size a = round (a * toRational size) :: Integer
@@ -2611,15 +2663,37 @@ writeDocumentView inp geom fonts layout intent =
               | otherwise = 0
             gs =
               concat
-                [ [(ix, g, a, t, (synSlant s, strokeOf latin s), tu, extra, o) | (Shaped ix g a t tu _ o, extra) <- zip shaped (trackingAfter r shaped)]
+                [ [(ix, g, a, t, (synSlant s, strokeOf latin s), tu, extra, o, part) | (Shaped ix g a t tu _ o part, extra) <- zip shaped (trackingAfter r shaped)]
                 | (role, r, latin) <- runsOf look txt,
                   let s = syntheticOf look latin
                       shaped = lfShape fonts (shapingFor role r) r
                 ]
-            advs = scanl (+) 0 [toSp size a + extra | (_, _, a, _, _, _, extra, _) <- gs]
+            advs = scanl (+) 0 [toSp size a + extra | (_, _, a, _, _, _, extra, _, _) <- gs]
             -- a glyph turned in vertical text: drawn with the horizontal font (golem-driver ADR 0015)
-            placed = [(ix, g, t, sb, tu && v && not rotated, off, o) | ((ix, g, _, t, sb, tu, _, o), off) <- zip gs advs]
-            byFont = Map.fromListWith (flip (<>)) [((ix, sb, tu), [(g, t, off, o)]) | (ix, g, t, sb, tu, off, o) <- placed]
+            placed = [(ix, g, t, sb, tu && v && not rotated, off, o, part) | ((ix, g, _, t, sb, tu, _, o, part), off) <- zip gs advs]
+            byFont seg = Map.fromListWith (flip (<>)) [((ix, sb, tu), [(g, t, off, o)]) | (ix, g, t, sb, tu, off, o, _) <- seg]
+            marksOf seg = [mark k xs | (k, xs) <- Map.toList (byFont seg)]
+            refOf ix tu = ref ix (v && not rotated && not tu)
+            {- the occurrences of the clusters drawn, each with its text when the
+            ToUnicode entries of its font do not give it back: such a cluster
+            is drawn alone inside ActualText (golem-driver ADR 0030) -}
+            occurrences = \case
+              [] -> []
+              x@(_, _, _, _, _, _, _, ClusterLead) : rest ->
+                let (more, rest') = span (\(_, _, _, _, _, _, _, part) -> part == ClusterRest) rest
+                 in (x : more) : occurrences rest'
+              x : rest -> [x] : occurrences rest
+            replacement occ = case occ of
+              (ix, _, _, _, tu, _, _, _) : _
+                | [(_, Just t)] <- actualTextOf (Map.findWithDefault Map.empty (refOf ix tu) textEntries) [(g, t', part) | (_, g, t', _, _, _, _, part) <- occ] -> Just t
+              _ -> Nothing
+            segments = \case
+              [] -> []
+              occ : rest
+                | Just t <- replacement occ -> [P.ActualText t (marksOf occ)] <> segments rest
+                | otherwise ->
+                    let (plain, rest') = break (isJust . replacement) rest
+                     in marksOf (concat (occ : plain)) <> segments rest'
             -- each glyph moved by its GPOS offset, by how it is drawn (golem-driver ADR 0020)
             frameOf turned
               | v && (rotated || turned) = FrameTurned
@@ -2640,7 +2714,7 @@ writeDocumentView inp geom fonts layout intent =
               | scale /= 0 = P.ScaledGlyphRun (ref ix False) size (1000 + scale) [(code ix g, gx, gy) | (g, _, off, o) <- xs, let (gx, gy) = moved turned o (x0 + off, y0)]
               | otherwise = P.GlyphRun (ref ix False) size [(code ix g, gx, gy) | (g, _, off, o) <- xs, let (gx, gy) = moved turned o (x0 + off, y0)]
             code = lfCode fonts
-         in ([mark k xs | (k, xs) <- Map.toList byFont], [(ref ix (v && not rotated && not tu), g, t) | (ix, g, t, _, tu, _, _) <- placed])
+         in (segments (occurrences placed), [(refOf ix tu, g, t, part) | (ix, g, t, _, tu, _, _, part) <- placed])
       {- the mark of a kenten shape in a role at a size, the centre of the
       ink box of its glyph at a point (golem-driver ADR 0019): horizontal,
       in the vertical font (its glyph origin at (1/2, 0.88) em of the
@@ -2650,11 +2724,19 @@ writeDocumentView inp geom fonts layout intent =
               let (x0, y0, x1, y1) = fromMaybe (0, 0, 0, 0) (lfInkBox fonts ix g)
                   (mx, my) = ((x0 + x1) / 2, (y0 + y1) / 2)
                   code = lfCode fonts ix g
+                  -- the mark is a cluster of one glyph; in ActualText when its entry is another text (golem-driver ADR 0030)
+                  -- the use does not wait for the entries, which come from the uses of every page
+                  withText r m =
+                    ( case actualTextOf (Map.findWithDefault Map.empty r textEntries) [(g, t, ClusterWhole)] of
+                        [(_, Just t')] -> P.ActualText t' [m]
+                        _ -> m,
+                      (r, g, t, ClusterWhole)
+                    )
                in case (vertical, tu) of
-                    (False, _) -> (P.GlyphRun (ref ix False) d [(code, cx - toSp d mx, cy - toSp d my)], (ref ix False, g, t))
-                    (True, False) -> (P.GlyphRun (ref ix True) d [(code, cx - toSp d (mx - 1 / 2), cy - toSp d (my - 88 / 100))], (ref ix True, g, t))
+                    (False, _) -> withText (ref ix False) (P.GlyphRun (ref ix False) d [(code, cx - toSp d mx, cy - toSp d my)])
+                    (True, False) -> withText (ref ix True) (P.GlyphRun (ref ix True) d [(code, cx - toSp d (mx - 1 / 2), cy - toSp d (my - 88 / 100))])
                     -- turned 90 degrees clockwise: (x, y) of the glyph is (y, -x) on the page
-                    (True, True) -> (P.RotatedGlyphRun (ref ix False) d [(code, cx - toSp d my, cy + toSp d mx)], (ref ix False, g, t))
+                    (True, True) -> withText (ref ix False) (P.RotatedGlyphRun (ref ix False) d [(code, cx - toSp d my, cy + toSp d mx)])
          in unzip (map place (kentenShaped fonts vertical role shape))
       -- the face that sets the Japanese text of a look: that of an ideograph
       japaneseFace look = maybe 0 shFace (listToMaybe (lfShape fonts (Shaping (lkFace look) False []) "漢"))
@@ -2667,7 +2749,7 @@ writeDocumentView inp geom fonts layout intent =
       -- top edge, or the centre line from its right edge
       -- runAt with the face, size, swatch and role of each glyph, for the view (golem-cli ADR 0006)
       runAtU look v rotated scale pt txt = usesOf look (runAt look v rotated scale pt txt)
-      usesOf look (ms, us) = (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) (lkFace look) | (r@(P.FontRef k), g, t) <- us])
+      usesOf look (ms, us) = (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) (lkFace look) part | (r@(P.FontRef k), g, t, part) <- us])
       lineStart ta cross
         | vertical = (rectX ta + rectW ta - cross, rectY ta + rectH ta)
         | otherwise = (rectX ta, rectY ta + rectH ta - cross)
@@ -2818,7 +2900,8 @@ writeDocumentView inp geom fonts layout intent =
                         size = lkSize look
                      in (lkColor look, runAtU look vertical vertical 0 (if vertical then (ox - size * 3 `div` 10, oy) else (ox, oy)) "-")
               _ -> (Nothing, ([], []))
-            parts = filter (not . null . fst . snd) (zipWith (curry boxRun) [0 ..] placed)
+            -- by the glyphs used, not the marks: the marks need the ToUnicode entries of every page (golem-driver ADR 0030)
+            parts = filter (not . null . snd . snd) (zipWith (curry boxRun) [0 ..] placed)
             -- boxes of the same swatch in a row share one saved colour
             coloured = groupBy (\a b -> fst a == fst b) parts
             marksOf grp = case grp of
@@ -2909,7 +2992,8 @@ writeDocumentView inp geom fonts layout intent =
             figMarks = [figureMark fid r pf | (fid, r, pf) <- figures]
             -- one note's lines are in one line of the flow (golem-driver ADR 0018)
             noteLines = concat [[(nid, l) | l <- take cnt (drop from (Map.findWithDefault [] nid noteBodies))] | (nid, from, cnt) <- poFootnotes p]
-            bottomSlots = drop (length grid - length noteLines) [0 .. length grid - 1]
+            -- the foot of the column, of its lines with @page-lines (docs/adr ADR 0030)
+            bottomSlots = drop (poLines p - length noteLines) [0 .. poLines p - 1]
             noteParts = [entry "脚注の行" (noteSpan nid) ta (gridAt slot) (SetLine l (pgFontSize geom) 0 [] []) | (slot, (nid, l)) <- zip bottomSlots noteLines]
             {- each rule with its band, the weight of its thinnest part, its
             marks and its swatch (golem-driver ADR 0028) -}
@@ -2926,7 +3010,7 @@ writeDocumentView inp geom fonts layout intent =
                 <> [ ("脚注の罫線", r, ruleThinnest t (rsStyle rule), ruleMarks sw (ruleShapes vertical r (rsStyle rule)), sw)
                    | not (null noteLines),
                      Just rule <- [stNotesRule style],
-                     let (r, t) = noteRule ta rule (length grid - length noteLines)
+                     let (r, t) = noteRule ta rule (poLines p - length noteLines)
                          sw = ruleSwatch rule
                    ]
          in ( lineParts <> noteParts,
@@ -3134,8 +3218,11 @@ writeDocumentView inp geom fonts layout intent =
       -- the bleed and the crop marks around each page (golem-pdf ADR 0004)
       bleed = maybe 0 pageBleed (stPage style)
       pdfPages = [P.framePage (piMarks inp) bleed (pw, ph) (pdMarks pd) | pd <- drawn]
-      -- each glyph once per font, with the text of its first occurrence (golem-font ADR 0002)
-      used = Map.map Map.toList (Map.fromListWith (Map.unionWith (\_ old -> old)) [(guRef u, Map.singleton (guGlyph u) (guText u)) | pd <- reverse drawn, u <- reverse (pdUses pd)])
+      {- each glyph once per font, with the text of its cluster; a whole
+      cluster wins, then the first drawn (golem-driver ADR 0030) -}
+      used = Map.map toUnicodeOf (Map.fromListWith (<>) [(guRef u, [(guGlyph u, guText u, guPart u)]) | pd <- reverse drawn, u <- reverse (pdUses pd)])
+      -- the ToUnicode entries the marks are checked against for ActualText (golem-driver ADR 0030)
+      textEntries = Map.map Map.fromList used
       -- the PDF and its view from the fonts embedded (docs/adr ADR 0034)
       finish fontsUsed =
         let programs = [case P.fontProgram f of P.TrueTypeProgram b -> b; P.CffProgram b -> b; P.OpenTypeProgram b -> b | f <- Map.elems fontsUsed]

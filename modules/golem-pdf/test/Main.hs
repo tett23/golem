@@ -7,6 +7,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
+import Data.Char (toUpper)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -1057,6 +1058,18 @@ marksTests =
         testCase "a filled closed curve is m, the curves, h and f (golem-driver ADR 0028)" $
           contentStream Map.empty Map.empty [CurveFill (0, 0) [((65536, 65536), (131072, 65536), (196608, 0)), ((131072, -65536), (65536, -65536), (0, 0))]]
             @?= "0 0 m\n1 1 2 1 3 0 c\n2 -1 1 -1 0 0 c\nh f\n",
+        -- golem-driver ADR 0030
+        testCase "ActualText wraps its marks in /Span with the replacement text, BDC to EMC" $ do
+          let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [ActualText "ffi" [GlyphRun (FontRef 7) (10 * 65536) [(3, 0, 0)]]]
+          cs @?= "/Span << /ActualText (ffi) >> BDC\nBT /F1 10 Tf\n1 0 0 1 0 0 Tm <0003> Tj\nET\nEMC\n",
+        testCase "ActualText of a text that is not ASCII is UTF-16BE with the BOM" $ do
+          let cs = contentStream (Map.fromList [(FontRef 7, 1)]) Map.empty [ActualText "\233" [GlyphRun (FontRef 7) (10 * 65536) [(3, 0, 0)]]]
+          -- hexadecimal digits are case-insensitive in PDF; the writer writes them in lower case
+          assertBool (show cs) ("/SPAN << /ACTUALTEXT <FEFF00E9> >> BDC\n" `BS.isPrefixOf` BC.map toUpper cs),
+        testCase "a page with ActualText passes the PDF/X-4 checks, its font a resource" $ do
+          let doc = (documentWith [page [ActualText "ffi" [GlyphRun (FontRef 7) (10 * 65536) [(1, 0, 0)]]]]) {docPdfX = Just (PdfX "fake-japan-color-profile" "JC200103" [] [])}
+          verify (documentObjects doc) @?= []
+          assertBool "the font is a resource" ("/Font <<" `BS.isInfixOf` writePdf doc),
         testCase "a translated mark moves the origin inside q and Q" $
           contentStream Map.empty Map.empty [Translated 65536 131072 [Rule (Rect 0 0 65536 65536)]] @?= "q 1 0 0 1 1 2 cm\n0 0 1 1 re f\nQ\n",
         testCase "images and fonts inside translated marks are page resources" $ do
@@ -1160,7 +1173,21 @@ tests :: TestTree
 tests =
   testGroup
     "golem-pdf (ADR 0001)"
-    [ testCase "numbers: zero, negatives, rounding half to even, trailing zeros" $ do
+    [ testGroup
+        "showRationalDigits, the numbers of figure matrices (golem-pdf ADR 0008)"
+        [ testCase (show n <> " digits of " <> show r <> " is " <> T.unpack t) $ showRationalDigits n r @?= t
+        | (n, r, t) <-
+            [ (6, -(1 / 3), "-0.333333"),
+              (2, 1 / 8, "0.12"), -- 12.5 hundredths: half to the even 12
+              (2, 3 / 8, "0.38"), -- 37.5 hundredths: half to the even 38
+              (2, -(1 / 8), "-0.12"), -- half to even on the negative side too
+              (2, -(1 / 1000), "0"), -- rounds to zero: no minus sign
+              (10, 1 / 20, "0.05"),
+              (0, 5 / 2, "2"),
+              (3, 2, "2")
+            ]
+        ],
+      testCase "numbers: zero, negatives, rounding half to even, trailing zeros" $ do
         spToPt 0 @?= "0"
         spToPt 65536 @?= "1"
         spToPt (-32768) @?= "-0.5"

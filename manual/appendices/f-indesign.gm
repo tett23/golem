@@ -16,6 +16,7 @@ InDesign の操作の手順は説明しません。
 | 正規表現スタイル | 正規表現スタイル（GREP スタイル） |
 | アキ量のセット | 文字組みアキ量設定 |
 | [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift] | カーニング、トラッキング、プロポーショナルメトリクス、ベースラインシフト |
+| [code: @no-page-break] | 段落分離禁止オプションの「次の段落と連動」 |
 | マスターページ（[code: \[masters\]]） | 親ページ（InDesign 2022 より前はマスターページ） |
 | プロジェクトの [code: fonts/] | Document Fonts フォルダー |
 | スウォッチ（[code: \[color.swatches\]]） | スウォッチ |
@@ -216,7 +217,7 @@ InDesign のプリフライトに当たり、プリフライトプロファイ�
 - InDesign のプロファイルのファイル（[code: .idpp]）は読めません。
 - InDesign のプリフライトは問題をすべてエラーとして一覧にしますが、Golem はエラーと警告を分けます。エラーがあれば終了コードが 1 になるので、CI で入稿の可否を決められます。
 - 結果は画面のパネルではなく、診断として出します。[code: --format json] でほかのプログラムが読める形にもなります。
-- 透明、オーバープリント、特色は検査しません。Golem の PDF はこれらを使いません。
+- 透明、オーバープリント、特色は検査しません。Golem が組む部分はこれらを使いません。PDF の図版の中の透明とオーバープリントは、そのまま PDF に入ります。特色を含む PDF の図版は、置けずにエラー（G0810）になります。
 
 [code: golem preflight] の PDF/X-4 の検査は、Golem が作りうる要素に限ったもので、規格への適合の判定ではありません[note: ISO 15930-7:2010（PDF/X-4）。[code: https://www.iso.org/standard/55843.html]]。
 入稿の前には、商用のプリフライトのツールでも確かめてください。

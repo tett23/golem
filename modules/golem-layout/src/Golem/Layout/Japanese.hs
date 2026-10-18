@@ -98,7 +98,7 @@ data ComposeEnv = ComposeEnv
     -- | the placement of ruby (golem-layout ADR 0009)
     ceRuby :: !RubyStyle,
     -- | the number notation of vertical text when the source names none
-    ceVerticalNumbers :: !(Maybe NumberStyle),
+    ceVerticalNumbers :: !VerticalNumbers,
     cePatterns :: !(Maybe Patterns),
     -- | page numbers of labels decided so far (S2); unknown labels take a one-digit stand-in
     cePageOf :: Text -> Maybe Integer,
@@ -137,7 +137,7 @@ defaultComposeEnv fs =
       ceHanging = False,
       ceProtrusion = False,
       ceRuby = defaultRubyStyle fs,
-      ceVerticalNumbers = Nothing,
+      ceVerticalNumbers = VerticalFixed StyleKanji,
       cePatterns = Nothing,
       cePageOf = const Nothing,
       ceLook = plainLook "body" fs,
@@ -351,15 +351,12 @@ codePieces lk = go
 numberPieces :: ComposeEnv -> Integer -> Maybe NumberStyle -> [Piece]
 numberPieces env n style
   | not (ceVertical env) = textPieces lk (T.pack (show n))
-  | otherwise = case style <|> ceVerticalNumbers env of
-      Just StyleKanji -> textPieces lk (kanji n)
-      Just StyleKanjiDigits -> textPieces lk (kanjiDigits n)
-      Just StyleTcy -> [PBox lk (T.pack (show n)) KindTcy (lkSize lk)]
-      Nothing -> textPieces lk (kanji n)
+  | otherwise = case fromMaybe (verticalStyleOf (ceVerticalNumbers env) n) style of
+      StyleKanji -> textPieces lk (kanji n)
+      StyleKanjiDigits -> textPieces lk (kanjiDigits n)
+      StyleTcy -> [PBox lk (T.pack (show n)) KindTcy (lkSize lk)]
   where
     lk = ceLook env
-    Nothing <|> b = b
-    a <|> _ = a
 
 {- | Ruby: half-size reading above the base. Several segments, or one
 base character, are mono ruby; one segment over several characters is a

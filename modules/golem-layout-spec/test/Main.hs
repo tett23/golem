@@ -219,6 +219,28 @@ tests =
         pgNoteSeparator (geom (withRule (Just (Abs (pt 15))) 19661 (Just (Abs (pt 10))))) @?= 2
         -- zw is the size of the grid
         pgNoteSeparator (geom (withRule (Just (Zw 1.5)) 19661 (Just (Zw 1)))) @?= 2,
+      testCase "G0701: rule-after takes its space across from the margin after the lines (golem-driver ADR 0027)" $ do
+        -- 30 lines of 8pt on 14pt: 414pt from a head margin of 18mm (51.02pt) leave 130.26pt below
+        let g = Grid (Abs (pt 8)) 40 30 (Abs (pt 14)) 1 Nothing (Abs mm18) (Abs mm20)
+            after inner = rule0 {rsKeepInColumn = False, rsSpaceBefore = Just (Abs (pt inner))}
+        ruleMessages (withParaRule False (styleWith False False g) (after 100)) @?= []
+        ruleMessages (withParaRule False (styleWith False False g) (after 131)) @?= ["段落スタイル a の罫線が仕上がりの線を超えます"],
+      testCase "G0701: in vertical text a rule runs from the head margin and reaches right before the lines (golem-driver ADR 0027)" $ do
+        -- 40 characters of 9pt from a head margin of 18mm (51.02pt); 20 lines of 9pt on 15pt (294pt) from a gutter of 20mm (56.69pt) on A5
+        let g = Grid (Abs (pt 9)) 40 20 (Abs (pt 15)) 1 Nothing (Abs mm18) (Abs mm20)
+            vertical = styleWith True True g
+            indent x = rule0 {rsStartIndent = Abs (negate (pt x))}
+            out x = rule0 {rsKeepInColumn = False, rsSpaceAfter = Just (Abs (pt x))}
+        -- along: the head margin, not the gutter
+        ruleMessages (withParaRule True vertical (indent 50)) @?= []
+        ruleMessages (withParaRule True vertical (indent 54)) @?= ["段落スタイル a の罫線が仕上がりの線を超えます"]
+        -- across: the margin right of the lines, not the head margin; the rule is 0.3pt
+        ruleMessages (withParaRule True vertical (out 53)) @?= []
+        ruleMessages (withParaRule True vertical (out 57)) @?= ["段落スタイル a の罫線が仕上がりの線を超えます"],
+      testCase "G0701: a rule into the column gap is named as over half the gap (golem-driver ADR 0027)" $ do
+        -- two columns of 20 characters of 8pt with a gap of 1zw: 21zw reaches 8pt into a gap of 8pt
+        let g = Grid (Abs (pt 8)) 20 30 (Abs (pt 14)) 2 (Just (Zw 1)) (Abs mm18) (Abs mm20)
+        ruleMessages (withParaRule True (styleWith False False g) rule0 {rsLength = Just (Zw 21)}) @?= ["段落スタイル a の罫線が段間の半分を超えます"],
       testCase "G0750: a hidden folio on the type area, only with crop marks and when enabled (golem-driver ADR 0021)" $ do
         let mm15 = 2786570 -- 15mm
             mm15' = 278657 -- 1.5mm
@@ -241,4 +263,9 @@ tests =
         pgHiddenFolio (either (error . show) id (pageGeometry (FileId 0) True s {stHiddenFolio = (stHiddenFolio s) {hfPages = HiddenAll}})) @?= Just (HiddenFolioGeometry (pt 6) 278657 True)
     ]
   where
+    rule0 = RuleSpec Nothing 19661 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True
+    -- the paragraph style "a" with a rule before (True) or after (False)
+    withParaRule before st r =
+      st {stParaStyles = Map.insert "a" (if before then noParaDef {psRuleBefore = Just (Just r)} else noParaDef {psRuleAfter = Just (Just r)}) (stParaStyles defaultStyle)}
+    ruleMessages st = either (map diagMessage) (const []) (pageGeometry (FileId 0) False st)
     oneLine r = RunningLines ([PartRef r False] :| [])

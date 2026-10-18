@@ -32,14 +32,9 @@ in plain text), arabic in horizontal text.
 -}
 renderNumber :: TextVariant -> Text -> Integer -> Maybe NumberStyle -> Text
 renderNumber Horizontal _ n _ = T.pack (show n)
-renderNumber Vertical def n st = case fromMaybe (styleOf def) st of
+renderNumber Vertical def n st = case fromMaybe (verticalStyleOf (verticalNumbersNamed def) n) st of
   StyleKanjiDigits -> kanjiDigits n
   _ -> kanji n
-  where
-    styleOf = \case
-      "kanji-digits" -> StyleKanjiDigits
-      "tcy" -> StyleTcy
-      _ -> StyleKanji
 
 data Ctx = Ctx
   { cVariant :: TextVariant,
@@ -140,6 +135,7 @@ block c ind (Block sp _ body) = case body of
   ChannelOutput IndexOutput -> ""
   -- plain text has no pages (docs/adr ADR 0017)
   ForcedBreak _ -> ""
+  PageControl _ -> ""
   ChannelOutput BibliographyOutput ->
     -- the entry, or the key that has none (golem-doc ADR 0004, 0005)
     T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> maybe k entryText (Map.lookup k (cBibliography c)) | (k, n) <- bookCitations (cBook c)]

@@ -305,27 +305,31 @@ completions ws path off = case sourceOf ws path of
               -- the kinds of a page break (docs/adr ADR 0017)
               if "@page-break " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
                 then [Completion k CkSettingValue | k <- ["recto", "verso"]]
-                else
-                  -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
-                  if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
-                    then [Completion n CkParaStyle | n <- paraNames]
+                else -- the signed counts of @page-lines (docs/adr ADR 0030)
+                  if "@page-lines " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                    then [Completion k CkSettingValue | k <- ["+1", "-1"]]
                     else
-                      if not hasOpen || T.isInfixOf "]" lastOpen
-                        then []
-                        else case metaPath of
-                          -- the keys of meta and of meta.roles (docs/adr ADR 0033)
-                          Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
-                          Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
-                          _ -> case ws' of
-                            [] -> commandNames
-                            [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
-                            (cmd : _)
-                              | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
-                              | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
-                              | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
-                            _ -> []
+                      -- paragraph styles after @style at the start of a line (docs/adr ADR 0005)
+                      if "@style " `T.isPrefixOf` T.stripStart lineBefore && length (T.words lineBefore) <= 2 && not ("[" `T.isInfixOf` lineBefore)
+                        then [Completion n CkParaStyle | n <- paraNames]
+                        else
+                          if not hasOpen || T.isInfixOf "]" lastOpen
+                            then []
+                            else case metaPath of
+                              -- the keys of meta and of meta.roles (docs/adr ADR 0033)
+                              Just ["meta", _] -> [Completion k CkSettingKey | k <- Map.keys meta]
+                              Just ["meta", "roles", _] | Just (VHash rs) <- Map.lookup "roles" meta -> [Completion k CkSettingKey | k <- Map.keys rs]
+                              _ -> case ws' of
+                                [] -> commandNames
+                                [_] | not (T.isSuffixOf " " lastOpen) -> commandNames
+                                (cmd : _)
+                                  | cmd `elem` labelCommands -> [Completion l CkLabel | l <- labels]
+                                  | cmd == "color" -> [Completion n CkSwatch | n <- Map.keys (stSwatches style)]
+                                  | cmd == "style" -> [Completion n CkCharStyle | n <- charNames]
+                                _ -> []
   where
-    commandNames = [Completion c CkCommand | c <- builtinInlineCommands]
+    -- the built-in commands, then those of the plugins (docs/adr ADR 0031)
+    commandNames = [Completion c CkCommand | c <- builtinInlineCommands <> maybe [] evPluginCommands (wsEvaluated ws)]
 
 {- | Completion after @manifest (docs/adr ADR 0014): the keys of [source]
 (docs/adr ADR 0013), then the values of a key.

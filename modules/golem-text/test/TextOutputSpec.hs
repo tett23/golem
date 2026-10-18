@@ -84,6 +84,17 @@ tests =
       twoFiles "ja" 1 2 [0, 0] @?= [("chapters/a.txt", "甲*1\n"), ("chapters/b.txt", "乙*2\n\n注\n*1 注甲。\n*2 注乙。\n")],
     testCase "two chapters each have their notes; Notes in English (golem-driver ADR 0026)" $
       twoFiles "en" 1 1 [0, 1] @?= [("chapters/a.txt", "甲*1\n\nNotes\n*1 注甲。\n"), ("chapters/b.txt", "乙*1\n\nNotes\n*1 注乙。\n")],
+    testCase "files after the chapters the manifest gives are each a chapter of their own" $
+      let (fidC, ft3) = registerFile "chapters/c.gm" ft2
+          noted f n t = Document f [Block (mkSpan f 0 1) Nothing (Paragraph Nothing [txt t, Note (mkSpan f 1 2) n [txt ("注" <> t)]])]
+       in renderText "ja" "kanji" False (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft3 ((bookOf []) {bookDocs = [noted fid 1 "甲", noted fidB 2 "乙", noted fidC 3 "丙"], bookChapterOf = [0]})
+            @?= [("chapters/a.txt", "甲*1\n\n注\n*1 注甲\n"), ("chapters/b.txt", "乙*2\n\n注\n*2 注乙\n"), ("chapters/c.txt", "丙*3\n\n注\n*3 注丙\n")],
+    testCase "the title of the notes is 注 for any language that starts with ja, in any case" $
+      [lookup "chapters/b.txt" (twoFiles lang 1 1 [0, 1]) | lang <- ["JA", "ja-JP"]]
+        @?= replicate 2 (Just "乙*1\n\n注\n*1 注乙。\n"),
+    testCase "the last file of a chapter with no text of its own has the title and the notes only" $
+      renderText "ja" "kanji" False (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft2 ((bookOf []) {bookDocs = [Document fid [para 0 [txt "甲", Note (at 1) 1 [txt "注甲。"]]], Document fidB []], bookChapterOf = [0, 0]})
+        @?= [("chapters/a.txt", "甲*1\n"), ("chapters/b.txt", "注\n*1 注甲。\n")],
     testCase "the file is named after the source with .txt and ends with one newline" $
       horizontal (bookOf [para 0 [txt "本文。"]]) @?= [("chapters/a.txt", "本文。\n")],
     testCase "blocks are separated by one blank line" $
@@ -132,7 +143,15 @@ tests =
         testCase "a tate-chu-yoko number is kanji in vertical text" $
           only (vertical (bookOf [para 0 [Number (at 1) 12 (Just StyleTcy)]])) @?= "十二\n",
         testCase "kanji-digits is kept in vertical text" $
-          only (vertical (bookOf [para 0 [Number (at 1) 2026 (Just StyleKanjiDigits)]])) @?= "二〇二六\n"
+          only (vertical (bookOf [para 0 [Number (at 1) 2026 (Just StyleKanjiDigits)]])) @?= "二〇二六\n",
+        -- golem-parser ADR 0011
+        testCase "vertical = auto: kanji, as plain text has no tate-chu-yoko" $ do
+          let num def variant n = only (renderText "ja" def False (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty variant ft (bookOf [para 0 [Number (at 1) n Nothing]]))
+          num "auto" Vertical 9 @?= "九\n"
+          num "auto" Vertical 99 @?= "九十九\n"
+          num "auto" Vertical 100 @?= "百\n"
+          num "auto-digits" Vertical 100 @?= "一〇〇\n"
+          num "auto" Horizontal 100 @?= "100\n"
       ],
     testCase "a proof comment is written in the dev profile" $
       only (renderWith True Horizontal (bookOf [para 0 [txt "本文", ProofComment (at 1) "要確認"]])) @?= "本文【校正：要確認】\n",

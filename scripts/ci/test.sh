@@ -320,6 +320,18 @@ run bg start a/b true
 expect "bg: a name with a slash" 2
 run bg stop ok
 expect "bg: an unknown subcommand" 2
+run bg start .hidden true
+expect "bg: a name that starts with a dot" 2
+run bg start "" true
+expect "bg: an empty name" 2
+run bg wait ok extra
+expect "bg: wait with more than a name" 2
+# a name started again: wait waits for the new command, not the code of the old one
+run bg start again sh -c 'exit 3'
+run bg wait again
+run bg start again sh -c 'sleep 1; echo second'
+run bg wait again
+expect "bg: a name started again is waited for anew" 0 "second"
 unset BG_DIR
 
 # ---------------------------------------------------------------- apt-install.sh
@@ -328,6 +340,29 @@ apt_install() { sh "$HERE/apt-install.sh" "$@"; }
 : >"$WORK/in"
 run apt_install
 expect "apt-install: no package" 2
+# a fake sudo on PATH records each command and what it read; FAIL_ON makes that command fail
+mkdir -p "$WORK/fakebin"
+cat >"$WORK/fakebin/sudo" <<'FAKE'
+#!/bin/sh
+case "$1" in debconf-set-selections) printf '%s: %s\n' "$*" "$(cat)" ;; *) printf '%s\n' "$*" ;; esac >>"$SUDO_LOG"
+[ "$*" != "${FAIL_ON-}" ]
+FAKE
+chmod +x "$WORK/fakebin/sudo"
+export SUDO_LOG="$WORK/sudo.log"
+: >"$SUDO_LOG"
+run env PATH="$WORK/fakebin:$PATH" sh "$HERE/apt-install.sh" qpdf epubcheck
+expect "apt-install: installs the packages" 0
+if [ "$(cat "$SUDO_LOG")" = "debconf-set-selections: man-db man-db/auto-update boolean false
+apt-get update
+apt-get install -y --no-install-recommends qpdf epubcheck" ]; then ok; else
+  ng "apt-install: man-db is not updated, then update, then install without recommends"
+  sed 's/^/  sudo: /' "$SUDO_LOG"
+fi
+: >"$SUDO_LOG"
+run env PATH="$WORK/fakebin:$PATH" FAIL_ON="apt-get update" sh "$HERE/apt-install.sh" qpdf
+expect "apt-install: a failed update fails" 1
+if ! grep -q 'apt-get install' "$SUDO_LOG"; then ok; else ng "apt-install: nothing is installed after a failed update"; fi
+unset SUDO_LOG
 
 # ---------------------------------------------------------------- ci.yml and cabal
 # (docs/adr/0037-ci-build-job-speedup.md)

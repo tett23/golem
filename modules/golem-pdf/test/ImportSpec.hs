@@ -222,6 +222,15 @@ pageTests =
       case ipResources p of
         ODict kvs -> map fst kvs @?= ["ExtGState"]
         other -> assertFailure (show other),
+    testCase "objects are copied through nested references, each once, a cycle too" $ do
+      p <- importOk 1 (classicPdf "" (onePage "<< /ExtGState << /G1 5 0 R >> >>" "/G1 gs" <> [(5, "<< /Type /ExtGState /Next 6 0 R >>"), (6, "<< /Back 5 0 R >>")]))
+      map fst (ipObjects p) @?= [5, 6],
+    testCase "a reference to the page becomes null and is left out; the page is not copied" $ do
+      p <- importOk 1 (classicPdf "" (onePage "<< /ExtGState << /G1 5 0 R >> >>" "/G1 gs" <> [(5, "<< /Type /ExtGState /P 3 0 R >>")]))
+      ipObjects p @?= [(5, ODict [("Type", OName "ExtGState")])],
+    testCase "Metadata is not followed" $ do
+      p <- importOk 1 (classicPdf "" (onePage "<< /ExtGState << /G1 5 0 R >> >>" "/G1 gs" <> [(5, "<< /Type /ExtGState /Metadata 6 0 R >>"), (6, stream "/Type /Metadata /Subtype /XML" "<x/>")]))
+      ipObjects p @?= [(5, ODict [("Type", OName "ExtGState")])],
     testCase "the crop box is cut to the media box" $ do
       let pdf = classicPdf "" (onePage' "/MediaBox [0 0 200 100] /CropBox [-10 -10 100 50]")
       p <- importOk 1 pdf
@@ -232,6 +241,23 @@ pageTests =
       p <- importOk 1 pdf
       ipRotate p @?= 90
       ipSize p @?= (100, 200),
+    testCase "Rotate -90 is 270 and swaps the width and the height" $ do
+      p <- importOk 1 (classicPdf "" (onePage' "/MediaBox [0 0 200 100] /Rotate -90"))
+      (ipRotate p, ipSize p) @?= (270, (100, 200)),
+    testCase "Rotate 180 keeps the width and the height" $ do
+      p <- importOk 1 (classicPdf "" (onePage' "/MediaBox [0 0 200 100] /Rotate 180"))
+      (ipRotate p, ipSize p) @?= (180, (200, 100)),
+    testCase "Rotate 45 is Malformed" $
+      case importPage 1 (classicPdf "" (onePage' "/MediaBox [0 0 200 100] /Rotate 45")) of
+        Left (Malformed _) -> pure ()
+        other -> assertFailure (show other),
+    testCase "a crop box inside the media box is the box" $ do
+      p <- importOk 1 (classicPdf "" (onePage' "/MediaBox [0 0 200 100] /CropBox [10 20 110 70]"))
+      (ipBox p, ipSize p) @?= ((10, 20, 110, 70), (100, 50)),
+    testCase "a crop box of no width is Malformed" $
+      case importPage 1 (classicPdf "" (onePage' "/MediaBox [0 0 200 100] /CropBox [100 0 100 100]")) of
+        Left (Malformed _) -> pure ()
+        other -> assertFailure (show other),
     testCase "the same input gives the same page" $
       importPage 1 rgbPdf @?= importPage 1 rgbPdf
   ]
@@ -289,13 +315,37 @@ colourTests =
       assertBool (show c) (not (" rg" `hasInfix` c) && not ("DeviceRGB" `hasInfix` c))
       case ipResources p of
         ODict kvs -> lookup "ColorSpace" kvs @?= Just (ODict [("GolemSRGB", OArr [OName "ICCBased", ORef 0])])
-        other -> assertFailure (show other)
-      fmap (\case OStream _ b -> b == srgbProfile || BS.length b < BS.length srgbProfile; _ -> False) (lookup 0 (ipObjects p)) @?= Just True,
+        other -> assertFailure (show other),
     testCase "an RGB image gets the sRGB ICCBased" $ do
       p <- importOk 1 rgbPdf
       case lookup 5 (ipObjects p) of
         Just (OStream d _) -> lookup "ColorSpace" d @?= Just (OArr [OName "ICCBased", ORef 0])
         other -> assertFailure (show other),
+    testCase "RG and /DeviceRGB CS of the stroke become GolemSRGB with CS and SC" $ do
+      p <- importOk 1 (classicPdf "" (onePage "<< >>" "0 1 0 RG /DeviceRGB CS 0 0 1 1 re S"))
+      ipContent p @?= "/GolemSRGB CS 0 1 0 SC /GolemSRGB CS 0 0 1 1 re S",
+    testCase "rg in a string or a comment is not an operator and stays as it is" $ do
+      let content = "BT (1 0 0 rg) Tj ET\n% 1 0 0 rg\n0 0 0 1 k"
+      p <- importOk 1 (classicPdf "" (onePage "<< >>" content))
+      ipContent p @?= content
+      ipColors p @?= [UseCmyk],
+    testCase "DeviceRGB in the content of a Form XObject is replaced, and its Resources gain GolemSRGB" $ do
+      p <- importOk 1 (classicPdf "" (onePage "<< /XObject << /X1 5 0 R >> >>" "/X1 Do" <> [(5, stream "/Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << >>" "1 0 0 rg 0 0 1 1 re f")]))
+      case lookup 5 (ipObjects p) of
+        Just (OStream d body) -> do
+          BL.toStrict (Z.decompress (BL.fromStrict body)) @?= "/GolemSRGB cs 1 0 0 sc 0 0 1 1 re f"
+          lookup "Resources" d @?= Just (ODict [("ColorSpace", ODict [("GolemSRGB", OArr [OName "ICCBased", ORef 0])])])
+        other -> assertFailure (show other),
+    testCase "the sRGB profile added is object 0: the whole profile, three components, Flate" $ do
+      p <- importOk 1 rgbPdf
+      case lookup 0 (ipObjects p) of
+        Just (OStream d body) -> do
+          d @?= [("N", OInt 3), ("Filter", OName "FlateDecode")]
+          BL.toStrict (Z.decompress (BL.fromStrict body)) @?= srgbProfile
+        other -> assertFailure (show other),
+    testCase "a page only in DeviceCMYK gets no sRGB profile" $ do
+      p <- importOk 1 minimalPdf
+      (lookup 0 (ipObjects p), ipResources p) @?= (Nothing, ODict []),
     testCase "the colour spaces used" $ do
       p <- importOk 1 rgbPdf
       ipColors p @?= [UseRgb, UseCmyk]
@@ -360,6 +410,22 @@ writingTests =
           out = writePdf (formDoc [Form (FormRef 1) r, Form (FormRef 2) r] [(FormRef 1, p1), (FormRef 2, p2)])
       count "/Subtype /Form" out @?= 2
       count "/Subtype /Image" out @?= 1,
+    testGroup
+      "the Matrix of a PDF figure maps its crop box, turned by Rotate, to the unit square"
+      -- the box (10, 20)-(110, 70) is 100 by 50; e.g. Rotate 90 maps (x, y) to ((y - 20) / 50, (110 - x) / 100),
+      -- so the lower left corner (10, 20) goes to (0, 1), the upper left of the turned figure
+      [ testCase ("Rotate " <> show r) $ do
+          p <- importOk 1 (classicPdf "" [catalog, (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), (3, "<< /Type /Page /Parent 2 0 R /MediaBox [10 20 110 70] /Rotate " <> BC.pack (show r) <> " /Resources << >> /Contents 4 0 R >>"), (4, stream "" "0 0 1 1 re f")])
+          let pdf = writePdf (formDoc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, p)])
+          assertBool (show pdf) ("/BBox [10 20 110 70]" `BS.isInfixOf` pdf)
+          assertBool (show pdf) (("/Matrix [" <> matrix <> "]") `BS.isInfixOf` pdf)
+      | (r, matrix) <-
+          [ (0 :: Int, "0.01 0 0 0.02 -0.1 -0.4"),
+            (90, "0 -0.01 0.02 0 -0.4 1.1"),
+            (180, "-0.01 0 0 -0.02 1.1 1.4"),
+            (270, "0 0.01 -0.02 0 1.4 -0.1")
+          ]
+      ],
     testCase "the same document gives the same bytes" $ do
       p <- importOk 1 rgbPdf
       let doc = formDoc [Form (FormRef 1) (Rect 0 0 65536 65536)] [(FormRef 1, p)]

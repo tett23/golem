@@ -43,7 +43,24 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, AssembleSpec.tests, BibliographySpec.tests, ListMarkersSpec.tests, CborExprSpec.tests, NumberingSpec.tests]
+  testGroup "golem-doc" [cbor, AssembleSpec.tests, BibliographySpec.tests, ListMarkersSpec.tests, CborExprSpec.tests, NumberingSpec.tests, verticalNumbers]
+
+-- | The vertical style of the numbers of a book (golem-parser ADR 0011).
+verticalNumbers :: TestTree
+verticalNumbers =
+  testGroup
+    "verticalStyleOf (golem-parser ADR 0011)"
+    [ testCase "auto: two digits or fewer in tate-chu-yoko, the others in kanji" $ do
+        map (verticalStyleOf (VerticalAuto StyleKanji)) [0, 9, 10, 99] @?= replicate 4 StyleTcy
+        map (verticalStyleOf (VerticalAuto StyleKanji)) [100, -1] @?= [StyleKanji, StyleKanji],
+      testCase "auto-digits: three digits in kanji digits" $
+        verticalStyleOf (VerticalAuto StyleKanjiDigits) 100 @?= StyleKanjiDigits,
+      testCase "a fixed style for every number" $
+        mapM_ (\st -> map (verticalStyleOf (VerticalFixed st)) [-1, 0, 9, 99, 100, 12345] @?= replicate 6 st) [minBound .. maxBound],
+      testCase "the names of [numbers] vertical" $
+        map verticalNumbersNamed ["kanji", "kanji-digits", "tcy", "auto", "auto-digits"]
+          @?= [VerticalFixed StyleKanji, VerticalFixed StyleKanjiDigits, VerticalFixed StyleTcy, VerticalAuto StyleKanji, VerticalAuto StyleKanjiDigits]
+    ]
 
 cbor :: TestTree
 cbor =
@@ -174,6 +191,19 @@ cbor =
         validateDocument size [] (doc [Block sp Nothing (DefList [DefGroup [[]] [[brk]]])]) @?= [msgNested]
         validateDocument size [] (doc [Block sp Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing [brk] Nothing))]) @?= [msgNested]
         validateDocument size [] (doc [Block sp (Just "x") (ForcedBreak BreakRecto)]) @?= [msgLabel],
+      testCase "every page control survives the CBOR round trip (docs/adr ADR 0030)" $ do
+        let d = Document (FileId 0) [Block sp Nothing (PageControl c) | c <- [NoBreak, NeedLines 5, AdjustLines 1, AdjustLines (-2)]]
+        decodeDocument (encodeDocument d) @?= Right d,
+      testCase "page controls only at the top of a document, without a label, with valid counts (docs/adr ADR 0030)" $ do
+        let size (FileId 0) = Just 10
+            size _ = Nothing
+            ctl = Block sp Nothing (PageControl NoBreak)
+            doc = Document (FileId 0)
+        validateDocument size [] (doc [ctl, Block sp Nothing (PageControl (NeedLines 1)), Block sp Nothing (PageControl (AdjustLines (-1)))]) @?= []
+        validateDocument size [] (doc [Block sp Nothing (BulletList [ListItem Nothing [ctl]])]) @?= ["改ページの制御は文書の最上位にだけ置けます"]
+        validateDocument size [] (doc [Block sp (Just "x") (PageControl NoBreak)]) @?= ["改ページの制御はラベルを持てません"]
+        validateDocument size [] (doc [Block sp Nothing (PageControl (NeedLines 0))]) @?= ["@need-lines の行数は 1 以上です"]
+        validateDocument size [] (doc [Block sp Nothing (PageControl (AdjustLines 0))]) @?= ["@page-lines の増減は 0 でない整数です"],
       testCase "trailing bytes are rejected" $
         assertBool "rejected" (isLeft (decodeInlines (encodeInlines [] <> "\0"))),
       testCase "validation: spans, deferred expressions, index levels" $ do

@@ -528,6 +528,9 @@ headingTests =
       headingDefaults "ja-JP" 3 @?= (Zw 1, 2)
       headingDefaults "en" 1 @?= (Zw (3 % 2), 6)
       headingDefaults "fr" 2 @?= (Zw (5 % 4), 4),
+    testCase "the default size and lines of every level, in Japanese and in English (golem-driver ADR 0032)" $ do
+      map (headingDefaults "ja") [1 .. 5] @?= [(Zw (3 % 2), 5), (Zw (5 % 4), 3), (Zw 1, 2), (Zw 1, 1), (Zw 1, 1)]
+      map (headingDefaults "en") [1 .. 5] @?= [(Zw (3 % 2), 6), (Zw (5 % 4), 4), (Zw 1, 2), (Zw 1, 1), (Zw 1, 1)],
     testCase "a heading with only a number is 1.5 times the body and takes five lines in Japanese (golem-driver ADR 0032)" $ do
       let style = horizontalStyle <> "\n[headings.1]\nnumber = \"{n}\"\n"
           source = "# 見出し\n\n本文。\n"

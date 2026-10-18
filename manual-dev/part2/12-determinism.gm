@@ -84,10 +84,41 @@ EPUB の決定性（zip のエントリの時刻と順序の固定）は v2 で�
 決定性は、次のテストと CI で確かめる。
 
 - 出力を持つ各バックエンドに、同じ入力を二回ビルドしてバイト列が一致することを確かめるテストを置く。
-- 環境変数（[code: TZ]、[code: LANG]、[code: SOURCE_DATE_EPOCH]）を変えてビルドしても、出力が変わらないことを確かめる。
+- 実行の環境を変えてビルドしても、出力が変わらないことを [code: scripts/env-determinism/check.sh] で確かめる（この節の後半）。
 - 章を並列に処理する場合と逐次に処理する場合で、出力が一致することを確かめる。
 - CI の [code: determinism] ジョブで、x86-64 と aarch64 の出力のハッシュを比べる（第[ref-number ci-jobs]章）。
 - リリースのワークフローで、三つの配布物と CI のビルドの出力のハッシュを比べる（第[ref-number release]章）。
+
+[code: scripts/env-determinism/check.sh] は、決まった入力を基準の環境で組み、環境を変えて組み直し、[code: build/] の下のファイルの SHA-256、終了コード、標準出力と標準エラー出力（[code: --format json] の diagnostics）を比べる。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0029-environment-variation-determinism-test.md]（docs/adr の ADR 0029「実行環境を変えて出力の一致を確かめる検査」）]
+基準の環境は、環境変数を空にして [code: PATH=/usr/bin:/bin]、作業用の [code: HOME]、[code: LANG=C.UTF-8]、[code: TZ=UTC]、umask 022 だけを与えたものである。
+一つずつ変える変化は次のとおりである。
+
+- タイムゾーン：[code: tz-east]（UTC+14）、[code: tz-west]（UTC-12）、[code: tz-unset]
+- ロケール：[code: locale-c]、[code: locale-eucjp]、[code: locale-ja]、[code: locale-unset]
+- [code: SOURCE_DATE_EPOCH]：[code: sde-zero]、[code: sde-future]。Golem は [code: SOURCE_DATE_EPOCH] を読まないので、与えても出力は変わらない。
+- [code: home-other]、[code: home-unset]、[code: xdg]、[code: path-empty]、[code: umask]
+- [code: root-path]：プロジェクトを空白と日本語を含む深い階層に置く。
+- [code: mtime-past]、[code: mtime-future]：入力のファイルの時刻を変える。
+- [code: decoys]：どこからも参照しないファイルを置き、写す順を逆にする。ディレクトリを列挙して入力を決めていれば、結果が変わる。
+
+一つずつの変化は小さな入力（[code: scripts/determinism/]、テストのサンプル、その PDF の版、diagnostics を出す小さなプロジェクト）にだけ当てる。
+すべての変化を同時に当てる [code: combined] は、小さな入力に加えて、『テンペスト』、『蟹工船』、十冊のパブリックドメインの本、二つのマニュアルにも当てる。
+許容の一覧はなく、どの変化のどの入力でも、基準と違えば失敗する。
+
+手元では、[code: --quick] で大きな入力を飛ばして数秒で回せる。
+[code: combined] だけが大きな入力で失敗したときは、[code: --only] で変化を、[code: --input] で入力を絞り、原因の変化を探す。
+
+```sh
+$ export GOLEM=$(cabal list-bin -v0 golem)
+$ sh scripts/env-determinism/check.sh --quick
+$ sh scripts/env-determinism/check.sh --only tz-east --input tempest
+```
+
+ロケールが入っていない変化は [code: SKIP] と表示し、マニュアルのフォントがなければマニュアルを [code: SKIP] とする。
+[code: GOLEM_REQUIRE_LOCALES=1] と [code: GOLEM_REQUIRE_FONTS=1] を付けると、どちらも失敗にする。
+CI は二つを付けて実行する。
+この検査は EPUB も比べるので、v1 の EPUB にも事実上の決定性を求める。
+ただし、仕様としての EPUB の決定性の約束は v2 からのままである。
 
 決定性に反する処理を静的に検出する仕組みは作らないと決めている。
 規則はレビューとテストで守る。
@@ -114,7 +145,8 @@ EPUB の決定性（zip のエントリの時刻と順序の固定）は v2 で�
 
 逆に、画像の比較で見えないものもある。
 PDF のテキスト層（ToUnicode）、メタデータ、PDF/X-4 の要件、しおり、文書の構造は、画像には現れない。
-合字を一字めだけに対応させる ToUnicode の誤りは、画面では正しく見える。
+Golem はかつて、合字のグリフを一字めだけに対応させる ToUnicode を書いていた。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0030-ligature-text-layer.md]（golem-driver ADR 0030「合字のテキスト層」で直した）]
+この誤りは、画面では正しく見えた。
 見た目を変えない変更でバイト列が変わることもあるので、バイト列の比較は見た目の変化の判定には使えない。
 二つの検査は、互いの代わりにならない。
 

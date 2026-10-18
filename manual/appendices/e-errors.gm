@@ -89,6 +89,11 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   コマンドの引数に、同じキーの [code: キー=値] を二度書いています。
   最初に書いたものだけが使われます。
   どちらか片方を消してください。
+= [strong: G0278 [code: ## と ## のあいだには算用数字だけを書きます。本文の ## は \\## と書きます]]
+  [code: ##12##] のような数の書き方で、[code: ##] と [code: ##] のあいだに算用数字でない文字があるか、閉じの [code: ##] がありません。
+  小数、全角の数字、先頭の 0 は書けません。
+  そのような数は [code: \[number-text ...\]] か地の文で書いてください。
+  本文に [code: ##] と数字を続けて書くときは、[code: \\##] とエスケープしてください。
 = [strong: G0222 [code: 未知のコマンドです: …]]
   その名前のコマンドがありません。
   綴りを確かめてください。
@@ -217,7 +222,7 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0228 [code: 図版には alt の代替テキストが必要です]]
   [code: @figure] に [code: alt="…"] を書いてください。
 = [strong: G0229 [code: PDF の図版には web の代替画像が必要です]]
-  PDF の画像を使うときは、[code: web=] で HTML と EPUB のための PNG か JPEG の画像を指定してください。
+  PDF の画像を使うときは、[code: web=] で HTML と EPUB のための PNG、JPEG、SVG のどれかの画像を指定してください。
 = [strong: G0230 [code: wrap は start か end です: …]]
   [code: wrap=start] か [code: wrap=end] にしてください。
 = [strong: G0231 [code: 回り込む図版には width が必要です]]
@@ -260,6 +265,16 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0259 [code: @page-break と @column-break は文書の最上位にだけ置けます]]
   リストの項目や図版のキャプションの中に改ページを書いています。
   字下げをやめて、リストや図版の前か後ろに書いてください。
+= [strong: G0270 [code: @need-lines の引数は 1 以上の整数です]] など
+  [code: @no-page-break] は引数を取りません。
+  [code: @need-lines] には 1 以上の整数を、[code: @page-lines] には [code: +1] や [code: -1] のように符号を付けた 0 でない整数を一つ書きます。
+  次の行を字下げしているなら、字下げをやめてください。
+= [strong: G0271 [code: @no-page-break、@need-lines、@page-lines は文書の最上位にだけ置けます]]
+  リストの項目や図版のキャプションの中に書いています。
+  字下げをやめて、リストや図版の前か後ろに書いてください。
+= [strong: G0272 [code: @no-page-break と @page-break が同じ位置にあります]] など
+  改ページを止める指定と、改ページの指定を並べて書いています。
+  どちらか一方を消してください。
 = [strong: G0260 [code: 絶対パスは使えません: …]] など
   [code: @figure]、[code: @table]、[code: @listing] のパスが、絶対パス、URL、プロジェクトの外のどれかを指しています。
   ファイルをプロジェクトの中に置き、そこからの相対パスで書いてください。
@@ -271,7 +286,7 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   図を PDF、PNG、JPEG、SVG のどれかに書き出し、そのファイルを指してください。
 = [strong: G0275 [code: page は PDF の図版のページを 1 から数えた整数で書きます: …]]
   [code: page=] の値が 1 以上の整数でないか、PDF でない画像に [code: page] を書いています。
-  PDF の画像なら [code: page=3] のように書き、PNG と JPEG の画像からは [code: page] を消してください。
+  PDF の画像なら [code: page=3] のように書き、PNG、JPEG、SVG の画像からは [code: page] を消してください。
 = [strong: G0280 [code: format は csv か tsv です: …]]
   [code: @table] の [code: format] には、[code: csv] か [code: tsv] を書いてください。
 = [strong: G0281 [code: align の値は left、center、right、default のどれかです: …]] など
@@ -486,6 +501,10 @@ PDF を組むときに出るエラーです。
   傍注を本文の段落に移してください。
 = [strong: G0733 [code: 傍注が傍注欄より高く、収まりません]]、[strong: [code: このページの傍注が傍注欄に収まりません]]
   傍注を短くするか、そのページの傍注を減らしてください。
+= [strong: G0737 [code: ここで改ページを止められませんでした]] など（警告）
+  [code: @no-page-break]、[code: @need-lines]、[code: @page-lines] の指定を守れませんでした。
+  PDF はそのまま組まれます。
+  組んだ PDF を見て、指定の位置や行数を直すか、指定を消してください。
 = [strong: G0741 [code: 表の列の最小の幅の合計（…）が使える幅（…）に収まりません]]
   表の列を減らすか、長い語を短くしてください。
 = [strong: G0742 [code: 表の … 行目が見出しの行とともに一ページに収まりません]]
@@ -531,7 +550,7 @@ PDF を組むときに出るエラーです。
   [code: shape] をフォントにある形に替えるか、圏点の字を持つフォントをその役割の [code: ja] に書いてください。
 = [strong: G0810 [code: 図版を PDF に置けません: …]]
   [code: @figure] の画像を、PDF に置ける形で読めません。
-  PNG や JPEG のファイルが壊れている、インターレースの PNG である、拡張子と中身が違う、といった場合と、PDF の画像が暗号化されている、フォントを埋め込んでいない、特色やレイヤーを含む、[code: page] のページがない、といった場合です。
+  PNG や JPEG のファイルが壊れている、インターレースの PNG である、拡張子と中身が違う、といった場合と、PDF の画像が暗号化されている、フォントを埋め込んでいない、特色やレイヤーを含む、[code: page] のページがない、といった場合と、SVG の画像が XML として読めない、UTF-8 でない、大きさがない、といった場合です。
   メッセージの括弧の中の理由を見て、画像を書き出し直してください。
   PDF を組むとき（[code: golem build] の PDF と [code: golem preflight]）にだけ出ます。
 = [strong: G0811 [code: SVG の図版に扱えないものがあります: …]]
@@ -611,7 +630,9 @@ G0901 のほかは、エラーか警告か、出すかどうかをプリフラ�
   Golem は画像を縮小しないので、画像のファイルを小さく作り直してください。
 = [strong: G0908 [code: この設定では使えない色空間の図版です: …]]（警告）
   RGB の画像があります。
+  PDF の図版の中で RGB の色を使っている場合と、SVG の図版（色はいつも RGB です）も、このコードになります。
   Golem は画像の色を変換しないので、印刷所の条件で CMYK に変換した画像に替えてください。
+  SVG の図版は、図の作成ツールで CMYK の PDF に書き出して、PDF の画像として置いてください。
 = [strong: G0909 [code: 出力インテントと違う ICC プロファイルを持つ CMYK の図版です: …]]（警告）
   CMYK の画像の色の情報が、[code: \[color\]] の [code: intent] のファイルと違います。
   出力インテントと同じ条件で、画像を変換し直してください。

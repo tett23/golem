@@ -52,8 +52,8 @@ files = ["chapters/01.gm", "chapters/02.gm"]
 - [code: \[\[filters\]\]] は、どのファイルにどのフィルタを適用するかを宣言する。複数のフィルタは宣言の順に適用する。
 
 上書きできるのは、表示だけに関わるインラインのコマンドである。
-golem-eval ADR 0002 は [code: strong]、[code: bold]、[code: italic]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text] を挙げ、今の実装は [code: code] も同じ一覧に入れている。
-ブロックコマンドと、文書構造、注、チャネル（目次、脚注、索引、参考文献のように、文書の各所から項目を集めて別の位置に一覧として出す仕組み。第[ref-number ir]章の「[ref-title channels]」の節）に関わるコマンド（[code: ref-number]、[code: ref-title]、[code: note]、[code: sidenote]、[code: index]、[code: cite]）は上書きできない。
+[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text] の十を上書きできる。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0031-adr-code-mismatches.md]（docs/adr の ADR 0031「ADR とコードの四つの食い違いを、どちらに合わせるか」）]
+ブロックコマンドと、文書構造、参照、注、チャネル（目次、脚注、索引、参考文献のように、文書の各所から項目を集めて別の位置に一覧として出す仕組み。第[ref-number ir]章の「[ref-title channels]」の節）に関わるコマンド（[code: ref-number]、[code: ref-title]、[code: ref-page]、[code: note]、[code: sidenote]、[code: index]、[code: cite]）と、[code: aki] は上書きできない。
 これらは S1 の集約が前提にする情報を作るので、プラグインが置き換えると、番号やチャネルの不変条件を処理系が保証できなくなる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0002-file-evaluation.md]（golem-eval ADR 0002「ファイル内評価（S0）」）]
 
 コマンドの名前は、上書きを宣言したプラグインのコマンド、組み込みのコマンド、プラグインのコマンドの順に探す。[index reading="overrides": overrides]
@@ -126,8 +126,8 @@ WASI がないので、標準入出力やファイルを使うライブラリは
 | [code: golem_alloc] | [code: (len: u32) -> u32] | 入力を書く領域を確保し、その位置を返す |
 | [code: golem_invoke] | [code: (ptr: u32, len: u32) -> u64] | CBOR の要求を受け取り、CBOR の応答を返す |
 
-ADR は領域を解放する [code: golem_dealloc(ptr: u32, len: u32)] も挙げている。
-ただし、今のホストは呼び出しごとにインスタンスを捨てるので、この関数を呼ばない。
+ホストは呼び出しごとにインスタンスを捨てるので、領域を解放する関数を求めない。
+プラグインが [code: golem_dealloc] を公開していても害はなく、ホストは呼ばない。
 
 [code: u64] で返す値は、上位 32 ビットが出力の位置、下位 32 ビットが出力の長さである。
 ホストは、その範囲のバイト列を線形メモリから読む。
@@ -237,13 +237,12 @@ golem-plugin のテストは、テスト用のプラグインを wat（wasm の�
   (global $heap (mut i32) (i32.const 65536))
   ;; golem_describe の CBOR: [[], ["same"]]
   (data (i32.const 16) "\82\80\81\64same")
-  (func (export "golem_abi_version") (result i32) (i32.const 6))
+  (func (export "golem_abi_version") (result i32) (i32.const 7))
   (func (export "golem_alloc") (param $n i32) (result i32)
     (local $p i32)
     (local.set $p (global.get $heap))
     (global.set $heap (i32.add (global.get $heap) (local.get $n)))
     (local.get $p))
-  (func (export "golem_dealloc") (param i32 i32))
   (func (export "golem_describe") (result i64)
     (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 8)))
   (func (export "golem_invoke") (param $ptr i32) (param $len i32)

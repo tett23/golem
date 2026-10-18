@@ -109,6 +109,9 @@ colophonTests =
       ev "meta.printing.number" >>= (@?= Right (VInt 1))
       ev "meta.printing.edition" >>= (@?= Right (VInt 2))
       ev "meta.printing.year" >>= (@?= Right (VInt 2028))
+      -- 2028-01-10: month and day differ, so a swap shows
+      ev "meta.printing.month" >>= (@?= Right (VInt 1))
+      ev "meta.printing.day" >>= (@?= Right (VInt 10))
       ev "meta.printing.date" >>= (@?= Right (VString "2028-01-10"))
       ev "len(meta.printings)" >>= (@?= Right (VInt 3))
       ev "meta.publisher_person" >>= (@?= Right (VString "佐藤 一郎")),

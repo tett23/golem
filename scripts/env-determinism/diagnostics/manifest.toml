@@ -1,0 +1,13 @@
+# The input of scripts/env-determinism/check.sh whose build ends in an
+# error (docs/adr/0029): a warning, and an error with a related position,
+# in a chapter under chapters/.
+chapters = ["chapters/01.gm"]
+
+[metadata]
+id = "urn:uuid:11111111-2222-4333-8444-555555555555"
+title = "診断"
+language = "ja"
+date = 2026-10-11
+
+[targets.html]
+[targets.text]

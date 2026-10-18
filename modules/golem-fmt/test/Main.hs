@@ -20,7 +20,7 @@ spaces :: Gen Text
 spaces = Gen.element ["", " ", "  ", "   "]
 
 word :: Gen Text
-word = Gen.element ["語", "word", "漢字", "\\a", "\\[", "x", "日本語の文"]
+word = Gen.element ["語", "word", "漢字", "\\a", "\\[", "x", "日本語の文", "##36##", "\\##1##"]
 
 inline :: Gen Text
 inline =
@@ -119,6 +119,11 @@ tests =
         case format "[strong: a\n" of
           Unformattable ds -> assertBool "diagnostics" (not (null ds))
           Formatted r -> assertFailure ("formatted: " <> show r),
+      -- golem-parser ADR 0011
+      testCase "##36## and [number-text 36] are kept; the escape of \\##1## stays" $ do
+        formatted "##36##\n" @?= "##36##\n"
+        formatted "[number-text 36]\n" @?= "[number-text 36]\n"
+        formatted "\\##1##\n" @?= "\\##1##\n",
       -- golem-parser ADR 0013
       testCase "**[...] after a keyword argument is formatted" $
         case format "[f k=v **[h]]\n" of
