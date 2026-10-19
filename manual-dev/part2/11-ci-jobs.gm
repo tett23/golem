@@ -81,7 +81,7 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 ## build
 
 [code: build] は、[code: ubuntu-24.04]（x86-64）と [code: ubuntu-24.04-arm]（aarch64）のランナーで実行する。
-x86-64 では同じコミットを二つのランナーでビルドし、一方（[code: tests]）がテストを、もう一方（[code: outputs]）が出力を作る手順を受け持つ。
+x86-64 では同じコミットを二つのランナーでビルドし、一方（[code: tests]）がテストを、もう一方（[code: outputs]）が出力を作る手順を受け持つ。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0045-split-x86-build-and-pull-request-cache.md]（docs/adr の ADR 0045「x86-64 の build をテストと出力の二つのランナーに分け、プルリクエストの dist-newstyle を残す」）]
 aarch64 では一つのランナー（[code: all]）がすべてを受け持つ。
 主な手順は次のとおりである。
 
