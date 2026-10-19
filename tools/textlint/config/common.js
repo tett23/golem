@@ -38,7 +38,7 @@ const words = {
   },
   notice: {
     pattern: "お知らせ",
-    message: "開発者に向けた文書では重大度を notice と書く。「お知らせ」は docs/diagnostics.md の値を引くときだけ「」で囲んで使う（docs/manual-policy.md）。",
+    message: "開発者と技術者に向けた文書（開発者のマニュアル、仕様書、新しい ADR）では重大度を notice と書き、info とも書き分ける。「お知らせ」は docs/diagnostics.md の値を引くときだけ「」で囲んで使う（docs/manual-policy.md）。",
   },
 };
 
