@@ -6,7 +6,7 @@ Golem が見つけた誤りは、どの段階で見つかったものでも、�
 一つの形にそろえてあるので、CI で集計する側は一つの読み方だけを持てばよい。
 
 各 diagnostic は、安定したコード、重大度、ソースの位置、一行のメッセージを持ち、関連する位置と修正案を持つこともある。
-Haskell では、golem-syntax の型 [code: Diagnostic] で表す。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-syntax/adr/0001-source-spans-and-diagnostics.md]（golem-syntax ADR 0001「ソース位置と診断」）]
+Haskell では、golem-syntax の型 [code: Diagnostic] で表す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-syntax/adr/0001-source-spans-and-diagnostics.md]（golem-syntax ADR 0001「ソース位置と診断」）]
 
 ```haskell
 data Diagnostic = Diagnostic
@@ -82,7 +82,7 @@ golem-syntax の [code: Golem.Syntax.Render] の [code: renderJson] が文字列
 編集の列が空で、題だけが直し方を示す修正案もある。
 CR を含む原稿の G0103 に付く「golem fmt で LF に直す」がその例である。
 
-一部の diagnostic は、[code: fixes] の後に [code: facts] のオブジェクトを持つ。[index reading=facts: facts][note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
+一部の diagnostic は、[code: fixes] の後に [code: facts] のオブジェクトを持つ。[index reading=facts: facts][note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 ページ番号や測った値のように、メッセージに書いたことをプログラムが読める形にしたもので、鍵はdiagnostic ごとに決まった順に並ぶ。
 値は整数、文字列、整数の配列、文字列の配列のどれかである。
 今は [code: golem preflight] の diagnostic（G0902 から G0918）だけが持ち、ほかの diagnostic の JSON に [code: facts] の鍵は現れない。
@@ -104,7 +104,7 @@ diagnostics は、error と warning を先に、notice を後に並べる。[ind
 error と warning のあいだは、ファイルの順、位置の順、コードの順で並べ、notice どうしも同じ規則で並べる。
 ファイルの順は、マニフェストの章の順とファイルを初めて読んだ順で決まり、実行ごとに変わらない。
 並び順が入力だけで決まるので、同じ原稿の JSON は毎回同じバイト列になる。
-CI で前回の diagnostics と差分を取っても、順序の揺れによる偽の差分は出ない。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-syntax/adr/0002-notice-severity.md]（golem-syntax ADR 0002「重大度のお知らせ（notice）」）]
+CI で前回の diagnostics と差分を取っても、順序の揺れによる偽の差分は出ない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-syntax/adr/0002-notice-severity.md]（golem-syntax ADR 0002「重大度のお知らせ（notice）」）]
 
 notice を後に回すのは、notice の多いプロジェクトで、ビルドを止めた error が画面の外に流れないようにするためである。
 人が読む形式と JSON の形式は同じ順で出す。
@@ -143,7 +143,7 @@ Golem の文書の対象外であり、[code: golem explain] も説明を持た�
 ## diagnostic のコードの説明
 
 コードごとの意味、主な原因、直し方は、[code: docs/diagnostics.md] の一つの Markdown のファイルにまとめてある。
-[code: golem explain] は、この文書の節をそのまま表示する。[index reading="golem explain": golem explain][note: [code: https://github.com/tett23/golem/blob/main/docs/diagnostics.md]（docs/diagnostics.md「diagnostic のコード」）、[code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0005-explain-diagnostic-codes.md]（golem-cli ADR 0005「診断のコードの説明を golem explain で表示する」）]
+[code: golem explain] は、この文書の節をそのまま表示する。[index reading="golem explain": golem explain][note: [style url: https://github.com/tett23/golem/blob/main/docs/diagnostics.md]（docs/diagnostics.md「diagnostic のコード」）、[style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0005-explain-diagnostic-codes.md]（golem-cli ADR 0005「診断のコードの説明を golem explain で表示する」）]
 
 ```sh
 $ golem explain G0730    # 一つのコードの説明

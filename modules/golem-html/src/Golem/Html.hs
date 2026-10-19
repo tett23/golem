@@ -17,6 +17,8 @@ module Golem.Html
     codeTokens,
     XhtmlSite (..),
     renderXhtml,
+    allFigures,
+    webSource,
     pagePath,
     escapeXml,
     cmykToRgb,
@@ -293,12 +295,14 @@ renderXhtml cfg ft book =
             <> [(fontOut p, p) | (ja, la) <- Map.elems (hcFonts cfg), Just p <- [ja, la]]
     }
 
+-- | The file that HTML and EPUB copy for a figure: its @web@ image, or the figure itself.
 webSource :: Figure -> Text
 webSource f = fromMaybe (figSource f) (figWeb f)
 
 fontOut :: FilePath -> FilePath
 fontOut p = "fonts" </> takeFileName p
 
+-- | The @figure blocks, also those inside lists, in the order of the document.
 allFigures :: [Block] -> [Block]
 allFigures = concatMap go
   where
@@ -540,6 +544,13 @@ citeIds book = fst (foldl assign (Map.empty, Set.empty) entries)
           chosen = fromMaybe ("cite-" <> k) (find (`Set.notMember` used) candidates)
        in (Map.insert (at, k) chosen ids, Set.insert chosen used)
 
+{- | The file of the bibliography list a cite mark belongs to (golem-html
+ADR 0003, golem-doc ADR 0008); nothing when the book has no
+@bibliography.
+-}
+bibliographyHome :: Book -> SrcSpan -> Maybe FileId
+bibliographyHome book sp = fst <$> (fst =<< Map.lookup (spanFile sp, sp) (bookCiteMarks book))
+
 -- | The id of the entry of a key in a list; cite-<key> without a list.
 citeId :: Ctx -> Maybe ListAt -> Text -> Text
 citeId c at k = fromMaybe ("cite-" <> k) (at >>= \a -> Map.lookup (a, k) (cCiteIds c))
@@ -583,10 +594,13 @@ inline c = \case
      in "<a epub:type=\"noteref\" class=\"noteref\" href=\"" <> linkTo c (cnHome (cNotes c)) ("note-" <> key) <> "\" id=\"noteref-" <> key <> "\">" <> tshow n <> "</a>"
   Sidenote _ n _ -> "<sup class=\"sidenote-ref\">" <> tshow n <> "</sup>"
   IndexMark sp _ -> "<span id=\"" <> spanAnchor sp <> "\"></span>"
+  -- a link to the entry in the file of its bibliography; a span without one (golem-html ADR 0003)
   Cite sp k -> case citeNumber (cBook c) sp k of
     Just n ->
       let at = fst =<< Map.lookup (spanFile sp, sp) (bookCiteMarks (cBook c))
-       in "<a class=\"cite\" href=\"#" <> escapeXml (citeId c at k) <> "\">[" <> tshow n <> "]</a>"
+       in case bibliographyHome (cBook c) sp of
+            Just home -> "<a class=\"cite\" href=\"" <> linkTo c home (citeId c at k) <> "\">[" <> tshow n <> "]</a>"
+            Nothing -> "<span class=\"cite\">[" <> tshow n <> "]</span>"
     Nothing -> ""
   ProofComment _ t -> if hcDev (cCfg c) then "<span class=\"proof\">" <> escapeXml t <> "</span>" else ""
   LineBreak _ -> "<br/>"

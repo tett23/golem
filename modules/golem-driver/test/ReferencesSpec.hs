@@ -1,10 +1,13 @@
-module ReferencesSpec (indexTests, bibliographyFormatTests, tableTests, tocTests, indexColumnTests) where
+module ReferencesSpec (indexTests, bibliographyFormatTests, tableTests, tocTests, indexColumnTests, urlBreakTests) where
 
+import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
 import Control.Monad (forM_, zipWithM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
+import Data.ByteString.Lazy qualified as BL
 import Data.List (isSuffixOf, nub, sort)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
@@ -13,8 +16,8 @@ import Golem.Doc.Bibliography (EntryPart (..), entryText)
 import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLines, tocPage)
-import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
-import Golem.Layout.Look (plainLook)
+import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..), glueRatio, placeLine)
+import Golem.Layout.Look (Look (..), plainLook)
 import Golem.Layout.Paginate (ColumnSet (..), PageOut (..), Slotted (..), labelPages, markPages)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, typeAreaFor)
 import Golem.Pdf (spToPt)
@@ -22,6 +25,7 @@ import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Support
+import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -170,7 +174,29 @@ jaRefsJson = TE.encodeUtf8 "[{\"id\": \"jisx4061\", \"title\": \"JIS X 4061:1996
 
 bibliographyFormatTests :: [TestTree]
 bibliographyFormatTests =
-  [ testCase "a literal author and a literal date are in the entry" $ do
+  [ testCase "HTML and EPUB: a cite mark links to the bibliography in another file (golem-html ADR 0003)" $
+      withSystemTempDirectory "golem-cite" $ \tmp -> do
+        let manifest = T.replace "chapters = [\"a.gm\"]" "chapters = [\"chapters/00.gm\", \"chapters/01.gm\", \"chapters/99.gm\"]\nbibliography = [\"refs.json\"]" (TE.decodeUtf8 miniManifest)
+        TIO.writeFile (tmp </> "manifest.toml") (manifest <> "[targets.html]\n[targets.epub]\n")
+        BS.writeFile (tmp </> "style.toml") horizontalStyle
+        BS.writeFile (tmp </> "refs.json") refsJson
+        createDirectoryIfMissing True (tmp </> "chapters")
+        TIO.writeFile (tmp </> "chapters/00.gm") "@toc depth=1\n"
+        TIO.writeFile (tmp </> "chapters/01.gm") "本文[cite knuth1981]。\n"
+        TIO.writeFile (tmp </> "chapters/99.gm") "@bibliography\n"
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        let link = "<a class=\"cite\" href=\"../chapters/99.xhtml#cite-knuth1981\">[1]</a>"
+            entry = "<li id=\"cite-knuth1981\">"
+        html01 <- TIO.readFile (tmp </> "build/html/chapters/01.xhtml")
+        html99 <- TIO.readFile (tmp </> "build/html/chapters/99.xhtml")
+        assertBool (T.unpack html01) (link `T.isInfixOf` html01)
+        assertBool (T.unpack html99) (entry `T.isInfixOf` html99)
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let page p = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath p archive)
+        assertBool "EPUB 01" (link `T.isInfixOf` page "OEBPS/chapters/01.xhtml")
+        assertBool "EPUB 99" (entry `T.isInfixOf` page "OEBPS/chapters/99.xhtml"),
+    testCase "a literal author and a literal date are in the entry" $ do
       (ds, m) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", jaRefsJson)]
       ds @?= []
       Map.lookup "lit" m @?= Just "日本規格協会、照合順番、n.d.。"
@@ -600,3 +626,55 @@ indexColumnTests =
       assertBool "files" (not (Map.null one))
       two @?= one
   ]
+
+urlBreakTests :: [TestTree]
+urlBreakTests =
+  [ testCase "PDF: the first line of an entry with a long URL is not spaced out" $ do
+      (noto, serif) <- (,) <$> notoBytes <*> BS.readFile "../golem-font/test/fonts/SourceSerifVariable-Roman.ttf"
+      -- the page of the user manual: A5, 13Q, 32 characters a line
+      let style =
+            "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 32\nlines = 29\nline-pitch = \"22H\"\nposition = { top = \"22mm\", gutter = \"14mm\" }\n\n[fonts.body]\nja = \"fonts/noto.otf\"\nlatin = \"fonts/serif.ttf\"\n"
+          refs = TE.encodeUtf8 "[{\"id\": \"ms-wsl-filesystems\", \"type\": \"webpage\", \"title\": \"ファイル システム間での作業\", \"publisher\": \"Microsoft\", \"URL\": \"https://learn.microsoft.com/ja-jp/windows/wsl/filesystems\"}]"
+      r <- layoutMiniFonts realProvider ("bibliography = [\"refs.json\"]\n" <> miniManifest) style "本文[cite ms-wsl-filesystems]。\n\n@bibliography\n" [("fonts/noto.otf", noto), ("fonts/serif.ttf", serif), ("refs.json", refs)]
+      (_, pl) <- either (assertFailure . show) pure r
+      case [slLine sl | sl <- Map.elems (plLines pl), "[1]" `T.isPrefixOf` setLineText sl] of
+        l : _ -> assertBool (show (glueRatio l, lineText l, lineTexts pl)) (glueRatio l <= 1)
+        [] -> assertFailure (show (lineTexts pl)),
+    testCase "PDF: a quarter em after a note mark before a URL in code, and no break there" $ do
+      (gaps, breaks) <- noteGaps "本文。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0004-crop-marks-and-bleed.md]（トンボ）]\n"
+      map (uncurry (-)) gaps @?= [0]
+      breaks @?= 0,
+    testCase "PDF: a quarter em after a note mark before Japanese" $ do
+      (gaps, breaks) <- noteGaps "本文。[note: 和文で始まる注。]\n"
+      map (uncurry (-)) gaps @?= [0]
+      breaks @?= 0
+  ]
+  where
+    lineText l = T.concat [bcText c | Box _ c <- lineItems l]
+    {- the gap between the end of the note mark and the start of the first
+    character of the body in the first line of each footnote, with a
+    quarter of the mark's size; and the breaks between them -}
+    noteGaps src = do
+      (noto, sans) <- (,) <$> notoBytes <*> BS.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf"
+      let style =
+            "[page]\nsize = \"B5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"13Q\"\ncharacters = 40\nlines = 34\nline-pitch = \"22H\"\nposition = { top = \"28mm\", gutter = \"24mm\" }\n\n[fonts.body]\nja = \"fonts/noto.otf\"\n\n[fonts.code]\nja = \"fonts/noto.otf\"\nlatin = \"fonts/code.otf\"\n"
+      r <- layoutMiniFonts realProvider miniManifest style src [("fonts/noto.otf", noto), ("fonts/code.otf", sans)]
+      (_, pl) <- either (assertFailure . show) pure r
+      let firsts = [l | sl <- Map.elems (plLines pl), (_, l : _) <- slNotes sl]
+          results = mapMaybe markGap firsts
+      length results @?= length firsts
+      pure (map fst results, sum (map snd results))
+    -- the mark is the first box; the body starts at the next box with text, at the start of its background if it is code
+    markGap l = case [(it, at) | (it, at) <- placeLine l] of
+      (Box w mark, at) : rest -> case break (isText . fst) rest of
+        (between, (Box {}, next) : _) ->
+          Just ((next - (at + w), round (toRational (lkSize (bcLook mark)) / 4)), length [() | (it, _) <- between, isBreak it])
+        _ -> Nothing
+      _ -> Nothing
+    isText = \case
+      Box _ c -> bcText c /= ""
+      _ -> False
+    isBreak = \case
+      Glue {} -> True
+      Penalty _ p _ -> p < 10000
+      Box {} -> False

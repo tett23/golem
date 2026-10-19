@@ -3,7 +3,7 @@
 
 Golem への変更は、どれも ADR から始まる。[index reading=ADR: ADR]
 ADR（Architecture Decision Record）は、設計の決定を一件ずつ記録する文書である。
-仕様を決めてからテストを書き、テストを失敗させてから実装する、という順番を守る。[note: [code: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md）]
+仕様を決めてからテストを書き、テストを失敗させてから実装する、という順番を守る。[note: [style url: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md）]
 
 誤字の修正や、仕様に影響しないドキュメントの修正には ADR は要らない。
 二つのマニュアルと方針の文書の変更も、メンテナーが求めない限り ADR を書かず、プルリクエストで決める（第[ref-number manuals]章）。
@@ -85,7 +85,7 @@ ADR はレビューを受けるまでコミットしない。
 ## adr-guard
 
 この規則は、adr-guard が自動で強制する。[index reading=adr-guard: adr-guard]
-今使っているバージョンは v0.8.2 である。[note: [code: https://github.com/tett23/adr-guard]（adr-guard）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0032-update-adr-guard-to-v0.8.2.md]（docs/adr の ADR 0032「adr-guard を v0.8.2 に上げ、コミット済みの ADR のリンクだけの変更を許す」）]
+今使っているバージョンは v0.8.2 である。[note: [style url: https://github.com/tett23/adr-guard]（adr-guard）、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0032-update-adr-guard-to-v0.8.2.md]（docs/adr の ADR 0032「adr-guard を v0.8.2 に上げ、コミット済みの ADR のリンクだけの変更を許す」）]
 
 [code: .githooks/pre-commit] の中身は一行である。
 
@@ -98,10 +98,10 @@ exec adr-guard pre-commit --allow-status --allow-links
 例外は二つで、ステータスの行の変更（[code: --allow-status]）と、リンクを付ける、外す、リンク先を変えるだけの変更（[code: --allow-links]）である。
 リンクは ADR の参照に限らない。
 リンクのテキストの変更は拒む。
-ステータスの行のない ADR と、二つ以上ある ADR も拒む。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0010-update-adr-guard-to-v0.5.0.md]（docs/adr の ADR 0010「adr-guard を v0.5.0 に上げ、ステータスの行の変更を --allow-status で許可する」）]
+ステータスの行のない ADR と、二つ以上ある ADR も拒む。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0010-update-adr-guard-to-v0.5.0.md]（docs/adr の ADR 0010「adr-guard を v0.5.0 に上げ、ステータスの行の変更を --allow-status で許可する」）]
 
 監査の記録（[code: docs/audit/]、[code: docs/audits/]）と性能計測の記録（[code: docs/benchmarks/]、[code: docs/benchmark/]）も、コミットした後の変更、削除、移動を拒む。
-記録には、[code: --allow-status] と [code: --allow-links] の例外も適用されない。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0011-update-adr-guard-to-v0.8.0.md]（docs/adr の ADR 0011「adr-guard を v0.8.0 に上げ、ステータスの行の数と記録の保護も検査する」）]
+記録には、[code: --allow-status] と [code: --allow-links] の例外も適用されない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0011-update-adr-guard-to-v0.8.0.md]（docs/adr の ADR 0011「adr-guard を v0.8.0 に上げ、ステータスの行の数と記録の保護も検査する」）]
 
 同じ検査は、CI の [code: docs.yml] の [code: adr] ジョブでも、adr-guard の v0.8.2 の action に [code: allow-status: true] と [code: allow-links: true] を付けて行う。
 フックは手元の設定なので外せるが、CI の検査は外せない。

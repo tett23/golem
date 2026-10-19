@@ -1,6 +1,6 @@
 # ADR 0005: 参考文献に誌名、巻と号、ページ、URL、閲覧日を組む
 
-ステータス: 採択
+ステータス: 採択→`url` の改行の位置は [golem-layout ADR 0018](../../golem-layout/adr/0018-url-line-breaks.md)
 
 ## 文脈
 

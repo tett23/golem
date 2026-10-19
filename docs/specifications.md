@@ -1107,8 +1107,13 @@ CSS では、和文と欧文で別のカーニングを指定できない。
 
 組み込みの文字スタイルは `bold`（`synthetic-bold = true`）、`italic`（`synthetic-italic = true`）、`strong`（`based-on = "bold"`）、`code`（`font = "code"`）、`url`（キーなし）の五つである。
 `url` は参考文献の URL を組む文字スタイルであり、書体、大きさ、色は周りの文字のまま組む（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）。
-PDF では、`url` と、`based-on` をたどって `url` に行き着く文字スタイルの文字に、ハイフネーションをかけず、改行してよい位置を空白と `/` の後に限り、中の文字のあいだにアキ量のセットの空きを入れない。
-`/` の後で改行してもハイフンを描かず、`//` のような連なりは最後の `/` の後でだけ改行する。
+PDF では、`url` と、`based-on` をたどって `url` に行き着く文字スタイルの文字に、ハイフネーションをかけず、中の文字のあいだにアキ量のセットの空きを入れない。
+改行してよい位置は、空白と、`/`、`.`、`@`、`!`、`_`、`|`、`;`、`>`、`]`、`)`、`,`、`?`、`&`、`'`、`+`、`=`、`#`、`:` の後とする（LaTeX の url パッケージの `\UrlBreaks` と `\UrlBigBreaks`、[golem-layout ADR 0018](golem-layout/adr/0018-url-line-breaks.md)）。
+`//` のような `/` の連なりは最後の `/` の後でだけ改行し、`:` の次が `/` なら `:` の後では改行しない。
+`https:` と `//` のあいだ、`/` と `/` のあいだでは分かれない。
+`-` の前後と `%` の後では改行しない。
+改行の罰点は、`/` の後を 0、ほかの字の後を 100 とする。
+改行してもハイフンを描かない。
 `code` と違い、カーニングは止めず、`code` の役割の書体を読み込む理由にもならない。
 `url` には `[url: ...]` のような別名はなく、原稿では `[style url: ...]` と書く。
 原稿の `[strong: ...]`、`[bold: ...]`、`[italic: ...]`、`[code: ...]` は、これらを付ける `[style 名前: ...]` の別名である。
@@ -1131,6 +1136,9 @@ InDesign の段落境界線にあたる。
 罫線は段の行の始まりから `start-indent` の位置から引き、段落の字下げには合わせない。
 罫線と段落のあいだの間隔（前の罫線の `space-after`、後の罫線の `space-before`）を内側の間隔、罫線と前後の要素のあいだの間隔を外側の間隔と呼ぶ。
 間隔は、段落の行が載る格子の行の字面（`[page.grid]` の `font-size` の高さ）から測る。
+間隔（`space-before` と `space-after`）は `mm`、`pt`、`Q`、`H`、`zw` のどれでも書ける（[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）。
+間隔の `zw` は、段落スタイルでも見出しでも、版面の文字の大きさ（`[page.grid]` の `font-size`）を一字として解決する。
+`length`、`start-indent`、`end-indent` の `zw` は、段落スタイル（見出しでは見出し）の文字の大きさで解決する。
 段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G0311）とする。
 行送りの欄は設けない。
 PDF の本文を行の格子に載せるので、段落ごとに行送りを変えると見開きの行の位置がそろわなくなるためである。
@@ -1434,7 +1442,10 @@ HTML と EPUB では、組み込みの文字スタイルのうち `strong`、`bo
 段落スタイルと見出しの罫線は、前の罫線を `::before`、後の罫線を `::after` の擬似要素として書く（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
 `content: ""`、`display: block`、`border-block-start`、`margin-block`（`space-before` と `space-after`、書かなければ 0）を書き、`width` は `length` があればその寸法、`start-indent` か `end-indent` を書けば書かず、どちらもなければ `100%` とする。
 `start-indent` と `end-indent` は `margin-inline-start` と `margin-inline-end` に書く。
-`zw` は `em` にする。
+`length`、`start-indent`、`end-indent` の `zw` は `em` にする。
+`margin-block` の間隔の `zw` は、PDF と同じく版面の文字の大きさで解決し、`[page.grid]` の `font-size` が絶対的な寸法なら `pt` に換算して書く（[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）。
+`[page.grid]` がないか、`font-size` が絶対的な寸法でない本では、間隔の `zw` を `rem` にする。
+`mm` などの間隔は `pt` に換算し、0 の間隔は `0` と書く。
 線の種類は `border-style` に写し、`"solid"` と `"wavy"` は `solid`、`"dashed"` は `dashed`、`"dotted"` と `"japanese-dots"` は `dotted`、多重線は `double` とする（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
 色はスウォッチの RGB の近似で書き、`color` がなければ書かない（文字の色になる）。
 `keep-in-column`、`dash`、`gap` と行の格子への切り上げは、HTML と EPUB では使わない。
@@ -1723,7 +1734,7 @@ HarfBuzz のフォントは開いた後は読むだけで、HarfBuzz が複数�
 - 図番号は章ごとに振り、文書構造（S1）で決める。図番号は「図 3-2」のように章番号と組み合わせて使うので、章を複数のファイルに分けても章の中で番号が続く必要があるためである。
 - ICC プロファイルを持たない RGB の画像は sRGB とみなし、sRGB のプロファイルを付けて埋め込む。
 - PNG は、フィルタの前の画素のデータが 512 MiB 以下、ICC プロファイルが 32 MiB 以下のものに限る。画素のデータは画像に要るバイト数までしか展開しない（[docs/adr/0035](adr/0035-security-hardening.md)）。
-- PDF に置けない図版（読めない画像と、取り込めない PDF）は、PDF を組むとき（`golem build` の PDF と `golem preflight`）に `@figure` ごとに G0810 のエラーとし、PDF を書かない。dev と prod の両方でエラーである。HTML、EPUB、プレーンテキストは画像を読まないので、G0810 を出さない（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
+- PDF に置けない図版（読めない画像と、取り込めない PDF）は、PDF を組むとき（`golem build` の PDF と `golem preflight`）に `@figure` ごとに G0810 のエラーとし、PDF を書かない。dev と prod の両方でエラーである。HTML、EPUB、プレーンテキストは G0810 を出さない。HTML と EPUB が読むのは SVG だけで、動く中身の検査（G0814）のためである（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 
 PDF の図版は、そのページを Form XObject として PDF に取り込み、ベクターのまま描く（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 PDF を読む処理は golem-pdf の `Golem.Pdf.Import` に Haskell で書き、ほかのライブラリを使わない。
@@ -1750,7 +1761,19 @@ SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子�
 - 図版の大きさは、ルートの `width` と `height`（なければ `viewBox`）の縦横の比で決める。`viewBox` と `preserveAspectRatio` は Form XObject の中の行列で表す。
 - 数は有理数で計算し、三角関数と平方根は有理数の級数を決まった項数で打ち切って求める。座標と行列の値は、PDF に書くときに 1/65536 に丸める。x86-64 と aarch64 で同じ出力にするためである（[docs/adr/0002](adr/0002-determinism.md)）。
 - 色は sRGB の ICCBased の色空間（`/GolemSRGB`）で書き、DeviceRGB と CMYK への変換は使わない。sRGB のプロファイルは、画像、PDF の図版、SVG の図版で共有し、PDF に一度だけ書く。
-- HTML と EPUB は、SVG の図版をそのまま写して `<img>` で置き（`web` があればそれを置く）、中身を検査しない。EPUB の `media-type` は `image/svg+xml` である。
+- HTML と EPUB は、SVG の図版をそのまま写して `<img>` で置く（`web` があればそれを置く）。EPUB の `media-type` は `image/svg+xml` である。写す前に、次に定める動く中身だけを検査する（[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)）。PDF の部分集合の外のもの（輪郭にしていない文字、`@font-face` など）は、HTML と EPUB では許す。
+- 動く中身とは、ブラウザーが SVG を文書として開いたときに動かすか読むものであり、次の表のものを指す。HTML か EPUB を組むとき、写す SVG のファイル（`@figure` の図版か `web` の、拡張子が `.svg` のもの。箇条の中の `@figure` も含む）を golem-svg の XML の読み手で読み、要素と属性を文書の順にたどる。一つでもあれば、その SVG を参照する `@figure` のブロックごとに G0814 のエラーとし、HTML と EPUB を書かない。PDF とプレーンテキストは書く。dev と prod の両方でエラーである。一つの SVG を複数の `@figure` が参照していても、ファイルは一度だけ読む。
+
+| 種類 | 拒むもの |
+| --- | --- |
+| スクリプトの要素 | `script`（名前空間を問わない） |
+| 別の文書を埋め込む要素 | `foreignObject`、`iframe`、`embed`、`object`、`handler`、`listener` |
+| イベントの属性 | 名前が `on` で始まる属性（大文字と小文字を区別しない） |
+| 参照の属性 | `href` と `xlink:href` のうち、値が `#` で始まらないもの |
+| アニメーションによる書き換え | `set`、`animate` の要素で、`attributeName` が `href`、`xlink:href`、または `on` で始まる名前のもの |
+| CSS の外部の参照 | `style` の要素と `style` の属性の中の `@import` と、`url(` の後が `#` で始まらないもの |
+
+- XML として読めない SVG、UTF-8 でない SVG、内部サブセットを持つ `DOCTYPE` を持つ SVG も、中身を確かめられないので G0814 とし、G0810 と同じ理由を括弧の中に書く。動く中身を取り除いて写すことはしない。検査を通った SVG は、バイト列をそのまま写す。
 
 PDF では、図番号とキャプションを、画像の下（縦組みでは左）に、段落スタイル `caption` の `font` と `size` で組む（[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 指定がなければ本文と同じ書体と大きさになる。
@@ -1996,7 +2019,7 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 - 今の段に入らなければ、次の段から置く。罫線を持つ段落のまとまりが段に入るかは格子の行の数だけで決め、注の本文の行を数えない。段落はその位置に留まり、入らない注の本文を次のページに送る。
 - 罫線を持つ見出しは、見出しの行と注の本文と区切りの行に、罫線の領域を足して判定し、入らなければ注と罫線とともに次の段に送る。
 - 見出しの直後で改ページしない規則は、続く要素が罫線のまとまりなら、その全体の行の数を数える。
-- 空の段にも入らないまとまりは、お知らせ（G0746）を出して組む。段落は罫線を持たない段落と同じ規則で行を段に分け、前の罫線は最初の部分の前に、後の罫線は最後の部分の後にだけ引く。見出しは、後の罫線を省き、それでも入らなければ前の罫線も省く。
+- 空の段にも入らないまとまりは、お知らせ（G0746）を出して組む。段落は罫線を持たない段落と同じ規則で行を段に分け、前の罫線も後の罫線も引かず、罫線の領域の行も取らない（[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）。最初の部分は段の最初の格子の行から始まる。分けて組んだ段落は隣り合う罫線の領域を共有せず、直前の段落の後の罫線と直後の段落の前の罫線は、それぞれの段落だけの罫線として数える。見出しは、後の罫線を省き、それでも入らなければ前の罫線も省く。
 - 回り込む図版の脇には、罫線を持つ段落を組まない。その段落は図版の後から置き、図版の脇の残りの行は空ける。
 
 原稿からは、`@page-break`（改ページ）、`@page-break recto`（改丁）、`@page-break verso`（次の偶数ページから始める）、`@column-break`（改段）で改められる（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
@@ -2215,7 +2238,9 @@ PDF の本文の印は、`[notes]` の `mark-format` の `{n}` を番号（算�
 印の後ろには、印がないときに前の字と次の字のあいだに入る空きが入る。
 横組みでは、印の字面の枠の上端を本文の字面の枠の上端にそろえる。
 縦組みでは、印を横書きの向きで行の中に置き、印の右端を本文の字面の枠の右端にそろえる。
-ページの下の注の本文の先頭には、本文の印と同じ文字列と半角の空白を付ける（`*1 注の本文`）。
+ページの下の注の本文の先頭には、本文の印と同じ文字列と四分アキの `[aki]` を付ける（`*1 注の本文`）。
+印と本文のあいだは、伸び縮みしない四分アキに固定し、そこでは改行しない（[golem-layout ADR 0018](golem-layout/adr/0018-url-line-breaks.md)）。
+本文が改行できない長い語やコードで始まり、一行めに伸びるグルーがない場合、その行は自然な幅のまま行頭に寄せる。
 この印は注の本文の大きさで組み、上げない。
 縦組みでは、印の幅が本文の文字の大きさを超えると、印が行の外にはみ出す。
 大きい `mark-size` や字の多い `mark-format` では、短い印でも起きる。
@@ -2382,7 +2407,9 @@ CSL-JSON は文献管理ソフトが書き出せる標準の形式である。
 HTML と EPUB の参考文献の項目の `id` は、本の全体で一意にする。
 一覧を文書の順に、一覧の中の項目を番号の順にたどり、`cite-<キー>`、`cite-<キー>-2`、`cite-<キー>-3` の順の候補のうち、本の中でまだ使っていない最初のものを使う。
 一覧が一つの本では、どの項目も `cite-<キー>` になる。
-引用の印は、その印が載る一覧の、その文献の項目の `id` へのリンクである。
+HTML と EPUB の引用の印は、その印が載る一覧の、その文献の項目の `id` へのリンクである（[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)）。
+一覧が別のファイルにあれば、そのファイルへの相対リンク（`../chapters/99.xhtml#cite-knuth1981` など）にする。
+本に `@bibliography` がなければ、印をリンクにせず、`<span class="cite">[1]</span>` と書く。
 
 v1 の引用の書式は、処理系が持つ一種類だけとする。
 引用の書式は数千種類あり、それを解釈する処理系の実装は独立した大きな仕事になるためである。
@@ -2869,7 +2896,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
 - **結合文字**：U+0301 のような結合文字を、前の字と一つにせず、別の箱として組む。
-- **HTML の引用の印のリンク**：`[cite ...]` の印のリンクは、同じページの `#cite-<キー>` を指す（`modules/golem-html/src/Golem/Html.hs` の `Cite` の分岐）。`@bibliography` を別のファイルに置くと、リンクの先がない。ラベルへの参照と索引のリンクは、参照先のファイルへの相対リンクにしている（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)、[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)）。
 - **EPUB のナビゲーション文書と `@toc` の深さ**：ナビゲーション文書は、`@toc` の `depth` を見ず、`@notoc` のない見出しをいつもすべて載せる。[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md) は `@toc` がない場合だけを定めており、`@toc` がある場合の振る舞いを定めていない。
 - **プラグインの独自の一覧**：「チャネル」の節は、用語集のような独自の一覧をプラグインで作れるとしている。しかし、チャネルを出力するブロック（IR の tag 8）は目次、索引、参考文献の三種類に固定されており、ほかに使えるチャネルは注だけである。プラグインが独自のチャネルに項目を送り、一覧として出す手段はない（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)、[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
 - **累乗の diagnostic の揺れ**：浮動小数点数の底か負の指数の `**` は、結果の大きさを倍精度で見積もってから、範囲の外（G0204 か 0）と計算の上限（G0286）を判定する。見積もりの誤差は指数の絶対値に比例して増えるので、真の値が範囲の境界の近くにある式では、指数を 1 変えるだけで G0286 と G0204、G0286 と 0 が入れ替わる。「設計原則」の「diagnostics の決定性」に反する（[golem-eval ADR 0005](golem-eval/adr/0005-float-overflow.md)、[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)）。

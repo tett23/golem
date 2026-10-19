@@ -3,7 +3,7 @@
 
 Golem をソースからビルドする手順は、README の Development の節にある。
 この章はその手順を、なぜその順序なのかと一緒に並べ直す。
-手順の多くは、依存のバージョンを固定して、どのマシンでも同じ実行ファイルの振る舞いを得るためにある。[note: [code: https://github.com/tett23/golem/blob/main/README.md#development]（README の Development の節）]
+手順の多くは、依存のバージョンを固定して、どのマシンでも同じ実行ファイルの振る舞いを得るためにある。[note: [style url: https://github.com/tett23/golem/blob/main/README.md#development]（README の Development の節）]
 
 ## 道具をそろえる
 
@@ -15,7 +15,7 @@ GHC のバージョンを上げるときは ADR を書く。
 
 依存のライブラリのバージョンは、[code: cabal.project.freeze] で固定してコミットしてある。
 このファイルを消してビルドすると依存のバージョンが変わりうるので、消さない。
-固定したバージョンを変えるときは、変更の理由をプルリクエストに書く。[note: [code: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md の「テストと実装」の節）]
+固定したバージョンを変えるときは、変更の理由をプルリクエストに書く。[note: [style url: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md の「テストと実装」の節）]
 
 ほかに、次のものを入れておく。
 
@@ -81,13 +81,13 @@ macOS でビルドした実行ファイルは OS の標準のライブラリだ�
 
 golem-cli のテストは、[code: build-tool-depends] で [code: golem] の実行ファイルをビルドし、それを一時ディレクトリで実行して、終了コードと出力を確かめる。
 このテストができる前は、ADR 0001 が終了コード 2 と決めていた使い方の誤りが、実際には 1 を返していた。
-テスト設計に書いたテストを実際に書かないと、決定と実装のずれに誰も気付かない、という実例である。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0004-usage-error-exit-code.md]（golem-cli ADR 0004「使い方の誤りの終了コードを 2 にし、使い方の文言を日本語にする」）]
+テスト設計に書いたテストを実際に書かないと、決定と実装のずれに誰も気付かない、という実例である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0004-usage-error-exit-code.md]（golem-cli ADR 0004「使い方の誤りの終了コードを 2 にし、使い方の文言を日本語にする」）]
 
 CDDL のスキーマへの適合のテスト（golem-doc）は、外部の検証器 [code: cddl] の CLI を使う。
 [code: PATH] にあるか、環境変数 [code: GOLEM_CDDL] でパスを指定したときだけ実行し、なければ飛ばす。
 CI では必ず実行する。
 Haskell には成熟した CDDL の検証器がないので、テストにだけ外部の道具を使うと決めている。
-外部の道具を使うテストは、テストスイートだけが使うパッケージ golem-test-support の [code: needsTool] か [code: optionalTool] で書き、道具がなければ [code: SKIP] と表示される。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0028-shared-test-support-package.md]（ADR 0028「テストの補助を共有するパッケージ」）]
+外部の道具を使うテストは、テストスイートだけが使うパッケージ golem-test-support の [code: needsTool] か [code: optionalTool] で書き、道具がなければ [code: SKIP] と表示される。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0028-shared-test-support-package.md]（ADR 0028「テストの補助を共有するパッケージ」）]
 
 テストのうち、[code: docs/diagnostics.md] の節とソースのコードの一致を確かめるのは golem-driver のテストである（第[ref-number docs]章）。
 
@@ -103,7 +103,7 @@ $ scripts/gen-parser.sh
 このスクリプトは peg-hs の CLI をビルドして実行し、ラベルを外した文法（[code: modules/golem-parser/test/StrippedGrammar.hs]）も生成する。[index reading="gen-parser.sh": gen-parser.sh]
 golem-parser のテストは、二つの文法が同じ入力を受理することを確かめる。
 文法にラベルを足すときは、ラベルを外しても受理する言語が変わらないことを確かめ、理由のコメントを添えて [code: %safe] を書く。
-[code: scripts/gen-parser.sh] は peg-hs の警告を誤りとして扱う（[code: --Werror]）ので、[code: %safe] のないラベルがあると生成が失敗する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-parser/adr/0007-grammar-label-safety.md]（golem-parser ADR 0007「文法のラベルを安全にする」）]
+[code: scripts/gen-parser.sh] は peg-hs の警告を誤りとして扱う（[code: --Werror]）ので、[code: %safe] のないラベルがあると生成が失敗する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-parser/adr/0007-grammar-label-safety.md]（golem-parser ADR 0007「文法のラベルを安全にする」）]
 
 CI の [code: build] ジョブは、[code: scripts/gen-parser.sh] を実行し、生成物に差分がないことを [code: git diff --exit-code] で確かめる。
 文法だけを変えて生成し忘れると、CI が止まる。
@@ -125,7 +125,7 @@ $ hlint modules \
 
 CI の hlint は、GHC でビルドせず、hlint のリリースの x86-64 の Linux の配布物を [code: scripts/ci/fetch-hlint.sh] で取得して使う。
 以前の [code: format] ジョブは、hlint を動かすためだけに GHC の導入と [code: cabal install hlint-3.10] に時間を払っていた。
-配布物に替えて、ジョブの時間はおよそ 168 秒から 30 秒前後に縮んだと ADR は見積もっている。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0009-ci-speed.md]（docs/adr の ADR 0009「CI の高速化」）]
+配布物に替えて、ジョブの時間はおよそ 168 秒から 30 秒前後に縮んだと ADR は見積もっている。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0009-ci-speed.md]（docs/adr の ADR 0009「CI の高速化」）]
 
 ## シェルのスクリプトとそのテスト
 

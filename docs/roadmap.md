@@ -25,14 +25,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ### PDF
 
-- **分けて組んだ段落の罫線**（未実装、[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）：分けて組んだ段落には前後の罫線を引かない。罫線と本文のあいだの間隔を `mm` でも書けることを明記し、HTML と EPUB では間隔の `zw` を版面の文字の大きさで解決する。
 - **表の列の幅**（未実装、[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）：短い列から自然な幅を満たして配り、折り返しを長い列に集める。
-
-### 安全のための上限と検査
-
-2026-10-18 のセキュリティの監査で見つかった問題を直す。
-
-- **SVG の動く中身**（未実装、[docs/adr 0039](adr/0039-svg-active-content-in-html-and-epub.md)）：HTML と EPUB に写す SVG の図版に動く中身があれば G0814 で拒む。XML として読めない SVG も拒む。
 
 ### 既知の不具合の修正
 
@@ -41,8 +34,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - **結合文字**（未実装、[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）：結合文字を前の字と一つの箱に組む。
 - **ナビゲーション文書の深さ**（未実装、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）：`@toc` の深さをナビゲーション文書と `index.xhtml` に当てる。
-- **HTML の引用の印のリンク**（未実装、[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)）：引用の印を、その印が載る参考文献の一覧のある文書へのリンクにする。
-- **URL の改行と注の印の後の空き**（未実装、[golem-layout ADR 0018](golem-layout/adr/0018-url-line-breaks.md)）：URL の中で改行できる位置を増やし、注の印の後の空白を四分アキにする。
 
 
 ## v0.1.0-rc4

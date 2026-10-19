@@ -579,12 +579,41 @@ codeItems env lk run padStart padEnd =
   where
     tr = tracking lk
     sameSide a b = isVariationSelector b || (charClass a == Western) == (charClass b == Western)
-    -- a URL breaks only after the last slash of a run (golem-doc ADR 0005)
-    slashRun = if lkUrl lk then T.takeWhile (== '/') else T.take 1
-    slashParts t = case T.breakOn "/" t of
+    slashParts = if lkUrl lk then urlParts else codeParts
+    -- code breaks after each slash (golem-driver ADR 0017)
+    codeParts t = case T.breakOn "/" t of
       (a, rest)
         | T.null rest -> [a | not (T.null a)]
-        | otherwise -> let s = slashRun rest in (a <> s) : slashParts (T.drop (T.length s) rest)
+        | otherwise -> (a <> "/") : codeParts (T.drop 1 rest)
+
+{- | A URL cut after each character it may break after (golem-layout ADR
+0018): the characters of url.sty's breaks, but not a slash or a colon
+before a slash, so that a run of slashes and "https://" stay whole.
+-}
+urlParts :: Text -> [Text]
+urlParts t = filter (not . T.null) (go (T.unpack t))
+  where
+    go s = case cut s of
+      (a, []) -> [T.pack a]
+      (a, rest) -> T.pack a : go rest
+    cut = \case
+      [] -> ([], [])
+      c : rest@(d : _) | c `elem` urlBreakChars, not (d == '/' && c `elem` ("/:" :: String)) -> ([c], rest)
+      c : rest -> let (a, r) = cut rest in (c : a, r)
+
+-- | The characters a URL may break after (golem-layout ADR 0018): url.sty's \UrlBreaks and \UrlBigBreaks.
+urlBreakChars :: String
+urlBreakChars = "/.@!_|;>]),?&'+=#:"
+
+{- | The penalty of a break inside a URL after the text of a box, if it
+may break there (golem-layout ADR 0018): 0 after a slash, 100 after the
+other characters of 'urlBreakChars'.
+-}
+urlBreakAfter :: Text -> Maybe Int
+urlBreakAfter t = case T.unsnoc t of
+  Just (_, '/') -> Just 0
+  Just (_, c) | c `elem` urlBreakChars -> Just 100
+  _ -> Nothing
 
 {- | Whether text breaks as code: only at spaces and after a slash, with
 no hyphenation and no aki inside (golem-driver ADR 0017, golem-doc ADR 0005).
@@ -706,6 +735,8 @@ normalize env = go AtStart True
       Box w c ->
         let spacing = case before of
               -- inside code: a break after a slash, no spacing (golem-driver ADR 0017)
+              -- inside a URL: a break after the characters of url.sty's breaks (golem-layout ADR 0018)
+              AfterBox p | lkUrl (bcLook p) && lkUrl (bcLook c) -> [Penalty 0 n NoHyphen | Just n <- [urlBreakAfter (bcText p)]]
               AfterBox p | breaksAsCode (bcLook p) && breaksAsCode (bcLook c) -> [Penalty 0 0 NoHyphen | "/" `T.isSuffixOf` bcText p]
               AfterBox p -> between p c
               AtStart -> leading c
