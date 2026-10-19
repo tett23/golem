@@ -20,7 +20,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ### 記法と設定
 
-- **段落のあいだの行アキ**（未実装、[docs/adr 0046](adr/0046-blank-line-command.md)）：`@blank-line` と `@blank-line N` で、段落のあいだに行アキを入れる。行の大きさは、その位置の段落スタイルで決まる。段の先頭に来た行アキは捨て、notice で知らせる。
 - **マニュアルのライセンス**：二つのマニュアルの原稿（`.gm`）と、組んだ PDF と HTML を CC0 にする。リポジトリのほかの部分は今のとおり MIT とする。PDF に埋め込むフォントは SIL Open Font License 1.1 のままで、CC0 の対象にならないことを、マニュアルの奥付とライセンスの表示に書く。ライセンスの表示の置き場所（`manual/` と `manual-dev/` の LICENSE、奥付、README）を決める。
 
 ### PDF
@@ -53,7 +52,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **リファクタリング**：v0.1.0-rc4 の作業を始める前に、v0.1.0-rc3 までに入れたコードを整理する。モジュールの境界、重複した処理、大きくなった関数とテストの補助を見直し、rc4 のプラグインの仕上げに備える。出力は変えず、決定性の検査で確かめる。
 - **総ルビのプラグイン**：本文のすべての漢字にルビを振るプラグインを作る。読みの決め方、配布の形、Golem の本体に要る変更は ADR で決める。
 - **初出の語にルビを振るプラグイン**：指定した語に、章ごとの最初の出現でだけルビを振るプラグインを作る。語と読みの指定の仕方、章の境の判定、配布の形は ADR で決める。
-- **diagnostic の info**：diagnostic の重大度に、notice より下の info を加える。info は `--verbose` を付けたときにだけ出力し、ふだんの出力と `golem check` の結果、終了コードには影響しない。何を info にするか、`--verbose` を持つコマンド、LSP での扱い（Information と Hint のどちらに写すか）、JSON の出力、notice の抑制の設定（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）との関係は ADR で決める。開発者向けのマニュアルの「Golem に info はない」という説明も、このとき改める。
+- **diagnostic の info**：diagnostic の重大度に、notice より下の info を加える。info は `--verbose` を付けたときにだけ出力し、ふだんの出力と `golem check` の結果、終了コードには影響しない。何を info にするか、`--verbose` を持つコマンド、LSP での扱い（Information と Hint のどちらに写すか）、JSON の出力、notice の抑制の設定（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）との関係は ADR で決める。開発者向けのマニュアルの「Golem に info はない」という説明も、このとき改める。info に移す候補に、段の先頭で捨てた行アキの notice の G0747（[docs/adr 0046](adr/0046-blank-line-command.md)）がある。
 - **注の印の文字スタイル**：注の印に文字スタイル（`[notes]` の `mark-style`）を当てられるようにする。印の大きさと書式は `mark-size` と `mark-format` で指定できる（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
 - **注の印の数字の表記**：注の印の番号を、算用数字のほかに、漢数字や記号の連なり（JLReq の 4.2.2 が挙げる形）で組めるようにする。今の `mark-format` は算用数字の番号だけを置き換える（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
 
