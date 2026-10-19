@@ -81,10 +81,28 @@ jobs:
     needs: changes
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 30
+    # On x86-64, two runners build the same commit: one runs the tests,
+    # the other makes the outputs (the determinism check, the manuals,
+    # epubcheck and the environment check). The work is bound by the four
+    # cores of a runner, and the x86-64 build is the longest job; on
+    # aarch64 one runner does both (docs/adr/0045)
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+        include:
+          - runner: ubuntu-24.04
+            part: tests
+            tests: true
+            outputs: false
+          - runner: ubuntu-24.04
+            part: outputs
+            tests: false
+            outputs: true
+          - runner: ubuntu-24.04-arm
+            part: all
+            tests: true
+            outputs: true
+    name: build (${{ matrix.runner }}, ${{ matrix.part }})
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
@@ -94,9 +112,10 @@ jobs:
       # restored and cabal builds, and the step before the tests waits for
       # it. A stalled mirror fails it in 5 minutes (docs/adr/0009,
       # docs/adr/0037)
+      # the tests need qpdf, and epubcheck checks the EPUB of x86-64
       - name: qpdf, and epubcheck on x86-64, in the background (golem-pdf ADR 0001, golem-epub ADR 0001)
         env:
-          PACKAGES: ${{ matrix.runner == 'ubuntu-24.04' && 'qpdf epubcheck' || 'qpdf' }}
+          PACKAGES: ${{ matrix.runner == 'ubuntu-24.04' && matrix.outputs && 'epubcheck' || 'qpdf' }}
         run: |
           # PACKAGES is a list of package names
           # shellcheck disable=SC2086
@@ -162,15 +181,16 @@ jobs:
         run: scripts/fetch-wasmtime.sh
       - id: cddl
         name: Cache the cddl CLI (docs/adr/0009)
+        if: matrix.tests
         uses: actions/cache@v6
         with:
           path: ~/.cargo/bin/cddl
           key: cddl-${{ env.CDDL_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
       - name: cddl CLI for the schema test (golem-doc ADR 0001)
-        if: steps.cddl.outputs.cache-hit != 'true'
+        if: matrix.tests && steps.cddl.outputs.cache-hit != 'true'
         run: cargo install cddl --version "$CDDL_VERSION" --locked
-      # peg-cli is built with the rest, for the check of the generated parser
-      # compiled is true when GHC compiled a module, that is when
+      # peg-cli is built with the rest, for the check of the generated
+      # parser. compiled is true when GHC compiled a module, that is, when
       # dist-newstyle is no longer the one restored above (docs/adr/0045)
       - id: build
         name: cabal build all peg-cli:exe:peg-hs
@@ -183,60 +203,9 @@ jobs:
       # on golem-test-support, which only the test suites use (docs/adr/0028)
       - name: Only the test suites depend on golem-test-support (docs/adr/0028)
         run: sh scripts/ci/test-only-deps.sh dist-newstyle/cache/plan.json
-      - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
-        uses: actions/cache@v6
-        with:
-          path: |
-            manual/fonts
-            manual-dev/fonts
-          key: manual-fonts-${{ hashFiles('scripts/manual/fetch-fonts.sh') }}
-      # The outputs of golem are made while the tests run, on the cores the
-      # tests leave idle (docs/adr/0045). They are made from a copy of the
-      # commit (a worktree with the fonts of the manuals), with a copy of
-      # golem: the tests copy modules/golem-driver/test/fixtures/sample,
-      # which scripts/determinism.sh and the EPUB below would build in
-      # place. scripts/determinism.sh builds the two manuals with
-      # scripts/manual/build.sh, which fails on a single diagnostic,
-      # notices included, and lists the hashes of their outputs; the
-      # manuals are built once, here, on both architectures (docs/adr/0002,
-      # docs/adr/0022, docs/adr/0024, docs/adr/0037)
-      - name: Outputs for the determinism check, in the background; the manuals build without diagnostics (docs/adr/0045)
-        run: |
-          mkdir -p "$RUNNER_TEMP/bin"
-          cp "$(cabal list-bin -v0 golem)" "$RUNNER_TEMP/bin/golem"
-          git worktree add --detach "$RUNNER_TEMP/tree" HEAD
-          cp -R manual/fonts "$RUNNER_TEMP/tree/manual/fonts"
-          cp -R manual-dev/fonts "$RUNNER_TEMP/tree/manual-dev/fonts"
-          sh scripts/ci/bg.sh start determinism nice -n 19 sh -c 'GOLEM="$RUNNER_TEMP/bin/golem" sh "$RUNNER_TEMP/tree/scripts/determinism.sh" > "$RUNNER_TEMP/determinism-${{ matrix.runner }}.txt"'
       - name: qpdf, and epubcheck on x86-64, are installed
         timeout-minutes: 5
         run: sh scripts/ci/bg.sh wait apt
-      # the EPUB of aarch64 is the same, by the determinism job
-      - name: The EPUB passes epubcheck, in the background (docs/adr/0045)
-        if: matrix.runner == 'ubuntu-24.04'
-        run: |
-          cp -R modules/golem-driver/test/fixtures/sample "$RUNNER_TEMP/epub"
-          sh scripts/ci/bg.sh start epub nice -n 19 sh -c 'cd "$RUNNER_TEMP/epub" && "$RUNNER_TEMP/bin/golem" build --target epub && epubcheck build/epub/book.epub'
-      # the outputs do not change with the time zone, the locale,
-      # SOURCE_DATE_EPOCH, HOME, XDG_*, PATH, the umask, the path of the
-      # project, the times of its files and files nothing refers to; the
-      # changes take the same paths on both architectures (docs/adr/0029).
-      # check.sh copies every input it builds; it reads the checkout
-      - name: Japanese locales for the environment check
-        if: matrix.runner == 'ubuntu-24.04'
-        run: sudo locale-gen ja_JP.UTF-8 ja_JP.EUC-JP
-      - name: The outputs do not change with the environment, in the background (docs/adr/0029, docs/adr/0038, docs/adr/0045)
-        if: matrix.runner == 'ubuntu-24.04'
-        env:
-          # pull requests check the small inputs; pushes to main and the
-          # calls from release.yml check every input (docs/adr/0038)
-          QUICK: ${{ github.event_name == 'pull_request' && '--quick' || '' }}
-          GOLEM_REQUIRE_LOCALES: "1"
-          GOLEM_REQUIRE_FONTS: "1"
-        run: |
-          QUICK= # TEMPORARY: every input, to measure the overlap as on main
-          # shellcheck disable=SC2086
-          GOLEM="$RUNNER_TEMP/bin/golem" sh scripts/ci/bg.sh start env nice -n 19 sh scripts/env-determinism/check.sh $QUICK
       # qpdf, cddl and openssl are installed above (openssl comes with the
       # runner image): a test that needs one of them fails here instead of
       # being skipped. A suite that does not finish in 10 minutes is
@@ -244,61 +213,94 @@ jobs:
       # cabal.project.local); the step itself stops after 20, so that a
       # hang fails in minutes, not at the job's timeout
       - run: cabal test all
+        if: matrix.tests
         timeout-minutes: 20
         env:
           GOLEM_REQUIRE_EXTERNAL_TOOLS: "1"
       - name: Generated parser matches the grammar
+        if: matrix.tests
         run: |
           scripts/gen-parser.sh
           git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs
+      - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
+        if: matrix.outputs
+        uses: actions/cache@v6
+        with:
+          path: |
+            manual/fonts
+            manual-dev/fonts
+          key: manual-fonts-${{ hashFiles('scripts/manual/fetch-fonts.sh') }}
+      # the EPUB of aarch64 is the same, by the determinism job
       - name: The EPUB passes epubcheck
-        if: matrix.runner == 'ubuntu-24.04'
-        timeout-minutes: 10
-        run: sh scripts/ci/bg.sh wait epub
-      - name: Outputs for the determinism check; the manuals build without diagnostics
-        timeout-minutes: 15
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        working-directory: modules/golem-driver/test/fixtures/sample
         run: |
-          sh scripts/ci/bg.sh wait determinism
-          mv "$RUNNER_TEMP/determinism-${{ matrix.runner }}.txt" .
+          "$(cabal list-bin -v0 golem)" build --target epub
+          epubcheck build/epub/book.epub
+      # scripts/determinism.sh builds the two manuals with
+      # scripts/manual/build.sh, which fails on a single diagnostic,
+      # notices included, and lists the hashes of their outputs; the
+      # manuals are built once, here, on both architectures (docs/adr/0002,
+      # docs/adr/0022, docs/adr/0024, docs/adr/0037)
+      - name: Outputs for the determinism check; the manuals build without diagnostics
+        if: matrix.outputs
+        run: GOLEM="$(cabal list-bin -v0 golem)" scripts/determinism.sh > determinism-${{ matrix.runner }}.txt
       - uses: actions/upload-artifact@v7
+        if: matrix.outputs
         with:
           name: determinism-${{ matrix.runner }}
           path: determinism-${{ matrix.runner }}.txt
+      # the outputs do not change with the time zone, the locale,
+      # SOURCE_DATE_EPOCH, HOME, XDG_*, PATH, the umask, the path of the
+      # project, the times of its files and files nothing refers to; the
+      # changes take the same paths on both architectures (docs/adr/0029)
+      - name: Japanese locales for the environment check
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        run: sudo locale-gen ja_JP.UTF-8 ja_JP.EUC-JP
       - name: The outputs do not change with the environment (docs/adr/0029, docs/adr/0038)
-        if: matrix.runner == 'ubuntu-24.04'
-        timeout-minutes: 15
-        run: sh scripts/ci/bg.sh wait env
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        env:
+          # pull requests check the small inputs; pushes to main and the
+          # calls from release.yml check every input (docs/adr/0038)
+          QUICK: ${{ github.event_name == 'pull_request' && '--quick' || '' }}
+        run: |
+          # QUICK is empty or one word
+          # shellcheck disable=SC2086
+          GOLEM_REQUIRE_LOCALES=1 GOLEM_REQUIRE_FONTS=1 GOLEM="$(cabal list-bin -v0 golem)" sh scripts/env-determinism/check.sh $QUICK
       # the PDF and the HTML of the manuals; those of aarch64 are the same,
       # by the determinism job (docs/adr/0022, docs/adr/0024)
       - name: The user manual (docs/adr/0022)
-        if: matrix.runner == 'ubuntu-24.04'
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
         uses: actions/upload-artifact@v7
         with:
           name: manual
           path: |
-            ${{ runner.temp }}/tree/manual/build/pdf
-            ${{ runner.temp }}/tree/manual/build/html
+            manual/build/pdf
+            manual/build/html
       - name: The developer manual (docs/adr/0024)
-        if: matrix.runner == 'ubuntu-24.04'
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
         uses: actions/upload-artifact@v7
         with:
           name: manual-dev
           path: |
-            ${{ runner.temp }}/tree/manual-dev/build/pdf
-            ${{ runner.temp }}/tree/manual-dev/build/html
+            manual-dev/build/pdf
+            manual-dev/build/html
+      # pushes to main only: a pull request's cache would serve that pull
+      # request alone, under a key that changes with every commit. On
+      # x86-64 the runner of the tests saves it (docs/adr/0045)
       - name: Save dist-newstyle (docs/adr/0009)
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: success() && matrix.tests && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6
         with:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ github.sha }}
-      # A pull request saves its own dist-newstyle once cabal build has
-      # succeeded and compiled something, even when a later step fails, so
-      # that its next push builds on it (docs/adr/0045). Restore
-      # dist-newstyle above looks in the caches of the pull request first
-      # and then in those of main
+      # A pull request saves its own dist-newstyle when cabal build has
+      # compiled something, even when a later step fails, so that its next
+      # push or a rerun builds on it. Restore dist-newstyle above looks in
+      # the caches of the pull request first and then in those of main
+      # (docs/adr/0045)
       - name: Save dist-newstyle of the pull request (docs/adr/0045)
-        if: always() && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'
+        if: always() && matrix.tests && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'
         uses: actions/cache/save@v6
         with:
           path: dist-newstyle
