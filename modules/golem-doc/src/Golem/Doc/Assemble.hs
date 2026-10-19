@@ -10,7 +10,12 @@ module Golem.Doc.Assemble
     LabelTarget (..),
     TocEntry (..),
     IndexGroup (..),
+    ListAt,
     assemble,
+    citeNumber,
+    bibliographyAt,
+    indexAt,
+    indexGroups,
     bookChapters,
     notesTitle,
     blockNotes,
@@ -105,8 +110,15 @@ data Book = Book
     bookListings :: !(Map SrcSpan Text),
     bookToc :: ![TocEntry],
     bookTocDepth :: !(Maybe Int),
-    bookIndex :: ![IndexGroup],
-    bookCitations :: ![(Text, Int)],
+    {- | each @index with the groups of its range, in document order
+    (golem-doc ADR 0008)
+    -} bookIndexes :: ![(ListAt, [IndexGroup])],
+    {- | each @bibliography with the numbers of the citations of its range,
+    in document order; without @bibliography, one list without a place over
+    the whole book (golem-doc ADR 0008)
+    -} bookBibliographies :: ![(Maybe ListAt, [(Text, Int)])],
+    -- | the list and the number of each citation mark, by its file and span
+    bookCiteMarks :: !(Map (FileId, SrcSpan) (Maybe ListAt, Int)),
     bookLabels :: !(Map Text LabelTarget),
     bookReferenced :: !(Set Text),
     {- | the chapter of the manifest of each document, in the order of
@@ -114,6 +126,28 @@ data Book = Book
     chapter of its own
     -} bookChapterOf :: ![Int]
   }
+
+{- | The place of a list of a channel: the file and the span of its block
+(golem-doc ADR 0008).
+-}
+type ListAt = (FileId, SrcSpan)
+
+{- | The number of a citation mark: its number in the list it belongs to
+(golem-doc ADR 0008). The key decides it, so two marks a plugin puts out
+at one span keep their own numbers.
+-}
+citeNumber :: Book -> SrcSpan -> Text -> Maybe Int
+citeNumber book sp k = do
+  (at, _) <- Map.lookup (spanFile sp, sp) (bookCiteMarks book)
+  lookup at (bookBibliographies book) >>= lookup k
+
+-- | The citations of the @bibliography at a block span.
+bibliographyAt :: Book -> SrcSpan -> [(Text, Int)]
+bibliographyAt book sp = fromMaybe [] (lookup (Just (spanFile sp, sp)) (bookBibliographies book))
+
+-- | The groups of the @index at a block span.
+indexAt :: Book -> SrcSpan -> [IndexGroup]
+indexAt book sp = fromMaybe [] (lookup (spanFile sp, sp) (bookIndexes book))
 
 {- | The documents of the book by chapter of the manifest, in order
 (golem-driver ADR 0026).
@@ -284,7 +318,7 @@ assemble cfg evalDeferred docs =
           not (haNoToc a),
           Just h <- [Map.lookup sp (nsHeadings ns)]
         ]
-      citations = numberCitations docs
+      (bibliographies, citeMarks) = numberCitations docs
    in ( Book
           { bookDocs = renumberNotes cfg docs',
             bookHeadings = nsHeadings ns,
@@ -294,8 +328,9 @@ assemble cfg evalDeferred docs =
             bookTocDepth = case tocs of
               ((d, _) : _) -> Just d
               [] -> Nothing,
-            bookIndex = indexGroups docs,
-            bookCitations = citations,
+            bookIndexes = indexLists docs,
+            bookBibliographies = bibliographies,
+            bookCiteMarks = citeMarks,
             bookLabels = labels,
             bookReferenced = refd,
             bookChapterOf = acChapterOf cfg
@@ -504,19 +539,67 @@ relocate sp = \case
   Number _ n s -> Number sp n s
   other -> other
 
-numberCitations :: [Document] -> [(Text, Int)]
-numberCitations docs = zip (dedupe [k | Document _ bs <- docs, Block _ _ body <- allBlocks bs, Cite _ k <- bodyInlines body]) [1 ..]
+{- | The items of a channel split among its lists (golem-doc ADR 0008): an
+item goes to the first list after it, and the items after the last list
+to the last list. The blocks are in document order; an item is at the
+block that holds it. Without a list, one range without a place.
+-}
+scopes :: (BlockBody -> Bool) -> (FileId -> Inline -> [a]) -> [Document] -> [(Maybe ListAt, [a])]
+scopes isList itemOf docs = close (foldl step ([], []) events)
   where
+    events =
+      [ ev
+      | Document fid bs <- docs,
+        Block sp _ body <- allBlocks bs,
+        ev <- if isList body then [Left (fid, sp)] else map Right (concatMap (itemOf fid) (bodyInlines body))
+      ]
+    -- the lists so far (reversed) and the items waiting for a list (reversed)
+    step (done, pending) = \case
+      Left at -> ((Just at, reverse pending) : done, [])
+      Right x -> (done, x : pending)
+    close (done, pending) = case done of
+      [] -> [(Nothing, reverse pending)]
+      ((at, xs) : rest) -> reverse ((at, xs <> reverse pending) : rest)
+
+{- | The citations numbered from 1 in each @bibliography, in the order of
+first citation in its range, and the list and number of each mark
+(golem-doc ADR 0008).
+-}
+numberCitations :: [Document] -> ([(Maybe ListAt, [(Text, Int)])], Map (FileId, SrcSpan) (Maybe ListAt, Int))
+numberCitations docs =
+  let lists = scopes isBibliography (\fid -> \case Cite sp k -> [((fid, sp), k)]; _ -> []) docs
+      numbered = [(at, zip (dedupe (map snd marks)) [1 ..]) | (at, marks) <- lists]
+      marksOf = Map.fromList [(m, (at, n)) | ((at, marks), (_, nums)) <- zip lists numbered, (m, k) <- marks, Just n <- [lookup k nums]]
+   in (numbered, marksOf)
+  where
+    isBibliography = \case
+      ChannelOutput BibliographyOutput -> True
+      _ -> False
     dedupe = go Set.empty
     go _ [] = []
     go seen (x : xs)
       | x `Set.member` seen = go seen xs
       | otherwise = x : go (Set.insert x seen) xs
 
+-- | Each @index with the groups of the marks of its range (golem-doc ADR 0008).
+indexLists :: [Document] -> [(ListAt, [IndexGroup])]
+indexLists docs =
+  [ (at, groupMarks marks)
+  | (Just at, marks) <- scopes isIndex (\fid -> \case IndexMark sp e -> [((ieTerms e, ieReadings e), (fid, sp))]; _ -> []) docs
+  ]
+  where
+    isIndex = \case
+      ChannelOutput IndexOutput -> True
+      _ -> False
+
+-- | The groups of every index mark of the documents, whatever list they belong to.
 indexGroups :: [Document] -> [IndexGroup]
-indexGroups docs =
-  let marks = [((ieTerms e, ieReadings e), (fid, sp)) | Document fid bs <- docs, Block _ _ body <- allBlocks bs, IndexMark sp e <- bodyInlines body]
-      grouped = Map.toList (Map.fromListWith (flip (<>)) [(k, [loc]) | (k, loc) <- marks])
+indexGroups docs = groupMarks [((ieTerms e, ieReadings e), (fid, sp)) | Document fid bs <- docs, Block _ _ body <- allBlocks bs, IndexMark sp e <- bodyInlines body]
+
+-- | Index marks grouped by their terms and readings, in collation order.
+groupMarks :: [(([Text], [Text]), (FileId, SrcSpan))] -> [IndexGroup]
+groupMarks marks =
+  let grouped = Map.toList (Map.fromListWith (flip (<>)) [(k, [loc]) | (k, loc) <- marks])
       sorted = sortOn (\((ts, rs), _) -> (map collationKey rs, map T.unpack ts)) grouped
    in [IndexGroup ts rs locs | ((ts, rs), locs) <- sorted]
 
