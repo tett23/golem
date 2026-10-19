@@ -50,6 +50,9 @@ ctx =
             ("empty.csv", AssetText (FileId 24) ""),
             ("blank.csv", AssetText (FileId 25) "\n\n"),
             ("ragged.csv", AssetText (FileId 26) "a,b\n1\n"),
+            ("ctl.csv", AssetText (FileId 27) "a,b\n1,x\STXy\n"),
+            ("ctl.hs", AssetText (FileId 28) "l1\nl\ETX2\n"),
+            ("tab.hs", AssetText (FileId 29) "a\tb\nc\n"),
             ("/tmp/a.png", AssetInvalid Absolute),
             ("https://example.com/a.png", AssetInvalid Url),
             ("../outside.txt", AssetInvalid EscapesRoot),
@@ -192,11 +195,32 @@ escapeTests =
           other -> assertFailure (show other)
     ]
 
+-- | The characters that cannot be written to the output are G0289 (docs/adr ADR 0042).
+outputCharTests :: TestTree
+outputCharTests =
+  testGroup
+    "characters that cannot be written to the output (docs/adr ADR 0042)"
+    [ testCase "U+0001 in a paragraph is G0289 at the text of the paragraph" $
+        [(c, s, e, "U+0001" `T.isInfixOf` m) | (c, m, s, e) <- diags "前\SOH後\n"] @?= [("G0289", 0, 7, True)],
+      testCase "one G0289 for each string, with the first character" $
+        [(c, "U+0001" `T.isInfixOf` m) | (c, m, _, _) <- diags "a\SOHb\USc\n\n# d\SOe\n"] @?= [("G0289", True), ("G0289", False)],
+      testCase "U+0002 in a cell of a table file is G0289" $
+        [(c, "U+0002" `T.isInfixOf` m) | (c, m, _, _) <- diags "@table src=ctl.csv\n"] @?= [("G0289", True)],
+      testCase "U+0003 in the file of @listing is G0289" $
+        [(c, "U+0003" `T.isInfixOf` m) | (c, m, _, _) <- diags "@listing ctl.hs\n"] @?= [("G0289", True)],
+      testCase "a tab and a newline pass" $ do
+        errs "@listing tab.hs\n" @?= []
+        errs "a\tb\n" @?= [],
+      testCase "U+007F and U+0085 pass" $
+        errs "a\DELb\x85\&c\n" @?= []
+    ]
+
 tests :: TestTree
 tests =
   testGroup
     "file evaluation, S0 (ADR 0002)"
     [ verseTests,
+      outputCharTests,
       printingsTests,
       diagnosticTests,
       settingsTests,
