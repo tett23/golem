@@ -207,7 +207,7 @@ evalFile ctx0 (A.File fid blocks0) =
         { erDocument = applyRegexStyles rules doc,
           erExports = stVars st,
           erUsage = Usage (stDefined st) (stRefs st) (stNsRefs st) (stImports st),
-          erDiagnostics = stDiags st <> breakDiags <> filterDiags,
+          erDiagnostics = stDiags st <> breakDiags <> filterDiags <> unwritableText (applyRegexStyles rules doc),
           erSource = ctxSource ctx,
           erStyles = local,
           erNumberSites = stNumberSites st
@@ -226,6 +226,53 @@ withFileStyles local ctx
         { ctxCharStyles = Set.union (Map.keysSet (lsCharStyles local)) (ctxCharStyles ctx),
           ctxParaStyles = Map.union (paraLineBreaks (withLocalStyles (ctxStyle ctx) local)) (ctxParaStyles ctx)
         }
+
+-- ------------------------------------------------------------------ characters for the output
+
+{- | G0289 at each string of the IR with a character that cannot be
+written to the output (docs/adr ADR 0042): the text of paragraphs,
+headings, lists, table cells, code, figures and notes, whatever the
+target. One for each string, naming its first such character; the lines
+of a code block are one string at the block.
+-}
+unwritableText :: Document -> [Diagnostic]
+unwritableText = concatMap blockDiags . docBlocks
+  where
+    at sp t = case firstUnwritable t of
+      Just c -> [diagnostic "G0289" Error sp ("出力に書けない文字（" <> codePointText c <> "）があります")]
+      Nothing -> []
+    blockDiags (Block sp _ b) = case b of
+      Paragraph _ is -> inlines is
+      Heading _ attrs is -> maybe [] inlines (haTocTitle attrs) <> inlines is
+      BulletList items -> concatMap (concatMap blockDiags . itemBlocks) items
+      OrderedList items -> concatMap (concatMap blockDiags . itemBlocks) items
+      DefList groups -> concat [concatMap inlines (dgTerms g) <> concatMap (concatMap blockDiags) (dgDefs g) | g <- groups]
+      Table _ h body -> concatMap inlines h <> concatMap (concatMap inlines) body
+      CodeBlock c -> maybe [] (at sp) (codeFile c) <> maybe [] inlines (codeCaption c) <> at sp (codeText c)
+      FigureBlock f -> at sp (figAlt f) <> concatMap blockDiags (figCaption f)
+      ChannelOutput _ -> []
+      ForcedBreak _ -> []
+      PageControl _ -> []
+    inlines :: [InlineF r] -> [Diagnostic]
+    inlines = concatMap inline
+    inline :: InlineF r -> [Diagnostic]
+    inline = \case
+      Text sp t -> at sp t
+      Ruby sp _ segs -> concat [inlines (rsBase g) <> maybe [] (at sp) (rsReading g) | g <- segs]
+      Kenten _ _ xs -> inlines xs
+      Color _ _ xs -> inlines xs
+      CharStyle _ _ xs -> inlines xs
+      Tcy sp t -> at sp t
+      Note _ _ xs -> inlines xs
+      Sidenote _ _ xs -> inlines xs
+      IndexMark sp e -> concatMap (at sp) (ieTerms e <> ieReadings e)
+      ProofComment sp t -> at sp t
+      Number {} -> []
+      Ref {} -> []
+      Deferred {} -> []
+      Cite {} -> []
+      LineBreak {} -> []
+      Aki {} -> []
 
 -- ------------------------------------------------------------------ newlines
 
