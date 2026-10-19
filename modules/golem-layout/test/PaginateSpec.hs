@@ -494,8 +494,32 @@ propertyTests =
       blocks <- forAll genBlocks
       capacity <- forAll (Gen.int (Range.linear 2 9))
       let starts = [k | p <- paginate 1 capacity (flowsOf blocks), (k, _) <- poSlots p]
-      filter (\k -> k < 0 || k >= capacity) starts === []
+      filter (\k -> k < 0 || k >= capacity) starts === [],
+    -- the bounds of the starts alone pass when a heading of two grid lines
+    -- starts on the last one, or when two slots share a grid line
+    testProperty "the slots of a page do not overlap and end within the page" $ property $ do
+      blocks <- forAll genBlocks
+      capacity <- forAll (Gen.int (Range.linear 2 9))
+      let spans = Map.fromList (headingSpans 0 blocks)
+          extent = \case
+            SHeading l _ -> Map.findWithDefault 1 l spans
+            _ -> 1
+      mapM_
+        ( \p -> do
+            let slots = [(k, k + extent s) | (k, s) <- poSlots p]
+            annotateShow (poNumber p, slots)
+            -- each slot starts at or after the end of the one before it
+            and (zipWith (\(_, e) (k, _) -> e <= k) slots (drop 1 slots)) === True
+            filter (\(_, e) -> e > capacity) slots === []
+        )
+        (paginate 1 capacity (flowsOf blocks))
   ]
+  where
+    -- the grid lines each heading takes, by the id of its line
+    headingSpans :: Int -> [Block] -> [(Int, Int)]
+    headingSpans _ [] = []
+    headingSpans i (Para n : rest) = headingSpans (i + n) rest
+    headingSpans i (Head k : rest) = (i, k) : headingSpans (i + 1) rest
 
 -- | Size 10pt, pitch 17pt, in sp.
 ruleGrid :: RuleGrid
