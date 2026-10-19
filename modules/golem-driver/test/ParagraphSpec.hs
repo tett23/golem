@@ -1,4 +1,4 @@
-module ParagraphSpec (verseTests, indentTests, listTests, separatorTests, hardBreakTests, akiTests, breakTests, pageControlTests, columnTests, inseparableTests, codeSpaceTests) where
+module ParagraphSpec (verseTests, indentTests, listTests, separatorTests, hardBreakTests, akiTests, breakTests, pageControlTests, blankLineTests, columnTests, inseparableTests, codeSpaceTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
@@ -391,6 +391,42 @@ pageControlTests =
   ]
   where
     verticalFive = replaceIn "binding = \"left\"" "binding = \"right\"" (replaceIn "writing-mode = \"horizontal\"" "writing-mode = \"vertical\"" fiveLines)
+
+-- | Blank lines between blocks (docs/adr ADR 0046).
+blankLineTests :: [TestTree]
+blankLineTests =
+  [ testCase "PDF: @blank-line 2 puts the next paragraph three grid lines after, horizontal and vertical" $
+      forM_ [horizontalStyle, pdfStyle] $ \style -> do
+        (_, layout) <- layoutMini style "あ\n@blank-line 2\nい\n" [] >>= either (assertFailure . show) pure
+        map (map fst . poSlots) (plPages layout) @?= [[0, 3]]
+        plNotices layout @?= [],
+    testCase "PDF: a blank line at the top of a column is dropped with the notice G0747 at its line" $ do
+      let src = "あ\n\n@page-break\n\n@blank-line\n\nい\n"
+      (_, layout) <- layoutMini fiveLines src [] >>= either (assertFailure . show) pure
+      map (map fst . poSlots) (plPages layout) @?= [[0], [0]]
+      [(diagCode d, diagSeverity d, diagMessage d, spanStart (diagSpan d)) | d <- plNotices layout]
+        @?= [(DiagnosticCode "G0747", Notice, "段の先頭に来た @blank-line の空きを捨てました", 18)],
+    testCase "PDF: blank lines between two stanzas take the place of space-between, not more" $ do
+      (_, layout) <- layoutMini horizontalStyle "@style verse\n  あ\n\n@blank-line\n\n@style verse\n  い\n" [] >>= either (assertFailure . show) pure
+      map (map fst . poSlots) (plPages layout) @?= [[0, 2]]
+      (_, plain) <- layoutMini horizontalStyle "@style verse\n  あ\n\n@style verse\n  い\n" [] >>= either (assertFailure . show) pure
+      map (map fst . poSlots) (plPages plain) @?= [[0, 2]],
+    testCase "HTML: a div of a br for each blank line between the paragraphs" $ do
+      (page, _) <- htmlMini horizontalStyle "あ\n@blank-line 2\nい\n"
+      assertBool (T.unpack page) ("<p>あ</p>\n<div class=\"blank-line\"><br/><br/></div>\n<p>い</p>\n" `T.isInfixOf` page),
+    testCase "HTML: nothing before the first block, after a page break or after the last block" $ do
+      (page, _) <- htmlMini horizontalStyle "@blank-line\n\nあ\n\n@page-break\n@blank-line\nい\n\n@blank-line 3\n"
+      assertBool (T.unpack page) (not ("blank-line" `T.isInfixOf` page))
+      assertBool (T.unpack page) ("<p>あ</p>\n<p data-break-before=\"page\">い</p>\n" `T.isInfixOf` page),
+    testCase "plain text: as many more empty lines as blank lines, and none at the ends or after a break" $ do
+      let text src = withVerseProject "" src $ \tmp -> do
+            _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            TIO.readFile (tmp </> "build/text/horizontal/v.txt")
+      t <- text "あ\n@blank-line 2\nい\n"
+      t @?= "あ\n\n\n\nい\n"
+      t' <- text "@blank-line\n\nあ\n\n@page-break\n@blank-line\nい\n\n@blank-line\n"
+      t' @?= "あ\n\nい\n"
+  ]
 
 breakTests :: [TestTree]
 breakTests =

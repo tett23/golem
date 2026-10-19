@@ -352,16 +352,23 @@ idAttr = maybe "" (\l -> " id=\"" <> escapeXml l <> "\"")
 carries the kind of the last of them on its outermost element; a break
 at the end writes nothing, and a column break nothing (docs/adr ADR 0017).
 The block after a no-break carries avoid; need-lines and page-lines write
-nothing (docs/adr ADR 0030).
+nothing (docs/adr ADR 0030). Blank lines are a div of a br for each line
+between two blocks, and nothing before the first block, after a break or
+after the last block (docs/adr ADR 0046).
 -}
 topBlocks :: Ctx -> [Block] -> Text
-topBlocks c = go Nothing
+topBlocks c = go Nothing Nothing
   where
-    go _ [] = ""
-    go _ (Block _ _ (ForcedBreak k) : rest) = go (breakName k) rest
-    go _ (Block _ _ (PageControl NoBreak) : rest) = go (Just "avoid") rest
-    go pending (Block _ _ (PageControl _) : rest) = go pending rest
-    go pending (b : rest) = withBreak pending (block c b) <> go Nothing rest
+    -- the break pending, and the blank lines pending after a block (Nothing before one)
+    go _ _ [] = ""
+    go _ _ (Block _ _ (ForcedBreak k) : rest) = go (breakName k) Nothing rest
+    go _ blanks (Block _ _ (PageControl NoBreak) : rest) = go (Just "avoid") blanks rest
+    go pending blanks (Block _ _ (PageControl _) : rest) = go pending blanks rest
+    go pending blanks (Block _ _ (BlankLines n) : rest) = go pending ((+ toInteger n) <$> blanks) rest
+    go pending blanks (b : rest) = blankLines (fromMaybe 0 blanks) <> withBreak pending (block c b) <> go Nothing (Just 0) rest
+    blankLines n
+      | n > 0 = "<div class=\"blank-line\">" <> T.replicate (fromInteger n) "<br/>" <> "</div>\n"
+      | otherwise = ""
     -- the attribute goes at the end of the first start tag
     withBreak pending html = case pending of
       Nothing -> html
@@ -459,6 +466,8 @@ block c (Block sp lbl body) = case body of
       <> "</ol>\n"
   ForcedBreak _ -> ""
   PageControl _ -> ""
+  -- placed by topBlocks (docs/adr ADR 0046)
+  BlankLines _ -> ""
   where
     -- a URL of http or https is a link; another URL is not (golem-doc ADR 0005)
     entryPart = \case

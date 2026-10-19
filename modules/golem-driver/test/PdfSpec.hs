@@ -1454,6 +1454,9 @@ codeBlockRubyTests =
       case plPages pl of
         [_, p2] -> take 1 [s | (s, SLine _) <- poSlots p2] @?= [0]
         ps -> assertFailure (show (map poSlots ps)),
+    testCase "a blank line after a code block with a background takes the place of the space line (docs/adr ADR 0046)" $ do
+      (_, pl) <- layoutOk (horizontalStyle <> codeBg) "```\na\n```\n\n@blank-line\n\n[ruby: 漢|かん]字。\n" []
+      firstLineSlot pl @?= Just (codeEnd pl + 1),
     testCase "two builds with ruby after a code block give the same bytes" $ do
       let src = "```\na\n```\n\n[ruby: 漢|かん]字。\n"
       a <- miniPdf fakeProvider True (horizontalStyle <> codeBg) src []

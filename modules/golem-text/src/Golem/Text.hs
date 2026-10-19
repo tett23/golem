@@ -80,10 +80,26 @@ renderText lang numberDefault dev firstLine lists bib variant ft book =
   where
     ctxOf fid = Ctx variant lang numberDefault book dev (firstLine fid) False lists bib 0
 
+{- | The blocks of a file, an empty line between two; blank lines add
+their empty lines between two blocks, and nothing before the first
+block, after a break or after the last block (docs/adr ADR 0046).
+-}
+topText :: Ctx -> [Block] -> Text
+topText c = T.concat . go False Nothing
+  where
+    -- whether a block was written, and the empty lines pending after a block (Nothing after a break)
+    go _ _ [] = []
+    go written _ (Block _ _ (ForcedBreak _) : rest) = go written Nothing rest
+    go written blanks (Block _ _ (BlankLines n) : rest) = go written ((+ toInteger n) <$> blanks) rest
+    go written blanks (b : rest) =
+      let t = block c 0 b
+          sep = if written then "\n\n" <> T.replicate (fromInteger (fromMaybe 0 blanks)) "\n" else ""
+       in if T.null t then go written blanks rest else sep : t : go True (Just 0) rest
+
 -- | A file and, after it, the notes of the documents of its chapter.
 file :: Ctx -> Document -> [Document] -> Text
 file c (Document _ bs) chapter =
-  let body = T.intercalate "\n\n" (filter (not . T.null) (map (block c 0) bs))
+  let body = topText c bs
       notes = [(n, xs) | Document _ cbs <- chapter, Note _ n xs <- concatMap blockInlines cbs]
       noteMark n = (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
       noteText = T.intercalate "\n" (notesTitle (cLanguage c) : [noteMark n <> " " <> inlines c xs | (n, xs) <- notes])
@@ -136,6 +152,8 @@ block c ind (Block sp _ body) = case body of
   -- plain text has no pages (docs/adr ADR 0017)
   ForcedBreak _ -> ""
   PageControl _ -> ""
+  -- placed by topText (docs/adr ADR 0046)
+  BlankLines _ -> ""
   ChannelOutput BibliographyOutput ->
     -- the entry, or the key that has none (golem-doc ADR 0004, 0005)
     T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> maybe k entryText (Map.lookup k (cBibliography c)) | (k, n) <- bibliographyAt (cBook c) sp]
