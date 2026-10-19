@@ -334,7 +334,8 @@ textPieces lk t
            in PWord lk (T.pack (map fst w)) : go rest'
       | otherwise = PChar lk c "" : go rest
 
-{- | The text of code (golem-driver ADR 0017): spaces as between words, a
+{- | The text of code (golem-driver ADR 0017): spaces as breaks of a fixed
+width (golem-layout ADR 0017), a
 tab as other text has it, and each run of the rest as one piece.
 -}
 codePieces :: Look -> Text -> [Piece]
@@ -518,7 +519,9 @@ itemsFor env prev p next = case p of
   PWord lk word -> wordItems env lk word
   PSpace lk ->
     let sw = advance env lk ' '
-     in [Glue (sw + tracking lk) (sw `div` 2) (sw `div` 3)]
+     in if lkCode lk
+          then [Glue (sw + tracking lk) 0 0] -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
+          else [Glue (sw + tracking lk) (sw `div` 2) (sw `div` 3)]
   PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0)]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
