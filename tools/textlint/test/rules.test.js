@@ -70,6 +70,9 @@ const cases = [
   ["a review word: 効いて", "CI で効いてくる。\n", {}, ["1:review-words"]],
   ["not a review word: 有効", "PDF でだけ有効である。\n", {}, []],
   ["not a review word: 効果", "効果がある。\n", {}, []],
+  ["a review word: 鍵", "キャッシュの鍵を変える。\n", {}, ["1:review-words"]],
+  ["not a review word: 公開鍵", "公開鍵と秘密鍵で署名する。\n", {}, []],
+  ["a review word: 鍵 named in quotes", "「鍵」と書かない。\n", {}, []],
   // prh
   ["prh: upstream for developers", "本流に送る。\n", {}, ["1:prh"]],
   ["prh: public domain","公有の作品である。\n", {}, ["1:prh"]],

@@ -524,7 +524,7 @@ Git のコミットやビルドの環境は含めない。
 
 `meta` が持つ値は次のとおりである。
 マニフェストのキーの `-` は、`meta` では `_` になる。
-マニフェストにない値は鍵もなく、引くと G0202 になる。
+マニフェストにない値はキーもなく、引くと G0202 になる。
 
 - `id`、`title`、`language`、`date`（`2026-10-16` の形の文字列）と、あれば `title_reading`、`edition`、`publisher`、`publisher_person`
 - `creators`：`creators` の名前の配列

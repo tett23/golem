@@ -168,7 +168,7 @@ description = [commands: [* tstr], filters: [* tstr],
 channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 ```
 
-- [code: golem_describe] は [code: description] を返す。二つの欄の [code: description] は不正な応答（G0605）である。[code: order] は 0 が文書の順、1 が読みの順である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0007-plugin-channel-lists.md]（golem-doc ADR 0007「プラグインの独自のチャネル」）]
+- [code: golem_describe] は [code: description] を返す。二つのフィールドの [code: description] は不正な応答（G0605）である。[code: order] は 0 が文書の順、1 が読みの順である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0007-plugin-channel-lists.md]（golem-doc ADR 0007「プラグインの独自のチャネル」）]
 - コマンドの呼び出しでは、[code: golem_invoke] は [code: command-request] を受け取り、[code: output] がインラインの列（[code: inlines]）の [code: response] を返す。
 - フィルタの呼び出しでは、[code: filter-request] を受け取り、[code: output] がファイル一つ分の文書（[code: document]）の [code: response] を返す。
 - 引数の値に連想配列は渡せない。[code: value] にマップがないのはそのためである。
@@ -234,7 +234,7 @@ golem-plugin のテストは、テスト用のプラグインを wat（wasm の�
 次は、受け取った文書をそのまま返すフィルタ [code: same] だけを持つプラグインである。
 [code: identity.wat] から、コマンドの部分を除いて整形し直した。
 
-```wat
+```wat numbers=true
 (module
   (memory (export "memory") 2)
   (global $heap (mut i32) (i32.const 65536))

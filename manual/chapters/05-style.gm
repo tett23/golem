@@ -26,7 +26,7 @@ Golem では、それらがすべて [code: style.toml] という一つのテキ
 紙面の大きさと、本文を組む領域（版面）は、[code: \[page\]] と [code: \[page.grid\]] で決めます。
 InDesign の新規ドキュメントの設定と、レイアウトグリッドの設定に当たります。
 
-@listing style.toml lines=3-17
+@listing style.toml lines=3-17 numbers=true
 
 [code: \[page\]] には、紙面そのものを書きます。
 
@@ -187,7 +187,7 @@ gap = "0.5zw"
 段落の体裁は段落スタイル[index reading=だんらくすたいる: 段落スタイル]に、文字の体裁は文字スタイル[index reading=もじすたいる: 文字スタイル]にまとめます。
 InDesign の段落スタイルと文字スタイルに当たり、ほかのスタイルを引き継ぐ [code: based-on] は、InDesign の「基準」に当たります。
 
-@listing style.toml lines=31-53
+@listing style.toml lines=31-53 numbers=true
 
 文字スタイル（[code: \[character-styles.<名前>\]]）に書けるキーは次のとおりです。
 
@@ -503,7 +503,7 @@ InDesign の親ページとの違いは、置けるものが柱とノンブル�
 
 注、傍注、図番号、目次の体裁は、それぞれのテーブルで決めます。
 
-```toml
+```toml numbers=true
 [notes]
 placement = "page-foot"
 numbering = "chapter"
@@ -671,7 +671,7 @@ InDesign の文字組みアキ量設定に当たる設定で、和文と欧文�
 
 セットを変えるには、[code: \[aki-sets.名前\]] にセットを定義し、段落スタイルの [code: aki-set] で選びます。
 
-```toml
+```toml numbers=true
 [aki-sets.wide-waou]
 based-on = "gyomatsu-yakumono-hankaku"
 

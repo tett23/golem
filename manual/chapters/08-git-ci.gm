@@ -162,7 +162,7 @@ GitHub Actions では、プロジェクトのフォルダの [code: .github/work
 YAML は TOML と同じく設定を書く形式で、行頭の字下げの深さで入れ子を表します。
 次の例は、Golem の配布物を取得して確かめ、本を組み、組んだ結果を保存する手順です。
 
-```yaml
+```yaml numbers=true
 name: book
 on: push
 jobs:

@@ -34,7 +34,7 @@ golem-cli ADR 0005 と docs/adr の ADR 0005 は別の文書である。
 
 ADR は日本語で、次の形で書く。
 
-```markdown
+```markdown numbers=true
 # ADR 0001: タイトル
 
 ステータス: 提案
@@ -131,7 +131,7 @@ ADR や仕様書が日本語でも、コミットのメッセージ、リリー�
 マージには、CI の [code: ci]（[code: ci.yml]）と [code: adr]（[code: docs.yml]）の二つの検査が通っている必要がある（第[ref-number ci-jobs]章）。
 
 [code: main] の rebase と force push は禁じている。
-例外は、API の鍵のような秘密の情報を誤ってコミットした場合だけである。
+例外は、API キーのような秘密の情報を誤ってコミットした場合だけである。
 自分のブランチは、マージするまでなら rebase してよい。
 
 ## 依存を増やす前に
