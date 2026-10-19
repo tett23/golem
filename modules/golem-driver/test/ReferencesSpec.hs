@@ -35,6 +35,13 @@ numbersIn is = [n | Number _ n _ <- is]
 refsJson :: BS.ByteString
 refsJson = "[{\"id\": \"knuth1981\", \"title\": \"Breaking Paragraphs into Lines\", \"author\": [{\"family\": \"Knuth\", \"given\": \"Donald\"}], \"issued\": {\"date-parts\": [[1981]]}}]"
 
+-- | Three entries, a, b and c, as CSL-JSON, and their entries for the PDF.
+abcJson :: BS.ByteString
+abcJson = "[{\"id\": \"a\", \"title\": \"A\"}, {\"id\": \"b\", \"title\": \"B\"}, {\"id\": \"c\", \"title\": \"C\"}]"
+
+abcEntries :: Map.Map T.Text [EntryPart]
+abcEntries = Map.fromList [(k, [EntryText ("Entry " <> T.toUpper k)]) | k <- ["a", "b", "c"]]
+
 indexTests :: [TestTree]
 indexTests =
   [ testCase "index lines: entries, sub-entries indented, pages once and in order" $ do
@@ -89,6 +96,26 @@ indexTests =
       assertBool (show ls) (any ("[1]" `T.isInfixOf`) ls)
       assertBool (show ls) (not (any ("knuth1981" `T.isInfixOf`) ls))
       assertBool (show ls) (any (\l -> "[1]" `T.isPrefixOf` l && "Knuth" `T.isInfixOf` l) ls),
+    -- several lists (golem-doc ADR 0008)
+    testCase "PDF: each @bibliography lists the citations of its range, numbered from 1" $ do
+      let source = "本文[cite a][cite b]。\n\n@bibliography\n\n本文[cite b][cite c]。\n\n@bibliography\n"
+      r <- pagesMini "bibliography = [\"refs.json\"]\n" horizontalStyle source [("refs.json", abcJson)] abcEntries
+      ls <- concat <$> either (assertFailure . show) pure r
+      filter ("Entry" `T.isInfixOf`) ls @?= ["[1]EntryA", "[2]EntryB", "[1]EntryB", "[2]EntryC"]
+      assertBool (show ls) (any ("[1][2]" `T.isInfixOf`) ls)
+      assertBool (show ls) (not (any ("[3]" `T.isInfixOf`) ls)),
+    testCase "PDF: each @index has the marks of its own range" $ do
+      let source = "本文[index reading=か: か]。\n\n@index\n\n本文[index reading=さ: さ]。\n\n@index\n"
+      r <- pagesMini "" horizontalStyle source [] Map.empty
+      ls <- concat <$> either (assertFailure . show) pure r
+      filter (\l -> any (`T.isPrefixOf` l) ["か　", "さ　"]) ls @?= ["か　1", "さ　1"],
+    testCase "plain text: each @bibliography lists the citations of its range" $
+      withBibProject "bibliography = [\"refs.json\"]" "本文[cite a][cite b]。\n\n@bibliography\n\n本文[cite b][cite c]。\n\n@bibliography\n" [("refs.json", abcJson)] $ \tmp -> do
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        t <- TIO.readFile (tmp </> "build/text/horizontal/a.txt")
+        [l | l <- T.lines t, "[" `T.isPrefixOf` l] @?= ["[1] A.", "[2] B.", "[1] B.", "[2] C."]
+        assertBool (T.unpack t) ("本文[1][2]。" `T.isInfixOf` t),
     testCase "every index mark has a page" $ do
       img <- tinyImage
       let source =

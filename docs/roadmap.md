@@ -33,15 +33,12 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 2026-10-18 のセキュリティの監査で見つかった問題を直す。
 
 - **SVG の動く中身**（未実装、[docs/adr 0039](adr/0039-svg-active-content-in-html-and-epub.md)）：HTML と EPUB に写す SVG の図版に動く中身があれば G0814 で拒む。XML として読めない SVG も拒む。
-- **PDF の図版の取り込みの上限**（未実装、[docs/adr 0040](adr/0040-pdf-import-resource-limits.md)）：展開の合計、ページの木、相互参照、予測子、内容のストリームに上限を設ける。
 - **SVG の `marker` と数の上限**（未実装、[docs/adr 0041](adr/0041-svg-marker-and-number-limits.md)）：`marker` の循環と 10 段以上の入れ子、範囲の外の数を G0811 にする。
-- **表のファイルの大きさの上限**（未実装、[docs/adr 0043](adr/0043-table-file-size-limits.md)）：大きすぎる表のファイルを G0288 で拒む。
 
 ### 既知の不具合の修正
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
 
-- **複数の `@index` と `@bibliography`**（未実装、[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）：複数の一覧を置けるようにし、項目が載る一覧と HTML の `id` を決める。
 - **結合文字**（未実装、[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）：結合文字を前の字と一つの箱に組む。
 - **ナビゲーション文書の深さ**（未実装、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）：`@toc` の深さをナビゲーション文書と `index.xhtml` に当てる。
 - **浮動小数点数の桁あふれ**（未実装、[golem-eval ADR 0005](golem-eval/adr/0005-float-overflow.md)）：正確な値を一度だけ丸めて計算し、比較を正確に行う。
@@ -51,6 +48,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ## v0.1.0-rc4
 
+- **リファクタリング**：v0.1.0-rc4 の作業を始める前に、v0.1.0-rc3 までに入れたコードを整理する。モジュールの境界、重複した処理、大きくなった関数とテストの補助を見直し、rc4 のプラグインの仕上げに備える。出力は変えず、決定性の検査で確かめる。
 - **総ルビのプラグイン**：本文のすべての漢字にルビを振るプラグインを作る。読みの決め方、配布の形、Golem の本体に要る変更は ADR で決める。
 - **初出の語にルビを振るプラグイン**：指定した語に、章ごとの最初の出現でだけルビを振るプラグインを作る。語と読みの指定の仕方、章の境の判定、配布の形は ADR で決める。
 - **diagnostic の info**：diagnostic の重大度に、notice より下の info を加える。info は `--verbose` を付けたときにだけ出力し、ふだんの出力と `golem check` の結果、終了コードには影響しない。何を info にするか、`--verbose` を持つコマンド、LSP での扱い（Information と Hint のどちらに写すか）、JSON の出力、notice の抑制の設定（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）との関係は ADR で決める。開発者向けのマニュアルの「Golem に info はない」という説明も、このとき改める。
@@ -98,6 +96,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **参考文献のスタイル**：雑誌や出版社ごとに決まった参考文献の書式を守れるように、参考文献のスタイルを選び、定められるようにする。TeX（BibTeX と biblatex）の文献のスタイルと同等のことができるのを目指す。v0.1.0-rc3 で欄を増やした書式（[golem-doc ADR 0005](golem-doc/adr/0005-bibliography-fields.md)）を既定のスタイルとして引き継ぐ。着手するときに ADR を作成する。
 - **時間のかかる `unsafe` の FFI の呼び出し**：プラグインのコンパイル（`golem_plugin_load`）と WAT から wasm への変換（`golem_wat2wasm`）は、`modules/golem-plugin/src/Golem/Plugin.hs` で `unsafe` として呼んでいる。`unsafe` の呼び出しは、終わるまで capability を手放さないので、そのあいだ GC の同期でほかのすべての capability が待たされる。この二つを `safe` の呼び出しにする。デッドロックにはならず遅れるだけであり、出力も変わらない（2026-10-17 のテストが止まる件の調査で見つかった）。
 - **追い込みと追い出しの設定**：行の調整で、行末に収まらない字を前の行に追い込むか、次の行に追い出すかと、その優先の順を、段落スタイルで設定できるようにする（JLReq の 3.8 の詰める処理と空ける処理）。今は追い込みをせず、収まらない箱を追い出して、足りない幅を行の中の字のあいだで埋める。改行できないコードや URL の前の行で字のあいだが大きく空く場合（開発者のマニュアルの表のセルの「超越関数を持たない。」の行）を、この設定で避けられるようにする（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。
+- **柱とノンブルのスタイル**：柱とノンブルに、書体、文字の大きさ、色を、段落スタイルか文字スタイルで設定できるようにする。今はマスターページの `running-head` と `folio` で位置と内容を決められるが、書体と大きさと色は決められない。v2 以降に回した「ページ番号と柱の拡張」のうち、柱とノンブルの書体と色はこの項目で v1.0.0 に前倒しする。
 
 ### LaTeX との差を埋める項目
 

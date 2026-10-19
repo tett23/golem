@@ -138,7 +138,7 @@ block c ind (Block sp _ body) = case body of
   PageControl _ -> ""
   ChannelOutput BibliographyOutput ->
     -- the entry, or the key that has none (golem-doc ADR 0004, 0005)
-    T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> maybe k entryText (Map.lookup k (cBibliography c)) | (k, n) <- bookCitations (cBook c)]
+    T.intercalate "\n" ["[" <> T.pack (show n) <> "] " <> maybe k entryText (Map.lookup k (cBibliography c)) | (k, n) <- bibliographyAt (cBook c) sp]
   where
     -- a number and the separator of the language (golem-html ADR 0002)
     numbered = maybe "" (\n -> n <> numberSeparator (cLanguage c) n)
@@ -211,7 +211,7 @@ inline c = \case
   Note _ n _ -> (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
   Sidenote _ n _ -> "※" <> T.pack (show n)
   IndexMark {} -> ""
-  Cite _ k -> case lookup k (bookCitations (cBook c)) of
+  Cite sp k -> case citeNumber (cBook c) sp k of
     Just n -> "[" <> T.pack (show n) <> "]"
     Nothing -> ""
   ProofComment _ t -> if cProfileDev c then "【校正：" <> t <> "】" else ""

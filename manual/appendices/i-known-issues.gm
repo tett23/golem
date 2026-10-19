@@ -43,10 +43,6 @@
   [code: @notoc] を付けた見出しは載りません。
   対処：目次に載せたくない見出しに [code: @notoc] を付けます。
   その見出しは、[code: @toc] の目次からも外れます。
-= [strong: [code: @index] と [code: @bibliography] を二つ書いてもエラーにならない]
-  [code: @index] や [code: @bibliography] を二つ以上書いても、エラーにならず、書いた場所ごとに一覧の全体が組まれます。
-  [code: @toc] は二つ以上書くとエラー（G0402）になります。
-  対処：それぞれ一つだけ書きます。
 
 @nonumber
 ## 計算とエディタ
