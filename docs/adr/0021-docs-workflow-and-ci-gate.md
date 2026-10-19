@@ -196,4 +196,4 @@ docs の一覧の漏れの検査について、次を確かめる。
 - GitHub Docs, "Troubleshooting required status checks"（パスで起動しなかったワークフローの必須の検査が待ちのまま残ること）. https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/troubleshooting-required-status-checks
 - GitHub Docs, "Using conditions to control job execution"（`if` で skip したジョブは成功として報告されること）. https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/using-conditions-to-control-job-execution
 - Git Documentation, git-diff（`A...B` が共通の祖先から `B` への差分であること）. https://git-scm.com/docs/git-diff
-- peg-hs の `.github/workflows/adr.yml` と `.github/workflows/ci.yml`（peg-hs ADR 0039）. https://github.com/tett23/peg-hs
+- peg-hs の `.github/workflows/adr.yml` と `.github/workflows/ci.yml`（[peg-hs ADR 0039](https://github.com/tett23/peg-hs/blob/main/docs/adr/0039-faster-ci.md)）. https://github.com/tett23/peg-hs
