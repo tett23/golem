@@ -62,13 +62,13 @@ comparisons =
           ("2 < 2", Right (VBool False))
         ],
       table
-        "an integer compared with a float is converted to a float"
+        "an integer and a float are compared exactly (golem-eval ADR 0005)"
         [ ("1 < 1.5", Right (VBool True)),
           ("2.5 > 2", Right (VBool True)),
           ("2 <= 2.0", Right (VBool True)),
           ("3 >= 3.5", Right (VBool False)),
-          -- 2^53 + 1 converts to 2^53, the nearest double
-          ("9007199254740993 == 9007199254740992.0", Right (VBool True))
+          -- 2^53 + 1 is not 2^53, though 2^53 is the nearest double to it
+          ("9007199254740993 == 9007199254740992.0", Right (VBool False))
         ],
       table
         "two integers are compared exactly, beyond the precision of a double"

@@ -16,6 +16,7 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:  Golem.Svg
+                    Golem.Svg.Active
                     Golem.Svg.Colors
                     Golem.Svg.Css
                     Golem.Svg.Number
@@ -32,6 +33,10 @@ test-suite golem-svg-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    ActiveSpec
+                    SecuritySpec
+  -- GHC.Stats measures what reading a hostile figure allocates (security audit 2026-10-18)
+  ghc-options:      -rtsopts -with-rtsopts=-T
   build-depends:
     , base
     , bytestring

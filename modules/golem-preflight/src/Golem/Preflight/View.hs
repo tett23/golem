@@ -76,7 +76,9 @@ data ImageView = ImageView
     ivContent :: !FigureContent,
     -- | the @figure block
     ivSpan :: !SrcSpan,
-    ivPath :: !Text
+    ivPath :: !Text,
+    -- | whether the figure is turned onto its page (golem-driver ADR 0034): its pixel width lies along the height of the rectangle
+    ivTurned :: !Bool
   }
   deriving stock (Eq, Show)
 

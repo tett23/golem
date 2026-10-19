@@ -24,6 +24,7 @@ import Golem.Project.Paths
 import Golem.Project.Style
 import Golem.Syntax
 import OutputCharsSpec qualified
+import StylePositionSpec qualified
 import System.Directory (createDirectoryIfMissing, createFileLink)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -501,6 +502,7 @@ tests =
       TomlMessageSpec.tests,
       ColophonSpec.tests,
       OutputCharsSpec.tests,
+      StylePositionSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))
@@ -706,6 +708,13 @@ tests =
           @?= Right (Just (Just (RuleSpec Nothing 19661 (Just (Zw 0.25)) Nothing Nothing RuleSolid (Zw 0) Nothing True)))
         fmap (fmap hsRuleBefore) (headingOf "[headings.2]\nrule-before = false\n") @?= Right (Just Nothing)
         codes (parseStyle (FileId 0) "[headings.2]\nrule-before = true\n") @?= ["G0306"],
+      testCase "the spaces of a rule in mm (golem-driver ADR 0035)" $ do
+        let mm r = Abs (round (r * 72 * 65536 / 25.4 :: Rational))
+            spaces r = (rsSpaceBefore r, rsSpaceAfter r)
+        fmap (fmap spaces . fst . (`paraRules` Just "sec")) (parseStyle (FileId 0) "[paragraph-styles.sec]\nrule-before = { space-before = \"3mm\", space-after = \"1.5mm\" }\n")
+          @?= Right (Just (Just (mm 3), Just (mm 1.5)))
+        fmap (fmap (fmap rsSpaceBefore . hsRuleAfter) . Map.lookup 2 . stHeadings) (parseStyle (FileId 0) "[headings.2]\nrule-after = { space-before = \"2mm\" }\n")
+          @?= Right (Just (Just (Just (mm 2)))),
       testCase "[toc] leader (golem-driver ADR 0009)" $ do
         fmap stTocLeader (parseStyle (FileId 0) "[toc]\nleader = \"none\"\n") @?= Right "none"
         fmap stTocLeader (parseStyle (FileId 0) "") @?= Right "dots"

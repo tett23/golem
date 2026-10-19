@@ -8,14 +8,21 @@ module Golem.Eval.Expr
     embedValue,
     builtinNames,
     freeNames,
+    PowResult (..),
+    powRounded,
+    maxExactBits,
   )
 where
 
+import Data.Bits (shiftR, (.&.))
 import Data.Foldable (traverse_)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
+import Data.Ratio (denominator, numerator, (%))
 import Data.Text (Text)
 import Data.Text qualified as T
+import GHC.Num.Integer (integerLog2)
 import Golem.Eval.Number
 import Golem.Eval.Value
 import Golem.Parser.AST
@@ -113,21 +120,52 @@ lookupMember le (VHash m) (k : ks) = case Map.lookup k m of
   Nothing -> err "G0202" le ("未定義の名前 " <> k <> " です")
 lookupMember le v _ = typeErr le (typeName v <> " の要素は参照できません")
 
-asDouble :: Value -> Maybe Double
-asDouble = \case
-  VInt i -> Just (fromInteger i)
-  VFloat d -> Just d
+{- | A number as a double: an integer is rounded to the nearest double, ties
+to even; one that rounds to infinity is G0204 (golem-eval ADR 0005).
+Nothing for a value that is not a number.
+-}
+asDouble :: Located a -> Value -> Maybe (Eval Double)
+asDouble at = \case
+  VInt i
+    | isInfinite d -> Just (err "G0204" at "整数が大きすぎて浮動小数点数に変換できません")
+    | otherwise -> Just (pure d)
+    where
+      d = fromInteger i :: Double
+  VFloat d -> Just (pure d)
   _ -> Nothing
+
+-- | A number as an exact rational; a double is finite, so it has one.
+asRational :: Value -> Maybe Rational
+asRational = \case
+  VInt i -> Just (fromInteger i)
+  VFloat d -> Just (toRational d)
+  _ -> Nothing
+
+{- | The order of two numbers, compared exactly: integers as integers, an
+integer and a double as rationals (golem-eval ADR 0005).
+-}
+compareNum :: Value -> Value -> Maybe Ordering
+compareNum a b = case (a, b) of
+  (VInt i, VInt j) -> Just (compare i j)
+  (VFloat x, VFloat y) -> Just (compare x y)
+  _ -> compare <$> asRational a <*> asRational b
 
 binary :: Located Expr -> BinaryOp -> Value -> Value -> Eval Value
 binary le op x y = case op of
   Add -> arith (+) (+)
   Sub -> arith (-) (-)
   Mul -> arith (*) (*)
-  Div -> case (asDouble x, asDouble y) of
-    (Just _, Just 0) -> err "G0203" le "0 で割っています"
-    (Just a, Just b) -> mkFloat le (a / b)
-    _ -> mismatch
+  Div -> case (x, y) of
+    (_, VInt 0) | isNum x -> err "G0203" le "0 で割っています"
+    (_, VFloat 0) | isNum x -> err "G0203" le "0 で割っています"
+    -- the exact quotient rounded once (golem-eval ADR 0005)
+    (VInt a, VInt b) -> mkFloat le (fromRational (a % b))
+    _ -> case (asDouble le x, asDouble le y) of
+      (Just ea, Just eb) -> do
+        a <- ea
+        b <- eb
+        mkFloat le (a / b)
+      _ -> mismatch
   Mod -> case (x, y) of
     (VInt _, VInt 0) -> err "G0203" le "0 で割っています"
     (VInt a, VInt b) -> pure (VInt (floorMod a b))
@@ -141,11 +179,12 @@ binary le op x y = case op of
       | k > 0, k >= 4096 || abs a >= intLimit -> tooBig le
       | k > 0 -> checkedInt le (a ^ k)
       | a == 0 -> err "G0203" le "0 で割っています"
-      | otherwise -> mkFloat le (1 / powInt (*) 1 (fromInteger a) (negate k))
+      | otherwise -> rounded (fromInteger a) k
     (VFloat a, VInt k)
-      | k >= 0 -> mkFloat le (powInt (*) 1 a k)
+      | k == 0 -> pure (VFloat 1)
+      | a == 0, k > 0 -> pure (VFloat 0)
       | a == 0 -> err "G0203" le "0 で割っています"
-      | otherwise -> mkFloat le (1 / powInt (*) 1 a (negate k))
+      | otherwise -> rounded (toRational a) k
     _ -> mismatch
   OpEq -> pure (VBool (equal x y))
   OpNe -> pure (VBool (not (equal x y)))
@@ -155,24 +194,31 @@ binary le op x y = case op of
   OpGe -> VBool . (/= LT) <$> compareV
   where
     mismatch = typeErr le (typeName x <> " と " <> typeName y <> " にこの演算子は使えません")
+    isNum v = case v of
+      VInt _ -> True
+      VFloat _ -> True
+      _ -> False
+    rounded a k = case powRounded a k of
+      PowValue d -> pure (VFloat d)
+      PowOverflow -> err "G0204" le "結果が NaN か無限大になる演算です"
+      PowTooLarge -> err "G0286" le "累乗の計算が大きすぎます"
     arith :: (Integer -> Integer -> Integer) -> (Double -> Double -> Double) -> Eval Value
     arith fi fd = case (x, y) of
       (VInt a, VInt b) -> checkedInt le (fi a b)
-      _ -> case (asDouble x, asDouble y) of
-        (Just a, Just b) -> mkFloat le (fd a b)
+      _ -> case (asDouble le x, asDouble le y) of
+        (Just ea, Just eb) -> do
+          a <- ea
+          b <- eb
+          mkFloat le (fd a b)
         _ -> mismatch
     compareV = case (x, y) of
       (VString a, VString b) -> pure (compare (T.unpack a) (T.unpack b))
-      (VInt a, VInt b) -> pure (compare a b)
-      _ -> case (asDouble x, asDouble y) of
-        (Just a, Just b) -> pure (compare a b)
-        _ -> mismatch
+      _ -> maybe mismatch pure (compareNum x y)
 
 equal :: Value -> Value -> Bool
-equal a b = case (asDouble a, asDouble b, a, b) of
-  (_, _, VInt i, VInt j) -> i == j
-  (Just x, Just y, _, _) -> x == y
-  _ -> a == b
+equal a b = case compareNum a b of
+  Just o -> o == EQ
+  Nothing -> a == b
 
 call :: Located Expr -> Name -> [Value] -> Eval Value
 call le f args = case (f, args) of
@@ -189,8 +235,8 @@ call le f args = case (f, args) of
   ("fixed", [v, VInt n]) | n >= 0 -> num v >>= \x -> pure (VString (renderDecimalFixed (roundHalfAway (fromInteger n) x)))
   ("abs", [VInt i]) -> checkedInt le (abs i)
   ("abs", [VFloat d]) -> mkFloat le (abs d)
-  ("min", v : vs) -> extreme (<) v vs
-  ("max", v : vs) -> extreme (>) v vs
+  ("min", v : vs) -> extreme LT v vs
+  ("max", v : vs) -> extreme GT v vs
   ("len", [VString s]) -> pure (VInt (toInteger (T.length s)))
   ("len", [VArray xs]) -> pure (VInt (toInteger (length xs)))
   ("div", [VInt _, VInt 0]) -> err "G0203" le "0 で割っています"
@@ -206,14 +252,13 @@ call le f args = case (f, args) of
     | otherwise -> err "G0261" le ("未定義の関数 " <> f <> " です")
   where
     tooManyDigits = err "G0286" le "小数の桁数が多すぎます（1000 桁までです）"
-    num v = maybe (typeErr le (typeName v <> " は数ではありません")) pure (asDouble v)
-    -- min and max with no argument are G0207 above
+    num v = fromMaybe (typeErr le (typeName v <> " は数ではありません")) (asDouble le v)
+    -- min and max with no argument are G0207 above; the values are compared
+    -- exactly, and the earlier of equal ones is kept (golem-eval ADR 0005)
     extreme better v vs = do
-      traverse_ num (v : vs)
-      pure (foldl (\a b -> if lessThan better b a then b else a) v vs)
-    lessThan better a b = case (asDouble a, asDouble b) of
-      (Just x, Just y) -> better x y
-      _ -> False
+      traverse_ isNumber (v : vs)
+      pure (foldl (\a b -> if compareNum b a == Just better then b else a) v vs)
+    isNumber v = maybe (typeErr le (typeName v <> " は数ではありません")) (const (pure ())) (asRational v)
 
 -- | Text for embedding a value in prose; only numbers and strings.
 embedValue :: SrcSpan -> Value -> Either Diagnostic Text
@@ -222,3 +267,71 @@ embedValue sp = \case
   VFloat d -> Right (renderDouble d)
   VString s -> Right s
   v -> Left (diagnostic "G0208" Error sp (typeName v <> " は本文に埋め込めません"))
+
+{- | The largest exact power, in bits: the bits of the odd part of the
+base, less one, times the exponent (golem-eval ADR 0005). The judgement
+looks at this alone. Raising it changes no result within it, since a
+result is the exact value rounded once.
+-}
+maxExactBits :: Integer
+maxExactBits = 2 ^ (20 :: Int)
+
+-- | A power with a rational base, rounded once (golem-eval ADR 0005).
+data PowResult
+  = -- | the nearest double; zero for a result that rounds to zero
+    PowValue !Double
+  | -- | the result rounds to infinity (G0204)
+    PowOverflow
+  | -- | the exact power is over 'maxExactBits' (G0286)
+    PowTooLarge
+  deriving stock (Eq, Show)
+
+{- | @a ^^ k@, for a base and an exponent that are not 0, rounded once to
+the nearest double, ties to even. The size is estimated first ('estimatePow'),
+so that a result far out of the range of doubles is not computed exactly:
+at least 2^1025 is infinity, below 2^-1076 is zero.
+-}
+powRounded :: Rational -> Integer -> PowResult
+powRounded a k
+  | e >= 1025 = PowOverflow
+  | e < -1076 = PowValue 0
+  | log2 m * abs k > maxExactBits = PowTooLarge
+  | otherwise = maybe PowOverflow PowValue (finite (fromRational (a ^^ k)))
+  where
+    e = snd (estimatePow (abs a) k)
+    -- the base is ±m × 2^e' with m odd (the other part of the fraction is a power of 2)
+    m = max (oddPart (numerator a)) (oddPart (denominator a))
+    oddPart n = abs n `shiftR` fromInteger (log2 (abs n .&. negate (abs n)))
+
+-- | The bits of a positive integer, less one.
+log2 :: Integer -> Integer
+log2 = toInteger . integerLog2
+
+{- | The size of @q ^^ k@ for a positive @q@ and an exponent that is not 0,
+as a mantissa in [1, 2) and an integer exponent: the log2 of the result is
+in [e, e + 1). Repeated squaring of doubles, the mantissa brought back into
+[1, 2) after each product, so that nothing overflows or becomes 0; no
+'log', so that the estimate is deterministic (golem-eval ADR 0005).
+-}
+estimatePow :: Rational -> Integer -> (Double, Integer)
+estimatePow q k
+  | k < 0 = invert (go (abs k) (split q) (1, 0))
+  | otherwise = go k (split q) (1, 0)
+  where
+    go :: Integer -> (Double, Integer) -> (Double, Integer) -> (Double, Integer)
+    go 0 _ acc = acc
+    go n b acc = go (n `div` 2) (mul b b) (if odd n then mul acc b else acc)
+    mul (m1, e1) (m2, e2) =
+      let m' = m1 * m2
+       in if m' >= 2 then (m' / 2, e1 + e2 + 1) else (m', e1 + e2)
+    invert (m', e')
+      | m' == 1 = (1, negate e')
+      | otherwise = (2 / m', negate e' - 1)
+
+-- | A positive rational as a mantissa in [1, 2) and an integer exponent.
+split :: Rational -> (Double, Integer)
+split q =
+  let e0 = log2 (numerator q) - log2 (denominator q)
+      e = if q < 2 ^^ e0 then e0 - 1 else e0
+      m = fromRational (q / 2 ^^ e) :: Double
+   in if m >= 2 then (1, e + 1) else (m, e)

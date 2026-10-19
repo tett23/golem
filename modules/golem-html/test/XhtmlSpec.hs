@@ -124,11 +124,44 @@ multipleBibliographyTests =
         ids (bodyA cfg0 book) @?= ["cite-knuth-2", "cite-knuth", "cite-knuth-3"]
     ]
   where
-    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] ""
-    assembled bss = fst (assemble acfg (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
-    citing f s ks = Block (mkSpan f s (s + 1)) Nothing (Paragraph Nothing [Cite (mkSpan f (s + i) (s + i + 1)) k | (i, k) <- zip [0 ..] ks])
-    bib f s = Block (mkSpan f s (s + 1)) Nothing (ChannelOutput BibliographyOutput)
     ids body = [T.takeWhile (/= '"') rest | piece <- drop 1 (T.splitOn "<li id=\"" body), let rest = piece]
+
+-- | A book of a.gm and b.gm with these blocks, assembled (golem-doc ADR 0002).
+assembled :: [[Block]] -> Book
+assembled bss = fst (assemble acfg (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
+  where
+    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] ""
+
+-- | A paragraph at offset s that cites the keys, one byte apart.
+citing :: FileId -> Int -> [Text] -> Block
+citing f s ks = Block (mkSpan f s (s + 1)) Nothing (Paragraph Nothing [Cite (mkSpan f (s + i) (s + i + 1)) k | (i, k) <- zip [0 ..] ks])
+
+-- | A @bibliography at offset s.
+bib :: FileId -> Int -> Block
+bib f s = Block (mkSpan f s (s + 1)) Nothing (ChannelOutput BibliographyOutput)
+
+-- | Links from a cite mark to the file of its bibliography (golem-html ADR 0003).
+citeLinkTests :: TestTree
+citeLinkTests =
+  testGroup
+    "a cite mark links to the file of its bibliography (golem-html ADR 0003)"
+    [ testCase "a bibliography in another file: a relative link to it" $
+        bodyA cfg0 (assembled [[citing fidA 0 ["k"]], [bib fidB 0]])
+          @?= "<p><a class=\"cite\" href=\"b.xhtml#cite-k\">[1]</a></p>\n",
+      testCase "without any bibliography: a span, no link" $ do
+        let body = bodyA cfg0 (assembled [[citing fidA 0 ["k"]], []])
+        body @?= "<p><span class=\"cite\">[1]</span></p>\n"
+        assertBool (T.unpack body) (not ("href" `T.isInfixOf` body)),
+      testCase "two bibliographies: each mark links to the file of the list it belongs to" $ do
+        let book = assembled [[citing fidA 0 ["k"]], [bib fidB 0, citing fidB 5 ["k"], bib fidB 10]]
+            bodyB = maybe "" bodyOf (lookup "b.xhtml" (sitePages (renderXhtml cfg0 ft book)))
+        bodyA cfg0 book @?= "<p><a class=\"cite\" href=\"b.xhtml#cite-k\">[1]</a></p>\n"
+        assertBool (T.unpack bodyB) ("<a class=\"cite\" href=\"#cite-k-2\">[1]</a>" `T.isInfixOf` bodyB),
+      testCase "a bibliography inside a list item of another file" $ do
+        let inList = Block (mkSpan fidB 0 1) Nothing (BulletList [ListItem Nothing [bib fidB 2]])
+        bodyA cfg0 (assembled [[citing fidA 0 ["k"]], [inList]])
+          @?= "<p><a class=\"cite\" href=\"b.xhtml#cite-k\">[1]</a></p>\n"
+    ]
 
 -- | A span in b.gm.
 atB :: Int -> SrcSpan
@@ -328,7 +361,7 @@ tests =
               book = (bookOf [Block (at 0) (Just "intro") (Heading 1 noHeadingAttrs [txt "Introduction"])]) {bookHeadings = Map.fromList [(at 0, info)]}
            in bodyA cfg0 {hcLanguage = "en"} book @?= "<h1 id=\"intro\"><span class=\"number\">Chapter 1: </span>Introduction</h1>\n",
         testCase "an ideographic space after the number of a caption, outside the span" $
-          let fig = Figure "images/a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing
+          let fig = Figure "images/a.png" Nothing "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False
               book = (bookOf [Block (at 0) Nothing (FigureBlock fig)]) {bookFigures = Map.fromList [(at 0, "図1-1")]}
            in bodyA cfg0 book @?= "<figure>\n<img src=\"images/a.png\" alt=\"代替\"/>\n<figcaption><span class=\"number\">図1-1</span>\x3000キャプション</figcaption>\n</figure>\n",
         testCase "the table of contents" $
@@ -366,6 +399,7 @@ tests =
        in bodyA cfg book
             @?= "<p>文献<a class=\"cite\" href=\"#cite-knuth1981\">[1]</a></p>\n<ol class=\"bibliography\">\n<li id=\"cite-knuth1981\">Knuth, Breaking Paragraphs into Lines.</li>\n</ol>\n",
     multipleBibliographyTests,
+    citeLinkTests,
     -- golem-doc ADR 0005
     testCase "a URL of http or https in the bibliography is a link of class cs-url; another is a span" $
       let book =
@@ -377,7 +411,7 @@ tests =
        in bodyA cfg book
             @?= "<p><a class=\"cite\" href=\"#cite-a\">[1]</a><a class=\"cite\" href=\"#cite-b\">[2]</a></p>\n<ol class=\"bibliography\">\n<li id=\"cite-a\">A. <a class=\"cs-url\" href=\"HTTPS://example.com/?a=1&amp;b=2\">HTTPS://example.com/?a=1&amp;b=2</a></li>\n<li id=\"cite-b\">B. <span class=\"cs-url\">javascript:alert(1)</span></li>\n</ol>\n",
     testCase "a figure uses its web image and copies it as an asset" $
-      let fig = Figure "images/a.pdf" (Just "images/a.png") "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing
+      let fig = Figure "images/a.pdf" (Just "images/a.png") "代替" Nothing Nothing [para 3 [txt "キャプション"]] Nothing False
           site = renderXhtml cfg0 ft (bookOf [Block (at 0) Nothing (FigureBlock fig)])
        in (maybe "" bodyOf (lookup "a.xhtml" (sitePages site)), siteAssets site)
             @?= ("<figure>\n<img src=\"images/a.png\" alt=\"代替\"/>\n<figcaption>キャプション</figcaption>\n</figure>\n", [("images/a.png", "images/a.png")]),

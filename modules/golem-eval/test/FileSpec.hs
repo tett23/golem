@@ -308,6 +308,15 @@ tests =
         msgs "@figure images/a.pdf page=0 web=images/a.png alt=\"x\"\n" @?= [("G0275", "page は PDF の図版のページを 1 から数えた整数で書きます: 0")]
         errs "@figure images/a.pdf page=x web=images/a.png alt=\"x\"\n" @?= ["G0275"]
         errs "@figure images/a.png page=1 alt=\"x\"\n" @?= ["G0275"],
+      testCase "a figure turned to take a page of its own (golem-driver ADR 0034)" $ do
+        let rotateOf src = case body src of
+              [FigureBlock f] -> pure (figRotate f)
+              other -> assertFailure (show other)
+        rotateOf "@figure images/a.png alt=\"x\" rotate=true\n" >>= (@?= True)
+        rotateOf "@figure images/a.png alt=\"x\" rotate=false\n" >>= (@?= False)
+        rotateOf "@figure images/a.png alt=\"x\"\n" >>= (@?= False)
+        msgs "@figure images/a.png alt=\"x\" rotate=yes\n" @?= [("G0287", "rotate は true か false です: yes")]
+        msgs "@figure images/a.png alt=\"x\" rotate=true wrap=end width=4zw\n" @?= [("G0287", "回して置く図版は回り込ませられません")],
       testCase "csv tables and listings" $ do
         case body "@table src=data.csv\n" of
           [Table _ h [r]] -> (map stripSpans h, map stripSpans r) @?= ([["a"], ["b"]], [["1"], ["x,y"]])
@@ -763,6 +772,10 @@ settingsTests =
         at "@style-def paragraph Letter\n" @?= [("G0306", 0)]
         at "@style-def paragraph a line-breaks=x\n" @?= [("G0306", 0)]
         at "@style-def paragraph a based-on=nope\n" @?= [("G0313", 0)]
+        -- the paths of style.toml are not used for a file (golem-project ADR 0008)
+        let grid = either (error . show) id (parseStyle (FileId 0) "[page]\nsize = \"A5\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 40\nlines = 30\nline-pitch = \"16pt\"\nposition = { top = \"14mm\", gutter = \"14mm\" }\n")
+            (_, gds, _) = runS sctx {ctxStyle = grid} "@style-def paragraph big size=30Q\n\na\n"
+        [(x, spanStart (diagSpan d)) | d <- gds, let { DiagnosticCode x = diagCode d }, x == "G0311"] @?= [("G0311", 0)]
         codesS "@style-def paragraph a based-on=nope\n\n@style a\nx\n" @?= ["G0313", "G0247"],
       testCase "@manifest and @style-def elsewhere are G0249" $ do
         codesS "a\n\n@style-def paragraph letter\n" @?= ["G0249"]

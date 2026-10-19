@@ -46,6 +46,7 @@ import Toml.Semantics
     valueAnn,
   )
 import Toml.Syntax (Located (..), Position (..), parseRawToml)
+import Prelude hiding (fail)
 
 data Manifest = Manifest
   { manifestMetadata :: !Metadata,
@@ -316,7 +317,7 @@ instance FromValue ChapterEntry where
     Text' _ t -> pure (ChapterFile (T.unpack t) Nothing [])
     List' _ xs -> ChapterGroup <$> traverse fromValue xs
     v@Table' {} -> parseTableFromValue (ChapterFile . T.unpack <$> reqKey "file" <*> optKey "master" <*> sourceEdits) v
-    _ -> fail "章は、ファイルのパス、表、配列のどれかで書きます"
+    v -> failAt (valueAnn v) "章は、ファイルのパス、表、配列のどれかで書きます"
 
 -- | The [source] table: its keys as edits of the settings (docs/adr ADR 0013).
 newtype SourceTable = SourceTable {sourceTableEdits :: [SourceEdit]}
@@ -330,10 +331,10 @@ over are unknown keys and are reported as such.
 sourceEdits :: ParseTable l [SourceEdit]
 sourceEdits = catMaybes <$> traverse one sourceKeys
   where
+    -- an invalid value is at the value (golem-project ADR 0008)
     one (k, f) =
-      optKey k >>= \case
-        Nothing -> pure Nothing
-        Just v -> either (fail . T.unpack) (pure . Just . SourceEdit k v) (f v)
+      optKeyOf k $ \val ->
+        fromValue val >>= \v -> either (failAt (valueAnn val) . T.unpack) (pure . SourceEdit k v) (f v)
 
 -- | The edits applied in order.
 applyEdits :: [SourceEdit] -> SourceSettings -> SourceSettings
@@ -447,16 +448,16 @@ written to the output (docs/adr ADR 0042), in the order of the file: one
 for each string, naming its first such character.
 -}
 unwritableStrings :: FileId -> Text -> Table' Position -> [Diagnostic]
-unwritableStrings fid src = map snd . Map.toAscList . Map.fromList . table []
+unwritableStrings fid src = map snd . Map.toAscList . Map.fromList . inTable []
   where
-    table path (MkTable kvs) = concat [value (path <> [ScopeKey k]) v | (k, (_, v)) <- Map.toList kvs]
+    inTable path (MkTable kvs) = concat [value (path <> [ScopeKey k]) v | (k, (_, v)) <- Map.toList kvs]
     value path = \case
       Text' pos t
         | Just c <- firstUnwritable t ->
             let sp = positionSpan fid src (Just pos)
              in [(spanStart sp, diagnostic "G0328" Error sp (pathText path <> " に出力に書けない文字（" <> codePointText c <> "）があります"))]
       List' _ vs -> concat (zipWith (\i v -> value (path <> [ScopeIndex i]) v) [0 ..] vs)
-      Table' _ t -> table path t
+      Table' _ t -> inTable path t
       _ -> []
 
 -- | Converts toml-parser messages to diagnostics at their line.

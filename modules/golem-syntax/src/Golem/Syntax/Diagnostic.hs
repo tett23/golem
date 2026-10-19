@@ -92,6 +92,7 @@ noticeCodes =
       "G0408", -- page breaks at the very end of the book
       "G0409", -- @blank-line at the very end of the book (docs/adr ADR 0046)
       "G0730", -- a line of a code block wrapped (golem-driver ADR 0017)
+      "G0739", -- a figure fitted to the column (golem-driver ADR 0034)
       "G0745", -- kenten with ruby, not drawn in the PDF (golem-driver ADR 0019)
       "G0746", -- a block with rules broken or a heading rule left out (golem-driver ADR 0027)
       "G0747", -- blank lines dropped at the top of a column (docs/adr ADR 0046)
