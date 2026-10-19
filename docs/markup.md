@@ -266,6 +266,7 @@ v1 で定めるブロックコマンドは次のとおりである。
 - `@label name`：直後のブロックにラベルを付ける。
 - `@toc depth=N`：目次を出力する。文書に一つだけ置ける。PDF では、各項目に見出しのページ番号をリーダーとともに出す（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
 - `@index`：索引を出力する。いくつでも置け、二つ以上あれば、それぞれにその範囲の印を載せる（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
+- `@channel 名前 style=段落スタイル`：プラグインが宣言したチャネルの一覧を出力する。`style` は項目を組む段落スタイルで、省けば `body` である。宣言されていない名前は G0290 になる（[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。
 - `@bibliography`：参考文献の一覧を出力する。いくつでも置け、二つ以上あれば、それぞれにその範囲の引用を載せ、番号を一覧ごとに 1 から振る（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
 - `@printings`：マニフェストの `[[metadata.printings]]` から、発行の履歴（`2026年10月16日　初版第1刷発行` の形の段落）を一項目一段落で組む。引数と本体は取らない。日本語の本でだけ使える（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。
 - `@figure`：図版を置く（「図版」の節を参照）。
