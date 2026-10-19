@@ -214,7 +214,11 @@ explainTests =
             let isPreflight e = any ("- 重大度: プリフライトの設定による" `T.isPrefixOf`) (T.lines (exBody e))
             sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isPreflight e] @?= sort [c | DiagnosticCode c <- preflightCodes],
           testCase "the catalog has G0244 retired" $
-            fmap exStatus (lookupExplanation "G0244") @?= Just Retired
+            fmap exStatus (lookupExplanation "G0244") @?= Just Retired,
+          testCase "G0295 is in use and in the sources (golem-eval ADR 0006)" $ do
+            fmap exStatus (lookupExplanation "G0295") @?= Just InUse
+            used <- sourceCodes
+            assertBool "G0295 in the sources" ("G0295" `elem` used)
         ],
       testGroup
         "the form of the document"
