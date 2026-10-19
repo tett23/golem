@@ -130,7 +130,7 @@ multipleBibliographyTests =
 assembled :: [[Block]] -> Book
 assembled bss = fst (assemble acfg (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
   where
-    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] ""
+    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" 40
 
 -- | A paragraph at offset s that cites the keys, one byte apart.
 citing :: FileId -> Int -> [Text] -> Block

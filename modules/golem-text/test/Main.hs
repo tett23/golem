@@ -65,7 +65,7 @@ noEval _ _ _ = Right ""
 -- | The plain text of one file in a book of the language, with the number format of headings.
 render :: Text -> Text -> [Block] -> [Text]
 render lang format bs =
-  let cfg = AssembleConfig (Map.fromList [(1, format)]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}"
+  let cfg = AssembleConfig (Map.fromList [(1, format)]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" 16
       (book, _) = assemble cfg noEval [Document (FileId 0) bs]
       (_, ft) = registerFile "a.gm" emptyFileTable
    in concatMap (T.lines . snd) (renderText lang "kanji" False (const (const 0)) lists Map.empty Horizontal ft book)

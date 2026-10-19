@@ -12,7 +12,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 cfg :: AssembleConfig
-cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}"
+cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" 16
 
 sp :: Int -> Int -> SrcSpan
 sp f s = mkSpan (FileId f) s (s + 1)
@@ -331,7 +331,35 @@ noticeTests =
         books twoFiles @?= [[para 1 0 []], [brk 2 0 BreakPage, para 2 5 []]]
         -- a blank line after a break is no error
         warnings [Document (FileId 1) [brk 1 0 BreakPage, blank 1 5 1, para 1 10 []]] @?= []
-        books [Document (FileId 1) [brk 1 0 BreakPage, blank 1 5 1, para 1 10 []]] @?= [[brk 1 0 BreakPage, blank 1 5 1, para 1 10 []]]
+        books [Document (FileId 1) [brk 1 0 BreakPage, blank 1 5 1, para 1 10 []]] @?= [[brk 1 0 BreakPage, blank 1 5 1, para 1 10 []]],
+      testCase "G0411: blank lines of as many lines as a page or more are dropped (docs/adr ADR 0047)" $ do
+        let g0411 f s n = ("G0411", "@blank-line の行数 " <> T.pack (show (n :: Int)) <> " がページの行数 16 以上なので捨てます", sp f s)
+            only c = filter (\(c', _, _) -> c' == c)
+        -- fewer lines than a page stay
+        notices [Document (FileId 1) [para 1 0 [], blank 1 5 15, para 1 10 []]] @?= []
+        books [Document (FileId 1) [para 1 0 [], blank 1 5 15, para 1 10 []]] @?= [[para 1 0 [], blank 1 5 15, para 1 10 []]]
+        -- as many lines as a page are dropped
+        notices [Document (FileId 1) [para 1 0 [], blank 1 5 16, para 1 10 []]] @?= [g0411 1 5 16]
+        books [Document (FileId 1) [para 1 0 [], blank 1 5 16, para 1 10 []]] @?= [[para 1 0 [], para 1 10 []]]
+        -- blank lines written in a row count by their sum, each with a notice
+        notices [Document (FileId 1) [para 1 0 [], blank 1 5 10, blank 1 10 6, para 1 15 []]] @?= [g0411 1 5 16, g0411 1 10 16]
+        books [Document (FileId 1) [para 1 0 [], blank 1 5 10, blank 1 10 6, para 1 15 []]] @?= [[para 1 0 [], para 1 15 []]]
+        -- controls of page breaks between them keep the run
+        notices [Document (FileId 1) [para 1 0 [], blank 1 5 10, ctl 1 10 (NeedLines 3), blank 1 15 6, para 1 20 []]] @?= [g0411 1 5 16, g0411 1 15 16]
+        books [Document (FileId 1) [para 1 0 [], blank 1 5 10, ctl 1 10 (NeedLines 3), blank 1 15 6, para 1 20 []]] @?= [[para 1 0 [], ctl 1 10 (NeedLines 3), para 1 20 []]]
+        -- a paragraph between them breaks the run
+        notices [Document (FileId 1) [para 1 0 [], blank 1 5 10, para 1 10 [], blank 1 15 6, para 1 20 []]] @?= []
+        books [Document (FileId 1) [para 1 0 [], blank 1 5 10, para 1 10 [], blank 1 15 6, para 1 20 []]] @?= [[para 1 0 [], blank 1 5 10, para 1 10 [], blank 1 15 6, para 1 20 []]]
+        -- G0410 comes first, and the blank line has no G0411
+        let beforeBreak = [Document (FileId 1) [para 1 0 [], blank 1 5 20, brk 1 10 BreakPage, para 1 15 []]]
+        only "G0411" (notices beforeBreak) @?= []
+        warnings beforeBreak @?= [("G0410", "@blank-line の直後に @page-break があります", sp 1 5)]
+        -- G0409 comes first, and the blank line has no G0411
+        notices [Document (FileId 1) [para 1 0 [], blank 1 5 20]] @?= [("G0409", "本の最後の @blank-line は効果がありません", sp 1 5)]
+        -- across the files, by the sum
+        let twoFiles = [Document (FileId 1) [para 1 0 [], blank 1 5 10], Document (FileId 2) [blank 2 0 6, para 2 5 []]]
+        notices twoFiles @?= [g0411 1 5 16, g0411 2 0 16]
+        books twoFiles @?= [[para 1 0 []], [para 2 5 []]]
     ]
   where
     notices docs = [(c, diagMessage d, diagSpan d) | d <- snd (assemble cfg noEval docs), diagSeverity d == Notice, let DiagnosticCode c = diagCode d]
