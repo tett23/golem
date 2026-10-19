@@ -294,7 +294,7 @@ v1 で定めるブロックコマンドは次のとおりである。
 - 画像の形式は PDF、SVG、PNG、JPEG で、拡張子（`.pdf`、`.svg`、`.png`、`.jpg`、`.jpeg`。大文字と小文字を区別しない）で決める。ほかの拡張子はコンパイルエラー（G0274）になる。
 - PDF の画像は EPUB と HTML で表示できないので、`web` に Web 用の代替画像（PNG、JPEG、SVG）を指定する。PDF の画像で `web` を省くとコンパイルエラーになる。`web` にほかの形式を書くと G0273 になる。`web` は PNG、JPEG、SVG の図版にも書け、HTML と EPUB は `web` があればそれを使う。
 - PDF の画像は、`page` で何ページ目を置くかを選べる（`page=3` など）。1 以上の整数で、省けば 1 である。整数でない値、0 以下の値、PDF でない画像の `page` は G0275 になる。
-- SVG の画像は、PDF でもベクターのまま描く（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。扱うのは、パス、基本の図形、変換、塗りと線、マーカー、単純な CSS の範囲である。範囲の外のもの（グラデーション、`use`、クリップ、1 でない不透明度など）と、輪郭にしていない文字は、PDF を組むときに G0811 のエラーになる。文字は図の作成ツールで輪郭にして書き出す。HTML と EPUB は SVG をそのまま置く。
+- SVG の画像は、PDF でもベクターのまま描く（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。扱うのは、パス、基本の図形、変換、塗りと線、マーカー、単純な CSS の範囲である。範囲の外のもの（グラデーション、`use`、クリップ、1 でない不透明度など）と、輪郭にしていない文字は、PDF を組むときに G0811 のエラーになる。文字は図の作成ツールで輪郭にして書き出す。HTML と EPUB は SVG をそのまま置く。ただし、スクリプト、イベントの属性、文書の外を指す `href`、`foreignObject`、CSS の `@import` と外を指す `url()` などの動く中身を持つ SVG と、XML として読めない SVG は、HTML と EPUB を組むときに G0814 のエラーになる（[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)）。
 - PDF の画像は、そのページの切り抜きの枠（CropBox）をベクターのまま置く（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。PDF に置けない画像（壊れた画像、暗号化された PDF、フォントを埋め込んでいない PDF など）は、PDF を組むときに G0810 のエラーになる。
 
 ```
