@@ -112,6 +112,10 @@ wasmtime のバージョンを上げるときは、`scripts/wasmtime-licenses.sh
 このスクリプトはネットワークに接続し、`cargo` と `rustup` を要する。
 `c-objects.tsv` の構成要素の列は、スクリプトが埋めないので手で埋める。
 `cabal.project.freeze` で固定した依存のバージョンを変えるときも、変更の理由をプルリクエストに書く。
+リリースノートを書く Claude Code のバージョンは、`mise.toml` の `"npm:@anthropic-ai/claude-code"` に正確な値で固定してある（[docs/adr/0044](./docs/adr/0044-release-workflow-hardening.md)）。
+上げるときは `mise.toml` を変えるプルリクエストを出し、新しいバージョンの `claude --help` に `--tools` と `--strict-mcp-config` があることを確かめる（`scripts/release/test.sh` は、そのバージョンの `claude` があれば確かめる）。
+リリースノートから兄弟のリポジトリへリンクするときは、`scripts/release/allowed-links.txt` に `https://github.com/tett23/<リポジトリ>/` の 1 行を足すプルリクエストを出す。
+ghcup を上げるときは、`scripts/release/build-linux.sh` の ghcup のバージョン、ブートストラップのスクリプトのコミット、その SHA-256 を一緒に変える。
 
 ## 整形と検査
 
