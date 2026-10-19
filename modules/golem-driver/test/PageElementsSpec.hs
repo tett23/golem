@@ -37,11 +37,12 @@ footnoteTests =
       content <- projectPdf twoFiles (horizontalStyle <> "\n[notes]\nnumbering = \"file\"\n") [("a.gm", "一[note: 甲。]\n"), ("b.gm", "二[note: 乙。]\n")]
       let count c = length [() | d <- drawnGlyphs content, dGlyph d == fromEnum c]
       (count '甲', count '乙') @?= (1, 1),
-    testCase "PDF: the first line of a note body starts with its mark and a space" $ do
+    testCase "PDF: the first line of a note body starts with its mark and an aki" $ do
       (_, pl) <- layoutHeads twoFiles horizontalStyle [("a.gm", "一[note: 甲。]\n"), ("b.gm", "二[note: 乙。]\n")]
       let firsts = [l | sl <- Map.elems (plLines pl), (_, l : _) <- slNotes sl]
           start l = case lineItems l of
-            (Box _ c : Glue {} : Box _ d : _) -> Just (bcText c, bcText d)
+            -- the mark, a quarter em [aki] (golem-layout ADR 0018), the body
+            (Box _ c : Box _ a : Box _ d : _) | T.null (bcText a) -> Just (bcText c, bcText d)
             _ -> Nothing
       map start firsts @?= [Just ("*1", "甲"), Just ("*1", "乙")],
     testCase "PDF: horizontal, the mark is half the size, raised to the top of the em box, before the next character" $ do
@@ -102,7 +103,8 @@ footnoteTests =
       let marks = [bcText c | sl <- Map.elems (plLines pl), Box _ c <- lineItems (slLine sl), boxKind c == KindNoteMark]
           firsts = [l | sl <- Map.elems (plLines pl), (_, l : _) <- slNotes sl]
           start l = case lineItems l of
-            (Box _ c : Glue {} : Box _ d : _) -> Just (bcText c, bcText d)
+            -- the mark, a quarter em [aki] (golem-layout ADR 0018), the body
+            (Box _ c : Box _ a : Box _ d : _) | T.null (bcText a) -> Just (bcText c, bcText d)
             _ -> Nothing
       marks @?= ["1)"]
       map start firsts @?= [Just ("1)", "甲")],

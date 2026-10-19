@@ -8,12 +8,12 @@ Golem には二つのマニュアルがある。
 自分のマニュアルを自分で組むのには、二つの理由がある。
 一つは、配布する PDF をそのまま組版の見本にするためである。
 もう一つは、一冊の本の分量の原稿を毎回組むことを、回帰の検査にするためである。
-テストの小さな入力では出ない不具合が、マニュアルを組むと出ることがある。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0022-manual-as-typesetting-sample.md]（docs/adr の ADR 0022「組版のサンプルを兼ねるマニュアル」）]
+テストの小さな入力では出ない不具合が、マニュアルを組むと出ることがある。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0022-manual-as-typesetting-sample.md]（docs/adr の ADR 0022「組版のサンプルを兼ねるマニュアル」）]
 
 マニュアルを書く人とレビューする人の基準は、[code: docs/manual-policy.md] にある。
 最初の中身は docs/adr の ADR 0024 が決めた。
 マニュアルと方針の文書の変更は、読み手や内容の範囲を変えるときも含めて、ADR を書かずにプルリクエストで決める。
-ADR を書くのは、メンテナーが求めたときだけである。[note: [code: https://github.com/tett23/golem/blob/main/docs/manual-policy.md]（マニュアルの方針）、[code: https://github.com/tett23/golem/blob/main/docs/adr/0024-manual-audiences-and-policy.md]（docs/adr の ADR 0024「マニュアルの読み手と方針」）]
+ADR を書くのは、メンテナーが求めたときだけである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/manual-policy.md]（マニュアルの方針）、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0024-manual-audiences-and-policy.md]（docs/adr の ADR 0024「マニュアルの読み手と方針」）]
 
 ## 二つのマニュアル
 
@@ -129,18 +129,19 @@ Golem が報告する誤りや注意は、使い手のマニュアルの「診�
 
 この本は、[code: docs/] の仕様書、各モジュールの仕様書、ADR、[code: CONTRIBUTING.md] をまとめ、その文書へリンクする。
 リンクは脚注に置き、リポジトリの文書は [code: https://github.com/tett23/golem/blob/main/] から始まる URL で書く。
+脚注の URL は [code: \[style url: ...\]] で書き、URL の中の [code: .] や [code: /] の後で改行できるようにする。
 タグやコミットを含む URL にはしない。
 本文の脚注がコミットごとに変わると、内容を変えていないページまで差分に現れるからである。
 
 ```text
-…を定めている。[note: [code: https://github.com/...]（文書の名前）]
+…を定めている。[note: [style url: https://github.com/...]（文書の名前）]
 ```
 
 この本では、脚注を段落の最後の句点の後に置き、脚注の中では URL を先に、文書の名前を後の括弧に書いている。
 URL のようなコードは、空白と [code: /] の後でだけ行を改め、字間を伸ばさない。
 文書の名前を先に書くと、名前の和文だけの短い行ができ、その行の字間が大きく伸びる。
 URL を先に書けば、URL の行はそろわないまま残り、和文の名前は次の行を埋める。
-脚注の印は前の字に付けて組まれ、次の字に重ならないので、句点の前にも置ける。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0018-footnote-marks-and-numbers.md]（golem-driver ADR 0018「脚注の印と番号」）]
+脚注の印は前の字に付けて組まれ、次の字に重ならないので、句点の前にも置ける。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0018-footnote-marks-and-numbers.md]（golem-driver ADR 0018「脚注の印と番号」）]
 この本は、注を段落の全体に対するものとして扱い、段落の末尾に置いている。
 
 脚注の中は散文スロットなので、[code: \]]、[code: \|]、[code: \[] は [code: \\] でエスケープする。
@@ -149,7 +150,7 @@ URL を先に書けば、URL の行はそろわないまま残り、和文の名
 
 - 前付けは、番号のない「はじめに」（目次に載せる）、目次の順にする。
 - 索引は二段で組む（[code: style.toml] の [code: \[index\]] の [code: columns = 2]）。
-- 脚注の前に区切り線を引く（[code: style.toml] の [code: \[notes.rule\]]）。長さは一行の字数の 4 分の 1 ほどにし、線の前後に 0.5zw の間隔を書く。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md]（golem-driver ADR 0024「罫線の指定と脚注の区切り線」）]
+- 脚注の前に区切り線を引く（[code: style.toml] の [code: \[notes.rule\]]）。長さは一行の字数の 4 分の 1 ほどにし、線の前後に 0.5zw の間隔を書く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md]（golem-driver ADR 0024「罫線の指定と脚注の区切り線」）]
 - 奥付は版とコミットの二行を載せる。
 - コードブロックは組み込みの段落スタイル [code: code] で組み、背景のスウォッチ（[code: { cmyk = \[0, 0, 0, 8\] }] を出発点にする）と内側の余白を付ける。墨だけのごく薄い色にするのは、本文の文字の色と重ならず、モノクロで印刷しても沈まないようにするためである。
 - 本文の中のファイル名、コマンド、パス、キーは [code: \[code: ...\]] で書く。[code: \[style code: ...\]] は使わない。
@@ -191,7 +192,7 @@ Golem は SVG の図版の文字を描かないので、原稿の文字を輪郭
 輪郭の SVG は手で直さない。
 その先頭のコメントには原稿の SHA-256 があり、[code: scripts/manual/check-figures.sh] が CI でそれを原稿と比べる。
 組むときには実行しないので、マニュアルを組むだけなら Inkscape は要らない。
-輪郭の SVG はフォントを読み込まないので、HTML と EPUB の [code: <img>] でも PDF と同じ形に描かれる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0009-svg-figures.md]（golem-pdf ADR 0009「SVG の図版」）]
+輪郭の SVG はフォントを読み込まないので、HTML と EPUB の [code: <img>] でも PDF と同じ形に描かれる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0009-svg-figures.md]（golem-pdf ADR 0009「SVG の図版」）]
 
 ## 更新の検査との関係
 

@@ -321,6 +321,7 @@ docs/diagnostics.md の重大度の欄の値を説明するときに限り、そ
 
 開発者のマニュアルは、`docs/` の仕様書、各モジュールの仕様書、ADR、CONTRIBUTING.md をまとめ、その文書へリンクする。
 リンクは脚注に置き、リポジトリの文書は `https://github.com/tett23/golem/blob/main/` から始まる URL で書く。
+脚注の URL は `[style url: ...]` で書き、URL の中の `.` や `/` の後で改行できるようにする（[golem-layout ADR 0018](golem-layout/adr/0018-url-line-breaks.md)）。
 タグやコミットを含む URL にはしない。
 どのコミットから組んだかは、奥付の版で示す。
 
