@@ -568,6 +568,18 @@ turnedFigureTests =
       assertBool "caption lines" (not (null caps))
       content <- miniPdf fakeProvider True style source boxes >>= fmap BS.concat . inflateAll
       assertBool "caption glyphs" (fromEnum 'キ' `elem` map dGlyph (drawnGlyphs content)),
+    testCase "vertical: the lines of the frame advance from the bottom of the page to the top (golem-driver ADR 0038)" $ do
+      -- 20 characters do not fit the frame line of 145pt: two lines of the caption
+      (img, caps) <- turnedParts (vertical10 60) (fig "wide" " rotate=true" (T.replicate 20 "あ"))
+      assertBool "two lines" (length caps >= 2)
+      forM_ caps $ \c -> assertBool (show (c, img)) (rectY c >= rectY img + rectH img)
+      case caps of
+        (first : second : _) -> assertBool (show (first, second)) (rectY second > rectY first)
+        _ -> assertFailure (show caps),
+    testCase "horizontal: the lines of the frame advance from the left of the page to the right (golem-driver ADR 0038)" $ do
+      (img, caps) <- turnedParts (horizontal20 "left" 20) (fig "wide" " rotate=true" "キャプション。")
+      assertBool "caption lines" (not (null caps))
+      forM_ caps $ \c -> assertBool (show (c, img)) (rectX c >= rectX img + rectW img),
     testCase "two columns: a turned figure spans the type area of both" $ do
       let style = pageStyle "horizontal" "left" 12 20 2 20 25
       (geom, _) <- layoutOk style (fig "wide" " rotate=true" "") boxes
@@ -591,3 +603,13 @@ turnedFigureTests =
       assertBool "outputs" (not (null (nOutputs plain)))
       nOutputs turned @?= nOutputs plain
   ]
+
+{- | The rectangle of the image of the only turned figure and those of the
+lines of its caption, in the order of the lines, on the page in PDF
+coordinates (golem-driver ADR 0038).
+-}
+turnedParts :: BS.ByteString -> T.Text -> IO (Rect, [Rect])
+turnedParts style source = do
+  v <- viewOf style source boxes
+  img <- single [ivRect i | pv <- vwPages v, i <- pvImages pv, ivTurned i]
+  pure (img, [lvRect l | pv <- vwPages v, l <- pvLines pv, lvKind l == "キャプションの行"])
