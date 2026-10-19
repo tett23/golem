@@ -5667,7 +5667,7 @@ SVG の図版に、Golem が PDF に描ける範囲の外の要素、属性、�
 `@figure` ごとに一つ出し、PDF を書かない。
 dev と prod の両方でエラーである。
 PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出し、HTML、EPUB、プレーンテキストでは出さない。
-HTML と EPUB は SVG を PDF の部分集合では検査せず、動く中身だけを [G0814](#g0814) で検査する。
+HTML と EPUB は SVG を PDF の部分集合では検査せず、動的なコンテンツだけを [G0814](#g0814) で検査する。
 位置は、その `@figure` のブロックである。
 
 - メッセージ: `SVG の図版に扱えないものがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。文字なら `（<名前>: 文字は輪郭にして書き出してください）`。ほかになければ `ほか <n> 件` を書かない。
@@ -5720,14 +5720,14 @@ SVG で収まらない図は、PDF で書き出して PDF の図版として置�
 
 ## G0814
 
-SVG の図版に、HTML と EPUB に写せない動く中身があります
+SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-HTML と EPUB に写す SVG のファイルに、ブラウザーが SVG を文書として開いたときに動かすか読むもの（動く中身）がある。
+HTML と EPUB に写す SVG のファイルに、ブラウザーが SVG を文書として開いたときに動かすか読むもの（動的なコンテンツ）がある。
 写す SVG は、`@figure` の図版か `web` のうち、拡張子が `.svg` のものである。
 HTML と EPUB は SVG をそのまま写すので、読者が SVG を直接開けば、そのスクリプトが動く。
 拒むのは、`script` の要素、`foreignObject`、`iframe`、`embed`、`object`、`handler`、`listener` の要素、名前が `on` で始まる属性、`#` で始まらない `href` と `xlink:href`、`href` かイベントの属性を書き換える `set` と `animate`、CSS の `@import` と `#` で始まらない `url()` である。
@@ -5739,7 +5739,7 @@ dev と prod の両方でエラーである。
 HTML か EPUB を組むとき（`golem build`）にだけ出す。
 位置は、その `@figure` のブロックである。
 
-- メッセージ: `SVG の図版に、HTML と EPUB に写せない動く中身があります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。`<名前>` は要素の名前、属性の名前、`url()`、`@import` のどれかである。ほかになければ `ほか <n> 件` を書かない。読めない SVG なら `SVG の図版に、HTML と EPUB に写せない動く中身があります: <パス>（<G0810 と同じ理由>）`
+- メッセージ: `SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。`<名前>` は要素の名前、属性の名前、`url()`、`@import` のどれかである。ほかになければ `ほか <n> 件` を書かない。読めない SVG なら `SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: <パス>（<G0810 と同じ理由>）`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg.Active`）
 - ADR: [docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)
 

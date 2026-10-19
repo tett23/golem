@@ -557,8 +557,8 @@ SVG の中の数は、絶対値が 10 億（10 の 9 乗）までです。
 マーカーが自分自身を（ほかのマーカーを経てでも）置くときと、10 段を超えるときは、エラー（G0811）になります。
 
 HTML と EPUB には、SVG のファイルをそのまま写します。
-そのため、読者が SVG を開いたときに動く中身を持つ SVG は写せず、HTML と EPUB を組むときにエラー（G0814）になります。
-動く中身とは、スクリプト（[code: script]）、[code: onload] などのイベントの属性、ほかのファイルを指す [code: href]、HTML を埋め込む [code: foreignObject]、CSS の [code: @import] とほかのファイルを指す [code: url()] などです。
+そのため、読者が SVG を開いたときに動的なコンテンツを持つ SVG は写せず、HTML と EPUB を組むときにエラー（G0814）になります。
+動的なコンテンツとは、スクリプト（[code: script]）、[code: onload] などのイベントの属性、ほかのファイルを指す [code: href]、HTML を埋め込む [code: foreignObject]、CSS の [code: @import] とほかのファイルを指す [code: url()] などです。
 XML として読めない SVG も、中身を確かめられないので同じエラーになります。
 図の作成ツールで、これらを使わずに書き出し直します。
 [code: web] に書いた SVG も同じです。
