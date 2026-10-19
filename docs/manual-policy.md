@@ -38,10 +38,10 @@ $ GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev # 一�
 ```
 
 `build.sh` は、組む前に `scripts/manual/build-info.sh` で `common/build-info.gm`（奥付の版とコミットのハッシュ）を書き、フォントを取得し、`golem build --target pdf --target html` で組む。
-エラー、警告、お知らせのどれか一つでも出れば失敗とする。
+エラー、警告、notice のどれか一つでも出れば失敗とする。
 マニフェストに `[diagnostics]` の `silence-notices` を書いてはいけない（`build.sh` が組む前に止める）。
 `golem build` に `--no-notices` を付けて呼ぶこともしない。
-お知らせの原因（コードのフォントの役割の欠け、折り返したコードの行、勧めない記法など）は、原稿の側で取り除く。
+notice の原因（コードのフォントの役割の欠け、折り返したコードの行、勧めない記法など）は、原稿の側で取り除く。
 勧めない書き方を例として見せたいときは、コードブロックの中に書く。
 コードブロックの中身は解釈されない。
 
@@ -233,7 +233,7 @@ PDF/X-4 は、Golem 自身では適合を判定できず、入稿の前に商用
 - 第 4 章「プロジェクトの設定」
 - 第 5 章「スタイルの設定」
 - 第 6 章「出力」
-- 第 7 章「検査と診断」（お知らせと、その抑制を含む）
+- 第 7 章「検査と診断」（notice と、その抑制を含む）
 - 第 8 章「バージョン管理と CI」
 - 第 9 章「エディタと LSP」
 - 第 10 章「プラグイン」
@@ -318,6 +318,9 @@ diagnostic の重大度は、`error`、`warning`、`notice` の名前で書く�
 使い手のマニュアルと docs/diagnostics.md が使う「お知らせ」は、開発者のマニュアルでは使わない。
 開発者は「お知らせ」から重大度の `notice` を引きにくく、ログの水準の info と取り違えやすいためである。
 docs/diagnostics.md の重大度の欄の値を説明するときに限り、その値として「お知らせ」を引く。
+この規則は、技術者が読む仕様書（`docs/` の仕様書、各モジュールの仕様書、markup.md、roadmap.md、glossary.md）と、新しい ADR にも当てはめる。
+notice より下の重大度 info を加える予定がある（roadmap.md の「diagnostic の info」）。
+notice と info は別の重大度であり、どちらも「お知らせ」とまとめず、名前で書き分ける。
 
 開発者のマニュアルは、`docs/` の仕様書、各モジュールの仕様書、ADR、CONTRIBUTING.md をまとめ、その文書へリンクする。
 リンクは脚注に置き、リポジトリの文書は `https://github.com/tett23/golem/blob/main/` から始まる URL で書く。
