@@ -57,11 +57,11 @@ image :: ColorSpace -> Int -> Int -> Int -> Maybe BS.ByteString -> ImageData
 image cs bits w h icc = ImageData w h bits cs icc "" False False Nothing
 
 placed :: ImageData -> Rect -> ImageView
-placed img r = ImageView r (RasterFigure img) srcSpan "images/photo.jpg"
+placed img r = ImageView r (RasterFigure img) srcSpan "images/photo.jpg" False
 
 -- | A page of a PDF figure that uses the colour spaces given, placed well inside the page (golem-pdf ADR 0008).
 vector :: [ColorUse] -> ImageView
-vector cs = ImageView (Rect (mm 20) (mm 20) (inch 4) (inch 3)) (VectorFigure page) srcSpan "images/figure.pdf"
+vector cs = ImageView (Rect (mm 20) (mm 20) (inch 4) (inch 3)) (VectorFigure page) srcSpan "images/figure.pdf" False
   where
     page = ImportedPage "file" 1 (0, 0, 288, 216) 0 (288, 216) (ODict []) Nothing "" [] cs
 
@@ -214,7 +214,7 @@ checkTests =
     testCase "G0908: a gray ICC profile is allowed where gray is" $
       only "G0908" (check printRules (imagePage [vector [UseIcc 1 "p", UseCmyk]])) @?= [],
     testCase "an SVG figure is rgb for G0908 and not checked by G0906, G0907 and G0909 (golem-pdf ADR 0009)" $ do
-      let iv = ImageView (Rect (mm 20) (mm 20) (inch 100) (inch 100)) (SvgFigure (Drawing (10, 10) [])) srcSpan "images/a.svg"
+      let iv = ImageView (Rect (mm 20) (mm 20) (inch 100) (inch 100)) (SvgFigure (Drawing (10, 10) [])) srcSpan "images/a.svg" False
           r = printRules {ruImageResolutionMax = LevelWarning, ruColorMax = 1}
       map (lookup "color-space" . diagFacts) (only "G0908" (check printRules (imagePage [iv]))) @?= [Just (FactText "rgb")]
       only "G0906" (check printRules (imagePage [iv])) @?= []
@@ -241,6 +241,15 @@ checkTests =
       lookup "ppi" (concatMap snd (res 10 7.5)) @?= Just (FactInt 120),
     testCase "G0906: the smaller of the two directions" $
       [lookup "ppi" (diagFacts d) | d <- only "G0906" (check printRules (imagePage [placedAt CsCmyk 1200 600 4 3]))] @?= [Just (FactInt 200)],
+    testCase "G0906: a turned image divides its pixel width by the height of its rectangle (golem-driver ADR 0034)" $ do
+      let iv turned = (placedAt CsCmyk 300 600 2 1.5) {ivTurned = turned}
+          ppis turned = [lookup "ppi" (diagFacts d) | d <- only "G0906" (check printRules (imagePage [iv turned]))]
+      -- turned: 300 / 1.5 and 600 / 2; not turned: 300 / 2 and 600 / 1.5
+      ppis True @?= [Just (FactInt 200)]
+      ppis False @?= [Just (FactInt 150)],
+    testCase "G0911: a turned image is checked by its rectangle on the page (golem-driver ADR 0034)" $ do
+      let iv = (placed (image CsCmyk 8 4000 4000 Nothing) (Rect (mm 30) (mm 30) (mm 128 - mm 30 - mm 2) (mm 100))) {ivTurned = True}
+      length (only "G0911" (check printRules emptyView {vwPages = [(emptyPage 1) {pvImages = [iv]}]})) @?= 1,
     testCase "G0906: one-bit gray uses the bitmap thresholds" $ do
       let iv = placed (image CsGray 1 2400 1800 Nothing) (Rect (mm 20) (mm 20) (inch 4) (inch 3))
       [(diagSeverity d, lookup "limit" (diagFacts d)) | d <- only "G0906" (check printRules (imagePage [iv]))] @?= [(Warning, Just (FactInt 1200))],

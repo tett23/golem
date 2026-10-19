@@ -54,7 +54,7 @@ heading :: Int -> HeadingAttrs -> Text -> Block
 heading s a t = Block (sp s) Nothing (Heading 1 a [Text (sp s) t])
 
 figure :: Int -> Text -> Block
-figure s cap = Block (sp s) Nothing (FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block (sp (s + 1)) Nothing (Paragraph Nothing [Text (sp (s + 1)) cap])] Nothing))
+figure s cap = Block (sp s) Nothing (FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block (sp (s + 1)) Nothing (Paragraph Nothing [Text (sp (s + 1)) cap])] Nothing False))
 
 toc :: Int -> Block
 toc s = Block (sp s) Nothing (ChannelOutput (TocOutput 1))

@@ -714,11 +714,11 @@ wrapTests =
       ex <- maybe (assertFailure "no exclusion") pure (pfExclusion pf)
       let ta = typeAreaFor geom (poNumber p)
       map (slIndent . snd) (take (exLines ex) (linesFrom pl p slot)) @?= replicate (exLines ex) (50 * pt)
-      rectX (figureRect geom ta slot pf) @?= rectX ta
+      rectX (figureRect geom (poNumber p) ta slot pf) @?= rectX ta
       (geom', pl') <- layoutOk horizontal24 (wrapped "end" "4zw" <> longPara 30) img
       (_, pf', p', slot') <- theFigure pl'
       let ta' = typeAreaFor geom' (poNumber p')
-          r = figureRect geom' ta' slot' pf'
+          r = figureRect geom' (poNumber p') ta' slot' pf'
       rectX r + rectW r @?= rectX ta' + rectW ta',
     testCase "a paragraph after a short one beside the figure starts short" $ do
       img <- tinyImage
@@ -747,7 +747,7 @@ wrapTests =
       (_, _, p, slot) <- theFigure pl
       (_, pf, _, _) <- theFigure pl
       let ta = typeAreaFor geom (poNumber p)
-          r = figureRect geom ta slot pf
+          r = figureRect geom (poNumber p) ta slot pf
           fs = pgFontSize geom
       rectY r + rectH r @?= rectY ta + rectH ta
       rectX r + rectW r @?= rectX ta + rectW ta - toInteger slot * pgLinePitch geom
@@ -782,7 +782,7 @@ wrapTests =
       (geom, pl) <- layoutOk (figStyle (replaceIn "characters = 42" "characters = 20" pdfStyle)) "@figure images/tiny.jpg alt=\"t\"\n  キャプション。\n\n後の段落。\n" img
       (_, pf, p, slot) <- theFigure pl
       let ta = typeAreaFor geom (poNumber p)
-          r = figureRect geom ta slot pf
+          r = figureRect geom (poNumber p) ta slot pf
       assertBool (show (r, ta)) (rectX r >= rectX ta && rectX r + rectW r <= rectX ta + rectW ta && rectY r >= rectY ta && rectY r + rectH r <= rectY ta + rectH ta),
     testCase "a page reference beside a wrapped figure converges" $ do
       img <- tinyImage

@@ -88,10 +88,14 @@ mmText s =
       (i, f) = abs tenths `divMod` 10
    in (if tenths < 0 then "-" else "") <> tshow i <> "." <> tshow f <> "mm"
 
--- | The effective resolution: the pixels over the inches placed, the smaller of the two, cut down.
+{- | The effective resolution: the pixels over the inches placed, the
+smaller of the two, cut down. A turned image lies across its rectangle
+(golem-driver ADR 0034).
+-}
 ppiOf :: ImageView -> ImageData -> Integer
 ppiOf iv img =
-  let Rect _ _ w h = ivRect iv
+  let Rect _ _ rw rh = ivRect iv
+      (w, h) = if ivTurned iv then (rh, rw) else (rw, rh)
       per px sz = if sz <= 0 then 0 else toInteger px * 72 * 65536 `div` sz
    in min (per (imgWidth img) w) (per (imgHeight img) h)
 

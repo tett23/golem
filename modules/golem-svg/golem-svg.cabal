@@ -32,6 +32,9 @@ test-suite golem-svg-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
+  other-modules:    SecuritySpec
+  -- GHC.Stats measures what reading a hostile figure allocates (security audit 2026-10-18)
+  ghc-options:      -rtsopts -with-rtsopts=-T
   build-depends:
     , base
     , bytestring

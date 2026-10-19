@@ -10,6 +10,8 @@ module Golem.Pdf.Writer
     FormRef (..),
     Swatch (..),
     RunStyle (..),
+    Turn (..),
+    turnRect,
     Mark (..),
     Page (..),
     FontProgram (..),
@@ -121,7 +123,27 @@ data Mark
     text, outside BT and ET; not nested (golem-driver ADR 0030)
     -}
     ActualText !Text ![Mark]
+  | {- | marks drawn in a frame whose origin is its lower left corner,
+    turned and placed in the rectangle, inside q and Q (golem-driver ADR
+    0034); the frame is as wide as the rectangle is high
+    -}
+    Turned !Turn !Rect ![Mark]
   deriving stock (Eq, Show)
+
+{- | How marks are turned onto the page (golem-driver ADR 0034): to the
+right (clockwise), the top of their frame at the right of the page; to
+the left, at the left.
+-}
+data Turn = TurnedRight | TurnedLeft
+  deriving stock (Eq, Show)
+
+{- | Where a rectangle of the frame of 'Turned' lands on the page, when the
+frame is turned into the rectangle @r@ (golem-driver ADR 0034).
+-}
+turnRect :: Turn -> Rect -> Rect -> Rect
+turnRect t (Rect x y w h) (Rect u v a b) = case t of
+  TurnedRight -> Rect (x + v) (y + h - u - a) b a
+  TurnedLeft -> Rect (x + w - v - b) (y + u) b a
 
 data Page = Page
   { pageMediaBox :: !Rect,
@@ -254,6 +276,9 @@ contentStreamWith fontNames imageNames formNames marks = BL.toStrict (B.toLazyBy
       -- a /Span with the replacement text written in the stream, no tag structure (golem-driver ADR 0030)
       ActualText t ms -> "/Span << /ActualText " <> serialize (pdfTextString t) <> " >> BDC" <> nl <> mconcat (map mark ms) <> "EMC" <> nl
       Translated x y ms -> "q 1 0 0 1 " <> num x <> sp <> num y <> " cm" <> nl <> mconcat (map mark ms) <> "Q" <> nl
+      -- the frame's (u, v) goes to (x + v, y + h - u), or to (x + w - v, y + u)
+      Turned TurnedRight (Rect x y _ h) ms -> "q 0 -1 1 0 " <> num x <> sp <> num (y + h) <> " cm" <> nl <> mconcat (map mark ms) <> "Q" <> nl
+      Turned TurnedLeft (Rect x y w _) ms -> "q 0 1 -1 0 " <> num (x + w) <> sp <> num y <> " cm" <> nl <> mconcat (map mark ms) <> "Q" <> nl
       RegistrationRules rs -> "q" <> nl <> "/Reg cs 1 scn" <> nl <> mconcat (map (mark . Rule) rs) <> "Q" <> nl
       -- the form maps its crop box to the unit square (its Matrix), so it is placed as an image is
       Form f (Rect x y w h) ->
@@ -434,18 +459,21 @@ documentObjects doc =
       Saved ms -> concatMap fontsOf ms
       ActualText _ ms -> concatMap fontsOf ms
       Translated _ _ ms -> concatMap fontsOf ms
+      Turned _ _ ms -> concatMap fontsOf ms
       _ -> []
     imagesOf = \case
       Image i _ -> [i]
       Saved ms -> concatMap imagesOf ms
       ActualText _ ms -> concatMap imagesOf ms
       Translated _ _ ms -> concatMap imagesOf ms
+      Turned _ _ ms -> concatMap imagesOf ms
       _ -> []
     formsOf = \case
       Form f _ -> [f]
       Saved ms -> concatMap formsOf ms
       ActualText _ ms -> concatMap formsOf ms
       Translated _ _ ms -> concatMap formsOf ms
+      Turned _ _ ms -> concatMap formsOf ms
       _ -> []
 
 {- | The Form XObjects of PDF figures from object @base@ (ADR 0008): each
@@ -526,6 +554,7 @@ usesRegistration = \case
   Saved ms -> any usesRegistration ms
   ActualText _ ms -> any usesRegistration ms
   Translated _ _ ms -> any usesRegistration ms
+  Turned _ _ ms -> any usesRegistration ms
   _ -> False
 
 {- | The registration colour (ADR 0007): the Separation of the colorant
