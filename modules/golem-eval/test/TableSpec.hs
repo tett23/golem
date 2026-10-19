@@ -116,6 +116,18 @@ genGrid minCols cs = do
 genEol :: Gen Text
 genEol = Gen.element ["\n", "\r\n"]
 
+{- | The lines joined with LF or CRLF, and at times without one after the
+last line. An empty last line keeps its end, without which it is no line.
+-}
+genFile :: [Text] -> Gen Text
+genFile ls = do
+  es <- Gen.list (Range.singleton (length ls)) genEol
+  lastEol <- Gen.element [True, False]
+  let es' = if lastEol || maybe True T.null (lastMay ls) then es else take (length ls - 1) es <> [""]
+  pure (T.concat (zipWith (<>) ls es'))
+  where
+    lastMay = foldl (const Just) Nothing
+
 -- | A CSV field, quoted when it has a comma, a quote or a line feed.
 csvField :: Text -> Text
 csvField t
@@ -126,17 +138,15 @@ roundTrips :: TestTree
 roundTrips =
   testGroup
     "written and read back"
-    [ testProperty "a TSV written with tabs and LF or CRLF reads back as its rows" $ property $ do
+    [ testProperty "a TSV written with tabs and LF or CRLF, the last one optional, reads back as its rows" $ property $ do
         -- no tab, CR or LF in a cell; quotes, commas, backslashes and spaces are as written
         g <- forAll (genGrid 1 "a 表\"\\,")
-        eols <- forAll (Gen.list (Range.singleton (length g)) genEol)
-        let file = T.concat (zipWith (\r e -> T.intercalate "\t" r <> e) g eols)
+        file <- forAll (genFile (map (T.intercalate "\t") g))
         tsv file === Right g,
-      testProperty "a CSV written with quotes where needed reads back as its rows" $ property $ do
+      testProperty "a CSV written with quotes where needed, the last line end optional, reads back as its rows" $ property $ do
         -- two columns at least, so that no row is an empty line, which CSV drops
         g <- forAll (genGrid 2 "a 表\",\n\t")
-        eols <- forAll (Gen.list (Range.singleton (length g)) genEol)
-        let file = T.concat (zipWith (\r e -> T.intercalate "," (map csvField r) <> e) g eols)
+        file <- forAll (genFile (map (T.intercalate "," . map csvField) g))
         csv file === Right g
     ]
 
