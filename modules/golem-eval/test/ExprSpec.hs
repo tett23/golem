@@ -1,8 +1,11 @@
 module ExprSpec (tests) where
 
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Word (Word64)
+import GHC.Float (castDoubleToWord64)
 import Golem.Eval.Expr
 import Golem.Eval.Number
 import Golem.Eval.Value
@@ -89,6 +92,7 @@ tests =
         ev "y" @?= Left "G0202"
         ev "nope(1)" @?= Left "G0261",
       diagnosticTests,
+      overflowTests,
       testCase "precedence through evaluation" $ do
         ev "-2 ** 2" @?= Right (VInt (-4))
         ev "2 ** 3 ** 2" @?= Right (VInt 512)
@@ -179,4 +183,86 @@ diagnosticTests =
         case evalExpr env (exprOf "1 + (2 / 0)") of
           Left d -> (spanStart (diagSpan d), spanEnd (diagSpan d)) @?= (7, 14)
           Right v -> assertFailure (show v)
+    ]
+
+-- | The bits of the double of an expression, or the code of its error.
+bitsOf :: Text -> Either Text Word64
+bitsOf src = case ev src of
+  Left c -> Left c
+  Right (VFloat d) -> Right (castDoubleToWord64 d)
+  Right v -> Left (T.pack (show v))
+
+-- | The bits of a double.
+bits :: Double -> Either Text Word64
+bits = Right . castDoubleToWord64
+
+-- | Evaluates within a second, or fails.
+withinASecond :: TestTree -> TestTree
+withinASecond = localOption (mkTimeout 1000000)
+
+-- | Floating-point overflow and the exact rules of golem-eval ADR 0005.
+overflowTests :: TestTree
+overflowTests =
+  testGroup
+    "floating-point overflow (golem-eval ADR 0005)"
+    [ testCase "negative exponents" $ do
+        bitsOf "2.0 ** -1074" @?= bits (encodeFloat 1 (-1074))
+        bitsOf "2 ** -1074" @?= bits (encodeFloat 1 (-1074))
+        -- halfway, to the even side
+        bitsOf "2 ** -1075" @?= bits 0
+        bitsOf "2.0 ** -1075" @?= bits 0
+        bitsOf "3 ** -2" @?= bits (1 / 9)
+        -- not a negative zero
+        bitsOf "(-2.0) ** -1075" @?= bits 0,
+      testCase "a floating-point base" $ do
+        bitsOf "1.1 ** 10" @?= bits 2.5937424601000023
+        bitsOf "0.5 ** 1074" @?= bits (encodeFloat 1 (-1074))
+        bitsOf "2.0 ** 1023" @?= bits (encodeFloat 1 1023)
+        bitsOf "2.0 ** 1024" @?= Left "G0204"
+        -- (1e200) ** 2 of the ADR; the language has no exponent notation
+        bitsOf "(10.0 ** 200) ** 2" @?= Left "G0204"
+        bitsOf "0.1 ** 400" @?= bits 0,
+      withinASecond $ testCase "the size is estimated first" $ do
+        bitsOf "1.5 ** 100000000" @?= Left "G0204"
+        bitsOf "0.75 ** -100000000" @?= Left "G0204"
+        bitsOf "0.5 ** 100000000" @?= bits 0
+        evm "1.0000001 ** 100000" @?= Left ("G0286", "累乗の計算が大きすぎます")
+        bitsOf "1.0 ** 100000000" @?= bits 1
+        bitsOf "0.5 ** -1000" @?= bits (encodeFloat 1 1000),
+      testProperty "a power is the exact power rounded once" $ property $ do
+        a <- forAll (Gen.filter (/= 0) (Gen.double (Range.exponentialFloat (-1e300) 1e300)))
+        k <- forAll (Gen.filter (/= 0) (Gen.integral (Range.linear (-64) 64)))
+        let exact = fromRational (toRational a ^^ k) :: Double
+            -- a float literal: renderDouble writes an integral double without a point
+            lit = let r = renderDouble (abs a) in if T.any (== '.') r then r else r <> ".0"
+            src = "(" <> (if a < 0 then "-" else "") <> lit <> ") ** " <> T.pack (show k)
+        if isInfinite exact
+          then bitsOf src === Left "G0204"
+          else bitsOf src === bits (if exact == 0 then 0 else exact),
+      testCase "the division of integers" $ do
+        bitsOf "10 ** 309 / 10 ** 308" @?= bits 10
+        bitsOf "(2 ** 53 + 1) / 1" @?= bits (encodeFloat 1 53)
+        bitsOf "10 ** 400 / 3" @?= Left "G0204",
+      testProperty "the division of integers up to 2^53 is as before" $ property $ do
+        let int = Gen.integral (Range.linearFrom 0 (-(2 ^ (53 :: Int))) (2 ^ (53 :: Int)))
+        a <- forAll int
+        b <- forAll (Gen.filter (/= 0) int)
+        bitsOf (T.pack (show a) <> " / (" <> T.pack (show b) <> ")") === bits (fromMaybe 0 (finite (fromInteger a / fromInteger b))),
+      testCase "integers converted to floating point" $ do
+        let tooLarge = Left ("G0204", "整数が大きすぎて浮動小数点数に変換できません")
+        evm "10 ** 309 + 0.5" @?= tooLarge
+        evm "sqrt(10 ** 309)" @?= tooLarge
+        bitsOf "(2 ** 54 + 3) + 0.0" @?= bits (encodeFloat 1 54 + 4),
+      testCase "integers and floating point compared exactly" $ do
+        ev "10 ** 309 > 1.0" @?= Right (VBool True)
+        ev "2 ** 53 + 1 > 9007199254740992.0" @?= Right (VBool True)
+        ev "2 ** 53 + 1 != 9007199254740992.0" @?= Right (VBool True)
+        ev "2 ** 53 == 9007199254740992.0" @?= Right (VBool True)
+        ev "10 ** 400 < 10.0 ** 308" @?= Right (VBool False),
+      testCase "min and max" $ do
+        ev "max(10 ** 309, 10 ** 310)" @?= Right (VInt (10 ^ (310 :: Int)))
+        ev "max(2 ** 53, 2 ** 53 + 1)" @?= Right (VInt (2 ^ (53 :: Int) + 1))
+        ev "max(2 ** 53 + 1, 9007199254740992.0)" @?= Right (VInt (2 ^ (53 :: Int) + 1))
+        ev "max(9007199254740992.0, 2 ** 53 + 1)" @?= Right (VInt (2 ^ (53 :: Int) + 1))
+        ev "min(1, 1.0)" @?= Right (VInt 1)
     ]
