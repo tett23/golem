@@ -80,6 +80,11 @@ data Flow
     FFigure {ffId :: !Int, ffLines :: !Int, ffLabels :: ![Text], ffMarks :: ![SrcSpan]}
   | -- | a wrapped figure and the shortened lines set beside it (ADR 0004)
     FWrapped {fwId :: !Int, fwLines :: !Int, fwLabels :: ![Text], fwMarks :: ![SrcSpan], fwBeside :: [LineBox]}
+  | {- | a figure turned onto a page of its own (golem-driver ADR 0034): on
+    the page if nothing is on it, else waiting with the figures sent on,
+    at the start of a later page
+    -}
+    FPageFigure {fpId :: !Int, fpLabels :: ![Text], fpMarks :: ![SrcSpan]}
   | {- | the rest of a paragraph whose first lines are beside a wrapped
     figure: no orphan rule for its first line (golem-driver ADR 0005)
     -}
@@ -171,6 +176,8 @@ data Slotted
   = SLine !Int
   | SFigure !Int
   | SWrapped !Int
+  | -- | a figure turned onto the whole page (golem-driver ADR 0034)
+    SPageFigure !Int
   | -- | a heading block: its first line and how many lines it has
     SHeading !Int !Int
   | -- | a part of a code block: its first row, how many rows it has and the grid lines it takes (golem-driver ADR 0017)
@@ -337,6 +344,8 @@ paginateWithin maxLines separatorLines base capacity flows =
         let st1 = checkNoBreak (placeFlow (ready st) f rest)
             deferred = case f of
               FFigure i _ _ _ -> any (\case FFigure j _ _ _ -> i == j; _ -> False) (sDeferred st1)
+              -- the flow after a turned figure is never on its page
+              FPageFigure {} -> True
               _ -> False
          in go st1 {sSeen = True, sLastDeferred = deferred} rest
     -- the breaks written so far, then the need-lines, apply before anything but another break
@@ -401,12 +410,18 @@ paginateWithin maxLines separatorLines base capacity flows =
       BreakRecto -> parityStart odd st
       BreakVerso -> parityStart even st
       BreakColumn
-        | csColumns (sSet st) > 1 -> nextColumn st
+        -- a waiting turned figure is placed first, on a page of its own (golem-driver ADR 0034)
+        | csColumns (sSet st) > 1 && not (any isPageFigure (sDeferred st)) -> nextColumn st
         | otherwise -> breakPage st
     breakPage st
       -- the page is closed even when empty; an empty page is blank
-      | isEmpty st && sColumn st == 0 = blankPage st
+      | isEmpty st && sColumn st == 0 && not (afterPageFigure st) = blankPage st
+      -- the page after a turned figure is already a new page (golem-driver ADR 0034)
+      | isEmpty st && sColumn st == 0 = st
       | otherwise = nextPage st
+    afterPageFigure st = case sDone st of
+      (po : _) -> poNumber po == sPage st - 1 && any (\case (_, SPageFigure _) -> True; _ -> False) (poSlots po)
+      [] -> False
     nextNeed = \case
       (FParagraph ls : _) -> min 2 (length ls)
       (FContinued ls : _) -> min 2 (length ls)
@@ -415,6 +430,7 @@ paginateWithin maxLines separatorLines base capacity flows =
       -- a heading keeps what follows it, a heading after it too (golem-driver ADR 0032)
       (FHeading _ _ n _ : rest) -> n + nextNeed rest
       (FFigure _ n _ _ : _) -> min n capacity
+      (FPageFigure {} : _) -> 0
       (FWrapped _ n _ _ ls : _) -> max n (length ls)
       (FSpace _ : _) -> 0
       (FBreak _ : _) -> 0
@@ -455,6 +471,10 @@ paginateWithin maxLines separatorLines base capacity flows =
       FFigure i n labels marks
         | not (null (sDeferred st)) -> st {sDeferred = sDeferred st <> [f]}
         | n <= free st || isEmpty st -> putSlot st n (SFigure i) labels marks
+        | otherwise -> st {sDeferred = sDeferred st <> [f]}
+      -- a turned figure takes a page with nothing on it, or waits (golem-driver ADR 0034)
+      FPageFigure i labels marks
+        | null (sDeferred st) && sColumn st == 0 && sUsed st == 0 && null (sNotes st) && sNoteLines st == 0 -> pageFigure st {sAdjust = 0} i labels marks
         | otherwise -> st {sDeferred = sDeferred st <> [f]}
       FWrapped i n labels marks beside ->
         let st0 = flushFigures st
@@ -763,8 +783,20 @@ paginateWithin maxLines separatorLines base capacity flows =
                 sJoin = Nothing,
                 sPendingNotes = []
               }
-          withNotes = foldl' carryNote fresh (sPendingNotes st)
-       in placeDeferred withNotes {sDeferred = []} (sDeferred st)
+          -- the turned figures waiting first take pages of their own before the notes go on (golem-driver ADR 0034)
+          (turned, waiting) = if toPage then span isPageFigure (sDeferred st) else ([], sDeferred st)
+          fresh' = foldl' (\s' (i, labels, marks) -> pageFigure s' i labels marks) fresh [(i, labels, marks) | FPageFigure i labels marks <- turned]
+          withNotes = foldl' carryNote fresh' (sPendingNotes st)
+       in placeDeferred withNotes {sDeferred = []} waiting
+    isPageFigure = \case
+      FPageFigure {} -> True
+      _ -> False
+    -- a page of nothing but a turned figure; the next page starts empty
+    pageFigure st i labels marks =
+      st
+        { sDone = PageOut (sPage st) 0 False [(0, SPageFigure i)] [] labels marks [] (sSet st) {csFirstLine = 0} [] capacity [] : sDone st,
+          sPage = sPage st + 1
+        }
     carryNote st (i, from, len) =
       let sep = if sNoteLines st == 0 then separator else 0
           room = cap st - sNoteLines st - sep - 1
@@ -778,6 +810,8 @@ paginateWithin maxLines separatorLines base capacity flows =
     placeDeferred st (FFigure i n labels marks : rest)
       | n <= free st || isEmpty st = placeDeferred (putSlot st n (SFigure i) labels marks) rest
       | otherwise = st {sDeferred = FFigure i n labels marks : rest}
+    -- a turned figure waits for the next page, and the figures after it with it (golem-driver ADR 0034)
+    placeDeferred st rest@(FPageFigure {} : _) = st {sDeferred = rest}
     placeDeferred st (_ : rest) = placeDeferred st rest
     flushDeferred st
       | null (sDeferred st) && null (sPendingNotes st) = st
