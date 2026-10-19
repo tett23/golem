@@ -1,6 +1,6 @@
 # ADR 0034: 回り込ませない図版を段に収め、回して置けるようにする
 
-ステータス: 採択
+ステータス: 採択→（縦組みの枠の行の送りの向き）は [golem-driver ADR 0038](0038-turned-figure-line-progression.md)
 
 ## 文脈
 
