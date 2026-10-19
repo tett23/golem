@@ -139,8 +139,8 @@ cbor =
         abiVersion @?= 7
         let bytes = toStrictByteString (encodeTerm (TList [TInt 6, TInt 0, TList []]))
         assertBool "rejected" (isLeft (decodeDocument bytes)),
-      testCase "a figure with its page survives the CBOR round trip (golem-pdf ADR 0008)" $ do
-        let fig = Figure "images/a.pdf" (Just "images/a.png") "alt" Nothing Nothing [] (Just 3)
+      testCase "a figure with its page and rotate survives the CBOR round trip (golem-pdf ADR 0008, golem-driver ADR 0034)" $ do
+        let fig = Figure "images/a.pdf" (Just "images/a.png") "alt" Nothing Nothing [] (Just 3) True
             doc = Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing (FigureBlock fig)]
         decodeDocument (encodeDocument doc) @?= Right doc,
       testCase "a code block survives the CBOR round trip (golem-driver ADR 0023)" $ do
@@ -189,7 +189,7 @@ cbor =
         validateDocument size [] (doc [brk]) @?= []
         validateDocument size [] (doc [Block sp Nothing (BulletList [ListItem Nothing [brk]])]) @?= [msgNested]
         validateDocument size [] (doc [Block sp Nothing (DefList [DefGroup [[]] [[brk]]])]) @?= [msgNested]
-        validateDocument size [] (doc [Block sp Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing [brk] Nothing))]) @?= [msgNested]
+        validateDocument size [] (doc [Block sp Nothing (FigureBlock (Figure "a.png" Nothing "a" Nothing Nothing [brk] Nothing False))]) @?= [msgNested]
         validateDocument size [] (doc [Block sp (Just "x") (ForcedBreak BreakRecto)]) @?= [msgLabel],
       testCase "every page control survives the CBOR round trip (docs/adr ADR 0030)" $ do
         let d = Document (FileId 0) [Block sp Nothing (PageControl c) | c <- [NoBreak, NeedLines 5, AdjustLines 1, AdjustLines (-2)]]

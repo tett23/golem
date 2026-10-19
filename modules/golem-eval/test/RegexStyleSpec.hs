@@ -77,8 +77,8 @@ tests =
         para r [t "1", Sidenote sp 1 [t "2b"]] @?= [cs "n" [t "1"], Sidenote sp 1 [t "2", cs "m" [t "b"]]],
       testCase "a caption has the rules of caption, not of body" $ do
         let r = rules [("body", [("[0-9]+", "n")]), ("caption", [("[a-z]+", "m")])]
-            fig = FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block sp Nothing (Paragraph Nothing [t "1a"])] Nothing)
-        bodies r [fig] @?= [FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block sp Nothing (Paragraph Nothing [t "1", cs "m" [t "a"]])] Nothing)],
+            fig = FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block sp Nothing (Paragraph Nothing [t "1a"])] Nothing False)
+        bodies r [fig] @?= [FigureBlock (Figure "a.png" Nothing "" Nothing Nothing [Block sp Nothing (Paragraph Nothing [t "1", cs "m" [t "a"]])] Nothing False)],
       testCase "a line break is not wrapped and cuts a run" $ do
         let r = rules [("body", [("[0-9\\n]+", "n")])]
             out = para r [t "a1", LineBreak sp, t "2b"]

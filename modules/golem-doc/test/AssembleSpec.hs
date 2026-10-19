@@ -65,7 +65,7 @@ tests =
           [Document _ [_, _, Block _ _ (Paragraph Nothing is)]] -> is @?= [Text (sp 1 9) "count=2"]
           other -> assertFailure (show other),
       testCase "figure numbers restart per chapter" $ do
-        let fig f s = Block (sp f s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing))
+        let fig f s = Block (sp f s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False))
             docs = [Document (FileId 1) [heading 1 0 1 noHeadingAttrs Nothing "一", fig 1 2, fig 1 4, heading 1 6 1 noHeadingAttrs Nothing "二", fig 1 8]]
             (book, ds) = assemble cfg noEval docs
         ds @?= []
@@ -128,14 +128,14 @@ diagnosticCodes =
           [Document _ (Block _ _ (Paragraph Nothing is) : _)] -> is @?= []
           other -> assertFailure (show other),
       testCase "G0404: figures outside a chapter, before the first and after a @nonumber chapter" $ do
-        let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing))
+        let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False))
             docs = [Document (FileId 1) [fig 0, heading 1 2 1 noHeadingAttrs Nothing "一", fig 4, heading 1 6 1 noHeadingAttrs {haNoNumber = True} Nothing "あとがき", fig 8]]
             msg = "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
         map summary (snd (assemble cfg noEval docs))
           @?= [("G0404", Error, sp 1 0, msg, []), ("G0404", Error, sp 1 8, msg, [])]
         snd (assemble cfg {acFigureFormat = "{n}"} noEval docs) @?= [],
       testCase "listing numbers: per chapter, apart from figures, only with a caption (golem-driver ADR 0023)" $ do
-        let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing))
+        let fig s = Block (sp 1 s) Nothing (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False))
             code s cap = Block (sp 1 s) Nothing (CodeBlock (Code Nothing Nothing Nothing cap False [CodeLine "x" (Just 1) Nothing False []]))
             capt t = Just [Text (sp 1 0) t]
             docs =
@@ -189,7 +189,7 @@ diagnosticCodes =
           other -> assertFailure (show other)
         snd (assemble cfg noEval [Document (FileId 1) [p, para 1 5 [Ref (sp 1 6) RefPage "p"]]]) @?= []
         let h = heading 1 0 1 noHeadingAttrs (Just "h") "一"
-            f = Block (sp 1 2) (Just "f") (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing))
+            f = Block (sp 1 2) (Just "f") (FigureBlock (Figure "a.png" Nothing "alt" Nothing Nothing [] Nothing False))
         snd (assemble cfg noEval [Document (FileId 1) [h, f, para 1 5 [Ref (sp 1 6) RefTitle "h", Ref (sp 1 7) RefTitle "f"]]]) @?= []
     ]
 

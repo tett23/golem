@@ -891,11 +891,19 @@ figure ctx sp args body = do
                 Just "start" -> pure (Right (Just WrapStart))
                 Just "end" -> pure (Right (Just WrapEnd))
                 Just w -> pure (Left w)
-              case wrap of
-                Left w -> err "G0230" sp ("wrap は start か end です: " <> w) >> pure []
-                Right wr
+              -- a figure turned onto a page of its own in the PDF (golem-driver ADR 0034)
+              let rotate = case look "rotate" of
+                    Nothing -> Right False
+                    Just "true" -> Right True
+                    Just "false" -> Right False
+                    Just r -> Left r
+              case (wrap, rotate) of
+                (Left w, _) -> err "G0230" sp ("wrap は start か end です: " <> w) >> pure []
+                (_, Left r) -> err "G0287" sp ("rotate は true か false です: " <> r) >> pure []
+                (Right wr, Right rot)
+                  | rot && isJust wr -> err "G0287" sp "回して置く図版は回り込ませられません" >> pure []
                   | isJust wr && isNothing (look "width") -> err "G0231" sp "回り込む図版には width が必要です" >> pure []
-                  | otherwise -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page)))]
+                  | otherwise -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot))]
     _ -> err "G0232" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
     check p = isJust <$> asset ctx sp p
