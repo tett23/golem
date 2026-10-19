@@ -82,7 +82,7 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 30
     # On x86-64 two runners build the same commit: one runs the tests,
-    # the other makes the outputs (the determinism check, the manuals,
+    # the other makes the outputs (the determinism check, the two manuals,
     # epubcheck and the environment check). The work is bound by the four
     # cores of a runner, and the x86-64 build is the longest job; on
     # aarch64 one runner does both (docs/adr/0045)
