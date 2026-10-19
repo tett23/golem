@@ -145,6 +145,26 @@ indexTests =
       qpdfCheck a
   ]
 
+{- | The project of golem-epub ADR 0002, with @toc depth=1 or without
+@toc, built to HTML and EPUB: the navigation document and the index page.
+-}
+tocProject :: Bool -> IO (T.Text, T.Text)
+tocProject withToc = withSystemTempDirectory "golem-nav" $ \tmp -> do
+  let manifest = T.replace "chapters = [\"a.gm\"]" "chapters = [\"chapters/00.gm\", \"chapters/01.gm\", \"chapters/99.gm\"]\nbibliography = [\"refs.json\"]" (TE.decodeUtf8 miniManifest)
+  TIO.writeFile (tmp </> "manifest.toml") (manifest <> "[targets.html]\n[targets.epub]\n")
+  BS.writeFile (tmp </> "style.toml") horizontalStyle
+  BS.writeFile (tmp </> "refs.json") refsJson
+  createDirectoryIfMissing True (tmp </> "chapters")
+  TIO.writeFile (tmp </> "chapters/00.gm") (if withToc then "# 目次\n\n@toc depth=1\n" else "# 目次\n")
+  TIO.writeFile (tmp </> "chapters/01.gm") "# 第一章\n\n## 節一\n\n### 項一\n\n本文[cite knuth1981]。\n"
+  TIO.writeFile (tmp </> "chapters/99.gm") "# 参考文献\n\n@bibliography\n"
+  r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
+  assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+  archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+  let nav = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath "OEBPS/nav.xhtml" archive)
+  index <- TIO.readFile (tmp </> "build/html/index.xhtml")
+  pure (nav, index)
+
 -- | A one-chapter project with a bibliography line and extra files.
 withBibProject :: T.Text -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
 withBibProject bibLine source files act = withSystemTempDirectory "golem-bib" $ \tmp -> do
@@ -174,7 +194,17 @@ jaRefsJson = TE.encodeUtf8 "[{\"id\": \"jisx4061\", \"title\": \"JIS X 4061:1996
 
 bibliographyFormatTests :: [TestTree]
 bibliographyFormatTests =
-  [ testCase "HTML and EPUB: a cite mark links to the bibliography in another file (golem-html ADR 0003)" $
+  [ testCase "EPUB navigation and the HTML index page follow the depth of @toc (golem-epub ADR 0002)" $ do
+      (nav, index) <- tocProject True
+      assertBool (T.unpack nav) (not (any (`T.isInfixOf` nav) ["節一", "項一"]))
+      assertBool (T.unpack nav) ("第一章" `T.isInfixOf` nav)
+      assertBool (T.unpack index) (not (any (`T.isInfixOf` index) ["toc-2", "toc-3"]))
+      assertBool (T.unpack index) ("toc-1" `T.isInfixOf` index),
+    testCase "without @toc, the EPUB navigation and the HTML index page have every level (golem-epub ADR 0002)" $ do
+      (nav, index) <- tocProject False
+      assertBool (T.unpack nav) (all (`T.isInfixOf` nav) ["第一章", "節一", "項一"])
+      assertBool (T.unpack index) (all (`T.isInfixOf` index) ["toc-1", "toc-2", "toc-3"]),
+    testCase "HTML and EPUB: a cite mark links to the bibliography in another file (golem-html ADR 0003)" $
       withSystemTempDirectory "golem-cite" $ \tmp -> do
         let manifest = T.replace "chapters = [\"a.gm\"]" "chapters = [\"chapters/00.gm\", \"chapters/01.gm\", \"chapters/99.gm\"]\nbibliography = [\"refs.json\"]" (TE.decodeUtf8 miniManifest)
         TIO.writeFile (tmp </> "manifest.toml") (manifest <> "[targets.html]\n[targets.epub]\n")
