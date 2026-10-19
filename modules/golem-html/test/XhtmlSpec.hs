@@ -9,7 +9,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Assemble (Book (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..), TocEntry (..))
+import Golem.Doc.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..), NoteNumbering (..), TocEntry (..), assemble)
 import Golem.Doc.Bibliography (EntryPart (..))
 import Golem.Doc.IR
 import Golem.Html
@@ -70,8 +70,9 @@ bookOf bs =
       bookListings = Map.empty,
       bookToc = [],
       bookTocDepth = Nothing,
-      bookIndex = [],
-      bookCitations = [],
+      bookIndexes = [],
+      bookBibliographies = [],
+      bookCiteMarks = Map.empty,
       bookLabels = Map.empty,
       bookReferenced = Set.empty,
       bookChapterOf = []
@@ -96,6 +97,38 @@ bodyA cfg book = maybe "" bodyOf (lookup "a.xhtml" (sitePages (renderXhtml cfg f
 -- | The lines of the style sheet that start with a prefix.
 cssLines :: Text -> HtmlConfig -> [Text]
 cssLines prefix cfg = filter (T.isPrefixOf prefix) (T.lines (siteCss (renderXhtml cfg ft (bookOf []))))
+
+-- | Several @bibliography in a book (golem-doc ADR 0008), over assembled books of a.gm and b.gm.
+multipleBibliographyTests :: TestTree
+multipleBibliographyTests =
+  testGroup
+    "the ids of the entries of several @bibliography (golem-doc ADR 0008)"
+    [ testCase "a bibliography per chapter: the second B is cite-B-2 and its mark links to it" $ do
+        let book =
+              assembled
+                [ [citing fidA 0 ["A", "B"], bib fidA 5],
+                  [citing fidB 0 ["B", "C"], bib fidB 5]
+                ]
+            pages = sitePages (renderXhtml cfg0 ft book)
+            bodyB = maybe "" bodyOf (lookup "b.xhtml" pages)
+        ids (bodyA cfg0 book) @?= ["cite-A", "cite-B"]
+        ids bodyB @?= ["cite-B-2", "cite-C"]
+        assertBool (T.unpack bodyB) ("<a class=\"cite\" href=\"#cite-B-2\">[1]</a>" `T.isInfixOf` bodyB),
+      testCase "two bibliographies in one file have no id twice" $ do
+        let book = assembled [[citing fidA 0 ["x"], bib fidA 5, citing fidA 6 ["x"], bib fidA 10]]
+            body = bodyA cfg0 book
+        ids body @?= ["cite-x", "cite-x-2"]
+        assertBool (T.unpack body) ("href=\"#cite-x-2\"" `T.isInfixOf` body),
+      testCase "a candidate taken by another key is skipped: knuth in the second list is cite-knuth-3" $ do
+        let book = assembled [[citing fidA 0 ["knuth-2", "knuth"], bib fidA 5, citing fidA 6 ["knuth"], bib fidA 10]]
+        ids (bodyA cfg0 book) @?= ["cite-knuth-2", "cite-knuth", "cite-knuth-3"]
+    ]
+  where
+    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] ""
+    assembled bss = fst (assemble acfg (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
+    citing f s ks = Block (mkSpan f s (s + 1)) Nothing (Paragraph Nothing [Cite (mkSpan f (s + i) (s + i + 1)) k | (i, k) <- zip [0 ..] ks])
+    bib f s = Block (mkSpan f s (s + 1)) Nothing (ChannelOutput BibliographyOutput)
+    ids body = [T.takeWhile (/= '"') rest | piece <- drop 1 (T.splitOn "<li id=\"" body), let rest = piece]
 
 -- | A span in b.gm.
 atB :: Int -> SrcSpan
@@ -321,21 +354,24 @@ tests =
     testCase "an index mark is an empty span with an id from its position" $
       bodyA cfg0 (bookOf [para 0 [txt "組版", IndexMark (at 7) (IndexEntry ["組版"] ["くみはん"])]]) @?= "<p>組版<span id=\"i-0-7\"></span></p>\n",
     testCase "the index links each location by its order" $
-      let book = (bookOf [Block (at 0) Nothing (ChannelOutput IndexOutput)]) {bookIndex = [IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(fidA, at 7), (fidA, at 20)]]}
+      let book = (bookOf [Block (at 0) Nothing (ChannelOutput IndexOutput)]) {bookIndexes = [((fidA, at 0), [IndexGroup ["組版", "和文組版"] ["くみはん", "わぶんくみはん"] [(fidA, at 7), (fidA, at 20)]])]}
        in bodyA cfg0 book @?= "<section class=\"index\">\n<ul>\n<li>組版 / 和文組版 <a href=\"#i-0-7\">1</a>, <a href=\"#i-0-20\">2</a></li>\n</ul>\n</section>\n",
     testCase "a citation links to its numbered entry in the bibliography" $
       let book =
             (bookOf [para 0 [txt "文献", Cite (at 1) "knuth1981"], Block (at 5) Nothing (ChannelOutput BibliographyOutput)])
-              { bookCitations = [("knuth1981", 1)]
+              { bookBibliographies = [(Just (fidA, at 5), [("knuth1981", 1)])],
+                bookCiteMarks = Map.fromList [((fidA, at 1), (Just (fidA, at 5), 1))]
               }
           cfg = cfg0 {hcBibliography = Map.fromList [("knuth1981", [EntryText "Knuth, Breaking Paragraphs into Lines."])]}
        in bodyA cfg book
             @?= "<p>文献<a class=\"cite\" href=\"#cite-knuth1981\">[1]</a></p>\n<ol class=\"bibliography\">\n<li id=\"cite-knuth1981\">Knuth, Breaking Paragraphs into Lines.</li>\n</ol>\n",
+    multipleBibliographyTests,
     -- golem-doc ADR 0005
     testCase "a URL of http or https in the bibliography is a link of class cs-url; another is a span" $
       let book =
             (bookOf [para 0 [Cite (at 1) "a", Cite (at 2) "b"], Block (at 5) Nothing (ChannelOutput BibliographyOutput)])
-              { bookCitations = [("a", 1), ("b", 2)]
+              { bookBibliographies = [(Just (fidA, at 5), [("a", 1), ("b", 2)])],
+                bookCiteMarks = Map.fromList [((fidA, at 1), (Just (fidA, at 5), 1)), ((fidA, at 2), (Just (fidA, at 5), 2))]
               }
           cfg = cfg0 {hcBibliography = Map.fromList [("a", [EntryText "A. ", EntryUrl "HTTPS://example.com/?a=1&b=2"]), ("b", [EntryText "B. ", EntryUrl "javascript:alert(1)"])]}
        in bodyA cfg book

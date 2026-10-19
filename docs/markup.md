@@ -264,8 +264,8 @@ v1 で定めるブロックコマンドは次のとおりである。
 - `@import path as ns`：別のファイルで `@set` により定義した変数を、名前空間 `ns` の下に取り込む。名前空間は省略できない。パスはプロジェクトルートの中に限る。v1 で取り込めるのは変数だけである。
 - `@label name`：直後のブロックにラベルを付ける。
 - `@toc depth=N`：目次を出力する。文書に一つだけ置ける。PDF では、各項目に見出しのページ番号をリーダーとともに出す（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
-- `@index`：索引を出力する。
-- `@bibliography`：参考文献の一覧を出力する。
+- `@index`：索引を出力する。いくつでも置け、二つ以上あれば、それぞれにその範囲の印を載せる（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
+- `@bibliography`：参考文献の一覧を出力する。いくつでも置け、二つ以上あれば、それぞれにその範囲の引用を載せ、番号を一覧ごとに 1 から振る（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
 - `@printings`：マニフェストの `[[metadata.printings]]` から、発行の履歴（`2026年10月16日　初版第1刷発行` の形の段落）を一項目一段落で組む。引数と本体は取らない。日本語の本でだけ使える（[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)）。
 - `@figure`：図版を置く（「図版」の節を参照）。
 - `@table src=path format=形式 align=揃え cells=text`：CSV か TSV のファイルから表を作る（「表」の節を参照）。`format`、`align`、`cells` は省ける（[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md)）。
@@ -377,6 +377,12 @@ TSV はタブでセルを区切り、引用符もエスケープもない。
 文字コードは UTF-8 に限り、ファイルの先頭の BOM は読み飛ばす。
 LF の前にない CR はエラー（G0282）になる。
 セルの中身は地の文として扱い、インラインの記法を解釈しない。
+
+表のファイルには上限がある（[docs/adr/0043](adr/0043-table-file-size-limits.md)）。
+ファイルの大きさは 16 MiB 以下、行の数は見出しの行を含めて 10,000 以下、1 行のセルの数は 256 以下とする。
+どれかを超えるとエラー（G0288）になり、表を作らない。
+CSV の捨てる空の行は、行の数に数えない。
+上限を超える表は、いくつかのファイルに分ける。
 
 `align` は列の揃えを左の列から順に並べる。
 値は `left`、`center`、`right`、`default` で、原稿の `|` の表の区切りの行の `:---`、`:---:`、`---:`、`---` にあたる。
@@ -1175,6 +1181,7 @@ PDF では、`style.toml` に `[sidenotes]` がない場合と、脚注の本文
 
 マニフェストで宣言した書誌データ（CSL-JSON）のキーで文献を引用する。
 引用した文献は `@bibliography` の一覧に載る。
+`@bibliography` が二つ以上あれば、引用の印の後にある最初の一覧に載り、最後の一覧より後の印は最後の一覧に載る（[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）。
 `[cite ...]` は散文スロットを取らず、`: ` の後に本文を書くとコンパイルエラーとなる（[golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)）。
 
 ## 予約された記法

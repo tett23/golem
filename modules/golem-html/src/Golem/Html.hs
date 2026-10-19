@@ -24,7 +24,7 @@ module Golem.Html
 where
 
 import Data.Char (isAsciiUpper)
-import Data.List (sortOn)
+import Data.List (find, sortOn)
 import Data.List.NonEmpty (NonEmpty)
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict (Map)
@@ -248,7 +248,9 @@ data Ctx = Ctx
     -- | the depth of the list around (0 outside lists; golem-driver ADR 0013)
     cListDepth :: Int,
     -- | the notes of the chapter of the page (golem-driver ADR 0026)
-    cNotes :: ChapterNotes
+    cNotes :: ChapterNotes,
+    -- | the id of each entry of each @bibliography (golem-doc ADR 0008)
+    cCiteIds :: Map (ListAt, Text) Text
   }
 
 {- | Where the notes of a page go (golem-driver ADR 0026): the file whose
@@ -316,7 +318,7 @@ page :: HtmlConfig -> FileTable -> Book -> ChapterNotes -> Document -> Text
 page cfg ft book notes (Document fid bs) =
   let here = pagePath ft fid
       local = Map.lookup fid (hcLocalStyles cfg)
-      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes
+      c = Ctx cfg ft book here (maybe id (Map.union . hlParaStyles) local (hcParaStyles cfg)) 0 notes (citeIds book)
       -- a page with styles of its own has the class of its position (docs/adr ADR 0014)
       classes = ["vertical" | hcVertical cfg] <> ["file-" <> tshow n | Just _ <- [local], (n, Document fid' _) <- zip [1 :: Int ..] (bookDocs book), fid' == fid]
       body = topBlocks c bs <> notesSection c
@@ -447,12 +449,12 @@ block c (Block sp lbl body) = case body of
         cap = T.concat [inlines c is | Block _ _ (Paragraph _ is) <- figCaption f]
      in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webSource f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
   ChannelOutput (TocOutput d) -> toc c (Just d)
-  ChannelOutput IndexOutput -> index c
+  ChannelOutput IndexOutput -> index c sp
   ChannelOutput BibliographyOutput ->
     "<ol class=\"bibliography\">\n"
       <> T.concat
-        [ "<li id=\"cite-" <> escapeXml k <> "\">" <> maybe (escapeXml k) (T.concat . map entryPart) (Map.lookup k (hcBibliography (cCfg c))) <> "</li>\n"
-        | (k, _) <- bookCitations (cBook c)
+        [ "<li id=\"" <> escapeXml (citeId c (Just (spanFile sp, sp)) k) <> "\">" <> maybe (escapeXml k) (T.concat . map entryPart) (Map.lookup k (hcBibliography (cCfg c))) <> "</li>\n"
+        | (k, _) <- bibliographyAt (cBook c) sp
         ]
       <> "</ol>\n"
   ForcedBreak _ -> ""
@@ -511,8 +513,8 @@ linkTo c fid anchor =
       file = if target == cHere c then "" else escapeXml (relLink (cHere c) target)
    in file <> "#" <> escapeXml anchor
 
-index :: Ctx -> Text
-index c =
+index :: Ctx -> SrcSpan -> Text
+index c sp =
   "<section class=\"index\">\n<ul>\n"
     <> T.concat
       [ "<li>"
@@ -520,9 +522,27 @@ index c =
           <> " "
           <> T.intercalate ", " ["<a href=\"" <> linkTo c fid (spanAnchor sp) <> "\">" <> T.pack (show i) <> "</a>" | (i, (fid, sp)) <- zip [1 :: Int ..] (igLocations g)]
           <> "</li>\n"
-      | g <- bookIndex (cBook c)
+      | g <- indexAt (cBook c) sp
       ]
     <> "</ul>\n</section>\n"
+
+{- | The ids of the entries of the bibliographies, unique in the book
+(golem-doc ADR 0008): the lists in document order and their entries in
+the order of their numbers, each taking the first of cite-<key>,
+cite-<key>-2, cite-<key>-3, ... not taken yet.
+-}
+citeIds :: Book -> Map (ListAt, Text) Text
+citeIds book = fst (foldl assign (Map.empty, Set.empty) entries)
+  where
+    entries = [(at, k) | (Just at, cites) <- bookBibliographies book, (k, _) <- sortOn snd cites]
+    assign (ids, used) (at, k) =
+      let candidates = ("cite-" <> k) : ["cite-" <> k <> "-" <> tshow i | i <- [2 :: Int ..]]
+          chosen = fromMaybe ("cite-" <> k) (find (`Set.notMember` used) candidates)
+       in (Map.insert (at, k) chosen ids, Set.insert chosen used)
+
+-- | The id of the entry of a key in a list; cite-<key> without a list.
+citeId :: Ctx -> Maybe ListAt -> Text -> Text
+citeId c at k = fromMaybe ("cite-" <> k) (at >>= \a -> Map.lookup (a, k) (cCiteIds c))
 
 spanAnchor :: SrcSpan -> Text
 spanAnchor (SrcSpan (FileId f) s _) = "i-" <> T.pack (show f) <> "-" <> T.pack (show s)
@@ -563,8 +583,10 @@ inline c = \case
      in "<a epub:type=\"noteref\" class=\"noteref\" href=\"" <> linkTo c (cnHome (cNotes c)) ("note-" <> key) <> "\" id=\"noteref-" <> key <> "\">" <> tshow n <> "</a>"
   Sidenote _ n _ -> "<sup class=\"sidenote-ref\">" <> tshow n <> "</sup>"
   IndexMark sp _ -> "<span id=\"" <> spanAnchor sp <> "\"></span>"
-  Cite _ k -> case lookup k (bookCitations (cBook c)) of
-    Just n -> "<a class=\"cite\" href=\"#cite-" <> escapeXml k <> "\">[" <> tshow n <> "]</a>"
+  Cite sp k -> case citeNumber (cBook c) sp k of
+    Just n ->
+      let at = fst =<< Map.lookup (spanFile sp, sp) (bookCiteMarks (cBook c))
+       in "<a class=\"cite\" href=\"#" <> escapeXml (citeId c at k) <> "\">[" <> tshow n <> "]</a>"
     Nothing -> ""
   ProofComment _ t -> if hcDev (cCfg c) then "<span class=\"proof\">" <> escapeXml t <> "</span>" else ""
   LineBreak _ -> "<br/>"

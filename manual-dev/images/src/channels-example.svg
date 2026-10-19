@@ -73,12 +73,12 @@
   <text x="500" y="267">索引</text>
 
   <rect class="lbib" x="480" y="310" width="370" height="140" rx="6"/>
-  <text class="file" x="500" y="345">bookCitations</text>
+  <text class="file" x="500" y="345">bookBibliographies</text>
   <text x="500" y="385">knuth1981 → 1</text>
   <text x="500" y="418">jlreq → 2（二度目の引用も 2）</text>
 
   <rect class="lidx" x="480" y="470" width="370" height="200" rx="6"/>
-  <text class="file" x="500" y="505">bookIndex（読みの順）</text>
+  <text class="file" x="500" y="505">bookIndexes（読みの順）</text>
   <text x="500" y="545">行分割：01.gm、02.gm</text>
   <text x="500" y="578">禁則：01.gm</text>
   <text x="500" y="611">ルビ：02.gm</text>

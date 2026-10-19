@@ -17,6 +17,7 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8', decodeUtf8Lenient, encodeUtf8)
+import Data.Text.Unsafe (lengthWord8)
 import Golem.Syntax
 
 {- | A failure of the reading stage ('readSource'). The file that failed is
@@ -62,12 +63,13 @@ is not before an LF, G0282 (golem-eval ADR 0004). At most one diagnostic.
 checkTableText :: FileId -> Text -> [Diagnostic]
 checkTableText fid = go 0
   where
-    go off t = case T.breakOn "\r" t of
-      (pre, rest)
-        | T.null rest -> []
-        | "\r\n" `T.isPrefixOf` rest -> go (off + BS.length (encodeUtf8 pre) + 2) (T.drop 2 rest)
-        | otherwise ->
-            let i = off + BS.length (encodeUtf8 pre)
+    go !off t = case T.break (== '\r') t of
+      (pre, rest) -> case T.uncons rest of
+        Nothing -> []
+        Just (_, r) -> case T.uncons r of
+          Just ('\n', r') -> go (off + lengthWord8 pre + 2) r'
+          _ ->
+            let i = off + lengthWord8 pre
              in [diagnostic "G0282" Error (mkSpan fid i (i + 1)) "単独の CR があります。表のファイルの改行は LF か CRLF に限ります"]
 
 {- | 'readSource' for the file at @path@: on failure, the diagnostics and

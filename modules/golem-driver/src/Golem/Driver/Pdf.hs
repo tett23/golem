@@ -943,7 +943,7 @@ layoutPdf inp0 geom fonts =
 layoutFigures :: PdfInput -> PageGeometry -> LoadedFonts -> Map (Text, Int) P.FigureContent -> IO (Either [Diagnostic] PdfLayout)
 layoutFigures inp geom fonts figures = do
   -- S2: compose with assumed page numbers until they settle
-  let terms = Map.fromList [(sp, T.intercalate " / " (igTerms g)) | g <- bookIndex (piBook inp), (_, sp) <- igLocations g]
+  let terms = Map.fromList [(sp, T.intercalate " / " (igTerms g)) | g <- indexGroups (bookDocs (piBook inp)), (_, sp) <- igLocations g]
   let capacity = length (pgLineGrid geom)
       round' assumed = do
         built <- buildFlow inp geom fonts figures assumed
@@ -1751,12 +1751,12 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
             -- the index marks of a title are counted at the heading, not in the table of contents
             ChannelOutput (TocOutput depth) -> (n, [plainUnit (UTocEntry (teLevel e) (teSpan e)) Nothing (numberedTitle lang sp0 (teNumber e) (filter (not . isMark) (teTitle e))) | e <- bookToc book, teLevel e <= depth])
             ChannelOutput IndexOutput ->
-              let entries kind = [plainUnit kind Nothing is | is <- indexLines (pgVertical geom) pageOf (bookIndex book)]
+              let entries kind = [plainUnit kind Nothing is | is <- indexLines (pgVertical geom) pageOf (indexAt book sp)]
                in case indexSet of
                     Nothing -> (n, entries (UPara noIndent))
                     -- the index in its own columns (docs/adr ADR 0025)
                     Just set -> (n, [plainUnit (UColumns (Just set)) Nothing []] <> entries (UIndexEntry (csMeasure set)) <> [plainUnit (UColumns Nothing) Nothing []])
-            ChannelOutput BibliographyOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bookCitations book)])
+            ChannelOutput BibliographyOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bibliographyAt book sp)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
             PageControl c -> (n, [plainUnit (UPageControl c) Nothing []])
     {- the items of the list numbered n: their units are inside it, the first
@@ -1835,9 +1835,8 @@ buildFlow inp geom fonts images assumed = do
       vertical = pgVertical geom
       -- notes at the end of the chapter, not at the foot of the page (golem-driver ADR 0026)
       atEnd = stNotesPlacement style == PlaceChapterEnd
-      cites = Map.fromList (bookCitations (piBook inp))
       -- citations show their numbers (golem-driver ADR 0007)
-      envFor lk = (composeEnv style geom fonts assumed lk) {ceCiteNumber = (`Map.lookup` cites)}
+      envFor lk = (composeEnv style geom fonts assumed lk) {ceCiteNumber = citeNumber (piBook inp)}
       bodyEnv = envFor (bodyLook style fs)
       params = kpParams style geom
       measure = columnMeasure geom

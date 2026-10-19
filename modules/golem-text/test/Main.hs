@@ -37,8 +37,10 @@ renderBlocks bib cites listings bodies =
             bookListings = Map.fromList [(mkSpan fid i (i + 1), t) | (i, t) <- Map.toList listings],
             bookToc = [],
             bookTocDepth = Nothing,
-            bookIndex = [],
-            bookCitations = cites,
+            bookIndexes = [],
+            -- the bibliography is the block at offset 0 (golem-doc ADR 0008)
+            bookBibliographies = [(Just (fid, mkSpan fid 0 1), cites)],
+            bookCiteMarks = Map.empty,
             bookLabels = Map.empty,
             bookReferenced = Set.empty,
             bookChapterOf = []
