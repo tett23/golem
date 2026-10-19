@@ -170,7 +170,7 @@ jobs:
         if: steps.cddl.outputs.cache-hit != 'true'
         run: cargo install cddl --version "$CDDL_VERSION" --locked
       # peg-cli is built with the rest, for the check of the generated parser
-      # compiled is true when GHC compiled a module, that is, when
+      # compiled is true when GHC compiled a module, that is when
       # dist-newstyle is no longer the one restored above (docs/adr/0045)
       - id: build
         name: cabal build all peg-cli:exe:peg-hs
