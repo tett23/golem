@@ -237,6 +237,14 @@ jobs:
         run: |
           "$(cabal list-bin -v0 golem)" build --target epub
           epubcheck build/epub/book.epub
+      # one @bibliography per chapter and per section: no id twice, no
+      # broken link (golem-doc ADR 0008)
+      - name: The EPUB of several bibliographies passes epubcheck
+        if: matrix.runner == 'ubuntu-24.04'
+        working-directory: modules/golem-driver/test/fixtures/bibliographies
+        run: |
+          "$(cabal list-bin -v0 golem)" build --target epub
+          epubcheck build/epub/book.epub
       # scripts/determinism.sh builds the two manuals with
       # scripts/manual/build.sh, which fails on a single diagnostic,
       # notices included, and lists the hashes of their outputs; the

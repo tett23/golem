@@ -60,6 +60,7 @@ import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
 import Data.Vector qualified as V
 import Golem.Doc.Assemble
@@ -90,7 +91,7 @@ import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Syntax
 import Golem.Text qualified as GT
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, pathIsSymbolicLink, removeDirectoryRecursive)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getFileSize, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
 
 data Target = TargetHtml | TargetEpub | TargetText | TargetPdf
@@ -467,7 +468,8 @@ tables and listings, presence for images, and why a path cannot be used
 text, from @overlay@ when the editor has it open. Each file read as text
 has a FileId, from the one after plugins.lock's, in the order of the paths
 (golem-eval ADR 0004). A table file passes the reading stage of table
-files ('readTableSource'); a listing is read as before.
+files ('readTableSource'); a listing is read as before. A table file
+over 'tableMaxBytes' is not read for the table (docs/adr ADR 0043).
 -}
 loadAssets :: Map FilePath Text -> FilePath -> Project -> IO LoadedAssets
 loadAssets overlay root project = do
@@ -489,15 +491,25 @@ loadAssets overlay root project = do
       case (r, Map.lookup path fids) of
         (Left e, _) -> pure (AssetInvalid e, Nothing, [], Nothing)
         (Right rel, Just fid) -> do
-          bytes <- maybe (BS.readFile (root </> rel)) (pure . TE.encodeUtf8) (Map.lookup rel overlay <|> Map.lookup path overlay)
-          let source = Just (fid, readInfo rel bytes)
-              lenient = TE.decodeUtf8Lenient bytes
-          pure $
-            if Set.member UseTable uses
-              then case readTableSource fid bytes of
-                Right t -> (AssetText fid t, source, [], Just rel)
-                Left ds -> (AssetTableUnreadable fid lenient, source, ds, Just rel)
-              else (AssetText fid lenient, source, [], Nothing)
+          let open = Map.lookup rel overlay <|> Map.lookup path overlay
+              readBytes = maybe (BS.readFile (root </> rel)) (pure . TE.encodeUtf8) open
+          -- the size of a table file is known before it is read (G0288, docs/adr ADR 0043)
+          size <- maybe (getFileSize (root </> rel)) (pure . toInteger . lengthWord8) open
+          if Set.member UseTable uses && size > toInteger tableMaxBytes
+            then do
+              -- a listing of the same file still reads it, as before
+              listed <- if Set.member UseListing uses then Just . TE.decodeUtf8Lenient <$> readBytes else pure Nothing
+              pure (AssetTableTooLarge size listed, Nothing, [], Just rel)
+            else do
+              bytes <- readBytes
+              let source = Just (fid, readInfo rel bytes)
+                  lenient = TE.decodeUtf8Lenient bytes
+              pure $
+                if Set.member UseTable uses
+                  then case readTableSource fid bytes of
+                    Right t -> (AssetText fid t, source, [], Just rel)
+                    Left ds -> (AssetTableUnreadable fid lenient, source, ds, Just rel)
+                  else (AssetText fid lenient, source, [], Nothing)
         (Right _, Nothing) -> pure (AssetPresent, Nothing, [], Nothing)
 
 -- | The paths a file refers to by @figure, @table and @listing, as written.
