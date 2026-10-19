@@ -9,6 +9,7 @@ where
 import Data.Char (ord)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Syntax.Diagnostic
@@ -37,8 +38,69 @@ location files sp = case Map.lookup (spanFile sp) files of
     let lc = offsetToLineCol (siLines si) (spanStart sp)
      in (T.pack (siPath si), Just (siLines si, lc))
 
+{- | Whether the human rendering writes a character in its visible form
+(docs/adr ADR 0042): the C0 controls but the tab, DEL and the C1 controls.
+A newline of a message is written as it is.
+-}
+isTerminalControl :: Char -> Bool
+isTerminalControl c = (c < ' ' && c /= '\t') || (c >= '\DEL' && c <= '\x9F')
+
+-- | A character as the human rendering writes it: a control as @\\x1b@.
+visibleChar :: Char -> Text
+visibleChar c
+  | isTerminalControl c = T.pack ("\\x" <> pad2 (showHex (ord c) ""))
+  | otherwise = T.singleton c
+  where
+    pad2 s = replicate (2 - length s) '0' <> s
+
+-- | A text with every control in its visible form.
+visible :: Text -> Text
+visible = T.concatMap visibleChar
+
+-- | 'visible' that keeps the newlines of a message.
+visibleMessage :: Text -> Text
+visibleMessage = T.intercalate "\n" . map visible . T.splitOn "\n"
+
+-- | The most characters of a source line that the human rendering writes.
+excerptWidth :: Int
+excerptWidth = 200
+
+-- | The most characters of a long source line before the column.
+excerptBefore :: Int
+excerptBefore = 60
+
+{- | A source line as the human rendering writes it (docs/adr ADR 0042):
+the controls visible, and a line longer than 'excerptWidth' after that
+cut to the window around the column, with an ellipsis at each cut end.
+A character made visible is not cut; the CR of a CRLF line is dropped.
+-}
+excerptOf :: Text -> Int -> Text
+excerptOf line0 col
+  | total <= excerptWidth = T.concat pieces
+  | otherwise =
+      (if skipped > 0 then "…" else "")
+        <> T.concat kept
+        <> (if skipped + length kept < length pieces then "…" else "")
+  where
+    line = fromMaybe line0 (T.stripSuffix "\r" line0)
+    pieces = map visibleChar (T.unpack line)
+    widths = map T.length pieces
+    total = sum widths
+    -- the start of the column after the replacement
+    at = sum (take col widths)
+    start = max 0 (at - excerptBefore)
+    -- whole pieces from the first that starts at or after start, while they fit
+    starts = scanl (+) 0 widths
+    skipped = length (takeWhile (< start) (take (length pieces) starts))
+    kept = fitting excerptWidth (drop skipped pieces)
+    fitting room = \case
+      p : ps | T.length p <= room -> p : fitting (room - T.length p) ps
+      _ -> []
+
 {- | @path:line:col: severity[code]: message@ followed by the source line.
-Lines and columns are one-based for humans.
+Lines and columns are one-based for humans. Control characters are
+written in their visible form, and a long source line is cut (docs/adr
+ADR 0042).
 -}
 renderHuman :: Map FileId SourceInfo -> [Diagnostic] -> Text
 renderHuman files = T.concat . map one . sortDiagnostics
@@ -49,7 +111,7 @@ renderHuman files = T.concat . map one . sortDiagnostics
             Just (_, LineCol l c) -> T.pack (show (l + 1)) <> ":" <> T.pack (show (c + 1))
             Nothing -> "?:?"
           header =
-            path
+            visible path
               <> ":"
               <> posText
               <> ": "
@@ -57,14 +119,14 @@ renderHuman files = T.concat . map one . sortDiagnostics
               <> "["
               <> codeText (diagCode d)
               <> "]: "
-              <> diagMessage d
+              <> visibleMessage (diagMessage d)
               <> "\n"
           excerpt = case mpos of
-            Just (li, LineCol l _) -> "  | " <> lineText li l <> "\n"
+            Just (li, LineCol l c) -> "  | " <> excerptOf (lineText li l) c <> "\n"
             Nothing -> ""
           related =
             T.concat
-              [ "  = " <> fst (location files sp) <> relPos sp <> ": " <> msg <> "\n"
+              [ "  = " <> visible (fst (location files sp)) <> relPos sp <> ": " <> visibleMessage msg <> "\n"
               | (sp, msg) <- diagRelated d
               ]
           relPos sp = case snd (location files sp) of

@@ -86,6 +86,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 ## 出力
 
 - **ターゲット**：出力する形式。PDF、EPUB、HTML、プレーンテキストの四つがある。`golem build` は既定で四つすべてを生成し、`--target` で絞れる（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。
+- **出力に書けない文字**：XML 1.0 の `Char` に当たらない文字。タブ、改行、復帰以外の U+0000 から U+001F と、U+FFFE、U+FFFF、サロゲートの符号位置である。出力の側で置き換えず、原稿では G0289、`manifest.toml` では G0328 として、どのターゲットでも読み込みの段階で拒む（[仕様書](specifications.md)、[docs/adr/0042](adr/0042-control-characters-and-glob-metacharacters.md)）。
 - **PDF/X-4**：印刷用の PDF の規格（ISO 15930-7:2010）。出力インテント、フォントの埋め込み、XMP のメタデータなどを求める（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。
 - **出力インテント**：印刷の条件を表す ICC プロファイル。v1 では Japan Color 2001 Coated とし、色の名前と CMYK の値はこれに結び付けて定義する。
 - **スウォッチ**：名前を付けた色。`style.toml` に CMYK の値で定義し、原稿からは名前で指す。

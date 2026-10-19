@@ -1,5 +1,6 @@
 module Main (main) where
 
+import CodeSpaceSpec (codeSpaceTests)
 import Control.Monad (forM_)
 import Data.List (isPrefixOf, maximumBy, subsequences)
 import Data.Map.Strict qualified as Map
@@ -30,6 +31,7 @@ import Golem.Syntax (FileId (..), mkSpan)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import InseparableSpec (inseparableTests)
 import KnuthPlassReference
 import LineBreakingSpec (lineBreakingTests)
 import PaginateSpec (paginateTests)
@@ -304,6 +306,8 @@ tests =
       testGroup "note marks and note keys (golem-driver ADR 0018)" noteMarkTests,
       testGroup "boundaries and invariants" [paginateTests, punctuationTests, lineBreakingTests],
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
+      inseparableTests,
+      codeSpaceTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,

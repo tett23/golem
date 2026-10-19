@@ -35,7 +35,7 @@ charClass c
   | c `elem` ("・：；" :: String) = MiddleDot
   | c `elem` ("。．" :: String) = FullStop
   | c `elem` ("、，" :: String) = Comma
-  | c `elem` ("—…‥〳〴〵" :: String) = Inseparable
+  | c `elem` ("—―…‥〳〴〵" :: String) = Inseparable
   | c `elem` ("ヽヾゝゞ々〻" :: String) = Iteration
   | c == 'ー' = ProlongedSound
   | c `elem` ("ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ" :: String) = SmallKana

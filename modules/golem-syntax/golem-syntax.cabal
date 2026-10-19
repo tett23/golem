@@ -18,6 +18,7 @@ library
   exposed-modules:
     Golem.Syntax
     Golem.Syntax.Span
+    Golem.Syntax.Chars
     Golem.Syntax.Position
     Golem.Syntax.Diagnostic
     Golem.Syntax.Render

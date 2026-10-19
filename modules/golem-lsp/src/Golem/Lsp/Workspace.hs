@@ -11,6 +11,7 @@ module Golem.Lsp.Workspace
     closeFile,
     reloadWorkspace,
     tablesToWatch,
+    watchGlob,
     tableFilesChanged,
     sourceOf,
     lineIndexOf,
@@ -157,6 +158,18 @@ assetPaths = Set.fromList . map siPath . Map.elems . assetSources
 -- | The table files the last evaluation read, which the client is to watch (golem-eval ADR 0004).
 tablesToWatch :: Workspace -> Set.Set FilePath
 tablesToWatch = maybe Set.empty evTableFiles . wsEvaluated
+
+{- | The glob that watches one table file (docs/adr ADR 0042): each
+metacharacter of the glob of LSP ('*', '?', '[', ']', '{', '}') in the
+path becomes a bracket expression of that one character, so that the glob
+matches the file of that name and no other.
+-}
+watchGlob :: FilePath -> Text
+watchGlob = T.pack . concatMap escape
+  where
+    escape c
+      | c `elem` ("*?[]{}" :: String) = ['[', c, ']']
+      | otherwise = [c]
 
 {- | Whether a notification of changed files asks for evaluating the project
 again: one of them is a watched table file that the editor does not have

@@ -34,9 +34,29 @@ PACKAGES="bash binutils build-base ca-certificates curl file git gmp-dev gmp-sta
 # shellcheck disable=SC2086
 apk add --no-cache $PACKAGES
 
-# GHC 9.10.3 for Alpine and cabal-install 3.16.1.0 through ghcup
+# GHC 9.10.3 for Alpine and cabal-install 3.16.1.0 through ghcup. The
+# bootstrap script of ghcup is fetched from the commit that installs
+# GHCUP_VERSION and is checked by its SHA-256 before it runs; ghcup checks
+# GHC and cabal by the SHA-256 of its metadata (docs/adr/0044). Update the
+# three lines together when ghcup is updated.
+GHCUP_VERSION=0.2.6.2
+GHCUP_BOOTSTRAP_COMMIT=77e50744d3afc6d7cc090e787b9093b03405a042
+GHCUP_BOOTSTRAP_SHA256=c85add4cdca779ea34bcbeeb3a311bbfed23fc96583311df41fe4e73554eba6d
+BOOTSTRAP=$(mktemp)
+curl --proto '=https' --tlsv1.2 -sSfL -o "$BOOTSTRAP" \
+  "https://raw.githubusercontent.com/haskell/ghcup-hs/$GHCUP_BOOTSTRAP_COMMIT/scripts/bootstrap/bootstrap-haskell"
+ACTUAL=$(sha256sum "$BOOTSTRAP" | cut -d' ' -f1)
+[ "$ACTUAL" = "$GHCUP_BOOTSTRAP_SHA256" ] || {
+  echo "build-linux: SHA-256 mismatch for the bootstrap script of ghcup: $ACTUAL" >&2
+  exit 1
+}
+grep -qx "ghver=\"$GHCUP_VERSION\"" "$BOOTSTRAP" || {
+  echo "build-linux: the bootstrap script of ghcup does not install ghcup $GHCUP_VERSION" >&2
+  exit 1
+}
 export BOOTSTRAP_HASKELL_NONINTERACTIVE=1 BOOTSTRAP_HASKELL_MINIMAL=1
-curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
+sh "$BOOTSTRAP"
+rm -f "$BOOTSTRAP"
 PATH=$HOME/.ghcup/bin:$PATH
 export PATH
 ghcup install ghc 9.10.3 --set

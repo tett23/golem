@@ -124,6 +124,16 @@ malformedResponseTests =
       testCase "bytes after the CBOR of the response" $ do
         p <- answering (withDiagnostics [] <> BS.pack [0x00])
         shout p @?= Left (BadOutput "CBOR の後ろに余分なバイトがあります"),
+      testCase "a Number out of int64 is out of range, G0609 (golem-doc ADR 0006)" $ do
+        let numberOf n = TList [TList [TInt 9, TList [TInt 1, TInt 10, TInt 20], TInteger n, TNull]]
+        mapM_
+          ( \n -> do
+              p <- answering (cbor (TList [numberOf n, TList []]))
+              shout p @?= Left (BadOutput "スキーマに合いません: 整数が範囲の外です")
+          )
+          [2 ^ (63 :: Int), 2 ^ (70 :: Int), negate (2 ^ (63 :: Int)) - 1]
+        p <- answering (cbor (TList [numberOf (2 ^ (63 :: Int) - 1), TList []]))
+        fmap fst (shout p) @?= Right [Number callSpan (2 ^ (63 :: Int) - 1) Nothing],
       testCase "a filter that answers with inlines instead of a document" $ do
         let doc = Document (FileId 1) [Block callSpan Nothing (Paragraph Nothing [Text callSpan "a"])]
         p <- answering (withDiagnostics [])

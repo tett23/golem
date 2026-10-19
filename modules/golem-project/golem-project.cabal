@@ -43,6 +43,7 @@ test-suite golem-project-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    ColophonSpec
+                    OutputCharsSpec
                     TomlMessageSpec
   build-depends:
     , base

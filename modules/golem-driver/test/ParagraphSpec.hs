@@ -1,4 +1,4 @@
-module ParagraphSpec (verseTests, indentTests, listTests, separatorTests, hardBreakTests, akiTests, breakTests, pageControlTests, columnTests) where
+module ParagraphSpec (verseTests, indentTests, listTests, separatorTests, hardBreakTests, akiTests, breakTests, pageControlTests, columnTests, inseparableTests, codeSpaceTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
@@ -10,7 +10,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.Pdf (PdfLayout (..), SetLine (..))
-import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
+import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (Look (..), Synthetic (..))
 import Golem.Layout.Paginate (Flow (..), LineBox (..), PageOut (..), Slotted (..), paginate)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), columnsFor, typeAreaFor)
@@ -531,4 +531,56 @@ columnTests =
       two @?= one
       css <- maybe (assertFailure (show (Map.keys two))) pure (Map.lookup ("html" </> "style.css") two)
       assertBool "no columns" (not ("columns" `BS.isInfixOf` css) && not ("column-count" `BS.isInfixOf` css))
+  ]
+
+inseparableTests :: [TestTree]
+inseparableTests =
+  [ testCase "PDF: no line starts with the full stop after an ellipsis" $ do
+      ls <- notoLines "……。"
+      assertBool (show ls) (not (any ("。" `T.isPrefixOf`) ls))
+      assertBool (show ls) (not (any (endsWithOne '…') ls)),
+    testCase "PDF: a double dash of U+2015 is not split" $ do
+      ls <- notoLines "――。"
+      assertBool (show ls) (not (any (endsWithOne '―') ls))
+      assertBool (show ls) (not (any ("。" `T.isPrefixOf`) ls))
+  ]
+  where
+    endsWithOne ch t = T.length (T.takeWhileEnd (== ch) t) == 1
+    -- Noto Serif JP of the 蟹工船 fixture, vertical, 38 characters a line;
+    -- one paragraph for each n of 'あ' × n <> run <> 'い' × 40
+    notoLines run = do
+      noto <- notoBytes
+      let style = replaceIn "characters = 42" "characters = 38" pdfStyle <> "\n[fonts.body]\nja = \"fonts/noto.otf\"\n"
+          src = T.intercalate "\n\n" [T.replicate n "あ" <> run <> T.replicate 40 "い" | n <- [30 .. 41 :: Int]] <> "\n"
+      r <- layoutMiniFonts realProvider miniManifest style src [("fonts/noto.otf", noto)]
+      either (assertFailure . show) (pure . lineTexts . snd) r
+
+codeSpaceTests :: [TestTree]
+codeSpaceTests =
+  [ testCase "PDF: a space of inline code keeps its natural width in a justified line" $ do
+      noto <- notoBytes
+      sans <- BS.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf"
+      -- the page grid of the developer manual; Source Sans Pro stands in for Source Code Pro
+      let style =
+            TE.encodeUtf8 $
+              T.unlines
+                [ "[page]\nsize = \"B5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n",
+                  "[page.grid]\nfont-size = \"13Q\"\ncharacters = 40\nlines = 34\nline-pitch = \"22H\"\nposition = { top = \"28mm\", gutter = \"24mm\" }\n",
+                  "[fonts.body]\nja = \"fonts/noto.otf\"\n",
+                  "[fonts.code]\nja = \"fonts/noto.otf\"\nlatin = \"fonts/code.otf\"\n"
+                ]
+          src = "[code: golem new DIR] は、[code: manifest.toml]、[code: style.toml]、章のファイル、[code: preflight.toml] を作る。" <> T.replicate 40 "あ" <> "\n"
+      r <- layoutMiniFonts realProvider miniManifest style src [("fonts/noto.otf", noto), ("fonts/code.otf", sans)]
+      (_, pl) <- either (assertFailure . show) pure r
+      case Map.elems (plLines pl) of
+        sl : _ -> do
+          let placed = placeLine (slLine sl)
+              gaps =
+                [ (next - (at + w), g)
+                | ((Box w c, at), (Glue g _ _, _), (Box _ c', next)) <- zip3 placed (drop 1 placed) (drop 2 placed),
+                  (bcText c, bcText c') `elem` [("golem", "new"), ("new", "DIR")]
+                ]
+          length gaps @?= 2
+          mapM_ (uncurry (@?=)) gaps
+        [] -> assertFailure "no line"
   ]

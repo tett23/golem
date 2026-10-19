@@ -178,9 +178,40 @@ jobs:
             diff determinism-ubuntu-24.04.txt "determinism-$p.txt"
           done
 
+  # Claude Code writes the release notes in a job of its own, with no write
+  # permission and no OIDC token (docs/adr/0044). The version of Claude
+  # Code is the one of mise.toml. workflow_dispatch writes the notes of the
+  # commit, to try the job; the release job does not run then.
+  notes:
+    needs: version
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      REF: ${{ github.ref_type == 'tag' && needs.version.outputs.tag || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/mise-action@v5
+        env:
+          MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+        with:
+          cache: false
+      - name: Release notes
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: sh scripts/release/write-notes.sh "$REF" notes.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: notes
+          path: notes.md
+
   release:
     if: github.event_name == 'push' && github.ref_type == 'tag'
-    needs: [version, ci, build, smoke, determinism]
+    needs: [version, ci, build, smoke, determinism, notes]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -226,16 +257,9 @@ jobs:
       - uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/golem-*.tar.gz
-      - uses: actions/setup-node@v7
+      - uses: actions/download-artifact@v8
         with:
-          node-version: lts/*
-      - name: Claude Code
-        run: npm install -g @anthropic-ai/claude-code
-      - name: Release notes
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GH_TOKEN: ${{ github.token }}
-        run: sh scripts/release/write-notes.sh "$TAG" notes.md
+          name: notes
       - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
