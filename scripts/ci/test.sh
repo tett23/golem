@@ -388,6 +388,26 @@ if grep -qE "test-wrapper: .*scripts/ci/suite-timeout\.sh.*cabal\.project\.local
 if grep -qE 'scripts/env-determinism/check\.sh +\$QUICK *$' "$CI_YML"; then ok; else ng "ci.yml: check.sh takes the argument of the event"; fi
 if grep -qF "QUICK: \${{ github.event_name == 'pull_request' && '--quick' || '' }}" "$CI_YML"; then ok; else ng "ci.yml: --quick on pull requests only"; fi
 
+# ---------------------------------------------------------------- ci.yml and the parts of build
+# (docs/adr/0045-split-x86-build-and-pull-request-cache.md)
+
+# x86-64 builds twice: one runner for the tests, one for the outputs;
+# aarch64 does both
+matrix_rows() { # the runner, part, tests and outputs of each row of the matrix
+  awk '/^        include:/ { on = 1; next }
+    on && /^    [a-z]/ { on = 0 }
+    on && /- runner:/ { r = $3 } on && /part:/ { p = $2 } on && /tests:/ { t = $2 }
+    on && /outputs:/ { print r, p, t, $2 }' "$1"
+}
+if [ "$(matrix_rows "$CI_YML")" = "ubuntu-24.04 tests true false
+ubuntu-24.04 outputs false true
+ubuntu-24.04-arm all true true" ]; then ok; else ng "ci.yml: the matrix of build has the tests and the outputs of x86-64 and all of aarch64"; fi
+# the step after a line that matches $1 has the condition $2
+step_if() { awk -v s="$1" -v c="$2" 'index($0, s) { getline; if (index($0, c)) found = 1 } END { exit !found }' "$CI_YML"; }
+if step_if "- run: cabal test all" "if: matrix.tests"; then ok; else ng "ci.yml: the tests run on the runners of the tests"; fi
+if step_if "name: Outputs for the determinism check" "if: matrix.outputs"; then ok; else ng "ci.yml: the outputs are made on the runners of the outputs"; fi
+if grep -qF "matrix.tests && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'" "$CI_YML"; then ok; else ng "ci.yml: a pull request saves dist-newstyle when GHC compiled, from the runner of the tests"; fi
+
 # ---------------------------------------------------------------- release.yml and mise.toml
 # (docs/adr/0044-release-workflow-hardening.md)
 
