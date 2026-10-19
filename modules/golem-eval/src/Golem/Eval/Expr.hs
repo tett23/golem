@@ -201,7 +201,7 @@ binary le op x y = case op of
     rounded a k = case powRounded a k of
       PowValue d -> pure (VFloat d)
       PowOverflow -> err "G0204" le "結果が NaN か無限大になる演算です"
-      PowTooLarge -> err "G0286" le "累乗の計算が大きすぎます"
+      PowTooLarge n -> err "G0295" le ("累乗の計算が大きすぎます（正確な計算に要るビットの数 " <> T.pack (show n) <> " が、上限の 1048576（2 の 20 乗）を超えます）")
     arith :: (Integer -> Integer -> Integer) -> (Double -> Double -> Double) -> Eval Value
     arith fi fd = case (x, y) of
       (VInt a, VInt b) -> checkedInt le (fi a b)
@@ -269,9 +269,9 @@ embedValue sp = \case
   v -> Left (diagnostic "G0208" Error sp (typeName v <> " は本文に埋め込めません"))
 
 {- | The largest exact power, in bits: the bits of the odd part of the
-base, less one, times the exponent (golem-eval ADR 0005). The judgement
-looks at this alone. Raising it changes no result within it, since a
-result is the exact value rounded once.
+base, less one, times the exponent (golem-eval ADR 0005, ADR 0006). The
+judgement looks at this alone, before the range. Raising it changes no
+result within it, since a result is the exact value rounded once.
 -}
 maxExactBits :: Integer
 maxExactBits = 2 ^ (20 :: Int)
@@ -282,56 +282,52 @@ data PowResult
     PowValue !Double
   | -- | the result rounds to infinity (G0204)
     PowOverflow
-  | -- | the exact power is over 'maxExactBits' (G0286)
-    PowTooLarge
+  | -- | the exact power needs this many bits, over 'maxExactBits' (G0295)
+    PowTooLarge !Integer
   deriving stock (Eq, Show)
 
 {- | @a ^^ k@, for a base and an exponent that are not 0, rounded once to
-the nearest double, ties to even. The size is estimated first ('estimatePow'),
-so that a result far out of the range of doubles is not computed exactly:
-at least 2^1025 is infinity, below 2^-1076 is zero.
+the nearest double, ties to even (golem-eval ADR 0006). Every judgement is
+on integers: first the limit of the exact computation, then the range
+from the bits of the exact power, so that the result depends on the input
+alone and on no estimate. With @|a| = m × 2^f@, @m@ odd, the exact power is
+@m^|k| × 2^(f × k)@ or its reciprocal; at least 2^1024 is infinity, at
+most 2^-1075 (halfway to the least subnormal) is zero.
 -}
 powRounded :: Rational -> Integer -> PowResult
 powRounded a k
-  | e >= 1025 = PowOverflow
-  | e < -1076 = PowValue 0
-  | log2 m * abs k > maxExactBits = PowTooLarge
-  | otherwise = maybe PowOverflow PowValue (finite (fromRational (a ^^ k)))
+  | bitsNeeded > maxExactBits = PowTooLarge bitsNeeded
+  | lo >= 1024 = PowOverflow
+  | hi <= -1075 = PowValue 0
+  | otherwise = maybe PowOverflow PowValue (finite (withSign (fromRational exact)))
   where
-    e = snd (estimatePow (abs a) k)
-    -- the base is ±m × 2^e' with m odd (the other part of the fraction is a power of 2)
-    m = max (oddPart (numerator a)) (oddPart (denominator a))
-    oddPart n = abs n `shiftR` fromInteger (log2 (abs n .&. negate (abs n)))
+    (m, f) = oddAndPowerOfTwo (abs a)
+    bitsNeeded = log2 m * abs k
+    p = m ^ abs k
+    big = f * k
+    l = log2 p + 1
+    -- 2^lo <= |result| < 2^hi for k > 0; 2^lo < |result| <= 2^hi for k < 0
+    (lo, hi)
+      | k > 0 = (l - 1 + big, l + big)
+      | otherwise = (big - l, big - l + 1)
+    exact
+      | k > 0 = fromInteger p * 2 ^^ big
+      | otherwise = 2 ^^ big / fromInteger p
+    withSign d = if a < 0 && odd k then negate d else d
+
+{- | A positive rational whose denominator is a power of 2 (an integer or
+a double) as @m × 2^f@ with @m@ odd.
+-}
+oddAndPowerOfTwo :: Rational -> (Integer, Integer)
+oddAndPowerOfTwo q =
+  let (mn, fn) = twos (numerator q)
+      (md, fd) = twos (denominator q)
+   in (mn * md, fn - fd)
+  where
+    twos n =
+      let z = log2 (n .&. negate n)
+       in (n `shiftR` fromInteger z, z)
 
 -- | The bits of a positive integer, less one.
 log2 :: Integer -> Integer
 log2 = toInteger . integerLog2
-
-{- | The size of @q ^^ k@ for a positive @q@ and an exponent that is not 0,
-as a mantissa in [1, 2) and an integer exponent: the log2 of the result is
-in [e, e + 1). Repeated squaring of doubles, the mantissa brought back into
-[1, 2) after each product, so that nothing overflows or becomes 0; no
-'log', so that the estimate is deterministic (golem-eval ADR 0005).
--}
-estimatePow :: Rational -> Integer -> (Double, Integer)
-estimatePow q k
-  | k < 0 = invert (go (abs k) (split q) (1, 0))
-  | otherwise = go k (split q) (1, 0)
-  where
-    go :: Integer -> (Double, Integer) -> (Double, Integer) -> (Double, Integer)
-    go 0 _ acc = acc
-    go n b acc = go (n `div` 2) (mul b b) (if odd n then mul acc b else acc)
-    mul (m1, e1) (m2, e2) =
-      let m' = m1 * m2
-       in if m' >= 2 then (m' / 2, e1 + e2 + 1) else (m', e1 + e2)
-    invert (m', e')
-      | m' == 1 = (1, negate e')
-      | otherwise = (2 / m', negate e' - 1)
-
--- | A positive rational as a mantissa in [1, 2) and an integer exponent.
-split :: Rational -> (Double, Integer)
-split q =
-  let e0 = log2 (numerator q) - log2 (denominator q)
-      e = if q < 2 ^^ e0 then e0 - 1 else e0
-      m = fromRational (q / 2 ^^ e) :: Double
-   in if m >= 2 then (1, e + 1) else (m, e)

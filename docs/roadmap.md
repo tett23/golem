@@ -29,8 +29,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
 
-- **累乗の diagnostic の揺れ**（未実装、[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)）：累乗で、正確な計算の上限を範囲の判定より先に整数だけで決め、上限を超える累乗を新しいコード G0295 にする。浮動小数点の見積もりで G0204、G0286、0 が入れ替わらないようにする。
-- **ページの行数以上の行アキ**（未実装、[docs/adr 0047](adr/0047-blank-line-limit.md)）：続けて書いた `@blank-line` の行数の和がページの行数以上なら、すべての出力で捨て、お知らせ G0411 を出す。PDF で必ず捨てられる行アキが、HTML とプレーンテキストに残って出力を膨らませないようにする。
+- **ページの行数以上の行アキ**（未実装、[docs/adr 0047](adr/0047-blank-line-limit.md)）：続けて書いた `@blank-line` の行数の和がページの行数以上なら、すべての出力で捨て、notice の G0411 を出す。PDF で必ず捨てられる行アキが、HTML とプレーンテキストに残って出力を膨らませないようにする。
 - **縦組みで回した図版の行の送りの向き**（未実装、[golem-driver ADR 0038](golem-driver/adr/0038-turned-figure-line-progression.md)）：[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md) の記述を実装の向き（ページの下から上）に改め、向きを確かめるテストを足す。
 
 
