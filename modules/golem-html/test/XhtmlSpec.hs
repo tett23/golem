@@ -9,7 +9,7 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Assemble (AssembleConfig (..), Book (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..), NoteNumbering (..), TocEntry (..), assemble)
+import Golem.Doc.Assemble (AssembleConfig (..), Book (..), ChannelDecl (..), ChannelOrder (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..), NoteNumbering (..), TocEntry (..), assemble)
 import Golem.Doc.Bibliography (EntryPart (..))
 import Golem.Doc.IR
 import Golem.Html
@@ -75,7 +75,9 @@ bookOf bs =
       bookCiteMarks = Map.empty,
       bookLabels = Map.empty,
       bookReferenced = Set.empty,
-      bookChapterOf = []
+      bookChapterOf = [],
+      bookChannels = [],
+      bookChannelDecls = Map.empty
     }
 
 para :: Int -> [Inline] -> Block
@@ -130,7 +132,7 @@ multipleBibliographyTests =
 assembled :: [[Block]] -> Book
 assembled bss = fst (assemble acfg (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
   where
-    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] ""
+    acfg = AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" Map.empty
 
 -- | A paragraph at offset s that cites the keys, one byte apart.
 citing :: FileId -> Int -> [Text] -> Block
@@ -139,6 +141,33 @@ citing f s ks = Block (mkSpan f s (s + 1)) Nothing (Paragraph Nothing [Cite (mkS
 -- | A @bibliography at offset s.
 bib :: FileId -> Int -> Block
 bib f s = Block (mkSpan f s (s + 1)) Nothing (ChannelOutput BibliographyOutput)
+
+-- | The lists of the channels of plugins (golem-doc ADR 0007).
+channelTests :: TestTree
+channelTests =
+  testGroup
+    "the channels of plugins (golem-doc ADR 0007)"
+    [ testCase "a channel with locators: an id at each item, links from the list to another file" $ do
+        let book = withChannels [[para 0 [txt "人", item fidA 1 "people" "甲"], para 5 [item fidA 6 "people" "甲"]], [list fidB 0 "people"]]
+            pages = sitePages (renderXhtml cfg0 ft book)
+            bodyB = maybe "" bodyOf (lookup "b.xhtml" pages)
+        bodyA cfg0 book @?= "<p>人<span id=\"c-people-0-1\"></span></p>\n<p><span id=\"c-people-0-6\"></span></p>\n"
+        bodyB @?= "<section class=\"channel\" data-channel=\"people\">\n<ul>\n<li>甲 <a href=\"a.xhtml#c-people-0-1\">1</a>, <a href=\"a.xhtml#c-people-0-6\">2</a></li>\n</ul>\n</section>\n",
+      testCase "a channel without locators: nothing at the item, the bodies in the list" $ do
+        let book = withChannels [[para 0 [item fidA 1 "glossary" "語"], list fidA 5 "glossary"]]
+        bodyA cfg0 book @?= "<p></p>\n<section class=\"channel\" data-channel=\"glossary\">\n<ul>\n<li>語</li>\n</ul>\n</section>\n",
+      testCase "a list without entries is an empty ul" $
+        bodyA cfg0 (withChannels [[list fidA 0 "people"]]) @?= "<section class=\"channel\" data-channel=\"people\">\n<ul>\n</ul>\n</section>\n",
+      testCase "channels a-1 and a: no id twice" $ do
+        let body = bodyA cfg0 (withChannels [[para 0 [item fidA 1 "a-1" "x", item fidA 2 "a" "y"]]])
+            ids = [T.takeWhile (/= '"') p | p <- drop 1 (T.splitOn "id=\"" body)]
+        ids @?= ["c-a-1-0-1", "c-a-0-2"]
+    ]
+  where
+    decls = [ChannelDecl "people" OrderDocument True, ChannelDecl "glossary" OrderReading False, ChannelDecl "a-1" OrderDocument True, ChannelDecl "a" OrderDocument True]
+    withChannels bss = fst (assemble (AssembleConfig Map.empty "" Map.empty NumberPerFile [] "" (Map.fromList [(channelName d, d) | d <- decls])) (\_ _ _ -> Right "") [Document f bs | (f, bs) <- zip [fidA, fidB] bss])
+    item f s c t = ChannelItem (mkSpan f s (s + 1)) (ChannelItemData c (Just t) (Just t) [Text (mkSpan f s (s + 1)) t])
+    list f s c = Block (mkSpan f s (s + 1)) Nothing (ChannelOutput (CustomOutput c Nothing))
 
 -- | Links from a cite mark to the file of its bibliography (golem-html ADR 0003).
 citeLinkTests :: TestTree
@@ -400,6 +429,7 @@ tests =
             @?= "<p>文献<a class=\"cite\" href=\"#cite-knuth1981\">[1]</a></p>\n<ol class=\"bibliography\">\n<li id=\"cite-knuth1981\">Knuth, Breaking Paragraphs into Lines.</li>\n</ol>\n",
     multipleBibliographyTests,
     citeLinkTests,
+    channelTests,
     -- golem-doc ADR 0005
     testCase "a URL of http or https in the bibliography is a link of class cs-url; another is a span" $
       let book =

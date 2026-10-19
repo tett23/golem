@@ -7,7 +7,7 @@ the characters of 'Text', the bases of 'Ruby' (not the readings), one
 replacement character (U+FFFC) for an element that cannot be split or
 whose text is not known yet ('Tcy', 'Number', 'Ref', 'Deferred', 'Cite'), for 'Aki'
 and for 'Note' and 'Sidenote', a newline for 'LineBreak', and nothing for
-'IndexMark' and 'ProofComment'.
+'IndexMark', 'ProofComment' and 'ChannelItem' (golem-doc ADR 0007).
 -}
 module Golem.Eval.RegexStyle
   ( RegexRules,
@@ -108,6 +108,7 @@ targetOf = \case
   CharStyle _ _ xs -> T.concat (map targetOf xs)
   LineBreak _ -> "\n"
   IndexMark _ _ -> ""
+  ChannelItem _ _ -> ""
   ProofComment _ _ -> ""
   _ -> "\xFFFC"
 
@@ -171,6 +172,7 @@ piecesOfOne labels p = \case
   x@(Note {}) -> [(Nothing, x)]
   x@(Sidenote {}) -> [(Nothing, x)]
   x@(IndexMark {}) -> [(Nothing, x)]
+  x@(ChannelItem {}) -> [(Nothing, x)]
   x@(ProofComment {}) -> [(Nothing, x)]
   x -> [(Just (labelAt labels p), x)]
   where
@@ -197,3 +199,4 @@ spanOf = \case
   ProofComment s _ -> s
   LineBreak s -> s
   Aki s _ -> s
+  ChannelItem s _ -> s

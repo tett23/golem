@@ -179,7 +179,8 @@ data Anchor
   = AnchorNote !Int !Int !SrcSpan [Inline] -- item index, note number, span, body
   | AnchorSidenote !Int !Int !SrcSpan [Inline] -- item index, sidenote number, span, body
   | AnchorPageRef !Int !Text
-  | AnchorIndex !Int !SrcSpan IndexEntry -- item index, the mark, the entry
+  | -- | item index, the mark, the entry; an item of a channel has an empty entry (golem-doc ADR 0007)
+    AnchorIndex !Int !SrcSpan IndexEntry
   deriving stock (Eq, Show)
 
 {- | What a box shows (kept in 'bcTag').
@@ -275,6 +276,8 @@ piecesOf env inl = case inl of
       MarkerSymbol -> [PBox lk "※" KindText (lkSize lk)]
       MarkerNone -> []
   IndexMark sp e -> [PAnchor (\i -> AnchorIndex i sp e)]
+  -- nothing shows; its page is followed like that of an index mark (golem-doc ADR 0007)
+  ChannelItem sp _ -> [PAnchor (\i -> AnchorIndex i sp (IndexEntry [] []))]
   Cite sp k -> textPieces lk ("[" <> maybe k (T.pack . show) (ceCiteNumber env sp k) <> "]")
   ProofComment {} -> []
   -- the lines of a keep style are split before they are composed (docs/adr
@@ -416,6 +419,7 @@ withRuby = \case
   ProofComment s t -> ProofComment s t
   LineBreak s -> LineBreak s
   Aki s a -> Aki s a
+  ChannelItem s c -> ChannelItem s c
 
 -- | The advance of a character in a look, in sp.
 advance :: ComposeEnv -> Look -> Char -> Sp

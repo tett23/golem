@@ -8,12 +8,14 @@ module Golem.Driver.Plugins
   )
 where
 
+import Data.Char (isAsciiLower, isDigit)
 import Data.Either (partitionEithers, rights)
 import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Doc.Assemble (ChannelDecl (..))
 import Golem.Doc.IR (Document (..))
 import Golem.Eval.Builtin (BuiltinInline (..), OverridableBuiltin, PluginCommandName, parseBuiltin, pluginCommandName)
 import Golem.Eval.File (PluginCommand (..), PluginHook (..), noPlugins)
@@ -78,11 +80,18 @@ loadPlugins cacheDir mfid lfid lockText manifest
           collisionMessage (c, n)
             | Just (Overridable _) <- parseBuiltin c = "組み込みのコマンドと衝突しています（overrides で宣言してください）: " <> n <> "." <> c
             | otherwise = "上書きできない組み込みのコマンドと衝突しています: " <> n <> "." <> c
+          -- the channels of the plugins (golem-doc ADR 0007): G0612 for a name declared twice, reserved or malformed
+          declared = [(channelName d, (name, d)) | (name, _, p) <- plugins, d <- pluginChannels p]
+          channelProviders = Map.fromListWith (flip (<>)) [(c, [n]) | (c, (n, _)) <- declared]
+          channelCollisions = [(c, ns) | (c, ns) <- Map.toList channelProviders, length ns > 1]
+          badChannels = [(n, c) | (c, (n, _)) <- declared, not (validChannelName c)]
           diags =
             [err "G0606" ("複数のプラグインが同じコマンドを提供しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- collisions]
               <> [err "G0607" (collisionMessage u) | u <- undeclared]
               <> [err "G0608" m | (_, Left m) <- checkedOverrides]
               <> [err "G0610" m | Just m <- map filterError (manifestFilters manifest)]
+              <> [err "G0612" ("複数のプラグインが同じチャネルを宣言しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- channelCollisions]
+              <> [err "G0612" (n <> ": このチャネルの名前は使えません: " <> c) | (n, c) <- badChannels]
           call pname p name = PluginCommand $ \vals slots sp ->
             either (\pe -> Left [diagnostic "G0609" Error sp (qualified pname name pe)]) Right (callCommand p name vals slots sp)
           -- a filter that fails points at the top of the file (golem-plugin ADR 0003)
@@ -106,6 +115,7 @@ loadPlugins cacheDir mfid lfid lockText manifest
                 PluginHook
                   { phOverrides = Map.fromList [(o, call pname p c) | (Left o, (c, pname, p)) <- keyed],
                     phCommands = Map.fromList [(k, call pname p c) | (Right k, (c, pname, p)) <- keyed],
+                    phChannels = Map.fromList [(c, d) | (c, (_, d)) <- declared],
                     phApplyFilters = applyFilters
                   }
             else Left diags
@@ -125,6 +135,17 @@ commandKey checked x@(c, n, _) = case pluginCommandName c of
     Just (Right o) -> Just (Right (Left o, x))
     Just (Left _) -> Nothing
     Nothing -> Just (Left (c, n))
+
+{- | The name of a channel a plugin may declare (golem-doc ADR 0007): a
+lowercase ASCII letter, then lowercase letters, digits and -, and not one
+of the built-in channels.
+-}
+validChannelName :: Text -> Bool
+validChannelName c = case T.uncons c of
+  Just (h, rest) -> isAsciiLower h && T.all (\x -> isAsciiLower x || isDigit x || x == '-') rest && c `notElem` reservedChannels
+  Nothing -> False
+  where
+    reservedChannels = ["toc", "index", "bibliography", "note", "notes", "sidenote", "cite"]
 
 -- | @plugin.name: reason@, the message of G0609.
 qualified :: Text -> Text -> PluginError -> Text

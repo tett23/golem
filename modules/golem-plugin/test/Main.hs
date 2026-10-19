@@ -21,6 +21,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
+import Golem.Doc.Assemble (ChannelDecl (..))
 import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
 import Golem.Eval.Value (Value (..))
@@ -81,7 +82,7 @@ fixed = fixedFrom "fixed.wat"
 fixedFrom :: FilePath -> Int -> ByteString -> IO ByteString
 fixedFrom file ver response = do
   src <- wat file
-  let describe = cbor (TList [TList [TString "shout"], TList [TString "upper"]])
+  let describe = cbor (TList [TList [TString "shout"], TList [TString "upper"], TList []])
       filled =
         T.replace "{{ABI}}" (T.pack (show ver))
           . T.replace "{{DESCRIBE}}" (escape describe)
@@ -122,6 +123,15 @@ tests =
         p <- load =<< fixed abi (responseWith (inlinesTerm [Text callSpan "SLOT"]))
         (pluginCommands p, pluginFilters p) @?= (["shout"], ["upper"])
         fmap fst (shout p) @?= Right [Text callSpan "SLOT"],
+      -- golem-doc ADR 0007
+      testCase "channels.wat declares two channels and sends the slot to them" $ do
+        p <- load =<< compile =<< wat "channels.wat"
+        map channelName (pluginChannels p) @?= ["glossary", "people"]
+        let slot = [Text callSpan "語"]
+            itemOf c k r = ChannelItem callSpan (ChannelItemData c k r slot)
+        fmap fst (callCommand p "term" [VString "k", VString "よみ"] [slot] callSpan) @?= Right (slot <> [itemOf "glossary" (Just "k") (Just "よみ")])
+        fmap fst (callCommand p "person" [VString "甲"] [slot] callSpan) @?= Right (slot <> [itemOf "people" (Just "甲") Nothing])
+        fmap fst (callCommand p "person" [] [slot] callSpan) @?= Right (slot <> [itemOf "people" Nothing Nothing]),
       -- docs/adr ADR 0031
       testCase "a plugin without golem_dealloc loads and answers" $ do
         p <- load =<< fixedFrom "no-dealloc.wat" abi (responseWith (inlinesTerm [Text callSpan "SLOT"]))
