@@ -108,6 +108,8 @@ LSP は最後の変更から一定の時間を待ってから、変わったフ�
 動的な登録を申し出ないクライアントでは監視せず、原稿を編集したときに評価し直す。
 図版と [code: @listing] のファイルは監視しない。
 表のファイルの誤り（G0282 など）は、原稿ではなく、位置の指す表のファイルに載せる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0004-tsv-tables.md]（golem-eval ADR 0004「TSV の表、表のファイルの誤りの位置、表の列の揃え」）]
+ただし、表のファイルが大きさ、行の数、セルの数の上限を超えたときの G0288 は、原稿の [code: @table] のブロックに載せる。
+上限を超えた表のファイルは、行の数かセルの数が上限を超えた時点で読むのを止めるので、原稿を編集するたびに評価し直しても時間はかからない。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0043-table-file-size-limits.md]（ADR 0043「表のファイルの大きさの上限」）]
 
 ## diagnostics の載せ方
 

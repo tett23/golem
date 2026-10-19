@@ -248,8 +248,8 @@ S0 の時点では、一覧の中身は決まらない。
 | --- | --- | --- | --- | --- |
 | 目次 | 見出し（[code: @notoc] のないもの） | 見出しのブロック（タグ 1） | [code: bookToc]：文書の順 | [code: @toc] |
 | 脚注 | [code: \[note: ...\]] | 脚注（タグ 12） | 番号を振り直す | 出力が決める |
-| 索引 | [code: \[index reading=...: ...\]] | 索引の印（タグ 14） | [code: bookIndex]：読みの順 | [code: @index] |
-| 参考文献 | [code: \[cite キー\]] | 引用（タグ 15） | [code: bookCitations]：最初に引用した順 | [code: @bibliography] |
+| 索引 | [code: \[index reading=...: ...\]] | 索引の印（タグ 14） | [code: bookIndexes]：一覧ごとに読みの順 | [code: @index] |
+| 参考文献 | [code: \[cite キー\]] | 引用（タグ 15） | [code: bookBibliographies]：一覧ごとに最初に引用した順 | [code: @bibliography] |
 
 脚注だけは、出す位置をブロックコマンドで指定しない。
 PDF は [code: style.toml] の [code: \[notes\]] の [code: placement] に従い、ページの下（[code: "page-foot"]、既定）か、マニフェストの章の終わり（[code: "chapter-end"]）に置く。
@@ -280,10 +280,12 @@ data ChannelBlock = TocOutput !Int | IndexOutput | BibliographyOutput
 ```
 
 集めた結果は、S1 の結果の [code: Doc.Book] のフィールドに入る。
-[code: bookToc] は目次の項目（階層、番号の文字列、題、リンクの先、見出しの位置）の列、[code: bookIndex] は語ごとにまとめた索引の項目（語、読み、出現位置の列）の列、[code: bookCitations] は文献のキーと番号の組の列である。
+[code: bookToc] は目次の項目（階層、番号の文字列、題、リンクの先、見出しの位置）の列、[code: bookIndexes] は [code: @index] ごとの、語ごとにまとめた索引の項目（語、読み、出現位置の列）の列、[code: bookBibliographies] は [code: @bibliography] ごとの、文献のキーと番号の組の列である。
+[code: @bibliography] がなければ、[code: bookBibliographies] は位置のない一つの一覧を持ち、文書の全体で番号を振る。
+[code: bookCiteMarks] は、引用の印ごとに、載る一覧と番号を持つ。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0008-multiple-index-and-bibliography.md]（golem-doc ADR 0008「複数の [code: @index] と [code: @bibliography]」）]
 脚注は別のフィールドを持たず、[code: bookDocs] の中の脚注のインラインの番号を、その場で振り直す。
 
-出力の経路は、タグ 8 のブロックに出会うと、その位置に [code: Doc.Book] の該当するフィールドから一覧を書く。
+出力の経路は、タグ 8 のブロックに出会うと、そのブロックの位置で [code: Doc.Book] の該当するフィールドから一覧を引いて書く。
 一覧の中身を作り直すことはしないので、四つの出力の一覧は、同じ集約の結果から作られる。
 
 ### 例
@@ -332,7 +334,7 @@ data ChannelBlock = TocOutput !Int | IndexOutput | BibliographyOutput
 ```
 
 @label fig-channels-example
-@figure images/channels-example.svg alt="左に二つの章のファイルの見出しと印を書いた順に並べ、中央に S1 が作る bookToc、bookCitations、bookIndex と、振り直した脚注の番号を、右にプレーンテキストと HTML の出力を示す。印と集約の結果と出力を、チャネルごとの色で結んでいる"
+@figure images/channels-example.svg alt="左に二つの章のファイルの見出しと印を書いた順に並べ、中央に S1 が作る bookToc、bookBibliographies、bookIndexes と、振り直した脚注の番号を、右にプレーンテキストと HTML の出力を示す。印と集約の結果と出力を、チャネルごとの色で結んでいる"
   例のプロジェクトで、印が集められ、一覧になるまで。
 
 図[ref-number fig-channels-example]の左は、S0 が二つの章のファイルに残す印を、書いた順に並べたものである。
@@ -400,7 +402,9 @@ EPUB 3.3 がナビゲーション文書を必須にしており、読書シス�
 = [strong: 参考文献]
   書誌データにないキーを引用すると、S0 で G0221 の error になる。S0 はマニフェストの [code: bibliography] から書誌データのキーだけを受け取って、この検査をする。一覧に載るのは引用した文献だけで、書誌データにあっても引用していない文献は載らない。
 
-[code: @index] と [code: @bibliography] は、いくつ置いてもよく、置いた位置ごとに同じ一覧の全体を出す。
+[code: @index] と [code: @bibliography] は、いくつ置いてもよい。
+同じ種類の一覧が二つ以上あれば、項目はその項目より後にある最初の一覧に載り、最後の一覧より後の項目は最後の一覧に載る。
+参考文献の番号は一覧ごとに 1 から振り、HTML の項目の [code: id] は [code: cite-<キー>]、[code: cite-<キー>-2] の順の候補から、本の中でまだ使っていないものを選ぶ。
 どれも置かなければ一覧は出ないが、印はそのまま残り、diagnostic も出ない。
 引用の印は番号を表示し続け、索引の印は何も表示しない。
 印のないチャネルを出すと、空の一覧になる。

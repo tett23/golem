@@ -93,8 +93,8 @@
   <text class="c" x="545" y="408">索引の印</text>
   <text class="c sub" x="545" y="444">タグ 14、語と読み</text>
   <rect class="cell" x="740" y="375" width="250" height="100"/>
-  <text class="c" x="865" y="408">bookIndex</text>
-  <text class="c sub" x="865" y="444">同じ語をまとめ、読みの順</text>
+  <text class="c" x="865" y="408">bookIndexes</text>
+  <text class="c sub" x="865" y="444">一覧ごとに、読みの順</text>
   <rect class="cell" x="1060" y="375" width="220" height="100"/>
   <text class="c" x="1170" y="408">@index</text>
   <text class="c sub" x="1170" y="444">IndexOutput</text>
@@ -110,8 +110,8 @@
   <text class="c" x="545" y="548">引用</text>
   <text class="c sub" x="545" y="584">タグ 15、文献のキー</text>
   <rect class="cell" x="740" y="515" width="250" height="100"/>
-  <text class="c" x="865" y="548">bookCitations</text>
-  <text class="c sub" x="865" y="584">最初に引用した順に番号</text>
+  <text class="c" x="865" y="548">bookBibliographies</text>
+  <text class="c sub" x="865" y="584">一覧ごとに引用した順</text>
   <rect class="cell" x="1060" y="515" width="220" height="100"/>
   <text class="c" x="1170" y="548">@bibliography</text>
   <text class="c sub" x="1170" y="584">BibliographyOutput</text>
