@@ -34,7 +34,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time.Calendar (Day)
 import Golem.Parser.SourceSettings
-import Golem.Project.TomlMessage (schemaMessage, semanticMessage, syntaxMessage)
+import Golem.Project.TomlMessage (pathText, schemaMessage, semanticMessage, syntaxMessage)
 import Golem.Syntax
 import Toml qualified
 import Toml.Schema
@@ -428,13 +428,36 @@ positionSpan fid src = \case
     | Just off <- lineColToOffset (mkLineIndex src) (LineCol (l - 1) (c - 1)) -> mkSpan fid off off
   _ -> mkSpan fid 0 0
 
+{- | Reads manifest.toml. A string with a character that cannot be written
+to the output is G0328 before the schema (docs/adr ADR 0042).
+-}
 parseManifest :: FileId -> Text -> Either [Diagnostic] Manifest
 parseManifest fid src = do
+  case either (const []) (unwritableStrings fid src) (parseToml src) of
+    [] -> Right ()
+    ds -> Left ds
   m <- decodeStrictBy "G0301" manifestCode fid src
   let t = manifestTargets m
   if tgHtml t || not (null (tgText t)) || isJust (tgPdf t) || isJust (tgEpub t)
     then Right m
     else Left [diagnostic "G0301" Error (mkSpan fid 0 0) "出力ターゲットが一つもありません"]
+
+{- | G0328 at each string of a TOML table with a character that cannot be
+written to the output (docs/adr ADR 0042), in the order of the file: one
+for each string, naming its first such character.
+-}
+unwritableStrings :: FileId -> Text -> Table' Position -> [Diagnostic]
+unwritableStrings fid src = map snd . Map.toAscList . Map.fromList . table []
+  where
+    table path (MkTable kvs) = concat [value (path <> [ScopeKey k]) v | (k, (_, v)) <- Map.toList kvs]
+    value path = \case
+      Text' pos t
+        | Just c <- firstUnwritable t ->
+            let sp = positionSpan fid src (Just pos)
+             in [(spanStart sp, diagnostic "G0328" Error sp (pathText path <> " に出力に書けない文字（" <> codePointText c <> "）があります"))]
+      List' _ vs -> concat (zipWith (\i v -> value (path <> [ScopeIndex i]) v) [0 ..] vs)
+      Table' _ t -> table path t
+      _ -> []
 
 -- | Converts toml-parser messages to diagnostics at their line.
 tomlDiagnostics :: Text -> FileId -> Text -> [MatchMessage Position] -> [Diagnostic]
