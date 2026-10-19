@@ -37,8 +37,9 @@ bookOf bs =
       bookListings = Map.empty,
       bookToc = [],
       bookTocDepth = Nothing,
-      bookIndex = [],
-      bookCitations = [],
+      bookIndexes = [],
+      bookBibliographies = [],
+      bookCiteMarks = Map.empty,
       bookLabels = Map.empty,
       bookReferenced = Set.empty,
       bookChapterOf = []
@@ -106,7 +107,7 @@ tests =
               }
        in only (horizontal book) @?= "詳しくは「はじめに」を見よ。\n",
     testCase "a citation is its number in square brackets" $
-      let book = (bookOf [para 0 [txt "文献", Cite (at 1) "knuth1981", txt "による。"]]) {bookCitations = [("tex", 1), ("knuth1981", 2)]}
+      let book = (bookOf [para 0 [txt "文献", Cite (at 1) "knuth1981", txt "による。"]]) {bookBibliographies = [(Nothing, [("tex", 1), ("knuth1981", 2)])], bookCiteMarks = Map.fromList [((fid, at 1), (Nothing, 2))]}
        in only (horizontal book) @?= "文献[2]による。\n",
     testCase "a footnote is *n in horizontal text, its body at the end of the file" $
       let book = bookOf [para 0 [txt "本文", Note (at 1) 1 [txt "注の本文。"], txt "。"], para 5 [txt "次の段落。"]]

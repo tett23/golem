@@ -1110,7 +1110,7 @@ tests =
           testCase "a citation shows its number when there is one" $ do
             let cite = [Cite (mkSpan (FileId 0) 0 1) "knuth1981"]
                 texts env = [bcText c | Box _ c <- fst (composeInlines env cite)]
-            T.concat (texts (defaultComposeEnv fs) {ceCiteNumber = \k -> if k == "knuth1981" then Just 1 else Nothing}) @?= "[1]"
+            T.concat (texts (defaultComposeEnv fs) {ceCiteNumber = \_ k -> if k == "knuth1981" then Just 1 else Nothing}) @?= "[1]"
             T.concat (texts (defaultComposeEnv fs)) @?= "[knuth1981]",
           testCase "the sidenote marker in the text follows the style (golem-driver ADR 0006)" $ do
             let snSpan = mkSpan (FileId 0) 3 9
