@@ -2034,7 +2034,8 @@ buildFlow inp geom fonts images assumed = do
       -- a table: every cell at the body size, no hanging punctuation (golem-driver ADR 0008)
       composeTable st aligns h rows =
         let env = (styledEnv st bodyEnv) {ceHanging = False}
-            cellOf = composeInlines env
+            -- no break between the last two Japanese characters of a cell (golem-driver ADR 0037)
+            cellOf = first keepLastTwo . composeInlines env
             hCells = map cellOf h
             rCells = map (map cellOf) rows
             rowAttached cells setCells height =
@@ -2534,6 +2535,30 @@ fitFigure ratio along0 l p fs captionSpan =
         Just s -> toInteger (l - s) * p
         Nothing -> toInteger (l - 1) * p + fs
    in if across0 <= acrossMax then (along0, across0, False) else (floor (fromInteger acrossMax / ratio), acrossMax, True)
+
+{- | The items of a cell without a break between its last two boxes when
+both are one Japanese character (golem-driver ADR 0037): a penalty
+between them becomes infinite, and a glue gets an infinite penalty
+before it, as the line start rule does (golem-layout ADR 0002).
+-}
+keepLastTwo :: [Item] -> [Item]
+keepLastTwo items = case reverse boxes of
+  (lastIx : prevIx : _)
+    | lastIx `elem` jaBoxes && prevIx `elem` jaBoxes ->
+        let (before, rest) = splitAt (prevIx + 1) items
+            (between, after) = splitAt (lastIx - prevIx - 1) rest
+         in before <> concatMap hold between <> after
+  _ -> items
+  where
+    boxes = [i | (i, Box {}) <- zip [0 :: Int ..] items]
+    jaBoxes = [i | (i, Box _ c) <- zip [0 :: Int ..] items, japanese c]
+    japanese c = case T.unpack (bcText c) of
+      [ch] -> boxKind c `elem` [KindText, KindPunctuation, KindKenten] && charClass ch /= Western
+      _ -> False
+    hold = \case
+      Penalty w p h | p < infPenalty -> [Penalty w infPenalty h]
+      g@Glue {} -> [Penalty 0 infPenalty NoHyphen, g]
+      x -> [x]
 
 -- | Why a figure cannot be placed: G0810 with the reason, or G0811 (golem-pdf ADR 0008, 0009).
 data Unplaced = Unplaced !Text | UnsupportedSvg !(NonEmpty S.Unsupported)

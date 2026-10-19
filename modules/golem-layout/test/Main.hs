@@ -878,8 +878,28 @@ tests =
             cellExtent (compose (defaultComposeEnv fs) "well-known") @?= (5 * fs `div` 2, 5 * fs),
           testCase "column widths: natural when they fit" $
             columnWidths 100 [(10, 30), (20, 40)] @?= Right [30, 40],
-          testCase "column widths: the rest shared in proportion, the remainder from the first column" $
-            columnWidths 100 [(10, 60), (20, 80)] @?= Right [42, 58],
+          testCase "column widths: short columns filled first, the long ones level (golem-driver ADR 0037)" $ do
+            columnWidths 100 [(10, 60), (20, 80)] @?= Right [50, 50]
+            -- the table of the developer manual, in characters
+            columnWidths 38 [(1, 12), (4, 13), (9, 33)] @?= Right [12, 13, 13]
+            -- a minimum wider than the level
+            columnWidths 26 [(11, 11), (1, 5), (1, 16)] @?= Right [11, 5, 10]
+            -- the remainder one sp at a time from the first column
+            columnWidths 10 [(0, 9), (0, 9), (0, 9)] @?= Right [4, 3, 3],
+          testProperty "column widths: the sum is the width, each between its minimum and natural width, the short ones natural (golem-driver ADR 0037)" $ property $ do
+            cols <- forAll (Gen.list (Range.linear 1 8) (Gen.int (Range.linear 0 1000) >>= \lo -> (\hi -> (toInteger lo, toInteger hi)) <$> Gen.int (Range.linear lo 1000)))
+            let lo = sum (map fst cols)
+                hi = sum (map snd cols)
+            available <- forAll (Gen.integral (Range.linear lo (max lo (hi - 1))))
+            if hi <= available
+              then success
+              else do
+                ws <- evalEither (columnWidths available cols)
+                sum ws === available
+                assert (and [mn <= w && w <= nat | ((mn, nat), w) <- zip cols ws])
+                let clampTo c (mn, nat) = max mn (min c nat)
+                    level = last (0 : [c | c <- [0 .. maximum (map snd cols)], sum (map (clampTo c) cols) <= available])
+                assert (and [w == nat | ((_, nat), w) <- zip cols ws, nat <= level]),
           testCase "column widths: minimum widths that do not fit are an error" $
             columnWidths 20 [(10, 30), (20, 40)] @?= Left (ColumnsTooWide 30 20),
           testCase "a row is as high as its tallest cell" $ do
