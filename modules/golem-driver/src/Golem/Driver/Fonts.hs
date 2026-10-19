@@ -24,7 +24,7 @@ import Golem.Driver.Memo (fromShapingTextKey, memoWith, shapingTextKey)
 import Golem.Driver.Pdf (FontProvider (..), LoadedFonts (..), Shaped (..), Shaping (..), bodyFontDiagnostics, bodyRole, usedRoles)
 import Golem.Driver.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import Golem.Font
-import Golem.Layout.Japanese (CharClass (..), charClass, isVariationSelector)
+import Golem.Layout.Japanese (CharClass (..), charClass, isExtending, isVariationSelector)
 import Golem.Layout.Orientation (turnsInVertical)
 import Golem.Pdf qualified as P
 import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
@@ -125,8 +125,8 @@ provide faces body roles =
     fontFor role c =
       let (ja, la, _) = roleOf role
        in fromMaybe 0 (if charClass c == Western then la <|> ja else ja <|> la)
-    -- a variation selector stays with the character before it (golem-pdf ADR 0006)
-    runs role t = [(fontFor role (T.head r), r) | r <- T.groupBy (\a b -> isVariationSelector b || fontFor role a == fontFor role b) t, not (T.null r)]
+    -- a combining character stays with the character before it, variation selectors among them (golem-pdf ADR 0006, golem-driver ADR 0036)
+    runs role t = [(fontFor role (T.head r), r) | r <- T.groupBy (\a b -> isExtending b || fontFor role a == fontFor role b) t, not (T.null r)]
     {- shaping a text in a role, with the features added after the role's
     (docs/adr/0020). In vertical text a cluster of a Japanese run whose
     glyphs vert leaves as they are, and whose first character is R or Tr in

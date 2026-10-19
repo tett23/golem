@@ -136,7 +136,7 @@ check :: Rules -> View -> [Diagnostic]
 
 S0 で全ファイルを評価する [code: evalAll] も、import の順（[code: projectOrder]）に [code: evalFile] を [code: foldl'] で畳み込む純粋な関数である。
 S1 の [code: assemble] は、S0 の結果をマニフェストの章の順に並べたリストを受け取る。
-評価が純粋なので、同じファイルを複数のファイルが import しても、一度評価した結果をそのまま共有できる。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#プロジェクトの構成と-import]（仕様書の「プロジェクトの構成と import」の節）]
+評価が純粋なので、同じファイルを複数のファイルが import しても、一度評価した結果をそのまま共有できる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#プロジェクトの構成と-import]（仕様書の「プロジェクトの構成と import」の節）]
 LSP が編集されたファイルだけを評価し直せるのも同じ理由で、[code: Evaluated] の [code: evReevaluate] は、前回の評価の文脈を閉じ込めた純粋な関数である。
 S0 の結果から S1 を組み直す [code: evReassemble] も、同じ形の純粋な関数である。
 
@@ -177,7 +177,7 @@ C のライブラリを呼ぶ関数のうち、エッジで呼べるものは IO
 golem-font の [code: loadFont :: ByteString -> IO (Either FontError Font)] は、golem-driver の [code: Golem.Driver.Fonts] がフォントのファイルを読んだ直後に、IO の中で呼ぶ。
 フォントを開いた時点で決まる値（upem、範囲、PostScript 名、ROS、[code: fontEmBoxCentral]、CID-keyed のフォントの各グリフの CID）は、このときに読んで [code: Font] の値に持たせる。
 PDF に埋め込むサブセットを作る [code: subsetFont] も IO で、[code: renderPdfView] が組版を終えた後に、使ったグリフの表から呼ぶ。
-golem-plugin の [code: loadPlugin] と、テストでだけ使う [code: watToWasm] も IO である。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0034-fewer-unsafe-perform-io.md]（docs/adr の ADR 0034「unsafePerformIO を減らし、残すものを検査で固定する」）]
+golem-plugin の [code: loadPlugin] と、テストでだけ使う [code: watToWasm] も IO である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0034-fewer-unsafe-perform-io.md]（docs/adr の ADR 0034「unsafePerformIO を減らし、残すものを検査で固定する」）]
 
 エッジに出せないのは、組版と評価の内側から、進み具合に応じて呼ぶものである。
 何を問い合わせるかは組版が進むまで決まらないので、先に読んでおくことができない。
@@ -186,7 +186,7 @@ golem-plugin の [code: loadPlugin] と、テストでだけ使う [code: watToW
 - golem-font の [code: shapeUnits]（シェイピング）、[code: glyphVerticalOrigin]（縦組みの原点）、[code: glyphMetrics]（グリフの送りと外接矩形）。
 - golem-plugin の [code: invokeRaw]（プラグインの呼び出し。[code: callCommand] と [code: applyFilter] はこれを使う）。
 
-golem-font ADR 0001 は、FFI の呼び出しを純粋な関数として見えるように包むと決めている。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-font/adr/0001-shaping-and-metrics.md]（golem-font ADR 0001「シェイピングとメトリクス」）]
+golem-font ADR 0001 は、FFI の呼び出しを純粋な関数として見えるように包むと決めている。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-font/adr/0001-shaping-and-metrics.md]（golem-font ADR 0001「シェイピングとメトリクス」）]
 この四つのほかに [code: unsafePerformIO] とその仲間はない。
 [code: scripts/ci/unsafe-io.sh] が、使っている定義を [code: scripts/ci/unsafe-io-allowed.txt] の一覧と照らし合わせ、増えても減っても CI を失敗させる。
 
@@ -213,7 +213,7 @@ HarfBuzz のオブジェクト（blob、face、font）は開いた後は読む�
 この性質は、別の実行ファイルのテスト [code: golem-font-race-test] が確かめる。
 落ちるかもしれないテストを独立したプロセスで動かすのは、落ちたときにほかのテストを道連れにせず、そのテストの失敗として報告させるためである。
 
-プラグインの呼び出しを包めるのは、wasmtime の設定による。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0001-wasm-host-and-abi.md]（golem-plugin ADR 0001「wasm のホストと ABI」）]
+プラグインの呼び出しを包めるのは、wasmtime の設定による。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0001-wasm-host-and-abi.md]（golem-plugin ADR 0001「wasm のホストと ABI」）]
 
 - import を一つも渡さない。import を要求するモジュールは、読み込みの時点で [code: HasImports] のエラーにする。プラグインは時計、乱数、ファイル、環境変数に触れられない。
 - 呼び出しごとに新しいストアとインスタンスを作る（[code: cbits/golem_plugin.c] の [code: golem_plugin_call]）。前の呼び出しの状態が次の呼び出しに残らない。
@@ -255,7 +255,7 @@ golem-driver のテストは、並列と逐次で組んだ PDF のバイト列�
 S2 の繰り返しも同じ構造をしている。
 golem-layout の [code: resolvePageRefs] は、仮のページ番号から組んだページへの関数を受け取り、ページ番号が変わらなくなるまで繰り返す純粋な関数である。
 golem-driver の [code: fixpoint] が同じ繰り返しを IO の中で回しているのは、一回の組版が [code: mapConcurrently] を使うからで、繰り返しの判定は仮の値と組んだ結果だけで決まる。
-上限は 5 回で、収束しなければ G0721 のエラーにする。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-layout/adr/0003-pagination-and-s2.md]（golem-layout ADR 0003「改ページ、脚注、ページ番号の解決」）]
+上限は 5 回で、収束しなければ G0721 のエラーにする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-layout/adr/0003-pagination-and-s2.md]（golem-layout ADR 0003「改ページ、脚注、ページ番号の解決」）]
 
 ### コンパイルの時点の IO
 
@@ -271,7 +271,7 @@ Golem はこれらを入力から純粋に計算する。
 
 - PDF の [code: CreationDate] と [code: ModDate] は、マニフェストの [code: metadata.date] の日付から [code: pdfDate] が [code: D:YYYYMMDD000000Z] の形で作る。時刻は常に 0 時で、タイムゾーンは常に UTC なので、実行したマシンのタイムゾーンは入らない。
 - PDF の文書 ID は、本の識別子から名前に基づく UUID（バージョン 5）を [code: documentId] で作る。
-- インスタンス ID は、[code: instanceId] が入力の各要素の長さとバイト列を連結した SHA-256 の先頭 16 バイトから作る。要素は、マニフェスト、[code: style.toml]、原稿、出力を変える CLI のオプション、埋め込むフォントのプログラム、Golem のバージョンである（[code: instanceIdInputs]）。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0001-deterministic-pdf-writer.md]（golem-pdf ADR 0001「決定的な PDF の直列化」）]
+- インスタンス ID は、[code: instanceId] が入力の各要素の長さとバイト列を連結した SHA-256 の先頭 16 バイトから作る。要素は、マニフェスト、[code: style.toml]、原稿、出力を変える CLI のオプション、埋め込むフォントのプログラム、Golem のバージョンである（[code: instanceIdInputs]）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0001-deterministic-pdf-writer.md]（golem-pdf ADR 0001「決定的な PDF の直列化」）]
 - EPUB の zip のエントリには、時刻として 0 を渡している（[code: writeEpub]）。EPUB の決定性は v2 で扱う事項だが、今の実装も時計を読まない。
 
 乱数を使うのは [code: golem new] だけで、その乱数も golem-cli の [code: app/Main.hs] が [code: UUID.nextRandom] で作る。
@@ -361,11 +361,12 @@ FreeType のグリフは [code: FT_LOAD_NO_SCALE] で読み、拡大しない整
 
 [code: Double] を使うのは、式の言語だけである。
 書き手は [code: \[= 1.5 * 2\]] のように小数を書くので、小数を値として持つ型が要る。
-golem-eval ADR 0001 は、式の言語の数を [code: Integer] と倍精度の [code: Double] の二つにし、記法の仕様の「数の規則」で計算と表記を固定した。[note: [code: https://github.com/tett23/golem/blob/main/docs/markup.md#数の規則]（記法の仕様の「数の規則」の節）]
+golem-eval ADR 0001 は、式の言語の数を [code: Integer] と倍精度の [code: Double] の二つにし、記法の仕様の「数の規則」で計算と表記を固定した。[note: [style url: https://github.com/tett23/golem/blob/main/docs/markup.md#数の規則]（記法の仕様の「数の規則」の節）]
 
-- 丸めは最近接偶数丸めとし、整数と浮動小数点数の演算では整数を浮動小数点数に変換する。
+- 丸めは最近接偶数丸めとし、整数と浮動小数点数の演算では整数を浮動小数点数に変換する。変換すると無限大になる整数は G0204 にする。
+- 整数と浮動小数点数の比較は、浮動小数点数を有理数にして正確に行う。整数どうしの [code: /] は、有理数の商を一度だけ丸める。
 - 十進のリテラルは、最も近い倍精度の値へ正しく丸めて読む。
-- [code: **] の指数は整数に限り、決まった順序の掛け算で計算する（[code: powInt]）。
+- [code: **] の指数は整数に限る。整数の底と 0 以上の指数は整数で計算し、それ以外は正確な値を一度だけ丸める（[code: powRounded]）。計算の前に、仮数と整数の指数の組で結果の大きさを倍精度の掛け算だけで見積もり、範囲の外の結果と大きすぎる正確な計算を先に除く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0005-float-overflow.md]（golem-eval ADR 0005「浮動小数点数の桁あふれ」）]
 - NaN と無限大になる演算はエラーにし、負のゼロは正のゼロにする（[code: finite]）。
 - [code: round(x, n)] は、[code: x] を最短の十進表記に直してから、十進数として丸める。
 - 本文に埋め込む表記は、最短の往復表記の数字列から、指数表記を使わずに作る（[code: renderDouble]）。

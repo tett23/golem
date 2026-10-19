@@ -39,6 +39,7 @@ module Golem.Doc.IR
   )
 where
 
+import Data.Int (Int64)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -86,6 +87,8 @@ data BlockBody
     ForcedBreak !BreakKind
   | -- | a manual control of page breaks (docs/adr ADR 0030)
     PageControl !PageControl
+  | -- | blank lines before what follows (docs/adr ADR 0046)
+    BlankLines !Int64
   deriving stock (Eq, Show)
 
 {- | A manual control of page breaks (docs/adr ADR 0030): no break
@@ -183,7 +186,9 @@ data Figure = Figure
     figWidth :: !(Maybe Text),
     figCaption :: ![Block],
     -- | the page of a PDF figure, from 1 (golem-pdf ADR 0008)
-    figPage :: !(Maybe Int)
+    figPage :: !(Maybe Int),
+    -- | whether the PDF turns the figure and its caption onto a page of their own (golem-driver ADR 0034)
+    figRotate :: !Bool
   }
   deriving stock (Eq, Show)
 

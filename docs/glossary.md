@@ -25,6 +25,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **命令文脈**：`[name ...]` の中。コマンドの名前、引数、散文スロットを書く（[markup.md](markup.md)）。
 - **段落の区切り方**：原稿の段落を何で区切るか。空行で区切り、段落の中の改行が文字を生まない空行の様式（既定）と、改行ひとつで区切る改行の様式の二つがある。マニフェストの `[source]` の `paragraph-separator` で選び、章の項目ごとにも変えられる（[markup.md](markup.md)、[docs/adr/0013](adr/0013-paragraph-separator.md)）。
 - **強制改行**：段落を分けずに行を改めること。行末の `\` で書く。強制改行の後の行には、一行目の字下げを掛けない（[markup.md](markup.md)、[docs/adr/0016](adr/0016-hard-line-breaks.md)）。
+- **行アキ**：段落のあいだに、行の格子の行を単位とする空きを入れること。`@blank-line` と `@blank-line N` で書く。空行は空きを生まない（[markup.md](markup.md)、[docs/adr/0046](adr/0046-blank-line-command.md)）。
 - **韻文**：組み込みの段落スタイル `verse` を `@style verse` で付けた段落。段落の中の改行が行の区切りになり、段落の一つが一つの連になる（[markup.md](markup.md)、[docs/adr/0003](adr/0003-verse-line-breaks.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 - **文字スタイル**：文字の見た目（書体、大きさ、色、合成の太字と斜体）に名前を付けたもの。`style.toml` の `[character-styles.<名前>]` に定義し、ファイルの先頭の `@style-def character` でもそのファイルでだけ使える文字スタイルを定義できる。原稿では `[style 名前: ...]` で付ける。`[strong: ...]`、`[bold: ...]`、`[italic: ...]` は組み込みの文字スタイルの別名である。`based-on` で別の文字スタイルを引き継ぐ（[markup.md](markup.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 - **段落スタイル**：段落の見た目（書体、大きさ、改行の扱い、同じスタイルの段落の間の空き）に名前を付けたもの。`style.toml` の `[paragraph-styles.<名前>]` に定義し、ファイルの先頭の `@style-def paragraph` でもそのファイルでだけ使える段落スタイルを定義できる。原稿では `@style 名前` で付ける。段落スタイルを付けない段落は `body` で組む（[markup.md](markup.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。

@@ -4,7 +4,7 @@
 Golem の CI は、GitHub Actions の二つのワークフローからなる。[index reading=CI: CI]
 [code: .github/workflows/docs.yml] は ADR とドキュメントを、[code: .github/workflows/ci.yml] はコードを検査する。
 どちらも、[code: main] への push とプルリクエストで動く。
-[code: ci.yml] は、リリースのワークフローからも呼ばれる（第[ref-number release]章）。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0021-docs-workflow-and-ci-gate.md]（docs/adr の ADR 0021「ドキュメントの検査の分離と CI の判定ジョブ」）]
+[code: ci.yml] は、リリースのワークフローからも呼ばれる（第[ref-number release]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0021-docs-workflow-and-ci-gate.md]（docs/adr の ADR 0021「ドキュメントの検査の分離と CI の判定ジョブ」）]
 
 二つに分けたのは、ドキュメントの検査を、コードの検査の取り消しや省略に巻き込まないためである。
 ADR の検査は、ドキュメントだけの変更こそが対象なので、必ず走らなければならない。
@@ -46,8 +46,8 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 - [code: scripts/manual/test.sh]：マニュアルのスクリプトのテスト。
 - [code: scripts/env-determinism/test.sh]：実行の環境を変える検査（第[ref-number determinism]章）のテスト。偽の [code: golem] で、検査が各変化を実際に当てていることを確かめる。
 - [code: scripts/ci/docs-refs.sh]：コードとスクリプトが名指す [code: docs/] の下の文書が、ビルドの読む文書の一覧にあること（第[ref-number docs]章）。
-- [code: scripts/ci/incomplete-patterns.sh]：[code: modules/] の下のすべてのパッケージのすべてのコンポーネントが、[code: -Werror=incomplete-patterns] でビルドされること。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0027-exhaustive-command-dispatch-by-types.md]（docs/adr の ADR 0027「到達しない診断の分岐を型で除く」）]
-- [code: scripts/ci/unsafe-io.sh]：[code: unsafePerformIO] とその仲間を使う定義が、[code: scripts/ci/unsafe-io-allowed.txt] に残す理由とともに書いたものだけであること（第[ref-number purity]章）。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0034-fewer-unsafe-perform-io.md]（docs/adr の ADR 0034「unsafePerformIO を減らし、残すものを検査で固定する」）]
+- [code: scripts/ci/incomplete-patterns.sh]：[code: modules/] の下のすべてのパッケージのすべてのコンポーネントが、[code: -Werror=incomplete-patterns] でビルドされること。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0027-exhaustive-command-dispatch-by-types.md]（docs/adr の ADR 0027「到達しない診断の分岐を型で除く」）]
+- [code: scripts/ci/unsafe-io.sh]：[code: unsafePerformIO] とその仲間を使う定義が、[code: scripts/ci/unsafe-io-allowed.txt] に残す理由とともに書いたものだけであること（第[ref-number purity]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0034-fewer-unsafe-perform-io.md]（docs/adr の ADR 0034「unsafePerformIO を減らし、残すものを検査で固定する」）]
 - [code: scripts/ci/rts-capabilities.sh]：[code: modules/] の下の Haskell のコードが [code: setNumCapabilities] を呼ばないこと、[code: -threaded] でビルドする実行ファイルとテストのスイートが [code: -with-rtsopts=-N] でリンクされること。
 
 二つの [code: setNumCapabilities] が同時に capability を増やすと、GHC 9.10.3 のランタイムは止まる。
@@ -57,7 +57,7 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 [code: -N] でリンクすれば、capability の数は起動のときからプロセッサの数で、実行中に変わらない。
 
 そのあと、変更のパスから、ビルドが要るかを決める。
-パスは [code: scripts/ci/changed-paths.sh] が取り、判定は [code: scripts/ci/needs-build.sh] が行う。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0009-ci-speed.md]（docs/adr の ADR 0009「CI の高速化」）]
+パスは [code: scripts/ci/changed-paths.sh] が取り、判定は [code: scripts/ci/needs-build.sh] が行う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0009-ci-speed.md]（docs/adr の ADR 0009「CI の高速化」）]
 
 | 起動 | 変更のパスの範囲 |
 | --- | --- |
@@ -96,7 +96,7 @@ aarch64 では一つのランナー（[code: all]）がすべてを受け持つ�
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
 + 出力を受け持つランナーでは、[code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。このスクリプトは [code: scripts/manual/build.sh] で二つのマニュアルも組むので、diagnostic が一つでも出ればここで失敗する。
 + x86-64 では、[code: locale-gen] で日本語のロケール（UTF-8 と EUC-JP）を作り、[code: GOLEM_REQUIRE_LOCALES=1] と [code: GOLEM_REQUIRE_FONTS=1] を付けて [code: scripts/env-determinism/check.sh] を実行する。実行の環境を変えても出力が変わらないことを確かめる（第[ref-number determinism]章）。
-プルリクエストでは [code: --quick] を付けて小さな入力だけを検査し、[code: main] への push とリリースではすべての入力を検査する。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0038-env-determinism-quick-on-pull-requests.md]（docs/adr の ADR 0038「プルリクエストでは環境を変える検査を小さな入力に絞る」）]
+プルリクエストでは [code: --quick] を付けて小さな入力だけを検査し、[code: main] への push とリリースではすべての入力を検査する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0038-env-determinism-quick-on-pull-requests.md]（docs/adr の ADR 0038「プルリクエストでは環境を変える検査を小さな入力に絞る」）]
 + x86-64 では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。
 
 キャッシュの鍵は、[code: cabal.project] と [code: cabal.project.freeze] のハッシュ、ランナーの OS とアーキテクチャ、GHC のバージョンから作る。
@@ -113,7 +113,7 @@ x86-64 では、テストを受け持つランナーだけが保存する。
 [code: cabal test] にだけ引数で渡すと、[code: cabal build] と [code: cabal test] のあいだで設定が変わり、どちらのコマンドもすべてのパッケージを設定し直す。
 設定し直したパッケージの C と C++ のソースは、更新時刻で再コンパイルの要否が決まる。
 チェックアウトしたソースは更新時刻が新しいので、golem-font は HarfBuzz と FreeType をすべてコンパイルし直し、それだけで 3 分ほどかかる。
-[code: cabal.project.local] に書けば、CI の中のすべての [code: cabal] のコマンドが同じ設定を読む。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0037-ci-build-job-speedup.md]（docs/adr の ADR 0037「CI の build ジョブの手戻りをなくす」）]
+[code: cabal.project.local] に書けば、CI の中のすべての [code: cabal] のコマンドが同じ設定を読む。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0037-ci-build-job-speedup.md]（docs/adr の ADR 0037「CI の build ジョブの手戻りをなくす」）]
 [code: cabal] のコマンドに設定を変える引数を付けないことは、[code: scripts/ci/test.sh] が [code: ci.yml] を読んで確かめる。
 
 qpdf と epubcheck の導入には 20 秒ほどかかるが、使うのはテストと epubcheck だけである。
@@ -127,7 +127,7 @@ x86-64 にかかる時間は、ビルドに、テストと出力の長い方を�
 aarch64 は x86-64 より短く終わるので、一つのランナーのままにしている。
 
 aarch64 のランナーで同じことをするのは、時間がかかっても省けない。
-浮動小数点数の計算とネイティブライブラリの結果が二つのアーキテクチャで一致することが、決定性の主張の根拠そのものだからである。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0001-haskell-workspace-and-ci.md]（docs/adr の ADR 0001「Haskell のワークスペースと CI」）]
+浮動小数点数の計算とネイティブライブラリの結果が二つのアーキテクチャで一致することが、決定性の主張の根拠そのものだからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0001-haskell-workspace-and-ci.md]（docs/adr の ADR 0001「Haskell のワークスペースと CI」）]
 
 ## determinism
 

@@ -113,7 +113,8 @@ navDocument cfg ft book =
       "<body>",
       "<nav epub:type=\"toc\" id=\"toc\">",
       "<h1>" <> escapeXml (epTitle cfg) <> "</h1>",
-      nested (bookToc book),
+      -- within the depth of @toc (golem-epub ADR 0002)
+      nested (tocWithinDepth book),
       "</nav>",
       "</body>",
       "</html>"

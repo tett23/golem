@@ -63,6 +63,7 @@ module Golem.Driver.Pdf
     hiddenFolios,
     drawsFolio,
     figureRect,
+    fitFigure,
     renderPdf,
     renderPdfView,
     flowLines,
@@ -83,11 +84,12 @@ import Data.Char (isAlphaNum, isAscii, isSpace)
 import Data.Either (fromRight, isLeft)
 import Data.Foldable (toList)
 import Data.Function (on)
+import Data.Int (Int64)
 import Data.List (groupBy, intercalate, mapAccumL, nub, nubBy, sortOn, zip3, zip4)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
 import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -702,7 +704,11 @@ data PlacedFigure = PlacedFigure
     pfSource :: !Text,
     -- | the page of a PDF figure, from 1 (golem-pdf ADR 0008)
     pfPage :: !Int,
-    pfSpan :: !SrcSpan
+    pfSpan :: !SrcSpan,
+    -- | along the lines before the figure was fitted: the measure (golem-driver ADR 0034)
+    pfFullAlong :: !Sp,
+    -- | how a figure turned onto a page of its own is turned
+    pfTurn :: !(Maybe P.Turn)
   }
 
 {- | A table by its first line (golem-driver ADR 0031): its width, the
@@ -988,13 +994,17 @@ gridLine geom k = case (drop k grid, grid) of
   where
     grid = pgLineGrid geom
 
--- | G0737: the manual controls of page breaks not met (docs/adr ADR 0030).
+{- | G0737: the manual controls of page breaks not met (docs/adr ADR
+0030); G0747: the blank lines dropped (docs/adr ADR 0046).
+-}
 unmetWarnings :: [PageOut] -> [Diagnostic]
 unmetWarnings pages =
   [ case u of
       UnmetNoBreak sp -> diagnostic "G0737" Warning sp "ここで改ページを止められませんでした"
       UnmetNeedLines sp k -> diagnostic "G0737" Warning sp ("@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (poLines p)) <> " を超えます")
       UnmetAdjust sp k -> diagnostic "G0737" Warning sp ("@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")
+      -- G0747: blank lines dropped at the top of a column (docs/adr ADR 0046)
+      DroppedBlank sp -> notice "G0747" sp "段の先頭に来た @blank-line の空きを捨てました"
   | p <- pages,
     u <- poUnmet p
   ]
@@ -1007,7 +1017,7 @@ ruledNotices :: [Flow] -> Map Int RuledInfo -> [PageOut] -> [Diagnostic]
 ruledNotices flow infos pages =
   [ if riHeading info
       then notice "G0746" (riSpan info) ("罫線を持つ見出しが版面に入らないため、罫線を省きました（" <> riOwner info <> "）")
-      else notice "G0746" (riSpan info) ("罫線を持つ段落が版面に入らないため、分けて組みました（" <> riOwner info <> "）")
+      else notice "G0746" (riSpan info) ("罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（" <> riOwner info <> "）")
   | f@FRuled {} <- flow,
     let ids = case frBody f of
           RuledLines ls -> map lbId ls
@@ -1529,12 +1539,16 @@ noteAnchors anchors = snd (mapAccumL key Map.empty [(i, n, sp, b) | AnchorNote i
       let k = Map.findWithDefault 0 sp seen
        in (Map.insert sp (k + 1) seen, (i, NoteId sp k, n, b))
 
-{- | The body of a footnote after the mark of its number and a space
-(golem-driver ADR 0018), as a sidenote has its mark (ADR 0006); the mark
-in the format of [notes] mark-format (golem-driver ADR 0025).
+{- | The body of a footnote after the mark of its number (golem-driver ADR
+0018), as a sidenote has its mark (ADR 0006); the mark in the format of
+[notes] mark-format (golem-driver ADR 0025). A quarter em [aki] keeps the
+body apart from the mark: it neither stretches nor breaks (golem-layout
+ADR 0018).
 -}
 withNoteMark :: Text -> Int -> [Inline] -> [Inline]
-withNoteMark format n body = Text (mkSpan (FileId 0) 0 0) (noteMarkText format n <> " ") : body
+withNoteMark format n body = Text sp (noteMarkText format n) : Aki sp (AkiZw (1 / 4)) : body
+  where
+    sp = mkSpan (FileId 0) 0 0
 
 {- | The placement of ruby from [composition.ruby] (golem-layout ADR
 0009); @zw@ is the size of the paragraph.
@@ -1611,6 +1625,8 @@ data UnitKind
     UColumns !(Maybe ColumnSet)
   | -- | a manual control of page breaks (docs/adr ADR 0030)
     UPageControl !PageControl
+  | -- | blank lines before what follows (docs/adr ADR 0046)
+    UBlank !Int64
 
 {- | The look and the indent of a paragraph style (docs/adr ADR 0005, 0006):
 its role, its size, and its kerning, tracking, proportional metrics and
@@ -1686,8 +1702,10 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
                   let (breaks, body) = span isBreakUnit (reverse us)
                    in reverse body <> notesList (styleOf fid) docs <> reverse breaks
             _ -> us
+    -- blank lines at the end of a file go before the first block of the next (docs/adr ADR 0046)
     isBreakUnit u = case uKind u of
       UBreak _ -> True
+      UBlank _ -> True
       _ -> False
     -- the title and a paragraph for each note, its mark first, as at the foot of a page
     notesList style docs = case concatMap documentNotes docs of
@@ -1754,6 +1772,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
             ChannelOutput BibliographyOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bibliographyAt book sp)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
             PageControl c -> (n, [plainUnit (UPageControl c) Nothing []])
+            BlankLines k -> (n, [plainUnit (UBlank k) Nothing []])
     {- the items of the list numbered n: their units are inside it, the first
     unit of an item that starts with a paragraph carries the marker -}
     list style ctx n items =
@@ -1915,26 +1934,50 @@ buildFlow inp geom fonts images assumed = do
       -- figures: the image, its size, its caption and its exclusion (golem-driver ADR 0005)
       figureOf u fig = placeFigure u fig <$> Map.lookup (figureKey fig) images
       placeFigure u fig content =
-        let along = case figWrap fig of
-              Nothing -> Right measure
+        let -- a figure turned onto a page of its own is set in its frame (golem-driver ADR 0034)
+            turned = figRotate fig && isNothing (figWrap fig)
+            along = case figWrap fig of
+              Nothing -> Right (if turned then frameAlong else measure)
               Just _ -> maybe (Left ()) (Right . dimToSp fs) (figWidth fig >>= parseDim)
             alongSp = fromRight measure along
             -- the pixels of an image, the crop box of a PDF figure after its rotation (golem-pdf ADR 0008)
             (w, h) = figureProportions content
-            across = floor (fromInteger alongSp * (if vertical then w / h else h / w))
-            m = fromInteger ((across + pitch - 1) `div` pitch)
+            -- across the lines for each sp along them
+            ratio = if vertical then w / h else h / w
             number = Map.lookup (uSpan u) (bookFigures (piBook inp))
             captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number (concat [is | Block _ _ (Paragraph _ is) <- figCaption fig])
             -- the caption in the role and size of the paragraph style caption (golem-driver ADR 0010)
             (captionRole, cs) = paraFace (uStyle u) geom "caption"
             captionParams = params {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
             (captionItems, captionAnchors) = composeInlines ((styledEnv (uStyle u) (envFor (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption")}) captionInlines
-            caption = if null captionInlines then [] else brLines (breakParagraph captionParams (const alongSp) captionItems)
+            captionAt len = if null captionInlines then [] else brLines (breakParagraph captionParams (const len) captionItems)
+            -- the grid lines a caption of k lines takes: the fewest that hold it, its pitch in the body's ratio of pitch to size
+            captionSpanOf k = if k == 0 then (pitch, 0) else let cb' = headingBlock fs pitch cs k 1 in (hbPitch cb', hbSpan cb')
+            -- the caption in the measure before fitting (golem-driver ADR 0034)
+            caption = captionAt alongSp
             captionMarks = [sp | AnchorIndex _ sp _ <- captionAnchors]
             n = length caption
-            -- its pitch keeps the body's ratio of pitch to size; it takes the fewest grid lines that hold it
-            cb = headingBlock fs pitch cs n 1
-            (cp, span') = if n == 0 then (pitch, 0) else (hbPitch cb, hbSpan cb)
+            (cp, span') = captionSpanOf n
+            -- the grid lines of the column, or of the frame
+            gridLines = if turned then frameLines else capacity
+            fitOf len k s = fitFigure ratio len k pitch fs (if s == 0 then Nothing else Just s)
+            (alongFit, across, fitted) = case figWrap fig of
+              Nothing -> fitOf alongSp gridLines span'
+              Just _ -> (alongSp, floor (fromInteger alongSp * ratio), False)
+            m = fromInteger ((across + pitch - 1) `div` pitch)
+            -- the size the figure would take turned, to tell the writer (golem-driver ADR 0034)
+            turnedArea =
+              let s = snd (captionSpanOf (length (captionAt frameAlong)))
+                  (a, c, _) = fitOf frameAlong frameLines s
+               in if s >= frameLines then 0 else a * c
+            hint = if not turned && turnedArea > alongFit * across then "。rotate=true で回して一ページに置くと、より大きく置けます" else ""
+            place' = if turned then "ページ" else "段"
+            tooDeep = isNothing (figWrap fig) && n > 0 && span' >= gridLines
+            notices =
+              [ notice "G0739" (uSpan u) ("図版を" <> place' <> "に収めるため " <> T.pack (show (alongFit * 100 `div` max 1 alongSp)) <> "% に縮めました" <> hint)
+              | fitted,
+                not tooDeep
+              ]
             depth = if n > 0 then toInteger m * pitch + toInteger (n - 1) * cp + cs else across
             gap = dimToSp fs (stWrapGap style)
             ex = (\side -> exclusion side pitch gap alongSp depth) <$> figWrap fig
@@ -1946,9 +1989,23 @@ buildFlow inp geom fonts images assumed = do
                 | isLeft along || measure - exWidth e < 8 * fs ->
                     [diagnostic "G0722" Error (uSpan u) ("回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
                 | exLines e > capacity -> [diagnostic "G0723" Error (uSpan u) ("回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
-              _ -> []
-         in (PlacedFigure content alongSp across (figWrap fig) m caption cs cp span' ex (figSource fig) (snd (figureKey fig)) (uSpan u), errs, captionMarks)
+              -- a caption that leaves no line for the image (golem-driver ADR 0034)
+              _
+                | tooDeep -> [diagnostic "G0738" Error (uSpan u) ("図版のキャプションが" <> place' <> "の行数を超えます（" <> T.pack (show span') <> " 行。" <> place' <> "は " <> T.pack (show gridLines) <> " 行）")]
+                | otherwise -> []
+            turn
+              | not turned = Nothing
+              | vertical = Just P.TurnedRight
+              | otherwise = Just P.TurnedLeft
+         in (PlacedFigure content alongFit across (figWrap fig) m caption cs cp span' ex (figSource fig) (snd (figureKey fig)) (uSpan u) alongSp turn, errs, notices, captionMarks)
       figures = Map.fromList [(i, f) | (i, u@Unit {uKind = UFigure fig}) <- units, Just f <- [figureOf u fig]]
+      figureNotices = concat [ns | (_, _, ns, _) <- Map.elems figures]
+      {- the frame of a figure turned onto a page of its own (golem-driver
+      ADR 0034): the type area turned, the lines along its height in
+      horizontal text and its width in vertical text -}
+      typeArea = pgTypeArea geom
+      (frameAlong, frameAcross) = if vertical then (rectW typeArea, rectH typeArea) else (rectH typeArea, rectW typeArea)
+      frameLines = fromInteger (max 0 (frameAcross - fs) `div` pitch) + 1
       -- 1. a job per wrapped figure: the paragraphs right after it, in order, beside the exclusion
       wrapJob i ex = go (i + 1) 0
         where
@@ -1959,7 +2016,7 @@ buildFlow inp geom fonts images assumed = do
                 c <- force (compose (\k -> wrappedLineWidth measure ex offset k - lineIndent (uKind u) k) u)
                 ((j, (c, offset)) :) <$> go (j + 1) (offset + length (cLines c))
             | otherwise = pure []
-      jobs = [(i, ex) | (i, (pf, [], _)) <- Map.toList figures, Just ex <- [pfExclusion pf]]
+      jobs = [(i, ex) | (i, (pf, [], _, _)) <- Map.toList figures, Just ex <- [pfExclusion pf]]
   besides <- Map.fromList . concat <$> mapper (uncurry wrapJob) jobs
   -- 2. every other unit on its own
   let rest = [(i, u) | (i, u) <- units, Map.notMember i besides, not (isFigure u), not (isTable u), not (isGap u)]
@@ -1968,6 +2025,7 @@ buildFlow inp geom fonts images assumed = do
         UGap _ -> True
         UBreak _ -> True
         UPageControl _ -> True
+        UBlank _ -> True
         -- code blocks are set by codeBlocks (golem-driver ADR 0017)
         UCode {} -> True
         UColumns _ -> True
@@ -1991,7 +2049,8 @@ buildFlow inp geom fonts images assumed = do
       -- a table: every cell at the body size, no hanging punctuation (golem-driver ADR 0008)
       composeTable st aligns h rows =
         let env = (styledEnv st bodyEnv) {ceHanging = False}
-            cellOf = composeInlines env
+            -- no break between the last two Japanese characters of a cell (golem-driver ADR 0037)
+            cellOf = first keepLastTwo . composeInlines env
             hCells = map cellOf h
             rCells = map (map cellOf) rows
             rowAttached cells setCells height =
@@ -2007,7 +2066,7 @@ buildFlow inp geom fonts images assumed = do
               Left e -> Left e
               Right t -> Right (t, rowAttached header (stHeader t) (stHeaderLines t) : zipWith3 rowAttached rCells (stRows t) (stRowLines t))
       tableUnits = [(i, uStyle u, aligns, h, rows) | (i, u@Unit {uKind = UTable aligns h rows}) <- units]
-  _ <- mapper (\(_, (pf, _, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
+  _ <- mapper (\(_, (pf, _, _, _)) -> evaluate (length (show (map lineRatio (pfCaption pf))))) (Map.toList figures)
   singles <- Map.fromList . zip (map fst rest) <$> mapper (\(_, u) -> force (compose (widthOf (uKind u)) u)) rest
   tables <- Map.fromList <$> mapper (\(i, st, aligns, h, rows) -> let r = composeTable st aligns h rows in evaluate (length (show (fmap fst r))) >> pure (i, r)) tableUnits
   -- 3. number the lines in document order
@@ -2118,7 +2177,7 @@ buildFlow inp geom fonts images assumed = do
         | otherwise = case uKind u of
             UFigure _ -> case Map.lookup i figures of
               Nothing -> st
-              Just (pf, ferrs, fmarks) -> case pfExclusion pf of
+              Just (pf, ferrs, _, fmarks) -> case pfExclusion pf of
                 Just ex
                   | null ferrs ->
                       -- the figure and the lines beside it; the rest of a paragraph cut short continues
@@ -2144,6 +2203,8 @@ buildFlow inp geom fonts images assumed = do
                             headAcc,
                             errs <> tooNarrow
                           )
+                -- a turned figure takes a page of its own (golem-driver ADR 0034)
+                _ | isJust (pfTurn pf) -> (nextId + 1, flows <> [FPageFigure nextId (label u) fmarks], lineAcc, Map.insert nextId pf figAcc, headAcc, errs <> ferrs)
                 _ -> (nextId + 1, flows <> [FFigure nextId (pfImageLines pf + pfCaptionSpan pf) (label u) fmarks], lineAcc, Map.insert nextId pf figAcc, headAcc, errs <> ferrs)
             UGap n -> (nextId, flows <> [FSpace n], lineAcc, figAcc, headAcc, errs)
             UCode {} -> case Map.lookup i codeBlocks of
@@ -2163,6 +2224,7 @@ buildFlow inp geom fonts images assumed = do
                     AdjustLines k -> FAdjustLines (uSpan u) k
                in (nextId, flows <> [flow], lineAcc, figAcc, headAcc, errs)
             UColumns set -> (nextId, flows <> [maybe FRestoreColumns FSwitchColumns set], lineAcc, figAcc, headAcc, errs)
+            UBlank k -> (nextId, flows <> [FBlank (uSpan u) (fromIntegral k)], lineAcc, figAcc, headAcc, errs)
             _ ->
               let c = singles Map.! i
                   ls = cLines c
@@ -2239,7 +2301,7 @@ buildFlow inp geom fonts images assumed = do
       ruledInfoOf u = case uKind u of
         UHeading l _ _ -> uncurry (RuledInfo "見出しの罫線" ("見出し " <> T.pack (show l)) True (lkSize (uLook u))) (uRules u) (uSpan u)
         _ -> uncurry (RuledInfo "段落の罫線" ("段落スタイル " <> fromMaybe "body" (uParaStyle u)) False (lkSize (uLook u))) (uRules u) (uSpan u)
-  pure (Built flow' lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines lineFiles codeInfos codeNotices lineSpans ruledInfos)
+  pure (Built flow' lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos)
 
 {- | The links between ruled blocks (golem-driver ADR 0027): a block whose
 rule before follows right after a block with a rule after shares its
@@ -2475,6 +2537,45 @@ figureProportions = \case
   P.VectorFigure ip -> let (w, h) = P.ipSize ip in (max (1 / 65536) w, max (1 / 65536) h)
   P.SvgFigure d -> let (w, h) = P.drSize d in (max (1 / 65536) w, max (1 / 65536) h)
 
+{- | The size of a figure that does not wrap (golem-driver ADR 0034): along
+and across the lines and whether it was fitted. It takes the measure
+@along0@ unless it is then deeper than the grid lines of the column, @l@
+lines of pitch @p@ for the body size @fs@, leave it: those the caption
+takes, or the depth of the column without one. A deeper figure is made
+that deep, keeping its proportions (@ratio@ across for each along).
+-}
+fitFigure :: Rational -> Sp -> Int -> Sp -> Sp -> Maybe Int -> (Sp, Sp, Bool)
+fitFigure ratio along0 l p fs captionSpan =
+  let across0 = floor (fromInteger along0 * ratio)
+      acrossMax = max 0 $ case captionSpan of
+        Just s -> toInteger (l - s) * p
+        Nothing -> toInteger (l - 1) * p + fs
+   in if across0 <= acrossMax then (along0, across0, False) else (floor (fromInteger acrossMax / ratio), acrossMax, True)
+
+{- | The items of a cell without a break between its last two boxes when
+both are one Japanese character (golem-driver ADR 0037): a penalty
+between them becomes infinite, and a glue gets an infinite penalty
+before it, as the line start rule does (golem-layout ADR 0002).
+-}
+keepLastTwo :: [Item] -> [Item]
+keepLastTwo items = case reverse boxes of
+  (lastIx : prevIx : _)
+    | lastIx `elem` jaBoxes && prevIx `elem` jaBoxes ->
+        let (before, rest) = splitAt (prevIx + 1) items
+            (between, after) = splitAt (lastIx - prevIx - 1) rest
+         in before <> concatMap hold between <> after
+  _ -> items
+  where
+    boxes = [i | (i, Box {}) <- zip [0 :: Int ..] items]
+    jaBoxes = [i | (i, Box _ c) <- zip [0 :: Int ..] items, japanese c]
+    japanese c = case T.unpack (bcText c) of
+      [ch] -> boxKind c `elem` [KindText, KindPunctuation, KindKenten] && charClass ch /= Western
+      _ -> False
+    hold = \case
+      Penalty w p h | p < infPenalty -> [Penalty w infPenalty h]
+      g@Glue {} -> [Penalty 0 infPenalty NoHyphen, g]
+      x -> [x]
+
 -- | Why a figure cannot be placed: G0810 with the reason, or G0811 (golem-pdf ADR 0008, 0009).
 data Unplaced = Unplaced !Text | UnsupportedSvg !(NonEmpty S.Unsupported)
 
@@ -2517,17 +2618,38 @@ figureDiagnostics inp loaded =
     Just (Left why) <- [Map.lookup (figureKey f) loaded]
   ]
 
-{- | The rectangle of a figure's image from grid line @slot@ (golem-driver
-ADR 0005): its top (in vertical writing its right) edge at the top of the
-line at that grid line; at the line start, or at the line end for
-@wrap=end@.
+{- | The rectangle of a figure's image on page @page@ from grid line @slot@
+of the column @ta@ (golem-driver ADR 0005, 0034). A figure turned onto a
+page of its own is in the type area @ta@ turned, and its rectangle is
+where it lands on the page.
 -}
-figureRect :: PageGeometry -> Rect -> Int -> PlacedFigure -> Rect
-figureRect geom ta slot pf =
+figureRect :: PageGeometry -> Int -> Rect -> Int -> PlacedFigure -> Rect
+figureRect geom _ ta slot pf = case pfTurn pf of
+  Nothing -> imageRect geom (paperOf geom) ta slot pf
+  Just t ->
+    let (paper, area) = turnedFrame geom t ta pf
+     in P.turnRect t ta (imageRect geom paper area slot pf)
+
+-- | The trimmed page.
+paperOf :: PageGeometry -> Rect
+paperOf geom = let (pw, ph) = pgPageSize geom in Rect 0 0 pw ph
+
+{- | The rectangle of a figure's image from grid line @slot@ of an area
+(golem-driver ADR 0005, 0034): its top (in vertical writing its right)
+edge at the top of the line at that grid line; at the line start, or at
+the line end for @wrap=end@. A fitted figure goes to the end of the line
+whose edge is nearer the edge of the @paper@, to the start when they are
+as near.
+-}
+imageRect :: PageGeometry -> Rect -> Rect -> Int -> PlacedFigure -> Rect
+imageRect geom paper ta slot pf =
   let d = toInteger slot * pgLinePitch geom
-      atEnd = pfWrap pf == Just WrapEnd
       along = pfAlong pf
       across = pfAcross pf
+      atEnd = case pfWrap pf of
+        Just WrapEnd -> True
+        Just WrapStart -> False
+        Nothing -> along < pfFullAlong pf && nearerEnd (pgVertical geom) paper ta
    in if pgVertical geom
         then
           let right = rectX ta + rectW ta - d
@@ -2535,6 +2657,46 @@ figureRect geom ta slot pf =
         else
           let top = rectY ta + rectH ta - d
            in Rect (if atEnd then rectX ta + rectW ta - along else rectX ta) (top - across) along across
+
+{- | Whether the end of the lines of an area is nearer the edge of the
+paper than their start (golem-driver ADR 0034): the bottom against the
+top in vertical text, the right against the left in horizontal text.
+-}
+nearerEnd :: Bool -> Rect -> Rect -> Bool
+nearerEnd vertical paper ta
+  | vertical = rectY ta - rectY paper < (rectY paper + rectH paper) - (rectY ta + rectH ta)
+  | otherwise = (rectX paper + rectW paper) - (rectX ta + rectW ta) < rectX ta - rectX paper
+
+{- | The frame of a figure turned onto the type area @ta@ (golem-driver ADR
+0034), in its own coordinates: the paper, and the area the figure and its
+caption are set in. The frame is as wide as the type area is high; the
+lines of the frame start at its start across the lines, or at its end
+when that is nearer the edge of the paper and the figure leaves room.
+-}
+turnedFrame :: PageGeometry -> P.Turn -> Rect -> PlacedFigure -> (Rect, Rect)
+turnedFrame geom t ta pf =
+  let vertical = pgVertical geom
+      frame = Rect 0 0 (rectH ta) (rectW ta)
+      paper = unturnRect t ta (paperOf geom)
+      depth
+        | null (pfCaption pf) = pfAcross pf
+        | otherwise = toInteger (pfImageLines pf) * pgLinePitch geom + toInteger (length (pfCaption pf) - 1) * pfCaptionPitch pf + pfCaptionSize pf
+      spare = max 0 ((if vertical then rectW frame else rectH frame) - depth)
+      -- the end across the lines: the left of the frame in vertical text, its bottom in horizontal text
+      endNearer
+        | vertical = rectX frame - rectX paper < (rectX paper + rectW paper) - (rectX frame + rectW frame)
+        | otherwise = rectY frame - rectY paper < (rectY paper + rectH paper) - (rectY frame + rectH frame)
+      shift = if spare > 0 && endNearer then spare else 0
+      area
+        | vertical = frame {rectW = rectW frame - shift}
+        | otherwise = frame {rectH = rectH frame - shift}
+   in (paper, area)
+
+-- | Where a rectangle of the page is in the frame of 'P.Turned': the inverse of 'P.turnRect'.
+unturnRect :: P.Turn -> Rect -> Rect -> Rect
+unturnRect t (Rect x y w h) (Rect px py a b) = case t of
+  P.TurnedRight -> Rect (y + h - py - b) (px - x) b a
+  P.TurnedLeft -> Rect (py - y) (x + w - px - a) b a
 
 -- | The FileId of style.toml: the one after the files of the project.
 styleFileId :: Project -> FileId
@@ -2633,10 +2795,11 @@ writeDocumentView inp geom fonts layout intent =
       {- the runs of a text in a look: its role and whether it is a Latin
       run; split into Latin and other runs where the two sides differ in
       role or in synthetic bold and slant (golem-driver ADR 0004, docs/adr ADR 0005);
-      a variation selector stays with the character before it (golem-pdf ADR 0006) -}
+      a combining character stays with the character before it, variation
+      selectors among them (golem-pdf ADR 0006, golem-driver ADR 0036) -}
       runsOf look txt
         | lkFace look == lkLatinFace look && lkSynthetic look == lkLatinSynthetic look && not (synBold (lkSynthetic look) || synBold (lkLatinSynthetic look)) = [(lkFace look, txt, False)]
-        | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isVariationSelector b || isLatin a == isLatin b) txt, not (T.null r), let latin = isLatin (T.head r)]
+        | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isExtending b || isLatin a == isLatin b) txt, not (T.null r), let latin = isLatin (T.head r)]
       -- the synthetic bold and slant of a run
       syntheticOf look latin = if latin then lkLatinSynthetic look else lkSynthetic look
       -- glyph marks of a text in a look starting at a point, and the glyphs used
@@ -2831,10 +2994,15 @@ writeDocumentView inp geom fonts layout intent =
                             let (base, reading) = T.breakOn "|" (bcText c)
                                 rt = T.drop 1 reading
                                 rsize = lkSize half
-                                baseLooks = zipWith const (bcBaseLooks c <> repeat look) (T.unpack base)
-                                advOf lk ch = toSp (lkSize lk) (lfAdvance fonts (shapingOf vertical lk ch) ch)
-                                baseAdv = zipWith advOf baseLooks (T.unpack base)
-                                readAdv = map (advOf half) (T.unpack rt)
+                                -- a base character with its combining characters is one base (golem-driver ADR 0036)
+                                baseUnits = clusters base
+                                baseLooks = zipWith const (bcBaseLooks c <> repeat look) baseUnits
+                                advOf lk u = case T.uncons u of
+                                  Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingOf vertical lk ch) ch)
+                                  Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf vertical lk ch) u)
+                                  Nothing -> 0
+                                baseAdv = zipWith advOf baseLooks baseUnits
+                                readAdv = map (advOf half . T.singleton) (T.unpack rt)
                                 excess = max 0 (sum readAdv - w)
                                 rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (excess `div` 2, excess `div` 2)
                                 -- the reading sits beside the largest base character
@@ -2844,7 +3012,7 @@ writeDocumentView inp geom fonts layout intent =
                                 inColour lk (marks, glyphs)
                                   | lkColor lk /= lkColor look, Just sw <- swatchOf lk = ([P.Saved (P.SetColor sw : marks)], glyphs)
                                   | otherwise = (marks, glyphs)
-                                placed1 = [inColour lk (runAtU lk vertical False 0 (origin (off + pos)) (T.singleton ch)) | (ch, lk, pos) <- zip3 (T.unpack base) baseLooks (rpBase rp)]
+                                placed1 = [inColour lk (runAtU lk vertical False 0 (origin (off + pos)) u) | (u, lk, pos) <- zip3 baseUnits baseLooks (rpBase rp)]
                                 placed2 = [runAtU half vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
                              in (concatMap fst (placed1 <> placed2), concatMap snd (placed1 <> placed2))
                       KindKenten ->
@@ -2987,7 +3155,21 @@ writeDocumentView inp geom fonts layout intent =
                       here = lid - ciFirst ci
                       rect = codeRect ta codeSlot (spanLines - (if isFirst then ciCaptionSpan ci else 0)) (ciStart ci)
                 ]
-            figures = [(fid, figureRect geom ta slot pf, pf) | (slot, fid) <- placedFigures p, Just pf <- [Map.lookup fid (plFigures layout)]]
+            figures = [(fid, figureRect geom n ta slot pf, pf) | (slot, fid) <- placedFigures p, Just pf <- [Map.lookup fid (plFigures layout)]]
+            {- a figure turned onto the page (golem-driver ADR 0034): its image
+            and caption in its frame, turned into the type area; the view
+            sees them where they land -}
+            turnedOut =
+              [ let pageTa = typeAreaFor geom n
+                    (paper, area) = turnedFrame geom t pageTa pf
+                    imageR = imageRect geom paper area 0 pf
+                    captions = [entry "キャプションの行" (pfSpan pf) area (captionLineAt 0 pf j) (SetLine l (pfCaptionSize pf) 0 [] []) | (j, l) <- zip [0 ..] (pfCaption pf)]
+                    onPage (rec, (_, uses)) = (rec {lrRect = P.turnRect t pageTa <$> lrRect rec}, ([], uses))
+                 in (P.Turned t pageTa (figureMark fid imageR pf : concatMap (fst . snd) captions), (P.turnRect t pageTa imageR, pf), map onPage captions)
+              | (_, SPageFigure fid) <- poSlots p,
+                Just pf <- [Map.lookup fid (plFigures layout)],
+                Just t <- [pfTurn pf]
+              ]
             figMarks = [figureMark fid r pf | (fid, r, pf) <- figures]
             -- one note's lines are in one line of the flow (golem-driver ADR 0018)
             noteLines = concat [[(nid, l) | l <- take cnt (drop from (Map.findWithDefault [] nid noteBodies))] | (nid, from, cnt) <- poFootnotes p]
@@ -3012,8 +3194,8 @@ writeDocumentView inp geom fonts layout intent =
                      let (r, t) = noteRule ta rule (poLines p - length noteLines)
                          sw = ruleSwatch rule
                    ]
-         in ( lineParts <> noteParts,
-              (figMarks, [(r, pf) | (_, r, pf) <- figures]),
+         in ( lineParts <> noteParts <> concat [cs | (_, _, cs) <- turnedOut],
+              (figMarks <> [m | (m, _, _) <- turnedOut], [(r, pf) | (_, r, pf) <- figures] <> [i | (_, i, _) <- turnedOut]),
               (concat [ms | (_, _, _, ms, _) <- rules], [(k, r, t) | (k, r, t, _, _) <- rules]),
               (map snd backgrounds, map fst backgrounds <> [sw | (_, _, _, _, Just sw) <- rules])
             )
@@ -3258,7 +3440,7 @@ writeDocumentView inp geom fonts layout intent =
               V.PageView
                 { V.pvIndex = i,
                   V.pvTrim = Rect 0 0 pw ph,
-                  V.pvImages = [V.ImageView r (pfContent pf) (pfSpan pf) (pfSource pf) | (r, pf) <- pdImages pd],
+                  V.pvImages = [V.ImageView r (pfContent pf) (pfSpan pf) (pfSource pf) (isJust (pfTurn pf)) | (r, pf) <- pdImages pd],
                   V.pvLines = [V.LineView r (lrKind rec) (lrSpan rec) (lrOverfull rec) | (rec, _) <- pdLines pd, Just r <- [lrRect rec]],
                   V.pvGlyphs = [glyphView (lrSpan rec) u | (rec, us) <- pdLines pd, u <- us],
                   V.pvRules = [V.RuleView k t r | (k, r, t) <- pdRules pd],

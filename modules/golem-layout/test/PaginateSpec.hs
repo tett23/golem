@@ -32,7 +32,9 @@ paginateTests =
       testGroup "widows, orphans and the page end" widowOrphanTests,
       testGroup "page references that do not settle (S2)" pageRefTests,
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
+      testGroup "turned figures on pages of their own (golem-driver ADR 0034)" pageFigureTests,
       testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
+      testGroup "blank lines (docs/adr ADR 0046)" blankLineTests,
       testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
       testGroup "invariants" propertyTests
     ]
@@ -170,6 +172,32 @@ widowOrphanTests =
       -- 2 free on page 1: both figures of 3 lines are sent on, the text moves up
       let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 98 3 [] [], FFigure 99 3 [] [], FParagraph (lines' 10 2)]
       contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 10, SLine 11], [SFigure 98], [SFigure 99]]
+  ]
+
+pageFigureTests :: [TestTree]
+pageFigureTests =
+  [ testCase "a turned figure in the middle of the text: the text fills the page, the figure takes the next one" $ do
+      let ps = paginate 1 5 [FParagraph (lines' 0 3), FPageFigure 50 ["f"] [], FParagraph (lines' 10 4)]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 10, SLine 11], [SPageFigure 50], [SLine 12, SLine 13]]
+      labelPages ps @?= Map.fromList [("f", 2)],
+    testCase "a turned figure met on an empty page takes that page" $
+      contents (paginate 1 5 [FPageFigure 50 [] [], FParagraph (lines' 0 2)]) @?= [[SPageFigure 50], [SLine 0, SLine 1]],
+    testCase "a figure after a turned figure waits even when it fits, and goes to the page after it" $
+      contents (paginate 1 5 [FParagraph (lines' 0 2), FPageFigure 50 [] [], FFigure 60 1 [] [], FParagraph (lines' 10 2)])
+        @?= [[SLine 0, SLine 1, SLine 10, SLine 11], [SPageFigure 50], [SFigure 60]],
+    testCase "a waiting turned figure is placed before a forced page break" $
+      contents (paginate 1 5 [FParagraph (lines' 0 2), FPageFigure 50 [] [], FBreak BreakPage, FParagraph (lines' 10 1)])
+        @?= [[SLine 0, SLine 1], [SPageFigure 50], [SLine 10]],
+    testCase "a waiting turned figure is placed before a column break" $
+      [(poNumber p, poColumn p, map snd (poSlots p)) | p <- paginate 2 5 [FParagraph (lines' 0 2), FPageFigure 50 [] [], FBreak BreakColumn, FParagraph (lines' 10 1)]]
+        @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SPageFigure 50]), (3, 0, [SLine 10])],
+    testCase "a waiting turned figure is placed before a heading at a recto" $ do
+      let ps = paginate 1 5 [FParagraph (lines' 0 2), FPageFigure 50 [] [], FParagraph (lines' 10 1), FHeading 1 True 1 (lines' 20 1)]
+      [(poNumber p, map snd (poSlots p)) | p <- ps, not (poBlank p)] @?= [(1, [SLine 0, SLine 1, SLine 10]), (2, [SPageFigure 50]), (3, [SHeading 20 1])],
+    testCase "a footnote continued from the page before skips the page of a turned figure" $ do
+      let ps = paginate 1 5 [FParagraph [LineBox 0 [NoteBody (nid 900) 5] [] [] 0], FPageFigure 50 [] [], FParagraph (lines' 10 2)]
+      contents ps @?= [[SLine 0], [SPageFigure 50], [SLine 10, SLine 11]]
+      notesByPage ps @?= [(1, [nid 900]), (2, []), (3, [nid 900])]
   ]
 
 {- | The label "x" on the last of k one-line pages before it, where k is
@@ -336,6 +364,57 @@ pageControlTests =
       unmets ps @?= [UnmetAdjust mk (-9)]
   ]
 
+-- | On one column of ten grid lines (docs/adr ADR 0046).
+blankLineTests :: [TestTree]
+blankLineTests =
+  [ testCase "blank lines take grid lines before what follows" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 3), FBlank mk 2, FParagraph (lines' 10 2)]
+      gridLines ps @?= [[0, 1, 2, 5, 6]]
+      unmets ps @?= [],
+    testCase "blank lines and the first part of what follows go to the next column together, and the blank lines are dropped there" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 9), FBlank mk 1, FParagraph (lines' 10 3)]
+      lineIds ps @?= [[0 .. 8], [10, 11, 12]]
+      gridLines ps @?= [[0 .. 8], [0, 1, 2]]
+      unmets ps @?= [DroppedBlank mk],
+    testCase "blank lines after a full column are dropped" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 10), FBlank mk 1, FParagraph (lines' 10 2)]
+      gridLines ps @?= [[0 .. 9], [0, 1]]
+      unmets ps @?= [DroppedBlank mk],
+    testCase "blank lines after a page break are dropped" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 2), FBreak BreakPage, FBlank mk 3, FParagraph (lines' 10 2)]
+      gridLines ps @?= [[0, 1], [0, 1]]
+      unmets ps @?= [DroppedBlank mk],
+    testCase "blank lines at the start of the book are dropped" $ do
+      let ps = paginate 1 10 [FBlank mk 2, FParagraph (lines' 0 2)]
+      gridLines ps @?= [[0, 1]]
+      unmets ps @?= [DroppedBlank mk],
+    testCase "each blank line dropped is recorded" $
+      unmets (paginate 1 10 [FBlank mk 1, FBlank mk2 2, FParagraph (lines' 0 2)]) @?= [DroppedBlank mk, DroppedBlank mk2],
+    testCase "blank lines longer than the rest of the column are dropped whole, not cut" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 3), FBlank mk 20, FParagraph (lines' 10 2)]
+      gridLines ps @?= [[0, 1, 2], [0, 1]]
+      unmets ps @?= [DroppedBlank mk],
+    testCase "blank lines before a heading that starts at a recto are dropped at the recto" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 3), FBlank mk 2, FHeading 1 True 1 (lines' 20 1), FParagraph (lines' 30 2)]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2], [], [SHeading 20 1, SLine 30, SLine 31]]
+      map poBlank ps @?= [False, True, False]
+      gridLines ps @?= [[0, 1, 2], [], [0, 1, 2]]
+      unmets ps @?= [DroppedBlank mk],
+    testCase "a heading is kept with the blank lines and the first two lines after it" $ do
+      gridLines (paginate 1 10 [FParagraph (lines' 0 5), heading 20, FBlank mk 2, FParagraph (lines' 30 2)]) @?= [[0, 1, 2, 3, 4, 5, 8, 9]]
+      let ps = paginate 1 10 [FParagraph (lines' 0 6), heading 20, FBlank mk 2, FParagraph (lines' 30 2)]
+      gridLines ps @?= [[0 .. 5], [0, 3, 4]]
+      unmets ps @?= [],
+    testCase "a no-break keeps the last lines, the blank lines and the first lines after it together" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 9), FNoBreak mk, FBlank mk2 1, FParagraph (lines' 10 5)]
+      lineIds ps @?= [[0 .. 6], [7, 8, 10, 11, 12, 13, 14]]
+      gridLines ps @?= [[0 .. 6], [0, 1, 3, 4, 5, 6, 7]]
+      unmets ps @?= [],
+    testCase "a table after blank lines keeps its space before" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 2), FBlank mk 1, FTable 50 1 [] [lines' 30 1]]
+      map (map tsFirst . poTables) ps @?= [[4]]
+  ]
+
 figureOrderTests :: [TestTree]
 figureOrderTests =
   [ testCase "a figure after a figure sent on is sent on after it" $ do
@@ -475,6 +554,23 @@ ruledTests =
       gridLines joined @?= [[0, 1, 3, 4]]
       map poRules joined @?= [[PlacedRule 0 False (p + face + 2 * 65536), PlacedRule 10 True (p + face + 24 * 65536 - 2 * 65536 - 32768)]]
       gridLines (paginate 1 20 [a, FSpace 1, b']) @?= [[0, 1, 4, 5]],
+    testCase "a ruled paragraph split between columns has no rules and takes no lines for them (golem-driver ADR 0035)" $ do
+      let ps = paginate 1 4 [ruled (Just (spaced 5 10)) (Just (spaced 5 10)) (lines' 0 6)]
+      -- the first part starts at the first grid line; the room after the last part is not used
+      gridLines ps @?= [[0, 1, 2, 3], [0, 1]]
+      map poRules ps @?= [[], []],
+    testCase "the rule after before a split paragraph takes its own area (golem-driver ADR 0035)" $ do
+      let a = ruled Nothing (Just (spaced 2 3)) (lines' 0 1)
+          b = FRuled 10 (Just (spaced 2 6)) (Just (spaced 2 6)) True ruleGrid 0 (RuledLines (lines' 10 8))
+          rules = concatMap poRules (paginate 1 5 [a, b])
+      [(prId r, prBefore r) | r <- rules] @?= [(0, False)]
+      rules @?= concatMap poRules (paginate 1 5 [a, FSpace 0, b {frJoined = False}]),
+    testCase "the rule before after a split paragraph is a rule of its own (golem-driver ADR 0035)" $ do
+      let b = FRuled 10 (Just (spaced 2 6)) (Just (spaced 2 6)) False ruleGrid 0 (RuledLines (lines' 10 6))
+          c joined = FRuled 30 (Just (spaced 2 6)) Nothing joined ruleGrid 0 (RuledLines (lines' 30 1))
+          rulesOf j = map poRules (paginate 1 5 [b, c j])
+      [(prId r, prBefore r) | r <- concat (rulesOf True)] @?= [(30, True)]
+      rulesOf True @?= rulesOf False,
     testCase "a ruled paragraph that ends at the column end counts its rule at the edge" $ do
       -- inside: inner 5pt, outer 30pt take 2 lines; at the end 1 line
       let ps = paginate 1 4 [ruled Nothing (Just (spaced 5 30)) (lines' 0 3)]

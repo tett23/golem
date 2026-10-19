@@ -29,7 +29,7 @@ Golem のリポジトリの [code: docs/] には、性質の違う文書が並�
 ## 仕様書と README を最新に保つ
 
 ADR で仕様が変わったら、同じプルリクエストで [code: docs/specifications.md] と [code: README.md] も直す。[index reading=しようしょ: 仕様書]
-この二つは、[code: main] で常に最新でなければならない。[note: [code: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md の「ドキュメント」の節）]
+この二つは、[code: main] で常に最新でなければならない。[note: [style url: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md の「ドキュメント」の節）]
 
 「常に最新」は、プルリクエストを分けないということである。
 実装だけを先にマージして、仕様書を後で直す、という進め方をすると、そのあいだの [code: main] では仕様書が実装と食い違う。
@@ -47,7 +47,7 @@ ADR で仕様が変わったら、同じプルリクエストで [code: docs/spe
 新しい用語を導入したら、[code: docs/glossary.md] にも加える。
 
 diagnostic のコードを足すときは、同じ変更で [code: docs/diagnostics.md] に節を足す。[index reading="diagnostics.md": diagnostics.md]
-節の形は決まっている。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0005-explain-diagnostic-codes.md]（golem-cli ADR 0005「診断のコードの説明を golem explain で表示する」）]
+節の形は決まっている。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0005-explain-diagnostic-codes.md]（golem-cli ADR 0005「診断のコードの説明を golem explain で表示する」）]
 
 ```markdown
 ## G0701
@@ -93,7 +93,7 @@ CI は、変更が [code: docs/] の下のファイルとリポジトリのル�
 一覧にない文書は docs だけの変更として扱われ、変えてもビルドが走らない。
 コードの中では、文書のパスを一つの文字列（[code: "../../docs/diagnostics.md"] の形）で書く。
 CI の [code: changes] ジョブが実行する [code: scripts/ci/docs-refs.sh] は、[code: modules/] の [code: .hs] と [code: .cabal] と [code: scripts/] の [code: .sh] からそうした文字列を拾い、一覧と照らし合わせる。
-パスを文字列の連結で組み立てると、この検査をすり抜ける。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0021-docs-workflow-and-ci-gate.md]（docs/adr の ADR 0021「ドキュメントの検査の分離と CI の判定ジョブ」）]
+パスを文字列の連結で組み立てると、この検査をすり抜ける。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0021-docs-workflow-and-ci-gate.md]（docs/adr の ADR 0021「ドキュメントの検査の分離と CI の判定ジョブ」）]
 
 ## 記録
 
@@ -122,7 +122,7 @@ CI の所要時間の記録は [code: docs/ci-timings/] に置き、[code: scrip
 開発者のマニュアルのための規則（diagnostic、アセット、マシンと計算機）は、仕様書と新しい ADR にも当てはめる。
 コミット済みの ADR は変えられないので、古い用語のまま残す。
 
-これらの規則のうち文字と行で判定できるものは、textlint が検査する。[index reading=textlint: textlint][note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0036-textlint-for-documents.md]（docs/adr の ADR 0036「文書の表記を textlint で検査する」）]
+これらの規則のうち文字と行で判定できるものは、textlint が検査する。[index reading=textlint: textlint][note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0036-textlint-for-documents.md]（docs/adr の ADR 0036「文書の表記を textlint で検査する」）]
 規則と辞書は [code: tools/textlint/] にあり、バージョンを固定した npm のパッケージを使う。
 手元では、Node を入れてから次を実行する。
 初めての実行で、パッケージを [code: tools/textlint/node_modules/] に入れる。
@@ -141,7 +141,7 @@ CI では [code: docs.yml] の [code: textlint] ジョブが同じスクリプ�
 
 ## マニュアルの更新の検査
 
-仕様が変わったのにマニュアルが古いまま、という状態を防ぐために、[code: scripts/manual/check-updated.sh] がブランチの変更を検査する。[index reading=まにゅあるのこうしんのけんさ: マニュアルの更新の検査][index reading="check-updated.sh": check-updated.sh][note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0024-manual-audiences-and-policy.md]（docs/adr の ADR 0024「マニュアルの読み手と方針」）]
+仕様が変わったのにマニュアルが古いまま、という状態を防ぐために、[code: scripts/manual/check-updated.sh] がブランチの変更を検査する。[index reading=まにゅあるのこうしんのけんさ: マニュアルの更新の検査][index reading="check-updated.sh": check-updated.sh][note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0024-manual-audiences-and-policy.md]（docs/adr の ADR 0024「マニュアルの読み手と方針」）]
 
 ```sh
 $ sh scripts/manual/check-updated.sh BASE HEAD

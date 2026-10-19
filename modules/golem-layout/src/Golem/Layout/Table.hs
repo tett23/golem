@@ -45,23 +45,30 @@ data TableError = ColumnsTooWide !Sp !Sp
   deriving stock (Eq, Show)
 
 {- | Column widths from the width available and each column's (minimum,
-natural) width: natural widths when they fit; otherwise the minimum plus
-a share of the rest in proportion to (natural − minimum), rounded down,
-the remainder given 1sp at a time from the first column.
+natural) width (golem-driver ADR 0037): natural widths when they fit;
+otherwise each column up to the largest level C whose widths, C held
+between the minimum and the natural width, still fit, so that the short
+columns are filled and the long ones share the rest; the remainder is
+given 1sp at a time from the first column not yet at its natural width.
 -}
 columnWidths :: Sp -> [(Sp, Sp)] -> Either TableError [Sp]
 columnWidths available cols
   | sum (map snd cols) <= available = Right (map snd cols)
   | sumMin <= available =
-      let rest = available - sumMin
-          diffs = [nat - mn | (mn, nat) <- cols]
-          total = sum diffs
-          shares = [if total > 0 then rest * d `div` total else 0 | d <- diffs]
-          leftover = rest - sum shares
-       in Right [mn + sh + (if toInteger i < leftover then 1 else 0) | (i, (mn, _), sh) <- zip3 [0 :: Int ..] cols shares]
+      let level = search 0 (maximum (map snd cols))
+          widths = map (clampTo level) cols
+          leftover = available - sum widths
+          short = scanl (+) 0 [if w < nat then 1 else 0 | (w, (_, nat)) <- zip widths cols]
+       in Right [w + (if w < nat && k < leftover then 1 else 0) | (w, (_, nat), k) <- zip3 widths cols short]
   | otherwise = Left (ColumnsTooWide sumMin available)
   where
     sumMin = sum (map fst cols)
+    clampTo c (mn, nat) = max mn (min c nat)
+    fits c = sum (map (clampTo c) cols) <= available
+    -- the largest c in [lo, hi] that fits; lo fits
+    search lo hi
+      | lo >= hi = lo
+      | otherwise = let mid = (lo + hi + 1) `div` 2 in if fits mid then search mid hi else search lo (mid - 1)
 
 data SetCell = SetCell
   { -- | from the start of the table: the column's position and the alignment of the first line

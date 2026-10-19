@@ -17,6 +17,8 @@ module Golem.Html
     codeTokens,
     XhtmlSite (..),
     renderXhtml,
+    allFigures,
+    webSource,
     pagePath,
     escapeXml,
     cmykToRgb,
@@ -293,12 +295,14 @@ renderXhtml cfg ft book =
             <> [(fontOut p, p) | (ja, la) <- Map.elems (hcFonts cfg), Just p <- [ja, la]]
     }
 
+-- | The file that HTML and EPUB copy for a figure: its @web@ image, or the figure itself.
 webSource :: Figure -> Text
 webSource f = fromMaybe (figSource f) (figWeb f)
 
 fontOut :: FilePath -> FilePath
 fontOut p = "fonts" </> takeFileName p
 
+-- | The @figure blocks, also those inside lists, in the order of the document.
 allFigures :: [Block] -> [Block]
 allFigures = concatMap go
   where
@@ -352,16 +356,23 @@ idAttr = maybe "" (\l -> " id=\"" <> escapeXml l <> "\"")
 carries the kind of the last of them on its outermost element; a break
 at the end writes nothing, and a column break nothing (docs/adr ADR 0017).
 The block after a no-break carries avoid; need-lines and page-lines write
-nothing (docs/adr ADR 0030).
+nothing (docs/adr ADR 0030). Blank lines are a div of a br for each line
+between two blocks, and nothing before the first block, after a break or
+after the last block (docs/adr ADR 0046).
 -}
 topBlocks :: Ctx -> [Block] -> Text
-topBlocks c = go Nothing
+topBlocks c = go Nothing Nothing
   where
-    go _ [] = ""
-    go _ (Block _ _ (ForcedBreak k) : rest) = go (breakName k) rest
-    go _ (Block _ _ (PageControl NoBreak) : rest) = go (Just "avoid") rest
-    go pending (Block _ _ (PageControl _) : rest) = go pending rest
-    go pending (b : rest) = withBreak pending (block c b) <> go Nothing rest
+    -- the break pending, and the blank lines pending after a block (Nothing before one)
+    go _ _ [] = ""
+    go _ _ (Block _ _ (ForcedBreak k) : rest) = go (breakName k) Nothing rest
+    go _ blanks (Block _ _ (PageControl NoBreak) : rest) = go (Just "avoid") blanks rest
+    go pending blanks (Block _ _ (PageControl _) : rest) = go pending blanks rest
+    go pending blanks (Block _ _ (BlankLines n) : rest) = go pending ((+ toInteger n) <$> blanks) rest
+    go pending blanks (b : rest) = blankLines (fromMaybe 0 blanks) <> withBreak pending (block c b) <> go Nothing (Just 0) rest
+    blankLines n
+      | n > 0 = "<div class=\"blank-line\">" <> T.replicate (fromInteger n) "<br/>" <> "</div>\n"
+      | otherwise = ""
     -- the attribute goes at the end of the first start tag
     withBreak pending html = case pending of
       Nothing -> html
@@ -459,6 +470,8 @@ block c (Block sp lbl body) = case body of
       <> "</ol>\n"
   ForcedBreak _ -> ""
   PageControl _ -> ""
+  -- placed by topBlocks (docs/adr ADR 0046)
+  BlankLines _ -> ""
   where
     -- a URL of http or https is a link; another URL is not (golem-doc ADR 0005)
     entryPart = \case
@@ -540,6 +553,13 @@ citeIds book = fst (foldl assign (Map.empty, Set.empty) entries)
           chosen = fromMaybe ("cite-" <> k) (find (`Set.notMember` used) candidates)
        in (Map.insert (at, k) chosen ids, Set.insert chosen used)
 
+{- | The file of the bibliography list a cite mark belongs to (golem-html
+ADR 0003, golem-doc ADR 0008); nothing when the book has no
+@bibliography.
+-}
+bibliographyHome :: Book -> SrcSpan -> Maybe FileId
+bibliographyHome book sp = fst <$> (fst =<< Map.lookup (spanFile sp, sp) (bookCiteMarks book))
+
 -- | The id of the entry of a key in a list; cite-<key> without a list.
 citeId :: Ctx -> Maybe ListAt -> Text -> Text
 citeId c at k = fromMaybe ("cite-" <> k) (at >>= \a -> Map.lookup (a, k) (cCiteIds c))
@@ -583,10 +603,13 @@ inline c = \case
      in "<a epub:type=\"noteref\" class=\"noteref\" href=\"" <> linkTo c (cnHome (cNotes c)) ("note-" <> key) <> "\" id=\"noteref-" <> key <> "\">" <> tshow n <> "</a>"
   Sidenote _ n _ -> "<sup class=\"sidenote-ref\">" <> tshow n <> "</sup>"
   IndexMark sp _ -> "<span id=\"" <> spanAnchor sp <> "\"></span>"
+  -- a link to the entry in the file of its bibliography; a span without one (golem-html ADR 0003)
   Cite sp k -> case citeNumber (cBook c) sp k of
     Just n ->
       let at = fst =<< Map.lookup (spanFile sp, sp) (bookCiteMarks (cBook c))
-       in "<a class=\"cite\" href=\"#" <> escapeXml (citeId c at k) <> "\">[" <> tshow n <> "]</a>"
+       in case bibliographyHome (cBook c) sp of
+            Just home -> "<a class=\"cite\" href=\"" <> linkTo c home (citeId c at k) <> "\">[" <> tshow n <> "]</a>"
+            Nothing -> "<span class=\"cite\">[" <> tshow n <> "]</span>"
     Nothing -> ""
   ProofComment _ t -> if hcDev (cCfg c) then "<span class=\"proof\">" <> escapeXml t <> "</span>" else ""
   LineBreak _ -> "<br/>"

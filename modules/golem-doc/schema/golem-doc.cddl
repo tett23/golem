@@ -25,6 +25,7 @@ block-body =
   / [10, para-style: tstr / null, inlines]         ; paragraph; null is body
   / [11, break-kind]                               ; forced break (docs/adr ADR 0017)
   / [12, page-control]                             ; manual page break control (docs/adr ADR 0030)
+  / [13, lines: 1..9223372036854775807]            ; blank lines before what follows (docs/adr ADR 0046)
 ; 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
 
 heading-attrs = [toc-title: inlines / null, number: int64 / null, nonumber: bool, notoc: bool]
@@ -35,7 +36,7 @@ page-control = [0]                                 ; no page break
              / [1, 1..9223372036854775807]         ; need lines
              / [2, -9223372036854775808..-1 / 1..9223372036854775807] ; adjust the lines of the column
 alignment = 0..3                                   ; default, left, center, right
-figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block], page: int64 / null] ; page: golem-pdf ADR 0008
+figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block], page: int64 / null, rotate: bool] ; page: golem-pdf ADR 0008; rotate: golem-driver ADR 0034
 code = [lang: tstr / null, numbers: bool / null, file: tstr / null, caption: inlines / null, diff: bool, lines: [* code-line]]
 code-line = [text: tstr, number: int64 / null, diff-mark: (0..2) / null, highlight: bool, callouts: [* 1..50]] ; added, removed, context
 channel = [0, depth: uint64] / [1] / [2]           ; toc, index, bibliography

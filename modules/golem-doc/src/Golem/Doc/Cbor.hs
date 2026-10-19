@@ -114,6 +114,7 @@ bodyT = \case
   ChannelOutput c -> tagged 8 [channelT c]
   ForcedBreak k -> tagged 11 [int (fromEnum k)]
   PageControl c -> tagged 12 [pageControlT c]
+  BlankLines n -> tagged 13 [int n]
 
 pageControlT :: PageControl -> Term
 pageControlT = \case
@@ -134,8 +135,8 @@ itemT :: ListItem -> Term
 itemT (ListItem n bs) = TList [opt int n, list blockT bs]
 
 figureT :: Figure -> Term
-figureT (Figure src web alt wr w cap pg) =
-  TList [text src, opt text web, text alt, opt (int . fromEnum) wr, opt text w, list blockT cap, opt int pg]
+figureT (Figure src web alt wr w cap pg rot) =
+  TList [text src, opt text web, text alt, opt (int . fromEnum) wr, opt text w, list blockT cap, opt int pg, TBool rot]
 
 channelT :: ChannelBlock -> Term
 channelT = \case
@@ -307,6 +308,7 @@ termBody t =
         8 | [c] <- fs -> ChannelOutput <$> termChannel c
         11 | [k] <- fs -> ForcedBreak <$> asEnum k
         12 | [c] <- fs -> PageControl <$> termPageControl c
+        13 | [n] <- fs -> BlankLines . fromInteger <$> asInt n
         -- 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
         _ -> bad "ブロックの種類"
     [] -> bad "ブロックの種類"
@@ -351,8 +353,8 @@ termGroup t =
 termFigure :: Term -> D Figure
 termFigure t =
   asList t >>= \case
-    [src, web, alt, wr, w, cap, pg] ->
-      Figure <$> asText src <*> asOpt asText web <*> asText alt <*> asOpt asEnum wr <*> asOpt asText w <*> (asList cap >>= traverse termBlock) <*> asOpt asIntI pg
+    [src, web, alt, wr, w, cap, pg, rot] ->
+      Figure <$> asText src <*> asOpt asText web <*> asText alt <*> asOpt asEnum wr <*> asOpt asText w <*> (asList cap >>= traverse termBlock) <*> asOpt asIntI pg <*> asBool rot
     _ -> bad "図版"
 
 termChannel :: Term -> D ChannelBlock

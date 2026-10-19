@@ -1,6 +1,7 @@
 module Main (main) where
 
 import CodeSpaceSpec (codeSpaceTests)
+import CombiningSpec (combiningTests)
 import Control.Monad (forM_)
 import Data.List (isPrefixOf, maximumBy, subsequences)
 import Data.Map.Strict qualified as Map
@@ -40,6 +41,7 @@ import RuleAreaSpec (ruleAreaTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
+import UrlBreakSpec (urlBreakTests)
 
 main :: IO ()
 main = defaultMain tests
@@ -308,6 +310,8 @@ tests =
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
       codeSpaceTests,
+      urlBreakTests,
+      combiningTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
@@ -878,8 +882,28 @@ tests =
             cellExtent (compose (defaultComposeEnv fs) "well-known") @?= (5 * fs `div` 2, 5 * fs),
           testCase "column widths: natural when they fit" $
             columnWidths 100 [(10, 30), (20, 40)] @?= Right [30, 40],
-          testCase "column widths: the rest shared in proportion, the remainder from the first column" $
-            columnWidths 100 [(10, 60), (20, 80)] @?= Right [42, 58],
+          testCase "column widths: short columns filled first, the long ones level (golem-driver ADR 0037)" $ do
+            columnWidths 100 [(10, 60), (20, 80)] @?= Right [50, 50]
+            -- the table of the developer manual, in characters
+            columnWidths 38 [(1, 12), (4, 13), (9, 33)] @?= Right [12, 13, 13]
+            -- a minimum wider than the level
+            columnWidths 26 [(11, 11), (1, 5), (1, 16)] @?= Right [11, 5, 10]
+            -- the remainder one sp at a time from the first column
+            columnWidths 10 [(0, 9), (0, 9), (0, 9)] @?= Right [4, 3, 3],
+          testProperty "column widths: the sum is the width, each between its minimum and natural width, the short ones natural (golem-driver ADR 0037)" $ property $ do
+            cols <- forAll (Gen.list (Range.linear 1 8) (Gen.int (Range.linear 0 1000) >>= \lo -> (\hi -> (toInteger lo, toInteger hi)) <$> Gen.int (Range.linear lo 1000)))
+            let lo = sum (map fst cols)
+                hi = sum (map snd cols)
+            available <- forAll (Gen.integral (Range.linear lo (max lo (hi - 1))))
+            if hi <= available
+              then success
+              else do
+                ws <- evalEither (columnWidths available cols)
+                sum ws === available
+                assert (and [mn <= w && w <= nat | ((mn, nat), w) <- zip cols ws])
+                let clampTo c (mn, nat) = max mn (min c nat)
+                    level = last (0 : [c | c <- [0 .. maximum (map snd cols)], sum (map (clampTo c) cols) <= available])
+                assert (and [w == nat | ((_, nat), w) <- zip cols ws, nat <= level]),
           testCase "column widths: minimum widths that do not fit are an error" $
             columnWidths 20 [(10, 30), (20, 40)] @?= Left (ColumnsTooWide 30 20),
           testCase "a row is as high as its tallest cell" $ do
@@ -1745,12 +1769,12 @@ codeTests =
           r = breakParagraph defaultParams (\i -> if i == 0 then 37000 else 38000) its
       [T.concat [bcText c | Box _ c <- lineItems l] | l <- brLines r] @?= ["人が読む形式ではnotice[G0730]のように書き、JSONでは", "\"severity\":\"notice\"と書く。"]
       assertBool "not overfull" (not (any lineOverfull (brLines r))),
-    -- golem-doc ADR 0005
+    -- golem-doc ADR 0005; a break after the dot too (golem-layout ADR 0018)
     testCase "url: breaks after the last slash of a run and at spaces, no hyphenation" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}, cePatterns = Just englishUS}
           its = compose env "https://example.com/a/b"
-      [t | Box _ c <- its, let { t = bcText c }] @?= ["https://", "example.com/", "a/", "b"]
-      [h | Penalty _ p h <- its, abs p < infPenalty] @?= [NoHyphen, NoHyphen, NoHyphen]
+      [t | Box _ c <- its, let { t = bcText c }] @?= ["https://", "example.", "com/", "a/", "b"]
+      [h | Penalty _ p h <- its, abs p < infPenalty] @?= [NoHyphen, NoHyphen, NoHyphen, NoHyphen]
       [h | Penalty _ p h <- compose env "typesetting", abs p < infPenalty, h /= NoHyphen] @?= []
       [w | Glue w _ _ <- takeWhile (not . isFinalPenalty) (compose env "a漢b")] @?= [],
     testCase "url: a narrow paragraph breaks after a slash and draws no hyphen" $ do

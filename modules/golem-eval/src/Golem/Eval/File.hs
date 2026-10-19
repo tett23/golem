@@ -196,7 +196,7 @@ evalFile ctx0 (A.File fid blocks0) =
       st0 = St Map.empty (Map.singleton "meta" (ctxMeta ctx)) [] Set.empty Map.empty [] 0 0 (settingDiags <> styleDiags) Map.empty
       (bs0, st) = runState (concat <$> mapM (evalBlock ctx) blocks) st0
       (bs, nestedDiags) = nestedBreaks bs0
-      breakDiags = nestedDiags <> conflictingBreaks bs
+      breakDiags = nestedDiags <> conflictingBreaks bs <> blankLinesInRow bs
       doc0 = Document fid bs
       (doc, filterDiags) = case phApplyFilters (ctxPlugins ctx) (ctxPath ctx) doc0 of
         Left ds -> (doc0, ds)
@@ -253,6 +253,7 @@ unwritableText = concatMap blockDiags . docBlocks
       ChannelOutput _ -> []
       ForcedBreak _ -> []
       PageControl _ -> []
+      BlankLines _ -> []
     inlines :: [InlineF r] -> [Diagnostic]
     inlines = concatMap inline
     inline :: InlineF r -> [Diagnostic]
@@ -499,6 +500,7 @@ standalone ctx sp (A.Located nsp name) args body = case name of
   "no-page-break" -> pageControl sp name args body
   "need-lines" -> pageControl sp name args body
   "page-lines" -> pageControl sp name args body
+  "blank-line" -> blankLine sp args body
   "figure" -> figure ctx sp args body
   "table" -> csvTable ctx sp args
   "listing" -> listing ctx sp args
@@ -542,7 +544,7 @@ attributedWith ctx sp cmds target
 
 isBreakCommand :: A.Located A.Block -> Bool
 isBreakCommand = \case
-  A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["page-break", "column-break", "no-page-break", "need-lines", "page-lines"]
+  A.Located _ (A.BlockCommand (A.Located _ n) _ _) -> n `elem` ["page-break", "column-break", "no-page-break", "need-lines", "page-lines", "blank-line"]
   _ -> False
 
 attributedGroup :: EvalContext -> SrcSpan -> [A.Located A.Block] -> Maybe (A.Located A.Block) -> M [Block]
@@ -662,6 +664,41 @@ pageControl sp name args body
       | not (T.null w) && T.all isDigit w && T.length w <= 9 = Just (read (T.unpack w))
       | otherwise = Nothing
 
+{- | @blank-line and @blank-line N (docs/adr ADR 0046): one positional
+integer word of 1 or more, G0292 otherwise; G0291 out of int64.
+-}
+blankLine :: SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+blankLine sp args body
+  | not (null body) = bad "@blank-line は本体を持てません"
+  | otherwise = case map A.locValue args of
+      [] -> ok 1
+      [A.Positional (A.Word w)]
+        | not (T.null w) && T.all isDigit w ->
+            let n = read (T.unpack w) :: Integer
+             in if n < 1
+                  then bad usage
+                  else if inInt64 n then ok (fromInteger n) else outOfInt64 sp >> pure []
+      _ -> bad usage
+  where
+    usage = "@blank-line の引数は 1 以上の整数を一つだけ書きます"
+    ok n = pure [block sp (BlankLines n)]
+    bad m = err "G0292" sp m >> pure []
+
+{- | G0294 (docs/adr ADR 0046): blank lines written in a row, with only
+need-lines, page-lines and no-page-break between them, at each one after
+the first.
+-}
+blankLinesInRow :: [Block] -> [Diagnostic]
+blankLinesInRow bs =
+  [ notice "G0294" sp "続けて書いた @blank-line は @blank-line <N> にまとめて書けます"
+  | (i, Block sp _ (BlankLines _)) <- zip [0 :: Int ..] bs,
+    Block _ _ (BlankLines _) : _ <- [dropWhile control (reverse (take i bs))]
+  ]
+  where
+    control b = case blockBody b of
+      PageControl _ -> True
+      _ -> False
+
 {- | G0272: a no-break next to a page or column break, with only need-lines
 and page-lines between them (docs/adr ADR 0030).
 -}
@@ -682,8 +719,8 @@ conflictingBreaks bs =
       _ -> "@page-break"
 
 {- | Forced breaks below the top of the document are dropped with G0259
-(docs/adr ADR 0017), and the controls of page breaks with G0271 (docs/adr
-ADR 0030).
+(docs/adr ADR 0017), the controls of page breaks with G0271 (docs/adr ADR
+0030), and blank lines with G0293 (docs/adr ADR 0046).
 -}
 nestedBreaks :: [Block] -> ([Block], [Diagnostic])
 nestedBreaks bs = let (ds, bs') = concat <$> traverse top bs in (bs', ds)
@@ -691,12 +728,14 @@ nestedBreaks bs = let (ds, bs') = concat <$> traverse top bs in (bs', ds)
     top b = case blockBody b of
       ForcedBreak _ -> ([], [b])
       PageControl _ -> ([], [b])
+      BlankLines _ -> ([], [b])
       _ -> inner b
     -- the diagnostics and what is left of a block below the top
     inner :: Block -> ([Diagnostic], [Block])
     inner b@(Block sp lbl body) = case body of
       ForcedBreak _ -> ([diagnostic "G0259" Error sp "@page-break と @column-break は文書の最上位にだけ置けます"], [])
       PageControl _ -> ([diagnostic "G0271" Error sp "@no-page-break、@need-lines、@page-lines は文書の最上位にだけ置けます"], [])
+      BlankLines _ -> ([diagnostic "G0293" Error sp "@blank-line は文書の最上位にだけ置けます"], [])
       BulletList items -> rebuild BulletList <$> traverse item items
       OrderedList items -> rebuild OrderedList <$> traverse item items
       DefList gs -> rebuild DefList <$> traverse (\(DefGroup ts ds) -> DefGroup ts <$> traverse nested ds) gs
@@ -957,11 +996,19 @@ figure ctx sp args body = do
                 Just "start" -> pure (Right (Just WrapStart))
                 Just "end" -> pure (Right (Just WrapEnd))
                 Just w -> pure (Left w)
-              case wrap of
-                Left w -> err "G0230" sp ("wrap は start か end です: " <> w) >> pure []
-                Right wr
+              -- a figure turned onto a page of its own in the PDF (golem-driver ADR 0034)
+              let rotate = case look "rotate" of
+                    Nothing -> Right False
+                    Just "true" -> Right True
+                    Just "false" -> Right False
+                    Just r -> Left r
+              case (wrap, rotate) of
+                (Left w, _) -> err "G0230" sp ("wrap は start か end です: " <> w) >> pure []
+                (_, Left r) -> err "G0287" sp ("rotate は true か false です: " <> r) >> pure []
+                (Right wr, Right rot)
+                  | rot && isJust wr -> err "G0287" sp "回して置く図版は回り込ませられません" >> pure []
                   | isJust wr && isNothing (look "width") -> err "G0231" sp "回り込む図版には width が必要です" >> pure []
-                  | otherwise -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page)))]
+                  | otherwise -> pure [block sp (FigureBlock (Figure path web alt wr (look "width") caption (fromRight Nothing page) rot))]
     _ -> err "G0232" sp "@figure には画像のパスを一つ書きます" >> pure []
   where
     check p = isJust <$> asset ctx sp p

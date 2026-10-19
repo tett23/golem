@@ -9,7 +9,6 @@ module Golem.Eval.Number
     roundHalfAway,
     decimalToDouble,
     renderDecimalFixed,
-    powInt,
     floorDiv,
     floorMod,
   )
@@ -85,15 +84,6 @@ renderDecimalFixed (Decimal m n)
           padded = T.replicate (n + 1 - T.length digits) "0" <> digits
           (ip, fp) = T.splitAt (T.length padded - n) padded
        in (if m < 0 then "-" else "") <> ip <> "." <> fp
-
--- | Exponentiation by squaring in a fixed order.
-powInt :: (a -> a -> a) -> a -> a -> Integer -> a
-powInt mul one = go
-  where
-    go b k
-      | k <= 0 = one
-      | even k = let h = go b (k `div` 2) in mul h h
-      | otherwise = mul b (go b (k - 1))
 
 floorDiv :: Integer -> Integer -> Integer
 floorDiv = div
