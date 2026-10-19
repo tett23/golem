@@ -5044,16 +5044,17 @@ PDF で圏点がなくてよければ、そのままでよい。
 
 罫線を持つ段落か見出し（段落スタイルか `[headings.N]` の `rule-before`、`rule-after`）が、前の罫線の領域、行、後の罫線の領域を合わせて、空の段にも入らない。
 罫線を持つ段落は、罫線を持たない段落と同じく、孤立行と泣き別れの規則で行を段に分けて組む。
-前の罫線は最初の部分の前に、後の罫線は最後の部分の後にだけ引き、分けた箇所には罫線を引かない。
+分けて組んだ段落には、前の罫線も後の罫線も引かず、罫線の領域の行も取らない（[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）。
+後の罫線の領域が最後の部分の後に入る場合も引かない。
 罫線を持つ見出しは、行を分けず、後の罫線を省き、それでも入らなければ前の罫線も省く。
 PDF は書く。
 見出しの行だけで空の段に入らない場合は、[G0724](#g0724) である。
 位置は、段落か見出しの位置である。
 お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 
-- メッセージ: `罫線を持つ段落が版面に入らないため、分けて組みました（段落スタイル <名前>）`、`罫線を持つ見出しが版面に入らないため、罫線を省きました（見出し <階層>）`
+- メッセージ: `罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（段落スタイル <名前>）`、`罫線を持つ見出しが版面に入らないため、罫線を省きました（見出し <階層>）`
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
-- ADR: [golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)
+- ADR: [golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)、[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)（分けて組んだ段落の罫線）
 
 ### 主な原因
 

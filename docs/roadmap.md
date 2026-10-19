@@ -25,7 +25,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ### PDF
 
-- **分けて組んだ段落の罫線**（未実装、[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）：分けて組んだ段落には前後の罫線を引かない。罫線と本文のあいだの間隔を `mm` でも書けることを明記し、HTML と EPUB では間隔の `zw` を版面の文字の大きさで解決する。
 - **表の列の幅**（未実装、[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）：短い列から自然な幅を満たして配り、折り返しを長い列に集める。
 
 ### 安全のための上限と検査
