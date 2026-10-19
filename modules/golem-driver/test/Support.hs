@@ -289,7 +289,11 @@ layoutMini = layoutMiniWith miniManifest
 
 -- | 'layoutMini' with another manifest.
 layoutMiniWith :: BS.ByteString -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO (Either [Diagnostic] (PageGeometry, PdfLayout))
-layoutMiniWith manifest style source files = withSystemTempDirectory "golem-layout" $ \tmp -> do
+layoutMiniWith = layoutMiniFonts fakeProvider
+
+-- | 'layoutMiniWith' with the fonts of a provider.
+layoutMiniFonts :: FontProvider -> BS.ByteString -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO (Either [Diagnostic] (PageGeometry, PdfLayout))
+layoutMiniFonts provider manifest style source files = withSystemTempDirectory "golem-layout" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") manifest
   BS.writeFile (tmp </> "style.toml") style
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
@@ -299,7 +303,10 @@ layoutMiniWith manifest style source files = withSystemTempDirectory "golem-layo
     Left f -> pure (Left (pfDiagnostics f))
     Right e -> case (evBook e, pageGeometry (FileId 0) False (evStyle e)) of
       _ | errs@(_ : _) <- filter isError (evDiagnostics e) -> pure (Left errs)
-      (Just book, Right geom) -> fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty) geom fakeFonts
+      (Just book, Right geom) ->
+        loadFonts provider tmp (evStyleFile e) (evStyle e) [] >>= \case
+          Left ds -> pure (Left ds)
+          Right fonts -> fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty) geom fonts
       (_, Left ds) -> pure (Left ds)
       (Nothing, _) -> pure (Left (filter isError (evDiagnostics e)))
 

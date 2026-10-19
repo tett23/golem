@@ -26,7 +26,11 @@ circled n
 digitChar :: Integer -> Char
 digitChar d = T.index "〇一二三四五六七八九" (fromInteger d)
 
--- | Positional kanji numerals: 10 → 十, 120 → 百二十, 10000 → 一万.
+{- | Positional kanji numerals: 10 → 十, 120 → 百二十, 10000 → 一万.
+The units go up to 京 (10^16), so the domain is an absolute value below
+10^20; the numbers of the IR are int64 and stay far below it (golem-doc
+ADR 0006).
+-}
 kanji :: Integer -> Text
 kanji n
   | n < 0 = "マイナス" <> kanji (negate n)

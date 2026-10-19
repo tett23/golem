@@ -477,7 +477,7 @@ PDF でだけ有効です。
 - [code: middle-dot]：中点類です。
 - [code: full-stop]：句点類です。
 - [code: comma]：読点類です。
-- [code: inseparable]：分離禁止文字（…や‥）です。
+- [code: inseparable]：分離禁止文字（…、‥、U+2014 と U+2015 のダッシュ）です。
 - [code: iteration]：繰返し記号です。
 - [code: prolonged-sound]：長音記号です。
 - [code: small-kana]：小書きの仮名です。

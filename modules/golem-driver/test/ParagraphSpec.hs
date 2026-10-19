@@ -1,4 +1,4 @@
-module ParagraphSpec (verseTests, indentTests, listTests, separatorTests, hardBreakTests, akiTests, breakTests, pageControlTests, columnTests) where
+module ParagraphSpec (verseTests, indentTests, listTests, separatorTests, hardBreakTests, akiTests, breakTests, pageControlTests, columnTests, inseparableTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
@@ -532,3 +532,25 @@ columnTests =
       css <- maybe (assertFailure (show (Map.keys two))) pure (Map.lookup ("html" </> "style.css") two)
       assertBool "no columns" (not ("columns" `BS.isInfixOf` css) && not ("column-count" `BS.isInfixOf` css))
   ]
+
+inseparableTests :: [TestTree]
+inseparableTests =
+  [ testCase "PDF: no line starts with the full stop after an ellipsis" $ do
+      ls <- notoLines "……。"
+      assertBool (show ls) (not (any ("。" `T.isPrefixOf`) ls))
+      assertBool (show ls) (not (any (endsWithOne '…') ls)),
+    testCase "PDF: a double dash of U+2015 is not split" $ do
+      ls <- notoLines "――。"
+      assertBool (show ls) (not (any (endsWithOne '―') ls))
+      assertBool (show ls) (not (any ("。" `T.isPrefixOf`) ls))
+  ]
+  where
+    endsWithOne ch t = T.length (T.takeWhileEnd (== ch) t) == 1
+    -- Noto Serif JP of the 蟹工船 fixture, vertical, 38 characters a line;
+    -- one paragraph for each n of 'あ' × n <> run <> 'い' × 40
+    notoLines run = do
+      noto <- notoBytes
+      let style = replaceIn "characters = 42" "characters = 38" pdfStyle <> "\n[fonts.body]\nja = \"fonts/noto.otf\"\n"
+          src = T.intercalate "\n\n" [T.replicate n "あ" <> run <> T.replicate 40 "い" | n <- [30 .. 41 :: Int]] <> "\n"
+      r <- layoutMiniFonts realProvider miniManifest style src [("fonts/noto.otf", noto)]
+      either (assertFailure . show) (pure . lineTexts . snd) r
