@@ -84,6 +84,7 @@ import Data.Char (isAlphaNum, isAscii, isSpace)
 import Data.Either (fromRight, isLeft)
 import Data.Foldable (toList)
 import Data.Function (on)
+import Data.Int (Int64)
 import Data.List (groupBy, intercalate, mapAccumL, nub, nubBy, sortOn, zip3, zip4)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict (Map)
@@ -993,13 +994,17 @@ gridLine geom k = case (drop k grid, grid) of
   where
     grid = pgLineGrid geom
 
--- | G0737: the manual controls of page breaks not met (docs/adr ADR 0030).
+{- | G0737: the manual controls of page breaks not met (docs/adr ADR
+0030); G0747: the blank lines dropped (docs/adr ADR 0046).
+-}
 unmetWarnings :: [PageOut] -> [Diagnostic]
 unmetWarnings pages =
   [ case u of
       UnmetNoBreak sp -> diagnostic "G0737" Warning sp "ここで改ページを止められませんでした"
       UnmetNeedLines sp k -> diagnostic "G0737" Warning sp ("@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (poLines p)) <> " を超えます")
       UnmetAdjust sp k -> diagnostic "G0737" Warning sp ("@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")
+      -- G0747: blank lines dropped at the top of a column (docs/adr ADR 0046)
+      DroppedBlank sp -> notice "G0747" sp "段の先頭に来た @blank-line の空きを捨てました"
   | p <- pages,
     u <- poUnmet p
   ]
@@ -1012,7 +1017,7 @@ ruledNotices :: [Flow] -> Map Int RuledInfo -> [PageOut] -> [Diagnostic]
 ruledNotices flow infos pages =
   [ if riHeading info
       then notice "G0746" (riSpan info) ("罫線を持つ見出しが版面に入らないため、罫線を省きました（" <> riOwner info <> "）")
-      else notice "G0746" (riSpan info) ("罫線を持つ段落が版面に入らないため、分けて組みました（" <> riOwner info <> "）")
+      else notice "G0746" (riSpan info) ("罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（" <> riOwner info <> "）")
   | f@FRuled {} <- flow,
     let ids = case frBody f of
           RuledLines ls -> map lbId ls
@@ -1534,12 +1539,16 @@ noteAnchors anchors = snd (mapAccumL key Map.empty [(i, n, sp, b) | AnchorNote i
       let k = Map.findWithDefault 0 sp seen
        in (Map.insert sp (k + 1) seen, (i, NoteId sp k, n, b))
 
-{- | The body of a footnote after the mark of its number and a space
-(golem-driver ADR 0018), as a sidenote has its mark (ADR 0006); the mark
-in the format of [notes] mark-format (golem-driver ADR 0025).
+{- | The body of a footnote after the mark of its number (golem-driver ADR
+0018), as a sidenote has its mark (ADR 0006); the mark in the format of
+[notes] mark-format (golem-driver ADR 0025). A quarter em [aki] keeps the
+body apart from the mark: it neither stretches nor breaks (golem-layout
+ADR 0018).
 -}
 withNoteMark :: Text -> Int -> [Inline] -> [Inline]
-withNoteMark format n body = Text (mkSpan (FileId 0) 0 0) (noteMarkText format n <> " ") : body
+withNoteMark format n body = Text sp (noteMarkText format n) : Aki sp (AkiZw (1 / 4)) : body
+  where
+    sp = mkSpan (FileId 0) 0 0
 
 {- | The placement of ruby from [composition.ruby] (golem-layout ADR
 0009); @zw@ is the size of the paragraph.
@@ -1616,6 +1625,8 @@ data UnitKind
     UColumns !(Maybe ColumnSet)
   | -- | a manual control of page breaks (docs/adr ADR 0030)
     UPageControl !PageControl
+  | -- | blank lines before what follows (docs/adr ADR 0046)
+    UBlank !Int64
 
 {- | The look and the indent of a paragraph style (docs/adr ADR 0005, 0006):
 its role, its size, and its kerning, tracking, proportional metrics and
@@ -1691,8 +1702,10 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
                   let (breaks, body) = span isBreakUnit (reverse us)
                    in reverse body <> notesList (styleOf fid) docs <> reverse breaks
             _ -> us
+    -- blank lines at the end of a file go before the first block of the next (docs/adr ADR 0046)
     isBreakUnit u = case uKind u of
       UBreak _ -> True
+      UBlank _ -> True
       _ -> False
     -- the title and a paragraph for each note, its mark first, as at the foot of a page
     notesList style docs = case concatMap documentNotes docs of
@@ -1759,6 +1772,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
             ChannelOutput BibliographyOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bibliographyAt book sp)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
             PageControl c -> (n, [plainUnit (UPageControl c) Nothing []])
+            BlankLines k -> (n, [plainUnit (UBlank k) Nothing []])
     {- the items of the list numbered n: their units are inside it, the first
     unit of an item that starts with a paragraph carries the marker -}
     list style ctx n items =
@@ -2011,6 +2025,7 @@ buildFlow inp geom fonts images assumed = do
         UGap _ -> True
         UBreak _ -> True
         UPageControl _ -> True
+        UBlank _ -> True
         -- code blocks are set by codeBlocks (golem-driver ADR 0017)
         UCode {} -> True
         UColumns _ -> True
@@ -2208,6 +2223,7 @@ buildFlow inp geom fonts images assumed = do
                     AdjustLines k -> FAdjustLines (uSpan u) k
                in (nextId, flows <> [flow], lineAcc, figAcc, headAcc, errs)
             UColumns set -> (nextId, flows <> [maybe FRestoreColumns FSwitchColumns set], lineAcc, figAcc, headAcc, errs)
+            UBlank k -> (nextId, flows <> [FBlank (uSpan u) (fromIntegral k)], lineAcc, figAcc, headAcc, errs)
             _ ->
               let c = singles Map.! i
                   ls = cLines c
@@ -2754,10 +2770,11 @@ writeDocumentView inp geom fonts layout intent =
       {- the runs of a text in a look: its role and whether it is a Latin
       run; split into Latin and other runs where the two sides differ in
       role or in synthetic bold and slant (golem-driver ADR 0004, docs/adr ADR 0005);
-      a variation selector stays with the character before it (golem-pdf ADR 0006) -}
+      a combining character stays with the character before it, variation
+      selectors among them (golem-pdf ADR 0006, golem-driver ADR 0036) -}
       runsOf look txt
         | lkFace look == lkLatinFace look && lkSynthetic look == lkLatinSynthetic look && not (synBold (lkSynthetic look) || synBold (lkLatinSynthetic look)) = [(lkFace look, txt, False)]
-        | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isVariationSelector b || isLatin a == isLatin b) txt, not (T.null r), let latin = isLatin (T.head r)]
+        | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isExtending b || isLatin a == isLatin b) txt, not (T.null r), let latin = isLatin (T.head r)]
       -- the synthetic bold and slant of a run
       syntheticOf look latin = if latin then lkLatinSynthetic look else lkSynthetic look
       -- glyph marks of a text in a look starting at a point, and the glyphs used
@@ -2952,10 +2969,15 @@ writeDocumentView inp geom fonts layout intent =
                             let (base, reading) = T.breakOn "|" (bcText c)
                                 rt = T.drop 1 reading
                                 rsize = lkSize half
-                                baseLooks = zipWith const (bcBaseLooks c <> repeat look) (T.unpack base)
-                                advOf lk ch = toSp (lkSize lk) (lfAdvance fonts (shapingOf vertical lk ch) ch)
-                                baseAdv = zipWith advOf baseLooks (T.unpack base)
-                                readAdv = map (advOf half) (T.unpack rt)
+                                -- a base character with its combining characters is one base (golem-driver ADR 0036)
+                                baseUnits = clusters base
+                                baseLooks = zipWith const (bcBaseLooks c <> repeat look) baseUnits
+                                advOf lk u = case T.uncons u of
+                                  Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingOf vertical lk ch) ch)
+                                  Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf vertical lk ch) u)
+                                  Nothing -> 0
+                                baseAdv = zipWith advOf baseLooks baseUnits
+                                readAdv = map (advOf half . T.singleton) (T.unpack rt)
                                 excess = max 0 (sum readAdv - w)
                                 rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (excess `div` 2, excess `div` 2)
                                 -- the reading sits beside the largest base character
@@ -2965,7 +2987,7 @@ writeDocumentView inp geom fonts layout intent =
                                 inColour lk (marks, glyphs)
                                   | lkColor lk /= lkColor look, Just sw <- swatchOf lk = ([P.Saved (P.SetColor sw : marks)], glyphs)
                                   | otherwise = (marks, glyphs)
-                                placed1 = [inColour lk (runAtU lk vertical False 0 (origin (off + pos)) (T.singleton ch)) | (ch, lk, pos) <- zip3 (T.unpack base) baseLooks (rpBase rp)]
+                                placed1 = [inColour lk (runAtU lk vertical False 0 (origin (off + pos)) u) | (u, lk, pos) <- zip3 baseUnits baseLooks (rpBase rp)]
                                 placed2 = [runAtU half vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
                              in (concatMap fst (placed1 <> placed2), concatMap snd (placed1 <> placed2))
                       KindKenten ->

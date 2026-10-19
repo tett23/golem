@@ -1,6 +1,6 @@
 # ADR 0027: 段落スタイルの罫線
 
-ステータス: 採択
+ステータス: 採択→分けて組んだ段落の罫線と間隔の単位は [ADR 0035](0035-paragraph-rules-split-and-space-units.md)
 
 ## 文脈
 

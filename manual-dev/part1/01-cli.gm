@@ -3,7 +3,7 @@
 
 Golem の操作は、すべて [code: golem] という一つの実行ファイルのコマンドで行う。
 対話的な入力はなく、すべての操作が引数だけで完結する。
-CI から呼ぶことを前提にした設計であり、呼ぶ側は引数を渡し、終了コードと出力を読めばよい。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0001-command-line-interface.md]（golem-cli ADR 0001「コマンドラインのインターフェース」）]
+CI から呼ぶことを前提にした設計であり、呼ぶ側は引数を渡し、終了コードと出力を読めばよい。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0001-command-line-interface.md]（golem-cli ADR 0001「コマンドラインのインターフェース」）]
 
 golem-cli は実行ファイルを持つ唯一のモジュールであり、引数を解釈して各モジュールを呼ぶだけの薄い層である。
 処理の本体は golem-driver や golem-lsp にある。
@@ -11,7 +11,7 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 
 ## コマンドの一覧
 
-コマンドは次のとおりである。[index reading=こまんど: コマンド][note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#cli]（仕様書の「CLI」の節）]
+コマンドは次のとおりである。[index reading=こまんど: コマンド][note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#cli]（仕様書の「CLI」の節）]
 
 | コマンド | 内容 |
 | --- | --- |
@@ -47,13 +47,13 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 [code: golem build] は、[code: --target] を一つも書かなければ、HTML、EPUB、プレーンテキスト、PDF の四つをこの順で作る。[index reading="golem build": golem build]
 マニフェストの [code: \[targets.*\]] の有無は見ない。
 [code: \[targets.*\]] は、ISBN やプレーンテキストの [code: variants] のような、ターゲットごとの設定の置き場所である。
-CI で PDF だけが要るなら、[code: --target pdf] を明示する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0002-build-all-targets-by-default.md]（golem-cli ADR 0002「--target を省いた golem build はすべてのターゲットを作る」）]
+CI で PDF だけが要るなら、[code: --target pdf] を明示する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0002-build-all-targets-by-default.md]（golem-cli ADR 0002「--target を省いた golem build はすべてのターゲットを作る」）]
 
 [code: golem check] は出力を作らず、構文、評価、文書構造（S1）までを検査する。[index reading="golem check": golem check]
 四つのターゲットが使う [code: style.toml] のファイルの存在も確かめ、版面の誤り（G0701）、トンボと塗り足しの誤り（G0702）、段落スタイルの字下げの誤り（G0725）、本文のフォントの欠け（G0807）も報告する。
 行分割と改ページ（S2）はしないので、ページに収まらないことによる誤りは [code: golem build] でしか見つからない。
 
-[code: golem preflight] は、[code: golem build --target pdf --profile prod] と同じ手順で PDF を組み、ファイルに書かずに、組んだ結果を検査する。[index reading="golem preflight": golem preflight][note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
+[code: golem preflight] は、[code: golem build --target pdf --profile prod] と同じ手順で PDF を組み、ファイルに書かずに、組んだ結果を検査する。[index reading="golem preflight": golem preflight][note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 プロファイルは常に [code: prod] で、[code: --profile] は使い方の誤りになる。
 [code: \[targets.*\]] の有無は見ず、常に PDF を組む。
 検査の項目、重大度、しきい値はプリフライトの設定で決まり、設定は [code: --rules] のファイル、なければプロジェクトのルートの [code: preflight.toml]、それもなければ組み込みの [code: print] である。
@@ -65,7 +65,7 @@ LSP、[code: golem check]、[code: golem build] は、プリフライトの検�
 
 [code: golem build] は、プロジェクトのルートの [code: build/<ターゲット>/] に書く。
 書く前に、そのターゲットのディレクトリを空にする。
-前回のビルドの古いファイルが残って、今回の出力の一部と誤解されるのを防ぐためである。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0001-build-pipeline.md]（golem-driver ADR 0001「ビルドのパイプライン」）]
+前回のビルドの古いファイルが残って、今回の出力の一部と誤解されるのを防ぐためである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0001-build-pipeline.md]（golem-driver ADR 0001「ビルドのパイプライン」）]
 
 | 対象 | 出力 |
 | --- | --- |
@@ -80,7 +80,7 @@ CI で PDF を拾うときは、[code: build/pdf/*.pdf] のように一つだけ
 
 ## 終了コード
 
-終了コードは三つの値だけをとる。[index reading=しゅうりょうこーど: 終了コード][note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0004-usage-error-exit-code.md]（golem-cli ADR 0004「使い方の誤りの終了コードを 2 にし、使い方の文言を日本語にする」）]
+終了コードは三つの値だけをとる。[index reading=しゅうりょうこーど: 終了コード][note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0004-usage-error-exit-code.md]（golem-cli ADR 0004「使い方の誤りの終了コードを 2 にし、使い方の文言を日本語にする」）]
 
 | コード | 意味 |
 | --- | --- |
@@ -151,7 +151,7 @@ $ golem build --target pdf --format json 2> diagnostics.json
 
 [code: --marks] は PDF に付けるトンボの形を選ぶ。[index reading="とんぼ": トンボ]
 値は [code: japanese]（日本式の二重のトンボ）、[code: western]（欧文の一重のトンボ）、[code: none] で、既定は [code: none] である。
-PDF を書かないビルドでは何も変えない。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0004-crop-marks-and-bleed.md]（golem-pdf ADR 0004「トンボと塗り足し」）]
+PDF を書かないビルドでは何も変えない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0004-crop-marks-and-bleed.md]（golem-pdf ADR 0004「トンボと塗り足し」）]
 
 トンボは閲覧用と入稿用の PDF を同じ原稿から作り分けるための出力の設定なので、ファイルではなくオプションで選ぶ。
 [code: --marks] はインスタンス ID の入力に入るので、閲覧用と入稿用の PDF は同じドキュメント ID と異なるインスタンス ID を持つ。
@@ -163,7 +163,7 @@ PDF を書かないビルドでは何も変えない。[note: [code: https://git
 [code: --language ja] は A6 判の縦組みで Noto Serif JP を、[code: --language en] はマスマーケットのペーパーバックの横組みで Source Serif 4 を使う。
 フォントは配布元のタグで固定したバージョンから HTTPS で取得し、Golem のソースに固定した SHA-256 で検査してから [code: fonts/] に置く。
 取得に失敗すると、プロジェクトのファイルを一つも書かない。
-[code: --no-fonts] では取得せず、置くべきファイルと URL を表示する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0003-new-project-page-and-fonts.md]（golem-cli ADR 0003「golem new の雛形に版面とフォントを入れる」）]
+[code: --no-fonts] では取得せず、置くべきファイルと URL を表示する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0003-new-project-page-and-fonts.md]（golem-cli ADR 0003「golem new の雛形に版面とフォントを入れる」）]
 [code: preflight.toml] は [code: based-on = "print"] の一行と、[code: print] の主な値をコメントで書き写した例からなる。
 コメントだけが雛形の言語で、キーと値は言語によらない。
 [code: --no-fonts] でも作り、フォントの取得に失敗したときはほかのファイルと同じく書かない。

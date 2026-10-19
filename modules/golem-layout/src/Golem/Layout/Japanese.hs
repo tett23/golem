@@ -8,6 +8,8 @@ module Golem.Layout.Japanese
   ( CharClass (..),
     charClass,
     isVariationSelector,
+    isExtending,
+    clusters,
     ComposeEnv (..),
     SidenoteMarker (..),
     defaultComposeEnv,
@@ -26,6 +28,7 @@ module Golem.Layout.Japanese
 where
 
 import Data.Char (GeneralCategory (..), generalCategory, isSpace)
+import Data.List (groupBy)
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
@@ -161,11 +164,13 @@ them (golem-pdf ADR 0006).
 isVariationSelector :: Char -> Bool
 isVariationSelector c = (c >= '\xFE00' && c <= '\xFE0F') || (c >= '\xE0100' && c <= '\xE01EF')
 
-{- | The text of a box without its trailing variation selectors, unless
-nothing else is left: the character classes come from the base character.
+{- | The text of a box without its trailing combining characters
+(variation selectors among them), unless nothing else is left: the
+character classes come from the base character (golem-pdf ADR 0006,
+golem-driver ADR 0036).
 -}
-withoutSelectors :: Text -> Text
-withoutSelectors t = case T.dropWhileEnd isVariationSelector t of
+baseText :: Text -> Text
+baseText t = case T.dropWhileEnd isExtending t of
   base | T.null base -> t
   base -> base
 
@@ -304,14 +309,13 @@ noteMarkText format n = T.replace "{n}" (T.pack (show n)) format
 textPieces :: Look -> Text -> [Piece]
 textPieces lk t
   | breaksAsCode lk = codePieces lk t
-  | otherwise = reverse (foldl' attach [] (go (zip cs latinish)))
+  | otherwise = go (zip units latinish)
   where
-    -- variation selectors join the character or word before them (golem-pdf ADR 0006)
-    attach acc p = case (acc, p) of
-      (PChar l c vs : rest, PChar _ v "") | isVariationSelector v -> PChar l c (T.snoc vs v) : rest
-      (PWord l w : rest, PChar _ v "") | isVariationSelector v -> PWord l (T.snoc w v) : rest
-      _ -> p : acc
-    cs = T.unpack t
+    {- the units of the text: a base character and the combining characters
+    after it, variation selectors among them (golem-pdf ADR 0006,
+    golem-driver ADR 0036); the classes come from the base characters -}
+    units = [(T.head u, T.tail u) | u <- clusters t]
+    cs = map fst units
     isLatinWordChar c = charClass c == Western && not (isSpace c)
     -- quotation marks, apostrophes, hyphens and dashes join a Latin word when
     -- the nearest letter on either side is Latin (I’ll, “Mercy”—“We”,
@@ -327,12 +331,12 @@ textPieces lk t
       (c : _) -> isLatinWordChar c
       [] -> False
     go [] = []
-    go ((c, l) : rest)
-      | c == ' ' = PSpace lk : go (dropWhile ((== ' ') . fst) rest)
+    go (((c, marks), l) : rest)
+      | c == ' ' = PSpace lk : go (dropWhile ((== ' ') . fst . fst) rest)
       | l =
-          let (w, rest') = span snd ((c, l) : rest)
-           in PWord lk (T.pack (map fst w)) : go rest'
-      | otherwise = PChar lk c "" : go rest
+          let (w, rest') = span snd (((c, marks), l) : rest)
+           in PWord lk (T.concat [T.cons b m | ((b, m), _) <- w]) : go rest'
+      | otherwise = PChar lk c marks : go rest
 
 {- | The text of code (golem-driver ADR 0017): spaces as breaks of a fixed
 width (golem-layout ADR 0017), a
@@ -371,16 +375,16 @@ rubyPieces env segs = concat (zipWith piece [0 :: Int ..] segs)
     lk = (ceLook env) {lkKenten = Nothing}
     piece i (RubySegment base reading) =
       let chars = concatMap (baseChars env lk) base
-          baseText = T.pack (map fst chars)
-          kind = if length segs >= 2 || T.length baseText == 1 then MonoRuby else GroupRuby
-       in [PRubyBreak | i > 0] <> [PRuby lk kind baseText (map snd chars) reading]
+          baseStr = T.concat (map fst chars)
+          kind = if length segs >= 2 || length chars == 1 then MonoRuby else GroupRuby
+       in [PRubyBreak | i > 0] <> [PRuby lk kind baseStr (map snd chars) reading]
 
 {- | The characters of a ruby base, each with its look (golem-layout ADR
 0011): a character style or colour inside restyles its characters as
 outside a ruby; kenten, tate-chu-yoko and numbers keep the look around
 them; notes, index marks and the rest give no characters.
 -}
-baseChars :: ComposeEnv -> Look -> InlineNoRuby -> [(Char, Look)]
+baseChars :: ComposeEnv -> Look -> InlineNoRuby -> [(Text, Look)]
 baseChars env lk inl = case inl of
   Text _ t -> each t
   Color _ _ xs -> inner xs
@@ -390,7 +394,8 @@ baseChars env lk inl = case inl of
   Number _ n _ -> each (T.pack (show n))
   _ -> []
   where
-    each t = [(c, lk) | c <- T.unpack t]
+    -- a base character with its combining characters is one base (golem-driver ADR 0036)
+    each t = [(u, lk) | u <- clusters t]
     inner = concatMap (baseChars env (ceRestyle env lk (withRuby inl)))
 
 -- | An inline without ruby as an inline: the 'Ruby' constructor cannot occur.
@@ -440,7 +445,7 @@ kernPairs env = \case
   x : rest -> x : kernPairs env rest
   [] -> []
   where
-    single c = case T.unpack (withoutSelectors (bcText c)) of
+    single c = case T.unpack (baseText (bcText c)) of
       [ch]
         | boxKind c `elem` [KindText, KindKenten],
           charClass ch `notElem` [Western, Opening, Closing, FullStop, Comma, MiddleDot, Inseparable] ->
@@ -485,11 +490,17 @@ takesKenten c = case generalCategory c of
 isKanaClass :: CharClass -> Bool
 isKanaClass cls = cls `elem` [Kana, SmallKana, ProlongedSound]
 
-{- | The advances of the base characters of a ruby, each in its own look
+{- | The advances of the base characters of a ruby (a base character with
+its combining characters, golem-driver ADR 0036), each in its own look
 (golem-layout ADR 0011); characters without one take the ruby's look.
 -}
 baseAdvances :: ComposeEnv -> Look -> [Look] -> Text -> [Sp]
-baseAdvances env lk looks = zipWith (advance env) (looks <> repeat lk) . T.unpack
+baseAdvances env lk looks = zipWith unit (looks <> repeat lk) . clusters
+  where
+    -- a base character and its combining characters, shaped together (golem-driver ADR 0036)
+    unit l u = case T.unpack u of
+      [c] -> advance env l c
+      _ -> round (ceWordAdvance env l u * toRational (lkSize l))
 
 -- | The advances of the reading characters: half the size of the base, as drawn.
 readingAdvances :: ComposeEnv -> Look -> Maybe Text -> [Sp]
@@ -532,7 +543,7 @@ itemsFor env prev p next = case p of
         allowance before = \case
           _ | not (rsOverhangOntoKana style) -> 0
           Just (PChar lk' c _) | isNothing (lkKenten lk'), isKanaClass (charClass c) -> min (rsOverhang style) (advance env lk' c `div` 2)
-          Just (PRuby lk' _ b ls Nothing) -> case (if before then reverse else id) (zip (T.unpack b) (ls <> repeat lk')) of
+          Just (PRuby lk' _ b ls Nothing) -> case (if before then reverse else id) (zip (map T.head (clusters b)) (ls <> repeat lk')) of
             (c, lc) : _ | isKanaClass (charClass c) -> min (rsOverhang style) (advance env lc c `div` 2)
             _ -> 0
           Just (PRuby lk' k b ls r@(Just _)) ->
@@ -578,13 +589,42 @@ codeItems env lk run padStart padEnd =
   ]
   where
     tr = tracking lk
-    sameSide a b = isVariationSelector b || (charClass a == Western) == (charClass b == Western)
-    -- a URL breaks only after the last slash of a run (golem-doc ADR 0005)
-    slashRun = if lkUrl lk then T.takeWhile (== '/') else T.take 1
-    slashParts t = case T.breakOn "/" t of
+    sameSide a b = isExtending b || (charClass a == Western) == (charClass b == Western)
+    slashParts = if lkUrl lk then urlParts else codeParts
+    -- code breaks after each slash (golem-driver ADR 0017)
+    codeParts t = case T.breakOn "/" t of
       (a, rest)
         | T.null rest -> [a | not (T.null a)]
-        | otherwise -> let s = slashRun rest in (a <> s) : slashParts (T.drop (T.length s) rest)
+        | otherwise -> (a <> "/") : codeParts (T.drop 1 rest)
+
+{- | A URL cut after each character it may break after (golem-layout ADR
+0018): the characters of url.sty's breaks, but not a slash or a colon
+before a slash, so that a run of slashes and "https://" stay whole.
+-}
+urlParts :: Text -> [Text]
+urlParts t = filter (not . T.null) (go (T.unpack t))
+  where
+    go s = case cut s of
+      (a, []) -> [T.pack a]
+      (a, rest) -> T.pack a : go rest
+    cut = \case
+      [] -> ([], [])
+      c : rest@(d : _) | c `elem` urlBreakChars, not (d == '/' && c `elem` ("/:" :: String)) -> ([c], rest)
+      c : rest -> let (a, r) = cut rest in (c : a, r)
+
+-- | The characters a URL may break after (golem-layout ADR 0018): url.sty's \UrlBreaks and \UrlBigBreaks.
+urlBreakChars :: String
+urlBreakChars = "/.@!_|;>]),?&'+=#:"
+
+{- | The penalty of a break inside a URL after the text of a box, if it
+may break there (golem-layout ADR 0018): 0 after a slash, 100 after the
+other characters of 'urlBreakChars'.
+-}
+urlBreakAfter :: Text -> Maybe Int
+urlBreakAfter t = case T.unsnoc t of
+  Just (_, '/') -> Just 0
+  Just (_, c) | c `elem` urlBreakChars -> Just 100
+  _ -> Nothing
 
 {- | Whether text breaks as code: only at spaces and after a slash, with
 no hyphenation and no aki inside (golem-driver ADR 0017, golem-doc ADR 0005).
@@ -640,7 +680,7 @@ wordItems env lk word =
       (parts, pen)
         | T.any (`elem` ("-‐‑–—" :: String)) word =
             (if explicitP >= infPenalty then [word] else explicitParts word, Penalty 0 explicitP ExplicitHyphen)
-        | otherwise = (maybe [word] (`hyphenate` word) (cePatterns env), Penalty (advance env lk '-') 50 (PatternHyphen (protAt snd '-')))
+        | otherwise = (maybe [word] (`hyphenateUnits` word) (cePatterns env), Penalty (advance env lk '-') 50 (PatternHyphen (protAt snd '-')))
       rotated = ceVertical env
       tag = fromEnum (if rotated then KindRotated else KindText)
       tr = tracking lk
@@ -661,13 +701,34 @@ explicitParts :: Text -> [Text]
 explicitParts word = go [] (zip [0 :: Int ..] groups)
   where
     isExplicit c = c `elem` ("-‐–—" :: String)
-    groups = T.groupBy (\a b -> isExplicit a == isExplicit b) word
+    -- a combining character after a hyphen stays with the hyphen (golem-driver ADR 0036)
+    groups = map T.concat (groupBy (\a b -> isExplicit (T.head a) == isExplicit (T.head b)) (clusters word))
     lastIx = length groups - 1
-    cutAfter i g = i > 0 && i < lastIx && T.all isExplicit g
+    cutAfter i g = i > 0 && i < lastIx && T.all isExplicit (T.filter (not . isExtending) g)
     go acc [] = [T.concat (reverse acc) | not (null acc)]
     go acc ((i, g) : rest)
       | cutAfter i g = T.concat (reverse (g : acc)) : go [] rest
       | otherwise = go (g : acc) rest
+
+{- | A word hyphenated by the patterns (golem-driver ADR 0036): the
+patterns see the word without its combining characters, and each cut
+goes after as many base characters, with their combining characters, in
+the word itself; no part starts with a combining character.
+-}
+hyphenateUnits :: Patterns -> Text -> [Text]
+hyphenateUnits p word
+  | T.any isExtending word = cut (map T.length (hyphenate p (T.filter (not . isExtending) word))) (clusters word)
+  | otherwise = hyphenate p word
+  where
+    bases u = if maybe False (isExtending . fst) (T.uncons u) then 0 else 1 :: Int
+    -- the last part takes the rest
+    cut ns us = case ns of
+      n : rest@(_ : _) -> let (a, b) = takeBases n us in T.concat a : cut rest b
+      _ -> [T.concat us | not (null us)]
+    takeBases n = \case
+      u : us
+        | n > 0 || bases u == 0 -> let (a, b) = takeBases (n - bases u) us in (u : a, b)
+      us -> ([], us)
 
 -- | What comes before an item in 'normalize'.
 data Before
@@ -706,6 +767,8 @@ normalize env = go AtStart True
       Box w c ->
         let spacing = case before of
               -- inside code: a break after a slash, no spacing (golem-driver ADR 0017)
+              -- inside a URL: a break after the characters of url.sty's breaks (golem-layout ADR 0018)
+              AfterBox p | lkUrl (bcLook p) && lkUrl (bcLook c) -> [Penalty 0 n NoHyphen | Just n <- [urlBreakAfter (bcText p)]]
               AfterBox p | breaksAsCode (bcLook p) && breaksAsCode (bcLook c) -> [Penalty 0 0 NoHyphen | "/" `T.isSuffixOf` bcText p]
               AfterBox p -> between p c
               AtStart -> leading c
@@ -733,12 +796,12 @@ normalize env = go AtStart True
                 bcEdgeEnd = bcEdgeEnd c + edge (akiBetween set (AkiChar l) AkiLineEnd)
               }
       _ -> c
-    -- the classes come from the base characters, without variation selectors (golem-pdf ADR 0006)
-    baseText = withoutSelectors . bcText
-    firstClass c = case T.uncons (baseText c) of
+    -- the classes come from the base characters, without combining characters (golem-driver ADR 0036)
+    baseOf = baseText . bcText
+    firstClass c = case T.uncons (baseOf c) of
       Just (ch, _) | not (isRuby c) -> Just (charClass ch)
       _ -> Nothing
-    lastClass c = case T.unsnoc (baseText c) of
+    lastClass c = case T.unsnoc (baseOf c) of
       Just (_, ch) | not (isRuby c) -> Just (charClass ch)
       _ -> Nothing
     isRuby c = boxKind c `elem` [KindRuby, KindGroupRuby]

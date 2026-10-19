@@ -1,6 +1,7 @@
 module Main (main) where
 
 import CodeSpaceSpec (codeSpaceTests)
+import CombiningSpec (combiningTests)
 import Control.Monad (forM_)
 import Data.List (isPrefixOf, maximumBy, subsequences)
 import Data.Map.Strict qualified as Map
@@ -40,6 +41,7 @@ import RuleAreaSpec (ruleAreaTests)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
+import UrlBreakSpec (urlBreakTests)
 
 main :: IO ()
 main = defaultMain tests
@@ -308,6 +310,8 @@ tests =
       testGroup "the areas of paragraph rules (golem-driver ADR 0027)" ruleAreaTests,
       inseparableTests,
       codeSpaceTests,
+      urlBreakTests,
+      combiningTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,
@@ -1745,12 +1749,12 @@ codeTests =
           r = breakParagraph defaultParams (\i -> if i == 0 then 37000 else 38000) its
       [T.concat [bcText c | Box _ c <- lineItems l] | l <- brLines r] @?= ["人が読む形式ではnotice[G0730]のように書き、JSONでは", "\"severity\":\"notice\"と書く。"]
       assertBool "not overfull" (not (any lineOverfull (brLines r))),
-    -- golem-doc ADR 0005
+    -- golem-doc ADR 0005; a break after the dot too (golem-layout ADR 0018)
     testCase "url: breaks after the last slash of a run and at spaces, no hyphenation" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkUrl = True}, cePatterns = Just englishUS}
           its = compose env "https://example.com/a/b"
-      [t | Box _ c <- its, let { t = bcText c }] @?= ["https://", "example.com/", "a/", "b"]
-      [h | Penalty _ p h <- its, abs p < infPenalty] @?= [NoHyphen, NoHyphen, NoHyphen]
+      [t | Box _ c <- its, let { t = bcText c }] @?= ["https://", "example.", "com/", "a/", "b"]
+      [h | Penalty _ p h <- its, abs p < infPenalty] @?= [NoHyphen, NoHyphen, NoHyphen, NoHyphen]
       [h | Penalty _ p h <- compose env "typesetting", abs p < infPenalty, h /= NoHyphen] @?= []
       [w | Glue w _ _ <- takeWhile (not . isFinalPenalty) (compose env "a漢b")] @?= [],
     testCase "url: a narrow paragraph breaks after a slash and draws no hyphen" $ do

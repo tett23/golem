@@ -15,7 +15,7 @@ module Golem.Driver.Overhang
 where
 
 import Data.Text qualified as T
-import Golem.Layout.Japanese (BoxKind (..), boxKind)
+import Golem.Layout.Japanese (BoxKind (..), boxKind, clusters)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Layout.Look (Look (..))
 import Golem.LayoutSpec (baselineRatio)
@@ -71,7 +71,7 @@ lineOverhang vertical h central l = maximum (0 : concatMap boxOverhang (lineItem
             (base, reading) <- T.breakOn "|" (bcText c),
             T.length reading > 1 ->
               let look = bcLook c
-                  looks = zipWith const (bcBaseLooks c <> repeat look) (T.unpack base)
+                  looks = zipWith const (bcBaseLooks c <> repeat look) (clusters base)
                   big = if null looks then lkSize look else maximum (map lkSize looks)
                in [rubyOverhang vertical h big (lkSize look `div` 2) (lkBaselineShift look)]
         KindKenten
