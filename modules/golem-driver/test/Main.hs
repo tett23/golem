@@ -71,6 +71,7 @@ tests =
              testGroup "PDF index and bibliography (ADR 0007)" indexTests,
              testGroup "bibliography entries and G0326 (golem-doc ADR 0004)" bibliographyFormatTests,
              testGroup "PDF tables (ADR 0008)" tableTests,
+             testGroup "table column widths (golem-driver ADR 0037)" columnWidthTests,
              testGroup "PDF table of contents (ADR 0009)" tocTests,
              testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
              testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
