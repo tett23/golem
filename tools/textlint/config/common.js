@@ -36,6 +36,13 @@ const words = {
     message:
       "「効く」を使わない。文ごとに「有効」「適用される」「役に立つ」「働く」「左右する」などの正確な語を選ぶ（docs/manual-policy.md）。",
   },
+  // 鍵 but not the cryptographic terms (公開鍵, 秘密鍵, 共通鍵, 署名の鍵),
+  // which are the standard Japanese words.
+  key: {
+    pattern: "(?<!公開|秘密|共通|署名の)鍵",
+    message:
+      "key は「鍵」と書かず「キー」と書く（TOML、表、辞書、キーワード引数、並べ替え、キャッシュ、API のキー）。暗号の語（公開鍵、秘密鍵）はそのまま使う（docs/manual-policy.md）。",
+  },
   notice: {
     pattern: "お知らせ",
     message: "開発者と技術者に向けた文書（開発者のマニュアル、仕様書、新しい ADR）では重大度を notice と書き、info とも書き分ける。「お知らせ」は docs/diagnostics.md の値を引くときだけ「」で囲んで使う（docs/manual-policy.md）。",

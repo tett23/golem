@@ -76,7 +76,7 @@ Haskell は、副作用を型で区別する。
 副作用を持つ計算は [code: IO a] のような型を持ち、型に [code: IO] を持たない関数の中からは [code: IO] の計算を実行できない（例外は [code: unsafePerformIO] で、後の「C のライブラリを純粋な関数として包む」の節で扱う）。
 このため、型に [code: IO] が現れない関数はふつう純粋であり、それを確かめるのはコンパイラの型の検査である。
 golem-eval の [code: evalFile :: EvalContext -> A.File -> EvalResult] は、型の上で時計も環境変数も読めない。
-[code: evalFile] が使う値は、import 先の評価の結果、マニフェストの値、図版と CSV と TSV の中身、プラグインの関数まで、すべて [code: EvalContext] の欄として渡されている。
+[code: evalFile] が使う値は、import 先の評価の結果、マニフェストの値、図版と CSV と TSV の中身、プラグインの関数まで、すべて [code: EvalContext] のフィールドとして渡されている。
 
 純粋性と決定性は、副作用を通してつながっている。
 出力が入力の外の値で揺れるのは、どこかで読む副作用（時刻、乱数、環境、列挙の順）が値を持ち込んだときである。
@@ -110,7 +110,7 @@ IO を持つのは、golem-driver の [code: evaluateProjectWith] と [code: bui
 処理の各段階は、読み込みの済んだ値を受け取る純粋な関数として書いてある。
 主な関数の型は次のとおりである。
 
-```haskell
+```haskell numbers=true
 -- golem-parser（構文解析）
 parseFile :: FileId -> ByteString
           -> Either [Diagnostic] (Node, [Diagnostic])
@@ -120,7 +120,8 @@ loadStyle :: FileId -> Maybe Text -> Either [Diagnostic] Style
 evalFile :: EvalContext -> A.File -> EvalResult
 -- golem-doc（S1）
 assemble :: AssembleConfig
-         -> (DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text)
+         -> (DocValues -> SrcSpan -> DeferredExpr
+             -> Either Diagnostic Text)
          -> [Document] -> (Book, [Diagnostic])
 -- golem-layout（S2 の行分割、改ページ、ページ番号の解決）
 breakParagraph :: Params -> (Int -> Sp) -> [Item] -> Breaks

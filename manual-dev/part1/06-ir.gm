@@ -102,7 +102,7 @@ Haskell の型（golem-doc の [code: Golem.Doc.IR]）は手で書き、CDDL と
 - 直和型は [code: \[タグ番号, フィールド...\]] の配列で表す。タグ番号は一度割り当てたら変えず、使わなくなった番号も再利用しない。
 - マップを使わず、フィールドの順序で区別する。マップのキーの順序に依存しないためである。
 - CBOR は RFC 8949 [cite rfc8949] の決定的な符号化で書く。
-- 整数の欄は 64 ビットの符号付き整数（-2 の 63 乗以上、2 の 63 乗未満）に限り、CDDL では [code: int64] と書く。bignum（CBOR の tag 2 と 3）は書かない。評価器は範囲の外の整数を IR に入れずに G0291 のエラーにし、復号は範囲の外の整数をスキーマの誤りにする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0006-integer-range-in-ir.md]（golem-doc ADR 0006「意味論 IR の大きな整数」）]
+- 整数のフィールドは 64 ビットの符号付き整数（-2 の 63 乗以上、2 の 63 乗未満）に限り、CDDL では [code: int64] と書く。bignum（CBOR の tag 2 と 3）は書かない。評価器は範囲の外の整数を IR に入れずに G0291 のエラーにし、復号は範囲の外の整数をスキーマの誤りにする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0006-integer-range-in-ir.md]（golem-doc ADR 0006「意味論 IR の大きな整数」）]
 - スキーマの先頭にバージョンを置き、ABI のバージョンと一致させる。ノードやフィールドを足したらバージョンを上げる。今のバージョンは 7 である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0008-pdf-figures.md]（golem-pdf ADR 0008「PDF の図版と置けない図版の診断」）が図版に PDF のページの番号を足して 7 にした。]
 
 ## 文書とブロック
@@ -296,7 +296,7 @@ data ChannelBlock = TocOutput !Int | IndexOutput | BibliographyOutput
 次の四つのファイルからなるプロジェクトで、チャネルの働きを追う。
 マニフェストの [code: chapters] には、この順に並べ、[code: bibliography] に [code: knuth1981] と [code: jlreq] の二件を持つ CSL-JSON のファイルを書く。
 
-```
+``` numbers=true
 % front.gm
 @nonumber
 @notoc
@@ -428,7 +428,7 @@ S0 を並列に実行し、完了の順が変わっても、一覧は変わら�
 上書きを許すと、S1 が前提にする印の形（索引の読み、引用のキー）を処理系が保証できなくなるからである。
 
 組み込みのチャネルのほかに、プラグインは独自のチャネルを宣言できる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0007-plugin-channel-lists.md]（golem-doc ADR 0007「プラグインの独自のチャネル」）]
-宣言は [code: golem_describe] の応答の三つ目の欄で、名前、並べ方（文書の順か読みの順）、出現の位置を付けるかどうか（[code: locators]）を持つ。
+宣言は [code: golem_describe] の応答の三つ目のフィールドで、名前、並べ方（文書の順か読みの順）、出現の位置を付けるかどうか（[code: locators]）を持つ。
 プラグインは、出力のインラインにチャネルの項目（タグ 19）を含めて項目を送り、原稿はブロックコマンド [code: @channel 名前] で一覧を置く（タグ 8 の [code: channel] の 3）。
 ホストは、項目のチャネルがそのプラグインの宣言したものであること、読みの順のチャネルの項目に読みがあること、本文がほかのチャネルへ項目を送らないことを確かめ、違えば G0609 にする。
 
