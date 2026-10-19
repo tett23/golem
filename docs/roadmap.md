@@ -35,7 +35,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **SVG の動く中身**（未実装、[docs/adr 0039](adr/0039-svg-active-content-in-html-and-epub.md)）：HTML と EPUB に写す SVG の図版に動く中身があれば G0814 で拒む。XML として読めない SVG も拒む。
 - **PDF の図版の取り込みの上限**（未実装、[docs/adr 0040](adr/0040-pdf-import-resource-limits.md)）：展開の合計、ページの木、相互参照、予測子、内容のストリームに上限を設ける。
 - **SVG の `marker` と数の上限**（未実装、[docs/adr 0041](adr/0041-svg-marker-and-number-limits.md)）：`marker` の循環と 10 段以上の入れ子、範囲の外の数を G0811 にする。
-- **表のファイルの大きさの上限**（未実装、[docs/adr 0043](adr/0043-table-file-size-limits.md)）：大きすぎる表のファイルを G0288 で拒む。
 
 ### 既知の不具合の修正
 

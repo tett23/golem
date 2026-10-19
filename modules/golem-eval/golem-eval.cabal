@@ -41,8 +41,11 @@ test-suite golem-eval-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    BuiltinSpec DeferredSpec DiagnosticSitesSpec ExprSpec FileSpec OperatorSpec RegexStyleSpec TableSpec
+  -- GHC.Stats measures the memory of reading a table (docs/adr ADR 0043)
+  ghc-options:      -rtsopts "-with-rtsopts=-T"
   build-depends:
     , base
+    , bytestring
     , containers
     , golem-doc
     , golem-eval

@@ -1,10 +1,15 @@
 -- | TSV and CSV tables, align= and cells= of @table (golem-eval ADR 0004).
 module TableSpec (tests) where
 
+import Control.Exception (evaluate)
+import Control.Monad (unless)
+import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
+import GHC.Stats (RTSStats (..), getRTSStats, getRTSStatsEnabled)
 import Golem.Doc.IR
 import Golem.Eval.File
 import Golem.Parser (parseAst)
@@ -14,6 +19,7 @@ import Golem.Syntax
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import System.Mem (performGC)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
@@ -24,8 +30,8 @@ fid = FileId 9
 -- | A table file, read without errors, as rows; or the code, message and span of the error.
 type Parsed = Either (Text, Text, Int, Int) [[Text]]
 
-parsed :: Either Diagnostic [[Text]] -> Parsed
-parsed = either (\d -> let DiagnosticCode c = diagCode d in Left (c, diagMessage d, spanStart (diagSpan d), spanEnd (diagSpan d))) Right
+parsed :: Either TableError [[Text]] -> Parsed
+parsed = either (\e -> let d = tableDiagnostic (mkSpan (FileId 1) 0 0) "t" e; DiagnosticCode c = diagCode d in Left (c, diagMessage d, spanStart (diagSpan d), spanEnd (diagSpan d))) Right
 
 tsv :: Text -> Parsed
 tsv = parsed . parseTsv fid
@@ -57,7 +63,15 @@ ctx =
             ("empty-cell.tsv", AssetText (FileId 12) "a\tb\n\tx\n"),
             ("empty-cell.csv", AssetText (FileId 13) "a,b\n,x\n"),
             ("ragged.tsv", AssetText (FileId 14) "a\tb\nc\n"),
-            ("bad.tsv", AssetTableUnreadable (FileId 15) "a\rb\n")
+            ("bad.tsv", AssetTableUnreadable (FileId 15) "a\rb\n"),
+            -- the limits of a table file (docs/adr ADR 0043)
+            ("max-bytes.tsv", AssetText (FileId 16) (T.replicate tableMaxBytes "a")),
+            ("over-bytes.tsv", AssetText (FileId 17) (T.replicate tableMaxBytes "a" <> "\n")),
+            ("max-rows.tsv", AssetText (FileId 18) (T.unlines (replicate tableMaxRows "a"))),
+            ("over-rows.tsv", AssetText (FileId 19) (T.unlines (replicate (tableMaxRows + 1) "a"))),
+            ("max-cells.csv", AssetText (FileId 20) (T.intercalate "," (replicate tableMaxCells "a") <> "\n")),
+            ("over-cells.csv", AssetText (FileId 21) (T.intercalate "," (replicate (tableMaxCells + 1) "a") <> "\n")),
+            ("too-large.csv", AssetTableTooLarge 16777217 Nothing)
           ],
       ctxPlugins = noPlugins,
       ctxSource = defaultSourceSettings,
@@ -84,7 +98,7 @@ codes :: Text -> [Text]
 codes src = [c | (c, _, _, _) <- snd (run src)]
 
 tests :: TestTree
-tests = testGroup "tables (golem-eval ADR 0004)" [tsvTests, csvTests, argTests, roundTrips]
+tests = testGroup "tables (golem-eval ADR 0004)" [tsvTests, csvTests, argTests, roundTrips, limitTests, allocationTests]
 
 {- | Rows of the same number of cells, at least @minCols@, the first cell not empty (an empty
 file is G0285), from characters that a table file treats in different ways.
@@ -246,3 +260,66 @@ argTests =
     abc = ([["a"], ["b"], ["c"]], [[["1"], ["2"], ["3"]]])
     cellsOf (_, h, rs) = (h, rs)
     alignOf (al, _, _) = al
+
+-- | The limits of a table file, G0288 (docs/adr ADR 0043).
+limitTests :: TestTree
+limitTests =
+  testGroup
+    "the limits of a table file (docs/adr ADR 0043)"
+    [ testCase "the limits" $ (tableMaxBytes, tableMaxRows, tableMaxCells) @?= (16777216, 10000, 256),
+      testCase "16 MiB is read, and one byte more is G0288 at @table" $ do
+        fmap (\(_, h, rs) -> (length h, length rs)) (table "@table src=max-bytes.tsv\n") @?= Just (1, 0)
+        run "@table src=over-bytes.tsv\n" @?= ([], [("G0288", "表のファイルが大きさの上限を超えます: over-bytes.tsv（16777217 バイト、上限は 16777216 バイト）", 0, 26)]),
+      testCase "a file the driver did not read for its size is G0288" $
+        run "@table src=too-large.csv\n" @?= ([], [("G0288", "表のファイルが大きさの上限を超えます: too-large.csv（16777217 バイト、上限は 16777216 バイト）", 0, 25)]),
+      testCase "10,000 rows are read, and 10,001 are G0288" $ do
+        fmap (\(_, h, rs) -> (length h, length rs)) (table "@table src=max-rows.tsv\n") @?= Just (1, 9999)
+        run "@table src=over-rows.tsv\n" @?= ([], [("G0288", "表のファイルが行の数の上限を超えます: over-rows.tsv（10001 行目、上限は 10000 行）", 0, 25)]),
+      testCase "256 cells are read, and 257 are G0288" $ do
+        fmap (\(_, h, _) -> length h) (table "@table src=max-cells.csv\n") @?= Just 256
+        run "@table src=over-cells.csv\n" @?= ([], [("G0288", "表のファイルがセルの数の上限を超えます: over-cells.csv（1 行目、上限は 1 行に 256 個）", 0, 26)]),
+      testCase "the rows and cells are counted as the file is read, and the rest is not" $ do
+        -- a G0285 or G0283 after the row over the limit is not reached
+        tsv (T.unlines (replicate (tableMaxRows + 1) "a") <> "a\tb\n") @?= Left ("G0288", "表のファイルが行の数の上限を超えます: t（10001 行目、上限は 10000 行）", 0, 0)
+        csv (T.intercalate "," (replicate (tableMaxCells + 1) "a") <> ",\"x\n") @?= Left ("G0288", "表のファイルがセルの数の上限を超えます: t（1 行目、上限は 1 行に 256 個）", 0, 0)
+        -- a G0285 before it is
+        tsv ("a\tb\n" <> T.unlines (replicate tableMaxRows "a")) @?= Left ("G0285", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5),
+      testCase "the empty lines a CSV drops are not rows" $
+        fmap length (csv (T.unlines (replicate tableMaxRows "a,b") <> "\n\n")) @?= Right tableMaxRows,
+      testCase "a table of 10,000 rows of a CSV, as a cell over lines" $
+        fmap length (csv (T.concat (replicate tableMaxRows "\"a\r\nb\",c\r\n"))) @?= Right tableMaxRows
+    ]
+
+{- | The reading of a table allocates at most 16 times the size of the file
+(docs/adr ADR 0043), measured by GHC.Stats (the test suite runs with +RTS -T).
+-}
+allocationTests :: TestTree
+allocationTests =
+  testGroup
+    "the memory of reading a table (docs/adr ADR 0043)"
+    [ testCase "a CSV of 1 MiB allocates at most 16 MiB" $ do
+        let row = T.intercalate "," ["\"東京都, 千代田区\"", "12345", "2026-10-19", "a short note", "\"q\"\"r\""] <> "\r\n"
+            n = (2 ^ (20 :: Int)) `div` utf8Len row
+            file = T.concat (replicate n row)
+        _ <- evaluate (T.length file)
+        bytes <- allocated (either (const 0) (sum . map (sum . map T.length)) (parseCsv fid file))
+        assertBool ("allocated " <> show bytes <> " bytes for " <> show (utf8Len file)) (bytes <= 16 * fromIntegral (utf8Len file)),
+      testCase "a TSV of 1 MiB allocates at most 16 MiB" $ do
+        let row = T.intercalate "\t" ["東京都千代田区", "12345", "2026-10-19", "a short note", "q\"r"] <> "\n"
+            n = (2 ^ (20 :: Int)) `div` utf8Len row
+            file = T.concat (replicate n row)
+        _ <- evaluate (T.length file)
+        bytes <- allocated (either (const 0) (sum . map (sum . map T.length)) (parseTsv fid file))
+        assertBool ("allocated " <> show bytes <> " bytes for " <> show (utf8Len file)) (bytes <= 16 * fromIntegral (utf8Len file))
+    ]
+  where
+    utf8Len = BS.length . TE.encodeUtf8
+    allocated x = do
+      enabled <- getRTSStatsEnabled
+      unless enabled (assertFailure "run with +RTS -T")
+      performGC
+      start <- allocated_bytes <$> getRTSStats
+      _ <- evaluate x
+      performGC
+      end <- allocated_bytes <$> getRTSStats
+      pure (end - start)

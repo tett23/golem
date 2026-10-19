@@ -23,6 +23,12 @@ module Golem.Eval.File
     tableAlign,
     parseCsv,
     parseTsv,
+    TableError (..),
+    TableLimit (..),
+    tableDiagnostic,
+    tableMaxBytes,
+    tableMaxRows,
+    tableMaxCells,
     duplicateKeys,
   )
 where
@@ -30,6 +36,7 @@ where
 import Control.Applicative ((<|>))
 import Control.Monad (forM, unless)
 import Control.Monad.State.Strict
+import Data.Bifunctor qualified as Bi
 import Data.Char (isAscii, isAsciiLower, isDigit)
 import Data.Either (fromLeft, fromRight, isLeft)
 import Data.List (mapAccumL, partition)
@@ -41,6 +48,9 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Array qualified as TA
+import Data.Text.Internal qualified as TI
+import Data.Text.Unsafe (lengthWord8)
 import Golem.Doc.IR
 import Golem.Eval.Builtin
 import Golem.Eval.Expr
@@ -104,6 +114,11 @@ data Asset
     the text as before (golem-eval ADR 0004)
     -}
     AssetTableUnreadable !FileId !Text
+  | {- | a table file larger than 'tableMaxBytes', by its size in bytes, not
+    read for the table (G0288, docs/adr ADR 0043); the text when a listing
+    also reads it
+    -}
+    AssetTableTooLarge !Integer !(Maybe Text)
   | -- | present, and not read
     AssetPresent
   | -- | a path that cannot be used: absolute, a URL, outside the root, or missing
@@ -1009,7 +1024,7 @@ csvTable ctx sp args = do
                       -- an empty cell of a TSV has no inlines, as in a | table
                       TableTsv -> (parseTsv fid content, \t -> [Text sp t | not (T.null t)])
                  in case rows of
-                      Left d -> report d >> pure []
+                      Left e -> report (tableDiagnostic sp path e) >> pure []
                       Right [] -> pure []
                       Right (h : body) -> case al of
                         Nothing -> pure [table (map (const AlignDefault) h) cell h body]
@@ -1018,11 +1033,61 @@ csvTable ctx sp args = do
                           | length as == length h -> pure [table as cell h body]
                           | otherwise -> err "G0281" asp ("align の値の数が表の列の数と違います（列は " <> tshow (length h) <> "、align は " <> tshow (length as) <> "）") >> pure []
               Just (AssetTableUnreadable _ _) -> pure []
+              Just (AssetTableTooLarge n _) -> report (tableDiagnostic sp path (TableOverLimit (OverBytes n))) >> pure []
               Just _ -> missing sp path >> pure []
               Nothing -> pure []
       _ -> pure []
   where
     table as cell h body = block sp (Table as (map cell h) (map (map cell) body))
+    tshow = T.pack . show
+
+-- | Why a table file gives no table.
+data TableError
+  = -- | G0282, G0283 or G0285, in the file
+    TableInvalid !Diagnostic
+  | -- | G0288 (docs/adr ADR 0043)
+    TableOverLimit !TableLimit
+  deriving stock (Eq, Show)
+
+-- | The limit a table file goes over (docs/adr ADR 0043).
+data TableLimit
+  = -- | the size of the file, in bytes
+    OverBytes !Integer
+  | -- | the row that goes over the number of rows, counted from 1 with the header row
+    OverRows !Int
+  | -- | the row whose cells go over the number of cells, counted from 1
+    OverCells !Int
+  deriving stock (Eq, Show)
+
+-- | The size of a table file, in bytes, at most 16 MiB (docs/adr ADR 0043).
+tableMaxBytes :: Int
+tableMaxBytes = 2 ^ (24 :: Int)
+
+-- | The rows of a table file, the header row included (docs/adr ADR 0043).
+tableMaxRows :: Int
+tableMaxRows = 10000
+
+-- | The cells of a row of a table file (docs/adr ADR 0043).
+tableMaxCells :: Int
+tableMaxCells = 256
+
+{- | The diagnostic of a table error: one in the file as it is, G0288 at
+the @table block, with the path as written.
+-}
+tableDiagnostic :: SrcSpan -> Text -> TableError -> Diagnostic
+tableDiagnostic sp path = \case
+  TableInvalid d -> d
+  TableOverLimit l -> diagnostic "G0288" Error sp ("表のファイルが" <> what l <> ": " <> path <> "（" <> detail l <> "）")
+  where
+    what = \case
+      OverBytes _ -> "大きさの上限を超えます"
+      OverRows _ -> "行の数の上限を超えます"
+      OverCells _ -> "セルの数の上限を超えます"
+    detail = \case
+      OverBytes n -> tshow n <> " バイト、上限は " <> tshow tableMaxBytes <> " バイト"
+      OverRows r -> tshow r <> " 行目、上限は " <> tshow tableMaxRows <> " 行"
+      OverCells r -> tshow r <> " 行目、上限は 1 行に " <> tshow tableMaxCells <> " 個"
+    tshow :: (Show a) => a -> Text
     tshow = T.pack . show
 
 -- | The format of a table file (golem-eval ADR 0004).
@@ -1073,67 +1138,107 @@ cellReading = \case
 {- | A TSV file as rows of cells (IANA text/tab-separated-values): LF or
 CRLF ends a line, one line end at the end of the file is dropped, tabs
 separate the cells and nothing else is special. Left is G0285 (an empty
-file, or a row with another number of cells than the header), or G0282.
+file, or a row with another number of cells than the header), G0282, or
+a limit the file goes over (docs/adr ADR 0043).
 -}
-parseTsv :: FileId -> Text -> Either Diagnostic [[Text]]
+parseTsv :: FileId -> Text -> Either TableError [[Text]]
 parseTsv fid t0 = do
-  noLoneCr fid t0
+  withinBytes t0
+  Bi.first TableInvalid (noLoneCr fid t0)
   let (base, t) = skipBom t0
       body = fromMaybe t (T.stripSuffix "\r\n" t <|> T.stripSuffix "\n" t)
-  tableShape fid "TSV" (if T.null body then [] else tsvLines base (T.splitOn "\n" body))
+  tableRows fid "TSV" (if T.null body then [] else tsvLines base (T.split (== '\n') body))
   where
     tsvLines _ [] = []
-    tsvLines off (l : ls) =
+    tsvLines !off (l : ls) =
       let content = fromMaybe l (T.stripSuffix "\r" l)
-       in (off, off + byteLen content, T.splitOn "\t" content) : tsvLines (off + byteLen l + 1) ls
+       in Right (off, off + byteLen content, take (tableMaxCells + 1) (T.split (== '\t') content)) : tsvLines (off + byteLen l + 1) ls
 
 {- | A CSV file as rows of cells (RFC 4180): comma-separated, double-quoted
 fields with "" escapes, LF or CRLF ending a record; CRLF in quotes is LF
-in the cell, and empty lines are dropped. Left is G0285, G0282 or G0283
-(a quote not closed).
+in the cell, and empty lines are dropped. Left is G0285, G0282, G0283
+(a quote not closed), or a limit the file goes over (docs/adr ADR 0043).
+The file is read as Text, a record at a time, by its UTF-8 bytes; a cell
+is a slice of the file unless it has quotes or CRLF to undo.
 -}
-parseCsv :: FileId -> Text -> Either Diagnostic [[Text]]
-parseCsv fid t0 = do
-  noLoneCr fid t0
-  let (base, t) = skipBom t0
-  recs <- records base (T.unpack t)
-  tableShape fid "CSV" (filter (\(_, _, cs) -> cs /= [""]) recs)
+parseCsv :: FileId -> Text -> Either TableError [[Text]]
+parseCsv fid t0@(TI.Text arr off0 len) = do
+  withinBytes t0
+  Bi.first TableInvalid (noLoneCr fid t0)
+  tableRows fid "CSV" (filter (either (const True) (\(_, _, cs) -> cs /= [""])) (records (off0 + fst (skipBom t0))))
   where
-    records _ [] = Right []
-    records off s = do
-      (cs, end, rest) <- record off s []
-      ((off, end, cs) :) <$> maybe (Right []) (uncurry records) rest
-    record off s acc = do
-      (f, off', rest) <- field off s
-      let acc' = f : acc
-      case rest of
-        ',' : r -> record (off' + 1) r acc'
-        '\n' : r -> Right (reverse acc', off', Just (off' + 1, r))
-        '\r' : '\n' : r -> Right (reverse acc', off', Just (off' + 2, r))
-        _ -> Right (reverse acc', off', Nothing)
-    field off = \case
-      '"' : s -> quoted off (off + 1) s ""
-      s -> plain off s ""
-    -- characters up to a comma or a line end; a quote is as written
-    plain off s acc = case s of
-      c : rest | c `notElem` (",\n\r" :: String) -> plain (off + charLen c) rest (c : acc)
-      _ -> Right (T.pack (reverse acc), off, s)
-    quoted open off s acc = case s of
-      [] -> Left (diagnostic "G0283" Error (mkSpan fid open (open + 1)) "CSV の引用符が閉じていません")
-      '"' : '"' : rest -> quoted open (off + 2) rest ('"' : acc)
-      '"' : rest -> plain (off + 1) rest acc
-      '\r' : '\n' : rest -> quoted open (off + 2) rest ('\n' : acc)
-      c : rest -> quoted open (off + charLen c) rest (c : acc)
+    -- the bytes of the file are indexed in the array of the text; the special
+    -- characters are ASCII, which no other character's UTF-8 bytes contain
+    end = off0 + len
+    byte = TA.unsafeIndex arr
+    pos i = i - off0
+    slice i j = TI.text arr i (j - i)
+    isStop w = w == 0x2C || w == 0x0A || w == 0x0D
+    records i
+      | i >= end = []
+      | otherwise = record i i (0 :: Int) []
+    -- the cells of the record that starts at @start@; the record stops at the
+    -- cell over the limit, which 'tableRows' reports, and nothing after it is read
+    record !start !i !n acc = case field i of
+      Left d -> [Left d]
+      Right (cell, e)
+        | n + 1 > tableMaxCells -> [row e]
+        | e < end && byte e == 0x2C -> record start (e + 1) (n + 1) acc'
+        | e < end && byte e == 0x0A -> row e : records (e + 1)
+        | e + 1 < end && byte e == 0x0D -> row e : records (e + 2)
+        | otherwise -> [row e]
+        where
+          acc' = cell : acc
+          row e' = Right (pos start, pos e', reverse acc')
+    -- a field from @i@, and where it ends
+    field !i
+      | i < end && byte i == 0x22 = quoted i (i + 1) False
+      | otherwise = let e = plain i in Right (slice i e, e)
+    plain !i
+      | i < end && not (isStop (byte i)) = plain (i + 1)
+      | otherwise = i
+    -- the closing quote; doubled quotes and CRLF are undone only when there are any
+    quoted !open !i !undo
+      | i >= end = Left (diagnostic "G0283" Error (mkSpan fid (pos open) (pos open + 1)) "CSV の引用符が閉じていません")
+      | byte i == 0x22 && i + 1 < end && byte (i + 1) == 0x22 = quoted open (i + 2) True
+      | byte i == 0x22 =
+          let e = plain (i + 1)
+              inner = slice (open + 1) i
+              inner' = if undo then T.replace "\r\n" "\n" (T.replace "\"\"" "\"" inner) else inner
+           in Right (if e == i + 1 then inner' else inner' <> slice (i + 1) e, e)
+      | byte i == 0x0D = quoted open (i + 1) True
+      | otherwise = quoted open (i + 1) undo
 
--- | The rows of a table file with their spans, as a table: G0285 when empty or ragged.
-tableShape :: FileId -> Text -> [(Int, Int, [Text])] -> Either Diagnostic [[Text]]
-tableShape fid name = \case
-  [] -> Left (diagnostic "G0285" Error (mkSpan fid 0 0) (name <> " が空です"))
-  rows@((_, _, h) : rest) -> case [r | r@(_, _, cs) <- rest, length cs /= length h] of
-    (s, e, cs) : _ -> Left (diagnostic "G0285" Error (mkSpan fid s e) (name <> " の行のセルの数が見出しの行と違います（見出しの行は " <> count h <> "、この行は " <> count cs <> "）"))
-    [] -> Right [cs | (_, _, cs) <- rows]
+{- | The rows of a table file with their spans, as a table, read in order
+and no further than the first error: a row over 'tableMaxRows' or with
+cells over 'tableMaxCells' (G0288, docs/adr ADR 0043), a reading error
+(G0283), or a row whose cells differ in number from the header's (G0285);
+G0285 also for no rows.
+-}
+tableRows :: FileId -> Text -> [Either Diagnostic (Int, Int, [Text])] -> Either TableError [[Text]]
+tableRows fid name = \case
+  [] -> Left (TableInvalid (diagnostic "G0285" Error (mkSpan fid 0 0) (name <> " が空です")))
+  r0 : rest -> do
+    (_, _, h) <- Bi.first TableInvalid r0
+    withinCells 1 h
+    (h :) <$> go 2 h rest
   where
+    go :: Int -> [Text] -> [Either Diagnostic (Int, Int, [Text])] -> Either TableError [[Text]]
+    go _ _ [] = Right []
+    go n h (r : rs)
+      | n > tableMaxRows = Left (TableOverLimit (OverRows n))
+      | otherwise = do
+          (s, e, cs) <- Bi.first TableInvalid r
+          withinCells n cs
+          unless (length cs == length h) $
+            Left (TableInvalid (diagnostic "G0285" Error (mkSpan fid s e) (name <> " の行のセルの数が見出しの行と違います（見出しの行は " <> count h <> "、この行は " <> count cs <> "）")))
+          (cs :) <$> go (n + 1) h rs
+    withinCells n cs = unless (length cs <= tableMaxCells) (Left (TableOverLimit (OverCells n)))
     count = T.pack . show . length
+
+-- | G0288 for a file over 'tableMaxBytes' (docs/adr ADR 0043).
+withinBytes :: Text -> Either TableError ()
+withinBytes t = unless (byteLen t <= tableMaxBytes) (Left (TableOverLimit (OverBytes (toInteger (byteLen t)))))
 
 -- | G0282 for a lone CR, as the reading stage of a table file reports it.
 noLoneCr :: FileId -> Text -> Either Diagnostic ()
@@ -1143,24 +1248,16 @@ noLoneCr fid t = maybe (Right ()) Left (listToMaybe (checkTableText fid t))
 skipBom :: Text -> (Int, Text)
 skipBom t = maybe (0, t) (3,) (T.stripPrefix "\xFEFF" t)
 
+-- | The length of a text in UTF-8, in constant time.
 byteLen :: Text -> Int
-byteLen = sum . map charLen . T.unpack
-
--- | The length of a character in UTF-8.
-charLen :: Char -> Int
-charLen c
-  | n < 0x80 = 1
-  | n < 0x800 = 2
-  | n < 0x10000 = 3
-  | otherwise = 4
-  where
-    n = fromEnum c
+byteLen = lengthWord8
 
 -- | The text of a file read as text, for a listing.
 assetContent :: Asset -> Maybe Text
 assetContent = \case
   AssetText _ t -> Just t
   AssetTableUnreadable _ t -> Just t
+  AssetTableTooLarge _ t -> t
   _ -> Nothing
 
 {- | The file a path refers to. A path that cannot be used is reported, and
