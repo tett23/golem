@@ -1879,6 +1879,10 @@ LSP では、エディタで開いているファイルの BOM と CR も G0102 
 `manifest.toml`、`style.toml`、`plugins.lock` の誤りの文言は、toml-parser が作る文言も含めてすべて日本語にする（[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md)）。
 未知のキーは `知らないキーです: page.bindng`、値の型の誤りは `page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に `page.bindng` や `chapters[0]` の形の経路を書く。
 TOML の構文の誤りと意味の誤り（同じ表を二度書くなど）は、ファイルの先頭ではなく誤りのある行の位置で出す。
+Golem が値の読み込みで出す誤り（単位のない寸法、列挙にない値など）も、その値の位置で出し、文言の後ろの経路はそのキーまでを書く（[golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md)）。
+二つのキーの組み合わせで決まる誤りは、文言が直すよう求めているキーの値の位置で出す。
+`style.toml` を読み込んだ後の検査（スタイルの参照、版面を超える文字の大きさなど）の誤りは、直すべき値の位置で出す。
+その値がそのスタイルの表に書かれていなければ（`based-on` で受け継いだ値など）その表の見出しの位置、表もなければ `style.toml` の先頭で出す。
 
 diagnostic の重大度は、エラー、警告、お知らせの三つである（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
 エラーはビルドを止め、警告は止めないが入稿やデプロイの前に直すべきものを表す。

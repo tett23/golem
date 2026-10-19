@@ -24,6 +24,7 @@ import Golem.Project.Paths
 import Golem.Project.Style
 import Golem.Syntax
 import OutputCharsSpec qualified
+import StylePositionSpec qualified
 import System.Directory (createDirectoryIfMissing, createFileLink)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -501,6 +502,7 @@ tests =
       TomlMessageSpec.tests,
       ColophonSpec.tests,
       OutputCharsSpec.tests,
+      StylePositionSpec.tests,
       testCase "dimensions" $ do
         parseDim "1pt" @?= Just (Abs 65536)
         parseDim "25.4mm" @?= Just (Abs (72 * 65536))
