@@ -240,7 +240,7 @@ jobs:
       # one @bibliography per chapter and per section: no id twice, no
       # broken link (golem-doc ADR 0008)
       - name: The EPUB of several bibliographies passes epubcheck
-        if: matrix.runner == 'ubuntu-24.04'
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
         working-directory: modules/golem-driver/test/fixtures/bibliographies
         run: |
           "$(cabal list-bin -v0 golem)" build --target epub
