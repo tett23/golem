@@ -71,6 +71,7 @@ import Golem.Doc.Numbering (numberSeparator)
 import Golem.Driver.Fonts (golemFontProvider)
 import Golem.Driver.Pdf
 import Golem.Driver.Plugins (loadPlugins)
+import Golem.Driver.Svg (activeMessage)
 import Golem.Epub
 import Golem.Eval.Builtin (unPluginCommandName)
 import Golem.Eval.Expr (Env (..), embedValue, evalExpr)
@@ -89,6 +90,7 @@ import Golem.Preflight.View (View)
 import Golem.Project
 import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
+import Golem.Svg.Active (activeContent)
 import Golem.Syntax
 import Golem.Text qualified as GT
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getFileSize, pathIsSymbolicLink, removeDirectoryRecursive)
@@ -695,17 +697,40 @@ buildCore inMemory opts = do
       case evBook e of
         Just book
           | not (hasErrors (finish evDiags)) && not (optCheckOnly opts) -> do
-              -- a list number its format cannot write stops every target (golem-driver ADR 0013)
-              let listDiags = listNumberDiagnostics (evStyle e) (maybe False pageVertical (stPage (evStyle e))) book
+              -- G0814 stops HTML and EPUB, which copy SVG figures as they are (docs/adr ADR 0039)
+              activeDiags <-
+                if any (`elem` writable) [TargetHtml, TargetEpub]
+                  then activeContentDiagnostics (optRoot opts) book
+                  else pure []
+              let webWritable = [t | t <- writable, null activeDiags || t `notElem` [TargetHtml, TargetEpub]]
+                  -- a list number its format cannot write stops every target (golem-driver ADR 0013)
+                  listDiags = listNumberDiagnostics (evStyle e) (maybe False pageVertical (stPage (evStyle e))) book
               (written, outDiags, pdf) <-
-                if null listDiags || null writable
-                  then writeTargets inMemory opts e diagFid book missing writable
+                if null listDiags || null webWritable
+                  then writeTargets inMemory opts e diagFid book missing webWritable
                   else pure ([], listDiags, Nothing)
-              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> outDiags)) infos written, pdf)
+              pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> activeDiags <> outDiags)) infos written, pdf)
         _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags)) infos [], Nothing)
   where
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002)
     finishWith silenced = sortDiagnostics . silenceNotices (if optNoNotices opts then Nothing else Just silenced) . map (adjustForProfile (optProfile opts))
+
+{- | G0814 (docs/adr ADR 0039): the SVG files that HTML and EPUB copy (a
+figure or its @web@ image, also inside lists) with active content, or
+that cannot be read; each file is read once, and each @figure that uses
+it gets its own diagnostic at its block. Files that are missing or
+outside the root are left to the diagnostics about paths.
+-}
+activeContentDiagnostics :: FilePath -> Book -> IO [Diagnostic]
+activeContentDiagnostics root book = do
+  let figures = [(sp, webSource f) | Document _ bs <- bookDocs book, Block sp _ (FigureBlock f) <- allFigures bs, ".svg" `T.isSuffixOf` T.toLower (webSource f)]
+  checked <- forM (nub (map snd figures)) $ \path -> do
+    resolved <- resolveInRoot root (T.unpack path)
+    case resolved of
+      Right _ -> (path,) . activeMessage path . activeContent <$> BS.readFile (root </> T.unpack path)
+      Left _ -> pure (path, Nothing)
+  let messages = Map.fromList checked
+  pure [diagnostic "G0814" Error sp msg | (sp, path) <- figures, Just (Just msg) <- [Map.lookup path messages]]
 
 {- | G0327 (golem-driver ADR 0026): numbers per file meet in the list of a
 chapter of two files or more with notes in two of them, when a target
