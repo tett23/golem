@@ -116,6 +116,9 @@ Golem は、コンピューターに入っているフォントを探しませ�
 
 組み込みの文字スタイルは、[code: bold] が [code: synthetic-bold = true]、[code: italic] が [code: synthetic-italic = true]、[code: strong] が [code: based-on = "bold"]、[code: code] が [code: font = "code"] で、[code: url] はキーを持ちません。
 [code: code] と、[code: based-on] で [code: code] を引き継ぐ文字スタイルの文字は、PDF で語の途中で分けず、空白と [code: /] の後でだけ行を改めます。
+その中の空白は、コードの書体の空白一字分の幅のまま組み、行を両端にそろえるために広げたり詰めたりしません。
+行の長さの過不足は、同じ行のほかの字のあいだや語のあいだで調整します。
+コードだけでできた行は、両端にそろえず、行頭に寄せて組みます。
 
 [code: url] は、参考文献の URL を組む文字スタイルです。
 書体、大きさ、色は周りの文字のままです。

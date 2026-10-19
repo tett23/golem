@@ -1,0 +1,15 @@
+chapters = ["chapters/01.gm", "chapters/02.gm"]
+bibliography = ["refs.json"]
+
+# One @bibliography per chapter and per section (golem-doc ADR 0008): the
+# EPUB passes epubcheck, with no id twice and no broken link
+
+[metadata]
+id = "urn:uuid:11111111-2222-4333-8444-666666666666"
+title = "参考文献の試験"
+language = "ja"
+date = 2026-10-19
+
+[targets.html]
+[targets.epub]
+[targets.text]

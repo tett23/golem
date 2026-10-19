@@ -83,16 +83,79 @@ tests =
         assertBool "notoc" (sp 1 30 `notElem` map teSpan (bookToc book)),
       testCase "index order: kana, voicing, small kana, long vowel, latin before kana" $ do
         let mark s t r = IndexMark (sp 1 s) (IndexEntry [t] [r])
-            docs = [Document (FileId 1) [para 1 0 [mark 0 "ガ" "が", mark 1 "カ" "か", mark 2 "パ" "ぱ", mark 3 "ハ" "は", mark 4 "バ" "ば", mark 5 "API" "API", mark 6 "ツ" "つ", mark 7 "ッ" "っ", mark 8 "カ" "か"]]]
+            docs = [Document (FileId 1) [para 1 0 [mark 0 "ガ" "が", mark 1 "カ" "か", mark 2 "パ" "ぱ", mark 3 "ハ" "は", mark 4 "バ" "ば", mark 5 "API" "API", mark 6 "ツ" "つ", mark 7 "ッ" "っ", mark 8 "カ" "か"], Block (sp 1 50) Nothing (ChannelOutput IndexOutput)]]
             book = fst (assemble cfg noEval docs)
-        map igTerms (bookIndex book) @?= [["API"], ["カ"], ["ガ"], ["ツ"], ["ッ"], ["ハ"], ["バ"], ["パ"]]
-        map (length . igLocations) (bookIndex book) @?= [1, 2, 1, 1, 1, 1, 1, 1]
+        map igTerms (concatMap snd (bookIndexes book)) @?= [["API"], ["カ"], ["ガ"], ["ツ"], ["ッ"], ["ハ"], ["バ"], ["パ"]]
+        map (length . igLocations) (concatMap snd (bookIndexes book)) @?= [1, 2, 1, 1, 1, 1, 1, 1]
         compare (collationKey "かー") (collationKey "かあ") @?= EQ,
       testCase "citations are numbered in order of first citation" $ do
         let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) "b", Cite (sp 1 1) "a", Cite (sp 1 2) "b"]]]
-        bookCitations (fst (assemble cfg noEval docs)) @?= [("b", 1), ("a", 2)],
+        bookBibliographies (fst (assemble cfg noEval docs)) @?= [(Nothing, [("b", 1), ("a", 2)])],
+      multipleListTests,
       diagnosticCodes
     ]
+
+-- | Several @index and @bibliography in a book (golem-doc ADR 0008).
+multipleListTests :: TestTree
+multipleListTests =
+  testGroup
+    "several @index and @bibliography (golem-doc ADR 0008)"
+    [ testCase "one @bibliography lists every citation wherever it is" $ do
+        let cites = para 1 10 [Cite (sp 1 10) "b", Cite (sp 1 11) "a", Cite (sp 1 12) "b"]
+            more = para 1 20 [Cite (sp 1 20) "c"]
+        mapM_
+          ( \bs -> do
+              let book = fst (assemble cfg noEval [Document (FileId 1) bs])
+              bookBibliographies book @?= [(Just (FileId 1, sp 1 0), [("b", 1), ("a", 2), ("c", 3)])]
+          )
+          [ [bib 1 0, cites, more],
+            [cites, bib 1 0, more],
+            [cites, more, bib 1 0]
+          ],
+      testCase "a @bibliography at the end of each chapter numbers its own citations" $ do
+        let docs =
+              [ Document (FileId 1) [para 1 0 [Cite (sp 1 0) "A", Cite (sp 1 1) "B"], bib 1 5],
+                Document (FileId 2) [para 2 0 [Cite (sp 2 0) "B", Cite (sp 2 1) "C"], bib 2 5]
+              ]
+            book = fst (assemble cfg noEval docs)
+        bookBibliographies book
+          @?= [ (Just (FileId 1, sp 1 5), [("A", 1), ("B", 2)]),
+                (Just (FileId 2, sp 2 5), [("B", 1), ("C", 2)])
+              ]
+        Map.lookup (FileId 2, sp 2 0) (bookCiteMarks book) @?= Just (Just (FileId 2, sp 2 5), 1)
+        Map.lookup (FileId 1, sp 1 1) (bookCiteMarks book) @?= Just (Just (FileId 1, sp 1 5), 2),
+      testCase "citations after the last @bibliography go to the last one" $ do
+        let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) "A"], bib 1 5, para 1 6 [Cite (sp 1 6) "B"], bib 1 10, para 1 12 [Cite (sp 1 12) "C", Cite (sp 1 13) "B"]]]
+            book = fst (assemble cfg noEval docs)
+        map snd (bookBibliographies book) @?= [[("A", 1)], [("B", 1), ("C", 2)]]
+        Map.lookup (FileId 1, sp 1 12) (bookCiteMarks book) @?= Just (Just (FileId 1, sp 1 10), 2),
+      testCase "a citation in a footnote is at the paragraph of the note" $ do
+        let docs = [Document (FileId 1) [para 1 0 [Text (sp 1 0) "a", Note (sp 1 1) 1 [Cite (sp 1 2) "N"]], bib 1 5, para 1 6 [Cite (sp 1 6) "M"], bib 1 10]]
+            book = fst (assemble cfg noEval docs)
+        map snd (bookBibliographies book) @?= [[("N", 1)], [("M", 1)]],
+      testCase "each @index has the marks of its own range" $ do
+        let mark f s t = IndexMark (sp f s) (IndexEntry [t] [t])
+            idx f s = Block (sp f s) Nothing (ChannelOutput IndexOutput)
+            docs =
+              [ Document (FileId 1) [para 1 0 [mark 1 0 "か", mark 1 1 "あ"], idx 1 5],
+                Document (FileId 2) [para 2 0 [mark 2 0 "か"], idx 2 5, para 2 6 [mark 2 6 "さ"]]
+              ]
+            book = fst (assemble cfg noEval docs)
+        [(at, [(igTerms g, igLocations g) | g <- gs]) | (at, gs) <- bookIndexes book]
+          @?= [ ((FileId 1, sp 1 5), [(["あ"], [(FileId 1, sp 1 1)]), (["か"], [(FileId 1, sp 1 0)])]),
+                ((FileId 2, sp 2 5), [(["か"], [(FileId 2, sp 2 0)]), (["さ"], [(FileId 2, sp 2 6)])])
+              ],
+      testCase "without @bibliography, one list without a place numbers the whole book" $ do
+        let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) "b"]], Document (FileId 2) [para 2 0 [Cite (sp 2 0) "a", Cite (sp 2 1) "b"]]]
+            book = fst (assemble cfg noEval docs)
+        bookBibliographies book @?= [(Nothing, [("b", 1), ("a", 2)])]
+        Map.lookup (FileId 2, sp 2 1) (bookCiteMarks book) @?= Just (Nothing, 1),
+      testCase "two @toc are still G0402" $ do
+        let toc s = Block (sp 1 s) Nothing (ChannelOutput (TocOutput 2))
+        codes (snd (assemble cfg noEval [Document (FileId 1) [toc 0, bib 1 2, bib 1 3, toc 5]])) @?= ["G0402"]
+    ]
+  where
+    bib f s = Block (sp f s) Nothing (ChannelOutput BibliographyOutput)
 
 -- | The diagnostics of document assembly (golem-doc ADR 0003).
 diagnosticCodes :: TestTree
