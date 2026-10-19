@@ -134,6 +134,10 @@ data Flow
     FNeedLines !SrcSpan !Int
   | -- | change the grid lines of the current column
     FAdjustLines !SrcSpan !Int
+  | {- | blank lines before what follows (docs/adr ADR 0046), in its
+    column; dropped at the top of a column
+    -}
+    FBlank !SrcSpan !Int
   deriving stock (Eq, Show)
 
 {- | What a ruled block holds (golem-driver ADR 0027): the lines of a
@@ -235,6 +239,8 @@ data Unmet
     UnmetNeedLines !SrcSpan !Int
   | -- | the lines the column was changed by
     UnmetAdjust !SrcSpan !Int
+  | -- | blank lines dropped at the top of a column (docs/adr ADR 0046)
+    DroppedBlank !SrcSpan
   deriving stock (Eq, Show)
 
 -- | The part of a table on a page, in grid lines.
@@ -280,6 +286,8 @@ data St = St
     sUnmet :: ![Unmet],
     -- | a no-break waiting for the next flow: page, column and slots before it
     sNoBreak :: !(Maybe (SrcSpan, Int, Int, Int)),
+    -- | the blank lines not placed yet, in the order written (docs/adr ADR 0046)
+    sBlank :: ![(SrcSpan, Int)],
     -- | whether any flow has been placed
     sSeen :: !Bool,
     -- | whether the last flow was a figure sent on
@@ -306,7 +314,7 @@ paginateIn = paginateWithin maxBound
 -}
 paginateWithin :: Int -> Int -> ColumnSet -> Int -> [Flow] -> [PageOut]
 paginateWithin maxLines separatorLines base capacity flows =
-  let st0 = St 1 0 0 0 [] [] [] [] [] [] [] [] [] base {csFirstLine = 0} 0 [] Nothing Nothing 0 [] Nothing False False
+  let st0 = St 1 0 0 0 [] [] [] [] [] [] [] [] [] base {csFirstLine = 0} 0 [] Nothing Nothing 0 [] Nothing [] False False
       final = closePage (go st0 flows)
       done = reverse (sDone final)
       -- controls not met in a column that made no output go with the last column
@@ -319,10 +327,10 @@ paginateWithin maxLines separatorLines base capacity flows =
     -- a footnote line always fits under the separator and one line of text
     separator = max 1 (min separatorLines (capacity - 2))
     top st = csFirstLine (sSet st)
-    -- breaks and need-lines left at the end of the book are dropped (docs/adr ADR 0017, 0030)
+    -- breaks, need-lines and blank lines left at the end of the book are dropped (docs/adr ADR 0017, 0030, 0046)
     go st [] =
       let st1 = maybe st (\(sp, _, _, _) -> addUnmet (UnmetNoBreak sp) st) (sNoBreak st)
-       in flushDeferred st1 {sBreaks = [], sNeed = Nothing, sNoBreak = Nothing}
+       in flushDeferred st1 {sBreaks = [], sNeed = Nothing, sNoBreak = Nothing, sBlank = []}
     go st (f : rest) = case f of
       -- a no-break with nothing before it, or after a figure sent on, cannot be met
       FNoBreak sp
@@ -330,17 +338,34 @@ paginateWithin maxLines separatorLines base capacity flows =
         | otherwise -> go st {sNoBreak = Just (sp, sPage st, sColumn st, length (sSlots st))} rest
       FNeedLines sp n -> go st {sNeed = Just (maybe (sp, n) (\(s0, n0) -> if n > n0 then (sp, n) else (s0, n0)) (sNeed st))} rest
       FAdjustLines sp k -> go (adjustLines (applyBreaks st) sp k) rest
+      FBlank sp n -> go st {sBlank = sBlank st <> [(sp, n)]} rest
       FBreak _ -> go (place st f rest) rest
       -- the space between paragraphs is not the flow a no-break waits for
       FSpace _ -> go (place (ready st) f rest) rest
       _ ->
-        let st1 = checkNoBreak (placeFlow (ready st) f rest)
+        let st1 = checkNoBreak (placeFlow (placeBlank (ready st) f rest) f rest)
             deferred = case f of
               FFigure i _ _ _ -> any (\case FFigure j _ _ _ -> i == j; _ -> False) (sDeferred st1)
               _ -> False
          in go st1 {sSeen = True, sLastDeferred = deferred} rest
     -- the breaks written so far, then the need-lines, apply before anything but another break
     ready = applyNeed . applyBreaks
+    {- the blank lines go in the column of the first part of what follows;
+    at the top of a column they are dropped and recorded, never cut
+    (docs/adr ADR 0046). A heading at a recto starts its page first. -}
+    placeBlank st0 f rest = case sBlank st0 of
+      [] -> st0
+      blanks ->
+        let st1 = if startsRecto f then parityStart odd st0 else st0
+            total = foldl' (\a (_, n) -> min capacity (a + min capacity n)) 0 blanks
+            st2 = if sUsed st1 /= top st1 && total + nextNeed (f : rest) > free st1 then nextColumn st1 else st1
+         in if sUsed st2 == top st2
+              then foldl' (\s' (sp, _) -> addUnmet (DroppedBlank sp) s') st2 {sBlank = []} blanks
+              else st2 {sUsed = sUsed st2 + total, sBlank = []}
+    startsRecto = \case
+      FHeading {fhRecto = True} -> True
+      FRuled {frBody = RuledHeading {rhRecto = True}} -> True
+      _ -> False
     addUnmet u st = st {sUnmet = sUnmet st <> [u]}
     -- the grid lines of the current column (docs/adr ADR 0030)
     cap st = capacity + sAdjust st
@@ -422,6 +447,8 @@ paginateWithin maxLines separatorLines base capacity flows =
       (FNoBreak _ : rest) -> nextNeed rest
       (FNeedLines _ _ : rest) -> nextNeed rest
       (FAdjustLines _ _ : rest) -> nextNeed rest
+      -- blank lines go with what follows, at most a column (docs/adr ADR 0046)
+      (FBlank _ n : rest) -> min capacity (min capacity n + nextNeed rest)
       (FCode g cap first cont ls : _)
         | null ls -> 0
         | otherwise -> let k = min (length ls) (max 1 first) in cap + codeSpan g (k + (if cont && k < length ls then 1 else 0))
@@ -479,6 +506,7 @@ paginateWithin maxLines separatorLines base capacity flows =
       FNoBreak _ -> st
       FNeedLines _ _ -> st
       FAdjustLines _ _ -> st
+      FBlank _ _ -> st
       where
         need = nextNeed rest
     -- the set starts at line @first@ of the page, above the footnotes already there
