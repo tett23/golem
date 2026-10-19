@@ -2371,7 +2371,9 @@ CSL-JSON は文献管理ソフトが書き出せる標準の形式である。
 HTML と EPUB の参考文献の項目の `id` は、本の全体で一意にする。
 一覧を文書の順に、一覧の中の項目を番号の順にたどり、`cite-<キー>`、`cite-<キー>-2`、`cite-<キー>-3` の順の候補のうち、本の中でまだ使っていない最初のものを使う。
 一覧が一つの本では、どの項目も `cite-<キー>` になる。
-引用の印は、その印が載る一覧の、その文献の項目の `id` へのリンクである。
+HTML と EPUB の引用の印は、その印が載る一覧の、その文献の項目の `id` へのリンクである（[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)）。
+一覧が別のファイルにあれば、そのファイルへの相対リンク（`../chapters/99.xhtml#cite-knuth1981` など）にする。
+本に `@bibliography` がなければ、印をリンクにせず、`<span class="cite">[1]</span>` と書く。
 
 v1 の引用の書式は、処理系が持つ一種類だけとする。
 引用の書式は数千種類あり、それを解釈する処理系の実装は独立した大きな仕事になるためである。
@@ -2858,7 +2860,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
 - **結合文字**：U+0301 のような結合文字を、前の字と一つにせず、別の箱として組む。
-- **HTML の引用の印のリンク**：`[cite ...]` の印のリンクは、同じページの `#cite-<キー>` を指す（`modules/golem-html/src/Golem/Html.hs` の `Cite` の分岐）。`@bibliography` を別のファイルに置くと、リンクの先がない。ラベルへの参照と索引のリンクは、参照先のファイルへの相対リンクにしている（[golem-html ADR 0001](golem-html/adr/0001-xhtml-serializer.md)、[golem-doc ADR 0002](golem-doc/adr/0002-document-assembly.md)）。
 - **EPUB のナビゲーション文書と `@toc` の深さ**：ナビゲーション文書は、`@toc` の `depth` を見ず、`@notoc` のない見出しをいつもすべて載せる。[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md) は `@toc` がない場合だけを定めており、`@toc` がある場合の振る舞いを定めていない。
 - **プラグインの独自の一覧**：「チャネル」の節は、用語集のような独自の一覧をプラグインで作れるとしている。しかし、チャネルを出力するブロック（IR の tag 8）は目次、索引、参考文献の三種類に固定されており、ほかに使えるチャネルは注だけである。プラグインが独自のチャネルに項目を送り、一覧として出す手段はない（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)、[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
 

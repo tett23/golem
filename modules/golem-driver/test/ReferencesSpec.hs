@@ -1,8 +1,10 @@
 module ReferencesSpec (indexTests, bibliographyFormatTests, tableTests, tocTests, indexColumnTests) where
 
+import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
 import Control.Monad (forM_, zipWithM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
+import Data.ByteString.Lazy qualified as BL
 import Data.List (isSuffixOf, nub, sort)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
@@ -22,6 +24,7 @@ import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Support
+import System.Directory (createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -170,7 +173,29 @@ jaRefsJson = TE.encodeUtf8 "[{\"id\": \"jisx4061\", \"title\": \"JIS X 4061:1996
 
 bibliographyFormatTests :: [TestTree]
 bibliographyFormatTests =
-  [ testCase "a literal author and a literal date are in the entry" $ do
+  [ testCase "HTML and EPUB: a cite mark links to the bibliography in another file (golem-html ADR 0003)" $
+      withSystemTempDirectory "golem-cite" $ \tmp -> do
+        let manifest = T.replace "chapters = [\"a.gm\"]" "chapters = [\"chapters/00.gm\", \"chapters/01.gm\", \"chapters/99.gm\"]\nbibliography = [\"refs.json\"]" (TE.decodeUtf8 miniManifest)
+        TIO.writeFile (tmp </> "manifest.toml") (manifest <> "[targets.html]\n[targets.epub]\n")
+        BS.writeFile (tmp </> "style.toml") horizontalStyle
+        BS.writeFile (tmp </> "refs.json") refsJson
+        createDirectoryIfMissing True (tmp </> "chapters")
+        TIO.writeFile (tmp </> "chapters/00.gm") "@toc depth=1\n"
+        TIO.writeFile (tmp </> "chapters/01.gm") "本文[cite knuth1981]。\n"
+        TIO.writeFile (tmp </> "chapters/99.gm") "@bibliography\n"
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
+        assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+        let link = "<a class=\"cite\" href=\"../chapters/99.xhtml#cite-knuth1981\">[1]</a>"
+            entry = "<li id=\"cite-knuth1981\">"
+        html01 <- TIO.readFile (tmp </> "build/html/chapters/01.xhtml")
+        html99 <- TIO.readFile (tmp </> "build/html/chapters/99.xhtml")
+        assertBool (T.unpack html01) (link `T.isInfixOf` html01)
+        assertBool (T.unpack html99) (entry `T.isInfixOf` html99)
+        archive <- toArchive <$> BL.readFile (tmp </> "build/epub/book.epub")
+        let page p = maybe "" (TE.decodeUtf8 . BL.toStrict . fromEntry) (findEntryByPath p archive)
+        assertBool "EPUB 01" (link `T.isInfixOf` page "OEBPS/chapters/01.xhtml")
+        assertBool "EPUB 99" (entry `T.isInfixOf` page "OEBPS/chapters/99.xhtml"),
+    testCase "a literal author and a literal date are in the entry" $ do
       (ds, m) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", jaRefsJson)]
       ds @?= []
       Map.lookup "lit" m @?= Just "日本規格協会、照合順番、n.d.。"
