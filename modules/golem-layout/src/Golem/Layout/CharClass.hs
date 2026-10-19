@@ -2,6 +2,7 @@
 module Golem.Layout.CharClass
   ( CharClass (..),
     charClass,
+    ciMeasure,
   )
 where
 
@@ -43,3 +44,7 @@ charClass c
   | (c >= '\x3041' && c <= '\x309F') || (c >= '\x30A0' && c <= '\x30FF') = Kana
   | isAscii c || (c >= '\x00A0' && c <= '\x024F') || (c >= '\x0370' && c <= '\x04FF') = Western
   | otherwise = Ideograph
+
+-- | Temporary, for a CI measurement (draft PR); to be reverted.
+ciMeasure :: Int
+ciMeasure = 1

@@ -170,8 +170,15 @@ jobs:
         if: steps.cddl.outputs.cache-hit != 'true'
         run: cargo install cddl --version "$CDDL_VERSION" --locked
       # peg-cli is built with the rest, for the check of the generated parser
+      # compiled is true when GHC compiled a module, that is, when
+      # dist-newstyle is no longer the one restored above (docs/adr/0045)
       - id: build
-        run: cabal build all peg-cli:exe:peg-hs
+        name: cabal build all peg-cli:exe:peg-hs
+        shell: bash
+        run: |
+          cabal build all peg-cli:exe:peg-hs 2>&1 | tee "$RUNNER_TEMP/build.log"
+          if grep -qE '^\[ *[0-9]+ of [0-9]+\] Compiling ' "$RUNNER_TEMP/build.log"; then COMPILED=true; else COMPILED=false; fi
+          echo "compiled=$COMPILED" >> "$GITHUB_OUTPUT"
       # in the plan of the build above, no library nor executable depends
       # on golem-test-support, which only the test suites use (docs/adr/0028)
       - name: Only the test suites depend on golem-test-support (docs/adr/0028)
@@ -286,11 +293,12 @@ jobs:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ github.sha }}
       # A pull request saves its own dist-newstyle once cabal build has
-      # succeeded, even when a later step fails, so that its next push
-      # builds on it (docs/adr/0045). Restore dist-newstyle above looks in
-      # the caches of the pull request first and then in those of main
+      # succeeded and compiled something, even when a later step fails, so
+      # that its next push builds on it (docs/adr/0045). Restore
+      # dist-newstyle above looks in the caches of the pull request first
+      # and then in those of main
       - name: Save dist-newstyle of the pull request (docs/adr/0045)
-        if: always() && steps.build.outcome == 'success' && github.event_name == 'pull_request'
+        if: always() && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'
         uses: actions/cache/save@v6
         with:
           path: dist-newstyle
