@@ -33,6 +33,13 @@ font = "heading"
 [character-styles.code]
 color = "code"
 
+# 脚注の URL（[style url: ...]）は、書体と色をコードと同じにする。
+# 背景はコードの系列の文字スタイルにだけ書けるので、塗らない
+# （golem-layout ADR 0018、golem-driver ADR 0029）。
+[character-styles.url]
+font = "code"
+color = "code"
+
 [paragraph-styles.body]
 first-line-indent = "1zw"
 

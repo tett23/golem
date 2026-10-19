@@ -25,7 +25,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ### PDF
 
-- **分けて組んだ段落の罫線**（未実装、[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）：分けて組んだ段落には前後の罫線を引かない。罫線と本文のあいだの間隔を `mm` でも書けることを明記し、HTML と EPUB では間隔の `zw` を版面の文字の大きさで解決する。
 - **表の列の幅**（未実装、[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）：短い列から自然な幅を満たして配り、折り返しを長い列に集める。
 
 ### 既知の不具合の修正
@@ -33,7 +32,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
 
 - **結合文字**（未実装、[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）：結合文字を前の字と一つの箱に組む。
-- **URL の改行と注の印の後の空き**（未実装、[golem-layout ADR 0018](golem-layout/adr/0018-url-line-breaks.md)）：URL の中で改行できる位置を増やし、注の印の後の空白を四分アキにする。
 
 
 ## v0.1.0-rc4

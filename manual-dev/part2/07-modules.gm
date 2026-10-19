@@ -3,7 +3,7 @@
 
 Golem のソースは、リポジトリの [code: modules/] の下に、モジュールごとの cabal のパッケージとして置いてある。[index reading=もじゅーる: モジュール]
 パッケージの名前はモジュールの名前と同じ（[code: golem-syntax] など）で、実行ファイルを持つのは golem-cli だけである。
-ほかのモジュールはすべてライブラリである。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0001-haskell-workspace-and-ci.md]（docs/adr の ADR 0001「Haskell のワークスペースと CI」）]
+ほかのモジュールはすべてライブラリである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0001-haskell-workspace-and-ci.md]（docs/adr の ADR 0001「Haskell のワークスペースと CI」）]
 
 モジュールを細かく分けたのは、モジュールのあいだのインターフェースを先に ADR で定め、各モジュールを並行して実装するためである。
 ADR はコミットした後に変えられないので、下の層から順に作った。
@@ -49,7 +49,7 @@ ADR はコミットした後に変えられないので、下の層から順に�
 
 上から読むと、golem-cli が golem-lsp を通して golem-driver を使い、golem-driver が出力の各パッケージと golem-lint と golem-plugin を束ねる。
 golem-preflight は、golem-driver が PDF を書きながら作る組んだ結果の写し（[code: Golem.Preflight.View]）を、プリフライトの設定に従って検査する。
-PDF/X-4 の要件の検査は、golem-pdf の [code: Golem.Pdf.X4.verify] が書く前の PDF のオブジェクトに対して行う。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
+PDF/X-4 の要件の検査は、golem-pdf の [code: Golem.Pdf.X4.verify] が書く前の PDF のオブジェクトに対して行う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 下の層は、golem-project、golem-doc、golem-parser、golem-syntax の順に積み重なる。
 golem-project が golem-doc に依存するのは、[code: style.toml] の [code: \[lists\]] の番号の書式を golem-doc の型で読むからである。
 golem-eval が golem-project に依存するのは、ファイルの中の [code: @style-def] と正規表現スタイルを [code: style.toml] の型で扱い、import の先を golem-project の関数で解決するからである。
@@ -59,12 +59,12 @@ golem-font は Golem のほかのパッケージに依存しない。
 HarfBuzz と FreeType を包み、フォントのサブセット化と埋め込みを行う。
 golem-pdf は PDF を書くだけでなく、PDF の図版を読む処理（[code: Golem.Pdf.Import]）も持つ。
 相互参照、オブジェクト、三つの復号（Flate、ASCIIHex、ASCII85）、ページの木だけを Haskell で書き、ほかのライブラリには依存しない。
-図版のページを Form XObject として取り込み、DeviceRGB を sRGB の ICCBased に置き換え、特色、レイヤー、埋め込んでいないフォントを持つ PDF を拒む。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0008-pdf-figures.md]（golem-pdf ADR 0008「PDF の図版と置けない図版の診断」）]
+図版のページを Form XObject として取り込み、DeviceRGB を sRGB の ICCBased に置き換え、特色、レイヤー、埋め込んでいないフォントを持つ PDF を拒む。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0008-pdf-figures.md]（golem-pdf ADR 0008「PDF の図版と置けない図版の診断」）]
 golem-svg は、SVG の図版を XML と CSS から読み、パス、塗りと線、行列と切り抜きの列に直す。
 数は有理数で計算し、三角関数と平方根も有理数の級数で求めるので、マシンによらず同じ値になる。
-golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画（[code: Golem.Pdf.Drawing]）に直す。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0009-svg-figures.md]（golem-pdf ADR 0009「SVG の図版」）]
+golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画（[code: Golem.Pdf.Drawing]）に直す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0009-svg-figures.md]（golem-pdf ADR 0009「SVG の図版」）]
 HTML と EPUB は SVG をそのまま写すが、golem-driver の [code: buildCore] が、写す前に golem-svg の [code: Golem.Svg.Active] で動く中身を探す。
-同じ XML の読み手で読み、要素と属性を文書の順にたどって、次の表のものを G0814 にする。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0039-svg-active-content-in-html-and-epub.md]（docs/adr ADR 0039「HTML と EPUB に写す SVG の図版の、動く中身を拒む」）]
+同じ XML の読み手で読み、要素と属性を文書の順にたどって、次の表のものを G0814 にする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0039-svg-active-content-in-html-and-epub.md]（docs/adr ADR 0039「HTML と EPUB に写す SVG の図版の、動く中身を拒む」）]
 G0814 があれば HTML と EPUB を書かず、PDF とプレーンテキストは書く。
 
 | 種類 | 拒むもの |
@@ -76,7 +76,7 @@ G0814 があれば HTML と EPUB を書かず、PDF とプレーンテキスト�
 | アニメーションによる書き換え | [code: href]、[code: xlink:href]、[code: on] で始まる名前を [code: attributeName] にした [code: set] と [code: animate] |
 | CSS の外部の参照 | [code: @import] と、[code: #] で始まらない [code: url()] |
 
-HTML と EPUB は並列ではなく親子であり、golem-epub は golem-html の出力に EPUB 3.3 [cite epub33] のパッケージングを加える薄い層である。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#モジュール構成]（仕様書の「モジュール構成」の節）]
+HTML と EPUB は並列ではなく親子であり、golem-epub は golem-html の出力に EPUB 3.3 [cite epub33] のパッケージングを加える薄い層である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#モジュール構成]（仕様書の「モジュール構成」の節）]
 
 golem-fixtures は、テストのフィクスチャの原文を Golem の原稿に変換する開発用の実行ファイルを持つ。
 golem の実行ファイルはこのパッケージに依存せず、リリースの配布物にも入らない（第[ref-number fixtures]章）。
@@ -106,7 +106,7 @@ hyph-utf8 は英語（米国）のハイフネーションのパターンで、�
 
 ## 処理の流れ
 
-[code: golem build] の処理は、golem-driver が次の段階に分けて進める。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0001-build-pipeline.md]（golem-driver ADR 0001「ビルドのパイプライン」）]
+[code: golem build] の処理は、golem-driver が次の段階に分けて進める。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0001-build-pipeline.md]（golem-driver ADR 0001「ビルドのパイプライン」）]
 
 + golem-project でマニフェスト、[code: style.toml]、import のグラフを読む。プラグインはキャッシュから読み込む。
 + マニフェストから到達するすべての原稿を構文解析する。ファイルごとに並列に実行する。
@@ -129,7 +129,7 @@ golem-lsp も golem-driver に依存し、ファイルの変更ごとに S0 と�
 ファイルをまたぐ操作には、性質の違う二つがある。
 章を並べて一冊にする内容の合成と、共通の変数を使えるようにする定義の取り込みである。
 内容の合成はマニフェストの章の配列で表し、原稿がほかの原稿の内容を取り込む記法は持たない。
-定義の取り込みは [code: @import path as ns] で書き、取り込めるのは [code: @set] の変数だけである。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#プロジェクトの構成と-import]（仕様書の「プロジェクトの構成と import」の節）]
+定義の取り込みは [code: @import path as ns] で書き、取り込めるのは [code: @set] の変数だけである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#プロジェクトの構成と-import]（仕様書の「プロジェクトの構成と import」の節）]
 
 この分け方のおかげで、内容の循環は構造の上で起こりえず、各ファイルは単独で検査できる単位になる。
 この単位が、並列のビルドと LSP の再評価の土台である。

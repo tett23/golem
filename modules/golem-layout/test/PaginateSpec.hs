@@ -502,6 +502,23 @@ ruledTests =
       gridLines joined @?= [[0, 1, 3, 4]]
       map poRules joined @?= [[PlacedRule 0 False (p + face + 2 * 65536), PlacedRule 10 True (p + face + 24 * 65536 - 2 * 65536 - 32768)]]
       gridLines (paginate 1 20 [a, FSpace 1, b']) @?= [[0, 1, 4, 5]],
+    testCase "a ruled paragraph split between columns has no rules and takes no lines for them (golem-driver ADR 0035)" $ do
+      let ps = paginate 1 4 [ruled (Just (spaced 5 10)) (Just (spaced 5 10)) (lines' 0 6)]
+      -- the first part starts at the first grid line; the room after the last part is not used
+      gridLines ps @?= [[0, 1, 2, 3], [0, 1]]
+      map poRules ps @?= [[], []],
+    testCase "the rule after before a split paragraph takes its own area (golem-driver ADR 0035)" $ do
+      let a = ruled Nothing (Just (spaced 2 3)) (lines' 0 1)
+          b = FRuled 10 (Just (spaced 2 6)) (Just (spaced 2 6)) True ruleGrid 0 (RuledLines (lines' 10 8))
+          rules = concatMap poRules (paginate 1 5 [a, b])
+      [(prId r, prBefore r) | r <- rules] @?= [(0, False)]
+      rules @?= concatMap poRules (paginate 1 5 [a, FSpace 0, b {frJoined = False}]),
+    testCase "the rule before after a split paragraph is a rule of its own (golem-driver ADR 0035)" $ do
+      let b = FRuled 10 (Just (spaced 2 6)) (Just (spaced 2 6)) False ruleGrid 0 (RuledLines (lines' 10 6))
+          c joined = FRuled 30 (Just (spaced 2 6)) Nothing joined ruleGrid 0 (RuledLines (lines' 30 1))
+          rulesOf j = map poRules (paginate 1 5 [b, c j])
+      [(prId r, prBefore r) | r <- concat (rulesOf True)] @?= [(30, True)]
+      rulesOf True @?= rulesOf False,
     testCase "a ruled paragraph that ends at the column end counts its rule at the edge" $ do
       -- inside: inner 5pt, outer 30pt take 2 lines; at the end 1 line
       let ps = paginate 1 4 [ruled Nothing (Just (spaced 5 30)) (lines' 0 3)]
