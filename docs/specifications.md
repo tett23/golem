@@ -146,7 +146,7 @@ EPUB と HTML はリフローであり、位置情報が意味論に混入した
 矢印は、元のモジュールが先のモジュールを使うことを表す。
 golem-syntax は golem-regex、golem-font、golem-svg、golem-fixtures、golem-test-support を除くすべてのモジュールが使うので、golem-parser からの矢印だけを示す。
 golem-regex は base、text、containers、array だけに依存する正規表現の照合器である（[docs/adr/0015](adr/0015-regex-styles.md)）。
-golem-svg は base、bytestring、containers、text だけに依存し、SVG の図版を PDF に描ける形に読む（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+golem-svg は base、bytestring、containers、text だけに依存し、SVG の図版を PDF に描ける形に読む（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、仕様は [golem-svg の仕様書](golem-svg/specifications.md)）。
 golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画に直す。
 ほかの依存を通して届く依存の矢印も省いている。
 PDF 経路のモジュールだけが、レイアウト IR、シェイピング[^shaping]、フォントのサブセット化[^subset]を扱う。
@@ -1710,6 +1710,8 @@ SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子�
 - 表にない要素、属性、値は無視せず、文書の順にすべて集めて G0811 のエラーにする。グラデーション、`use`、クリップ、フィルター、1 でない不透明度などは扱わない。
 - 輪郭にしていない文字（`text`、`tspan`、`textPath` と `@font-face`）は G0811 である。文字は図の作成ツールで輪郭にして書き出す。文字だけに意味を持つプロパティ（`font-family` など）と、`aria-` で始まる属性は読み飛ばす。
 - XML として読めない SVG、UTF-8 でない SVG、内部サブセットを持つ `DOCTYPE`、大きさのない SVG は G0810 である。
+- SVG の数は、絶対値が 10^9 以下でなければならない（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。超える数を持つ属性とプロパティは、名前に `（読めない数）` を添えて G0811 にする。座標、変換の行列の成分、線の幅、破線の配列、円弧の半径のどれも同じである。値を丸めて読むことはしない。ルートの `width`、`height`、`viewBox` の数が超えれば、理由を `大きさの数が大きすぎます` とする G0810 にする。指数は 4 桁まで、仮数は 60 桁までが数の形であり、これを超える形は読めない値として、名前に何も添えずに G0811 にする。
+- `marker` の中の `marker` は 9 段まで描く（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。図が置く `marker` を 1 段目とし、10 段目を置く参照は `marker（入れ子）` の G0811 である。`marker` が自分自身を、ほかの `marker` を経てでも置けば、その循環の中の参照は `marker（循環）` の G0811 である。図が置かない `marker` は数えない。
 - 図版の大きさは、ルートの `width` と `height`（なければ `viewBox`）の縦横の比で決める。`viewBox` と `preserveAspectRatio` は Form XObject の中の行列で表す。
 - 数は有理数で計算し、三角関数と平方根は有理数の級数を決まった項数で打ち切って求める。座標と行列の値は、PDF に書くときに 1/65536 に丸める。x86-64 と aarch64 で同じ出力にするためである（[docs/adr/0002](adr/0002-determinism.md)）。
 - 色は sRGB の ICCBased の色空間（`/GolemSRGB`）で書き、DeviceRGB と CMYK への変換は使わない。sRGB のプロファイルは、画像、PDF の図版、SVG の図版で共有し、PDF に一度だけ書く。
