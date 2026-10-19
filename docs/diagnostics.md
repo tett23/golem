@@ -5319,6 +5319,7 @@ PDF を書かない。
 `@figure` の画像のファイルはあるが、PDF に置ける形で読めない。
 PNG と JPEG の図版は画像として読めないとき、PDF の図版は Golem が取り込めないときに出す。
 SVG の図版は、XML として読めないとき、UTF-8 でないとき、内部サブセットを持つ `DOCTYPE` があるとき、大きさ（ルートの `width` と `height` か `viewBox`）がないときに出す（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+大きさの数の絶対値が 10^9 を超えるときも、大きさがないときと同じく、理由を `大きさの数が大きすぎます` として出す（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。
 SVG の範囲の外のものは [G0811](#g0811) である。
 PDF の図版を取り込めないのは、次のどれかの場合である。
 
@@ -5347,11 +5348,12 @@ HTML、EPUB、プレーンテキストは画像を読まないので出さない
 
 - メッセージ: `図版を PDF に置けません: <パス>（<理由>）`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`、golem-svg の `Golem.Svg`）
-- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[docs/adr/0040](adr/0040-pdf-import-resource-limits.md)
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[docs/adr/0040](adr/0040-pdf-import-resource-limits.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（SVG の大きさの数）
 
 ### 主な原因
 
 - 画像のファイルが壊れている。
+- SVG の図版の大きさに、10^9 を超える数を書いた。
 - インターレースの PNG を使った。
 - 拡張子と中身の形式が食い違っている（中身が PDF の `.png` など）。
 - PDF の図版の書き出しの設定で、フォントを埋め込んでいないか、特色やレイヤーを残している。
@@ -5377,6 +5379,10 @@ SVG の図版に扱えないものがあります
 SVG の図版に、Golem が PDF に描ける範囲の外の要素、属性、プロパティの値がある。
 範囲は [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md) の表のとおりで、パス、基本の図形、変換、塗りと線、マーカーなどである。
 輪郭にしていない文字（`text`、`tspan`、`textPath` の要素と `@font-face`）も範囲の外である。
+絶対値が 10^9 を超える数も範囲の外であり、その属性かプロパティの名前に `（読めない数）` を添える（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。
+`marker` が自分自身を、ほかの `marker` を経てでも置くときは、その参照を `marker（循環）` とする。
+`marker` の中の `marker` が 10 段目になる参照は `marker（入れ子）` とする。
+どちらも、その参照を持つ図形の位置を書き、範囲の外の `marker` は描かない。
 範囲の外のものを黙って無視せず、文書の順にすべて集め、最初のものの名前と位置（SVG のファイルの中の行と桁）を書き、残りの件数を添える。
 最初のものが文字なら、輪郭にして書き出すよう案内する。
 `@figure` ごとに一つ出し、PDF を書かない。
@@ -5386,18 +5392,22 @@ PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出
 
 - メッセージ: `SVG の図版に扱えないものがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。文字なら `（<名前>: 文字は輪郭にして書き出してください）`。ほかになければ `ほか <n> 件` を書かない。
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
-- ADR: [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)
+- ADR: [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（`marker` の循環と入れ子、読めない数）
 
 ### 主な原因
 
 - 文字を輪郭にせずに書き出した。
 - グラデーション、`use`、クリップ、フィルター、1 でない不透明度などを使った。
 - 子孫の結合子などの、扱わない CSS のセレクターを使った。
+- 地図のタイルなどの、大きな座標を使う図を書き出した。
+- `marker` が自分自身を参照するか、深く入れ子にした SVG を生成した。
 
 ### 直し方
 
 図の作成ツールで、文字を輪郭（アウトライン）にして書き出す。
 範囲の外の機能は、ツールの側で範囲の中に収めて書き出し直す。
+読めない数は、座標を縮めて書き出し直す。
+`marker` の循環は断ち、入れ子は 9 段までにする。
 SVG で収まらない図は、PDF で書き出して PDF の図版として置く。
 
 ## G0813

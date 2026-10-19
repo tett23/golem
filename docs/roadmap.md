@@ -34,7 +34,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 2026-10-18 のセキュリティの監査で見つかった問題を直す。
 
 - **SVG の動く中身**（未実装、[docs/adr 0039](adr/0039-svg-active-content-in-html-and-epub.md)）：HTML と EPUB に写す SVG の図版に動く中身があれば G0814 で拒む。XML として読めない SVG も拒む。
-- **SVG の `marker` と数の上限**（未実装、[docs/adr 0041](adr/0041-svg-marker-and-number-limits.md)）：`marker` の循環と 10 段以上の入れ子、範囲の外の数を G0811 にする。
 
 ### 既知の不具合の修正
 
