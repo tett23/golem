@@ -1,7 +1,7 @@
 {- | Reading a page of a PDF as a Form XObject (golem-pdf ADR 0008). The
 PDFs are written by Golem itself or put together here as bytes.
 -}
-module ImportSpec (tests, minimalPdf, classicPdf) where
+module ImportSpec (tests, minimalPdf, classicPdf, stream, catalog, onePage, layout, objBytes, xrefTable) where
 
 import Codec.Compression.Zlib qualified as Z
 import Data.Bits (shiftR)
@@ -189,7 +189,22 @@ xrefTests =
 
 pageTests :: [TestTree]
 pageTests =
-  [ testCase "the third page of three, and no fourth" $ do
+  [ testCase "ASCIIHex and ASCII85 decode the content (docs/adr ADR 0040)" $ do
+      let page dict body = classicPdf "" (take 3 (onePage "<< >>" "") <> [(4, stream dict body)])
+      -- white space between the digits, and an odd last digit
+      hex <- importOk 1 (page "/Filter /ASCIIHexDecode" "30 2067\n0a3>")
+      ipContent hex @?= "0 g\n0"
+      a85 <- importOk 1 (page "/Filter /ASCII85Decode" "<~0Hb!80d(*~>")
+      ipContent a85 @?= "0 g\n1 g"
+      -- z is four zero bytes; white space may come anywhere, also between ~ and >
+      a85z <- importOk 1 (page "/Filter /ASCII85Decode" "0Hb!8 z\n0d&.m 0HbCK~ >")
+      ipContent a85z @?= "0 g\n\0\0\0\0/GolemSRGB cs 1 0 0 sc"
+      importPage 1 (page "/Filter /ASCII85Decode" "0Hb!8v~>") @?= Left (Malformed "ASCII85 のストリーム")
+      importPage 1 (page "/Filter /ASCII85Decode" "0Hb!80~>") @?= Left (Malformed "ASCII85 のストリーム")
+      importPage 1 (page "/Filter /ASCII85Decode" "0Hzb!8~>") @?= Left (Malformed "ASCII85 のストリーム")
+      importPage 1 (page "/Filter /ASCII85Decode" "s8W-\"~>") @?= Left (Malformed "ASCII85 のストリーム")
+      importPage 1 (page "/Filter /ASCIIHexDecode" "3g>") @?= Left (Malformed "ASCIIHex のストリーム"),
+    testCase "the third page of three, and no fourth" $ do
       let pdf =
             classicPdf
               ""

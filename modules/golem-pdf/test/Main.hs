@@ -24,6 +24,7 @@ import Hedgehog.Range qualified as Range
 import ImageSpec qualified
 import ImportSpec qualified
 import Numeric (readHex)
+import SecuritySpec qualified
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
@@ -1307,6 +1308,7 @@ tests =
       testGroup "Producer (ADR 0005)" producerTests,
       ImageSpec.tests,
       ImportSpec.tests,
+      SecuritySpec.tests,
       DrawingSpec.tests,
       testGroup
         "CIDSystemInfo (ADR 0006)"
