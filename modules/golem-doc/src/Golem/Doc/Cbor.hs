@@ -45,7 +45,16 @@ encodeInlines :: [Inline] -> ByteString
 encodeInlines = toStrictByteString . encodeTerm . inlinesTerm
 
 int :: (Integral a) => a -> Term
-int = TInteger . toInteger
+int = TInteger . checked . toInteger
+
+{- | An integer of the IR as it is encoded. The evaluator keeps every
+integer within int64 (G0291), so one out of range is a bug of the host
+(golem-doc ADR 0006): the encoding never writes a bignum.
+-}
+checked :: Integer -> Integer
+checked n
+  | inInt64 n = n
+  | otherwise = error ("golem-doc: an integer out of int64 reached the encoder: " <> show n)
 
 text :: Text -> Term
 text = TString
@@ -164,7 +173,7 @@ segT (RubySegment base reading) = TList [list (inlineT absurd) base, opt text re
 
 exprT :: AST.Located AST.Expr -> Term
 exprT (AST.Located s e) = case e of
-  AST.EInt i -> tagged 0 [spanT s, TInteger i]
+  AST.EInt i -> tagged 0 [spanT s, int i]
   AST.EFloat d -> tagged 1 [spanT s, floatTerm d]
   AST.EString t -> tagged 2 [spanT s, text t]
   AST.EBool b -> tagged 3 [spanT s, TBool b]
@@ -203,12 +212,20 @@ termOf bs = case deserialiseFromBytes decodeTerm (BL.fromStrict bs) of
 bad :: Text -> D a
 bad what = Left ("スキーマに合いません: " <> what)
 
+{- | An integer of the CDDL @int64@ (golem-doc ADR 0006); a larger one,
+a bignum (tags 2 and 3) included, does not conform.
+-}
 asInt :: Term -> D Integer
 asInt = \case
   TInt i -> Right (toInteger i)
-  TInteger i -> Right i
+  TInteger i
+    | inInt64 i -> Right i
+    | otherwise -> bad "整数が範囲の外です"
   _ -> bad "整数"
 
+{- | An integer of a field of type 'Int'. 'asInt' has checked the range,
+which is the range of 'Int', so 'fromInteger' never rounds it.
+-}
 asIntI :: Term -> D Int
 asIntI t = fromInteger <$> asInt t
 

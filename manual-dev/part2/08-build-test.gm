@@ -50,6 +50,7 @@ $ scripts/fetch-wasmtime.sh
 ```
 
 このスクリプトは、プラットフォームに合う wasmtime 49.0.2 の C API の配布物を取得し、SHA-256 を検証して [code: third_party/wasmtime] に置く。[index reading="fetch-wasmtime.sh": fetch-wasmtime.sh]
+[code: third_party/wasmtime/VERSION] には配布物の名前と SHA-256 を書き、どちらもスクリプトのものと一致するときだけ、取得済みのものを使う。
 ライブラリの絶対パスを [code: cabal.project.local] に書き込むので、以後の [code: cabal] はそれを使ってリンクする。
 [code: third_party/] と [code: cabal.project.local] は [code: .gitignore] に入っている。
 

@@ -37,13 +37,11 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **SVG の `marker` と数の上限**（未実装、[docs/adr 0041](adr/0041-svg-marker-and-number-limits.md)）：`marker` の循環と 10 段以上の入れ子、範囲の外の数を G0811 にする。
 - **制御文字と glob のメタ文字**（未実装、[docs/adr 0042](adr/0042-control-characters-and-glob-metacharacters.md)）：出力に書けない文字を G0328 と G0289 で拒み、端末に出す diagnostic の制御文字をエスケープし、LSP の監視のパターンをエスケープする。
 - **表のファイルの大きさの上限**（未実装、[docs/adr 0043](adr/0043-table-file-size-limits.md)）：大きすぎる表のファイルを G0288 で拒む。
-- **リリースのワークフロー**（未実装、[docs/adr 0044](adr/0044-release-workflow-hardening.md)）：リリースノートを書くジョブを権限のないジョブに分け、Claude Code のバージョンを `mise.toml` で固定し、リンクを許可リストで検査する。
 
 ### 既知の不具合の修正
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
 
-- **IR の整数の範囲**（未実装、[golem-doc ADR 0006](golem-doc/adr/0006-integer-range-in-ir.md)）：IR の整数を 64 ビットの範囲に限り、範囲の外を G0291 にする。
 - **複数の `@index` と `@bibliography`**（未実装、[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）：複数の一覧を置けるようにし、項目が載る一覧と HTML の `id` を決める。
 - **結合文字**（未実装、[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）：結合文字を前の字と一つの箱に組む。
 - **ナビゲーション文書の深さ**（未実装、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）：`@toc` の深さをナビゲーション文書と `index.xhtml` に当てる。
@@ -205,6 +203,7 @@ v3 の GUI は、次の原則に従って作る。
 実装は終わり、自動のテストも通っているが、ADR が求める手作業の確かめがまだ残っている項目をここにまとめる。
 確かめたら、結果を実装のプルリクエストか `docs/audits/` の記録に書き、この一覧から消す。
 
+- **リリースのワークフローの固め方**：`workflow_dispatch` で `release.yml` を動かし、`notes` ジョブが mise で Claude Code を入れて `notes.md` を上げることと、タグの push で `release` ジョブがそれを使うことを確かめていない。`build-linux.sh` を Alpine のコンテナで動かし、ghcup のブートストラップのスクリプトのハッシュが一致して進むことと、ハッシュを一文字変えると止まることも確かめていない（[docs/adr/0044](adr/0044-release-workflow-hardening.md)）。
 - **LSP の位置の扱い**：UTF-8 の位置の交渉と、行の長さを超える列の丸めを、実際のエディタ（Neovim）で確かめていない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)、[golem-lsp ADR 0003](golem-lsp/adr/0003-position-handling.md)）。
 - **CIDSystemInfo と異体字**：Adobe-Japan1 の ROS を持つフォント（小塚明朝 Pr6N など）で組んだ PDF を Acrobat のプリフライトにかけ、`CIDSystemInfo` がフォントの ROS になっていること、IVS の異体字が出ることを確かめていない。リポジトリにそうしたフォントがないためである（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。
 - **プリフライトと商用のプリフライトの差**：Golem の G0914 が出なかった PDF を Acrobat のプリフライト（PDF/X-4 の適合の検査）にかけ、Acrobat が PDF/X-4 の誤りを報告するかを確かめていない。差があれば `Golem.Pdf.X4.verify` に足す要件を ADR にし、結果は `docs/audits/` に残す。同じ条件の文書を InDesign のプリフライトにかけ、同じ種類の問題が両方で出るかも確かめていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
