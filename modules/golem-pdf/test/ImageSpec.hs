@@ -3,7 +3,7 @@
 run. The images are built here, a few pixels each, so that the expected
 samples can be worked out by hand.
 -}
-module ImageSpec (tests) where
+module ImageSpec (tests, allocatedBy, zeros) where
 
 import Codec.Compression.Zlib qualified as Z
 import Control.Exception (SomeException, evaluate, try)
