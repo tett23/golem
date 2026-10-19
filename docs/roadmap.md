@@ -40,7 +40,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
 
-- **複数の `@index` と `@bibliography`**（未実装、[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）：複数の一覧を置けるようにし、項目が載る一覧と HTML の `id` を決める。
 - **結合文字**（未実装、[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）：結合文字を前の字と一つの箱に組む。
 - **ナビゲーション文書の深さ**（未実装、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）：`@toc` の深さをナビゲーション文書と `index.xhtml` に当てる。
 - **浮動小数点数の桁あふれ**（未実装、[golem-eval ADR 0005](golem-eval/adr/0005-float-overflow.md)）：正確な値を一度だけ丸めて計算し、比較を正確に行う。

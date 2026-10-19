@@ -109,7 +109,7 @@ data ComposeEnv = ComposeEnv
     -- | how a sidenote is marked in the text (golem-driver ADR 0006)
     ceSidenoteMarker :: !SidenoteMarker,
     -- | the number of a cited work (golem-driver ADR 0007)
-    ceCiteNumber :: Text -> Maybe Int,
+    ceCiteNumber :: SrcSpan -> Text -> Maybe Int,
     {- | the penalty of a break after a hyphen or dash in a Latin word;
     10000 or more means no such break (golem-layout ADR 0008)
     -} ceExplicitHyphenPenalty :: !Int,
@@ -143,7 +143,7 @@ defaultComposeEnv fs =
       ceLook = plainLook "body" fs,
       ceRestyle = const,
       ceSidenoteMarker = MarkerNumber,
-      ceCiteNumber = const Nothing,
+      ceCiteNumber = \_ _ -> Nothing,
       ceExplicitHyphenPenalty = 50,
       ceAkiSet = defaultAkiSet,
       ceNoteMarkSize = Zw (1 % 2),
@@ -270,7 +270,7 @@ piecesOf env inl = case inl of
       MarkerSymbol -> [PBox lk "※" KindText (lkSize lk)]
       MarkerNone -> []
   IndexMark sp e -> [PAnchor (\i -> AnchorIndex i sp e)]
-  Cite _ k -> textPieces lk ("[" <> maybe k (T.pack . show) (ceCiteNumber env k) <> "]")
+  Cite sp k -> textPieces lk ("[" <> maybe k (T.pack . show) (ceCiteNumber env sp k) <> "]")
   ProofComment {} -> []
   -- the lines of a keep style are split before they are composed (docs/adr
   -- ADR 0005); what reaches here is a hard break (docs/adr ADR 0016)
