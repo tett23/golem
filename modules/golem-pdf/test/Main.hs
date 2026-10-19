@@ -1072,6 +1072,15 @@ marksTests =
           assertBool "the font is a resource" ("/Font <<" `BS.isInfixOf` writePdf doc),
         testCase "a translated mark moves the origin inside q and Q" $
           contentStream Map.empty Map.empty [Translated 65536 131072 [Rule (Rect 0 0 65536 65536)]] @?= "q 1 0 0 1 1 2 cm\n0 0 1 1 re f\nQ\n",
+        testCase "a turned mark turns its frame into the rectangle inside q and Q (golem-driver ADR 0034)" $ do
+          let r = Rect 65536 131072 (30 * 65536) (40 * 65536 + 32768)
+              inner = [Rule (Rect 0 0 65536 65536)]
+          contentStream Map.empty Map.empty [Turned TurnedRight r inner] @?= "q 0 -1 1 0 1 42.5 cm\n0 0 1 1 re f\nQ\n"
+          contentStream Map.empty Map.empty [Turned TurnedLeft r inner] @?= "q 0 1 -1 0 31 2 cm\n0 0 1 1 re f\nQ\n",
+        testCase "images and fonts inside turned marks are page resources" $ do
+          let pdf = writePdf (documentWith [page [Turned TurnedRight (Rect 0 0 65536 65536) [Image (ImageRef 1) (Rect 0 0 65536 65536), GlyphRun (FontRef 7) 65536 [(1, 0, 0)]]]])
+          assertBool "XObject" ("/XObject << /Im1 " `BS.isInfixOf` pdf)
+          assertBool "Font" ("/Font << /F1 " `BS.isInfixOf` pdf),
         testCase "images and fonts inside translated marks are page resources" $ do
           let pdf = writePdf (documentWith [page [Translated 65536 65536 [Saved [Image (ImageRef 1) (Rect 0 0 65536 65536)], GlyphRun (FontRef 7) 65536 [(1, 0, 0)]]]])
           assertBool "XObject" ("/XObject << /Im1 " `BS.isInfixOf` pdf)
