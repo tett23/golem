@@ -3,10 +3,16 @@ trigonometric functions and the square root as rational series cut at a
 fixed number of terms, so that x86-64 and aarch64 give the same values
 (docs/adr ADR 0002). Values that come out of a series are rounded to
 'precisionBits' bits, which keeps the rationals small.
+
+A number read from the SVG is at most 'numberLimit' (10^9) in absolute
+value (docs/adr ADR 0041); a larger one is not a number that can be read,
+and 'tooLarge' tells such a value apart from a malformed one.
 -}
 module Golem.Svg.Number
   ( parseNumber,
     numberPrefix,
+    numberLimit,
+    tooLarge,
     roundTo,
     sqrtR,
     cosDeg,
@@ -29,15 +35,50 @@ precisionBits = 40
 roundTo :: Rational -> Rational
 roundTo x = round (x * 2 ^ precisionBits) % (2 ^ precisionBits)
 
+-- | The largest absolute value of a number read (docs/adr ADR 0041).
+numberLimit :: Integer
+numberLimit = 10 ^ (9 :: Int)
+
 -- | A whole SVG number: sign, digits, a fraction, an exponent.
 parseNumber :: Text -> Maybe Rational
 parseNumber t = case numberPrefix (T.strip t) of
   Just (v, rest) | T.null rest -> Just v
   _ -> Nothing
 
--- | A number at the start of a text and what follows it.
+-- | A number at the start of a text and what follows it; none if it is larger than 'numberLimit'.
 numberPrefix :: Text -> Maybe (Rational, Text)
-numberPrefix t0 =
+numberPrefix t = case lexNumber t of
+  Just (Lexed sign mant e, rest) | not (exceeds mant e) -> Just (fromInteger sign * (mant % 1) * (10 ^^ e), rest)
+  _ -> Nothing
+
+{- | Whether a text has a number of the form of an SVG number whose value
+is larger than 'numberLimit' in absolute value. Hexadecimal colours are
+the caller's to leave out.
+-}
+tooLarge :: Text -> Bool
+tooLarge t = case T.uncons t of
+  Nothing -> False
+  Just (_, rest) -> case lexNumber t of
+    Just (Lexed _ mant e, after) -> exceeds mant e || tooLarge after
+    Nothing -> tooLarge rest
+
+-- | A number as its sign, its digits as an integer and the power of ten they are scaled by.
+data Lexed = Lexed !Integer !Integer !Integer
+
+{- | Whether digits scaled by a power of ten exceed the limit, without
+computing a power larger than the digits allow.
+-}
+exceeds :: Integer -> Integer -> Bool
+exceeds mant e
+  | mant == 0 = False
+  | e > 9 = True
+  | e >= 0 = mant * 10 ^ e > numberLimit
+  | e < -60 = False
+  | otherwise = mant > numberLimit * 10 ^ negate e
+
+-- | The form of an SVG number: at most 60 digits and an exponent of at most 4 digits.
+lexNumber :: Text -> Maybe (Lexed, Text)
+lexNumber t0 =
   let (sign, t1) = case T.uncons t0 of
         Just ('-', r) -> (-1, r)
         Just ('+', r) -> (1, r)
@@ -64,8 +105,7 @@ numberPrefix t0 =
           let digits = int <> frac
               mant = if T.null digits then 0 else read (T.unpack digits) :: Integer
               scale = toInteger (T.length frac)
-              v = (mant % 1) * (10 ^^ (ex - scale))
-           in Just (sign * v, t4)
+           in Just (Lexed sign mant (ex - scale), t4)
 
 -- | The square root, by the integer square root of the value scaled.
 sqrtR :: Rational -> Rational

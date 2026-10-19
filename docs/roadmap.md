@@ -20,11 +20,11 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ### 記法と設定
 
+- **段落のあいだの行アキ**（未実装、[docs/adr 0046](adr/0046-blank-line-command.md)）：`@blank-line` と `@blank-line N` で、段落のあいだに行アキを入れる。行の大きさは、その位置の段落スタイルで決まる。段の先頭に来た行アキは捨て、notice で知らせる。
 - **マニュアルのライセンス**：二つのマニュアルの原稿（`.gm`）と、組んだ PDF と HTML を CC0 にする。リポジトリのほかの部分は今のとおり MIT とする。PDF に埋め込むフォントは SIL Open Font License 1.1 のままで、CC0 の対象にならないことを、マニュアルの奥付とライセンスの表示に書く。ライセンスの表示の置き場所（`manual/` と `manual-dev/` の LICENSE、奥付、README）を決める。
 
 ### PDF
 
-- **図版を段に収め、回して置く**（未実装、[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）：回り込ませない図版を、行長と段の長さの両方に収まるよう縮め、縮めたことを notice の G0739 で知らせる。キャプションだけで段に収まらなければ G0738 にする。`@figure` の `rotate=true` で、図版をキャプションとともに 90 度回して一ページに置く。
 - **分けて組んだ段落の罫線**（未実装、[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）：分けて組んだ段落には前後の罫線を引かない。罫線と本文のあいだの間隔を `mm` でも書けることを明記し、HTML と EPUB では間隔の `zw` を版面の文字の大きさで解決する。
 - **表の列の幅**（未実装、[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）：短い列から自然な幅を満たして配り、折り返しを長い列に集める。
 
@@ -33,7 +33,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 2026-10-18 のセキュリティの監査で見つかった問題を直す。
 
 - **SVG の動く中身**（未実装、[docs/adr 0039](adr/0039-svg-active-content-in-html-and-epub.md)）：HTML と EPUB に写す SVG の図版に動く中身があれば G0814 で拒む。XML として読めない SVG も拒む。
-- **SVG の `marker` と数の上限**（未実装、[docs/adr 0041](adr/0041-svg-marker-and-number-limits.md)）：`marker` の循環と 10 段以上の入れ子、範囲の外の数を G0811 にする。
 
 ### 既知の不具合の修正
 
@@ -41,9 +40,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - **結合文字**（未実装、[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）：結合文字を前の字と一つの箱に組む。
 - **ナビゲーション文書の深さ**（未実装、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）：`@toc` の深さをナビゲーション文書と `index.xhtml` に当てる。
-- **浮動小数点数の桁あふれ**（未実装、[golem-eval ADR 0005](golem-eval/adr/0005-float-overflow.md)）：正確な値を一度だけ丸めて計算し、比較を正確に行う。
 - **HTML の引用の印のリンク**（未実装、[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)）：引用の印を、その印が載る参考文献の一覧のある文書へのリンクにする。
-- **`style.toml` の値の誤りの位置**（未実装、[golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md)）：値の誤りと、読み込んだ後の検査の誤りを、値の位置に出す。
 
 
 ## v0.1.0-rc4
@@ -83,7 +80,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **段落の行揃え**：段落スタイルに行揃え（左、中央、右、均等配置と最終行の揃え）の欄を加える。縦組みでは天付き、中央、地付きと読む。今は両端揃えしかなく、扉、献辞、署名、奥付を組めない。値は InDesign の行揃えに合わせる。ノド側と小口側の揃えを作るかは ADR で決める。v2 の「段落スタイルの拡張」の行揃えを先に取り出す。
 - **段落の前後のアキ**：段落スタイルに、段落の前と後の空きの欄を加える。単位は `space-between` と同じく行の数とし、行の格子を崩さない。段の先頭で段落の前の空きを捨てるか（InDesign は捨てる）は ADR で決める。v2 の「段落スタイルの拡張」の段落の前後の空きを先に取り出す。
 - **行の終わりの側の字下げ**：段落スタイルに、行の終わりの側の字下げの欄を加え、引用を両側から字下げして組めるようにする。行揃えと段落の前後のアキと同じ ADR で決めてよい。v2 の「段落スタイルの拡張」の行の終わりの側の字下げを先に取り出す。
-- **回り込ませない図版の幅**：回り込ませない図版の幅を `@figure` の `width` で指定できるようにする。今は行長に固定し、`width` を書いても diagnostic を出さずに無視する（golem-driver の `placeFigure`）。行の中の寄せと、行長より大きい図版の縮小も合わせて決める。v2 の「図版とキャプションの拡張」の図版の幅の指定を先に取り出す。
+- **回り込ませない図版の幅**：回り込ませない図版の幅を `@figure` の `width` で指定できるようにする。今は行長に固定し、`width` を書いても diagnostic を出さずに無視する（golem-driver の `placeFigure`）。`width` に行長より大きい値を書いた場合も、[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md) の段に収める規則で縮める。行の中の寄せは、その ADR の寄せ（紙の端に近いほうの段の端）を既定にする。v2 の「図版とキャプションの拡張」の図版の幅の指定を先に取り出す。
 
 ## v1.0.0
 
@@ -137,7 +134,8 @@ v2.0.0-rc1 は、数式の組版かその下準備、あるいはその両方を
 - **改ページの大域の最適化**：見開きの単位の最適化と、段組みの段の高さの調整を含む（[golem-layout ADR 0003](golem-layout/adr/0003-pagination-and-s2.md)）。
 - **フレーム**：レベル 2 と 3 のフレーム。型は定義してあり、v1 では値を書くとエラーになる（[golem-layout-spec ADR 0001](golem-layout-spec/adr/0001-page-geometry.md)、[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)）。
 - **段組みの拡張**：v1 で実装する段組み（仕様書の [「style.toml」の節](specifications.md#styletoml) の段組み、[docs/adr/0018](adr/0018-multi-column-layout.md)）を超える部分。段抜きの見出し、索引のほかで一冊の中で段数を切り替えること、段組みの版面での回り込みと段をまたぐ除外領域を含む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0007](golem-driver/adr/0007-pdf-index-and-bibliography.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。段の高さの調整は「改ページの大域の最適化」に、段組みの版面での傍注欄は「傍注の拡張」に含める。索引の段組みは [docs/adr/0025](adr/0025-index-columns.md) で v1 に入れた。
-- **図版とキャプションの拡張**：版面より大きい図版を縮小する、複数のページに分ける、見開きに置くといった扱い（v1 は空のページにそのまま置く）、回り込ませない図版の幅の指定、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。
+- **図版とキャプションの拡張**：複数のページに分ける、見開きに置くといった扱い、回り込ませない図版の幅の指定、ページの端や塗り足しの領域まで伸ばす図版、矩形以外の形の回り込み、キャプションの位置（画像の上、横）と揃え、画像とキャプションのあいだの空き、図番号とキャプションの本文で書体や大きさを変えること（[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。
+- **お知らせの局所的な抑制**：textlint の無効にするコメントのように、`.gm` の中でお知らせを局所的に抑制するブロックコマンド。今の抑制は `manifest.toml` の `silence-notices` と `--no-notices` による本の全体の単位であり、縮めた図版のお知らせ G0739 も図版ごとには抑制できない。本の全体での抑制で困る例が出たら、別の ADR で加える（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
 - **複数段落の注**：v1 の注は一つの段落に限る。
 - **目次の拡張**：章ごとの小目次（v1 の `@toc` は文書に一つだけ）、`[toc]` の `font` と `size` による項目の書体と大きさ、階層ごとの書体の切り替え、字下げ、空き、リーダーの字の設定、折り返した題のぶら下げ、図目次と表目次（[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)）。
 - **ページ番号と柱の拡張**：ノンブルの書式を目次と索引のページ番号に使うこと、前付けのローマ数字のノンブルと、前付けと本文でのページ番号の振り直し、EPUB の `page-list`、柱とノンブルと目次の項目を見出しの書体で組むこと、柱、ノンブル、罫線、図版の色（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md)）。

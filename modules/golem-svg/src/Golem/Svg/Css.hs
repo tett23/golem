@@ -57,13 +57,16 @@ selects s name classes ident =
 
 -- | Comments replaced by spaces of the same length, so that offsets hold.
 stripComments :: Text -> Text
-stripComments t = case T.breakOn "/*" t of
-  (before, after)
-    | T.null after -> t
-    | otherwise ->
-        let (comment, rest) = T.breakOn "*/" after
-            n = T.length comment + min 2 (T.length rest)
-         in before <> T.replicate n " " <> stripComments (T.drop 2 rest)
+stripComments = T.concat . go
+  where
+    -- the pieces, joined once: joining at each comment is quadratic (security audit 2026-10-18, C9)
+    go t = case T.breakOn "/*" t of
+      (before, after)
+        | T.null after -> [t]
+        | otherwise ->
+            let (comment, rest) = T.breakOn "*/" after
+                n = T.length comment + min 2 (T.length rest)
+             in before : T.replicate n " " : go (T.drop 2 rest)
 
 -- | The rules of a style sheet, and what is unsupported in it.
 parseStylesheet :: Text -> ([Rule], [CssProblem])

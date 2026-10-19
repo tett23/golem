@@ -103,7 +103,7 @@ silence-notices = ["G0262", "G0407"]
 - **廃止**：G0244。[docs/adr/0003](adr/0003-verse-line-breaks.md) が `@verse` の引数の誤りに定めたが、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) で使わなくなった。下に節を置く。
 - **廃止**：G0235。[golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md) が `@table` のコマンドを指す CSV の誤りに定めたが、[golem-eval ADR 0004](golem-eval/adr/0004-tsv-tables.md) で表のファイルの中を指す G0285 に置き換えた。下に節を置く。
 - **廃止**：G0248。[docs/adr/0005](adr/0005-character-and-paragraph-styles.md) が廃止した `@verse` に定めたが、[golem-fmt ADR 0002](golem-fmt/adr/0002-remove-verse-migration.md) で使わなくなった。下に節を置く。
-- **空き**：G0104 から G0109、G0125 から G0128、G0601、G0703 から G0720、G0731、G0736、G0738 から G0740。各区分の最後に使った番号より後も空いている。
+- **空き**：G0104 から G0109、G0125 から G0128、G0601、G0703 から G0720、G0731、G0736、G0740。各区分の最後に使った番号より後も空いている。
 
 ## G0101
 
@@ -674,14 +674,18 @@ G0110 から G0123 に当たらない構文エラーの既定のコードであ�
 ### 意味
 
 浮動小数点の計算の結果が NaN か無限大になった。
+または、浮動小数点数に変換する整数が大きすぎ、変換すると無限大になる（絶対値が 2^1024 - 2^970 以上）。
+整数は、整数と浮動小数点数の `+`、`-`、`*`、`/` と、`sqrt`、`round`、`fixed` の引数で浮動小数点数に変換する。
 
-- メッセージ: `結果が NaN か無限大になる演算です`、`負の数の平方根です`
+- メッセージ: `結果が NaN か無限大になる演算です`、`負の数の平方根です`、`整数が大きすぎて浮動小数点数に変換できません`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)
+- ADR: [golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)、[golem-eval ADR 0005](golem-eval/adr/0005-float-overflow.md)
 
 ### 主な原因
 
 - 負の数の平方根など、浮動小数点の計算が NaN か無限大になる演算をした。
+- `2.0 ** 1024` や `10 ** 400 / 3` のように、結果が倍精度の範囲を超えた。
+- `10 ** 309 + 0.5` のように、大きな整数と浮動小数点数を混ぜて計算した。
 
 ### 直し方
 
@@ -2824,20 +2828,51 @@ TSV の途中の空の行は消す。
 
 式の整数の演算の結果の絶対値が 2 の 4096 乗以上になった。
 または、`round` か `fixed` の小数の桁数に 1000 を超える数を書いた。
+浮動小数点数の底か負の指数の `**` を正確に計算すると大きくなりすぎる場合も、このエラーになる。
+底を `±m × 2^e`（`m` は正の奇数）としたとき、`(m のビットの数 - 1) × |指数|` が 2^20 を超える場合である。
 上限を超える値を作る前に止めるので、大きな冪や桁数で評価が終わらなくなることはない。
 
-- メッセージ: `整数が大きすぎます（絶対値は 2 の 4096 乗未満に限ります）`、`小数の桁数が多すぎます（1000 桁までです）`
+- メッセージ: `整数が大きすぎます（絶対値は 2 の 4096 乗未満に限ります）`、`小数の桁数が多すぎます（1000 桁までです）`、`累乗の計算が大きすぎます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: [docs/adr/0035](adr/0035-security-hardening.md)
+- ADR: [docs/adr/0035](adr/0035-security-hardening.md)、[golem-eval ADR 0005](golem-eval/adr/0005-float-overflow.md)
 
 ### 主な原因
 
 - `10 ** 100000` のような、大きな冪を書いた。
 - `round` か `fixed` の二つめの引数に、大きな桁数を書いた。
+- `1.0000001 ** 100000` のように、1 に近い数を何万回も掛ける累乗を書いた。
 
 ### 直し方
 
 式を直し、値を上限の内に収める。
+
+## G0287
+
+@figure の rotate の誤りです
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@figure` の `rotate` の値が `true` でも `false` でもない。
+または、`rotate=true` と `wrap` を両方書いた。
+回して置く図版は一ページを占め、脇に本文を置かないので、回り込ませられない。
+位置は `@figure` のブロックである。
+
+- メッセージ: `rotate は true か false です: <値>`、`回して置く図版は回り込ませられません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)
+
+### 主な原因
+
+- `rotate=yes` のように、`true` と `false` 以外の値を書いた。
+- 回り込ませていた図版に `rotate=true` を足した。
+
+### 直し方
+
+`rotate` には `true` か `false` を書く。
+回して置く図版からは `wrap` と `width` を消す。
 
 ## G0288
 
@@ -2957,8 +2992,8 @@ manifest.toml の誤りです
 `[metadata]` の `creators` と `contributors` の `role` が役割の表の語でない場合、`name` が空の文字列の場合、`publisher-person` が空の文字列か改行を含む場合、`printings` の版か刷が 1 より小さい場合、`printings` が版と刷の順に狭義に増えていない場合、`printings` の `date` が前の項目より前の場合も、この誤りとする。
 
 - メッセージ: `TOML の誤りです: <詳細>`、`@style-def の値が不正です: <詳細>`、`出力ターゲットが一つもありません`、`同じファイルを [source] の設定を変えて章に二度並べています: <パス>`、`章は、ファイルのパス、表、配列のどれかで書きます`、`役割は語で書きます。"<符号>" は "<語>" です`、`役割は <語の一覧> のどれかです: <値>`、`発行所は [metadata] の publisher に、発行人は publisher-person に書きます`、`name に空の文字列は書けません`、`publisher-person に空の文字列は書けません`、`publisher-person に改行は書けません`、`版と刷の番号は 1 以上の整数です`、`printings は版と刷の順に、同じ版と刷を二度書かずに並べます`、`printings の date が前の項目の date より前です`、または TOML のスキーマの誤りの文言（`知らないキーです: <経路>.<キー>`、`必須のキーがありません: <経路>.<キー>`、`<経路> には<型>を書きます（<型>が書かれています）`、`[source]` の不正な値など）。TOML の誤りの詳細は、`文字列が閉じていません`、`閉じた表にキーを足しています: <キー>` などの日本語の文言である。経路は `metadata.title` や `chapters[0]` の形で書く。Golem の検査の文言には、`(chapters[0])` のように経路を後ろに添える。経路が空のとき（ファイルの最上位の誤り）は添えない。
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）。位置は、スキーマの誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置、それ以外では `manifest.toml` の先頭である
-- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えた。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md) が役割、名前、発行人、刷の検査を加えた
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Manifest`）。位置は、スキーマの誤りと Golem が値の読み込みで調べる誤り（章の項目、`[source]` の値など）では誤った値の位置、TOML の構文の誤りではその誤りの位置、それ以外（出力ターゲットが一つもないなど）では `manifest.toml` の先頭である
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md) が触れ、[docs/adr/0013](adr/0013-paragraph-separator.md) が `[source]` の誤りの条件を加えた。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。[docs/adr/0033](adr/0033-colophon-contributors-and-printings.md) が役割、名前、発行人、刷の検査を加えた。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -3096,8 +3131,8 @@ style.toml の誤りです
 誤りのある定義は捨てる。
 
 - メッセージ: `TOML の誤りです: <詳細>`、TOML のスキーマの誤りの文言、または値の検査の文言（`スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: <名前>`、`番号の書式が不正です: <書式>`、`塗り足しには zw を使えません`、`<キー> に使えない値です: <値>（<許す値> のどれか）`、`columns が 2 以上のときは column-gap が要ります`、`space-between は 0 以上です`、`長さの書き方が不正です: <値>（13Q や 20mm のように書きます）`、`長さは文字列で書きます`、`cmyk は 0 から 100 までの整数四つです`、`見出しの段は 1、2、3 のどれかです: <段>`、`罫線の <キー> を寸法として読めません: <値>`、`罫線の length は 0 より大きい寸法です`、`罫線の weight には zw を使えません`、`罫線の weight は 0 より大きい寸法です`、`罫線の <キー> は 0 以上の寸法です`、`罫線の style に使えない値です: <値>（<許す値> のどれか）`、`罫線の <キー> には zw を使えません`、`罫線の <キー> は 0 より大きい寸法です`、`罫線の <キー> は style が <線の種類> のときには書けません`、`[notes.rule] には length が要ります`、`[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です`、`[notes] の mark-format には {n} をちょうど一つ書きます: <書式>`、`lines は 1 以上の整数です: <値>`、`罫線の length と end-indent は一緒に書けません`、`罫線には表か false を書きます。true は書けません`、`[notes.rule] には <キー> を書けません。段落スタイルと見出しの罫線だけのキーです`、`段落スタイル <名前> には rule-before と rule-after を書けません`、`段落スタイル <名前> の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください` など）。廃止した欄（`[emphasis]`、`[verse]`、`[sidenotes]` の `font` と `size`）は、書き換え先を示す文言になる。TOML のスキーマの誤りの文言は、`知らないキーです: page.bindng`、`必須のキーがありません: <経路>.<キー>`、`page.binding には文字列を書きます（整数が書かれています）` のように、文言の中に経路を書く。Golem の検査の文言には、`(page.grid.font-size)` のように経路を後ろに添え、経路が空のときは添えない。TOML の誤りの詳細も、`文字列が閉じていません`、`閉じた表にキーを足しています: page` などの日本語の文言である。
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置、読み込んだ後の検査では `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md) である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は、スキーマの誤りと Golem が値の読み込みで調べる誤りでは誤った値の位置、TOML の構文の誤りではその誤りの位置である。二つのキーの組み合わせの誤りは、文言が直すよう求めているキーの値の位置（`columns` と `column-gap` では `columns`）に出す。読み込んだ後の検査では、直すべき値の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置、それもなければ `style.toml` の先頭である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
+- ADR: [golem-project ADR 0006](golem-project/adr/0006-project-diagnostic-codes.md)（定めた）。条件を加えた ADR は [golem-project ADR 0004](golem-project/adr/0004-font-file-check-per-target.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[docs/adr/0006](adr/0006-paragraph-indent.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-layout ADR 0008](golem-layout/adr/0008-explicit-hyphens.md)、[golem-layout ADR 0009](golem-layout/adr/0009-ruby-placement.md)、[golem-driver ADR 0009](golem-driver/adr/0009-pdf-toc-page-numbers.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[docs/adr/0014](adr/0014-in-file-settings.md)、[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)、[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)、[golem-driver ADR 0032](golem-driver/adr/0032-default-heading-styles.md) である。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が TOML の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -3162,8 +3197,8 @@ style.toml にないフォントの役割です
 組み込みの段落スタイル `code` と文字スタイル `code` の `font` が既定の役割 `code` を指し、`[fonts.code]` がない場合は、この誤りとせず、本文の役割で組む（[G0808](#g0808)、[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
 
 - メッセージ: `style.toml にないフォントの役割です: <役割>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)（定めた）、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（段落スタイルに広げた）、[docs/adr/0014](adr/0014-in-file-settings.md)（ファイルの中の定義に広げた）
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。`style.toml` の検査の位置は、直すべき値（`font`、`size`、`first-line-indent`、`based-on`、`color`、`kerning` など）の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
+- ADR: [golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)（定めた）、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（段落スタイルに広げた）、[docs/adr/0014](adr/0014-in-file-settings.md)（ファイルの中の定義に広げた）。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -3237,8 +3272,8 @@ LSP は出さない。
 段落スタイルの解決した `size` が、`[page.grid]` の文字の大きさを超える。
 
 - メッセージ: `段落スタイルの文字の大きさが版面の文字の大きさを超えます: <名前>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。`style.toml` の検査の位置は、直すべき値（`font`、`size`、`first-line-indent`、`based-on`、`color`、`kerning` など）の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
+- ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -3260,8 +3295,8 @@ LSP は出さない。
 段落スタイルの `indent` と `first-line-indent` の和が負になる。
 
 - メッセージ: `段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: <名前>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [docs/adr/0006](adr/0006-paragraph-indent.md)
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。`style.toml` の検査の位置は、直すべき値（`font`、`size`、`first-line-indent`、`based-on`、`color`、`kerning` など）の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
+- ADR: [docs/adr/0006](adr/0006-paragraph-indent.md)。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -3286,8 +3321,8 @@ style.toml のスタイルの参照が不正です
 段落スタイルの `aki-set` と、アキ量のセットの `based-on` が存在しないセットを指すか、セットの `based-on` が循環する場合も、この誤りとする。
 
 - メッセージ: `style.toml のスタイルの参照が不正です: <理由>`（ファイルの中の定義では `@style-def のスタイルの参照が不正です: <理由>`）。正規表現スタイルの理由は `正規表現スタイルの文字スタイルがありません: <名前>` か `正規表現スタイルの段落スタイルがありません: <名前>`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（正規表現スタイルの参照は [docs/adr/0015](adr/0015-regex-styles.md)、アキ量のセットの参照は [docs/adr/0019](adr/0019-aki-settings.md)）
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。`style.toml` の検査の位置は、直すべき値（`font`、`size`、`first-line-indent`、`based-on`、`color`、`kerning` など）の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置である。ファイルの中の定義（`@style-def`）は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
+- ADR: [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（正規表現スタイルの参照は [docs/adr/0015](adr/0015-regex-styles.md)、アキ量のセットの参照は [docs/adr/0019](adr/0019-aki-settings.md)）。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -3360,8 +3395,8 @@ style.toml のスタイルの参照が不正です
 部分集合の外の構文は、黙って別の意味に読まずにこの誤りとする。
 
 - メッセージ: `正規表現を解釈できません: <理由>（<段落スタイル> の <n> 番目の正規表現の <位置> 字目）`
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`、照合器は golem-regex の `Golem.Regex`）。ファイルの中の `@style-def regex` は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその行になる
-- ADR: [docs/adr/0015](adr/0015-regex-styles.md)
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`、照合器は golem-regex の `Golem.Regex`）。`style.toml` の検査の位置は、その正規表現スタイルの `pattern` の値の位置である。ファイルの中の `@style-def regex` は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその行になる
+- ADR: [docs/adr/0015](adr/0015-regex-styles.md)。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -3421,7 +3456,7 @@ manifest.toml がありません
 
 - メッセージ: `未知の判型です: <名前>。表にない判型は size = { width = "…", height = "…" } で書きます`、`判型の width と height はどちらも必須です`、`判型には zw を使えません`、`判型の幅と高さは 0 より大きい寸法です`、または未知のキーと寸法の誤りの TOML のスキーマの文言。どれも誤った箇所の経路を添える。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [golem-project ADR 0005](golem-project/adr/0005-page-size-by-dimensions.md)
+- ADR: [golem-project ADR 0005](golem-project/adr/0005-page-size-by-dimensions.md)。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -3449,7 +3484,7 @@ manifest.toml がありません
 
 - メッセージ: `未知の位置です: <位置>`。誤った箇所の経路を添える。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -3498,8 +3533,8 @@ manifest.toml がありません
 ファイルの中の段落スタイルの定義（`@style-def`）の寸法の欄も同じである。
 
 - メッセージ: `アキの量の指定が正しくありません: <理由>`。理由は `アキの量として読めません: <値>`、`未知のクラスの名前です: <名前>`、`line-end は after にだけ書けます`、`<名前> は before にだけ書けます`、`minimum、optimum、maximum の順に小さくない値を書きます`、`組み込みのアキ量のセットと同じ名前です。…`、`アキの量の名前と百分率は、アキの量を書く欄でだけ使えます。…` などである。誤った箇所の経路を添える。`[aki-sets]` の中の型の誤りは、TOML のスキーマの文言になる。
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。`@style-def` の寸法の欄は評価（golem-eval の `Golem.Eval.Settings`）
-- ADR: [docs/adr/0019](adr/0019-aki-settings.md)
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は誤った値の位置であり、組み込みのセットと同じ名前のセットではそのセットの表の見出しの位置である。`@style-def` の寸法の欄は評価（golem-eval の `Golem.Eval.Settings`）
+- ADR: [docs/adr/0019](adr/0019-aki-settings.md)。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -3532,8 +3567,8 @@ manifest.toml がありません
 オプティカルカーニングは v2 以降に回した。
 
 - メッセージ: `<欄> の値が正しくありません: <値>`。`tracking` の範囲の外では `（-1000 から 10000 までです）` を添える。`kerning = "optical"` は `v1 ではオプティカルカーニングを使えません（<文字スタイル|段落スタイル> <名前> の kerning）`。値の型の誤りは、`character-styles.<名前>.kerning には文字列を書きます（整数が書かれています）` のように文言の中に経路を書く（`@style-def` では経路は `kerning` だけになる）。そのほかの文言には誤った箇所の経路を添える。
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。ファイルの中の定義は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
-- ADR: [docs/adr/0020](adr/0020-indesign-character-features.md)。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が値の型の誤りの文言を日本語にした
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。`style.toml` の検査の位置は、直すべき値（`font`、`size`、`first-line-indent`、`based-on`、`color`、`kerning` など）の位置であり、その値が書かれていなければそのスタイルなどの表の見出しの位置である。ファイルの中の定義は評価（golem-eval の `Golem.Eval.Settings`）が同じ検査をし、位置はその `@style-def` の行になる
+- ADR: [docs/adr/0020](adr/0020-indesign-character-features.md)。[golem-project ADR 0007](golem-project/adr/0007-toml-messages-in-japanese.md) が値の型の誤りの文言を日本語にした。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -3562,8 +3597,8 @@ manifest.toml がありません
 メッセージがどの欄の誤りかを示す。
 
 - メッセージ: `[lists] の <欄> が正しくありません: <理由>`。理由は `空の配列です`、`空の文字列があります`、`番号の差し込みがありません`、`番号の差し込みが二つ以上あります`、`表にない差し込みです: {x}`、`寸法として読めません`、`負の寸法です` など。誤った箇所の経路を添える。
-- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）。位置は誤ったキーの値の位置である
+- ADR: [golem-driver ADR 0013](golem-driver/adr/0013-list-indents.md)。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -3655,7 +3690,7 @@ silence-notices に抑制できないコードがあります
 
 - メッセージ: `[index] の columns は 1 以上の整数です` または `[index] の column-gap が正しくありません`。誤った箇所の経路を添える。
 - 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
-- ADR: [docs/adr/0025](adr/0025-index-columns.md)
+- ADR: [docs/adr/0025](adr/0025-index-columns.md)。位置は [golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md) が定めた
 
 ### 主な原因
 
@@ -4800,6 +4835,68 @@ PDF の改ページで、`@no-page-break`、`@need-lines`、`@page-lines` の指
 
 組んだ PDF を見て、指定の位置か量を直すか、指定を消す。
 
+## G0738
+
+図版のキャプションが段に収まりません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+回り込ませない図版のキャプションが占める格子の行の数が、段の行の数に達し、画像を置く行が残らない。
+`rotate=true` の図版では、回した図版を組む枠の行の数に達した場合である。
+位置は `@figure` のブロックである。
+dev と prod の両方でエラーになる。
+
+- メッセージ: `図版のキャプションが段の行数を超えます（<s> 行。段は <L> 行）`、`図版のキャプションがページの行数を超えます（<s> 行。ページは <L> 行）`。`<s>` はキャプションが占める格子の行の数、`<L>` は段か枠の行の数
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)
+
+### 主な原因
+
+- キャプションが長い。
+- `style.toml` の `[page.grid]` の `lines` が少ない。
+- `rotate=true` の図版で、版面の幅（縦組みでは高さ）が狭い。
+
+### 直し方
+
+キャプションを短くするか、段の行の数を増やす。
+回した図版では、回さずに置くことも考える。
+
+## G0739
+
+図版を段に収めるため縮めました
+
+- 重大度: お知らせ
+- 状態: 使用中
+
+### 意味
+
+回り込ませない図版を行長にそろえると、段の行の送りの方向の長さを超えるので、縦横の比を保って縮めた。
+縮めた図版は、行の方向に余りができ、仕上がりの紙の端に近いほうの段の端に寄せた。
+`rotate=true` の図版では、回した図版を組む枠に収めるために縮めた。
+図版ごとに一つ出し、位置は `@figure` のブロックである。
+PDF は書く。
+お知らせなので、エラーにも警告にもならず、ビルドの成否に影響しない（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。
+
+- メッセージ: `図版を段に収めるため <r>% に縮めました`、回した図版では `図版をページに収めるため <r>% に縮めました`。`<r>` は縮めた後の行の方向の長さを行長で割った百分率の切り捨て。回さずに置いた図版が、回せばより大きく置ける場合は、`。rotate=true で回して一ページに置くと、より大きく置けます` が続く
+- 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
+- ADR: [golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)
+
+### 主な原因
+
+- 縦組みの版面に、横長の図版を置いた。
+- 横組みの版面に、縦長の図版を置いた。
+- キャプションが長く、画像を置ける行が少ない。
+
+### 直し方
+
+縮めてよい図版なら、そのままでよい。
+大きく置きたい図版は、図版の縦横の比を変えて作り直すか、`rotate=true` を書いて回して一ページに置く。
+`manifest.toml` の `[diagnostics]` の `silence-notices` に `"G0739"` を加えると、このお知らせを出さなくなる。
+抑制は本の全体の単位であり、図版ごとには抑制できない。
+
 ## G0741
 
 表の列が版面の行長に収まりません
@@ -5319,6 +5416,7 @@ PDF を書かない。
 `@figure` の画像のファイルはあるが、PDF に置ける形で読めない。
 PNG と JPEG の図版は画像として読めないとき、PDF の図版は Golem が取り込めないときに出す。
 SVG の図版は、XML として読めないとき、UTF-8 でないとき、内部サブセットを持つ `DOCTYPE` があるとき、大きさ（ルートの `width` と `height` か `viewBox`）がないときに出す（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
+大きさの数の絶対値が 10^9 を超えるときも、大きさがないときと同じく、理由を `大きさの数が大きすぎます` として出す（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。
 SVG の範囲の外のものは [G0811](#g0811) である。
 PDF の図版を取り込めないのは、次のどれかの場合である。
 
@@ -5347,11 +5445,12 @@ HTML、EPUB、プレーンテキストは画像を読まないので出さない
 
 - メッセージ: `図版を PDF に置けません: <パス>（<理由>）`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`、golem-svg の `Golem.Svg`）
-- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[docs/adr/0040](adr/0040-pdf-import-resource-limits.md)
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[docs/adr/0040](adr/0040-pdf-import-resource-limits.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（SVG の大きさの数）
 
 ### 主な原因
 
 - 画像のファイルが壊れている。
+- SVG の図版の大きさに、10^9 を超える数を書いた。
 - インターレースの PNG を使った。
 - 拡張子と中身の形式が食い違っている（中身が PDF の `.png` など）。
 - PDF の図版の書き出しの設定で、フォントを埋め込んでいないか、特色やレイヤーを残している。
@@ -5377,6 +5476,10 @@ SVG の図版に扱えないものがあります
 SVG の図版に、Golem が PDF に描ける範囲の外の要素、属性、プロパティの値がある。
 範囲は [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md) の表のとおりで、パス、基本の図形、変換、塗りと線、マーカーなどである。
 輪郭にしていない文字（`text`、`tspan`、`textPath` の要素と `@font-face`）も範囲の外である。
+絶対値が 10^9 を超える数も範囲の外であり、その属性かプロパティの名前に `（読めない数）` を添える（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。
+`marker` が自分自身を、ほかの `marker` を経てでも置くときは、その参照を `marker（循環）` とする。
+`marker` の中の `marker` が 10 段目になる参照は `marker（入れ子）` とする。
+どちらも、その参照を持つ図形の位置を書き、範囲の外の `marker` は描かない。
 範囲の外のものを黙って無視せず、文書の順にすべて集め、最初のものの名前と位置（SVG のファイルの中の行と桁）を書き、残りの件数を添える。
 最初のものが文字なら、輪郭にして書き出すよう案内する。
 `@figure` ごとに一つ出し、PDF を書かない。
@@ -5386,18 +5489,22 @@ PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出
 
 - メッセージ: `SVG の図版に扱えないものがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。文字なら `（<名前>: 文字は輪郭にして書き出してください）`。ほかになければ `ほか <n> 件` を書かない。
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
-- ADR: [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)
+- ADR: [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（`marker` の循環と入れ子、読めない数）
 
 ### 主な原因
 
 - 文字を輪郭にせずに書き出した。
 - グラデーション、`use`、クリップ、フィルター、1 でない不透明度などを使った。
 - 子孫の結合子などの、扱わない CSS のセレクターを使った。
+- 地図のタイルなどの、大きな座標を使う図を書き出した。
+- `marker` が自分自身を参照するか、深く入れ子にした SVG を生成した。
 
 ### 直し方
 
 図の作成ツールで、文字を輪郭（アウトライン）にして書き出す。
 範囲の外の機能は、ツールの側で範囲の中に収めて書き出し直す。
+読めない数は、座標を縮めて書き出し直す。
+`marker` の循環は断ち、入れ子は 9 段までにする。
 SVG で収まらない図は、PDF で書き出して PDF の図版として置く。
 
 ## G0813

@@ -183,7 +183,9 @@ data Figure = Figure
     figWidth :: !(Maybe Text),
     figCaption :: ![Block],
     -- | the page of a PDF figure, from 1 (golem-pdf ADR 0008)
-    figPage :: !(Maybe Int)
+    figPage :: !(Maybe Int),
+    -- | whether the PDF turns the figure and its caption onto a page of their own (golem-driver ADR 0034)
+    figRotate :: !Bool
   }
   deriving stock (Eq, Show)
 

@@ -32,6 +32,7 @@ paginateTests =
       testGroup "widows, orphans and the page end" widowOrphanTests,
       testGroup "page references that do not settle (S2)" pageRefTests,
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
+      testGroup "turned figures on pages of their own (golem-driver ADR 0034)" pageFigureTests,
       testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
       testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
       testGroup "invariants" propertyTests
@@ -170,6 +171,32 @@ widowOrphanTests =
       -- 2 free on page 1: both figures of 3 lines are sent on, the text moves up
       let ps = paginate 1 5 [FParagraph (lines' 0 3), FFigure 98 3 [] [], FFigure 99 3 [] [], FParagraph (lines' 10 2)]
       contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 10, SLine 11], [SFigure 98], [SFigure 99]]
+  ]
+
+pageFigureTests :: [TestTree]
+pageFigureTests =
+  [ testCase "a turned figure in the middle of the text: the text fills the page, the figure takes the next one" $ do
+      let ps = paginate 1 5 [FParagraph (lines' 0 3), FPageFigure 50 ["f"] [], FParagraph (lines' 10 4)]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2, SLine 10, SLine 11], [SPageFigure 50], [SLine 12, SLine 13]]
+      labelPages ps @?= Map.fromList [("f", 2)],
+    testCase "a turned figure met on an empty page takes that page" $
+      contents (paginate 1 5 [FPageFigure 50 [] [], FParagraph (lines' 0 2)]) @?= [[SPageFigure 50], [SLine 0, SLine 1]],
+    testCase "a figure after a turned figure waits even when it fits, and goes to the page after it" $
+      contents (paginate 1 5 [FParagraph (lines' 0 2), FPageFigure 50 [] [], FFigure 60 1 [] [], FParagraph (lines' 10 2)])
+        @?= [[SLine 0, SLine 1, SLine 10, SLine 11], [SPageFigure 50], [SFigure 60]],
+    testCase "a waiting turned figure is placed before a forced page break" $
+      contents (paginate 1 5 [FParagraph (lines' 0 2), FPageFigure 50 [] [], FBreak BreakPage, FParagraph (lines' 10 1)])
+        @?= [[SLine 0, SLine 1], [SPageFigure 50], [SLine 10]],
+    testCase "a waiting turned figure is placed before a column break" $
+      [(poNumber p, poColumn p, map snd (poSlots p)) | p <- paginate 2 5 [FParagraph (lines' 0 2), FPageFigure 50 [] [], FBreak BreakColumn, FParagraph (lines' 10 1)]]
+        @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SPageFigure 50]), (3, 0, [SLine 10])],
+    testCase "a waiting turned figure is placed before a heading at a recto" $ do
+      let ps = paginate 1 5 [FParagraph (lines' 0 2), FPageFigure 50 [] [], FParagraph (lines' 10 1), FHeading 1 True 1 (lines' 20 1)]
+      [(poNumber p, map snd (poSlots p)) | p <- ps, not (poBlank p)] @?= [(1, [SLine 0, SLine 1, SLine 10]), (2, [SPageFigure 50]), (3, [SHeading 20 1])],
+    testCase "a footnote continued from the page before skips the page of a turned figure" $ do
+      let ps = paginate 1 5 [FParagraph [LineBox 0 [NoteBody (nid 900) 5] [] [] 0], FPageFigure 50 [] [], FParagraph (lines' 10 2)]
+      contents ps @?= [[SLine 0], [SPageFigure 50], [SLine 10, SLine 11]]
+      notesByPage ps @?= [(1, [nid 900]), (2, []), (3, [nid 900])]
   ]
 
 {- | The label "x" on the last of k one-line pages before it, where k is
