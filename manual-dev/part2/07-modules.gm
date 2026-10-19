@@ -63,6 +63,19 @@ golem-pdf は PDF を書くだけでなく、PDF の図版を読む処理（[cod
 golem-svg は、SVG の図版を XML と CSS から読み、パス、塗りと線、行列と切り抜きの列に直す。
 数は有理数で計算し、三角関数と平方根も有理数の級数で求めるので、マシンによらず同じ値になる。
 golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画（[code: Golem.Pdf.Drawing]）に直す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0009-svg-figures.md]（golem-pdf ADR 0009「SVG の図版」）]
+HTML と EPUB は SVG をそのまま写すが、golem-driver の [code: buildCore] が、写す前に golem-svg の [code: Golem.Svg.Active] で動く中身を探す。
+同じ XML の読み手で読み、要素と属性を文書の順にたどって、次の表のものを G0814 にする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0039-svg-active-content-in-html-and-epub.md]（docs/adr ADR 0039「HTML と EPUB に写す SVG の図版の、動く中身を拒む」）]
+G0814 があれば HTML と EPUB を書かず、PDF とプレーンテキストは書く。
+
+| 種類 | 拒むもの |
+| --- | --- |
+| スクリプトの要素 | [code: script] |
+| 別の文書を埋め込む要素 | [code: foreignObject]、[code: iframe]、[code: embed]、[code: object]、[code: handler]、[code: listener] |
+| イベントの属性 | [code: on] で始まる属性（大文字と小文字を区別しない） |
+| 参照の属性 | [code: #] で始まらない [code: href] と [code: xlink:href] |
+| アニメーションによる書き換え | [code: href]、[code: xlink:href]、[code: on] で始まる名前を [code: attributeName] にした [code: set] と [code: animate] |
+| CSS の外部の参照 | [code: @import] と、[code: #] で始まらない [code: url()] |
+
 HTML と EPUB は並列ではなく親子であり、golem-epub は golem-html の出力に EPUB 3.3 [cite epub33] のパッケージングを加える薄い層である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#モジュール構成]（仕様書の「モジュール構成」の節）]
 
 golem-fixtures は、テストのフィクスチャの原文を Golem の原稿に変換する開発用の実行ファイルを持つ。

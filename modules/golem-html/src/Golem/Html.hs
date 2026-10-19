@@ -17,6 +17,8 @@ module Golem.Html
     codeTokens,
     XhtmlSite (..),
     renderXhtml,
+    allFigures,
+    webSource,
     pagePath,
     escapeXml,
     cmykToRgb,
@@ -293,12 +295,14 @@ renderXhtml cfg ft book =
             <> [(fontOut p, p) | (ja, la) <- Map.elems (hcFonts cfg), Just p <- [ja, la]]
     }
 
+-- | The file that HTML and EPUB copy for a figure: its @web@ image, or the figure itself.
 webSource :: Figure -> Text
 webSource f = fromMaybe (figSource f) (figWeb f)
 
 fontOut :: FilePath -> FilePath
 fontOut p = "fonts" </> takeFileName p
 
+-- | The @figure blocks, also those inside lists, in the order of the document.
 allFigures :: [Block] -> [Block]
 allFigures = concatMap go
   where

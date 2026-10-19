@@ -8,6 +8,7 @@ golem-svg は、`@figure` の SVG の図版を、PDF に描ける形（パス、
 ## モジュール
 
 - `Golem.Svg`：図を読む `readSvg`。要素、スタイル、図形、`marker` を扱う。
+- `Golem.Svg.Active`：HTML と EPUB に写す SVG の動く中身を、文書の順に返す `activeContent`（[docs/adr/0039](../adr/0039-svg-active-content-in-html-and-epub.md)）。拒むものの表は [仕様書](../specifications.md) の図版の節に書く。`style` の要素と属性の CSS は、注釈を同じ長さの空白に置き換えてから（`Golem.Svg.Css` の `stripComments`）、`@import` と `url(` を探す。手間は文書の長さに比例する。
 - `Golem.Svg.Xml`：SVG が使う XML の読み手。
 - `Golem.Svg.Css`：`<style>` と `style` の属性の CSS の読み手。
 - `Golem.Svg.Number`：数の読み手と、有理数の三角関数と平方根。

@@ -1,6 +1,7 @@
 -- | The SVG subset of golem-pdf ADR 0009: XML, CSS and the drawing.
 module Main (main) where
 
+import ActiveSpec qualified
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Either (isLeft)
@@ -62,6 +63,7 @@ tests outlined sources =
       testGroup "strokes" strokeTests,
       testGroup "the size and the viewBox" sizeTests,
       SecuritySpec.tests,
+      ActiveSpec.tests,
       testGroup
         "the figures of the developer manual"
         ( [ testCase ("the outlined " <> f <> " has nothing unsupported") $ do
