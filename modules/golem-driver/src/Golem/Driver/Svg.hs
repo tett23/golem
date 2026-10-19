@@ -1,10 +1,13 @@
 {- | SVG figures for the PDF (golem-pdf ADR 0009): the drawing of
 golem-svg as the drawing of golem-pdf, and the wording of G0811.
 golem-pdf does not depend on golem-svg; this module joins them.
+Also the wording of G0814, the active content that HTML and EPUB refuse
+(docs/adr ADR 0039).
 -}
 module Golem.Driver.Svg
   ( svgDrawing,
     unsupportedMessage,
+    activeMessage,
   )
 where
 
@@ -13,6 +16,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Pdf qualified as P
 import Golem.Svg qualified as S
+import Golem.Svg.Active qualified as A
 
 -- | The drawing of an SVG in the terms of golem-pdf.
 svgDrawing :: S.Svg -> P.Drawing
@@ -61,5 +65,30 @@ unsupportedMessage path (u :| rest) =
     <> "）"
     <> (if null rest then "" else "ほか " <> tshow (length rest) <> " 件")
   where
+    tshow :: Int -> Text
+    tshow = T.pack . show
+
+{- | G0814 (docs/adr ADR 0039): the first active thing, with where it is,
+and how many more; or why the SVG cannot be read, in the words of G0810.
+Nothing when the SVG has nothing active.
+-}
+activeMessage :: Text -> Either Text [A.Active] -> Maybe Text
+activeMessage path = \case
+  Left why -> Just (prefix <> path <> "（" <> why <> "）")
+  Right [] -> Nothing
+  Right (a : rest) ->
+    Just $
+      prefix
+        <> path
+        <> ":"
+        <> tshow (A.acLine a)
+        <> ":"
+        <> tshow (A.acColumn a)
+        <> "（"
+        <> A.acName a
+        <> "）"
+        <> (if null rest then "" else "ほか " <> tshow (length rest) <> " 件")
+  where
+    prefix = "SVG の図版に、HTML と EPUB に写せない動く中身があります: "
     tshow :: Int -> Text
     tshow = T.pack . show

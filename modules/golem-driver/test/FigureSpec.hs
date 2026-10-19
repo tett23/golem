@@ -1,9 +1,10 @@
 -- | PDF figures and figures that cannot be placed (golem-pdf ADR 0008).
-module FigureSpec (pdfFigureTests, svgFigureTests) where
+module FigureSpec (pdfFigureTests, svgFigureTests, activeContentTests) where
 
 import Control.Monad (forM_)
 import Data.Bits (shiftR)
 import Data.ByteString qualified as BS
+import Data.Containers.ListUtils (nubOrd)
 import Data.List (isSuffixOf)
 import Data.Maybe (isJust)
 import Data.Text qualified as T
@@ -13,7 +14,7 @@ import Golem.Driver.Pdf (PlacedFigure (..))
 import Golem.Pdf (FigureContent (..), ImportedPage (..))
 import Golem.Syntax
 import Support
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -196,4 +197,58 @@ svgFigureTests =
       page <- BS.readFile (tmp </> "build/html/a.xhtml")
       assertBool "t.svg" ("src=\"images/t.svg\"" `BS.isInfixOf` page)
       assertBool "u.png" ("src=\"images/u.png\"" `BS.isInfixOf` page)
+  ]
+
+-- | A build of a one-chapter project with files to the targets: the errors (code, message, line of the span) and the files under build.
+activeBuild :: Profile -> [Target] -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([(DiagnosticCode, T.Text)], [Diagnostic], Bool, Bool, Bool)
+activeBuild profile targets source files = withSystemTempDirectory "golem-active" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
+  BS.writeFile (tmp </> "style.toml") (withBodyFont (figStyle horizontalStyle))
+  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
+  forM_ (bodyFontFiles horizontalStyle <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  r <- build (defaultOptions tmp) {optTargets = Just targets, optFonts = fakeProvider, optProfile = profile}
+  html <- doesDirectoryExist (tmp </> "build/html")
+  epub <- doesDirectoryExist (tmp </> "build/epub")
+  let errs = filter isError (brDiagnostics r)
+  pure ([(diagCode d, diagMessage d) | d <- errs], errs, html, epub, any (".pdf" `isSuffixOf`) (brWritten r))
+
+scriptSvg :: BS.ByteString
+scriptSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n<script/></svg>"
+
+activeContentTests :: [TestTree]
+activeContentTests =
+  [ testCase "an SVG figure with a script is G0814 for HTML and for EPUB, in dev and prod, and neither is written" $
+      forM_ [Dev, Prod] $ \profile -> forM_ [TargetHtml, TargetEpub] $ \t -> do
+        (errs, _, html, epub, _) <- activeBuild profile [t] "@figure images/s.svg alt=\"t\"\n" [("images/s.svg", scriptSvg)]
+        errs @?= [(DiagnosticCode "G0814", "SVG の図版に、HTML と EPUB に写せない動く中身があります: images/s.svg:2:1（script）")]
+        (html, epub) @?= (False, False),
+    testCase "the web SVG of a PNG figure is checked for HTML" $ do
+      (errs, _, html, _, _) <- activeBuild Dev [TargetHtml] "@figure images/f.png web=images/s.svg alt=\"t\"\n" [("images/f.png", png False), ("images/s.svg", scriptSvg)]
+      map fst errs @?= [DiagnosticCode "G0814"]
+      html @?= False,
+    testCase "a broken SVG is G0814 with the reason of G0810; more than one thing adds ほか" $ do
+      (errs, _, _, _, _) <- activeBuild Dev [TargetHtml] "@figure images/b.svg alt=\"t\"\n" [("images/b.svg", "<svg")]
+      map fst errs @?= [DiagnosticCode "G0814"]
+      assertBool (show errs) (all (("images/b.svg（" `T.isInfixOf`) . snd) errs)
+      (errs2, _, _, _, _) <- activeBuild Dev [TargetHtml] "@figure images/s.svg alt=\"t\"\n" [("images/s.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect onclick=\"\"/><script/></svg>")]
+      map snd errs2 @?= ["SVG の図版に、HTML と EPUB に写せない動く中身があります: images/s.svg:1:70（onclick）ほか 1 件"],
+    testCase "two @figure of one SVG, one in a list, give one G0814 each, at their blocks" $ do
+      (errs, ds, _, _, _) <- activeBuild Dev [TargetHtml] "@figure images/s.svg alt=\"t\"\n\n- 項目\n\n  @figure images/s.svg alt=\"u\"\n" [("images/s.svg", scriptSvg)]
+      map fst errs @?= [DiagnosticCode "G0814", DiagnosticCode "G0814"]
+      length (nubOrd (map diagSpan ds)) @?= 2,
+    testCase "the PDF and plain text are still written when HTML has G0814" $ do
+      (errs, _, html, _, pdf) <- activeBuild Dev [TargetHtml, TargetPdf] "@figure images/f.png web=images/s.svg alt=\"t\"\n" [("images/f.png", png False), ("images/s.svg", scriptSvg)]
+      map fst errs @?= [DiagnosticCode "G0814"]
+      (html, pdf) @?= (False, True),
+    testCase "an SVG that passes is copied byte for byte, with text and @font-face" $ withSystemTempDirectory "golem-active" $ \tmp -> do
+      let ok = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><style>@font-face { font-family: a }</style><use href=\"#a\"/><text>a</text></svg>"
+      BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
+      BS.writeFile (tmp </> "style.toml") (figStyle horizontalStyle)
+      BS.writeFile (tmp </> "a.gm") "@figure images/t.svg alt=\"t\"\n"
+      createDirectoryIfMissing True (tmp </> "images")
+      BS.writeFile (tmp </> "images/t.svg") ok
+      r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
+      brDiagnostics r @?= []
+      copied <- BS.readFile (tmp </> "build/html/images/t.svg")
+      copied @?= ok
   ]

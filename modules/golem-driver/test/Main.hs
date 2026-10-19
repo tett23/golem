@@ -63,6 +63,7 @@ tests =
              testGroup "PDF captions (ADR 0010)" captionTests,
              testGroup "PDF figures (golem-pdf ADR 0008)" pdfFigureTests,
              testGroup "SVG figures (golem-pdf ADR 0009)" svgFigureTests,
+             testGroup "SVG active content in HTML and EPUB (docs/adr ADR 0039)" activeContentTests,
              testGroup "PDF sidenotes (ADR 0006)" sidenoteTests,
              testGroup "PDF index and bibliography (ADR 0007)" indexTests,
              testGroup "bibliography entries and G0326 (golem-doc ADR 0004)" bibliographyFormatTests,
