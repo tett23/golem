@@ -246,6 +246,21 @@ cbor =
         validateDocument size [] (doc [Block sp (Just "x") (PageControl NoBreak)]) @?= ["改ページの制御はラベルを持てません"]
         validateDocument size [] (doc [Block sp Nothing (PageControl (NeedLines 0))]) @?= ["@need-lines の行数は 1 以上です"]
         validateDocument size [] (doc [Block sp Nothing (PageControl (AdjustLines 0))]) @?= ["@page-lines の増減は 0 でない整数です"],
+      testCase "blank lines survive the CBOR round trip as tag 13 (docs/adr ADR 0046)" $ do
+        let d = Document (FileId 0) [Block sp Nothing (BlankLines n) | n <- [1, 9223372036854775807]]
+            spT = TList [TInt 0, TInt 0, TInt 1]
+        decodeDocument (encodeDocument d) @?= Right d
+        decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, TList [TInt 13, TInt 2]]]])))
+          @?= Right (Document (FileId 0) [Block sp Nothing (BlankLines 2)]),
+      testCase "blank lines only at the top of a document, without a label, of one line or more (docs/adr ADR 0046)" $ do
+        let size (FileId 0) = Just 10
+            size _ = Nothing
+            blank = Block sp Nothing (BlankLines 1)
+            doc = Document (FileId 0)
+        validateDocument size [] (doc [blank, Block sp Nothing (BlankLines 3)]) @?= []
+        validateDocument size [] (doc [Block sp Nothing (BlankLines 0)]) @?= ["行アキの行数は 1 以上です"]
+        validateDocument size [] (doc [Block sp Nothing (BulletList [ListItem Nothing [blank]])]) @?= ["行アキは文書の最上位にだけ置けます"]
+        validateDocument size [] (doc [Block sp (Just "x") (BlankLines 1)]) @?= ["行アキはラベルを持てません"],
       testCase "trailing bytes are rejected" $
         assertBool "rejected" (isLeft (decodeInlines (encodeInlines [] <> "\0"))),
       testCase "validation: spans, deferred expressions, index levels" $ do

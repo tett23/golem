@@ -296,10 +296,40 @@ noticeTests =
         notices [Document (FileId 1) [para 1 0 [], brk 1 5 BreakPage], Document (FileId 2) [para 2 0 []]] @?= []
         notices [Document (FileId 1) [para 1 0 [], brk 1 5 BreakPage, brk 1 10 BreakColumn]]
           @?= [("G0408", "本の最後の改ページは効果がありません", sp 1 5), ("G0408", "本の最後の改ページは効果がありません", sp 1 10)]
-        notices [Document (FileId 1) [brk 1 0 BreakPage, para 1 5 []]] @?= []
+        notices [Document (FileId 1) [brk 1 0 BreakPage, para 1 5 []]] @?= [],
+      testCase "G0409: blank lines at the end of the book are dropped (docs/adr ADR 0046)" $ do
+        let g0409 f s = ("G0409", "本の最後の @blank-line は効果がありません", sp f s)
+        notices [Document (FileId 1) [para 1 0 [], blank 1 5 1]] @?= [g0409 1 5]
+        books [Document (FileId 1) [para 1 0 [], blank 1 5 1]] @?= [[para 1 0 []]]
+        -- with only breaks after it
+        filter (\(c, _, _) -> c == "G0409") (notices [Document (FileId 1) [para 1 0 [], blank 1 5 1, brk 1 10 BreakPage]]) @?= [g0409 1 5]
+        -- across the files, the blank lines of the end of the book
+        notices [Document (FileId 1) [para 1 0 [], blank 1 5 2], Document (FileId 2) [blank 2 0 1, ctl 2 5 (NeedLines 3)]] @?= [g0409 1 5, g0409 2 0]
+        -- a blank line at the end of a file comes before the first block of the next file
+        notices [Document (FileId 1) [para 1 0 [], blank 1 5 1], Document (FileId 2) [para 2 0 []]] @?= []
+        books [Document (FileId 1) [para 1 0 [], blank 1 5 1], Document (FileId 2) [para 2 0 []]] @?= [[para 1 0 [], blank 1 5 1], [para 2 0 []]],
+      testCase "G0410: blank lines right before a page or column break are dropped (docs/adr ADR 0046)" $ do
+        let page s = ("G0410", "@blank-line の直後に @page-break があります", sp 1 s)
+            column s = ("G0410", "@blank-line の直後に @column-break があります", sp 1 s)
+        warnings [Document (FileId 1) [para 1 0 [], blank 1 5 1, brk 1 10 BreakPage, para 1 15 []]] @?= [page 5]
+        books [Document (FileId 1) [para 1 0 [], blank 1 5 1, brk 1 10 BreakPage, para 1 15 []]] @?= [[para 1 0 [], brk 1 10 BreakPage, para 1 15 []]]
+        warnings [Document (FileId 1) [blank 1 0 1, brk 1 5 BreakPage, para 1 10 []]] @?= [page 0]
+        warnings [Document (FileId 1) [para 1 0 [], blank 1 5 1, ctl 1 10 (NeedLines 3), brk 1 15 BreakColumn, para 1 20 []]] @?= [column 5]
+        warnings [Document (FileId 1) [para 1 0 [], blank 1 5 1, blank 1 10 2, brk 1 15 BreakRecto, para 1 20 []]] @?= [page 5, page 10]
+        -- across the files
+        let twoFiles = [Document (FileId 1) [para 1 0 [], blank 1 5 1], Document (FileId 2) [brk 2 0 BreakPage, para 2 5 []]]
+        warnings twoFiles @?= [page 5]
+        books twoFiles @?= [[para 1 0 []], [brk 2 0 BreakPage, para 2 5 []]]
+        -- a blank line after a break is no error
+        warnings [Document (FileId 1) [brk 1 0 BreakPage, blank 1 5 1, para 1 10 []]] @?= []
+        books [Document (FileId 1) [brk 1 0 BreakPage, blank 1 5 1, para 1 10 []]] @?= [[brk 1 0 BreakPage, blank 1 5 1, para 1 10 []]]
     ]
   where
     notices docs = [(c, diagMessage d, diagSpan d) | d <- snd (assemble cfg noEval docs), diagSeverity d == Notice, let DiagnosticCode c = diagCode d]
+    warnings docs = [(c, diagMessage d, diagSpan d) | d <- snd (assemble cfg noEval docs), diagSeverity d == Warning, let DiagnosticCode c = diagCode d]
+    books docs = map docBlocks (bookDocs (fst (assemble cfg noEval docs)))
+    blank f s n = Block (sp f s) Nothing (BlankLines n)
+    ctl f s c = Block (sp f s) Nothing (PageControl c)
     olist f s ns = Block (sp f s) Nothing (OrderedList [ListItem n [para f (s + 1) []] | n <- ns])
     brk f s k = Block (sp f s) Nothing (ForcedBreak k)
 
