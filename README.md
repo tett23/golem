@@ -183,13 +183,14 @@ ADR はコミット後に変更しない規約であり、変更が必要な場�
 
 HarfBuzz と FreeType は、ソースを `modules/golem-font/cbits/` に同梱して静的にリンクする。
 zlib は Hackage の `zlib-clib` 1.3.2 を同梱するバージョンとして使う（`cabal.project` で固定）。
-wasmtime はプラットフォームごとの C API の配布物を `scripts/fetch-wasmtime.sh` で取得する（SHA-256 を検証し、`third_party/wasmtime` に置く）。
+wasmtime はプラットフォームごとの C API の配布物を `scripts/fetch-wasmtime.sh` で取得する（SHA-256 を検証し、`third_party/wasmtime` に置く。`third_party/wasmtime/VERSION` の名前と SHA-256 がスクリプトのものと一致しなければ取り直す）。
 `licenses/` には、配布物の `THIRD_PARTY_LICENSES/` に写すライセンスの文書のうち、ビルドの環境から取れないもの（`libwasmtime.a` に入った Rust のクレートなどの文書と、Alpine のパッケージが入れない文書）を置く（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
 
 ### ビルドとテスト
 
 GHC 9.10.3 と cabal-install 3.16.1.0 を ghcup で入れる。
 `mise.toml` は ghcup の `bin` を `PATH` に加える。
+`mise.toml` は、リリースノートを書く Claude Code のバージョンも固定する（`mise install` で入る）。
 C と C++ のコンパイラも必要である。
 
 最初に wasmtime を取得する。
@@ -337,7 +338,7 @@ CI は二つのワークフローからなる。
 CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timings.sh` で作る。
 
 `.github/workflows/release.yml` は、`v` で始まるタグの push と `workflow_dispatch` で動く（[docs/adr/0004](./docs/adr/0004-binary-distribution-and-release.md)）。
-`workflow_dispatch` では、配布物を作って検査するところまでを行い、リリースは作らない。
+`workflow_dispatch` では、配布物を作って検査し、そのコミットのリリースノートを書くところまでを行い、リリースは作らない。
 
 | ジョブ | 内容 |
 |---|---|
@@ -346,7 +347,8 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 | `build` | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクして、macOS では `macos-15` でビルドし、アーカイブを作る。`THIRD_PARTY_LICENSES/` を決めたリンクマップも成果物として上げる |
 | `smoke` | アーカイブを別のランナーと、`alpine` と `debian:stable-slim` のコンテナの中で展開して動かす |
 | `determinism` | 三つの配布物と CI のビルドの、`scripts/determinism.sh` の出力を比べる |
-| `release` | タグの push のときだけ、`SHA256SUMS`、来歴の証明、GMP のソース、x86-64 の Linux の配布物で組んだ二つのマニュアルの PDF と HTML（`golem-manual-<タグ>` と `golem-dev-manual-<タグ>`）、AI が書いたリリースノートと共に下書きのリリースを作る |
+| `notes` | `mise.toml` で固定した Claude Code を `jdx/mise-action` で入れ、`scripts/release/write-notes.sh` でリリースノートを書き、`notes.md` を成果物として上げる。権限は `contents: read` だけである（[docs/adr/0044](./docs/adr/0044-release-workflow-hardening.md)） |
+| `release` | タグの push のときだけ、`SHA256SUMS`、来歴の証明、GMP のソース、x86-64 の Linux の配布物で組んだ二つのマニュアルの PDF と HTML（`golem-manual-<タグ>` と `golem-dev-manual-<タグ>`）、`notes` が書いたリリースノートと共に下書きのリリースを作る。Node と Claude Code は入れない |
 
 リリースノートを書く AI の API キーは、リポジトリの秘密情報 `ANTHROPIC_API_KEY` に置く。
 

@@ -64,13 +64,19 @@ $ gh workflow run release.yml --ref <ブランチ>
 | [code: build] | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクし、macOS では [code: macos-15] でビルドしてアーカイブを作る |
 | [code: smoke] | アーカイブを別のランナーと、[code: alpine] と [code: debian:stable-slim] のコンテナの中で展開して動かす |
 | [code: determinism] | 三つの配布物と CI のビルドの、[code: scripts/determinism.sh] の出力を比べる |
-| [code: release] | タグの push のときだけ、アセットをそろえて下書きのリリースを作る |
+| [code: notes] | Claude Code でリリースノートを書き、[code: notes.md] を成果物として上げる。権限は [code: contents: read] だけである |
+| [code: release] | タグの push のときだけ、アセットと [code: notes] のノートをそろえて下書きのリリースを作る |
 
 [code: smoke] は、ca-certificates のある [code: debian:stable-slim] と、ないものの両方で動かす。
 配布物はルート証明書を同梱せず OS の証明書のストアを読むので、ストアがない環境で正しく失敗し、[code: SSL_CERT_FILE] で救えることも確かめる必要がある。
 
 [code: determinism] は、CI のビルドの出力と三つの配布物の出力が、一行も違わないことを確かめる。
 配布物は CI とは別の環境（Alpine の musl、macOS）でビルドするので、そこで出力が変わらないことを、ここで初めて確かめられる。
+
+Alpine の中のビルド（[code: scripts/release/build-linux.sh]）は、GHC と cabal を ghcup で入れる。
+ghcup のブートストラップのスクリプトは、パイプで [code: sh] に渡さず、ファイルに下ろしてスクリプトに書いた SHA-256 と比べてから動かす。
+ghcup のバージョン、スクリプトを取るコミット、ハッシュの三つは同じスクリプトに書いてあり、ghcup を上げるときは三つを一緒に変える。
+GHC と cabal は、ghcup が自分のメタデータの SHA-256 で確かめる。
 
 ## アセット
 
@@ -121,7 +127,28 @@ Windows と x86-64 の macOS は配布の対象にしていない。
 
 下書きのノートは AI が書く。[index reading="りりーすのーと": リリースノート]
 [code: scripts/release/write-notes.sh] が、前のタグからの変更の一覧（[code: scripts/release/notes.sh]）、プルリクエスト、範囲で加わった ADR を Claude Code に渡して書かせ、[code: scripts/release/check-notes.sh] で検査する。
-検査は、見出しが英語であること、[code: ## Unsorted] がないこと、リンクが [code: https://github.com/tett23/golem/] で始まる絶対リンクであること、一覧のすべてのプルリクエストへのリンクがあることを確かめる。
+検査は、見出しが英語であること、[code: ## Unsorted] がないこと、すべてのリンクが許可リストの前置きで始まること、一覧のすべてのプルリクエストへのリンクがあることを確かめる。
+
+許可リストは [code: scripts/release/allowed-links.txt] であり、ノートに書いてよいリンクの前置きを 1 行に一つ書く。
+今は [code: https://github.com/tett23/golem/] と [code: https://github.com/tett23/peg-hs/] の 2 行である。
+検査は、Markdown のリンク、参照形式のリンク、生の URL、[code: <https://…>] の自動リンク、[code: www.] の自動リンク、[code: <a>] のタグをすべて見る。
+[code: http://] の URL は、許可リストに書いてあっても失敗にする。
+兄弟のリポジトリへリンクする必要ができたら、許可リストに 1 行足すプルリクエストを出す。
+[code: https://github.com/tett23/] の一行で済ませないのは、どのリポジトリへのリンクを許すかをレビューで見えるようにするためである。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0044-release-workflow-hardening.md]（docs/adr の ADR 0044「リリースのワークフローの固め方」）]
+
+ノートを書く処理は、配布物を公開する [code: release] ジョブから分けた [code: notes] ジョブで動く。
+[code: notes] の権限は [code: contents: read] だけであり、来歴の証明に使う OIDC のトークンを持たない。
+プルリクエストの本文は誰でも書けるので、Claude Code がその中の指示に従っても、リリースや来歴の証明を書き換えられないようにするためである。
+[code: notes] が上げた [code: notes.md] を、[code: release] が下ろして使う。
+
+Claude Code のバージョンは、リポジトリのルートの [code: mise.toml] で正確に固定してある。[index reading="mise": mise]
+[code: notes] は [code: jdx/mise-action] でこのバージョンを入れ、開発者も同じ [code: mise.toml] で同じものを入れられる。
+mise は npm のパッケージのインストールのスクリプトを既定で動かさないので、[code: allow_builds] で Claude Code のスクリプトだけを許している。
+[code: write-notes.sh] は [code: claude -p] に、道具を一つも許さない [code: --tools ''] と、MCP の設定を読まない [code: --strict-mcp-config] を付ける。
+フラグの名前は固定したバージョンの [code: claude --help] で確かめたものであり、バージョンを上げるときは同じプルリクエストでフラグも確かめる。
+[code: claude --help] にこの二つがなければ、AI を動かさずに変更の一覧をノートにする。
+ジョブのトークンと、後のステップの環境を変えられる [code: GITHUB_ENV]、[code: GITHUB_PATH]、[code: GITHUB_OUTPUT]、[code: GITHUB_STATE]、[code: GITHUB_STEP_SUMMARY] は、[code: claude] の環境から外す。
+[code: workflow_dispatch] で起動したときも [code: notes] は動き、そのコミットのノートを書くので、ジョブを試せる。
 
 AI の実行か検査に失敗したときは、リリースを止めず、[code: ## Unsorted] に変更の一覧が残ったノートを使う。
 失敗の理由は、ワークフローの要約に書かれる。
