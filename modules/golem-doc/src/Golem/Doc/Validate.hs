@@ -37,6 +37,11 @@ validateDocument fileSize allowed (Document _ bs) = concatMap (blockAt True) bs
               NeedLines n | n < 1 -> ["@need-lines の行数は 1 以上です"]
               AdjustLines 0 -> ["@page-lines の増減は 0 でない整数です"]
               _ -> []
+        -- blank lines likewise, at least one (docs/adr ADR 0046)
+        BlankLines n ->
+          ["行アキは文書の最上位にだけ置けます" | not top]
+            <> ["行アキはラベルを持てません" | Just _ <- [lbl]]
+            <> ["行アキの行数は 1 以上です" | n < 1]
         _ -> bodyErrors body
     inl is = concatMap (inlineErrors fileSize allowed) is <> breakErrors False is
     bodyErrors = \case
@@ -64,6 +69,7 @@ validateDocument fileSize allowed (Document _ bs) = concatMap (blockAt True) bs
       ChannelOutput _ -> []
       ForcedBreak _ -> []
       PageControl _ -> []
+      BlankLines _ -> []
 
 {- | A line break stands only between two inlines at the top of a
 paragraph, never two in a row (docs/adr ADR 0005).

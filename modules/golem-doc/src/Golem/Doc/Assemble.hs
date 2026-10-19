@@ -293,8 +293,9 @@ assemble ::
   (DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text) ->
   [Document] ->
   (Book, [Diagnostic])
-assemble cfg evalDeferred docs =
-  let ns = numberDocs cfg docs
+assemble cfg evalDeferred docs0 =
+  let (docs, blankDiags) = droppedBlankLines docs0
+      ns = numberDocs cfg docs
       figureText sp = case Map.lookup sp (nsFigures ns) of
         Just (ch, n) -> Just (formatNumber (acFigureFormat cfg) [n] ch)
         Nothing -> Nothing
@@ -343,7 +344,7 @@ assemble cfg evalDeferred docs =
             bookReferenced = refd,
             bookChapterOf = acChapterOf cfg
           },
-        sortDiagnostics (nsDiags ns <> figureErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs)
+        sortDiagnostics (nsDiags ns <> figureErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs <> blankDiags)
       )
 
 -- | G0407 at the @number line of the block (golem-syntax ADR 0002).
@@ -402,6 +403,48 @@ trailingBreaks docs = case reverse docs of
     isBreak b = case blockBody b of
       ForcedBreak _ -> True
       _ -> False
+
+{- | The blank lines that have no effect (docs/adr ADR 0046), dropped from
+every output: G0409 for those at the end of the book, with only breaks,
+controls of page breaks and other blank lines after them; G0410 for those
+right before a page or column break, past the controls and other blank
+lines, across the files too. The blocks stay in their files.
+-}
+droppedBlankLines :: [Document] -> ([Document], [Diagnostic])
+droppedBlankLines docs =
+  let flat = [(i, b) | (i, Document _ bs) <- zip [0 :: Int ..] docs, b <- bs]
+      tails' = drop 1 (scanr (:) [] (map snd flat))
+      verdicts =
+        [ (key, diags)
+        | ((i, Block sp _ (BlankLines _)), after) <- zip flat tails',
+          let key = (i, sp)
+              rest = dropWhile soft after
+              atEnd = all quiet after
+              end = [notice "G0409" sp "本の最後の @blank-line は効果がありません" | atEnd]
+              brk = case rest of
+                Block _ _ (ForcedBreak k) : _ -> [diagnostic "G0410" Warning sp ("@blank-line の直後に " <> breakName k <> " があります")]
+                _ -> []
+              diags = end <> brk,
+          not (null diags)
+        ]
+      dropped = Set.fromList (map fst verdicts)
+      keep i b = case b of
+        Block sp _ (BlankLines _) -> Set.notMember (i, sp) dropped
+        _ -> True
+   in ( [Document f [b | b <- bs, keep i b] | (i, Document f bs) <- zip [0 ..] docs],
+        concatMap snd verdicts
+      )
+  where
+    soft b = case blockBody b of
+      PageControl _ -> True
+      BlankLines _ -> True
+      _ -> False
+    quiet b = case blockBody b of
+      ForcedBreak _ -> True
+      _ -> soft b
+    breakName = \case
+      BreakColumn -> "@column-break"
+      _ -> "@page-break"
 
 -- | Every block in document order, descending into containers.
 allBlocks :: [Block] -> [Block]

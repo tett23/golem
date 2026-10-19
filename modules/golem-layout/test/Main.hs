@@ -1,6 +1,7 @@
 module Main (main) where
 
 import CodeSpaceSpec (codeSpaceTests)
+import CombiningSpec (combiningTests)
 import Control.Monad (forM_)
 import Data.List (isPrefixOf, maximumBy, subsequences)
 import Data.Map.Strict qualified as Map
@@ -310,6 +311,7 @@ tests =
       inseparableTests,
       codeSpaceTests,
       urlBreakTests,
+      combiningTests,
       testGroup "vertical orientation (golem-driver ADR 0015)" orientationTests,
       testGroup "kerning, tracking and baseline shift (docs/adr/0020)" characterFeatureTests,
       testGroup "aki sets and [aki] (docs/adr ADR 0019)" akiTests,

@@ -111,8 +111,12 @@ tests =
           golden "file-settings" "@manifest   paragraph-separator=line\n@style-def   paragraph  letter   indent=1zw\n\n本文。\n",
           golden "verse" "@style verse\n\tFull fathom five thy father lies;  \n\tOf his bones are coral made;\t\n\n\n  Nothing of him that doth fade,\n  But doth suffer a sea-change \n",
           -- docs/adr ADR 0016
-          golden "hard-breaks" "a\\\nb\n\n- a\\\n  b\n"
+          golden "hard-breaks" "a\\\nb\n\n- a\\\n  b\n",
+          -- docs/adr ADR 0046
+          golden "blank-line-command" "あ\n@blank-line\nい\n\n@blank-line  2\n"
         ],
+      testCase "@blank-line right after a paragraph is kept as written (docs/adr ADR 0046)" $
+        formatted "あ\n@blank-line\nい\n" @?= "あ\n@blank-line\nい\n",
       testCase "BOM, CRLF and tab indentation are fixed" $
         formatted "\xFEFF- a\r\n\t- b\r\n" @?= "- a\n  - b\n",
       testCase "a file with syntax errors is not formatted" $

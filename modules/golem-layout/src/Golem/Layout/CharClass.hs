@@ -2,10 +2,14 @@
 module Golem.Layout.CharClass
   ( CharClass (..),
     charClass,
+    isExtending,
+    clusters,
   )
 where
 
-import Data.Char (isAscii)
+import Data.Char (GeneralCategory (..), generalCategory, isAscii, isSpace)
+import Data.Text (Text)
+import Data.Text qualified as T
 
 -- | JLReq character classes used by the rules (cl-01 … cl-27).
 data CharClass
@@ -43,3 +47,24 @@ charClass c
   | (c >= '\x3041' && c <= '\x309F') || (c >= '\x30A0' && c <= '\x30FF') = Kana
   | isAscii c || (c >= '\x00A0' && c <= '\x024F') || (c >= '\x0370' && c <= '\x04FF') = Western
   | otherwise = Ideograph
+
+{- | A character that joins the character before it in one box: general
+category Mn, Mc or Me (combining characters, variation selectors among
+them; golem-driver ADR 0036).
+-}
+isExtending :: Char -> Bool
+isExtending c = generalCategory c `elem` [NonSpacingMark, SpacingCombiningMark, EnclosingMark]
+
+{- | A text cut into its character units (golem-driver ADR 0036): a base
+character and the combining characters after it. A combining character
+with no base before it (at the start, after a space or another such
+character) is a unit of its own.
+-}
+clusters :: Text -> [Text]
+clusters = map T.pack . go . T.unpack
+  where
+    go = \case
+      [] -> []
+      c : rest
+        | isSpace c || isExtending c -> [c] : go rest
+        | otherwise -> let (marks, rest') = span isExtending rest in (c : marks) : go rest'
