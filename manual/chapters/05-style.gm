@@ -241,7 +241,19 @@ space-after = "0.5zw"
 負の値にすると、罫線は段の外の余白に出ます。
 罫線と段落のあいだ（前の罫線の [code: space-after]、後の罫線の [code: space-before]）は書いたとおりに空き、罫線の外側の空きは行の格子に合わせて広がります。
 本文の行が格子からずれないようにするためです。
+間隔は [code: mm]、[code: pt]、[code: Q]、[code: H]、[code: zw] のどれでも書けます。
+間隔の [code: zw] は、段落の文字の大きさではなく、版面の文字の大きさ（[code: \[page.grid\]] の [code: font-size]）を一字とします。
+PDF でも HTML と EPUB でも同じです。
+[code: length] と [code: start-indent] と [code: end-indent] の [code: zw] は、段落スタイルの文字の大きさを一字とします。
+
+```toml
+[paragraph-styles.lead.rule-after]
+weight = "0.3pt"
+space-before = "2mm"
+```
+
 罫線を持つ段落は、罫線とともに一つの段に置き、ページの境で分けません。
+一つの段に入らないほど長い段落だけは、前と後の罫線を省いて分けて組み、お知らせ（G0746）を出します。
 ページの頭の罫線は段の中に収まりますが、[code: keep-in-column = false] と書くと天の余白に出ます。
 [code: false] を書くと、引き継いだ罫線を引きません。
 見出しの [code: \[headings.階層\]] にも同じ二つのキーを書けます（付録C）。

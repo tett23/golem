@@ -1012,7 +1012,7 @@ ruledNotices :: [Flow] -> Map Int RuledInfo -> [PageOut] -> [Diagnostic]
 ruledNotices flow infos pages =
   [ if riHeading info
       then notice "G0746" (riSpan info) ("罫線を持つ見出しが版面に入らないため、罫線を省きました（" <> riOwner info <> "）")
-      else notice "G0746" (riSpan info) ("罫線を持つ段落が版面に入らないため、分けて組みました（" <> riOwner info <> "）")
+      else notice "G0746" (riSpan info) ("罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（" <> riOwner info <> "）")
   | f@FRuled {} <- flow,
     let ids = case frBody f of
           RuledLines ls -> map lbId ls
