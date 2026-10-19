@@ -80,26 +80,31 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 
 ## build
 
-[code: build] は、[code: ubuntu-24.04]（x86-64）と [code: ubuntu-24.04-arm]（aarch64）の二つのランナーで同じ手順を実行する。
+[code: build] は、[code: ubuntu-24.04]（x86-64）と [code: ubuntu-24.04-arm]（aarch64）のランナーで実行する。
+x86-64 では同じコミットを二つのランナーでビルドし、一方（[code: tests]）がテストを、もう一方（[code: outputs]）が出力を作る手順を受け持つ。
+aarch64 では一つのランナー（[code: all]）がすべてを受け持つ。
 主な手順は次のとおりである。
 
-+ qpdf を裏で入れ始める（x86-64 では epubcheck も）。入れ終わるのを待つのは、テストの直前である。
++ qpdf を裏で入れ始める（x86-64 の [code: outputs] では、qpdf の代わりに epubcheck）。入れ終わるのを待つのは、ビルドの直後である。
 + テストのラッパー [code: scripts/ci/suite-timeout.sh] を [code: cabal.project.local] に書く。
 + GHC 9.10.3 と cabal-install 3.16.1.0 を用意する。GHC のディレクトリ、Hackage の索引、cabal の store、[code: dist-newstyle] をキャッシュから戻す。
 + [code: scripts/fetch-wasmtime.sh] で wasmtime を取得する。
-+ [code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
-+ [code: cabal build all] と [code: cabal test all] を実行する。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることを確かめる。
-+ [code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
-+ 二つのマニュアルのフォントをキャッシュから戻す。
++ テストを受け持つランナーでは、[code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
++ [code: cabal build all] を実行し、テストを受け持つランナーでは続けて [code: cabal test all] を実行する。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることを確かめる。
++ テストを受け持つランナーでは、[code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
++ 出力を受け持つランナーでは、二つのマニュアルのフォントをキャッシュから戻す。
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
-+ [code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。このスクリプトは [code: scripts/manual/build.sh] で二つのマニュアルも組むので、diagnostic が一つでも出ればここで失敗する。
++ 出力を受け持つランナーでは、[code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。このスクリプトは [code: scripts/manual/build.sh] で二つのマニュアルも組むので、diagnostic が一つでも出ればここで失敗する。
 + x86-64 では、[code: locale-gen] で日本語のロケール（UTF-8 と EUC-JP）を作り、[code: GOLEM_REQUIRE_LOCALES=1] と [code: GOLEM_REQUIRE_FONTS=1] を付けて [code: scripts/env-determinism/check.sh] を実行する。実行の環境を変えても出力が変わらないことを確かめる（第[ref-number determinism]章）。
 プルリクエストでは [code: --quick] を付けて小さな入力だけを検査し、[code: main] への push とリリースではすべての入力を検査する。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0038-env-determinism-quick-on-pull-requests.md]（docs/adr の ADR 0038「プルリクエストでは環境を変える検査を小さな入力に絞る」）]
 + x86-64 では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。
 
 キャッシュの鍵は、[code: cabal.project] と [code: cabal.project.freeze] のハッシュ、ランナーの OS とアーキテクチャ、GHC のバージョンから作る。
-[code: dist-newstyle] のキャッシュは、[code: main] への push のときだけ保存する。
-プルリクエストのキャッシュはそのプルリクエストにしか使えず、しかもコミットごとに鍵が変わるからである。
+[code: dist-newstyle] のキャッシュは、[code: main] への push と、プルリクエストで GHC がモジュールをコンパイルしたときに保存する。
+x86-64 では、テストを受け持つランナーだけが保存する。
+プルリクエストのキャッシュは、そのプルリクエストの次の push と再実行だけが使える。
+キャッシュを戻すときは、そのプルリクエストのキャッシュを先に探し、なければ [code: main] のキャッシュを使う。
+何もコンパイルしなかった実行は、戻したキャッシュのままなので保存しない。
 マニュアルのフォントのキャッシュの鍵は、[code: scripts/manual/fetch-fonts.sh] のハッシュである。
 フォントの URL と SHA-256 はこのスクリプトに書いてあるので、フォントを変えれば鍵も変わる。
 
@@ -114,6 +119,12 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 qpdf と epubcheck の導入には 20 秒ほどかかるが、使うのはテストと epubcheck だけである。
 そこで [code: scripts/ci/bg.sh] で裏で走らせ、キャッシュの復元とビルドのあいだに済ませる。
 ミラーが止まったときは、5 分で失敗にする。
+
+x86-64 で二つのランナーに分けるのは、テストも出力を作る手順も、ランナーの四つのコアを使い切るからである。
+同じランナーの上で二つを同時に走らせても、どちらも遅くなり、合わせた時間はほとんど縮まらない。
+ランナーを分ければビルドを二度することになるが、二つのランナーは同時に走る。
+x86-64 にかかる時間は、ビルドに、テストと出力の長い方を足したものになる。
+aarch64 は x86-64 より短く終わるので、一つのランナーのままにしている。
 
 aarch64 のランナーで同じことをするのは、時間がかかっても省けない。
 浮動小数点数の計算とネイティブライブラリの結果が二つのアーキテクチャで一致することが、決定性の主張の根拠そのものだからである。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0001-haskell-workspace-and-ci.md]（docs/adr の ADR 0001「Haskell のワークスペースと CI」）]
