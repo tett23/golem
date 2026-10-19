@@ -4,3 +4,10 @@
 _.path = ["{{env.HOME}}/.ghcup/bin"]
 GOLEM_GHC_VERSION = "9.10.3"
 GOLEM_CABAL_VERSION = "3.16.1.0"
+
+# Claude Code, which writes the release notes (docs/adr/0044). The version
+# is exact; update it with a pull request. mise does not run the install
+# scripts of npm packages unless allow_builds names them, and the
+# postinstall of Claude Code puts its native binary in place.
+[tools]
+"npm:@anthropic-ai/claude-code" = { version = "2.1.292", allow_builds = ["@anthropic-ai/claude-code"] }

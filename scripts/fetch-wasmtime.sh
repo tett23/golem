@@ -3,7 +3,20 @@
 # and checks its SHA-256 (golem-plugin ADR 0001: wasmtime 49.0.2).
 # On musl (Alpine), for which the glibc archives cannot be linked, it uses
 # the musl archives of the same release (docs/adr/0004).
+#
+#   fetch-wasmtime.sh             fetch, or use third_party/wasmtime
+#   fetch-wasmtime.sh --expected  print the VERSION line it expects
+#
+# third_party/wasmtime/VERSION holds the name of the archive and its
+# SHA-256. The directory is used as it is only when both are those of this
+# script; otherwise the archive is fetched again (docs/adr/0044).
 set -eu
+EXPECTED_ONLY=false
+case ${1:-} in
+  --expected) EXPECTED_ONLY=true ;;
+  "") ;;
+  *) echo "usage: fetch-wasmtime.sh [--expected]" >&2; exit 2 ;;
+esac
 VERSION=49.0.2
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 is_musl() {
@@ -18,6 +31,7 @@ case "$(uname -s)-$(uname -m)" in
   *) echo "unsupported platform: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
 esac
 NAME=wasmtime-v$VERSION-$ARCH-c-api
+if [ "$EXPECTED_ONLY" = true ]; then printf '%s %s\n' "$NAME" "$SHA"; exit 0; fi
 DEST=$ROOT/third_party/wasmtime
 write_local() {
   # cabal needs absolute paths for libraries of a registered package
@@ -26,7 +40,7 @@ write_local() {
     printf '\n-- written by scripts/fetch-wasmtime.sh\npackage golem-plugin\n  extra-include-dirs: %s/include\n  extra-lib-dirs: %s/lib\n' "$DEST" "$DEST" >> "$LOCAL"
   fi
 }
-if [ -f "$DEST/VERSION" ] && [ "$(cat "$DEST/VERSION")" = "$NAME" ]; then write_local; exit 0; fi
+if [ -f "$DEST/VERSION" ] && [ "$(cat "$DEST/VERSION")" = "$NAME $SHA" ]; then write_local; exit 0; fi
 TMP=$(mktemp -d)
 trap 'rm -rf "${TMP:?}"' EXIT
 
@@ -42,5 +56,5 @@ mkdir -p "$DEST/lib"
 # link statically: only the archive
 cp "$TMP/x/$NAME/lib/libwasmtime.a" "$DEST/lib/"
 cp "$TMP/x/$NAME/LICENSE" "$DEST/LICENSE"
-echo "$NAME" > "$DEST/VERSION"
+echo "$NAME $SHA" > "$DEST/VERSION"
 write_local

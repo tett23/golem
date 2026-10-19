@@ -388,6 +388,25 @@ if grep -qE "test-wrapper: .*scripts/ci/suite-timeout\.sh.*cabal\.project\.local
 if grep -qE 'scripts/env-determinism/check\.sh +\$QUICK *$' "$CI_YML"; then ok; else ng "ci.yml: check.sh takes the argument of the event"; fi
 if grep -qF "QUICK: \${{ github.event_name == 'pull_request' && '--quick' || '' }}" "$CI_YML"; then ok; else ng "ci.yml: --quick on pull requests only"; fi
 
+# ---------------------------------------------------------------- release.yml and mise.toml
+# (docs/adr/0044-release-workflow-hardening.md)
+
+# Claude Code is pinned to an exact version in mise.toml
+MISE_TOML=$HERE/../../mise.toml
+if grep -Eq '^"npm:@anthropic-ai/claude-code" = \{ *version = "[0-9]+\.[0-9]+\.[0-9]+"' "$MISE_TOML"; then ok; else ng "mise.toml: Claude Code at an exact version"; fi
+RELEASE_YML=$HERE/../../.github/workflows/release.yml
+job_of() { # job_of WORKFLOW JOB: the lines of the job
+  awk -v job="  $2:" '/^jobs:/ { on = 1; next } on && /^[^ #]/ { on = 0 } on && /^  [a-z][a-z0-9-]*:$/ { inj = ($0 == job) } on && inj' "$1"
+}
+perms_of() { # perms_of WORKFLOW JOB: the permissions of the job, one per line
+  job_of "$1" "$2" | awk '/^    permissions:/ { on = 1; next } on && /^    [^ ]/ { on = 0 } on { sub(/^ +/, ""); print }'
+}
+if [ "$(perms_of "$RELEASE_YML" notes)" = "contents: read" ]; then ok; else ng "release.yml: the notes job has contents: read only"; fi
+if job_of "$RELEASE_YML" notes | grep -q 'jdx/mise-action@v'; then ok; else ng "release.yml: the notes job installs Claude Code with mise"; fi
+if job_of "$RELEASE_YML" release | grep -Eiq 'npm|mise|claude'; then ng "release.yml: the release job has no npm, mise nor Claude Code"; else ok; fi
+if job_of "$RELEASE_YML" release | grep -q '^      - release$\|needs:.*notes'; then ok; else ng "release.yml: the release job needs the notes job"; fi
+if grep -q 'npm install' "$RELEASE_YML"; then ng "release.yml: no npm install"; else ok; fi
+
 # ---------------------------------------------------------------- gate.sh
 
 gate() { sh "$HERE/gate.sh" "$@"; }
