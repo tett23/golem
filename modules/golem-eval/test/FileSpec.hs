@@ -210,6 +210,7 @@ tests =
       escapeTests,
       duplicateKeyTests,
       shorthandTests,
+      int64Tests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
@@ -440,6 +441,52 @@ shorthandTests =
         errs "[tcy: ##10##]\n" @?= errs "[tcy: [number-text 10]]\n"
         assertBool "G0240" ("G0240" `elem` errs "[tcy: ##10##]\n")
     ]
+
+-- | The integers of the IR are int64; one out of range is G0291 (golem-doc ADR 0006).
+int64Tests :: TestTree
+int64Tests =
+  testGroup
+    "G0291: an integer out of the range of the IR (golem-doc ADR 0006)"
+    [ testCase "[number-text] at the ends of int64" $ do
+        paraOf "[number-text [= 2 ** 63 - 1]]\n" @?= ["<number 9223372036854775807 Nothing>"]
+        paraOf "[number-text [= -(2 ** 63)]]\n" @?= ["<number -9223372036854775808 Nothing>"]
+        errs "[number-text [= 2 ** 63 - 1]]\n" @?= [],
+      testCase "[number-text] beyond int64 is G0291 at the command and puts out nothing" $ do
+        diags "[number-text [= 2 ** 63]]\n" @?= [("G0291", msg, 0, 25)]
+        msgs "[number-text [= -(2 ** 63) - 1]]\n" @?= [("G0291", msg)]
+        paraOf "a[number-text [= 2 ** 63]]b\n" @?= ["ab"]
+        msgs "##9223372036854775808##\n" @?= [("G0291", msg)],
+      testCase "@number beyond int64 is G0291 at its line and numbers as without it" $ do
+        let src = "@number 9223372036854775808\n# h\n"
+        diags src @?= [("G0291", msg, 0, 28)]
+        [haNumber a | Heading _ a _ <- body src] @?= [Nothing]
+        msgs "@number 9223372036854775807\n# h\n" @?= [],
+      testCase "numbers= whose last line is beyond int64 is G0291 and numbers as without it" $ do
+        let src = "``` numbers=9223372036854775807\na\nb\n```\n"
+            (bs, ds) = run ctx src
+        ds @?= ["G0291"]
+        bs @?= fst (run ctx "```\na\nb\n```\n")
+        [c | (c, _, s, _) <- diags src, s == 0] @?= ["G0291"]
+        snd (run ctx "``` numbers=9223372036854775806\na\nb\n```\n") @?= [],
+      testCase "an aki beyond int64 is G0291 and puts out nothing" $ do
+        msgs "a[aki 99999999999999999999mm]b\n" @?= [("G0291", msg)]
+        paraOf "a[aki 99999999999999999999mm]b\n" @?= ["ab"],
+      testCase "a deferred expression with an integer beyond int64 is G0291" $ do
+        msgs "@set n = 2 ** 70\n\n[= n + doc.chapters.count]\n" @?= [("G0291", msg)]
+        body "@set n = 2 ** 70\n\n[= n + doc.chapters.count]\n" @?= [Paragraph Nothing []]
+        errs "@set n = 2 ** 62\n\n[= n + doc.chapters.count]\n" @?= []
+        -- a value in prose is text, not an integer of the IR
+        paraOf "[= 2 ** 70]\n" @?= ["1180591620717411303424"],
+      testCase "a plugin command with an argument beyond int64 is G0291 and is not called" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let hook = noPlugins {phCommands = Map.fromList [(greet, pluginOutput)]}
+            c = ctx {ctxPlugins = hook}
+        run c "[greet [= 2 ** 63]: x]\n" @?= ([Paragraph Nothing []], ["G0291"])
+        run c "[greet [= [1, 2 ** 63]]: x]\n" @?= ([Paragraph Nothing []], ["G0291"])
+        snd (run c "[greet [= 2 ** 63 - 1]: x]\n") @?= []
+    ]
+  where
+    msg = "整数が意味論 IR に書ける範囲を超えています（-2 の 63 乗以上、2 の 63 乗未満に限ります）"
 
 -- | The same key twice among the keyword arguments (golem-parser ADR 0013).
 duplicateKeyTests :: TestTree

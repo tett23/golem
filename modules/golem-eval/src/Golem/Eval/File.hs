@@ -36,6 +36,7 @@ import Data.List (mapAccumL, partition)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
+import Data.Ratio (denominator, numerator)
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -371,7 +372,7 @@ evalBlock ctx (A.Located sp b) = case b of
   A.CodeBlock lang args0 ls -> do
     args <- uniqueKeys args0
     ca <- codeArgs ctx sp [] args
-    c <- codeOf ca Nothing lang [(lsp, t) | A.Located lsp t <- ls]
+    c <- codeOf sp ca Nothing lang [(lsp, t) | A.Located lsp t <- ls]
     pure [block sp (CodeBlock c)]
   A.SetVar (A.Located nsp n) e -> do
     defined <- gets (Map.member n . stVars)
@@ -668,7 +669,10 @@ applyAttr ctx (label, body) (A.Located sp cmd) = case cmd of
     _ -> err "G0213" sp ("@" <> name <> " はこのブロックには付けられません") >> pure (label, body)
     where
       withNumber f = case map A.locValue args of
-        [A.Positional v] | Just n <- intOf (argValueRaw v) -> pure (label, f n)
+        [A.Positional v]
+          | Just n <- intOf (argValueRaw v) ->
+              -- G0291: as if there were no @number (golem-doc ADR 0006)
+              if inInt64 n then pure (label, f n) else outOfInt64 sp >> pure (label, body)
         _ -> err "G0227" sp "@number には整数を一つ書きます" >> pure (label, body)
   _ -> pure (label, body)
   where
@@ -1147,7 +1151,7 @@ listing ctx sp args = do
               codeArgsOf = [a | a@(A.Located _ (A.Keyword (A.Located _ k) _)) <- args, k `notElem` ["src", "lines"]]
               code start xs = do
                 ca <- codeArgs ctx sp ["lang"] codeArgsOf
-                c <- codeOf ca start (caLang ca) [(sp, x) | x <- xs]
+                c <- codeOf sp ca start (caLang ca) [(sp, x) | x <- xs]
                 pure [block sp (CodeBlock c)]
           case argText <$> lookup "lines" kw of
             Nothing -> code Nothing ls
@@ -1232,19 +1236,20 @@ codeArgs ctx _ extra = foldl (\m a -> m >>= \acc -> step acc a) (pure (CodeArgs 
 {- | The code of lines with their spans (golem-driver ADR 0023): the diff
 marks and the callouts taken off, each line numbered from the first
 number, a removed line not counted, and the lines of highlight marked.
-@start@ is the first line of lines= of @listing.
+@start@ is the first line of lines= of @listing. A number of numbers=
+that takes a line out of int64 is G0291 at the block @bsp@, and the lines
+are numbered as without numbers= (golem-doc ADR 0006).
 -}
-codeOf :: CodeArgs -> Maybe Integer -> Maybe Text -> [(SrcSpan, Text)] -> M Code
-codeOf ca start lang ls = do
+codeOf :: SrcSpan -> CodeArgs -> Maybe Integer -> Maybe Text -> [(SrcSpan, Text)] -> M Code
+codeOf bsp ca0 start lang ls = do
   marked <- mapM diffOf ls
   withCallouts <- mapM calloutsOf marked
-  let first = case caNumbers ca of
-        Just (Right n) -> n
-        _ -> fromMaybe 1 start
-      numbered = snd (mapAccumL number first withCallouts)
-      number n (t, d, cs)
-        | d == Just DiffRemoved = (n, CodeLine t Nothing d False cs)
-        | otherwise = (n + 1, CodeLine t (Just n) d False cs)
+  let numberedFrom c = snd (mapAccumL number (firstOf c) withCallouts)
+  ca <-
+    if all inInt64 (firstOf ca0 : [n | CodeLine {clNumber = Just n} <- numberedFrom ca0])
+      then pure ca0
+      else outOfInt64 bsp >> pure ca0 {caNumbers = Nothing}
+  let numbered = numberedFrom ca
       present = Set.fromList [n | CodeLine {clNumber = Just n} <- numbered]
   hl <- case caHighlight ca of
     Nothing -> pure Set.empty
@@ -1262,8 +1267,14 @@ codeOf ca start lang ls = do
         codeLines = [l {clHighlight = maybe False (`Set.member` hl) (clNumber l)} | l <- numbered]
       }
   where
+    firstOf c = case caNumbers c of
+      Just (Right n) -> n
+      _ -> fromMaybe 1 start
+    number n (t, d, cs)
+      | d == Just DiffRemoved = (n, CodeLine t Nothing d False cs)
+      | otherwise = (n + 1, CodeLine t (Just n) d False cs)
     diffOf (lsp, t)
-      | not (caDiff ca) = pure (lsp, t, Nothing)
+      | not (caDiff ca0) = pure (lsp, t, Nothing)
       | otherwise = case T.uncons t of
           Nothing -> pure (lsp, t, Just DiffContext)
           Just ('+', rest) -> pure (lsp, rest, Just DiffAdded)
@@ -1271,7 +1282,7 @@ codeOf ca start lang ls = do
           Just (' ', rest) -> pure (lsp, rest, Just DiffContext)
           Just _ -> err "G0269" lsp "diff=true のコードの行は +、-、空白のどれかで始めます" >> pure (lsp, t, Just DiffContext)
     calloutsOf (lsp, t, d)
-      | not (caCallouts ca) = pure (t, d, [])
+      | not (caCallouts ca0) = pure (t, d, [])
       | otherwise = do
           let (t', ns) = lineCallouts t
               bad = [n | n <- ns, n < 1 || n > 50]
@@ -1361,7 +1372,10 @@ evalInline ctx inHeading (A.Located sp i) = case i of
       then
         if inHeading
           then err "G0214" sp "見出しの中では doc を参照できません" >> pure []
-          else pure [Deferred sp (DeferredExpr (substitute en e))]
+          else
+            let e' = substitute en e
+             in -- G0291: an integer of the IR out of int64 (golem-doc ADR 0006)
+                if all inInt64 (exprInts e') then pure [Deferred sp (DeferredExpr e')] else outOfInt64 sp >> pure []
       else case evalExpr en e >>= embedValue sp of
         Left d -> report d >> pure []
         Right t -> pure [Text sp t]
@@ -1408,6 +1422,8 @@ evalCommand ctx inHeading sp (A.Located nsp name) args slots
       slots' <- mapM (evalInlines ctx inHeading) slots
       case sequence vals of
         Left d -> report d >> pure []
+        -- G0291: the plugin is not called (golem-doc ADR 0006)
+        Right vs | not (all (all inInt64 . valueInts) vs) -> outOfInt64 sp >> pure []
         Right vs -> case pcCall pc vs slots' sp of
           Left ds -> mapM_ report ds >> pure []
           Right (out, ds) -> mapM_ report ds >> pure out
@@ -1462,6 +1478,7 @@ builtinWith ctx inHeading sp b args slots = do
         val <- argValue ctx v
         let st = argText <$> lookup "style" kw
         case (val, st) of
+          (Right (VInt n), _) | not (inInt64 n) -> outOfInt64 sp >> pure []
           (Right (VInt n), Nothing) -> pure [Number sp n Nothing]
           (Right (VInt n), Just s)
             | Just ns <- lookup s [("kanji", StyleKanji), ("kanji-digits", StyleKanjiDigits), ("tcy", StyleTcy)] -> pure [Number sp n (Just ns)]
@@ -1512,7 +1529,7 @@ aki sp args slots = case (args, slots) of
   (_, _ : _) -> wrong "aki は散文スロットを取りません"
   ([A.Located _ (A.Positional v)], []) -> case nameArg v of
     Just t
-      | Just a <- amount t -> pure [Aki sp a]
+      | Just a <- amount t -> if akiInInt64 a then pure [Aki sp a] else outOfInt64 sp >> pure []
       | otherwise -> wrong ("アキの量を読めません: " <> t)
     Nothing -> wrong "aki には量を一つ書きます"
   _ -> wrong "aki には量を一つ書きます"
@@ -1522,6 +1539,10 @@ aki sp args slots = case (args, slots) of
       (_, Just (Abs x)) -> Just (AkiAbs x)
       _ -> Nothing
     wrong why = err "G0255" sp (why <> "。" <> akiAmounts) >> pure []
+    -- the numerator and the denominator of zw, or sp (golem-doc ADR 0006)
+    akiInInt64 = \case
+      AkiZw r -> inInt64 (numerator r) && inInt64 (denominator r)
+      AkiAbs x -> inInt64 x
 
 -- | What the amount of an [aki] may be (the message of G0255).
 akiAmounts :: Text
@@ -1621,6 +1642,30 @@ argValue _ = \case
     en <- env
     pure (evalExpr en e)
   v -> pure (Right (argValueRaw v))
+
+{- | G0291: an integer out of int64 for a field of the IR (golem-doc ADR
+0006).
+-}
+outOfInt64 :: SrcSpan -> M ()
+outOfInt64 sp = err "G0291" sp "整数が意味論 IR に書ける範囲を超えています（-2 の 63 乗以上、2 の 63 乗未満に限ります）"
+
+-- | The integer literals of an expression.
+exprInts :: A.Located A.Expr -> [Integer]
+exprInts (A.Located _ e) = case e of
+  A.EInt i -> [i]
+  A.EArray xs -> concatMap exprInts xs
+  A.EHash kvs -> concatMap (exprInts . snd) kvs
+  A.ECall _ xs -> concatMap exprInts xs
+  A.EUnary _ a -> exprInts a
+  A.EBinary _ a b -> exprInts a <> exprInts b
+  _ -> []
+
+-- | The integers of a value as a plugin gets it.
+valueInts :: Value -> [Integer]
+valueInts = \case
+  VInt i -> [i]
+  VArray vs -> concatMap valueInts vs
+  _ -> []
 
 intOf :: Value -> Maybe Integer
 intOf = \case
