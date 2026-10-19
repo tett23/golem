@@ -238,6 +238,7 @@ tests =
       shorthandTests,
       int64Tests,
       channelCommandTests,
+      powDiagnosticTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
@@ -1463,3 +1464,18 @@ printingsTests =
         run (printingsCtx "ja") "@printings 1\n" @?= ([], ["G0276"])
         run (printingsCtx "ja") "@printings\n  本文\n" @?= ([], ["G0276"])
     ]
+
+{- | The diagnostics of a power depend on the input alone: alone, after
+other expressions, and twice in one file (golem-eval ADR 0006).
+-}
+powDiagnosticTests :: TestTree
+powDiagnosticTests =
+  testProperty "the diagnostics of a power depend on the input alone (golem-eval ADR 0006)" $ property $ do
+    base <- forAll (Gen.element ["1.5", "1.50", "0.75", "3", "1.0000001", "1.000000417232513427734375", "0.99999998509883880615234375", "2.0", "(-3.0)"])
+    k <- forAll (Gen.choice [Gen.integral (Range.linearFrom 0 (-1100) 1100), Gen.integral (Range.exponentialFrom 0 (negate (2 ^ (40 :: Int))) (2 ^ (40 :: Int)))])
+    let e = "[= " <> base <> " ** " <> T.pack (show (k :: Integer)) <> "]"
+        cm = map (\(c, m, _, _) -> (c, m))
+        alone = cm (diags (e <> "\n"))
+    cm (diags ("[= 1 + 1] [= 2.0 ** 3]\n\n" <> e <> "\n")) === alone
+    cm (diags (e <> "\n\n" <> e <> "\n")) === alone <> alone
+    diags (e <> "\n\n" <> e <> "\n") === diags (e <> "\n\n" <> e <> "\n")

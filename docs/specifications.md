@@ -1743,7 +1743,7 @@ HarfBuzz のフォントは開いた後は読むだけで、HarfBuzz が複数�
 - 図番号は章ごとに振り、文書構造（S1）で決める。図番号は「図 3-2」のように章番号と組み合わせて使うので、章を複数のファイルに分けても章の中で番号が続く必要があるためである。
 - ICC プロファイルを持たない RGB の画像は sRGB とみなし、sRGB のプロファイルを付けて埋め込む。
 - PNG は、フィルタの前の画素のデータが 512 MiB 以下、ICC プロファイルが 32 MiB 以下のものに限る。画素のデータは画像に要るバイト数までしか展開しない（[docs/adr/0035](adr/0035-security-hardening.md)）。
-- PDF に置けない図版（読めない画像と、取り込めない PDF）は、PDF を組むとき（`golem build` の PDF と `golem preflight`）に `@figure` ごとに G0810 のエラーとし、PDF を書かない。dev と prod の両方でエラーである。HTML、EPUB、プレーンテキストは G0810 を出さない。HTML と EPUB が読むのは SVG だけで、動く中身の検査（G0814）のためである（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
+- PDF に置けない図版（読めない画像と、取り込めない PDF）は、PDF を組むとき（`golem build` の PDF と `golem preflight`）に `@figure` ごとに G0810 のエラーとし、PDF を書かない。dev と prod の両方でエラーである。HTML、EPUB、プレーンテキストは G0810 を出さない。HTML と EPUB が読むのは SVG だけで、動的なコンテンツの検査（G0814）のためである（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 
 PDF の図版は、そのページを Form XObject として PDF に取り込み、ベクターのまま描く（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 PDF を読む処理は golem-pdf の `Golem.Pdf.Import` に Haskell で書き、ほかのライブラリを使わない。
@@ -1770,8 +1770,8 @@ SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子�
 - 図版の大きさは、ルートの `width` と `height`（なければ `viewBox`）の縦横の比で決める。`viewBox` と `preserveAspectRatio` は Form XObject の中の行列で表す。
 - 数は有理数で計算し、三角関数と平方根は有理数の級数を決まった項数で打ち切って求める。座標と行列の値は、PDF に書くときに 1/65536 に丸める。x86-64 と aarch64 で同じ出力にするためである（[docs/adr/0002](adr/0002-determinism.md)）。
 - 色は sRGB の ICCBased の色空間（`/GolemSRGB`）で書き、DeviceRGB と CMYK への変換は使わない。sRGB のプロファイルは、画像、PDF の図版、SVG の図版で共有し、PDF に一度だけ書く。
-- HTML と EPUB は、SVG の図版をそのまま写して `<img>` で置く（`web` があればそれを置く）。EPUB の `media-type` は `image/svg+xml` である。写す前に、次に定める動く中身だけを検査する（[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)）。PDF の部分集合の外のもの（輪郭にしていない文字、`@font-face` など）は、HTML と EPUB では許す。
-- 動く中身とは、ブラウザーが SVG を文書として開いたときに動かすか読むものであり、次の表のものを指す。HTML か EPUB を組むとき、写す SVG のファイル（`@figure` の図版か `web` の、拡張子が `.svg` のもの。箇条の中の `@figure` も含む）を golem-svg の XML の読み手で読み、要素と属性を文書の順にたどる。一つでもあれば、その SVG を参照する `@figure` のブロックごとに G0814 のエラーとし、HTML と EPUB を書かない。PDF とプレーンテキストは書く。dev と prod の両方でエラーである。一つの SVG を複数の `@figure` が参照していても、ファイルは一度だけ読む。
+- HTML と EPUB は、SVG の図版をそのまま写して `<img>` で置く（`web` があればそれを置く）。EPUB の `media-type` は `image/svg+xml` である。写す前に、次に定める動的なコンテンツだけを検査する（[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)）。PDF の部分集合の外のもの（輪郭にしていない文字、`@font-face` など）は、HTML と EPUB では許す。
+- 動的なコンテンツとは、ブラウザーが SVG を文書として開いたときに動かすか読むものであり、次の表のものを指す。HTML か EPUB を組むとき、写す SVG のファイル（`@figure` の図版か `web` の、拡張子が `.svg` のもの。箇条の中の `@figure` も含む）を golem-svg の XML の読み手で読み、要素と属性を文書の順にたどる。一つでもあれば、その SVG を参照する `@figure` のブロックごとに G0814 のエラーとし、HTML と EPUB を書かない。PDF とプレーンテキストは書く。dev と prod の両方でエラーである。一つの SVG を複数の `@figure` が参照していても、ファイルは一度だけ読む。
 
 | 種類 | 拒むもの |
 | --- | --- |
@@ -1782,7 +1782,7 @@ SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子�
 | アニメーションによる書き換え | `set`、`animate` の要素で、`attributeName` が `href`、`xlink:href`、または `on` で始まる名前のもの |
 | CSS の外部の参照 | `style` の要素と `style` の属性の中の `@import` と、`url(` の後が `#` で始まらないもの |
 
-- XML として読めない SVG、UTF-8 でない SVG、内部サブセットを持つ `DOCTYPE` を持つ SVG も、中身を確かめられないので G0814 とし、G0810 と同じ理由を括弧の中に書く。動く中身を取り除いて写すことはしない。検査を通った SVG は、バイト列をそのまま写す。
+- XML として読めない SVG、UTF-8 でない SVG、内部サブセットを持つ `DOCTYPE` を持つ SVG も、中身を確かめられないので G0814 とし、G0810 と同じ理由を括弧の中に書く。動的なコンテンツを取り除いて写すことはしない。検査を通った SVG は、バイト列をそのまま写す。
 
 PDF では、図番号とキャプションを、画像の下（縦組みでは左）に、段落スタイル `caption` の `font` と `size` で組む（[golem-driver ADR 0005](golem-driver/adr/0005-pdf-wrapped-figures.md)、[golem-driver ADR 0010](golem-driver/adr/0010-caption-style.md)）。
 指定がなければ本文と同じ書体と大きさになる。
@@ -2992,7 +2992,7 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
-- **累乗の diagnostic の揺れ**：浮動小数点数の底か負の指数の `**` は、結果の大きさを倍精度で見積もってから、範囲の外（G0204 か 0）と計算の上限（G0286）を判定する。見積もりの誤差は指数の絶対値に比例して増えるので、真の値が範囲の境界の近くにある式では、指数を 1 変えるだけで G0286 と G0204、G0286 と 0 が入れ替わる。「設計原則」の「diagnostics の決定性」に反する（[golem-eval ADR 0005](golem-eval/adr/0005-float-overflow.md)、[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)）。
+今は、載せている不具合はない。
 
 ## 仕様が不明瞭な場合
 
