@@ -31,7 +31,7 @@ TeX で組めば、これらのいくつかは解ける。
 原稿はソースであり、組むことはビルドであり、紙面はビルドの成果物である。
 ソフトウェアの開発が何十年もかけて磨いてきた道具（バージョン管理、レビュー、テスト、CI、再現できるビルド）は、そのまま組版にも使える。
 これまで使えなかったのは、組版の道具がそれを受け入れる形をしていなかったからだ。
-Golem は、その形をした組版システムとして作っている[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md]（仕様書の「目的」と「解決する問題」の節）]。
+Golem は、その形をした組版システムとして作っている[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md]（仕様書の「目的」と「解決する問題」の節）]。
 
 @nonumber
 @label preface-software
@@ -83,7 +83,7 @@ Golem の開発の CI にも、まだ入っていない。
 使い手のマニュアルも同じである。
 二冊は、ビルドの要るプルリクエストのたびに、CI の [code: build] ジョブで x86-64 と aarch64 の両方で組まれ、error、warning、notice のどれか一つでも出れば失敗する（第[ref-number manuals]章）。
 組んだ二冊の PDF と HTML は、CI の [code: determinism] ジョブが二つのアーキテクチャの出力のハッシュを比べる対象にも入っている。
-一行でも違えば、その変更はマージできない（第[ref-number ci-jobs]章）[note: [code: https://github.com/tett23/golem/blob/main/.github/workflows/ci.yml]（CI のワークフロー）]。
+一行でも違えば、その変更はマージできない（第[ref-number ci-jobs]章）[note: [style url: https://github.com/tett23/golem/blob/main/.github/workflows/ci.yml]（CI のワークフロー）]。
 
 テストの素材も、手加減していない。
 golem-driver のフィクスチャには、横組みの『テンペスト』と縦組みの『蟹工船』に加えて、組みにくいパブリックドメインの作品を十冊置いている。
@@ -105,7 +105,7 @@ TeX でも、設定を尽くせば同じ出力を得られることはある。
 Golem では、それが処理系の約束であり、CI で毎回確かめている。
 
 和文は、あとから足した拡張ではない。
-PDF の行分割は、欧文と和文の段落を TeX と同じ Knuth と Plass の方式（段落の全体で改行の位置を選ぶ方式）[cite knuth-plass] で行に分け、禁則、ルビ、圏点、縦中横、アキ量のセット、縦組みは W3C の「日本語組版処理の要件」（JLReq）[cite jlreq] に従って処理系の中で組む[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md]（仕様書の「行分割」と「仕様が不明瞭な場合」の節）]。
+PDF の行分割は、欧文と和文の段落を TeX と同じ Knuth と Plass の方式（段落の全体で改行の位置を選ぶ方式）[cite knuth-plass] で行に分け、禁則、ルビ、圏点、縦中横、アキ量のセット、縦組みは W3C の「日本語組版処理の要件」（JLReq）[cite jlreq] に従って処理系の中で組む[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md]（仕様書の「行分割」と「仕様が不明瞭な場合」の節）]。
 
 拡張の境界も、文書になっている。
 すべての出力の元になる意味論 IR（式とコマンドの評価が済み、位置と大きさを持たない文書の表現）は、CBOR のデータの形を記述するスキーマの言語 CDDL [cite rfc8610] で記述した仕様の一部である。
@@ -117,14 +117,14 @@ PDF の行分割は、欧文と和文の段落を TeX と同じ Knuth と Plass 
 一方で、TeX にあって今の Golem にないものも多い。
 数式の組版はなく、数式は画像にして図版として入れる。
 四十年を超える歴史と、パッケージの蓄積もない。
-足りない組版の機能は、[code: docs/roadmap.md] と、TeX と比べた監査の記録にまとめてある[note: [code: https://github.com/tett23/golem/blob/main/docs/roadmap.md]（ロードマップ）、[code: https://github.com/tett23/golem/blob/main/docs/audits/2026-10-16-tex-feature-gap.md]（TeX と比べて Golem に足りない組版の機能）]。
+足りない組版の機能は、[code: docs/roadmap.md] と、TeX と比べた監査の記録にまとめてある[note: [style url: https://github.com/tett23/golem/blob/main/docs/roadmap.md]（ロードマップ）、[style url: https://github.com/tett23/golem/blob/main/docs/audits/2026-10-16-tex-feature-gap.md]（TeX と比べて Golem に足りない組版の機能）]。
 
 @nonumber
 ## 自由ソフトウェアとしての Golem
 
-Golem は MIT License の自由ソフトウェアである[note: [code: https://github.com/tett23/golem/blob/main/LICENSE]]。
+Golem は MIT License の自由ソフトウェアである[note: [style url: https://github.com/tett23/golem/blob/main/LICENSE]]。
 自由ソフトウェアの「自由」は、値段のことではない。
-プログラムを目的を問わずに動かす自由、ソースコードを読んで仕組みを調べる自由、自分の必要に合わせて改変する自由、改変したものも含めて他人に配る自由のことである[note: [code: https://www.gnu.org/philosophy/free-sw.ja.html]（GNU プロジェクトによる自由ソフトウェアの定義）]。
+プログラムを目的を問わずに動かす自由、ソースコードを読んで仕組みを調べる自由、自分の必要に合わせて改変する自由、改変したものも含めて他人に配る自由のことである[note: [style url: https://www.gnu.org/philosophy/free-sw.ja.html]（GNU プロジェクトによる自由ソフトウェアの定義）]。
 Golem は、この四つをすべて、誰にでも渡す。
 MIT License が求めるのは、著作権とライセンスの表示を残すことだけである。
 使用、改変、再配布をライセンスで制限し、ソースコードを公開しないソフトウェアを、プロプライエタリソフトウェアと呼ぶ。
@@ -169,8 +169,8 @@ CI のランナーにも、同僚の手元にも、印刷所のサーバーに�
 Golem を作る動機は、組版という難しい問題を、自分たちの手で解いていく楽しさにある。
 
 貢献はいつでも歓迎する。
-コードと文書の変更の手順は [code: CONTRIBUTING.md] と第二部に書いた[note: [code: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]]。
-とりわけ役に立つのは、実際に Golem で本を組んでみて、使いにくかったところや組めなかったものを知らせてもらうことである[note: [code: https://github.com/tett23/golem/issues]]。
+コードと文書の変更の手順は [code: CONTRIBUTING.md] と第二部に書いた[note: [style url: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]]。
+とりわけ役に立つのは、実際に Golem で本を組んでみて、使いにくかったところや組めなかったものを知らせてもらうことである[note: [style url: https://github.com/tett23/golem/issues]]。
 
 @nonumber
 ## この本の読み手
@@ -219,7 +219,7 @@ CI で自動の組版を組む人、エディタに LSP をつなぐ人、プラ
 各節の根拠になる文書は、脚注にリンクで示す。
 リンクは常に [code: main] の文書を指し、タグやコミットを含めない。
 脚注の URL がコミットごとに変わると、内容を変えていないページまで差分に現れるからである。
-どのコミットから組んだ本かは、奥付の版とコミットのハッシュで確かめられる。[note: [code: https://github.com/tett23/golem/blob/main/docs/manual-policy.md]（マニュアルの方針）]
+どのコミットから組んだ本かは、奥付の版とコミットのハッシュで確かめられる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/manual-policy.md]（マニュアルの方針）]
 
 書いてあるのは、採択して実装を終えた仕様だけである。
 [code: docs/roadmap.md] に載っている事項（未決事項を含む）と、提案の段階の ADR は書かない。

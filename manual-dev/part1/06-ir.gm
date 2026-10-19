@@ -3,7 +3,7 @@
 
 Golem の処理には、二つの中間表現がある。
 原稿を評価した結果の[strong: 意味論 IR]と、[code: style.toml] から作る[strong: レイアウト IR] である。[index reading=いみろんあいあーる: 意味論 IR][index reading=れいあうとあいあーる: レイアウト IR]
-すべての出力は意味論 IR から分かれ、PDF の経路だけがレイアウト IR を合わせて読む。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#処理の流れ]（仕様書の「処理の流れ」の節）]
+すべての出力は意味論 IR から分かれ、PDF の経路だけがレイアウト IR を合わせて読む。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#処理の流れ]（仕様書の「処理の流れ」の節）]
 
 二つを分けている理由は、仕様書が「幾何の隔離」と呼ぶ原則にある。
 EPUB と HTML はリフローの媒体であり、行もページも読者の側で決まる。
@@ -42,7 +42,7 @@ EPUB と HTML はリフローの媒体であり、行もページも読者の側
 
 Golem は、この循環を、評価を三つの階層に分けることで断っている。[index reading=ひょうかのかいそう: 評価の階層（S0、S1、S2）]
 各階層の値は、それより下の階層の値にだけ依存できる。
-仕様書は、S0 から S2 を「階層」とも「段階」とも呼んでいる。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#目次と文書構造の参照]（仕様書の「目次と文書構造の参照」の節）]
+仕様書は、S0 から S2 を「階層」とも「段階」とも呼んでいる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#目次と文書構造の参照]（仕様書の「目次と文書構造の参照」の節）]
 
 @label fig-stages
 @figure images/stages.svg alt="下から S0（ファイル内評価）、S1（文書構造）、S2（レイアウト後）の三つの帯を重ね、S0 の各ファイルの結果が S1 に集まり、S1 の結果が S2 に渡ることと、プラグイン、golem check と LSP、HTML と EPUB とテキスト、golem build の PDF がそれぞれどの階層まで使うかを示した図"
@@ -63,7 +63,7 @@ S0 は、ファイルを一つずつ、そのファイルと import 先だけを
 ほかの章のファイルは見ない。
 このため、各ファイルは単独で検査でき、依存のないファイルは並列に評価でき、LSP は変わったファイルだけを評価し直せる。
 S0 は脚注の番号もファイルごとに振るが、これは [code: golem check] と LSP のための仮の番号である。
-出力の番号は、章ごとのように本の構成に依存する範囲で振るので、S1 が振り直す。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0018-footnote-marks-and-numbers.md]（golem-driver ADR 0018「脚注の印と番号」）]
+出力の番号は、章ごとのように本の構成に依存する範囲で振るので、S1 が振り直す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0018-footnote-marks-and-numbers.md]（golem-driver ADR 0018「脚注の印と番号」）]
 [code: meta] はマニフェストだけで決まるので、S0 の値として見出しの中でも使える。
 S0 で決められない値（[code: doc] を使う式と、ラベルへの参照）は、評価せずに意味論 IR に残す（後の「[ref-title deferred]」の節）。
 S1 が集める情報（見出し、ラベル、チャネルへの項目、属性）は、S0 が作る意味論 IR の中に、書いた順に残る。
@@ -79,7 +79,7 @@ S2 は、PDF の経路だけにある。[index reading="S2": S2（レイアウ�
 しかも、ページ番号の表記の幅が行の幅を変え、行が改ページを変え、改ページがページ番号を変える。
 そこで、ページ番号への参照を仮の値で組み、求めたページ番号を入れて組み直すことを、すべてのページ番号が前回と変わらなくなるまで繰り返す。
 5 回までに収束しなければ、エラー（G0721）で止まる。
-各回の組版は入力だけで決まるので、繰り返しの過程も決定的である。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-layout/adr/0003-pagination-and-s2.md]（golem-layout ADR 0003「改ページ、脚注、ページ番号の解決」）]
+各回の組版は入力だけで決まるので、繰り返しの過程も決定的である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-layout/adr/0003-pagination-and-s2.md]（golem-layout ADR 0003「改ページ、脚注、ページ番号の解決」）]
 目次の見出しのページは、繰り返しが収束した後に、最終回のページから一度だけ求める。
 
 下の階層にだけ依存するという規則から、次のことが決まる。
@@ -95,15 +95,15 @@ S2 は、PDF の経路だけにある。[index reading="S2": S2（レイアウ�
 ファイルは golem-doc のパッケージの [code: schema/] にある。[index reading=cddl: CDDL]
 Haskell の型（golem-doc の [code: Golem.Doc.IR]）は手で書き、CDDL と一致することをテストで確かめている。
 同じ CDDL がプラグインとの ABI にもなる。
-二つを別々に定義すると、処理系の内部の型とプラグインの ABI が次第にずれていくからである。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0001-semantic-ir-in-cddl.md]（golem-doc ADR 0001「意味論 IR の正典を CDDL で定める」）]
+二つを別々に定義すると、処理系の内部の型とプラグインの ABI が次第にずれていくからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0001-semantic-ir-in-cddl.md]（golem-doc ADR 0001「意味論 IR の正典を CDDL で定める」）]
 
 符号化の規則は次のとおりである。
 
 - 直和型は [code: \[タグ番号, フィールド...\]] の配列で表す。タグ番号は一度割り当てたら変えず、使わなくなった番号も再利用しない。
 - マップを使わず、フィールドの順序で区別する。マップのキーの順序に依存しないためである。
 - CBOR は RFC 8949 [cite rfc8949] の決定的な符号化で書く。
-- 整数の欄は 64 ビットの符号付き整数（-2 の 63 乗以上、2 の 63 乗未満）に限り、CDDL では [code: int64] と書く。bignum（CBOR の tag 2 と 3）は書かない。評価器は範囲の外の整数を IR に入れずに G0291 のエラーにし、復号は範囲の外の整数をスキーマの誤りにする。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0006-integer-range-in-ir.md]（golem-doc ADR 0006「意味論 IR の大きな整数」）]
-- スキーマの先頭にバージョンを置き、ABI のバージョンと一致させる。ノードやフィールドを足したらバージョンを上げる。今のバージョンは 7 である。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0008-pdf-figures.md]（golem-pdf ADR 0008「PDF の図版と置けない図版の診断」）が図版に PDF のページの番号を足して 7 にした。]
+- 整数の欄は 64 ビットの符号付き整数（-2 の 63 乗以上、2 の 63 乗未満）に限り、CDDL では [code: int64] と書く。bignum（CBOR の tag 2 と 3）は書かない。評価器は範囲の外の整数を IR に入れずに G0291 のエラーにし、復号は範囲の外の整数をスキーマの誤りにする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0006-integer-range-in-ir.md]（golem-doc ADR 0006「意味論 IR の大きな整数」）]
+- スキーマの先頭にバージョンを置き、ABI のバージョンと一致させる。ノードやフィールドを足したらバージョンを上げる。今のバージョンは 7 である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0008-pdf-figures.md]（golem-pdf ADR 0008「PDF の図版と置けない図版の診断」）が図版に PDF のページの番号を足して 7 にした。]
 
 ## 文書とブロック
 
@@ -194,7 +194,7 @@ S0 で作る意味論 IR には、まだ決まっていない値が残る。[ind
 
 golem-doc の [code: assemble] は、全ファイルの S0 の結果をマニフェストの順に受け取り、S1 の値をすべて解決した文書の全体（[code: Doc.Book]）を作る。
 見出しの番号、ラベルの解決、目次、図番号、索引の並べ替え、参考文献の番号がここで決まる。
-ページへの参照だけが、S2 まで残る。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0002-document-assembly.md]（golem-doc ADR 0002「文書構造（S1）の集約」）]
+ページへの参照だけが、S2 まで残る。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0002-document-assembly.md]（golem-doc ADR 0002「文書構造（S1）の集約」）]
 
 プラグインの出力は、要求に含まれていた参照と [code: DeferredExpr] をそのまま運べるが、新しく作れない。
 プラグインが値を読めない参照を作れないようにすることで、評価の階層のあいだに循環ができないようにしている。
@@ -209,7 +209,7 @@ golem-doc の [code: assemble] は、全ファイルの S0 の結果をマニフ
 目次は、各章の見出しを前付けの一か所に並べたものである。
 
 Golem は、この四つを同じ形の仕組みとして扱い、[strong: チャネル]と呼ぶ。
-チャネルは、文書の各所で書いた項目を本の全体から集め、別の一か所に一覧として出す経路である。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#チャネル]（仕様書の「チャネル」の節）]
+チャネルは、文書の各所で書いた項目を本の全体から集め、別の一か所に一覧として出す経路である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#チャネル]（仕様書の「チャネル」の節）]
 TeX の [code: \\tableofcontents] や [code: \\printindex] が補助ファイルを介してしていることを、Golem は評価の階層の中で行う。
 チャネルという語は Golem の仕様書の語で、ほかの組版システムで通じる名前ではない。
 
@@ -254,14 +254,14 @@ S0 の時点では、一覧の中身は決まらない。
 脚注だけは、出す位置をブロックコマンドで指定しない。
 PDF は [code: style.toml] の [code: \[notes\]] の [code: placement] に従い、ページの下（[code: "page-foot"]、既定）か、マニフェストの章の終わり（[code: "chapter-end"]）に置く。
 HTML、EPUB、プレーンテキストは、[code: placement] によらず、章の最後のファイルの出力の末尾に、章のすべての注を見出し「注」（日本語でない本では「Notes」）の下にまとめる。
-章を複数のファイルに分けたとき、HTML と EPUB の本文の参照と注のあいだのリンクは、ファイルをまたぐ相対のリンクになる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0026-chapter-end-notes.md]（golem-driver ADR 0026「章末の注」）]
+章を複数のファイルに分けたとき、HTML と EPUB の本文の参照と注のあいだのリンクは、ファイルをまたぐ相対のリンクになる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0026-chapter-end-notes.md]（golem-driver ADR 0026「章末の注」）]
 章の一覧の見出しは意味論 IR に入らず、出力の経路が足すので、目次と見出しの番号には入らない。
 
 ### 意味論 IR の中のチャネル
 
 送る側の印は、意味論 IR のインライン（脚注、索引の印、引用）か、見出しのブロックそのものである。
 印をチャネルごとの別の表に書き出すことはしない。
-golem-eval ADR 0002 は、S0 が意味論 IR と別に、見出し、ラベル、チャネルへの項目を並べた [code: FileIndex] を出すと書いているが、今の実装にこの型はない。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0002-file-evaluation.md]（golem-eval ADR 0002「ファイル内評価（S0）」）]
+golem-eval ADR 0002 は、S0 が意味論 IR と別に、見出し、ラベル、チャネルへの項目を並べた [code: FileIndex] を出すと書いているが、今の実装にこの型はない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0002-file-evaluation.md]（golem-eval ADR 0002「ファイル内評価（S0）」）]
 S1 の [code: assemble] が、意味論 IR のブロックとインラインをたどって印を拾う。
 箇条書き、定義リスト、図版のキャプション、表のセル、脚注の本文の中の印も拾う。
 
@@ -372,10 +372,10 @@ HTML の経路と EPUB の経路は本文の XHTML を共有するので、本�
 
 PDF の目次と索引のページ番号は、S2 で決まる。
 目次のページ番号は、S2 の繰り返しが収束した後に、最終回のページから一度だけ求める。
-目次の行分割はページ番号の値によらないので、目次のページ番号が後ろのページを動かすことはない。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0009-pdf-toc-page-numbers.md]（golem-driver ADR 0009「PDF の目次にページ番号を出す」）]
+目次の行分割はページ番号の値によらないので、目次のページ番号が後ろのページを動かすことはない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0009-pdf-toc-page-numbers.md]（golem-driver ADR 0009「PDF の目次にページ番号を出す」）]
 索引のページ番号は、ページ番号への参照と同じく繰り返しの中で求め、5 回までに収束しなければ G0721 の error になる。
 索引の印のページは、印を含む行のページである。
-脚注の本文の中の印は、その脚注の印を含む本文の行のページ、図版のキャプションの中の印は、図版を置いたページになる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0007-pdf-index-and-bibliography.md]（golem-driver ADR 0007「PDF に索引と参考文献を出力する」）]
+脚注の本文の中の印は、その脚注の印を含む本文の行のページ、図版のキャプションの中の印は、図版を置いたページになる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0007-pdf-index-and-bibliography.md]（golem-driver ADR 0007「PDF に索引と参考文献を出力する」）]
 [code: style.toml] の [code: \[index\]] の [code: columns] が版面の段数と違えば、PDF は [code: @index] の位置で段数を切り替える。
 
 HTML の索引は、出現位置へのリンクに 1、2、3 のように順の番号を付ける。
@@ -384,7 +384,7 @@ HTML の索引は、出現位置へのリンクに 1、2、3 のように順の�
 
 EPUB のナビゲーション文書は、目次のチャネルから作る。
 [code: @toc] の有無と [code: depth] によらず、[code: @notoc] のない見出しをすべて載せる。
-EPUB 3.3 がナビゲーション文書を必須にしており、読書システムはそれを目次として使うからである。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-epub/adr/0001-epub-packaging.md]（golem-epub ADR 0001「EPUB のパッケージング」）]
+EPUB 3.3 がナビゲーション文書を必須にしており、読書システムはそれを目次として使うからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-epub/adr/0001-epub-packaging.md]（golem-epub ADR 0001「EPUB のパッケージング」）]
 
 ### 既定の値と境界の場合
 
@@ -420,7 +420,7 @@ S0 を並列に実行し、完了の順が変わっても、一覧は変わら�
 上書きを許すと、S1 が前提にする印の形（索引の読み、引用のキー）を処理系が保証できなくなるからである。
 
 チャネルの種類は、タグ 8 の三つと脚注に固定されている。
-仕様書は用語集のような独自の一覧をプラグインで作れると書くが、プラグインが新しいチャネルを作り、その一覧を出す位置を置く経路は、今の意味論 IR にない。[note: [code: https://github.com/tett23/golem/blob/main/docs/audits/2026-10-16-tex-feature-gap.md]（監査「TeX と比べて Golem に足りない組版の機能（2026-10-16）」の「参考文献、索引、用語集」の節）]
+仕様書は用語集のような独自の一覧をプラグインで作れると書くが、プラグインが新しいチャネルを作り、その一覧を出す位置を置く経路は、今の意味論 IR にない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/audits/2026-10-16-tex-feature-gap.md]（監査「TeX と比べて Golem に足りない組版の機能（2026-10-16）」の「参考文献、索引、用語集」の節）]
 チャネルを足すには、タグ 8 の [code: channel] に種類を足し、ABI のバージョンを上げ、S1 の集約と四つの出力の経路に書き方を足すことになる。
 
 ## レイアウト IR
@@ -429,9 +429,9 @@ S0 を並列に実行し、完了の順が変わっても、一覧は変わら�
 値は [code: style.toml] に書かれ、golem-project が読み込んで [code: Style] にする。
 寸法は、この時点で整数の sp に変換する。
 1pt は 65536sp であり、レイアウトの計算は浮動小数点数を使わない。
-浮動小数点数の結果は、計算の順序や計算機の命令によって最後の桁が変わりうるからである。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-project/adr/0002-style-toml.md]（golem-project ADR 0002「style.toml の読み込み」）]
+浮動小数点数の結果は、計算の順序や計算機の命令によって最後の桁が変わりうるからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-project/adr/0002-style-toml.md]（golem-project ADR 0002「style.toml の読み込み」）]
 
-golem-layout-spec は、[code: Style] からページの幾何を計算し、[code: PageGeometry] にする。[index reading="PageGeometry": PageGeometry][note: [code: https://github.com/tett23/golem/blob/main/docs/golem-layout-spec/adr/0001-page-geometry.md]（golem-layout-spec ADR 0001「ページの幾何」）]
+golem-layout-spec は、[code: Style] からページの幾何を計算し、[code: PageGeometry] にする。[index reading="PageGeometry": PageGeometry][note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-layout-spec/adr/0001-page-geometry.md]（golem-layout-spec ADR 0001「ページの幾何」）]
 
 | フィールド | 内容 |
 | --- | --- |
