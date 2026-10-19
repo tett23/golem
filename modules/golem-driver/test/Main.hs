@@ -86,6 +86,7 @@ tests =
              testGroup "hidden folios (ADR 0021)" hiddenFolioTests,
              testGroup "forced breaks (docs/adr ADR 0017)" breakTests,
              testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
+             testGroup "blank lines (docs/adr ADR 0046)" blankLineTests,
              testGroup "columns (docs/adr ADR 0018)" columnTests,
              testGroup "index columns (docs/adr ADR 0025)" indexColumnTests,
              testGroup "variation selectors and CIDSystemInfo (golem-pdf ADR 0006)" variationTests,

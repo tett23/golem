@@ -84,6 +84,7 @@ import Data.Char (isAlphaNum, isAscii, isSpace)
 import Data.Either (fromRight, isLeft)
 import Data.Foldable (toList)
 import Data.Function (on)
+import Data.Int (Int64)
 import Data.List (groupBy, intercalate, mapAccumL, nub, nubBy, sortOn, zip3, zip4)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict (Map)
@@ -993,13 +994,17 @@ gridLine geom k = case (drop k grid, grid) of
   where
     grid = pgLineGrid geom
 
--- | G0737: the manual controls of page breaks not met (docs/adr ADR 0030).
+{- | G0737: the manual controls of page breaks not met (docs/adr ADR
+0030); G0747: the blank lines dropped (docs/adr ADR 0046).
+-}
 unmetWarnings :: [PageOut] -> [Diagnostic]
 unmetWarnings pages =
   [ case u of
       UnmetNoBreak sp -> diagnostic "G0737" Warning sp "ここで改ページを止められませんでした"
       UnmetNeedLines sp k -> diagnostic "G0737" Warning sp ("@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (poLines p)) <> " を超えます")
       UnmetAdjust sp k -> diagnostic "G0737" Warning sp ("@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")
+      -- G0747: blank lines dropped at the top of a column (docs/adr ADR 0046)
+      DroppedBlank sp -> notice "G0747" sp "段の先頭に来た @blank-line の空きを捨てました"
   | p <- pages,
     u <- poUnmet p
   ]
@@ -1620,6 +1625,8 @@ data UnitKind
     UColumns !(Maybe ColumnSet)
   | -- | a manual control of page breaks (docs/adr ADR 0030)
     UPageControl !PageControl
+  | -- | blank lines before what follows (docs/adr ADR 0046)
+    UBlank !Int64
 
 {- | The look and the indent of a paragraph style (docs/adr ADR 0005, 0006):
 its role, its size, and its kerning, tracking, proportional metrics and
@@ -1695,8 +1702,10 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
                   let (breaks, body) = span isBreakUnit (reverse us)
                    in reverse body <> notesList (styleOf fid) docs <> reverse breaks
             _ -> us
+    -- blank lines at the end of a file go before the first block of the next (docs/adr ADR 0046)
     isBreakUnit u = case uKind u of
       UBreak _ -> True
+      UBlank _ -> True
       _ -> False
     -- the title and a paragraph for each note, its mark first, as at the foot of a page
     notesList style docs = case concatMap documentNotes docs of
@@ -1763,6 +1772,7 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
             ChannelOutput BibliographyOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bibliographyAt book sp)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
             PageControl c -> (n, [plainUnit (UPageControl c) Nothing []])
+            BlankLines k -> (n, [plainUnit (UBlank k) Nothing []])
     {- the items of the list numbered n: their units are inside it, the first
     unit of an item that starts with a paragraph carries the marker -}
     list style ctx n items =
@@ -2015,6 +2025,7 @@ buildFlow inp geom fonts images assumed = do
         UGap _ -> True
         UBreak _ -> True
         UPageControl _ -> True
+        UBlank _ -> True
         -- code blocks are set by codeBlocks (golem-driver ADR 0017)
         UCode {} -> True
         UColumns _ -> True
@@ -2212,6 +2223,7 @@ buildFlow inp geom fonts images assumed = do
                     AdjustLines k -> FAdjustLines (uSpan u) k
                in (nextId, flows <> [flow], lineAcc, figAcc, headAcc, errs)
             UColumns set -> (nextId, flows <> [maybe FRestoreColumns FSwitchColumns set], lineAcc, figAcc, headAcc, errs)
+            UBlank k -> (nextId, flows <> [FBlank (uSpan u) (fromIntegral k)], lineAcc, figAcc, headAcc, errs)
             _ ->
               let c = singles Map.! i
                   ls = cLines c

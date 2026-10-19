@@ -193,5 +193,7 @@ genTopBlock =
                       AdjustLines <$> Gen.filter (/= 0) (Gen.int (Range.linear (-5) 5))
                     ]
               )
-      )
+      ),
+      -- blank lines (docs/adr ADR 0046)
+      (1, Block <$> genSpan <*> pure Nothing <*> (BlankLines <$> Gen.int64 (Range.exponential 1 maxBound)))
     ]

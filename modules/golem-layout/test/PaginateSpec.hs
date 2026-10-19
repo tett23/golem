@@ -34,6 +34,7 @@ paginateTests =
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
       testGroup "turned figures on pages of their own (golem-driver ADR 0034)" pageFigureTests,
       testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
+      testGroup "blank lines (docs/adr ADR 0046)" blankLineTests,
       testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
       testGroup "invariants" propertyTests
     ]
@@ -361,6 +362,57 @@ pageControlTests =
       let ps = paginate 1 10 [FAdjustLines mk (-10), FParagraph (lines' 0 3)]
       take 1 (map poLines ps) @?= [1]
       unmets ps @?= [UnmetAdjust mk (-9)]
+  ]
+
+-- | On one column of ten grid lines (docs/adr ADR 0046).
+blankLineTests :: [TestTree]
+blankLineTests =
+  [ testCase "blank lines take grid lines before what follows" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 3), FBlank mk 2, FParagraph (lines' 10 2)]
+      gridLines ps @?= [[0, 1, 2, 5, 6]]
+      unmets ps @?= [],
+    testCase "blank lines and the first part of what follows go to the next column together, and the blank lines are dropped there" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 9), FBlank mk 1, FParagraph (lines' 10 3)]
+      lineIds ps @?= [[0 .. 8], [10, 11, 12]]
+      gridLines ps @?= [[0 .. 8], [0, 1, 2]]
+      unmets ps @?= [DroppedBlank mk],
+    testCase "blank lines after a full column are dropped" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 10), FBlank mk 1, FParagraph (lines' 10 2)]
+      gridLines ps @?= [[0 .. 9], [0, 1]]
+      unmets ps @?= [DroppedBlank mk],
+    testCase "blank lines after a page break are dropped" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 2), FBreak BreakPage, FBlank mk 3, FParagraph (lines' 10 2)]
+      gridLines ps @?= [[0, 1], [0, 1]]
+      unmets ps @?= [DroppedBlank mk],
+    testCase "blank lines at the start of the book are dropped" $ do
+      let ps = paginate 1 10 [FBlank mk 2, FParagraph (lines' 0 2)]
+      gridLines ps @?= [[0, 1]]
+      unmets ps @?= [DroppedBlank mk],
+    testCase "each blank line dropped is recorded" $
+      unmets (paginate 1 10 [FBlank mk 1, FBlank mk2 2, FParagraph (lines' 0 2)]) @?= [DroppedBlank mk, DroppedBlank mk2],
+    testCase "blank lines longer than the rest of the column are dropped whole, not cut" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 3), FBlank mk 20, FParagraph (lines' 10 2)]
+      gridLines ps @?= [[0, 1, 2], [0, 1]]
+      unmets ps @?= [DroppedBlank mk],
+    testCase "blank lines before a heading that starts at a recto are dropped at the recto" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 3), FBlank mk 2, FHeading 1 True 1 (lines' 20 1), FParagraph (lines' 30 2)]
+      contents ps @?= [[SLine 0, SLine 1, SLine 2], [], [SHeading 20 1, SLine 30, SLine 31]]
+      map poBlank ps @?= [False, True, False]
+      gridLines ps @?= [[0, 1, 2], [], [0, 1, 2]]
+      unmets ps @?= [DroppedBlank mk],
+    testCase "a heading is kept with the blank lines and the first two lines after it" $ do
+      gridLines (paginate 1 10 [FParagraph (lines' 0 5), heading 20, FBlank mk 2, FParagraph (lines' 30 2)]) @?= [[0, 1, 2, 3, 4, 5, 8, 9]]
+      let ps = paginate 1 10 [FParagraph (lines' 0 6), heading 20, FBlank mk 2, FParagraph (lines' 30 2)]
+      gridLines ps @?= [[0 .. 5], [0, 3, 4]]
+      unmets ps @?= [],
+    testCase "a no-break keeps the last lines, the blank lines and the first lines after it together" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 9), FNoBreak mk, FBlank mk2 1, FParagraph (lines' 10 5)]
+      lineIds ps @?= [[0 .. 6], [7, 8, 10, 11, 12, 13, 14]]
+      gridLines ps @?= [[0 .. 6], [0, 1, 3, 4, 5, 6, 7]]
+      unmets ps @?= [],
+    testCase "a table after blank lines keeps its space before" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 2), FBlank mk 1, FTable 50 1 [] [lines' 30 1]]
+      map (map tsFirst . poTables) ps @?= [[4]]
   ]
 
 figureOrderTests :: [TestTree]

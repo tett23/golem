@@ -1,5 +1,6 @@
 module LowerSpec (tests) where
 
+import Data.List (isInfixOf)
 import Data.Text (Text)
 import Golem.Parser
 import Golem.Parser.AST
@@ -188,6 +189,18 @@ tests =
           locValue n2 @?= "ruby"
           (inl s1, inl s2) @?= ([Text "東/京"], [Text "とう/きょう"])
         other -> assertFailure (show other),
+      -- the grammar is unchanged; @blank-line is a block command (docs/adr ADR 0046)
+      testCase "@blank-line right after a paragraph ends it and is an attribute group of the next" $ do
+        let (_, _, ds) = parseAst fid "あ\n@blank-line\nい\n"
+        ds @?= []
+        case ast "あ\n@blank-line\nい\n" of
+          [Paragraph [Located _ (Text "あ")], Attributed [Located _ (BlockCommand (Located _ "blank-line") [] [])] (Just (Located _ (Paragraph [Located _ (Text "い")])))] -> pure ()
+          other -> assertFailure (show other),
+      testCase "@blank-line in the middle of a paragraph is no text of it" $
+        case ast "あ\nい\n@blank-line 2\nう\n" of
+          [Paragraph is, Attributed [Located _ (BlockCommand (Located _ "blank-line") [_] [])] (Just (Located _ (Paragraph [Located _ (Text "う")])))] ->
+            assertBool (show is) (not ("blank-line" `isInfixOf` show (inl is)))
+          other -> assertFailure (show other),
       testCase "set and attributed blocks" $ case ast "@set price = 100\n\n@label intro\n@nonumber\n# はじめに\n" of
         [SetVar n _, Attributed cmds (Just (Located _ (Heading 1 _)))] -> do
           locValue n @?= "price"
