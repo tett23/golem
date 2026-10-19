@@ -200,7 +200,7 @@ jobs:
           git worktree add --detach "$RUNNER_TEMP/tree" HEAD
           cp -R manual/fonts "$RUNNER_TEMP/tree/manual/fonts"
           cp -R manual-dev/fonts "$RUNNER_TEMP/tree/manual-dev/fonts"
-          sh scripts/ci/bg.sh start determinism sh -c 'GOLEM="$RUNNER_TEMP/bin/golem" sh "$RUNNER_TEMP/tree/scripts/determinism.sh" > "$RUNNER_TEMP/determinism-${{ matrix.runner }}.txt"'
+          sh scripts/ci/bg.sh start determinism nice -n 19 sh -c 'GOLEM="$RUNNER_TEMP/bin/golem" sh "$RUNNER_TEMP/tree/scripts/determinism.sh" > "$RUNNER_TEMP/determinism-${{ matrix.runner }}.txt"'
       - name: qpdf, and epubcheck on x86-64, are installed
         timeout-minutes: 5
         run: sh scripts/ci/bg.sh wait apt
@@ -209,7 +209,7 @@ jobs:
         if: matrix.runner == 'ubuntu-24.04'
         run: |
           cp -R modules/golem-driver/test/fixtures/sample "$RUNNER_TEMP/epub"
-          sh scripts/ci/bg.sh start epub sh -c 'cd "$RUNNER_TEMP/epub" && "$RUNNER_TEMP/bin/golem" build --target epub && epubcheck build/epub/book.epub'
+          sh scripts/ci/bg.sh start epub nice -n 19 sh -c 'cd "$RUNNER_TEMP/epub" && "$RUNNER_TEMP/bin/golem" build --target epub && epubcheck build/epub/book.epub'
       # the outputs do not change with the time zone, the locale,
       # SOURCE_DATE_EPOCH, HOME, XDG_*, PATH, the umask, the path of the
       # project, the times of its files and files nothing refers to; the
@@ -229,7 +229,7 @@ jobs:
         run: |
           # QUICK is empty or one word
           # shellcheck disable=SC2086
-          GOLEM="$RUNNER_TEMP/bin/golem" sh scripts/ci/bg.sh start env sh scripts/env-determinism/check.sh $QUICK
+          GOLEM="$RUNNER_TEMP/bin/golem" sh scripts/ci/bg.sh start env nice -n 19 sh scripts/env-determinism/check.sh $QUICK
       # qpdf, cddl and openssl are installed above (openssl comes with the
       # runner image): a test that needs one of them fails here instead of
       # being skipped. A suite that does not finish in 10 minutes is
