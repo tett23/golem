@@ -107,11 +107,14 @@ paragraphRuleTests =
       length [l | l <- ls, l == ["f"]] @?= 17
       assertBool "CMYK" (["0", "1", "1", "0", "k", "0", "1", "1", "0", "K"] `elem` ls),
     testCase "G0746: a ruled paragraph longer than a page is broken, with a notice, and the PDF is written" $ do
-      let style = withRule fiveLines "weight = \"0.5pt\""
+      let style = withRule fiveLines "weight = \"0.5pt\"" <> "rule-after = { weight = \"0.5pt\" }\n"
           source = "@style sec\n  " <> T.replicate 96 "あ" <> "\n"
       n <- notified miniManifest style source
-      [(diagMessage d, diagSeverity d) | d <- g0746 n] @?= [("罫線を持つ段落が版面に入らないため、分けて組みました（段落スタイル sec）", Notice)]
+      [(diagMessage d, diagSeverity d) | d <- g0746 n] @?= [("罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（段落スタイル sec）", Notice)]
       assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n))
+      -- neither rule is drawn on any part (golem-driver ADR 0035)
+      content <- miniPdf fakeProvider True style source [] >>= fmap BS.concat . inflateAll
+      rects content @?= []
       quiet <- notified (miniManifest <> "\n[diagnostics]\nsilence-notices = [\"G0746\"]\n") style source
       g0746 quiet @?= [],
     testCase "G0746: a heading whose rule after does not fit an empty page loses it" $ do
@@ -121,9 +124,37 @@ paragraphRuleTests =
     testCase "a book without a broken block has no G0746" $ do
       n <- notified miniManifest (withRule horizontalStyle "weight = \"0.5pt\"") section
       g0746 n @?= [],
+    testCase "the spaces of a rule in mm (golem-driver ADR 0035)" $ do
+      content <- miniPdf fakeProvider True (withRule horizontalStyle "weight = \"0.5pt\", space-after = \"2mm\"") section [] >>= fmap BS.concat . inflateAll
+      (_, ySetsu) <- glyphAt content '節'
+      case rects content of
+        [(_, y, _, _)] -> near (ySetsu + 8.8 - y) (negate (mmPt 2))
+        other -> assertFailure (show other),
+    testCase "a space of 1zw is a character of the size of the grid, not of the paragraph style (golem-driver ADR 0035)" $ do
+      let ruleY extra = do
+            content <- miniPdf fakeProvider True (withRule horizontalStyle "weight = \"0.5pt\", space-after = \"1zw\"" <> extra) section [] >>= fmap BS.concat . inflateAll
+            case rects content of
+              [(_, y, _, _)] -> pure y
+              other -> assertFailure (show other)
+      small <- ruleY "size = \"0.5zw\"\n"
+      body <- ruleY ""
+      content <- miniPdf fakeProvider True (withRule horizontalStyle "weight = \"0.5pt\", space-after = \"1zw\"") section [] >>= fmap BS.concat . inflateAll
+      (_, ySetsu) <- glyphAt content '節'
+      near small body
+      near (ySetsu + 8.8 - body) (-10),
+    testCase "HTML: the spaces of a rule in mm are pt; zw is the size of the grid in pt (golem-driver ADR 0035)" $ do
+      (_, mmCss) <- htmlMini (withRule horizontalStyle "space-before = \"3mm\"") section
+      assertBool (T.unpack mmCss) ("margin-block: 8.504pt 0;" `T.isInfixOf` mmCss)
+      (_, css) <- htmlMini (withRule horizontalStyle "space-before = \"1zw\", space-after = \"0.5zw\", length = \"10zw\"" <> "size = \"0.5zw\"\n") section
+      assertBool (T.unpack css) ("margin-block: 10pt 5pt;" `T.isInfixOf` css)
+      assertBool (T.unpack css) ("width: 10em" `T.isInfixOf` css)
+      (_, hCss) <- htmlMini (horizontalStyle <> "\n[headings.2]\nrule-after = { space-before = \"1zw\" }\n") "## 節\n"
+      assertBool (T.unpack hCss) ("margin-block: 10pt 0;" `T.isInfixOf` hCss)
+      (_, noGrid) <- htmlMini "[paragraph-styles.sec]\nrule-before = { space-before = \"1zw\" }\n" section
+      assertBool (T.unpack noGrid) ("margin-block: 1rem 0;" `T.isInfixOf` noGrid),
     testCase "HTML: the rule before is ::before with a block border; 10zw is 10em" $ do
       (_, css) <- htmlMini (withRule horizontalStyle "weight = \"0.5pt\", space-before = \"1zw\", space-after = \"0.5zw\"") section
-      assertBool (T.unpack css) ("p.ps-sec::before { content: \"\"; display: block; width: 100%; border-block-start: 0.5pt solid; margin-block: 1em 0.5em; }" `T.isInfixOf` css)
+      assertBool (T.unpack css) ("p.ps-sec::before { content: \"\"; display: block; width: 100%; border-block-start: 0.5pt solid; margin-block: 10pt 5pt; }" `T.isInfixOf` css)
       (_, css10) <- htmlMini (withRule horizontalStyle "length = \"10zw\"") section
       assertBool (T.unpack css10) ("width: 10em" `T.isInfixOf` css10),
     testCase "HTML: a heading rule after is h2::after; a negative start-indent is margin-inline-start" $ do

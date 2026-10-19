@@ -682,18 +682,15 @@ paginateWithin maxLines separatorLines base capacity flows =
             RuledLines ls -> foldl' (\s' (j, l) -> putLineKeeping (length ls - 1 - j + k2) s' l) st1 (zip [0 ..] ls)
             RuledHeading _ n ls -> putBlock st1 n ls
        in st2 {sRules = sRules st2 <> after, sUsed = min (sUsed st2 + k2) (max (sUsed st2) (cap st2 - sNoteLines st2)), sJoin = waiting}
-    {- a block that does not fit an empty column (golem-driver ADR 0027): the
-    lines of a paragraph are broken as any paragraph's, the rule before at
-    the start of the first part and the rule after the last; a heading
-    drops its rule after, then its rule before, until it fits -}
+    {- a block that does not fit an empty column (golem-driver ADR 0027,
+    0035): the lines of a paragraph are broken as any paragraph's, without
+    its rules and their areas; a heading drops its rule after, then its
+    rule before, until it fits -}
     splitRuled st0 fr rest =
       let st = if isEmpty st0 then st0 else nextColumn st0
           (k1, before, _, _, _) = planOf st fr rest Nothing
        in case frBody fr of
-            RuledLines ls ->
-              let st1 = placeLines st {sRules = sRules st <> before, sUsed = sUsed st + k1} True ls
-                  (_, _, k2, after, _) = planOf st1 {sUsed = sUsed st1 - length ls} fr {frBefore = Nothing} [] Nothing
-               in if k2 <= free st1 then st1 {sRules = sRules st1 <> after, sUsed = sUsed st1 + k2} else st1
+            RuledLines ls -> placeLines st True ls
             RuledHeading _ n ls ->
               let (_, _, k2, after, _) = planOf st fr [] Nothing
                in if k1 + headingNeed st n ls + k2 <= free st

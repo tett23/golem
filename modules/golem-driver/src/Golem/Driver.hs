@@ -1061,7 +1061,7 @@ htmlParaStyles style =
     ]
 
 {- | A rule of a paragraph style or a heading for CSS (golem-driver ADR
-0027, 0028): zw as em, the line style as one of the border styles of CSS
+0027, 0028, 0035): zw of the length and the indents as em, the line style as one of the border styles of CSS
 and the swatch as its RGB; a rule without a colour takes the colour of
 the text. Without a length the block is as wide as the line, or as the
 rest of the line when an indent is written.
@@ -1085,7 +1085,17 @@ htmlRule style r =
       colour = case rsColor r >>= (`Map.lookup` stSwatches style) of
         Just (Swatch cmyk) -> let (cr, cg, cb) = cmykToRgb cmyk in " rgb(" <> T.pack (show cr) <> ", " <> T.pack (show cg) <> ", " <> T.pack (show cb) <> ")"
         Nothing -> ""
-      space = maybe "0" cssLength
+      {- the spaces between the rule and the text (golem-driver ADR 0035): zw
+      is a character of the size of the grid, in pt, or rem without one -}
+      gridSize = case stPage style >>= pageGrid of
+        Just Grid {gridFontSize = Abs fs} | fs > 0 -> Just fs
+        _ -> Nothing
+      space = \case
+        Nothing -> "0"
+        Just (Abs 0) -> "0"
+        Just (Zw 0) -> "0"
+        Just (Abs sp) -> cssLength (Abs sp)
+        Just (Zw z) -> maybe (decimal3 z <> "rem") (\fs -> cssLength (Abs (round (z * toRational fs)))) gridSize
    in HtmlRule
         { hrWidth = width,
           hrStartIndent = start,
