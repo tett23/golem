@@ -13,6 +13,7 @@ module Golem.Doc.Assemble
     ListAt,
     assemble,
     citeNumber,
+    tocWithinDepth,
     bibliographyAt,
     indexAt,
     indexGroups,
@@ -140,6 +141,13 @@ citeNumber :: Book -> SrcSpan -> Text -> Maybe Int
 citeNumber book sp k = do
   (at, _) <- Map.lookup (spanFile sp, sp) (bookCiteMarks book)
   lookup at (bookBibliographies book) >>= lookup k
+
+{- | The entries of the table of contents within the depth of @toc, in
+order; every entry without @toc (golem-epub ADR 0002). The EPUB
+navigation document and the HTML index page use it.
+-}
+tocWithinDepth :: Book -> [TocEntry]
+tocWithinDepth book = [e | e <- bookToc book, maybe True (teLevel e <=) (bookTocDepth book)]
 
 -- | The citations of the @bibliography at a block span.
 bibliographyAt :: Book -> SrcSpan -> [(Text, Int)]

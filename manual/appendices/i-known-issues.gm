@@ -29,15 +29,6 @@
   対処：[code: golem preflight] を実行します。フォントにない字は G0902 で報告されます（「[ref-title preflight]」、[ref-page preflight] ページ）。
 
 @nonumber
-## 目次、索引、参考文献
-
-= [strong: EPUB の目次が [code: @toc] の深さに従わない]
-  EPUB のリーダーが表示する目次には、[code: @toc] の [code: depth] より深い見出しも載ります。
-  [code: @notoc] を付けた見出しは載りません。
-  対処：目次に載せたくない見出しに [code: @notoc] を付けます。
-  その見出しは、[code: @toc] の目次からも外れます。
-
-@nonumber
 ## 組版の時間
 
 = [strong: 脚注の多い本の組版に時間がかかる]
