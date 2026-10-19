@@ -1529,12 +1529,16 @@ noteAnchors anchors = snd (mapAccumL key Map.empty [(i, n, sp, b) | AnchorNote i
       let k = Map.findWithDefault 0 sp seen
        in (Map.insert sp (k + 1) seen, (i, NoteId sp k, n, b))
 
-{- | The body of a footnote after the mark of its number and a space
-(golem-driver ADR 0018), as a sidenote has its mark (ADR 0006); the mark
-in the format of [notes] mark-format (golem-driver ADR 0025).
+{- | The body of a footnote after the mark of its number (golem-driver ADR
+0018), as a sidenote has its mark (ADR 0006); the mark in the format of
+[notes] mark-format (golem-driver ADR 0025). A quarter em [aki] keeps the
+body apart from the mark: it neither stretches nor breaks (golem-layout
+ADR 0018).
 -}
 withNoteMark :: Text -> Int -> [Inline] -> [Inline]
-withNoteMark format n body = Text (mkSpan (FileId 0) 0 0) (noteMarkText format n <> " ") : body
+withNoteMark format n body = Text sp (noteMarkText format n) : Aki sp (AkiZw (1 / 4)) : body
+  where
+    sp = mkSpan (FileId 0) 0 0
 
 {- | The placement of ruby from [composition.ruby] (golem-layout ADR
 0009); @zw@ is the size of the paragraph.
