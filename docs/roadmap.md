@@ -40,7 +40,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - **結合文字**（未実装、[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）：結合文字を前の字と一つの箱に組む。
 - **ナビゲーション文書の深さ**（未実装、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）：`@toc` の深さをナビゲーション文書と `index.xhtml` に当てる。
-- **HTML の引用の印のリンク**（未実装、[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)）：引用の印を、その印が載る参考文献の一覧のある文書へのリンクにする。
 
 
 ## v0.1.0-rc4
