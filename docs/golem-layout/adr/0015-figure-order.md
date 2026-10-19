@@ -1,6 +1,6 @@
 # ADR 0015: 図版を原稿の順にページに置く
 
-ステータス: 採択
+ステータス: 採択→回した図版の待ちは [golem-driver ADR 0034](../../golem-driver/adr/0034-fit-figures-to-column.md)
 
 ## 文脈
 

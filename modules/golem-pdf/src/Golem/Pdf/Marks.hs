@@ -16,7 +16,7 @@ module Golem.Pdf.Marks
 where
 
 import Golem.LayoutSpec (Rect (..))
-import Golem.Pdf.Writer (Mark (..), Page (..), Sp)
+import Golem.Pdf.Writer (Mark (..), Page (..), Sp, turnRect)
 
 data MarkStyle = Japanese | Western
   deriving stock (Eq, Show)
@@ -132,6 +132,8 @@ registrationRects = concatMap (go 0 0)
       Saved ms -> concatMap (go dx dy) ms
       ActualText _ ms -> concatMap (go dx dy) ms
       Translated x y ms -> concatMap (go (dx + x) (dy + y)) ms
+      -- the frame turned into its rectangle (golem-driver ADR 0034)
+      Turned t (Rect x y w h) ms -> map (turnRect t (Rect (x + dx) (y + dy) w h)) (concatMap (go 0 0) ms)
       _ -> []
 
 {- | The numbers (from 1) of the pages whose registration colour meets the
