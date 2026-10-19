@@ -36,7 +36,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **PDF の図版の取り込みの上限**（未実装、[docs/adr 0040](adr/0040-pdf-import-resource-limits.md)）：展開の合計、ページの木、相互参照、予測子、内容のストリームに上限を設ける。
 - **制御文字と glob のメタ文字**（未実装、[docs/adr 0042](adr/0042-control-characters-and-glob-metacharacters.md)）：出力に書けない文字を G0328 と G0289 で拒み、端末に出す diagnostic の制御文字をエスケープし、LSP の監視のパターンをエスケープする。
 - **表のファイルの大きさの上限**（未実装、[docs/adr 0043](adr/0043-table-file-size-limits.md)）：大きすぎる表のファイルを G0288 で拒む。
-- **リリースのワークフロー**（未実装、[docs/adr 0044](adr/0044-release-workflow-hardening.md)）：リリースノートを書くジョブを権限のないジョブに分け、Claude Code のバージョンを `mise.toml` で固定し、リンクを許可リストで検査する。
 
 ### 既知の不具合の修正
 
@@ -48,7 +47,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **ナビゲーション文書の深さ**（未実装、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）：`@toc` の深さをナビゲーション文書と `index.xhtml` に当てる。
 - **浮動小数点数の桁あふれ**（未実装、[golem-eval ADR 0005](golem-eval/adr/0005-float-overflow.md)）：正確な値を一度だけ丸めて計算し、比較を正確に行う。
 - **HTML の引用の印のリンク**（未実装、[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)）：引用の印を、その印が載る参考文献の一覧のある文書へのリンクにする。
-- **三点リーダーの後の句点と `――` の分割**（未実装、[golem-layout ADR 0016](golem-layout/adr/0016-ellipsis-before-full-stop.md)）：句点の行頭禁則を確かめる回帰のテストを足し、`――` を分離禁止にする。
 - **本文の中のコードの空白**（未実装、[golem-layout ADR 0017](golem-layout/adr/0017-spaces-inside-inline-code.md)）：コードの空白を伸び縮みさせない。
 - **URL の改行と注の印の後の空き**（未実装、[golem-layout ADR 0018](golem-layout/adr/0018-url-line-breaks.md)）：URL の中で改行できる位置を増やし、注の印の後の空白を四分アキにする。
 - **`style.toml` の値の誤りの位置**（未実装、[golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md)）：値の誤りと、読み込んだ後の検査の誤りを、値の位置に出す。
@@ -189,6 +187,14 @@ v2.0.0-rc1 は、数式の組版かその下準備、あるいはその両方を
 
 ## v3 以降に回した事項
 
+v3 の GUI は、次の原則に従って作る。
+
+- **応答の悪いアプリケーションは最悪である**：操作への応答の遅さは、機能の不足よりも使う人を損なう。
+- **時間のかかる作業は使う人を止めない**：組版、書き出し、検査のような時間のかかる作業は、裏で進め、その間も操作を受け付ける。止めることがどうしても要る場合は、止めていること、何を待っているか、どこまで進んだかを画面に示す。
+- **デザインシステムで一貫性を保つ**：画面の部品、色、文字、余白、操作は、デザインシステムに定めたものだけを使う。画面ごとの例外を作らず、要るものはデザインシステムに足してから使う。
+
+- **デザインシステムの構築**：GUI を作る前に、画面の部品、色、文字、余白、操作の規則をまとめたデザインシステムを作る。GUI の画面と、マニュアルやウェブの文書の見た目は、このデザインシステムに従ってそろえる。どこまでを Golem のスタイルの仕組みで表すかは ADR で決める。
+- **アクセシビリティの基準**：GUI が満たすアクセシビリティの基準（準拠する規格と水準、キーボードだけでの操作、スクリーンリーダー、色のコントラスト、文字の拡大など）を定める。デザインシステムの構築と同時に決め、デザインシステムの部品はこの基準を満たすように作る。
 - **GUI**：原稿とスタイルを編集し、組版の結果を確かめる画面。v2 までの Golem は CLI と CI で完結させる。ページ画像の差分を取る仕組みを自前で持つ場合も、GUI より後に扱う。
 - **GUI の作り方**：GUI は Tauri で作り、すべての描画を canvas に任せる。描く内容は Golem が決め、canvas はそれを描くだけにする（グリフのアウトラインを座標と一緒に受け取ってパスとして描くか、Golem がページを画像にしたものを並べる）。ブラウザの文字の描画（`fillText`）には頼らないので、プレビューは PDF と同じ見た目になり、OS ごとの WebView の違いは表示の速さしか左右しない。Golem の本体は今のまま CLI と LSP で動かし、GUI はそれと通信する別のプロセスにする。原稿の入力欄には WebView の入力の仕組みを使い、日本語の IME と縦書きの入力を扱う。Linux の WebKitGTK の canvas の性能が足りなければ、そのときに代わりを検討する。着手するときに ADR を作成する。
 - **HarfBuzz と FreeType の置き換え**：シェイピングとフォントの読み込みを Golem 自身の実装に置き換える。v2 までは、バージョンを固定した HarfBuzz と FreeType を同梱して使う（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)）。
@@ -198,6 +204,7 @@ v2.0.0-rc1 は、数式の組版かその下準備、あるいはその両方を
 実装は終わり、自動のテストも通っているが、ADR が求める手作業の確かめがまだ残っている項目をここにまとめる。
 確かめたら、結果を実装のプルリクエストか `docs/audits/` の記録に書き、この一覧から消す。
 
+- **リリースのワークフローの固め方**：`workflow_dispatch` で `release.yml` を動かし、`notes` ジョブが mise で Claude Code を入れて `notes.md` を上げることと、タグの push で `release` ジョブがそれを使うことを確かめていない。`build-linux.sh` を Alpine のコンテナで動かし、ghcup のブートストラップのスクリプトのハッシュが一致して進むことと、ハッシュを一文字変えると止まることも確かめていない（[docs/adr/0044](adr/0044-release-workflow-hardening.md)）。
 - **LSP の位置の扱い**：UTF-8 の位置の交渉と、行の長さを超える列の丸めを、実際のエディタ（Neovim）で確かめていない（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)、[golem-lsp ADR 0003](golem-lsp/adr/0003-position-handling.md)）。
 - **CIDSystemInfo と異体字**：Adobe-Japan1 の ROS を持つフォント（小塚明朝 Pr6N など）で組んだ PDF を Acrobat のプリフライトにかけ、`CIDSystemInfo` がフォントの ROS になっていること、IVS の異体字が出ることを確かめていない。リポジトリにそうしたフォントがないためである（[golem-pdf ADR 0006](golem-pdf/adr/0006-cid-system-info.md)）。
 - **プリフライトと商用のプリフライトの差**：Golem の G0914 が出なかった PDF を Acrobat のプリフライト（PDF/X-4 の適合の検査）にかけ、Acrobat が PDF/X-4 の誤りを報告するかを確かめていない。差があれば `Golem.Pdf.X4.verify` に足す要件を ADR にし、結果は `docs/audits/` に残す。同じ条件の文書を InDesign のプリフライトにかけ、同じ種類の問題が両方で出るかも確かめていない（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。

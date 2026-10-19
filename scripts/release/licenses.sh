@@ -217,7 +217,8 @@ fi
 # licenses/wasmtime-v<version>/ (docs/adr/0007)
 if has wasmtime; then
   [ -f "$ROOT/third_party/wasmtime/VERSION" ] || fail "no third_party/wasmtime/VERSION (run scripts/fetch-wasmtime.sh)"
-  WNAME=$(cat "$ROOT/third_party/wasmtime/VERSION")
+  # VERSION is the name of the archive and its SHA-256 (scripts/fetch-wasmtime.sh)
+  WNAME=$(cut -d" " -f1 "$ROOT/third_party/wasmtime/VERSION")
   WVER=$(printf '%s\n' "$WNAME" | sed -n 's/^\(wasmtime-v[0-9][0-9.]*\)-.*-c-api$/\1/p')
   WPLATFORM=$(printf '%s\n' "$WNAME" | sed -n 's/^wasmtime-v[0-9][0-9.]*-\(.*\)-c-api$/\1/p')
   [ -n "$WVER" ] && [ -n "$WPLATFORM" ] || fail "not the name of a wasmtime C API archive: $WNAME"
