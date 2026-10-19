@@ -631,6 +631,9 @@ PDF では、版面の行長を超えた行を折り返し、折り返した部�
 - `@notoc`：目次に載せない。
 
 `@number` は番号付きリストの項目にも付けられ、リストを途中の番号から始めるのに使う。
+`@number` の `N` は -2 の 63 乗以上、2 の 63 乗未満の整数に限る。
+範囲の外の `N` はエラー（G0291）になり、`@number` がないものとして番号を振る（[golem-doc ADR 0006](golem-doc/adr/0006-integer-range-in-ir.md)）。
+コードブロックの `numbers=N`、`[aki ...]` の量、`doc` を使う `[= ...]` の中の整数、プラグインのコマンドに渡す整数も、同じ範囲に限る。
 
 コードブロックと `@listing` には、`@caption 本文` でキャプションを付けられる（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 本文は `@toc-title` と同じく行の残りであり、`[code: ...]` のようなインラインの要素を書ける。
@@ -1073,6 +1076,8 @@ HTML と EPUB では `<code>` の要素になる。
 
 横書きでは常に算用数字になるので、`style` 引数は縦書きでだけ意味を持つ。
 `[number-text ...]` に渡せるのは整数だけであり、浮動小数点数を渡すとコンパイルエラーとなる。
+渡せる整数は -2 の 63 乗以上、2 の 63 乗未満であり、範囲の外の整数はエラー（G0291）になって何も出さない（[golem-doc ADR 0006](golem-doc/adr/0006-integer-range-in-ir.md)）。
+式の値の上限（絶対値が 2 の 4096 乗未満）より狭いのは、数が意味論 IR の 64 ビットの整数の欄に入るためである。
 `[number-text ...]` は散文スロットを取らず、`: ` の後に本文を書くとコンパイルエラーとなる（[golem-eval ADR 0003](golem-eval/adr/0003-evaluation-diagnostic-codes.md)）。
 
 ```

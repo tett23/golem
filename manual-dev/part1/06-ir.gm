@@ -102,6 +102,7 @@ Haskell の型（golem-doc の [code: Golem.Doc.IR]）は手で書き、CDDL と
 - 直和型は [code: \[タグ番号, フィールド...\]] の配列で表す。タグ番号は一度割り当てたら変えず、使わなくなった番号も再利用しない。
 - マップを使わず、フィールドの順序で区別する。マップのキーの順序に依存しないためである。
 - CBOR は RFC 8949 [cite rfc8949] の決定的な符号化で書く。
+- 整数の欄は 64 ビットの符号付き整数（-2 の 63 乗以上、2 の 63 乗未満）に限り、CDDL では [code: int64] と書く。bignum（CBOR の tag 2 と 3）は書かない。評価器は範囲の外の整数を IR に入れずに G0291 のエラーにし、復号は範囲の外の整数をスキーマの誤りにする。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0006-integer-range-in-ir.md]（golem-doc ADR 0006「意味論 IR の大きな整数」）]
 - スキーマの先頭にバージョンを置き、ABI のバージョンと一致させる。ノードやフィールドを足したらバージョンを上げる。今のバージョンは 7 である。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0008-pdf-figures.md]（golem-pdf ADR 0008「PDF の図版と置けない図版の診断」）が図版に PDF のページの番号を足して 7 にした。]
 
 ## 文書とブロック
@@ -110,8 +111,8 @@ Haskell の型（golem-doc の [code: Golem.Doc.IR]）は手で書き、CDDL と
 ブロックは、ソースの位置、ラベル、本体の三つを持つ。
 
 ```cddl
-document = [abi-version: 7, file: uint, blocks: [* block]]
-span = [file: uint, start: uint, end: uint]
+document = [abi-version: 7, file: uint64, blocks: [* block]]
+span = [file: uint64, start: uint64, end: uint64]
 block = [span, label: tstr / null, body: block-body]
 ```
 
@@ -144,7 +145,7 @@ diagnostic の位置と同じ単位で、プラグインの出力の位置の検
 ```cddl
 code = [lang: tstr / null, numbers: bool / null, file: tstr / null,
         caption: inlines / null, diff: bool, lines: [* code-line]]
-code-line = [text: tstr, number: int / null, diff-mark: (0..2) / null,
+code-line = [text: tstr, number: int64 / null, diff-mark: (0..2) / null,
              highlight: bool, callouts: [* 1..50]]
 ```
 
@@ -269,7 +270,7 @@ S1 の [code: assemble] が、意味論 IR のブロックとインラインを�
 
 ```cddl
 block-body = ... / [8, channel] / ...
-channel = [0, depth: uint] / [1] / [2]   ; toc, index, bibliography
+channel = [0, depth: uint64] / [1] / [2] ; toc, index, bibliography
 ```
 
 Haskell では、golem-doc の [code: Golem.Doc.IR] の [code: ChannelBlock] である。

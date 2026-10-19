@@ -256,7 +256,7 @@ handlers encVar rootVar wsVar gen watchVar =
           old <- liftIO (readTVarIO watchVar)
           forM_ old unregisterCapability
           let want = tablesToWatch ws
-              watchers = [FileSystemWatcher (GlobPattern (InR (RelativePattern (baseUri ws) (Pattern (T.pack p))))) Nothing | p <- Set.toList want]
+              watchers = [FileSystemWatcher (GlobPattern (InR (RelativePattern (baseUri ws) (Pattern (watchGlob p))))) Nothing | p <- Set.toList want]
           tok <-
             if Set.null want
               then pure Nothing

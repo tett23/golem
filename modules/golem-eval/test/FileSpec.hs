@@ -50,6 +50,9 @@ ctx =
             ("empty.csv", AssetText (FileId 24) ""),
             ("blank.csv", AssetText (FileId 25) "\n\n"),
             ("ragged.csv", AssetText (FileId 26) "a,b\n1\n"),
+            ("ctl.csv", AssetText (FileId 27) "a,b\n1,x\STXy\n"),
+            ("ctl.hs", AssetText (FileId 28) "l1\nl\ETX2\n"),
+            ("tab.hs", AssetText (FileId 29) "a\tb\nc\n"),
             ("/tmp/a.png", AssetInvalid Absolute),
             ("https://example.com/a.png", AssetInvalid Url),
             ("../outside.txt", AssetInvalid EscapesRoot),
@@ -192,11 +195,32 @@ escapeTests =
           other -> assertFailure (show other)
     ]
 
+-- | The characters that cannot be written to the output are G0289 (docs/adr ADR 0042).
+outputCharTests :: TestTree
+outputCharTests =
+  testGroup
+    "characters that cannot be written to the output (docs/adr ADR 0042)"
+    [ testCase "U+0001 in a paragraph is G0289 at the text of the paragraph" $
+        [(c, s, e, "U+0001" `T.isInfixOf` m) | (c, m, s, e) <- diags "前\SOH後\n"] @?= [("G0289", 0, 7, True)],
+      testCase "one G0289 for each string, with the first character" $
+        [(c, "U+0001" `T.isInfixOf` m) | (c, m, _, _) <- diags "a\SOHb\USc\n\n# d\SOe\n"] @?= [("G0289", True), ("G0289", False)],
+      testCase "U+0002 in a cell of a table file is G0289" $
+        [(c, "U+0002" `T.isInfixOf` m) | (c, m, _, _) <- diags "@table src=ctl.csv\n"] @?= [("G0289", True)],
+      testCase "U+0003 in the file of @listing is G0289" $
+        [(c, "U+0003" `T.isInfixOf` m) | (c, m, _, _) <- diags "@listing ctl.hs\n"] @?= [("G0289", True)],
+      testCase "a tab and a newline pass" $ do
+        errs "@listing tab.hs\n" @?= []
+        errs "a\tb\n" @?= [],
+      testCase "U+007F and U+0085 pass" $
+        errs "a\DELb\x85\&c\n" @?= []
+    ]
+
 tests :: TestTree
 tests =
   testGroup
     "file evaluation, S0 (ADR 0002)"
     [ verseTests,
+      outputCharTests,
       printingsTests,
       diagnosticTests,
       settingsTests,
@@ -210,6 +234,7 @@ tests =
       escapeTests,
       duplicateKeyTests,
       shorthandTests,
+      int64Tests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
@@ -449,6 +474,52 @@ shorthandTests =
         errs "[tcy: ##10##]\n" @?= errs "[tcy: [number-text 10]]\n"
         assertBool "G0240" ("G0240" `elem` errs "[tcy: ##10##]\n")
     ]
+
+-- | The integers of the IR are int64; one out of range is G0291 (golem-doc ADR 0006).
+int64Tests :: TestTree
+int64Tests =
+  testGroup
+    "G0291: an integer out of the range of the IR (golem-doc ADR 0006)"
+    [ testCase "[number-text] at the ends of int64" $ do
+        paraOf "[number-text [= 2 ** 63 - 1]]\n" @?= ["<number 9223372036854775807 Nothing>"]
+        paraOf "[number-text [= -(2 ** 63)]]\n" @?= ["<number -9223372036854775808 Nothing>"]
+        errs "[number-text [= 2 ** 63 - 1]]\n" @?= [],
+      testCase "[number-text] beyond int64 is G0291 at the command and puts out nothing" $ do
+        diags "[number-text [= 2 ** 63]]\n" @?= [("G0291", msg, 0, 25)]
+        msgs "[number-text [= -(2 ** 63) - 1]]\n" @?= [("G0291", msg)]
+        paraOf "a[number-text [= 2 ** 63]]b\n" @?= ["ab"]
+        msgs "##9223372036854775808##\n" @?= [("G0291", msg)],
+      testCase "@number beyond int64 is G0291 at its line and numbers as without it" $ do
+        let src = "@number 9223372036854775808\n# h\n"
+        diags src @?= [("G0291", msg, 0, 28)]
+        [haNumber a | Heading _ a _ <- body src] @?= [Nothing]
+        msgs "@number 9223372036854775807\n# h\n" @?= [],
+      testCase "numbers= whose last line is beyond int64 is G0291 and numbers as without it" $ do
+        let src = "``` numbers=9223372036854775807\na\nb\n```\n"
+            (bs, ds) = run ctx src
+        ds @?= ["G0291"]
+        bs @?= fst (run ctx "```\na\nb\n```\n")
+        [c | (c, _, s, _) <- diags src, s == 0] @?= ["G0291"]
+        snd (run ctx "``` numbers=9223372036854775806\na\nb\n```\n") @?= [],
+      testCase "an aki beyond int64 is G0291 and puts out nothing" $ do
+        msgs "a[aki 99999999999999999999mm]b\n" @?= [("G0291", msg)]
+        paraOf "a[aki 99999999999999999999mm]b\n" @?= ["ab"],
+      testCase "a deferred expression with an integer beyond int64 is G0291" $ do
+        msgs "@set n = 2 ** 70\n\n[= n + doc.chapters.count]\n" @?= [("G0291", msg)]
+        body "@set n = 2 ** 70\n\n[= n + doc.chapters.count]\n" @?= [Paragraph Nothing []]
+        errs "@set n = 2 ** 62\n\n[= n + doc.chapters.count]\n" @?= []
+        -- a value in prose is text, not an integer of the IR
+        paraOf "[= 2 ** 70]\n" @?= ["1180591620717411303424"],
+      testCase "a plugin command with an argument beyond int64 is G0291 and is not called" $ do
+        greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
+        let hook = noPlugins {phCommands = Map.fromList [(greet, pluginOutput)]}
+            c = ctx {ctxPlugins = hook}
+        run c "[greet [= 2 ** 63]: x]\n" @?= ([Paragraph Nothing []], ["G0291"])
+        run c "[greet [= [1, 2 ** 63]]: x]\n" @?= ([Paragraph Nothing []], ["G0291"])
+        snd (run c "[greet [= 2 ** 63 - 1]: x]\n") @?= []
+    ]
+  where
+    msg = "整数が意味論 IR に書ける範囲を超えています（-2 の 63 乗以上、2 の 63 乗未満に限ります）"
 
 -- | The same key twice among the keyword arguments (golem-parser ADR 0013).
 duplicateKeyTests :: TestTree

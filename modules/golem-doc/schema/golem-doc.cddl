@@ -2,9 +2,14 @@
 ; the Haskell types in Golem.Doc.IR mirror it. Sum types are arrays whose
 ; first element is a fixed tag; tags are never reused.
 
-document = [abi-version: 7, file: uint, blocks: [* block]]
+document = [abi-version: 7, file: uint64, blocks: [* block]]
 
-span = [file: uint, start: uint, end: uint]
+span = [file: uint64, start: uint64, end: uint64]
+
+; the integers of the IR are 64-bit signed integers; bignums are never
+; written (golem-doc ADR 0006)
+int64 = -9223372036854775808..9223372036854775807
+uint64 = 0..9223372036854775807
 
 block = [span, label: tstr / null, body: block-body]
 
@@ -22,18 +27,18 @@ block-body =
   / [12, page-control]                             ; manual page break control (docs/adr ADR 0030)
 ; 0 (paragraph without a style) and 9 (verse) are retired (docs/adr ADR 0005)
 
-heading-attrs = [toc-title: inlines / null, number: int / null, nonumber: bool, notoc: bool]
-list-item = [number: int / null, [* block]]
+heading-attrs = [toc-title: inlines / null, number: int64 / null, nonumber: bool, notoc: bool]
+list-item = [number: int64 / null, [* block]]
 def-group = [terms: [+ inlines], defs: [+ [* block]]]
 break-kind = 0..3                                  ; page, recto, verso, column
 page-control = [0]                                 ; no page break
-             / [1, uint .ge 1]                     ; need lines
-             / [2, int .ne 0]                      ; adjust the lines of the column
+             / [1, 1..9223372036854775807]         ; need lines
+             / [2, -9223372036854775808..-1 / 1..9223372036854775807] ; adjust the lines of the column
 alignment = 0..3                                   ; default, left, center, right
-figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block], page: int / null, rotate: bool] ; page: golem-pdf ADR 0008; rotate: golem-driver ADR 0034
+figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: tstr / null, caption: [* block], page: int64 / null, rotate: bool] ; page: golem-pdf ADR 0008; rotate: golem-driver ADR 0034
 code = [lang: tstr / null, numbers: bool / null, file: tstr / null, caption: inlines / null, diff: bool, lines: [* code-line]]
-code-line = [text: tstr, number: int / null, diff-mark: (0..2) / null, highlight: bool, callouts: [* 1..50]] ; added, removed, context
-channel = [0, depth: uint] / [1] / [2]             ; toc, index, bibliography
+code-line = [text: tstr, number: int64 / null, diff-mark: (0..2) / null, highlight: bool, callouts: [* 1..50]] ; added, removed, context
+channel = [0, depth: uint64] / [1] / [2]           ; toc, index, bibliography
 
 inlines = [* inline]
 inlines-no-ruby = [* inline-no-ruby]
@@ -48,23 +53,23 @@ inline-no-ruby =
   / [6, span, swatch: tstr, inlines]               ; color
   / [7, span, style: tstr, inlines]                ; character style
   / [8, span, tstr]                                ; tate-chu-yoko
-  / [9, span, int, number-style / null]            ; number
+  / [9, span, int64, number-style / null]          ; number
   / [10, span, ref-kind, label: tstr]              ; reference
   / [11, span, expr]                               ; deferred expression (S1)
-  / [12, span, uint, inlines]                      ; note
-  / [13, span, uint, inlines]                      ; sidenote
+  / [12, span, uint64, inlines]                    ; note
+  / [13, span, uint64, inlines]                    ; sidenote
   / [14, span, terms: [1*2 tstr], readings: [1*2 tstr]] ; index mark
   / [15, span, key: tstr]                          ; citation
   / [16, span, tstr]                               ; proofreading comment
   / [17, span]                                     ; line break
-  / [18, span, zw: [int, uint] / null, sp: int / null] ; aki: zw or sp, exactly one (docs/adr ADR 0019)
+  / [18, span, zw: [int64, 1..9223372036854775807] / null, sp: int64 / null] ; aki: zw or sp, exactly one (docs/adr ADR 0019)
 ; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005)
 
 number-style = 0..2                                ; kanji, kanji-digits, tcy
 ref-kind = 0..2                                    ; number, title, page
 
 expr =
-    [0, span, int]
+    [0, span, int64]
   / [1, span, float]
   / [2, span, tstr]
   / [3, span, bool]
@@ -81,7 +86,7 @@ expr =
 command-request = [0, name: tstr, args: [* argument], slots: [* inlines], span]
 filter-request = [1, name: tstr, document]
 argument = [0, value] / [1, key: tstr, value]
-value = int / float / tstr / bool / null / [* value]
+value = int64 / float / tstr / bool / null / [* value]
 response = [output: inlines / document, diagnostics: [* plugin-diagnostic]]
 plugin-diagnostic = [code: tstr, severity: 0 / 1, span, message: tstr]
 ; golem_describe: the names of the commands and filters a plugin provides
