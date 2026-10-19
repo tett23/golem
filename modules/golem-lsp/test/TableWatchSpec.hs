@@ -66,7 +66,12 @@ tableWatchTests :: TestTree
 tableWatchTests =
   testGroup
     "table files (golem-eval ADR 0004)"
-    [ testCase "G0285 is published on the table file" $ withTableProject $ \dir -> do
+    [ -- ADR 0042: the metacharacters of a path are bracket expressions of one character
+      testCase "the glob of a table file escapes the metacharacters of its path" $ do
+        watchGlob "a*b?.tsv" @?= "a[*]b[?].tsv"
+        watchGlob "data/[x]{y}.csv" @?= "data/[[]x[]][{]y[}].csv"
+        watchGlob "data/x.tsv" @?= "data/x.tsv",
+      testCase "G0285 is published on the table file" $ withTableProject $ \dir -> do
         ws <- openWorkspace dir
         codesOf ws "data/x.tsv" @?= ["G0285"]
         codesOf ws "data/x.csv" @?= ["G0285"],
