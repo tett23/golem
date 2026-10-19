@@ -22,6 +22,7 @@ import Data.Char (chr, isAlphaNum, isHexDigit, isSpace)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -149,7 +150,7 @@ element posAt scope i0 = do
   i1 <- if "<" `T.isPrefixOf` rest' i0 then Right (advance 1 i0) else Left "要素がありません"
   let qname = T.takeWhile isNameChar (rest' i1)
   if T.null qname then Left "要素の名前がありません" else Right ()
-  (attrs, i2) <- attributes [] (advance (T.length qname) i1)
+  (attrs, i2) <- attributes [] Set.empty (advance (T.length qname) i1)
   let scope' = Map.union (Map.fromList [(nsPrefix n, v) | (n, v, _) <- attrs, isNsDecl n]) scope
       resolveEl n = case T.breakOn ":" n of
         (p, local) | not (T.null local) -> (Map.findWithDefault ("?" <> p) p scope', T.drop 1 local)
@@ -175,7 +176,8 @@ element posAt scope i0 = do
   where
     isNsDecl n = n == "xmlns" || "xmlns:" `T.isPrefixOf` n
     nsPrefix n = if n == "xmlns" then "" else T.drop 6 n
-    attributes acc i = do
+    -- the names seen so far are a set: a list makes the check quadratic (security audit 2026-10-18, C10)
+    attributes acc seen i = do
       let i' = skipSpace i
           name = T.takeWhile isNameChar (rest' i')
       if T.null name
@@ -188,19 +190,27 @@ element posAt scope i0 = do
             Just (q, _) | q == '"' || q == '\'' -> do
               (raw, i4) <- upTo "属性の値" (T.singleton q) (advance 1 i3)
               v <- references raw
-              if name `elem` [n | (n, _, _) <- acc] then Left ("属性が重なっています: " <> name) else Right ()
-              attributes ((name, normalizeSpace v, o) : acc) i4
+              if name `Set.member` seen then Left ("属性が重なっています: " <> name) else Right ()
+              attributes ((name, normalizeSpace v, o) : acc) (Set.insert name seen) i4
             _ -> Left ("属性の値が引用符で囲まれていません: " <> name)
     -- attribute value normalization: white space characters become spaces
     normalizeSpace = T.map (\c -> if c == '\t' || c == '\n' || c == '\r' then ' ' else c)
 
+{- | A node of content being read: text is kept as its pieces, last first,
+and joined once at the end tag (joining at each piece is quadratic,
+security audit 2026-10-18, C9).
+-}
+data Partial
+  = PNode !Node
+  | PText ![Text] !Pos
+
 -- | The content of an element up to its end tag.
-content :: (Int -> Pos) -> Map Text Text -> [Node] -> Input -> Either Text ([Node], Input)
+content :: (Int -> Pos) -> Map Text Text -> [Partial] -> Input -> Either Text ([Node], Input)
 content posAt scope acc i =
   let t = rest' i
    in if
         | T.null t -> Left "要素が閉じていません"
-        | "</" `T.isPrefixOf` t -> Right (reverse acc, i)
+        | "</" `T.isPrefixOf` t -> Right (reverse (map complete acc), i)
         | "<!--" `T.isPrefixOf` t -> upTo "コメント" "-->" (advance 4 i) >>= content posAt scope acc . snd
         | "<![CDATA[" `T.isPrefixOf` t -> do
             (body, i') <- upTo "CDATA" "]]>" (advance 9 i)
@@ -209,40 +219,50 @@ content posAt scope acc i =
         | "<!" `T.isPrefixOf` t -> Left "要素の中に置けない宣言があります"
         | "<" `T.isPrefixOf` t -> do
             (e, i') <- element posAt scope i
-            content posAt scope (NElement e : acc) i'
+            content posAt scope (PNode (NElement e) : acc) i'
         | otherwise -> do
             let raw = T.takeWhile (/= '<') t
             v <- references raw
             content posAt scope (text v (posAt (offset i)) acc) (advance (T.length raw) i)
 
 -- | Text after text is one text, at the position of the first.
-text :: Text -> Pos -> [Node] -> [Node]
+text :: Text -> Pos -> [Partial] -> [Partial]
 text t p = \case
-  NText t' p' : rest -> NText (t' <> t) p' : rest
-  acc -> NText t p : acc
+  PText ts p' : rest -> PText (t : ts) p' : rest
+  acc -> PText [t] p : acc
+
+complete :: Partial -> Node
+complete = \case
+  PNode n -> n
+  PText ts p -> NText (T.concat (reverse ts)) p
 
 -- | Character references and the five predefined entities.
 references :: Text -> Either Text Text
 references t
   | not ("&" `T.isInfixOf` t) = Right t
-  | otherwise =
-      let (before, after) = T.breakOn "&" t
-          (ref, rest) = T.breakOn ";" (T.drop 1 after)
-       in if T.null rest
-            then Left "参照が閉じていません"
-            else do
-              c <- case ref of
-                "lt" -> Right "<"
-                "gt" -> Right ">"
-                "amp" -> Right "&"
-                "quot" -> Right "\""
-                "apos" -> Right "'"
-                _
-                  | Just h <- T.stripPrefix "#x" ref, not (T.null h), T.length h <= 6, T.all isHexDigit h -> hexCode h
-                  | Just d <- T.stripPrefix "#" ref, not (T.null d), T.length d <= 7, T.all (`elem` ['0' .. '9']) d -> codePoint (read (T.unpack d))
-                  | otherwise -> Left ("知らない実体参照です: &" <> ref <> ";")
-              (\r -> before <> c <> r) <$> references (T.drop 1 rest)
+  | otherwise = T.concat <$> pieces t
   where
+    -- the pieces, joined once: joining at each reference is quadratic (security audit 2026-10-18, C9)
+    pieces s
+      | not ("&" `T.isInfixOf` s) = Right [s]
+      | otherwise =
+          let (before, after) = T.breakOn "&" s
+              (ref, rest) = T.breakOn ";" (T.drop 1 after)
+           in if T.null rest
+                then Left "参照が閉じていません"
+                else do
+                  c <- resolve ref
+                  (\r -> before : c : r) <$> pieces (T.drop 1 rest)
+    resolve ref = case ref of
+      "lt" -> Right "<"
+      "gt" -> Right ">"
+      "amp" -> Right "&"
+      "quot" -> Right "\""
+      "apos" -> Right "'"
+      _
+        | Just h <- T.stripPrefix "#x" ref, not (T.null h), T.length h <= 6, T.all isHexDigit h -> hexCode h
+        | Just d <- T.stripPrefix "#" ref, not (T.null d), T.length d <= 7, T.all (`elem` ['0' .. '9']) d -> codePoint (read (T.unpack d))
+        | otherwise -> Left ("知らない実体参照です: &" <> ref <> ";")
     hexCode h = case readHex (T.unpack h) of
       [(n, "")] -> codePoint n
       _ -> Left "文字参照が不正です"
