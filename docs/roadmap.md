@@ -42,7 +42,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **ナビゲーション文書の深さ**（未実装、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）：`@toc` の深さをナビゲーション文書と `index.xhtml` に当てる。
 - **HTML の引用の印のリンク**（未実装、[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)）：引用の印を、その印が載る参考文献の一覧のある文書へのリンクにする。
 - **URL の改行と注の印の後の空き**（未実装、[golem-layout ADR 0018](golem-layout/adr/0018-url-line-breaks.md)）：URL の中で改行できる位置を増やし、注の印の後の空白を四分アキにする。
-- **`style.toml` の値の誤りの位置**（未実装、[golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md)）：値の誤りと、読み込んだ後の検査の誤りを、値の位置に出す。
 
 
 ## v0.1.0-rc4

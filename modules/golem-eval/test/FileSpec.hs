@@ -771,6 +771,10 @@ settingsTests =
         at "@style-def paragraph Letter\n" @?= [("G0306", 0)]
         at "@style-def paragraph a line-breaks=x\n" @?= [("G0306", 0)]
         at "@style-def paragraph a based-on=nope\n" @?= [("G0313", 0)]
+        -- the paths of style.toml are not used for a file (golem-project ADR 0008)
+        let grid = either (error . show) id (parseStyle (FileId 0) "[page]\nsize = \"A5\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 40\nlines = 30\nline-pitch = \"16pt\"\nposition = { top = \"14mm\", gutter = \"14mm\" }\n")
+            (_, gds, _) = runS sctx {ctxStyle = grid} "@style-def paragraph big size=30Q\n\na\n"
+        [(x, spanStart (diagSpan d)) | d <- gds, let { DiagnosticCode x = diagCode d }, x == "G0311"] @?= [("G0311", 0)]
         codesS "@style-def paragraph a based-on=nope\n\n@style a\nx\n" @?= ["G0313", "G0247"],
       testCase "@manifest and @style-def elsewhere are G0249" $ do
         codesS "a\n\n@style-def paragraph letter\n" @?= ["G0249"]

@@ -81,6 +81,7 @@ module Golem.Project.Style
     parseRuleSpec,
     defaultStyle,
     parseStyle,
+    checkPosition,
     loadStyle,
     fontFiles,
     pageSize,
@@ -89,11 +90,11 @@ module Golem.Project.Style
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (join, unless, when, (>=>))
+import Control.Monad (join, unless, when)
 import Data.Bifunctor (bimap)
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 import Data.Foldable (toList)
-import Data.List (nub)
+import Data.List (nub, nubBy)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -112,6 +113,7 @@ import Toml.Schema
 import Toml.Schema.Matcher (inKey)
 import Toml.Semantics (valueAnn)
 import Toml.Syntax (Position (..))
+import Prelude hiding (fail)
 
 -- | Scaled points: 1pt = 65536sp.
 type Sp = Integer
@@ -678,24 +680,27 @@ instance FromValue HiddenFolio where
     pages <-
       optKeyOf
         "pages"
-        ( fromValue >=> \case
+        ( withValue $ \l -> \case
             "unnumbered" -> pure HiddenUnnumbered
             "all" -> pure HiddenAll
-            v -> fail ("[hidden-folio] の pages に使えない値です: " <> T.unpack v <> "（unnumbered, all のどれか）")
+            v -> failAt l ("[hidden-folio] の pages に使えない値です: " <> T.unpack v <> "（unnumbered, all のどれか）")
         )
-    let len k = optKeyOf k $ \case
-          Text' _ t -> case parseDim t of
-            Just (Abs x) | x > 0 -> pure (Abs x)
-            Just (Abs _) -> fail ("[hidden-folio] の " <> T.unpack k <> " は 0 より大きい寸法です: " <> T.unpack t)
-            -- not relative to the size of the type, as the page size (golem-driver ADR 0021)
-            Just (Zw _) -> fail ("[hidden-folio] の " <> T.unpack k <> " には zw を使えません")
-            Nothing -> fail ("[hidden-folio] の " <> T.unpack k <> " の長さの書き方が不正です: " <> T.unpack t)
-          _ -> fail ("[hidden-folio] の " <> T.unpack k <> " は文字列で書きます")
-    size <- fromMaybe (hfSize d) <$> len "size"
-    gutter <- fromMaybe (hfGutter d) <$> len "gutter"
-    -- half the size stands for half the advance of a digit, which the font decides
-    case (size, gutter) of
-      (Abs s, Abs g) | 2 * g < s -> fail "[hidden-folio] の gutter が size の半分より小さいため、隠しノンブルが仕上がりの線を越えます"
+    let len k = optKeyOf k $ \v -> case v of
+          Text' l t ->
+            (l,) <$> case parseDim t of
+              Just (Abs x) | x > 0 -> pure (Abs x)
+              Just (Abs _) -> failAt l ("[hidden-folio] の " <> T.unpack k <> " は 0 より大きい寸法です: " <> T.unpack t)
+              -- not relative to the size of the type, as the page size (golem-driver ADR 0021)
+              Just (Zw _) -> failAt l ("[hidden-folio] の " <> T.unpack k <> " には zw を使えません")
+              Nothing -> failAt l ("[hidden-folio] の " <> T.unpack k <> " の長さの書き方が不正です: " <> T.unpack t)
+          _ -> failAt (valueAnn v) ("[hidden-folio] の " <> T.unpack k <> " は文字列で書きます")
+    sizeAt <- len "size"
+    gutterAt <- len "gutter"
+    let size = maybe (hfSize d) snd sizeAt
+        gutter = maybe (hfGutter d) snd gutterAt
+    -- half the size stands for half the advance of a digit, which the font decides; the error is at gutter
+    case (size, gutter, fmap fst gutterAt <|> fmap fst sizeAt) of
+      (Abs s, Abs g, Just l) | 2 * g < s -> failTableAt l "[hidden-folio] の gutter が size の半分より小さいため、隠しノンブルが仕上がりの線を越えます"
       _ -> pure ()
     pure (HiddenFolio enabled (fromMaybe (hfPages d) pages) size gutter)
 
@@ -941,12 +946,13 @@ instance FromValue RuleSpec where
     dash <- dashLength "dash"
     gap <- dashLength "gap"
     -- the place of a paragraph or heading rule (golem-driver ADR 0027); negative is out of the column
-    let indent key = optKeyOf key $ ruleDim key $ \_ d -> pure d
-    startIndent <- indent "start-indent"
-    endIndent <- indent "end-indent"
+    let indent key = optKeyOf key $ ruleDim key (curry pure)
+    startIndent <- fmap snd <$> indent "start-indent"
+    endIndentAt <- indent "end-indent"
+    let endIndent = snd <$> endIndentAt
     keepIn <- optKey "keep-in-column"
-    case (len, endIndent) of
-      (Just _, Just _) -> fail "罫線の length と end-indent は一緒に書けません"
+    case (len, endIndentAt) of
+      (Just _, Just (l, _)) -> failTableAt l "罫線の length と end-indent は一緒に書けません"
       _ -> pure ()
     let w = fromMaybe defaultRuleWeight weight
         name = maybe "solid" (\(_, t, _) -> t) styleName
@@ -1096,7 +1102,7 @@ instance FromValue PageSize where
       case (w, h) of
         (Just w', Just h') -> CustomSize <$> side l w' <*> side l h'
         _ -> failAt l "判型の width と height はどちらも必須です"
-    _ -> fail "判型の名前か { width = ..., height = ... } を書きます"
+    _ -> failAt (valueAnn v) "判型の名前か { width = ..., height = ... } を書きます"
     where
       side l = \case
         Abs x
@@ -1108,13 +1114,37 @@ instance FromValue PageSize where
 newtype DimV = DimV Dim
 
 instance FromValue DimV where
-  fromValue (Text' _ t) = case parseDim t of
+  fromValue (Text' l t) = case parseDim t of
     Just d -> pure (DimV d)
     Nothing
       -- the names of aki amounts and percentages are only for aki (docs/adr ADR 0019): G0320
-      | Just _ <- parseAki t -> fail (T.unpack (akiError ("アキの量の名前と百分率は、アキの量を書く欄でだけ使えます。寸法は 0.5zw や 2mm のように書きます: " <> t)))
-      | otherwise -> fail ("長さの書き方が不正です: " <> T.unpack t <> "（13Q や 20mm のように書きます）")
-  fromValue _ = fail "長さは文字列で書きます"
+      | Just _ <- parseAki t -> failAt l (T.unpack (akiError ("アキの量の名前と百分率は、アキの量を書く欄でだけ使えます。寸法は 0.5zw や 2mm のように書きます: " <> t)))
+      | otherwise -> failAt l ("長さの書き方が不正です: " <> T.unpack t <> "（13Q や 20mm のように書きます）")
+  fromValue v = failAt (valueAnn v) "長さは文字列で書きます"
+
+{- | 'fromValue' and then a check of what it read, which fails at the
+value (golem-project ADR 0008).
+-}
+withValue :: (FromValue a) => (l -> a -> Matcher l b) -> Value' l -> Matcher l b
+withValue k v = fromValue v >>= k (valueAnn v)
+
+-- | An optional key with the position of its value.
+optKeyAt :: (FromValue a) => Text -> ParseTable l (Maybe (l, a))
+optKeyAt k = optKeyOf k (\v -> (valueAnn v,) <$> fromValue v)
+
+-- | A required key with the position of its value.
+reqKeyAt :: (FromValue a) => Text -> ParseTable l (l, a)
+reqKeyAt k = reqKeyOf k (\v -> (valueAnn v,) <$> fromValue v)
+
+-- | 'optKeyAt' of a string.
+textAt :: Text -> ParseTable l (Maybe (l, Text))
+textAt = optKeyAt
+
+-- | The position of the value of a key of a table; the table's own without it.
+keyPosition :: Value' l -> Text -> l
+keyPosition v k = case v of
+  Table' l (MkTable t) -> maybe l (valueAnn . snd) (Map.lookup k t)
+  _ -> valueAnn v
 
 -- | The message of G0320 (docs/adr ADR 0019).
 akiError :: Text -> Text
@@ -1124,8 +1154,8 @@ akiError why = "アキの量の指定が正しくありません: " <> why
 newtype AkiV = AkiV Rational
 
 instance FromValue AkiV where
-  fromValue (Text' _ t) = maybe (fail (T.unpack (akiError ("アキの量として読めません: " <> t)))) (pure . AkiV) (parseAki t)
-  fromValue _ = fail (T.unpack (akiError "アキの量は \"四分\" や \"25%\" のように文字列で書きます"))
+  fromValue (Text' l t) = maybe (failAt l (T.unpack (akiError ("アキの量として読めません: " <> t)))) (pure . AkiV) (parseAki t)
+  fromValue v = failAt (valueAnn v) (T.unpack (akiError "アキの量は \"四分\" や \"25%\" のように文字列で書きます"))
 
 -- | The classes of one side of a rule: a name or an array of names.
 newtype ClassesV = ClassesV [Text]
@@ -1133,29 +1163,33 @@ newtype ClassesV = ClassesV [Text]
 instance FromValue ClassesV where
   fromValue (Text' _ t) = pure (ClassesV [t])
   fromValue v@(List' _ _) = ClassesV <$> fromValue v
-  fromValue _ = fail (T.unpack (akiError "クラスは名前の文字列か、その配列で書きます"))
+  fromValue v = failAt (valueAnn v) (T.unpack (akiError "クラスは名前の文字列か、その配列で書きます"))
 
 instance FromValue AkiRuleDef where
   fromValue = parseTableFromValue $ do
-    ClassesV before <- reqKey "before"
-    ClassesV after <- reqKey "after"
-    AkiV o <- reqKey "optimum"
-    n <- maybe o (\(AkiV x) -> x) <$> optKey "minimum"
-    m <- maybe o (\(AkiV x) -> x) <$> optKey "maximum"
-    let bad why = fail (T.unpack (akiError why))
+    (lb, ClassesV before) <- reqKeyAt "before"
+    (la, ClassesV after) <- reqKeyAt "after"
+    (lo, AkiV o) <- reqKeyAt "optimum"
+    mn <- optKeyAt "minimum"
+    mx <- optKeyAt "maximum"
+    let n = maybe o (\(_, AkiV x) -> x) mn
+        m = maybe o (\(_, AkiV x) -> x) mx
+        -- each error is at the value it asks to fix (golem-project ADR 0008)
+        bad l why = failTableAt l (T.unpack (akiError why))
         known = (`elem` akiClassNames)
     case [c | c <- before, not (known c || c `elem` ["line-start", "paragraph-start"])] of
       (c : _)
-        | c == "line-end" -> bad "line-end は after にだけ書けます"
-        | otherwise -> bad ("未知のクラスの名前です: " <> c)
+        | c == "line-end" -> bad lb "line-end は after にだけ書けます"
+        | otherwise -> bad lb ("未知のクラスの名前です: " <> c)
       [] -> pure ()
     case [c | c <- after, not (known c || c == "line-end")] of
       (c : _)
-        | c `elem` ["line-start", "paragraph-start"] -> bad (c <> " は before にだけ書けます")
-        | otherwise -> bad ("未知のクラスの名前です: " <> c)
+        | c `elem` ["line-start", "paragraph-start"] -> bad la (c <> " は before にだけ書けます")
+        | otherwise -> bad la ("未知のクラスの名前です: " <> c)
       [] -> pure ()
-    when (null before || null after) $ bad "before と after には一つ以上のクラスを書きます"
-    unless (n <= o && o <= m) $ bad "minimum、optimum、maximum の順に小さくない値を書きます"
+    when (null before || null after) $ bad (if null before then lb else la) "before と after には一つ以上のクラスを書きます"
+    unless (n <= o && o <= m) $
+      bad (if n > o then maybe lo fst mn else maybe lo fst mx) "minimum、optimum、maximum の順に小さくない値を書きます"
     pure (AkiRuleDef before after n o m)
 
 instance FromValue AkiSetDef where
@@ -1178,11 +1212,11 @@ kentenShapeNames :: [Text]
 kentenShapeNames = ["sesame", "open-sesame", "dot", "open-dot", "circle", "open-circle", "double-circle", "open-double-circle", "triangle", "open-triangle"]
 
 enumKey :: Text -> [Text] -> ParseTable l (Maybe Text)
-enumKey k allowed = do
-  v <- optKey k
-  case v of
-    Just x | x `notElem` allowed -> fail (T.unpack (k <> " に使えない値です: " <> x <> "（" <> T.intercalate ", " allowed <> " のどれか）"))
-    _ -> pure v
+enumKey k allowed =
+  optKeyOf k $ withValue $ \l x ->
+    if x `notElem` allowed
+      then failAt l (T.unpack (k <> " に使えない値です: " <> x <> "（" <> T.intercalate ", " allowed <> " のどれか）"))
+      else pure x
 
 instance FromValue Grid where
   fromValue = parseTableFromValue $ do
@@ -1190,10 +1224,13 @@ instance FromValue Grid where
     ch <- reqKey "characters"
     ls <- reqKey "lines"
     lp <- reqDim "line-pitch"
-    cols <- fromMaybe 1 <$> optKey "columns"
+    colsAt <- optKeyAt "columns"
+    let cols = maybe 1 snd colsAt
     gap <- dimKey "column-gap"
     pos <- reqKey "position"
-    when (cols > 1 && isNothing gap) $ fail "columns が 2 以上のときは column-gap が要ります"
+    case colsAt of
+      Just (l, c) | c > 1 && isNothing gap -> failTableAt l "columns が 2 以上のときは column-gap が要ります"
+      _ -> pure ()
     let Position2 t g = pos
     pure (Grid fs ch ls lp cols gap t g)
 
@@ -1209,11 +1246,10 @@ instance FromValue Page where
     wm <- enumKey "writing-mode" ["vertical", "horizontal"]
     grid <- optKey "grid"
     bleed <-
-      dimKey "bleed" >>= \case
-        Nothing -> pure 0
-        Just (Abs s) -> pure s
+      fmap (fromMaybe 0) . optKeyOf "bleed" . withValue $ \l -> \case
+        DimV (Abs s) -> pure s
         -- the bleed does not depend on the size of the type (golem-pdf ADR 0004)
-        Just (Zw _) -> fail "塗り足しには zw を使えません"
+        DimV (Zw _) -> failAt l "塗り足しには zw を使えません"
     pure (Page size (binding == Just "right") (wm == Just "vertical") grid bleed)
 
 instance FromValue FontRole where
@@ -1237,8 +1273,7 @@ instance FromValue CharStyleDef where
         Bool' _ True -> failAt (valueAnn v) "background にはスウォッチの名前か false を書きます"
         _ -> Just <$> fromValue v
     -- a negative padding is read and reported by the checks (golem-driver ADR 0029)
-    pad <- optKey "padding"
-    pad' <- traverse (\v -> maybe (fail ("長さの書き方が不正です: " <> T.unpack v <> "（0.25zw や 1mm のように書きます）")) pure (parseSignedDim v)) pad
+    pad' <- signedDimKey "padding" "（0.25zw や 1mm のように書きます）"
     pure (CharStyleDef b f s c sb si k t p bs bg pad')
 
 {- | kerning, tracking, proportional-metrics and baseline-shift
@@ -1246,21 +1281,21 @@ instance FromValue CharStyleDef where
 -}
 featureKeysOf :: ParseTable l (Maybe Kerning, Maybe Int, Maybe Bool, Maybe Dim)
 featureKeysOf = do
-  let wrong key v = fail (T.unpack (key <> " の値が正しくありません: " <> v))
+  let wrong l key v = failAt l (T.unpack (key <> " の値が正しくありません: " <> v))
   k <-
     optKeyOf "kerning" $
-      fromValue >=> \case
+      withValue $ \l -> \case
         "metrics" -> pure KernMetrics
         "japanese-equal-width" -> pure KernJapaneseEqualWidth
         "none" -> pure KernNone
         "optical" -> pure KernOptical
-        v -> wrong "kerning" v
+        v -> wrong l "kerning" v
   t <-
     optKeyOf "tracking" $
-      fromValue >=> \n ->
-        if n < -1000 || n > 10000 then wrong "tracking" (T.pack (show n) <> "（-1000 から 10000 までです）") else pure n
+      withValue $ \l n ->
+        if n < -1000 || n > 10000 then wrong l "tracking" (T.pack (show n) <> "（-1000 から 10000 までです）") else pure n
   p <- optKey "proportional-metrics"
-  bs <- optKeyOf "baseline-shift" (fromValue >=> \v -> maybe (wrong "baseline-shift" v) pure (parseSignedDim v))
+  bs <- optKeyOf "baseline-shift" (withValue (\l v -> maybe (wrong l "baseline-shift" v) pure (parseSignedDim v)))
   pure (k, t, p, bs)
 
 -- | The keys of 'featureKeysOf': their errors are G0321 (docs/adr/0020).
@@ -1273,24 +1308,28 @@ instance FromValue ParaStyleDef where
     f <- optKey "font"
     s <- dimKey "size"
     lb <- enumKey "line-breaks" ["join", "keep"]
-    sb <- optKey "space-between"
-    when (maybe False (< 0) sb) $ fail "space-between は 0 以上です"
+    sb <- optKeyOf "space-between" (withValue (\l x -> if x < 0 then failAt l "space-between は 0 以上です" else pure x))
     ind <- dimKey "indent"
-    fli <- optKey "first-line-indent"
-    fli' <- traverse (\v -> maybe (fail ("長さの書き方が不正です: " <> T.unpack v <> "（1zw や -1zw のように書きます）")) pure (parseSignedDim v)) fli
+    fli' <- signedDimKey "first-line-indent" "（1zw や -1zw のように書きます）"
     rs <- optKey "regex-styles"
     aki <- optKey "aki-set"
     (k, t, p, bs) <- featureKeysOf
     bg <- optKey "background"
-    pad <- optKey "padding"
     -- a negative padding is read and reported by the checks (golem-driver ADR 0017)
-    pad' <- traverse (\v -> maybe (fail ("長さの書き方が不正です: " <> T.unpack v <> "（0.5zw や 1mm のように書きます）")) pure (parseSignedDim v)) pad
+    pad' <- signedDimKey "padding" "（0.5zw や 1mm のように書きます）"
     -- the border of code; zw is reported by the checks (golem-driver ADR 0023)
     border <- optKey "border"
     bw <- dimKey "border-width"
     rb <- optKeyOf "rule-before" ruleOrFalse
     ra <- optKeyOf "rule-after" ruleOrFalse
     pure (ParaStyleDef b f s ((\x -> if x == "keep" then KeepLines else JoinLines) <$> lb) sb ind fli' rs aki k t p bs bg pad' border bw rb ra)
+
+{- | A dimension that may be negative, read in its key so that an error is
+at the value and names the key (golem-project ADR 0008).
+-}
+signedDimKey :: Text -> String -> ParseTable l (Maybe Dim)
+signedDimKey k example = optKeyOf k $ withValue $ \l v ->
+  maybe (failAt l ("長さの書き方が不正です: " <> T.unpack v <> example)) pure (parseSignedDim v)
 
 {- | A paragraph or heading rule (golem-driver ADR 0027): a rule spec, or
 false for none; true is an error.
@@ -1310,7 +1349,7 @@ instance FromValue HeadingStyle where
     s <- dimKey "size"
     n <- optKey "number"
     pb <- enumKey "page-break" ["recto", "any"]
-    ls <- optKeyOf "lines" $ fromValue >=> \l -> if l < (1 :: Int) then fail ("lines は 1 以上の整数です: " <> show l) else pure l
+    ls <- optKeyOf "lines" $ withValue $ \at l -> if l < (1 :: Int) then failAt at ("lines は 1 以上の整数です: " <> show l) else pure l
     -- retired (golem-driver ADR 0014): G0319
     pickKey
       [ Key "running-head" (\v -> failAt (valueAnn v) "[headings.<l>] の running-head は廃止しました。柱に使う見出しは [masters.<名前>] の running-head の content で指定してください"),
@@ -1374,10 +1413,11 @@ instance FromValue SidenoteStyle where
     _ <- enumKey "side" ["outside"]
     w <- reqDim "width"
     g <- reqDim "gap"
-    f <- optKey "font"
-    s <- optKey "size"
-    when (isJust (f :: Maybe Text) || isJust (s :: Maybe Text)) $
-      fail "[sidenotes] の font と size は廃止しました。[paragraph-styles.sidenote] の font と size に書き換えます"
+    f <- textAt "font"
+    s <- textAt "size"
+    case fmap fst f <|> fmap fst s of
+      Just l -> failTableAt l "[sidenotes] の font と size は廃止しました。[paragraph-styles.sidenote] の font と size に書き換えます"
+      Nothing -> pure ()
     m <- enumKey "marker" ["number", "symbol", "none"]
     pure (SidenoteStyle w g (fromMaybe "number" m))
 
@@ -1395,7 +1435,7 @@ instance FromValue MasterPosition where
     Text' l p
       | p `elem` masterPositions -> pure (MasterPosition p)
       | otherwise -> failAt l ("未知の位置です: " <> T.unpack p)
-    _ -> fail "top-outside のような位置を書きます"
+    _ -> failAt (valueAnn v) "top-outside のような位置を書きます"
 
 reqPosition :: ParseTable l Text
 reqPosition = (\(MasterPosition p) -> p) <$> reqKey "position"
@@ -1445,13 +1485,14 @@ Errors of the contents are reported under their key, which makes them
 G0314.
 -}
 instance FromValue RunningHeadDef where
-  fromValue = parseTableFromValue $ do
+  fromValue v = flip parseTableFromValue v $ do
     p <- reqPosition
     c <- optKeyOf "content" runningContentOf
     e <- optKeyOf "even" runningContentOf
     o <- optKeyOf "odd" runningContentOf
     let written = T.intercalate ", " [k <> " = " <> t | (k, Just (t, _)) <- [("content", c), ("even", e), ("odd", o)]]
-        wrong k = liftMatcher (inKey k (fail (runningContentMessage (if T.null written then "（なし）" else written))))
+        -- at the value of the key, or at the running head when the key is not written (golem-project ADR 0008)
+        wrong k = liftMatcher (inKey k (failAt (keyPosition v k) (runningContentMessage (if T.null written then "（なし）" else written))))
     case (c, e, o) of
       (Just (_, x), Nothing, Nothing) -> pure (RunningHeadDef p x x)
       (Nothing, Just (_, x), Just (_, y)) -> pure (RunningHeadDef p y x)
@@ -1469,10 +1510,9 @@ instance FromValue MasterDef where
 
 instance FromValue Swatch where
   fromValue = parseTableFromValue $ do
-    cs <- reqKey "cmyk"
-    case cs of
+    reqKeyOf "cmyk" $ withValue $ \l cs -> case cs of
       [c, m, y, k] | all (\x -> x >= 0 && x <= 100) cs -> pure (Swatch (c, m, y, k))
-      _ -> fail "cmyk は 0 から 100 までの整数四つです"
+      _ -> failAt l "cmyk は 0 から 100 までの整数四つです"
 
 newtype Numbers = Numbers (Maybe Text)
 
@@ -1483,8 +1523,9 @@ instance FromValue Numbers where
 data EmphasisV
 
 instance FromValue EmphasisV where
-  fromValue _ =
-    fail
+  fromValue v =
+    failAt
+      (valueAnn v)
       "[emphasis] は廃止しました。strong = \"italic\" は [character-styles.strong] の based-on = \"italic\" に、bold-font は [character-styles.bold] の font に、italic-font は [character-styles.italic] の font に書き換えます"
 
 -- | Where the notes of the PDF are set (golem-driver ADR 0026).
@@ -1500,20 +1541,20 @@ instance FromValue Notes where
           <$> enumKey "placement" ["page-foot", "chapter-end"]
           <*> (fmap numbering <$> enumKey "numbering" ["chapter", "file", "book"])
           <*> optKeyOf "rule" noteRule
-          <*> (dimKey "mark-size" >>= traverse markSize)
-          <*> (optKey "mark-format" >>= traverse markFormat)
+          <*> optKeyOf "mark-size" (withValue (\l (DimV d) -> markSize l d))
+          <*> optKeyOf "mark-format" (withValue markFormat)
       )
     where
       {- the size of note marks (golem-driver ADR 0025): above 0, and at
       most the size of the text in zw -}
-      markSize d = case d of
+      markSize l d = case d of
         Abs n | n > 0 -> pure d
         Zw r | r > 0 && r <= 1 -> pure d
-        _ -> fail "[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です"
+        _ -> failAt l "[notes] の mark-size は 0 より大きい寸法で、zw では 1 以下です"
       -- the format of note marks: {n} exactly once (golem-driver ADR 0025)
-      markFormat f
+      markFormat l f
         | T.count "{n}" f == 1 = pure f
-        | otherwise = fail ("[notes] の mark-format には {n} をちょうど一つ書きます: " <> T.unpack f)
+        | otherwise = failAt l ("[notes] の mark-format には {n} をちょうど一つ書きます: " <> T.unpack f)
       {- the rule before footnotes (golem-driver ADR 0024): length is
       required; a space not written is 0 when the other is written -}
       noteRule v = do
@@ -1548,10 +1589,12 @@ instance FromValue CodeSec where
     removed <- optKey "removed"
     wm <- optKey "wrap-mark"
     cont <- optKey "continued"
-    colors <- fromMaybe Map.empty <$> optKey "colors"
-    case filter (`notElem` codeTokenKinds) (Map.keys colors) of
-      (k : _) -> fail (T.unpack ("[code.colors] に書けない字句の種類です: " <> k <> "。" <> T.intercalate "、" codeTokenKinds <> " を書けます"))
-      [] -> pure ()
+    colors <-
+      fmap (fromMaybe Map.empty) . optKeyOf "colors" $ \v -> do
+        cs <- fromValue v
+        case filter (`notElem` codeTokenKinds) (Map.keys cs) of
+          (k : _) -> inKey k (failAt (keyPosition v k) (T.unpack ("[code.colors] に書けない字句の種類です: " <> k <> "。" <> T.intercalate "、" codeTokenKinds <> " を書けます")))
+          [] -> pure cs
     pure (CodeSec (CodeStyle (fromMaybe (cdNumber d) number) (fromMaybe False ln) lnc hl added removed (fromMaybe "" wm) (fromMaybe "" cont) colors))
 
 data Figures = Figures (Maybe Text) (Maybe Dim)
@@ -1563,8 +1606,9 @@ instance FromValue Figures where
 data VerseV
 
 instance FromValue VerseV where
-  fromValue _ =
-    fail
+  fromValue v =
+    failAt
+      (valueAnn v)
       "[verse] は廃止しました。indent = I と hang = H は [paragraph-styles.verse] の indent = I + H と first-line-indent = -H に、stanza-gap は [paragraph-styles.verse] の space-between に書き換えます"
 
 {- | [lists] (golem-driver ADR 0013): every error names its key; they are
@@ -1574,25 +1618,26 @@ newtype ListsSec = ListsSec ListStyle
 
 instance FromValue ListsSec where
   fromValue = parseTableFromValue $ do
-    bullets <- optKey "bullets"
-    numbers <- optKey "numbers"
-    gap <- optKey "gap"
-    let bad key why = fail (T.unpack ("[lists] の " <> key <> " が正しくありません: " <> why))
+    bullets <- optKeyAt "bullets"
+    numbers <- optKeyAt "numbers"
+    gap <- textAt "gap"
+    -- each error is at the value of its key (golem-project ADR 0008)
+    let bad l key why = failTableAt l (T.unpack ("[lists] の " <> key <> " が正しくありません: " <> why))
         nonEmpty key = \case
           Nothing -> pure Nothing
-          Just [] -> bad key "空の配列です"
-          Just (x : rest)
-            | any T.null (x : rest) -> bad key "空の文字列があります"
-            | otherwise -> pure (Just (x :| rest))
-    bs <- nonEmpty "bullets" bullets
+          Just (l, []) -> bad l key "空の配列です"
+          Just (l, x : rest)
+            | any T.null (x : rest) -> bad l key "空の文字列があります"
+            | otherwise -> pure (Just (l, x :| rest))
+    bs <- fmap snd <$> nonEmpty "bullets" bullets
     ns <- nonEmpty "numbers" numbers
-    fmts <- traverse (traverse (\f -> either (\why -> bad "numbers" (why <> ": " <> f)) pure (parseNumberFormat f))) ns
+    fmts <- traverse (\(l, fs) -> traverse (\f -> either (\why -> bad l "numbers" (why <> ": " <> f)) pure (parseNumberFormat f)) fs) ns
     g <- case gap of
       Nothing -> pure Nothing
-      Just t -> case parseSignedDim t of
-        Nothing -> bad "gap" ("寸法として読めません: " <> t)
+      Just (l, t) -> case parseSignedDim t of
+        Nothing -> bad l "gap" ("寸法として読めません: " <> t)
         Just d
-          | negativeDim d -> bad "gap" ("負の寸法です: " <> t)
+          | negativeDim d -> bad l "gap" ("負の寸法です: " <> t)
           | otherwise -> pure (Just d)
     pure (ListsSec (ListStyle (fromMaybe (lsBullets defaultListStyle) bs) fmts g))
 
@@ -1627,7 +1672,10 @@ instance FromValue Style where
     fonts <- fromMaybe Map.empty <$> optKey "fonts"
     cstyles <- fromMaybe Map.empty <$> optKey "character-styles"
     pstyles <- fromMaybe Map.empty <$> optKey "paragraph-styles"
-    headings <- fromMaybe Map.empty <$> optKey "headings"
+    hs <-
+      fmap (fromMaybe []) . optKeyOf "headings" $ \v -> do
+        (headings :: Map Text HeadingStyle) <- fromValue v
+        traverse (headingLevel v) (Map.toList headings)
     comp <- fromMaybe defaultComposition <$> optKey "composition"
     Numbers nv <- fromMaybe (Numbers Nothing) <$> optKey "numbers"
     -- the value of a retired table fails with how to rewrite it
@@ -1640,15 +1688,16 @@ instance FromValue Style where
     (_ :: Maybe VerseV) <- optKey "verse"
     TocSec leader <- fromMaybe (TocSec Nothing) <$> optKey "toc"
     ListsSec lists <- fromMaybe (ListsSec defaultListStyle) <$> optKey "lists"
-    akiSets <- fromMaybe Map.empty <$> optKey "aki-sets"
+    -- the built-in sets cannot be defined again (docs/adr ADR 0019); the error is at the set
+    akiSets <-
+      fmap (fromMaybe Map.empty) . optKeyOf "aki-sets" $ \v -> do
+        sets <- fromValue v
+        case filter (`elem` builtinAkiSetNames) (Map.keys sets) of
+          (n : _) -> inKey n (failAt (keyPosition v n) (T.unpack (akiError ("組み込みのアキ量のセットと同じ名前です。based-on で引き継いだ別の名前のセットを作ります: " <> n))))
+          [] -> pure sets
     index <- fmap (\(IndexSec ix) -> ix) <$> optKey "index"
     CodeSec code <- fromMaybe (CodeSec defaultCodeStyle) <$> optKey "code"
     hidden <- fromMaybe defaultHiddenFolio <$> optKey "hidden-folio"
-    -- the built-in sets cannot be defined again (docs/adr ADR 0019)
-    case filter (`elem` builtinAkiSetNames) (Map.keys akiSets) of
-      (n : _) -> liftMatcher (inKey "aki-sets" (inKey n (fail (T.unpack (akiError ("組み込みのアキ量のセットと同じ名前です。based-on で引き継いだ別の名前のセットを作ります: " <> n))))))
-      [] -> pure ()
-    hs <- traverse headingLevel (Map.toList (headings :: Map Text HeadingStyle))
     let d = defaultStyle
     pure
       Style
@@ -1678,11 +1727,11 @@ instance FromValue Style where
           stHiddenFolio = hidden
         }
     where
-      headingLevel (k, v) = case k of
-        "1" -> pure (1, v)
-        "2" -> pure (2, v)
-        "3" -> pure (3, v)
-        _ -> fail ("見出しの段は 1、2、3 のどれかです: " <> T.unpack k)
+      headingLevel v (k, h) = case k of
+        "1" -> pure (1, h)
+        "2" -> pure (2, h)
+        "3" -> pure (3, h)
+        _ -> inKey k (failAt (keyPosition v k) ("見出しの段は 1、2、3 のどれかです: " <> T.unpack k))
 
 negativeDim :: Dim -> Bool
 negativeDim = \case
@@ -1702,6 +1751,19 @@ validNumberFormat = go
                   && inside `elem` ["n", "n:kanji", "1", "2", "chapter"]
                   && go (T.drop 1 after)
 
+{- | The position of the value at a path of a TOML table; without one,
+that of the table the path ends in (golem-project ADR 0008).
+-}
+checkPosition :: Table' Position -> [Scope] -> Maybe Position
+checkPosition top path = valueAt path <|> (case reverse path of _ : parent@(_ : _) -> valueAt (reverse parent); _ -> Nothing)
+  where
+    valueAt = fmap valueAnn . go (Table' (Position 0 1 1) top)
+    go v = \case
+      [] -> Just v
+      ScopeKey k : rest | Table' _ (MkTable t) <- v -> Map.lookup k t >>= \(_, x) -> go x rest
+      ScopeIndex i : rest | List' _ xs <- v, i >= 0, (x : _) <- drop i xs -> go x rest
+      _ -> Nothing
+
 {- | Parses style.toml and checks what can be checked without the
 filesystem.
 -}
@@ -1709,19 +1771,18 @@ parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
   s0 <- either (Left . map akiCode) Right (decodeStrictBy "G0306" codeAt fid src)
   let s = s0 {stIndex = (\ix -> ix {ixColumnsAt = columnsAt}) <$> stIndex s0}
-  case nub [(code, m) | (code, _, m) <- styleChecks "style.toml の" s] of
+  -- the same code and message once, at the path that comes first (golem-project ADR 0008)
+  case nubBy (\(c, _, m) (c', _, m') -> (c, m) == (c', m')) [(code, path, m) | (code, _, path, m) <- styleChecks "style.toml の" s] of
     [] -> Right s
-    ds -> Left [diagnostic code Error (mkSpan fid 0 0) m | (code, m) <- ds]
+    ds -> Left [diagnostic code Error (at path) m | (code, path, m) <- ds]
   where
+    tree = either (const Nothing) Just (Toml.parse src)
+    -- the span of the value to fix, of its table, or the start of the file
+    at path = case tree >>= (`checkPosition` path) of
+      Just (Position _ l c) | Just off <- lineColToOffset (mkLineIndex src) (LineCol (l - 1) (c - 1)) -> mkSpan fid off off
+      _ -> mkSpan fid 0 0
     -- where the value of [index] columns starts, for G0744 (docs/adr ADR 0025)
-    columnsAt = case Toml.parse src of
-      Right (MkTable top)
-        | Just (_, Table' _ (MkTable ix)) <- Map.lookup "index" top,
-          Just (_, v) <- Map.lookup "columns" ix,
-          Position _ l c <- valueAnn v,
-          Just off <- lineColToOffset (mkLineIndex src) (LineCol (l - 1) (c - 1)) ->
-            off
-      _ -> 0
+    columnsAt = spanStart (at [ScopeKey "index", ScopeKey "columns"])
     -- an aki amount wrong in any key is G0320 (docs/adr ADR 0019)
     akiCode d
       | akiError "" `T.isPrefixOf` diagMessage d = d {diagCode = DiagnosticCode "G0320"}
@@ -1746,61 +1807,66 @@ parseStyle fid src = do
 
 {- | The checks of the styles of a 'Style' (docs/adr ADR 0005, 0006, 0014):
 the code, the name of the style it is about (empty when it is about no
-style) and the message. @owner@ starts the message of G0313: where the
+style), the path of the value to fix in style.toml (golem-project ADR
+0008) and the message. @owner@ starts the message of G0313: where the
 definitions were written.
 -}
-styleChecks :: Text -> Style -> [(Text, Text, Text)]
+styleChecks :: Text -> Style -> [(Text, Text, [Scope], Text)]
 styleChecks owner s =
-  [("G0306", "", m) | m <- numberChecks]
-    <> [("G0306", n, "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | n <- Map.keys (stCharStyles s) <> Map.keys (stParaStyles s), not (validStyleName n)]
-    <> [("G0306", "", m) | m <- checks]
-    <> [("G0306", n, m) | (n, m) <- codeChecks]
-    <> [("G0306", n, m) | (n, m) <- ruleChecks]
-    <> [("G0308", n, "style.toml にないフォントの役割です: " <> r) | (n, r) <- roles, Map.notMember r (stFonts s)]
-    <> [("G0313", n, owner <> "スタイルの参照が不正です: " <> m) | (n, m) <- referenceChecks]
-    <> [(code, n, m) | (n, ParaStyleDef {psRegexStyles = Just rs}) <- Map.toList (stParaStyles s), (i, r) <- zip [0 ..] rs, (code, m) <- regexStyleErrors owner s n i r]
-    <> [("G0311", n, "段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks]
-    <> [("G0312", n, "段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | n <- indentChecks]
-    <> [("G0321", n, "v1 ではオプティカルカーニングを使えません（" <> kind <> " " <> n <> " の kerning）") | (kind, n) <- opticals]
+  [("G0306", "", path, m) | (path, m) <- numberChecks]
+    <> [("G0306", n, keys [kind, n], "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | (kind, n) <- map ("character-styles",) (Map.keys (stCharStyles s)) <> map ("paragraph-styles",) (Map.keys (stParaStyles s)), not (validStyleName n)]
+    <> [("G0306", "", path, m) | (path, m) <- checks]
+    <> [("G0306", n, path, m) | (n, path, m) <- codeChecks]
+    <> [("G0306", n, path, m) | (n, path, m) <- ruleChecks]
+    <> [("G0308", n, path, "style.toml にないフォントの役割です: " <> r) | (n, path, r) <- roles, Map.notMember r (stFonts s)]
+    <> [("G0313", n, path, owner <> "スタイルの参照が不正です: " <> m) | (n, path, m) <- referenceChecks]
+    <> [(code, n, path, m) | (n, ParaStyleDef {psRegexStyles = Just rs}) <- Map.toList (stParaStyles s), (i, r) <- zip [0 ..] rs, (code, path, m) <- regexStyleErrors owner s n i r]
+    <> [("G0311", n, para n "size", "段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks]
+    <> [("G0312", n, path, "段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | (n, path) <- indentChecks]
+    <> [("G0321", n, keys [kind, n, "kerning"], "v1 ではオプティカルカーニングを使えません（" <> word <> " " <> n <> " の kerning）") | (kind, word, n) <- opticals]
   where
+    keys = map ScopeKey
+    para n k = keys ["paragraph-styles", n, k]
+    char n k = keys ["character-styles", n, k]
+    -- the first key of two that is written, the second when neither is
+    either2 at written a b = if written then at a else at b
     -- optical kerning is a v2 item (docs/adr/0020)
     opticals =
-      [("文字スタイル", n) | (n, CharStyleDef {csKerning = Just KernOptical}) <- Map.toList (stCharStyles s)]
-        <> [("段落スタイル", n) | (n, ParaStyleDef {psKerning = Just KernOptical}) <- Map.toList (stParaStyles s)]
+      [("character-styles", "文字スタイル", n) | (n, CharStyleDef {csKerning = Just KernOptical}) <- Map.toList (stCharStyles s)]
+        <> [("paragraph-styles", "段落スタイル", n) | (n, ParaStyleDef {psKerning = Just KernOptical}) <- Map.toList (stParaStyles s)]
     {- font roles named outside [fonts] must exist (golem-driver ADR 0003, 0004; docs/adr ADR 0005);
     the role code of the styles code may be missing: the body role sets code (golem-driver ADR 0017) -}
     roles =
-      [("", f) | HeadingStyle {hsFont = Just f} <- Map.elems (stHeadings s)]
-        <> [(n, f) | (n, CharStyleDef {csFont = Just f}) <- Map.toList (stCharStyles s), (n, f) /= ("code", "code")]
-        <> [(n, f) | (n, ParaStyleDef {psFont = Just f}) <- Map.toList (stParaStyles s), (n, f) /= ("code", "code")]
+      [("", keys ["headings", T.pack (show l), "font"], f) | (l, HeadingStyle {hsFont = Just f}) <- Map.toList (stHeadings s)]
+        <> [(n, char n "font", f) | (n, CharStyleDef {csFont = Just f}) <- Map.toList (stCharStyles s), (n, f) /= ("code", "code")]
+        <> [(n, para n "font", f) | (n, ParaStyleDef {psFont = Just f}) <- Map.toList (stParaStyles s), (n, f) /= ("code", "code")]
     {- the paragraph style code takes four keys; background and padding are
     for code only; a padding is not negative (golem-driver ADR 0017) -}
     codeChecks =
-      [ ("code", "段落スタイル code に書けるキーは " <> T.intercalate "、" codeParaKeys <> " だけです: " <> T.intercalate ", " ks)
+      [ ("code", para "code" k, "段落スタイル code に書けるキーは " <> T.intercalate "、" codeParaKeys <> " だけです: " <> T.intercalate ", " ks)
       | Just d <- [Map.lookup "code" (stParaStyles s)],
-        let ks = writtenOtherKeys d,
-        not (null ks)
+        ks@(k : _) <- [writtenOtherKeys d]
       ]
-        <> [ (n, "background と padding は段落スタイル code にだけ書けます: " <> n)
+        <> [ (n, either2 (para n) (isJust (psBackground d)) "background" "padding", "background と padding は段落スタイル code にだけ書けます: " <> n)
            | (n, d) <- Map.toList (stParaStyles s),
              n /= "code",
              isJust (psBackground d) || isJust (psPadding d)
            ]
-        <> [("code", "padding は 0 以上の寸法です") | Just ParaStyleDef {psPadding = Just p} <- [Map.lookup "code" (stParaStyles s)], negativeDim p]
+        <> [("code", para "code" "padding", "padding は 0 以上の寸法です") | Just ParaStyleDef {psPadding = Just p} <- [Map.lookup "code" (stParaStyles s)], negativeDim p]
         -- the background and the padding of inline code are for code styles only (golem-driver ADR 0029)
-        <> [ (n, "文字スタイルの background と padding は code と based-on で code に行き着く文字スタイルにだけ書けます: " <> n)
+        <> [ (n, either2 (char n) (isJust (csBackground d)) "background" "padding", "文字スタイルの background と padding は code と based-on で code に行き着く文字スタイルにだけ書けます: " <> n)
            | (n, d) <- Map.toList (stCharStyles s),
              not (isCodeCharStyle s n),
              isJust (csBackground d) || isJust (csPadding d)
            ]
-        <> [(n, "文字スタイル " <> n <> " の padding は 0 以上の寸法です") | (n, CharStyleDef {csPadding = Just p}) <- Map.toList (stCharStyles s), negativeDim p]
+        <> [(n, char n "padding", "文字スタイル " <> n <> " の padding は 0 以上の寸法です") | (n, CharStyleDef {csPadding = Just p}) <- Map.toList (stCharStyles s), negativeDim p]
         -- the border is for code only, its width an absolute dimension (golem-driver ADR 0023)
-        <> [ (n, "border と border-width は段落スタイル code にだけ書けます: " <> n)
+        <> [ (n, either2 (para n) (isJust (psBorder d)) "border" "border-width", "border と border-width は段落スタイル code にだけ書けます: " <> n)
            | (n, d) <- Map.toList (stParaStyles s),
              n /= "code",
              isJust (psBorder d) || isJust (psBorderWidth d)
            ]
-        <> [ ("code", "border-width は mm、pt、Q、H の寸法で書きます")
+        <> [ ("code", para "code" "border-width", "border-width は mm、pt、Q、H の寸法で書きます")
            | Just ParaStyleDef {psBorderWidth = Just w} <- [Map.lookup "code" (stParaStyles s)],
              case w of
                Zw _ -> True
@@ -1823,17 +1889,19 @@ styleChecks owner s =
           ],
         written
       ]
+    -- the rule written first of rule-before and rule-after
+    rulePath n d = either2 (para n) (isJust (psRuleBefore d)) "rule-before" "rule-after"
     {- paragraph rules (golem-driver ADR 0027): not on caption, sidenote and
     code; with a grid, a length left by the indents greater than 0 -}
     ruleChecks =
-      [ (n, "段落スタイル " <> n <> " には rule-before と rule-after を書けません")
+      [ (n, rulePath n d, "段落スタイル " <> n <> " には rule-before と rule-after を書けません")
       | (n, d) <- Map.toList (stParaStyles s),
         n `elem` ["caption", "sidenote", "code"],
         isJust (psRuleBefore d) || isJust (psRuleAfter d)
       ]
         <> case stPage s >>= pageGrid of
           Just Grid {gridFontSize = Abs fs, gridCharacters = chars} ->
-            [ (n, "段落スタイル " <> n <> " の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください")
+            [ (n, maybe (para n "rule-before") (rulePath n) (Map.lookup n (stParaStyles s)), "段落スタイル " <> n <> " の罫線の長さが 0 以下です。start-indent と end-indent を狭めてください")
             | n <- Map.keys (stParaStyles s),
               Just d <- [paraStyle s (Just n)],
               let size = maybe fs (dimToSp fs) (psSize d),
@@ -1857,52 +1925,52 @@ styleChecks owner s =
           paraCycle = [n | n <- Map.keys ps, n /= "body", cyclic paraParent ps n]
           akiKnown n = n `elem` builtinAkiSetNames || Map.member n (stAkiSets s)
           akiCycle = [n | n <- Map.keys (stAkiSets s), cyclic (const asBasedOn) (stAkiSets s) n]
-       in [ (n, "文字スタイル " <> n <> " の based-on がありません: " <> b)
+       in [ (n, char n "based-on", "文字スタイル " <> n <> " の based-on がありません: " <> b)
           | (n, CharStyleDef {csBasedOn = Just b}) <- Map.toList cs,
             Map.notMember b cs
           ]
-            <> [(n, "文字スタイルの based-on が循環しています: " <> T.intercalate ", " charCycle) | n <- charCycle]
-            <> [(n, "文字スタイル " <> n <> " の color のスウォッチがありません: " <> c) | (n, CharStyleDef {csColor = Just c}) <- Map.toList cs, Map.notMember c (stSwatches s)]
-            <> [(n, "文字スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, CharStyleDef {csBackground = Just (Just c)}) <- Map.toList cs, Map.notMember c (stSwatches s)]
-            <> [("body", "段落スタイル body には based-on を書けません") | Just ParaStyleDef {psBasedOn = Just _} <- [Map.lookup "body" ps]]
-            <> [ (n, "段落スタイル " <> n <> " の based-on がありません: " <> b)
+            <> [(n, char n "based-on", "文字スタイルの based-on が循環しています: " <> T.intercalate ", " charCycle) | n <- charCycle]
+            <> [(n, char n "color", "文字スタイル " <> n <> " の color のスウォッチがありません: " <> c) | (n, CharStyleDef {csColor = Just c}) <- Map.toList cs, Map.notMember c (stSwatches s)]
+            <> [(n, char n "background", "文字スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, CharStyleDef {csBackground = Just (Just c)}) <- Map.toList cs, Map.notMember c (stSwatches s)]
+            <> [("body", para "body" "based-on", "段落スタイル body には based-on を書けません") | Just ParaStyleDef {psBasedOn = Just _} <- [Map.lookup "body" ps]]
+            <> [ (n, para n "based-on", "段落スタイル " <> n <> " の based-on がありません: " <> b)
                | (n, ParaStyleDef {psBasedOn = Just b}) <- Map.toList ps,
                  n `notElem` ["body", "code"],
                  Map.notMember b ps
                ]
             -- code is not a base of other styles (golem-driver ADR 0017)
-            <> [ (n, "段落スタイル code は based-on に書けません。コードブロックの段落スタイルです: " <> n)
+            <> [ (n, para n "based-on", "段落スタイル code は based-on に書けません。コードブロックの段落スタイルです: " <> n)
                | (n, ParaStyleDef {psBasedOn = Just "code"}) <- Map.toList ps,
                  n /= "code"
                ]
             -- the swatch of a background (golem-driver ADR 0017)
-            <> [(n, "段落スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBackground = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
-            <> [(n, "段落スタイル " <> n <> " の border のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBorder = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
+            <> [(n, para n "background", "段落スタイル " <> n <> " の background のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBackground = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
+            <> [(n, para n "border", "段落スタイル " <> n <> " の border のスウォッチがありません: " <> c) | (n, ParaStyleDef {psBorder = Just c}) <- Map.toList ps, Map.notMember c (stSwatches s)]
             -- the swatch of a rule (golem-driver ADR 0028)
-            <> [("", "[notes.rule] の color のスウォッチがありません: " <> c) | Just RuleSpec {rsColor = Just c} <- [stNotesRule s], Map.notMember c (stSwatches s)]
-            <> [ (n, "段落スタイル " <> n <> " の罫線の color のスウォッチがありません: " <> c)
+            <> [("", keys ["notes", "rule", "color"], "[notes.rule] の color のスウォッチがありません: " <> c) | Just RuleSpec {rsColor = Just c} <- [stNotesRule s], Map.notMember c (stSwatches s)]
+            <> [ (n, keys ["paragraph-styles", n, k, "color"], "段落スタイル " <> n <> " の罫線の color のスウォッチがありません: " <> c)
                | (n, d) <- Map.toList ps,
-                 Just (Just RuleSpec {rsColor = Just c}) <- [psRuleBefore d, psRuleAfter d],
+                 (k, Just (Just RuleSpec {rsColor = Just c})) <- [("rule-before", psRuleBefore d), ("rule-after", psRuleAfter d)],
                  Map.notMember c (stSwatches s)
                ]
-            <> [ ("", "見出し " <> T.pack (show l) <> " の罫線の color のスウォッチがありません: " <> c)
+            <> [ ("", keys ["headings", T.pack (show l), k, "color"], "見出し " <> T.pack (show l) <> " の罫線の color のスウォッチがありません: " <> c)
                | (l, h) <- Map.toList (stHeadings s),
-                 Just RuleSpec {rsColor = Just c} <- [hsRuleBefore h, hsRuleAfter h],
+                 (k, Just RuleSpec {rsColor = Just c}) <- [("rule-before", hsRuleBefore h), ("rule-after", hsRuleAfter h)],
                  Map.notMember c (stSwatches s)
                ]
             -- the swatches of [code] and [code.colors] (golem-driver ADR 0023)
-            <> [("", "[code] の " <> k <> " のスウォッチがありません: " <> c) | (k, c) <- codeSwatches, Map.notMember c (stSwatches s)]
-            <> [(n, "段落スタイルの based-on が循環しています: " <> T.intercalate ", " paraCycle) | n <- paraCycle]
+            <> [("", ScopeKey "code" : path, "[code] の " <> k <> " のスウォッチがありません: " <> c) | (k, path, c) <- codeSwatches, Map.notMember c (stSwatches s)]
+            <> [(n, para n "based-on", "段落スタイルの based-on が循環しています: " <> T.intercalate ", " paraCycle) | n <- paraCycle]
             -- aki sets: aki-set and based-on name a set, without a cycle (docs/adr ADR 0019)
-            <> [ (n, "段落スタイル " <> n <> " の aki-set のアキ量のセットがありません: " <> a)
+            <> [ (n, para n "aki-set", "段落スタイル " <> n <> " の aki-set のアキ量のセットがありません: " <> a)
                | (n, ParaStyleDef {psAkiSet = Just a}) <- Map.toList ps,
                  not (akiKnown a)
                ]
-            <> [ ("", "アキ量のセット " <> n <> " の based-on がありません: " <> b)
+            <> [ ("", keys ["aki-sets", n, "based-on"], "アキ量のセット " <> n <> " の based-on がありません: " <> b)
                | (n, AkiSetDef {asBasedOn = Just b}) <- Map.toList (stAkiSets s),
                  not (akiKnown b)
                ]
-            <> [("", "アキ量のセットの based-on が循環しています: " <> T.intercalate ", " akiCycle) | not (null akiCycle)]
+            <> [("", keys ["aki-sets", n, "based-on"], "アキ量のセットの based-on が循環しています: " <> T.intercalate ", " akiCycle) | n <- take 1 akiCycle]
     -- a paragraph style no larger than the grid (docs/adr ADR 0005)
     sizeChecks = case stPage s >>= pageGrid of
       Just Grid {gridFontSize = Abs fs} ->
@@ -1923,24 +1991,28 @@ styleChecks owner s =
             (Just (Abs a), Just (Abs b)) -> a + b < 0
             (Just a, Just b) | Just fs <- gridSize -> let size = maybe fs (dimToSp fs) (psSize d) in dimToSp size a + dimToSp size b < 0
             _ -> False
-       in [n | n <- Map.keys (stParaStyles s), Just d <- [paraStyle s (Just n)], negative d]
+          written n = maybe False (isJust . psFirstLineIndent) (Map.lookup n (stParaStyles s))
+       in [(n, either2 (para n) (written n) "first-line-indent" "indent") | n <- Map.keys (stParaStyles s), Just d <- [paraStyle s (Just n)], negative d]
     numberChecks =
-      [ "番号の書式が不正です: " <> f
-      | f <- stFigureNumber s : cdNumber (stCode s) : [n | HeadingStyle {hsNumber = Just n} <- Map.elems (stHeadings s)],
+      [ (path, "番号の書式が不正です: " <> f)
+      | (path, f) <-
+          (keys ["figures", "number"], stFigureNumber s)
+            : (keys ["code", "number"], cdNumber (stCode s))
+            : [(keys ["headings", T.pack (show l), "number"], n) | (l, HeadingStyle {hsNumber = Just n}) <- Map.toList (stHeadings s)],
         not (validNumberFormat f)
       ]
         -- a listing number has a placeholder (golem-driver ADR 0023)
-        <> ["[code] の number には {n} などの差し込みを書きます: " <> cdNumber (stCode s) | not ("{" `T.isInfixOf` cdNumber (stCode s))]
+        <> [(keys ["code", "number"], "[code] の number には {n} などの差し込みを書きます: " <> cdNumber (stCode s)) | not ("{" `T.isInfixOf` cdNumber (stCode s))]
     codeSwatches =
       let c = stCode s
-       in [(k, v) | (k, Just v) <- [("line-number-color", cdLineNumberColor c), ("highlight", cdHighlight c), ("added", cdAdded c), ("removed", cdRemoved c)]]
-            <> [("colors." <> k, v) | (k, v) <- Map.toList (cdColors c)]
+       in [(k, [ScopeKey k], v) | (k, Just v) <- [("line-number-color", cdLineNumberColor c), ("highlight", cdHighlight c), ("added", cdAdded c), ("removed", cdRemoved c)]]
+            <> [("colors." <> k, keys ["colors", k], v) | (k, v) <- Map.toList (cdColors c)]
     checks =
-      [ "explicit-hyphen-penalty は -9999 から 10000 までです: " <> T.pack (show p)
+      [ (keys ["composition", "explicit-hyphen-penalty"], "explicit-hyphen-penalty は -9999 から 10000 までです: " <> T.pack (show p))
       | let p = compExplicitHyphenPenalty (stComposition s),
         p < -9999 || p > 10000
       ]
-        <> [ "ルビのかけの量は 0 以上です（[composition.ruby] の overhang）"
+        <> [ (keys ["composition", "ruby", "overhang"], "ルビのかけの量は 0 以上です（[composition.ruby] の overhang）")
            | negativeDim (rdOverhang (compRuby (stComposition s)))
            ]
 
@@ -2033,18 +2105,20 @@ those style.toml has by itself: (code, the name of the style, message).
 -}
 checkLocalStyles :: Style -> LocalStyles -> [(Text, Text, Text)]
 checkLocalStyles s ls =
-  let base = styleChecks owner s
-   in nub [c | c <- styleChecks owner (withLocalStyles s ls {lsRegexStyles = Map.empty}), c `notElem` base]
+  let base = checksOf s
+   in nub [c | c <- checksOf (withLocalStyles s ls {lsRegexStyles = Map.empty}), c `notElem` base]
   where
-    owner = "@style-def の"
+    -- the paths are of style.toml; the errors of a file are at its @style-def
+    checksOf st = [(code, n, m) | (code, n, _, m) <- styleChecks "@style-def の" st]
 
 {- | The errors of the i-th (from 0) regex style of a paragraph style
 (docs/adr ADR 0015): a pattern outside the dialect is G0315, a character
 style that does not exist G0313.
 -}
-regexStyleErrors :: Text -> Style -> Text -> Int -> RegexStyleDef -> [(Text, Text)]
+regexStyleErrors :: Text -> Style -> Text -> Int -> RegexStyleDef -> [(Text, [Scope], Text)]
 regexStyleErrors owner s para i (RegexStyleDef p st) =
   [ ( "G0315",
+      at "pattern",
       "正規表現を解釈できません: "
         <> reMessage e
         <> "（"
@@ -2057,7 +2131,10 @@ regexStyleErrors owner s para i (RegexStyleDef p st) =
     )
   | Left e <- [compile p]
   ]
-    <> [("G0313", owner <> "スタイルの参照が不正です: 正規表現スタイルの文字スタイルがありません: " <> st) | Map.notMember st (stCharStyles s)]
+    <> [("G0313", at "style", owner <> "スタイルの参照が不正です: 正規表現スタイルの文字スタイルがありません: " <> st) | Map.notMember st (stCharStyles s)]
+  where
+    -- the key of the i-th regex style of the paragraph style (golem-project ADR 0008)
+    at k = [ScopeKey "paragraph-styles", ScopeKey para, ScopeKey "regex-styles", ScopeIndex i, ScopeKey k]
 
 {- | The errors of the regex styles of a file (docs/adr ADR 0015): the
 paragraph style, the place of the regex style among those the file adds
@@ -2069,7 +2146,7 @@ checkLocalRegexStyles s ls =
   let combined = withLocalStyles s ls {lsRegexStyles = Map.empty}
    in concat
         [ if Map.member p (stParaStyles combined)
-            then [(p, i, code, m) | (code, m) <- regexStyleErrors owner combined p i r]
+            then [(p, i, code, m) | (code, _, m) <- regexStyleErrors owner combined p i r]
             else [(p, i, "G0313", owner <> "スタイルの参照が不正です: 正規表現スタイルの段落スタイルがありません: " <> p)]
         | (p, rs) <- Map.toList (lsRegexStyles ls),
           (i, r) <- zip [0 ..] rs
