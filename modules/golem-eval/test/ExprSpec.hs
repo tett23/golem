@@ -378,6 +378,32 @@ exactLimitTests =
         bitsOf "(-2) ** -1075" @?= bits 0
         bitsOf "3.0 ** -678" @?= bits (encodeFloat 1 (-1074))
         bitsOf "3 ** -679" @?= bits 0,
+      testCase "an exact power of -2^-1075 is a positive zero (golem-eval ADR 0005)" $ do
+        -- the exact power is past the range check, and rounds to zero
+        case ev "(0 - 2.0 ** -215) ** 5" of
+          Right (VFloat d) -> do
+            d @?= 0
+            assertBool "not a negative zero" (not (isNegativeZero d))
+          other -> assertFailure (show other)
+        bitsOf "(0 - 2.0 ** 215) ** -5" @?= bits 0,
+      testProperty "a power that is zero is not a negative zero (golem-eval ADR 0005)" $ property $ do
+        -- odd exponents and bases -2^f with f * k around -1075
+        k <-
+          forAll
+            ( Gen.choice
+                [ (*) <$> Gen.element [1, -1] <*> Gen.element [1, 5, 25, 43, 215, 1075],
+                  (\n -> 2 * n + 1) <$> Gen.integral (Range.linear (-1100) 1100)
+                ]
+            )
+        delta <- forAll (Gen.integral (Range.constant (-1) 1))
+        let f = (-1075) `div` k + delta
+        when (f < -1074 || f > 1023) discard
+        let a = negate (encodeFloat 1 (fromInteger f)) :: Double
+            r = ev (floatLit a <> " ** " <> T.pack (show k))
+        annotateShow r
+        case r of
+          Right (VFloat d) | d == 0 -> assert (not (isNegativeZero d))
+          _ -> success,
       withinASecond $ testCase "the boundaries of the limit" $ do
         assertBool "1.0000001 ** 20164 is a value" (isValue (ev "1.0000001 ** 20164"))
         evm "1.0000001 ** 20165" @?= Left (overLimit 1048580)
