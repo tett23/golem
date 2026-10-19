@@ -5053,10 +5053,11 @@ PDF は書く。
 ### 意味
 
 表の各列の最小の幅（改行できる位置のあいだの最も広い部分）の合計が、版面の行長を超える。
+セルの最後の二つの和文の字は、一つの区間として数える（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。
 
 - メッセージ: `表の列の最小の幅の合計（<幅> mm）が使える幅（<幅> mm）に収まりません`
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
-- ADR: [golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)
+- ADR: [golem-driver ADR 0008](golem-driver/adr/0008-pdf-tables.md)、[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)
 
 ### 主な原因
 

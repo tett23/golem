@@ -1,6 +1,6 @@
 # ADR 0008: PDF で表を組む
 
-ステータス: 採択→罫線の位置、表の前後の空き、空の見出しの行は [ADR 0031](0031-table-spacing-and-rules.md)
+ステータス: 採択→罫線の位置、表の前後の空き、空の見出しの行は [ADR 0031](0031-table-spacing-and-rules.md)、列の幅の二つめの場合の配り方は [ADR 0037](0037-table-column-widths.md)
 
 ## 文脈
 

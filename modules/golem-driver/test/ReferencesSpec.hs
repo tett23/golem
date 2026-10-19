@@ -1,4 +1,4 @@
-module ReferencesSpec (indexTests, bibliographyFormatTests, tableTests, tocTests, indexColumnTests, urlBreakTests) where
+module ReferencesSpec (indexTests, bibliographyFormatTests, tableTests, columnWidthTests, tocTests, indexColumnTests, urlBreakTests) where
 
 import Codec.Archive.Zip (findEntryByPath, fromEntry, toArchive)
 import Control.Monad (forM_, zipWithM_)
@@ -393,6 +393,59 @@ tocTests =
 
 smallTable :: T.Text
 smallTable = "| 項目 | 値 |\n|:---|---:|\n| 幅 | 10 |\n| 高さ | 20 |\n"
+
+-- | The table of the developer manual on what determinism asks of purity, without its code (golem-driver ADR 0037).
+purityTable :: T.Text
+purityTable =
+  T.unlines
+    [ "| 規則 | 守る場所 | 仕組み |",
+      "| --- | --- | --- |",
+      "| 時計を読まない | golem-pdf、golem-epub | 日時は metadata.date から作り、zip の時刻には 0 を渡す |",
+      "| 乱数を使わない | golem-cli | golem new の id だけ。ライブラリには引数で渡す |",
+      "| 環境変数、ロケール | golem-project、golem-plugin | 原稿はバイト列で読む。XDG_CACHE_HOME は場所だけを決める |",
+      "| ディレクトリを列挙しない | golem-driver | 読むファイルは assetRefs が原稿から集める |",
+      "| 走査の順を固定する | すべて | Data.Map。freeze のフラグ |",
+      "| 並列の結果の順 | golem-driver | mapConcurrently は入力の順で返す |",
+      "| 浮動小数点数 | golem-eval、golem-layout、golem-font | 超越関数を持たない。sp と有理数。-ffp-contract=off |",
+      "| ネイティブライブラリ | golem-font、golem-plugin、golem-pdf | 同梱してバージョンを固定する。純粋な関数として包む。wasmtime の設定 |"
+    ]
+
+-- | The cell lines of the tables of a layout: their start in the table and their text.
+tableCellLines :: PdfLayout -> [(Integer, T.Text)]
+tableCellLines pl = [(slIndent sl, T.concat [bcText c | Box _ c <- lineItems (slLine sl)]) | sls <- Map.elems (plTableLines pl), sl <- sls]
+
+-- | The grid of the developer manual (B5, 13Q, 40 characters a line) with Noto Serif JP.
+notoTableLayout :: T.Text -> IO PdfLayout
+notoTableLayout src = do
+  noto <- notoBytes
+  let style =
+        TE.encodeUtf8 . T.unlines $
+          [ "[page]\nsize = \"B5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n",
+            "[page.grid]\nfont-size = \"13Q\"\ncharacters = 40\nlines = 34\nline-pitch = \"22H\"\nposition = { top = \"28mm\", gutter = \"24mm\" }\n",
+            "[fonts.body]\nja = \"fonts/noto.otf\"\n"
+          ]
+  r <- layoutMiniFonts realProvider miniManifest style src [("fonts/noto.otf", noto)]
+  either (assertFailure . show) (pure . snd) r
+
+columnWidthTests :: [TestTree]
+columnWidthTests =
+  [ testCase "the short first column of the purity table is not broken (golem-driver ADR 0037)" $ do
+      pl <- notoTableLayout purityTable
+      sort [t | (0, t) <- tableCellLines pl]
+        @?= sort ["規則", "時計を読まない", "乱数を使わない", "環境変数、ロケール", "ディレクトリを列挙しない", "走査の順を固定する", "並列の結果の順", "浮動小数点数", "ネイティブライブラリ"],
+    testCase "no line of a cell of the purity table is one Japanese character (golem-driver ADR 0037)" $ do
+      pl <- notoTableLayout purityTable
+      let lonely = [t | (_, t) <- tableCellLines pl, T.length t == 1, T.all (> '\x2fff') t]
+      lonely @?= [],
+    testCase "the last two characters of a cell are not broken apart (golem-driver ADR 0037)" $ do
+      (_, pl) <- layoutOk horizontalStyle "| 甲 | 乙 |\n|---|---|\n| ああああああああ | いろはにほあ |\n" []
+      [t | (_, t) <- tableCellLines pl, "あ" `T.isSuffixOf` t, not ("ああ" `T.isPrefixOf` t)] @?= ["ほあ"],
+    testCase "a cell of two characters is two characters wide at its narrowest (golem-driver ADR 0037)" $ do
+      -- six columns of two characters and five gaps do not fit 12 characters
+      let cells = "| " <> T.intercalate " | " (replicate 6 "あい") <> " |\n"
+      (errs, _) <- buildMini fakeProvider True horizontalStyle (cells <> "|" <> T.replicate 6 "---|" <> "\n" <> cells) []
+      errs @?= [DiagnosticCode "G0741"]
+  ]
 
 tableTests :: [TestTree]
 tableTests =

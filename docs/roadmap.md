@@ -24,7 +24,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ### PDF
 
-- **表の列の幅**（未実装、[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）：短い列から自然な幅を満たして配り、折り返しを長い列に集める。
 
 ### 既知の不具合の修正
 
