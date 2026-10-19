@@ -88,5 +88,48 @@ escapeTests =
         T.filter (< ' ') (T.dropEnd 1 (jsonWithMessage m)) === ""
     ]
 
+-- | The human rendering is written to a terminal: no C0 control character but the newline may reach it.
+terminalTests :: TestTree
+terminalTests =
+  testGroup
+    "the human rendering and the terminal (security audit 2026-10-18, C13)"
+    [ testCase "an escape sequence in the source line is not written as it is" $ do
+        let fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex "x\ESC[31m\ESC]0;title\BELy\n"))]
+            out = renderHuman fs [diagnostic "G0101" Error (mkSpan (FileId 0) 0 1) "m"]
+        T.filter (\c -> c < ' ' && c /= '\n') out @?= "",
+      testCase "an escape sequence in the path and in the message is not written as it is" $ do
+        let fs = Map.fromList [(FileId 0, SourceInfo "a\ESC[2Jb.gm" (mkLineIndex "x"))]
+            d = (diagnostic "G0101" Error (mkSpan (FileId 0) 0 1) "m\ESC[0m") {diagRelated = [(mkSpan (FileId 0) 0 1, "r\SOH")]}
+        T.filter (\c -> c < ' ' && c /= '\n') (renderHuman fs [d]) @?= "",
+      -- ADR 0042: the form of the replacement
+      testCase "ESC is written as \\x1b in the source line, the path and the message" $ do
+        let fs = Map.fromList [(FileId 0, SourceInfo "a\ESCb.gm" (mkLineIndex "x\ESCy\BELz\n"))]
+            d = (diagnostic "G0101" Error (mkSpan (FileId 0) 0 1) "m\ESCn") {diagRelated = [(mkSpan (FileId 0) 0 1, "r\SOH")]}
+        renderHuman fs [d] @?= "a\\x1bb.gm:1:1: error[G0101]: m\\x1bn\n  | x\\x1by\\x07z\n  = a\\x1bb.gm:1:1: r\\x01\n",
+      testCase "a tab is written as it is; U+007F and U+0085 are replaced" $ do
+        let fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex "a\tb\DELc\x85\&d\n"))]
+        renderHuman fs [diagnostic "G0101" Error (mkSpan (FileId 0) 0 1) "m"] @?= "a.gm:1:1: error[G0101]: m\n  | a\tb\\x7fc\\x85d\n",
+      testCase "a line of 1000 characters is cut to 200 around the column, with an ellipsis at each cut end" $ do
+        let line = T.pack [toEnum (0x4e00 + i) | i <- [0 .. 999 :: Int]]
+            fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex (line <> "\n")))]
+            off = 3 * 500
+            out = renderHuman fs [diagnostic "G0101" Error (mkSpan (FileId 0) off (off + 3)) "m"]
+            excerpt = T.drop 4 (T.lines out !! 1)
+        excerpt @?= "\x2026" <> T.take 200 (T.drop 440 line) <> "\x2026"
+        assertBool "the character at the column" (T.index line 500 `T.elem` excerpt),
+      testCase "a line of 100 characters is written as it is" $ do
+        let line = T.replicate 100 "a"
+            fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex line))]
+        T.lines (renderHuman fs [diagnostic "G0101" Error (mkSpan (FileId 0) 50 51) "m"]) !! 1 @?= "  | " <> line,
+      testCase "near the start of a long line only the end is cut" $ do
+        let line = T.replicate 300 "a"
+            fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex line))]
+        T.lines (renderHuman fs [diagnostic "G0101" Error (mkSpan (FileId 0) 10 11) "m"]) !! 1 @?= "  | " <> T.replicate 200 "a" <> "\x2026",
+      testCase "the length is counted after the replacement" $ do
+        let line = T.replicate 100 "\SOH"
+            fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex line))]
+        T.lines (renderHuman fs [diagnostic "G0101" Error (mkSpan (FileId 0) 0 1) "m"]) !! 1 @?= "  | " <> T.replicate 50 "\\x01" <> "\x2026"
+    ]
+
 tests :: TestTree
-tests = testGroup "rendering (golem-syntax ADR 0001)" [relatedTests, escapeTests]
+tests = testGroup "rendering (golem-syntax ADR 0001)" [relatedTests, escapeTests, terminalTests]

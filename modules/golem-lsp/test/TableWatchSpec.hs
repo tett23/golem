@@ -32,17 +32,32 @@ manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4
 
 -- | A project whose a.gm refers to a ragged TSV and a ragged CSV.
 withTableProject :: (FilePath -> IO a) -> IO a
-withTableProject act = withSystemTempDirectory "golem-lsp-tables" $ \tmp0 -> do
-  tmp <- canonicalizePath tmp0
-  forM_
-    [ ("manifest.toml", manifest),
-      ("a.gm", "@table src=data/x.tsv\n\n@table src=data/x.csv\n"),
+withTableProject =
+  withProject
+    [ ("a.gm", "@table src=data/x.tsv\n\n@table src=data/x.csv\n"),
       ("data/x.tsv", "a\tb\nc\n"),
       ("data/x.csv", "a,b\nc\n"),
       ("data/y.tsv", "a\tb\n1\t2\n")
     ]
-    $ \(p, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> p)) >> BS.writeFile (tmp </> p) bytes
+
+-- | A project of the manifest and the files given, in a temporary directory.
+withProject :: [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
+withProject files act = withSystemTempDirectory "golem-lsp-tables" $ \tmp0 -> do
+  tmp <- canonicalizePath tmp0
+  forM_ (("manifest.toml", manifest) : files) $
+    \(p, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> p)) >> BS.writeFile (tmp </> p) bytes
   act tmp
+
+{- | Whether a glob pattern has a metacharacter outside a bracket
+expression, so that it could match more files than one.
+-}
+hasBareGlob :: String -> Bool
+hasBareGlob = go
+  where
+    go = \case
+      [] -> False
+      '[' : rest -> go (drop 1 (dropWhile (/= ']') rest))
+      c : rest -> c `elem` ("*?{" :: String) || go rest
 
 codesOf :: Workspace -> FilePath -> [Text]
 codesOf ws p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
@@ -84,6 +99,13 @@ tableWatchTests =
         cleared @?= []
         afterSwitch @?= ["data/y.tsv"]
         unchanged @?= 0,
+      -- security audit 2026-10-18, C14: the name of a table file is not a glob
+      testCase "a table file named with * and ? is watched as that file, not as a glob" $
+        withProject [("a.gm", "@table src=data/x*y?.tsv\n"), ("data/x*y?.tsv", "a\tb\nc\n"), ("data/xZyQ.tsv", "a\tb\nc\td\n")] $ \dir -> do
+          regs <- lspSession True dir $ do
+            _ <- waitDiagnostics dir "data/x*y?.tsv" (not . null)
+            watched
+          assertBool ("watching " <> show regs) (not (any hasBareGlob regs)),
       testCase "a client without dynamic registration is not asked to watch" $ withTableProject $ \dir -> do
         regs <- lspSession False dir $ do
           _ <- waitDiagnostics dir "data/x.tsv" (not . null)
