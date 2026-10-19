@@ -144,6 +144,7 @@
   - [code: page]：PDF の画像の、置くページです。1 から数えた整数で、省けば 1 です。PDF の画像にだけ書けます。
   - [code: wrap]：[code: start] か [code: end] を書くと、図版を版面の端に寄せ、本文を脇に回り込ませます。PDF でだけ有効です。
   - [code: width]：回り込ませる図版の幅です。[code: wrap] を書くときは省けません。
+  - [code: rotate]：[code: true] を書くと、図版とキャプションを一緒に 90 度回し、一ページに置きます。省けば [code: false] です。PDF でだけ有効で、[code: wrap] とは一緒に書けません。
 = [strong: [code: @table src=ファイル]]
   CSV か TSV のファイルから表を作ります。
   一行目が見出しの行になります。
