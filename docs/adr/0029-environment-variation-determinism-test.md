@@ -1,6 +1,6 @@
 # ADR 0029: 実行環境を変えて出力の一致を確かめる検査
 
-ステータス: 採択
+ステータス: 採択→CI で `--quick` を付けるかどうかは [ADR 0038](0038-env-determinism-quick-on-pull-requests.md)
 
 ## 文脈
 

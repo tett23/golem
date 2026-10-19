@@ -39,10 +39,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **表のファイルの大きさの上限**（未実装、[docs/adr 0043](adr/0043-table-file-size-limits.md)）：大きすぎる表のファイルを G0288 で拒む。
 - **リリースのワークフロー**（未実装、[docs/adr 0044](adr/0044-release-workflow-hardening.md)）：リリースノートを書くジョブを権限のないジョブに分け、Claude Code のバージョンを `mise.toml` で固定し、リンクを許可リストで検査する。
 
-### CI
-
-- **環境を変える検査をプルリクエストで絞る**（未実装、[docs/adr 0038](adr/0038-env-determinism-quick-on-pull-requests.md)）：プルリクエストでは `check.sh --quick` を使い、`main` への push とリリースではすべての入力を検査する。
-
 ### 既知の不具合の修正
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
