@@ -1,4 +1,4 @@
-module PdfSpec (qpdfInstalled, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests, ligatureTests) where
+module PdfSpec (qpdfInstalled, pdfPipelineTests, marksTests, hiddenFolioTests, variationTests, characterFeatureTests, turnedTests, kentenTests, rubyTests, codeTests, inlineCodeBackgroundTests, codeBlockRubyTests, ligatureTests, combiningTests) where
 
 import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
@@ -1454,6 +1454,9 @@ codeBlockRubyTests =
       case plPages pl of
         [_, p2] -> take 1 [s | (s, SLine _) <- poSlots p2] @?= [0]
         ps -> assertFailure (show (map poSlots ps)),
+    testCase "a blank line after a code block with a background takes the place of the space line (docs/adr ADR 0046)" $ do
+      (_, pl) <- layoutOk (horizontalStyle <> codeBg) "```\na\n```\n\n@blank-line\n\n[ruby: 漢|かん]字。\n" []
+      firstLineSlot pl @?= Just (codeEnd pl + 1),
     testCase "two builds with ruby after a code block give the same bytes" $ do
       let src = "```\na\n```\n\n[ruby: 漢|かん]字。\n"
       a <- miniPdf fakeProvider True (horizontalStyle <> codeBg) src []
@@ -1510,6 +1513,10 @@ extractedText tu content = go (BC.lines content)
         | "/Span << /ActualText (" `BS.isPrefixOf` l ->
             let t = BC.takeWhile (/= ')') (BS.drop (BS.length "/Span << /ActualText (") l)
              in TE.decodeUtf8 t <> go (drop 1 (dropWhile (/= "EMC") rest))
+        -- a replacement of other than ASCII: UTF-16BE in hexadecimal, after a byte order mark
+        | "/Span << /ActualText <" `BS.isPrefixOf` l ->
+            let h = BC.takeWhile (/= '>') (BS.drop (BS.length "/Span << /ActualText <" + 4) l)
+             in TE.decodeUtf16BE (BS.pack [fromIntegral (hexInt (BS.take 2 (BS.drop i h))) | i <- [0, 2 .. BS.length h - 2]]) <> go (drop 1 (dropWhile (/= "EMC") rest))
         | Just g <- glyphOf l -> Map.findWithDefault "" g tu <> go rest
         | otherwise -> go rest
     glyphOf l = case [w | w <- BC.words l, "<" `BS.isPrefixOf` w, ">" `BS.isSuffixOf` w] of
@@ -1591,3 +1598,44 @@ ligatureTests =
       assertBool (show content) ("/Span << /ActualText (y) >> BDC" `BS.isInfixOf` content)
       extractedText (toUnicodeEntries streams) content @?= "xy"
   ]
+
+{- | Combining characters (golem-driver ADR 0036): Source Serif of The
+Tempest fixture as the Latin face of the body, Noto Serif JP of the 蟹工船
+fixture as the Japanese face.
+-}
+combiningTests :: [TestTree]
+combiningTests =
+  [ testCase "PDF: cafe◌́ is drawn in the Latin face only" $ do
+      pdf <- combiningPdf "cafe\x301\n"
+      resources <- fontResources pdf
+      content <- BS.concat <$> inflateAll pdf
+      let latin = [name | (name, dict, _) <- resources, "SourceSerif" `BS.isInfixOf` dict]
+          fonts = nub [dFont d | d <- drawnGlyphs content]
+      assertBool (show (latin, fonts)) (not (null fonts) && all (`elem` latin) fonts),
+    testCase "PDF: the word cafe◌́ is as wide as café" $ do
+      files <- combiningFiles
+      r <- layoutMiniFonts realProvider miniManifest combiningStyle "cafe\x301 x\n\ncafé x\n" files
+      (_, pl) <- either (assertFailure . show) pure r
+      let widths = Map.fromList [(bcText c, w) | sl <- Map.elems (plLines pl), Box w c <- lineItems (slLine sl)]
+      (Map.lookup "cafe\x301" widths, Map.member "café" widths) @?= (Map.lookup "café" widths, True),
+    testCase "PDF: the text taken out with ActualText is the source, cafe◌́ and café" $ do
+      pdf <- combiningPdf "cafe\x301\n\ncafé\n"
+      streams <- inflateAll pdf
+      let content = BS.concat [s | s <- streams, " Tf" `BS.isInfixOf` s]
+      extractedText (toUnicodeEntries streams) content @?= "cafe\x301\&café",
+    testCase "shapeText: cafe◌́ in a role of two faces is all in the Latin face" $
+      withSystemTempDirectory "golem-combining" $ \tmp -> do
+        files <- combiningFiles
+        forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+        style <- either (assertFailure . show) pure (parseStyle (FileId 0) "[fonts.body]\nja = \"fonts/noto.otf\"\nlatin = \"fonts/serif.ttf\"\n")
+        fonts <- loadFonts golemFontProvider tmp (FileId 0) style [] >>= either (assertFailure . show) pure
+        let faceOf t = nub (map shFace (lfShape fonts (Shaping "body" False []) t))
+        faceOf "cafe\x301" @?= faceOf "cafe"
+  ]
+  where
+    combiningStyle = replaceIn "characters = 12" "characters = 24" horizontalStyle <> "\n[fonts.body]\nja = \"fonts/noto.otf\"\nlatin = \"fonts/serif.ttf\"\n"
+    combiningFiles = do
+      noto <- notoBytes
+      serif <- BS.readFile "test/fixtures/tempest/fonts/SourceSerifVariable-Roman.ttf"
+      pure [("fonts/noto.otf", noto), ("fonts/serif.ttf", serif)]
+    combiningPdf src = combiningFiles >>= miniPdf realProvider False combiningStyle src

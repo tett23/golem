@@ -39,6 +39,7 @@ module Golem.Doc.IR
   )
 where
 
+import Data.Int (Int64)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -86,6 +87,8 @@ data BlockBody
     ForcedBreak !BreakKind
   | -- | a manual control of page breaks (docs/adr ADR 0030)
     PageControl !PageControl
+  | -- | blank lines before what follows (docs/adr ADR 0046)
+    BlankLines !Int64
   deriving stock (Eq, Show)
 
 {- | A manual control of page breaks (docs/adr ADR 0030): no break

@@ -230,6 +230,7 @@ tests =
       hardBreakTests,
       breakTests,
       pageControlTests,
+      blankLineTests,
       codeTests,
       escapeTests,
       duplicateKeyTests,
@@ -1057,6 +1058,92 @@ pageControlTests =
     hasControl = \case
       PageControl _ -> True
       BulletList items -> any (any (hasControl . blockBody) . itemBlocks) items
+      _ -> False
+
+-- | Blank lines between blocks (docs/adr ADR 0046).
+blankLineTests :: TestTree
+blankLineTests =
+  testGroup
+    "blank lines (docs/adr ADR 0046)"
+    [ testCase "@blank-line is a block, in both styles of the paragraph separator" $
+        mapM_
+          ( \c -> do
+              outline c "あ\n@blank-line\nい\n" @?= (["p あ", "blank 1", "p い"], [])
+              outline c "あ\n\n@blank-line 2\n\nい\n" @?= (["p あ", "blank 2", "p い"], [])
+              outline c "あ\n@blank-line 9223372036854775807\n" @?= (["p あ", "blank 9223372036854775807"], [])
+          )
+          [ctx, lineCtx],
+      testCase "wrong arguments and a body are G0292 and give no block" $
+        mapM_
+          (\src -> assertEqual (T.unpack src) ([], ["G0292"]) (outline ctx src))
+          [ "@blank-line 0\n",
+            "@blank-line -1\n",
+            "@blank-line 1.5\n",
+            "@blank-line x\n",
+            "@blank-line 1 2\n",
+            "@blank-line lines=2\n",
+            "@blank-line +1\n",
+            "@blank-line\n  あ\n"
+          ],
+      testCase "an integer out of int64 is G0291" $
+        outline ctx "@blank-line 9223372036854775808\n" @?= ([], ["G0291"]),
+      testCase "the messages of G0292" $ do
+        msgs "@blank-line 0\n" @?= [("G0292", "@blank-line の引数は 1 以上の整数を一つだけ書きます")]
+        msgs "@blank-line\n  あ\n" @?= [("G0292", "@blank-line は本体を持てません")],
+      testCase "@blank-line not at the top of the document is G0293 and dropped" $ do
+        mapM_
+          ( \src -> do
+              let (bs, es) = blocksWith src
+              assertEqual (T.unpack src) ["G0293"] es
+              assertBool (T.unpack src) (not (any hasBlank bs))
+          )
+          [ "- あ\n\n  @blank-line\n  い\n",
+            "@figure images/a.png alt=a\n  c\n\n  @blank-line\n",
+            "= t\n  @blank-line\n"
+          ]
+        msgs "- あ\n\n  @blank-line\n  い\n" @?= [("G0293", "@blank-line は文書の最上位にだけ置けます")],
+      testCase "@blank-line in the body of @style is G0245" $
+        errs "@style verse\n  あ\n\n  @blank-line\n" @?= ["G0245"],
+      testCase "in an attribute group, the blank lines go before the target and the attributes skip them" $ do
+        labelled "@blank-line\n@label x\n# 見出し\n" @?= ([(Nothing, "blank 1"), (Just "x", "heading")], [])
+        labelled "@label x\n@blank-line\n# 見出し\n" @?= ([(Nothing, "blank 1"), (Just "x", "heading")], [])
+        snd (labelled "@label x\n@blank-line\n") @?= ["G0210"],
+      testCase "blank lines written in a row are the notice G0294 at the later ones" $ do
+        outline ctx "@blank-line\n@blank-line 2\nあ\n" @?= (["blank 1", "blank 2", "p あ"], ["G0294"])
+        [(c, m, s) | (c, m, s, _) <- diags "@blank-line\n@blank-line 2\nあ\n"] @?= [("G0294", "続けて書いた @blank-line は @blank-line <N> にまとめて書けます", 12)]
+        snd (outline ctx "@blank-line\n@need-lines 3\n@blank-line\nあ\n") @?= ["G0294"]
+        snd (outline ctx "@blank-line\n@no-page-break\n@page-lines +1\n@blank-line\nあ\n") @?= ["G0294"]
+        snd (outline ctx "@blank-line\n@blank-line\n@blank-line\nあ\n") @?= ["G0294", "G0294"]
+        snd (outline ctx "@blank-line\nあ\n@blank-line\nい\n") @?= []
+        snd (outline ctx "@blank-line\n@page-break\n@blank-line\nい\n") @?= [],
+      testCase "G0294 is a notice" $ do
+        let (_, ds, _) = runS ctx "@blank-line\n@blank-line\n"
+        [diagSeverity d | d <- ds] @?= [Notice]
+        assertBool "a notice code" (DiagnosticCode "G0294" `elem` noticeCodes),
+      testCase "an inline [blank-line] is an unknown command" $
+        assertBool "an error" (not (null (errs "あ[blank-line]い\n")))
+    ]
+  where
+    outline c src = let (bs, es) = run c src in (map shape bs, es)
+    shape = \case
+      Paragraph _ is -> "p " <> T.concat (stripSpans is)
+      BlankLines n -> "blank " <> T.pack (show n)
+      Heading {} -> "heading"
+      other -> T.pack (show other)
+    labelled src =
+      let (file, _, pds) = parseAst (FileId 1) src
+          r = evalFile ctx file
+       in ([(blockLabel b, shape (blockBody b)) | b <- docBlocks (erDocument r)], [x | d <- pds <> erDiagnostics r, let DiagnosticCode x = diagCode d])
+    blocksWith src =
+      let (file, _, pds) = parseAst (FileId 1) src
+          r = evalFile ctx file
+       in (docBlocks (erDocument r), [x | d <- pds <> erDiagnostics r, let DiagnosticCode x = diagCode d])
+    hasBlank (Block _ _ b) = case b of
+      BlankLines _ -> True
+      BulletList items -> any (any hasBlank . itemBlocks) items
+      OrderedList items -> any (any hasBlank . itemBlocks) items
+      DefList gs -> any (any (any hasBlank) . dgDefs) gs
+      FigureBlock f -> any hasBlank (figCaption f)
       _ -> False
 
 -- | The code of a code block.

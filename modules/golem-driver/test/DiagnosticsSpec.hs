@@ -141,6 +141,13 @@ noticeTests =
         assertBool (show texts) (not (null texts) && all ("ab\ncd" `BS.isInfixOf`) texts)
         quiet <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G0279\"]\n" verse) id
         codesOf (nDiagnostics quiet) @?= [],
+      -- docs/adr ADR 0046
+      testCase "G0747 at a blank line dropped at the top of a column, and silence-notices drops G0747" $ do
+        let src = "a\n\n@page-break\n\n@blank-line\n\nb\n"
+        n <- buildNotified (noticeProject "" src) id
+        [(c, spanStart (diagSpan d)) | d <- nDiagnostics n, let { DiagnosticCode c = diagCode d }] @?= [("G0747", 16)]
+        quiet <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G0747\"]\n" src) id
+        codesOf (nDiagnostics quiet) @?= [],
       testCase "--no-notices drops every notice and keeps the errors" $ do
         n <- buildNotified (noticeProject "" (noticeSource <> "\n[unknown: x]\n")) (\o -> o {optNoNotices = True})
         codesOf (nDiagnostics n) @?= ["G0222"]
