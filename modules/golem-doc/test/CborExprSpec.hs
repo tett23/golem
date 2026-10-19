@@ -10,7 +10,6 @@ import Codec.CBOR.Term (Term (..), decodeTerm, encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
-import Data.Either (isLeft)
 import Data.Ratio (denominator, numerator)
 import Data.Word (Word8)
 import GHC.Float (double2Float, float2Double)
@@ -205,17 +204,17 @@ decoderRejects =
   testGroup
     "the decoder rejects expressions outside the CDDL"
     [ testCase "operator 12" $
-        assertBool "rejected" (isLeft (decodeInlines (inlineWith (TList [TInt 10, spanTerm, TInt 12, int1, int1])))),
+        decodeInlines (inlineWith (TList [TInt 10, spanTerm, TInt 12, int1, int1])) @?= Left "スキーマに合いません: 演算子",
       testCase "operator -1" $
-        assertBool "rejected" (isLeft (decodeInlines (inlineWith (TList [TInt 10, spanTerm, TInt (-1), int1, int1])))),
+        decodeInlines (inlineWith (TList [TInt 10, spanTerm, TInt (-1), int1, int1])) @?= Left "スキーマに合いません: 演算子",
       testCase "expression tag 12" $
-        assertBool "rejected" (isLeft (decodeInlines (inlineWith (TList [TInt 12, spanTerm])))),
+        decodeInlines (inlineWith (TList [TInt 12, spanTerm])) @?= Left "スキーマに合いません: 式",
       testCase "an error expression with a field" $
-        assertBool "rejected" (isLeft (decodeInlines (inlineWith (TList [TInt 11, spanTerm, TInt 0])))),
+        decodeInlines (inlineWith (TList [TInt 11, spanTerm, TInt 0])) @?= Left "スキーマに合いません: 式",
       testCase "a hash entry that is not a pair" $
-        assertBool "rejected" (isLeft (decodeInlines (inlineWith (TList [TInt 6, spanTerm, TList [TList [TString "k"]]])))),
+        decodeInlines (inlineWith (TList [TInt 6, spanTerm, TList [TList [TString "k"]]])) @?= Left "スキーマに合いません: 連想配列の要素",
       testCase "a float given as an integer" $
-        assertBool "rejected" (isLeft (decodeInlines (inlineWith (TList [TInt 1, spanTerm, TInt 1])))),
+        decodeInlines (inlineWith (TList [TInt 1, spanTerm, TInt 1])) @?= Left "スキーマに合いません: 浮動小数点数",
       testCase "the well-formed counterpart is accepted" $
         decodeInlines (inlineWith (TList [TInt 10, spanTerm, TInt 11, int1, int1]))
           @?= Right (deferred (AST.Located sp (AST.EBinary AST.OpGe (AST.Located sp (AST.EInt 1)) (AST.Located sp (AST.EInt 1)))))

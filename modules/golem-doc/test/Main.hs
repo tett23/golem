@@ -7,7 +7,6 @@ import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Exception (ErrorCall, evaluate, try)
 import Data.ByteString qualified as BS
-import Data.Either (fromLeft, isLeft)
 import Gen
 import Golem.Doc.Cbor
 import Golem.Doc.IR
@@ -145,24 +144,29 @@ cbor =
             inner = TList [TInt 4, spanT, TList [TList [TList [], TNull]]]
             outer = TList [TInt 4, spanT, TList [TList [TList [inner], TString "よみ"]]]
             bytes = toStrictByteString (encodeTerm (TList [outer]))
-        assertBool "rejected" (isLeft (decodeInlines bytes)),
+        decodeInlines bytes @?= Left "ルビの中にルビがあります"
+        -- the same ruby at the top level is accepted
+        decodeInlines (toStrictByteString (encodeTerm (TList [inner]))) @?= Right [Ruby sp () [RubySegment [] Nothing]]
+        -- a ruby whose base has a ruby is rejected however deep the inner one is
+        let deep = TList [TInt 4, spanT, TList [TList [TList [TList [TInt 7, spanT, TString "strong", TList [inner]]], TString "よみ"]]]
+        decodeInlines (toStrictByteString (encodeTerm (TList [deep]))) @?= Left "ルビの中にルビがあります",
       testCase "wrong ABI version is rejected" $ do
         let bytes = toStrictByteString (encodeTerm (TList [TInt 99, TInt 0, TList []]))
-        assertBool "rejected" (isLeft (decodeDocument bytes))
-        fromLeft "" (decodeDocument bytes) @?= "ABI のバージョンが異なります: 99",
+        decodeDocument bytes @?= Left "ABI のバージョンが異なります: 99",
       testCase "a document of ABI version 2 is rejected (docs/adr ADR 0005)" $ do
         let bytes = toStrictByteString (encodeTerm (TList [TInt 2, TInt 0, TList []]))
-        assertBool "rejected" (isLeft (decodeDocument bytes)),
+        decodeDocument bytes @?= Left "ABI のバージョンが異なります: 2",
       testCase "retired tags are rejected (docs/adr ADR 0005)" $ do
         let spT = TList [TInt 0, TInt 0, TInt 1]
             text = TList [TInt 0, spT, TString "a"]
             doc body = toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, body]]]))
-        assertBool "a styled paragraph" (not (isLeft (decodeDocument (doc (TList [TInt 10, TString "verse", TList [text]])))))
-        assertBool "a body paragraph" (not (isLeft (decodeDocument (doc (TList [TInt 10, TNull, TList [text, TList [TInt 17, spT], text]])))))
-        assertBool "paragraph 0" (isLeft (decodeDocument (doc (TList [TInt 0, TList [text]]))))
-        assertBool "verse 9" (isLeft (decodeDocument (doc (TList [TInt 9, TList [TList [TList [text]]]]))))
+            one body = Right (Document (FileId 0) [Block sp Nothing body])
+        decodeDocument (doc (TList [TInt 10, TString "verse", TList [text]])) @?= one (Paragraph (Just "verse") [Text sp "a"])
+        decodeDocument (doc (TList [TInt 10, TNull, TList [text, TList [TInt 17, spT], text]])) @?= one (Paragraph Nothing [Text sp "a", LineBreak sp, Text sp "a"])
+        decodeDocument (doc (TList [TInt 0, TList [text]])) @?= Left "スキーマに合いません: ブロックの種類"
+        decodeDocument (doc (TList [TInt 9, TList [TList [TList [text]]]])) @?= Left "スキーマに合いません: ブロックの種類"
         mapM_
-          (\t -> assertBool ("inline " <> show t) (isLeft (decodeInlines (toStrictByteString (encodeTerm (TList [TList [TInt t, spT, TList [text]]]))))))
+          (\t -> decodeInlines (toStrictByteString (encodeTerm (TList [TList [TInt t, spT, TList [text]]]))) @?= Left "スキーマに合いません: インラインの種類")
           [1, 2, 3],
       testCase "line breaks only between inlines at the top of a paragraph (docs/adr ADR 0005)" $ do
         let size (FileId 0) = Just 10
@@ -180,7 +184,9 @@ cbor =
       testCase "the ABI version is 7 and version 6 is rejected (golem-pdf ADR 0008)" $ do
         abiVersion @?= 7
         let bytes = toStrictByteString (encodeTerm (TList [TInt 6, TInt 0, TList []]))
-        assertBool "rejected" (isLeft (decodeDocument bytes)),
+        decodeDocument bytes @?= Left "ABI のバージョンが異なります: 6"
+        -- the next version is not accepted either
+        decodeDocument (toStrictByteString (encodeTerm (TList [TInt 8, TInt 0, TList []]))) @?= Left "ABI のバージョンが異なります: 8",
       testCase "a figure with its page and rotate survives the CBOR round trip (golem-pdf ADR 0008, golem-driver ADR 0034)" $ do
         let fig = Figure "images/a.pdf" (Just "images/a.png") "alt" Nothing Nothing [] (Just 3) True
             doc = Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing (FigureBlock fig)]
@@ -208,9 +214,12 @@ cbor =
             inl t = decodeInlines (toStrictByteString (encodeTerm (TList [t])))
         inl (TList [TInt 18, spT, TList [TInt 1, TInt 5], TNull]) @?= Right [Aki sp (AkiZw (1 / 5))]
         inl (TList [TInt 18, spT, TNull, TInt 65536]) @?= Right [Aki sp (AkiAbs 65536)]
-        assertBool "both" (isLeft (inl (TList [TInt 18, spT, TList [TInt 1, TInt 5], TInt 65536])))
-        assertBool "neither" (isLeft (inl (TList [TInt 18, spT, TNull, TNull])))
-        assertBool "zero denominator" (isLeft (inl (TList [TInt 18, spT, TList [TInt 1, TInt 0], TNull]))),
+        inl (TList [TInt 18, spT, TList [TInt 1, TInt 5], TInt 65536]) @?= Left "スキーマに合いません: インラインの種類"
+        inl (TList [TInt 18, spT, TNull, TNull]) @?= Left "スキーマに合いません: 整数"
+        inl (TList [TInt 18, spT, TList [TInt 1, TInt 0], TNull]) @?= Left "スキーマに合いません: アキの分母"
+        inl (TList [TInt 18, spT, TList [TInt 1, TInt (-5)], TNull]) @?= Left "スキーマに合いません: アキの分母"
+        -- the numerator and the denominator are read in lowest terms
+        inl (TList [TInt 18, spT, TList [TInt 2, TInt 10], TNull]) @?= Right [Aki sp (AkiZw (1 / 5))],
       testCase "a negative aki is invalid (docs/adr ADR 0019)" $ do
         let size (FileId 0) = Just 10
             size _ = Nothing
@@ -262,7 +271,18 @@ cbor =
         validateDocument size [] (doc [Block sp Nothing (BulletList [ListItem Nothing [blank]])]) @?= ["行アキは文書の最上位にだけ置けます"]
         validateDocument size [] (doc [Block sp (Just "x") (BlankLines 1)]) @?= ["行アキはラベルを持てません"],
       testCase "trailing bytes are rejected" $
-        assertBool "rejected" (isLeft (decodeInlines (encodeInlines [] <> "\0"))),
+        decodeInlines (encodeInlines [] <> "\0") @?= Left "CBOR の後に余分なバイト列があります",
+      testCase "an enumeration out of its range is rejected (forced breaks)" $ do
+        let spT = TList [TInt 0, TInt 0, TInt 1]
+            doc body = decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, body]]])))
+        doc (TList [TInt 11, TInt 3]) @?= Right (Document (FileId 0) [Block sp Nothing (ForcedBreak BreakColumn)])
+        doc (TList [TInt 11, TInt 4]) @?= Left "スキーマに合いません: 列挙の範囲"
+        doc (TList [TInt 11, TInt (-1)]) @?= Left "スキーマに合いません: 列挙の範囲",
+      testCase "a span that ends before it starts, or starts before 0, is rejected" $ do
+        let inl t = decodeInlines (toStrictByteString (encodeTerm (TList [t])))
+        inl (TList [TInt 0, TList [TInt 0, TInt 3, TInt 3], TString "a"]) @?= Right [Text (SrcSpan (FileId 0) 3 3) "a"]
+        inl (TList [TInt 0, TList [TInt 0, TInt 3, TInt 2], TString "a"]) @?= Left "スキーマに合いません: 位置の範囲"
+        inl (TList [TInt 0, TList [TInt 0, TInt (-1), TInt 2], TString "a"]) @?= Left "スキーマに合いません: 位置の範囲",
       testCase "validation: spans, deferred expressions, index levels" $ do
         let size (FileId 0) = Just 10
             size _ = Nothing

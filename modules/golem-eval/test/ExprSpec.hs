@@ -7,7 +7,7 @@ import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word64)
-import GHC.Float (castDoubleToWord64)
+import GHC.Float (castDoubleToWord64, castWord64ToDouble)
 import Golem.Eval.Expr
 import Golem.Eval.Number
 import Golem.Eval.Value
@@ -110,13 +110,32 @@ tests =
         ev "max(1, 2.5, 2)" @?= Right (VFloat 2.5),
       testCase "embedding rejects non-text values" $ do
         shown "true" @?= Left "Diagnostic {diagCode = DiagnosticCode \"G0208\", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 0, spanStart = 0, spanEnd = 0}, diagMessage = \"\\30495\\20605\\20516 \\12399\\26412\\25991\\12395\\22475\\12417\\36796\\12417\\12414\\12379\\12435\", diagRelated = [], diagFixes = [], diagFacts = []}"
-        either (const True) (const False) (shown "[1]") @?= True,
-      testProperty "a == div(a, b) * b + a % b" $ property $ do
+        -- the code and the message name the type of every value that is not text
+        [either (Just . codeMsg) (const Nothing) (embedValue (mkSpan (FileId 0) 0 0) v) | v <- [VBool False, VNil, VArray [VInt 1], VHash Map.empty]]
+          @?= [Just ("G0208", t <> " は本文に埋め込めません") | t <- ["真偽値", "nil", "配列", "連想配列"]],
+      -- the identity alone holds for truncation as well; the remainder takes
+      -- the sign of the divisor only when the quotient is floored
+      testProperty "a == div(a, b) * b + a % b, the remainder with the sign of b" $ property $ do
         a <- forAll (Gen.integral (Range.linearFrom 0 (-1000) 1000))
         b <- forAll (Gen.filter (/= 0) (Gen.integral (Range.linearFrom 0 (-50) 50)))
-        a === floorDiv a b * b + floorMod a b,
+        let lit n = "(" <> T.pack (show (n :: Integer)) <> ")"
+        q <- evalEither (ev ("div(" <> lit a <> ", " <> lit b <> ")"))
+        r <- evalEither (ev (lit a <> " % " <> lit b))
+        case (q, r) of
+          (VInt q', VInt r') -> do
+            a === q' * b + r'
+            assert (abs r' < abs b)
+            assert (r' == 0 || signum r' == signum b)
+          other -> annotateShow other >> failure,
       testProperty "rendering reads back to the same double" $ property $ do
-        d <- forAll (Gen.double (Range.exponentialFloatFrom 0 (-1e30) 1e30))
+        -- the whole range of doubles, subnormals and the largest included
+        d <-
+          forAll $
+            Gen.choice
+              [ Gen.double (Range.exponentialFloatFrom 0 (-1e30) 1e30),
+                castWord64ToDouble <$> Gen.word64 Range.constantBounded,
+                Gen.element [5.0e-324, -5.0e-324, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, 1.0e-7, 1.0e21]
+              ]
         case finite d of
           Nothing -> success
           Just x -> do
