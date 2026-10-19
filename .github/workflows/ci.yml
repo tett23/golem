@@ -234,7 +234,7 @@ jobs:
           GOLEM_REQUIRE_LOCALES: "1"
           GOLEM_REQUIRE_FONTS: "1"
         run: |
-          # QUICK is empty or one word
+          QUICK= # TEMPORARY: every input, to measure the overlap as on main
           # shellcheck disable=SC2086
           GOLEM="$RUNNER_TEMP/bin/golem" sh scripts/ci/bg.sh start env nice -n 19 sh scripts/env-determinism/check.sh $QUICK
       # qpdf, cddl and openssl are installed above (openssl comes with the
