@@ -53,6 +53,10 @@ linesWith prefix = filter (T.isPrefixOf prefix) . T.lines
 opf :: EpubConfig -> Text
 opf cfg = packageDocument cfg ["a.xhtml", "b.xhtml"] ["style.css"]
 
+-- | A book with a heading of each level, and the depth of its @toc (golem-epub ADR 0002).
+threeLevels :: Maybe Int -> Book
+threeLevels d = emptyBook {bookToc = [entry 1 fidA "c1" "章", entry 2 fidA "s1" "節", entry 3 fidA "t1" "項"], bookTocDepth = d}
+
 emptyBook :: Book
 emptyBook =
   Book
@@ -160,7 +164,20 @@ tests =
           linesWith "<ol>" (navDocument cfg0 {epLanguage = "en"} ft emptyBook {bookToc = [numbered "1"]})
             @?= ["<ol><li><a href=\"a.xhtml#intro\">1 はじめに</a></li></ol>"],
         testCase "the nav element is the toc" $
-          linesWith "<nav" (navDocument cfg0 ft emptyBook) @?= ["<nav epub:type=\"toc\" id=\"toc\">"]
+          linesWith "<nav" (navDocument cfg0 ft emptyBook) @?= ["<nav epub:type=\"toc\" id=\"toc\">"],
+        -- golem-epub ADR 0002
+        testCase "@toc depth=1: only the headings of level 1, no nested ol" $
+          linesWith "<ol>" (navDocument cfg0 ft (threeLevels (Just 1)))
+            @?= ["<ol><li><a href=\"a.xhtml#c1\">章</a></li></ol>"],
+        testCase "@toc depth=2: no heading of level 3, level 2 nested under level 1" $
+          linesWith "<ol>" (navDocument cfg0 ft (threeLevels (Just 2)))
+            @?= ["<ol><li><a href=\"a.xhtml#c1\">章</a><ol><li><a href=\"a.xhtml#s1\">節</a></li></ol></li></ol>"],
+        testCase "no @toc: every level, nested" $
+          linesWith "<ol>" (navDocument cfg0 ft (threeLevels Nothing))
+            @?= ["<ol><li><a href=\"a.xhtml#c1\">章</a><ol><li><a href=\"a.xhtml#s1\">節</a><ol><li><a href=\"a.xhtml#t1\">項</a></li></ol></li></ol></li></ol>"],
+        testCase "nothing within the depth: one link to the navigation document itself" $
+          linesWith "<ol>" (navDocument cfg0 ft emptyBook {bookToc = [entry 2 fidA "s1" "節"], bookTocDepth = Just 1})
+            @?= ["<ol><li><a href=\"#toc\">" <> epTitle cfg0 <> "</a></li></ol>"]
       ],
     testGroup
       "container"

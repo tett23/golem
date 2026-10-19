@@ -1170,7 +1170,8 @@ indexPage cfg ft book =
               <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage cfg) n)) (teNumber te)
               <> escapeXml (T.concat (map inlineText (teTitle te)))
               <> "</a></li>\n"
-          | te <- bookToc book
+          | -- within the depth of @toc (golem-epub ADR 0002)
+            te <- tocWithinDepth book
           ]
    in T.concat
         [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"",

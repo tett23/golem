@@ -92,6 +92,15 @@ tests =
         let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) "b", Cite (sp 1 1) "a", Cite (sp 1 2) "b"]]]
         bookBibliographies (fst (assemble cfg noEval docs)) @?= [(Nothing, [("b", 1), ("a", 2)])],
       multipleListTests,
+      testCase "tocWithinDepth: every entry without @toc, those within its depth in order with it (golem-epub ADR 0002)" $ do
+        let docs d =
+              [ Document (FileId 1) ([Block (sp 1 0) Nothing (ChannelOutput (TocOutput n)) | Just n <- [d]] <> [heading 1 10 1 noHeadingAttrs Nothing "一", heading 1 20 2 noHeadingAttrs Nothing "節", heading 1 30 3 noHeadingAttrs Nothing "項", heading 1 40 1 noHeadingAttrs Nothing "二"])
+              ]
+            levels d = map teLevel (tocWithinDepth (fst (assemble cfg noEval (docs d))))
+        levels Nothing @?= [1, 2, 3, 1]
+        levels (Just 1) @?= [1, 1]
+        levels (Just 2) @?= [1, 2, 1]
+        levels (Just 3) @?= [1, 2, 3, 1],
       diagnosticCodes
     ]
 
