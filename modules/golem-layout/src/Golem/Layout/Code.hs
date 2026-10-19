@@ -25,7 +25,7 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Layout.CharClass (CharClass (..), charClass)
-import Golem.Layout.Japanese (isVariationSelector)
+import Golem.Layout.Japanese (isExtending)
 
 type Sp = Integer
 
@@ -57,7 +57,7 @@ codeAtomsColored shape = concatMap (\(col, t) -> concatMap (atoms col) (T.groupB
     blank c = c == ' ' || c == '\t'
     sameRun a b
       | blank a || blank b = False
-      | otherwise = isVariationSelector b || latin a == latin b
+      | otherwise = isExtending b || latin a == latin b
     atoms col r = case T.unpack r of
       " " -> [ASpace]
       "\t" -> [ATab]
