@@ -34,20 +34,17 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - **SVG の動く中身**（未実装、[docs/adr 0039](adr/0039-svg-active-content-in-html-and-epub.md)）：HTML と EPUB に写す SVG の図版に動く中身があれば G0814 で拒む。XML として読めない SVG も拒む。
 - **PDF の図版の取り込みの上限**（未実装、[docs/adr 0040](adr/0040-pdf-import-resource-limits.md)）：展開の合計、ページの木、相互参照、予測子、内容のストリームに上限を設ける。
-- **制御文字と glob のメタ文字**（未実装、[docs/adr 0042](adr/0042-control-characters-and-glob-metacharacters.md)）：出力に書けない文字を G0328 と G0289 で拒み、端末に出す diagnostic の制御文字をエスケープし、LSP の監視のパターンをエスケープする。
 - **表のファイルの大きさの上限**（未実装、[docs/adr 0043](adr/0043-table-file-size-limits.md)）：大きすぎる表のファイルを G0288 で拒む。
 
 ### 既知の不具合の修正
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
 
-- **IR の整数の範囲**（未実装、[golem-doc ADR 0006](golem-doc/adr/0006-integer-range-in-ir.md)）：IR の整数を 64 ビットの範囲に限り、範囲の外を G0291 にする。
 - **複数の `@index` と `@bibliography`**（未実装、[golem-doc ADR 0008](golem-doc/adr/0008-multiple-index-and-bibliography.md)）：複数の一覧を置けるようにし、項目が載る一覧と HTML の `id` を決める。
 - **結合文字**（未実装、[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）：結合文字を前の字と一つの箱に組む。
 - **ナビゲーション文書の深さ**（未実装、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）：`@toc` の深さをナビゲーション文書と `index.xhtml` に当てる。
 - **浮動小数点数の桁あふれ**（未実装、[golem-eval ADR 0005](golem-eval/adr/0005-float-overflow.md)）：正確な値を一度だけ丸めて計算し、比較を正確に行う。
 - **HTML の引用の印のリンク**（未実装、[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)）：引用の印を、その印が載る参考文献の一覧のある文書へのリンクにする。
-- **本文の中のコードの空白**（未実装、[golem-layout ADR 0017](golem-layout/adr/0017-spaces-inside-inline-code.md)）：コードの空白を伸び縮みさせない。
 - **URL の改行と注の印の後の空き**（未実装、[golem-layout ADR 0018](golem-layout/adr/0018-url-line-breaks.md)）：URL の中で改行できる位置を増やし、注の印の後の空白を四分アキにする。
 - **`style.toml` の値の誤りの位置**（未実装、[golem-project ADR 0008](golem-project/adr/0008-style-toml-value-positions.md)）：値の誤りと、読み込んだ後の検査の誤りを、値の位置に出す。
 

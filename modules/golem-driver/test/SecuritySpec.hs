@@ -39,7 +39,13 @@ securityTests :: TestTree
 securityTests =
   testGroup
     "untrusted projects (docs/adr ADR 0035)"
-    [ testCase "build as a symbolic link out of the project is G0813, and nothing there is removed" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+    [ -- docs/adr ADR 0042: the same manuscript is refused for every target
+      testCase "U+0001 in the text stops the text and the PDF builds with G0289" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        project tmp "" (withBodyFont horizontalStyle) "前\SOH後\n" (bodyFontFiles horizontalStyle)
+        forM_ [TargetText, TargetPdf] $ \t -> do
+          r <- build (defaultOptions tmp) {optTargets = Just [t], optFonts = fakeProvider}
+          (map diagCode (filter isError (brDiagnostics r)), brWritten r) @?= ([DiagnosticCode "G0289"], []),
+      testCase "build as a symbolic link out of the project is G0813, and nothing there is removed" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         v <- victim tmp
         let root = tmp </> "p"
         createDirectoryIfMissing True root

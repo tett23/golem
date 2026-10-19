@@ -4,6 +4,7 @@ mirror it and are checked against it by round-trip tests.
 -}
 module Golem.Doc.IR
   ( abiVersion,
+    inInt64,
     Document (..),
     Block (..),
     BlockBody (..),
@@ -44,6 +45,13 @@ import Data.Text qualified as T
 import Data.Void (Void)
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
+
+{- | Whether an integer is within the CDDL @int64@ (golem-doc ADR 0006):
+from -2^63 to 2^63 - 1, the range of the integers of the IR. It is the
+range of 'Int' too.
+-}
+inInt64 :: Integer -> Bool
+inInt64 n = n >= toInteger (minBound :: Int) && n <= toInteger (maxBound :: Int)
 
 -- | The ABI version shared with plugins. Bump on any change to the IR.
 abiVersion :: Int

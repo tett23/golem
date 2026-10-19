@@ -158,7 +158,7 @@ command-request = [0, name: tstr, args: [* argument],
                    slots: [* inlines], span]
 filter-request = [1, name: tstr, document]
 argument = [0, value] / [1, key: tstr, value]
-value = int / float / tstr / bool / null / [* value]
+value = int64 / float / tstr / bool / null / [* value]
 response = [output: inlines / document,
             diagnostics: [* plugin-diagnostic]]
 plugin-diagnostic = [code: tstr, severity: 0 / 1, span, message: tstr]

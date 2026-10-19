@@ -5,11 +5,13 @@ import BibliographySpec qualified
 import CborExprSpec qualified
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
+import Control.Exception (ErrorCall, evaluate, try)
 import Data.ByteString qualified as BS
 import Data.Either (fromLeft, isLeft)
 import Gen
 import Golem.Doc.Cbor
 import Golem.Doc.IR
+import Golem.Doc.Numerals (kanji)
 import Golem.Doc.Validate
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
@@ -43,7 +45,47 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, AssembleSpec.tests, BibliographySpec.tests, ListMarkersSpec.tests, CborExprSpec.tests, NumberingSpec.tests, verticalNumbers]
+  testGroup "golem-doc" [cbor, AssembleSpec.tests, BibliographySpec.tests, ListMarkersSpec.tests, CborExprSpec.tests, NumberingSpec.tests, verticalNumbers, int64Tests]
+
+-- | The integers of the IR are int64 (golem-doc ADR 0006).
+int64Tests :: TestTree
+int64Tests =
+  testGroup
+    "the integers of the IR are int64 (golem-doc ADR 0006)"
+    [ testCase "the ends of int64 survive the CBOR round trip" $ do
+        let is = [Number sp n Nothing | n <- [2 ^ (63 :: Int) - 1, negate (2 ^ (63 :: Int))]]
+        decodeInlines (encodeInlines is) @?= Right is,
+      testCase "a Number of 2^63 is out of range" $
+        inl (TList [TInt 9, spT, TInteger (2 ^ (63 :: Int)), TNull]) @?= Left outOfRange,
+      testCase "a Number of -2^63 - 1 is out of range" $
+        inl (TList [TInt 9, spT, TInteger (negate (2 ^ (63 :: Int)) - 1), TNull]) @?= Left outOfRange,
+      testCase "a Number as a bignum (tag 2 and 3) is out of range" $ do
+        inl (TList [TInt 9, spT, TInteger (2 ^ (70 :: Int)), TNull]) @?= Left outOfRange
+        inl (TList [TInt 9, spT, TInteger (negate (2 ^ (70 :: Int))), TNull]) @?= Left outOfRange,
+      testCase "the start of a span at 2^64 + 5 is not read as 5" $
+        inl (TList [TInt 0, TList [TInt 0, TInteger (2 ^ (64 :: Int) + 5), TInteger (2 ^ (64 :: Int) + 6)], TString "a"]) @?= Left outOfRange,
+      testCase "the other integers: @number, aki, a code line, an expression" $ do
+        let big = TInteger (2 ^ (63 :: Int))
+            doc body = decodeDocument (toStrictByteString (encodeTerm (TList [TInt abiVersion, TInt 0, TList [TList [spT, TNull, body]]])))
+        doc (TList [TInt 1, TInt 1, TList [TNull, big, TBool False, TBool False], TList []]) @?= Left outOfRange
+        doc (TList [TInt 6, TList [TNull, TNull, TNull, TNull, TBool False, TList [TList [TString "a", big, TNull, TBool False, TList []]]]]) @?= Left outOfRange
+        inl (TList [TInt 18, spT, TNull, big]) @?= Left outOfRange
+        inl (TList [TInt 18, spT, TList [TInt 1, big], TNull]) @?= Left outOfRange
+        inl (TList [TInt 11, spT, TList [TInt 0, spT, big]]) @?= Left outOfRange,
+      testCase "encoding an integer out of range is a bug of the host" $ do
+        r <- try (evaluate (BS.length (encodeInlines [Number sp (2 ^ (63 :: Int)) Nothing])))
+        case r of
+          Left (_ :: ErrorCall) -> pure ()
+          Right _ -> assertFailure "encoded",
+      testCase "kanji up to the ends of int64" $ do
+        kanji (2 ^ (63 :: Int) - 1) @?= "九百二十二京三千三百七十二兆三百六十八億五千四百七十七万五千八百七"
+        kanji (negate (2 ^ (63 :: Int))) @?= "マイナス九百二十二京三千三百七十二兆三百六十八億五千四百七十七万五千八百八"
+        kanji (10 ^ (16 :: Int)) @?= "一京"
+    ]
+  where
+    spT = TList [TInt 0, TInt 0, TInt 1]
+    inl t = decodeInlines (toStrictByteString (encodeTerm (TList [t])))
+    outOfRange = "スキーマに合いません: 整数が範囲の外です"
 
 -- | The vertical style of the numbers of a book (golem-parser ADR 0011).
 verticalNumbers :: TestTree
