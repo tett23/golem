@@ -8,7 +8,7 @@
 決定性は、一箇所の注意では保てない。
 時計、乱数、環境変数、ファイルの列挙の順、ハッシュ表の走査の順、並列の処理の完了の順、浮動小数点数、ネイティブライブラリのバージョンのどれか一つが入力の外から入り込めば、出力は揺れる。
 そこで、すべてのモジュールが従う規則を docs/adr の ADR 0002 が定めている。
-この章は、その規則を、コードを書くときの注意として並べ直す。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0002-determinism.md]（docs/adr の ADR 0002「決定性の規則」）]
+この章は、その規則を、コードを書くときの注意として並べ直す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0002-determinism.md]（docs/adr の ADR 0002「決定性の規則」）]
 
 ## 入力の外から値を持ち込まない
 
@@ -41,7 +41,7 @@ diagnostics の出力の順も、重大度、ファイルの順、位置の順�
 レイアウトの寸法は整数の sp（1pt = 65536sp）で表し、浮動小数点数を使わない。[index reading=sp: sp]
 [code: style.toml] の寸法は、読み込みの時点で sp に変換する。
 
-式の言語の浮動小数点数は、記法の仕様の「数の規則」に従う。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0001-expression-language-and-numerics.md]（golem-eval ADR 0001「式の言語と数の規則」）]
+式の言語の浮動小数点数は、記法の仕様の「数の規則」に従う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-eval/adr/0001-expression-language-and-numerics.md]（golem-eval ADR 0001「式の言語と数の規則」）]
 
 - IEEE 754 の倍精度で表し、丸めは最近接偶数丸めとする。四則演算と [code: sqrt] の結果は、この規格で一つに定まる。
 - 超越関数（三角関数、指数関数、対数関数）は v1 では持たない。結果が実行の環境の数学ライブラリで最後の桁まで一致する保証がないからである。
@@ -67,7 +67,7 @@ import を渡さず、NaN を正規化し、relaxed SIMD を止め、命令の�
 Golem のバージョンは入力の一部である。
 バージョンが変われば、出力が変わってよい。
 PDF の Producer とインスタンス ID には Golem のバージョンが入るので、原稿を変えなくても、バージョンを上げれば PDF のバイト列は変わる。
-異なるバージョンの Golem のあいだで出力が一致することは求めない。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0005-producer.md]（golem-pdf ADR 0005「PDF の Producer に Golem の版を書く」）]
+異なるバージョンの Golem のあいだで出力が一致することは求めない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0005-producer.md]（golem-pdf ADR 0005「PDF の Producer に Golem の版を書く」）]
 
 二つのマニュアルの奥付には、組んだコミットのハッシュが入る。
 このため、マニュアルの PDF と HTML は、内容を変えていないコミットでも奥付の分だけバイト列が変わる。
@@ -89,7 +89,7 @@ EPUB の決定性（zip のエントリの時刻と順序の固定）は v2 で�
 - CI の [code: determinism] ジョブで、x86-64 と aarch64 の出力のハッシュを比べる（第[ref-number ci-jobs]章）。
 - リリースのワークフローで、三つの配布物と CI のビルドの出力のハッシュを比べる（第[ref-number release]章）。
 
-[code: scripts/env-determinism/check.sh] は、決まった入力を基準の環境で組み、環境を変えて組み直し、[code: build/] の下のファイルの SHA-256、終了コード、標準出力と標準エラー出力（[code: --format json] の diagnostics）を比べる。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0029-environment-variation-determinism-test.md]（docs/adr の ADR 0029「実行環境を変えて出力の一致を確かめる検査」）]
+[code: scripts/env-determinism/check.sh] は、決まった入力を基準の環境で組み、環境を変えて組み直し、[code: build/] の下のファイルの SHA-256、終了コード、標準出力と標準エラー出力（[code: --format json] の diagnostics）を比べる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0029-environment-variation-determinism-test.md]（docs/adr の ADR 0029「実行環境を変えて出力の一致を確かめる検査」）]
 基準の環境は、環境変数を空にして [code: PATH=/usr/bin:/bin]、作業用の [code: HOME]、[code: LANG=C.UTF-8]、[code: TZ=UTC]、umask 022 だけを与えたものである。
 一つずつ変える変化は次のとおりである。
 
@@ -147,7 +147,7 @@ CI は二つを付けて実行する。
 
 逆に、画像の比較で見えないものもある。
 PDF のテキスト層（ToUnicode）、メタデータ、PDF/X-4 の要件、しおり、文書の構造は、画像には現れない。
-Golem はかつて、合字のグリフを一字めだけに対応させる ToUnicode を書いていた。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0030-ligature-text-layer.md]（golem-driver ADR 0030「合字のテキスト層」で直した）]
+Golem はかつて、合字のグリフを一字めだけに対応させる ToUnicode を書いていた。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0030-ligature-text-layer.md]（golem-driver ADR 0030「合字のテキスト層」で直した）]
 この誤りは、画面では正しく見えた。
 見た目を変えない変更でバイト列が変わることもあるので、バイト列の比較は見た目の変化の判定には使えない。
 二つの検査は、互いの代わりにならない。
@@ -175,7 +175,7 @@ PDF を画像にする道具（ラスタライザ）には、次のものがあ�
 
 HTML と EPUB は、ブラウザで開いて画面を撮って比べる。
 Playwright（Apache-2.0）の [code: toHaveScreenshot] は、撮った画像を参照の画像と pixelmatch で比べ、画素ごとの色の差の閾値と、違ってよい画素の数を指定できる。
-ただし、ブラウザの描画は OS、ブラウザのバージョン、設定で変わるので、参照の画像はブラウザと OS の組ごとに持つ必要がある。[note: [code: https://playwright.dev/docs/test-snapshots]（Playwright の Visual comparisons）]
+ただし、ブラウザの描画は OS、ブラウザのバージョン、設定で変わるので、参照の画像はブラウザと OS の組ごとに持つ必要がある。[note: [style url: https://playwright.dev/docs/test-snapshots]（Playwright の Visual comparisons）]
 Puppeteer（Apache-2.0）は画面を撮るだけで、比べる部分は自分で書く。
 BackstopJS（MIT）と reg-suit（MIT）は、画面の撮影か画像の比較とその報告をまとめた道具である。
 Percy のような外部のサービスは、参照の画像をリポジトリの外に置くことになり、手元と CI で同じ検査を再現できないので、候補から外す。
@@ -189,11 +189,11 @@ golem-test-support の [code: needsTool] と [code: optionalTool] で書けば�
 LaTeX のパッケージの検査に使う l3build は、画像を比べない。
 テストの文書が箱の中身をログに書き、そのログを保存したログと比べる。
 カーネルや依存の変更でログの中身が変わると、PDF の見た目が同じでもテストが失敗する。
-この弱点を補うために、PDF を [code: pdftoppm] で PNG にし、そのハッシュを保存したハッシュと比べる ppmcheckpdf（LPPL 1.3c）が作られている。[note: [code: https://ctan.org/pkg/ppmcheckpdf]（CTAN の ppmcheckpdf）]
+この弱点を補うために、PDF を [code: pdftoppm] で PNG にし、そのハッシュを保存したハッシュと比べる ppmcheckpdf（LPPL 1.3c）が作られている。[note: [style url: https://ctan.org/pkg/ppmcheckpdf]（CTAN の ppmcheckpdf）]
 
 Typst は、ページの組版のテストを自前の描画系で PNG にし、リポジトリに置いた参照の画像と比べる。
 参照の画像は小さく保つ上限があり、一部のテストは画像の代わりにハッシュだけをコミットする。
-参照を更新するコマンドがあり、失敗すると差を示す HTML の報告を書く。[note: [code: https://github.com/typst/typst/blob/main/tests/README.md]（Typst の tests/README.md）]
+参照を更新するコマンドがあり、失敗すると差を示す HTML の報告を書く。[note: [style url: https://github.com/typst/typst/blob/main/tests/README.md]（Typst の tests/README.md）]
 Golem には自前の描画系がないので、外部のラスタライザを使うことになる。
 
 ### 費用と注意

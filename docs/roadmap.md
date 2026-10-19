@@ -33,7 +33,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - **結合文字**（未実装、[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）：結合文字を前の字と一つの箱に組む。
 - **ナビゲーション文書の深さ**（未実装、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）：`@toc` の深さをナビゲーション文書と `index.xhtml` に当てる。
-- **URL の改行と注の印の後の空き**（未実装、[golem-layout ADR 0018](golem-layout/adr/0018-url-line-breaks.md)）：URL の中で改行できる位置を増やし、注の印の後の空白を四分アキにする。
 
 
 ## v0.1.0-rc4

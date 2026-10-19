@@ -3,7 +3,7 @@
 
 Golem は、原稿とスタイルをリポジトリで管理し、push のたびに CI が成果物を組む使い方を前提にしている。
 この使い方が成り立つ根拠は、出力の[strong: 決定性]にある。[index reading=けっていせい: 決定性]
-同じ入力からバイト単位で同じ PDF ができるとき、そしてそのときに限り、出力の差分は変更の影響と一致する。[note: [code: https://github.com/tett23/golem/blob/main/docs/specifications.md#golem-が強いるワークフロー]（仕様書の「Golem が強いるワークフロー」の節）]
+同じ入力からバイト単位で同じ PDF ができるとき、そしてそのときに限り、出力の差分は変更の影響と一致する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#golem-が強いるワークフロー]（仕様書の「Golem が強いるワークフロー」の節）]
 
 CI に載せるだけなら、[code: golem build] を呼んで終了コードを見れば足りる。
 決定性を使うと、その先ができる。
@@ -13,7 +13,7 @@ CI に載せるだけなら、[code: golem build] を呼んで終了コードを
 ## golem を用意する
 
 CI では、GitHub Releases の配布物を使うのが手軽である。
-Linux の配布物は musl で完全に静的にリンクしてあり、ディストリビューションを問わない。[note: [code: https://github.com/tett23/golem/blob/main/README.md#installation]（README の Installation の節）]
+Linux の配布物は musl で完全に静的にリンクしてあり、ディストリビューションを問わない。[note: [style url: https://github.com/tett23/golem/blob/main/README.md#installation]（README の Installation の節）]
 
 | アーカイブ | 対象 |
 | --- | --- |
@@ -44,7 +44,7 @@ $ gh attestation verify "golem-$TAG-x86_64-linux.tar.gz" --repo tett23/golem
 CI で使う [code: golem] のバージョンは、タグで固定する。
 Golem のバージョンは入力の一部であり、バージョンが変われば出力のバイト列も変わってよいと決めているからである。
 PDF の Producer にもバージョンが入る（[code: Golem 0.1.0-rc1] の形）。
-最新のバージョンを毎回取ってくる CI は、Golem の更新だけで出力が変わり、差分の意味が崩れる。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0002-determinism.md]（docs/adr の ADR 0002「決定性の規則」）]
+最新のバージョンを毎回取ってくる CI は、Golem の更新だけで出力が変わり、差分の意味が崩れる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0002-determinism.md]（docs/adr の ADR 0002「決定性の規則」）]
 
 配布物はルート証明書を同梱せず、OS の証明書のストアを読む。
 ca-certificates のない最小構成のコンテナで [code: golem new] やプラグインの取得をするときは、ca-certificates を入れるか、[code: SSL_CERT_FILE] で証明書のファイルを指定する。
@@ -70,7 +70,7 @@ JSON の形は第[ref-number diagnostics]章で説明した。
 出力は [code: build/<ターゲット>/] に書かれる。
 CI の成果物として上げるのは、このディレクトリである。
 
-入稿の前の CI では、組む前に [code: golem preflight] を走らせる。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
+入稿の前の CI では、組む前に [code: golem preflight] を走らせる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 
 ```sh
 $ golem preflight --marks japanese --format json \
@@ -106,7 +106,7 @@ Golem のマニュアル自身がこの形で組まれている（第[ref-number
 フォントがなくても、HTML、EPUB、プレーンテキストは組める。
 PDF だけが G0802 で止まる。
 
-プラグインを使うプロジェクトでは、[code: plugins.lock] をリポジトリにコミットし、CI で組む前に [code: golem plugin fetch] を実行する。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0002-distribution-and-lock.md]（golem-plugin ADR 0002「プラグインの取得とロックファイル」）]
+プラグインを使うプロジェクトでは、[code: plugins.lock] をリポジトリにコミットし、CI で組む前に [code: golem plugin fetch] を実行する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0002-distribution-and-lock.md]（golem-plugin ADR 0002「プラグインの取得とロックファイル」）]
 
 ```sh
 $ golem plugin fetch
@@ -156,7 +156,7 @@ Golem の開発の CI も、[code: scripts/determinism.sh] で同じ形の一覧
 
 インスタンス ID には、マニフェスト、[code: style.toml]、原稿、出力を変えるオプションが入る。[index reading="いんすたんすID": インスタンス ID]
 閲覧用と入稿用の PDF のように、オプションだけが違う二つの PDF は、同じドキュメント ID と異なるインスタンス ID を持つ。
-ハッシュの比較では、この二つは別のファイルとして扱えばよい。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0004-crop-marks-and-bleed.md]（golem-pdf ADR 0004「トンボと塗り足し」の「インスタンス ID の入力」）]
+ハッシュの比較では、この二つは別のファイルとして扱えばよい。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0004-crop-marks-and-bleed.md]（golem-pdf ADR 0004「トンボと塗り足し」の「インスタンス ID の入力」）]
 
 ## ページ画像の差分を取る
 
@@ -165,7 +165,7 @@ Golem の開発の CI も、[code: scripts/determinism.sh] で同じ形の一覧
 
 Golem 自身は、ページ画像の差分を取る仕組みを持たない。[index reading="ぺーじがぞうのさぶん": ページ画像の差分]
 Golem の責務は、差分が意味を持つ決定的な出力を作るところまでであり、差分は外部の道具に任せると決めている。
-差分の仕組みを自前で持つ可能性はあるが、GUI を作るより後になる。[note: [code: https://github.com/tett23/golem/blob/main/docs/roadmap.md]（docs/roadmap.md の v3 の「GUI」）]
+差分の仕組みを自前で持つ可能性はあるが、GUI を作るより後になる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/roadmap.md]（docs/roadmap.md の v3 の「GUI」）]
 
 外部の道具の組み合わせは自由である。
 たとえば Poppler の [code: pdftoppm] でページを PNG にし、ImageMagick の [code: compare] で画素の差を数えられる。

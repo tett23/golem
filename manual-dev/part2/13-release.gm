@@ -3,7 +3,7 @@
 
 Golem の実行ファイルは、GitHub Releases で配布する。[index reading=りりーす: リリース]
 配布物を作り、検査し、下書きのリリースを作るところまでは [code: .github/workflows/release.yml] が自動で行う。
-リリースノートを読んで直し、公開するのは人である。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0004-binary-distribution-and-release.md]（docs/adr の ADR 0004「実行ファイルの配布とリリースの自動化」）]
+リリースノートを読んで直し、公開するのは人である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0004-binary-distribution-and-release.md]（docs/adr の ADR 0004「実行ファイルの配布とリリースの自動化」）]
 
 ## バージョン
 
@@ -20,7 +20,7 @@ Golem のバージョンは [code: X.Y.Z] か、プレリリースの識別子�
 [code: v] で始まるタグをリリースとして扱う。
 [code: v0.1.0-rc1] のようにバージョンの後に識別子が付くタグは、プレリリースとする。
 
-タグは次のとおり扱う。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0008-first-release-verification.md]（docs/adr の ADR 0008「最初のプレリリース v0.1.0-rc1 でリリースのワークフローを確かめる」）]
+タグは次のとおり扱う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0008-first-release-verification.md]（docs/adr の ADR 0008「最初のプレリリース v0.1.0-rc1 でリリースのワークフローを確かめる」）]
 
 - push したタグを、別のコミットに付け直さない。
 - 公開していないリリースのタグは、ワークフローが失敗したとき、または配布物の確かめが通らなかったときに限り削除してよい。削除したタグの名前は再び使わず、プレリリースの識別子を進める（[code: rc1] の次は [code: rc2]）。
@@ -41,7 +41,7 @@ $ gh run rerun <実行の ID> --failed
 + 下書きのリリースノートを読み、分類やまとめ方がおかしければ手で直す。
 + GitHub の Releases の画面で、下書きを公開する。
 
-監査は、プレリリース（[code: rc] などの識別子が付くタグ）を含め、[code: v] で始まるタグのリリースのたびにする。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0035-security-hardening.md]（docs/adr の ADR 0035「信頼できない入力に対する防御を固める」）]
+監査は、プレリリース（[code: rc] などの識別子が付くタグ）を含め、[code: v] で始まるタグのリリースのたびにする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0035-security-hardening.md]（docs/adr の ADR 0035「信頼できない入力に対する防御を固める」）]
 監査の記録は、ほかの記録と同じく、コミットしたあとは変更しない。
 見つかった問題は、失敗するテストを先に書いてから直し、仕様を変える修正には ADR を書く。
 監査の記録と修正が [code: main] に入るまで、タグを付けない。
@@ -134,7 +134,7 @@ Windows と x86-64 の macOS は配布の対象にしていない。
 検査は、Markdown のリンク、参照形式のリンク、生の URL、[code: <https://…>] の自動リンク、[code: www.] の自動リンク、[code: <a>] のタグをすべて見る。
 [code: http://] の URL は、許可リストに書いてあっても失敗にする。
 兄弟のリポジトリへリンクする必要ができたら、許可リストに 1 行足すプルリクエストを出す。
-[code: https://github.com/tett23/] の一行で済ませないのは、どのリポジトリへのリンクを許すかをレビューで見えるようにするためである。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0044-release-workflow-hardening.md]（docs/adr の ADR 0044「リリースのワークフローの固め方」）]
+[code: https://github.com/tett23/] の一行で済ませないのは、どのリポジトリへのリンクを許すかをレビューで見えるようにするためである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0044-release-workflow-hardening.md]（docs/adr の ADR 0044「リリースのワークフローの固め方」）]
 
 ノートを書く処理は、配布物を公開する [code: release] ジョブから分けた [code: notes] ジョブで動く。
 [code: notes] の権限は [code: contents: read] だけであり、来歴の証明に使う OIDC のトークンを持たない。

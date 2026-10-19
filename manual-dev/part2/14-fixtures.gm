@@ -10,7 +10,7 @@ Golem のテストは、実際の本に近い入力を必要とする。
 
 ## テスト用の素材
 
-フィクスチャに外部の文章やフォントを加えるときは、次の決まりに従う。[index reading=ふぃくすちゃ: フィクスチャ][note: [code: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md の「テスト用の素材」の節）]
+フィクスチャに外部の文章やフォントを加えるときは、次の決まりに従う。[index reading=ふぃくすちゃ: フィクスチャ][note: [style url: https://github.com/tett23/golem/blob/main/CONTRIBUTING.md]（CONTRIBUTING.md の「テスト用の素材」の節）]
 
 - ライセンスを確かめ、ライセンスの文書を一緒に置く。
 - 出典は、そのフィクスチャの README に書く。
@@ -30,7 +30,7 @@ golem-driver のフィクスチャ（[code: modules/golem-driver/test/fixtures/]
 どちらも著作権の保護期間が満了している。
 各プロジェクトは、使うフォントとそのライセンスを [code: fonts/] に持ち、そのディレクトリで [code: golem build] を実行すれば組める。
 
-[code: pd/] の十冊は、二冊では足りない組版の難所を集めたものである。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0026-ten-public-domain-fixtures.md]（docs/adr の ADR 0026「組みにくい公有の作品を fixture に十作加える」）]
+[code: pd/] の十冊は、二冊では足りない組版の難所を集めたものである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0026-ten-public-domain-fixtures.md]（docs/adr の ADR 0026「組みにくい公有の作品を fixture に十作加える」）]
 英語は、散文が主の戯曲、韻文の戯曲、字下げした詩、二段組の例文を持つ教科書、巻末の注を持つ小説の五冊で、Project Gutenberg から作る。
 日本語は、ルビの多い小説、短歌、字下げの深い詩、返り点を含む史伝、戯曲の五冊で、青空文庫から作る。
 どれも日本と米国で著作権の保護期間が満了している。
@@ -51,7 +51,7 @@ golem-driver のテストは十冊を出力を書かずに検査し、環境変�
 $ GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 ```
 
-変換の実行ファイル [code: golem-fixtures] は、五つの命令を持つ。[index reading="golem-fixtures": golem-fixtures][note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0023-fixture-converters-without-python.md]（docs/adr の ADR 0023「fixture の変換を Python から移す」）]
+変換の実行ファイル [code: golem-fixtures] は、五つの命令を持つ。[index reading="golem-fixtures": golem-fixtures][note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0023-fixture-converters-without-python.md]（docs/adr の ADR 0023「fixture の変換を Python から移す」）]
 
 ```text
 golem-fixtures gutenberg-play INPUT.txt OUTPUT.gm
@@ -94,7 +94,7 @@ Haskell のパッケージ、GHC のランタイム、GMP、HarfBuzz、FreeType�
 それぞれのライセンスは、配布物の [code: THIRD_PARTY_LICENSES/] に入れる。
 
 入れるものは、固定の一覧ではなく、実行ファイルのリンクマップから決める。[index reading=らいせんす: ライセンス][index reading="THIRD_PARTY_LICENSES": THIRD_PARTY_LICENSES]
-固定の一覧は、依存が変わるたびに手で直す必要があり、直し忘れても気付けないからである。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0007-third-party-licenses.md]（docs/adr の ADR 0007「配布物の THIRD_PARTY_LICENSES にリンクしたものをすべて入れる」）]
+固定の一覧は、依存が変わるたびに手で直す必要があり、直し忘れても気付けないからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0007-third-party-licenses.md]（docs/adr の ADR 0007「配布物の THIRD_PARTY_LICENSES にリンクしたものをすべて入れる」）]
 
 + ビルドのスクリプトが、リンカーにリンクマップを書かせる。
 + [code: scripts/release/link-components.sh] が、実行ファイルに入ったアーカイブを一つずつ、ライセンスの文書を持つ構成要素（Haskell のパッケージ、GHC、GMP、wasmtime、Alpine のパッケージ、compiler-rt）に対応させる。
