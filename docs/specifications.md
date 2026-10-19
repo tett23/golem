@@ -2898,7 +2898,6 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 - **結合文字**：U+0301 のような結合文字を、前の字と一つにせず、別の箱として組む。
 - **EPUB のナビゲーション文書と `@toc` の深さ**：ナビゲーション文書は、`@toc` の `depth` を見ず、`@notoc` のない見出しをいつもすべて載せる。[golem-epub ADR 0001](golem-epub/adr/0001-epub-packaging.md) は `@toc` がない場合だけを定めており、`@toc` がある場合の振る舞いを定めていない。
 - **プラグインの独自の一覧**：「チャネル」の節は、用語集のような独自の一覧をプラグインで作れるとしている。しかし、チャネルを出力するブロック（IR の tag 8）は目次、索引、参考文献の三種類に固定されており、ほかに使えるチャネルは注だけである。プラグインが独自のチャネルに項目を送り、一覧として出す手段はない（[golem-doc ADR 0001](golem-doc/adr/0001-semantic-ir-in-cddl.md)、[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
-- **累乗の diagnostic の揺れ**：浮動小数点数の底か負の指数の `**` は、結果の大きさを倍精度で見積もってから、範囲の外（G0204 か 0）と計算の上限（G0286）を判定する。見積もりの誤差は指数の絶対値に比例して増えるので、真の値が範囲の境界の近くにある式では、指数を 1 変えるだけで G0286 と G0204、G0286 と 0 が入れ替わる。「設計原則」の「diagnostics の決定性」に反する（[golem-eval ADR 0005](golem-eval/adr/0005-float-overflow.md)、[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)）。
 
 ## 仕様が不明瞭な場合
 

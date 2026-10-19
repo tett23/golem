@@ -1,6 +1,6 @@
 # ADR 0005: 浮動小数点数の桁あふれ
 
-ステータス: 採択
+ステータス: 採択→累乗の判定の順序と G0286 の累乗の上限は [golem-eval ADR 0006](0006-exact-power-limit-before-range.md)
 
 ## 文脈
 
