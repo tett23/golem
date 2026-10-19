@@ -285,7 +285,18 @@ tomlMessageTests =
         assertBool err' ("G0306" `isInfixOf` err' && "知らないキーです: page.bindng" `isInfixOf` err')
         mapM_
           (\w -> assertBool (w <> " in " <> err <> err') (not (w `isInfixOf` (err <> err'))))
-          ["unexpected key", "missing key", "expected ", "lexical error", "parse error"]
+          ["unexpected key", "missing key", "expected ", "lexical error", "parse error"],
+      -- golem-project ADR 0008: the errors of style.toml are at their value
+      testCase "a padding without a unit is at the value of padding" $ do
+        (code, err) <- golemIn [("manifest.toml", manifestText), ("style.toml", "[page]\nsize = \"A5\"\n\n[paragraph-styles.code]\npadding = \"0\"\n"), ("a.gm", "本文。\n")] ["check"]
+        assertEqual err (ExitFailure 1) code
+        assertBool err (not ("style.toml:1:1" `isInfixOf` err))
+        assertBool err ("style.toml:5:11: error[G0306]" `isPrefixOf` err),
+      testCase "a paragraph style larger than the grid is at the value of size" $ do
+        let style = "[page]\nsize = \"A5\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 40\nlines = 30\nline-pitch = \"16pt\"\nposition = { top = \"14mm\", gutter = \"14mm\" }\n\n[paragraph-styles.body]\nsize = \"30Q\"\n"
+        (code, err) <- golemIn [("manifest.toml", manifestText), ("style.toml", style), ("a.gm", "本文。\n")] ["check"]
+        assertEqual err (ExitFailure 1) code
+        assertBool err ("style.toml:11:8: error[G0311]" `isInfixOf` err)
     ]
   where
     manifestText = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
