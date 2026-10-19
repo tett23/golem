@@ -170,14 +170,66 @@ jobs:
         if: steps.cddl.outputs.cache-hit != 'true'
         run: cargo install cddl --version "$CDDL_VERSION" --locked
       # peg-cli is built with the rest, for the check of the generated parser
-      - run: cabal build all peg-cli:exe:peg-hs
+      - id: build
+        run: cabal build all peg-cli:exe:peg-hs
       # in the plan of the build above, no library nor executable depends
       # on golem-test-support, which only the test suites use (docs/adr/0028)
       - name: Only the test suites depend on golem-test-support (docs/adr/0028)
         run: sh scripts/ci/test-only-deps.sh dist-newstyle/cache/plan.json
+      - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
+        uses: actions/cache@v6
+        with:
+          path: |
+            manual/fonts
+            manual-dev/fonts
+          key: manual-fonts-${{ hashFiles('scripts/manual/fetch-fonts.sh') }}
+      # The outputs of golem are made while the tests run, on the cores the
+      # tests leave idle (docs/adr/0045). They are made from a copy of the
+      # commit (a worktree with the fonts of the manuals), with a copy of
+      # golem: the tests copy modules/golem-driver/test/fixtures/sample,
+      # which scripts/determinism.sh and the EPUB below would build in
+      # place. scripts/determinism.sh builds the two manuals with
+      # scripts/manual/build.sh, which fails on a single diagnostic,
+      # notices included, and lists the hashes of their outputs; the
+      # manuals are built once, here, on both architectures (docs/adr/0002,
+      # docs/adr/0022, docs/adr/0024, docs/adr/0037)
+      - name: Outputs for the determinism check, in the background; the manuals build without diagnostics (docs/adr/0045)
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          cp "$(cabal list-bin -v0 golem)" "$RUNNER_TEMP/bin/golem"
+          git worktree add --detach "$RUNNER_TEMP/tree" HEAD
+          cp -R manual/fonts "$RUNNER_TEMP/tree/manual/fonts"
+          cp -R manual-dev/fonts "$RUNNER_TEMP/tree/manual-dev/fonts"
+          sh scripts/ci/bg.sh start determinism sh -c 'GOLEM="$RUNNER_TEMP/bin/golem" sh "$RUNNER_TEMP/tree/scripts/determinism.sh" > "$RUNNER_TEMP/determinism-${{ matrix.runner }}.txt"'
       - name: qpdf, and epubcheck on x86-64, are installed
         timeout-minutes: 5
         run: sh scripts/ci/bg.sh wait apt
+      # the EPUB of aarch64 is the same, by the determinism job
+      - name: The EPUB passes epubcheck, in the background (docs/adr/0045)
+        if: matrix.runner == 'ubuntu-24.04'
+        run: |
+          cp -R modules/golem-driver/test/fixtures/sample "$RUNNER_TEMP/epub"
+          sh scripts/ci/bg.sh start epub sh -c 'cd "$RUNNER_TEMP/epub" && "$RUNNER_TEMP/bin/golem" build --target epub && epubcheck build/epub/book.epub'
+      # the outputs do not change with the time zone, the locale,
+      # SOURCE_DATE_EPOCH, HOME, XDG_*, PATH, the umask, the path of the
+      # project, the times of its files and files nothing refers to; the
+      # changes take the same paths on both architectures (docs/adr/0029).
+      # check.sh copies every input it builds; it reads the checkout
+      - name: Japanese locales for the environment check
+        if: matrix.runner == 'ubuntu-24.04'
+        run: sudo locale-gen ja_JP.UTF-8 ja_JP.EUC-JP
+      - name: The outputs do not change with the environment, in the background (docs/adr/0029, docs/adr/0038, docs/adr/0045)
+        if: matrix.runner == 'ubuntu-24.04'
+        env:
+          # pull requests check the small inputs; pushes to main and the
+          # calls from release.yml check every input (docs/adr/0038)
+          QUICK: ${{ github.event_name == 'pull_request' && '--quick' || '' }}
+          GOLEM_REQUIRE_LOCALES: "1"
+          GOLEM_REQUIRE_FONTS: "1"
+        run: |
+          # QUICK is empty or one word
+          # shellcheck disable=SC2086
+          GOLEM="$RUNNER_TEMP/bin/golem" sh scripts/ci/bg.sh start env sh scripts/env-determinism/check.sh $QUICK
       # qpdf, cddl and openssl are installed above (openssl comes with the
       # runner image): a test that needs one of them fails here instead of
       # being skipped. A suite that does not finish in 10 minutes is
@@ -192,48 +244,23 @@ jobs:
         run: |
           scripts/gen-parser.sh
           git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs
-      - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
-        uses: actions/cache@v6
-        with:
-          path: |
-            manual/fonts
-            manual-dev/fonts
-          key: manual-fonts-${{ hashFiles('scripts/manual/fetch-fonts.sh') }}
-      # the EPUB of aarch64 is the same, by the determinism job
       - name: The EPUB passes epubcheck
         if: matrix.runner == 'ubuntu-24.04'
-        working-directory: modules/golem-driver/test/fixtures/sample
-        run: |
-          "$(cabal list-bin -v0 golem)" build --target epub
-          epubcheck build/epub/book.epub
-      # scripts/determinism.sh builds the two manuals with
-      # scripts/manual/build.sh, which fails on a single diagnostic,
-      # notices included, and lists the hashes of their outputs; the
-      # manuals are built once, here, on both architectures (docs/adr/0002,
-      # docs/adr/0022, docs/adr/0024, docs/adr/0037)
+        timeout-minutes: 10
+        run: sh scripts/ci/bg.sh wait epub
       - name: Outputs for the determinism check; the manuals build without diagnostics
-        run: GOLEM="$(cabal list-bin -v0 golem)" scripts/determinism.sh > determinism-${{ matrix.runner }}.txt
+        timeout-minutes: 15
+        run: |
+          sh scripts/ci/bg.sh wait determinism
+          mv "$RUNNER_TEMP/determinism-${{ matrix.runner }}.txt" .
       - uses: actions/upload-artifact@v7
         with:
           name: determinism-${{ matrix.runner }}
           path: determinism-${{ matrix.runner }}.txt
-      # the outputs do not change with the time zone, the locale,
-      # SOURCE_DATE_EPOCH, HOME, XDG_*, PATH, the umask, the path of the
-      # project, the times of its files and files nothing refers to; the
-      # changes take the same paths on both architectures (docs/adr/0029)
-      - name: Japanese locales for the environment check
-        if: matrix.runner == 'ubuntu-24.04'
-        run: sudo locale-gen ja_JP.UTF-8 ja_JP.EUC-JP
       - name: The outputs do not change with the environment (docs/adr/0029, docs/adr/0038)
         if: matrix.runner == 'ubuntu-24.04'
-        env:
-          # pull requests check the small inputs; pushes to main and the
-          # calls from release.yml check every input (docs/adr/0038)
-          QUICK: ${{ github.event_name == 'pull_request' && '--quick' || '' }}
-        run: |
-          # QUICK is empty or one word
-          # shellcheck disable=SC2086
-          GOLEM_REQUIRE_LOCALES=1 GOLEM_REQUIRE_FONTS=1 GOLEM="$(cabal list-bin -v0 golem)" sh scripts/env-determinism/check.sh $QUICK
+        timeout-minutes: 15
+        run: sh scripts/ci/bg.sh wait env
       # the PDF and the HTML of the manuals; those of aarch64 are the same,
       # by the determinism job (docs/adr/0022, docs/adr/0024)
       - name: The user manual (docs/adr/0022)
@@ -242,24 +269,32 @@ jobs:
         with:
           name: manual
           path: |
-            manual/build/pdf
-            manual/build/html
+            ${{ runner.temp }}/tree/manual/build/pdf
+            ${{ runner.temp }}/tree/manual/build/html
       - name: The developer manual (docs/adr/0024)
         if: matrix.runner == 'ubuntu-24.04'
         uses: actions/upload-artifact@v7
         with:
           name: manual-dev
           path: |
-            manual-dev/build/pdf
-            manual-dev/build/html
-      # pushes to main only: a pull request's cache would serve that pull
-      # request alone, under a key that changes with every commit
+            ${{ runner.temp }}/tree/manual-dev/build/pdf
+            ${{ runner.temp }}/tree/manual-dev/build/html
       - name: Save dist-newstyle (docs/adr/0009)
         if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6
         with:
           path: dist-newstyle
           key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ github.sha }}
+      # A pull request saves its own dist-newstyle once cabal build has
+      # succeeded, even when a later step fails, so that its next push
+      # builds on it (docs/adr/0045). Restore dist-newstyle above looks in
+      # the caches of the pull request first and then in those of main
+      - name: Save dist-newstyle of the pull request (docs/adr/0045)
+        if: always() && steps.build.outcome == 'success' && github.event_name == 'pull_request'
+        uses: actions/cache/save@v6
+        with:
+          path: dist-newstyle
+          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-pr-${{ github.event.pull_request.number }}-${{ github.sha }}-${{ github.run_attempt }}
 
   determinism:
     needs: build
