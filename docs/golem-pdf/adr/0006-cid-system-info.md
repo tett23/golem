@@ -1,6 +1,6 @@
 # ADR 0006: CIDSystemInfo と異体字の選択
 
-ステータス: 採択→ToUnicode で表せないクラスタに ActualText を使うことは [golem-driver ADR 0030](../../golem-driver/adr/0030-ligature-text-layer.md) で加えた
+ステータス: 採択→ToUnicode で表せないクラスタに ActualText を使うことは [golem-driver ADR 0030](../../golem-driver/adr/0030-ligature-text-layer.md) で加えた、異体字セレクタを前の字に付ける処理を結合文字に広げたことは [golem-driver ADR 0036](../../golem-driver/adr/0036-combining-characters.md)
 
 ## 文脈
 
