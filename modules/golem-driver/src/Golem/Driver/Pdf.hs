@@ -2758,10 +2758,11 @@ writeDocumentView inp geom fonts layout intent =
       {- the runs of a text in a look: its role and whether it is a Latin
       run; split into Latin and other runs where the two sides differ in
       role or in synthetic bold and slant (golem-driver ADR 0004, docs/adr ADR 0005);
-      a variation selector stays with the character before it (golem-pdf ADR 0006) -}
+      a combining character stays with the character before it, variation
+      selectors among them (golem-pdf ADR 0006, golem-driver ADR 0036) -}
       runsOf look txt
         | lkFace look == lkLatinFace look && lkSynthetic look == lkLatinSynthetic look && not (synBold (lkSynthetic look) || synBold (lkLatinSynthetic look)) = [(lkFace look, txt, False)]
-        | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isVariationSelector b || isLatin a == isLatin b) txt, not (T.null r), let latin = isLatin (T.head r)]
+        | otherwise = [(if latin then lkLatinFace look else lkFace look, r, latin) | r <- T.groupBy (\a b -> isExtending b || isLatin a == isLatin b) txt, not (T.null r), let latin = isLatin (T.head r)]
       -- the synthetic bold and slant of a run
       syntheticOf look latin = if latin then lkLatinSynthetic look else lkSynthetic look
       -- glyph marks of a text in a look starting at a point, and the glyphs used
@@ -2956,10 +2957,15 @@ writeDocumentView inp geom fonts layout intent =
                             let (base, reading) = T.breakOn "|" (bcText c)
                                 rt = T.drop 1 reading
                                 rsize = lkSize half
-                                baseLooks = zipWith const (bcBaseLooks c <> repeat look) (T.unpack base)
-                                advOf lk ch = toSp (lkSize lk) (lfAdvance fonts (shapingOf vertical lk ch) ch)
-                                baseAdv = zipWith advOf baseLooks (T.unpack base)
-                                readAdv = map (advOf half) (T.unpack rt)
+                                -- a base character with its combining characters is one base (golem-driver ADR 0036)
+                                baseUnits = clusters base
+                                baseLooks = zipWith const (bcBaseLooks c <> repeat look) baseUnits
+                                advOf lk u = case T.uncons u of
+                                  Just (ch, rest) | T.null rest -> toSp (lkSize lk) (lfAdvance fonts (shapingOf vertical lk ch) ch)
+                                  Just (ch, _) -> toSp (lkSize lk) (lfWordAdvance fonts (shapingOf vertical lk ch) u)
+                                  Nothing -> 0
+                                baseAdv = zipWith advOf baseLooks baseUnits
+                                readAdv = map (advOf half . T.singleton) (T.unpack rt)
                                 excess = max 0 (sum readAdv - w)
                                 rp = placeRuby (rubyStyleOf style (lkSize look)) (if kind == KindRuby then MonoRuby else GroupRuby) baseAdv readAdv (excess `div` 2, excess `div` 2)
                                 -- the reading sits beside the largest base character
@@ -2969,7 +2975,7 @@ writeDocumentView inp geom fonts layout intent =
                                 inColour lk (marks, glyphs)
                                   | lkColor lk /= lkColor look, Just sw <- swatchOf lk = ([P.Saved (P.SetColor sw : marks)], glyphs)
                                   | otherwise = (marks, glyphs)
-                                placed1 = [inColour lk (runAtU lk vertical False 0 (origin (off + pos)) (T.singleton ch)) | (ch, lk, pos) <- zip3 (T.unpack base) baseLooks (rpBase rp)]
+                                placed1 = [inColour lk (runAtU lk vertical False 0 (origin (off + pos)) u) | (u, lk, pos) <- zip3 baseUnits baseLooks (rpBase rp)]
                                 placed2 = [runAtU half vertical False 0 (beside (origin (off + pos)) across) (T.singleton ch) | (ch, pos) <- zip (T.unpack rt) (rpReading rp)]
                              in (concatMap fst (placed1 <> placed2), concatMap snd (placed1 <> placed2))
                       KindKenten ->

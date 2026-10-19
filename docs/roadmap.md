@@ -32,7 +32,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
 - **累乗の diagnostic の揺れ**（未実装、[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)）：累乗で、正確な計算の上限を範囲の判定より先に整数だけで決め、上限を超える累乗を新しいコード G0295 にする。浮動小数点の見積もりで G0204、G0286、0 が入れ替わらないようにする。
 
-- **結合文字**（未実装、[golem-driver ADR 0036](golem-driver/adr/0036-combining-characters.md)）：結合文字を前の字と一つの箱に組む。
 - **ナビゲーション文書の深さ**（未実装、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)）：`@toc` の深さをナビゲーション文書と `index.xhtml` に当てる。
 
 

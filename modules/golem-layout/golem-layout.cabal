@@ -51,6 +51,7 @@ test-suite golem-layout-test
   hs-source-dirs:   test
   main-is:          Main.hs
   other-modules:    CodeSpaceSpec
+                    CombiningSpec
                     InseparableSpec
                     KnuthPlassReference
                     LineBreakingSpec
