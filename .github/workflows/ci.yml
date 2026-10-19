@@ -230,7 +230,7 @@ jobs:
         env:
           # pull requests check the small inputs; pushes to main and the
           # calls from release.yml check every input (docs/adr/0038)
-          QUICK: ${{ github.event_name == 'pull_request' && '--quick' || '' }}
+          QUICK: ""
           GOLEM_REQUIRE_LOCALES: "1"
           GOLEM_REQUIRE_FONTS: "1"
         run: |
