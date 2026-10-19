@@ -230,7 +230,7 @@ activeContentTests =
   [ testCase "an SVG figure with a script is G0814 for HTML and for EPUB, in dev and prod, and neither is written" $
       forM_ [Dev, Prod] $ \profile -> forM_ [TargetHtml, TargetEpub] $ \t -> do
         (errs, _, html, epub, _) <- activeBuild profile [t] "@figure images/s.svg alt=\"t\"\n" [("images/s.svg", scriptSvg)]
-        errs @?= [(DiagnosticCode "G0814", "SVG の図版に、HTML と EPUB に写せない動く中身があります: images/s.svg:2:1（script）")]
+        errs @?= [(DiagnosticCode "G0814", "SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: images/s.svg:2:1（script）")]
         (html, epub) @?= (False, False),
     testCase "the web SVG of a PNG figure is checked for HTML" $ do
       (errs, _, html, _, _) <- activeBuild Dev [TargetHtml] "@figure images/f.png web=images/s.svg alt=\"t\"\n" [("images/f.png", png False), ("images/s.svg", scriptSvg)]
@@ -241,7 +241,7 @@ activeContentTests =
       map fst errs @?= [DiagnosticCode "G0814"]
       assertBool (show errs) (all (("images/b.svg（" `T.isInfixOf`) . snd) errs)
       (errs2, _, _, _, _) <- activeBuild Dev [TargetHtml] "@figure images/s.svg alt=\"t\"\n" [("images/s.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect onclick=\"\"/><script/></svg>")]
-      map snd errs2 @?= ["SVG の図版に、HTML と EPUB に写せない動く中身があります: images/s.svg:1:70（onclick）ほか 1 件"],
+      map snd errs2 @?= ["SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: images/s.svg:1:70（onclick）ほか 1 件"],
     testCase "two @figure of one SVG, one in a list, give one G0814 each, at their blocks" $ do
       (errs, ds, _, _, _) <- activeBuild Dev [TargetHtml] "@figure images/s.svg alt=\"t\"\n\n- 項目\n\n  @figure images/s.svg alt=\"u\"\n" [("images/s.svg", scriptSvg)]
       map fst errs @?= [DiagnosticCode "G0814", DiagnosticCode "G0814"]

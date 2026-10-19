@@ -89,6 +89,6 @@ activeMessage path = \case
         <> "）"
         <> (if null rest then "" else "ほか " <> tshow (length rest) <> " 件")
   where
-    prefix = "SVG の図版に、HTML と EPUB に写せない動く中身があります: "
+    prefix = "SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: "
     tshow :: Int -> Text
     tshow = T.pack . show
