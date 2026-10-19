@@ -77,11 +77,11 @@ isSpan = \case
   TList [a, b, c] -> all isUint [a, b, c]
   _ -> False
 
--- the CDDL int: major types 0 and 1, -2^64 .. 2^64-1
+-- the CDDL int64: -2^63 .. 2^63-1 (golem-doc ADR 0006)
 isInt :: Term -> Bool
 isInt = \case
   TInt _ -> True
-  TInteger i -> i >= -18446744073709551616 && i <= 18446744073709551615
+  TInteger i -> i >= -9223372036854775808 && i <= 9223372036854775807
   _ -> False
 
 isUint :: Term -> Bool
@@ -188,11 +188,11 @@ floatEncodings =
 intEncodings :: TestTree
 intEncodings =
   testGroup
-    "integers of an expression use the major types of the CDDL int"
-    [ testCase "2^64 - 1 is an unsigned integer of 8 bytes" $
-        lastBytes 9 (AST.EInt 18446744073709551615) @?= 0x1b : replicate 8 0xff,
-      testCase "-2^64 is a negative integer of 8 bytes" $
-        lastBytes 9 (AST.EInt (-18446744073709551616)) @?= 0x3b : replicate 8 0xff,
+    "integers of an expression use the major types of the CDDL int64 (golem-doc ADR 0006)"
+    [ testCase "2^63 - 1 is an unsigned integer of 8 bytes" $
+        lastBytes 9 (AST.EInt 9223372036854775807) @?= 0x1b : 0x7f : replicate 7 0xff,
+      testCase "-2^63 is a negative integer of 8 bytes" $
+        lastBytes 9 (AST.EInt (-9223372036854775808)) @?= 0x3b : 0x7f : replicate 7 0xff,
       testCase "-25 is a negative integer of 1 byte" $
         lastBytes 2 (AST.EInt (-25)) @?= [0x38, 0x18]
     ]

@@ -1,4 +1,4 @@
-module Gen (genDocument, genInline, genExpr, genFloat) where
+module Gen (genDocument, genInline, genExpr, genFloat, genInt64) where
 
 import Data.Text (Text)
 import Data.Void (Void)
@@ -30,14 +30,14 @@ genInlineWith mr =
     Gen.choice
     ( [ Text <$> genSpan <*> genText,
         Tcy <$> genSpan <*> genText,
-        Number <$> genSpan <*> Gen.integral (Range.linearFrom 0 (-1000000000000) 1000000000000) <*> Gen.maybe Gen.enumBounded,
+        Number <$> genSpan <*> genInt64 <*> Gen.maybe Gen.enumBounded,
         Ref <$> genSpan <*> Gen.enumBounded <*> genText,
         Deferred <$> genSpan <*> (DeferredExpr <$> genExpr),
         IndexMark <$> genSpan <*> (IndexEntry <$> Gen.list (Range.singleton 1) genText <*> Gen.list (Range.singleton 1) genText),
         Cite <$> genSpan <*> genText,
         ProofComment <$> genSpan <*> genText,
         LineBreak <$> genSpan,
-        Aki <$> genSpan <*> Gen.choice [AkiZw <$> genRatio, AkiAbs <$> Gen.integral (Range.linear 0 10000000)]
+        Aki <$> genSpan <*> Gen.choice [AkiZw <$> genRatio, AkiAbs <$> genNonNegative64]
       ]
         <> maybe [] (\gr -> [Ruby <$> genSpan <*> gr <*> Gen.list (Range.linear 1 3) (RubySegment <$> Gen.list (Range.linear 0 2) genNoRuby <*> Gen.maybe genText)]) mr
     )
@@ -50,9 +50,32 @@ genInlineWith mr =
   where
     sub = Gen.list (Range.linear 0 3) (genInlineWith mr)
 
--- | A non-negative amount in zw, in lowest terms as 'Rational' keeps it.
+{- | A non-negative amount in zw, in lowest terms as 'Rational' keeps it;
+the numerator and the denominator reach the end of int64 (golem-doc ADR
+0006).
+-}
 genRatio :: Gen Rational
-genRatio = (\n d -> fromInteger n / fromInteger d) <$> Gen.integral (Range.linear 0 40) <*> Gen.integral (Range.linear 1 12)
+genRatio =
+  (\n d -> fromInteger n / fromInteger d)
+    <$> Gen.choice [Gen.integral (Range.linear 0 40), genNonNegative64]
+    <*> Gen.choice [Gen.integral (Range.linear 1 12), Gen.integral (Range.linear 1 maxInt64), pure maxInt64]
+
+maxInt64, minInt64 :: Integer
+maxInt64 = 2 ^ (63 :: Int) - 1
+minInt64 = negate (2 ^ (63 :: Int))
+
+-- | An integer of the CDDL @int64@, with its ends (golem-doc ADR 0006).
+genInt64 :: Gen Integer
+genInt64 =
+  Gen.choice
+    [ Gen.integral (Range.linearFrom 0 (-1000000000000) 1000000000000),
+      Gen.integral (Range.linearFrom 0 minInt64 maxInt64),
+      Gen.element [maxInt64, minInt64, maxInt64 - 1, minInt64 + 1, 4294967296, -4294967297]
+    ]
+
+-- | A non-negative integer of the CDDL @int64@, with its end.
+genNonNegative64 :: Gen Integer
+genNonNegative64 = Gen.choice [Gen.integral (Range.linear 0 10000000), Gen.integral (Range.linear 0 maxInt64), pure maxInt64]
 
 -- | Every kind of expression and every operator (golem-doc ADR 0001).
 genExpr :: Gen (AST.Located AST.Expr)
@@ -79,12 +102,13 @@ genExpr =
 binaryOps :: [AST.BinaryOp]
 binaryOps = [AST.Add, AST.Sub, AST.Mul, AST.Div, AST.Mod, AST.Pow, AST.OpEq, AST.OpNe, AST.OpLt, AST.OpLe, AST.OpGt, AST.OpGe]
 
--- | Integers within the CBOR major types 0 and 1 (the CDDL @int@), with their ends.
+-- | Integers of the CDDL @int64@ (golem-doc ADR 0006), with the ends of the CBOR heads.
 genInt :: Gen Integer
 genInt =
   Gen.choice
     [ Gen.integral (Range.linearFrom 0 (-100) 100),
-      Gen.element [23, 24, 255, 256, 65535, 65536, 4294967295, 4294967296, 18446744073709551615, -24, -25, -18446744073709551616]
+      Gen.element [23, 24, 255, 256, 65535, 65536, 4294967295, 4294967296, maxInt64, -24, -25, minInt64],
+      genInt64
     ]
 
 {- | Floats at the edges of the half, single and double precision encodings
@@ -129,14 +153,14 @@ genBlock =
         ChannelOutput <$> Gen.element [TocOutput 2, IndexOutput, BibliographyOutput],
         Table <$> Gen.list (Range.singleton 2) Gen.enumBounded <*> Gen.list (Range.singleton 2) inl <*> Gen.list (Range.linear 0 2) (Gen.list (Range.singleton 2) inl)
       ]
-      [ BulletList <$> Gen.list (Range.linear 1 3) (ListItem <$> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.list (Range.linear 0 2) genBlock),
+      [ BulletList <$> Gen.list (Range.linear 1 3) (ListItem <$> Gen.maybe genInt64 <*> Gen.list (Range.linear 0 2) genBlock),
         OrderedList <$> Gen.list (Range.linear 1 3) (ListItem Nothing <$> Gen.list (Range.linear 0 2) genBlock),
         DefList <$> Gen.list (Range.linear 1 2) (DefGroup <$> Gen.list (Range.linear 1 2) inl <*> Gen.list (Range.linear 1 2) (Gen.list (Range.linear 0 2) genBlock)),
         FigureBlock <$> (Figure <$> genText <*> Gen.maybe genText <*> genText <*> Gen.maybe Gen.enumBounded <*> Gen.maybe genText <*> Gen.list (Range.linear 0 1) genBlock <*> Gen.maybe (Gen.int (Range.linear 1 9)))
       ]
   where
     inl = Gen.list (Range.linear 0 3) genInline
-    attrs = HeadingAttrs <$> Gen.maybe inl <*> Gen.maybe (Gen.integral (Range.linear 1 9)) <*> Gen.bool <*> Gen.bool
+    attrs = HeadingAttrs <$> Gen.maybe inl <*> Gen.maybe genInt64 <*> Gen.bool <*> Gen.bool
 
 genCode :: Gen Code
 genCode =
@@ -146,7 +170,7 @@ genCode =
     <*> Gen.maybe genText
     <*> Gen.maybe (Gen.list (Range.linear 0 2) genInline)
     <*> Gen.bool
-    <*> Gen.list (Range.linear 0 3) (CodeLine <$> genText <*> Gen.maybe (Gen.integral (Range.linear 0 99)) <*> Gen.maybe Gen.enumBounded <*> Gen.bool <*> Gen.list (Range.linear 0 2) (Gen.int (Range.linear 1 50)))
+    <*> Gen.list (Range.linear 0 3) (CodeLine <$> genText <*> Gen.maybe genInt64 <*> Gen.maybe Gen.enumBounded <*> Gen.bool <*> Gen.list (Range.linear 0 2) (Gen.int (Range.linear 1 50)))
 
 genDocument :: Gen Document
 genDocument = Document (FileId 0) <$> Gen.list (Range.linear 0 5) genTopBlock
