@@ -14,6 +14,7 @@ module Golem.Svg.Css
     parseDeclarations,
     specificity,
     selects,
+    stripComments,
   )
 where
 
