@@ -306,7 +306,9 @@ layoutMiniFonts provider manifest style source files = withSystemTempDirectory "
       (Just book, Right geom) ->
         loadFonts provider tmp (evStyleFile e) (evStyle e) [] >>= \case
           Left ds -> pure (Left ds)
-          Right fonts -> fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty) geom fonts
+          Right fonts -> do
+            (_, _, bib) <- loadBibliography tmp (projectManifest (evProject e))
+            fmap (geom,) <$> layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] bib Nothing Map.empty (chapterMasters (evProject e)) (evStyleFile e) Map.empty) geom fonts
       (_, Left ds) -> pure (Left ds)
       (Nothing, _) -> pure (Left (filter isError (evDiagnostics e)))
 
