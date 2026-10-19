@@ -40,6 +40,7 @@ figure = [src: tstr, web: tstr / null, alt: tstr, wrap: (0 / 1) / null, width: t
 code = [lang: tstr / null, numbers: bool / null, file: tstr / null, caption: inlines / null, diff: bool, lines: [* code-line]]
 code-line = [text: tstr, number: int64 / null, diff-mark: (0..2) / null, highlight: bool, callouts: [* 1..50]] ; added, removed, context
 channel = [0, depth: uint64] / [1] / [2]           ; toc, index, bibliography
+        / [3, name: tstr, style: tstr / null]      ; a channel of a plugin (golem-doc ADR 0007)
 
 inlines = [* inline]
 inlines-no-ruby = [* inline-no-ruby]
@@ -64,6 +65,7 @@ inline-no-ruby =
   / [16, span, tstr]                               ; proofreading comment
   / [17, span]                                     ; line break
   / [18, span, zw: [int64, 1..9223372036854775807] / null, sp: int64 / null] ; aki: zw or sp, exactly one (docs/adr ADR 0019)
+  / [19, span, channel: tstr, key: tstr / null, reading: tstr / null, inlines] ; channel item (golem-doc ADR 0007)
 ; 1 (strong), 2 (bold) and 3 (italic) are retired: they are character styles (docs/adr ADR 0005)
 
 number-style = 0..2                                ; kanji, kanji-digits, tcy
@@ -90,5 +92,7 @@ argument = [0, value] / [1, key: tstr, value]
 value = int64 / float / tstr / bool / null / [* value]
 response = [output: inlines / document, diagnostics: [* plugin-diagnostic]]
 plugin-diagnostic = [code: tstr, severity: 0 / 1, span, message: tstr]
-; golem_describe: the names of the commands and filters a plugin provides
-description = [commands: [* tstr], filters: [* tstr]]
+; golem_describe: the names of the commands and filters a plugin provides,
+; and the channels it declares (golem-doc ADR 0007)
+description = [commands: [* tstr], filters: [* tstr], channels: [* channel-decl]]
+channel-decl = [name: tstr, order: 0 / 1, locators: bool] ; order: document, reading

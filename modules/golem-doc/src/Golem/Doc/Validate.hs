@@ -116,9 +116,27 @@ inlineErrors fileSize allowed i =
     IndexMark _ (IndexEntry ts rs) -> ["索引の項目の段の数が不正です" | null ts || length ts > 2 || length ts /= length rs]
     -- negative amounts are not written (docs/adr ADR 0019)
     Aki _ a -> ["アキの量が負です" | negativeAki a]
+    -- the body sends nothing to another channel (golem-doc ADR 0007)
+    ChannelItem _ c ->
+      sub (ciBody c)
+        <> breakErrors False (ciBody c)
+        <> ["チャネルの項目の本文に置けない要素があります" | any sends (ciBody c)]
     _ -> []
   where
+    sub :: [InlineF q] -> [Text]
     sub = concatMap (inlineErrors fileSize allowed)
+    sends :: InlineF q -> Bool
+    sends = \case
+      Note {} -> True
+      Sidenote {} -> True
+      IndexMark {} -> True
+      Cite {} -> True
+      ChannelItem {} -> True
+      Ruby _ _ segs -> any (any sends . rsBase) segs
+      Kenten _ _ xs -> any sends xs
+      Color _ _ xs -> any sends xs
+      CharStyle _ _ xs -> any sends xs
+      _ -> False
     negativeAki = \case
       AkiZw r -> r < 0
       AkiAbs x -> x < 0
@@ -141,3 +159,4 @@ inlineSpan = \case
   ProofComment s _ -> s
   LineBreak s -> s
   Aki s _ -> s
+  ChannelItem s _ -> s

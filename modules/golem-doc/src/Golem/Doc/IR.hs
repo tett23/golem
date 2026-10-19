@@ -17,6 +17,7 @@ module Golem.Doc.IR
     HeadingAttrs (..),
     noHeadingAttrs,
     ChannelBlock (..),
+    ChannelItem (..),
     Code (..),
     CodeLine (..),
     DiffMark (..),
@@ -137,7 +138,23 @@ data HeadingAttrs = HeadingAttrs
 noHeadingAttrs :: HeadingAttrs
 noHeadingAttrs = HeadingAttrs Nothing Nothing False False
 
-data ChannelBlock = TocOutput !Int | IndexOutput | BibliographyOutput
+{- | The list of a channel at its place: the table of contents, the index,
+the bibliography, or a channel of a plugin with the paragraph style of its
+entries (golem-doc ADR 0007).
+-}
+data ChannelBlock = TocOutput !Int | IndexOutput | BibliographyOutput | CustomOutput !Text !(Maybe Text)
+  deriving stock (Eq, Show)
+
+{- | An item a plugin sends to a channel of its own (golem-doc ADR 0007):
+the channel, the key that makes items one entry, the reading of a channel
+in reading order, and the body of the entry. It shows nothing where it is.
+-}
+data ChannelItem = ChannelItemData
+  { ciChannel :: !Text,
+    ciKey :: !(Maybe Text),
+    ciReading :: !(Maybe Text),
+    ciBody :: ![Inline]
+  }
   deriving stock (Eq, Show)
 
 {- | A code block (golem-driver ADR 0023): its language, whether it has
@@ -215,6 +232,8 @@ data InlineF r
     LineBreak !SrcSpan
   | -- | a fixed space written with [aki] (docs/adr ADR 0019)
     Aki !SrcSpan !AkiAmount
+  | -- | an item of a channel of a plugin (golem-doc ADR 0007)
+    ChannelItem !SrcSpan !ChannelItem
   deriving stock (Eq, Show)
 
 -- | The amount of an [aki]: in zw (the size of the type there), or absolute in sp.
@@ -294,3 +313,4 @@ noRuby = \case
   ProofComment s t -> Just (ProofComment s t)
   LineBreak s -> Just (LineBreak s)
   Aki s a -> Just (Aki s a)
+  ChannelItem s c -> Just (ChannelItem s c)

@@ -51,6 +51,7 @@ import Data.Text qualified as T
 import Data.Text.Array qualified as TA
 import Data.Text.Internal qualified as TI
 import Data.Text.Unsafe (lengthWord8)
+import Golem.Doc.Assemble (ChannelDecl)
 import Golem.Doc.IR
 import Golem.Eval.Builtin
 import Golem.Eval.Expr
@@ -77,11 +78,13 @@ override of a built-in command from a command of its own (docs/adr ADR 0027).
 data PluginHook = PluginHook
   { phOverrides :: !(Map OverridableBuiltin PluginCommand),
     phCommands :: !(Map PluginCommandName PluginCommand),
+    -- | the channels the plugins declare (golem-doc ADR 0007)
+    phChannels :: !(Map Text ChannelDecl),
     phApplyFilters :: FilePath -> Document -> Either [Diagnostic] (Document, [Diagnostic])
   }
 
 noPlugins :: PluginHook
-noPlugins = PluginHook Map.empty Map.empty (\_ d -> Right (d, []))
+noPlugins = PluginHook Map.empty Map.empty Map.empty (\_ d -> Right (d, []))
 
 data EvalContext = EvalContext
   { ctxFile :: !FileId,
@@ -274,6 +277,7 @@ unwritableText = concatMap blockDiags . docBlocks
       Cite {} -> []
       LineBreak {} -> []
       Aki {} -> []
+      ChannelItem sp c -> concatMap (at sp) (ciChannel c : maybe [] pure (ciKey c) <> maybe [] pure (ciReading c)) <> inlines (ciBody c)
 
 -- ------------------------------------------------------------------ newlines
 
@@ -494,6 +498,7 @@ standalone ctx sp (A.Located nsp name) args body = case name of
       _ -> err "G0225" sp "@toc の depth は 1 から 3 の整数です" >> pure []
   "index" -> pure [block sp (ChannelOutput IndexOutput)]
   "bibliography" -> pure [block sp (ChannelOutput BibliographyOutput)]
+  "channel" -> channelBlock ctx sp args
   "printings" -> printingsBlock ctx sp args body
   "page-break" -> forcedBreak sp name args body
   "column-break" -> forcedBreak sp name args body
@@ -525,6 +530,25 @@ attributed ctx sp cmds0 target
         ([], Nothing) -> pure []
         (cmds, _) -> attributed ctx sp cmds target
   | otherwise = attributedWith ctx sp cmds0 target
+
+{- | @channel, the list of a channel a plugin declares (golem-doc ADR
+0007): one name, G0290 otherwise; style= the paragraph style of its
+entries, body by default, G0247 when it is not defined.
+-}
+channelBlock :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> M [Block]
+channelBlock ctx sp args = do
+  kw <- keywords ctx args
+  case [v | A.Located _ (A.Positional v) <- args] of
+    [v]
+      | Just n <- nameArg v,
+        Map.member n (phChannels (ctxPlugins ctx)) -> case argText <$> lookup "style" kw of
+          Nothing -> pure [block sp (ChannelOutput (CustomOutput n Nothing))]
+          Just "body" -> pure [block sp (ChannelOutput (CustomOutput n Nothing))]
+          Just st
+            | Map.member st (ctxParaStyles ctx) -> pure [block sp (ChannelOutput (CustomOutput n (Just st)))]
+            | otherwise -> err "G0247" sp ("定義されていない段落スタイルです: " <> st) >> pure []
+      | otherwise -> err "G0290" sp ("宣言されていないチャネルです: " <> argText v) >> pure []
+    _ -> err "G0290" sp "@channel にはチャネルの名前を一つ書きます" >> pure []
 
 -- | G0249: @manifest or @style-def after the file settings (docs/adr ADR 0014).
 misplacedSetting :: SrcSpan -> M ()

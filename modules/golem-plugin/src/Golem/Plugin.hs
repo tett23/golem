@@ -12,6 +12,7 @@ module Golem.Plugin
   ( Plugin,
     pluginCommands,
     pluginFilters,
+    pluginChannels,
     PluginError (..),
     abiVersion,
     defaultFuel,
@@ -39,6 +40,7 @@ import Data.Text qualified as T
 import Foreign
 import Foreign.C.String (CString, peekCString, withCStringLen)
 import Foreign.C.Types
+import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.Cbor
 import Golem.Doc.IR hiding (abiVersion)
 import Golem.Doc.Validate (validateDocument)
@@ -80,7 +82,9 @@ data Plugin = Plugin
     plFuel :: !Word64,
     plMemory :: !Int64,
     pluginCommands :: ![Text],
-    pluginFilters :: ![Text]
+    pluginFilters :: ![Text],
+    -- | the channels it declares (golem-doc ADR 0007)
+    pluginChannels :: ![ChannelDecl]
   }
 
 data PluginError
@@ -142,7 +146,7 @@ loadPluginWith fuel memory wasm = do
       fp <- newForeignPtr c_free p
       n <- c_importCount p
       names <- mapM (\i -> c_importName p i >>= \c -> T.pack <$> peekCString c <* c_freeBytes c) [0 .. n - 1]
-      let plugin = Plugin fp fuel memory [] []
+      let plugin = Plugin fp fuel memory [] [] []
       if not (null names)
         then pure (Left (HasImports names))
         else do
@@ -155,8 +159,8 @@ loadPluginWith fuel memory wasm = do
                   described <- callMode plugin 1 BS.empty
                   pure $ do
                     (bytes, _) <- described
-                    (cmds, filts) <- decodeDescription bytes
-                    Right plugin {pluginCommands = cmds, pluginFilters = filts}
+                    (cmds, filts, chans) <- decodeDescription bytes
+                    Right plugin {pluginCommands = cmds, pluginFilters = filts, pluginChannels = chans}
 
 callMode :: Plugin -> CInt -> ByteString -> IO (Either PluginError (ByteString, Word32))
 callMode plugin mode input = withForeignPtr (plPtr plugin) $ \p ->
@@ -200,16 +204,24 @@ decodeTermBytes b = case deserialiseFromBytes decodeTerm (BL.fromStrict b) of
   Right _ -> Left (BadOutput "CBOR の後ろに余分なバイトがあります")
   Left e -> Left (BadOutput (T.pack (show e)))
 
-decodeDescription :: ByteString -> Either PluginError ([Text], [Text])
+{- | The commands, the filters and the channels of a description
+(golem-doc ADR 0007): three lists; two are not a description.
+-}
+decodeDescription :: ByteString -> Either PluginError ([Text], [Text], [ChannelDecl])
 decodeDescription b = do
   t <- decodeTermBytes b
   case t of
-    TList [TList cs, TList fs] -> (,) <$> mapM name cs <*> mapM name fs
+    TList [TList cs, TList fs, TList chs] -> (,,) <$> mapM name cs <*> mapM name fs <*> mapM channel chs
     _ -> Left (BadOutput "golem_describe の形が不正です")
   where
     name = \case
       TString s -> Right s
       _ -> Left (BadOutput "名前が文字列ではありません")
+    channel = \case
+      TList [TString n, TInt o, TBool l]
+        | o == 0 -> Right (ChannelDecl n OrderDocument l)
+        | o == 1 -> Right (ChannelDecl n OrderReading l)
+      _ -> Left (BadOutput "チャネルの宣言の形が不正です")
 
 valueTerm :: Value -> Either PluginError Term
 valueTerm = \case
@@ -229,6 +241,7 @@ callCommand plugin name args slots sp = do
   out <- invokeRaw plugin (toStrictByteString (encodeTerm req))
   (outT, diags) <- response out
   inls <- either (Left . BadOutput) Right (termInlines outT)
+  checkItems plugin [] (concatMap inlineItems inls)
   let allowedSpans = Set.insert sp (Set.fromList (concatMap (concatMap inlineSpans) slots))
       allowedDeferred = concatMap (concatMap inlineDeferred) slots
   checkOutput allowedSpans allowedDeferred (concatMap inlineSpans inls) (concatMap inlineDeferred inls)
@@ -241,6 +254,8 @@ applyFilter plugin name doc = do
   out <- invokeRaw plugin (toStrictByteString (encodeTerm req))
   (outT, diags) <- response out
   doc' <- either (Left . BadOutput) Right (termDocument outT)
+  -- the items that came in with the document pass as they are (golem-doc ADR 0007)
+  checkItems plugin (documentItems doc) (documentItems doc')
   checkOutput (Set.fromList (documentSpans doc)) (documentDeferred doc) (documentSpans doc') (documentDeferred doc')
   -- the invariants of the IR, such as forced breaks only at the top (docs/adr ADR 0017);
   -- the spans were checked above, so every file is taken to be large enough
@@ -274,6 +289,50 @@ checkOutput allowedSpans allowedDeferred spans deferred
   | any (`notElem` allowedDeferred) deferred = Left (BadOutput "要求にない DeferredExpr を含んでいます")
   | otherwise = Right ()
 
+{- | The items of channels a plugin puts out (golem-doc ADR 0007): of a
+channel it declares, with a reading when the channel is in reading order;
+an item that came in with the request is let through. The body is
+checked with the IR (Golem.Doc.Validate).
+-}
+checkItems :: Plugin -> [(SrcSpan, ChannelItem)] -> [(SrcSpan, ChannelItem)] -> Either PluginError ()
+checkItems plugin given = mapM_ check
+  where
+    check x@(_, c)
+      | x `elem` given = Right ()
+      | otherwise = case [d | d <- pluginChannels plugin, channelName d == ciChannel c] of
+          [] -> Left (BadOutput ("宣言していないチャネルです: " <> ciChannel c))
+          (d : _)
+            | channelOrder d == OrderReading && maybe True T.null (ciReading c) -> Left (BadOutput ("読みの順のチャネルの項目には読みが要ります: " <> ciChannel c))
+            | any sends (ciBody c) -> Left (BadOutput "チャネルの項目の本文に置けない要素があります")
+            | otherwise -> Right ()
+    sends :: InlineF q -> Bool
+    sends = \case
+      Note {} -> True
+      Sidenote {} -> True
+      IndexMark {} -> True
+      Cite {} -> True
+      ChannelItem {} -> True
+      Ruby _ _ segs -> any (any sends . rsBase) segs
+      Kenten _ _ xs -> any sends xs
+      Color _ _ xs -> any sends xs
+      CharStyle _ _ xs -> any sends xs
+      _ -> False
+
+-- | The items of channels among inlines, with their spans.
+inlineItems :: InlineF r -> [(SrcSpan, ChannelItem)]
+inlineItems = \case
+  ChannelItem s c -> [(s, c)]
+  Ruby _ _ segs -> concat [concatMap inlineItems (rsBase g) | g <- segs]
+  Kenten _ _ xs -> concatMap inlineItems xs
+  Color _ _ xs -> concatMap inlineItems xs
+  CharStyle _ _ xs -> concatMap inlineItems xs
+  Note _ _ xs -> concatMap inlineItems xs
+  Sidenote _ _ xs -> concatMap inlineItems xs
+  _ -> []
+
+documentItems :: Document -> [(SrcSpan, ChannelItem)]
+documentItems doc = concat [concatMap inlineItems (blockInlines b) | b <- blocksOf doc]
+
 inlineSpans :: InlineF r -> [SrcSpan]
 inlineSpans = \case
   Text s _ -> [s]
@@ -292,6 +351,7 @@ inlineSpans = \case
   ProofComment s _ -> [s]
   LineBreak s -> [s]
   Aki s _ -> [s]
+  ChannelItem s c -> s : concatMap inlineSpans (ciBody c)
 
 inlineDeferred :: InlineF r -> [DeferredExpr]
 inlineDeferred = \case
@@ -302,6 +362,7 @@ inlineDeferred = \case
   CharStyle _ _ xs -> concatMap inlineDeferred xs
   Note _ _ xs -> concatMap inlineDeferred xs
   Sidenote _ _ xs -> concatMap inlineDeferred xs
+  ChannelItem _ c -> concatMap inlineDeferred (ciBody c)
   _ -> []
 
 blocksOf :: Document -> [Block]

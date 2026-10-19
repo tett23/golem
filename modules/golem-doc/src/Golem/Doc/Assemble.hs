@@ -10,12 +10,16 @@ module Golem.Doc.Assemble
     LabelTarget (..),
     TocEntry (..),
     IndexGroup (..),
+    ChannelOrder (..),
+    ChannelDecl (..),
+    ChannelEntry (..),
     ListAt,
     assemble,
     citeNumber,
     tocWithinDepth,
     bibliographyAt,
     indexAt,
+    channelAt,
     indexGroups,
     bookChapters,
     notesTitle,
@@ -54,8 +58,35 @@ data AssembleConfig = AssembleConfig
     of the documents; a document past its end is a chapter of its own
     -} acChapterOf :: ![Int],
     -- | [code] number: the format of listing numbers (golem-driver ADR 0023)
-    acListingFormat :: !Text
+    acListingFormat :: !Text,
+    -- | the channels the plugins declare, by name (golem-doc ADR 0007)
+    acChannels :: !(Map Text ChannelDecl)
   }
+
+-- | How the entries of a channel of a plugin are ordered (golem-doc ADR 0007).
+data ChannelOrder = OrderDocument | OrderReading
+  deriving stock (Eq, Show, Enum, Bounded)
+
+{- | A channel a plugin declares (golem-doc ADR 0007): its name, the order
+of its entries, and whether an entry shows where its items are.
+-}
+data ChannelDecl = ChannelDecl
+  { channelName :: !Text,
+    channelOrder :: !ChannelOrder,
+    channelLocators :: !Bool
+  }
+  deriving stock (Eq, Show)
+
+{- | An entry of a list of a channel of a plugin (golem-doc ADR 0007): the
+key of its items, the body of the first of them, and where they are, in
+document order.
+-}
+data ChannelEntry = ChannelEntry
+  { ceKey :: !(Maybe Text),
+    ceBody :: ![Inline],
+    ceLocations :: ![(FileId, SrcSpan)]
+  }
+  deriving stock (Eq, Show)
 
 {- | The range over which footnotes and sidenotes are numbered from 1
 (golem-driver ADR 0018): a file, a chapter of the manifest, or the book.
@@ -125,7 +156,12 @@ data Book = Book
     {- | the chapter of the manifest of each document, in the order of
     'bookDocs' (golem-driver ADR 0018, 0026); a document past its end is a
     chapter of its own
-    -} bookChapterOf :: ![Int]
+    -} bookChapterOf :: ![Int],
+    {- | each @channel in document order: its place, its channel and its
+    entries (golem-doc ADR 0007)
+    -} bookChannels :: ![(ListAt, Text, [ChannelEntry])],
+    -- | the channels the plugins declare, by name
+    bookChannelDecls :: !(Map Text ChannelDecl)
   }
 
 {- | The place of a list of a channel: the file and the span of its block
@@ -152,6 +188,10 @@ tocWithinDepth book = [e | e <- bookToc book, maybe True (teLevel e <=) (bookToc
 -- | The citations of the @bibliography at a block span.
 bibliographyAt :: Book -> SrcSpan -> [(Text, Int)]
 bibliographyAt book sp = fromMaybe [] (lookup (Just (spanFile sp, sp)) (bookBibliographies book))
+
+-- | The entries of the @channel at a block span (golem-doc ADR 0007).
+channelAt :: Book -> SrcSpan -> [ChannelEntry]
+channelAt book sp = concat [es | (at, _, es) <- bookChannels book, at == (spanFile sp, sp)]
 
 -- | The groups of the @index at a block span.
 indexAt :: Book -> SrcSpan -> [IndexGroup]
@@ -342,7 +382,9 @@ assemble cfg evalDeferred docs0 =
             bookCiteMarks = citeMarks,
             bookLabels = labels,
             bookReferenced = refd,
-            bookChapterOf = acChapterOf cfg
+            bookChapterOf = acChapterOf cfg,
+            bookChannels = channelLists (acChannels cfg) docs',
+            bookChannelDecls = acChannels cfg
           },
         sortDiagnostics (nsDiags ns <> figureErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs <> blankDiags)
       )
@@ -536,6 +578,8 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
       Color sp c xs -> pure . Color sp c <$> inls xs
       CharStyle sp c xs -> pure . CharStyle sp c <$> inls xs
       Note sp n xs -> pure . Note sp n <$> inls xs
+      -- the body of an item resolves like the text around it (golem-doc ADR 0007)
+      ChannelItem sp c -> (\b -> [ChannelItem sp c {ciBody = b}]) <$> inls (ciBody c)
       Sidenote sp n xs -> pure . Sidenote sp n <$> inls xs
       other -> pure [other]
 
@@ -631,6 +675,35 @@ numberCitations docs =
     go seen (x : xs)
       | x `Set.member` seen = go seen xs
       | otherwise = x : go (Set.insert x seen) xs
+
+{- | Each @channel with the entries of its range (golem-doc ADR 0007): the
+items of one channel split among its lists as the items of @index
+(golem-doc ADR 0008), made one entry per key, and ordered by the order
+the channel declares.
+-}
+channelLists :: Map Text ChannelDecl -> [Document] -> [(ListAt, Text, [ChannelEntry])]
+channelLists decls docs =
+  [ (at, name, maybe [] (entriesOf name) (lookup (Just at) (scoped name)))
+  | (at, name) <- lists
+  ]
+  where
+    lists = [((fid, sp), n) | Document fid bs <- docs, Block sp _ (ChannelOutput (CustomOutput n _)) <- allBlocks bs]
+    scoped name =
+      scopes
+        (\case ChannelOutput (CustomOutput n _) -> n == name; _ -> False)
+        (\fid -> \case ChannelItem sp c | ciChannel c == name -> [((fid, sp), c)]; _ -> [])
+        docs
+    entriesOf name items =
+      let order = maybe OrderDocument channelOrder (Map.lookup name decls)
+          grouped = groupItems (zip [0 :: Int ..] items)
+       in map snd $ case order of
+            OrderDocument -> grouped
+            OrderReading -> sortOn (\((i, c), _) -> (fmap collationKey (ciReading c), fmap T.unpack (ciKey c), i)) grouped
+    -- one entry per key, at its first item; an item without a key is an entry of its own
+    groupItems = foldl collect []
+    collect acc (i, (loc, c)) = case ciKey c of
+      Just k | any (\((_, c0), _) -> ciKey c0 == Just k) acc -> [if ciKey c0 == Just k then (f, e {ceLocations = ceLocations e <> [loc]}) else (f, e) | (f@(_, c0), e) <- acc]
+      _ -> acc <> [((i, c), ChannelEntry (ciKey c) (ciBody c) [loc])]
 
 -- | Each @index with the groups of the marks of its range (golem-doc ADR 0008).
 indexLists :: [Document] -> [(ListAt, [IndexGroup])]

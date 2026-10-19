@@ -944,7 +944,12 @@ layoutPdf inp0 geom fonts =
 layoutFigures :: PdfInput -> PageGeometry -> LoadedFonts -> Map (Text, Int) P.FigureContent -> IO (Either [Diagnostic] PdfLayout)
 layoutFigures inp geom fonts figures = do
   -- S2: compose with assumed page numbers until they settle
-  let terms = Map.fromList [(sp, T.intercalate " / " (igTerms g)) | g <- indexGroups (bookDocs (piBook inp)), (_, sp) <- igLocations g]
+  -- the names of the marks for G0721: the terms of the index, the bodies of the entries of channels (golem-doc ADR 0007)
+  let terms =
+        Map.fromList
+          ( [(sp, T.intercalate " / " (igTerms g)) | g <- indexGroups (bookDocs (piBook inp)), (_, sp) <- igLocations g]
+              <> [(sp, T.concat (map inlineText (ceBody e))) | (_, _, es) <- bookChannels (piBook inp), e <- es, (_, sp) <- ceLocations e]
+          )
   let capacity = length (pgLineGrid geom)
       round' assumed = do
         built <- buildFlow inp geom fonts figures assumed
@@ -1340,6 +1345,18 @@ indexLines vertical pageOf = go Nothing
     pagesOf g = Set.toAscList (Set.fromList [n | (_, sp) <- igLocations g, Just n <- [pageOf sp]])
     entry prefix term ps =
       prefix <> [txt term] <> (if null ps then [] else txt "　" : intercalate [txt (if vertical then "、" else ", ")] [[Number sp0 n Nothing] | n <- ps])
+
+{- | The lines of the list of a channel of a plugin (golem-doc ADR 0007):
+the body of each entry, and with locators an ideographic space and its
+pages as in the index.
+-}
+channelLines :: Bool -> (SrcSpan -> Maybe Integer) -> Bool -> [ChannelEntry] -> [[Inline]]
+channelLines vertical pageOf locators = map line
+  where
+    sp0 = mkSpan (FileId 0) 0 0
+    line e =
+      let ps = Set.toAscList (Set.fromList [n | (_, sp) <- ceLocations e, Just n <- [pageOf sp]])
+       in ceBody e <> (if not locators || null ps then [] else Text sp0 "　" : intercalate [Text sp0 (if vertical then "、" else ", ")] [[Number sp0 n Nothing] | n <- ps])
 
 {- | The lines of the bibliography: @[n] @ and the entry, or the key when
 it has none; a URL is in the character style url (golem-doc ADR 0005).
@@ -1769,6 +1786,11 @@ unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chap
                     Nothing -> (n, entries (UPara noIndent))
                     -- the index in its own columns (docs/adr ADR 0025)
                     Just set -> (n, [plainUnit (UColumns (Just set)) Nothing []] <> entries (UIndexEntry (csMeasure set)) <> [plainUnit (UColumns Nothing) Nothing []])
+            -- each entry of a channel of a plugin a paragraph of its style (golem-doc ADR 0007)
+            ChannelOutput (CustomOutput name st) ->
+              let (face, ind) = paraLook style geom st
+                  locators = maybe False channelLocators (Map.lookup name (bookChannelDecls book))
+               in (n, [(unit (UPara (if null ctx then ind else noIndent)) Nothing is face) {uParaStyle = st} | is <- channelLines (pgVertical geom) pageOf locators (channelAt book sp)])
             ChannelOutput BibliographyOutput -> (n, [plainUnit (UPara noIndent) Nothing is | is <- bibliographyLines bib (bibliographyAt book sp)])
             ForcedBreak k -> (n, [plainUnit (UBreak k) Nothing []])
             PageControl c -> (n, [plainUnit (UPageControl c) Nothing []])

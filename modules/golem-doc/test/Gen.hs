@@ -37,7 +37,9 @@ genInlineWith mr =
         Cite <$> genSpan <*> genText,
         ProofComment <$> genSpan <*> genText,
         LineBreak <$> genSpan,
-        Aki <$> genSpan <*> Gen.choice [AkiZw <$> genRatio, AkiAbs <$> genNonNegative64]
+        Aki <$> genSpan <*> Gen.choice [AkiZw <$> genRatio, AkiAbs <$> genNonNegative64],
+        -- an item of a channel of a plugin (golem-doc ADR 0007)
+        ChannelItem <$> genSpan <*> (ChannelItemData <$> genText <*> Gen.maybe genText <*> Gen.maybe genText <*> Gen.list (Range.linear 0 2) (Text <$> genSpan <*> genText))
       ]
         <> maybe [] (\gr -> [Ruby <$> genSpan <*> gr <*> Gen.list (Range.linear 1 3) (RubySegment <$> Gen.list (Range.linear 0 2) genNoRuby <*> Gen.maybe genText)]) mr
     )
@@ -150,7 +152,7 @@ genBlock =
       [ Paragraph <$> Gen.maybe genText <*> inl,
         Heading <$> Gen.int (Range.linear 1 3) <*> attrs <*> inl,
         CodeBlock <$> genCode,
-        ChannelOutput <$> Gen.element [TocOutput 2, IndexOutput, BibliographyOutput],
+        ChannelOutput <$> Gen.choice [Gen.element [TocOutput 2, IndexOutput, BibliographyOutput], CustomOutput <$> genText <*> Gen.maybe genText],
         Table <$> Gen.list (Range.singleton 2) Gen.enumBounded <*> Gen.list (Range.singleton 2) inl <*> Gen.list (Range.linear 0 2) (Gen.list (Range.singleton 2) inl)
       ]
       [ BulletList <$> Gen.list (Range.linear 1 3) (ListItem <$> Gen.maybe genInt64 <*> Gen.list (Range.linear 0 2) genBlock),
