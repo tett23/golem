@@ -88,7 +88,13 @@ tableWatchTests =
         regs <- lspSession False dir $ do
           _ <- waitDiagnostics dir "data/x.tsv" (not . null)
           watched
-        regs @?= []
+        regs @?= [],
+      testCase "a large table is G0288 at its @table (docs/adr ADR 0043)" $ withTableProject $ \dir -> do
+        BS.writeFile (dir </> "data/big.tsv") (BS.concat (replicate 10001 "a\tb\n"))
+        ws0 <- openWorkspace dir
+        ws <- updateFile ws0 "a.gm" "本文。\n\n@table src=data/big.tsv\n"
+        [(c, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
+          @?= [("G0288", 11, 35)]
     ]
 
 -- | A session against the server, with or without dynamic registration of watched files.
