@@ -149,6 +149,8 @@ block c ind (Block sp _ body) = case body of
   ChannelOutput (TocOutput d) ->
     T.intercalate "\n" [numbered (teNumber e) <> inlines c (teTitle e) | e <- bookToc (cBook c), teLevel e <= d]
   ChannelOutput IndexOutput -> ""
+  -- the body of each entry of a channel of a plugin on a line (golem-doc ADR 0007)
+  ChannelOutput (CustomOutput _ _) -> T.intercalate "\n" [inlines c (ceBody e) | e <- channelAt (cBook c) sp]
   -- plain text has no pages (docs/adr ADR 0017)
   ForcedBreak _ -> ""
   PageControl _ -> ""
@@ -229,6 +231,7 @@ inline c = \case
   Note _ n _ -> (if cVariant c == Vertical then "※" else "*") <> T.pack (show n)
   Sidenote _ n _ -> "※" <> T.pack (show n)
   IndexMark {} -> ""
+  ChannelItem {} -> ""
   Cite sp k -> case citeNumber (cBook c) sp k of
     Just n -> "[" <> T.pack (show n) <> "]"
     Nothing -> ""

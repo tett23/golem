@@ -119,7 +119,9 @@ CI の所要時間の記録は [code: docs/ci-timings/] に置き、[code: scrip
 外来語の区切りのような、並列でない中黒は使ってよい。
 
 用語は、マニュアルの方針の文書（[code: docs/manual-policy.md]）の規則に従う。
-開発者のマニュアルのための規則（diagnostic、アセット、マシンと計算機）は、仕様書と新しい ADR にも当てはめる。
+開発者のマニュアルのための規則（diagnostic、アセット、マシンと計算機、重大度の notice）は、仕様書と新しい ADR にも当てはめる。
+仕様書と ADR は、使い手のマニュアルが使う「お知らせ」と書かず、notice と書く。
+notice より下の重大度 info を加える予定があるので、二つを「お知らせ」でまとめず、名前で書き分ける。
 コミット済みの ADR は変えられないので、古い用語のまま残す。
 
 これらの規則のうち文字と行で判定できるものは、textlint が検査する。[index reading=textlint: textlint][note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0036-textlint-for-documents.md]（docs/adr の ADR 0036「文書の表記を textlint で検査する」）]

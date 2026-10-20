@@ -182,7 +182,7 @@ The middle dot (・) is not used to list things in parallel; join them with 、 
 Other uses of the middle dot, such as separating the words of a loanword, are allowed.
 
 Terms follow the rules of [docs/manual-policy.md](./docs/manual-policy.md).
-The rules of the developer manual (diagnostic, not 診断; アセット, not 資産; マシン or 計算機, not 機械) and the rules common to the two manuals (書体 and フォント kept apart; バージョン, not 版, for a version; パブリックドメイン, not 公有) also apply to the specifications under `docs/`, README, CONTRIBUTING, and new ADRs.
+The rules of the developer manual (diagnostic, not 診断; アセット, not 資産; マシン or 計算機, not 機械; notice and info, not お知らせ) and the rules common to the two manuals (書体 and フォント kept apart; バージョン, not 版, for a version; パブリックドメイン, not 公有) also apply to the specifications under `docs/`, README, CONTRIBUTING, and new ADRs.
 Committed ADRs cannot change and keep their old terms.
 
 textlint checks the rules that can be decided from the characters and the lines ([docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)).

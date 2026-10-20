@@ -71,7 +71,9 @@ emptyBook =
       bookCiteMarks = Map.empty,
       bookLabels = Map.empty,
       bookReferenced = Set.empty,
-      bookChapterOf = []
+      bookChapterOf = [],
+      bookChannels = [],
+      bookChannelDecls = Map.empty
     }
 
 entry :: Int -> FileId -> Text -> Text -> TocEntry

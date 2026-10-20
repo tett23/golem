@@ -1,5 +1,6 @@
 module AssembleSpec (tests) where
 
+import Data.List (sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -12,7 +13,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 cfg :: AssembleConfig
-cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" 16
+cfg = AssembleConfig (Map.fromList [(1, "第{n:kanji}章")]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" Map.empty 16
 
 sp :: Int -> Int -> SrcSpan
 sp f s = mkSpan (FileId f) s (s + 1)
@@ -92,6 +93,7 @@ tests =
         let docs = [Document (FileId 1) [para 1 0 [Cite (sp 1 0) "b", Cite (sp 1 1) "a", Cite (sp 1 2) "b"]]]
         bookBibliographies (fst (assemble cfg noEval docs)) @?= [(Nothing, [("b", 1), ("a", 2)])],
       multipleListTests,
+      channelTests,
       testCase "tocWithinDepth: every entry without @toc, those within its depth in order with it (golem-epub ADR 0002)" $ do
         let docs d =
               [ Document (FileId 1) ([Block (sp 1 0) Nothing (ChannelOutput (TocOutput n)) | Just n <- [d]] <> [heading 1 10 1 noHeadingAttrs Nothing "一", heading 1 20 2 noHeadingAttrs Nothing "節", heading 1 30 3 noHeadingAttrs Nothing "項", heading 1 40 1 noHeadingAttrs Nothing "二"])
@@ -103,6 +105,46 @@ tests =
         levels (Just 3) @?= [1, 2, 3, 1],
       diagnosticCodes
     ]
+
+-- | The channels of plugins (golem-doc ADR 0007).
+channelTests :: TestTree
+channelTests =
+  testGroup
+    "the channels of plugins (golem-doc ADR 0007)"
+    [ testCase "three items of one key are one entry: the body of the first, three locations" $ do
+        let docs = [Document (FileId 1) [para 1 0 [item 1 0 "glossary" (Just "k") (Just "か") "一", item 1 1 "glossary" (Just "k") (Just "か") "二"], para 1 5 [item 1 5 "glossary" (Just "k") (Just "か") "三"], list 1 9 "glossary"]]
+        entries (fst (assemble ccfg noEval docs)) @?= [((FileId 1, sp 1 9), "glossary", [(Just "k", ["一"], [(FileId 1, sp 1 0), (FileId 1, sp 1 1), (FileId 1, sp 1 5)])])],
+      testCase "two items without a key are two entries" $ do
+        let docs = [Document (FileId 1) [para 1 0 [item 1 0 "people" Nothing Nothing "甲", item 1 1 "people" Nothing Nothing "甲"], list 1 9 "people"]]
+        map (\(_, _, es) -> length es) (entries (fst (assemble ccfg noEval docs))) @?= [2],
+      testCase "the reading order is that of the index" $ do
+        let docs = [Document (FileId 1) [para 1 0 [item 1 0 "glossary" (Just "1") (Just "かんじ") "漢字", item 1 1 "glossary" (Just "2") (Just "かな") "かな", item 1 2 "glossary" (Just "3") (Just "カナ") "カナ"], list 1 9 "glossary"]]
+            bodies = [b | (_, _, es) <- entries (fst (assemble ccfg noEval docs)), (_, b, _) <- es]
+            expected = map snd (sortOn fst [(collationKey r, [t]) | (r, t) <- [("かんじ", "漢字"), ("かな", "かな"), ("カナ", "カナ")]])
+        bodies @?= expected
+        bodies @?= [["かな"], ["カナ"], ["漢字"]],
+      testCase "the document order follows the first locations across files" $ do
+        let docs =
+              [ Document (FileId 1) [para 1 0 [item 1 0 "people" (Just "b") Nothing "乙"]],
+                Document (FileId 2) [para 2 0 [item 2 0 "people" (Just "a") Nothing "甲", item 2 1 "people" (Just "b") Nothing "乙"], list 2 9 "people"]
+              ]
+        [k | (_, _, es) <- entries (fst (assemble ccfg noEval docs)), (k, _, _) <- es] @?= [Just "b", Just "a"],
+      testCase "one @channel at the end of each chapter lists the items of its chapter" $ do
+        let docs =
+              [ Document (FileId 1) [para 1 0 [item 1 0 "people" (Just "a") Nothing "甲"], list 1 9 "people"],
+                Document (FileId 2) [para 2 0 [item 2 0 "people" (Just "b") Nothing "乙"], list 2 9 "people"]
+              ]
+        [(at, [k | (k, _, _) <- es]) | (at, _, es) <- entries (fst (assemble ccfg noEval docs))]
+          @?= [((FileId 1, sp 1 9), [Just "a"]), ((FileId 2, sp 2 9), [Just "b"])],
+      testCase "the lists of one channel do not take the items of another" $ do
+        let docs = [Document (FileId 1) [para 1 0 [item 1 0 "people" (Just "a") Nothing "甲", item 1 1 "glossary" (Just "g") (Just "が") "語"], list 1 8 "glossary", list 1 9 "people"]]
+        [(c, [k | (k, _, _) <- es]) | (_, c, es) <- entries (fst (assemble ccfg noEval docs))] @?= [("glossary", [Just "g"]), ("people", [Just "a"])]
+    ]
+  where
+    ccfg = cfg {acChannels = Map.fromList [(channelName d, d) | d <- [ChannelDecl "glossary" OrderReading False, ChannelDecl "people" OrderDocument True]]}
+    item f s c k r t = ChannelItem (sp f s) (ChannelItemData c k r [Text (sp f s) t])
+    list f s c = Block (sp f s) Nothing (ChannelOutput (CustomOutput c Nothing))
+    entries book = [(at, c, [(ceKey e, [t | Text _ t <- ceBody e], ceLocations e) | e <- es]) | (at, c, es) <- bookChannels book]
 
 -- | Several @index and @bibliography in a book (golem-doc ADR 0008).
 multipleListTests :: TestTree

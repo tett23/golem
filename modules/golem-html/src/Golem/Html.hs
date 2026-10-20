@@ -461,6 +461,7 @@ block c (Block sp lbl body) = case body of
      in "<figure" <> idAttr lbl <> ">\n<img src=\"" <> escapeXml (relLink (cHere c) (T.unpack (webSource f))) <> "\" alt=\"" <> escapeXml (figAlt f) <> "\"/>\n<figcaption>" <> num <> cap <> "</figcaption>\n</figure>\n"
   ChannelOutput (TocOutput d) -> toc c (Just d)
   ChannelOutput IndexOutput -> index c sp
+  ChannelOutput (CustomOutput name _) -> channelList c sp name
   ChannelOutput BibliographyOutput ->
     "<ol class=\"bibliography\">\n"
       <> T.concat
@@ -564,6 +565,33 @@ bibliographyHome book sp = fst <$> (fst =<< Map.lookup (spanFile sp, sp) (bookCi
 citeId :: Ctx -> Maybe ListAt -> Text -> Text
 citeId c at k = fromMaybe ("cite-" <> k) (at >>= \a -> Map.lookup (a, k) (cCiteIds c))
 
+{- | The list of a channel of a plugin (golem-doc ADR 0007): its entries
+in a ul, each with links to where its items are when the channel shows
+them.
+-}
+channelList :: Ctx -> SrcSpan -> Text -> Text
+channelList c sp name =
+  "<section class=\"channel\" data-channel=\""
+    <> escapeXml name
+    <> "\">\n<ul>\n"
+    <> T.concat
+      [ "<li>"
+          <> inlines c (ceBody e)
+          <> ( if locators
+                 then " " <> T.intercalate ", " ["<a href=\"" <> linkTo c fid (channelAnchor name lsp) <> "\">" <> tshow i <> "</a>" | (i, (fid, lsp)) <- zip [1 :: Int ..] (ceLocations e)]
+                 else ""
+             )
+          <> "</li>\n"
+      | e <- channelAt (cBook c) sp
+      ]
+    <> "</ul>\n</section>\n"
+  where
+    locators = maybe False channelLocators (Map.lookup name (bookChannelDecls (cBook c)))
+
+-- | The id at an item of a channel: c-<channel>-<file>-<start> (golem-doc ADR 0007).
+channelAnchor :: Text -> SrcSpan -> Text
+channelAnchor name (SrcSpan (FileId f) s _) = "c-" <> name <> "-" <> T.pack (show f) <> "-" <> T.pack (show s)
+
 spanAnchor :: SrcSpan -> Text
 spanAnchor (SrcSpan (FileId f) s _) = "i-" <> T.pack (show f) <> "-" <> T.pack (show s)
 
@@ -603,6 +631,10 @@ inline c = \case
      in "<a epub:type=\"noteref\" class=\"noteref\" href=\"" <> linkTo c (cnHome (cNotes c)) ("note-" <> key) <> "\" id=\"noteref-" <> key <> "\">" <> tshow n <> "</a>"
   Sidenote _ n _ -> "<sup class=\"sidenote-ref\">" <> tshow n <> "</sup>"
   IndexMark sp _ -> "<span id=\"" <> spanAnchor sp <> "\"></span>"
+  -- an empty span with an id when the channel shows where its items are (golem-doc ADR 0007)
+  ChannelItem sp ci
+    | maybe False channelLocators (Map.lookup (ciChannel ci) (bookChannelDecls (cBook c))) -> "<span id=\"" <> escapeXml (channelAnchor (ciChannel ci) sp) <> "\"></span>"
+    | otherwise -> ""
   -- a link to the entry in the file of its bibliography; a span without one (golem-html ADR 0003)
   Cite sp k -> case citeNumber (cBook c) sp k of
     Just n ->

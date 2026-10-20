@@ -122,7 +122,7 @@ WASI がないので、標準入出力やファイルを使うライブラリは
 | --- | --- | --- |
 | [code: memory] | メモリ | 入力と出力を置く線形メモリ |
 | [code: golem_abi_version] | [code: () -> u32] | ABI のバージョン |
-| [code: golem_describe] | [code: () -> u64] | コマンドとフィルタの名前の一覧を CBOR で返す |
+| [code: golem_describe] | [code: () -> u64] | コマンドとフィルタの名前と、チャネルの宣言の一覧を CBOR で返す |
 | [code: golem_alloc] | [code: (len: u32) -> u32] | 入力を書く領域を確保し、その位置を返す |
 | [code: golem_invoke] | [code: (ptr: u32, len: u32) -> u64] | CBOR の要求を受け取り、CBOR の応答を返す |
 
@@ -144,7 +144,8 @@ WASI がないので、標準入出力やファイルを使うライブラリは
 読み込みの時点で、ホストは [code: golem_abi_version] を呼び、ホストの ABI のバージョンと比べる。
 今の ABI のバージョンは 7 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
 一致しなければ、読み込みの時点でエラー（G0605）になる。
-続けて [code: golem_describe] を呼び、プラグインが提供するコマンドとフィルタの名前を得る。
+続けて [code: golem_describe] を呼び、プラグインが提供するコマンドとフィルタの名前と、宣言するチャネルを得る。
+チャネルの名前が予約した名前か形の誤った名前であるか、二つのプラグインが同じチャネルを宣言すると、G0612 のエラーになる。
 
 ## 受け渡す CBOR
 
@@ -162,10 +163,12 @@ value = int64 / float / tstr / bool / null / [* value]
 response = [output: inlines / document,
             diagnostics: [* plugin-diagnostic]]
 plugin-diagnostic = [code: tstr, severity: 0 / 1, span, message: tstr]
-description = [commands: [* tstr], filters: [* tstr]]
+description = [commands: [* tstr], filters: [* tstr],
+               channels: [* channel-decl]]
+channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 ```
 
-- [code: golem_describe] は [code: description] を返す。
+- [code: golem_describe] は [code: description] を返す。二つのフィールドの [code: description] は不正な応答（G0605）である。[code: order] は 0 が文書の順、1 が読みの順である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0007-plugin-channel-lists.md]（golem-doc ADR 0007「プラグインの独自のチャネル」）]
 - コマンドの呼び出しでは、[code: golem_invoke] は [code: command-request] を受け取り、[code: output] がインラインの列（[code: inlines]）の [code: response] を返す。
 - フィルタの呼び出しでは、[code: filter-request] を受け取り、[code: output] がファイル一つ分の文書（[code: document]）の [code: response] を返す。
 - 引数の値に連想配列は渡せない。[code: value] にマップがないのはそのためである。
@@ -231,12 +234,12 @@ golem-plugin のテストは、テスト用のプラグインを wat（wasm の�
 次は、受け取った文書をそのまま返すフィルタ [code: same] だけを持つプラグインである。
 [code: identity.wat] から、コマンドの部分を除いて整形し直した。
 
-```wat
+```wat numbers=true
 (module
   (memory (export "memory") 2)
   (global $heap (mut i32) (i32.const 65536))
-  ;; golem_describe の CBOR: [[], ["same"]]
-  (data (i32.const 16) "\82\80\81\64same")
+  ;; golem_describe の CBOR: [[], ["same"], []]
+  (data (i32.const 16) "\83\80\81\64same\80")
   (func (export "golem_abi_version") (result i32) (i32.const 7))
   (func (export "golem_alloc") (param $n i32) (result i32)
     (local $p i32)
@@ -244,7 +247,7 @@ golem-plugin のテストは、テスト用のプラグインを wat（wasm の�
     (global.set $heap (i32.add (global.get $heap) (local.get $n)))
     (local.get $p))
   (func (export "golem_describe") (result i64)
-    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 8)))
+    (i64.or (i64.shl (i64.const 16) (i64.const 32)) (i64.const 9)))
   (func (export "golem_invoke") (param $ptr i32) (param $len i32)
     (result i64)
     (local $skip i32) (local $doc i32)

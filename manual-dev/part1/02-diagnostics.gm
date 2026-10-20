@@ -50,10 +50,10 @@ diagnostic が一つもなくても [code: \[\]] を書く。
   "fixes":[]}]
 ```
 
-鍵の順は固定である。
+キーの順は固定である。
 golem-syntax の [code: Golem.Syntax.Render] の [code: renderJson] が文字列を直接組み立てており、JSON のライブラリの走査順に左右されない。
 
-| 鍵 | 型 | 内容 |
+| キー | 型 | 内容 |
 | --- | --- | --- |
 | [code: code] | 文字列 | diagnostic のコード |
 | [code: severity] | 文字列 | [code: error]、[code: warning]、[code: notice] のどれか |
@@ -63,9 +63,9 @@ golem-syntax の [code: Golem.Syntax.Render] の [code: renderJson] が文字列
 | [code: fixes] | 配列 | [code: title] と [code: edits] を持つ修正案の列 |
 | [code: facts] | オブジェクト | プログラムが読む事実。持つ diagnostic にだけある（下を参照） |
 
-[code: span] は次の五つの鍵を持つ。
+[code: span] は次の五つのキーを持つ。
 
-| 鍵 | 内容 |
+| キー | 内容 |
 | --- | --- |
 | [code: file] | プロジェクトのルートからのパス |
 | [code: start] | ファイルの先頭からの UTF-8 のバイト数（範囲の始まり） |
@@ -83,9 +83,9 @@ golem-syntax の [code: Golem.Syntax.Render] の [code: renderJson] が文字列
 CR を含む原稿の G0103 に付く「golem fmt で LF に直す」がその例である。
 
 一部の diagnostic は、[code: fixes] の後に [code: facts] のオブジェクトを持つ。[index reading=facts: facts][note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
-ページ番号や測った値のように、メッセージに書いたことをプログラムが読める形にしたもので、鍵はdiagnostic ごとに決まった順に並ぶ。
+ページ番号や測った値のように、メッセージに書いたことをプログラムが読める形にしたもので、キーは diagnostic ごとに決まった順に並ぶ。
 値は整数、文字列、整数の配列、文字列の配列のどれかである。
-今は [code: golem preflight] の diagnostic（G0902 から G0918）だけが持ち、ほかの diagnostic の JSON に [code: facts] の鍵は現れない。
+今は [code: golem preflight] の diagnostic（G0902 から G0918）だけが持ち、ほかの diagnostic の JSON に [code: facts] のキーは現れない。
 
 ```json
 {"code":"G0906","severity":"warning",

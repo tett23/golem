@@ -5,6 +5,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.IR
 import Golem.Doc.Validate (validateDocument)
 import Golem.Eval.Builtin (OverridableBuiltin (..), pluginCommandName)
@@ -236,6 +237,7 @@ tests =
       duplicateKeyTests,
       shorthandTests,
       int64Tests,
+      channelCommandTests,
       powDiagnosticTests,
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
@@ -476,6 +478,29 @@ shorthandTests =
         errs "[tcy: ##10##]\n" @?= errs "[tcy: [number-text 10]]\n"
         assertBool "G0240" ("G0240" `elem` errs "[tcy: ##10##]\n")
     ]
+
+-- | @channel, the list of a channel of a plugin (golem-doc ADR 0007).
+channelCommandTests :: TestTree
+channelCommandTests =
+  testGroup
+    "@channel (golem-doc ADR 0007)"
+    [ testCase "a declared channel is its list, with the style of its entries" $ do
+        fst (run withGlossary "@channel glossary\n") @?= [ChannelOutput (CustomOutput "glossary" Nothing)]
+        fst (run withGlossary "@channel glossary style=quote\n") @?= [ChannelOutput (CustomOutput "glossary" (Just "quote"))]
+        fst (run withGlossary "@channel glossary style=body\n") @?= [ChannelOutput (CustomOutput "glossary" Nothing)]
+        snd (run withGlossary "@channel glossary\n") @?= [],
+      testCase "G0290: a channel no plugin declares, at the command" $ do
+        diagsWith withGlossary "@channel unknown\n" @?= [("G0290", "宣言されていないチャネルです: unknown", 0, 17)]
+        msgs "@channel glossary\n" @?= [("G0290", "宣言されていないチャネルです: glossary")],
+      testCase "G0290: no name, or two" $ do
+        [(c, m) | (c, m, _, _) <- diagsWith withGlossary "@channel\n"] @?= [("G0290", "@channel にはチャネルの名前を一つ書きます")]
+        [(c, m) | (c, m, _, _) <- diagsWith withGlossary "@channel a b\n"] @?= [("G0290", "@channel にはチャネルの名前を一つ書きます")]
+        fst (run withGlossary "@channel a b\n") @?= [],
+      testCase "G0247: a paragraph style not defined" $
+        snd (run withGlossary "@channel glossary style=nope\n") @?= ["G0247"]
+    ]
+  where
+    withGlossary = ctx {ctxPlugins = noPlugins {phChannels = Map.fromList [("glossary", ChannelDecl "glossary" OrderReading False)]}}
 
 -- | The integers of the IR are int64; one out of range is G0291 (golem-doc ADR 0006).
 int64Tests :: TestTree

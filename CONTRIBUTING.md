@@ -145,8 +145,8 @@ ADR で仕様が変わったら、同じプルリクエストで [docs/specifica
 ADR を実装して使い手から見える振る舞いが変わるときは同じプルリクエストで `manual/` を、開発の手順や仕組みが変わるときは `manual-dev/` を直す。
 マニュアルには、採択して実装を終えた仕様だけを書く。
 マニュアルを編集する前に、一度 `sh scripts/manual/build-info.sh manual`（と `manual-dev`）を実行して、奥付が読む `common/build-info.gm` を作っておく。
-二つのマニュアルは `scripts/manual/build.sh` で、エラー、警告、お知らせを一つも出さずに組めなければならない（CI の `build` ジョブで走る）。
-`silence-notices` と `--no-notices` で、お知らせを消してはいけない。
+二つのマニュアルは `scripts/manual/build.sh` で、エラー、警告、notice を一つも出さずに組めなければならない（CI の `build` ジョブで走る）。
+`silence-notices` と `--no-notices` で、notice を消してはいけない。
 `.githooks/pre-push` と CI の `manual` ジョブ（`docs.yml`）は、次のブランチを止める。
 
 - docs/markup.md か docs/specifications.md を変えて、`manual/` も `manual-dev/` も変えていないブランチ
@@ -189,7 +189,7 @@ tasty 1.5.4 も、capability がプロセッサより少ないと起動の時点
 外来語の区切りのような、並列でない中黒は使ってよい。
 
 用語は [docs/manual-policy.md](./docs/manual-policy.md) の規則に従う。
-開発者のマニュアルの規則（「診断」ではなく diagnostic、「資産」ではなくアセット、「機械」ではなくマシンか計算機）と、二つのマニュアルに共通する規則（「書体」と「フォント」の使い分け、version は「版」ではなくバージョン、public domain は「公有」ではなくパブリックドメイン）は、`docs/` の仕様書、README、CONTRIBUTING、新しい ADR にも当てはめる。
+開発者のマニュアルの規則（「診断」ではなく diagnostic、「資産」ではなくアセット、「機械」ではなくマシンか計算機、「お知らせ」ではなく notice と info）と、二つのマニュアルに共通する規則（「書体」と「フォント」の使い分け、version は「版」ではなくバージョン、public domain は「公有」ではなくパブリックドメイン）は、`docs/` の仕様書、README、CONTRIBUTING、新しい ADR にも当てはめる。
 コミット済みの ADR は変えられないので、古い用語のまま残す。
 
 文字と行で判定できる規則は、textlint で検査する（[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。

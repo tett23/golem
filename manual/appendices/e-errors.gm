@@ -106,6 +106,9 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   その名前のコマンドがありません。
   綴りを確かめてください。
   プラグインのコマンドなら、[code: manifest.toml] にプラグインを宣言してください。
+= [strong: G0290 [code: 宣言されていないチャネルです: …]]、[strong: [code: @channel にはチャネルの名前を一つ書きます]]
+  [code: @channel] に書いた一覧の名前を、どのプラグインも作りません。
+  綴りと、その一覧を作るプラグインを [code: manifest.toml] に宣言したかを確かめてください。
 = [strong: G0238 [code: … には散文スロットが一つ必要です]]、[strong: [code: … は散文スロットを取りません]] など
   コマンドの [code: :] の後の本文（散文スロット。「[ref-title inline-commands]」、[ref-page inline-commands] ページ）の数が違います。
   ルビは [code: \[ruby: 親文字\|読み\]] のように、[code: \|] で区切って二つ書きます。
@@ -483,9 +486,9 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   文字の [code: ~] は [code: \\~] と書き、和文の文字の範囲は [code: \[\\x{4E00}-\\x{9FFF}\]] のように書きます。
   [code: @style-def regex] の文字列の中では、[code: \\] を [code: \\\\] と書きます。
 = [strong: G0320 [code: アキの量の指定が正しくありません: …]]
-  [code: \[aki-sets\]] の規則か、寸法の欄の値が違います。
+  [code: \[aki-sets\]] の規則か、寸法のキーの値が違います。
   量は [code: "四分"]、[code: "0.25zw"]、[code: "25%"] のように書き、[code: minimum]、[code: optimum]、[code: maximum] の順に小さくない値にしてください。
-  [code: indent] のような寸法の欄には、[code: "四分"] や [code: "25%"] ではなく [code: "0.5zw"] のような寸法を書きます。
+  [code: indent] のような寸法のキーには、[code: "四分"] や [code: "25%"] ではなく [code: "0.5zw"] のような寸法を書きます。
 = [strong: G0321 [code: … の値が正しくありません: …]]
   [code: kerning]、[code: tracking]、[code: proportional-metrics]、[code: baseline-shift] の値が違います。
   [code: kerning = "optical"] はまだ使えないので、[code: "metrics"] にしてください。
@@ -646,6 +649,9 @@ PDF を組むときに出るエラーです。
   [code: overrides] に、置き換えられないコマンドか、そのプラグインにないコマンドを書いています。
 = [strong: G0610 [code: 宣言されていないプラグインです: …]]、[strong: [code: プラグインが提供していないフィルタです: …]]
   [code: \[\[filters\]\]] の [code: plugin] と [code: filter] の名前を確かめてください。
+= [strong: G0612 [code: 複数のプラグインが同じチャネルを宣言しています: …]]、[strong: [code: …: このチャネルの名前は使えません: …]]
+  二つのプラグインが同じ一覧（チャネル）を作ろうとしているか、プラグインが使えない名前の一覧を作ろうとしています。
+  どちらかのプラグインを外すか、プラグインの作者に知らせてください。
 
 @nonumber
 ## プリフライト

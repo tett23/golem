@@ -99,14 +99,14 @@ aarch64 では一つのランナー（[code: all]）がすべてを受け持つ�
 プルリクエストでは [code: --quick] を付けて小さな入力だけを検査し、[code: main] への push とリリースではすべての入力を検査する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0038-env-determinism-quick-on-pull-requests.md]（docs/adr の ADR 0038「プルリクエストでは環境を変える検査を小さな入力に絞る」）]
 + x86-64 では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。
 
-キャッシュの鍵は、[code: cabal.project] と [code: cabal.project.freeze] のハッシュ、ランナーの OS とアーキテクチャ、GHC のバージョンから作る。
+キャッシュのキーは、[code: cabal.project] と [code: cabal.project.freeze] のハッシュ、ランナーの OS とアーキテクチャ、GHC のバージョンから作る。
 [code: dist-newstyle] のキャッシュは、[code: main] への push と、プルリクエストで GHC がモジュールをコンパイルしたときに保存する。
 x86-64 では、テストを受け持つランナーだけが保存する。
 プルリクエストのキャッシュは、そのプルリクエストの次の push と再実行だけが使える。
 キャッシュを戻すときは、そのプルリクエストのキャッシュを先に探し、なければ [code: main] のキャッシュを使う。
 何もコンパイルしなかった実行は、戻したキャッシュのままなので保存しない。
-マニュアルのフォントのキャッシュの鍵は、[code: scripts/manual/fetch-fonts.sh] のハッシュである。
-フォントの URL と SHA-256 はこのスクリプトに書いてあるので、フォントを変えれば鍵も変わる。
+マニュアルのフォントのキャッシュのキーは、[code: scripts/manual/fetch-fonts.sh] のハッシュである。
+フォントの URL と SHA-256 はこのスクリプトに書いてあるので、フォントを変えればキーも変わる。
 
 テストのラッパーを [code: cabal test] の引数でなく [code: cabal.project.local] に書くのは、[code: dist-newstyle] のキャッシュを生かすためである。
 テストのラッパーは、ローカルのパッケージの設定の一部である。
@@ -170,7 +170,7 @@ hlint は [code: -j] でランナーのすべてのコアを使う。
 続けて [code: scripts/manual/check-figures.sh] で、この本の輪郭の SVG の図が原稿の SVG から作られたままであることを確かめる（第[ref-number manuals]章）。
 
 [code: textlint] は、[code: scripts/ci/textlint.sh] で文書の表記を検査する（第[ref-number docs]章）。
-[code: actions/setup-node] で Node の最新の LTS を入れ、[code: tools/textlint/node_modules/] を [code: package-lock.json] のハッシュを鍵にしてキャッシュする。
+[code: actions/setup-node] で Node の最新の LTS を入れ、[code: tools/textlint/node_modules/] を [code: package-lock.json] のハッシュをキーにしてキャッシュする。
 キャッシュが当たれば [code: npm ci] を省く。
 先に、Golem の規則と辞書のテスト（[code: node --test]）を走らせる。
 ベースからヘッドまでに加わった ADR も検査し、コミット済みの ADR は検査しない。

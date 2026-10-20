@@ -143,6 +143,7 @@ channelT = \case
   TocOutput d -> tagged 0 [int d]
   IndexOutput -> tagged 1 []
   BibliographyOutput -> tagged 2 []
+  CustomOutput n st -> tagged 3 [text n, opt text st]
 
 inlinesTerm :: [Inline] -> Term
 inlinesTerm = list (inlineT (const TNull))
@@ -166,6 +167,7 @@ inlineT rt = \case
   LineBreak s -> tagged 17 [spanT s]
   Aki s (AkiZw r) -> tagged 18 [spanT s, TList [int (numerator r), int (denominator r)], TNull]
   Aki s (AkiAbs x) -> tagged 18 [spanT s, TNull, int x]
+  ChannelItem s (ChannelItemData c k r body) -> tagged 19 [spanT s, text c, opt text k, opt text r, inlinesTerm body]
   where
     sub = list (inlineT rt)
 
@@ -369,6 +371,10 @@ termChannel t =
         1 -> Right IndexOutput
         2 -> Right BibliographyOutput
         _ -> bad "チャネル"
+    [tag, n, st] ->
+      asIntI tag >>= \case
+        3 -> CustomOutput <$> asText n <*> asOpt asText st
+        _ -> bad "チャネル"
     _ -> bad "チャネル"
 
 termInlines :: Term -> D [Inline]
@@ -406,6 +412,8 @@ termInline rd t =
           d' <- asInt d
           if d' > 0 then Right (Aki s (AkiZw (n' % d'))) else bad "アキの分母"
         (18, [TNull, x]) -> Aki s . AkiAbs <$> asInt x
+        -- an item of a channel of a plugin (golem-doc ADR 0007)
+        (19, [c, k, r, x]) -> fmap (ChannelItem s) (ChannelItemData <$> asText c <*> asOpt asText k <*> asOpt asText r <*> termInlines x)
         -- 1, 2 and 3 (strong, bold, italic) are retired: they are character styles (docs/adr ADR 0005)
         _ -> bad "インラインの種類"
     _ -> bad "インライン"

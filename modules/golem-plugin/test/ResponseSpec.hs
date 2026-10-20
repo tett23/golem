@@ -14,6 +14,7 @@ import Data.ByteString qualified as BS
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
+import Golem.Doc.Assemble (ChannelDecl (..), ChannelOrder (..))
 import Golem.Doc.Cbor (documentTerm, inlinesTerm)
 import Golem.Doc.IR
 import Golem.Eval.Value (Value (..))
@@ -26,9 +27,14 @@ import Text.Printf (printf)
 cbor :: Term -> ByteString
 cbor = toStrictByteString . encodeTerm
 
--- | The usual description: one command, shout, and one filter, upper.
+{- | The usual description: one command, shout, one filter, upper, and two
+channels, glossary in reading order and people in document order with
+locators (golem-doc ADR 0007).
+-}
 shoutAndUpper :: ByteString
-shoutAndUpper = cbor (TList [TList [TString "shout"], TList [TString "upper"]])
+shoutAndUpper = cbor (TList [TList [TString "shout"], TList [TString "upper"], TList [decl "glossary" 1 False, decl "people" 0 True]])
+  where
+    decl n o l = TList [TString n, TInt o, TBool l]
 
 {- | fixed.wat filled with a description and a response; the ABI version
 is the host's.
@@ -72,6 +78,7 @@ responseTests =
   testGroup
     "the response of a plugin (golem-plugin ADR 0001)"
     [ diagnosticTests,
+      channelTests,
       malformedResponseTests,
       malformedDescriptionTests,
       testCase "a hash as an argument is bad output before the plugin runs" $ do
@@ -142,6 +149,37 @@ malformedResponseTests =
           other -> assertFailure (show other)
     ]
 
+-- | The channels of a plugin (golem-doc ADR 0007).
+channelTests :: TestTree
+channelTests =
+  testGroup
+    "the channels of a plugin (golem-doc ADR 0007)"
+    [ testCase "the description of three fields gives the channels" $ do
+        p <- answering (withDiagnostics [])
+        pluginChannels p @?= [ChannelDecl "glossary" OrderReading False, ChannelDecl "people" OrderDocument True],
+      testCase "a description of two fields is bad output" $ do
+        wasm <- fixedPlugin (cbor (TList [TList [TString "shout"], TList [TString "upper"]])) (withDiagnostics [])
+        loadPlugin wasm >>= (@?= Left (BadOutput "golem_describe の形が不正です")) . void,
+      testCase "an item of a channel the plugin declares comes back" $ do
+        let it = item "glossary" (Just "かな") [Text callSpan "語"]
+        p <- answering (itemsResponse [it])
+        fmap fst (shout p) @?= Right [it],
+      testCase "an item of a channel the plugin does not declare is bad output" $ do
+        p <- answering (itemsResponse [item "other" Nothing [Text callSpan "語"]])
+        shout p @?= Left (BadOutput "宣言していないチャネルです: other"),
+      testCase "an item of a channel in reading order without a reading is bad output" $ do
+        p <- answering (itemsResponse [item "glossary" Nothing [Text callSpan "語"]])
+        shout p @?= Left (BadOutput "読みの順のチャネルの項目には読みが要ります: glossary")
+        p' <- answering (itemsResponse [item "glossary" (Just "") [Text callSpan "語"]])
+        shout p' @?= Left (BadOutput "読みの順のチャネルの項目には読みが要ります: glossary"),
+      testCase "an item whose body holds a note is bad output" $ do
+        p <- answering (itemsResponse [item "people" Nothing [Note callSpan 1 [Text callSpan "注"]]])
+        shout p @?= Left (BadOutput "チャネルの項目の本文に置けない要素があります")
+    ]
+  where
+    item c r body = ChannelItem callSpan (ChannelItemData c (Just "k") r body)
+    itemsResponse is = cbor (TList [inlinesTerm is, TList []])
+
 malformedDescriptionTests :: TestTree
 malformedDescriptionTests =
   testGroup
@@ -150,10 +188,10 @@ malformedDescriptionTests =
         wasm <- fixedPlugin (cbor (TList [TList [TString "shout"]])) (withDiagnostics [])
         loadPlugin wasm >>= (@?= Left (BadOutput "golem_describe の形が不正です")) . void,
       testCase "a command name that is not a string" $ do
-        wasm <- fixedPlugin (cbor (TList [TList [TInt 1], TList []])) (withDiagnostics [])
+        wasm <- fixedPlugin (cbor (TList [TList [TInt 1], TList [], TList []])) (withDiagnostics [])
         loadPlugin wasm >>= (@?= Left (BadOutput "名前が文字列ではありません")) . void,
       testCase "a filter name that is not a string" $ do
-        wasm <- fixedPlugin (cbor (TList [TList [], TList [TBool True]])) (withDiagnostics [])
+        wasm <- fixedPlugin (cbor (TList [TList [], TList [TBool True], TList []])) (withDiagnostics [])
         loadPlugin wasm >>= (@?= Left (BadOutput "名前が文字列ではありません")) . void
     ]
 

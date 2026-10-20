@@ -225,8 +225,8 @@ evaluateProjectWith overlay profile root = do
           hookE <- loadPlugins cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) manifest0
           let (pluginDiags, hook) = either (,noPlugins) ([],) hookE
               pluginCommands = sort (map unPluginCommandName (Map.keys (phCommands hook)))
-              -- no G0222 after the plugins failed to load (golem-plugin ADR 0003)
-              quiet = if null pluginDiags then id else \r -> r {erDiagnostics = filter ((/= DiagnosticCode "G0222") . diagCode) (erDiagnostics r)}
+              -- no G0222 after the plugins failed to load (golem-plugin ADR 0003), nor G0290 (golem-doc ADR 0007)
+              quiet = if null pluginDiags then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G0222", DiagnosticCode "G0290"]) . diagCode) (erDiagnostics r)}
           if hasErrors synDiags
             then do
               loaded <- loadAssets overlay root project
@@ -249,7 +249,7 @@ evaluateProjectWith overlay profile root = do
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
                   projectDiags = defaultStyleNotice <> masterDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
-                  reassemble = assembleResults style manifest project projectDiags
+                  reassemble = assembleResults (phChannels hook) style manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)
               pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText results book (projectDiags <> s0Diags <> s1Diags) (laSources loaded) (laTableFiles loaded) projectDiags s1Diags reassemble again pluginCommands))
@@ -258,8 +258,8 @@ evaluateProjectWith overlay profile root = do
 and the diagnostics of S1; nothing when the diagnostics of the project
 stage or of S0 have an error.
 -}
-assembleResults :: Style -> Manifest -> Project -> [Diagnostic] -> Map FileId EvalResult -> (Maybe Book, [Diagnostic])
-assembleResults style manifest project projectDiags results
+assembleResults :: Map Text ChannelDecl -> Style -> Manifest -> Project -> [Diagnostic] -> Map FileId EvalResult -> (Maybe Book, [Diagnostic])
+assembleResults channels style manifest project projectDiags results
   | hasErrors (projectDiags <> concatMap erDiagnostics (Map.elems results)) = (Nothing, [])
   | otherwise =
       let -- the chapter of the manifest of each file: a top-level entry, a nested array as one (golem-driver ADR 0018)
@@ -267,7 +267,7 @@ assembleResults style manifest project projectDiags results
           chapterRuns = [(erDocument r, ch) | ((fid, _), ch) <- zip (projectChapters project) chapterOfFile, Just r <- [Map.lookup fid results]]
           -- where G0407 points (golem-syntax ADR 0002)
           numberSites = Map.unions (map erNumberSites (Map.elems results))
-          cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style)) pageLines
+          cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style)) channels pageLines
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
           pageLines = maybe maxBound gridLines (stPage style >>= pageGrid)
           (book, s1Diags) = assemble cfg evalDeferred (map fst chapterRuns)

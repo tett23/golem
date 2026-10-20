@@ -8,7 +8,7 @@ import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.Assemble (Book (..), HeadingInfo (..), LabelTarget (..), TocEntry (..))
+import Golem.Doc.Assemble (Book (..), ChannelEntry (..), HeadingInfo (..), LabelTarget (..), TocEntry (..))
 import Golem.Doc.IR
 import Golem.Syntax.Span
 import Golem.Text
@@ -42,7 +42,9 @@ bookOf bs =
       bookCiteMarks = Map.empty,
       bookLabels = Map.empty,
       bookReferenced = Set.empty,
-      bookChapterOf = []
+      bookChapterOf = [],
+      bookChannels = [],
+      bookChannelDecls = Map.empty
     }
 
 para :: Int -> [Inline] -> Block
@@ -106,6 +108,14 @@ tests =
               { bookLabels = Map.fromList [("intro", LabelTarget (at 9) Nothing [txt "はじめに"] "intro" fid)]
               }
        in only (horizontal book) @?= "詳しくは「はじめに」を見よ。\n",
+    testCase "the list of a channel of a plugin: the body of each entry on a line; the item shows nothing (golem-doc ADR 0007)" $
+      let item n t = ChannelItem (at n) (ChannelItemData "people" (Just t) Nothing [Text (at n) t])
+          entry t n = ChannelEntry (Just t) [Text (at n) t] [(fid, at n)]
+          book =
+            (bookOf [para 0 [txt "本文", item 1 "甲", item 2 "乙"], Block (at 5) Nothing (ChannelOutput (CustomOutput "people" Nothing))])
+              { bookChannels = [((fid, at 5), "people", [entry "甲" 1, entry "乙" 2])]
+              }
+       in only (horizontal book) @?= "本文\n\n甲\n乙\n",
     testCase "a citation is its number in square brackets" $
       let book = (bookOf [para 0 [txt "文献", Cite (at 1) "knuth1981", txt "による。"]]) {bookBibliographies = [(Nothing, [("tex", 1), ("knuth1981", 2)])], bookCiteMarks = Map.fromList [((fid, at 1), (Nothing, 2))]}
        in only (horizontal book) @?= "文献[2]による。\n",

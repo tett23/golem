@@ -7,7 +7,7 @@ import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Word (Word64)
-import GHC.Float (castDoubleToWord64)
+import GHC.Float (castDoubleToWord64, castWord64ToDouble)
 import Golem.Eval.Expr
 import Golem.Eval.Number
 import Golem.Eval.Value
@@ -110,13 +110,32 @@ tests =
         ev "max(1, 2.5, 2)" @?= Right (VFloat 2.5),
       testCase "embedding rejects non-text values" $ do
         shown "true" @?= Left "Diagnostic {diagCode = DiagnosticCode \"G0208\", diagSeverity = Error, diagSpan = SrcSpan {spanFile = FileId 0, spanStart = 0, spanEnd = 0}, diagMessage = \"\\30495\\20605\\20516 \\12399\\26412\\25991\\12395\\22475\\12417\\36796\\12417\\12414\\12379\\12435\", diagRelated = [], diagFixes = [], diagFacts = []}"
-        either (const True) (const False) (shown "[1]") @?= True,
-      testProperty "a == div(a, b) * b + a % b" $ property $ do
+        -- the code and the message name the type of every value that is not text
+        [either (Just . codeMsg) (const Nothing) (embedValue (mkSpan (FileId 0) 0 0) v) | v <- [VBool False, VNil, VArray [VInt 1], VHash Map.empty]]
+          @?= [Just ("G0208", t <> " は本文に埋め込めません") | t <- ["真偽値", "nil", "配列", "連想配列"]],
+      -- the identity alone holds for truncation as well; the remainder takes
+      -- the sign of the divisor only when the quotient is floored
+      testProperty "a == div(a, b) * b + a % b, the remainder with the sign of b" $ property $ do
         a <- forAll (Gen.integral (Range.linearFrom 0 (-1000) 1000))
         b <- forAll (Gen.filter (/= 0) (Gen.integral (Range.linearFrom 0 (-50) 50)))
-        a === floorDiv a b * b + floorMod a b,
+        let lit n = "(" <> T.pack (show (n :: Integer)) <> ")"
+        q <- evalEither (ev ("div(" <> lit a <> ", " <> lit b <> ")"))
+        r <- evalEither (ev (lit a <> " % " <> lit b))
+        case (q, r) of
+          (VInt q', VInt r') -> do
+            a === q' * b + r'
+            assert (abs r' < abs b)
+            assert (r' == 0 || signum r' == signum b)
+          other -> annotateShow other >> failure,
       testProperty "rendering reads back to the same double" $ property $ do
-        d <- forAll (Gen.double (Range.exponentialFloatFrom 0 (-1e30) 1e30))
+        -- the whole range of doubles, subnormals and the largest included
+        d <-
+          forAll $
+            Gen.choice
+              [ Gen.double (Range.exponentialFloatFrom 0 (-1e30) 1e30),
+                castWord64ToDouble <$> Gen.word64 Range.constantBounded,
+                Gen.element [5.0e-324, -5.0e-324, 2.2250738585072014e-308, 1.7976931348623157e308, -1.7976931348623157e308, 1.0e-7, 1.0e21]
+              ]
         case finite d of
           Nothing -> success
           Just x -> do
@@ -378,6 +397,32 @@ exactLimitTests =
         bitsOf "(-2) ** -1075" @?= bits 0
         bitsOf "3.0 ** -678" @?= bits (encodeFloat 1 (-1074))
         bitsOf "3 ** -679" @?= bits 0,
+      testCase "an exact power of -2^-1075 is a positive zero (golem-eval ADR 0005)" $ do
+        -- the exact power is past the range check, and rounds to zero
+        case ev "(0 - 2.0 ** -215) ** 5" of
+          Right (VFloat d) -> do
+            d @?= 0
+            assertBool "not a negative zero" (not (isNegativeZero d))
+          other -> assertFailure (show other)
+        bitsOf "(0 - 2.0 ** 215) ** -5" @?= bits 0,
+      testProperty "a power that is zero is not a negative zero (golem-eval ADR 0005)" $ property $ do
+        -- odd exponents and bases -2^f with f * k around -1075
+        k <-
+          forAll
+            ( Gen.choice
+                [ (*) <$> Gen.element [1, -1] <*> Gen.element [1, 5, 25, 43, 215, 1075],
+                  (\n -> 2 * n + 1) <$> Gen.integral (Range.linear (-1100) 1100)
+                ]
+            )
+        delta <- forAll (Gen.integral (Range.constant (-1) 1))
+        let f = (-1075) `div` k + delta
+        when (f < -1074 || f > 1023) discard
+        let a = negate (encodeFloat 1 (fromInteger f)) :: Double
+            r = ev (floatLit a <> " ** " <> T.pack (show k))
+        annotateShow r
+        case r of
+          Right (VFloat d) | d == 0 -> assert (not (isNegativeZero d))
+          _ -> success,
       withinASecond $ testCase "the boundaries of the limit" $ do
         assertBool "1.0000001 ** 20164 is a value" (isValue (ev "1.0000001 ** 20164"))
         evm "1.0000001 ** 20165" @?= Left (overLimit 1048580)

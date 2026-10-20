@@ -116,7 +116,7 @@ $ golem build --target pdf
 [code: golem plugin fetch] は [code: plugins.lock] のとおりに配布物を取得し、SHA-256 を検証してキャッシュに置く。
 キャッシュは XDG の規則に従うユーザーのキャッシュのディレクトリの [code: golem/plugins/] で、Linux ではふつう [code: ~/.cache/golem/plugins/<SHA-256>.wasm] になる。
 [code: golem build] はキャッシュからだけ読み、ネットワークに接続しない。
-CI のキャッシュの鍵を [code: plugins.lock] のハッシュにすれば、プラグインの取得は [code: plugins.lock] を変えたときだけになる。
+CI のキャッシュのキーを [code: plugins.lock] のハッシュにすれば、プラグインの取得は [code: plugins.lock] を変えたときだけになる。
 
 ## 決定性が保証する範囲
 
