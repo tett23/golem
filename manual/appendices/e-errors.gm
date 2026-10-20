@@ -764,6 +764,11 @@ G0901 のほかは、エラーか警告か、出すかどうかをプリフラ�
 = [strong: G0409 [code: 本の最後の @blank-line は効果がありません]]
   本の最後のブロックの後にある [code: @blank-line] は捨てられます。
   消してください。
+= [strong: G0411 [code: @blank-line の行数 … がページの行数 … 以上なので捨てます]]
+  [code: @blank-line] の行数が、ページの行数（[code: style.toml] の [code: \[page.grid\]] の [code: lines]）以上です。
+  続けて書いた [code: @blank-line] は、行数を足して比べます。
+  PDF では必ず捨てられる空きなので、HTML、EPUB、プレーンテキストでも捨てます。
+  ページを改めたいなら [code: @page-break] に書き換え、空きを残したいなら行数を減らしてください。
 = [strong: G0730 [code: コードの行を折り返しました（… 行）]]
   コードブロックの行が版面に収まらず、折り返して組みました。
   行を短く書き直すか、段落スタイル [code: code] の [code: size] を小さくしてください。

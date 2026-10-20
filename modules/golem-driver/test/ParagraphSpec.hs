@@ -2,7 +2,7 @@ module ParagraphSpec (verseTests, indentTests, listTests, separatorTests, hardBr
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
-import Data.List (nub, sort, sortOn)
+import Data.List (isSuffixOf, nub, sort, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust)
 import Data.Text qualified as T
@@ -425,7 +425,22 @@ blankLineTests =
       t <- text "あ\n@blank-line 2\nい\n"
       t @?= "あ\n\n\n\nい\n"
       t' <- text "@blank-line\n\nあ\n\n@page-break\n@blank-line\nい\n\n@blank-line\n"
-      t' @?= "あ\n\nい\n"
+      t' @?= "あ\n\nい\n",
+    testCase "G0411: blank lines of as many lines as a page are dropped from the PDF, HTML and plain text (docs/adr ADR 0047)" $ do
+      let style = withBodyFont (replaceIn "lines = 30" "lines = 16" horizontalStyle)
+          manifest extra = miniManifest <> "\n[targets.html]\n\n[targets.text]\nvariants = [\"horizontal\"]\n" <> extra
+          run extra = buildNotified ([("manifest.toml", manifest extra), ("style.toml", style), ("a.gm", TE.encodeUtf8 "あ\n\n@blank-line 16\n\nい\n")] <> fakeFontFiles) id
+          codesOf c n = [(diagSeverity d, diagMessage d) | d <- nDiagnostics n, diagCode d == DiagnosticCode c]
+      n <- run ""
+      assertEqual "no errors" [] (map diagCode (filter isError (nDiagnostics n)))
+      codesOf "G0411" n @?= [(Notice, "@blank-line の行数 16 がページの行数 16 以上なので捨てます")]
+      codesOf "G0747" n @?= []
+      assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n))
+      page <- maybe (assertFailure (show (map fst (nOutputs n)))) (pure . TE.decodeUtf8) (lookup "html/a.xhtml" (nOutputs n))
+      assertBool (T.unpack page) (not ("blank-line" `T.isInfixOf` page))
+      fmap TE.decodeUtf8 (lookup "text/horizontal/a.txt" (nOutputs n)) @?= Just "あ\n\nい\n"
+      quiet <- run "\n[diagnostics]\nsilence-notices = [\"G0411\"]\n"
+      codesOf "G0411" quiet @?= []
   ]
 
 breakTests :: [TestTree]

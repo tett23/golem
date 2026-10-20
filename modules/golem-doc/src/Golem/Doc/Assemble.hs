@@ -60,7 +60,10 @@ data AssembleConfig = AssembleConfig
     -- | [code] number: the format of listing numbers (golem-driver ADR 0023)
     acListingFormat :: !Text,
     -- | the channels the plugins declare, by name (golem-doc ADR 0007)
-    acChannels :: !(Map Text ChannelDecl)
+    acChannels :: !(Map Text ChannelDecl),
+    {- | the lines of a page, @[page.grid].lines@: a run of blank lines of
+    as many lines or more is dropped (docs/adr ADR 0047)
+    -} acPageLines :: !Int
   }
 
 -- | How the entries of a channel of a plugin are ordered (golem-doc ADR 0007).
@@ -334,7 +337,7 @@ assemble ::
   [Document] ->
   (Book, [Diagnostic])
 assemble cfg evalDeferred docs0 =
-  let (docs, blankDiags) = droppedBlankLines docs0
+  let (docs, blankDiags) = droppedBlankLines (acPageLines cfg) docs0
       ns = numberDocs cfg docs
       figureText sp = case Map.lookup sp (nsFigures ns) of
         Just (ch, n) -> Just (formatNumber (acFigureFormat cfg) [n] ch)
@@ -450,10 +453,52 @@ trailingBreaks docs = case reverse docs of
 every output: G0409 for those at the end of the book, with only breaks,
 controls of page breaks and other blank lines after them; G0410 for those
 right before a page or column break, past the controls and other blank
-lines, across the files too. The blocks stay in their files.
+lines, across the files too. The blocks stay in their files. Then G0411
+for the runs of the blank lines that remain, with only controls of page
+breaks between them, whose sum is the lines of a page or more (docs/adr
+ADR 0047).
 -}
-droppedBlankLines :: [Document] -> ([Document], [Diagnostic])
-droppedBlankLines docs =
+droppedBlankLines :: Int -> [Document] -> ([Document], [Diagnostic])
+droppedBlankLines pageLines docs0 =
+  let (docs, ineffective) = ineffectiveBlankLines docs0
+      (docs', tooLong) = blankLinesOverPage pageLines docs
+   in (docs', ineffective <> tooLong)
+
+{- | G0411 for each blank line of a run, with only controls of page breaks
+between them and across the files, whose lines add up to the lines of a
+page or more (docs/adr ADR 0047). The PDF drops such a run at the top of
+a column, so every output drops it.
+-}
+blankLinesOverPage :: Int -> [Document] -> ([Document], [Diagnostic])
+blankLinesOverPage pageLines docs =
+  let flat = [(i, b) | (i, Document _ bs) <- zip [0 :: Int ..] docs, b <- bs]
+      runs = blankRuns flat
+      verdicts =
+        [ ((i, sp), notice "G0411" sp ("@blank-line の行数 " <> T.pack (show total) <> " がページの行数 " <> T.pack (show pageLines) <> " 以上なので捨てます"))
+        | run <- runs,
+          let total = sum [toInteger n | (_, _, n) <- run],
+          total >= toInteger pageLines,
+          (i, sp, _) <- run
+        ]
+      dropped = Set.fromList (map fst verdicts)
+      keep i b = case b of
+        Block sp _ (BlankLines _) -> Set.notMember (i, sp) dropped
+        _ -> True
+   in ( [Document f [b | b <- bs, keep i b] | (i, Document f bs) <- zip [0 ..] docs],
+        map snd verdicts
+      )
+  where
+    -- the blank lines of each run, in order: controls of page breaks join, any other block parts
+    blankRuns = filter (not . null) . go []
+      where
+        go acc [] = [reverse acc]
+        go acc ((i, b) : rest) = case blockBody b of
+          BlankLines n -> go ((i, blockSpan b, n) : acc) rest
+          PageControl _ -> go acc rest
+          _ -> reverse acc : go [] rest
+
+ineffectiveBlankLines :: [Document] -> ([Document], [Diagnostic])
+ineffectiveBlankLines docs =
   let flat = [(i, b) | (i, Document _ bs) <- zip [0 :: Int ..] docs, b <- bs]
       tails' = drop 1 (scanr (:) [] (map snd flat))
       verdicts =
