@@ -18,7 +18,7 @@ After cloning, enable the Git hooks first.
 git config core.hooksPath .githooks
 ```
 
-The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.8.2 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.2`).
+The hook calls [adr-guard](https://github.com/tett23/adr-guard) v0.8.3 or later, so install it beforehand (`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.3`).
 This setting is not stored in the repository, so run it in every clone.
 `.githooks/pre-push` stops the push of a branch that changes the specification without updating the manual (see Documentation).
 
@@ -68,7 +68,9 @@ ADRs are written in Japanese.
 ## トレードオフ
 ```
 
-The status (ステータス) is one of 提案 (proposed), 採択 (accepted), 却下 (rejected), or 破棄 (abandoned).
+The status (ステータス) is one of 提案 (proposed), 採択 (accepted), 採択（未実装） (accepted, not implemented), 却下 (rejected), or 破棄 (abandoned).
+Use 採択（未実装） for an ADR that is accepted but not implemented yet, and change it to 採択 when the implementation is done.
+`adr-guard unimplemented` lists the ADRs with 採択（未実装） ([docs/adr/0048](./docs/adr/0048-update-adr-guard-to-v0.8.3.md)).
 When a later ADR replaces part of one, the status names it, as in "採択→○○（変更部分）は [ADR NNNN](...)", with a link.
 
 ### ADRs are immutable

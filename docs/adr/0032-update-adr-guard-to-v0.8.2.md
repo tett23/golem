@@ -1,6 +1,6 @@
 # ADR 0032: adr-guard を v0.8.2 に上げ、コミット済みの ADR のリンクだけの変更を許す
 
-ステータス: 採択
+ステータス: 採択→CI の action の版は [ADR 0048](0048-update-adr-guard-to-v0.8.3.md)
 
 ## 文脈
 

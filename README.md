@@ -148,8 +148,8 @@ diagnostic のコード（`G0101` など）の意味と直し方は [docs/diagno
 git config core.hooksPath .githooks
 ```
 
-フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.8.2 以降を呼び出すので、あらかじめインストールしておく（[docs/adr/0032](./docs/adr/0032-update-adr-guard-to-v0.8.2.md)）。
-ソースからは `cargo install --git https://github.com/tett23/adr-guard --tag v0.8.2` で入る。
+フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.8.3 以降を呼び出すので、あらかじめインストールしておく（[docs/adr/0048](./docs/adr/0048-update-adr-guard-to-v0.8.3.md)）。
+ソースからは `cargo install --git https://github.com/tett23/adr-guard --tag v0.8.3` で入る。
 `.githooks/pre-commit` は、コミット済みの ADR（`docs/adr/` と `docs/<モジュール>/adr/` の配下）への変更、削除、リネームを含むコミットを拒否する。
 例外は `ステータス:` で始まる行で、この行だけは変更できる（`--allow-status`）。
 リンクを付ける、外す、リンク先を変えるだけの変更も許す（`--allow-links`）。
@@ -166,7 +166,7 @@ ADR はコミット後に変更しない規約であり、変更が必要な場�
 マニュアルの変わらない変更では、コミットのメッセージの末尾に `Manual: unchanged` のトレーラーを書く。
 `main` への push とブランチの削除は検査しない。
 `core.hooksPath` はクローンごとのローカル設定であり、リポジトリには保存されないため、クローンのたびに実行が必要になる。
-同じ検査は CI の `adr` ジョブでも、adr-guard の v0.8.2 の action に `allow-status: true` と `allow-links: true` を付けて行う。
+同じ検査は CI の `adr` ジョブでも、adr-guard の v0.8.3 の action に `allow-status: true` と `allow-links: true` を付けて行う。
 
 ### 固定しているネイティブライブラリ
 

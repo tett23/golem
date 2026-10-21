@@ -18,7 +18,7 @@ Golem への変更は、どれも ADR（Architecture Decision Record）から始
 git config core.hooksPath .githooks
 ```
 
-フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.8.2 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.2`）。
+フックは [adr-guard](https://github.com/tett23/adr-guard) の v0.8.3 以降を呼び出すので、あらかじめインストールしておく（`cargo install --git https://github.com/tett23/adr-guard --tag v0.8.3`）。
 `.githooks/pre-push` は、仕様を変えたのにマニュアルを直していないブランチの push を止める（「ドキュメント」の節）。
 この設定はリポジトリに保存されないため、クローンのたびに実行する。
 
@@ -68,7 +68,9 @@ ADR は日本語で書く。
 ## トレードオフ
 ```
 
-ステータスには、提案、採択、却下、破棄のいずれかを書く。
+ステータスには、提案、採択、採択（未実装）、却下、破棄のいずれかを書く。
+採択（未実装）は、採択したがまだ実装していない ADR に使い、実装を終えたら採択に変える。
+採択（未実装）の ADR は `adr-guard unimplemented` で一覧にできる（[docs/adr/0048](./docs/adr/0048-update-adr-guard-to-v0.8.3.md)）。
 あとの ADR が一部を置き換えた場合は、「採択→○○（変更部分）は [ADR NNNN](...)」のように、置き換えた ADR をリンクで示す。
 
 ### 変更してはいけない

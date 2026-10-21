@@ -60,7 +60,8 @@ ADR は日本語で、次の形で書く。
 ## ステータス
 
 ステータスの行は、行頭が [code: ステータス:] の行で、ADR はこれをちょうど一つ持つ。[index reading=すてーたす: ステータスの行]
-値は、提案、採択、却下、破棄のどれかである。
+値は、提案、採択、採択（未実装）、却下、破棄のどれかである。
+採択（未実装）は、採択したがまだ実装していない ADR に使い、実装を終えたら採択に変える。
 後の ADR が一部を置き換えた場合は、「採択→○○は ADR NNNN」のように、置き換えた ADR をリンクで示す。
 
 ```markdown
@@ -85,7 +86,7 @@ ADR はレビューを受けるまでコミットしない。
 ## adr-guard
 
 この規則は、adr-guard が自動で強制する。[index reading=adr-guard: adr-guard]
-今使っているバージョンは v0.8.2 である。[note: [style url: https://github.com/tett23/adr-guard]（adr-guard）、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0032-update-adr-guard-to-v0.8.2.md]（docs/adr の ADR 0032「adr-guard を v0.8.2 に上げ、コミット済みの ADR のリンクだけの変更を許す」）]
+今使っているバージョンは v0.8.3 である。[note: [style url: https://github.com/tett23/adr-guard]（adr-guard）、[style url: https://github.com/tett23/golem/blob/main/docs/adr/0048-update-adr-guard-to-v0.8.3.md]（docs/adr の ADR 0048「adr-guard を v0.8.3 に上げ、ステータスの候補に採択（未実装）を加える」）]
 
 [code: .githooks/pre-commit] の中身は一行である。
 
@@ -103,7 +104,7 @@ exec adr-guard pre-commit --allow-status --allow-links
 監査の記録（[code: docs/audit/]、[code: docs/audits/]）と性能計測の記録（[code: docs/benchmarks/]、[code: docs/benchmark/]）も、コミットした後の変更、削除、移動を拒む。
 記録には、[code: --allow-status] と [code: --allow-links] の例外も適用されない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0011-update-adr-guard-to-v0.8.0.md]（docs/adr の ADR 0011「adr-guard を v0.8.0 に上げ、ステータスの行の数と記録の保護も検査する」）]
 
-同じ検査は、CI の [code: docs.yml] の [code: adr] ジョブでも、adr-guard の v0.8.2 の action に [code: allow-status: true] と [code: allow-links: true] を付けて行う。
+同じ検査は、CI の [code: docs.yml] の [code: adr] ジョブでも、adr-guard の v0.8.3 の action に [code: allow-status: true] と [code: allow-links: true] を付けて行う。
 フックは手元の設定なので外せるが、CI の検査は外せない。
 
 ## ADR の参照にはリンクを付ける
@@ -116,6 +117,7 @@ adr-guard には、一覧を出す命令と直す命令がある。
 $ adr-guard links          # リンクのない ADR の参照の一覧
 $ adr-guard links --fix    # リンクを付ける
 $ adr-guard check-status   # ステータスの行の数が誤った ADR の一覧
+$ adr-guard unimplemented  # ステータスが採択（未実装）の ADR の一覧
 ```
 
 ADR を書いた後と、仕様書や README を直した後は、[code: adr-guard links --fix] を実行してから確かめる。

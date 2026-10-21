@@ -29,8 +29,9 @@ jobs:
       # unlinked ADR references, ADRs without exactly one status line, and
       # changes to committed records (docs/audit/, docs/audits/,
       # docs/benchmarks/, docs/benchmark/) fail
-      # (docs/adr/0010, docs/adr/0011, docs/adr/0012, docs/adr/0032)
-      - uses: tett23/adr-guard@v0.8.2
+      # (docs/adr/0010, docs/adr/0011, docs/adr/0012, docs/adr/0032,
+      # docs/adr/0048)
+      - uses: tett23/adr-guard@v0.8.3
         with:
           allow-status: true
           allow-links: true
