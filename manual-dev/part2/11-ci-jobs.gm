@@ -163,7 +163,7 @@ hlint は [code: -j] でランナーのすべてのコアを使う。
 
 ## adr、manual、textlint
 
-[code: docs.yml] の [code: adr] は、adr-guard の v0.8.2 の action で、コミット済みの ADR と記録の保護、ADR の参照のリンク、ステータスの行の数を検査する（第[ref-number adr]章）。
+[code: docs.yml] の [code: adr] は、adr-guard の v0.8.3 の action で、コミット済みの ADR と記録の保護、ADR の参照のリンク、ステータスの行の数を検査する（第[ref-number adr]章）。
 プルリクエストではベースからヘッドまで、[code: main] への push では push の前から後までの変更を見る。
 
 [code: manual] は、プルリクエストのときだけ、[code: scripts/manual/check-updated.sh] でマニュアルの更新を検査する（第[ref-number docs]章）。
