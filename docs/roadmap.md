@@ -31,6 +31,10 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - diagnostic のコードを、段階の 2 桁と番号の 3 桁の 5 桁にする（未実装、[docs/adr 0061](adr/0061-five-digit-diagnostic-codes.md)）。ほかの ADR をすべて実装した後に実装する。
 
+### CI
+
+- epubcheck を apt ではなく配布元の release から取り、キャッシュする（未実装、[docs/adr 0062](adr/0062-epubcheck-from-release-with-cache.md)）。apt の時間切れで CI がおよそ 18% の確率で落ちていた。
+
 ### 既知の不具合の修正
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
