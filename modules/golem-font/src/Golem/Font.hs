@@ -18,6 +18,7 @@ module Golem.Font
     loadFont,
     fontUnitsPerEm,
     fontIsCff,
+    fontIsCff2,
     fontNumGlyphs,
     fontExtents,
     fontEmBoxCentral,
@@ -70,6 +71,8 @@ foreign import capi unsafe "golem_font.h golem_font_fstype" c_fstype :: Ptr CFon
 
 foreign import capi unsafe "golem_font.h golem_font_is_cff" c_isCff :: Ptr CFont -> IO CInt
 
+foreign import capi unsafe "golem_font.h golem_font_is_cff2" c_isCff2 :: Ptr CFont -> IO CInt
+
 foreign import capi unsafe "golem_font.h golem_font_num_glyphs" c_numGlyphs :: Ptr CFont -> IO CInt
 
 foreign import capi unsafe "golem_font.h golem_font_extents" c_extents :: Ptr CFont -> Ptr Int32 -> Ptr Int32 -> Ptr Int32 -> IO ()
@@ -100,6 +103,8 @@ data Font = Font
     fontBytes :: !ByteString,
     fontUnitsPerEm :: !Int,
     fontIsCff :: !Bool,
+    -- | whether the font has CFF2 outlines, which the PDF does not take (golem-font ADR 0003)
+    fontIsCff2 :: !Bool,
     fontNumGlyphs :: !Int,
     -- | ascender, descender, cap height in font units
     fontExtents :: !(Int, Int, Int),
@@ -142,6 +147,7 @@ loadFont bytes = do
       fsType <- fromIntegral <$> c_fstype p
       upem <- fromIntegral <$> c_upem p
       cff <- (/= 0) <$> c_isCff p
+      cff2 <- (/= 0) <$> c_isCff2 p
       n <- fromIntegral <$> c_numGlyphs p
       ext <- allocaArray 3 $ \arr -> do
         c_extents p arr (arr `plusPtr` 4) (arr `plusPtr` 8)
@@ -167,7 +173,7 @@ loadFont bytes = do
       pure $
         if embeddingRestricted fsType
           then Left (EmbeddingRestricted fsType)
-          else Right (Font fp bytes upem cff n ext ps ros central cids)
+          else Right (Font fp bytes upem cff cff2 n ext ps ros central cids)
 
 {- | Whether fsType forbids Golem to embed the font (golem-driver ADR 0016),
 as the OpenType specification reads it: bits 0 to 3 are usage permissions

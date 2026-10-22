@@ -47,7 +47,7 @@ data View = View
   }
   deriving stock (Eq, Show)
 
--- | An embedded font: its path in style.toml and its form (@cff@ or @truetype@).
+-- | An embedded font: its path in style.toml and its form (@cff@, @cff2@ or @truetype@).
 data FontView = FontView
   { fvPath :: !Text,
     fvFormat :: !Text

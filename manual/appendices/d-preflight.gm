@@ -51,7 +51,7 @@
 | キー | print の既定 | 意味 |
 |:---|:---|:---|
 | [code: severity] | [code: "off"] | 重さです。 |
-| [code: allowed] | [code: \["cff", "truetype"\]] | 許す形式です。[code: "cff"] と [code: "truetype"] から選びます。 |
+| [code: allowed] | [code: \["cff", "truetype"\]] | 許す形式です。[code: "cff"]、[code: "cff2"]、[code: "truetype"] から選びます。[code: "cff2"] のフォントは G0819 で PDF を組めないので、この検査には現れません。 |
 
 @nonumber
 ## [code: \[type-size\]]

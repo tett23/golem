@@ -5887,6 +5887,37 @@ HTML か EPUB を組むとき（`golem build`）にだけ出す。
 外部の画像を参照する図は、画像を埋め込むか、`web` に PNG を置く。
 他人から受け取った SVG でこのコードが出たら、中身を確かめてから使う。
 
+## G0819
+
+CFF2 の輪郭のフォントは PDF に埋め込めません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF が使う役割のフォントが、CFF2 の輪郭（`CFF2` の表）を持つ。
+CFF2 の輪郭は、可変の OpenType/CFF2 のフォントが使う。
+PDF の埋め込みフォントの入れ物は CFF2 の輪郭を受けず、TrueType の入れ物に入れた PDF はビューアーで字が描かれない。
+フォントのファイルごとに一つ出す。
+PDF を書かない。
+`golem build` の PDF、`golem check`、`golem preflight` が報告する。
+HTML と EPUB はフォントのファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、出さない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+
+- メッセージ: `CFF2 の輪郭のフォントは PDF に埋め込めません: <パス>。CFF か TrueType の輪郭のフォントを使ってください`。パスは `style.toml` に書いたとおりである。
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Fonts`、golem-font の `Golem.Font`）
+- ADR: [golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)
+
+### 主な原因
+
+- 可変フォントの `.otf`（たとえば `SourceSerif4Variable-Roman.otf`）を、本の役割に指定した。
+
+### 直し方
+
+同じ書体の、CFF の輪郭の版（静的な `.otf`）か TrueType の輪郭の版（`.ttf`）を使う。
+Source Serif 4 なら、`SourceSerif4-Regular.otf` か `SourceSerif4Variable-Roman.ttf` である。
+
 ## G0901
 
 プリフライトの設定に誤りがあります
@@ -5959,7 +5990,8 @@ HTML か EPUB を組むとき（`golem build`）にだけ出す。
 ### 意味
 
 PDF に埋め込んだフォントの形式が、プリフライトの設定の `[font-formats]` の `allowed` にない。
-形式は、`CFF ` の表を持つ OpenType を `cff`、そうでないものを `truetype` とする。
+形式は、`CFF ` の表を持つ OpenType を `cff`、`CFF2` の表を持つ OpenType を `cff2`、そのどちらでもないものを `truetype` とする（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。
+`cff2` のフォントは [G0819](#g0819) で PDF を組めないので、`allowed` に書けるが、この検査には現れない。
 フォントのファイルごとに一つ出す。
 位置は `style.toml` の先頭である。
 

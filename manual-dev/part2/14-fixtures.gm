@@ -82,7 +82,9 @@ golem-fixtures は [code: base]、[code: text]、[code: containers]、[code: byt
 
 golem-font のテストが使うフォントは、[code: modules/golem-font/test/fonts/] に置いてある。
 PDF の決定性の検査（[code: scripts/determinism.sh]）も、ここの Source Han Sans のサブセットと Source Sans Pro で組む。
-ライセンスの文書（[code: OFL.txt]）と出典の README が同じディレクトリにある。
+ライセンスの文書（[code: OFL.txt]、[code: SourceSerif4-OFL.txt]）と出典の README が同じディレクトリにある。
+CFF2 の輪郭の試料（[code: SourceSerif4Variable-Roman.otf]）は、Source Serif 4 の配布物から手を加えずに写した。
+このフォントのライセンスは予約フォント名（Reserved Font Name）の Source を持ち、手を加えた版にはその名前を使えないので、サブセットにしていない。
 
 二つのマニュアルのフォントは、リポジトリに入れない。
 組む前に [code: scripts/manual/fetch-fonts.sh] が、配布元のタグで固定した URL から取得し、SHA-256 を検査して置く（第[ref-number manuals]章）。

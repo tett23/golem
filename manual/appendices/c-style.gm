@@ -74,6 +74,7 @@ PDF を作るには必須です。
 フォントのファイルはプロジェクトの中に置き、プロジェクトのフォルダからの相対パスで書きます。
 Golem は、コンピューターに入っているフォントを探しません。
 フォントのライセンスが PDF への埋め込みを禁じていれば、エラー（G0804）になります[note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
+CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）は PDF に埋め込めないので、PDF が使う役割に書くとエラー（G0819）になります。
 
 | キー | 意味 |
 |:---|:---|
