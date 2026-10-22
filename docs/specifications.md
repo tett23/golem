@@ -2395,7 +2395,8 @@ Golem は決定性を重視する[sidenote: 同じ入力から同じ出力を得
 
 PDF では、傍注を版面の外の傍注欄に置く。
 傍注欄は、`style.toml` の `[sidenotes]` で、小口[^fore-edge]側の余白に幅（`width`）と版面との間隔（`gap`）を指定して設ける。
-`[sidenotes]` には、ほかに本文側の印（`marker`）だけを書く。
+`[sidenotes]` には、ほかに、本文側の印（`marker`）と、傍注欄を置く側（`side`）を書く（[golem-project ADR 0009](golem-project/adr/0009-sidenotes-side-key.md)）。
+`side` は `"outside"`（小口の側）だけを書け、既定も `"outside"` である。
 本文の版面は字詰めのとおりに組み、傍注は本文の行の長さに影響しない。
 傍注がある行だけ本文を短くすると、本文の端がページごとに不ぞろいになるためである。
 

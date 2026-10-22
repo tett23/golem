@@ -7,7 +7,7 @@ import Data.ByteString qualified as BS
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Ratio ((%))
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -553,6 +553,14 @@ tests =
       listTests,
       characterFeatureTests,
       codeStyleTests,
+      testCase "side of [sidenotes] takes only outside, the default (golem-project ADR 0009)" $ do
+        let sn = "[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\n"
+            sidenotesOf t = either (const Nothing) stSidenotes (parseStyle (FileId 0) t)
+        sidenotesOf (sn <> "side = \"outside\"\n") @?= sidenotesOf sn
+        assertBool "without side" (isJust (sidenotesOf sn))
+        codes (parseStyle (FileId 0) (sn <> "side = \"inside\"\n")) @?= ["G0306"]
+        msgs (parseStyle (FileId 0) (sn <> "side = \"inside\"\n")) @?= ["side に使えない値です: inside（outside のどれか） (sidenotes.side)"]
+        codes (parseStyle (FileId 0) (sn <> "side = 1\n")) @?= ["G0306"],
       testCase "the sidenote font and size are the paragraph style sidenote (golem-driver ADR 0011)" $ do
         let retired = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const [])
             hasIt ms = assertBool (show ms) (not (null ms) && all (\m -> "G0306" `T.isPrefixOf` m) ms && any ("[paragraph-styles.sidenote]" `T.isInfixOf`) ms)
