@@ -11,7 +11,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **幾何の隔離**：意味論 IR に位置や大きさの情報を持たせず、幾何はレイアウトの側に閉じ込める原則。リフローする EPUB と HTML を壊さないためである（[仕様書](specifications.md)）。
 - **広い型、狭い実装**：型は将来の表現力まで見越して設計し、実装は当面の用途に絞り、使わない機能は縮退させる方針（[仕様書](specifications.md)）。
 - **構文解釈の安定**：構文の解析がコマンドの定義に依存しない性質。プラグインを加えても、既存の原稿の解析結果は変わらない（[仕様書](specifications.md)、[markup.md](markup.md)）。
-- **ADR**：設計の決定を一件ずつ記録する文書（Architecture Decision Record）。連番のファイルとして `docs/adr/` と `docs/<モジュール>/adr/` に置き、コミットした後はステータスの行を除いて変更しない。
+- **ADR**：設計の決定を一件ずつ記録する文書（Architecture Decision Record）。連番のファイルとして `docs/adr/` と `docs/<モジュール>/adr/` に置き、コミットした後はステータスの行とリンクだけの変更（[docs/adr/0032](adr/0032-update-adr-guard-to-v0.8.2.md)）を除いて変更しない。
 - **adr-guard**：コミット済みの ADR と記録（`docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/`）の変更を拒み、ADR がステータスの行をちょうど一つ持つことを確かめる検査。Git の pre-commit フックと CI の `adr` ジョブで動く（[README](../README.md)）。
 
 ## 原稿の記法
@@ -24,7 +24,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **式文脈**：`[= ...]` の中。式の言語で値を計算し、その結果を本文に埋め込む（[markup.md](markup.md)、[golem-eval ADR 0001](golem-eval/adr/0001-expression-language-and-numerics.md)）。
 - **命令文脈**：`[name ...]` の中。コマンドの名前、引数、散文スロットを書く（[markup.md](markup.md)）。
 - **段落の区切り方**：原稿の段落を何で区切るか。空行で区切り、段落の中の改行が文字を生まない空行の様式（既定）と、改行ひとつで区切る改行の様式の二つがある。マニフェストの `[source]` の `paragraph-separator` で選び、章の項目ごとにも変えられる（[markup.md](markup.md)、[docs/adr/0013](adr/0013-paragraph-separator.md)）。
-- **強制改行**：段落を分けずに行を改めること。行末の `\` で書く。強制改行の後の行には、一行目の字下げを掛けない（[markup.md](markup.md)、[docs/adr/0016](adr/0016-hard-line-breaks.md)）。
+- **強制改行**：段落を分けずに行を改めること。行末の `\` で書く。`join` の段落の強制改行の後の行には、一行目の字下げを掛けない。`line-breaks = "keep"` の段落では、行末の `\` は改行と同じく行の区切りであり、各行に一行目の字下げを掛ける（[markup.md](markup.md)、[docs/adr/0016](adr/0016-hard-line-breaks.md)）。
 - **行アキ**：段落のあいだに、行の格子の行を単位とする空きを入れること。`@blank-line` と `@blank-line N` で書く。空行は空きを生まない（[markup.md](markup.md)、[docs/adr/0046](adr/0046-blank-line-command.md)）。
 - **韻文**：組み込みの段落スタイル `verse` を `@style verse` で付けた段落。段落の中の改行が行の区切りになり、段落の一つが一つの連になる（[markup.md](markup.md)、[docs/adr/0003](adr/0003-verse-line-breaks.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。
 - **文字スタイル**：文字の見た目（書体、大きさ、色、合成の太字と斜体）に名前を付けたもの。`style.toml` の `[character-styles.<名前>]` に定義し、ファイルの先頭の `@style-def character` でもそのファイルでだけ使える文字スタイルを定義できる。原稿では `[style 名前: ...]` で付ける。`[strong: ...]`、`[bold: ...]`、`[italic: ...]` は組み込みの文字スタイルの別名である。`based-on` で別の文字スタイルを引き継ぐ（[markup.md](markup.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)）。

@@ -73,7 +73,7 @@ ADR をやめる場合は、ステータスを破棄にして、理由を [code:
 
 ## コミットした ADR は変えない
 
-コミットした ADR は、ステータスの行を除いて変更できない。
+コミットした ADR は、ステータスの行と、リンクを付ける、外す、リンク先を変えるだけの変更を除いて変更できない。
 仕様を変えたくなったら、元の ADR を書き換えずに、新しい連番の ADR を書き、元の ADR のステータスの行で新しい ADR を指す。
 
 この規則は、モジュールを並行して実装する進め方から来ている。
@@ -130,7 +130,7 @@ ADR や仕様書が日本語でも、コミットのメッセージ、リリー�
 [code: main] に直接 push せず、ブランチを切ってプルリクエストを作る。
 マージは常に no-ff で行う。[index reading="no-ff": no-ff]
 [code: main] には保護の規則があり、プルリクエストを経ない push と、マージのコミット以外のマージ（squash と rebase）を拒む。[index reading="ほごのきそく": 保護の規則]
-マージには、CI の [code: ci]（[code: ci.yml]）と [code: adr]（[code: docs.yml]）の二つの検査が通っている必要がある（第[ref-number ci-jobs]章）。
+マージには、CI の [code: ci]（[code: ci.yml]）と、[code: adr]、[code: manual]、[code: textlint]（[code: docs.yml]）の四つの検査が通っている必要がある（第[ref-number ci-jobs]章）。
 
 [code: main] の rebase と force push は禁じている。
 例外は、API キーのような秘密の情報を誤ってコミットした場合だけである。

@@ -208,7 +208,7 @@ Keep each commit to one coherent change.
 Do not push to `main` directly; create a branch and open a pull request.
 Always merge with no-ff.
 `main` is protected: it rejects pushes that do not go through a pull request, and merges other than merge commits (squash and rebase).
-A merge needs two checks of CI to pass: `ci` (`ci.yml`) and `adr` (`docs.yml`) ([docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)).
+A merge needs four checks of CI to pass: `ci` (`ci.yml`), and `adr`, `manual`, and `textlint` (`docs.yml`) ([docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md), [docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md), [docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)).
 
 Rebasing or force-pushing `main` is forbidden.
 The only exception is when a secret such as an API key has been committed by mistake.
