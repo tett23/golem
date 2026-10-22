@@ -29,7 +29,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 2026-10-20 の ADR と仕様の矛盾のレビュー（[記録](audits/2026-10-20-adr-spec-review.md)）と、それに続く検討で採択した ADR を実装する。
 
-- プレーンテキストで、強制改行の後の行に一行目の字下げを掛けない（未実装、[docs/adr 0049](adr/0049-plain-text-indent-after-hard-break.md)）。
 - `golem` をすべてのプロセッサの上で動かし、環境を変える検査で capability の数を変える（未実装、[docs/adr 0050](adr/0050-run-golem-on-every-processor.md)）。
 - PDF の図版の `Contents` で繰り返し名指したストリームを、出力でも一度だけ書く（未実装、[docs/adr 0051](adr/0051-reuse-repeated-pdf-content-streams.md)）。
 - プラグインの ABI のバージョンは、リリースしたバージョンからだけ上げる（未実装、[docs/adr 0052](adr/0052-plugin-abi-version-bump-rule.md)）。
