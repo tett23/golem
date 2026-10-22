@@ -1,6 +1,6 @@
 # ADR 0001: 意味論 IR の正典を CDDL で定める
 
-ステータス: 採択
+ステータス: 採択→インラインの強調と段落の形は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md)
 
 ## 文脈
 

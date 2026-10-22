@@ -1,6 +1,6 @@
 # ADR 0006: プロジェクトの段階の診断のコード G0301 から G0309 を定める
 
-ステータス: 採択→toml-parser の文言の扱いは [ADR 0007](0007-toml-messages-in-japanese.md)、G0305 の経路が空の分岐は [ADR 0027](../../adr/0027-exhaustive-command-dispatch-by-types.md)、Golem の文言の誤りと読み込んだ後の検査の位置は [ADR 0008](0008-style-toml-value-positions.md)
+ステータス: 採択→toml-parser の文言の扱いは [ADR 0007](0007-toml-messages-in-japanese.md)、G0305 の経路が空の分岐は [ADR 0027](../../adr/0027-exhaustive-command-dispatch-by-types.md)、Golem の文言の誤りと読み込んだ後の検査の位置は [ADR 0008](0008-style-toml-value-positions.md)、未知の判型の G0306 から G0317 への移動は [ADR 0005](0005-page-size-by-dimensions.md)
 
 ## 文脈
 

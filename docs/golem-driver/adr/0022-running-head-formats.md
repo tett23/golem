@@ -1,6 +1,6 @@
 # ADR 0022: 柱の内容の書式
 
-ステータス: 採択
+ステータス: 採択→番号と題のあいだの区切りは [golem-html ADR 0002](../../golem-html/adr/0002-heading-number-spacing.md)
 
 ## 文脈
 

@@ -1,6 +1,6 @@
 # ADR 0003: 別のファイルの参考文献への引用の印のリンク
 
-ステータス: 採択
+ステータス: 採択→本文の 62、77、88、103 行の golem-doc の ADR へのリンクは誤って docs/adr/0008 を指している。正しい先は [golem-doc ADR 0008](../../golem-doc/adr/0008-multiple-index-and-bibliography.md)
 
 ## 文脈
 

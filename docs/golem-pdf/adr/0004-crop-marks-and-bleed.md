@@ -1,6 +1,6 @@
 # ADR 0004: トンボと塗り足し
 
-ステータス: 採択→トンボの色は [ADR 0007](0007-registration-crop-marks.md)
+ステータス: 採択→トンボの色は [ADR 0007](0007-registration-crop-marks.md)、`golem check` が G0702 を検査するターゲットは [golem-project ADR 0004](../../golem-project/adr/0004-font-file-check-per-target.md)
 
 ## 文脈
 

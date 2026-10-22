@@ -1,6 +1,6 @@
 # ADR 0001: lint の規則
 
-ステータス: 採択→G0501 の韻文の扱いは [docs/adr/0003](../../adr/0003-verse-line-breaks.md)、段落スタイルの扱いは [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md)、G0501 の改行の様式の扱いは [docs/adr/0013](../../adr/0013-paragraph-separator.md)
+ステータス: 採択→G0501 の韻文の扱いは [docs/adr/0003](../../adr/0003-verse-line-breaks.md)、段落スタイルの扱いは [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md)、G0501 の改行の様式の扱いは [docs/adr/0013](../../adr/0013-paragraph-separator.md)、G0501 の強制改行の扱いは [docs/adr/0016](../../adr/0016-hard-line-breaks.md)
 
 ## 文脈
 

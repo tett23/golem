@@ -1,6 +1,6 @@
 # ADR 0009: SVG の図版
 
-ステータス: 採択→HTML と EPUB での SVG の動く中身の検査は [docs/adr ADR 0039](../../adr/0039-svg-active-content-in-html-and-epub.md)
+ステータス: 採択→HTML と EPUB での SVG の動く中身の検査は [docs/adr ADR 0039](../../adr/0039-svg-active-content-in-html-and-epub.md)、`marker` の循環と入れ子の上限と、数の大きさの上限は [docs/adr/0041](../../adr/0041-svg-marker-and-number-limits.md)
 
 ## 文脈
 

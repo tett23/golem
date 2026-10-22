@@ -1,6 +1,6 @@
 # ADR 0001: Haskell のワークスペースと CI
 
-ステータス: 採択
+ステータス: 採択→docs だけの変更で CI のジョブを省くことと、`format` ジョブの hlint の入れ方は [ADR 0009](0009-ci-speed.md)、`adr` ジョブの置き場所と CI の判定のジョブは [ADR 0021](0021-docs-workflow-and-ci-gate.md)
 
 ## 文脈
 

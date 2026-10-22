@@ -1,6 +1,6 @@
 # ADR 0001: wasm のホストと ABI
 
-ステータス: 採択→`golem_dealloc` は [docs/adr/0031](../../adr/0031-adr-code-mismatches.md)
+ステータス: 採択→`golem_dealloc` は [docs/adr/0031](../../adr/0031-adr-code-mismatches.md)、`golem_describe` のチャネルの宣言と、チャネルの項目の出力の検証は [golem-doc ADR 0007](../../golem-doc/adr/0007-plugin-channel-lists.md)
 
 ## 文脈
 
