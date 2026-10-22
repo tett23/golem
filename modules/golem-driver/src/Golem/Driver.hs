@@ -68,7 +68,7 @@ import Golem.Doc.Bibliography (CslDate (..), CslEntry (..), CslName (..), EntryP
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Doc.Numbering (numberSeparator)
-import Golem.Driver.Fonts (golemFontProvider)
+import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
 import Golem.Driver.Pdf
 import Golem.Driver.Plugins (loadPlugins)
 import Golem.Driver.Svg (activeMessage)
@@ -687,7 +687,13 @@ buildCore inMemory opts = do
       missing <- missingStyleFiles (optRoot opts) (evStyle e)
       -- without code in the book, the role code is not used (golem-driver ADR 0017)
       let fileStyle = maybe id (\b -> codeStyles (bookHasCode (docStyles e) b) (stFonts (evStyle e))) (evBook e) (evStyle e)
-          perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid fileStyle (Map.elems (localStylesOf e)) missing t)) | t <- targets]
+          locals = Map.elems (localStylesOf e)
+      -- G0819: CFF2 fonts, which the PDF cannot embed; golem check reports them too (golem-font ADR 0003)
+      cff2Diags <-
+        if TargetPdf `elem` targets
+          then cff2FontDiagnostics (optRoot opts) diagFid [p | p <- pdfFontPaths fileStyle locals, Map.notMember p missing]
+          else pure []
+      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid fileStyle locals missing t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
           -- G0701, G0702 and G0725 stop the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
@@ -829,7 +835,7 @@ targetFileDiagnostics fid style locals missing = \case
   TargetEpub -> siteFonts
   TargetText -> []
   where
-    pdfFonts = [p | r <- usedRoles style locals, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
+    pdfFonts = pdfFontPaths style locals
     siteFonts = report "G0310" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
     report code sev missingMsg paths =
       [ diagnostic code sev (mkSpan fid 0 0) (T.pack (msg <> ": " <> p))
@@ -837,6 +843,10 @@ targetFileDiagnostics fid style locals missing = \case
         Just err <- [Map.lookup p missing],
         let msg = if err == Missing then missingMsg else pathErrorMessage err
       ]
+
+-- | The font files of the roles the PDF uses.
+pdfFontPaths :: Style -> [LocalStyles] -> [FilePath]
+pdfFontPaths style locals = [p | r <- usedRoles style locals, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
 
 {- | G0702 (golem-pdf ADR 0004): Japanese crop marks need bleed, because the
 trim line and the bleed line would be drawn on top of each other. Only when
@@ -1011,7 +1021,7 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
               TextVertical -> ("vertical", GT.Vertical)
               TextHorizontal -> ("horizontal", GT.Horizontal)
         -- each document with the indents of its style (docs/adr ADR 0014)
-        let pages = GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textFirstLine . docStyles e) (textLists style) bib gv ft book
+        let pages = GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textIndents . docStyles e) (textLists style) bib gv ft book
         forM pages $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)
@@ -1148,13 +1158,18 @@ htmlFeatures k t p b =
     }
 
 {- | The ideographic spaces that start the lines of a paragraph of a style
-in plain text (docs/adr ADR 0006): the whole part of indent plus
-first-line-indent when both are in zw, none otherwise.
+in plain text, when indent and first-line-indent are both in zw, none
+otherwise (docs/adr ADR 0006): the whole part of their sum before the
+first line, and before each line after a line break the same in a keep
+paragraph, the whole part of indent in a join paragraph (docs/adr ADR
+0049); never negative.
 -}
-textFirstLine :: Style -> Maybe Text -> Int
-textFirstLine style st = case paraStyle style st of
-  Just ParaStyleDef {psIndent = Just (Zw a), psFirstLineIndent = Just (Zw b)} -> max 0 (truncate (a + b))
-  _ -> 0
+textIndents :: Style -> Maybe Text -> (Int, Int)
+textIndents style st = case paraStyle style st of
+  Just ParaStyleDef {psIndent = Just (Zw a), psFirstLineIndent = Just (Zw b), psLineBreaks = lb} ->
+    let first = max 0 (truncate (a + b))
+     in (first, if lb == Just KeepLines then first else max 0 (truncate a))
+  _ -> (0, 0)
 
 -- | A ruby alignment of style.toml as a CSS ruby-align value (golem-layout ADR 0009).
 rubyAlignCss :: Text -> Text

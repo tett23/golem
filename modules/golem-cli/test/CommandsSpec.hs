@@ -10,7 +10,7 @@ import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (isDigit)
-import Data.List (isInfixOf, isPrefixOf, sort, stripPrefix)
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf, sort, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -172,6 +172,23 @@ newTests =
         writeFiles (tmp </> "book") [("fonts/SourceSerif4-Regular.otf", "font")]
         (code, _, err) <- golemAt (tmp </> "book") ["check"]
         (code, err) @?= (ExitSuccess, ""),
+      testCase "the style.toml of the template has a bleed: 3mm for ja, 0.125in for en (golem-pdf ADR 0010)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        _ <- golemAt tmp ["new", "ja", "--no-fonts"]
+        _ <- golemAt tmp ["new", "en", "--language", "en", "--no-fonts"]
+        let bleedOf p = filter ("bleed = " `isPrefixOf`) . takeWhile (/= "") . drop 1 . dropWhile (/= "[page]") . lines <$> readUtf8 p
+        ja <- bleedOf (tmp </> "ja/style.toml")
+        en <- bleedOf (tmp </> "en/style.toml")
+        (ja, en) @?= (["bleed = \"3mm\""], ["bleed = \"0.125in\""]),
+      testCase "the en template builds a PDF with Japanese marks, without G0702 (golem-pdf ADR 0010)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+        _ <- golemAt tmp ["new", "book", "--language", "en", "--no-fonts"]
+        font <- BL.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf"
+        createDirectoryIfMissing True (tmp </> "book/fonts")
+        BL.writeFile (tmp </> "book/fonts/SourceSerif4-Regular.otf") font
+        (code, _, err) <- golemAt (tmp </> "book") ["build", "--target", "pdf", "--marks", "japanese"]
+        assertBool err (not ("G0702" `isInfixOf` err))
+        assertEqual err ExitSuccess code
+        pdfs <- filter (".pdf" `isSuffixOf`) <$> listDirectory (tmp </> "book/build/pdf")
+        length pdfs @?= 1,
       testCase "a directory that is not empty: 1, and its files are left alone" $ withSystemTempDirectory "golem-new" $ \tmp -> do
         writeFiles tmp [("book/notes.txt", "mine")]
         (code, _, err) <- golemAt tmp ["new", "book", "--no-fonts"]
@@ -450,8 +467,10 @@ preflightTests =
         createDirectoryIfMissing True (tmp </> "book/fonts")
         BL.writeFile (tmp </> "book/fonts/SourceSerif4-Regular.otf") font
         (code, _, err) <- golemAt (tmp </> "book") ["preflight"]
-        -- the template has no bleed (G0910) and no output intent (G0914)
+        -- the template has a bleed (golem-pdf ADR 0010), and no output intent (G0914)
         code @?= ExitFailure 1
+        assertBool err ("G0914" `isInfixOf` err)
+        assertBool err (not ("G0910" `isInfixOf` err))
         let summary = last (lines err)
-        assertBool summary ("プリフライト（設定: preflight.toml、基にした設定: print）: エラー 2、警告 0。" `isPrefixOf` summary)
+        assertBool summary ("プリフライト（設定: preflight.toml、基にした設定: print）: エラー 1、警告 0。" `isPrefixOf` summary)
     ]

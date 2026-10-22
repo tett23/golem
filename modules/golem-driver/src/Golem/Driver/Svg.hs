@@ -7,6 +7,7 @@ Also the wording of G0814, the active content that HTML and EPUB refuse
 module Golem.Driver.Svg
   ( svgDrawing,
     unsupportedMessage,
+    markerMessage,
     activeMessage,
   )
 where
@@ -62,6 +63,26 @@ unsupportedMessage path (u :| rest) =
     <> "（"
     <> S.unName u
     <> (if S.unText u then ": 文字は輪郭にして書き出してください" else "")
+    <> "）"
+    <> (if null rest then "" else "ほか " <> tshow (length rest) <> " 件")
+  where
+    tshow :: Int -> Text
+    tshow = T.pack . show
+
+{- | G0816 and G0817 (docs/adr ADR 0054): the first reference to a marker,
+with where the shape that holds it is and the id it places, and how many
+more.
+-}
+markerMessage :: Text -> Text -> NonEmpty S.MarkerRef -> Text
+markerMessage lead path (r :| rest) =
+  lead
+    <> path
+    <> ":"
+    <> tshow (S.mrLine r)
+    <> ":"
+    <> tshow (S.mrColumn r)
+    <> "（"
+    <> S.mrId r
     <> "）"
     <> (if null rest then "" else "ほか " <> tshow (length rest) <> " 件")
   where

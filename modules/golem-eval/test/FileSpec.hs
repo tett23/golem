@@ -995,15 +995,20 @@ breakTests =
         check "@label x\n@page-break\n# h\n",
       testCase "a label with only a break after it has no target" $
         errs "@label x\n@page-break\n\na\n" @?= ["G0210"],
-      testCase "wrong arguments are G0258" $ do
+      testCase "a wrong argument of @page-break is G0258 (docs/adr ADR 0060)" $ do
         mapM_
-          (\src -> assertEqual (T.unpack src) ["G0258"] (errs src))
+          (\src -> assertEqual (T.unpack src) [("G0258", "@page-break の引数は recto か verso です")] (msgs src))
           [ "@page-break page\n",
             "@page-break recto verso\n",
-            "@page-break x=1\n",
-            "@column-break recto\n",
-            "@page-break\n  a\n"
+            "@page-break x=1\n"
           ],
+      testCase "an argument of @column-break is G0296 (docs/adr ADR 0060)" $
+        msgs "@column-break recto\n" @?= [("G0296", "@column-break は引数を取りません")],
+      testCase "a body under a break is G0297 at its first block (docs/adr ADR 0060)" $ do
+        diags "@page-break\n  a\n" @?= [("G0297", "@page-break は本体を持てません", 12, 16)]
+        msgs "@column-break\n  a\n" @?= [("G0297", "@column-break は本体を持てません")],
+      testCase "an argument and a body are G0296 then G0297 (docs/adr ADR 0060)" $
+        map fst (msgs "@column-break recto\n  a\n") @?= ["G0296", "G0297"],
       testCase "a break not at the top of the document is G0259 and dropped" $ do
         mapM_
           ( \src -> do
@@ -1051,18 +1056,23 @@ pageControlTests =
             r = evalFile ctx file
         map diagCode (pds <> erDiagnostics r) @?= []
         [(blockLabel b, isControl (blockBody b)) | b <- docBlocks (erDocument r)] @?= [(Nothing, True), (Just "x", False)],
-      testCase "wrong arguments are G0270" $
+      testCase "a wrong argument of @need-lines is G0270 (docs/adr ADR 0060)" $
         mapM_
-          (\src -> assertEqual (T.unpack src) ["G0270"] (errs src))
-          [ "@no-page-break x\n",
-            "@need-lines\n",
-            "@need-lines 0\n",
-            "@need-lines 2.5\n",
-            "@page-lines 1\n",
-            "@page-lines +0\n",
-            "@page-lines +1 +2\n",
-            "@need-lines 3\n  a\n"
-          ],
+          (\src -> assertEqual (T.unpack src) [("G0270", "@need-lines の引数は 1 以上の整数です")] (msgs src))
+          ["@need-lines\n", "@need-lines 0\n", "@need-lines 2.5\n", "@need-lines 3 4\n", "@need-lines n=3\n"],
+      testCase "a wrong argument of @page-lines is G0299 (docs/adr ADR 0060)" $
+        mapM_
+          (\src -> assertEqual (T.unpack src) [("G0299", "@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です")] (msgs src))
+          ["@page-lines\n", "@page-lines 1\n", "@page-lines +0\n", "@page-lines +1 +2\n", "@page-lines n=+1\n"],
+      testCase "an argument of @no-page-break is G0296 (docs/adr ADR 0060)" $
+        msgs "@no-page-break x\n" @?= [("G0296", "@no-page-break は引数を取りません")],
+      testCase "a body under a control is G0297 (docs/adr ADR 0060)" $
+        mapM_
+          (\(src, name) -> assertEqual (T.unpack src) [("G0297", "@" <> name <> " は本体を持てません")] (msgs src))
+          [("@no-page-break\n  a\n", "no-page-break"), ("@need-lines 3\n  a\n", "need-lines"), ("@page-lines +1\n  a\n", "page-lines")],
+      testCase "a wrong argument and a body are both reported (docs/adr ADR 0060)" $ do
+        map fst (msgs "@no-page-break x\n  a\n") @?= ["G0296", "G0297"]
+        map fst (msgs "@page-lines 1\n  a\n") @?= ["G0299", "G0297"],
       testCase "a control not at the top of the document is G0271 and dropped" $ do
         let (bs, es) = run ctx "- a\n\n  @no-page-break\n"
         es @?= ["G0271"]

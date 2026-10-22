@@ -189,8 +189,9 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   数として組む整数は、式の値より狭い範囲に限ります。
   値を範囲の内に収めてください。
   数として扱う必要がなければ、[code: \[= ...\]] で本文の文字列として埋め込めます。
-= [strong: G0295 [code: 累乗の計算が大きすぎます（正確な計算に要るビットの数 … が、上限の 1048576（2 の 20 乗）を超えます）]]
-  [code: 1.0000001 ** 100000] や [code: 1.5 ** 100000000] のような累乗は、正確に計算すると大きくなりすぎます。
+= [strong: G0295 [code: 累乗の正確な計算に要るビットの数 … が、上限の 1048576（2 の 20 乗）を超えます（結果の大きさによらない上限です）]]
+  [code: 1.0000001 ** 100000] や [code: 1.5 ** 100000000] のような累乗は、正確な計算に要るビットの数が上限を超えます。
+  結果の値が小数で普通に表せる大きさでも、このエラーになります。
   評価が終わらなくなるのを防ぐための上限で、結果が小数で表せる範囲の内か外かより先に確かめます。
   指数を小さくするか、底を変えてください。
 = [strong: G0206 [code: ** の指数は整数に限ります]]
@@ -274,11 +275,11 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   書けるキーは [code: numbers]、[code: file]、[code: highlight]、[code: diff]、[code: callouts] で、[code: @listing] では [code: lang] も書けます。
   [code: highlight] の番号がコードにない、[code: diff=true] のコードに [code: +]、[code: -]、空白のどれでも始まらない行がある、注釈の印の番号が 1 から 50 の外にある、[code: @caption] にキャプションがない、といった場合も、このエラーになります。
   メッセージの示すキーと値を直してください。
-= [strong: G0296 [code: @printings は引数を取りません]]
-  引数を取らないコマンドに引数を書いています。
+= [strong: G0296 [code: @printings は引数を取りません]] など
+  [code: @printings]、[code: @column-break]、[code: @no-page-break] のような、引数を取らないコマンドに引数を書いています。
   コマンドの行から引数を消してください。
-= [strong: G0297 [code: @printings は本体を持てません]]
-  本体を持てないコマンドの次の行を字下げしています。
+= [strong: G0297 [code: @printings は本体を持てません]] など
+  [code: @printings] や改ページのコマンドのような、本体を持てないコマンドの次の行を字下げしています。
   字下げをやめて、別の段落として書いてください。
 = [strong: G0276 [code: @printings は日本語の本（language = "ja"）でだけ使えます]]
   [code: manifest.toml] の [code: language] が [code: "ja"] でない本に [code: @printings] を書いています。
@@ -286,17 +287,15 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0298 [code: マニフェストに \[\[metadata.printings\]\] がありません]]
   [code: manifest.toml] に [code: \[\[metadata.printings\]\]] がない本に [code: @printings] を書いています。
   [code: \[\[metadata.printings\]\]] に版、刷、日付を書いてください。
-= [strong: G0258 [code: @page-break の引数は recto か verso です]] など
+= [strong: G0258 [code: @page-break の引数は recto か verso です]]
   [code: @page-break] には何も書かないか、[code: recto] か [code: verso] を一つだけ書きます。
-  [code: @column-break] は引数を取りません。
-  次の行を字下げしているなら、字下げをやめてください。
 = [strong: G0259 [code: @page-break と @column-break は文書の最上位にだけ置けます]]
   リストの項目や図版のキャプションの中に改ページを書いています。
   字下げをやめて、リストや図版の前か後ろに書いてください。
-= [strong: G0270 [code: @need-lines の引数は 1 以上の整数です]] など
-  [code: @no-page-break] は引数を取りません。
-  [code: @need-lines] には 1 以上の整数を、[code: @page-lines] には [code: +1] や [code: -1] のように符号を付けた 0 でない整数を一つ書きます。
-  次の行を字下げしているなら、字下げをやめてください。
+= [strong: G0270 [code: @need-lines の引数は 1 以上の整数です]]
+  [code: @need-lines] には 1 以上の整数を一つだけ書きます。
+= [strong: G0299 [code: @page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です]]
+  [code: @page-lines] には、[code: +1] や [code: -1] のように符号を付けた 0 でない整数を一つだけ書きます。
 = [strong: G0271 [code: @no-page-break、@need-lines、@page-lines は文書の最上位にだけ置けます]]
   リストの項目や図版のキャプションの中に書いています。
   字下げをやめて、リストや図版の前か後ろに書いてください。
@@ -595,6 +594,11 @@ PDF を組むときに出るエラーです。
 = [strong: G0805 [code: PostScript 名が同じ異なるフォントがあります: …]]
   同じフォントの別のバージョンのファイルを混ぜています。
   どちらかのファイルにそろえてください。
+= [strong: G0819 [code: CFF2 の輪郭のフォントは PDF に埋め込めません: …]]
+  PDF が使う役割に、CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）を書いています。
+  同じ書体の、CFF の輪郭の版（可変でない [code: .otf]）か TrueType の輪郭の版（[code: .ttf]）に替えてください。
+  Source Serif 4 なら、[code: SourceSerif4-Regular.otf] か [code: SourceSerif4Variable-Roman.ttf] です。
+  [code: golem build] の PDF と [code: golem check] と [code: golem preflight] で出ます。HTML と EPUB では出ません。
 = [strong: G0806 [code: 出力インテントの ICC プロファイルがありません: …]]
   [code: \[color\]] の [code: intent] に書いたファイルがありません。
 = [strong: G0809 [code: 役割 … の和文の書体に圏点の形 … の字（U+…）がありません]]
@@ -611,7 +615,13 @@ PDF を組むときに出るエラーです。
   [code: 文字は輪郭にして書き出してください] と出たら、図の作成ツールで文字を輪郭（アウトライン）にして書き出し直してください。
   グラデーション、透明、[code: use] などは、使わずに書き出すか、PDF で書き出して PDF の画像として置いてください。
   名前に [code: （読めない数）] がつくのは、その属性に絶対値が 10 億を超える数があるときです。座標を小さくして書き出し直してください。
-  [code: marker（循環）] はマーカーが自分自身を置くとき、[code: marker（入れ子）] はマーカーの中のマーカーが 9 段を超えるときです。
+= [strong: G0816 [code: SVG の図版の marker が循環しています: …]]
+  SVG の図版のマーカー（[code: marker]）が、自分自身を、ほかのマーカーを経てでも置いています。
+  メッセージには、最初に見つかった参照を持つ図形の、SVG のファイルの中の行と桁と、置くマーカーの id が出ます。
+  循環の中の参照を一つ切って、書き出し直してください。
+= [strong: G0817 [code: SVG の図版の marker の入れ子が 9 段を超えます: …]]
+  SVG の図版のマーカーの中のマーカーが、9 段を超えて入れ子になっています。
+  入れ子を 9 段までにして、書き出し直してください。
 = [strong: G0813 [code: 出力先がシンボリックリンクかディレクトリではないので、消すことも書くこともしません: …]]
   [code: build] か、その下の [code: html] などのディレクトリが、シンボリックリンクになっています。
   Golem は出力の前にこれらのディレクトリを消すので、リンクの先のファイルを消さないように止めます。

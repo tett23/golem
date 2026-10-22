@@ -86,7 +86,7 @@ import Data.Foldable (toList)
 import Data.Function (on)
 import Data.Int (Int64)
 import Data.List (groupBy, intercalate, mapAccumL, nub, nubBy, sortOn, zip3, zip4)
-import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty (nonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
@@ -104,7 +104,7 @@ import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals (circled, formatNumber)
 import Golem.Driver.Overhang (kentenAcross, lineOverhang, reachesBackground, rubyAcross)
 import Golem.Driver.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
-import Golem.Driver.Svg (svgDrawing, unsupportedMessage)
+import Golem.Driver.Svg (markerMessage, svgDrawing, unsupportedMessage)
 import Golem.Driver.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import Golem.Driver.Version (golemVersion)
 import Golem.Html (codeTokens)
@@ -169,8 +169,8 @@ data LoadedFonts = LoadedFonts
     {- | the height of the centre of the ideographic em box above the
     baseline of a face number, in em (golem-driver ADR 0015)
     -} lfEmBoxCentral :: Int -> Rational,
-    {- | the path of the file of a face number and its form, @cff@ or
-    @truetype@ (golem-cli ADR 0006)
+    {- | the path of the file of a face number and its form, @cff@, @cff2@ or
+    @truetype@ (golem-cli ADR 0006, golem-font ADR 0003)
     -} lfFaceFile :: Int -> (FilePath, Text),
     {- | the ink box of a glyph of a face number: xMin, yMin, xMax, yMax in
     em (golem-driver ADR 0019)
@@ -2284,14 +2284,15 @@ buildFlow inp geom fonts images assumed = do
                in (nextId + length ls, flows <> flowOf, Map.union lineAcc set, figAcc, headAcc', errs')
       -- code blocks, set line by line (golem-driver ADR 0017)
       codeBlocks = Map.fromList [(i, codeBlockOf geom fonts measure capacity u lead code (codeCaptionOf u lead code)) | (i, u@Unit {uKind = UCode lead code}) <- units]
-      {- the caption of a code block: the listing number, an ideographic
-      space and the caption, set as the caption of a figure over the width of
-      the block (golem-driver ADR 0023) -}
+      {- the caption of a code block: the listing number, the separator of
+      the language of the book (golem-driver ADR 0042) and the caption, set
+      as the caption of a figure over the width of the block (golem-driver
+      ADR 0023) -}
       codeCaptionOf u lead code = case codeCaption code of
         Nothing -> CodeCaption [] fs pitch 0 []
         Just is ->
           let number = Map.lookup (uSpan u) (bookListings (piBook inp))
-              captionInlines = maybe [] (\num -> [Text (uSpan u) (num <> "　")]) number <> is
+              captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number is
               (captionRole, cs) = paraFace (uStyle u) geom "caption"
               captionParams = params {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
               (captionItems, captionAnchors) = composeInlines ((styledEnv (uStyle u) (envFor (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption")}) captionInlines
@@ -2603,8 +2604,11 @@ keepLastTwo items = case reverse boxes of
       g@Glue {} -> [Penalty 0 infPenalty NoHyphen, g]
       x -> [x]
 
--- | Why a figure cannot be placed: G0810 with the reason, or G0811 (golem-pdf ADR 0008, 0009).
-data Unplaced = Unplaced !Text | UnsupportedSvg !(NonEmpty S.Unsupported)
+{- | Why a figure cannot be placed: G0810 with the reason, or what an SVG
+figure cannot be drawn for, G0811, G0816 and G0817 (golem-pdf ADR 0008,
+0009, docs/adr ADR 0054).
+-}
+data Unplaced = Unplaced !Text | UnsupportedSvg !S.SvgProblems
 
 {- | The figures, read once by file and page; why one cannot be placed
 (golem-pdf ADR 0008). The format follows the extension, as golem-eval
@@ -2632,17 +2636,22 @@ loadFigures inp = do
 figureBlocks :: Book -> [(SrcSpan, Figure)]
 figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ (FigureBlock f) <- bs]
 
-{- | G0810: a figure that cannot be placed in the PDF, and G0811: an SVG
-figure with things outside the subset; one per @figure (golem-pdf ADR
-0008, 0009).
+{- | G0810: a figure that cannot be placed in the PDF; G0811: an SVG figure
+with things outside the subset, G0816: with markers in a cycle, G0817: with
+markers nested too deep, each that applies in this order; one of each per
+@figure (golem-pdf ADR 0008, 0009, docs/adr ADR 0054).
 -}
 figureDiagnostics :: PdfInput -> Map (Text, Int) (Either Unplaced P.FigureContent) -> [Diagnostic]
 figureDiagnostics inp loaded =
-  [ case why of
-      Unplaced reason -> diagnostic "G0810" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> reason <> "）")
-      UnsupportedSvg us -> diagnostic "G0811" Error sp (unsupportedMessage (figSource f) us)
+  [ d
   | (sp, f) <- figureBlocks (piBook inp),
-    Just (Left why) <- [Map.lookup (figureKey f) loaded]
+    Just (Left why) <- [Map.lookup (figureKey f) loaded],
+    d <- case why of
+      Unplaced reason -> [diagnostic "G0810" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> reason <> "）")]
+      UnsupportedSvg ps ->
+        [diagnostic "G0811" Error sp (unsupportedMessage (figSource f) us) | Just us <- [nonEmpty (S.spUnsupported ps)]]
+          <> [diagnostic "G0816" Error sp (markerMessage "SVG の図版の marker が循環しています: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerCycles ps)]]
+          <> [diagnostic "G0817" Error sp (markerMessage "SVG の図版の marker の入れ子が 9 段を超えます: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerDepth ps)]]
   ]
 
 {- | The rectangle of a figure's image on page @page@ from grid line @slot@
