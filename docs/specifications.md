@@ -954,7 +954,7 @@ W に傍注欄は含めない。
 索引の段の行長が版面の文字の大きさの 8 字分に満たない場合は、`[index]` の `columns` の値の位置で G0744 とし、PDF をターゲットに含む `golem check` も報告する。
 索引の段数を切り替える位置は、「索引」の節に書く。
 
-寸法は `mm`、`pt`、`Q`（級）、`H`（歯）、`zw`（全角一字分）の単位を付けた文字列で書き、処理系の内部では整数の sp に変換する。
+寸法は `mm`、`pt`、`Q`（級）、`H`（歯）、`in`（インチ。1in = 72pt = 25.4mm、[golem-project ADR 0010](golem-project/adr/0010-inch-unit.md)）、`zw`（全角一字分）の単位を付けた文字列で書き、処理系の内部では整数の sp に変換する。
 
 `[page]` の `size` は判型であり、仕上がりの寸法である（[golem-project ADR 0002](golem-project/adr/0002-style-toml.md)、[golem-project ADR 0005](golem-project/adr/0005-page-size-by-dimensions.md)）。
 判型の表の名前か、幅と高さの寸法で書く。
@@ -972,12 +972,13 @@ W に傍注欄は含めない。
 | `"mass-market"` | 4.25in × 6.875in（[golem-project ADR 0003](golem-project/adr/0003-mass-market-paperback-size.md)） |
 
 表にない判型は、`size = { width = "148mm", height = "210mm" }` のように、`width` と `height` の二つの欄を持つテーブルで書く。
-二つの欄はどちらも必須で、単位は `mm`、`pt`、`Q`、`H` とし、幅と高さで単位が異なってもよい。
+二つの欄はどちらも必須で、単位は `mm`、`pt`、`Q`、`H`、`in` とし、幅と高さで単位が異なってもよい。
 判型は文字の大きさに依存しない長さなので、`zw` は使えない。
 幅と高さは、組み方向や綴じの方向によらず、ページを正立させたときの横と縦の寸法である。
 幅が高さより大きい横長の判型も書ける。
 表の名前はどれも縦長の寸法であり、横長にするには寸法で書く。
-インチの単位はなく、インチの判型は `mm`（1in = 25.4mm）か `pt`（1in = 72pt）で書く。
+インチの判型は `in` で書ける（[golem-project ADR 0010](golem-project/adr/0010-inch-unit.md)）。
+たとえば 5.5in × 8.5in は `{ width = "5.5in", height = "8.5in" }` であり、`{ width = "396pt", height = "612pt" }` と同じ判型になる。
 表にない名前（`"148mm x 210mm"` のような文字列を含む）、欄の欠落、未知の欄、寸法として読めない値、`zw`、0 以下の値は、読み込みの段階で G0317 とし、位置は `size` の値の位置とする。
 読み込みで判型が確定するので、`golem check` と、PDF を含まないビルドでも検出する。
 判型を使うのは PDF だけであり、HTML、EPUB、プレーンテキストは判型を読まない。
@@ -999,8 +1000,8 @@ EPUB と HTML は `bleed` を無視する。
 | --- | --- | --- | --- |
 | `enabled` | 真偽値 | `true` | トンボを付けた PDF に隠しノンブルを入れるか |
 | `pages` | `"unnumbered"` か `"all"` | `"unnumbered"` | 入れるページ |
-| `size` | 寸法（`mm`、`pt`、`Q`、`H`） | `"6pt"` | 数字の大きさ |
-| `gutter` | 寸法（`mm`、`pt`、`Q`、`H`） | `"1.5mm"` | ノドの仕上がりの線から、数字の列の中心線までの距離 |
+| `size` | 寸法（`mm`、`pt`、`Q`、`H`、`in`） | `"6pt"` | 数字の大きさ |
+| `gutter` | 寸法（`mm`、`pt`、`Q`、`H`、`in`） | `"1.5mm"` | ノドの仕上がりの線から、数字の列の中心線までの距離 |
 
 `[hidden-folio]` を書かない本は、すべてのキーが既定の値になり、トンボを付けた PDF には隠しノンブルが入る。
 中綴じの本ではノドが見開きの中央に見えるので、`enabled = false` を書く。
@@ -1154,7 +1155,7 @@ InDesign の段落境界線にあたる。
 罫線は段の行の始まりから `start-indent` の位置から引き、段落の字下げには合わせない。
 罫線と段落のあいだの間隔（前の罫線の `space-after`、後の罫線の `space-before`）を内側の間隔、罫線と前後の要素のあいだの間隔を外側の間隔と呼ぶ。
 間隔は、段落の行が載る格子の行の字面（`[page.grid]` の `font-size` の高さ）から測る。
-間隔（`space-before` と `space-after`）は `mm`、`pt`、`Q`、`H`、`zw` のどれでも書ける（[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）。
+間隔（`space-before` と `space-after`）は `mm`、`pt`、`Q`、`H`、`in`、`zw` のどれでも書ける（[golem-driver ADR 0035](golem-driver/adr/0035-paragraph-rules-split-and-space-units.md)）。
 間隔の `zw` は、段落スタイルでも見出しでも、版面の文字の大きさ（`[page.grid]` の `font-size`）を一字として解決する。
 `length`、`start-indent`、`end-indent` の `zw` は、段落スタイル（見出しでは見出し）の文字の大きさで解決する。
 段落スタイルの `size` の `zw` は版面の文字の大きさを一字とし、版面の文字の大きさを超える値はエラー（G0311）とする。
@@ -1188,7 +1189,7 @@ HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS 
 `background` のスウォッチが `[color.swatches]` にない場合は G0313、`padding` が負か寸法として読めない場合は G0306 とする。
 ファイルの先頭の `@style-def paragraph code` も、同じキーに限って書ける。
 
-技術書のための枠のキーとして、`code` には `border`（スウォッチの名前、既定なし）と `border-width`（`mm`、`pt`、`Q`、`H` の寸法、既定 `"0.25pt"`）も書ける（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+技術書のための枠のキーとして、`code` には `border`（スウォッチの名前、既定なし）と `border-width`（`mm`、`pt`、`Q`、`H`、`in` の寸法、既定 `"0.25pt"`）も書ける（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 `border` があれば、PDF では背景と同じ矩形の線を、線の中心を矩形の辺に置いて描き、改ページで分かれた部分ごとに閉じた矩形にする。
 HTML と EPUB では `pre` に `border` を書く。
 `border` と `border-width` も `code` にだけ書け、ほかの段落スタイルに書く場合と、`border-width` を `zw` で書く場合はエラー（G0306）、スウォッチがない場合は G0313 とする。

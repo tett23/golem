@@ -20,6 +20,7 @@
 | [code: pt] | ポイントです。1in の 72 分の 1 です。 |
 | [code: Q] | 級です。0.25mm です。文字の大きさに使います。 |
 | [code: H] | 歯です。0.25mm です。行送りに使います。 |
+| [code: in] | インチです。72pt（25.4mm）です。英語圏の判型や塗り足しに使います。 |
 | [code: zw] | 全角一字分です。その場所の文字の大きさを一字とします。 |
 
 見出しの番号、図番号、ノンブルの書式には、次の差し込みを書けます。
@@ -40,7 +41,7 @@ HTML と EPUB は [code: writing-mode] だけを使います。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [code: size] | （必須） | 判型です。[code: "A4"]、[code: "A5"]、[code: "A6"]、[code: "B5"]、[code: "B6"]、[code: "四六判"]、[code: "菊判"]、[code: "新書判"]、[code: "mass-market"] のどれかか、[code: { width = "148mm", height = "210mm" }] のように幅と高さで書きます。幅と高さに [code: zw] は使えません。 |
+| [code: size] | （必須） | 判型です。[code: "A4"]、[code: "A5"]、[code: "A6"]、[code: "B5"]、[code: "B6"]、[code: "四六判"]、[code: "菊判"]、[code: "新書判"]、[code: "mass-market"] のどれかか、[code: { width = "148mm", height = "210mm" }] のように幅と高さで書きます。英語の本の判型は [code: { width = "5.5in", height = "8.5in" }] のようにインチでも書けます。幅と高さに [code: zw] は使えません。 |
 | [code: binding] | [code: "left"] | 綴じる側です。[code: "right"]（右綴じ）か [code: "left"]（左綴じ）です。 |
 | [code: writing-mode] | [code: "horizontal"] | [code: "vertical"]（縦組み）か [code: "horizontal"]（横組み）です。 |
 | [code: bleed] | [code: "0mm"] | 塗り足しの幅です。[code: zw] は使えません。 |
@@ -180,7 +181,7 @@ Golem は、コンピューターに入っているフォントを探しませ�
 
 間隔は、段落の行が載る行の格子の字面から測ります。
 罫線と段落のあいだ（前の罫線の [code: space-after]、後の罫線の [code: space-before]）は書いたとおりに空き、外側の空きは、罫線の領域が行の格子の行の数にそろうまで広がります。
-間隔は [code: mm]、[code: pt]、[code: Q]、[code: H]、[code: zw] のどれでも書けます。
+間隔は [code: mm]、[code: pt]、[code: Q]、[code: H]、[code: in]、[code: zw] のどれでも書けます。
 間隔の [code: zw] は、PDF でも HTML と EPUB でも、版面の文字の大きさ（[code: \[page.grid\]] の [code: font-size]）を一字とします。
 罫線が仕上がりの線か段間の半分を超えると、版面を計算できないエラー（G0701）です。
 [code: true] を書いたとき、[code: caption]、[code: sidenote]、[code: code] に書いたとき、[code: @style-def] に書いたときはエラー（G0306）です。
