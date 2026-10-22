@@ -169,6 +169,34 @@ characterFeatureTests =
       shapingOf False (lk KernJapaneseEqualWidth True) 'a' @?= Shaping "body" False []
       -- Latin in vertical text is turned and measured horizontally
       shapingOf True (lk KernMetrics False) 'a' @?= Shaping "body" False [],
+    testCase "punctuation JLReq spaces gets -palt and -vpal by every kerning method (docs/adr ADR 0053)" $ do
+      let lk k p = (plainLook "body" 655360) {lkKerning = k, lkProportional = p}
+      shapingOf False (lk KernMetrics True) '「' @?= Shaping "body" False ["-palt", "-vpal"]
+      shapingOf True (lk KernMetrics True) '「' @?= Shaping "body" True ["-palt", "-vpal"]
+      -- the role's palt is undone even without proportional-metrics
+      shapingOf False (lk KernMetrics False) '「' @?= Shaping "body" False ["-palt", "-vpal"]
+      mapM_ (\c -> shapingOf False (lk KernMetrics True) c @?= Shaping "body" False ["-palt", "-vpal"]) ['」', '。', '、', '・', '：', '；']
+      shapingOf False (lk KernNone True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"]
+      shapingOf False (lk KernJapaneseEqualWidth True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"]
+      -- what JLReq does not space keeps palt
+      shapingOf False (lk KernMetrics True) '？' @?= Shaping "body" False ["palt"]
+      shapingOf False (lk KernMetrics True) '…' @?= Shaping "body" False ["palt"],
+    testCase "the role's palt leaves a bracket its full width, a kana its palt width (docs/adr ADR 0053)" $ do
+      fonts <- notoPaltFonts
+      let lk = plainLook "palt" 655360
+          advance c = lfAdvance fonts (shapingOf False lk c) c
+      advance '「' @?= 1
+      advance 'あ' @?= lfAdvance fonts (Shaping "palt" False []) 'あ',
+    testCase "brackets are as wide with the role's palt or proportional-metrics as without (docs/adr ADR 0053)" $ do
+      noto <- notoBytes
+      let fonts = "\n[fonts.body]\nja = \"fonts/noto.otf\"\n\n[fonts.palt]\nja = \"fonts/noto.otf\"\nfeatures = [\"palt\"]\n\n[character-styles.p]\nfont = \"palt\"\n\n[character-styles.q]\nproportional-metrics = true\n"
+          widths source = do
+            (_, pl) <- layoutMiniFonts golemFontProvider miniManifest (horizontal30 fonts) source [("fonts/noto.otf", noto)] >>= either (assertFailure . show) pure
+            pure [(bcText c, w) | sl <- Map.elems (plLines pl), Box w c <- lineItems (slLine sl), bcText c `elem` ["「", "」"]]
+      plain <- widths "漢「字」漢\n"
+      assertEqual "two brackets" 2 (length plain)
+      widths "[style q: 漢「字」漢]\n" >>= (@?= plain)
+      widths "[style p: 漢「字」漢]\n" >>= (@?= plain),
     testCase "PDF: a baseline shift moves the glyph up in horizontal text, right in vertical text" $ do
       let up = "\n[character-styles.up]\nbaseline-shift = \"2pt\"\n"
           at axis style = do
@@ -198,17 +226,17 @@ characterFeatureTests =
         [g] -> assertBool (show g) (snd (shOffset g) /= 0)
         other -> assertFailure (show other),
     testCase "PDF: a glyph is drawn at its box moved by its offset; other glyphs stay (golem-driver ADR 0020)" $ do
-      -- a bracket gets palt or vpal from a role's features (proportional-metrics leaves punctuation to the aki)
+      -- a kana gets palt or vpal from a role's features (punctuation JLReq spaces does not, docs/adr ADR 0053)
       let style feature = fakeBody <> "\n[fonts.palt]\nja = \"fonts/h.otf\"\nfeatures = [\"" <> feature <> "\"]\n\n[character-styles.p]\nfont = \"palt\"\n"
-          -- the bracket of the role palt moved as palt (horizontal) or vpal (vertical) would; the advances stay
+          -- the kana of the role palt moved as palt (horizontal) or vpal (vertical) would; the advances stay
           moved =
             fakeFonts
               { lfShape = \s t ->
-                  [ if shText g == "「" && shRole s == "palt" then g {shOffset = if shVertical s then (0, 1 / 4) else (-(1 / 4), 0)} else g
+                  [ if shText g == "あ" && shRole s == "palt" then g {shOffset = if shVertical s then (0, 1 / 4) else (-(1 / 4), 0)} else g
                   | g <- lfShape fakeFonts s t
                   ]
               }
-          drawn fonts base feature = miniPdf (FontProvider (\_ _ _ _ -> pure (Right fonts))) True (base <> style feature) "[style p: 漢「字」]\n" fakeFontFiles >>= fmap (drawnGlyphs . BS.concat) . inflateAll
+          drawn fonts base feature = miniPdf (FontProvider (\_ _ _ _ -> pure (Right fonts))) True (base <> style feature) "[style p: 漢あ字]\n" fakeFontFiles >>= fmap (drawnGlyphs . BS.concat) . inflateAll
           diff base feature = do
             plain <- drawn fakeFonts base feature
             off <- drawn moved base feature
@@ -218,7 +246,7 @@ characterFeatureTests =
       horizontal <- diff horizontalStyle "palt"
       case horizontal of
         [(g, dx', dy')] -> do
-          g @?= fromEnum '「'
+          g @?= fromEnum 'あ'
           near (-(10 / 4)) dx'
           dy' @?= 0
         other -> assertFailure (show other)
@@ -226,7 +254,7 @@ characterFeatureTests =
       case vertical of
         -- 13Q is 3.25mm: a quarter of it upward
         [(g, dx', dy')] -> do
-          g @?= fromEnum '「'
+          g @?= fromEnum 'あ'
           dx' @?= 0
           near (13 / 4 / 4 * 72 / 25.4) dy'
         other -> assertFailure (show other),
