@@ -1715,6 +1715,11 @@ HTML と EPUB では、CSS の `text-orientation` の既定の `mixed` に任せ
 OS/2 の `fsType` は OpenType の仕様のとおりに読み、ビット 1（制限付きのライセンス）がビット 2 とビット 3 なしに立っている場合、ビット 8（サブセット化の禁止）が立っている場合、ビット 9（ビットマップの埋め込みだけを許す）が立っている場合に埋め込みを禁じているとみなす（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 Golem は常にサブセットを埋め込むので、サブセット化を禁じるフォントは埋め込めない。
 読み込めないフォント（G0803）と埋め込めないフォント（G0804）は、パスごとにすべて報告する。
+CFF2 の輪郭を持つフォント（可変の OpenType/CFF2）は、PDF に埋め込めないので、PDF が使う役割に指定するとエラー（G0819）とし、PDF を書かない（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。
+PDF の埋め込みフォントの入れ物は CFF2 の輪郭を受けないためである。
+G0819 は読めないフォント（G0803）と原因が違うので、コードを分ける。
+`golem build` の PDF、`golem check`、`golem preflight` が報告し、`golem check` もフォントのファイルを読んで確かめる。
+HTML と EPUB はフォントのファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、拒まない。
 
 PDF は、本文の役割と、見出しの `font`、文字スタイルの `font`、段落スタイル（組み込みの `caption` と `sidenote` を含む）の `font` が指す役割のフォントだけを読み込む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 コードの書体は役割 `code` で指定し、組み込みの段落スタイル `code` と文字スタイル `code` が既定でこれを指す（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
@@ -3038,7 +3043,7 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
-- **CFF2 のフォントの PDF**：CFF2 の輪郭を持つフォント（可変の OpenType/CFF2）を本の役割に使うと、`golem build` は diagnostic を出さずに PDF を書くが、そのフォントを TrueType の入れ物（`FontFile2`）に埋め込むので、PDF として誤っており、macOS の PDFKit では字がすべて黒丸に置き換わる。直すまで、PDF には CFF か TrueType の輪郭のフォントを使う（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。
+今は載せるものがない。
 
 ## 仕様が不明瞭な場合
 

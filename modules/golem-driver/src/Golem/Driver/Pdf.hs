@@ -169,8 +169,8 @@ data LoadedFonts = LoadedFonts
     {- | the height of the centre of the ideographic em box above the
     baseline of a face number, in em (golem-driver ADR 0015)
     -} lfEmBoxCentral :: Int -> Rational,
-    {- | the path of the file of a face number and its form, @cff@ or
-    @truetype@ (golem-cli ADR 0006)
+    {- | the path of the file of a face number and its form, @cff@, @cff2@ or
+    @truetype@ (golem-cli ADR 0006, golem-font ADR 0003)
     -} lfFaceFile :: Int -> (FilePath, Text),
     {- | the ink box of a glyph of a face number: xMin, yMin, xMax, yMax in
     em (golem-driver ADR 0019)

@@ -68,7 +68,7 @@ import Golem.Doc.Bibliography (CslDate (..), CslEntry (..), CslName (..), EntryP
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Doc.Numbering (numberSeparator)
-import Golem.Driver.Fonts (golemFontProvider)
+import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
 import Golem.Driver.Pdf
 import Golem.Driver.Plugins (loadPlugins)
 import Golem.Driver.Svg (activeMessage)
@@ -687,7 +687,13 @@ buildCore inMemory opts = do
       missing <- missingStyleFiles (optRoot opts) (evStyle e)
       -- without code in the book, the role code is not used (golem-driver ADR 0017)
       let fileStyle = maybe id (\b -> codeStyles (bookHasCode (docStyles e) b) (stFonts (evStyle e))) (evBook e) (evStyle e)
-          perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid fileStyle (Map.elems (localStylesOf e)) missing t)) | t <- targets]
+          locals = Map.elems (localStylesOf e)
+      -- G0819: CFF2 fonts, which the PDF cannot embed; golem check reports them too (golem-font ADR 0003)
+      cff2Diags <-
+        if TargetPdf `elem` targets
+          then cff2FontDiagnostics (optRoot opts) diagFid [p | p <- pdfFontPaths fileStyle locals, Map.notMember p missing]
+          else pure []
+      let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid fileStyle locals missing t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
           -- G0701, G0702 and G0725 stop the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
@@ -829,7 +835,7 @@ targetFileDiagnostics fid style locals missing = \case
   TargetEpub -> siteFonts
   TargetText -> []
   where
-    pdfFonts = [p | r <- usedRoles style locals, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
+    pdfFonts = pdfFontPaths style locals
     siteFonts = report "G0310" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
     report code sev missingMsg paths =
       [ diagnostic code sev (mkSpan fid 0 0) (T.pack (msg <> ": " <> p))
@@ -837,6 +843,10 @@ targetFileDiagnostics fid style locals missing = \case
         Just err <- [Map.lookup p missing],
         let msg = if err == Missing then missingMsg else pathErrorMessage err
       ]
+
+-- | The font files of the roles the PDF uses.
+pdfFontPaths :: Style -> [LocalStyles] -> [FilePath]
+pdfFontPaths style locals = [p | r <- usedRoles style locals, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
 
 {- | G0702 (golem-pdf ADR 0004): Japanese crop marks need bleed, because the
 trim line and the bleed line would be drawn on top of each other. Only when

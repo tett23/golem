@@ -595,6 +595,11 @@ PDF を組むときに出るエラーです。
 = [strong: G0805 [code: PostScript 名が同じ異なるフォントがあります: …]]
   同じフォントの別のバージョンのファイルを混ぜています。
   どちらかのファイルにそろえてください。
+= [strong: G0819 [code: CFF2 の輪郭のフォントは PDF に埋め込めません: …]]
+  PDF が使う役割に、CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）を書いています。
+  同じ書体の、CFF の輪郭の版（可変でない [code: .otf]）か TrueType の輪郭の版（[code: .ttf]）に替えてください。
+  Source Serif 4 なら、[code: SourceSerif4-Regular.otf] か [code: SourceSerif4Variable-Roman.ttf] です。
+  [code: golem build] の PDF と [code: golem check] と [code: golem preflight] で出ます。HTML と EPUB では出ません。
 = [strong: G0806 [code: 出力インテントの ICC プロファイルがありません: …]]
   [code: \[color\]] の [code: intent] に書いたファイルがありません。
 = [strong: G0809 [code: 役割 … の和文の書体に圏点の形 … の字（U+…）がありません]]
