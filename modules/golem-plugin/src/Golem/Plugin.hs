@@ -65,7 +65,10 @@ foreign import capi unsafe "golem_plugin.h golem_plugin_free_bytes" c_freeBytes 
 
 foreign import capi unsafe "golem_plugin.h golem_wat2wasm" c_wat2wasm :: CString -> CSize -> Ptr CSize -> Ptr CString -> IO (Ptr Word8)
 
--- | The ABI version of this host.
+{- | The ABI version of this host, the one of the IR ('Golem.Doc.IR.abiVersion'):
+one more than the last release only when the ABI changed since
+(docs/adr ADR 0052).
+-}
 abiVersion :: Word32
 abiVersion = 7
 
