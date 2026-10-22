@@ -5900,12 +5900,11 @@ SVG の図版に、Golem が PDF に描ける範囲の外の要素、属性、�
 範囲は [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md) の表のとおりで、パス、基本の図形、変換、塗りと線、マーカーなどである。
 輪郭にしていない文字（`text`、`tspan`、`textPath` の要素と `@font-face`）も範囲の外である。
 絶対値が 10^9 を超える数も範囲の外であり、その属性かプロパティの名前に `（読めない数）` を添える（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。
-`marker` が自分自身を、ほかの `marker` を経てでも置くときは、その参照を `marker（循環）` とする。
-`marker` の中の `marker` が 10 段目になる参照は `marker（入れ子）` とする。
-どちらも、その参照を持つ図形の位置を書き、範囲の外の `marker` は描かない。
+`marker` の循環は [G0816](#g0816)、深すぎる `marker` の入れ子は [G0817](#g0817) であり、このコードには入れない。
 範囲の外のものを黙って無視せず、文書の順にすべて集め、最初のものの名前と位置（SVG のファイルの中の行と桁）を書き、残りの件数を添える。
 最初のものが文字なら、輪郭にして書き出すよう案内する。
 `@figure` ごとに一つ出し、PDF を書かない。
+同じ `@figure` に G0816 か G0817 も当たれば、このコードの後に続けて出す。
 dev と prod の両方でエラーである。
 PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出し、HTML、EPUB、プレーンテキストでは出さない。
 HTML と EPUB は SVG を PDF の部分集合では検査せず、動的なコンテンツだけを [G0814](#g0814) で検査する。
@@ -5913,7 +5912,7 @@ HTML と EPUB は SVG を PDF の部分集合では検査せず、動的なコ�
 
 - メッセージ: `SVG の図版に扱えないものがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。文字なら `（<名前>: 文字は輪郭にして書き出してください）`。ほかになければ `ほか <n> 件` を書かない。
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
-- ADR: [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（`marker` の循環と入れ子、読めない数）
+- ADR: [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（読めない数）、[docs/adr/0054](adr/0054-svg-marker-cycle-and-depth-codes.md)（`marker` の循環と入れ子を G0816 と G0817 に分けた）
 
 ### 主な原因
 
@@ -5921,14 +5920,12 @@ HTML と EPUB は SVG を PDF の部分集合では検査せず、動的なコ�
 - グラデーション、`use`、クリップ、フィルター、1 でない不透明度などを使った。
 - 子孫の結合子などの、扱わない CSS のセレクターを使った。
 - 地図のタイルなどの、大きな座標を使う図を書き出した。
-- `marker` が自分自身を参照するか、深く入れ子にした SVG を生成した。
 
 ### 直し方
 
 図の作成ツールで、文字を輪郭（アウトライン）にして書き出す。
 範囲の外の機能は、ツールの側で範囲の中に収めて書き出し直す。
 読めない数は、座標を縮めて書き出し直す。
-`marker` の循環は断ち、入れ子は 9 段までにする。
 SVG で収まらない図は、PDF で書き出して PDF の図版として置く。
 
 ## G0813
@@ -5995,6 +5992,73 @@ HTML か EPUB を組むとき（`golem build`）にだけ出す。
 図の作成ツールで、スクリプト、イベント、外部への参照を使わずに書き出し直す。
 外部の画像を参照する図は、画像を埋め込むか、`web` に PNG を置く。
 他人から受け取った SVG でこのコードが出たら、中身を確かめてから使う。
+
+## G0816
+
+SVG の図版の marker が循環しています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+SVG の図版の `marker` が、自分自身を、ほかの `marker` を経てでも置く。
+循環する `marker` は描き終わらない図なので、Golem の範囲によらず描かない。
+判定は `marker` の参照のグラフで行い、図の本体から届く `marker` のあいだの参照のうち、両端が同じ強連結成分にあるもの（自分自身への参照を含む）を循環の参照とする（[docs/adr/0054](adr/0054-svg-marker-cycle-and-depth-codes.md)）。
+循環の中の参照をすべて数える。
+図の本体が置かない `marker` は数えない。
+循環の参照を文書の順に集め、最初のものの位置（参照を持つ図形の、SVG のファイルの中の行と桁）と置く `marker` の id を書き、残りの件数を添える。
+`@figure` ごとに一つ出し、PDF を書かない。
+同じ `@figure` に [G0811](#g0811) も当たれば、その後に、[G0817](#g0817) も当たれば、その前に出す。
+dev と prod の両方でエラーである。
+PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出す。
+位置は、その `@figure` のブロックである。
+
+- メッセージ: `SVG の図版の marker が循環しています: <パス>:<行>:<桁>（<id>）ほか <n> 件`。ほかになければ `ほか <n> 件` を書かない。
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
+- ADR: [docs/adr/0054](adr/0054-svg-marker-cycle-and-depth-codes.md)
+
+### 主な原因
+
+- `marker` が自分自身を参照する SVG を生成した。
+- 二つ以上の `marker` が互いを置く SVG を生成した。
+
+### 直し方
+
+循環の中の参照を一つ切る。
+
+## G0817
+
+SVG の図版の marker の入れ子が 9 段を超えます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+SVG の図版の `marker` の中の `marker` が、9 段を超えて入れ子になる。
+図が置く `marker` を 1 段目とし、描く手間を限るために 9 段まで描く。
+`marker` の深さは、循環の参照を除いた、図の本体からの最も長い参照の列の長さとする（[docs/adr/0054](adr/0054-svg-marker-cycle-and-depth-codes.md)）。
+深さ 9 以上の `marker` の中の参照を、すべて数える。
+循環の参照でもある参照は、[G0816](#g0816) として数える。
+参照を文書の順に集め、最初のものの位置（参照を持つ図形の、SVG のファイルの中の行と桁）と置く `marker` の id を書き、残りの件数を添える。
+`@figure` ごとに一つ出し、PDF を書かない。
+同じ `@figure` に [G0811](#g0811) か G0816 も当たれば、その後に出す。
+dev と prod の両方でエラーである。
+PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出す。
+位置は、その `@figure` のブロックである。
+
+- メッセージ: `SVG の図版の marker の入れ子が 9 段を超えます: <パス>:<行>:<桁>（<id>）ほか <n> 件`。ほかになければ `ほか <n> 件` を書かない。
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
+- ADR: [docs/adr/0054](adr/0054-svg-marker-cycle-and-depth-codes.md)
+
+### 主な原因
+
+- `marker` を深く入れ子にした SVG を生成した。
+
+### 直し方
+
+`marker` の入れ子を 9 段までにする。
 
 ## G0819
 

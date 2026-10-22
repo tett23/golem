@@ -31,7 +31,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - PDF の図版の `Contents` で繰り返し名指したストリームを、出力でも一度だけ書く（未実装、[docs/adr 0051](adr/0051-reuse-repeated-pdf-content-streams.md)）。
 - `palt` と `vpal` を、JLReq が空きを決める約物に当てない（未実装、[docs/adr 0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
-- SVG の `marker` の循環と深すぎる入れ子を、それぞれのコードのエラーにする（未実装、[docs/adr 0054](adr/0054-svg-marker-cycle-and-depth-codes.md)）。
 - `@no-page-break` の前の 3 行以下の段落は全体を送る（未実装、[docs/adr 0055](adr/0055-no-page-break-moves-short-paragraphs-whole.md)）。
 - 「傍注欄」を「傍注の領域」と言い換える（未実装、[docs/adr 0059](adr/0059-say-sidenote-area.md)）。
 - diagnostic のコードを、段階の 2 桁と番号の 3 桁の 5 桁にする（未実装、[docs/adr 0061](adr/0061-five-digit-diagnostic-codes.md)）。ほかの ADR をすべて実装した後に実装する。
