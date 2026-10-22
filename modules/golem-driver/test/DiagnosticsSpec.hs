@@ -7,7 +7,7 @@ import Data.Char (isDigit)
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.List (isSuffixOf, nub, sort)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust)
+import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
@@ -19,7 +19,7 @@ import Golem.Layout.Paginate (ColumnSet (..), PageOut (..))
 import Golem.Project (ProjectFailure (..))
 import Golem.Syntax
 import Support
-import System.Directory (createFileLink, doesDirectoryExist, listDirectory)
+import System.Directory (createDirectoryIfMissing, createFileLink, doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
@@ -226,10 +226,10 @@ explainTests =
             fmap exStatus (lookupExplanation "G0295") @?= Just InUse
             used <- sourceCodes
             assertBool "G0295 in the sources" ("G0295" `elem` used),
-          testCase "G0296, G0297 and G0298 are in use and in the sources (docs/adr ADR 0056)" $ do
-            map (fmap exStatus . lookupExplanation) ["G0296", "G0297", "G0298"] @?= replicate 3 (Just InUse)
+          testCase "G0296, G0297, G0298 and G0299 are in use and in the sources (docs/adr ADR 0056, ADR 0060)" $ do
+            map (fmap exStatus . lookupExplanation) ["G0296", "G0297", "G0298", "G0299"] @?= replicate 4 (Just InUse)
             used <- sourceCodes
-            [c | c <- ["G0296", "G0297", "G0298"], c `notElem` used] @?= []
+            [c | c <- ["G0296", "G0297", "G0298", "G0299"], c `notElem` used] @?= []
         ],
       testGroup
         "the form of the document"
@@ -479,5 +479,29 @@ outputDiagnosticTests =
       noto <- notoBytes
       b <- buildMarksFiles (\o -> o {optFonts = golemFontProvider}) (Just (horizontalStyle <> "\n[fonts.body]\nja = \"fonts/r.otf\"\n")) [("fonts/r.otf", withFsType 0x0002 noto)]
       map diagCode (bErrors b) @?= [DiagnosticCode "G0804"]
-      map diagMessage (bErrors b) @?= ["ライセンスが埋め込みを禁じているフォントです（fsType 0x0002）: fonts/r.otf"]
+      map diagMessage (bErrors b) @?= ["ライセンスが埋め込みを禁じているフォントです（fsType 0x0002）: fonts/r.otf"],
+    testCase "G0819: a CFF2 font stops the PDF, in golem build, golem check and golem preflight, but not HTML (golem-font ADR 0003)" $ do
+      cff2 <- BS.readFile "../golem-font/test/fonts/SourceSerif4Variable-Roman.otf"
+      let style = horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/v.otf\"\n"
+          files = [("fonts/v.otf", cff2)]
+          expected = ["CFF2 の輪郭のフォントは PDF に埋め込めません: fonts/v.otf。CFF か TrueType の輪郭のフォントを使ってください"]
+      b <- buildMarksFiles (\o -> o {optFonts = golemFontProvider}) (Just style) files
+      map diagMessage (bErrors b) @?= expected
+      map diagCode (bErrors b) @?= [DiagnosticCode "G0819"]
+      map (whereIs b) (bErrors b) @?= [(Just "style.toml", 0)]
+      bPdf b @?= Nothing
+      c <- buildMarksFiles (\o -> o {optFonts = golemFontProvider, optCheckOnly = True}) (Just style) files
+      map diagCode (bErrors c) @?= [DiagnosticCode "G0819"]
+      h <- buildMarksFiles (\o -> o {optFonts = golemFontProvider, optTargets = Just [TargetHtml]}) (Just style) files
+      map diagCode (bErrors h) @?= []
+      assertBool "HTML written" (not (null (bWritten h)))
+      withSystemTempDirectory "golem-cff2" $ \tmp -> do
+        BS.writeFile (tmp </> "manifest.toml") miniManifest
+        BS.writeFile (tmp </> "style.toml") style
+        BS.writeFile (tmp </> "a.gm") "Text.\n"
+        createDirectoryIfMissing True (tmp </> "fonts")
+        BS.writeFile (tmp </> "fonts/v.otf") cff2
+        p <- preflight (defaultPreflightOptions tmp)
+        map diagCode (filter isError (prDiagnostics p)) @?= [DiagnosticCode "G0819"]
+        assertBool "no PDF" (isNothing (prPdf p))
   ]

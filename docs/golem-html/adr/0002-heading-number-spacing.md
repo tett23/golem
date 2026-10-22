@@ -1,6 +1,6 @@
 # ADR 0002: 番号と題のあいだの区切り
 
-ステータス: 採択
+ステータス: 採択→（区切りを置く箇所にコードブロックのキャプションを加えること）は [golem-driver ADR 0042](../../golem-driver/adr/0042-listing-caption-number-separator.md)
 
 ## 文脈
 

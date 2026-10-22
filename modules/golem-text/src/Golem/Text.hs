@@ -134,7 +134,8 @@ block c ind (Block sp _ body) = case body of
   -- the caption, the file name, the diff marks and the callouts (golem-driver ADR 0023)
   CodeBlock code ->
     let num = Map.lookup sp (bookListings (cBook c))
-        caption = [maybe "" (<> "　") num <> inlines c is | Just is <- [codeCaption code]]
+        -- the separator of the language (golem-driver ADR 0042)
+        caption = [numbered num <> inlines c is | Just is <- [codeCaption code]]
         mark l = case clDiff l of
           Just DiffAdded -> "+"
           Just DiffRemoved -> "-"

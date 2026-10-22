@@ -89,6 +89,13 @@ int golem_font_is_cff(golem_font *f) {
   return r;
 }
 
+int golem_font_is_cff2(golem_font *f) {
+  hb_blob_t *b = hb_face_reference_table(f->hbface, HB_TAG('C','F','F','2'));
+  int r = hb_blob_get_length(b) > 0;
+  hb_blob_destroy(b);
+  return r;
+}
+
 void golem_font_extents(golem_font *f, int32_t *asc, int32_t *desc, int32_t *cap) {
   LOCK_FT(f);
   *asc = f->face->ascender;
