@@ -2279,14 +2279,15 @@ buildFlow inp geom fonts images assumed = do
                in (nextId + length ls, flows <> flowOf, Map.union lineAcc set, figAcc, headAcc', errs')
       -- code blocks, set line by line (golem-driver ADR 0017)
       codeBlocks = Map.fromList [(i, codeBlockOf geom fonts measure capacity u lead code (codeCaptionOf u lead code)) | (i, u@Unit {uKind = UCode lead code}) <- units]
-      {- the caption of a code block: the listing number, an ideographic
-      space and the caption, set as the caption of a figure over the width of
-      the block (golem-driver ADR 0023) -}
+      {- the caption of a code block: the listing number, the separator of
+      the language of the book (golem-driver ADR 0042) and the caption, set
+      as the caption of a figure over the width of the block (golem-driver
+      ADR 0023) -}
       codeCaptionOf u lead code = case codeCaption code of
         Nothing -> CodeCaption [] fs pitch 0 []
         Just is ->
           let number = Map.lookup (uSpan u) (bookListings (piBook inp))
-              captionInlines = maybe [] (\num -> [Text (uSpan u) (num <> "　")]) number <> is
+              captionInlines = numberedTitle (bookLanguage inp) (uSpan u) number is
               (captionRole, cs) = paraFace (uStyle u) geom "caption"
               captionParams = params {pEmergencyStretch = dimToSp cs (compEmergencyStretch (stComposition style))}
               (captionItems, captionAnchors) = composeInlines ((styledEnv (uStyle u) (envFor (styleLook (uStyle u) (Just "caption") captionRole cs))) {ceAkiSet = akiSetOf (uStyle u) (Just "caption")}) captionInlines
