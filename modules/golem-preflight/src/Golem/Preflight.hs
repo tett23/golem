@@ -12,15 +12,16 @@ where
 
 import Data.ByteString (ByteString)
 import Data.Char (GeneralCategory (..), generalCategory, isControl, ord)
-import Data.List (nub, sort)
+import Data.List (minimumBy, nub, sort, sortOn)
 import Data.Map.Strict qualified as Map
+import Data.Ord (comparing)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf (ColorSpace (..), ColorUse (..), FigureContent (..), ImageData (..), ImportedPage (..), X4Problem (..))
 import Golem.Preflight.Rules
 import Golem.Preflight.View
-import Golem.Project.Style (Sp)
+import Golem.Project.Style (SizeSource, Sp, sizeSourcePath, sizeSourceText)
 import Golem.Syntax
 import Numeric (showHex)
 
@@ -131,7 +132,7 @@ perFigure v f =
 glyphMissing :: Rules -> View -> [Diagnostic]
 glyphMissing r v =
   concat
-    [ at (ruGlyphMissing r) "G0902" (gvSpan g) msg [("code-point", FactText cp), ("font", FactText (gvFont g)), pagesFact ps, ("count", FactInt (toInteger (length gs)))]
+    [ at (ruGlyphMissing r) "G0902" (gvLineSpan g) msg [("code-point", FactText cp), ("font", FactText (gvFont g)), pagesFact ps, ("count", FactInt (toInteger (length gs)))]
     | ((t, font), ps, gs@(g : _)) <- groups [((gvText gl, gvFont gl), pvIndex p, gl) | p <- vwPages v, gl <- pvGlyphs p, gvGlyph gl == 0],
       let c = maybe ' ' fst (T.uncons t)
           cp = "U+" <> T.justifyRight 4 '0' (T.toUpper (T.pack (showHex (ord c) "")))
@@ -158,21 +159,44 @@ inks = \case
   Nothing -> 1
   Just (_, (c, m, y, k)) -> length (filter (/= 0) [c, m, y, k])
 
--- | G0904: text smaller than min-size, only in two inks or more with multi-ink-only.
+{- | G0904: text smaller than min-size, only in two inks or more with
+multi-ink-only. One per definition that decided the size, part (the text,
+a ruby, a kenten mark) and swatch (golem-cli ADR 0008), at the character
+of the group first in the source, in the order of the source: the
+groups and their places do not move with the page breaks; only the
+pages of a message do.
+-}
 typeSize :: Rules -> View -> [Diagnostic]
 typeSize r v =
   concat
-    [ at (ruTypeSize r) "G0904" (gvSpan g) msg [("size", FactText (mmText (gvSize g))), pagesFact ps]
-    | (_, ps, g : _) <-
-        groups
-          [ ((gvStyle gl, fmap fst (gvColor gl)), pvIndex p, gl)
-          | p <- vwPages v,
-            gl <- pvGlyphs p,
-            gvSize gl < ruTypeSizeMin r,
-            not (ruTypeSizeMultiInkOnly r) || inks (gvColor gl) >= 2
-          ],
-      let msg = "文字が小さすぎます: " <> mmText (gvSize g) <> "（" <> mmText (ruTypeSizeMin r) <> " 未満、色 " <> maybe "なし" fst (gvColor g) <> "、" <> pagesPhrase ps <> "）"
+    [ at (ruTypeSize r) "G0904" (gvSpan g) msg [("size", FactText (mmText (gvSize g))), ("source", FactText (sizeSourcePath src)), ("part", FactText (partName part)), pagesFact ps]
+    | ((src, part, _), ps, g) <- sortOn (\(k, _, g) -> (gvSpan g, k)) firsts,
+      let msg = "文字が小さすぎます: " <> mmText (gvSize g) <> "（" <> mmText (ruTypeSizeMin r) <> " 未満、" <> sourcePhrase src part <> "、色 " <> maybe "なし" fst (gvColor g) <> "、" <> pagesPhrase ps <> "）"
     ]
+  where
+    small =
+      [ ((gvSizeSource gl, gvPart gl, fmap fst (gvColor gl)), pvIndex p, gl)
+      | p <- vwPages v,
+        gl <- pvGlyphs p,
+        gvSize gl < ruTypeSizeMin r,
+        not (ruTypeSizeMultiInkOnly r) || inks (gvColor gl) >= 2
+      ]
+    -- the character first in the source; of two at one place, the smaller
+    firsts = [(k, ps, minimumBy (comparing (\g -> (gvSpan g, gvSize g))) gs) | (k, ps, gs@(_ : _)) <- groups small]
+
+-- | The definition and the part of G0904: @文字スタイル b の size のルビ@.
+sourcePhrase :: SizeSource -> GlyphPart -> Text
+sourcePhrase src = \case
+  PartBase -> sizeSourceText src
+  PartRuby -> sizeSourceText src <> " のルビ"
+  PartKenten -> sizeSourceText src <> " の圏点"
+
+-- | The part of a glyph in the facts of G0904.
+partName :: GlyphPart -> Text
+partName = \case
+  PartBase -> "base"
+  PartRuby -> "ruby"
+  PartKenten -> "kenten"
 
 -- | G0906: the effective resolution below a threshold of the kind of the image.
 imageResolution :: Rules -> View -> [Diagnostic]

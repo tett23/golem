@@ -73,7 +73,11 @@ imagePage :: [ImageView] -> View
 imagePage ivs = withPages [(emptyPage 1) {pvImages = ivs}]
 
 glyph :: Int -> Text -> Rational -> Maybe (Text, Cmyk) -> GlyphView
-glyph g t size color = GlyphView t "fonts/a.otf" g (pt size) color "body" srcSpan
+glyph g t size color = GlyphView t "fonts/a.otf" g (pt size) color (SourceParagraphStyle "body") PartBase srcSpan srcSpan
+
+-- | A glyph of 4pt in two inks from a size source, of a part, at an offset of the source (golem-cli ADR 0008).
+smallAt :: SizeSource -> GlyphPart -> Int -> GlyphView
+smallAt src part off = GlyphView "あ" "fonts/a.otf" 5 (pt 4) (Just ("rich", (100, 0, 0, 100))) src part (mkSpan (FileId 0) off (off + 1)) srcSpan
 
 codesOf :: [Diagnostic] -> [Text]
 codesOf ds = [c | DiagnosticCode c <- map diagCode ds]
@@ -192,6 +196,29 @@ checkTests =
       count printRules [glyph 5 "あ" 5 rich] @?= 0
       count printRules {ruTypeSizeMultiInkOnly = False} [glyph 5 "あ" 4 k100] @?= 1
       count printRules {ruTypeSizeMultiInkOnly = False} [glyph 5 "あ" 4 k100, glyph 6 "い" 4 rich] @?= 2,
+    testCase "G0904: two definitions of one size, role and colour are two causes (golem-cli ADR 0008)" $ do
+      let ds = only "G0904" (check printRules (withPages [(emptyPage 1) {pvGlyphs = [smallAt (SourceParagraphStyle "a") PartBase 10, smallAt (SourceParagraphStyle "b") PartBase 20]}]))
+      map diagMessage ds
+        @?= [ "文字が小さすぎます: 1.4mm（1.8mm 未満、段落スタイル a の size、色 rich、PDF の 1 ページ目）",
+              "文字が小さすぎます: 1.4mm（1.8mm 未満、段落スタイル b の size、色 rich、PDF の 1 ページ目）"
+            ]
+      map (lookup "source" . diagFacts) ds @?= [Just (FactText "paragraph-styles.a.size"), Just (FactText "paragraph-styles.b.size")],
+    testCase "G0904: the text and its ruby of one definition are two causes (golem-cli ADR 0008)" $ do
+      let ds = only "G0904" (check printRules (withPages [(emptyPage 1) {pvGlyphs = [smallAt (SourceCharacterStyle "s") PartBase 10, smallAt (SourceCharacterStyle "s") PartRuby 10]}]))
+      map diagMessage ds
+        @?= [ "文字が小さすぎます: 1.4mm（1.8mm 未満、文字スタイル s の size、色 rich、PDF の 1 ページ目）",
+              "文字が小さすぎます: 1.4mm（1.8mm 未満、文字スタイル s の size のルビ、色 rich、PDF の 1 ページ目）"
+            ]
+      map (lookup "part" . diagFacts) ds @?= [Just (FactText "base"), Just (FactText "ruby")],
+    testCase "G0904: at the character first in the source, not on the first page (golem-cli ADR 0008)" $ do
+      let src = SourceParagraphStyle "a"
+          ds = only "G0904" (check printRules (withPages [(emptyPage 1) {pvGlyphs = [smallAt src PartBase 50]}, (emptyPage 2) {pvGlyphs = [smallAt src PartBase 10]}]))
+      map (spanStart . diagSpan) ds @?= [10]
+      map (lookup "pdf-pages" . diagFacts) ds @?= [Just (FactInts [1, 2])],
+    testCase "G0904: in the order of the source, not of the pages (golem-cli ADR 0008)" $ do
+      let ds = only "G0904" (check printRules (withPages [(emptyPage 1) {pvGlyphs = [smallAt (SourceParagraphStyle "a") PartBase 90]}, (emptyPage 2) {pvGlyphs = [smallAt SourceNoteMark PartBase 5]}]))
+      map (spanStart . diagSpan) ds @?= [5, 90]
+      map (lookup "source" . diagFacts) ds @?= [Just (FactText "notes.mark-size"), Just (FactText "paragraph-styles.a.size")],
     testCase "G0908: a PDF figure in DeviceRGB and DeviceCMYK is one diagnostic with rgb (golem-pdf ADR 0008)" $ do
       let ds = only "G0908" (check printRules (imagePage [vector [UseRgb, UseCmyk, UseGray]]))
       length ds @?= 1

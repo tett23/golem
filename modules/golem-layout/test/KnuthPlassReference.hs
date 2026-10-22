@@ -29,7 +29,7 @@ import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Data.Text.Read qualified as TR
 import Golem.Layout.KnuthPlass
-import Golem.Layout.Look (Look, plainLook)
+import Golem.Layout.Look (Look, noBoxSource, plainLook)
 
 -- | What TeX measured, in sp.
 data Words = Words
@@ -120,10 +120,10 @@ paragraphItems ws =
         (WordBox {} : _) -> [Glue w y z]
         _ -> []
       items = \case
-        (WordBox word n : rest) -> Box n (BoxContent word False 0 0 0 referenceLook 0 0 [] 0 0) : between rest <> items rest
+        (WordBox word n : rest) -> Box n (BoxContent word False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource) : between rest <> items rest
         (WordExHyphen : rest) -> Penalty 0 50 ExplicitHyphen : items rest
         [] -> []
-   in Box (wParindent ws) (BoxContent "" False 0 0 0 referenceLook 0 0 [] 0 0) : items (wBoxes ws) <> finish
+   in Box (wParindent ws) (BoxContent "" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource) : items (wBoxes ws) <> finish
 
 -- ------------------------------------------------------------------ the log
 

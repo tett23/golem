@@ -33,7 +33,7 @@ import Data.Maybe (listToMaybe)
 import Data.Ord (Down (..), comparing)
 import Data.Ratio ((%))
 import Data.Text (Text)
-import Golem.Layout.Look (Look)
+import Golem.Layout.Look (BoxSource, Look)
 
 type Sp = Integer
 
@@ -61,7 +61,11 @@ data BoxContent = BoxContent
     (golem-driver ADR 0029), inside the width: the glyphs start
     'bcPadStart' after the start of the box. The algorithm does not read it.
     -} bcPadStart :: !Sp,
-    bcPadEnd :: !Sp
+    bcPadEnd :: !Sp,
+    {- | the definition that decided the size of the box and where its
+    characters are in the source (golem-cli ADR 0008), for golem preflight.
+    The algorithm does not read it, and nothing that draws the box does.
+    -} bcSource :: !BoxSource
   }
   deriving stock (Eq, Show)
 
