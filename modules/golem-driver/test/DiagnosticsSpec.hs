@@ -226,10 +226,10 @@ explainTests =
             fmap exStatus (lookupExplanation "G0295") @?= Just InUse
             used <- sourceCodes
             assertBool "G0295 in the sources" ("G0295" `elem` used),
-          testCase "G0296, G0297 and G0298 are in use and in the sources (docs/adr ADR 0056)" $ do
-            map (fmap exStatus . lookupExplanation) ["G0296", "G0297", "G0298"] @?= replicate 3 (Just InUse)
+          testCase "G0296, G0297, G0298 and G0299 are in use and in the sources (docs/adr ADR 0056, ADR 0060)" $ do
+            map (fmap exStatus . lookupExplanation) ["G0296", "G0297", "G0298", "G0299"] @?= replicate 4 (Just InUse)
             used <- sourceCodes
-            [c | c <- ["G0296", "G0297", "G0298"], c `notElem` used] @?= []
+            [c | c <- ["G0296", "G0297", "G0298", "G0299"], c `notElem` used] @?= []
         ],
       testGroup
         "the form of the document"
