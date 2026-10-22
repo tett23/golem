@@ -35,7 +35,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - diagnostic のコードを、段階の 2 桁と番号の 3 桁の 5 桁にする（未実装、[docs/adr 0061](adr/0061-five-digit-diagnostic-codes.md)）。ほかの ADR をすべて実装した後に実装する。
 - G0904 を、文字の大きさを決めた定義と色の組ごとに、原稿の文字の位置で報告する（未実装、[golem-cli ADR 0008](golem-cli/adr/0008-g0904-by-size-source-and-colour.md)）。
 - 隠しノンブルの検査を `size` の半分の幅で行い、仕上がりの線を越える誤りを G0329 に分ける（未実装、[golem-driver ADR 0041](golem-driver/adr/0041-hidden-folio-overlap-check-by-size.md)）。
-- CFF のフォントは CFF の表だけを `CIDFontType0C` で埋め込む（未実装、[golem-pdf ADR 0011](golem-pdf/adr/0011-cff-fontfile3-subtype.md)）。
 - `[sidenotes]` の `side` は `"outside"` だけを受け付けるキーとして残す（未実装、[golem-project ADR 0009](golem-project/adr/0009-sidenotes-side-key.md)）。
 
 ### 既知の不具合の修正

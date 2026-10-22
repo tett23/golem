@@ -5,6 +5,7 @@ ADR 0002 and 0003, golem-font ADR 0001 and 0002).
 -}
 module Golem.Driver.Fonts
   ( golemFontProvider,
+    cffFontProgram,
     cff2FontDiagnostics,
     toUnicodeOf,
     actualTextOf,
@@ -14,6 +15,7 @@ where
 import Control.Applicative ((<|>))
 import Data.ByteString qualified as BS
 import Data.Containers.ListUtils (nubOrd)
+import Data.Functor ((<&>))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, isJust)
 import Data.Ratio ((%))
@@ -84,7 +86,7 @@ golemFontProvider = FontProvider $ \root fid style locals ->
                     ]
                in case clashes of
                     ((n, p1, p2) : _) -> Left [err "G0805" ("PostScript 名が同じ異なるフォントがあります: " <> n <> "（" <> T.pack p1 <> "、" <> T.pack p2 <> "）")]
-                    [] -> Right (provide [(f, p) | (_, f, p) <- faces] body roleFaces)
+                    [] -> Right (provide fid [(f, p) | (_, f, p) <- faces] body roleFaces)
   where
     nubOn key = reverse . fst . foldl' (\(acc, seen) x -> if key x `elem` seen then (acc, seen) else (x : acc, key x : seen)) ([], [])
 
@@ -122,8 +124,8 @@ and its OpenType features. A role that is not loaded is the body role.
 The measures are kept by the shaping too: its features change them
 (docs/adr/0020).
 -}
-provide :: [(Font, FilePath)] -> Text -> Map.Map Text (Maybe Int, Maybe Int, [Text]) -> LoadedFonts
-provide faces body roles =
+provide :: FileId -> [(Font, FilePath)] -> Text -> Map.Map Text (Maybe Int, Maybe Int, [Text]) -> LoadedFonts
+provide fid faces body roles =
   LoadedFonts
     { lfAdvance = advance,
       lfWordAdvance = \s t -> sum (map shAdvance (shapeText s t)),
@@ -223,9 +225,10 @@ provide faces body roles =
         groupOn k = \case
           [] -> []
           x : xs -> let (same, rest) = span ((== k x) . k) xs in (x : same) : groupOn k rest
-    -- IO: the subset is made as the PDF is written (docs/adr ADR 0034)
+    {- IO: the subset is made as the PDF is written (docs/adr ADR 0034); a CFF
+    font without a CFF table is G0818 (golem-pdf ADR 0011) -}
     embed ix vertical used = do
-      let f = fontAt ix
+      let (f, path) = faceAt ix
           upem = toInteger (fontUnitsPerEm f)
           per1000 v = fromInteger (round (toInteger v * 1000 % upem))
           gids = Map.keys (Map.fromList [(g, ()) | (g, _) <- used])
@@ -235,28 +238,36 @@ provide faces body roles =
           name = subsetTag gids <> "+" <> (if T.null (fontPostScriptName f) then "GolemFont" else fontPostScriptName f)
           (bx0, by0, bx1, by1) = foldr (\(_, m) (a, b, c, d) -> let (x0, y0, x1, y1) = gmBBox m in (min a x0, min b y0, max c x1, max d y1)) (0, 0, 0, 0) metrics
       program <- fromMaybe (fontBytes f) <$> subsetFont f gids
-      pure
-        P.Font
-          { P.fontName = name,
-            P.fontProgram = if fontIsCff f then maybe (P.OpenTypeProgram program) P.CffProgram (sfntTable "CFF " program) else P.TrueTypeProgram program,
-            P.fontVertical = vertical,
-            P.fontWidths = [(cid g, per1000 (gmAdvance m)) | (g, m) <- metrics],
-            P.fontVerticalAdvances = [(cid g, per1000 (gmVerticalAdvance m)) | vertical, (g, m) <- metrics],
-            P.fontAscent = per1000 asc,
-            P.fontDescent = per1000 desc,
-            P.fontCapHeight = per1000 cap,
-            P.fontStemV = 80,
-            P.fontBBox = (per1000 bx0, per1000 by0, per1000 bx1, per1000 by1),
-            P.fontItalicAngle = 0,
-            P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0, not (T.null t)]),
-            P.fontCidSystemInfo = maybe ("Adobe", "Identity", 0) (\c -> (csiRegistry c, csiOrdering c, csiSupplement c)) (fontCidSystemInfo f)
-          }
+      pure $
+        (if fontIsCff f then cffFontProgram fid path program else Right (P.TrueTypeProgram program)) <&> \fontProgram ->
+          P.Font
+            { P.fontName = name,
+              P.fontProgram = fontProgram,
+              P.fontVertical = vertical,
+              P.fontWidths = [(cid g, per1000 (gmAdvance m)) | (g, m) <- metrics],
+              P.fontVerticalAdvances = [(cid g, per1000 (gmVerticalAdvance m)) | vertical, (g, m) <- metrics],
+              P.fontAscent = per1000 asc,
+              P.fontDescent = per1000 desc,
+              P.fontCapHeight = per1000 cap,
+              P.fontStemV = 80,
+              P.fontBBox = (per1000 bx0, per1000 by0, per1000 bx1, per1000 by1),
+              P.fontItalicAngle = 0,
+              P.fontToUnicode = Map.toList (Map.fromListWith (\_ old -> old) [(cid g, t) | (g, t) <- used, g /= 0, not (T.null t)]),
+              P.fontCidSystemInfo = maybe ("Adobe", "Identity", 0) (\c -> (csiRegistry c, csiOrdering c, csiSupplement c)) (fontCidSystemInfo f)
+            }
 
-{- | The bytes of one table of an sfnt (OpenType) font. A CFF font is embedded
-as its bare CFF table (FontFile3 with the subtype CIDFontType0C): PDFium
-takes the codes of a CID-keyed CFF wrapped in OpenType as glyph IDs, and
-drew no Japanese (golem-font ADR 0002 leaves the form of FontFile3 open).
+{- | The program of a CFF font: its bare CFF table, embedded in FontFile3 with
+the subtype CIDFontType0C (golem-pdf ADR 0011). PDFium takes the codes of a
+CID-keyed CFF wrapped in OpenType as glyph IDs and draws no Japanese, so a
+font whose CFF table cannot be taken out is G0818, at the top of @fid@, and
+is not embedded as OpenType.
 -}
+cffFontProgram :: FileId -> FilePath -> BS.ByteString -> Either Diagnostic P.FontProgram
+cffFontProgram fid path program = case sfntTable "CFF " program of
+  Just cff | not (BS.null cff) -> Right (P.CffProgram cff)
+  _ -> Left (diagnostic "G0818" Error (mkSpan fid 0 0) ("フォントから CFF の表を取り出せません: " <> T.pack path))
+
+-- | The bytes of one table of an sfnt (OpenType) font.
 sfntTable :: BS.ByteString -> BS.ByteString -> Maybe BS.ByteString
 sfntTable tag font = go 0
   where
