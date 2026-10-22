@@ -5975,7 +5975,7 @@ HTML か EPUB を組むとき（`golem build`）にだけ出す。
 
 - メッセージ: `SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。`<名前>` は要素の名前、属性の名前、`url()`、`@import` のどれかである。ほかになければ `ほか <n> 件` を書かない。読めない SVG なら `SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: <パス>（<G0810 と同じ理由>）`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg.Active`）
-- ADR: [docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)
+- ADR: [docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)、[docs/adr/0057](adr/0057-g0814-says-dynamic-content.md)（文言）
 
 ### 主な原因
 
