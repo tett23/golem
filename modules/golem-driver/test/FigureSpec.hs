@@ -155,6 +155,13 @@ pdfWith profile source files = withSystemTempDirectory "golem-svg" $ \tmp -> do
   let errs = filter isError (brDiagnostics r)
   pure (map diagCode errs, pdf, map diagMessage errs)
 
+-- | An SVG whose markers a and b place each other, the drawing placing a; what is given goes first.
+markerSvg :: BS.ByteString -> BS.ByteString
+markerSvg before =
+  "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n<defs><marker id=\"a\"><path d=\"M0 0 L1 1\" marker-end=\"url(#b)\"/></marker><marker id=\"b\"><path d=\"M0 0 L1 1\" marker-end=\"url(#a)\"/></marker></defs>"
+    <> before
+    <> "<path d=\"M0 0 L10 0\" marker-end=\"url(#a)\"/></svg>"
+
 svgFigureTests :: [TestTree]
 svgFigureTests =
   [ testCase "an SVG figure fills the measure, its height in the proportion of its root, as one Form XObject" $ do
@@ -190,6 +197,22 @@ svgFigureTests =
       (codes, _, msgs) <- pdfWith Dev "@figure images/t.svg alt=\"t\"\n" [("images/t.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n<text>a</text><use/></svg>")]
       codes @?= [DiagnosticCode "G0811"]
       msgs @?= ["SVG の図版に扱えないものがあります: images/t.svg:2:1（text: 文字は輪郭にして書き出してください）ほか 1 件"],
+    testCase "G0816: two markers that place each other, at the first reference, not G0811 (docs/adr ADR 0054)" $ do
+      (codes, pdf, msgs) <- pdfWith Dev "@figure images/m.svg alt=\"t\"\n" [("images/m.svg", markerSvg "")]
+      (codes, pdf) @?= ([DiagnosticCode "G0816"], Nothing)
+      msgs @?= ["SVG の図版の marker が循環しています: images/m.svg:2:22（b）ほか 1 件"],
+    testCase "G0817: a chain of 10 markers, not G0811 (docs/adr ADR 0054)" $ do
+      let chain =
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><defs><marker id=\"c1\"><path d=\"M0 0 L1 1\" stroke=\"#000\"/></marker>"
+              <> BS.concat ["<marker id=\"c" <> showB k <> "\"><path d=\"M0 0 L1 0\" stroke=\"#000\" marker-end=\"url(#c" <> showB (k - 1) <> ")\"/></marker>" | k <- [2 .. 10]]
+              <> "</defs><path d=\"M0 0 L10 0\" stroke=\"#000\" marker-end=\"url(#c10)\"/></svg>"
+          showB = TE.encodeUtf8 . T.pack . show :: Int -> BS.ByteString
+      (codes, pdf, msgs) <- pdfWith Dev "@figure images/c.svg alt=\"t\"\n" [("images/c.svg", chain)]
+      (codes, pdf) @?= ([DiagnosticCode "G0817"], Nothing)
+      assertBool (show msgs) (all ("SVG の図版の marker の入れ子が 9 段を超えます: images/c.svg:1:" `T.isPrefixOf`) msgs && all ("（c1）" `T.isSuffixOf`) msgs),
+    testCase "text and a cycle of markers are G0811 and G0816, in this order, and no PDF is written (docs/adr ADR 0054)" $ do
+      (codes, pdf, _) <- pdfWith Dev "@figure images/m.svg alt=\"t\"\n" [("images/m.svg", markerSvg "<text>a</text>")]
+      (codes, pdf) @?= ([DiagnosticCode "G0811", DiagnosticCode "G0816"], Nothing),
     testCase "one problem that is not text is G0811 without the request for outlines and without ほか" $ do
       (codes, _, msgs) <- pdfWith Dev "@figure images/g.svg alt=\"t\"\n" [("images/g.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n  <use/></svg>")]
       codes @?= [DiagnosticCode "G0811"]
