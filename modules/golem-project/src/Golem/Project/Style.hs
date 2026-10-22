@@ -35,6 +35,11 @@ module Golem.Project.Style
     noParaDef,
     charStyle,
     paraStyle,
+    SizeSource (..),
+    paraSizeSource,
+    charSizeSource,
+    sizeSourcePath,
+    sizeSourceText,
     isCodeCharStyle,
     charStyleBackground,
     isUrlCharStyle,
@@ -550,6 +555,73 @@ charStyle :: Style -> Text -> Maybe CharStyleDef
 charStyle style name = case chainOf (const csBasedOn) (stCharStyles style) name of
   [] -> Nothing
   chain@(d : _) -> Just (foldr1 overChar chain) {csBasedOn = csBasedOn d}
+
+{- | The definition of style.toml that decided the size of a character
+(golem-cli ADR 0008): the definition that writes @size@ (or @mark-size@,
+@font-size@), not the one applied, so that one fix fixes every character
+of the group.
+-}
+data SizeSource
+  = -- | @[paragraph-styles.<name>]@ @size@, built-in styles included
+    SourceParagraphStyle !Text
+  | -- | @[character-styles.<name>]@ @size@, regex styles included
+    SourceCharacterStyle !Text
+  | -- | @[headings.<level>]@ @size@
+    SourceHeading !Int
+  | -- | @[notes]@ @mark-size@
+    SourceNoteMark
+  | -- | @[page.grid]@ @font-size@: no definition writes a size
+    SourceGrid
+  | -- | @[hidden-folio]@ @size@
+    SourceHiddenFolio
+  deriving stock (Eq, Ord, Show)
+
+{- | The paragraph style of a based-on chain that writes @size@ (Nothing is
+body); the grid when none of the chain does.
+-}
+paraSizeSource :: Style -> Maybe Text -> SizeSource
+paraSizeSource style mname =
+  maybe SourceGrid SourceParagraphStyle (firstWriting (namedChainOf paraParent (stParaStyles style) (fromMaybe "body" mname)))
+  where
+    firstWriting chain = case [n | (n, d) <- chain, isJust (psSize d)] of
+      (n : _) -> Just n
+      [] -> Nothing
+
+-- | The character style of a based-on chain that writes @size@, if any.
+charSizeSource :: Style -> Text -> Maybe Text
+charSizeSource style name = case [n | (n, d) <- namedChainOf (const csBasedOn) (stCharStyles style) name, isJust (csSize d)] of
+  (n : _) -> Just n
+  [] -> Nothing
+
+-- | 'chainOf' with the name of each definition.
+namedChainOf :: (Text -> a -> Maybe Text) -> Map Text a -> Text -> [(Text, a)]
+namedChainOf parent styles = go []
+  where
+    go seen name
+      | name `elem` seen = []
+      | otherwise = case Map.lookup name styles of
+          Nothing -> []
+          Just d -> (name, d) : maybe [] (go (name : seen)) (parent name d)
+
+-- | The key of style.toml of a size source, as a path: @paragraph-styles.a.size@.
+sizeSourcePath :: SizeSource -> Text
+sizeSourcePath = \case
+  SourceParagraphStyle n -> "paragraph-styles." <> n <> ".size"
+  SourceCharacterStyle n -> "character-styles." <> n <> ".size"
+  SourceHeading l -> "headings." <> T.pack (show l) <> ".size"
+  SourceNoteMark -> "notes.mark-size"
+  SourceGrid -> "page.grid.font-size"
+  SourceHiddenFolio -> "hidden-folio.size"
+
+-- | A size source as messages name it: @段落スタイル a の size@.
+sizeSourceText :: SizeSource -> Text
+sizeSourceText = \case
+  SourceParagraphStyle n -> "段落スタイル " <> n <> " の size"
+  SourceCharacterStyle n -> "文字スタイル " <> n <> " の size"
+  SourceHeading l -> "[headings." <> T.pack (show l) <> "] の size"
+  SourceNoteMark -> "[notes] の mark-size"
+  SourceGrid -> "[page.grid] の font-size"
+  SourceHiddenFolio -> "[hidden-folio] の size"
 
 {- | A paragraph style with its based-on chain resolved (Nothing is body);
 an unknown name is 'Nothing'. Every key but the font and the size has a

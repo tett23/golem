@@ -11,6 +11,7 @@ module Golem.Preflight.View
     ImageView (..),
     LineView (..),
     GlyphView (..),
+    GlyphPart (..),
     RuleView (..),
   )
 where
@@ -20,7 +21,7 @@ import Data.Map.Strict (Map)
 import Data.Text (Text)
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf (FigureContent, X4Problem)
-import Golem.Project.Style (Sp)
+import Golem.Project.Style (SizeSource, Sp)
 import Golem.Syntax (SrcSpan)
 
 -- | Process colour in percent.
@@ -102,11 +103,22 @@ data GlyphView = GlyphView
     gvSize :: !Sp,
     -- | the swatch of the text, when it has one
     gvColor :: !(Maybe (Text, Cmyk)),
-    -- | the font role and the size, by which small text is grouped
-    gvStyle :: !Text,
-    gvSpan :: !SrcSpan
+    -- | the definition of style.toml that decided the size (golem-cli ADR 0008)
+    gvSizeSource :: !SizeSource,
+    -- | a character of the text, of a ruby or a kenten mark
+    gvPart :: !GlyphPart,
+    -- | where the character is in the source: the inline text, or the element that made it
+    gvSpan :: !SrcSpan,
+    -- | the block of the line the glyph is on, where G0902 reports it
+    gvLineSpan :: !SrcSpan
   }
   deriving stock (Eq, Show)
+
+{- | What a glyph is (golem-cli ADR 0008): a ruby and a kenten mark take a
+size from the character they are on, so small ones are a cause of their own.
+-}
+data GlyphPart = PartBase | PartRuby | PartKenten
+  deriving stock (Eq, Ord, Show)
 
 -- | A rule Golem draws (table rules); crop marks are not in a view.
 data RuleView = RuleView

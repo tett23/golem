@@ -148,6 +148,61 @@ preflightIn tmp = preflight (defaultPreflightOptions tmp) {poFonts = fakeProvide
 errorCodes :: [Diagnostic] -> [DiagnosticCode]
 errorCodes = map diagCode . filter isError
 
+-- | A style with the swatch rich of two inks and a character style ink of that colour and no size (golem-cli ADR 0008).
+inkStyle :: BS.ByteString -> BS.ByteString
+inkStyle extra = horizontalStyle <> "\n[color.swatches]\nrich = { cmyk = [100, 0, 0, 100] }\n\n[character-styles.ink]\ncolor = \"rich\"\n" <> extra
+
+-- | The G0904 of golem preflight on a source: the start of each and its message.
+smallText :: BS.ByteString -> T.Text -> IO [(Int, T.Text)]
+smallText style source = withPreflightProject style source [] $ \tmp -> do
+  p <- preflightIn tmp
+  pure [(spanStart (diagSpan d), diagMessage d) | d <- prDiagnostics p, diagCode d == DiagnosticCode "G0904"]
+
+-- | The byte offset of the first occurrence of a text in a source.
+byteAt :: T.Text -> T.Text -> Int
+byteAt needle source = BS.length (TE.encodeUtf8 (fst (T.breakOn needle source)))
+
+-- | Whether a message names a definition.
+names :: T.Text -> (Int, T.Text) -> Bool
+names what (_, m) = what `T.isInfixOf` m
+
+g0904Tests :: [TestTree]
+g0904Tests =
+  [ testCase "G0904: two paragraph styles of one size, one per style, at their text (golem-cli ADR 0008)" $ do
+      let style = inkStyle "\n[paragraph-styles.a]\nsize = \"4pt\"\n\n[paragraph-styles.b]\nsize = \"4pt\"\n"
+          source = "@style a\n  [style ink: 一の字。]\n\n@style b\n  [style ink: 二の字。]\n"
+      ds <- smallText style source
+      map fst ds @?= [byteAt "一の字" source, byteAt "二の字" source]
+      assertBool (show ds) (and (zipWith names ["段落スタイル a の size", "段落スタイル b の size"] ds)),
+    testCase "G0904: a paragraph style based on another without a size is in the group of that one (golem-cli ADR 0008)" $ do
+      let style = inkStyle "\n[paragraph-styles.a]\nsize = \"4pt\"\n\n[paragraph-styles.c]\nbased-on = \"a\"\n"
+          source = "@style a\n  [style ink: 一の字。]\n\n@style c\n  [style ink: 二の字。]\n"
+      ds <- smallText style source
+      map fst ds @?= [byteAt "一の字" source]
+      assertBool (show ds) (all (names "段落スタイル a の size") ds),
+    testCase "G0904: a character style of a small size, at the text inside it (golem-cli ADR 0008)" $ do
+      let style = inkStyle "\n[character-styles.s]\nsize = \"4pt\"\ncolor = \"rich\"\n"
+          source = "大きな本文の段落の中の[style s: 小字]です。\n"
+      ds <- smallText style source
+      map fst ds @?= [byteAt "小字" source]
+      assertBool (show ds) (all (names "文字スタイル s の size") ds),
+    testCase "G0904: a small word in a long paragraph is at the word, not the block (golem-cli ADR 0008)" $ do
+      let style = inkStyle "\n[character-styles.s]\nsize = \"4pt\"\ncolor = \"rich\"\n"
+          source = T.replicate 40 "長い段落の本文。" <> "[style s: 小字]" <> T.replicate 10 "続き。" <> "\n"
+      ds <- smallText style source
+      map fst ds @?= [byteAt "小字" source],
+    testCase "G0904: a note set at the page foot comes in the order of the source, and a line before it moves nothing (golem-cli ADR 0008)" $ do
+      let style = inkStyle "\n[character-styles.s]\nsize = \"4pt\"\ncolor = \"rich\"\n\n[character-styles.t]\nsize = \"3pt\"\ncolor = \"rich\"\n"
+          body = "本文[note: [style s: 注の小字]。]。\n\n[style t: 本文の小字]。\n"
+          added = "足した一行。\n\n"
+      ds <- smallText style body
+      -- the note is drawn below the text after it, but comes first
+      map fst ds @?= [byteAt "注の小字" body, byteAt "本文の小字" body]
+      assertBool (show ds) (and (zipWith names ["文字スタイル s の size", "文字スタイル t の size"] ds))
+      moved <- smallText style (added <> body)
+      map (subtract (BS.length (TE.encodeUtf8 added)) . fst) moved @?= map fst ds
+  ]
+
 preflightTests :: [TestTree]
 preflightTests =
   [ testCase "the PDF checked is the PDF of build --profile prod, not of dev" $
@@ -292,3 +347,4 @@ preflightTests =
            errorCodes (prDiagnostics q) @?= []
        | (lang, tag) <- [(Japanese, "ja"), (English, "en")]
        ]
+    <> g0904Tests

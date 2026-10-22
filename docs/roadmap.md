@@ -39,7 +39,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - G0814 の文言を「動的なコンテンツ」にする（未実装、[docs/adr 0057](adr/0057-g0814-says-dynamic-content.md)）。
 - 「傍注欄」を「傍注の領域」と言い換える（未実装、[docs/adr 0059](adr/0059-say-sidenote-area.md)）。
 - diagnostic のコードを、段階の 2 桁と番号の 3 桁の 5 桁にする（未実装、[docs/adr 0061](adr/0061-five-digit-diagnostic-codes.md)）。ほかの ADR をすべて実装した後に実装する。
-- G0904 を、文字の大きさを決めた定義と色の組ごとに、原稿の文字の位置で報告する（未実装、[golem-cli ADR 0008](golem-cli/adr/0008-g0904-by-size-source-and-colour.md)）。
 - 回した図版を待つあいだの改段と、回した図版のページの後の改ページ（未実装、[golem-driver ADR 0039](golem-driver/adr/0039-breaks-around-turned-figures.md)）。
 - 隠しノンブルの検査を `size` の半分の幅で行い、仕上がりの線を越える誤りを G0329 に分ける（未実装、[golem-driver ADR 0041](golem-driver/adr/0041-hidden-folio-overlap-check-by-size.md)）。
 - G0295 のメッセージを、計算の量の上限として書く（未実装、[golem-eval ADR 0007](golem-eval/adr/0007-power-limit-message.md)）。

@@ -1,6 +1,6 @@
 # ADR 0006: golem preflight
 
-ステータス: 採択→G0905 の廃止と、図版の検査の PDF の図版への拡張は [golem-pdf ADR 0008](../../golem-pdf/adr/0008-pdf-figures.md)
+ステータス: 採択→G0905 の廃止と、図版の検査の PDF の図版への拡張は [golem-pdf ADR 0008](../../golem-pdf/adr/0008-pdf-figures.md)、（G0904 のまとめの単位と位置）は [ADR 0008](0008-g0904-by-size-source-and-colour.md)
 
 ## 文脈
 

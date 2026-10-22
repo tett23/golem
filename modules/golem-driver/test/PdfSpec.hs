@@ -16,7 +16,7 @@ import Golem.Driver.Overhang (kentenOverhang, lineOverhang, reachesBackground, r
 import Golem.Driver.Pdf (ClusterPart (..), CodeInfo (..), FontProvider (..), GlyphFrame (..), LoadedFonts (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
-import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), plainLook)
+import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook)
 import Golem.Layout.Paginate (PageOut (..), Slotted (..))
 import Golem.Layout.Ruby (RubyAlign (..), RubyKind (..), RubyPlacement (..), RubyStyle (..), placeRuby)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), baselineRatio, columnsFor, pageGeometry, typeAreaFor)
@@ -1412,7 +1412,7 @@ codeBlockRubyTests =
       lineOverhang False (10 * pt) (const 0) (lineOf [rubyBox KindRuby "漢|" []]) @?= 0,
     testCase "a kenten box overhangs only when its look has a mark" $ do
       let central = const (baselineRatio - 1 / 2)
-          kenten shape = Box (10 * pt) (BoxContent "漢" False 0 0 (fromEnum KindKenten) (plainLook "body" (10 * pt)) {lkKenten = shape} 0 0 [] 0 0)
+          kenten shape = Box (10 * pt) (BoxContent "漢" False 0 0 (fromEnum KindKenten) (plainLook "body" (10 * pt)) {lkKenten = shape} 0 0 [] 0 0 noBoxSource)
       lineOverhang False (10 * pt) central (lineOf [kenten (Just KentenSesame)]) @?= 5 * pt
       lineOverhang False (10 * pt) central (lineOf [kenten Nothing]) @?= 0,
     testCase "the overhang of a line is that of its highest box" $
@@ -1468,7 +1468,7 @@ codeBlockRubyTests =
     plainLine = Line [] 0 0 0 (0, 0) False (0, 0)
     lineOf items = Line items 0 0 0 (0, 0) False (0, 0)
     -- a ruby box of the kind set at 10pt, its reading at half that; its base characters at 10pt unless given
-    rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0)
+    rubyBox kind text bases = Box (10 * pt) (BoxContent text False 0 0 (fromEnum kind) (plainLook "body" (10 * pt)) 0 0 bases 0 0 noBoxSource)
     firstPage pl = take 1 (plPages pl)
     -- the grid line after the code block of the first page
     codeEnd pl = sum (take 1 [s + n | p <- firstPage pl, (s, SCode _ _ n) <- poSlots p])

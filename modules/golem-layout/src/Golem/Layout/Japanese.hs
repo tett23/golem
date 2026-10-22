@@ -28,7 +28,7 @@ module Golem.Layout.Japanese
 where
 
 import Data.Char (GeneralCategory (..), generalCategory, isSpace)
-import Data.List (groupBy)
+import Data.List (groupBy, zip4)
 import Data.Maybe (fromMaybe, isJust, isNothing)
 import Data.Ratio ((%))
 import Data.Text (Text)
@@ -121,7 +121,13 @@ data ComposeEnv = ComposeEnv
     -- | [notes] mark-size: the size of note marks (golem-driver ADR 0025)
     ceNoteMarkSize :: !Dim,
     -- | [notes] mark-format: the text of a note mark, {n} its number (golem-driver ADR 0025)
-    ceNoteMarkFormat :: !Text
+    ceNoteMarkFormat :: !Text,
+    -- | the definition that decided the size of 'ceLook' (golem-cli ADR 0008)
+    ceSizeSource :: !SizeSource,
+    -- | the size source inside an inline element, as 'ceRestyle' is the look inside it
+    ceSizeSourceOf :: SizeSource -> Inline -> SizeSource,
+    -- | the source of the boxes of the piece 'itemsFor' makes; set by 'composeInlines'
+    ceBoxSource :: !BoxSource
   }
 
 -- | The mark of a sidenote in the text: its number, ※ or nothing.
@@ -150,7 +156,10 @@ defaultComposeEnv fs =
       ceExplicitHyphenPenalty = 50,
       ceAkiSet = defaultAkiSet,
       ceNoteMarkSize = Zw (1 % 2),
-      ceNoteMarkFormat = "*{n}"
+      ceNoteMarkFormat = "*{n}",
+      ceSizeSource = SourceGrid,
+      ceSizeSourceOf = const,
+      ceBoxSource = noBoxSource
     }
   where
     defaultAdvance c
@@ -212,10 +221,13 @@ data Piece
 
 composeInlines :: ComposeEnv -> [Inline] -> ([Item], [Anchor])
 composeInlines env inls =
-  let pieces = padCode (concatMap (piecesOf env) inls)
-      (items, anchors) = foldl' emit ([], []) (zip3 prevs pieces nexts)
-      emit (acc, as) (_, PAnchor f, _) = (acc, (length acc, f) : as)
-      emit (acc, as) (pv, p, nx) = (acc <> itemsFor env pv p nx, as)
+  let sourced = concatMap (piecesOf env) inls
+      -- padCode keeps one piece for each piece
+      pieces = padCode (map snd sourced)
+      (items, anchors) = foldl' emit ([], []) (zip4 (map fst sourced) prevs pieces nexts)
+      emit (acc, as) (_, _, PAnchor f, _) = (acc, (length acc, f) : as)
+      -- the boxes of a piece carry its source (golem-cli ADR 0008)
+      emit (acc, as) (src, pv, p, nx) = (acc <> itemsFor env {ceBoxSource = src} pv p nx, as)
       -- the neighbours of each piece, anchors and breaks between mono ruby bases skipped
       solid = \case
         PAnchor _ -> False
@@ -254,40 +266,46 @@ alignPositions = go 0 0
       Box {} -> True
       _ -> False
 
-piecesOf :: ComposeEnv -> Inline -> [Piece]
+{- | The pieces of an inline, each with its source (golem-cli ADR 0008): the
+size source of the look it is set in and the span of the inline it
+comes from.
+-}
+piecesOf :: ComposeEnv -> Inline -> [(BoxSource, Piece)]
 piecesOf env inl = case inl of
-  Text _ t -> textPieces lk t
+  Text sp t -> at sp (textPieces lk t)
   Color _ _ xs -> restyled xs
   CharStyle _ _ xs -> restyled xs
   -- the shape is a look of the characters inside; the inner kenten wins (golem-driver ADR 0019)
   Kenten _ sh xs -> concatMap (piecesOf env {ceLook = lk {lkKenten = Just (fromMaybe KentenSesame (sh >>= kentenShapeFromName))}}) xs
-  Ruby _ _ segs -> rubyPieces env segs
-  Tcy _ t -> [PBox lk t KindTcy (lkSize lk)]
-  Number _ n style -> numberPieces env n style
-  Ref _ RefPage l ->
+  Ruby sp _ segs -> at sp (rubyPieces env segs)
+  Tcy sp t -> at sp [PBox lk t KindTcy (lkSize lk)]
+  Number sp n style -> at sp (numberPieces env n style)
+  Ref sp RefPage l ->
     let n = fromMaybe 1 (cePageOf env l)
-     in PAnchor (`AnchorPageRef` l) : textPieces lk (T.pack (show n))
-  Ref _ _ l -> textPieces lk l
+     in at sp (PAnchor (`AnchorPageRef` l) : textPieces lk (T.pack (show n)))
+  Ref sp _ l -> at sp (textPieces lk l)
   Deferred {} -> []
-  Note sp n body -> [PAnchor (\i -> AnchorNote i n sp body), markPiece (noteMarkText (ceNoteMarkFormat env) n)]
+  -- a mark is set at the mark size of [notes] (golem-driver ADR 0025)
+  Note sp n body -> [((ceSizeSource env, sp), PAnchor (\i -> AnchorNote i n sp body)), ((SourceNoteMark, sp), markPiece (noteMarkText (ceNoteMarkFormat env) n))]
   Sidenote sp n body ->
-    PAnchor (\i -> AnchorSidenote i n sp body) : case ceSidenoteMarker env of
-      MarkerNumber -> [markPiece (T.pack (show n))]
-      MarkerSymbol -> [PBox lk "※" KindText (lkSize lk)]
+    ((ceSizeSource env, sp), PAnchor (\i -> AnchorSidenote i n sp body)) : case ceSidenoteMarker env of
+      MarkerNumber -> [((SourceNoteMark, sp), markPiece (T.pack (show n)))]
+      MarkerSymbol -> at sp [PBox lk "※" KindText (lkSize lk)]
       MarkerNone -> []
-  IndexMark sp e -> [PAnchor (\i -> AnchorIndex i sp e)]
+  IndexMark sp e -> at sp [PAnchor (\i -> AnchorIndex i sp e)]
   -- nothing shows; its page is followed like that of an index mark (golem-doc ADR 0007)
-  ChannelItem sp _ -> [PAnchor (\i -> AnchorIndex i sp (IndexEntry [] []))]
-  Cite sp k -> textPieces lk ("[" <> maybe k (T.pack . show) (ceCiteNumber env sp k) <> "]")
+  ChannelItem sp _ -> at sp [PAnchor (\i -> AnchorIndex i sp (IndexEntry [] []))]
+  Cite sp k -> at sp (textPieces lk ("[" <> maybe k (T.pack . show) (ceCiteNumber env sp k) <> "]"))
   ProofComment {} -> []
   -- the lines of a keep style are split before they are composed (docs/adr
   -- ADR 0005); what reaches here is a hard break (docs/adr ADR 0016)
-  LineBreak {} -> [PForcedBreak]
-  Aki _ a -> [PAki lk a]
+  LineBreak sp -> at sp [PForcedBreak]
+  Aki sp a -> at sp [PAki lk a]
   where
     lk = ceLook env
+    at sp = map ((ceSizeSource env, sp),)
     -- the look inside: the inner setting wins, the rest is inherited (golem-driver ADR 0004)
-    restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl})
+    restyled = concatMap (piecesOf env {ceLook = ceRestyle env lk inl, ceSizeSource = ceSizeSourceOf env (ceSizeSource env) inl})
     {- the mark of a note or a numbered sidenote (golem-driver ADR 0018):
     set at the mark size (golem-driver ADR 0025), as wide as its advance
     across, the mark size down; the box keeps the look of its place -}
@@ -530,14 +548,14 @@ itemsFor env prev p next = case p of
           | pre + post > 0 = KindPunctuation
           | otherwise = KindText
         hang = if ceHanging env && cls `elem` [FullStop, Comma] then w else 0
-     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0)]
+     in [Box (w + t) (BoxContent (T.cons c vs) False 0 hang (fromEnum tag) lk 0 (negate t) [] 0 0 (ceBoxSource env))]
   PWord lk word -> wordItems env lk word
   PSpace lk ->
     let sw = advance env lk ' '
      in if lkCode lk
           then [Glue (sw + tracking lk) 0 0] -- a space of inline code neither stretches nor shrinks (golem-layout ADR 0017)
           else [Glue (sw + tracking lk) (sw `div` 2) (sw `div` 3)]
-  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0)]
+  PBox lk t kind w -> [Box w (BoxContent t False 0 0 (fromEnum kind) lk 0 0 [] 0 0 (ceBoxSource env))]
   PRuby lk kind base looks reading ->
     let style = ceRuby env
         rp = placeRuby style kind (baseAdvances env lk looks base) (readingAdvances env lk reading) (allowance True prev, allowance False next)
@@ -561,7 +579,7 @@ itemsFor env prev p next = case p of
         tag = case kind of
           MonoRuby -> KindRuby
           GroupRuby -> KindGroupRuby
-     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks 0 0)]
+     in [Box (rpWidth rp) (BoxContent (base <> maybe "" ("|" <>) reading) False 0 0 (fromEnum tag) lk (rpOverhang rp) (rpOverhang rp) looks 0 0 (ceBoxSource env))]
   PRubyBreak -> [Penalty 0 0 NoHyphen]
   -- normalize sees no box next to these items: the spacing is that of the line's edge
   PForcedBreak -> lineEnd
@@ -570,7 +588,7 @@ itemsFor env prev p next = case p of
     let w = case a of
           AkiZw r -> round (r * toRational (lkSize lk))
           AkiAbs x -> x
-     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0)]
+     in [Box w (BoxContent "" False 0 0 (fromEnum KindAki) lk 0 0 [] 0 0 (ceBoxSource env))]
   PCode lk run ps pe -> codeItems env lk run ps pe
   PAnchor _ -> []
 
@@ -581,7 +599,7 @@ expansion.
 -}
 codeItems :: ComposeEnv -> Look -> Text -> Sp -> Sp -> [Item]
 codeItems env lk run padStart padEnd =
-  [ Box (w + tr * toInteger (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe)
+  [ Box (w + tr * toInteger (T.length seg) + ps + pe) (BoxContent seg False 0 0 (fromEnum tag) lk 0 (negate tr) [] ps pe (ceBoxSource env))
   | let segs = [seg | part <- slashParts run, seg <- T.groupBy sameSide part]
         lastIx = length segs - 1,
     (i, seg) <- zip [0 :: Int ..] segs,
@@ -693,7 +711,7 @@ wordItems env lk word =
         let w = round (ceWordAdvance env lk t * toRational (lkSize lk))
             ps = maybe 0 (min w . protAt fst . fst) (T.uncons t)
             pe = maybe 0 (min w . protAt snd . snd) (T.unsnoc t)
-         in Box (w + tr * toInteger (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0)
+         in Box (w + tr * toInteger (T.length t)) (BoxContent t True ps pe tag lk 0 (negate tr) [] 0 0 (ceBoxSource env))
       -- the advance of the character at the line end, without tracking, by its ratio (golem-layout ADR 0014)
       protAt pick c = if ceProtrusion env then advance env lk c * pick (protrusionRatio c) `div` 1000 else 0
    in concat [box part : [pen | i < length parts - 1] | (i, part) <- zip [0 :: Int ..] parts]

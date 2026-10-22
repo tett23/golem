@@ -42,6 +42,7 @@ test-suite golem-preflight-test
     , golem-layout-spec
     , golem-pdf
     , golem-preflight
+    , golem-project
     , golem-syntax
     , tasty          >=1.4 && <1.6
     , tasty-hunit    >=0.10 && <0.11

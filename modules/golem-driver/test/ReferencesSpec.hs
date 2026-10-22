@@ -17,7 +17,7 @@ import Golem.Doc.IR (Inline, InlineF (..))
 import Golem.Driver
 import Golem.Driver.Pdf (PdfLayout (..), SetLine (..), TocGeometry (..), TocPage (..), bibliographyLines, indexLines, tocPage)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..), glueRatio, placeLine)
-import Golem.Layout.Look (Look (..), plainLook)
+import Golem.Layout.Look (Look (..), noBoxSource, plainLook)
 import Golem.Layout.Paginate (ColumnSet (..), PageOut (..), Slotted (..), labelPages, markPages)
 import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry, typeAreaFor)
 import Golem.Pdf (spToPt)
@@ -303,7 +303,7 @@ urlRefsJson = TE.encodeUtf8 "[{\"id\": \"jlreq\", \"type\": \"webpage\", \"title
 
 -- | A line of one box of a width (a page number in the tests of tocPage).
 oneBoxLine :: Integer -> Line
-oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0 [] 0 0)] 0 w 0 (0, 0) False (0, 0)
+oneBoxLine w = Line [Box w (BoxContent "1" False 0 0 0 (plainLook "body" (10 * pt)) 0 0 [] 0 0 noBoxSource)] 0 w 0 (0, 0) False (0, 0)
 
 -- | fs = 10pt, measure = 120pt, W = 15pt, g = 5pt, u = 10pt.
 tocGeom :: Bool -> TocGeometry
