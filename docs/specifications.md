@@ -1795,7 +1795,7 @@ SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子�
 - 輪郭にしていない文字（`text`、`tspan`、`textPath` と `@font-face`）は G0811 である。文字は図の作成ツールで輪郭にして書き出す。文字だけに意味を持つプロパティ（`font-family` など）と、`aria-` で始まる属性は読み飛ばす。
 - XML として読めない SVG、UTF-8 でない SVG、内部サブセットを持つ `DOCTYPE`、大きさのない SVG は G0810 である。
 - SVG の数は、絶対値が 10^9 以下でなければならない（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。超える数を持つ属性とプロパティは、名前に `（読めない数）` を添えて G0811 にする。座標、変換の行列の成分、線の幅、破線の配列、円弧の半径のどれも同じである。値を丸めて読むことはしない。ルートの `width`、`height`、`viewBox` の数が超えれば、理由を `大きさの数が大きすぎます` とする G0810 にする。指数は 4 桁まで、仮数は 60 桁までが数の形であり、これを超える形は読めない値として、名前に何も添えずに G0811 にする。
-- `marker` の中の `marker` は 9 段まで描く（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。図が置く `marker` を 1 段目とし、10 段目を置く参照は `marker（入れ子）` の G0811 である。`marker` が自分自身を、ほかの `marker` を経てでも置けば、その循環の中の参照は `marker（循環）` の G0811 である。図が置かない `marker` は数えない。
+- `marker` の中の `marker` は 9 段まで描く（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。図が置く `marker` を 1 段目とし、深さ 9 以上の `marker` の中の参照は G0817 である。`marker` が自分自身を、ほかの `marker` を経てでも置けば、その循環の中の参照はすべて G0816 である。循環の参照でもあり深すぎる参照でもあれば G0816 とする。図が置かない `marker` は数えない。一つの `@figure` に G0811、G0816、G0817 のうち複数が当たれば、この順にすべて出す（[docs/adr/0054](adr/0054-svg-marker-cycle-and-depth-codes.md)）。
 - 図版の大きさは、ルートの `width` と `height`（なければ `viewBox`）の縦横の比で決める。`viewBox` と `preserveAspectRatio` は Form XObject の中の行列で表す。
 - 数は有理数で計算し、三角関数と平方根は有理数の級数を決まった項数で打ち切って求める。座標と行列の値は、PDF に書くときに 1/65536 に丸める。x86-64 と aarch64 で同じ出力にするためである（[docs/adr/0002](adr/0002-determinism.md)）。
 - 色は sRGB の ICCBased の色空間（`/GolemSRGB`）で書き、DeviceRGB と CMYK への変換は使わない。sRGB のプロファイルは、画像、PDF の図版、SVG の図版で共有し、PDF に一度だけ書く。
