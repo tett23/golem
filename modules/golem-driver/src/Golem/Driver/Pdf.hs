@@ -2609,11 +2609,12 @@ keepLastTwo items = case reverse boxes of
       g@Glue {} -> [Penalty 0 infPenalty NoHyphen, g]
       x -> [x]
 
-{- | Why a figure cannot be placed: G0810 with the reason, or what an SVG
+{- | Why a figure cannot be placed: G0810 with the reason, what an SVG
 figure cannot be drawn for, G0811, G0816 and G0817 (golem-pdf ADR 0008,
-0009, docs/adr ADR 0054).
+0009, docs/adr ADR 0054), or G0815, the joined content of a PDF page over
+256 MiB (docs/adr ADR 0051).
 -}
-data Unplaced = Unplaced !Text | UnsupportedSvg !S.SvgProblems
+data Unplaced = Unplaced !Text | UnsupportedSvg !S.SvgProblems | ContentTooLarge
 
 {- | The figures, read once by file and page; why one cannot be placed
 (golem-pdf ADR 0008). The format follows the extension, as golem-eval
@@ -2630,7 +2631,10 @@ loadFigures inp = do
       bytes <- BS.readFile (piRoot inp <> "/" <> T.unpack s)
       pure $
         if
-          | ".pdf" `T.isSuffixOf` T.toLower s -> either (Left . Unplaced . P.importErrorText) (Right . P.VectorFigure) (P.importPage page bytes)
+          | ".pdf" `T.isSuffixOf` T.toLower s -> case P.importPage page bytes of
+              Left (P.ContentTooLarge _) -> Left ContentTooLarge
+              Left e -> Left (Unplaced (P.importErrorText e))
+              Right ip -> Right (P.VectorFigure ip)
           | ".svg" `T.isSuffixOf` T.toLower s -> case S.readSvg bytes of
               Left (S.SvgMalformed why) -> Left (Unplaced why)
               Left (S.SvgUnsupported us) -> Left (UnsupportedSvg us)
@@ -2643,8 +2647,9 @@ figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ (Figur
 
 {- | G0810: a figure that cannot be placed in the PDF; G0811: an SVG figure
 with things outside the subset, G0816: with markers in a cycle, G0817: with
-markers nested too deep, each that applies in this order; one of each per
-@figure (golem-pdf ADR 0008, 0009, docs/adr ADR 0054).
+markers nested too deep, each that applies in this order; G0815: a PDF
+figure whose page content joined is over 256 MiB; one of each per @figure
+(golem-pdf ADR 0008, 0009, docs/adr ADR 0051, 0054).
 -}
 figureDiagnostics :: PdfInput -> Map (Text, Int) (Either Unplaced P.FigureContent) -> [Diagnostic]
 figureDiagnostics inp loaded =
@@ -2657,6 +2662,7 @@ figureDiagnostics inp loaded =
         [diagnostic "G0811" Error sp (unsupportedMessage (figSource f) us) | Just us <- [nonEmpty (S.spUnsupported ps)]]
           <> [diagnostic "G0816" Error sp (markerMessage "SVG の図版の marker が循環しています: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerCycles ps)]]
           <> [diagnostic "G0817" Error sp (markerMessage "SVG の図版の marker の入れ子が 9 段を超えます: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerDepth ps)]]
+      ContentTooLarge -> [diagnostic "G0815" Error sp ("図版の PDF のページの内容をつなぐと 256 MiB を超えます: " <> figSource f)]
   ]
 
 {- | The rectangle of a figure's image on page @page@ from grid line @slot@
