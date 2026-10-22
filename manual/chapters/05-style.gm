@@ -633,7 +633,7 @@ JLReq は、日本語の組版の規格 JIS X 4051 [cite jisx4051] と、組版�
 
 - [code: kinsoku]：禁則[index reading=きんそく: 禁則]の強さです。[code: "strict"]（既定）は、小書きの仮名（ぁ、っ、ゃ など）と長音記号も行頭に置きません。[code: "loose"] は、それらの行頭を許します。
 - [code: hanging-punctuation]：[code: true] にすると、行末の句読点を版面の外に出すことを許します（ぶら下げ組[index reading=ぶらさげぐみ: ぶら下げ組]）。このマニュアルはぶら下げ組で組んでいます。
-- [code: tolerance]、[code: pretolerance]、[code: emergency-stretch]：欧文の段落を行に分けるときの、語間の伸び縮みの許容度です。既定値は TeX と同じ 200、100、0 です。どうしても行に分けられないときは、行が版面からはみ出し、警告が出ます。
+- [code: tolerance]、[code: pretolerance]、[code: emergency-stretch]：欧文の段落を行に分けるときの、語間の伸び縮みの許容度です。既定値は TeX と同じ 200、100、0 です。どうしても行に分けられないときは、行が版面からはみ出します。はみ出した行は、[code: golem preflight] が警告（G0913）で知らせます。
 
 段落は、一行ずつ先頭から分けるのではなく、段落の全体を見て、語間や字間の伸び縮みが全体として最も少なくなる位置で行に分けます。
 InDesign の段落コンポーザーに近い考え方です。

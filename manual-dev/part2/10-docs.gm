@@ -16,7 +16,7 @@ Golem のリポジトリの [code: docs/] には、性質の違う文書が並�
 | [code: docs/<モジュール>/specifications.md] | モジュールの実装の詳細 | 同上 |
 | [code: docs/glossary.md] | 用語集 | 新しい用語を導入したら足す |
 | [code: docs/diagnostics.md] | diagnostic のコードの説明 | コードを足すときに同じ変更で足す |
-| [code: docs/adr/]、[code: docs/<モジュール>/adr/] | ADR | ステータスの行を除き変えない |
+| [code: docs/adr/]、[code: docs/<モジュール>/adr/] | ADR | ステータスの行とリンクだけの変更を除き変えない |
 | [code: docs/audits/] など | 監査と性能計測の記録 | コミットした後は変えない |
 | [code: docs/manual-policy.md] | 二つのマニュアルの方針 | 第[ref-number manuals]章 |
 | [code: README.md] | 概要、導入、使い方、開発の手順 | ADR に合わせて直す。[code: main] で常に最新 |

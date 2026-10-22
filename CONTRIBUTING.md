@@ -215,7 +215,7 @@ CI の `textlint` ジョブ（`docs.yml`）も同じスクリプトを走らせ�
 `main` に直接 push せず、ブランチを切ってプルリクエストを作る。
 マージは常に no-ff で行う。
 `main` には保護の規則があり、プルリクエストを経ない push と、マージコミット以外のマージ（squash と rebase）を拒否する。
-マージには、CI の `ci`（`ci.yml`）と `adr`（`docs.yml`）の二つの検査が通っている必要がある（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
+マージには、CI の `ci`（`ci.yml`）と、`adr`、`manual`、`textlint`（`docs.yml`）の四つの検査が通っている必要がある（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)、[docs/adr/0022](./docs/adr/0022-manual-as-typesetting-sample.md)、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。
 
 `main` の rebase と force push は禁止する。
 例外は、API キーのような秘密情報を誤ってコミットした場合だけである。
