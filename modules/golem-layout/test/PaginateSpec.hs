@@ -313,6 +313,10 @@ pageControlTests =
         @?= [[0 .. 6], [20, 21, 30, 31, 32, 33, 34]]
       lineIds (paginate 1 10 [FParagraph (lines' 0 6), FParagraph (lines' 20 3), FNoBreak mk, FParagraph (lines' 30 5)])
         @?= [[0 .. 5], [20, 21, 22, 30, 31, 32, 33, 34]],
+    testCase "no-break: a paragraph of four lines leaves two and sends the last two (docs/adr ADR 0055)" $ do
+      let ps = paginate 1 10 [FParagraph (lines' 0 5), FParagraph (lines' 20 4), FNoBreak mk, FParagraph (lines' 30 5)]
+      lineIds ps @?= [[0, 1, 2, 3, 4, 20, 21], [22, 23, 30, 31, 32, 33, 34]]
+      unmets ps @?= [],
     testCase "no-break: nothing is sent from an empty column, and the control is unmet" $ do
       let ps = paginate 1 3 [FParagraph (lines' 0 3), FNoBreak mk, FParagraph (lines' 10 5)]
       lineIds ps @?= [[0, 1, 2], [10, 11, 12], [13, 14]]
