@@ -2116,6 +2116,9 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 
 原稿からは、`@page-break`（改ページ）、`@page-break recto`（改丁）、`@page-break verso`（次の偶数ページから始める）、`@column-break`（改段）で改められる（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 記法と置ける位置は [markup.md](markup.md) の「改ページ」の節で定める。
+引数と本体の誤りは原因ごとのコードにし、どれもエラーとして誤ったコマンドを捨てる（[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)）。
+`@page-break` の引数が `recto` か `verso` の一つでなければ G0258、`@column-break` に引数を書けば G0296、どちらかに本体を書けば本体の最初のブロックに G0297 を出す。
+引数と本体の両方が誤っていれば、両方をこの順に出す。
 改ページは意味論 IR の最上位のブロック（`ForcedBreak`）であり、ページの大きさや位置を持たない。
 「次のページから始める」は文書の構造の指定であり、HTML と EPUB でも CSS の `break-before` として意味を持つためである。
 
@@ -2136,6 +2139,9 @@ EPUB の読書環境は文書の境界で改ページし、見開きの左右も
 
 原稿からは、`@no-page-break`（ここで改ページしない）、`@need-lines N`（残りが N 行に足りなければ次の段から続ける）、`@page-lines ±N`（その段の行数を増減する）で、改ページを止めたり、位置を少しずらしたりできる（[docs/adr/0030](adr/0030-manual-page-break-control.md)）。
 記法と規則は [markup.md](markup.md) の「改ページの手での制御」の節で定める。
+引数と本体の誤りは原因ごとのコードにし、どれもエラーとして誤ったコマンドを捨てる（[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)）。
+`@no-page-break` に引数を書けば G0296、`@need-lines` の引数が 1 以上の整数の一つでなければ G0270、`@page-lines` の引数が符号を付けた 0 でない整数の一つでなければ G0299、三つのどれかに本体を書けば本体の最初のブロックに G0297 を出す。
+引数と本体の両方が誤っていれば、両方をこの順に出す。
 三つの印は意味論 IR の最上位のブロック（`PageControl`）である。
 ABI のバージョンは、同じリリースで先に上げた 7 のままとする。
 `ForcedBreak` と別のブロックにしたのは、`@need-lines` と `@page-lines` が版面の行数に依存する PDF だけの指定だからである。

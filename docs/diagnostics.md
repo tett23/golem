@@ -2000,35 +2000,33 @@ lines の範囲が不正です
 
 ## G0258
 
-改ページのコマンドの引数が誤っています
+@page-break の引数が誤っています
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@page-break` か `@column-break` の引数か本体が誤っている。
+`@page-break` の引数が、`recto` か `verso` の位置引数一つでない。
 `@page-break` は位置引数を一つまで取り、それは `recto` か `verso` である。
-`@column-break` は引数を取らない。
-どちらもキーワード引数と本体を持たない。
+引数を二つ以上書いた場合と、キーワード引数を書いた場合も、この誤りとする。
 誤ったコマンドは捨て、改ページしない。
+位置はコマンドの行である。
+本体も書いていれば、G0297 も出る。
 
-- メッセージ: `@page-break の引数は recto か verso です`、`@column-break は引数を取りません`、`@page-break と @column-break は本体を持てません`
+- メッセージ: `@page-break の引数は recto か verso です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0017](adr/0017-forced-page-breaks.md)
+- ADR: [docs/adr/0017](adr/0017-forced-page-breaks.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
 
 ### 主な原因
 
 - `@page-break page` のように、`recto` と `verso` のほかの語を書いた。
 - `@page-break recto verso` のように、引数を二つ以上書いた。
 - `@page-break x=1` のように、キーワード引数を書いた。
-- `@column-break recto` のように、`@column-break` に引数を書いた。
-- `@page-break` の次の行を字下げして、本体にした。
 
 ### 直し方
 
 ただの改ページは `@page-break` とだけ書き、奇数ページから始めるなら `@page-break recto`、偶数ページから始めるなら `@page-break verso` と書く。
-`@page-break` の次の行を字下げしているなら、字下げをやめる。
 
 ## G0259
 
@@ -2377,34 +2375,31 @@ PDF をターゲットに含むビルドと `golem check` で出す。
 
 ## G0270
 
-改ページの制御の引数が誤っています
+@need-lines の引数が誤っています
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@no-page-break`、`@need-lines`、`@page-lines` の引数か本体が、決まった形でない。
-`@no-page-break` は引数を取らない。
-`@need-lines` は 1 以上の整数の位置引数を一つ取る。
-`@page-lines` は、`+` か `-` の符号を付けた 0 でない整数の位置引数を一つ取る。
-どれも本体を持たない。
-そのコマンドは捨て、改ページを変えない。
+`@need-lines` の引数が、1 以上の整数の位置引数一つでない。
+引数がない場合、二つ以上書いた場合、キーワード引数を書いた場合も、この誤りとする。
+誤ったコマンドは捨て、改ページを変えない。
+位置はコマンドの行である。
+本体も書いていれば、G0297 も出る。
 
-- メッセージ: `@no-page-break は引数を取りません`、`@need-lines の引数は 1 以上の整数です`、`@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です`、`<名前> は本体を持てません`
+- メッセージ: `@need-lines の引数は 1 以上の整数です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)
+- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
 
 ### 主な原因
 
-- `@page-lines 1` のように、符号を付けずに書いた。
 - `@need-lines 0` や `@need-lines 2.5` のように、1 以上の整数でない値を書いた。
-- コマンドの次の行を字下げして、本体を書いた。
+- `@need-lines` とだけ書き、行数を書かなかった。
 
 ### 直し方
 
-`@need-lines 5`、`@page-lines +1`、`@page-lines -1` の形で書く。
-`@no-page-break` には何も続けない。
+`@need-lines 5` の形で、1 以上の整数を一つだけ書く。
 
 ## G0271
 
@@ -3140,15 +3135,15 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 位置引数、キーワード引数、展開した引数のどれでも、この誤りになる。
 コマンドは何も組まない。
 位置はコマンドの行である。
-今の対象は `@printings` である。
+対象は `@column-break`、`@no-page-break`、`@printings` である。
 
 - メッセージ: `<名前> は引数を取りません`。`<名前>` は `@` を付けたコマンドの名前である。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)
+- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
 
 ### 主な原因
 
-- `@printings 1` のように、引数を取らないコマンドの後に値を書いた。
+- `@column-break recto` や `@printings 1` のように、引数を取らないコマンドの後に値を書いた。
 
 ### 直し方
 
@@ -3166,11 +3161,12 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 本体を持てないブロックコマンドの次の行を字下げし、本体を書いた。
 コマンドは何も組まない。
 位置は本体の最初のブロックである。
-今の対象は `@printings` である。
+対象は `@page-break`、`@column-break`、`@no-page-break`、`@need-lines`、`@page-lines`、`@printings` である。
+引数も誤っていれば、引数の誤りのコードの後に出る。
 
 - メッセージ: `<名前> は本体を持てません`。`<名前>` は `@` を付けたコマンドの名前である。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)
+- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
 
 ### 主な原因
 
@@ -3206,6 +3202,34 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 `manifest.toml` に `[[metadata.printings]]` を足し、版、刷、日付を書く。
 発行の履歴を組まないなら、`@printings` を消す。
+
+## G0299
+
+@page-lines の引数が誤っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@page-lines` の引数が、`+` か `-` の符号を付けた 0 でない整数の位置引数一つでない。
+引数がない場合、二つ以上書いた場合、キーワード引数を書いた場合も、この誤りとする。
+誤ったコマンドは捨て、ページの行数を変えない。
+位置はコマンドの行である。
+本体も書いていれば、G0297 も出る。
+
+- メッセージ: `@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
+
+### 主な原因
+
+- `@page-lines 1` のように、符号を付けずに書いた。
+- `@page-lines +0` のように、0 を書いた。
+
+### 直し方
+
+`@page-lines +1` か `@page-lines -1` の形で、符号を付けた 0 でない整数を一つだけ書く。
 
 ## G0301
 
