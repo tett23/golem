@@ -43,8 +43,8 @@ data Ctx = Ctx
     cNumberDefault :: Text,
     cBook :: Book,
     cProfileDev :: Bool,
-    -- | the ideographic spaces before the first line of a paragraph of a style (docs/adr ADR 0006)
-    cFirstLine :: Maybe Text -> Int,
+    -- | the ideographic spaces before the first line of a paragraph of a style, and after a line break (docs/adr ADR 0006, 0049)
+    cFirstLine :: Maybe Text -> (Int, Int),
     -- | inside a list item, where paragraphs are not indented
     cInList :: Bool,
     -- | the markers of [lists] (golem-driver ADR 0013)
@@ -67,11 +67,11 @@ data TextLists = TextLists
 
 {- | One text file per source file, named after the source with a .txt
 extension. @firstLine@ gives, for a file, the ideographic spaces that
-start the lines of a paragraph of a style (Nothing is body; docs/adr ADR
-0006, 0014). The notes of a chapter of the manifest follow its last file,
+start the first line of a paragraph of a style and the lines after a
+line break (Nothing is body; docs/adr ADR 0006, 0014, 0049). The notes of a chapter of the manifest follow its last file,
 after a title (golem-driver ADR 0026).
 -}
-renderText :: Text -> Text -> Bool -> (FileId -> Maybe Text -> Int) -> TextLists -> Map Text [EntryPart] -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
+renderText :: Text -> Text -> Bool -> (FileId -> Maybe Text -> (Int, Int)) -> TextLists -> Map Text [EntryPart] -> TextVariant -> FileTable -> Book -> [(FilePath, Text)]
 renderText lang numberDefault dev firstLine lists bib variant ft book =
   [ (replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "txt", file (ctxOf fid) d (if isLast then chapter else []))
   | chapter <- bookChapters book,
@@ -114,10 +114,12 @@ indentBy n = T.replicate n "　"
 
 block :: Ctx -> Int -> Block -> Text
 block c ind (Block sp _ body) = case body of
-  -- a line break is a newline and the nesting indent (docs/adr ADR 0005); each line starts with the first-line indent (docs/adr ADR 0006)
+  -- a line break is a newline and the nesting indent (docs/adr ADR 0005); the first line starts
+  -- with the first indent, each line after a line break with the second (docs/adr ADR 0006, 0049)
   Paragraph st is ->
-    let lead = indentBy ind <> (if cInList c then "" else indentBy (cFirstLine c st))
-     in lead <> T.intercalate ("\n" <> lead) (map (inlines c) (splitLines is)) <> sidenotes is
+    let (first, rest) = if cInList c then (0, 0) else cFirstLine c st
+        lead n = indentBy ind <> indentBy n
+     in lead first <> T.intercalate ("\n" <> lead rest) (map (inlines c) (splitLines is)) <> sidenotes is
   Heading _ _ is ->
     let num = Map.lookup sp (bookHeadings (cBook c)) >>= hiNumberText
      in numbered num <> inlines c is
