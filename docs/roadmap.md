@@ -30,11 +30,9 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 2026-10-20 の ADR と仕様の矛盾のレビュー（[記録](audits/2026-10-20-adr-spec-review.md)）と、それに続く検討で採択した ADR を実装する。
 
 - PDF の図版の `Contents` で繰り返し名指したストリームを、出力でも一度だけ書く（未実装、[docs/adr 0051](adr/0051-reuse-repeated-pdf-content-streams.md)）。
-- `palt` と `vpal` を、JLReq が空きを決める約物に当てない（未実装、[docs/adr 0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 - 「傍注欄」を「傍注の領域」と言い換える（未実装、[docs/adr 0059](adr/0059-say-sidenote-area.md)）。
 - diagnostic のコードを、段階の 2 桁と番号の 3 桁の 5 桁にする（未実装、[docs/adr 0061](adr/0061-five-digit-diagnostic-codes.md)）。ほかの ADR をすべて実装した後に実装する。
 - G0904 を、文字の大きさを決めた定義と色の組ごとに、原稿の文字の位置で報告する（未実装、[golem-cli ADR 0008](golem-cli/adr/0008-g0904-by-size-source-and-colour.md)）。
-- `[sidenotes]` の `side` は `"outside"` だけを受け付けるキーとして残す（未実装、[golem-project ADR 0009](golem-project/adr/0009-sidenotes-side-key.md)）。
 
 ### 既知の不具合の修正
 

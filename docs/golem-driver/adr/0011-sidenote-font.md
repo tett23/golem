@@ -1,6 +1,6 @@
 # ADR 0011: 傍注を段落スタイル sidenote の書体と大きさで組む
 
-ステータス: 採択
+ステータス: 採択→（`[sidenotes]` に残すキーへの `side` の追加）は [golem-project ADR 0009](../../golem-project/adr/0009-sidenotes-side-key.md)
 
 ## 文脈
 
