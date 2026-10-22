@@ -2,6 +2,7 @@
 size = "mass-market"
 binding = "left"
 writing-mode = "horizontal"
+bleed = "0.125in"
 
 [page.grid]
 font-size = "9.5pt"

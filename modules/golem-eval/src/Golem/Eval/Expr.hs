@@ -201,7 +201,7 @@ binary le op x y = case op of
     rounded a k = case powRounded a k of
       PowValue d -> pure (VFloat d)
       PowOverflow -> err "G0204" le "結果が NaN か無限大になる演算です"
-      PowTooLarge n -> err "G0295" le ("累乗の計算が大きすぎます（正確な計算に要るビットの数 " <> T.pack (show n) <> " が、上限の 1048576（2 の 20 乗）を超えます）")
+      PowTooLarge n -> err "G0295" le ("累乗の正確な計算に要るビットの数 " <> T.pack (show n) <> " が、上限の 1048576（2 の 20 乗）を超えます（結果の大きさによらない上限です）")
     arith :: (Integer -> Integer -> Integer) -> (Double -> Double -> Double) -> Eval Value
     arith fi fd = case (x, y) of
       (VInt a, VInt b) -> checkedInt le (fi a b)

@@ -107,6 +107,23 @@ fake ls '/bin/ls -A >build/out.txt'
 run GOLEM="$WORK/ls"
 expect "the files of the project" 1 "FAIL decoys"
 
+# the number of capabilities (docs/adr/0050)
+fake caps 'printf "%s" "${GHCRTS-unset}" >build/out.txt'
+run GOLEM="$WORK/caps"
+expect "GHCRTS" 1 "FAIL caps-one" "FAIL caps-two" "FAIL combined"
+run GOLEM="$WORK/fixed"
+expect "a fixed output passes the capabilities" 0 "ok   caps-one exprs" "ok   caps-two exprs"
+for c in caps-one caps-two; do
+  CODE=0
+  env GOLEM="$WORK/fixed" sh "$CHECK" --only "$c" --input exprs >"$WORK/out" 2>&1 || CODE=$?
+  expect "--only $c is a change" 0 "ok   $c exprs"
+done
+# the GHCRTS of the outer environment does not reach the base: were it
+# passed, the base would be the same as caps-two
+CODE=0
+env GOLEM="$WORK/caps" GHCRTS=-N2 sh "$CHECK" --only caps-two --input exprs >"$WORK/out" 2>&1 || CODE=$?
+expect "the outer GHCRTS does not reach golem" 1 "FAIL caps-two"
+
 fake stderr 'printf "%s" "${TZ-unset}" >&2'
 run GOLEM="$WORK/stderr"
 expect "a difference in stderr" 1 "FAIL tz-east" "stderr"

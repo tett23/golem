@@ -15,7 +15,7 @@ import Golem.LayoutSpec (PageGeometry (..), Rect (..), pageGeometry)
 import Golem.Plugin.Lock (hashHex)
 import Golem.Preflight.Rules (Level (..), Rules (..), parseRules, printRules)
 import Golem.Preflight.View (GlyphView (..), ImageView (..), LineView (..), PageView (..), RuleView (..), View (..))
-import Golem.Project.Style (parseStyle)
+import Golem.Project.Style (Page (..), Style (..), parseDim, parseStyle)
 import Golem.Syntax
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
@@ -57,6 +57,12 @@ newProjectTests =
                templatePage Japanese @?= Right ((19505991, 27494158), True, True),
              testCase "the English template lays out a horizontal mass-market page bound on the left" $
                templatePage English @?= Right ((20054016, 32440320), False, False),
+             -- golem-pdf ADR 0010, golem-project ADR 0010
+             testCase "the templates have a bleed: 3mm for Japanese, 0.125in (9pt) for English" $ do
+               let bleedOf lang = fmap pageBleed . stPage <$> parseStyle (FileId 0) (templateText lang "style.toml")
+               bleedOf Japanese @?= Right (Just (round (3 * 72 * 65536 / (25.4 :: Rational))))
+               bleedOf English @?= Right (Just (9 * 65536))
+               parseDim "0.125in" @?= parseDim "9pt",
              testCase "fonts come from tagged releases with fixed hashes" $ do
                map fsPath (templateFonts Japanese) @?= ["fonts/NotoSerifJP-Regular.otf", "fonts/LICENSE-NotoSerifJP.txt"]
                map fsPath (templateFonts English) @?= ["fonts/SourceSerif4-Regular.otf", "fonts/LICENSE-SourceSerif4.md"]
@@ -332,15 +338,15 @@ preflightTests =
         map diagCode (prDiagnostics p) @?= [DiagnosticCode "G0901"]
         prPdf p @?= Nothing
   ]
-    <> [ testCase ("the template fails print with G0910 and G0914 only, and passes with bleed and intent (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
+    <> [ testCase ("the template fails print with G0914 only, and passes with intent; it has a bleed (golem-pdf ADR 0010) (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
            let dir = tmp </> "book"
            createProject dir (templateFiles lang uuid0) Nothing >>= (@?= Right ())
            forM_ (templateFonts lang) $ \f -> createDirectoryIfMissing True (takeDirectory (dir </> fsPath f)) >> BS.writeFile (dir </> fsPath f) "fake"
            p <- preflightIn dir
-           sort (errorCodes (prDiagnostics p)) @?= [DiagnosticCode "G0910", DiagnosticCode "G0914"]
+           sort (errorCodes (prDiagnostics p)) @?= [DiagnosticCode "G0914"]
            [diagMessage d | d <- prDiagnostics p, diagCode d == DiagnosticCode "G0914"] @?= ["PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）"]
            style <- TIO.readFile (dir </> "style.toml")
-           TIO.writeFile (dir </> "style.toml") (T.replace "[page]\n" "[page]\nbleed = \"3mm\"\n" style <> "\n[color]\nintent = \"profiles/test.icc\"\n")
+           TIO.writeFile (dir </> "style.toml") (style <> "\n[color]\nintent = \"profiles/test.icc\"\n")
            createDirectoryIfMissing True (dir </> "profiles")
            BS.writeFile (dir </> "profiles/test.icc") "fake profile"
            q <- preflightIn dir

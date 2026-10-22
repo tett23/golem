@@ -1,6 +1,6 @@
 # ADR 0029: 実行環境を変えて出力の一致を確かめる検査
 
-ステータス: 採択→CI で `--quick` を付けるかどうかは [ADR 0038](0038-env-determinism-quick-on-pull-requests.md)
+ステータス: 採択→CI で `--quick` を付けるかどうかは [ADR 0038](0038-env-determinism-quick-on-pull-requests.md)、capability の数を変えることは [ADR 0050](0050-run-golem-on-every-processor.md)
 
 ## 文脈
 
