@@ -1455,14 +1455,24 @@ printingsTests =
           other -> assertFailure (show other),
       testCase "@style applies to every paragraph" $
         [st | Paragraph st _ <- fst (run (printingsCtx "ja") "@style quote\n@printings\n")] @?= [Just "quote", Just "quote", Just "quote"],
-      testCase "a book not in Japanese, or without printings, is G0276 and sets nothing" $ do
+      testCase "a book not in Japanese is G0276 alone and sets nothing" $ do
         run (printingsCtx "en") "@printings\n" @?= ([], ["G0276"])
-        run (printingsCtx "ja") {ctxMeta = Map.fromList [("language", VString "ja")]} "@printings\n" @?= ([], ["G0276"])
-        [m | (_, m, _, _) <- diagsWith (printingsCtx "en") "@printings\n"] @?= ["@printings は日本語の本（language = \"ja\"）でだけ使えます"]
-        [m | (_, m, _, _) <- diagsWith (printingsCtx "ja") {ctxMeta = Map.fromList [("language", VString "ja")]} "@printings\n"] @?= ["マニフェストに [[metadata.printings]] がありません"],
-      testCase "an argument or a body is an error and sets nothing" $ do
-        run (printingsCtx "ja") "@printings 1\n" @?= ([], ["G0276"])
-        run (printingsCtx "ja") "@printings\n  本文\n" @?= ([], ["G0276"])
+        [m | (_, m, _, _) <- diagsWith (printingsCtx "en") "@printings\n"] @?= ["@printings は日本語の本（language = \"ja\"）でだけ使えます"],
+      testCase "a Japanese book without printings is G0298 alone and sets nothing" $ do
+        let noPrintings = (printingsCtx "ja") {ctxMeta = Map.fromList [("language", VString "ja")]}
+        run noPrintings "@printings\n" @?= ([], ["G0298"])
+        [m | (_, m, _, _) <- diagsWith noPrintings "@printings\n"] @?= ["マニフェストに [[metadata.printings]] がありません"],
+      testCase "an argument is G0296 and sets nothing" $ do
+        run (printingsCtx "ja") "@printings 1\n" @?= ([], ["G0296"])
+        [(c, m, s) | (c, m, s, _) <- diagsWith (printingsCtx "ja") "@printings 1\n"] @?= [("G0296", "@printings は引数を取りません", 0)]
+        run (printingsCtx "ja") "@printings key=1\n" @?= ([], ["G0296"]),
+      testCase "a body is G0297 at its first block and sets nothing" $ do
+        run (printingsCtx "ja") "@printings\n  本文\n" @?= ([], ["G0297"])
+        [(c, m, s) | (c, m, s, _) <- diagsWith (printingsCtx "ja") "@printings\n  本文\n"] @?= [("G0297", "@printings は本体を持てません", 11)],
+      testCase "an argument and a body are G0296 then G0297" $
+        run (printingsCtx "ja") "@printings 1\n  本文\n" @?= ([], ["G0296", "G0297"]),
+      testCase "every cause is reported, in the order of the table" $
+        run (printingsCtx "en") {ctxMeta = Map.fromList [("language", VString "en")]} "@printings 1\n" @?= ([], ["G0296", "G0276", "G0298"])
     ]
 
 {- | The diagnostics of a power depend on the input alone: alone, after

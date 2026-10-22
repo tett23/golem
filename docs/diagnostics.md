@@ -2541,33 +2541,30 @@ PNG、JPEG、SVG の図版からは、`page` を消す。
 
 ## G0276
 
-@printings を組めません
+@printings は日本語の本でだけ使えます
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@printings` を、日本語でない本か、`[[metadata.printings]]` のない本に書いた。
-`@printings` に引数か本体を書いた場合も、この誤りとする。
-どの場合も、`@printings` は何も組まない。
+`@printings` を、日本語でない本（`[metadata] language` が `ja` でない本）に書いた。
+`@printings` は何も組まない。
 位置は `@printings` の行である。
+`@printings` のほかの誤り（引数の G0296、本体の G0297、`[[metadata.printings]]` の欠けの G0298）も当たれば、それらと一緒に出る。
 
-- メッセージ: `@printings は日本語の本（language = "ja"）でだけ使えます`、`マニフェストに [[metadata.printings]] がありません`、`@printings は引数も本体も取りません`
+- メッセージ: `@printings は日本語の本（language = "ja"）でだけ使えます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)
+- ADR: [docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)、[docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)
 
 ### 主な原因
 
 - `[metadata] language` が `ja` でない本に `@printings` を書いた。発行の履歴の書式は、今は日本語の一つだけである。
-- `manifest.toml` に `[[metadata.printings]]` を書いていない。
-- `@printings` の後に引数を書いたか、字下げした本体を書いた。
 
 ### 直し方
 
-`[[metadata.printings]]` に版、刷、日付を書く。
-日本語でない本では、`meta.printing` の値から発行の履歴を一行ずつ書く。
-`@printings` の引数と本体を消す。
+日本語の本なら、`[metadata] language` を `ja` にする。
+日本語でない本では、`@printings` を消し、`meta.printing` の値から発行の履歴を一行ずつ書く。
 
 ## G0277
 
@@ -3129,6 +3126,86 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 指数を小さくするか、底を変える。
 底が 2 の累乗（`2.0` や `0.5`）なら `m` が 1 なので、指数がいくつでもこのエラーにならない。
+
+## G0296
+
+引数を取らないコマンドに引数を書きました
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+引数を取らないブロックコマンドに、引数を書いた。
+位置引数、キーワード引数、展開した引数のどれでも、この誤りになる。
+コマンドは何も組まない。
+位置はコマンドの行である。
+今の対象は `@printings` である。
+
+- メッセージ: `<名前> は引数を取りません`。`<名前>` は `@` を付けたコマンドの名前である。
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)
+
+### 主な原因
+
+- `@printings 1` のように、引数を取らないコマンドの後に値を書いた。
+
+### 直し方
+
+コマンドの行から引数を消す。
+
+## G0297
+
+本体を持てないコマンドに本体を書きました
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+本体を持てないブロックコマンドの次の行を字下げし、本体を書いた。
+コマンドは何も組まない。
+位置は本体の最初のブロックである。
+今の対象は `@printings` である。
+
+- メッセージ: `<名前> は本体を持てません`。`<名前>` は `@` を付けたコマンドの名前である。
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)
+
+### 主な原因
+
+- コマンドの次の行を、続きのつもりで字下げした。
+
+### 直し方
+
+コマンドの次の行の字下げをやめ、別の段落として書く。
+本体のつもりで書いた行が要らなければ消す。
+
+## G0298
+
+マニフェストに [[metadata.printings]] がありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@printings` を、`manifest.toml` に `[[metadata.printings]]` のない本に書いた。
+`@printings` は何も組まない。
+位置は `@printings` の行である。
+
+- メッセージ: `マニフェストに [[metadata.printings]] がありません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)、[docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)
+
+### 主な原因
+
+- `manifest.toml` に `[[metadata.printings]]` を書いていない。
+
+### 直し方
+
+`manifest.toml` に `[[metadata.printings]]` を足し、版、刷、日付を書く。
+発行の履歴を組まないなら、`@printings` を消す。
 
 ## G0301
 

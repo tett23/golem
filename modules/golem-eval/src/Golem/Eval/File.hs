@@ -629,16 +629,24 @@ attributedGroup ctx sp cmds target = case target of
 
 {- | @printings: one paragraph for each printing of meta.printings, as
 @2026年10月16日　初版第1刷発行@; the year in kanji-digits, the other
-numbers by the default of [numbers]. G0276 for a book not in Japanese,
-without printings, or with arguments or a body (docs/adr ADR 0033).
+numbers by the default of [numbers] (docs/adr ADR 0033). Each cause
+has its own code and every cause found is reported, in this order:
+G0296 for arguments, G0297 for a body, G0276 for a book not in Japanese,
+G0298 without printings (docs/adr ADR 0056).
 -}
 printingsBlock :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-printingsBlock ctx sp args body
-  | not (null args) || not (null body) = err "G0276" sp "@printings は引数も本体も取りません" >> pure []
-  | Map.lookup "language" (ctxMeta ctx) /= Just (VString "ja") = err "G0276" sp "@printings は日本語の本（language = \"ja\"）でだけ使えます" >> pure []
-  | Just (VArray ps@(_ : _)) <- Map.lookup "printings" (ctxMeta ctx) = pure (mapMaybe line ps)
-  | otherwise = err "G0276" sp "マニフェストに [[metadata.printings]] がありません" >> pure []
+printingsBlock ctx sp args body = case (errors, Map.lookup "printings" (ctxMeta ctx)) of
+  ([], Just (VArray ps)) -> pure (mapMaybe line ps)
+  _ -> mapM_ (\(c, s, m) -> err c s m) errors >> pure []
   where
+    printings = case Map.lookup "printings" (ctxMeta ctx) of
+      Just (VArray (_ : _)) -> True
+      _ -> False
+    errors =
+      [("G0296", sp, takesNoArguments "printings") | not (null args)]
+        <> [("G0297", bsp, takesNoBody "printings") | A.Located bsp _ : _ <- [body]]
+        <> [("G0276", sp, "@printings は日本語の本（language = \"ja\"）でだけ使えます") | Map.lookup "language" (ctxMeta ctx) /= Just (VString "ja")]
+        <> [("G0298", sp, "マニフェストに [[metadata.printings]] がありません") | not printings]
     line = \case
       VHash h
         | Just [e, n, y, m, d] <- traverse (\k -> case Map.lookup k h of Just (VInt i) -> Just i; _ -> Nothing) ["edition", "number", "year", "month", "day"] ->
@@ -649,6 +657,13 @@ printingsBlock ctx sp args body
       _ -> Nothing
     num = Number sp
     txt = Text sp
+
+{- | The message of G0296, an argument to a command that takes none, and of
+G0297, a body under a command that cannot have one (docs/adr ADR 0056).
+-}
+takesNoArguments, takesNoBody :: Text -> Text
+takesNoArguments name = "@" <> name <> " は引数を取りません"
+takesNoBody name = "@" <> name <> " は本体を持てません"
 
 -- | @page-break and @column-break (docs/adr ADR 0017).
 forcedBreak :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
