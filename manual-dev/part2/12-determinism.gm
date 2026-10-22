@@ -100,9 +100,11 @@ EPUB の決定性（zip のエントリの時刻と順序の固定）は v2 で�
 - [code: root-path]：プロジェクトを空白と日本語を含む深い階層に置く。
 - [code: mtime-past]、[code: mtime-future]：入力のファイルの時刻を変える。
 - [code: decoys]：どこからも参照しないファイルを置き、写す順を逆にする。ディレクトリを列挙して入力を決めていれば、結果が変わる。
+- [code: caps-one]、[code: caps-two]：[code: GHCRTS=-N1] と [code: GHCRTS=-N2] で、[code: golem] の capability の数を一つと二つにする。基準の環境は [code: GHCRTS] を与えないので、[code: golem] はすべてのプロセッサの上で動く。一つは並列のない場合、二つは並列のある最小の数で、基準と仕事の分かれ方が変わる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0050-run-golem-on-every-processor.md]（docs/adr の ADR 0050「golem をすべてのプロセッサの上で動かし、環境を変える検査で capability の数を変える」）]
 
 一つずつの変化は小さな入力（[code: scripts/determinism/]、テストのサンプル、その PDF の版、diagnostics を出す小さなプロジェクト）にだけ当てる。
 すべての変化を同時に当てる [code: combined] は、小さな入力に加えて、『テンペスト』、『蟹工船』、十冊のパブリックドメインの本、二つのマニュアルにも当てる。
+[code: combined] は [code: GHCRTS=-N2] で組み、大きな入力も並列に組んだまま、基準と違う capability の数で確かめる。
 許容の一覧はなく、どの変化のどの入力でも、基準と違えば失敗する。
 
 手元では、[code: --quick] で大きな入力を飛ばして数秒で回せる。
