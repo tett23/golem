@@ -510,6 +510,15 @@ tests =
         parseDim "1H" @?= parseDim "0.25mm"
         parseDim "2zw" @?= Just (Zw 2)
         parseDim "3em" @?= Nothing,
+      testCase "the inch unit (golem-project ADR 0010)" $ do
+        parseDim "1in" @?= Just (Abs (72 * 65536))
+        parseDim "0.125in" @?= Just (Abs (9 * 65536))
+        parseDim "8.5in" @?= parseDim "612pt"
+        parseDim "0.1in" @?= Just (Abs (round (72 * 65536 / (10 :: Rational))))
+        fmap (\case Abs x -> x < 0; Zw _ -> False) (parseSignedDim "-0.5in") @?= Just True
+        parseSignedDim "-0.5in" @?= Just (Abs (-(36 * 65536)))
+        parseDim "1 in" @?= Nothing
+        parseDim "1In" @?= Nothing,
       testCase "style.toml from the specification" $
         case parseStyle (FileId 0) specStyle of
           Left ds -> assertFailure (show ds)
@@ -1502,6 +1511,8 @@ pageSizeTests =
       trim "{ width = \"396pt\", height = \"612pt\" }" @?= Right (Just (396 * 65536, 612 * 65536))
       trim "{ width = \"100mm\", height = \"600Q\" }" @?= Right (Just (abs' "100mm", abs' "600Q"))
       trim "{ width = \"210mm\", height = \"148mm\" }" @?= Right (Just (abs' "210mm", abs' "148mm")),
+    testCase "a page given in inches (golem-project ADR 0010)" $
+      trim "{ width = \"5.5in\", height = \"8.5in\" }" @?= trim "{ width = \"396pt\", height = \"612pt\" }",
     testCase "a page given by dimensions is the same as the named size" $
       trim "{ width = \"107.95mm\", height = \"174.625mm\" }" @?= trim "\"mass-market\"",
     testCase "the named sizes are the table in sp" $
