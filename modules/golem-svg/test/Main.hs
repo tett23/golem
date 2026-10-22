@@ -36,7 +36,7 @@ drawing body = either (assertFailure . show) (pure . svgDrawing) (readSvg (svg b
 
 unsupported :: BS.ByteString -> [Unsupported]
 unsupported b = case readSvg b of
-  Left (SvgUnsupported us) -> NE.toList us
+  Left (SvgUnsupported ps) -> spUnsupported ps
   _ -> []
 
 -- | The paths of a drawing, groups flattened.
