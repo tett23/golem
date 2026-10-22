@@ -1,6 +1,6 @@
 # ADR 0006: 段落スタイルで段落の字下げを指定する
 
-ステータス: 採択→`join` の段落の強制改行の後の行の字下げは [ADR 0016](0016-hard-line-breaks.md)
+ステータス: 採択→`join` の段落の強制改行の後の行の字下げは [ADR 0016](0016-hard-line-breaks.md)、プレーンテキストで join の段落の LineBreak の後の行に置く空白は [ADR 0049](0049-plain-text-indent-after-hard-break.md)
 
 ## 文脈
 

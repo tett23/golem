@@ -178,7 +178,7 @@ instance FromValue RulesFile where
     r2 <- check "glyph-missing" r1 $ \r -> levelKey r ruGlyphMissing (\x -> r {ruGlyphMissing = x})
     r3 <- check "font-formats" r2 $ \r -> do
       a <- levelKey r ruFontFormats (\x -> r {ruFontFormats = x})
-      textsKey "allowed" ["cff", "truetype"] a ruFontFormatsAllowed (\x -> a {ruFontFormatsAllowed = x})
+      textsKey "allowed" ["cff", "cff2", "truetype"] a ruFontFormatsAllowed (\x -> a {ruFontFormatsAllowed = x})
     r4 <- check "type-size" r3 $ \r -> do
       a <- levelKey r ruTypeSize (\x -> r {ruTypeSize = x})
       b <- lengthKey "min-size" a ruTypeSizeMin (\x -> a {ruTypeSizeMin = x})

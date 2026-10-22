@@ -665,39 +665,47 @@ takesNoArguments, takesNoBody :: Text -> Text
 takesNoArguments name = "@" <> name <> " は引数を取りません"
 takesNoBody name = "@" <> name <> " は本体を持てません"
 
--- | @page-break and @column-break (docs/adr ADR 0017).
-forcedBreak :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-forcedBreak sp name args body
-  | not (null body) = err "G0258" sp "@page-break と @column-break は本体を持てません" >> pure []
-  | otherwise = case (name, map A.locValue args) of
-      ("page-break", []) -> ok BreakPage
-      ("page-break", [A.Positional (A.Word "recto")]) -> ok BreakRecto
-      ("page-break", [A.Positional (A.Word "verso")]) -> ok BreakVerso
-      ("column-break", []) -> ok BreakColumn
-      ("column-break", _) -> err "G0258" sp "@column-break は引数を取りません" >> pure []
-      _ -> err "G0258" sp "@page-break の引数は recto か verso です" >> pure []
-  where
-    ok k = pure [block sp (ForcedBreak k)]
+{- | A page-break command: the error of its arguments, if any, then G0297
+at the first block of its body, if any; the block only if neither
+(docs/adr ADR 0060).
+-}
+breakCommand :: SrcSpan -> Text -> [A.Located A.Block] -> Either (Text, Text) BlockBody -> M [Block]
+breakCommand sp name body parsed = do
+  either (\(c, m) -> err c sp m) (const (pure ())) parsed
+  mapM_ (\(A.Located bsp _) -> err "G0297" bsp (takesNoBody name)) (take 1 body)
+  pure [block sp b | null body, Right b <- [parsed]]
 
--- | @no-page-break, @need-lines and @page-lines (docs/adr ADR 0030).
+{- | @page-break and @column-break (docs/adr ADR 0017): G0258 for an
+argument of @page-break other than one recto or verso, G0296 for an
+argument of @column-break (docs/adr ADR 0060).
+-}
+forcedBreak :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+forcedBreak sp name args body = breakCommand sp name body $ case (name, map A.locValue args) of
+  ("page-break", []) -> Right (ForcedBreak BreakPage)
+  ("page-break", [A.Positional (A.Word "recto")]) -> Right (ForcedBreak BreakRecto)
+  ("page-break", [A.Positional (A.Word "verso")]) -> Right (ForcedBreak BreakVerso)
+  ("column-break", []) -> Right (ForcedBreak BreakColumn)
+  ("column-break", _) -> Left ("G0296", takesNoArguments name)
+  _ -> Left ("G0258", "@page-break の引数は recto か verso です")
+
+{- | @no-page-break, @need-lines and @page-lines (docs/adr ADR 0030):
+G0296 for an argument of @no-page-break, G0270 for a wrong argument of
+@need-lines, G0299 for a wrong argument of @page-lines (docs/adr ADR 0060).
+-}
 pageControl :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-pageControl sp name args body
-  | not (null body) = bad ("@" <> name <> " は本体を持てません")
-  | otherwise = case (name, map A.locValue args) of
-      ("no-page-break", []) -> ok NoBreak
-      ("no-page-break", _) -> bad "@no-page-break は引数を取りません"
-      ("need-lines", [A.Positional (A.Word w)]) | Just n <- count w, n >= 1 -> ok (NeedLines n)
-      ("need-lines", _) -> bad "@need-lines の引数は 1 以上の整数です"
-      ("page-lines", [A.Positional (A.Word w)])
-        | Just (s, digits) <- T.uncons w,
-          s `elem` ['+', '-'],
-          Just n <- count digits,
-          n /= 0 ->
-            ok (AdjustLines (if s == '-' then negate n else n))
-      _ -> bad "@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です"
+pageControl sp name args body = breakCommand sp name body . fmap PageControl $ case (name, map A.locValue args) of
+  ("no-page-break", []) -> Right NoBreak
+  ("no-page-break", _) -> Left ("G0296", takesNoArguments name)
+  ("need-lines", [A.Positional (A.Word w)]) | Just n <- count w, n >= 1 -> Right (NeedLines n)
+  ("need-lines", _) -> Left ("G0270", "@need-lines の引数は 1 以上の整数です")
+  ("page-lines", [A.Positional (A.Word w)])
+    | Just (s, digits) <- T.uncons w,
+      s `elem` ['+', '-'],
+      Just n <- count digits,
+      n /= 0 ->
+        Right (AdjustLines (if s == '-' then negate n else n))
+  _ -> Left ("G0299", "@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です")
   where
-    ok c = pure [block sp (PageControl c)]
-    bad m = err "G0270" sp m >> pure []
     -- ASCII digits that fit in an Int
     count w
       | not (T.null w) && T.all isDigit w && T.length w <= 9 = Just (read (T.unpack w))

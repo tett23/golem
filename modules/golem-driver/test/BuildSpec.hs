@@ -15,9 +15,10 @@ import Golem.Doc.Assemble (Book (..), HeadingInfo (..))
 import Golem.Doc.IR (InlineF (..))
 import Golem.Driver
 import Golem.Driver.New
-import Golem.Driver.Pdf (instanceIdInputs, numberedTitle, producer, runningHeadLines)
+import Golem.Driver.Pdf (CodeInfo (..), PdfLayout (..), instanceIdInputs, numberedTitle, producer, runningHeadLines)
 import Golem.Driver.Version (golemVersion)
 import Golem.Epub (EpubConfig (..), navDocument)
+import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
 import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Manifest (Manifest (..), Metadata (..))
 import Golem.Project.Style (HeadForm (..), HeadPick (..), RunningContent (..), RunningPart (..), RunningRef (..))
@@ -303,10 +304,14 @@ numberStyle format = horizontalStyle <> TE.encodeUtf8 ("\n[headings.1]\nnumber =
 page and the table of contents page.
 -}
 sepHtml :: T.Text -> T.Text -> T.Text -> IO (T.Text, T.Text)
-sepHtml lang format source = withSystemTempDirectory "golem-sep" $ \tmp -> do
+sepHtml lang format = sepHtmlStyle lang (numberStyle format)
+
+-- | 'sepHtml' with a style.toml.
+sepHtmlStyle :: T.Text -> BS.ByteString -> T.Text -> IO (T.Text, T.Text)
+sepHtmlStyle lang style source = withSystemTempDirectory "golem-sep" $ \tmp -> do
   img <- tinyImage
   BS.writeFile (tmp </> "manifest.toml") (langManifest lang <> "\n[targets.html]\n")
-  BS.writeFile (tmp </> "style.toml") (numberStyle format)
+  BS.writeFile (tmp </> "style.toml") style
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
   forM_ img $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
   r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
@@ -369,7 +374,34 @@ numberSeparatorTests =
               ]
       (heads, pl) <- layoutHeads (langManifest "en") style [("a.gm", "# Introduction\n\n" <> T.replicate (12 * 11) "あ" <> "\n")]
       Map.lookup 2 heads @?= Just ["1 Introduction"]
-      assertBool (show (lineTexts pl)) (not (any (T.isInfixOf "\x3000") (lineTexts pl)))
+      assertBool (show (lineTexts pl)) (not (any (T.isInfixOf "\x3000") (lineTexts pl))),
+    testCase "HTML: the listing number and the caption of a code block by the language (golem-driver ADR 0042)" $ do
+      let source = "@caption Settings\n```\nx\n```\n"
+      (en, _) <- sepHtmlStyle "en" (horizontalStyle <> "\n[code]\nnumber = \"L{n}\"\n") source
+      assertBool (T.unpack en) ("<figcaption>L1 Settings</figcaption>" `T.isInfixOf` en)
+      assertBool (T.unpack en) (not ("\x3000" `T.isInfixOf` en))
+      (ja, _) <- sepHtmlStyle "ja" (horizontalStyle <> "\n[code]\nnumber = \"L{n}\"\n") source
+      assertBool (T.unpack ja) ("<figcaption>L1\x3000Settings</figcaption>" `T.isInfixOf` ja)
+      (spaced, _) <- sepHtmlStyle "en" (horizontalStyle <> "\n[code]\nnumber = \"Listing {n}: \"\n") source
+      assertBool (T.unpack spaced) ("<figcaption>Listing 1: Settings</figcaption>" `T.isInfixOf` spaced),
+    testCase "PDF: the listing number and the caption of a code block by the language (golem-driver ADR 0042)" $ do
+      let caption lang number = do
+            (_, pl) <- layoutHeads (langManifest lang) (horizontal30 ("\n[code]\nnumber = \"" <> number <> "\"\n")) [("a.gm", "@caption Settings\n```\na\n```\n")]
+            case Map.elems (plCodes pl) of
+              -- the boxes, and the glues as spaces: the space of a separator is a glue
+              (ci : _) -> pure (T.strip (T.concat [item it | l <- take 1 (ciCaption ci), it <- lineItems l]), T.concat [bcText c | l <- ciCaption ci, Box _ c <- lineItems l])
+              [] -> assertFailure "no code"
+          item = \case
+            Box _ c -> bcText c
+            Glue {} -> " "
+            Penalty {} -> ""
+      (en, enBoxes) <- caption "en" "L{n}"
+      en @?= "L1 Settings"
+      assertBool (show enBoxes) (not ("\x3000" `T.isInfixOf` enBoxes))
+      (_, jaBoxes) <- caption "ja" "L{n}"
+      jaBoxes @?= "L1\x3000Settings"
+      (spaced, _) <- caption "en" "Listing {n}: "
+      spaced @?= "Listing 1: Settings"
   ]
   where
     sp0 = mkSpan (FileId 0) 0 0

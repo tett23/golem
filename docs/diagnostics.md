@@ -2000,35 +2000,33 @@ lines の範囲が不正です
 
 ## G0258
 
-改ページのコマンドの引数が誤っています
+@page-break の引数が誤っています
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@page-break` か `@column-break` の引数か本体が誤っている。
+`@page-break` の引数が、`recto` か `verso` の位置引数一つでない。
 `@page-break` は位置引数を一つまで取り、それは `recto` か `verso` である。
-`@column-break` は引数を取らない。
-どちらもキーワード引数と本体を持たない。
+引数を二つ以上書いた場合と、キーワード引数を書いた場合も、この誤りとする。
 誤ったコマンドは捨て、改ページしない。
+位置はコマンドの行である。
+本体も書いていれば、G0297 も出る。
 
-- メッセージ: `@page-break の引数は recto か verso です`、`@column-break は引数を取りません`、`@page-break と @column-break は本体を持てません`
+- メッセージ: `@page-break の引数は recto か verso です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0017](adr/0017-forced-page-breaks.md)
+- ADR: [docs/adr/0017](adr/0017-forced-page-breaks.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
 
 ### 主な原因
 
 - `@page-break page` のように、`recto` と `verso` のほかの語を書いた。
 - `@page-break recto verso` のように、引数を二つ以上書いた。
 - `@page-break x=1` のように、キーワード引数を書いた。
-- `@column-break recto` のように、`@column-break` に引数を書いた。
-- `@page-break` の次の行を字下げして、本体にした。
 
 ### 直し方
 
 ただの改ページは `@page-break` とだけ書き、奇数ページから始めるなら `@page-break recto`、偶数ページから始めるなら `@page-break verso` と書く。
-`@page-break` の次の行を字下げしているなら、字下げをやめる。
 
 ## G0259
 
@@ -2291,7 +2289,7 @@ code はコードブロックの段落スタイルです
 `{set.<名前空間>.<名前>}` では、名前空間の `@import` がないか、取り込んだファイルにその変数がない。
 柱の `set` の変数は、そのページのファイルの変数であり、`@set` の変数がファイルの単位で定義されるという規則を変えない。
 S0 の評価の後に、マニフェストの章のファイルごとに検査する。
-PDF をターゲットに含むビルドと `golem check` で出し、HTML、EPUB、プレーンテキストだけのビルドでは出さない。
+PDF をターゲットに含むビルドと `golem check`（四つのターゲットを検査するので、つねに PDF を含む）で出し、HTML、EPUB、プレーンテキストだけのビルドでは出さない。
 同じファイルと同じ変数の組には一つだけ出す。
 位置はそのファイルの先頭であり、`style.toml` の先頭を関連する位置として添える。
 
@@ -2322,7 +2320,7 @@ PDF をターゲットに含むビルドと `golem check` で出し、HTML、EPU
 `style.toml` のマスターページの柱の書式が参照する変数の値が、文字列でも数でもない（真偽値、`nil`、配列、連想配列）。
 文字列はそのまま、数は式文脈 `[= ...]` で本文に埋め込んだときと同じ文字列にして柱に出す。
 S0 の評価の後に、マニフェストの章のファイルごとに検査する。
-PDF をターゲットに含むビルドと `golem check` で出す。
+PDF をターゲットに含むビルドと `golem check`（四つのターゲットを検査するので、つねに PDF を含む）で出す。
 位置はそのファイルの先頭であり、`style.toml` の先頭を関連する位置として添える。
 
 - メッセージ: `柱に出せるのは文字列と数です: <名前> は <型>`
@@ -2377,34 +2375,31 @@ PDF をターゲットに含むビルドと `golem check` で出す。
 
 ## G0270
 
-改ページの制御の引数が誤っています
+@need-lines の引数が誤っています
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@no-page-break`、`@need-lines`、`@page-lines` の引数か本体が、決まった形でない。
-`@no-page-break` は引数を取らない。
-`@need-lines` は 1 以上の整数の位置引数を一つ取る。
-`@page-lines` は、`+` か `-` の符号を付けた 0 でない整数の位置引数を一つ取る。
-どれも本体を持たない。
-そのコマンドは捨て、改ページを変えない。
+`@need-lines` の引数が、1 以上の整数の位置引数一つでない。
+引数がない場合、二つ以上書いた場合、キーワード引数を書いた場合も、この誤りとする。
+誤ったコマンドは捨て、改ページを変えない。
+位置はコマンドの行である。
+本体も書いていれば、G0297 も出る。
 
-- メッセージ: `@no-page-break は引数を取りません`、`@need-lines の引数は 1 以上の整数です`、`@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です`、`<名前> は本体を持てません`
+- メッセージ: `@need-lines の引数は 1 以上の整数です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)
+- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
 
 ### 主な原因
 
-- `@page-lines 1` のように、符号を付けずに書いた。
 - `@need-lines 0` や `@need-lines 2.5` のように、1 以上の整数でない値を書いた。
-- コマンドの次の行を字下げして、本体を書いた。
+- `@need-lines` とだけ書き、行数を書かなかった。
 
 ### 直し方
 
-`@need-lines 5`、`@page-lines +1`、`@page-lines -1` の形で書く。
-`@no-page-break` には何も続けない。
+`@need-lines 5` の形で、1 以上の整数を一つだけ書く。
 
 ## G0271
 
@@ -3099,23 +3094,26 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 ## G0295
 
-累乗の計算が大きすぎます
+累乗の正確な計算に要るビットの数が上限を超えます
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-浮動小数点数の底か、整数の底と負の指数の `**` を、正確に計算すると大きくなりすぎる。
+浮動小数点数の底か、整数の底と負の指数の `**` の正確な計算に要るビットの数が、上限を超える。
 底の絶対値を `m × 2^f`（`m` は正の奇数、`f` は整数）と分けたとき、`(m のビットの数 - 1) × |指数|` が 2^20（1048576）を超える場合である。
 この判定は、結果が倍精度の範囲の内か外かより先に、整数の演算だけで行う。
 このため、結果が範囲の外にある式（`1.5 ** 100000000`）も、範囲の内にある式も、上限を超えればこのエラーになる。
+上限は計算の量の上限であり、結果の値の大きさによらない。
+たとえば `1.0000000000000002 ** 30000` の底は 1 + 2^-52 で、`m` が 53 ビットなので `52 × 30000 = 1560000` が上限を超え、このエラーになる。
+結果はおよそ 1 + 6.7 × 10^-12 であり、倍精度で普通に表せる値である。
 どの式がこのエラーになるかは、底と指数だけで決まる。
 位置は `**` の式の全体である。
 
-- メッセージ: `累乗の計算が大きすぎます（正確な計算に要るビットの数 <n> が、上限の 1048576（2 の 20 乗）を超えます）`。`<n>` は `(m のビットの数 - 1) × |指数|` の値である。
+- メッセージ: `累乗の正確な計算に要るビットの数 <n> が、上限の 1048576（2 の 20 乗）を超えます（結果の大きさによらない上限です）`。`<n>` は `(m のビットの数 - 1) × |指数|` の値である。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.Expr`）
-- ADR: [golem-eval ADR 0005](golem-eval/adr/0005-float-overflow.md)、[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)
+- ADR: [golem-eval ADR 0005](golem-eval/adr/0005-float-overflow.md)、[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)、[golem-eval ADR 0007](golem-eval/adr/0007-power-limit-message.md)
 
 ### 主な原因
 
@@ -3126,6 +3124,9 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 指数を小さくするか、底を変える。
 底が 2 の累乗（`2.0` や `0.5`）なら `m` が 1 なので、指数がいくつでもこのエラーにならない。
+`m` が短いのは、`1.5` や `1.25` のように分母が 2 の累乗の小数だけである。
+`1.1` や `1.0000001` のような十進の小数の底は、倍精度の値の `m` がおよそ 53 ビットになるので、指数の絶対値の上限はおよそ 20000 である。
+十進の桁を減らしても `m` のビットの数は減らないので、底の桁を減らしてもこのエラーは消えない。
 
 ## G0296
 
@@ -3140,15 +3141,15 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 位置引数、キーワード引数、展開した引数のどれでも、この誤りになる。
 コマンドは何も組まない。
 位置はコマンドの行である。
-今の対象は `@printings` である。
+対象は `@column-break`、`@no-page-break`、`@printings` である。
 
 - メッセージ: `<名前> は引数を取りません`。`<名前>` は `@` を付けたコマンドの名前である。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)
+- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
 
 ### 主な原因
 
-- `@printings 1` のように、引数を取らないコマンドの後に値を書いた。
+- `@column-break recto` や `@printings 1` のように、引数を取らないコマンドの後に値を書いた。
 
 ### 直し方
 
@@ -3166,11 +3167,12 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 本体を持てないブロックコマンドの次の行を字下げし、本体を書いた。
 コマンドは何も組まない。
 位置は本体の最初のブロックである。
-今の対象は `@printings` である。
+対象は `@page-break`、`@column-break`、`@no-page-break`、`@need-lines`、`@page-lines`、`@printings` である。
+引数も誤っていれば、引数の誤りのコードの後に出る。
 
 - メッセージ: `<名前> は本体を持てません`。`<名前>` は `@` を付けたコマンドの名前である。
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)
+- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
 
 ### 主な原因
 
@@ -3206,6 +3208,34 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 `manifest.toml` に `[[metadata.printings]]` を足し、版、刷、日付を書く。
 発行の履歴を組まないなら、`@printings` を消す。
+
+## G0299
+
+@page-lines の引数が誤っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@page-lines` の引数が、`+` か `-` の符号を付けた 0 でない整数の位置引数一つでない。
+引数がない場合、二つ以上書いた場合、キーワード引数を書いた場合も、この誤りとする。
+誤ったコマンドは捨て、ページの行数を変えない。
+位置はコマンドの行である。
+本体も書いていれば、G0297 も出る。
+
+- メッセージ: `@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
+
+### 主な原因
+
+- `@page-lines 1` のように、符号を付けずに書いた。
+- `@page-lines +0` のように、0 を書いた。
+
+### 直し方
+
+`@page-lines +1` か `@page-lines -1` の形で、符号を付けた 0 でない整数を一つだけ書く。
 
 ## G0301
 
@@ -4781,10 +4811,11 @@ LSP は出さない。
 
 `--marks japanese` で PDF を作るか検査するときに、`[page]` の `bleed` が 0 である。
 PDF をターゲットに含まないビルドと LSP では出さない。
+`golem check` は四つのターゲットを検査するので、マニフェストのターゲットによらず出す。
 
 - メッセージ: `日本式のトンボには塗り足しが要ります。style.toml の [page] に bleed を書いてください`
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver`）
-- ADR: [golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)
+- ADR: [golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)
 
 ### 主な原因
 
@@ -5952,7 +5983,7 @@ HTML か EPUB を組むとき（`golem build`）にだけ出す。
 
 - メッセージ: `SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。`<名前>` は要素の名前、属性の名前、`url()`、`@import` のどれかである。ほかになければ `ほか <n> 件` を書かない。読めない SVG なら `SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: <パス>（<G0810 と同じ理由>）`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg.Active`）
-- ADR: [docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)
+- ADR: [docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)、[docs/adr/0057](adr/0057-g0814-says-dynamic-content.md)（文言）
 
 ### 主な原因
 
@@ -5994,6 +6025,37 @@ PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出
 ### 直し方
 
 図版を作ったツールで PDF を書き出し直すか、図版を SVG か PNG にする。
+
+## G0819
+
+CFF2 の輪郭のフォントは PDF に埋め込めません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF が使う役割のフォントが、CFF2 の輪郭（`CFF2` の表）を持つ。
+CFF2 の輪郭は、可変の OpenType/CFF2 のフォントが使う。
+PDF の埋め込みフォントの入れ物は CFF2 の輪郭を受けず、TrueType の入れ物に入れた PDF はビューアーで字が描かれない。
+フォントのファイルごとに一つ出す。
+PDF を書かない。
+`golem build` の PDF、`golem check`、`golem preflight` が報告する。
+HTML と EPUB はフォントのファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、出さない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+
+- メッセージ: `CFF2 の輪郭のフォントは PDF に埋め込めません: <パス>。CFF か TrueType の輪郭のフォントを使ってください`。パスは `style.toml` に書いたとおりである。
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Fonts`、golem-font の `Golem.Font`）
+- ADR: [golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)
+
+### 主な原因
+
+- 可変フォントの `.otf`（たとえば `SourceSerif4Variable-Roman.otf`）を、本の役割に指定した。
+
+### 直し方
+
+同じ書体の、CFF の輪郭の版（静的な `.otf`）か TrueType の輪郭の版（`.ttf`）を使う。
+Source Serif 4 なら、`SourceSerif4-Regular.otf` か `SourceSerif4Variable-Roman.ttf` である。
 
 ## G0901
 
@@ -6067,7 +6129,8 @@ PDF を組むとき（`golem build` の PDF と `golem preflight`）にだけ出
 ### 意味
 
 PDF に埋め込んだフォントの形式が、プリフライトの設定の `[font-formats]` の `allowed` にない。
-形式は、`CFF ` の表を持つ OpenType を `cff`、そうでないものを `truetype` とする。
+形式は、`CFF ` の表を持つ OpenType を `cff`、`CFF2` の表を持つ OpenType を `cff2`、そのどちらでもないものを `truetype` とする（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。
+`cff2` のフォントは [G0819](#g0819) で PDF を組めないので、`allowed` に書けるが、この検査には現れない。
 フォントのファイルごとに一つ出す。
 位置は `style.toml` の先頭である。
 
