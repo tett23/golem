@@ -1,6 +1,6 @@
 # ADR 0001: Knuth-Plass による行分割
 
-ステータス: 採択→罰点が等しい候補の選び方は [ADR 0008](0008-explicit-hyphens.md)
+ステータス: 採択→罰点が等しい候補の選び方は [ADR 0008](0008-explicit-hyphens.md)、行長からはみ出す行の診断は [golem-cli ADR 0006](../../golem-cli/adr/0006-preflight.md)
 
 ## 文脈
 

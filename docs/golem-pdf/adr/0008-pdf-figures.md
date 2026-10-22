@@ -1,6 +1,6 @@
 # ADR 0008: PDF の図版と置けない図版の診断
 
-ステータス: 採択→図版の形式の SVG は [ADR 0009](0009-svg-figures.md)
+ステータス: 採択→図版の形式の SVG は [ADR 0009](0009-svg-figures.md)、取り込みの資源の上限は [docs/adr/0040](../../adr/0040-pdf-import-resource-limits.md)
 
 ## 文脈
 

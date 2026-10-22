@@ -1,6 +1,6 @@
 # ADR 0025: 注の印の大きさと書式
 
-ステータス: 採択
+ステータス: 採択→注の本文の先頭の印の後の空きは [golem-layout ADR 0018](../../golem-layout/adr/0018-url-line-breaks.md)
 
 ## 文脈
 

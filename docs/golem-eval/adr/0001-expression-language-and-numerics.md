@@ -1,6 +1,6 @@
 # ADR 0001: 式の言語と数の規則
 
-ステータス: 採択→組み込み関数の `join` は [docs/adr ADR 0033](../../adr/0033-colophon-contributors-and-printings.md)
+ステータス: 採択→組み込み関数の `join` は [docs/adr ADR 0033](../../adr/0033-colophon-contributors-and-printings.md)、累乗、整数と浮動小数点数の比較、整数から浮動小数点数への変換は [ADR 0005](0005-float-overflow.md)
 
 ## 文脈
 

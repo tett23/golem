@@ -1,6 +1,6 @@
 # ADR 0005: 回り込みの図版を PDF のパイプラインにつなぐ
 
-ステータス: 採択→段組みの版面での回り込みの扱いは [docs/adr/0018](../../adr/0018-multi-column-layout.md)、回り込ませない図版の大きさは [ADR 0034](0034-fit-figures-to-column.md)
+ステータス: 採択→段組みの版面での回り込みの扱いは [docs/adr/0018](../../adr/0018-multi-column-layout.md)、回り込ませない図版の大きさは [ADR 0034](0034-fit-figures-to-column.md)、キャプションの書体、大きさ、行の送りは [ADR 0010](0010-caption-style.md)
 
 ## 文脈
 

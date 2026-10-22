@@ -1,6 +1,6 @@
 # ADR 0006: 傍注を PDF に出力する
 
-ステータス: 採択→段組みの版面での傍注欄の扱いは [docs/adr/0018](../../adr/0018-multi-column-layout.md)、傍注の番号の印の組み方と番号を振る範囲は [ADR 0018](0018-footnote-marks-and-numbers.md)
+ステータス: 採択→段組みの版面での傍注欄の扱いは [docs/adr/0018](../../adr/0018-multi-column-layout.md)、傍注の番号の印の組み方と番号を振る範囲は [ADR 0018](0018-footnote-marks-and-numbers.md)、傍注の書体と大きさの欄は [ADR 0011](0011-sidenote-font.md)
 
 ## 文脈
 

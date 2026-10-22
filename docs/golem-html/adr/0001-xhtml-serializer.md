@@ -1,6 +1,6 @@
 # ADR 0001: XHTML と CSS の出力
 
-ステータス: 採択
+ステータス: 採択→注の本文をまとめる場所と一覧の見出しは [golem-driver ADR 0026](../../golem-driver/adr/0026-chapter-end-notes.md)
 
 ## 文脈
 
