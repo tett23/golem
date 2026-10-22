@@ -25,7 +25,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 
 | ジョブ | 内容 |
 | --- | --- |
-| [code: changes] | スクリプトのテスト、ビルドが読む文書の一覧の検査、不完全なパターンをエラーにするフラグの検査、capability の数を実行中に変えないことの検査、ビルドの要否の判定 |
+| [code: changes] | スクリプトのテスト、ビルドが読む文書の一覧の検査、不完全なパターンをエラーにするフラグの検査、capability の数を実行中に変えないことの検査、プラグインの ABI のバージョンの検査、ビルドの要否の判定 |
 | [code: build] | x86-64 と aarch64 でのビルドとテスト、生成したパーサーの検査、二つのマニュアル |
 | [code: determinism] | 二つのアーキテクチャの出力のハッシュの比較 |
 | [code: release-scripts] | [code: VERSION] と全パッケージのバージョンの一致、リリースのスクリプトのテスト |
@@ -40,7 +40,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 
 ## changes
 
-[code: changes] は、最初に次の七つを実行する。
+[code: changes] は、最初に次の八つを実行する。
 
 - [code: scripts/ci/test.sh]：CI のスクリプトのテスト。
 - [code: scripts/manual/test.sh]：マニュアルのスクリプトのテスト。
@@ -49,6 +49,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 - [code: scripts/ci/incomplete-patterns.sh]：[code: modules/] の下のすべてのパッケージのすべてのコンポーネントが、[code: -Werror=incomplete-patterns] でビルドされること。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0027-exhaustive-command-dispatch-by-types.md]（docs/adr の ADR 0027「到達しない診断の分岐を型で除く」）]
 - [code: scripts/ci/unsafe-io.sh]：[code: unsafePerformIO] とその仲間を使う定義が、[code: scripts/ci/unsafe-io-allowed.txt] に残す理由とともに書いたものだけであること（第[ref-number purity]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0034-fewer-unsafe-perform-io.md]（docs/adr の ADR 0034「unsafePerformIO を減らし、残すものを検査で固定する」）]
 - [code: scripts/ci/rts-capabilities.sh]：[code: modules/] の下の Haskell のコードが [code: setNumCapabilities] を呼ばないこと、[code: -threaded] でビルドする実行ファイルとテストのスイートが [code: -with-rtsopts=-N] でリンクされること。
+- [code: scripts/ci/abi-version.sh]：プラグインの ABI のバージョンが、直前のリリースのタグからの ABI の変更に合っていること。CDDL と [code: Golem.Doc.Validate] がコメントと空白を除いてリリースと同じならバージョンも同じで、違えばバージョンが一つ上がっていなければならない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0052-plugin-abi-version-bump-rule.md]（docs/adr の ADR 0052「プラグインの ABI のバージョンは、リリースしたバージョンからだけ上げる」）]
 
 二つの [code: setNumCapabilities] が同時に capability を増やすと、GHC 9.10.3 のランタイムは止まる。
 先に増やした呼び出しが足した capability を、あとの呼び出しが手放さずに残し、次の GC がその capability を待ち続けるからである。

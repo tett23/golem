@@ -45,6 +45,8 @@ $ gh run rerun <実行の ID> --failed
 監査の記録は、ほかの記録と同じく、コミットしたあとは変更しない。
 見つかった問題は、失敗するテストを先に書いてから直し、仕様を変える修正には ADR を書く。
 監査の記録と修正が [code: main] に入るまで、タグを付けない。
+リリースの前に、プラグインの ABI のバージョンを確かめる必要はない。
+直前のリリースからの ABI の変更に合っているかは、CI の [code: changes] ジョブの [code: scripts/ci/abi-version.sh] がプルリクエストごとに検査する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0052-plugin-abi-version-bump-rule.md]（docs/adr の ADR 0052「プラグインの ABI のバージョンは、リリースしたバージョンからだけ上げる」）]
 
 タグと [code: VERSION] が一致しないとき、タグのコミットが [code: main] に含まれないときは、ワークフローの [code: version] ジョブが失敗し、リリースは作られない。
 

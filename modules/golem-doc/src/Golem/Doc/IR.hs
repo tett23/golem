@@ -55,7 +55,10 @@ range of 'Int' too.
 inInt64 :: Integer -> Bool
 inInt64 n = n >= toInteger (minBound :: Int) && n <= toInteger (maxBound :: Int)
 
--- | The ABI version shared with plugins. Bump on any change to the IR.
+{- | The ABI version shared with plugins. It goes up by one when the ABI
+changes after the release that has it, and at most once between two
+releases (docs/adr ADR 0052); scripts/ci/abi-version.sh checks it.
+-}
 abiVersion :: Int
 abiVersion = 7
 

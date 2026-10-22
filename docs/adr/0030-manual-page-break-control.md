@@ -1,6 +1,6 @@
 # ADR 0030: 改ページの手での制御
 
-ステータス: 採択→`@no-page-break`、`@need-lines`、`@page-lines` の誤りのコードは [ADR 0060](0060-page-break-command-codes-by-cause.md)、`@no-page-break` の前の段落から送る行の数は [ADR 0055](0055-no-page-break-moves-short-paragraphs-whole.md)
+ステータス: 採択→ABI のバージョンを上げるかどうかは [ADR 0052](0052-plugin-abi-version-bump-rule.md)、`@no-page-break`、`@need-lines`、`@page-lines` の誤りのコードは [ADR 0060](0060-page-break-command-codes-by-cause.md)、`@no-page-break` の前の段落から送る行の数は [ADR 0055](0055-no-page-break-moves-short-paragraphs-whole.md)
 
 ## 文脈
 
