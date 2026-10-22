@@ -1790,7 +1790,7 @@ SVG の図版は、golem-svg が Haskell で読み、PDF の描画の演算子�
 - 図版の大きさは、ルートの `width` と `height`（なければ `viewBox`）の縦横の比で決める。`viewBox` と `preserveAspectRatio` は Form XObject の中の行列で表す。
 - 数は有理数で計算し、三角関数と平方根は有理数の級数を決まった項数で打ち切って求める。座標と行列の値は、PDF に書くときに 1/65536 に丸める。x86-64 と aarch64 で同じ出力にするためである（[docs/adr/0002](adr/0002-determinism.md)）。
 - 色は sRGB の ICCBased の色空間（`/GolemSRGB`）で書き、DeviceRGB と CMYK への変換は使わない。sRGB のプロファイルは、画像、PDF の図版、SVG の図版で共有し、PDF に一度だけ書く。
-- HTML と EPUB は、SVG の図版をそのまま写して `<img>` で置く（`web` があればそれを置く）。EPUB の `media-type` は `image/svg+xml` である。写す前に、次に定める動的なコンテンツだけを検査する（[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)）。PDF の部分集合の外のもの（輪郭にしていない文字、`@font-face` など）は、HTML と EPUB では許す。
+- HTML と EPUB は、SVG の図版をそのまま写して `<img>` で置く（`web` があればそれを置く）。EPUB の `media-type` は `image/svg+xml` である。写す前に、次に定める動的なコンテンツだけを検査する（[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)、語は [docs/adr/0057](adr/0057-g0814-says-dynamic-content.md)）。PDF の部分集合の外のもの（輪郭にしていない文字、`@font-face` など）は、HTML と EPUB では許す。
 - 動的なコンテンツとは、ブラウザーが SVG を文書として開いたときに動かすか読むものであり、次の表のものを指す。HTML か EPUB を組むとき、写す SVG のファイル（`@figure` の図版か `web` の、拡張子が `.svg` のもの。箇条の中の `@figure` も含む）を golem-svg の XML の読み手で読み、要素と属性を文書の順にたどる。一つでもあれば、その SVG を参照する `@figure` のブロックごとに G0814 のエラーとし、HTML と EPUB を書かない。PDF とプレーンテキストは書く。dev と prod の両方でエラーである。一つの SVG を複数の `@figure` が参照していても、ファイルは一度だけ読む。
 
 | 種類 | 拒むもの |
