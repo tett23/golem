@@ -191,6 +191,33 @@ pageFigureTests =
     testCase "a waiting turned figure is placed before a column break" $
       [(poNumber p, poColumn p, map snd (poSlots p)) | p <- paginate 2 5 [FParagraph (lines' 0 2), FPageFigure 50 [] [], FBreak BreakColumn, FParagraph (lines' 10 1)]]
         @?= [(1, 0, [SLine 0, SLine 1]), (2, 0, [SPageFigure 50]), (3, 0, [SLine 10])],
+    testCase "a column break with only an unturned figure waiting goes to the next column (golem-driver ADR 0039)" $
+      [(poNumber p, poColumn p, map snd (poSlots p)) | p <- paginate 2 5 [FParagraph (lines' 0 4), FFigure 60 3 [] [], FBreak BreakColumn, FParagraph (lines' 10 1)]]
+        @?= [(1, 0, [SLine 0, SLine 1, SLine 2, SLine 3]), (1, 1, [SFigure 60, SLine 10])],
+    testCase "a page break right after a turned figure met on an empty page adds no blank page (golem-driver ADR 0039)" $ do
+      let ps = paginate 1 5 [FPageFigure 50 [] [], FBreak BreakPage, FParagraph (lines' 10 1)]
+      contents ps @?= [[SPageFigure 50], [SLine 10]]
+      map poBlank ps @?= [False, False],
+    testCase "two or three page breaks after a waiting turned figure add no blank page (golem-driver ADR 0039)" $ do
+      let flows k = [FParagraph (lines' 0 2), FPageFigure 50 [] []] <> replicate k (FBreak BreakPage) <> [FParagraph (lines' 10 1)]
+      mapM_
+        ( \k -> do
+            let ps = paginate 1 5 (flows k)
+            contents ps @?= [[SLine 0, SLine 1], [SPageFigure 50], [SLine 10]]
+            any poBlank ps @?= False
+        )
+        [2, 3],
+    testCase "a recto break after a turned figure on page 1 makes page 2 blank (golem-driver ADR 0039)" $ do
+      let ps = paginate 1 5 [FPageFigure 50 [] [], FBreak BreakRecto, FParagraph (lines' 10 1)]
+      [(poNumber p, poBlank p, map snd (poSlots p)) | p <- ps] @?= [(1, False, [SPageFigure 50]), (2, True, []), (3, False, [SLine 10])],
+    testCase "a verso break after a turned figure on page 2 makes page 3 blank (golem-driver ADR 0039)" $ do
+      let ps = paginate 1 5 [FParagraph (lines' 0 1), FPageFigure 50 [] [], FBreak BreakVerso, FParagraph (lines' 10 1)]
+      [(poNumber p, poBlank p, map snd (poSlots p)) | p <- ps]
+        @?= [(1, False, [SLine 0]), (2, False, [SPageFigure 50]), (3, True, []), (4, False, [SLine 10])],
+    testCase "a page break on an empty first page without a turned figure still makes a blank page (golem-driver ADR 0039)" $ do
+      let ps = paginate 1 5 [FBreak BreakPage, FParagraph (lines' 10 1)]
+      map poBlank ps @?= [True, False]
+      contents ps @?= [[], [SLine 10]],
     testCase "a waiting turned figure is placed before a heading at a recto" $ do
       let ps = paginate 1 5 [FParagraph (lines' 0 2), FPageFigure 50 [] [], FParagraph (lines' 10 1), FHeading 1 True 1 (lines' 20 1)]
       [(poNumber p, map snd (poSlots p)) | p <- ps, not (poBlank p)] @?= [(1, [SLine 0, SLine 1, SLine 10]), (2, [SPageFigure 50]), (3, [SHeading 20 1])],
