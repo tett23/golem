@@ -661,17 +661,20 @@ data HiddenFolio = HiddenFolio
     -- | the size of the digits, absolute
     hfSize :: !Dim,
     -- | from the trim line of the gutter to the centre line of the column, absolute
-    hfGutter :: !Dim
+    hfGutter :: !Dim,
+    -- | whether gutter was written: G0329 is at gutter, or at size without it (golem-driver ADR 0041)
+    hfGutterWritten :: !Bool
   }
   deriving stock (Eq, Show)
 
 -- | Without [hidden-folio]: enabled, on the pages without a folio, 6pt, 1.5mm.
 defaultHiddenFolio :: HiddenFolio
-defaultHiddenFolio = HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs (mmToSp (3 % 2)))
+defaultHiddenFolio = HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs (mmToSp (3 % 2))) False
 
-{- | Every error of [hidden-folio] is G0306: a dimension in zw, of 0 or
-less or unreadable, a value of pages outside the table, an unknown key,
-and a gutter less than half the size (golem-driver ADR 0021).
+{- | Every error of reading [hidden-folio] is G0306: a dimension in zw, of
+0 or less or unreadable, a value of pages outside the table and an
+unknown key (golem-driver ADR 0021). A gutter less than half the size is
+G0329, a check after reading ('hiddenFolioChecks', golem-driver ADR 0041).
 -}
 instance FromValue HiddenFolio where
   fromValue = parseTableFromValue $ do
@@ -698,11 +701,46 @@ instance FromValue HiddenFolio where
     gutterAt <- len "gutter"
     let size = maybe (hfSize d) snd sizeAt
         gutter = maybe (hfGutter d) snd gutterAt
-    -- half the size stands for half the advance of a digit, which the font decides; the error is at gutter
-    case (size, gutter, fmap fst gutterAt <|> fmap fst sizeAt) of
-      (Abs s, Abs g, Just l) | 2 * g < s -> failTableAt l "[hidden-folio] の gutter が size の半分より小さいため、隠しノンブルが仕上がりの線を越えます"
-      _ -> pure ()
-    pure (HiddenFolio enabled (fromMaybe (hfPages d) pages) size gutter)
+    pure (HiddenFolio enabled (fromMaybe (hfPages d) pages) size gutter (isJust gutterAt))
+
+{- | G0329 (golem-driver ADR 0041): the column of digits, half the size on
+each side of its centre line, crosses the trim line of the gutter when
+the gutter is less than half the size. Half the size stands for half the
+advance of a digit, which the font decides and style.toml does not know.
+The path of the value to fix (gutter, or size when gutter is not
+written), the message with the values in mm, and the facts in sp.
+-}
+hiddenFolioChecks :: HiddenFolio -> [([Scope], Text, [(Text, Fact)])]
+hiddenFolioChecks hf = case (hfSize hf, hfGutter hf) of
+  (Abs size, Abs gutter)
+    | 2 * gutter < size ->
+        let -- the fewest hundredths of a mm whose sp, doubled, reach the size
+            minGutter = until (\k -> 2 * mmToSp (k % 100) >= size) (+ 1) (max 0 (floor (spToMm size * 50) - 1))
+            -- the most hundredths of a mm whose sp is within twice the gutter
+            maxSize = until (\k -> k <= 0 || mmToSp (k % 100) <= 2 * gutter) (subtract 1) (ceiling (spToMm (2 * gutter) * 100) + 1)
+            path = map ScopeKey ["hidden-folio", if hfGutterWritten hf then "gutter" else "size"]
+            message =
+              "[hidden-folio] の gutter（"
+                <> mm2 (spToMm gutter)
+                <> "）が size（"
+                <> mm2 (spToMm size)
+                <> "）の半分（"
+                <> mm2 (spToMm size / 2)
+                <> "）より小さいため、隠しノンブルの数字が仕上がりの線を越えます（gutter を "
+                <> mm2 (minGutter % 100)
+                <> " 以上にするか、size を "
+                <> mm2 (maxSize % 100)
+                <> " 以下にします）"
+         in [(path, message, [("gutter", FactInt gutter), ("size", FactInt size), ("min-gutter", FactInt (mmToSp (minGutter % 100))), ("max-size", FactInt (mmToSp (maxSize % 100)))])]
+  _ -> []
+  where
+    spToMm sp = toRational sp * (254 % 10) / (72 * 65536)
+    -- mm to two decimals, the third rounded half up
+    mm2 :: Rational -> Text
+    mm2 x =
+      let c = floor (x * 100 + 1 % 2) :: Integer
+          (i, f) = c `divMod` 100
+       in T.pack (show i <> "." <> (if f < 10 then "0" else "") <> show f <> "mm")
 
 -- | How a heading is shown in a running head (golem-driver ADR 0014, 0022).
 data HeadForm = HeadShort | HeadNumbered | HeadNumber
@@ -1774,8 +1812,12 @@ parseStyle fid src = do
   -- the same code and message once, at the path that comes first (golem-project ADR 0008)
   case nubBy (\(c, _, m) (c', _, m') -> (c, m) == (c', m')) [(code, path, m) | (code, _, path, m) <- styleChecks "style.toml の" s] of
     [] -> Right s
-    ds -> Left [diagnostic code Error (at path) m | (code, path, m) <- ds]
+    ds -> Left [(diagnostic code Error (at path) m) {diagFacts = factsOf s code} | (code, path, m) <- ds]
   where
+    -- the facts of G0329 (golem-driver ADR 0041); the other checks have none
+    factsOf st = \case
+      "G0329" -> concat [fs | (_, _, fs) <- hiddenFolioChecks (stHiddenFolio st)]
+      _ -> []
     tree = either (const Nothing) Just (Toml.parse src)
     -- the span of the value to fix, of its table, or the start of the file
     at path = case tree >>= (`checkPosition` path) of
@@ -1818,6 +1860,7 @@ styleChecks owner s =
     <> [("G0306", "", path, m) | (path, m) <- checks]
     <> [("G0306", n, path, m) | (n, path, m) <- codeChecks]
     <> [("G0306", n, path, m) | (n, path, m) <- ruleChecks]
+    <> [("G0329", "", path, m) | (path, m, _) <- hiddenFolioChecks (stHiddenFolio s)]
     <> [("G0308", n, path, "style.toml にないフォントの役割です: " <> r) | (n, path, r) <- roles, Map.notMember r (stFonts s)]
     <> [("G0313", n, path, owner <> "スタイルの参照が不正です: " <> m) | (n, path, m) <- referenceChecks]
     <> [(code, n, path, m) | (n, ParaStyleDef {psRegexStyles = Just rs}) <- Map.toList (stParaStyles s), (i, r) <- zip [0 ..] rs, (code, path, m) <- regexStyleErrors owner s n i r]

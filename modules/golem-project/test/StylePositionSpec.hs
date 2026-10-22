@@ -56,7 +56,6 @@ readingRows =
     Row "columns without column-gap" (grid <> "columns = 2\n") "G0306" "columns = 2" 10 Nothing,
     Row "a bleed in zw" "[page]\nsize = \"A5\"\nbleed = \"1zw\"\n" "G0306" "\"1zw\"" 0 Nothing,
     Row "a page size that is a number" "[page]\nsize = 3\n" "G0317" "3" 0 Nothing,
-    Row "a hidden folio gutter less than half the size" "[hidden-folio]\nsize = \"6pt\"\ngutter = \"1pt\"\n" "G0306" "\"1pt\"" 0 Nothing,
     Row "a hidden folio pages outside the table" "[hidden-folio]\npages = \"some\"\n" "G0306" "\"some\"" 0 Nothing,
     Row "an aki rule value that is no dimension" "[aki-sets.mine]\nrules = [{ before = \"opening\", after = \"closing\", optimum = \"abc\" }]\n" "G0320" "\"abc\"" 0 Nothing,
     Row "an aki rule with an unknown class" "[aki-sets.mine]\nrules = [{ before = \"nothere\", after = \"closing\", optimum = \"四分\" }]\n" "G0320" "\"nothere\"" 0 Nothing,
@@ -86,6 +85,7 @@ readingRows =
 checkRows :: [Row]
 checkRows =
   [ Row "a negative padding of code" "[paragraph-styles.code]\npadding = \"-1mm\"\n" "G0306" "\"-1mm\"" 0 Nothing,
+    Row "a hidden folio gutter less than half the size (golem-driver ADR 0041)" "[hidden-folio]\nsize = \"6pt\"\ngutter = \"1pt\"\n" "G0329" "\"1pt\"" 0 Nothing,
     Row "a negative padding of a character style" "[character-styles.code]\npadding = \"-1mm\"\n" "G0306" "\"-1mm\"" 0 Nothing,
     Row "a key code does not take" "[paragraph-styles.code]\nindent = \"1zw\"\n" "G0306" "\"1zw\"" 0 Nothing,
     Row "a background outside code" "[color.swatches.x]\ncmyk = [0, 0, 0, 0]\n[paragraph-styles.body]\nbackground = \"x\"\n" "G0306" "background = \"x\"" 13 Nothing,

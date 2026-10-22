@@ -321,7 +321,7 @@ type area or the sidenote column of an odd or an even page.
 -}
 hiddenFolioGeometry :: FileId -> Bool -> Style -> Sp -> Bool -> [(Int, [Rect])] -> Either [Diagnostic] (Maybe HiddenFolioGeometry)
 hiddenFolioGeometry fid marks style pw bindingRight areas = case stHiddenFolio style of
-  HiddenFolio True pages (Abs size) (Abs gutter)
+  HiddenFolio True pages (Abs size) (Abs gutter) _
     | marks ->
         let centre p = case gutterSide bindingRight p of
               SideLeft -> gutter
