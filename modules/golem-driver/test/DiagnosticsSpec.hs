@@ -222,6 +222,8 @@ explainTests =
             sort [c | (c, e) <- Map.toList catalog, exStatus e == InUse, isPreflight e] @?= sort [c | DiagnosticCode c <- preflightCodes],
           testCase "the catalog has G0244 retired" $
             fmap exStatus (lookupExplanation "G0244") @?= Just Retired,
+          testCase "golem explain G0329 explains it (golem-driver ADR 0041)" $
+            fmap (\e -> (exStatus e, exTitle e)) (lookupExplanation "G0329") @?= Just (InUse, "隠しノンブルが仕上がりの線を越えます"),
           testCase "G0295 is in use and in the sources (golem-eval ADR 0006)" $ do
             fmap exStatus (lookupExplanation "G0295") @?= Just InUse
             used <- sourceCodes
