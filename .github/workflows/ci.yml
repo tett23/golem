@@ -217,6 +217,9 @@ jobs:
         timeout-minutes: 20
         env:
           GOLEM_REQUIRE_EXTERNAL_TOOLS: "1"
+          # the ten public-domain books are typeset to every target
+          # (docs/adr/0026, docs/adr/0058)
+          GOLEM_PD_BOOKS: "1"
       - name: Generated parser matches the grammar
         if: matrix.tests
         run: |
@@ -335,7 +338,17 @@ jobs:
           persist-credentials: false
       - name: VERSION matches the version of every package (docs/adr/0004)
         run: sh scripts/release/check-version.sh
+      # the pinned Claude Code of mise.toml, as in the notes job of
+      # release.yml, for the check of claude --help; no API key
+      # (docs/adr/0044, docs/adr/0058)
+      - uses: jdx/mise-action@v5
+        env:
+          MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+        with:
+          cache: false
       - name: Tests of the release scripts (docs/adr/0004)
+        env:
+          GOLEM_REQUIRE_CLAUDE: "1"
         run: sh scripts/release/test.sh
 
   format:

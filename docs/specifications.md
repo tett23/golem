@@ -544,8 +544,11 @@ Git のコミットやビルドの環境は含めない。
 一つの段落は `2026年10月16日　初版第1刷発行` の形であり、版の番号が 1 なら「初版」、2 以上なら `第2版` のように番号を入れた形とする。
 年、月、日と版、刷の番号は数の値として組むので、縦組みでは漢数字になる。
 年は一字ずつの漢数字（`kanji-digits`、二〇二六）とし、ほかは `[numbers]` の `vertical` の既定に従う。
-書式はこの一つに固定し、日本語でない本（`language` が `ja` でない本）と `printings` のない本では G0276 とする。
-引数か本体を書いた場合も G0276 とする。
+書式はこの一つに固定する。
+`@printings` の誤りは、原因ごとに一つのコードとし、どれもエラーである（[docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)）。
+引数を書いた場合は G0296（`@printings は引数を取りません`）、本体を書いた場合は G0297（`@printings は本体を持てません`、位置は本体の最初のブロック）、日本語でない本（`language` が `ja` でない本）では G0276、`printings` のない本では G0298 とする。
+四つは互いに独立に判定し、当たるものをすべてこの順に出す。
+どれか一つでもあれば、`@printings` は何も組まない。
 書式を変える設定は、v0.1.0-rc4 か v1.0.0 で扱う予定である（[docs/roadmap.md](roadmap.md) の「発行の履歴の書式」）。
 
 ## 目次と文書構造の参照
@@ -617,7 +620,7 @@ S0 はソースファイルごとに独立して評価し、S1 は各ファイ�
 番号の文字列が空白（U+0020、U+3000、タブ）で終わるときは、区切りを足さない。
 `number = "Chapter {n}: "` のように書式の末尾に区切りを書けば、その区切りがそのまま使われる。
 番号の書式は区切りを変えないので、同じ本の中では章も節も同じ区切りになる。
-この規則は、見出し、図版のキャプション、目次の項目（PDF の目次、本文の `@toc`、HTML の目次のページ、EPUB のナビゲーション文書）、柱の `heading.<l>.numbered` の、すべての出力に適用される。
+この規則は、見出し、図版のキャプション、コードブロックのキャプション（[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）、目次の項目（PDF の目次、本文の `@toc`、HTML の目次のページ、EPUB のナビゲーション文書）、柱の `heading.<l>.numbered` の、すべての出力に適用される。
 HTML の見出しとキャプションでは、区切りを `<span class="number">` の外に、題の前のテキストとして書く。
 番号を持たない見出しと、番号のないキャプションには区切りを置かない。
 傍注の番号とリストの印の後の空きは、この規則によらない。
@@ -1235,7 +1238,7 @@ PDF では、コードブロックを次のように組む。
 - 差分の印の列の幅は空白の送りの 2 倍とし、`+` と `-` を列の始まりに置く。変わらない行には何も置かない。
 - G0743 の行長の不足は、行長から左右の `padding`、行番号の列と空き、差分の印の列、`wrap-mark` の幅を引いた幅で検査する。
 - `file` があれば、最初の部分の先頭に一行を足し、ファイル名をコードの列の始まりに置く。この行と最初のコードの一行は同じページに置き、改ページの後の部分には繰り返さない。
-- キャプションは、リスト番号、全角の空白、キャプションを、背景の外のコードブロックの上に、段落スタイル `caption` の `font` と `size` で、行送りの比を保って組む。キャプションは行の格子の上から始め、最後の行の後からコードブロックの格子の行を占める。キャプションと最初のコードの一行が同じページに収まらなければ、キャプションごと次のページに送る。
+- キャプションは、リスト番号、区切り（「目次と文書構造の参照」の節の番号と題のあいだの区切り、[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）、キャプションを、背景の外のコードブロックの上に、段落スタイル `caption` の `font` と `size` で、行送りの比を保って組む。キャプションは行の格子の上から始め、最後の行の後からコードブロックの格子の行を占める。キャプションと最初のコードの一行が同じページに収まらなければ、キャプションごと次のページに送る。
 - 強調する行と、`added` か `removed` の色を持つ差分の行は、その行（折り返した続きの行を含む）のコードの行送りの帯を背景の左右いっぱいに、背景の上、文字の下に塗る。強調と差分が重なれば強調の色で塗る。
 - 言語の名前が skylighting の構文にあれば、HTML と同じく字句に分け、`[code.colors]` の表にある種類の字句の文字の色だけを変える。構文にない言語と、字句に分けるのに失敗した場合は、色を付けずに組み、diagnostic を出さない。
 - 注釈の印は丸数字（① は U+2460、㉑ は U+3251、㊱ は U+32B1 から）で描き、同じ行の複数の印は空白の送り一つ分を空けて並べる。印を持つ行の行末の最大に空白の送りの 2 倍を足した位置から並べて、どの印もコードの列に収まれば、すべての印をその位置にそろえる。収まらなければ各行の行末から空白の送りの 2 倍の後に置き、それでも収まらない行は印の前で折り返し、続きの行の始まりの位置に置く。
@@ -1452,7 +1455,7 @@ HTML と EPUB では、組み込みの文字スタイルのうち `strong`、`bo
 縦組みの本でも行の方向になるよう、余白は `padding-inline` で書き、行と直交する方向の余白と `box-decoration-break` は書かない。
 行をまたぐ `<code>` の分かれた側には、CSS の既定のとおり余白が付かず、PDF と同じ形になる。
 網の行と直交する方向の範囲は、ブラウザーの行の内容の領域で決まり、PDF の字面とは一致しない。
-キャプションかファイル名のあるコードブロックは `<figure class="listing">` で包み、`<figcaption>` にリスト番号、全角の空白、キャプションを入れ、ファイル名を `<div class="code-file">` に入れて、どちらも `<pre>` の前に置く（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
+キャプションかファイル名のあるコードブロックは `<figure class="listing">` で包み、`<figcaption>` にリスト番号、区切り（「目次と文書構造の参照」の節の番号と題のあいだの区切り、[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）、キャプションを入れ、ファイル名を `<div class="code-file">` に入れて、どちらも `<pre>` の前に置く（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 行番号、強調、差分、注釈の印のどれかを持つコードブロックは、各行を `<span class="line">`（強調は `hl`、追加と削除は `add` と `del` の class を足す）で包み、行番号を `<span class="ln" aria-hidden="true">`、差分の印を `<span class="dm" aria-hidden="true">`、注釈の印を `<span class="callout">①</span>` にする。
 そのようなコードブロックのある本の `style.css` には、`.ln` と `.dm` の `user-select: none`、行番号の右揃えの幅（最大の桁数の `ch`）、強調と差分の背景の色（スウォッチの RGB の近似、強調の既定は墨 15% の近似）を書く。
 `[code.colors]` があれば `code span.<短い class>` の `color` を書き、なければ字句の色を書かない。
@@ -1713,6 +1716,11 @@ HTML と EPUB では、CSS の `text-orientation` の既定の `mixed` に任せ
 OS/2 の `fsType` は OpenType の仕様のとおりに読み、ビット 1（制限付きのライセンス）がビット 2 とビット 3 なしに立っている場合、ビット 8（サブセット化の禁止）が立っている場合、ビット 9（ビットマップの埋め込みだけを許す）が立っている場合に埋め込みを禁じているとみなす（[golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)）。
 Golem は常にサブセットを埋め込むので、サブセット化を禁じるフォントは埋め込めない。
 読み込めないフォント（G0803）と埋め込めないフォント（G0804）は、パスごとにすべて報告する。
+CFF2 の輪郭を持つフォント（可変の OpenType/CFF2）は、PDF に埋め込めないので、PDF が使う役割に指定するとエラー（G0819）とし、PDF を書かない（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。
+PDF の埋め込みフォントの入れ物は CFF2 の輪郭を受けないためである。
+G0819 は読めないフォント（G0803）と原因が違うので、コードを分ける。
+`golem build` の PDF、`golem check`、`golem preflight` が報告し、`golem check` もフォントのファイルを読んで確かめる。
+HTML と EPUB はフォントのファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、拒まない。
 
 PDF は、本文の役割と、見出しの `font`、文字スタイルの `font`、段落スタイル（組み込みの `caption` と `sidenote` を含む）の `font` が指す役割のフォントだけを読み込む（[golem-driver ADR 0003](golem-driver/adr/0003-pdf-heading-styles.md)、[ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)、[docs/adr/0005](adr/0005-character-and-paragraph-styles.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)）。
 コードの書体は役割 `code` で指定し、組み込みの段落スタイル `code` と文字スタイル `code` が既定でこれを指す（[golem-driver ADR 0017](golem-driver/adr/0017-pdf-code-blocks.md)）。
@@ -2115,6 +2123,9 @@ PDF の改ページは、行を版面の格子に先頭から順に詰めて決�
 
 原稿からは、`@page-break`（改ページ）、`@page-break recto`（改丁）、`@page-break verso`（次の偶数ページから始める）、`@column-break`（改段）で改められる（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 記法と置ける位置は [markup.md](markup.md) の「改ページ」の節で定める。
+引数と本体の誤りは原因ごとのコードにし、どれもエラーとして誤ったコマンドを捨てる（[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)）。
+`@page-break` の引数が `recto` か `verso` の一つでなければ G0258、`@column-break` に引数を書けば G0296、どちらかに本体を書けば本体の最初のブロックに G0297 を出す。
+引数と本体の両方が誤っていれば、両方をこの順に出す。
 改ページは意味論 IR の最上位のブロック（`ForcedBreak`）であり、ページの大きさや位置を持たない。
 「次のページから始める」は文書の構造の指定であり、HTML と EPUB でも CSS の `break-before` として意味を持つためである。
 
@@ -2135,6 +2146,9 @@ EPUB の読書環境は文書の境界で改ページし、見開きの左右も
 
 原稿からは、`@no-page-break`（ここで改ページしない）、`@need-lines N`（残りが N 行に足りなければ次の段から続ける）、`@page-lines ±N`（その段の行数を増減する）で、改ページを止めたり、位置を少しずらしたりできる（[docs/adr/0030](adr/0030-manual-page-break-control.md)）。
 記法と規則は [markup.md](markup.md) の「改ページの手での制御」の節で定める。
+引数と本体の誤りは原因ごとのコードにし、どれもエラーとして誤ったコマンドを捨てる（[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)）。
+`@no-page-break` に引数を書けば G0296、`@need-lines` の引数が 1 以上の整数の一つでなければ G0270、`@page-lines` の引数が符号を付けた 0 でない整数の一つでなければ G0299、三つのどれかに本体を書けば本体の最初のブロックに G0297 を出す。
+引数と本体の両方が誤っていれば、両方をこの順に出す。
 三つの印は意味論 IR の最上位のブロック（`PageControl`）である。
 ABI のバージョンは、同じリリースで先に上げた 7 のままとする。
 `ForcedBreak` と別のブロックにしたのは、`@need-lines` と `@page-lines` が版面の行数に依存する PDF だけの指定だからである。
@@ -3038,7 +3052,7 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
-- **CFF2 のフォントの PDF**：CFF2 の輪郭を持つフォント（可変の OpenType/CFF2）を本の役割に使うと、`golem build` は diagnostic を出さずに PDF を書くが、そのフォントを TrueType の入れ物（`FontFile2`）に埋め込むので、PDF として誤っており、macOS の PDFKit では字がすべて黒丸に置き換わる。直すまで、PDF には CFF か TrueType の輪郭のフォントを使う（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。
+今は載せるものがない。
 
 ## 仕様が不明瞭な場合
 

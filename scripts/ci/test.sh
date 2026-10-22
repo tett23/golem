@@ -406,6 +406,24 @@ ubuntu-24.04-arm all true true" ]; then ok; else ng "ci.yml: the matrix of build
 step_if() { awk -v s="$1" -v c="$2" 'index($0, s) { getline; if (index($0, c)) found = 1 } END { exit !found }' "$CI_YML"; }
 if step_if "- run: cabal test all" "if: matrix.tests"; then ok; else ng "ci.yml: the tests run on the runners of the tests"; fi
 if step_if "name: Outputs for the determinism check" "if: matrix.outputs"; then ok; else ng "ci.yml: the outputs are made on the runners of the outputs"; fi
+# the step that starts at a line that matches $1 has a line that matches $2
+step_has() {
+  awk -v s="$1" -v c="$2" 'index($0, s) { on = 1; print; next } on && /^      - / { on = 0 } on' "$CI_YML" | grep -qF -- "$2"
+}
+# the lines of the job $1 of ci.yml
+job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML"; }
+# the ten public-domain books are typeset to every target in CI (docs/adr/0058)
+if step_has "- run: cabal test all" 'GOLEM_PD_BOOKS: "1"'; then ok; else ng "ci.yml: cabal test all has GOLEM_PD_BOOKS"; fi
+# release-scripts installs the pinned Claude Code with mise before test.sh
+# and requires it (docs/adr/0058)
+RS=$WORK/release-scripts.yml
+job_lines release-scripts >"$RS"
+MISE_AT=$(grep -n 'uses: jdx/mise-action@' "$RS" | head -1 | cut -d: -f1)
+TEST_AT=$(grep -n 'run: sh scripts/release/test.sh' "$RS" | head -1 | cut -d: -f1)
+if [ -n "$MISE_AT" ] && [ -n "$TEST_AT" ] && [ "$MISE_AT" -lt "$TEST_AT" ]; then ok; else ng "ci.yml: release-scripts installs Claude Code with mise before test.sh"; fi
+if grep -qF 'MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}' "$RS" && grep -qF 'cache: false' "$RS"; then ok; else ng "ci.yml: release-scripts runs mise as the notes job does"; fi
+if grep -qF 'GOLEM_REQUIRE_CLAUDE: "1"' "$RS"; then ok; else ng "ci.yml: release-scripts runs test.sh with GOLEM_REQUIRE_CLAUDE"; fi
+if grep -q 'ANTHROPIC_API_KEY' "$RS"; then ng "ci.yml: release-scripts has no API key"; else ok; fi
 if grep -qF "matrix.tests && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'" "$CI_YML"; then ok; else ng "ci.yml: a pull request saves dist-newstyle when GHC compiled, from the runner of the tests"; fi
 
 # ---------------------------------------------------------------- release.yml and mise.toml

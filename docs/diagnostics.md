@@ -2000,35 +2000,33 @@ lines の範囲が不正です
 
 ## G0258
 
-改ページのコマンドの引数が誤っています
+@page-break の引数が誤っています
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@page-break` か `@column-break` の引数か本体が誤っている。
+`@page-break` の引数が、`recto` か `verso` の位置引数一つでない。
 `@page-break` は位置引数を一つまで取り、それは `recto` か `verso` である。
-`@column-break` は引数を取らない。
-どちらもキーワード引数と本体を持たない。
+引数を二つ以上書いた場合と、キーワード引数を書いた場合も、この誤りとする。
 誤ったコマンドは捨て、改ページしない。
+位置はコマンドの行である。
+本体も書いていれば、G0297 も出る。
 
-- メッセージ: `@page-break の引数は recto か verso です`、`@column-break は引数を取りません`、`@page-break と @column-break は本体を持てません`
+- メッセージ: `@page-break の引数は recto か verso です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0017](adr/0017-forced-page-breaks.md)
+- ADR: [docs/adr/0017](adr/0017-forced-page-breaks.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
 
 ### 主な原因
 
 - `@page-break page` のように、`recto` と `verso` のほかの語を書いた。
 - `@page-break recto verso` のように、引数を二つ以上書いた。
 - `@page-break x=1` のように、キーワード引数を書いた。
-- `@column-break recto` のように、`@column-break` に引数を書いた。
-- `@page-break` の次の行を字下げして、本体にした。
 
 ### 直し方
 
 ただの改ページは `@page-break` とだけ書き、奇数ページから始めるなら `@page-break recto`、偶数ページから始めるなら `@page-break verso` と書く。
-`@page-break` の次の行を字下げしているなら、字下げをやめる。
 
 ## G0259
 
@@ -2377,34 +2375,31 @@ PDF をターゲットに含むビルドと `golem check`（四つのターゲ�
 
 ## G0270
 
-改ページの制御の引数が誤っています
+@need-lines の引数が誤っています
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@no-page-break`、`@need-lines`、`@page-lines` の引数か本体が、決まった形でない。
-`@no-page-break` は引数を取らない。
-`@need-lines` は 1 以上の整数の位置引数を一つ取る。
-`@page-lines` は、`+` か `-` の符号を付けた 0 でない整数の位置引数を一つ取る。
-どれも本体を持たない。
-そのコマンドは捨て、改ページを変えない。
+`@need-lines` の引数が、1 以上の整数の位置引数一つでない。
+引数がない場合、二つ以上書いた場合、キーワード引数を書いた場合も、この誤りとする。
+誤ったコマンドは捨て、改ページを変えない。
+位置はコマンドの行である。
+本体も書いていれば、G0297 も出る。
 
-- メッセージ: `@no-page-break は引数を取りません`、`@need-lines の引数は 1 以上の整数です`、`@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です`、`<名前> は本体を持てません`
+- メッセージ: `@need-lines の引数は 1 以上の整数です`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)
+- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
 
 ### 主な原因
 
-- `@page-lines 1` のように、符号を付けずに書いた。
 - `@need-lines 0` や `@need-lines 2.5` のように、1 以上の整数でない値を書いた。
-- コマンドの次の行を字下げして、本体を書いた。
+- `@need-lines` とだけ書き、行数を書かなかった。
 
 ### 直し方
 
-`@need-lines 5`、`@page-lines +1`、`@page-lines -1` の形で書く。
-`@no-page-break` には何も続けない。
+`@need-lines 5` の形で、1 以上の整数を一つだけ書く。
 
 ## G0271
 
@@ -2541,33 +2536,30 @@ PNG、JPEG、SVG の図版からは、`page` を消す。
 
 ## G0276
 
-@printings を組めません
+@printings は日本語の本でだけ使えます
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-`@printings` を、日本語でない本か、`[[metadata.printings]]` のない本に書いた。
-`@printings` に引数か本体を書いた場合も、この誤りとする。
-どの場合も、`@printings` は何も組まない。
+`@printings` を、日本語でない本（`[metadata] language` が `ja` でない本）に書いた。
+`@printings` は何も組まない。
 位置は `@printings` の行である。
+`@printings` のほかの誤り（引数の G0296、本体の G0297、`[[metadata.printings]]` の欠けの G0298）も当たれば、それらと一緒に出る。
 
-- メッセージ: `@printings は日本語の本（language = "ja"）でだけ使えます`、`マニフェストに [[metadata.printings]] がありません`、`@printings は引数も本体も取りません`
+- メッセージ: `@printings は日本語の本（language = "ja"）でだけ使えます`
 - 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
-- ADR: [docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)
+- ADR: [docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)、[docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)
 
 ### 主な原因
 
 - `[metadata] language` が `ja` でない本に `@printings` を書いた。発行の履歴の書式は、今は日本語の一つだけである。
-- `manifest.toml` に `[[metadata.printings]]` を書いていない。
-- `@printings` の後に引数を書いたか、字下げした本体を書いた。
 
 ### 直し方
 
-`[[metadata.printings]]` に版、刷、日付を書く。
-日本語でない本では、`meta.printing` の値から発行の履歴を一行ずつ書く。
-`@printings` の引数と本体を消す。
+日本語の本なら、`[metadata] language` を `ja` にする。
+日本語でない本では、`@printings` を消し、`meta.printing` の値から発行の履歴を一行ずつ書く。
 
 ## G0277
 
@@ -3129,6 +3121,115 @@ IR の整数の欄は 64 ビットの符号付き整数に限るので、その�
 
 指数を小さくするか、底を変える。
 底が 2 の累乗（`2.0` や `0.5`）なら `m` が 1 なので、指数がいくつでもこのエラーにならない。
+
+## G0296
+
+引数を取らないコマンドに引数を書きました
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+引数を取らないブロックコマンドに、引数を書いた。
+位置引数、キーワード引数、展開した引数のどれでも、この誤りになる。
+コマンドは何も組まない。
+位置はコマンドの行である。
+対象は `@column-break`、`@no-page-break`、`@printings` である。
+
+- メッセージ: `<名前> は引数を取りません`。`<名前>` は `@` を付けたコマンドの名前である。
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
+
+### 主な原因
+
+- `@column-break recto` や `@printings 1` のように、引数を取らないコマンドの後に値を書いた。
+
+### 直し方
+
+コマンドの行から引数を消す。
+
+## G0297
+
+本体を持てないコマンドに本体を書きました
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+本体を持てないブロックコマンドの次の行を字下げし、本体を書いた。
+コマンドは何も組まない。
+位置は本体の最初のブロックである。
+対象は `@page-break`、`@column-break`、`@no-page-break`、`@need-lines`、`@page-lines`、`@printings` である。
+引数も誤っていれば、引数の誤りのコードの後に出る。
+
+- メッセージ: `<名前> は本体を持てません`。`<名前>` は `@` を付けたコマンドの名前である。
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
+
+### 主な原因
+
+- コマンドの次の行を、続きのつもりで字下げした。
+
+### 直し方
+
+コマンドの次の行の字下げをやめ、別の段落として書く。
+本体のつもりで書いた行が要らなければ消す。
+
+## G0298
+
+マニフェストに [[metadata.printings]] がありません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@printings` を、`manifest.toml` に `[[metadata.printings]]` のない本に書いた。
+`@printings` は何も組まない。
+位置は `@printings` の行である。
+
+- メッセージ: `マニフェストに [[metadata.printings]] がありません`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0033](adr/0033-colophon-contributors-and-printings.md)、[docs/adr/0056](adr/0056-printings-diagnostic-codes-by-cause.md)
+
+### 主な原因
+
+- `manifest.toml` に `[[metadata.printings]]` を書いていない。
+
+### 直し方
+
+`manifest.toml` に `[[metadata.printings]]` を足し、版、刷、日付を書く。
+発行の履歴を組まないなら、`@printings` を消す。
+
+## G0299
+
+@page-lines の引数が誤っています
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`@page-lines` の引数が、`+` か `-` の符号を付けた 0 でない整数の位置引数一つでない。
+引数がない場合、二つ以上書いた場合、キーワード引数を書いた場合も、この誤りとする。
+誤ったコマンドは捨て、ページの行数を変えない。
+位置はコマンドの行である。
+本体も書いていれば、G0297 も出る。
+
+- メッセージ: `@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です`
+- 段階とモジュール: 評価（golem-eval の `Golem.Eval.File`）
+- ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)、[docs/adr/0060](adr/0060-page-break-command-codes-by-cause.md)
+
+### 主な原因
+
+- `@page-lines 1` のように、符号を付けずに書いた。
+- `@page-lines +0` のように、0 を書いた。
+
+### 直し方
+
+`@page-lines +1` か `@page-lines -1` の形で、符号を付けた 0 でない整数を一つだけ書く。
 
 ## G0301
 
@@ -5889,6 +5990,37 @@ HTML か EPUB を組むとき（`golem build`）にだけ出す。
 外部の画像を参照する図は、画像を埋め込むか、`web` に PNG を置く。
 他人から受け取った SVG でこのコードが出たら、中身を確かめてから使う。
 
+## G0819
+
+CFF2 の輪郭のフォントは PDF に埋め込めません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+PDF が使う役割のフォントが、CFF2 の輪郭（`CFF2` の表）を持つ。
+CFF2 の輪郭は、可変の OpenType/CFF2 のフォントが使う。
+PDF の埋め込みフォントの入れ物は CFF2 の輪郭を受けず、TrueType の入れ物に入れた PDF はビューアーで字が描かれない。
+フォントのファイルごとに一つ出す。
+PDF を書かない。
+`golem build` の PDF、`golem check`、`golem preflight` が報告する。
+HTML と EPUB はフォントのファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、出さない。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+
+- メッセージ: `CFF2 の輪郭のフォントは PDF に埋め込めません: <パス>。CFF か TrueType の輪郭のフォントを使ってください`。パスは `style.toml` に書いたとおりである。
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、`Golem.Driver.Fonts`、golem-font の `Golem.Font`）
+- ADR: [golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)
+
+### 主な原因
+
+- 可変フォントの `.otf`（たとえば `SourceSerif4Variable-Roman.otf`）を、本の役割に指定した。
+
+### 直し方
+
+同じ書体の、CFF の輪郭の版（静的な `.otf`）か TrueType の輪郭の版（`.ttf`）を使う。
+Source Serif 4 なら、`SourceSerif4-Regular.otf` か `SourceSerif4Variable-Roman.ttf` である。
+
 ## G0901
 
 プリフライトの設定に誤りがあります
@@ -5961,7 +6093,8 @@ HTML か EPUB を組むとき（`golem build`）にだけ出す。
 ### 意味
 
 PDF に埋め込んだフォントの形式が、プリフライトの設定の `[font-formats]` の `allowed` にない。
-形式は、`CFF ` の表を持つ OpenType を `cff`、そうでないものを `truetype` とする。
+形式は、`CFF ` の表を持つ OpenType を `cff`、`CFF2` の表を持つ OpenType を `cff2`、そのどちらでもないものを `truetype` とする（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。
+`cff2` のフォントは [G0819](#g0819) で PDF を組めないので、`allowed` に書けるが、この検査には現れない。
 フォントのファイルごとに一つ出す。
 位置は `style.toml` の先頭である。
 

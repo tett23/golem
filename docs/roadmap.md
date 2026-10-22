@@ -36,18 +36,13 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - `palt` と `vpal` を、JLReq が空きを決める約物に当てない（未実装、[docs/adr 0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 - SVG の `marker` の循環と深すぎる入れ子を、それぞれのコードのエラーにする（未実装、[docs/adr 0054](adr/0054-svg-marker-cycle-and-depth-codes.md)）。
 - `@no-page-break` の前の 3 行以下の段落は全体を送る（未実装、[docs/adr 0055](adr/0055-no-page-break-moves-short-paragraphs-whole.md)）。
-- `@printings` の誤りを原因ごとのコードに分ける（未実装、[docs/adr 0056](adr/0056-printings-diagnostic-codes-by-cause.md)）。
 - G0814 の文言を「動的なコンテンツ」にする（未実装、[docs/adr 0057](adr/0057-g0814-says-dynamic-content.md)）。
-- CI で動いていなかった二つの検査を CI で動かす（未実装、[docs/adr 0058](adr/0058-run-skipped-checks-in-ci.md)）。
 - 「傍注欄」を「傍注の領域」と言い換える（未実装、[docs/adr 0059](adr/0059-say-sidenote-area.md)）。
-- 改ページのコマンドの誤りを原因ごとのコードに分ける（未実装、[docs/adr 0060](adr/0060-page-break-command-codes-by-cause.md)）。
 - diagnostic のコードを、段階の 2 桁と番号の 3 桁の 5 桁にする（未実装、[docs/adr 0061](adr/0061-five-digit-diagnostic-codes.md)）。ほかの ADR をすべて実装した後に実装する。
 - G0904 を、文字の大きさを決めた定義と色の組ごとに、原稿の文字の位置で報告する（未実装、[golem-cli ADR 0008](golem-cli/adr/0008-g0904-by-size-source-and-colour.md)）。
 - 回した図版を待つあいだの改段と、回した図版のページの後の改ページ（未実装、[golem-driver ADR 0039](golem-driver/adr/0039-breaks-around-turned-figures.md)）。
 - 隠しノンブルの検査を `size` の半分の幅で行い、仕上がりの線を越える誤りを G0329 に分ける（未実装、[golem-driver ADR 0041](golem-driver/adr/0041-hidden-folio-overlap-check-by-size.md)）。
-- コードブロックのリスト番号とキャプションのあいだの区切りを、本の言語で決める（未実装、[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）。
 - G0295 のメッセージを、計算の量の上限として書く（未実装、[golem-eval ADR 0007](golem-eval/adr/0007-power-limit-message.md)）。
-- CFF2 のフォントを PDF の組版で拒む（未実装、[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。
 - CFF のフォントは CFF の表だけを `CIDFontType0C` で埋め込む（未実装、[golem-pdf ADR 0011](golem-pdf/adr/0011-cff-fontfile3-subtype.md)）。
 - `[sidenotes]` の `side` は `"outside"` だけを受け付けるキーとして残す（未実装、[golem-project ADR 0009](golem-project/adr/0009-sidenotes-side-key.md)）。
 
@@ -103,7 +98,7 @@ v1.0.0 のリリースまでに、次の項目を扱う。
 v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 仕様や機能を変える項目は、着手するときに ADR を作成する。
 
-- **可変フォント**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。今は可変フォントを既定のインスタンスとして組むが、サブセットで軸を固定しないので、使わない可変のデータ（fvar、gvar、HVAR、MVAR など）も PDF に埋め込んでいる。glyf の可変フォントで軸を既定の値に固定すると、描画を変えずに PDF が 35K から 8K に縮んだ。CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、それまでは PDF の組版で拒む（草案の golem-font ADR で決める）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、描画を比べる回帰テストで確かめてからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
+- **可変フォント**：可変フォントの軸（太さ、幅など）と名前付きのインスタンスの指定。今は可変フォントを既定のインスタンスとして組むが、サブセットで軸を固定しないので、使わない可変のデータ（fvar、gvar、HVAR、MVAR など）も PDF に埋め込んでいる。glyf の可変フォントで軸を既定の値に固定すると、描画を変えずに PDF が 35K から 8K に縮んだ。CFF2 の輪郭のフォントは、PDF に埋め込むと読めないので、それまでは PDF の組版で G0819 として拒む（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。CFF2 を CFF に変換して受け付けるのは、同梱の HarfBuzz の変換でグリフが崩れたので、HarfBuzz を更新し、描画を比べる回帰テストで確かめてからにする（[golem-font ADR 0001](golem-font/adr/0001-shaping-and-metrics.md)、[golem-driver ADR 0004](golem-driver/adr/0004-pdf-emphasis-and-character-styles.md)）。
 - **コミットをまたいだ出力の比べ**：決定性の検査の出力のハッシュの一覧を、前のコミットの一覧と比べ、出力が変わったプルリクエストを見分けられるようにする。今の決定性の検査は、同じコミットの出力を x86-64 と aarch64 で比べるだけなので、出力を変えないはずのリファクタリングで出力が変わっても見つからない。意図して出力を変える変更は、一覧の更新で明示する（[2026-10-20 のロードマップのレビュー](audits/2026-10-20-roadmap-review.md)）。
 - **番号と題のあいだの区切りの設定**：見出し、図版、コードブロックのキャプションの番号と題のあいだの区切りを、段落スタイルで決められるようにする。今は本の言語で一つに決まり、コードブロックのリスト番号も同じ規則に従う（草案の ADR で決める）。
 - **一つのコードに一つの原因の監査**：今の diagnostic のコードのうち、異なる原因を一つにまとめているものを洗い出し、コードを分ける（仕様書の「設計原則」の「一つのコードに一つの原因」）。コードを分けると、書き手や CI がコードで引いていた扱いが変わるので、1.0.0 の前に済ませる。
