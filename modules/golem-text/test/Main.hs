@@ -97,7 +97,11 @@ tests =
             render "ja" "第{n:kanji}章" [toc 0, heading 5 noHeadingAttrs "海"] @?= ["第一章\x3000海", "", "第一章\x3000海"],
           testCase "captions" $ do
             render "en" "{n}" [heading 0 noHeadingAttrs "A", figure 5 "Cap"] @?= ["1 A", "", "［図1-1 Cap］"]
-            render "ja" "{n}" [heading 0 noHeadingAttrs "A", figure 5 "キャプション"] @?= ["1\x3000\&A", "", "［図1-1\x3000キャプション］"]
+            render "ja" "{n}" [heading 0 noHeadingAttrs "A", figure 5 "キャプション"] @?= ["1\x3000\&A", "", "［図1-1\x3000キャプション］"],
+          testCase "the caption of a code block (golem-driver ADR 0042)" $ do
+            let listing s cap = Block (sp s) Nothing (CodeBlock (Code Nothing Nothing Nothing (Just [Text (sp s) cap]) False [CodeLine "x" Nothing Nothing False []]))
+            render "en" "{n}" [heading 0 noHeadingAttrs "A", listing 5 "設定の読み込み"] @?= ["1 A", "", "リスト1-1 設定の読み込み", "x"]
+            render "ja" "{n}" [heading 0 noHeadingAttrs "A", listing 5 "設定の読み込み"] @?= ["1\x3000\&A", "", "リスト1-1\x3000設定の読み込み", "x"]
         ],
       testCase "a code block: the caption, the file, the diff marks and the callouts (golem-driver ADR 0023)" $ do
         let sp0 = mkSpan (FileId 0) 0 0
