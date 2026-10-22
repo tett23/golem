@@ -54,19 +54,22 @@ templateFiles lang uuid =
         ]
     style = T.unlines $ case lang of
       Japanese ->
-        page "A6" "right" "vertical" "12.5Q" 38 16 "20H" "14mm" "14mm"
+        page "A6" "right" "vertical" "3mm" "12.5Q" 38 16 "20H" "14mm" "14mm"
           <> fonts "# Noto Serif JP (Noto Serif CJK 2.003, Subset OTF), SIL Open Font License 1.1" "ja = \"fonts/NotoSerifJP-Regular.otf\""
           <> rest "第{n:kanji}章"
       English ->
-        page "mass-market" "left" "horizontal" "9.5pt" 24 33 "12pt" "16mm" "15mm"
+        page "mass-market" "left" "horizontal" "0.125in" "9.5pt" 24 33 "12pt" "16mm" "15mm"
           <> fonts "# Source Serif 4 Regular (4.005R), SIL Open Font License 1.1" "latin = \"fonts/SourceSerif4-Regular.otf\""
           <> rest "Chapter {n}"
-    page :: Text -> Text -> Text -> Text -> Int -> Int -> Text -> Text -> Text -> [Text]
-    page size binding mode fontSize chars lines pitch top gutter =
+    -- the bleed is the usual one of the printers of the language
+    -- (golem-pdf ADR 0010): 3mm in Japan, 0.125in in English
+    page :: Text -> Text -> Text -> Text -> Text -> Int -> Int -> Text -> Text -> Text -> [Text]
+    page size binding mode bleed fontSize chars lines pitch top gutter =
       [ "[page]",
         "size = \"" <> size <> "\"",
         "binding = \"" <> binding <> "\"",
         "writing-mode = \"" <> mode <> "\"",
+        "bleed = \"" <> bleed <> "\"",
         "",
         "[page.grid]",
         "font-size = \"" <> fontSize <> "\"",

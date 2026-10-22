@@ -30,7 +30,7 @@ InDesign の新規ドキュメントの設定と、レイアウトグリッド�
 
 [code: \[page\]] には、紙面そのものを書きます。
 
-- [code: size]：判型[index reading=はんけい: 判型]です。[code: "A4"]、[code: "A5"]、[code: "A6"]、[code: "B5"]、[code: "B6"]、[code: "四六判"]、[code: "菊判"]、[code: "新書判"]、[code: "mass-market"]（ペーパーバック）から選びます。寸法は「[ref-title tables]」（[ref-page tables] ページ）に載せています。表にない判型は、[code: size = { width = "148mm", height = "210mm" }] のように幅と高さで書きます。
+- [code: size]：判型[index reading=はんけい: 判型]です。[code: "A4"]、[code: "A5"]、[code: "A6"]、[code: "B5"]、[code: "B6"]、[code: "四六判"]、[code: "菊判"]、[code: "新書判"]、[code: "mass-market"]（ペーパーバック）から選びます。寸法は「[ref-title tables]」（[ref-page tables] ページ）に載せています。表にない判型は、[code: size = { width = "148mm", height = "210mm" }] のように幅と高さで書きます。英語の本の判型は、[code: size = { width = "5.5in", height = "8.5in" }] のようにインチでも書けます。
 - [code: binding]：綴じる側です。縦組みの本は右綴じ（[code: "right"]）、横組みの本は左綴じ（[code: "left"]）が普通です。
 - [code: writing-mode]：縦組み（[code: "vertical"]）か横組み（[code: "horizontal"]）かです。
 - [code: bleed]：塗り足しの幅です（「[ref-title print-pdf]」、[ref-page print-pdf] ページ）。
@@ -46,8 +46,9 @@ InDesign の新規ドキュメントの設定と、レイアウトグリッド�
 - [code: columns]：段数です。省略すると 1 段になります。
 - [code: column-gap]：段と段のあいだの空き（段間）です。[code: columns] が 2 以上なら必ず書きます。
 
-寸法は、[code: mm]、[code: pt]、[code: Q]（級）、[code: H]（歯）、[code: zw]（全角一字分）の単位を付けて書きます。
+寸法は、[code: mm]、[code: pt]、[code: Q]（級）、[code: H]（歯）、[code: in]（インチ）、[code: zw]（全角一字分）の単位を付けて書きます。
 1Q と 1H は、どちらも 0.25mm です。
+1in は 72pt（25.4mm）です。
 
 InDesign のレイアウトグリッドと違うのは、格子が目安ではなく、組版の規則そのものだという点です。
 Golem には、テキストフレームを描いて置く操作がありません。
@@ -118,6 +119,17 @@ Golem はこの欄を仕様のとおりに読み、次のどれかに当たる�
 エラーになったフォントは、ライセンスの条件を変えて使うことはできないので、埋め込みを許すフォントに替えてください。
 この欄はプログラムが読み取るための目印にすぎず、ライセンスの契約の全体ではありません。
 欄が埋め込みを許していても、フォントの使用許諾の契約に別の条件がないかは、契約の文書で確かめてください。
+
+### CFF2 の輪郭のフォント
+
+可変フォントの [code: .otf] の多くは、CFF2 という形式で字の輪郭を持っています。
+PDF の埋め込みフォントの形式は CFF2 の輪郭を受けないので、Golem は CFF2 の輪郭のフォントを PDF に埋め込めません。
+PDF が使う役割にこのフォントを書くと、エラー（G0819）になり、PDF を書きません。
+[code: golem check] と [code: golem preflight] も、このエラーを出します。
+HTML と EPUB は、フォントのファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、このエラーを出しません。
+
+G0819 が出たら、同じ書体の、CFF の輪郭の版（可変でない [code: .otf]）か TrueType の輪郭の版（[code: .ttf]）を使ってください。
+たとえば Source Serif 4 なら、[code: SourceSerif4Variable-Roman.otf] の代わりに、[code: SourceSerif4-Regular.otf] か [code: SourceSerif4Variable-Roman.ttf] を使います。
 
 ### OpenType の機能
 
@@ -241,7 +253,7 @@ space-after = "0.5zw"
 負の値にすると、罫線は段の外の余白に出ます。
 罫線と段落のあいだ（前の罫線の [code: space-after]、後の罫線の [code: space-before]）は書いたとおりに空き、罫線の外側の空きは行の格子に合わせて広がります。
 本文の行が格子からずれないようにするためです。
-間隔は [code: mm]、[code: pt]、[code: Q]、[code: H]、[code: zw] のどれでも書けます。
+間隔は [code: mm]、[code: pt]、[code: Q]、[code: H]、[code: in]、[code: zw] のどれでも書けます。
 間隔の [code: zw] は、段落の文字の大きさではなく、版面の文字の大きさ（[code: \[page.grid\]] の [code: font-size]）を一字とします。
 PDF でも HTML と EPUB でも同じです。
 [code: length] と [code: start-indent] と [code: end-indent] の [code: zw] は、段落スタイルの文字の大きさを一字とします。

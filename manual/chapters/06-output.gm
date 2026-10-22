@@ -72,6 +72,7 @@ Golem の開発では、PDF/X-4 の要件のうち Golem が書く要素（出�
 日本の印刷所に入稿する PDF には、塗り足し[index reading=ぬりたし: 塗り足し]とトンボ[index reading=とんぼ: トンボ]を付けます。
 塗り足しの幅は、[code: style.toml] の [code: \[page\]] の [code: bleed] に書きます。
 日本の印刷所では 3mm が多く使われます。
+[code: golem new] の雛形は、日本語の本に [code: bleed = "3mm"] を、英語の本に英語圏の印刷所の慣行に合わせて [code: bleed = "0.125in"] を、はじめから書いています。
 
 ```toml
 [page]
@@ -127,7 +128,7 @@ enabled = false
 
 入稿用の PDF を作る手順をまとめると、次のようになります。
 
-+ [code: style.toml] の [code: \[page\]] に [code: bleed] を、[code: \[color\]] に [code: intent] を書く。
++ [code: style.toml] の [code: \[page\]] の [code: bleed] を印刷所の指定に合わせ、[code: \[color\]] に [code: intent] を書く。
 + [code: golem preflight --marks japanese] で検査する（次の節）。
 + [code: --marks japanese] と [code: --profile prod] を付けて PDF を組む（[code: --profile prod] は「[ref-title profiles]」、[ref-page profiles] ページ）。
 + 組んだ PDF を商用のプリフライトで検査する。
@@ -136,7 +137,7 @@ enabled = false
 @figure images/crop-marks.png alt="golem new で作った本に、塗り足しと日本式のトンボを付けたページ" wrap=end width=12zw
   塗り足しと日本式のトンボを付けたページ。
 
-図[ref-number fig-crop-marks]は、[code: golem new] で作った本に [code: bleed = "3mm"] を書き、[code: --marks japanese] を付けて組んだページです。
+図[ref-number fig-crop-marks]は、[code: golem new] で作った本（[code: bleed = "3mm"]）に [code: --marks japanese] を付けて組んだページです。
 
 @label preflight
 ## 入稿の前の検査
@@ -160,20 +161,22 @@ InDesign のプリフライトに当たり、Golem では [code: golem preflight
 $ golem preflight
 ```
 
-雛形のままでは、次の二つのエラーが出ます。
-どちらも位置は [code: style.toml] の先頭です。
+雛形のままでは、次のエラーが一つ出ます。
+位置は [code: style.toml] の先頭です。
 
-- G0910：[code: 塗り足しの幅が足りません: 0.0mm（3.0mm 以上にします）]
 - G0914：[code: PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の \[color\] に intent を書きます）]
 
-最後の行には、[code: プリフライト（設定: preflight.toml、基にした設定: print）: エラー 2、警告 0。] で始まる要約が出ます。
+最後の行には、[code: プリフライト（設定: preflight.toml、基にした設定: print）: エラー 1、警告 0。] で始まる要約が出ます。
 
-G0910 は塗り足しがないこと、G0914 は出力インテントがないことを示します。
-どちらも、前の節で説明した入稿の手順の一つ目（[code: bleed] と [code: intent] を書く）をまだしていないためです。
-雛形に [code: bleed] と [code: intent] が書かれていないのは、出力インテントの ICC プロファイルが印刷所ごとに違い、塗り足しを入れると画面で読むための PDF にも余白が付くからです。
+G0914 は出力インテントがないことを示します。
+前の節で説明した入稿の手順の一つ目のうち、[code: intent] を書くことをまだしていないためです。
+雛形に [code: intent] が書かれていないのは、出力インテントの ICC プロファイルが印刷所ごとに違うからです。
+塗り足しは雛形に書いてあるので、塗り足しの幅の検査（G0910）は通ります。
+そのかわり、雛形で組んだ PDF は、トンボを付けなくても仕上がりの外側に塗り足しの分だけ大きくなります。
+画面で読むための PDF が要るときは、[code: bleed] の行を消します。
 
-最初の実行に [code: --marks japanese] を付けなかったのは、塗り足しのない雛形では、日本式のトンボのエラー（G0702）で PDF を組めず、検査まで進まないからです。
-[code: style.toml] の [code: \[page\]] に [code: bleed = "3mm"] を、[code: \[color\]] に [code: intent] を書いてから、入稿する PDF と同じトンボを付けて検査し直します。
+雛形には塗り足しがあるので、最初の実行から [code: --marks japanese] を付けても、日本式のトンボのエラー（G0702）は出ません。
+[code: style.toml] の [code: \[color\]] に [code: intent] を書いてから、入稿する PDF と同じトンボを付けて検査し直します。
 
 ```sh
 $ golem preflight --marks japanese

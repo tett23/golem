@@ -110,7 +110,7 @@ The script connects to the network and needs `cargo` and `rustup`.
 It does not fill in the component column of `c-objects.tsv`; fill it in by hand.
 When changing dependency versions pinned in `cabal.project.freeze`, explain why in the pull request.
 The version of Claude Code, which writes the release notes, is pinned to an exact value at `"npm:@anthropic-ai/claude-code"` in `mise.toml` ([docs/adr/0044](./docs/adr/0044-release-workflow-hardening.md)).
-To raise it, open a pull request that changes `mise.toml`, and check that `claude --help` of the new version still has `--tools` and `--strict-mcp-config` (`scripts/release/test.sh` checks this when that version of `claude` is installed).
+To raise it, open a pull request that changes `mise.toml`, and check that `claude --help` of the new version still has `--tools` and `--strict-mcp-config` (`scripts/release/test.sh` checks this when that version of `claude` is installed; the `release-scripts` job of CI installs that version with mise and always checks it, [docs/adr/0058](./docs/adr/0058-run-skipped-checks-in-ci.md)).
 To link from the release notes to a sibling repository, open a pull request that adds the line `https://github.com/tett23/<repository>/` to `scripts/release/allowed-links.txt`.
 When raising ghcup, change the ghcup version, the commit of the bootstrap script and its SHA-256 in `scripts/release/build-linux.sh` together.
 

@@ -1,6 +1,6 @@
 # ADR 0017: 原稿から改ページ、改丁、改段を指定する
 
-ステータス: 採択→「実装しないこと」の改ページを禁じる指定は [docs/adr/0030](0030-manual-page-break-control.md)、本の最後の改ページの G0408 は [golem-syntax ADR 0002](../golem-syntax/adr/0002-notice-severity.md)、（回した図版のページの直後の改ページで白ページを足さないこと）は [golem-driver ADR 0039](../golem-driver/adr/0039-breaks-around-turned-figures.md)
+ステータス: 採択→「実装しないこと」の改ページを禁じる指定は [docs/adr/0030](0030-manual-page-break-control.md)、本の最後の改ページの G0408 は [golem-syntax ADR 0002](../golem-syntax/adr/0002-notice-severity.md)、`@page-break` と `@column-break` の誤りのコードは [ADR 0060](0060-page-break-command-codes-by-cause.md)、（回した図版のページの直後の改ページで白ページを足さないこと）は [golem-driver ADR 0039](../golem-driver/adr/0039-breaks-around-turned-figures.md)
 
 ## 文脈
 

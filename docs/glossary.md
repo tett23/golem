@@ -57,7 +57,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **行の格子**：版面の中で各行を置く位置の並び（ベースライングリッド）。見開きの左右のページで行の位置がそろう。
 - **脚注の区切り線**：PDF のページ下の脚注の前に引く罫線。`style.toml` の `[notes.rule]` に書いたときだけ引く。本文と脚注のあいだの区切りの領域は格子の行の整数倍で、間隔を書くと行の数が増える（[仕様書](specifications.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 - **罫線の指定**：`style.toml` で罫線を書く共通の値の形。`length`、`weight`、`space-before`、`space-after` の四つのキーを持ち、値の検査はどの使い手でも同じである。今の使い手は脚注の区切り線だけである（[仕様書](specifications.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
-- **sp**：Golem が内部で使う長さの単位。1pt の 65536 分の 1 であり、すべての寸法を整数で扱うためにある。`style.toml` では mm、pt、Q（級）、H（歯）、zw（全角一字分）で書き、読み込むときに sp へ変換する。
+- **sp**：Golem が内部で使う長さの単位。1pt の 65536 分の 1 であり、すべての寸法を整数で扱うためにある。`style.toml` では mm、pt、Q（級）、H（歯）、in（インチ）、zw（全角一字分）で書き、読み込むときに sp へ変換する。
 - **Knuth-Plass の行分割**：段落全体を見て、行の詰まり具合の悪さ（不良度）と罰点の合計が最小になる改行の位置を選ぶ方法。行ごとに目標の行長（L*(i)）を変えられる（[golem-layout ADR 0001](golem-layout/adr/0001-knuth-plass-line-breaking.md)）。
 - **禁則**：行頭や行末に置いてはいけない文字を、その位置に来させない規則。閉じ括弧や句読点は行頭に置かない（[golem-layout ADR 0002](golem-layout/adr/0002-japanese-composition.md)）。
 - **約物**：句読点、括弧、中点などの記号。和文では字面の外側に空きを持ち、隣り合うと空きを詰める。

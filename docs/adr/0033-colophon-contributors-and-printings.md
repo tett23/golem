@@ -1,6 +1,6 @@
 # ADR 0033: 奥付の関係者と刷
 
-ステータス: 採択
+ステータス: 採択→`@printings` の誤りのコード（G0296、G0297、G0298 と G0276 の範囲）は [ADR 0056](0056-printings-diagnostic-codes-by-cause.md)
 
 ## 文脈
 
