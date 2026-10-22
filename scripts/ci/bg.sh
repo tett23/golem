@@ -1,7 +1,8 @@
 #!/bin/sh
 # Runs a command in the background of a CI job, and waits for it in a later
 # step (docs/adr/0037-ci-build-job-speedup.md). The build job installs qpdf
-# and epubcheck this way while cabal builds.
+# and epubcheck this way while cabal builds
+# (docs/adr/0062-epubcheck-from-release-with-cache.md).
 #
 #   bg.sh start NAME COMMAND [ARGUMENTS...]
 #   bg.sh wait NAME
