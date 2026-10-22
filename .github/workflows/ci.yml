@@ -24,6 +24,10 @@ env:
   # written once, for haskell-actions/setup and the cache keys (docs/adr/0009)
   GHC_VERSION: "9.10.3"
   CDDL_VERSION: "0.10.7"
+  # the release zip of w3c/epubcheck, for the cache key and its check
+  # (docs/adr/0062)
+  EPUBCHECK_VERSION: "5.4.0"
+  EPUBCHECK_SHA256: "33350c61038e71dfb3d45a76aed04bf5481e6d5500cb780f6e98db8bbd15a28c"
 
 jobs:
   # Whether the change needs the build and the checks: not when it touches
@@ -114,14 +118,25 @@ jobs:
       # restored and cabal builds, and the step before the tests waits for
       # it. A stalled mirror fails it in 5 minutes (docs/adr/0009,
       # docs/adr/0037)
-      # the tests need qpdf, and epubcheck checks the EPUB of x86-64
-      - name: qpdf, and epubcheck on x86-64, in the background (golem-pdf ADR 0001, golem-epub ADR 0001)
-        env:
-          PACKAGES: ${{ matrix.runner == 'ubuntu-24.04' && matrix.outputs && 'epubcheck' || 'qpdf' }}
+      # the tests need qpdf
+      - name: qpdf in the background (golem-pdf ADR 0001)
+        if: matrix.tests
+        run: sh scripts/ci/bg.sh start apt timeout -k 10 300 sh scripts/ci/apt-install.sh qpdf
+      # epubcheck checks the EPUB of x86-64. It comes from the release zip
+      # of w3c/epubcheck, not from apt, and runs with the Java of the
+      # runner image; the zip is cached by its version and SHA-256
+      # (golem-epub ADR 0001, docs/adr/0062)
+      - name: Cache the release of epubcheck (docs/adr/0062)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/epubcheck/zip
+          key: epubcheck-${{ env.EPUBCHECK_VERSION }}-${{ env.EPUBCHECK_SHA256 }}
+      - name: epubcheck in the background (golem-epub ADR 0001, docs/adr/0062)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
         run: |
-          # PACKAGES is a list of package names
-          # shellcheck disable=SC2086
-          sh scripts/ci/bg.sh start apt timeout -k 10 300 sh scripts/ci/apt-install.sh $PACKAGES
+          echo "$RUNNER_TEMP/epubcheck/bin" >> "$GITHUB_PATH"
+          sh scripts/ci/bg.sh start epubcheck timeout -k 10 300 sh scripts/ci/epubcheck-install.sh "$EPUBCHECK_VERSION" "$EPUBCHECK_SHA256"
       # Every cabal command below reads the test wrapper from
       # cabal.project.local. Given on the command line of cabal test
       # alone, it changed the configuration of the local packages between
@@ -205,9 +220,14 @@ jobs:
       # on golem-test-support, which only the test suites use (docs/adr/0028)
       - name: Only the test suites depend on golem-test-support (docs/adr/0028)
         run: sh scripts/ci/test-only-deps.sh dist-newstyle/cache/plan.json
-      - name: qpdf, and epubcheck on x86-64, are installed
+      - name: qpdf is installed
+        if: matrix.tests
         timeout-minutes: 5
         run: sh scripts/ci/bg.sh wait apt
+      - name: epubcheck is installed
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        timeout-minutes: 5
+        run: sh scripts/ci/bg.sh wait epubcheck
       # qpdf, cddl and openssl are installed above (openssl comes with the
       # runner image): a test that needs one of them fails here instead of
       # being skipped. A suite that does not finish in 10 minutes is

@@ -86,7 +86,7 @@ x86-64 では同じコミットを二つのランナーでビルドし、一方�
 aarch64 では一つのランナー（[code: all]）がすべてを受け持つ。
 主な手順は次のとおりである。
 
-+ qpdf を裏で入れ始める（x86-64 の [code: outputs] では、qpdf の代わりに epubcheck）。入れ終わるのを待つのは、ビルドの直後である。
++ テストを受け持つランナーでは qpdf を、x86-64 の [code: outputs] では epubcheck を、裏で入れ始める。入れ終わるのを待つのは、ビルドの直後である。
 + テストのラッパー [code: scripts/ci/suite-timeout.sh] を [code: cabal.project.local] に書く。
 + GHC 9.10.3 と cabal-install 3.16.1.0 を用意する。GHC のディレクトリ、Hackage の索引、cabal の store、[code: dist-newstyle] をキャッシュから戻す。
 + [code: scripts/fetch-wasmtime.sh] で wasmtime を取得する。
@@ -119,7 +119,21 @@ x86-64 では、テストを受け持つランナーだけが保存する。
 
 qpdf と epubcheck の導入には 20 秒ほどかかるが、使うのはテストと epubcheck だけである。
 そこで [code: scripts/ci/bg.sh] で裏で走らせ、キャッシュの復元とビルドのあいだに済ませる。
-ミラーが止まったときは、5 分で失敗にする。
+導入が 5 分で終わらなければ、失敗にする。
+
+qpdf は apt で入れる。
+apt は、止まったダウンロードを 30 秒で切り、3 回まで取り直す。
+ミラーが一時的に止まっても、5 分を使い切らずに済む。
+
+epubcheck は apt で入れない。
+apt の epubcheck は Java の実行環境を含めて 80 MB ほどを Ubuntu のミラーから取り、ミラーが途中で止まって 5 分の時間切れになることがたびたびあった。
+そこで、配布元（GitHub の w3c/epubcheck）の release の zip を [code: scripts/ci/epubcheck-install.sh] で取る。
+版は 5.4.0 に固定し、[code: ci.yml] の [code: EPUBCHECK_VERSION] と [code: EPUBCHECK_SHA256] に書く。
+SHA-256 が合わない zip は、取ってきたものもキャッシュのものも、失敗にする。
+zip は版と SHA-256 をキーにキャッシュするので、取りに行くのは版を上げたときとキャッシュが消えたときだけである。
+取り出した jar は、ランナーにもとからある Java 17（[code: JAVA_HOME_17_X64]）で動かす。
+[code: epubcheck] の名前で呼べるよう、jar を動かす小さなシェルのスクリプトを [code: PATH] に置く。
+版を上げるときは、[code: ci.yml] の版と SHA-256 を変えるプルリクエストを出す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0062-epubcheck-from-release-with-cache.md]（docs/adr の ADR 0062「epubcheck を apt ではなく配布元の release から取り、キャッシュする」）]
 
 x86-64 で二つのランナーに分けるのは、テストも出力を作る手順も、ランナーの四つのコアを使い切るからである。
 同じランナーの上で二つを同時に走らせても、どちらも遅くなり、合わせた時間はほとんど縮まらない。

@@ -433,16 +433,91 @@ export SUDO_LOG="$WORK/sudo.log"
 run env PATH="$WORK/fakebin:$PATH" sh "$HERE/apt-install.sh" qpdf epubcheck
 expect "apt-install: installs the packages" 0
 if [ "$(cat "$SUDO_LOG")" = "debconf-set-selections: man-db man-db/auto-update boolean false
-apt-get update
-apt-get install -y --no-install-recommends qpdf epubcheck" ]; then ok; else
-  ng "apt-install: man-db is not updated, then update, then install without recommends"
+apt-get -o Acquire::http::Timeout=30 -o Acquire::Retries=3 update
+apt-get -o Acquire::http::Timeout=30 -o Acquire::Retries=3 install -y --no-install-recommends qpdf epubcheck" ]; then ok; else
+  ng "apt-install: man-db is not updated, then update, then install without recommends, each with a timeout of 30 seconds and 3 retries"
   sed 's/^/  sudo: /' "$SUDO_LOG"
 fi
 : >"$SUDO_LOG"
-run env PATH="$WORK/fakebin:$PATH" FAIL_ON="apt-get update" sh "$HERE/apt-install.sh" qpdf
+run env PATH="$WORK/fakebin:$PATH" FAIL_ON="apt-get -o Acquire::http::Timeout=30 -o Acquire::Retries=3 update" sh "$HERE/apt-install.sh" qpdf
 expect "apt-install: a failed update fails" 1
 if ! grep -q 'apt-get install' "$SUDO_LOG"; then ok; else ng "apt-install: nothing is installed after a failed update"; fi
 unset SUDO_LOG
+
+# ---------------------------------------------------------------- epubcheck-install.sh
+# (docs/adr/0062-epubcheck-from-release-with-cache.md)
+
+# a fake release zip with the layout of epubcheck-VERSION.zip; a fake curl
+# on PATH records its arguments and writes the zip to the file of -o; a fake
+# Java prints its arguments
+EC=$WORK/epubcheck
+mkdir -p "$EC/src/epubcheck-9.9.9/lib" "$EC/fakebin" "$EC/java/bin"
+printf 'jar\n' >"$EC/src/epubcheck-9.9.9/epubcheck.jar"
+(cd "$EC/src" && zip -qr "$EC/release.zip" epubcheck-9.9.9)
+if command -v sha256sum >/dev/null 2>&1; then
+  EC_SHA=$(sha256sum "$EC/release.zip" | cut -d' ' -f1)
+else
+  EC_SHA=$(shasum -a 256 "$EC/release.zip" | cut -d' ' -f1)
+fi
+EC_BAD=0000000000000000000000000000000000000000000000000000000000000000
+cat >"$EC/fakebin/curl" <<'FAKE'
+#!/bin/sh
+printf '%s\n' "$*" >>"$CURL_LOG"
+while [ $# -gt 0 ]; do
+  case "$1" in -o) cp "$CURL_ZIP" "$2" || exit 22; shift ;; esac
+  shift
+done
+FAKE
+cat >"$EC/java/bin/java" <<'FAKE'
+#!/bin/sh
+printf 'java %s\n' "$*"
+FAKE
+chmod +x "$EC/fakebin/curl" "$EC/java/bin/java"
+export CURL_LOG="$EC/curl.log" CURL_ZIP="$EC/release.zip"
+# epubcheck_install HOME VERSION SHA: runs the script with the fakes
+epubcheck_install() {
+  env PATH="$EC/fakebin:$PATH" EPUBCHECK_HOME="$1" JAVA_HOME_17_X64="$EC/java" sh "$HERE/epubcheck-install.sh" "$2" "$3"
+}
+: >"$WORK/in"
+run sh "$HERE/epubcheck-install.sh"
+expect "epubcheck-install: no argument" 2
+run sh "$HERE/epubcheck-install.sh" 9.9.9
+expect "epubcheck-install: no SHA-256" 2
+# no cache: the zip is fetched from the release of w3c/epubcheck
+: >"$CURL_LOG"
+run epubcheck_install "$EC/h1" 9.9.9 "$EC_SHA"
+expect "epubcheck-install: a zip of the right SHA-256 is installed" 0
+if grep -qF "https://github.com/w3c/epubcheck/releases/download/v9.9.9/epubcheck-9.9.9.zip" "$CURL_LOG"; then ok; else ng "epubcheck-install: the zip is fetched from the release of w3c/epubcheck"; fi
+if [ -f "$EC/h1/zip/epubcheck-9.9.9.zip" ]; then ok; else ng "epubcheck-install: the zip is kept for the cache"; fi
+CODE=0
+"$EC/h1/bin/epubcheck" book.epub >"$WORK/out" 2>"$WORK/err" || CODE=$?
+expect "epubcheck-install: epubcheck runs the jar with the Java of JAVA_HOME_17_X64" 0 "java -jar $EC/h1/epubcheck-9.9.9/epubcheck.jar book.epub"
+# a wrong SHA-256 fails, and nothing is installed nor cached
+: >"$CURL_LOG"
+run epubcheck_install "$EC/h2" 9.9.9 "$EC_BAD"
+expect "epubcheck-install: a zip of a wrong SHA-256 fails" 1
+if [ ! -e "$EC/h2/bin/epubcheck" ] && [ ! -e "$EC/h2/zip/epubcheck-9.9.9.zip" ]; then ok; else ng "epubcheck-install: nothing is installed nor cached from a zip of a wrong SHA-256"; fi
+# a cached zip: curl is not called
+mkdir -p "$EC/h3/zip"
+cp "$EC/release.zip" "$EC/h3/zip/epubcheck-9.9.9.zip"
+: >"$CURL_LOG"
+run epubcheck_install "$EC/h3" 9.9.9 "$EC_SHA"
+expect "epubcheck-install: a cached zip is installed" 0
+if [ ! -s "$CURL_LOG" ]; then ok; else ng "epubcheck-install: a cached zip is not fetched again"; fi
+if [ -x "$EC/h3/bin/epubcheck" ]; then ok; else ng "epubcheck-install: epubcheck is installed from the cached zip"; fi
+# a cached zip of a wrong SHA-256 fails
+mkdir -p "$EC/h4/zip"
+printf 'not a zip\n' >"$EC/h4/zip/epubcheck-9.9.9.zip"
+run epubcheck_install "$EC/h4" 9.9.9 "$EC_SHA"
+expect "epubcheck-install: a cached zip of a wrong SHA-256 fails" 1
+if [ ! -e "$EC/h4/bin/epubcheck" ]; then ok; else ng "epubcheck-install: nothing is installed from a cached zip of a wrong SHA-256"; fi
+# a failed download fails
+run env PATH="$EC/fakebin:$PATH" CURL_ZIP="$EC/no-such.zip" EPUBCHECK_HOME="$EC/h5" JAVA_HOME_17_X64="$EC/java" sh "$HERE/epubcheck-install.sh" 9.9.9 "$EC_SHA"
+if [ "$CODE" != 0 ] && [ ! -e "$EC/h5/bin/epubcheck" ]; then ok; else ng "epubcheck-install: a failed download fails"; fi
+# no Java at JAVA_HOME_17_X64
+run env PATH="$EC/fakebin:$PATH" EPUBCHECK_HOME="$EC/h6" JAVA_HOME_17_X64="$EC/no-java" sh "$HERE/epubcheck-install.sh" 9.9.9 "$EC_SHA"
+if [ "$CODE" != 0 ] && [ ! -e "$EC/h6/bin/epubcheck" ]; then ok; else ng "epubcheck-install: no Java fails"; fi
+unset CURL_LOG CURL_ZIP
 
 # ---------------------------------------------------------------- ci.yml and cabal
 # (docs/adr/0037-ci-build-job-speedup.md)
@@ -494,6 +569,24 @@ step_has() {
 job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML"; }
 # the ten public-domain books are typeset to every target in CI (docs/adr/0058)
 if step_has "- run: cabal test all" 'GOLEM_PD_BOOKS: "1"'; then ok; else ng "ci.yml: cabal test all has GOLEM_PD_BOOKS"; fi
+# apt installs qpdf on the runners of the tests only; epubcheck comes from
+# its release, cached by its version and SHA-256, on the x86-64 runner of
+# the outputs (docs/adr/0062)
+if step_if "name: qpdf in the background" "if: matrix.tests" && step_has "name: qpdf in the background" "apt-install.sh qpdf"; then ok; else ng "ci.yml: apt installs qpdf on the runners of the tests"; fi
+if grep -n 'apt-install\.sh' "$CI_YML" | grep -q epubcheck || grep -q "'epubcheck'" "$CI_YML"; then ng "ci.yml: apt does not install epubcheck"; else ok; fi
+if grep -Eq '^  EPUBCHECK_VERSION: "[0-9]+\.[0-9]+\.[0-9]+"$' "$CI_YML" && grep -Eq '^  EPUBCHECK_SHA256: "[0-9a-f]{64}"$' "$CI_YML"; then ok; else ng "ci.yml: the version and the SHA-256 of epubcheck are pinned"; fi
+EPUBCHECK_IF="if: matrix.runner == 'ubuntu-24.04' && matrix.outputs"
+if step_if "name: Cache the release of epubcheck" "$EPUBCHECK_IF" &&
+  step_has "name: Cache the release of epubcheck" "uses: actions/cache@" &&
+  step_has "name: Cache the release of epubcheck" 'key: epubcheck-${{ env.EPUBCHECK_VERSION }}-${{ env.EPUBCHECK_SHA256 }}'; then ok; else
+  ng "ci.yml: the release of epubcheck is cached by its version and SHA-256 on the x86-64 runner of the outputs"
+fi
+if step_if "name: epubcheck in the background" "$EPUBCHECK_IF" &&
+  step_has "name: epubcheck in the background" 'sh scripts/ci/bg.sh start epubcheck timeout -k 10 300 sh scripts/ci/epubcheck-install.sh "$EPUBCHECK_VERSION" "$EPUBCHECK_SHA256"'; then ok; else
+  ng "ci.yml: epubcheck-install.sh runs in the background with the pinned version on the x86-64 runner of the outputs"
+fi
+if step_if "name: epubcheck is installed" "$EPUBCHECK_IF" && step_has "name: epubcheck is installed" "bg.sh wait epubcheck"; then ok; else ng "ci.yml: the x86-64 runner of the outputs waits for epubcheck"; fi
+if step_if "name: qpdf is installed" "if: matrix.tests" && step_has "name: qpdf is installed" "bg.sh wait apt"; then ok; else ng "ci.yml: the runners of the tests wait for qpdf"; fi
 # release-scripts installs the pinned Claude Code with mise before test.sh
 # and requires it (docs/adr/0058)
 RS=$WORK/release-scripts.yml

@@ -31,10 +31,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - diagnostic のコードを、段階の 2 桁と番号の 3 桁の 5 桁にする（未実装、[docs/adr 0061](adr/0061-five-digit-diagnostic-codes.md)）。ほかの ADR をすべて実装した後に実装する。
 
-### CI
-
-- epubcheck を apt ではなく配布元の release から取り、キャッシュする（未実装、[docs/adr 0062](adr/0062-epubcheck-from-release-with-cache.md)）。apt の時間切れで CI がおよそ 18% の確率で落ちていた。
-
 ### 既知の不具合の修正
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
@@ -246,6 +242,7 @@ v3 の GUI は、次の原則に従って作る。
   - 開発者のマニュアルの 22 ページのコードの空白と前後の空き、利用者のマニュアルの 285 ページの参照の 11、12、14。
   - 図版を段に収めて回す試料（縦組みと横組み）で、縮めた図版が版面に収まり、回した図版がキャプションと一緒に回ること（[golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)）。
 - **EPUB の検査と読書環境での見え方**：別のファイルの参考文献への引用のリンク、ナビゲーション文書の深さ、プラグインの独自のチャネルを使った EPUB を epubcheck にかけて RSC-012 などが出ないことと、ブラウザと読書環境で見え方を確かめていない（[golem-html ADR 0003](golem-html/adr/0003-cite-links-across-files.md)、[golem-epub ADR 0002](golem-epub/adr/0002-nav-and-toc-depth.md)、[golem-doc ADR 0007](golem-doc/adr/0007-plugin-channel-lists.md)）。
+- **epubcheck と apt の時間切れ**：epubcheck を配布元の release から取るようにした後の 30 回の `ci.yml` の実行で、apt と epubcheck の時間切れが一度も起きないことを確かめていない。結果は `docs/ci-timings/` に記録する（[docs/adr 0062](adr/0062-epubcheck-from-release-with-cache.md)）。
 
 ## 未決事項
 

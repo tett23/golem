@@ -272,6 +272,12 @@ CI を待つ時間は、変更を一つ入れるたびにかかるので、CI �
 プルリクエストの CI が 5 分を超えたら、ほかの作業を止めて、まず CI を改善する（ジョブの分割、キャッシュ、変更のないモジュールの検査を省くことなど）。
 最適化の前後の時間は `docs/ci-timings/` に記録する。
 
+CI の `build` ジョブは、EPUB を検査する epubcheck を apt から入れない。
+配布元（GitHub の w3c/epubcheck）の release の zip を取り、`ci.yml` に書いた SHA-256 で検査してから、ランナーにもとからある Java 17（`JAVA_HOME_17_X64`）で動かす。
+zip は版と SHA-256 をキーにキャッシュするので、取りに行くのは版を上げたときとキャッシュが消えたときだけである。
+今の版は 5.4.0 である。
+版を上げるときは、`ci.yml` の `EPUBCHECK_VERSION` と `EPUBCHECK_SHA256` を変えるプルリクエストを出す（[docs/adr/0062](./docs/adr/0062-epubcheck-from-release-with-cache.md)）。
+
 ## ライセンス
 
 貢献したコードとドキュメントは、[MIT ライセンス](./LICENSE) のもとで配布される。
