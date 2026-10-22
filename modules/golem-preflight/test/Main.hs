@@ -178,6 +178,10 @@ checkTests =
       let r = printRules {ruFontFormats = LevelError, ruFontFormatsAllowed = ["cff"]}
           v = emptyView {vwFonts = [FontView "fonts/a.ttf" "truetype", FontView "fonts/b.otf" "cff"]}
       map diagMessage (only "G0903" (check r v)) @?= ["この設定では使えない形式のフォントです: fonts/a.ttf（truetype）"],
+    testCase "G0903: a CFF2 font is of the form cff2, which allowed may name (golem-font ADR 0003)" $ do
+      let v = emptyView {vwFonts = [FontView "fonts/v.otf" "cff2"]}
+      map diagMessage (only "G0903" (check printRules {ruFontFormats = LevelError} v)) @?= ["この設定では使えない形式のフォントです: fonts/v.otf（cff2）"]
+      fmap ruFontFormatsAllowed (parseRules (FileId 0) "[font-formats]\nallowed = [\"cff\", \"cff2\"]\n") @?= Right ["cff", "cff2"],
     testCase "G0904: small text in two inks or more" $ do
       let k100 = Just ("black", (0, 0, 0, 100))
           rich = Just ("rich", (100, 0, 0, 100))

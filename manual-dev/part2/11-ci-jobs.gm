@@ -25,7 +25,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 
 | ジョブ | 内容 |
 | --- | --- |
-| [code: changes] | スクリプトのテスト、ビルドが読む文書の一覧の検査、不完全なパターンをエラーにするフラグの検査、capability の数を実行中に変えないことの検査、ビルドの要否の判定 |
+| [code: changes] | スクリプトのテスト、ビルドが読む文書の一覧の検査、不完全なパターンをエラーにするフラグの検査、capability の数を実行中に変えないことの検査、プラグインの ABI のバージョンの検査、ビルドの要否の判定 |
 | [code: build] | x86-64 と aarch64 でのビルドとテスト、生成したパーサーの検査、二つのマニュアル |
 | [code: determinism] | 二つのアーキテクチャの出力のハッシュの比較 |
 | [code: release-scripts] | [code: VERSION] と全パッケージのバージョンの一致、リリースのスクリプトのテスト |
@@ -40,7 +40,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 
 ## changes
 
-[code: changes] は、最初に次の七つを実行する。
+[code: changes] は、最初に次の八つを実行する。
 
 - [code: scripts/ci/test.sh]：CI のスクリプトのテスト。
 - [code: scripts/manual/test.sh]：マニュアルのスクリプトのテスト。
@@ -49,6 +49,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 - [code: scripts/ci/incomplete-patterns.sh]：[code: modules/] の下のすべてのパッケージのすべてのコンポーネントが、[code: -Werror=incomplete-patterns] でビルドされること。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0027-exhaustive-command-dispatch-by-types.md]（docs/adr の ADR 0027「到達しない診断の分岐を型で除く」）]
 - [code: scripts/ci/unsafe-io.sh]：[code: unsafePerformIO] とその仲間を使う定義が、[code: scripts/ci/unsafe-io-allowed.txt] に残す理由とともに書いたものだけであること（第[ref-number purity]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0034-fewer-unsafe-perform-io.md]（docs/adr の ADR 0034「unsafePerformIO を減らし、残すものを検査で固定する」）]
 - [code: scripts/ci/rts-capabilities.sh]：[code: modules/] の下の Haskell のコードが [code: setNumCapabilities] を呼ばないこと、[code: -threaded] でビルドする実行ファイルとテストのスイートが [code: -with-rtsopts=-N] でリンクされること。
+- [code: scripts/ci/abi-version.sh]：プラグインの ABI のバージョンが、直前のリリースのタグからの ABI の変更に合っていること。CDDL と [code: Golem.Doc.Validate] がコメントと空白を除いてリリースと同じならバージョンも同じで、違えばバージョンが一つ上がっていなければならない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0052-plugin-abi-version-bump-rule.md]（docs/adr の ADR 0052「プラグインの ABI のバージョンは、リリースしたバージョンからだけ上げる」）]
 
 二つの [code: setNumCapabilities] が同時に capability を増やすと、GHC 9.10.3 のランタイムは止まる。
 先に増やした呼び出しが足した capability を、あとの呼び出しが手放さずに残し、次の GC がその capability を待ち続けるからである。
@@ -90,7 +91,7 @@ aarch64 では一つのランナー（[code: all]）がすべてを受け持つ�
 + GHC 9.10.3 と cabal-install 3.16.1.0 を用意する。GHC のディレクトリ、Hackage の索引、cabal の store、[code: dist-newstyle] をキャッシュから戻す。
 + [code: scripts/fetch-wasmtime.sh] で wasmtime を取得する。
 + テストを受け持つランナーでは、[code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
-+ [code: cabal build all] を実行し、テストを受け持つランナーでは続けて [code: cabal test all] を実行する。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることを確かめる。
++ [code: cabal build all] を実行し、テストを受け持つランナーでは続けて [code: cabal test all] を実行する。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。テストには [code: GOLEM_PD_BOOKS] を付け、フィクスチャの十冊をすべてのターゲットに組む（第[ref-number fixtures]章）。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることを確かめる。
 + テストを受け持つランナーでは、[code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
 + 出力を受け持つランナーでは、二つのマニュアルのフォントをキャッシュから戻す。
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
@@ -148,6 +149,11 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 ## release-scripts と format
 
 [code: release-scripts] は、[code: scripts/release/check-version.sh] で [code: VERSION] と全パッケージの cabal ファイルのバージョンの一致を検査し、[code: scripts/release/test.sh] でリリースのスクリプトのテストを実行する。
+テストの前に、リリースの [code: notes] ジョブと同じく mise で [code: mise.toml] に固定した版の Claude Code を入れ、テストに [code: GOLEM_REQUIRE_CLAUDE=1] を付ける。
+テストは、固定した版の [code: claude --help] にリリースのスクリプトの使うフラグがあることを確かめ、[code: claude] がなければ飛ばさずに失敗する。
+手元では、[code: claude] がなければこの検査を飛ばす。
+API キーは渡さない。
+[code: claude --help] は認証なしで動く。
 バージョンを上げるプルリクエストは、ここで一致を確かめられる（第[ref-number release]章）。
 
 [code: format] は、fourmolu 0.21.0.0 で整形済みであることと、hlint 3.10 の指摘がないことを確かめる（第[ref-number build-test]章）。

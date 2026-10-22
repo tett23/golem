@@ -124,6 +124,86 @@ expect "changed-paths: workflow_dispatch" 3 ""
 run in_g pull_request 1234567890123456789012345678901234567890 "$TOPIC"
 if [ "$CODE" != 0 ] && [ "$CODE" != 3 ]; then ok; else ng "changed-paths: a commit that does not exist (exit code $CODE)"; fi
 
+# ---------------------------------------------------------------- abi-version.sh
+# (docs/adr/0052-plugin-abi-version-bump-rule.md)
+
+AV=$WORK/abi
+# abi_repo: a repository with the three files at ABI 1, tagged v0.0.1
+abi_repo() {
+  rm -rf "$AV"
+  mkdir -p "$AV/modules/golem-doc/schema" "$AV/modules/golem-doc/src/Golem/Doc"
+  (
+    cd "$AV" || exit 1
+    git init -q -b main .
+    git config user.email ci@example.com
+    git config user.name ci
+    printf '; the IR\ndocument = { version: uint }\n' >modules/golem-doc/schema/golem-doc.cddl
+    printf -- '-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\n' >modules/golem-doc/src/Golem/Doc/Validate.hs
+    printf 'module Golem.Doc.IR where\n\nabiVersion :: Int\nabiVersion = 1\n' >modules/golem-doc/src/Golem/Doc/IR.hs
+    git add . && git commit -q -m release && git tag v0.0.1
+  ) >/dev/null 2>&1
+}
+# abi_change NAME CODE [STDERR-WORD...]: commits the changes made in $AV, then runs the script
+abi_change() {
+  name=$1 code=$2
+  shift 2
+  (cd "$AV" && git add -A && git commit -q --allow-empty -m change) >/dev/null 2>&1
+  : >"$WORK/in"
+  run env GOLEM_ROOT="$AV" sh "$HERE/abi-version.sh"
+  expect "abi-version: $name" "$code"
+  for w in "$@"; do
+    if grep -qF -- "$w" "$WORK/err"; then ok; else ng "$name: \"$w\" on stderr"; fi
+  done
+}
+abi_cddl() { printf "$1" >"$AV/modules/golem-doc/schema/golem-doc.cddl"; }
+abi_validate() { printf -- "$1" >"$AV/modules/golem-doc/src/Golem/Doc/Validate.hs"; }
+abi_set() { sed "s/^abiVersion = .*/abiVersion = $1/" "$AV/modules/golem-doc/src/Golem/Doc/IR.hs" >"$AV/ir" && mv "$AV/ir" "$AV/modules/golem-doc/src/Golem/Doc/IR.hs"; }
+abi_repo
+abi_change "nothing changed" 0
+abi_repo
+abi_cddl '; the IR, commented again\ndocument = {  version: uint }\n'
+abi_change "a comment of the CDDL" 0
+abi_repo
+abi_cddl '; the IR\ndocument = { version: uint, title: tstr }\n'
+abi_set 2
+abi_change "a rule of the CDDL and one more version" 0
+abi_repo
+abi_cddl '; the IR\ndocument = { version: uint, title: tstr }\n'
+abi_change "a rule of the CDDL without a new version" 1 "1" "golem-doc.cddl"
+abi_repo
+abi_cddl '; the IR\ndocument = { version: uint, title: tstr }\n'
+abi_set 3
+abi_change "a rule of the CDDL and two more versions" 1 "3"
+abi_repo
+abi_set 2
+abi_change "a new version without a change" 1 "2"
+abi_repo
+abi_validate '-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n >= 0 -- positive\n'
+abi_change "a check of Validate.hs without a new version" 1 "Validate.hs"
+abi_repo
+abi_validate '-- | The checks, again\nmodule Golem.Doc.Validate where\n\n{- | another\nblock {- nested -} comment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- strictly positive\n'
+abi_change "a comment of Validate.hs" 0
+abi_repo
+abi_validate "-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\nq = ('\"', \"a -- b\") -- one\n"
+(cd "$AV" && git add -A && git commit -q -m q && git tag -f v0.0.1) >/dev/null 2>&1
+abi_validate "-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\nq = ('\"', \"a -- b\") -- two\n"
+abi_change "a comment after a character and a string with dashes" 0
+abi_validate "-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\nq = ('\"', \"a -- c\") -- two\n"
+abi_change "dashes in a string are not a comment" 1 "Validate.hs"
+abi_repo
+abi_cddl '; the IR\ndocument = { version: uint, title: tstr }\n'
+abi_validate '-- | The checks\nmodule Golem.Doc.Validate where\n\ncheck :: Int -> Bool\ncheck n = n >= 0\n'
+abi_set 2
+abi_change "the CDDL and Validate.hs and one more version" 0
+abi_repo
+(cd "$AV" && git rm -q modules/golem-doc/src/Golem/Doc/Validate.hs && git commit -q -m gone && git tag -d v0.0.1 && git tag v0.0.1) >/dev/null 2>&1
+abi_validate '-- | The checks\nmodule Golem.Doc.Validate where\n'
+abi_change "Validate.hs missing from the release" 1 "Validate.hs"
+abi_repo
+(cd "$AV" && git tag -d v0.0.1) >/dev/null 2>&1
+abi_change "no release tag" 0
+if grep -q 'no release' "$WORK/out" "$WORK/err"; then ok; else ng "abi-version: no release tag: says the check is skipped"; fi
+
 # ---------------------------------------------------------------- docs-refs.sh
 
 docs_refs() { sh "$HERE/docs-refs.sh" "$@"; }
@@ -406,6 +486,24 @@ ubuntu-24.04-arm all true true" ]; then ok; else ng "ci.yml: the matrix of build
 step_if() { awk -v s="$1" -v c="$2" 'index($0, s) { getline; if (index($0, c)) found = 1 } END { exit !found }' "$CI_YML"; }
 if step_if "- run: cabal test all" "if: matrix.tests"; then ok; else ng "ci.yml: the tests run on the runners of the tests"; fi
 if step_if "name: Outputs for the determinism check" "if: matrix.outputs"; then ok; else ng "ci.yml: the outputs are made on the runners of the outputs"; fi
+# the step that starts at a line that matches $1 has a line that matches $2
+step_has() {
+  awk -v s="$1" -v c="$2" 'index($0, s) { on = 1; print; next } on && /^      - / { on = 0 } on' "$CI_YML" | grep -qF -- "$2"
+}
+# the lines of the job $1 of ci.yml
+job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML"; }
+# the ten public-domain books are typeset to every target in CI (docs/adr/0058)
+if step_has "- run: cabal test all" 'GOLEM_PD_BOOKS: "1"'; then ok; else ng "ci.yml: cabal test all has GOLEM_PD_BOOKS"; fi
+# release-scripts installs the pinned Claude Code with mise before test.sh
+# and requires it (docs/adr/0058)
+RS=$WORK/release-scripts.yml
+job_lines release-scripts >"$RS"
+MISE_AT=$(grep -n 'uses: jdx/mise-action@' "$RS" | head -1 | cut -d: -f1)
+TEST_AT=$(grep -n 'run: sh scripts/release/test.sh' "$RS" | head -1 | cut -d: -f1)
+if [ -n "$MISE_AT" ] && [ -n "$TEST_AT" ] && [ "$MISE_AT" -lt "$TEST_AT" ]; then ok; else ng "ci.yml: release-scripts installs Claude Code with mise before test.sh"; fi
+if grep -qF 'MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}' "$RS" && grep -qF 'cache: false' "$RS"; then ok; else ng "ci.yml: release-scripts runs mise as the notes job does"; fi
+if grep -qF 'GOLEM_REQUIRE_CLAUDE: "1"' "$RS"; then ok; else ng "ci.yml: release-scripts runs test.sh with GOLEM_REQUIRE_CLAUDE"; fi
+if grep -q 'ANTHROPIC_API_KEY' "$RS"; then ng "ci.yml: release-scripts has no API key"; else ok; fi
 if grep -qF "matrix.tests && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'" "$CI_YML"; then ok; else ng "ci.yml: a pull request saves dist-newstyle when GHC compiled, from the runner of the tests"; fi
 
 # ---------------------------------------------------------------- release.yml and mise.toml

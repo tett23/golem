@@ -82,6 +82,11 @@ tests han sans serif noto =
             loadFont (withFsType 0x0002 serif) >>= (@?= Left (EmbeddingRestricted 0x0002)) . void
             loadFont (withFsType 0x0200 serif) >>= (@?= Left (EmbeddingRestricted 0x0200)) . void
             loadFont (withFsType 0x0008 serif) >>= (@?= Right ()) . void,
+          testCase "CFF2 outlines are told from CFF and glyf ones (golem-font ADR 0003)" $ do
+            cff2 <- load "SourceSerif4Variable-Roman.otf"
+            glyfVariable <- loadFont serif >>= either (assertFailure . show) pure
+            map fontIsCff2 [cff2, sans, glyfVariable] @?= [True, False, False]
+            map fontIsCff [cff2, sans, glyfVariable] @?= [False, True, False],
           testCase "fsType as the OpenType specification reads it: the least restrictive usage, no subsetting (golem-driver ADR 0016)" $ do
             sequence_ [loadFont (withFsType v serif) >>= (@?= Left (EmbeddingRestricted v)) . void | v <- [0x0102, 0x0100, 0x0302]]
             sequence_ [loadFont (withFsType v serif) >>= (@?= Right ()) . void | v <- [0x0000, 0x0004, 0x0008, 0x0006, 0x000A]],

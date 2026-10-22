@@ -120,6 +120,17 @@ Golem はこの欄を仕様のとおりに読み、次のどれかに当たる�
 この欄はプログラムが読み取るための目印にすぎず、ライセンスの契約の全体ではありません。
 欄が埋め込みを許していても、フォントの使用許諾の契約に別の条件がないかは、契約の文書で確かめてください。
 
+### CFF2 の輪郭のフォント
+
+可変フォントの [code: .otf] の多くは、CFF2 という形式で字の輪郭を持っています。
+PDF の埋め込みフォントの形式は CFF2 の輪郭を受けないので、Golem は CFF2 の輪郭のフォントを PDF に埋め込めません。
+PDF が使う役割にこのフォントを書くと、エラー（G0819）になり、PDF を書きません。
+[code: golem check] と [code: golem preflight] も、このエラーを出します。
+HTML と EPUB は、フォントのファイルをそのまま同梱し、ブラウザーと読書環境が CFF2 を描くので、このエラーを出しません。
+
+G0819 が出たら、同じ書体の、CFF の輪郭の版（可変でない [code: .otf]）か TrueType の輪郭の版（[code: .ttf]）を使ってください。
+たとえば Source Serif 4 なら、[code: SourceSerif4Variable-Roman.otf] の代わりに、[code: SourceSerif4-Regular.otf] か [code: SourceSerif4Variable-Roman.ttf] を使います。
+
 ### OpenType の機能
 
 OpenType のフォントは、字形の置き換えや字送りの調整を、機能という単位で持っています。

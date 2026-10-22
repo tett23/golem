@@ -50,6 +50,12 @@ diagnosticSiteTests =
           r <- loadFonts golemFontProvider tmp (FileId 7) style []
           either (map (\d -> (diagCode d, diagSpan d, diagMessage d))) (const []) r
             @?= [(DiagnosticCode "G0802", mkSpan (FileId 7) 0 0, "フォントのファイルがありません: fonts/none.otf")],
+      testCase "G0819: the font provider by itself rejects a CFF2 font (golem-font ADR 0003)" $
+        withSystemTempDirectory "golem-sites" $ \tmp -> do
+          BS.readFile "../golem-font/test/fonts/SourceSerif4Variable-Roman.otf" >>= BS.writeFile (tmp </> "v.otf")
+          style <- either (assertFailure . show) pure (parseStyle (FileId 0) "[fonts.body]\nlatin = \"v.otf\"\n")
+          r <- loadFonts golemFontProvider tmp (FileId 7) style []
+          either (map (\d -> (diagCode d, diagSpan d))) (const []) r @?= [(DiagnosticCode "G0819", mkSpan (FileId 7) 0 0)],
       testCase "G0806: rendering a PDF whose output intent is missing stops at the top of style.toml" $
         withMiniEvaluated (horizontalStyle <> "\n[color]\nintent = \"icc/none.icc\"\n") "本文。\n" $ \tmp e -> do
           inp <- inputOf tmp e

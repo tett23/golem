@@ -22,6 +22,7 @@ extra-doc-files:
   cbits/freetype/LICENSE.TXT
   cbits/freetype/docs/FTL.TXT
   test/fonts/OFL.txt
+  test/fonts/SourceSerif4-OFL.txt
 
 common warnings
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -Werror=incomplete-patterns

@@ -239,7 +239,8 @@ activeContentTests =
     testCase "a broken SVG is G0814 with the reason of G0810; more than one thing adds ほか" $ do
       (errs, _, _, _, _) <- activeBuild Dev [TargetHtml] "@figure images/b.svg alt=\"t\"\n" [("images/b.svg", "<svg")]
       map fst errs @?= [DiagnosticCode "G0814"]
-      assertBool (show errs) (all (("images/b.svg（" `T.isInfixOf`) . snd) errs)
+      -- the wording of docs/adr ADR 0057
+      assertBool (show errs) (all (("SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: images/b.svg（" `T.isPrefixOf`) . snd) errs)
       (errs2, _, _, _, _) <- activeBuild Dev [TargetHtml] "@figure images/s.svg alt=\"t\"\n" [("images/s.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect onclick=\"\"/><script/></svg>")]
       map snd errs2 @?= ["SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: images/s.svg:1:70（onclick）ほか 1 件"],
     testCase "two @figure of one SVG, one in a list, give one G0814 each, at their blocks" $ do
