@@ -3720,7 +3720,7 @@ manifest.toml がありません
 ### 直し方
 
 表の名前（`"A4"`、`"A5"`、`"A6"`、`"B5"`、`"B6"`、`"四六判"`、`"菊判"`、`"新書判"`、`"mass-market"`）を書くか、`size = { width = "148mm", height = "210mm" }` のように寸法で書く。
-単位は `mm`、`pt`、`Q`、`H` とし、`zw` は使わない。
+単位は `mm`、`pt`、`Q`、`H`、`in` とし、`zw` は使わない。
 
 ## G0318
 
@@ -4764,7 +4764,7 @@ plugins.lock を読めません
 7. 段組みの版面に `[sidenotes]` がある。
 8. 傍注欄が判型からはみ出す。
 9. `[notes.rule]` の `length` が行長（段組みでは段の行長）より長い。
-10. 段落スタイル（名前の順）と見出し（階層の順）の罫線が、仕上がりの線を超えるか、段組みの版面で段間の半分を超える（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。行の方向では、`start-indent`、`end-indent`、`length` で段の外に出る量を、左右（縦組みでは天地）の余白と比べる。行に直交する方向では、`keep-in-column = false` の罫線の内側の間隔と太さを、天地（縦組みでは左右）の余白と比べる。余白は奇数ページと偶数ページの狭いほうである。
+10. 段落スタイル（名前の順）と見出し（階層の順）の罫線が、仕上がりの線を超えるか、段組みの版面で段間の半分を超える（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。行の方向では、`start-indent`、`end-indent`、`length` で段の外に出る量を、左右（縦組みでは天地）の余白と比べる。行に直交する方向では、`keep-in-column = false` の罫線の内側の間隔と太さを、天地（縦組みでは左右）の余白と比べる。余白は奇数ページと偶数ページの狭いほうである。段間の半分と比べるのは行の方向だけで、行に直交する方向の罫線は段間と比べない（[golem-driver ADR 0040](golem-driver/adr/0040-rules-outside-column-only-at-type-area-edge.md)）。
 
 PDF をターゲットに含むときは、ビルドと `golem check` の両方で、レイアウトの前に報告する。
 PDF を書かない。
@@ -4774,7 +4774,7 @@ LSP は出さない。
 
 - メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注欄を設けられません`、`段組みの版面には傍注欄を設けられません`、`版面と傍注欄の合計がページからはみ出しています`、`脚注の区切り線の length が行長を超えます`、`段落スタイル <名前> の罫線が仕上がりの線を超えます`、`段落スタイル <名前> の罫線が段間の半分を超えます`、`見出し <階層> の罫線が仕上がりの線を超えます`、`見出し <階層> の罫線が段間の半分を超えます`
 - 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`、golem-driver の `Golem.Driver`）
-- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[docs/adr/0018](adr/0018-multi-column-layout.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md) も触れる）
+- ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[docs/adr/0018](adr/0018-multi-column-layout.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)、[golem-driver ADR 0040](golem-driver/adr/0040-rules-outside-column-only-at-type-area-edge.md) も触れる）
 
 ### 主な原因
 
@@ -4785,7 +4785,8 @@ LSP は出さない。
 - 縦組みの版面に傍注欄を設けた。
 - `[page.grid]` の `columns` が 2 以上の版面に傍注欄（`[sidenotes]`）を設けた。
 - 脚注の区切り線（`[notes.rule]`）の `length` が、一行の長さ（段組みでは一段の行長）より長い。
-- 段落スタイルか見出しの罫線を、`start-indent`、`end-indent`、`length`、`keep-in-column = false` で、余白の幅か段間の半分を超えて段の外に出した。
+- 段落スタイルか見出しの罫線を、`start-indent`、`end-indent`、`length` で、余白の幅か段間の半分を超えて段の外に出した。
+- 段落スタイルか見出しの罫線を、`keep-in-column = false` で、天地（縦組みでは左右）の余白を超えて段の外に出した。この罫線は余白とだけ比べ、段間の半分とは比べない（[golem-driver ADR 0040](golem-driver/adr/0040-rules-outside-column-only-at-type-area-edge.md)）。
 
 ### 直し方
 

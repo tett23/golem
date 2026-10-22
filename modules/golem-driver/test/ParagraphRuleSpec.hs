@@ -87,6 +87,33 @@ paragraphRuleTests =
       case rects content of
         [(_, y, _, _)] -> near y (top + 2)
         other -> assertFailure (show other),
+    testCase "keep-in-column = false: the rule of the first paragraph of the second column in the head margin (golem-driver ADR 0040)" $ do
+      content <- miniPdf fakeProvider True (withRule horizontal2 "weight = \"0.5pt\", space-after = \"2pt\", keep-in-column = false") "前。\n\n@column-break\n\n@style sec\n  節。\n" [] >>= fmap BS.concat . inflateAll
+      (xSetsu, ySetsu) <- glyphAt content '節'
+      let top = 595.2756 - mmPt 18
+      -- 節 on the first grid line of the second column
+      near (ySetsu + 8.8) top
+      near xSetsu (mmPt 20 + 140)
+      case rects content of
+        [(x, y, _, _)] -> near x (mmPt 20 + 140) >> near y (top + 2)
+        other -> assertFailure (show other),
+    testCase "keep-in-column = false, vertical: the rule of the second column in the right margin, not in the gap (golem-driver ADR 0040)" $ do
+      let style = replaceIn "characters = 42" "characters = 20" (replaceIn "columns = 1" "columns = 2\ncolumn-gap = \"2zw\"" pdfStyle)
+      content <- miniPdf fakeProvider True (withRule style "weight = \"0.5pt\", space-after = \"2pt\", keep-in-column = false") "前。\n\n@column-break\n\n@style sec\n  節。\n" [] >>= fmap BS.concat . inflateAll
+      (xSetsu, _) <- glyphAt content '節'
+      (xMae, _) <- glyphAt content '前'
+      let size = 13 / 4 * 72 / 25.4
+          top = mmPt (182 - 18)
+      -- 節 on the first grid line of the second column, as 前 of the first
+      near xSetsu xMae
+      case [r | r@(_, _, w, _) <- rects content, w < 1] of
+        [(x, y, _, h)] -> do
+          -- right of the right edge of the type area
+          near (x - (xSetsu + size / 2)) 2
+          -- over the second column only: below the first column and the gap
+          near (y + h) (top - 22 * size)
+          near h (20 * size)
+        other -> assertFailure (show other),
     testCase "a heading rule after: the inner space below the last grid line of the heading" $ do
       let style = horizontalStyle <> "\n[headings.1]\nrule-after = { weight = \"0.5pt\", space-before = \"2pt\" }\n"
           source = "# 章\n\n本文。\n"

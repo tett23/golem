@@ -42,7 +42,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - diagnostic のコードを、段階の 2 桁と番号の 3 桁の 5 桁にする（未実装、[docs/adr 0061](adr/0061-five-digit-diagnostic-codes.md)）。ほかの ADR をすべて実装した後に実装する。
 - G0904 を、文字の大きさを決めた定義と色の組ごとに、原稿の文字の位置で報告する（未実装、[golem-cli ADR 0008](golem-cli/adr/0008-g0904-by-size-source-and-colour.md)）。
 - 回した図版を待つあいだの改段と、回した図版のページの後の改ページ（未実装、[golem-driver ADR 0039](golem-driver/adr/0039-breaks-around-turned-figures.md)）。
-- `keep-in-column = false` の罫線を版面の外に出すのは、版面の端に接する段の端だけとする（未実装、[golem-driver ADR 0040](golem-driver/adr/0040-rules-outside-column-only-at-type-area-edge.md)）。
 - 隠しノンブルの検査を `size` の半分の幅で行い、仕上がりの線を越える誤りを G0329 に分ける（未実装、[golem-driver ADR 0041](golem-driver/adr/0041-hidden-folio-overlap-check-by-size.md)）。
 - コードブロックのリスト番号とキャプションのあいだの区切りを、本の言語で決める（未実装、[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）。
 - G0295 のメッセージを、計算の量の上限として書く（未実装、[golem-eval ADR 0007](golem-eval/adr/0007-power-limit-message.md)）。
@@ -50,7 +49,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - `golem check` の G0702 の条件と、雛形の塗り足し（未実装、[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)）。
 - CFF のフォントは CFF の表だけを `CIDFontType0C` で埋め込む（未実装、[golem-pdf ADR 0011](golem-pdf/adr/0011-cff-fontfile3-subtype.md)）。
 - `[sidenotes]` の `side` は `"outside"` だけを受け付けるキーとして残す（未実装、[golem-project ADR 0009](golem-project/adr/0009-sidenotes-side-key.md)）。
-- 寸法にインチの単位 `in` を加える（未実装、[golem-project ADR 0010](golem-project/adr/0010-inch-unit.md)）。
 
 ### 既知の不具合の修正
 
