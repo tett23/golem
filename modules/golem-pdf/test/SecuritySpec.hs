@@ -81,6 +81,17 @@ contentsOf refs streams =
         <> streams
     )
 
+-- | A content stream of @n@ bytes of @0 g@ (a colour set at the top), Flate-compressed.
+grayStream :: Int -> ByteString
+grayStream n = stream "/Filter /FlateDecode" (compressed (BS.concat (replicate (n `div` 4) "0 g\n")))
+
+-- | The Form XObjects a page's content calls by the names Golem gives (docs/adr ADR 0051).
+innerForms :: ImportedPage -> [ByteString]
+innerForms p = [body | (_, OStream d body) <- ipObjects p, lookup "Subtype" d == Just (OName "Form")]
+
+inflated :: ByteString -> ByteString
+inflated = BL.toStrict . Z.decompress . BL.fromStrict
+
 -- | A stream of @n@ bytes of NUL (white space in a content stream), Flate-compressed.
 nulStream :: Int -> ByteString
 nulStream n = stream "/Filter /FlateDecode" (zeros n)
@@ -173,18 +184,34 @@ tests =
             -- of the file, about 150 bytes a byte), quadratic reading a few GB
             assertBool ("allocated " <> show bytes) (bytes < 512 * toInteger (BS.length body)),
       localOption (mkTimeout (seconds 60)) $
-        testCase "C3: one stream of 8 MiB named 40 times in Contents is inflated once" $
+        testCase "C3: one stream of 8 MiB named 40 times in Contents is inflated once and written once (docs/adr ADR 0051)" $
           do
-            -- the joined content would be 320 MiB, more than one stream may be, so it is refused
             let pdf = contentsOf (BC.unwords (replicate 40 "4 0 R")) [(4, nulStream (8 * mib))]
             (r, bytes) <- allocatedBy (imported 1 pdf)
-            refusedFor tooLarge r
-            assertBool ("allocated " <> show bytes) (bytes < toInteger (300 * mib)),
+            readOk r
+            assertBool ("allocated " <> show bytes) (bytes < toInteger (300 * mib))
+            p <- either (assertFailure . show) pure (importPage 1 pdf)
+            ipContent p @?= BC.intercalate "\n" (replicate 40 "/GolemC4 Do")
+            map (BS.length . inflated) (innerForms p) @?= [8 * mib],
       localOption (mkTimeout (seconds 60)) $
         testCase "C3: one stream of 8 MiB named 30 times in Contents counts 8 MiB" $
           do
             let pdf = contentsOf (BC.unwords (replicate 30 "4 0 R")) [(4, nulStream (8 * mib))]
-            imported 1 pdf >>= (@?= Right (30 * 8 * mib + 29, 0)),
+            imported 1 pdf >>= (@?= Right (30 * BS.length "/GolemC4 Do" + 29, 1)),
+      localOption (mkTimeout (seconds 120)) $
+        testCase "C3: a stream of 8 MiB that sets the colour at the top, named 40 times, is ContentTooLarge (docs/adr ADR 0051)" $
+          do
+            let pdf = contentsOf (BC.unwords (replicate 40 "4 0 R")) [(4, grayStream (8 * mib))]
+            (r, bytes) <- allocatedBy (imported 1 pdf)
+            r @?= Left (ContentTooLarge (40 * 8 * mib + 39))
+            assertBool ("allocated " <> show bytes) (bytes < toInteger (300 * mib)),
+      localOption (mkTimeout (seconds 300)) $
+        testCase "the joined content of a stream named 32 times is refused, of one named 31 times read (docs/adr ADR 0051)" $
+          do
+            let named k = contentsOf (BC.unwords (replicate k "4 0 R")) [(4, grayStream (8 * mib))]
+            imported 1 (named 32) >>= (@?= Left (ContentTooLarge (32 * 8 * mib + 31)))
+            -- not reused: the content is the streams joined
+            imported 1 (named 31) >>= (@?= Right (31 * 8 * mib + 30, 0)),
       localOption (mkTimeout (seconds 120)) $
         testCase "C3: an ICC profile of 130 MiB named by two colour spaces is decoded once" $
           do

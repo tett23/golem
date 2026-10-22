@@ -5,6 +5,7 @@ no set line reaches past its target length.
 module LineBreakingSpec (lineBreakingTests) where
 
 import Golem.Layout.KnuthPlass
+import Golem.Layout.Look (noBoxSource)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -14,7 +15,7 @@ import Test.Tasty.Hedgehog (testProperty)
 
 -- | Words of the given widths separated by glue of width 6, stretch 3 and shrink 2.
 paragraph :: [Sp] -> [Item]
-paragraph ws = concat [Box w (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0) : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
+paragraph ws = concat [Box w (BoxContent "w" False 0 0 0 referenceLook 0 0 [] 0 0 noBoxSource) : [Glue 6 3 2 | i < length ws - 1] | (i, w) <- zip [0 :: Int ..] ws] <> finish
 
 -- | Where the last box of a set line ends.
 lastBoxEnd :: Line -> Sp

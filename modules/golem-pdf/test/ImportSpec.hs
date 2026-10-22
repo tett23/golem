@@ -149,6 +149,7 @@ tests =
       testGroup "pages" pageTests,
       testGroup "what is refused" refusalTests,
       testGroup "colours" colourTests,
+      testGroup "content streams named more than once (docs/adr ADR 0051)" reuseTests,
       testGroup "writing" writingTests
     ]
 
@@ -318,6 +319,64 @@ rgbPdf =
     ( onePage "<< /XObject << /Im1 5 0 R >> >>" "1 0 0 rg /DeviceRGB cs 0 0 1 1 re f 0 0 0 1 k /Im1 Do"
         <> [(5, stream "/Type /XObject /Subtype /Image /Width 1 /Height 1 /BitsPerComponent 8 /ColorSpace /DeviceRGB" "\xff\x00\x00")]
     )
+
+-- | One page whose Contents is the array given, with the resources and the streams given.
+contentsPage :: ByteString -> ByteString -> [RawObj] -> ByteString
+contentsPage resources refs streams =
+  classicPdf
+    ""
+    ( [ catalog,
+        (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+        (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources " <> resources <> " /Contents [" <> refs <> "] >>")
+      ]
+        <> streams
+    )
+
+-- | The decoded data of a stream object.
+inflate :: ByteString -> ByteString
+inflate = BL.toStrict . Z.decompress . BL.fromStrict
+
+reuseTests :: [TestTree]
+reuseTests =
+  [ testCase "a closed stream named twice is one inner Form, called twice by Do, rewritten once" $ do
+      p <- importOk 1 (contentsPage "<< >>" "4 0 R 4 0 R" [(4, stream "" "q 1 0 0 rg 0 0 1 1 re f Q")])
+      ipContent p @?= "/GolemC4 Do\n/GolemC4 Do"
+      let xobjects = case ipResources p of
+            ODict kv | Just (ODict xs) <- lookup "XObject" kv -> xs
+            _ -> []
+      case lookup "GolemC4" xobjects of
+        Just (ORef k) -> case lookup k (ipObjects p) of
+          Just (OStream d body) -> do
+            inflate body @?= "q /GolemSRGB cs 1 0 0 sc 0 0 1 1 re f Q"
+            lookup "Subtype" d @?= Just (OName "Form")
+            -- the BBox of the outer Form, and the identity matrix
+            fmap length (lookup "BBox" d >>= \case OArr xs -> Just xs; _ -> Nothing) @?= Just 4
+            lookup "Matrix" d @?= Just (OArr (map OInt [1, 0, 0, 1, 0, 0]))
+            let inner = case lookup "Resources" d of
+                  Just (ODict kv) | Just (ODict xs) <- lookup "XObject" kv -> map fst xs
+                  _ -> []
+            assertBool (show inner) ("GolemC4" `notElem` inner)
+          other -> assertFailure (show other)
+        other -> assertFailure (show (other, ipResources p))
+      ipColors p @?= [UseRgb],
+    testGroup
+      "a page whose streams do not meet the conditions is joined as before"
+      [ testCase name $ do
+          p <- importOk 1 (contentsPage resources refs streams)
+          ipContent p @?= joined
+          assertBool "no inner Form" (not ("GolemC" `hasInfix` ipContent p))
+      | (name, resources, refs, streams, joined) <-
+          [ ("the stream named twice sets a colour at the top", "<< >>", "4 0 R 4 0 R", [(4, stream "" "1 0 0 rg 0 0 1 1 re f")], "/GolemSRGB cs 1 0 0 sc 0 0 1 1 re f\n/GolemSRGB cs 1 0 0 sc 0 0 1 1 re f"),
+            ("the stream named twice starts with Q", "<< >>", "5 0 R 4 0 R 4 0 R", [(4, stream "" "Q q 0 0 1 1 re f"), (5, stream "" "q")], "q\nQ q 0 0 1 1 re f\nQ q 0 0 1 1 re f"),
+            ("the stream named twice ends with q", "<< >>", "4 0 R 4 0 R 5 0 R", [(4, stream "" "0 0 1 1 re f q"), (5, stream "" "Q Q")], "0 0 1 1 re f q\n0 0 1 1 re f q\nQ Q"),
+            ("the stream named twice leaves a BDC open", "<< >>", "4 0 R 4 0 R 5 0 R", [(4, stream "" "/Span << >> BDC 0 0 1 1 re f"), (5, stream "" "EMC EMC")], "/Span << >> BDC 0 0 1 1 re f\n/Span << >> BDC 0 0 1 1 re f\nEMC EMC"),
+            ("a stream ends with BT and the next starts with ET", "<< >>", "5 0 R 4 0 R 4 0 R 6 0 R", [(4, stream "" "q Q"), (5, stream "" "BT"), (6, stream "" "ET")], "BT\nq Q\nq Q\nET"),
+            ("a stream ends with the operands 1 0, which the next one uses", "<< >>", "5 0 R 4 0 R 4 0 R", [(4, stream "" "0 rg q Q"), (5, stream "" "1 0")], "/GolemSRGB cs 1 0 0 sc q Q\n0 rg q Q"),
+            ("the page has GolemC4 in its XObject already", "<< /XObject << /GolemC4 6 0 R >> >>", "4 0 R 4 0 R", [(4, stream "" "q 0 0 1 1 re f Q"), (6, stream "/Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources << >>" "0 0 1 1 re f")], "q 0 0 1 1 re f Q\nq 0 0 1 1 re f Q"),
+            ("streams named once each may open and close a q between them", "<< >>", "4 0 R 5 0 R", [(4, stream "" "q 0 0 1 1 re f"), (5, stream "" "Q")], "q 0 0 1 1 re f\nQ")
+          ]
+      ]
+  ]
 
 colourTests :: [TestTree]
 colourTests =

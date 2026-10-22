@@ -51,6 +51,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import Golem.Pdf.Drawing (Drawing)
 import Golem.Pdf.Image (ImageData, inflateUpTo, unfilterPng)
+import Golem.Pdf.Number (showRationalDigits)
 import Golem.Pdf.Object
 import Golem.Pdf.Sha256 (sha256)
 import Golem.Pdf.Srgb (srgbProfile)
@@ -109,6 +110,8 @@ data ImportError
   | RgbInlineImage
   | OptionalContent
   | UnsupportedUserUnit
+  | -- | the length of the content of a page whose Contents are joined, over 256 MiB (G0815, docs/adr ADR 0051)
+    ContentTooLarge !Int
   deriving stock (Eq, Show)
 
 -- | What a figure placed in a PDF is (golem-pdf ADR 0008, 0009).
@@ -136,6 +139,7 @@ importErrorText = \case
   RgbInlineImage -> "RGB のインライン画像があります"
   OptionalContent -> "レイヤー（オプショナルコンテンツ）があります"
   UnsupportedUserUnit -> "UserUnit が 1 でないページは使えません"
+  ContentTooLarge _ -> "ページの内容をつなぐと 256 MiB を超えます"
 
 tshow :: (Show a) => a -> Text
 tshow = T.pack . show
@@ -1002,14 +1006,21 @@ importM n bytes = do
       _ -> badM "Rotate"
   resources <- maybe (pure (VDict [])) (resolve doc) (inResources inh)
   group <- traverse (resolve doc) (lookup "Group" page)
-  content <- pageContent doc page
+  parts <- contentParts doc page
   -- the objects the resources and the group reach, each once
   objs <- collect doc (resources : maybe [] pure group)
   let roots = resources : maybe [] pure group
       values = roots <> [o | (_, o, _) <- objs]
   checkObjects doc objs values
-  -- the content streams decoded, checked and with DeviceRGB replaced
-  (pageBytes, pageChanged, pageUses) <- liftR (rewriteContent content)
+  -- the content streams decoded, checked and with DeviceRGB replaced; a stream named more than once is written once (docs/adr ADR 0051)
+  shared <- reusedContent doc resources parts
+  (pageBytes, pageChanged, pageUses, inner) <- case shared of
+    Just r -> pure r
+    Nothing -> do
+      let total = sum (map (BS.length . snd) parts) + max 0 (length parts - 1)
+      when (total > maxStreamBytes) (liftR (Left (ContentTooLarge total)))
+      (b, ch, us) <- liftR (rewriteContent (BS.intercalate "\n" (map snd parts)))
+      pure (b, ch, us, [])
   rewritten <-
     Map.fromList
       <$> traverse
@@ -1033,6 +1044,30 @@ importM n bytes = do
           | otherwise -> conv o
       profile = OStream [("N", OInt 3), ("Filter", OName "FlateDecode")] (flate srgbProfile)
       size = if rotate == 90 || rotate == 270 then (y1 - y0, x1 - x0) else (x1 - x0, y1 - y0)
+      -- the resources of the page, which the inner Forms share (docs/adr ADR 0051)
+      pageResources = (if contentNeeds then addSrgb' else id) (conv resources)
+      -- the inner Forms are keyed by page too, since their resources are the page's
+      innerForm body =
+        OStream
+          [ ("Type", OName "XObject"),
+            ("Subtype", OName "Form"),
+            ("BBox", OArr [OReal (showRationalDigits 6 v) | v <- [x0, y0, x1, y1]]),
+            ("Matrix", OArr (map OInt [1, 0, 0, 1, 0, 0])),
+            ("Resources", pageResources),
+            ("Filter", OName "FlateDecode")
+          ]
+          (flate body)
+      innerKey k = negate (k * 4294967296 + n)
+      calledForms = [(innerName k, ORef (innerKey k)) | (k, _) <- inner]
+      withForms = \case
+        ODict kv
+          | not (null calledForms) ->
+              let xobjects = case lookup "XObject" kv of
+                    Just (ODict xs) -> xs
+                    Just (ORef r) | ODict xs <- conv (Map.findWithDefault VNull r raw) -> xs
+                    _ -> []
+               in ODict (filter ((/= "XObject") . fst) kv <> [("XObject", ODict (xobjects <> calledForms))])
+        other -> other
   uses <- objectUses doc values
   pure
     ImportedPage
@@ -1041,10 +1076,10 @@ importM n bytes = do
         ipBox = box,
         ipRotate = rotate,
         ipSize = size,
-        ipResources = (if contentNeeds then addSrgb' else id) (conv resources),
+        ipResources = withForms pageResources,
         ipGroup = conv <$> group,
         ipContent = pageBytes,
-        ipObjects = map object objs <> [(0, profile) | withProfile],
+        ipObjects = map object objs <> [(innerKey k, innerForm body) | (k, body) <- inner] <> [(0, profile) | withProfile],
         ipColors = nub (pageUses <> concat [u | (_, _, u) <- Map.elems rewritten] <> uses)
       }
 
@@ -1056,30 +1091,72 @@ checkHeader b =
         then Right ()
         else bad "ヘッダー"
 
-{- | The content of a page: its streams decoded and joined by newlines. A
-stream named more than once is decoded once, and the joined content may
-be no larger than 'maxStreamBytes' (docs/adr ADR 0040).
+{- | The streams of the content of a page, decoded, in order, with the
+numbers of those that are objects. A stream named more than once is
+decoded once (docs/adr ADR 0040).
 -}
-pageContent :: Doc -> Dict -> M ByteString
-pageContent d page = case lookup "Contents" page of
-  Nothing -> pure ""
+contentParts :: Doc -> Dict -> M [(Maybe Int, ByteString)]
+contentParts d page = case lookup "Contents" page of
+  Nothing -> pure []
   Just v ->
     resolve d v >>= \case
-      VArr xs -> do
-        parts <- traverse one xs
-        when (sum (map BS.length parts) + length parts - 1 > maxStreamBytes) (badM tooLarge)
-        pure (BS.intercalate "\n" parts)
-      _ -> one v
+      VArr xs -> traverse one xs
+      _ -> pure <$> one v
   where
     one = \case
       VRef k ->
         fetch d k >>= \case
-          VStream dict body -> decodedObject d k dict body
-          VNull -> pure ""
+          VStream dict body -> (Just k,) <$> decodedObject d k dict body
+          VNull -> pure (Nothing, "")
           _ -> badM "内容のストリーム"
-      VStream dict body -> decodeStream d dict body
-      VNull -> pure ""
+      VStream dict body -> (Nothing,) <$> decodeStream d dict body
+      VNull -> pure (Nothing, "")
       _ -> badM "内容のストリーム"
+
+-- | The name of the inner Form of the stream that is the object @k@ (docs/adr ADR 0051).
+innerName :: Int -> Text
+innerName k = "GolemC" <> T.pack (show k)
+
+{- | The content of a page whose Contents names a stream more than once,
+when each such stream can be written once as an inner Form XObject and
+called by Do (docs/adr ADR 0051): every stream ends clean, every stream
+named more than once is closed and quiet, and the XObject resources have
+none of the names given to the inner Forms. Each stream is rewritten once.
+The content, whether it changed, the colour spaces, and the rewritten
+streams called as inner Forms; Nothing when the page is to be joined.
+-}
+reusedContent :: Doc -> V -> [(Maybe Int, ByteString)] -> M (Maybe (ByteString, Bool, [ColorUse], [(Int, ByteString)]))
+reusedContent d resources parts
+  | Map.null repeated = pure Nothing
+  | otherwise = do
+      xobjects <- maybe (pure VNull) (resolve d) (look "XObject" resources)
+      let taken = [k | k <- Map.keys repeated, isJust (look (TE.encodeUtf8 (innerName k)) xobjects)]
+          once = Map.fromList [(k, rewriteContentShaped b) | (Just k, b) <- parts]
+          shaped = [maybe (rewriteContentShaped b) (\k -> Map.findWithDefault (rewriteContentShaped b) k once) key | (key, b) <- parts]
+      pure $ case sequence shaped of
+        Right rs
+          | null taken,
+            all (\(_, _, _, sh) -> shClean sh) rs,
+            and [shClosed sh && shQuiet sh | (k, Right (_, _, _, sh)) <- Map.toList once, Map.member k repeated] ->
+              let piece (key, _) (b, _, _, _) = case key of
+                    Just k | Map.member k repeated -> TE.encodeUtf8 ("/" <> innerName k <> " Do")
+                    _ -> b
+                  firsts = nubOrdOn fst [(k, b) | ((Just k, _), (b, _, _, _)) <- zip parts rs, Map.member k repeated]
+               in Just
+                    ( BS.intercalate "\n" (zipWith piece parts rs),
+                      any (\(_, ch, _, _) -> ch) rs,
+                      foldl (\acc u -> if u `elem` acc then acc else acc <> [u]) [] (concat [us | (_, _, us, _) <- rs]),
+                      firsts
+                    )
+        _ -> Nothing
+  where
+    repeated = Map.filter (>= (2 :: Int)) (Map.fromListWith (+) [(k, 1) | (Just k, _) <- parts])
+    nubOrdOn f = go Set.empty
+      where
+        go _ [] = []
+        go seen (x : xs)
+          | Set.member (f x) seen = go seen xs
+          | otherwise = x : go (Set.insert (f x) seen) xs
 
 -- | What a stream is to the copy: its data is decoded and rewritten, or copied as it is.
 data Role = Plain | Content
@@ -1289,7 +1366,39 @@ copied as a slice of the input, so that a stream of many small tokens
 takes memory in proportion to its length (docs/adr ADR 0040).
 -}
 rewriteContent :: ByteString -> R (ByteString, Bool, [ColorUse])
-rewriteContent c = go 0 0 0 0 0 0 0 0 0 0 0 0 [] []
+rewriteContent c = (\(out, changed, uses, _) -> (out, changed, uses)) <$> rewriteContentShaped c
+
+{- | What a content stream read alone, from a clean state, leaves (docs/adr
+ADR 0051): whether it ends clean (no operand pending, outside a text
+object, no path being built, no ET without its BT), whether it is closed
+(q and Q, BMC or BDC and EMC, balanced and never more closed than opened)
+and whether it is quiet (no operator that sets the graphics state or the
+text state outside q and Q).
+-}
+data Shape = Shape
+  { shClean :: !Bool,
+    shClosed :: !Bool,
+    shQuiet :: !Bool
+  }
+  deriving stock (Eq, Show)
+
+-- the state of 'Shape' while reading, packed in one Int: flags, the depth of q, the depth of marked content
+inTextBit, inPathBit, leakBit, badEtBit, badNestBit, qUnit, mkUnit :: Int
+inTextBit = 1
+inPathBit = 2
+leakBit = 4
+badEtBit = 8
+badNestBit = 16
+qUnit = 32
+mkUnit = 1 `shiftL` 34
+
+qDepth, mkDepth :: Int -> Int
+qDepth st = (st `shiftR` 5) .&. ((1 `shiftL` 29) - 1)
+mkDepth st = st `shiftR` 34
+
+-- | 'rewriteContent' with the 'Shape' of the stream, read in the same pass.
+rewriteContentShaped :: ByteString -> R (ByteString, Bool, [ColorUse], Shape)
+rewriteContentShaped c = go 0 0 0 0 0 0 0 0 0 0 0 0 0 [] []
   where
     len = BS.length c
     at = BU.unsafeIndex c
@@ -1303,43 +1412,84 @@ rewriteContent c = go 0 0 0 0 0 0 0 0 0 0 0 0 [] []
       where
         match !x = x >= BS.length kw || (at (s + x) == BU.unsafeIndex kw x && match (x + 1))
     addUse u us = if u `elem` us then us else us <> [u]
+    shapeOf !n !st =
+      Shape
+        { shClean = n == 0 && st .&. (inTextBit .|. inPathBit .|. badEtBit) == 0,
+          shClosed = st .&. badNestBit == 0 && qDepth st == 0 && mkDepth st == 0,
+          shQuiet = st .&. leakBit == 0
+        }
+    {- the state after the operator from i to j (docs/adr ADR 0051); the
+    operators that set the graphics state or the text state leak it outside
+    q and Q, text state operators inside a text object too -}
+    stepState !i !j !st = case j - i of
+      1 -> case at i of
+        113 -> st + qUnit
+        81 -> closeQ
+        w
+          | w `BS.elem` "mlcvyh" -> st .|. inPathBit
+          | w `BS.elem` "SsfFBbn" -> endPath
+          | w `BS.elem` "wJjMdiGgKkW\"" -> leak
+          | otherwise -> st
+      2
+        | is i j "BT" -> st .|. inTextBit
+        | is i j "ET" -> if st .&. inTextBit == 0 then st .|. badEtBit else st - inTextBit
+        | is i j "re" -> st .|. inPathBit
+        | is i j "f*" || is i j "B*" || is i j "b*" -> endPath
+        | any2 ["cm", "ri", "gs", "CS", "cs", "SC", "sc", "RG", "rg", "W*", "Tc", "Tw", "Tz", "TL", "Tf", "Tr", "Ts"] -> leak
+        | otherwise -> st
+      3
+        | is i j "BMC" || is i j "BDC" -> st + mkUnit
+        | is i j "EMC" -> if mkDepth st == 0 then st .|. badNestBit else st - mkUnit
+        | is i j "SCN" || is i j "scn" -> leak
+        | otherwise -> st
+      _ -> st
+      where
+        closeQ = if qDepth st == 0 then st .|. badNestBit else st - qUnit
+        endPath = if st .&. inPathBit == 0 then st else st - inPathBit
+        leak = if qDepth st == 0 then st .|. leakBit else st
+        any2 = go2
+          where
+            go2 = \case
+              [] -> False
+              kw : rest -> is i j kw || go2 rest
     {- i: where reading is; n: the operands since the last operator (4 for
-    more than three); (k1, s1, e1): the kind (0 other, 1 number, 2 name),
-    the start and the end of the last operand, (k2, s2, e2) of the one
-    before, (k3, s3, e3) of the one before that; copied: how much of the
-    input is in the output; out: the output so far, reversed; uses: the
-    colour spaces, in the order they are first used. Every step is a call
-    with these as arguments, so that a step allocates nothing.
+    more than three); st: the 'Shape' so far, packed; (k1, s1, e1): the
+    kind (0 other, 1 number, 2 name), the start and the end of the last
+    operand, (k2, s2, e2) of the one before, (k3, s3, e3) of the one
+    before that; copied: how much of the input is in the output; out: the
+    output so far, reversed; uses: the colour spaces, in the order they
+    are first used. Every step is a call with these as arguments, so that
+    a step allocates nothing.
     -}
-    go :: Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> [ByteString] -> [ColorUse] -> R (ByteString, Bool, [ColorUse])
-    go !i !n !k1 !s1 !e1 !k2 !s2 !e2 !k3 !s3 !e3 !copied !out !uses
+    go :: Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> Int -> [ByteString] -> [ColorUse] -> R (ByteString, Bool, [ColorUse], Shape)
+    go !i !n !st !k1 !s1 !e1 !k2 !s2 !e2 !k3 !s3 !e3 !copied !out !uses
       | i >= len =
           if null out
-            then Right (c, False, uses)
-            else Right (BS.concat (reverse (BS.drop copied c : out)), True, uses)
-      | isWs (at i) = go (i + 1) n k1 s1 e1 k2 s2 e2 k3 s3 e3 copied out uses
-      | at i == 37 = go (lineEnd i) n k1 s1 e1 k2 s2 e2 k3 s3 e3 copied out uses
-      | at i == 47 = go (regularEnd (i + 1)) (min 4 (n + 1)) 2 i (regularEnd (i + 1)) k1 s1 e1 k2 s2 e2 copied out uses
+            then Right (c, False, uses, shapeOf n st)
+            else Right (BS.concat (reverse (BS.drop copied c : out)), True, uses, shapeOf n st)
+      | isWs (at i) = go (i + 1) n st k1 s1 e1 k2 s2 e2 k3 s3 e3 copied out uses
+      | at i == 37 = go (lineEnd i) n st k1 s1 e1 k2 s2 e2 k3 s3 e3 copied out uses
+      | at i == 47 = go (regularEnd (i + 1)) (min 4 (n + 1)) st 2 i (regularEnd (i + 1)) k1 s1 e1 k2 s2 e2 copied out uses
       | at i == 40 || at i == 60 || at i == 91 = case parseObj 0 (BS.drop i c) of
           Left _ -> bad "内容のストリーム"
-          Right (_, after) -> let j = len - BS.length after in go j (min 4 (n + 1)) 0 i j k1 s1 e1 k2 s2 e2 copied out uses
-      | at i == 123 || at i == 125 = go (i + 1) (min 4 (n + 1)) 0 i (i + 1) k1 s1 e1 k2 s2 e2 copied out uses
-      | isNumChar (at i) = go (numberEnd i) (min 4 (n + 1)) 1 i (numberEnd i) k1 s1 e1 k2 s2 e2 copied out uses
-      | isRegular (at i) = keyword' i (regularEnd i) n k1 s1 e1 k2 s2 e2 k3 s3 e3 copied out uses
+          Right (_, after) -> let j = len - BS.length after in go j (min 4 (n + 1)) st 0 i j k1 s1 e1 k2 s2 e2 copied out uses
+      | at i == 123 || at i == 125 = go (i + 1) (min 4 (n + 1)) st 0 i (i + 1) k1 s1 e1 k2 s2 e2 copied out uses
+      | isNumChar (at i) = go (numberEnd i) (min 4 (n + 1)) st 1 i (numberEnd i) k1 s1 e1 k2 s2 e2 copied out uses
+      | isRegular (at i) = keyword' i (regularEnd i) n st k1 s1 e1 k2 s2 e2 k3 s3 e3 copied out uses
       | otherwise = bad "内容のストリーム"
     -- the keyword from i to j: an operator, or true, false and null as operands
-    keyword' !i !j !n !k1 !s1 !e1 !k2 !s2 !e2 !k3 !s3 !e3 !copied !out !uses
+    keyword' !i !j !n !st0 !k1 !s1 !e1 !k2 !s2 !e2 !k3 !s3 !e3 !copied !out !uses
       | is i j "BI" = do
           (dict, k) <- inlineImage j
           u <- inlineUses dict
-          go k 0 0 0 0 0 0 0 0 0 0 copied out (foldl (flip addUse) uses (reverse u))
-      | is i j "true" || is i j "false" || is i j "null" = go j (min 4 (n + 1)) 0 i j k1 s1 e1 k2 s2 e2 copied out uses
+          go k 0 st0 0 0 0 0 0 0 0 0 0 copied out (foldl (flip addUse) uses (reverse u))
+      | is i j "true" || is i j "false" || is i j "null" = go j (min 4 (n + 1)) st0 0 i j k1 s1 e1 k2 s2 e2 copied out uses
       | (is i j "rg" || is i j "RG") && n == 3 && k1 == 1 && k2 == 1 && k3 == 1 =
           let (space, set) = if is i j "rg" then ("cs", "sc") else ("CS", "SC")
               r = "/GolemSRGB " <> space <> " " <> slice s3 e3 <> " " <> slice s2 e2 <> " " <> slice s1 e1 <> " " <> set
            in next j (r : slice copied s3 : out) (addUse UseRgb uses)
       | (is i j "cs" || is i j "CS") && n == 1 && k1 == 2 = case unescapeName (slice (s1 + 1) e1) of
-          "DeviceRGB" -> go j 0 0 0 0 0 0 0 0 0 0 e1 ("/GolemSRGB" : slice copied s1 : out) (addUse UseRgb uses)
+          "DeviceRGB" -> go j 0 st 0 0 0 0 0 0 0 0 0 e1 ("/GolemSRGB" : slice copied s1 : out) (addUse UseRgb uses)
           "DeviceGray" -> next copied out (addUse UseGray uses)
           "DeviceCMYK" -> next copied out (addUse UseCmyk uses)
           _ -> next copied out uses
@@ -1347,7 +1497,8 @@ rewriteContent c = go 0 0 0 0 0 0 0 0 0 0 0 0 [] []
       | is i j "k" || is i j "K" = next copied out (addUse UseCmyk uses)
       | otherwise = next copied out uses
       where
-        next = go j 0 0 0 0 0 0 0 0 0 0
+        st = stepState i j st0
+        next = go j 0 st 0 0 0 0 0 0 0 0 0
     -- the dictionary of an inline image after BI, and the end of its EI
     inlineImage j = entries [] (BS.drop j c)
       where

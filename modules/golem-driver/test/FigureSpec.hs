@@ -5,9 +5,11 @@ ADR 0039).
 -}
 module FigureSpec (pdfFigureTests, svgFigureTests, fitFigureTests, turnedFigureTests, activeContentTests) where
 
+import Codec.Compression.Zlib qualified as Z
 import Control.Monad (forM_)
 import Data.Bits (shiftR)
 import Data.ByteString qualified as BS
+import Data.ByteString.Lazy qualified as BL
 import Data.Containers.ListUtils (nubOrd)
 import Data.List (isSuffixOf)
 import Data.Map.Strict qualified as Map
@@ -87,9 +89,58 @@ rotatedPdf r =
         <> TE.encodeUtf8 (T.pack (show xrefAt))
         <> "\n%%EOF\n"
 
+{- | A PDF of one page of 200 by 100 pt, built here as bytes, whose
+Contents is the array given; the objects from 4 are the content streams,
+each a dictionary and its data (docs/adr ADR 0051).
+-}
+contentsPdf :: BS.ByteString -> [(BS.ByteString, BS.ByteString)] -> BS.ByteString
+contentsPdf refs streams =
+  let objs =
+        [ "<< /Type /Catalog /Pages 2 0 R >>",
+          "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+          "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << >> /Contents [" <> refs <> "] >>"
+        ]
+          <> ["<< /Length " <> showB (BS.length d) <> " " <> dict <> " >>\nstream\n" <> d <> "\nendstream" | (dict, d) <- streams]
+      header = "%PDF-1.4\n"
+      bodies = [showB n <> " 0 obj\n" <> o <> "\nendobj\n" | (n, o) <- zip [1 :: Int ..] objs]
+      offsets = scanl (+) (BS.length header) (map BS.length bodies)
+      entry o = TE.encodeUtf8 (T.justifyRight 10 '0' (T.pack (show o))) <> " 00000 n \n"
+   in header
+        <> BS.concat bodies
+        <> "xref\n0 "
+        <> showB (length objs + 1)
+        <> "\n0000000000 65535 f \n"
+        <> BS.concat (map entry (init offsets))
+        <> "trailer\n<< /Size "
+        <> showB (length objs + 1)
+        <> " /Root 1 0 R >>\nstartxref\n"
+        <> showB (last offsets)
+        <> "\n%%EOF\n"
+  where
+    showB :: Int -> BS.ByteString
+    showB = TE.encodeUtf8 . T.pack . show
+
 pdfFigureTests :: [TestTree]
 pdfFigureTests =
-  [ testGroup
+  [ testCase "a PDF figure whose content names a stream twice writes it once, as an inner Form (docs/adr ADR 0051)" $ do
+      let fig = contentsPdf "4 0 R 4 0 R" [("", "q 0 0 0 1 k 0 0 100 50 re f Q")]
+      (codes, pdf, _) <- pdfWith Dev "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", fig), ("images/f.png", png False)]
+      codes @?= []
+      out <- maybe (assertFailure "no PDF") pure pdf
+      count "/Subtype /Form" out @?= 2
+      count "/GolemC4 " out @?= 1
+      qpdfCheck out,
+    testCase "G0815: a stream that sets a colour at the top, named 40 times, at the @figure, not G0810 (docs/adr ADR 0051)" $ do
+      let gray = BL.toStrict (Z.compress (BL.fromStrict (BS.concat (replicate (2 * 1024 * 1024) "0 g\n"))))
+          fig = contentsPdf (BS.intercalate " " (replicate 40 "4 0 R")) [("/Filter /FlateDecode", gray)]
+          src = "本文。\n\n@figure images/f.pdf web=images/f.png alt=\"t\"\n"
+      (codes, pdf, messages) <- pdfWith Dev src [("images/f.pdf", fig), ("images/f.png", png False)]
+      codes @?= [DiagnosticCode "G0815"]
+      messages @?= ["図版の PDF のページの内容をつなぐと 256 MiB を超えます: images/f.pdf"]
+      pdf @?= Nothing
+      b <- buildMarksFilesWith src id (Just (withBodyFont (figStyle horizontalStyle))) (bodyFontFiles horizontalStyle <> [("images/f.pdf", fig), ("images/f.png", png False)])
+      map (whereIs b) (bErrors b) @?= [(Just "a.gm", BS.length (TE.encodeUtf8 "本文。\n\n"))],
+    testGroup
       "a PDF figure of 200 by 100 pt fills the measure of 240 pt, its height by its turned size; a tall one is fitted to the 29 lines its number leaves (golem-driver ADR 0034)"
       [ testCase ("Rotate " <> show r) $ do
           (_, pl) <- layoutOk horizontal24 "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", rotatedPdf r), ("images/f.png", png False)]
