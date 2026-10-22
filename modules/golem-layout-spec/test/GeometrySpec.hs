@@ -38,10 +38,10 @@ sized w h g = defaultStyle {stPage = Just (Page (CustomSize w h) False False (Ju
 geom :: Style -> PageGeometry
 geom s = either (error . show) id (pageGeometry (FileId 0) False s)
 
--- | The message of the one G0701, or what came instead.
-g0701 :: Style -> Either Text [Sp]
-g0701 s = case pageGeometry (FileId 0) False s of
-  Left [d] | diagCode d == DiagnosticCode "G0701" -> Left (diagMessage d)
+-- | The message of the one G07001, or what came instead.
+g07001 :: Style -> Either Text [Sp]
+g07001 s = case pageGeometry (FileId 0) False s of
+  Left [d] | diagCode d == DiagnosticCode "G07001" -> Left (diagMessage d)
   Left ds -> Left (T.pack (show ds))
   Right g -> Right (pgLineGrid g)
 
@@ -78,17 +78,17 @@ geometryTests =
         folios @?= [(Anchor 23376227 1351744 AlignEnd, Anchor 4117931 1351744 AlignStart)],
       testCase "a type area that fills the page to the edge is accepted" $
         -- width 20mm + 300pt, height 18mm + 503pt
-        fmap length (g0701 (sized (mm20 + pt 300) (mm18 + pt 503) (grid 30 30 1 Nothing))) @?= Right 30,
-      testCase "a type area one sp wider than the page is G0701" $
-        g0701 (sized (mm20 + pt 300 - 1) (mm18 + pt 503) (grid 30 30 1 Nothing)) @?= Left "版面がページからはみ出しています",
-      testCase "a type area one sp taller than the page is G0701" $
-        g0701 (sized (mm20 + pt 300) (mm18 + pt 503 - 1) (grid 30 30 1 Nothing)) @?= Left "版面がページからはみ出しています",
+        fmap length (g07001 (sized (mm20 + pt 300) (mm18 + pt 503) (grid 30 30 1 Nothing))) @?= Right 30,
+      testCase "a type area one sp wider than the page is G07001" $
+        g07001 (sized (mm20 + pt 300 - 1) (mm18 + pt 503) (grid 30 30 1 Nothing)) @?= Left "版面がページからはみ出しています",
+      testCase "a type area one sp taller than the page is G07001" $
+        g07001 (sized (mm20 + pt 300) (mm18 + pt 503 - 1) (grid 30 30 1 Nothing)) @?= Left "版面がページからはみ出しています",
       testCase "a line pitch equal to the font size is accepted: the lines touch" $
         -- the baselines 10pt apart, the first at 8.8pt = 576717sp
-        fmap (take 3) (g0701 (a5 ((grid 30 30 1 Nothing) {gridLinePitch = Abs (pt 10)}))) @?= Right [576717, 576717 + pt 10, 576717 + pt 20],
-      testCase "a line pitch one sp below the font size is G0701" $
-        g0701 (a5 ((grid 30 30 1 Nothing) {gridLinePitch = Abs (pt 10 - 1)}))
+        fmap (take 3) (g07001 (a5 ((grid 30 30 1 Nothing) {gridLinePitch = Abs (pt 10)}))) @?= Right [576717, 576717 + pt 10, 576717 + pt 20],
+      testCase "a line pitch one sp below the font size is G07001" $
+        g07001 (a5 ((grid 30 30 1 Nothing) {gridLinePitch = Abs (pt 10 - 1)}))
           @?= Left "字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください",
       testCase "a grid of one line has one line" $
-        fmap length (g0701 (a5 (grid 30 1 1 Nothing))) @?= Right 1
+        fmap length (g07001 (a5 (grid 30 1 1 Nothing))) @?= Right 1
     ]

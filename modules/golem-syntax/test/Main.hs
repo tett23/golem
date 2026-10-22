@@ -135,8 +135,8 @@ tests =
         isJust (lineColToOffset li (LineCol 0 5)) @?= False,
       testCase "profile adjusts only profile-dependent codes" $ do
         let sp = mkSpan (FileId 0) 0 1
-            lbl = diagnostic "G0504" Warning sp "unused label"
-            other = diagnostic "G0101" Warning sp "other"
+            lbl = diagnostic "G05004" Warning sp "unused label"
+            other = diagnostic "G01001" Warning sp "other"
         diagSeverity (adjustForProfile Prod lbl) @?= Error
         diagSeverity (adjustForProfile Dev lbl) @?= Warning
         diagSeverity (adjustForProfile Prod other) @?= Warning,
@@ -152,30 +152,42 @@ tests =
       testCase "json rendering is stable" $ do
         let src = "一行目\n二行目\"x\""
             files = Map.fromList [(FileId 0, SourceInfo "ch/01.gm" (mkLineIndex src))]
-            d = (diagnostic "G0101" Error (mkSpan (FileId 0) 10 13) "閉じていない [") {diagFixes = [Fix "fix" [(mkSpan (FileId 0) 13 13, "]")]]}
+            d = (diagnostic "G01001" Error (mkSpan (FileId 0) 10 13) "閉じていない [") {diagFixes = [Fix "fix" [(mkSpan (FileId 0) 13 13, "]")]]}
         renderJson files [d]
-          @?= "[{\"code\":\"G0101\",\"severity\":\"error\",\"span\":{\"file\":\"ch/01.gm\",\"start\":10,\"end\":13,\"line\":2,\"column\":1},\"message\":\"閉じていない [\",\"related\":[],\"fixes\":[{\"title\":\"fix\",\"edits\":[{\"span\":{\"file\":\"ch/01.gm\",\"start\":13,\"end\":13,\"line\":2,\"column\":2},\"text\":\"]\"}]}]}]\n",
+          @?= "[{\"code\":\"G01001\",\"severity\":\"error\",\"span\":{\"file\":\"ch/01.gm\",\"start\":10,\"end\":13,\"line\":2,\"column\":1},\"message\":\"閉じていない [\",\"related\":[],\"fixes\":[{\"title\":\"fix\",\"edits\":[{\"span\":{\"file\":\"ch/01.gm\",\"start\":13,\"end\":13,\"line\":2,\"column\":2},\"text\":\"]\"}]}]}]\n",
       testCase "facts (golem-cli ADR 0006): none leaves the JSON as it was" $ do
         let files = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex "x"))]
-            d = diagnostic "G0201" Error (mkSpan (FileId 0) 0 1) "m"
+            d = diagnostic "G02001" Error (mkSpan (FileId 0) 0 1) "m"
         diagFacts d @?= []
         renderJson files [d]
-          @?= "[{\"code\":\"G0201\",\"severity\":\"error\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"m\",\"related\":[],\"fixes\":[]}]\n",
+          @?= "[{\"code\":\"G02001\",\"severity\":\"error\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"m\",\"related\":[],\"fixes\":[]}]\n",
       testCase "facts (golem-cli ADR 0006): written in the order given" $ do
         let files = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex "x"))]
-            d = (diagnostic "G0906" Warning (mkSpan (FileId 0) 0 1) "m") {diagFacts = [("pdf-pages", FactInts [12, 13]), ("ppi", FactInt 212), ("font", FactText "f\"x"), ("names", FactTexts ["a", "b"])]}
+            d = (diagnostic "G09006" Warning (mkSpan (FileId 0) 0 1) "m") {diagFacts = [("pdf-pages", FactInts [12, 13]), ("ppi", FactInt 212), ("font", FactText "f\"x"), ("names", FactTexts ["a", "b"])]}
         renderJson files [d]
-          @?= "[{\"code\":\"G0906\",\"severity\":\"warning\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"m\",\"related\":[],\"fixes\":[],\"facts\":{\"pdf-pages\":[12,13],\"ppi\":212,\"font\":\"f\\\"x\",\"names\":[\"a\",\"b\"]}}]\n"
+          @?= "[{\"code\":\"G09006\",\"severity\":\"warning\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"m\",\"related\":[],\"fixes\":[],\"facts\":{\"pdf-pages\":[12,13],\"ppi\":212,\"font\":\"f\\\"x\",\"names\":[\"a\",\"b\"]}}]\n"
         renderHuman files [d] @?= renderHuman files [d {diagFacts = []}],
-      testCase "preflightCodes are G0902 to G0918 but the retired G0905, apart from notices and the profile" $ do
-        preflightCodes @?= [DiagnosticCode (T.pack ("G09" <> (if n < 10 then "0" else "") <> show n)) | n <- [2 .. 18 :: Int], n /= 5]
+      testCase "preflightCodes are G09002 to G09018 but the retired G09005, apart from notices and the profile" $ do
+        preflightCodes @?= [DiagnosticCode (T.pack ("G090" <> (if n < 10 then "0" else "") <> show n)) | n <- [2 .. 18 :: Int], n /= 5]
         assertBool "no notice" (not (any (`elem` noticeCodes) preflightCodes))
         assertBool "no profile" (not (any (`elem` profileDependentCodes) preflightCodes)),
+      testCase "every code is G, the two digits of its stage and three digits (docs/adr 0061)" $ do
+        let stage (DiagnosticCode c) = T.take 2 (T.drop 1 c)
+            shaped (DiagnosticCode c) =
+              T.length c == 6
+                && T.take 1 c == "G"
+                && T.all (`elem` ['0' .. '9']) (T.drop 1 c)
+                && stage (DiagnosticCode c) `elem` ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
+        [c | c <- noticeCodes <> profileDependentCodes <> preflightCodes, not (shaped c)] @?= []
+        -- the stage that gives each of them
+        map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "08"]
+        map stage profileDependentCodes @?= ["05", "03"]
+        assertBool "preflight is 09" (all ((== "09") . stage) preflightCodes),
       testCase "human rendering" $ do
         let src = "abc\ndef"
             files = Map.fromList [(FileId 0, SourceInfo "x.gm" (mkLineIndex src))]
-        renderHuman files [diagnostic "G0201" Error (mkSpan (FileId 0) 5 6) "msg"]
-          @?= "x.gm:2:2: error[G0201]: msg\n  | def\n",
+        renderHuman files [diagnostic "G02001" Error (mkSpan (FileId 0) 5 6) "msg"]
+          @?= "x.gm:2:2: error[G02001]: msg\n  | def\n",
       noticeTests,
       RenderSpec.tests,
       ShowTreeSpec.tests
@@ -190,26 +202,26 @@ noticeTests =
         Error < Warning @?= True
         Warning < Notice @?= True,
       testCase "notices alone are no errors" $
-        hasErrors [notice "G0265" sp0 "a", notice "G0262" sp0 "b"] @?= False,
+        hasErrors [notice "G02065" sp0 "a", notice "G02062" sp0 "b"] @?= False,
       testCase "notice builds a diagnostic of severity Notice" $ do
-        let d = notice "G0265" sp0 "m"
-        (diagCode d, diagSeverity d, diagMessage d) @?= (DiagnosticCode "G0265", Notice, "m"),
+        let d = notice "G02065" sp0 "m"
+        (diagCode d, diagSeverity d, diagMessage d) @?= (DiagnosticCode "G02065", Notice, "m"),
       testCase "the profile does not change a notice" $ do
-        let d = notice "G0265" sp0 "m"
+        let d = notice "G02065" sp0 "m"
         diagSeverity (adjustForProfile Prod d) @?= Notice
         diagSeverity (adjustForProfile Dev d) @?= Notice,
       testCase "no code is a notice and profile-dependent" $
         [c | c <- noticeCodes, c `elem` profileDependentCodes] @?= [],
       testCase "the initial notice codes" $
-        noticeCodes @?= map DiagnosticCode ["G0262", "G0263", "G0264", "G0265", "G0279", "G0294", "G0323", "G0407", "G0408", "G0409", "G0411", "G0730", "G0739", "G0745", "G0746", "G0747", "G0808"],
+        noticeCodes @?= map DiagnosticCode ["G02062", "G02063", "G02064", "G02065", "G02079", "G02094", "G03023", "G04007", "G04008", "G04009", "G04011", "G07030", "G07039", "G07045", "G07046", "G07047", "G08008"],
       testCase "a notice early in the file comes after an error late in it" $ do
-        let n = notice "G0265" (mkSpan (FileId 0) 0 1) "n"
-            e = diagnostic "G0201" Error (mkSpan (FileId 1) 50 51) "e"
+        let n = notice "G02065" (mkSpan (FileId 0) 0 1) "n"
+            e = diagnostic "G02001" Error (mkSpan (FileId 1) 50 51) "e"
         sortDiagnostics [n, e] @?= [e, n],
       testCase "errors and warnings stay mixed in the order of their positions" $ do
-        let w = diagnostic "G0205" Warning (mkSpan (FileId 0) 0 1) "w"
-            e = diagnostic "G0201" Error (mkSpan (FileId 0) 5 6) "e"
-            n = notice "G0262" (mkSpan (FileId 0) 1 2) "n"
+        let w = diagnostic "G02005" Warning (mkSpan (FileId 0) 0 1) "w"
+            e = diagnostic "G02001" Error (mkSpan (FileId 0) 5 6) "e"
+            n = notice "G02062" (mkSpan (FileId 0) 1 2) "n"
         sortDiagnostics [e, n, w] @?= [w, e, n],
       testProperty "notices come last, whatever the input order" $ property $ do
         ds <- forAll (Gen.list (Range.linear 0 20) genDiagWithNotices)
@@ -219,27 +231,27 @@ noticeTests =
         let sevs = map diagSeverity sorted
         dropWhile (== Notice) (dropWhile (/= Notice) sevs) === [],
       testCase "silencing some codes drops their notices only" $ do
-        let n1 = notice "G0262" sp0 "a"
-            n2 = notice "G0265" sp0 "b"
-            e = diagnostic "G0262" Error sp0 "error with a silenced code"
-            w = diagnostic "G0262" Warning sp0 "warning with a silenced code"
-        silenceNotices (Just (Set.singleton (DiagnosticCode "G0262"))) [n1, n2, e, w] @?= [n2, e, w],
+        let n1 = notice "G02062" sp0 "a"
+            n2 = notice "G02065" sp0 "b"
+            e = diagnostic "G02062" Error sp0 "error with a silenced code"
+            w = diagnostic "G02062" Warning sp0 "warning with a silenced code"
+        silenceNotices (Just (Set.singleton (DiagnosticCode "G02062"))) [n1, n2, e, w] @?= [n2, e, w],
       testProperty "silencing every code drops every notice and keeps the rest" $ property $ do
         ds <- forAll (Gen.list (Range.linear 0 20) genDiagWithNotices)
         silenceNotices Nothing ds === filter ((/= Notice) . diagSeverity) ds,
       testCase "human rendering of a notice" $ do
         let src = "@listing src=a.hs\n"
             files = Map.fromList [(FileId 0, SourceInfo "chapters/01.gm" (mkLineIndex src))]
-        renderHuman files [notice "G0265" (mkSpan (FileId 0) 9 17) "@listing の src= は廃止予定です。パスを最初の引数に書きます"]
-          @?= "chapters/01.gm:1:10: notice[G0265]: @listing の src= は廃止予定です。パスを最初の引数に書きます\n  | @listing src=a.hs\n",
+        renderHuman files [notice "G02065" (mkSpan (FileId 0) 9 17) "@listing の src= は廃止予定です。パスを最初の引数に書きます"]
+          @?= "chapters/01.gm:1:10: notice[G02065]: @listing の src= は廃止予定です。パスを最初の引数に書きます\n  | @listing src=a.hs\n",
       testCase "json rendering of a notice, after the errors" $ do
         let src = "ab\ncd\n"
             files = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex src))]
-            n = notice "G0265" (mkSpan (FileId 0) 0 1) "n"
-            e = diagnostic "G0201" Error (mkSpan (FileId 0) 3 4) "e"
+            n = notice "G02065" (mkSpan (FileId 0) 0 1) "n"
+            e = diagnostic "G02001" Error (mkSpan (FileId 0) 3 4) "e"
         renderJson files [n, e]
-          @?= "[{\"code\":\"G0201\",\"severity\":\"error\",\"span\":{\"file\":\"a.gm\",\"start\":3,\"end\":4,\"line\":2,\"column\":1},\"message\":\"e\",\"related\":[],\"fixes\":[]},"
-            <> "{\"code\":\"G0265\",\"severity\":\"notice\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"n\",\"related\":[],\"fixes\":[]}]\n"
+          @?= "[{\"code\":\"G02001\",\"severity\":\"error\",\"span\":{\"file\":\"a.gm\",\"start\":3,\"end\":4,\"line\":2,\"column\":1},\"message\":\"e\",\"related\":[],\"fixes\":[]},"
+            <> "{\"code\":\"G02065\",\"severity\":\"notice\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"n\",\"related\":[],\"fixes\":[]}]\n"
     ]
   where
     sp0 = mkSpan (FileId 0) 0 1
@@ -255,7 +267,7 @@ genDiag = do
   f <- Gen.int (Range.linear 0 3)
   s <- Gen.int (Range.linear 0 50)
   l <- Gen.int (Range.linear 0 5)
-  code <- Gen.element ["G0101", "G0201", "G0504"]
+  code <- Gen.element ["G01001", "G02001", "G05004"]
   sev <- Gen.element [Error, Warning]
   msg <- Gen.element ["a", "b"]
   pure (diagnostic code sev (mkSpan (FileId f) s (s + l)) msg)

@@ -225,7 +225,7 @@ instance FromValue DiagnosticsTable where
   fromValue = parseTableFromValue (DiagnosticsTable . fromMaybe Set.empty <$> optKeyOf "silence-notices" silenceList)
 
 {- | The codes of silence-notices. An element that is not the code of a
-notice is reported at the element; the scope of the element makes it G0324
+notice is reported at the element; the scope of the element makes it G03024
 ('manifestCode'). Every such element is reported, not only the first.
 -}
 silenceList :: Value' l -> Matcher l (Set DiagnosticCode)
@@ -235,19 +235,19 @@ silenceList = \case
   where
     element = \case
       Text' l t
-        | not (isCodeShape t) -> warnAt l ("診断のコードは G と 4 桁の数字で書きます: " <> T.unpack t) >> pure Nothing
+        | not (isCodeShape t) -> warnAt l ("診断のコードは G と 5 桁の数字で書きます: " <> T.unpack t) >> pure Nothing
         | DiagnosticCode t `notElem` noticeCodes -> warnAt l ("抑制できるのはお知らせのコードだけです: " <> T.unpack t) >> pure Nothing
         | otherwise -> pure (Just (DiagnosticCode t))
       v -> warnAt (Toml.valueAnn v) "診断のコードは文字列で書きます" >> pure Nothing
-    isCodeShape t = T.length t == 5 && T.take 1 t == "G" && T.all isDigit (T.drop 1 t)
+    isCodeShape t = T.length t == 6 && T.take 1 t == "G" && T.all isDigit (T.drop 1 t)
 
-{- | The code of a schema message of the manifest: G0324 for an element of
-silence-notices, G0301 otherwise.
+{- | The code of a schema message of the manifest: G03024 for an element of
+silence-notices, G03001 otherwise.
 -}
 manifestCode :: [Scope] -> Text
 manifestCode = \case
-  [ScopeKey "diagnostics", ScopeKey "silence-notices", ScopeIndex _] -> "G0324"
-  _ -> "G0301"
+  [ScopeKey "diagnostics", ScopeKey "silence-notices", ScopeIndex _] -> "G03024"
+  _ -> "G03001"
 
 defaultTargets :: Targets
 defaultTargets = Targets Nothing Nothing True []
@@ -430,20 +430,20 @@ positionSpan fid src = \case
   _ -> mkSpan fid 0 0
 
 {- | Reads manifest.toml. A string with a character that cannot be written
-to the output is G0328 before the schema (docs/adr ADR 0042).
+to the output is G03028 before the schema (docs/adr ADR 0042).
 -}
 parseManifest :: FileId -> Text -> Either [Diagnostic] Manifest
 parseManifest fid src = do
   case either (const []) (unwritableStrings fid src) (parseToml src) of
     [] -> Right ()
     ds -> Left ds
-  m <- decodeStrictBy "G0301" manifestCode fid src
+  m <- decodeStrictBy "G03001" manifestCode fid src
   let t = manifestTargets m
   if tgHtml t || not (null (tgText t)) || isJust (tgPdf t) || isJust (tgEpub t)
     then Right m
-    else Left [diagnostic "G0301" Error (mkSpan fid 0 0) "出力ターゲットが一つもありません"]
+    else Left [diagnostic "G03001" Error (mkSpan fid 0 0) "出力ターゲットが一つもありません"]
 
-{- | G0328 at each string of a TOML table with a character that cannot be
+{- | G03028 at each string of a TOML table with a character that cannot be
 written to the output (docs/adr ADR 0042), in the order of the file: one
 for each string, naming its first such character.
 -}
@@ -455,7 +455,7 @@ unwritableStrings fid src = map snd . Map.toAscList . Map.fromList . inTable []
       Text' pos t
         | Just c <- firstUnwritable t ->
             let sp = positionSpan fid src (Just pos)
-             in [(spanStart sp, diagnostic "G0328" Error sp (pathText path <> " に出力に書けない文字（" <> codePointText c <> "）があります"))]
+             in [(spanStart sp, diagnostic "G03028" Error sp (pathText path <> " に出力に書けない文字（" <> codePointText c <> "）があります"))]
       List' _ vs -> concat (zipWith (\i v -> value (path <> [ScopeIndex i]) v) [0 ..] vs)
       Table' _ t -> inTable path t
       _ -> []

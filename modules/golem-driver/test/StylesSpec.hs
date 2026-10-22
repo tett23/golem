@@ -159,7 +159,7 @@ inFileTests =
         ev <- evaluateProject Dev tmp
         case ev of
           Left f -> assertFailure (show (pfDiagnostics f))
-          Right e -> assertBool "G0247" (DiagnosticCode "G0247" `elem` map diagCode (evDiagnostics e)),
+          Right e -> assertBool "G02047" (DiagnosticCode "G02047" `elem` map diagCode (evDiagnostics e)),
     testCase "plain text: the first line of a style of the file" $
       withChapters "" [("c1.gm", "@style-def paragraph letter first-line-indent=1zw\n\n@style letter\n手紙。\n")] [] $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
@@ -184,14 +184,14 @@ inFileTests =
         assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
         p1 <- TIO.readFile (tmp </> "build/html/c1.xhtml")
         T.count "<p>" p1 @?= 1,
-    testCase "lint: two Latin lines of a file in the line style are not G0501" $
+    testCase "lint: two Latin lines of a file in the line style are not G05001" $
       withChapters "" [("c1.gm", "@manifest paragraph-separator=line\n\nFull fathom five\nOf his bones\n"), ("c2.gm", "Full fathom five\nOf his bones\n")] [] $ \tmp -> do
         (infos, ds) <- lintProject Dev False tmp
-        [p | d <- ds, diagCode d == DiagnosticCode "G0501", Just (SourceInfo p _) <- [Map.lookup (spanFile (diagSpan d)) infos]] @?= ["c2.gm"],
-    testCase "lint: a style of the file that keeps its lines is not G0501" $
+        [p | d <- ds, diagCode d == DiagnosticCode "G05001", Just (SourceInfo p _) <- [Map.lookup (spanFile (diagSpan d)) infos]] @?= ["c2.gm"],
+    testCase "lint: a style of the file that keeps its lines is not G05001" $
       withChapters "" [("c1.gm", "@style-def paragraph letter line-breaks=keep\n\n@style letter\n  Full fathom five\n  Of his bones\n"), ("c2.gm", "Full fathom five\nOf his bones\n")] [] $ \tmp -> do
         (infos, ds) <- lintProject Dev False tmp
-        [p | d <- ds, diagCode d == DiagnosticCode "G0501", Just (SourceInfo p _) <- [Map.lookup (spanFile (diagSpan d)) infos]] @?= ["c2.gm"]
+        [p | d <- ds, diagCode d == DiagnosticCode "G05001", Just (SourceInfo p _) <- [Map.lookup (spanFile (diagSpan d)) infos]] @?= ["c2.gm"]
   ]
   where
     letters =

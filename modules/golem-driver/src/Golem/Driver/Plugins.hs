@@ -26,7 +26,7 @@ import Golem.Syntax
 
 {- | Given the cache, the FileId of manifest.toml, where most diagnostics
 point, and the FileId and text of plugins.lock (empty when there is
-none), where G0611 points.
+none), where G06011 points.
 -}
 loadPlugins :: FilePath -> FileId -> FileId -> Text -> Manifest -> IO (Either [Diagnostic] PluginHook)
 loadPlugins cacheDir mfid lfid lockText manifest
@@ -45,28 +45,28 @@ loadPlugins cacheDir mfid lfid lockText manifest
       Just e | leUrl e == pdUrl decl -> do
         cached <- readCached cacheDir e
         case cached of
-          Left NotCached -> pure (Left [err "G0603" ("キャッシュにないプラグインです。golem plugin fetch を実行してください: " <> name)])
-          Left HashMismatch -> pure (Left [err "G0604" ("キャッシュの配布物のハッシュが plugins.lock と一致しません: " <> name)])
+          Left NotCached -> pure (Left [err "G06003" ("キャッシュにないプラグインです。golem plugin fetch を実行してください: " <> name)])
+          Left HashMismatch -> pure (Left [err "G06004" ("キャッシュの配布物のハッシュが plugins.lock と一致しません: " <> name)])
           Right bytes ->
             loadPlugin bytes >>= \case
-              Left pe -> pure (Left [err "G0605" (name <> ": " <> describePluginError pe)])
+              Left pe -> pure (Left [err "G06005" (name <> ": " <> describePluginError pe)])
               Right p -> pure (Right (name, decl, p))
-      Just _ -> pure (Left [err "G0602" ("plugins.lock の URL が manifest.toml と違います。golem plugin lock を実行してください: " <> name)])
-      Nothing -> pure (Left [err "G0602" ("plugins.lock にないプラグインです。golem plugin lock を実行してください: " <> name)])
+      Just _ -> pure (Left [err "G06002" ("plugins.lock の URL が manifest.toml と違います。golem plugin lock を実行してください: " <> name)])
+      Nothing -> pure (Left [err "G06002" ("plugins.lock にないプラグインです。golem plugin lock を実行してください: " <> name)])
     hook plugins =
       let provided = [(c, name) | (name, _, p) <- plugins, c <- pluginCommands p]
           overrides = [(o, name, p) | (name, decl, p) <- plugins, o <- pdOverrides decl]
           providers = Map.fromListWith (<>) [(c, [n]) | (c, n) <- provided]
           collisions = [(c, sort ns) | (c, ns) <- Map.toList providers, length ns > 1]
-          -- each name in overrides as the built-in command it overrides, or G0608
+          -- each name in overrides as the built-in command it overrides, or G06008
           checkedOverrides = [((n, o), overrideTarget o n p) | (o, n, p) <- overrides]
           overrideTarget o n p
             | o `notElem` pluginCommands p = Left ("プラグインが提供していないコマンドを overrides に書いています: " <> n <> "." <> o)
             | Just (Overridable b) <- parseBuiltin o = Right b
             | otherwise = Left ("上書きできる組み込みのコマンドではありません: " <> n <> "." <> o)
           -- each command a plugin provides as a key of the hook (docs/adr ADR 0027):
-          -- a name of its own, a declared override, or G0607 for an undeclared
-          -- built-in name; a declared name that is not overridable is G0608 above
+          -- a name of its own, a declared override, or G06007 for an undeclared
+          -- built-in name; a declared name that is not overridable is G06008 above
           (undeclared, keyed) = partitionEithers (mapMaybe (commandKey checkedOverrides) plugins')
           plugins' = [(c, name, p) | (name, _, p) <- plugins, c <- pluginCommands p]
           filterError f = case lookupPlugin (fdPlugin f) of
@@ -80,20 +80,20 @@ loadPlugins cacheDir mfid lfid lockText manifest
           collisionMessage (c, n)
             | Just (Overridable _) <- parseBuiltin c = "組み込みのコマンドと衝突しています（overrides で宣言してください）: " <> n <> "." <> c
             | otherwise = "上書きできない組み込みのコマンドと衝突しています: " <> n <> "." <> c
-          -- the channels of the plugins (golem-doc ADR 0007): G0612 for a name declared twice, reserved or malformed
+          -- the channels of the plugins (golem-doc ADR 0007): G06012 for a name declared twice, reserved or malformed
           declared = [(channelName d, (name, d)) | (name, _, p) <- plugins, d <- pluginChannels p]
           channelProviders = Map.fromListWith (flip (<>)) [(c, [n]) | (c, (n, _)) <- declared]
           channelCollisions = [(c, ns) | (c, ns) <- Map.toList channelProviders, length ns > 1]
           badChannels = [(n, c) | (c, (n, _)) <- declared, not (validChannelName c)]
           diags =
-            [err "G0606" ("複数のプラグインが同じコマンドを提供しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- collisions]
-              <> [err "G0607" (collisionMessage u) | u <- undeclared]
-              <> [err "G0608" m | (_, Left m) <- checkedOverrides]
-              <> [err "G0610" m | Just m <- map filterError (manifestFilters manifest)]
-              <> [err "G0612" ("複数のプラグインが同じチャネルを宣言しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- channelCollisions]
-              <> [err "G0612" (n <> ": このチャネルの名前は使えません: " <> c) | (n, c) <- badChannels]
+            [err "G06006" ("複数のプラグインが同じコマンドを提供しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- collisions]
+              <> [err "G06007" (collisionMessage u) | u <- undeclared]
+              <> [err "G06008" m | (_, Left m) <- checkedOverrides]
+              <> [err "G06010" m | Just m <- map filterError (manifestFilters manifest)]
+              <> [err "G06012" ("複数のプラグインが同じチャネルを宣言しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- channelCollisions]
+              <> [err "G06012" (n <> ": このチャネルの名前は使えません: " <> c) | (n, c) <- badChannels]
           call pname p name = PluginCommand $ \vals slots sp ->
-            either (\pe -> Left [diagnostic "G0609" Error sp (qualified pname name pe)]) Right (callCommand p name vals slots sp)
+            either (\pe -> Left [diagnostic "G06009" Error sp (qualified pname name pe)]) Right (callCommand p name vals slots sp)
           -- a filter that fails points at the top of the file (golem-plugin ADR 0003)
           applyFilters path doc0 =
             foldl
@@ -103,7 +103,7 @@ loadPlugins cacheDir mfid lfid lockText manifest
                     | path `elem` fdFiles f,
                       Just (_, _, p) <- lookupPlugin (fdPlugin f) ->
                         case applyFilter p (fdFilter f) doc of
-                          Left pe -> Left [diagnostic "G0609" Error (mkSpan (docFile doc0) 0 0) (qualified (fdPlugin f) (fdFilter f) pe)]
+                          Left pe -> Left [diagnostic "G06009" Error (mkSpan (docFile doc0) 0 0) (qualified (fdPlugin f) (fdFilter f) pe)]
                           Right (doc', ws') -> Right (doc', ws <> ws')
                     | otherwise -> Right (doc, ws)
               )
@@ -121,8 +121,8 @@ loadPlugins cacheDir mfid lfid lockText manifest
             else Left diags
 
 {- | The key of a command a plugin provides: Right with the key, Left with
-(command, plugin) for an undeclared built-in name (G0607), or Nothing for a
-declared name that is not an overridable built-in command, which G0608
+(command, plugin) for an undeclared built-in name (G06007), or Nothing for a
+declared name that is not an overridable built-in command, which G06008
 reports.
 -}
 commandKey ::
@@ -147,6 +147,6 @@ validChannelName c = case T.uncons c of
   where
     reservedChannels = ["toc", "index", "bibliography", "note", "notes", "sidenote", "cite"]
 
--- | @plugin.name: reason@, the message of G0609.
+-- | @plugin.name: reason@, the message of G06009.
 qualified :: Text -> Text -> PluginError -> Text
 qualified plugin name pe = plugin <> "." <> name <> ": " <> describePluginError pe

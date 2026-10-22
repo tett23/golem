@@ -42,15 +42,15 @@ err :: Text -> Located a -> Text -> Eval b
 err code at msg = Left (diagnostic code Error (locSpan at) msg)
 
 typeErr :: Located a -> Text -> Eval b
-typeErr = err "G0201"
+typeErr = err "G02001"
 
 mkFloat :: Located a -> Double -> Eval Value
 mkFloat at x = case finite x of
   Just y -> pure (VFloat y)
-  Nothing -> err "G0204" at "結果が NaN か無限大になる演算です"
+  Nothing -> err "G02004" at "結果が NaN か無限大になる演算です"
 
 {- | An integer is below 2^4096 in absolute value (docs/adr ADR 0035);
-a larger result of an operation is G0286.
+a larger result of an operation is G02086.
 -}
 intLimit :: Integer
 intLimit = 2 ^ (4096 :: Int)
@@ -60,9 +60,9 @@ maxDigits :: Integer
 maxDigits = 1000
 
 tooBig :: Located a -> Eval b
-tooBig at = err "G0286" at "整数が大きすぎます（絶対値は 2 の 4096 乗未満に限ります）"
+tooBig at = err "G02086" at "整数が大きすぎます（絶対値は 2 の 4096 乗未満に限ります）"
 
--- | An integer result, or G0286 when it is too large.
+-- | An integer result, or G02086 when it is too large.
 checkedInt :: Located a -> Integer -> Eval Value
 checkedInt at i
   | abs i >= intLimit = tooBig at
@@ -96,11 +96,11 @@ evalExpr env le@(Located _ e) = case e of
     Nothing
       | n == "pi" -> pure (VFloat pi)
       | n == "e" -> pure (VFloat (exp 1))
-      | otherwise -> err "G0202" le ("未定義の名前 " <> n <> " です")
+      | otherwise -> err "G02002" le ("未定義の名前 " <> n <> " です")
   EVar (ns : rest) -> case Map.lookup ns (envNamespaces env) of
-    Nothing -> err "G0202" le ("未定義の名前空間 " <> ns <> " です")
+    Nothing -> err "G02002" le ("未定義の名前空間 " <> ns <> " です")
     Just m -> lookupMember le (VHash m) rest
-  EVar [] -> err "G0202" le "名前がありません"
+  EVar [] -> err "G02002" le "名前がありません"
   EUnary Negate x ->
     evalExpr env x >>= \case
       VInt i -> checkedInt le (negate i)
@@ -111,23 +111,23 @@ evalExpr env le@(Located _ e) = case e of
     y <- evalExpr env b
     binary le op x y
   ECall f args -> traverse (evalExpr env) args >>= call le f
-  EError -> err "G0120" le "式を解釈できません"
+  EError -> err "G01020" le "式を解釈できません"
 
 lookupMember :: Located Expr -> Value -> [Name] -> Eval Value
 lookupMember _ v [] = pure v
 lookupMember le (VHash m) (k : ks) = case Map.lookup k m of
   Just v -> lookupMember le v ks
-  Nothing -> err "G0202" le ("未定義の名前 " <> k <> " です")
+  Nothing -> err "G02002" le ("未定義の名前 " <> k <> " です")
 lookupMember le v _ = typeErr le (typeName v <> " の要素は参照できません")
 
 {- | A number as a double: an integer is rounded to the nearest double, ties
-to even; one that rounds to infinity is G0204 (golem-eval ADR 0005).
+to even; one that rounds to infinity is G02004 (golem-eval ADR 0005).
 Nothing for a value that is not a number.
 -}
 asDouble :: Located a -> Value -> Maybe (Eval Double)
 asDouble at = \case
   VInt i
-    | isInfinite d -> Just (err "G0204" at "整数が大きすぎて浮動小数点数に変換できません")
+    | isInfinite d -> Just (err "G02004" at "整数が大きすぎて浮動小数点数に変換できません")
     | otherwise -> Just (pure d)
     where
       d = fromInteger i :: Double
@@ -156,8 +156,8 @@ binary le op x y = case op of
   Sub -> arith (-) (-)
   Mul -> arith (*) (*)
   Div -> case (x, y) of
-    (_, VInt 0) | isNum x -> err "G0203" le "0 で割っています"
-    (_, VFloat 0) | isNum x -> err "G0203" le "0 で割っています"
+    (_, VInt 0) | isNum x -> err "G02003" le "0 で割っています"
+    (_, VFloat 0) | isNum x -> err "G02003" le "0 で割っています"
     -- the exact quotient rounded once (golem-eval ADR 0005)
     (VInt a, VInt b) -> mkFloat le (fromRational (a % b))
     _ -> case (asDouble le x, asDouble le y) of
@@ -167,23 +167,23 @@ binary le op x y = case op of
         mkFloat le (a / b)
       _ -> mismatch
   Mod -> case (x, y) of
-    (VInt _, VInt 0) -> err "G0203" le "0 で割っています"
+    (VInt _, VInt 0) -> err "G02003" le "0 で割っています"
     (VInt a, VInt b) -> pure (VInt (floorMod a b))
     _ -> typeErr le "% は整数にだけ使えます"
   Pow -> case (x, y) of
-    (_, VFloat _) -> err "G0206" le "** の指数は整数に限ります"
+    (_, VFloat _) -> err "G02006" le "** の指数は整数に限ります"
     (VInt a, VInt k)
       -- the size is judged before the power is computed (docs/adr ADR 0035)
       | k == 0 -> pure (VInt 1)
       | k > 0, abs a <= 1 -> pure (VInt (a ^ k))
       | k > 0, k >= 4096 || abs a >= intLimit -> tooBig le
       | k > 0 -> checkedInt le (a ^ k)
-      | a == 0 -> err "G0203" le "0 で割っています"
+      | a == 0 -> err "G02003" le "0 で割っています"
       | otherwise -> rounded (fromInteger a) k
     (VFloat a, VInt k)
       | k == 0 -> pure (VFloat 1)
       | a == 0, k > 0 -> pure (VFloat 0)
-      | a == 0 -> err "G0203" le "0 で割っています"
+      | a == 0 -> err "G02003" le "0 で割っています"
       | otherwise -> rounded (toRational a) k
     _ -> mismatch
   OpEq -> pure (VBool (equal x y))
@@ -200,8 +200,8 @@ binary le op x y = case op of
       _ -> False
     rounded a k = case powRounded a k of
       PowValue d -> pure (VFloat d)
-      PowOverflow -> err "G0204" le "結果が NaN か無限大になる演算です"
-      PowTooLarge n -> err "G0295" le ("累乗の正確な計算に要るビットの数 " <> T.pack (show n) <> " が、上限の 1048576（2 の 20 乗）を超えます（結果の大きさによらない上限です）")
+      PowOverflow -> err "G02004" le "結果が NaN か無限大になる演算です"
+      PowTooLarge n -> err "G02095" le ("累乗の正確な計算に要るビットの数 " <> T.pack (show n) <> " が、上限の 1048576（2 の 20 乗）を超えます（結果の大きさによらない上限です）")
     arith :: (Integer -> Integer -> Integer) -> (Double -> Double -> Double) -> Eval Value
     arith fi fd = case (x, y) of
       (VInt a, VInt b) -> checkedInt le (fi a b)
@@ -222,7 +222,7 @@ equal a b = case compareNum a b of
 
 call :: Located Expr -> Name -> [Value] -> Eval Value
 call le f args = case (f, args) of
-  ("sqrt", [v]) -> num v >>= \x -> if x < 0 then err "G0204" le "負の数の平方根です" else mkFloat le (sqrt x)
+  ("sqrt", [v]) -> num v >>= \x -> if x < 0 then err "G02004" le "負の数の平方根です" else mkFloat le (sqrt x)
   ("floor", [VInt i]) -> pure (VInt i)
   ("floor", [VFloat d]) -> pure (VInt (floor d))
   ("ceil", [VInt i]) -> pure (VInt i)
@@ -239,7 +239,7 @@ call le f args = case (f, args) of
   ("max", v : vs) -> extreme GT v vs
   ("len", [VString s]) -> pure (VInt (toInteger (T.length s)))
   ("len", [VArray xs]) -> pure (VInt (toInteger (length xs)))
-  ("div", [VInt _, VInt 0]) -> err "G0203" le "0 で割っています"
+  ("div", [VInt _, VInt 0]) -> err "G02003" le "0 で割っています"
   ("div", [VInt a, VInt b]) -> pure (VInt (floorDiv a b))
   ("div", [_, _]) -> typeErr le "div は整数にだけ使えます"
   -- the strings of an array with a separator between them (docs/adr ADR 0033)
@@ -248,12 +248,12 @@ call le f args = case (f, args) of
     | otherwise -> typeErr le "join の配列には文字列だけを並べます"
   ("join", [_, _]) -> typeErr le "join は文字列の配列と区切りの文字列に使えます"
   _
-    | f `elem` builtinNames -> err "G0207" le (f <> " の引数が不正です")
-    | otherwise -> err "G0261" le ("未定義の関数 " <> f <> " です")
+    | f `elem` builtinNames -> err "G02007" le (f <> " の引数が不正です")
+    | otherwise -> err "G02061" le ("未定義の関数 " <> f <> " です")
   where
-    tooManyDigits = err "G0286" le "小数の桁数が多すぎます（1000 桁までです）"
+    tooManyDigits = err "G02086" le "小数の桁数が多すぎます（1000 桁までです）"
     num v = fromMaybe (typeErr le (typeName v <> " は数ではありません")) (asDouble le v)
-    -- min and max with no argument are G0207 above; the values are compared
+    -- min and max with no argument are G02007 above; the values are compared
     -- exactly, and the earlier of equal ones is kept (golem-eval ADR 0005)
     extreme better v vs = do
       traverse_ isNumber (v : vs)
@@ -266,7 +266,7 @@ embedValue sp = \case
   VInt i -> Right (T.pack (show i))
   VFloat d -> Right (renderDouble d)
   VString s -> Right s
-  v -> Left (diagnostic "G0208" Error sp (typeName v <> " は本文に埋め込めません"))
+  v -> Left (diagnostic "G02008" Error sp (typeName v <> " は本文に埋め込めません"))
 
 {- | The largest exact power, in bits: the bits of the odd part of the
 base, less one, times the exponent (golem-eval ADR 0005, ADR 0006). The
@@ -280,9 +280,9 @@ maxExactBits = 2 ^ (20 :: Int)
 data PowResult
   = -- | the nearest double; zero for a result that rounds to zero
     PowValue !Double
-  | -- | the result rounds to infinity (G0204)
+  | -- | the result rounds to infinity (G02004)
     PowOverflow
-  | -- | the exact power needs this many bits, over 'maxExactBits' (G0295)
+  | -- | the exact power needs this many bits, over 'maxExactBits' (G02095)
     PowTooLarge !Integer
   deriving stock (Eq, Show)
 

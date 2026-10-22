@@ -59,7 +59,7 @@ import Text.Printf (printf)
 
 -- ------------------------------------------------------------------ the result
 
--- | A colour space a PDF figure uses, for golem preflight (G0908, G0909).
+-- | A colour space a PDF figure uses, for golem preflight (G09008, G09009).
 data ColorUse
   = UseGray
   | -- | DeviceRGB (replaced by sRGB) and CalRGB
@@ -110,7 +110,7 @@ data ImportError
   | RgbInlineImage
   | OptionalContent
   | UnsupportedUserUnit
-  | -- | the length of the content of a page whose Contents are joined, over 256 MiB (G0815, docs/adr ADR 0051)
+  | -- | the length of the content of a page whose Contents are joined, over 256 MiB (G08015, docs/adr ADR 0051)
     ContentTooLarge !Int
   deriving stock (Eq, Show)
 

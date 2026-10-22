@@ -297,18 +297,18 @@ run build manual-dev
 expect "build: manual-dev only" 0
 check "build: only manual-dev is built" logged "manual-dev build --target pdf --target html info=yes"
 
-FAKE_STDERR='notice[G0730]: a.gm:1:1: the line is folded'
+FAKE_STDERR='notice[G07030]: a.gm:1:1: the line is folded'
 FAKE_CODE=0
 export FAKE_STDERR FAKE_CODE
 run build manual
 expect "build: a notice fails the build" 1
-err_has "build: the notice is shown" "notice[G0730]"
-FAKE_STDERR='warning[G0205]: a.gm:1:1: unused'
+err_has "build: the notice is shown" "notice[G07030]"
+FAKE_STDERR='warning[G02005]: a.gm:1:1: unused'
 run build manual
 expect "build: a warning fails the build" 1
 unset FAKE_STDERR FAKE_CODE
 
-printf '\n[diagnostics]\nsilence-notices = ["G0730"]\n' >>"$R/manual-dev/manifest.toml"
+printf '\n[diagnostics]\nsilence-notices = ["G07030"]\n' >>"$R/manual-dev/manifest.toml"
 run build manual-dev
 expect "build: silence-notices fails the build" 1
 check "build: golem is not run with silence-notices" test ! -e "$LOG"

@@ -204,11 +204,11 @@ tests =
       testCase "a result of the wrong type is bad output, every time (docs/adr ADR 0035)" $ do
         w <- compile =<< wat "describe-i32.wat"
         loadPlugin w >>= (@?= Left (BadOutput "golem_describe の戻り値の型が不正です")) . void,
-      testCase "a sha256 that is not 64 lowercase hexadecimal digits is G0611 (docs/adr ADR 0035)" $
+      testCase "a sha256 that is not 64 lowercase hexadecimal digits is G06011 (docs/adr ADR 0035)" $
         forM_ ["../../../../tmp/x", "00", T.toUpper (hashHex "AAA"), hashHex "AAA" <> "0"] $ \h ->
           case parseLock (FileId 0) ("[plugins.a]\nurl = \"https://example.com/a.wasm\"\nsha256 = \"" <> h <> "\"\n") of
             Left ds -> do
-              map diagCode ds @?= [DiagnosticCode "G0611"]
+              map diagCode ds @?= [DiagnosticCode "G06011"]
               map diagMessage ds @?= ["plugins.a.sha256 は 64 文字の小文字の 16 進数で書きます"]
             Right m -> assertFailure (show m),
       testCase "NaN results are the same bytes on every run" $ do
@@ -290,10 +290,10 @@ lockTests =
             ]
         parseLock (FileId 0) (renderLock lock) @?= Right lock
         listDirectory cache >>= (@?= 2) . length,
-      testCase "an unknown key of plugins.lock is G0611 in Japanese (golem-project ADR 0007)" $
+      testCase "an unknown key of plugins.lock is G06011 in Japanese (golem-project ADR 0007)" $
         case parseLock (FileId 0) "[plugins.a]\nurl = \"https://example.com/a.wasm\"\nsha256 = \"00\"\nsha = \"00\"\n" of
           Left ds -> do
-            map diagCode ds @?= [DiagnosticCode "G0611"]
+            map diagCode ds @?= [DiagnosticCode "G06011"]
             assertBool (show (map diagMessage ds)) (all (("知らないキーです: " `T.isPrefixOf`) . diagMessage) ds)
           Right m -> assertFailure (show m),
       testCase "a plugin removed from the manifest leaves the lock" $ withSystemTempDirectory "cache" $ \cache -> do

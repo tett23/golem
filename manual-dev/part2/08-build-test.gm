@@ -153,7 +153,7 @@ $ GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev
 ```
 
 マニュアルを編集する前に、[code: sh scripts/manual/build-info.sh manual-dev] を一度実行する。
-奥付が読む [code: common/build-info.gm] は生成物で、ないまま [code: golem check] や LSP で開くと、[code: @import] の先がないエラー（G0302）になるからである。
+奥付が読む [code: common/build-info.gm] は生成物で、ないまま [code: golem check] や LSP で開くと、[code: @import] の先がないエラー（G03002）になるからである。
 詳しくは第[ref-number manuals]章で説明する。
 
 ## フィクスチャを取得する

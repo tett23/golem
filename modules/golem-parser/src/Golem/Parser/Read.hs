@@ -38,27 +38,27 @@ readSource fid bs
   | otherwise = case decodeUtf8' bs of
       Left _ ->
         let bad = invalidOffset bs
-         in Left [diagnostic "G0101" Error (mkSpan fid bad (bad + 1)) "UTF-8 として不正なバイト列があります"]
+         in Left [diagnostic "G01001" Error (mkSpan fid bad (bad + 1)) "UTF-8 として不正なバイト列があります"]
       Right t -> case checkText fid t of
         [] -> Right t
         ds -> Left ds
 
 {- | The reading stage of a table file, a CSV or a TSV (golem-eval ADR
-0004): invalid UTF-8 is G0101, as in a source file; a BOM at the start is
+0004): invalid UTF-8 is G01001, as in a source file; a BOM at the start is
 not an error, and stays in the text (the table readers skip it, and count
-its bytes); a CR not before an LF is G0282. CRLF is not an error.
+its bytes); a CR not before an LF is G02082. CRLF is not an error.
 -}
 readTableSource :: FileId -> ByteString -> Either [Diagnostic] Text
 readTableSource fid bs = case decodeUtf8' bs of
   Left _ ->
     let bad = invalidOffset bs
-     in Left [diagnostic "G0101" Error (mkSpan fid bad (bad + 1)) "UTF-8 として不正なバイト列があります"]
+     in Left [diagnostic "G01001" Error (mkSpan fid bad (bad + 1)) "UTF-8 として不正なバイト列があります"]
   Right t -> case checkTableText fid t of
     [] -> Right t
     ds -> Left ds
 
 {- | The check of 'readTableSource' left after decoding: the first CR that
-is not before an LF, G0282 (golem-eval ADR 0004). At most one diagnostic.
+is not before an LF, G02082 (golem-eval ADR 0004). At most one diagnostic.
 -}
 checkTableText :: FileId -> Text -> [Diagnostic]
 checkTableText fid = go 0
@@ -70,7 +70,7 @@ checkTableText fid = go 0
           Just ('\n', r') -> go (off + lengthWord8 pre + 2) r'
           _ ->
             let i = off + lengthWord8 pre
-             in [diagnostic "G0282" Error (mkSpan fid i (i + 1)) "単独の CR があります。表のファイルの改行は LF か CRLF に限ります"]
+             in [diagnostic "G02082" Error (mkSpan fid i (i + 1)) "単独の CR があります。表のファイルの改行は LF か CRLF に限ります"]
 
 {- | 'readSource' for the file at @path@: on failure, the diagnostics and
 the file's entry in the source table.
@@ -98,13 +98,13 @@ checkText fid t
         | T.null rest -> []
         | otherwise ->
             let i = BS.length (encodeUtf8 pre)
-             in [ (diagnostic "G0103" Error (mkSpan fid i (i + 1)) "改行に CR が含まれています。改行は LF に限ります")
+             in [ (diagnostic "G01003" Error (mkSpan fid i (i + 1)) "改行に CR が含まれています。改行は LF に限ります")
                     { diagFixes = [Fix "golem fmt で LF に直す" []]
                     }
                 ]
 
 bomDiagnostic :: FileId -> Diagnostic
-bomDiagnostic fid = diagnostic "G0102" Error (mkSpan fid 0 3) "ファイルの先頭に BOM があります。BOM を取り除いてください"
+bomDiagnostic fid = diagnostic "G01002" Error (mkSpan fid 0 3) "ファイルの先頭に BOM があります。BOM を取り除いてください"
 
 -- | The first byte offset at which UTF-8 decoding fails.
 invalidOffset :: ByteString -> Int

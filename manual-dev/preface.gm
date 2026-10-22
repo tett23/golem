@@ -97,7 +97,7 @@ golem-driver のフィクスチャには、横組みの『テンペスト』と�
 TeX で組んだ本の誤りを追ったことがあれば、マクロの展開の奥で起きたエラーが、原稿のどの行のせいなのかわからなかった経験があるだろう。
 Golem にはテキストを置き換えるマクロがない。
 記法には文法があり、パーサーが原稿を空白とコメントまで失わない具象構文木（CST）にしてから、意味だけを残した抽象構文木（AST）に写す。
-どの段階で見つかった誤りも、原稿の位置と [code: G0215] のような安定したコードを持つ diagnostic（LSP やコンパイラの用語で、処理系が報告する誤りや注意）として報告され、[code: golem explain] でコードの説明を引ける（第[ref-number diagnostics]章）。
+どの段階で見つかった誤りも、原稿の位置と [code: G02015] のような安定したコードを持つ diagnostic（LSP やコンパイラの用語で、処理系が報告する誤りや注意）として報告され、[code: golem explain] でコードの説明を引ける（第[ref-number diagnostics]章）。
 同じパーサーの上に、整形（[code: golem fmt]）、lint（[code: golem lint]）、LSP [cite lsp] のサーバー（[code: golem lsp]）が載っている（第[ref-number lsp]章）。
 
 出力の決定性は、処理系が保証する性質である。

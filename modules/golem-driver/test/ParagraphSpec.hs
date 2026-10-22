@@ -189,10 +189,10 @@ indentTests =
       (_, pl) <- layoutOk (horizontal24 <> "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") (wrapped "start" "4zw" <> longPara 30) img
       (_, _, p, slot) <- theFigure pl
       take 2 (map (slIndent . snd) (linesFrom pl p slot)) @?= [60 * pt, 50 * pt],
-    testCase "PDF: an indent that leaves less than 8 characters is G0725" $ do
+    testCase "PDF: an indent that leaves less than 8 characters is G07025" $ do
       let style = replaceIn "characters = 12" "characters = 10" horizontalStyle <> "\n[paragraph-styles.body]\nindent = \"3zw\"\n"
       (errs, pdf) <- buildMini fakeProvider True style "本文。\n" []
-      (nub errs, pdf) @?= ([DiagnosticCode "G0725"], Nothing),
+      (nub errs, pdf) @?= ([DiagnosticCode "G07025"], Nothing),
     testCase "HTML: the indent of body and of verse, none in list items" $ do
       withVerseProject "[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n" "本文。\n" $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
@@ -282,16 +282,16 @@ listTests =
     testCase "PDF: the paragraph style's indent does not apply to list items" $ do
       (_, ls) <- verseLines (horizontalStyle <> "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") ("- " <> T.replicate 20 "あ" <> "\n")
       map snd ls @?= [0, 10 * pt],
-    testCase "PDF: lists nested so deep that less than 8 characters are left are G0727" $ do
+    testCase "PDF: lists nested so deep that less than 8 characters are left are G07027" $ do
       let style = replaceIn "characters = 12" "characters = 10" horizontalStyle
       (ok, _) <- buildMini fakeProvider False style "- 外\n  - 内の項目。\n" []
       ok @?= []
       r <- layoutMini style "- 一\n  - 二\n    - 三の項目。\n" []
       case r of
         Left ds -> do
-          [diagCode d | d <- ds] @?= [DiagnosticCode "G0727"]
+          [diagCode d | d <- ds] @?= [DiagnosticCode "G07027"]
           [diagSpan d | d <- ds] /= [] @? "span"
-        Right _ -> assertFailure "expected G0727",
+        Right _ -> assertFailure "expected G07027",
     testCase "PDF: a note in a list item belongs to the line of its marker" $
       forM_ [8 .. 14] $ \k -> do
         (_, pl) <- layoutOk horizontalStyle ("- " <> T.replicate k "あ" <> "[note: 注。]" <> T.replicate 8 "い" <> "\n") []
@@ -318,17 +318,17 @@ listTests =
       (_, ls) <- verseLines style ("- " <> T.replicate 20 "あ" <> "\n")
       -- 1 character and fs / 2, rounded up to whole characters
       map snd ls @?= [0, 20 * pt],
-    testCase "a number its format cannot write is G0729, at the item" $ do
+    testCase "a number its format cannot write is G07029, at the item" $ do
       r <- layoutMini (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" []
       case r of
         Left ds -> do
-          [diagCode d | d <- ds] @?= [DiagnosticCode "G0729"]
+          [diagCode d | d <- ds] @?= [DiagnosticCode "G07029"]
           let lineStart = BS.length (TE.encodeUtf8 "+ 一\n@number 51\n")
           assertBool (show ds) (all (\d -> spanStart (diagSpan d) >= lineStart) ds)
-        Right _ -> assertFailure "expected G0729"
+        Right _ -> assertFailure "expected G07029"
       withVerseProject (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" $ \tmp -> do
         r' <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText]}
-        [diagCode d | d <- brDiagnostics r', isError d] @?= [DiagnosticCode "G0729"],
+        [diagCode d | d <- brDiagnostics r', isError d] @?= [DiagnosticCode "G07029"],
     testCase "HTML: [lists] writes a @counter-style for each depth" $
       withVerseProject (TE.encodeUtf8 "[lists]\nbullets = [\"■\", \"□\"]\nnumbers = [\"({1})\", \"{①}\"]\n") "- 一\n  - 二\n\n+ 一\n  + 二\n" $ \tmp -> do
         _ <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
@@ -371,16 +371,16 @@ pageControlTests =
             length ps @?= 6
             assertBool (show steps) (all (\s -> abs (s - 15) < 0.01) steps)
           [] -> assertFailure "no glyphs",
-    testCase "PDF: page-lines +1 past the trimmed page is G0737 and changes nothing" $ do
+    testCase "PDF: page-lines +1 past the trimmed page is G07037 and changes nothing" $ do
       let style = replaceIn "lines = 30" "lines = 36" horizontalStyle
       r <- layoutMini style "@page-lines +1\n\n一\n" []
       (_, layout) <- either (assertFailure . show) pure r
       map poLines (plPages layout) @?= [36]
-      map diagCode (plNotices layout) @?= [DiagnosticCode "G0737"],
-    testCase "PDF: a no-break that cannot be met and need-lines past the column are G0737, and the PDF is written" $ do
+      map diagCode (plNotices layout) @?= [DiagnosticCode "G07037"],
+    testCase "PDF: a no-break that cannot be met and need-lines past the column are G07037, and the PDF is written" $ do
       r <- layoutMini fiveLines "@no-page-break\n\n一\n\n@need-lines 9\n\n二\n" []
       (_, layout) <- either (assertFailure . show) pure r
-      map diagCode (plNotices layout) @?= [DiagnosticCode "G0737", DiagnosticCode "G0737"]
+      map diagCode (plNotices layout) @?= [DiagnosticCode "G07037", DiagnosticCode "G07037"]
       _ <- miniPdf fakeProvider True fiveLines "@no-page-break\n\n一\n" []
       pure (),
     testCase "PDF: the same bytes in parallel and in sequence with the controls" $ do
@@ -414,12 +414,12 @@ blankLineTests =
         (_, layout) <- layoutMini style "あ\n@blank-line 2\nい\n" [] >>= either (assertFailure . show) pure
         map (map fst . poSlots) (plPages layout) @?= [[0, 3]]
         plNotices layout @?= [],
-    testCase "PDF: a blank line at the top of a column is dropped with the notice G0747 at its line" $ do
+    testCase "PDF: a blank line at the top of a column is dropped with the notice G07047 at its line" $ do
       let src = "あ\n\n@page-break\n\n@blank-line\n\nい\n"
       (_, layout) <- layoutMini fiveLines src [] >>= either (assertFailure . show) pure
       map (map fst . poSlots) (plPages layout) @?= [[0], [0]]
       [(diagCode d, diagSeverity d, diagMessage d, spanStart (diagSpan d)) | d <- plNotices layout]
-        @?= [(DiagnosticCode "G0747", Notice, "段の先頭に来た @blank-line の空きを捨てました", 18)],
+        @?= [(DiagnosticCode "G07047", Notice, "段の先頭に来た @blank-line の空きを捨てました", 18)],
     testCase "PDF: blank lines between two stanzas take the place of space-between, not more" $ do
       (_, layout) <- layoutMini horizontalStyle "@style verse\n  あ\n\n@blank-line\n\n@style verse\n  い\n" [] >>= either (assertFailure . show) pure
       map (map fst . poSlots) (plPages layout) @?= [[0, 2]]
@@ -440,21 +440,21 @@ blankLineTests =
       t @?= "あ\n\n\n\nい\n"
       t' <- text "@blank-line\n\nあ\n\n@page-break\n@blank-line\nい\n\n@blank-line\n"
       t' @?= "あ\n\nい\n",
-    testCase "G0411: blank lines of as many lines as a page are dropped from the PDF, HTML and plain text (docs/adr ADR 0047)" $ do
+    testCase "G04011: blank lines of as many lines as a page are dropped from the PDF, HTML and plain text (docs/adr ADR 0047)" $ do
       let style = withBodyFont (replaceIn "lines = 30" "lines = 16" horizontalStyle)
           manifest extra = miniManifest <> "\n[targets.html]\n\n[targets.text]\nvariants = [\"horizontal\"]\n" <> extra
           run extra = buildNotified ([("manifest.toml", manifest extra), ("style.toml", style), ("a.gm", TE.encodeUtf8 "あ\n\n@blank-line 16\n\nい\n")] <> fakeFontFiles) id
           codesOf c n = [(diagSeverity d, diagMessage d) | d <- nDiagnostics n, diagCode d == DiagnosticCode c]
       n <- run ""
       assertEqual "no errors" [] (map diagCode (filter isError (nDiagnostics n)))
-      codesOf "G0411" n @?= [(Notice, "@blank-line の行数 16 がページの行数 16 以上なので捨てます")]
-      codesOf "G0747" n @?= []
+      codesOf "G04011" n @?= [(Notice, "@blank-line の行数 16 がページの行数 16 以上なので捨てます")]
+      codesOf "G07047" n @?= []
       assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n))
       page <- maybe (assertFailure (show (map fst (nOutputs n)))) (pure . TE.decodeUtf8) (lookup "html/a.xhtml" (nOutputs n))
       assertBool (T.unpack page) (not ("blank-line" `T.isInfixOf` page))
       fmap TE.decodeUtf8 (lookup "text/horizontal/a.txt" (nOutputs n)) @?= Just "あ\n\nい\n"
-      quiet <- run "\n[diagnostics]\nsilence-notices = [\"G0411\"]\n"
-      codesOf "G0411" quiet @?= []
+      quiet <- run "\n[diagnostics]\nsilence-notices = [\"G04011\"]\n"
+      codesOf "G04011" quiet @?= []
   ]
 
 breakTests :: [TestTree]
@@ -558,13 +558,13 @@ columnTests =
       content <- miniPdf fakeProvider True style (longPara 50) [] >>= pageContents
       length content @?= 1
       length [d | d <- concatMap drawnGlyphs content, dGlyph d == fromEnum '1'] @?= 1,
-    testCase "PDF: a wrapped figure on a page of two columns is G0726 at the figure" $ do
+    testCase "PDF: a wrapped figure on a page of two columns is G07026 at the figure" $ do
       img <- tinyImage
       let source = longPara 2 <> wrapped "start" "4zw" <> longPara 10
       r <- layoutMini (figStyle horizontal2) source img
       case r of
         Left [d] -> do
-          diagCode d @?= DiagnosticCode "G0726"
+          diagCode d @?= DiagnosticCode "G07026"
           [spanStart (diagSpan d)] @?= offsetsIn "@figure" source
         other -> assertFailure (show (either (map diagCode) (const []) other)),
     testCase "PDF: the index is set in the measure of a column and goes on in the second column" $ do

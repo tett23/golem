@@ -32,10 +32,10 @@ manifestOf metaLines tables =
 parsed :: Text -> Text -> Either [Diagnostic] Metadata
 parsed m t = manifestMetadata <$> parseManifest (FileId 0) (manifestOf m t)
 
--- | The one G0301 of a manifest: its message and its offset.
+-- | The one G03001 of a manifest: its message and its offset.
 oneError :: Text -> Text -> IO (Text, Int)
 oneError m t = case parseManifest (FileId 0) (manifestOf m t) of
-  Left [d] | diagCode d == DiagnosticCode "G0301" -> pure (diagMessage d, spanStart (diagSpan d))
+  Left [d] | diagCode d == DiagnosticCode "G03001" -> pure (diagMessage d, spanStart (diagSpan d))
   other -> assertFailure (show (either (map diagMessage) (const []) other))
 
 -- | The byte offset of the first occurrence of a text in a manifest.
@@ -89,7 +89,7 @@ tests =
               Left ds -> assertFailure (show ds)
           )
           [minBound .. maxBound],
-      testCase "a code of the table is G0301 at the value and names the word" $ do
+      testCase "a code of the table is G03001 at the value and names the word" $ do
         (m1, at1) <- oneError "" (contributor "aut")
         at1 @?= offsetOf "\"aut\"" "" (contributor "aut")
         assertBool (T.unpack m1) ("\"author\"" `T.isInfixOf` m1)
@@ -97,7 +97,7 @@ tests =
         assertBool (T.unpack m2) ("\"translator\"" `T.isInfixOf` m2)
         (m3, _) <- oneError "" "[[metadata.creators]]\nname = \"a\"\nrole = \"aut\"\n"
         assertBool (T.unpack m3) ("\"author\"" `T.isInfixOf` m3),
-      testCase "a word or code not in the table is G0301 and lists the words" $
+      testCase "a word or code not in the table is G03001 and lists the words" $
         mapM_
           ( \r -> do
               (m, at) <- oneError "" (contributor r)
@@ -105,23 +105,23 @@ tests =
               assertBool (T.unpack m) (all (`T.isInfixOf` m) ["author", "cover-designer", "binder"])
           )
           ["pbl", "Author", "writer"],
-      testCase "role = publisher is G0301 and names publisher and publisher-person" $ do
+      testCase "role = publisher is G03001 and names publisher and publisher-person" $ do
         (m, _) <- oneError "" (contributor "publisher")
         assertBool (T.unpack m) ("publisher-person" `T.isInfixOf` m && "[metadata] の publisher" `T.isInfixOf` m),
-      testCase "an empty publisher-person, or one with a newline, is G0301 at the value" $ do
+      testCase "an empty publisher-person, or one with a newline, is G03001 at the value" $ do
         (_, at) <- oneError "publisher-person = \"\"" ""
         at @?= offsetOf "\"\"" "publisher-person = \"\"" ""
         _ <- oneError "publisher-person = \"a\\nb\"" ""
         pure (),
-      testCase "an empty name is G0301, in creators and in contributors" $ do
+      testCase "an empty name is G03001, in creators and in contributors" $ do
         _ <- oneError "" "[[metadata.creators]]\nname = \"\"\nrole = \"author\"\n"
         (_, at) <- oneError "" "[[metadata.contributors]]\nname = \"\"\nrole = \"editor\"\n"
         at @?= offsetOf "\"\"" "" "[[metadata.contributors]]\nname = \"\"\nrole = \"editor\"\n",
-      testCase "an edition or a printing below 1 is G0301" $ do
+      testCase "an edition or a printing below 1 is G03001" $ do
         _ <- oneError "" (printing 0 1 "2026-10-16")
         _ <- oneError "" (printing 1 0 "2026-10-16")
         pure (),
-      testCase "printings that do not increase, or go back in date, are G0301 at the item" $ do
+      testCase "printings that do not increase, or go back in date, are G03001 at the item" $ do
         let two a b = a <> "\n" <> b
             cases =
               [ two (printing 1 1 "2026-10-16") (printing 1 1 "2026-10-17"),
@@ -145,7 +145,7 @@ tests =
           @?= Right [(1, 3), (2, 1)],
       testCase "a printing number may skip" $
         fmap (map prNumber . mdPrintings) (parsed "" (printing 1 1 "2026-10-16" <> "\n" <> printing 1 3 "2027-01-01")) @?= Right [1, 3],
-      testCase "an unknown key of contributors is G0301" $ do
+      testCase "an unknown key of contributors is G03001" $ do
         _ <- oneError "" "[[metadata.contributors]]\nname = \"a\"\nrole = \"editor\"\nnote = \"x\"\n"
         pure (),
       testCase "the words differ, and the codes are three lower-case letters that differ" $ do

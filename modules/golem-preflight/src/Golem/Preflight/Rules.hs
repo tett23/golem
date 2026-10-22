@@ -1,7 +1,7 @@
 {- | The preflight rules (golem-cli ADR 0006): which checks golem preflight
 runs, with which severity and thresholds. A file of rules is TOML; what it
 does not write comes from the built-in rules it is based on, key by key.
-Every error of the file is G0901.
+Every error of the file is G09001.
 -}
 module Golem.Preflight.Rules
   ( Level (..),
@@ -156,9 +156,9 @@ noneRules =
 builtinRules :: [(Text, Rules)]
 builtinRules = [("basic", basicRules), ("print", printRules), ("none", noneRules)]
 
--- | Reads a file of rules; every error is G0901 at its place in the file.
+-- | Reads a file of rules; every error is G09001 at its place in the file.
 parseRules :: FileId -> Text -> Either [Diagnostic] Rules
-parseRules fid src = (\(RulesFile r) -> r) <$> decodeStrictBy "G0901" (const "G0901") fid src
+parseRules fid src = (\(RulesFile r) -> r) <$> decodeStrictBy "G09001" (const "G09001") fid src
 
 newtype RulesFile = RulesFile Rules
 

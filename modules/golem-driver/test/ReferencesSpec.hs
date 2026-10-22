@@ -231,24 +231,24 @@ bibliographyFormatTests =
       ds @?= []
       Map.lookup "lit" m @?= Just "日本規格協会、照合順番、n.d.。"
       Map.lookup "jisx4061" m @?= Just "JIS X 4061:1996 日本語文字列照合順番、日本規格協会、1996。",
-    testCase "a missing file is G0326 at the head of manifest.toml" $ do
+    testCase "a missing file is G03026 at the head of manifest.toml" $ do
       (ds, m) <- bibOf "bibliography = [\"nope.json\"]" []
-      map (\d -> (diagCode d, diagSeverity d, diagSpan d, diagMessage d)) ds @?= [(DiagnosticCode "G0326", Error, mkSpan (FileId 0) 0 0, "参考文献のファイルがありません: nope.json")]
+      map (\d -> (diagCode d, diagSeverity d, diagSpan d, diagMessage d)) ds @?= [(DiagnosticCode "G03026", Error, mkSpan (FileId 0) 0 0, "参考文献のファイルがありません: nope.json")]
       m @?= Map.empty,
-    testCase "a file that is not JSON, or not an array, is G0326" $ do
+    testCase "a file that is not JSON, or not an array, is G03026" $ do
       (ds1, _) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", "{")]
-      map diagCode ds1 @?= [DiagnosticCode "G0326"]
+      map diagCode ds1 @?= [DiagnosticCode "G03026"]
       assertBool (show ds1) (all (("参考文献のファイルを JSON として読めません: refs.json（" `T.isPrefixOf`) . diagMessage) ds1)
       (ds2, _) <- bibOf "bibliography = [\"refs.json\"]" [("refs.json", "{}")]
       map diagMessage ds2 @?= ["参考文献のファイルは CSL-JSON の配列で書きます: refs.json"],
-    testCase "an absolute path is G0303" $ do
+    testCase "an absolute path is G03003" $ do
       (ds, _) <- bibOf "bibliography = [\"/abs.json\"]" []
-      map diagCode ds @?= [DiagnosticCode "G0303"],
-    testCase "golem check reports G0326 before the G0221 it causes" $
+      map diagCode ds @?= [DiagnosticCode "G03003"],
+    testCase "golem check reports G03026 before the G02021 it causes" $
       withBibProject "bibliography = [\"nope.json\"]" "本文[cite jlreq]。\n" [] $ \tmp -> do
         r <- build (defaultOptions tmp) {optCheckOnly = True}
-        -- G0807 of the fontless PDF target comes after them
-        take 2 (map diagCode (filter isError (brDiagnostics r))) @?= [DiagnosticCode "G0326", DiagnosticCode "G0221"],
+        -- G08007 of the fontless PDF target comes after them
+        take 2 (map diagCode (filter isError (brDiagnostics r))) @?= [DiagnosticCode "G03026", DiagnosticCode "G02021"],
     testCase "HTML lists a Japanese entry with 、 and 。" $
       withBibProject "bibliography = [\"refs.json\"]" "本文[cite jisx4061]。\n\n@bibliography\n" [("refs.json", jaRefsJson)] $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
@@ -474,7 +474,7 @@ columnWidthTests =
       -- six columns of two characters and five gaps do not fit 12 characters
       let cells = "| " <> T.intercalate " | " (replicate 6 "あい") <> " |\n"
       (errs, _) <- buildMini fakeProvider True horizontalStyle (cells <> "|" <> T.replicate 6 "---|" <> "\n" <> cells) []
-      errs @?= [DiagnosticCode "G0741"]
+      errs @?= [DiagnosticCode "G07041"]
   ]
 
 tableTests :: [TestTree]
@@ -502,10 +502,10 @@ tableTests =
     testCase "columns too wide for the measure, or a row taller than a page, are errors" $ do
       let wide = "| " <> T.intercalate " | " (replicate 13 "字") <> " |\n|" <> T.replicate 13 "---|" <> "\n| " <> T.intercalate " | " (replicate 13 "字") <> " |\n"
       (e1, p1) <- buildMini fakeProvider True horizontalStyle wide []
-      (e1, p1) @?= ([DiagnosticCode "G0741"], Nothing)
+      (e1, p1) @?= ([DiagnosticCode "G07041"], Nothing)
       let tall = "| 項目 | 値 |\n|---|---|\n| " <> T.replicate 60 "あ" <> " | 1 |\n"
       (e2, p2) <- buildMini fakeProvider True fiveLines tall []
-      (e2, p2) @?= ([DiagnosticCode "G0742"], Nothing),
+      (e2, p2) @?= ([DiagnosticCode "G07042"], Nothing),
     testCase "a table from CSV is set the same way" $ do
       content <- miniPdf fakeProvider True horizontalStyle "@table src=data.csv\n" [("data.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] >>= fmap BS.concat . inflateAll
       length (rulesIn content) @?= 3
@@ -662,18 +662,18 @@ indexColumnTests =
       let body = fst . BS.breakSubstring "trailer"
       body a @?= body b
       body a @?= body c,
-    testCase "G0744: index columns under 8 characters, at the value of columns, also in golem check" $ do
+    testCase "G07044: index columns under 8 characters, at the value of columns, also in golem check" $ do
       let style = withIndexColumns "5" horizontalStyle
           src = BC.unpack style
           at = length (takeWhile (/= "[index]") (lines src))
           offset = sum (map ((+ 1) . length) (take at (lines src))) + length ("[index]\ncolumns = " :: String)
       b <- buildMarksFilesWith indexSource id (Just (style <> fakeBody)) fakeFontFiles
-      map diagMessage (ofCode "G0744" b) @?= ["索引の段の行長が足りません。columns を減らすか column-gap を狭めてください"]
-      map (whereIs b) (ofCode "G0744" b) @?= [(Just "style.toml", offset)]
+      map diagMessage (ofCode "G07044" b) @?= ["索引の段の行長が足りません。columns を減らすか column-gap を狭めてください"]
+      map (whereIs b) (ofCode "G07044" b) @?= [(Just "style.toml", offset)]
       bPdf b @?= Nothing
       c <- buildMarksFilesWith indexSource (\o -> o {optCheckOnly = True}) (Just (style <> fakeBody)) fakeFontFiles
-      map diagCode (ofCode "G0744" c) @?= [DiagnosticCode "G0744"],
-    testCase "PDF: with a sidenote column, two index columns are not G0701 and leave the column out" $ do
+      map diagCode (ofCode "G07044" c) @?= [DiagnosticCode "G07044"],
+    testCase "PDF: with a sidenote column, two index columns are not G07001 and leave the column out" $ do
       let style = withIndexColumns "2" (replaceIn "characters = 12" "characters = 24" sidenoteStyle) <> "column-gap = \"2zw\"\n"
       (_, pl) <- layoutOk style indexSource []
       nub [lineTarget (slLine sl) | p <- plPages pl, sl <- indexLinesOn pl p] @?= [11 * 10 * pt],

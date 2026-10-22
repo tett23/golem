@@ -1,3 +1,3 @@
-# The font is not there: G0310, a warning in dev (docs/adr/0029).
+# The font is not there: G03010, a warning in dev (docs/adr/0029).
 [fonts.body]
 ja = "fonts/missing.otf"

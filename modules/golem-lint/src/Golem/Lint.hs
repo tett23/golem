@@ -58,7 +58,7 @@ isLatinScript c =
            || (ord c >= 0x0370 && ord c <= 0x04FF)
        )
 
-{- | G0501: a newline inside a paragraph between two Latin characters
+{- | G05001: a newline inside a paragraph between two Latin characters
 joins the words without a space. The newlines of a paragraph in a
 paragraph style that keeps its lines (the body of @style, or the target
 of an attribute group with @style) break lines, and those of a paragraph
@@ -117,7 +117,7 @@ latinJoinedByNewline source keep fid = go 0
     scan start cs =
       let toks = flat start cs
           hits =
-            [ diagnostic "G0501" Error (mkSpan fid off (off + 1)) "改行の前後が欧文なので、単語が空白なしにつながります。一行で書いてください"
+            [ diagnostic "G05001" Error (mkSpan fid off (off + 1)) "改行の前後が欧文なので、単語が空白なしにつながります。一行で書いてください"
             | (i, (off, Token KNewline _)) <- zip [0 :: Int ..] toks,
               Just before <- [lastChar (map snd (take i toks))],
               isLatinScript before,
@@ -140,10 +140,10 @@ latinJoinedByNewline source keep fid = go 0
       (Token KText t : _) | not (T.null t) -> Just (T.head t)
       _ -> Nothing
 
--- | G0502: a variable used neither in its file nor by any importer.
+-- | G05002: a variable used neither in its file nor by any importer.
 unusedVariables :: LintInput -> [Diagnostic]
 unusedVariables input =
-  [ diagnostic "G0502" Error sp ("使われていない変数です: " <> v)
+  [ diagnostic "G05002" Error sp ("使われていない変数です: " <> v)
   | f <- liFiles input,
     (v, sp) <- usageDefined (flUsage f),
     not (v `Set.member` usageReferenced (flUsage f)),
@@ -158,21 +158,21 @@ unusedVariables input =
           target == path
         ]
 
--- | G0503: an import whose namespace is never referenced.
+-- | G05003: an import whose namespace is never referenced.
 unusedImports :: LintInput -> [Diagnostic]
 unusedImports input =
-  [ diagnostic "G0503" Error sp ("使われていない import です: " <> ns)
+  [ diagnostic "G05003" Error sp ("使われていない import です: " <> ns)
   | f <- liFiles input,
     (ns, _, sp) <- usageImports (flUsage f),
     not (Map.member ns (usageNamespaceRefs (flUsage f)))
   ]
 
-{- | G0504: a label nobody refers to. A warning in dev, an error in prod
+{- | G05004: a label nobody refers to. A warning in dev, an error in prod
 (adjusted in golem-syntax).
 -}
 unreferencedLabels :: LintInput -> [Diagnostic]
 unreferencedLabels input =
-  [ diagnostic "G0504" Warning sp ("参照されていないラベルです: " <> l)
+  [ diagnostic "G05004" Warning sp ("参照されていないラベルです: " <> l)
   | (l, sp) <- Map.toList (liLabels input),
     not (l `Set.member` liReferenced input)
   ]

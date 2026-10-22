@@ -132,19 +132,19 @@ data MarkerRef = MarkerRef
 
 -- | What a drawing cannot be read for, by cause, each in document order (docs/adr ADR 0054).
 data SvgProblems = SvgProblems
-  { -- | outside the subset (G0811)
+  { -- | outside the subset (G08011)
     spUnsupported :: ![Unsupported],
-    -- | references within a cycle of markers (G0816)
+    -- | references within a cycle of markers (G08016)
     spMarkerCycles :: ![MarkerRef],
-    -- | references from a marker 9 deep or deeper (G0817)
+    -- | references from a marker 9 deep or deeper (G08017)
     spMarkerDepth :: ![MarkerRef]
   }
   deriving stock (Eq, Show)
 
 data SvgError
-  = -- | the reason of G0810
+  = -- | the reason of G08010
     SvgMalformed !Text
-  | -- | G0811, G0816 and G0817; at least one of the lists is not empty
+  | -- | G08011, G08016 and G08017; at least one of the lists is not empty
     SvgUnsupported !SvgProblems
   deriving stock (Eq, Show)
 

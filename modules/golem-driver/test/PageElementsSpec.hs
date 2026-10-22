@@ -197,9 +197,9 @@ noteRuleTests =
             length (nub ys) @?= 2
           other -> assertFailure (show other)
         [] -> assertFailure "no pages",
-    testCase "a rule longer than the line is G0701" $ do
+    testCase "a rule longer than the line is G07001" $ do
       (errs, pdf) <- buildMini fakeProvider True (horizontalStyle <> "\n[notes.rule]\nlength = \"13zw\"\n") "漢[note: 注。]字\n" []
-      (errs, pdf) @?= ([DiagnosticCode "G0701"], Nothing),
+      (errs, pdf) @?= ([DiagnosticCode "G07001"], Nothing),
     testCase "a coloured rule is filled with the CMYK of its swatch inside q and Q (golem-driver ADR 0028)" $ do
       let style = horizontalStyle <> "\n[color.swatches]\naccent = { cmyk = [0, 100, 100, 0] }\n" <> "\n[notes.rule]\nlength = \"5zw\"\nweight = \"0.3pt\"\ncolor = \"accent\"\n"
       content <- miniPdf fakeProvider True style "漢[note: 注。]字\n" [] >>= fmap BS.concat . inflateAll
@@ -348,27 +348,27 @@ runningHeadTests =
       twoFoot <- drawnAt "position = \"bottom-center\", content = [\"Z\", \"Q\"]"
       map snd (twoFoot 'Z') @?= map snd (oneFoot 'Z')
       map snd (twoFoot 'Q') @?= map (subtract pitch . snd) (twoFoot 'Z'),
-    testCase "a variable the file does not define is G0267 at the top of the file (ADR 0022)" $ do
+    testCase "a variable the file does not define is G02067 at the top of the file (ADR 0022)" $ do
       (ds, srcs, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", twoChapters)] Nothing
-      case [d | d <- ds, diagCode d == DiagnosticCode "G0267"] of
+      case [d | d <- ds, diagCode d == DiagnosticCode "G02067"] of
         [d] -> do
           fmap siPath (Map.lookup (spanFile (diagSpan d)) srcs) @?= Just "a.gm"
           (spanStart (diagSpan d), spanEnd (diagSpan d)) @?= (0, 0)
         other -> assertFailure (show other)
       (ds', _, _) <- buildHeads (headsStyle "content = [\"{set.revision?}\"]") [("a.gm", twoChapters)] Nothing
       [d | d <- ds', isError d] @?= [],
-    testCase "a variable that is not a string or a number is G0268 (ADR 0022)" $ do
+    testCase "a variable that is not a string or a number is G02068 (ADR 0022)" $ do
       (ds, _, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "@set revision = true\n\n" <> twoChapters)] Nothing
-      map diagCode (filter isError ds) @?= [DiagnosticCode "G0268"],
+      map diagCode (filter isError ds) @?= [DiagnosticCode "G02068"],
     testCase "an imported variable (ADR 0022)" $ do
       (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.values.price}\"]") [("a.gm", "@import common/values.gm as values\n\n" <> twoChapters), ("common/values.gm", "@set price = 100\n")]
       Map.lookup 2 heads @?= Just ["100"],
-    testCase "no G0267 in a build without the PDF (ADR 0022)" $ do
+    testCase "no G02067 in a build without the PDF (ADR 0022)" $ do
       (ds, _, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", twoChapters)] (Just [TargetHtml])
-      [d | d <- ds, diagCode d == DiagnosticCode "G0267"] @?= [],
-    testCase "a line wider than the type area is G0751, and the PDF is written (ADR 0022)" $ do
+      [d | d <- ds, diagCode d == DiagnosticCode "G02067"] @?= [],
+    testCase "a line wider than the type area is G07051, and the PDF is written (ADR 0022)" $ do
       (ds, _, pdf) <- buildHeads (headsStyle "content = [\"ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJ\"]") [("a.gm", twoChapters)] Nothing
-      [diagSeverity d | d <- ds, diagCode d == DiagnosticCode "G0751"] @?= [Warning]
+      [diagSeverity d | d <- ds, diagCode d == DiagnosticCode "G07051"] @?= [Warning]
       [d | d <- ds, isError d] @?= []
       assertBool "a PDF" (isJust pdf),
     testCase "the short title of @toc-title" $ do
@@ -518,12 +518,12 @@ headingTests =
     testCase "different fonts with the same PostScript name are an error" $ do
       (sans, _) <- realLatinFonts
       (errs, pdf) <- buildMini realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.heading]\nlatin = \"fonts/sans2.otf\"\n\n[headings.1]\nfont = \"heading\"\n") "# Zebra\n\nquick\n" [("fonts/sans.otf", sans), ("fonts/sans2.otf", sans <> BS.replicate 4 0)]
-      errs @?= [DiagnosticCode "G0805"]
+      errs @?= [DiagnosticCode "G08005"]
       pdf @?= Nothing,
     testCase "a heading taller than the page is an error" $ do
       let style = BC.pack (T.unpack (T.replace "lines = 30" "lines = 3" (T.pack (BC.unpack horizontalStyle)))) <> "\n[headings.1]\nsize = \"60pt\"\n"
       (errs, pdf) <- buildMini fakeProvider True style "# A\n\nx\n" []
-      errs @?= [DiagnosticCode "G0724"]
+      errs @?= [DiagnosticCode "G07024"]
       pdf @?= Nothing,
     testCase "the default size and lines of a heading by language and level (golem-driver ADR 0032)" $ do
       headingDefaults "ja" 1 @?= (Zw (3 % 2), 5)
@@ -550,12 +550,12 @@ headingTests =
       (_, pl) <- layoutOk style "# 見出し\n\n本文。\n" []
       headingGap pl @?= [1]
       map (\hb -> (hbSpan hb, hbOffset hb)) (Map.elems (plHeadings pl)) @?= [(1, 0)],
-    testCase "the default lines are cut to a page of three lines; lines = 4 is G0724 (golem-driver ADR 0032)" $ do
+    testCase "the default lines are cut to a page of three lines; lines = 4 is G07024 (golem-driver ADR 0032)" $ do
       let three = replaceIn "lines = 30" "lines = 3" horizontalStyle
       (ok, _) <- buildMini fakeProvider True three "# A\n\nx\n" []
       ok @?= []
       (errs, pdf) <- buildMini fakeProvider True (three <> "\n[headings.1]\nlines = 4\n") "# A\n\nx\n" []
-      errs @?= [DiagnosticCode "G0724"]
+      errs @?= [DiagnosticCode "G07024"]
       pdf @?= Nothing,
     testCase "default headings: parallel and sequential, and two builds, give the same bytes (golem-driver ADR 0032)" $ do
       let source = "# 一\n\n本文。\n\n## 二\n\n### 三\n\n本文。\n"
@@ -755,19 +755,19 @@ wrapTests =
       rectX r + rectW r @?= rectX ta + rectW ta - toInteger slot * pgLinePitch geom
       ex <- maybe (assertFailure "no exclusion") pure (pfExclusion pf)
       map (slIndent . snd) (take (exLines ex) (linesFrom pl p slot)) @?= replicate (exLines ex) (5 * fs),
-    testCase "a width that is not a length, or leaves too short lines, is G0722" $ do
+    testCase "a width that is not a length, or leaves too short lines, is G07022" $ do
       img <- tinyImage
       a <- layoutMini horizontal24 (wrapped "end" "3em" <> longPara 3) img
-      either (map diagCode) (const []) a @?= [DiagnosticCode "G0722"]
+      either (map diagCode) (const []) a @?= [DiagnosticCode "G07022"]
       b <- layoutMini horizontal24 (wrapped "end" "22zw" <> longPara 3) img
-      either (map diagCode) (const []) b @?= [DiagnosticCode "G0722"],
-    testCase "an exclusion longer than the page is G0723 at the figure" $ do
+      either (map diagCode) (const []) b @?= [DiagnosticCode "G07022"],
+    testCase "an exclusion longer than the page is G07023 at the figure" $ do
       img <- tinyImage
       let source = "前の段落。\n\n" <> wrapped "end" "10zw" <> longPara 3
       r <- layoutMini (replaceIn "lines = 30" "lines = 10" horizontal24) source img
       case r of
         Left [d] -> do
-          diagCode d @?= DiagnosticCode "G0723"
+          diagCode d @?= DiagnosticCode "G07023"
           spanStart (diagSpan d) @?= BS.length (fst (BS.breakSubstring "@figure" (TE.encodeUtf8 source)))
         other -> assertFailure (show (either (map diagCode) (const []) other)),
     testCase "a figure that does not wrap takes its image and caption lines; the caption is drawn" $ do
@@ -872,12 +872,12 @@ captionTests =
       let ds = drawnGlyphs content
       assertBool "drawn" (not (null [d | d <- ds, dGlyph d == fromEnum '甲']))
       assertBool "the heading role's font" (nub [dFont d | d <- ds, dGlyph d == fromEnum '甲'] /= nub [dFont d | d <- ds, dGlyph d == fromEnum '後']),
-    testCase "a small caption fits where a body-size one is G0723" $ do
+    testCase "a small caption fits where a body-size one is G07023" $ do
       img <- tinyImage
       let short = replaceIn "lines = 30" "lines = 8" horizontal24
           source = "@figure images/tiny.jpg alt=\"t\" wrap=end width=4zw\n  " <> T.replicate 14 "甲" <> "\n\n" <> longPara 2
       (errs, _) <- buildMini fakeProvider True short source img
-      errs @?= [DiagnosticCode "G0723"]
+      errs @?= [DiagnosticCode "G07023"]
       (errs', _) <- buildMini fakeProvider True (short <> "\n[paragraph-styles.caption]\nsize = \"5pt\"\n") source img
       errs' @?= [],
     testCase "vertical: the caption is in the type area, its first centre line half its size from the grid" $ do
@@ -981,17 +981,17 @@ sidenoteTests =
           psTop b + 20 * pt @?= 445 * pt
           assertBool "pulled up" (psTop a < 28 * 15 * pt)
         other -> assertFailure (show (length other)),
-    testCase "sidenotes that do not fit, or one taller than the column, are G0733" $ do
+    testCase "sidenotes that do not fit, or one taller than the column, are G07033" $ do
       let crowded = T.concat (replicate 30 ("一[sidenote: " <> T.replicate 3 "あいうえおかき" <> "]\n\n"))
       r <- layoutMini sidenoteStyle crowded []
       case r of
         Left [d] -> do
-          diagCode d @?= DiagnosticCode "G0733"
+          diagCode d @?= DiagnosticCode "G07033"
           diagMessage d @?= "このページの傍注が傍注の領域に収まりません"
           assertBool "at a sidenote" (spanStart (diagSpan d) `elem` offsetsIn "[sidenote" crowded)
         other -> assertFailure (show (either (map diagCode) (const []) other))
       r' <- layoutMini sidenoteStyle ("一[sidenote: " <> T.replicate 60 "あいうえおかき" <> "]\n") []
-      either (map (\d -> (diagCode d, diagMessage d))) (const []) r' @?= [(DiagnosticCode "G0733", "傍注が傍注の領域より高く、収まりません")],
+      either (map (\d -> (diagCode d, diagMessage d))) (const []) r' @?= [(DiagnosticCode "G07033", "傍注が傍注の領域より高く、収まりません")],
     testCase "the length of a sidenote does not change the pages" $ do
       let source body = fillers 20 <> "本文[sidenote: " <> body <> "]。" <> longPara 20
       (_, a) <- layoutOk sidenoteStyle (source "短い。") []
@@ -1012,14 +1012,14 @@ sidenoteTests =
         other -> assertFailure (show (length other)),
     testCase "sidenotes need a horizontal page with a sidenote column, and the text flow" $ do
       a <- layoutMini horizontalStyle "本文[sidenote: 注]。\n" []
-      either (map (\d -> (diagCode d, diagMessage d))) (const []) a @?= [(DiagnosticCode "G0734", "傍注の領域（style.toml の [sidenotes]）のない版面では傍注を使えません")]
+      either (map (\d -> (diagCode d, diagMessage d))) (const []) a @?= [(DiagnosticCode "G07034", "傍注の領域（style.toml の [sidenotes]）のない版面では傍注を使えません")]
       b <- layoutMini pdfStyle "本文[sidenote: 注]。\n" []
-      either (map diagCode) (const []) b @?= [DiagnosticCode "G0732"]
+      either (map diagCode) (const []) b @?= [DiagnosticCode "G07032"]
       c <- layoutMini sidenoteStyle "本文[note: 注の[sidenote: 傍注]本文]。\n" []
-      either (map diagCode) (const []) c @?= [DiagnosticCode "G0735"]
+      either (map diagCode) (const []) c @?= [DiagnosticCode "G07035"]
       img <- tinyImage
       d <- layoutMini (figStyle sidenoteStyle) "@figure images/tiny.jpg alt=\"t\"\n  キャプション[sidenote: 傍注]。\n" img
-      either (map diagCode) (const []) d @?= [DiagnosticCode "G0735"],
+      either (map diagCode) (const []) d @?= [DiagnosticCode "G07035"],
     testCase "sidenote text is drawn in the sidenote column at its size" $ do
       content <- miniPdf fakeProvider True sidenoteStyle "本文[sidenote: 注]。\n" [] >>= fmap BS.concat . inflateAll
       geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 sidenoteStyle) >>= pageGeometry (FileId 0) False)

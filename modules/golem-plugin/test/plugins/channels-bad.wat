@@ -1,5 +1,5 @@
 ;; A plugin that declares the channels index, a reserved name, and
-;; Glossary, a malformed one (golem-doc ADR 0007): G0612 when it is loaded.
+;; Glossary, a malformed one (golem-doc ADR 0007): G06012 when it is loaded.
 (module
   (memory (export "memory") 1)
   (global $heap (mut i32) (i32.const 1024))

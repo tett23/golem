@@ -40,31 +40,31 @@ securityTests =
   testGroup
     "untrusted projects (docs/adr ADR 0035)"
     [ -- docs/adr ADR 0042: the same manuscript is refused for every target
-      testCase "U+0001 in the text stops the text and the PDF builds with G0289" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+      testCase "U+0001 in the text stops the text and the PDF builds with G02089" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         project tmp "" (withBodyFont horizontalStyle) "前\SOH後\n" (bodyFontFiles horizontalStyle)
         forM_ [TargetText, TargetPdf] $ \t -> do
           r <- build (defaultOptions tmp) {optTargets = Just [t], optFonts = fakeProvider}
-          (map diagCode (filter isError (brDiagnostics r)), brWritten r) @?= ([DiagnosticCode "G0289"], []),
-      testCase "build as a symbolic link out of the project is G0813, and nothing there is removed" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+          (map diagCode (filter isError (brDiagnostics r)), brWritten r) @?= ([DiagnosticCode "G02089"], []),
+      testCase "build as a symbolic link out of the project is G08013, and nothing there is removed" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         v <- victim tmp
         let root = tmp </> "p"
         createDirectoryIfMissing True root
         project root "" horizontalStyle "本文。\n" []
         createDirectoryLink v (root </> "build")
         r <- build (defaultOptions root) {optTargets = Just [TargetHtml, TargetText]}
-        map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G0813"]
+        map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08013"]
         brWritten r @?= []
         forM_ ["html", "text", "epub", "pdf"] $ \d ->
           doesFileExist (v </> d </> "precious.txt") >>= assertBool ("kept " <> d)
         doesFileExist (v </> "html" </> "a.xhtml") >>= assertBool "nothing written there" . not,
-      testCase "build/html as a symbolic link is G0813 too" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+      testCase "build/html as a symbolic link is G08013 too" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         v <- victim tmp
         let root = tmp </> "p"
         createDirectoryIfMissing True (root </> "build")
         project root "" horizontalStyle "本文。\n" []
         createDirectoryLink (v </> "html") (root </> "build" </> "html")
         r <- build (defaultOptions root) {optTargets = Just [TargetHtml]}
-        map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G0813"]
+        map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08013"]
         doesFileExist (v </> "html" </> "precious.txt") >>= assertBool "kept",
       testCase "a figure path with a quote stays inside the src attribute" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         img <- tinyImage

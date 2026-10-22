@@ -47,7 +47,7 @@ imported n pdf = do
 readOk :: Either ImportError (Int, Int) -> Assertion
 readOk = either (assertFailure . show) (const (pure ()))
 
--- | Refused for the reason given (the text in the parentheses of G0810).
+-- | Refused for the reason given (the text in the parentheses of G08010).
 refusedFor :: Text -> Either ImportError (Int, Int) -> Assertion
 refusedFor why r = r @?= Left (Malformed why)
 

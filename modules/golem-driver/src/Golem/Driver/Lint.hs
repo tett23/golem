@@ -30,7 +30,7 @@ lintProject profile noNotices root = do
   where
     finish silenced = sortDiagnostics . silenceNotices (if noNotices then Nothing else Just silenced) . map (adjustForProfile profile)
 
-{- | The rules on an evaluated project. G0501 of a file that defines styles
+{- | The rules on an evaluated project. G05001 of a file that defines styles
 uses the paragraph styles that keep their lines in that file (docs/adr
 ADR 0005, 0014).
 -}
@@ -47,9 +47,9 @@ lintEvaluated e =
         | (fid, sf) <- sources,
           Just r <- [Map.lookup fid (evResults e)]
         ]
-      -- G0501 again for the files with styles of their own
+      -- G05001 again for the files with styles of their own
       perFile ds =
-        [d | d <- ds, not (diagCode d == DiagnosticCode "G0501" && Map.member (spanFile (diagSpan d)) locals)]
+        [d | d <- ds, not (diagCode d == DiagnosticCode "G05001" && Map.member (spanFile (diagSpan d)) locals)]
           <> concat [latinJoinedByNewline (sourceOf fid) (keepStyles (docStyles e fid)) fid (sfCst sf) | (fid, sf) <- sources, Map.member fid locals]
    in case evBook e of
         Just b -> perFile (lint (LintInput files (Map.map ltSpan (bookLabels b)) (bookReferenced b) keep))

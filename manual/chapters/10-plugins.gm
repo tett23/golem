@@ -49,7 +49,7 @@ $ golem plugin fetch
 $ golem build
 ```
 
-プラグインを読み込めないときは、[code: plugins.lock] やキャッシュの問題を示すエラー（G0602 から G0612。付録E）だけを出します。
+プラグインを読み込めないときは、[code: plugins.lock] やキャッシュの問題を示すエラー（G06002 から G06012。付録E）だけを出します。
 そのプラグインのコマンドと一覧を使った箇所は、未知のコマンドや未知の一覧として報告しません。
 [code: plugins.lock] が壊れて読めないときは、[code: plugins.lock] を消してから [code: golem plugin lock] を実行し直してください。
 
@@ -67,7 +67,7 @@ overrides = ["ruby"]
 書いていない名前は置き換わりません。
 置き換えられるのは、見た目に関わる十のコマンド（[code: strong]、[code: bold]、[code: italic]、[code: code]、[code: ruby]、[code: kenten]、[code: color]、[code: style]、[code: tcy]、[code: number-text]）です。
 注、傍注、索引、引用、相互参照のように本の構造に関わるコマンドと、[code: aki] は置き換えられません。
-[code: overrides] にこれらの名前を書くと、エラー（G0608）になります。
+[code: overrides] にこれらの名前を書くと、エラー（G06008）になります。
 
 ## プラグインの一覧を置く
 
@@ -85,7 +85,7 @@ overrides = ["ruby"]
 一覧の並べ方（本文に出てきた順か、読みの順か）と、PDF のページ番号や HTML のリンクを付けるかどうかは、プラグインが決めます。
 同じ一覧の [code: @channel] を章の末尾ごとに置くと、それぞれの章の項目だけが載ります（[code: @index] と同じ決まりです）。
 [code: @channel] を置かない一覧は、どこにも組まれません。
-プラグインが作らない名前を書くと、エラー（G0290）になります。
+プラグインが作らない名前を書くと、エラー（G02090）になります。
 
 ## フィルタを適用する
 

@@ -10,7 +10,7 @@ Haskell では、golem-syntax の型 [code: Diagnostic] で表す。[note: [styl
 
 ```haskell
 data Diagnostic = Diagnostic
-  { diagCode :: !DiagnosticCode,      -- "G0101" の形
+  { diagCode :: !DiagnosticCode,      -- "G01001" の形
     diagSeverity :: !Severity,        -- Error | Warning | Notice
     diagSpan :: !SrcSpan,             -- ファイルと UTF-8 のバイトの範囲
     diagMessage :: !Text,
@@ -24,9 +24,9 @@ data Diagnostic = Diagnostic
 既定の形式は、一つの diagnostic につき、位置と重大度とコードとメッセージの行、原稿の該当の行の抜粋、関連する位置の行を書く。
 
 ```text
-a.gm:3:3: error[G0403]: 存在しないラベルへの参照です: nosuch
+a.gm:3:3: error[G04003]: 存在しないラベルへの参照です: nosuch
   | 本文[ref-title nosuch]。
-コードの説明は golem explain <コード> で表示できます（例: golem explain G0403）
+コードの説明は golem explain <コード> で表示できます（例: golem explain G04003）
 ```
 
 位置は [code: パス:行:列] で、行と列は 1 から数える。
@@ -42,7 +42,7 @@ diagnostic が一つもなくても [code: \[\]] を書く。
 実際の出力は一行で、改行と字下げはここで読みやすさのために加えた。
 
 ```json
-[{"code":"G0403",
+[{"code":"G04003",
   "severity":"error",
   "span":{"file":"a.gm","start":19,"end":37,"line":3,"column":3},
   "message":"存在しないラベルへの参照です: nosuch",
@@ -80,15 +80,15 @@ golem-syntax の [code: Golem.Syntax.Render] の [code: renderJson] が文字列
 
 修正案の [code: edits] は、[code: span] と、その範囲を置き換える [code: text] の組の列である。
 編集の列が空で、題だけが直し方を示す修正案もある。
-CR を含む原稿の G0103 に付く「golem fmt で LF に直す」がその例である。
+CR を含む原稿の G01003 に付く「golem fmt で LF に直す」がその例である。
 
 一部の diagnostic は、[code: fixes] の後に [code: facts] のオブジェクトを持つ。[index reading=facts: facts][note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 ページ番号や測った値のように、メッセージに書いたことをプログラムが読める形にしたもので、キーは diagnostic ごとに決まった順に並ぶ。
 値は整数、文字列、整数の配列、文字列の配列のどれかである。
-今は [code: golem preflight] の diagnostic（G0902 から G0918）だけが持ち、ほかの diagnostic の JSON に [code: facts] のキーは現れない。
+今は [code: golem preflight] の diagnostic（G09002 から G09018）だけが持ち、ほかの diagnostic の JSON に [code: facts] のキーは現れない。
 
 ```json
-{"code":"G0906","severity":"warning",
+{"code":"G09006","severity":"warning",
  "span":{...},"message":"…","related":[],"fixes":[],
  "facts":{"ppi":212,"limit":300,
           "pixels":[1200,900],"pdf-pages":[12]}}
@@ -111,8 +111,11 @@ notice を後に回すのは、notice の多いプロジェクトで、ビルド
 
 ## diagnostic のコード
 
-diagnostic のコードは、[code: G] と 4 桁の数字である。[index reading="diagnosticのこーど": diagnostic のコード]
-上 2 桁が、diagnostic を出す段階を表す。
+diagnostic のコードは、[code: G] と 5 桁の数字である。[index reading="diagnosticのこーど": diagnostic のコード]
+上 2 桁が diagnostic を出す段階を表し、下 3 桁がその段階の中の番号である。
+番号の 000 から 099 は、以前の 4 桁のコードを写したものに取っておき、新しいコードには 100 から 999 を割り当てる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0061-five-digit-diagnostic-codes.md]（docs/adr 0061「diagnostic のコードを、段階の 2 桁と番号の 3 桁の 5 桁にする」）]
+4 桁のコードは、段階の 2 桁と番号の 2 桁のあいだに [code: 0] を一つ足せば 5 桁のコードになる（[code: G0258] は [code: G02058]）。
+監査の記録などコミットの後に書き換えない文書には、4 桁のコードが残っている。
 
 | 上 2 桁 | 段階 | 主なモジュール |
 | --- | --- | --- |
@@ -136,9 +139,9 @@ CI でコードごとに扱いを分ける仕組み（特定のコードを集�
 原因が違えば、メッセージを変えるだけでなく、コードを分ける。
 
 一部のコードは、プロファイルで重大度が変わる。
-今は G0310（HTML と EPUB に同梱するフォントの欠け）と G0504（参照されていないラベル）で、[code: dev] では警告、[code: prod] ではエラーになる。
-G0205（校正用のコメントの残り）は [code: prod] でだけ出る警告である。
-G0902 から G0918 の重大度は、プリフライトの設定で決まる（[code: Golem.Syntax.Diagnostic.preflightCodes]）。
+今は G03010（HTML と EPUB に同梱するフォントの欠け）と G05004（参照されていないラベル）で、[code: dev] では警告、[code: prod] ではエラーになる。
+G02005（校正用のコメントの残り）は [code: prod] でだけ出る警告である。
+G09002 から G09018 の重大度は、プリフライトの設定で決まる（[code: Golem.Syntax.Diagnostic.preflightCodes]）。
 設定で選べるのは [code: error]、[code: warning]、[code: off] で、[code: notice] は選べない。
 
 プラグインが出す diagnostic のコードは、プラグインが決める。
@@ -150,24 +153,24 @@ Golem の文書の対象外であり、[code: golem explain] も説明を持た�
 [code: golem explain] は、この文書の節をそのまま表示する。[index reading="golem explain": golem explain][note: [style url: https://github.com/tett23/golem/blob/main/docs/diagnostics.md]（docs/diagnostics.md「diagnostic のコード」）、[style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0005-explain-diagnostic-codes.md]（golem-cli ADR 0005「診断のコードの説明を golem explain で表示する」）]
 
 ```sh
-$ golem explain G0730    # 一つのコードの説明
-$ golem explain g0730    # 大文字と小文字は区別しない
+$ golem explain G07030    # 一つのコードの説明
+$ golem explain g07030    # 大文字と小文字は区別しない
 $ golem explain          # すべてのコードと題を一行ずつ
 ```
 
-一覧の形式は [code: G0701  版面を計算できません] のように、コード、空白二つ、題である。
+一覧の形式は [code: G07001  版面を計算できません] のように、コード、空白二つ、題である。
 廃止したコードには題の後に「（廃止）」が付く。
-形の誤った値（[code: G] と 4 桁の数字でないもの）と、文書にないコードは使い方の誤りであり、終了コード 2 で終わる。
+形の誤った値（4 桁の古いコードを含め、[code: G] と 5 桁の数字でないもの）と、文書にないコードは使い方の誤りであり、終了コード 2 で終わる。
 
 人が読む形式で diagnostics を出した後、文書にあるコードが一つでもあれば、標準エラー出力に次の一行を加える。
 
 ```text
-コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）
+コードの説明は golem explain <コード> で表示できます（例: golem explain G01017）
 ```
 
 例のコードは、出した diagnostics のうち文書にあるコードの最小のものである。
 JSON の形式には加えない。
-LSP は、文書にあるコードの diagnostic の [code: codeDescription] に、[code: main] の [code: docs/diagnostics.md] の節の URL（[code: …/docs/diagnostics.md#g0117] の形）を付ける。
+LSP は、文書にあるコードの diagnostic の [code: codeDescription] に、[code: main] の [code: docs/diagnostics.md] の節の URL（[code: …/docs/diagnostics.md#g01017] の形）を付ける。
 
 説明の文書は golem-driver に埋め込まれている。
 コンパイルのときに Template Haskell で読み、節の形（題、重大度、状態、意味、主な原因、直し方、昇順）が崩れていれば golem をビルドできない。
@@ -193,31 +196,31 @@ notice には、ほかの二つと違う性質が三つある。
 - プロファイルで重大度が変わらない。
 - 出力のバイト列を変えない。抑制しても、しなくても、PDF は同じである。
 
-人が読む形式では [code: notice\[G0730\]] のように書き、JSON では [code: "severity":"notice"] と書く。
+人が読む形式では [code: notice\[G07030\]] のように書き、JSON では [code: "severity":"notice"] と書く。
 今の notice は次の十六である。
 
 | コード | 内容 |
 | --- | --- |
-| G0262 | [code: @style-def] が [code: style.toml] か組み込みのスタイルを上書きした |
-| G0263 | 数字だけの縦中横 |
-| G0264 | 行を保つ段落の行頭のエスケープした空白 |
-| G0265 | [code: @listing] の [code: src=]（廃止予定） |
-| G0279 | 行を保つ段落の行末のエスケープした空白 |
-| G0294 | 続けて書いた [code: @blank-line] |
-| G0323 | [code: style.toml] のないプロジェクト |
-| G0407 | 自動の番号と同じ [code: @number] |
-| G0408 | 本の最後の改ページ |
-| G0409 | 本の最後の [code: @blank-line] |
-| G0411 | ページの行数以上の [code: @blank-line] |
-| G0730 | コードブロックの行の折り返し |
-| G0739 | 段かページに収めるために縮めた図版 |
-| G0745 | PDF で描かない、ルビの親文字の圏点 |
-| G0746 | 罫線を持つ段落を分けたか、見出しの罫線を省いた |
-| G0747 | 段の先頭で捨てた行アキ |
-| G0808 | [code: \[fonts.code\]] のない本のコード |
+| G02062 | [code: @style-def] が [code: style.toml] か組み込みのスタイルを上書きした |
+| G02063 | 数字だけの縦中横 |
+| G02064 | 行を保つ段落の行頭のエスケープした空白 |
+| G02065 | [code: @listing] の [code: src=]（廃止予定） |
+| G02079 | 行を保つ段落の行末のエスケープした空白 |
+| G02094 | 続けて書いた [code: @blank-line] |
+| G03023 | [code: style.toml] のないプロジェクト |
+| G04007 | 自動の番号と同じ [code: @number] |
+| G04008 | 本の最後の改ページ |
+| G04009 | 本の最後の [code: @blank-line] |
+| G04011 | ページの行数以上の [code: @blank-line] |
+| G07030 | コードブロックの行の折り返し |
+| G07039 | 段かページに収めるために縮めた図版 |
+| G07045 | PDF で描かない、ルビの親文字の圏点 |
+| G07046 | 罫線を持つ段落を分けたか、見出しの罫線を省いた |
+| G07047 | 段の先頭で捨てた行アキ |
+| G08008 | [code: \[fonts.code\]] のない本のコード |
 
 notice のコードは [code: Golem.Syntax.Diagnostic.noticeCodes] の一箇所に並べてある。
-lint の規則（G05xx）は notice を出さない。
+lint の規則（G05xxx）は notice を出さない。
 
 ## notice を抑制する
 
@@ -232,12 +235,12 @@ lint の警告を個別の箇所で止める手段がないのと同じ考え方
 
 ```toml
 [diagnostics]
-silence-notices = ["G0262", "G0407"]
+silence-notices = ["G02062", "G04007"]
 ```
 
 並べたコードの notice は、[code: golem build]、[code: golem check]、[code: golem lint]、LSP のどれにも出ない。
-並べられるのは notice のコードだけで、ほかのコードと形の誤ったコードはその要素の位置でエラー（G0324）になる。
-値が配列でない場合と、[code: \[diagnostics\]] の未知のキーは G0301 になる。
+並べられるのは notice のコードだけで、ほかのコードと形の誤ったコードはその要素の位置でエラー（G03024）になる。
+値が配列でない場合と、[code: \[diagnostics\]] の未知のキーは G03001 になる。
 すべての notice を抑制する値はない。
 
 もう一つは、コマンドの [code: --no-notices] である。[index reading="--no-notices": --no-notices]
@@ -251,7 +254,7 @@ LSP には [code: --no-notices] に当たる設定はなく、[code: silence-not
 
 ## 廃止予定の notice
 
-記法と設定のキーを廃止するときは、まず廃止予定の notice を出す（G0265 がその例である）。[index reading="はいしよてい": 廃止予定]
+記法と設定のキーを廃止するときは、まず廃止予定の notice を出す（G02065 がその例である）。[index reading="はいしよてい": 廃止予定]
 手順は [code: docs/diagnostics.md] の「お知らせ」の節が決めている。
 
 + 廃止を決める ADR で、廃止予定の notice のコードを決める。メッセージは「〜は廃止予定です」で始め、代わりの書き方を続ける。

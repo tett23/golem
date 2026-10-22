@@ -1,7 +1,7 @@
 {- | Diagnostic sites that a build through 'build' never reaches, because
 the driver reports the same problem earlier (golem-driver ADR 0016):
 the fonts and the output intent when the PDF is rendered by itself, and
-the blocks of the labels where G0721 points.
+the blocks of the labels where G07021 points.
 -}
 module DiagnosticSitesSpec (diagnosticSiteTests) where
 
@@ -44,25 +44,25 @@ diagnosticSiteTests :: TestTree
 diagnosticSiteTests =
   testGroup
     "diagnostic sites behind the driver's own checks (golem-driver ADR 0016)"
-    [ testCase "G0802: the font provider by itself reports a missing font file once, at the top of the given file" $
+    [ testCase "G08002: the font provider by itself reports a missing font file once, at the top of the given file" $
         withSystemTempDirectory "golem-sites" $ \tmp -> do
           style <- either (assertFailure . show) pure (parseStyle (FileId 0) "[fonts.body]\nja = \"fonts/none.otf\"\nlatin = \"fonts/none.otf\"\n")
           r <- loadFonts golemFontProvider tmp (FileId 7) style []
           either (map (\d -> (diagCode d, diagSpan d, diagMessage d))) (const []) r
-            @?= [(DiagnosticCode "G0802", mkSpan (FileId 7) 0 0, "フォントのファイルがありません: fonts/none.otf")],
-      testCase "G0819: the font provider by itself rejects a CFF2 font (golem-font ADR 0003)" $
+            @?= [(DiagnosticCode "G08002", mkSpan (FileId 7) 0 0, "フォントのファイルがありません: fonts/none.otf")],
+      testCase "G08019: the font provider by itself rejects a CFF2 font (golem-font ADR 0003)" $
         withSystemTempDirectory "golem-sites" $ \tmp -> do
           BS.readFile "../golem-font/test/fonts/SourceSerif4Variable-Roman.otf" >>= BS.writeFile (tmp </> "v.otf")
           style <- either (assertFailure . show) pure (parseStyle (FileId 0) "[fonts.body]\nlatin = \"v.otf\"\n")
           r <- loadFonts golemFontProvider tmp (FileId 7) style []
-          either (map (\d -> (diagCode d, diagSpan d))) (const []) r @?= [(DiagnosticCode "G0819", mkSpan (FileId 7) 0 0)],
-      testCase "G0806: rendering a PDF whose output intent is missing stops at the top of style.toml" $
+          either (map (\d -> (diagCode d, diagSpan d))) (const []) r @?= [(DiagnosticCode "G08019", mkSpan (FileId 7) 0 0)],
+      testCase "G08006: rendering a PDF whose output intent is missing stops at the top of style.toml" $
         withMiniEvaluated (horizontalStyle <> "\n[color]\nintent = \"icc/none.icc\"\n") "本文。\n" $ \tmp e -> do
           inp <- inputOf tmp e
           r <- renderPdf fakeProvider inp
           either (map (\d -> (diagCode d, diagSpan d, diagMessage d))) (const []) r
-            @?= [(DiagnosticCode "G0806", mkSpan (styleFileId (evProject e)) 0 0, "出力インテントの ICC プロファイルがありません: icc/none.icc")],
-      testCase "G0721 points at the block a label is attached to" $ do
+            @?= [(DiagnosticCode "G08006", mkSpan (styleFileId (evProject e)) 0 0, "出力インテントの ICC プロファイルがありません: icc/none.icc")],
+      testCase "G07021 points at the block a label is attached to" $ do
         let source = "最初の段落。\n\n@label second\n二番目の段落。\n\n@label third\n三番目の段落。\n"
         withMiniEvaluated horizontalStyle source $ \_ e -> do
           book <- maybe (assertFailure (show (evDiagnostics e))) pure (evBook e)

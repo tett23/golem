@@ -40,7 +40,7 @@ fi
 for name in "$@"; do
   SRC=$DIR/images/src/$name.svg
   SUM=$(sha256sum "$SRC" | cut -d ' ' -f 1)
-  # Inkscape does not read @font-face, and an outlined SVG must not keep it (G0811)
+  # Inkscape does not read @font-face, and an outlined SVG must not keep it (G08011)
   sed '/@font-face/d' "$SRC" > "$TMP/$name.svg"
   FONTCONFIG_FILE="$TMP/fonts.conf" HOME="$TMP" "$INKSCAPE" --export-text-to-path --export-plain-svg \
     --export-filename="$TMP/$name.out.svg" "$TMP/$name.svg" >/dev/null 2>&1

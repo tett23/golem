@@ -274,7 +274,7 @@ diagnosticsFor :: Workspace -> Map FilePath [Diagnostic]
 diagnosticsFor ws =
   Map.unionWith (<>) projectDiags looseDiags
   where
-    -- the styles a loose file defines count for its G0501 (docs/adr ADR 0014)
+    -- the styles a loose file defines count for its G05001 (docs/adr ADR 0014)
     looseKeep s = maybe builtinKeepStyles (keepStyles . withLocalStyles defaultStyle . erStyles) (srcResult s)
     -- and its @manifest (docs/adr ADR 0013, 0014)
     looseDiags = Map.map (\s -> sortDiagnostics (maybe [] erDiagnostics (srcResult s) <> latinJoinedByNewline (maybe defaultSourceSettings erSource (srcResult s)) (looseKeep s) (srcFile s) (srcCst s))) (wsLoose ws)

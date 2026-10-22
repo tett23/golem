@@ -133,24 +133,24 @@ paragraphRuleTests =
       let ls = map BC.words (BC.lines content)
       length [l | l <- ls, l == ["f"]] @?= 17
       assertBool "CMYK" (["0", "1", "1", "0", "k", "0", "1", "1", "0", "K"] `elem` ls),
-    testCase "G0746: a ruled paragraph longer than a page is broken, with a notice, and the PDF is written" $ do
+    testCase "G07046: a ruled paragraph longer than a page is broken, with a notice, and the PDF is written" $ do
       let style = withRule fiveLines "weight = \"0.5pt\"" <> "rule-after = { weight = \"0.5pt\" }\n"
           source = "@style sec\n  " <> T.replicate 96 "あ" <> "\n"
       n <- notified miniManifest style source
-      [(diagMessage d, diagSeverity d) | d <- g0746 n] @?= [("罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（段落スタイル sec）", Notice)]
+      [(diagMessage d, diagSeverity d) | d <- g07046 n] @?= [("罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（段落スタイル sec）", Notice)]
       assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n))
       -- neither rule is drawn on any part (golem-driver ADR 0035)
       content <- miniPdf fakeProvider True style source [] >>= fmap BS.concat . inflateAll
       rects content @?= []
-      quiet <- notified (miniManifest <> "\n[diagnostics]\nsilence-notices = [\"G0746\"]\n") style source
-      g0746 quiet @?= [],
-    testCase "G0746: a heading whose rule after does not fit an empty page loses it" $ do
+      quiet <- notified (miniManifest <> "\n[diagnostics]\nsilence-notices = [\"G07046\"]\n") style source
+      g07046 quiet @?= [],
+    testCase "G07046: a heading whose rule after does not fit an empty page loses it" $ do
       let style = fiveLines <> "\n[headings.2]\nlines = 3\nrule-before = { space-after = \"5pt\", space-before = \"10pt\" }\nrule-after = { space-before = \"20pt\" }\n"
       n <- notified miniManifest style "## 節\n\n本文。\n"
-      map diagMessage (g0746 n) @?= ["罫線を持つ見出しが版面に入らないため、罫線を省きました（見出し 2）"],
-    testCase "a book without a broken block has no G0746" $ do
+      map diagMessage (g07046 n) @?= ["罫線を持つ見出しが版面に入らないため、罫線を省きました（見出し 2）"],
+    testCase "a book without a broken block has no G07046" $ do
       n <- notified miniManifest (withRule horizontalStyle "weight = \"0.5pt\"") section
-      g0746 n @?= [],
+      g07046 n @?= [],
     testCase "the spaces of a rule in mm (golem-driver ADR 0035)" $ do
       content <- miniPdf fakeProvider True (withRule horizontalStyle "weight = \"0.5pt\", space-after = \"2mm\"") section [] >>= fmap BS.concat . inflateAll
       (_, ySetsu) <- glyphAt content '節'
@@ -202,7 +202,7 @@ paragraphRuleTests =
   ]
   where
     notified manifest style source = buildNotified ([("manifest.toml", manifest), ("style.toml", withBodyFont style), ("a.gm", TE.encodeUtf8 source)] <> fakeFontFiles) id
-    g0746 n = [d | d <- nDiagnostics n, diagCode d == DiagnosticCode "G0746"]
+    g07046 n = [d | d <- nDiagnostics n, diagCode d == DiagnosticCode "G07046"]
     nearAll xs ys = do
       length xs @?= length ys
       zipWithM_ near xs ys

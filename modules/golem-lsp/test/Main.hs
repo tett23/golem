@@ -178,25 +178,25 @@ tests =
             found = completions ws "b.gm"
         found (offsetIn src "@manifest \n" 10) @?= [Completion "paragraph-separator=" CkSettingKey]
         found (offsetIn src "separator=\n" 10) @?= [Completion "blank-line" CkSettingValue, Completion "line" CkSettingValue],
-      testCase "a file outside the project read in the line style has no G0501 (docs/adr ADR 0014)" $ do
+      testCase "a file outside the project read in the line style has no G05001 (docs/adr ADR 0014)" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "loose.gm" "@manifest paragraph-separator=line\n\nFull fathom five\nOf his bones\n"
         [c | d <- fromMaybe [] (Map.lookup "loose.gm" (diagnosticsFor ws)), let { DiagnosticCode c = diagCode d }] @?= []
         ws' <- updateFile ws0 "loose.gm" "Full fathom five\nOf his bones\n"
-        [c | d <- fromMaybe [] (Map.lookup "loose.gm" (diagnosticsFor ws')), let { DiagnosticCode c = diagCode d }] @?= ["G0501"],
+        [c | d <- fromMaybe [] (Map.lookup "loose.gm" (diagnosticsFor ws')), let { DiagnosticCode c = diagCode d }] @?= ["G05001"],
       -- golem-parser ADR 0009
-      testCase "an empty expression outside the project is one G0120, and hover and completion still work" $ do
+      testCase "an empty expression outside the project is one G01020, and hover and completion still work" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "loose.gm" "[=]\n\n[= 1 + 2]\n\n[co\n"
         let src = textOf ws "loose.gm"
-        filter (== "G0120") (codesOf ws "loose.gm") @?= ["G0120"]
+        filter (== "G01020") (codesOf ws "loose.gm") @?= ["G01020"]
         -- the evaluation diagnostics go with a syntax error
-        filter (`notElem` ["G0117", "G0120"]) (codesOf ws "loose.gm") @?= []
+        filter (`notElem` ["G01017", "G01020"]) (codesOf ws "loose.gm") @?= []
         assertBool "hover" (isJust (hover ws "loose.gm" (offsetIn src "1 + 2" 0)))
         assertBool "completion" ("color" `elem` map cmpLabel (completions ws "loose.gm" (offsetIn src "[co" 3))),
-      testCase "a buffer with CR or a BOM is G0103 or G0102, in and outside the project" $ do
+      testCase "a buffer with CR or a BOM is G01003 or G01002, in and outside the project" $ do
         ws0 <- openWorkspace root
-        let cases = [("b.gm", "@label second\r\n# 次の章\n", "G0103"), ("b.gm", "\xFEFF@label second\n# 次の章\n", "G0102"), ("loose.gm", "本文\r\n", "G0103"), ("loose.gm", "\xFEFF本文\n", "G0102")]
+        let cases = [("b.gm", "@label second\r\n# 次の章\n", "G01003"), ("b.gm", "\xFEFF@label second\n# 次の章\n", "G01002"), ("loose.gm", "本文\r\n", "G01003"), ("loose.gm", "\xFEFF本文\n", "G01002")]
         mapM_
           ( \(p, t, c) -> do
               ws <- updateFile ws0 p t
@@ -237,20 +237,20 @@ tests =
         let diags = diagnosticsFor ws
         assertBool "syntax error in b.gm" (any ((== Error) . diagSeverity) (fromMaybe [] (Map.lookup "b.gm" diags)))
         let codes = [c | d <- concat (Map.elems diags), let DiagnosticCode c = diagCode d]
-        assertBool (show codes) (all (`notElem` codes) ["G0306", "G0310", "G0802"]),
+        assertBool (show codes) (all (`notElem` codes) ["G03006", "G03010", "G08002"]),
       testCase "a missing import is reported on the file of the @import (golem-project ADR 0006)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         mapM_ (\f -> copyFile (root </> f) (tmp </> f)) ["manifest.toml", "b.gm"]
         BS.writeFile (tmp </> "a.gm") "@import nope.gm as x\n"
         ws <- openWorkspace tmp
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
-        codesIn "a.gm" @?= ["G0302"]
+        codesIn "a.gm" @?= ["G03002"]
         codesIn "manifest.toml" @?= [],
       testCase "a style.toml error is reported on style.toml (golem-project ADR 0006)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         mapM_ (\f -> createDirectoryIfMissing True (takeDirectory (tmp </> f)) >> copyFile (root </> f) (tmp </> f)) ["manifest.toml", "a.gm", "b.gm", "common/values.gm"]
         BS.writeFile (tmp </> "style.toml") "[page]\nunknown = 1\n"
         ws <- openWorkspace tmp
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
-        codesIn "style.toml" @?= ["G0306"]
+        codesIn "style.toml" @?= ["G03006"]
         codesIn "manifest.toml" @?= [],
       testCase "a notice is published as Information (golem-syntax ADR 0002)" $ do
         lspSeverity Notice @?= L.DiagnosticSeverity_Information
@@ -262,10 +262,10 @@ tests =
         BS.writeFile (tmp </> "a.gm") "[tcy: 10]\n\n@number 1\n# A\n"
         BS.writeFile (tmp </> "manifest.toml") manifest
         ws0 <- openWorkspace tmp
-        codes ws0 @?= [("G0263", Notice), ("G0407", Notice), ("G0323", Notice)]
-        BS.writeFile (tmp </> "manifest.toml") (manifest <> "\n[diagnostics]\nsilence-notices = [\"G0263\"]\n")
+        codes ws0 @?= [("G02063", Notice), ("G04007", Notice), ("G03023", Notice)]
+        BS.writeFile (tmp </> "manifest.toml") (manifest <> "\n[diagnostics]\nsilence-notices = [\"G02063\"]\n")
         ws1 <- openWorkspace tmp
-        codes ws1 @?= [("G0407", Notice), ("G0323", Notice)],
+        codes ws1 @?= [("G04007", Notice), ("G03023", Notice)],
       testCase "completion: the keys of meta and the roles of the manifest (docs/adr ADR 0033)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[[metadata.creators]]\nname = \"A\"\nrole = \"author\"\n\n[[metadata.contributors]]\nname = \"B\"\nrole = \"cover-designer\"\n\n[[metadata.printings]]\nedition = 1\nprinting = 1\ndate = 2026-10-16\n\n[targets.html]\n"
             src = "[= meta.]\n\n[= join(meta.roles., \"、\")]\n" :: Text
@@ -275,17 +275,17 @@ tests =
         let names o = map cmpLabel (completions ws "a.gm" o)
         names (offsetIn src "[= meta." 8) @?= ["creators", "date", "id", "language", "printing", "printings", "roles", "title"]
         names (offsetIn src "meta.roles." 11) @?= ["author", "cover_designer"],
-      testCase "G0501 is not reported for the newlines of the line style (docs/adr ADR 0013)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+      testCase "G05001 is not reported for the newlines of the line style (docs/adr ADR 0013)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
         let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
-            g0501 ws = [c | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d, c == "G0501"]
+            g05001 ws = [c | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d, c == "G05001"]
         BS.writeFile (tmp </> "a.gm") "Full fathom\nfive\n"
         BS.writeFile (tmp </> "manifest.toml") manifest
         ws0 <- openWorkspace tmp
-        g0501 ws0 @?= ["G0501"]
+        g05001 ws0 @?= ["G05001"]
         BS.writeFile (tmp </> "manifest.toml") (manifest <> "\n[source]\nparagraph-separator = \"line\"\n")
         ws1 <- openWorkspace tmp
         assertBool "evaluated" (isJust (wsEvaluated ws1))
-        g0501 ws1 @?= [],
+        g05001 ws1 @?= [],
       testCase "only changes to headings, labels or exports re-evaluate the project" $ do
         ws0 <- openWorkspace root
         let n0 = wsFullEvaluations ws0
@@ -393,7 +393,7 @@ tests =
                 r16 <- s16
                 r8 <- s8
                 map (+ 2) (srMissingLabelColumns r16) @?= srMissingLabelColumns r8
-                assertBool "has a G0403" (not (null (srMissingLabelColumns r8))),
+                assertBool "has a G04003" (not (null (srMissingLabelColumns r8))),
               testCase "utf-8 hover inside a character returns null (ADR 0002)" $ do
                 r8 <- s8
                 srInsideHover r8 @?= Just Nothing,
@@ -523,14 +523,14 @@ session spec = do
             all ((== 0) . startLine) ds ->
               pure ds
         _ -> errorsFor path
-    -- the G0403 diagnostics published for the given file
+    -- the G04003 diagnostics published for the given file
     missingLabel :: FilePath -> LT.Session [L.Diagnostic]
     missingLabel path = do
       msg <- LT.anyMessage
       case msg of
         M.FromServerMess M.SMethod_TextDocumentPublishDiagnostics (M.TNotificationMessage _ _ (L.PublishDiagnosticsParams u _ ds))
           | L.uriToFilePath u == Just path,
-            found@(_ : _) <- [d | d <- ds, diagCode d == Just (L.InR "G0403")] ->
+            found@(_ : _) <- [d | d <- ds, diagCode d == Just (L.InR "G04003")] ->
               pure found
         _ -> missingLabel path
 

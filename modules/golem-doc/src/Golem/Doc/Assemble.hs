@@ -50,7 +50,7 @@ data AssembleConfig = AssembleConfig
   { acHeadingFormats :: !(Map Int Text),
     acFigureFormat :: !Text,
     {- | the line of each @number by the span of the block it numbers,
-    where G0407 points; a block not in it is pointed at itself
+    where G04007 points; a block not in it is pointed at itself
     -} acNumberSites :: !(Map SrcSpan SrcSpan),
     -- | the range over which notes are numbered (golem-driver ADR 0018)
     acNoteNumbering :: !NoteNumbering,
@@ -299,7 +299,7 @@ numberDocs cfg docs = execState (mapM_ doc docs) (NumSt [0, 0, 0] Nothing 0 Map.
             chapter = if l == 1 then head' <$> nums else nsChapter st
             figureReset = if l == 1 then 0 else nsFigure st
             info = HeadingInfo l nums numText (fromMaybe is (haTocTitle a)) (headingAnchor lbl sp) fid
-            -- G0407: @number equal to the number it would get without it (golem-syntax ADR 0002)
+            -- G04007: @number equal to the number it would get without it (golem-syntax ADR 0002)
             redundant = [redundantNumber cfg sp n | not (haNoNumber a), Just n <- [haNumber a], n == cs !! (l - 1) + 1]
         put
           st
@@ -345,9 +345,9 @@ assemble cfg evalDeferred docs0 =
       listingText sp = case Map.lookup sp (nsListings ns) of
         Just (ch, n) -> Just (formatNumber (acListingFormat cfg) [n] ch)
         Nothing -> Nothing
-      -- G0404 for figures and code blocks (golem-driver ADR 0023)
+      -- G04004 for figures and code blocks (golem-driver ADR 0023)
       outside fmt numbered =
-        [ diagnostic "G0404" Error sp "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
+        [ diagnostic "G04004" Error sp "章の外にある図版とコードには、章番号を使う番号を振れません。章は番号を持つ階層 1 の見出しから始まります"
         | "{chapter}" `T.isInfixOf` fmt,
           (sp, (Nothing, _)) <- Map.toList numbered
         ]
@@ -359,7 +359,7 @@ assemble cfg evalDeferred docs0 =
       tocs = [(d, sp) | Document _ bs <- docs, Block sp _ (ChannelOutput (TocOutput d)) <- allBlocks bs]
       tocDiags = case tocs of
         ((_, firstToc) : rest) ->
-          [ (diagnostic "G0402" Error sp "@toc は文書に一つだけ置けます") {diagRelated = [(firstToc, "最初の @toc")]}
+          [ (diagnostic "G04002" Error sp "@toc は文書に一つだけ置けます") {diagRelated = [(firstToc, "最初の @toc")]}
           | (_, sp) <- rest
           ]
         [] -> []
@@ -392,12 +392,12 @@ assemble cfg evalDeferred docs0 =
         sortDiagnostics (nsDiags ns <> figureErrors <> labelDiags <> resolveDiags <> tocDiags <> listNumberNotices cfg docs <> trailingBreaks docs <> blankDiags)
       )
 
--- | G0407 at the @number line of the block (golem-syntax ADR 0002).
+-- | G04007 at the @number line of the block (golem-syntax ADR 0002).
 redundantNumber :: AssembleConfig -> SrcSpan -> Integer -> Diagnostic
 redundantNumber cfg sp n =
-  notice "G0407" (Map.findWithDefault sp sp (acNumberSites cfg)) ("@number " <> T.pack (show n) <> " は自動で振られる番号と同じです")
+  notice "G04007" (Map.findWithDefault sp sp (acNumberSites cfg)) ("@number " <> T.pack (show n) <> " は自動で振られる番号と同じです")
 
-{- | G0407 for the items of numbered lists. An attribute before an item
+{- | G04007 for the items of numbered lists. An attribute before an item
 makes a list of its own, which without the attribute would continue the
 list right before it; so a list right after a numbered list counts on from
 the last number of that list.
@@ -433,14 +433,14 @@ listNumberNotices cfg = concatMap (blocks . docBlocks)
       [] -> Nothing
       xs -> Just (last xs)
 
-{- | G0408 for the page and column breaks at the end of the last file: the
+{- | G04008 for the page and column breaks at the end of the last file: the
 book drops them (golem-syntax ADR 0002). The breaks at the end of another
 file act on the next file.
 -}
 trailingBreaks :: [Document] -> [Diagnostic]
 trailingBreaks docs = case reverse docs of
   (Document _ bs : _) ->
-    [ notice "G0408" sp "本の最後の改ページは効果がありません"
+    [ notice "G04008" sp "本の最後の改ページは効果がありません"
     | Block sp _ _ <- reverse (takeWhile isBreak (reverse bs))
     ]
   [] -> []
@@ -450,10 +450,10 @@ trailingBreaks docs = case reverse docs of
       _ -> False
 
 {- | The blank lines that have no effect (docs/adr ADR 0046), dropped from
-every output: G0409 for those at the end of the book, with only breaks,
-controls of page breaks and other blank lines after them; G0410 for those
+every output: G04009 for those at the end of the book, with only breaks,
+controls of page breaks and other blank lines after them; G04010 for those
 right before a page or column break, past the controls and other blank
-lines, across the files too. The blocks stay in their files. Then G0411
+lines, across the files too. The blocks stay in their files. Then G04011
 for the runs of the blank lines that remain, with only controls of page
 breaks between them, whose sum is the lines of a page or more (docs/adr
 ADR 0047).
@@ -464,7 +464,7 @@ droppedBlankLines pageLines docs0 =
       (docs', tooLong) = blankLinesOverPage pageLines docs
    in (docs', ineffective <> tooLong)
 
-{- | G0411 for each blank line of a run, with only controls of page breaks
+{- | G04011 for each blank line of a run, with only controls of page breaks
 between them and across the files, whose lines add up to the lines of a
 page or more (docs/adr ADR 0047). The PDF drops such a run at the top of
 a column, so every output drops it.
@@ -474,7 +474,7 @@ blankLinesOverPage pageLines docs =
   let flat = [(i, b) | (i, Document _ bs) <- zip [0 :: Int ..] docs, b <- bs]
       runs = blankRuns flat
       verdicts =
-        [ ((i, sp), notice "G0411" sp ("@blank-line の行数 " <> T.pack (show total) <> " がページの行数 " <> T.pack (show pageLines) <> " 以上なので捨てます"))
+        [ ((i, sp), notice "G04011" sp ("@blank-line の行数 " <> T.pack (show total) <> " がページの行数 " <> T.pack (show pageLines) <> " 以上なので捨てます"))
         | run <- runs,
           let total = sum [toInteger n | (_, _, n) <- run],
           total >= toInteger pageLines,
@@ -507,9 +507,9 @@ ineffectiveBlankLines docs =
           let key = (i, sp)
               rest = dropWhile soft after
               atEnd = all quiet after
-              end = [notice "G0409" sp "本の最後の @blank-line は効果がありません" | atEnd]
+              end = [notice "G04009" sp "本の最後の @blank-line は効果がありません" | atEnd]
               brk = case rest of
-                Block _ _ (ForcedBreak k) : _ -> [diagnostic "G0410" Warning sp ("@blank-line の直後に " <> breakName k <> " があります")]
+                Block _ _ (ForcedBreak k) : _ -> [diagnostic "G04010" Warning sp ("@blank-line の直後に " <> breakName k <> " があります")]
                 _ -> []
               diags = end <> brk,
           not (null diags)
@@ -572,7 +572,7 @@ collectLabels ns docs = foldl add (Map.empty, []) targets
       Just prev ->
         ( m,
           ds
-            <> [ (diagnostic "G0401" Error (ltSpan t) ("ラベルが重複しています: " <> l))
+            <> [ (diagnostic "G04001" Error (ltSpan t) ("ラベルが重複しています: " <> l))
                    { diagRelated = [(ltSpan prev, "最初の定義")]
                    }
                ]
@@ -603,16 +603,16 @@ resolveDoc labels dv evalDeferred (Document fid bs) = Document fid <$> mapM blk 
         modify' (first (Set.insert l))
         case (Map.lookup l labels, k) of
           (Nothing, _) -> do
-            modify' (\(s, ds) -> (s, ds <> [diagnostic "G0403" Error sp ("存在しないラベルへの参照です: " <> l)]))
+            modify' (\(s, ds) -> (s, ds <> [diagnostic "G04003" Error sp ("存在しないラベルへの参照です: " <> l)]))
             pure []
           (Just t, RefNumber) -> case ltNumber t of
             Just n -> pure [relocate sp n]
             Nothing -> do
-              modify' (\(s, ds) -> (s, ds <> [diagnostic "G0405" Error sp ("番号を持たない要素への参照です: " <> l)]))
+              modify' (\(s, ds) -> (s, ds <> [diagnostic "G04005" Error sp ("番号を持たない要素への参照です: " <> l)]))
               pure []
           (Just t, RefTitle) -> case ltTitle t of
             [] -> do
-              modify' (\(s, ds) -> (s, ds <> [diagnostic "G0406" Error sp ("題を持たない要素への参照です: " <> l)]))
+              modify' (\(s, ds) -> (s, ds <> [diagnostic "G04006" Error sp ("題を持たない要素への参照です: " <> l)]))
               pure []
             title -> pure (map (relocate sp) title)
           (Just _, RefPage) -> pure [Ref sp k l]

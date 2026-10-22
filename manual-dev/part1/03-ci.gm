@@ -104,7 +104,7 @@ Golem はシステムにインストールされたフォントを探さない�
 Golem のマニュアル自身がこの形で組まれている（第[ref-number manuals]章）。
 
 フォントがなくても、HTML、EPUB、プレーンテキストは組める。
-PDF だけが G0802 で止まる。
+PDF だけが G08002 で止まる。
 
 プラグインを使うプロジェクトでは、[code: plugins.lock] をリポジトリにコミットし、CI で組む前に [code: golem plugin fetch] を実行する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0002-distribution-and-lock.md]（golem-plugin ADR 0002「プラグインの取得とロックファイル」）]
 

@@ -114,10 +114,10 @@ columnsFor g p = if odd p then pgColumns g else pgColumnsEven g
 sidenoteAreaFor :: PageGeometry -> Int -> Maybe Rect
 sidenoteAreaFor g p = (\(o, e) -> if odd p then o else e) <$> pgSidenotes g
 
-{- | The page geometry, or G0701 at the top of @fid@: style.toml, or the
+{- | The page geometry, or G07001 at the top of @fid@: style.toml, or the
 manifest without one (golem-driver ADR 0016). The first condition that
 fails is reported, alone. The page size and the positions of master
-pages were checked when style.toml was read (G0317, G0318).
+pages were checked when style.toml was read (G03017, G03018).
 -}
 pageGeometry :: FileId -> Bool -> Style -> Either [Diagnostic] PageGeometry
 pageGeometry fid marks style = case stPage style of
@@ -126,7 +126,7 @@ pageGeometry fid marks style = case stPage style of
     Nothing -> Left [err "style.toml に [page.grid] がないため、版面を計算できません"]
     Just grid -> geometry page grid (pageTrimSize page)
   where
-    err = diagnostic "G0701" Error (mkSpan fid 0 0)
+    err = diagnostic "G07001" Error (mkSpan fid 0 0)
     geometry page grid (pw, ph) = do
       fs <- case gridFontSize grid of
         Abs s | s > 0 -> Right s
@@ -283,14 +283,14 @@ runningHeadBaselines ph pitch a n
   | anchorAtHead ph a = [anY a + toInteger (n - 1 - i) * pitch | i <- [0 .. n - 1]]
   | otherwise = [anY a - toInteger i * pitch | i <- [0 .. n - 1]]
 
-{- | G0752 (golem-driver ADR 0022): the em box of the outermost line of a
+{- | G07052 (golem-driver ADR 0022): the em box of the outermost line of a
 running head (the size times 'baselineRatio' above the baseline, the
 rest below) out of the trimmed page, for the most lines a format has.
 -}
 runningHeadFits :: FileId -> Sp -> Sp -> Sp -> Map Text MasterGeometry -> Either [Diagnostic] ()
 runningHeadFits fid ph fs pitch masters =
   if any outside [(a, n) | MasterGeometry (Just (co, ce, a1, a2)) _ <- Map.elems masters, (c, a) <- [(co, a1), (ce, a2)], let n = linesOf c, n > 0]
-    then Left [diagnostic "G0752" Error (mkSpan fid 0 0) "柱の行がページからはみ出しています。行の数を減らすか、天（または地）の余白を広げてください"]
+    then Left [diagnostic "G07052" Error (mkSpan fid 0 0) "柱の行がページからはみ出しています。行の数を減らすか、天（または地）の余白を広げてください"]
     else Right ()
   where
     above = round (fromInteger fs * baselineRatio)
@@ -315,7 +315,7 @@ separatorLines fs pitch rule = case (rsSpaceBefore rule, rsSpaceAfter rule) of
      in max 1 (fromInteger (negate (negate need `div` pitch)))
 
 {- | The hidden folios (golem-driver ADR 0021): only with crop marks and
-when enabled; G0750 at the top of @fid@ when the column of digits (half
+when enabled; G07050 at the top of @fid@ when the column of digits (half
 the size on each side of its centre line) overlaps, across the page, the
 type area or the sidenote column of an odd or an even page.
 -}
@@ -328,7 +328,7 @@ hiddenFolioGeometry fid marks style pw bindingRight areas = case stHiddenFolio s
               SideRight -> pw - gutter
             overlaps p (Rect x _ w _) = centre p - size `div` 2 < x + w && centre p + size `div` 2 > x
          in if or [overlaps p r | (p, rs) <- areas, r <- rs]
-              then Left [diagnostic "G0750" Error (mkSpan fid 0 0) "隠しノンブルが版面に重なります。[hidden-folio] の gutter を小さくするか、ノドの余白を広げてください"]
+              then Left [diagnostic "G07050" Error (mkSpan fid 0 0) "隠しノンブルが版面に重なります。[hidden-folio] の gutter を小さくするか、ノドの余白を広げてください"]
               else Right (Just (HiddenFolioGeometry size gutter (pages == HiddenAll)))
   _ -> Right Nothing
 

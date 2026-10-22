@@ -27,12 +27,12 @@ data Status = InUse | Retired
 
 -- | One section of docs/diagnostics.md.
 data Explanation = Explanation
-  { -- | such as @G0701@
+  { -- | such as @G07001@
     exCode :: !Text,
     -- | the paragraph after the heading
     exTitle :: !Text,
     exStatus :: !Status,
-    -- | from the @## G0701@ line up to the next @## @ line, without the blank lines at the end
+    -- | from the @## G07001@ line up to the next @## @ line, without the blank lines at the end
     exBody :: !Text
   }
   deriving stock (Eq, Show)
@@ -87,7 +87,7 @@ isCodeHeading :: Text -> Bool
 isCodeHeading l = maybe False isCode (T.stripPrefix "## " l)
 
 isCode :: Text -> Bool
-isCode t = T.length t == 5 && T.take 1 t == "G" && T.all isDigit (T.drop 1 t)
+isCode t = T.length t == 6 && T.take 1 t == "G" && T.all isDigit (T.drop 1 t)
 
 -- | Each line with whether it is inside a fenced code block.
 withFence :: [Numbered] -> [(Int, Text, Bool)]

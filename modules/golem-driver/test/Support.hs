@@ -262,7 +262,7 @@ fakeFontFiles :: [(FilePath, BS.ByteString)]
 fakeFontFiles = [("fonts/" <> f, "fake") | f <- ["b.otf", "w.otf", "h.otf"]]
 
 {- | A style with the fake body font when it names no font role, so that a
-PDF test is not stopped by G0807 (golem-driver ADR 0016).
+PDF test is not stopped by G08007 (golem-driver ADR 0016).
 -}
 withBodyFont :: BS.ByteString -> BS.ByteString
 withBodyFont style

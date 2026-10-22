@@ -48,7 +48,7 @@ int :: (Integral a) => a -> Term
 int = TInteger . checked . toInteger
 
 {- | An integer of the IR as it is encoded. The evaluator keeps every
-integer within int64 (G0291), so one out of range is a bug of the host
+integer within int64 (G02091), so one out of range is a bug of the host
 (golem-doc ADR 0006): the encoding never writes a bignum.
 -}
 checked :: Integer -> Integer

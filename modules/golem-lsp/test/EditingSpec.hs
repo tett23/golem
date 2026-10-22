@@ -158,8 +158,8 @@ sessionTests =
       r <- inSession $ \absRoot -> do
         doc <- LT.openDoc "b.gm" "golem"
         LT.changeDoc doc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument "@label second\n# 改めた章\n\n\n\n[ref-title   nosuch]\n"))]
-        -- the G0403 of the edited text: the workspace has it (a new heading re-evaluates the project)
-        _ <- publishedFor (absRoot </> "b.gm") (elem "G0403")
+        -- the G04003 of the edited text: the workspace has it (a new heading re-evaluates the project)
+        _ <- publishedFor (absRoot </> "b.gm") (elem "G04003")
         M.TResponseMessage _ _ res <- LT.request M.SMethod_TextDocumentFormatting (L.DocumentFormattingParams Nothing doc (L.FormattingOptions 2 True Nothing Nothing Nothing))
         pure (either (const []) (\case L.InL es -> [(rg, t) | L.TextEdit rg t <- es]; L.InR _ -> []) res)
       r @?= [(range 0 0 6 0, "@label second\n# 改めた章\n\n[ref-title nosuch]\n")],
@@ -167,7 +167,7 @@ sessionTests =
       r <- inSession $ \absRoot -> do
         doc <- LT.openDoc "b.gm" "golem"
         LT.changeDoc doc [L.TextDocumentContentChangeEvent (L.InR (L.TextDocumentContentChangeWholeDocument "@label second\n# 改めた章\n\n[ref-title nosuch]\n"))]
-        _ <- publishedFor (absRoot </> "b.gm") (elem "G0403")
+        _ <- publishedFor (absRoot </> "b.gm") (elem "G04003")
         LT.closeDoc doc
         publishedFor (absRoot </> "b.gm") (const True)
       r @?= []

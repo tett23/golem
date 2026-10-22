@@ -231,7 +231,7 @@
   第[ref-number markup]章「[ref-title inline-commands]」、付録A。
 = [strong: 診断]
   Golem が原稿と設定について報告することの総称です。[index reading=しんだん: 診断]
-  重い順に、エラー、警告、お知らせがあり、どれも [code: G0215] のようなコードを持ちます。
+  重い順に、エラー、警告、お知らせがあり、どれも [code: G02015] のようなコードを持ちます。
   第[ref-number check]章「[ref-title check]」、付録E。
 = [strong: エラー]
   直さなければならない誤りです。[index reading=えらー: エラー]

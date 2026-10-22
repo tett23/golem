@@ -165,7 +165,7 @@ data LoadedFonts = LoadedFonts
     {- | the embedded (subset) font of a face number, for horizontal or
     vertical use, with the glyphs used and their text; IO, since the
     subset is made as the PDF is written (docs/adr ADR 0034); a font that
-    cannot be embedded is a diagnostic (G0818, golem-pdf ADR 0011)
+    cannot be embedded is a diagnostic (G08018, golem-pdf ADR 0011)
     -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> IO (Either Diagnostic P.Font),
     {- | the height of the centre of the ideographic em box above the
     baseline of a face number, in em (golem-driver ADR 0015)
@@ -226,7 +226,7 @@ newtype FontProvider = FontProvider
 noFontProvider :: FontProvider
 noFontProvider =
   FontProvider $ \_ fid _ _ ->
-    pure (Left [diagnostic "G0801" Error (mkSpan fid 0 0) "フォントを読まない設定（noFontProvider）では PDF を出力できません"])
+    pure (Left [diagnostic "G08001" Error (mkSpan fid 0 0) "フォントを読まない設定（noFontProvider）では PDF を出力できません"])
 
 {- | What the instance ID is computed from: the bytes of every input, the
 embedded font programs and, last, @golem-@ and the version of Golem
@@ -279,7 +279,7 @@ bodyRole style
   | Map.member "body" (stFonts style) = "body"
   | otherwise = maybe "body" fst (Map.lookupMin (stFonts style))
 
-{- | G0807 (golem-driver ADR 0016): style.toml sets no body font, or the
+{- | G08007 (golem-driver ADR 0016): style.toml sets no body font, or the
 body role has no file, at the top of @fid@.
 -}
 bodyFontDiagnostics :: FileId -> Style -> [Diagnostic]
@@ -289,7 +289,7 @@ bodyFontDiagnostics fid style
   | otherwise = []
   where
     body = bodyRole style
-    err = diagnostic "G0807" Error (mkSpan fid 0 0)
+    err = diagnostic "G08007" Error (mkSpan fid 0 0)
 
 {- | The font roles the PDF uses, body first, then the others by name:
 headings (golem-driver ADR 0003), character styles (ADR 0004) and
@@ -371,12 +371,12 @@ codeInput inp =
           piLocalStyles = Map.map (codeLocalStyles hasCode fonts) (piLocalStyles inp)
         }
 
-{- | G0808 (golem-driver ADR 0017): the book has code, [fonts.code] is
+{- | G08008 (golem-driver ADR 0017): the book has code, [fonts.code] is
 missing and a style code names the role code; at the top of @fid@.
 -}
 codeFontNotice :: FileId -> Style -> Book -> [Diagnostic]
 codeFontNotice fid style book =
-  [ notice "G0808" (mkSpan fid 0 0) "コードの書体の役割 code がないので、本文の書体で組みます"
+  [ notice "G08008" (mkSpan fid 0 0) "コードの書体の役割 code がないので、本文の書体で組みます"
   | bookHasCode (const style) book,
     Map.notMember "code" (stFonts style),
     (paraStyle style (Just "code") >>= psFont) == Just "code" || (charStyle style "code" >>= csFont) == Just "code"
@@ -388,13 +388,13 @@ the shape in the Japanese face of a role, in the direction of the text.
 kentenShaped :: LoadedFonts -> Bool -> Text -> KentenShape -> [Shaped]
 kentenShaped fonts vertical role shape = lfShape fonts (Shaping role vertical []) (T.singleton (kentenChar shape))
 
-{- | G0809 (golem-driver ADR 0019): a role whose Japanese face has no glyph
+{- | G08009 (golem-driver ADR 0019): a role whose Japanese face has no glyph
 for a kenten shape used in it, once for each role and shape, at the top
 of @fid@.
 -}
 kentenGlyphDiagnostics :: FileId -> Bool -> LoadedFonts -> PdfLayout -> [Diagnostic]
 kentenGlyphDiagnostics fid vertical fonts layout =
-  [ diagnostic "G0809" Error (mkSpan fid 0 0) ("役割 " <> role <> " の和文の書体に圏点の形 " <> kentenShapeName shape <> " の字（U+" <> codePoint (kentenChar shape) <> "）がありません")
+  [ diagnostic "G08009" Error (mkSpan fid 0 0) ("役割 " <> role <> " の和文の書体に圏点の形 " <> kentenShapeName shape <> " の字（U+" <> codePoint (kentenChar shape) <> "）がありません")
   | (role, shape) <- Set.toAscList (Set.fromList [(lkFace (bcLook c), shape) | l <- layoutLines layout, Box _ c <- lineItems l, boxKind c == KindKenten, Just shape <- [lkKenten (bcLook c)]]),
     let gs = kentenShaped fonts vertical role shape,
     null gs || any ((== 0) . shGlyph) gs
@@ -413,13 +413,13 @@ layoutLines layout =
       concat [[tpLeader tp, tpNumber tp] | tp <- Map.elems (plTocPages layout)]
     ]
 
-{- | G0745 (golem-driver ADR 0019): kenten in the base of a ruby, at the
+{- | G07045 (golem-driver ADR 0019): kenten in the base of a ruby, at the
 kenten, and ruby in kenten, at the ruby. The PDF draws no kenten there;
 HTML and EPUB draw both.
 -}
 kentenRubyNotices :: Book -> [Diagnostic]
 kentenRubyNotices book =
-  [ notice "G0745" sp "ルビの親文字の圏点は PDF では描きません"
+  [ notice "G07045" sp "ルビの親文字の圏点は PDF では描きません"
   | Document _ bs <- bookDocs book,
     is <- concatMap blockInlineLists bs,
     sp <- concatMap (sites False) is
@@ -772,7 +772,7 @@ data PdfLayout = PdfLayout
     plHeadingSpans :: !(Map Int SrcSpan),
     -- | the code block of each row of code (golem-driver ADR 0017)
     plCodes :: !(Map Int CodeInfo),
-    -- | the notices of the layout (G0730)
+    -- | the notices of the layout (G07030)
     plNotices :: ![Diagnostic],
     -- | the block of the unit of each first line (golem-cli ADR 0006)
     plLineSpans :: !(Map Int SrcSpan),
@@ -786,7 +786,7 @@ data Built = Built
     bFigures :: Map Int PlacedFigure,
     -- | heading blocks by their first line
     bHeadings :: Map Int HeadingBlock,
-    -- | errors found while building (G0722, G0723, G0724, G0741, G0742)
+    -- | errors found while building (G07022, G07023, G07024, G07041, G07042)
     bErrors :: [Diagnostic],
     bTableLines :: Map Int [SetLine],
     bTables :: Map Int TableGeometry,
@@ -798,7 +798,7 @@ data Built = Built
     bLineFiles :: Map Int FileId,
     -- | the code block of each row of code (golem-driver ADR 0017)
     bCodes :: Map Int CodeInfo,
-    -- | notices (G0730)
+    -- | notices (G07030)
     bNotices :: [Diagnostic],
     -- | the block of each unit by the id of its first line (golem-cli ADR 0006)
     bLineSpans :: Map Int SrcSpan,
@@ -807,20 +807,20 @@ data Built = Built
   }
 
 {- | What style.toml alone decides before the layout (golem-driver ADR
-0016): the page geometry (G0701) and the indent of each paragraph style
-(G0725), at the top of @fid@. The driver reports them for golem check too.
+0016): the page geometry (G07001) and the indent of each paragraph style
+(G07025), at the top of @fid@. The driver reports them for golem check too.
 -}
 styleLayoutDiagnostics :: FileId -> Bool -> Style -> [LocalStyles] -> [Diagnostic]
 styleLayoutDiagnostics fid marks style locals = either id (\geom -> indentDiagnostics fid style locals geom <> indexDiagnostics fid style geom <> codeMeasureDiagnostics fid style locals geom) (pageGeometry fid marks style)
 
-{- | G0743 (golem-driver ADR 0017): the measure of a column less the padding
+{- | G07043 (golem-driver ADR 0017): the measure of a column less the padding
 on both sides leaves 8 characters of code, in style.toml and in the style
 of each file; at the top of @fid@.
 -}
 codeMeasureDiagnostics :: FileId -> Style -> [LocalStyles] -> PageGeometry -> [Diagnostic]
 codeMeasureDiagnostics fid style locals geom =
   nub
-    [ diagnostic "G0743" Error (mkSpan fid 0 0) "コードブロックの行長が足りません"
+    [ diagnostic "G07043" Error (mkSpan fid 0 0) "コードブロックの行長が足りません"
     | st <- style : map (withLocalStyles style) locals,
       let lk = codeLook st geom
           size = lkSize lk,
@@ -853,12 +853,12 @@ indexColumnSet style geom = do
     then Nothing
     else Just (ColumnSet n ((w - toInteger (n - 1) * gap) `div` toInteger n) gap 0)
 
-{- | G0744: the columns of the index leave 8 characters of the type
+{- | G07044: the columns of the index leave 8 characters of the type
 area's size (docs/adr ADR 0025), at the value of [index] columns.
 -}
 indexDiagnostics :: FileId -> Style -> PageGeometry -> [Diagnostic]
 indexDiagnostics fid style geom =
-  [ diagnostic "G0744" Error (mkSpan fid at at) "索引の段の行長が足りません。columns を減らすか column-gap を狭めてください"
+  [ diagnostic "G07044" Error (mkSpan fid at at) "索引の段の行長が足りません。columns を減らすか column-gap を狭めてください"
   | Just set <- [indexColumnSet style geom],
     csMeasure set < 8 * pgFontSize geom,
     let at = maybe 0 ixColumnsAt (stIndex style)
@@ -877,14 +877,14 @@ columnSetRects geom n set =
       | i <- [0 .. toInteger (csColumns set) - 1]
       ]
 
-{- | G0725: every paragraph style leaves 8 characters of its own size on a
+{- | G07025: every paragraph style leaves 8 characters of its own size on a
 line of a column (docs/adr ADR 0006, golem-driver ADR 0005 and 0016), in
 style.toml and in the style of each file (docs/adr ADR 0014).
 -}
 indentDiagnostics :: FileId -> Style -> [LocalStyles] -> PageGeometry -> [Diagnostic]
 indentDiagnostics fid style locals geom =
   nub
-    [ diagnostic "G0725" Error (mkSpan fid 0 0) ("段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: " <> name)
+    [ diagnostic "G07025" Error (mkSpan fid 0 0) ("段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: " <> name)
     | st <- style : map (withLocalStyles style) locals,
       name <- Map.keys (stParaStyles st),
       let (lk, Indent s f) = paraLook st geom (Just name),
@@ -900,7 +900,7 @@ checkedGeometry inp = do
     [] -> Right geom
     ds -> Left ds
 
-{- | The PDF and the notices of its layout (G0730), or the errors that
+{- | The PDF and the notices of its layout (G07030), or the errors that
 stopped it.
 -}
 renderPdf :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic]))
@@ -923,7 +923,7 @@ renderPdfView provider inp0 = case checkedGeometry inp of
           Left ds -> pure (Left ds)
           Right intent -> do
             laid <- layoutPdf inp geom fonts
-            -- a kenten shape the font has no glyph for stops the PDF (G0809, golem-driver ADR 0019)
+            -- a kenten shape the font has no glyph for stops the PDF (G08009, golem-driver ADR 0019)
             case laid of
               Left ds -> pure (Left ds)
               Right layout -> case kentenGlyphDiagnostics (piStyleFile inp) (pgVertical geom) fonts layout of
@@ -966,7 +966,7 @@ layoutPdf inp0 geom fonts =
         ds@(_ : _) -> pure (Left ds)
         [] -> do
           loaded <- loadFigures inp
-          -- a figure that cannot be placed stops the PDF (G0810, golem-pdf ADR 0008)
+          -- a figure that cannot be placed stops the PDF (G08010, golem-pdf ADR 0008)
           case figureDiagnostics inp loaded of
             ds@(_ : _) -> pure (Left ds)
             [] -> layoutFigures inp geom fonts (Map.mapMaybe (either (const Nothing) Just) loaded)
@@ -975,7 +975,7 @@ layoutPdf inp0 geom fonts =
 layoutFigures :: PdfInput -> PageGeometry -> LoadedFonts -> Map (Text, Int) P.FigureContent -> IO (Either [Diagnostic] PdfLayout)
 layoutFigures inp geom fonts figures = do
   -- S2: compose with assumed page numbers until they settle
-  -- the names of the marks for G0721: the terms of the index, the bodies of the entries of channels (golem-doc ADR 0007)
+  -- the names of the marks for G07021: the terms of the index, the bodies of the entries of channels (golem-doc ADR 0007)
   let terms =
         Map.fromList
           ( [(sp, T.intercalate " / " (igTerms g)) | g <- indexGroups (bookDocs (piBook inp)), (_, sp) <- igLocations g]
@@ -1032,30 +1032,30 @@ gridLine geom k = case (drop k grid, grid) of
   where
     grid = pgLineGrid geom
 
-{- | G0737: the manual controls of page breaks not met (docs/adr ADR
-0030); G0747: the blank lines dropped (docs/adr ADR 0046).
+{- | G07037: the manual controls of page breaks not met (docs/adr ADR
+0030); G07047: the blank lines dropped (docs/adr ADR 0046).
 -}
 unmetWarnings :: [PageOut] -> [Diagnostic]
 unmetWarnings pages =
   [ case u of
-      UnmetNoBreak sp -> diagnostic "G0737" Warning sp "ここで改ページを止められませんでした"
-      UnmetNeedLines sp k -> diagnostic "G0737" Warning sp ("@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (poLines p)) <> " を超えます")
-      UnmetAdjust sp k -> diagnostic "G0737" Warning sp ("@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")
-      -- G0747: blank lines dropped at the top of a column (docs/adr ADR 0046)
-      DroppedBlank sp -> notice "G0747" sp "段の先頭に来た @blank-line の空きを捨てました"
+      UnmetNoBreak sp -> diagnostic "G07037" Warning sp "ここで改ページを止められませんでした"
+      UnmetNeedLines sp k -> diagnostic "G07037" Warning sp ("@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (poLines p)) <> " を超えます")
+      UnmetAdjust sp k -> diagnostic "G07037" Warning sp ("@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")
+      -- G07047: blank lines dropped at the top of a column (docs/adr ADR 0046)
+      DroppedBlank sp -> notice "G07047" sp "段の先頭に来た @blank-line の空きを捨てました"
   | p <- pages,
     u <- poUnmet p
   ]
 
-{- | G0746 (golem-driver ADR 0027): a ruled paragraph broken between
+{- | G07046 (golem-driver ADR 0027): a ruled paragraph broken between
 columns, or a ruled heading that lost a rule, because an empty column
 could not hold its block.
 -}
 ruledNotices :: [Flow] -> Map Int RuledInfo -> [PageOut] -> [Diagnostic]
 ruledNotices flow infos pages =
   [ if riHeading info
-      then notice "G0746" (riSpan info) ("罫線を持つ見出しが版面に入らないため、罫線を省きました（" <> riOwner info <> "）")
-      else notice "G0746" (riSpan info) ("罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（" <> riOwner info <> "）")
+      then notice "G07046" (riSpan info) ("罫線を持つ見出しが版面に入らないため、罫線を省きました（" <> riOwner info <> "）")
+      else notice "G07046" (riSpan info) ("罫線を持つ段落が版面に入らないため、罫線を省いて分けて組みました（" <> riOwner info <> "）")
   | f@FRuled {} <- flow,
     let ids = case frBody f of
           RuledLines ls -> map lbId ls
@@ -1198,13 +1198,13 @@ runningHeads inp geom layout =
               runningHeadLines meta (Map.findWithDefault Map.empty fid (piRunningVars inp)) (if odd (poNumber p) then co else ce) st (startedOn p)
    in Map.fromList [(poNumber p, one p st m fid) | (p, st, m, fid) <- zip4 pages starts (pageMasters inp geom layout) (pageFiles inp layout)]
 
-{- | G0751 (golem-driver ADR 0022): a line of a running head wider than the
+{- | G07051 (golem-driver ADR 0022): a line of a running head wider than the
 type area of its page, once for each text, at the top of style.toml. The
 line is drawn as it is, out into the margin.
 -}
 runningHeadNotices :: PdfInput -> PageGeometry -> LoadedFonts -> PdfLayout -> [Diagnostic]
 runningHeadNotices inp geom fonts layout =
-  [ diagnostic "G0751" Warning (mkSpan (piStyleFile inp) 0 0) ("柱の行が版面の幅を超えています（" <> T.pack (show n) <> " ページ）: " <> t)
+  [ diagnostic "G07051" Warning (mkSpan (piStyleFile inp) 0 0) ("柱の行が版面の幅を超えています（" <> T.pack (show n) <> " ページ）: " <> t)
   | (n, t) <- sortOn id [(n, t) | (t, n) <- Map.toList (Map.fromListWith min wide)]
   ]
   where
@@ -1417,15 +1417,15 @@ sidenoteMetrics style geom =
    in (role, size, pgLinePitch geom * size `div` pgFontSize geom)
 
 {- | Sidenotes the PDF cannot place (golem-driver ADR 0006): in vertical
-writing (G0732), without a sidenote column (G0734), or in a footnote or
-a caption (G0735).
+writing (G07032), without a sidenote column (G07034), or in a footnote or
+a caption (G07035).
 -}
 sidenoteDiagnostics :: PageGeometry -> Book -> [Diagnostic]
 sidenoteDiagnostics geom book
   | pgVertical geom = concatMap (verticalSidenotes (defaultComposeEnv 0) {ceVertical = True}) inlineLists
   | otherwise = case pgSidenotes geom of
-      Nothing -> [diagnostic "G0734" Error sp "傍注の領域（style.toml の [sidenotes]）のない版面では傍注を使えません" | (sp, _) <- sites]
-      Just _ -> [diagnostic "G0735" Error sp "PDF では、脚注の本文と図版のキャプションの中に傍注を置けません" | (sp, False) <- sites]
+      Nothing -> [diagnostic "G07034" Error sp "傍注の領域（style.toml の [sidenotes]）のない版面では傍注を使えません" | (sp, _) <- sites]
+      Just _ -> [diagnostic "G07035" Error sp "PDF では、脚注の本文と図版のキャプションの中に傍注を置けません" | (sp, False) <- sites]
   where
     blocks = concat [bs | Document _ bs <- bookDocs book]
     -- every list of inlines of the book, captions included
@@ -1443,7 +1443,7 @@ sidenoteDiagnostics geom book
       CharStyle _ _ xs -> concatMap (inlineSites flow) xs
       _ -> []
 
--- | The block of each label, where G0721 points (golem-driver ADR 0016).
+-- | The block of each label, where G07021 points (golem-driver ADR 0016).
 labelSpans :: Book -> Map Text SrcSpan
 labelSpans book = Map.fromListWith (\_ old -> old) (concatMap site (concat [bs | Document _ bs <- bookDocs book]))
   where
@@ -1456,11 +1456,11 @@ labelSpans book = Map.fromListWith (\_ old -> old) (concatMap site (concat [bs |
         _ -> []
 
 {- | Numbers of list items that the number format of their depth cannot
-write (golem-driver ADR 0013): G0729 at the item, whatever the target.
+write (golem-driver ADR 0013): G07029 at the item, whatever the target.
 -}
 listNumberDiagnostics :: Style -> Bool -> Book -> [Diagnostic]
 listNumberDiagnostics style vertical book =
-  [ diagnostic "G0729" Error (lsiSpan s) ("リストの番号 " <> T.pack (show (lsiNumber s)) <> " は、書式 " <> renderNumberFormat f <> " で表せません")
+  [ diagnostic "G07029" Error (lsiSpan s) ("リストの番号 " <> T.pack (show (lsiNumber s)) <> " は、書式 " <> renderNumberFormat f <> " で表せません")
   | s <- listSites (concat [bs | Document _ bs <- bookDocs book]),
     let f = atDepth formats (lsiDepth s),
     null (formatListNumber (nfStyle f) (lsiNumber s))
@@ -1496,8 +1496,8 @@ placePageSidenotes geom metricsOf lineMap p =
         then Right []
         else case placeSidenotes columnH (bodyPitch `div` 2) [(want, height sp ls) | (sp, want, ls) <- notes] of
           Right tops -> Right [PlacedSidenote sp t ls | ((sp, _, ls), t) <- zip notes tops]
-          Left (TooTall i) -> Left [diagnostic "G0733" Error (at i) "傍注が傍注の領域より高く、収まりません"]
-          Left (DoesNotFit i) -> Left [diagnostic "G0733" Error (at i) "このページの傍注が傍注の領域に収まりません"]
+          Left (TooTall i) -> Left [diagnostic "G07033" Error (at i) "傍注が傍注の領域より高く、収まりません"]
+          Left (DoesNotFit i) -> Left [diagnostic "G07033" Error (at i) "このページの傍注が傍注の領域に収まりません"]
 
 -- | The page numbers assumed in a round of S2: of labels and of index marks (golem-driver ADR 0007).
 data Assumed = Assumed
@@ -1508,7 +1508,7 @@ data Assumed = Assumed
 
 {- | S2: lays out with assumed page numbers until the pages of the labels
 and index marks settle. A round that fails stops it with its errors;
-after 'maxIterations' rounds, G0721 names what still moves and is at the
+after 'maxIterations' rounds, G07021 names what still moves and is at the
 first of them (golem-driver ADR 0016): the block of a label (@labelSpan@)
 or an index mark.
 -}
@@ -1533,7 +1533,7 @@ fixpoint labelSpan termOf layoutWith = go (1 :: Int) (Assumed Map.empty Map.empt
     notSettled labels marks =
       let named = [(labelSpan l, l) | l <- labels] <> nubOn snd [(m, termOf m) | m <- marks]
           sites = map fst named
-       in (diagnostic "G0721" Error (fromMaybe (mkSpan (FileId 0) 0 0) (listToMaybe sites)) ("ページ番号の参照が収束しません: " <> T.intercalate ", " (map snd named)))
+       in (diagnostic "G07021" Error (fromMaybe (mkSpan (FileId 0) 0 0) (listToMaybe sites)) ("ページ番号の参照が収束しません: " <> T.intercalate ", " (map snd named)))
             { diagRelated = [(sp, "ページが定まりません") | sp <- drop 1 sites]
             }
     nubOn key = reverse . fst . foldl (\(acc, seen) x -> if key x `elem` seen then (acc, seen) else (x : acc, key x : seen)) ([], [])
@@ -2039,7 +2039,7 @@ buildFlow inp geom fonts images assumed = do
             place' = if turned then "ページ" else "段"
             tooDeep = isNothing (figWrap fig) && n > 0 && span' >= gridLines
             notices =
-              [ notice "G0739" (uSpan u) ("図版を" <> place' <> "に収めるため " <> T.pack (show (alongFit * 100 `div` max 1 alongSp)) <> "% に縮めました" <> hint)
+              [ notice "G07039" (uSpan u) ("図版を" <> place' <> "に収めるため " <> T.pack (show (alongFit * 100 `div` max 1 alongSp)) <> "% に縮めました" <> hint)
               | fitted,
                 not tooDeep
               ]
@@ -2049,14 +2049,14 @@ buildFlow inp geom fonts images assumed = do
             errs = case (figWrap fig, ex) of
               -- no wrapping on a page of columns (docs/adr ADR 0018)
               (Just _, _)
-                | length (pgColumns geom) > 1 -> [diagnostic "G0726" Error (uSpan u) "段組みの版面では図版を回り込ませられません。wrap を外すか、columns を 1 にしてください"]
+                | length (pgColumns geom) > 1 -> [diagnostic "G07026" Error (uSpan u) "段組みの版面では図版を回り込ませられません。wrap を外すか、columns を 1 にしてください"]
               (Just _, Just e)
                 | isLeft along || measure - exWidth e < 8 * fs ->
-                    [diagnostic "G0722" Error (uSpan u) ("回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
-                | exLines e > capacity -> [diagnostic "G0723" Error (uSpan u) ("回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
+                    [diagnostic "G07022" Error (uSpan u) ("回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: " <> fromMaybe "" (figWidth fig))]
+                | exLines e > capacity -> [diagnostic "G07023" Error (uSpan u) ("回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
               -- a caption that leaves no line for the image (golem-driver ADR 0034)
               _
-                | tooDeep -> [diagnostic "G0738" Error (uSpan u) ("図版のキャプションが" <> place' <> "の行数を超えます（" <> T.pack (show span') <> " 行。" <> place' <> "は " <> T.pack (show gridLines) <> " 行）")]
+                | tooDeep -> [diagnostic "G07038" Error (uSpan u) ("図版のキャプションが" <> place' <> "の行数を超えます（" <> T.pack (show span') <> " 行。" <> place' <> "は " <> T.pack (show gridLines) <> " 行）")]
                 | otherwise -> []
             turn
               | not turned = Nothing
@@ -2187,10 +2187,10 @@ buildFlow inp geom fonts images assumed = do
       step (nextId, flows, lineAcc, figAcc, headAcc, errs, tabAcc, ext) (i, u) = case uKind u of
         UTable {} -> case Map.lookup i tables of
           Just (Left (ColumnsTooWide mn avail)) ->
-            (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G0741" Error (uSpan u) ("表の列の最小の幅の合計（" <> mm mn <> " mm）が使える幅（" <> mm avail <> " mm）に収まりません")], tabAcc, ext)
+            (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G07041" Error (uSpan u) ("表の列の最小の幅の合計（" <> mm mn <> " mm）が使える幅（" <> mm avail <> " mm）に収まりません")], tabAcc, ext)
           Just (Right (t, atts))
             | tall@(_ : _) <- [r | (r, h) <- zip [1 :: Int ..] (stRowLines t), stHeaderLines t + h > capacity] ->
-                (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G0742" Error (uSpan u) ("表の " <> T.pack (show r) <> " 行目が見出しの行とともに一ページに収まりません") | r <- tall], tabAcc, ext)
+                (nextId, flows, lineAcc, figAcc, headAcc, errs <> [diagnostic "G07042" Error (uSpan u) ("表の " <> T.pack (show r) <> " 行目が見出しの行とともに一ページに収まりません") | r <- tall], tabAcc, ext)
             | otherwise ->
                 let heights = stHeaderLines t : stRowLines t
                     starts = scanl (+) nextId heights
@@ -2254,7 +2254,7 @@ buildFlow inp geom fonts images assumed = do
                              in (nid + length (cLines c), boxAcc <> bs, Map.union setAcc set)
                           tooNarrow =
                             [ if null (uLists (unitAt Map.! j))
-                                then diagnostic "G0728" Error (uSpan (unitAt Map.! j)) "回り込む図版の脇で、字下げを引くと行が残りません"
+                                then diagnostic "G07028" Error (uSpan (unitAt Map.! j)) "回り込む図版の脇で、字下げを引くと行が残りません"
                                 else listTooDeep (uSpan (unitAt Map.! j))
                             | (j, c, off) <- paras,
                               any (\k -> wrappedLineWidth measure ex off k - lineIndent (uKind (unitAt Map.! j)) k <= 0) [0 .. length (cLines c) - 1]
@@ -2311,12 +2311,12 @@ buildFlow inp geom fonts images assumed = do
                   (headAcc', errs') = case uKind u of
                     UHeading l short _ ->
                       ( Map.insert nextId hb headAcc,
-                        errs <> [diagnostic "G0724" Error (uSpan u) ("見出しが版面に入りません（" <> T.pack (show l) <> " の見出し: " <> short <> "）") | hbSpan hb > capacity]
+                        errs <> [diagnostic "G07024" Error (uSpan u) ("見出しが版面に入りません（" <> T.pack (show l) <> " の見出し: " <> short <> "）") | hbSpan hb > capacity]
                       )
                     -- the title of the notes is in neither the headings nor the running heads (golem-driver ADR 0026)
                     UNotesTitle title ->
                       ( Map.insert nextId hb headAcc,
-                        errs <> [diagnostic "G0724" Error (uSpan u) ("見出しが版面に入りません（注の一覧の見出し: " <> title <> "）") | hbSpan hb > capacity]
+                        errs <> [diagnostic "G07024" Error (uSpan u) ("見出しが版面に入りません（注の一覧の見出し: " <> title <> "）") | hbSpan hb > capacity]
                       )
                     _ -> (headAcc, errs)
                in (nextId + length ls, flows <> flowOf, Map.union lineAcc set, figAcc, headAcc', errs')
@@ -2339,7 +2339,7 @@ buildFlow inp geom fonts images assumed = do
            in CodeCaption ls cs (hbPitch cb) (if null ls then 0 else hbSpan cb) [sp | AnchorIndex _ sp _ <- captionAnchors]
       codeErrors = concatMap cbErrors (Map.elems codeBlocks)
       -- the text of a list item leaves 8 characters of the type area (golem-driver ADR 0013)
-      listTooDeep sp = diagnostic "G0727" Error sp "リストの入れ子が深く、項目の本文の行長が足りません。行長を本文の文字の大きさの 8 字分以上残してください"
+      listTooDeep sp = diagnostic "G07027" Error sp "リストの入れ子が深く、項目の本文の行長が足りません。行長を本文の文字の大きさの 8 字分以上残してください"
       deepLists =
         nub
           [ listTooDeep (uSpan u)
@@ -2407,7 +2407,7 @@ marginAcross geom before =
    in min (side (pgTypeArea geom)) (side (pgTypeAreaEven geom))
 
 {- | The rules of a ruled block (golem-driver ADR 0027): the kind for golem
-preflight, whose rules they are for G0746, whether it is a heading, the
+preflight, whose rules they are for G07046, whether it is a heading, the
 size zw is resolved by, the rules and the block.
 -}
 data RuledInfo = RuledInfo
@@ -2432,9 +2432,9 @@ data SetCode = SetCode
     cbFirstRows :: Int,
     -- | the index marks of the caption
     cbMarks :: [SrcSpan],
-    -- | G0743
+    -- | G07043
     cbErrors :: [Diagnostic],
-    -- | G0730
+    -- | G07030
     cbNotices :: [Diagnostic]
   }
 
@@ -2555,8 +2555,8 @@ codeBlockOf geom fonts measure capacity u lead code caption =
         sw <- codeStyle >>= psBorder >>= swatchOf
         pure (sw, dimToSp size (fromMaybe (Abs 16384) (codeStyle >>= psBorderWidth)))
       errs =
-        [diagnostic "G0743" Error (uSpan u) "コードブロックの行長が足りません" | avail < 8 * size]
-          <> [diagnostic "G0743" Error (uSpan u) "コードブロックの一行が一ページに収まりません" | codeSpan g (if isJust continuedLine then 2 else 1) > capacity]
+        [diagnostic "G07043" Error (uSpan u) "コードブロックの行長が足りません" | avail < 8 * size]
+          <> [diagnostic "G07043" Error (uSpan u) "コードブロックの一行が一ページに収まりません" | codeSpan g (if isJust continuedLine then 2 else 1) > capacity]
       rows = fileRows <> codeRows
    in SetCode
         { cbRows = rows,
@@ -2582,7 +2582,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
           cbFirstRows = length fileRows + 1,
           cbMarks = ccMarks caption,
           cbErrors = take 1 errs,
-          cbNotices = [notice "G0730" (uSpan u) ("コードの行を折り返しました（" <> T.pack (show wrapped) <> " 行）") | wrapped > 0]
+          cbNotices = [notice "G07030" (uSpan u) ("コードの行を折り返しました（" <> T.pack (show wrapped) <> " 行）") | wrapped > 0]
         }
 
 -- | Which line (0-based) contains the item at an index.
@@ -2644,9 +2644,9 @@ keepLastTwo items = case reverse boxes of
       g@Glue {} -> [Penalty 0 infPenalty NoHyphen, g]
       x -> [x]
 
-{- | Why a figure cannot be placed: G0810 with the reason, what an SVG
-figure cannot be drawn for, G0811, G0816 and G0817 (golem-pdf ADR 0008,
-0009, docs/adr ADR 0054), or G0815, the joined content of a PDF page over
+{- | Why a figure cannot be placed: G08010 with the reason, what an SVG
+figure cannot be drawn for, G08011, G08016 and G08017 (golem-pdf ADR 0008,
+0009, docs/adr ADR 0054), or G08015, the joined content of a PDF page over
 256 MiB (docs/adr ADR 0051).
 -}
 data Unplaced = Unplaced !Text | UnsupportedSvg !S.SvgProblems | ContentTooLarge
@@ -2680,9 +2680,9 @@ loadFigures inp = do
 figureBlocks :: Book -> [(SrcSpan, Figure)]
 figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ (FigureBlock f) <- bs]
 
-{- | G0810: a figure that cannot be placed in the PDF; G0811: an SVG figure
-with things outside the subset, G0816: with markers in a cycle, G0817: with
-markers nested too deep, each that applies in this order; G0815: a PDF
+{- | G08010: a figure that cannot be placed in the PDF; G08011: an SVG figure
+with things outside the subset, G08016: with markers in a cycle, G08017: with
+markers nested too deep, each that applies in this order; G08015: a PDF
 figure whose page content joined is over 256 MiB; one of each per @figure
 (golem-pdf ADR 0008, 0009, docs/adr ADR 0051, 0054).
 -}
@@ -2692,12 +2692,12 @@ figureDiagnostics inp loaded =
   | (sp, f) <- figureBlocks (piBook inp),
     Just (Left why) <- [Map.lookup (figureKey f) loaded],
     d <- case why of
-      Unplaced reason -> [diagnostic "G0810" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> reason <> "）")]
+      Unplaced reason -> [diagnostic "G08010" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> reason <> "）")]
       UnsupportedSvg ps ->
-        [diagnostic "G0811" Error sp (unsupportedMessage (figSource f) us) | Just us <- [nonEmpty (S.spUnsupported ps)]]
-          <> [diagnostic "G0816" Error sp (markerMessage "SVG の図版の marker が循環しています: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerCycles ps)]]
-          <> [diagnostic "G0817" Error sp (markerMessage "SVG の図版の marker の入れ子が 9 段を超えます: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerDepth ps)]]
-      ContentTooLarge -> [diagnostic "G0815" Error sp ("図版の PDF のページの内容をつなぐと 256 MiB を超えます: " <> figSource f)]
+        [diagnostic "G08011" Error sp (unsupportedMessage (figSource f) us) | Just us <- [nonEmpty (S.spUnsupported ps)]]
+          <> [diagnostic "G08016" Error sp (markerMessage "SVG の図版の marker が循環しています: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerCycles ps)]]
+          <> [diagnostic "G08017" Error sp (markerMessage "SVG の図版の marker の入れ子が 9 段を超えます: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerDepth ps)]]
+      ContentTooLarge -> [diagnostic "G08015" Error sp ("図版の PDF のページの内容をつなぐと 256 MiB を超えます: " <> figSource f)]
   ]
 
 {- | The rectangle of a figure's image on page @page@ from grid line @slot@
@@ -2792,14 +2792,14 @@ pdfXPeople md = (names (mdCreators md), names (mdContributors md))
   where
     names cs = [crName c | c <- cs, inMetadata (crRole c)]
 
--- | The output intent; a profile that cannot be read is G0806 (golem-project ADR 0004).
+-- | The output intent; a profile that cannot be read is G08006 (golem-project ADR 0004).
 loadIntent :: PdfInput -> IO (Either [Diagnostic] (Maybe P.PdfX))
 loadIntent inp = case stIntent (piStyle inp) of
   Nothing -> pure (Right Nothing)
   Just path -> do
     r <- resolveInRoot (piRoot inp) path
     case r of
-      Left e -> pure (Left [diagnostic "G0806" Error (mkSpan (styleFileId (piProject inp)) 0 0) (T.pack (intentMessage e <> ": " <> path))])
+      Left e -> pure (Left [diagnostic "G08006" Error (mkSpan (styleFileId (piProject inp)) 0 0) (T.pack (intentMessage e <> ": " <> path))])
       Right rel -> do
         bytes <- BS.readFile (piRoot inp <> "/" <> rel)
         let md = manifestMetadata (projectManifest (piProject inp))

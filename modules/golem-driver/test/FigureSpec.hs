@@ -130,12 +130,12 @@ pdfFigureTests =
       count "/Subtype /Form" out @?= 2
       count "/GolemC4 " out @?= 1
       qpdfCheck out,
-    testCase "G0815: a stream that sets a colour at the top, named 40 times, at the @figure, not G0810 (docs/adr ADR 0051)" $ do
+    testCase "G08015: a stream that sets a colour at the top, named 40 times, at the @figure, not G08010 (docs/adr ADR 0051)" $ do
       let gray = BL.toStrict (Z.compress (BL.fromStrict (BS.concat (replicate (2 * 1024 * 1024) "0 g\n"))))
           fig = contentsPdf (BS.intercalate " " (replicate 40 "4 0 R")) [("/Filter /FlateDecode", gray)]
           src = "本文。\n\n@figure images/f.pdf web=images/f.png alt=\"t\"\n"
       (codes, pdf, messages) <- pdfWith Dev src [("images/f.pdf", fig), ("images/f.png", png False)]
-      codes @?= [DiagnosticCode "G0815"]
+      codes @?= [DiagnosticCode "G08015"]
       messages @?= ["図版の PDF のページの内容をつなぐと 256 MiB を超えます: images/f.pdf"]
       pdf @?= Nothing
       b <- buildMarksFilesWith src id (Just (withBodyFont (figStyle horizontalStyle))) (bodyFontFiles horizontalStyle <> [("images/f.pdf", fig), ("images/f.png", png False)])
@@ -163,27 +163,27 @@ pdfFigureTests =
       let one = "@figure images/f.pdf web=images/f.png alt=\"t\"\n  キャプション。\n\n"
       pdf <- miniPdf fakeProvider False (figStyle horizontalStyle) (one <> "本文。\n\n" <> one) [("images/f.pdf", fig), ("images/f.png", png False)]
       count "/Subtype /Form" pdf @?= 1,
-    testCase "a broken PNG and an interlaced PNG are G0810, and no PDF is written, in dev and prod" $
+    testCase "a broken PNG and an interlaced PNG are G08010, and no PDF is written, in dev and prod" $
       forM_ [Dev, Prod] $ \profile -> do
         let src = "@figure images/a.png alt=\"t\"\n\n@figure images/b.png alt=\"t\"\n"
         (codes, written) <- buildIn profile [TargetPdf] src [("images/a.png", BS.take 20 (png False)), ("images/b.png", png True)]
-        codes @?= [DiagnosticCode "G0810", DiagnosticCode "G0810"]
+        codes @?= [DiagnosticCode "G08010", DiagnosticCode "G08010"]
         written @?= False,
-    testCase "the message of G0810 has the path and the reason" $ withSystemTempDirectory "golem-figure" $ \tmp -> do
+    testCase "the message of G08010 has the path and the reason" $ withSystemTempDirectory "golem-figure" $ \tmp -> do
       BS.writeFile (tmp </> "manifest.toml") miniManifest
       BS.writeFile (tmp </> "style.toml") (withBodyFont (figStyle horizontalStyle))
       BS.writeFile (tmp </> "a.gm") "@figure images/b.png alt=\"t\"\n"
       forM_ (bodyFontFiles horizontalStyle <> [("images/b.png", png True)]) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
       r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
       map diagMessage (filter isError (brDiagnostics r)) @?= ["図版を PDF に置けません: images/b.png（インターレースの PNG は使えません）"],
-    testCase "an encrypted PDF figure is G0810" $ do
+    testCase "an encrypted PDF figure is G08010" $ do
       fig <- golemPdf
       let (before, after) = BS.breakSubstring "trailer\n<<" fig
           encrypted = before <> "trailer\n<< /Encrypt 1 0 R" <> BS.drop 10 after
       (codes, written) <- buildIn Dev [TargetPdf] "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", encrypted), ("images/f.png", png False)]
-      codes @?= [DiagnosticCode "G0810"]
+      codes @?= [DiagnosticCode "G08010"]
       written @?= False,
-    testCase "HTML does not read the images: a broken PNG is not G0810" $ do
+    testCase "HTML does not read the images: a broken PNG is not G08010" $ do
       (codes, _) <- buildIn Dev [TargetHtml] "@figure images/a.png alt=\"t\"\n" [("images/a.png", BS.take 20 (png False))]
       codes @?= []
   ]
@@ -238,35 +238,35 @@ svgFigureTests =
       (_, a, _) <- pdfWith Dev "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", redSvg)]
       (_, b, _) <- pdfWith Dev "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", redSvg)]
       assertBool "same" (a == b && isJust a),
-    testCase "a gradient is G0811 and no PDF is written, in dev and prod; a broken SVG is G0810" $ do
+    testCase "a gradient is G08011 and no PDF is written, in dev and prod; a broken SVG is G08010" $ do
       forM_ [Dev, Prod] $ \profile -> do
         (codes, pdf, _) <- pdfWith profile "@figure images/g.svg alt=\"t\"\n" [("images/g.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><linearGradient id=\"g\"/></svg>")]
-        (codes, pdf) @?= ([DiagnosticCode "G0811"], Nothing)
+        (codes, pdf) @?= ([DiagnosticCode "G08011"], Nothing)
       (codes, _, _) <- pdfWith Dev "@figure images/b.svg alt=\"t\"\n" [("images/b.svg", "<svg")]
-      codes @?= [DiagnosticCode "G0810"],
-    testCase "text is G0811, asking for outlines" $ do
+      codes @?= [DiagnosticCode "G08010"],
+    testCase "text is G08011, asking for outlines" $ do
       (codes, _, msgs) <- pdfWith Dev "@figure images/t.svg alt=\"t\"\n" [("images/t.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n<text>a</text><use/></svg>")]
-      codes @?= [DiagnosticCode "G0811"]
+      codes @?= [DiagnosticCode "G08011"]
       msgs @?= ["SVG の図版に扱えないものがあります: images/t.svg:2:1（text: 文字は輪郭にして書き出してください）ほか 1 件"],
-    testCase "G0816: two markers that place each other, at the first reference, not G0811 (docs/adr ADR 0054)" $ do
+    testCase "G08016: two markers that place each other, at the first reference, not G08011 (docs/adr ADR 0054)" $ do
       (codes, pdf, msgs) <- pdfWith Dev "@figure images/m.svg alt=\"t\"\n" [("images/m.svg", markerSvg "")]
-      (codes, pdf) @?= ([DiagnosticCode "G0816"], Nothing)
+      (codes, pdf) @?= ([DiagnosticCode "G08016"], Nothing)
       msgs @?= ["SVG の図版の marker が循環しています: images/m.svg:2:22（b）ほか 1 件"],
-    testCase "G0817: a chain of 10 markers, not G0811 (docs/adr ADR 0054)" $ do
+    testCase "G08017: a chain of 10 markers, not G08011 (docs/adr ADR 0054)" $ do
       let chain =
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><defs><marker id=\"c1\"><path d=\"M0 0 L1 1\" stroke=\"#000\"/></marker>"
               <> BS.concat ["<marker id=\"c" <> showB k <> "\"><path d=\"M0 0 L1 0\" stroke=\"#000\" marker-end=\"url(#c" <> showB (k - 1) <> ")\"/></marker>" | k <- [2 .. 10]]
               <> "</defs><path d=\"M0 0 L10 0\" stroke=\"#000\" marker-end=\"url(#c10)\"/></svg>"
           showB = TE.encodeUtf8 . T.pack . show :: Int -> BS.ByteString
       (codes, pdf, msgs) <- pdfWith Dev "@figure images/c.svg alt=\"t\"\n" [("images/c.svg", chain)]
-      (codes, pdf) @?= ([DiagnosticCode "G0817"], Nothing)
+      (codes, pdf) @?= ([DiagnosticCode "G08017"], Nothing)
       assertBool (show msgs) (all ("SVG の図版の marker の入れ子が 9 段を超えます: images/c.svg:1:" `T.isPrefixOf`) msgs && all ("（c1）" `T.isSuffixOf`) msgs),
-    testCase "text and a cycle of markers are G0811 and G0816, in this order, and no PDF is written (docs/adr ADR 0054)" $ do
+    testCase "text and a cycle of markers are G08011 and G08016, in this order, and no PDF is written (docs/adr ADR 0054)" $ do
       (codes, pdf, _) <- pdfWith Dev "@figure images/m.svg alt=\"t\"\n" [("images/m.svg", markerSvg "<text>a</text>")]
-      (codes, pdf) @?= ([DiagnosticCode "G0811", DiagnosticCode "G0816"], Nothing),
-    testCase "one problem that is not text is G0811 without the request for outlines and without ほか" $ do
+      (codes, pdf) @?= ([DiagnosticCode "G08011", DiagnosticCode "G08016"], Nothing),
+    testCase "one problem that is not text is G08011 without the request for outlines and without ほか" $ do
       (codes, _, msgs) <- pdfWith Dev "@figure images/g.svg alt=\"t\"\n" [("images/g.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n  <use/></svg>")]
-      codes @?= [DiagnosticCode "G0811"]
+      codes @?= [DiagnosticCode "G08011"]
       msgs @?= ["SVG の図版に扱えないものがあります: images/g.svg:2:3（use）"],
     testCase "HTML and EPUB place an SVG with text as it is, or its web image" $ withSystemTempDirectory "golem-svg" $ \tmp -> do
       BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
@@ -301,29 +301,29 @@ scriptSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\
 
 activeContentTests :: [TestTree]
 activeContentTests =
-  [ testCase "an SVG figure with a script is G0814 for HTML and for EPUB, in dev and prod, and neither is written" $
+  [ testCase "an SVG figure with a script is G08014 for HTML and for EPUB, in dev and prod, and neither is written" $
       forM_ [Dev, Prod] $ \profile -> forM_ [TargetHtml, TargetEpub] $ \t -> do
         (errs, _, html, epub, _) <- activeBuild profile [t] "@figure images/s.svg alt=\"t\"\n" [("images/s.svg", scriptSvg)]
-        errs @?= [(DiagnosticCode "G0814", "SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: images/s.svg:2:1（script）")]
+        errs @?= [(DiagnosticCode "G08014", "SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: images/s.svg:2:1（script）")]
         (html, epub) @?= (False, False),
     testCase "the web SVG of a PNG figure is checked for HTML" $ do
       (errs, _, html, _, _) <- activeBuild Dev [TargetHtml] "@figure images/f.png web=images/s.svg alt=\"t\"\n" [("images/f.png", png False), ("images/s.svg", scriptSvg)]
-      map fst errs @?= [DiagnosticCode "G0814"]
+      map fst errs @?= [DiagnosticCode "G08014"]
       html @?= False,
-    testCase "a broken SVG is G0814 with the reason of G0810; more than one thing adds ほか" $ do
+    testCase "a broken SVG is G08014 with the reason of G08010; more than one thing adds ほか" $ do
       (errs, _, _, _, _) <- activeBuild Dev [TargetHtml] "@figure images/b.svg alt=\"t\"\n" [("images/b.svg", "<svg")]
-      map fst errs @?= [DiagnosticCode "G0814"]
+      map fst errs @?= [DiagnosticCode "G08014"]
       -- the wording of docs/adr ADR 0057
       assertBool (show errs) (all (("SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: images/b.svg（" `T.isPrefixOf`) . snd) errs)
       (errs2, _, _, _, _) <- activeBuild Dev [TargetHtml] "@figure images/s.svg alt=\"t\"\n" [("images/s.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect onclick=\"\"/><script/></svg>")]
       map snd errs2 @?= ["SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: images/s.svg:1:70（onclick）ほか 1 件"],
-    testCase "two @figure of one SVG, one in a list, give one G0814 each, at their blocks" $ do
+    testCase "two @figure of one SVG, one in a list, give one G08014 each, at their blocks" $ do
       (errs, ds, _, _, _) <- activeBuild Dev [TargetHtml] "@figure images/s.svg alt=\"t\"\n\n- 項目\n\n  @figure images/s.svg alt=\"u\"\n" [("images/s.svg", scriptSvg)]
-      map fst errs @?= [DiagnosticCode "G0814", DiagnosticCode "G0814"]
+      map fst errs @?= [DiagnosticCode "G08014", DiagnosticCode "G08014"]
       length (nubOrd (map diagSpan ds)) @?= 2,
-    testCase "the PDF and plain text are still written when HTML has G0814" $ do
+    testCase "the PDF and plain text are still written when HTML has G08014" $ do
       (errs, _, html, _, pdf) <- activeBuild Dev [TargetHtml, TargetPdf] "@figure images/f.png web=images/s.svg alt=\"t\"\n" [("images/f.png", png False), ("images/s.svg", scriptSvg)]
-      map fst errs @?= [DiagnosticCode "G0814"]
+      map fst errs @?= [DiagnosticCode "G08014"]
       (html, pdf) @?= (False, True),
     testCase "an SVG that passes is copied byte for byte, with text and @font-face" $ withSystemTempDirectory "golem-active" $ \tmp -> do
       let ok = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><style>@font-face { font-family: a }</style><use href=\"#a\"/><text>a</text></svg>"
@@ -535,41 +535,41 @@ fitFigureTests =
           (rectX r, rectW r, rectY r + rectH r) @?= (rectX col, 240 * pt, rectY col + rectH col)
       ],
     testGroup
-      "the notice G0739 and the error G0738"
-      [ testCase "one G0739 for each fitted figure, at the @figure, with the percentage and the hint of rotate" $ do
+      "the notice G07039 and the error G07038"
+      [ testCase "one G07039 for each fitted figure, at the @figure, with the percentage and the hint of rotate" $ do
           let source = fig "wide" "" "" <> fig "wide" "" ""
           (_, pl) <- layoutOk (vertical10 60) source boxes
-          [(diagMessage d, diagSeverity d) | d <- notices "G0739" pl] @?= replicate 2 ("図版を段に収めるため 18% に縮めました。rotate=true で回して一ページに置くと、より大きく置けます", Notice)
-          map (spanStart . diagSpan) (notices "G0739" pl) @?= figureOffsets source,
+          [(diagMessage d, diagSeverity d) | d <- notices "G07039" pl] @?= replicate 2 ("図版を段に収めるため 18% に縮めました。rotate=true で回して一ページに置くと、より大きく置けます", Notice)
+          map (spanStart . diagSpan) (notices "G07039" pl) @?= figureOffsets source,
         testCase "no hint when turning it would not make it larger" $ do
           (_, pl) <- layoutOk (horizontal20 "left" 20) (fig "tall" "" "") boxes
-          map diagMessage (notices "G0739" pl) @?= ["図版を段に収めるため 39% に縮めました"],
-        testCase "no G0739 for a figure that is not fitted" $ do
+          map diagMessage (notices "G07039" pl) @?= ["図版を段に収めるため 39% に縮めました"],
+        testCase "no G07039 for a figure that is not fitted" $ do
           (_, pl) <- layoutOk (horizontal20 "left" 20) (fig "wide" "" "キャプション。") boxes
-          notices "G0739" pl @?= [],
-        testCase "silence-notices silences G0739 and the PDF stays the same" $ do
+          notices "G07039" pl @?= [],
+        testCase "silence-notices silences G07039 and the PDF stays the same" $ do
           let source = fig "wide" "" ""
           loud <- notifiedWith "" (vertical10 60) source id
-          quiet <- notifiedWith "\n[diagnostics]\nsilence-notices = [\"G0739\"]\n" (vertical10 60) source id
-          length [d | d <- nDiagnostics loud, diagCode d == DiagnosticCode "G0739"] @?= 1
-          [d | d <- nDiagnostics quiet, diagCode d == DiagnosticCode "G0739"] @?= []
+          quiet <- notifiedWith "\n[diagnostics]\nsilence-notices = [\"G07039\"]\n" (vertical10 60) source id
+          length [d | d <- nDiagnostics loud, diagCode d == DiagnosticCode "G07039"] @?= 1
+          [d | d <- nDiagnostics quiet, diagCode d == DiagnosticCode "G07039"] @?= []
           -- the manifests differ, and so the IDs of the PDF; the content streams are the same
           quietStreams <- maybe (assertFailure "no PDF") inflateAll (lookup pdfName (nOutputs quiet))
           loudStreams <- maybe (assertFailure "no PDF") inflateAll (lookup pdfName (nOutputs loud))
           quietStreams @?= loudStreams
           assertBool "a PDF" (isJust (lookup pdfName (nOutputs loud))),
-        testCase "G0738: a caption as deep as the column, at the figure, in dev and prod" $ do
+        testCase "G07038: a caption as deep as the column, at the figure, in dev and prod" $ do
           let source = "前の段落。\n\n" <> fig "wide" "" (T.replicate 70 "あ")
           r <- layoutMini (pageStyle "horizontal" "left" 24 2 1 20 20) source boxes
           case r of
             Left [d] -> do
-              diagCode d @?= DiagnosticCode "G0738"
+              diagCode d @?= DiagnosticCode "G07038"
               Just (spanStart (diagSpan d)) @?= listToMaybe (figureOffsets source)
               assertBool (T.unpack (diagMessage d)) ("図版のキャプションが段の行数を超えます（" `T.isPrefixOf` diagMessage d && "段は 2 行）" `T.isSuffixOf` diagMessage d)
             other -> assertFailure (show (either (map diagCode) (const []) other))
           forM_ [Dev, Prod] $ \profile -> do
             n <- notifiedWith "" (pageStyle "horizontal" "left" 24 2 1 20 20) source (\o -> o {optTargets = Just [TargetPdf], optProfile = profile})
-            [diagCode d | d <- nDiagnostics n, isError d] @?= [DiagnosticCode "G0738"]
+            [diagCode d | d <- nDiagnostics n, isError d] @?= [DiagnosticCode "G07038"]
       ],
     testCase "fitted and turned figures: parallel and sequential, and two builds, give the same bytes" $ do
       let source = "本文。\n\n" <> fig "wide" "" "キャプション。" <> fig "wide" " rotate=true" "回した図。" <> "後の本文。\n"
@@ -616,18 +616,18 @@ turnedFigureTests =
       (geom', pl') <- layoutOk (vertical10 60) (fig "wide" " rotate=true" (T.replicate 40 "あ")) boxes
       (pf', _, _) <- single (figuresIn pl')
       map lineTarget (pfCaption pf') @?= map (const (rectW (pgTypeArea geom'))) (pfCaption pf'),
-    testCase "the frame has (Fd - h) / p + 1 lines; a figure that does not fit it is fitted with G0739 for the page" $ do
+    testCase "the frame has (Fd - h) / p + 1 lines; a figure that does not fit it is fitted with G07039 for the page" $ do
       -- horizontal24: Fm 445pt, Fd 240pt, 16 lines
       (_, pl) <- layoutOk horizontal24 (fig "square" " rotate=true" "") boxes
       (pf, _, _) <- single (figuresIn pl)
       -- the number of the figure takes one line
       (pfCaptionSpan pf, pfImageLines pf, pfAcross pf, pfAlong pf) @?= (1, 15, 225 * pt, 225 * pt)
-      map diagMessage (notices "G0739" pl) @?= ["図版をページに収めるため 50% に縮めました"],
-    testCase "G0738: a caption as deep as the frame" $ do
+      map diagMessage (notices "G07039" pl) @?= ["図版をページに収めるため 50% に縮めました"],
+    testCase "G07038: a caption as deep as the frame" $ do
       r <- layoutMini (pageStyle "horizontal" "left" 3 20 1 20 20) (fig "wide" " rotate=true" (T.replicate 70 "あ")) boxes
       case r of
         Left [d] -> do
-          diagCode d @?= DiagnosticCode "G0738"
+          diagCode d @?= DiagnosticCode "G07038"
           assertBool (T.unpack (diagMessage d)) ("図版のキャプションがページの行数を超えます（" `T.isPrefixOf` diagMessage d && "ページは 2 行）" `T.isSuffixOf` diagMessage d)
         other -> assertFailure (show (either (map diagCode) (const []) other)),
     testCase "the image and the caption of a turned figure are inside the type area on the page; the caption is text" $ do

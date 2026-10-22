@@ -84,25 +84,25 @@ malformed :: TestTree
 malformed =
   testGroup
     "malformed expressions (ADR 0009)"
-    [ testCase "[=] is an EError at the G0120" $ do
+    [ testCase "[=] is an EError at the G01020" $ do
         let e = exprIn "[=]\n"
         (bare e, at e) @?= (EError, (2, 2))
-        syntaxDiags "[=]\n" @?= [("G0120", 2, 2)],
+        syntaxDiags "[=]\n" @?= [("G01020", 2, 2)],
       testCase "an empty keyword splat is an EError where its expression was wanted" $ do
         [(bare e, at e) | SplatKeyword e <- argsOf "[f **[]]\n"] @?= [(EError, (6, 6))]
-        syntaxDiags "[f **[]]\n" @?= [("G0120", 6, 6)],
+        syntaxDiags "[f **[]]\n" @?= [("G01020", 6, 6)],
       testCase "an empty positional splat is an EError where its expression was wanted" $ do
         [(bare e, at e) | SplatPositional e <- argsOf "[f *[]]\n"] @?= [(EError, (5, 5))]
-        syntaxDiags "[f *[]]\n" @?= [("G0120", 5, 5)],
-      testCase "@set without an expression is a SetVar of an EError at the G0120" $ do
+        syntaxDiags "[f *[]]\n" @?= [("G01020", 5, 5)],
+      testCase "@set without an expression is a SetVar of an EError at the G01020" $ do
         [(locValue n, bare e, at e) | SetVar n e <- blocks "@set x = +\n"] @?= [("x", EError, (9, 10))]
-        syntaxDiags "@set x = +\n" @?= [("G0120", 9, 10)],
+        syntaxDiags "@set x = +\n" @?= [("G01020", 9, 10)],
       testCase "a hash entry without a value is an EError" $ do
         bare (exprIn "[= {a:}]\n") @?= EError
-        map (\(c, _, _) -> c) (syntaxDiags "[= {a:}]\n") @?= ["G0120"],
-      testCase "an expression followed by a stray token keeps the expression and is a G0117" $ do
+        map (\(c, _, _) -> c) (syntaxDiags "[= {a:}]\n") @?= ["G01020"],
+      testCase "an expression followed by a stray token keeps the expression and is a G01017" $ do
         bare (exprIn "[= 1 ? 2]\n") @?= EInt 1
-        syntaxDiags "[= 1 ? 2]\n" @?= [("G0117", 5, 9)]
+        syntaxDiags "[= 1 ? 2]\n" @?= [("G01017", 5, 9)]
     ]
 
 escapesInLists :: TestTree
