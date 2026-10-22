@@ -25,7 +25,9 @@ module Golem.Svg
     Matrix (..),
     ClipRect (..),
     SvgError (..),
+    SvgProblems (..),
     Unsupported (..),
+    MarkerRef (..),
     readSvg,
   )
 where
@@ -36,7 +38,6 @@ import Data.Char (isAlpha, isDigit, isSpace, toLower)
 import Data.Containers.ListUtils (nubOrd)
 import Data.Graph (flattenSCC, stronglyConnComp)
 import Data.List (sortOn)
-import Data.List.NonEmpty (NonEmpty, nonEmpty)
 import Data.Map.Lazy qualified as LazyMap
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -121,11 +122,34 @@ data Unsupported = Unsupported
   }
   deriving stock (Eq, Show)
 
+-- | A reference to a marker: where the shape that places it is, and the id it places (docs/adr ADR 0054).
+data MarkerRef = MarkerRef
+  { mrLine :: !Int,
+    mrColumn :: !Int,
+    mrId :: !Text
+  }
+  deriving stock (Eq, Show)
+
+-- | What a drawing cannot be read for, by cause, each in document order (docs/adr ADR 0054).
+data SvgProblems = SvgProblems
+  { -- | outside the subset (G0811)
+    spUnsupported :: ![Unsupported],
+    -- | references within a cycle of markers (G0816)
+    spMarkerCycles :: ![MarkerRef],
+    -- | references from a marker 9 deep or deeper (G0817)
+    spMarkerDepth :: ![MarkerRef]
+  }
+  deriving stock (Eq, Show)
+
 data SvgError
   = -- | the reason of G0810
     SvgMalformed !Text
-  | -- | G0811
-    SvgUnsupported !(NonEmpty Unsupported)
+  | -- | G0811, G0816 and G0817; at least one of the lists is not empty
+    SvgUnsupported !SvgProblems
+  deriving stock (Eq, Show)
+
+-- | Why a reference to a marker is refused (docs/adr ADR 0054).
+data MarkerProblem = MarkerCycle | MarkerTooDeep
   deriving stock (Eq, Show)
 
 identity :: Matrix
@@ -168,13 +192,12 @@ readSvg bytes = do
       contents = LazyMap.mapWithKey (\i (m, mst) -> elementChildren env0 {envInMarker = Just i} mst m) (envMarkers env0)
       top = elementChildren env0 (cascade env0 defaultStyle root) root
   (size, rootMatrix, rootClip, rootProbs) <- rootGeometry root
-  let probs = wProbs top
-      ops = wOps top
-      allProbs = rootProbs <> probs
+  let ops = wOps top
+      problems = SvgProblems (rootProbs <> wProbs top) [r | (MarkerCycle, r) <- wMarkerProbs top] [r | (MarkerTooDeep, r) <- wMarkerProbs top]
       body = if rootMatrix == identity && isNothing rootClip then ops else [DGroup rootMatrix rootClip ops]
-  case nonEmpty allProbs of
-    Just us -> Left (SvgUnsupported us)
-    Nothing -> Right (Svg size body)
+  if problems == SvgProblems [] [] []
+    then Right (Svg size body)
+    else Left (SvgUnsupported problems)
   where
     sheetOf e = [(r, ()) | r <- fst (parseStylesheet (T.concat [t | NText t _ <- elChildren e]))]
 
@@ -251,22 +274,25 @@ data Env = Env
     envMarkers :: !(Map Text (Element, Style)),
     envDefault :: !Style,
     envInMarker :: Maybe Text,
-    envMarkerEdge :: Text -> Text -> Maybe Text,
+    envMarkerEdge :: Text -> Text -> Maybe MarkerProblem,
     envMarkerOps :: Map Text [DrawOp]
   }
 
--- | What reading elements gives: the problems, the drawing, the markers the drawing places.
+{- | What reading elements gives: the problems, the drawing, the markers the
+drawing places, and the references to markers that are refused.
+-}
 data Walk = Walk
   { wProbs :: [Unsupported],
     wOps :: [DrawOp],
-    wRefs :: [Text]
+    wRefs :: [Text],
+    wMarkerProbs :: [(MarkerProblem, MarkerRef)]
   }
 
 instance Semigroup Walk where
-  Walk a b c <> Walk a' b' c' = Walk (a <> a') (b <> b') (c <> c')
+  Walk a b c d <> Walk a' b' c' d' = Walk (a <> a') (b <> b') (c <> c') (d <> d')
 
 instance Monoid Walk where
-  mempty = Walk [] [] []
+  mempty = Walk [] [] [] []
 
 -- | The specified properties of an element, with where each came from.
 specified :: Env -> Element -> [(Text, Text, Pos)]
@@ -494,10 +520,10 @@ elementChildren env st e = mconcat [elementOps env st c | NElement c <- elChildr
 elementOps :: Env -> Style -> Element -> Walk
 elementOps env parent e
   | name `elem` ["title", "desc", "metadata"] = mempty
-  | name `elem` ["text", "tspan", "textPath"] = Walk [Unsupported name l c True] [] []
-  | name == "style" = Walk (attributeProblems ["type"] e <> sheetProblems) [] []
+  | name `elem` ["text", "tspan", "textPath"] = Walk [Unsupported name l c True] [] [] []
+  | name == "style" = Walk (attributeProblems ["type"] e <> sheetProblems) [] [] []
   | otherwise = case elementAttrs name of
-      Nothing -> Walk [unsupportedAt name (elPos e)] [] []
+      Nothing -> Walk [unsupportedAt name (elPos e)] [] [] []
       Just allowed ->
         let st = cascade env parent e
             probs = attributeProblems allowed e <> propertyProblems env e <> markerAttrProblems
@@ -516,11 +542,11 @@ elementOps env parent e
               | otherwise = shaped
             ops = wOps drawn
             wrapped = if m == identity || null ops then ops else [DGroup m Nothing ops]
-            -- a marker this shape places in the content of a marker, in a cycle or too deep (docs/adr ADR 0041)
+            -- a marker this shape places in the content of a marker, in a cycle or too deep (docs/adr ADR 0041, 0054)
             edgeProbs = case envInMarker env of
-              Just from | name `notElem` ["g", "defs", "marker"] -> [unsupportedAt n (elPos e) | to <- wRefs drawn, Just n <- [envMarkerEdge env from to]]
+              Just from | name `notElem` ["g", "defs", "marker"] -> [(why, MarkerRef l c to) | to <- wRefs drawn, Just why <- [envMarkerEdge env from to]]
               _ -> []
-         in Walk (probs <> tProbs <> wProbs shaped <> edgeProbs <> wProbs children) wrapped (wRefs drawn)
+         in Walk (probs <> tProbs <> wProbs shaped <> wProbs children) wrapped (wRefs drawn) (wMarkerProbs shaped <> edgeProbs <> wMarkerProbs children)
   where
     -- the numbers of a marker that are read with a default: refused only when too large
     markerAttrProblems =
@@ -584,17 +610,17 @@ shape env st e = case elName e of
   "polyline" -> poly False
   "polygon" -> poly True
   "path" -> case attr "d" e of
-    Just d | Nothing <- parsePath d -> Walk [unsupportedAt (valueName "d" d) (attrPos "d")] [] []
+    Just d | Nothing <- parsePath d -> Walk [unsupportedAt (valueName "d" d) (attrPos "d")] [] [] []
     d -> drawMarked (fromMaybe [] (parsePath (fromMaybe "" d)))
   _ -> mempty
   where
     p = paintOf st
     visible = Map.findWithDefault "visible" "visibility" st == "visible"
-    draw segs = Walk [] [DPath p segs | visible, not (null segs)] []
+    draw segs = Walk [] [DPath p segs | visible, not (null segs)] [] []
     drawMarked segs
       | visible =
           let (refs, ops) = markers env st segs
-           in draw segs <> Walk [] ops refs
+           in draw segs <> Walk [] ops refs []
       | otherwise = draw segs
     lookupLen k = case Map.lookup k st of
       Just v | v /= "auto" -> lengthPx v
@@ -602,11 +628,11 @@ shape env st e = case elName e of
     attrPos k = case [atPos a | a <- elAttrs e, atName a == k] of
       q : _ -> q
       [] -> elPos e
-    geometry ks w = Walk [unsupportedAt (valueName k v) (attrPos k) | k <- ks, Just v <- [attr k e], isNothing (lengthPx v)] [] [] <> w
+    geometry ks w = Walk [unsupportedAt (valueName k v) (attrPos k) | k <- ks, Just v <- [attr k e], isNothing (lengthPx v)] [] [] [] <> w
     poly closed = case attr "points" e >>= numberList of
       Just ns | even (length ns), (x0 : y0 : rest) <- ns -> drawMarked (MoveTo (x0, y0) : map LineTo (pairs rest) <> [ClosePath | closed])
       Just [] -> mempty
-      _ -> Walk [unsupportedAt (valueName "points" (fromMaybe "" (attr "points" e))) (attrPos "points")] [] []
+      _ -> Walk [unsupportedAt (valueName "points" (fromMaybe "" (attr "points" e))) (attrPos "points")] [] [] []
     pairs = \case
       a : b : r -> (a, b) : pairs r
       _ -> []
@@ -934,14 +960,14 @@ marker deeper than 'markerDepthLimit'. Only markers the drawing reaches
 count. The depth of a marker is the longest chain of references that
 reaches it, without the references within cycles.
 -}
-markerEdges :: [Text] -> Map Text [Text] -> Text -> Text -> Maybe Text
+markerEdges :: [Text] -> Map Text [Text] -> Text -> Text -> Maybe MarkerProblem
 markerEdges top edges = edge
   where
     -- the graph is computed once, for every reference asked about
     edge from to
       | from `Set.notMember` reachable = Nothing
-      | cyclic from to = Just "marker（循環）"
-      | maybe False (>= markerDepthLimit) (Map.lookup from depths) = Just "marker（入れ子）"
+      | cyclic from to = Just MarkerCycle
+      | maybe False (>= markerDepthLimit) (Map.lookup from depths) = Just MarkerTooDeep
       | otherwise = Nothing
     out i = Map.findWithDefault [] i edges
     component = Map.fromList [(i, k) | (k, scc) <- zip [0 :: Int ..] (stronglyConnComp [(i, i, out i) | i <- Map.keys edges]), i <- flattenSCC scc]
