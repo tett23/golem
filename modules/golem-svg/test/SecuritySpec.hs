@@ -148,8 +148,14 @@ markerChain n =
 -- | The names of what is outside the subset (G0811), or nothing.
 unsupportedNames :: Either SvgError Svg -> [Text]
 unsupportedNames = \case
-  Left (SvgUnsupported us) -> map unName (NE.toList us)
+  Left (SvgUnsupported ps) -> map unName (spUnsupported ps)
   _ -> []
+
+-- | The references within cycles of markers (G0816) and those too deep (G0817), by the id they place (docs/adr ADR 0054).
+markerProblems :: Either SvgError Svg -> ([Text], [Text])
+markerProblems = \case
+  Left (SvgUnsupported ps) -> (map mrId (spMarkerCycles ps), map mrId (spMarkerDepth ps))
+  _ -> ([], [])
 
 -- | The depth of groups of a drawing.
 groupDepth :: [DrawOp] -> Int
@@ -203,21 +209,31 @@ tests =
 adr0041Tests :: [TestTree]
 adr0041Tests =
   [ localOption (mkTimeout (seconds 5)) $
-      testCase "C8: a marker that refers to itself is G0811, marker（循環）" $
+      testCase "C8: a marker that refers to itself is one reference in a cycle (G0816, docs/adr ADR 0054)" $
         do
           r <- total selfMarker
-          unsupportedNames r @?= ["marker（循環）"],
-    testCase "two markers that refer to each other are G0811, marker（循環）" $ do
+          markerProblems r @?= (["m"], [])
+          unsupportedNames r @?= [],
+    testCase "a places b, b places a, the drawing places a: both references are in the cycle, in document order" $ do
       r <- total (svg "<defs><marker id=\"a\"><path d=\"M0 0 L1 1\" marker-end=\"url(#b)\"/></marker><marker id=\"b\"><path d=\"M0 0 L1 1\" marker-end=\"url(#a)\"/></marker></defs><path d=\"M0 0 L10 0\" marker-end=\"url(#a)\"/>")
-      assertBool (show r) (not (null (unsupportedNames r)) && all (== "marker（循環）") (unsupportedNames r)),
+      markerProblems r @?= (["b", "a"], [])
+      case r of
+        Left (SvgUnsupported ps) -> map (\m -> (mrLine m, mrColumn m)) (spMarkerCycles ps) @?= [(1, 86), (1, 152)]
+        other -> assertFailure (show other),
+    testCase "a cycle of three markers is three references" $ do
+      r <- total (svg "<defs><marker id=\"a\"><path d=\"M0 0 L1 1\" marker-end=\"url(#b)\"/></marker><marker id=\"b\"><path d=\"M0 0 L1 1\" marker-end=\"url(#c)\"/></marker><marker id=\"c\"><path d=\"M0 0 L1 1\" marker-end=\"url(#a)\"/></marker></defs><path d=\"M0 0 L10 0\" marker-end=\"url(#a)\"/>")
+      markerProblems r @?= (["b", "c", "a"], []),
     testCase "a marker in a cycle that the drawing never places is not a problem" $ do
       r <- total (svg "<defs><marker id=\"m\"><path d=\"M0 0 L1 1\" marker-end=\"url(#m)\"/></marker></defs><path d=\"M0 0 L10 0\" stroke=\"#000\"/>")
-      unsupportedNames r @?= [],
+      either (assertFailure . show) (const (pure ())) r,
     localOption (mkTimeout (seconds 5)) $
-      testCase "C8: markers nested 14 deep, four at each level, are G0811, marker（入れ子）" $
+      testCase "C8: markers nested 14 deep, four at each level, are references too deep only (G0817)" $
         do
           r <- total (nestedMarkers 14)
-          assertBool (show (take 3 (unsupportedNames r))) ("marker（入れ子）" `elem` unsupportedNames r && all (== "marker（入れ子）") (unsupportedNames r)),
+          let (cycles, deep) = markerProblems r
+          assertBool (show (take 3 deep)) (not (null deep))
+          cycles @?= []
+          unsupportedNames r @?= [],
     localOption (mkTimeout (seconds 5)) $
       testCase "a chain of 9 markers is drawn" $
         do
@@ -227,10 +243,20 @@ adr0041Tests =
             Right s -> groupDepth (svgDrawing s) @?= 18
             Left e -> assertFailure (show e),
     localOption (mkTimeout (seconds 5)) $
-      testCase "a chain of 10 markers is G0811, marker（入れ子）" $
+      testCase "a chain of 10 markers is one reference too deep (G0817)" $
         do
           r <- total (markerChain 10)
-          unsupportedNames r @?= ["marker（入れ子）"],
+          markerProblems r @?= ([], ["c1"])
+          unsupportedNames r @?= [],
+    localOption (mkTimeout (seconds 5)) $
+      testCase "a chain of 12 markers is three references too deep" $
+        do
+          r <- total (markerChain 12)
+          markerProblems r @?= ([], ["c1", "c2", "c3"]),
+    testCase "text and a cycle of markers are both reported, each in its list" $ do
+      r <- total (svg "<text>a</text><defs><marker id=\"m\"><path d=\"M0 0 L1 1\" marker-end=\"url(#m)\"/></marker></defs><path d=\"M0 0 L10 0\" marker-end=\"url(#m)\"/>")
+      unsupportedNames r @?= ["text"]
+      markerProblems r @?= (["m"], []),
     localOption (mkTimeout (seconds 5)) $
       testCase "C11: six arcs with radii of 1e9999 are G0811, d（読めない数）" $
         do
