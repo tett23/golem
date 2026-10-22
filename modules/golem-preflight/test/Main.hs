@@ -10,7 +10,6 @@ import Golem.Pdf (ColorSpace (..), ColorUse (..), Drawing (..), FigureContent (.
 import Golem.Preflight
 import Golem.Preflight.Rules
 import Golem.Preflight.View
-import Golem.Project.Style (SizeSource (..))
 import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit

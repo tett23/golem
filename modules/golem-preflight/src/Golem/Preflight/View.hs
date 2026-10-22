@@ -12,6 +12,9 @@ module Golem.Preflight.View
     LineView (..),
     GlyphView (..),
     GlyphPart (..),
+    -- where the size of a glyph was decided, re-exported for the tests
+    -- and the callers of this module (golem-cli ADR 0008)
+    SizeSource (..),
     RuleView (..),
   )
 where
@@ -21,7 +24,7 @@ import Data.Map.Strict (Map)
 import Data.Text (Text)
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf (FigureContent, X4Problem)
-import Golem.Project.Style (SizeSource, Sp)
+import Golem.Project.Style (SizeSource (..), Sp)
 import Golem.Syntax (SrcSpan)
 
 -- | Process colour in percent.
