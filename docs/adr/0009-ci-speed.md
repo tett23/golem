@@ -1,6 +1,6 @@
 # ADR 0009: CI の高速化
 
-ステータス: 採択
+ステータス: 採択→docs だけの変更を省く根拠は [docs/adr/0021](0021-docs-workflow-and-ci-gate.md)、プルリクエストでの `dist-newstyle` のキャッシュの保存は [docs/adr/0045](0045-split-x86-build-and-pull-request-cache.md)
 
 ## 文脈
 
