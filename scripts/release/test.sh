@@ -275,14 +275,61 @@ for v in GH_TOKEN GITHUB_TOKEN ACTIONS_ID_TOKEN_REQUEST_TOKEN ACTIONS_ID_TOKEN_R
   case $CLAUDE_LINE in *"-u $v "*) ok ;; *) ng "write-notes: claude -p runs without $v" ;; esac
 done
 
-# the pinned Claude Code knows the flags; checked when it is installed
+# the pinned Claude Code knows the flags; checked when it is installed.
+# Without it the check is skipped, unless GOLEM_REQUIRE_CLAUDE=1 (as in CI,
+# docs/adr/0058-run-skipped-checks-in-ci.md): then it fails.
 PINNED=$(sed -n 's/^"npm:@anthropic-ai\/claude-code" = { *version = "\([^"]*\)".*/\1/p' "$HERE/../../mise.toml")
-if command -v claude >/dev/null 2>&1 && [ "$(claude --version 2>/dev/null | cut -d' ' -f1)" = "$PINNED" ]; then
-  claude --help >"$WORK/help.txt" 2>&1 || true
-  if grep -q -- '--tools <tools' "$WORK/help.txt" && grep -q -- '--strict-mcp-config' "$WORK/help.txt"; then ok; else ng "write-notes: claude $PINNED --help has --tools and --strict-mcp-config"; fi
-else
+# claude_flags: 0 when the pinned claude has the flags or is skipped, 1 otherwise
+claude_flags() {
+  if command -v claude >/dev/null 2>&1 && [ "$(claude --version 2>/dev/null | cut -d' ' -f1)" = "$PINNED" ]; then
+    claude --help >"$WORK/help.txt" 2>&1 || true
+    if grep -q -- '--tools <tools' "$WORK/help.txt" && grep -q -- '--strict-mcp-config' "$WORK/help.txt"; then return 0; fi
+    printf 'claude %s --help has no --tools or no --strict-mcp-config\n' "$PINNED" >&2
+    return 1
+  fi
+  if [ "${GOLEM_REQUIRE_CLAUDE:-}" = 1 ]; then
+    printf 'Claude Code %s is not installed, and GOLEM_REQUIRE_CLAUDE=1 does not skip the check of claude --help\n' "$PINNED" >&2
+    return 1
+  fi
   printf 'skip: Claude Code %s is not installed; claude --help is not checked\n' "$PINNED"
-fi
+}
+# claude_flags_with DIR REQUIRE: claude_flags with DIR first in PATH and
+# GOLEM_REQUIRE_CLAUDE=REQUIRE
+claude_flags_with() (
+  PATH="$1:$PATH"
+  GOLEM_REQUIRE_CLAUDE=$2
+  export GOLEM_REQUIRE_CLAUDE
+  claude_flags
+)
+CF=$WORK/claude-flags
+mkdir -p "$CF/other" "$CF/pinned" "$CF/old"
+cat >"$CF/other/claude" <<'EOF'
+#!/bin/sh
+echo "0.0.0 (Claude Code)"
+EOF
+cat >"$CF/pinned/claude" <<EOF
+#!/bin/sh
+if [ "\$1" = --version ]; then echo "$PINNED (Claude Code)"; exit 0; fi
+printf '  --strict-mcp-config   Only use MCP servers from --mcp-config\n  --tools <tools...>    Specify the list of available tools\n'
+EOF
+cat >"$CF/old/claude" <<EOF
+#!/bin/sh
+if [ "\$1" = --version ]; then echo "$PINNED (Claude Code)"; exit 0; fi
+echo '  --allowedTools <tools...>'
+EOF
+chmod +x "$CF/other/claude" "$CF/pinned/claude" "$CF/old/claude"
+run claude_flags_with "$CF/other" ""
+expect "claude-flags: without the pinned claude the check is skipped" 0 "skip: Claude Code $PINNED is not installed; claude --help is not checked"
+run claude_flags_with "$CF/other" 1
+expect "claude-flags: without the pinned claude and with GOLEM_REQUIRE_CLAUDE=1 the check fails" 1
+run claude_flags_with "$CF/pinned" 1
+expect "claude-flags: the pinned claude with the flags" 0 ""
+run claude_flags_with "$CF/old" ""
+expect "claude-flags: the pinned claude without the flags fails" 1
+# the claude of this environment
+run claude_flags
+expect "write-notes: claude $PINNED --help has --tools and --strict-mcp-config" 0
+cat "$WORK/out"
 
 # write-notes.sh with a fake claude and gh: the arguments, the environment
 # and the prompt that claude gets

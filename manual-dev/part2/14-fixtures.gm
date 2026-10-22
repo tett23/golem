@@ -40,7 +40,10 @@ golem-driver のフィクスチャ（[code: modules/golem-driver/test/fixtures/]
 同じフォントを十冊に置くと 34 MB が増えるうえ、Golem はプロジェクトルートの外のフォントを読まず、シンボリックリンクで外を指すこともできないからである。
 組む前に [code: scripts/fixtures/copy-fonts.sh] で、『蟹工船』と『テンペスト』のフォントを写す。
 golem-driver のテストは十冊を出力を書かずに検査し、環境変数 [code: GOLEM_PD_BOOKS] があればすべてのターゲットに組む。
-十冊を組むと 35 秒ほどかかり、CI の時間を倍近くにするためである。
+CI の [code: build] ジョブはこの変数を付けてテストを走らせ、十冊をすべてのターゲットに組む。
+組版の段階で生じる誤りを、CI で見つけるためである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0058-run-skipped-checks-in-ci.md]（docs/adr の ADR 0058「CI で動いていなかった二つの検査を CI で動かす」）]
+手元では、変数を付けたときだけ組む。
+十冊を組むと 20 秒から 35 秒ほどかかり、手元のテストの時間を延ばさないためである。
 
 ## 原文から原稿を作る
 
@@ -82,7 +85,9 @@ golem-fixtures は [code: base]、[code: text]、[code: containers]、[code: byt
 
 golem-font のテストが使うフォントは、[code: modules/golem-font/test/fonts/] に置いてある。
 PDF の決定性の検査（[code: scripts/determinism.sh]）も、ここの Source Han Sans のサブセットと Source Sans Pro で組む。
-ライセンスの文書（[code: OFL.txt]）と出典の README が同じディレクトリにある。
+ライセンスの文書（[code: OFL.txt]、[code: SourceSerif4-OFL.txt]）と出典の README が同じディレクトリにある。
+CFF2 の輪郭の試料（[code: SourceSerif4Variable-Roman.otf]）は、Source Serif 4 の配布物から手を加えずに写した。
+このフォントのライセンスは予約フォント名（Reserved Font Name）の Source を持ち、手を加えた版にはその名前を使えないので、サブセットにしていない。
 
 二つのマニュアルのフォントは、リポジトリに入れない。
 組む前に [code: scripts/manual/fetch-fonts.sh] が、配布元のタグで固定した URL から取得し、SHA-256 を検査して置く（第[ref-number manuals]章）。

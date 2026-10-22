@@ -12,6 +12,8 @@ void golem_font_close(golem_font *f);
 int golem_font_upem(golem_font *f);
 int golem_font_fstype(golem_font *f);
 int golem_font_is_cff(golem_font *f);
+/* Whether the font has a CFF2 table (golem-font ADR 0003). */
+int golem_font_is_cff2(golem_font *f);
 int golem_font_num_glyphs(golem_font *f);
 /* ascender, descender, cap height; font units */
 void golem_font_extents(golem_font *f, int32_t *asc, int32_t *desc, int32_t *cap);

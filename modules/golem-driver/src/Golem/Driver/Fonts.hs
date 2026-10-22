@@ -6,6 +6,7 @@ ADR 0002 and 0003, golem-font ADR 0001 and 0002).
 module Golem.Driver.Fonts
   ( golemFontProvider,
     cffFontProgram,
+    cff2FontDiagnostics,
     toUnicodeOf,
     actualTextOf,
   )
@@ -52,7 +53,9 @@ golemFontProvider = FontProvider $ \root fid style locals ->
             bytes <- BS.readFile (root </> rel)
             loaded <- loadFont bytes
             pure $ case loaded of
-              Right f -> Right (bytes, f, path)
+              Right f
+                | fontIsCff2 f -> Left (cff2Diagnostic fid path)
+                | otherwise -> Right (bytes, f, path)
               Left Unreadable -> Left (err "G0803" ("フォントを読み込めません: " <> T.pack path))
               Left (EmbeddingRestricted t) -> Left (err "G0804" ("ライセンスが埋め込みを禁じているフォントです（fsType " <> T.pack (printf "0x%04X" t) <> "）: " <> T.pack path))
    in case bodyFontDiagnostics fid style of
@@ -87,6 +90,35 @@ golemFontProvider = FontProvider $ \root fid style locals ->
   where
     nubOn key = reverse . fst . foldl' (\(acc, seen) x -> if key x `elem` seen then (acc, seen) else (x : acc, key x : seen)) ([], [])
 
+{- | G0819 (golem-font ADR 0003): a font with CFF2 outlines cannot be
+embedded in the PDF. At the top of @fid@, as the other font diagnostics.
+-}
+cff2Diagnostic :: FileId -> FilePath -> Diagnostic
+cff2Diagnostic fid path =
+  diagnostic "G0819" Error (mkSpan fid 0 0) ("CFF2 の輪郭のフォントは PDF に埋め込めません: " <> T.pack path <> "。CFF か TrueType の輪郭のフォントを使ってください")
+
+{- | G0819 for the given font files of the PDF, before it is laid out, so
+that golem check reports it too (golem-font ADR 0003). A file that cannot
+be read or loaded is left to the font provider (G0802, G0803, G0804).
+-}
+cff2FontDiagnostics :: FilePath -> FileId -> [FilePath] -> IO [Diagnostic]
+cff2FontDiagnostics root fid paths = concat <$> mapM one (nubOrd paths)
+  where
+    one path = do
+      r <- resolveInRoot root path
+      case r of
+        Left _ -> pure []
+        Right rel -> do
+          loaded <- BS.readFile (root </> rel) >>= loadFont
+          pure [cff2Diagnostic fid path | Right f <- [loaded], fontIsCff2 f]
+
+-- | The form of a face for golem preflight (golem-cli ADR 0006, golem-font ADR 0003).
+faceForm :: Font -> Text
+faceForm f
+  | fontIsCff2 f = "cff2"
+  | fontIsCff f = "cff"
+  | otherwise = "truetype"
+
 {- | Fonts by face number; each role maps to its Japanese and Latin faces
 and its OpenType features. A role that is not loaded is the body role.
 The measures are kept by the shaping too: its features change them
@@ -104,7 +136,7 @@ provide fid faces body roles =
       lfEmbed = embed,
       lfEmBoxCentral = \ix -> let f = fontAt ix in toInteger (fontEmBoxCentral f) % toInteger (fontUnitsPerEm f),
       -- the path in style.toml and the form of a face (golem-cli ADR 0006)
-      lfFaceFile = \ix -> let (f, p) = faceAt ix in (p, if fontIsCff f then "cff" else "truetype"),
+      lfFaceFile = \ix -> let (f, p) = faceAt ix in (p, faceForm f),
       -- the ink box of a glyph from FreeType, in em (golem-driver ADR 0019)
       lfInkBox = \ix g ->
         let f = fontAt ix

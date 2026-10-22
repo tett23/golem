@@ -55,7 +55,7 @@ txt = Text (at 0)
 
 -- | The one text file of a book, as the given variant and profile.
 renderWith :: Bool -> TextVariant -> Book -> [(FilePath, Text)]
-renderWith dev variant = renderText "ja" "kanji" dev (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty variant ft
+renderWith dev variant = renderText "ja" "kanji" dev (const (const (0, 0))) (TextLists (pure "・") Nothing Nothing) Map.empty variant ft
 
 horizontal, vertical :: Book -> [(FilePath, Text)]
 horizontal = renderWith False Horizontal
@@ -72,7 +72,7 @@ ft2 :: FileTable
 -- | a.gm and b.gm with one note each, in the chapters given.
 twoFiles :: Text -> Int -> Int -> [Int] -> [(FilePath, Text)]
 twoFiles lang na nb chapters =
-  renderText lang "kanji" False (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft2 $
+  renderText lang "kanji" False (const (const (0, 0))) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft2 $
     (bookOf [])
       { bookDocs =
           [ Document fid [para 0 [txt "甲", Note (at 1) na [txt "注甲。"]]],
@@ -90,16 +90,20 @@ tests =
     testCase "files after the chapters the manifest gives are each a chapter of their own" $
       let (fidC, ft3) = registerFile "chapters/c.gm" ft2
           noted f n t = Document f [Block (mkSpan f 0 1) Nothing (Paragraph Nothing [txt t, Note (mkSpan f 1 2) n [txt ("注" <> t)]])]
-       in renderText "ja" "kanji" False (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft3 ((bookOf []) {bookDocs = [noted fid 1 "甲", noted fidB 2 "乙", noted fidC 3 "丙"], bookChapterOf = [0]})
+       in renderText "ja" "kanji" False (const (const (0, 0))) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft3 ((bookOf []) {bookDocs = [noted fid 1 "甲", noted fidB 2 "乙", noted fidC 3 "丙"], bookChapterOf = [0]})
             @?= [("chapters/a.txt", "甲*1\n\n注\n*1 注甲\n"), ("chapters/b.txt", "乙*2\n\n注\n*2 注乙\n"), ("chapters/c.txt", "丙*3\n\n注\n*3 注丙\n")],
     testCase "the title of the notes is 注 for any language that starts with ja, in any case" $
       [lookup "chapters/b.txt" (twoFiles lang 1 1 [0, 1]) | lang <- ["JA", "ja-JP"]]
         @?= replicate 2 (Just "乙*1\n\n注\n*1 注乙。\n"),
     testCase "the last file of a chapter with no text of its own has the title and the notes only" $
-      renderText "ja" "kanji" False (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft2 ((bookOf []) {bookDocs = [Document fid [para 0 [txt "甲", Note (at 1) 1 [txt "注甲。"]]], Document fidB []], bookChapterOf = [0, 0]})
+      renderText "ja" "kanji" False (const (const (0, 0))) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft2 ((bookOf []) {bookDocs = [Document fid [para 0 [txt "甲", Note (at 1) 1 [txt "注甲。"]]], Document fidB []], bookChapterOf = [0, 0]})
         @?= [("chapters/a.txt", "甲*1\n"), ("chapters/b.txt", "注\n*1 注甲。\n")],
     testCase "the file is named after the source with .txt and ends with one newline" $
       horizontal (bookOf [para 0 [txt "本文。"]]) @?= [("chapters/a.txt", "本文。\n")],
+    testCase "the first line and the lines after a line break have their own indents (docs/adr ADR 0049)" $ do
+      let indented ns = only (renderText "ja" "kanji" False (const (const ns)) (TextLists (pure "・") Nothing Nothing) Map.empty Horizontal ft (bookOf [para 0 [txt "一行目", LineBreak (at 1), txt "二行目"]]))
+      indented (1, 0) @?= "　一行目\n二行目\n"
+      indented (1, 1) @?= "　一行目\n　二行目\n",
     testCase "blocks are separated by one blank line" $
       only (horizontal (bookOf [para 0 [txt "一つ目。"], para 5 [txt "二つ目。"]])) @?= "一つ目。\n\n二つ目。\n",
     testCase "a page reference is the title of the target in corner brackets" $
@@ -157,7 +161,7 @@ tests =
           only (vertical (bookOf [para 0 [Number (at 1) 2026 (Just StyleKanjiDigits)]])) @?= "二〇二六\n",
         -- golem-parser ADR 0011
         testCase "vertical = auto: kanji, as plain text has no tate-chu-yoko" $ do
-          let num def variant n = only (renderText "ja" def False (const (const 0)) (TextLists (pure "・") Nothing Nothing) Map.empty variant ft (bookOf [para 0 [Number (at 1) n Nothing]]))
+          let num def variant n = only (renderText "ja" def False (const (const (0, 0))) (TextLists (pure "・") Nothing Nothing) Map.empty variant ft (bookOf [para 0 [Number (at 1) n Nothing]]))
           num "auto" Vertical 9 @?= "九\n"
           num "auto" Vertical 99 @?= "九十九\n"
           num "auto" Vertical 100 @?= "百\n"
