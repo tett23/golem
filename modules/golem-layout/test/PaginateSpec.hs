@@ -545,7 +545,16 @@ gridLines = map (map fst . poSlots)
 
 ruledTests :: [TestTree]
 ruledTests =
-  [ testCase "a ruled paragraph that does not fit goes whole to the next column, its rule counted at the start" $ do
+  [ testCase "keep-in-column = false at the start of columns that start mid-page: in the column, as keep-in-column = true (golem-driver ADR 0040)" $ do
+      let outside = (spaced 5 10) {rsdOutside = Just (100 * 65536)}
+          flows b = [FParagraph (lines' 0 2), FSwitchColumns (ColumnSet 2 0 0 0), ruled (Just b) Nothing (lines' 10 1)]
+          inside = paginateIn 1 (ColumnSet 1 0 0 0) 10 (flows (spaced 5 10))
+          out = paginateIn 1 (ColumnSet 1 0 0 0) 10 (flows outside)
+      map poRules out @?= map poRules inside
+      gridLines out @?= gridLines inside
+      -- the area of the rule takes a grid line after the two lines before
+      gridLines out @?= [[0, 1], [3]],
+    testCase "a ruled paragraph that does not fit goes whole to the next column, its rule counted at the start" $ do
       -- 3 free; a line of area before (inner 5pt, outer 10pt) and 3 lines
       let ps = paginate 1 5 [FParagraph (lines' 0 2), ruled (Just (spaced 5 10)) Nothing (lines' 10 3)]
       gridLines ps @?= [[0, 1], [1, 2, 3]]
