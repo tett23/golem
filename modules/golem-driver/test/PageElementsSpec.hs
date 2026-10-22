@@ -987,10 +987,11 @@ sidenoteTests =
       case r of
         Left [d] -> do
           diagCode d @?= DiagnosticCode "G0733"
+          diagMessage d @?= "このページの傍注が傍注の領域に収まりません"
           assertBool "at a sidenote" (spanStart (diagSpan d) `elem` offsetsIn "[sidenote" crowded)
         other -> assertFailure (show (either (map diagCode) (const []) other))
       r' <- layoutMini sidenoteStyle ("一[sidenote: " <> T.replicate 60 "あいうえおかき" <> "]\n") []
-      either (map diagCode) (const []) r' @?= [DiagnosticCode "G0733"],
+      either (map (\d -> (diagCode d, diagMessage d))) (const []) r' @?= [(DiagnosticCode "G0733", "傍注が傍注の領域より高く、収まりません")],
     testCase "the length of a sidenote does not change the pages" $ do
       let source body = fillers 20 <> "本文[sidenote: " <> body <> "]。" <> longPara 20
       (_, a) <- layoutOk sidenoteStyle (source "短い。") []
@@ -1011,7 +1012,7 @@ sidenoteTests =
         other -> assertFailure (show (length other)),
     testCase "sidenotes need a horizontal page with a sidenote column, and the text flow" $ do
       a <- layoutMini horizontalStyle "本文[sidenote: 注]。\n" []
-      either (map diagCode) (const []) a @?= [DiagnosticCode "G0734"]
+      either (map (\d -> (diagCode d, diagMessage d))) (const []) a @?= [(DiagnosticCode "G0734", "傍注の領域（style.toml の [sidenotes]）のない版面では傍注を使えません")]
       b <- layoutMini pdfStyle "本文[sidenote: 注]。\n" []
       either (map diagCode) (const []) b @?= [DiagnosticCode "G0732"]
       c <- layoutMini sidenoteStyle "本文[note: 注の[sidenote: 傍注]本文]。\n" []

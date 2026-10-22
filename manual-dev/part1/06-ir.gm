@@ -458,7 +458,7 @@ golem-layout-spec は、[code: Style] からページの幾何を計算し、[co
 | [code: pgTypeArea]、[code: pgTypeAreaEven] | 奇数ページと偶数ページの版面 |
 | [code: pgLineGrid] | 版面の中の各行の位置（行の格子） |
 | [code: pgColumns]、[code: pgColumnsEven] | 段組みの各段の領域 |
-| [code: pgSidenotes] | 傍注欄の領域 |
+| [code: pgSidenotes] | 傍注の領域 |
 | [code: pgMasters] | マスターページごとの柱とノンブルの位置と内容 |
 
 座標の原点は、PDF と同じくページの左下である。

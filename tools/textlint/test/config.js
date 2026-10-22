@@ -8,7 +8,7 @@ module.exports = {
   plugins: gmPlugin,
   rules: {
     "preset-golem": {
-      "review-words": { words: [{ pattern: "機械(?!語)", message: "machine" }, words.kiku, words.key] },
+      "review-words": { words: [{ pattern: "機械(?!語)", message: "machine" }, words.kiku, words.key, words.sidenoteArea] },
     },
     prh: prh(process.env.GOLEM_TEXTLINT_TEST_PRH || "dev"),
   },

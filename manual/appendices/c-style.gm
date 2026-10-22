@@ -332,15 +332,15 @@ HTML、EPUB、プレーンテキストには線を出しません。
 @nonumber
 ## [code: \[sidenotes\]]
 
-傍注欄です。
+傍注の領域です。
 傍注を使う横組みの本で、PDF を作るには必須です。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [code: width] | （必須） | 傍注欄の幅です。 |
-| [code: gap] | （必須） | 版面と傍注欄のあいだの空きです。 |
+| [code: width] | （必須） | 傍注の領域の幅です。 |
+| [code: gap] | （必須） | 版面と傍注の領域のあいだの空きです。 |
 | [code: marker] | [code: "number"] | 本文の側の印です。[code: "number"]（番号）、[code: "symbol"]（※）、[code: "none"]（なし）から選びます。 |
-| [code: side] | [code: "outside"] | 傍注欄を置く側です。今は [code: "outside"]（小口の側）だけを書けます。 |
+| [code: side] | [code: "outside"] | 傍注の領域を置く側です。今は [code: "outside"]（小口の側）だけを書けます。 |
 
 @nonumber
 ## [code: \[figures\]]
@@ -419,7 +419,7 @@ HTML と EPUB には適用されません。
 
 [code: size] と [code: gutter] には [code: zw] を使えません。
 [code: gutter] が [code: size] の半分より小さいと、数字が仕上がりの線を越えるので、エラー（G0306）になります。
-数字の列が版面か傍注欄に重なると、エラー（G0750）になります。
+数字の列が版面か傍注の領域に重なると、エラー（G0750）になります。
 
 @nonumber
 ## [code: \[lists\]]

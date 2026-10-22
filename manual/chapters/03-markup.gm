@@ -354,9 +354,9 @@ PDF でも章の終わりにまとめたいときは、[code: \[notes\]] の [co
 本文の語。[sidenote: 傍注の本文です。]
 ```
 
-PDF では、傍注は版面の外の傍注欄に、注の印のある行と同じ高さで組まれます。[sidenote: この傍注のように組まれます。]
+PDF では、傍注は版面の外の傍注の領域に、注の印のある行と同じ高さで組まれます。[sidenote: この傍注のように組まれます。]
 出典は脚注に、用語の補足は傍注に、という使い分けができます。
-傍注を使うには、[code: style.toml] に傍注欄の設定（[code: \[sidenotes\]]）が要ります（「[ref-title notes-style]」、[ref-page notes-style] ページ）。
+傍注を使うには、[code: style.toml] に傍注の領域の設定（[code: \[sidenotes\]]）が要ります（「[ref-title notes-style]」、[ref-page notes-style] ページ）。
 傍注は縦組みでは使えません。
 
 @label tables
