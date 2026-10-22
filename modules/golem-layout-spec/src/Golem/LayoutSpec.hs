@@ -170,9 +170,9 @@ pageGeometry fid marks style = case stPage style of
             else do
               sidenotes <- case stSidenotes style of
                 Nothing -> Right Nothing
-                Just _ | vertical -> Left [err "縦組みの版面には傍注欄を設けられません"]
+                Just _ | vertical -> Left [err "縦組みの版面には傍注の領域を設けられません"]
                 -- no sidenote column on a page of columns (docs/adr ADR 0018)
-                Just _ | cols > 1 -> Left [err "段組みの版面には傍注欄を設けられません"]
+                Just _ | cols > 1 -> Left [err "段組みの版面には傍注の領域を設けられません"]
                 Just sn -> do
                   let w = dimToSp fs (snWidth sn)
                       g = dimToSp fs (snGap sn)
@@ -182,7 +182,7 @@ pageGeometry fid marks style = case stPage style of
                       so = placeOn 1 odd'
                       se = placeOn 2 even'
                   if overflow so || overflow se
-                    then Left [err "版面と傍注欄の合計がページからはみ出しています"]
+                    then Left [err "版面と傍注の領域の合計がページからはみ出しています"]
                     else Right (Just (so, se))
               {- the rule before footnotes no longer than a line of a column, and
               the grid lines of the separator (golem-driver ADR 0024) -}

@@ -517,12 +517,12 @@ PDF を組むときに出るエラーです。
 = [strong: G0701 [code: 版面がページからはみ出しています]] など
   [code: \[page\]] と [code: \[page.grid\]] の値で版面を決められません。
   字数、行数、文字の大きさ、[code: position] を判型に収まる値にしてください。
-  [code: \[page\]] や [code: \[page.grid\]] がないときと、縦組みや段組みの版面に傍注欄を設けたときも、このコードが出ます。
+  [code: \[page\]] や [code: \[page.grid\]] がないときと、縦組みや段組みの版面に傍注の領域を設けたときも、このコードが出ます。
   脚注の区切り線（[code: \[notes.rule\]]）の [code: length] が一行の長さ（段組みでは一段の長さ）より長いときも出ます。
 = [strong: G0702 [code: 日本式のトンボには塗り足しが要ります。style.toml の \[page\] に bleed を書いてください]]
   [code: --marks japanese] を使うときは、[code: bleed = "3mm"] のように塗り足しを書いてください。
 = [strong: G0750 [code: 隠しノンブルが版面に重なります。\[hidden-folio\] の gutter を小さくするか、ノドの余白を広げてください]]
-  トンボを付けた PDF に入れる隠しノンブルが、版面か傍注欄に重なります。
+  トンボを付けた PDF に入れる隠しノンブルが、版面か傍注の領域に重なります。
   [code: \[hidden-folio\]] の [code: gutter] を小さくするか、[code: \[page.grid\]] の [code: position] の [code: gutter] を広げてください。
   中綴じの本のように隠しノンブルが要らないときは、[code: \[hidden-folio\]] に [code: enabled = false] を書きます。
 = [strong: G0724 [code: 見出しが版面に入りません（…）]]
@@ -550,11 +550,11 @@ PDF を組むときに出るエラーです。
   図版の [code: wrap] を外すか、[code: \[page.grid\]] の [code: columns] を 1 にしてください。
 = [strong: G0732 [code: 縦組みの版面では傍注を使えません。脚注に替えてください]]
   縦組みの本では、傍注の代わりに脚注（[code: \[note: ...\]]）を使ってください。
-= [strong: G0734 [code: 傍注欄（style.toml の \[sidenotes\]）のない版面では傍注を使えません]]
+= [strong: G0734 [code: 傍注の領域（style.toml の \[sidenotes\]）のない版面では傍注を使えません]]
   [code: style.toml] に [code: \[sidenotes\]] を書いてください。
 = [strong: G0735 [code: PDF では、脚注の本文と図版のキャプションの中に傍注を置けません]]
   傍注を本文の段落に移してください。
-= [strong: G0733 [code: 傍注が傍注欄より高く、収まりません]]、[strong: [code: このページの傍注が傍注欄に収まりません]]
+= [strong: G0733 [code: 傍注が傍注の領域より高く、収まりません]]、[strong: [code: このページの傍注が傍注の領域に収まりません]]
   傍注を短くするか、そのページの傍注を減らしてください。
 = [strong: G0737 [code: ここで改ページを止められませんでした]] など（警告）
   [code: @no-page-break]、[code: @need-lines]、[code: @page-lines] の指定を守れませんでした。

@@ -76,7 +76,8 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **縦組みの向き（Vertical_Orientation）**：Unicode の UAX #50 が文字ごとに定める、縦組みでの文字の向き。正立（U）、回転（R）、縦書き用の字形があれば使い、なければ正立（Tu）、縦書き用の字形があれば使い、なければ回転（Tr）の四つの値がある。Golem の PDF は、縦書き用の字形がない R と Tr の文字を、横組みの字形を時計回りに 90 度回して描く（[golem-driver ADR 0015](golem-driver/adr/0015-vertical-dashes.md)）。
 - **突き出し**と**伸縮（hz）**：行末のハイフンや句読点を版面の外へわずかに出すことと、欧文のグリフの幅をわずかに伸び縮みさせること。どちらも語間の空きのばらつきを減らす（[golem-layout ADR 0005](golem-layout/adr/0005-microtypography.md)）。
 - **回り込み**：図版の脇に本文を流し込むこと。図版の周りを除外領域とし、そこにかかる行の行長を短くする（[golem-layout ADR 0004](golem-layout/adr/0004-wrapped-figures.md)）。
-- **傍注**：版面の外の小口側に設けた傍注欄に置く注（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
+- **傍注**：版面の外の小口側に設けた傍注の領域に置く注（[golem-layout ADR 0006](golem-layout/adr/0006-sidenotes.md)）。
+- **傍注の領域**：傍注を置くために、版面の外の小口側に設ける場所。`style.toml` の `[sidenotes]` の `width` と `gap` で幅と版面との間隔を決める。[docs/adr/0059](adr/0059-say-sidenote-area.md) より前の ADR と監査の記録は「傍注欄」と書く。
 - **改ページ**：今のページを閉じ、次のページから続けること。原稿では `@page-break` で指定する（[markup.md](markup.md)、[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 - **改丁**：次の奇数ページから始めること。原稿では `@page-break recto`、見出しでは `style.toml` の `page-break = "recto"` で指定する（[docs/adr/0017](adr/0017-forced-page-breaks.md)）。
 - **隠しノンブル**：ノンブルの見えないページのノドの側に入れる、製本で綴じ込まれて見えなくなる小さなページ番号。印刷所と製本所がページの順を確かめるために使う。Golem はトンボを付けた PDF にだけ、白ページやマスターページに `folio` のないページへ、ページの通し番号を算用数字で縦に並べて入れる。`style.toml` の `[hidden-folio]` で止められる（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。

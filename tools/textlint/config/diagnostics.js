@@ -20,7 +20,7 @@ module.exports = {
       ...markdownRules["preset-ja-spacing"],
       "ja-no-space-around-parentheses": false,
     },
-    ...golemRules([words.machine, words.kiku, words.key]),
+    ...golemRules([words.machine, words.kiku, words.key, words.sidenoteArea]),
     prh: prh("dev"),
   },
 };

@@ -103,8 +103,8 @@ tests =
                 ("font-size in zw", zwSize, "文字の大きさは絶対的な寸法で書いてください"),
                 ("no characters", styleWith False False (grid 0 30 1 Nothing), "字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください"),
                 ("overflow", styleWith False False (grid 40 30 1 Nothing), "版面がページからはみ出しています"),
-                ("vertical with sidenotes", (styleWith True True (grid 40 20 1 Nothing)) {stSidenotes = Just (sn 20)}, "縦組みの版面には傍注欄を設けられません"),
-                ("sidenotes overflow", base {stSidenotes = Just (sn 200)}, "版面と傍注欄の合計がページからはみ出しています")
+                ("vertical with sidenotes", (styleWith True True (grid 40 20 1 Nothing)) {stSidenotes = Just (sn 20)}, "縦組みの版面には傍注の領域を設けられません"),
+                ("sidenotes overflow", base {stSidenotes = Just (sn 200)}, "版面と傍注の領域の合計がページからはみ出しています")
               ]
         mapM_
           ( \(name, st, msg) -> case pageGeometry (FileId 7) False st of
