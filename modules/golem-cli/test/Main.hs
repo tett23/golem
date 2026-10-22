@@ -226,8 +226,19 @@ marksTests =
         assertEqual err (ExitFailure 1) code
         assertBool err ("G0702" `isInfixOf` err)
         (code', err') <- golemIn projectFiles ["build", "--target", "html", "--marks", "japanese"]
-        assertEqual err' ExitSuccess code'
+        assertEqual err' ExitSuccess code',
+      -- golem check checks the four targets, whatever the targets of the
+      -- manifest (golem-pdf ADR 0010); without style.toml it also fails
+      -- with G0807, so the test looks at G0702, not at the exit code
+      testCase "golem check --marks japanese is G0702 without [targets.pdf] in the manifest (golem-pdf ADR 0010)" $ do
+        (_, err) <- golemIn htmlOnlyFiles ["check", "--marks", "japanese"]
+        assertBool err ("G0702" `isInfixOf` err),
+      testCase "golem check --marks western is not G0702 without [targets.pdf] (golem-pdf ADR 0010)" $ do
+        (_, err) <- golemIn htmlOnlyFiles ["check", "--marks", "western"]
+        assertBool err (not ("G0702" `isInfixOf` err))
     ]
+  where
+    htmlOnlyFiles = [(p, if p == "manifest.toml" then T.unpack (T.replace "\n\n[targets.pdf]\n" "\n" (T.pack c)) else c) | (p, c) <- projectFiles]
 
 -- | golem explain and the hint after the diagnostics (ADR 0005).
 explainTests :: TestTree

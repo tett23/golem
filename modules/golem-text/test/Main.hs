@@ -47,7 +47,7 @@ renderBlocks bib cites listings bodies =
             bookChannels = [],
             bookChannelDecls = Map.empty
           }
-   in renderText "ja" "kanji" False (const (const 0)) lists bib Horizontal ft book
+   in renderText "ja" "kanji" False (const (const (0, 0))) lists bib Horizontal ft book
 
 sp :: Int -> SrcSpan
 sp s = mkSpan (FileId 0) s (s + 1)
@@ -70,7 +70,7 @@ render lang format bs =
   let cfg = AssembleConfig (Map.fromList [(1, format)]) "図{chapter}-{n}" Map.empty NumberPerFile [] "リスト{chapter}-{n}" Map.empty 16
       (book, _) = assemble cfg noEval [Document (FileId 0) bs]
       (_, ft) = registerFile "a.gm" emptyFileTable
-   in concatMap (T.lines . snd) (renderText lang "kanji" False (const (const 0)) lists Map.empty Horizontal ft book)
+   in concatMap (T.lines . snd) (renderText lang "kanji" False (const (const (0, 0))) lists Map.empty Horizontal ft book)
 
 tests :: TestTree
 tests =
