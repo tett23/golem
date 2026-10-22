@@ -629,16 +629,24 @@ attributedGroup ctx sp cmds target = case target of
 
 {- | @printings: one paragraph for each printing of meta.printings, as
 @2026年10月16日　初版第1刷発行@; the year in kanji-digits, the other
-numbers by the default of [numbers]. G0276 for a book not in Japanese,
-without printings, or with arguments or a body (docs/adr ADR 0033).
+numbers by the default of [numbers] (docs/adr ADR 0033). Each cause
+has its own code and every cause found is reported, in this order:
+G0296 for arguments, G0297 for a body, G0276 for a book not in Japanese,
+G0298 without printings (docs/adr ADR 0056).
 -}
 printingsBlock :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-printingsBlock ctx sp args body
-  | not (null args) || not (null body) = err "G0276" sp "@printings は引数も本体も取りません" >> pure []
-  | Map.lookup "language" (ctxMeta ctx) /= Just (VString "ja") = err "G0276" sp "@printings は日本語の本（language = \"ja\"）でだけ使えます" >> pure []
-  | Just (VArray ps@(_ : _)) <- Map.lookup "printings" (ctxMeta ctx) = pure (mapMaybe line ps)
-  | otherwise = err "G0276" sp "マニフェストに [[metadata.printings]] がありません" >> pure []
+printingsBlock ctx sp args body = case (errors, Map.lookup "printings" (ctxMeta ctx)) of
+  ([], Just (VArray ps)) -> pure (mapMaybe line ps)
+  _ -> mapM_ (\(c, s, m) -> err c s m) errors >> pure []
   where
+    printings = case Map.lookup "printings" (ctxMeta ctx) of
+      Just (VArray (_ : _)) -> True
+      _ -> False
+    errors =
+      [("G0296", sp, takesNoArguments "printings") | not (null args)]
+        <> [("G0297", bsp, takesNoBody "printings") | A.Located bsp _ : _ <- [body]]
+        <> [("G0276", sp, "@printings は日本語の本（language = \"ja\"）でだけ使えます") | Map.lookup "language" (ctxMeta ctx) /= Just (VString "ja")]
+        <> [("G0298", sp, "マニフェストに [[metadata.printings]] がありません") | not printings]
     line = \case
       VHash h
         | Just [e, n, y, m, d] <- traverse (\k -> case Map.lookup k h of Just (VInt i) -> Just i; _ -> Nothing) ["edition", "number", "year", "month", "day"] ->
@@ -650,39 +658,54 @@ printingsBlock ctx sp args body
     num = Number sp
     txt = Text sp
 
--- | @page-break and @column-break (docs/adr ADR 0017).
-forcedBreak :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-forcedBreak sp name args body
-  | not (null body) = err "G0258" sp "@page-break と @column-break は本体を持てません" >> pure []
-  | otherwise = case (name, map A.locValue args) of
-      ("page-break", []) -> ok BreakPage
-      ("page-break", [A.Positional (A.Word "recto")]) -> ok BreakRecto
-      ("page-break", [A.Positional (A.Word "verso")]) -> ok BreakVerso
-      ("column-break", []) -> ok BreakColumn
-      ("column-break", _) -> err "G0258" sp "@column-break は引数を取りません" >> pure []
-      _ -> err "G0258" sp "@page-break の引数は recto か verso です" >> pure []
-  where
-    ok k = pure [block sp (ForcedBreak k)]
+{- | The message of G0296, an argument to a command that takes none, and of
+G0297, a body under a command that cannot have one (docs/adr ADR 0056).
+-}
+takesNoArguments, takesNoBody :: Text -> Text
+takesNoArguments name = "@" <> name <> " は引数を取りません"
+takesNoBody name = "@" <> name <> " は本体を持てません"
 
--- | @no-page-break, @need-lines and @page-lines (docs/adr ADR 0030).
+{- | A page-break command: the error of its arguments, if any, then G0297
+at the first block of its body, if any; the block only if neither
+(docs/adr ADR 0060).
+-}
+breakCommand :: SrcSpan -> Text -> [A.Located A.Block] -> Either (Text, Text) BlockBody -> M [Block]
+breakCommand sp name body parsed = do
+  either (\(c, m) -> err c sp m) (const (pure ())) parsed
+  mapM_ (\(A.Located bsp _) -> err "G0297" bsp (takesNoBody name)) (take 1 body)
+  pure [block sp b | null body, Right b <- [parsed]]
+
+{- | @page-break and @column-break (docs/adr ADR 0017): G0258 for an
+argument of @page-break other than one recto or verso, G0296 for an
+argument of @column-break (docs/adr ADR 0060).
+-}
+forcedBreak :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
+forcedBreak sp name args body = breakCommand sp name body $ case (name, map A.locValue args) of
+  ("page-break", []) -> Right (ForcedBreak BreakPage)
+  ("page-break", [A.Positional (A.Word "recto")]) -> Right (ForcedBreak BreakRecto)
+  ("page-break", [A.Positional (A.Word "verso")]) -> Right (ForcedBreak BreakVerso)
+  ("column-break", []) -> Right (ForcedBreak BreakColumn)
+  ("column-break", _) -> Left ("G0296", takesNoArguments name)
+  _ -> Left ("G0258", "@page-break の引数は recto か verso です")
+
+{- | @no-page-break, @need-lines and @page-lines (docs/adr ADR 0030):
+G0296 for an argument of @no-page-break, G0270 for a wrong argument of
+@need-lines, G0299 for a wrong argument of @page-lines (docs/adr ADR 0060).
+-}
 pageControl :: SrcSpan -> Text -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
-pageControl sp name args body
-  | not (null body) = bad ("@" <> name <> " は本体を持てません")
-  | otherwise = case (name, map A.locValue args) of
-      ("no-page-break", []) -> ok NoBreak
-      ("no-page-break", _) -> bad "@no-page-break は引数を取りません"
-      ("need-lines", [A.Positional (A.Word w)]) | Just n <- count w, n >= 1 -> ok (NeedLines n)
-      ("need-lines", _) -> bad "@need-lines の引数は 1 以上の整数です"
-      ("page-lines", [A.Positional (A.Word w)])
-        | Just (s, digits) <- T.uncons w,
-          s `elem` ['+', '-'],
-          Just n <- count digits,
-          n /= 0 ->
-            ok (AdjustLines (if s == '-' then negate n else n))
-      _ -> bad "@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です"
+pageControl sp name args body = breakCommand sp name body . fmap PageControl $ case (name, map A.locValue args) of
+  ("no-page-break", []) -> Right NoBreak
+  ("no-page-break", _) -> Left ("G0296", takesNoArguments name)
+  ("need-lines", [A.Positional (A.Word w)]) | Just n <- count w, n >= 1 -> Right (NeedLines n)
+  ("need-lines", _) -> Left ("G0270", "@need-lines の引数は 1 以上の整数です")
+  ("page-lines", [A.Positional (A.Word w)])
+    | Just (s, digits) <- T.uncons w,
+      s `elem` ['+', '-'],
+      Just n <- count digits,
+      n /= 0 ->
+        Right (AdjustLines (if s == '-' then negate n else n))
+  _ -> Left ("G0299", "@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です")
   where
-    ok c = pure [block sp (PageControl c)]
-    bad m = err "G0270" sp m >> pure []
     -- ASCII digits that fit in an Int
     count w
       | not (T.null w) && T.all isDigit w && T.length w <= 9 = Just (read (T.unpack w))

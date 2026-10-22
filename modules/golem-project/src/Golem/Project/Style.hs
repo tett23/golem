@@ -122,7 +122,8 @@ type Sp = Integer
 data Dim = Abs !Sp | Zw !Rational
   deriving stock (Eq, Show)
 
-{- | Parses @"13Q"@, @"20mm"@, @"10.5pt"@, @"22H"@, @"1zw"@. Conversion uses
+{- | Parses @"13Q"@, @"20mm"@, @"10.5pt"@, @"22H"@, @"0.125in"@, @"1zw"@
+(1in = 72pt, golem-project ADR 0010). Conversion uses
 exact rationals and rounds once, half to even.
 -}
 parseDim :: Text -> Maybe Dim
@@ -132,6 +133,7 @@ parseDim t =
         r <- decimal num
         case unit of
           "pt" -> Just (Abs (round (r * 65536)))
+          "in" -> Just (Abs (round (r * 72 * 65536)))
           "mm" -> Just (Abs (mmToSp r))
           "Q" -> Just (Abs (mmToSp (r * (1 % 4))))
           "H" -> Just (Abs (mmToSp (r * (1 % 4))))
@@ -1909,7 +1911,7 @@ styleChecks owner s =
              n /= "code",
              isJust (psBorder d) || isJust (psBorderWidth d)
            ]
-        <> [ ("code", para "code" "border-width", "border-width は mm、pt、Q、H の寸法で書きます")
+        <> [ ("code", para "code" "border-width", "border-width は mm、pt、Q、H、in の寸法で書きます")
            | Just ParaStyleDef {psBorderWidth = Just w} <- [Map.lookup "code" (stParaStyles s)],
              case w of
                Zw _ -> True

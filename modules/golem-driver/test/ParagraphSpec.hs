@@ -210,7 +210,21 @@ indentTests =
             _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
             TIO.readFile (tmp </> "build/text/horizontal/v.txt")
       text "[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n" "本文。\n\n- 項目\n" >>= (@?= "　本文。\n\n・項目\n")
-      text "[paragraph-styles.body]\nfirst-line-indent = \"3mm\"\n" "本文。\n" >>= (@?= "本文。\n")
+      text "[paragraph-styles.body]\nfirst-line-indent = \"3mm\"\n" "本文。\n" >>= (@?= "本文。\n"),
+    testCase "plain text: a line after a hard break starts at indent (docs/adr ADR 0049)" $ do
+      let text style src = withVerseProject style src $ \tmp -> do
+            _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            TIO.readFile (tmp </> "build/text/horizontal/v.txt")
+          address = "東京都\\\n千代田区\n"
+      text "[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n" address >>= (@?= "　東京都\n千代田区\n")
+      text "[paragraph-styles.body]\nindent = \"2zw\"\nfirst-line-indent = \"1zw\"\n" address >>= (@?= "　　　東京都\n　　千代田区\n")
+      text "[paragraph-styles.body]\nindent = \"2zw\"\nfirst-line-indent = \"3mm\"\n" address >>= (@?= "東京都\n千代田区\n"),
+    testCase "plain text: every line of a keep paragraph starts with the first-line indent; an item has the nesting indent only (docs/adr ADR 0049)" $ do
+      let text style src = withVerseProject style src $ \tmp -> do
+            _ <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            TIO.readFile (tmp </> "build/text/horizontal/v.txt")
+      text "[paragraph-styles.verse]\nindent = \"3zw\"\nfirst-line-indent = \"-1zw\"\n" "@style verse\n  あ\n  い\n" >>= (@?= "　　あ\n　　い\n")
+      text "[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n" "- 東京都\\\n  千代田区\n" >>= (@?= "・　東京都\n　千代田区\n")
   ]
 
 -- | The plain text of a one-file project, horizontal or vertical.

@@ -252,6 +252,7 @@ golem-driver のテストは、並列と逐次で組んだ PDF のバイト列�
 本当に同時に動かすのは、[code: -threaded] と [code: -with-rtsopts=-N] でビルドし、マシンのすべてのプロセッサを capability にするテストのスイート [code: golem-driver-parallel-test] である。
 生成した原稿と [code: tempest]、[code: kanikosen] の見本を並列と逐次で組み、バイト列と diagnostics が一致することを確かめる。
 [code: golem] の実行ファイルも [code: -with-rtsopts=-N] でリンクし、マシンのすべてのプロセッサを capability にする。
+環境を変える検査（[code: scripts/env-determinism/check.sh]）は、[code: GHCRTS] で [code: golem] の capability の数を一つと二つに変えて、出力が変わらないことを確かめる（第[ref-number determinism]章）。
 
 S2 の繰り返しも同じ構造をしている。
 golem-layout の [code: resolvePageRefs] は、仮のページ番号から組んだページへの関数を受け取り、ページ番号が変わらなくなるまで繰り返す純粋な関数である。

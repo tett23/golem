@@ -20,6 +20,7 @@
 | [code: pt] | ポイントです。1in の 72 分の 1 です。 |
 | [code: Q] | 級です。0.25mm です。文字の大きさに使います。 |
 | [code: H] | 歯です。0.25mm です。行送りに使います。 |
+| [code: in] | インチです。72pt（25.4mm）です。英語圏の判型や塗り足しに使います。 |
 | [code: zw] | 全角一字分です。その場所の文字の大きさを一字とします。 |
 
 見出しの番号、図番号、ノンブルの書式には、次の差し込みを書けます。
@@ -40,7 +41,7 @@ HTML と EPUB は [code: writing-mode] だけを使います。
 
 | キー | 既定 | 意味 |
 |:---|:---|:---|
-| [code: size] | （必須） | 判型です。[code: "A4"]、[code: "A5"]、[code: "A6"]、[code: "B5"]、[code: "B6"]、[code: "四六判"]、[code: "菊判"]、[code: "新書判"]、[code: "mass-market"] のどれかか、[code: { width = "148mm", height = "210mm" }] のように幅と高さで書きます。幅と高さに [code: zw] は使えません。 |
+| [code: size] | （必須） | 判型です。[code: "A4"]、[code: "A5"]、[code: "A6"]、[code: "B5"]、[code: "B6"]、[code: "四六判"]、[code: "菊判"]、[code: "新書判"]、[code: "mass-market"] のどれかか、[code: { width = "148mm", height = "210mm" }] のように幅と高さで書きます。英語の本の判型は [code: { width = "5.5in", height = "8.5in" }] のようにインチでも書けます。幅と高さに [code: zw] は使えません。 |
 | [code: binding] | [code: "left"] | 綴じる側です。[code: "right"]（右綴じ）か [code: "left"]（左綴じ）です。 |
 | [code: writing-mode] | [code: "horizontal"] | [code: "vertical"]（縦組み）か [code: "horizontal"]（横組み）です。 |
 | [code: bleed] | [code: "0mm"] | 塗り足しの幅です。[code: zw] は使えません。 |
@@ -74,6 +75,7 @@ PDF を作るには必須です。
 フォントのファイルはプロジェクトの中に置き、プロジェクトのフォルダからの相対パスで書きます。
 Golem は、コンピューターに入っているフォントを探しません。
 フォントのライセンスが PDF への埋め込みを禁じていれば、エラー（G0804）になります[note: OpenType の仕様の OS/2 の表（[code: fsType]）。[code: https://learn.microsoft.com/en-us/typography/opentype/spec/os2]]。
+CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）は PDF に埋め込めないので、PDF が使う役割に書くとエラー（G0819）になります。
 
 | キー | 意味 |
 |:---|:---|
@@ -180,7 +182,7 @@ Golem は、コンピューターに入っているフォントを探しませ�
 
 間隔は、段落の行が載る行の格子の字面から測ります。
 罫線と段落のあいだ（前の罫線の [code: space-after]、後の罫線の [code: space-before]）は書いたとおりに空き、外側の空きは、罫線の領域が行の格子の行の数にそろうまで広がります。
-間隔は [code: mm]、[code: pt]、[code: Q]、[code: H]、[code: zw] のどれでも書けます。
+間隔は [code: mm]、[code: pt]、[code: Q]、[code: H]、[code: in]、[code: zw] のどれでも書けます。
 間隔の [code: zw] は、PDF でも HTML と EPUB でも、版面の文字の大きさ（[code: \[page.grid\]] の [code: font-size]）を一字とします。
 罫線が仕上がりの線か段間の半分を超えると、版面を計算できないエラー（G0701）です。
 [code: true] を書いたとき、[code: caption]、[code: sidenote]、[code: code] に書いたとき、[code: @style-def] に書いたときはエラー（G0306）です。
@@ -355,7 +357,7 @@ HTML、EPUB、プレーンテキストには線を出しません。
 
 | キー | 意味 |
 |:---|:---|
-| [code: number] | キャプションを付けたコードブロックのリスト番号の書式です。[code: {n}] などの差し込みを必ず含めます。既定は「リスト2-1」のように組む書式です。 |
+| [code: number] | キャプションを付けたコードブロックのリスト番号の書式です。[code: {n}] などの差し込みを必ず含めます。既定は「リスト2-1」のように組む書式です。番号とキャプションのあいだには、見出しの [code: number] と同じく、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式が空白で終われば足しません。 |
 | [code: line-numbers] | [code: true] にすると、[code: numbers] を書かないコードブロックにも行番号を付けます。既定は [code: false] です。 |
 | [code: line-number-color] | 行番号と折り返した行の印の色の名前です。書かなければ本文の文字の色です。 |
 | [code: highlight] | 強調する行の背景の色の名前です。書かなければ墨 15% の網にします。 |

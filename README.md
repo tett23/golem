@@ -231,6 +231,8 @@ GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 十冊はフォントをコミットしない。
 そのディレクトリで `golem build` を実行する前に、`scripts/fixtures/copy-fonts.sh` で『蟹工船』と『テンペスト』のフォントを写す（[docs/adr/0026](./docs/adr/0026-ten-public-domain-fixtures.md)）。
 golem-driver のテストは十冊をエラーなしに検査し、環境変数 `GOLEM_PD_BOOKS` があればすべてのターゲットに組む。
+CI の `build` ジョブは `GOLEM_PD_BOOKS` を付けてテストを走らせ、十冊をすべてのターゲットに組む（[docs/adr/0058](./docs/adr/0058-run-skipped-checks-in-ci.md)）。
+手元では、変数を付けたときだけ組む。
 
 ```bash
 scripts/fixtures/copy-fonts.sh
@@ -322,10 +324,10 @@ CI は二つのワークフローからなる。
 | `docs.yml` | `adr` | コミット済みの ADR と記録（`docs/audit/`、`docs/audits/`、`docs/benchmarks/`、`docs/benchmark/`）が変更されていないこと、文書の中の ADR の参照にリンクがあること、各 ADR がステータスの行をちょうど一つ持つことを検査する |
 | `docs.yml` | `manual` | プルリクエストで、`docs/markup.md` か `docs/specifications.md` を変えたのに `manual/` も `manual-dev/` も変えていないこと、`CONTRIBUTING.md` か `CONTRIBUTING.en.md` を変えたのに `manual-dev/` を変えていないことを検査する（`scripts/manual/check-updated.sh`）。`main` への push では省く |
 | `docs.yml` | `textlint` | `tools/textlint/` の規則のテストを実行し、`docs/` の文書（ADR と記録を除く）、README.md、CONTRIBUTING.md、変更で加わった ADR、二つのマニュアルの原稿の表記を textlint で検査する（`scripts/ci/textlint.sh`、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)） |
-| `ci.yml` | `changes` | `scripts/ci/`、`scripts/manual/`、`scripts/env-determinism/` のスクリプトのテスト（`scripts/ci/test.sh`、`scripts/manual/test.sh`、`scripts/env-determinism/test.sh`）を実行し、ビルドが読む `docs/` の下の文書が一覧にあることと、全パッケージが `-Werror=incomplete-patterns` でビルドされること（`scripts/ci/incomplete-patterns.sh`、[docs/adr/0027](./docs/adr/0027-exhaustive-command-dispatch-by-types.md)）と、`unsafePerformIO` の使用が一覧のとおりであること（`scripts/ci/unsafe-io.sh`、[docs/adr/0034](./docs/adr/0034-fewer-unsafe-perform-io.md)）と、`modules/` のプログラムが実行中に capability の数を変えないこと（`scripts/ci/rts-capabilities.sh`）を確かめ、変更のパスからビルドが要るかを決める |
+| `ci.yml` | `changes` | `scripts/ci/`、`scripts/manual/`、`scripts/env-determinism/` のスクリプトのテスト（`scripts/ci/test.sh`、`scripts/manual/test.sh`、`scripts/env-determinism/test.sh`）を実行し、ビルドが読む `docs/` の下の文書が一覧にあることと、全パッケージが `-Werror=incomplete-patterns` でビルドされること（`scripts/ci/incomplete-patterns.sh`、[docs/adr/0027](./docs/adr/0027-exhaustive-command-dispatch-by-types.md)）と、`unsafePerformIO` の使用が一覧のとおりであること（`scripts/ci/unsafe-io.sh`、[docs/adr/0034](./docs/adr/0034-fewer-unsafe-perform-io.md)）と、`modules/` のプログラムが実行中に capability の数を変えないこと（`scripts/ci/rts-capabilities.sh`）と、プラグインの ABI のバージョンが直前のリリースからの ABI の変更に合っていること（`scripts/ci/abi-version.sh`、[docs/adr/0052](./docs/adr/0052-plugin-abi-version-bump-rule.md)）を確かめ、変更のパスからビルドが要るかを決める |
 | `ci.yml` | `build` | x86-64 と aarch64 の Linux でビルドとテストを行い（10 分で終わらないテストのスイートは `scripts/ci/suite-timeout.sh` が止めて失敗にする）、生成したパーサーが文法と一致することを確かめる。`scripts/determinism.sh` の出力を作り、その中で `manual/` と `manual-dev/` を notice も含めて diagnostic を一つも出さずに組む。x86-64 では EPUB が epubcheck を通ることを確かめ、組んだ二つのマニュアルの PDF と HTML を成果物 `manual` と `manual-dev` として上げ、実行の環境を変えても出力が変わらないことを `scripts/env-determinism/check.sh` で確かめる。プルリクエストでは `--quick` で小さな入力だけを検査し、`main` への push とリリースではすべての入力を検査する（[docs/adr/0029](./docs/adr/0029-environment-variation-determinism-test.md)、[docs/adr/0038](./docs/adr/0038-env-determinism-quick-on-pull-requests.md)）。テストのラッパーは、すべての `cabal` のコマンドが同じ設定を読むように `cabal.project.local` に書き、qpdf と epubcheck はビルドの裏で入れる（[docs/adr/0037](./docs/adr/0037-ci-build-job-speedup.md)）。x86-64 では同じコミットを二つのランナーでビルドし、一方がテストを、もう一方が決定性の検査の出力、マニュアル、epubcheck、環境を変える検査を受け持つ。プルリクエストでは、GHC がモジュールをコンパイルしたときに `dist-newstyle` をそのプルリクエストのキャッシュに保存し、次の push と再実行はそれを使う（[docs/adr/0045](./docs/adr/0045-split-x86-build-and-pull-request-cache.md)） |
 | `ci.yml` | `determinism` | 決まった入力（`scripts/determinism.sh`。二つのマニュアルを含む）の出力のハッシュを、二つのアーキテクチャで比べる |
-| `ci.yml` | `release-scripts` | `VERSION` と全パッケージのバージョンの一致を検査し、`scripts/release/` のスクリプトのテスト（`scripts/release/test.sh`）を実行する |
+| `ci.yml` | `release-scripts` | `VERSION` と全パッケージのバージョンの一致を検査し、`mise.toml` に固定した版の Claude Code を mise で入れて、`scripts/release/` のスクリプトのテスト（`scripts/release/test.sh`）を `GOLEM_REQUIRE_CLAUDE=1` で実行する（[docs/adr/0058](./docs/adr/0058-run-skipped-checks-in-ci.md)） |
 | `ci.yml` | `format` | fourmolu と hlint で検査する |
 | `ci.yml` | `ci` | `ci.yml` のほかのジョブがすべて成功したか、省かれたことを確かめる（`scripts/ci/gate.sh`） |
 
