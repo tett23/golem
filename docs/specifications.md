@@ -3034,7 +3034,7 @@ PDF 経路は最重量の工程（フォントのサブセット化と PDF/X-4 �
 テストを足すときに見つかったものは、該当する場合をテストに入れずに残している。
 直すときは、仕様とコードのどちらに合わせるかを決め、必要なら ADR を作成する。
 
-今は、載せている不具合はない。
+- **CFF2 のフォントの PDF**：CFF2 の輪郭を持つフォント（可変の OpenType/CFF2）を本の役割に使うと、`golem build` は diagnostic を出さずに PDF を書くが、そのフォントを TrueType の入れ物（`FontFile2`）に埋め込むので、PDF として誤っており、macOS の PDFKit では字がすべて黒丸に置き換わる。直すまで、PDF には CFF か TrueType の輪郭のフォントを使う（[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。
 
 ## 仕様が不明瞭な場合
 
