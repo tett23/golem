@@ -45,7 +45,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - 回した図版を待つあいだの改段と、回した図版のページの後の改ページ（未実装、[golem-driver ADR 0039](golem-driver/adr/0039-breaks-around-turned-figures.md)）。
 - 隠しノンブルの検査を `size` の半分の幅で行い、仕上がりの線を越える誤りを G0329 に分ける（未実装、[golem-driver ADR 0041](golem-driver/adr/0041-hidden-folio-overlap-check-by-size.md)）。
 - コードブロックのリスト番号とキャプションのあいだの区切りを、本の言語で決める（未実装、[golem-driver ADR 0042](golem-driver/adr/0042-listing-caption-number-separator.md)）。
-- G0295 のメッセージを、計算の量の上限として書く（未実装、[golem-eval ADR 0007](golem-eval/adr/0007-power-limit-message.md)）。
 - CFF2 のフォントを PDF の組版で拒む（未実装、[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。
 - `golem check` の G0702 の条件と、雛形の塗り足し（未実装、[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)）。
 - CFF のフォントは CFF の表だけを `CIDFontType0C` で埋め込む（未実装、[golem-pdf ADR 0011](golem-pdf/adr/0011-cff-fontfile3-subtype.md)）。

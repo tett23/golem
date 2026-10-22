@@ -250,6 +250,9 @@ overflowTests =
         ev "0.75 ** -100000000" @?= Left "G0295"
         bitsOf "0.5 ** 100000000" @?= bits 0
         evm "1.0000001 ** 100000" @?= Left (overLimit (52 * 100000))
+        -- the result, about 1 + 6.7e-12, is a double; the limit is on the computation (golem-eval ADR 0007)
+        evm "1.0000000000000002 ** 30000" @?= Left (overLimit 1560000)
+        assertBool "1.0000000000000002 ** 20000 is a value" (either (const False) (const True) (ev "1.0000000000000002 ** 20000"))
         bitsOf "1.0 ** 100000000" @?= bits 1
         bitsOf "0.5 ** -1000" @?= bits (encodeFloat 1 1000),
       testProperty "a power is the exact power rounded once" $ property $ do
@@ -292,7 +295,7 @@ overflowTests =
 
 -- | The code and the message of a power over the limit of the exact computation.
 overLimit :: Integer -> (Text, Text)
-overLimit n = ("G0295", "累乗の計算が大きすぎます（正確な計算に要るビットの数 " <> T.pack (show n) <> " が、上限の 1048576（2 の 20 乗）を超えます）")
+overLimit n = ("G0295", "累乗の正確な計算に要るビットの数 " <> T.pack (show n) <> " が、上限の 1048576（2 の 20 乗）を超えます（結果の大きさによらない上限です）")
 
 -- | The bits of the odd part of the absolute value of a rational, less one.
 oddBitsLess1 :: Rational -> Integer
