@@ -435,13 +435,13 @@ paginateWithin maxLines separatorLines base capacity flows =
       BreakRecto -> parityStart odd st
       BreakVerso -> parityStart even st
       BreakColumn
-        -- a waiting turned figure is placed first, on a page of its own (golem-driver ADR 0034)
+        -- a waiting turned figure is placed first, on a page of its own (golem-driver ADR 0034, 0039)
         | csColumns (sSet st) > 1 && not (any isPageFigure (sDeferred st)) -> nextColumn st
         | otherwise -> breakPage st
     breakPage st
       -- the page is closed even when empty; an empty page is blank
       | isEmpty st && sColumn st == 0 && not (afterPageFigure st) = blankPage st
-      -- the page after a turned figure is already a new page (golem-driver ADR 0034)
+      -- the page after a turned figure is already a new page (golem-driver ADR 0039)
       | isEmpty st && sColumn st == 0 = st
       | otherwise = nextPage st
     afterPageFigure st = case sDone st of
