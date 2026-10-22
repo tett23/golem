@@ -434,7 +434,7 @@ block c (Block sp lbl body) = case body of
         -- a caption or a file name: a figure (golem-driver ADR 0023)
         wrapped = isJust (codeCaption code) || isJust (codeFile code)
         caption =
-          [ "<figcaption>" <> maybe "" (\n -> escapeXml n <> "　") (Map.lookup sp (bookListings (cBook c))) <> inlines c is <> "</figcaption>"
+          [ "<figcaption>" <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage (cCfg c)) n)) (Map.lookup sp (bookListings (cBook c))) <> inlines c is <> "</figcaption>"
           | Just is <- [codeCaption code]
           ]
         file = ["<div class=\"code-file\">" <> escapeXml f <> "</div>" | Just f <- [codeFile code]]
