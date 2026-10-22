@@ -153,10 +153,11 @@ data Page = Page
   }
   deriving stock (Eq, Show)
 
-{- | The embedded font program. An OpenType font with CFF outlines goes
-into FontFile3 with the OpenType subtype (PDF 1.6).
+{- | The embedded font program: a TrueType font goes into FontFile2, the
+bare CFF table of a font with CFF outlines into FontFile3 with the subtype
+CIDFontType0C (golem-pdf ADR 0011).
 -}
-data FontProgram = TrueTypeProgram !ByteString | CffProgram !ByteString | OpenTypeProgram !ByteString
+data FontProgram = TrueTypeProgram !ByteString | CffProgram !ByteString
   deriving stock (Eq, Show)
 
 {- | An embedded CID-keyed font, prepared by golem-font. Metrics are in
@@ -580,11 +581,10 @@ registrationColorSpace =
 fontObjects :: Int -> Font -> [Obj]
 fontObjects base f =
   let (bx0, by0, bx1, by1) = fontBBox f
-      isCff = case fontProgram f of TrueTypeProgram _ -> False; _ -> True
-      programBytes = case fontProgram f of CffProgram b -> b; TrueTypeProgram b -> b; OpenTypeProgram b -> b
+      isCff = case fontProgram f of TrueTypeProgram _ -> False; CffProgram _ -> True
+      programBytes = case fontProgram f of CffProgram b -> b; TrueTypeProgram b -> b
       programSubtype = case fontProgram f of
         CffProgram _ -> [("Subtype", OName "CIDFontType0C")]
-        OpenTypeProgram _ -> [("Subtype", OName "OpenType")]
         TrueTypeProgram _ -> []
       type0 =
         ODict

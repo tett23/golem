@@ -486,7 +486,7 @@ fakeFonts =
       lfFaceFile = const ("fonts/b.otf", "truetype"),
       lfInkBox = \_ _ -> Just (1 / 10, -(1 / 10), 9 / 10, 8 / 10),
       lfEmbed = \_ vertical used ->
-        pure $
+        pure . Right $
           Font "AAAAAA+Fake" (TrueTypeProgram "fake font program") vertical [(g, 1000) | (g, _) <- used] [] 880 (-120) 700 80 (0, -120, 1000, 880) 0 used ("Adobe", "Identity", 0)
     }
   where

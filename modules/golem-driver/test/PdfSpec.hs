@@ -11,7 +11,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
-import Golem.Driver.Fonts (actualTextOf, golemFontProvider, toUnicodeOf)
+import Golem.Driver.Fonts (actualTextOf, cffFontProgram, golemFontProvider, toUnicodeOf)
 import Golem.Driver.New (Language (..), createProject, templateFiles)
 import Golem.Driver.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
 import Golem.Driver.Pdf (ClusterPart (..), CodeInfo (..), FontProvider (..), GlyphFrame (..), LoadedFonts (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
@@ -62,6 +62,33 @@ pdfPipelineTests =
         -- 「は」(U+306F) and 「じ」(U+3058) of 「はじめに」 are mapped back to text
         assertBool "ToUnicode" (any (\st -> "<306f>" `BS.isInfixOf` st && "beginbfchar" `BS.isInfixOf` st) streams)
         qpdfCheck a,
+      testCase "a CFF font that is not CID-keyed is a bare CFF in CIDFontType0C too (golem-pdf ADR 0011)" $ do
+        (sans, _) <- realLatinFonts
+        pdf <- miniPdf golemFontProvider False (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n") "Text.\n" [("fonts/sans.otf", sans)]
+        assertBool "CIDFontType0C" ("/Subtype /CIDFontType0C" `BS.isInfixOf` pdf)
+        assertBool "no OpenType program" (not ("/Subtype /OpenType" `BS.isInfixOf` pdf))
+        streams <- inflateAll pdf
+        -- the CFF header: major version 1, minor 0, header size 4
+        assertBool "a bare CFF program" (any (BS.isPrefixOf (BS.pack [1, 0, 4])) streams)
+        assertBool "no OpenType font" (not (any (BS.isPrefixOf "OTTO") streams))
+        qpdfCheck pdf,
+      testCase "G0818: a CFF font without a CFF table is not embedded as OpenType (golem-pdf ADR 0011)" $ do
+        (sans, _) <- realLatinFonts
+        let renamed = renameTable "CFF " "CFX " sans
+            expected = diagnostic "G0818" Error (mkSpan (FileId 3) 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"
+        cffFontProgram (FileId 3) "fonts/sans.otf" renamed @?= Left expected
+        case cffFontProgram (FileId 3) "fonts/sans.otf" sans of
+          Right (P.CffProgram b) -> BS.take 3 b @?= BS.pack [1, 0, 4]
+          other -> assertFailure (either show (const "another program") other)
+        -- the build stops with G0818 at the top of style.toml and writes no PDF
+        let failing =
+              FontProvider $ \root fid style locals ->
+                fmap (\lf -> lf {lfEmbed = \_ _ _ -> pure (Left (diagnostic "G0818" Error (mkSpan fid 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"))})
+                  <$> loadFonts golemFontProvider root fid style locals
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = failing}) (Just (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n")) [("fonts/sans.otf", sans)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G0818"]
+        map (whereIs b) (bErrors b) @?= [(Just "style.toml", 0)]
+        bPdf b @?= Nothing,
       testCase "ruby readings, emphasis dots and line-end hyphens are drawn" $ do
         pdf <- withSystemTempDirectory "golem-driver" $ \tmp -> do
           copyTree fixture tmp
@@ -170,6 +197,34 @@ characterFeatureTests =
       shapingOf False (lk KernJapaneseEqualWidth True) 'a' @?= Shaping "body" False []
       -- Latin in vertical text is turned and measured horizontally
       shapingOf True (lk KernMetrics False) 'a' @?= Shaping "body" False [],
+    testCase "punctuation JLReq spaces gets -palt and -vpal by every kerning method (docs/adr ADR 0053)" $ do
+      let lk k p = (plainLook "body" 655360) {lkKerning = k, lkProportional = p}
+      shapingOf False (lk KernMetrics True) '「' @?= Shaping "body" False ["-palt", "-vpal"]
+      shapingOf True (lk KernMetrics True) '「' @?= Shaping "body" True ["-palt", "-vpal"]
+      -- the role's palt is undone even without proportional-metrics
+      shapingOf False (lk KernMetrics False) '「' @?= Shaping "body" False ["-palt", "-vpal"]
+      mapM_ (\c -> shapingOf False (lk KernMetrics True) c @?= Shaping "body" False ["-palt", "-vpal"]) ['」', '。', '、', '・', '：', '；']
+      shapingOf False (lk KernNone True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"]
+      shapingOf False (lk KernJapaneseEqualWidth True) '「' @?= Shaping "body" False ["-kern", "-vkrn", "-palt", "-vpal"]
+      -- what JLReq does not space keeps palt
+      shapingOf False (lk KernMetrics True) '？' @?= Shaping "body" False ["palt"]
+      shapingOf False (lk KernMetrics True) '…' @?= Shaping "body" False ["palt"],
+    testCase "the role's palt leaves a bracket its full width, a kana its palt width (docs/adr ADR 0053)" $ do
+      fonts <- notoPaltFonts
+      let lk = plainLook "palt" 655360
+          advance c = lfAdvance fonts (shapingOf False lk c) c
+      advance '「' @?= 1
+      advance 'あ' @?= lfAdvance fonts (Shaping "palt" False []) 'あ',
+    testCase "brackets are as wide with the role's palt or proportional-metrics as without (docs/adr ADR 0053)" $ do
+      noto <- notoBytes
+      let fonts = "\n[fonts.body]\nja = \"fonts/noto.otf\"\n\n[fonts.palt]\nja = \"fonts/noto.otf\"\nfeatures = [\"palt\"]\n\n[character-styles.p]\nfont = \"palt\"\n\n[character-styles.q]\nproportional-metrics = true\n"
+          widths source = do
+            (_, pl) <- layoutMiniFonts golemFontProvider miniManifest (horizontal30 fonts) source [("fonts/noto.otf", noto)] >>= either (assertFailure . show) pure
+            pure [(bcText c, w) | sl <- Map.elems (plLines pl), Box w c <- lineItems (slLine sl), bcText c `elem` ["「", "」"]]
+      plain <- widths "漢「字」漢\n"
+      assertEqual "two brackets" 2 (length plain)
+      widths "[style q: 漢「字」漢]\n" >>= (@?= plain)
+      widths "[style p: 漢「字」漢]\n" >>= (@?= plain),
     testCase "PDF: a baseline shift moves the glyph up in horizontal text, right in vertical text" $ do
       let up = "\n[character-styles.up]\nbaseline-shift = \"2pt\"\n"
           at axis style = do
@@ -199,17 +254,17 @@ characterFeatureTests =
         [g] -> assertBool (show g) (snd (shOffset g) /= 0)
         other -> assertFailure (show other),
     testCase "PDF: a glyph is drawn at its box moved by its offset; other glyphs stay (golem-driver ADR 0020)" $ do
-      -- a bracket gets palt or vpal from a role's features (proportional-metrics leaves punctuation to the aki)
+      -- a kana gets palt or vpal from a role's features (punctuation JLReq spaces does not, docs/adr ADR 0053)
       let style feature = fakeBody <> "\n[fonts.palt]\nja = \"fonts/h.otf\"\nfeatures = [\"" <> feature <> "\"]\n\n[character-styles.p]\nfont = \"palt\"\n"
-          -- the bracket of the role palt moved as palt (horizontal) or vpal (vertical) would; the advances stay
+          -- the kana of the role palt moved as palt (horizontal) or vpal (vertical) would; the advances stay
           moved =
             fakeFonts
               { lfShape = \s t ->
-                  [ if shText g == "「" && shRole s == "palt" then g {shOffset = if shVertical s then (0, 1 / 4) else (-(1 / 4), 0)} else g
+                  [ if shText g == "あ" && shRole s == "palt" then g {shOffset = if shVertical s then (0, 1 / 4) else (-(1 / 4), 0)} else g
                   | g <- lfShape fakeFonts s t
                   ]
               }
-          drawn fonts base feature = miniPdf (FontProvider (\_ _ _ _ -> pure (Right fonts))) True (base <> style feature) "[style p: 漢「字」]\n" fakeFontFiles >>= fmap (drawnGlyphs . BS.concat) . inflateAll
+          drawn fonts base feature = miniPdf (FontProvider (\_ _ _ _ -> pure (Right fonts))) True (base <> style feature) "[style p: 漢あ字]\n" fakeFontFiles >>= fmap (drawnGlyphs . BS.concat) . inflateAll
           diff base feature = do
             plain <- drawn fakeFonts base feature
             off <- drawn moved base feature
@@ -219,7 +274,7 @@ characterFeatureTests =
       horizontal <- diff horizontalStyle "palt"
       case horizontal of
         [(g, dx', dy')] -> do
-          g @?= fromEnum '「'
+          g @?= fromEnum 'あ'
           near (-(10 / 4)) dx'
           dy' @?= 0
         other -> assertFailure (show other)
@@ -227,7 +282,7 @@ characterFeatureTests =
       case vertical of
         -- 13Q is 3.25mm: a quarter of it upward
         [(g, dx', dy')] -> do
-          g @?= fromEnum '「'
+          g @?= fromEnum 'あ'
           dx' @?= 0
           near (13 / 4 / 4 * 72 / 25.4) dy'
         other -> assertFailure (show other),
@@ -1654,3 +1709,11 @@ combiningTests =
       serif <- BS.readFile "test/fixtures/tempest/fonts/SourceSerifVariable-Roman.ttf"
       pure [("fonts/noto.otf", noto), ("fonts/serif.ttf", serif)]
     combiningPdf src = combiningFiles >>= miniPdf realProvider False combiningStyle src
+
+-- | A copy of an sfnt font with the tag of one table record changed.
+renameTable :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString
+renameTable from to font =
+  let numTables = fromIntegral (BS.index font 4) * 256 + fromIntegral (BS.index font 5) :: Int
+   in case [r | k <- [0 .. numTables - 1], let r = 12 + 16 * k, BS.take 4 (BS.drop r font) == from] of
+        r : _ -> BS.take r font <> to <> BS.drop (r + 4) font
+        [] -> font
