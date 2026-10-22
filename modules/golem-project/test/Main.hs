@@ -792,17 +792,61 @@ hiddenFolioTests =
   testGroup
     "[hidden-folio] (golem-driver ADR 0021)"
     [ testCase "the defaults without [hidden-folio]" $
-        fmap stHiddenFolio (parseStyle (FileId 0) "") @?= Right (HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs 278657)),
+        fmap stHiddenFolio (parseStyle (FileId 0) "") @?= Right (HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs 278657) False),
       testCase "the four keys are read" $
         fmap stHiddenFolio (parseStyle (FileId 0) "[hidden-folio]\nenabled = false\npages = \"all\"\nsize = \"8Q\"\ngutter = \"2mm\"\n")
-          @?= Right (HiddenFolio False HiddenAll (Abs 371543) (Abs 371543)),
+          @?= Right (HiddenFolio False HiddenAll (Abs 371543) (Abs 371543) True),
       testCase "zw, a size or gutter of 0 or less, an unknown pages and an unknown key are G0306" $
         mapM_
           (\body -> codes (parseStyle (FileId 0) ("[hidden-folio]\n" <> body <> "\n")) @?= ["G0306"])
           ["size = \"1zw\"", "gutter = \"-1mm\"", "size = \"0pt\"", "pages = \"blank\"", "font = \"body\"", "gutter = \"1zw\"", "size = \"abc\""],
-      testCase "a gutter less than half the size is G0306" $
-        codes (parseStyle (FileId 0) "[hidden-folio]\nsize = \"6pt\"\ngutter = \"1mm\"\n") @?= ["G0306"]
+      testCase "a gutter less than half the size is G0329 at gutter, with the values to fix (golem-driver ADR 0041)" $ do
+        let src = "[hidden-folio]\nsize = \"6pt\"\ngutter = \"2pt\"\n"
+        case parseStyle (FileId 0) src of
+          Left [d] -> do
+            diagCode d @?= DiagnosticCode "G0329"
+            diagMessage d @?= "[hidden-folio] の gutter（0.71mm）が size（2.12mm）の半分（1.06mm）より小さいため、隠しノンブルの数字が仕上がりの線を越えます（gutter を 1.06mm 以上にするか、size を 1.41mm 以下にします）"
+            spanStart (diagSpan d) @?= T.length "[hidden-folio]\nsize = \"6pt\"\ngutter = "
+            map fst (diagFacts d) @?= ["gutter", "size", "min-gutter", "max-size"]
+          other -> assertFailure (show (void other)),
+      testCase "a size of 8mm with the default gutter is G0329 at size (golem-driver ADR 0041)" $
+        case parseStyle (FileId 0) "[hidden-folio]\nsize = \"8mm\"\n" of
+          Left [d] -> (diagCode d, spanStart (diagSpan d)) @?= (DiagnosticCode "G0329", T.length "[hidden-folio]\nsize = ")
+          other -> assertFailure (show (void other)),
+      testCase "the gutter and the size the message names pass, 0.01mm past them do not (golem-driver ADR 0041)" $
+        forM_ [("6pt", "2pt"), ("8mm", "1.5mm"), ("13Q", "1mm"), ("7pt", "0.5mm")] $ \(size, gutter) -> do
+          let style s g = "[hidden-folio]\nsize = \"" <> s <> "\"\ngutter = \"" <> g <> "\"\n"
+          (minGutter, maxSize) <- case parseStyle (FileId 0) (style size gutter) of
+            Left [d] | diagCode d == DiagnosticCode "G0329" -> pure (bounds (diagMessage d))
+            other -> assertFailure (show (void other))
+          codes (parseStyle (FileId 0) (style size (mmText minGutter))) @?= []
+          codes (parseStyle (FileId 0) (style (mmText maxSize) gutter)) @?= []
+          codes (parseStyle (FileId 0) (style size (mmText (minGutter - 1 % 100)))) @?= ["G0329"]
+          codes (parseStyle (FileId 0) (style (mmText (maxSize + 1 % 100)) gutter)) @?= ["G0329"],
+      testCase "a gutter of exactly half the size is no error (golem-driver ADR 0041)" $
+        codes (parseStyle (FileId 0) "[hidden-folio]\nsize = \"6pt\"\ngutter = \"3pt\"\n") @?= [],
+      testCase "G0329 also when the hidden folio is not enabled (golem-driver ADR 0041)" $
+        codes (parseStyle (FileId 0) "[hidden-folio]\nenabled = false\nsize = \"6pt\"\ngutter = \"2pt\"\n") @?= ["G0329"],
+      testCase "a gutter in zw is still G0306, not G0329 (golem-driver ADR 0041)" $
+        codes (parseStyle (FileId 0) "[hidden-folio]\nsize = \"6pt\"\ngutter = \"1zw\"\n") @?= ["G0306"],
+      testCase "G0329 comes with the other checks; a schema error stops the reading (golem-driver ADR 0041)" $ do
+        let hf = "[hidden-folio]\nsize = \"6pt\"\ngutter = \"2pt\"\n"
+            grid = "[page]\nsize = \"A5\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 40\nlines = 30\nline-pitch = \"16pt\"\nposition = { top = \"14mm\", gutter = \"14mm\" }\n"
+        Set.fromList (codes (parseStyle (FileId 0) (grid <> "[paragraph-styles.body]\nsize = \"30Q\"\n" <> hf))) @?= Set.fromList ["G0311", "G0329"]
+        codes (parseStyle (FileId 0) (hf <> "font = \"body\"\n")) @?= ["G0306"]
     ]
+  where
+    -- the gutter and the size in mm the message of G0329 names
+    bounds m = (mmIn "gutter を " m, mmIn "size を " m)
+    mmIn key m = case T.breakOn "mm" (T.drop (T.length key) (snd (T.breakOn key m))) of
+      (n, _) -> case T.splitOn "." n of
+        [i, f] -> fromInteger (read (T.unpack i)) + read (T.unpack f) % 100
+        _ -> error (T.unpack m)
+    -- a length in mm to two decimals
+    mmText :: Rational -> Text
+    mmText r =
+      let c = round (r * 100) :: Integer
+       in T.pack (show (c `div` 100) <> "." <> (if c `mod` 100 < 10 then "0" else "") <> show (c `mod` 100) <> "mm")
 
 -- | [index] (docs/adr ADR 0025).
 indexStyleTests :: TestTree

@@ -3386,6 +3386,7 @@ style.toml の誤りです
 マスターページの柱の内容の誤りには使わない（[G0314](#g0314)）。
 見出しの `running-head` には使わない（[G0319](#g0319)）。
 文字スタイルと段落スタイルの `kerning`、`tracking`、`proportional-metrics`、`baseline-shift` の誤りには使わない（[G0321](#g0321)）。
+隠しノンブルの `gutter` と `size` の関係の誤りには使わない（[G0329](#g0329)）。
 `@style-def` の名前と欄の誤りにも出る。
 誤りのある定義は捨てる。
 
@@ -3404,7 +3405,7 @@ style.toml の誤りです
 - `border` か `border-width` を、`code` のほかの段落スタイルに書いた。`border-width` を zw で書いた（[golem-driver ADR 0023](golem-driver/adr/0023-code-block-book-features.md)）。
 - 文字スタイルの `background` か `padding` を、`code` と `based-on` で `code` に行き着く文字スタイルのほかに書いた。文字スタイルの `background` に `true` を書いた。文字スタイルの `padding` が負であるか、寸法として読めない（[golem-driver ADR 0029](golem-driver/adr/0029-inline-code-background.md)）。
 - `[code]` か `[code.colors]` に未知のキーを書いた。`[code]` の `line-numbers` が真偽値でない。`[code]` の `number` が `{n}` などの差し込みを含まない。
-- `[hidden-folio]` の `size` か `gutter` を `zw` で書いたか、0 以下にしたか、寸法として読めない値にした。`pages` に `unnumbered` と `all` のほかの値を書いた。`gutter` が `size` の半分より小さい（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。
+- `[hidden-folio]` の `size` か `gutter` を `zw` で書いたか、0 以下にしたか、寸法として読めない値にした。`pages` に `unnumbered` と `all` のほかの値を書いた（[golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)）。`gutter` が `size` の半分より小さい誤りは [G0329](#g0329) である。
 - 罫線の指定（`[notes.rule]`）で、`length` が寸法として読めないか 0 以下、`weight` が寸法として読めないか 0 以下か `zw`、`space-before` か `space-after` が寸法として読めないか負である。未知のキーを書いた。`[notes.rule]` に `length` を書いていない（[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)）。
 - 罫線の指定で、`style` に線の種類の表にない値を書いた。`dash` か `gap` が寸法として読めないか、0 以下か、`zw` である。`dash` を `"dashed"` のほかの線の種類に、`gap` を `"dashed"`、`"dotted"`、`"japanese-dots"` のほかの線の種類に書いた。`color` を文字列で書いていない（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
 - 段落スタイルか `[headings.N]` の `rule-before`、`rule-after` に、表と `false` のほかの値（`true` を含む）を書いた。組み込みの段落スタイル `caption`、`sidenote`、`code` に書いた。`@style-def` に書いた。`length` と `end-indent` を一緒に書いた。`start-indent` と `end-indent` を引くと罫線の長さが 0 以下になる。`[notes.rule]` に `start-indent`、`end-indent`、`keep-in-column` を書いた（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
@@ -4047,6 +4048,40 @@ dev と prod の両方でエラーであり、LSP も同じく出す。
 ### 直し方
 
 メッセージの経路の値から、その文字のエスケープを消す。
+
+## G0329
+
+隠しノンブルが仕上がりの線を越えます
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+`style.toml` の `[hidden-folio]` の `gutter` が `size` の半分より小さい（`2 × gutter < size`）。
+隠しノンブルの数字の列は、ノドの仕上がりの線から `gutter` の距離にある中心線から、左右に `size` の半分ずつの幅を持つとして測るので、列がノドの仕上がりの線を越える。
+フォントの字の送りは使わず、実際の数字の幅より広い `size` で測る（[G0750](#g0750) と同じ）。
+`style.toml` をスキーマのとおりに読めた後の検査であり、ほかの検査の誤り（[G0311](#g0311) など）と一緒に出す。
+TOML として読めないか、スキーマに合わない（[G0306](#g0306) などで読み込みが止まる）ときは検査しない。
+`enabled`、`--marks`、ターゲットによらず検査する。
+位置は `gutter` の値で、`gutter` を書かず `size` だけを書いた場合は `size` の値である。
+値はどれも mm で、小数第 2 位まで書く。
+`<下限>` は、検査を通る `gutter` のうち 0.01mm の倍数で最も小さい値、`<上限>` は、検査を通る `size` のうち 0.01mm の倍数で最も大きい値であり、どちらも `style.toml` の寸法と同じ丸めで sp に直して求める。
+diagnostic の事実（JSON の `facts`）に、`gutter`、`size`、`min-gutter`、`max-size` を sp の整数で持つ。
+
+- メッセージ: `[hidden-folio] の gutter（<gutter>）が size（<size>）の半分（<半分>）より小さいため、隠しノンブルの数字が仕上がりの線を越えます（gutter を <下限> 以上にするか、size を <上限> 以下にします）`（例: `size = "6pt"`、`gutter = "2pt"` では `[hidden-folio] の gutter（0.71mm）が size（2.12mm）の半分（1.06mm）より小さいため、隠しノンブルの数字が仕上がりの線を越えます（gutter を 1.06mm 以上にするか、size を 1.41mm 以下にします）`）
+- 段階とモジュール: プロジェクト（golem-project の `Golem.Project.Style`）
+- ADR: [golem-driver ADR 0041](golem-driver/adr/0041-hidden-folio-overlap-check-by-size.md)
+
+### 主な原因
+
+- `[hidden-folio]` の `gutter` を小さくしすぎた。
+- `[hidden-folio]` の `size` を大きくしすぎた。
+
+### 直し方
+
+`[hidden-folio]` の `gutter` を大きくするか、`size` を小さくする。
+メッセージの下限か上限の値をそのまま `"1.06mm"` のように書けば、検査を通る。
 
 ## G0401
 
@@ -5506,7 +5541,7 @@ PDF を書かない。
 
 - メッセージ: `隠しノンブルが版面に重なります。[hidden-folio] の gutter を小さくするか、ノドの余白を広げてください`
 - 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`、golem-driver の `Golem.Driver`、`Golem.Driver.Pdf`）
-- ADR: [golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)
+- ADR: [golem-driver ADR 0021](golem-driver/adr/0021-hidden-folios.md)、[golem-driver ADR 0041](golem-driver/adr/0041-hidden-folio-overlap-check-by-size.md)（数字の列の幅を `size` で測ること）
 
 ### 主な原因
 

@@ -504,6 +504,10 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
 = [strong: G0325 [code: \[index\] の columns は 1 以上の整数です]]、[strong: [code: \[index\] の column-gap が正しくありません]]
   [code: \[index\]] の [code: columns] は [code: 2] のように 1 以上の整数で、[code: column-gap] は [code: "2zw"] のように 0 以上の寸法で書いてください。
   [code: "2"] のように引用符で囲むと、文字列になって誤りになります。
+= [strong: G0329 [code: \[hidden-folio\] の gutter（…）が size（…）の半分（…）より小さいため、隠しノンブルの数字が仕上がりの線を越えます（…）]]
+  隠しノンブルの数字の列が、ノドの仕上がりの線を越えます。
+  [code: \[hidden-folio\]] の [code: gutter] を大きくするか、[code: size] を小さくしてください。
+  メッセージの括弧の中の値を、[code: gutter = "1.06mm"] のようにそのまま書けば、このエラーは出なくなります。
 
 @nonumber
 ## 紙面に収まらないとき
