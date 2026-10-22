@@ -31,7 +31,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - プレーンテキストで、強制改行の後の行に一行目の字下げを掛けない（未実装、[docs/adr 0049](adr/0049-plain-text-indent-after-hard-break.md)）。
 - `golem` をすべてのプロセッサの上で動かし、環境を変える検査で capability の数を変える（未実装、[docs/adr 0050](adr/0050-run-golem-on-every-processor.md)）。
-- PDF の図版の `Contents` で繰り返し名指したストリームを、出力でも一度だけ書く（未実装、[docs/adr 0051](adr/0051-reuse-repeated-pdf-content-streams.md)）。
 - プラグインの ABI のバージョンは、リリースしたバージョンからだけ上げる（未実装、[docs/adr 0052](adr/0052-plugin-abi-version-bump-rule.md)）。
 - `palt` と `vpal` を、JLReq が空きを決める約物に当てない（未実装、[docs/adr 0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 - SVG の `marker` の循環と深すぎる入れ子を、それぞれのコードのエラーにする（未実装、[docs/adr 0054](adr/0054-svg-marker-cycle-and-depth-codes.md)）。

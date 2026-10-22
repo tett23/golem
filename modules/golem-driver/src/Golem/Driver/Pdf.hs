@@ -2598,8 +2598,11 @@ keepLastTwo items = case reverse boxes of
       g@Glue {} -> [Penalty 0 infPenalty NoHyphen, g]
       x -> [x]
 
--- | Why a figure cannot be placed: G0810 with the reason, or G0811 (golem-pdf ADR 0008, 0009).
-data Unplaced = Unplaced !Text | UnsupportedSvg !(NonEmpty S.Unsupported)
+{- | Why a figure cannot be placed: G0810 with the reason, G0811 (golem-pdf
+ADR 0008, 0009), or G0815, the joined content of a PDF page over 256 MiB
+(docs/adr ADR 0051).
+-}
+data Unplaced = Unplaced !Text | UnsupportedSvg !(NonEmpty S.Unsupported) | ContentTooLarge
 
 {- | The figures, read once by file and page; why one cannot be placed
 (golem-pdf ADR 0008). The format follows the extension, as golem-eval
@@ -2616,7 +2619,10 @@ loadFigures inp = do
       bytes <- BS.readFile (piRoot inp <> "/" <> T.unpack s)
       pure $
         if
-          | ".pdf" `T.isSuffixOf` T.toLower s -> either (Left . Unplaced . P.importErrorText) (Right . P.VectorFigure) (P.importPage page bytes)
+          | ".pdf" `T.isSuffixOf` T.toLower s -> case P.importPage page bytes of
+              Left (P.ContentTooLarge _) -> Left ContentTooLarge
+              Left e -> Left (Unplaced (P.importErrorText e))
+              Right ip -> Right (P.VectorFigure ip)
           | ".svg" `T.isSuffixOf` T.toLower s -> case S.readSvg bytes of
               Left (S.SvgMalformed why) -> Left (Unplaced why)
               Left (S.SvgUnsupported us) -> Left (UnsupportedSvg us)
@@ -2627,15 +2633,17 @@ loadFigures inp = do
 figureBlocks :: Book -> [(SrcSpan, Figure)]
 figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ (FigureBlock f) <- bs]
 
-{- | G0810: a figure that cannot be placed in the PDF, and G0811: an SVG
-figure with things outside the subset; one per @figure (golem-pdf ADR
-0008, 0009).
+{- | G0810: a figure that cannot be placed in the PDF, G0811: an SVG figure
+with things outside the subset, and G0815: a PDF figure whose page content
+joined is over 256 MiB; one per @figure (golem-pdf ADR 0008, 0009, docs/adr
+ADR 0051).
 -}
 figureDiagnostics :: PdfInput -> Map (Text, Int) (Either Unplaced P.FigureContent) -> [Diagnostic]
 figureDiagnostics inp loaded =
   [ case why of
       Unplaced reason -> diagnostic "G0810" Error sp ("図版を PDF に置けません: " <> figSource f <> "（" <> reason <> "）")
       UnsupportedSvg us -> diagnostic "G0811" Error sp (unsupportedMessage (figSource f) us)
+      ContentTooLarge -> diagnostic "G0815" Error sp ("図版の PDF のページの内容をつなぐと 256 MiB を超えます: " <> figSource f)
   | (sp, f) <- figureBlocks (piBook inp),
     Just (Left why) <- [Map.lookup (figureKey f) loaded]
   ]
