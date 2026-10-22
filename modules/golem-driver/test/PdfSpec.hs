@@ -12,6 +12,7 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.Fonts (actualTextOf, cffFontProgram, golemFontProvider, toUnicodeOf)
+import Golem.Driver.New (Language (..), createProject, templateFiles)
 import Golem.Driver.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
 import Golem.Driver.Pdf (ClusterPart (..), CodeInfo (..), FontProvider (..), GlyphFrame (..), LoadedFonts (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
 import Golem.Layout.Japanese (BoxKind (..))
@@ -512,6 +513,20 @@ marksTests =
       (w, h) <- a5Size
       boxOf "MediaBox" pdf @?= boxOf "BleedBox" pdf
       boxOf "TrimBox" pdf @?= boxText (Rect 557314 557314 w h),
+    testCase "the English template: 0.125in of bleed, and Japanese marks without G0702 (golem-pdf ADR 0010, golem-project ADR 0010)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+      let dir = tmp </> "book"
+      createProject dir (templateFiles English uuid0) Nothing >>= (@?= Right ())
+      createDirectoryIfMissing True (dir </> "fonts")
+      copyFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" (dir </> "fonts/SourceSerif4-Regular.otf")
+      r <- build (defaultOptions dir) {optTargets = Just [TargetPdf], optMarks = JapaneseMarks}
+      [diagCode d | d <- brDiagnostics r, isError d] @?= []
+      pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
+        [p] -> BS.readFile p
+        other -> assertFailure (show other)
+      -- mass-market is 4.25 x 6.875 in, 306 x 495 pt
+      let s = P.sheet (Just P.Japanese) (9 * 65536) (20054016, 32440320)
+      boxOf "TrimBox" pdf @?= boxText (P.shTrim s)
+      boxOf "BleedBox" pdf @?= boxText (P.shBleed s),
     testCase "Japanese marks without bleed are G0702 at the top of style.toml, and no PDF" $ do
       b <- buildMarks (\o -> o {optMarks = JapaneseMarks}) (Just horizontalStyle)
       map diagCode (bErrors b) @?= [DiagnosticCode "G0702"]

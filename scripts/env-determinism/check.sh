@@ -8,12 +8,15 @@
 #
 #   --quick        leave out the large inputs (tempest, kanikosen, the ten
 #                  public-domain books and the two manuals)
-#   --only NAME    apply only the change NAME (tz-east, ..., combined)
+#   --only NAME    apply only the change NAME (tz-east, ..., caps-two, combined)
 #   --input NAME   build only the input NAME; every change chosen is applied
 #                  to it, a large one too
 #
 # Each change but combined is applied to the small inputs (exprs, sample,
 # sample-pdf, diagnostics); combined, every change at once, to all inputs.
+# caps-one and caps-two set GHCRTS=-N1 and -N2, the number of capabilities
+# of golem (docs/adr/0050); the base gives no GHCRTS, so golem runs on every
+# processor, as -with-rtsopts=-N says; combined uses -N2.
 #
 # GOLEM_REQUIRE_LOCALES=1 fails the check when a locale a change needs is not
 # installed; otherwise the change is a SKIP. GOLEM_REQUIRE_FONTS=1 fails it
@@ -57,7 +60,7 @@ FIX=$ROOT/modules/golem-driver/test/fixtures
 SMALL="exprs sample sample-pdf diagnostics"
 BOOKS="merry-wives frogs snark elements-of-style nightmare-abbey koya-hijiri ichiaku-no-suna haru-to-shura taira-no-masakado ushiyama-hotel"
 LARGE="tempest kanikosen $BOOKS manual manual-dev"
-CHANGES="tz-east tz-west tz-unset locale-c locale-eucjp locale-ja locale-unset sde-zero sde-future home-other home-unset xdg path-empty umask root-path mtime-past mtime-future decoys combined"
+CHANGES="tz-east tz-west tz-unset locale-c locale-eucjp locale-ja locale-unset sde-zero sde-future home-other home-unset xdg path-empty umask root-path mtime-past mtime-future decoys caps-one caps-two combined"
 # a name --only does not know would apply nothing and pass
 if [ -n "$ONLY" ]; then
   case " $CHANGES " in
@@ -172,7 +175,7 @@ build() {
     mtime-future) find "$dir" -exec touch -t 209912312359 {} + ;;
   esac
   # the base environment, then the change
-  P=/usr/bin:/bin H=$WORK/home-a LNG=C.UTF-8 LCA= T=UTC SDE= XDG= U=022
+  P=/usr/bin:/bin H=$WORK/home-a LNG=C.UTF-8 LCA= T=UTC SDE= XDG= U=022 RTS=
   case "$b_change" in
     tz-east) T=Pacific/Kiritimati ;;
     tz-west) T=Etc/GMT+12 ;;
@@ -188,8 +191,10 @@ build() {
     xdg) XDG=$WORK/xdg ;;
     path-empty) P=/nonexistent ;;
     umask) U=077 ;;
+    caps-one) RTS=-N1 ;;
+    caps-two) RTS=-N2 ;;
     combined)
-      T=Pacific/Kiritimati SDE=0 H=$WORK/home-b XDG=$WORK/xdg P=/nonexistent U=077
+      T=Pacific/Kiritimati SDE=0 H=$WORK/home-b XDG=$WORK/xdg P=/nonexistent U=077 RTS=-N2
       LCA=${EUCJP:-C}
       ;;
   esac
@@ -199,6 +204,7 @@ build() {
   [ -z "$LCA" ] || set -- "$@" LC_ALL="$LCA"
   [ "$T" = - ] || set -- "$@" TZ="$T"
   [ -z "$SDE" ] || set -- "$@" SOURCE_DATE_EPOCH="$SDE"
+  [ -z "$RTS" ] || set -- "$@" GHCRTS="$RTS"
   [ -z "$XDG" ] || set -- "$@" XDG_CACHE_HOME="$XDG/cache" XDG_CONFIG_HOME="$XDG/config" XDG_DATA_HOME="$XDG/data"
   code=0
   (cd "$dir" && umask "$U" && env -i "$@" "$GOLEM" build --format json >"$base/stdout" 2>"$base/stderr") || code=$?
