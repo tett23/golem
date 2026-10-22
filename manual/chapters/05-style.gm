@@ -66,7 +66,7 @@ Golem には、テキストフレームを描いて置く操作がありませ�
 索引だけは、[code: \[index\]] で版面と異なる段数にできます（「[ref-title index-columns]」、[ref-page index-columns] ページ）。
 脚注は、注の印のある段の下に入ります。
 章の終わりでは、後ろの段が空いたまま残ることがあります。
-段組みの版面では、傍注欄（[code: \[sidenotes\]]）と図版の回り込み（[code: wrap]）は使えず、エラーになります。
+段組みの版面では、傍注の領域（[code: \[sidenotes\]]）と図版の回り込み（[code: wrap]）は使えず、エラーになります。
 HTML と EPUB は、段組みにしません。
 
 @label fonts
@@ -543,7 +543,7 @@ leader = "dots"
 - [code: \[notes\]] の [code: mark-size]：PDF の本文の注の印の大きさです。[code: zw] は印の位置の文字の大きさに対する比で、0 より大きく 1 以下の値を書きます。[code: "6pt"] のような寸法も書けますが、印の位置の文字より大きくはなりません。省くと [code: "0.5zw"]（本文の文字の半分）です。このマニュアルは [code: "0.65zw"] で組んでいます。
 - [code: \[notes\]] の [code: mark-format]：PDF の注の印の書式です。[code: {n}] が注の番号になり、ちょうど一つ書きます。[code: "{n})"] なら [code: 1)]、[code: "注{n}"] なら [code: 注1] の形になります。注の本文の先頭にも同じ印が付きます。省くと [code: "*{n}"] です。HTML、EPUB、プレーンテキストの印は変わりません。
 - [code: \[notes.rule\]]：PDF のページの下の脚注の前に引く区切り線です。[code: length] が線の長さ（必須）、[code: weight] が太さ（省くと [code: "0.3pt"]）、[code: space-before] が本文の最後の行と線のあいだの空き、[code: space-after] が線と脚注の一行目のあいだの空きです。[code: style] で線の種類を、[code: color] でスウォッチの名前の色を選べます。このテーブルがなければ線は引きません。
-- [code: \[sidenotes\]]：傍注欄を、小口側の余白に設けます。[code: width] が傍注欄の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。
+- [code: \[sidenotes\]]：傍注の領域を、小口側の余白に設けます。[code: width] が傍注の領域の幅、[code: gap] が版面とのあいだの空きです。[code: marker] で本文側の印を、番号（[code: "number"]）、「※」（[code: "symbol"]）、なし（[code: "none"]）から選べます。
 - [code: \[figures\]] の [code: number]：図番号の書式です。[code: {chapter}] が章の番号、[code: {n}] が章の中の図の番号です。[code: wrap-gap] で、回り込みの図版と本文のあいだの空きを決めます。
 - [code: \[toc\]] の [code: leader]：目次のリーダーを点線（[code: "dots"]）にするか、なし（[code: "none"]）にするかです。
 
@@ -571,10 +571,10 @@ style = "dotted"
 color = "accent"
 ```
 
-傍注欄の幅は、傍注を使うなら必ず決めてください。
+傍注の領域の幅は、傍注を使うなら必ず決めてください。
 [code: \[sidenotes\]] がないまま傍注を使うと、PDF を組むときにエラーになります。
-このマニュアルは、傍注欄を取るために一行の字数を減らしています。
-傍注欄は小口側の余白の中に収まる必要があるからです。
+このマニュアルは、傍注の領域を取るために一行の字数を減らしています。
+傍注の領域は小口側の余白の中に収まる必要があるからです。
 
 @label index-columns
 ## 索引の段組み
@@ -592,7 +592,7 @@ column-gap = "2zw"
 - [code: column-gap]：索引の段と段のあいだの空きです。書かなければ、[code: \[page.grid\]] の [code: column-gap] を使います。
 
 索引の段の幅は、版面の幅から段間を引き、[code: columns] の数で等しく分けたものです。
-傍注欄は版面の幅に含めません。
+傍注の領域は版面の幅に含めません。
 索引の行は、本文と同じ行の位置に並びます。
 索引の段の幅が本文の文字の 8 字分に満たないと、エラーになります。
 [code: columns] を減らすか、[code: column-gap] を狭めてください。

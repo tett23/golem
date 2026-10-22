@@ -73,6 +73,8 @@ const cases = [
   ["a review word: 鍵", "キャッシュの鍵を変える。\n", {}, ["1:review-words"]],
   ["not a review word: 公開鍵", "公開鍵と秘密鍵で署名する。\n", {}, []],
   ["a review word: 鍵 named in quotes", "「鍵」と書かない。\n", {}, []],
+  ["a review word: 傍注欄", "版面の外の傍注欄に置く。\n", {}, ["1:review-words"]],
+  ["a review word: 傍注欄 named in quotes", "旧い ADR は「傍注欄」と書く。\n", {}, []],
   // prh
   ["prh: upstream for developers", "本流に送る。\n", {}, ["1:prh"]],
   ["prh: public domain","公有の作品である。\n", {}, ["1:prh"]],

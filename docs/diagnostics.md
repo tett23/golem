@@ -4762,7 +4762,7 @@ plugins.lock を読めません
 5. 版面が判型からはみ出す。
 6. 縦組みの版面に `[sidenotes]` がある。
 7. 段組みの版面に `[sidenotes]` がある。
-8. 傍注欄が判型からはみ出す。
+8. 傍注の領域が判型からはみ出す。
 9. `[notes.rule]` の `length` が行長（段組みでは段の行長）より長い。
 10. 段落スタイル（名前の順）と見出し（階層の順）の罫線が、仕上がりの線を超えるか、段組みの版面で段間の半分を超える（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。行の方向では、`start-indent`、`end-indent`、`length` で段の外に出る量を、左右（縦組みでは天地）の余白と比べる。行に直交する方向では、`keep-in-column = false` の罫線の内側の間隔と太さを、天地（縦組みでは左右）の余白と比べる。余白は奇数ページと偶数ページの狭いほうである。段間の半分と比べるのは行の方向だけで、行に直交する方向の罫線は段間と比べない（[golem-driver ADR 0040](golem-driver/adr/0040-rules-outside-column-only-at-type-area-edge.md)）。
 
@@ -4772,7 +4772,7 @@ LSP は出さない。
 位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
 未知の判型は [G0317](#g0317)、マスターページの未知の位置は [G0318](#g0318) である。
 
-- メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注欄を設けられません`、`段組みの版面には傍注欄を設けられません`、`版面と傍注欄の合計がページからはみ出しています`、`脚注の区切り線の length が行長を超えます`、`段落スタイル <名前> の罫線が仕上がりの線を超えます`、`段落スタイル <名前> の罫線が段間の半分を超えます`、`見出し <階層> の罫線が仕上がりの線を超えます`、`見出し <階層> の罫線が段間の半分を超えます`
+- メッセージ: `style.toml に [page] がないため、版面を計算できません`、`style.toml に [page.grid] がないため、版面を計算できません`、`文字の大きさは絶対的な寸法で書いてください`、`字数、行数、段数は 1 以上、行送りは文字の大きさ以上にしてください`、`版面がページからはみ出しています`、`縦組みの版面には傍注の領域を設けられません`、`段組みの版面には傍注の領域を設けられません`、`版面と傍注の領域の合計がページからはみ出しています`、`脚注の区切り線の length が行長を超えます`、`段落スタイル <名前> の罫線が仕上がりの線を超えます`、`段落スタイル <名前> の罫線が段間の半分を超えます`、`見出し <階層> の罫線が仕上がりの線を超えます`、`見出し <階層> の罫線が段間の半分を超えます`
 - 段階とモジュール: レイアウト（golem-layout-spec の `Golem.LayoutSpec`、golem-driver の `Golem.Driver`）
 - ADR: [golem-driver ADR 0016](golem-driver/adr/0016-output-and-layout-diagnostic-codes.md)（[golem-cli ADR 0003](golem-cli/adr/0003-new-project-page-and-fonts.md)、[golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)、[golem-driver ADR 0011](golem-driver/adr/0011-sidenote-font.md)、[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[docs/adr/0018](adr/0018-multi-column-layout.md)、[golem-driver ADR 0024](golem-driver/adr/0024-rule-spec-and-footnote-separator.md)、[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)、[golem-driver ADR 0040](golem-driver/adr/0040-rules-outside-column-only-at-type-area-edge.md) も触れる）
 
@@ -4781,9 +4781,9 @@ LSP は出さない。
 - `style.toml` に `[page]` か `[page.grid]` がない。
 - 文字の大きさを絶対的な寸法で書いていない。
 - 字数、行数、段数が 0 以下か、行送りが文字の大きさより小さい。
-- 版面か傍注欄が判型からはみ出している。
-- 縦組みの版面に傍注欄を設けた。
-- `[page.grid]` の `columns` が 2 以上の版面に傍注欄（`[sidenotes]`）を設けた。
+- 版面か傍注の領域が判型からはみ出している。
+- 縦組みの版面に傍注の領域を設けた。
+- `[page.grid]` の `columns` が 2 以上の版面に傍注の領域（`[sidenotes]`）を設けた。
 - 脚注の区切り線（`[notes.rule]`）の `length` が、一行の長さ（段組みでは一段の行長）より長い。
 - 段落スタイルか見出しの罫線を、`start-indent`、`end-indent`、`length` で、余白の幅か段間の半分を超えて段の外に出した。
 - 段落スタイルか見出しの罫線を、`keep-in-column = false` で、天地（縦組みでは左右）の余白を超えて段の外に出した。この罫線は余白とだけ比べ、段間の半分とは比べない（[golem-driver ADR 0040](golem-driver/adr/0040-rules-outside-column-only-at-type-area-edge.md)）。
@@ -5094,7 +5094,7 @@ PDF は書く。
 ### 意味
 
 縦組みの版面で傍注を使った。
-縦組みでは傍注欄を設けない。
+縦組みでは傍注の領域を設けない。
 段落、見出し、リストの項目、定義リスト、表のセル、図版のキャプションの傍注と、圏点、色、文字スタイル、脚注の本文の中の傍注を、一つにつき一つ報告する。
 縦組みのときは、[G0734](#g0734) と [G0735](#g0735) を出さない。
 PDF を書かない。
@@ -5106,7 +5106,7 @@ PDF を書かない。
 
 ### 主な原因
 
-- 縦組みの版面で傍注を使った。縦組みでは傍注欄を設けない。
+- 縦組みの版面で傍注を使った。縦組みでは傍注の領域を設けない。
 
 ### 直し方
 
@@ -5114,24 +5114,24 @@ PDF を書かない。
 
 ## G0733
 
-傍注が傍注欄に収まりません
+傍注が傍注の領域に収まりません
 
 - 重大度: エラー
 - 状態: 使用中
 
 ### 意味
 
-一つの傍注が傍注欄より高いか、一ページの傍注を上に詰めても傍注欄に収まらない。
+一つの傍注が傍注の領域より高いか、一ページの傍注を上に詰めても傍注の領域に収まらない。
 ページごとに最初の一つだけを報告する。
 
-- メッセージ: `傍注が傍注欄より高く、収まりません`、`このページの傍注が傍注欄に収まりません`
+- メッセージ: `傍注が傍注の領域より高く、収まりません`、`このページの傍注が傍注の領域に収まりません`
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
 - ADR: [golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)
 
 ### 主な原因
 
-- 一つの傍注が傍注欄より高い。
-- 一ページの傍注が多く、上に詰めても傍注欄に収まらない。
+- 一つの傍注が傍注の領域より高い。
+- 一ページの傍注が多く、上に詰めても傍注の領域に収まらない。
 
 ### 直し方
 
@@ -5139,7 +5139,7 @@ PDF を書かない。
 
 ## G0734
 
-傍注欄のない版面では傍注を使えません
+傍注の領域のない版面では傍注を使えません
 
 - 重大度: エラー
 - 状態: 使用中
@@ -5148,7 +5148,7 @@ PDF を書かない。
 
 `[sidenotes]` のない横組みの版面で傍注を使った。
 
-- メッセージ: `傍注欄（style.toml の [sidenotes]）のない版面では傍注を使えません`
+- メッセージ: `傍注の領域（style.toml の [sidenotes]）のない版面では傍注を使えません`
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
 - ADR: [golem-driver ADR 0006](golem-driver/adr/0006-pdf-sidenotes.md)
 
@@ -5491,7 +5491,7 @@ diagnostic の重大度に notice より下の info を設けたら、このコ�
 
 ### 意味
 
-トンボを付けた PDF に入れる隠しノンブルの数字の列の左右の範囲（ノドの仕上がりの線から `[hidden-folio]` の `gutter` の距離にある中心線から、`size` の半分ずつ）が、そのページの版面か傍注欄に、左右の方向で重なる。
+トンボを付けた PDF に入れる隠しノンブルの数字の列の左右の範囲（ノドの仕上がりの線から `[hidden-folio]` の `gutter` の距離にある中心線から、`size` の半分ずつ）が、そのページの版面か傍注の領域に、左右の方向で重なる。
 `style.toml` と `--marks` だけで決まるので、PDF をターゲットに含み、`--marks` が `japanese` か `western` のときは、ビルドと `golem check` の両方で、レイアウトの前に報告する。
 `[hidden-folio]` の `enabled` が `false` のときと、`--marks none` のときは検査しない。
 PDF を書かない。

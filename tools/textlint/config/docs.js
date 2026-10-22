@@ -8,7 +8,7 @@ const { prh, words, markdownRules, golemRules } = require("./common");
 module.exports = {
   rules: {
     ...markdownRules,
-    ...golemRules([words.machine, words.notice, words.kiku, words.key]),
+    ...golemRules([words.machine, words.notice, words.kiku, words.key, words.sidenoteArea]),
     prh: prh("dev"),
   },
 };

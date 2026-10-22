@@ -43,6 +43,12 @@ const words = {
     message:
       "key は「鍵」と書かず「キー」と書く（TOML、表、辞書、キーワード引数、並べ替え、キャッシュ、API のキー）。暗号の語（公開鍵、秘密鍵）はそのまま使う（docs/manual-policy.md）。",
   },
+  // the place of the sidenotes beside the type area (docs/adr/0059);
+  // committed ADRs keep the old word, which is quoted when it is named
+  sidenoteArea: {
+    pattern: "傍注欄",
+    message: "「傍注欄」と書かず「傍注の領域」と書く。旧い ADR の語を引くときだけ「」で囲む（docs/adr/0059）。",
+  },
   notice: {
     pattern: "お知らせ",
     message: "開発者と技術者に向けた文書（開発者のマニュアル、仕様書、新しい ADR）では重大度を notice と書き、info とも書き分ける。「お知らせ」は docs/diagnostics.md の値を引くときだけ「」で囲んで使う（docs/manual-policy.md）。",

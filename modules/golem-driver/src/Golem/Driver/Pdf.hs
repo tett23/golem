@@ -1391,7 +1391,7 @@ sidenoteDiagnostics :: PageGeometry -> Book -> [Diagnostic]
 sidenoteDiagnostics geom book
   | pgVertical geom = concatMap (verticalSidenotes (defaultComposeEnv 0) {ceVertical = True}) inlineLists
   | otherwise = case pgSidenotes geom of
-      Nothing -> [diagnostic "G0734" Error sp "傍注欄（style.toml の [sidenotes]）のない版面では傍注を使えません" | (sp, _) <- sites]
+      Nothing -> [diagnostic "G0734" Error sp "傍注の領域（style.toml の [sidenotes]）のない版面では傍注を使えません" | (sp, _) <- sites]
       Just _ -> [diagnostic "G0735" Error sp "PDF では、脚注の本文と図版のキャプションの中に傍注を置けません" | (sp, False) <- sites]
   where
     blocks = concat [bs | Document _ bs <- bookDocs book]
@@ -1463,8 +1463,8 @@ placePageSidenotes geom metricsOf lineMap p =
         then Right []
         else case placeSidenotes columnH (bodyPitch `div` 2) [(want, height sp ls) | (sp, want, ls) <- notes] of
           Right tops -> Right [PlacedSidenote sp t ls | ((sp, _, ls), t) <- zip notes tops]
-          Left (TooTall i) -> Left [diagnostic "G0733" Error (at i) "傍注が傍注欄より高く、収まりません"]
-          Left (DoesNotFit i) -> Left [diagnostic "G0733" Error (at i) "このページの傍注が傍注欄に収まりません"]
+          Left (TooTall i) -> Left [diagnostic "G0733" Error (at i) "傍注が傍注の領域より高く、収まりません"]
+          Left (DoesNotFit i) -> Left [diagnostic "G0733" Error (at i) "このページの傍注が傍注の領域に収まりません"]
 
 -- | The page numbers assumed in a round of S2: of labels and of index marks (golem-driver ADR 0007).
 data Assumed = Assumed
