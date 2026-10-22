@@ -55,14 +55,14 @@ Golem でも、文字スタイル（[docs/adr/0005](0005-character-and-paragraph
 
 - `CharStyleDef` に `csKerning :: Maybe Kerning`、`csTracking :: Maybe Int`、`csProportional :: Maybe Bool`、`csBaselineShift :: Maybe Dim` を、`ParaStyleDef` に同じ四つ（`ps` で始まる名前）を加える。`overChar`、`overPara` と `paraStyle` の既定を合わせて直す。
 - `data Kerning = KernMetrics | KernJapaneseEqualWidth | KernNone | KernOptical` を `Golem.Project.Style` に置く。
-- `kerning = "optical"` は G0321（文字の送りの欄の誤り）とし、メッセージを「v1 ではオプティカルカーニングを使えません」とする。型には値を持たせ、読み込みの検査で拒む。
-- `tracking` の範囲の外の値、`baseline-shift` の寸法として読めない値は G0321 とする。`baseline-shift` は `parseSignedDim` で読む。
+- `kerning = "optical"` は G03021（文字の送りの欄の誤り）とし、メッセージを「v1 ではオプティカルカーニングを使えません」とする。型には値を持たせ、読み込みの検査で拒む。
+- `tracking` の範囲の外の値、`baseline-shift` の寸法として読めない値は G03021 とする。`baseline-shift` は `parseSignedDim` で読む。
 
 | 診断コード | 重大度 | メッセージ |
 |---|---|---|
-| G0321 | エラー | `<欄> の値が正しくありません: <値>`（`kerning = "optical"` は `v1 ではオプティカルカーニングを使えません`） |
+| G03021 | エラー | `<欄> の値が正しくありません: <値>`（`kerning = "optical"` は `v1 ではオプティカルカーニングを使えません`） |
 
-G0321 は未使用である。`style.toml` の一般の誤りの G0306 から、カーニング、トラッキング、ベースラインシフトの欄の誤りを分けて、どの欄の誤りかをコードで引けるようにする（提案中の ADR のあいだで、G0317 から G0322 を分けて割り当てた）。
+G03021 は未使用である。`style.toml` の一般の誤りの G03006 から、カーニング、トラッキング、ベースラインシフトの欄の誤りを分けて、どの欄の誤りかをコードで引けるようにする（提案中の ADR のあいだで、G03017 から G03022 を分けて割り当てた）。
 
 - ファイルの中の文字スタイルと段落スタイルの定義（[docs/adr/0014](0014-in-file-settings.md)）でも、同じ欄を書ける。
 
@@ -189,7 +189,7 @@ CSS では、和文と欧文で別のカーニングを指定できない。
 ### style.toml（`modules/golem-project/test/Main.hs`）
 
 - `[character-styles.tight]` の `kerning = "none"`、`tracking = -50`、`proportional-metrics = true`、`baseline-shift = "1pt"` を読める。
-- `kerning = "optical"` と `kerning = "auto"`、`tracking = 10001`、`tracking = -1001`、`baseline-shift = "up"` が G0321 になる。
+- `kerning = "optical"` と `kerning = "auto"`、`tracking = 10001`、`tracking = -1001`、`baseline-shift = "up"` が G03021 になる。
 - 段落スタイルの `based-on` の鎖で、子が書かない欄を親から引き継ぎ、`body` が何も書かなければ `metrics`、0、偽、0 になる。
 
 ### 測り方（`modules/golem-driver/test/Main.hs`、`modules/golem-font/test`）

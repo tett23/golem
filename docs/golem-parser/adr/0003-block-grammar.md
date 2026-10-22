@@ -1,6 +1,6 @@
 # ADR 0003: ブロック層の文法
 
-ステータス: 採択→回復のラベルの追加（table_row）は [ADR 0007](0007-grammar-label-safety.md)、表の行末の `\` は [ADR 0010](0010-ruby-slash-escape-and-table-cell-breaks.md)、行頭の数の開きは [ADR 0011](0011-number-shorthand.md)、不正なインデントの条件（G0111）は [ADR 0009](0009-syntax-diagnostic-codes.md)
+ステータス: 採択→回復のラベルの追加（table_row）は [ADR 0007](0007-grammar-label-safety.md)、表の行末の `\` は [ADR 0010](0010-ruby-slash-escape-and-table-cell-breaks.md)、行頭の数の開きは [ADR 0011](0011-number-shorthand.md)、不正なインデントの条件（G01011）は [ADR 0009](0009-syntax-diagnostic-codes.md)
 
 ## 文脈
 

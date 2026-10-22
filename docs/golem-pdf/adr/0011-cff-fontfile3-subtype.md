@@ -75,13 +75,13 @@ Golem は、ビューアーで描けない PDF を黙って書かない。
 
 | コード | 重大度 | 対象 | メッセージ | 位置 |
 |---|---|---|---|---|
-| G0818 | エラー | CFF の表を取り出せないフォント | `フォントから CFF の表を取り出せません: <パス>` | `style.toml` の先頭（`style.toml` がなければマニフェストの先頭） |
+| G08018 | エラー | CFF の表を取り出せないフォント | `フォントから CFF の表を取り出せません: <パス>` | `style.toml` の先頭（`style.toml` がなければマニフェストの先頭） |
 
 - `<パス>` は、`style.toml` に書いたとおりのフォントのパスである。
-- PDF を組むとき（`golem build` の PDF と `golem preflight`）に出し、dev と prod の両方でエラーとする。G0818 があれば PDF を書かない。
-- 位置は、ほかのフォントの diagnostic（G0802、G0803）と同じく `style.toml` の先頭とする。
-- golem-pdf の `FontProgram` から `OpenTypeProgram` を除く。`Golem.Driver.Fonts` は、表を取り出せなければ `CffProgram` を作らず G0818 を返す。
-- G08 の番号は G0814 まで使っている。G0815 は [docs/adr/0051](../../adr/0051-reuse-repeated-pdf-content-streams.md) の草稿が、G0816 と G0817 は [docs/adr/0054](../../adr/0054-svg-marker-cycle-and-depth-codes.md) の草稿が使う。G0818 は、origin の各ブランチと、この worktree のほかの草稿で使われていない。
+- PDF を組むとき（`golem build` の PDF と `golem preflight`）に出し、dev と prod の両方でエラーとする。G08018 があれば PDF を書かない。
+- 位置は、ほかのフォントの diagnostic（G08002、G08003）と同じく `style.toml` の先頭とする。
+- golem-pdf の `FontProgram` から `OpenTypeProgram` を除く。`Golem.Driver.Fonts` は、表を取り出せなければ `CffProgram` を作らず G08018 を返す。
+- G08 の番号は G08014 まで使っている。G08015 は [docs/adr/0051](../../adr/0051-reuse-repeated-pdf-content-streams.md) の草稿が、G08016 と G08017 は [docs/adr/0054](../../adr/0054-svg-marker-cycle-and-depth-codes.md) の草稿が使う。G08018 は、origin の各ブランチと、この worktree のほかの草稿で使われていない。
 
 ### ADR のステータス
 
@@ -102,9 +102,9 @@ Golem は、ビューアーで描けない PDF を黙って書かない。
 - docs/specifications.md の「フォント」の節の、埋め込みの形を書いた段落（Type 0 のフォントと CIDFont で書く、の段落）に、次を足し、この ADR へのリンクを付ける。
   - 輪郭が CFF のフォントは `CIDFontType0` とし、`FontFile3` に CFF の表だけを `/Subtype /CIDFontType0C` で埋め込む。
   - 輪郭が TrueType のフォントは `CIDFontType2` とし、`FontFile2` に埋め込む。
-  - OpenType に包んだ CFF を埋め込まない理由（PDFium が文字のコードをグリフ ID として読む）と、CFF の表を取り出せないフォントを G0818 とすること。
-- `docs/diagnostics.md` に G0818 の節を足す。
-- 使い手のマニュアルの付録 E に G0818 を足す。
+  - OpenType に包んだ CFF を埋め込まない理由（PDFium が文字のコードをグリフ ID として読む）と、CFF の表を取り出せないフォントを G08018 とすること。
+- `docs/diagnostics.md` に G08018 の節を足す。
+- 使い手のマニュアルの付録 E に G08018 を足す。
 
 ## 実装しないこと
 
@@ -116,8 +116,8 @@ Golem は、ビューアーで描けない PDF を黙って書かない。
 
 次のテストを先に書き、失敗させてから実装する。
 
-- golem-driver の `Golem.Driver.Fonts` で、`CFF ` の表を持たない OpenType のバイト列（`CFF ` を別の名前に書き換えた Source Sans Pro など）を CFF のフォントとして埋め込もうとすると、G0818 になり、`/Subtype /OpenType` の `FontFile3` を作らないこと。
-- golem-driver の `test/PdfSpec.hs`：そのフォントを `[fonts.body]` に書いたプロジェクトの PDF のビルドが、`style.toml` の先頭に G0818 を一つ出し、PDF を書かないこと。
+- golem-driver の `Golem.Driver.Fonts` で、`CFF ` の表を持たない OpenType のバイト列（`CFF ` を別の名前に書き換えた Source Sans Pro など）を CFF のフォントとして埋め込もうとすると、G08018 になり、`/Subtype /OpenType` の `FontFile3` を作らないこと。
+- golem-driver の `test/PdfSpec.hs`：そのフォントを `[fonts.body]` に書いたプロジェクトの PDF のビルドが、`style.toml` の先頭に G08018 を一つ出し、PDF を書かないこと。
 
 今の振る舞いを固定するテストを足す。
 
@@ -127,19 +127,19 @@ Golem は、ビューアーで描けない PDF を黙って書かない。
 
 golem-syntax では、次を確かめる。
 
-- docs の diagnostic の一覧とコードの一致の検査が、G0818 を含めて通ること。
+- docs の diagnostic の一覧とコードの一致の検査が、G08018 を含めて通ること。
 
 ## トレードオフ
 
 - `CIDFontType0C` は CFF の表だけを埋め込むので、OpenType のほかの表（`GSUB`、`GPOS`、`cmap` など）は PDF に入らない。PDF の描画はグリフ ID か CID と輪郭だけで足り、シェイピングは Golem が先に済ませているので、失うものはない。
 - `/Subtype /OpenType` は規格が定める形であり、和文を描かないのは PDFium が 9.7.4.2 と食い違うためである。それでも、PDFium は Chromium の PDF のビューアーとして広く使われるので、ビューアーの互換を優先した。`CIDFontType0C` も規格が定める形なので、規格から外れることはない。
-- 今は `/Subtype /OpenType` で書けていたフォントが、G0818 で PDF を組めなくなる。どういうフォントで表を取り出せないかは確かめていない。サブセットを作れずに元のフォントを使った場合で、元のフォントが一つの OpenType でないとき（たとえばフォントのコレクションの `.ttc`）が考えられる。
+- 今は `/Subtype /OpenType` で書けていたフォントが、G08018 で PDF を組めなくなる。どういうフォントで表を取り出せないかは確かめていない。サブセットを作れずに元のフォントを使った場合で、元のフォントが一つの OpenType でないとき（たとえばフォントのコレクションの `.ttc`）が考えられる。
 
 ## 参考文献
 
 - [golem-font ADR 0002](../../golem-font/adr/0002-subsetting-and-embedding.md)
 - [ADR 0006](0006-cid-system-info.md)
-- [docs/adr/0054](../../adr/0054-svg-marker-cycle-and-depth-codes.md)（G0816、G0817）
+- [docs/adr/0054](../../adr/0054-svg-marker-cycle-and-depth-codes.md)（G08016、G08017）
 - コミット cfaf4149（fix(golem-driver): embed CFF fonts as bare CFF (CIDFontType0C)）
 - ISO 32000-1:2008, 9.7.4.2 Glyph Selection in CIDFonts、9.9 Embedded Font Programs（Table 126、Table 127）。Adobe が公開する版（SHA-256 `9de0ca9e8570d6209e8bd48a355be8eb6ec376acfc3fc3ae97cd8730351417ff`）。https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf
 - PDF Association, Arlington PDF Model, `tsv/latest/FontDescriptorCIDType0.tsv`、`FontFile3CIDType0.tsv`、`FontFile3OpenType.tsv`（コミット d148fee5）。https://github.com/pdf-association/arlington-pdf-model

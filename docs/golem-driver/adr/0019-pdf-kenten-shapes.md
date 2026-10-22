@@ -5,7 +5,7 @@
 ## 文脈
 
 圏点は `[kenten: 語]` と `[kenten shape=circle: 語]` で書き、形を省くと `style.toml` の `[composition]` の `kenten` に従う（[docs/markup.md](../../markup.md) の「圏点」）。
-形は、golem-eval の `Golem.Eval.File` の `kentenShapes` にある `sesame`、`open-sesame`、`dot`、`open-dot`、`circle`、`open-circle` の六つであり、ほかの値は G0239 になる。
+形は、golem-eval の `Golem.Eval.File` の `kentenShapes` にある `sesame`、`open-sesame`、`dot`、`open-dot`、`circle`、`open-circle` の六つであり、ほかの値は G02039 になる。
 意味論 IR の `Kenten !SrcSpan !(Maybe Text) [Inline]` は、書いた形をそのまま持ち、省いた場合は `Nothing` である。
 
 PDF の圏点には、仕様書の「v1 の実装で次の段階以降に回した項目」に挙げた不具合がある。
@@ -69,8 +69,8 @@ InDesign の圏点は、ゴマ、白ゴマ、黒丸、白丸、黒三角、白�
 | `triangle` | ▲（U+25B2） | 黒三角（加える） |
 | `open-triangle` | △（U+25B3） | 白三角（加える） |
 
-- `kentenShapes` に四つを加える。一覧にない値は今と同じく G0239 とする。
-- `[composition]` の `kenten` を、同じ一覧の `enumKey` で読む。一覧にない値は、ほかの `enumKey` の欄と同じく `style.toml` の値の誤り（G0306）とする。既定は今と同じ `"sesame"` とする。
+- `kentenShapes` に四つを加える。一覧にない値は今と同じく G02039 とする。
+- `[composition]` の `kenten` を、同じ一覧の `enumKey` で読む。一覧にない値は、ほかの `enumKey` の欄と同じく `style.toml` の値の誤り（G03006）とする。既定は今と同じ `"sesame"` とする。
 - `Golem.Eval.File` は、形を省いた `[kenten]` の形を `ctxDefaultKenten` で埋め、IR の `Kenten` は常に `Just` の形を持つ。型は `Maybe Text` のまま変えない。プラグインが `Nothing` の圏点を返した場合は、各出力で `sesame` とみなす。
 - golem-layout の `Golem.Layout.Look` に、形の型を置く。
 
@@ -124,20 +124,20 @@ lfInkBox :: Int -> Int -> Maybe (Rational, Rational, Rational, Rational)
 
 `Golem.Driver.Fonts` の `provide` は、golem-font の `glyphMetrics` の `gmBBox` を `fontUnitsPerEm` で割って返す。
 
-### 圏点の字のない書体（G0809）
+### 圏点の字のない書体（G08009）
 
 親文字の和文の書体が圏点の字を持たない（シェイピングの結果のグリフの番号が 0 である）と、`.notdef` の箱が描かれる。
 これを黙って描かないために、PDF を書く前にエラーで止める。
 
 | 診断 | 重大度 | メッセージ |
 |---|---|---|
-| G0809 | エラー | `役割 <役割> の和文の書体に圏点の形 <形> の字（U+<符号位置>）がありません` |
+| G08009 | エラー | `役割 <役割> の和文の書体に圏点の形 <形> の字（U+<符号位置>）がありません` |
 
 - レイアウトの後、すべての `KindKenten` の箱から、役割と形の組を集める。組ごとに一つだけ報告する。
-- 位置は、`KindKenten` の箱が原稿の位置を持たないので、G0807 と同じく `style.toml` の先頭とし、なければ `manifest.toml` の先頭とする。
-- 段階は出力（G08xx）とし、docs/diagnostics.md に節を足す。直し方には、`shape` を書体にある形に替えるか、圏点の字を持つ書体を役割に指定することを書く。
+- 位置は、`KindKenten` の箱が原稿の位置を持たないので、G08007 と同じく `style.toml` の先頭とし、なければ `manifest.toml` の先頭とする。
+- 段階は出力（G08xxx）とし、docs/diagnostics.md に節を足す。直し方には、`shape` を書体にある形に替えるか、圏点の字を持つ書体を役割に指定することを書く。
 
-### ルビと重なる圏点（G0745）
+### ルビと重なる圏点（G07045）
 
 ルビの親文字の中の圏点と、圏点の中のルビは、PDF では圏点を描かない。
 圏点とルビが同じ側に重なるためである。
@@ -146,11 +146,11 @@ lfInkBox :: Int -> Int -> Maybe (Rational, Rational, Rational, Rational)
 
 | 診断 | 重大度 | メッセージ |
 |---|---|---|
-| G0745 | お知らせ | `ルビの親文字の圏点は PDF では描きません` |
+| G07045 | お知らせ | `ルビの親文字の圏点は PDF では描きません` |
 
 - `Golem.Driver.Pdf` に `kentenRubyNotices :: Book -> [Diagnostic]` を加え、`sidenoteDiagnostics` と同じく PDF を組むときにだけ呼ぶ。
 - 位置は、ルビの親文字の中の `Kenten` ではその `Kenten` の位置、`Kenten` の中の `Ruby` ではその `Ruby` の位置とする。
-- `noticeCodes` に G0745 を加える。HTML と EPUB は圏点とルビの両方を出すので、このお知らせは PDF の段階のものである。
+- `noticeCodes` に G07045 を加える。HTML と EPUB は圏点とルビの両方を出すので、このお知らせは PDF の段階のものである。
 
 ### HTML と EPUB（golem-html）
 
@@ -167,7 +167,7 @@ lfInkBox :: Int -> Int -> Maybe (Rational, Rational, Rational, Rational)
   - `manual/appendices/a-markup.gm` の「段落の中のコマンド」の `[kenten: ...]` の項：「今の版では、形の指定は HTML と EPUB でだけ効き、PDF では常にゴマで組みます。」を消し、形の一覧を十にする。
   - `manual/appendices/c-style.gm` の「`[composition]`」の表の `kenten` の行：「今の版では HTML と EPUB でだけ効きます。」を消す。
   - `manual/chapters/03-markup.gm` の「強調と圏点」の節：圏点の見本の段落で、形を一つ変えて見せる。
-- docs/diagnostics.md に G0745 と G0809 の節を足す。
+- docs/diagnostics.md に G07045 と G08009 の節を足す。
 - 用語集の「圏点」に、形の一覧が docs/markup.md にあることと、約物と区切りには付けないことを書き足す。
 
 ## 実装しないこと
@@ -175,7 +175,7 @@ lfInkBox :: Int -> Int -> Maybe (Rational, Rational, Rational, Rational)
 - 欧文の語への圏点。CSS は欧文にも圏点を付けるので、HTML と PDF で見た目が異なる。欧文の語は分けずに一つの箱で組むので、字ごとに圏点を置くには語の中の字の位置が要る。
 - 圏点の大きさ、親文字との距離、揃え（中央か先頭か）、置く側（上か下か）の設定。CSS の `text-emphasis-position` に当たる設定も持たない。
 - 任意の字を圏点に使うこと（CSS の文字列の `text-emphasis-style`、InDesign のカスタム）。
-- 圏点とルビを同じ親文字に置くこと（G0745 で知らせる）。仕様書が v2 以降に回した「ルビの中の圏点」も扱わない。
+- 圏点とルビを同じ親文字に置くこと（G07045 で知らせる）。仕様書が v2 以降に回した「ルビの中の圏点」も扱わない。
 - 圏点の分の行間の調整。圏点は行の間の空きに置き、行送りを変えない。今と同じである。
 - 圏点の字を図形（パス）で描くこと。golem-pdf の描画は矩形の罫しか持たず、書体の字形を使うほうが書体の調子に合う。
 
@@ -186,8 +186,8 @@ lfInkBox :: Int -> Int -> Maybe (Rational, Rational, Rational, Rational)
 ### 評価と設定（`modules/golem-eval/test`、`modules/golem-project/test/Main.hs`）
 
 - `[kenten: 語]` の IR が、`ctxDefaultKenten = "circle"` の文脈で `Kenten _ (Just "circle") _` になる。
-- `shape=double-circle`、`open-double-circle`、`triangle`、`open-triangle` が受け付けられ、`shape=star` が G0239 になる。
-- `[composition] kenten = "star"` が G0306 になり、`kenten = "triangle"` を読める。
+- `shape=double-circle`、`open-double-circle`、`triangle`、`open-triangle` が受け付けられ、`shape=star` が G02039 になる。
+- `[composition] kenten = "star"` が G03006 になり、`kenten = "triangle"` を読める。
 
 ### 組み方（`modules/golem-layout/test/Main.hs`）
 
@@ -205,8 +205,8 @@ Source Han Sans のサブセット（`modules/golem-font/test/fonts/`）を本�
 - `shape=triangle` で、U+25B2 のグリフが描かれる。
 - `[composition] kenten = "open-circle"` のとき、形を省いた圏点で U+25CB のグリフが描かれる。
 - 圏点の中の「「」のグリフの位置が、圏点のない「「」と同じである。
-- 圏点の字を持たない書体（Source Sans Pro を和文の役割に指定する）で G0809 が一つだけ出て、PDF を書かない。
-- `[ruby: [kenten: 漢]|かん]` と `[kenten: [ruby: 漢|かん]]` で、それぞれ G0745 のお知らせが出て、PDF は書かれる。
+- 圏点の字を持たない書体（Source Sans Pro を和文の役割に指定する）で G08009 が一つだけ出て、PDF を書かない。
+- `[ruby: [kenten: 漢]|かん]` と `[kenten: [ruby: 漢|かん]]` で、それぞれ G07045 のお知らせが出て、PDF は書かれる。
 - 既存の圏点を含む PDF の golden テストは、圏点の位置が変わるので期待値を直す。直す前に、変わったのが圏点のグリフだけであることを確かめる。
 
 ### HTML（`modules/golem-html/test`）

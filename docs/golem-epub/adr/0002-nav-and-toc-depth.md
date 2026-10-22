@@ -42,7 +42,7 @@ Pandoc の EPUB の出力も、`--toc-depth` でナビゲーション文書の�
 - ナビゲーション文書は、`@toc` があるとき、その `depth` 以下の階層の見出しだけを載せる。`@notoc` の見出しは今と同じく載せない。
 - `@toc` がないときは、[golem-epub ADR 0001](0001-epub-packaging.md) のとおり、`@notoc` のない見出しをすべて載せる。
 - HTML のターゲットの目次のページ（`index.xhtml`）にも同じ規則を当てる。
-- 深さは `Book` の `bookTocDepth`（文書の最初の `@toc` の `depth`）から取る。`@toc` が二つ以上あれば G0402 のエラーになるので、ビルドの出力では一つに決まる。
+- 深さは `Book` の `bookTocDepth`（文書の最初の `@toc` の `depth`）から取る。`@toc` が二つ以上あれば G04002 のエラーになるので、ビルドの出力では一つに決まる。
 - 載せる見出しが一つもない場合（`@toc depth=1` で階層 1 の見出しがない本）は、今の `navDocument` と同じく、ナビゲーション文書そのものへのリンクを一つ置く。目次のページは空の一覧になる。
 
 目次の項目の並びは `Book` にすでにあり、`bookTocDepth` も `Book` にある。
@@ -60,7 +60,7 @@ tocWithinDepth book = [e | e <- bookToc book, maybe True (teLevel e <=) (bookToc
 
 この関数は golem-doc の `Golem.Doc.Assemble` に置き、golem-epub の `navDocument` と golem-driver の `indexPage` が使う。
 本文の `@toc`（golem-html、golem-text）と PDF の目次（golem-driver）は、今のとおり自分のブロックの `depth` で絞る。
-G0402 で `@toc` は一つに限られるので、ブロックの `depth` と `bookTocDepth` は同じ値になる。
+G04002 で `@toc` は一つに限られるので、ブロックの `depth` と `bookTocDepth` は同じ値になる。
 
 `navDocument` の入れ子は、絞った後の項目の階層で作る。
 絞った後の並びでは、ある項目の子はその項目より深い階層の項目だけなので、今の入れ子の作り方をそのまま使える。
@@ -111,7 +111,7 @@ Apple Books か Thorium Reader で開き、リーダーの目次に階層 1 の�
 v1 のリリースの前なので、この変化を受け入れる。
 
 `@toc` のブロックを持たない二つの出力は `bookTocDepth` を、ブロックを持つ三つの出力はブロックの `depth` を見るので、深さの出どころは二つある。
-G0402 があるので二つは同じ値になり、本文の `@toc` と PDF の目次の実装を書き換えずに済む。
+G04002 があるので二つは同じ値になり、本文の `@toc` と PDF の目次の実装を書き換えずに済む。
 
 ## ドキュメント
 

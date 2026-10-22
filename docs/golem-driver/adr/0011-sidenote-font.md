@@ -20,7 +20,7 @@
 [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) は、段落の見た目を `[paragraph-styles.<名前>]` の段落スタイルにまとめ、組み込みの段落スタイルとして `body`、`verse`、`caption`、`sidenote` を置く。
 段落スタイルの `font` はフォントの役割、`size` は文字の大きさで、`zw` は版面の文字の大きさを一字とする。
 書かない欄は `based-on` をたどって引き継ぎ、最後は `body` の値になる。
-`font` が `[fonts]` にない役割を指すと G0308、`size` が版面の文字の大きさを超えると G0311 になり、`usedRoles` はすべての段落スタイルの `font` を集める。
+`font` が `[fonts]` にない役割を指すと G03008、`size` が版面の文字の大きさを超えると G03011 になり、`usedRoles` はすべての段落スタイルの `font` を集める。
 `sidenote` は `based-on = "body"` だけを持ち、その ADR では傍注の組み方に使われない。
 キャプションの書体と大きさは、[ADR 0010](0010-caption-style.md) で段落スタイル `caption` に置いた。
 
@@ -56,17 +56,17 @@ size = "8pt"    # 文字の大きさ
 ```
 
 - `SidenoteStyle` から `snFont` と `snSize` を削る。`snWidth`、`snGap`、`snMarker` は残す。
-- `[sidenotes]` の `font` と `size` は未知のキーとして G0306 にし、[docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) の廃止した欄と同じく、メッセージで書き換え方を示す。
+- `[sidenotes]` の `font` と `size` は未知のキーとして G03006 にし、[docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) の廃止した欄と同じく、メッセージで書き換え方を示す。
 
 | 旧 | 新 |
 |---|---|
 | `[sidenotes] font = "r"` | `[paragraph-styles.sidenote] font = "r"` |
 | `[sidenotes] size = "8pt"` | `[paragraph-styles.sidenote] size = "8pt"` |
 
-- `[paragraph-styles.sidenote]` の読み込み、`based-on` の解決、G0306、G0308、G0311 の検査は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) のとおりとする。`roleChecks` に傍注のための検査を加える必要はない。
+- `[paragraph-styles.sidenote]` の読み込み、`based-on` の解決、G03006、G03008、G03011 の検査は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) のとおりとする。`roleChecks` に傍注のための検査を加える必要はない。
 - 傍注に効くのは、解決した `sidenote` の `font` と `size` だけである。`line-breaks`、`space-between`、[docs/adr/0006](../../adr/0006-paragraph-indent.md) の `indent` と `first-line-indent` は、傍注の本文には効かない。傍注の本文は意味論 IR の段落ではなく、インラインの要素の内容だからである。これらの欄は、`@style sidenote` を付けた原稿の段落には効く。
 
-今まで `[sidenotes]` の `font` に `[fonts]` にない役割を書いても黙って本文の書体で組まれていたが、`[paragraph-styles.sidenote]` に移すと G0308 になる。
+今まで `[sidenotes]` の `font` に `[fonts]` にない役割を書いても黙って本文の書体で組まれていたが、`[paragraph-styles.sidenote]` に移すと G03008 になる。
 綴りの誤りが見た目の劣化としてしか現れないことを防ぐという、未知のキーをエラーにする方針（[仕様書](../../specifications.md) の「style.toml」の節）に合う。
 
 ### 役割と大きさの決め方（golem-driver）
@@ -92,8 +92,8 @@ sidenoteMetrics :: Style -> PageGeometry -> (Text, Sp, Sp)
 [ADR 0010](0010-caption-style.md) のキャプションは見出しと同じ丸めで行送りを求めるが、傍注の計算を変えると既存の傍注のある PDF の出力が変わるので、ここでは変えない。
 
 `usedRoles` は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) のとおりすべての段落スタイルの `font` を集めるので、`sidenote` の役割はこの ADR で加えなくても読み込まれる。
-読み込む役割の決め方、フェイスの番号、同じバイト列のファイルの統合、G0805 の検査は [ADR 0003](0003-pdf-heading-styles.md) のとおりとする。
-縦組みの版面には `[sidenotes]` を書けない（G0701）ので、縦組みでは傍注を組まない。
+読み込む役割の決め方、フェイスの番号、同じバイト列のファイルの統合、G08005 の検査は [ADR 0003](0003-pdf-heading-styles.md) のとおりとする。
+縦組みの版面には `[sidenotes]` を書けない（G07001）ので、縦組みでは傍注を組まない。
 縦組みでも `sidenote` の `font` の役割は `usedRoles` に入って読み込まれるが、PDF に書くフォントは内容のストリームが参照するものだけ（`Golem.Pdf.Writer.writePdf` の `fontOrder`）なので、傍注のない PDF にはその役割のフォントは埋め込まれない。
 
 ### 傍注の組版と描画
@@ -103,7 +103,7 @@ sidenoteMetrics :: Style -> PageGeometry -> (Text, Sp, Sp)
 - 傍注の本文の中の文字スタイル（`[strong: ...]` などの組み込みの文字スタイルを含む）と色は、[docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) の `restyle` で、傍注の見た目から切り替える。文字スタイルの `size` の `zw` は s を一字とする。
 - `writeDocument` の傍注の描画は変えない。各箱の `bcLook` の役割で `lfShape` を呼ぶので、傍注の役割のグリフはその役割のフォントで描かれ、そのサブセットに入る。
 
-傍注の配置（`placePageSidenotes`）、G0732 から G0735 の検査、S2 との関係は [ADR 0006](0006-pdf-sidenotes.md) のまま変えない。
+傍注の配置（`placePageSidenotes`）、G07032 から G07035 の検査、S2 との関係は [ADR 0006](0006-pdf-sidenotes.md) のまま変えない。
 傍注の高さは役割によらず `(行数 − 1) × p + s` なので、書体を変えて変わるのは、行分割で決まる行数だけである。
 
 ### HTML と EPUB（golem-html、golem-driver）
@@ -159,9 +159,9 @@ HTML の傍注は、画面が広ければ本文の余白に置かれるので、
 
 ### golem-project（modules/golem-project/test/Main.hs）
 
-- `[sidenotes]\nwidth = "6zw"\ngap = "1zw"\nsize = "8pt"\n` が G0306 になり、メッセージに `[paragraph-styles.sidenote]` が含まれること。`font = "note"` も同じであること。
+- `[sidenotes]\nwidth = "6zw"\ngap = "1zw"\nsize = "8pt"\n` が G03006 になり、メッセージに `[paragraph-styles.sidenote]` が含まれること。`font = "note"` も同じであること。
 - `[fonts.note]` と `[paragraph-styles.sidenote]\nfont = "note"\nsize = "8pt"\n` を含む `style.toml` が診断なしで読め、`paraStyle s (Just "sidenote")` の `psFont` が `Just "note"`、`psSize` が `Just (Abs (8 × 65536))` になること。
-- `[paragraph-styles.sidenote]\nfont = "nope"\n` を含み `[fonts.nope]` がない `style.toml` が G0308 になること。
+- `[paragraph-styles.sidenote]\nfont = "nope"\n` を含み `[fonts.nope]` がない `style.toml` が G03008 になること。
 
 ### golem-driver（modules/golem-driver/test/Main.hs）
 
@@ -184,14 +184,14 @@ HTML でも、傍注がその書体で表示されることを確かめる。
 
 ## トレードオフ
 
-`[sidenotes]` の `font` と `size` を廃止するので、それを書いた `style.toml` は G0306 になり、`[paragraph-styles.sidenote]` への書き換えが要る。
+`[sidenotes]` の `font` と `size` を廃止するので、それを書いた `style.toml` は G03006 になり、`[paragraph-styles.sidenote]` への書き換えが要る。
 Golem はまだ配布しておらず、書き換えの対象はリポジトリの中のテストと仕様書の例だけである。
 書体と大きさの書き方を段落スタイルの一通りにする利点を取る。
 
 傍注の書体と大きさを段落スタイルに置くので、`sidenote` の欄のうち `font` と `size` だけが傍注に効き、ほかの欄は `@style sidenote` の段落にだけ効く。
 [ADR 0010](0010-caption-style.md) のキャプションと同じ扱いである。
 
-`size` が版面の文字の大きさを超えると G0311 になるので、本文より大きい傍注は組めなくなる。
+`size` が版面の文字の大きさを超えると G03011 になるので、本文より大きい傍注は組めなくなる。
 今の `[sidenotes]` の `size` には上限がない。
 傍注を本文より大きく組む本は考えにくく、段落スタイルの検査を場所によって変えないことを選ぶ。
 

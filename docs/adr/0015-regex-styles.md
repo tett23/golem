@@ -8,7 +8,7 @@
 数字だけを欧文の書体にする、「第 N 章」の N を太字にする、特定の固有名に色を付ける、といった指定を、原稿の該当箇所にいちいち `[style 名前: ...]` を書かずに済ませるためのものである。
 
 [docs/adr/0014](0014-in-file-settings.md) は、ファイルの中の記法 `@style-def regex 段落スタイル key=value` と効く範囲を決め、意味をこの ADR に送った。
-それまでの暫定として、`@style-def regex` は G0254（`正規表現スタイルはまだ実装していません`）になる。
+それまでの暫定として、`@style-def regex` は G02054（`正規表現スタイルはまだ実装していません`）になる。
 [docs/adr/0014](0014-in-file-settings.md) がこの ADR に求めたのは次の三つである。
 
 - 段落スタイルのどの欄に置くか、`based-on` で組の並びを引き継ぐか。
@@ -104,7 +104,7 @@ regex-styles = [
 ### 正規表現の方言
 
 InDesign の方言（Boost の Perl 互換）の部分集合とする。
-部分集合の外の構文は、黙って別の意味に読まず、G0315 とする。
+部分集合の外の構文は、黙って別の意味に読まず、G03015 とする。
 
 | 構文 | 意味 |
 |---|---|
@@ -130,7 +130,7 @@ InDesign の方言（Boost の Perl 互換）の部分集合とする。
 | `\K` | そこまでの一致を一致の範囲から外す |
 | `(?i)` | 正規表現の先頭にだけ書ける。大文字と小文字を区別しない（`Data.Char` の `toLower` と `toUpper` による単純な対応） |
 
-G0315 とする構文：
+G03015 とする構文：
 
 - 後方参照（`\1` から `\9`、`\k<...>`）、名前付きの群（`(?<名前>...)`、`(?P<...>...)`）、アトミックな群（`(?>...)`）、所有的な量指定子（`*+`、`++`、`?+`）、条件（`(?(...)...)`）、コメント（`(?#...)`）。
 - 先頭でない位置の `(?i)` と、ほかのフラグ（`(?s)`、`(?m)`、`(?x)`、`(?-i)`）。
@@ -205,7 +205,7 @@ matchesCounting :: Regex -> Text -> ([(Int, Int)], Int)
 
 #### アルゴリズム
 
-- 構文解析：正規表現を抽象構文木にし、「方言」の検査（G0315 の条件）をここで行う。
+- 構文解析：正規表現を抽象構文木にし、「方言」の検査（G03015 の条件）をここで行う。
 - コンパイル：抽象構文木を、命令の配列（一字の述語、分岐（欲張りと怠惰で順序を変える）、移動、表明（`^`、`$`、`\b`、`\B`）、先読みと後読みの部分プログラム、`\K`、成功）に写す。`{n,m}` は展開する。後読みの部分プログラムには、固定の長さを持たせる。
 - 照合：対象を `UArray Int Char` に写し、各開始位置から、命令の番号と位置の組（pc, pos）を状態とするバックトラックで探す。一度失敗した（pc, pos）を集合に記録し、再び訪れたら直ちに失敗とする。捕獲と後方参照がないので、（pc, pos）から成功に至るかは、そこまでの経路によらない。失敗の記録は開始位置をまたいで使い回せる。探している最中の（pc, pos）を再び訪れた場合（空の繰り返しの輪）も失敗とする。
 - 先読みと後読みの結果は、（部分プログラム、位置）ごとに記録して使い回す。後読みは、今の位置から固定の長さだけ戻った位置で部分プログラムを照合し、ちょうど今の位置で成功するかを調べる。
@@ -236,17 +236,17 @@ data RegexStyleDef = RegexStyleDef
 psRegexStyles :: !(Maybe [RegexStyleDef])
 ```
 
-- `FromValue ParaStyleDef` は `regex-styles` を、`pattern` と `style` の二つのキーを持つ表の配列として読む。キーの欠け、未知のキー、型の誤りは、今の型の誤りと同じく G0306 とする。
+- `FromValue ParaStyleDef` は `regex-styles` を、`pattern` と `style` の二つのキーを持つ表の配列として読む。キーの欠け、未知のキー、型の誤りは、今の型の誤りと同じく G03006 とする。
 - `overPara` は `psRegexStyles` を、ほかのキーと同じく `<|>` で重ねる（並びの全体を置き換える）。
-- [docs/adr/0014](0014-in-file-settings.md) の `styleChecks` に `regexChecks` を加える。各組の `pattern` を `Golem.Regex.compile` にかけ、誤りを G0315 とする。`style` が文字スタイル（組み込みと `style.toml`）にない場合は G0313 とする。
+- [docs/adr/0014](0014-in-file-settings.md) の `styleChecks` に `regexChecks` を加える。各組の `pattern` を `Golem.Regex.compile` にかけ、誤りを G03015 とする。`style` が文字スタイル（組み込みと `style.toml`）にない場合は G03013 とする。
 - golem-project は golem-regex に依存する。
 
 | 診断コード | 重大度 | メッセージ |
 |---|---|---|
-| G0315 | エラー | `正規表現を解釈できません: <理由>（<段落スタイル> の <n> 番目の正規表現の <位置> 字目）` |
-| G0313 | エラー | 今の `style.toml のスタイルの参照が不正です: <理由>`。理由は `正規表現スタイルの文字スタイルがありません: <名前>` |
+| G03015 | エラー | `正規表現を解釈できません: <理由>（<段落スタイル> の <n> 番目の正規表現の <位置> 字目）` |
+| G03013 | エラー | 今の `style.toml のスタイルの参照が不正です: <理由>`。理由は `正規表現スタイルの文字スタイルがありません: <名前>` |
 
-G0315 は未使用である（golem-project は G0313 まで使い、G0314 は作業中の [golem-driver ADR 0014](../golem-driver/adr/0014-running-heads.md) が使う。origin/main のコードと docs の ADR、作業中の ADR に記載はない）。
+G03015 は未使用である（golem-project は G03013 まで使い、G03014 は作業中の [golem-driver ADR 0014](../golem-driver/adr/0014-running-heads.md) が使う。origin/main のコードと docs の ADR、作業中の ADR に記載はない）。
 `<理由>` の例：`後方参照は使えません`、`後読みの長さが一つに決まりません`、`InDesign の ~ のメタ文字は使えません。文字の ~ は \~ と書きます`、`文字体系の \p{Han} は使えません。\x{4E00}-\x{9FFF} のように範囲で書きます`。
 
 ### ファイルの中の正規表現スタイル（[docs/adr/0014](0014-in-file-settings.md) の `@style-def regex`）
@@ -256,22 +256,22 @@ G0315 は未使用である（golem-project は G0313 まで使い、G0314 は�
 @style-def regex letter pattern="(?<=拝)啓" style=strong
 ```
 
-- 二つ目の位置引数は、組を足す段落スタイルの名前である。組み込み、`style.toml`、同じファイルの `@style-def paragraph` のどれかの名前でなければならない（G0313）。
-- キーワード引数は `pattern` と `style` の二つで、どちらも必須である。欠け、未知のキーは G0306 とする。値の読み方は [docs/adr/0014](0014-in-file-settings.md) の「値の読み方」の表のとおりであり、`pattern` は文字列として読む。
+- 二つ目の位置引数は、組を足す段落スタイルの名前である。組み込み、`style.toml`、同じファイルの `@style-def paragraph` のどれかの名前でなければならない（G03013）。
+- キーワード引数は `pattern` と `style` の二つで、どちらも必須である。欠け、未知のキーは G03006 とする。値の読み方は [docs/adr/0014](0014-in-file-settings.md) の「値の読み方」の表のとおりであり、`pattern` は文字列として読む。
 - Golem の文字列の中では、`\` の後の文字はその文字になる（`"\d"` は `d`）。正規表現の `\` は `\\` と書く（`pattern="\\d+"`）。
-- 一行が一つの組である。同じ段落スタイルに何行でも書け、書いた順に並びに加わる。[docs/adr/0014](0014-in-file-settings.md) の G0253（同じ名前を二度定義した）は、正規表現スタイルには当てない。
+- 一行が一つの組である。同じ段落スタイルに何行でも書け、書いた順に並びに加わる。[docs/adr/0014](0014-in-file-settings.md) の G02053（同じ名前を二度定義した）は、正規表現スタイルには当てない。
 - そのファイルの段落スタイル `P` の並びは、`style.toml` から見た `P` の並び（`based-on` で引き継いだものを含む）の後に、ファイルの中の組を書いた順に並べたものとする。そのファイルでは、`P` の `regex-styles` のキーをこの並びで上書きしたのと同じであり、`regex-styles` を書かずに `P` を `based-on` で引き継ぐ段落スタイルにも及ぶ。
-- `@style-def paragraph` のキーワード引数に `regex-styles` は書けない。値が配列なので、[docs/adr/0014](0014-in-file-settings.md) の値の読み方では表せず、型の誤り（G0306）になる。
+- `@style-def paragraph` のキーワード引数に `regex-styles` は書けない。値が配列なので、[docs/adr/0014](0014-in-file-settings.md) の値の読み方では表せず、型の誤り（G03006）になる。
 
 `Golem.Project.Style` を次のように変える。
 
 - `LocalStyles` に `lsRegexStyles :: !(Map Text [RegexStyleDef])`（段落スタイルの名前から、書いた順の組）を加える。
 - `withLocalStyles` は、文字スタイルと段落スタイルを重ねた後に、`lsRegexStyles` の各名前について、重ねた後の `Style` で解決した並びの後に組を足した値を、その名前の `psRegexStyles` にする。
-- `checkLocalStyles` は、`regexChecks` の G0315 と G0313 を、組を書いた `@style-def` の行の位置で返す。誤りのある組は捨て、ほかの組は効かせる。
+- `checkLocalStyles` は、`regexChecks` の G03015 と G03013 を、組を書いた `@style-def` の行の位置で返す。誤りのある組は捨て、ほかの組は効かせる。
 
-G0254 は使わなくなる。
+G02054 は使わなくなる。
 番号は再利用しない。
-`fileStyles`（[docs/adr/0014](0014-in-file-settings.md)）の手順 1 から G0254 の分岐を削り、`regex` の種類の引数を上の規則で検査する（形の誤りは G0252）。
+`fileStyles`（[docs/adr/0014](0014-in-file-settings.md)）の手順 1 から G02054 の分岐を削り、`regex` の種類の引数を上の規則で検査する（形の誤りは G02052）。
 
 ### 評価（golem-eval）
 
@@ -341,7 +341,7 @@ applyRegexStyles :: RegexRules -> Document -> Document
 - 仕様書：「style.toml」の例の `[paragraph-styles.body]` に `regex-styles` を加え、説明を書く。「v1 の実装で次の段階以降に回した項目」から「正規表現スタイル」を削る。
 - docs/glossary.md の「組版」に「正規表現スタイル」の項目（段落スタイルの中の、正規表現と文字スタイルの組の並び。一致した文字に文字スタイルを当てる）を加える。
 - `docs/golem-regex/specifications.md` を作り、方言、照合の規則、アルゴリズム、性能の上限を書く。
-- [docs/adr/0014](0014-in-file-settings.md) のステータスの行を「採択→正規表現スタイルの意味と G0254 の廃止は docs/adr/0015」に変え、この ADR へのリンクを付ける。
+- [docs/adr/0014](0014-in-file-settings.md) のステータスの行を「採択→正規表現スタイルの意味と G02054 の廃止は docs/adr/0015」に変え、この ADR へのリンクを付ける。
 
 ## データ構造の変更
 
@@ -374,7 +374,7 @@ applyRegexStyles :: RegexRules -> Document -> Document
 - 空の一致：`a*` が `"baa"` で `[(1,3)]` だけを返すこと。
 - 先読みと後読み：`(?<=第)[0-9]+(?=章)` が `"第12章と第3節"` で `[(1,3)]` を返すこと。`(?<!\d)\d{2}(?!\d)` が `"1 22 333"` で `[(2,4)]` を返すこと。
 - `\K`：`第\K[0-9]+` が `"第12章"` で `[(1,3)]` を返すこと。
-- `(?i)abc` が `"ABC"` に一致すること。`a(?i)bc` が G0315 の誤り（`compile` の `Left`）になること。
+- `(?i)abc` が `"ABC"` に一致すること。`a(?i)bc` が G03015 の誤り（`compile` の `Left`）になること。
 - `^` と `$`：`^a` が `"aa"` で `[(0,1)]`、`a$` が `[(1,2)]` を返すこと。`^b` が `"a\nb"` に一致しないこと。`.` が `\n` に一致せず、`\n` が一致すること。
 - 誤り：`\1`、`(?<n>a)`、`(?>a)`、`a*+`、`(?(1)a)`、`(?#c)`、`(?s)a`、`\Q`、`\h`、`\p{Han}`、`\p{Nope}`、`(?<=a+)b`、`(?<=a|bc)d`、`~m`、`[z-a]`、`a{3,2}`、`(a`、空の文字列、`(a{1000}){1000}` が `Left` になり、`reOffset` が誤りの位置を指すこと。`\~` と `(?<=ab|cd)e` は `Right` になること。
 - 性能：`matchesCounting (compile "(a*)*b")` を `'a'` 10000 字に当てた手順の数が、命令の数 × 10001 × 4 以下であること。`(a|aa)*c` と `(?=(a+))*b` でも同じ上限を確かめる。
@@ -384,9 +384,9 @@ applyRegexStyles :: RegexRules -> Document -> Document
 
 - `[paragraph-styles.body] regex-styles = [{ pattern = '[0-9]+', style = "bold" }]` を読み、`paraStyle s Nothing` の `psRegexStyles` が一つの組を持つこと。
 - `[paragraph-styles.quote]`（`regex-styles` なし）の `psRegexStyles` が `body` の並びを引き継ぎ、`regex-styles = []` の `quote` が空の並びを持つこと。`quote` が自分の並びを持てば、`body` の並びと合わさらず置き換わること。
-- `pattern` の欠け、`style` の欠け、未知のキー `colour`、`pattern = 1` が G0306 になること。
-- `pattern = '\1'` が G0315、`style = "nope"` が G0313 になること。
-- `checkLocalStyles` で、`lsRegexStyles` の `body` の組が `style.toml` の `body` の並びの後に足され、`based-on` で `body` を引き継ぐ `quote` にも及ぶこと。ファイルの中の組の誤り（G0315、G0313）がその組の位置で返り、ほかの組は残ること。
+- `pattern` の欠け、`style` の欠け、未知のキー `colour`、`pattern = 1` が G03006 になること。
+- `pattern = '\1'` が G03015、`style = "nope"` が G03013 になること。
+- `checkLocalStyles` で、`lsRegexStyles` の `body` の組が `style.toml` の `body` の並びの後に足され、`based-on` で `body` を引き継ぐ `quote` にも及ぶこと。ファイルの中の組の誤り（G03015、G03013）がその組の位置で返り、ほかの組は残ること。
 
 ### golem-eval（`test/RegexStyleSpec.hs` と `test/FileSpec.hs`）
 
@@ -402,9 +402,9 @@ applyRegexStyles :: RegexRules -> Document -> Document
 - `Note` の本文の `"12"` に、段落の並びが当たらないこと。`Sidenote` の本文には `sidenote` の並びが当たること。図版のキャプションの段落に `caption` の並びが当たり、`body` の並びが当たらないこと。
 - `[Text "a1", LineBreak, Text "2b"]` に `[0-9\n]+` を当てても、`LineBreak` が包まれず、`1` と `2` が別の `CharStyle` になること。結果が `Golem.Doc.Validate` を通ること。
 - 見出し、表のセル、定義リストの用語の文字に当たらないこと。リストの項目の段落には `body` の並びが当たること。
-- `evalFile` で、`"@style-def regex body pattern=\"\\\\d+\" style=bold\n\na1\n"` が `CharStyle "bold" [Text "1"]` を含み、G0254 が出ないこと。
-- `"@style-def regex nope pattern=x style=bold\n"` が G0313、`"@style-def regex body style=bold\n"` が G0306、`"@style-def regex body pattern=\"\\\\1\" style=bold\n"` が G0315、`"@style-def regex body\n"` が G0306 になること。
-- 同じファイルに `@style-def regex body` を二行書くと、二つの組が書いた順に並ぶこと（G0253 にならないこと）。
+- `evalFile` で、`"@style-def regex body pattern=\"\\\\d+\" style=bold\n\na1\n"` が `CharStyle "bold" [Text "1"]` を含み、G02054 が出ないこと。
+- `"@style-def regex nope pattern=x style=bold\n"` が G03013、`"@style-def regex body style=bold\n"` が G03006、`"@style-def regex body pattern=\"\\\\1\" style=bold\n"` が G03015、`"@style-def regex body\n"` が G03006 になること。
+- 同じファイルに `@style-def regex body` を二行書くと、二つの組が書いた順に並ぶこと（G02053 にならないこと）。
 - フィルタのプラグインが返した `Text` にも正規表現スタイルが当たること。
 
 ### golem-driver（`test/Main.hs`）
@@ -437,7 +437,7 @@ InDesign の振る舞いは公式の資料で確かめておらず、フォー�
 
 正規表現の照合器を再実装するので、PCRE2 や Boost.Regex と結果が食い違う不具合が起こりうる。
 テストの例を両者のテストから写して、食い違いを減らす。
-方言を部分集合に絞ったので、InDesign の正規表現スタイルをそのまま写すと G0315 になることがある。
+方言を部分集合に絞ったので、InDesign の正規表現スタイルをそのまま写すと G03015 になることがある。
 黙って別の意味に読むよりは、移すときに直す箇所が分かるほうを取った。
 `\p{Han}` を使えないのは不便だが、InDesign でも使えず、使えるようにすると Unicode の文字体系の表（Scripts.txt）を Golem に持つことになる。
 

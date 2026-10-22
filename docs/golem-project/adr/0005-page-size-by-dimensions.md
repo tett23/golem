@@ -11,9 +11,9 @@
 今の実装は次のとおりである。
 
 - `Golem.Project.Style` の `Page` は、`[page]` の `size` を文字列のまま `pageSizeName :: Text` に持つ。
-- `parseStyle` の検査は、表にない名前を G0306（`未知の判型です`）とするが、`x` を含む文字列は通す。寸法による指定のために空けておいた抜け道である。
-- `Golem.LayoutSpec.pageGeometry` は、`pageSize (pageSizeName page)` が `Nothing` なら G0701（`未知の判型です`）を返す。`x` を含む文字列はここで止まる。
-- したがって `size = "148mm x 210mm"` は、`golem check` を通り、PDF のビルドで G0701 になる。HTML、EPUB、プレーンテキストは判型を使わないので、これらのビルドは通る。
+- `parseStyle` の検査は、表にない名前を G03006（`未知の判型です`）とするが、`x` を含む文字列は通す。寸法による指定のために空けておいた抜け道である。
+- `Golem.LayoutSpec.pageGeometry` は、`pageSize (pageSizeName page)` が `Nothing` なら G07001（`未知の判型です`）を返す。`x` を含む文字列はここで止まる。
+- したがって `size = "148mm x 210mm"` は、`golem check` を通り、PDF のビルドで G07001 になる。HTML、EPUB、プレーンテキストは判型を使わないので、これらのビルドは通る。
 
 InDesign の新規ドキュメントのダイアログは、ページサイズを名前の付いたプリセットから選ぶか、幅と高さの二つの欄に値を入れて決める。
 ページサイズは、塗り足しなどを断裁した後の仕上がりの寸法である（Adobe のヘルプ「[Create new documents](https://helpx.adobe.com/indesign/using/create-new-documents.html)」、InDesign CC 2015 以前の版の記述）。
@@ -53,7 +53,7 @@ size = { width = "148mm", height = "210mm" }
 
 ### 検査
 
-次はすべて G0317（判型の誤り）とし、位置は `size` の値の位置とする。
+次はすべて G03017（判型の誤り）とし、位置は `size` の値の位置とする。
 読み込みの段階（`decodeStrict` の `FromValue`）で失敗させるので、`golem check` と、PDF を含まないビルドでも検出する。
 
 | 場合 | メッセージ |
@@ -65,13 +65,13 @@ size = { width = "148mm", height = "210mm" }
 | `zw` の値 | `判型には zw を使えません` |
 | 0 以下の値 | `判型の幅と高さは 0 より大きい寸法です` |
 
-G0317 を新しく割り当てる。
-G0317 は未使用である。`style.toml` の一般の誤りの G0306 から判型の誤りを分け、どの欄の誤りかをコードで引けるようにする（提案中の ADR のあいだで、G0317 から G0322 を分けて割り当てた）。
-[golem-driver ADR 0016](../../golem-driver/adr/0016-output-and-layout-diagnostic-codes.md) が `pageGeometry` から移す「未知の判型」の検査も、G0317 とする。
-これまで `style.toml` の値の誤りは G0306 にまとめていた（[ADR 0002](0002-style-toml.md)）が、判型の誤りはこの G0317 に分ける。
+G03017 を新しく割り当てる。
+G03017 は未使用である。`style.toml` の一般の誤りの G03006 から判型の誤りを分け、どの欄の誤りかをコードで引けるようにする（提案中の ADR のあいだで、G03017 から G03022 を分けて割り当てた）。
+[golem-driver ADR 0016](../../golem-driver/adr/0016-output-and-layout-diagnostic-codes.md) が `pageGeometry` から移す「未知の判型」の検査も、G03017 とする。
+これまで `style.toml` の値の誤りは G03006 にまとめていた（[ADR 0002](0002-style-toml.md)）が、判型の誤りはこの G03017 に分ける。
 
 `parseStyle` の `checks` から、`未知の判型です` の検査と `x` を含む文字列を通す条件を削る。
-読み込みで判型が確定するので、`Golem.LayoutSpec.pageGeometry` の `未知の判型です`（G0701）の分岐はなくなる。
+読み込みで判型が確定するので、`Golem.LayoutSpec.pageGeometry` の `未知の判型です`（G07001）の分岐はなくなる。
 
 ### データ構造
 
@@ -130,7 +130,7 @@ HTML、EPUB、プレーンテキストは、これまでどおり判型を読ま
 - 上の二つのほかの、判型の表への名前の追加。[ADR 0002](0002-style-toml.md) のとおり、名前を加えるたびに ADR を作る。
 - 表の名前を横長にする指定（InDesign の方向のボタンに当たるもの）。
 - 判型の上限の検査。PDF の実装上の上限（記憶によれば、PDF 1.7 の付録 C で 14,400 単位、200in）や InDesign の上限（Adobe のコミュニティの回答によれば 216in）を超える本は想定しにくく、MediaBox はトンボと塗り足しの分だけ判型より大きくなるので、上限は判型ではなく MediaBox で決めることになる。必要になってから ADR で扱う。
-- 小さすぎる判型の個別の検査。版面が収まらなければ、今の `pageGeometry` の G0701（`版面がページからはみ出しています`）になる。
+- 小さすぎる判型の個別の検査。版面が収まらなければ、今の `pageGeometry` の G07001（`版面がページからはみ出しています`）になる。
 
 ## テスト設計
 
@@ -141,7 +141,7 @@ HTML、EPUB、プレーンテキストは、これまでどおり判型を読ま
 - `size = { width = "396pt", height = "612pt" }` の `pageTrimSize` が `(396 * 65536, 612 * 65536)` になる。
 - 幅と高さで単位が異なる `{ width = "100mm", height = "600Q" }` を読める。
 - 横長の `{ width = "210mm", height = "148mm" }` を読める。
-- 次がそれぞれ G0317 になり、メッセージに上の表の文言が含まれる。
+- 次がそれぞれ G03017 になり、メッセージに上の表の文言が含まれる。
   - `size = "148mm x 210mm"`
   - `size = "A3"`
   - `size = { width = "148mm" }`
@@ -150,8 +150,8 @@ HTML、EPUB、プレーンテキストは、これまでどおり判型を読ま
   - `size = { width = "0mm", height = "210mm" }`
   - `size = { width = "148", height = "210mm" }`
 - 既存の判型の名前の `pageTrimSize` が、`pageSize` の mm の値を sp にしたものと一致する（A4 から `mass-market` までの七つ）。
-- `size = "菊判"` の `pageTrimSize` が `{ width = "150mm", height = "220mm" }` の値と、`size = "新書判"` の `pageTrimSize` が `{ width = "103mm", height = "182mm" }` の値と一致する。今は G0306 になることを確かめてから実装する。
-- `size = "菊版"` と `size = "新書版"` は G0317 になる。
+- `size = "菊判"` の `pageTrimSize` が `{ width = "150mm", height = "220mm" }` の値と、`size = "新書判"` の `pageTrimSize` が `{ width = "103mm", height = "182mm" }` の値と一致する。今は G03006 になることを確かめてから実装する。
+- `size = "菊版"` と `size = "新書版"` は G03017 になる。
 - 仕様書の例の `style.toml` を読むと、`pageSizeSpec` が `NamedSize "B6"` になる。
 
 ### golem-layout-spec（`modules/golem-layout-spec/test/Main.hs`）
@@ -172,7 +172,7 @@ HTML、EPUB、プレーンテキストは、これまでどおり判型を読ま
 `[page]` に `width` と `height` を並べる形（比較の C）にすれば型は一つになるが、`size` との排他を検査する必要があり、どちらを書いたかで意味が変わる欄が二組できる。
 
 `x` を含む文字列は、これまで `golem check` を通っていたが、エラーになる。
-寸法による指定は実装されていなかったので、PDF のビルドはもともと G0701 で止まっていた。
+寸法による指定は実装されていなかったので、PDF のビルドはもともと G07001 で止まっていた。
 エラーになる段階が早まるだけで、出力が変わる原稿はない。
 
 ## 参考文献

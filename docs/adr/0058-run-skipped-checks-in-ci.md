@@ -10,7 +10,7 @@ v0.1.0-rc3 の作業で、スキップされているテストを調べた。
 
 ただ、CI で一度も動いていない検査が二つあった。
 
-1. **パブリックドメインの十冊をすべてのターゲットに組む検査**（[ADR 0026](0026-ten-public-domain-fixtures.md)）。golem-driver のテストは、十冊を出力を書かずに検査し、環境変数 `GOLEM_PD_BOOKS` があるときだけ、すべてのターゲットに組む。CI はこの変数を付けていない。[ADR 0026](0026-ten-public-domain-fixtures.md) はトレードオフの節で、組版の段階で生じる誤り（G07xx など）が CI では見つからないことを認めていた。
+1. **パブリックドメインの十冊をすべてのターゲットに組む検査**（[ADR 0026](0026-ten-public-domain-fixtures.md)）。golem-driver のテストは、十冊を出力を書かずに検査し、環境変数 `GOLEM_PD_BOOKS` があるときだけ、すべてのターゲットに組む。CI はこの変数を付けていない。[ADR 0026](0026-ten-public-domain-fixtures.md) はトレードオフの節で、組版の段階で生じる誤り（G07xxx など）が CI では見つからないことを認めていた。
 2. **固定した版の Claude Code が、リリースのスクリプトの使うフラグを持つかの検査**（[ADR 0044](0044-release-workflow-hardening.md)）。`scripts/release/test.sh` は、`mise.toml` に固定した版の `claude` が `PATH` にあるときだけ、`claude --help` に `--tools` と `--strict-mcp-config` があることを確かめ、なければ `skip:` と書いて飛ばす。CI の `release-scripts` ジョブは Claude Code を入れないので、いつも飛ばしている。固定の版を上げたときにフラグが変わっていても、リリースの `notes` ジョブを動かすまで分からない。
 
 手元で動かすと、どちらも通った。

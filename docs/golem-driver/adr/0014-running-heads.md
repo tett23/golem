@@ -60,7 +60,7 @@ running-head = { position = "top-outside", even = "heading.2.short", odd = "head
 ```
 
 - `position` は必須で、値は今と同じである。
-- 内容は `content` で両方のページに一つを書くか、`even` と `odd` の両方を書く。`content` と `even` または `odd` を一緒に書いた場合、`even` と `odd` の片方だけを書いた場合、どれも書かない場合は G0314 とする。
+- 内容は `content` で両方のページに一つを書くか、`even` と `odd` の両方を書く。`content` と `even` または `odd` を一緒に書いた場合、`even` と `odd` の片方だけを書いた場合、どれも書かない場合は G03014 とする。
 - 偶数と奇数は、ノンブルと同じくページの通し番号で決める。
 
 内容の値は次のどれかとする。
@@ -102,23 +102,23 @@ data MasterDef = MasterDef
 
 | 診断コード | 重大度 | メッセージ |
 |---|---|---|
-| G0314 | エラー | `柱の内容が正しくありません: <値>。heading.<階層>.short か heading.<階層>.numbered（末尾に .last を付けられます）、title、none のどれかを、content に一つ、または even と odd の両方に書いてください` |
+| G03014 | エラー | `柱の内容が正しくありません: <値>。heading.<階層>.short か heading.<階層>.numbered（末尾に .last を付けられます）、title、none のどれかを、content に一つ、または even と odd の両方に書いてください` |
 
-G0314 は未使用である（golem-project は G0301 から G0313 までを使っている）。
+G03014 は未使用である（golem-project は G03001 から G03013 までを使っている）。
 未知のキーをエラーにするのと同じく、綴りの誤りが柱の欠落としてしか現れないことを防ぐ。
 
 ### 見出しの `running-head` の廃止
 
 `[headings.<l>]` の `running-head` を廃止し、`hsRunningHead` を削る。
 柱に使う見出しの階層は、マスターページの内容の値の l が決めるので、見出しの側の欄は同じことを二か所に書かせるだけになるためである。
-`running-head` を書いた `[headings.<l>]` は G0319（廃止した欄）とし、メッセージで「柱に使う見出しは [masters.<名前>] の running-head の content で指定してください」と示す。
+`running-head` を書いた `[headings.<l>]` は G03019（廃止した欄）とし、メッセージで「柱に使う見出しは [masters.<名前>] の running-head の content で指定してください」と示す。
 廃止した `[verse]` などと同じく読み込みで止める（[docs/adr/0006](../../adr/0006-paragraph-indent.md)）。
 
 | 診断コード | 重大度 | メッセージ |
 |---|---|---|
-| G0319 | エラー | `[headings.<l>] の running-head は廃止しました。柱に使う見出しは [masters.<名前>] の running-head の content で指定してください` |
+| G03019 | エラー | `[headings.<l>] の running-head は廃止しました。柱に使う見出しは [masters.<名前>] の running-head の content で指定してください` |
 
-G0319 は未使用である。`style.toml` の一般の誤りの G0306 から、廃止した欄の誤りを分けて、どの欄の誤りかをコードで引けるようにする（提案中の ADR のあいだで、G0317 から G0322 を分けて割り当てた）。
+G03019 は未使用である。`style.toml` の一般の誤りの G03006 から、廃止した欄の誤りを分けて、どの欄の誤りかをコードで引けるようにする（提案中の ADR のあいだで、G03017 から G03022 を分けて割り当てた）。
 
 
 ### ページのマスターページ
@@ -243,9 +243,9 @@ runningHeads :: PdfInput -> PageGeometry -> PdfLayout -> Map Int (Maybe Text)
 
 - `content = "heading.1.short"` が、`rhOdd` と `rhEven` がともに `RunningHeading 1 HeadShort PickFirst` の `RunningHeadDef` として読めること。
 - `even = "title"`、`odd = "heading.2.numbered.last"` が、`RunningTitle` と `RunningHeading 2 HeadNumbered PickLast` として読めること。`none` が `RunningNone` として読めること。
-- `content = "heading.0.short"`、`content = "heading.1.long"`、`content = "chapter"` が G0314 になること。
-- `content` と `odd` を両方書いた場合、`even` だけを書いた場合、どれも書かない場合が G0314 になること。
-- `[headings.1] running-head = true` が G0319 になり、メッセージに `[masters.` が含まれること。今の `running-head = true` を含むテストの入力から、その行を削る。
+- `content = "heading.0.short"`、`content = "heading.1.long"`、`content = "chapter"` が G03014 になること。
+- `content` と `odd` を両方書いた場合、`even` だけを書いた場合、どれも書かない場合が G03014 になること。
+- `[headings.1] running-head = true` が G03019 になり、メッセージに `[masters.` が含まれること。今の `running-head = true` を含むテストの入力から、その行を削る。
 
 ### golem-layout（`modules/golem-layout/test/Main.hs`）
 

@@ -173,7 +173,7 @@ e は最後の行を `placeLine` で配置したときの最後の箱の終わ�
 leader = "dots"   # "dots"（既定）か "none"
 ```
 
-- `Style` に `stTocLeader :: !Text` を加え、既定を `"dots"` とする。値は `enumKey` で検査し、ほかの値は今の未知の値と同じく G0306 とする。
+- `Style` に `stTocLeader :: !Text` を加え、既定を `"dots"` とする。値は `enumKey` で検査し、ほかの値は今の未知の値と同じく G03006 とする。
 - `"none"` はリーダーを描かない。ページ番号の位置と予約の幅 R は `"dots"` と同じである。
 - HTML、EPUB、プレーンテキストは `[toc]` を読まない。
 
@@ -225,7 +225,7 @@ R はページ番号 999 の幅から決まり、実際のページ番号によ�
 ### golem-project（modules/golem-project/test/Main.hs）
 
 - `[toc]\nleader = "none"\n` が読め、`stTocLeader` が `"none"` になること。`[toc]` がなければ `"dots"` になること。
-- `[toc]\nleader = "dash"\n` と `[toc]\nfont = "body"\n` が G0306 になること。
+- `[toc]\nleader = "dash"\n` と `[toc]\nfont = "body"\n` が G03006 になること。
 
 ### golem-driver の単体のテスト（modules/golem-driver/test/Main.hs）
 
@@ -284,4 +284,4 @@ LaTeX の目次も、ページ番号の幅を固定の寸法で予約してい�
 見出しのページを索引の印と同じ `asMarks` に入れる案も考えた。
 見出しのブロックの位置は `#` から、索引の印の位置は `[` から始まるので、同じ `SrcSpan` にはならない。
 それでも採らなかったのは、ページ番号が行分割に影響しない目次を繰り返しに含めると、ラベルも印もない原稿で一回で済む収束の判定が二回に増えるためである。
-G0721 のメッセージに見出しの題を並べる処理も要らなくなる。
+G07021 のメッセージに見出しの題を並べる処理も要らなくなる。

@@ -93,7 +93,7 @@ numbering = "chapter"
 | `"book"` | 本の全体で 1 から通し番号にする |
 
 - `Style` に `stNotesNumbering :: NoteNumbering` を加え、既定を `NumberPerChapter` とする。`NoteNumbering` は golem-doc に置き（下の節）、golem-project はそれを使う。
-- 三つ以外の値は、ほかの `enumKey` の欄と同じく `style.toml` の値の誤り（G0306）とする。
+- 三つ以外の値は、ほかの `enumKey` の欄と同じく `style.toml` の値の誤り（G03006）とする。
 - 傍注の番号も、同じ欄の範囲で振り直す。傍注は脚注と別に数える。
 
 既定を `"chapter"` にするのは、章を一つのファイルで書く本では今と同じ番号になり、章を複数のファイルに分けた本では章の途中で番号が戻らなくなるためである。
@@ -207,7 +207,7 @@ data NoteBody = NoteBody {nbId :: !NoteId, nbLines :: !Int}
 
 - `[notes]` がないとき、`stNotesNumbering` が `NumberPerChapter` である。
 - `numbering = "file"`、`"chapter"`、`"book"` を読める。
-- `numbering = "page"` が G0306 になる。
+- `numbering = "page"` が G03006 になる。
 
 ### 番号の振り直し（`modules/golem-doc/test`）
 

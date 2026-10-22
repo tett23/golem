@@ -92,7 +92,7 @@ fromLineCol enc li lc@(LineCol l c) = do
    - 6 行目の `values.version` の上で `K`（ホバー）を押すと、評価の結果が出る。
    - 6 行目の `[ref-number second]` の `second` の上で `gd`（定義への移動）を押すと、`b.gm` の 1 行目の `second` に移る。
    - 3 行目の `@label intro` の `intro` の上で `:lua vim.lsp.buf.rename('opening')` を実行すると、`a.gm` と `b.gm` の `intro` だけが過不足なく書き換わる。確かめた後に `:wa` をせずに `:qa!` で閉じる。
-   - 6 行目の末尾に `😀[ref-title nosuch]` を書き足すと、G0403 の下線が `[` から `]` までに引かれる。
+   - 6 行目の末尾に `😀[ref-title nosuch]` を書き足すと、G04003 の下線が `[` から `]` までに引かれる。
 6. 行の長さを超える列を、手で要求に載せて確かめる。
 
    ```lua

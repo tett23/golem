@@ -134,15 +134,15 @@ golem-plugin のテストのプラグイン（`modules/golem-plugin/test/plugins
 - `Evaluated` に、プラグインのコマンドの名前の欄 `evPluginCommands :: [Text]` を加える。`PluginHook` の `phCommands` のキーを名前に戻し、昇順に並べたものである。上書きのコマンド（`phOverrides`）の名前は組み込みの名前なので、含めない。
 - `evaluateProject` は、構文のエラーがあるときも、ないときと同じくプラグインを読み込む。プラグインの読み込みは、`manifest.toml`、`plugins.lock`、キャッシュだけを読み、原稿を読まないからである。
   - 構文のエラーがあるときの `evReevaluate` も、読み込んだフックで評価する。今は `noPlugins` で評価している。
-  - 構文のエラーがあるときの `evDiagnostics` に、プラグインの読み込みの診断（G06xx）も加える。今は、構文のエラーを直すまで、プラグインの誤りが見えない。
-  - プラグインの読み込みに失敗したときの `evPluginCommands` は空とする。G0222 を出さない扱い（[golem-plugin ADR 0003](../golem-plugin/adr/0003-plugin-diagnostic-codes.md)）は変えない。
+  - 構文のエラーがあるときの `evDiagnostics` に、プラグインの読み込みの診断（G06xxx）も加える。今は、構文のエラーを直すまで、プラグインの誤りが見えない。
+  - プラグインの読み込みに失敗したときの `evPluginCommands` は空とする。G02022 を出さない扱い（[golem-plugin ADR 0003](../golem-plugin/adr/0003-plugin-diagnostic-codes.md)）は変えない。
 
 **golem-lsp**：
 
 - `completions` のコマンドの名前の候補を、`builtinInlineCommands` の後に `evPluginCommands` を続けたものにする。`wsEvaluated` がなければ、今と同じく組み込みの名前だけとする。
 - 候補の種類は、組み込みと同じ `CkCommand` とする。LSP の `CompletionItemKind` も同じものに写す。
 
-二つのプラグインが同じ名前を提供する場合と、組み込みの名前を宣言なしに提供する場合は、読み込みの時点でエラー（G0606、G0607）になり、フックが作られない。
+二つのプラグインが同じ名前を提供する場合と、組み込みの名前を宣言なしに提供する場合は、読み込みの時点でエラー（G06006、G06007）になり、フックが作られない。
 そのため、候補に同じ名前が二度並ぶことはない。
 
 ### 3. golem inspect のオプション
@@ -207,7 +207,7 @@ golem-plugin のテストのプラグイン（`modules/golem-plugin/test/plugins
 
 - `evaluateProject` の結果の `evPluginCommands` が `["broken"]` になること。今は欄がないのでコンパイルできない。
 - 章のファイルに構文のエラー（閉じていない `[`）を置いたプロジェクトでも、`evPluginCommands` が `["broken"]` になること。
-- 同じプロジェクトで、構文のエラーのないファイルを `evReevaluate` で評価し直すと、`[broken]` が G0222 にならず、プラグインの呼び出しの結果（`identity.wat` の `broken` は空の応答を返すので、その検証の誤り）になること。今は `noPlugins` で評価するので G0222 になり、失敗する。
+- 同じプロジェクトで、構文のエラーのないファイルを `evReevaluate` で評価し直すと、`[broken]` が G02022 にならず、プラグインの呼び出しの結果（`identity.wat` の `broken` は空の応答を返すので、その検証の誤り）になること。今は `noPlugins` で評価するので G02022 になり、失敗する。
 - 構文のエラーと、`plugins.lock` にないプラグインの宣言の両方があるプロジェクトで、`evDiagnostics` に構文の誤りとプラグインの読み込みの誤りの両方が入ること。
 
 `modules/golem-lsp/test/Main.hs`（`withPlugins` と同じ手順でキャッシュとロックファイルを用意したワークスペース）：
@@ -220,7 +220,7 @@ golem-plugin のテストのプラグイン（`modules/golem-plugin/test/plugins
 
 食い違い 1、3、4 は、コードを変えずに ADR と文書を合わせるので、テストは今の振る舞いを仕様として固定するものになる。
 
-- 食い違い 1：`modules/golem-eval/test/BuiltinSpec.hs` の `overridableCommands` のテストは、すでに十の名前を確かめている。上書きできないコマンドの名前の一覧（`[builtinName (Fixed f) | f <- [minBound .. maxBound]]`）が `ref-number`、`ref-title`、`ref-page`、`note`、`sidenote`、`index`、`cite`、`aki` であることを加える。`modules/golem-driver/test/PluginsSpec.hs` に、`overrides = ["code"]` のプラグインが読み込めることと、`overrides = ["aki"]` が G0608 になることを加える。
+- 食い違い 1：`modules/golem-eval/test/BuiltinSpec.hs` の `overridableCommands` のテストは、すでに十の名前を確かめている。上書きできないコマンドの名前の一覧（`[builtinName (Fixed f) | f <- [minBound .. maxBound]]`）が `ref-number`、`ref-title`、`ref-page`、`note`、`sidenote`、`index`、`cite`、`aki` であることを加える。`modules/golem-driver/test/PluginsSpec.hs` に、`overrides = ["code"]` のプラグインが読み込めることと、`overrides = ["aki"]` が G06008 になることを加える。
 - 食い違い 3：`modules/golem-cli/test/CommandsSpec.hs` に、`golem inspect FILE --cst` が使い方の誤り（終了コード 2）になること、`--as` を省くと CST を表示することを加える。
 - 食い違い 4：`modules/golem-plugin/test/plugins/` に、`golem_dealloc` を公開しない `no-dealloc.wat` を加え、そのコマンドを呼べることを確かめる。
 

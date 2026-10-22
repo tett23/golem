@@ -1,6 +1,6 @@
 # ADR 0033: 奥付の関係者と刷
 
-ステータス: 採択→`@printings` の誤りのコード（G0296、G0297、G0298 と G0276 の範囲）は [ADR 0056](0056-printings-diagnostic-codes-by-cause.md)
+ステータス: 採択→`@printings` の誤りのコード（G02096、G02097、G02098 と G02076 の範囲）は [ADR 0056](0056-printings-diagnostic-codes-by-cause.md)
 
 ## 文脈
 
@@ -52,10 +52,10 @@ v0.1.0-rc3 で、奥付に編集者、印刷所、製本所を載せられるよ
 式の言語では `-` が引き算の演算子だからである。
 
 式の言語には、配列の要素を取り出す書き方も、配列を順に処理する書き方もない（[golem-eval ADR 0001](../golem-eval/adr/0001-expression-language-and-numerics.md)、golem-parser の `Expr`）。
-配列を本文に埋め込むと型エラー（G0201）になる。
+配列を本文に埋め込むと型エラー（G02001）になる。
 このため、今の Golem では `meta.creators` を本文に出す手段がない。
 連想配列の入れ子は `meta.a.b` の形で引ける（golem-eval の `lookupMember`）。
-ない鍵を引くと G0202 になる。
+ない鍵を引くと G02002 になる。
 
 マニュアルの奥付（`manual/back.gm`）は、`meta.title`、`meta.date`、`meta.publisher` と、`scripts/manual/build-info.sh` が書いた `common/build-info.gm` の `build.edition`、`build.commit` から組んでいる。
 マニュアルの「版」は Golem のバージョンであり、出版の版と刷ではない。
@@ -85,7 +85,7 @@ JIS X 4051 は組版の規則の規格であり、奥付に載せる項目を定
 
 ### 未決
 
-- 新しい診断のコード G0276 は、ほかの rc3 の草稿が使う番号（G0275 まで）の次として仮に選んだ。採択の前に空いていることを確かめる。
+- 新しい診断のコード G02076 は、ほかの rc3 の草稿が使う番号（G02075 まで）の次として仮に選んだ。採択の前に空いていることを確かめる。
 
 ## 実装すること
 
@@ -156,7 +156,7 @@ date = 2027-04-01
 出力のメタデータに書かないので、並べ替えや検索に使う場所がないためである。
 
 本文からは `meta.publisher_person` で参照する（`title-reading` が `meta.title_reading` になるのと同じ規則）。
-キーがなければ鍵もなく、引くと G0202 になる。
+キーがなければ鍵もなく、引くと G02002 になる。
 
 出力のメタデータには書かない。
 EPUB の `dc:publisher` と XMP の `dc:publisher` は発行所（`publisher`）を書く欄であり、発行人に合う欄が EPUB にも XMP の Dublin Core にもないためである。
@@ -201,9 +201,9 @@ EPUB の `dc:publisher` と XMP の `dc:publisher` は発行所（`publisher`）
 符号と語の両方を受け付ける案は採らない。
 v1.0.0 の前であり、同じ値を二通りに書ける状態を残すと、仕様書、マニュアル、`meta.roles` の鍵がどちらの書き方にも対応しなければならなくなるためである。
 
-置き換えた後で表の符号（`aut`、`trl` など）を `role` に書くと G0301 とし、語を示す。
+置き換えた後で表の符号（`aut`、`trl` など）を `role` に書くと G03001 とし、語を示す。
 メッセージは「役割は語で書きます。"aut" は "author" です」の形とする。
-表にない符号（`pbl` など）も、表にない語と同じく G0301 とする。
+表にない符号（`pbl` など）も、表にない語と同じく G03001 とする。
 
 リポジトリの中の `role = "aut"` と `role = "trl"`（二つのマニュアルの `manifest.toml` と、golem-driver の fixture の 13 個の `manifest.toml`）を、同じ変更で語に書き換える。
 fixture の `manifest.toml` のバイト列が変わるので、その PDF のインスタンス ID が変わる。
@@ -211,7 +211,7 @@ EPUB のパッケージ文書の `role` は符号のままなので変わらな�
 
 ### 検査
 
-次のどれも、マニフェストのほかの誤りと同じく G0301（エラー）とし、位置は誤った値とする。
+次のどれも、マニフェストのほかの誤りと同じく G03001（エラー）とし、位置は誤った値とする。
 
 - `role` が表の語でない（`creators` と `contributors`）。メッセージに表の語を並べる。表の符号を書いた場合は、上の移行のメッセージにする。
 - `role = "publisher"`。メッセージは「発行所は [metadata] の publisher に、発行人は publisher-person に書きます」とする。
@@ -229,14 +229,14 @@ EPUB のパッケージ文書の `role` は符号のままなので変わらな�
 `meta` に次の値を加える。
 
 - **`meta.publisher_person`**：`publisher-person` の文字列である（上の「発行人」）。
-- **`meta.roles.<役割>`**：`creators` と `contributors` のうち役割が `<役割>` である項目の名前の配列である。`<役割>` は表の語の `-` を `_` にしたもの（`meta.roles.cover_designer`）である。`creators` を先に、それぞれマニフェストの順に並べる。印刷所と製本所も含む。その役割の項目がなければ鍵もなく、引くと G0202 になる。
+- **`meta.roles.<役割>`**：`creators` と `contributors` のうち役割が `<役割>` である項目の名前の配列である。`<役割>` は表の語の `-` を `_` にしたもの（`meta.roles.cover_designer`）である。`creators` を先に、それぞれマニフェストの順に並べる。印刷所と製本所も含む。その役割の項目がなければ鍵もなく、引くと G02002 になる。
 - **`meta.printing`**：現在の刷（`printings` の最後の項目）の連想配列であり、`edition`、`number`、`year`、`month`、`day` を整数で、`date` を `2026-10-16` の形の文字列で持つ。`printings` がなければ鍵もない。
 - **`meta.printings`**：`printings` の全項目を、`meta.printing` と同じ形の連想配列の配列にしたものである。式の言語に配列を順に処理する書き方がないので、本文から直接は使わず、`len(meta.printings)` などに使う。
 
 配列を本文に出すために、式の言語に組み込み関数 `join(配列, 区切り)` を加える。
 `join` は文字列の配列の要素を、区切りの文字列をはさんでつないだ文字列を返す。
 空の配列には空の文字列を返す。
-要素に文字列でないものがある場合と、引数の型が違う場合は型エラー（G0201）とする。
+要素に文字列でないものがある場合と、引数の型が違う場合は型エラー（G02001）とする。
 これで `[= join(meta.roles.editor, "、")]` や `[= join(meta.creators, "、")]` と書ける。
 
 刷の番号を縦組みで漢数字にしたい場合は、`[number-text [= meta.printing.number]]` と書く。
@@ -273,9 +273,9 @@ EPUB のパッケージ文書の `role` は符号のままなので変わらな�
 書式を `style.toml` で変えられるようにすることと、日本語でない本の書式は、v0.1.0-rc4 か v1.0.0 で扱う（[docs/roadmap.md](../roadmap.md) の v1.0.0 の「発行の履歴の書式」）。
 そのときは、この ADR の書式を既定の値とし、別の ADR で設定のキーを決める。
 
-`[metadata] language` が `ja` でない本で `@printings` を書くと、G0276（エラー）とし、何も組まない。
+`[metadata] language` が `ja` でない本で `@printings` を書くと、G02076（エラー）とし、何も組まない。
 メッセージは「`@printings` は日本語の本（language = "ja"）でだけ使えます」とする。
-`printings` のない本で `@printings` を書いた場合も G0276 とし、メッセージは「マニフェストに [[metadata.printings]] がありません」とする。
+`printings` のない本で `@printings` を書いた場合も G02076 とし、メッセージは「マニフェストに [[metadata.printings]] がありません」とする。
 
 関係者の行（「印刷所　株式会社〇〇印刷」など）を組む組み込みの奥付は用意しない。
 奥付に載せる項目、順序、見出しの語は本ごとに違い、`meta.roles` と `join` で書き手が組めるためである。
@@ -370,21 +370,21 @@ golem-epub の `EpubConfig` に `epContributors :: [EpubCreator]` を、golem-pd
 ### golem-project
 
 - `contributors` と `printings` を持つマニフェストを読み、`mdContributors` と `mdPrintings` がマニフェストの順に入ること。表のすべての語が `Role` に読めること。
-- 次のそれぞれが G0301 になり、位置が誤った値であること：`role = "aut"`（メッセージに `"author"` を含む）、`role = "trl"`（`"translator"` を含む）、`role = "pbl"`、`role = "Author"`、`role = "writer"`（メッセージに表の語を並べる）、`role = "publisher"`（メッセージに `publisher` と `publisher-person` のキーを含む）、`publisher-person = ""`、改行を含む `publisher-person`、`name = ""`（`creators` と `contributors` の両方）、`edition = 0`、`printing = 0`、同じ（版、刷）の二項目、（1, 2）の後の（1, 1）、（2, 1）の後の（1, 3）、前の項目より前の `date`。
+- 次のそれぞれが G03001 になり、位置が誤った値であること：`role = "aut"`（メッセージに `"author"` を含む）、`role = "trl"`（`"translator"` を含む）、`role = "pbl"`、`role = "Author"`、`role = "writer"`（メッセージに表の語を並べる）、`role = "publisher"`（メッセージに `publisher` と `publisher-person` のキーを含む）、`publisher-person = ""`、改行を含む `publisher-person`、`name = ""`（`creators` と `contributors` の両方）、`edition = 0`、`printing = 0`、同じ（版、刷）の二項目、（1, 2）の後の（1, 1）、（2, 1）の後の（1, 3）、前の項目より前の `date`。
 - 刷の番号が飛ぶ（（1, 1）の次に（1, 3））マニフェストがエラーにならないこと。
-- `contributors` の未知のキーが G0301 になること。
+- `contributors` の未知のキーが G03001 になること。
 - 表のすべての `Role` について、`roleWord` が互いに異なり、`marcRelator` が英小文字 3 字で互いに異なること。
 
 ### golem-eval
 
 - `join(["a", "b"], "、")` が「a、b」、`join([], "、")` が空の文字列になること。
-- `join([1], "、")`、`join("a", "、")`、`join(["a"], 1)` が G0201 になること。
+- `join([1], "、")`、`join("a", "、")`、`join(["a"], 1)` が G02001 になること。
 - `meta.roles.editor`、`meta.roles.cover_designer`、`meta.roles.printer`、`meta.printing.number`、`meta.printing.year`、`meta.printing.date` が期待の値になること。`creators` と `contributors` の両方に `author` がある場合に `creators` が先に並ぶこと。
 - `meta.publisher_person` が `publisher-person` の文字列になること。`publisher` のない本でも参照できること。
-- 項目のない役割（`meta.roles.binder`）、`printings` のない本の `meta.printing`、`publisher-person` のない本の `meta.publisher_person` が G0202 になること。
+- 項目のない役割（`meta.roles.binder`）、`printings` のない本の `meta.printing`、`publisher-person` のない本の `meta.publisher_person` が G02002 になること。
 - `@printings` が三項目の `printings` から三つの段落を作り、横組みの段落の文字列が上の例の三行と一致すること。版 1 が「初版」、版 2 が「第2版」になること。
 - 縦組みで、年が「二〇二六」、月と日と刷が `[numbers]` の既定の表記になること（IR の `Number` と `style` で確かめる）。
-- `language = "en"` の本と、`printings` のない本の `@printings` が G0276 になり、何も組まないこと。
+- `language = "en"` の本と、`printings` のない本の `@printings` が G02076 になり、何も組まないこと。
 - `@printings` に引数を書いた場合が、ほかのブロックコマンドと同じ引数の誤りになること。
 
 ### golem-epub、golem-pdf、golem-driver
@@ -415,7 +415,7 @@ EPUB の区別をそのまま書き手に見せるほうが、写し方が一つ
 符号をそのまま書く今の方式なら MARC のすべての役割を書けるが、書き手が略語を読み解く負担のほうが大きいと判断した。
 語の追加は表に一行足すだけで済む。
 
-符号を語に置き換えるので、`role = "aut"` と書いた既存のプロジェクトは G0301 になる。
+符号を語に置き換えるので、`role = "aut"` と書いた既存のプロジェクトは G03001 になる。
 v1.0.0 の前の変更であり、メッセージが書き換える語を示すので、直す手間は一行ごとに一度で済む。
 
 `date` と `printings` を独立にしたので、刷を重ねるときは `date` と `printings` の二箇所を書き換える。
@@ -438,9 +438,9 @@ v1.0.0 の前の変更であり、メッセージが書き換える語を示す�
 
 - docs/specifications.md：「メタデータ」の節の例と、役割を MARC relator の符号で書くという文を、語の表に置き換える。`contributors`、`printings`、`publisher-person`、検査、EPUB と XMP の写し方（印刷所、製本所、発行人を書かないこと）を書く。「本文からの参照」に `meta.publisher_person`、`meta.roles`、`meta.printing`、`meta.printings` を書く。
 - docs/markup.md：式文脈の組み込み関数に `join` を、予約された名前空間 `meta` の説明に新しい値を、ブロックコマンドに `@printings` を加える。
-- docs/diagnostics.md：G0301 の意味に役割、名前、刷の検査と、符号を書いた場合の案内を加える。G0276 の節を加える。G0201 と G0202 の例に `join` と `meta.roles` を加える。
+- docs/diagnostics.md：G03001 の意味に役割、名前、刷の検査と、符号を書いた場合の案内を加える。G02076 の節を加える。G02001 と G02002 の例に `join` と `meta.roles` を加える。
 - docs/roadmap.md：v0.1.0-rc3 の「奥付の関係者と刷」の項目を消す。v1.0.0 の「発行の履歴の書式」は残す。
-- ユーザー向けのマニュアル：第 4 章（`chapters/04-manifest.gm`）と付録 B（`appendices/b-manifest.gm`）の `role` の説明と例を語に直し、`contributors`、`printings`、`publisher-person` を書く。第 3 章と付録 A に `join` と `@printings` を、付録 E に G0276 を書く。付録 H の rc3 の項目を消す。奥付の作り方の例を第 4 章に置く。
+- ユーザー向けのマニュアル：第 4 章（`chapters/04-manifest.gm`）と付録 B（`appendices/b-manifest.gm`）の `role` の説明と例を語に直し、`contributors`、`printings`、`publisher-person` を書く。第 3 章と付録 A に `join` と `@printings` を、付録 E に G02076 を書く。付録 H の rc3 の項目を消す。奥付の作り方の例を第 4 章に置く。
 - 二つのマニュアルの `manifest.toml` と、golem-driver の fixture の `manifest.toml` の `role` を語に直す。
 - 開発者向けのマニュアル：メタデータの写し方を述べた箇所があれば、`dc:contributor` と役割の表を加える。
 - [golem-epub ADR 0001](../golem-epub/adr/0001-epub-packaging.md) のステータスの行を「採択→`dc:contributor` と役割の写し方は ADR 0033」とする。

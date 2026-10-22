@@ -21,15 +21,15 @@
 段落スタイルの `font` はフォントの役割、`size` は文字の大きさで、`zw` は版面の文字の大きさを一字とする。
 書かない欄は `based-on` をたどって引き継ぎ、最後は `body` の値になる。
 `body` の `font` の既定は本文の役割、`size` の既定は版面の文字の大きさである。
-`font` が `[fonts]` にない役割を指すと G0308、`size` が版面の文字の大きさを超えると G0311 になる。
+`font` が `[fonts]` にない役割を指すと G03008、`size` が版面の文字の大きさを超えると G03011 になる。
 `caption` は `based-on = "body"` だけを持ち、その ADR ではキャプションの組み方に使われない。
-同じ ADR は、キャプションの本体の `@style` を G0213 とし、キャプションの見た目を `caption` が決めるとしている。
+同じ ADR は、キャプションの本体の `@style` を G02013 とし、キャプションの見た目を `caption` が決めるとしている。
 
 見出しの `[headings.<階層>]` の `font` と `size`（[ADR 0003](0003-pdf-heading-styles.md)）も、同じ意味の欄である。
 
 キャプションの書体と大きさを指定する欄は、`caption` の段落スタイルにする。
 `[figures]` の下に独自の表を設けると、書体と大きさの書き方が段落スタイルと二通りになる。
-段落スタイルにすれば、`based-on`、G0308、G0311、`usedRoles` の扱いが [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) のまま使える。
+段落スタイルにすれば、`based-on`、G03008、G03011、`usedRoles` の扱いが [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) のまま使える。
 
 この ADR は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) と [docs/adr/0006](../../adr/0006-paragraph-indent.md) の後に実装する。
 `caption` の段落スタイル、`usedRoles` の集め方、`restyle` の文字スタイルの扱いを、その二つの ADR に頼るためである。
@@ -56,8 +56,8 @@ font = "caption"  # フォントの役割
 size = "11Q"      # 文字の大きさ
 ```
 
-- golem-project には新しい欄も型も加えない。`[paragraph-styles.caption]` の読み込み、`based-on` の解決、G0306、G0308、G0311 の検査は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) のとおりとする。
-- `[figures.caption]` の表は設けない。`[figures]` に `caption` を書けば、今と同じく未知のキーとして G0306 になる。
+- golem-project には新しい欄も型も加えない。`[paragraph-styles.caption]` の読み込み、`based-on` の解決、G03006、G03008、G03011 の検査は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) のとおりとする。
+- `[figures.caption]` の表は設けない。`[figures]` に `caption` を書けば、今と同じく未知のキーとして G03006 になる。
 - キャプションに効くのは、解決した `caption` の `font` と `size` だけである。`line-breaks`、`space-between`、[docs/adr/0006](../../adr/0006-paragraph-indent.md) の `indent` と `first-line-indent` は、キャプションには効かない。意味論 IR のキャプション（`figCaption`）は段落スタイルのない段落（`Paragraph Nothing`）の列だが、図版の書式で図番号と一つのまとまりとして組み、[docs/adr/0006](../../adr/0006-paragraph-indent.md) も字下げを効かせない場所としているためである。これらの欄は、`@style caption` を付けた原稿の段落には効く。
 - `caption` に `based-on` で別の段落スタイルを指定すれば、その `font` と `size` を引き継ぐ。
 
@@ -91,7 +91,7 @@ paraFace style geom name =
 [ADR 0011](0011-sidenote-font.md) の傍注も同じ関数を `"sidenote"` で使う。
 
 `usedRoles` は、[docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) のとおり、すべての段落スタイルの `font` を集めるので、`caption` の役割はこの ADR で加えなくても読み込まれる。
-読み込む役割の決め方、フェイスの番号、G0805 の検査は [ADR 0003](0003-pdf-heading-styles.md) のとおりとする。
+読み込む役割の決め方、フェイスの番号、G08005 の検査は [ADR 0003](0003-pdf-heading-styles.md) のとおりとする。
 
 ### キャプションの組み方
 
@@ -132,8 +132,8 @@ cs = fs なら、各行の位置は今の `gridAt (k + m + j)` と一致する�
 - ない場合：今と同じく `across`。
 
 cs = fs なら、今の式 `(m + n − 1) × p + fs` と一致する。
-`exWidth`、`exLines`、G0722、G0723 の計算は [ADR 0005](0005-pdf-wrapped-figures.md) のまま変えない。
-小さいキャプションでは `exLines` が減るので、本文の大きさでは G0723 になった図版が入る場合がある。
+`exWidth`、`exLines`、G07022、G07023 の計算は [ADR 0005](0005-pdf-wrapped-figures.md) のまま変えない。
+小さいキャプションでは `exLines` が減るので、本文の大きさでは G07023 になった図版が入る場合がある。
 
 `paginate` の `FWrapped` は、`exLines` と脇の行の数の大きいほうを使う。
 `exLines` は `depth` から求めるので、キャプションの占める格子の数 N を別に渡す必要はない。
@@ -216,9 +216,9 @@ HTML は版面を使わないが、本文に対する比を保てば、読者が
 - 表のキャプション（[仕様書](../../specifications.md) の「v2 以降に回した事項」の表の拡張）。
 - HTML と EPUB で、見出しの `font` と `size`、文字スタイルの `size`、`caption` と `sidenote` 以外の段落スタイルの `size` を使うこと（[ADR 0003](0003-pdf-heading-styles.md)、[docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) の決定のまま）。
 - キャプションに `caption` の `line-breaks`、`space-between`、字下げを効かせること。
-- 原稿で一つのキャプションごとに段落スタイルを選ぶこと（[docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) の G0213 のまま）。
+- 原稿で一つのキャプションごとに段落スタイルを選ぶこと（[docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) の G02013 のまま）。
 - `[figures.caption]` のような、段落スタイルと別のキャプションの欄。
-- キャプションの中の傍注の配置（[ADR 0006](0006-pdf-sidenotes.md) の G0735 のまま）。
+- キャプションの中の傍注の配置（[ADR 0006](0006-pdf-sidenotes.md) の G07035 のまま）。
 
 ## テスト設計
 
@@ -229,7 +229,7 @@ HTML は版面を使わないが、本文に対する比を保てば、読者が
 検査そのものは [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) のテストが確かめるので、ここではキャプションの書き方で通ることだけを確かめる。
 
 - `[fonts.caption]` と `[paragraph-styles.caption]\nfont = "caption"\nsize = "8pt"\n` を含む `style.toml` が診断なしで読め、`paraStyle s (Just "caption")` の `psFont` が `Just "caption"`、`psSize` が `Just (Abs (8 × 65536))` になること。
-- `[figures]\ncaption = "x"\n` と、`[figures.caption]\nfont = "body"\n` が G0306 になること。
+- `[figures]\ncaption = "x"\n` と、`[figures.caption]\nfont = "body"\n` が G03006 になること。
 
 ### golem-driver（modules/golem-driver/test/Main.hs）
 
@@ -240,7 +240,7 @@ HTML は版面を使わないが、本文に対する比を保てば、読者が
 - `size = "6pt"` で、回り込ませない図版に全角 100 字のキャプションを付けると、キャプションが 3 行（6pt で一行 40 字）になり、`pfCaptionPitch` が 9pt、`pfCaptionSpan` が 2 になること。後の段落の最初の行が、図版の先頭の格子から 24 + 2 個後の格子に置かれること。同じ原稿を `[paragraph-styles.caption]` なしで組むと、キャプションが 5 行で、後の段落が 24 + 5 個後の格子に置かれること。
 - 同じ 6pt の原稿の PDF で、キャプションの文字のグリフが大きさ 6 の `Tf` で描かれ、1 行目のベースラインの y 座標が、版面の上端から `(k + 24) × 15pt + round(6pt × 0.88)` 下にあること（k は図版の先頭の格子の番号）。2 行目がその 9pt 下にあること。
 - `[fonts.heading]` と `[paragraph-styles.caption] font = "heading"` で、キャプションの文字のグリフが `heading` の役割のフェイス（`fakeFonts` の 4）のフォントのリソースで描かれ、本文のグリフは本文のフォントのリソースで描かれること。
-- 本文の大きさでは G0723 になる回り込みの図版（行数を減らした版面で、キャプションの行で除外領域が一ページを超えるもの）が、小さいキャプションでは G0723 にならないこと。
+- 本文の大きさでは G07023 になる回り込みの図版（行数を減らした版面で、キャプションの行で除外領域が一ページを超えるもの）が、小さいキャプションでは G07023 にならないこと。
 - 縦組みの `pdfStyle` に `size = "10Q"` を足し、回り込ませない図版のキャプションの行が版面の中にあり、1 行目の中心線が画像の左の格子の字面の始まりから 5Q の位置にあること。
 - `[paragraph-styles.caption]` に `font = "body"` と版面と同じ `size` を書いた PDF が、書かない PDF とバイト列で一致すること。
 - `[paragraph-styles.note] size = "8pt"` と `[paragraph-styles.caption] based-on = "note"` で、キャプションが 8pt で組まれること。
@@ -268,7 +268,7 @@ HTML でも、キャプションが本文より小さく表示されることを
 
 キャプションの書体と大きさを段落スタイルに置くので、`caption` の欄のうち `font` と `size` だけがキャプションに効き、ほかの欄は `@style caption` の段落にだけ効く。
 同じ名前のスタイルで効く欄が場所によって違うのは分かりにくいが、キャプションのために別の表を設けて書き方を二通りにするより、InDesign の段落スタイルにまとめる [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) の方針を優先する。
-`size` が版面の文字の大きさを超えると G0311 になるので、本文より大きいキャプションは組めない。
+`size` が版面の文字の大きさを超えると G03011 になるので、本文より大きいキャプションは組めない。
 キャプションの行は本文の格子に載らないので、この制約はキャプションには本来要らないが、段落スタイルの検査を場所によって変えないことを選ぶ。
 
 HTML の大きさを本文に対する比で書くので、`[page.grid]` のない `style.toml` では絶対の大きさ（pt）になる。

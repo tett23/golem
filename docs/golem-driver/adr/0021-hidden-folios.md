@@ -1,6 +1,6 @@
 # ADR 0021: 隠しノンブル
 
-ステータス: 採択→（数字の列の幅と、仕上がりの線を越える誤りの G0306 から G0329 への分離）は [ADR 0041](0041-hidden-folio-overlap-check-by-size.md)
+ステータス: 採択→（数字の列の幅と、仕上がりの線を越える誤りの G03006 から G03029 への分離）は [ADR 0041](0041-hidden-folio-overlap-check-by-size.md)
 
 ## 文脈
 
@@ -63,8 +63,8 @@ gutter = "1.5mm"        # 既定。ノドの仕上がりの線から数字の列
 つまり、トンボを付けた PDF には、何も書かなくても隠しノンブルが入る。
 入稿先が隠しノンブルを求めない場合と、中綴じの本の場合は、`enabled = false` を書く。
 
-`size` と `gutter` は判型と同じく文字の大きさに依存しない長さなので、`zw` で書くとエラー（G0306）とする。
-0 以下の値、寸法として読めない値、未知のキー、`pages` の表にない値も G0306 とする。
+`size` と `gutter` は判型と同じく文字の大きさに依存しない長さなので、`zw` で書くとエラー（G03006）とする。
+0 以下の値、寸法として読めない値、未知のキー、`pages` の表にない値も G03006 とする。
 
 ### 入れるページ
 
@@ -111,20 +111,20 @@ gutter = "1.5mm"        # 既定。ノドの仕上がりの線から数字の列
 
 ### 版面との重なり
 
-列の左右の範囲（中心線から字の送りの幅の半分ずつ）が、そのページの版面か傍注欄に、左右の方向で重なる場合はエラー（G0750）とする。
+列の左右の範囲（中心線から字の送りの幅の半分ずつ）が、そのページの版面か傍注欄に、左右の方向で重なる場合はエラー（G07050）とする。
 ノドの余白が数ミリしかない判型の設定は、隠しノンブルが本文に重なるか、本文がノドに綴じ込まれる設定であり、どちらにしても入稿できないからである。
 この検査は、`[hidden-folio]` の値と版面の寸法だけで決まるので、`Golem.LayoutSpec.pageGeometry` で行い、位置は `style.toml` の先頭とする。
 `enabled = false` の場合と、トンボを付けない PDF の場合は検査しない。
 `golem check` では、`--marks` に `japanese` か `western` を渡したときだけ検査する。
 
-列の左右の範囲がノドの仕上がりの線を越える場合（`gutter` が字の送りの半分より小さい場合）は、`style.toml` を読むときに G0306 とする。
+列の左右の範囲がノドの仕上がりの線を越える場合（`gutter` が字の送りの半分より小さい場合）は、`style.toml` を読むときに G03006 とする。
 字の送りは書体で決まるので、読み込みの段階では `size` の半分を字の送りの半分と見なして検査する。
 
 | 診断コード | 重大度 | 段階 | メッセージ |
 | --- | --- | --- | --- |
-| G0750 | エラー | レイアウト | `隠しノンブルが版面に重なります。[hidden-folio] の gutter を小さくするか、ノドの余白を広げてください` |
+| G07050 | エラー | レイアウト | `隠しノンブルが版面に重なります。[hidden-folio] の gutter を小さくするか、ノドの余白を広げてください` |
 
-G0750 は未使用である（[golem-syntax ADR 0002](../../golem-syntax/adr/0002-notice-severity.md) と [ADR 0017](0017-pdf-code-blocks.md) が予約した番号とも重ならない）。
+G07050 は未使用である（[golem-syntax ADR 0002](../../golem-syntax/adr/0002-notice-severity.md) と [ADR 0017](0017-pdf-code-blocks.md) が予約した番号とも重ならない）。
 
 ### HTML、EPUB、プレーンテキスト
 
@@ -139,9 +139,9 @@ G0750 は未使用である（[golem-syntax ADR 0002](../../golem-syntax/adr/000
 ### ドキュメント
 
 - docs/specifications.md の「v1 の実装で次の段階以降に回した項目」から「隠しノンブル」を削る。
-- 同じく「style.toml」の節に `[hidden-folio]` の四つのキー、入れるページ、位置と形、G0750 を書き、この ADR へリンクする。CLI の節の `--marks` の説明に、トンボを付けた PDF に隠しノンブルが入ることを書く。
+- 同じく「style.toml」の節に `[hidden-folio]` の四つのキー、入れるページ、位置と形、G07050 を書き、この ADR へリンクする。CLI の節の `--marks` の説明に、トンボを付けた PDF に隠しノンブルが入ることを書く。
 - docs/glossary.md に「隠しノンブル」を加える。
-- docs/diagnostics.md に G0750 の節を足す。
+- docs/diagnostics.md に G07050 の節を足す。
 - 利用者のマニュアル（`manual/`）に、隠しノンブルが入ること、中綴じの本では `enabled = false` にすることを書く（[docs/adr/0024](../../adr/0024-manual-audiences-and-policy.md)）。説明は `manual/chapters/06-output.gm` の「塗り足しとトンボ」の節（ラベル `print-pdf`）の、入稿用の PDF を作る手順の前に置き、設定のキーは `manual/appendices/c-style.gm` に節を加えて書く。`manual/chapters/05-style.gm` の「柱とノンブル」の節から、その説明へ参照を張る。
 
 ## データ構造の変更
@@ -202,13 +202,13 @@ drawsFolio :: Bool -> Maybe MasterGeometry -> Bool
 
 - `[hidden-folio]` を書かない `style.toml` で、`stHiddenFolio` が `enabled = true`、`pages = "unnumbered"`、`size = 6pt`、`gutter = 1.5mm` になること。
 - `enabled = false`、`pages = "all"`、`size = "8Q"`、`gutter = "2mm"` が読めること。
-- `size = "1zw"`、`gutter = "-1mm"`、`size = "0pt"`、`pages = "blank"`、未知のキー `font` が、それぞれ G0306 になること。
-- `size = "6pt"`、`gutter = "1mm"`（字の送りの半分 3pt ≒ 1.06mm を下回る）が G0306 になること。
+- `size = "1zw"`、`gutter = "-1mm"`、`size = "0pt"`、`pages = "blank"`、未知のキー `font` が、それぞれ G03006 になること。
+- `size = "6pt"`、`gutter = "1mm"`（字の送りの半分 3pt ≒ 1.06mm を下回る）が G03006 になること。
 
 ### golem-layout-spec（`modules/golem-layout-spec/test/Main.hs`）
 
-- ノドの余白が 1.5mm しかない版面で、トンボありのとき G0750 になり、トンボなしと `enabled = false` のときは G0750 にならないこと。
-- ノドの余白が 15mm の版面で G0750 にならないこと。
+- ノドの余白が 1.5mm しかない版面で、トンボありのとき G07050 になり、トンボなしと `enabled = false` のときは G07050 にならないこと。
+- ノドの余白が 15mm の版面で G07050 にならないこと。
 
 ### golem-driver（`modules/golem-driver/test/Main.hs`）
 

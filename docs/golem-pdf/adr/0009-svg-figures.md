@@ -11,7 +11,7 @@
 
 [ADR 0008](0008-pdf-figures.md) の実験で確かめたとおり、今の Golem は `@figure images/a.svg` を評価の段階で通し、次のように扱う。
 
-- PDF は、`readImage` が SVG を読めないので、図版をキャプションごと黙って落とす。[ADR 0008](0008-pdf-figures.md) は、これを G0810 のエラーにし、図版の拡張子を `.pdf`、`.png`、`.jpg`、`.jpeg` に限る（G0274）。
+- PDF は、`readImage` が SVG を読めないので、図版をキャプションごと黙って落とす。[ADR 0008](0008-pdf-figures.md) は、これを G08010 のエラーにし、図版の拡張子を `.pdf`、`.png`、`.jpg`、`.jpeg` に限る（G02074）。
 - HTML と EPUB は、SVG のファイルをそのまま写して `<img>` で置く。EPUB はその `media-type` を `application/octet-stream` にする。SVG は EPUB 3 のコアメディアタイプ（`image/svg+xml`）なので、正しい型を書けば EPUB のリーダーはそのまま表示できる。
 
 ### 開発者のマニュアルの図
@@ -59,24 +59,24 @@ SVG の図版も同じ例外に入れ、sRGB の ICCBased の色空間で描く�
 
 案の段階で残していた問いに、メンテナーが次のとおり答えた。
 
-- SVG の中の、輪郭（アウトライン）にしていない文字は、エラーとする。`text`、`tspan`、`textPath` の要素と `@font-face` は、どれも PDF に置けない。したがって、SVG の文字の書体を `@font-face` や `style.toml` の役割から探す仕組みは作らない。案にあった、外部のファイルを参照する SVG に `web` を求める診断（G0812）と、総称のファミリーと役割の結び付けの問いも、この決定で要らなくなった。
+- SVG の中の、輪郭（アウトライン）にしていない文字は、エラーとする。`text`、`tspan`、`textPath` の要素と `@font-face` は、どれも PDF に置けない。したがって、SVG の文字の書体を `@font-face` や `style.toml` の役割から探す仕組みは作らない。案にあった、外部のファイルを参照する SVG に `web` を求める診断（G08012）と、総称のファミリーと役割の結び付けの問いも、この決定で要らなくなった。
 - `device-cmyk()` は扱わない（「実装しないこと」）。
 - 開発者のマニュアルの四つの図は、文字を輪郭にした SVG にし、SVG の図版としてベクターのまま置く。PNG にはしない。輪郭の SVG は、編集できる原稿の SVG から開発の時に作り、原稿と輪郭の SVG の両方をコミットする。作るためのツールは、Golem 自身の実行時の依存を増やさないかぎり、理由があれば開発の時のツールを使ってよい。
 - SVG を読む処理は、新しいパッケージ golem-svg として Haskell で書く。Rust のライブラリも、新しい組み込みの依存も入れない。組み込みの依存を足すことは、ビルドと決定性の管理の負担が大きいためである。
-- 新しい診断のコード（G0811）が、並行して書かれているほかの ADR のコードと重なった場合は、実装する者がそれを報告し、重ならない順に実装する。この ADR を書いた時点では、08 の区分のコードを使うほかの案は [ADR 0008](0008-pdf-figures.md) だけである。
+- 新しい診断のコード（G08011）が、並行して書かれているほかの ADR のコードと重なった場合は、実装する者がそれを報告し、重ならない順に実装する。この ADR を書いた時点では、08 の区分のコードを使うほかの案は [ADR 0008](0008-pdf-figures.md) だけである。
 
-文字のエラーには、新しいコードを足さず、扱えない機能のコード G0811 を使う。
+文字のエラーには、新しいコードを足さず、扱えない機能のコード G08011 を使う。
 文字を描けない理由は、グラデーションや `use` を描けない理由と同じく、この ADR が扱う範囲の外にあることである。
 直し方も同じく、作成ツールの側で範囲の中に収めて書き出し直すことであり、文字の場合は輪郭にして書き出す。
 コードを分けても、利用者が取る行動は変わらない。
-`@figure` ごとに一つの診断にまとめる G0811 の規則の中で、文字の場合は、メッセージの理由に輪郭にするよう書いて案内する。
+`@figure` ごとに一つの診断にまとめる G08011 の規則の中で、文字の場合は、メッセージの理由に輪郭にするよう書いて案内する。
 
 ## 実装すること
 
 ### 範囲
 
 SVG 1.1 と SVG 2 の静的な部分のうち、次の表のものだけを扱う。
-表にない SVG の要素、属性、プロパティの値は、黙って無視せず、G0811 のエラーにする。
+表にない SVG の要素、属性、プロパティの値は、黙って無視せず、G08011 のエラーにする。
 無視して描くと、ブラウザーで見た図と PDF の図が食い違い、その違いに気付く手段がないためである。
 
 | 種類 | 扱うもの |
@@ -95,7 +95,7 @@ SVG 1.1 と SVG 2 の静的な部分のうち、次の表のものだけを扱�
 | 文字だけに効くプロパティ | `font-family`、`font-size`、`font-weight`、`font-style`、`font-variant` と `font-variant-` で始まるもの、`font-stretch`、`font-feature-settings`、`font-variation-settings`、`font`、`text-anchor`、`text-orientation`、`dominant-baseline`、`alignment-baseline`、`baseline-shift`、`writing-mode`、`glyph-orientation-vertical`、`letter-spacing`、`word-spacing`、`line-height`、`inline-size`、`shape-inside`、`shape-padding`、`xml:space`。値を問わず読み飛ばす |
 | 描画に効かない属性 | `aria-` で始まる属性と `role`。読み飛ばす |
 
-文字の要素（`text`、`tspan`、`textPath`）と、スタイルシートの `@font-face` は、表の外であり G0811 とする。
+文字の要素（`text`、`tspan`、`textPath`）と、スタイルシートの `@font-face` は、表の外であり G08011 とする。
 
 文字だけに効くプロパティを読み飛ばすのは、作成ツールが文字を輪郭にして書き出すときに、元の文字のスタイルを輪郭のパスや `g` に残すことが多いためである。
 これらのプロパティは文字の要素がなければ描画に効かないので、読み飛ばしても PDF の図はブラウザーで見た図と変わらない。
@@ -105,8 +105,8 @@ SVG 1.1 と SVG 2 の静的な部分のうち、次の表のものだけを扱�
 
 SVG を読むための XML と CSS の部分集合を、依存に入れずに Haskell で書く。
 
-- **XML**：UTF-8 の文書だけを読む（宣言の `encoding` が UTF-8 以外なら G0810）。要素、属性、名前空間、文字、CDATA、コメント、処理命令（読み飛ばす）、文字参照と五つの定義済みの実体参照を扱う。内部サブセットを持つ `DOCTYPE` は拒む（実体の展開をしないためである）。SVG の名前空間の外の要素と属性（Inkscape の `sodipodi:` など）は読み飛ばす。整形式でない文書は G0810 とする。
-- **CSS**：`<style>` の中と `style` の属性を読む。セレクターは型、`.class`、`#id`、`*`、それらの組み合わせ（`rect.proc`）、カンマで並べたリストを扱う。結合子（子孫、子、兄弟）、擬似クラス、属性セレクター、`!important`、すべてのアットルール（`@font-face` を含む）は G0811 とする。カスケードは、表現の属性、詳細度と出現の順で並べたスタイルシートの規則、`style` の属性の順に強くなり、継承するプロパティは親から引き継ぐ。ベンダーの接頭辞の付いたプロパティ（`-inkscape-font-specification` など）は読み飛ばす。
+- **XML**：UTF-8 の文書だけを読む（宣言の `encoding` が UTF-8 以外なら G08010）。要素、属性、名前空間、文字、CDATA、コメント、処理命令（読み飛ばす）、文字参照と五つの定義済みの実体参照を扱う。内部サブセットを持つ `DOCTYPE` は拒む（実体の展開をしないためである）。SVG の名前空間の外の要素と属性（Inkscape の `sodipodi:` など）は読み飛ばす。整形式でない文書は G08010 とする。
+- **CSS**：`<style>` の中と `style` の属性を読む。セレクターは型、`.class`、`#id`、`*`、それらの組み合わせ（`rect.proc`）、カンマで並べたリストを扱う。結合子（子孫、子、兄弟）、擬似クラス、属性セレクター、`!important`、すべてのアットルール（`@font-face` を含む）は G08011 とする。カスケードは、表現の属性、詳細度と出現の順で並べたスタイルシートの規則、`style` の属性の順に強くなり、継承するプロパティは親から引き継ぐ。ベンダーの接頭辞の付いたプロパティ（`-inkscape-font-specification` など）は読み飛ばす。
 
 ### 描画（golem-svg の `Golem.Svg`）
 
@@ -122,8 +122,8 @@ data DrawOp
   = DPath !Paint ![Segment]
   | DGroup !Matrix !(Maybe ClipRect) ![DrawOp]
 data SvgError
-  = SvgMalformed !Text                  -- G0810 の理由
-  | SvgUnsupported !(NonEmpty Unsupported)  -- G0811
+  = SvgMalformed !Text                  -- G08010 の理由
+  | SvgUnsupported !(NonEmpty Unsupported)  -- G08011
 ```
 
 - 円、楕円、角の丸い矩形、円弧（`A`）は三次のベジェ曲線に直す。円弧は 90 度以下の区間に分ける。
@@ -144,12 +144,12 @@ data SvgError
 
 | コード | 重大度 | 出す場面 | メッセージ |
 | --- | --- | --- | --- |
-| G0810 | エラー | SVG を XML として読めない、UTF-8 でない、内部サブセットを持つ、大きさがない | `図版を PDF に置けません: <パス>（<理由>）`（[ADR 0008](0008-pdf-figures.md) と同じ） |
-| G0811 | エラー | 扱わない要素、属性、値、輪郭にしていない文字 | `SVG の図版に扱えないものがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件` |
+| G08010 | エラー | SVG を XML として読めない、UTF-8 でない、内部サブセットを持つ、大きさがない | `図版を PDF に置けません: <パス>（<理由>）`（[ADR 0008](0008-pdf-figures.md) と同じ） |
+| G08011 | エラー | 扱わない要素、属性、値、輪郭にしていない文字 | `SVG の図版に扱えないものがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件` |
 
-- G0811 は `@figure` ごとに一つ出し、最初に見つかったものの名前と位置をメッセージに書き、残りの件数を添える。位置はその `@figure` のブロックとする。
+- G08011 は `@figure` ごとに一つ出し、最初に見つかったものの名前と位置をメッセージに書き、残りの件数を添える。位置はその `@figure` のブロックとする。
 - 最初に見つかったものが文字の要素か `@font-face` なら、`（<名前>）` を `（<名前>: 文字は輪郭にして書き出してください）` とする。
-- G0810 と G0811 は dev と prod の両方でエラーである。PDF を組むとき（`golem build` の PDF、`golem preflight`）にだけ出す。HTML、EPUB、プレーンテキストは SVG を読まない。
+- G08010 と G08011 は dev と prod の両方でエラーである。PDF を組むとき（`golem build` の PDF、`golem preflight`）にだけ出す。HTML、EPUB、プレーンテキストは SVG を読まない。
 
 ### HTML と EPUB（golem-html、golem-epub）
 
@@ -165,13 +165,13 @@ data SvgError
 | 画像（最初の位置引数） | `.pdf`、`.png`、`.jpg`、`.jpeg`、`.svg` |
 | `web` | `.png`、`.jpg`、`.jpeg`、`.svg` |
 
-- G0273 と G0274 のメッセージに SVG を加える（`図版の形式は PDF、PNG、JPEG、SVG です: <パス>`、`web の代替画像は PNG、JPEG、SVG です: <パス>`）。
-- SVG の図版の `web` は省ける。`page` は SVG の図版にも書けない（G0275）。
+- G02073 と G02074 のメッセージに SVG を加える（`図版の形式は PDF、PNG、JPEG、SVG です: <パス>`、`web の代替画像は PNG、JPEG、SVG です: <パス>`）。
+- SVG の図版の `web` は省ける。`page` は SVG の図版にも書けない（G02075）。
 
 ### プリフライト（golem-preflight）
 
 - SVG の図版も、[ADR 0008](0008-pdf-figures.md) の `FigureContent` の一つ（`SvgFigure`）としてページの図版の一覧に載せる。
-- G0908 は、SVG の図版の色空間を `rgb` とする。G0906、G0907、G0909 は SVG の図版を検査しない。G0911 は矩形で検査する。
+- G09008 は、SVG の図版の色空間を `rgb` とする。G09006、G09007、G09009 は SVG の図版を検査しない。G09011 は矩形で検査する。
 
 ### 開発者のマニュアルの図
 
@@ -193,7 +193,7 @@ sh scripts/manual/outline-figures.sh [名前...]   # 省けばすべての図
 
 1. `scripts/manual/fetch-fonts.sh` でマニュアルのフォントを用意する。
 2. 一時のディレクトリに fontconfig の設定を書く。フォントのディレクトリを `manual-dev/fonts` だけにし、原稿の `font-family` の名前（`Fig Sans`）を `Noto Sans JP` に結び付ける別名を置く。`FONTCONFIG_FILE` でこの設定を指し、システムのフォントを使わせない。
-3. 原稿の写しから `@font-face` の規則を消す（Inkscape は `@font-face` を読まず、残すと輪郭の SVG が G0811 になるためである）。
+3. 原稿の写しから `@font-face` の規則を消す（Inkscape は `@font-face` を読まず、残すと輪郭の SVG が G08011 になるためである）。
 4. `inkscape --export-text-to-path --export-plain-svg --export-filename=<出力> <写し>` で、文字を輪郭のパスにし、Inkscape の名前空間を除いた SVG を書く。
 5. 出力の先頭に、原稿のパス、原稿の SHA-256、Inkscape の版、手で直さないことを書いたコメントを置く。
 
@@ -213,13 +213,13 @@ sh scripts/manual/outline-figures.sh [名前...]   # 省けばすべての図
 
 ### ドキュメント
 
-- 仕様書の[「図版」の節](../../specifications.md#図版)の SVG の文を、扱う範囲、文字を輪郭にする必要があること、PDF での描き方、HTML と EPUB での扱い、G0811 に書き直す。[「色」の節](../../specifications.md#色)の画像の例外に SVG の図版を加える。[「モジュール構成」の節](../../specifications.md#モジュール構成)に golem-svg を加える。
+- 仕様書の[「図版」の節](../../specifications.md#図版)の SVG の文を、扱う範囲、文字を輪郭にする必要があること、PDF での描き方、HTML と EPUB での扱い、G08011 に書き直す。[「色」の節](../../specifications.md#色)の画像の例外に SVG の図版を加える。[「モジュール構成」の節](../../specifications.md#モジュール構成)に golem-svg を加える。
 - `docs/markup.md` の「図版」の節の形式の一覧に SVG を加え、`web` を省けること、扱う範囲の要約、文字を輪郭にする必要があることを書く。
-- `docs/diagnostics.md` に G0811 の節を足し、文字を輪郭にして書き出す直し方を書く。G0273 と G0274 のメッセージを改める。
+- `docs/diagnostics.md` に G08011 の節を足し、文字を輪郭にして書き出す直し方を書く。G02073 と G02074 のメッセージを改める。
 - `docs/roadmap.md` から「SVG の図版」を消す。
 - `docs/manual-policy.md` の図の項を改める。開発者のマニュアルの図は、`manual-dev/images/src/` の編集できる SVG を原稿とし、`scripts/manual/outline-figures.sh` で文字を輪郭にした SVG を `manual-dev/images/` に作り、両方をコミットする。輪郭の SVG は手で直さない。図は SVG の図版としてベクターのまま置き、`web` の画像は置かない。「今は RGB の PNG のままにする」の項は、図版が sRGB の SVG であることに改める。
 - README.md の開発者のマニュアルの図の手順と、開発者のマニュアルの `manual-dev/part2/15-manuals.gm` の図の段落を、`outline-figures.sh` と輪郭の SVG に改め、Inkscape を入れる必要があることを書く。
-- 利用者のマニュアルの `manual/chapters/03-markup.gm`（図版の節）と `manual/appendices/a-markup.gm` に SVG の扱いと文字の制限を、`manual/appendices/e-errors.gm` に G0811 を足す。
+- 利用者のマニュアルの `manual/chapters/03-markup.gm`（図版の節）と `manual/appendices/a-markup.gm` に SVG の扱いと文字の制限を、`manual/appendices/e-errors.gm` に G08011 を足す。
 - 開発者のマニュアルの `manual-dev/part2/07-modules.gm` に golem-svg を加え、モジュールの図の原稿（`images/src/modules.svg`）にも箱を足して、輪郭の SVG を作り直す。
 - 開発者のマニュアルの四つの `@figure`（`part1/06-ir.gm` の二つ、`part2/07-modules.gm`、`part2/12-purity.gm`）を `images/<名前>.svg` に改める。
 - [ADR 0008](0008-pdf-figures.md) のステータスの行を「採択→図版の形式の SVG は [ADR 0009](0009-svg-figures.md)」に改める（[ADR 0008](0008-pdf-figures.md) が採択された後）。
@@ -263,22 +263,22 @@ sh scripts/manual/outline-figures.sh [名前...]   # 省けばすべての図
 
 - SVG の図版を置いた本の PDF に Form XObject があり、矩形の幅が行長で、高さがルートの縦横の比に合う。その Form XObject の資源に `Font` がない。
 - SVG の `fill="#ff0000"` が、ICCBased の sRGB の `sc` で書かれ、PDF に DeviceRGB がない。`Golem.Pdf.X4.verify` が問題を返さない。PDF が `qpdf --check` を通る。
-- `linearGradient` を含む SVG が `golem build --target pdf` で G0811 になり、終了コード 1 で PDF を書かない。dev と prod の両方で同じである。整形式でない SVG が G0810 になる。
-- `text` を含む SVG が G0811 になり、メッセージに `文字は輪郭にして書き出してください` を含む。
+- `linearGradient` を含む SVG が `golem build --target pdf` で G08011 になり、終了コード 1 で PDF を書かない。dev と prod の両方で同じである。整形式でない SVG が G08010 になる。
+- `text` を含む SVG が G08011 になり、メッセージに `文字は輪郭にして書き出してください` を含む。
 - `text` を含む SVG の図版でも、`golem build --target html` と `--target epub` は診断を出さずに `<img>` で置く。`web` があれば、`<img>` が `web` を指す。
 - EPUB の `package.opf` で、SVG の項目の `media-type` が `image/svg+xml` である。
 - 同じ SVG の図版を持つ本を二度組んだ PDF のバイト列が同じである。決定性の CI の検査（x86-64 と aarch64）にも SVG の図版を持つ fixture を加える（[docs/adr/0002](../../adr/0002-determinism.md)）。
-- `print` の設定の `golem preflight` で、SVG の図版が G0908（`rgb`）を出し、G0906 を出さない。
+- `print` の設定の `golem preflight` で、SVG の図版が G09008（`rgb`）を出し、G09006 を出さない。
 
 ### 開発者のマニュアル（`scripts/manual/check-figures.sh`、`modules/golem-driver/test/CliSpec.hs`）
 
-- 開発者のマニュアルを PDF、HTML、EPUB で組み、G0810 と G0811 が出ない。PDF の四つの図版が Form XObject で、資源に `Font` を持たない。HTML の `<img>` が `images/<名前>.svg` を指す。この確かめは、マニュアルを組む今の CI のジョブがそのまま行う。
+- 開発者のマニュアルを PDF、HTML、EPUB で組み、G08010 と G08011 が出ない。PDF の四つの図版が Form XObject で、資源に `Font` を持たない。HTML の `<img>` が `images/<名前>.svg` を指す。この確かめは、マニュアルを組む今の CI のジョブがそのまま行う。
 - `check-figures.sh` は、原稿を一文字変えると失敗し、`outline-figures.sh` で作り直すと通る。シェルのスクリプトなので自動テストは書かず、実装の後にこの手順で確かめる。
 
 ### 自動テストにしない確かめ方
 
 - 四つの輪郭の SVG と原稿の SVG を Chrome で開いて並べ、文字の位置（中央揃え、`dominant-baseline: central`）、縦書きの字の向き、太字が一致することを目で確かめる。開発者のマニュアルの PDF の図も同じく比べる。Inkscape が `dominant-baseline` や縦書きを Chrome と違って組む場合は、原稿の側をどちらでも同じに描かれる書き方に直す。
-- Inkscape と Illustrator と draw.io で、表の範囲だけを使い、文字を輪郭にして描いた図を SVG で書き出し、PDF で崩れないこと、範囲の外の機能と輪郭にしていない文字が G0811 で報告されることを確かめる。
+- Inkscape と Illustrator と draw.io で、表の範囲だけを使い、文字を輪郭にして描いた図を SVG で書き出し、PDF で崩れないこと、範囲の外の機能と輪郭にしていない文字が G08011 で報告されることを確かめる。
 - SVG の図版を含む PDF を、商用のプリフライト（Acrobat の PDF/X-4 の検査）に通す。
 
 ## トレードオフ
@@ -287,7 +287,7 @@ sh scripts/manual/outline-figures.sh [名前...]   # 省けばすべての図
 変換器を使えば、SVG の機能のほとんどを最初から扱える。
 しかし、どの変換器もシステムのフォントを探し、出力が変換器の版で変わり、利用者の環境に別のツールを要求する。
 組み込みの依存として同梱する道もあるが、メンテナーはそれを避けると決めた。
-代わりに、扱える SVG は狭く、作成ツールの書き出しによっては G0811 で止まる。
+代わりに、扱える SVG は狭く、作成ツールの書き出しによっては G08011 で止まる。
 その場合は、ツールの側で範囲の中に収めて書き出し直すか、PDF で書き出して [ADR 0008](0008-pdf-figures.md) の PDF の図版として置く。
 
 輪郭にしていない文字を、エラーにした。
@@ -312,9 +312,9 @@ HTML と EPUB でも、開発者のマニュアルの図は `web` を置かず�
 輪郭の SVG はフォントを読み込まないので、`<img>` でも PDF と同じ形に描かれ、画面でも拡大して崩れない。
 PNG を残すと、原稿、輪郭の SVG、PNG の三つを同期させる必要があり、Chrome と Inkscape の両方が要る。
 
-文字のエラーに、新しいコードを足さず G0811 を使うことにした。
+文字のエラーに、新しいコードを足さず G08011 を使うことにした。
 コードを分けると、利用者はコードの一覧から文字の問題だけを探しやすくなる。
-しかし、原因（範囲の外の機能）と直し方（範囲に収めて書き出し直す）はほかの G0811 と同じであり、`@figure` ごとに一つにまとめる規則の中で文字だけを別の診断に分けると、一つの図版に二つのエラーが出る場合ができる。
+しかし、原因（範囲の外の機能）と直し方（範囲に収めて書き出し直す）はほかの G08011 と同じであり、`@figure` ごとに一つにまとめる規則の中で文字だけを別の診断に分けると、一つの図版に二つのエラーが出る場合ができる。
 メッセージの理由で輪郭にするよう案内すれば、直し方は伝わる。
 
 文字だけに効くプロパティを、エラーにせず読み飛ばすことにした。
@@ -328,7 +328,7 @@ PNG を残すと、原稿、輪郭の SVG、PNG の三つを同期させる必�
 
 SVG の色を sRGB のまま、ICCBased で PDF に入れることにした。
 印刷の色への変換は RIP に任せることになり、図の色は CMYK で指定した文字や罫線の色と完全には合わない。
-写真の画像と同じ扱いであり、`print` のプリフライトの設定は G0908 の警告でこれを知らせる。
+写真の画像と同じ扱いであり、`print` のプリフライトの設定は G09008 の警告でこれを知らせる。
 CMYK で色を決めたい図は、CMYK の PDF に書き出して PDF の図版として置ける。
 
 HTML と EPUB では SVG をそのまま使い、中身を検査しないことにした。

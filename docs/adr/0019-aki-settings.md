@@ -75,7 +75,7 @@ InDesign の「文字前のアキ量」のように文字に属性として付�
 
 `Golem.Project.Style` に `parseAki :: Text -> Maybe Rational` を加える。
 名前と百分率は、アキの量を書く欄（アキ量のセットの規則と、原稿の `[aki]`）でだけ受け付ける。
-`indent` などのほかの寸法の欄は今のままとし、`"二分"` を書けば G0320（アキの量の誤り）とする。
+`indent` などのほかの寸法の欄は今のままとし、`"二分"` を書けば G03020（アキの量の誤り）とする。
 負の値は書けない。
 
 ### アキ量のセット（golem-project）
@@ -135,13 +135,13 @@ aki-set = "wide-waou"
 - `before` の各クラスと `after` の各クラスの組に、(最小, 最適, 最大) を割り当てる。後に書いた規則が、同じ組の前の規則を上書きする。基準のセットの規則は、子のセットの規則より前にある。
 - `before = "paragraph-start"` は段落の最初の文字の前、`before = "line-start"` は段落の途中で改行した後の行頭の文字の前、`after = "line-end"` は改行する前の行末の文字の後ろの空きである。行頭と行末の空きは `optimum` の固定の量とし、`minimum` と `maximum` は使わない。
 - 規則のない組の空きは 0 で、伸び縮みしない。
-- `minimum <= optimum <= maximum` でない規則、未知のクラスの名前、`line-end` を `before` に書いた規則、`line-start` と `paragraph-start` を `after` に書いた規則は G0320 とする。
+- `minimum <= optimum <= maximum` でない規則、未知のクラスの名前、`line-end` を `before` に書いた規則、`line-start` と `paragraph-start` を `after` に書いた規則は G03020 とする。
 
 | 診断コード | 重大度 | メッセージ |
 |---|---|---|
-| G0320 | エラー | `アキの量の指定が正しくありません: <理由>` |
+| G03020 | エラー | `アキの量の指定が正しくありません: <理由>` |
 
-G0320 は未使用である。`style.toml` の一般の誤りの G0306 から、アキの量とアキ量のセットの誤りを分けて、どの欄の誤りかをコードで引けるようにする（提案中の ADR のあいだで、G0317 から G0322 を分けて割り当てた）。
+G03020 は未使用である。`style.toml` の一般の誤りの G03006 から、アキの量とアキ量のセットの誤りを分けて、どの欄の誤りかをコードで引けるようにする（提案中の ADR のあいだで、G03017 から G03022 を分けて割り当てた）。
 
 
 ### 組み込みのセット
@@ -180,7 +180,7 @@ InDesign の同名のセットの値とは、資料で確かめた項目（和�
 | `P` | `line-end` | 二分 |
 | `M` | `line-end` | 四分 |
 
-利用者が組み込みと同じ名前の節を書くとエラー（G0320）とする。
+利用者が組み込みと同じ名前の節を書くとエラー（G03020）とする。
 組み込みのセットの値を変えたい場合は、`based-on` で引き継いだ別の名前のセットを作る。
 段落スタイルと違い、組み込みのセットは InDesign の定義済みのセットに当たり、InDesign でも定義済みのセットは編集できない（記憶）。
 
@@ -188,7 +188,7 @@ InDesign の同名のセットの値とは、資料で確かめた項目（和�
 
 `[paragraph-styles.<名前>]` に `aki-set`（セットの名前）を加える。
 `body` の既定は `gyomatsu-yakumono-hankaku` とし、ほかの段落スタイルは `based-on` から引き継ぐ。
-存在しないセットを指す `aki-set` と `based-on`、循環する `based-on` は G0313 とする。
+存在しないセットを指す `aki-set` と `based-on`、循環する `based-on` は G03013 とする。
 ファイルの中の段落スタイルの定義（[docs/adr/0014](0014-in-file-settings.md)）でも `aki-set` を書けるが、セットそのものは `style.toml` にだけ定義できる。
 セットは `[composition]` と同じく本の全体で一つの資源だからである。
 
@@ -254,7 +254,7 @@ defaultAkiSet :: AkiSet                          -- gyomatsu-yakumono-hankaku
 - 意味論 IR の `InlineF` に `Aki !SrcSpan !AkiAmount` を加える。`data AkiAmount = AkiZw !Rational | AkiAbs !Sp` とする。
 - CDDL（`modules/golem-doc/schema/golem-doc.cddl`）の `inline-no-ruby` に `[18, span, zw: [int, uint] / null, sp: int / null]`（`zw` は分子と分母、どちらか一方だけが値を持つ）を加え、`Golem.Doc.Cbor` と `Golem.Doc.Validate` をそろえる。
 - インラインを足すと、フィルタのプラグインとの間の IR の形が変わるので、ABI の版を一つ上げる。今の版は 3 で、この ADR だけを実装すれば 4 になる。この ADR の実装より前に別の ADR（[docs/adr/0017](0017-forced-page-breaks.md) など）が版を上げていれば、その次の版にする。`Golem.Doc` と golem-plugin の `abiVersion`、テストのプラグイン（`modules/golem-plugin/test/plugins/*.wat`）の `golem_abi_version` の戻り値を同じ版にそろえる。
-- `Golem.Eval.File` の `builtinInlineCommands` に `aki` を加える。位置引数が一つでない、量を読めない、散文スロットがある場合は G0255 とし、メッセージで書ける量を示す。G0255 は今のコードと ADR で使われていない（`git grep` で確かめた）。`overridableCommands` には加えない。
+- `Golem.Eval.File` の `builtinInlineCommands` に `aki` を加える。位置引数が一つでない、量を読めない、散文スロットがある場合は G02055 とし、メッセージで書ける量を示す。G02055 は今のコードと ADR で使われていない（`git grep` で確かめた）。`overridableCommands` には加えない。
 - golem-layout は、`Aki` を幅が固定の `Glue w 0 0` にし、前に `Penalty 0 infPenalty NoHyphen` を置く。`[aki]` の前後では分割しない。`zw` は、その位置の文字の大きさ（`ceLook` の `lkSize`）で測る。
 - `[aki]` を挟んだ二つの文字の間には、アキ量のセットの空きを置かない。`[aki]` は、その位置の空きを書き手が決めたものとして扱う。`normalize` は `Aki` の `Glue` を、前後の箱の組の判定から外す（`between` に渡す前の箱を `Nothing` にする）。
 
@@ -290,9 +290,9 @@ defaultAkiSet :: AkiSet                          -- gyomatsu-yakumono-hankaku
 
 - `parseAki` が `"ベタ"`、`"全角"`、`"二分"`、`"三分"`、`"四分"`、`"五分"`、`"六分"`、`"八分"`、`"二分四分"`、`"0.2zw"`、`"12.5%"` を 0、1、1/2、1/3、1/4、1/5、1/6、1/8、3/4、1/5、1/8 に読み、`"-1zw"`、`"1mm"`、`"十分"` を読まない。
 - 上の例の `[aki-sets.wide-waou]` と `aki-set = "wide-waou"` を読める。
-- `minimum` が `optimum` より大きい規則、未知のクラス、`before = "line-end"`、組み込みと同じ名前の節が G0320 になる。
-- 存在しないセットを指す `aki-set` と `based-on`、循環する `based-on` が G0313 になる。
-- `indent = "二分"` が G0320 になる。
+- `minimum` が `optimum` より大きい規則、未知のクラス、`before = "line-end"`、組み込みと同じ名前の節が G03020 になる。
+- 存在しないセットを指す `aki-set` と `based-on`、循環する `based-on` が G03013 になる。
+- `indent = "二分"` が G03020 になる。
 
 ### 組み方（`modules/golem-layout/test/Main.hs`）
 
@@ -305,7 +305,7 @@ defaultAkiSet :: AkiSet                          -- gyomatsu-yakumono-hankaku
 
 ### `[aki]`
 
-- `modules/golem-eval/test`：`[aki 五分]` が `Aki sp (AkiZw (1/5))`、`[aki 1mm]` が `AkiAbs` になる。`[aki]`、`[aki 十分]`、`[aki 四分: 語]` が G0255 になる。
+- `modules/golem-eval/test`：`[aki 五分]` が `Aki sp (AkiZw (1/5))`、`[aki 1mm]` が `AkiAbs` になる。`[aki]`、`[aki 十分]`、`[aki 四分: 語]` が G02055 になる。
 - `modules/golem-doc/test`：`Aki` を CBOR に書いて読み戻すと同じ値になり、CDDL の検査を通る。
 - `modules/golem-layout/test/Main.hs`：`漢[aki 五分]A` が `[箱 漢, Penalty 0 inf, Glue (fs/5) 0 0, 箱 A]` になり、和欧間の `Glue` を含まない。
 - `modules/golem-html/test`：`[aki 五分]` が `margin-inline-start: 0.2em` の `span` になり、前後に U+2060 がある。

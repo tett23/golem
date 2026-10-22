@@ -6,7 +6,7 @@
 
 `style.toml` のキーを一つ綴り違えると、Golem は `unexpected key: bindng (.page)` と英語で答える。
 ほかの診断の文言はすべて日本語なので、設定の誤りだけが英語で出る。
-利用者のマニュアルは G0306 の説明で「今の版では、知らないキーのメッセージは英語です」と断っている（manual/ の付録D「診断の一覧」。[golem-cli ADR 0006](../../golem-cli/adr/0006-preflight.md) で付録E に繰り下がる）。
+利用者のマニュアルは G03006 の説明で「今の版では、知らないキーのメッセージは英語です」と断っている（manual/ の付録D「診断の一覧」。[golem-cli ADR 0006](../../golem-cli/adr/0006-preflight.md) で付録E に繰り下がる）。
 
 この英語は toml-parser 2.0.2.0 の文言である。
 [golem-project ADR 0006](0006-project-diagnostic-codes.md) は、Golem のソースが書いた英語の文言（`column-gap is required when columns > 1` など）を日本語に改め、toml-parser 自身の文言は英語のまま残すと決めた。
@@ -21,7 +21,7 @@ TOML の読み込みは、golem-project の `Golem.Project.Manifest.decodeStrict
 1. `Toml.parse` で構文を読む。失敗は `String` の一つの文言で返る。Golem はその前に `TOML の誤りです: ` を付け、位置をファイルの先頭にした診断を一つ作る。
 2. `runMatcher (fromValue ...)` でスキーマと照合する。失敗と警告は `MatchMessage Position` の列で返る。`tomlDiagnosticsBy` が、文言に ` (<経路>)` を足して、値の位置の診断にする。未知のキーは toml-parser では警告だが、`decodeStrictBy` はエラーにする。
 
-この関数を使うのは、`manifest.toml`（G0301）、`style.toml`（G0306、G0320、G0321）、golem-plugin の `plugins.lock`（G0611）である。
+この関数を使うのは、`manifest.toml`（G03001）、`style.toml`（G03006、G03020、G03021）、golem-plugin の `plugins.lock`（G06011）である。
 `Golem.Project.Style.readLocal` は、原稿の `@style-def` のキーと値を TOML の値に直して同じ照合にかけ、文言に ` (<キー>)` の形で経路を足す。
 
 ### toml-parser の文言の出どころ
@@ -76,7 +76,7 @@ pathText :: [Scope] -> Text
 ```
 
 `decodeStrictBy` と `Style.readLocal` は、どちらもこの関数を通して文言を作る。
-`plugins.lock`（G0611）も `decodeStrict` を通るので、同じく日本語になる。
+`plugins.lock`（G06011）も `decodeStrict` を通るので、同じく日本語になる。
 
 ### 読み込みの経路
 
@@ -85,7 +85,7 @@ pathText :: [Scope] -> Text
 - `ErrSemantics (SemanticError pos key kind)` は、`pos` の位置の診断にする。文言は `TOML の誤りです: ` に `semanticMessage kind key` を続ける。
 - スキーマの照合の文言は、`schemaMessage` で訳し、経路を下の形で添える。
 - 位置が取れないとき（`MatchMessage` の位置が `Nothing`）は、今と同じくファイルの先頭とする。
-- 診断のコードは変えない。`manifest.toml` は G0301、`style.toml` は G0306（アキの量は G0320、`features` の欄は G0321）、`plugins.lock` は G0611 のままである。
+- 診断のコードは変えない。`manifest.toml` は G03001、`style.toml` は G03006（アキの量は G03020、`features` の欄は G03021）、`plugins.lock` は G06011 のままである。
 
 ### 文言
 
@@ -188,8 +188,8 @@ Golem が `fail` で書いた日本語の文言はここを通る。
 
 `modules/golem-project/test/Main.hs`：
 
-- `style.toml` に `[page]` の `bindng = "left"` を書くと、G0306 の文言が `知らないキーです: page.bindng` で、位置がその行であること。
-- `manifest.toml` から `[metadata]` を除くと、G0301 の文言が `必須のキーがありません: metadata` であること。
+- `style.toml` に `[page]` の `bindng = "left"` を書くと、G03006 の文言が `知らないキーです: page.bindng` で、位置がその行であること。
+- `manifest.toml` から `[metadata]` を除くと、G03001 の文言が `必須のキーがありません: metadata` であること。
 - `[metadata]` から `title` を除くと、文言が `必須のキーがありません: metadata.title` であること。
 - `[page] bleed = 3` が `page.bleed には文字列を書きます（整数が書かれています）` であること。
 - `[page] size = 3` が、判型の新しい文言で始まること。
@@ -199,7 +199,7 @@ Golem が `fail` で書いた日本語の文言はここを通る。
 - `title = ` で行が終わると `TOML の誤りです: ` で始まり、`行末` を含むこと。
 - `n = 012` が `整数の先頭に 0 は書けません` を含むこと。
 - `@style-def` の値の型の誤りの文言が、`font には文字列を書きます（整数が書かれています）` の形であること（`modules/golem-eval/test` の `@style-def` のテストに加える）。
-- `plugins.lock` の未知のキーが G0611 で `知らないキーです: ` で始まること（`modules/golem-plugin/test`）。
+- `plugins.lock` の未知のキーが G06011 で `知らないキーです: ` で始まること（`modules/golem-plugin/test`）。
 
 `modules/golem-project/test/TomlMessageSpec.hs`（新設）：
 
@@ -212,7 +212,7 @@ Golem が `fail` で書いた日本語の文言はここを通る。
 
 `modules/golem-cli/test/Main.hs`：
 
-- `golem check` の人が読む出力に、`unexpected key`、`missing key`、`expected `、`lexical error`、`parse error` のどれも現れないこと（G0301 と G0306 を起こすプロジェクトで確かめる）。
+- `golem check` の人が読む出力に、`unexpected key`、`missing key`、`expected `、`lexical error`、`parse error` のどれも現れないこと（G03001 と G03006 を起こすプロジェクトで確かめる）。
 
 ### 自動テストにしない確かめ方
 
@@ -235,9 +235,9 @@ v1 のリリースの前なので、この変更を受け入れる。
 
 - docs/specifications.md の「構文木と診断」の「toml-parser 自身の文言（`missing key` など）は英語のまま出す」を、TOML の誤りの文言はすべて日本語にし、構文の誤りもその行の位置で出すと改め、この ADR へリンクする。
 - 同じく「今後の実装項目」の「記法と設定」から「style.toml の未知のキーの診断」の項を除く。
-- docs/diagnostics.md の G0301、G0306、G0321、G0611 の節のメッセージの欄から「toml-parser 自身の文言は英語のままである」の旨を除き、代表の文言（`知らないキーです: <経路>.<キー>` など）を書く。ADR の欄にこの ADR を加える。
+- docs/diagnostics.md の G03001、G03006、G03021、G06011 の節のメッセージの欄から「toml-parser 自身の文言は英語のままである」の旨を除き、代表の文言（`知らないキーです: <経路>.<キー>` など）を書く。ADR の欄にこの ADR を加える。
 - [golem-project ADR 0006](0006-project-diagnostic-codes.md) のステータスの行を「採択→toml-parser の文言の扱いは [ADR 0007](0007-toml-messages-in-japanese.md)」とする。
-- 利用者のマニュアル（manual/ の付録E「診断の一覧」。[golem-cli ADR 0006](../../golem-cli/adr/0006-preflight.md) より前に実装するときは付録D）の G0306 の説明から「今の版では、知らないキーのメッセージは英語です」を除き、知らないキーの例の文言を日本語にする（[docs/adr/0024](../../adr/0024-manual-audiences-and-policy.md)）。
+- 利用者のマニュアル（manual/ の付録E「診断の一覧」。[golem-cli ADR 0006](../../golem-cli/adr/0006-preflight.md) より前に実装するときは付録D）の G03006 の説明から「今の版では、知らないキーのメッセージは英語です」を除き、知らないキーの例の文言を日本語にする（[docs/adr/0024](../../adr/0024-manual-audiences-and-policy.md)）。
 
 ## 参考文献
 

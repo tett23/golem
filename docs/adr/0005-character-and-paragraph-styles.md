@@ -1,6 +1,6 @@
 # ADR 0005: 強調を文字スタイルへ、韻文を段落スタイルへ統合する
 
-ステータス: 採択→fmt の移行の段階と G0248 は [golem-fmt ADR 0002](../golem-fmt/adr/0002-remove-verse-migration.md)、文字の送りの欄は [docs/adr/0020](0020-indesign-character-features.md)
+ステータス: 採択→fmt の移行の段階と G02048 は [golem-fmt ADR 0002](../golem-fmt/adr/0002-remove-verse-migration.md)、文字の送りの欄は [docs/adr/0020](0020-indesign-character-features.md)
 
 ## 文脈
 
@@ -22,7 +22,7 @@ InDesign では、文字の見た目は文字スタイル、段落の見た目�
 InDesign から移る利用者が、同じ考え方で `style.toml` を書けるようにしたい。
 
 統合には、もう一つ解くべき問題がある。
-属性のブロックコマンド（`@label` など）の直後にブロックコマンドを置くと、評価が G0210（「属性の後にブロックがありません」）とする。
+属性のブロックコマンド（`@label` など）の直後にブロックコマンドを置くと、評価が G02010（「属性の後にブロックがありません」）とする。
 文法（[golem-parser ADR 0003](../golem-parser/adr/0003-block-grammar.md)）が、連続したブロックコマンドを一つの `NAttributed` にまとめ、最後のブロックコマンドを対象のブロックとして扱わないためである。
 `@label` を付けた `@figure` が markup.md の例にあるのに通らないのも、同じ原因である。
 段落スタイルをブロックコマンドで書くなら、`@label` と並べられなければならない。
@@ -117,7 +117,7 @@ InDesign の文字スタイルが文字の色を持つことに合わせて加�
 |---|---|---|
 | `based-on` | 段落スタイルの名前 | 基準にする段落スタイル。書かなければ `body` とする。`body` 自身には書けない |
 | `font` | フォントの役割 | 段落を組む役割。`body` の既定は本文の役割（`Golem.Driver.Pdf.bodyRole`） |
-| `size` | 寸法 | 段落の文字の大きさ。`zw` は版面の文字の大きさを一字とする。版面の文字の大きさを超える値は G0311 とする |
+| `size` | 寸法 | 段落の文字の大きさ。`zw` は版面の文字の大きさを一字とする。版面の文字の大きさを超える値は G03011 とする |
 | `line-breaks` | `"join"` か `"keep"` | `keep` なら、原稿の段落の中の改行を行の区切りにする。`join` なら、ほかの段落と同じく改行は文字を生まない |
 | `space-between` | 0 以上の整数 | 同じ段落スタイルの段落が続くとき、その間に空ける行の数（InDesign の「同じスタイルの段落間のスペース」） |
 
@@ -198,25 +198,25 @@ paraStyle :: Style -> Maybe Text -> Maybe ParaStyleDef
 `Style` の `stCharStyles` は、組み込みの定義に利用者の定義を重ねた表（`based-on` は解決しない）とし、`stParaStyles :: !(Map Text ParaStyleDef)` を加える。
 `parseStyle` の `checks` に次の検査を加え、`charStyle` と `paraStyle` が循環で止まらないことを保証する。
 
-- `based-on` が存在しないスタイルを指す、`based-on` が循環する、`body` に `based-on` がある：G0313。
-- 文字スタイルの `color` が `[color.swatches]` にない：G0313。
-- 段落スタイルの `font` が `[fonts]` にない：G0308（[golem-driver ADR 0003](../golem-driver/adr/0003-pdf-heading-styles.md) と同じ）。
-- `[page.grid]` があり、段落スタイルの解決した `size` を版面の文字の大きさで sp にした値が、版面の文字の大きさを超える：G0311。
-- スタイルの名前が `[a-z][a-z0-9-]*` に合わない：G0306。
+- `based-on` が存在しないスタイルを指す、`based-on` が循環する、`body` に `based-on` がある：G03013。
+- 文字スタイルの `color` が `[color.swatches]` にない：G03013。
+- 段落スタイルの `font` が `[fonts]` にない：G03008（[golem-driver ADR 0003](../golem-driver/adr/0003-pdf-heading-styles.md) と同じ）。
+- `[page.grid]` があり、段落スタイルの解決した `size` を版面の文字の大きさで sp にした値が、版面の文字の大きさを超える：G03011。
+- スタイルの名前が `[a-z][a-z0-9-]*` に合わない：G03006。
 
 | 診断コード | 重大度 | メッセージ |
 |---|---|---|
-| G0313 | エラー | `style.toml のスタイルの参照が不正です: <理由>` |
-| G0311 | エラー | `段落スタイルの文字の大きさが版面の文字の大きさを超えます: <名前>` |
+| G03013 | エラー | `style.toml のスタイルの参照が不正です: <理由>` |
+| G03011 | エラー | `段落スタイルの文字の大きさが版面の文字の大きさを超えます: <名前>` |
 
-G0311 と G0313 は未使用である。
-G0310 は [golem-project ADR 0004](../golem-project/adr/0004-font-file-check-per-target.md) が使う。
+G03011 と G03013 は未使用である。
+G03010 は [golem-project ADR 0004](../golem-project/adr/0004-font-file-check-per-target.md) が使う。
 
 ### 廃止する欄
 
 `[emphasis]` の節と `[verse]` の `stanza-gap` を廃止する。
 `Style` から `stStrongAs`、`stBoldFont`、`stItalicFont` と `VerseStyle` の `vsStanzaGap` を削る。
-廃止した欄は未知のキーとして G0306 になるが、メッセージで書き換え方を示す。
+廃止した欄は未知のキーとして G03006 になるが、メッセージで書き換え方を示す。
 
 | 旧 | 新 |
 |---|---|
@@ -246,8 +246,8 @@ G0310 は [golem-project ADR 0004](../golem-project/adr/0004-font-file-check-per
 ブロックは次のとおりにする。
 
 - `attributeCommands` に `"style"` を加える。本体のない `@style` は属性である。
-- `standalone` の `"style"` は本体の形を評価する。本体がなければ G0210 とする。
-- `standalone` の `"verse"` は G0248 とする。`verse` 関数は `styleBody` に改め、次の段落の評価の規則に従う。
+- `standalone` の `"style"` は本体の形を評価する。本体がなければ G02010 とする。
+- `standalone` の `"verse"` は G02048 とする。`verse` 関数は `styleBody` に改め、次の段落の評価の規則に従う。
 - `normalizeBlock` は、本体を持つ `@style` の本体の段落と、`@style` を含む属性のまとまりの対象の段落では、最上位の `SoftBreak` を残す（今の `@verse` の本体と同じく、入れ子のインラインにだけ `joinSoftBreaks` を適用する）。
 
 段落スタイルを付けた段落は、次の関数で評価する。
@@ -256,47 +256,47 @@ G0310 は [golem-project ADR 0004](../golem-project/adr/0004-font-file-check-per
 styledParagraph :: EvalContext -> SrcSpan -> Text -> [A.Located A.Inline] -> M [Block]
 ```
 
-1. 名前が `ctxParaStyles` になければ G0247 とし、段落を `body` として評価する。
+1. 名前が `ctxParaStyles` になければ G02047 とし、段落を `body` として評価する。
 2. `line-breaks` が `join` なら、`joinSoftBreaks` をかけて `evalInlines` で評価する。
 3. `keep` なら、今の `verse` の手順 3 と 4 に従う。最上位のインラインの列を `SoftBreak` で行に分け、各行の先頭と末尾の空白とタブを取り除いて評価し、空の行を捨てる。残った行を `LineBreak` でつなぐ。
 4. 行が一つも残らなければ、段落を捨てる。
 5. 名前が `body` なら `Paragraph Nothing`、それ以外は `Paragraph (Just 名前)` のブロックを返す。
 
 本体の形は、本体の各段落に `styledParagraph` を適用する。
-本体に段落以外のブロックがあれば、そのブロックの位置で G0245 とする（`A.ErrorBlock` は数えない）。
-本体から段落が一つも残らなければ G0246 とする。
-本体の形の `@style` の引数が名前一つでなければ、G0247 とする。
+本体に段落以外のブロックがあれば、そのブロックの位置で G02045 とする（`A.ErrorBlock` は数えない）。
+本体から段落が一つも残らなければ G02046 とする。
+本体の形の `@style` の引数が名前一つでなければ、G02047 とする。
 
 属性の形は `attributed` で扱う。
 属性に `@style` があり、対象が `A.Paragraph` なら、対象を `evalBlock` でなく `styledParagraph` で評価する。
-対象が段落でなければ、今の `applyAttr` と同じく G0213 とし、対象の `SoftBreak` を `joinSoftBreaks` で落としてから `evalBlock` で評価する。
+対象が段落でなければ、今の `applyAttr` と同じく G02013 とし、対象の `SoftBreak` を `joinSoftBreaks` で落としてから `evalBlock` で評価する。
 
-図版のキャプションの本体に `@style` があれば、G0213 とする。
+図版のキャプションの本体に `@style` があれば、G02013 とする。
 キャプションの段落の見た目は組み込みの段落スタイル `caption` が決め（[golem-driver ADR 0010](../golem-driver/adr/0010-caption-style.md)）、原稿で一つのキャプションごとに別のスタイルを選ぶ仕組みは設けないためである。
 キャプションの見た目を変えるには、`style.toml` の `[paragraph-styles.caption]` を書く。
 
 フィルタのプラグインが返した文書の段落スタイルの名前も検査する。
-`evalFile` で `phApplyFilters` の後に、`ctxParaStyles` にない名前を持つ `Paragraph` の位置で G0247 とする。
+`evalFile` で `phApplyFilters` の後に、`ctxParaStyles` にない名前を持つ `Paragraph` の位置で G02047 とする。
 
 | 診断コード | 重大度 | メッセージ |
 |---|---|---|
-| G0245 | エラー | `@style の本体には段落だけを置けます。段落は空行で区切ります`（`@verse` から一般化） |
-| G0246 | エラー | `@style の本体に段落がありません`（`@verse` から一般化） |
-| G0247 | エラー | `style.toml にない段落スタイルです: <名前>`、または `@style には段落スタイルの名前を一つ書きます` |
-| G0248 | エラー | `@verse は @style verse に変わりました。golem fmt で書き換えられます` |
+| G02045 | エラー | `@style の本体には段落だけを置けます。段落は空行で区切ります`（`@verse` から一般化） |
+| G02046 | エラー | `@style の本体に段落がありません`（`@verse` から一般化） |
+| G02047 | エラー | `style.toml にない段落スタイルです: <名前>`、または `@style には段落スタイルの名前を一つ書きます` |
+| G02048 | エラー | `@verse は @style verse に変わりました。golem fmt で書き換えられます` |
 
-G0247 と G0248 は未使用である（golem-eval は G0246 まで使っている）。
-G0244（`@verse` の引数）は使わなくなる。
+G02047 と G02048 は未使用である（golem-eval は G02046 まで使っている）。
+G02044（`@verse` の引数）は使わなくなる。
 番号は再利用しない。
 
-### 属性の後のブロックコマンド（G0210）
+### 属性の後のブロックコマンド（G02010）
 
 `attributed` で、対象のブロックがなく（`target` が `Nothing`）、まとまりの最後のブロックコマンドが属性でない場合は、それを対象にする。
 本体を持つ `@style` は属性でないものとして扱う。
 
 1. 最後のブロックコマンドより前のコマンドがすべて属性なら、最後のブロックコマンドを `standalone` で評価する。
 2. 評価の結果の最初のブロックに、前のコマンドの属性を `applyAttr` で付ける。`@label` は最初のブロックに付く。本体の形の `@style` なら最初の段落である。
-3. 前のコマンドに属性でないものがあれば、今と同じく G0211 とする。
+3. 前のコマンドに属性でないものがあれば、今と同じく G02011 とする。
 
 ```
 @label song
@@ -388,7 +388,7 @@ data InlineF r
 - 段落スタイルが `keep` なら、各部分を `UVerseLine` の単位にし、`[verse]` の `indent` と `hang` を使う。今の韻文の行と同じ組み方である。`join` なら `UPara` の単位にする。
 - ブロックの列の中で、同じ段落スタイルの段落が続き、その `space-between` が 1 以上なら、その間に `Unit (UGap n)` を置く。続く段落とは、同じブロックの列（文書の最上位、定義リストの説明、リストの項目）の中で隣り合う `Paragraph` である。
 
-- `usedRoles` は、`stBoldFont` と `stItalicFont` の代わりに、すべての段落スタイル（組み込みを含む `stParaStyles`）の `font` を、見出しと文字スタイルの `font` と並べて集める。読み込む役割の決め方、フェイスの番号、G0805 の検査は [golem-driver ADR 0003](../golem-driver/adr/0003-pdf-heading-styles.md) のとおりとする。
+- `usedRoles` は、`stBoldFont` と `stItalicFont` の代わりに、すべての段落スタイル（組み込みを含む `stParaStyles`）の `font` を、見出しと文字スタイルの `font` と並べて集める。読み込む役割の決め方、フェイスの番号、G08005 の検査は [golem-driver ADR 0003](../golem-driver/adr/0003-pdf-heading-styles.md) のとおりとする。
 
 組んだ行の幅と位置の計算（`widthOf`、`lineIndent`）、`FSpace` による空き、回り込みの図版の脇で `UVerseLine` を組まないことは、[docs/adr/0003](0003-verse-line-breaks.md) のまま変えない。
 
@@ -455,13 +455,13 @@ EPUB は golem-html の出力をそのまま包むので、golem-epub には変�
 
 ### lint（golem-lint）
 
-G0501 の例外を、`@verse` の本体から、`line-breaks = "keep"` の段落スタイルを付けた段落に替える。
+G05001 の例外を、`@verse` の本体から、`line-breaks = "keep"` の段落スタイルを付けた段落に替える。
 
 - `LintInput` に `liKeepStyles :: !(Set Text)` を加え、`latinJoinedByNewline` の引数にも同じ集合を加える。
 - 本体を持つ `@style 名前` の本体の段落と、`@style 名前` を含む `NAttributed` の対象の段落で、名前が集合にあれば、最上位の改行を調べず、散文スロットだけを調べる。
 - `Golem.Driver.Lint` は、評価ができた場合は解決した段落スタイルから集合を作る。評価が止まった場合は組み込みの `keep` のスタイル（`verse`）だけを集合にする。
 
-[golem-lint ADR 0001](../golem-lint/adr/0001-lint-rules.md) のステータスの行を「採択→G0501 の韻文の扱いは docs/adr/0003、段落スタイルの扱いは docs/adr/0005」に変え、[docs/adr/0003](0003-verse-line-breaks.md) とこの ADR へのリンクを、書き込む先のファイルからの相対パスで付ける。
+[golem-lint ADR 0001](../golem-lint/adr/0001-lint-rules.md) のステータスの行を「採択→G05001 の韻文の扱いは docs/adr/0003、段落スタイルの扱いは docs/adr/0005」に変え、[docs/adr/0003](0003-verse-line-breaks.md) とこの ADR へのリンクを、書き込む先のファイルからの相対パスで付ける。
 
 ### fmt（golem-fmt）と原稿の移行
 
@@ -469,7 +469,7 @@ G0501 の例外を、`@verse` の本体から、`line-breaks = "keep"` の段落
 
 - `Golem.Fmt` に `migrate :: Node -> Node` を置く。`NBlockCommand` で、名前が `verse` で引数のないものの `KIdent` のトークンを、`style verse` を解析した場合と同じトークンの並び（名前、空白、位置引数）に替える。コードブロックの中の `@verse` は `NBlockCommand` でないので書き換わらない。
 - `format` は、`preprocess` の後に解析し、`migrate` をかけて描画した文字列を新しい原稿とする。AST の一致を検査する基準（`astFingerprint`）は、この移行の後の原稿から取る。
-- 整形の不変条件は「移行の後の原稿と、整形の結果とで AST が一致する」となる。移行は、評価がエラー（G0248）とする記法を、同じ出力になる記法に替えるだけであり、`preprocess` が BOM と CRLF を直すのと同じ位置づけである。
+- 整形の不変条件は「移行の後の原稿と、整形の結果とで AST が一致する」となる。移行は、評価がエラー（G02048）とする記法を、同じ出力になる記法に替えるだけであり、`preprocess` が BOM と CRLF を直すのと同じ位置づけである。
 - `golem fmt --check` は、`@verse` を含むファイルを整形されていないファイルとして報告する。
 
 移行の段階は v1 の間は残し、外すときは別の ADR で決める。
@@ -481,7 +481,7 @@ G0501 の例外を、`@verse` の本体から、`line-breaks = "keep"` の段落
 
 - `[style ` の後の補完は、`stCharStyles` の名前（組み込みを含む）を出す。
 - 行頭の `@style ` の後で、`stParaStyles` の名前（組み込みを含む）を補完する。`@import ` のパスの補完と同じく、`completions` の最初の分岐に加える。`CompletionKind` に `CkParaStyle` を加え、`Golem.Lsp.Server` で `CkCharStyle` と同じ LSP の種類に写す。
-- 新しい診断（G0247、G0248、G0313、G0311）は既存の経路で表示される。
+- 新しい診断（G02047、G02048、G03013、G03011）は既存の経路で表示される。
 
 ### 変換スクリプトと fixture
 
@@ -537,11 +537,11 @@ G0501 の例外を、`@verse` の本体から、`line-breaks = "keep"` の段落
 - `[paragraph-styles.caption] size = "0.8zw"` で、`caption` の `psSize` が `Just (Zw (4/5))` になり、`based-on` を書かなくても `body` の `psLineBreaks` を引き継ぐこと。
 - `[character-styles.strong] based-on = "italic"` で、`strong` の `csSyntheticItalic` が `Just True`、`csSyntheticBold` が `Nothing` になること。
 - `[fonts.gothic]` と `[character-styles.bold] font = "gothic"` で、`bold` の `csFont` が `Just "gothic"`、`csSyntheticBold` が `Just True` になること。
-- 存在しない `based-on`、`a` と `b` の循環、`[paragraph-styles.body] based-on = "verse"`、`[color.swatches]` にない `color` が、それぞれ G0313 になること。
-- `[page.grid] font-size = "13Q"` で、段落スタイルの `size = "2zw"` が G0311、`size = "0.9zw"` が通ること。
-- 段落スタイルの `font` が `[fonts]` にない役割を指すと G0308 になること。
-- `[character-styles.Term]`、`line-breaks = "x"`、負の `space-between` が G0306 になること。
-- `[emphasis] strong = "bold"` と `[verse] stanza-gap = 1` が G0306 になり、メッセージに書き換え先の節の名前が含まれること。
+- 存在しない `based-on`、`a` と `b` の循環、`[paragraph-styles.body] based-on = "verse"`、`[color.swatches]` にない `color` が、それぞれ G03013 になること。
+- `[page.grid] font-size = "13Q"` で、段落スタイルの `size = "2zw"` が G03011、`size = "0.9zw"` が通ること。
+- 段落スタイルの `font` が `[fonts]` にない役割を指すと G03008 になること。
+- `[character-styles.Term]`、`line-breaks = "x"`、負の `space-between` が G03006 になること。
+- `[emphasis] strong = "bold"` と `[verse] stanza-gap = 1` が G03006 になり、メッセージに書き換え先の節の名前が含まれること。
 
 ### golem-eval（`modules/golem-eval/test/FileSpec.hs`）
 
@@ -550,11 +550,11 @@ G0501 の例外を、`@verse` の本体から、`line-breaks = "keep"` の段落
 - 属性の形 `"@style verse\nA\nB\n"` が `Paragraph (Just "verse") [Text "A", LineBreak, Text "B"]` になること。
 - `join` の段落スタイル `quote` で、`"@style quote\nab\ncd\n"` が `Paragraph (Just "quote") [Text "abcd"]` になること。
 - `"@style body\nx\n"` が `Paragraph Nothing [Text "x"]` になること。
-- `"@style nope\nx\n"` と `"@style\n  x\n"` が G0247、`"@verse\n  A\n"` が G0248、`"@style verse\n  - a\n"` が G0245、`"@style verse\n  %% c %%\n"` が G0246 になること。
-- `"@style quote\n# 見出し\n"` が G0213 になり、見出しは評価されること。
-- `"@label song\n@style verse\n  A\n"` が G0210 にならず、ラベル `song` を持つ段落になること。`@label` を付けた `@figure` が、ラベルを持つ `FigureBlock` になること。
+- `"@style nope\nx\n"` と `"@style\n  x\n"` が G02047、`"@verse\n  A\n"` が G02048、`"@style verse\n  - a\n"` が G02045、`"@style verse\n  %% c %%\n"` が G02046 になること。
+- `"@style quote\n# 見出し\n"` が G02013 になり、見出しは評価されること。
+- `"@label song\n@style verse\n  A\n"` が G02010 にならず、ラベル `song` を持つ段落になること。`@label` を付けた `@figure` が、ラベルを持つ `FigureBlock` になること。
 - [docs/adr/0003](0003-verse-line-breaks.md) の韻文のテスト（行頭の空白、全角の空白、行をまたぐ散文スロット、コメントだけの行、注の番号）を `@style verse` に書き換えて、行が `LineBreak` で区切られた同じ内容になること。
-- フィルタのプラグインが `Paragraph (Just "nope")` を返すと G0247 になること。
+- フィルタのプラグインが `Paragraph (Just "nope")` を返すと G02047 になること。
 
 ### golem-doc
 
@@ -581,8 +581,8 @@ G0501 の例外を、`@verse` の本体から、`line-breaks = "keep"` の段落
 
 ### golem-lint（`modules/golem-lint/test/Main.hs`）
 
-- `"@style verse\n  Full fathom five\n  Of his bones\n"` と、属性の形の `"@style verse\nFull fathom five\nOf his bones\n"` に G0501 が出ないこと。
-- `liKeepStyles` に `quote` がないとき、`"@style quote\n  Full fathom five\n  Of his bones\n"` に G0501 が出ること。
+- `"@style verse\n  Full fathom five\n  Of his bones\n"` と、属性の形の `"@style verse\nFull fathom five\nOf his bones\n"` に G05001 が出ないこと。
+- `liKeepStyles` に `quote` がないとき、`"@style quote\n  Full fathom five\n  Of his bones\n"` に G05001 が出ること。
 
 ### golem-fmt（`modules/golem-fmt/test/Main.hs`）
 

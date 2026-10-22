@@ -1,45 +1,45 @@
-# ADR 0006: プロジェクトの段階の診断のコード G0301 から G0309 を定める
+# ADR 0006: プロジェクトの段階の診断のコード G03001 から G03009 を定める
 
-ステータス: 採択→toml-parser の文言の扱いは [ADR 0007](0007-toml-messages-in-japanese.md)、G0305 の経路が空の分岐は [ADR 0027](../../adr/0027-exhaustive-command-dispatch-by-types.md)、Golem の文言の誤りと読み込んだ後の検査の位置は [ADR 0008](0008-style-toml-value-positions.md)、未知の判型の G0306 から G0317 への移動は [ADR 0005](0005-page-size-by-dimensions.md)
+ステータス: 採択→toml-parser の文言の扱いは [ADR 0007](0007-toml-messages-in-japanese.md)、G03005 の経路が空の分岐は [ADR 0027](../../adr/0027-exhaustive-command-dispatch-by-types.md)、Golem の文言の誤りと読み込んだ後の検査の位置は [ADR 0008](0008-style-toml-value-positions.md)、未知の判型の G03006 から G03017 への移動は [ADR 0005](0005-page-size-by-dimensions.md)
 
 ## 文脈
 
 [docs/diagnostics.md](../../diagnostics.md) は、ソースが出す診断のコードをすべて載せている。
-そのうち G0301、G0302、G0303、G0304、G0305、G0306、G0307、G0309 は「ADR なし」である。
+そのうち G03001、G03002、G03003、G03004、G03005、G03006、G03007、G03009 は「ADR なし」である。
 条件の一部は [golem-project ADR 0001](0001-manifest-and-import-graph.md) と [golem-project ADR 0002](0002-style-toml.md) が決めたが、どちらもコードの番号を割り当てていない。
-G0306 に条件を加えた ADR は多いが、G0306 そのものを定めた ADR はない。
+G03006 に条件を加えた ADR は多いが、G03006 そのものを定めた ADR はない。
 番号は [golem-syntax ADR 0001](../../golem-syntax/adr/0001-source-spans-and-diagnostics.md) の区分に従い、上 2 桁の 03 がプロジェクトの段階を表す。
 
 この ADR は、これらのコードの今の振る舞いを、ソースを読んで確かめたとおりに追認する。
 あわせて、読む中で見つけた次の問題に、それぞれ決定を与える。
 
-- **一つのコードに二つの条件**：G0302 は、プロジェクトのルートに `manifest.toml` がないときと、章や `@import` が指すファイルがないときの両方に使っている。
+- **一つのコードに二つの条件**：G03002 は、プロジェクトのルートに `manifest.toml` がないときと、章や `@import` が指すファイルがないときの両方に使っている。
   前者はプロジェクトそのものが見つからない誤りであり、後者は参照の誤りである。
   直し方が違う。
 - **位置が表示されない**：`Golem.Driver.build` は、`evaluateProject` が `Left` を返すと、`brSources` を空にして診断を返す。
-  `loadProjectWith` と `loadStyle` の失敗はすべてこの経路を通るので、G0301 から G0306 と G0309 は、CLI では `<unknown>:?:?` と表示される。
+  `loadProjectWith` と `loadStyle` の失敗はすべてこの経路を通るので、G03001 から G03006 と G03009 は、CLI では `<unknown>:?:?` と表示される。
   TOML のスキーマの誤りは行と桁を持つのに、それが利用者に届かない。
-  LSP は、プロジェクトの誤り（`wsProjectErrors`）をすべて `manifest.toml` に載せるので、原稿の `@import` の G0302 や `style.toml` の G0306 が `manifest.toml` の別の位置に出る。
-- **大文字と小文字の検査がファイルシステムで変わる**：G0304 は、シンボリックリンクを解決した後のパスを比べる。
+  LSP は、プロジェクトの誤り（`wsProjectErrors`）をすべて `manifest.toml` に載せるので、原稿の `@import` の G03002 や `style.toml` の G03006 が `manifest.toml` の別の位置に出る。
+- **大文字と小文字の検査がファイルシステムで変わる**：G03004 は、シンボリックリンクを解決した後のパスを比べる。
   大文字と小文字を区別しないファイルシステムでは、`Common.gm` と `common.gm` が同じ実体に解決され、衝突として検出されない。
   [golem-project ADR 0001](0001-manifest-and-import-graph.md) は「どの環境でも同じエラーになるほう」を選んだが、実装はそうなっていない。
   テスト（`modules/golem-project/test/Main.hs` の「error or single file」）も、どちらの結果も許している。
-- **同じ診断が重なる**：G0307 は、存在しないマスターページを指す章の項目ごとに一つ出す。
+- **同じ診断が重なる**：G03007 は、存在しないマスターページを指す章の項目ごとに一つ出す。
   どれも `manifest.toml` の先頭を指し、文言も同じなので、同じ名前を三つの章で使うと、同じ行が三つ並ぶ。
-- **G0309 の二重の検査**：`Golem.Project.Imports.importsOf` と `Golem.Eval.File.standalone` が、同じ文言の G0309 を別々の条件で出す。
+- **G03009 の二重の検査**：`Golem.Project.Imports.importsOf` と `Golem.Eval.File.standalone` が、同じ文言の G03009 を別々の条件で出す。
   前者はパスに語か文字列だけを認め、後者は任意の位置引数を認める。
   プロジェクトのビルドでは前者が先に止めるので、後者は出ない。
   後者が出るのは、LSP がプロジェクトの外のファイル（`Golem.Lsp.Workspace.loose`）を評価するときである。
-- **英語の文言**：G0301 と G0306 のスキーマの誤りは、toml-parser の文言（`unexpected key: foo (.page)` など）をそのまま出す。
+- **英語の文言**：G03001 と G03006 のスキーマの誤りは、toml-parser の文言（`unexpected key: foo (.page)` など）をそのまま出す。
   Golem が自分で書いた `fail` と `typeError` の文言にも英語が残っている（`column-gap is required when columns > 1` など）。
   ほかのコードの文言は日本語である。
   経路が空のときは `missing key: metadata ()` のように空の括弧が出る。
 - **到達しない分岐**：`Style` の `FromValue` の `[emphasis] は廃止しました` と `[verse] は廃止しました` の `fail` は、`EmphasisV` と `VerseV` の `fromValue` が先に必ず失敗するので、実行されない。
-  G0305 の経路が空の分岐（`mkSpan (FileId 0) 0 0`）も、`findCycles` が空の経路を返さないので実行されない。
-- **テストのないコード**：G0307 にはテストがない。
-  G0301 の「出力ターゲットが一つもありません」と TOML の構文の誤り、G0306 の TOML の構文の誤り、G0309 にもテストがない。
+  G03005 の経路が空の分岐（`mkSpan (FileId 0) 0 0`）も、`findCycles` が空の経路を返さないので実行されない。
+- **テストのないコード**：G03007 にはテストがない。
+  G03001 の「出力ターゲットが一つもありません」と TOML の構文の誤り、G03006 の TOML の構文の誤り、G03009 にもテストがない。
 
-提案中の ADR が `style.toml` の欄ごとに加える誤りは、G0306 ではなく別のコードにする（G0317 判型、G0318 マスターページの位置、G0319 廃止した欄、G0320 アキの量、G0321 文字の送りの欄、G0322 リストの書式）。この ADR は、今の G0306 の振る舞いだけを定める。
+提案中の ADR が `style.toml` の欄ごとに加える誤りは、G03006 ではなく別のコードにする（G03017 判型、G03018 マスターページの位置、G03019 廃止した欄、G03020 アキの量、G03021 文字の送りの欄、G03022 リストの書式）。この ADR は、今の G03006 の振る舞いだけを定める。
 この ADR は今の振る舞いだけを定め、それらの提案が加える条件には立ち入らない。
 
 ## 実装すること
@@ -53,18 +53,18 @@ G0306 に条件を加えた ADR は多いが、G0306 そのものを定めた AD
 診断の順序は、検査の順序に従う。
 プロジェクトの読み込み（`Golem.Project.loadProjectWith`）は、次の順に進み、誤りを見つけた段で止まる。
 
-1. `manifest.toml` の有無（G0302、下の変更で G0316）。
-2. `manifest.toml` の読み込み（`Golem.Parser.Read.readSource` の G0101 から G0103）と、スキーマの照合（G0301）。
-3. 章のパスの解決（G0302、G0303、G0304）。
+1. `manifest.toml` の有無（G03002、下の変更で G03016）。
+2. `manifest.toml` の読み込み（`Golem.Parser.Read.readSource` の G01001 から G01003）と、スキーマの照合（G03001）。
+3. 章のパスの解決（G03002、G03003、G03004）。
   最初の誤りで止まる。
 4. 章から `@import` をたどる幅優先の走査。
-  ファイルごとに、`@import` の形（G0309）、パスの解決（G0302、G0303）、大文字と小文字の衝突（G0304）の順に調べ、誤りがあればそのファイルの誤りをすべて返して止まる。
-5. 循環の検出（G0305）。
+  ファイルごとに、`@import` の形（G03009）、パスの解決（G03002、G03003）、大文字と小文字の衝突（G03004）の順に調べ、誤りがあればそのファイルの誤りをすべて返して止まる。
+5. 循環の検出（G03005）。
   循環ごとに一つ出す。
 
-その後、`Golem.Driver.evaluateProjectWith` が `style.toml` を読み（G0306）、原稿に構文の誤りがなければ、マスターページの参照を調べる（G0307）。
+その後、`Golem.Driver.evaluateProjectWith` が `style.toml` を読み（G03006）、原稿に構文の誤りがなければ、マスターページの参照を調べる（G03007）。
 
-#### G0301
+#### G03001
 
 **モジュール**：golem-project の `Golem.Project.Manifest.parseManifest`
 
@@ -75,10 +75,10 @@ G0306 に条件を加えた ADR は多いが、G0306 そのものを定めた AD
 | `[targets]` があるが、`html`、`epub`、`pdf`、`text` のどれも有効でない（`[targets]` が空、または `[targets.text]` の `variants` が空） | `出力ターゲットが一つもありません` | `manifest.toml` の先頭 |
 
 - 未知のキーは、toml-parser では警告であるが、`decodeStrict` がエラーに変える。
-- `[targets]` がないときは、HTML だけを出力する既定値になり、G0301 は出ない。
+- `[targets]` がないときは、HTML だけを出力する既定値になり、G03001 は出ない。
 - スキーマの誤りは、一度の照合で見つかったものをすべて出す。
 
-#### G0302
+#### G03002
 
 **モジュール**：golem-project の `Golem.Project`
 
@@ -88,14 +88,14 @@ G0306 に条件を加えた ADR は多いが、G0306 そのものを定めた AD
 | 章のパスを正規化した結果のファイルがない | `ファイルがありません: <書いたパス>` | `manifest.toml` の先頭 |
 | `@import` のパスを正規化した結果のファイルがない | `ファイルがありません: <書いたパス>` | その `@import` のブロック全体 |
 
-一つ目の条件は、下の変更で G0316 に移す。
+一つ目の条件は、下の変更で G03016 に移す。
 
-#### G0303
+#### G03003
 
 **モジュール**：golem-project の `Golem.Project`（パスの判定は `Golem.Project.Paths.resolveInRoot`）
 
 章と `@import` のパスについて、次の順に判定する。
-位置は G0302 と同じく、章なら `manifest.toml` の先頭、`@import` ならそのブロック全体である。
+位置は G03002 と同じく、章なら `manifest.toml` の先頭、`@import` ならそのブロック全体である。
 
 | 条件 | メッセージ |
 | --- | --- |
@@ -104,10 +104,10 @@ G0306 に条件を加えた ADR は多いが、G0306 そのものを定めた AD
 | `.` と `..` を字句の上で畳むと、ルートより上に出る | `プロジェクトルートの外を指しています: <書いたパス>` |
 | ファイルはあるが、シンボリックリンクを解決した実体がルートの外にある | `プロジェクトルートの外を指しています: <書いたパス>` |
 
-字句の上でルートの外に出るパスは、ファイルの有無を調べる前に G0303 になる。
-字句の上で中に収まるパスは、ファイルがなければ G0302 になり、リンクの先は調べない。
+字句の上でルートの外に出るパスは、ファイルの有無を調べる前に G03003 になる。
+字句の上で中に収まるパスは、ファイルがなければ G03002 になり、リンクの先は調べない。
 
-#### G0304
+#### G03004
 
 **モジュール**：golem-project の `Golem.Project`
 
@@ -118,7 +118,7 @@ G0306 に条件を加えた ADR は多いが、G0306 そのものを定めた AD
 
 **位置**：章なら `manifest.toml` の先頭、`@import` ならそのブロック全体。
 
-#### G0305
+#### G03005
 
 **モジュール**：golem-project の `Golem.Project`（検出は `Golem.Project.Imports.findCycles`）
 
@@ -131,11 +131,11 @@ G0306 に条件を加えた ADR は多いが、G0306 そのものを定めた AD
 **位置**：循環の最初のファイルにある `@import` のブロック全体。
 関連位置に、循環に含まれる各 `@import` のブロックを `@import <パス>` の文言で載せる。
 
-#### G0306
+#### G03006
 
 **モジュール**：golem-project の `Golem.Project.Style.parseStyle`
 
-`style.toml` がないときは既定のスタイルを使い、G0306 は出ない。
+`style.toml` がないときは既定のスタイルを使い、G03006 は出ない。
 `style.toml` の FileId は、プロジェクトのファイル表の項目数（どのファイルとも重ならない番号）である（`Golem.Driver.Pdf.styleFileId`）。
 
 | 条件 | メッセージ | 位置 |
@@ -171,10 +171,10 @@ G0306 に条件を加えた ADR は多いが、G0306 そのものを定めた AD
 | `[emphasis]` がある | `[emphasis] は廃止しました。` で始まり、書き換え先を示す文言 |
 | `[verse]` がある | `[verse] は廃止しました。` で始まり、書き換え先を示す文言 |
 
-G0306 は、ファイルの欠落には使わない（[golem-project ADR 0004](0004-font-file-check-per-target.md)）。
-フォントの役割の参照（G0308）、スタイルの参照（G0313）、文字の大きさ（G0311）、字下げ（G0312）は、この ADR の範囲の外である。
+G03006 は、ファイルの欠落には使わない（[golem-project ADR 0004](0004-font-file-check-per-target.md)）。
+フォントの役割の参照（G03008）、スタイルの参照（G03013）、文字の大きさ（G03011）、字下げ（G03012）は、この ADR の範囲の外である。
 
-#### G0307
+#### G03007
 
 **モジュール**：golem-driver の `Golem.Driver.evaluateProjectWith`
 
@@ -191,7 +191,7 @@ G0306 は、ファイルの欠落には使わない（[golem-project ADR 0004](0
 検査を golem-driver で行うのは、二つのファイルを両方読むのが golem-driver だからである。
 この配置は変えない。
 
-#### G0309
+#### G03009
 
 **モジュール**：golem-project の `Golem.Project.Imports.importsOf`、golem-eval の `Golem.Eval.File.standalone`
 
@@ -208,14 +208,14 @@ G0306 は、ファイルの欠落には使わない（[golem-project ADR 0004](0
 
 ### 変更
 
-#### G0302 を分け、`manifest.toml` の欠落を G0316 にする
+#### G03002 を分け、`manifest.toml` の欠落を G03016 にする
 
-- `manifest.toml` がプロジェクトのルートにないときのコードを、G0302 から **G0316** に変える。
+- `manifest.toml` がプロジェクトのルートにないときのコードを、G03002 から **G03016** に変える。
   メッセージは `manifest.toml がありません` のまま変えない。
-- G0302 は、章と `@import` が指すファイルがないときだけに使う。
-- G0316 を選んだのは、G0314 と G0315 が提案中の ADR に予約されているからである。
-- [docs/diagnostics.md](../../diagnostics.md) に G0316 の節を加え、G0302 の節から一つ目の条件を除く。
-  G0316 の節の ADR の欄にはこの ADR を書く。
+- G03002 は、章と `@import` が指すファイルがないときだけに使う。
+- G03016 を選んだのは、G03014 と G03015 が提案中の ADR に予約されているからである。
+- [docs/diagnostics.md](../../diagnostics.md) に G03016 の節を加え、G03002 の節から一つ目の条件を除く。
+  G03016 の節の ADR の欄にはこの ADR を書く。
 
 #### 失敗した読み込みでも位置を表示する
 
@@ -225,39 +225,39 @@ G0306 は、ファイルの欠落には使わない（[golem-project ADR 0004](0
 - `Golem.Driver.evaluateProjectWith` の失敗も `ProjectFailure` を返す。
   `style.toml` の読み込みに失敗したときは、プロジェクトの `SourceInfo` に `style.toml` の `SourceInfo` を加える。
 - `Golem.Driver.build` は、失敗のときも `pfSources` を `brSources` に入れる。
-  CLI は、G0301 から G0306 と G0309 を `manifest.toml:3:1:` や `a.gm:1:1:` の形で表示する。
+  CLI は、G03001 から G03006 と G03009 を `manifest.toml:3:1:` や `a.gm:1:1:` の形で表示する。
 - ソースの読み込み（`readSource`）の失敗は、提案中の [golem-parser ADR 0009](../../golem-parser/adr/0009-syntax-diagnostic-codes.md) の `ReadFailure` が別の型で表す。`ProjectFailure` は設定の誤りの失敗を表し、両方を実装したときは `ReadFailure` の `rfSources` と `rfDiagnostics` を `pfSources` と `pfDiagnostics` に合わせる。どちらの ADR も、他方の採否に依らずに実装できる。
 - LSP（`Golem.Lsp.Workspace.diagnosticsFor`）は、プロジェクトの誤りを、診断の位置の FileId が `pfSources` で指すファイルに載せる。
-  `pfSources` にない FileId の診断（G0316 など）は、これまでどおり `manifest.toml` に載せる。
+  `pfSources` にない FileId の診断（G03016 など）は、これまでどおり `manifest.toml` に載せる。
 
-#### G0304 を書いたパスでも調べる
+#### G03004 を書いたパスでも調べる
 
 - 衝突の検査に、シンボリックリンクを解決する前のパス（`normalizeRelative` の結果）も使う。
-  書いたパスを英小文字に畳んだものが、すでに登録した書いたパスと一致し、元の綴りが異なれば、G0304 とする。
-- これにより、大文字と小文字を区別しないファイルシステムでも、区別するファイルシステムでも、`Common.gm` と `common.gm` の参照は G0304 になる。
+  書いたパスを英小文字に畳んだものが、すでに登録した書いたパスと一致し、元の綴りが異なれば、G03004 とする。
+- これにより、大文字と小文字を区別しないファイルシステムでも、区別するファイルシステムでも、`Common.gm` と `common.gm` の参照は G03004 になる。
 - メッセージの二つのパスは、書いたパスとする。
 - 解決した後のパスによる今の検査は残す。
   区別するファイルシステムで、別々の綴りのリンクが大文字と小文字だけ異なる実体を指す場合を拾うためである。
 
-#### G0307 を名前ごとに一つにする
+#### G03007 を名前ごとに一つにする
 
-- 存在しないマスターページの名前ごとに、G0307 を一つだけ出す。
+- 存在しないマスターページの名前ごとに、G03007 を一つだけ出す。
   順序は、`manifest.toml` の章の順で名前が最初に現れた順とする。
 
-#### G0309 の条件を一つにする
+#### G03009 の条件を一つにする
 
-- `Golem.Project.Imports` に、引数の並びから `ImportSite` か G0309 の診断を作る関数 `importSite :: SrcSpan -> [Argument] -> Either Diagnostic ImportSite` を公開する。
+- `Golem.Project.Imports` に、引数の並びから `ImportSite` か G03009 の診断を作る関数 `importSite :: SrcSpan -> [Argument] -> Either Diagnostic ImportSite` を公開する。
   `importsOf` はこれを使う。
 - `Golem.Eval.File.standalone` の `@import` は、この関数で引数を判定する。
   golem-eval はすでに golem-project に依存しているので、依存は増えない。
-- これにより、プロジェクトの外のファイル（LSP の `loose`）でも、式やコマンドをパスに書いた `@import` は G0309 になる。
-- golem-eval の G0309 は残す。
+- これにより、プロジェクトの外のファイル（LSP の `loose`）でも、式やコマンドをパスに書いた `@import` は G03009 になる。
+- golem-eval の G03009 は残す。
   プロジェクトの外のファイルは golem-project の走査を通らないからである。
-  プロジェクトのビルドでは golem-project が先に止めるので、同じ `@import` に G0309 が二つ出ることはない。
+  プロジェクトのビルドでは golem-project が先に止めるので、同じ `@import` に G03009 が二つ出ることはない。
 
 #### Golem が書いた文言を日本語にする
 
-G0301 と G0306 の文言のうち、Golem のソースが書いている英語の文言を、次の日本語に変える。
+G03001 と G03006 の文言のうち、Golem のソースが書いている英語の文言を、次の日本語に変える。
 
 | 今の文言 | 新しい文言 |
 | --- | --- |
@@ -278,14 +278,14 @@ G0301 と G0306 の文言のうち、Golem のソースが書いている英語�
 
 - `Style` の `FromValue` から、`when (isJust retiredEmphasis) $ fail "[emphasis] は廃止しました"` と `when (isJust retiredVerse) $ fail "[verse] は廃止しました"` を除く。
   `EmphasisV` と `VerseV` の `fromValue` が書き換え先を示す文言で失敗するので、振る舞いは変わらない。
-- G0305 の経路が空の分岐は残す。
+- G03005 の経路が空の分岐は残す。
   `cycleDiagnostic` を全域関数に保つためであり、位置の FileId 0 は `manifest.toml` である。
 
 #### 文書
 
-- [docs/diagnostics.md](../../diagnostics.md) の G0301 から G0307、G0309、G0316 の節の ADR の欄に、この ADR を書く。
+- [docs/diagnostics.md](../../diagnostics.md) の G03001 から G03007、G03009、G03016 の節の ADR の欄に、この ADR を書く。
   文言を変えたコードは、メッセージの欄も直す。
-- `docs/specifications.md` の診断のコードに触れる箇所があれば、G0316 を加える。
+- `docs/specifications.md` の診断のコードに触れる箇所があれば、G03016 を加える。
 
 ## 実装しないこと
 
@@ -296,10 +296,10 @@ G0301 と G0306 の文言のうち、Golem のソースが書いている英語�
   文言の形は toml-parser の版で変わりうる。
 - toml-parser 自身の文言の翻訳。
 - 大文字と小文字だけが実体と異なる綴りで、ファイルを一つだけ参照すること（`a.gm` を `A.gm` と書く）の検出。
-  区別しないファイルシステムでは通り、区別するファイルシステムでは G0302 になる。
+  区別しないファイルシステムでは通り、区別するファイルシステムでは G03002 になる。
   検出にはディレクトリの一覧と綴りを比べる必要がある。
-- G0307 の検査を、構文の誤りがあるときにも行うこと。
-- G0306 の条件の追加。
+- G03007 の検査を、構文の誤りがあるときにも行うこと。
+- G03006 の条件の追加。
   提案中の golem-driver の 0014 番と golem-project の 0005 番の ADR が、それぞれ扱う。
 
 ## テスト設計
@@ -308,15 +308,15 @@ G0301 と G0306 の文言のうち、Golem のソースが書いている英語�
 
 `modules/golem-project/test/Main.hs` に次のテストがある。
 
-- **G0301**：未知の節 `[extra]` と、`[targets.pdf]` の未知のキー `marks`。
-- **G0302**：章のファイルがない。
-- **G0303**：`@import ../x.gm`（ルートの外）と `@import "https://e.com/x.gm"`（URL）。
-- **G0304**：`Common.gm` と `common.gm`。
+- **G03001**：未知の節 `[extra]` と、`[targets.pdf]` の未知のキー `marks`。
+- **G03002**：章のファイルがない。
+- **G03003**：`@import ../x.gm`（ルートの外）と `@import "https://e.com/x.gm"`（URL）。
+- **G03004**：`Common.gm` と `common.gm`。
   区別しないファイルシステムでは成功も許している。
-- **G0305**：長さ 2 の循環と自分自身の import。
-- **G0306**：未知のキー、列挙にない値、範囲外の CMYK、不正な番号の書式、廃止した欄、ルビの値、`bleed` の `zw` など。
+- **G03005**：長さ 2 の循環と自分自身の import。
+- **G03006**：未知のキー、列挙にない値、範囲外の CMYK、不正な番号の書式、廃止した欄、ルビの値、`bleed` の `zw` など。
 
-G0307 と G0309 のテストはない。
+G03007 と G03009 のテストはない。
 
 ### 加えるテスト
 
@@ -324,56 +324,56 @@ G0307 と G0309 のテストはない。
 
 `modules/golem-project/test/Main.hs`：
 
-- `manifest.toml` のないルートで、`loadProject` のコードが `["G0316"]` で、メッセージが `manifest.toml がありません` であることを確かめる。
-- `@import nope.gm as x` の G0302 の位置が、その `@import` の行であることを確かめる。
-- `@import /abs.gm as x` が G0303 で `絶対パスは使えません: /abs.gm` であること、ルートの外へのシンボリックリンクが G0303 であることを確かめる。
-- `Common.gm` と `common.gm` のテストを、コードが `["G0304"]` であることの厳密な検査に変える。
+- `manifest.toml` のないルートで、`loadProject` のコードが `["G03016"]` で、メッセージが `manifest.toml がありません` であることを確かめる。
+- `@import nope.gm as x` の G03002 の位置が、その `@import` の行であることを確かめる。
+- `@import /abs.gm as x` が G03003 で `絶対パスは使えません: /abs.gm` であること、ルートの外へのシンボリックリンクが G03003 であることを確かめる。
+- `Common.gm` と `common.gm` のテストを、コードが `["G03004"]` であることの厳密な検査に変える。
   メッセージが `大文字と小文字だけが異なるパスです: common.gm と Common.gm` であることも確かめる。
 - 長さ 3 の循環で、メッセージが三つのファイルと最初のファイルを ` → ` でつなぎ、関連位置が三つあることを確かめる。
-- `[targets]` が空の `manifest.toml` が G0301 で `出力ターゲットが一つもありません` であることを確かめる。
-- `manifest.toml` の TOML の構文の誤りが G0301 で、メッセージが `TOML の誤りです: ` で始まることを確かめる。
+- `[targets]` が空の `manifest.toml` が G03001 で `出力ターゲットが一つもありません` であることを確かめる。
+- `manifest.toml` の TOML の構文の誤りが G03001 で、メッセージが `TOML の誤りです: ` で始まることを確かめる。
 - `[metadata]` のない `manifest.toml` のメッセージが `missing key: metadata` で終わり、` ()` を含まないことを確かめる。
-- `@import x.gm`、`@import x.gm as`、`@import [= 1] as x`、`@import x.gm as x extra` が、それぞれ G0309 であることを確かめる。
-  属性としてまとめたブロックの中の `@import x.gm` も G0309 であることを確かめる。
-- `parseStyle` で、TOML の構文の誤りが G0306 で `TOML の誤りです: ` で始まることを確かめる。
+- `@import x.gm`、`@import x.gm as`、`@import [= 1] as x`、`@import x.gm as x extra` が、それぞれ G03009 であることを確かめる。
+  属性としてまとめたブロックの中の `@import x.gm` も G03009 であることを確かめる。
+- `parseStyle` で、TOML の構文の誤りが G03006 で `TOML の誤りです: ` で始まることを確かめる。
 - `parseStyle` で、上の表の日本語の文言が出ることを確かめる（列挙の値、`column-gap`、`space-between`、`first-line-indent`、長さ、`cmyk`、見出しの段）。
 - `parseStyle` で、読み込んだ後の検査の五つの文言を一つずつ確かめる。
 
 `modules/golem-eval/test/FileSpec.hs`：
 
-- プロジェクトを通さずに `evalFile` で評価した `@import [= 1] as x` が G0309 になることを確かめる。
-  今は G0309 にならないので、変更の前は失敗する。
+- プロジェクトを通さずに `evalFile` で評価した `@import [= 1] as x` が G03009 になることを確かめる。
+  今は G03009 にならないので、変更の前は失敗する。
 
 `modules/golem-driver/test/Main.hs`：
 
-- `{ file = "b.gm", master = "nope" }` と `{ file = "c.gm", master = "nope" }` を持つプロジェクトで、G0307 がちょうど一つ出て、メッセージが `style.toml にないマスターページです: nope` であることを確かめる。
-- `style.toml` の `[masters.body]` を指す項目では G0307 が出ないことを確かめる。
-- 原稿に構文の誤りがあるとき、G0307 が出ないことを確かめる。
+- `{ file = "b.gm", master = "nope" }` と `{ file = "c.gm", master = "nope" }` を持つプロジェクトで、G03007 がちょうど一つ出て、メッセージが `style.toml にないマスターページです: nope` であることを確かめる。
+- `style.toml` の `[masters.body]` を指す項目では G03007 が出ないことを確かめる。
+- 原稿に構文の誤りがあるとき、G03007 が出ないことを確かめる。
 - `style.toml` の未知のキーで `build` が失敗したとき、`brSources` に `style.toml` の `SourceInfo` があり、`renderHuman` の出力が `style.toml:` で始まることを確かめる。
 - 章のファイルがないとき、`renderHuman` の出力が `manifest.toml:1:1:` で始まることを確かめる。
 
 `modules/golem-lsp/test/Main.hs`：
 
-- 原稿の `@import nope.gm as x` の G0302 が、`manifest.toml` ではなく、その原稿のファイルに載ることを確かめる。
-- `style.toml` の未知のキーの G0306 が、`style.toml` に載ることを確かめる。
+- 原稿の `@import nope.gm as x` の G03002 が、`manifest.toml` ではなく、その原稿のファイルに載ることを確かめる。
+- `style.toml` の未知のキーの G03006 が、`style.toml` に載ることを確かめる。
 
-`modules/golem-cli/test/Main.hs` の、ソースのコードがすべて `docs/diagnostics.md` に載っていることのテストが、G0316 の節を求めることも確かめる。
+`modules/golem-cli/test/Main.hs` の、ソースのコードがすべて `docs/diagnostics.md` に載っていることのテストが、G03016 の節を求めることも確かめる。
 
 ## トレードオフ
 
-G0302 を分けると、`manifest.toml` がないときに G0302 を前提にしていた利用者のスクリプトは動かなくなる。
+G03002 を分けると、`manifest.toml` がないときに G03002 を前提にしていた利用者のスクリプトは動かなくなる。
 まだ最初のリリースの前なので、コードの意味を一つに保つほうを選ぶ。
 
 `ProjectFailure` を返すと、`loadProjectWith` と `evaluateProjectWith` の型が変わり、golem-driver、golem-lsp、golem-cli の呼び出し側を直す必要がある。
 位置のない診断は直し方を探す手がかりを失うので、この手間を払う。
 
-G0304 を書いたパスでも調べると、区別するファイルシステムで、大文字と小文字だけ異なる二つのファイルを意図して置くことはできなくなる。
+G03004 を書いたパスでも調べると、区別するファイルシステムで、大文字と小文字だけ異なる二つのファイルを意図して置くことはできなくなる。
 これは [golem-project ADR 0001](0001-manifest-and-import-graph.md) がすでに選んだ制約であり、実装をそれに合わせる。
 
-G0307 を名前ごとに一つにすると、どの章の項目が誤っているかは診断から読めなくなる。
+G03007 を名前ごとに一つにすると、どの章の項目が誤っているかは診断から読めなくなる。
 位置がファイルの先頭である以上、同じ行を繰り返しても情報は増えないので、名前ごとに一つにする。
 
-toml-parser の文言を英語のまま残すので、G0301 と G0306 の文言は日本語と英語が混ざる。
+toml-parser の文言を英語のまま残すので、G03001 と G03006 の文言は日本語と英語が混ざる。
 翻訳すると toml-parser の版が上がるたびに文言の対応を保つ必要があり、その手間に見合わない。
 
 ## 参考文献

@@ -100,7 +100,7 @@ isExtending c = generalCategory c `elem` [NonSpacingMark, SpacingCombiningMark, 
 - `Golem.Driver.Fonts` の `runs` と `Golem.Driver.Pdf` の `runsOf` は、`isExtending` の字を前の字のランに残す。今の異体字セレクタの扱いを広げたものである。
 - `Golem.Driver.Pdf` の `shapingOf` は、字のまとまりの基底の字で、欧文と和文のどちらのシェイピングにするかを決める。
 - 縦組みで横組みの字形に回す判定（`turnsInVertical`、[ADR 0015](0015-vertical-dashes.md)）は、今のとおりクラスタの最初の文字で行う。
-- 書体に結合文字のグリフがなく、合成済みの字もない場合、HarfBuzz は .notdef を出す。今のとおり `golem preflight` の G0902 で報告し、ほかの書体で補うことはしない（v2 の「フォントのフォールバック」で扱う）。
+- 書体に結合文字のグリフがなく、合成済みの字もない場合、HarfBuzz は .notdef を出す。今のとおり `golem preflight` の G09002 で報告し、ほかの書体で補うことはしない（v2 の「フォントのフォールバック」で扱う）。
 
 ### テキスト層
 

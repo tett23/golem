@@ -42,7 +42,7 @@ italic-font = "italic"   # [italic: ...] を組むフォントの役割
 ```
 
 - `Style` に `stBoldFont :: !(Maybe Text)` と `stItalicFont :: !(Maybe Text)` を加え、`Emphasis` の読み込みで読む。どちらも省略でき、既定は `Nothing` とする。
-- `bold-font`、`italic-font`、`[character-styles.<名前>]` の `font` が `[fonts]` にない役割を指す場合は、[ADR 0003](0003-pdf-heading-styles.md) の G0308 とする。
+- `bold-font`、`italic-font`、`[character-styles.<名前>]` の `font` が `[fonts]` にない役割を指す場合は、[ADR 0003](0003-pdf-heading-styles.md) の G03008 とする。
 - 検査は `parseStyle` の `checks` に加え、すべてのターゲットで同じ診断を出す。
 
 ### 文字の見た目（golem-layout）
@@ -124,7 +124,7 @@ restyle :: Style -> Look -> Inline -> Look
 
 ### フォントの読み込みと幅の関数（golem-driver）
 
-- [ADR 0003](0003-pdf-heading-styles.md) で読み込む役割に、`bold-font`、`italic-font`、`[character-styles.*]` の `font` が指す役割を加える。フェイスの番号の振り方、同じバイト列のファイルの統合、G0805 の検査は [ADR 0003](0003-pdf-heading-styles.md) のとおりとする。
+- [ADR 0003](0003-pdf-heading-styles.md) で読み込む役割に、`bold-font`、`italic-font`、`[character-styles.*]` の `font` が指す役割を加える。フェイスの番号の振り方、同じバイト列のファイルの統合、G08005 の検査は [ADR 0003](0003-pdf-heading-styles.md) のとおりとする。
 - `composeEnv` は、`ceAdvance look c` を、`c` が欧文の文字（`charClass` が `Western`）なら `lfAdvance (lkLatinFace look) c`、ほかは `lfAdvance (lkFace look) c` とする。`ceWordAdvance look w` は `lfWordAdvance (lkLatinFace look) w` とする。
 - `ceRestyle` には `restyle (piStyle inp)` を渡す。
 - `LoadedFonts` の型は [ADR 0003](0003-pdf-heading-styles.md) のまま変えない。
@@ -230,8 +230,8 @@ data Mark
 
 ### golem-project（modules/golem-project/test/Main.hs）
 
-- `[emphasis] bold-font = "gothic"` を含み `[fonts.gothic]` がない `style.toml` が G0308 になること。
-- `[character-styles.term] font = "nope"` が G0308 になること。
+- `[emphasis] bold-font = "gothic"` を含み `[fonts.gothic]` がない `style.toml` が G03008 になること。
+- `[character-styles.term] font = "nope"` が G03008 になること。
 - `bold-font` と `italic-font` を含む正しい `style.toml` で、`stBoldFont` と `stItalicFont` が読めること。省略した場合は `Nothing` になること。
 
 ### golem-layout（modules/golem-layout/test/Main.hs）
