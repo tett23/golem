@@ -138,7 +138,8 @@ OpenType のフォントは、字形の置き換えや字送りの調整を、�
 どの機能を持つかはフォントによって違います。
 
 役割ごとに使う機能を、[code: features = \["palt"\]] のように指定できます。
-[code: palt] は、和文の約物や仮名を字面に合わせて詰めて組む機能です。
+[code: palt] は、和文の仮名などを字面に合わせて詰めて組む機能です。
+PDF では、括弧類、句読点、中点類（[code: ・]、[code: ：]、[code: ；]）には [code: palt] と [code: vpal] を当てず、全角のまま、日本語組版の規則で前後の空きを詰めます。
 同じ詰めは、文字スタイルと段落スタイルの [code: proportional-metrics] でも指定できます（「[ref-title kerning]」、[ref-page kerning] ページ）。
 
 縦組みの本では、フォントの縦書き用の字形（[code: vert]）を使います。
@@ -288,7 +289,7 @@ InDesign のカーニング、トラッキング、プロポーショナルメ�
 
 - [code: kerning]：カーニング[index reading=かーにんぐ: カーニング]（字の組ごとの字間の調整）の方式です。[code: "metrics"]（既定）は、フォントのペアカーニングの情報で字間を調整します。InDesign の「メトリクス」に当たります。[code: "japanese-equal-width"] は欧文だけを調整し、和文は全角の送りのまま組みます。InDesign の「和文等幅」に当たります。[code: "none"] は調整しません。
 - [code: tracking]：文字ごとに足す空き（トラッキング[index reading=とらっきんぐ: トラッキング]）です。InDesign と同じく、文字の大きさの 1/1000 を単位に、-1000 から 10000 までの整数で書きます。負の値は字間を詰めます。
-- [code: proportional-metrics]：[code: true] にすると、和文を字面に合わせた送り（プロポーショナルメトリクス）で組みます。OpenType の [code: palt]（縦組みでは [code: vpal]）の機能を使います。括弧類と句読点は全角のまま組みます。
+- [code: proportional-metrics]：[code: true] にすると、和文を字面に合わせた送り（プロポーショナルメトリクス）で組みます。OpenType の [code: palt]（縦組みでは [code: vpal]）の機能を使います。括弧類、句読点、中点類（[code: ・]、[code: ：]、[code: ；]）は全角のまま組みます。フォントの役割の [code: features] に [code: palt] を書いても同じです。HTML と EPUB では、これらの約物にも字面に合わせた送りが当たります。
 - [code: baseline-shift]：文字を、横組みでは上へ、縦組みでは右へずらす量（ベースラインシフト）です。[code: "1pt"] や [code: "-0.25zw"] のように書きます。行の位置は変わりません。
 
 ```toml

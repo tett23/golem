@@ -532,14 +532,19 @@ withFeatures d lk =
 vertical text when it is Japanese in a vertical paragraph (Latin is turned
 and shaped horizontally), with the features of the kerning method and the
 proportional metrics after the role's. Japanese punctuation that JLReq
-spaces keeps its full width: palt and vpal are not added to it.
+spaces keeps its full width (docs/adr ADR 0053): palt and vpal are not
+added to it, and -palt and -vpal after the role's features turn off a
+palt or vpal of the role.
 -}
 shapingOf :: Bool -> Look -> Char -> Shaping
 shapingOf vertical lk c
   | charClass c == Western = Shaping (lkLatinFace lk) False ["-kern" | lkKerning lk == L.KernNone]
   | otherwise = Shaping (lkFace lk) vertical extra
   where
-    proportional = [if vertical then "vpal" else "palt" | lkProportional lk, punctSpace (charClass c) == (0, 0)]
+    spaced = punctSpace (charClass c) /= (0, 0)
+    proportional
+      | spaced = ["-palt", "-vpal"]
+      | otherwise = [if vertical then "vpal" else "palt" | lkProportional lk]
     extra = case lkKerning lk of
       L.KernJapaneseEqualWidth -> ["-kern", "-vkrn", "-palt", "-vpal"]
       L.KernNone -> ["-kern", "-vkrn"] <> proportional
