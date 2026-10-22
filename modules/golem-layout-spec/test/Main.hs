@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Control.Monad (void)
+import Control.Monad (forM_, void)
 import Data.Either (isLeft)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
@@ -262,6 +262,19 @@ tests =
         codesOf False (withGutter mm15') @?= []
         codesOf True ((withGutter mm15') {stHiddenFolio = (stHiddenFolio defaultStyle) {hfEnabled = False}}) @?= []
         codesOf True (withGutter mm15) @?= [],
+      testCase "G0750: the column of digits is half the size on each side of its centre line, not the advance of a digit (golem-driver ADR 0041)" $ do
+        -- a gutter margin M of 15mm and digits of 6pt: the column reaches the type area at a hidden gutter of M - 3pt
+        let m = 2786570
+            withFolio bindingRight hg =
+              defaultStyle
+                { stPage = Just (Page (NamedSize "A5") bindingRight False (Just ((grid 30 30 1 Nothing) {gridGutter = Abs m})) 0),
+                  stHiddenFolio = (stHiddenFolio defaultStyle) {hfSize = Abs (pt 6), hfGutter = Abs hg}
+                }
+            codesOf st = either (map diagCode) (const []) (pageGeometry (FileId 3) True st)
+        forM_ [False, True] $ \bindingRight -> do
+          codesOf (withFolio bindingRight (m - pt 3)) @?= []
+          -- with an advance of 0.55em the digits would still be 1pt off the type area
+          codesOf (withFolio bindingRight (m - pt 3 + 1)) @?= [DiagnosticCode "G0750"],
       testCase "the hidden folio geometry is there only with crop marks and when enabled (golem-driver ADR 0021)" $ do
         let s = styleWith False False (grid 30 30 1 Nothing)
         pgHiddenFolio (either (error . show) id (pageGeometry (FileId 0) True s)) @?= Just (HiddenFolioGeometry (pt 6) 278657 False)
