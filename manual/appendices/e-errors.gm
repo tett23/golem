@@ -274,11 +274,18 @@ G0310 と G0504 は、[code: --profile dev] では警告、[code: --profile prod
   書けるキーは [code: numbers]、[code: file]、[code: highlight]、[code: diff]、[code: callouts] で、[code: @listing] では [code: lang] も書けます。
   [code: highlight] の番号がコードにない、[code: diff=true] のコードに [code: +]、[code: -]、空白のどれでも始まらない行がある、注釈の印の番号が 1 から 50 の外にある、[code: @caption] にキャプションがない、といった場合も、このエラーになります。
   メッセージの示すキーと値を直してください。
-= [strong: G0276 [code: @printings は日本語の本（language = "ja"）でだけ使えます]] など
-  [code: @printings] を組めません。
-  [code: manifest.toml] の [code: language] が [code: "ja"] でないか、[code: \[\[metadata.printings\]\]] がないか、[code: @printings] に引数か字下げした本体を書いています。
-  [code: \[\[metadata.printings\]\]] を書いてください。
-  日本語でない本では、[code: meta.printing] の値から一行ずつ書いてください。
+= [strong: G0296 [code: @printings は引数を取りません]]
+  引数を取らないコマンドに引数を書いています。
+  コマンドの行から引数を消してください。
+= [strong: G0297 [code: @printings は本体を持てません]]
+  本体を持てないコマンドの次の行を字下げしています。
+  字下げをやめて、別の段落として書いてください。
+= [strong: G0276 [code: @printings は日本語の本（language = "ja"）でだけ使えます]]
+  [code: manifest.toml] の [code: language] が [code: "ja"] でない本に [code: @printings] を書いています。
+  日本語でない本では、[code: @printings] を消し、[code: meta.printing] の値から一行ずつ書いてください。
+= [strong: G0298 [code: マニフェストに \[\[metadata.printings\]\] がありません]]
+  [code: manifest.toml] に [code: \[\[metadata.printings\]\]] がない本に [code: @printings] を書いています。
+  [code: \[\[metadata.printings\]\]] に版、刷、日付を書いてください。
 = [strong: G0258 [code: @page-break の引数は recto か verso です]] など
   [code: @page-break] には何も書かないか、[code: recto] か [code: verso] を一つだけ書きます。
   [code: @column-break] は引数を取りません。

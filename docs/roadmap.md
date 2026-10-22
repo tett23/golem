@@ -36,7 +36,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - `palt` と `vpal` を、JLReq が空きを決める約物に当てない（未実装、[docs/adr 0053](adr/0053-no-palt-on-jlreq-punctuation.md)）。
 - SVG の `marker` の循環と深すぎる入れ子を、それぞれのコードのエラーにする（未実装、[docs/adr 0054](adr/0054-svg-marker-cycle-and-depth-codes.md)）。
 - `@no-page-break` の前の 3 行以下の段落は全体を送る（未実装、[docs/adr 0055](adr/0055-no-page-break-moves-short-paragraphs-whole.md)）。
-- `@printings` の誤りを原因ごとのコードに分ける（未実装、[docs/adr 0056](adr/0056-printings-diagnostic-codes-by-cause.md)）。
 - G0814 の文言を「動的なコンテンツ」にする（未実装、[docs/adr 0057](adr/0057-g0814-says-dynamic-content.md)）。
 - CI で動いていなかった二つの検査を CI で動かす（未実装、[docs/adr 0058](adr/0058-run-skipped-checks-in-ci.md)）。
 - 「傍注欄」を「傍注の領域」と言い換える（未実装、[docs/adr 0059](adr/0059-say-sidenote-area.md)）。
