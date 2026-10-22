@@ -35,7 +35,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - 「傍注欄」を「傍注の領域」と言い換える（未実装、[docs/adr 0059](adr/0059-say-sidenote-area.md)）。
 - diagnostic のコードを、段階の 2 桁と番号の 3 桁の 5 桁にする（未実装、[docs/adr 0061](adr/0061-five-digit-diagnostic-codes.md)）。ほかの ADR をすべて実装した後に実装する。
 - G0904 を、文字の大きさを決めた定義と色の組ごとに、原稿の文字の位置で報告する（未実装、[golem-cli ADR 0008](golem-cli/adr/0008-g0904-by-size-source-and-colour.md)）。
-- 回した図版を待つあいだの改段と、回した図版のページの後の改ページ（未実装、[golem-driver ADR 0039](golem-driver/adr/0039-breaks-around-turned-figures.md)）。
 - CFF のフォントは CFF の表だけを `CIDFontType0C` で埋め込む（未実装、[golem-pdf ADR 0011](golem-pdf/adr/0011-cff-fontfile3-subtype.md)）。
 - `[sidenotes]` の `side` は `"outside"` だけを受け付けるキーとして残す（未実装、[golem-project ADR 0009](golem-project/adr/0009-sidenotes-side-key.md)）。
 
