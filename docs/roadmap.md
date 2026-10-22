@@ -48,7 +48,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - G0295 のメッセージを、計算の量の上限として書く（未実装、[golem-eval ADR 0007](golem-eval/adr/0007-power-limit-message.md)）。
 - CFF2 のフォントを PDF の組版で拒む（未実装、[golem-font ADR 0003](golem-font/adr/0003-reject-cff2-fonts-in-pdf.md)）。
 - `golem check` の G0702 の条件と、雛形の塗り足し（未実装、[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)）。
-- CFF のフォントは CFF の表だけを `CIDFontType0C` で埋め込む（未実装、[golem-pdf ADR 0011](golem-pdf/adr/0011-cff-fontfile3-subtype.md)）。
 - `[sidenotes]` の `side` は `"outside"` だけを受け付けるキーとして残す（未実装、[golem-project ADR 0009](golem-project/adr/0009-sidenotes-side-key.md)）。
 
 ### 既知の不具合の修正

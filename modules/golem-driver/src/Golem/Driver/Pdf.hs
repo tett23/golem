@@ -81,7 +81,7 @@ import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (isAlphaNum, isAscii, isSpace)
-import Data.Either (fromRight, isLeft)
+import Data.Either (fromRight, isLeft, lefts)
 import Data.Foldable (toList)
 import Data.Function (on)
 import Data.Int (Int64)
@@ -164,8 +164,9 @@ data LoadedFonts = LoadedFonts
     lfCode :: Int -> Int -> Int,
     {- | the embedded (subset) font of a face number, for horizontal or
     vertical use, with the glyphs used and their text; IO, since the
-    subset is made as the PDF is written (docs/adr ADR 0034)
-    -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> IO P.Font,
+    subset is made as the PDF is written (docs/adr ADR 0034); a font that
+    cannot be embedded is a diagnostic (G0818, golem-pdf ADR 0011)
+    -} lfEmbed :: Int -> Bool -> [(Int, Text)] -> IO (Either Diagnostic P.Font),
     {- | the height of the centre of the ideographic em box above the
     baseline of a face number, in em (golem-driver ADR 0015)
     -} lfEmBoxCentral :: Int -> Rational,
@@ -904,8 +905,12 @@ renderPdfView provider inp0 = case checkedGeometry inp of
                   let (used, finish) = writeDocumentView inp geom fonts layout intent
                   -- the fonts are subset and embedded here, at the writing edge (docs/adr ADR 0034)
                   embedded <- Map.traverseWithKey (\(P.FontRef k) gts -> lfEmbed fonts (k `div` 2) (odd k) gts) used
-                  let (bytes, view) = finish embedded
-                  pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout, view))
+                  -- a face used horizontally and vertically is reported once
+                  case nub (lefts (Map.elems embedded)) of
+                    [] -> do
+                      let (bytes, view) = finish (Map.mapMaybe (either (const Nothing) Just) embedded)
+                      pure (Right (bytes, plNotices layout <> runningHeadNotices inp geom fonts layout, view))
+                    ds -> pure (Left ds)
                 ds -> pure (Left ds)
   where
     inp = codeInput inp0
@@ -3428,7 +3433,7 @@ writeDocumentView inp geom fonts layout intent =
       textEntries = Map.map Map.fromList used
       -- the PDF and its view from the fonts embedded (docs/adr ADR 0034)
       finish fontsUsed =
-        let programs = [case P.fontProgram f of P.TrueTypeProgram b -> b; P.CffProgram b -> b; P.OpenTypeProgram b -> b | f <- Map.elems fontsUsed]
+        let programs = [case P.fontProgram f of P.TrueTypeProgram b -> b; P.CffProgram b -> b | f <- Map.elems fontsUsed]
             (y, mo, d) = toGregorian (mdDate md)
             doc =
               P.Document

@@ -5965,6 +5965,35 @@ HTML か EPUB を組むとき（`golem build`）にだけ出す。
 外部の画像を参照する図は、画像を埋め込むか、`web` に PNG を置く。
 他人から受け取った SVG でこのコードが出たら、中身を確かめてから使う。
 
+## G0818
+
+フォントから CFF の表を取り出せません
+
+- 重大度: エラー
+- 状態: 使用中
+
+### 意味
+
+輪郭が CFF のフォントを PDF に埋め込むとき、埋め込むフォント（サブセット、作れなければ元のフォント）から `CFF ` の表を取り出せない。
+Golem は CFF のフォントを、CFF の表だけを `FontFile3` に `/Subtype /CIDFontType0C` で埋め込む。
+OpenType のままの埋め込み（`/Subtype /OpenType`）は、Chromium の PDF のビューアー（PDFium）が CID-keyed の CFF の和文を描かないので、代わりに使わない。
+PDF を書かない。
+PDF を組むとき（`golem build` の PDF と `golem preflight`）に出し、dev と prod の両方でエラーとする。
+位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+
+- メッセージ: `フォントから CFF の表を取り出せません: <パス>`。パスは `style.toml` に書いたとおりである。
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`、`Golem.Driver.Pdf`）
+- ADR: [golem-pdf ADR 0011](golem-pdf/adr/0011-cff-fontfile3-subtype.md)
+
+### 主な原因
+
+- フォントのファイルの表の目録が壊れていて、`CFF ` の表の位置か長さが誤っている。
+- 一つの OpenType でないファイル（フォントのコレクションの `.ttc` など）を指している。
+
+### 直し方
+
+フォントの配布元から、一つの OpenType のファイル（`.otf`）を取り直して使う。
+
 ## G0901
 
 プリフライトの設定に誤りがあります
