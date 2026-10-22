@@ -2289,7 +2289,7 @@ code はコードブロックの段落スタイルです
 `{set.<名前空間>.<名前>}` では、名前空間の `@import` がないか、取り込んだファイルにその変数がない。
 柱の `set` の変数は、そのページのファイルの変数であり、`@set` の変数がファイルの単位で定義されるという規則を変えない。
 S0 の評価の後に、マニフェストの章のファイルごとに検査する。
-PDF をターゲットに含むビルドと `golem check` で出し、HTML、EPUB、プレーンテキストだけのビルドでは出さない。
+PDF をターゲットに含むビルドと `golem check`（四つのターゲットを検査するので、つねに PDF を含む）で出し、HTML、EPUB、プレーンテキストだけのビルドでは出さない。
 同じファイルと同じ変数の組には一つだけ出す。
 位置はそのファイルの先頭であり、`style.toml` の先頭を関連する位置として添える。
 
@@ -2320,7 +2320,7 @@ PDF をターゲットに含むビルドと `golem check` で出し、HTML、EPU
 `style.toml` のマスターページの柱の書式が参照する変数の値が、文字列でも数でもない（真偽値、`nil`、配列、連想配列）。
 文字列はそのまま、数は式文脈 `[= ...]` で本文に埋め込んだときと同じ文字列にして柱に出す。
 S0 の評価の後に、マニフェストの章のファイルごとに検査する。
-PDF をターゲットに含むビルドと `golem check` で出す。
+PDF をターゲットに含むビルドと `golem check`（四つのターゲットを検査するので、つねに PDF を含む）で出す。
 位置はそのファイルの先頭であり、`style.toml` の先頭を関連する位置として添える。
 
 - メッセージ: `柱に出せるのは文字列と数です: <名前> は <型>`
@@ -4811,10 +4811,11 @@ LSP は出さない。
 
 `--marks japanese` で PDF を作るか検査するときに、`[page]` の `bleed` が 0 である。
 PDF をターゲットに含まないビルドと LSP では出さない。
+`golem check` は四つのターゲットを検査するので、マニフェストのターゲットによらず出す。
 
 - メッセージ: `日本式のトンボには塗り足しが要ります。style.toml の [page] に bleed を書いてください`
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver`）
-- ADR: [golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)
+- ADR: [golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)、[golem-pdf ADR 0010](golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)
 
 ### 主な原因
 
@@ -5981,7 +5982,7 @@ HTML か EPUB を組むとき（`golem build`）にだけ出す。
 
 - メッセージ: `SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。`<名前>` は要素の名前、属性の名前、`url()`、`@import` のどれかである。ほかになければ `ほか <n> 件` を書かない。読めない SVG なら `SVG の図版に、HTML と EPUB に写せない動的なコンテンツがあります: <パス>（<G0810 と同じ理由>）`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg.Active`）
-- ADR: [docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)
+- ADR: [docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)、[docs/adr/0057](adr/0057-g0814-says-dynamic-content.md)（文言）
 
 ### 主な原因
 

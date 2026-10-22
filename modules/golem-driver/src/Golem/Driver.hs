@@ -1021,7 +1021,7 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
               TextVertical -> ("vertical", GT.Vertical)
               TextHorizontal -> ("horizontal", GT.Horizontal)
         -- each document with the indents of its style (docs/adr ADR 0014)
-        let pages = GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textFirstLine . docStyles e) (textLists style) bib gv ft book
+        let pages = GT.renderText (mdLanguage md) (stNumbersVertical style) dev (textIndents . docStyles e) (textLists style) bib gv ft book
         forM pages $ \(p, t) -> do
           writeText (dir </> sub </> p) t
           pure (dir </> sub </> p)
@@ -1158,13 +1158,18 @@ htmlFeatures k t p b =
     }
 
 {- | The ideographic spaces that start the lines of a paragraph of a style
-in plain text (docs/adr ADR 0006): the whole part of indent plus
-first-line-indent when both are in zw, none otherwise.
+in plain text, when indent and first-line-indent are both in zw, none
+otherwise (docs/adr ADR 0006): the whole part of their sum before the
+first line, and before each line after a line break the same in a keep
+paragraph, the whole part of indent in a join paragraph (docs/adr ADR
+0049); never negative.
 -}
-textFirstLine :: Style -> Maybe Text -> Int
-textFirstLine style st = case paraStyle style st of
-  Just ParaStyleDef {psIndent = Just (Zw a), psFirstLineIndent = Just (Zw b)} -> max 0 (truncate (a + b))
-  _ -> 0
+textIndents :: Style -> Maybe Text -> (Int, Int)
+textIndents style st = case paraStyle style st of
+  Just ParaStyleDef {psIndent = Just (Zw a), psFirstLineIndent = Just (Zw b), psLineBreaks = lb} ->
+    let first = max 0 (truncate (a + b))
+     in (first, if lb == Just KeepLines then first else max 0 (truncate a))
+  _ -> (0, 0)
 
 -- | A ruby alignment of style.toml as a CSS ruby-align value (golem-layout ADR 0009).
 rubyAlignCss :: Text -> Text
