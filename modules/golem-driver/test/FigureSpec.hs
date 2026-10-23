@@ -129,7 +129,10 @@ pdfFigureTests =
       out <- maybe (assertFailure "no PDF") pure pdf
       count "/Subtype /Form" out @?= 2
       count "/GolemC4 " out @?= 1
-      qpdfCheck out,
+      qpdfCheck out
+      -- docs/adr ADR 0076: the inner Form is in the Resources of the figure's Form
+      innerFormNested out
+      qpdfExpanded out >>= mapM_ innerFormNested,
     testCase "G08015: a stream that sets a colour at the top, named 40 times, at the @figure, not G08010 (docs/adr ADR 0051)" $ do
       let gray = BL.toStrict (Z.compress (BL.fromStrict (BS.concat (replicate (2 * 1024 * 1024) "0 g\n"))))
           fig = contentsPdf (BS.intercalate " " (replicate 40 "4 0 R")) [("/Filter /FlateDecode", gray)]
@@ -191,6 +194,29 @@ pdfFigureTests =
 -- | An SVG of 200 by 100 with a red square (golem-pdf ADR 0009).
 redSvg :: BS.ByteString
 redSvg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"100\"><rect x=\"10\" y=\"10\" width=\"50\" height=\"50\" fill=\"#ff0000\"/></svg>"
+
+{- | Exactly one object names GolemC4 in its Resources: a Form, the figure's,
+whose GolemC4 is a Form that names no GolemC4 itself (docs/adr ADR 0051,
+ADR 0076). The objects are followed by their numbers.
+-}
+innerFormNested :: BS.ByteString -> Assertion
+innerFormNested pdf = do
+  let objs = pdfObjects pdf
+      isForm v = pdfLookup objs "/Subtype" v == Just (PdfAtom "/Form")
+      inner v =
+        pdfLookup objs "/Resources" v >>= pdfLookup objs "/XObject" >>= \case
+          PdfDict kvs -> lookup "/GolemC4" kvs
+          _ -> Nothing
+  case [(n, v) | (n, v) <- Map.toList objs, isJust (inner v)] of
+    [(_, outer)] -> do
+      assertBool ("the object that names GolemC4 is a Form: " <> show outer) (isForm outer)
+      case inner outer of
+        Just (PdfRef m) -> do
+          form <- maybe (assertFailure ("no object " <> show m)) pure (Map.lookup m objs)
+          assertBool ("GolemC4 is a Form: " <> show form) (isForm form)
+          inner form @?= Nothing
+        other -> assertFailure ("GolemC4 is not a reference: " <> show other)
+    holders -> assertFailure ("the objects that name GolemC4 in their Resources: " <> show (map fst holders))
 
 -- | The PDF of a one-chapter project with files, or the error codes.
 pdfWith :: Profile -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Maybe BS.ByteString, [T.Text])

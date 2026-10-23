@@ -45,6 +45,7 @@ tests skips cacheHome =
         testGroup "the text layer of ligatures (golem-driver ADR 0030)" ligatureTests,
         testGroup "combining characters (golem-driver ADR 0036)" combiningTests,
         testGroup "the separator after a number (golem-html ADR 0002)" numberSeparatorTests,
+        testGroup "the default bullet by the output (golem-driver ADR 0044)" bulletTests,
         versionTests,
         memoTests,
         producerTests,
