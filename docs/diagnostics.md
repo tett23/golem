@@ -5735,6 +5735,7 @@ PDF を書かない。
 
 - フォントのファイルが壊れている。
 - OpenType として読めない、対応しない形式である。
+- 輪郭の表（`CFF ` も `glyf` も）がない。
 
 ### 直し方
 
@@ -6187,19 +6188,21 @@ OpenType のままの埋め込み（`/Subtype /OpenType`）は、Chromium の PD
 PDF を書かない。
 PDF を組むとき（`golem build` の PDF と `golem preflight`）に出し、dev と prod の両方でエラーとする。
 位置は `style.toml` の先頭（`style.toml` がなければマニフェストの先頭）である。
+フォントとして開けないファイル（輪郭の表がない、表の目録が壊れているなど）は、埋め込みより前に [G08003](#g08003) になる。
+このエラーは、開けたフォントの埋め込みの処理（サブセットや表の取り出し）が `CFF ` の表を失ったとき、OpenType のまま黙って埋め込むのを防ぐ。
 
 - メッセージ: `フォントから CFF の表を取り出せません: <パス>`。パスは `style.toml` に書いたとおりである。
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Fonts`、`Golem.Driver.Pdf`）
-- ADR: [golem-pdf ADR 0011](golem-pdf/adr/0011-cff-fontfile3-subtype.md)
+- ADR: [golem-pdf ADR 0011](golem-pdf/adr/0011-cff-fontfile3-subtype.md)、[golem-pdf ADR 0013](golem-pdf/adr/0013-renamed-cff-table-is-g08003.md)
 
 ### 主な原因
 
-- フォントのファイルの表の目録が壊れていて、`CFF ` の表の位置か長さが誤っている。
-- 一つの OpenType でないファイル（フォントのコレクションの `.ttc` など）を指している。
+- プロジェクトのフォントからは通常は起きない。埋め込みの処理の不具合を防ぐためのエラーである。`CFF ` の表の目録を壊したフォントも、CFF のフォントを含むフォントのコレクション（`.ttc`）も、試したかぎりでは G08018 にならなかった（[golem-pdf ADR 0013](golem-pdf/adr/0013-renamed-cff-table-is-g08003.md)）。
 
 ### 直し方
 
-フォントの配布元から、一つの OpenType のファイル（`.otf`）を取り直して使う。
+Golem の不具合として報告する。
+フォントの配布元から取り直したファイルで同じエラーが出るかを確かめると、報告の手がかりになる。
 
 ## G08019
 

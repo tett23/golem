@@ -56,7 +56,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - 箇条書きの既定の印を、PDF と CSS では「•」にする（未実装、[golem-driver ADR 0044](golem-driver/adr/0044-default-bullet-u2022.md)）。
 - 見出しを後の行と離さない規則で、後の行の注の本文を数える（未実装、[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
-- 輪郭の表のないフォントは G08003 とし、G08018 は埋め込みの防御として残す（未実装、[golem-pdf ADR 0013](golem-pdf/adr/0013-renamed-cff-table-is-g08003.md)）。
 
 ## v0.1.0-rc4
 
