@@ -288,6 +288,11 @@ hostileTests =
         $ total (png [ihdr 0x7FFFFFFF 0x7FFFFFFF 16 6 0, idat [0, 0]]) >>= (@?= Left "PNG の画像が大きすぎます"),
       testCase "more than 512 MiB of samples is too large" $
         total (png [ihdr 30000 30000 16 6 0, idat [0, 0]]) >>= (@?= Left "PNG の画像が大きすぎます"),
+      -- 32768 rows of a filter byte and 16383 samples: exactly 2^29 bytes (docs/adr ADR 0068)
+      testCase "exactly 512 MiB of filtered samples is not too large (docs/adr ADR 0068)" $
+        total (png [ihdr 16383 32768 8 0 0, idat [0, 0]]) >>= (@?= Left "PNG の画素のデータが足りません"),
+      testCase "one row beyond 512 MiB of filtered samples is too large (docs/adr ADR 0068)" $
+        total (png [ihdr 16383 32769 8 0 0, idat [0, 0]]) >>= (@?= Left "PNG の画像が大きすぎます"),
       testCase "an IDAT that is not zlib is an error" $
         total (png [ihdr 1 1 8 0 0, chunk "IDAT" "not zlib at all"]) >>= (@?= Left "PNG の画素のデータを展開できません"),
       testCase "an IDAT that inflates to 64 MiB is read only as far as the image needs" $ do
@@ -298,6 +303,12 @@ hostileTests =
         assertBool ("allocated " <> show bytes) (bytes < 16 * 1024 * 1024),
       testCase "an ICC profile that inflates beyond 32 MiB is an error" $ do
         let iccp = chunk "iCCP" ("p\0\0" <> zeros (64 * 1024 * 1024))
+        total (png [ihdr 1 1 8 0 0, iccp, idat [0, 0]]) >>= (@?= Left "PNG の ICC プロファイルが大きすぎます"),
+      testCase "an ICC profile that inflates to exactly 32 MiB is read (docs/adr ADR 0068)" $ do
+        let iccp = chunk "iCCP" ("p\0\0" <> zeros (32 * 1024 * 1024))
+        total (png [ihdr 1 1 8 0 0, iccp, idat [0, 0]]) >>= (@?= Right (BS.pack [0])),
+      testCase "an ICC profile that inflates to 32 MiB and one byte is an error (docs/adr ADR 0068)" $ do
+        let iccp = chunk "iCCP" ("p\0\0" <> zeros (32 * 1024 * 1024 + 1))
         total (png [ihdr 1 1 8 0 0, iccp, idat [0, 0]]) >>= (@?= Left "PNG の ICC プロファイルが大きすぎます"),
       testCase "an ICC profile that is not zlib is an error" $
         total (png [ihdr 1 1 8 0 0, chunk "iCCP" "p\0\0garbage", idat [0, 0]]) >>= (@?= Left "PNG の ICC プロファイルを展開できません"),

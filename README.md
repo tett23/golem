@@ -335,8 +335,9 @@ Golem のビルドとテストは Node を使わない。
 
 ### CI
 
-CI は二つのワークフローからなる。
+プルリクエストと `main` への push で走る CI は、二つのワークフローからなる。
 `.github/workflows/docs.yml` は ADR とドキュメントを、`.github/workflows/ci.yml` はコードを検査する（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
+ほかに、夜間に `main` で走る `.github/workflows/race.yml` がある。
 
 | ワークフロー | ジョブ | 内容 |
 |---|---|---|
@@ -349,6 +350,7 @@ CI は二つのワークフローからなる。
 | `ci.yml` | `release-scripts` | `VERSION` と全パッケージのバージョンの一致を検査し、`mise.toml` に固定した版の Claude Code を mise で入れて、`scripts/release/` のスクリプトのテスト（`scripts/release/test.sh`）を `GOLEM_REQUIRE_CLAUDE=1` で実行する（[docs/adr/0058](./docs/adr/0058-run-skipped-checks-in-ci.md)） |
 | `ci.yml` | `format` | fourmolu と hlint で検査する |
 | `ci.yml` | `ci` | `ci.yml` のほかのジョブがすべて成功したか、省かれたことを確かめる（`scripts/ci/gate.sh`） |
+| `race.yml` | `race` | 毎日一回 `main` で起動し、前回の成功した実行から `main` が変わっていれば（`scripts/ci/race-needed.sh`）、並行の競合を探すテスト（`golem-driver-parallel-test`、`golem-font-race-test`、`golem-font-test` の並行のテスト）を `GOLEM_RACE_TESTS=40` で走らせる。`workflow_dispatch` で手で起動すると、判定せずに走らせる。権限は `contents: read` と `actions: read` だけである（[docs/adr/0075](./docs/adr/0075-race-search-repetitions.md)） |
 
 変更が `docs/` の下のファイル、`tools/textlint/` の下のファイル、リポジトリの根の Markdown のファイルだけの場合、`build`、`determinism`、`format`、`release-scripts` は省かれる（[docs/adr/0009](./docs/adr/0009-ci-speed.md)、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。
 判定は `scripts/ci/needs-build.sh` が行い、プルリクエストの変更のパスは分岐点からの差分で取る（`scripts/ci/changed-paths.sh`）。
@@ -358,6 +360,11 @@ CI は二つのワークフローからなる。
 `main` の保護の規則が必須とする検査は、`ci`、`adr`、`manual`、`textlint` の四つである。
 同じプルリクエストに新しいコミットを push すると、走っている前の実行は取り消される。
 CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timings.sh` で作る。
+
+`GOLEM_RACE_TESTS` は、競合を探すテストの回数に掛ける数である（1 以上の整数。未設定なら 1）。
+プルリクエストの CI は設定せず、今の回数で走らせる。
+`race.yml` が落ちたら、落ちたテストの名前と、ログに出たシードとサイズ（tasty-hedgehog が `--hedgehog-replay` に渡す形で書く）と、実行の URL と head のコミットを添えて issue を立てる。
+手元では、`GOLEM_RACE_TESTS=40 cabal test golem-driver-parallel-test` のように同じ回数で試し、`--hedgehog-replay` で落ちた例を再現する。
 
 `.github/workflows/release.yml` は、`v` で始まるタグの push と `workflow_dispatch` で動く（[docs/adr/0004](./docs/adr/0004-binary-distribution-and-release.md)）。
 `workflow_dispatch` では、配布物を作って検査し、そのコミットのリリースノートを書くところまでを行い、リリースは作らない。
