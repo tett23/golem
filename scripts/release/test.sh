@@ -1042,12 +1042,24 @@ smoke_archive() {
   fake "$SM/$SMOKE_NAME" golem '
 case $1 in
   --version) echo "golem 1.2.3" ;;
-  new) for a in "$@"; do last=$a; done; mkdir -p "$last" ;;
+  new)
+    for a in "$@"; do last=$a; done
+    mkdir -p "$last"
+    # as golem new --no-fonts: the fonts to place, on stderr
+    case " $* " in *" --no-fonts "*) printf "%s\n" "フォントを取得しませんでした。次のファイルを置いてください。" "  $last/fonts/Font.otf (https://example.com/Font.otf)" >&2 ;; esac
+    if [ -n "${FAKE_NEW_ERR-}" ]; then printf "%s\n" "$FAKE_NEW_ERR" >&2; fi ;;
   build)
     shift
+    json=
     while [ $# -gt 0 ]; do
-      case $1 in --target) mkdir -p "build/$2" && echo out >"build/$2/out"; shift 2 ;; *) shift ;; esac
-    done ;;
+      case $1 in
+        --target) mkdir -p "build/$2" && echo out >"build/$2/out"; shift 2 ;;
+        --format) if [ "$2" = json ]; then json=1; fi; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    # as golem build --format json: the list of diagnostics, on stderr
+    if [ -n "${FAKE_BUILD_ERR-}" ]; then printf "%s\n" "$FAKE_BUILD_ERR" >&2; elif [ -n "$json" ]; then echo "[]" >&2; fi ;;
   *) exit 2 ;;
 esac'
   : >"$SM/$SMOKE_NAME/LICENSE"
@@ -1073,6 +1085,17 @@ smoke_archive
 printf 'x' >>"$SM/$SMOKE_NAME.tar.gz"
 run smoke 1.2.3
 expect "smoke: an archive that is not that of the .sha256" 1
+# a build that writes a diagnostic, and golem new --no-fonts that writes
+# more than the fonts to place, fail (docs/adr/0080)
+smoke_archive
+run env FAKE_BUILD_ERR='[{"code":"G03010","severity":"warning","message":"a font is missing"}]' sh "$HERE/smoke.sh" --offline "$SM/$SMOKE_NAME.tar.gz" 1.2.3
+expect "smoke: a build that writes a warning" 1
+if grep -q 'G03010' "$WORK/err"; then ok; else ng "smoke: the diagnostic of the build is shown"; fi
+run env FAKE_BUILD_ERR='[{"code":"G01017","severity":"notice","message":"a notice"}]' sh "$HERE/smoke.sh" --offline "$SM/$SMOKE_NAME.tar.gz" 1.2.3
+expect "smoke: a build that writes a notice" 1
+run env FAKE_NEW_ERR='warning: something' sh "$HERE/smoke.sh" --offline "$SM/$SMOKE_NAME.tar.gz" 1.2.3
+expect "smoke: golem new --no-fonts that writes one more line" 1
+if grep -q 'warning: something' "$WORK/err"; then ok; else ng "smoke: the line of golem new is shown"; fi
 
 # ----------------------------------------------------------------
 printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"

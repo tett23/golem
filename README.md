@@ -379,7 +379,7 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 | `ci` | `ci.yml` を再利用可能なワークフローとして呼ぶ |
 | `version` | `scripts/release/check-version.sh` で `VERSION` とタグを検査し、タグのコミットが `main` に含まれることを確かめる |
 | `build` | Linux の二つのアーキテクチャでは Alpine のコンテナの中で musl に静的にリンクして、macOS では `macos-15` でビルドし、アーカイブを作る。`THIRD_PARTY_LICENSES/` を決めたリンクマップも成果物として上げる |
-| `smoke` | アーカイブを別のランナーと、`alpine` と `debian:stable-slim` のコンテナの中で展開して動かす |
+| `smoke` | アーカイブを別のランナーと、`alpine` と `debian:stable-slim` のコンテナの中で展開して動かす。`golem new` の雛形と sample のビルドが diagnostics を一つも出さない（notice も含む）こと、`golem new --no-fonts` が置くべきフォントの一覧のほかに何も書かないことを確かめる（[docs/adr/0080](./docs/adr/0080-release-smoke-checks-diagnostics.md)） |
 | `determinism` | 三つの配布物と CI のビルドの、`scripts/determinism.sh` の出力を比べる |
 | `notes` | `mise.toml` で固定した Claude Code を `jdx/mise-action` で入れ、`scripts/release/write-notes.sh` でリリースノートを書き、`notes.md` を成果物として上げる。権限は `contents: read` だけである（[docs/adr/0044](./docs/adr/0044-release-workflow-hardening.md)） |
 | `release` | タグの push のときだけ、`SHA256SUMS`、来歴の証明、GMP のソース、x86-64 の Linux の配布物で組んだ二つのマニュアルの PDF と HTML（`golem-manual-<タグ>` と `golem-dev-manual-<タグ>`）、`notes` が書いたリリースノートと共に下書きのリリースを作る。Node と Claude Code は入れない |
