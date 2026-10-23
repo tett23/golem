@@ -19,14 +19,16 @@ import ReferencesSpec
 import RuleShapeSpec
 import SecuritySpec
 import StylesSpec
+import System.Environment (lookupEnv)
 import TableFilesSpec
 import Test.Tasty
 
 main :: IO ()
-main = defaultMain tests
+main = lookupEnv "XDG_CACHE_HOME" >>= defaultMain . tests
 
-tests :: TestTree
-tests =
+-- | The tests, with XDG_CACHE_HOME as it was when the suite started (docs/adr ADR 0072).
+tests :: Maybe String -> TestTree
+tests cacheHome =
   testGroup
     "golem-driver (ADR 0001)"
     ( [ qpdfInstalled,
@@ -78,6 +80,7 @@ tests =
              testGroup "PDF table of contents (ADR 0009)" tocTests,
              testGroup "ruby placement (golem-layout ADR 0009)" rubyTests,
              testGroup "plugins (golem-plugin ADR 0001, 0002)" pluginTests,
+             cacheHomeRestored cacheHome,
              testGroup "vertical glyphs turned without a vertical form (ADR 0015)" turnedTests,
              testGroup "kenten in the PDF (golem-driver ADR 0019)" kentenTests,
              testGroup "paragraph separator (docs/adr ADR 0013)" separatorTests,

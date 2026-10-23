@@ -457,10 +457,30 @@ tests =
         @?= ("<p><span class=\"proof\">要確認</span></p>\n", "<p></p>\n"),
     testCase "one page per source file, named .xhtml" $
       map fst (sitePages (renderXhtml cfg0 ft (bookOf []) {bookDocs = [Document fidA [], Document fidB []]})) @?= ["a.xhtml", "b.xhtml"],
-    testProperty "escapeXml leaves no markup characters" $ property $ do
-      t <- forAll (Gen.text (Range.linear 0 20) (Gen.element ("a<>&\"漢" :: String)))
-      T.filter (`elem` ("<>\"" :: String)) (escapeXml t) === ""
+    -- a round trip: an escape that drops or rewrites characters fails too (docs/adr/0066)
+    testProperty "escapeXml leaves no markup characters, and unescaping gives the text back" $ property $ do
+      t <- forAll (Gen.text (Range.linear 0 20) (Gen.element ("a<>&\"'漢" :: String)))
+      let e = escapeXml t
+      unescapeXml e === t
+      T.filter (`elem` ("<>\"" :: String)) e === ""
+      -- every & starts one of the four references
+      filter (\rest -> not (any (`T.isPrefixOf` rest) xmlReferences)) (drop 1 (T.splitOn "&" e)) === []
   ]
+
+-- | The references escapeXml writes, without their &.
+xmlReferences :: [Text]
+xmlReferences = ["amp;", "lt;", "gt;", "quot;"]
+
+-- | The inverse of escapeXml, written from the four references it writes.
+unescapeXml :: Text -> Text
+unescapeXml t = case T.uncons t of
+  Nothing -> ""
+  Just ('&', rest)
+    | Just r <- T.stripPrefix "amp;" rest -> "&" <> unescapeXml r
+    | Just r <- T.stripPrefix "lt;" rest -> "<" <> unescapeXml r
+    | Just r <- T.stripPrefix "gt;" rest -> ">" <> unescapeXml r
+    | Just r <- T.stripPrefix "quot;" rest -> "\"" <> unescapeXml r
+  Just (c, rest) -> T.cons c (unescapeXml rest)
 
 -- | Tables, lists, definition lists, the depth of the contents and code lines.
 blockTests :: [TestTree]
