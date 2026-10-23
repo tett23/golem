@@ -1,6 +1,6 @@
 module DiagnosticsSpec (explainTests, noticeTests, projectDiagnosticTests, readingTests, evalDiagnosticTests, outputDiagnosticTests) where
 
-import Control.Monad (filterM)
+import Control.Monad (filterM, forM)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.Char (isDigit)
@@ -109,6 +109,38 @@ noticeProject :: BS.ByteString -> BS.ByteString -> [(FilePath, BS.ByteString)]
 noticeProject extra source =
   [("manifest.toml", noticeManifest extra), ("style.toml", withBodyFont horizontalStyle), ("a.gm", source), ("code.hs", "main = pure ()\n")] <> fakeFontFiles
 
+-- | silence-notices of every code of 'noticeCodes'.
+silenceAllNotices :: BS.ByteString
+silenceAllNotices = "\n[diagnostics]\nsilence-notices = [" <> BS.intercalate ", " [TE.encodeUtf8 ("\"" <> c <> "\"") | DiagnosticCode c <- noticeCodes] <> "]\n"
+
+{- | Projects that together give every notice of 'noticeCodes', as functions
+of more manifest text. The first builds the four targets. G03023 needs a
+project without style.toml, which has no fonts for the PDF (G08007), and so
+the second builds the other three.
+-}
+everyNoticeProjects :: [BS.ByteString -> [(FilePath, BS.ByteString)]]
+everyNoticeProjects =
+  [ \extra -> [("manifest.toml", noticeManifest extra), ("style.toml", withBodyFont style), ("a.gm", TE.encodeUtf8 source), ("code.hs", "main = pure ()\n"), ("images/tall.svg", tall)] <> fakeFontFiles,
+    \extra -> [("manifest.toml", replaceIn "[targets.pdf]\n" "" (noticeManifest extra)), ("a.gm", "x\n")]
+  ]
+  where
+    -- five lines of 12 characters, a paragraph style with rules, and a zero indent of caption (G03100)
+    style = replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\" }\nrule-after = { weight = \"0.5pt\" }\n\n[paragraph-styles.caption]\nindent = \"0zw\"\n"
+    tall = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"300\"><rect width=\"100\" height=\"300\" fill=\"none\"/></svg>"
+    source =
+      T.concat
+        [ TE.decodeUtf8 noticeSource,
+          "\n本文。\n\n@style verse\n  ab\\ \n  cd\n\n", -- G02079
+          "[ruby: [kenten: 漢]|かん]\n\n", -- G07045
+          "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n\n", -- G07030
+          "@figure images/tall.svg alt=\"t\"\n  キャプション。\n\n", -- G07039, with a caption for G03100
+          "@style sec\n  " <> T.replicate 96 "あ" <> "\n\n", -- G07046
+          "a\n\n@page-break\n\n@blank-line\n\nb\n\n", -- G07047
+          "@blank-line\n@blank-line\n\nc\n\n", -- G02094
+          "@blank-line 5\n\nd\n\n", -- G04011
+          "@page-break\n\n@blank-line\n" -- G04008 and G04009
+        ]
+
 -- | The PDF without its instance ID, which is computed from the text of manifest.toml.
 withoutInstanceId :: (FilePath, BS.ByteString) -> (FilePath, BS.ByteString)
 withoutInstanceId (p, b)
@@ -165,15 +197,22 @@ noticeTests =
         n' <- buildNotified (noticeProject "" (noticeSource <> "\n[unknown: x]\n")) id
         take 1 (codesOf (nDiagnostics n')) @?= ["G02022"]
         assertBool "notices after the error" (length (nDiagnostics n') > 1),
-      testCase "the notices do not change the outputs of the four targets" $ do
-        let silenced = "\n[diagnostics]\nsilence-notices = [\"G02062\", \"G02063\", \"G02064\", \"G02065\", \"G04007\", \"G04008\", \"G08008\"]\n"
-        loud <- buildNotified (noticeProject "" noticeSource) id
-        quiet <- buildNotified (noticeProject silenced noticeSource) id
-        codesOf (nDiagnostics quiet) @?= []
-        assertBool "four targets" (all (\ext -> any ((ext `isSuffixOf`) . fst) (nOutputs loud)) [".pdf", ".epub", ".xhtml", ".txt"])
-        map withoutInstanceId (nOutputs quiet) @?= map withoutInstanceId (nOutputs loud)
-        quiet' <- buildNotified (noticeProject "" noticeSource) (\o -> o {optNoNotices = True})
-        nOutputs quiet' @?= nOutputs loud,
+      -- the spec: a notice does not change the bytes of the outputs
+      testCase "no notice of noticeCodes changes the outputs of the four targets" $ do
+        raised <- forM everyNoticeProjects $ \project -> do
+          loud <- buildNotified (project "") id
+          [diagCode d | d <- nDiagnostics loud, diagSeverity d /= Notice] @?= []
+          quiet <- buildNotified (project silenceAllNotices) id
+          nDiagnostics quiet @?= []
+          map withoutInstanceId (nOutputs quiet) @?= map withoutInstanceId (nOutputs loud)
+          none <- buildNotified (project "") (\o -> o {optNoNotices = True})
+          nDiagnostics none @?= []
+          nOutputs none @?= nOutputs loud
+          pure (map diagCode (nDiagnostics loud), map fst (nOutputs loud))
+        -- a new notice must be added to the projects
+        sort (nub (concatMap fst raised)) @?= sort noticeCodes
+        let written = concatMap snd raised
+        assertBool (show written) (all (\ext -> any (ext `isSuffixOf`) written) [".pdf", ".epub", ".xhtml", ".txt"]),
       testCase "the path of @listing as the first argument gives the same outputs as src=" $ do
         let (pre, post) = BS.breakSubstring "src=code.hs" noticeSource
             positional = pre <> "code.hs" <> BS.drop (BS.length "src=code.hs") post
