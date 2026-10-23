@@ -499,6 +499,7 @@ isbn = "978-..."
 
 diagnostics も決定性の対象である（「設計原則」の「diagnostics の決定性」）。
 同じ入力からは同じ diagnostics を得て、並びの順はコードの順、ファイルの順、位置の順に固定する（[ADR 0002](adr/0002-determinism.md)、[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
+x86-64 と aarch64 の間でも、diagnostics と終了コードが同じであることを CI の `determinism` ジョブが確かめる（[ADR 0071](adr/0071-determinism-check-compares-diagnostics.md)）。
 
 出力は、ファイルの入力、Golem のバージョン、出力を変える CLI のオプション（`--marks` と `--profile`）だけで決まる（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
 CLI のオプションは呼び出しに明示されるので、同じオプションで呼べば CI と手元で同じ出力が得られる。
@@ -3102,6 +3103,9 @@ Git の `pre-push` のフック（`origin/main` からの分岐点で検査す�
 
 CI の `build` ジョブは、テストの後に `scripts/manual/build.sh` で二つのマニュアルを組み、x86-64 のジョブで成果物 `manual` と `manual-dev` を上げる。
 組んだ PDF と HTML のハッシュは `scripts/determinism.sh` の出力に入り、x86-64 と aarch64 で同じバイト列になることを `determinism` ジョブが確かめる。
+`scripts/determinism.sh` は、マニュアルのほかの入力では、出力のファイルに加えて `golem build --format json` の標準出力と標準エラー出力の SHA-256 と終了コードも書く。
+入力には diagnostics を出して終了コード 1 で終わる `scripts/env-determinism/diagnostics/` を含むので、二つのアーキテクチャの diagnostics と終了コードも比べることになる。
+マニュアルは diagnostic を一つでも出せば `scripts/manual/build.sh` が失敗にするので、diagnostics の比較の対象にしない（[ADR 0071](adr/0071-determinism-check-compares-diagnostics.md)）。
 docs/manual-policy.md は Golem の振る舞いを定めないので、ビルドが読む文書の一覧（`scripts/ci/needs-build.sh`）に入れない。
 `manual/` と `manual-dev/` は `docs/` の外にあるので、その変更はビルドを走らせる。
 
