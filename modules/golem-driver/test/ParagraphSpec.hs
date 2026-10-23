@@ -523,7 +523,7 @@ columnTests =
           x0 = TE.encodeUtf8 (spToPt (rectX (typeAreaFor geom 1)))
           x1 = TE.encodeUtf8 (spToPt (rectX (columnsFor geom 1 !! 1)))
           firstY x = take 1 (sortOn (negate . ptToRational) [dY d | d <- ds, dX d == x])
-      assertBool "column 0" (not (null (firstY x0)))
+      firstY x0 @?= ["535.452"]
       firstY x1 @?= firstY x0,
     testCase "PDF: vertical, the second column starts at the top of column 1, on the first grid line" $ do
       geom <- geometryOf vertical2
@@ -559,7 +559,8 @@ columnTests =
           source = T.concat ["本文[index reading=" <> r <> ": 語" <> r <> "]。" | r <- readings] <> "\n\n@index\n"
       (_, pl) <- layoutOk (replaceIn "lines = 30" "lines = 5" horizontal2) source []
       let indexIn p = [sl | (_, SLine lid) <- poSlots p, Just sl <- [Map.lookup lid (plLines pl)], "語" `T.isPrefixOf` setLineText sl]
-      assertBool "in column 1" (any (\p -> poColumn p == 1 && not (null (indexIn p))) (plPages pl))
+      -- (page, column, index lines): two lines after the text, five in column 1, the rest on page 2
+      [(poNumber p, poColumn p, length (indexIn p)) | p <- plPages pl, not (null (indexIn p))] @?= [(1, 0, 2), (1, 1, 5), (2, 0, 3)]
       nub [lineTarget (slLine sl) | p <- plPages pl, sl <- indexIn p] @?= [12 * 10 * pt],
     testCase "PDF: two columns, parallel and sequential, and two builds, give the same bytes" $ do
       let source = "# 一\n\n本文[note: 注。]。\n\n" <> longPara 80

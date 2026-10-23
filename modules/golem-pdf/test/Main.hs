@@ -986,6 +986,17 @@ verifyTests =
       map (sort . T.splitOn "、" . T.dropEnd (T.length " があります") . x4Detail) names @?= [["JavaScript", "Launch", "URI"]]
       let unembedded = verify (mapObjs (onDict (hasType "FontDescriptor") (dropKey "FontFile2")) (documentObjects x4Sample))
       assertBool (show unembedded) (all ((== "フォントの埋め込み") . x4Requirement) unembedded && all ((" を埋め込んでいません" `T.isSuffixOf`) . x4Detail) unembedded),
+    -- golem-pdf ADR 0012
+    testCase "the forbidden names are in the order found" $
+      map x4Detail (verify (mapObjs (onDict isCatalog (<> [("Names", ODict [("JavaScript", ORef 1)]), ("AA", ODict [("URI", OName "Launch")])])) (documentObjects x4Sample)))
+        @?= ["JavaScript、URI、Launch があります"],
+    testCase "a forbidden name found twice is named once, where it is first found" $
+      map x4Detail (verify (mapObjs (onDict isCatalog (<> [("AA", ODict [("URI", ORef 1)]), ("Names", ODict [("JavaScript", ORef 1)]), ("OpenAction", ODict [("URI", ORef 1)])])) (documentObjects x4Sample)))
+        @?= ["URI、JavaScript があります"],
+    testCase "the names in the trailer come before the names in the objects" $
+      let inTrailer o = o {pdfTrailer = case pdfTrailer o of ODict kvs -> ODict (kvs <> [("JS", ORef 1)]); t -> t}
+       in map x4Detail (verify (inTrailer (mapObjs (onDict isCatalog (<> [("Names", ODict [("JavaScript", ORef 1)])])) (documentObjects x4Sample))))
+            @?= ["JS、JavaScript があります"],
     testCase "an empty output profile is no profile" $
       let objs = documentObjects x4Sample
           empty = length (pdfObjects objs) + 1

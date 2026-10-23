@@ -148,7 +148,8 @@ noticeTests =
         n <- buildNotified (noticeProject "" verse) id
         codesOf (nDiagnostics n) @?= ["G02079"]
         let texts = [t | (fp, t) <- nOutputs n, ".txt" `isSuffixOf` fp]
-        assertBool (show texts) (not (null texts) && all ("ab\ncd" `BS.isInfixOf`) texts)
+        [fp | (fp, _) <- nOutputs n, ".txt" `isSuffixOf` fp] @?= ["text/horizontal/a.txt", "text/vertical/a.txt"]
+        assertBool (show texts) (all ("ab\ncd" `BS.isInfixOf`) texts)
         quiet <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02079\"]\n" verse) id
         codesOf (nDiagnostics quiet) @?= [],
       -- docs/adr ADR 0046
@@ -526,7 +527,7 @@ outputDiagnosticTests =
       map diagCode (bErrors c) @?= [DiagnosticCode "G08019"]
       h <- buildMarksFiles (\o -> o {optFonts = golemFontProvider, optTargets = Just [TargetHtml]}) (Just style) files
       map diagCode (bErrors h) @?= []
-      assertBool "HTML written" (not (null (bWritten h)))
+      length (bWritten h) @?= 4
       withSystemTempDirectory "golem-cff2" $ \tmp -> do
         BS.writeFile (tmp </> "manifest.toml") miniManifest
         BS.writeFile (tmp </> "style.toml") style

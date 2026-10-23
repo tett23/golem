@@ -784,6 +784,13 @@ wrapTests =
       let source = "前の段落。\n\n" <> wrapped "end" "10zw" <> longPara 3
       r <- layoutMini (replaceIn "lines = 30" "lines = 10" horizontal24) source img
       layoutErrors r @?= [("G07023", "回り込む図版の除外領域が一ページの行数を超えます（12 行）", FileId 1, 17, 93)],
+    testCase "an exclusion as long as the page is not G07023; one line longer is" $ do
+      img <- tinyImage
+      let source = "前の段落。\n\n" <> wrapped "end" "10zw" <> longPara 3
+          errorsAt n = either (map (\d -> (diagCode d, diagMessage d))) (const []) <$> layoutMini (replaceIn "lines = 30" ("lines = " <> T.pack (show n)) horizontal24) source img
+      -- the exclusion takes 12 lines
+      rs <- mapM (\n -> (n,) <$> errorsAt n) [10 .. 13 :: Int]
+      rs @?= [(n, [(DiagnosticCode "G07023", "回り込む図版の除外領域が一ページの行数を超えます（12 行）")]) | n <- [10, 11]] <> [(12, []), (13, [])],
     testCase "a figure that does not wrap takes its image and caption lines; the caption is drawn" $ do
       img <- tinyImage
       let source = "@figure images/tiny.jpg alt=\"t\"\n  キャプション。\n\n後の段落。\n"

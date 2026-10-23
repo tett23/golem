@@ -6607,6 +6607,7 @@ PDF/X-4 の要件を満たしていません
 `Golem.Pdf.X4.verify` が、書く前の PDF のオブジェクトを検査する。
 項目は、PDF のバージョン、出力インテントとその ICC プロファイル、XMP の `GTS_PDFXVersion` と `Trapped`、各ページのボックス、フォントの埋め込み、ICC プロファイルのない RGB、暗号化と JavaScript と外部への参照である。
 要件ごとに一つ出す。
+JavaScript と外部への参照の詳細は、見つけた禁止の名前を、トレーラー、オブジェクトの順に見つけた順に一度ずつ並べる（[golem-pdf ADR 0012](golem-pdf/adr/0012-x4-forbidden-names-in-found-order.md)）。
 `style.toml` に `[color] intent` がないときは、続く要件の不足を並べず、一つにまとめる。
 位置は `style.toml` の先頭で、`style.toml` がなければ `manifest.toml` の先頭である。
 この検査は PDF/X-4 の適合の判定ではない（[golem-pdf ADR 0003](golem-pdf/adr/0003-pdf-x-4-validator.md)）。

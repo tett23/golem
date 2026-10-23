@@ -119,6 +119,12 @@ tests =
         formatted "あ\n@blank-line\nい\n" @?= "あ\n@blank-line\nい\n",
       testCase "BOM, CRLF and tab indentation are fixed" $
         formatted "\xFEFF- a\r\n\t- b\r\n" @?= "- a\n  - b\n",
+      -- golem-fmt ADR 0003
+      testCase "a lone CR becomes LF; CRLF stays one line break" $ do
+        formatted "a\rb\n" @?= "a\nb\n"
+        formatted "a\r\nb\n" @?= "a\nb\n"
+        formatted "a\r\r\nb\n" @?= "a\n\nb\n"
+        formatted "a\r" @?= "a\n",
       testCase "only the BOM at the start and only the tabs of the indentation are fixed" $ do
         formatted "a\xFEFF\&b\n" @?= "a\xFEFF\&b\n"
         formatted "\xFEFF\xFEFF\&a\n" @?= "\xFEFF\&a\n"
