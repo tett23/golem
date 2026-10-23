@@ -27,7 +27,19 @@ localeTests =
     [ testCase "HTML and plain text are the same UTF-8 bytes under EUC-JP" $ do
         ref <- withEncoding "UTF-8" builtOutputs
         euc <- withEncoding "EUC-JP" builtOutputs
-        assertBool "files" (not (null ref))
+        map fst ref
+          @?= [ "html/chapters/01.xhtml",
+                "html/chapters/02.xhtml",
+                "html/front.xhtml",
+                "html/index.xhtml",
+                "html/style.css",
+                "text/horizontal/chapters/01.txt",
+                "text/horizontal/chapters/02.txt",
+                "text/horizontal/front.txt",
+                "text/vertical/chapters/01.txt",
+                "text/vertical/chapters/02.txt",
+                "text/vertical/front.txt"
+              ]
         map fst euc @?= map fst ref
         forM_ (zip ref euc) $ \((p, a), (_, b)) -> assertEqual p a b
         -- the fixture's heading, in UTF-8

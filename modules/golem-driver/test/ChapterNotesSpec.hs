@@ -5,7 +5,6 @@ import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.List (findIndex, isSuffixOf)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Driver
@@ -107,12 +106,13 @@ chapterNoteTests =
       assertBool (show heads) (all (notElem "注") (Map.elems heads)),
     testCase "the title is set in the size of headings of level 2" $ do
       content <- miniPdf fakeProvider True (horizontalStyle <> "\n[headings.2]\nsize = \"20pt\"\n\n[notes]\nplacement = \"chapter-end\"\n") "本文[note: 注。]\n" [] >>= fmap BS.concat . inflateAll
-      assertBool (show (tfSizes content)) ("20" `elem` tfSizes content),
+      -- the body in 10pt, the note mark in 5pt, the title of the list alone in 20pt
+      tfSizes content @?= ["10", "10", "5", "10", "10", "10", "20"],
     testCase "a long list: the title is never alone at the foot of a page" $ do
       let src = [("a.gm", T.concat ["本文" <> T.pack (show i) <> "[note: " <> T.replicate 30 "注" <> "]\n\n" | i <- [1 :: Int .. 8]])]
       pages <- pagesOf oneFile (replaceIn "lines = 30" "lines = 5" horizontalStyle <> flatHeadings <> "\n[notes]\nplacement = \"chapter-end\"\n") src
       assertBool (show pages) (all (\p -> null p || last p /= "注") pages)
-      assertBool "the list is there" (isJust (lineIndex "注" pages)),
+      lineIndex "注" pages @?= Just 8,
     testCase "an index mark in a note shows the page of the list" $ do
       let src = [("a.gm", "本文[note: 注の[index reading=くみはん: 組版]。]\n\n@page-break\n\n二ページ目。\n\n@page-break\n\n@index\n")]
       pages <- pagesOf oneFile (horizontalStyle <> flatHeadings <> "\n[notes]\nplacement = \"chapter-end\"\n") src
@@ -161,5 +161,5 @@ chapterNoteTests =
       -- style.toml is not an input of the HTML, EPUB or plain text but its bytes; compare the pages and texts
       let pagesAndTexts = filter (\(p, _) -> any (`isSuffixOf` p) [".xhtml", ".txt"]) . notPdf
       pagesAndTexts a @?= pagesAndTexts b
-      assertBool "pages" (not (null (pagesAndTexts a)))
+      map fst (pagesAndTexts a) @?= ["build/html/a.xhtml", "build/html/b.xhtml", "build/html/index.xhtml", "build/text/horizontal/a.txt", "build/text/horizontal/b.txt"]
   ]
