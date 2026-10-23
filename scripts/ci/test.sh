@@ -103,10 +103,17 @@ mkdir -p "$G"
   git add docs && git commit -q -m x
   git checkout -q main
   echo b >b.hs && git add b.hs && git commit -q -m b
+  # a move of a module file into docs/, with rename detection on as git
+  # has it by default (docs/adr/0070)
+  git checkout -q -b moved
+  git config diff.renames true
+  mkdir -p docs && git mv a.hs docs/moved.md && git commit -q -m moved
+  git checkout -q main
 ) >/dev/null 2>&1
 MAIN=$(git -C "$G" rev-parse main)
 MAIN1=$(git -C "$G" rev-parse main~1)
 TOPIC=$(git -C "$G" rev-parse topic)
+MOVED=$(git -C "$G" rev-parse moved)
 : >"$WORK/in"
 in_g() { (cd "$G" && changed_paths "$@"); }
 run in_g pull_request "$MAIN" "$TOPIC"
@@ -115,6 +122,13 @@ docs/x.md
 docs/日本語.md"
 run in_g push "$MAIN1" "$MAIN"
 expect "changed-paths: a push" 0 "b.hs"
+run in_g push "$MAIN" "$MOVED"
+expect "changed-paths: a move is the path it left and the path it took (docs/adr/0070)" 0 "a.hs
+docs/moved.md"
+cp "$WORK/out" "$WORK/in"
+run needs_build
+expect "changed-paths: a module file moved into docs/ needs the build (docs/adr/0070)" 0 true
+: >"$WORK/in"
 run in_g push 0000000000000000000000000000000000000000 "$MAIN"
 expect "changed-paths: a push that creates the branch" 3 ""
 run in_g push "" "$MAIN"

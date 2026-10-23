@@ -68,6 +68,8 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 
 分岐点からの差分にするのは、ベースのブランチの先端がほかのプルリクエストのマージで進むからである。
 二点の差分では、ほかのプルリクエストの変更まで数えてしまう。
+ファイルの移動は、移動元と移動先の両方を変更のパスとして数える。
+[code: modules/] の下のファイルを [code: docs/] へ移すと、移動元が消えたことでビルドの結果が変わりうるので、ビルドする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0070-changed-paths-without-rename-detection.md]（docs/adr の ADR 0070「変更のパスを取るときにリネームの検出を切り、移動元のパスも数える」）]
 
 [code: needs-build.sh] は、変更が [code: docs/] の下のファイル、[code: tools/textlint/] の下のファイル、リポジトリのルートの Markdown のファイルだけなら [code: false] を、それ以外なら [code: true] を書く。
 ビルドが読む文書（今は [code: docs/diagnostics.md]）の変更は [code: true] になる。
