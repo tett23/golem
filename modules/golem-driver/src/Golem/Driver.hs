@@ -207,12 +207,14 @@ evaluateProjectWith overlay profile root = do
       styleBytes <- readMaybeBytes (root </> "style.toml")
       let -- G03023: the default style, when there is no style.toml (golem-syntax ADR 0002)
           defaultStyleNotice = [notice "G03023" (mkSpan (projectManifestFile project) 0 0) "style.toml がないので、既定の体裁で組みます" | isNothing styleBytes]
-          synDiags = defaultStyleNotice <> concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
           manifest0 = projectManifest project
           styleFid = styleFileId project
       -- style.toml passes the reading stage too (golem-parser ADR 0009)
       let styleRead = traverse (readSourceFile styleFid "style.toml") styleBytes
           styleText = fromRight Nothing styleRead
+          -- G03100: a zero indent of caption or sidenote (golem-driver ADR 0043)
+          styleNoticeDiags = maybe [] (styleNotices styleFid) styleText
+          synDiags = defaultStyleNotice <> styleNoticeDiags <> concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
       case first (map noFix . rfDiagnostics) styleRead >>= loadStyle styleFid of
         -- style.toml is where its errors point (golem-project ADR 0006)
         Left ds -> pure (Left (ProjectFailure ds (Map.insert styleFid (maybe (SourceInfo "style.toml" (mkLineIndex "")) (readInfo "style.toml") styleBytes) (sourceInfos project))))
@@ -248,7 +250,7 @@ evaluateProjectWith overlay profile root = do
               (bibDiags, citeKeys, _) <- loadBibliography root manifest
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
-                  projectDiags = defaultStyleNotice <> masterDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
+                  projectDiags = defaultStyleNotice <> styleNoticeDiags <> masterDiags <> pluginDiags <> laDiagnostics loaded <> bibDiags
                   reassemble = assembleResults (phChannels hook) style manifest project projectDiags
                   (book, s1Diags) = reassemble results
                   again f sf = quiet (reeval profile project style assets citeKeys hook results f sf)

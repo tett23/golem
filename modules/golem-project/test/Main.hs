@@ -568,6 +568,7 @@ tests =
       listTests,
       characterFeatureTests,
       codeStyleTests,
+      captionSidenoteTests,
       testCase "side of [sidenotes] takes only outside, the default (golem-project ADR 0009)" $ do
         let sn = "[sidenotes]\nwidth = \"6zw\"\ngap = \"1zw\"\n"
             sidenotesOf t = either (const Nothing) stSidenotes (parseStyle (FileId 0) t)
@@ -1121,6 +1122,61 @@ specStyle =
 {- | Kerning, tracking, proportional metrics and baseline shift (docs/adr/0020).
 | The paragraph style code and the character style code (golem-driver ADR 0017).
 -}
+
+{- | caption and sidenote take from body only the keys their layout uses
+(golem-driver ADR 0043).
+-}
+captionSidenoteTests :: TestTree
+captionSidenoteTests =
+  testGroup
+    "caption and sidenote (golem-driver ADR 0043)"
+    [ testCase "an indent of caption and a first-line-indent of sidenote are G03006, by name and key" $ do
+        let r1 = parseStyle (FileId 0) "[paragraph-styles.caption]\nindent = \"1zw\"\n"
+        codes r1 @?= ["G03006"]
+        assertBool (show (messages r1)) (any (\m -> "caption" `T.isInfixOf` m && "indent" `T.isInfixOf` m) (messages r1))
+        let r2 = parseStyle (FileId 0) "[paragraph-styles.sidenote]\nfirst-line-indent = \"1zw\"\n"
+        codes r2 @?= ["G03006"]
+        assertBool (show (messages r2)) (any (\m -> "sidenote" `T.isInfixOf` m && "first-line-indent" `T.isInfixOf` m) (messages r2)),
+      testCase "a non-zero indent or first-line-indent of caption and sidenote is G03006" $
+        forM_ ["caption", "sidenote"] $ \n ->
+          forM_ ["indent = \"1zw\"", "indent = \"1mm\"", "first-line-indent = \"-1zw\""] $ \kv ->
+            codes (parseStyle (FileId 0) ("[paragraph-styles." <> n <> "]\n" <> kv <> "\n")) @?= ["G03006"],
+      testCase "a zero indent of caption and sidenote is no error but the notice G03100, at the value" $
+        forM_ ["caption", "sidenote"] $ \n ->
+          forM_ [("indent", "0zw"), ("first-line-indent", "0mm"), ("first-line-indent", "-0pt")] $ \(k, v) -> do
+            let src = "[paragraph-styles." <> n <> "]\n" <> k <> " = \"" <> v <> "\"\n"
+            codes (parseStyle (FileId 0) src) @?= []
+            [(diagCode d, diagSeverity d, diagMessage d, spanStart (diagSpan d)) | d <- styleNotices (FileId 0) src]
+              @?= [(DiagnosticCode "G03100", Notice, "キャプションと傍注は字下げを掛けないので、" <> n <> "." <> k <> " = \"" <> v <> "\" は効果がありません", BS.length (TE.encodeUtf8 (fst (T.breakOn "\"" src))))],
+      testCase "no G03100 for a non-zero indent, for body, or without the keys" $ do
+        styleNotices (FileId 0) "[paragraph-styles.caption]\nindent = \"1zw\"\n" @?= []
+        styleNotices (FileId 0) "[paragraph-styles.body]\nindent = \"0zw\"\n" @?= []
+        styleNotices (FileId 0) "[paragraph-styles.caption]\nsize = \"9pt\"\n" @?= []
+        styleNotices (FileId 0) "not toml = = \n" @?= [],
+      testCase "the keys caption and sidenote use are not errors" $
+        forM_ ["caption", "sidenote"] $ \n ->
+          forM_ ["size = \"9pt\"", "based-on = \"body\"", "line-breaks = \"keep\"", "space-between = 1", "aki-set = \"gyomatsu-yakumono-zenkaku\"", "kerning = \"none\"", "tracking = 10", "proportional-metrics = true", "baseline-shift = \"1pt\"", "regex-styles = []"] $ \kv ->
+            codes (parseStyle (FileId 0) ("[paragraph-styles." <> n <> "]\n" <> kv <> "\n")) @?= [],
+      testCase "font and size of caption are not errors" $
+        codes (parseStyle (FileId 0) "[fonts.cap]\nja = \"c.otf\"\n\n[paragraph-styles.caption]\nfont = \"cap\"\nsize = \"9pt\"\n") @?= [],
+      testCase "caption and sidenote do not take the indents of body" $ do
+        s <- styleOf "[paragraph-styles.body]\nindent = \"2zw\"\nfirst-line-indent = \"1zw\"\n"
+        forM_ ["caption", "sidenote"] $ \n -> do
+          (paraStyle s (Just n) >>= psIndent) @?= Just (Zw 0)
+          (paraStyle s (Just n) >>= psFirstLineIndent) @?= Just (Zw 0),
+      testCase "@style-def paragraph caption: a non-zero indent is G03006, a zero one and size are not" $ do
+        base <- styleOf ""
+        let checks kvs = case localStyleDef ParagraphKind kvs of
+              Right (Right d) -> pure [c | (c, _, _) <- checkLocalStyles base noLocalStyles {lsParaStyles = Map.fromList [("caption", d)]}]
+              other -> assertFailure (show other) >> pure []
+        checks [("indent", LocalWord "1zw")] >>= (@?= ["G03006"])
+        checks [("indent", LocalWord "0zw")] >>= (@?= [])
+        checks [("size", LocalWord "9pt")] >>= (@?= [])
+    ]
+  where
+    styleOf t = either (\ds -> assertFailure (show ds) >> pure defaultStyle) pure (parseStyle (FileId 0) t)
+    messages = either (map diagMessage) (const [])
+
 codeStyleTests :: TestTree
 codeStyleTests =
   testGroup

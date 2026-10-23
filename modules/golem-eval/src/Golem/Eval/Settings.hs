@@ -179,7 +179,21 @@ fileStyles style header =
       kindName = \case
         CharacterKind -> "文字スタイル"
         ParagraphKind -> "段落スタイル"
-   in (final, ds1 <> ds2 <> ds3 <> overrides)
+      -- G03100: a zero indent of caption or sidenote has no effect (golem-driver ADR 0043)
+      zeroIndents =
+        [ notice "G03100" ksp (captionZeroIndentMessage n k (written v))
+        | (Def _ ParagraphKind n (Right d), kvs) <- defKeys,
+          Map.member n (lsParaStyles final),
+          k <- captionZeroIndentKeys n d,
+          (k', ksp, v) <- kvs,
+          k' == k
+        ]
+      -- each definition with the keys written on its line
+      defKeys = [(def, fst (keywordArgs args)) | def@(Def sp _ _ _) <- defs, A.Located sp' (A.BlockCommand (A.Located _ "style-def") args _) <- header, sp' == sp]
+      written = \case
+        LocalWord w -> w
+        LocalString t -> "\"" <> t <> "\""
+   in (final, ds1 <> ds2 <> ds3 <> overrides <> zeroIndents)
   where
     shape = "@style-def には種類（character、paragraph、regex）と名前を書きます"
     readDef (defs, ds) (sp, args, body) =

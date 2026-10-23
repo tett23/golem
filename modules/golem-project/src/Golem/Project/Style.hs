@@ -86,6 +86,9 @@ module Golem.Project.Style
     parseRuleSpec,
     defaultStyle,
     parseStyle,
+    styleNotices,
+    captionZeroIndentKeys,
+    captionZeroIndentMessage,
     checkPosition,
     loadStyle,
     fontFiles,
@@ -453,10 +456,70 @@ builtinParaStyles =
   Map.fromList
     [ ("body", bodyDefaults),
       ("verse", noParaDef {psBasedOn = Just "body", psLineBreaks = Just KeepLines, psSpaceBetween = Just 1, psIndent = Just (Zw 2), psFirstLineIndent = Just (Zw (-2))}),
-      ("caption", noParaDef {psBasedOn = Just "body"}),
-      ("sidenote", noParaDef {psBasedOn = Just "body"}),
+      -- caption and sidenote do not take the indents of body (golem-driver ADR 0043)
+      ("caption", noIndents {psBasedOn = Just "body"}),
+      ("sidenote", noIndents {psBasedOn = Just "body"}),
       ("code", noParaDef {psFont = Just "code", psPadding = Just (Zw (1 % 2))})
     ]
+  where
+    noIndents = noParaDef {psIndent = Just (Zw 0), psFirstLineIndent = Just (Zw 0)}
+
+{- | The non-zero indent keys written for caption or sidenote, which do not
+indent (golem-driver ADR 0043): (the name of the style, the key). A zero
+one is the notice G03100.
+-}
+captionIndentKeys :: Map Text ParaStyleDef -> [(Text, Text)]
+captionIndentKeys styles =
+  [ (n, k)
+  | n <- ["caption", "sidenote"],
+    Just d <- [Map.lookup n styles],
+    (k, Just v) <- indentKeysOf d,
+    not (zeroDim v)
+  ]
+
+-- | The indent keys of a definition of caption or sidenote whose value is zero (G03100, golem-driver ADR 0043).
+captionZeroIndentKeys :: Text -> ParaStyleDef -> [Text]
+captionZeroIndentKeys n d = [k | n `elem` ["caption", "sidenote"], (k, Just v) <- indentKeysOf d, zeroDim v]
+
+indentKeysOf :: ParaStyleDef -> [(Text, Maybe Dim)]
+indentKeysOf d = [("indent", psIndent d), ("first-line-indent", psFirstLineIndent d)]
+
+zeroDim :: Dim -> Bool
+zeroDim = \case
+  Abs x -> x == 0
+  Zw r -> r == 0
+
+{- | The notices of style.toml (golem-driver ADR 0043): G03100 for a zero
+indent or first-line-indent of caption or sidenote, at the value, with the
+value as written. A style.toml that does not parse has none.
+-}
+styleNotices :: FileId -> Text -> [Diagnostic]
+styleNotices fid src = case Toml.parse src of
+  Left _ -> []
+  Right top ->
+    [ notice "G03100" (spanAt pos) (captionZeroIndentMessage n k ("\"" <> t <> "\""))
+    | n <- ["caption", "sidenote"],
+      k <- ["indent", "first-line-indent"],
+      Just (Text' pos t) <- [lookupValue (Table' (Position 0 1 1) top) ["paragraph-styles", n, k]],
+      Just v <- [parseSignedDim t],
+      zeroDim v
+    ]
+  where
+    lookupValue v = \case
+      [] -> Just v
+      k : rest | Table' _ (MkTable t) <- v -> Map.lookup k t >>= \(_, x) -> lookupValue x rest
+      _ -> Nothing
+    spanAt (Position _ l c) = case lineColToOffset (mkLineIndex src) (LineCol (l - 1) (c - 1)) of
+      Just off -> mkSpan fid off off
+      Nothing -> mkSpan fid 0 0
+
+-- | The message of G03100: a zero indent of caption or sidenote, with the value as written (golem-driver ADR 0043).
+captionZeroIndentMessage :: Text -> Text -> Text -> Text
+captionZeroIndentMessage n k v = "キャプションと傍注は字下げを掛けないので、" <> n <> "." <> k <> " = " <> v <> " は効果がありません"
+
+-- | The message of an indent key of caption or sidenote (golem-driver ADR 0043).
+captionIndentMessage :: Text -> Text -> Text
+captionIndentMessage n k = "段落スタイル " <> n <> " には 0 でない indent と first-line-indent を書けません。キャプションと傍注は字下げをしません: " <> k
 
 -- | The keys the paragraph style code takes (golem-driver ADR 0017).
 codeParaKeys :: [Text]
@@ -1783,7 +1846,17 @@ instance FromValue Style where
     page <- optKey "page"
     fonts <- fromMaybe Map.empty <$> optKey "fonts"
     cstyles <- fromMaybe Map.empty <$> optKey "character-styles"
-    pstyles <- fromMaybe Map.empty <$> optKey "paragraph-styles"
+    -- the indents of caption and sidenote, as written (golem-driver ADR 0043)
+    pstyles <-
+      fmap (fromMaybe Map.empty) . optKeyOf "paragraph-styles" $ \v -> do
+        (styles :: Map Text ParaStyleDef) <- fromValue v
+        case captionIndentKeys styles of
+          (n, k) : _ ->
+            let style = case v of
+                  Table' _ (MkTable t) -> maybe v snd (Map.lookup n t)
+                  _ -> v
+             in inKey n (inKey k (failAt (keyPosition style k) (T.unpack (captionIndentMessage n k))))
+          [] -> pure styles
     hs <-
       fmap (fromMaybe []) . optKeyOf "headings" $ \v -> do
         (headings :: Map Text HeadingStyle) <- fromValue v
@@ -2223,7 +2296,9 @@ those style.toml has by itself: (code, the name of the style, message).
 checkLocalStyles :: Style -> LocalStyles -> [(Text, Text, Text)]
 checkLocalStyles s ls =
   let base = checksOf s
-   in nub [c | c <- checksOf (withLocalStyles s ls {lsRegexStyles = Map.empty}), c `notElem` base]
+      -- the indents of caption and sidenote, as written (golem-driver ADR 0043)
+      indents = [("G03006", n, captionIndentMessage n k) | (n, k) <- captionIndentKeys (lsParaStyles ls)]
+   in nub (indents <> [c | c <- checksOf (withLocalStyles s ls {lsRegexStyles = Map.empty}), c `notElem` base])
   where
     -- the paths are of style.toml; the errors of a file are at its @style-def
     checksOf st = [(code, n, m) | (code, n, _, m) <- styleChecks "@style-def の" st]

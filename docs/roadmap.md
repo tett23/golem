@@ -29,14 +29,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 2026-10-20 の ADR と仕様の矛盾のレビュー（[記録](audits/2026-10-20-adr-spec-review.md)）と、それに続く検討で採択した ADR を実装する。
 
-### 段落スタイル
-
-- キャプションと傍注の段落スタイルは、本文の字下げを引き継がない（未実装、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
-
-### fmt
-
-- 引数なしの `golem fmt` で、CR を含む原稿も整形できるようにする（未実装、[golem-fmt ADR 0004](golem-fmt/adr/0004-fmt-without-arguments-fixes-cr.md)）。
-
 ### 既知の不具合の修正
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。

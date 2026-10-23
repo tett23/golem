@@ -161,6 +161,16 @@ noticeTests =
         -- the @listing is code and style.toml has no [fonts.code]: G08008 (golem-driver ADR 0017)
         codesOf (nDiagnostics n) @?= ["G02062", "G02063", "G02064", "G02065", "G04007", "G04008", "G08008"]
         map diagSeverity (nDiagnostics n) @?= replicate 7 Notice,
+      -- golem-driver ADR 0043
+      testCase "G03100: a zero indent of caption in style.toml is a notice at style.toml; silence-notices drops it" $ do
+        let style = withBodyFont horizontalStyle <> "\n[paragraph-styles.caption]\nindent = \"0zw\"\n"
+            files extra = [("manifest.toml", noticeManifest extra), ("style.toml", style), ("a.gm", "abc\n")] <> fakeFontFiles
+        n <- buildNotified (files "") id
+        [(diagCode d, diagSeverity d, diagMessage d) | d <- nDiagnostics n]
+          @?= [(DiagnosticCode "G03100", Notice, "キャプションと傍注は字下げを掛けないので、caption.indent = \"0zw\" は効果がありません")]
+        assertBool "outputs" (not (null (nOutputs n)))
+        quiet <- buildNotified (files "\n[diagnostics]\nsilence-notices = [\"G03100\"]\n") id
+        nDiagnostics quiet @?= [],
       testCase "silence-notices drops those notices only" $ do
         n <- buildNotified (noticeProject "\n[diagnostics]\nsilence-notices = [\"G02063\", \"G04008\"]\n" noticeSource) id
         codesOf (nDiagnostics n) @?= ["G02062", "G02064", "G02065", "G04007", "G08008"],
@@ -486,8 +496,8 @@ outputDiagnosticTests =
       ok <- buildMarksFiles (\o -> o {optCheckOnly = True}) (Just (style "4zw")) fakeFontFiles
       map diagCode (bErrors ok) @?= []
       over <- buildMarksFiles (\o -> o {optCheckOnly = True}) (Just (style "5zw")) fakeFontFiles
-      -- caption and sidenote take the indent of body
-      map diagMessage (bErrors over) @?= ["段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: " <> n | n <- ["body", "caption", "sidenote"]],
+      -- caption and sidenote do not take the indent of body (golem-driver ADR 0043)
+      map diagMessage (bErrors over) @?= ["段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: body"],
     testCase "G07025 is about a paragraph style, at the top of style.toml, also in golem check" $ do
       let style = replaceIn "characters = 12" "characters = 10" horizontalStyle <> fakeBody <> "\n[paragraph-styles.body]\nindent = \"3zw\"\n"
       b <- buildMarksFiles id (Just style) fakeFontFiles
