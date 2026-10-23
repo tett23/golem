@@ -1,5 +1,6 @@
 module Main (main) where
 
+import AstShapeSpec qualified
 import CSTSpec qualified
 import LabelSafetySpec qualified
 import LowerSpec qualified
@@ -9,4 +10,4 @@ import SplatEscapeSpec qualified
 import Test.Tasty
 
 main :: IO ()
-main = defaultMain (testGroup "golem-parser" [CSTSpec.tests, ParserSpec.tests, LowerSpec.tests, LabelSafetySpec.tests, SourceSettingsSpec.tests, SplatEscapeSpec.tests])
+main = defaultMain (testGroup "golem-parser" [CSTSpec.tests, ParserSpec.tests, AstShapeSpec.tests, LowerSpec.tests, LabelSafetySpec.tests, SourceSettingsSpec.tests, SplatEscapeSpec.tests])

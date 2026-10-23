@@ -40,7 +40,7 @@ test-suite golem-parser-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    CSTSpec ParserSpec LowerSpec LabelSafetySpec SourceSettingsSpec SplatEscapeSpec StrippedGrammar
+  other-modules:    AstShapeSpec CSTSpec ParserSpec LowerSpec LabelSafetySpec SourceSettingsSpec SplatEscapeSpec StrippedGrammar
   build-depends:
     , base
     , bytestring

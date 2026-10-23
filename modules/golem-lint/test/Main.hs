@@ -32,6 +32,18 @@ codes = map (\d -> let DiagnosticCode c = diagCode d in c)
 sp :: SrcSpan
 sp = mkSpan (FileId 0) 0 1
 
+-- | (code, start, end) of each G05001 with the keep style verse.
+newlineSpans :: SourceSettings -> Text -> [(Text, Int, Int)]
+newlineSpans source src =
+  [ (c, spanStart (diagSpan d), spanEnd (diagSpan d))
+  | d <- latinJoinedByNewline source (Set.fromList ["verse"]) (FileId 0) (fst (parse (FileId 0) src)),
+    let DiagnosticCode c = diagCode d
+  ]
+
+-- | (code, message) of each diagnostic.
+coded :: [Diagnostic] -> [(Text, Text)]
+coded = map (\d -> let DiagnosticCode c = diagCode d in (c, diagMessage d))
+
 tests :: TestTree
 tests =
   testGroup
@@ -78,4 +90,40 @@ tests =
         let ds = lint (LintInput [] (Map.fromList [("a", sp), ("b", sp)]) (Set.fromList ["a"]) (Set.fromList ["verse"]))
         map diagSeverity ds @?= [Warning]
         map (diagSeverity . adjustForProfile Prod) ds @?= [Error]
+        coded ds @?= [("G05004", "参照されていないラベルです: b")],
+      testGroup
+        "exact diagnostics"
+        [ testCase "G05001 is the one character of the newline, with its message" $ do
+            newlineSpans defaultSourceSettings "This is\nEnglish\n" @?= [("G05001", 7, 8)]
+            map diagMessage (latinJoinedByNewline defaultSourceSettings Set.empty (FileId 0) (fst (parse (FileId 0) "a\nb\n")))
+              @?= ["改行の前後が欧文なので、単語が空白なしにつながります。一行で書いてください"],
+          testCase "G05001 counts the offsets of the blocks and slots before it" $ do
+            newlineSpans defaultSourceSettings "日本語。\n\none\ntwo\nthree\n" @?= [("G05001", 17, 18), ("G05001", 21, 22)]
+            newlineSpans defaultSourceSettings "- word\n  word\n" @?= [("G05001", 6, 7)]
+            newlineSpans defaultSourceSettings "@style verse\n  [note: a\n  b] x\n" @?= [("G05001", 23, 24)]
+            newlineSpans (SourceSettings LineSeparated) "x [note: a\nb] y\n" @?= [("G05001", 10, 11)],
+          testCase "G05001 stops at commands and expressions" $ do
+            newlineSpans defaultSourceSettings "[= 1]word\nword[= 1]\n" @?= [("G05001", 9, 10)]
+            newlineSpans defaultSourceSettings "word [= 1]\nword\n" @?= []
+            newlineSpans defaultSourceSettings "word\n[= 1] word\n" @?= [],
+          testCase "the scripts that count as Latin, at the edges of their blocks" $ do
+            let latin = "Az09\x00C0\x00FF\x024F\x1E00\x1EFF\x0370\x03B1\x04FF"
+                other = "_ \x00AA\x00BF\x00D7\x0250\x1F00\x0500\x3042漢\xFF10\xFF41"
+            filter (not . isLatinScript) latin @?= ""
+            filter isLatinScript other @?= "",
+          testCase "G05002 names the variable that no one uses" $ do
+            let defining = FileLint (FileId 1) "common.gm" (fst (parse (FileId 1) "")) defaultSourceSettings usage {usageDefined = [("x", sp), ("y", sp), ("z", sp)], usageReferenced = Set.fromList ["z"]}
+                importing = FileLint (FileId 2) "ch.gm" (fst (parse (FileId 2) "")) defaultSourceSettings usage {usageImports = [("c", "common.gm", sp)], usageNamespaceRefs = Map.fromList [("c", Set.fromList ["x"])]}
+            coded (lint (LintInput [defining, importing] Map.empty Set.empty Set.empty)) @?= [("G05002", "使われていない変数です: y")],
+          testCase "G05002: a reference through an import of another file does not count" $ do
+            let defining = FileLint (FileId 1) "common.gm" (fst (parse (FileId 1) "")) defaultSourceSettings usage {usageDefined = [("x", sp)]}
+                importing = FileLint (FileId 2) "ch.gm" (fst (parse (FileId 2) "")) defaultSourceSettings usage {usageImports = [("c", "other.gm", sp)], usageNamespaceRefs = Map.fromList [("c", Set.fromList ["x"])]}
+            coded (lint (LintInput [defining, importing] Map.empty Set.empty Set.empty)) @?= [("G05002", "使われていない変数です: x")],
+          testCase "G05003 names the import, and a used import is no error" $ do
+            let at s = mkSpan (FileId 1) s (s + 1)
+                f = FileLint (FileId 1) "a.gm" (fst (parse (FileId 1) "")) defaultSourceSettings usage {usageImports = [("w", "w.gm", at 5), ("v", "v.gm", at 2), ("u", "u.gm", at 8)], usageNamespaceRefs = Map.fromList [("u", Set.fromList ["k"])]}
+                ds = lint (LintInput [f] Map.empty Set.empty Set.empty)
+            coded ds @?= [("G05003", "使われていない import です: v"), ("G05003", "使われていない import です: w")]
+            map (spanStart . diagSpan) ds @?= [2, 5]
+        ]
     ]
