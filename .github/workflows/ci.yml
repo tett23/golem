@@ -242,6 +242,12 @@ jobs:
           # the ten public-domain books are typeset to every target
           # (docs/adr/0026, docs/adr/0058)
           GOLEM_PD_BOOKS: "1"
+          # a missing golden file fails instead of being written and
+          # passing (tasty-golden's --no-create). The environment reaches
+          # every suite; --test-options=--no-create would be rejected by
+          # the suites without tasty-golden, and no cabal command here takes
+          # a flag of the configuration (docs/adr/0037)
+          TASTY_NO_CREATE: "true"
       - name: Generated parser matches the grammar
         if: matrix.tests
         run: |

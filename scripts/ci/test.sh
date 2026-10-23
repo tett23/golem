@@ -569,6 +569,10 @@ step_has() {
 job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML"; }
 # the ten public-domain books are typeset to every target in CI (docs/adr/0058)
 if step_has "- run: cabal test all" 'GOLEM_PD_BOOKS: "1"'; then ok; else ng "ci.yml: cabal test all has GOLEM_PD_BOOKS"; fi
+# a missing golden file fails the tests in CI instead of being created
+# (tasty-golden's --no-create, given by the environment: a suite without
+# tasty-golden would reject the flag on its command line)
+if step_has "- run: cabal test all" 'TASTY_NO_CREATE: "true"'; then ok; else ng "ci.yml: cabal test all has TASTY_NO_CREATE"; fi
 # apt installs qpdf on the runners of the tests only; epubcheck comes from
 # its release, cached by its version and SHA-256, on the x86-64 runner of
 # the outputs (docs/adr/0062)
