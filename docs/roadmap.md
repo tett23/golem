@@ -44,7 +44,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - 並行の競合を探すテストの回数を、CI の夜間の実行で増やす（未実装、[ADR 0075](adr/0075-race-search-repetitions.md)）。
 - ADR のテスト設計より弱いテストを、テスト設計のとおりに強める（未実装、[ADR 0076](adr/0076-tests-weaker-than-adr-test-designs.md)）。
 - スクリプトのテストで、検査の対象が壊れても通る断言を直す（未実装、[ADR 0077](adr/0077-shell-test-assertions-that-pass-vacuously.md)）。
-- リリースのときと手でだけ動くスクリプトにテストを書く（未実装、[ADR 0078](adr/0078-tests-for-release-and-hand-run-scripts.md)）。
 - スクリプトのテストを macOS の BSD の道具でも走らせる（未実装、[ADR 0079](adr/0079-shell-tests-on-macos.md)）。
 - リリースの smoke の検査で、ビルドが diagnostics を出さないことも確かめる（未実装、[ADR 0080](adr/0080-release-smoke-checks-diagnostics.md)）。
 - フォントにない字を、golem build の dev では warning、prod ではエラーにする（未実装、[ADR 0081](adr/0081-missing-glyphs-warn-in-build.md)）。

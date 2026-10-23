@@ -47,6 +47,8 @@ jobs:
         run: sh scripts/manual/test.sh
       - name: Tests of the environment check (docs/adr/0029)
         run: sh scripts/env-determinism/test.sh
+      - name: Tests of the scripts run by hand (docs/adr/0078)
+        run: sh scripts/test.sh
       - name: The documents that the build reads are listed (docs/adr/0021)
         run: sh scripts/ci/docs-refs.sh
       - name: Every package errors on incomplete patterns (docs/adr/0027)
