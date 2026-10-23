@@ -11,8 +11,8 @@ import Golem.TestSupport.Env
 import Golem.TestSupport.ExternalTool
 import Golem.TestSupport.Skipped
 import Test.Tasty (TestTree, defaultMain, testGroup)
-import Test.Tasty.Options (OptionSet, singleOption)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
+import Test.Tasty.Options (OptionSet, singleOption)
 import Test.Tasty.Providers (IsTest (..))
 import Test.Tasty.Runners (Result (..), TestTree (..), resultSuccessful)
 
