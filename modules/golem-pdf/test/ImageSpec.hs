@@ -267,8 +267,8 @@ allocatedBy act = do
     else do
       before <- allocated_bytes <$> getRTSStats
       x <- act
-      after <- allocated_bytes <$> getRTSStats
-      pure (x, toInteger (after - before))
+      afterAct <- allocated_bytes <$> getRTSStats
+      pure (x, toInteger (afterAct - before))
 
 hostileTests :: TestTree
 hostileTests =

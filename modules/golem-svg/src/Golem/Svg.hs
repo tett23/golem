@@ -388,7 +388,7 @@ color current v0 =
   let v = T.strip v0
    in if
         | v == "currentColor" -> current
-        | Just h <- T.stripPrefix "#" v, T.length h == 3, T.all isHex h -> let [r, g, b] = map (\c -> 17 * hexDigit c) (T.unpack h) in Just (Color r g b)
+        | Just h <- T.stripPrefix "#" v, T.all isHex h, [r, g, b] <- map (\c -> 17 * hexDigit c) (T.unpack h) -> Just (Color r g b)
         | Just h <- T.stripPrefix "#" v, T.length h == 6, T.all isHex h -> let pair i = 16 * hexDigit (T.index h i) + hexDigit (T.index h (i + 1)) in Just (Color (pair 0) (pair 2) (pair 4))
         | Just inner <- T.stripPrefix "rgb(" v >>= T.stripSuffix ")" ->
             case map T.strip (T.splitOn "," inner) of
@@ -417,8 +417,8 @@ lengthPx v = parseNumber (fromMaybe v (T.stripSuffix "px" (T.strip v)))
 rootLength :: Text -> Maybe Rational
 rootLength v0 =
   let v = T.strip v0
-      unit u k = (* k) <$> (T.stripSuffix u v >>= parseNumber)
-   in listToMaybe (catMaybes [unit "pt" (4 / 3), unit "pc" 16, unit "mm" (96 / 254 * 10), unit "cm" (96 / 254 * 100), unit "in" 96, lengthPx v])
+      withUnit u k = (* k) <$> (T.stripSuffix u v >>= parseNumber)
+   in listToMaybe (catMaybes [withUnit "pt" (4 / 3), withUnit "pc" 16, withUnit "mm" (96 / 254 * 10), withUnit "cm" (96 / 254 * 100), withUnit "in" 96, lengthPx v])
 
 -- | A list of numbers separated by white space and commas.
 numberList :: Text -> Maybe [Rational]
@@ -437,10 +437,10 @@ paintOf :: Style -> Paint
 paintOf st =
   let get k = Map.findWithDefault (Map.findWithDefault "" k defaultStyle) k st
       current = color Nothing (get "color")
-      num k = fromMaybe 0 (lengthPx (get k))
+      lengthOf k = fromMaybe 0 (lengthPx (get k))
       fillC = color current =<< join' (paint (get "fill"))
       strokeC = color current =<< join' (paint (get "stroke"))
-      width = num "stroke-width"
+      width = lengthOf "stroke-width"
       dash = case get "stroke-dasharray" of
         "none" -> []
         d -> let ds = fromMaybe [] (dashes d) in if all (== 0) ds then [] else if odd (length ds) then ds <> ds else ds
@@ -458,7 +458,7 @@ paintOf st =
                         stJoin = case get "stroke-linejoin" of "round" -> JoinRound; "bevel" -> JoinBevel; _ -> JoinMiter,
                         stMiterLimit = fromMaybe 4 (parseNumber (get "stroke-miterlimit")),
                         stDash = dash,
-                        stDashOffset = num "stroke-dashoffset"
+                        stDashOffset = lengthOf "stroke-dashoffset"
                       }
             _ -> Nothing
         }
@@ -716,28 +716,48 @@ parsePath d = pathTokens d >>= \ts -> if null ts then Just [] else run ts
           nums n = let (xs, rest) = splitAt n ts in if length xs == n && all isNum xs then Just ([v | PNum v <- xs], rest) else Nothing
           isNum = \case PNum _ -> True; _ -> False
        in case toLower c of
-            'm' -> nums 2 >>= \([x, y], rest) -> let p = at (x, y) in go rest (Just c) p p Nothing (MoveTo p : acc)
-            'l' -> nums 2 >>= \([x, y], rest) -> let p = at (x, y) in go rest (Just c) p start Nothing (LineTo p : acc)
-            'h' -> nums 1 >>= \([x], rest) -> let p = (if rel then cx + x else x, cy) in go rest (Just c) p start Nothing (LineTo p : acc)
-            'v' -> nums 1 >>= \([y], rest) -> let p = (cx, if rel then cy + y else y) in go rest (Just c) p start Nothing (LineTo p : acc)
-            'c' -> nums 6 >>= \([a, b, e, f, x, y], rest) -> let c2 = at (e, f); p = at (x, y) in go rest (Just c) p start (Just (Left c2)) (CurveTo (at (a, b)) c2 p : acc)
-            's' ->
-              nums 4 >>= \([e, f, x, y], rest) ->
-                let c1 = case ctl of Just (Left q) -> reflect q cur; _ -> cur
-                    c2 = at (e, f)
-                    p = at (x, y)
-                 in go rest (Just c) p start (Just (Left c2)) (CurveTo c1 c2 p : acc)
-            'q' -> nums 4 >>= \([a, b, x, y], rest) -> let q = at (a, b); p = at (x, y) in go rest (Just c) p start (Just (Right q)) (quad cur q p : acc)
-            't' ->
-              nums 2 >>= \([x, y], rest) ->
-                let q = case ctl of Just (Right q0) -> reflect q0 cur; _ -> cur
-                    p = at (x, y)
-                 in go rest (Just c) p start (Just (Right q)) (quad cur q p : acc)
-            'a' ->
-              nums 7 >>= \([rx, ry, phi, fa, fs, x, y], rest) ->
-                if (fa /= 0 && fa /= 1) || (fs /= 0 && fs /= 1)
-                  then Nothing
-                  else let p = at (x, y) in go rest (Just c) p start Nothing (reverse (arc cur rx ry phi (fa == 1) (fs == 1) p) <> acc)
+            'm' -> do
+              ([x, y], rest) <- nums 2
+              let p = at (x, y)
+              go rest (Just c) p p Nothing (MoveTo p : acc)
+            'l' -> do
+              ([x, y], rest) <- nums 2
+              let p = at (x, y)
+              go rest (Just c) p start Nothing (LineTo p : acc)
+            'h' -> do
+              ([x], rest) <- nums 1
+              let p = (if rel then cx + x else x, cy)
+              go rest (Just c) p start Nothing (LineTo p : acc)
+            'v' -> do
+              ([y], rest) <- nums 1
+              let p = (cx, if rel then cy + y else y)
+              go rest (Just c) p start Nothing (LineTo p : acc)
+            'c' -> do
+              ([a, b, e, f, x, y], rest) <- nums 6
+              let c2 = at (e, f)
+                  p = at (x, y)
+              go rest (Just c) p start (Just (Left c2)) (CurveTo (at (a, b)) c2 p : acc)
+            's' -> do
+              ([e, f, x, y], rest) <- nums 4
+              let c1 = case ctl of Just (Left q) -> reflect q cur; _ -> cur
+                  c2 = at (e, f)
+                  p = at (x, y)
+              go rest (Just c) p start (Just (Left c2)) (CurveTo c1 c2 p : acc)
+            'q' -> do
+              ([a, b, x, y], rest) <- nums 4
+              let q = at (a, b)
+                  p = at (x, y)
+              go rest (Just c) p start (Just (Right q)) (quad cur q p : acc)
+            't' -> do
+              ([x, y], rest) <- nums 2
+              let q = case ctl of Just (Right q0) -> reflect q0 cur; _ -> cur
+                  p = at (x, y)
+              go rest (Just c) p start (Just (Right q)) (quad cur q p : acc)
+            'a' -> do
+              ([rx, ry, phi, fa, fs, x, y], rest) <- nums 7
+              if (fa /= 0 && fa /= 1) || (fs /= 0 && fs /= 1)
+                then Nothing
+                else let p = at (x, y) in go rest (Just c) p start Nothing (reverse (arc cur rx ry phi (fa == 1) (fs == 1) p) <> acc)
             _ -> Nothing
     reflect (qx, qy) (px, py) = (2 * px - qx, 2 * py - qy)
     quad (x0, y0) (qx, qy) (x, y) = CurveTo (x0 + 2 / 3 * (qx - x0), y0 + 2 / 3 * (qy - y0)) (x + 2 / 3 * (qx - x), y + 2 / 3 * (qy - y)) (x, y)
@@ -929,7 +949,7 @@ markers env st segs =
           dirIn = unit <$> din
           dirOut = unit <$> dout
           tangent = case (dirIn, dirOut) of
-            (Just a, Just b) -> let s = unit (bimap (fst a +) (snd a +) b) in if s == (0, 0) then b else s
+            (Just a, Just b) -> let sumDir = unit (bimap (fst a +) (snd a +) b) in if sumDir == (0, 0) then b else sumDir
             (Just a, Nothing) -> a
             (Nothing, Just b) -> b
             _ -> (1, 0)

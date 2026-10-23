@@ -123,8 +123,8 @@ contentsPdf refs streams =
 pdfFigureTests :: [TestTree]
 pdfFigureTests =
   [ testCase "a PDF figure whose content names a stream twice writes it once, as an inner Form (docs/adr ADR 0051)" $ do
-      let fig = contentsPdf "4 0 R 4 0 R" [("", "q 0 0 0 1 k 0 0 100 50 re f Q")]
-      (codes, pdf, _) <- pdfWith Dev "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", fig), ("images/f.png", png False)]
+      let figPdf = contentsPdf "4 0 R 4 0 R" [("", "q 0 0 0 1 k 0 0 100 50 re f Q")]
+      (codes, pdf, _) <- pdfWith Dev "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", figPdf), ("images/f.png", png False)]
       codes @?= []
       out <- maybe (assertFailure "no PDF") pure pdf
       count "/Subtype /Form" out @?= 2
@@ -135,13 +135,13 @@ pdfFigureTests =
       qpdfExpanded out >>= mapM_ innerFormNested,
     testCase "G08015: a stream that sets a colour at the top, named 40 times, at the @figure, not G08010 (docs/adr ADR 0051)" $ do
       let gray = BL.toStrict (Z.compress (BL.fromStrict (BS.concat (replicate (2 * 1024 * 1024) "0 g\n"))))
-          fig = contentsPdf (BS.intercalate " " (replicate 40 "4 0 R")) [("/Filter /FlateDecode", gray)]
+          figPdf = contentsPdf (BS.intercalate " " (replicate 40 "4 0 R")) [("/Filter /FlateDecode", gray)]
           src = "本文。\n\n@figure images/f.pdf web=images/f.png alt=\"t\"\n"
-      (codes, pdf, messages) <- pdfWith Dev src [("images/f.pdf", fig), ("images/f.png", png False)]
+      (codes, pdf, messages) <- pdfWith Dev src [("images/f.pdf", figPdf), ("images/f.png", png False)]
       codes @?= [DiagnosticCode "G08015"]
       messages @?= ["図版の PDF のページの内容をつなぐと 256 MiB を超えます: images/f.pdf"]
       pdf @?= Nothing
-      b <- buildMarksFilesWith src id (Just (withBodyFont (figStyle horizontalStyle))) (bodyFontFiles horizontalStyle <> [("images/f.pdf", fig), ("images/f.png", png False)])
+      b <- buildMarksFilesWith src id (Just (withBodyFont (figStyle horizontalStyle))) (bodyFontFiles horizontalStyle <> [("images/f.pdf", figPdf), ("images/f.png", png False)])
       map (whereIs b) (bErrors b) @?= [(Just "a.gm", BS.length (TE.encodeUtf8 "本文。\n\n"))],
     testGroup
       "a PDF figure of 200 by 100 pt fills the measure of 240 pt, its height by its turned size; a tall one is fitted to the 29 lines its number leaves (golem-driver ADR 0034)"
@@ -152,8 +152,8 @@ pdfFigureTests =
       | (r, along, across) <- [(0 :: Int, 240 * pt, 120), (90, 435 * pt `div` 2, 435), (180, 240 * pt, 120), (270, 435 * pt `div` 2, 435)]
       ],
     testCase "a PDF figure fills the measure, its height in the proportion of its crop box" $ do
-      fig <- golemPdf
-      (_, pl) <- layoutOk horizontal24 "@figure images/f.pdf web=images/f.png alt=\"t\"\n  キャプション。\n" [("images/f.pdf", fig), ("images/f.png", png False)]
+      figPdf <- golemPdf
+      (_, pl) <- layoutOk horizontal24 "@figure images/f.pdf web=images/f.png alt=\"t\"\n  キャプション。\n" [("images/f.pdf", figPdf), ("images/f.png", png False)]
       (_, pf, _, _) <- theFigure pl
       case pfContent pf of
         VectorFigure ip -> do
@@ -162,9 +162,9 @@ pdfFigureTests =
           pfAcross pf @?= floor (fromInteger (240 * pt) * h / w)
         other -> assertFailure (show other),
     testCase "the book's PDF has one Form XObject for a PDF figure placed twice" $ do
-      fig <- golemPdf
+      figPdf <- golemPdf
       let one = "@figure images/f.pdf web=images/f.png alt=\"t\"\n  キャプション。\n\n"
-      pdf <- miniPdf fakeProvider False (figStyle horizontalStyle) (one <> "本文。\n\n" <> one) [("images/f.pdf", fig), ("images/f.png", png False)]
+      pdf <- miniPdf fakeProvider False (figStyle horizontalStyle) (one <> "本文。\n\n" <> one) [("images/f.pdf", figPdf), ("images/f.png", png False)]
       count "/Subtype /Form" pdf @?= 1,
     testCase "a broken PNG and an interlaced PNG are G08010, and no PDF is written, in dev and prod" $
       forM_ [Dev, Prod] $ \profile -> do
@@ -180,9 +180,9 @@ pdfFigureTests =
       r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
       map diagMessage (filter isError (brDiagnostics r)) @?= ["図版を PDF に置けません: images/b.png（インターレースの PNG は使えません）"],
     testCase "an encrypted PDF figure is G08010" $ do
-      fig <- golemPdf
-      let (before, after) = BS.breakSubstring "trailer\n<<" fig
-          encrypted = before <> "trailer\n<< /Encrypt 1 0 R" <> BS.drop 10 after
+      figPdf <- golemPdf
+      let (before, rest) = BS.breakSubstring "trailer\n<<" figPdf
+          encrypted = before <> "trailer\n<< /Encrypt 1 0 R" <> BS.drop 10 rest
       (codes, written) <- buildIn Dev [TargetPdf] "@figure images/f.pdf web=images/f.png alt=\"t\"\n" [("images/f.pdf", encrypted), ("images/f.png", png False)]
       codes @?= [DiagnosticCode "G08010"]
       written @?= False,

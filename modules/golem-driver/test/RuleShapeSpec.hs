@@ -131,9 +131,9 @@ ruleShapeTests =
     pturn len (x, y) = (y, len - x)
     -- points along a cubic curve
     bezier (x0, y0) ((x1, y1), (x2, y2), (x3, y3)) =
-      [ (b (fromInteger x0) (fromInteger x1) (fromInteger x2) (fromInteger x3) t, b (fromInteger y0) (fromInteger y1) (fromInteger y2) (fromInteger y3) t)
+      [ (cubic (fromInteger x0) (fromInteger x1) (fromInteger x2) (fromInteger x3) t, cubic (fromInteger y0) (fromInteger y1) (fromInteger y2) (fromInteger y3) t)
       | i <- [0 .. 64 :: Int],
         let t = fromIntegral i / 64
       ]
-    b :: Double -> Double -> Double -> Double -> Double -> Double
-    b p0 p1 p2 p3 t = (1 - t) ^ (3 :: Int) * p0 + 3 * (1 - t) ^ (2 :: Int) * t * p1 + 3 * (1 - t) * t * t * p2 + t ^ (3 :: Int) * p3
+    cubic :: Double -> Double -> Double -> Double -> Double -> Double
+    cubic p0 p1 p2 p3 t = (1 - t) ^ (3 :: Int) * p0 + 3 * (1 - t) ^ (2 :: Int) * t * p1 + 3 * (1 - t) * t * t * p2 + t ^ (3 :: Int) * p3

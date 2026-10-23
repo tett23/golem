@@ -453,10 +453,10 @@ noteNumberTests =
       _ -> 0
     collect m ch docs =
       let book = fst (assemble cfg {acNoteNumbering = m, acChapterOf = ch} noEval docs)
-       in concatMap (\(Document _ bs) -> concatMap blockNotes bs) (bookDocs book)
-    blockNotes (Block _ _ body) = case body of
+       in concatMap (\(Document _ bs) -> concatMap notesOf bs) (bookDocs book)
+    notesOf (Block _ _ body) = case body of
       Paragraph _ is -> concatMap inl is
-      BulletList items -> concatMap (concatMap blockNotes . itemBlocks) items
+      BulletList items -> concatMap (concatMap notesOf . itemBlocks) items
       _ -> []
     inl i = case i of
       Note {} -> [("n" :: Text, i)]

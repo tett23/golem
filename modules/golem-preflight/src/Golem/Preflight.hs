@@ -23,7 +23,7 @@ import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf (ColorSpace (..), ColorUse (..), FigureContent (..), ImageData (..), ImportedPage (..), X4Problem (..))
 import Golem.Preflight.Rules
 import Golem.Preflight.View
-import Golem.Project.Style (SizeSource, Sp, sizeSourcePath, sizeSourceText)
+import Golem.Project.Style (Sp, sizeSourcePath, sizeSourceText)
 import Golem.Syntax
 import Numeric (showHex)
 

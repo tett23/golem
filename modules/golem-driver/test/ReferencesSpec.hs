@@ -290,10 +290,10 @@ bibliographyFormatTests =
     testCase "PDF: the URL of an entry is in the character style url" $ do
       (_, m) <- bibPartsOf "bibliography = [\"refs.json\"]" [("refs.json", urlRefsJson)]
       case bibliographyLines m [("jlreq", 1)] of
-        [[Text _ before, CharStyle _ "url" [Text _ u], Text _ after]] -> do
+        [[Text _ before, CharStyle _ "url" [Text _ u], Text _ rest]] -> do
           before @?= "[1] 「日本語組版処理の要件」、W3C、2020、"
           u @?= "https://www.w3.org/TR/jlreq/"
-          after @?= "（2026年10月16日閲覧）。"
+          rest @?= "（2026年10月16日閲覧）。"
         other -> assertFailure (show other)
   ]
 
@@ -590,8 +590,8 @@ tableTests =
 
 -- | How far below the heading 章 the first line after it is, by a character of that line, in pt.
 headingGap :: BS.ByteString -> T.Text -> Char -> IO Rational
-headingGap style after c = do
-  content <- miniPdf fakeProvider True style ("# 章\n\n" <> after) [] >>= fmap BS.concat . inflateAll
+headingGap style following c = do
+  content <- miniPdf fakeProvider True style ("# 章\n\n" <> following) [] >>= fmap BS.concat . inflateAll
   (-) <$> baselineOf content '章' <*> baselineOf content c
 
 -- | A table whose header row has only empty cells, with n body rows 行1, 行2, ...
@@ -731,7 +731,7 @@ urlBreakTests =
       r <- layoutMiniFonts realProvider ("bibliography = [\"refs.json\"]\n" <> miniManifest) style "本文[cite ms-wsl-filesystems]。\n\n@bibliography\n" [("fonts/noto.otf", noto), ("fonts/serif.ttf", serif), ("refs.json", refs)]
       (_, pl) <- either (assertFailure . show) pure r
       case [slLine sl | sl <- Map.elems (plLines pl), "[1]" `T.isPrefixOf` setLineText sl] of
-        l : _ -> assertBool (show (glueRatio l, lineText l, lineTexts pl)) (glueRatio l <= 1)
+        l : _ -> assertBool (show (glueRatio l, boxText l, lineTexts pl)) (glueRatio l <= 1)
         [] -> assertFailure (show (lineTexts pl)),
     testCase "PDF: a quarter em after a note mark before a URL in code, and no break there" $ do
       (gaps, breaks) <- noteGaps "本文。[note: [code: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0004-crop-marks-and-bleed.md]（トンボ）]\n"
@@ -743,7 +743,7 @@ urlBreakTests =
       breaks @?= 0
   ]
   where
-    lineText l = T.concat [bcText c | Box _ c <- lineItems l]
+    boxText l = T.concat [bcText c | Box _ c <- lineItems l]
     {- the gap between the end of the note mark and the start of the first
     character of the body in the first line of each footnote, with a
     quarter of the mark's size; and the breaks between them -}

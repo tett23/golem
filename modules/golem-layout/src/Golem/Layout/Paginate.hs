@@ -500,9 +500,9 @@ paginateWithin maxLines separatorLines base capacity flows =
       (FAdjustLines _ _ : rest) -> nextNeed rest
       -- blank lines go with what follows, at most a column (docs/adr ADR 0046)
       (FBlank _ n : rest) -> let r = nextNeed rest in r {needGrid = min capacity (min capacity n + needGrid r)}
-      (FCode g cap first cont ls : _)
+      (FCode g caption first cont ls : _)
         | null ls -> mempty
-        | otherwise -> let k = min (length ls) (max 1 first) in grid (cap + codeSpan g (k + (if cont && k < length ls then 1 else 0)))
+        | otherwise -> let k = min (length ls) (max 1 first) in grid (caption + codeSpan g (k + (if cont && k < length ls then 1 else 0)))
       -- a heading before the index columns on a page of one column keeps their first line
       (FSwitchColumns _ : rest) | columns == 1 -> nextNeed rest
       (FSwitchColumns _ : _) -> mempty
@@ -560,7 +560,7 @@ paginateWithin maxLines separatorLines base capacity flows =
             st2 = putSlot st1 0 (SWrapped i) labels marks
          in (placeLines st2 False beside) {sUsed = max (sUsed st1 + size) (sUsed (placeLines st2 False beside))}
       FBreak k -> st {sBreaks = sBreaks st <> [k]}
-      FCode g cap first cont ls -> placeCode st (g, cap, first, cont) True ls
+      FCode g caption first cont ls -> placeCode st (g, caption, first, cont) True ls
       FSwitchColumns set ->
         let st1 = flushDeferred st
          in if (columns == 1 && free st1 > 0) || (isEmpty st1 && sColumn st1 == 0)
@@ -605,9 +605,9 @@ paginateWithin maxLines separatorLines base capacity flows =
     placeCode st _ _ [] = st
     placeCode st c@(g, cap0, first, cont) isFirst ls@(l0 : _) =
       let len = length ls
-          cap = if isFirst then cap0 else 0
+          captionRows = if isFirst then cap0 else 0
           least = if isFirst then min len (max 1 first) else 1
-          spanOf j = cap + codeSpan g (j + (if cont && j < len then 1 else 0))
+          spanOf j = captionRows + codeSpan g (j + (if cont && j < len then 1 else 0))
           k0 = length (takeWhile (\j -> spanOf j <= free st) [1 .. len])
           k
             | k0 >= least = k0
@@ -732,8 +732,8 @@ paginateWithin maxLines separatorLines base capacity flows =
           (k1, before) = case (joined, frBefore fr) of
             (Just ((aid, ga, a, aLast), b), _) ->
               let (k, offA, offB) = rulesJoined ga a b r1
-                  base = toInteger aLast * p + h
-               in (k, [PlacedRule aid False (base + offA), PlacedRule (frId fr) True (base + offB)])
+                  joinBase = toInteger (aLast :: Int) * p + h
+               in (k, [PlacedRule aid False (joinBase + offA), PlacedRule (frId fr) True (joinBase + offB)])
             (Nothing, Just b)
               | u == top st ->
                   let (k, off) = ruleBeforeAtStart g b {rsdOutside = if top st == 0 then rsdOutside b else Nothing} r1
@@ -799,17 +799,17 @@ paginateWithin maxLines separatorLines base capacity flows =
     placeTable st i h rows =
       let start = sUsed st
           st1 = foldl' putLine st h
-          go stc first [] = segment stc first
-          go stc first (r : rest)
-            | fitting stc r >= length r || sUsed stc == first + length h = go (foldl' putLine stc r) first rest
+          rowsFrom stc first [] = segment stc first
+          rowsFrom stc first (r : rest)
+            | fitting stc r >= length r || sUsed stc == first + length h = rowsFrom (foldl' putLine stc r) first rest
             | otherwise =
                 let closed = segment stc first
                     fresh = nextColumn closed
                     repeated = foldl' putLine fresh [l {lbNotes = [], lbLabels = [], lbMarks = []} | l <- h]
-                 in go repeated (sUsed fresh) (r : rest)
+                 in rowsFrom repeated (sUsed fresh) (r : rest)
           headerEnd first = if null h then Nothing else Just (first + length h - 1)
           segment stc first = stc {sTables = sTables stc <> [TableSegment i first (headerEnd first) (sUsed stc - 1)]}
-       in go st1 start rows
+       in rowsFrom st1 start rows
     -- a heading: one block of n grid lines; the notes of its lines as in putLine
     putBlock st _ [] = st
     putBlock st n ls@(l0 : _) =

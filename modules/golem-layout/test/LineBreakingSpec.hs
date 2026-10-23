@@ -35,8 +35,8 @@ genWithWide = do
   ws <- Gen.list (Range.linear 0 12) (Gen.integral (Range.linear 1 (2 * target)))
   wide <- Gen.integral (Range.linear (target + 1) (3 * target))
   at <- Gen.int (Range.linear 0 (length ws))
-  let (before, after) = splitAt at ws
-  pure (before <> [wide] <> after, target)
+  let (before, rest) = splitAt at ws
+  pure (before <> [wide] <> rest, target)
 
 lineBreakingTests :: TestTree
 lineBreakingTests =
