@@ -79,6 +79,15 @@ buildTests =
     golden "html-front.xhtml" "build/html/front.xhtml",
     golden "html-02.xhtml" "build/html/chapters/02.xhtml",
     golden "html-style.css" "build/html/style.css",
+    -- prod drops the proofreading comment of chapters/01.gm (docs/adr/0064)
+    goldenIn Prod "prod-text-horizontal-01.txt" "build/text/horizontal/chapters/01.txt",
+    goldenIn Prod "prod-text-vertical-01.txt" "build/text/vertical/chapters/01.txt",
+    goldenIn Prod "prod-html-01.xhtml" "build/html/chapters/01.xhtml",
+    differsInProd "build/text/horizontal/chapters/01.txt",
+    differsInProd "build/text/vertical/chapters/01.txt",
+    differsInProd "build/html/chapters/01.xhtml",
+    sameInProd "build/html/front.xhtml",
+    sameInProd "build/html/chapters/02.xhtml",
     testCase "two builds produce identical bytes" $ do
       a <- buildAndRead Dev "build/html/chapters/01.xhtml"
       b <- buildAndRead Dev "build/html/chapters/01.xhtml"
