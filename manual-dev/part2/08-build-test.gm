@@ -79,6 +79,24 @@ macOS でビルドした実行ファイルは OS の標準のライブラリだ�
 単体テストとプロパティテストには tasty と hedgehog を、出力を固定の値と比べるテストには tasty-golden を使う。[index reading=てすと: テスト]
 各パッケージの [code: cabal test] が単独で通ることを保つ。
 
+tasty-golden は、ゴールデンのファイルがなければ作ってテストを通す。
+このままでは、ゴールデンを消したり名前を変え間違えたりしたコミットもテストを通ってしまう。
+そこで CI は、環境変数 [code: TASTY_NO_CREATE=true] を付けてテストを走らせ、欠けたゴールデンを失敗にする。
+コマンドラインの [code: --no-create] を使わないのは、tasty-golden を使わないスイートがこの引数を知らずに失敗するからである。
+環境変数なら、その選択肢を持つスイートだけが読む。
+
+```sh
+$ TASTY_NO_CREATE=true cabal test all
+```
+
+出力を意図して変えたときは、テストのスイートを指定して [code: --accept] を付け、ゴールデンを書き直す。
+書き直したファイルの差分を読み、意図した変更だけであることを確かめてからコミットする。
+[code: --accept] を受け付けるのも、tasty-golden を使うスイートだけである。
+
+```sh
+$ cabal test golem-driver:golem-driver-test --test-options=--accept
+```
+
 golem-cli のテストは、[code: build-tool-depends] で [code: golem] の実行ファイルをビルドし、それを一時ディレクトリで実行して、終了コードと出力を確かめる。
 このテストができる前は、ADR 0001 が終了コード 2 と決めていた使い方の誤りが、実際には 1 を返していた。
 テスト設計に書いたテストを実際に書かないと、決定と実装のずれに誰も気付かない、という実例である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0004-usage-error-exit-code.md]（golem-cli ADR 0004「使い方の誤りの終了コードを 2 にし、使い方の文言を日本語にする」）]

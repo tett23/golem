@@ -91,7 +91,7 @@ aarch64 では一つのランナー（[code: all]）がすべてを受け持つ�
 + GHC 9.10.3 と cabal-install 3.16.1.0 を用意する。GHC のディレクトリ、Hackage の索引、cabal の store、[code: dist-newstyle] をキャッシュから戻す。
 + [code: scripts/fetch-wasmtime.sh] で wasmtime を取得する。
 + テストを受け持つランナーでは、[code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
-+ [code: cabal build all] を実行し、テストを受け持つランナーでは続けて [code: cabal test all] を実行する。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。テストには [code: GOLEM_PD_BOOKS] を付け、フィクスチャの十冊をすべてのターゲットに組む（第[ref-number fixtures]章）。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることを確かめる。
++ [code: cabal build all] を実行し、テストを受け持つランナーでは続けて [code: cabal test all] を実行する。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。テストには [code: GOLEM_PD_BOOKS] を付け、フィクスチャの十冊をすべてのターゲットに組む（第[ref-number fixtures]章）。[code: TASTY_NO_CREATE=true] も付け、ゴールデンのファイルが欠けていれば失敗にする（第[ref-number build-test]章）。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることを確かめる。
 + テストを受け持つランナーでは、[code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
 + 出力を受け持つランナーでは、二つのマニュアルのフォントをキャッシュから戻す。
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。

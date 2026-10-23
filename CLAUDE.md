@@ -11,6 +11,7 @@ Golem はユーザーに組版システムと組版にまつわるワークフ�
   - **docs/adr/** 特定のモジュールに属さない横断的な ADR を配置する。命名と構成はモジュールの ADR と同じ。
   - コミット済みの ADR（`docs/adr/`、`docs/{module}/adr/` とも）はステータスの行を除き変更不可（adr-guard が強制する）。変更が必要な場合は新たな ADR を作成する。
   - ADR は行頭が `ステータス:` のステータスの行をちょうど1つ持つ（adr-guard の pre-commit と `adr-guard check-status` が検査する）。
+  - ADR からソースコード（`modules/`、`scripts/`、`.github/` などのファイル）を参照するときは、コミットのハッシュを含む GitHub の URL で書く（例: `https://github.com/tett23/golem/blob/<コミットのハッシュ>/modules/golem-layout/src/Golem/Layout/Paginate.hs#L209-L215`）。ファイルの全体を指すときも、行を指すときも同じ形にする。main は rebase も force push もしないので、ハッシュの URL は変わらない。GitHub から移るときは、adr-guard を変えるか、URL を書き換えて対応する。
   - **docs/audit/**、**docs/audits/**、**docs/benchmarks/**、**docs/benchmark/** 監査と性能計測の記録。コミット済みのものは変更、削除、移動不可（adr-guard が強制する）。`docs/ci-timings/` など別の名前の記録は検査されないが、同じくコミット後は変更しない。
 - **modules/** 各モジュールを配置する
 

@@ -96,6 +96,10 @@ Write a test that uses an external tool (such as `cddl`, `qpdf` or `openssl`) wi
 Where the tool is missing, the test is reported as `SKIP`, and with `GOLEM_REQUIRE_EXTERNAL_TOOLS=1` it fails.
 Only test suites may depend on golem-test-support; if a library or an executable does, `scripts/ci/test-only-deps.sh` in the `build` job of CI fails.
 
+Do not write golden files by hand; write them with `--accept` (see the Development section of [README.md](./README.md)).
+Read the diff of the written files and confirm that the output is the intended one before committing.
+CI runs the tests with `TASTY_NO_CREATE=true`, so a deleted or misnamed golden file fails.
+
 Golem always produces the same bytes from the same input.
 Changes that affect output are checked by the `determinism` job in CI, which compares x86-64 and aarch64.
 Keep anything that depends on the environment out of the output: time, random numbers, hash-table iteration order, locale.

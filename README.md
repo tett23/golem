@@ -209,6 +209,24 @@ cabal build all
 cabal test all
 ```
 
+ゴールデン（出力を固定したファイル）は tasty-golden で比べる。
+tasty-golden は、ゴールデンのファイルがなければ作ってテストを通す。
+CI は環境変数 `TASTY_NO_CREATE=true` を付けてテストを走らせるので、ゴールデンが欠けていると失敗する。
+手元でも同じ条件で確かめるには、この変数を付ける。
+
+```bash
+TASTY_NO_CREATE=true cabal test all
+```
+
+出力を意図して変えたときは、パッケージを指定して `--accept` を付け、ゴールデンを書き直す。
+`--accept` は tasty-golden を使うテストのスイートだけが受け付ける（`golem-cli-test`、`golem-driver-test`、`golem-fmt-test`、`golem-font-test`、`golem-lsp-test`、`golem-pdf-test`、`golem-svg-test`）。
+golem-driver と golem-font はほかのスイートも持ち、そちらは `--accept` を拒むので、スイートの名前まで指定する。
+書き直したファイルの差分を読み、意図した変更だけであることを確かめてからコミットする。
+
+```bash
+cabal test golem-driver:golem-driver-test --test-options=--accept
+```
+
 依存のバージョンは `cabal.project.freeze` で固定している。
 このファイルを消してビルドすると、依存のバージョンが変わりうる。
 
