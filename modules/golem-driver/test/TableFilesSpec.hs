@@ -8,7 +8,6 @@ import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import GHC.Clock (getMonotonicTime)
 import Golem.Doc.IR
 import Golem.Driver
 import Golem.Eval.File (EvalResult (..))
@@ -133,14 +132,13 @@ tableFileTests =
         fromCsv <- miniPdf fakeProvider True horizontalStyle "@table src=data.csv align=right\n" [("data.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] >>= fmap BS.concat . inflateAll
         fromBars <- miniPdf fakeProvider True horizontalStyle "| 項目 | 値 |\n|---:|---:|\n| 幅 | 10 |\n" [] >>= fmap BS.concat . inflateAll
         sort (drawnGlyphs fromCsv) @?= sort (drawnGlyphs fromBars),
-      testCase "a large table is G02088, and the text build ends within 10 seconds (docs/adr ADR 0043)" $
-        withTables [("a.gm", "@table src=data/big.tsv\n")] [("data/big.tsv", BS.concat (replicate 200000 "a\tb\tc\n"))] $ \tmp -> do
-          t0 <- getMonotonicTime
-          r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
-          t1 <- getMonotonicTime
-          [(c, diagMessage d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- brDiagnostics r, let DiagnosticCode c = diagCode d]
-            @?= [("G02088", "表のファイルが行の数の上限を超えます: data/big.tsv（10001 行目、上限は 10000 行）", 0, 24)]
-          assertBool ("took " <> show (t1 - t0) <> " seconds") (t1 - t0 < 10),
+      -- the time-out detects a build that does not stop (docs/adr ADR 0073)
+      localOption (mkTimeout 30000000) $
+        testCase "a large table is G02088, and the text build ends (docs/adr ADR 0043)" $
+          withTables [("a.gm", "@table src=data/big.tsv\n")] [("data/big.tsv", BS.concat (replicate 200000 "a\tb\tc\n"))] $ \tmp -> do
+            r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
+            [(c, diagMessage d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- brDiagnostics r, let DiagnosticCode c = diagCode d]
+              @?= [("G02088", "表のファイルが行の数の上限を超えます: data/big.tsv（10001 行目、上限は 10000 行）", 0, 24)],
       testCase "a table file over 16 MiB is G02088 and is not read (docs/adr ADR 0043)" $
         -- bytes that are not UTF-8 would be G01001 if the file were read
         withTables [("a.gm", "@table src=data/big.csv\n")] [("data/big.csv", BS.replicate (2 ^ (24 :: Int)) 0x61 <> "\xFF")] $ \tmp -> do
