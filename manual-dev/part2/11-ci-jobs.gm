@@ -46,10 +46,13 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 - [code: scripts/manual/test.sh]：マニュアルのスクリプトのテスト。
 - [code: scripts/env-determinism/test.sh]：実行の環境を変える検査（第[ref-number determinism]章）のテスト。偽の [code: golem] で、検査が各変化を実際に当てていることを確かめる。
 - [code: scripts/ci/docs-refs.sh]：コードとスクリプトが名指す [code: docs/] の下の文書が、ビルドの読む文書の一覧にあること（第[ref-number docs]章）。
-- [code: scripts/ci/incomplete-patterns.sh]：[code: modules/] の下のすべてのパッケージのすべてのコンポーネントが、[code: -Werror=incomplete-patterns] でビルドされること。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0027-exhaustive-command-dispatch-by-types.md]（docs/adr の ADR 0027「到達しない診断の分岐を型で除く」）]
+- [code: scripts/ci/incomplete-patterns.sh]：[code: modules/] の下のすべてのパッケージのすべてのコンポーネントが、[code: -Werror=incomplete-patterns] でビルドされること。フラグの後の [code: -Wno-error=incomplete-patterns]、[code: -Wno-incomplete-patterns]、[code: -Wwarn=incomplete-patterns] は、.cabal、ソースの [code: OPTIONS_GHC]、[code: cabal.project] と [code: cabal.project.local] のどこに書いても失敗にする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0027-exhaustive-command-dispatch-by-types.md]（docs/adr の ADR 0027「到達しない診断の分岐を型で除く」）]
 - [code: scripts/ci/unsafe-io.sh]：[code: unsafePerformIO] とその仲間を使う定義が、[code: scripts/ci/unsafe-io-allowed.txt] に残す理由とともに書いたものだけであること（第[ref-number purity]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0034-fewer-unsafe-perform-io.md]（docs/adr の ADR 0034「unsafePerformIO を減らし、残すものを検査で固定する」）]
-- [code: scripts/ci/rts-capabilities.sh]：[code: modules/] の下の Haskell のコードが [code: setNumCapabilities] を呼ばないこと、[code: -threaded] でビルドする実行ファイルとテストのスイートが [code: -with-rtsopts=-N] でリンクされること。
+- [code: scripts/ci/rts-capabilities.sh]：[code: modules/] の下の Haskell のコードが [code: setNumCapabilities] を呼ばないこと、[code: -threaded] でビルドする実行ファイルとテストのスイートが [code: -with-rtsopts=-N] でリンクされること。GHC は最後の [code: -with-rtsopts] だけを使うので、最後のものに [code: -N] があることを求める。
 - [code: scripts/ci/abi-version.sh]：プラグインの ABI のバージョンが、直前のリリースのタグからの ABI の変更に合っていること。CDDL と [code: Golem.Doc.Validate] がコメントと空白を除いてリリースと同じならバージョンも同じで、違えばバージョンが一つ上がっていなければならない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0052-plugin-abi-version-bump-rule.md]（docs/adr の ADR 0052「プラグインの ABI のバージョンは、リリースしたバージョンからだけ上げる」）]
+
+[code: incomplete-patterns.sh] と [code: rts-capabilities.sh] は、.cabal を cabal と同じように読む。
+セクションとフィールドの名前の大文字と小文字を区別せず、フィールドの名前の下に字下げした行もそのフィールドの値とする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0069-lint-scripts-bypassed-by-plain-rewrites.md]（docs/adr の ADR 0069「CI の検査のスクリプトを、素朴な書き換えで迂回できないようにする」）]
 
 二つの [code: setNumCapabilities] が同時に capability を増やすと、GHC 9.10.3 のランタイムは止まる。
 先に増やした呼び出しが足した capability を、あとの呼び出しが手放さずに残し、次の GC がその capability を待ち続けるからである。
