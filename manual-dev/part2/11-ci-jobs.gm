@@ -155,7 +155,13 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 - [code: scripts/determinism/] の式の評価のプロジェクト（HTML、EPUB、テキスト）
 - golem-driver のテストのサンプルのプロジェクト（HTML、EPUB、テキスト）
 - 同じサンプルを golem-font のテスト用のフォントで組んだ PDF
+- diagnostics を出して終了コード 1 で終わる [code: scripts/env-determinism/diagnostics/]
 - 二つのマニュアル（PDF と HTML）
+
+マニュアルのほかの入力は [code: --format json] で組み、出力のファイルに加えて、標準出力と標準エラー出力の SHA-256 と終了コードも書く。
+行の形は [code: <SHA-256>  <入力>/stderr] と [code: exit <コード>  <入力>] である。
+これで、二つのアーキテクチャの diagnostics の違いも見つかる。
+マニュアルは diagnostic を一つでも出せば [code: scripts/manual/build.sh] が失敗にするので、diagnostics を一覧に書かない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0071-determinism-check-compares-diagnostics.md]（docs/adr の ADR 0071「アーキテクチャ間の決定性の検査で、diagnostics と終了コードも比べる」）]
 
 ファイルの一覧は [code: LC_ALL=C] で並べてからハッシュを取るので、一覧の順もファイルシステムに左右されない。
 決定性の詳しい規則は第[ref-number determinism]章で説明する。
