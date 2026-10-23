@@ -47,6 +47,8 @@ jobs:
         run: sh scripts/manual/test.sh
       - name: Tests of the environment check (docs/adr/0029)
         run: sh scripts/env-determinism/test.sh
+      - name: Tests of the scripts run by hand (docs/adr/0078)
+        run: sh scripts/test.sh
       - name: The documents that the build reads are listed (docs/adr/0021)
         run: sh scripts/ci/docs-refs.sh
       - name: Every package errors on incomplete patterns (docs/adr/0027)
@@ -379,6 +381,33 @@ jobs:
           GOLEM_REQUIRE_CLAUDE: "1"
         run: sh scripts/release/test.sh
 
+  # The tests of the scripts again on macOS, with the BSD awk, sed, find and
+  # grep of the system: the scripts must run with the tools of the machine
+  # that runs them, and nothing else checks the BSD ones (docs/adr/0079).
+  # jq is in /usr/bin since macOS 15; the claude --help check is skipped
+  # here, release-scripts requires it
+  scripts-macos:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    timeout-minutes: 15
+    runs-on: macos-15
+    env:
+      PATH: /usr/bin:/bin:/usr/sbin:/sbin
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Tests of the CI scripts
+        run: sh scripts/ci/test.sh
+      - name: Tests of the scripts of the manuals
+        run: sh scripts/manual/test.sh
+      - name: Tests of the environment check
+        run: sh scripts/env-determinism/test.sh
+      - name: Tests of the release scripts
+        run: sh scripts/release/test.sh
+      - name: Tests of the scripts run by hand (docs/adr/0078)
+        run: sh scripts/test.sh
+
   format:
     needs: changes
     if: needs.changes.outputs.build == 'true'
@@ -404,7 +433,7 @@ jobs:
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
   ci:
-    needs: [changes, build, determinism, release-scripts, format]
+    needs: [changes, build, determinism, release-scripts, scripts-macos, format]
     if: always()
     runs-on: ubuntu-24.04
     steps:

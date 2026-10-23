@@ -842,6 +842,238 @@ if [ -e "$L/out/wasmtime" ] || grep -q 'wasmtime' "$L/out/README"; then ng "lice
 rm -rf "${L:?}/out"
 LINKMAP=$LC/gnu.map
 
+# ---------------------------------------------------------------- the scripts that run at a release
+# (docs/adr/0078-tests-for-release-and-hand-run-scripts.md): package.sh,
+# gmp-version.sh, fetch-gmp.sh, build-macos.sh, build-linux.sh and
+# smoke.sh, with fakes of the commands they call (curl, ghc, cabal, strip,
+# codesign, ...) first on PATH, and without the network. A script that
+# writes into the root of the repository runs from a copy in a fake root.
+
+# sha FILE: the SHA-256 of FILE
+if command -v sha256sum >/dev/null 2>&1; then
+  sha() { sha256sum "$1" | cut -d' ' -f1; }
+else
+  sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+fi
+
+# fake DIR NAME BODY: an executable DIR/NAME that runs the shell code BODY
+fake() {
+  mkdir -p "$1"
+  printf '#!/bin/sh\n%s\n' "$3" >"$1/$2"
+  chmod +x "$1/$2"
+}
+
+# ---- package.sh
+
+PK=$WORK/package
+mkdir -p "$PK/root/scripts/release" "$PK/root/scripts/ci" "$PK/root/third_party/wasmtime" "$PK/root/dist-newstyle/cache"
+cp "$HERE/package.sh" "$PK/root/scripts/release/package.sh"
+printf 'MIT\n' >"$PK/root/LICENSE"
+printf 'v99.0.0\n' >"$PK/root/third_party/wasmtime/VERSION"
+: >"$PK/root/dist-newstyle/cache/plan.json"
+# licenses.sh PLAN OUTDIR TAG writes the README of OUTDIR
+fake "$PK/root/scripts/release" licenses.sh 'mkdir -p "$2" && printf "licenses of %s\n" "$3" >"$2/README"'
+fake "$PK/root/scripts/ci" test-only-deps.sh 'exit 0'
+fake "$PK/bin" strip 'printf stripped >"$1"'
+fake "$PK/bin" codesign 'exit 0'
+fake "$PK/bin" ghc-9.10.3 'echo 9.10.3'
+fake "$PK/bin" cabal 'echo 3.16.1.0'
+printf '#!/bin/sh\necho golem\n' >"$PK/golem.bin"
+package() {
+  rm -rf "$PK/out"
+  PATH=$PK/bin:$PATH COMMIT=0123456789abcdef0123456789abcdef01234567 GMP_VERSION=6.3.0 \
+    sh "$PK/root/scripts/release/package.sh" v1.2.3 linux-x86_64 "$PK/golem.bin" "$PK/out"
+}
+run package
+expect "package: the archive is made" 0
+A=$PK/out/golem-v1.2.3-linux-x86_64.tar.gz
+mkdir -p "$PK/x"
+if [ -f "$A" ] && tar -xzf "$A" -C "$PK/x"; then ok; else ng "package: the archive is a tar.gz"; fi
+for f in golem LICENSE BUILDINFO THIRD_PARTY_LICENSES/README; do
+  if [ -f "$PK/x/golem-v1.2.3-linux-x86_64/$f" ]; then ok; else ng "package: the archive has $f"; fi
+done
+if [ "$(cat "$PK/x/golem-v1.2.3-linux-x86_64/golem" 2>/dev/null)" = stripped ]; then ok; else ng "package: golem is stripped"; fi
+if grep -qx 'commit: 0123456789abcdef0123456789abcdef01234567' "$PK/x/golem-v1.2.3-linux-x86_64/BUILDINFO" 2>/dev/null &&
+  grep -qx 'gmp: 6.3.0' "$PK/x/golem-v1.2.3-linux-x86_64/BUILDINFO" &&
+  grep -qx 'wasmtime: v99.0.0' "$PK/x/golem-v1.2.3-linux-x86_64/BUILDINFO"; then ok; else ng "package: BUILDINFO"; fi
+if [ "$(cat "$A.sha256" 2>/dev/null)" = "$(sha "$A")  golem-v1.2.3-linux-x86_64.tar.gz" ]; then ok; else ng "package: the .sha256 is that of the archive"; fi
+if [ ! -e "$PK/out/golem-v1.2.3-linux-x86_64" ]; then ok; else ng "package: the stage is removed"; fi
+run sh "$PK/root/scripts/release/package.sh" v1.2.3 linux-x86_64 "$PK/golem.bin"
+expect "package: three arguments" 2
+
+# ---- gmp-version.sh
+
+GV=$WORK/gmp-version
+gmp_header() { # FILE MAJOR MINOR PATCH
+  mkdir -p "$(dirname "$1")"
+  printf '#define __GNU_MP_VERSION %s\n#define __GNU_MP_VERSION_MINOR %s\n#define __GNU_MP_VERSION_PATCHLEVEL %s\n' "$2" "$3" "$4" >"$1"
+}
+# GHC_VERSION names a ghc that is not installed, so that the fake ghc runs
+fake "$GV/bin" ghc "echo $GV/libdir"
+gmp_version() { PATH=$GV/bin:$PATH GHC_VERSION=0-test GMP_INCLUDE_DIRS="$GV/include" sh "$HERE/gmp-version.sh"; }
+# macOS: GHC's own GMP, whose header is ghc-gmp.h
+gmp_header "$GV/libdir/lib/aarch64-osx-ghc-9.10.3/ghc-bignum-1.3/include/ghc-gmp.h" 6 3 0
+run gmp_version
+expect "gmp-version: ghc-gmp.h of macOS" 0 "6.3.0"
+# Alpine: ghc-gmp.h includes <gmp.h>
+rm -rf "$GV/libdir"
+mkdir -p "$GV/libdir/lib/x86_64-linux-ghc-9.10.3/ghc-bignum-1.3/include"
+printf '#include <gmp.h>\n' >"$GV/libdir/lib/x86_64-linux-ghc-9.10.3/ghc-bignum-1.3/include/ghc-gmp.h"
+gmp_header "$GV/include/gmp.h" 6 2 1
+run gmp_version
+expect "gmp-version: <gmp.h> of Alpine" 0 "6.2.1"
+rm -f "$GV/include/gmp.h"
+run gmp_version
+expect "gmp-version: no gmp.h" 1
+rm -rf "$GV/libdir"
+mkdir -p "$GV/libdir"
+run gmp_version
+expect "gmp-version: no ghc-gmp.h" 1
+
+# ---- fetch-gmp.sh
+
+# The pinned SHA-256 is that of the real gmp-6.3.0.tar.xz, which is not
+# here; the copy of the script pins the SHA-256 of a fixture instead. The
+# fake curl fails for the URLs of $CURL_FAIL and writes the fixture for
+# the others; each URL goes to $FG/curl.log.
+FG=$WORK/fetch-gmp
+mkdir -p "$FG/root"
+printf 'the source of gmp\n' >"$FG/gmp.tar.xz"
+sed "s/a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898/$(sha "$FG/gmp.tar.xz")/" "$HERE/fetch-gmp.sh" >"$FG/root/fetch-gmp.sh"
+if ! cmp -s "$HERE/fetch-gmp.sh" "$FG/root/fetch-gmp.sh"; then ok; else ng "fetch-gmp: the copy pins the fixture"; fi
+fake "$FG/bin" curl "
+out= url=
+while [ \$# -gt 0 ]; do
+  case \$1 in -o) out=\$2; shift 2 ;; -*) shift ;; *) url=\$1; shift ;; esac
+done
+echo \"\$url\" >>\"$FG/curl.log\"
+case \" \${CURL_FAIL-} \" in *\" \$url \"*) exit 22 ;; esac
+cp \"\${CURL_FILE:-$FG/gmp.tar.xz}\" \"\$out\""
+fetch_gmp() { rm -f "$FG/curl.log"; PATH=$FG/bin:$PATH sh "$FG/root/fetch-gmp.sh" "$@"; }
+CURL_FAIL=https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz
+export CURL_FAIL
+run fetch_gmp 6.3.0 "$FG/dist"
+expect "fetch-gmp: the second source answers" 0
+if cmp -s "$FG/gmp.tar.xz" "$FG/dist/gmp-6.3.0.tar.xz"; then ok; else ng "fetch-gmp: the source is put in DIR"; fi
+if [ "$(cat "$FG/curl.log" 2>/dev/null)" = "https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz
+https://ftpmirror.gnu.org/gmp/gmp-6.3.0.tar.xz" ]; then ok; else ng "fetch-gmp: gmplib.org, then the GNU mirror"; fi
+if [ -z "$(find "$FG/dist" -name '*.part')" ]; then ok; else ng "fetch-gmp: no .part is left"; fi
+rm -rf "$FG/dist"
+printf 'not the source of gmp\n' >"$FG/other.tar.xz"
+CURL_FILE=$FG/other.tar.xz run fetch_gmp 6.3.0 "$FG/dist"
+expect "fetch-gmp: a SHA-256 that does not match" 1
+if [ -z "$(find "$FG/dist" -type f)" ]; then ok; else ng "fetch-gmp: no file is left when the SHA-256 does not match"; fi
+rm -rf "$FG/dist"
+CURL_FAIL="https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz https://ftpmirror.gnu.org/gmp/gmp-6.3.0.tar.xz https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz" run fetch_gmp 6.3.0 "$FG/dist"
+expect "fetch-gmp: no source answers" 1
+if [ -z "$(find "$FG/dist" -type f)" ]; then ok; else ng "fetch-gmp: no file is left when no source answers"; fi
+run fetch_gmp 6.2.1 "$FG/dist"
+expect "fetch-gmp: a version that is not pinned" 1
+if [ ! -e "$FG/curl.log" ]; then ok; else ng "fetch-gmp: a version that is not pinned is not downloaded"; fi
+unset CURL_FAIL
+
+# ---- build-macos.sh and build-linux.sh
+
+# build-macos.sh runs from a copy in a fake root whose fetch-wasmtime.sh,
+# gmp-version.sh, fetch-gmp.sh and package.sh are fakes that write their
+# names to $BM/calls; cabal, nm, strings, ar, sw_vers and cc are fakes on
+# PATH. This checks the arguments and the order of the steps, not the
+# build itself, which release.yml does.
+BM=$WORK/build-macos
+mkdir -p "$BM/root/scripts/release" "$BM/root/third_party/wasmtime/lib"
+cp "$HERE/build-macos.sh" "$BM/root/scripts/release/build-macos.sh"
+: >"$BM/root/third_party/wasmtime/lib/libwasmtime.a"
+fake "$BM/root/scripts" fetch-wasmtime.sh "echo fetch-wasmtime >>\"$BM/calls\""
+fake "$BM/root/scripts/release" gmp-version.sh "echo gmp-version >>\"$BM/calls\"; echo 6.3.0"
+fake "$BM/root/scripts/release" fetch-gmp.sh "echo \"fetch-gmp \$*\" >>\"$BM/calls\""
+fake "$BM/root/scripts/release" package.sh "echo \"package \$1 \$2 \$3 \$4 \$GMP_VERSION \${GMP_SOURCE##*/} \${LINK_MAP##*/}\" >>\"$BM/calls\""
+fake "$BM/bin" cabal "
+case \$1 in
+  build) echo \"cabal \$*\" >>\"$BM/calls\" ;;
+  list-bin) echo /bin/golem ;;
+esac"
+fake "$BM/bin" nm 'echo "0000 T __RNvCs_wasmtime"'
+fake "$BM/bin" strings 'exit 0'
+fake "$BM/bin" ar 'exit 0'
+fake "$BM/bin" sw_vers 'echo 15.0'
+fake "$BM/bin" cc 'echo clang'
+build_macos() { rm -f "$BM/calls"; PATH=$BM/bin:$PATH sh "$BM/root/scripts/release/build-macos.sh" "$@"; }
+run build_macos v1.2.3 macos-arm64
+expect "build-macos: the steps run" 0
+if [ "$(cat "$BM/calls" 2>/dev/null)" = "fetch-wasmtime
+cabal build exe:golem
+gmp-version
+fetch-gmp 6.3.0 dist
+package v1.2.3 macos-arm64 /bin/golem dist 6.3.0 gmp-6.3.0.tar.xz golem.map" ]; then ok; else
+  ng "build-macos: fetch-wasmtime.sh, the build, gmp-version.sh, fetch-gmp.sh and package.sh in this order"
+  sed 's/^/  calls: /' "$BM/calls" 2>/dev/null
+fi
+if grep -qF -- "-optl-Wl,-map,$BM/root/dist/golem.map" "$BM/root/cabal.project.local"; then ok; else ng "build-macos: the link map is asked for in cabal.project.local"; fi
+fake "$BM/bin" nm 'exit 1'
+run build_macos v1.2.3 macos-arm64
+expect "build-macos: nm that reads nothing" 1
+if ! grep -q '^package' "$BM/calls" 2>/dev/null; then ok; else ng "build-macos: no archive when nm reads nothing"; fi
+run build_macos v1.2.3
+expect "build-macos: one argument" 2
+if [ ! -e "$BM/calls" ]; then ok; else ng "build-macos: nothing runs with one argument"; fi
+
+# build-linux.sh installs its toolchain with apk and ghcup in an Alpine
+# container and reads /etc/alpine-release, which no fake on PATH can stand
+# for; splitting it so that every step could be a fake would make it
+# harder to read than the order it runs in. Only its arguments and its
+# refusal outside Alpine are tested here (docs/adr/0078).
+run sh "$HERE/build-linux.sh" v1.2.3
+expect "build-linux: one argument" 2
+if [ ! -f /etc/alpine-release ]; then
+  run sh "$HERE/build-linux.sh" v1.2.3 linux-x86_64
+  expect "build-linux: outside Alpine" 1
+fi
+
+# ---- smoke.sh
+
+# An archive of a fake golem: --version prints its version, new makes the
+# folder, build writes one file per target.
+SM=$WORK/smoke
+SMOKE_NAME=golem-v1.2.3-linux-x86_64
+# smoke_archive [MISSING]: the archive and its .sha256, without MISSING
+smoke_archive() {
+  rm -rf "$SM"
+  mkdir -p "$SM/$SMOKE_NAME/THIRD_PARTY_LICENSES"
+  fake "$SM/$SMOKE_NAME" golem '
+case $1 in
+  --version) echo "golem 1.2.3" ;;
+  new) for a in "$@"; do last=$a; done; mkdir -p "$last" ;;
+  build)
+    shift
+    while [ $# -gt 0 ]; do
+      case $1 in --target) mkdir -p "build/$2" && echo out >"build/$2/out"; shift 2 ;; *) shift ;; esac
+    done ;;
+  *) exit 2 ;;
+esac'
+  : >"$SM/$SMOKE_NAME/LICENSE"
+  : >"$SM/$SMOKE_NAME/BUILDINFO"
+  : >"$SM/$SMOKE_NAME/THIRD_PARTY_LICENSES/README"
+  if [ $# -gt 0 ]; then rm -f "$SM/$SMOKE_NAME/$1"; fi
+  tar -C "$SM" -czf "$SM/$SMOKE_NAME.tar.gz" "$SMOKE_NAME"
+  printf '%s  %s\n' "$(sha "$SM/$SMOKE_NAME.tar.gz")" "$SMOKE_NAME.tar.gz" >"$SM/$SMOKE_NAME.tar.gz.sha256"
+}
+smoke() { sh "$HERE/smoke.sh" --offline "$SM/$SMOKE_NAME.tar.gz" "$1"; }
+smoke_archive
+run smoke 1.2.3
+expect "smoke: an archive with everything" 0
+if grep -qx '== skipped: golem new with fonts (--offline)' "$WORK/out"; then ok; else ng "smoke: --offline fetches no fonts"; fi
+run smoke 1.2.4
+expect "smoke: another version" 1
+for f in golem LICENSE BUILDINFO THIRD_PARTY_LICENSES/README; do
+  smoke_archive "$f"
+  run smoke 1.2.3
+  expect "smoke: an archive without $f" 1
+done
+smoke_archive
+printf 'x' >>"$SM/$SMOKE_NAME.tar.gz"
+run smoke 1.2.3
+expect "smoke: an archive that is not that of the .sha256" 1
+
 # ----------------------------------------------------------------
 printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"
 [ "$FAILURES" -eq 0 ]

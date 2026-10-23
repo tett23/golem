@@ -152,6 +152,8 @@ CI の hlint は、GHC でビルドせず、hlint のリリースの x86-64 の 
 ## シェルのスクリプトとそのテスト
 
 CI とリリースとマニュアルの仕組みは、[code: scripts/] の下の POSIX の [code: sh] のスクリプトでできている。
+スクリプトは、GNU 版の道具だけでなく、macOS の BSD 版の [code: awk]、[code: sed]、[code: find]、[code: grep] でも動くように書く。
+CI の [code: scripts-macos] ジョブが、そのことを macOS で確かめる（第[ref-number ci-jobs]章）。
 Golem の方針として、小さな道具を組み合わせ、Python のスクリプトはコミットしない。
 スクリプトには、それぞれテストのスクリプトがある。
 
@@ -159,10 +161,16 @@ Golem の方針として、小さな道具を組み合わせ、Python のスク�
 | --- | --- |
 | [code: scripts/ci/test.sh] | [code: scripts/ci/] のスクリプト（変更のパス、ビルドの要否、判定のジョブ） |
 | [code: scripts/manual/test.sh] | [code: scripts/manual/] のスクリプト（組み方、奥付の版の情報、更新の検査、フォントの取得） |
-| [code: scripts/release/test.sh] | [code: scripts/release/] のスクリプト（バージョンの検査、リリースノート、ライセンス） |
+| [code: scripts/release/test.sh] | [code: scripts/release/] のスクリプト（バージョンの検査、リリースノート、ライセンス、アーカイブの作成と検査、GMP の版と取得、macOS のビルドの順序） |
+| [code: scripts/test.sh] | 手でだけ動くスクリプト（[code: scripts/gen-vertical-orientation.sh]、[code: scripts/fixtures/] の二本） |
 
 どれも一時ディレクトリに Git のリポジトリや偽の [code: golem] を作り、スクリプトの終了コードと出力を確かめる。
-CI の [code: changes] ジョブが前の二つを、[code: release-scripts] ジョブが最後の一つを実行する（第[ref-number ci-jobs]章）。
+[code: curl]、[code: ghc]、[code: cabal]、[code: strip] などの外部のコマンドは、[code: PATH] の先頭に置いた偽物で差し替え、ネットワークも本物のツールチェーンも使わない。
+リポジトリに書き込むスクリプトは、一時ディレクトリに作った偽の根に写して動かす。
+Linux のリリースのビルド（[code: scripts/release/build-linux.sh]）は Alpine のコンテナの中で道具を入れるので、引数の検査と、Alpine の外で断ることだけを確かめる。
+[code: scripts/wasmtime-licenses.sh] は、偽物で差し替える道具が多すぎるので、テストを持たない。
+出力はリリースのときに [code: scripts/release/licenses.sh] が検査する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0078-tests-for-release-and-hand-run-scripts.md]（docs/adr の ADR 0078「リリースのときと手でだけ動くスクリプトにテストを書く」）]
+CI の [code: changes] ジョブが [code: scripts/release/test.sh] のほかを、[code: release-scripts] ジョブが [code: scripts/release/test.sh] を実行する（第[ref-number ci-jobs]章）。
 スクリプトを変えたら、手元でも [code: sh scripts/ci/test.sh] のように実行して確かめる。
 
 ## マニュアルを組む
