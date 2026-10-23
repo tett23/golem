@@ -1126,7 +1126,9 @@ codeTests =
           assertBool (show w) (abs (w - 100) < 0.001)
         other -> assertFailure (show other),
     testCase "G07043: too little measure in a deep list, at the block" $ do
-      let style = horizontalStyle <> nakaguroBullets <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
+      -- the bullet • and its gap take two characters a level (golem-driver ADR 0044):
+      -- of 14 characters, two levels and the padding leave 8, three leave 6
+      let style = replaceIn "characters = 12" "characters = 14" horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n    - c\n\n      ```\n      x\n      ```\n" []
       [(diagMessage d, spanStart (diagSpan d)) | d <- codeOf r "G07043"] @?= [("コードブロックの行長が足りません", 19)]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    x\n    ```\n" []
@@ -1234,7 +1236,8 @@ codeTests =
       (_, pl) <- layoutOk style "```\na\n```\n\n``` numbers=false\nb\n```\n" []
       codeRows pl @?= [[(pad, "1"), (pad + 15 * pt, "a")], [(pad, "b")]],
     testCase "G07043: line numbers and diff marks leave too little measure in a list" $ do
-      let style = horizontalStyle <> nakaguroBullets <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
+      -- of 14 characters, two levels of the bullet • (golem-driver ADR 0044) and the padding leave 8
+      let style = replaceIn "characters = 12" "characters = 14" horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n\n    ``` numbers=100 diff=true\n    +x\n    ```\n" []
       map diagMessage (codeOf r "G07043") @?= ["コードブロックの行長が足りません"]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    +x\n    ```\n" []

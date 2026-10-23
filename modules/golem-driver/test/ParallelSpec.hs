@@ -160,17 +160,20 @@ parallelTests race =
         ),
       testCase "layout errors of three chapters come in the order of the codes, the manifest and the positions" $ do
         let wide = "| " <> T.intercalate " | " (replicate 13 "字") <> " |\n|" <> T.replicate 13 "---|" <> "\n| " <> T.intercalate " | " (replicate 13 "字") <> " |\n"
-            -- the fourth level leaves less than 8 characters of 12 (G07027); the passes that
-            -- find it and the table errors are not the order of the files
+            -- the bullet • and its gap take two characters a level (golem-driver ADR 0044):
+            -- the items 三, 四 and 五 leave less than 8 characters of 12 (G07027); the passes
+            -- that find them and the table errors are not the order of the files
             deep = "- 一\n  - 二\n    - 三\n      - 四\n        - 五の項目。\n"
             chapters = [("z.gm", wide), ("a.gm", "前。\n\n" <> wide), ("m.gm", deep <> "\n" <> wide <> "\n" <> wide)]
-        (ds, pdf) <- buildChapters fakeProvider True (horizontalStyle <> nakaguroBullets) [] chapters
+        (ds, pdf) <- buildChapters fakeProvider True horizontalStyle [] chapters
         -- byte offsets: "前。" is 6 bytes and two newlines; the items of deep are 6, 8, 10
         -- and 12 bytes before "四", 62 bytes in all, then a newline; a table is 214 bytes
         -- (two rows of 80 and a rule of 54), then a newline
         (pdf, [(f, c, at) | (f, c, at, _) <- ds])
           @?= ( Nothing,
-                [ ("m.gm", DiagnosticCode "G07027", 36),
+                [ ("m.gm", DiagnosticCode "G07027", 14),
+                  ("m.gm", DiagnosticCode "G07027", 24),
+                  ("m.gm", DiagnosticCode "G07027", 36),
                   ("z.gm", DiagnosticCode "G07041", 0),
                   ("a.gm", DiagnosticCode "G07041", 8),
                   ("m.gm", DiagnosticCode "G07041", 63),
