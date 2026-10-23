@@ -33,13 +33,11 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 2026-10-23 のテストの品質の点検と、出力のゴールデンを足すときに見つかった問題から採択した ADR を実装する。
 
-- 出力の一部しか固定していないゴールデンを、出力の全体を固定する形にする（未実装、[ADR 0064](adr/0064-goldens-that-fix-less-than-the-output.md)）。
 - 実装を写したオラクルと、同じ式を二度評価するだけの断言をなくす（未実装、[ADR 0065](adr/0065-tautological-properties-and-oracles.md)）。
 - 空の結果や Nothing で通ってしまう断言を、中身を確かめる断言にする（未実装、[ADR 0066](adr/0066-assertions-that-pass-vacuously.md)）。
 - プロパティテストの生成器に、境界の入力を出させる（未実装、[ADR 0067](adr/0067-generators-missing-boundary-inputs.md)）。
 - 上限ちょうどの入力が通ることを、拒む側と対にして確かめる（未実装、[ADR 0068](adr/0068-accepting-side-of-limits.md)）。
 - CI の検査のスクリプトを、素朴な書き換えで迂回できないようにする（未実装、[ADR 0069](adr/0069-lint-scripts-bypassed-by-plain-rewrites.md)）。
-- アーキテクチャ間の決定性の検査で、diagnostics と終了コードも比べる（未実装、[ADR 0071](adr/0071-determinism-check-compares-diagnostics.md)）。
 - 環境変数を書き換えるテストは、書き換えを元に戻す（未実装、[ADR 0072](adr/0072-tests-restore-process-environment.md)）。
 - テストの時間の上限を、止まらないことの検出に限り、上限の検査は数で書く（未実装、[ADR 0073](adr/0073-time-bounds-in-tests.md)）。
 - テストを切り替える環境変数の値の読み方をそろえ、省いたテストを数える（未実装、[ADR 0074](adr/0074-test-switches-by-environment-variables.md)）。
