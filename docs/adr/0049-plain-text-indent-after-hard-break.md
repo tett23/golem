@@ -42,7 +42,7 @@
 | `keep` の段落 | `indent` と `first-line-indent` の和の整数部 | 最初の行と同じ |
 | `join` の段落 | `indent` と `first-line-indent` の和の整数部 | `indent` の整数部 |
 
-- 数が負なら 0 とする。`indent` と `first-line-indent` の和は G0312 で 0 以上に限られるが、`indent` だけなら負になりうる。
+- 数が負なら 0 とする。`indent` と `first-line-indent` の和は G03012 で 0 以上に限られるが、`indent` だけなら負になりうる。
 - `keep` の段落は今と変えない。原稿の一行が InDesign の一段落にあたるので、行ごとに一行目の字下げを掛ける（[ADR 0006](0006-paragraph-indent.md)）。
 - `join` の段落の強制改行の後の行は、PDF と HTML と同じく、`indent` の位置から始める。プレーンテキストには行長がないので、折り返した行はない。
 - リストの項目の中の段落には、今と同じく、どの行にも置かない。入れ子の字下げ（`indentBy ind`）は、今と同じく、すべての行の前に置く。

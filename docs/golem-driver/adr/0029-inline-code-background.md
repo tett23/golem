@@ -54,10 +54,10 @@ padding = "0.25zw"
 | `background` | スウォッチの名前か `false` | 段落スタイル `code` の `background` | 背景の色。`false` は背景を塗らない |
 | `padding` | 寸法 | `"0.25zw"` | コードの前後に取る、行の方向の余白。`zw` はその文字スタイルの文字の大きさを一字とする |
 
-- 二つのキーは、組み込みの文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイル（`lkCode` の文字スタイル）にだけ書ける。ほかの文字スタイルに書くと G0306 とする。型は文字スタイルの全体に持たせ、実装をコードに絞る（仕様書の「設計原則」の「広い型、狭い実装」）。段落スタイルの `background` と `padding` を `code` に絞ったのと同じ形である。
+- 二つのキーは、組み込みの文字スタイル `code` と、`based-on` をたどって `code` に行き着く文字スタイル（`lkCode` の文字スタイル）にだけ書ける。ほかの文字スタイルに書くと G03006 とする。型は文字スタイルの全体に持たせ、実装をコードに絞る（仕様書の「設計原則」の「広い型、狭い実装」）。段落スタイルの `background` と `padding` を `code` に絞ったのと同じ形である。
 - 二つのキーは、ほかのキーと同じく `based-on` でキーごとに引き継ぐ。
-- `background` を書かなければ、段落スタイル `code` の `background` を使う。段落スタイル `code` にも `background` がなければ、背景を塗らない。`background = false` は、段落スタイルの背景を引き継がないことを表す。`true` は G0306 とする。
-- `background` のスウォッチが `[color.swatches]` にない場合は G0313 とする。`padding` が寸法として読めない場合と負の場合は、寸法の値の誤りとして G0306 とする。
+- `background` を書かなければ、段落スタイル `code` の `background` を使う。段落スタイル `code` にも `background` がなければ、背景を塗らない。`background = false` は、段落スタイルの背景を引き継がないことを表す。`true` は G03006 とする。
+- `background` のスウォッチが `[color.swatches]` にない場合は G03013 とする。`padding` が寸法として読めない場合と負の場合は、寸法の値の誤りとして G03006 とする。
 - `padding` は、背景の有無によらず効く。背景がなくても、`background` を書かなくても、誤りにしない（メンテナーの決定）。背景がなければ、余白は空きとして見える。
 - `color`（文字の色）と `background` は一緒に書ける。
 - ファイルの先頭の `@style-def character` にも、同じ条件で書ける。
@@ -100,7 +100,7 @@ padding = "0.25zw"
 柱とノンブルは文字スタイルで組まないので、背景を持たない。
 
 背景のスウォッチは、golem preflight の使ったスウォッチ（`vwSwatchesUsed`）に加える。
-総インキ量の検査（G0915）が、本文の中のコードの背景にも及ぶ。
+総インキ量の検査（G09015）が、本文の中のコードの背景にも及ぶ。
 
 ### HTML と EPUB
 
@@ -132,7 +132,7 @@ code {
 
 - docs/specifications.md：文字スタイルのキーの説明に `background` と `padding` を、コードの文字スタイルの PDF の組み方と、HTML と EPUB の CSS の段落に背景を加える。
 - docs/markup.md：「コード」の節に、`style.toml` で背景を付けられることを一文加える。
-- docs/diagnostics.md：G0306 と G0313 の主な原因に、文字スタイルの `background` と `padding` を加える。
+- docs/diagnostics.md：G03006 と G03013 の主な原因に、文字スタイルの `background` と `padding` を加える。
 - docs/roadmap.md：v1.0.0 の「本文の中のコードの背景の色」を消す。
 - [ADR 0017](0017-pdf-code-blocks.md) のステータスを「採択→本文の中のコードの背景は [ADR 0029](0029-inline-code-background.md)」にする。
 - 使い手のマニュアル：`manual/chapters/05-style.gm` の文字スタイルの節と `manual/appendices/c-style.gm` の文字スタイルの表に、二つのキーを加える。
@@ -155,11 +155,11 @@ code {
 
 - `[character-styles.code] background = "code-bg"` を読むと、`csBackground` が `code-bg` になる。`padding` を書かなければ、解決した文字スタイルの余白が `0.25zw` になる。
 - `[character-styles.code]` に `background` を書かず、`[paragraph-styles.code] background = "code-bg"` がある本で、解決した文字スタイル `code` の背景が `code-bg` になる。段落スタイルにも背景がなければ、背景がない。
-- `background = false` で、段落スタイルの背景があっても背景がない。`background = true` が G0306 になる。
+- `background = false` で、段落スタイルの背景があっても背景がない。`background = true` が G03006 になる。
 - `background` のない文字スタイル `code` に `padding = "0.5zw"` を書いても診断が出ない。
 - `[character-styles.path] based-on = "code"` が、`code` の `background` を引き継ぐ。`path` に `background` を書いて上書きできる。
-- `based-on` が `code` に行き着かない文字スタイル（`[character-styles.term]`）に `background` か `padding` を書くと G0306 になる。
-- `background = "none-such"`（スウォッチにない）が G0313、`padding = "-1pt"` と `padding = "abc"` が G0306 になる。
+- `based-on` が `code` に行き着かない文字スタイル（`[character-styles.term]`）に `background` か `padding` を書くと G03006 になる。
+- `background = "none-such"`（スウォッチにない）が G03013、`padding = "-1pt"` と `padding = "abc"` が G03006 になる。
 - `@style-def character code background=code-bg` を読める。
 
 ### 組み方（`modules/golem-layout/test/Main.hs`）

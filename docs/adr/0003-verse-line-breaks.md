@@ -15,7 +15,7 @@ Full fathom five thy father lies; Of his bones are coral made; Those are pearls 
 ```
 
 変換スクリプト（`scripts/fixtures/gutenberg_play_to_gm.py`）が、原典の行を空白でつないで一行にしているためである。
-改行のまま残しても、段落内の改行は文字を生まないので、語が空白なしにつながる（lint の G0501 がこれを誤りとして報告する）。
+改行のまま残しても、段落内の改行は文字を生まないので、語が空白なしにつながる（lint の G05001 がこれを誤りとして報告する）。
 specifications.md は、この問題を「今後の実装項目」に挙げている。
 
 韻文の行は、組版の上でも段落と違う扱いを要する。
@@ -111,21 +111,21 @@ joinSoftBreaks :: [A.Located A.Inline] -> [A.Located A.Inline]
 verse :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
 ```
 
-1. 引数があれば G0244 とする。
-2. 本体に `A.Paragraph` 以外のブロックがあれば、そのブロックの位置で G0245 とする（`A.ErrorBlock` は構文エラーとして報告済みなので数えない）。
+1. 引数があれば G02044 とする。
+2. 本体に `A.Paragraph` 以外のブロックがあれば、そのブロックの位置で G02045 とする（`A.ErrorBlock` は構文エラーとして報告済みなので数えない）。
 3. 各段落の最上位のインラインの列を `SoftBreak` で分け、行の列にする。各行の先頭の `Text` の先頭の空白とタブを取り除き、`evalInlines` で評価する。
 4. 評価した結果が空の行（コメントだけの行など）は捨てる。行が一つもなくなった連は捨てる。
-5. 連が一つもなければ G0246 とする。そうでなければ `VerseBlock` のブロックを一つ返す。
+5. 連が一つもなければ G02046 とする。そうでなければ `VerseBlock` のブロックを一つ返す。
 
 注の番号は、行の順に、ほかのブロックと同じく文書の順で振る。
 
 | 診断コード | 重大度 | メッセージ |
 |---|---|---|
-| G0244 | エラー | `@verse は引数を取りません` |
-| G0245 | エラー | `@verse の本体には段落だけを置けます。連は空行で区切ります` |
-| G0246 | エラー | `@verse の本体がありません。韻文の行を 2 つ深くインデントして書きます` |
+| G02044 | エラー | `@verse は引数を取りません` |
+| G02045 | エラー | `@verse の本体には段落だけを置けます。連は空行で区切ります` |
+| G02046 | エラー | `@verse の本体がありません。韻文の行を 2 つ深くインデントして書きます` |
 
-G0244 から G0246 は未使用である（golem-eval は G0243 まで使っている）。
+G02044 から G02046 は未使用である（golem-eval は G02043 まで使っている）。
 
 ### 意味論 IR（golem-doc）
 
@@ -237,10 +237,10 @@ specifications.md の `style.toml` の例に `[verse]` を加える。
 
 ### lint（golem-lint）
 
-G0501（段落内の改行の前後がともに欧文）は、韻文の行の区切りには当てない。
+G05001（段落内の改行の前後がともに欧文）は、韻文の行の区切りには当てない。
 `latinJoinedByNewline` で、名前が `verse` の `NBlockCommand` の `NCommandBody` の中の `NParagraph` では、最上位の改行を調べず、入れ子の `NProseSlot` だけを調べる。
-散文スロットの中の改行は韻文の中でも文字を生まないので、そこでは G0501 が引き続き意味を持つ。
-[golem-lint ADR 0001](../golem-lint/adr/0001-lint-rules.md) のステータスの行を「採択→G0501 の韻文の扱いは docs/adr [ADR 0003](0003-verse-line-breaks.md)」に変える。
+散文スロットの中の改行は韻文の中でも文字を生まないので、そこでは G05001 が引き続き意味を持つ。
+[golem-lint ADR 0001](../golem-lint/adr/0001-lint-rules.md) のステータスの行を「採択→G05001 の韻文の扱いは docs/adr [ADR 0003](0003-verse-line-breaks.md)」に変える。
 
 ### fmt（golem-fmt）
 
@@ -253,7 +253,7 @@ AST に `SoftBreak` が加わっても、整形の前後で改行の位置が変
 
 機能は加えない。
 
-- 新しい診断（G0244 から G0246）は、評価の診断として既存の経路で表示される。
+- 新しい診断（G02044 から G02046）は、評価の診断として既存の経路で表示される。
 - AST を走査する関数に `SoftBreak` の場合を加える（何も返さない）。
 - ブロックコマンドの名前の補完は今もないので、`@verse` も補完しない。
 - 整形は golem-fmt を呼ぶので、韻文の行分けは保たれる。
@@ -298,7 +298,7 @@ fixture は `scripts/fixtures/fetch-public-domain.sh` で作り直し、`golem f
 - `@verse` の引数（詩ごとの `indent` や `hang` の上書き）。v1 では `style.toml` の値だけを使う。
 - 行番号（5 行ごとの番号など）。
 - 連をページで分けない指定。連の途中で改ページしうる。
-- `@label` などの属性を `@verse` に付けること。属性のまとまりの最後がブロックコマンドの場合、評価は今「属性の後にブロックがありません」（G0210）とする。`@figure` にも同じ問題があり、属性の規則の ADR で扱う。
+- `@label` などの属性を `@verse` に付けること。属性のまとまりの最後がブロックコマンドの場合、評価は今「属性の後にブロックがありません」（G02010）とする。`@figure` にも同じ問題があり、属性の規則の ADR で扱う。
 - 段落一般の強制改行（行末の `\` など）。必要になったら別の ADR で決める。行末の `\` は今は構文エラーなので、後から意味を与えられる。
 - 蟹工船の変換スクリプト（`aozora_to_gm.py`）の変更。
 - 段落スタイルとしての韻文の定義。文字スタイルと段落スタイルへの記法の統合は、v1 のリリースの前に別の ADR で行う。
@@ -317,12 +317,12 @@ fixture は `scripts/fixtures/fetch-public-domain.sh` で作り直し、`golem f
 ### golem-eval（`test/FileSpec.hs`）
 
 - `"吾輩は猫である。\n名前はまだ無い。\n"` の段落の IR が、一つの `Text "吾輩は猫である。名前はまだ無い。"` であること（この ADR の前と同じ）。
-- `"[tcy: 1\n2]\n"` が G0240 にならないこと（`joinSoftBreaks` が縦中横の中身の検査より先に働くこと）。
+- `"[tcy: 1\n2]\n"` が G02040 にならないこと（`joinSoftBreaks` が縦中横の中身の検査より先に働くこと）。
 - `"@verse\n  A\n  B\n\n  C\n"` が `VerseBlock [[[Text "A"], [Text "B"]], [[Text "C"]]]` になること。
 - `"@verse\n  A\n    B\n"` の二行目が `Text "B"` になること。`"@verse\n  A\n  　B\n"`（全角の空白で始まる行）の二行目が `Text "　B"` になること。
 - `"@verse\n  [italic: a\n  b] c\n"` が一行 `[Italic [Text "ab"], Text " c"]` になること。
 - `"@verse\n  A %% x %%\n  %% y %%\n  B\n"` が二行 `[Text "A"]` と `[Text "B"]` になること。
-- `"@verse x\n  A\n"` が G0244、`"@verse\n  - a\n"` が G0245、`"@verse\n"` が G0246 であること。
+- `"@verse x\n  A\n"` が G02044、`"@verse\n  - a\n"` が G02045、`"@verse\n"` が G02046 であること。
 - `@verse` の行の中の `[note: ...]` に、前後の段落の注と続く番号が振られること。
 
 ### golem-doc
@@ -355,8 +355,8 @@ fixture は `scripts/fixtures/fetch-public-domain.sh` で作り直し、`golem f
 
 ### golem-lint と golem-fmt
 
-- `"@verse\n  Full fathom five\n  Of his bones\n"` に G0501 が出ないこと。同じ二行を普通の段落に書くと G0501 が出ること。
-- `"@verse\n  [note: a\n  b] x\n"` の散文スロットの中の改行に G0501 が出ること。
+- `"@verse\n  Full fathom five\n  Of his bones\n"` に G05001 が出ないこと。同じ二行を普通の段落に書くと G05001 が出ること。
+- `"@verse\n  [note: a\n  b] x\n"` の散文スロットの中の改行に G05001 が出ること。
 - golem-fmt の golden に韻文のファイル（本体のインデントが 4 つの空白のもの、行末に空白のあるもの）を加え、本体が 2 つの空白にそろい、行分けが変わらないこと。既存の整形の前後の AST の一致のプロパティテストの生成器に `@verse` を加えること。
 
 ### 変換スクリプトと fixture

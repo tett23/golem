@@ -148,7 +148,7 @@ data Evaluated = Evaluated
     evAssetSources :: !(Map FileId SourceInfo),
     -- | the table files the evaluation read, relative to the root, for the LSP to watch (golem-eval ADR 0004)
     evTableFiles :: !(Set.Set FilePath),
-    -- | the diagnostics of the project stage: G0307, G0323, plugins, the bibliography, table files (golem-lsp ADR 0004)
+    -- | the diagnostics of the project stage: G03007, G03023, plugins, the bibliography, table files (golem-lsp ADR 0004)
     evProjectDiagnostics :: ![Diagnostic],
     -- | the diagnostics of S1 (golem-lsp ADR 0004)
     evS1Diagnostics :: ![Diagnostic],
@@ -173,7 +173,7 @@ localStylesOf = Map.filter (/= noLocalStyles) . Map.map erStyles . evResults
 docStyles :: Evaluated -> FileId -> Style
 docStyles e fid = maybe (evStyle e) (withLocalStyles (evStyle e)) (Map.lookup fid (localStylesOf e))
 
-{- | The FileId of plugins.lock, where G0611 points (golem-plugin ADR 0003):
+{- | The FileId of plugins.lock, where G06011 points (golem-plugin ADR 0003):
 the one after style.toml's.
 -}
 lockFileId :: Project -> FileId
@@ -205,8 +205,8 @@ evaluateProjectWith overlay profile root = do
     Left f -> pure (Left f)
     Right project -> do
       styleBytes <- readMaybeBytes (root </> "style.toml")
-      let -- G0323: the default style, when there is no style.toml (golem-syntax ADR 0002)
-          defaultStyleNotice = [notice "G0323" (mkSpan (projectManifestFile project) 0 0) "style.toml がないので、既定の体裁で組みます" | isNothing styleBytes]
+      let -- G03023: the default style, when there is no style.toml (golem-syntax ADR 0002)
+          defaultStyleNotice = [notice "G03023" (mkSpan (projectManifestFile project) 0 0) "style.toml がないので、既定の体裁で組みます" | isNothing styleBytes]
           synDiags = defaultStyleNotice <> concatMap sfSyntaxDiagnostics (Map.elems (projectSources project))
           manifest0 = projectManifest project
           styleFid = styleFileId project
@@ -225,8 +225,8 @@ evaluateProjectWith overlay profile root = do
           hookE <- loadPlugins cacheDir (projectManifestFile project) (lockFileId project) (fromMaybe "" lockText) manifest0
           let (pluginDiags, hook) = either (,noPlugins) ([],) hookE
               pluginCommands = sort (map unPluginCommandName (Map.keys (phCommands hook)))
-              -- no G0222 after the plugins failed to load (golem-plugin ADR 0003), nor G0290 (golem-doc ADR 0007)
-              quiet = if null pluginDiags then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G0222", DiagnosticCode "G0290"]) . diagCode) (erDiagnostics r)}
+              -- no G02022 after the plugins failed to load (golem-plugin ADR 0003), nor G02090 (golem-doc ADR 0007)
+              quiet = if null pluginDiags then id else \r -> r {erDiagnostics = filter ((`notElem` [DiagnosticCode "G02022", DiagnosticCode "G02090"]) . diagCode) (erDiagnostics r)}
           if hasErrors synDiags
             then do
               loaded <- loadAssets overlay root project
@@ -236,15 +236,15 @@ evaluateProjectWith overlay profile root = do
               pure (Right (Evaluated project style styleFid (fromMaybe "" styleText) lockText Map.empty Nothing (synDiags <> projectDiags) (laSources loaded) (laTableFiles loaded) projectDiags [] (const (Nothing, [])) (\f sf -> quiet (reeval profile project style assets citeKeys hook Map.empty f sf)) pluginCommands))
             else do
               let manifest = manifest0
-                  -- one G0307 for each name, in the order of the chapters (golem-project ADR 0006)
+                  -- one G03007 for each name, in the order of the chapters (golem-project ADR 0006)
                   masterDiags =
-                    [ diagnostic "G0307" Error (mkSpan (projectManifestFile project) 0 0) ("style.toml にないマスターページです: " <> m)
+                    [ diagnostic "G03007" Error (mkSpan (projectManifestFile project) 0 0) ("style.toml にないマスターページです: " <> m)
                     | m <- nub [m | (_, Just m) <- projectChapters project],
                       not (Map.member m (stMasters style))
                     ]
               loaded <- loadAssets overlay root project
               let assets = laAssets loaded
-              -- G0326 and G0303 of the bibliography, for every target (golem-doc ADR 0004)
+              -- G03026 and G03003 of the bibliography, for every target (golem-doc ADR 0004)
               (bibDiags, citeKeys, _) <- loadBibliography root manifest
               let results = Map.map quiet (evalAll profile project style assets citeKeys hook)
                   s0Diags = concatMap erDiagnostics (Map.elems results)
@@ -265,7 +265,7 @@ assembleResults channels style manifest project projectDiags results
       let -- the chapter of the manifest of each file: a top-level entry, a nested array as one (golem-driver ADR 0018)
           chapterOfFile = [i | (i, e) <- zip [0 :: Int ..] (manifestChapters manifest), _ <- chapterFiles [e]] <> [length (manifestChapters manifest) ..]
           chapterRuns = [(erDocument r, ch) | ((fid, _), ch) <- zip (projectChapters project) chapterOfFile, Just r <- [Map.lookup fid results]]
-          -- where G0407 points (golem-syntax ADR 0002)
+          -- where G04007 points (golem-syntax ADR 0002)
           numberSites = Map.unions (map erNumberSites (Map.elems results))
           cfg = AssembleConfig (Map.mapMaybe hsNumber (stHeadings style)) (stFigureNumber style) numberSites (stNotesNumbering style) (map snd chapterRuns) (cdNumber (stCode style)) channels pageLines
           -- the lines of a page; without [page.grid], no limit (docs/adr ADR 0047)
@@ -283,11 +283,11 @@ readMaybeBytes p = do
   e <- doesFileExist p
   if e then Just <$> BS.readFile p else pure Nothing
 
--- | golem fmt does not format style.toml, so its G0103 has no fix (golem-parser ADR 0009).
+-- | golem fmt does not format style.toml, so its G01003 has no fix (golem-parser ADR 0009).
 noFix :: Diagnostic -> Diagnostic
 noFix d = d {diagFixes = []}
 
--- | A deferred expression; G0208 is at the inline @sp@ (golem-eval ADR 0003).
+-- | A deferred expression; G02008 is at the inline @sp@ (golem-eval ADR 0003).
 evalDeferred :: DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text
 evalDeferred dv sp (DeferredExpr e) =
   let docNs = Map.fromList [("chapters", VHash (Map.fromList [("count", VInt (dvChapterCount dv))]))]
@@ -355,7 +355,7 @@ evaluateLoose path text =
 sourceSettingsOf :: Project -> FileId -> SourceSettings
 sourceSettingsOf project fid = Map.findWithDefault (manifestSource (projectManifest project)) fid (projectSourceSettings project)
 
--- | The paragraph styles that keep their lines (lint G0501, docs/adr ADR 0005).
+-- | The paragraph styles that keep their lines (lint G05001, docs/adr ADR 0005).
 keepStyles :: Style -> Set.Set Text
 keepStyles = Map.keysSet . Map.filter (== KeepLines) . paraLineBreaks
 
@@ -418,8 +418,8 @@ epubConfig md isbn vertical =
 
 {- | The variables the running heads show, as text, for each chapter file
 by its master page (golem-driver ADR 0022): its own (@{set.<name>}@) and
-those of its imports (@{set.<namespace>.<name>}@). G0267 for a variable
-without @?@ that the file does not have, G0268 for a value that is not a
+those of its imports (@{set.<namespace>.<name>}@). G02067 for a variable
+without @?@ that the file does not have, G02068 for a value that is not a
 string or a number; at the top of the file, once for each file and name.
 -}
 runningVars :: Evaluated -> (Map FileId (Map [Text] Text), [Diagnostic])
@@ -441,11 +441,11 @@ runningVars e =
               one (n, optional) = case lookupVar n of
                 Nothing
                   | optional -> ([], [])
-                  | otherwise -> ([], [(diagnostic "G0267" Error at ("柱が参照する変数 " <> T.intercalate "." n <> " が、このファイルにありません（マスターページ " <> mname <> "）")) {diagRelated = related}])
+                  | otherwise -> ([], [(diagnostic "G02067" Error at ("柱が参照する変数 " <> T.intercalate "." n <> " が、このファイルにありません（マスターページ " <> mname <> "）")) {diagRelated = related}])
                 -- strings and numbers as they are embedded in prose
                 Just v -> case embedValue at v of
                   Right t -> ([(n, t)], [])
-                  Left _ -> ([], [(diagnostic "G0268" Error at ("柱に出せるのは文字列と数です: " <> T.intercalate "." n <> " は " <> typeName v)) {diagRelated = related}])
+                  Left _ -> ([], [(diagnostic "G02068" Error at ("柱に出せるのは文字列と数です: " <> T.intercalate "." n <> " は " <> typeName v)) {diagRelated = related}])
               (vals, ds) = foldMap one (Map.toList refs)
            in (Map.singleton fid (Map.fromList vals), ds)
         _ -> (Map.empty, [])
@@ -460,7 +460,7 @@ data LoadedAssets = LoadedAssets
   { laAssets :: !(Map FilePath Asset),
     -- | the files read as text, where their diagnostics point
     laSources :: !(Map FileId SourceInfo),
-    -- | the reading stage of the table files: G0101 and G0282
+    -- | the reading stage of the table files: G01001 and G02082
     laDiagnostics :: ![Diagnostic],
     -- | the table files the last evaluation read, for the LSP to watch (golem-eval ADR 0004)
     laTableFiles :: !(Set.Set FilePath)
@@ -497,7 +497,7 @@ loadAssets overlay root project = do
         (Right rel, Just fid) -> do
           let open = Map.lookup rel overlay <|> Map.lookup path overlay
               readBytes = maybe (BS.readFile (root </> rel)) (pure . TE.encodeUtf8) open
-          -- the size of a table file is known before it is read (G0288, docs/adr ADR 0043)
+          -- the size of a table file is known before it is read (G02088, docs/adr ADR 0043)
           size <- maybe (getFileSize (root </> rel)) (pure . toInteger . lengthWord8) open
           if Set.member UseTable uses && size > toInteger tableMaxBytes
             then do
@@ -540,10 +540,10 @@ assetRefs (A.File _ bs) = concatMap blk bs
       A.StringLit t -> Just t
       _ -> Nothing
 
-{- | CSL-JSON: G0326 and G0303 for the files of the bibliography that
+{- | CSL-JSON: G03026 and G03003 for the files of the bibliography that
 cannot be read, the keys, and the entries formatted by golem-doc
 (golem-doc ADR 0004, 0005). The diagnostics point at the head of manifest.toml,
-FileId 0, as G0302 does, because the manifest keeps no positions.
+FileId 0, as G03002 does, because the manifest keeps no positions.
 -}
 loadBibliography :: FilePath -> Manifest -> IO ([Diagnostic], Set.Set Text, Map Text [EntryPart])
 loadBibliography root manifest = do
@@ -551,7 +551,7 @@ loadBibliography root manifest = do
     res <- resolveInRoot root p
     case res of
       Left Missing -> pure (Left (unreadable ("参考文献のファイルがありません: " <> T.pack p)))
-      Left e -> pure (Left (diagnostic "G0303" Error manifestHead (T.pack (pathErrorMessage e <> ": " <> p))))
+      Left e -> pure (Left (diagnostic "G03003" Error manifestHead (T.pack (pathErrorMessage e <> ": " <> p))))
       Right rel -> do
         r <- try (BL.readFile (root </> rel)) :: IO (Either SomeException BL.ByteString)
         pure $ case J.eitherDecode <$> r of
@@ -563,7 +563,7 @@ loadBibliography root manifest = do
   pure (lefts results, Map.keysSet m, m)
   where
     manifestHead = mkSpan (FileId 0) 0 0
-    unreadable = diagnostic "G0326" Error manifestHead
+    unreadable = diagnostic "G03026" Error manifestHead
 
 {- | The fields of a CSL-JSON item that the bibliography shows; Nothing
 without a string id (golem-doc ADR 0004, 0005). An empty string, or one
@@ -673,13 +673,13 @@ buildCore inMemory opts = do
           targets = fromMaybe (targetsOf (projectManifest project)) (optTargets opts)
       hasStyle <- doesFileExist (optRoot opts </> "style.toml")
       let styleFid = evStyleFile e
-          -- style.toml is a source of diagnostics (golem-project ADR 0004, G0702) when it exists
+          -- style.toml is a source of diagnostics (golem-project ADR 0004, G07002) when it exists
           infos =
             (if hasStyle then Map.insert styleFid (SourceInfo "style.toml" (mkLineIndex (evStyleText e))) else id)
               (withEvaluatedSources e (sourceInfos project))
           -- where diagnostics about style.toml point (golem-driver ADR 0016)
           diagFid = if hasStyle then styleFid else projectManifestFile project
-          -- G0702, and what style.toml decides of the layout (G0701, G0725; golem-driver ADR 0016)
+          -- G07002, and what style.toml decides of the layout (G07001, G07025; golem-driver ADR 0016)
           marksDiags =
             cropMarkDiagnostics opts e diagFid targets
               <> (if TargetPdf `elem` targets then styleLayoutDiagnostics diagFid (isJust (markStyle (optMarks opts))) (evStyle e) (Map.elems (localStylesOf e)) else [])
@@ -688,14 +688,14 @@ buildCore inMemory opts = do
       -- without code in the book, the role code is not used (golem-driver ADR 0017)
       let fileStyle = maybe id (\b -> codeStyles (bookHasCode (docStyles e) b) (stFonts (evStyle e))) (evBook e) (evStyle e)
           locals = Map.elems (localStylesOf e)
-      -- G0819: CFF2 fonts, which the PDF cannot embed; golem check reports them too (golem-font ADR 0003)
+      -- G08019: CFF2 fonts, which the PDF cannot embed; golem check reports them too (golem-font ADR 0003)
       cff2Diags <-
         if TargetPdf `elem` targets
           then cff2FontDiagnostics (optRoot opts) diagFid [p | p <- pdfFontPaths fileStyle locals, Map.notMember p missing]
           else pure []
       let perTarget = [(t, map (adjustForProfile (optProfile opts)) (targetFileDiagnostics diagFid fileStyle locals missing t <> (if t == TargetPdf then cff2Diags else []))) | t <- targets]
           fileDiags = nub (concatMap snd perTarget)
-          -- G0701, G0702 and G0725 stop the PDF before it is laid out; the other targets are written
+          -- G07001, G07002 and G07025 stop the PDF before it is laid out; the other targets are written
           writable = [t | (t, ds) <- perTarget, not (hasErrors ds), t /= TargetPdf || null marksDiags]
           -- the variables of the running heads, after S0, only for the PDF (golem-driver ADR 0022)
           evDiags =
@@ -705,7 +705,7 @@ buildCore inMemory opts = do
       case evBook e of
         Just book
           | not (hasErrors (finish evDiags)) && not (optCheckOnly opts) -> do
-              -- G0814 stops HTML and EPUB, which copy SVG figures as they are (docs/adr ADR 0039)
+              -- G08014 stops HTML and EPUB, which copy SVG figures as they are (docs/adr ADR 0039)
               activeDiags <-
                 if any (`elem` writable) [TargetHtml, TargetEpub]
                   then activeContentDiagnostics (optRoot opts) book
@@ -723,7 +723,7 @@ buildCore inMemory opts = do
     -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002)
     finishWith silenced = sortDiagnostics . silenceNotices (if optNoNotices opts then Nothing else Just silenced) . map (adjustForProfile (optProfile opts))
 
-{- | G0814 (docs/adr ADR 0039): the SVG files that HTML and EPUB copy (a
+{- | G08014 (docs/adr ADR 0039): the SVG files that HTML and EPUB copy (a
 figure or its @web@ image, also inside lists) with active content, or
 that cannot be read; each file is read once, and each @figure that uses
 it gets its own diagnostic at its block. Files that are missing or
@@ -738,9 +738,9 @@ activeContentDiagnostics root book = do
       Right _ -> (path,) . activeMessage path . activeContent <$> BS.readFile (root </> T.unpack path)
       Left _ -> pure (path, Nothing)
   let messages = Map.fromList checked
-  pure [diagnostic "G0814" Error sp msg | (sp, path) <- figures, Just (Just msg) <- [Map.lookup path messages]]
+  pure [diagnostic "G08014" Error sp msg | (sp, path) <- figures, Just (Just msg) <- [Map.lookup path messages]]
 
-{- | G0327 (golem-driver ADR 0026): numbers per file meet in the list of a
+{- | G03027 (golem-driver ADR 0026): numbers per file meet in the list of a
 chapter of two files or more with notes in two of them, when a target
 gathers the notes at the end of the chapter: HTML, EPUB and plain text
 always, the PDF with placement = "chapter-end". It points at the first
@@ -751,7 +751,7 @@ chapterNoteDiagnostics :: Style -> [Target] -> Map FileId SourceInfo -> Book -> 
 chapterNoteDiagnostics style targets infos book
   | stNotesNumbering style /= NumberPerFile || not gathered = []
   | otherwise =
-      [ diagnostic "G0327" Warning sp ("章末の注の番号が章の中で重なります（" <> pathOf f0 <> "）。[notes] の numbering を \"chapter\" にしてください")
+      [ diagnostic "G03027" Warning sp ("章末の注の番号が章の中で重なります（" <> pathOf f0 <> "）。[notes] の numbering を \"chapter\" にしてください")
       | ch@(Document f0 _ : _ : _) <- bookChapters book,
         (_ : ((sp, _, _) : _) : _) <- [filter (not . null) (map documentNotes ch)]
       ]
@@ -782,7 +782,7 @@ data PreflightResult = PreflightResult
     prBasedOn :: !Text
   }
 
-{- | golem preflight (golem-cli ADR 0006): the rules first (G0901 stops
+{- | golem preflight (golem-cli ADR 0006): the rules first (G09001 stops
 here), then the PDF as golem build --target pdf --profile prod makes it,
 kept in memory, then the checks of the rules on its view.
 -}
@@ -796,12 +796,12 @@ preflight po = do
       then
         pure $
           if isJust (poRules po)
-            then Left ([diagnostic "G0901" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルがありません: " <> T.pack path)], "")
+            then Left ([diagnostic "G09001" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルがありません: " <> T.pack path)], "")
             else Right (printRules, "組み込みの print")
       else do
         bytes <- BS.readFile path
         pure $ case TE.decodeUtf8' bytes of
-          Left _ -> Left ([diagnostic "G0901" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルが UTF-8 として読めません: " <> T.pack path)], "")
+          Left _ -> Left ([diagnostic "G09001" Error (mkSpan rulesFid 0 0) ("プリフライトの設定のファイルが UTF-8 として読めません: " <> T.pack path)], "")
           Right src -> case parseRules rulesFid src of
             Left ds -> Left (ds, src)
             Right r -> Right (r, fromMaybe (T.pack (takeFileName path)) (ruName r))
@@ -823,20 +823,20 @@ missingStyleFiles root style = do
 {- | Diagnostics of the missing files for one target (golem-project ADR
 0004): the fonts the PDF uses and its output intent (errors), every font
 for HTML and EPUB (warnings, errors in prod), nothing for plain text.
-The PDF also needs a body font with a file (G0807, golem-driver ADR 0016).
+The PDF also needs a body font with a file (G08007, golem-driver ADR 0016).
 -}
 targetFileDiagnostics :: FileId -> Style -> [LocalStyles] -> Map FilePath PathError -> Target -> [Diagnostic]
 targetFileDiagnostics fid style locals missing = \case
   TargetPdf ->
     bodyFontDiagnostics fid style
-      <> report "G0802" Error "フォントのファイルがありません" pdfFonts
-      <> report "G0806" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
+      <> report "G08002" Error "フォントのファイルがありません" pdfFonts
+      <> report "G08006" Error "出力インテントの ICC プロファイルがありません" (maybe [] pure (stIntent style))
   TargetHtml -> siteFonts
   TargetEpub -> siteFonts
   TargetText -> []
   where
     pdfFonts = pdfFontPaths style locals
-    siteFonts = report "G0310" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
+    siteFonts = report "G03010" Warning "フォントのファイルがないので、HTML と EPUB に同梱しません" (map snd (fontFiles style))
     report code sev missingMsg paths =
       [ diagnostic code sev (mkSpan fid 0 0) (T.pack (msg <> ": " <> p))
       | p <- nub paths,
@@ -848,14 +848,14 @@ targetFileDiagnostics fid style locals missing = \case
 pdfFontPaths :: Style -> [LocalStyles] -> [FilePath]
 pdfFontPaths style locals = [p | r <- usedRoles style locals, Just (FontRole ja la _) <- [Map.lookup r (stFonts style)], Just p <- [ja, la]]
 
-{- | G0702 (golem-pdf ADR 0004): Japanese crop marks need bleed, because the
+{- | G07002 (golem-pdf ADR 0004): Japanese crop marks need bleed, because the
 trim line and the bleed line would be drawn on top of each other. Only when
 the PDF is a target; at the top of style.toml (or of the manifest without
 one), as Style keeps no positions.
 -}
 cropMarkDiagnostics :: BuildOptions -> Evaluated -> FileId -> [Target] -> [Diagnostic]
 cropMarkDiagnostics opts e fid targets =
-  [ diagnostic "G0702" Error (mkSpan fid 0 0) "日本式のトンボには塗り足しが要ります。style.toml の [page] に bleed を書いてください"
+  [ diagnostic "G07002" Error (mkSpan fid 0 0) "日本式のトンボには塗り足しが要ります。style.toml の [page] に bleed を書いてください"
   | optMarks opts == JapaneseMarks,
     TargetPdf `elem` targets,
     maybe 0 pageBleed (stPage (evStyle e)) == 0
@@ -879,7 +879,7 @@ optionsInput opts =
     <> " profile="
     <> (case optProfile opts of Dev -> "dev"; Prod -> "prod")
 
-{- | Writes the targets, after G0813 (docs/adr ADR 0035): @build@ and the
+{- | Writes the targets, after G08013 (docs/adr ADR 0035): @build@ and the
 folder of each target that is written must be real folders or missing, not
 symbolic links nor other files, or nothing is removed nor written.
 -}
@@ -889,7 +889,7 @@ writeTargets inMemory opts e diagFid book missing targets = do
   unsafe <- if null written then pure [] else unsafeOutputDirs (optRoot opts) written
   case unsafe of
     [] -> writeTargetsChecked inMemory opts e diagFid book missing targets
-    ps -> pure ([], [diagnostic "G0813" Error (mkSpan diagFid 0 0) ("出力先がシンボリックリンクかディレクトリではないので、消すことも書くこともしません: " <> T.pack p) | p <- ps], Nothing)
+    ps -> pure ([], [diagnostic "G08013" Error (mkSpan diagFid 0 0) ("出力先がシンボリックリンクかディレクトリではないので、消すことも書くこともしません: " <> T.pack p) | p <- ps], Nothing)
 
 {- | The output folders, relative to the root, that are symbolic links (to
 anywhere, or nowhere) or files that are not folders: @build@ and the folder
@@ -1032,8 +1032,8 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
           -- the manifest, style.toml, the sources and the options that change the output (golem-pdf ADR 0004)
           inputs = projectManifestText project : evStyleText e : [sfText sf | sf <- Map.elems (projectSources project)] <> [optionsInput opts]
       r <- renderPdfView (optFonts opts) (PdfInput root project style book (optParallel opts) (map TE.encodeUtf8 inputs) bib (markStyle (optMarks opts)) (localStylesOf e) (Map.fromList [(fid, m) | (fid, Just m) <- projectChapters project]) diagFid (fst (runningVars e)))
-      -- G0808: code in the body role without [fonts.code] (golem-driver ADR 0017)
-      -- G0745: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
+      -- G08008: code in the body role without [fonts.code] (golem-driver ADR 0017)
+      -- G07045: kenten the PDF does not draw, with ruby (golem-driver ADR 0019)
       let fontNotice = codeFontNotice diagFid style book <> kentenRubyNotices book
       case r of
         Left ds -> pure ([], ds <> fontNotice, Nothing)

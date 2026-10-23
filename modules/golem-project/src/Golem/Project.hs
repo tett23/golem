@@ -88,7 +88,7 @@ loadProjectWith overlay root = do
   let (mfid, ft0) = registerFile "manifest.toml" emptyFileTable
   exists <- doesFileExist (root </> "manifest.toml")
   if not exists
-    then pure (Left (ProjectFailure [diagnostic "G0316" Error (mkSpan mfid 0 0) "manifest.toml がありません"] Map.empty))
+    then pure (Left (ProjectFailure [diagnostic "G03016" Error (mkSpan mfid 0 0) "manifest.toml がありません"] Map.empty))
     else do
       mbytes <- BS.readFile (root </> "manifest.toml")
       let mtext = TE.decodeUtf8Lenient mbytes
@@ -123,7 +123,7 @@ sourceInfoOf sf = SourceInfo (sfPath sf) (mkLineIndex (sfText sf))
 
 cycleDiagnostic :: FileTable -> NonEmpty (FileId, ImportSite) -> Diagnostic
 cycleDiagnostic ft path@((_, s0) :| _) =
-  (diagnostic "G0305" Error (isSpan s0) ("import が循環しています: " <> T.intercalate " → " (map name edges <> take 1 (map name edges))))
+  (diagnostic "G03005" Error (isSpan s0) ("import が循環しています: " <> T.intercalate " → " (map name edges <> take 1 (map name edges))))
     { diagRelated = [(isSpan s, "@import " <> isPath s) | (_, s) <- edges]
     }
   where
@@ -140,7 +140,7 @@ type LoadFailure = ([Diagnostic], Map FileId SourceInfo)
 -}
 data Seen = Seen !(Map String FilePath) !(Map String FilePath)
 
-{- | A path that differs from a registered one only in case (G0304), as
+{- | A path that differs from a registered one only in case (G03004), as
 the later path and the earlier one. The written paths come first, so that
 every file system gives the same error; the resolved paths catch links
 whose targets differ only in case (ADR 0006).
@@ -159,7 +159,7 @@ see :: FilePath -> FilePath -> Seen -> Seen
 see w rel (Seen written resolved) = Seen (Map.insert (map toLower w) w written) (Map.insert (map toLower rel) rel resolved)
 
 caseDiagnostic :: SrcSpan -> (FilePath, FilePath) -> Diagnostic
-caseDiagnostic sp (later, earlier) = diagnostic "G0304" Error sp (T.pack ("大文字と小文字だけが異なるパスです: " <> later <> " と " <> earlier))
+caseDiagnostic sp (later, earlier) = diagnostic "G03004" Error sp (T.pack ("大文字と小文字だけが異なるパスです: " <> later <> " と " <> earlier))
 
 -- | A path as written, normalised; resolving it has already succeeded.
 writtenPath :: FilePath -> FilePath
@@ -197,7 +197,7 @@ loadSources overlay root mfid ft0 manifest = do
                in case Map.lookup fid settings of
                     Just earlier
                       | earlier /= own ->
-                          Left [diagnostic "G0301" Error manifestSpan (T.pack ("同じファイルを [source] の設定を変えて章に二度並べています: " <> rel))]
+                          Left [diagnostic "G03001" Error manifestSpan (T.pack ("同じファイルを [source] の設定を変えて章に二度並べています: " <> rel))]
                     _ -> Right (ft', chs <> [(fid, master)], see (writtenPath p) rel seen, Map.insert fid own settings)
     crawl ft _ sources edges [] = pure (Right (ft, sources, edges))
     crawl ft seen sources edges (fid : rest)
@@ -250,5 +250,5 @@ pathDiagnostic sp p e =
   diagnostic code Error sp (T.pack (pathErrorMessage e <> ": " <> p))
   where
     code = case e of
-      Missing -> "G0302"
-      _ -> "G0303"
+      Missing -> "G03002"
+      _ -> "G03003"

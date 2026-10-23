@@ -26,7 +26,7 @@
 
 = [strong: フォントにない字を [code: golem build] が知らせない]
   フォントにない字があっても、[code: golem build] はエラーにせずに組み、PDF には四角い箱を描くか、何も描きません。
-  対処：[code: golem preflight] を実行します。フォントにない字は G0902 で報告されます（「[ref-title preflight]」、[ref-page preflight] ページ）。
+  対処：[code: golem preflight] を実行します。フォントにない字は G09002 で報告されます（「[ref-title preflight]」、[ref-page preflight] ページ）。
 
 @nonumber
 ## 組版の時間

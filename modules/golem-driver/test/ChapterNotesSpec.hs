@@ -131,27 +131,27 @@ chapterNoteTests =
       a @?= b
       a @?= c,
     testGroup
-      "G0327"
+      "G03027"
       [ testCase "numbering per file in a chapter of two files with notes is a warning; the PDF is written" $ do
           (ds, files) <- buildFor [TargetPdf] oneChapter (chapterEnd <> "numbering = \"file\"\n") [("a.gm", "甲[note: 甲注。]\n"), ("b.gm", "乙乙[note: 乙注。]\n")]
-          [diagSeverity d | d <- ds, diagCode d == DiagnosticCode "G0327"] @?= [Warning]
+          [diagSeverity d | d <- ds, diagCode d == DiagnosticCode "G03027"] @?= [Warning]
           -- at the first note of the second file of the chapter; the message names the first
-          [spanStart (diagSpan d) | d <- ds, diagCode d == DiagnosticCode "G0327"] @?= [6]
-          assertBool "a.gm" (all (\d -> "a.gm" `T.isInfixOf` diagMessage d) [d | d <- ds, diagCode d == DiagnosticCode "G0327"])
+          [spanStart (diagSpan d) | d <- ds, diagCode d == DiagnosticCode "G03027"] @?= [6]
+          assertBool "a.gm" (all (\d -> "a.gm" `T.isInfixOf` diagMessage d) [d | d <- ds, diagCode d == DiagnosticCode "G03027"])
           assertBool "a PDF" (any ((".pdf" `isSuffixOf`) . fst) files),
         testCase "numbering per chapter or per book gives none" $
           forM_ ["chapter", "book"] $ \n -> do
             (ds, _) <- buildFor [TargetPdf] oneChapter (chapterEnd <> "numbering = \"" <> n <> "\"\n") [("a.gm", "甲[note: 甲注。]\n"), ("b.gm", "乙[note: 乙注。]\n")]
-            filter (== DiagnosticCode "G0327") (codesOf ds) @?= [],
+            filter (== DiagnosticCode "G03027") (codesOf ds) @?= [],
         testCase "page-foot: none for the PDF alone, one with HTML or plain text" $ do
           let style = horizontalStyle <> "\n[notes]\nnumbering = \"file\"\n"
               src = [("a.gm", "甲[note: 甲注。]\n"), ("b.gm", "乙[note: 乙注。]\n")]
           (pdf, _) <- buildFor [TargetPdf] oneChapter style src
-          filter (== DiagnosticCode "G0327") (codesOf pdf) @?= []
+          filter (== DiagnosticCode "G03027") (codesOf pdf) @?= []
           (html, _) <- buildFor [TargetHtml] oneChapter style src
-          filter (== DiagnosticCode "G0327") (codesOf html) @?= [DiagnosticCode "G0327"]
+          filter (== DiagnosticCode "G03027") (codesOf html) @?= [DiagnosticCode "G03027"]
           (text, _) <- buildFor [TargetText] oneChapter style src
-          filter (== DiagnosticCode "G0327") (codesOf text) @?= [DiagnosticCode "G0327"]
+          filter (== DiagnosticCode "G03027") (codesOf text) @?= [DiagnosticCode "G03027"]
       ],
     testCase "HTML, EPUB and plain text do not depend on placement" $ do
       let src = [("a.gm", "甲[note: 甲注。]\n"), ("b.gm", "乙[note: 乙注。]\n")]

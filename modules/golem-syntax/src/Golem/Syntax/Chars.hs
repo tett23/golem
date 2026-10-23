@@ -1,7 +1,7 @@
 {- | The characters that cannot be written to the output (docs/adr ADR
 0042): those outside the Char production of XML 1.0. They are refused
-where the text is read, in manifest.toml (G0328) and in the manuscript
-(G0289), so that no output has to change them.
+where the text is read, in manifest.toml (G03028) and in the manuscript
+(G02089), so that no output has to change them.
 -}
 module Golem.Syntax.Chars
   ( isUnwritable,

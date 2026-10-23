@@ -32,9 +32,11 @@ code, and only notices can be silenced.
 data Severity = Error | Warning | Notice
   deriving stock (Eq, Ord, Show)
 
-{- | @G@ followed by four digits. The upper two digits name the source
-(01 syntax, 02 eval, 03 project, 04 document, 05 lint, 06 plugin,
-07 layout, 08 output, 09 preflight). A code is never reused for another meaning.
+{- | @G@ followed by five digits (docs/adr 0061). The upper two digits name
+the source (01 syntax, 02 eval, 03 project, 04 document, 05 lint, 06 plugin,
+07 layout, 08 output, 09 preflight); the lower three are the number in it.
+Numbers 000 to 099 are the codes of four digits written with a 0 inserted;
+new codes take 100 to 999. A code is never reused for another meaning.
 -}
 newtype DiagnosticCode = DiagnosticCode Text
   deriving stock (Eq, Ord, Show)
@@ -81,23 +83,23 @@ noticeCodes :: [DiagnosticCode]
 noticeCodes =
   map
     DiagnosticCode
-    [ "G0262", -- a @style-def overrides a style of style.toml or a built-in one
-      "G0263", -- [tcy: ...] of ASCII digits only
-      "G0264", -- an escaped space at the start of a line in a paragraph that keeps its lines
-      "G0265", -- @listing src= (to be retired)
-      "G0279", -- an escaped space at the end of a line in a paragraph that keeps its lines
-      "G0294", -- @blank-line written in a row (docs/adr ADR 0046)
-      "G0323", -- no style.toml
-      "G0407", -- @number equal to the automatic number
-      "G0408", -- page breaks at the very end of the book
-      "G0409", -- @blank-line at the very end of the book (docs/adr ADR 0046)
-      "G0411", -- @blank-line of as many lines as a page or more (docs/adr ADR 0047)
-      "G0730", -- a line of a code block wrapped (golem-driver ADR 0017)
-      "G0739", -- a figure fitted to the column (golem-driver ADR 0034)
-      "G0745", -- kenten with ruby, not drawn in the PDF (golem-driver ADR 0019)
-      "G0746", -- a block with rules broken or a heading rule left out (golem-driver ADR 0027)
-      "G0747", -- blank lines dropped at the top of a column (docs/adr ADR 0046)
-      "G0808" -- code in the body role without [fonts.code] (golem-driver ADR 0017)
+    [ "G02062", -- a @style-def overrides a style of style.toml or a built-in one
+      "G02063", -- [tcy: ...] of ASCII digits only
+      "G02064", -- an escaped space at the start of a line in a paragraph that keeps its lines
+      "G02065", -- @listing src= (to be retired)
+      "G02079", -- an escaped space at the end of a line in a paragraph that keeps its lines
+      "G02094", -- @blank-line written in a row (docs/adr ADR 0046)
+      "G03023", -- no style.toml
+      "G04007", -- @number equal to the automatic number
+      "G04008", -- page breaks at the very end of the book
+      "G04009", -- @blank-line at the very end of the book (docs/adr ADR 0046)
+      "G04011", -- @blank-line of as many lines as a page or more (docs/adr ADR 0047)
+      "G07030", -- a line of a code block wrapped (golem-driver ADR 0017)
+      "G07039", -- a figure fitted to the column (golem-driver ADR 0034)
+      "G07045", -- kenten with ruby, not drawn in the PDF (golem-driver ADR 0019)
+      "G07046", -- a block with rules broken or a heading rule left out (golem-driver ADR 0027)
+      "G07047", -- blank lines dropped at the top of a column (docs/adr ADR 0046)
+      "G08008" -- code in the body role without [fonts.code] (golem-driver ADR 0017)
     ]
 
 {- | The single place where notices are silenced: those whose codes are in
@@ -120,17 +122,17 @@ error in prod.
 -}
 profileDependentCodes :: [DiagnosticCode]
 profileDependentCodes =
-  [ DiagnosticCode "G0504", -- unreferenced label
-    DiagnosticCode "G0310" -- a font missing from HTML and EPUB (golem-project ADR 0004)
+  [ DiagnosticCode "G05004", -- unreferenced label
+    DiagnosticCode "G03010" -- a font missing from HTML and EPUB (golem-project ADR 0004)
   ]
 
 {- | The codes of golem preflight whose severity the preflight rules decide,
-but G0905, retired (golem-pdf ADR 0008)
+but G09005, retired (golem-pdf ADR 0008)
 (golem-cli ADR 0006). They are neither notices nor profile-dependent, and
 docs/diagnostics.md must agree with them (a golem-driver test).
 -}
 preflightCodes :: [DiagnosticCode]
-preflightCodes = [DiagnosticCode (T.pack ("G09" <> pad n)) | n <- [2 .. 18 :: Int], n /= 5]
+preflightCodes = [DiagnosticCode (T.pack ("G090" <> pad n)) | n <- [2 .. 18 :: Int], n /= 5]
   where
     pad n = (if n < 10 then "0" else "") <> show n
 

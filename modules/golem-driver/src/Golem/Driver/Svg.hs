@@ -1,7 +1,7 @@
 {- | SVG figures for the PDF (golem-pdf ADR 0009): the drawing of
-golem-svg as the drawing of golem-pdf, and the wording of G0811.
+golem-svg as the drawing of golem-pdf, and the wording of G08011.
 golem-pdf does not depend on golem-svg; this module joins them.
-Also the wording of G0814, the active content that HTML and EPUB refuse
+Also the wording of G08014, the active content that HTML and EPUB refuse
 (docs/adr ADR 0039).
 -}
 module Golem.Driver.Svg
@@ -49,7 +49,7 @@ svgDrawing s = P.Drawing (S.svgSize s) (map item (S.svgDrawing s))
       S.CurveTo a b c -> P.SegCurve a b c
       S.ClosePath -> P.SegClose
 
-{- | G0811: the first thing outside the subset, with where it is, and how
+{- | G08011: the first thing outside the subset, with where it is, and how
 many more (golem-pdf ADR 0009).
 -}
 unsupportedMessage :: Text -> NonEmpty S.Unsupported -> Text
@@ -69,7 +69,7 @@ unsupportedMessage path (u :| rest) =
     tshow :: Int -> Text
     tshow = T.pack . show
 
-{- | G0816 and G0817 (docs/adr ADR 0054): the first reference to a marker,
+{- | G08016 and G08017 (docs/adr ADR 0054): the first reference to a marker,
 with where the shape that holds it is and the id it places, and how many
 more.
 -}
@@ -89,8 +89,8 @@ markerMessage lead path (r :| rest) =
     tshow :: Int -> Text
     tshow = T.pack . show
 
-{- | G0814 (docs/adr ADR 0039): the first active thing, with where it is,
-and how many more; or why the SVG cannot be read, in the words of G0810.
+{- | G08014 (docs/adr ADR 0039): the first active thing, with where it is,
+and how many more; or why the SVG cannot be read, in the words of G08010.
 Nothing when the SVG has nothing active.
 -}
 activeMessage :: Text -> Either Text [A.Active] -> Maybe Text

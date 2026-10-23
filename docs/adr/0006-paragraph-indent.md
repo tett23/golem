@@ -65,13 +65,13 @@ InDesign の「[基本段落]」も、字下げの既定は 0 である。
 
 - 書かなければ、ほかのキーと同じく `based-on` の値を引き継ぐ（[docs/adr/0005](0005-character-and-paragraph-styles.md) の「based-on の解決」）。
 - `zw` は、その段落の文字の大きさ（段落スタイルの `size`、なければ版面の文字の大きさ）を一字とする。
-- 解決した `indent` と `first-line-indent` を同じ文字の大きさで sp にした和が負なら、G0312 とする。最初の行の始まりが版面の外に出るためである。`zw` と絶対の単位が混ざる場合も、段落の文字の大きさで sp にしてから比べる。段落の文字の大きさは `[page.grid]` があるときだけ決まるので、ないときは両方が `zw` の場合と両方が絶対の単位の場合だけを検査する。
+- 解決した `indent` と `first-line-indent` を同じ文字の大きさで sp にした和が負なら、G03012 とする。最初の行の始まりが版面の外に出るためである。`zw` と絶対の単位が混ざる場合も、段落の文字の大きさで sp にしてから比べる。段落の文字の大きさは `[page.grid]` があるときだけ決まるので、ないときは両方が `zw` の場合と両方が絶対の単位の場合だけを検査する。
 
 | 診断コード | 重大度 | メッセージ |
 |---|---|---|
-| G0312 | エラー | `段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: <名前>` |
+| G03012 | エラー | `段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: <名前>` |
 
-G0312 は未使用である（[docs/adr/0005](0005-character-and-paragraph-styles.md) が G0311 と G0313 を、[golem-project ADR 0004](../golem-project/adr/0004-font-file-check-per-target.md) が G0310 を使う）。
+G03012 は未使用である（[docs/adr/0005](0005-character-and-paragraph-styles.md) が G03011 と G03013 を、[golem-project ADR 0004](../golem-project/adr/0004-font-file-check-per-target.md) が G03010 を使う）。
 
 負の寸法を読むため、`Golem.Project.Style` に `parseSignedDim :: Text -> Maybe Dim` を加える。
 先頭の `-` を一つだけ許し、残りを `parseDim` で読んで符号を反転する。
@@ -91,7 +91,7 @@ G0312 は未使用である（[docs/adr/0005](0005-character-and-paragraph-style
 `verse` の既定は、`[verse]` の既定（`indent = "0zw"`、`hang = "2zw"`）と同じ組み方である。
 
 `[verse]` の節を廃止し、`VerseStyle`、`defaultVerseStyle`、`stVerse` を削る。
-`[verse]` を書いた `style.toml` は G0306 とし、メッセージで `[paragraph-styles.verse]` の `indent = I + H`、`first-line-indent = -H` への書き換えを示す。
+`[verse]` を書いた `style.toml` は G03006 とし、メッセージで `[paragraph-styles.verse]` の `indent = I + H`、`first-line-indent = -H` への書き換えを示す。
 
 ### 字下げが効く段落
 
@@ -144,14 +144,14 @@ data UnitKind
 
 字下げが大きすぎる段落スタイルは、PDF の組版の前に検査する。
 
-- 解決した各段落スタイルについて、`measure - inStart - max 0 inFirst` が段落の文字の大きさの 8 字分に満たなければ、G0725 とする。基準を 8 字分にするのは、回り込みの図版の脇の行の下限（G0722、[golem-driver ADR 0005](../golem-driver/adr/0005-pdf-wrapped-figures.md)）に合わせるためである。
-- 回り込みの図版の脇で、行長から字下げを引いた値が 0 以下になる行があれば、その段落の位置で G0725 とする。
+- 解決した各段落スタイルについて、`measure - inStart - max 0 inFirst` が段落の文字の大きさの 8 字分に満たなければ、G07025 とする。基準を 8 字分にするのは、回り込みの図版の脇の行の下限（G07022、[golem-driver ADR 0005](../golem-driver/adr/0005-pdf-wrapped-figures.md)）に合わせるためである。
+- 回り込みの図版の脇で、行長から字下げを引いた値が 0 以下になる行があれば、その段落の位置で G07025 とする。
 
 | 診断コード | 重大度 | メッセージ |
 |---|---|---|
-| G0725 | エラー | `段落の字下げが大きすぎます。行長を本文の文字の大きさの 8 字分以上残してください: <名前>` |
+| G07025 | エラー | `段落の字下げが大きすぎます。行長を本文の文字の大きさの 8 字分以上残してください: <名前>` |
 
-G0725 は未使用である（golem-driver は G0721 から G0724 までを使っている）。
+G07025 は未使用である（golem-driver は G07021 から G07024 までを使っている）。
 
 ### HTML と EPUB（golem-html）
 
@@ -235,9 +235,9 @@ CSS を次の規則で書く。
 - 空の `style.toml` で、`paraStyle s Nothing` の字下げが `Zw 0` と `Zw 0`、`paraStyle s (Just "verse")` が `Zw 2` と `Zw (-2)` であること。
 - `[paragraph-styles.quote] indent = "2zw"` で、`quote` の `first-line-indent` が `body` の値を引き継ぐこと。
 - `parseSignedDim` が `"-1.5zw"` を `Zw (-3/2)`、`"-3mm"` を負の `Abs` に、`"--1zw"` と `"-zw"` を `Nothing` にすること。
-- `indent = "-1zw"` が G0306、`indent = "1zw"` と `first-line-indent = "-2zw"` の組が G0312、`indent = "2zw"` と `first-line-indent = "-2zw"` の組が通ること。
-- `[page.grid] font-size = "13Q"` で、`indent = "1mm"` と `first-line-indent = "-1zw"` の組が G0312 になること（1zw は 3.25mm）。
-- `[verse] indent = "0zw"` が G0306 になり、メッセージに `[paragraph-styles.verse]` が含まれること。
+- `indent = "-1zw"` が G03006、`indent = "1zw"` と `first-line-indent = "-2zw"` の組が G03012、`indent = "2zw"` と `first-line-indent = "-2zw"` の組が通ること。
+- `[page.grid] font-size = "13Q"` で、`indent = "1mm"` と `first-line-indent = "-1zw"` の組が G03012 になること（1zw は 3.25mm）。
+- `[verse] indent = "0zw"` が G03006 になり、メッセージに `[paragraph-styles.verse]` が含まれること。
 
 ### golem-driver（`modules/golem-driver/test/Main.hs`）
 
@@ -250,7 +250,7 @@ PDF は `flowLines` の `(lineTarget, slIndent)` の組で確かめる。
 - リストの項目の段落と、目次の行では、`body` に `first-line-indent = "1zw"` があっても `slIndent` が 0 であること。
 - 定義リストの説明の段落では `slIndent` が一字分であること。
 - `wrap=start` の図版の直後の段落で、脇の一行目の `slIndent` が除外領域の幅と一字分の和であること。
-- 字数 10 の版面で `indent = "3zw"` が G0725 になること。
+- 字数 10 の版面で `indent = "3zw"` が G07025 になること。
 - HTML：`body` に `first-line-indent = "1zw"` を指定すると、`style.css` に `p { padding-inline-start: 0em; text-indent: 1em; }` と `li p, li p[class]` の規則があること。`verse` の CSS が `p.ps-verse { padding-inline-start: 2em; text-indent: -2em; }` を含み、`.line` の規則を含むこと。既定の `style.toml` の CSS が golden と一致すること。
 - プレーンテキスト：`first-line-indent = "1zw"` の段落が全角の空白一つで始まること。`first-line-indent = "3mm"` では空白が付かないこと。リストの項目には付かないこと。
 - `scripts/determinism.sh` が出力する sample の各ファイルのハッシュと、`kanikosen` と `tempest` の各ターゲットの出力が、この ADR の前と変わらないこと。既定の字下げが 0 であり、韻文の既定が `[verse]` の既定と同じ組み方であることの確認である。

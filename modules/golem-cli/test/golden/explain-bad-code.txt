@@ -1,4 +1,4 @@
-診断のコードは G と 4 桁の数字です: nope
+診断のコードは G と 5 桁の数字です: nope
 
 使い方: golem explain [CODE]
 

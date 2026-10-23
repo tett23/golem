@@ -104,7 +104,7 @@ messages =
     ("bad-profile", ["build", "--profile", "nope"]),
     ("missing-value", ["build", "--profile"]),
     ("explain-help", ["explain", "--help"]),
-    ("explain-unknown-code", ["explain", "G9999"]),
+    ("explain-unknown-code", ["explain", "G99999"]),
     ("explain-bad-code", ["explain", "nope"])
   ]
 
@@ -158,12 +158,12 @@ tests =
       localeTests,
       rtsTests,
       -- golem-parser ADR 0010
-      testCase "a backslash after the last | of a table row is G0124, not G0110" $
+      testCase "a backslash after the last | of a table row is G01024, not G01010" $
         mapM_
           ( \src -> do
               (code, err) <- golemIn [(p, if p == "a.gm" then src else c) | (p, c) <- syntaxErrorFiles] ["check"]
               assertEqual err (ExitFailure 1) code
-              assertBool err ("error[G0124]" `isInfixOf` err && not ("error[G0110]" `isInfixOf` err))
+              assertBool err ("error[G01024]" `isInfixOf` err && not ("error[G01010]" `isInfixOf` err))
           )
           ["| a | b |\\\n|---|---|\n| c | d |\n", "| a | b |\n|---|---|\n| c | d |\\\n| e | f |\n"]
     ]
@@ -182,14 +182,14 @@ missingFontTests :: TestTree
 missingFontTests =
   testGroup
     "files of style.toml per target (golem-project ADR 0004)"
-    [ testCase "golem check fails with G0802 and G0310" $ do
+    [ testCase "golem check fails with G08002 and G03010" $ do
         (code, err) <- inMissingProject ["check"]
         assertEqual err (ExitFailure 1) code
-        assertBool err ("G0802" `isInfixOf` err && "G0310" `isInfixOf` err),
-      testCase "golem build --target html succeeds with G0310" $ do
+        assertBool err ("G08002" `isInfixOf` err && "G03010" `isInfixOf` err),
+      testCase "golem build --target html succeeds with G03010" $ do
         (code, err) <- inMissingProject ["build", "--target", "html"]
         assertEqual err ExitSuccess code
-        assertBool err ("G0310" `isInfixOf` err)
+        assertBool err ("G03010" `isInfixOf` err)
     ]
 
 -- | A project without bleed: a manifest with the HTML and PDF targets and one chapter.
@@ -221,21 +221,21 @@ marksTests =
         assertEqual out (ExitFailure 2) code
         assertBool out ("未知のトンボの形です: nope" `isInfixOf` out),
       exitsWith (ExitFailure 2) ["build", "--marks"],
-      testCase "Japanese marks without bleed: G0702 for PDF, nothing for HTML" $ do
+      testCase "Japanese marks without bleed: G07002 for PDF, nothing for HTML" $ do
         (code, err) <- golemIn projectFiles ["build", "--target", "pdf", "--marks", "japanese"]
         assertEqual err (ExitFailure 1) code
-        assertBool err ("G0702" `isInfixOf` err)
+        assertBool err ("G07002" `isInfixOf` err)
         (code', err') <- golemIn projectFiles ["build", "--target", "html", "--marks", "japanese"]
         assertEqual err' ExitSuccess code',
       -- golem check checks the four targets, whatever the targets of the
       -- manifest (golem-pdf ADR 0010); without style.toml it also fails
-      -- with G0807, so the test looks at G0702, not at the exit code
-      testCase "golem check --marks japanese is G0702 without [targets.pdf] in the manifest (golem-pdf ADR 0010)" $ do
+      -- with G08007, so the test looks at G07002, not at the exit code
+      testCase "golem check --marks japanese is G07002 without [targets.pdf] in the manifest (golem-pdf ADR 0010)" $ do
         (_, err) <- golemIn htmlOnlyFiles ["check", "--marks", "japanese"]
-        assertBool err ("G0702" `isInfixOf` err),
-      testCase "golem check --marks western is not G0702 without [targets.pdf] (golem-pdf ADR 0010)" $ do
+        assertBool err ("G07002" `isInfixOf` err),
+      testCase "golem check --marks western is not G07002 without [targets.pdf] (golem-pdf ADR 0010)" $ do
         (_, err) <- golemIn htmlOnlyFiles ["check", "--marks", "western"]
-        assertBool err (not ("G0702" `isInfixOf` err))
+        assertBool err (not ("G07002" `isInfixOf` err))
     ]
   where
     htmlOnlyFiles = [(p, if p == "manifest.toml" then T.unpack (T.replace "\n\n[targets.pdf]\n" "\n" (T.pack c)) else c) | (p, c) <- projectFiles]
@@ -245,37 +245,46 @@ explainTests :: TestTree
 explainTests =
   testGroup
     "golem explain (ADR 0005)"
-    [ testCase "golem explain G0117 prints the section and exits with 0" $ do
-        (code, out, _) <- golemSplit ["explain", "G0117"]
+    [ testCase "golem explain G01017 prints the section and exits with 0" $ do
+        (code, out, _) <- golemSplit ["explain", "G01017"]
         code @?= ExitSuccess
-        assertBool out ("## G0117\n" `isPrefixOf` out),
+        assertBool out ("## G01017\n" `isPrefixOf` out),
       testCase "the code is case-insensitive" $ do
-        (_, upper, _) <- golemSplit ["explain", "G0117"]
-        (code, lower, _) <- golemSplit ["explain", "g0117"]
+        (_, upper, _) <- golemSplit ["explain", "G01017"]
+        (code, lower, _) <- golemSplit ["explain", "g01017"]
         code @?= ExitSuccess
         lower @?= upper,
       testCase "a retired code is shown and exits with 0" $ do
-        (code, out, _) <- golemSplit ["explain", "G0244"]
+        (code, out, _) <- golemSplit ["explain", "G02044"]
         code @?= ExitSuccess
-        assertBool out ("## G0244\n" `isPrefixOf` out && "- 状態: 廃止" `isInfixOf` out),
+        assertBool out ("## G02044\n" `isPrefixOf` out && "- 状態: 廃止" `isInfixOf` out),
       testCase "golem explain lists every code, the retired ones marked" $ do
         (code, out, _) <- golemSplit ["explain"]
         code @?= ExitSuccess
         length (lines out) @?= Map.size catalog
-        assertBool out (any (\l -> "G0244  " `isPrefixOf` l && "（廃止）" `isSuffixOf` l) (lines out))
-        map (take 5) (lines out) @?= map T.unpack (Map.keys catalog),
-      exitsWith (ExitFailure 2) ["explain", "G9999"],
+        assertBool out (any (\l -> "G02044  " `isPrefixOf` l && "（廃止）" `isSuffixOf` l) (lines out))
+        map (take 6) (lines out) @?= map T.unpack (Map.keys catalog),
+      testCase "golem explain G02058 prints the section of G02058 (docs/adr 0061)" $ do
+        (code, out, _) <- golemSplit ["explain", "G02058"]
+        code @?= ExitSuccess
+        assertBool out ("## G02058\n" `isPrefixOf` out),
+      testCase "a code of four digits is a usage error (docs/adr 0061)" $ do
+        (code, out, err) <- golemSplit ["explain", "G0258"]
+        code @?= ExitFailure 2
+        out @?= ""
+        assertBool err ("診断のコードは G と 5 桁の数字です: G0258" `isPrefixOf` err),
+      exitsWith (ExitFailure 2) ["explain", "G99999"],
       exitsWith (ExitFailure 2) ["explain", "nope"],
       testCase "golem check with a syntax error ends with the hint" $ do
         (code, err) <- golemIn syntaxErrorFiles ["check"]
         assertEqual err (ExitFailure 1) code
-        last (lines err) @?= "コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）"
+        last (lines err) @?= "コードの説明は golem explain <コード> で表示できます（例: golem explain G01017）"
         assertEqual err 1 (length (filter ("golem explain" `isInfixOf`) (lines err))),
       -- golem-parser ADR 0011
-      testCase "golem check reports ##1.5## as G0278" $ do
+      testCase "golem check reports ##1.5## as G02078" $ do
         (code, err) <- golemIn [(p, if p == "a.gm" then "数は ##1.5## です。\n" else c) | (p, c) <- syntaxErrorFiles] ["check"]
         assertEqual err (ExitFailure 1) code
-        assertBool err ("error[G0278]" `isInfixOf` err),
+        assertBool err ("error[G02078]" `isInfixOf` err),
       testCase "golem check --format json writes only JSON" $ do
         (code, err) <- golemIn syntaxErrorFiles ["check", "--format", "json"]
         assertEqual err (ExitFailure 1) code
@@ -287,13 +296,13 @@ tomlMessageTests :: TestTree
 tomlMessageTests =
   testGroup
     "TOML messages in Japanese (golem-project ADR 0007)"
-    [ testCase "G0301 and G0306 show no message of toml-parser" $ do
+    [ testCase "G03001 and G03006 show no message of toml-parser" $ do
         (code, err) <- golemIn [("manifest.toml", T.unpack (T.replace "title = \"T\"\n" "" (T.pack manifestText))), ("a.gm", "本文。\n")] ["check"]
         assertEqual err (ExitFailure 1) code
-        assertBool err ("G0301" `isInfixOf` err && "必須のキーがありません: metadata.title" `isInfixOf` err)
+        assertBool err ("G03001" `isInfixOf` err && "必須のキーがありません: metadata.title" `isInfixOf` err)
         (code', err') <- golemIn [("manifest.toml", manifestText), ("style.toml", "[page]\nsize = \"A5\"\nbindng = \"left\"\n"), ("a.gm", "本文。\n")] ["check"]
         assertEqual err' (ExitFailure 1) code'
-        assertBool err' ("G0306" `isInfixOf` err' && "知らないキーです: page.bindng" `isInfixOf` err')
+        assertBool err' ("G03006" `isInfixOf` err' && "知らないキーです: page.bindng" `isInfixOf` err')
         mapM_
           (\w -> assertBool (w <> " in " <> err <> err') (not (w `isInfixOf` (err <> err'))))
           ["unexpected key", "missing key", "expected ", "lexical error", "parse error"],
@@ -302,17 +311,17 @@ tomlMessageTests =
         (code, err) <- golemIn [("manifest.toml", manifestText), ("style.toml", "[page]\nsize = \"A5\"\n\n[paragraph-styles.code]\npadding = \"0\"\n"), ("a.gm", "本文。\n")] ["check"]
         assertEqual err (ExitFailure 1) code
         assertBool err (not ("style.toml:1:1" `isInfixOf` err))
-        assertBool err ("style.toml:5:11: error[G0306]" `isPrefixOf` err),
+        assertBool err ("style.toml:5:11: error[G03006]" `isPrefixOf` err),
       testCase "a paragraph style larger than the grid is at the value of size" $ do
         let style = "[page]\nsize = \"A5\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 40\nlines = 30\nline-pitch = \"16pt\"\nposition = { top = \"14mm\", gutter = \"14mm\" }\n\n[paragraph-styles.body]\nsize = \"30Q\"\n"
         (code, err) <- golemIn [("manifest.toml", manifestText), ("style.toml", style), ("a.gm", "本文。\n")] ["check"]
         assertEqual err (ExitFailure 1) code
-        assertBool err ("style.toml:11:8: error[G0311]" `isInfixOf` err)
+        assertBool err ("style.toml:11:8: error[G03011]" `isInfixOf` err)
     ]
   where
     manifestText = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
 
--- | A project whose only chapter has an unclosed bracket (G0117).
+-- | A project whose only chapter has an unclosed bracket (G01017).
 syntaxErrorFiles :: [(FilePath, String)]
 syntaxErrorFiles =
   [ ( "manifest.toml",
@@ -321,7 +330,7 @@ syntaxErrorFiles =
     ("a.gm", "[strong: 閉じない\n")
   ]
 
-{- | A project with a notice only (G0263). The body font is a file that is
+{- | A project with a notice only (G02063). The body font is a file that is
 not a font: golem check looks for it and does not read it.
 -}
 noticeFiles :: [(FilePath, String)]
@@ -334,7 +343,7 @@ noticeFiles =
     ("a.gm", "[tcy: 10]\n")
   ]
 
--- | The notices with an error (G0222) and a warning (G0205 in prod).
+-- | The notices with an error (G02022) and a warning (G02005 in prod).
 mixedFiles :: [(FilePath, String)]
 mixedFiles = [(p, if p == "a.gm" then "[tcy: 10]\n\n[unknown: x] %%= 校正 %%\n" else c) | (p, c) <- noticeFiles]
 
@@ -356,7 +365,7 @@ noticeTests =
           ( \args -> do
               (code, err) <- golemIn noticeFiles args
               assertEqual (unwords args <> "\n" <> err) ExitSuccess code
-              assertBool err ("notice[G0263]" `isInfixOf` err)
+              assertBool err ("notice[G02063]" `isInfixOf` err)
           )
           [build, ["check"], ["lint"], build <> ["--profile", "prod"], ["check", "--profile", "prod"], ["lint", "--profile", "prod"]],
       testCase "--no-notices drops the notices and keeps errors and warnings" $
@@ -364,17 +373,17 @@ noticeTests =
           ( \cmd -> do
               (_, err) <- golemIn mixedFiles (cmd <> ["--profile", "prod", "--no-notices"])
               assertBool err (not ("notice[" `isInfixOf` err))
-              assertBool err ("error[G0222]" `isInfixOf` err && "warning[G0205]" `isInfixOf` err)
+              assertBool err ("error[G02022]" `isInfixOf` err && "warning[G02005]" `isInfixOf` err)
               (_, json) <- golemIn mixedFiles (cmd <> ["--profile", "prod", "--no-notices", "--format", "json"])
               assertBool json (not ("\"notice\"" `isInfixOf` json))
-              assertBool json ("\"G0222\"" `isInfixOf` json && "\"G0205\"" `isInfixOf` json)
+              assertBool json ("\"G02022\"" `isInfixOf` json && "\"G02005\"" `isInfixOf` json)
               (_, loud) <- golemIn mixedFiles (cmd <> ["--profile", "prod", "--format", "json"])
               assertBool loud ("\"severity\":\"notice\"" `isInfixOf` loud)
           )
           [build, ["check"], ["lint"]],
       testCase "the hint follows notices alone, and not --no-notices" $ do
         (_, err) <- golemIn noticeFiles ["check"]
-        last (lines err) @?= "コードの説明は golem explain <コード> で表示できます（例: golem explain G0263）"
+        last (lines err) @?= "コードの説明は golem explain <コード> で表示できます（例: golem explain G02063）"
         (code, quiet) <- golemIn noticeFiles ["check", "--no-notices"]
         code @?= ExitSuccess
         quiet @?= "",
@@ -438,14 +447,14 @@ preflightTests =
       testCase "warnings only: 0" $ do
         (code, _, err, _) <- golemPreflight (("preflight.toml", "[bleed-size]\nseverity = \"warning\"\nmin = \"5mm\"\n") : preflightProject "Body text.\n") ["preflight"]
         assertEqual err ExitSuccess code
-        assertBool err ("warning[G0910]" `isInfixOf` err),
-      testCase "G0902: 1" $ do
+        assertBool err ("warning[G09010]" `isInfixOf` err),
+      testCase "G09002: 1" $ do
         (code, _, err, _) <- golemPreflight (preflightProject "Body \xE000 text.\n") ["preflight"]
         assertEqual err (ExitFailure 1) code
-        assertBool err ("error[G0902]" `isInfixOf` err),
+        assertBool err ("error[G09002]" `isInfixOf` err),
       exitsWith (ExitFailure 2) ["preflight", "--profile", "dev"],
       exitsWith (ExitFailure 2) ["preflight", "--rules"],
-      testCase "--format json: valid, no summary, G0906 with ppi" $ do
+      testCase "--format json: valid, no summary, G09006 with ppi" $ do
         img <- BL.readFile "../golem-pdf/test/fixtures/tiny.jpg"
         let files = preflightProject "# Chapter\n\n@figure tiny.jpg alt=\"t\"\n\nBody text.\n"
         (_, _, err, _) <- golemPreflightWith files [("tiny.jpg", img)] ["preflight", "--format", "json"]
@@ -453,15 +462,15 @@ preflightTests =
           Left e -> assertFailure (e <> "\n" <> err)
           Right _ -> pure ()
         assertBool err (not ("プリフライト（" `isInfixOf` err))
-        assertBool err ("\"code\":\"G0906\"" `isInfixOf` err && "\"facts\":{" `isInfixOf` err && "\"ppi\":" `isInfixOf` err),
-      testCase "--rules reads a file out of the project, and a missing one is G0901" $ withSystemTempDirectory "golem-rules" $ \other -> do
+        assertBool err ("\"code\":\"G09006\"" `isInfixOf` err && "\"facts\":{" `isInfixOf` err && "\"ppi\":" `isInfixOf` err),
+      testCase "--rules reads a file out of the project, and a missing one is G09001" $ withSystemTempDirectory "golem-rules" $ \other -> do
         writeFile (other </> "printer.toml") "based-on = \"none\"\nname = \"Printer\"\n"
         (code, _, err, _) <- golemPreflight (preflightProject "Body \xE000 text.\n") ["preflight", "--rules", other </> "printer.toml"]
         assertEqual err ExitSuccess code
         assertBool err ("設定: Printer、基にした設定: none" `isInfixOf` err)
         (code', _, err', _) <- golemPreflight (preflightProject "Body text.\n") ["preflight", "--rules", other </> "missing.toml"]
         assertEqual err' (ExitFailure 1) code'
-        assertBool err' ("error[G0901]" `isInfixOf` err')
+        assertBool err' ("error[G09001]" `isInfixOf` err')
     ]
 
 -- | Lower-case hexadecimal SHA-256.

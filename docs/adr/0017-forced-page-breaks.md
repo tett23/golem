@@ -1,6 +1,6 @@
 # ADR 0017: 原稿から改ページ、改丁、改段を指定する
 
-ステータス: 採択→「実装しないこと」の改ページを禁じる指定は [docs/adr/0030](0030-manual-page-break-control.md)、本の最後の改ページの G0408 は [golem-syntax ADR 0002](../golem-syntax/adr/0002-notice-severity.md)、`@page-break` と `@column-break` の誤りのコードは [ADR 0060](0060-page-break-command-codes-by-cause.md)、（回した図版のページの直後の改ページで白ページを足さないこと）は [golem-driver ADR 0039](../golem-driver/adr/0039-breaks-around-turned-figures.md)
+ステータス: 採択→「実装しないこと」の改ページを禁じる指定は [docs/adr/0030](0030-manual-page-break-control.md)、本の最後の改ページの G04008 は [golem-syntax ADR 0002](../golem-syntax/adr/0002-notice-severity.md)、`@page-break` と `@column-break` の誤りのコードは [ADR 0060](0060-page-break-command-codes-by-cause.md)、（回した図版のページの直後の改ページで白ページを足さないこと）は [golem-driver ADR 0039](../golem-driver/adr/0039-breaks-around-turned-figures.md)
 
 ## 文脈
 
@@ -29,7 +29,7 @@ CSS では、`break-before` の `page`、`recto`、`verso`、`column` がこれ�
 次の三つを比べた。
 
 - 独立したブロックコマンド（`@page-break`）：今のブロックコマンドの文法で書ける。InDesign の分割文字と同じく、本文の流れの中の一点を表す。
-- 次のブロックに付ける属性（`@page-break` を `@label` と同じ属性にする）：CSS の `break-before` と InDesign の「開始位置」に近い。ただし、属性の後にブロックがない位置（ファイルの末尾、空行の後に続くブロックコマンドの前など）に書くと G0210 になる。ファイルの末尾で「次のファイルの前で改める」と書けない。
+- 次のブロックに付ける属性（`@page-break` を `@label` と同じ属性にする）：CSS の `break-before` と InDesign の「開始位置」に近い。ただし、属性の後にブロックがない位置（ファイルの末尾、空行の後に続くブロックコマンドの前など）に書くと G02010 になる。ファイルの末尾で「次のファイルの前で改める」と書けない。
 - 見出しの設定を広げる（`[headings.*]` の `page-break` に `page` と `verso` を加える）：見出しの階層ごとの規則なので、任意の位置を指定できない。
 
 独立したブロックコマンドを採る。
@@ -58,8 +58,8 @@ CSS では、`break-before` の `page`、`recto`、`verso`、`column` がこれ�
 | `@page-break verso` | 次の偶数ページから続ける | 偶数ページで改ページ | `break-before: verso` |
 | `@column-break` | 次の段から続ける（改段） | 改段 | `break-before: column` |
 
-- 文書の最上位にだけ置ける。リストの項目、定義リストの説明、ブロックコマンドの本体（`@figure` のキャプション、本体の形の `@style`）の中には置けない（G0259）。本体の形の `@style` の中は、今と同じく G0245 になる。
-- 位置引数は `@page-break` に一つまで（`recto` か `verso`）、`@column-break` にはない。キーワード引数と本体は持たない。誤りは G0258 とする。
+- 文書の最上位にだけ置ける。リストの項目、定義リストの説明、ブロックコマンドの本体（`@figure` のキャプション、本体の形の `@style`）の中には置けない（G02059）。本体の形の `@style` の中は、今と同じく G02045 になる。
+- 位置引数は `@page-break` に一つまで（`recto` か `verso`）、`@column-break` にはない。キーワード引数と本体は持たない。誤りは G02058 とする。
 - 属性のまとまりの中に書いてよい。まとまりの中の位置によらず、まとまりの対象のブロックの直前に改ページを置く。`@label` などの属性は、`@page-break` を飛ばして対象のブロックに付く。
 
 ```
@@ -125,15 +125,15 @@ data BreakKind = BreakPage | BreakRecto | BreakVerso | BreakColumn
 
 - `standalone` に `"page-break"` と `"column-break"` を加え、引数を検査して `ForcedBreak` のブロックを一つ返す。
 - `attributed` は、まとまりの `cmds` から名前が `page-break` と `column-break` のブロックコマンドを先に取り除き、書いた順に `standalone` で評価する。残りの `cmds` と対象のブロックは今の規則で評価し、その結果を改ページのブロックの後に並べる。残りの `cmds` が空で対象のブロックがあれば、対象のブロックを `evalBlock` で評価する。残りの `cmds` が空で対象のブロックもなければ、改ページのブロックだけを返す。
-- `@label x` の直後に空行を挟まず `@page-break` だけが続く場合、`@page-break` を取り除いた残りは対象のない属性になり、今と同じく G0210 になる。[docs/adr/0005](0005-character-and-paragraph-styles.md) の、まとまりの最後の属性でないブロックコマンドを対象にする規則は、改ページのコマンドには当てない。改ページにラベルを付ける意味がないためである。
-- 文書の最上位でない位置の改ページは、評価の後に取り除いて G0259 とする。`evalFile` の最後（フィルタのプラグインの前）に、ブロックの木を走査して、最上位でない `ForcedBreak` の位置で G0259 を出し、そのブロックを捨てる関数 `nestedBreaks :: [Block] -> ([Block], [Diagnostic])` を通す。評価の各所に深さを持ち回らずに済むためである。
+- `@label x` の直後に空行を挟まず `@page-break` だけが続く場合、`@page-break` を取り除いた残りは対象のない属性になり、今と同じく G02010 になる。[docs/adr/0005](0005-character-and-paragraph-styles.md) の、まとまりの最後の属性でないブロックコマンドを対象にする規則は、改ページのコマンドには当てない。改ページにラベルを付ける意味がないためである。
+- 文書の最上位でない位置の改ページは、評価の後に取り除いて G02059 とする。`evalFile` の最後（フィルタのプラグインの前）に、ブロックの木を走査して、最上位でない `ForcedBreak` の位置で G02059 を出し、そのブロックを捨てる関数 `nestedBreaks :: [Block] -> ([Block], [Diagnostic])` を通す。評価の各所に深さを持ち回らずに済むためである。
 
 | 診断コード | 重大度 | 条件 | メッセージ |
 |---|---|---|---|
-| G0258 | エラー | 引数の誤り | `@page-break の引数は recto か verso です`、`@column-break は引数を取りません`、`@page-break と @column-break は本体を持てません` |
-| G0259 | エラー | 文書の最上位でない位置の改ページ | `@page-break と @column-break は文書の最上位にだけ置けます` |
+| G02058 | エラー | 引数の誤り | `@page-break の引数は recto か verso です`、`@column-break は引数を取りません`、`@page-break と @column-break は本体を持てません` |
+| G02059 | エラー | 文書の最上位でない位置の改ページ | `@page-break と @column-break は文書の最上位にだけ置けます` |
 
-G0258 と G0259 は未使用である（G0256 と G0257 は [docs/adr/0016](0016-hard-line-breaks.md) が使う。origin/main のコードと docs の ADR、作業中の ADR に記載はない）。
+G02058 と G02059 は未使用である（G02056 と G02057 は [docs/adr/0016](0016-hard-line-breaks.md) が使う。origin/main のコードと docs の ADR、作業中の ADR に記載はない）。
 
 ### PDF（golem-driver と golem-layout）
 
@@ -204,7 +204,7 @@ EPUB は golem-html の出力を包むので、golem-epub は変えない。
 ### LSP（golem-lsp）
 
 - 行頭の `@page-break ` の後で、`recto` と `verso` を補完する（`CkSettingValue`）。
-- G0258 と G0259 は、評価の診断として既存の経路で表示される。
+- G02058 と G02059 は、評価の診断として既存の経路で表示される。
 
 ### ドキュメント
 
@@ -243,11 +243,11 @@ EPUB は golem-html の出力を包むので、golem-epub は変えない。
 ### golem-eval（`test/FileSpec.hs`）
 
 - `"@page-break\n\na\n"` が `[ForcedBreak BreakPage, Paragraph Nothing [Text "a"]]` になること。`"@page-break recto\n"`、`"@page-break verso\n"`、`"@column-break\n"` がそれぞれの種類になること。
-- `"@page-break recto\n# h\n"`（空行なし）が `[ForcedBreak BreakRecto, Heading ...]` になり、G0211 が出ないこと。
+- `"@page-break recto\n# h\n"`（空行なし）が `[ForcedBreak BreakRecto, Heading ...]` になり、G02011 が出ないこと。
 - `"@page-break\n@label x\n# h\n"` と `"@label x\n@page-break\n# h\n"` のどちらでも、ラベル `x` が見出しに付き、改ページのブロックが見出しの前にあること。
-- `"@label x\n@page-break\n\na\n"` が G0210 になること。
-- `"@page-break page\n"`、`"@page-break recto verso\n"`、`"@page-break x=1\n"`、`"@column-break recto\n"`、本体を持つ `"@page-break\n  a\n"` が G0258 になること。
-- `"- a\n\n  @page-break\n"` と `"= t\n  @page-break\n"` と `"@figure x.png alt=a\n  @page-break\n"` が G0259 になり、結果に `ForcedBreak` がないこと。`"@style quote\n  @page-break\n"` が G0245 になること。
+- `"@label x\n@page-break\n\na\n"` が G02010 になること。
+- `"@page-break page\n"`、`"@page-break recto verso\n"`、`"@page-break x=1\n"`、`"@column-break recto\n"`、本体を持つ `"@page-break\n  a\n"` が G02058 になること。
+- `"- a\n\n  @page-break\n"` と `"= t\n  @page-break\n"` と `"@figure x.png alt=a\n  @page-break\n"` が G02059 になり、結果に `ForcedBreak` がないこと。`"@style quote\n  @page-break\n"` が G02045 になること。
 
 ### golem-layout（`test/Main.hs`）
 

@@ -207,7 +207,7 @@ data FontRole = FontRole
   deriving stock (Eq, Show)
 
 {- | The kerning method of a style (docs/adr/0020). 'KernOptical' is read
-and then rejected by the checks of style.toml (G0321): it is a v2 item.
+and then rejected by the checks of style.toml (G03021): it is a v2 item.
 -}
 data Kerning = KernMetrics | KernJapaneseEqualWidth | KernNone | KernOptical
   deriving stock (Eq, Ord, Show)
@@ -717,7 +717,7 @@ column-gap, the gap is the column-gap of [page.grid].
 data IndexStyle = IndexStyle
   { ixColumns :: !(Maybe Int),
     ixColumnGap :: !(Maybe Dim),
-    -- | where the value of columns starts in style.toml, for G0744
+    -- | where the value of columns starts in style.toml, for G07044
     ixColumnsAt :: !Int
   }
   deriving stock (Eq, Show)
@@ -736,7 +736,7 @@ data HiddenFolio = HiddenFolio
     hfSize :: !Dim,
     -- | from the trim line of the gutter to the centre line of the column, absolute
     hfGutter :: !Dim,
-    -- | whether gutter was written: G0329 is at gutter, or at size without it (golem-driver ADR 0041)
+    -- | whether gutter was written: G03029 is at gutter, or at size without it (golem-driver ADR 0041)
     hfGutterWritten :: !Bool
   }
   deriving stock (Eq, Show)
@@ -745,10 +745,10 @@ data HiddenFolio = HiddenFolio
 defaultHiddenFolio :: HiddenFolio
 defaultHiddenFolio = HiddenFolio True HiddenUnnumbered (Abs (6 * 65536)) (Abs (mmToSp (3 % 2))) False
 
-{- | Every error of reading [hidden-folio] is G0306: a dimension in zw, of
+{- | Every error of reading [hidden-folio] is G03006: a dimension in zw, of
 0 or less or unreadable, a value of pages outside the table and an
 unknown key (golem-driver ADR 0021). A gutter less than half the size is
-G0329, a check after reading ('hiddenFolioChecks', golem-driver ADR 0041).
+G03029, a check after reading ('hiddenFolioChecks', golem-driver ADR 0041).
 -}
 instance FromValue HiddenFolio where
   fromValue = parseTableFromValue $ do
@@ -777,7 +777,7 @@ instance FromValue HiddenFolio where
         gutter = maybe (hfGutter d) snd gutterAt
     pure (HiddenFolio enabled (fromMaybe (hfPages d) pages) size gutter (isJust gutterAt))
 
-{- | G0329 (golem-driver ADR 0041): the column of digits, half the size on
+{- | G03029 (golem-driver ADR 0041): the column of digits, half the size on
 each side of its centre line, crosses the trim line of the gutter when
 the gutter is less than half the size. Half the size stands for half the
 advance of a digit, which the font decides and style.toml does not know.
@@ -915,7 +915,7 @@ runningMetaKeys :: [Text]
 runningMetaKeys = ["title", "title_reading", "edition", "publisher", "date", "language", "id"]
 
 {- | One line of a running head format (golem-driver ADR 0022): text and
-slots in braces, @{{@ and @}}@ for braces. 'Left' is the reason of G0314.
+slots in braces, @{{@ and @}}@ for braces. 'Left' is the reason of G03014.
 -}
 parseRunningFormat :: Text -> Either Text [RunningPart]
 parseRunningFormat t0
@@ -1024,8 +1024,8 @@ ruleStyleNames =
   ]
 
 {- | Reads a rule spec from its table; every error is at the value or,
-for an unknown key, at the table (G0306 by the path of its user). The
-swatch of color is checked by the user of the style (G0313).
+for an unknown key, at the table (G03006 by the path of its user). The
+swatch of color is checked by the user of the style (G03013).
 -}
 instance FromValue RuleSpec where
   fromValue = parseTableFromValue $ do
@@ -1094,9 +1094,9 @@ instance FromValue RuleSpec where
 defaultRuleWeight :: Sp
 defaultRuleWeight = round (3 / 10 * 65536 :: Rational)
 
--- | A TOML document that is one rule spec, read by its 'FromValue'; errors are G0306.
+-- | A TOML document that is one rule spec, read by its 'FromValue'; errors are G03006.
 parseRuleSpec :: FileId -> Text -> Either [Diagnostic] RuleSpec
-parseRuleSpec = decodeStrictBy "G0306" (const "G0306")
+parseRuleSpec = decodeStrictBy "G03006" (const "G03006")
 
 newtype Swatch = Swatch (Int, Int, Int, Int)
   deriving stock (Eq, Show)
@@ -1229,7 +1229,7 @@ instance FromValue DimV where
   fromValue (Text' l t) = case parseDim t of
     Just d -> pure (DimV d)
     Nothing
-      -- the names of aki amounts and percentages are only for aki (docs/adr ADR 0019): G0320
+      -- the names of aki amounts and percentages are only for aki (docs/adr ADR 0019): G03020
       | Just _ <- parseAki t -> failAt l (T.unpack (akiError ("アキの量の名前と百分率は、アキの量を書く欄でだけ使えます。寸法は 0.5zw や 2mm のように書きます: " <> t)))
       | otherwise -> failAt l ("長さの書き方が不正です: " <> T.unpack t <> "（13Q や 20mm のように書きます）")
   fromValue v = failAt (valueAnn v) "長さは文字列で書きます"
@@ -1258,7 +1258,7 @@ keyPosition v k = case v of
   Table' l (MkTable t) -> maybe l (valueAnn . snd) (Map.lookup k t)
   _ -> valueAnn v
 
--- | The message of G0320 (docs/adr ADR 0019).
+-- | The message of G03020 (docs/adr ADR 0019).
 akiError :: Text -> Text
 akiError why = "アキの量の指定が正しくありません: " <> why
 
@@ -1389,7 +1389,7 @@ instance FromValue CharStyleDef where
     pure (CharStyleDef b f s c sb si k t p bs bg pad')
 
 {- | kerning, tracking, proportional-metrics and baseline-shift
-(docs/adr/0020). Every error is under its key, which makes it G0321.
+(docs/adr/0020). Every error is under its key, which makes it G03021.
 -}
 featureKeysOf :: ParseTable l (Maybe Kerning, Maybe Int, Maybe Bool, Maybe Dim)
 featureKeysOf = do
@@ -1410,7 +1410,7 @@ featureKeysOf = do
   bs <- optKeyOf "baseline-shift" (withValue (\l v -> maybe (wrong l "baseline-shift" v) pure (parseSignedDim v)))
   pure (k, t, p, bs)
 
--- | The keys of 'featureKeysOf': their errors are G0321 (docs/adr/0020).
+-- | The keys of 'featureKeysOf': their errors are G03021 (docs/adr/0020).
 featureKeys :: [Text]
 featureKeys = ["kerning", "tracking", "proportional-metrics", "baseline-shift"]
 
@@ -1462,7 +1462,7 @@ instance FromValue HeadingStyle where
     n <- optKey "number"
     pb <- enumKey "page-break" ["recto", "any"]
     ls <- optKeyOf "lines" $ withValue $ \at l -> if l < (1 :: Int) then failAt at ("lines は 1 以上の整数です: " <> show l) else pure l
-    -- retired (golem-driver ADR 0014): G0319
+    -- retired (golem-driver ADR 0014): G03019
     pickKey
       [ Key "running-head" (\v -> failAt (valueAnn v) "[headings.<l>] の running-head は廃止しました。柱に使う見出しは [masters.<名前>] の running-head の content で指定してください"),
         Else (pure ())
@@ -1538,7 +1538,7 @@ masterPositions :: [Text]
 masterPositions = ["top-outside", "top-inside", "top-center", "bottom-outside", "bottom-inside", "bottom-center"]
 
 {- | A position of a master page; an unknown one is an error at its value,
-which makes it G0318 (golem-driver ADR 0016).
+which makes it G03018 (golem-driver ADR 0016).
 -}
 newtype MasterPosition = MasterPosition Text
 
@@ -1561,19 +1561,19 @@ instance FromValue PosContent where
     f <- optKey "format"
     pure (PosContent p (fromMaybe "" (c <> f)))
 
--- | The message of G0314 (golem-driver ADR 0014).
+-- | The message of G03014 (golem-driver ADR 0014).
 runningContentMessage :: Text -> String
 runningContentMessage v =
   T.unpack ("柱の内容が正しくありません: " <> v <> "。heading.<階層>.short か heading.<階層>.numbered（末尾に .last を付けられます）、title、none のどれかを、content に一つ、または even と odd の両方に書いてください")
 
--- | The message of G0314 for a format (golem-driver ADR 0022).
+-- | The message of G03014 for a format (golem-driver ADR 0022).
 runningFormatMessage :: Text -> String
 runningFormatMessage why = T.unpack ("柱の書式が正しくありません: " <> why)
 
 {- | A content of a running head: a word of the vocabulary as a string
 (golem-driver ADR 0014), or a format as an array of lines (golem-driver
 ADR 0022); with what was written, for the message of a wrong combination.
-A string with @{@ is a format written as a string: G0314 that points to
+A string with @{@ is a format written as a string: G03014 that points to
 arrays, so that a misspelt word never shows as fixed text.
 -}
 runningContentOf :: Value' l -> Matcher l (Text, RunningContent)
@@ -1594,7 +1594,7 @@ runningContentOf v = case v of
 
 {- | A running head: @position@, and @content@ or both @even@ and @odd@.
 Errors of the contents are reported under their key, which makes them
-G0314.
+G03014.
 -}
 instance FromValue RunningHeadDef where
   fromValue v = flip parseTableFromValue v $ do
@@ -1687,7 +1687,7 @@ instance FromValue Notes where
         "book" -> NumberPerBook
         _ -> NumberPerChapter
 
--- | [code] (golem-driver ADR 0023): an unknown key or kind is G0306.
+-- | [code] (golem-driver ADR 0023): an unknown key or kind is G03006.
 newtype CodeSec = CodeSec CodeStyle
 
 instance FromValue CodeSec where
@@ -1724,7 +1724,7 @@ instance FromValue VerseV where
       "[verse] は廃止しました。indent = I と hang = H は [paragraph-styles.verse] の indent = I + H と first-line-indent = -H に、stanza-gap は [paragraph-styles.verse] の space-between に書き換えます"
 
 {- | [lists] (golem-driver ADR 0013): every error names its key; they are
-G0322 by their path.
+G03022 by their path.
 -}
 newtype ListsSec = ListsSec ListStyle
 
@@ -1753,7 +1753,7 @@ instance FromValue ListsSec where
           | otherwise -> pure (Just d)
     pure (ListsSec (ListStyle (fromMaybe (lsBullets defaultListStyle) bs) fmts g))
 
-{- | [index] (docs/adr ADR 0025): every error is at its value, G0325 by
+{- | [index] (docs/adr ADR 0025): every error is at its value, G03025 by
 its path. The position of columns is filled in by 'parseStyle'.
 -}
 newtype IndexSec = IndexSec IndexStyle
@@ -1881,66 +1881,66 @@ filesystem.
 -}
 parseStyle :: FileId -> Text -> Either [Diagnostic] Style
 parseStyle fid src = do
-  s0 <- either (Left . map akiCode) Right (decodeStrictBy "G0306" codeAt fid src)
+  s0 <- either (Left . map akiCode) Right (decodeStrictBy "G03006" codeAt fid src)
   let s = s0 {stIndex = (\ix -> ix {ixColumnsAt = columnsAt}) <$> stIndex s0}
   -- the same code and message once, at the path that comes first (golem-project ADR 0008)
   case nubBy (\(c, _, m) (c', _, m') -> (c, m) == (c', m')) [(code, path, m) | (code, _, path, m) <- styleChecks "style.toml の" s] of
     [] -> Right s
     ds -> Left [(diagnostic code Error (at path) m) {diagFacts = factsOf s code} | (code, path, m) <- ds]
   where
-    -- the facts of G0329 (golem-driver ADR 0041); the other checks have none
+    -- the facts of G03029 (golem-driver ADR 0041); the other checks have none
     factsOf st = \case
-      "G0329" -> concat [fs | (_, _, fs) <- hiddenFolioChecks (stHiddenFolio st)]
+      "G03029" -> concat [fs | (_, _, fs) <- hiddenFolioChecks (stHiddenFolio st)]
       _ -> []
     tree = either (const Nothing) Just (Toml.parse src)
     -- the span of the value to fix, of its table, or the start of the file
     at path = case tree >>= (`checkPosition` path) of
       Just (Position _ l c) | Just off <- lineColToOffset (mkLineIndex src) (LineCol (l - 1) (c - 1)) -> mkSpan fid off off
       _ -> mkSpan fid 0 0
-    -- where the value of [index] columns starts, for G0744 (docs/adr ADR 0025)
+    -- where the value of [index] columns starts, for G07044 (docs/adr ADR 0025)
     columnsAt = spanStart (at [ScopeKey "index", ScopeKey "columns"])
-    -- an aki amount wrong in any key is G0320 (docs/adr ADR 0019)
+    -- an aki amount wrong in any key is G03020 (docs/adr ADR 0019)
     akiCode d
-      | akiError "" `T.isPrefixOf` diagMessage d = d {diagCode = DiagnosticCode "G0320"}
+      | akiError "" `T.isPrefixOf` diagMessage d = d {diagCode = DiagnosticCode "G03020"}
       | otherwise = d
-    -- errors of the page size are G0317 (ADR 0005)
+    -- errors of the page size are G03017 (ADR 0005)
     codeAt = \case
-      ScopeKey "page" : ScopeKey "size" : _ -> "G0317"
-      -- errors of [lists] are G0322 (golem-driver ADR 0013)
-      ScopeKey "lists" : _ -> "G0322"
-      -- errors of [aki-sets] are G0320 (docs/adr ADR 0019)
-      ScopeKey "aki-sets" : _ -> "G0320"
-      -- the values of [index] are G0325, an unknown key G0306 (docs/adr ADR 0025)
-      ScopeKey "index" : ScopeKey k : _ | k `elem` ["columns", "column-gap"] -> "G0325"
-      -- the contents of a running head are G0314, the retired running-head of a heading G0319 (golem-driver ADR 0014)
-      ScopeKey "masters" : _ : ScopeKey "running-head" : ScopeKey k : _ | k `elem` ["content", "even", "odd"] -> "G0314"
-      -- an unknown position of a running head or a folio is G0318 (golem-driver ADR 0016)
-      ScopeKey "masters" : _ : ScopeKey k : ScopeKey "position" : _ | k `elem` ["running-head", "folio"] -> "G0318"
-      ScopeKey "headings" : _ : ScopeKey "running-head" : _ -> "G0319"
-      -- the keys of kerning, tracking and baseline shift are G0321 (docs/adr/0020)
-      ScopeKey t : _ : ScopeKey k : _ | t `elem` ["character-styles", "paragraph-styles"], k `elem` featureKeys -> "G0321"
-      _ -> "G0306"
+      ScopeKey "page" : ScopeKey "size" : _ -> "G03017"
+      -- errors of [lists] are G03022 (golem-driver ADR 0013)
+      ScopeKey "lists" : _ -> "G03022"
+      -- errors of [aki-sets] are G03020 (docs/adr ADR 0019)
+      ScopeKey "aki-sets" : _ -> "G03020"
+      -- the values of [index] are G03025, an unknown key G03006 (docs/adr ADR 0025)
+      ScopeKey "index" : ScopeKey k : _ | k `elem` ["columns", "column-gap"] -> "G03025"
+      -- the contents of a running head are G03014, the retired running-head of a heading G03019 (golem-driver ADR 0014)
+      ScopeKey "masters" : _ : ScopeKey "running-head" : ScopeKey k : _ | k `elem` ["content", "even", "odd"] -> "G03014"
+      -- an unknown position of a running head or a folio is G03018 (golem-driver ADR 0016)
+      ScopeKey "masters" : _ : ScopeKey k : ScopeKey "position" : _ | k `elem` ["running-head", "folio"] -> "G03018"
+      ScopeKey "headings" : _ : ScopeKey "running-head" : _ -> "G03019"
+      -- the keys of kerning, tracking and baseline shift are G03021 (docs/adr/0020)
+      ScopeKey t : _ : ScopeKey k : _ | t `elem` ["character-styles", "paragraph-styles"], k `elem` featureKeys -> "G03021"
+      _ -> "G03006"
 
 {- | The checks of the styles of a 'Style' (docs/adr ADR 0005, 0006, 0014):
 the code, the name of the style it is about (empty when it is about no
 style), the path of the value to fix in style.toml (golem-project ADR
-0008) and the message. @owner@ starts the message of G0313: where the
+0008) and the message. @owner@ starts the message of G03013: where the
 definitions were written.
 -}
 styleChecks :: Text -> Style -> [(Text, Text, [Scope], Text)]
 styleChecks owner s =
-  [("G0306", "", path, m) | (path, m) <- numberChecks]
-    <> [("G0306", n, keys [kind, n], "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | (kind, n) <- map ("character-styles",) (Map.keys (stCharStyles s)) <> map ("paragraph-styles",) (Map.keys (stParaStyles s)), not (validStyleName n)]
-    <> [("G0306", "", path, m) | (path, m) <- checks]
-    <> [("G0306", n, path, m) | (n, path, m) <- codeChecks]
-    <> [("G0306", n, path, m) | (n, path, m) <- ruleChecks]
-    <> [("G0329", "", path, m) | (path, m, _) <- hiddenFolioChecks (stHiddenFolio s)]
-    <> [("G0308", n, path, "style.toml にないフォントの役割です: " <> r) | (n, path, r) <- roles, Map.notMember r (stFonts s)]
-    <> [("G0313", n, path, owner <> "スタイルの参照が不正です: " <> m) | (n, path, m) <- referenceChecks]
+  [("G03006", "", path, m) | (path, m) <- numberChecks]
+    <> [("G03006", n, keys [kind, n], "スタイルの名前は英小文字で始まり、英小文字、数字、- だけからなります: " <> n) | (kind, n) <- map ("character-styles",) (Map.keys (stCharStyles s)) <> map ("paragraph-styles",) (Map.keys (stParaStyles s)), not (validStyleName n)]
+    <> [("G03006", "", path, m) | (path, m) <- checks]
+    <> [("G03006", n, path, m) | (n, path, m) <- codeChecks]
+    <> [("G03006", n, path, m) | (n, path, m) <- ruleChecks]
+    <> [("G03029", "", path, m) | (path, m, _) <- hiddenFolioChecks (stHiddenFolio s)]
+    <> [("G03008", n, path, "style.toml にないフォントの役割です: " <> r) | (n, path, r) <- roles, Map.notMember r (stFonts s)]
+    <> [("G03013", n, path, owner <> "スタイルの参照が不正です: " <> m) | (n, path, m) <- referenceChecks]
     <> [(code, n, path, m) | (n, ParaStyleDef {psRegexStyles = Just rs}) <- Map.toList (stParaStyles s), (i, r) <- zip [0 ..] rs, (code, path, m) <- regexStyleErrors owner s n i r]
-    <> [("G0311", n, para n "size", "段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks]
-    <> [("G0312", n, path, "段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | (n, path) <- indentChecks]
-    <> [("G0321", n, keys [kind, n, "kerning"], "v1 ではオプティカルカーニングを使えません（" <> word <> " " <> n <> " の kerning）") | (kind, word, n) <- opticals]
+    <> [("G03011", n, para n "size", "段落スタイルの文字の大きさが版面の文字の大きさを超えます: " <> n) | n <- sizeChecks]
+    <> [("G03012", n, path, "段落の最初の行が版面の外に出ます。indent と first-line-indent の和を 0 以上にしてください: " <> n) | (n, path) <- indentChecks]
+    <> [("G03021", n, keys [kind, n, "kerning"], "v1 ではオプティカルカーニングを使えません（" <> word <> " " <> n <> " の kerning）") | (kind, word, n) <- opticals]
   where
     keys = map ScopeKey
     para n k = keys ["paragraph-styles", n, k]
@@ -2167,8 +2167,8 @@ regexStyleKeys = ["pattern", "style"]
 {- | The keys of one @style-def as a TOML table, read with the 'FromValue'
 of style.toml: a string is a string, the words true and false are
 booleans, a word of digits (with a leading -) is an integer, any other
-word is a string. Errors are (code, message): G0321 for the keys of
-kerning, tracking and baseline shift (docs/adr/0020), G0306 for the others.
+word is a string. Errors are (code, message): G03021 for the keys of
+kerning, tracking and baseline shift (docs/adr/0020), G03006 for the others.
 -}
 localStyleDef :: StyleKind -> [(Text, LocalValue)] -> Either [(Text, Text)] (Either CharStyleDef ParaStyleDef)
 localStyleDef kind kvs = case kind of
@@ -2189,8 +2189,8 @@ readLocal kvs = run (Table (table [(k, tomlValue v) | (k, v) <- kvs]))
       Success ws _ -> Left (map message ws)
     message (MatchMessage _ path msg) = (codeOf path, schemaMessage path msg)
     codeOf = \case
-      ScopeKey k : _ | k `elem` featureKeys -> "G0321"
-      _ -> "G0306"
+      ScopeKey k : _ | k `elem` featureKeys -> "G03021"
+      _ -> "G03006"
     tomlValue = \case
       LocalString t -> Text t
       LocalWord "true" -> Bool True
@@ -2229,12 +2229,12 @@ checkLocalStyles s ls =
     checksOf st = [(code, n, m) | (code, n, _, m) <- styleChecks "@style-def の" st]
 
 {- | The errors of the i-th (from 0) regex style of a paragraph style
-(docs/adr ADR 0015): a pattern outside the dialect is G0315, a character
-style that does not exist G0313.
+(docs/adr ADR 0015): a pattern outside the dialect is G03015, a character
+style that does not exist G03013.
 -}
 regexStyleErrors :: Text -> Style -> Text -> Int -> RegexStyleDef -> [(Text, [Scope], Text)]
 regexStyleErrors owner s para i (RegexStyleDef p st) =
-  [ ( "G0315",
+  [ ( "G03015",
       at "pattern",
       "正規表現を解釈できません: "
         <> reMessage e
@@ -2248,7 +2248,7 @@ regexStyleErrors owner s para i (RegexStyleDef p st) =
     )
   | Left e <- [compile p]
   ]
-    <> [("G0313", at "style", owner <> "スタイルの参照が不正です: 正規表現スタイルの文字スタイルがありません: " <> st) | Map.notMember st (stCharStyles s)]
+    <> [("G03013", at "style", owner <> "スタイルの参照が不正です: 正規表現スタイルの文字スタイルがありません: " <> st) | Map.notMember st (stCharStyles s)]
   where
     -- the key of the i-th regex style of the paragraph style (golem-project ADR 0008)
     at k = [ScopeKey "paragraph-styles", ScopeKey para, ScopeKey "regex-styles", ScopeIndex i, ScopeKey k]
@@ -2256,7 +2256,7 @@ regexStyleErrors owner s para i (RegexStyleDef p st) =
 {- | The errors of the regex styles of a file (docs/adr ADR 0015): the
 paragraph style, the place of the regex style among those the file adds
 to it (from 0), the code and the message. The paragraph style must exist
-(G0313); the character styles of the file count.
+(G03013); the character styles of the file count.
 -}
 checkLocalRegexStyles :: Style -> LocalStyles -> [(Text, Int, Text, Text)]
 checkLocalRegexStyles s ls =
@@ -2264,7 +2264,7 @@ checkLocalRegexStyles s ls =
    in concat
         [ if Map.member p (stParaStyles combined)
             then [(p, i, code, m) | (code, _, m) <- regexStyleErrors owner combined p i r]
-            else [(p, i, "G0313", owner <> "スタイルの参照が不正です: 正規表現スタイルの段落スタイルがありません: " <> p)]
+            else [(p, i, "G03013", owner <> "スタイルの参照が不正です: 正規表現スタイルの段落スタイルがありません: " <> p)]
         | (p, rs) <- Map.toList (lsRegexStyles ls),
           (i, r) <- zip [0 ..] rs
         ]

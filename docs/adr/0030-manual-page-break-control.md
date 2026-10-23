@@ -18,7 +18,7 @@ PDF の改ページ（`Golem.Layout.Paginate.paginateIn`）は、ブロック（
 - 見出し（`FHeading`）と定義リストの用語（`FDefTerm`）は、続くブロックの最初の部分（`nextNeed`、段落なら最初の 2 行）と同じ段に置く（`keep`）。今の段に入らなければ次の段へ送る。空の段では送らない。
 - 図版（`FFigure`）は、今の段に入らなければ後に送り（`sDeferred`）、後の本文を先に置く。
 - 改ページの印（`FBreak`）は `sBreaks` にためておき、次のブロックを置く直前に書いた順に適用する。
-- `paginate` は診断を返さない純粋な関数である。版面に入らない見出し（G0724）のように、改ページの前に分かる誤りは、golem-driver が `paginate` を呼ぶ前に検査する（[golem-driver ADR 0003](../golem-driver/adr/0003-pdf-heading-styles.md)）。
+- `paginate` は診断を返さない純粋な関数である。版面に入らない見出し（G07024）のように、改ページの前に分かる誤りは、golem-driver が `paginate` を呼ぶ前に検査する（[golem-driver ADR 0003](../golem-driver/adr/0003-pdf-heading-styles.md)）。
 
 この規則で組めない組み方が三つある。
 
@@ -70,10 +70,10 @@ Golem の版面は行の格子で決まり（仕様書の「style.toml」の節�
 | `@need-lines N` | 今の段の残りが N 行に足りなければ、次の段から続ける | `\needspace` | なし | なし |
 | `@page-lines +N`、`@page-lines -N` | 印の位置の段の行数を、その段に限り N 行増やす（減らす） | `\enlargethispage` | テキストフレームを伸ばす | なし |
 
-- 文書の最上位にだけ置ける。リストの項目、定義リストの説明、ブロックコマンドの本体の中に置くと G0271 とする。本体の形の `@style` の中は、ほかのブロックと同じく G0245 になる。
-- `@no-page-break` は引数を取らない。`@need-lines` は 1 以上の整数の位置引数を一つ取る。`@page-lines` は、`+` か `-` の符号を付けた 0 でない整数の位置引数を一つ取る。符号を必須にするのは、版面の行数そのものではなく増減であることを原稿で読めるようにするためである。どれもキーワード引数と本体を持たない。誤りは G0270 とする。
+- 文書の最上位にだけ置ける。リストの項目、定義リストの説明、ブロックコマンドの本体の中に置くと G02071 とする。本体の形の `@style` の中は、ほかのブロックと同じく G02045 になる。
+- `@no-page-break` は引数を取らない。`@need-lines` は 1 以上の整数の位置引数を一つ取る。`@page-lines` は、`+` か `-` の符号を付けた 0 でない整数の位置引数を一つ取る。符号を必須にするのは、版面の行数そのものではなく増減であることを原稿で読めるようにするためである。どれもキーワード引数と本体を持たない。誤りは G02070 とする。
 - 属性のまとまりの中に書いてよい。規則は `@page-break` と同じで、まとまりの中の位置によらず、まとまりの対象のブロックの直前に置かれる。`@label` などの属性は、印を飛ばして対象のブロックに付く。
-- `@no-page-break` の直前か直後に、印のほかのブロックを挟まずに `@page-break` か `@column-break` を書くと、G0272 とする。改めることと改めないことを同じ位置に指定しているためである。間に `@need-lines` か `@page-lines` があっても、同じ位置とみなす。
+- `@no-page-break` の直前か直後に、印のほかのブロックを挟まずに `@page-break` か `@column-break` を書くと、G02072 とする。改めることと改めないことを同じ位置に指定しているためである。間に `@need-lines` か `@page-lines` があっても、同じ位置とみなす。
 
 ### 意味
 
@@ -152,16 +152,16 @@ data PageControl = NoBreak | NeedLines !Int | AdjustLines !Int
 
 - `standalone` に `"no-page-break"`、`"need-lines"`、`"page-lines"` を加え、引数を検査して `PageControl` のブロックを一つ返す。`@need-lines` の引数は語 `5` を整数として、`@page-lines` の引数は語 `+1`、`-2` を符号付きの整数として読む。
 - `attributed` が `@page-break` と `@column-break` を取り除く規則（[docs/adr/0017](0017-forced-page-breaks.md)）に、三つのコマンドを加える。書いた順は保つ。
-- 最上位でない位置の印は、`nestedBreaks` と同じ走査で取り除き、G0271 とする。
-- G0272 は、ファイルの最上位のブロックの列で、`NoBreak` と `ForcedBreak` が `PageControl` のほかのブロックを挟まずに隣り合う位置に出す。ファイルをまたぐ隣り合いは評価では分からないので、改ページで守れなかった指定として扱う。
+- 最上位でない位置の印は、`nestedBreaks` と同じ走査で取り除き、G02071 とする。
+- G02072 は、ファイルの最上位のブロックの列で、`NoBreak` と `ForcedBreak` が `PageControl` のほかのブロックを挟まずに隣り合う位置に出す。ファイルをまたぐ隣り合いは評価では分からないので、改ページで守れなかった指定として扱う。
 
 | 診断コード | 重大度 | 条件 | メッセージ |
 |---|---|---|---|
-| G0270 | エラー | 引数の誤り | `@no-page-break は引数を取りません`、`@need-lines の引数は 1 以上の整数です`、`@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です`、`<名前> は本体を持てません` |
-| G0271 | エラー | 文書の最上位でない位置の印 | `@no-page-break、@need-lines、@page-lines は文書の最上位にだけ置けます` |
-| G0272 | エラー | 改ページと改ページの禁止が同じ位置にある | `@no-page-break と <@page-break か @column-break> が同じ位置にあります` |
+| G02070 | エラー | 引数の誤り | `@no-page-break は引数を取りません`、`@need-lines の引数は 1 以上の整数です`、`@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です`、`<名前> は本体を持てません` |
+| G02071 | エラー | 文書の最上位でない位置の印 | `@no-page-break、@need-lines、@page-lines は文書の最上位にだけ置けます` |
+| G02072 | エラー | 改ページと改ページの禁止が同じ位置にある | `@no-page-break と <@page-break か @column-break> が同じ位置にあります` |
 
-G0270 から G0272 は、02 の区分（評価）の最後に使った G0269 の次の番号である。
+G02070 から G02072 は、02 の区分（評価）の最後に使った G02069 の次の番号である。
 
 ### PDF（golem-layout）
 
@@ -204,14 +204,14 @@ data Unmet
 
 | 診断コード | 重大度 | 条件 | メッセージ |
 |---|---|---|---|
-| G0737 | 警告 | 改ページの手での制御を守れなかった | `ここで改ページを止められませんでした`、`@need-lines <N> は段の行数 <M> を超えます`、`@page-lines の増減を <K> 行に切り詰めました` |
+| G07037 | 警告 | 改ページの手での制御を守れなかった | `ここで改ページを止められませんでした`、`@need-lines <N> は段の行数 <M> を超えます`、`@page-lines の増減を <K> 行に切り詰めました` |
 
 警告の位置は印の位置とする。
-G0737 は、07 の区分（レイアウト）の空きの番号である。
+G07037 は、07 の区分（レイアウト）の空きの番号である。
 
 ### HTML と EPUB（golem-html）
 
-- `NoBreak` の後の最初のブロックの要素に、`data-break-before="avoid"` 属性を付ける。改ページの印（`page`、`recto`、`verso`）と同じ属性を使うのは、[docs/adr/0017](0017-forced-page-breaks.md) と同じく、`body` の段落の選び方（`p:not([class])`）を壊さないためである。G0272 があるので、同じ要素に二つの値が来ることはない。
+- `NoBreak` の後の最初のブロックの要素に、`data-break-before="avoid"` 属性を付ける。改ページの印（`page`、`recto`、`verso`）と同じ属性を使うのは、[docs/adr/0017](0017-forced-page-breaks.md) と同じく、`body` の段落の選び方（`p:not([class])`）を壊さないためである。G02072 があるので、同じ要素に二つの値が来ることはない。
 - `style.css` には、本で `@no-page-break` を使った場合に限り、次の規則を書く。
 
   ```css
@@ -235,7 +235,7 @@ G0737 は、07 の区分（レイアウト）の空きの番号である。
 
 - [docs/markup.md](../markup.md)：ブロックコマンドの一覧に三つを加え、「改ページ」の節に、記法、置ける位置、意味、守れない指定を書く。
 - 仕様書の「改ページ」の節に、三つの印の規則と、HTML と EPUB の出力を書く。
-- [docs/diagnostics.md](../diagnostics.md) に G0270、G0271、G0272、G0737 の節を加え、「使っていない番号」の空きから G0737 を除く。
+- [docs/diagnostics.md](../diagnostics.md) に G02070、G02071、G02072、G07037 の節を加え、「使っていない番号」の空きから G07037 を除く。
 - [docs/roadmap.md](../roadmap.md) の「改ページの手での制御」の項目を消す。
 - 使い手のマニュアルの `manual/chapters/03-markup.gm` の改ページの節と `manual/appendices/a-markup.gm` のブロックコマンドの一覧に三つの記法を、`manual/appendices/e-errors.gm` に四つのコードを加える。`manual/appendices/f-indesign.gm` の対応の表に、「次の段落と連動」と `@no-page-break` の行を加える。`manual/appendices/h-roadmap.gm` から項目を消す。
 - [docs/adr/0017](0017-forced-page-breaks.md) のステータスの行に、「実装しないこと」の「改ページを禁じる指定」をこの ADR で扱ったことを、この ADR へのリンクで書き足す。
@@ -271,9 +271,9 @@ G0737 は、07 の区分（レイアウト）の空きの番号である。
 
 - `"a\n\n@no-page-break\n\nb\n"` が `[Paragraph a, PageControl NoBreak, Paragraph b]` になる。`"@need-lines 5\n"` が `NeedLines 5`、`"@page-lines +1\n"` が `AdjustLines 1`、`"@page-lines -2\n"` が `AdjustLines (-2)` になる。
 - `"@need-lines 3\n@label x\n# h\n"` で、ラベルが見出しに付き、印が見出しの前にある。
-- `"@no-page-break x\n"`、`"@need-lines\n"`、`"@need-lines 0\n"`、`"@need-lines 2.5\n"`、`"@page-lines 1\n"`（符号なし）、`"@page-lines +0\n"`、`"@page-lines +1 +2\n"`、本体を持つ `"@need-lines 3\n  a\n"` が G0270 になる。
-- `"- a\n\n  @no-page-break\n"` が G0271 になり、結果に `PageControl` がない。
-- `"@no-page-break\n@page-break\n"`、`"@column-break\n\n@no-page-break\n"`、`"@no-page-break\n@need-lines 2\n@page-break\n"` が G0272 になる。`"@no-page-break\n\na\n\n@page-break\n"` は G0272 にならない。
+- `"@no-page-break x\n"`、`"@need-lines\n"`、`"@need-lines 0\n"`、`"@need-lines 2.5\n"`、`"@page-lines 1\n"`（符号なし）、`"@page-lines +0\n"`、`"@page-lines +1 +2\n"`、本体を持つ `"@need-lines 3\n  a\n"` が G02070 になる。
+- `"- a\n\n  @no-page-break\n"` が G02071 になり、結果に `PageControl` がない。
+- `"@no-page-break\n@page-break\n"`、`"@column-break\n\n@no-page-break\n"`、`"@no-page-break\n@need-lines 2\n@page-break\n"` が G02072 になる。`"@no-page-break\n\na\n\n@page-break\n"` は G02072 にならない。
 
 ### golem-layout（`test/Main.hs`）
 
@@ -297,9 +297,9 @@ G0737 は、07 の区分（レイアウト）の空きの番号である。
 ### golem-driver（`test/Main.hs` または `PdfSpec.hs`）
 
 - `@page-lines +1` で 1 行増やしたページの最後の行の基準線が、版面の最後の格子の基準線から行送り一つ分だけ先にある。横組みと縦組みの両方で確かめる。
-- 版面の下の余白が行送りより狭い版面で `@page-lines +1` を書くと、G0737 の警告が出て、行数が増えない。
-- `@no-page-break` を守れない入力（空の段に入らない二つの段落）が G0737 の警告になり、PDF は出力される。
-- `@need-lines` に格子の行数を超える値を書くと G0737 の警告になる。
+- 版面の下の余白が行送りより狭い版面で `@page-lines +1` を書くと、G07037 の警告が出て、行数が増えない。
+- `@no-page-break` を守れない入力（空の段に入らない二つの段落）が G07037 の警告になり、PDF は出力される。
+- `@need-lines` に格子の行数を超える値を書くと G07037 の警告になる。
 - 印を書かない本の PDF が、この ADR の前とバイト列で一致する（既存の golden と、決定性の検査の sample のハッシュで確かめる）。
 - HTML で、`@no-page-break` の後の段落が `<p data-break-before="avoid">` になり、`style.css` に `[data-break-before="avoid"]` の規則がある。`@no-page-break` を使わない本の `style.css` が変わらない。`@need-lines` と `@page-lines` が何も出力しない。
 - プレーンテキストで、`"a\n\n@no-page-break\n\nb\n"` が `"a\n\nb\n"` と同じ出力になる。

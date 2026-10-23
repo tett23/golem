@@ -108,7 +108,7 @@ takesNoSlot = \case
     BSidenote -> False
     BIndex -> False
     BCite -> True
-    -- [aki] reports a slot as G0255 itself (docs/adr ADR 0019)
+    -- [aki] reports a slot as G02055 itself (docs/adr ADR 0019)
     BAki -> False
 
 -- | The name of a plugin command that is not a built-in one.

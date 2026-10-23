@@ -123,7 +123,7 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 `golem preflight` の要約の SHA-256 は、この PDF と一致する。
 
 日本の印刷所に入稿する PDF は、`style.toml` の `[page]` に `bleed = "3mm"` を書き、`golem build --target pdf --marks japanese` で作る。
-塗り足しのない日本式のトンボはエラー（G0702）になる。
+塗り足しのない日本式のトンボはエラー（G07002）になる。
 欧文の一重のトンボは `--marks western` で付ける。
 閲覧用の PDF は `--marks` を付けずに作る。
 トンボを付けた PDF には、ノンブルのないページのノドの側に隠しノンブルが入る。
@@ -133,7 +133,8 @@ PDF/X-4 の適合は Golem 自身の検査で確かめているが、入稿す�
 原稿の異体字セレクタ（IVS）は PDF では字形の選択に使い、ToUnicode には基底の文字だけを書く（[golem-pdf ADR 0006](docs/golem-pdf/adr/0006-cid-system-info.md)）。
 ビルドはプラグインをキャッシュからだけ読み、ネットワークに接続しない。
 diagnostics は `--format json` で JSON にできる。
-diagnostic のコード（`G0101` など）の意味と直し方は [docs/diagnostics.md](docs/diagnostics.md) にまとめてある。
+diagnostic のコード（`G01001` など）の意味と直し方は [docs/diagnostics.md](docs/diagnostics.md) にまとめてある。
+コードは `G` と、段階の 2 桁と番号の 3 桁からなる 5 桁の数字である（[docs/adr/0061](./docs/adr/0061-five-digit-diagnostic-codes.md)）。
 終了コードは、成功が 0、エラーの diagnostic があれば 1、使い方の誤りが 2 である。
 
 ## Development
@@ -291,7 +292,7 @@ GOLEM="$(cabal list-bin golem)" sh scripts/manual/build.sh manual-dev  # 一冊�
 
 `build-info.gm` は生成物で、Git では管理しない。
 マニュアルを `golem check` や LSP で開く前に、一度 `sh scripts/manual/build-info.sh manual`（開発者のマニュアルは `manual-dev`）を実行する。
-実行しないと、奥付の `@import` の先がないエラー（G0302）になる。
+実行しないと、奥付の `@import` の先がないエラー（G03002）になる。
 Git のリポジトリの外で組むときは、環境変数 `GOLEM_MANUAL_COMMIT` と `GOLEM_MANUAL_TAG` で値を渡す。
 スクリプトのテストは `scripts/manual/test.sh` にある。
 

@@ -43,7 +43,7 @@ CI の epubcheck にかける fixture（`modules/golem-driver/test/fixtures/samp
   同じファイルなら今と同じ `#cite-<キー>` になり、別のファイルなら `../chapters/99.xhtml#cite-knuth1981` のような相対リンクになる。
 - 本に `@bibliography` がないときは、印をリンクにせず、`<span class="cite">[n]</span>` と書く。
   今はこの場合も同じページの `#cite-<キー>` を指しており、リンクの先がない。
-- 書誌データにないキー（G0221）の印は、今と同じく何も書かない。
+- 書誌データにないキー（G02021）の印は、今と同じく何も書かない。
 
 `@bibliography` を二つ以上置いた本の扱い（一覧ごとの番号と、`id` の重複の避け方）は、[golem-doc ADR 0008](../../golem-doc/adr/0008-multiple-index-and-bibliography.md) に従う。
 この ADR は、印から一覧のある文書へのリンクの作り方だけを定める。

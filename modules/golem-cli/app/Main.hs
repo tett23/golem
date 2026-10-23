@@ -137,8 +137,8 @@ inspectAsOpt =
 codeArg :: ReadM T.Text
 codeArg = eitherReader $ \s ->
   let code = T.toUpper (T.pack s)
-   in if T.length code /= 5 || T.take 1 code /= "G" || not (T.all isDigit (T.drop 1 code))
-        then Left ("診断のコードは G と 4 桁の数字です: " <> s)
+   in if T.length code /= 6 || T.take 1 code /= "G" || not (T.all isDigit (T.drop 1 code))
+        then Left ("診断のコードは G と 5 桁の数字です: " <> s)
         else
           if Map.member code catalog
             then Right code
@@ -349,10 +349,10 @@ readArgument path = do
   exists <- doesFileExist path
   if exists then Just <$> BS.readFile path else pure Nothing
 
--- | G0302 for a file named on the command line that is not there (golem-cli ADR 0007).
+-- | G03002 for a file named on the command line that is not there (golem-cli ADR 0007).
 missingArgument :: FilePath -> IO ExitCode
 missingArgument path = do
-  putHuman (Map.singleton (FileId 0) (SourceInfo path (mkLineIndex ""))) [diagnostic "G0302" Error (mkSpan (FileId 0) 0 0) ("ファイルがありません: " <> T.pack path)]
+  putHuman (Map.singleton (FileId 0) (SourceInfo path (mkLineIndex ""))) [diagnostic "G03002" Error (mkSpan (FileId 0) 0 0) ("ファイルがありません: " <> T.pack path)]
   pure (ExitFailure 1)
 
 -- | A path relative to the working directory, without @.@ and with @..@ resolved.
@@ -397,7 +397,7 @@ formatFiles check files0 = do
       results <- mapM one fs
       pure (if and results then ExitSuccess else ExitFailure 1)
   where
-    -- a file that is not there is G0302, and the others are formatted (golem-cli ADR 0007)
+    -- a file that is not there is G03002, and the others are formatted (golem-cli ADR 0007)
     one path =
       readArgument path >>= \case
         Nothing -> missingArgument path >> pure False
@@ -433,7 +433,7 @@ pluginFetch :: IO ExitCode
 pluginFetch = do
   exists <- doesFileExist "plugins.lock"
   text <- if exists then TE.decodeUtf8Lenient <$> BS.readFile "plugins.lock" else pure ""
-  -- G0611 points into plugins.lock (golem-plugin ADR 0003)
+  -- G06011 points into plugins.lock (golem-plugin ADR 0003)
   case parseLock (FileId 0) text of
     Left ds -> putHuman (Map.singleton (FileId 0) (SourceInfo "plugins.lock" (mkLineIndex text))) ds >> pure (ExitFailure 1)
     Right lock -> do

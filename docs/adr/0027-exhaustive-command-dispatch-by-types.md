@@ -6,30 +6,30 @@
 
 テストを書く作業で、診断を出すのに実行されない分岐が三つ見つかった。
 
-- **golem-eval の `builtinWith` の最後の枝**：`_ -> err "G0222" ...` である。
+- **golem-eval の `builtinWith` の最後の枝**：`_ -> err "G02022" ...` である。
   `builtinWith` は、`evalInline` が名前を `builtinInlineCommands` にあると確かめてから、`builtin` を通して呼ぶ。
   `builtinInlineCommands` の名前のうち `aki` は `builtin` が先に処理し、残りの名前は `builtinWith` の `case` がすべて個別に処理する。
   そのため最後の枝に来る名前はない。
-- **golem-driver の `Golem.Driver.Plugins` の `call` の `Nothing` の枝**：G0222 を返す。
+- **golem-driver の `Golem.Driver.Plugins` の `call` の `Nothing` の枝**：G02022 を返す。
   評価は `phCommands` か `phOverrides` にある名前でだけ `phCallCommand` を呼ぶ。
   `phCommands` は `commandOwner` のキーそのものである。
-  `phOverrides` の名前は、G0606、G0607、G0608 の検査を通ったときに限り、`commandOwner` のキーに含まれる（検査が一つでも誤りを出すと、フックを作らない）。
+  `phOverrides` の名前は、G06006、G06007、G06008 の検査を通ったときに限り、`commandOwner` のキーに含まれる（検査が一つでも誤りを出すと、フックを作らない）。
   そのため `Map.lookup` が `Nothing` を返すことはない。
-- **golem-project の `cycleDiagnostic` の `[]` の枝**：G0305 を `manifest.toml` の先頭（`mkSpan (FileId 0) 0 0`）に出す。
+- **golem-project の `cycleDiagnostic` の `[]` の枝**：G03005 を `manifest.toml` の先頭（`mkSpan (FileId 0) 0 0`）に出す。
   `findCycles` が返す経路は、最後に `(f, site)` を一つ足して作るので、空にならない。
   `cycleDiagnostic` はモジュールの外に公開していないので、ほかの呼び出し元もない。
 
 調べると、もう一つ同じ形の分岐がある。
-golem-eval の `noPlugins` の `phCallCommand` は G0222 を返すが、`noPlugins` の `phCommands` と `phOverrides` は空なので、評価はこの関数を呼ばない。
+golem-eval の `noPlugins` の `phCallCommand` は G02022 を返すが、`noPlugins` の `phCommands` と `phOverrides` は空なので、評価はこの関数を呼ばない。
 golem-eval の `FileSpec.hs` のテストだけが、この関数を直接呼んでいる。
 
 既存の ADR は、これらの分岐を残すと決めている。
-[golem-eval ADR 0003](../golem-eval/adr/0003-evaluation-diagnostic-codes.md) は、`builtin` の最後の枝、`noPlugins` の `phCallCommand`、`Golem.Driver.Plugins` の `call` の G0222 を「プラグインのフックの関数を全域にするための枝として残し」とした。
-[golem-project ADR 0006](../golem-project/adr/0006-project-diagnostic-codes.md) は、G0305 の経路が空の分岐を「`cycleDiagnostic` を全域関数に保つため」に残すとした。
+[golem-eval ADR 0003](../golem-eval/adr/0003-evaluation-diagnostic-codes.md) は、`builtin` の最後の枝、`noPlugins` の `phCallCommand`、`Golem.Driver.Plugins` の `call` の G02022 を「プラグインのフックの関数を全域にするための枝として残し」とした。
+[golem-project ADR 0006](../golem-project/adr/0006-project-diagnostic-codes.md) は、G03005 の経路が空の分岐を「`cycleDiagnostic` を全域関数に保つため」に残すとした。
 
 どちらも、関数を全域にする手段として、到達しない入力に診断を割り当てている。
 しかし、その入力は型が許しているだけで、実際には来ない。
-来ない入力に診断を割り当てると、テストで確かめられない診断が残り、位置とメッセージも検査されない（`builtinWith` の枝はコマンド全体を、評価の入口の G0222 は名前を指していて、すでに食い違っている）。
+来ない入力に診断を割り当てると、テストで確かめられない診断が残り、位置とメッセージも検査されない（`builtinWith` の枝はコマンド全体を、評価の入口の G02022 は名前を指していて、すでに食い違っている）。
 型で入力を絞れば、関数は全域のまま、到達しない分岐を書かずに済む。
 
 この ADR は、そのための型の変更を定め、上の二つの ADR の該当部分を置き換える。
@@ -50,11 +50,11 @@ golem-eval に、組み込みのインラインのコマンドを表す直和型
   `aki` も `builtinWith` の `case` の枝の一つにし、`builtin` の `name == "aki"` の特別扱いを除く。
   `builtinWith` は先頭で `keywords` を呼ぶが、`keywords` は引数から組を取り出すだけの純粋な関数で、診断も状態の変化も起こさない。
   `aki` の枝が `keywords` の後に来ても、出力と診断は変わらない。
-  `aki` は G0214 と G0238 の検査（`ref-*` と `noSlotCommands` に限る）の対象でもないので、検査の順が変わっても影響しない。
+  `aki` は G02014 と G02038 の検査（`ref-*` と `noSlotCommands` に限る）の対象でもないので、検査の順が変わっても影響しない。
 - `builtinInlineCommands`、`overridableCommands`、`noSlotCommands` は、`BuiltinInline` から導く。
   `builtinInlineCommands` と `overridableCommands` は今の型（`[Text]`）と今の並びのまま公開を続ける。
   golem-driver の `Golem.Driver.Plugins` と golem-lsp の補完（`Golem.Lsp.Features`）は、今と同じ一覧を受け取る。
-- `builtinWith` の G0222 の枝を除く。
+- `builtinWith` の G02022 の枝を除く。
 
 ### プラグインのコマンドを型で二つに分ける
 
@@ -74,18 +74,18 @@ golem-eval の `PluginHook` の `phCommands`、`phOverrides`、`phCallCommand` �
 1. `parseBuiltin` が `Overridable o` を返し、`o` が `phOverrides` にあれば、そのプラグインのコマンドを呼ぶ。
 2. `parseBuiltin` が `Just b` を返せば、組み込みのコマンド `b` を評価する。
 3. `pluginCommandName` で作った名前が `phCommands` にあれば、そのプラグインのコマンドを呼ぶ。
-4. どれでもなければ G0222 を出す（名前の位置）。
+4. どれでもなければ G02022 を出す（名前の位置）。
 
-今の順「上書きのプラグイン、組み込み、プラグイン、G0222」と同じである。
+今の順「上書きのプラグイン、組み込み、プラグイン、G02022」と同じである。
 
 golem-driver の `loadPlugins` は、検査と型への変換を一つの手順で行う。
 プラグインが提供するコマンドの名前ごとに、`pluginCommandName` が `Just` を返せば `phCommands` の要素にする。
 `Nothing`（組み込みの名前）なら、そのプラグインの `overrides` に宣言があり、`OverridableBuiltin` に変換できるときだけ `phOverrides` の要素にする。
-宣言がなければ G0607、宣言はあるが上書きできない名前なら G0608 を、その変換の失敗として出す。
-`overrides` に書いた名前をプラグインが提供していない場合の G0608 と、二つのプラグインが同じ名前を提供する場合の G0606 は、今と同じく出す。
+宣言がなければ G06007、宣言はあるが上書きできない名前なら G06008 を、その変換の失敗として出す。
+`overrides` に書いた名前をプラグインが提供していない場合の G06008 と、二つのプラグインが同じ名前を提供する場合の G06006 は、今と同じく出す。
 検査で確かめた条件を、検査の結果の値の型が持つので、検査の後に名前を引き直して `Maybe` を扱う箇所がなくなる。
 `call` の `Nothing` の枝はなくなる。
-`noPlugins` の二つの `Map` は空になり、G0222 を返す関数はなくなる。
+`noPlugins` の二つの `Map` は空になり、G02022 を返す関数はなくなる。
 
 ### 循環の経路を NonEmpty にする
 
@@ -108,22 +108,22 @@ golem-project の `findCycles` の型を `ImportGraph -> [NonEmpty (FileId, Impo
 
 ### 診断のコード
 
-G0222 と G0305 は廃止しない。
+G02022 と G03005 は廃止しない。
 
-- G0222 は、評価の入口（`Golem.Eval.File` の `evalInline`）で、組み込みにもプラグインにもない名前に出し続ける。出す箇所はここだけになる。
-- G0305 は、`cycleDiagnostic` の空でない経路の枝で出し続ける。
+- G02022 は、評価の入口（`Golem.Eval.File` の `evalInline`）で、組み込みにもプラグインにもない名前に出し続ける。出す箇所はここだけになる。
+- G03005 は、`cycleDiagnostic` の空でない経路の枝で出し続ける。
 
-`docs/diagnostics.md` の G0222 の「段階とモジュール」から、golem-driver の `Golem.Driver.Plugins` を除き、golem-eval の `Golem.Eval.File` だけにする。
-G0305 の節は変えない。
-`docs/specifications.md` の G0222 の記述（プラグインの読み込みの失敗の後に報告しないこと）は変えない。
-golem-driver の `Driver.hs` の、読み込みの失敗の後に G0222 を除く処理も変えない。
+`docs/diagnostics.md` の G02022 の「段階とモジュール」から、golem-driver の `Golem.Driver.Plugins` を除き、golem-eval の `Golem.Eval.File` だけにする。
+G03005 の節は変えない。
+`docs/specifications.md` の G02022 の記述（プラグインの読み込みの失敗の後に報告しないこと）は変えない。
+golem-driver の `Driver.hs` の、読み込みの失敗の後に G02022 を除く処理も変えない。
 
 ### 既存の ADR のステータス
 
 採択のときに、次の二つの ADR のステータスの行を変える。
 
-- [golem-eval ADR 0003](../golem-eval/adr/0003-evaluation-diagnostic-codes.md)：`採択→到達しない G0222 の枝の扱いは ADR 0027`（相対リンクを付ける）
-- [golem-project ADR 0006](../golem-project/adr/0006-project-diagnostic-codes.md)：`採択→toml-parser の文言の扱いは ADR 0007、G0305 の経路が空の分岐は ADR 0027`（相対リンクを付ける）
+- [golem-eval ADR 0003](../golem-eval/adr/0003-evaluation-diagnostic-codes.md)：`採択→到達しない G02022 の枝の扱いは ADR 0027`（相対リンクを付ける）
+- [golem-project ADR 0006](../golem-project/adr/0006-project-diagnostic-codes.md)：`採択→toml-parser の文言の扱いは ADR 0007、G03005 の経路が空の分岐は ADR 0027`（相対リンクを付ける）
 
 ## データ構造
 
@@ -194,9 +194,9 @@ cycleDiagnostic :: FileTable -> NonEmpty (FileId, ImportSite) -> Diagnostic
 
 ## 実装しないこと
 
-- G0222 と G0305 の番号、重大度、メッセージ、位置は変えない。
+- G02022 と G03005 の番号、重大度、メッセージ、位置は変えない。
 - `-Wincomplete-uni-patterns` と `-Wincomplete-record-updates` は、警告のままにする。エラーにするのは、`case` と関数の定義の網羅性を見る `-Wincomplete-patterns` だけである。
-- `phApplyFilters` の型は変えない。フィルタの名前の検査（G0610）は今のままである。
+- `phApplyFilters` の型は変えない。フィルタの名前の検査（G06010）は今のままである。
 - `builtinInlineCommands` と `overridableCommands` を公開から外さない。golem-driver と golem-lsp の使い方を変えないためである。
 - ブロックのコマンド（`@figure` など）と属性のコマンドの名前を直和型にすることは、この ADR では行わない。到達しない分岐は見つかっていない。
 - [golem-project ADR 0006](../golem-project/adr/0006-project-diagnostic-codes.md) が挙げた `Style` の `FromValue` の到達しない `fail` は、同じ ADR が除くと決めているので、ここでは扱わない。
@@ -214,25 +214,25 @@ cycleDiagnostic :: FileTable -> NonEmpty (FileId, ImportSite) -> Diagnostic
 - `parseBuiltin` は、組み込みでない名前（`nope`、空文字列、`Strong` のような大文字）に `Nothing` を返す。
 - `builtinInlineCommands` が、今の一覧と同じ並びで等しい（`["strong", "bold", "italic", "code", "ruby", "kenten", "color", "style", "tcy", "number-text", "ref-number", "ref-title", "ref-page", "note", "sidenote", "index", "cite", "aki"]`）。
 - `overridableCommands` が、今の一覧と同じ並びで等しい。
-- `noSlotCommands` にあたる名前（`number-text`、`ref-number`、`ref-title`、`ref-page`、`cite`）に散文スロットを書くと、今と同じ G0238 が出る。
-- `aki` の今のテスト（G0255 を含む）が変わらずに通る。`aki` に散文スロットを書いた場合も、今と同じ G0255 が出る。
+- `noSlotCommands` にあたる名前（`number-text`、`ref-number`、`ref-title`、`ref-page`、`cite`）に散文スロットを書くと、今と同じ G02038 が出る。
+- `aki` の今のテスト（G02055 を含む）が変わらずに通る。`aki` に散文スロットを書いた場合も、今と同じ G02055 が出る。
 - プラグインのコマンドの上書き：`phOverrides` に `BStrong` を持つフックで `[strong: x]` がプラグインの出力になる（今の `FileSpec.hs` のテストを新しい型で書き直す）。
-- `phCommands` に組み込みでない名前（`greet`）を持つフックで `[greet: x]` がプラグインの出力になり、`[nope: x]` は G0222 になる。
+- `phCommands` に組み込みでない名前（`greet`）を持つフックで `[greet: x]` がプラグインの出力になり、`[nope: x]` は G02022 になる。
 - `pluginCommandName` は、`builtinInlineCommands` のすべての名前に `Nothing` を返し、`greet` には `Just` を返す。
-- G0222 の今のテスト（`[nope: x]` の位置が名前であること）は変えずに通る。`noPlugins` の `phCallCommand` を直接呼ぶ部分は、関数がなくなるので除く。
+- G02022 の今のテスト（`[nope: x]` の位置が名前であること）は変えずに通る。`noPlugins` の `phCallCommand` を直接呼ぶ部分は、関数がなくなるので除く。
 
 ### golem-driver
 
 - `loadPlugins` が作るフックの `phOverrides` と `phCommands` のキーを名前に戻して合わせたものが、今の `phCommands`（`commandOwner` のキー）と等しく、`phOverrides` のキーの名前が今の `phOverrides` と等しい。上書きを宣言したプラグインと、上書きのないプラグインの二つの場合で確かめる。
 - 上書きのコマンドを使う原稿のビルドで、プラグインの出力が使われる（既存の `PluginsSpec.hs` のテストが通ること）。
-- G0606、G0607、G0608 の既存のテストが、コード、メッセージ、位置、出る順まで変わらずに通る。検査と変換を一つにしても、出す診断の並び（G0606、G0607、G0608、G0610 の順）は変えない。
-- 読み込みの失敗の後に G0222 を出さない既存のテスト（`PluginsSpec.hs` と `DiagnosticsSpec.hs`）が変わらずに通る。
-- `docs/diagnostics.md` と、ソースが使うコードの照合（`modules/golem-driver/test/Main.hs`）が通る。G0222 と G0305 は、ソースで使われ続けるので「使用中」のままである。
+- G06006、G06007、G06008 の既存のテストが、コード、メッセージ、位置、出る順まで変わらずに通る。検査と変換を一つにしても、出す診断の並び（G06006、G06007、G06008、G06010 の順）は変えない。
+- 読み込みの失敗の後に G02022 を出さない既存のテスト（`PluginsSpec.hs` と `DiagnosticsSpec.hs`）が変わらずに通る。
+- `docs/diagnostics.md` と、ソースが使うコードの照合（`modules/golem-driver/test/Main.hs`）が通る。G02022 と G03005 は、ソースで使われ続けるので「使用中」のままである。
 
 ### golem-project
 
 - `findCycles` を直接呼ぶテストを足す。自分自身の import は長さ 1 の経路を一つ、`a → b → a` は長さ 2 の経路を一つ、`a → b → c → a` は長さ 3 の経路を一つ返す。循環のないグラフには空のリストを返す。
-- G0305 の既存のテスト（長さ 2 の循環と自分自身の import）の位置、メッセージ、関連位置が変わらない。
+- G03005 の既存のテスト（長さ 2 の循環と自分自身の import）の位置、メッセージ、関連位置が変わらない。
 
 ### 振る舞いが変わらないことの確かめ方
 
@@ -248,7 +248,7 @@ cycleDiagnostic :: FileTable -> NonEmpty (FileId, ImportSite) -> Diagnostic
 - `PluginCommandName` の構築子を隠しても、`Golem.Eval.Builtin` の中では作れる。隠すのは、モジュールの外（golem-driver とテスト）から組み込みの名前を `phCommands` に入れられないようにするためで、モジュールの中の正しさは `pluginCommandName` のテストで確かめる。
 - `-Werror=incomplete-patterns` は、一時的な書きかけの状態でもビルドを止める。開発の途中で不便になる場面があるが、網羅していない `case` を残さないことを優先する。全パッケージに付けるのは、パッケージごとに規則が違うと、どのパッケージで網羅性が保証されるかを覚えておく必要が生じるからである。
 - `-Werror` を付けても、ワイルドカードの枝（`_ ->`）を書けば網羅性の検査は通る。ワイルドカードを禁じる検査は GHC にないので、レビューで見る。
-- G0222 と G0305 の出る箇所を減らすので、`docs/diagnostics.md` の記述と既存の ADR のステータスを更新する手間がかかる。
+- G02022 と G03005 の出る箇所を減らすので、`docs/diagnostics.md` の記述と既存の ADR のステータスを更新する手間がかかる。
 
 ## 参考文献
 

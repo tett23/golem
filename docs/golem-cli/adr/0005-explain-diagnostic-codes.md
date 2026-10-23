@@ -4,19 +4,19 @@
 
 ## 文脈
 
-Golem の診断は、コード（`G0701` など）、重大度、位置、一行のメッセージを持つ（[golem-syntax ADR 0001](../../golem-syntax/adr/0001-source-spans-and-diagnostics.md)）。
-人が読む形式では `a.gm:3:1: error[G0117]: 閉じ括弧 ] がありません` のように出る。
+Golem の診断は、コード（`G07001` など）、重大度、位置、一行のメッセージを持つ（[golem-syntax ADR 0001](../../golem-syntax/adr/0001-source-spans-and-diagnostics.md)）。
+人が読む形式では `a.gm:3:1: error[G01017]: 閉じ括弧 ] がありません` のように出る。
 メッセージは一行なので、なぜその誤りになるのか、どう直せばよいのかまでは書けない。
-とくにレイアウトと出力の診断（`G07xx`、`G08xx`）は、原因が `style.toml` と原稿の組み合わせにあり、一行からは直し方を読み取りにくい。
+とくにレイアウトと出力の診断（`G07xxx`、`G08xxx`）は、原因が `style.toml` と原稿の組み合わせにあり、一行からは直し方を読み取りにくい。
 
 コードの一覧と説明は、どこにもない。
 [golem-syntax ADR 0001](../../golem-syntax/adr/0001-source-spans-and-diagnostics.md) は「コードの一覧は golem-syntax の中に一箇所で定義する」と決めたが、実装されていない。
-今のコードは、各モジュールのソースに文字列のリテラル（`diagnostic "G0306" Error …` など）として散らばっている。
-`git grep` で `modules/*/src` を数えると、G0101 から G0806 までの 120 個ほどのコードが使われている。
+今のコードは、各モジュールのソースに文字列のリテラル（`diagnostic "G03006" Error …` など）として散らばっている。
+`git grep` で `modules/*/src` を数えると、G01001 から G08006 までの 120 個ほどのコードが使われている。
 golem-syntax にあるのは、プロファイルで重大度が変わるコードの一覧（`profileDependentCodes`）だけである。
 
 使わなくなったコードもある。
-G0244（`@verse` の引数）は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) で使わなくなった。
+G02044（`@verse` の引数）は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) で使わなくなった。
 コードは別の意味に再利用しないので、使わなくなったコードも、CI のログや過去の資料に残った値として意味を引ける必要がある。
 
 ほかの処理系では、rustc が `rustc --explain E0308` でエラーのコードの説明を表示し、診断の末尾でこのコマンドを案内する。
@@ -32,7 +32,7 @@ G0244（`@verse` の引数）は [docs/adr/0005](../../adr/0005-character-and-pa
 各コードは、次の形の節にする。
 
 ````markdown
-## G0701
+## G07001
 
 版面を計算できません
 
@@ -60,7 +60,7 @@ characters = 38   # 42 から減らす
 ```
 ````
 
-- 節の見出しは `## ` とコードだけとする。GitHub の見出しの id がコードの小文字（`#g0701`）になり、LSP から直接に節を指せる。
+- 節の見出しは `## ` とコードだけとする。GitHub の見出しの id がコードの小文字（`#g07001`）になり、LSP から直接に節を指せる。
 - 見出しの次の段落を、一行の題とする。`golem explain` の一覧に使う。
 - 重大度は「エラー」「警告」「dev では警告、prod ではエラー」のいずれかとする。最後のものは `profileDependentCodes` のコードに使う。
 - 状態は「使用中」か「廃止」とする。廃止したコードには、廃止した ADR へのリンクと、代わりの書き方を書く。廃止したコードの節には「主な原因」を書かなくてよい。
@@ -80,10 +80,10 @@ golem-driver に二つのモジュールを足す。
 -- Golem.Driver.Explain.Catalog（Template Haskell から呼ぶので別のモジュールにする）
 data Status = InUse | Retired
 data Explanation = Explanation
-  { exCode   :: !Text      -- "G0701"
+  { exCode   :: !Text      -- "G07001"
   , exTitle  :: !Text      -- 見出しの次の段落
   , exStatus :: !Status
-  , exBody   :: !Text      -- "## G0701" の行から次の "## " の直前まで（末尾の空行を除く）
+  , exBody   :: !Text      -- "## G07001" の行から次の "## " の直前まで（末尾の空行を除く）
   }
 parseCatalog :: Text -> Either Text [Explanation]
 
@@ -102,10 +102,10 @@ codeDescriptionUrl :: DiagnosticCode -> Maybe Text
 
 golem-cli に `golem explain [CODE]` を加える。
 
-- `golem explain G0701` は、`exBody` を標準出力にそのまま書き、終了コード 0 で終わる。Markdown の記号は端末でも読めるので、整形し直さない。
-- コードは大文字と小文字を区別しない（`g0701` も受け付ける）。
+- `golem explain G07001` は、`exBody` を標準出力にそのまま書き、終了コード 0 で終わる。Markdown の記号は端末でも読めるので、整形し直さない。
+- コードは大文字と小文字を区別しない（`g07001` も受け付ける）。
 - 廃止したコードも表示する。終了コードは 0 とする。
-- `golem explain` を引数なしで実行すると、すべてのコードを一行に一つずつ、コードの昇順に `G0701  版面を計算できません` の形で書く。廃止したコードには題の後に `（廃止）` を付ける。
+- `golem explain` を引数なしで実行すると、すべてのコードを一行に一つずつ、コードの昇順に `G07001  版面を計算できません` の形で書く。廃止したコードには題の後に `（廃止）` を付ける。
 - 引数の検査は、optparse-applicative の `ReadM` で引数の解釈の段階で行う。[ADR 0004](0004-usage-error-exit-code.md) と同じく、誤りは使い方の誤りとして終了コード 2 にする。
   - `G` と 4 桁の数字の形でない値：`診断のコードは G と 4 桁の数字です: <値>`
   - 形は正しいが文書にないコード：`未知の診断のコードです: <値>。プラグインが出す診断は、プラグインの文書を参照してください`
@@ -116,7 +116,7 @@ golem-cli に `golem explain [CODE]` を加える。
 人が読む形式で診断を出した後に、文書にあるコードが一つでもあれば、標準エラー出力に次の一行を加える。
 
 ```
-コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）
+コードの説明は golem explain <コード> で表示できます（例: golem explain G01017）
 ```
 
 - 例のコードは、出した診断のうち文書にあるコードの最小のものとする。診断の並びは決定的なので、この行も決定的になる。
@@ -130,14 +130,14 @@ golem-cli に `golem explain [CODE]` を加える。
 
 golem-lsp の `toDiagnostic` で、文書にあるコードの診断に `codeDescription` を付ける。
 
-- `href` は `https://github.com/tett23/golem/blob/main/docs/diagnostics.md#g0701` の形とし、`codeDescriptionUrl` が作る。
+- `href` は `https://github.com/tett23/golem/blob/main/docs/diagnostics.md#g07001` の形とし、`codeDescriptionUrl` が作る。
 - 版のタグではなく `main` を指す。開発中の版は対応するタグを持たず、コードは別の意味に再利用しないので、`main` の説明は古い版の Golem が出したコードにも当てはまる。
 - プラグインのコードには付けない。
 - クライアントの能力の `codeDescriptionSupport` は見ない。LSP 3.17 では任意の欄であり、対応しないクライアントは無視する。
 
 ### ドキュメント
 
-- `docs/diagnostics.md` を作り、`modules/*/src` と `modules/golem-cli/app` で使っているすべてのコードと、廃止した G0244 の説明を書く。
+- `docs/diagnostics.md` を作り、`modules/*/src` と `modules/golem-cli/app` で使っているすべてのコードと、廃止した G02044 の説明を書く。
 - 仕様書の「構文木と診断」の節に、コードの説明が `docs/diagnostics.md` にあり、`golem explain` で表示できること、新しいコードを足すときは同じ変更で説明を足すことを書く。
 - 仕様書の「CLI」の表に `golem explain [CODE]` を加える。
 - 仕様書の「v1 の実装で次の段階以降に回した項目」から「診断のコードの説明」を削る。
@@ -177,22 +177,22 @@ golem-lsp の `toDiagnostic` で、文書にあるコードの診断に `codeDes
 
 ### golem explain（`modules/golem-cli/test/Main.hs`）
 
-- `golem explain G0117` の出力が `## G0117` で始まり、終了コードが 0 になる。
-- `golem explain g0117` の出力が `golem explain G0117` と同じになる。
-- `golem explain G0244` が廃止の節を表示し、終了コードが 0 になる。
-- `golem explain` の出力の行の数が `catalog` の要素の数と等しく、`G0244` の行に `（廃止）` がある。
+- `golem explain G01017` の出力が `## G01017` で始まり、終了コードが 0 になる。
+- `golem explain g01017` の出力が `golem explain G01017` と同じになる。
+- `golem explain G02044` が廃止の節を表示し、終了コードが 0 になる。
+- `golem explain` の出力の行の数が `catalog` の要素の数と等しく、`G02044` の行に `（廃止）` がある。
 - `golem explain G9999` と `golem explain nope` の終了コードが 2 になる。両者の出力を golden テストで固定する。
 - `golem explain --help` の出力を golden テストで固定する。
-- 構文エラーのある原稿で `golem check` を実行すると、標準エラー出力の最後の行が `コードの説明は golem explain <コード> で表示できます（例: golem explain G0117）` になる。`--format json` では、標準エラー出力が JSON として読める。
+- 構文エラーのある原稿で `golem check` を実行すると、標準エラー出力の最後の行が `コードの説明は golem explain <コード> で表示できます（例: golem explain G01017）` になる。`--format json` では、標準エラー出力が JSON として読める。
 
 ### LSP（`modules/golem-lsp/test/Main.hs`）
 
-- `protocol` のセッションの golden（`test/golden/protocol.txt`、`protocol-utf8.txt`）に、診断の `codeDescription` の行を加える。G0117 の診断で `https://github.com/tett23/golem/blob/main/docs/diagnostics.md#g0117` になる。
+- `protocol` のセッションの golden（`test/golden/protocol.txt`、`protocol-utf8.txt`）に、診断の `codeDescription` の行を加える。G01017 の診断で `https://github.com/tett23/golem/blob/main/docs/diagnostics.md#g01017` になる。
 - 単体：`codeDescriptionUrl (DiagnosticCode "X001")` が `Nothing` になる。
 
 ### 実装の後の確かめ
 
-- GitHub で `docs/diagnostics.md` を開き、`#g0117` の URL で G0117 の節に移ることを確かめる。見出しの id がコードの小文字になるという前提は記憶によるので、ここで確かめる。
+- GitHub で `docs/diagnostics.md` を開き、`#g01017` の URL で G01017 の節に移ることを確かめる。見出しの id がコードの小文字になるという前提は記憶によるので、ここで確かめる。
 
 ## トレードオフ
 

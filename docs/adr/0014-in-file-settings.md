@@ -1,6 +1,6 @@
 # ADR 0014: .gm の中に、そのファイルにだけ効く設定とスタイルを書く
 
-ステータス: 採択→正規表現スタイルの意味と G0254 の廃止は [docs/adr/0015](0015-regex-styles.md)
+ステータス: 採択→正規表現スタイルの意味と G02054 の廃止は [docs/adr/0015](0015-regex-styles.md)
 
 ## 文脈
 
@@ -104,18 +104,18 @@ InDesign でも、文書ごとに同じ名前のスタイルが別の定義を�
 | 層 | 同じ名前の定義が二つあるとき |
 |---|---|
 | 組み込みと `style.toml` | `style.toml` の定義が上書きする（[docs/adr/0005](0005-character-and-paragraph-styles.md)） |
-| `style.toml` の中 | TOML の誤り。`[paragraph-styles.quote]` の表を二度書くと、TOML の解析器（toml-parser 2.0.2.0 の `Toml.Semantics`）が `ClosedTable` か `AlreadyAssigned` の誤りを返し、今の `decodeStrict` が G0306（`TOML の誤りです`）とする。新しい検査は要らない |
+| `style.toml` の中 | TOML の誤り。`[paragraph-styles.quote]` の表を二度書くと、TOML の解析器（toml-parser 2.0.2.0 の `Toml.Semantics`）が `ClosedTable` か `AlreadyAssigned` の誤りを返し、今の `decodeStrict` が G03006（`TOML の誤りです`）とする。新しい検査は要らない |
 | `style.toml` とファイルの中 | ファイルの中の定義が、そのファイルの中でだけ上書きする |
-| 同じファイルの中 | G0253。後勝ちにしない |
+| 同じファイルの中 | G02053。後勝ちにしない |
 
 `based-on` の名前は、そのファイルから見た定義で解決する。
 そのファイルの `Style` は、`style.toml` の定義にファイルの中の定義を重ねたものであり、`based-on` をたどる鎖のどの名前も、上書きがあれば上書きした後の定義を指す。
 
 - `style.toml` の `quote` が `based-on = "body"` で、ファイルの中で `body` を上書きすると、そのファイルの `quote` は上書きした `body` を引き継ぐ。`style.toml` の `quote` は書き直さなくてよい。
-- 上書きした定義の `based-on` に、自分の名前は書けない。上書きしたキーのほかは `style.toml` の同じ名前の定義の値を保つので、自分を基準にして `style.toml` の定義を引き継ぐ必要がない。自分の名前を書くと、ほかの循環と同じく G0313 とする。
+- 上書きした定義の `based-on` に、自分の名前は書けない。上書きしたキーのほかは `style.toml` の同じ名前の定義の値を保つので、自分を基準にして `style.toml` の定義を引き継ぐ必要がない。自分の名前を書くと、ほかの循環と同じく G03013 とする。
 - `based-on` を書かない上書きは、`style.toml` の同じ名前の定義の `based-on` を保つ。
-- 循環は、そのファイルから見た定義の全体で検査する。`style.toml` の `a` が `based-on = "b"` のとき、ファイルの中で `b` を `based-on=a` で上書きすると、そのファイルで循環になり G0313 とする。
-- `body` の上書きにも、`based-on` は書けない（G0313）。`style.toml` の `body` と同じ規則である。
+- 循環は、そのファイルから見た定義の全体で検査する。`style.toml` の `a` が `based-on = "b"` のとき、ファイルの中で `b` を `based-on=a` で上書きすると、そのファイルで循環になり G03013 とする。
+- `body` の上書きにも、`based-on` は書けない（G03013）。`style.toml` の `body` と同じ規則である。
 
 `based-on` には、`style.toml` のスタイルと、同じファイルの中で定義したスタイルのどちらも書ける。
 文字スタイルと段落スタイルは別の名前の空間であり、`style.toml` と同じく、同じ名前の文字スタイルと段落スタイルを定義してよい。
@@ -228,7 +228,7 @@ data LocalValue = LocalWord Text | LocalString Text
   deriving stock (Eq, Show)
 
 -- | 一つの @style-def の欄を「値の読み方」の表で TOML の表に写し、
--- style.toml と同じ FromValue で読む。誤りは G0306 のメッセージとして返す。
+-- style.toml と同じ FromValue で読む。誤りは G03006 のメッセージとして返す。
 localStyleDef :: StyleKind -> [(Text, LocalValue)] -> Either [Text] (Either CharStyleDef ParaStyleDef)
 
 -- | ファイルの中の定義を style.toml の定義に重ねた Style。
@@ -251,16 +251,16 @@ charStyleKeys, paraStyleKeys :: [Text]
 
 ファイルの中で定義した名前だけでなく、`style.toml` の名前も検査の対象に残す。
 上書きは、`based-on` でその名前を引き継ぐ `style.toml` のスタイルの解決も変える。
-ファイルの中で `body` の字下げを上書きすると、`style.toml` の `quote` の `indent` と `first-line-indent` の和が負になりうる（G0312）。
+ファイルの中で `body` の字下げを上書きすると、`style.toml` の `quote` の `indent` と `first-line-indent` の和が負になりうる（G03012）。
 検査は `withLocalStyles` した `Style` の上で行うので、`based-on` が `style.toml` のスタイルを指す場合も、上書きで循環が生じる場合も検査できる。
 
 | 検査 | 診断コード |
 |---|---|
-| 名前が `[a-z][a-z0-9-]*` に合わない、未知のキー、値の型や範囲の誤り | G0306 |
-| `font` が `[fonts]` にない役割を指す | G0308 |
-| 段落スタイルの解決した `size` が版面の文字の大きさを超える | G0311 |
-| `indent` と `first-line-indent` の和が負 | G0312 |
-| `based-on` が存在しない、`based-on` が循環する、`color` が `[color.swatches]` にない | G0313 |
+| 名前が `[a-z][a-z0-9-]*` に合わない、未知のキー、値の型や範囲の誤り | G03006 |
+| `font` が `[fonts]` にない役割を指す | G03008 |
+| 段落スタイルの解決した `size` が版面の文字の大きさを超える | G03011 |
+| `indent` と `first-line-indent` の和が負 | G03012 |
+| `based-on` が存在しない、`based-on` が循環する、`color` が `[color.swatches]` にない | G03013 |
 
 コードは `style.toml` と同じものを使う。
 位置は、名前をファイルの中で定義していればその `@style-def` の行とし、`style.toml` の名前なら、その `based-on` の鎖の中で最初にファイルの中で定義した名前の `@style-def` の行とする。
@@ -298,10 +298,10 @@ fileStyles :: Style -> [A.Located A.Block] -> (LocalStyles, [Diagnostic])
 
 `fileStyles` は次のように読む。
 
-1. 各 `@style-def` の引数の形を検査する（G0252）。種類が `regex` なら G0254 とし、定義として扱わない。
-2. 同じファイルの同じ種類で同じ名前を二度定義していれば G0253 とし、二つ目以降の定義を捨てる。`style.toml` と組み込みのスタイルと同じ名前は、上書きとして受け付ける。
-3. 欄を `localStyleDef` で読み、誤りを G0306 とする。誤りのある定義は捨てる。
-4. 残った定義を `LocalStyles` にまとめ、`checkLocalStyles` の結果を診断にする。参照の検査で誤った組の名前をファイルの中で定義していれば、その定義も捨てる。捨てた新しい名前を使った箇所は、G0218 か G0247 になる。捨てた上書きの名前は、`style.toml` の定義のまま使える。
+1. 各 `@style-def` の引数の形を検査する（G02052）。種類が `regex` なら G02054 とし、定義として扱わない。
+2. 同じファイルの同じ種類で同じ名前を二度定義していれば G02053 とし、二つ目以降の定義を捨てる。`style.toml` と組み込みのスタイルと同じ名前は、上書きとして受け付ける。
+3. 欄を `localStyleDef` で読み、誤りを G03006 とする。誤りのある定義は捨てる。
+4. 残った定義を `LocalStyles` にまとめ、`checkLocalStyles` の結果を診断にする。参照の検査で誤った組の名前をファイルの中で定義していれば、その定義も捨てる。捨てた新しい名前を使った箇所は、G02018 か G02047 になる。捨てた上書きの名前は、`style.toml` の定義のまま使える。
 
 評価の文脈を、ファイルの中の定義を重ねた値に替えてから、残りのブロックを評価する。
 
@@ -309,29 +309,29 @@ fileStyles :: Style -> [A.Located A.Block] -> (LocalStyles, [Diagnostic])
 - `ctxParaStyles` を、`withLocalStyles` した `Style` のすべての段落スタイルについて、`paraStyle` で解決した `line-breaks` の表に替える（golem-driver の `paraLineBreaks` を golem-project に移して共有する）。上書きは、その名前と、`based-on` でその名前を引き継ぐ段落スタイルの `line-breaks` を変えうる。たとえば `@style-def paragraph verse line-breaks=join` のファイルでは、`@style verse` の段落の改行が文字を生まない。
 - [docs/adr/0013](0013-paragraph-separator.md) の `splitLines` と、フィルタのプラグインの後の段落スタイルの検査（`unknownParaStyles`）も、替えた後の `ctxParaStyles` を使う。
 
-先頭でない位置の `@manifest` と `@style-def` は、`standalone` の `"manifest"` と `"style-def"` で G0249 とし、上書きと定義としては扱わない。
-属性のまとまりの途中の `@manifest` と `@style-def` も、`attributed` を通って同じく G0249 とする。
+先頭でない位置の `@manifest` と `@style-def` は、`standalone` の `"manifest"` と `"style-def"` で G02049 とし、上書きと定義としては扱わない。
+属性のまとまりの途中の `@manifest` と `@style-def` も、`attributed` を通って同じく G02049 とする。
 
-G0218 と G0247 のメッセージの「style.toml にない」を「定義されていない」に改める。
+G02018 と G02047 のメッセージの「style.toml にない」を「定義されていない」に改める。
 ファイルの中で定義できるので、`style.toml` だけを直す先として示すと誤りになる。
 
 | 診断コード | 重大度 | 条件 | メッセージ |
 |---|---|---|---|
-| G0249 | エラー | ファイルの設定の並びの外にある `@manifest` か `@style-def` | `@manifest と @style-def はファイルの最初に置きます` |
-| G0250 | エラー | `@manifest` のキーが `[source]` のキーでない | `ファイルの中で上書きできない設定です: <キー>。上書きできるのは paragraph-separator です` |
-| G0251 | エラー | `@manifest` の値が不正 | `paragraph-separator の値は blank-line か line です: <値>`（`sourceKeys` の返すメッセージ） |
-| G0252 | エラー | 引数の形の誤り | `@manifest には key=value だけを書きます`、`@style-def には種類（character、paragraph、regex）と名前を書きます`、`値は語か文字列で書きます`、`同じキーを二度書いています: <キー>` |
-| G0253 | エラー | 同じファイルの中で、同じ種類の同じ名前のスタイルを二度定義した | `同じ名前のスタイルを二度定義しています: <名前>` |
-| G0254 | エラー | `@style-def regex`（正規表現スタイルの ADR を実装するまでの暫定） | `正規表現スタイルはまだ実装していません` |
+| G02049 | エラー | ファイルの設定の並びの外にある `@manifest` か `@style-def` | `@manifest と @style-def はファイルの最初に置きます` |
+| G02050 | エラー | `@manifest` のキーが `[source]` のキーでない | `ファイルの中で上書きできない設定です: <キー>。上書きできるのは paragraph-separator です` |
+| G02051 | エラー | `@manifest` の値が不正 | `paragraph-separator の値は blank-line か line です: <値>`（`sourceKeys` の返すメッセージ） |
+| G02052 | エラー | 引数の形の誤り | `@manifest には key=value だけを書きます`、`@style-def には種類（character、paragraph、regex）と名前を書きます`、`値は語か文字列で書きます`、`同じキーを二度書いています: <キー>` |
+| G02053 | エラー | 同じファイルの中で、同じ種類の同じ名前のスタイルを二度定義した | `同じ名前のスタイルを二度定義しています: <名前>` |
+| G02054 | エラー | `@style-def regex`（正規表現スタイルの ADR を実装するまでの暫定） | `正規表現スタイルはまだ実装していません` |
 
-G0252 の条件は、位置引数の数の誤り（`@manifest` の位置引数、`@style-def` の種類か名前の欠け、三つ目の位置引数）、未知の種類、展開する引数（`*[...]`、`**[...]`）、本体がある、`@manifest` に引数がない、同じキーを二度書いた、値が語と文字列のほか（`[= ...]`、命令文脈）、である。
+G02052 の条件は、位置引数の数の誤り（`@manifest` の位置引数、`@style-def` の種類か名前の欠け、三つ目の位置引数）、未知の種類、展開する引数（`*[...]`、`**[...]`）、本体がある、`@manifest` に引数がない、同じキーを二度書いた、値が語と文字列のほか（`[= ...]`、命令文脈）、である。
 誤りのある `@manifest` の引数は、その引数だけを無視し、ほかの引数の上書きは効かせる。
 誤りのある `@style-def` は、その定義の全体を捨てる。
 欄の一部だけを効かせた段落スタイルは、書いた人が意図しない見た目で組まれるためである。
 
-G0249 から G0254 は未使用である（golem-eval は G0248 まで使う。G0247 と G0248 は [docs/adr/0005](0005-character-and-paragraph-styles.md) が使う。origin/main のコードと docs の ADR に G0249 から G0254 の記載はない）。
+G02049 から G02054 は未使用である（golem-eval は G02048 まで使う。G02047 と G02048 は [docs/adr/0005](0005-character-and-paragraph-styles.md) が使う。origin/main のコードと docs の ADR に G02049 から G02054 の記載はない）。
 
-未知のキーと、マニフェストにはあるが上書きできないキー（`title` など）は、どちらも G0250 とする。
+未知のキーと、マニフェストにはあるが上書きできないキー（`title` など）は、どちらも G02050 とする。
 マニフェストのスキーマは `FromValue` のインスタンスとして書かれており、キーの一覧を持たない。
 二つを分けるには、インスタンスと一致させ続けるキーの一覧を golem-project に別に持つことになる。
 どちらの場合も、利用者が要る情報は上書きできるキーの一覧であり、メッセージに並べる。
@@ -342,7 +342,7 @@ golem-project のマニフェストの読み込みは変えない。
 `projectSourceSettings` は、マニフェストだけから決まる値（[docs/adr/0013](0013-paragraph-separator.md)）のままとし、ファイルの中の上書きは評価が適用する。
 ファイルに実際に効いた設定は、`EvalResult` の `erSource` で知る。
 
-golem-driver の lint（`Golem.Driver.Lint`）は、[docs/adr/0013](0013-paragraph-separator.md) のとおり `erSource` を `FileLint` に渡すので、上書きはそのまま G0501 の判定に反映される。
+golem-driver の lint（`Golem.Driver.Lint`）は、[docs/adr/0013](0013-paragraph-separator.md) のとおり `erSource` を `FileLint` に渡すので、上書きはそのまま G05001 の判定に反映される。
 
 ### 出力（golem-driver、golem-html）
 
@@ -357,7 +357,7 @@ PDF：
 - `unitsOf` は、文書ごとの `Style` で段落の書体、大きさ、字下げ、`space-between` を決める（`paraFace`、`unitsOf` の中の `paraStyle`）。
 - `Unit` に `uStyle :: !Style` を加え、行を組むときの `ceRestyle` は単位の `uStyle` で `restyle` を呼ぶ。文字スタイルの解決が文書ごとになる。
 - 図版のキャプション（`paraFace style geom "caption"`）と傍注（`paraFace style geom "sidenote"`）の書体と大きさも、その図版と傍注を含む文書の `Style` で決める。ファイルの中で `caption` と `sidenote` を上書きすると、そのファイルのキャプションと傍注だけが変わる。
-- `usedRoles` に `[LocalStyles]` の引数を加え、すべてのファイルの中のスタイルの `font` も集める。読み込む役割は、`style.toml` のスタイルが使わない役割の分だけ増えうる。どの役割も `[fonts]` にある（G0308）ので、`[fonts]` にないフォントのファイルを探すことはない。
+- `usedRoles` に `[LocalStyles]` の引数を加え、すべてのファイルの中のスタイルの `font` も集める。読み込む役割は、`style.toml` のスタイルが使わない役割の分だけ増えうる。どの役割も `[fonts]` にある（G03008）ので、`[fonts]` にないフォントのファイルを探すことはない。
 
 プレーンテキスト：
 
@@ -417,7 +417,7 @@ HTML を Content Security Policy の `style-src 'self'` の下で配信すると
 - 上書きと定義は、そのファイルのテキストの中にある。ほかのファイルの評価の結果にも、評価の順序にも依存しない。
 - インスタンス ID の入力（全ソースファイルとマニフェスト）は変わらない。上書きと定義はソースファイルに含まれる。
 - CSS の class の番号 `n` と規則の順は、マニフェストの章の順と名前の順で決まる。
-- 同じキーを二度書いた場合と、同じ名前を二度定義した場合は、後勝ちにせず G0252 と G0253 とする。書いた順に依存する規則を一つでも減らすためである。
+- 同じキーを二度書いた場合と、同じ名前を二度定義した場合は、後勝ちにせず G02052 と G02053 とする。書いた順に依存する規則を一つでも減らすためである。
 
 ### fmt（golem-fmt）
 
@@ -430,7 +430,7 @@ HTML を Content Security Policy の `style-src 'self'` の下で配信すると
 
 規則は加えない。
 マニフェストと同じ値の上書き（効果のない上書き）も、誤りとは言えないので報告しない。
-G0501 の例外にする `keep` の段落スタイル（`liKeepStyles`）は、`Golem.Driver.Lint` が、文書ごとの `Style` から作る。
+G05001 の例外にする `keep` の段落スタイル（`liKeepStyles`）は、`Golem.Driver.Lint` が、文書ごとの `Style` から作る。
 評価が止まった場合は、今と同じく組み込みの `keep` のスタイルだけを集合にする。
 
 ### LSP（golem-lsp）
@@ -450,7 +450,7 @@ G0501 の例外にする `keep` の段落スタイル（`liKeepStyles`）は、`
 
 診断：
 
-- G0249 から G0254 と、ファイルの中の定義の G0306、G0308、G0311、G0312、G0313 は、評価の診断として既存の経路で表示される。
+- G02049 から G02054 と、ファイルの中の定義の G03006、G03008、G03011、G03012、G03013 は、評価の診断として既存の経路で表示される。
 
 編集：
 
@@ -477,7 +477,7 @@ G0501 の例外にする `keep` の段落スタイル（`liKeepStyles`）は、`
 - `style.toml` の文字スタイルと段落スタイルのほかの節（`[fonts]`、`[color.swatches]`、`[page]`、`[headings.*]`、`[composition]`、`[masters.*]` など）のファイルの中での定義と上書き。
 - 上書きで、`style.toml` の定義のキーを消すこと（値を持たない状態に戻すこと）。書いたキーが勝つ規則では、書かなかったキーは `style.toml` の値を保つ。
 - 組み込みのスタイルを、ファイルの中で消すこと。
-- 正規表現スタイルの意味と実装。段落スタイルの欄、`style.toml` の書き方、正規表現の方言、一致の重なりと決定性、エンジンは、v1 の別の ADR で決める。その ADR を実装するまで、`@style-def regex` は G0254 とする。
+- 正規表現スタイルの意味と実装。段落スタイルの欄、`style.toml` の書き方、正規表現の方言、一致の重なりと決定性、エンジンは、v1 の別の ADR で決める。その ADR を実装するまで、`@style-def regex` は G02054 とする。
 - ファイルより細かい範囲（節、ブロック）での上書きと定義。
 - `@import` したファイルへの上書きと定義の伝播。ほかのファイルのスタイルを取り込む記法。
 - フロントマター（`---` で囲んだ TOML）。
@@ -497,48 +497,48 @@ G0501 の例外にする `keep` の段落スタイル（`liKeepStyles`）は、`
 - `localStyleDef CharacterKind [("synthetic-bold", LocalWord "true")]` が `csSyntheticBold = Just True` になり、`[("synthetic-bold", LocalString "true")]`、`[("space-between", LocalString "1")]`（段落スタイル）、`[("colour", LocalWord "x")]`、`[("line-breaks", LocalWord "x")]`、`[("space-between", LocalWord "-1")]` が誤りになること。
 - `charStyleKeys` と `paraStyleKeys` の各キーが、`localStyleDef` で未知のキーの誤りにならないこと。
 - 空の `style.toml` に `quote` を足した `Style` で、`based-on = "quote"` のファイルの中の段落スタイル `letter` を `withLocalStyles` した `paraStyle s (Just "letter")` が、`quote` の欄を引き継ぐこと。
-- `checkLocalStyles` が、`Letter` という名前に G0306、`based-on = "nope"` に G0313、ファイルの中の `a` と `b` の循環に G0313、`[fonts]` にない `font` に G0308、`[color.swatches]` にない `color` に G0313、`[page.grid] font-size = "13Q"` での `size = "2zw"` に G0311、`indent = "1zw"` と `first-line-indent = "-2zw"` に G0312 を返すこと。
+- `checkLocalStyles` が、`Letter` という名前に G03006、`based-on = "nope"` に G03013、ファイルの中の `a` と `b` の循環に G03013、`[fonts]` にない `font` に G03008、`[color.swatches]` にない `color` に G03013、`[page.grid] font-size = "13Q"` での `size = "2zw"` に G03011、`indent = "1zw"` と `first-line-indent = "-2zw"` に G03012 を返すこと。
 - `style.toml` に `based-on` の誤りがあっても、`checkLocalStyles` がその誤りを返さないこと。
 - `[paragraph-styles.quote] font = "heading"` の `style.toml` に、ファイルの中の `quote`（`indent = "1zw"`）を `withLocalStyles` した `paraStyle s (Just "quote")` が、`psFont = Just "heading"` と `psIndent = Just (Zw 1)` を持つこと。`withLocalStyles` の前の `Style` の `quote` は変わらないこと。
 - ファイルの中で `body` を `indent = "1zw"` で上書きすると、`based-on` を書かない `style.toml` の `quote` の `psIndent` が `Just (Zw 1)` になること。
-- ファイルの中の `quote` を `based-on = "quote"` で上書きすると G0313 になること。`style.toml` の `a` が `based-on = "b"` のとき、ファイルの中の `b` を `based-on = "a"` で上書きすると G0313 になり、その位置の名前が `b` であること。ファイルの中の `body` に `based-on` を書くと G0313 になること。
-- ファイルの中で `body` を `first-line-indent = "-1zw"` で上書きし、`style.toml` の `quote` が字下げを持たないとき、G0312 が `quote` の名前で返ること。
-- `[paragraph-styles.quote]` の表を二度書いた `style.toml` の `parseStyle` が G0306 になること（TOML の重複の誤りであり、新しい検査を加えずに通ることを確かめる）。
+- ファイルの中の `quote` を `based-on = "quote"` で上書きすると G03013 になること。`style.toml` の `a` が `based-on = "b"` のとき、ファイルの中の `b` を `based-on = "a"` で上書きすると G03013 になり、その位置の名前が `b` であること。ファイルの中の `body` に `based-on` を書くと G03013 になること。
+- ファイルの中で `body` を `first-line-indent = "-1zw"` で上書きし、`style.toml` の `quote` が字下げを持たないとき、G03012 が `quote` の名前で返ること。
+- `[paragraph-styles.quote]` の表を二度書いた `style.toml` の `parseStyle` が G03006 になること（TOML の重複の誤りであり、新しい検査を加えずに通ることを確かめる）。
 
 ### golem-eval（`test/FileSpec.hs`）
 
 マニフェストの上書きは、`ctxSource` を空行の様式にした文脈で確かめる。
 
 - `"@manifest paragraph-separator=line\n\na\nb\n"` が二つの段落 `a` と `b` になり、`erSource` が改行の様式であること。
-- `"@manifest paragraph-separator=\"line\"\na\nb\n"`（空行を挟まず、値を文字列で書く）が同じ結果になり、G0211 が出ないこと。
+- `"@manifest paragraph-separator=\"line\"\na\nb\n"`（空行を挟まず、値を文字列で書く）が同じ結果になり、G02011 が出ないこと。
 - `"%% 設定 %%\n@manifest paragraph-separator=line\n\na\nb\n"`（先頭のコメント）が同じ結果になること。
 - `"@manifest paragraph-separator=line\n@label p\na\nb\n"` で、ラベル `p` が段落 `a` に付くこと。
 - `ctxSource` を改行の様式にした文脈で、`"@manifest paragraph-separator=blank-line\n\na\nb\n"` が一つの段落 `ab` になること。
-- `"a\n\n@manifest paragraph-separator=line\n"` が G0249 になり、`erSource` が `ctxSource` のままであること。
-- `"@manifest title=x\n"` と `"@manifest paragraph-separater=line\n"` が G0250、`"@manifest paragraph-separator=lines\n"` が G0251 になること。
-- `"@manifest line\n"`、`"@manifest\n"`、`"@manifest paragraph-separator=line paragraph-separator=line\n"`、`"@manifest paragraph-separator=[= \"line\"]\n"`、本体を持つ `"@manifest paragraph-separator=line\n  a\n"` が G0252 になること。
-- `"@manifest title=x paragraph-separator=line\n\na\nb\n"` で、G0250 が出たうえで `paragraph-separator` の上書きが効くこと。
+- `"a\n\n@manifest paragraph-separator=line\n"` が G02049 になり、`erSource` が `ctxSource` のままであること。
+- `"@manifest title=x\n"` と `"@manifest paragraph-separater=line\n"` が G02050、`"@manifest paragraph-separator=lines\n"` が G02051 になること。
+- `"@manifest line\n"`、`"@manifest\n"`、`"@manifest paragraph-separator=line paragraph-separator=line\n"`、`"@manifest paragraph-separator=[= \"line\"]\n"`、本体を持つ `"@manifest paragraph-separator=line\n  a\n"` が G02052 になること。
+- `"@manifest title=x paragraph-separator=line\n\na\nb\n"` で、G02050 が出たうえで `paragraph-separator` の上書きが効くこと。
 
 スタイルの定義は、`ctxStyle` に `[color.swatches] accent` と `[paragraph-styles.quote]` を持つ `Style` を入れた文脈で確かめる。
 
 - `"@style-def paragraph letter line-breaks=keep\n\n@style letter\na\nb\n"` が `Paragraph (Just "letter") [Text "a", LineBreak, Text "b"]` になり、`erStyles` の `lsParaStyles` に `letter` があること。
 - `"@style-def paragraph letter based-on=verse\n\n@style letter\na\nb\n"` が、`verse` の `keep` を引き継いで同じ結果になること。
-- `"@style-def character term color=accent\n\n[style term: x]\n"` が `CharStyle _ "term" [Text _ "x"]` を含む段落になること。`@style-def` のない `"[style term: x]\n"` が G0218 になり、メッセージに「定義されていない」が含まれること。
+- `"@style-def character term color=accent\n\n[style term: x]\n"` が `CharStyle _ "term" [Text _ "x"]` を含む段落になること。`@style-def` のない `"[style term: x]\n"` が G02018 になり、メッセージに「定義されていない」が含まれること。
 - `"@manifest paragraph-separator=line\n@style-def paragraph letter\n@style letter\na\nb\n"`（空行なし、改行の様式）で、`a` が `letter` の段落、`b` が `body` の段落になること。
 - `"@style-def character note\n@style-def paragraph note\n\nx\n"` が診断を出さないこと（種類ごとの名前の空間）。
-- `"@style-def paragraph a\n@style-def paragraph a\n"` と `"@style-def paragraph quote\n@style-def paragraph quote indent=1zw\n"` が G0253 になること。
+- `"@style-def paragraph a\n@style-def paragraph a\n"` と `"@style-def paragraph quote\n@style-def paragraph quote indent=1zw\n"` が G02053 になること。
 - `"@style-def paragraph body indent=1zw\n\nx\n"`、`"@style-def character strong synthetic-italic=true\n\n[strong: x]\n"`、`"@style-def paragraph quote indent=1zw\n\n@style quote\nx\n"` が診断を出さず、`erStyles` に上書きした名前があること。
 - `"@style-def paragraph verse line-breaks=join\n\n@style verse\na\nb\n"` が `Paragraph (Just "verse") [Text "ab"]` になること。上書きのない文脈では `LineBreak` で二行に分かれること。
-- `"@style-def\n"`、`"@style-def table a\n"`、`"@style-def paragraph\n"`、`"@style-def paragraph a b\n"`、`"@style-def paragraph a font=[= \"x\"]\n"`、`"@style-def paragraph a indent=1zw indent=2zw\n"`、本体を持つ `"@style-def paragraph a\n  x\n"` が G0252 になること。
-- `"@style-def regex body pattern=\"[0-9]+\" style=strong\n"` が G0254 になること。
-- `"@style-def paragraph Letter\n"` と `"@style-def paragraph a line-breaks=x\n"` が G0306、`"@style-def paragraph a based-on=nope\n"` が G0313 になり、位置が `@style-def` の行であること。誤った定義の名前を `@style a` で使うと G0247 になること。
-- `"a\n\n@style-def paragraph letter\n"` と `"@label x\n@style-def paragraph letter\na\n"` が G0249 になること。
-- フィルタのプラグインが `Paragraph (Just "letter")` を返しても、`letter` を定義したファイルでは G0247 にならないこと。
+- `"@style-def\n"`、`"@style-def table a\n"`、`"@style-def paragraph\n"`、`"@style-def paragraph a b\n"`、`"@style-def paragraph a font=[= \"x\"]\n"`、`"@style-def paragraph a indent=1zw indent=2zw\n"`、本体を持つ `"@style-def paragraph a\n  x\n"` が G02052 になること。
+- `"@style-def regex body pattern=\"[0-9]+\" style=strong\n"` が G02054 になること。
+- `"@style-def paragraph Letter\n"` と `"@style-def paragraph a line-breaks=x\n"` が G03006、`"@style-def paragraph a based-on=nope\n"` が G03013 になり、位置が `@style-def` の行であること。誤った定義の名前を `@style a` で使うと G02047 になること。
+- `"a\n\n@style-def paragraph letter\n"` と `"@label x\n@style-def paragraph letter\na\n"` が G02049 になること。
+- フィルタのプラグインが `Paragraph (Just "letter")` を返しても、`letter` を定義したファイルでは G02047 にならないこと。
 
 ### golem-lint（`test/Main.hs`）
 
-- `flSource` を改行の様式にした `FileLint` で、欧文の二行に G0501 が出ないこと（[docs/adr/0013](0013-paragraph-separator.md) のテストと共通）。
-- `liKeepStyles` に `letter` を入れたとき、`"@style letter\n  Full fathom five\n  Of his bones\n"` に G0501 が出ないこと。
+- `flSource` を改行の様式にした `FileLint` で、欧文の二行に G05001 が出ないこと（[docs/adr/0013](0013-paragraph-separator.md) のテストと共通）。
+- `liKeepStyles` に `letter` を入れたとき、`"@style letter\n  Full fathom five\n  Of his bones\n"` に G05001 が出ないこと。
 
 ### golem-driver（`test/Main.hs`）
 
@@ -547,7 +547,7 @@ G0501 の例外にする `keep` の段落スタイル（`liKeepStyles`）は、`
 - `[source]` を書かないプロジェクトで、`@manifest paragraph-separator=line` を書いた章の三行が HTML の三つの `<p>` になり、書かない章の二行が一つの `<p>` になること。
 - 章の項目に `paragraph-separator = "line"` を書き、ファイルに `@manifest paragraph-separator=blank-line` を書いた章で、ファイルの中の上書きが勝つこと。
 - `@import` でだけ参照されるファイルの `@manifest` が、取り込む側の章の段落に影響しないこと。
-- `golem lint` が、`@manifest paragraph-separator=line` を書いた章の欧文の二行に G0501 を出さないこと。
+- `golem lint` が、`@manifest paragraph-separator=line` を書いた章の欧文の二行に G05001 を出さないこと。
 
 スタイルの定義：作業用のディレクトリに、`style.toml` に `letter` を持たないプロジェクトを作り、一つ目の章に `@style-def paragraph letter indent=2zw`、二つ目の章に `@style-def paragraph letter indent=4zw`、三つ目の章にファイルの中のスタイルを書かない。
 
@@ -559,7 +559,7 @@ G0501 の例外にする `keep` の段落スタイル（`liKeepStyles`）は、`
 - 同じプロジェクトの PDF で、四つ目の章の `[style term: 語]` が合成の太字にならず、ほかの章では太字になること。四つ目の章の `body` の段落が 2 字下がること。
 - 四つ目の章で `@style-def paragraph caption size=0.8zw` を書くと、その章の図版のキャプションだけが小さく組まれること。
 - `[fonts.heading]` を持ち、`style.toml` のどのスタイルも `heading` を使わないプロジェクトで、`@style-def paragraph letter font=heading` の段落が `heading` の役割のフォントのリソースで描かれること。
-- `@import` でだけ参照されるファイルで定義した `letter` を、取り込む側の章で `@style letter` とすると G0247 になること。
+- `@import` でだけ参照されるファイルで定義した `letter` を、取り込む側の章で `@style letter` とすると G02047 になること。
 - プレーンテキストの出力で、`@style-def paragraph letter first-line-indent=1zw` の段落の最初の行が全角の空白一つで始まること。
 - 既存の golden と、`scripts/determinism.sh` の sample の各ファイルのハッシュが、この ADR の前と変わらないこと。
 
@@ -573,7 +573,7 @@ G0501 の例外にする `keep` の段落スタイル（`liKeepStyles`）は、`
 - `"@style-def "` の行末での補完が `character` と `paragraph` を返し、`regex` を返さないこと。`"@style-def paragraph letter "` の行末での補完が `based-on=` と `indent=` を含むこと。`"@style-def paragraph letter based-on="` の行末での補完が `body`、`verse` と同じファイルの段落スタイルを含むこと。
 - `@style-def paragraph letter` を書いたファイルで、`"@style "` の行末での補完が `letter` を含み、別のファイルでは含まないこと。
 - `@style letter` の `letter` の上での定義へのジャンプが、同じファイルの `@style-def paragraph letter` の `letter` の位置を返すこと。`@style verse` の上では空の結果を返し、`@style-def paragraph verse line-breaks=join` を書いたファイルではその位置を返すこと。
-- `@manifest paragraph-separator=line` を書いたプロジェクトの外のファイルで、欧文の二行に G0501 の診断が出ないこと。
+- `@manifest paragraph-separator=line` を書いたプロジェクトの外のファイルで、欧文の二行に G05001 の診断が出ないこと。
 - 開いたファイルの `@manifest` と `@style-def` の行を書き換えた後、プロジェクト全体の評価の回数（`wsFullEvaluations`）が増えないこと。
 
 ## トレードオフ
@@ -588,7 +588,7 @@ LSP のホバーで効いている値と出所を示すことは、必要にな�
 ファイルの中の上書きを章の項目より優先するのは、設定を原稿のテキストと一緒に移せることを重く見たためである。
 
 `@manifest` という名前は、マニフェストのどのキーでも書けるように読める。
-実際に書けるのは `[source]` のキーだけであり、ほかのキーは G0250 になる。
+実際に書けるのは `[source]` のキーだけであり、ほかのキーは G02050 になる。
 利用者の言う「マニフェストの上書き」をそのまま名前にし、範囲の制限は診断のメッセージで伝える。
 
 ファイルの中で `style.toml` の定義を上書きできるので、`@style quote` の見た目はファイルによって変わる。
@@ -607,7 +607,7 @@ HTML と EPUB の文書ごとの規則は、扱う性質をすべて書くので
 `margin-block` の `1em` は、ブラウザーの `p` の既定を写したものであり、読書環境が別の既定を持つと、上書きした文書と上書きしない文書で段落の間が違って見えうる。
 `revert` を使えば既定に戻せるが、EPUB の読書環境の対応がそろっていない。
 
-ファイルの中の定義の誤りに、`style.toml` と同じ G03 の番台のコード（G0306、G0308、G0311、G0312、G0313）を使う。
+ファイルの中の定義の誤りに、`style.toml` と同じ G03 の番台のコード（G03006、G03008、G03011、G03012、G03013）を使う。
 コードの番台はモジュールに対応しているが、ここでは評価の診断に golem-project の番台が混ざる。
 同じ規則を一つのコードで説明できることを取った。
 

@@ -52,7 +52,7 @@ fileHeader = go []
 err :: Text -> SrcSpan -> Text -> Diagnostic
 err code = diagnostic code Error
 
--- | The keyword arguments of a setting: (key, span, value), or the G0252 messages.
+-- | The keyword arguments of a setting: (key, span, value), or the G02052 messages.
 keywordArgs :: [A.Located A.Argument] -> ([(Text, SrcSpan, LocalValue)], [(SrcSpan, Text)])
 keywordArgs args =
   let kws = [(k, sp, v) | A.Located sp (A.Keyword (A.Located _ k) v) <- args]
@@ -78,17 +78,17 @@ fileSettings table s0 header = foldl step (s0, []) [(sp, args, body) | A.Located
   where
     shape = "@manifest には key=value だけを書きます"
     step (s, ds) (sp, args, body)
-      | not (null body) || null args = (s, ds <> [err "G0252" sp shape])
+      | not (null body) || null args = (s, ds <> [err "G02052" sp shape])
       | otherwise =
           let others = [asp | A.Located asp a <- args, not (isKeyword a)]
               (kvs, bad) = keywordArgs args
               apply (s', ds') (k, ksp, v) = case lookup k table of
-                Nothing -> (s', ds' <> [err "G0250" ksp (notOverridable k)])
+                Nothing -> (s', ds' <> [err "G02050" ksp (notOverridable k)])
                 Just f -> case f (valueText v) of
-                  Left m -> (s', ds' <> [err "G0251" ksp m])
+                  Left m -> (s', ds' <> [err "G02051" ksp m])
                   Right g -> (g s', ds')
               (s'', applied) = foldl apply (s, []) kvs
-           in (s'', ds <> [err "G0252" asp shape | asp <- others] <> [err "G0252" bsp m | (bsp, m) <- bad] <> applied)
+           in (s'', ds <> [err "G02052" asp shape | asp <- others] <> [err "G02052" bsp m | (bsp, m) <- bad] <> applied)
     isKeyword = \case
       A.Keyword {} -> True
       _ -> False
@@ -123,7 +123,7 @@ fileStyles style header =
       checked ls acc =
         let cs = checkLocalStyles style ls
             ds = [err code (positionOf ls name) m | (code, name, m) <- cs]
-            wrong = [localsOf ls name | (code, name, _) <- cs, code `elem` ["G0306", "G0308", "G0313"]]
+            wrong = [localsOf ls name | (code, name, _) <- cs, code `elem` ["G03006", "G03008", "G03013"]]
             ls' =
               ls
                 { lsCharStyles = foldr Map.delete (lsCharStyles ls) (concatMap snd wrong),
@@ -167,9 +167,9 @@ fileStyles style header =
           { lsRegexStyles =
               Map.filter (not . null) (Map.mapWithKey (\n rs -> [r | (i, r) <- zip [0 ..] rs, (n, i) `notElem` wrongRegexes]) (lsRegexStyles withRegexes))
           }
-      -- G0262: one notice for each definition that took effect over a style of style.toml or a built-in one
+      -- G02062: one notice for each definition that took effect over a style of style.toml or a built-in one
       overrides =
-        [ notice "G0262" sp ("ファイルの中の定義が" <> kindName k <> "の " <> n <> " を上書きしています")
+        [ notice "G02062" sp ("ファイルの中の定義が" <> kindName k <> "の " <> n <> " を上書きしています")
         | Def sp k n _ <- defs,
           let (inFile, inStyle) = case k of
                 CharacterKind -> (Map.member n (lsCharStyles final), Map.member n (stCharStyles style))
@@ -186,7 +186,7 @@ fileStyles style header =
       let positionals = [v | A.Located _ (A.Positional v) <- args]
           splats = [() | A.Located _ a <- args, isSplat a]
           (kvs, bad) = keywordArgs args
-          shapeErrs = [err "G0252" bsp m | (bsp, m) <- bad]
+          shapeErrs = [err "G02052" bsp m | (bsp, m) <- bad]
        in case positionals of
             [A.Word kindW, A.Word name]
               | null body,
@@ -197,16 +197,16 @@ fileStyles style header =
                     Nothing
                       | not (null shapeErrs) -> (defs, ds <> shapeErrs)
                       | otherwise -> case localRegexStyleDef [(key, asString v) | (key, _, v) <- kvs] of
-                          Left ms -> (defs, ds <> [err "G0306" sp ("@style-def の値が不正です: " <> m) | m <- ms])
+                          Left ms -> (defs, ds <> [err "G03006" sp ("@style-def の値が不正です: " <> m) | m <- ms])
                           Right d -> (defs <> [RegexDef sp name d], ds)
                     Just k
                       | not (null shapeErrs) -> (defs, ds <> shapeErrs)
-                      | not (null [() | Def _ k' n _ <- defs, k' == k, n == name]) -> (defs, ds <> [err "G0253" sp ("同じ名前のスタイルを二度定義しています: " <> name)])
+                      | not (null [() | Def _ k' n _ <- defs, k' == k, n == name]) -> (defs, ds <> [err "G02053" sp ("同じ名前のスタイルを二度定義しています: " <> name)])
                       | otherwise -> case localStyleDef k [(key, v) | (key, _, v) <- kvs] of
-                          -- an aki amount in a dimension is G0320 (docs/adr ADR 0019); kerning, tracking and baseline shift G0321 (docs/adr/0020)
-                          Left ms -> (defs, ds <> [err (if "アキの量の指定が正しくありません" `T.isPrefixOf` m then "G0320" else code) sp ("@style-def の値が不正です: " <> m) | (code, m) <- ms])
+                          -- an aki amount in a dimension is G03020 (docs/adr ADR 0019); kerning, tracking and baseline shift G03021 (docs/adr/0020)
+                          Left ms -> (defs, ds <> [err (if "アキの量の指定が正しくありません" `T.isPrefixOf` m then "G03020" else code) sp ("@style-def の値が不正です: " <> m) | (code, m) <- ms])
                           Right d -> (defs <> [Def sp k name d], ds)
-            _ -> (defs, ds <> [err "G0252" sp shape] <> shapeErrs)
+            _ -> (defs, ds <> [err "G02052" sp shape] <> shapeErrs)
     asString = \case
       LocalWord w -> LocalString w
       v -> v

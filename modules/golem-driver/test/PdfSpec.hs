@@ -43,11 +43,11 @@ pdfPipelineTests =
         copyTree fixture tmp
         BS.writeFile (tmp </> "style.toml") pdfStyle
         r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf]}
-        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G0807"]
+        map diagCode (brDiagnostics r) @?= [DiagnosticCode "G08007"]
         map diagMessage (brDiagnostics r) @?= ["style.toml に本文のフォントがありません。[fonts.body] を書いてください"]
         -- reported before the fonts are loaded (golem-driver ADR 0016)
         r' <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = noFontProvider}
-        map diagCode (brDiagnostics r') @?= [DiagnosticCode "G0807"],
+        map diagCode (brDiagnostics r') @?= [DiagnosticCode "G08007"],
       testCase "with real fonts: subset OpenType fonts, ToUnicode, deterministic and parallel-safe" $ do
         a <- buildRealPdf True
         b <- buildRealPdf False
@@ -72,21 +72,21 @@ pdfPipelineTests =
         assertBool "a bare CFF program" (any (BS.isPrefixOf (BS.pack [1, 0, 4])) streams)
         assertBool "no OpenType font" (not (any (BS.isPrefixOf "OTTO") streams))
         qpdfCheck pdf,
-      testCase "G0818: a CFF font without a CFF table is not embedded as OpenType (golem-pdf ADR 0011)" $ do
+      testCase "G08018: a CFF font without a CFF table is not embedded as OpenType (golem-pdf ADR 0011)" $ do
         (sans, _) <- realLatinFonts
         let renamed = renameTable "CFF " "CFX " sans
-            expected = diagnostic "G0818" Error (mkSpan (FileId 3) 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"
+            expected = diagnostic "G08018" Error (mkSpan (FileId 3) 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"
         cffFontProgram (FileId 3) "fonts/sans.otf" renamed @?= Left expected
         case cffFontProgram (FileId 3) "fonts/sans.otf" sans of
           Right (P.CffProgram b) -> BS.take 3 b @?= BS.pack [1, 0, 4]
           other -> assertFailure (either show (const "another program") other)
-        -- the build stops with G0818 at the top of style.toml and writes no PDF
+        -- the build stops with G08018 at the top of style.toml and writes no PDF
         let failing =
               FontProvider $ \root fid style locals ->
-                fmap (\lf -> lf {lfEmbed = \_ _ _ -> pure (Left (diagnostic "G0818" Error (mkSpan fid 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"))})
+                fmap (\lf -> lf {lfEmbed = \_ _ _ -> pure (Left (diagnostic "G08018" Error (mkSpan fid 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"))})
                   <$> loadFonts golemFontProvider root fid style locals
         b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = failing}) (Just (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n")) [("fonts/sans.otf", sans)]
-        map diagCode (bErrors b) @?= [DiagnosticCode "G0818"]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08018"]
         map (whereIs b) (bErrors b) @?= [(Just "style.toml", 0)]
         bPdf b @?= Nothing,
       testCase "ruby readings, emphasis dots and line-end hyphens are drawn" $ do
@@ -433,10 +433,10 @@ hiddenFolioTests =
       let after = snd (BS.breakSubstring " Do" content)
       assertBool "a figure" (not (BS.null after))
       assertBool "the folio after it" ("<0031> Tj" `BS.isInfixOf` after),
-    testCase "golem check reports G0750 only with crop marks" $ do
+    testCase "golem check reports G07050 only with crop marks" $ do
       let narrow = replaceIn "gutter = \"20mm\"" "gutter = \"1mm\"" horizontalStyle
       b <- buildMarks (\o -> o {optMarks = WesternMarks, optTargets = Nothing, optCheckOnly = True}) (Just narrow)
-      map diagCode (bErrors b) @?= [DiagnosticCode "G0750"]
+      map diagCode (bErrors b) @?= [DiagnosticCode "G07050"]
       n <- buildMarks (\o -> o {optTargets = Nothing, optCheckOnly = True}) (Just narrow)
       map diagCode (bErrors n) @?= [],
     testCase "with marks, parallel and sequential builds agree" $ do
@@ -541,7 +541,7 @@ marksTests =
       (w, h) <- a5Size
       boxOf "MediaBox" pdf @?= boxOf "BleedBox" pdf
       boxOf "TrimBox" pdf @?= boxText (Rect 557314 557314 w h),
-    testCase "the English template: 0.125in of bleed, and Japanese marks without G0702 (golem-pdf ADR 0010, golem-project ADR 0010)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+    testCase "the English template: 0.125in of bleed, and Japanese marks without G07002 (golem-pdf ADR 0010, golem-project ADR 0010)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
       let dir = tmp </> "book"
       createProject dir (templateFiles English uuid0) Nothing >>= (@?= Right ())
       createDirectoryIfMissing True (dir </> "fonts")
@@ -555,24 +555,24 @@ marksTests =
       let s = P.sheet (Just P.Japanese) (9 * 65536) (20054016, 32440320)
       boxOf "TrimBox" pdf @?= boxText (P.shTrim s)
       boxOf "BleedBox" pdf @?= boxText (P.shBleed s),
-    testCase "Japanese marks without bleed are G0702 at the top of style.toml, and no PDF" $ do
+    testCase "Japanese marks without bleed are G07002 at the top of style.toml, and no PDF" $ do
       b <- buildMarks (\o -> o {optMarks = JapaneseMarks}) (Just horizontalStyle)
-      map diagCode (bErrors b) @?= [DiagnosticCode "G0702"]
+      map diagCode (bErrors b) @?= [DiagnosticCode "G07002"]
       [(fmap siPath (Map.lookup (spanFile (diagSpan d)) (bSources b)), spanStart (diagSpan d)) | d <- bErrors b] @?= [(Just "style.toml", 0)]
       bPdf b @?= Nothing
       w <- buildMarks (\o -> o {optMarks = WesternMarks}) (Just horizontalStyle)
       map diagCode (bErrors w) @?= []
       assertBool "Western PDF" (isJust (bPdf w)),
-    testCase "without style.toml, G0702 is at the top of manifest.toml" $ do
+    testCase "without style.toml, G07002 is at the top of manifest.toml" $ do
       b <- buildMarks (\o -> o {optMarks = JapaneseMarks}) Nothing
-      [(fmap siPath (Map.lookup (spanFile (diagSpan d)) (bSources b)), spanStart (diagSpan d)) | d <- ofCode "G0702" b] @?= [(Just "manifest.toml", 0)],
-    testCase "Japanese marks without bleed are not G0702 when PDF is not a target" $ do
+      [(fmap siPath (Map.lookup (spanFile (diagSpan d)) (bSources b)), spanStart (diagSpan d)) | d <- ofCode "G07002" b] @?= [(Just "manifest.toml", 0)],
+    testCase "Japanese marks without bleed are not G07002 when PDF is not a target" $ do
       b <- buildMarks (\o -> o {optMarks = JapaneseMarks, optTargets = Just [TargetHtml]}) (Just horizontalStyle)
       map diagCode (bErrors b) @?= []
       assertBool "HTML" (any (".xhtml" `isSuffixOf`) (bWritten b)),
-    testCase "golem check with Japanese marks and no bleed is G0702 and writes nothing" $ do
+    testCase "golem check with Japanese marks and no bleed is G07002 and writes nothing" $ do
       b <- buildMarks (\o -> o {optMarks = JapaneseMarks, optTargets = Nothing, optCheckOnly = True}) (Just horizontalStyle)
-      map diagCode (bErrors b) @?= [DiagnosticCode "G0702"]
+      map diagCode (bErrors b) @?= [DiagnosticCode "G07002"]
       bBuildDir b @?= False,
     testCase "bleed in style.toml changes the instance ID" $ do
       a <- marksPdf id horizontalStyle
@@ -590,7 +590,7 @@ marksTests =
       boxOf "TrimBox" pdf @?= "0 0 396 612",
     testCase "golem check rejects a page size outside the table (golem-project ADR 0005)" $ do
       b <- buildMarks (\o -> o {optTargets = Nothing, optCheckOnly = True}) (Just (replaceIn "size = \"A5\"\n" "size = \"148mm x 210mm\"\n" horizontalStyle))
-      map diagCode (bErrors b) @?= [DiagnosticCode "G0317"],
+      map diagCode (bErrors b) @?= [DiagnosticCode "G03017"],
     testCase "with marks and bleed, two builds give the same bytes" $ do
       a <- marksPdf (\o -> o {optMarks = JapaneseMarks}) bleedStyle
       b <- marksPdf (\o -> o {optMarks = JapaneseMarks, optParallel = False}) bleedStyle
@@ -805,20 +805,20 @@ kentenTests =
       without <- kentenDrawn horizontalStyle "「字」\n"
       [(dX d, dY d) | d <- with, dGlyph d == bracket] @?= [(dX d, dY d) | d <- without, dGlyph d == bracket]
       length [d | d <- with, dGlyph d == sesame] @?= 1,
-    testCase "G0809: the Japanese font has no kenten character; once per role and shape, no PDF" $ do
+    testCase "G08009: the Japanese font has no kenten character; once per role and shape, no PDF" $ do
       (sans, _) <- realLatinFonts
       (errs, pdf) <- buildMini golemFontProvider True (horizontalStyle <> "\n[fonts.body]\nja = \"fonts/sans.otf\"\n") "[kenten: 漢]と[kenten: 字]\n" [("fonts/sans.otf", sans)]
-      errs @?= [DiagnosticCode "G0809"]
+      errs @?= [DiagnosticCode "G08009"]
       pdf @?= Nothing,
-    testCase "G0809: the message names the role, the shape and the character" $ do
+    testCase "G08009: the message names the role, the shape and the character" $ do
       (sans, _) <- realLatinFonts
       n <- buildNotified [("manifest.toml", miniManifest), ("style.toml", horizontalStyle <> "\n[fonts.body]\nja = \"fonts/sans.otf\"\n"), ("a.gm", TE.encodeUtf8 "[kenten shape=open-sesame: 漢]\n"), ("fonts/sans.otf", sans)] (\o -> o {optFonts = golemFontProvider})
-      [(c, diagMessage d) | d <- nDiagnostics n, let DiagnosticCode c = diagCode d, c == "G0809"]
-        @?= [("G0809", "役割 body の和文の書体に圏点の形 open-sesame の字（U+FE46）がありません")],
-    testCase "G0745: kenten in a ruby base, and ruby in kenten, are a notice; the PDF is written" $
+      [(c, diagMessage d) | d <- nDiagnostics n, let DiagnosticCode c = diagCode d, c == "G08009"]
+        @?= [("G08009", "役割 body の和文の書体に圏点の形 open-sesame の字（U+FE46）がありません")],
+    testCase "G07045: kenten in a ruby base, and ruby in kenten, are a notice; the PDF is written" $
       forM_ [("[ruby: [kenten: 漢]|かん]\n", 7), ("[kenten: [ruby: 漢|かん]]\n", 9)] $ \(src, at) -> do
         n <- buildNotified ([("manifest.toml", miniManifest), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 src)] <> fakeFontFiles) id
-        [(c, diagSeverity d, spanStart (diagSpan d)) | d <- nDiagnostics n, let { DiagnosticCode c = diagCode d }, c == "G0745"] @?= [("G0745", Notice, at)]
+        [(c, diagSeverity d, spanStart (diagSpan d)) | d <- nDiagnostics n, let { DiagnosticCode c = diagCode d }, c == "G07045"] @?= [("G07045", Notice, at)]
         assertBool "the PDF" (any ((".pdf" `isSuffixOf`) . fst) (nOutputs n)),
     testCase "HTML: the class of the shape; no shape is sesame" $ do
       n <- buildNotified ([("manifest.toml", miniManifest <> "\n[targets.html]\n"), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 "[kenten: 漢][kenten shape=open-triangle: 字]\n")] <> fakeFontFiles) id
@@ -968,12 +968,12 @@ codeTests =
               [(pad + 14 * sp, "abcdefgh")],
               [(pad + 2 * sp, "ijklm")]
             ],
-    testCase "G0730: one notice for a block with wrapped lines, with the number of lines" $ do
+    testCase "G07030: one notice for a block with wrapped lines, with the number of lines" $ do
       r <- buildAll horizontalStyle "```\nabcdefghijklmnopqrstuvwxyzabcd\nx\nabcdefghijklmnopqrstuvwxyzabcd\n```\n" []
-      [(diagMessage d, diagSeverity d) | d <- codeOf r "G0730"] @?= [("コードの行を折り返しました（2 行）", Notice)]
+      [(diagMessage d, diagSeverity d) | d <- codeOf r "G07030"] @?= [("コードの行を折り返しました（2 行）", Notice)]
       assertBool "the PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
       r' <- buildAll horizontalStyle "```\nabc\n```\n" []
-      codeOf r' "G0730" @?= [],
+      codeOf r' "G07030" @?= [],
     testCase "the grid: three rows of 11Q code on 13Q and 22H take three lines; the text after is on the grid" $ do
       (_, pl) <- layoutOk (grid13 <> "\n[paragraph-styles.code]\nsize = \"11Q\"\n") "```\na\nb\nc\n```\n\n本文。\n" []
       case plPages pl of
@@ -1026,19 +1026,19 @@ codeTests =
           assertBool (show x) (abs (x - toPt (rectX (firstColumn geom) + 10 * pt)) < 0.001)
           assertBool (show w) (abs (w - 110) < 0.001)
         other -> assertFailure (show other),
-    testCase "G0743: too little measure in a deep list, at the block" $ do
+    testCase "G07043: too little measure in a deep list, at the block" $ do
       let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n    - c\n\n      ```\n      x\n      ```\n" []
-      [(diagMessage d, spanStart (diagSpan d) > 0) | d <- codeOf r "G0743"] @?= [("コードブロックの行長が足りません", True)]
+      [(diagMessage d, spanStart (diagSpan d) > 0) | d <- codeOf r "G07043"] @?= [("コードブロックの行長が足りません", True)]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    x\n    ```\n" []
-      codeOf ok "G0743" @?= [],
-    testCase "G0743: too little measure at the top, reported by golem check too" $ do
+      codeOf ok "G07043" @?= [],
+    testCase "G07043: too little measure at the top, reported by golem check too" $ do
       let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"3zw\"\n"
       r <- buildAllWith (\o -> o {optCheckOnly = True}) style "```\nx\n```\n" []
-      map diagMessage (codeOf r "G0743") @?= ["コードブロックの行長が足りません"],
-    testCase "G0743: one row and its padding taller than a page" $ do
+      map diagMessage (codeOf r "G07043") @?= ["コードブロックの行長が足りません"],
+    testCase "G07043: one row and its padding taller than a page" $ do
       r <- buildAll (replaceIn "lines = 30" "lines = 1" horizontalStyle) "```\nx\n```\n" []
-      map diagMessage (codeOf r "G0743") @?= ["コードブロックの一行が一ページに収まりません"],
+      map diagMessage (codeOf r "G07043") @?= ["コードブロックの一行が一ページに収まりません"],
     testCase "empty lines are rows, at the start, in the middle and at the end" $ do
       (_, pl) <- layoutOk horizontalStyle "```\n\nx\n\ny\n\n```\n" []
       map (map snd) (codeRows pl) @?= [[], ["x"], [], ["y"], []],
@@ -1064,12 +1064,12 @@ codeTests =
       assertBool "embedded" ("SourceSansPro" `BS.isInfixOf` withCode')
       without <- miniPdf realProvider False style "本文。\n" files
       assertBool "not embedded" (not ("SourceSansPro" `BS.isInfixOf` without)),
-    testCase "G0808: without [fonts.code], code is set in the body role, with one notice" $ do
+    testCase "G08008: without [fonts.code], code is set in the body role, with one notice" $ do
       r <- buildAll horizontalStyle "```\nabc\n```\n\n[code: x] and [code: y]\n" []
-      [(diagMessage d, diagSeverity d) | d <- codeOf r "G0808"] @?= [("コードの書体の役割 code がないので、本文の書体で組みます", Notice)]
+      [(diagMessage d, diagSeverity d) | d <- codeOf r "G08008"] @?= [("コードの書体の役割 code がないので、本文の書体で組みます", Notice)]
       assertBool "the PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
       r' <- buildAll horizontalStyle "本文。\n" []
-      codeOf r' "G0808" @?= [],
+      codeOf r' "G08008" @?= [],
     testCase "[code: manifest.toml] at the line end is not hyphenated: the whole goes to the next line" $ do
       ts <- listPages horizontalStyle "あいうえおかきくけ[code: manifest.toml]です。\n"
       assertBool (show ts) (any ("manifest.toml" `T.isPrefixOf`) ts),
@@ -1123,12 +1123,12 @@ codeTests =
       let style = horizontalStyle <> "\n[code]\nline-numbers = true\n"
       (_, pl) <- layoutOk style "```\na\n```\n\n``` numbers=false\nb\n```\n" []
       codeRows pl @?= [[(pad, "1"), (pad + 15 * pt, "a")], [(pad, "b")]],
-    testCase "G0743: line numbers and diff marks leave too little measure in a list" $ do
+    testCase "G07043: line numbers and diff marks leave too little measure in a list" $ do
       let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n\n    ``` numbers=100 diff=true\n    +x\n    ```\n" []
-      map diagMessage (codeOf r "G0743") @?= ["コードブロックの行長が足りません"]
+      map diagMessage (codeOf r "G07043") @?= ["コードブロックの行長が足りません"]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    +x\n    ```\n" []
-      codeOf ok "G0743" @?= [],
+      codeOf ok "G07043" @?= [],
     testCase "file: one more row with the file name first, not repeated after a page break" $ do
       (_, plain) <- layoutOk horizontalStyle "```\na\nb\n```\n" []
       (_, named) <- layoutOk horizontalStyle "``` file=a.hs\na\nb\n```\n" []

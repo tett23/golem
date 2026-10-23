@@ -65,14 +65,14 @@ tableFileTests =
         headerTexts withBom @?= [["a"], ["b"]]
         csvBom <- oneTable "data/x.csv" "\xEF\xBB\xBF\&a,b\n1,2\n"
         headerTexts csvBom @?= [["a"], ["b"]],
-      testCase "G0285 after a BOM counts its bytes" $
+      testCase "G02085 after a BOM counts its bytes" $
         withTables [("a.gm", "@table src=data/x.tsv\n")] [("data/x.tsv", "\xEF\xBB\xBF\&a\tb\nc\n")] $ \tmp -> do
           r <- check tmp
-          [(c, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- brDiagnostics r, let { DiagnosticCode c = diagCode d }] @?= [("G0285", 7, 8)],
-      testCase "a BOM at the start of a source file is still G0102" $
+          [(c, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- brDiagnostics r, let { DiagnosticCode c = diagCode d }] @?= [("G02085", 7, 8)],
+      testCase "a BOM at the start of a source file is still G01002" $
         withTables [("a.gm", "\xEF\xBB\xBF\&x\n")] [] $ \tmp -> do
           r <- check tmp
-          codesOf r @?= ["G0102"],
+          codesOf r @?= ["G01002"],
       testCase "U+FEFF elsewhere stays in the cell" $ do
         bs <- oneTable "data/x.tsv" "a\tb\xEF\xBB\xBF\n1\t2\n"
         headerTexts bs @?= [["a"], ["b\xFEFF"]],
@@ -81,28 +81,28 @@ tableFileTests =
         c <- oneTable "data/x.csv" "a,b\r\n1,2\r\n"
         headerTexts t @?= [["a"], ["b"]]
         headerTexts c @?= [["a"], ["b"]],
-      testCase "a lone CR is G0282, not G0103" $
+      testCase "a lone CR is G02082, not G01003" $
         forM_ ["data/x.tsv", "data/x.csv"] $ \p ->
           withTables [("a.gm", TE.encodeUtf8 ("@table src=" <> T.pack p <> "\n"))] [(p, "a\rb\n")] $ \tmp -> do
             r <- check tmp
-            codesOf r @?= ["G0282"],
-      testCase "Shift_JIS is G0101" $
+            codesOf r @?= ["G02082"],
+      testCase "Shift_JIS is G01001" $
         forM_ ["data/x.tsv", "data/x.csv"] $ \p ->
           withTables [("a.gm", TE.encodeUtf8 ("@table src=" <> T.pack p <> "\n"))] [(p, "\x95\x5C\n")] $ \tmp -> do
             r <- check tmp
-            codesOf r @?= ["G0101"],
+            codesOf r @?= ["G01001"],
       testCase "the table file is shown in human and JSON output" $
         withTables [("a.gm", "@table src=data/x.tsv\n\n@table src=data/x.csv\n")] [("data/x.tsv", "a\tb\nc\n"), ("data/x.csv", "a,b\nc\n")] $ \tmp -> do
           r <- check tmp
           let human = renderHuman (brSources r) (brDiagnostics r)
               json = renderJson (brSources r) (brDiagnostics r)
-          assertBool (T.unpack human) ("data/x.tsv:2:1: error[G0285]" `T.isInfixOf` human)
-          assertBool (T.unpack human) ("data/x.csv:2:1: error[G0285]" `T.isInfixOf` human)
+          assertBool (T.unpack human) ("data/x.tsv:2:1: error[G02085]" `T.isInfixOf` human)
+          assertBool (T.unpack human) ("data/x.csv:2:1: error[G02085]" `T.isInfixOf` human)
           assertBool (T.unpack json) ("\"data/x.tsv\"" `T.isInfixOf` json && "\"data/x.csv\"" `T.isInfixOf` json),
       testCase "a file referred to twice gives its reading error once" $
         withTables [("a.gm", "@table src=data/x.tsv\n\n@table src=data/x.tsv\n")] [("data/x.tsv", "a\rb\n")] $ \tmp -> do
           r <- check tmp
-          codesOf r @?= ["G0282"],
+          codesOf r @?= ["G02082"],
       testCase "FileIds do not depend on the order the files were made" $ do
         let files = [("data/b.tsv", "a\tb\nc\n"), ("data/a.csv", "a,b\nc\n"), ("src/x.hs", "x\n")]
             src = "@table src=data/b.tsv\n\n@table src=data/a.csv\n\n@listing src/x.hs\n"
@@ -115,7 +115,7 @@ tableFileTests =
       testCase "a table file that fails to be read makes no table; the other chapters are evaluated" $
         withTables [("a.gm", "@table src=data/x.tsv\n"), ("b.gm", TE.encodeUtf8 "本文。\n")] [("data/x.tsv", "a\rb\n")] $ \tmp -> do
           r <- check tmp
-          codesOf r @?= ["G0282"]
+          codesOf r @?= ["G02082"]
           byPath <- blocksOf tmp
           Map.lookup "a.gm" byPath @?= Just []
           fmap length (Map.lookup "b.gm" byPath) @?= Just 1,
@@ -133,20 +133,20 @@ tableFileTests =
         fromCsv <- miniPdf fakeProvider True horizontalStyle "@table src=data.csv align=right\n" [("data.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] >>= fmap BS.concat . inflateAll
         fromBars <- miniPdf fakeProvider True horizontalStyle "| 項目 | 値 |\n|---:|---:|\n| 幅 | 10 |\n" [] >>= fmap BS.concat . inflateAll
         sort (drawnGlyphs fromCsv) @?= sort (drawnGlyphs fromBars),
-      testCase "a large table is G0288, and the text build ends within 10 seconds (docs/adr ADR 0043)" $
+      testCase "a large table is G02088, and the text build ends within 10 seconds (docs/adr ADR 0043)" $
         withTables [("a.gm", "@table src=data/big.tsv\n")] [("data/big.tsv", BS.concat (replicate 200000 "a\tb\tc\n"))] $ \tmp -> do
           t0 <- getMonotonicTime
           r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
           t1 <- getMonotonicTime
           [(c, diagMessage d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- brDiagnostics r, let DiagnosticCode c = diagCode d]
-            @?= [("G0288", "表のファイルが行の数の上限を超えます: data/big.tsv（10001 行目、上限は 10000 行）", 0, 24)]
+            @?= [("G02088", "表のファイルが行の数の上限を超えます: data/big.tsv（10001 行目、上限は 10000 行）", 0, 24)]
           assertBool ("took " <> show (t1 - t0) <> " seconds") (t1 - t0 < 10),
-      testCase "a table file over 16 MiB is G0288 and is not read (docs/adr ADR 0043)" $
-        -- bytes that are not UTF-8 would be G0101 if the file were read
+      testCase "a table file over 16 MiB is G02088 and is not read (docs/adr ADR 0043)" $
+        -- bytes that are not UTF-8 would be G01001 if the file were read
         withTables [("a.gm", "@table src=data/big.csv\n")] [("data/big.csv", BS.replicate (2 ^ (24 :: Int)) 0x61 <> "\xFF")] $ \tmp -> do
           r <- check tmp
           [(c, diagMessage d) | d <- brDiagnostics r, let DiagnosticCode c = diagCode d]
-            @?= [("G0288", "表のファイルが大きさの上限を超えます: data/big.csv（16777217 バイト、上限は 16777216 バイト）")],
+            @?= [("G02088", "表のファイルが大きさの上限を超えます: data/big.csv（16777217 バイト、上限は 16777216 バイト）")],
       testCase "a table file of 16 MiB is read" $
         withTables [("a.gm", "@table src=data/big.csv\n")] [("data/big.csv", BS.replicate (2 ^ (24 :: Int) - 1) 0x61 <> "\n")] $ \tmp -> do
           r <- check tmp

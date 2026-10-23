@@ -14,16 +14,16 @@
 
 コードを読むと、図版は次の順に扱われる。
 
-- 評価（golem-eval の `Golem.Eval.File` の `figure`）は、画像と `web` のファイルがあるかだけを確かめる。ないファイルは G0233、使えないパスは G0260 になる。拡張子が `.pdf` で `web` がなければ G0229 になる。形式は拡張子の `.pdf` だけで見分け、ほかの拡張子（`.svg`、`.gif` など）はそのまま通る。
+- 評価（golem-eval の `Golem.Eval.File` の `figure`）は、画像と `web` のファイルがあるかだけを確かめる。ないファイルは G02033、使えないパスは G02060 になる。拡張子が `.pdf` で `web` がなければ G02029 になる。形式は拡張子の `.pdf` だけで見分け、ほかの拡張子（`.svg`、`.gif` など）はそのまま通る。
 - PDF の書き手（golem-driver の `Golem.Driver.Pdf` の `loadFigures`）は、golem-pdf の `Golem.Pdf.Image.readImage` で画像を読む。`readImage` は先頭のバイト列で JPEG と PNG を見分け、それ以外を `Left` にする。`loadFigures` は `Left` を `Nothing` にし、`figureOf` はその図版の配置を作らない。
-- `golem preflight` だけが、同じ図版を G0905 で報告する（[golem-cli ADR 0006](../../golem-cli/adr/0006-preflight.md)）。同じ ADR は、`golem build` で黙って落とすことを直すかどうかを別の ADR に回した。
+- `golem preflight` だけが、同じ図版を G09005 で報告する（[golem-cli ADR 0006](../../golem-cli/adr/0006-preflight.md)）。同じ ADR は、`golem build` で黙って落とすことを直すかどうかを別の ADR に回した。
 
 ### 実験で確かめた振る舞い
 
 `golem new` の雛形に四つの図版（正しい PNG、`web=` 付きの PDF、200 バイトで切った PNG、SVG）を置き、`main` の `e3e19da` と同じモジュールのバイナリで組んだ。
 
 - `golem build --target pdf` は、診断を一つも出さずに終了コード 0 で終わった。PDF に入った画像の XObject は二つ（正しい PNG と、そのアルファの SMask）だけで、残りの三つの図版は、キャプションと図番号ごと PDF から消えた。
-- `golem preflight` は、三つの図版をそれぞれ G0905 で報告した（「JPEG と PNG 以外の画像は使えません」が二つ、「PNG のチャンクが途中で切れています」が一つ）。
+- `golem preflight` は、三つの図版をそれぞれ G09005 で報告した（「JPEG と PNG 以外の画像は使えません」が二つ、「PNG のチャンクが途中で切れています」が一つ）。
 - `golem build --target html` と `--target epub` は四つとも `<img>` で置き、ファイルをそのまま写した。EPUB は SVG の `media-type` を `application/octet-stream` にした（golem-epub の `mediaType` が `.svg` を知らないため）。
 
 ロードマップの「図版の欠落の扱い」が「可能性がある」と書いていた振る舞いは、実際に起きている。
@@ -57,10 +57,10 @@ Flate の復号には、すでに依存に入っている zlib を使う。
 案の段階で残していた問いに、メンテナーが次のとおり答えた。
 
 - `page=` は v1 に入れ、この ADR で扱う。意味論の IR の `Figure` に欄が一つ増える（下の「データ構造」）。
-- G0905 を廃止した後、`preflight.toml` の `image-unplaceable` のキーは知らないキー（G0901）とする。v1 の前なので、読んで無視する移行の期間は設けない。雛形の `preflight.toml` はこのキーをコメントの中にも書いていないが、利用者のマニュアルの付録（`manual/appendices/d-preflight.gm`）はキーとして載せているので、そこから消す。
+- G09005 を廃止した後、`preflight.toml` の `image-unplaceable` のキーは知らないキー（G09001）とする。v1 の前なので、読んで無視する移行の期間は設けない。雛形の `preflight.toml` はこのキーをコメントの中にも書いていないが、利用者のマニュアルの付録（`manual/appendices/d-preflight.gm`）はキーとして載せているので、そこから消す。
 - DeviceRGB を sRGB の ICCBased に置き換える方法は、内容のストリームの書き換えとする（理由は「トレードオフ」）。
 - PDF を読む処理は Haskell で golem-pdf の中に再実装する。Rust のライブラリも、新しい組み込みの依存（C のライブラリや Hackage の PDF のライブラリ）も入れない。組み込みの依存を足すことは、ビルドと決定性の管理の負担が大きいためである。
-- 新しい診断のコード（G0273、G0274、G0275、G0810）が、並行して書かれているほかの ADR のコードと重なった場合は、実装する者がそれを報告し、重ならない順に実装する。この ADR を書いた時点では、G0270 から G0272 を [docs/adr/0030](../../adr/0030-manual-page-break-control.md) の案が、G0276 を [docs/adr/0033](../../adr/0033-colophon-contributors-and-printings.md) の案が使い、08 の区分のコードを使うほかの案はない。
+- 新しい診断のコード（G02073、G02074、G02075、G08010）が、並行して書かれているほかの ADR のコードと重なった場合は、実装する者がそれを報告し、重ならない順に実装する。この ADR を書いた時点では、G02070 から G02072 を [docs/adr/0030](../../adr/0030-manual-page-break-control.md) の案が、G02076 を [docs/adr/0033](../../adr/0033-colophon-contributors-and-printings.md) の案が使い、08 の区分のコードを使うほかの案はない。
 
 ## 実装すること
 
@@ -71,13 +71,13 @@ Flate の復号には、すでに依存に入っている zlib を使う。
 
 | 引数 | 受け付ける拡張子（大文字と小文字を区別しない） | 誤りのコード |
 | --- | --- | --- |
-| 画像（最初の位置引数） | `.pdf`、`.png`、`.jpg`、`.jpeg` | G0274 |
-| `web` | `.png`、`.jpg`、`.jpeg` | G0273 |
+| 画像（最初の位置引数） | `.pdf`、`.png`、`.jpg`、`.jpeg` | G02074 |
+| `web` | `.png`、`.jpg`、`.jpeg` | G02073 |
 
-- G0274 のメッセージは `図版の形式は PDF、PNG、JPEG です: <パス>`、G0273 のメッセージは `web の代替画像は PNG か JPEG です: <パス>` とする。
+- G02074 のメッセージは `図版の形式は PDF、PNG、JPEG です: <パス>`、G02073 のメッセージは `web の代替画像は PNG か JPEG です: <パス>` とする。
 - `web` は、PNG と JPEG の図版にも書ける。今と同じく、HTML と EPUB は `web` があればそれを、なければ図版のファイルを使う。PDF は常に図版のファイルを使う。
-- PDF の図版に `web` がなければ、今と同じく G0229 とする。
-- 拡張子と中身が食い違うファイル（中身が PDF の `.png` など）は、PDF の書き手が拡張子の形式として読んで失敗し、G0810 になる。中身で形式を決め直さない。
+- PDF の図版に `web` がなければ、今と同じく G02029 とする。
+- 拡張子と中身が食い違うファイル（中身が PDF の `.png` など）は、PDF の書き手が拡張子の形式として読んで失敗し、G08010 になる。中身で形式を決め直さない。
 
 ### ページの指定（golem-eval、golem-doc）
 
@@ -88,8 +88,8 @@ Flate の復号には、すでに依存に入っている zlib を使う。
 ```
 
 - `page` は 1 以上の整数で、PDF の何ページ目を置くかを表す。省けば 1 である。
-- 整数として読めない値、0 以下の値、PDF でない図版に書いた `page` は G0275（`page は PDF の図版のページを 1 から数えた整数で書きます: <値>`）とする。
-- ページの数を超える値は、評価の段階ではファイルを読まないので、PDF の書き手が G0810 にする。
+- 整数として読めない値、0 以下の値、PDF でない図版に書いた `page` は G02075（`page は PDF の図版のページを 1 から数えた整数で書きます: <値>`）とする。
+- ページの数を超える値は、評価の段階ではファイルを読まないので、PDF の書き手が G08010 にする。
 
 ### PDF の読み込み（golem-pdf の `Golem.Pdf.Import`）
 
@@ -172,19 +172,19 @@ data FigureContent
 ```
 
 - 拡張子が `.pdf` なら `importPage`、`.png`、`.jpg`、`.jpeg` なら `readImage` で読む。
-- `Left` になった図版は、エラー G0810（`図版を PDF に置けません: <パス>（<理由>）`）とし、PDF を書かない。理由は `readImage` の文言か、`ImportError` の文言である。位置はその `@figure` のブロックとし、`@figure` ごとに一つ出す。
-- G0810 は dev と prod の両方でエラーである。ないファイル（G0233）が両方でエラーなのと合わせる。
+- `Left` になった図版は、エラー G08010（`図版を PDF に置けません: <パス>（<理由>）`）とし、PDF を書かない。理由は `readImage` の文言か、`ImportError` の文言である。位置はその `@figure` のブロックとし、`@figure` ごとに一つ出す。
+- G08010 は dev と prod の両方でエラーである。ないファイル（G02033）が両方でエラーなのと合わせる。
 - 図版の大きさは、PNG と JPEG では画素の縦横の比、PDF では切り抜きの枠（回転の後）の縦横の比から決める。回り込み（`wrap`、`width`）、キャプション、行の格子の扱いは、[golem-driver ADR 0005](../../golem-driver/adr/0005-pdf-wrapped-figures.md) のまま変えない。
-- G0810 は PDF を組むとき（`golem build` の PDF、`golem preflight`）にだけ出す。HTML、EPUB、プレーンテキストは画像を読まない。
+- G08010 は PDF を組むとき（`golem build` の PDF、`golem preflight`）にだけ出す。HTML、EPUB、プレーンテキストは画像を読まない。
 
 ### プリフライト（golem-preflight）
 
-- G0905 を廃止する。G0810 で PDF を作れなければプリフライトの検査は行わないので、G0905 が出る場面はなくなる。`View` から `vwUnplaceable` を消し、`preflight.toml` の `image-unplaceable` を知らないキー（G0901）にする。
+- G09005 を廃止する。G08010 で PDF を作れなければプリフライトの検査は行わないので、G09005 が出る場面はなくなる。`View` から `vwUnplaceable` を消し、`preflight.toml` の `image-unplaceable` を知らないキー（G09001）にする。
 - 取り込んだ PDF の図版も、ページの図版の一覧に載せる。`ImageView` の `ivImage :: ImageData` を、`ivContent :: FigureContent` に替える。
-- G0906（実効の解像度の不足）と G0907（過剰）は、PNG と JPEG の図版だけを検査する。PDF の図版の中の画像の解像度は検査しない。
-- G0908（許さない色空間）は、PDF の図版では、`ImportedPage` の色空間の一覧のうち、許さないものをすべて並べて一つの診断にする。sRGB に置き換えた DeviceRGB は `rgb` とする。
-- G0909（出力インテントと違うプロファイル）は、PDF の図版の CMYK の ICCBased のプロファイルが出力インテントと違えば出す。
-- G0911（断裁の危険域の図版）は、PDF の図版も矩形で検査する。
+- G09006（実効の解像度の不足）と G09007（過剰）は、PNG と JPEG の図版だけを検査する。PDF の図版の中の画像の解像度は検査しない。
+- G09008（許さない色空間）は、PDF の図版では、`ImportedPage` の色空間の一覧のうち、許さないものをすべて並べて一つの診断にする。sRGB に置き換えた DeviceRGB は `rgb` とする。
+- G09009（出力インテントと違うプロファイル）は、PDF の図版の CMYK の ICCBased のプロファイルが出力インテントと違えば出す。
+- G09011（断裁の危険域の図版）は、PDF の図版も矩形で検査する。
 
 ### データ構造
 
@@ -196,13 +196,13 @@ data FigureContent
 
 ### ドキュメント
 
-- 仕様書の[「図版」の節](../../specifications.md#図版)に、PDF の図版の取り込み方（ページ、切り抜きの枠、色とフォントの扱い、拒む場合）、`web` の形式、G0810 を書く。[「色」の節](../../specifications.md#色)の画像の例外に、PDF の図版の DeviceRGB を sRGB に置き換えることを足す。[「golem preflight」の節](../../specifications.md#golem-preflight)の表から G0905 の行を消し、G0906 から G0911 の説明に PDF の図版の扱いを足す。
-- `docs/markup.md` の「図版」の節に、`page=`、`web` の形式、形式の誤り（G0273、G0274、G0275）を書く。
-- `docs/diagnostics.md` に G0273、G0274、G0275、G0810 の節を足し、G0905 を状態「廃止」にして、代わりに G0810 を案内する。
+- 仕様書の[「図版」の節](../../specifications.md#図版)に、PDF の図版の取り込み方（ページ、切り抜きの枠、色とフォントの扱い、拒む場合）、`web` の形式、G08010 を書く。[「色」の節](../../specifications.md#色)の画像の例外に、PDF の図版の DeviceRGB を sRGB に置き換えることを足す。[「golem preflight」の節](../../specifications.md#golem-preflight)の表から G09005 の行を消し、G09006 から G09011 の説明に PDF の図版の扱いを足す。
+- `docs/markup.md` の「図版」の節に、`page=`、`web` の形式、形式の誤り（G02073、G02074、G02075）を書く。
+- `docs/diagnostics.md` に G02073、G02074、G02075、G08010 の節を足し、G09005 を状態「廃止」にして、代わりに G08010 を案内する。
 - `docs/roadmap.md` から「図版の欠落の扱い」「PDF の図版」「PDF に置けない図版」を消す。
-- 利用者のマニュアルの `manual/chapters/03-markup.gm`（図版の節）と `manual/appendices/a-markup.gm` に `page=` と形式の規則を、`manual/appendices/d-preflight.gm` から `image-unplaceable` の行を消し、`manual/appendices/e-errors.gm` に G0273、G0274、G0275、G0810 を足して G0905 を廃止と書き、`manual/appendices/i-known-issues.gm` の置けない図版の項を消す。
+- 利用者のマニュアルの `manual/chapters/03-markup.gm`（図版の節）と `manual/appendices/a-markup.gm` に `page=` と形式の規則を、`manual/appendices/d-preflight.gm` から `image-unplaceable` の行を消し、`manual/appendices/e-errors.gm` に G02073、G02074、G02075、G08010 を足して G09005 を廃止と書き、`manual/appendices/i-known-issues.gm` の置けない図版の項を消す。
 - 開発者のマニュアルのモジュールの章（`manual-dev/part2/07-modules.gm`）の golem-pdf の説明に、PDF を読む処理を足す。
-- [golem-cli ADR 0006](../../golem-cli/adr/0006-preflight.md) のステータスの行を「採択→G0905 の廃止と、図版の検査の PDF の図版への拡張は [golem-pdf ADR 0008](../../golem-pdf/adr/0008-pdf-figures.md)」に改める。
+- [golem-cli ADR 0006](../../golem-cli/adr/0006-preflight.md) のステータスの行を「採択→G09005 の廃止と、図版の検査の PDF の図版への拡張は [golem-pdf ADR 0008](../../golem-pdf/adr/0008-pdf-figures.md)」に改める。
 - [ADR 0002](0002-pdf-x-4.md) のステータスの行に「取り込んだ PDF の図版の色、フォント、透明の扱いは [ADR 0008](0008-pdf-figures.md)」を足す。
 
 ## 実装しないこと
@@ -227,10 +227,10 @@ data FigureContent
 
 ### 評価（`modules/golem-eval/test/Main.hs`）
 
-- `@figure a.gif alt="x"` が G0274 になり、`@figure a.PDF web=a.png alt="x"` は通る。
-- `@figure a.pdf web=b.pdf alt="x"` と `web=b.svg` が G0273 になる。
+- `@figure a.gif alt="x"` が G02074 になり、`@figure a.PDF web=a.png alt="x"` は通る。
+- `@figure a.pdf web=b.pdf alt="x"` と `web=b.svg` が G02073 になる。
 - `@figure a.png web=b.jpg alt="x"` が通り、`Figure` の `figWeb` が `b.jpg` である。
-- `page=2` の PDF の図版の `figPage` が `Just 2` になる。`page=0`、`page=x`、PNG の図版の `page=1` が G0275 になる。
+- `page=2` の PDF の図版の `figPage` が `Just 2` になる。`page=0`、`page=x`、PNG の図版の `page=1` が G02075 になる。
 
 ### 意味論の IR（`modules/golem-doc/test/Main.hs`）
 
@@ -250,18 +250,18 @@ data FigureContent
 
 - `web=` 付きの PDF の図版（Golem で組んだ PDF）を置いた本の PDF に、Form XObject が一つあり、図版の矩形の幅が行長で、高さが切り抜きの枠の比に合う。
 - 同じ PDF を二度置いた本で、Form XObject が一つだけである。
-- 壊れた PNG と、`readImage` が拒む PNG（インターレース）の図版で、`golem build --target pdf` が G0810 を出し、終了コード 1 で、PDF を書かない。dev と prod の両方で同じである。
-- 今の `CliSpec` の「a PDF as a figure is G0905」を、PDF の図版が置かれ、G0905 も G0810 も出ないテストに替える。暗号化した PDF の図版が `golem build` で G0810 になるテストを足す。
-- `golem build --target html` は、壊れた PNG の図版でも G0810 を出さない。
-- `golem preflight` は G0810 で終わり、プリフライトの検査を行わない。`image-unplaceable` を書いた `preflight.toml` が G0901 になる。
+- 壊れた PNG と、`readImage` が拒む PNG（インターレース）の図版で、`golem build --target pdf` が G08010 を出し、終了コード 1 で、PDF を書かない。dev と prod の両方で同じである。
+- 今の `CliSpec` の「a PDF as a figure is G09005」を、PDF の図版が置かれ、G09005 も G08010 も出ないテストに替える。暗号化した PDF の図版が `golem build` で G08010 になるテストを足す。
+- `golem build --target html` は、壊れた PNG の図版でも G08010 を出さない。
+- `golem preflight` は G08010 で終わり、プリフライトの検査を行わない。`image-unplaceable` を書いた `preflight.toml` が G09001 になる。
 - `docs/diagnostics.md` の節と、ソースで使うコードが一致する（既存のテストがそのまま確かめる）。
 
 ### プリフライト（`modules/golem-preflight/test/Main.hs`）
 
-- G0905 のテストを消す。
-- DeviceRGB と DeviceCMYK を使う PDF の図版が、`print` の設定で G0908 を一つ出し、メッセージに `rgb` を含む。
-- 出力インテントと違う CMYK の ICCBased を持つ PDF の図版が G0909 を出す。
-- PDF の図版が G0906 を出さない。
+- G09005 のテストを消す。
+- DeviceRGB と DeviceCMYK を使う PDF の図版が、`print` の設定で G09008 を一つ出し、メッセージに `rgb` を含む。
+- 出力インテントと違う CMYK の ICCBased を持つ PDF の図版が G09009 を出す。
+- PDF の図版が G09006 を出さない。
 
 ### 自動テストにしない確かめ方
 
@@ -273,7 +273,7 @@ data FigureContent
 置けない図版を、警告ではなくエラーにした。
 警告にすると、dev で組みながら図を後から差し替える使い方はしやすくなる。
 しかし、図版が消えた PDF は図番号の参照が宙に浮いたまま組まれ、警告を見落とせば入稿まで気付かない。
-ないファイル（G0233）が両方のプロファイルでエラーなのとも合わない。
+ないファイル（G02033）が両方のプロファイルでエラーなのとも合わない。
 
 DeviceRGB の置き換えを、内容のストリームの書き換えで行うことにした。
 資源の `DefaultRGB` に sRGB を置けば、内容のストリームを触らずに済み、書き換えの誤りで図の見た目が変わる危険もない。
@@ -284,7 +284,7 @@ PDF/X-4 の検査がこれを認めるかも確かめられていない。
 
 特色とレイヤーを拒むことにした。
 図の PDF にはこれらを含むものがあり、その図は書き出しの設定を変えるまで使えない。
-特色を通すと、本の PDF はプロセスカラーだけという仕様書の前提が崩れ、プリフライトの検査（G0915 の総インキ量など）も特色を数える形に改める必要がある。
+特色を通すと、本の PDF はプロセスカラーだけという仕様書の前提が崩れ、プリフライトの検査（G09015 の総インキ量など）も特色を数える形に改める必要がある。
 v1 では理由を示して拒み、書き出しの側で直してもらう。
 
 PDF を読む処理を Haskell で自前で書くことにした。

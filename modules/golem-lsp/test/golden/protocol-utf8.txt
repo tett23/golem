@@ -1,9 +1,9 @@
-diagnostics: [(Range {_start = Position {_line = 3, _character = 0}, _end = Position {_line = 3, _character = 0}},Just (InR "G0117"))]
-codeDescription: [Just "https://github.com/tett23/golem/blob/main/docs/diagnostics.md#g0117"]
+diagnostics: [(Range {_start = Position {_line = 3, _character = 0}, _end = Position {_line = 3, _character = 0}},Just (InR "G01017"))]
+codeDescription: [Just "https://github.com/tett23/golem/blob/main/docs/diagnostics.md#g01017"]
 hover: Just "1.0"
 definition: [(Just "b.gm",Range {_start = Position {_line = 0, _character = 7}, _end = Position {_line = 0, _character = 13}})]
 symbols: はじめに(節)
 positionEncoding: Just PositionEncodingKind_UTF8
 references: [(Just "a.gm",Range {_start = Position {_line = 2, _character = 7}, _end = Position {_line = 2, _character = 12}}),(Just "b.gm",Range {_start = Position {_line = 3, _character = 11}, _end = Position {_line = 3, _character = 16}}),(Just "b.gm",Range {_start = Position {_line = 3, _character = 30}, _end = Position {_line = 3, _character = 35}})]
-missing label: [(Range {_start = Position {_line = 0, _character = 4}, _end = Position {_line = 0, _character = 22}},Just (InR "G0403"))]
+missing label: [(Range {_start = Position {_line = 0, _character = 4}, _end = Position {_line = 0, _character = 22}},Just (InR "G04003"))]
 hover inside a character: Nothing

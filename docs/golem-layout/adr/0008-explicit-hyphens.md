@@ -135,7 +135,7 @@ lineDemerits ps b p =
 |---|---|---|---|
 | `explicit-hyphen-penalty` | 整数 | 50 | 明示のハイフンの直後で分けるときの罰則。−9999 から 10000 まで |
 
-- `Golem.Project.Style` の `Composition` に `compExplicitHyphenPenalty :: Int` を加え、範囲の外の値は G0306 とする（`parseStyle` の `checks` に加える）。−10000 以下は強制の改行になるので許さない。
+- `Golem.Project.Style` の `Composition` に `compExplicitHyphenPenalty :: Int` を加え、範囲の外の値は G03006 とする（`parseStyle` の `checks` に加える）。−10000 以下は強制の改行になるので許さない。
 - golem-driver の `Pdf.hs` は、この値を `ComposeEnv` に加える `ceExplicitHyphenPenalty :: Int` に渡す。`defaultComposeEnv` の既定値は 50 とする。
 
 ### 参照テストの拡張
@@ -262,7 +262,7 @@ TeX のログでは、どちらも一行目が `b=*`（許容度を超える行�
 
 ### style.toml と PDF
 
-- `modules/golem-project/test/Main.hs`：`explicit-hyphen-penalty = 100` を読めること、`-10000` と `10001` が G0306 になること、欄がなければ 50 になること。
+- `modules/golem-project/test/Main.hs`：`explicit-hyphen-penalty = 100` を読めること、`-10000` と `10001` が G03006 になること、欄がなければ 50 になること。
 - `modules/golem-driver/test/Main.hs`：狭い行長の横組みの段落に `well-known` を並べて PDF を作り、内容のストリームの `<002D>` の数が原稿の `-` の数と等しいこと。行末にハイフンが足されていないことを確かめる。
 
 ## トレードオフ

@@ -102,10 +102,10 @@ comparisons =
         ],
       table
         "ordering is only for numbers and for strings"
-        [ ("1 < \"a\"", Left "G0201"),
-          ("true < false", Left "G0201"),
-          ("nil >= nil", Left "G0201"),
-          ("[1] > [0]", Left "G0201")
+        [ ("1 < \"a\"", Left "G02001"),
+          ("true < false", Left "G02001"),
+          ("nil >= nil", Left "G02001"),
+          ("[1] > [0]", Left "G02001")
         ]
     ]
 
@@ -162,7 +162,7 @@ integerBuiltins =
         [ ("min(3, 1, 2)", Right (VInt 1)),
           ("max(-1, -2.5)", Right (VInt (-1))),
           ("min(4)", Right (VInt 4)),
-          ("min(1, \"a\")", Left "G0201")
+          ("min(1, \"a\")", Left "G02001")
         ],
       table
         "div rounds toward negative infinity"
@@ -173,14 +173,14 @@ integerBuiltins =
           ("7 % -2", Right (VInt (-1)))
         ],
       table
-        "an argument of the wrong kind is G0207"
-        [ ("len(1)", Left "G0207"),
-          ("floor(\"a\")", Left "G0207"),
-          ("abs(nil)", Left "G0207"),
-          ("fixed(1.5)", Left "G0207"),
-          ("fixed(1.5, -1)", Left "G0207"),
-          ("round(1.5, 1.0)", Left "G0207"),
-          ("div(1)", Left "G0207")
+        "an argument of the wrong kind is G02007"
+        [ ("len(1)", Left "G02007"),
+          ("floor(\"a\")", Left "G02007"),
+          ("abs(nil)", Left "G02007"),
+          ("fixed(1.5)", Left "G02007"),
+          ("fixed(1.5, -1)", Left "G02007"),
+          ("round(1.5, 1.0)", Left "G02007"),
+          ("div(1)", Left "G02007")
         ],
       table
         "the constants are the nearest doubles"
@@ -202,7 +202,7 @@ powers =
       ("2.0 ** -2", Right (VFloat 0.25)),
       ("1.5 ** 2", Right (VFloat 2.25)),
       ("2.0 ** 0", Right (VFloat 1)),
-      ("\"a\" ** 2", Left "G0201")
+      ("\"a\" ** 2", Left "G02001")
     ]
 
 numericBoundaries :: TestTree
@@ -216,12 +216,12 @@ numericBoundaries =
           ("18446744073709551616 * 18446744073709551616", Right (VInt 340282366920938463463374607431768211456))
         ],
       table
-        "a float that overflows is G0204"
+        "a float that overflows is G02004"
         [ ("2.0 ** 1023", Right (VFloat 8.98846567431158e307)),
-          ("2.0 ** 1024", Left "G0204"),
+          ("2.0 ** 1024", Left "G02004"),
           -- 10^309 is beyond the largest double when converted
-          ("10 ** 309 + 0.5", Left "G0204"),
-          ("10 ** 309 / 1", Left "G0204")
+          ("10 ** 309 + 0.5", Left "G02004"),
+          ("10 ** 309 / 1", Left "G02004")
         ],
       testGroup
         "embedding"

@@ -74,7 +74,7 @@
   <text class="c small" x="850" y="710">（import 先）</text>
   <line class="dash" x1="680" y1="670" x2="738" y2="670"/>
   <text class="small" x="30" y="772">ファイルごとに、そのファイルと import 先だけを見て評価する。</text>
-  <text class="small" x="30" y="806">見出しは S1 の入力なので、見出しの中で doc と相互参照は使えない（G0214）。</text>
+  <text class="small" x="30" y="806">見出しは S1 の入力なので、見出しの中で doc と相互参照は使えない（G02014）。</text>
   <text class="small" x="30" y="840">S1、S2 の値は、意味論 IR に決まっていない値として残す。</text>
 
   <!-- ranges -->

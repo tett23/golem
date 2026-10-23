@@ -869,7 +869,7 @@ verticalSidenotes env inls
   where
     msg = "縦組みの版面では傍注を使えません。脚注に替えてください"
     go = \case
-      Sidenote sp _ _ -> [diagnostic "G0732" Error sp msg]
+      Sidenote sp _ _ -> [diagnostic "G07032" Error sp msg]
       Kenten _ _ xs -> concatMap go xs
       Color _ _ xs -> concatMap go xs
       CharStyle _ _ xs -> concatMap go xs

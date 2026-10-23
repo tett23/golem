@@ -60,7 +60,7 @@ overhang-onto = "kana"    # かけてよい隣の文字
 - 読みが一字のときは、`"1:2:1"` と `"0:1:0"` は `"center"` と同じ配置になる。
 - `base-spacing` の値の意味は、上の読みを親文字に置き換えたものである。
 - 読みの字間を空けて親文字の幅にそろえるというユーザーの要望は `"0:1:0"` に、JLReq がグループルビに使う配置は `"1:2:1"` に、今の描画は `"center"` に当たる。
-- 寸法の値が負の場合と、列挙にない値は G0306 とする。`enumKey` と `parseStyle` の `checks` で検査する。`position` の欄は未知の欄として G0306 になる。
+- 寸法の値が負の場合と、列挙にない値は G03006 とする。`enumKey` と `parseStyle` の `checks` で検査する。`position` の欄は未知の欄として G03006 になる。
 - 五つの欄はどれも省ける。省いた欄は既定値になる。`[composition.ruby]` の表そのものを省けば、すべての欄が既定値になる。
 
 ### 既定値の根拠
@@ -311,8 +311,8 @@ EPUB は HTML と同じシリアライザを使うので、同じ CSS が入る�
 ### style.toml（`modules/golem-project/test/Main.hs`）
 
 - `[composition.ruby]` の五つの欄を読み、`RubyStyleDef` になる。欄がなければ既定値になる。
-- `group-align = "justify"`、`mono-align = "1:2:1"`、`overhang = "-1zw"` が G0306 になる。
-- `position = "mono-center"` が G0306 になる。仕様書の例の文字列を使う既存のテストを、新しい表に書き換える。
+- `group-align = "justify"`、`mono-align = "1:2:1"`、`overhang = "-1zw"` が G03006 になる。
+- `position = "mono-center"` が G03006 になる。仕様書の例の文字列を使う既存のテストを、新しい表に書き換える。
 
 ### PDF（`modules/golem-driver/test/Main.hs`）
 
@@ -343,7 +343,7 @@ v1 のリリースの前であり、今の配置は [ADR 0002](0002-japanese-com
 片側だけかける組み方は読みの中心が親文字の中心からずれ、中付きの原則と食い違う。
 中心をそろえることを優先する。
 
-`position` の欄をなくすので、今の仕様書の例をそのまま書いた `style.toml` は G0306 になる。
+`position` の欄をなくすので、今の仕様書の例をそのまま書いた `style.toml` は G03006 になる。
 `position` が取れた値は `"mono-center"` だけで、配置を変える働きがなかった。
 v1 のリリースの前なので、互換の別名を残さない。
 

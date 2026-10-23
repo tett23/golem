@@ -100,7 +100,7 @@ renderNumberFormat (NumberFormat pre st suf) =
     escape = T.replace "}" "}}" . T.replace "{" "{{"
 
 {- | A number in a notation; 'Nothing' when the notation cannot write it
-(G0729). @{n}@ is written in Arabic numerals here: its vertical notation
+(G07029). @{n}@ is written in Arabic numerals here: its vertical notation
 is chosen where it is set.
 -}
 formatListNumber :: ListNumberStyle -> Integer -> Maybe Text

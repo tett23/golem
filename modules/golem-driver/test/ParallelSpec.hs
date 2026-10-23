@@ -148,7 +148,7 @@ parallelTests =
         ),
       testCase "layout errors of three chapters come in the order of the manifest, the positions and the codes" $ do
         let wide = "| " <> T.intercalate " | " (replicate 13 "字") <> " |\n|" <> T.replicate 13 "---|" <> "\n| " <> T.intercalate " | " (replicate 13 "字") <> " |\n"
-            -- the fourth level leaves less than 8 characters of 12 (G0727); the passes that
+            -- the fourth level leaves less than 8 characters of 12 (G07027); the passes that
             -- find it and the table errors are not the order of the files
             deep = "- 一\n  - 二\n    - 三\n      - 四\n        - 五の項目。\n"
             chapters = [("z.gm", wide), ("a.gm", "前。\n\n" <> wide), ("m.gm", deep <> "\n" <> wide <> "\n" <> wide)]
@@ -158,11 +158,11 @@ parallelTests =
         -- (two rows of 80 and a rule of 54), then a newline
         (pdf, [(f, c, at) | (f, c, at, _) <- ds])
           @?= ( Nothing,
-                [ ("z.gm", DiagnosticCode "G0741", 0),
-                  ("a.gm", DiagnosticCode "G0741", 8),
-                  ("m.gm", DiagnosticCode "G0727", 36),
-                  ("m.gm", DiagnosticCode "G0741", 63),
-                  ("m.gm", DiagnosticCode "G0741", 278)
+                [ ("z.gm", DiagnosticCode "G07041", 0),
+                  ("a.gm", DiagnosticCode "G07041", 8),
+                  ("m.gm", DiagnosticCode "G07027", 36),
+                  ("m.gm", DiagnosticCode "G07041", 63),
+                  ("m.gm", DiagnosticCode "G07041", 278)
                 ]
               ),
       testPropertyNamed

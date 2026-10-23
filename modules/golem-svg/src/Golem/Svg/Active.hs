@@ -30,7 +30,7 @@ xlinkNs :: Text
 xlinkNs = "http://www.w3.org/1999/xlink"
 
 {- | The active content of an SVG file, in the order of the document; the
-reason when it cannot be read as XML (the words of G0810).
+reason when it cannot be read as XML (the words of G08010).
 -}
 activeContent :: ByteString -> Either Text [Active]
 activeContent bytes = element <$> parseXml bytes

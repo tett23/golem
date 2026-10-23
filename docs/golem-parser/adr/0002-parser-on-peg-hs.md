@@ -65,7 +65,7 @@ peg-hs の構文木（`SyntaxNode`）を、[ADR 0001](0001-cst-types-and-invaria
 
 peg-hs の `SyntaxError` を、golem-syntax の `Diagnostic` に変換する。
 
-- ラベルの名前から診断コード（`G01xx`）と日本語のメッセージへの対応表を、golem-parser の中に一箇所で持つ。
+- ラベルの名前から診断コード（`G01xxx`）と日本語のメッセージへの対応表を、golem-parser の中に一箇所で持つ。
 - ラベルを持たない構文エラー（開始規則の後に残った入力、開始規則の失敗）にも、それぞれ診断コードを割り当てる。
 - 診断の位置は、`SyntaxError` の範囲から作る。範囲が空の場合（挿入の回復）は、その位置を指す幅 0 の位置とする。
 

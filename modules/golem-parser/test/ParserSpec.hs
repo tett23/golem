@@ -125,36 +125,36 @@ tests =
         let src = "前の段落。\n\n壊れた[strong: 段落\n\n後の段落。\n"
             (cst, ds) = parse fid src
         render cst @?= src
-        map diagCode ds @?= [DiagnosticCode "G0117"]
+        map diagCode ds @?= [DiagnosticCode "G01017"]
         length [() | ElemNode n <- nodeChildren cst, nodeKind n == NParagraph] @?= 3,
       testCase "a bare bracket is an error" $ do
         let (_, ds) = parse fid "本文 [ だけ\n"
-        map diagCode ds @?= [DiagnosticCode "G0121"],
+        map diagCode ds @?= [DiagnosticCode "G01021"],
       testCase "heading level four is an error and the next block survives" $ do
         let (cst, ds) = parse fid "#### 深すぎる\n\n# 正しい\n"
-        map diagCode ds @?= [DiagnosticCode "G0112"]
+        map diagCode ds @?= [DiagnosticCode "G01012"]
         assertBool "heading parsed" (NHeading `elem` kinds cst),
       testCase "tab indentation is an error" $ do
         let (_, ds) = parse fid "- a\n\t- b\n"
-        map diagCode ds @?= [DiagnosticCode "G0111"],
+        map diagCode ds @?= [DiagnosticCode "G01011"],
       testCase "odd indentation at top level is an error" $ do
         let (_, ds) = parse fid " 一つ空けた段落\n\n次。\n"
-        map diagCode ds @?= [DiagnosticCode "G0111"],
+        map diagCode ds @?= [DiagnosticCode "G01011"],
       testCase "orphan =: is an error" $ do
         let (_, ds) = parse fid "=:\n  説明\n\n次。\n"
-        map diagCode ds @?= [DiagnosticCode "G0113"],
+        map diagCode ds @?= [DiagnosticCode "G01013"],
       testCase "unclosed comment" $ do
         let (_, ds) = parse fid "本文 %% 閉じない\n\n次。\n"
-        map diagCode ds @?= [DiagnosticCode "G0118"],
+        map diagCode ds @?= [DiagnosticCode "G01018"],
       testCase "positional after keyword" $ do
         let (_, ds) = parse fid "[f a=1 b]\n"
-        map diagCode ds @?= [DiagnosticCode "G0119"],
+        map diagCode ds @?= [DiagnosticCode "G01019"],
       testCase "mismatched table cells" $ do
         let (_, ds) = parse fid "| a | b |\n|---|---|\n| 1 |\n"
-        map diagCode ds @?= [DiagnosticCode "G0115"],
+        map diagCode ds @?= [DiagnosticCode "G01015"],
       testCase "unclosed code block" $ do
         let (_, ds) = parse fid "```\nx\n"
-        map diagCode ds @?= [DiagnosticCode "G0116"],
+        map diagCode ds @?= [DiagnosticCode "G01016"],
       -- golem-parser ADR 0007
       testCase "empty and blank-only files are accepted" $
         mapM_ parseOk ["", "\n", "\n\n", "  \n"],
@@ -165,14 +165,14 @@ tests =
         astOf "a\n\n\t" @?= astOf "a\n",
       testCase "*[ always starts a splat" $ do
         -- The splat and the command it is in both lack their ].
-        nub (codes "[f *[x y]]\n") @?= [DiagnosticCode "G0117"]
-        codes "[f *[= 1]]\n" @?= [DiagnosticCode "G0120"]
-        codes "[f **[= 1]]\n" @?= [DiagnosticCode "G0120"]
+        nub (codes "[f *[x y]]\n") @?= [DiagnosticCode "G01017"]
+        codes "[f *[= 1]]\n" @?= [DiagnosticCode "G01020"]
+        codes "[f **[= 1]]\n" @?= [DiagnosticCode "G01020"]
         parseOk "[f * x]\n",
       testCase "a line starting with | that is not a table row" $ do
-        codes "| a |\n|---|\n|abc\n" @?= [DiagnosticCode "G0123"]
+        codes "| a |\n|---|\n|abc\n" @?= [DiagnosticCode "G01023"]
         let (cst, ds) = parse fid "| a |\n|---|\n|abc\n\n次の段落。\n"
-        map diagCode ds @?= [DiagnosticCode "G0123"]
+        map diagCode ds @?= [DiagnosticCode "G01023"]
         length [() | ElemNode n <- nodeChildren cst, nodeKind n == NParagraph] @?= 1,
       testCase "an empty item followed by a trailing blank line is an error" $ do
         assertBool "- \\n is an error" (not (null (codes "- \n")))
@@ -181,9 +181,9 @@ tests =
         ls <- grammarLabels
         assertBool "table_row is a label" ("table_row" `elem` ls)
         let cs = map (fst . labelCode . Just) ls
-        assertBool "no label falls back to G0129" ("G0129" `notElem` cs)
+        assertBool "no label falls back to G01029" ("G01029" `notElem` cs)
         sort (nub cs) @?= sort cs
-        fst (labelCode (Just "table_row")) @?= "G0123",
+        fst (labelCode (Just "table_row")) @?= "G01023",
       -- docs/adr ADR 0016
       testCase "a backslash at the end of a line is a hard break" $ do
         parseOk "a\\\nb\n"
@@ -191,31 +191,31 @@ tests =
         parseOk "a  \\\n  b\n"
         parseOk "- a\\\n  b\n",
       testCase "a hard break needs the next line of the paragraph" $
-        mapM_ (\src -> assertEqual (show src) [DiagnosticCode "G0124"] (nub (codes src))) ["a\\\n\nb\n", "a\\\n", "a\\", "a\\\n# h\n"],
+        mapM_ (\src -> assertEqual (show src) [DiagnosticCode "G01024"] (nub (codes src))) ["a\\\n\nb\n", "a\\\n", "a\\", "a\\\n# h\n"],
       testCase "headings, terms and cells have no hard breaks" $ do
-        mapM_ (\src -> assertBool (show (src, codes src)) (DiagnosticCode "G0124" `elem` codes src)) ["# h\\\n", "= t\\\n  d\n"]
+        mapM_ (\src -> assertBool (show (src, codes src)) (DiagnosticCode "G01024" `elem` codes src)) ["# h\\\n", "= t\\\n  d\n"]
         -- a row that ends in a backslash is no row: the table is a block that cannot be parsed
-        codes "| a\\\n|---|\n" @?= [DiagnosticCode "G0110"],
+        codes "| a\\\n|---|\n" @?= [DiagnosticCode "G01010"],
       testCase "a hard break in a prose slot is not a syntax error" $ do
         parseOk "[note: a\\\nb]\n"
         assertBool "a HardBreak node" (NHardBreak `elem` kinds (fst (parse fid "[note: a\\\nb]\n"))),
       testCase "hard_break has its code" $
-        fst (labelCode (Just "hard_break")) @?= "G0124",
+        fst (labelCode (Just "hard_break")) @?= "G01024",
       -- golem-parser ADR 0010
       testGroup
         "a backslash after the last | of a table row (ADR 0010)"
         [ -- right after the backslash, where BadBreak reports it in a heading too ("# h\\" is at 4)
-          testCase "in the header row: G0124 only, at the backslash" $ do
-            parsed "| a | b |\\\n|---|---|\n| c | d |\n" @?= [(g "G0124", 10, 10)]
-            parsed "# h\\\n" @?= [(g "G0124", 4, 4)],
-          testCase "in a body row: G0124 only, and the table keeps its rows" $ do
-            parsed "| a | b |\n|---|---|\n| c | d |\\\n| e | f |\n" @?= [(g "G0124", 30, 30)]
+          testCase "in the header row: G01024 only, at the backslash" $ do
+            parsed "| a | b |\\\n|---|---|\n| c | d |\n" @?= [(g "G01024", 10, 10)]
+            parsed "# h\\\n" @?= [(g "G01024", 4, 4)],
+          testCase "in a body row: G01024 only, and the table keeps its rows" $ do
+            parsed "| a | b |\n|---|---|\n| c | d |\\\n| e | f |\n" @?= [(g "G01024", 30, 30)]
             map tableShape (astOf "| a | b |\n|---|---|\n| c | d |\\\n| e | f |\n")
               @?= map tableShape (astOf "| a | b |\n|---|---|\n| c | d |\n| e | f |\n"),
           testCase "on the last line without a newline" $
-            parsed "| a | b |\n|---|---|\n| c | d |\\" @?= [(g "G0124", 30, 30)],
-          testCase "a row without its last | is still G0115" $
-            codes "| a | b |\n|---|---|\n| c | d \\\n" @?= [g "G0115"],
+            parsed "| a | b |\n|---|---|\n| c | d |\\" @?= [(g "G01024", 30, 30)],
+          testCase "a row without its last | is still G01015" $
+            codes "| a | b |\n|---|---|\n| c | d \\\n" @?= [g "G01015"],
           testCase "the message is the one of the hard break" $
             messageOf "| a | b |\\\n|---|---|\n" (snd (labelCode (Just "hard_break")))
         ],
@@ -261,10 +261,10 @@ numberShorthandTests =
           [Golem.Parser.AST.Located _ (Golem.Parser.AST.Heading 2 is)] ->
             map Golem.Parser.AST.locValue is @?= [Golem.Parser.AST.Text "第", Golem.Parser.AST.NumberShorthand "##1##", Golem.Parser.AST.Text "節"]
           other -> assertFailure (show other),
-      testCase "###1## and #1 are G0110, #### is G0112 as before" $ do
-        codes "###1##\n" @?= [DiagnosticCode "G0110"]
-        codes "#1\n" @?= [DiagnosticCode "G0110"]
-        codes "#### x\n" @?= [DiagnosticCode "G0112"],
+      testCase "###1## and #1 are G01010, #### is G01012 as before" $ do
+        codes "###1##\n" @?= [DiagnosticCode "G01010"]
+        codes "#1\n" @?= [DiagnosticCode "G01010"]
+        codes "#### x\n" @?= [DiagnosticCode "G01012"],
       testCase "the contents are not checked by the grammar" $ do
         mapM_ (\src -> (src, codes src, length (shorthandNodes src)) @?= (src, [], 1)) ["##0##\n", "##007##\n", "##1.5##\n", "##1,000##\n", "##1 2##\n", "##12年\n"]
         shorthandNodes "##12年\n" @?= [[(KNumberMark, "##"), (KNumberBody, "12年")]],
@@ -293,8 +293,8 @@ numberShorthandTests =
 located :: [Diagnostic] -> [(DiagnosticCode, Int, Int)]
 located = map (\d -> (diagCode d, spanStart (diagSpan d), spanEnd (diagSpan d)))
 
-g0119 :: Text
-g0119 = "位置引数と *[...] は、key=value と **[...] より前に書きます"
+g01019 :: Text
+g01019 = "位置引数と *[...] は、key=value と **[...] より前に書きます"
 
 parsed :: Text -> [(DiagnosticCode, Int, Int)]
 parsed = located . snd . parse fid
@@ -313,18 +313,18 @@ codeTests :: TestTree
 codeTests =
   testGroup
     "syntax diagnostic codes (ADR 0009)"
-    [ testCase "G0101 points at the first invalid byte" $ do
-        located (readDiags "ab\xFF\n") @?= [(g "G0101", 2, 3)]
+    [ testCase "G01001 points at the first invalid byte" $ do
+        located (readDiags "ab\xFF\n") @?= [(g "G01001", 2, 3)]
         map diagMessage (readDiags "ab\xFF\n") @?= ["UTF-8 として不正なバイト列があります"]
-        located (readDiags "a\xE3\x81") @?= [(g "G0101", 1, 2)],
-      testCase "G0102 for a BOM, checked before UTF-8 and CR" $ do
-        located (readDiags (BS.pack [0xEF, 0xBB, 0xBF] <> TE.encodeUtf8 "本文\n")) @?= [(g "G0102", 0, 3)]
+        located (readDiags "a\xE3\x81") @?= [(g "G01001", 1, 2)],
+      testCase "G01002 for a BOM, checked before UTF-8 and CR" $ do
+        located (readDiags (BS.pack [0xEF, 0xBB, 0xBF] <> TE.encodeUtf8 "本文\n")) @?= [(g "G01002", 0, 3)]
         map diagMessage (readDiags "\xEF\xBB\xBF\n") @?= ["ファイルの先頭に BOM があります。BOM を取り除いてください"]
-        located (readDiags "\xEF\xBB\xBF\xFF\r\n") @?= [(g "G0102", 0, 3)],
-      testCase "G0103 for CRLF and a lone CR, with a fix title" $ do
+        located (readDiags "\xEF\xBB\xBF\xFF\r\n") @?= [(g "G01002", 0, 3)],
+      testCase "G01003 for CRLF and a lone CR, with a fix title" $ do
         mapM_
           ( \src -> do
-              located (readDiags src) @?= [(g "G0103", 1, 2)]
+              located (readDiags src) @?= [(g "G01003", 1, 2)]
               map (map fixTitle . diagFixes) (readDiags src) @?= [["golem fmt で LF に直す"]]
           )
           ["a\r\nb\r\n", "a\rb\n"],
@@ -334,52 +334,52 @@ codeTests =
         mapM_
           (\t -> checkText fid t @?= readDiags (TE.encodeUtf8 t))
           ["\xFEFF本文\n", "本文\r\n", "本文\n"],
-      testCase "G0110" $ parsed "= a\n=:\n" @?= [(g "G0110", 0, 6)],
-      testCase "G0111 starts at the extra space or tab, with its message" $ do
-        map (\(c, s, _) -> (c, s)) (parsed "  二つ空け\n") @?= [(g "G0111", 0)]
-        map (\(c, s, _) -> (c, s)) (parsed "- a\n\t- b\n") @?= [(g "G0111", 4)]
+      testCase "G01010" $ parsed "= a\n=:\n" @?= [(g "G01010", 0, 6)],
+      testCase "G01011 starts at the extra space or tab, with its message" $ do
+        map (\(c, s, _) -> (c, s)) (parsed "  二つ空け\n") @?= [(g "G01011", 0)]
+        map (\(c, s, _) -> (c, s)) (parsed "- a\n\t- b\n") @?= [(g "G01011", 4)]
         messageOf "  二つ空け\n" "インデントが不正です（タブ、またはブロックの深さより多い空白）",
       testCase "three spaces continue an item" $ parsed "- a\n   - b\n" @?= [],
-      testCase "G0112 starts at the fourth #" $ map (\(c, s, _) -> (c, s)) (parsed "#### x\n") @?= [(g "G0112", 3)],
-      testCase "G0113 starts at =:" $ map (\(c, s, _) -> (c, s)) (parsed "=:\n  説明\n") @?= [(g "G0113", 0)],
-      testCase "G0114 starts at the second line" $ do
-        map (\(c, s, _) -> (c, s)) (parsed "| a |\n") @?= [(g "G0114", 6)]
-        map (\(c, s, _) -> (c, s)) (parsed "| a |\nx\n") @?= [(g "G0114", 6)],
-      testCase "G0115 at the end of the row" $ parsed "| a |\n|---|\n| 1 | 2 |\n" @?= [(g "G0115", 21, 21)],
-      testCase "G0116 at the end of the file" $ parsed "```\nx\n" @?= [(g "G0116", 6, 6)],
-      testCase "G0117 where ] is wanted, with its message" $ do
-        map (\(c, s, _) -> (c, s)) (parsed "[= 1 ? 2]\n") @?= [(g "G0117", 5)]
+      testCase "G01012 starts at the fourth #" $ map (\(c, s, _) -> (c, s)) (parsed "#### x\n") @?= [(g "G01012", 3)],
+      testCase "G01013 starts at =:" $ map (\(c, s, _) -> (c, s)) (parsed "=:\n  説明\n") @?= [(g "G01013", 0)],
+      testCase "G01014 starts at the second line" $ do
+        map (\(c, s, _) -> (c, s)) (parsed "| a |\n") @?= [(g "G01014", 6)]
+        map (\(c, s, _) -> (c, s)) (parsed "| a |\nx\n") @?= [(g "G01014", 6)],
+      testCase "G01015 at the end of the row" $ parsed "| a |\n|---|\n| 1 | 2 |\n" @?= [(g "G01015", 21, 21)],
+      testCase "G01016 at the end of the file" $ parsed "```\nx\n" @?= [(g "G01016", 6, 6)],
+      testCase "G01017 where ] is wanted, with its message" $ do
+        map (\(c, s, _) -> (c, s)) (parsed "[= 1 ? 2]\n") @?= [(g "G01017", 5)]
         messageOf "[= 1 ? 2]\n" "ここに閉じ括弧 ] が必要です"
         let twice = parsed "[f *[x y]]\n"
-        map (\(c, _, _) -> c) twice @?= [g "G0117", g "G0117"]
+        map (\(c, _, _) -> c) twice @?= [g "G01017", g "G01017"]
         assertBool "different positions" (nub twice == twice),
-      testCase "G0118 at the end of the paragraph" $ do
-        parsed "本文 %% x\n\n次\n" @?= [(g "G0118", 11, 11)]
-        parsed "# 見出し %% x\n\n次\n" @?= [(g "G0118", 16, 16)],
-      testCase "G0119" $ do
-        parsed "[f a=1 b]\n" @?= [(g "G0119", 6, 8)]
-        messageOf "[f a=1 b]\n" g0119,
+      testCase "G01018 at the end of the paragraph" $ do
+        parsed "本文 %% x\n\n次\n" @?= [(g "G01018", 11, 11)]
+        parsed "# 見出し %% x\n\n次\n" @?= [(g "G01018", 16, 16)],
+      testCase "G01019" $ do
+        parsed "[f a=1 b]\n" @?= [(g "G01019", 6, 8)]
+        messageOf "[f a=1 b]\n" g01019,
       -- golem-parser ADR 0013
       testCase "**[...] may follow keyword arguments" $ do
         parsed "[f k=v **[h]]\n" @?= []
         parsed "[f k=1 **[h] j=2 **[i]]\n" @?= [],
       testCase "the same key twice is left to evaluation" $ parsed "[f k=1 k=2]\n" @?= [],
-      testCase "a positional argument after **[...] is G0119" $ do
-        parsed "[f **[h] x]\n" @?= [(g "G0119", 8, 10)]
-        messageOf "[f **[h] x]\n" g0119,
-      testCase "*[...] after **[...] is G0119" $ parsed "[f **[h] *[g]]\n" @?= [(g "G0119", 8, 13)],
+      testCase "a positional argument after **[...] is G01019" $ do
+        parsed "[f **[h] x]\n" @?= [(g "G01019", 8, 10)]
+        messageOf "[f **[h] x]\n" g01019,
+      testCase "*[...] after **[...] is G01019" $ parsed "[f **[h] *[g]]\n" @?= [(g "G01019", 8, 13)],
       testCase "**[...] after keyword arguments on block and code lines" $ do
         parsed "@b k=v **[h]\n" @?= []
         parsed "``` text k=v **[h]\ncode\n```\n" @?= [],
-      testCase "G0120 where an expression is wanted" $ do
-        parsed "[=]\n" @?= [(g "G0120", 2, 2)]
-        parsed "[= ]\n" @?= [(g "G0120", 3, 3)]
-        parsed "@set x = +\n" @?= [(g "G0120", 9, 10)]
-        sort (parsed "本文 [=\n") @?= [(g "G0117", 9, 9), (g "G0120", 9, 9)],
-      testCase "G0121 starts at [" $ do
-        map (\(c, s, _) -> (c, s)) (parsed "本文 [ だけ\n") @?= [(g "G0121", 7)]
-        map (\(c, s, _) -> (c, s)) (parsed "[A]\n") @?= [(g "G0121", 0)],
-      testCase "G0122 and G0129" $ do
-        labelCode Nothing @?= ("G0122", "解釈できない入力が残っています")
-        labelCode (Just "nonexistent") @?= ("G0129", "構文エラー（nonexistent）")
+      testCase "G01020 where an expression is wanted" $ do
+        parsed "[=]\n" @?= [(g "G01020", 2, 2)]
+        parsed "[= ]\n" @?= [(g "G01020", 3, 3)]
+        parsed "@set x = +\n" @?= [(g "G01020", 9, 10)]
+        sort (parsed "本文 [=\n") @?= [(g "G01017", 9, 9), (g "G01020", 9, 9)],
+      testCase "G01021 starts at [" $ do
+        map (\(c, s, _) -> (c, s)) (parsed "本文 [ だけ\n") @?= [(g "G01021", 7)]
+        map (\(c, s, _) -> (c, s)) (parsed "[A]\n") @?= [(g "G01021", 0)],
+      testCase "G01022 and G01029" $ do
+        labelCode Nothing @?= ("G01022", "解釈できない入力が残っています")
+        labelCode (Just "nonexistent") @?= ("G01029", "構文エラー（nonexistent）")
     ]

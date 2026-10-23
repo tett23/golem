@@ -68,7 +68,7 @@ data BoxContent = BoxContent
 - `Text` の字は、その位置の `Look` を持つ。最初の位置の `Look` はルビの外側の `Look` である。
 - `CharStyle` と `Color` の中は、`piecesOf` の `restyled` と同じく `ceRestyle env lk inl` で内側の `Look` にして続ける。内側の設定が勝ち、書かない欄は外側から引き継ぐ。
 - `Tcy` と `Number` は、今の `plain` と同じ文字列を、その位置の `Look` で持つ。
-- `Kenten` の中の字は、その位置の `Look` で持つ。親文字の字の `Look` は、圏点の形の欄（[golem-driver ADR 0019](../../golem-driver/adr/0019-pdf-kenten-shapes.md) の `lkKenten`）を常に空にする。圏点の中のルビでも同じである。親文字の圏点は描かない（[golem-driver ADR 0019](../../golem-driver/adr/0019-pdf-kenten-shapes.md) の G0745）。
+- `Kenten` の中の字は、その位置の `Look` で持つ。親文字の字の `Look` は、圏点の形の欄（[golem-driver ADR 0019](../../golem-driver/adr/0019-pdf-kenten-shapes.md) の `lkKenten`）を常に空にする。圏点の中のルビでも同じである。親文字の圏点は描かない（[golem-driver ADR 0019](../../golem-driver/adr/0019-pdf-kenten-shapes.md) の G07045）。
 - そのほかの要素（注、索引の印など）は、今の `plain` と同じく字を出さない。
 
 `InlineNoRuby` を `ceRestyle` に渡すときは、`Ruby` を持たない型から `Inline` に写す（`vacuous` と同じ写し方）。
@@ -106,7 +106,7 @@ data BoxContent = BoxContent
 
 ## 実装しないこと
 
-- 親文字の中の圏点（[golem-driver ADR 0019](../../golem-driver/adr/0019-pdf-kenten-shapes.md) の G0745 で知らせる）。
+- 親文字の中の圏点（[golem-driver ADR 0019](../../golem-driver/adr/0019-pdf-kenten-shapes.md) の G07045 で知らせる）。
 - 読みの中の文字スタイル。読みには文字だけを書ける（docs/markup.md）。
 - 親文字の中の字の大きさの違いに応じて、読みの大きさを字ごとに変えること。読みはルビの全体で一つの大きさとする。
 - 親文字の中のペアカーニングとトラッキング。

@@ -158,11 +158,11 @@ errorCodes = map diagCode . filter isError
 inkStyle :: BS.ByteString -> BS.ByteString
 inkStyle extra = horizontalStyle <> "\n[color.swatches]\nrich = { cmyk = [100, 0, 0, 100] }\n\n[character-styles.ink]\ncolor = \"rich\"\n" <> extra
 
--- | The G0904 of golem preflight on a source: the start of each and its message.
+-- | The G09004 of golem preflight on a source: the start of each and its message.
 smallText :: BS.ByteString -> T.Text -> IO [(Int, T.Text)]
 smallText style source = withPreflightProject style source [] $ \tmp -> do
   p <- preflightIn tmp
-  pure [(spanStart (diagSpan d), diagMessage d) | d <- prDiagnostics p, diagCode d == DiagnosticCode "G0904"]
+  pure [(spanStart (diagSpan d), diagMessage d) | d <- prDiagnostics p, diagCode d == DiagnosticCode "G09004"]
 
 -- | The byte offset of the first occurrence of a text in a source.
 byteAt :: T.Text -> T.Text -> Int
@@ -174,30 +174,30 @@ names what (_, m) = what `T.isInfixOf` m
 
 g0904Tests :: [TestTree]
 g0904Tests =
-  [ testCase "G0904: two paragraph styles of one size, one per style, at their text (golem-cli ADR 0008)" $ do
+  [ testCase "G09004: two paragraph styles of one size, one per style, at their text (golem-cli ADR 0008)" $ do
       let style = inkStyle "\n[paragraph-styles.a]\nsize = \"4pt\"\n\n[paragraph-styles.b]\nsize = \"4pt\"\n"
           source = "@style a\n  [style ink: 一の字。]\n\n@style b\n  [style ink: 二の字。]\n"
       ds <- smallText style source
       map fst ds @?= [byteAt "一の字" source, byteAt "二の字" source]
       assertBool (show ds) (and (zipWith names ["段落スタイル a の size", "段落スタイル b の size"] ds)),
-    testCase "G0904: a paragraph style based on another without a size is in the group of that one (golem-cli ADR 0008)" $ do
+    testCase "G09004: a paragraph style based on another without a size is in the group of that one (golem-cli ADR 0008)" $ do
       let style = inkStyle "\n[paragraph-styles.a]\nsize = \"4pt\"\n\n[paragraph-styles.c]\nbased-on = \"a\"\n"
           source = "@style a\n  [style ink: 一の字。]\n\n@style c\n  [style ink: 二の字。]\n"
       ds <- smallText style source
       map fst ds @?= [byteAt "一の字" source]
       assertBool (show ds) (all (names "段落スタイル a の size") ds),
-    testCase "G0904: a character style of a small size, at the text inside it (golem-cli ADR 0008)" $ do
+    testCase "G09004: a character style of a small size, at the text inside it (golem-cli ADR 0008)" $ do
       let style = inkStyle "\n[character-styles.s]\nsize = \"4pt\"\ncolor = \"rich\"\n"
           source = "大きな本文の段落の中の[style s: 小字]です。\n"
       ds <- smallText style source
       map fst ds @?= [byteAt "小字" source]
       assertBool (show ds) (all (names "文字スタイル s の size") ds),
-    testCase "G0904: a small word in a long paragraph is at the word, not the block (golem-cli ADR 0008)" $ do
+    testCase "G09004: a small word in a long paragraph is at the word, not the block (golem-cli ADR 0008)" $ do
       let style = inkStyle "\n[character-styles.s]\nsize = \"4pt\"\ncolor = \"rich\"\n"
           source = T.replicate 40 "長い段落の本文。" <> "[style s: 小字]" <> T.replicate 10 "続き。" <> "\n"
       ds <- smallText style source
       map fst ds @?= [byteAt "小字" source],
-    testCase "G0904: a note set at the page foot comes in the order of the source, and a line before it moves nothing (golem-cli ADR 0008)" $ do
+    testCase "G09004: a note set at the page foot comes in the order of the source, and a line before it moves nothing (golem-cli ADR 0008)" $ do
       let style = inkStyle "\n[character-styles.s]\nsize = \"4pt\"\ncolor = \"rich\"\n\n[character-styles.t]\nsize = \"3pt\"\ncolor = \"rich\"\n"
           body = "本文[note: [style s: 注の小字]。]。\n\n[style t: 本文の小字]。\n"
           added = "足した一行。\n\n"
@@ -264,18 +264,18 @@ preflightTests =
         p <- preflightIn tmp
         v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
         Map.keys (vwSwatchesUsed v) @?= ["heavy"]
-        assertBool (show (prDiagnostics p)) (DiagnosticCode "G0915" `elem` map diagCode (prDiagnostics p)),
-    testCase "the view: paragraph rules are of their own kind; one near the trim is G0912 (golem-driver ADR 0027)" $ do
+        assertBool (show (prDiagnostics p)) (DiagnosticCode "G09015" `elem` map diagCode (prDiagnostics p)),
+    testCase "the view: paragraph rules are of their own kind; one near the trim is G09012 (golem-driver ADR 0027)" $ do
       let ruled extra = horizontalStyle <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\"" <> extra <> " }\n"
           source = "前。\n\n@style sec\n  節。\n"
       withPreflightProject (ruled "") source [] $ \tmp -> do
         p <- preflightIn tmp
         v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
         [rvKind r | r <- concatMap pvRules (vwPages v)] @?= ["段落の罫線"]
-        assertBool (show (prDiagnostics p)) (DiagnosticCode "G0912" `notElem` map diagCode (prDiagnostics p))
+        assertBool (show (prDiagnostics p)) (DiagnosticCode "G09012" `notElem` map diagCode (prDiagnostics p))
       withPreflightProject (ruled ", start-indent = \"-19mm\"") source [] $ \tmp -> do
         p <- preflightIn tmp
-        assertBool (show (prDiagnostics p)) (DiagnosticCode "G0912" `elem` map diagCode (prDiagnostics p)),
+        assertBool (show (prDiagnostics p)) (DiagnosticCode "G09012" `elem` map diagCode (prDiagnostics p)),
     testCase "a character the font has not is glyph 0 in the view (with real fonts)" $ withSystemTempDirectory "golem-preflight" $ \tmp -> do
       copyTree fixture tmp
       createDirectoryIfMissing True (tmp </> "fonts")
@@ -285,44 +285,44 @@ preflightTests =
       p <- preflight (defaultPreflightOptions tmp)
       v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
       assertBool "glyph 0 of U+E000" (any (any (\g -> gvGlyph g == 0 && gvText g == "\xE000") . pvGlyphs) (vwPages v))
-      assertBool "G0902" (DiagnosticCode "G0902" `elem` errorCodes (prDiagnostics p)),
-    testCase "a PDF as a figure is placed, with neither G0905 nor G0810 (golem-pdf ADR 0008)" $ do
+      assertBool "G09002" (DiagnosticCode "G09002" `elem` errorCodes (prDiagnostics p)),
+    testCase "a PDF as a figure is placed, with neither G09005 nor G08010 (golem-pdf ADR 0008)" $ do
       fig <- miniPdf fakeProvider False horizontalStyle "図。\n" []
       img <- tinyImage
       withPreflightProject horizontalStyle "# 章\n\n@figure images/a.pdf web=images/tiny.jpg alt=\"t\"\n\n本文。\n" (("images/a.pdf", fig) : img) $ \tmp -> do
         p <- preflightIn tmp
         let codes = map diagCode (prDiagnostics p)
-        assertBool (show codes) (DiagnosticCode "G0905" `notElem` codes && DiagnosticCode "G0810" `notElem` codes)
+        assertBool (show codes) (DiagnosticCode "G09005" `notElem` codes && DiagnosticCode "G08010" `notElem` codes)
         v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
         map ivPath (concatMap pvImages (vwPages v)) @?= ["images/a.pdf"],
-    testCase "an SVG figure is G0908 (rgb) in print, and not G0906 (golem-pdf ADR 0009)" $
+    testCase "an SVG figure is G09008 (rgb) in print, and not G09006 (golem-pdf ADR 0009)" $
       withPreflightProject horizontalStyle "# 章\n\n@figure images/a.svg alt=\"t\"\n\n本文。\n" [("images/a.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><rect width=\"5\" height=\"5\" fill=\"red\"/></svg>")] $ \tmp -> do
         p <- preflightIn tmp
         let codes = map diagCode (prDiagnostics p)
-        assertBool (show codes) (DiagnosticCode "G0908" `elem` codes && DiagnosticCode "G0906" `notElem` codes),
-    testCase "a figure that cannot be placed stops golem preflight with G0810 before the checks (golem-pdf ADR 0008)" $
+        assertBool (show codes) (DiagnosticCode "G09008" `elem` codes && DiagnosticCode "G09006" `notElem` codes),
+    testCase "a figure that cannot be placed stops golem preflight with G08010 before the checks (golem-pdf ADR 0008)" $
       withPreflightProject horizontalStyle "# 章\n\n@figure images/a.png alt=\"t\"\n\n本文。\n" [("images/a.png", "\x89PNG\r\n\x1a\n")] $ \tmp -> do
         p <- preflightIn tmp
-        errorCodes (prDiagnostics p) @?= [DiagnosticCode "G0810"]
+        errorCodes (prDiagnostics p) @?= [DiagnosticCode "G08010"]
         assertBool "no view" (isNothing (prView p)),
-    testCase "image-unplaceable in preflight.toml is G0901 (golem-pdf ADR 0008)" $
+    testCase "image-unplaceable in preflight.toml is G09001 (golem-pdf ADR 0008)" $
       withPreflightProject horizontalStyle "本文。\n" [("preflight.toml", "[image-unplaceable]\nseverity = \"off\"\n")] $ \tmp -> do
         p <- preflightIn tmp
-        map diagCode (prDiagnostics p) @?= [DiagnosticCode "G0901"],
-    {- the profile is prod: G0205 is reported in prod only. G0504, the
+        map diagCode (prDiagnostics p) @?= [DiagnosticCode "G09001"],
+    {- the profile is prod: G02005 is reported in prod only. G05004, the
     example of the ADR, is a diagnostic of golem lint, which neither golem
     build nor golem preflight runs. -}
-    testCase "the profile is prod (G0205 is reported in prod only)" $
+    testCase "the profile is prod (G02005 is reported in prod only)" $
       withPreflightProject horizontalStyle "本文。 %%= 校正 %%\n" [] $ \tmp -> do
         p <- preflightIn tmp
-        [diagSeverity d | d <- prDiagnostics p, diagCode d == DiagnosticCode "G0205"] @?= [Warning]
+        [diagSeverity d | d <- prDiagnostics p, diagCode d == DiagnosticCode "G02005"] @?= [Warning]
         assertBool "a view" (isJust (prView p)),
     testCase "an error of the build stops before the checks" $
       withPreflightProject horizontalStyle "[nope: x]\n" [] $ \tmp -> do
         p <- preflightIn tmp
         assertBool "errors" (not (null (errorCodes (prDiagnostics p))))
         assertBool "no view" (isNothing (prView p)),
-    testCase "rules out of the project are read, a missing file is G0901" $
+    testCase "rules out of the project are read, a missing file is G09001" $
       withPreflightProject horizontalStyle "本文。\n" [] $ \tmp -> withSystemTempDirectory "golem-rules" $ \other -> do
         TIO.writeFile (other </> "printer.toml") "based-on = \"none\"\nname = \"A 印刷\"\n"
         p <- preflight (defaultPreflightOptions tmp) {poFonts = fakeProvider, poRules = Just (other </> "printer.toml")}
@@ -330,21 +330,21 @@ preflightTests =
         prBasedOn p @?= "none"
         errorCodes (prDiagnostics p) @?= []
         q <- preflight (defaultPreflightOptions tmp) {poFonts = fakeProvider, poRules = Just (other </> "missing.toml")}
-        map diagCode (prDiagnostics q) @?= [DiagnosticCode "G0901"]
+        map diagCode (prDiagnostics q) @?= [DiagnosticCode "G09001"]
         prPdf q @?= Nothing,
     testCase "a wrong preflight.toml stops before the PDF" $
       withPreflightProject horizontalStyle "本文。\n" [("preflight.toml", "[pdf-x]\nseverity = \"notice\"\n")] $ \tmp -> do
         p <- preflightIn tmp
-        map diagCode (prDiagnostics p) @?= [DiagnosticCode "G0901"]
+        map diagCode (prDiagnostics p) @?= [DiagnosticCode "G09001"]
         prPdf p @?= Nothing
   ]
-    <> [ testCase ("the template fails print with G0914 only, and passes with intent; it has a bleed (golem-pdf ADR 0010) (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
+    <> [ testCase ("the template fails print with G09014 only, and passes with intent; it has a bleed (golem-pdf ADR 0010) (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
            let dir = tmp </> "book"
            createProject dir (templateFiles lang uuid0) Nothing >>= (@?= Right ())
            forM_ (templateFonts lang) $ \f -> createDirectoryIfMissing True (takeDirectory (dir </> fsPath f)) >> BS.writeFile (dir </> fsPath f) "fake"
            p <- preflightIn dir
-           sort (errorCodes (prDiagnostics p)) @?= [DiagnosticCode "G0914"]
-           [diagMessage d | d <- prDiagnostics p, diagCode d == DiagnosticCode "G0914"] @?= ["PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）"]
+           sort (errorCodes (prDiagnostics p)) @?= [DiagnosticCode "G09014"]
+           [diagMessage d | d <- prDiagnostics p, diagCode d == DiagnosticCode "G09014"] @?= ["PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）"]
            style <- TIO.readFile (dir </> "style.toml")
            TIO.writeFile (dir </> "style.toml") (style <> "\n[color]\nintent = \"profiles/test.icc\"\n")
            createDirectoryIfMissing True (dir </> "profiles")

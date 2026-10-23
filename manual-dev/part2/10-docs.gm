@@ -50,7 +50,7 @@ diagnostic のコードを足すときは、同じ変更で [code: docs/diagnost
 節の形は決まっている。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0005-explain-diagnostic-codes.md]（golem-cli ADR 0005「診断のコードの説明を golem explain で表示する」）]
 
 ```markdown
-## G0701
+## G07001
 
 版面を計算できません
 
@@ -64,7 +64,7 @@ diagnostic のコードを足すときは、同じ変更で [code: docs/diagnost
 ### 直し方
 ```
 
-- 見出しは [code: ##] とコードだけにする。GitHub の見出しの id がコードの小文字（[code: #g0701]）になり、LSP の [code: codeDescription] が節を直接指せる。
+- 見出しは [code: ##] とコードだけにする。GitHub の見出しの id がコードの小文字（[code: #g07001]）になり、LSP の [code: codeDescription] が節を直接指せる。
 - 見出しの次の段落が、一行の題になる。[code: golem explain] の一覧に使う。
 - 重大度は、「エラー」「警告」「dev では警告、prod ではエラー」「お知らせ」のどれかを書く。[code: golem explain] がこの文書を使い手に表示するので、notice は「お知らせ」と書く。
 - 状態は、使用中か廃止を書く。使わなくなったコードは、節を消さずに状態を廃止にし、代わりの書き方を書く。

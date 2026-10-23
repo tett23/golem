@@ -75,7 +75,7 @@ paragraph-separator = "line"
 - 既定は `blank-line` とする。既存の原稿の出力を変えないためである。`[metadata]` の `language` からは推定しない。言語を変えただけで段落の数が変わるのを避けるためである。
 - 一つのファイルに効く値は、次の順で最初に見つかったものとする。ファイルの中の上書き（[docs/adr/0014](0014-in-file-settings.md)）、章の項目、`[source]`、既定。
 - `@import` でだけ参照されるファイルには、`[source]` の値が効く。
-- 未知のキー、不正な値は、マニフェストのほかの誤りと同じく G0301 とする。同じファイルを章の配列に二度並べ、項目の `[source]` のキーの値が異なる場合も G0301 とする。
+- 未知のキー、不正な値は、マニフェストのほかの誤りと同じく G03001 とする。同じファイルを章の配列に二度並べ、項目の `[source]` のキーの値が異なる場合も G03001 とする。
 
 ### 値の型と表（golem-parser）
 
@@ -103,8 +103,8 @@ golem-project（マニフェストの読み込み）、golem-eval（評価とフ
 
 ### マニフェストの読み込み（golem-project）
 
-- `Manifest` に `manifestSource :: !SourceSettings` を加える。`[source]` の節を、文字列の値の表として読み、各キーを `sourceKeys` で解釈する。表にないキーは G0301 とする。
-- `ChapterEntry` の `ChapterFile` に、項目に書いた `[source]` のキーの書き換え（`SourceSettings -> SourceSettings` の列。書いた順）を持たせる。`chapterFiles` は、パスとマスターページに加えてこの書き換えを返す。表の形の項目で、`file` と `master` のほかのキーは `sourceKeys` で解釈し、表にないキーは G0301 とする。
+- `Manifest` に `manifestSource :: !SourceSettings` を加える。`[source]` の節を、文字列の値の表として読み、各キーを `sourceKeys` で解釈する。表にないキーは G03001 とする。
+- `ChapterEntry` の `ChapterFile` に、項目に書いた `[source]` のキーの書き換え（`SourceSettings -> SourceSettings` の列。書いた順）を持たせる。`chapterFiles` は、パスとマスターページに加えてこの書き換えを返す。表の形の項目で、`file` と `master` のほかのキーは `sourceKeys` で解釈し、表にないキーは G03001 とする。
 - `Project` に `projectSourceSettings :: !(Map FileId SourceSettings)` を加える。章のファイルには `[source]` の値に項目の書き換えを適用した値を、`@import` でだけ参照されるファイルには `[source]` の値を入れる。
 
 ### 評価（golem-eval）
@@ -155,14 +155,14 @@ markup.md の「段落と改行」に、改行の様式の節を加え、次を�
 
 ### lint（golem-lint）
 
-G0501（段落の中の改行の前後がともに欧文）は、改行の様式の段落の最上位の改行には当てない。
+G05001（段落の中の改行の前後がともに欧文）は、改行の様式の段落の最上位の改行には当てない。
 そこでは改行が段落の区切りであり、単語はつながらないためである。
 
 - `FileLint` に `flSource :: !SourceSettings` を加え、`latinJoinedByNewline` の引数にする。
 - 改行の様式では、`NParagraph` と `NListItem` の最上位の改行を調べず、入れ子の `NProseSlot` だけを調べる。今の `keep` の段落スタイルの段落の扱い（[docs/adr/0005](0005-character-and-paragraph-styles.md)）と同じ走査である。
 - `Golem.Driver.Lint` は、評価の結果の `erSource` を渡す。
 
-[golem-lint ADR 0001](../golem-lint/adr/0001-lint-rules.md) のステータスの行の末尾に「、G0501 の改行の様式の扱いは docs/adr/0013」を加え、この ADR へのリンクを付ける。
+[golem-lint ADR 0001](../golem-lint/adr/0001-lint-rules.md) のステータスの行の末尾に「、G05001 の改行の様式の扱いは docs/adr/0013」を加え、この ADR へのリンクを付ける。
 
 ### fmt（golem-fmt）
 
@@ -194,7 +194,7 @@ fmt は改行の位置を変えず（[golem-fmt ADR 0001](../golem-fmt/adr/0001-
 - 二つの様式のあいだで原稿を書き換える機能（`golem fmt` の変換など）。
 - `golem new` の雛形に `[source]` を書くこと。`--language ja` でも既定の空行の様式のままとする。
 - 一つのファイルの中で様式を切り替えること。ファイルより細かい単位では、本体を持つ `@style` と段落スタイルで足りる。
-- 属性のまとまりと後ろのブロックのあいだに空行が要る場合の扱い（`@set` の行の直後に段落を書くと G0211 になるなど）。様式によらない今の規則であり、変えない。
+- 属性のまとまりと後ろのブロックのあいだに空行が要る場合の扱い（`@set` の行の直後に段落を書くと G02011 になるなど）。様式によらない今の規則であり、変えない。
 
 ## テスト設計
 
@@ -207,9 +207,9 @@ fmt は改行の位置を変えず（[golem-fmt ADR 0001](../golem-fmt/adr/0001-
 ### golem-project（`test/Main.hs`）
 
 - `[source]` のないマニフェストの `manifestSource` が `defaultSourceSettings` であること。
-- `[source] paragraph-separator = "line"` を読むこと。`"lines"` と、`[source]` の未知のキーが G0301 になること。
+- `[source] paragraph-separator = "line"` を読むこと。`"lines"` と、`[source]` の未知のキーが G03001 になること。
 - 章の項目 `{ file = "b.gm", paragraph-separator = "blank-line" }` と `[source] paragraph-separator = "line"` で、`projectSourceSettings` の `b.gm` が `BlankLineSeparated`、ほかの章と `@import` でだけ参照されるファイルが `LineSeparated` になること。
-- 同じファイルを二つの項目に並べ、`paragraph-separator` の値を変えると G0301 になること。
+- 同じファイルを二つの項目に並べ、`paragraph-separator` の値を変えると G03001 になること。
 
 ### golem-eval（`test/FileSpec.hs`）
 
@@ -230,8 +230,8 @@ fmt は改行の位置を変えず（[golem-fmt ADR 0001](../golem-fmt/adr/0001-
 
 ### golem-lint（`test/Main.hs`）
 
-- 改行の様式で、`"Full fathom\nfive\n"` に G0501 が出ないこと。空行の様式では出ること。
-- 改行の様式で、`"[note: a\nb] x\n"` の散文スロットの中の改行に G0501 が出ること。
+- 改行の様式で、`"Full fathom\nfive\n"` に G05001 が出ないこと。空行の様式では出ること。
+- 改行の様式で、`"[note: a\nb] x\n"` の散文スロットの中の改行に G05001 が出ること。
 
 ### golem-driver（`test/Main.hs`）
 
@@ -243,7 +243,7 @@ fmt は改行の位置を変えず（[golem-fmt ADR 0001](../golem-fmt/adr/0001-
 
 ### golem-lsp（`test/Main.hs`）
 
-- `[source] paragraph-separator = "line"` のプロジェクトで、欧文の二行を改行ひとつで書いたファイルに G0501 の診断が出ないこと。
+- `[source] paragraph-separator = "line"` のプロジェクトで、欧文の二行を改行ひとつで書いたファイルに G05001 の診断が出ないこと。
 
 ### 変換スクリプトと fixture
 

@@ -141,7 +141,7 @@ verseTexts src = [[(t, spanStart tsp, spanEnd tsp) | Text tsp t <- is] | Paragra
 
 -- | The notices of a source: code, message, start and end.
 notices :: Text -> [(Text, Text, Int, Int)]
-notices src = [d | d@(c, _, _, _) <- diags src, c `elem` ["G0264", "G0279"]]
+notices src = [d | d@(c, _, _, _) <- diags src, c `elem` ["G02064", "G02079"]]
 
 fst3 :: (a, b, c) -> a
 fst3 (a, _, _) = a
@@ -177,10 +177,10 @@ escapeTests =
         errs "[ruby: a\\/b|えー]\n" @?= [],
       testCase "\\/ in the reading is a / of the reading" $
         rubiesOf "[ruby: 漢字|かん\\/じ]\n" @?= [[(["漢字"], Just "かん/じ")]],
-      testCase "the reading of one segment against a base of two is G0215" $
-        errs "[ruby: 漢/字|かん\\/じ]\n" @?= ["G0215"],
+      testCase "the reading of one segment against a base of two is G02015" $
+        errs "[ruby: 漢/字|かん\\/じ]\n" @?= ["G02015"],
       testCase "the separators written in the source are as before" $ do
-        errs "[ruby: 東京|とう/きょう]\n" @?= ["G0215"]
+        errs "[ruby: 東京|とう/きょう]\n" @?= ["G02015"]
         rubiesOf "[ruby: 漢/字|かん/]\n" @?= [[(["漢"], Just "かん"), (["字"], Nothing)]]
         rubiesOf "[ruby: [bold: 漢/字]|かんじ]\n" @?= [[(["<bold>", "漢/字"], Just "かんじ")]],
       testCase "a / in the value of an expression is no separator" $ do
@@ -196,19 +196,19 @@ escapeTests =
           other -> assertFailure (show other)
     ]
 
--- | The characters that cannot be written to the output are G0289 (docs/adr ADR 0042).
+-- | The characters that cannot be written to the output are G02089 (docs/adr ADR 0042).
 outputCharTests :: TestTree
 outputCharTests =
   testGroup
     "characters that cannot be written to the output (docs/adr ADR 0042)"
-    [ testCase "U+0001 in a paragraph is G0289 at the text of the paragraph" $
-        [(c, s, e, "U+0001" `T.isInfixOf` m) | (c, m, s, e) <- diags "前\SOH後\n"] @?= [("G0289", 0, 7, True)],
-      testCase "one G0289 for each string, with the first character" $
-        [(c, "U+0001" `T.isInfixOf` m) | (c, m, _, _) <- diags "a\SOHb\USc\n\n# d\SOe\n"] @?= [("G0289", True), ("G0289", False)],
-      testCase "U+0002 in a cell of a table file is G0289" $
-        [(c, "U+0002" `T.isInfixOf` m) | (c, m, _, _) <- diags "@table src=ctl.csv\n"] @?= [("G0289", True)],
-      testCase "U+0003 in the file of @listing is G0289" $
-        [(c, "U+0003" `T.isInfixOf` m) | (c, m, _, _) <- diags "@listing ctl.hs\n"] @?= [("G0289", True)],
+    [ testCase "U+0001 in a paragraph is G02089 at the text of the paragraph" $
+        [(c, s, e, "U+0001" `T.isInfixOf` m) | (c, m, s, e) <- diags "前\SOH後\n"] @?= [("G02089", 0, 7, True)],
+      testCase "one G02089 for each string, with the first character" $
+        [(c, "U+0001" `T.isInfixOf` m) | (c, m, _, _) <- diags "a\SOHb\USc\n\n# d\SOe\n"] @?= [("G02089", True), ("G02089", False)],
+      testCase "U+0002 in a cell of a table file is G02089" $
+        [(c, "U+0002" `T.isInfixOf` m) | (c, m, _, _) <- diags "@table src=ctl.csv\n"] @?= [("G02089", True)],
+      testCase "U+0003 in the file of @listing is G02089" $
+        [(c, "U+0003" `T.isInfixOf` m) | (c, m, _, _) <- diags "@listing ctl.hs\n"] @?= [("G02089", True)],
       testCase "a tab and a newline pass" $ do
         errs "@listing tab.hs\n" @?= []
         errs "a\tb\n" @?= [],
@@ -242,60 +242,60 @@ tests =
       testCase "variables, expressions and meta" $
         paraOf "@set x = 2\n\n[= x * 3] と [= meta.title]\n" @?= ["6 と 本の題"],
       testCase "redefinition and use before definition are errors" $ do
-        errs "@set x = 1\n\n@set x = 2\n" @?= ["G0224"]
-        errs "[= y]\n\n@set y = 1\n" @?= ["G0202"],
+        errs "@set x = 1\n\n@set x = 2\n" @?= ["G02024"]
+        errs "[= y]\n\n@set y = 1\n" @?= ["G02002"],
       testCase "imports bind a namespace" $
         paraOf "@import common/values.gm as v\n\n[= v.price + 1]\n" @?= ["101"],
-      testCase "an expression as the path of @import is G0309 (golem-project ADR 0006)" $ do
-        errs "@import [= 1] as x\n" @?= ["G0309"]
+      testCase "an expression as the path of @import is G03009 (golem-project ADR 0006)" $ do
+        errs "@import [= 1] as x\n" @?= ["G03009"]
         errs "@import \"common/values.gm\" as v\n" @?= [],
       testCase "doc becomes a deferred expression; forbidden in headings" $ do
         paraOf "@set n = 1\n\n[= doc.chapters.count + n]\n" @?= ["<deferred>"]
-        errs "# 全 [= doc.chapters.count] 章\n" @?= ["G0214"]
-        errs "# [ref-title intro]\n" @?= ["G0214"],
+        errs "# 全 [= doc.chapters.count] 章\n" @?= ["G02014"]
+        errs "# [ref-title intro]\n" @?= ["G02014"],
       testCase "notes are numbered per file" $
         paraOf "a[note: 一]b[note: 二]\n" @?= ["a", "<note 1>", "一", "b", "<note 2>", "二"],
       testCase "ruby segments" $ do
         paraOf "[ruby: 東/京|とう/きょう][ruby: 五月雨|さみだれ][ruby: お/父/さん|/とう/]\n" @?= ["<ruby 2>", "<ruby 1>", "<ruby 3>"]
-        errs "[ruby: 東/京|とう]\n" @?= ["G0215"]
-        errs "[ruby: [ruby: a|b]|c]\n" @?= ["G0216"],
+        errs "[ruby: 東/京|とう]\n" @?= ["G02015"]
+        errs "[ruby: [ruby: a|b]|c]\n" @?= ["G02016"],
       testCase "number-text" $ do
         paraOf "[number-text 10 style=tcy]\n" @?= ["<number 10 Just StyleTcy>"]
-        errs "[number-text 1.5]\n" @?= ["G0219"]
-        errs "[number-text 1 style=roman]\n" @?= ["G0219"],
+        errs "[number-text 1.5]\n" @?= ["G02019"]
+        errs "[number-text 1 style=roman]\n" @?= ["G02019"],
       testCase "references and citations" $ do
         paraOf "[ref-number intro][cite knuth1981]\n" @?= ["<ref RefNumber intro>", "Cite (SrcSpan {spanFile = FileId 1, spanStart = 18, spanEnd = 34}) \"knuth1981\""]
-        errs "[cite nope]\n" @?= ["G0221"],
+        errs "[cite nope]\n" @?= ["G02021"],
       testCase "styles and swatches must exist" $ do
         errs "[color accent: x][style term: y]\n" @?= []
-        errs "[color red: x]\n" @?= ["G0217"]
-        errs "[style nope: x]\n" @?= ["G0218"],
+        errs "[color red: x]\n" @?= ["G02017"]
+        errs "[style nope: x]\n" @?= ["G02018"],
       testCase "index requires a reading" $ do
         errs "[index reading=くみはん: 組版]\n" @?= []
-        errs "[index: 組版]\n" @?= ["G0220"]
-        errs "[index reading=あ/い/う: a/b/c]\n" @?= ["G0242"],
+        errs "[index: 組版]\n" @?= ["G02020"]
+        errs "[index reading=あ/い/う: a/b/c]\n" @?= ["G02042"],
       testCase "unknown commands" $ do
-        errs "[nope: x]\n" @?= ["G0222"]
-        errs "@nope\n" @?= ["G0209"],
+        errs "[nope: x]\n" @?= ["G02022"]
+        errs "@nope\n" @?= ["G02009"],
       testCase "attributes attach to the next block" $
         case body "@label intro\n@nonumber\n@toc-title 短い\n# はじめに\n" of
           [Heading 1 (HeadingAttrs (Just t) Nothing True False) _] -> stripSpans t @?= ["短い"]
           other -> assertFailure (show other),
       testCase "attribute errors" $ do
-        errs "@label a\n@label b\n# x\n" @?= ["G0212"]
-        errs "@label a\n" @?= ["G0210"]
-        errs "@nonumber\n本文。\n" @?= ["G0213"]
-        errs "@label a\n@set x = 1\n# x\n" @?= ["G0211"],
+        errs "@label a\n@label b\n# x\n" @?= ["G02012"]
+        errs "@label a\n" @?= ["G02010"]
+        errs "@nonumber\n本文。\n" @?= ["G02013"]
+        errs "@label a\n@set x = 1\n# x\n" @?= ["G02011"],
       testCase "figures" $ do
         errs "@figure images/a.png alt=\"x\"\n  キャプション。\n" @?= []
-        errs "@figure images/a.png\n" @?= ["G0228"]
-        errs "@figure images/a.pdf alt=x\n" @?= ["G0229"]
-        errs "@figure images/none.png alt=x\n" @?= ["G0233"]
-        errs "@figure images/a.png alt=x wrap=end\n" @?= ["G0231"],
+        errs "@figure images/a.png\n" @?= ["G02028"]
+        errs "@figure images/a.pdf alt=x\n" @?= ["G02029"]
+        errs "@figure images/none.png alt=x\n" @?= ["G02033"]
+        errs "@figure images/a.png alt=x wrap=end\n" @?= ["G02031"],
       testCase "the formats of a figure and its web image (golem-pdf ADR 0008)" $ do
-        msgs "@figure images/a.gif alt=\"x\"\n" @?= [("G0274", "図版の形式は PDF、PNG、JPEG、SVG です: images/a.gif")]
+        msgs "@figure images/a.gif alt=\"x\"\n" @?= [("G02074", "図版の形式は PDF、PNG、JPEG、SVG です: images/a.gif")]
         errs "@figure images/a.PDF web=images/a.png alt=\"x\"\n" @?= []
-        msgs "@figure images/a.pdf web=images/b.pdf alt=\"x\"\n" @?= [("G0273", "web の代替画像は PNG、JPEG、SVG です: images/b.pdf")]
+        msgs "@figure images/a.pdf web=images/b.pdf alt=\"x\"\n" @?= [("G02073", "web の代替画像は PNG、JPEG、SVG です: images/b.pdf")]
         errs "@figure images/a.png web=images/b.jpg alt=\"x\"\n" @?= []
         case body "@figure images/a.png web=images/b.jpg alt=\"x\"\n" of
           [FigureBlock f] -> (figWeb f, figPage f) @?= (Just "images/b.jpg", Nothing)
@@ -303,14 +303,14 @@ tests =
       testCase "SVG figures and web images (golem-pdf ADR 0009)" $ do
         errs "@figure images/b.svg alt=\"x\"\n" @?= []
         errs "@figure images/a.pdf web=images/b.svg alt=\"x\"\n" @?= []
-        errs "@figure images/b.svg page=1 alt=\"x\"\n" @?= ["G0275"],
+        errs "@figure images/b.svg page=1 alt=\"x\"\n" @?= ["G02075"],
       testCase "the page of a PDF figure (golem-pdf ADR 0008)" $ do
         case body "@figure images/a.pdf page=2 web=images/a.png alt=\"x\"\n" of
           [FigureBlock f] -> figPage f @?= Just 2
           other -> assertFailure (show other)
-        msgs "@figure images/a.pdf page=0 web=images/a.png alt=\"x\"\n" @?= [("G0275", "page は PDF の図版のページを 1 から数えた整数で書きます: 0")]
-        errs "@figure images/a.pdf page=x web=images/a.png alt=\"x\"\n" @?= ["G0275"]
-        errs "@figure images/a.png page=1 alt=\"x\"\n" @?= ["G0275"],
+        msgs "@figure images/a.pdf page=0 web=images/a.png alt=\"x\"\n" @?= [("G02075", "page は PDF の図版のページを 1 から数えた整数で書きます: 0")]
+        errs "@figure images/a.pdf page=x web=images/a.png alt=\"x\"\n" @?= ["G02075"]
+        errs "@figure images/a.png page=1 alt=\"x\"\n" @?= ["G02075"],
       testCase "a figure turned to take a page of its own (golem-driver ADR 0034)" $ do
         let rotateOf src = case body src of
               [FigureBlock f] -> pure (figRotate f)
@@ -318,17 +318,17 @@ tests =
         rotateOf "@figure images/a.png alt=\"x\" rotate=true\n" >>= (@?= True)
         rotateOf "@figure images/a.png alt=\"x\" rotate=false\n" >>= (@?= False)
         rotateOf "@figure images/a.png alt=\"x\"\n" >>= (@?= False)
-        msgs "@figure images/a.png alt=\"x\" rotate=yes\n" @?= [("G0287", "rotate は true か false です: yes")]
-        msgs "@figure images/a.png alt=\"x\" rotate=true wrap=end width=4zw\n" @?= [("G0287", "回して置く図版は回り込ませられません")],
+        msgs "@figure images/a.png alt=\"x\" rotate=yes\n" @?= [("G02087", "rotate は true か false です: yes")]
+        msgs "@figure images/a.png alt=\"x\" rotate=true wrap=end width=4zw\n" @?= [("G02087", "回して置く図版は回り込ませられません")],
       testCase "csv tables and listings" $ do
         case body "@table src=data.csv\n" of
           [Table _ h [r]] -> (map stripSpans h, map stripSpans r) @?= ([["a"], ["b"]], [["1"], ["x,y"]])
           other -> assertFailure (show other)
         map (fmap codeText . codeOf) (body "@listing src/Main.hs lines=2-3\n") @?= [Just "l2\nl3"]
-        errs "@listing src/Main.hs lines=3-9\n" @?= ["G0237"],
+        errs "@listing src/Main.hs lines=3-9\n" @?= ["G02037"],
       testCase "proofreading comments: kept in dev, warned and dropped in prod" $ do
         errs "本文%%= メモ %%\n" @?= []
-        snd (run ctx {ctxProfile = Prod} "本文%%= メモ %%\n") @?= ["G0205"],
+        snd (run ctx {ctxProfile = Prod} "本文%%= メモ %%\n") @?= ["G02005"],
       testCase "a plugin may override a built-in command when declared" $ do
         let hook = noPlugins {phOverrides = Map.fromList [(BStrong, pluginOutput)]}
         fst (run ctx {ctxPlugins = hook} "[strong: x]\n") @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 11) "PLUGIN"]],
@@ -336,7 +336,7 @@ tests =
         greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
         let hook = noPlugins {phCommands = Map.fromList [(greet, pluginOutput)]}
         fst (run ctx {ctxPlugins = hook} "[greet: x]\n") @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 10) "PLUGIN"]]
-        diagsWith ctx {ctxPlugins = hook} "[nope: x]\n" @?= [("G0222", "未知のコマンドです: nope", 1, 5)]
+        diagsWith ctx {ctxPlugins = hook} "[nope: x]\n" @?= [("G02022", "未知のコマンドです: nope", 1, 5)]
     ]
 
 verseTests :: TestTree
@@ -346,8 +346,8 @@ verseTests =
     [ testCase "newlines in a paragraph produce nothing" $
         body "吾輩は猫である。\n名前はまだ無い。\n" @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 49) "吾輩は猫である。名前はまだ無い。"]],
       testCase "newlines are dropped before the tcy check" $
-        -- no G0240; the digits make the notice G0263 (golem-syntax ADR 0002)
-        errs "[tcy: 1\n2]\n" @?= ["G0263"],
+        -- no G02040; the digits make the notice G02063 (golem-syntax ADR 0002)
+        errs "[tcy: 1\n2]\n" @?= ["G02063"],
       testCase "lines and stanzas" $
         verseOf "@style verse\n  A\n  B\n\n  C\n" @?= [[["A"], ["B"]], [["C"]]],
       testCase "whitespace at the start of a line is ignored, the ideographic space is not" $ do
@@ -383,11 +383,11 @@ styleTests =
         let c = ctx {ctxCharStyles = Set.insert "code" (ctxCharStyles ctx)}
         fst (run c "[code: manifest.toml]\n") @?= [Paragraph Nothing [CharStyle (mkSpan (FileId 1) 0 21) "code" [Text (mkSpan (FileId 1) 7 20) "manifest.toml"]]]
         map (fmap stripSpans . paraInlines) (fst (run c "[code: manifest.toml]\n")) @?= map (fmap stripSpans . paraInlines) (fst (run c "[style code: manifest.toml]\n")),
-      testCase "@style code is G0266 (golem-driver ADR 0017)" $ do
+      testCase "@style code is G02066 (golem-driver ADR 0017)" $ do
         let c = ctx {ctxParaStyles = Map.insert "code" JoinLines (ctxParaStyles ctx)}
-        snd (run c "@style code\nx\n") @?= ["G0266"]
-        snd (run c "@style code\n  x\n") @?= ["G0266"]
-        [m | (code', m, _, _) <- diagsWith c "@style code\nx\n", code' == "G0266"] @?= ["code はコードブロックの段落スタイルです。コードは ``` か @listing で書きます"],
+        snd (run c "@style code\nx\n") @?= ["G02066"]
+        snd (run c "@style code\n  x\n") @?= ["G02066"]
+        [m | (code', m, _, _) <- diagsWith c "@style code\nx\n", code' == "G02066"] @?= ["code はコードブロックの段落スタイルです。コードは ``` か @listing で書きます"],
       testCase "the body form" $
         map stripped (body "@style verse\n  A\n  B\n\n  C\n") @?= [(Just "verse", ["A", "<br>", "B"]), (Just "verse", ["C"])],
       testCase "the attribute form" $
@@ -397,15 +397,15 @@ styleTests =
       testCase "body is no style" $
         map stripped (body "@style body\nx\n") @?= [(Nothing, ["x"])],
       testCase "a wrong @style block is a diagnostic: an unknown or missing name, an unknown command, a list or comment inside, no body" $ do
-        errs "@style nope\nx\n" @?= ["G0247"]
+        errs "@style nope\nx\n" @?= ["G02047"]
         map stripped (body "@style nope\nx\n") @?= [(Nothing, ["x"])]
-        errs "@style\n  x\n" @?= ["G0247"]
-        errs "@verse\n  A\n" @?= ["G0209"]
-        errs "@style verse\n  - a\n" @?= ["G0245"]
-        errs "@style verse\n  %% c %%\n" @?= ["G0246"]
-        errs "@style verse\n" @?= ["G0210"],
+        errs "@style\n  x\n" @?= ["G02047"]
+        errs "@verse\n  A\n" @?= ["G02009"]
+        errs "@style verse\n  - a\n" @?= ["G02045"]
+        errs "@style verse\n  %% c %%\n" @?= ["G02046"]
+        errs "@style verse\n" @?= ["G02010"],
       testCase "a style on a block that is not a paragraph" $ do
-        errs "@style quote\n# 見出し\n" @?= ["G0213"]
+        errs "@style quote\n# 見出し\n" @?= ["G02013"]
         case body "@style quote\n# 見出し\n" of
           [Heading 1 _ _] -> pure ()
           other -> assertFailure (show other),
@@ -416,12 +416,12 @@ styleTests =
         case blocksOf "@label fig\n@figure images/a.png alt=x\n  キャプション。\n" of
           [Block _ (Just "fig") (FigureBlock _)] -> pure ()
           other -> assertFailure (show other)
-        errs "@label a\n@set x = 1\n@figure images/a.png alt=x\n" @?= ["G0211"],
+        errs "@label a\n@set x = 1\n@figure images/a.png alt=x\n" @?= ["G02011"],
       testCase "a style inside a caption" $
-        errs "@figure images/a.png alt=x\n  @style quote\n  キャプション。\n" @?= ["G0213"],
+        errs "@figure images/a.png alt=x\n  @style quote\n  キャプション。\n" @?= ["G02013"],
       testCase "a filter must not invent paragraph styles" $ do
         let hook = noPlugins {phApplyFilters = \_ (Document f bs) -> Right (Document f (bs <> [Block (mkSpan f 0 1) Nothing (Paragraph (Just "nope") [])]), [])}
-        snd (run ctx {ctxPlugins = hook} "x\n") @?= ["G0247"]
+        snd (run ctx {ctxPlugins = hook} "x\n") @?= ["G02047"]
     ]
   where
     stripped = \case
@@ -449,10 +449,10 @@ shorthandTests =
         errs ("##" <> t <> "##\n") === [],
       testCase "##10## is a Number at the whole shorthand" $
         body "a##10##b\n" @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 1) "a", Number (mkSpan (FileId 1) 1 7) 10 Nothing, Text (mkSpan (FileId 1) 7 8) "b"]],
-      testCase "anything but ASCII digits is G0278 at the whole shorthand" $ do
+      testCase "anything but ASCII digits is G02078 at the whole shorthand" $ do
         let msg = "## と ## のあいだには算用数字だけを書きます。本文の ## は \\## と書きます"
         mapM_
-          (\(src, e) -> (src, diags src) @?= (src, [("G0278", msg, 0, e)]))
+          (\(src, e) -> (src, diags src) @?= (src, [("G02078", msg, 0, e)]))
           [("##007##\n", 7), ("##1.5##\n", 7), ("##1,000##\n", 9), ("##1 2##\n", 7), ("##12年\n", 7)]
         body "##1.5##\n" @?= [Paragraph Nothing []],
       testCase "inside [code: ...] it is text" $ do
@@ -473,10 +473,10 @@ shorthandTests =
           [Paragraph Nothing [Ruby _ _ segs]] -> assertBool (show segs) (or [True | RubySegment b _ <- segs, Number {} <- b])
           other -> assertFailure (show other)
         errs "[ruby: 一|##1##]\n" @?= errs "[ruby: 一|[number-text 1]]\n"
-        assertBool "G0243" ("G0243" `elem` errs "[ruby: 一|##1##]\n"),
-      testCase "[tcy: ##10##] is G0240 as [tcy: [number-text 10]]" $ do
+        assertBool "G02043" ("G02043" `elem` errs "[ruby: 一|##1##]\n"),
+      testCase "[tcy: ##10##] is G02040 as [tcy: [number-text 10]]" $ do
         errs "[tcy: ##10##]\n" @?= errs "[tcy: [number-text 10]]\n"
-        assertBool "G0240" ("G0240" `elem` errs "[tcy: ##10##]\n")
+        assertBool "G02040" ("G02040" `elem` errs "[tcy: ##10##]\n")
     ]
 
 -- | @channel, the list of a channel of a plugin (golem-doc ADR 0007).
@@ -489,60 +489,60 @@ channelCommandTests =
         fst (run withGlossary "@channel glossary style=quote\n") @?= [ChannelOutput (CustomOutput "glossary" (Just "quote"))]
         fst (run withGlossary "@channel glossary style=body\n") @?= [ChannelOutput (CustomOutput "glossary" Nothing)]
         snd (run withGlossary "@channel glossary\n") @?= [],
-      testCase "G0290: a channel no plugin declares, at the command" $ do
-        diagsWith withGlossary "@channel unknown\n" @?= [("G0290", "宣言されていないチャネルです: unknown", 0, 17)]
-        msgs "@channel glossary\n" @?= [("G0290", "宣言されていないチャネルです: glossary")],
-      testCase "G0290: no name, or two" $ do
-        [(c, m) | (c, m, _, _) <- diagsWith withGlossary "@channel\n"] @?= [("G0290", "@channel にはチャネルの名前を一つ書きます")]
-        [(c, m) | (c, m, _, _) <- diagsWith withGlossary "@channel a b\n"] @?= [("G0290", "@channel にはチャネルの名前を一つ書きます")]
+      testCase "G02090: a channel no plugin declares, at the command" $ do
+        diagsWith withGlossary "@channel unknown\n" @?= [("G02090", "宣言されていないチャネルです: unknown", 0, 17)]
+        msgs "@channel glossary\n" @?= [("G02090", "宣言されていないチャネルです: glossary")],
+      testCase "G02090: no name, or two" $ do
+        [(c, m) | (c, m, _, _) <- diagsWith withGlossary "@channel\n"] @?= [("G02090", "@channel にはチャネルの名前を一つ書きます")]
+        [(c, m) | (c, m, _, _) <- diagsWith withGlossary "@channel a b\n"] @?= [("G02090", "@channel にはチャネルの名前を一つ書きます")]
         fst (run withGlossary "@channel a b\n") @?= [],
-      testCase "G0247: a paragraph style not defined" $
-        snd (run withGlossary "@channel glossary style=nope\n") @?= ["G0247"]
+      testCase "G02047: a paragraph style not defined" $
+        snd (run withGlossary "@channel glossary style=nope\n") @?= ["G02047"]
     ]
   where
     withGlossary = ctx {ctxPlugins = noPlugins {phChannels = Map.fromList [("glossary", ChannelDecl "glossary" OrderReading False)]}}
 
--- | The integers of the IR are int64; one out of range is G0291 (golem-doc ADR 0006).
+-- | The integers of the IR are int64; one out of range is G02091 (golem-doc ADR 0006).
 int64Tests :: TestTree
 int64Tests =
   testGroup
-    "G0291: an integer out of the range of the IR (golem-doc ADR 0006)"
+    "G02091: an integer out of the range of the IR (golem-doc ADR 0006)"
     [ testCase "[number-text] at the ends of int64" $ do
         paraOf "[number-text [= 2 ** 63 - 1]]\n" @?= ["<number 9223372036854775807 Nothing>"]
         paraOf "[number-text [= -(2 ** 63)]]\n" @?= ["<number -9223372036854775808 Nothing>"]
         errs "[number-text [= 2 ** 63 - 1]]\n" @?= [],
-      testCase "[number-text] beyond int64 is G0291 at the command and puts out nothing" $ do
-        diags "[number-text [= 2 ** 63]]\n" @?= [("G0291", msg, 0, 25)]
-        msgs "[number-text [= -(2 ** 63) - 1]]\n" @?= [("G0291", msg)]
+      testCase "[number-text] beyond int64 is G02091 at the command and puts out nothing" $ do
+        diags "[number-text [= 2 ** 63]]\n" @?= [("G02091", msg, 0, 25)]
+        msgs "[number-text [= -(2 ** 63) - 1]]\n" @?= [("G02091", msg)]
         paraOf "a[number-text [= 2 ** 63]]b\n" @?= ["ab"]
-        msgs "##9223372036854775808##\n" @?= [("G0291", msg)],
-      testCase "@number beyond int64 is G0291 at its line and numbers as without it" $ do
+        msgs "##9223372036854775808##\n" @?= [("G02091", msg)],
+      testCase "@number beyond int64 is G02091 at its line and numbers as without it" $ do
         let src = "@number 9223372036854775808\n# h\n"
-        diags src @?= [("G0291", msg, 0, 28)]
+        diags src @?= [("G02091", msg, 0, 28)]
         [haNumber a | Heading _ a _ <- body src] @?= [Nothing]
         msgs "@number 9223372036854775807\n# h\n" @?= [],
-      testCase "numbers= whose last line is beyond int64 is G0291 and numbers as without it" $ do
+      testCase "numbers= whose last line is beyond int64 is G02091 and numbers as without it" $ do
         let src = "``` numbers=9223372036854775807\na\nb\n```\n"
             (bs, ds) = run ctx src
-        ds @?= ["G0291"]
+        ds @?= ["G02091"]
         bs @?= fst (run ctx "```\na\nb\n```\n")
-        [c | (c, _, s, _) <- diags src, s == 0] @?= ["G0291"]
+        [c | (c, _, s, _) <- diags src, s == 0] @?= ["G02091"]
         snd (run ctx "``` numbers=9223372036854775806\na\nb\n```\n") @?= [],
-      testCase "an aki beyond int64 is G0291 and puts out nothing" $ do
-        msgs "a[aki 99999999999999999999mm]b\n" @?= [("G0291", msg)]
+      testCase "an aki beyond int64 is G02091 and puts out nothing" $ do
+        msgs "a[aki 99999999999999999999mm]b\n" @?= [("G02091", msg)]
         paraOf "a[aki 99999999999999999999mm]b\n" @?= ["ab"],
-      testCase "a deferred expression with an integer beyond int64 is G0291" $ do
-        msgs "@set n = 2 ** 70\n\n[= n + doc.chapters.count]\n" @?= [("G0291", msg)]
+      testCase "a deferred expression with an integer beyond int64 is G02091" $ do
+        msgs "@set n = 2 ** 70\n\n[= n + doc.chapters.count]\n" @?= [("G02091", msg)]
         body "@set n = 2 ** 70\n\n[= n + doc.chapters.count]\n" @?= [Paragraph Nothing []]
         errs "@set n = 2 ** 62\n\n[= n + doc.chapters.count]\n" @?= []
         -- a value in prose is text, not an integer of the IR
         paraOf "[= 2 ** 70]\n" @?= ["1180591620717411303424"],
-      testCase "a plugin command with an argument beyond int64 is G0291 and is not called" $ do
+      testCase "a plugin command with an argument beyond int64 is G02091 and is not called" $ do
         greet <- maybe (assertFailure "greet is not built in") pure (pluginCommandName "greet")
         let hook = noPlugins {phCommands = Map.fromList [(greet, pluginOutput)]}
             c = ctx {ctxPlugins = hook}
-        run c "[greet [= 2 ** 63]: x]\n" @?= ([Paragraph Nothing []], ["G0291"])
-        run c "[greet [= [1, 2 ** 63]]: x]\n" @?= ([Paragraph Nothing []], ["G0291"])
+        run c "[greet [= 2 ** 63]: x]\n" @?= ([Paragraph Nothing []], ["G02091"])
+        run c "[greet [= [1, 2 ** 63]]: x]\n" @?= ([Paragraph Nothing []], ["G02091"])
         snd (run c "[greet [= 2 ** 63 - 1]: x]\n") @?= []
     ]
   where
@@ -552,32 +552,32 @@ int64Tests =
 duplicateKeyTests :: TestTree
 duplicateKeyTests =
   testGroup
-    "the same key twice is G0277 (golem-parser ADR 0013)"
+    "the same key twice is G02077 (golem-parser ADR 0013)"
     [ testCase "a built-in command keeps the first" $ do
         -- "[number-text 10 style=kanji style=tcy]": the second style=tcy is bytes 28 to 37
-        [d | d@(c, _, _, _) <- diags "[number-text 10 style=kanji style=tcy]\n", c == "G0277"]
-          @?= [("G0277", "同じキーを二度書いています: style", 28, 37)]
+        [d | d@(c, _, _, _) <- diags "[number-text 10 style=kanji style=tcy]\n", c == "G02077"]
+          @?= [("G02077", "同じキーを二度書いています: style", 28, 37)]
         paraOf "[number-text 10 style=kanji style=tcy]\n" @?= ["<number 10 Just StyleKanji>"],
       testCase "a block command keeps the first" $ do
         let (bs, ds) = run ctx "@toc depth=1 depth=3\n"
-        ds @?= ["G0277"]
+        ds @?= ["G02077"]
         bs @?= [ChannelOutput (TocOutput 1)],
       testCase "the line that opens a code block" $
         do
-          -- "``` text" would make text a positional argument (G0269); the language follows the fence
-          errs "```text numbers=true numbers=false\na\n```\n" @?= ["G0277"]
-          filter (== "G0277") (errs "``` text numbers=true numbers=false\na\n```\n") @?= ["G0277"],
+          -- "``` text" would make text a positional argument (G02069); the language follows the fence
+          errs "```text numbers=true numbers=false\na\n```\n" @?= ["G02077"]
+          filter (== "G02077") (errs "``` text numbers=true numbers=false\na\n```\n") @?= ["G02077"],
       testCase "a plugin command" $ do
         broken <- maybe (assertFailure "broken is built in") pure (pluginCommandName "broken")
         let hook = noPlugins {phCommands = Map.fromList [(broken, pluginOutput)]}
-        snd (run ctx {ctxPlugins = hook} "[broken k=1 k=2]\n") @?= ["G0277"],
+        snd (run ctx {ctxPlugins = hook} "[broken k=1 k=2]\n") @?= ["G02077"],
       testCase "every key after the first" $
-        [(s, e) | (c, _, s, e) <- diags "[f k=1 k=2 k=3]\n", c == "G0277"] @?= [(7, 10), (11, 14)],
+        [(s, e) | (c, _, s, e) <- diags "[f k=1 k=2 k=3]\n", c == "G02077"] @?= [(7, 10), (11, 14)],
       testCase "different keys and an unexpanded **[...] are not" $ do
-        filter (== "G0277") (errs "[f k=1 j=1]\n") @?= []
-        filter (== "G0277") (errs "[f k=1 **[h]]\n") @?= [],
-      testCase "@style-def keeps G0252" $
-        codesS "@style-def character x weight=bold weight=normal\n" @?= ["G0252"]
+        filter (== "G02077") (errs "[f k=1 j=1]\n") @?= []
+        filter (== "G02077") (errs "[f k=1 **[h]]\n") @?= [],
+      testCase "@style-def keeps G02052" $
+        codesS "@style-def character x weight=bold weight=normal\n" @?= ["G02052"]
     ]
 
 -- | A context whose styles are those of 'settingsStyle'.
@@ -603,71 +603,71 @@ noticeTests :: TestTree
 noticeTests =
   testGroup
     "notices (golem-syntax ADR 0002)"
-    [ testCase "G0262: a @style-def over a style of style.toml or a built-in one" $ do
-        let at src = [(c, m, s) | (c, m, s, _) <- diagsWith sctx src, c == "G0262"]
-        at "@style-def paragraph body indent=1zw\n\nx\n" @?= [("G0262", "ファイルの中の定義が段落スタイルの body を上書きしています", 0)]
+    [ testCase "G02062: a @style-def over a style of style.toml or a built-in one" $ do
+        let at src = [(c, m, s) | (c, m, s, _) <- diagsWith sctx src, c == "G02062"]
+        at "@style-def paragraph body indent=1zw\n\nx\n" @?= [("G02062", "ファイルの中の定義が段落スタイルの body を上書きしています", 0)]
         at "@style-def paragraph letter based-on=body\n\nx\n" @?= []
         let headingStyle = either (error . show) id (parseStyle (FileId 9) "[fonts.heading]\nja = \"fonts/h.otf\"\n")
             hctx = ctx {ctxStyle = headingStyle, ctxCharStyles = Map.keysSet (stCharStyles headingStyle), ctxParaStyles = paraLineBreaks headingStyle}
-        [c | (c, _, _, _) <- diagsWith hctx "@style-def character bold font=heading\n\n[bold: x]\n"] @?= ["G0262"]
-        at "@style-def paragraph letter indent=1zw\n@style-def paragraph quote indent=2zw\n\nx\n" @?= [("G0262", "ファイルの中の定義が段落スタイルの quote を上書きしています", 39)],
-      testCase "G0262 is a notice" $ do
+        [c | (c, _, _, _) <- diagsWith hctx "@style-def character bold font=heading\n\n[bold: x]\n"] @?= ["G02062"]
+        at "@style-def paragraph letter indent=1zw\n@style-def paragraph quote indent=2zw\n\nx\n" @?= [("G02062", "ファイルの中の定義が段落スタイルの quote を上書きしています", 39)],
+      testCase "G02062 is a notice" $ do
         let (_, ds, _) = runS sctx "@style-def paragraph body indent=1zw\n\nx\n"
         map diagSeverity ds @?= [Notice],
-      testCase "G0263: [tcy: ...] of ASCII digits only" $ do
-        [(c, m, s, e) | (c, m, s, e) <- diags "a[tcy: 10]b\n", c == "G0263"] @?= [("G0263", "数の縦中横は [number-text 10 style=tcy] でも書けます", 1, 10)]
+      testCase "G02063: [tcy: ...] of ASCII digits only" $ do
+        [(c, m, s, e) | (c, m, s, e) <- diags "a[tcy: 10]b\n", c == "G02063"] @?= [("G02063", "数の縦中横は [number-text 10 style=tcy] でも書けます", 1, 10)]
         errs "[tcy: !?]\n" @?= []
         errs "[tcy: 1a]\n" @?= []
         errs "[number-text 10 style=tcy]\n" @?= [],
       -- golem-parser ADR 0012
-      testCase "G0279: an escaped space at the end of a line of a paragraph that keeps its lines" $ do
+      testCase "G02079: an escaped space at the end of a line of a paragraph that keeps its lines" $ do
         -- "@style verse\n" is 13 bytes; "ab\\ " starts at 13
         verseTexts "@style verse\nab\\ \n" @?= [[("ab", 13, 15)]]
-        notices "@style verse\nab\\ \n" @?= [("G0279", "行末のエスケープした空白は無視されます", 15, 16)]
+        notices "@style verse\nab\\ \n" @?= [("G02079", "行末のエスケープした空白は無視されます", 15, 16)]
         verseTexts "@style verse\ncd\\ \\ \n" @?= [[("cd", 13, 15)]]
-        notices "@style verse\ncd\\ \\ \n" @?= [("G0279", "行末のエスケープした空白は無視されます", 15, 16)]
+        notices "@style verse\ncd\\ \\ \n" @?= [("G02079", "行末のエスケープした空白は無視されます", 15, 16)]
         map (map fst3) (verseTexts "@style verse\nef\\\t\n") @?= [["ef"]]
-        map fst4 (notices "@style verse\nef\\\t\n") @?= ["G0279"],
-      testCase "G0279: plain spaces after the escape" $ do
+        map fst4 (notices "@style verse\nef\\\t\n") @?= ["G02079"],
+      testCase "G02079: plain spaces after the escape" $ do
         map (map fst3) (verseTexts "@style verse\ngh\\    \n") @?= [["gh"]]
-        map fst4 (notices "@style verse\ngh\\    \n") @?= ["G0279"],
-      testCase "no G0279 for plain spaces at the end of a line" $ do
+        map fst4 (notices "@style verse\ngh\\    \n") @?= ["G02079"],
+      testCase "no G02079 for plain spaces at the end of a line" $ do
         map (map fst3) (verseTexts "@style verse\nij  \n") @?= [["ij"]]
         notices "@style verse\nij  \n" @?= [],
-      testCase "an escaped indent: G0264 only, and the text starts at its first letter" $ do
+      testCase "an escaped indent: G02064 only, and the text starts at its first letter" $ do
         verseTexts "@style verse\n\\ gh\n" @?= [[("gh", 15, 17)]]
-        map fst4 (notices "@style verse\n\\ gh\n") @?= ["G0264"]
+        map fst4 (notices "@style verse\n\\ gh\n") @?= ["G02064"]
         map (map fst3) (verseTexts "@style verse\n\\ \\ gh\n") @?= [["gh"]]
-        map fst4 (notices "@style verse\n\\ \\ gh\n") @?= ["G0264"]
+        map fst4 (notices "@style verse\n\\ \\ gh\n") @?= ["G02064"]
         map (map fst3) (verseTexts "@style verse\n\\  \\ gh\n") @?= [["gh"]]
-        map fst4 (notices "@style verse\n\\  \\ gh\n") @?= ["G0264"],
-      testCase "a line of an escaped space alone is G0264 only, not G0279 too" $ do
+        map fst4 (notices "@style verse\n\\  \\ gh\n") @?= ["G02064"],
+      testCase "a line of an escaped space alone is G02064 only, not G02079 too" $ do
         -- "@style verse\na\n" is 15 bytes; the escape of the second line is at 15
-        notices "@style verse\na\n\\ \n" @?= [("G0264", "行頭のエスケープした空白は無視されます。字下げには全角の空白を使います", 15, 16)],
-      testCase "an escape at each end of one line is G0264 and G0279" $
+        notices "@style verse\na\n\\ \n" @?= [("G02064", "行頭のエスケープした空白は無視されます。字下げには全角の空白を使います", 15, 16)],
+      testCase "an escape at each end of one line is G02064 and G02079" $
         -- "@style verse\n" is 13 bytes; "\\ gh\\ ": the escapes at 13 and 17
-        [(c, s) | (c, _, s, _) <- notices "@style verse\n\\ gh\\ \n"] @?= [("G0264", 13), ("G0279", 17)],
-      testCase "G0279 once for each line that ends in an escape" $
+        [(c, s) | (c, _, s, _) <- notices "@style verse\n\\ gh\\ \n"] @?= [("G02064", 13), ("G02079", 17)],
+      testCase "G02079 once for each line that ends in an escape" $
         -- "@style verse\n" is 13 bytes; "ab\\ \n" is 5, so "cd\\ " starts at 18
-        [(c, s) | (c, _, s, _) <- notices "@style verse\nab\\ \ncd\\ \n"] @?= [("G0279", 15), ("G0279", 20)],
+        [(c, s) | (c, _, s, _) <- notices "@style verse\nab\\ \ncd\\ \n"] @?= [("G02079", 15), ("G02079", 20)],
       testCase "an escaped space inside a line stays" $ do
         map (map fst3) (verseTexts "@style verse\na\\ b\n") @?= [["a b"]]
         notices "@style verse\na\\ b\n" @?= [],
       testCase "a paragraph that joins its lines keeps the escaped space" $ do
         paraOf "ij\\ \nkl\n" @?= ["ij kl"]
         errs "ij\\ \nkl\n" @?= [],
-      testCase "G0264: an escaped space at the start of a line of a paragraph that keeps its lines" $ do
-        [(c, m, s) | (c, m, s, _) <- diags "@style verse\n  a\n  \\ x\n", c == "G0264"]
-          @?= [("G0264", "行頭のエスケープした空白は無視されます。字下げには全角の空白を使います", 19)]
-        errs "@style verse\n  \\ x\n" @?= ["G0264"]
+      testCase "G02064: an escaped space at the start of a line of a paragraph that keeps its lines" $ do
+        [(c, m, s) | (c, m, s, _) <- diags "@style verse\n  a\n  \\ x\n", c == "G02064"]
+          @?= [("G02064", "行頭のエスケープした空白は無視されます。字下げには全角の空白を使います", 19)]
+        errs "@style verse\n  \\ x\n" @?= ["G02064"]
         errs "@style quote\n  \\ x\n" @?= []
         errs "\\ x\n" @?= []
         errs "@style verse\n  a\\ b\n" @?= []
         -- the escaped space is dropped as before (golem-parser ADR 0010)
         verseOf "@style verse\n  a\n  \\ x\n" @?= [[["a"], ["x"]]],
-      testCase "G0265: @listing src=, and the content is the same" $ do
-        [(c, m, s, e) | (c, m, s, e) <- diags "@listing src=src/Main.hs\n", c == "G0265"]
-          @?= [("G0265", "@listing の src= は廃止予定です。パスを最初の引数に書きます", 9, 24)]
+      testCase "G02065: @listing src=, and the content is the same" $ do
+        [(c, m, s, e) | (c, m, s, e) <- diags "@listing src=src/Main.hs\n", c == "G02065"]
+          @?= [("G02065", "@listing の src= は廃止予定です。パスを最初の引数に書きます", 9, 24)]
         errs "@listing src/Main.hs\n" @?= []
         body "@listing src=src/Main.hs lines=2-3\n" @?= body "@listing src/Main.hs lines=2-3\n",
       testCase "the span of each @number by the span of its block" $ do
@@ -695,7 +695,7 @@ settingsTests =
         map stripped bs @?= [(Nothing, ["<term>", "x"])]
         ds @?= []
         let (_, ds', _) = runS sctx "[style term: x]\n"
-        map (\d -> let DiagnosticCode c = diagCode d in c) ds' @?= ["G0218"]
+        map (\d -> let DiagnosticCode c = diagCode d in c) ds' @?= ["G02018"]
         assertBool "message" (all (T.isInfixOf "定義されていない" . diagMessage) ds'),
       testCase "the file settings may run into the next block without a blank line" $ do
         let (bs, ds, _) = runS sctx "@style-def paragraph letter\n@style letter\na\n"
@@ -706,15 +706,15 @@ settingsTests =
         ds' @?= [],
       testCase "character and paragraph styles are separate name spaces" $
         codesS "@style-def character note\n@style-def paragraph note\n\nx\n" @?= [],
-      testCase "a name defined twice in a file is G0253" $ do
-        codesS "@style-def paragraph a\n@style-def paragraph a\n" @?= ["G0253"]
+      testCase "a name defined twice in a file is G02053" $ do
+        codesS "@style-def paragraph a\n@style-def paragraph a\n" @?= ["G02053"]
         -- the first overrides quote of style.toml (golem-syntax ADR 0002)
-        codesS "@style-def paragraph quote\n@style-def paragraph quote indent=1zw\n" @?= ["G0253", "G0262"],
+        codesS "@style-def paragraph quote\n@style-def paragraph quote indent=1zw\n" @?= ["G02053", "G02062"],
       testCase "a style of style.toml or a built-in style may be overridden" $ do
         let ok src name = do
               let (_, ds, r) = runS sctx src
-              -- G0262 tells the override (golem-syntax ADR 0002)
-              map diagCode ds @?= [DiagnosticCode "G0262"]
+              -- G02062 tells the override (golem-syntax ADR 0002)
+              map diagCode ds @?= [DiagnosticCode "G02062"]
               assertBool (T.unpack name) (Map.member name (lsParaStyles (erStyles r)) || Map.member name (lsCharStyles (erStyles r)))
         ok "@style-def paragraph body indent=1zw\n\nx\n" "body"
         ok "@style-def character strong synthetic-italic=true\n\n[strong: x]\n" "strong"
@@ -724,9 +724,9 @@ settingsTests =
         map stripped bs @?= [(Just "verse", ["ab"])]
         let (bs', _, _) = runS sctx "@style verse\na\nb\n"
         map stripped bs' @?= [(Just "verse", ["a", "<br>", "b"])],
-      testCase "the arguments of @style-def and @manifest are G0252" $ do
+      testCase "the arguments of @style-def and @manifest are G02052" $ do
         mapM_
-          (\src -> (src, codesS src) @?= (src, ["G0252"]))
+          (\src -> (src, codesS src) @?= (src, ["G02052"]))
           [ "@style-def\n",
             "@style-def table a\n",
             "@style-def paragraph\n",
@@ -740,11 +740,11 @@ settingsTests =
             "@manifest title=[= \"x\"]\n",
             "@manifest title=x\n  a\n"
           ],
-      testCase "@manifest overrides only the keys of [source] (G0250)" $ do
-        codesS "@manifest title=x\n" @?= ["G0250"]
-        codesS "@manifest paragraph-separater=line\n" @?= ["G0250"]
+      testCase "@manifest overrides only the keys of [source] (G02050)" $ do
+        codesS "@manifest title=x\n" @?= ["G02050"]
+        codesS "@manifest paragraph-separater=line\n" @?= ["G02050"]
         let (bs, ds, _) = runS sctx "@manifest title=x\n@label p\na\n"
-        map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G0250"]
+        map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G02050"]
         map stripped bs @?= [(Nothing, ["a"])],
       testCase "@style-def regex adds a regex style for the file (docs/adr ADR 0015)" $ do
         let (bs, ds, _) = runS sctx "@style-def regex body pattern=\"\\\\d+\" style=bold\n\na1\n"
@@ -754,22 +754,22 @@ settingsTests =
         map stripped bs' @?= [(Nothing, ["a1"])],
       testCase "a value of the wrong type in @style-def is in Japanese (golem-project ADR 0007)" $ do
         let (_, ds, _) = runS sctx "@style-def character term font=1\n\nx\n"
-        [(x, diagMessage d) | d <- ds, let { DiagnosticCode x = diagCode d }] @?= [("G0306", "@style-def の値が不正です: font には文字列を書きます（整数が書かれています）")],
+        [(x, diagMessage d) | d <- ds, let { DiagnosticCode x = diagCode d }] @?= [("G03006", "@style-def の値が不正です: font には文字列を書きます（整数が書かれています）")],
       testCase "the errors of @style-def regex (docs/adr ADR 0015)" $ do
-        codesS "@style-def regex nope pattern=x style=bold\n" @?= ["G0313"]
-        codesS "@style-def regex body style=bold\n" @?= ["G0306"]
-        codesS "@style-def regex body pattern=\"\\\\1\" style=bold\n" @?= ["G0315"]
-        codesS "@style-def regex body\n" @?= ["G0306"]
-        codesS "@style-def regex body pattern=x style=nope\n" @?= ["G0313"]
-        codesS "@style-def regex body pattern=x style=bold colour=x\n" @?= ["G0306"]
-        codesS "@style-def regex body pattern=x pattern=y style=bold\n" @?= ["G0252"],
+        codesS "@style-def regex nope pattern=x style=bold\n" @?= ["G03013"]
+        codesS "@style-def regex body style=bold\n" @?= ["G03006"]
+        codesS "@style-def regex body pattern=\"\\\\1\" style=bold\n" @?= ["G03015"]
+        codesS "@style-def regex body\n" @?= ["G03006"]
+        codesS "@style-def regex body pattern=x style=nope\n" @?= ["G03013"]
+        codesS "@style-def regex body pattern=x style=bold colour=x\n" @?= ["G03006"]
+        codesS "@style-def regex body pattern=x pattern=y style=bold\n" @?= ["G02052"],
       testCase "a wrong regex style is reported at its line and dropped, the others stay" $ do
         let src = "@style-def regex body pattern=a style=bold\n@style-def regex body pattern=\"\\\\1\" style=bold\n@style-def regex body pattern=b style=nope\n\nab\n"
             (bs, ds, r) = runS sctx src
-        [(x, spanStart (diagSpan d)) | d <- ds, let { DiagnosticCode x = diagCode d }] @?= [("G0315", 43), ("G0313", 90)]
+        [(x, spanStart (diagSpan d)) | d <- ds, let { DiagnosticCode x = diagCode d }] @?= [("G03015", 43), ("G03013", 90)]
         Map.lookup "body" (lsRegexStyles (erStyles r)) @?= Just [RegexStyleDef "a" "bold"]
         map stripped bs @?= [(Nothing, ["<bold>", "a", "b"])],
-      testCase "the regex styles of a file are added in the order written, not G0253" $ do
+      testCase "the regex styles of a file are added in the order written, not G02053" $ do
         let (bs, ds, r) = runS sctx "@style-def regex body pattern=\"[0-9]+\" style=bold\n@style-def regex body pattern=2 style=italic\n\n12\n"
         ds @?= []
         Map.lookup "body" (lsRegexStyles (erStyles r)) @?= Just [RegexStyleDef "[0-9]+" "bold", RegexStyleDef "2" "italic"]
@@ -795,18 +795,18 @@ settingsTests =
         map stripped bs @?= [(Nothing, ["a"]), (Nothing, ["x", "<bold>", "9"])],
       testCase "an invalid definition is reported at its @style-def and dropped" $ do
         let at src = let (_, ds, _) = runS sctx src in [(x, spanStart (diagSpan d)) | d <- ds, let DiagnosticCode x = diagCode d]
-        at "@style-def paragraph Letter\n" @?= [("G0306", 0)]
-        at "@style-def paragraph a line-breaks=x\n" @?= [("G0306", 0)]
-        at "@style-def paragraph a based-on=nope\n" @?= [("G0313", 0)]
+        at "@style-def paragraph Letter\n" @?= [("G03006", 0)]
+        at "@style-def paragraph a line-breaks=x\n" @?= [("G03006", 0)]
+        at "@style-def paragraph a based-on=nope\n" @?= [("G03013", 0)]
         -- the paths of style.toml are not used for a file (golem-project ADR 0008)
         let grid = either (error . show) id (parseStyle (FileId 0) "[page]\nsize = \"A5\"\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 40\nlines = 30\nline-pitch = \"16pt\"\nposition = { top = \"14mm\", gutter = \"14mm\" }\n")
             (_, gds, _) = runS sctx {ctxStyle = grid} "@style-def paragraph big size=30Q\n\na\n"
-        [(x, spanStart (diagSpan d)) | d <- gds, let { DiagnosticCode x = diagCode d }, x == "G0311"] @?= [("G0311", 0)]
-        codesS "@style-def paragraph a based-on=nope\n\n@style a\nx\n" @?= ["G0313", "G0247"],
-      testCase "@manifest and @style-def elsewhere are G0249" $ do
-        codesS "a\n\n@style-def paragraph letter\n" @?= ["G0249"]
-        codesS "@label x\n@style-def paragraph letter\na\n" @?= ["G0249"]
-        codesS "a\n\n@manifest paragraph-separator=line\n" @?= ["G0249"],
+        [(x, spanStart (diagSpan d)) | d <- gds, let { DiagnosticCode x = diagCode d }, x == "G03011"] @?= [("G03011", 0)]
+        codesS "@style-def paragraph a based-on=nope\n\n@style a\nx\n" @?= ["G03013", "G02047"],
+      testCase "@manifest and @style-def elsewhere are G02049" $ do
+        codesS "a\n\n@style-def paragraph letter\n" @?= ["G02049"]
+        codesS "@label x\n@style-def paragraph letter\na\n" @?= ["G02049"]
+        codesS "a\n\n@manifest paragraph-separator=line\n" @?= ["G02049"],
       testCase "@manifest overrides how the file is read" $ do
         let paras c src = let (bs, _, _) = runS c src in map stripped bs
             lineS = sctx {ctxSource = SourceSettings LineSeparated}
@@ -822,20 +822,20 @@ settingsTests =
         paras lineS "@manifest paragraph-separator=blank-line\n\na\nb\n" @?= [(Nothing, ["ab"])],
       testCase "@manifest elsewhere does not apply" $ do
         let (_, ds, r) = runS sctx "a\n\n@manifest paragraph-separator=line\n"
-        map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G0249"]
+        map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G02049"]
         erSource r @?= ctxSource sctx,
-      testCase "the keys and values of @manifest (G0250, G0251, G0252)" $ do
-        codesS "@manifest title=x\n" @?= ["G0250"]
-        codesS "@manifest paragraph-separater=line\n" @?= ["G0250"]
-        codesS "@manifest paragraph-separator=lines\n" @?= ["G0251"]
+      testCase "the keys and values of @manifest (G02050, G02051, G02052)" $ do
+        codesS "@manifest title=x\n" @?= ["G02050"]
+        codesS "@manifest paragraph-separater=line\n" @?= ["G02050"]
+        codesS "@manifest paragraph-separator=lines\n" @?= ["G02051"]
         mapM_
-          (\src -> (src, codesS src) @?= (src, ["G0252"]))
+          (\src -> (src, codesS src) @?= (src, ["G02052"]))
           [ "@manifest paragraph-separator=line paragraph-separator=line\n",
             "@manifest paragraph-separator=[= \"line\"]\n",
             "@manifest paragraph-separator=line\n  a\n"
           ]
         let (bs, ds, _) = runS sctx "@manifest title=x paragraph-separator=line\n\na\nb\n"
-        map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G0250"]
+        map (\d -> let DiagnosticCode c = diagCode d in c) ds @?= ["G02050"]
         map stripped bs @?= [(Nothing, ["a"]), (Nothing, ["b"])],
       testCase "@manifest and @style-def together, without a blank line" $ do
         let (bs, ds, _) = runS sctx "@manifest paragraph-separator=line\n@style-def paragraph letter\n@style letter\na\nb\n"
@@ -847,7 +847,7 @@ settingsTests =
         let (_, ds, _) = runS sctx {ctxPlugins = hook} "@style-def paragraph letter\n\nx\n"
         ds @?= []
         let (_, ds', _) = runS sctx {ctxPlugins = hook} "x\n"
-        map (\d -> let DiagnosticCode c = diagCode d in c) ds' @?= ["G0247"]
+        map (\d -> let DiagnosticCode c = diagCode d in c) ds' @?= ["G02047"]
     ]
   where
     stripped = \case
@@ -952,16 +952,16 @@ hardBreakTests =
               other -> assertFailure (show other)
           )
           [ctx, lineCtx],
-      testCase "a hard break in a prose slot is G0256" $ do
-        errs "[note: a\\\nb] c\n" @?= ["G0256"]
+      testCase "a hard break in a prose slot is G02056" $ do
+        errs "[note: a\\\nb] c\n" @?= ["G02056"]
         paraOf "[note: a\\\nb] c\n" @?= ["<note 1>", "ab", " c"],
-      testCase "an empty line is G0257 and the paragraph is valid" $
+      testCase "an empty line is G02057 and the paragraph is valid" $
         mapM_
           ( \c ->
               mapM_
                 ( \src -> do
                     let (bs, es) = run c src
-                    assertEqual (show src) ["G0257"] es
+                    assertEqual (show src) ["G02057"] es
                     validateDocument (const (Just 1000)) [] (Document (FileId 1) [Block (mkSpan (FileId 1) 0 1) Nothing b | b <- bs]) @?= []
                 )
                 ["\\\na\n", "a\\\n\\\nb\n", "a\\\n%% c %%\nb\n"]
@@ -982,7 +982,7 @@ breakTests =
         run ctx "@page-break recto\n" @?= ([ForcedBreak BreakRecto], [])
         run ctx "@page-break verso\n" @?= ([ForcedBreak BreakVerso], [])
         run ctx "@column-break\n" @?= ([ForcedBreak BreakColumn], []),
-      testCase "a break right before a block goes before it, without G0211" $ do
+      testCase "a break right before a block goes before it, without G02011" $ do
         let (bs, es) = run ctx "@page-break recto\n# h\n"
         es @?= []
         map shape bs @?= ["break BreakRecto", "heading"],
@@ -994,33 +994,33 @@ breakTests =
         check "@page-break\n@label x\n# h\n"
         check "@label x\n@page-break\n# h\n",
       testCase "a label with only a break after it has no target" $
-        errs "@label x\n@page-break\n\na\n" @?= ["G0210"],
-      testCase "a wrong argument of @page-break is G0258 (docs/adr ADR 0060)" $ do
+        errs "@label x\n@page-break\n\na\n" @?= ["G02010"],
+      testCase "a wrong argument of @page-break is G02058 (docs/adr ADR 0060)" $ do
         mapM_
-          (\src -> assertEqual (T.unpack src) [("G0258", "@page-break の引数は recto か verso です")] (msgs src))
+          (\src -> assertEqual (T.unpack src) [("G02058", "@page-break の引数は recto か verso です")] (msgs src))
           [ "@page-break page\n",
             "@page-break recto verso\n",
             "@page-break x=1\n"
           ],
-      testCase "an argument of @column-break is G0296 (docs/adr ADR 0060)" $
-        msgs "@column-break recto\n" @?= [("G0296", "@column-break は引数を取りません")],
-      testCase "a body under a break is G0297 at its first block (docs/adr ADR 0060)" $ do
-        diags "@page-break\n  a\n" @?= [("G0297", "@page-break は本体を持てません", 12, 16)]
-        msgs "@column-break\n  a\n" @?= [("G0297", "@column-break は本体を持てません")],
-      testCase "an argument and a body are G0296 then G0297 (docs/adr ADR 0060)" $
-        map fst (msgs "@column-break recto\n  a\n") @?= ["G0296", "G0297"],
-      testCase "a break not at the top of the document is G0259 and dropped" $ do
+      testCase "an argument of @column-break is G02096 (docs/adr ADR 0060)" $
+        msgs "@column-break recto\n" @?= [("G02096", "@column-break は引数を取りません")],
+      testCase "a body under a break is G02097 at its first block (docs/adr ADR 0060)" $ do
+        diags "@page-break\n  a\n" @?= [("G02097", "@page-break は本体を持てません", 12, 16)]
+        msgs "@column-break\n  a\n" @?= [("G02097", "@column-break は本体を持てません")],
+      testCase "an argument and a body are G02096 then G02097 (docs/adr ADR 0060)" $
+        map fst (msgs "@column-break recto\n  a\n") @?= ["G02096", "G02097"],
+      testCase "a break not at the top of the document is G02059 and dropped" $ do
         mapM_
           ( \src -> do
               let (bs, es) = blocksOf src
-              assertEqual (T.unpack src) ["G0259"] es
+              assertEqual (T.unpack src) ["G02059"] es
               assertBool (T.unpack src) (not (any hasBreak bs))
           )
           [ "- a\n\n  @page-break\n",
             "= t\n  @page-break\n",
             "@figure images/a.png alt=a\n  @page-break\n"
           ]
-        errs "@style quote\n  @page-break\n" @?= ["G0245"]
+        errs "@style quote\n  @page-break\n" @?= ["G02045"]
     ]
   where
     blocksOf src =
@@ -1056,30 +1056,30 @@ pageControlTests =
             r = evalFile ctx file
         map diagCode (pds <> erDiagnostics r) @?= []
         [(blockLabel b, isControl (blockBody b)) | b <- docBlocks (erDocument r)] @?= [(Nothing, True), (Just "x", False)],
-      testCase "a wrong argument of @need-lines is G0270 (docs/adr ADR 0060)" $
+      testCase "a wrong argument of @need-lines is G02070 (docs/adr ADR 0060)" $
         mapM_
-          (\src -> assertEqual (T.unpack src) [("G0270", "@need-lines の引数は 1 以上の整数です")] (msgs src))
+          (\src -> assertEqual (T.unpack src) [("G02070", "@need-lines の引数は 1 以上の整数です")] (msgs src))
           ["@need-lines\n", "@need-lines 0\n", "@need-lines 2.5\n", "@need-lines 3 4\n", "@need-lines n=3\n"],
-      testCase "a wrong argument of @page-lines is G0299 (docs/adr ADR 0060)" $
+      testCase "a wrong argument of @page-lines is G02099 (docs/adr ADR 0060)" $
         mapM_
-          (\src -> assertEqual (T.unpack src) [("G0299", "@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です")] (msgs src))
+          (\src -> assertEqual (T.unpack src) [("G02099", "@page-lines の引数は +1 や -1 のように符号を付けた 0 でない整数です")] (msgs src))
           ["@page-lines\n", "@page-lines 1\n", "@page-lines +0\n", "@page-lines +1 +2\n", "@page-lines n=+1\n"],
-      testCase "an argument of @no-page-break is G0296 (docs/adr ADR 0060)" $
-        msgs "@no-page-break x\n" @?= [("G0296", "@no-page-break は引数を取りません")],
-      testCase "a body under a control is G0297 (docs/adr ADR 0060)" $
+      testCase "an argument of @no-page-break is G02096 (docs/adr ADR 0060)" $
+        msgs "@no-page-break x\n" @?= [("G02096", "@no-page-break は引数を取りません")],
+      testCase "a body under a control is G02097 (docs/adr ADR 0060)" $
         mapM_
-          (\(src, name) -> assertEqual (T.unpack src) [("G0297", "@" <> name <> " は本体を持てません")] (msgs src))
+          (\(src, name) -> assertEqual (T.unpack src) [("G02097", "@" <> name <> " は本体を持てません")] (msgs src))
           [("@no-page-break\n  a\n", "no-page-break"), ("@need-lines 3\n  a\n", "need-lines"), ("@page-lines +1\n  a\n", "page-lines")],
       testCase "a wrong argument and a body are both reported (docs/adr ADR 0060)" $ do
-        map fst (msgs "@no-page-break x\n  a\n") @?= ["G0296", "G0297"]
-        map fst (msgs "@page-lines 1\n  a\n") @?= ["G0299", "G0297"],
-      testCase "a control not at the top of the document is G0271 and dropped" $ do
+        map fst (msgs "@no-page-break x\n  a\n") @?= ["G02096", "G02097"]
+        map fst (msgs "@page-lines 1\n  a\n") @?= ["G02099", "G02097"],
+      testCase "a control not at the top of the document is G02071 and dropped" $ do
         let (bs, es) = run ctx "- a\n\n  @no-page-break\n"
-        es @?= ["G0271"]
+        es @?= ["G02071"]
         assertBool "no control" (not (any hasControl bs)),
-      testCase "a control and a forced break at the same place are G0272" $ do
+      testCase "a control and a forced break at the same place are G02072" $ do
         mapM_
-          (\src -> assertEqual (T.unpack src) ["G0272"] (errs src))
+          (\src -> assertEqual (T.unpack src) ["G02072"] (errs src))
           [ "@no-page-break\n@page-break\n",
             "@column-break\n\n@no-page-break\n",
             "@no-page-break\n@need-lines 2\n@page-break\n"
@@ -1108,9 +1108,9 @@ blankLineTests =
               outline c "あ\n@blank-line 9223372036854775807\n" @?= (["p あ", "blank 9223372036854775807"], [])
           )
           [ctx, lineCtx],
-      testCase "wrong arguments and a body are G0292 and give no block" $
+      testCase "wrong arguments and a body are G02092 and give no block" $
         mapM_
-          (\src -> assertEqual (T.unpack src) ([], ["G0292"]) (outline ctx src))
+          (\src -> assertEqual (T.unpack src) ([], ["G02092"]) (outline ctx src))
           [ "@blank-line 0\n",
             "@blank-line -1\n",
             "@blank-line 1.5\n",
@@ -1120,41 +1120,41 @@ blankLineTests =
             "@blank-line +1\n",
             "@blank-line\n  あ\n"
           ],
-      testCase "an integer out of int64 is G0291" $
-        outline ctx "@blank-line 9223372036854775808\n" @?= ([], ["G0291"]),
-      testCase "the messages of G0292" $ do
-        msgs "@blank-line 0\n" @?= [("G0292", "@blank-line の引数は 1 以上の整数を一つだけ書きます")]
-        msgs "@blank-line\n  あ\n" @?= [("G0292", "@blank-line は本体を持てません")],
-      testCase "@blank-line not at the top of the document is G0293 and dropped" $ do
+      testCase "an integer out of int64 is G02091" $
+        outline ctx "@blank-line 9223372036854775808\n" @?= ([], ["G02091"]),
+      testCase "the messages of G02092" $ do
+        msgs "@blank-line 0\n" @?= [("G02092", "@blank-line の引数は 1 以上の整数を一つだけ書きます")]
+        msgs "@blank-line\n  あ\n" @?= [("G02092", "@blank-line は本体を持てません")],
+      testCase "@blank-line not at the top of the document is G02093 and dropped" $ do
         mapM_
           ( \src -> do
               let (bs, es) = blocksWith src
-              assertEqual (T.unpack src) ["G0293"] es
+              assertEqual (T.unpack src) ["G02093"] es
               assertBool (T.unpack src) (not (any hasBlank bs))
           )
           [ "- あ\n\n  @blank-line\n  い\n",
             "@figure images/a.png alt=a\n  c\n\n  @blank-line\n",
             "= t\n  @blank-line\n"
           ]
-        msgs "- あ\n\n  @blank-line\n  い\n" @?= [("G0293", "@blank-line は文書の最上位にだけ置けます")],
-      testCase "@blank-line in the body of @style is G0245" $
-        errs "@style verse\n  あ\n\n  @blank-line\n" @?= ["G0245"],
+        msgs "- あ\n\n  @blank-line\n  い\n" @?= [("G02093", "@blank-line は文書の最上位にだけ置けます")],
+      testCase "@blank-line in the body of @style is G02045" $
+        errs "@style verse\n  あ\n\n  @blank-line\n" @?= ["G02045"],
       testCase "in an attribute group, the blank lines go before the target and the attributes skip them" $ do
         labelled "@blank-line\n@label x\n# 見出し\n" @?= ([(Nothing, "blank 1"), (Just "x", "heading")], [])
         labelled "@label x\n@blank-line\n# 見出し\n" @?= ([(Nothing, "blank 1"), (Just "x", "heading")], [])
-        snd (labelled "@label x\n@blank-line\n") @?= ["G0210"],
-      testCase "blank lines written in a row are the notice G0294 at the later ones" $ do
-        outline ctx "@blank-line\n@blank-line 2\nあ\n" @?= (["blank 1", "blank 2", "p あ"], ["G0294"])
-        [(c, m, s) | (c, m, s, _) <- diags "@blank-line\n@blank-line 2\nあ\n"] @?= [("G0294", "続けて書いた @blank-line は @blank-line <N> にまとめて書けます", 12)]
-        snd (outline ctx "@blank-line\n@need-lines 3\n@blank-line\nあ\n") @?= ["G0294"]
-        snd (outline ctx "@blank-line\n@no-page-break\n@page-lines +1\n@blank-line\nあ\n") @?= ["G0294"]
-        snd (outline ctx "@blank-line\n@blank-line\n@blank-line\nあ\n") @?= ["G0294", "G0294"]
+        snd (labelled "@label x\n@blank-line\n") @?= ["G02010"],
+      testCase "blank lines written in a row are the notice G02094 at the later ones" $ do
+        outline ctx "@blank-line\n@blank-line 2\nあ\n" @?= (["blank 1", "blank 2", "p あ"], ["G02094"])
+        [(c, m, s) | (c, m, s, _) <- diags "@blank-line\n@blank-line 2\nあ\n"] @?= [("G02094", "続けて書いた @blank-line は @blank-line <N> にまとめて書けます", 12)]
+        snd (outline ctx "@blank-line\n@need-lines 3\n@blank-line\nあ\n") @?= ["G02094"]
+        snd (outline ctx "@blank-line\n@no-page-break\n@page-lines +1\n@blank-line\nあ\n") @?= ["G02094"]
+        snd (outline ctx "@blank-line\n@blank-line\n@blank-line\nあ\n") @?= ["G02094", "G02094"]
         snd (outline ctx "@blank-line\nあ\n@blank-line\nい\n") @?= []
         snd (outline ctx "@blank-line\n@page-break\n@blank-line\nい\n") @?= [],
-      testCase "G0294 is a notice" $ do
+      testCase "G02094 is a notice" $ do
         let (_, ds, _) = runS ctx "@blank-line\n@blank-line\n"
         [diagSeverity d | d <- ds] @?= [Notice]
-        assertBool "a notice code" (DiagnosticCode "G0294" `elem` noticeCodes),
+        assertBool "a notice code" (DiagnosticCode "G02094" `elem` noticeCodes),
       testCase "an inline [blank-line] is an unknown command" $
         assertBool "an error" (not (null (errs "あ[blank-line]い\n")))
     ]
@@ -1224,14 +1224,14 @@ codeTests =
         linesOf c @?= [("line 20", Just 20, Nothing, False, []), ("line 21", Just 21, Nothing, False, []), ("line 22", Just 22, Nothing, False, [])]
         d <- oneCode "@listing x.hs lines=20-22 numbers=5\n"
         map clNumber (codeLines d) @?= [Just 5, Just 6, Just 7],
-      testCase "highlight=2,4-5: lines 2, 4 and 5; highlight=9 in three lines is G0269" $ do
+      testCase "highlight=2,4-5: lines 2, 4 and 5; highlight=9 in three lines is G02069" $ do
         c <- oneCode "``` highlight=2,4-5\na\nb\nc\nd\ne\n```\n"
         map clHighlight (codeLines c) @?= [False, True, False, True, True]
-        msgs "``` highlight=9\na\nb\nc\n```\n" @?= [("G0269", "highlight の行 9 はこのコードにありません")]
+        msgs "``` highlight=9\na\nb\nc\n```\n" @?= [("G02069", "highlight の行 9 はこのコードにありません")]
         l <- oneCode "@listing x.hs lines=20-22 highlight=21\n"
         map clHighlight (codeLines l) @?= [False, True, False],
       localOption (mkTimeout 10000000) $ testCase "a highlight range far beyond the code ends at once (docs/adr ADR 0035)" $ do
-        msgs "``` highlight=2-1000000000000\na\nb\nc\n```\n" @?= [("G0269", "highlight の行 4 はこのコードにありません")]
+        msgs "``` highlight=2-1000000000000\na\nb\nc\n```\n" @?= [("G02069", "highlight の行 4 はこのコードにありません")]
         -- the blocks too, highlight and all, as the LSP keeps them
         size <- evaluate (length (show (run ctx "``` highlight=2-1000000000000\na\nb\nc\n```\n")))
         assertBool "evaluated" (size > 0)
@@ -1246,14 +1246,14 @@ codeTests =
                 ("c", Just 2, Just DiffContext, False, []),
                 ("", Just 3, Just DiffContext, False, [])
               ],
-      testCase "diff=true: a line that starts with another character is G0269 at the line" $
-        diags "``` diff=true\n+a\nxa\n```\n" @?= [("G0269", "diff=true のコードの行は +、-、空白のどれかで始めます", 17, 19)],
+      testCase "diff=true: a line that starts with another character is G02069 at the line" $
+        diags "``` diff=true\n+a\nxa\n```\n" @?= [("G02069", "diff=true のコードの行は +、-、空白のどれかで始めます", 17, 19)],
       testCase "a removed line cannot be highlighted" $
-        msgs "``` diff=true highlight=2\n+a\n-b\n```\n" @?= [("G0269", "highlight の行 2 はこのコードにありません")],
+        msgs "``` diff=true highlight=2\n+a\n-b\n```\n" @?= [("G02069", "highlight の行 2 はこのコードにありません")],
       testCase "callouts=true: <1> at the line end, several, the spaces before them" $ do
         c <- oneCode "``` callouts=true\nfoo  <1>\nbar <2> <3>\nbaz\n```\n"
         linesOf c @?= [("foo", Just 1, Nothing, False, [1]), ("bar", Just 2, Nothing, False, [2, 3]), ("baz", Just 3, Nothing, False, [])]
-        diags "``` callouts=true\nfoo <51>\n```\n" @?= [("G0269", "注釈の印の番号は 1 から 50 までです: 51", 18, 26)],
+        diags "``` callouts=true\nfoo <51>\n```\n" @?= [("G02069", "注釈の印の番号は 1 から 50 までです: 51", 18, 26)],
       testCase "without callouts, <1> stays in the text" $ do
         c <- oneCode "```\nList<1>\nfoo <1>\n```\n"
         map clText (codeLines c) @?= ["List<1>", "foo <1>"]
@@ -1261,26 +1261,26 @@ codeTests =
       testCase "@caption: inlines, code style included" $ do
         c <- oneCode "@caption 設定の [code: x] の読み込み\n```\na\n```\n"
         fmap stripSpans (codeCaption c) @?= Just ["設定の ", "<code>", "x", " の読み込み"],
-      testCase "@caption on a paragraph is G0213; with no text G0269" $ do
-        errs "@caption 説明\n段落。\n" @?= ["G0213"]
-        msgs "@caption\n```\na\n```\n" @?= [("G0269", "@caption には本文を書きます")],
+      testCase "@caption on a paragraph is G02013; with no text G02069" $ do
+        errs "@caption 説明\n段落。\n" @?= ["G02013"]
+        msgs "@caption\n```\na\n```\n" @?= [("G02069", "@caption には本文を書きます")],
       testCase "@caption and @label before @listing" $ do
         case body "@label cfg\n@caption 設定\n@listing x.hs lines=1-2\n" of
           [CodeBlock c] -> fmap stripSpans (codeCaption c) @?= Just ["設定"]
           other -> assertFailure (show other)
         case run ctx "@label cfg\n@caption 設定\n@listing x.hs lines=1-2\n" of
           (_, ds) -> ds @?= [],
-      testCase "the wrong arguments are G0269" $ do
-        msgs "```haskell foo\na\n```\n" @?= [("G0269", "コードブロックの開始の行には、言語の名前とキーワード引数だけを書けます")]
-        msgs "``` unknown=1\na\n```\n" @?= [("G0269", "コードブロックに書けないキーです: unknown。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます")]
-        msgs "``` numbers=-1\na\n```\n" @?= [("G0269", "numbers の値が正しくありません: -1")]
-        msgs "``` numbers=abc\na\n```\n" @?= [("G0269", "numbers の値が正しくありません: abc")]
-        msgs "``` diff=yes\na\n```\n" @?= [("G0269", "diff の値が正しくありません: yes")]
-        msgs "@listing x.hs unknown=1\n" @?= [("G0269", "コードブロックに書けないキーです: unknown。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます")],
-      testCase "lang= of @listing is the language; on the fence it is G0269" $ do
+      testCase "the wrong arguments are G02069" $ do
+        msgs "```haskell foo\na\n```\n" @?= [("G02069", "コードブロックの開始の行には、言語の名前とキーワード引数だけを書けます")]
+        msgs "``` unknown=1\na\n```\n" @?= [("G02069", "コードブロックに書けないキーです: unknown。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます")]
+        msgs "``` numbers=-1\na\n```\n" @?= [("G02069", "numbers の値が正しくありません: -1")]
+        msgs "``` numbers=abc\na\n```\n" @?= [("G02069", "numbers の値が正しくありません: abc")]
+        msgs "``` diff=yes\na\n```\n" @?= [("G02069", "diff の値が正しくありません: yes")]
+        msgs "@listing x.hs unknown=1\n" @?= [("G02069", "コードブロックに書けないキーです: unknown。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます")],
+      testCase "lang= of @listing is the language; on the fence it is G02069" $ do
         c <- oneCode "@listing x.hs lines=1-1 lang=haskell\n"
         codeLang c @?= Just "haskell"
-        errs "``` lang=haskell\na\n```\n" @?= ["G0269"],
+        errs "``` lang=haskell\na\n```\n" @?= ["G02069"],
       testCase "file= is the file name" $ do
         c <- oneCode "```haskell file=\"src/Main.hs\"\na\n```\n"
         codeFile c @?= Just "src/Main.hs"
@@ -1296,44 +1296,44 @@ diagnosticTests :: TestTree
 diagnosticTests =
   testGroup
     "diagnostic codes (golem-eval ADR 0003)"
-    [ testCase "G0223: a reserved word as a name" $ do
-        diags "@set doc = 1\n" @?= [("G0223", "予約語は変数の名前に使えません: doc", 5, 8)]
-        diags "@import common/values.gm as meta\n" @?= [("G0223", "予約語は名前空間に使えません: meta", 28, 32)],
-      testCase "G0225: the depth of @toc" $ do
-        mapM_ (\src -> (src, errs src) @?= (src, ["G0225"])) ["@toc depth=0\n", "@toc depth=4\n", "@toc depth=x\n"]
-        msgs "@toc depth=0\n" @?= [("G0225", "@toc の depth は 1 から 3 の整数です")]
+    [ testCase "G02023: a reserved word as a name" $ do
+        diags "@set doc = 1\n" @?= [("G02023", "予約語は変数の名前に使えません: doc", 5, 8)]
+        diags "@import common/values.gm as meta\n" @?= [("G02023", "予約語は名前空間に使えません: meta", 28, 32)],
+      testCase "G02025: the depth of @toc" $ do
+        mapM_ (\src -> (src, errs src) @?= (src, ["G02025"])) ["@toc depth=0\n", "@toc depth=4\n", "@toc depth=x\n"]
+        msgs "@toc depth=0\n" @?= [("G02025", "@toc の depth は 1 から 3 の整数です")]
         errs "@toc\n" @?= []
         errs "@toc depth=3\n" @?= [],
-      testCase "G0226: the names of labels" $ do
+      testCase "G02026: the names of labels" $ do
         let labelMsg = "@label にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます"
             refMsg = "参照にはラベルの名前を一つ書きます。名前は英小文字、数字、-、_ で書きます"
-        msgs "@label Intro\n# x\n" @?= [("G0226", labelMsg)]
-        msgs "@label a b\n# x\n" @?= [("G0226", labelMsg)]
-        msgs "[ref-number Intro]\n" @?= [("G0226", refMsg)]
-        msgs "[ref-number]\n" @?= [("G0226", refMsg)],
-      testCase "G0227: @number" $ do
-        errs "@number x\n# x\n" @?= ["G0227"]
-        errs "@number 1 2\n# x\n" @?= ["G0227"]
-        msgs "@number x\n# x\n" @?= [("G0227", "@number には整数を一つ書きます")]
+        msgs "@label Intro\n# x\n" @?= [("G02026", labelMsg)]
+        msgs "@label a b\n# x\n" @?= [("G02026", labelMsg)]
+        msgs "[ref-number Intro]\n" @?= [("G02026", refMsg)]
+        msgs "[ref-number]\n" @?= [("G02026", refMsg)],
+      testCase "G02027: @number" $ do
+        errs "@number x\n# x\n" @?= ["G02027"]
+        errs "@number 1 2\n# x\n" @?= ["G02027"]
+        msgs "@number x\n# x\n" @?= [("G02027", "@number には整数を一つ書きます")]
         errs "@number 3\n+ a\n" @?= [],
-      testCase "G0230, G0232, G0234" $ do
-        msgs "@figure images/a.png alt=x wrap=left width=10mm\n" @?= [("G0230", "wrap は start か end です: left")]
-        msgs "@figure alt=x\n" @?= [("G0232", "@figure には画像のパスを一つ書きます")]
-        errs "@figure images/a.png images/b.png alt=x\n" @?= ["G0232"]
-        msgs "@table data.csv\n" @?= [("G0234", "@table には src が必要です")],
-      testCase "G0285: CSV that is not a table, in the file (golem-eval ADR 0004)" $ do
-        msgs "@table src=empty.csv\n" @?= [("G0285", "CSV が空です")]
-        msgs "@table src=blank.csv\n" @?= [("G0285", "CSV が空です")]
-        diags "@table src=ragged.csv\n" @?= [("G0285", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
-      testCase "G0236: @listing without a path" $ do
-        msgs "@listing\n" @?= [("G0236", "@listing にはファイルのパスが必要です")]
-        -- src= is read, with the notice G0265 (golem-syntax ADR 0002)
-        errs "@listing src=src/Main.hs\n" @?= ["G0265"],
-      testCase "G0238: the number of prose slots" $ do
-        msgs "[strong]\n" @?= [("G0238", "strong には散文スロットが一つ必要です")]
-        msgs "[strong: a|b]\n" @?= [("G0238", "strong には散文スロットが一つ必要です")]
-        msgs "[index reading=a]\n" @?= [("G0238", "index には散文スロットが一つ必要です")]
-        msgs "[ruby: a]\n" @?= [("G0238", "ruby には散文スロットが二つ必要です")],
+      testCase "G02030, G02032, G02034" $ do
+        msgs "@figure images/a.png alt=x wrap=left width=10mm\n" @?= [("G02030", "wrap は start か end です: left")]
+        msgs "@figure alt=x\n" @?= [("G02032", "@figure には画像のパスを一つ書きます")]
+        errs "@figure images/a.png images/b.png alt=x\n" @?= ["G02032"]
+        msgs "@table data.csv\n" @?= [("G02034", "@table には src が必要です")],
+      testCase "G02085: CSV that is not a table, in the file (golem-eval ADR 0004)" $ do
+        msgs "@table src=empty.csv\n" @?= [("G02085", "CSV が空です")]
+        msgs "@table src=blank.csv\n" @?= [("G02085", "CSV が空です")]
+        diags "@table src=ragged.csv\n" @?= [("G02085", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
+      testCase "G02036: @listing without a path" $ do
+        msgs "@listing\n" @?= [("G02036", "@listing にはファイルのパスが必要です")]
+        -- src= is read, with the notice G02065 (golem-syntax ADR 0002)
+        errs "@listing src=src/Main.hs\n" @?= ["G02065"],
+      testCase "G02038: the number of prose slots" $ do
+        msgs "[strong]\n" @?= [("G02038", "strong には散文スロットが一つ必要です")]
+        msgs "[strong: a|b]\n" @?= [("G02038", "strong には散文スロットが一つ必要です")]
+        msgs "[index reading=a]\n" @?= [("G02038", "index には散文スロットが一つ必要です")]
+        msgs "[ruby: a]\n" @?= [("G02038", "ruby には散文スロットが二つ必要です")],
       testCase "[aki] puts a fixed space (docs/adr ADR 0019)" $ do
         let akiOf src = case body src of
               [Paragraph Nothing is] -> [(spanStart s, spanEnd s, a) | Aki s a <- is]
@@ -1343,26 +1343,26 @@ diagnosticTests =
         akiOf "3[aki 1mm]kg\n" @?= [(1, 10, AkiAbs (maybe 0 (dimToSp 0) (parseDim "1mm")))]
         akiOf "[aki \"2pt\"]\n" @?= [(0, 11, AkiAbs (2 * 65536))]
         errs "a[aki 五分]b\n" @?= [],
-      testCase "G0255: [aki] needs one amount and no prose slot" $ do
-        let g0255 src = do
+      testCase "G02055: [aki] needs one amount and no prose slot" $ do
+        let g02055 src = do
               let ms = msgs src
-              assertBool (show ms) (not (null ms) && all ((== "G0255") . fst) ms && all (("ベタ、全角、二分" `T.isInfixOf`) . snd) ms)
+              assertBool (show ms) (not (null ms) && all ((== "G02055") . fst) ms && all (("ベタ、全角、二分" `T.isInfixOf`) . snd) ms)
               body src @?= [Paragraph Nothing [Text (mkSpan (FileId 1) 0 1) "a"]]
-        g0255 "a[aki]\n"
-        g0255 "a[aki 十分]\n"
-        g0255 "a[aki 四分: 語]\n"
-        g0255 "a[aki 四分 二分]\n"
-        g0255 "a[aki -1zw]\n"
-        g0255 "a[aki x=四分]\n"
-        g0255 "a[aki [= 1]]\n",
-      testCase "G0238: commands that take no prose slot" $ do
-        msgs "[number-text 1: x]\n" @?= [("G0238", "number-text は散文スロットを取りません")]
-        msgs "[ref-number intro: x]\n" @?= [("G0238", "ref-number は散文スロットを取りません")]
-        msgs "[ref-title intro: x]\n" @?= [("G0238", "ref-title は散文スロットを取りません")]
-        msgs "[ref-page intro: x]\n" @?= [("G0238", "ref-page は散文スロットを取りません")]
-        diags "[cite knuth1981: x]\n" @?= [("G0238", "cite は散文スロットを取りません", 0, 19)]
+        g02055 "a[aki]\n"
+        g02055 "a[aki 十分]\n"
+        g02055 "a[aki 四分: 語]\n"
+        g02055 "a[aki 四分 二分]\n"
+        g02055 "a[aki -1zw]\n"
+        g02055 "a[aki x=四分]\n"
+        g02055 "a[aki [= 1]]\n",
+      testCase "G02038: commands that take no prose slot" $ do
+        msgs "[number-text 1: x]\n" @?= [("G02038", "number-text は散文スロットを取りません")]
+        msgs "[ref-number intro: x]\n" @?= [("G02038", "ref-number は散文スロットを取りません")]
+        msgs "[ref-title intro: x]\n" @?= [("G02038", "ref-title は散文スロットを取りません")]
+        msgs "[ref-page intro: x]\n" @?= [("G02038", "ref-page は散文スロットを取りません")]
+        diags "[cite knuth1981: x]\n" @?= [("G02038", "cite は散文スロットを取りません", 0, 19)]
         body "[cite knuth1981: x]\n" @?= [Paragraph Nothing []]
-        errs "# [ref-number intro: x]\n" @?= ["G0214"],
+        errs "# [ref-number intro: x]\n" @?= ["G02014"],
       testCase "kenten without a shape takes the default of style.toml (golem-driver ADR 0019)" $ do
         let kentenOf c src = case fst (run c src) of
               [Paragraph Nothing [Kenten _ sh _]] -> sh
@@ -1373,62 +1373,62 @@ diagnosticTests =
       testCase "the four added kenten shapes (golem-driver ADR 0019)" $ do
         mapM_ (\sh -> errs ("[kenten shape=" <> sh <> ": a]\n") @?= []) ["double-circle", "open-double-circle", "triangle", "open-triangle"]
         kentenShapes @?= ["sesame", "open-sesame", "dot", "open-dot", "circle", "open-circle", "double-circle", "open-double-circle", "triangle", "open-triangle"],
-      testCase "G0239, G0240, G0241, G0243" $ do
-        msgs "[kenten shape=star: a]\n" @?= [("G0239", "未知の圏点の形です: star")]
-        msgs "[tcy: [strong: 12]]\n" @?= [("G0240", "縦中横の中身は地の文に限ります")]
+      testCase "G02039, G02040, G02041, G02043" $ do
+        msgs "[kenten shape=star: a]\n" @?= [("G02039", "未知の圏点の形です: star")]
+        msgs "[tcy: [strong: 12]]\n" @?= [("G02040", "縦中横の中身は地の文に限ります")]
         errs "a[tcy: %% c %%]b\n" @?= []
         paraOf "a[tcy: %% c %%]b\n" @?= ["ab"]
-        msgs "[index reading=あ: [strong: 語]]\n" @?= [("G0241", "索引の語は地の文に限ります")]
-        msgs "[ruby: 字|[strong: じ]]\n" @?= [("G0243", "ルビの読みは地の文に限ります")],
-      testCase "G0205: kept in dev, a warning over the comment in prod" $ do
+        msgs "[index reading=あ: [strong: 語]]\n" @?= [("G02041", "索引の語は地の文に限ります")]
+        msgs "[ruby: 字|[strong: じ]]\n" @?= [("G02043", "ルビの読みは地の文に限ります")],
+      testCase "G02005: kept in dev, a warning over the comment in prod" $ do
         errs "本文%%= メモ %%\n" @?= []
         case body "本文%%= メモ %%\n" of
           [Paragraph Nothing [Text _ "本文", ProofComment _ _]] -> pure ()
           other -> assertFailure (show other)
         let (file, _, _) = parseAst (FileId 1) "本文%%= メモ %%\n"
         [(diagCode d, diagSeverity d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- erDiagnostics (evalFile ctx {ctxProfile = Prod} file)]
-          @?= [(DiagnosticCode "G0205", Warning, 6, 19)],
-      testCase "G0209: the position is the name" $
-        diags "@nope\n" @?= [("G0209", "未知のブロックコマンドです: @nope", 1, 5)],
-      testCase "G0210: no block after attributes" $ do
-        diags "@label a\n" @?= [("G0210", "@label の後にブロックがありません", 0, 9)]
-        diags "@label a\n@notoc\n" @?= [("G0210", "属性の後にブロックがありません", 0, 16)]
-        diags "@style verse\n" @?= [("G0210", "@style の後にブロックがありません", 0, 13)],
-      testCase "G0211: the other commands of the group are evaluated" $ do
-        msgs "@label a\n@set x = 1\n# [= x]\n" @?= [("G0211", "属性のまとまりに属性でないコマンドがあります")]
+          @?= [(DiagnosticCode "G02005", Warning, 6, 19)],
+      testCase "G02009: the position is the name" $
+        diags "@nope\n" @?= [("G02009", "未知のブロックコマンドです: @nope", 1, 5)],
+      testCase "G02010: no block after attributes" $ do
+        diags "@label a\n" @?= [("G02010", "@label の後にブロックがありません", 0, 9)]
+        diags "@label a\n@notoc\n" @?= [("G02010", "属性の後にブロックがありません", 0, 16)]
+        diags "@style verse\n" @?= [("G02010", "@style の後にブロックがありません", 0, 13)],
+      testCase "G02011: the other commands of the group are evaluated" $ do
+        msgs "@label a\n@set x = 1\n# [= x]\n" @?= [("G02011", "属性のまとまりに属性でないコマンドがあります")]
         case body "@label a\n@set x = 1\n# [= x]\n" of
           [Heading 1 _ is] -> stripSpans is @?= ["1"]
           other -> assertFailure (show other),
-      testCase "G0212: each repeated attribute line" $ do
-        diags "@label a\n@notoc\n@label b\n# x\n" @?= [("G0212", "同じ属性を二度書いています", 16, 25)]
-        map (\(c, _, s, e) -> (c, s, e)) (diags "@label a\n@label b\n@label c\n# x\n") @?= [("G0212", 9, 18), ("G0212", 18, 27)],
-      testCase "G0213: attributes on the wrong block" $ do
-        diags "@notoc\n本文。\n" @?= [("G0213", "@notoc はこのブロックには付けられません", 0, 7)]
-        diags "@figure images/a.png alt=x\n  @style quote\n  キャプション。\n" @?= [("G0213", "@style は図版のキャプションには付けられません", 27, 42)],
-      testCase "G0215: every ruby split into segments must match" $ do
-        msgs "[ruby: 東京|とう/きょう]\n" @?= [("G0215", "モノルビの対象と読みのセグメントの数が一致しません")]
+      testCase "G02012: each repeated attribute line" $ do
+        diags "@label a\n@notoc\n@label b\n# x\n" @?= [("G02012", "同じ属性を二度書いています", 16, 25)]
+        map (\(c, _, s, e) -> (c, s, e)) (diags "@label a\n@label b\n@label c\n# x\n") @?= [("G02012", 9, 18), ("G02012", 18, 27)],
+      testCase "G02013: attributes on the wrong block" $ do
+        diags "@notoc\n本文。\n" @?= [("G02013", "@notoc はこのブロックには付けられません", 0, 7)]
+        diags "@figure images/a.png alt=x\n  @style quote\n  キャプション。\n" @?= [("G02013", "@style は図版のキャプションには付けられません", 27, 42)],
+      testCase "G02015: every ruby split into segments must match" $ do
+        msgs "[ruby: 東京|とう/きょう]\n" @?= [("G02015", "モノルビの対象と読みのセグメントの数が一致しません")]
         errs "[ruby: 五月雨|さみだれ]\n" @?= []
         errs "[ruby: お/父/さん|/とう/]\n" @?= [],
-      testCase "G0217, G0218, G0221: an argument that is not a name" $ do
-        msgs "[color [= \"x\"]: a]\n" @?= [("G0217", "color にはスウォッチの名前を一つ書きます")]
-        msgs "[style [= \"x\"]: a]\n" @?= [("G0218", "style には文字スタイルの名前を一つ書きます")]
-        msgs "[cite [= \"x\"]]\n" @?= [("G0221", "cite には書誌データのキーを一つ書きます")]
-        msgs "[color red: x]\n" @?= [("G0217", "style.toml にないスウォッチです: red")]
-        msgs "[cite nope]\n" @?= [("G0221", "書誌データにないキーです: nope")],
-      testCase "G0219: number-text" $ do
-        msgs "[number-text]\n" @?= [("G0219", "number-text には整数を一つ書きます")]
-        msgs "[number-text 1.5]\n" @?= [("G0219", "number-text に渡せるのは整数だけです")]
-        errs "[number-text [= 1 / 0]]\n" @?= ["G0203"],
-      testCase "G0222: the position is the name" $ do
-        diags "[nope: x]\n" @?= [("G0222", "未知のコマンドです: nope", 1, 5)],
-      testCase "G0233: missing files" $ do
-        msgs "@listing images/none.txt\n" @?= [("G0233", "ファイルがありません: images/none.txt")]
-        msgs "@table src=none.csv\n" @?= [("G0233", "ファイルがありません: none.csv")]
-        msgs "@listing gone.txt\n" @?= [("G0233", "ファイルがありません: gone.txt")],
-      testCase "G0260: paths that cannot be used" $ do
-        msgs "@figure /tmp/a.png alt=x\n" @?= [("G0260", "絶対パスは使えません: /tmp/a.png")]
-        msgs "@figure images/a.png web=\"https://example.com/a.png\" alt=x\n" @?= [("G0260", "URL は使えません: https://example.com/a.png")]
-        diags "@listing ../outside.txt\n" @?= [("G0260", "プロジェクトルートの外を指しています: ../outside.txt", 0, 24)]
+      testCase "G02017, G02018, G02021: an argument that is not a name" $ do
+        msgs "[color [= \"x\"]: a]\n" @?= [("G02017", "color にはスウォッチの名前を一つ書きます")]
+        msgs "[style [= \"x\"]: a]\n" @?= [("G02018", "style には文字スタイルの名前を一つ書きます")]
+        msgs "[cite [= \"x\"]]\n" @?= [("G02021", "cite には書誌データのキーを一つ書きます")]
+        msgs "[color red: x]\n" @?= [("G02017", "style.toml にないスウォッチです: red")]
+        msgs "[cite nope]\n" @?= [("G02021", "書誌データにないキーです: nope")],
+      testCase "G02019: number-text" $ do
+        msgs "[number-text]\n" @?= [("G02019", "number-text には整数を一つ書きます")]
+        msgs "[number-text 1.5]\n" @?= [("G02019", "number-text に渡せるのは整数だけです")]
+        errs "[number-text [= 1 / 0]]\n" @?= ["G02003"],
+      testCase "G02022: the position is the name" $ do
+        diags "[nope: x]\n" @?= [("G02022", "未知のコマンドです: nope", 1, 5)],
+      testCase "G02033: missing files" $ do
+        msgs "@listing images/none.txt\n" @?= [("G02033", "ファイルがありません: images/none.txt")]
+        msgs "@table src=none.csv\n" @?= [("G02033", "ファイルがありません: none.csv")]
+        msgs "@listing gone.txt\n" @?= [("G02033", "ファイルがありません: gone.txt")],
+      testCase "G02060: paths that cannot be used" $ do
+        msgs "@figure /tmp/a.png alt=x\n" @?= [("G02060", "絶対パスは使えません: /tmp/a.png")]
+        msgs "@figure images/a.png web=\"https://example.com/a.png\" alt=x\n" @?= [("G02060", "URL は使えません: https://example.com/a.png")]
+        diags "@listing ../outside.txt\n" @?= [("G02060", "プロジェクトルートの外を指しています: ../outside.txt", 0, 24)]
     ]
 
 -- | A printing as meta.printings has it (docs/adr ADR 0033).
@@ -1465,24 +1465,24 @@ printingsTests =
           other -> assertFailure (show other),
       testCase "@style applies to every paragraph" $
         [st | Paragraph st _ <- fst (run (printingsCtx "ja") "@style quote\n@printings\n")] @?= [Just "quote", Just "quote", Just "quote"],
-      testCase "a book not in Japanese is G0276 alone and sets nothing" $ do
-        run (printingsCtx "en") "@printings\n" @?= ([], ["G0276"])
+      testCase "a book not in Japanese is G02076 alone and sets nothing" $ do
+        run (printingsCtx "en") "@printings\n" @?= ([], ["G02076"])
         [m | (_, m, _, _) <- diagsWith (printingsCtx "en") "@printings\n"] @?= ["@printings は日本語の本（language = \"ja\"）でだけ使えます"],
-      testCase "a Japanese book without printings is G0298 alone and sets nothing" $ do
+      testCase "a Japanese book without printings is G02098 alone and sets nothing" $ do
         let noPrintings = (printingsCtx "ja") {ctxMeta = Map.fromList [("language", VString "ja")]}
-        run noPrintings "@printings\n" @?= ([], ["G0298"])
+        run noPrintings "@printings\n" @?= ([], ["G02098"])
         [m | (_, m, _, _) <- diagsWith noPrintings "@printings\n"] @?= ["マニフェストに [[metadata.printings]] がありません"],
-      testCase "an argument is G0296 and sets nothing" $ do
-        run (printingsCtx "ja") "@printings 1\n" @?= ([], ["G0296"])
-        [(c, m, s) | (c, m, s, _) <- diagsWith (printingsCtx "ja") "@printings 1\n"] @?= [("G0296", "@printings は引数を取りません", 0)]
-        run (printingsCtx "ja") "@printings key=1\n" @?= ([], ["G0296"]),
-      testCase "a body is G0297 at its first block and sets nothing" $ do
-        run (printingsCtx "ja") "@printings\n  本文\n" @?= ([], ["G0297"])
-        [(c, m, s) | (c, m, s, _) <- diagsWith (printingsCtx "ja") "@printings\n  本文\n"] @?= [("G0297", "@printings は本体を持てません", 11)],
-      testCase "an argument and a body are G0296 then G0297" $
-        run (printingsCtx "ja") "@printings 1\n  本文\n" @?= ([], ["G0296", "G0297"]),
+      testCase "an argument is G02096 and sets nothing" $ do
+        run (printingsCtx "ja") "@printings 1\n" @?= ([], ["G02096"])
+        [(c, m, s) | (c, m, s, _) <- diagsWith (printingsCtx "ja") "@printings 1\n"] @?= [("G02096", "@printings は引数を取りません", 0)]
+        run (printingsCtx "ja") "@printings key=1\n" @?= ([], ["G02096"]),
+      testCase "a body is G02097 at its first block and sets nothing" $ do
+        run (printingsCtx "ja") "@printings\n  本文\n" @?= ([], ["G02097"])
+        [(c, m, s) | (c, m, s, _) <- diagsWith (printingsCtx "ja") "@printings\n  本文\n"] @?= [("G02097", "@printings は本体を持てません", 11)],
+      testCase "an argument and a body are G02096 then G02097" $
+        run (printingsCtx "ja") "@printings 1\n  本文\n" @?= ([], ["G02096", "G02097"]),
       testCase "every cause is reported, in the order of the table" $
-        run (printingsCtx "en") {ctxMeta = Map.fromList [("language", VString "en")]} "@printings 1\n" @?= ([], ["G0296", "G0276", "G0298"])
+        run (printingsCtx "en") {ctxMeta = Map.fromList [("language", VString "en")]} "@printings 1\n" @?= ([], ["G02096", "G02076", "G02098"])
     ]
 
 {- | The diagnostics of a power depend on the input alone: alone, after

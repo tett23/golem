@@ -1,5 +1,5 @@
 {- | The checks of golem preflight (golem-cli ADR 0006): pure functions from
-the rules and a view of the PDF to diagnostics G0902 to G0918. A check
+the rules and a view of the PDF to diagnostics G09002 to G09018. A check
 reports a cause once, at its first place, with every page in the fact
 @pdf-pages@ and the first ten pages in the message.
 -}
@@ -128,11 +128,11 @@ perFigure v f =
 
 -- ------------------------------------------------------------------ the checks
 
--- | G0902: glyph 0 (.notdef), per character and font.
+-- | G09002: glyph 0 (.notdef), per character and font.
 glyphMissing :: Rules -> View -> [Diagnostic]
 glyphMissing r v =
   concat
-    [ at (ruGlyphMissing r) "G0902" (gvLineSpan g) msg [("code-point", FactText cp), ("font", FactText (gvFont g)), pagesFact ps, ("count", FactInt (toInteger (length gs)))]
+    [ at (ruGlyphMissing r) "G09002" (gvLineSpan g) msg [("code-point", FactText cp), ("font", FactText (gvFont g)), pagesFact ps, ("count", FactInt (toInteger (length gs)))]
     | ((t, font), ps, gs@(g : _)) <- groups [((gvText gl, gvFont gl), pvIndex p, gl) | p <- vwPages v, gl <- pvGlyphs p, gvGlyph gl == 0],
       let c = maybe ' ' fst (T.uncons t)
           cp = "U+" <> T.justifyRight 4 '0' (T.toUpper (T.pack (showHex (ord c) "")))
@@ -142,11 +142,11 @@ glyphMissing r v =
   where
     isMark c = generalCategory c `elem` [NonSpacingMark, SpacingCombiningMark, EnclosingMark]
 
--- | G0903: an embedded font of a form the rules do not allow.
+-- | G09003: an embedded font of a form the rules do not allow.
 fontFormats :: Rules -> View -> [Diagnostic]
 fontFormats r v =
   concat
-    [ at (ruFontFormats r) "G0903" (vwStyleSpan v) ("この設定では使えない形式のフォントです: " <> fvPath f <> "（" <> fvFormat f <> "）") [("font", FactText (fvPath f))]
+    [ at (ruFontFormats r) "G09003" (vwStyleSpan v) ("この設定では使えない形式のフォントです: " <> fvPath f <> "（" <> fvFormat f <> "）") [("font", FactText (fvPath f))]
     | f <- nubOnPath (vwFonts v),
       fvFormat f `notElem` ruFontFormatsAllowed r
     ]
@@ -159,7 +159,7 @@ inks = \case
   Nothing -> 1
   Just (_, (c, m, y, k)) -> length (filter (/= 0) [c, m, y, k])
 
-{- | G0904: text smaller than min-size, only in two inks or more with
+{- | G09004: text smaller than min-size, only in two inks or more with
 multi-ink-only. One per definition that decided the size, part (the text,
 a ruby, a kenten mark) and swatch (golem-cli ADR 0008), at the character
 of the group first in the source, in the order of the source: the
@@ -169,7 +169,7 @@ pages of a message do.
 typeSize :: Rules -> View -> [Diagnostic]
 typeSize r v =
   concat
-    [ at (ruTypeSize r) "G0904" (gvSpan g) msg [("size", FactText (mmText (gvSize g))), ("source", FactText (sizeSourcePath src)), ("part", FactText (partName part)), pagesFact ps]
+    [ at (ruTypeSize r) "G09004" (gvSpan g) msg [("size", FactText (mmText (gvSize g))), ("source", FactText (sizeSourcePath src)), ("part", FactText (partName part)), pagesFact ps]
     | ((src, part, _), ps, g) <- sortOn (\(k, _, g) -> (gvSpan g, k)) firsts,
       let msg = "文字が小さすぎます: " <> mmText (gvSize g) <> "（" <> mmText (ruTypeSizeMin r) <> " 未満、" <> sourcePhrase src part <> "、色 " <> maybe "なし" fst (gvColor g) <> "、" <> pagesPhrase ps <> "）"
     ]
@@ -184,24 +184,24 @@ typeSize r v =
     -- the character first in the source; of two at one place, the smaller
     firsts = [(k, ps, minimumBy (comparing (\g -> (gvSpan g, gvSize g))) gs) | (k, ps, gs@(_ : _)) <- groups small]
 
--- | The definition and the part of G0904: @文字スタイル b の size のルビ@.
+-- | The definition and the part of G09004: @文字スタイル b の size のルビ@.
 sourcePhrase :: SizeSource -> GlyphPart -> Text
 sourcePhrase src = \case
   PartBase -> sizeSourceText src
   PartRuby -> sizeSourceText src <> " のルビ"
   PartKenten -> sizeSourceText src <> " の圏点"
 
--- | The part of a glyph in the facts of G0904.
+-- | The part of a glyph in the facts of G09004.
 partName :: GlyphPart -> Text
 partName = \case
   PartBase -> "base"
   PartRuby -> "ruby"
   PartKenten -> "kenten"
 
--- | G0906: the effective resolution below a threshold of the kind of the image.
+-- | G09006: the effective resolution below a threshold of the kind of the image.
 imageResolution :: Rules -> View -> [Diagnostic]
 imageResolution r v =
-  [ (diagnostic "G0906" sev (ivSpan iv) msg) {diagFacts = [("ppi", FactInt ppi), ("limit", FactInt (toInteger limit)), ("pixels", FactInts [toInteger (imgWidth img), toInteger (imgHeight img)]), pagesFact ps]}
+  [ (diagnostic "G09006" sev (ivSpan iv) msg) {diagFacts = [("ppi", FactInt ppi), ("limit", FactInt (toInteger limit)), ("pixels", FactInts [toInteger (imgWidth img), toInteger (imgHeight img)]), pagesFact ps]}
   | (iv, ps, (img, ppi, sev, limit)) <- perFigure v below,
     let msg = "図版の実効の解像度が足りません: " <> ivPath iv <> "（" <> tshow ppi <> "ppi、" <> tshow limit <> "ppi 未満、" <> pagesPhrase ps <> "）"
   ]
@@ -218,11 +218,11 @@ imageResolution r v =
         then Just (img, ppi, Error, e)
         else if w > 0 && ppi < toInteger w then Just (img, ppi, Warning, w) else Nothing
 
--- | G0907: the effective resolution above the maximum of the kind of the image.
+-- | G09007: the effective resolution above the maximum of the kind of the image.
 imageResolutionMax :: Rules -> View -> [Diagnostic]
 imageResolutionMax r v =
   concat
-    [ at (ruImageResolutionMax r) "G0907" (ivSpan iv) msg [("ppi", FactInt ppi), ("limit", FactInt (toInteger limit)), ("pixels", FactInts [toInteger (imgWidth img), toInteger (imgHeight img)]), pagesFact ps]
+    [ at (ruImageResolutionMax r) "G09007" (ivSpan iv) msg [("ppi", FactInt ppi), ("limit", FactInt (toInteger limit)), ("pixels", FactInts [toInteger (imgWidth img), toInteger (imgHeight img)]), pagesFact ps]
     | (iv, ps, (img, ppi, limit)) <- perFigure v above,
       let msg = "図版の実効の解像度が高すぎます: " <> ivPath iv <> "（" <> tshow ppi <> "ppi、" <> tshow limit <> "ppi 超）"
     ]
@@ -257,11 +257,11 @@ colorUseName = \case
   UseIcc _ _ -> "icc"
   UseLab -> "lab"
 
--- | G0908: an image in a colour space the rules do not allow; for a PDF figure, all of them in one.
+-- | G09008: an image in a colour space the rules do not allow; for a PDF figure, all of them in one.
 imageColorSpace :: Rules -> View -> [Diagnostic]
 imageColorSpace r v =
   concat
-    [ at (ruImageColorSpace r) "G0908" (ivSpan iv) ("この設定では使えない色空間の図版です: " <> ivPath iv <> "（" <> cs <> "）。Golem は画像の色を変換しないので、CMYK に変換した画像に替えます") [("color-space", FactText cs), pagesFact ps]
+    [ at (ruImageColorSpace r) "G09008" (ivSpan iv) ("この設定では使えない色空間の図版です: " <> ivPath iv <> "（" <> cs <> "）。Golem は画像の色を変換しないので、CMYK に変換した画像に替えます") [("color-space", FactText cs), pagesFact ps]
     | (iv, ps, cs) <- perFigure v disallowed
     ]
   where
@@ -274,13 +274,13 @@ imageColorSpace r v =
       -- an SVG figure is sRGB (golem-pdf ADR 0009)
       SvgFigure _ -> ["rgb"]
 
--- | G0909: a CMYK image with a profile other than the output intent's.
+-- | G09009: a CMYK image with a profile other than the output intent's.
 imageIcc :: Rules -> View -> [Diagnostic]
 imageIcc r v = case vwIntentProfile v of
   Nothing -> []
   Just intent ->
     concat
-      [ at (ruImageIcc r) "G0909" (ivSpan iv) ("出力インテントと違う ICC プロファイルを持つ CMYK の図版です: " <> ivPath iv <> "。印刷の工程で色が変換されることがあります") [pagesFact ps]
+      [ at (ruImageIcc r) "G09009" (ivSpan iv) ("出力インテントと違う ICC プロファイルを持つ CMYK の図版です: " <> ivPath iv <> "。印刷の工程で色が変換されることがあります") [pagesFact ps]
       | (iv, ps, ()) <- perFigure v (differs intent)
       ]
   where
@@ -294,12 +294,12 @@ imageIcc r v = case vwIntentProfile v of
         | otherwise -> Nothing
       SvgFigure _ -> Nothing
 
--- | G0910: [page] bleed below min.
+-- | G09010: [page] bleed below min.
 bleedSize :: Rules -> View -> [Diagnostic]
 bleedSize r v =
   [ d
   | vwBleed v < ruBleedMin r,
-    d <- at (ruBleedSize r) "G0910" (vwStyleSpan v) ("塗り足しの幅が足りません: " <> mmText (vwBleed v) <> "（" <> mmText (ruBleedMin r) <> " 以上にします）") []
+    d <- at (ruBleedSize r) "G09010" (vwStyleSpan v) ("塗り足しの幅が足りません: " <> mmText (vwBleed v) <> "（" <> mmText (ruBleedMin r) <> " 以上にします）") []
   ]
 
 {- | The distance of each edge of a rectangle from the same edge of the
@@ -313,11 +313,11 @@ edges p (Rect x y w h) =
       (gutter, outer) = if pvGutterLeft p then (left, right) else (right, left)
    in [("天", (ty + th) - (y + h)), ("地", y - ty), ("小口", outer), ("のど", gutter)]
 
--- | G0911: an edge of an image near the trim line that does not reach the bleed line.
+-- | G09011: an edge of an image near the trim line that does not reach the bleed line.
 trimHazard :: Rules -> View -> [Diagnostic]
 trimHazard r v =
   concat
-    [ at (ruBleedTrimHazard r) "G0911" (ivSpan iv) ("図版が仕上がりの線の近くにあり、塗り足しまで届いていません: " <> ivPath iv <> "（" <> edge <> "、仕上がりの線から " <> mmText e <> "、" <> pagesPhrase ps <> "）") [pagesFact ps]
+    [ at (ruBleedTrimHazard r) "G09011" (ivSpan iv) ("図版が仕上がりの線の近くにあり、塗り足しまで届いていません: " <> ivPath iv <> "（" <> edge <> "、仕上がりの線から " <> mmText e <> "、" <> pagesPhrase ps <> "）") [pagesFact ps]
     | (iv, ps, (edge, e)) <- perFigure' hazard
     ]
   where
@@ -332,11 +332,11 @@ trimHazard r v =
       | (_, ps, (iv, a) : _) <- groups [(ivSpan iv, pvIndex p, (iv, a)) | p <- vwPages v, iv <- pvImages p, Just a <- [f p iv]]
       ]
 
--- | G0912: lines of text and rules outside the safe area.
+-- | G09012: lines of text and rules outside the safe area.
 liveArea :: Rules -> View -> [Diagnostic]
 liveArea r v =
   concat
-    [ at (ruLiveArea r) "G0912" sp ("文字が仕上がりの線に近すぎます: " <> kind <> "（" <> edge <> "、仕上がりの線から " <> mmText e <> "、" <> pagesPhrase ps <> "）") [pagesFact ps]
+    [ at (ruLiveArea r) "G09012" sp ("文字が仕上がりの線に近すぎます: " <> kind <> "（" <> edge <> "、仕上がりの線から " <> mmText e <> "、" <> pagesPhrase ps <> "）") [pagesFact ps]
     | ((kind, edge), ps, (sp, e) : _) <-
         groups
           ( [((lvKind l, edge), pvIndex p, (lvSpan l, e)) | p <- vwPages v, l <- pvLines p, (edge, e) <- take 1 (outside p (lvRect l))]
@@ -346,39 +346,39 @@ liveArea r v =
   where
     outside p rect = [(edge, e) | (edge, e) <- edges p rect, e < ruLiveAreaDistance r]
 
--- | G0913: a line overfull after line breaking.
+-- | G09013: a line overfull after line breaking.
 overfullLines :: Rules -> View -> [Diagnostic]
 overfullLines r v =
   concat
-    [ at (ruOverfullLines r) "G0913" (lvSpan l) ("行が行長から " <> mmText amount <> " はみ出しています（" <> pagesPhrase [pvIndex p] <> "）") [("overfull", FactText (mmText amount)), pagesFact [pvIndex p]]
+    [ at (ruOverfullLines r) "G09013" (lvSpan l) ("行が行長から " <> mmText amount <> " はみ出しています（" <> pagesPhrase [pvIndex p] <> "）") [("overfull", FactText (mmText amount)), pagesFact [pvIndex p]]
     | p <- vwPages v,
       l <- pvLines p,
       Just amount <- [lvOverfull l]
     ]
 
--- | G0914: the PDF/X-4 requirements; one diagnostic when the output intent is missing.
+-- | G09014: the PDF/X-4 requirements; one diagnostic when the output intent is missing.
 pdfX :: Rules -> View -> [Diagnostic]
 pdfX r v
   | null (vwX4 v) = []
   | otherwise = case vwIntentProfile v of
-      Nothing -> at (ruPdfX r) "G0914" (vwStyleSpan v) "PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）" [("requirement", FactText "出力インテント")]
+      Nothing -> at (ruPdfX r) "G09014" (vwStyleSpan v) "PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）" [("requirement", FactText "出力インテント")]
       Just _ ->
         concat
-          [ at (ruPdfX r) "G0914" (vwStyleSpan v) ("PDF/X-4 の要件を満たしていません: " <> x4Requirement p <> "（" <> x4Detail p <> "）") [("requirement", FactText (x4Requirement p))]
+          [ at (ruPdfX r) "G09014" (vwStyleSpan v) ("PDF/X-4 の要件を満たしていません: " <> x4Requirement p <> "（" <> x4Detail p <> "）") [("requirement", FactText (x4Requirement p))]
           | p <- nub (vwX4 v)
           ]
 
--- | G0915: the total ink of a swatch used.
+-- | G09015: the total ink of a swatch used.
 inkCoverage :: Rules -> View -> [Diagnostic]
 inkCoverage r v =
   concat
-    [ at (ruInkCoverage r) "G0915" (vwStyleSpan v) ("色の総インキ量が多すぎます: " <> name <> "（" <> tshow total <> "%、" <> tshow (ruInkMax r) <> "% 超）") [("total", FactInt (toInteger total))]
+    [ at (ruInkCoverage r) "G09015" (vwStyleSpan v) ("色の総インキ量が多すぎます: " <> name <> "（" <> tshow total <> "%、" <> tshow (ruInkMax r) <> "% 超）") [("total", FactInt (toInteger total))]
     | (name, (c, m, y, k)) <- Map.toList (vwSwatchesUsed v),
       let total = c + m + y + k,
       total > ruInkMax r
     ]
 
--- | G0916: the pages are not a multiple of multiple-of.
+-- | G09016: the pages are not a multiple of multiple-of.
 pageCount :: Rules -> View -> [Diagnostic]
 pageCount r v =
   let n = length (vwPages v)
@@ -386,19 +386,19 @@ pageCount r v =
       short = (m - n `mod` m) `mod` m
    in [ d
       | short /= 0,
-        d <- at (ruPageCount r) "G0916" (vwManifestSpan v) ("ページ数が " <> tshow m <> " の倍数ではありません: " <> tshow n <> "（あと " <> tshow short <> " ページ）") [("pages", FactInt (toInteger n))]
+        d <- at (ruPageCount r) "G09016" (vwManifestSpan v) ("ページ数が " <> tshow m <> " の倍数ではありません: " <> tshow n <> "（あと " <> tshow short <> " ページ）") [("pages", FactInt (toInteger n))]
       ]
 
--- | G0917: the blank pages, together.
+-- | G09017: the blank pages, together.
 blankPages :: Rules -> View -> [Diagnostic]
 blankPages r v = case [pvIndex p | p <- vwPages v, pvBlank p] of
   [] -> []
-  ps -> at (ruBlankPages r) "G0917" (vwManifestSpan v) ("空白のページです（" <> pagesPhrase ps <> "）") [pagesFact ps]
+  ps -> at (ruBlankPages r) "G09017" (vwManifestSpan v) ("空白のページです（" <> pagesPhrase ps <> "）") [pagesFact ps]
 
--- | G0918: rules thinner than min, per kind.
+-- | G09018: rules thinner than min, per kind.
 strokeWeight :: Rules -> View -> [Diagnostic]
 strokeWeight r v =
   concat
-    [ at (ruStrokeWeight r) "G0918" (vwStyleSpan v) ("線が細すぎます: " <> kind <> "（" <> mmText w <> "、" <> mmText (ruStrokeMin r) <> " 未満、" <> pagesPhrase ps <> "）") [pagesFact ps]
+    [ at (ruStrokeWeight r) "G09018" (vwStyleSpan v) ("線が細すぎます: " <> kind <> "（" <> mmText w <> "、" <> mmText (ruStrokeMin r) <> " 未満、" <> pagesPhrase ps <> "）") [pagesFact ps]
     | (kind, ps, w : _) <- groups [(rvKind ru, pvIndex p, rvWeight ru) | p <- vwPages v, ru <- pvRules p, rvWeight ru < ruStrokeMin r]
     ]

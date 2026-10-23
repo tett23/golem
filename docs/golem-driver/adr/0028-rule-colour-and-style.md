@@ -16,11 +16,11 @@
 
 コードで確かめると、次のとおりである。
 
-- `Golem.Project.Style` の `RuleSpec` は、`length`、`weight`、`space-before`、`space-after` の四つのキーだけを読み、ほかのキーを G0306 にする。
+- `Golem.Project.Style` の `RuleSpec` は、`length`、`weight`、`space-before`、`space-after` の四つのキーだけを読み、ほかのキーを G03006 にする。
 - golem-pdf の罫線の描画の手段は、塗った矩形の `Rule`（`re f`）だけである。線を引く（stroke の）演算子も、曲線も書かない。トンボも矩形を塗って描く（[golem-pdf ADR 0007](../../golem-pdf/adr/0007-registration-crop-marks.md)）。
 - 脚注の区切り線と表の罫線は、色を設定せずに描く。PDF の既定の塗りの色（DeviceGray の黒）になる。
 - コードブロックの背景と枠は、`P.Saved [P.SetColor sw, P.Rule ...]` の形で、スウォッチの CMYK を DeviceCMYK で塗る（[ADR 0017](0017-pdf-code-blocks.md)、[ADR 0023](0023-code-block-book-features.md)）。`SetColor` は塗りと線の両方の色（`k` と `K`）を設定する。
-- golem preflight は、罫線の太さを `RuleView` の `rvWeight` で検査し（G0918）、使ったスウォッチの総インキ量を `vwSwatchesUsed` で検査する（G0915）。罫線の色は、今はスウォッチとして数えていない。
+- golem preflight は、罫線の太さを `RuleView` の `rvWeight` で検査し（G09018）、使ったスウォッチの総インキ量を `vwSwatchesUsed` で検査する（G09015）。罫線の色は、今はスウォッチとして数えていない。
 
 
 ### InDesign の線の種類と既定
@@ -95,10 +95,10 @@ color = "accent"
 ```
 
 - 値の検査は、どの使い手でも同じにする。
-  - `color` が `[color.swatches]` にない場合は G0313 とする。文字スタイルの `color` と同じ扱いである。
-  - `style` が表の値のどれでもない場合は G0306 とする。
-  - `dash` と `gap` が寸法として読めない値の場合、0 以下の場合、`zw` の場合は G0306 とする。線分の長さは `weight` と同じく字の大きさに比例させる理由がないので、`zw` を受け付けない。
-  - `dash` は `"dashed"` のときだけ、`gap` は `"dashed"`、`"dotted"`、`"japanese-dots"` のときだけ書ける。ほかの線の種類に書くと G0306 とする。効果のないキーを黙って受け付けないためである。
+  - `color` が `[color.swatches]` にない場合は G03013 とする。文字スタイルの `color` と同じ扱いである。
+  - `style` が表の値のどれでもない場合は G03006 とする。
+  - `dash` と `gap` が寸法として読めない値の場合、0 以下の場合、`zw` の場合は G03006 とする。線分の長さは `weight` と同じく字の大きさに比例させる理由がないので、`zw` を受け付けない。
+  - `dash` は `"dashed"` のときだけ、`gap` は `"dashed"`、`"dotted"`、`"japanese-dots"` のときだけ書ける。ほかの線の種類に書くと G03006 とする。効果のないキーを黙って受け付けないためである。
 - 既定の値は今の振る舞いと同じなので、四つのキーを書かない本の出力は変わらない。
 - 使い手ごとに変える事項はない。四つのキーは、脚注の区切り線、段落スタイルの罫線、見出しの罫線で同じ意味を持つ。
 
@@ -131,8 +131,8 @@ PDF の破線のパターン（`d` の演算子）に任せると、罫線の終
 
 ### golem preflight
 
-- `pdRules` と `RuleView` の `rvWeight` には、線の種類の最も細い部分の太さを入れる。実線と破線では `w`、多重線では最も細い線の太さ、点線と和文の点線では `w`、波線では `t` とする。多重線の細い線や波線が細すぎる場合に G0918 で報告するためである。
-- 罫線の色のスウォッチを、使ったスウォッチ（`vwSwatchesUsed`）に加える。総インキ量の検査（G0915）が、罫線の色にも及ぶ。
+- `pdRules` と `RuleView` の `rvWeight` には、線の種類の最も細い部分の太さを入れる。実線と破線では `w`、多重線では最も細い線の太さ、点線と和文の点線では `w`、波線では `t` とする。多重線の細い線や波線が細すぎる場合に G09018 で報告するためである。
+- 罫線の色のスウォッチを、使ったスウォッチ（`vwSwatchesUsed`）に加える。総インキ量の検査（G09015）が、罫線の色にも及ぶ。
 
 ### HTML と EPUB
 
@@ -169,7 +169,7 @@ data RuleStyle
 ### ドキュメント
 
 - docs/specifications.md：「罫線の指定」の表と検査の段落に四つのキーと線の種類の表を加え、「style.toml」の例に `style` と `color` を書く。「色」の節に、罫線の色も DeviceCMYK で塗ることを加える。
-- docs/diagnostics.md：G0306 と G0313 の主な原因に、罫線の指定のキーを加える。
+- docs/diagnostics.md：G03006 と G03013 の主な原因に、罫線の指定のキーを加える。
 - docs/roadmap.md：v1.0.0 の「罫線の色と線の種類」を消す。v0.1.0-rc3 の節に、この ADR を実装することを書く。
 - [ADR 0024](0024-rule-spec-and-footnote-separator.md) のステータスを「採択→罫線の色と線の種類は [ADR 0028](0028-rule-colour-and-style.md)」にする。
 - 使い手のマニュアル：`manual/chapters/05-style.gm` の注の設定と段落スタイルの罫線の説明、`manual/appendices/c-style.gm` の罫線の指定の表に四つのキーと線の種類を加える。`manual/appendices/f-indesign.gm` に、InDesign の線パネルの種類との対応と、採らなかった種類を加える。`manual/appendices/h-roadmap.gm` から罫線の色と線の種類を消す。
@@ -198,8 +198,8 @@ data RuleStyle
 - `style = "dotted"`、`weight = "1pt"` を読むと、`RuleDotted`（2pt）になる。`style = "japanese-dots"`、`weight = "1pt"` を読むと、`RuleJapaneseDots`（1pt）になる。
 - 多重線の 7 種が、表の比の `RuleMulti` になる（`"thick-thin"` は `[2, 1, 1]`、`"triple"` は `[1, 1, 1, 1, 1]`）。
 - `style = "wavy"` が `RuleWavy` になる。
-- `style = "straight-hash"`、`style = "double"`、`dash = "1zw"`、`gap = "0pt"`、`"solid"` と `dash` の組、`"dotted"` と `dash` の組、`"thin-thin"` と `gap` の組、`"wavy"` と `gap` の組が、それぞれ G0306 になる。
-- `[notes.rule]` の `color = "accent"` で `[color.swatches]` に `accent` があれば読め、なければ G0313 になる。段落スタイルの `rule-before` と見出しの `rule-after` の `color` も同じく検査される。
+- `style = "straight-hash"`、`style = "double"`、`dash = "1zw"`、`gap = "0pt"`、`"solid"` と `dash` の組、`"dotted"` と `dash` の組、`"thin-thin"` と `gap` の組、`"wavy"` と `gap` の組が、それぞれ G03006 になる。
+- `[notes.rule]` の `color = "accent"` で `[color.swatches]` に `accent` があれば読め、なければ G03013 になる。段落スタイルの `rule-before` と見出しの `rule-after` の `color` も同じく検査される。
 
 ### 線の形（golem-driver の純粋な関数のテスト）
 
@@ -221,7 +221,7 @@ data RuleStyle
 - 段落スタイルの罫線に `style = "dotted"` を書くと、PDF の内容に点の数だけの円が描かれる。
 - 内容のストリームに `S`、`J`、`d` の演算子が現れない。
 - 四つのキーを書かない本の PDF のバイト列が変わらないことを、既存の PDF のテストと決定性の検査で確かめる。
-- golem preflight の見え方で、`"thin-thin"` の罫線の `rvWeight` が細い線の太さに、波線の `rvWeight` が `t` になり、罫線の色のスウォッチが `vwSwatchesUsed` に入る。総インキ量の多いスウォッチを罫線の色にだけ使うと、G0915 が出る。
+- golem preflight の見え方で、`"thin-thin"` の罫線の `rvWeight` が細い線の太さに、波線の `rvWeight` が `t` になり、罫線の色のスウォッチが `vwSwatchesUsed` に入る。総インキ量の多いスウォッチを罫線の色にだけ使うと、G09015 が出る。
 
 ### HTML（`modules/golem-html/test/Main.hs`）
 

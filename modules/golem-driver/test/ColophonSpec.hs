@@ -118,11 +118,11 @@ colophonTests =
     testCase "a book without a publisher has its publisher person" $ do
       let noPublisher = T.unlines (filter (/= "publisher = \"ゴーレム書房\"") (T.lines colophonMeta))
       evalMeta noPublisher "meta.publisher_person" >>= (@?= Right (VString "佐藤 一郎")),
-    testCase "a role without items, printing without printings and publisher_person without it are G0202" $ do
+    testCase "a role without items, printing without printings and publisher_person without it are G02002" $ do
       evalMeta colophonMeta "meta.roles.binder" >>= (@?= Right (VArray [VString "株式会社乙製本"]))
-      evalMeta colophonMeta "meta.roles.translator" >>= (@?= Left "G0202")
-      evalMeta plainMeta "meta.printing" >>= (@?= Left "G0202")
-      evalMeta plainMeta "meta.publisher_person" >>= (@?= Left "G0202"),
+      evalMeta colophonMeta "meta.roles.translator" >>= (@?= Left "G02002")
+      evalMeta plainMeta "meta.printing" >>= (@?= Left "G02002")
+      evalMeta plainMeta "meta.publisher_person" >>= (@?= Left "G02002"),
     testCase "EPUB: creators and contributors with their codes; no printer, binder, printings or publisher person" $ do
       md <- metadataOf colophonMeta
       let opf = packageDocument (epubConfig md Nothing False) ["a.xhtml"] []

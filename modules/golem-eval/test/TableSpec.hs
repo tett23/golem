@@ -101,7 +101,7 @@ tests :: TestTree
 tests = testGroup "tables (golem-eval ADR 0004)" [tsvTests, csvTests, argTests, roundTrips, limitTests, allocationTests]
 
 {- | Rows of the same number of cells, at least @minCols@, the first cell not empty (an empty
-file is G0285), from characters that a table file treats in different ways.
+file is G02085), from characters that a table file treats in different ways.
 -}
 genGrid :: Int -> [Char] -> Gen [[Text]]
 genGrid minCols cs = do
@@ -162,30 +162,30 @@ tsvTests =
         tsv "a\tb\r\nc\td\n" @?= Right [["a", "b"], ["c", "d"]],
       testCase "the header row alone" $ tsv "a\tb\n" @?= Right [["a", "b"]],
       testCase "empty files" $ do
-        tsv "" @?= Left ("G0285", "TSV が空です", 0, 0)
-        tsv "\n" @?= Left ("G0285", "TSV が空です", 0, 0)
-        tsv "\r\n" @?= Left ("G0285", "TSV が空です", 0, 0),
+        tsv "" @?= Left ("G02085", "TSV が空です", 0, 0)
+        tsv "\n" @?= Left ("G02085", "TSV が空です", 0, 0)
+        tsv "\r\n" @?= Left ("G02085", "TSV が空です", 0, 0),
       testCase "a row with another number of cells" $ do
-        tsv "a\tb\nc\n" @?= Left ("G0285", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)
-        tsv "a\tb\r\nc\r\n" @?= Left ("G0285", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 5, 6),
+        tsv "a\tb\nc\n" @?= Left ("G02085", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)
+        tsv "a\tb\r\nc\r\n" @?= Left ("G02085", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 5, 6),
       testCase "the first such row alone" $
-        tsv "a\tb\nc\td\te\nf\n" @?= Left ("G0285", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 3）", 4, 9),
+        tsv "a\tb\nc\td\te\nf\n" @?= Left ("G02085", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 3）", 4, 9),
       testCase "empty lines are rows of one empty cell" $ do
-        tsv "a\tb\n\n" @?= Left ("G0285", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 4)
+        tsv "a\tb\n\n" @?= Left ("G02085", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 4)
         tsv "a\n\nb\n" @?= Right [["a"], [""], ["b"]],
       testCase "an empty cell" $ tsv "a\t\tb" @?= Right [["a", "", "b"]],
       testCase "quotes and backslashes are as written" $ do
         tsv "\"a,b\"\t\"c" @?= Right [["\"a,b\"", "\"c"]]
         tsv "C:\\new\tx" @?= Right [["C:\\new", "x"]],
       testCase "spaces around a cell are kept" $ tsv " a \tb" @?= Right [[" a ", "b"]],
-      testCase "a lone CR is G0282" $
-        tsv "a\rb\tc" @?= Left ("G0282", "単独の CR があります。表のファイルの改行は LF か CRLF に限ります", 1, 2),
+      testCase "a lone CR is G02082" $
+        tsv "a\rb\tc" @?= Left ("G02082", "単独の CR があります。表のファイルの改行は LF か CRLF に限ります", 1, 2),
       testCase "positions are in bytes" $
         -- 表 is 3 bytes, the combining mark U+3099 is 3 bytes
-        tsv "表\tか\x3099\nx\n" @?= Left ("G0285", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 11, 12),
+        tsv "表\tか\x3099\nx\n" @?= Left ("G02085", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 11, 12),
       testCase "a BOM at the start is skipped and counted" $ do
         tsv "\xFEFF\&a\tb\n" @?= Right [["a", "b"]]
-        tsv "\xFEFF\&a\tb\nc\n" @?= Left ("G0285", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 7, 8)
+        tsv "\xFEFF\&a\tb\nc\n" @?= Left ("G02085", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 7, 8)
     ]
 
 csvTests :: TestTree
@@ -200,17 +200,17 @@ csvTests =
       testCase "quoted fields as before" $
         csv "a,b\n1,\"x,y\"\n\"q\"\"r\",s\n" @?= Right [["a", "b"], ["1", "x,y"], ["q\"r", "s"]],
       testCase "a row with another number of cells" $
-        csv "a,b\nc\n" @?= Left ("G0285", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5),
+        csv "a,b\nc\n" @?= Left ("G02085", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5),
       testCase "a record over lines" $
-        csv "a,b\n\"c\nd\"\n" @?= Left ("G0285", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 9),
+        csv "a,b\n\"c\nd\"\n" @?= Left ("G02085", "CSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 9),
       testCase "empty files" $ do
-        csv "" @?= Left ("G0285", "CSV が空です", 0, 0)
-        csv "\n\n" @?= Left ("G0285", "CSV が空です", 0, 0),
-      testCase "an unclosed quote is G0283" $
-        csv "a,\"b" @?= Left ("G0283", "CSV の引用符が閉じていません", 2, 3),
-      testCase "a lone CR is G0282, in quotes or not" $ do
-        csv "\"a\rb\"" @?= Left ("G0282", "単独の CR があります。表のファイルの改行は LF か CRLF に限ります", 2, 3)
-        csv "a\rb" @?= Left ("G0282", "単独の CR があります。表のファイルの改行は LF か CRLF に限ります", 1, 2),
+        csv "" @?= Left ("G02085", "CSV が空です", 0, 0)
+        csv "\n\n" @?= Left ("G02085", "CSV が空です", 0, 0),
+      testCase "an unclosed quote is G02083" $
+        csv "a,\"b" @?= Left ("G02083", "CSV の引用符が閉じていません", 2, 3),
+      testCase "a lone CR is G02082, in quotes or not" $ do
+        csv "\"a\rb\"" @?= Left ("G02082", "単独の CR があります。表のファイルの改行は LF か CRLF に限ります", 2, 3)
+        csv "a\rb" @?= Left ("G02082", "単独の CR があります。表のファイルの改行は LF か CRLF に限ります", 1, 2),
       testCase "a quote outside quotes is as written" $ csv "a\"b,c" @?= Right [["a\"b", "c"]],
       testCase "empty lines are dropped" $ csv "a,b\n\n1,2\n\n" @?= Right [["a", "b"], ["1", "2"]],
       testCase "a BOM at the start is skipped" $ csv "\xFEFF\&a,b\n" @?= Right [["a", "b"]]
@@ -229,8 +229,8 @@ argTests =
       testCase "format= comes first" $ do
         fmap cellsOf (table "@table src=t.txt format=tsv\n") @?= Just abc
         fmap cellsOf (table "@table src=c.tsv format=csv\n") @?= Just abc,
-      testCase "G0280" $
-        run "@table src=x.csv format=xml\n" @?= ([], [("G0280", "format は csv か tsv です: xml", 17, 27)]),
+      testCase "G02080" $
+        run "@table src=x.csv format=xml\n" @?= ([], [("G02080", "format は csv か tsv です: xml", 17, 27)]),
       testCase "the same CSV and TSV give the same table" $
         fst (run "@table src=x.tsv\n") @?= fst (run "@table src=x.csv\n"),
       testCase "empty cells differ, on purpose" $ do
@@ -247,22 +247,22 @@ argTests =
         fmap alignOf (table "@table src=x.tsv align=\"left, default ,right\"\n") @?= Just [AlignLeft, AlignDefault, AlignRight],
       testCase "one value for every column" $
         fmap alignOf (table "@table src=x.tsv align=right\n") @?= Just [AlignRight, AlignRight, AlignRight],
-      testCase "G0281: the number of values" $
-        run "@table src=x.tsv align=left,right\n" @?= ([], [("G0281", "align の値の数が表の列の数と違います（列は 3、align は 2）", 17, 33)]),
-      testCase "G0281: values" $ do
-        run "@table src=x.tsv align=left,,right\n" @?= ([], [("G0281", "align の値は left、center、right、default のどれかです: left,,right", 17, 34)])
-        codes "@table src=x.tsv align=middle\n" @?= ["G0281"]
-        codes "@table src=x.tsv align=Left\n" @?= ["G0281"]
-        codes "@table src=x.tsv align=[= \"left\"]\n" @?= ["G0281"],
+      testCase "G02081: the number of values" $
+        run "@table src=x.tsv align=left,right\n" @?= ([], [("G02081", "align の値の数が表の列の数と違います（列は 3、align は 2）", 17, 33)]),
+      testCase "G02081: values" $ do
+        run "@table src=x.tsv align=left,,right\n" @?= ([], [("G02081", "align の値は left、center、right、default のどれかです: left,,right", 17, 34)])
+        codes "@table src=x.tsv align=middle\n" @?= ["G02081"]
+        codes "@table src=x.tsv align=Left\n" @?= ["G02081"]
+        codes "@table src=x.tsv align=[= \"left\"]\n" @?= ["G02081"],
       testCase "cells=text is the default" $
         table "@table src=x.tsv cells=text\n" @?= table "@table src=x.tsv\n",
-      testCase "G0284" $ do
-        run "@table src=x.tsv cells=markup\n" @?= ([], [("G0284", "cells=markup はまだ実装していません", 17, 29)])
-        run "@table src=x.tsv cells=html\n" @?= ([], [("G0284", "cells は text です: html", 17, 27)]),
+      testCase "G02084" $ do
+        run "@table src=x.tsv cells=markup\n" @?= ([], [("G02084", "cells=markup はまだ実装していません", 17, 29)])
+        run "@table src=x.tsv cells=html\n" @?= ([], [("G02084", "cells は text です: html", 17, 27)]),
       testCase "CSV and TSV take the same alignment" $
         fmap alignOf (table "@table src=x.tsv align=left,center,right\n") @?= fmap alignOf (table "@table src=x.csv align=left,center,right\n"),
-      testCase "G0285 at the table file" $
-        snd (run "@table src=ragged.tsv\n") @?= [("G0285", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
+      testCase "G02085 at the table file" $
+        snd (run "@table src=ragged.tsv\n") @?= [("G02085", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5)],
       testCase "a file that failed the reading stage gives no table and no more diagnostics" $
         run "@table src=bad.tsv\n" @?= ([], [])
     ]
@@ -271,29 +271,29 @@ argTests =
     cellsOf (_, h, rs) = (h, rs)
     alignOf (al, _, _) = al
 
--- | The limits of a table file, G0288 (docs/adr ADR 0043).
+-- | The limits of a table file, G02088 (docs/adr ADR 0043).
 limitTests :: TestTree
 limitTests =
   testGroup
     "the limits of a table file (docs/adr ADR 0043)"
     [ testCase "the limits" $ (tableMaxBytes, tableMaxRows, tableMaxCells) @?= (16777216, 10000, 256),
-      testCase "16 MiB is read, and one byte more is G0288 at @table" $ do
+      testCase "16 MiB is read, and one byte more is G02088 at @table" $ do
         fmap (\(_, h, rs) -> (length h, length rs)) (table "@table src=max-bytes.tsv\n") @?= Just (1, 0)
-        run "@table src=over-bytes.tsv\n" @?= ([], [("G0288", "表のファイルが大きさの上限を超えます: over-bytes.tsv（16777217 バイト、上限は 16777216 バイト）", 0, 26)]),
-      testCase "a file the driver did not read for its size is G0288" $
-        run "@table src=too-large.csv\n" @?= ([], [("G0288", "表のファイルが大きさの上限を超えます: too-large.csv（16777217 バイト、上限は 16777216 バイト）", 0, 25)]),
-      testCase "10,000 rows are read, and 10,001 are G0288" $ do
+        run "@table src=over-bytes.tsv\n" @?= ([], [("G02088", "表のファイルが大きさの上限を超えます: over-bytes.tsv（16777217 バイト、上限は 16777216 バイト）", 0, 26)]),
+      testCase "a file the driver did not read for its size is G02088" $
+        run "@table src=too-large.csv\n" @?= ([], [("G02088", "表のファイルが大きさの上限を超えます: too-large.csv（16777217 バイト、上限は 16777216 バイト）", 0, 25)]),
+      testCase "10,000 rows are read, and 10,001 are G02088" $ do
         fmap (\(_, h, rs) -> (length h, length rs)) (table "@table src=max-rows.tsv\n") @?= Just (1, 9999)
-        run "@table src=over-rows.tsv\n" @?= ([], [("G0288", "表のファイルが行の数の上限を超えます: over-rows.tsv（10001 行目、上限は 10000 行）", 0, 25)]),
-      testCase "256 cells are read, and 257 are G0288" $ do
+        run "@table src=over-rows.tsv\n" @?= ([], [("G02088", "表のファイルが行の数の上限を超えます: over-rows.tsv（10001 行目、上限は 10000 行）", 0, 25)]),
+      testCase "256 cells are read, and 257 are G02088" $ do
         fmap (\(_, h, _) -> length h) (table "@table src=max-cells.csv\n") @?= Just 256
-        run "@table src=over-cells.csv\n" @?= ([], [("G0288", "表のファイルがセルの数の上限を超えます: over-cells.csv（1 行目、上限は 1 行に 256 個）", 0, 26)]),
+        run "@table src=over-cells.csv\n" @?= ([], [("G02088", "表のファイルがセルの数の上限を超えます: over-cells.csv（1 行目、上限は 1 行に 256 個）", 0, 26)]),
       testCase "the rows and cells are counted as the file is read, and the rest is not" $ do
-        -- a G0285 or G0283 after the row over the limit is not reached
-        tsv (T.unlines (replicate (tableMaxRows + 1) "a") <> "a\tb\n") @?= Left ("G0288", "表のファイルが行の数の上限を超えます: t（10001 行目、上限は 10000 行）", 0, 0)
-        csv (T.intercalate "," (replicate (tableMaxCells + 1) "a") <> ",\"x\n") @?= Left ("G0288", "表のファイルがセルの数の上限を超えます: t（1 行目、上限は 1 行に 256 個）", 0, 0)
-        -- a G0285 before it is
-        tsv ("a\tb\n" <> T.unlines (replicate tableMaxRows "a")) @?= Left ("G0285", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5),
+        -- a G02085 or G02083 after the row over the limit is not reached
+        tsv (T.unlines (replicate (tableMaxRows + 1) "a") <> "a\tb\n") @?= Left ("G02088", "表のファイルが行の数の上限を超えます: t（10001 行目、上限は 10000 行）", 0, 0)
+        csv (T.intercalate "," (replicate (tableMaxCells + 1) "a") <> ",\"x\n") @?= Left ("G02088", "表のファイルがセルの数の上限を超えます: t（1 行目、上限は 1 行に 256 個）", 0, 0)
+        -- a G02085 before it is
+        tsv ("a\tb\n" <> T.unlines (replicate tableMaxRows "a")) @?= Left ("G02085", "TSV の行のセルの数が見出しの行と違います（見出しの行は 2、この行は 1）", 4, 5),
       testCase "the empty lines a CSV drops are not rows" $
         fmap length (csv (T.unlines (replicate tableMaxRows "a,b") <> "\n\n")) @?= Right tableMaxRows,
       testCase "a table of 10,000 rows of a CSV, as a cell over lines" $

@@ -88,7 +88,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 ## 出力
 
 - **ターゲット**：出力する形式。PDF、EPUB、HTML、プレーンテキストの四つがある。`golem build` は既定で四つすべてを生成し、`--target` で絞れる（[golem-cli ADR 0002](golem-cli/adr/0002-build-all-targets-by-default.md)）。
-- **出力に書けない文字**：XML 1.0 の `Char` に当たらない文字。タブ、改行、復帰以外の U+0000 から U+001F と、U+FFFE、U+FFFF、サロゲートの符号位置である。出力の側で置き換えず、原稿では G0289、`manifest.toml` では G0328 として、どのターゲットでも読み込みの段階で拒む（[仕様書](specifications.md)、[docs/adr/0042](adr/0042-control-characters-and-glob-metacharacters.md)）。
+- **出力に書けない文字**：XML 1.0 の `Char` に当たらない文字。タブ、改行、復帰以外の U+0000 から U+001F と、U+FFFE、U+FFFF、サロゲートの符号位置である。出力の側で置き換えず、原稿では G02089、`manifest.toml` では G03028 として、どのターゲットでも読み込みの段階で拒む（[仕様書](specifications.md)、[docs/adr/0042](adr/0042-control-characters-and-glob-metacharacters.md)）。
 - **PDF/X-4**：印刷用の PDF の規格（ISO 15930-7:2010）。出力インテント、フォントの埋め込み、XMP のメタデータなどを求める（[golem-pdf ADR 0002](golem-pdf/adr/0002-pdf-x-4.md)）。
 - **出力インテント**：印刷の条件を表す ICC プロファイル。v1 では Japan Color 2001 Coated とし、色の名前と CMYK の値はこれに結び付けて定義する。
 - **スウォッチ**：名前を付けた色。`style.toml` に CMYK の値で定義し、原稿からは名前で指す。
@@ -111,7 +111,7 @@ Golem の仕様書、言語仕様、ADR で使う用語をまとめる。
 - **lint**：原稿の誤りの可能性を指摘する検査。規則は処理系が固定し、利用者が加えたり止めたりはできない（[golem-lint ADR 0001](golem-lint/adr/0001-lint-rules.md)）。
 - **fmt**：出力を変えずに原稿の書式を整える整形。整形の前後で AST が一致することを保つ（[golem-fmt ADR 0001](golem-fmt/adr/0001-formatter.md)）。
 - **LSP**：エディタに diagnostics、補完、定義への移動などを提供する言語サーバーの規約（Language Server Protocol）。`golem lsp` が話す（[golem-lsp ADR 0001](golem-lsp/adr/0001-language-server.md)）。
-- **diagnostic**：構文の誤り、評価の誤り、lint の指摘などを、ソース上の位置と符号（`G0101` など）を付けて報告したもの。重大度はエラー、警告、notice の三つである（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)、[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。コードの一覧と説明は [docs/diagnostics.md](diagnostics.md) にある。
+- **diagnostic**：構文の誤り、評価の誤り、lint の指摘などを、ソース上の位置と符号（`G01001` など）を付けて報告したもの。重大度はエラー、警告、notice の三つである（[golem-syntax ADR 0001](golem-syntax/adr/0001-source-spans-and-diagnostics.md)、[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。コードの一覧と説明は [docs/diagnostics.md](diagnostics.md) にある。
 - **notice**：警告より下の diagnostic の重大度。誤りではないが書き手が知っておいたほうがよいこと（スタイルの上書き、効果のない書き方、廃止予定の書き方など）を伝える。終了コードと出力を変えず、マニフェストの `[diagnostics]` の `silence-notices` と、コマンドの `--no-notices` で抑制できる。抑制できる diagnostic は notice だけである（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）。仕様書、言語仕様、ADR では notice と書き、使い手のマニュアルと docs/diagnostics.md では「お知らせ」と書く（[docs/manual-policy.md](manual-policy.md)）。notice より下の重大度 info を加える予定があり（[docs/roadmap.md](roadmap.md) の「diagnostic の info」）、notice と info は別の重大度として書き分ける。
 - **プラグイン**：wasm のモジュールとして配布する拡張。import を一切受け取らず、呼び出しごとに新しいインスタンスで実行する。文書から呼ぶ**コマンド**と、ファイル一つ分の文書を書き換える**フィルタ**の二種類がある（[golem-plugin ADR 0001](golem-plugin/adr/0001-wasm-host-and-abi.md)）。
 - **命令数の上限**：プラグインが一回の呼び出しで実行できる命令の数の上限（wasmtime の fuel）。命令の数で数えるので、上限に達する位置も決定的である。

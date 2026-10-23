@@ -36,8 +36,8 @@ import Golem.Syntax
 import System.FilePath ((</>))
 import Text.Printf (printf)
 
-{- | Every file that cannot be loaded is reported, once per path (G0802,
-G0803, G0804); G0805 is checked only when all are loaded. The
+{- | Every file that cannot be loaded is reported, once per path (G08002,
+G08003, G08004); G08005 is checked only when all are loaded. The
 diagnostics are at the top of @fid@ (golem-driver ADR 0016).
 -}
 golemFontProvider :: FontProvider
@@ -48,7 +48,7 @@ golemFontProvider = FontProvider $ \root fid style locals ->
         r <- resolveInRoot root path
         case r of
           -- reported by the driver before the fonts are loaded; kept for a provider used alone
-          Left e -> pure (Left (err "G0802" (T.pack ((if e == Missing then "フォントのファイルがありません" else pathErrorMessage e) <> ": " <> path))))
+          Left e -> pure (Left (err "G08002" (T.pack ((if e == Missing then "フォントのファイルがありません" else pathErrorMessage e) <> ": " <> path))))
           Right rel -> do
             bytes <- BS.readFile (root </> rel)
             loaded <- loadFont bytes
@@ -56,8 +56,8 @@ golemFontProvider = FontProvider $ \root fid style locals ->
               Right f
                 | fontIsCff2 f -> Left (cff2Diagnostic fid path)
                 | otherwise -> Right (bytes, f, path)
-              Left Unreadable -> Left (err "G0803" ("フォントを読み込めません: " <> T.pack path))
-              Left (EmbeddingRestricted t) -> Left (err "G0804" ("ライセンスが埋め込みを禁じているフォントです（fsType " <> T.pack (printf "0x%04X" t) <> "）: " <> T.pack path))
+              Left Unreadable -> Left (err "G08003" ("フォントを読み込めません: " <> T.pack path))
+              Left (EmbeddingRestricted t) -> Left (err "G08004" ("ライセンスが埋め込みを禁じているフォントです（fsType " <> T.pack (printf "0x%04X" t) <> "）: " <> T.pack path))
    in case bodyFontDiagnostics fid style of
         -- reported by the driver before the fonts are loaded; kept for a provider used alone
         ds@(_ : _) -> pure (Left ds)
@@ -85,21 +85,21 @@ golemFontProvider = FontProvider $ \root fid style locals ->
                       n == fontPostScriptName f2
                     ]
                in case clashes of
-                    ((n, p1, p2) : _) -> Left [err "G0805" ("PostScript 名が同じ異なるフォントがあります: " <> n <> "（" <> T.pack p1 <> "、" <> T.pack p2 <> "）")]
+                    ((n, p1, p2) : _) -> Left [err "G08005" ("PostScript 名が同じ異なるフォントがあります: " <> n <> "（" <> T.pack p1 <> "、" <> T.pack p2 <> "）")]
                     [] -> Right (provide fid [(f, p) | (_, f, p) <- faces] body roleFaces)
   where
     nubOn key = reverse . fst . foldl' (\(acc, seen) x -> if key x `elem` seen then (acc, seen) else (x : acc, key x : seen)) ([], [])
 
-{- | G0819 (golem-font ADR 0003): a font with CFF2 outlines cannot be
+{- | G08019 (golem-font ADR 0003): a font with CFF2 outlines cannot be
 embedded in the PDF. At the top of @fid@, as the other font diagnostics.
 -}
 cff2Diagnostic :: FileId -> FilePath -> Diagnostic
 cff2Diagnostic fid path =
-  diagnostic "G0819" Error (mkSpan fid 0 0) ("CFF2 の輪郭のフォントは PDF に埋め込めません: " <> T.pack path <> "。CFF か TrueType の輪郭のフォントを使ってください")
+  diagnostic "G08019" Error (mkSpan fid 0 0) ("CFF2 の輪郭のフォントは PDF に埋め込めません: " <> T.pack path <> "。CFF か TrueType の輪郭のフォントを使ってください")
 
-{- | G0819 for the given font files of the PDF, before it is laid out, so
+{- | G08019 for the given font files of the PDF, before it is laid out, so
 that golem check reports it too (golem-font ADR 0003). A file that cannot
-be read or loaded is left to the font provider (G0802, G0803, G0804).
+be read or loaded is left to the font provider (G08002, G08003, G08004).
 -}
 cff2FontDiagnostics :: FilePath -> FileId -> [FilePath] -> IO [Diagnostic]
 cff2FontDiagnostics root fid paths = concat <$> mapM one (nubOrd paths)
@@ -226,7 +226,7 @@ provide fid faces body roles =
           [] -> []
           x : xs -> let (same, rest) = span ((== k x) . k) xs in (x : same) : groupOn k rest
     {- IO: the subset is made as the PDF is written (docs/adr ADR 0034); a CFF
-    font without a CFF table is G0818 (golem-pdf ADR 0011) -}
+    font without a CFF table is G08018 (golem-pdf ADR 0011) -}
     embed ix vertical used = do
       let (f, path) = faceAt ix
           upem = toInteger (fontUnitsPerEm f)
@@ -259,13 +259,13 @@ provide fid faces body roles =
 {- | The program of a CFF font: its bare CFF table, embedded in FontFile3 with
 the subtype CIDFontType0C (golem-pdf ADR 0011). PDFium takes the codes of a
 CID-keyed CFF wrapped in OpenType as glyph IDs and draws no Japanese, so a
-font whose CFF table cannot be taken out is G0818, at the top of @fid@, and
+font whose CFF table cannot be taken out is G08018, at the top of @fid@, and
 is not embedded as OpenType.
 -}
 cffFontProgram :: FileId -> FilePath -> BS.ByteString -> Either Diagnostic P.FontProgram
 cffFontProgram fid path program = case sfntTable "CFF " program of
   Just cff | not (BS.null cff) -> Right (P.CffProgram cff)
-  _ -> Left (diagnostic "G0818" Error (mkSpan fid 0 0) ("フォントから CFF の表を取り出せません: " <> T.pack path))
+  _ -> Left (diagnostic "G08018" Error (mkSpan fid 0 0) ("フォントから CFF の表を取り出せません: " <> T.pack path))
 
 -- | The bytes of one table of an sfnt (OpenType) font.
 sfntTable :: BS.ByteString -> BS.ByteString -> Maybe BS.ByteString

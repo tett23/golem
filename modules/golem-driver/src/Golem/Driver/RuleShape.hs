@@ -115,7 +115,7 @@ roundDiv :: Integer -> Integer -> Integer
 roundDiv a b = (2 * a + b) `div` (2 * b)
 
 {- | The weight of the thinnest part of a rule of weight w, which golem
-preflight checks (G0918).
+preflight checks (G09018).
 -}
 ruleThinnest :: Sp -> RuleStyle -> Sp
 ruleThinnest w = \case

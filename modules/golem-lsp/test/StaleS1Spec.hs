@@ -62,23 +62,23 @@ staleS1Tests :: TestTree
 staleS1Tests =
   testGroup
     "S1 on every edit (golem-lsp ADR 0004)"
-    [ testCase "a reference to a missing label is G0403 at once" $ do
+    [ testCase "a reference to a missing label is G04003 at once" $ do
         ws <- editing original [withNolabel]
-        [s | ("G0403", s) <- codesOfB ws] @?= [byteOffset withNolabel "[ref-page nolabel]"],
-      testCase "two @toc are G0402" $ do
+        [s | ("G04003", s) <- codesOfB ws] @?= [byteOffset withNolabel "[ref-page nolabel]"],
+      testCase "two @toc are G04002" $ do
         ws <- editing original [original <> "\n@toc\n\n@toc\n"]
-        assertBool (show (codesOfB ws)) ("G0402" `elem` map fst (codesOfB ws)),
-      testCase "removing the reference removes G0403" $ do
+        assertBool (show (codesOfB ws)) ("G04002" `elem` map fst (codesOfB ws)),
+      testCase "removing the reference removes G04003" $ do
         ws <- editing withNolabel [original]
-        [c | (c, _) <- codesOfB ws, c == "G0403"] @?= [],
-      testCase "G0403 moves with the text before it" $ do
+        [c | (c, _) <- codesOfB ws, c == "G04003"] @?= [],
+      testCase "G04003 moves with the text before it" $ do
         let moved = "@label second\n# 次の章\n\n前の段落。\n\n[ref-title intro]と[ref-page nolabel]を見る。\n"
         ws <- editing withNolabel [moved]
-        [s | ("G0403", s) <- codesOfB ws] @?= [byteOffset withNolabel "[ref-page nolabel]" + BS.length (TE.encodeUtf8 "前の段落。\n\n")],
-      testCase "an S0 error stops S1, and removing it brings G0403 back" $ do
+        [s | ("G04003", s) <- codesOfB ws] @?= [byteOffset withNolabel "[ref-page nolabel]" + BS.length (TE.encodeUtf8 "前の段落。\n\n")],
+      testCase "an S0 error stops S1, and removing it brings G04003 back" $ do
         let broken = withNolabel <> "\n[nosuch: x]\n"
         ws <- editing original [broken]
-        map fst (codesOfB ws) @?= ["G0222"]
+        map fst (codesOfB ws) @?= ["G02022"]
         ws' <- editing original [broken, withNolabel]
-        map fst (codesOfB ws') @?= ["G0403"]
+        map fst (codesOfB ws') @?= ["G04003"]
     ]

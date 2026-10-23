@@ -1,6 +1,6 @@
 # ADR 0001: ソース位置と診断
 
-ステータス: 採択→コードの一覧は [golem-cli ADR 0005](../../golem-cli/adr/0005-explain-diagnostic-codes.md)、重大度と並び順は [ADR 0002](0002-notice-severity.md)、診断の事実の欄とプリフライトの区分 09 は [golem-cli ADR 0006](../../golem-cli/adr/0006-preflight.md)
+ステータス: 採択→コードの一覧は [golem-cli ADR 0005](../../golem-cli/adr/0005-explain-diagnostic-codes.md)、重大度と並び順は [ADR 0002](0002-notice-severity.md)、診断の事実の欄とプリフライトの区分 09 は [golem-cli ADR 0006](../../golem-cli/adr/0006-preflight.md)、コードの形は [docs/adr 0061](../../adr/0061-five-digit-diagnostic-codes.md)
 
 ## 文脈
 
@@ -27,7 +27,7 @@ data SrcSpan = SrcSpan
 
 data Severity = Error | Warning
 
-newtype DiagnosticCode = DiagnosticCode Text   -- 例: "G0101"
+newtype DiagnosticCode = DiagnosticCode Text   -- 例: "G01001"
 
 data Diagnostic = Diagnostic
   { diagCode     :: !DiagnosticCode
@@ -51,7 +51,7 @@ data Fix = Fix
 ### 診断コード
 
 - 診断コードは `G` と 4 桁の数字とし、一度割り当てたコードは別の意味に再利用しない。
-- 上 2 桁で発生源を分ける（`G01xx` 構文、`G02xx` 評価、`G03xx` プロジェクトと import、`G04xx` 文書構造、`G05xx` lint、`G06xx` プラグイン、`G07xx` レイアウト、`G08xx` 出力）。
+- 上 2 桁で発生源を分ける（`G01xxx` 構文、`G02xxx` 評価、`G03xxx` プロジェクトと import、`G04xxx` 文書構造、`G05xxx` lint、`G06xxx` プラグイン、`G07xxx` レイアウト、`G08xxx` 出力）。
 - コードの一覧は golem-syntax の中に一箇所で定義する。
 
 ### 重大度とプロファイル

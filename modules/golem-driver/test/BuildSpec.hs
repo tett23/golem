@@ -95,7 +95,7 @@ buildTests =
     testCase "prod drops proofreading comments and warns" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
       copyTree fixture tmp
       r <- build (defaultOptions tmp) {optProfile = Prod}
-      map diagCode (brDiagnostics r) @?= [DiagnosticCode "G0205"]
+      map diagCode (brDiagnostics r) @?= [DiagnosticCode "G02005"]
       t <- BS.readFile (tmp </> "build/text/horizontal/chapters/01.txt")
       assertBool "no proof comment" (not (BS.isInfixOf "校正" t)),
     testCase "check does not write output" $ withSystemTempDirectory "golem-driver" $ \tmp -> do
@@ -107,7 +107,7 @@ buildTests =
       copyTree fixture tmp
       BS.writeFile (tmp </> "chapters/02.gm") "[nope: x] [strong: y\n"
       r <- build (defaultOptions tmp)
-      map diagCode (brDiagnostics r) @?= [DiagnosticCode "G0117"]
+      map diagCode (brDiagnostics r) @?= [DiagnosticCode "G01017"]
       exists <- doesDirectoryExist (tmp </> "build")
       exists @?= False
       T.length (T.pack "") @?= 0
@@ -228,9 +228,9 @@ styleFileTests =
   [ testCase "a missing font does not stop the evaluation: the book is assembled with no diagnostics" $ withStyleProject missingStyle [] $ \tmp -> do
       e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
       (isJust (evBook e), map diagCode (evDiagnostics e)) @?= (True, []),
-    testCase "HTML, EPUB and plain text are written without the missing font, with one G0310 warning" $ withStyleProject missingStyle [] $ \tmp -> do
+    testCase "HTML, EPUB and plain text are written without the missing font, with one G03010 warning" $ withStyleProject missingStyle [] $ \tmp -> do
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub, TargetText]}
-      codeSeverities r @?= [(DiagnosticCode "G0310", Warning)]
+      codeSeverities r @?= [(DiagnosticCode "G03010", Warning)]
       assertBool "message" (any (T.isInfixOf "fonts/missing.otf" . diagMessage) (brDiagnostics r))
       mapM_ (\d -> doesDirectoryExist (tmp </> d) >>= assertBool d) ["build/html", "build/text/horizontal"]
       css <- TIO.readFile (tmp </> "build/html/style.css")
@@ -238,10 +238,10 @@ styleFileTests =
       doesDirectoryExist (tmp </> "build/html/fonts") >>= assertBool "no fonts directory" . not
       epub <- BS.readFile (tmp </> "build/epub/book.epub")
       assertBool "no fonts in the EPUB" (not ("OEBPS/fonts/" `BS.isInfixOf` epub)),
-    testCase "the PDF stops with G0802 on style.toml before the fonts are loaded" $ withStyleProject missingStyle [] $ \tmp -> do
+    testCase "the PDF stops with G08002 on style.toml before the fonts are loaded" $ withStyleProject missingStyle [] $ \tmp -> do
       calls <- newIORef (0 :: Int)
       r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = countingFonts calls}
-      codeSeverities r @?= [(DiagnosticCode "G0802", Error)]
+      codeSeverities r @?= [(DiagnosticCode "G08002", Error)]
       e <- evaluateProject Dev tmp >>= either (assertFailure . show . pfDiagnostics) pure
       map (spanFile . diagSpan) (brDiagnostics r) @?= [evStyleFile e]
       doesDirectoryExist (tmp </> "build/pdf") >>= assertBool "no PDF" . not
@@ -249,44 +249,44 @@ styleFileTests =
     testCase "plain text does not look at the files" $ withStyleProject missingStyle [] $ \tmp -> do
       r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
       codeSeverities r @?= [],
-    testCase "prod makes G0310 an error and writes no HTML" $ withStyleProject missingStyle [] $ \tmp -> do
+    testCase "prod makes G03010 an error and writes no HTML" $ withStyleProject missingStyle [] $ \tmp -> do
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml], optProfile = Prod}
-      [s | (DiagnosticCode "G0310", s) <- codeSeverities r] @?= [Error]
+      [s | (DiagnosticCode "G03010", s) <- codeSeverities r] @?= [Error]
       doesDirectoryExist (tmp </> "build/html") >>= assertBool "no HTML" . not,
     testCase "the PDF does not report roles it does not use; HTML leaves only the missing face out" $ do
       let style = horizontalStyle <> fakeBody <> "\n[fonts.mono]\nlatin = \"fonts/missing.otf\"\n"
       withStyleProject style fakeFontFiles $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
-        -- the fixture has code and no [fonts.code]: G0808 (golem-driver ADR 0017)
-        filter ((/= DiagnosticCode "G0808") . fst) (codeSeverities r) @?= []
+        -- the fixture has code and no [fonts.code]: G08008 (golem-driver ADR 0017)
+        filter ((/= DiagnosticCode "G08008") . fst) (codeSeverities r) @?= []
         h <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
-        codeSeverities h @?= [(DiagnosticCode "G0310", Warning)]
+        codeSeverities h @?= [(DiagnosticCode "G03010", Warning)]
         css <- TIO.readFile (tmp </> "build/html/style.css")
         assertBool "body face" ("font-family: \"golem-body-ja\"; src" `T.isInfixOf` css)
         assertBool "no mono face" (not ("font-family: \"golem-mono-latin\"; src" `T.isInfixOf` css)),
-    testCase "a missing ICC profile is G0806 for the PDF and nothing for HTML" $ do
+    testCase "a missing ICC profile is G08006 for the PDF and nothing for HTML" $ do
       let style = horizontalStyle <> fakeBody <> "\n[color]\nintent = \"icc/none.icc\"\n"
       withStyleProject style fakeFontFiles $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
-        codeSeverities r @?= [(DiagnosticCode "G0806", Error)]
+        codeSeverities r @?= [(DiagnosticCode "G08006", Error)]
         doesDirectoryExist (tmp </> "build/pdf") >>= assertBool "no PDF" . not
         h <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
         codeSeverities h @?= [],
     testCase "check reports the files of every target and writes nothing" $ withStyleProject missingStyle [] $ \tmp -> do
       r <- build (defaultOptions tmp) {optTargets = Just allTargets, optCheckOnly = True}
-      sort (map diagCode (brDiagnostics r)) @?= [DiagnosticCode "G0310", DiagnosticCode "G0802"]
+      sort (map diagCode (brDiagnostics r)) @?= [DiagnosticCode "G03010", DiagnosticCode "G08002"]
       doesDirectoryExist (tmp </> "build") >>= assertBool "no build" . not,
     testCase "one path named by two roles is reported once for HTML and EPUB" $ do
       let style = missingStyle <> "\n[fonts.mono]\nlatin = \"fonts/missing.otf\"\n"
       withStyleProject style [] $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub]}
-        codeSeverities r @?= [(DiagnosticCode "G0310", Warning)]
+        codeSeverities r @?= [(DiagnosticCode "G03010", Warning)]
   ]
     <> [ testCase ("a project made without fonts builds every target but the PDF (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
            let dir = tmp </> "book"
            createProject dir (templateFiles lang uuid0) Nothing >>= (@?= Right ())
            r <- build (defaultOptions dir) {optTargets = Just allTargets}
-           codeSeverities r @?= [(DiagnosticCode "G0310", Warning), (DiagnosticCode "G0802", Error)]
+           codeSeverities r @?= [(DiagnosticCode "G03010", Warning), (DiagnosticCode "G08002", Error)]
            mapM_ (\d -> doesDirectoryExist (dir </> d) >>= assertBool d) ["build/html", "build/epub", "build/text"]
            doesDirectoryExist (dir </> "build/pdf") >>= assertBool "no PDF" . not
        | (lang, tag) <- [(Japanese, "ja"), (English, "en")]

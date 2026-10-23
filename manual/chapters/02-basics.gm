@@ -169,12 +169,12 @@ Golem に対応したテキストエディタでは、書いている途中で�
 その番号をファイルのバイトの並びに直す方式の一つが [strong: UTF-8] です [cite rfc3629][note: RFC 3629, UTF-8, a transformation format of ISO 10646。[code: https://www.rfc-editor.org/rfc/rfc3629]]。[index reading=ゆーてぃーえふえいと: UTF-8]
 
 Golem の原稿、[code: manifest.toml]、[code: style.toml] は、UTF-8 で保存します。
-日本でかつて広く使われていた Shift_JIS で保存したファイルを Golem に読ませると、UTF-8 として読めないバイトがあるエラー（G0101）になります。
+日本でかつて広く使われていた Shift_JIS で保存したファイルを Golem に読ませると、UTF-8 として読めないバイトがあるエラー（G01001）になります。
 テキストエディタの保存の設定で、文字コードに UTF-8 を選んでください。
 
 UTF-8 で保存するときに、ファイルの先頭に BOM という印を付けるテキストエディタがあります。[index reading=ぼむ: BOM]
 BOM は、ファイルが UTF-8 であることを示す 3 バイトの印です。
-Golem は、BOM のあるファイルをエラー（G0102）にします。
+Golem は、BOM のあるファイルをエラー（G01002）にします。
 UTF-8 には BOM が要らず、先頭に余計な印があると、ファイルを読むソフトウェアによって先頭の文字の扱いが変わるためです。
 保存の設定で「BOM なし」を選ぶか、[code: golem fmt] を実行して取り除きます。
 
@@ -185,7 +185,7 @@ macOS と Linux は LF という一つの文字で行を改め、Windows は CR 
 この違いを改行コードと呼びます。
 
 Golem は、改行を LF に限ります。
-CR を含むファイルはエラー（G0103）になり、[code: golem fmt] で LF に直せます。
+CR を含むファイルはエラー（G01003）になり、[code: golem fmt] で LF に直せます。
 改行の扱いがファイルによって揺れると、同じ原稿から同じ出力が得られなくなるためです。
 
 ### 正規化をしないことと異体字
@@ -273,7 +273,7 @@ chapters = [
 ### 型の誤り
 
 Golem は、TOML として読めないファイルと、値の型が違うキーを、どちらもエラーにします。
-コードは、[code: style.toml] の誤りが G0306、[code: manifest.toml] の誤りが G0301 です。
+コードは、[code: style.toml] の誤りが G03006、[code: manifest.toml] の誤りが G03001 です。
 よくあるのは、長さを数で書いてしまう誤りです。
 
 ```toml
@@ -285,7 +285,7 @@ Golem の長さは、[code: "13Q"] や [code: "3mm"] のように単位を付け
 上の書き方では、次のエラーになります（ここに示すエラーの表示は、紙面に収めるために途中で行を折り返しています）。
 
 ```
-style.toml:1:1: error[G0306]: 長さは文字列で
+style.toml:1:1: error[G03006]: 長さは文字列で
 書きます (page.grid.font-size)
 ```
 
@@ -294,7 +294,7 @@ style.toml:1:1: error[G0306]: 長さは文字列で
 同じテーブルの中で同じキーを二度書いた場合と、引用符を閉じ忘れた場合は、TOML の誤りとして、誤りのある行と列で報告します。
 
 ```
-style.toml:10:1: error[G0306]: TOML の誤りです:
+style.toml:10:1: error[G03006]: TOML の誤りです:
 同じキーに二度値を書いています: lines
 ```
 

@@ -131,7 +131,7 @@ malformedResponseTests =
       testCase "bytes after the CBOR of the response" $ do
         p <- answering (withDiagnostics [] <> BS.pack [0x00])
         shout p @?= Left (BadOutput "CBOR の後ろに余分なバイトがあります"),
-      testCase "a Number out of int64 is out of range, G0609 (golem-doc ADR 0006)" $ do
+      testCase "a Number out of int64 is out of range, G06009 (golem-doc ADR 0006)" $ do
         let numberOf n = TList [TList [TInt 9, TList [TInt 1, TInt 10, TInt 20], TInteger n, TNull]]
         mapM_
           ( \n -> do
@@ -195,7 +195,7 @@ malformedDescriptionTests =
         loadPlugin wasm >>= (@?= Left (BadOutput "名前が文字列ではありません")) . void
     ]
 
--- | The reasons of G0605 and G0609 as golem-plugin ADR 0003 writes them.
+-- | The reasons of G06005 and G06009 as golem-plugin ADR 0003 writes them.
 describeErrorTests :: TestTree
 describeErrorTests =
   testGroup

@@ -131,7 +131,7 @@ WASI がないので、標準入出力やファイルを使うライブラリは
 
 [code: u64] で返す値は、上位 32 ビットが出力の位置、下位 32 ビットが出力の長さである。
 ホストは、その範囲のバイト列を線形メモリから読む。
-ホストは戻り値の型も確かめ、表の型と違えば、プラグインの出力が不正であるとして G0605 か G0609 のエラーにする（メッセージは [code: <関数名> の戻り値の型が不正です]）。
+ホストは戻り値の型も確かめ、表の型と違えば、プラグインの出力が不正であるとして G06005 か G06009 のエラーにする（メッセージは [code: <関数名> の戻り値の型が不正です]）。
 
 一回の呼び出しの流れは次のとおりである。[index reading="golem_invoke": golem_invoke]
 
@@ -143,9 +143,9 @@ WASI がないので、標準入出力やファイルを使うライブラリは
 
 読み込みの時点で、ホストは [code: golem_abi_version] を呼び、ホストの ABI のバージョンと比べる。
 今の ABI のバージョンは 7 である（golem-plugin の [code: Golem.Plugin.abiVersion]）。
-一致しなければ、読み込みの時点でエラー（G0605）になる。
+一致しなければ、読み込みの時点でエラー（G06005）になる。
 続けて [code: golem_describe] を呼び、プラグインが提供するコマンドとフィルタの名前と、宣言するチャネルを得る。
-チャネルの名前が予約した名前か形の誤った名前であるか、二つのプラグインが同じチャネルを宣言すると、G0612 のエラーになる。
+チャネルの名前が予約した名前か形の誤った名前であるか、二つのプラグインが同じチャネルを宣言すると、G06012 のエラーになる。
 
 ## 受け渡す CBOR
 
@@ -168,7 +168,7 @@ description = [commands: [* tstr], filters: [* tstr],
 channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 ```
 
-- [code: golem_describe] は [code: description] を返す。二つのフィールドの [code: description] は不正な応答（G0605）である。[code: order] は 0 が文書の順、1 が読みの順である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0007-plugin-channel-lists.md]（golem-doc ADR 0007「プラグインの独自のチャネル」）]
+- [code: golem_describe] は [code: description] を返す。二つのフィールドの [code: description] は不正な応答（G06005）である。[code: order] は 0 が文書の順、1 が読みの順である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-doc/adr/0007-plugin-channel-lists.md]（golem-doc ADR 0007「プラグインの独自のチャネル」）]
 - コマンドの呼び出しでは、[code: golem_invoke] は [code: command-request] を受け取り、[code: output] がインラインの列（[code: inlines]）の [code: response] を返す。
 - フィルタの呼び出しでは、[code: filter-request] を受け取り、[code: output] がファイル一つ分の文書（[code: document]）の [code: response] を返す。
 - 引数の値に連想配列は渡せない。[code: value] にマップがないのはそのためである。
@@ -199,29 +199,29 @@ channel-decl = [name: tstr, order: 0 / 1, locators: bool]
 
 ## プラグインの diagnostic
 
-プラグインの読み込みと実行の誤りは、G0602 から G0611 で報告する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0003-plugin-diagnostic-codes.md]（golem-plugin ADR 0003「プラグインの診断のコード（G0602 から G0610）」）]
+プラグインの読み込みと実行の誤りは、G06002 から G06011 で報告する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-plugin/adr/0003-plugin-diagnostic-codes.md]（golem-plugin ADR 0003「プラグインの診断のコード（G06002 から G06010）」）]
 
 | コード | 内容 |
 | --- | --- |
-| G0602 | [code: plugins.lock] にないか、URL がマニフェストと違う |
-| G0603 | キャッシュにない（[code: golem plugin fetch] を求める） |
-| G0604 | キャッシュの配布物のハッシュが一致しない |
-| G0605 | wasm として読み込めない（import、ABI のバージョン、関数の欠けを含む） |
-| G0606 | 二つ以上のプラグインが同じコマンドを提供する |
-| G0607 | 組み込みのコマンドとの衝突に [code: overrides] の宣言がない |
-| G0608 | [code: overrides] の名前が誤っている |
-| G0609 | 実行が失敗した（命令数、メモリ、不正な出力） |
-| G0610 | [code: \[\[filters\]\]] が誤ったプラグインかフィルタを指す |
-| G0611 | [code: plugins.lock] が TOML として読めない |
+| G06002 | [code: plugins.lock] にないか、URL がマニフェストと違う |
+| G06003 | キャッシュにない（[code: golem plugin fetch] を求める） |
+| G06004 | キャッシュの配布物のハッシュが一致しない |
+| G06005 | wasm として読み込めない（import、ABI のバージョン、関数の欠けを含む） |
+| G06006 | 二つ以上のプラグインが同じコマンドを提供する |
+| G06007 | 組み込みのコマンドとの衝突に [code: overrides] の宣言がない |
+| G06008 | [code: overrides] の名前が誤っている |
+| G06009 | 実行が失敗した（命令数、メモリ、不正な出力） |
+| G06010 | [code: \[\[filters\]\]] が誤ったプラグインかフィルタを指す |
+| G06011 | [code: plugins.lock] が TOML として読めない |
 
 diagnostic の位置は、ほとんどが [code: manifest.toml] の先頭である。
 マニフェストはプラグインの宣言の位置を持たないので、メッセージにプラグインの名前を書いて、宣言を見つけられるようにしている。
-例外は二つで、G0609 はコマンドを呼んだ箇所か、フィルタを適用したファイルの先頭を指し、G0611 は [code: plugins.lock] の中の位置を指す。
+例外は二つで、G06009 はコマンドを呼んだ箇所か、フィルタを適用したファイルの先頭を指し、G06011 は [code: plugins.lock] の中の位置を指す。
 
-G0605 と G0609 のメッセージには、理由が続く（[code: プラグインの ABI のバージョンが異なります: 4] など）。
-G0609 のメッセージは [code: <プラグイン>.<コマンド>: <理由>] の形で、どのプラグインのどのコマンドが失敗したかを示す。
-読み込みか検査で誤りが出たときは、そのプラグインのコマンドを未知のコマンド（G0222）として報告しない。
-読み込めなかったプラグインのコマンドがすべて G0222 になり、本当の原因を埋もれさせるのを防ぐためである。
+G06005 と G06009 のメッセージには、理由が続く（[code: プラグインの ABI のバージョンが異なります: 4] など）。
+G06009 のメッセージは [code: <プラグイン>.<コマンド>: <理由>] の形で、どのプラグインのどのコマンドが失敗したかを示す。
+読み込みか検査で誤りが出たときは、そのプラグインのコマンドを未知のコマンド（G02022）として報告しない。
+読み込めなかったプラグインのコマンドがすべて G02022 になり、本当の原因を埋もれさせるのを防ぐためである。
 
 ## 作り方と確かめ方
 

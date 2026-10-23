@@ -28,7 +28,7 @@ adobe-fonts/source-serif の 4.005R の配布物（`source-serif-4.005_Desktop.z
 
 - golem-font の `golem_font_is_cff` は `CFF ` の表だけを見る。CFF2 のフォントでは偽になり、golem-driver の `Golem.Driver.Fonts` は `TrueTypeProgram` を作る。
 - golem-pdf は `TrueTypeProgram` を `CIDFontType2` と `FontFile2` で書く。`FontFile2` は TrueType（glyf）の輪郭の入れ物なので、glyf を持たない CFF2 の sfnt を入れた PDF は、PDF として誤っている。CoreGraphics は埋め込んだフォントを捨て、Helvetica に置き換えた。
-- `lfFaceFile` も CFF2 のフォントを `truetype` と申告するので、プリフライトのフォントの形式の検査（G0903）にも誤った形式が伝わる。
+- `lfFaceFile` も CFF2 のフォントを `truetype` と申告するので、プリフライトのフォントの形式の検査（G09003）にも誤った形式が伝わる。
 - サブセット（`golem_font_subset`）は軸を固定しない。可変フォントでは、fvar、HVAR、MVAR、avar、STAT、gvar または CFF2 の可変のデータが、使わないまま埋め込まれる。
 
 仕様書の設計原則は、書き手の入力と違う出力を黙って作らないことを求める。
@@ -46,21 +46,21 @@ CFF2 の今の扱いは、読めない PDF を黙って作るので、この原�
 ### CFF2 のフォントを PDF の組版で拒む
 
 - golem-font の読み込みで、`CFF2` の表を持つかを判定し、`fontIsCff2` として返す。
-- PDF を組むとき（`golem build` の PDF、`golem check`、`golem preflight`）に、本の役割が CFF2 のフォントを使っていれば、新しいコード G0819 のエラーとし、PDF を書かない。
+- PDF を組むとき（`golem build` の PDF、`golem check`、`golem preflight`）に、本の役割が CFF2 のフォントを使っていれば、新しいコード G08019 のエラーとし、PDF を書かない。
 - HTML と EPUB は、フォントのファイルをそのまま同梱し、ブラウザと読書環境が CFF2 を描くので、拒まない。
-- G0819 は、読めないフォント（G0803）とは原因が違うので、コードを分ける（仕様書の「設計原則」の「一つのコードに一つの原因」）。
+- G08019 は、読めないフォント（G08003）とは原因が違うので、コードを分ける（仕様書の「設計原則」の「一つのコードに一つの原因」）。
 
 | コード | 重大度 | 対象 | メッセージ | 位置 |
 |---|---|---|---|---|
-| G0819 | エラー | CFF2 の輪郭を持つフォント | `CFF2 の輪郭のフォントは PDF に埋め込めません: <パス>。CFF か TrueType の輪郭のフォントを使ってください` | `style.toml` の先頭（`style.toml` がなければマニフェストの先頭） |
+| G08019 | エラー | CFF2 の輪郭を持つフォント | `CFF2 の輪郭のフォントは PDF に埋め込めません: <パス>。CFF か TrueType の輪郭のフォントを使ってください` | `style.toml` の先頭（`style.toml` がなければマニフェストの先頭） |
 
-- 図版と出力の区分（08）は G0814 まで使っている。G0815 は [docs/adr 0051](../../adr/0051-reuse-repeated-pdf-content-streams.md) の草案、G0816 と G0817 は [docs/adr 0054](../../adr/0054-svg-marker-cycle-and-depth-codes.md) の草案、G0818 は [golem-pdf ADR 0011](../../golem-pdf/adr/0011-cff-fontfile3-subtype.md) の草案が使うので、G0819 とする。草案の採択の順で番号が変わる場合は、採択のときに付け直す。
-- `lfFaceFile` が CFF2 のフォントを `truetype` と申告しないよう、形式に `cff2` を加える。プリフライトの G0903 の形式の値にも加える。
+- 図版と出力の区分（08）は G08014 まで使っている。G08015 は [docs/adr 0051](../../adr/0051-reuse-repeated-pdf-content-streams.md) の草案、G08016 と G08017 は [docs/adr 0054](../../adr/0054-svg-marker-cycle-and-depth-codes.md) の草案、G08018 は [golem-pdf ADR 0011](../../golem-pdf/adr/0011-cff-fontfile3-subtype.md) の草案が使うので、G08019 とする。草案の採択の順で番号が変わる場合は、採択のときに付け直す。
+- `lfFaceFile` が CFF2 のフォントを `truetype` と申告しないよう、形式に `cff2` を加える。プリフライトの G09003 の形式の値にも加える。
 
 ### ドキュメント
 
-- 仕様書の「フォント」の節に、CFF2 のフォントは PDF で G0819 になることを書く。
-- `docs/diagnostics.md` に G0819 の節を足す。G0903 の形式の値に `cff2` を足す。
+- 仕様書の「フォント」の節に、CFF2 のフォントは PDF で G08019 になることを書く。
+- `docs/diagnostics.md` に G08019 の節を足す。G09003 の形式の値に `cff2` を足す。
 - 使い手のマニュアルのフォントの章と付録 E に、CFF2 のフォントを PDF に使えないことと、その直し方（同じ書体の CFF か TrueType の版を使う。Source Serif 4 なら `SourceSerif4-Regular.otf` か `SourceSerif4Variable-Roman.ttf`）を書く。
 - [ADR 0001](0001-shaping-and-metrics.md) のステータスの行を「採択→CFF2 の輪郭のフォントの扱いは [ADR 0003](0003-reject-cff2-fonts-in-pdf.md)」とする。
 - この ADR を実装するまで、CFF2 のフォントの不具合を仕様書の「既知の不具合」に載せる。
@@ -76,7 +76,7 @@ CFF2 の今の扱いは、読めない PDF を黙って作るので、この原�
 テストを先に書き、今の実装で失敗することを確かめる。
 
 - golem-font：CFF2 のフォント、CFF のフォント、glyf の可変フォントで、`fontIsCff2` がそれぞれ真、偽、偽になること。CFF2 の小さな試料のフォントを `modules/golem-font/test/fonts/` に足す（SIL Open Font License のフォントから作り、ライセンスの表示を添える）。
-- golem-driver：CFF2 のフォントを本文の役割にした本を PDF に組むと G0819 が一つ出て、PDF を書かないこと。HTML に組むと G0819 が出ないこと。今の実装では PDF が書かれるので失敗する。
+- golem-driver：CFF2 のフォントを本文の役割にした本を PDF に組むと G08019 が一つ出て、PDF を書かないこと。HTML に組むと G08019 が出ないこと。今の実装では PDF が書かれるので失敗する。
 - golem-preflight：CFF2 のフォントの形式が `cff2` として渡ること。
 
 ## トレードオフ

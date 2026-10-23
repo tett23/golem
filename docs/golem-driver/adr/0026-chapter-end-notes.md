@@ -94,7 +94,7 @@ PDF、HTML、EPUB、プレーンテキストのどれも、同じ規則で文言
 
 `Golem.Driver.Pdf` の `UnitKind` に、一覧の見出しの単位 `UNotesTitle` を加える。
 `UHeading` を使わないのは、`UHeading` が柱の値と、目次のページ番号を引く見出しの表（`extras` の `hAcc`）に入るためである。
-`UNotesTitle` は、行取り（`headingBlock` と `headAcc`）と G0724 の検査を `UHeading` と同じく通し、改ページの `Flow` では `FHeading`（`fhRecto` は偽）に写す。
+`UNotesTitle` は、行取り（`headingBlock` と `headAcc`）と G07024 の検査を `UHeading` と同じく通し、改ページの `Flow` では `FHeading`（`fhRecto` は偽）に写す。
 `hAcc` と柱の値には入れない。
 
 注の本文の中の索引の印は、一覧の行に置かれるので、索引のページ番号は一覧のページになる。
@@ -102,17 +102,17 @@ PDF、HTML、EPUB、プレーンテキストのどれも、同じ規則で文言
 
 ### 番号の範囲と章の不一致の警告
 
-`numbering = "file"` で、二つ以上のファイルからなる章に、二つ以上のファイルの注があり、その章の注を章末にまとめる出力がある場合は、警告 G0327 を出す。
+`numbering = "file"` で、二つ以上のファイルからなる章に、二つ以上のファイルの注があり、その章の注を章末にまとめる出力がある場合は、警告 G03027 を出す。
 章末にまとめる出力は、`placement = "chapter-end"` の PDF と、`placement` によらず HTML、EPUB、プレーンテキストである。
 ターゲットが PDF だけで `placement = "page-foot"` なら出さない。
 
 | 診断コード | 重大度 | 条件 | メッセージ |
 | --- | --- | --- | --- |
-| G0327 | 警告 | 章末の注の一覧の中で、番号が重なる | `章末の注の番号が章の中で重なります（<章の最初のファイル>）。[notes] の numbering を "chapter" にしてください` |
+| G03027 | 警告 | 章末の注の一覧の中で、番号が重なる | `章末の注の番号が章の中で重なります（<章の最初のファイル>）。[notes] の numbering を "chapter" にしてください` |
 
 警告の位置は、その章の二つ目のファイルの最初の注とする。
 出力は止めず、重なった番号のまま組む。
-G0327 は、03 の区分（プロジェクト）の最後に使った G0326 の次の番号である。
+G03027 は、03 の区分（プロジェクト）の最後に使った G03026 の次の番号である。
 マニフェストと `style.toml` の組み合わせから決まる診断なので、03 の区分に置く。
 
 ### HTML、EPUB、プレーンテキスト
@@ -129,7 +129,7 @@ G0327 は、03 の区分（プロジェクト）の最後に使った G0326 の�
 
 - 本文の参照の `href` は、一覧を置いた文書への相対のリンク（`linkTo` と同じ形）にする。同じ文書なら今と同じ `#note-N` である。
 - 一覧の注から本文の参照へ戻るリンクも、参照を置いた文書への相対のリンクにする。
-- id は今と同じ `note-N` と `noteref-N` とする。ただし、`numbering = "file"` で番号が章の中で重なる場合（G0327）は、章の中のファイルの順番 k（1 から）を入れて `note-k-N` と `noteref-k-N` とし、その章のすべての注に使う。一つの文書の中で id が重ならないためである。
+- id は今と同じ `note-N` と `noteref-N` とする。ただし、`numbering = "file"` で番号が章の中で重なる場合（G03027）は、章の中のファイルの順番 k（1 から）を入れて `note-k-N` と `noteref-k-N` とし、その章のすべての注に使う。一つの文書の中で id が重ならないためである。
 
 **プレーンテキスト**：注の印（`*1`、縦書きでは `※1`）は今のままとする。
 
@@ -137,10 +137,10 @@ G0327 は、03 の区分（プロジェクト）の最後に使った G0326 の�
 
 - 仕様書の「style.toml」の節の `[notes]` の説明から「`placement` は読み込むが、どの出力も注の置き方を変えない」を消し、`placement` の二つの値が PDF にだけ効くことを書く。
 - 仕様書の「脚注」の節に、PDF の章末の注の規則（章の単位、一覧の位置、見出しの文言、改ページ、区切り線を使わないこと）を書く。HTML、EPUB、プレーンテキストが章の最後のファイルの末尾に章の注をまとめること、見出しを置くこと、文書をまたぐリンクを書く。
-- [docs/diagnostics.md](../../diagnostics.md) に G0327 の節を加える。
+- [docs/diagnostics.md](../../diagnostics.md) に G03027 の節を加える。
 - [docs/roadmap.md](../../roadmap.md) の「章末の注」の項目を消す。
 - [docs/roadmap.md](../../roadmap.md) の「v2 以降に回した事項」に、「章末の注の拡張」として、一覧の前で改ページする設定と、一覧の見出しの文言の設定を加え、この ADR へのリンクを付ける。
-- 使い手のマニュアルの `manual/chapters/05-style.gm` の「注と図の設定」の節と、`manual/appendices/c-style.gm` の `[notes]` の節に、`placement` の意味と、見出しの文言が固定であることを書く。`manual/appendices/e-errors.gm` に G0327 を加える。`manual/appendices/h-roadmap.gm` から章末の注を消す。
+- 使い手のマニュアルの `manual/chapters/05-style.gm` の「注と図の設定」の節と、`manual/appendices/c-style.gm` の `[notes]` の節に、`placement` の意味と、見出しの文言が固定であることを書く。`manual/appendices/e-errors.gm` に G03027 を加える。`manual/appendices/h-roadmap.gm` から章末の注を消す。
 - [ADR 0018](0018-footnote-marks-and-numbers.md) のステータスの行に、「実装しないこと」に置いた `placement = "chapter-end"` をこの ADR で扱ったことを、この ADR へのリンクで書き足す。
 
 ## データ構造
@@ -170,7 +170,7 @@ G0327 は、03 の区分（プロジェクト）の最後に使った G0326 の�
 
 - `[notes]` がないとき、`stNotesPlacement` が `PlaceFoot` である。
 - `placement = "chapter-end"` が `PlaceChapterEnd` になる。
-- `chapter-end-title` のような未知のキーは、今と同じく G0306 になる。
+- `chapter-end-title` のような未知のキーは、今と同じく G03006 になる。
 
 ### PDF（`modules/golem-driver/test/Main.hs` または `PdfSpec.hs`）
 
@@ -191,10 +191,10 @@ G0327 は、03 の区分（プロジェクト）の最後に使った G0326 の�
 
 ### 診断（`modules/golem-driver/test/Main.hs`）
 
-- `placement = "chapter-end"`、`numbering = "file"` で、二つのファイルからなる章の両方に注がある本が G0327 の警告になり、PDF は出力される。
-- 同じ本で `numbering = "chapter"` または `"book"` なら G0327 が出ない。
+- `placement = "chapter-end"`、`numbering = "file"` で、二つのファイルからなる章の両方に注がある本が G03027 の警告になり、PDF は出力される。
+- 同じ本で `numbering = "chapter"` または `"book"` なら G03027 が出ない。
 - 同じ本で `placement = "page-foot"` の場合、ターゲットが PDF だけなら出ず、HTML かプレーンテキストを含めば出る。
-- 診断の文書の検査（コードがすべて載っていること）が、G0327 の節を加えた後に通る。
+- 診断の文書の検査（コードがすべて載っていること）が、G03027 の節を加えた後に通る。
 
 ### HTML、EPUB、プレーンテキスト（`modules/golem-html/test/Main.hs`、`modules/golem-epub/test/Main.hs`、`modules/golem-text/test/Main.hs`）
 

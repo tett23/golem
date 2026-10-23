@@ -1,6 +1,6 @@
 # ADR 0004: トンボと塗り足し
 
-ステータス: 採択→トンボの色は [ADR 0007](0007-registration-crop-marks.md)、`golem check` が G0702 を出す条件は [ADR 0010](0010-golem-check-g0702-and-template-bleed.md)（`golem check` が四つのターゲットを検査することは [golem-project ADR 0004](../../golem-project/adr/0004-font-file-check-per-target.md)）
+ステータス: 採択→トンボの色は [ADR 0007](0007-registration-crop-marks.md)、`golem check` が G07002 を出す条件は [ADR 0010](0010-golem-check-g0702-and-template-bleed.md)（`golem check` が四つのターゲットを検査することは [golem-project ADR 0004](../../golem-project/adr/0004-font-file-check-per-target.md)）
 
 ## 文脈
 
@@ -29,7 +29,7 @@ v1 のレイアウトは、版面と余白の中にだけ描く。
 
 [docs/adr/0002](../../adr/0002-determinism.md) の入力の一覧はファイルと Golem の版だけで、CLI のオプションを含まない。
 今の `golem build` のオプションのうち、`--target` と `--format` は書くターゲットと診断の形式を選ぶだけで、出力のバイト列を変えない。
-`--profile` は、prod で校正用のコメントを出力から落とす（`Golem.Eval.File` の G0205）ので、出力のバイト列を変える。
+`--profile` は、prod で校正用のコメントを出力から落とす（`Golem.Eval.File` の G02005）ので、出力のバイト列を変える。
 それでも `--profile` はインスタンス ID の入力に入っていない。
 
 ## 実装すること
@@ -62,7 +62,7 @@ golem build --target pdf                    # 閲覧用（トンボなし）
 ### style.toml の `bleed`
 
 - `[page]` に `bleed` を加える。値は寸法の文字列で、`mm`、`pt`、`Q`、`H` を使える。既定は `0mm` とする。
-- `golem-project` の `Golem.Project.Style.Page` に `pageBleed :: !Sp` を加える。`FromValue Page` で `dimKey "bleed"` を読み、`Zw` の値はエラー（G0306「塗り足しには zw を使えません」）とする。塗り足しは文字の大きさに依存しない長さだからである。
+- `golem-project` の `Golem.Project.Style.Page` に `pageBleed :: !Sp` を加える。`FromValue Page` で `dimKey "bleed"` を読み、`Zw` の値はエラー（G03006「塗り足しには zw を使えません」）とする。塗り足しは文字の大きさに依存しない長さだからである。
 - 負の値は `parseDim` が受け付けないので、別の検査は要らない。
 - EPUB と HTML は `bleed` を無視する。
 
@@ -88,8 +88,8 @@ data CropMarks = NoMarks | JapaneseMarks | WesternMarks
 ```
 
 - `golem build` は `--target` の指定にかかわらず `--marks` を受け付ける。PDF を書かないビルドでは、`--marks` は何も変えない。
-- `golem check` は、`--marks` を受け付け、`golem build` と同じく G0702 を検査する。`golem check` は `golem build` と同じ検査を出力なしで行うコマンドなので、入稿用の設定を `golem check --marks japanese` で前もって確かめられるようにする。
-- `golem lint`、`golem fmt`、LSP は `--marks` を持たない。LSP はターゲットを出力しないので、G0702 を出さない。
+- `golem check` は、`--marks` を受け付け、`golem build` と同じく G07002 を検査する。`golem check` は `golem build` と同じ検査を出力なしで行うコマンドなので、入稿用の設定を `golem check --marks japanese` で前もって確かめられるようにする。
+- `golem lint`、`golem fmt`、LSP は `--marks` を持たない。LSP はターゲットを出力しないので、G07002 を出さない。
 - [golem-cli ADR 0001](../../golem-cli/adr/0001-command-line-interface.md) のコマンドの表の `golem build` と `golem check` の行に `[--marks japanese|western|none]` を加える（ドキュメントの節を参照）。
 
 ### ページの箱
@@ -162,10 +162,10 @@ MediaBox の原点を左下の隅に保つので、`m` が 0 でなければ、�
 
 ### 診断
 
-- G0702：`--marks japanese` で PDF を書くか検査するときに、`style.toml` の `[page]` の `bleed` が 0 なら、PDF の出力の前にエラーとする。メッセージは「日本式のトンボには塗り足しが要ります。style.toml の [page] に bleed を書いてください」とする。日本式の二重のトンボは、仕上がりの線と塗り足しの線の間隔で塗り足しを示すので、塗り足しが 0 だと二本の線が重なり、意味をなさないためである。
-- G0702 の位置は `style.toml` とする。`Style` はキーの位置を持たないので、ほかの `style.toml` の診断（G0306 など）と同じく先頭（`mkSpan <style.toml の FileId> 0 0`）に置く。`style.toml` がないプロジェクトでは、`manifest.toml` の先頭に置く。
-- G0702 は PDF のターゲットの診断であり、`--target` に `pdf` を含まないビルドでは出さない。`golem check` は、マニフェストのターゲット（`targetsOf`）に PDF があれば出す。
-- G0702 は今の G07 の番号（G0701、G0721 から G0724、G0732 から G0735、G0741、G0742）の空きである。[docs/adr/0006](../../adr/0006-paragraph-indent.md) の G0725 とも重ならない。
+- G07002：`--marks japanese` で PDF を書くか検査するときに、`style.toml` の `[page]` の `bleed` が 0 なら、PDF の出力の前にエラーとする。メッセージは「日本式のトンボには塗り足しが要ります。style.toml の [page] に bleed を書いてください」とする。日本式の二重のトンボは、仕上がりの線と塗り足しの線の間隔で塗り足しを示すので、塗り足しが 0 だと二本の線が重なり、意味をなさないためである。
+- G07002 の位置は `style.toml` とする。`Style` はキーの位置を持たないので、ほかの `style.toml` の診断（G03006 など）と同じく先頭（`mkSpan <style.toml の FileId> 0 0`）に置く。`style.toml` がないプロジェクトでは、`manifest.toml` の先頭に置く。
+- G07002 は PDF のターゲットの診断であり、`--target` に `pdf` を含まないビルドでは出さない。`golem check` は、マニフェストのターゲット（`targetsOf`）に PDF があれば出す。
+- G07002 は今の G07 の番号（G07001、G07021 から G07024、G07032 から G07035、G07041、G07042）の空きである。[docs/adr/0006](../../adr/0006-paragraph-indent.md) の G07025 とも重ならない。
 - 欧文のトンボは、塗り足しが 0 でもエラーにしない。始点の距離 `o` が 3mm より小さくならないので、断裁の後にトンボが残らない。
 
 ### インスタンス ID の入力
@@ -203,7 +203,7 @@ MediaBox の原点を左下の隅に保つので、`m` が 0 でなければ、�
 ### CLI の変更をこの ADR で扱う理由
 
 `--marks` のために golem-cli の ADR を別に立てない。
-`--marks` は塗り足しと G0702 とインスタンス ID の入力と一体の変更であり、別の ADR に分けると、片方だけを実装した状態で意味をなさない。
+`--marks` は塗り足しと G07002 とインスタンス ID の入力と一体の変更であり、別の ADR に分けると、片方だけを実装した状態で意味をなさない。
 引数の解釈の規則（終了コードと日本語の文言）は [golem-cli ADR 0004](../../golem-cli/adr/0004-usage-error-exit-code.md) がすでに決めており、`--marks` はその規則にオプションを一つ足すだけで、golem-cli の設計を変えない。
 golem-cli の変更（`marksOpt`、テスト、golden）は、この ADR の実装に含める。
 
@@ -238,8 +238,8 @@ golem-cli の変更（`marksOpt`、テスト、golden）は、この ADR の実�
 ### golem-project（`modules/golem-project/test/Main.hs`）
 
 - `[page]` の `bleed = "3mm"` が `pageBleed = 557314` になり、`bleed` を省くと 0 になること。
-- `bleed = "1zw"` が G0306 になること。
-- マニフェストの `[targets.pdf]` に `marks = "japanese"` を書くと、今と同じく未知のキーとして G0301 になること（マニフェストに `marks` を加えないことの確認）。
+- `bleed = "1zw"` が G03006 になること。
+- マニフェストの `[targets.pdf]` に `marks = "japanese"` を書くと、今と同じく未知のキーとして G03001 になること（マニフェストに `marks` を加えないことの確認）。
 
 ### golem-driver（`modules/golem-driver/test/Main.hs`）
 
@@ -248,9 +248,9 @@ golem-cli の変更（`marksOpt`、テスト、golden）は、この ADR の実�
 - `bleed` がなく `optMarks = NoMarks` のとき、出力の PDF の各ページの `/MediaBox`、`/TrimBox`、`/BleedBox` が同じ値で、内容のストリームに `cm` の移動がないこと。
 - `bleed = "3mm"` と `optMarks = JapaneseMarks` のとき、`/MediaBox`、`/TrimBox`、`/BleedBox` の値が `sheet` の計算と一致し、内容のストリームが `q 1 0 0 1` で始まり、`1 1 1 1 k` を含むこと。出力が `qpdf --check` を通ること。
 - `bleed = "3mm"` と `optMarks = NoMarks` のとき、MediaBox と BleedBox が一致し、TrimBox がその内側にあること。
-- `optMarks = JapaneseMarks` で `bleed` がないとき、`style.toml` の先頭の位置の G0702 になり、PDF が書かれないこと。`optMarks = WesternMarks` で `bleed` がないときは、エラーにならないこと。
-- `optMarks = JapaneseMarks` で `bleed` がなく、`optTargets = Just [TargetHtml]` のとき、G0702 が出ず、HTML が書かれること。
-- マニフェストに `[targets.pdf]` があるプロジェクトで、`optMarks = JapaneseMarks`、`optCheckOnly = True` で `bleed` がないとき、G0702 が出て、`build/` に何も書かれないこと。
+- `optMarks = JapaneseMarks` で `bleed` がないとき、`style.toml` の先頭の位置の G07002 になり、PDF が書かれないこと。`optMarks = WesternMarks` で `bleed` がないときは、エラーにならないこと。
+- `optMarks = JapaneseMarks` で `bleed` がなく、`optTargets = Just [TargetHtml]` のとき、G07002 が出ず、HTML が書かれること。
+- マニフェストに `[targets.pdf]` があるプロジェクトで、`optMarks = JapaneseMarks`、`optCheckOnly = True` で `bleed` がないとき、G07002 が出て、`build/` に何も書かれないこと。
 - `style.toml` の `bleed` だけが違う二つのプロジェクトの PDF で、インスタンス ID（トレーラーの `/ID` の第二要素）が異なること。
 - 同じプロジェクトを `optMarks` だけ変えて二回ビルドした PDF で、ドキュメント ID（`/ID` の第一要素）が同じで、インスタンス ID が異なること。`optProfile` だけを変えた場合も、インスタンス ID が異なること。
 - 同じ設定で二回ビルドした PDF のバイト列が一致すること（既存の決定性のテストに、トンボと塗り足しのある設定を加える）。
@@ -260,7 +260,7 @@ golem-cli の変更（`marksOpt`、テスト、golden）は、この ADR の実�
 - `golem build --marks nope` と `golem check --marks nope` が終了コード 2 で終わり、標準エラー出力に `未知のトンボの形です: nope` を含むこと。
 - `golem build --marks`（値の欠け）が終了コード 2 で終わること。
 - `golem build --help` の golden に `--marks japanese|western|none` の行と日本語の説明が入ること。golden を更新する。
-- `bleed` のないプロジェクトで `golem build --target pdf --marks japanese` が終了コード 1 で終わり、標準エラー出力に G0702 があること。同じプロジェクトで `golem build --target html --marks japanese` が終了コード 0 で終わること。
+- `bleed` のないプロジェクトで `golem build --target pdf --marks japanese` が終了コード 1 で終わり、標準エラー出力に G07002 があること。同じプロジェクトで `golem build --target html --marks japanese` が終了コード 0 で終わること。
 
 ### 手作業の確認
 

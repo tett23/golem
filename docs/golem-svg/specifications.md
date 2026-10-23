@@ -2,7 +2,7 @@
 
 golem-svg は、`@figure` の SVG の図版を、PDF に描ける形（パス、塗りと線、行列とクリップを持つグループ）に読むパッケージである（[golem-pdf ADR 0009](../golem-pdf/adr/0009-svg-figures.md)）。
 依存は `base`、`bytestring`、`containers`、`text` だけである。
-読める範囲と、範囲の外を G0811 にすることは、[仕様書](../specifications.md) の図版の節に書く。
+読める範囲と、範囲の外を G08011 にすることは、[仕様書](../specifications.md) の図版の節に書く。
 この文書には、図の大きさにかかわらず読み終えるための上限と、その判定の場所を書く。
 
 ## モジュール
@@ -26,8 +26,8 @@ golem-svg は、`@figure` の SVG の図版を、PDF に描ける形（パス、
 `Golem.Svg` は、範囲の外の値の名前を決めるときにこれを使い、超える数があれば名前に `（読めない数）` を添える。
 色の値は `rgb()` の中の数だけを見る。
 16 進数の色の数字を数として読まないためである。
-`marker` の `markerWidth`、`markerHeight`、`refX`、`refY`、`viewBox`、`orient` は、読めなければ既定の値を使うが、10^9 を超える数があれば G0811 にする。
-ルートの `width`、`height`、`viewBox` に 10^9 を超える数があれば、`rootGeometry` が `SvgMalformed "大きさの数が大きすぎます"`（G0810）を返す。
+`marker` の `markerWidth`、`markerHeight`、`refX`、`refY`、`viewBox`、`orient` は、読めなければ既定の値を使うが、10^9 を超える数があれば G08011 にする。
+ルートの `width`、`height`、`viewBox` に 10^9 を超える数があれば、`rootGeometry` が `SvgMalformed "大きさの数が大きすぎます"`（G08010）を返す。
 
 値を 10^9 に丸めることはしない。
 計算は有理数のままで、浮動小数点数は使わない。
@@ -36,8 +36,8 @@ golem-svg は、`@figure` の SVG の図版を、PDF に描ける形（パス、
 
 図が置く `marker` を 1 段目とし、`marker` の中身が置く `marker` を 1 段深いとする。
 9 段（`markerDepthLimit`）まで描く（[docs/adr/0041](../adr/0041-svg-marker-and-number-limits.md)）。
-循環の中の参照を G0816、深さ 9 以上の `marker` の中の参照を G0817 にする（[docs/adr/0054](../adr/0054-svg-marker-cycle-and-depth-codes.md)）。
-`readSvg` は、範囲の外のもの（G0811）、循環の参照（G0816）、深すぎる参照（G0817）を、`SvgProblems` の三つの列に分けて返す。
+循環の中の参照を G08016、深さ 9 以上の `marker` の中の参照を G08017 にする（[docs/adr/0054](../adr/0054-svg-marker-cycle-and-depth-codes.md)）。
+`readSvg` は、範囲の外のもの（G08011）、循環の参照（G08016）、深すぎる参照（G08017）を、`SvgProblems` の三つの列に分けて返す。
 参照は `MarkerRef`（参照を持つ図形の行と桁、置く `marker` の id）で表す。
 三つのどれかが空でなければ `SvgUnsupported` とする。
 
@@ -46,7 +46,7 @@ golem-svg は、`@figure` の SVG の図版を、PDF に描ける形（パス、
 1. 要素を読む走査（`elementOps`）は、問題と描画のほかに、置く `marker` の id を返す。図の本体が置く `marker` と、各 `marker` の中身が置く `marker` から、グラフを作る。
 2. 強連結成分が同じ二つの `marker` のあいだの参照（自分自身への参照を含む）を、循環の参照とする。
 3. 図の本体から届く `marker` だけを数える。`marker` の深さは、循環の参照を除いて、図の本体からその `marker` に至る最も長い参照の列の長さである。
-4. 図の本体から届く `marker` の中身にある参照のうち、循環の参照を G0816、深さ 9 以上の `marker` からの参照を G0817 とする。範囲の外の参照も深さに数える。両方に当たる参照は G0816 とする。循環を切らなければ、段の数を減らしても直らないためである。
+4. 図の本体から届く `marker` の中身にある参照のうち、循環の参照を G08016、深さ 9 以上の `marker` からの参照を G08017 とする。範囲の外の参照も深さに数える。両方に当たる参照は G08016 とする。循環を切らなければ、段の数を減らしても直らないためである。
 
 問題は、`marker` の中身を文書の中で読むときに、参照を持つ図形の位置で出す。
 各 `marker` の中身は一度だけ読み、置くたびに読み直さない。

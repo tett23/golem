@@ -179,13 +179,13 @@ newTests =
         ja <- bleedOf (tmp </> "ja/style.toml")
         en <- bleedOf (tmp </> "en/style.toml")
         (ja, en) @?= (["bleed = \"3mm\""], ["bleed = \"0.125in\""]),
-      testCase "the en template builds a PDF with Japanese marks, without G0702 (golem-pdf ADR 0010)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
+      testCase "the en template builds a PDF with Japanese marks, without G07002 (golem-pdf ADR 0010)" $ withSystemTempDirectory "golem-new" $ \tmp -> do
         _ <- golemAt tmp ["new", "book", "--language", "en", "--no-fonts"]
         font <- BL.readFile "../golem-font/test/fonts/SourceSansPro-Regular.otf"
         createDirectoryIfMissing True (tmp </> "book/fonts")
         BL.writeFile (tmp </> "book/fonts/SourceSerif4-Regular.otf") font
         (code, _, err) <- golemAt (tmp </> "book") ["build", "--target", "pdf", "--marks", "japanese"]
-        assertBool err (not ("G0702" `isInfixOf` err))
+        assertBool err (not ("G07002" `isInfixOf` err))
         assertEqual err ExitSuccess code
         pdfs <- filter (".pdf" `isSuffixOf`) <$> listDirectory (tmp </> "book/build/pdf")
         length pdfs @?= 1,
@@ -237,25 +237,25 @@ inspectTests =
         (code, out, err) <- golemAt tmp ["inspect", "a.gm"]
         code @?= ExitFailure 1
         assertBool out ("NFile@" `isPrefixOf` out)
-        assertBool err ("a.gm:2:1: error[G0117]: " `isPrefixOf` err && "golem explain" `isInfixOf` err && not ("Diagnostic {" `isInfixOf` err))
+        assertBool err ("a.gm:2:1: error[G01017]: " `isPrefixOf` err && "golem explain" `isInfixOf` err && not ("Diagnostic {" `isInfixOf` err))
         (code', out', _) <- golemAt tmp ["inspect", "a.gm", "--as", "ast"]
         code' @?= ExitFailure 1
         assertBool out' ("File" `isPrefixOf` out'),
-      testCase "a file that is not there is G0302 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+      testCase "a file that is not there is G03002 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
         (code, out, err) <- golemAt tmp ["inspect", "nope.gm"]
         (code, out) @?= (ExitFailure 1, "")
-        take 1 (lines err) @?= ["nope.gm:1:1: error[G0302]: ファイルがありません: nope.gm"]
+        take 1 (lines err) @?= ["nope.gm:1:1: error[G03002]: ファイルがありません: nope.gm"]
         assertBool err (not ("withBinaryFile" `isInfixOf` err) && not ("backtrace" `isInfixOf` err)),
-      testCase "a directory is G0302 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+      testCase "a directory is G03002 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
         createDirectoryIfMissing True (tmp </> "d.gm")
         (code, _, err) <- golemAt tmp ["inspect", "d.gm"]
         code @?= ExitFailure 1
-        assertBool err ("error[G0302]" `isInfixOf` err),
-      testCase "a file that is not UTF-8 is G0101 in the human format (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
+        assertBool err ("error[G03002]" `isInfixOf` err),
+      testCase "a file that is not UTF-8 is G01001 in the human format (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
         BS.writeFile (tmp </> "b.gm") (BS.pack [0x61, 0xff, 0x0a])
         (code, _, err) <- golemAt tmp ["inspect", "b.gm"]
         code @?= ExitFailure 1
-        assertBool err ("b.gm:1:2: error[G0101]: " `isPrefixOf` err),
+        assertBool err ("b.gm:1:2: error[G01001]: " `isPrefixOf` err),
       testCase "--as ir shows the document of the file, without the CBOR line (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
         writeFiles tmp twoChapters
         (code, out, err) <- golemAt tmp ["inspect", "b.gm", "--as", "ir"]
@@ -280,7 +280,7 @@ inspectTests =
         writeFiles tmp (twoChapters <> [("c.gm", "三章の[nosuch: x]。\n")])
         (code, out, err) <- golemAt tmp ["inspect", "c.gm", "--as", "ir"]
         code @?= ExitFailure 1
-        assertBool err ("c.gm:1:" `isPrefixOf` err && "error[G0222]" `isInfixOf` err)
+        assertBool err ("c.gm:1:" `isPrefixOf` err && "error[G02022]" `isInfixOf` err)
         assertBool out ("Document" `isPrefixOf` out),
       testCase "--as ir without manifest.toml evaluates the file alone (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
         writeFiles tmp [("x.gm", "単独。\n")]
@@ -296,7 +296,7 @@ inspectTests =
         writeFiles tmp (twoChapters <> [("a.gm", "一章の[ref-title nolabel]。\n")])
         (code, out, err) <- golemAt tmp ["inspect", "b.gm", "--as", "ir"]
         code @?= ExitFailure 1
-        assertBool err ("error[G0403]" `isInfixOf` err)
+        assertBool err ("error[G04003]" `isInfixOf` err)
         assertBool out ("二章" `isInfixOf` out),
       testCase "--as cbor writes the CBOR of the document (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-inspect" $ \tmp -> do
         writeFiles tmp twoChapters
@@ -360,31 +360,31 @@ fmtTests =
         _ <- golemAt tmp ["fmt"]
         (code, out, _) <- golemAt tmp ["fmt", "--check"]
         (code, out) @?= (ExitSuccess, ""),
-      testCase "without a manifest: G0316 and 1" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+      testCase "without a manifest: G03016 and 1" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
         (code, _, err) <- golemAt tmp ["fmt"]
         code @?= ExitFailure 1
-        assertBool err ("error[G0316]: manifest.toml がありません" `isInfixOf` err),
+        assertBool err ("error[G03016]: manifest.toml がありません" `isInfixOf` err),
       testCase "a file that is not UTF-8 is left alone with 1" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
         BS.writeFile (tmp </> "b.gm") (BS.pack [0xff, 0xfe])
         (code, _, err) <- golemAt tmp ["fmt", "b.gm"]
         (code, err) @?= (ExitFailure 1, "b.gm: UTF-8 として読めないため整形しません\n")
         BS.readFile (tmp </> "b.gm") >>= (@?= BS.pack [0xff, 0xfe]),
-      testCase "a file that is not there is G0302 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+      testCase "a file that is not there is G03002 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
         (code, _, err) <- golemAt tmp ["fmt", "nope.gm"]
         code @?= ExitFailure 1
-        take 1 (lines err) @?= ["nope.gm:1:1: error[G0302]: ファイルがありません: nope.gm"]
+        take 1 (lines err) @?= ["nope.gm:1:1: error[G03002]: ファイルがありません: nope.gm"]
         assertBool err (not ("withBinaryFile" `isInfixOf` err) && not ("backtrace" `isInfixOf` err)),
       testCase "the other files are formatted after a file that is not there (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
         writeFiles tmp [("ok.gm", "本文。  \n")]
         (code, _, err) <- golemAt tmp ["fmt", "nope.gm", "ok.gm"]
         code @?= ExitFailure 1
-        assertBool err ("error[G0302]" `isInfixOf` err)
+        assertBool err ("error[G03002]" `isInfixOf` err)
         readUtf8 (tmp </> "ok.gm") >>= (@?= "本文。\n"),
-      testCase "a directory is G0302 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+      testCase "a directory is G03002 (golem-cli ADR 0007)" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
         createDirectoryIfMissing True (tmp </> "d.gm")
         (code, _, err) <- golemAt tmp ["fmt", "--check", "d.gm"]
         code @?= ExitFailure 1
-        assertBool err ("error[G0302]" `isInfixOf` err)
+        assertBool err ("error[G03002]" `isInfixOf` err)
     ]
 
 -- ------------------------------------------------------------------ golem plugin lock / fetch (golem-plugin ADR 0002)
@@ -429,10 +429,10 @@ pluginTests =
       testCase "fetch without plugins.lock has nothing to do and exits with 0" $
         inPluginProject [("manifest.toml", manifestWith "[]")] [] ["plugin", "fetch"] $ \_ (code, _, err) ->
           (code, err) @?= (ExitSuccess, ""),
-      testCase "fetch with a plugins.lock that is not TOML: G0611 at its place in plugins.lock" $
+      testCase "fetch with a plugins.lock that is not TOML: G06011 at its place in plugins.lock" $
         inPluginProject [("manifest.toml", manifestWith "[]"), ("plugins.lock", "[plugins.a\n")] [] ["plugin", "fetch"] $ \_ (code, _, err) -> do
           code @?= ExitFailure 1
-          take 1 (lines err) @?= ["plugins.lock:1:11: error[G0611]: TOML の誤りです: ここに行末は書けません"],
+          take 1 (lines err) @?= ["plugins.lock:1:11: error[G06011]: TOML の誤りです: ここに行末は書けません"],
       testCase "fetch of an artifact already in the cache needs no network" $
         inPluginProject [("manifest.toml", manifestWith "[]"), ("plugins.lock", lockOfAAA)] [(hashOfAAA <> ".wasm", "AAA")] ["plugin", "fetch"] $ \_ (code, _, err) ->
           (code, err) @?= (ExitSuccess, ""),
@@ -459,7 +459,7 @@ preflightTests =
         _ <- golemAt tmp ["new", "book", "--language", "en", "--no-fonts"]
         (code, _, err) <- golemAt (tmp </> "book") ["preflight"]
         code @?= ExitFailure 1
-        assertBool err ("error[G0802]" `isInfixOf` err)
+        assertBool err ("error[G08002]" `isInfixOf` err)
         assertBool err (not ("プリフライト（" `isInfixOf` err)),
       testCase "the summary of a new project names its preflight.toml, based on print, and counts the errors" $ withSystemTempDirectory "golem-preflight" $ \tmp -> do
         _ <- golemAt tmp ["new", "book", "--language", "en", "--no-fonts"]
@@ -467,10 +467,10 @@ preflightTests =
         createDirectoryIfMissing True (tmp </> "book/fonts")
         BL.writeFile (tmp </> "book/fonts/SourceSerif4-Regular.otf") font
         (code, _, err) <- golemAt (tmp </> "book") ["preflight"]
-        -- the template has a bleed (golem-pdf ADR 0010), and no output intent (G0914)
+        -- the template has a bleed (golem-pdf ADR 0010), and no output intent (G09014)
         code @?= ExitFailure 1
-        assertBool err ("G0914" `isInfixOf` err)
-        assertBool err (not ("G0910" `isInfixOf` err))
+        assertBool err ("G09014" `isInfixOf` err)
+        assertBool err (not ("G09010" `isInfixOf` err))
         let summary = last (lines err)
         assertBool summary ("プリフライト（設定: preflight.toml、基にした設定: print）: エラー 1、警告 0。" `isPrefixOf` summary)
     ]

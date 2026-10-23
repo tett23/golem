@@ -1,7 +1,7 @@
 {- | Hostile SVG figures end within limits of time and allocation (the
 security audit of 2026-10-18, candidates C8 to C11). Each input is small;
 what is asserted is that reading it is bounded: it is refused with what
-becomes G0810 or G0811, or it is read in a time and an allocation
+becomes G08010 or G08011, or it is read in a time and an allocation
 proportional to the input.
 -}
 module SecuritySpec (tests) where
@@ -145,13 +145,13 @@ markerChain n =
   where
     tshow = T.pack . show
 
--- | The names of what is outside the subset (G0811), or nothing.
+-- | The names of what is outside the subset (G08011), or nothing.
 unsupportedNames :: Either SvgError Svg -> [Text]
 unsupportedNames = \case
   Left (SvgUnsupported ps) -> map unName (spUnsupported ps)
   _ -> []
 
--- | The references within cycles of markers (G0816) and those too deep (G0817), by the id they place (docs/adr ADR 0054).
+-- | The references within cycles of markers (G08016) and those too deep (G08017), by the id they place (docs/adr ADR 0054).
 markerProblems :: Either SvgError Svg -> ([Text], [Text])
 markerProblems = \case
   Left (SvgUnsupported ps) -> (map mrId (spMarkerCycles ps), map mrId (spMarkerDepth ps))
@@ -209,7 +209,7 @@ tests =
 adr0041Tests :: [TestTree]
 adr0041Tests =
   [ localOption (mkTimeout (seconds 5)) $
-      testCase "C8: a marker that refers to itself is one reference in a cycle (G0816, docs/adr ADR 0054)" $
+      testCase "C8: a marker that refers to itself is one reference in a cycle (G08016, docs/adr ADR 0054)" $
         do
           r <- total selfMarker
           markerProblems r @?= (["m"], [])
@@ -227,7 +227,7 @@ adr0041Tests =
       r <- total (svg "<defs><marker id=\"m\"><path d=\"M0 0 L1 1\" marker-end=\"url(#m)\"/></marker></defs><path d=\"M0 0 L10 0\" stroke=\"#000\"/>")
       either (assertFailure . show) (const (pure ())) r,
     localOption (mkTimeout (seconds 5)) $
-      testCase "C8: markers nested 14 deep, four at each level, are references too deep only (G0817)" $
+      testCase "C8: markers nested 14 deep, four at each level, are references too deep only (G08017)" $
         do
           r <- total (nestedMarkers 14)
           let (cycles, deep) = markerProblems r
@@ -243,7 +243,7 @@ adr0041Tests =
             Right s -> groupDepth (svgDrawing s) @?= 18
             Left e -> assertFailure (show e),
     localOption (mkTimeout (seconds 5)) $
-      testCase "a chain of 10 markers is one reference too deep (G0817)" $
+      testCase "a chain of 10 markers is one reference too deep (G08017)" $
         do
           r <- total (markerChain 10)
           markerProblems r @?= ([], ["c1"])
@@ -258,24 +258,24 @@ adr0041Tests =
       unsupportedNames r @?= ["text"]
       markerProblems r @?= (["m"], []),
     localOption (mkTimeout (seconds 5)) $
-      testCase "C11: six arcs with radii of 1e9999 are G0811, d（読めない数）" $
+      testCase "C11: six arcs with radii of 1e9999 are G08011, d（読めない数）" $
         do
           r <- total (svg ("<path d=\"M0 0" <> T.replicate 3 " A 1e9999 1e9999 0 0 1 10 0 A 1e9999 1e9999 0 0 1 0 0" <> "\" stroke=\"#000\" fill=\"none\"/>"))
           unsupportedNames r @?= ["d（読めない数）"],
     localOption (mkTimeout (seconds 5)) $
-      testCase "C11: a width of 1e9999 is G0810, 大きさの数が大きすぎます" $
+      testCase "C11: a width of 1e9999 is G08010, 大きさの数が大きすぎます" $
         do
           r <- total "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1e9999\" height=\"1e9999\"><rect width=\"1\" height=\"1\"/></svg>"
           r @?= Left (SvgMalformed "大きさの数が大きすぎます"),
-    testCase "a viewBox of a number too large is G0810, 大きさの数が大きすぎます" $
+    testCase "a viewBox of a number too large is G08010, 大きさの数が大きすぎます" $
       readSvg "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1e10 1\"/>" @?= Left (SvgMalformed "大きさの数が大きすぎます"),
     testCase "a radius of 1e9 is read" $ do
       r <- total (arcOf "1e9")
       unsupportedNames r @?= [],
-    testCase "a radius of 1.000000001e9 is G0811, d（読めない数）" $ do
+    testCase "a radius of 1.000000001e9 is G08011, d（読めない数）" $ do
       r <- total (arcOf "1.000000001e9")
       unsupportedNames r @?= ["d（読めない数）"],
-    testCase "a radius of -1e9999 is G0811, d（読めない数）" $ do
+    testCase "a radius of -1e9999 is G08011, d（読めない数）" $ do
       r <- total (arcOf "-1e9999")
       unsupportedNames r @?= ["d（読めない数）"],
     testCase "a number of an exponent of five digits is malformed, not too large" $ do

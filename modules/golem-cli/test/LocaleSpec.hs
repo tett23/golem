@@ -33,7 +33,7 @@ localeTests =
         assertJapanese "stderr" (Just (rErr r)),
       sameEverywhere "golem check writes the same diagnostics and hint" syntaxErrorFiles ["check"] $ \r ->
         assertJapanese "stderr" (Just (rErr r)),
-      sameEverywhere "golem explain writes the same section" [] ["explain", "G0117"] $ \r ->
+      sameEverywhere "golem explain writes the same section" [] ["explain", "G01017"] $ \r ->
         assertJapanese "stdout" (Just (rOut r)),
       sameEverywhere "golem inspect writes the same tree" projectFiles ["inspect", "a.gm"] $ \r ->
         assertJapanese "stdout" (Just (rOut r)),

@@ -22,7 +22,7 @@
 - `parseSignedDim` も `parseDim` を使うので、負の寸法（`-0.5in`）も書ける。
 - `in` は絶対的な寸法（`Abs`）であり、`zw` を拒む欄（判型など）でも使える。
 - [golem-pdf ADR 0010](../../golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md) の草案の英語の雛形の塗り足しを、`bleed = "9pt"` から `bleed = "0.125in"` に改める。この ADR と golem-pdf ADR 0010 を一緒に採択するときは、golem-pdf ADR 0010 の本文をこの値で書いてから採択する。
-- 寸法として読めない値の diagnostic（G0306、G0317 など）のメッセージで、使える単位を並べている箇所に `in` を足す。
+- 寸法として読めない値の diagnostic（G03006、G03017 など）のメッセージで、使える単位を並べている箇所に `in` を足す。
 
 ### ドキュメント
 

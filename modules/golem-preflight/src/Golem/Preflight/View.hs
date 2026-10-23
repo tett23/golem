@@ -112,7 +112,7 @@ data GlyphView = GlyphView
     gvPart :: !GlyphPart,
     -- | where the character is in the source: the inline text, or the element that made it
     gvSpan :: !SrcSpan,
-    -- | the block of the line the glyph is on, where G0902 reports it
+    -- | the block of the line the glyph is on, where G09002 reports it
     gvLineSpan :: !SrcSpan
   }
   deriving stock (Eq, Show)

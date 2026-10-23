@@ -50,14 +50,14 @@ golem-cli は実行ファイルを持つ唯一のモジュールであり、引�
 CI で PDF だけが要るなら、[code: --target pdf] を明示する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0002-build-all-targets-by-default.md]（golem-cli ADR 0002「--target を省いた golem build はすべてのターゲットを作る」）]
 
 [code: golem check] は出力を作らず、構文、評価、文書構造（S1）までを検査する。[index reading="golem check": golem check]
-マニフェストの [code: \[targets.*\]] によらず四つのターゲットを検査するので、四つのターゲットが使う [code: style.toml] のファイルの存在も確かめ、版面の誤り（G0701）、トンボと塗り足しの誤り（G0702）、段落スタイルの字下げの誤り（G0725）、本文のフォントの欠け（G0807）も報告する。
+マニフェストの [code: \[targets.*\]] によらず四つのターゲットを検査するので、四つのターゲットが使う [code: style.toml] のファイルの存在も確かめ、版面の誤り（G07001）、トンボと塗り足しの誤り（G07002）、段落スタイルの字下げの誤り（G07025）、本文のフォントの欠け（G08007）も報告する。
 行分割と改ページ（S2）はしないので、ページに収まらないことによる誤りは [code: golem build] でしか見つからない。
 
 [code: golem preflight] は、[code: golem build --target pdf --profile prod] と同じ手順で PDF を組み、ファイルに書かずに、組んだ結果を検査する。[index reading="golem preflight": golem preflight][note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 プロファイルは常に [code: prod] で、[code: --profile] は使い方の誤りになる。
 [code: \[targets.*\]] の有無は見ず、常に PDF を組む。
 検査の項目、重大度、しきい値はプリフライトの設定で決まり、設定は [code: --rules] のファイル、なければプロジェクトのルートの [code: preflight.toml]、それもなければ組み込みの [code: print] である。
-設定の誤りは G0901 で、PDF を組まずに終わる。
+設定の誤りは G09001 で、PDF を組まずに終わる。
 構文から出力までの段階のエラーで PDF を組めないときは、[code: golem build] と同じ diagnostics だけを出し、検査はしない。
 LSP、[code: golem check]、[code: golem build] は、プリフライトの検査をしない。
 
@@ -140,8 +140,8 @@ $ golem build --target pdf --format json 2> diagnostics.json
 [code: --profile] は [code: dev] と [code: prod] の二つで、既定は [code: dev] である。[index reading=ぷろふぁいる: プロファイル]
 プロファイルが変えるのは、校正用のコメント（[code: \%%= ... \%%]）の扱いと、diagnostic の重大度の二つだけである。
 
-- 校正用のコメントは、[code: dev] では出力に現れ、[code: prod] では出力されず警告（G0205）になる。
-- 参照されていないラベル（G0504）と、HTML と EPUB のフォントの欠け（G0310）は、[code: dev] では警告、[code: prod] ではエラーになる。
+- 校正用のコメントは、[code: dev] では出力に現れ、[code: prod] では出力されず警告（G02005）になる。
+- 参照されていないラベル（G05004）と、HTML と EPUB のフォントの欠け（G03010）は、[code: dev] では警告、[code: prod] ではエラーになる。
 
 重大度の変更は、golem-syntax の [code: adjustForProfile] の一箇所で行う。
 対象のコードは [code: Golem.Syntax.Diagnostic.profileDependentCodes] に並んでいる。
@@ -155,7 +155,7 @@ PDF を書かないビルドでは何も変えない。[note: [style url: https:
 
 トンボは閲覧用と入稿用の PDF を同じ原稿から作り分けるための出力の設定なので、ファイルではなくオプションで選ぶ。
 [code: --marks] はインスタンス ID の入力に入るので、閲覧用と入稿用の PDF は同じドキュメント ID と異なるインスタンス ID を持つ。
-日本式のトンボは塗り足しを示すので、[code: style.toml] の [code: \[page\]] に [code: bleed] がなければエラー（G0702）になり、PDF を書かない。
+日本式のトンボは塗り足しを示すので、[code: style.toml] の [code: \[page\]] に [code: bleed] がなければエラー（G07002）になり、PDF を書かない。
 
 ## プロジェクトの雛形
 
@@ -167,8 +167,8 @@ PDF を書かないビルドでは何も変えない。[note: [style url: https:
 [code: preflight.toml] は [code: based-on = "print"] の一行と、[code: print] の主な値をコメントで書き写した例からなる。
 コメントだけが雛形の言語で、キーと値は言語によらない。
 [code: --no-fonts] でも作り、フォントの取得に失敗したときはほかのファイルと同じく書かない。
-雛形の [code: \[page\]] は、日本語で [code: bleed = "3mm"]、英語で [code: bleed = "0.125in"] の塗り足しを持つので、[code: --marks japanese] でもそのまま PDF を組める。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md]（golem-pdf ADR 0010「golem check の G0702 の条件と、雛形の塗り足し」）]
-雛形は [code: \[color\] intent] を持たないので、そのままでは [code: print] のプリフライトで G0914 のエラーになる。
+雛形の [code: \[page\]] は、日本語で [code: bleed = "3mm"]、英語で [code: bleed = "0.125in"] の塗り足しを持つので、[code: --marks japanese] でもそのまま PDF を組める。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md]（golem-pdf ADR 0010「golem check の G07002 の条件と、雛形の塗り足し」）]
+雛形は [code: \[color\] intent] を持たないので、そのままでは [code: print] のプリフライトで G09014 のエラーになる。
 
 マニフェストの [code: id] は、[code: golem new] が UUID の v4 で一度だけ生成する。
 これが Golem が乱数を使う唯一の箇所である。
@@ -199,5 +199,5 @@ AST と IR は、型の導出した [code: Show] の文字列を、字下げし�
 
 diagnostics は、ほかのコマンドと同じく人が読む形で標準エラー出力に書き、エラーがあれば終了コードは 1 になる。
 閉じていない [code: \[] を含むファイルの CST のように、エラーがあっても、表示は作れる限り標準出力に書く。
-引数のファイルがないときは、G0302 になる。
+引数のファイルがないときは、G03002 になる。
 意味論 IR と CBOR の形は第[ref-number ir]章で説明する。

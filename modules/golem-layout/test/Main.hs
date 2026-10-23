@@ -1764,10 +1764,10 @@ codeTests =
                   _ -> lk
               }
           code t = CharStyle sp "code" [Text sp t]
-          its = fst (composeInlines env [Text sp "人が読む形式では ", code "notice[G0730]", Text sp " のように書き、JSON では ", code "\"severity\":\"notice\"", Text sp " と書く。"])
+          its = fst (composeInlines env [Text sp "人が読む形式では ", code "notice[G07030]", Text sp " のように書き、JSON では ", code "\"severity\":\"notice\"", Text sp " と書く。"])
           -- 38zw, the first line indented by 1zw
           r = breakParagraph defaultParams (\i -> if i == 0 then 37000 else 38000) its
-      [T.concat [bcText c | Box _ c <- lineItems l] | l <- brLines r] @?= ["人が読む形式ではnotice[G0730]のように書き、JSONでは", "\"severity\":\"notice\"と書く。"]
+      [T.concat [bcText c | Box _ c <- lineItems l] | l <- brLines r] @?= ["人が読む形式ではnotice[G07030]のように書き、JSONでは", "\"severity\":\"notice\"と書く。"]
       assertBool "not overfull" (not (any lineOverfull (brLines r))),
     -- golem-doc ADR 0005; a break after the dot too (golem-layout ADR 0018)
     testCase "url: breaks after the last slash of a run and at spaces, no hyphenation" $ do

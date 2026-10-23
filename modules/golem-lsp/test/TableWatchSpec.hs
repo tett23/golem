@@ -71,15 +71,15 @@ tableWatchTests =
         watchGlob "a*b?.tsv" @?= "a[*]b[?].tsv"
         watchGlob "data/[x]{y}.csv" @?= "data/[[]x[]][{]y[}].csv"
         watchGlob "data/x.tsv" @?= "data/x.tsv",
-      testCase "G0285 is published on the table file" $ withTableProject $ \dir -> do
+      testCase "G02085 is published on the table file" $ withTableProject $ \dir -> do
         ws <- openWorkspace dir
-        codesOf ws "data/x.tsv" @?= ["G0285"]
-        codesOf ws "data/x.csv" @?= ["G0285"],
+        codesOf ws "data/x.tsv" @?= ["G02085"]
+        codesOf ws "data/x.csv" @?= ["G02085"],
       testCase "the editor's text of an open table file comes before the disk" $ withTableProject $ \dir -> do
         ws0 <- openWorkspace dir
         ws <- updateFile ws0 "data/x.tsv" "a\tb\nc\td\n"
         codesOf ws "data/x.tsv" @?= []
-        codesOf ws "data/x.csv" @?= ["G0285"],
+        codesOf ws "data/x.csv" @?= ["G02085"],
       testCase "the table files to watch, and which notifications re-evaluate" $ withTableProject $ \dir -> do
         ws <- openWorkspace dir
         tablesToWatch ws @?= Set.fromList ["data/x.csv", "data/x.tsv"]
@@ -87,7 +87,7 @@ tableWatchTests =
         tableFilesChanged ws {wsWatchedTables = tablesToWatch ws} ["data/y.tsv", "a.gm"] @?= False
         open <- updateFile ws "data/x.tsv" "a\tb\nc\n"
         tableFilesChanged open {wsWatchedTables = tablesToWatch ws} ["data/x.tsv"] @?= False,
-      testCase "a client with dynamic registration watches the table files; a fixed file clears G0285" $ withTableProject $ \dir -> do
+      testCase "a client with dynamic registration watches the table files; a fixed file clears G02085" $ withTableProject $ \dir -> do
         (regs, cleared, afterSwitch, unchanged) <- lspSession True dir $ do
           _ <- waitDiagnostics dir "data/x.tsv" (not . null)
           regs <- watched
@@ -116,12 +116,12 @@ tableWatchTests =
           _ <- waitDiagnostics dir "data/x.tsv" (not . null)
           watched
         regs @?= [],
-      testCase "a large table is G0288 at its @table (docs/adr ADR 0043)" $ withTableProject $ \dir -> do
+      testCase "a large table is G02088 at its @table (docs/adr ADR 0043)" $ withTableProject $ \dir -> do
         BS.writeFile (dir </> "data/big.tsv") (BS.concat (replicate 10001 "a\tb\n"))
         ws0 <- openWorkspace dir
         ws <- updateFile ws0 "a.gm" "本文。\n\n@table src=data/big.tsv\n"
         [(c, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
-          @?= [("G0288", 11, 35)]
+          @?= [("G02088", 11, 35)]
     ]
 
 -- | A session against the server, with or without dynamic registration of watched files.
