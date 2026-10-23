@@ -647,8 +647,7 @@ rubyTests =
       styled <- miniPdf fakeProvider True style "[ruby: 東京12|とうきょう]へ\n" fakeFontFiles >>= fmap BS.concat . inflateAll
       plain <- miniPdf fakeProvider True (pdfStyle <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\nlatin = \"fonts/h.otf\"\n") "[ruby: 東京12|とうきょう]へ\n" fakeFontFiles >>= fmap BS.concat . inflateAll
       -- 2, not 1: the folio draws a 1 in the body role
-      assertBool "drawn" (not (null (fontsOf styled '2')))
-      assertBool (show (fontsOf styled '2', fontsOf plain '2')) (fontsOf styled '2' /= fontsOf plain '2')
+      (fontsOf styled '2', fontsOf plain '2') @?= (["/F2"], ["/F1"])
       fontsOf styled '東' @?= fontsOf plain '東',
     testCase "a ruby at the line start does not stick out of the type area" $ do
       let source = T.replicate 12 "あ" <> "[ruby: 字|あいう]の" <> T.replicate 6 "あ" <> "\n"
@@ -1029,13 +1028,20 @@ codeTests =
     testCase "G07043: too little measure in a deep list, at the block" $ do
       let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n    - c\n\n      ```\n      x\n      ```\n" []
-      [(diagMessage d, spanStart (diagSpan d) > 0) | d <- codeOf r "G07043"] @?= [("コードブロックの行長が足りません", True)]
+      [(diagMessage d, spanStart (diagSpan d)) | d <- codeOf r "G07043"] @?= [("コードブロックの行長が足りません", 19)]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    x\n    ```\n" []
       codeOf ok "G07043" @?= [],
     testCase "G07043: too little measure at the top, reported by golem check too" $ do
       let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"3zw\"\n"
       r <- buildAllWith (\o -> o {optCheckOnly = True}) style "```\nx\n```\n" []
       map diagMessage (codeOf r "G07043") @?= ["コードブロックの行長が足りません"],
+    testCase "G07043: padding that leaves exactly 8 characters is not G07043; more padding is" $ do
+      -- 12 characters of 10pt, padding on both sides
+      let style padding = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"" <> padding <> "\"\n"
+      ok <- buildAllWith (\o -> o {optCheckOnly = True}) (style "2zw") "```\nx\n```\n" []
+      [diagCode d | d <- brDiagnostics ok, isError d] @?= []
+      over <- buildAllWith (\o -> o {optCheckOnly = True}) (style "2.5zw") "```\nx\n```\n" []
+      map diagMessage (codeOf over "G07043") @?= ["コードブロックの行長が足りません"],
     testCase "G07043: one row and its padding taller than a page" $ do
       r <- buildAll (replaceIn "lines = 30" "lines = 1" horizontalStyle) "```\nx\n```\n" []
       map diagMessage (codeOf r "G07043") @?= ["コードブロックの一行が一ページに収まりません"],
@@ -1415,7 +1421,7 @@ inlineCodeBackgroundTests =
       content <- miniPdf fakeProvider True style ("[code: abcdefghijklmnopqrstuvw]\n\n[ruby: 漢|かん]" <> T.replicate 10 "字" <> "\n") [] >>= fmap BS.concat . inflateAll
       let rects = filledRects content
           readings = [d | d <- drawnGlyphs content, dSize d == "5"]
-      assertBool (show rects) (not (null rects))
+      length rects @?= 1
       assertBool "readings" (length readings == 2)
       assertBool (show (rects, map emBox readings)) (not (any (\d -> any (overlaps (emBox d)) rects) readings)),
     testCase "code in a footnote and in a table cell has a rectangle" $ do
@@ -1517,7 +1523,7 @@ codeBlockRubyTests =
                 y = read (BC.unpack (dY d))
                 s = sizeOf d
              in (x - s / 2, y - s, x + s / 2, y)
-      assertBool "readings" (not (null readings))
+      length readings @?= 2
       assertBool (show (filledRects content, map vbox readings)) (not (any (\d -> any (overlaps (vbox d)) (filledRects content)) readings)),
     testCase "a code block that ends a column: the paragraph with ruby starts the next one, with no space line" $ do
       (_, pl) <- layoutOk (fiveLines <> codeBg) "一。\n\n二。\n\n三。\n\n```\na\n```\n\n[ruby: 漢|かん]字。\n" []

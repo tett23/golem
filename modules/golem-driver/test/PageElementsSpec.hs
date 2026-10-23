@@ -354,12 +354,13 @@ runningHeadTests =
         [d] -> do
           fmap siPath (Map.lookup (spanFile (diagSpan d)) srcs) @?= Just "a.gm"
           (spanStart (diagSpan d), spanEnd (diagSpan d)) @?= (0, 0)
+          diagMessage d @?= "柱が参照する変数 revision が、このファイルにありません（マスターページ body）"
         other -> assertFailure (show other)
       (ds', _, _) <- buildHeads (headsStyle "content = [\"{set.revision?}\"]") [("a.gm", twoChapters)] Nothing
       [d | d <- ds', isError d] @?= [],
     testCase "a variable that is not a string or a number is G02068 (ADR 0022)" $ do
-      (ds, _, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "@set revision = true\n\n" <> twoChapters)] Nothing
-      map diagCode (filter isError ds) @?= [DiagnosticCode "G02068"],
+      (ds, srcs, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", "@set revision = true\n\n" <> twoChapters)] Nothing
+      [(described d, fmap siPath (Map.lookup (spanFile (diagSpan d)) srcs)) | d <- ds, isError d] @?= [(("G02068", "柱に出せるのは文字列と数です: revision は 真偽値", FileId 1, 0, 0), Just "a.gm")],
     testCase "an imported variable (ADR 0022)" $ do
       (heads, _) <- layoutHeads miniManifest (headsStyle "content = [\"{set.values.price}\"]") [("a.gm", "@import common/values.gm as values\n\n" <> twoChapters), ("common/values.gm", "@set price = 100\n")]
       Map.lookup 2 heads @?= Just ["100"],
@@ -367,10 +368,18 @@ runningHeadTests =
       (ds, _, _) <- buildHeads (headsStyle "content = [\"{set.revision}\"]") [("a.gm", twoChapters)] (Just [TargetHtml])
       [d | d <- ds, diagCode d == DiagnosticCode "G02067"] @?= [],
     testCase "a line wider than the type area is G07051, and the PDF is written (ADR 0022)" $ do
-      (ds, _, pdf) <- buildHeads (headsStyle "content = [\"ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJ\"]") [("a.gm", twoChapters)] Nothing
-      [diagSeverity d | d <- ds, diagCode d == DiagnosticCode "G07051"] @?= [Warning]
+      (ds, srcs, pdf) <- buildHeads (headsStyle "content = [\"ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJ\"]") [("a.gm", twoChapters)] Nothing
+      [(diagSeverity d, described d, fmap siPath (Map.lookup (spanFile (diagSpan d)) srcs)) | d <- ds, diagCode d == DiagnosticCode "G07051"] @?= [(Warning, ("G07051", "柱の行が版面の幅を超えています（2 ページ）: ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJ", FileId 2, 0, 0), Just "style.toml")]
       [d | d <- ds, isError d] @?= []
       assertBool "a PDF" (isJust pdf),
+    testCase "a line exactly as wide as the type area is not G07051; one more character is (ADR 0022)" $ do
+      -- the type area is 12 characters of 10pt; the fake font sets Latin half an em wide
+      let g07051 t = do
+            (ds, _, _) <- buildHeads (headsStyle ("content = [\"" <> TE.encodeUtf8 t <> "\"]")) [("a.gm", twoChapters)] Nothing
+            pure [diagMessage d | d <- ds, diagCode d == DiagnosticCode "G07051"]
+      forM_ [(T.replicate 24 "A", T.replicate 25 "A"), (T.replicate 12 "字", T.replicate 13 "字")] $ \(fits, over) -> do
+        g07051 fits >>= (@?= [])
+        g07051 over >>= (@?= ["柱の行が版面の幅を超えています（2 ページ）: " <> over]),
     testCase "the short title of @toc-title" $ do
       (heads, _) <- layoutHeads miniManifest (headsStyle "content = \"heading.1.short\"") [("a.gm", "@toc-title 短\n# 長い題\n\n" <> lines' 11 <> "\n")]
       Map.lookup 2 heads @?= Just ["短"],
@@ -517,14 +526,15 @@ headingTests =
       qpdfCheck a,
     testCase "different fonts with the same PostScript name are an error" $ do
       (sans, _) <- realLatinFonts
-      (errs, pdf) <- buildMini realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.heading]\nlatin = \"fonts/sans2.otf\"\n\n[headings.1]\nfont = \"heading\"\n") "# Zebra\n\nquick\n" [("fonts/sans.otf", sans), ("fonts/sans2.otf", sans <> BS.replicate 4 0)]
-      errs @?= [DiagnosticCode "G08005"]
+      (errs, pdf) <- buildMiniErrors realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.heading]\nlatin = \"fonts/sans2.otf\"\n\n[headings.1]\nfont = \"heading\"\n") "# Zebra\n\nquick\n" [("fonts/sans.otf", sans), ("fonts/sans2.otf", sans <> BS.replicate 4 0)]
+      [(c, m, st, en) | (c, m, _, st, en) <- map described errs] @?= [("G08005", "PostScript 名が同じ異なるフォントがあります: SourceSansPro-Regular（fonts/sans.otf、fonts/sans2.otf）", 0, 0)]
       pdf @?= Nothing,
     testCase "a heading taller than the page is an error" $ do
       let style = BC.pack (T.unpack (T.replace "lines = 30" "lines = 3" (T.pack (BC.unpack horizontalStyle)))) <> "\n[headings.1]\nsize = \"60pt\"\n"
       (errs, pdf) <- buildMini fakeProvider True style "# A\n\nx\n" []
       errs @?= [DiagnosticCode "G07024"]
-      pdf @?= Nothing,
+      pdf @?= Nothing
+      layoutMini style "# A\n\nx\n" [] >>= (@?= [("G07024", "見出しが版面に入りません（1 の見出し: A）", FileId 1, 0, 4)]) . layoutErrors,
     testCase "the default size and lines of a heading by language and level (golem-driver ADR 0032)" $ do
       headingDefaults "ja" 1 @?= (Zw (3 % 2), 5)
       headingDefaults "ja-JP" 3 @?= (Zw 1, 2)
@@ -556,7 +566,8 @@ headingTests =
       ok @?= []
       (errs, pdf) <- buildMini fakeProvider True (three <> "\n[headings.1]\nlines = 4\n") "# A\n\nx\n" []
       errs @?= [DiagnosticCode "G07024"]
-      pdf @?= Nothing,
+      pdf @?= Nothing
+      layoutMini (three <> "\n[headings.1]\nlines = 4\n") "# A\n\nx\n" [] >>= (@?= [("G07024", "見出しが版面に入りません（1 の見出し: A）", FileId 1, 0, 4)]) . layoutErrors,
     testCase "default headings: parallel and sequential, and two builds, give the same bytes (golem-driver ADR 0032)" $ do
       let source = "# 一\n\n本文。\n\n## 二\n\n### 三\n\n本文。\n"
       a <- miniPdf fakeProvider True horizontalStyle source []
@@ -669,7 +680,8 @@ emphasisTests =
       runs <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n\n[character-styles.bold]\nfont = \"heading\"\n") "[bold: 本Golem]\n" fakeFontFiles >>= fmap (strokeRuns . BS.concat) . inflateAll
       widthsOf '本' runs @?= [Nothing]
       widthsOf 'G' runs @?= [Just (TE.encodeUtf8 (spToPt 10922))]
-      assertBool "different fonts" (nub [f | (f, _, gs) <- runs, fromEnum '本' `elem` gs] /= nub [f | (f, _, gs) <- runs, fromEnum 'G' `elem` gs]),
+      -- the body role is /F1 and the heading role /F2
+      (nub [f | (f, _, gs) <- runs, fromEnum '本' `elem` gs], nub [f | (f, _, gs) <- runs, fromEnum 'G' `elem` gs]) @?= (["/F1"], ["/F2"]),
     testCase "a character style colours its text" $ do
       pdf <- miniPdf fakeProvider True (horizontalStyle <> "\n[color.swatches]\naccent = { cmyk = [0, 80, 100, 0] }\n\n[character-styles.term]\ncolor = \"accent\"\n") "前[style term: 語]後\n" []
       content <- BS.concat <$> inflateAll pdf
@@ -677,13 +689,12 @@ emphasisTests =
     testCase "a paragraph style sets the role of its paragraphs" $ do
       content <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n\n[paragraph-styles.quote]\nfont = \"heading\"\n") "本\n\n@style quote\n語\n" fakeFontFiles >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
-      assertBool "the heading role's font" ([dFont d | d <- ds, dGlyph d == fromEnum '語'] /= [dFont d | d <- ds, dGlyph d == fromEnum '本'])
-      assertBool "drawn" (not (null [d | d <- ds, dGlyph d == fromEnum '語'])),
+      ([dFont d | d <- ds, dGlyph d == fromEnum '語'], [dFont d | d <- ds, dGlyph d == fromEnum '本']) @?= (["/F2"], ["/F1"]),
     testCase "a role with one side leaves the other side in the outer face, synthetic" $ do
       content <- miniPdf fakeProvider True (horizontalStyle <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n\n[character-styles.bold]\nfont = \"wide\"\n") "本[bold: 語Go]\n" fakeFontFiles >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
       [dFont d | d <- ds, dGlyph d == fromEnum '語'] @?= [dFont d | d <- ds, dGlyph d == fromEnum '本']
-      assertBool "Latin in the wide role" ([dFont d | d <- ds, dGlyph d == fromEnum 'G'] /= [dFont d | d <- ds, dGlyph d == fromEnum '本'])
+      ([dFont d | d <- ds, dGlyph d == fromEnum 'G'], [dFont d | d <- ds, dGlyph d == fromEnum '本']) @?= (["/F2"], ["/F1"])
       assertBool "the Japanese side is synthetic bold" ("2 Tr" `BS.isInfixOf` content)
   ]
 
@@ -695,7 +706,7 @@ wrapTests =
       (_, pf, _, _) <- theFigure pl
       let n = toInteger (length (pfCaption pf))
       (pfAlong pf, pfAcross pf, pfImageLines pf) @?= (40 * pt, 60 * pt, 4)
-      assertBool "a caption" (n > 0)
+      n @?= 3
       fmap exLines (pfExclusion pf) @?= Just (fromInteger ((((4 + n - 1) * 15 + 10 + 10) + 14) `div` 15)),
     testCase "lines beside the figure are shorter; the rest of the paragraph is full" $ do
       img <- tinyImage
@@ -707,7 +718,7 @@ wrapTests =
       length beside @?= exLines ex
       map (lineTarget . slLine) beside @?= replicate (exLines ex) (190 * pt)
       map slIndent beside @?= replicate (exLines ex) 0
-      assertBool "continued lines" (not (null rest))
+      length rest @?= 7
       assertBool "full lines" (all ((== 240 * pt) . lineTarget . slLine) rest),
     testCase "wrap=start indents the lines beside it; the image sits at the line start or end" $ do
       img <- tinyImage
@@ -758,18 +769,21 @@ wrapTests =
     testCase "a width that is not a length, or leaves too short lines, is G07022" $ do
       img <- tinyImage
       a <- layoutMini horizontal24 (wrapped "end" "3em" <> longPara 3) img
-      either (map diagCode) (const []) a @?= [DiagnosticCode "G07022"]
+      layoutErrors a @?= [("G07022", "回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: 3em", FileId 1, 0, 75)]
       b <- layoutMini horizontal24 (wrapped "end" "22zw" <> longPara 3) img
-      either (map diagCode) (const []) b @?= [DiagnosticCode "G07022"],
+      layoutErrors b @?= [("G07022", "回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: 22zw", FileId 1, 0, 76)],
+    testCase "a wrapped figure that leaves exactly 8 characters beside it is not G07022; one character wider is" $ do
+      -- 24 characters: the width, the gap of 1zw and 8 characters
+      img <- tinyImage
+      a <- layoutMini horizontal24 (wrapped "end" "15zw" <> longPara 3) img
+      layoutErrors a @?= []
+      b <- layoutMini horizontal24 (wrapped "end" "16zw" <> longPara 3) img
+      map (\(c, m, _, _, _) -> (c, m)) (layoutErrors b) @?= [("G07022", "回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: 16zw")],
     testCase "an exclusion longer than the page is G07023 at the figure" $ do
       img <- tinyImage
       let source = "前の段落。\n\n" <> wrapped "end" "10zw" <> longPara 3
       r <- layoutMini (replaceIn "lines = 30" "lines = 10" horizontal24) source img
-      case r of
-        Left [d] -> do
-          diagCode d @?= DiagnosticCode "G07023"
-          spanStart (diagSpan d) @?= BS.length (fst (BS.breakSubstring "@figure" (TE.encodeUtf8 source)))
-        other -> assertFailure (show (either (map diagCode) (const []) other)),
+      layoutErrors r @?= [("G07023", "回り込む図版の除外領域が一ページの行数を超えます（12 行）", FileId 1, 17, 93)],
     testCase "a figure that does not wrap takes its image and caption lines; the caption is drawn" $ do
       img <- tinyImage
       let source = "@figure images/tiny.jpg alt=\"t\"\n  キャプション。\n\n後の段落。\n"
@@ -870,14 +884,14 @@ captionTests =
       img <- tinyImage
       content <- miniPdf fakeProvider True (captionStyle "font = \"heading\"\n" <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n") (figureWith 4) (img <> fakeFontFiles) >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
-      assertBool "drawn" (not (null [d | d <- ds, dGlyph d == fromEnum '甲']))
-      assertBool "the heading role's font" (nub [dFont d | d <- ds, dGlyph d == fromEnum '甲'] /= nub [dFont d | d <- ds, dGlyph d == fromEnum '後']),
+      (nub [dFont d | d <- ds, dGlyph d == fromEnum '甲'], nub [dFont d | d <- ds, dGlyph d == fromEnum '後']) @?= (["/F2"], ["/F1"]),
     testCase "a small caption fits where a body-size one is G07023" $ do
       img <- tinyImage
       let short = replaceIn "lines = 30" "lines = 8" horizontal24
           source = "@figure images/tiny.jpg alt=\"t\" wrap=end width=4zw\n  " <> T.replicate 14 "甲" <> "\n\n" <> longPara 2
       (errs, _) <- buildMini fakeProvider True short source img
       errs @?= [DiagnosticCode "G07023"]
+      layoutMini short source img >>= (@?= [("G07023", "回り込む図版の除外領域が一ページの行数を超えます（10 行）", FileId 1, 0, 96)]) . layoutErrors
       (errs', _) <- buildMini fakeProvider True (short <> "\n[paragraph-styles.caption]\nsize = \"5pt\"\n") source img
       errs' @?= [],
     testCase "vertical: the caption is in the type area, its first centre line half its size from the grid" $ do
@@ -1016,16 +1030,16 @@ sidenoteTests =
       b <- layoutMini pdfStyle "本文[sidenote: 注]。\n" []
       either (map diagCode) (const []) b @?= [DiagnosticCode "G07032"]
       c <- layoutMini sidenoteStyle "本文[note: 注の[sidenote: 傍注]本文]。\n" []
-      either (map diagCode) (const []) c @?= [DiagnosticCode "G07035"]
+      layoutErrors c @?= [("G07035", "PDF では、脚注の本文と図版のキャプションの中に傍注を置けません", FileId 1, 19, 37)]
       img <- tinyImage
       d <- layoutMini (figStyle sidenoteStyle) "@figure images/tiny.jpg alt=\"t\"\n  キャプション[sidenote: 傍注]。\n" img
-      either (map diagCode) (const []) d @?= [DiagnosticCode "G07035"],
+      layoutErrors d @?= [("G07035", "PDF では、脚注の本文と図版のキャプションの中に傍注を置けません", FileId 1, 52, 70)],
     testCase "sidenote text is drawn in the sidenote column at its size" $ do
       content <- miniPdf fakeProvider True sidenoteStyle "本文[sidenote: 注]。\n" [] >>= fmap BS.concat . inflateAll
       geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 sidenoteStyle) >>= pageGeometry (FileId 0) False)
       area <- maybe (assertFailure "no column") pure (sidenoteAreaFor geom 1)
       let small = [d | d <- drawnGlyphs content, dSize d == "8"]
-      assertBool "8pt glyphs" (not (null small))
+      length small @?= 2
       assertBool (show (map dX small)) (TE.encodeUtf8 (spToPt (rectX area)) `elem` map dX small),
     testCase "a page reference in a sidenote converges" $ do
       (_, pl) <- layoutOk sidenoteStyle ("本文[sidenote: [ref-page later]ページを参照。]。\n\n" <> longPara 60 <> "@label later\n後。\n") []
@@ -1046,8 +1060,7 @@ sidenoteTests =
       let ds = drawnGlyphs content
           fontsOf c sz = nub [dFont d | d <- ds, dGlyph d == fromEnum c, dSize d == sz]
       fontsOf '注' "8" @?= fontsOf '1' "8"
-      assertBool "drawn" (not (null (fontsOf '注' "8")))
-      assertBool "the note's role" (fontsOf '注' "8" /= fontsOf '本' "10")
+      (fontsOf '注' "8", fontsOf '本' "10") @?= (["/F2"], ["/F1"])
       nub [dFont d | d <- ds, dGlyph d == fromEnum '1', dSize d /= "8"] @?= fontsOf '本' "10",
     testCase "a sidenote role measures the note in its own font" $ do
       let note = "本文[sidenote: abcdefghijklmnopqrstuvwxyz]。\n"

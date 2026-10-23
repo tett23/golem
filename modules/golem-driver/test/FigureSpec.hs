@@ -13,7 +13,7 @@ import Data.ByteString.Lazy qualified as BL
 import Data.Containers.ListUtils (nubOrd)
 import Data.List (isSuffixOf)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust, listToMaybe)
+import Data.Maybe (isJust)
 import Data.Ratio ((%))
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -240,10 +240,10 @@ svgFigureTests =
       assertBool "same" (a == b && isJust a),
     testCase "a gradient is G08011 and no PDF is written, in dev and prod; a broken SVG is G08010" $ do
       forM_ [Dev, Prod] $ \profile -> do
-        (codes, pdf, _) <- pdfWith profile "@figure images/g.svg alt=\"t\"\n" [("images/g.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><linearGradient id=\"g\"/></svg>")]
-        (codes, pdf) @?= ([DiagnosticCode "G08011"], Nothing)
-      (codes, _, _) <- pdfWith Dev "@figure images/b.svg alt=\"t\"\n" [("images/b.svg", "<svg")]
-      codes @?= [DiagnosticCode "G08010"],
+        (codes, pdf, msgs) <- pdfWith profile "@figure images/g.svg alt=\"t\"\n" [("images/g.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"><linearGradient id=\"g\"/></svg>")]
+        (codes, pdf, msgs) @?= ([DiagnosticCode "G08011"], Nothing, ["SVG の図版に扱えないものがあります: images/g.svg:1:64（linearGradient）"])
+      (codes, _, msgs) <- pdfWith Dev "@figure images/b.svg alt=\"t\"\n" [("images/b.svg", "<svg")]
+      (codes, msgs) @?= ([DiagnosticCode "G08010"], ["図版を PDF に置けません: images/b.svg（開始のタグが壊れています: svg）"]),
     testCase "text is G08011, asking for outlines" $ do
       (codes, _, msgs) <- pdfWith Dev "@figure images/t.svg alt=\"t\"\n" [("images/t.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n<text>a</text><use/></svg>")]
       codes @?= [DiagnosticCode "G08011"]
@@ -260,7 +260,7 @@ svgFigureTests =
           showB = TE.encodeUtf8 . T.pack . show :: Int -> BS.ByteString
       (codes, pdf, msgs) <- pdfWith Dev "@figure images/c.svg alt=\"t\"\n" [("images/c.svg", chain)]
       (codes, pdf) @?= ([DiagnosticCode "G08017"], Nothing)
-      assertBool (show msgs) (all ("SVG の図版の marker の入れ子が 9 段を超えます: images/c.svg:1:" `T.isPrefixOf`) msgs && all ("（c1）" `T.isSuffixOf`) msgs),
+      msgs @?= ["SVG の図版の marker の入れ子が 9 段を超えます: images/c.svg:1:146（c1）"],
     testCase "text and a cycle of markers are G08011 and G08016, in this order, and no PDF is written (docs/adr ADR 0054)" $ do
       (codes, pdf, _) <- pdfWith Dev "@figure images/m.svg alt=\"t\"\n" [("images/m.svg", markerSvg "<text>a</text>")]
       (codes, pdf) @?= ([DiagnosticCode "G08011", DiagnosticCode "G08016"], Nothing),
@@ -558,15 +558,17 @@ fitFigureTests =
           loudStreams <- maybe (assertFailure "no PDF") inflateAll (lookup pdfName (nOutputs loud))
           quietStreams @?= loudStreams
           assertBool "a PDF" (isJust (lookup pdfName (nOutputs loud))),
+        testCase "G07038 at the boundary: a caption one line short of the column is fitted; as deep as the column is G07038" $ do
+          -- 24 characters: 21 あ and the number of the figure take one line, 22 take two, the depth of the column
+          let column k = do
+                r <- layoutMini (pageStyle "horizontal" "left" 24 2 1 20 20) ("前の段落。\n\n" <> fig "wide" "" (T.replicate k "あ")) boxes
+                pure (either (map (\d -> (diagCode d, diagMessage d))) (map (\d -> (diagCode d, diagMessage d)) . notices "G07039" . snd) r)
+          column 21 >>= (@?= [(DiagnosticCode "G07039", "図版を段に収めるため 18% に縮めました")])
+          column 22 >>= (@?= [(DiagnosticCode "G07038", "図版のキャプションが段の行数を超えます（2 行。段は 2 行）")]),
         testCase "G07038: a caption as deep as the column, at the figure, in dev and prod" $ do
           let source = "前の段落。\n\n" <> fig "wide" "" (T.replicate 70 "あ")
           r <- layoutMini (pageStyle "horizontal" "left" 24 2 1 20 20) source boxes
-          case r of
-            Left [d] -> do
-              diagCode d @?= DiagnosticCode "G07038"
-              Just (spanStart (diagSpan d)) @?= listToMaybe (figureOffsets source)
-              assertBool (T.unpack (diagMessage d)) ("図版のキャプションが段の行数を超えます（" `T.isPrefixOf` diagMessage d && "段は 2 行）" `T.isSuffixOf` diagMessage d)
-            other -> assertFailure (show (either (map diagCode) (const []) other))
+          layoutErrors r @?= [("G07038", "図版のキャプションが段の行数を超えます（4 行。段は 2 行）", FileId 1, 17, 262)]
           forM_ [Dev, Prod] $ \profile -> do
             n <- notifiedWith "" (pageStyle "horizontal" "left" 24 2 1 20 20) source (\o -> o {optTargets = Just [TargetPdf], optProfile = profile})
             [diagCode d | d <- nDiagnostics n, isError d] @?= [DiagnosticCode "G07038"]
@@ -611,11 +613,12 @@ turnedFigureTests =
     testCase "the caption of a turned figure is set to the height of the type area, or its width in vertical text" $ do
       (geom, pl) <- layoutOk (horizontal20 "left" 20) (fig "wide" " rotate=true" (T.replicate 40 "あ")) boxes
       (pf, _, _) <- single (figuresIn pl)
-      assertBool "lines" (not (null (pfCaption pf)))
+      length (pfCaption pf) @?= 2
       map lineTarget (pfCaption pf) @?= map (const (rectH (pgTypeArea geom))) (pfCaption pf)
       (geom', pl') <- layoutOk (vertical10 60) (fig "wide" " rotate=true" (T.replicate 40 "あ")) boxes
       (pf', _, _) <- single (figuresIn pl')
-      map lineTarget (pfCaption pf') @?= map (const (rectW (pgTypeArea geom'))) (pfCaption pf'),
+      map lineTarget (pfCaption pf') @?= map (const (rectW (pgTypeArea geom'))) (pfCaption pf')
+      length (pfCaption pf') @?= 3,
     testCase "the frame has (Fd - h) / p + 1 lines; a figure that does not fit it is fitted with G07039 for the page" $ do
       -- horizontal24: Fm 445pt, Fd 240pt, 16 lines
       (_, pl) <- layoutOk horizontal24 (fig "square" " rotate=true" "") boxes
@@ -625,11 +628,7 @@ turnedFigureTests =
       map diagMessage (notices "G07039" pl) @?= ["図版をページに収めるため 50% に縮めました"],
     testCase "G07038: a caption as deep as the frame" $ do
       r <- layoutMini (pageStyle "horizontal" "left" 3 20 1 20 20) (fig "wide" " rotate=true" (T.replicate 70 "あ")) boxes
-      case r of
-        Left [d] -> do
-          diagCode d @?= DiagnosticCode "G07038"
-          assertBool (T.unpack (diagMessage d)) ("図版のキャプションがページの行数を超えます（" `T.isPrefixOf` diagMessage d && "ページは 2 行）" `T.isSuffixOf` diagMessage d)
-        other -> assertFailure (show (either (map diagCode) (const []) other)),
+      layoutErrors r @?= [("G07038", "図版のキャプションがページの行数を超えます（3 行。ページは 2 行）", FileId 1, 0, 257)],
     testCase "the image and the caption of a turned figure are inside the type area on the page; the caption is text" $ do
       let style = vertical10 60
           source = fig "wide" " rotate=true" "キャプション。"
@@ -640,20 +639,20 @@ turnedFigureTests =
           caps = [lvRect l | pv <- vwPages v, l <- pvLines pv, lvKind l == "キャプションの行"]
       map ivTurned ivs @?= [True]
       forM_ (map ivRect ivs <> caps) $ \r -> assertBool (show (r, ta)) (inside r ta)
-      assertBool "caption lines" (not (null caps))
+      length caps @?= 1
       content <- miniPdf fakeProvider True style source boxes >>= fmap BS.concat . inflateAll
       assertBool "caption glyphs" (fromEnum 'キ' `elem` map dGlyph (drawnGlyphs content)),
     testCase "vertical: the lines of the frame advance from the bottom of the page to the top (golem-driver ADR 0038)" $ do
       -- 20 characters do not fit the frame line of 145pt: two lines of the caption
       (img, caps) <- turnedParts (vertical10 60) (fig "wide" " rotate=true" (T.replicate 20 "あ"))
-      assertBool "two lines" (length caps >= 2)
+      length caps @?= 2
       forM_ caps $ \c -> assertBool (show (c, img)) (rectY c >= rectY img + rectH img)
       case caps of
         (first : second : _) -> assertBool (show (first, second)) (rectY second > rectY first)
         _ -> assertFailure (show caps),
     testCase "horizontal: the lines of the frame advance from the left of the page to the right (golem-driver ADR 0038)" $ do
       (img, caps) <- turnedParts (horizontal20 "left" 20) (fig "wide" " rotate=true" "キャプション。")
-      assertBool "caption lines" (not (null caps))
+      length caps @?= 1
       forM_ caps $ \c -> assertBool (show (c, img)) (rectX c >= rectX img + rectW img),
     testCase "two columns: a turned figure spans the type area of both" $ do
       let style = pageStyle "horizontal" "left" 12 20 2 20 25
@@ -675,7 +674,7 @@ turnedFigureTests =
       let build' r = notifiedWith "\n[targets.html]\n\n[targets.epub]\n" (horizontal20 "left" 20) (fig "wide" r "キャプション。") (\o -> o {optTargets = Just [TargetHtml, TargetEpub]})
       turned <- build' " rotate=true"
       plain <- build' ""
-      assertBool "outputs" (not (null (nOutputs plain)))
+      map fst (nOutputs plain) @?= ["epub/book.epub", "html/a.xhtml", "html/fonts/b.otf", "html/images/wide.svg", "html/index.xhtml", "html/style.css"]
       nOutputs turned @?= nOutputs plain
   ]
 
