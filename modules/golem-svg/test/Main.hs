@@ -13,6 +13,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Svg
 import Golem.Svg.Css
 import Golem.Svg.Xml
+import NumberSpec qualified
 import SecuritySpec qualified
 import System.Directory (listDirectory)
 import System.FilePath ((</>))
@@ -64,6 +65,7 @@ tests outlined sources =
       testGroup "the size and the viewBox" sizeTests,
       SecuritySpec.tests,
       ActiveSpec.tests,
+      NumberSpec.numberTests,
       testGroup
         "the figures of the developer manual"
         ( [ testCase ("the outlined " <> f <> " has nothing unsupported") $ do
