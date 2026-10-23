@@ -3,6 +3,7 @@
 module Main (main) where
 
 import Control.Concurrent (forkIO)
+import Control.Exception (finally)
 import Control.Monad (void)
 import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
@@ -31,7 +32,7 @@ import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
 import StaleS1Spec (staleS1Tests)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory, makeAbsolute)
-import System.Environment (setEnv)
+import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
 import System.IO.Temp (withSystemTempDirectory)
@@ -46,7 +47,32 @@ root :: FilePath
 root = "test/fixtures/proj"
 
 main :: IO ()
-main = defaultMain tests
+main = do
+  cacheHome <- lookupEnv "XDG_CACHE_HOME"
+  defaultMain (dependentTestGroup "golem-lsp" AllFinish [tests, cacheHomeTests cacheHome])
+
+{- | The tests that set XDG_CACHE_HOME, one at a time after the others, and
+last a check that it is as it was when the suite started (docs/adr ADR
+0072). The environment is one for the process, and tasty runs the other
+tests at once.
+-}
+cacheHomeTests :: Maybe String -> TestTree
+cacheHomeTests start =
+  dependentTestGroup
+    "XDG_CACHE_HOME (docs/adr ADR 0072)"
+    AllFinish
+    [ -- docs/adr ADR 0031
+      testCase "completion: the commands of the plugins after the built-in ones, with a syntax error too" $
+        withIdentityPlugin $ \tmp -> do
+          ws0 <- openWorkspace tmp
+          ws <- updateFile ws0 "b.gm" "本文。\n\n["
+          let names = map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[")))
+          names @?= builtinInlineCommands <> ["broken"]
+          ws' <- updateFile ws0 "b.gm" "本文。\n\n[b"
+          assertBool "broken" ("broken" `elem` map cmpLabel (completions ws' "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[b")))),
+      testCase "XDG_CACHE_HOME is as it was when the suite started" $
+        lookupEnv "XDG_CACHE_HOME" >>= (@?= start)
+    ]
 
 -- | Byte offset of the k-th byte inside the first occurrence of needle.
 offsetIn :: Text -> Text -> Int -> Int
@@ -101,15 +127,6 @@ tests =
         assertBool "commands" ("color" `elem` names (offsetIn src "[co" 3))
         names (offsetIn src "[color " 7) @?= ["accent"]
         assertBool "paths" ("common/values.gm" `elem` names (offsetIn src "@import " 8)),
-      -- docs/adr ADR 0031
-      testCase "completion: the commands of the plugins after the built-in ones, with a syntax error too" $
-        withIdentityPlugin $ \tmp -> do
-          ws0 <- openWorkspace tmp
-          ws <- updateFile ws0 "b.gm" "本文。\n\n["
-          let names = map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[")))
-          names @?= builtinInlineCommands <> ["broken"]
-          ws' <- updateFile ws0 "b.gm" "本文。\n\n[b"
-          assertBool "broken" ("broken" `elem` map cmpLabel (completions ws' "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[b")))),
       testCase "completion: a project without plugins has the built-in names only" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "本文。\n\n["
@@ -551,8 +568,16 @@ withIdentityPlugin k = withSystemTempDirectory "golem-lsp-plugin" $ \tmp -> do
   BS.appendFile (tmp </> "manifest.toml") "\n[plugins.identity]\nurl = \"https://example.com/identity.wasm\"\n"
   src <- TIO.readFile "../golem-plugin/test/plugins/identity.wat"
   wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
-  setEnv "XDG_CACHE_HOME" (tmp </> "cache")
-  cache <- defaultCacheDir
-  r <- lockPlugins (\u -> pure (if u == "https://example.com/identity.wasm" then Right wasm else Left "404")) cache (Map.fromList [("identity", "https://example.com/identity.wasm")])
-  either (assertFailure . show) (TIO.writeFile (tmp </> "plugins.lock") . renderLock) r
-  k tmp
+  withEnv "XDG_CACHE_HOME" (tmp </> "cache") $ do
+    cache <- defaultCacheDir
+    r <- lockPlugins (\u -> pure (if u == "https://example.com/identity.wasm" then Right wasm else Left "404")) cache (Map.fromList [("identity", "https://example.com/identity.wasm")])
+    either (assertFailure . show) (TIO.writeFile (tmp </> "plugins.lock") . renderLock) r
+    k tmp
+
+{- | Runs an action with an environment variable set, and sets it back
+afterwards, or unsets it where it was not set (docs/adr ADR 0072).
+-}
+withEnv :: String -> String -> IO a -> IO a
+withEnv name value act = do
+  old <- lookupEnv name
+  (setEnv name value >> act) `finally` maybe (unsetEnv name) (setEnv name) old

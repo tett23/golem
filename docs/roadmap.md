@@ -38,7 +38,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - プロパティテストの生成器に、境界の入力を出させる（未実装、[ADR 0067](adr/0067-generators-missing-boundary-inputs.md)）。
 - 上限ちょうどの入力が通ることを、拒む側と対にして確かめる（未実装、[ADR 0068](adr/0068-accepting-side-of-limits.md)）。
 - 変更のパスを取るときにリネームの検出を切り、移動元のパスも数える（未実装、[ADR 0070](adr/0070-changed-paths-without-rename-detection.md)）。
-- 環境変数を書き換えるテストは、書き換えを元に戻す（未実装、[ADR 0072](adr/0072-tests-restore-process-environment.md)）。
 - テストの時間の上限を、止まらないことの検出に限り、上限の検査は数で書く（未実装、[ADR 0073](adr/0073-time-bounds-in-tests.md)）。
 - テストを切り替える環境変数の値の読み方をそろえ、省いたテストを数える（未実装、[ADR 0074](adr/0074-test-switches-by-environment-variables.md)）。
 - 並行の競合を探すテストの回数を、CI の夜間の実行で増やす（未実装、[ADR 0075](adr/0075-race-search-repetitions.md)）。
