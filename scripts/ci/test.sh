@@ -40,6 +40,41 @@ expect() {
   ok
 }
 
+# skip COUNT NAME: COUNT checks did not run; said on stderr and counted in
+# the summary (docs/adr/0077)
+SKIPPED=0
+skip() {
+  SKIPPED=$((SKIPPED + $1))
+  printf 'SKIP %s %s\n' "$1" "$2" >&2
+}
+
+# fixture NAME CMD...: runs a command that builds the input of the tests.
+# A failure stops the tests with its output: a broken fixture would make
+# the later checks pass or fail for another reason (docs/adr/0077)
+fixture() {
+  name=$1
+  shift
+  # not in an if nor before || or &&, which would turn off set -e in CMD
+  "$@" >"$WORK/fixture.log" 2>&1
+  fixture_code=$?
+  if [ "$fixture_code" != 0 ]; then
+    printf 'FIXTURE FAILED: %s\n' "$name"
+    sed 's/^/  /' "$WORK/fixture.log"
+    exit 1
+  fi
+}
+
+# git_repo DIR: a new repository at DIR on the branch main, which commits
+# and tags as ci, without signing whatever the configuration of the user
+git_repo() {
+  mkdir -p "$1" &&
+    git -C "$1" init -q -b main &&
+    git -C "$1" config user.email ci@example.com &&
+    git -C "$1" config user.name ci &&
+    git -C "$1" config commit.gpgsign false &&
+    git -C "$1" config tag.gpgsign false
+}
+
 # ---------------------------------------------------------------- needs-build.sh
 
 needs_build() { sh "$HERE/needs-build.sh"; }
@@ -90,20 +125,38 @@ expect "needs-build: the documents that the build reads (docs/adr/0024)" 0 "docs
 # (docs/adr/0021-docs-workflow-and-ci-gate.md)
 
 changed_paths() { sh "$HERE/changed-paths.sh" "$@"; }
+# git_repo commits and tags even when the configuration of the user signs
+# every commit and tag with a gpg that fails; a plain repository does not
+# (docs/adr/0077)
+printf '[commit]\n\tgpgsign = true\n[tag]\n\tgpgsign = true\n[gpg]\n\tprogram = false\n' >"$WORK/signing.gitconfig"
+# signed_commit DIR INIT...: INIT makes a repository at DIR, then a commit
+# and an annotated tag, with the configuration that signs
+signed_commit() (
+  dir=$1
+  shift
+  GIT_CONFIG_GLOBAL=$WORK/signing.gitconfig
+  export GIT_CONFIG_GLOBAL
+  "$@" "$dir" && echo a >"$dir/a" && git -C "$dir" add a &&
+    git -C "$dir" -c user.email=ci@example.com -c user.name=ci commit -q -m a &&
+    git -C "$dir" -c user.email=ci@example.com -c user.name=ci tag -a -m t v1
+) >/dev/null 2>&1
+plain_repo() { mkdir -p "$1" && git -C "$1" init -q -b main; }
+if signed_commit "$WORK/signing-plain" plain_repo; then ng "git_repo: the configuration that signs breaks a plain repository"; else ok; fi
+if signed_commit "$WORK/signing-fixture" git_repo; then ok; else ng "git_repo: a fixture commits and tags without signing"; fi
+
 G=$WORK/git
-mkdir -p "$G"
-(
-  cd "$G" || exit 1
-  git init -q -b main .
-  git config user.email ci@example.com
-  git config user.name ci
+changed_paths_repo() (
+  set -e
+  git_repo "$G"
+  cd "$G"
   echo a >a.hs && git add a.hs && git commit -q -m a
   git checkout -q -b topic
   mkdir -p docs && echo x >docs/x.md && echo s >"docs/a b.md" && echo j >docs/日本語.md
   git add docs && git commit -q -m x
   git checkout -q main
   echo b >b.hs && git add b.hs && git commit -q -m b
-) >/dev/null 2>&1
+)
+fixture "the repository of changed-paths.sh" changed_paths_repo
 MAIN=$(git -C "$G" rev-parse main)
 MAIN1=$(git -C "$G" rev-parse main~1)
 TOPIC=$(git -C "$G" rev-parse topic)
@@ -129,25 +182,25 @@ if [ "$CODE" != 0 ] && [ "$CODE" != 3 ]; then ok; else ng "changed-paths: a comm
 
 AV=$WORK/abi
 # abi_repo: a repository with the three files at ABI 1, tagged v0.0.1
+# abi_git ARG...: git in $AV, as a fixture
+abi_git() { fixture "abi-version: git $*" git -C "$AV" "$@"; }
 abi_repo() {
   rm -rf "$AV"
+  fixture "abi-version: the repository" git_repo "$AV"
   mkdir -p "$AV/modules/golem-doc/schema" "$AV/modules/golem-doc/src/Golem/Doc"
-  (
-    cd "$AV" || exit 1
-    git init -q -b main .
-    git config user.email ci@example.com
-    git config user.name ci
-    printf '; the IR\ndocument = { version: uint }\n' >modules/golem-doc/schema/golem-doc.cddl
-    printf -- '-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\n' >modules/golem-doc/src/Golem/Doc/Validate.hs
-    printf 'module Golem.Doc.IR where\n\nabiVersion :: Int\nabiVersion = 1\n' >modules/golem-doc/src/Golem/Doc/IR.hs
-    git add . && git commit -q -m release && git tag v0.0.1
-  ) >/dev/null 2>&1
+  printf '; the IR\ndocument = { version: uint }\n' >"$AV/modules/golem-doc/schema/golem-doc.cddl"
+  printf -- '-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\n' >"$AV/modules/golem-doc/src/Golem/Doc/Validate.hs"
+  printf 'module Golem.Doc.IR where\n\nabiVersion :: Int\nabiVersion = 1\n' >"$AV/modules/golem-doc/src/Golem/Doc/IR.hs"
+  abi_git add .
+  abi_git commit -q -m release
+  abi_git tag v0.0.1
 }
 # abi_change NAME CODE [STDERR-WORD...]: commits the changes made in $AV, then runs the script
 abi_change() {
   name=$1 code=$2
   shift 2
-  (cd "$AV" && git add -A && git commit -q --allow-empty -m change) >/dev/null 2>&1
+  abi_git add -A
+  abi_git commit -q --allow-empty -m change
   : >"$WORK/in"
   run env GOLEM_ROOT="$AV" sh "$HERE/abi-version.sh"
   expect "abi-version: $name" "$code"
@@ -185,7 +238,9 @@ abi_validate '-- | The checks, again\nmodule Golem.Doc.Validate where\n\n{- | an
 abi_change "a comment of Validate.hs" 0
 abi_repo
 abi_validate "-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\nq = ('\"', \"a -- b\") -- one\n"
-(cd "$AV" && git add -A && git commit -q -m q && git tag -f v0.0.1) >/dev/null 2>&1
+abi_git add -A
+abi_git commit -q -m q
+abi_git tag -f v0.0.1
 abi_validate "-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\nq = ('\"', \"a -- b\") -- two\n"
 abi_change "a comment after a character and a string with dashes" 0
 abi_validate "-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\nq = ('\"', \"a -- c\") -- two\n"
@@ -196,11 +251,14 @@ abi_validate '-- | The checks\nmodule Golem.Doc.Validate where\n\ncheck :: Int -
 abi_set 2
 abi_change "the CDDL and Validate.hs and one more version" 0
 abi_repo
-(cd "$AV" && git rm -q modules/golem-doc/src/Golem/Doc/Validate.hs && git commit -q -m gone && git tag -d v0.0.1 && git tag v0.0.1) >/dev/null 2>&1
+abi_git rm -q modules/golem-doc/src/Golem/Doc/Validate.hs
+abi_git commit -q -m gone
+abi_git tag -d v0.0.1
+abi_git tag v0.0.1
 abi_validate '-- | The checks\nmodule Golem.Doc.Validate where\n'
 abi_change "Validate.hs missing from the release" 1 "Validate.hs"
 abi_repo
-(cd "$AV" && git tag -d v0.0.1) >/dev/null 2>&1
+abi_git tag -d v0.0.1
 abi_change "no release tag" 0
 if grep -q 'no release' "$WORK/out" "$WORK/err"; then ok; else ng "abi-version: no release tag: says the check is skipped"; fi
 
@@ -369,6 +427,8 @@ if command -v timeout >/dev/null 2>&1; then
   run suite_timeout sleep 30
   expect "suite-timeout: a suite that does not finish is stopped" 124
   if grep -qx 'sleep: did not finish in 1 seconds' "$WORK/err"; then ok; else ng "suite-timeout: the suite that did not finish is named"; fi
+else
+  skip 4 "suite-timeout (no timeout command)"
 fi
 
 # ---------------------------------------------------------------- bg.sh
@@ -659,11 +719,23 @@ expect "gate: not JSON" 1
 ci_jobs() { # ci_jobs WORKFLOW: the names of its jobs
   awk '/^jobs:/ { on = 1; next } on && /^[^ #]/ { on = 0 } on && /^  [a-z][a-z0-9-]*:$/ { sub(/^  /, ""); sub(/:$/, ""); print }' "$1"
 }
-: >"$WORK/in"
-run gate --names
-if [ "$CODE" = 0 ] && [ "$(sort "$WORK/out")" = "$(ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx ci | sort)" ]; then ok; else ng "gate: the names are the jobs of ci.yml"; fi
-ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx ci | grep -vx format >"$WORK/fewer"
-if [ "$(sort "$WORK/out")" != "$(sort "$WORK/fewer")" ]; then ok; else ng "gate: a job missing from the names is found"; fi
+# names_match GATE: the names of the gate.sh at GATE are the jobs of ci.yml
+names_match() {
+  : >"$WORK/in"
+  run sh "$1" --names
+  [ "$CODE" = 0 ] && [ "$(sort "$WORK/out")" = "$(ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx ci | sort)" ]
+}
+if names_match "$HERE/gate.sh"; then ok; else ng "gate: the names are the jobs of ci.yml"; fi
+# the same comparison finds a job missing from the names, in a copy of
+# gate.sh without format (docs/adr/0077)
+sed 's/^NAMES="\(.*\) format\(.*\)"$/NAMES="\1\2"/' "$HERE/gate.sh" >"$WORK/gate-fewer.sh"
+if grep -q '^NAMES=.*format' "$WORK/gate-fewer.sh" || cmp -s "$HERE/gate.sh" "$WORK/gate-fewer.sh"; then
+  ng "gate: the copy of gate.sh has no format"
+elif names_match "$WORK/gate-fewer.sh"; then
+  ng "gate: a job missing from the names is found"
+else
+  ok
+fi
 
 # ---------------------------------------------------------------- determinism.sh
 
@@ -841,5 +913,5 @@ run test_only_deps
 expect "test-only-deps: no argument" 2
 
 # ----------------------------------------------------------------
-printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"
+printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]
