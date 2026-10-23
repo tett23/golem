@@ -108,6 +108,7 @@ stage() {
     sample-pdf)
       cp -R "$FIX/sample" "$d"
       mkdir -p "$d/fonts"
+      # Noto Serif JP has every character of the sample (docs/adr/0081)
       cp "$ROOT/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" "$d/fonts/ja.otf"
       cp "$ROOT/modules/golem-font/test/fonts/SourceSansPro-Regular.otf" "$d/fonts/latin.otf"
       cp "$ROOT/scripts/determinism/pdf-style.toml" "$d/style.toml"

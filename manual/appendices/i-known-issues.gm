@@ -22,13 +22,6 @@
   原稿の一部の言語を指定する方法がないので、英語の本の中のフランス語の語も、英語の規則で分綴されます。
 
 @nonumber
-## 字と図版
-
-= [strong: フォントにない字を [code: golem build] が知らせない]
-  フォントにない字があっても、[code: golem build] はエラーにせずに組み、PDF には四角い箱を描くか、何も描きません。
-  対処：[code: golem preflight] を実行します。フォントにない字は G09002 で報告されます（「[ref-title preflight]」、[ref-page preflight] ページ）。
-
-@nonumber
 ## 組版の時間
 
 = [strong: 脚注の多い本の組版に時間がかかる]

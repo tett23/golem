@@ -50,7 +50,8 @@ for project in "$ROOT/scripts/determinism" "$ROOT/modules/golem-driver/test/fixt
   build "$(basename "$project")" "$project" --target html --target epub --target text
   rm -rf "$project/build"
 done
-# the PDF path: the Japanese font has every character of the sample, the bullet • too (golem-driver ADR 0044)
+# the PDF path: Noto Serif JP of the kanikosen fixture, which has every
+# character of the sample (docs/adr/0081), and Source Sans Pro of golem-font
 cp -R "$ROOT/modules/golem-driver/test/fixtures/sample" "$WORK/pdf"
 mkdir -p "$WORK/pdf/fonts"
 cp "$ROOT/modules/golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" "$WORK/pdf/fonts/ja.otf"

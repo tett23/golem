@@ -298,6 +298,27 @@ preflightTests =
       v <- maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
       assertBool "glyph 0 of U+E000" (any (any (\g -> gvGlyph g == 0 && gvText g == "\xE000") . pvGlyphs) (vwPages v))
       assertBool "G09002" (DiagnosticCode "G09002" `elem` errorCodes (prDiagnostics p)),
+    testCase "a character the font has not: the G08100 of the build, an error, beside G09002 (docs/adr 0081)" $ do
+      let privateUse rules = withSystemTempDirectory "golem-preflight" $ \tmp -> do
+            copyTree fixture tmp
+            createDirectoryIfMissing True (tmp </> "fonts")
+            copyFile "../golem-font/test/fonts/SourceHanSans-Regular_subset.otf" (tmp </> "fonts/ja.otf")
+            BS.writeFile (tmp </> "style.toml") (pdfStyle <> "\n[fonts.body]\nja = \"fonts/ja.otf\"\n")
+            forM_ rules (BS.writeFile (tmp </> "preflight.toml"))
+            BS.appendFile (tmp </> "chapters/02.gm") (TE.encodeUtf8 "\n私用\xE000。\n")
+            p <- preflight (defaultPreflightOptions tmp)
+            assertBool "the PDF is checked" (isJust (prView p))
+            pure [(diagCode d, diagSeverity d, diagSpan d, diagMessage d) | d <- prDiagnostics p, "U+E000" `T.isInfixOf` diagMessage d]
+      found <- privateUse Nothing
+      case found of
+        [(c1, s1, sp1, m1), (c2, s2, sp2, m2)] -> do
+          (c1, s1, c2, s2) @?= (DiagnosticCode "G08100", Error, DiagnosticCode "G09002", Error)
+          (sp1, m1) @?= (sp2, m2)
+        other -> assertFailure (show other)
+      warned <- privateUse (Just "[glyph-missing]\nseverity = \"warning\"\n")
+      [(c, sev) | (c, sev, _, _) <- warned] @?= [(DiagnosticCode "G08100", Error), (DiagnosticCode "G09002", Warning)]
+      off <- privateUse (Just "[glyph-missing]\nseverity = \"off\"\n")
+      [(c, sev) | (c, sev, _, _) <- off] @?= [(DiagnosticCode "G08100", Error)],
     testCase "a PDF as a figure is placed, with neither G09005 nor G08010 (golem-pdf ADR 0008)" $ do
       fig <- miniPdf fakeProvider False horizontalStyle "図。\n" []
       img <- tinyImage
