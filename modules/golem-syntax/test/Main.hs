@@ -140,6 +140,10 @@ tests =
         diagSeverity (adjustForProfile Prod lbl) @?= Error
         diagSeverity (adjustForProfile Dev lbl) @?= Warning
         diagSeverity (adjustForProfile Prod other) @?= Warning,
+      testCase "G08100, a character the font has not, is a warning in dev and an error in prod (docs/adr 0081)" $ do
+        let d = diagnostic "G08100" Warning (mkSpan (FileId 0) 0 1) "m"
+        diagSeverity (adjustForProfile Dev d) @?= Warning
+        diagSeverity (adjustForProfile Prod d) @?= Error,
       testProperty "sorting ignores input order" $ property $ do
         ds <- forAll (Gen.list (Range.linear 0 20) genDiag)
         perm <- forAll (Gen.shuffle ds)
@@ -181,7 +185,7 @@ tests =
         [c | c <- noticeCodes <> profileDependentCodes <> preflightCodes, not (shaped c)] @?= []
         -- the stage that gives each of them
         map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "03", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "08"]
-        map stage profileDependentCodes @?= ["05", "03"]
+        map stage profileDependentCodes @?= ["05", "03", "08"]
         assertBool "preflight is 09" (all ((== "09") . stage) preflightCodes),
       testCase "human rendering" $ do
         let src = "abc\ndef"

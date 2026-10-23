@@ -56,7 +56,7 @@ golem をビルドするときにこの文書を埋め込み、節の形を検�
 | 09 | プリフライト | golem-preflight |
 
 重大度がプロファイルで変わるコードは `Golem.Syntax.Diagnostic.profileDependentCodes` にまとめてあり、dev では警告、prod ではエラーになる。
-今は [G03010](#g03010) と [G05004](#g05004) の二つである。
+今は [G03010](#g03010)、[G05004](#g05004)、[G08100](#g08100) の三つである。
 [G02005](#g02005) は、prod でだけ出る警告である。
 
 09 のコードは、`golem preflight` だけが出す（[golem-cli ADR 0006](golem-cli/adr/0006-preflight.md)）。
@@ -6232,6 +6232,40 @@ HTML と EPUB はフォントのファイルをそのまま同梱し、ブラウ
 同じ書体の、CFF の輪郭の版（静的な `.otf`）か TrueType の輪郭の版（`.ttf`）を使う。
 Source Serif 4 なら、`SourceSerif4-Regular.otf` か `SourceSerif4Variable-Roman.ttf` である。
 
+## G08100
+
+フォントにグリフのない文字があります
+
+- 重大度: dev では警告、prod ではエラー
+- 状態: 使用中
+
+### 意味
+
+PDF をターゲットに含む `golem build` で、シェイピングの結果のグリフ番号が 0（.notdef）になった文字がある。
+その文字は、PDF では空の箱（豆腐）などで表示される。
+原稿の文字、番号の文字列、柱、ノンブル、目次と索引の文字列、ルビ、圏点のすべてを対象とする。
+符号位置とフォントのファイルの組ごとに一つにまとめ、JSON の `facts` に `code-point`、`font`、`pdf-pages`、`count` を書く。
+位置は、その文字を含む行のブロックの位置である。
+dev では PDF を書き、終了コードを変えない。
+prod ではエラーなので PDF を書かず（前のビルドの PDF も消す）、終了コードは 1 になる。
+ほかのターゲットは書く。
+HTML、EPUB、プレーンテキストのターゲットと、`golem check`、LSP では出さない。
+`golem preflight` はビルドを prod で走らせるので、同じ文字を [G09002](#g09002) とともにエラーで出す。
+プリフライトの設定の `glyph-missing` は、このコードに当たらない。
+
+- メッセージ: `フォントにグリフのない文字です: U+<16 進数>「<文字>」（<フォントのパス>、PDF の <ページ> ページ目）`。結合文字と制御文字は「」の字を省く。ページは 10 ページまで並べ、残りを「ほか <n> ページ」とする
+- 段階とモジュール: 出力（golem-driver の `Golem.Driver`、golem-preflight の `Golem.Preflight`）
+- ADR: [docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)
+
+### 主な原因
+
+- 本文のフォントが、その文字（外字、絵文字、私用領域の文字など）を持っていない。
+- 和文の文字を、欧文だけのフォントの役割で組んでいる。
+
+### 直し方
+
+その文字を持つフォントを `style.toml` の `[fonts]` の役割に書くか、原稿の文字を替える。
+
 ## G09001
 
 プリフライトの設定に誤りがあります
@@ -6293,6 +6327,8 @@ Source Serif 4 なら、`SourceSerif4-Regular.otf` か `SourceSerif4Variable-Rom
 
 その文字を持つフォントを `style.toml` の `[fonts]` の役割に書くか、原稿の文字を替える。
 検査を外すときは、プリフライトの設定の `[glyph-missing]` の `severity` を `off` にする。
+ただし、同じ文字は `golem build` が [G08100](#g08100) で報告し、`golem preflight` は prod で組むので、それがエラーになる。
+`glyph-missing` を `off` にしても、フォントにない文字があれば `golem preflight` は終了コード 1 で終わる。
 
 ## G09003
 

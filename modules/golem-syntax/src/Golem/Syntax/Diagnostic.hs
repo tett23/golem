@@ -124,7 +124,8 @@ error in prod.
 profileDependentCodes :: [DiagnosticCode]
 profileDependentCodes =
   [ DiagnosticCode "G05004", -- unreferenced label
-    DiagnosticCode "G03010" -- a font missing from HTML and EPUB (golem-project ADR 0004)
+    DiagnosticCode "G03010", -- a font missing from HTML and EPUB (golem-project ADR 0004)
+    DiagnosticCode "G08100" -- a character the font of the PDF has not (docs/adr 0081)
   ]
 
 {- | The codes of golem preflight whose severity the preflight rules decide,

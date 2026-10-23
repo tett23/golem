@@ -15,7 +15,7 @@
 
 ほとんどはエラーで、一つでもあれば出力を書きません。
 警告になるものは、項目の中にそう書いています。
-G03010 と G05004 は、[code: --profile dev] では警告、[code: --profile prod] ではエラーです。
+G03010、G05004、G08100 は、[code: --profile dev] では警告、[code: --profile prod] ではエラーです。
 [code: golem preflight] だけが出す G09 で始まる診断の重さは、プリフライトの設定で決まります。
 お知らせは最後の節にまとめています。
 この付録にない番号は、今のバージョンの Golem では出ません。
@@ -612,6 +612,12 @@ PDF を組むときに出るエラーです。
   同じ書体の、CFF の輪郭の版（可変でない [code: .otf]）か TrueType の輪郭の版（[code: .ttf]）に替えてください。
   Source Serif 4 なら、[code: SourceSerif4-Regular.otf] か [code: SourceSerif4Variable-Roman.ttf] です。
   [code: golem build] の PDF と [code: golem check] と [code: golem preflight] で出ます。HTML と EPUB では出ません。
+= [strong: G08100 [code: フォントにグリフのない文字です: …]]（[code: --profile dev] では警告）
+  フォントが持っていない文字があり、PDF では空の箱などで表示されます。
+  その文字を持つフォントを [code: style.toml] の [code: \[fonts\]] に書くか、文字を替えてください。
+  [code: --profile prod] ではエラーになり、PDF を書きません。
+  [code: golem build] の PDF と [code: golem preflight] で出ます。HTML、EPUB、プレーンテキストと [code: golem check] では出ません。
+  [code: golem preflight] では、同じ文字が G09002 でも出ます。
 = [strong: G08006 [code: 出力インテントの ICC プロファイルがありません: …]]
   [code: \[color\]] の [code: intent] に書いたファイルがありません。
 = [strong: G08009 [code: 役割 … の和文の書体に圏点の形 … の字（U+…）がありません]]
@@ -703,6 +709,8 @@ G09001 のほかは、エラーか警告か、出すかどうかをプリフラ�
 = [strong: G09002 [code: フォントにグリフのない文字です: …]]（エラー）
   フォントが持っていない文字があり、PDF では空の箱などで表示されます。
   その文字を持つフォントを [code: style.toml] の [code: \[fonts\]] に書くか、文字を替えてください。
+  同じ文字は、ビルドの G08100 のエラーとしても出ます。
+  [code: \[glyph-missing\]] を [code: "off"] にしても G08100 は消えず、終了コードは 1 になります。
 = [strong: G09003 [code: この設定では使えない形式のフォントです: …]]（検査しない）
   印刷所が受けない形式（TrueType など）のフォントを埋め込んでいます。
   受ける形式のフォントに替えてください。

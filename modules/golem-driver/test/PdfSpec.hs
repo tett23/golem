@@ -4,7 +4,7 @@ import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.IORef (newIORef, readIORef)
-import Data.List (isSuffixOf, nub, sortOn)
+import Data.List (isSuffixOf, nub, sort, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
@@ -29,8 +29,8 @@ import Golem.Syntax
 import Golem.TestSupport.ExternalTool (needsTool)
 import Numeric (readHex)
 import Support
-import System.Directory (copyFile, createDirectoryIfMissing, findExecutable)
-import System.FilePath (takeDirectory, (</>))
+import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, findExecutable)
+import System.FilePath (takeDirectory, takeFileName, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -48,6 +48,39 @@ pdfPipelineTests =
         -- reported before the fonts are loaded (golem-driver ADR 0016)
         r' <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = noFontProvider}
         map diagCode (brDiagnostics r') @?= [DiagnosticCode "G08007"],
+      testCase "G08100: the characters the font has not, warnings in dev, and the PDF is written (docs/adr 0081)" $
+        withMissingGlyphs subsetJa $ \tmp -> do
+          r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf]}
+          assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+          let g = g08100 r
+          map (\(sev, _, _, _) -> sev) g @?= replicate 7 Warning
+          sort [cp | (_, cp, _, _) <- g] @?= ["U+2026", "U+4E00", "U+4E09", "U+4E8C", "U+4FA1", "U+9014", "U+91CD"]
+          sum [n | (_, _, n, _) <- g] @?= 103
+          sort [at | (_, _, _, at) <- g] @?= sort (replicate 4 ("front.gm", 5) <> [("chapters/01.gm", 6), ("chapters/01.gm", 10), ("chapters/02.gm", 6)])
+          map takeFileName (brWritten r) @?= ["urn-uuid-11111111-2222-4333-8444-555555555555.pdf"],
+      testCase "G08100 in prod: errors, no PDF, and HTML is still written (docs/adr 0081)" $
+        withMissingGlyphs subsetJa $ \tmp -> do
+          -- the PDF of a dev build before does not stay
+          _ <- build (defaultOptions tmp) {optTargets = Just [TargetPdf]}
+          r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml], optProfile = Prod}
+          map (\(sev, _, _, _) -> sev) (g08100 r) @?= replicate 7 Error
+          pdfDir <- doesDirectoryExist (tmp </> "build/pdf")
+          assertBool "no build/pdf" (not pdfDir)
+          html <- doesFileExist (tmp </> "build/html/index.xhtml")
+          assertBool "HTML written" html,
+      testCase "G08100: the same diagnostics whether laid out in parallel or not (docs/adr 0081)" $
+        withMissingGlyphs subsetJa $ \tmp -> do
+          a <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optParallel = True}
+          b <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optParallel = False}
+          brDiagnostics a @?= brDiagnostics b,
+      testCase "G08100: not for HTML, EPUB nor plain text (docs/adr 0081)" $
+        withMissingGlyphs subsetJa $ \tmp -> do
+          r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetEpub, TargetText]}
+          g08100 r @?= [],
+      testCase "G08100: none with Noto Serif JP (docs/adr 0081)" $
+        withMissingGlyphs "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" $ \tmp -> do
+          r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf]}
+          g08100 r @?= [],
       testCase "with real fonts: subset OpenType fonts, ToUnicode, deterministic and parallel-safe" $ do
         a <- buildRealPdf True
         b <- buildRealPdf False
@@ -676,6 +709,39 @@ qpdfInstalled =
   needsTool "qpdf" (findExecutable "qpdf") $ \qpdf ->
     testCase "qpdf is installed for the structure checks of the PDFs" $
       qpdf >>= \exe -> assertBool exe (not (null exe))
+
+-- | The Japanese subset of golem-font's tests, which lacks some characters of the sample.
+subsetJa :: FilePath
+subsetJa = "../golem-font/test/fonts/SourceHanSans-Regular_subset.otf"
+
+{- | The sample with the fonts and the page of scripts/determinism.sh: the
+given Japanese font and Source Sans Pro (docs/adr 0081).
+-}
+withMissingGlyphs :: FilePath -> (FilePath -> IO a) -> IO a
+withMissingGlyphs ja act = withSystemTempDirectory "golem-driver" $ \tmp -> do
+  copyTree fixture tmp
+  createDirectoryIfMissing True (tmp </> "fonts")
+  copyFile ja (tmp </> "fonts/ja.otf")
+  copyFile "../golem-font/test/fonts/SourceSansPro-Regular.otf" (tmp </> "fonts/latin.otf")
+  copyFile "../../scripts/determinism/pdf-style.toml" (tmp </> "style.toml")
+  act tmp
+
+{- | The G08100 of a build: the severity, the code point, the count and the
+file and line (from 1) of each.
+-}
+g08100 :: BuildResult -> [(Severity, T.Text, Integer, (FilePath, Int))]
+g08100 r =
+  [ (diagSeverity d, cp, n, (maybe "?" siPath si, maybe 0 (\i -> lcLine (offsetToLineCol (siLines i) (spanStart (diagSpan d))) + 1) si))
+  | d <- brDiagnostics r,
+    diagCode d == DiagnosticCode "G08100",
+    let si = Map.lookup (spanFile (diagSpan d)) (brSources r)
+        cp = case lookup "code-point" (diagFacts d) of
+          Just (FactText t) -> t
+          _ -> ""
+        n = case lookup "count" (diagFacts d) of
+          Just (FactInt i) -> i
+          _ -> 0
+  ]
 
 -- | The fixture with the test fonts of golem-font as the body font.
 buildRealPdf :: Bool -> IO BS.ByteString

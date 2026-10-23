@@ -85,7 +85,7 @@ CR を含む原稿の G01003 に付く「golem fmt で LF に直す」がその�
 一部の diagnostic は、[code: fixes] の後に [code: facts] のオブジェクトを持つ。[index reading=facts: facts][note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0006-preflight.md]（golem-cli ADR 0006「golem preflight」）]
 ページ番号や測った値のように、メッセージに書いたことをプログラムが読める形にしたもので、キーは diagnostic ごとに決まった順に並ぶ。
 値は整数、文字列、整数の配列、文字列の配列のどれかである。
-今は [code: golem preflight] の diagnostic（G09002 から G09018）だけが持ち、ほかの diagnostic の JSON に [code: facts] のキーは現れない。
+今は [code: golem preflight] の diagnostic（G09002 から G09018）と、フォントにない字の G08100 だけが持ち、ほかの diagnostic の JSON に [code: facts] のキーは現れない。
 
 ```json
 {"code":"G09006","severity":"warning",
@@ -139,7 +139,7 @@ CI でコードごとに扱いを分ける仕組み（特定のコードを集�
 原因が違えば、メッセージを変えるだけでなく、コードを分ける。
 
 一部のコードは、プロファイルで重大度が変わる。
-今は G03010（HTML と EPUB に同梱するフォントの欠け）と G05004（参照されていないラベル）で、[code: dev] では警告、[code: prod] ではエラーになる。
+今は G03010（HTML と EPUB に同梱するフォントの欠け）、G05004（参照されていないラベル）、G08100（PDF のフォントにない字）で、[code: dev] では警告、[code: prod] ではエラーになる。
 G02005（校正用のコメントの残り）は [code: prod] でだけ出る警告である。
 G09002 から G09018 の重大度は、プリフライトの設定で決まる（[code: Golem.Syntax.Diagnostic.preflightCodes]）。
 設定で選べるのは [code: error]、[code: warning]、[code: off] で、[code: notice] は選べない。

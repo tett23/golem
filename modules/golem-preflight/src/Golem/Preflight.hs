@@ -5,6 +5,8 @@ reports a cause once, at its first place, with every page in the fact
 -}
 module Golem.Preflight
   ( check,
+    MissingGlyph (..),
+    missingGlyphs,
     pagesPhrase,
     mmText,
   )
@@ -128,19 +130,33 @@ perFigure v f =
 
 -- ------------------------------------------------------------------ the checks
 
--- | G09002: glyph 0 (.notdef), per character and font.
-glyphMissing :: Rules -> View -> [Diagnostic]
-glyphMissing r v =
-  concat
-    [ at (ruGlyphMissing r) "G09002" (gvLineSpan g) msg [("code-point", FactText cp), ("font", FactText (gvFont g)), pagesFact ps, ("count", FactInt (toInteger (length gs)))]
-    | ((t, font), ps, gs@(g : _)) <- groups [((gvText gl, gvFont gl), pvIndex p, gl) | p <- vwPages v, gl <- pvGlyphs p, gvGlyph gl == 0],
-      let c = maybe ' ' fst (T.uncons t)
-          cp = "U+" <> T.justifyRight 4 '0' (T.toUpper (T.pack (showHex (ord c) "")))
-          shown = if isControl c || isMark c then "" else "「" <> T.singleton c <> "」"
-          msg = "フォントにグリフのない文字です: " <> cp <> shown <> "（" <> font <> "、" <> pagesPhrase ps <> "）"
-    ]
+{- | A character drawn as glyph 0 (.notdef), once per code point and font
+file: where the first is, the message and the facts that G09002 and the
+G08100 of golem build share (docs/adr 0081).
+-}
+data MissingGlyph = MissingGlyph
+  { mgSpan :: !SrcSpan,
+    mgMessage :: !Text,
+    mgFacts :: ![(Text, Fact)]
+  }
+  deriving stock (Eq, Show)
+
+-- | The characters of a view drawn as glyph 0, per character and font.
+missingGlyphs :: View -> [MissingGlyph]
+missingGlyphs v =
+  [ MissingGlyph (gvLineSpan g) msg [("code-point", FactText cp), ("font", FactText (gvFont g)), pagesFact ps, ("count", FactInt (toInteger (length gs)))]
+  | ((t, font), ps, gs@(g : _)) <- groups [((gvText gl, gvFont gl), pvIndex p, gl) | p <- vwPages v, gl <- pvGlyphs p, gvGlyph gl == 0],
+    let c = maybe ' ' fst (T.uncons t)
+        cp = "U+" <> T.justifyRight 4 '0' (T.toUpper (T.pack (showHex (ord c) "")))
+        shown = if isControl c || isMark c then "" else "「" <> T.singleton c <> "」"
+        msg = "フォントにグリフのない文字です: " <> cp <> shown <> "（" <> font <> "、" <> pagesPhrase ps <> "）"
+  ]
   where
     isMark c = generalCategory c `elem` [NonSpacingMark, SpacingCombiningMark, EnclosingMark]
+
+-- | G09002: glyph 0 (.notdef), per character and font.
+glyphMissing :: Rules -> View -> [Diagnostic]
+glyphMissing r v = concat [at (ruGlyphMissing r) "G09002" (mgSpan m) (mgMessage m) (mgFacts m) | m <- missingGlyphs v]
 
 -- | G09003: an embedded font of a form the rules do not allow.
 fontFormats :: Rules -> View -> [Diagnostic]

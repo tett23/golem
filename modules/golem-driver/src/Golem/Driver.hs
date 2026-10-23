@@ -84,7 +84,7 @@ import Golem.Parser.Read (ReadFailure (..), checkText, readInfo, readSourceFile,
 import Golem.Parser.SourceSettings (SourceSettings, defaultSourceSettings)
 import Golem.Pdf qualified as P
 import Golem.Plugin.Lock (defaultCacheDir)
-import Golem.Preflight (check)
+import Golem.Preflight (MissingGlyph (..), check, missingGlyphs)
 import Golem.Preflight.Rules (Rules (..), parseRules, printRules)
 import Golem.Preflight.View (View)
 import Golem.Project
@@ -1041,12 +1041,19 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
         Left ds -> pure ([], ds <> fontNotice, Nothing)
         Right (bytes, notices, view)
           -- golem preflight keeps the PDF in memory (golem-cli ADR 0006)
-          | inMemory -> pure ([], notices <> fontNotice, Just (bytes, view))
+          | inMemory -> pure ([], notices <> fontNotice <> glyphs, Just (bytes, view))
+          -- G08100 is an error in prod and stops the PDF; the PDF of an earlier build goes too (docs/adr 0081)
+          | hasErrors (map (adjustForProfile (optProfile opts)) glyphs) -> do
+              clean dir
+              pure ([], notices <> fontNotice <> glyphs, Nothing)
           | otherwise -> do
               clean dir
               createDirectoryIfMissing True dir
               BS.writeFile out bytes
-              pure ([out], notices <> fontNotice, Nothing)
+              pure ([out], notices <> fontNotice <> glyphs, Nothing)
+          where
+            -- G08100: the characters drawn as glyph 0, from the characters of the view (docs/adr 0081)
+            glyphs = [(diagnostic "G08100" Warning (mgSpan m) (mgMessage m)) {diagFacts = mgFacts m} | m <- missingGlyphs view]
   pure (concat [w | (w, _, _) <- results], concat [d | (_, d, _) <- results], listToMaybe [x | (_, _, Just x) <- results])
   where
     clean dir = do
