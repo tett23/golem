@@ -29,9 +29,37 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 2026-10-20 の ADR と仕様の矛盾のレビュー（[記録](audits/2026-10-20-adr-spec-review.md)）と、それに続く検討で採択した ADR を実装する。
 
+### テストの品質と診断
+
+2026-10-23 のテストの品質の点検と、出力のゴールデンを足すときに見つかった問題から採択した ADR を実装する。
+
+- 出力の一部しか固定していないゴールデンを、出力の全体を固定する形にする（未実装、[ADR 0064](adr/0064-goldens-that-fix-less-than-the-output.md)）。
+- 実装を写したオラクルと、同じ式を二度評価するだけの断言をなくす（未実装、[ADR 0065](adr/0065-tautological-properties-and-oracles.md)）。
+- 空の結果や Nothing で通ってしまう断言を、中身を確かめる断言にする（未実装、[ADR 0066](adr/0066-assertions-that-pass-vacuously.md)）。
+- プロパティテストの生成器に、境界の入力を出させる（未実装、[ADR 0067](adr/0067-generators-missing-boundary-inputs.md)）。
+- 上限ちょうどの入力が通ることを、拒む側と対にして確かめる（未実装、[ADR 0068](adr/0068-accepting-side-of-limits.md)）。
+- CI の検査のスクリプトを、素朴な書き換えで迂回できないようにする（未実装、[ADR 0069](adr/0069-lint-scripts-bypassed-by-plain-rewrites.md)）。
+- 変更のパスを取るときにリネームの検出を切り、移動元のパスも数える（未実装、[ADR 0070](adr/0070-changed-paths-without-rename-detection.md)）。
+- アーキテクチャ間の決定性の検査で、diagnostics と終了コードも比べる（未実装、[ADR 0071](adr/0071-determinism-check-compares-diagnostics.md)）。
+- 環境変数を書き換えるテストは、書き換えを元に戻す（未実装、[ADR 0072](adr/0072-tests-restore-process-environment.md)）。
+- テストの時間の上限を、止まらないことの検出に限り、上限の検査は数で書く（未実装、[ADR 0073](adr/0073-time-bounds-in-tests.md)）。
+- テストを切り替える環境変数の値の読み方をそろえ、省いたテストを数える（未実装、[ADR 0074](adr/0074-test-switches-by-environment-variables.md)）。
+- 並行の競合を探すテストの回数を、CI の夜間の実行で増やす（未実装、[ADR 0075](adr/0075-race-search-repetitions.md)）。
+- ADR のテスト設計より弱いテストを、テスト設計のとおりに強める（未実装、[ADR 0076](adr/0076-tests-weaker-than-adr-test-designs.md)）。
+- スクリプトのテストで、検査の対象が壊れても通る断言を直す（未実装、[ADR 0077](adr/0077-shell-test-assertions-that-pass-vacuously.md)）。
+- リリースのときと手でだけ動くスクリプトにテストを書く（未実装、[ADR 0078](adr/0078-tests-for-release-and-hand-run-scripts.md)）。
+- スクリプトのテストを macOS の BSD の道具でも走らせる（未実装、[ADR 0079](adr/0079-shell-tests-on-macos.md)）。
+- リリースの smoke の検査で、ビルドが diagnostics を出さないことも確かめる（未実装、[ADR 0080](adr/0080-release-smoke-checks-diagnostics.md)）。
+- フォントにない字を、golem build の dev では warning、prod ではエラーにする（未実装、[ADR 0081](adr/0081-missing-glyphs-warn-in-build.md)）。
+- diagnostics をコードの順を先にして並べる（未実装、[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
+
 ### 既知の不具合の修正
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
+
+- 箇条書きの既定の印を、PDF と CSS では「•」にする（未実装、[golem-driver ADR 0044](golem-driver/adr/0044-default-bullet-u2022.md)）。
+- 見出しを後の行と離さない規則で、後の行の注の本文を数える（未実装、[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
+- 輪郭の表のないフォントは G08003 とし、G08018 は埋め込みの防御として残す（未実装、[golem-pdf ADR 0013](golem-pdf/adr/0013-renamed-cff-table-is-g08003.md)）。
 
 ## v0.1.0-rc4
 
@@ -63,6 +91,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **`*[式]` の展開とプラグインへの引数**：パーサーは `*[式]` を読むが、評価はそれを展開しない。プラグインのコマンドに渡すキーワード引数は、キーを落として `[0, value]` で送っている。展開したキーがほかのキーワード引数と重なれば G02077 とする（[golem-parser ADR 0013](golem-parser/adr/0013-splat-after-keyword-arguments.md)）。
 - **出力インテントの条件**：PDF/X-4 の出力インテントは `[color] intent` があるときにだけ書くが、仕様書にこの条件が書かれていない。
 - **原稿の中の言語の切り替え**：本の言語は manifest の `language` だけで決まり、原稿の一部の言語を指定する記法がない。原稿の一部の言語を指定する記法を加え、引用符と和欧の扱いを、その部分の言語で切り替えられるようにする。その部分の言語で分綴することは、v1.0.0 の「本の中の別の言語の分綴」で扱う。
+- **式の言語の指数の書き方**：式の言語の数のリテラルに、`15e-1` のような指数の書き方を加える。今は整数と小数だけを読む。指数の書き方のリテラルをどの値として読むかは、上の「数を有理数に寄せる」と合わせて ADR で決める。加えた後に、[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md) のテスト設計が挙げる `15e-1` の底のテストを書く（[docs/adr 0076](adr/0076-tests-weaker-than-adr-test-designs.md)）。
 - **見出しの 4 階層め以降**：意味論の IR の見出しは 3 階層までで、4 階層め以降の見出しを書けない。
 
 ### LaTeX との差を埋める項目
@@ -92,6 +121,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **追い込みと追い出しの設定**：行の調整で、行末に収まらない字を前の行に追い込むか、次の行に追い出すかと、その優先の順を、段落スタイルで設定できるようにする（JLReq の 3.8 の詰める処理と空ける処理）。今は追い込みをせず、収まらない箱を追い出して、足りない幅を行の中の字のあいだで埋める。改行できないコードや URL の前の行で字のあいだが大きく空く場合（開発者のマニュアルの表のセルの「超越関数を持たない。」の行）を、この設定で避けられるようにする（[golem-driver ADR 0037](golem-driver/adr/0037-table-column-widths.md)）。
 - **柱とノンブルのスタイル**：柱とノンブルに、書体、文字の大きさ、色を、段落スタイルか文字スタイルで設定できるようにする。今はマスターページの `running-head` と `folio` で位置と内容を決められるが、書体と大きさと色は決められない。v2 以降に回した「ページ番号と柱の拡張」のうち、柱とノンブルの書体と色はこの項目で v1.0.0 に前倒しする。
 - **diagnostics の判定の近似の監査**：浮動小数点などの近似で diagnostic を決めている箇所が、ほかのモジュールにないかを調べる。同じ入力からはいつも同じ diagnostic を得るという原則（仕様書の「設計原則」）に反する箇所は、仕様書の「既知の不具合」に載せ、個別の ADR で直す（[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)）。
+- **フォントにない字があるときの preflight の完走**：フォントにない字は、prod のビルドで G08100 のエラーになる（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）。`golem preflight` は prod のビルドを走らせるので、`glyph-missing` の設定によらず終了コード 1 で終わる。字が欠けていても、preflight をほかの検査まで完走させ、結果をまとめて見られるようにする。
 
 ### LaTeX との差を埋める項目
 
