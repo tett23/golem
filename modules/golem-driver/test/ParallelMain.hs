@@ -4,4 +4,4 @@ import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import ParallelSpec (parallelTests, raceFactor)
 
 main :: IO ()
-main = raceFactor >>= defaultMainReportingSkips . parallelTests
+main = raceFactor >>= defaultMainReportingSkips . const . parallelTests

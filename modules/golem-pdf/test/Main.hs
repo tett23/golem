@@ -38,7 +38,7 @@ import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
 
 main :: IO ()
-main = defaultMainReportingSkips tests
+main = defaultMainReportingSkips (const tests)
 
 hex :: ByteString -> String
 hex = concatMap (\w -> [digits !! fromIntegral (w `div` 16), digits !! fromIntegral (w `mod` 16)]) . BS.unpack

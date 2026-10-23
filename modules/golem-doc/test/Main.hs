@@ -30,7 +30,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
 
 main :: IO ()
-main = defaultMainReportingSkips tests
+main = defaultMainReportingSkips (const tests)
 
 sp :: SrcSpan
 sp = SrcSpan (FileId 0) 0 1

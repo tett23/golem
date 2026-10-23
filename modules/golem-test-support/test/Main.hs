@@ -11,6 +11,7 @@ import Golem.TestSupport.Env
 import Golem.TestSupport.ExternalTool
 import Golem.TestSupport.Skipped
 import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.Options (OptionSet, singleOption)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
 import Test.Tasty.Providers (IsTest (..))
 import Test.Tasty.Runners (Result (..), TestTree (..), resultSuccessful)
@@ -33,9 +34,13 @@ missing = pure Nothing
 
 -- | The results of every single test of a tree, in order.
 runAll :: TestTree -> IO [(String, Result)]
-runAll = \case
-  SingleTest n t -> (\r -> [(n, r)]) <$> run mempty t (const (pure ()))
-  TestGroup _ ts -> concat <$> mapM runAll ts
+runAll = runAllWith mempty
+
+-- | 'runAll' with the options given.
+runAllWith :: OptionSet -> TestTree -> IO [(String, Result)]
+runAllWith opts = \case
+  SingleTest n t -> (\r -> [(n, r)]) <$> run opts t (const (pure ()))
+  TestGroup _ ts -> concat <$> mapM (runAllWith opts) ts
   _ -> pure []
 
 runOne :: TestTree -> IO Result
@@ -136,18 +141,17 @@ skippedTests =
       testCase "nothing skipped: no line" $ skippedLines [] @?= [],
       testCase "the reasons in order" $
         skippedLines [("b", 1), ("a", 2)] @?= ["2 a", "1 b"],
-      testCase "a missing tool not required is counted by its name" $ do
-        resetSkipped
-        _ <- runOne (needsToolWith (pure False) "tool" missing passing)
-        _ <- runOne (needsToolWith (pure False) "tool" missing passing)
+      testCase "a test of a missing tool not required is counted by its name, in the counter of the run" $ do
+        skips <- newSkips
+        let counted = runAllWith (singleOption (SkipCounter (Just skips)))
+        _ <- counted (needsToolWith (pure False) "tool" missing passing)
+        _ <- counted (needsToolWith (pure False) "tool" missing failing)
+        _ <- counted (needsToolWith (pure True) "tool" missing passing)
+        _ <- counted (needsToolWith (pure False) "tool" found passing)
         _ <- optionalToolWith (pure False) "tool" missing
-        _ <- runOne (needsToolWith (pure True) "tool" missing passing)
-        _ <- runOne (needsToolWith (pure False) "tool" found passing)
-        skippedSoFar
-          >>= ( @?=
-                  [ ("checks skipped: tool is not installed (GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes them failures)", 1),
-                    ("tests skipped: tool is not installed (GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes them failures)", 2)
-                  ]
-              )
-        resetSkipped
+        skippedSoFar skips >>= (@?= [("tests skipped: tool is not installed (GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes them failures)", 2)]),
+      testCase "without a counter nothing is counted" $ do
+        skips <- newSkips
+        _ <- runAll (needsToolWith (pure False) "tool" missing passing)
+        skippedSoFar skips >>= (@?= [])
     ]

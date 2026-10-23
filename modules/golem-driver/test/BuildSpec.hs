@@ -24,7 +24,7 @@ import Golem.Project.Manifest (Manifest (..), Metadata (..))
 import Golem.Project.Style (HeadForm (..), HeadPick (..), RunningContent (..), RunningPart (..), RunningRef (..))
 import Golem.Syntax
 import Golem.TestSupport.Env (envFlag)
-import Golem.TestSupport.Skipped (countSkipped)
+import Golem.TestSupport.Skipped (Skips, countSkipped)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.Environment (lookupEnv)
@@ -152,8 +152,9 @@ allTargetsTests =
         listDirectory (tmp </> "build/text") >>= (@?= ["vertical"])
     ]
 
-publicDomainTests :: TestTree
-publicDomainTests =
+-- | The tests of the fixtures; the books checked only are counted in the skips of the run (docs/adr ADR 0074).
+publicDomainTests :: Skips -> TestTree
+publicDomainTests skips =
   testGroup
     "public-domain books"
     [ testCase "The Tempest builds horizontally to every target" $ do
@@ -171,7 +172,7 @@ publicDomainTests =
         content <- BS.concat <$> inflateAll pdf
         assertBool "turned dashes" (any (\d -> dGlyph d == 722 && dMatrix d == ["0", "-1", "1", "0"]) (drawnGlyphs content))
         qpdfCheck pdf,
-      testGroup "ten public-domain books (docs/adr/0026)" (map pdBookTest pdBooks)
+      testGroup "ten public-domain books (docs/adr/0026)" (map (pdBookTest skips) pdBooks)
     ]
 
 -- | The books of test/fixtures/pd (docs/adr/0026) and whether each is set vertically.
@@ -194,8 +195,8 @@ pdBooks =
 ten (docs/adr/0026). The books do not commit their fonts; the fonts of
 蟹工船 and The Tempest are copied in, as scripts/fixtures/copy-fonts.sh does.
 -}
-pdBookTest :: (FilePath, Bool) -> TestTree
-pdBookTest (name, vertical) = testCase name $ withSystemTempDirectory "golem-pd" $ \tmp -> do
+pdBookTest :: Skips -> (FilePath, Bool) -> TestTree
+pdBookTest skips (name, vertical) = testCase name $ withSystemTempDirectory "golem-pd" $ \tmp -> do
   let src = "test/fixtures/pd" </> name
   entries <- listDirectory src
   forM_ entries $ \e -> do
@@ -208,7 +209,7 @@ pdBookTest (name, vertical) = testCase name $ withSystemTempDirectory "golem-pd"
   createDirectoryIfMissing True (tmp </> "fonts")
   copyFile (fonts </> font) (tmp </> "fonts" </> font)
   full <- envFlag "GOLEM_PD_BOOKS"
-  unless full (countSkipped "books checked only: GOLEM_PD_BOOKS is not 1 (GOLEM_PD_BOOKS=1 builds them to every target)")
+  unless full (countSkipped skips "books checked only: GOLEM_PD_BOOKS is not 1 (GOLEM_PD_BOOKS=1 builds them to every target)")
   r <- build (defaultOptions tmp) {optCheckOnly = not full}
   assertEqual "no errors" [] [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
   when full $ do

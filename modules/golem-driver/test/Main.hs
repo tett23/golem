@@ -7,7 +7,7 @@ import ColophonSpec
 import DiagnosticSitesSpec
 import DiagnosticsSpec
 import FigureSpec
-import Golem.TestSupport.Skipped (defaultMainReportingSkips)
+import Golem.TestSupport.Skipped (Skips, defaultMainReportingSkips)
 import LocaleSpec
 import MemoSpec
 import OutputGoldenSpec
@@ -25,11 +25,11 @@ import TableFilesSpec
 import Test.Tasty
 
 main :: IO ()
-main = lookupEnv "XDG_CACHE_HOME" >>= defaultMainReportingSkips . tests
+main = lookupEnv "XDG_CACHE_HOME" >>= defaultMainReportingSkips . flip tests
 
 -- | The tests, with XDG_CACHE_HOME as it was when the suite started (docs/adr ADR 0072).
-tests :: Maybe String -> TestTree
-tests cacheHome =
+tests :: Skips -> Maybe String -> TestTree
+tests skips cacheHome =
   testGroup
     "golem-driver (ADR 0001)"
     ( [ qpdfInstalled,
@@ -106,7 +106,7 @@ tests cacheHome =
              testGroup "the shapes of the line styles of a rule (ADR 0028)" ruleShapeTests,
              testGroup "the rules of paragraph styles and headings (ADR 0027)" paragraphRuleTests,
              localeTests,
-             publicDomainTests,
+             publicDomainTests skips,
              diagnosticSiteTests
            ]
     )
