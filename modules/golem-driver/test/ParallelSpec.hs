@@ -158,7 +158,7 @@ parallelTests race =
             (s, p) <- evalIO (sequentialAndParallel realProvider (notoStyle vertical) [("fonts/noto.otf", noto)] chapters)
             p === s
         ),
-      testCase "layout errors of three chapters come in the order of the manifest, the positions and the codes" $ do
+      testCase "layout errors of three chapters come in the order of the codes, the manifest and the positions" $ do
         let wide = "| " <> T.intercalate " | " (replicate 13 "字") <> " |\n|" <> T.replicate 13 "---|" <> "\n| " <> T.intercalate " | " (replicate 13 "字") <> " |\n"
             -- the fourth level leaves less than 8 characters of 12 (G07027); the passes that
             -- find it and the table errors are not the order of the files
@@ -170,9 +170,9 @@ parallelTests race =
         -- (two rows of 80 and a rule of 54), then a newline
         (pdf, [(f, c, at) | (f, c, at, _) <- ds])
           @?= ( Nothing,
-                [ ("z.gm", DiagnosticCode "G07041", 0),
+                [ ("m.gm", DiagnosticCode "G07027", 36),
+                  ("z.gm", DiagnosticCode "G07041", 0),
                   ("a.gm", DiagnosticCode "G07041", 8),
-                  ("m.gm", DiagnosticCode "G07027", 36),
                   ("m.gm", DiagnosticCode "G07041", 63),
                   ("m.gm", DiagnosticCode "G07041", 278)
                 ]

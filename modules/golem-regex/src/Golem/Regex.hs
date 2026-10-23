@@ -142,6 +142,13 @@ compile src = do
 tooLarge :: Text
 tooLarge = "照合のプログラムが大きすぎます。量指定子の展開を含めて " <> T.pack (show maxProgramSize) <> " 命令までです"
 
+-- | The largest count a quantifier may write.
+maxRepetition :: Integer
+maxRepetition = 65535
+
+tooManyRepetitions :: Text
+tooManyRepetitions = "繰り返しの回数が上限の " <> T.pack (show maxRepetition) <> " 回を超えています"
+
 parseAlt :: Env -> Input -> Either RegexError (Node, Input)
 parseAlt env input = do
   (first, rest) <- parseSeq env input
@@ -203,7 +210,7 @@ parseQuantifier atom input = case input of
     | c == '{',
       Just ((lo, hi, _), rest') <- braces input -> do
         when (maybe False (< lo) hi) $ failAt o "量指定子の {n,m} は n ≦ m です"
-        when (lo > 65535 || maybe False (> 65535) hi) $ failAt o "繰り返しの回数は 65535 までです"
+        when (lo > maxRepetition || maybe False (> maxRepetition) hi) $ failAt o tooManyRepetitions
         lazy o (fromInteger lo) (fromInteger <$> hi) rest'
   _ -> pure (atom, input)
   where

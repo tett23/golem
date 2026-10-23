@@ -244,11 +244,11 @@ bibliographyFormatTests =
     testCase "an absolute path is G03003" $ do
       (ds, _) <- bibOf "bibliography = [\"/abs.json\"]" []
       map diagCode ds @?= [DiagnosticCode "G03003"],
-    testCase "golem check reports G03026 before the G02021 it causes" $
+    testCase "golem check reports G03026 after the G02021 it causes" $
       withBibProject "bibliography = [\"nope.json\"]" "本文[cite jlreq]。\n" [] $ \tmp -> do
         r <- build (defaultOptions tmp) {optCheckOnly = True}
         -- G08007 of the fontless PDF target comes after them
-        take 2 (map diagCode (filter isError (brDiagnostics r))) @?= [DiagnosticCode "G03026", DiagnosticCode "G02021"],
+        take 2 (map diagCode (filter isError (brDiagnostics r))) @?= [DiagnosticCode "G02021", DiagnosticCode "G03026"],
     testCase "HTML lists a Japanese entry with 、 and 。" $
       withBibProject "bibliography = [\"refs.json\"]" "本文[cite jisx4061]。\n\n@bibliography\n" [("refs.json", jaRefsJson)] $ \tmp -> do
         r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}

@@ -33,7 +33,7 @@
 [code: Data.HashMap] の走査の順は、ハッシュの関数とライブラリのバージョンで変わりうる。
 
 並列に処理した結果は、完了の順ではなく、マニフェストの章の順と章の中の位置で並べ直してから統合する。
-diagnostics の出力の順も、重大度、ファイルの順、位置の順、コードの順に固定する（第[ref-number diagnostics]章）。
+diagnostics の出力の順も、notice かどうか、コードの順、ファイルの順、位置の順に固定する（第[ref-number diagnostics]章）。
 同じ値を比べる順序に穴があると、並べ替えの安定性に頼ることになるので、golem-syntax の [code: sortDiagnostics] は最後に残りのフィールドまで比べて、順序を全順序にしている。
 
 ## 数を扱う

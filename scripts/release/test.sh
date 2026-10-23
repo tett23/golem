@@ -347,7 +347,7 @@ fi
 for a in "$@"; do printf '[%s]\n' "$a"; done >"$FAKE_LOG/args"
 env >"$FAKE_LOG/env"
 cat >"$FAKE_LOG/prompt"
-printf '## Added\n\n- something\n'
+if [ -n "${FAKE_NOTES:-}" ]; then cat "$FAKE_NOTES"; else printf '## Added\n\n- something\n'; fi
 EOF
 cat >"$FAKE/gh" <<'EOF'
 #!/bin/sh
@@ -373,8 +373,28 @@ for v in GH_TOKEN GITHUB_TOKEN ACTIONS_ID_TOKEN_REQUEST_TOKEN ACTIONS_ID_TOKEN_R
   if grep -q "^$v=" "$FAKE_LOG/env"; then ng "write-notes: claude runs without $v"; else ok; fi
 done
 if head -3 "$FAKE_LOG/prompt" | grep -q 'untrusted data'; then ok; else ng "write-notes: the prompt starts with the bodies being untrusted"; fi
-# the notes of the fake claude miss the pull requests: the list is the notes
-if cmp -s "$WORK/written.md" "$WORK/notes.md" || grep -q '## Unsorted' "$WORK/written.md"; then ok; else ng "write-notes: the list when the check fails"; fi
+# the notes of the fake claude miss the pull requests: the notes are the
+# list of notes.sh from the first commit (v0.0.9 is deleted above), as it is
+if cmp -s "$WORK/written.md" "$HERE/testdata/notes-first.md"; then ok; else ng "write-notes: the list when the check fails"; fi
+# notes of the fake claude that pass check-notes.sh are the notes
+# (docs/adr/0077)
+cat >"$WORK/ai-good.md" <<'EOF'
+## Added
+
+- Something old ([#2](https://github.com/tett23/golem/pull/2))
+- Something new ([#3](https://github.com/tett23/golem/pull/3), [ADR 0001](https://github.com/tett23/golem/blob/v0.1.0/docs/adr/0001-x.md))
+
+## Fixed
+
+- Something fixed ([#4](https://github.com/tett23/golem/pull/4))
+- Something else ([#5](https://github.com/tett23/golem/pull/5))
+EOF
+FAKE_NOTES=$WORK/ai-good.md
+export FAKE_NOTES
+run write_notes
+unset FAKE_NOTES
+expect "write-notes: notes that pass the check" 0
+if cmp -s "$WORK/written.md" "$WORK/ai-good.md"; then ok; else ng "write-notes: the notes of claude when the check passes"; fi
 # a Claude Code without the flags: the notes are the list, claude -p is not run
 rm -f "$FAKE_LOG/args"
 FAKE_OLD_HELP=1
@@ -423,7 +443,25 @@ if [ "$CODE" != 0 ] && [ -e "$FW/curl.log" ]; then ok; else ng "fetch-wasmtime: 
 BL=$HERE/build-linux.sh
 if grep -Eq '^GHCUP_VERSION=[0-9]+(\.[0-9]+)+$' "$BL"; then ok; else ng "build-linux: GHCUP_VERSION"; fi
 if grep -Eq '^GHCUP_BOOTSTRAP_SHA256=[0-9a-f]{64}$' "$BL"; then ok; else ng "build-linux: GHCUP_BOOTSTRAP_SHA256"; fi
-if grep -Eq '\| *(ba)?sh' "$BL"; then ng "build-linux: nothing is piped into sh"; else ok; fi
+# pipes_into_shell: 0 if a line of stdin runs what another command writes
+# as a shell script: a pipe into sh, bash, dash, ash or zsh (by name or by
+# path), or sh -c or bash -c of $( (docs/adr/0077)
+pipes_into_shell() {
+  grep -Eq '(^|[^|])\|[[:space:]]*(/[^[:space:]]*/)?(sh|bash|dash|ash|zsh)([[:space:]]|$)|(^|[^A-Za-z0-9_.-])(/[^[:space:]]*/)?(sh|bash)[[:space:]]+-c[[:space:]]+["'"'"']?\$\('
+}
+for line in 'curl -fsSL https://example.com/x | sh' 'curl -fsSL https://example.com/x |sh -s --' \
+  'curl -fsSL https://example.com/x | /bin/sh' 'curl -fsSL https://example.com/x | /usr/bin/bash' \
+  'curl -fsSL https://example.com/x | dash' 'curl -fsSL https://example.com/x | ash' 'curl -fsSL https://example.com/x | zsh' \
+  'sh -c "$(curl -fsSL https://example.com/x)"' 'bash -c "$(curl -fsSL https://example.com/x)"' \
+  '/bin/sh -c "$(curl -fsSL https://example.com/x)"'; do
+  if printf '%s\n' "$line" | pipes_into_shell; then ok; else ng "build-linux: the check finds: $line"; fi
+done
+for line in 'curl --proto =https -sSfL -o "$BOOTSTRAP" https://example.com/x' \
+  'printf "%s  %s\n" "$SHA" "$BOOTSTRAP" | sha256sum -c -' 'sh "$BOOTSTRAP"' \
+  'ACTUAL=$(sha256sum "$BOOTSTRAP" | cut -d" " -f1)' 'test -f a || sh b.sh' 'x | shasum -a 256'; do
+  if printf '%s\n' "$line" | pipes_into_shell; then ng "build-linux: the check passes: $line"; else ok; fi
+done
+if pipes_into_shell <"$BL"; then ng "build-linux: nothing is piped into a shell"; else ok; fi
 
 # ---------------------------------------------------------------- link-components.sh
 # (docs/adr/0007-third-party-licenses.md)
