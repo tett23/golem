@@ -202,6 +202,8 @@ LSP では、エディタで開いているファイルにも出す。
 ### 直し方
 
 原稿のファイルは `golem fmt` で LF に直す。
+引数なしの `golem fmt` でも直せる（[golem-fmt ADR 0004](golem-fmt/adr/0004-fmt-without-arguments-fixes-cr.md)）。
+`manifest.toml` と `style.toml` は `golem fmt` が整形しないので、エディタで直す。
 エディタの改行の設定を LF にする。
 
 ## G01010
