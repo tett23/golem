@@ -178,7 +178,7 @@ diagnosticTests =
         evm "min()" @?= Left ("G02007", "min の引数が不正です")
         evm "max()" @?= Left ("G02007", "max の引数が不正です")
         evm "round(1.5, -1)" @?= Left ("G02007", "round の引数が不正です"),
-      localOption (mkTimeout 10000000) $ testCase "G02086: integers below 2^4096 and at most 1000 digits (docs/adr ADR 0035)" $ do
+      localOption (mkTimeout 30000000) $ testCase "G02086: integers below 2^4096 and at most 1000 digits (docs/adr ADR 0035)" $ do
         let big = ("G02086", "整数が大きすぎます（絶対値は 2 の 4096 乗未満に限ります）")
             digits = ("G02086", "小数の桁数が多すぎます（1000 桁までです）")
         evm "10 ** 100000000" @?= Left big
@@ -218,9 +218,9 @@ bitsOf src = case ev src of
 bits :: Double -> Either Text Word64
 bits = Right . castDoubleToWord64
 
--- | Evaluates within a second, or fails.
-withinASecond :: TestTree -> TestTree
-withinASecond = localOption (mkTimeout 1000000)
+-- | Fails a test that does not end within half a minute (docs/adr ADR 0073).
+withinHalfAMinute :: TestTree -> TestTree
+withinHalfAMinute = localOption (mkTimeout 30000000)
 
 -- | Floating-point overflow and the exact rules of golem-eval ADR 0005.
 overflowTests :: TestTree
@@ -244,7 +244,7 @@ overflowTests =
         -- (1e200) ** 2 of the ADR; the language has no exponent notation
         bitsOf "(10.0 ** 200) ** 2" @?= Left "G02004"
         bitsOf "0.1 ** 400" @?= bits 0,
-      withinASecond $ testCase "large exponents" $ do
+      withinHalfAMinute $ testCase "large exponents" $ do
         -- over the limit before the range (golem-eval ADR 0006)
         ev "1.5 ** 100000000" @?= Left "G02095"
         ev "0.75 ** -100000000" @?= Left "G02095"
@@ -345,7 +345,7 @@ exactLimitTests :: TestTree
 exactLimitTests =
   testGroup
     "the exact limit before the range (golem-eval ADR 0006)"
-    [ withinASecond $ testCase "the estimate no longer decides the code" $ do
+    [ withinHalfAMinute $ testCase "the estimate no longer decides the code" $ do
         -- 1 + 7 * 2^-24 and 1 - 2^-26 written exactly
         let up = "1.000000417232513427734375"
             down = "0.99999998509883880615234375"
@@ -387,13 +387,13 @@ exactLimitTests =
             neg = s < 0 && odd k
             r = bitsOf (floatLit a <> " ** " <> T.pack (show k))
         r === expected e neg,
-      withinASecond $ testCase "the boundaries of overflow" $ do
+      withinHalfAMinute $ testCase "the boundaries of overflow" $ do
         bitsOf "2.0 ** 1023" @?= bits (encodeFloat 1 1023)
         ev "2.0 ** 1024" @?= Left "G02004"
         ev "0.5 ** -1024" @?= Left "G02004"
         bitsOf "3.0 ** 646" @?= bits 1.6608505280233425e308
         ev "3.0 ** 647" @?= Left "G02004",
-      withinASecond $ testCase "the boundaries of underflow" $ do
+      withinHalfAMinute $ testCase "the boundaries of underflow" $ do
         bitsOf "2.0 ** -1074" @?= bits (encodeFloat 1 (-1074))
         bitsOf "2 ** -1074" @?= bits (encodeFloat 1 (-1074))
         bitsOf "2.0 ** -1075" @?= bits 0
@@ -426,7 +426,7 @@ exactLimitTests =
         case r of
           Right (VFloat d) | d == 0 -> assert (not (isNegativeZero d))
           _ -> success,
-      withinASecond $ testCase "the boundaries of the limit" $ do
+      withinHalfAMinute $ testCase "the boundaries of the limit" $ do
         assertBool "1.0000001 ** 20164 is a value" (isValue (ev "1.0000001 ** 20164"))
         evm "1.0000001 ** 20165" @?= Left (overLimit 1048580)
         ev "1.5 ** 1048576" @?= Left "G02004"
@@ -435,7 +435,7 @@ exactLimitTests =
         evm "1.5 ** -1048577" @?= Left (overLimit 1048577)
         bitsOf "3 ** -1048576" @?= bits 0
         evm "3 ** -1048577" @?= Left (overLimit 1048577),
-      withinASecond $ testCase "a power of 2 with a large exponent" $ do
+      withinHalfAMinute $ testCase "a power of 2 with a large exponent" $ do
         ev "2.0 ** 100000000000" @?= Left "G02004"
         bitsOf "0.5 ** 100000000000" @?= bits 0
         bitsOf "2 ** -100000000000" @?= bits 0

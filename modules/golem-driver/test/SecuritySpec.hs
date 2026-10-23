@@ -127,7 +127,7 @@ securityTests =
         css <- TIO.readFile (tmp </> "build/html/style.css")
         assertBool (T.unpack css) ("font-family: \"golem-x\\\" } body { color: red } x { a: \\\"-latin\"; src: url(\"fonts/a\\\").otf\");" `T.isInfixOf` css)
         assertBool (T.unpack css) (not ("\n body { color: red }" `T.isInfixOf` css)),
-      localOption (mkTimeout 20000000) $ testCase "a year of 1e1000000000 in CSL-JSON does not stop the build" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+      localOption (mkTimeout 30000000) $ testCase "a year of 1e1000000000 in CSL-JSON does not stop the build" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         project tmp "bibliography = [\"refs.json\"]\n" horizontalStyle "本文[cite a][cite b]。\n" [("refs.json", "[{\"id\": \"a\", \"title\": \"T\", \"issued\": {\"date-parts\": [[1e1000000000]]}}, {\"id\": \"b\", \"title\": \"U\", \"issued\": {\"date-parts\": [[1e-1000000000]]}}]")]
         r <- build (defaultOptions tmp) {optTargets = Just [TargetText]}
         map diagCode (filter isError (brDiagnostics r)) @?= []

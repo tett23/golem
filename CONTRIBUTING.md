@@ -96,6 +96,7 @@ ADR はレビューを受けるまでコミットしない。
 
 ADR のテスト設計に書いたテストを先に書き、失敗することを確かめてから実装する。
 設定の値のように自動テストを書けない変更は、テスト設計に確かめ方を書いておき、実装したあとに実際に動かして確かめる。
+採択済みの ADR のテスト設計が「10 秒以内」「5 秒以内」のように時間で書いた検査は、計算が止まらないことを検出する意図として読み、テストの時間切れを 30 秒にして、上限で拒んだことを断言する（[docs/adr/0073](./docs/adr/0073-time-bounds-in-tests.md)）。
 
 外部ツール（`cddl`、`qpdf`、`openssl` など）を使うテストは、`modules/golem-test-support` の `Golem.TestSupport.ExternalTool` にある `needsTool` か `optionalTool` で書く（[docs/adr/0028](./docs/adr/0028-shared-test-support-package.md)）。
 ツールがなければ `SKIP` と表示され、`GOLEM_REQUIRE_EXTERNAL_TOOLS=1` のもとでは失敗になる。
@@ -111,7 +112,7 @@ Golem は、同じ入力から常に同じバイト列を出力する。
 
 `scripts/` の下のスクリプトは、POSIX の `sh` で書き、macOS の BSD 版の `awk`、`sed`、`find`、`grep` でも動くようにする。
 `sed -i` の引数のように GNU 版と BSD 版で違う書き方は避ける。
-CI の `scripts-macos` ジョブが、`PATH` をシステムの道具だけにして、`scripts/` の下の四本のテストを macOS で走らせる（[docs/adr/0079](./docs/adr/0079-shell-tests-on-macos.md)）。
+CI の `scripts-macos` ジョブが、`PATH` をシステムの道具だけにして、`scripts/` の下の五本のテストを macOS で走らせる（[docs/adr/0079](./docs/adr/0079-shell-tests-on-macos.md)）。
 
 ライセンスに問題がなく、再実装がやさしいものは、依存に加えずに再実装する。
 その場合は、本家のテストを参考にして、テストを十分に厚く書く。

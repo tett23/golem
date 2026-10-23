@@ -106,7 +106,7 @@ Keep anything that depends on the environment out of the output: time, random nu
 
 Write the scripts under `scripts/` in POSIX `sh`, and make them run with the BSD `awk`, `sed`, `find` and `grep` of macOS too.
 Avoid forms that GNU and BSD write differently, such as the argument of `sed -i`.
-The `scripts-macos` job of CI runs the four tests under `scripts/` on macOS with only the tools of the system on `PATH` ([docs/adr/0079](./docs/adr/0079-shell-tests-on-macos.md)).
+The `scripts-macos` job of CI runs the five tests under `scripts/` on macOS with only the tools of the system on `PATH` ([docs/adr/0079](./docs/adr/0079-shell-tests-on-macos.md)).
 
 If something has no license problem and is easy to reimplement, reimplement it instead of adding a dependency.
 In that case, write thorough tests, using the original project's tests as a reference.

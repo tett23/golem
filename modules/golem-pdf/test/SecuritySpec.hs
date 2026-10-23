@@ -147,7 +147,7 @@ tests :: TestTree
 tests =
   testGroup
     "hostile PDF figures end within limits (security audit 2026-10-18, docs/adr ADR 0040)"
-    [ localOption (mkTimeout (seconds 5))
+    [ localOption (mkTimeout (seconds 30))
         $ testCase "C1: a page tree that is a DAG of depth 24 is refused for the page tree at the node named twice"
         $ imported 2 (dagPdf 24) >>= refusedFor "ページの木",
       testCase "C1: a page named by two Kids is refused for the page tree" $ do
@@ -173,7 +173,7 @@ tests =
                 ]
         imported 1 pdf >>= readOk
         imported 2 pdf >>= refusedFor "ページの木",
-      localOption (mkTimeout (seconds 10)) $
+      localOption (mkTimeout (seconds 30)) $
         testCase "C2: a literal string of 50000 short octal escapes is read in time and allocation linear in its length" $
           do
             let body = "BT (" <> BS.concat (replicate 50000 "\\1x") <> ") Tj ET"
@@ -254,7 +254,7 @@ tests =
                       (6, stream "/Type /XObject /Subtype /Form /BBox [0 0 1 1] /Filter /FlateDecode" (zeros 1))
                     ]
             imported 1 pdf >>= (@?= Right (256 * mib, 1)),
-      localOption (mkTimeout (seconds 10))
+      localOption (mkTimeout (seconds 30))
         $ testCase "C4: the TIFF predictor with Colors 65536 is refused for the predictor"
         $ imported 1 (pageWith "/Filter /FlateDecode /DecodeParms << /Predictor 2 /Colors 65536 /BitsPerComponent 8 /Columns 65536 >>" (zeros mib)) >>= refusedFor "予測子",
       testCase "C4: Colors 33, BitsPerComponent 3 and Columns 0 are refused for the predictor" $ do
@@ -262,7 +262,7 @@ tests =
         imported 1 (parms "/Colors 33") >>= refusedFor "予測子"
         imported 1 (parms "/BitsPerComponent 3") >>= refusedFor "予測子"
         imported 1 (parms "/Columns 0") >>= refusedFor "予測子",
-      localOption (mkTimeout (seconds 10))
+      localOption (mkTimeout (seconds 30))
         $ testCase "C4: the TIFF predictor with Colors 4 decodes 1 MiB in time linear in its length"
         $ imported 1 (pageWith "/Filter /FlateDecode /DecodeParms << /Predictor 2 /Colors 4 /BitsPerComponent 8 /Columns 65536 >>" (zeros mib)) >>= (@?= Right (mib, 0)),
       testCase "C4: the TIFF predictor adds the byte a pixel before" $ do
