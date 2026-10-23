@@ -97,13 +97,36 @@ cd "$WORK"
 # A project made with --no-fonts does not build until its fonts are put
 # in place (style.toml names them, golem-cli ADR 0003), so the build uses
 # the sample of golem-driver, which names no fonts.
+# Neither writes anything else: golem new --no-fonts writes only the fonts
+# to place, and a build writes no diagnostic, not even a notice
+# (docs/adr/0080-release-smoke-checks-diagnostics.md).
+NO_FONTS_HEAD="フォントを取得しませんでした。次のファイルを置いてください。"
+# no_fonts DIR [ARG...]: golem new --no-fonts ARG... DIR; its stderr is the
+# line above, then one line per file to place, "  DIR/fonts/FILE (URL)"
+no_fonts() {
+  dir=$1
+  shift
+  "$GOLEM" new --no-fonts "$@" "$dir" 2>"$WORK/new.err" || fail "golem new --no-fonts $* $dir: $(cat "$WORK/new.err")"
+  [ "$(head -n 1 "$WORK/new.err")" = "$NO_FONTS_HEAD" ] &&
+    [ "$(tail -n +2 "$WORK/new.err" | grep -c '')" -ge 1 ] &&
+    ! tail -n +2 "$WORK/new.err" | grep -v "^  $dir/fonts/[^ ]* (https://[^ ]*)\$" >/dev/null ||
+    fail "golem new --no-fonts $* $dir wrote more than the fonts to place: $(cat "$WORK/new.err")"
+}
+# build_clean NAME ARG...: golem build --format json ARG... in NAME; its
+# stderr is the empty list of diagnostics
+build_clean() {
+  p=$1
+  shift
+  (cd "$p" && "$GOLEM" build --format json "$@") 2>"$WORK/build.err" || fail "golem build in $p: $(cat "$WORK/build.err")"
+  [ "$(cat "$WORK/build.err")" = "[]" ] || fail "golem build in $p wrote diagnostics: $(cat "$WORK/build.err")"
+}
 step "golem new --no-fonts"
-"$GOLEM" new --no-fonts book-ja 2>/dev/null || fail "golem new --no-fonts book-ja"
-"$GOLEM" new --no-fonts --language en book-en 2>/dev/null || fail "golem new --no-fonts --language en book-en"
+no_fonts book-ja
+no_fonts book-en --language en
 step "golem build (HTML, EPUB, text) without fonts"
 cp -R "$ROOT/modules/golem-driver/test/fixtures/sample" sample
 rm -rf sample/build
-(cd sample && "$GOLEM" build --target html --target epub --target text) || fail "golem build in the sample"
+build_clean sample --target html --target epub --target text
 for t in html epub text; do
   [ -n "$(ls -A "sample/build/$t" 2>/dev/null)" ] || fail "no $t output in the sample"
 done
@@ -114,7 +137,7 @@ with_fonts() {
   "$GOLEM" new book || fail "golem new book"
   "$GOLEM" new --language en book-en-fonts || fail "golem new --language en book-en-fonts"
   for p in book book-en-fonts; do
-    (cd "$p" && "$GOLEM" build) || fail "golem build in $p"
+    build_clean "$p"
     for t in html epub text pdf; do
       [ -n "$(ls -A "$p/build/$t" 2>/dev/null)" ] || fail "no $t output in $p"
     done

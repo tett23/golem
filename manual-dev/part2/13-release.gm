@@ -72,6 +72,12 @@ $ gh workflow run release.yml --ref <ブランチ>
 [code: smoke] は、ca-certificates のある [code: debian:stable-slim] と、ないものの両方で動かす。
 配布物はルート証明書を同梱せず OS の証明書のストアを読むので、ストアがない環境で正しく失敗し、[code: SSL_CERT_FILE] で救えることも確かめる必要がある。
 
+[code: smoke] は、終了コードと出力のファイルだけでなく、標準エラー出力も見る。
+[code: golem new] の雛形と sample を [code: --format json] で組み、標準エラー出力が diagnostics の空の一覧 [code: \[\]] であることを求める。
+notice も許さない。
+雛形を組んで警告が出るなら、利用者が最初に見る出力が警告になるからである。
+[code: golem new --no-fonts] は、置くべきフォントの一覧のほかに何も書かないことを確かめる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0080-release-smoke-checks-diagnostics.md]（docs/adr の ADR 0080「リリースの smoke の検査で、ビルドが diagnostics を出さないことも確かめる」）]
+
 [code: determinism] は、CI のビルドの出力と三つの配布物の出力が、一行も違わないことを確かめる。
 配布物は CI とは別の環境（Alpine の musl、macOS）でビルドするので、そこで出力が変わらないことを、ここで初めて確かめられる。
 
