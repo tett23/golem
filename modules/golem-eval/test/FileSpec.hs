@@ -1,6 +1,7 @@
 module FileSpec (tests) where
 
 import Control.Exception (evaluate)
+import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Data.Text (Text)
@@ -611,6 +612,15 @@ noticeTests =
             hctx = ctx {ctxStyle = headingStyle, ctxCharStyles = Map.keysSet (stCharStyles headingStyle), ctxParaStyles = paraLineBreaks headingStyle}
         [c | (c, _, _, _) <- diagsWith hctx "@style-def character bold font=heading\n\n[bold: x]\n"] @?= ["G02062"]
         at "@style-def paragraph letter indent=1zw\n@style-def paragraph quote indent=2zw\n\nx\n" @?= [("G02062", "ファイルの中の定義が段落スタイルの quote を上書きしています", 39)],
+      -- golem-driver ADR 0043
+      testCase "G03100: a zero indent of caption or sidenote in @style-def, at the keyword" $ do
+        let at src = [(c, m, st) | (c, m, st, _) <- diagsWith sctx src, c == "G03100"]
+        at "@style-def paragraph caption indent=0zw\n\nx\n" @?= [("G03100", "キャプションと傍注は字下げを掛けないので、caption.indent = 0zw は効果がありません", 29)]
+        at "@style-def paragraph sidenote first-line-indent=\"0mm\"\n\nx\n" @?= [("G03100", "キャプションと傍注は字下げを掛けないので、sidenote.first-line-indent = \"0mm\" は効果がありません", 30)]
+        at "@style-def paragraph quote indent=0zw\n\nx\n" @?= []
+        [c | (c, _, _, _) <- diagsWith sctx "@style-def paragraph caption indent=1zw\n\nx\n"] @?= ["G03006"]
+        let (_, ds, _) = runS sctx "@style-def paragraph caption indent=0zw\n\nx\n"
+        sort [(diagCode d, diagSeverity d) | d <- ds] @?= [(DiagnosticCode "G02062", Notice), (DiagnosticCode "G03100", Notice)],
       testCase "G02062 is a notice" $ do
         let (_, ds, _) = runS sctx "@style-def paragraph body indent=1zw\n\nx\n"
         map diagSeverity ds @?= [Notice],

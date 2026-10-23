@@ -198,8 +198,14 @@ CFF2 の輪郭のフォント（可変フォントの [code: .otf] の多く）�
 
 - [code: body]：本文です。ほかの段落スタイルの既定の引き継ぎ先です。
 - [code: verse]：韻文です。[code: line-breaks = "keep"]、[code: space-between = 1]、[code: indent = "2zw"]、[code: first-line-indent = "-2zw"] です。
-- [code: caption]：図版のキャプションです。キャプションには [code: font] と [code: size] だけが有効です。
-- [code: sidenote]：傍注の本文です。傍注には [code: font] と [code: size] だけが有効です。
+- [code: caption]：図版のキャプションです。[code: indent = "0zw"]、[code: first-line-indent = "0zw"] で、[code: body] の字下げを引き継ぎません。
+- [code: sidenote]：傍注の本文です。[code: caption] と同じく、字下げは 0 です。
+
+[code: caption] と [code: sidenote] には、0 でない [code: indent] と [code: first-line-indent] を書けません。
+書くとエラー（G03006）です。
+0 を書いたときは、組んだ結果が変わらないことを知らせるお知らせ（G03100）を出します。
+キャプションと傍注の本文に適用されるのは、[code: font]、[code: size]、[code: regex-styles] と、PDF では [code: aki-set] と文字の送りの四つのキーです。
+[code: line-breaks] と [code: space-between] は、原稿で [code: @style caption] のように付けた段落にだけ適用されます。
 - [code: code]：コードブロックです。[code: font = "code"]、[code: padding = "0.5zw"] です。
 
 段落スタイル [code: code] に書けるキーは、次の六つだけです。

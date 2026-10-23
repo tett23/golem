@@ -879,7 +879,8 @@ columnSetRects geom n set =
 
 {- | G07025: every paragraph style leaves 8 characters of its own size on a
 line of a column (docs/adr ADR 0006, golem-driver ADR 0005 and 0016), in
-style.toml and in the style of each file (docs/adr ADR 0014).
+style.toml and in the style of each file (docs/adr ADR 0014). caption and
+sidenote do not indent, and G07043 checks code (golem-driver ADR 0043).
 -}
 indentDiagnostics :: FileId -> Style -> [LocalStyles] -> PageGeometry -> [Diagnostic]
 indentDiagnostics fid style locals geom =
@@ -887,6 +888,7 @@ indentDiagnostics fid style locals geom =
     [ diagnostic "G07025" Error (mkSpan fid 0 0) ("段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: " <> name)
     | st <- style : map (withLocalStyles style) locals,
       name <- Map.keys (stParaStyles st),
+      name `notElem` ["caption", "sidenote", "code"],
       let (lk, Indent s f) = paraLook st geom (Just name),
       let size = lkSize lk,
       columnMeasure geom - s - max 0 f < 8 * size

@@ -464,6 +464,8 @@ G03010 と G05004 は、[code: --profile dev] では警告、[code: --profile pr
   キーの綴り、値の種類、単位、選べる値を、付録C と見比べてください。
   知らないキーは、[code: 知らないキーです: page.bindng] のように、テーブルとキーをつなげた名前で示します。
   廃止した [code: \[emphasis\]]、[code: \[verse\]] などを書いたときは、書き換え先がメッセージに出ます。
+  段落スタイル [code: caption] と [code: sidenote] に [code: indent] か [code: first-line-indent] を書いたときも、この誤りです。
+  キャプションと傍注は字下げをしません。
 = [strong: G03017 [code: 未知の判型です: …]] など
   [code: \[page\]] の [code: size] が違います。
   表の名前を書くか、[code: { width = "148mm", height = "210mm" }] のように幅と高さで書いてください。
@@ -789,6 +791,10 @@ G09001 のほかは、エラーか警告か、出すかどうかをプリフラ�
 = [strong: G03023 [code: style.toml がないので、既定の体裁で組みます]]
   プロジェクトのフォルダに [code: style.toml] がありません。
   既定の体裁でよければ、そのままでかまいません。
+= [strong: G03100 [code: キャプションと傍注は字下げを掛けないので、… は効果がありません]]
+  段落スタイル [code: caption] か [code: sidenote] に、0 の [code: indent] か [code: first-line-indent] を書いています。
+  キャプションと傍注ははじめから字下げをしないので、組んだ結果は変わりません。
+  そのキーを消してください。
 = [strong: G04007 [code: @number … は自動で振られる番号と同じです]]
   見出しやリストの項目の [code: @number] が、書かなくても振られる番号と同じです。
   項目を入れ替えたときに番号が固定されてしまうので、消してください。

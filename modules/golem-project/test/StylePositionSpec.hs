@@ -88,6 +88,8 @@ checkRows =
     Row "a hidden folio gutter less than half the size (golem-driver ADR 0041)" "[hidden-folio]\nsize = \"6pt\"\ngutter = \"1pt\"\n" "G03029" "\"1pt\"" 0 Nothing,
     Row "a negative padding of a character style" "[character-styles.code]\npadding = \"-1mm\"\n" "G03006" "\"-1mm\"" 0 Nothing,
     Row "a key code does not take" "[paragraph-styles.code]\nindent = \"1zw\"\n" "G03006" "\"1zw\"" 0 Nothing,
+    Row "a key caption does not take" "[paragraph-styles.caption]\nsize = \"9pt\"\nindent = \"1zw\"\n" "G03006" "\"1zw\"" 0 Nothing,
+    Row "a key sidenote does not take" "[paragraph-styles.sidenote]\nfirst-line-indent = \"1zw\"\n" "G03006" "\"1zw\"" 0 Nothing,
     Row "a background outside code" "[color.swatches.x]\ncmyk = [0, 0, 0, 0]\n[paragraph-styles.body]\nbackground = \"x\"\n" "G03006" "background = \"x\"" 13 Nothing,
     Row "a padding of a character style outside code" "[character-styles.em]\npadding = \"1mm\"\n" "G03006" "\"1mm\"" 0 Nothing,
     Row "a border-width outside code" "[paragraph-styles.body]\nborder-width = \"1mm\"\n" "G03006" "\"1mm\"" 0 Nothing,

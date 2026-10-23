@@ -180,7 +180,7 @@ tests =
                 && stage (DiagnosticCode c) `elem` ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
         [c | c <- noticeCodes <> profileDependentCodes <> preflightCodes, not (shaped c)] @?= []
         -- the stage that gives each of them
-        map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "08"]
+        map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "03", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "08"]
         map stage profileDependentCodes @?= ["05", "03"]
         assertBool "preflight is 09" (all ((== "09") . stage) preflightCodes),
       testCase "human rendering" $ do
@@ -213,7 +213,7 @@ noticeTests =
       testCase "no code is a notice and profile-dependent" $
         [c | c <- noticeCodes, c `elem` profileDependentCodes] @?= [],
       testCase "the initial notice codes" $
-        noticeCodes @?= map DiagnosticCode ["G02062", "G02063", "G02064", "G02065", "G02079", "G02094", "G03023", "G04007", "G04008", "G04009", "G04011", "G07030", "G07039", "G07045", "G07046", "G07047", "G08008"],
+        noticeCodes @?= map DiagnosticCode ["G02062", "G02063", "G02064", "G02065", "G02079", "G02094", "G03023", "G03100", "G04007", "G04008", "G04009", "G04011", "G07030", "G07039", "G07045", "G07046", "G07047", "G08008"],
       testCase "a notice early in the file comes after an error late in it" $ do
         let n = notice "G02065" (mkSpan (FileId 0) 0 1) "n"
             e = diagnostic "G02001" Error (mkSpan (FileId 1) 50 51) "e"
