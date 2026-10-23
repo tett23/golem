@@ -7,9 +7,12 @@ module Main (main) where
 
 import Control.Exception (SomeException, try)
 import Data.IORef (modifyIORef, newIORef, readIORef)
+import Golem.TestSupport.Env
 import Golem.TestSupport.ExternalTool
+import Golem.TestSupport.Skipped
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
+import Test.Tasty.Options (OptionSet, singleOption)
 import Test.Tasty.Providers (IsTest (..))
 import Test.Tasty.Runners (Result (..), TestTree (..), resultSuccessful)
 
@@ -20,7 +23,9 @@ main =
       "golem-test-support"
       [ needsToolTests,
         optionalToolTests,
-        requiredTests
+        requiredTests,
+        envFlagTests,
+        skippedTests
       ]
 
 found, missing :: IO (Maybe FilePath)
@@ -29,9 +34,13 @@ missing = pure Nothing
 
 -- | The results of every single test of a tree, in order.
 runAll :: TestTree -> IO [(String, Result)]
-runAll = \case
-  SingleTest n t -> (\r -> [(n, r)]) <$> run mempty t (const (pure ()))
-  TestGroup _ ts -> concat <$> mapM runAll ts
+runAll = runAllWith mempty
+
+-- | 'runAll' with the options given.
+runAllWith :: OptionSet -> TestTree -> IO [(String, Result)]
+runAllWith opts = \case
+  SingleTest n t -> (\r -> [(n, r)]) <$> run opts t (const (pure ()))
+  TestGroup _ ts -> concat <$> mapM (runAllWith opts) ts
   _ -> pure []
 
 runOne :: TestTree -> IO Result
@@ -109,4 +118,40 @@ requiredTests =
       testCase "0: not required" $ toolsRequiredBy (Just "0") @?= False,
       testCase "empty: not required" $ toolsRequiredBy (Just "") @?= False,
       testCase "true: not required" $ toolsRequiredBy (Just "true") @?= False
+    ]
+
+envFlagTests :: TestTree
+envFlagTests =
+  testGroup
+    "envFlagBy (docs/adr ADR 0074)"
+    [ testCase "1: on" $ envFlagBy (Just "1") @?= True,
+      testCase "unset: off" $ envFlagBy Nothing @?= False,
+      testCase "empty: off" $ envFlagBy (Just "") @?= False,
+      testCase "0: off" $ envFlagBy (Just "0") @?= False,
+      testCase "yes: off" $ envFlagBy (Just "yes") @?= False
+    ]
+
+skippedTests :: TestTree
+skippedTests =
+  testGroup
+    "the line of the tests skipped (docs/adr ADR 0074)"
+    [ testCase "one line for each reason, the count first" $
+        skippedLines [("tests skipped: qpdf is not installed (GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes them failures)", 3)]
+          @?= ["3 tests skipped: qpdf is not installed (GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes them failures)"],
+      testCase "nothing skipped: no line" $ skippedLines [] @?= [],
+      testCase "the reasons in order" $
+        skippedLines [("b", 1), ("a", 2)] @?= ["2 a", "1 b"],
+      testCase "a test of a missing tool not required is counted by its name, in the counter of the run" $ do
+        skips <- newSkips
+        let counted = runAllWith (singleOption (SkipCounter (Just skips)))
+        _ <- counted (needsToolWith (pure False) "tool" missing passing)
+        _ <- counted (needsToolWith (pure False) "tool" missing failing)
+        _ <- counted (needsToolWith (pure True) "tool" missing passing)
+        _ <- counted (needsToolWith (pure False) "tool" found passing)
+        _ <- optionalToolWith (pure False) "tool" missing
+        skippedSoFar skips >>= (@?= [("tests skipped: tool is not installed (GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes them failures)", 2)]),
+      testCase "without a counter nothing is counted" $ do
+        skips <- newSkips
+        _ <- runAll (needsToolWith (pure False) "tool" missing passing)
+        skippedSoFar skips >>= (@?= [])
     ]

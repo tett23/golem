@@ -1,7 +1,7 @@
 module Main (main) where
 
+import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import ParallelSpec (parallelTests, raceFactor)
-import Test.Tasty
 
 main :: IO ()
-main = raceFactor >>= defaultMain . parallelTests
+main = raceFactor >>= defaultMainReportingSkips . const . parallelTests

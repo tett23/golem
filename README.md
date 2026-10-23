@@ -249,9 +249,11 @@ GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 
 十冊はフォントをコミットしない。
 そのディレクトリで `golem build` を実行する前に、`scripts/fixtures/copy-fonts.sh` で『蟹工船』と『テンペスト』のフォントを写す（[docs/adr/0026](./docs/adr/0026-ten-public-domain-fixtures.md)）。
-golem-driver のテストは十冊をエラーなしに検査し、環境変数 `GOLEM_PD_BOOKS` があればすべてのターゲットに組む。
-CI の `build` ジョブは `GOLEM_PD_BOOKS` を付けてテストを走らせ、十冊をすべてのターゲットに組む（[docs/adr/0058](./docs/adr/0058-run-skipped-checks-in-ci.md)）。
+golem-driver のテストは十冊をエラーなしに検査し、環境変数 `GOLEM_PD_BOOKS` が `1` ならすべてのターゲットに組む。
+`0` や `yes` などほかの値は、付けていないのと同じに扱う（[docs/adr/0074](./docs/adr/0074-test-switches-by-environment-variables.md)）。
+CI の `build` ジョブは `GOLEM_PD_BOOKS=1` を付けてテストを走らせ、十冊をすべてのターゲットに組む（[docs/adr/0058](./docs/adr/0058-run-skipped-checks-in-ci.md)）。
 手元では、変数を付けたときだけ組む。
+組まずに検査だけで済ませた冊数は、テストの結果の後に標準エラー出力へ一行で出る。
 
 ```bash
 scripts/fixtures/copy-fonts.sh
@@ -267,7 +269,9 @@ cargo install cddl --version 0.10.7 --locked
 
 ほかに、PDF の構造の検査は qpdf を、プラグインの配布のテストは openssl を使う。
 これらの外部ツールがないと、それを使うテストは `SKIP` と表示されて飛ばされる。
+tasty は `SKIP` を通ったテストとして数えるので、飛ばした数はテストのスイートの最後に、ツールごとに標準エラー出力へ一行で出る（`3 tests skipped: qpdf is not installed (GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes them failures)` の形）。
 `GOLEM_REQUIRE_EXTERNAL_TOOLS=1` を付けると、ツールがないことがテストの失敗になる。
+値は `1` だけが有効であり、`0` や `yes` などは付けていないのと同じに扱う（[docs/adr/0074](./docs/adr/0074-test-switches-by-environment-variables.md)）。
 CI はこれを付けて実行する。
 この振る舞いを持つテストの補助は、テストスイートだけが使うパッケージ `modules/golem-test-support` にある（[docs/adr/0028](docs/adr/0028-shared-test-support-package.md)）。
 

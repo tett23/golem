@@ -39,11 +39,12 @@ golem-driver のフィクスチャ（[code: modules/golem-driver/test/fixtures/]
 十冊はフォントをコミットしない。
 同じフォントを十冊に置くと 34 MB が増えるうえ、Golem はプロジェクトルートの外のフォントを読まず、シンボリックリンクで外を指すこともできないからである。
 組む前に [code: scripts/fixtures/copy-fonts.sh] で、『蟹工船』と『テンペスト』のフォントを写す。
-golem-driver のテストは十冊を出力を書かずに検査し、環境変数 [code: GOLEM_PD_BOOKS] があればすべてのターゲットに組む。
+golem-driver のテストは十冊を出力を書かずに検査し、環境変数 [code: GOLEM_PD_BOOKS] が [code: 1] ならすべてのターゲットに組む。
 CI の [code: build] ジョブはこの変数を付けてテストを走らせ、十冊をすべてのターゲットに組む。
 組版の段階で生じる誤りを、CI で見つけるためである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0058-run-skipped-checks-in-ci.md]（docs/adr の ADR 0058「CI で動いていなかった二つの検査を CI で動かす」）]
 手元では、変数を付けたときだけ組む。
 十冊を組むと 20 秒から 35 秒ほどかかり、手元のテストの時間を延ばさないためである。
+組まずに検査だけで済ませたときは、テストの結果の後に、その冊数を標準エラー出力へ一行で書く。
 
 ## 原文から原稿を作る
 

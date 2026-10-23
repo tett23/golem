@@ -123,9 +123,10 @@ cd modules/golem-driver/test/fixtures/pd/koya-hijiri && golem build
 ## Tests
 
 The golem-driver tests check each book of `pd/` without errors (as
-`golem check` does). With `GOLEM_PD_BOOKS` set, they build every target of
-each book, check the PDF with qpdf and its writing mode; this takes about
-35 seconds for the ten.
+`golem check` does). With `GOLEM_PD_BOOKS=1` (only `1`; `0` or `yes` is as
+if unset), they build every target of each book, check the PDF with qpdf
+and its writing mode; this takes about 35 seconds for the ten. Without it,
+the suite ends with a line of how many books were checked only.
 
 ```sh
 GOLEM_PD_BOOKS=1 cabal test golem-driver --test-options='-p 0026'

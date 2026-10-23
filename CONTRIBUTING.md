@@ -100,6 +100,9 @@ ADR のテスト設計に書いたテストを先に書き、失敗すること�
 
 外部ツール（`cddl`、`qpdf`、`openssl` など）を使うテストは、`modules/golem-test-support` の `Golem.TestSupport.ExternalTool` にある `needsTool` か `optionalTool` で書く（[docs/adr/0028](./docs/adr/0028-shared-test-support-package.md)）。
 ツールがなければ `SKIP` と表示され、`GOLEM_REQUIRE_EXTERNAL_TOOLS=1` のもとでは失敗になる。
+この変数の値は `1` だけが有効である。
+飛ばしたテストの数は、テストのスイートの最後に標準エラー出力へ一行で出る（[docs/adr/0074](./docs/adr/0074-test-switches-by-environment-variables.md)）。
+テストを切り替える環境変数を新しく読むときは、golem-test-support の `envFlag` で読み、値が `1` のときだけ有効にする。
 golem-test-support に依存してよいのはテストスイートだけであり、ライブラリと実行ファイルが依存すると CI の `build` ジョブの `scripts/ci/test-only-deps.sh` が失敗する。
 
 ゴールデンのファイルは手で作らず、`--accept` で書き出す（手順は [README.md](./README.md) の Development の節）。
