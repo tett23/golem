@@ -165,6 +165,8 @@ ADR を実装して使い手から見える振る舞いが変わるときは同�
 一覧にない文書は docs だけの変更として扱われ、変えてもビルドが走らない。
 コードの中では、文書のパスを一つの文字列（`"../../docs/diagnostics.md"` のような形）で書く。
 CI の `changes` ジョブは、そうした文字列を拾って一覧と照らし合わせる（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
+パスを `"docs" </> "diagnostics.md"` のように組み立てるときは、その行に `-- docs-refs: docs/diagnostics.md` の注釈で読む文書を書く。
+`"docs"` という文字列を含む行に注釈がないと、同じジョブ（`scripts/ci/docs-refs.sh`）が失敗する（[docs/adr/0069](./docs/adr/0069-lint-scripts-bypassed-by-plain-rewrites.md)）。
 
 すべてのパッケージは、網羅していない `case` と関数の定義を `-Werror=incomplete-patterns` でエラーにする（[docs/adr/0027](./docs/adr/0027-exhaustive-command-dispatch-by-types.md)）。
 `modules/` にパッケージを足したときは、cabal ファイルの `common warnings` の `ghc-options` にこのフラグを書き、各コンポーネントで `import: warnings` とする。
