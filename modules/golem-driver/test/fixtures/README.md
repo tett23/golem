@@ -3,6 +3,7 @@
 | Directory | Contents |
 |---|---|
 | `sample/` | a small project written for the tests |
+| `figures/` | a small project with an SVG, a PDF and a JPEG figure, for the goldens of the PDF and the EPUB (`OutputGoldenSpec`); the test copies its fonts in as `fonts/ja.otf` and `fonts/latin.otf` |
 | `tempest/` | *The Tempest* by William Shakespeare, set horizontally |
 | `kanikosen/` | 『蟹工船』小林多喜二, set vertically |
 | `pd/` | ten public-domain books that are hard to set ([docs/adr/0026](../../../../docs/adr/0026-ten-public-domain-fixtures.md)) |

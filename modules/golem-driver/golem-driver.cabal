@@ -82,6 +82,7 @@ test-suite golem-driver-test
     FigureSpec
     LocaleSpec
     MemoSpec
+    OutputGoldenSpec
     PageElementsSpec
     ParagraphRuleSpec
     ParagraphSpec
