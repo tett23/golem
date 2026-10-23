@@ -665,6 +665,46 @@ if [ "$CODE" = 0 ] && [ "$(sort "$WORK/out")" = "$(ci_jobs "$HERE/../../.github/
 ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx ci | grep -vx format >"$WORK/fewer"
 if [ "$(sort "$WORK/out")" != "$(sort "$WORK/fewer")" ]; then ok; else ng "gate: a job missing from the names is found"; fi
 
+# ---------------------------------------------------------------- determinism.sh
+
+# docs/adr/0071: the list has the SHA-256 of stdout and of stderr and the
+# exit code of each build, and diagnostics is an input. The fake golem
+# writes build/out; in the folder named diagnostics it writes $FAKE_STDERR
+# to stderr and exits with 1. The manuals are empty projects under
+# GOLEM_MANUAL_ROOT, built without their fonts.
+DET=$WORK/determinism
+mkdir -p "$DET/bin" "$DET/root/manual" "$DET/root/manual-dev"
+: >"$DET/root/manual/manifest.toml"
+: >"$DET/root/manual-dev/manifest.toml"
+cat >"$DET/bin/golem" <<'GOLEM'
+#!/bin/sh
+mkdir -p build
+printf 'out\n' >build/out
+if [ "$(basename "$(pwd)")" = diagnostics ]; then
+  printf '%s\n' "$FAKE_STDERR" >&2
+  exit 1
+fi
+GOLEM
+chmod +x "$DET/bin/golem"
+determinism() {
+  GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root GOLEM_MANUAL_SKIP_FONTS=1 \
+    GOLEM_MANUAL_COMMIT=0 GOLEM_MANUAL_TAG=v0 FAKE_STDERR=$1 \
+    sh "$HERE/../determinism.sh"
+}
+: >"$WORK/in"
+run determinism '{"diagnostics":[{"code":"G00000"}]}'
+cp "$WORK/out" "$DET/first"
+expect "determinism: a build that exits with 1" 0
+if grep -qx 'exit 1  diagnostics' "$WORK/out"; then ok; else ng "determinism: the exit code of diagnostics"; fi
+if grep -qx 'exit 0  sample' "$WORK/out"; then ok; else ng "determinism: the exit code of sample"; fi
+if grep -qE '^[0-9a-f]{64}  diagnostics/stderr$' "$WORK/out"; then ok; else ng "determinism: the stderr of diagnostics"; fi
+if grep -qx 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  sample/stdout' "$WORK/out"; then ok; else ng "determinism: the empty stdout of sample"; fi
+if grep -qE '^[0-9a-f]{64}  manual/build/out$' "$WORK/out"; then ok; else ng "determinism: the files of a manual"; fi
+run determinism '{"diagnostics":[{"code":"G00001"}]}'
+expect "determinism: another stderr" 0
+if [ "$(grep '  diagnostics/stderr$' "$DET/first")" != "$(grep '  diagnostics/stderr$' "$WORK/out")" ]; then ok; else ng "determinism: a change of one character in stderr changes the list"; fi
+if [ "$(grep -v '  diagnostics/stderr$' "$DET/first")" = "$(grep -v '  diagnostics/stderr$' "$WORK/out")" ]; then ok; else ng "determinism: the rest of the list stays"; fi
+
 # ---------------------------------------------------------------- timings.sh
 
 timings() { sh "$HERE/timings.sh" "$@"; }
