@@ -124,8 +124,8 @@ everyNoticeProjects =
     \extra -> [("manifest.toml", replaceIn "[targets.pdf]\n" "" (noticeManifest extra)), ("a.gm", "x\n")]
   ]
   where
-    -- five lines of 12 characters, and a paragraph style with rules
-    style = replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\" }\nrule-after = { weight = \"0.5pt\" }\n"
+    -- five lines of 12 characters, a paragraph style with rules, and a zero indent of caption (G03100)
+    style = replaceIn "lines = 30" "lines = 5" horizontalStyle <> "\n[paragraph-styles.sec]\nrule-before = { weight = \"0.5pt\" }\nrule-after = { weight = \"0.5pt\" }\n\n[paragraph-styles.caption]\nindent = \"0zw\"\n"
     tall = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"100\" height=\"300\"><rect width=\"100\" height=\"300\" fill=\"none\"/></svg>"
     source =
       T.concat
@@ -133,7 +133,7 @@ everyNoticeProjects =
           "\n本文。\n\n@style verse\n  ab\\ \n  cd\n\n", -- G02079
           "[ruby: [kenten: 漢]|かん]\n\n", -- G07045
           "```\nabcdefghijklmnopqrstuvwxyzabcd\n```\n\n", -- G07030
-          "@figure images/tall.svg alt=\"t\"\n\n", -- G07039
+          "@figure images/tall.svg alt=\"t\"\n  キャプション。\n\n", -- G07039, with a caption for G03100
           "@style sec\n  " <> T.replicate 96 "あ" <> "\n\n", -- G07046
           "a\n\n@page-break\n\n@blank-line\n\nb\n\n", -- G07047
           "@blank-line\n@blank-line\n\nc\n\n", -- G02094
