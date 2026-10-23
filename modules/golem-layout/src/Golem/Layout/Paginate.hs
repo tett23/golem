@@ -259,6 +259,11 @@ data Unmet
     UnmetAdjust !SrcSpan !Int !AdjustLimit
   | -- | blank lines dropped at the top of a column (docs/adr ADR 0046)
     DroppedBlank !SrcSpan
+  | {- | a heading placed in an empty column it does not fit (golem-layout
+    ADR 0020): the id of its first line, its grid lines and the grid
+    lines left in the column
+    -}
+    TallHeading !Int !Int !Int
   deriving stock (Eq, Show)
 
 -- | The part of a table on a page, in grid lines.
@@ -813,7 +818,8 @@ paginateWithin maxLines separatorLines base capacity flows =
     -- a heading: one block of n grid lines; the notes of its lines as in putLine
     putBlock st _ [] = st
     putBlock st n ls@(l0 : _) =
-      let notes = concatMap lbNotes ls
+      let tall = [TallHeading (lbId l0) n (free st) | n > free st]
+          notes = concatMap lbNotes ls
           noteLines = sum (map nbLines notes)
           sep = if sNoteLines st == 0 && noteLines > 0 then separator else 0
           room = cap st - sUsed st - n - sNoteLines st - sep
@@ -826,7 +832,8 @@ paginateWithin maxLines separatorLines base capacity flows =
               sPendingNotes = sPendingNotes st <> pending,
               sLabels = sLabels st <> concatMap lbLabels ls,
               sMarks = sMarks st <> concatMap lbMarks ls,
-              sHeadingOnly = isEmpty st || sHeadingOnly st
+              sHeadingOnly = isEmpty st || sHeadingOnly st,
+              sUnmet = sUnmet st <> tall
             }
     -- a note longer than the room continues on the next page
     splitNotes = go'

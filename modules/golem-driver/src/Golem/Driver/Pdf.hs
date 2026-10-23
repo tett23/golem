@@ -805,7 +805,9 @@ data Built = Built
     -- | the block of each unit by the id of its first line (golem-cli ADR 0006)
     bLineSpans :: Map Int SrcSpan,
     -- | the rules of each ruled block by its first line (golem-driver ADR 0027)
-    bRules :: Map Int RuledInfo
+    bRules :: Map Int RuledInfo,
+    -- | the span and the name in messages of each heading by its first line (golem-layout ADR 0020)
+    bHeadingNames :: Map Int (SrcSpan, Text)
   }
 
 {- | What style.toml alone decides before the layout (golem-driver ADR
@@ -1008,7 +1010,7 @@ layoutFigures inp geom fonts figures = do
           atHeading hs tp = tp {tpLeader = withBoxSource (SourceGrid, hs) (tpLeader tp), tpNumber = withBoxSource (SourceGrid, hs) (tpNumber tp)}
           tocPages = Map.fromList [(lid, atHeading hs (tocPage tg e (pageNumberLine env n))) | (lid, (hs, e)) <- Map.toList (bTocLines built), Just n <- [Map.lookup hs hPages]]
        in case concat [ds | (_, Left ds) <- placed] of
-            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings pages) (bLineSpans built) (bRules built))
+            [] -> Right (PdfLayout pages (bLines built) (bFigures built) (bHeadings built) (Map.fromList [(n, ps) | (n, Right ps@(_ : _)) <- placed]) (bTableLines built) (bTables built) tocPages (bLineFiles built) (bHeadingSpans built) (bCodes built) (bNotices built <> ruledNotices (bFlow built) (bRules built) pages <> unmetWarnings (bHeadingNames built) pages) (bLineSpans built) (bRules built))
             ds -> Left ds
 
 {- | The most grid lines a column may have with @page-lines (docs/adr ADR
@@ -1045,18 +1047,25 @@ adjustReason = \case
   AdjustOneLine -> "段には少なくとも 1 行を残すため、"
 
 {- | G07037: the manual controls of page breaks not met (docs/adr ADR
-0030); G07047: the blank lines dropped (docs/adr ADR 0046).
+0030); G07047: the blank lines dropped (docs/adr ADR 0046); G07100: the
+headings taller than the rest of their columns, named by @names@
+(golem-layout ADR 0020).
 -}
-unmetWarnings :: [PageOut] -> [Diagnostic]
-unmetWarnings pages =
-  [ case u of
-      UnmetNoBreak sp -> diagnostic "G07037" Warning sp "ここで改ページを止められませんでした"
-      UnmetNeedLines sp k -> diagnostic "G07037" Warning sp ("@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (poLines p)) <> " を超えます")
-      UnmetAdjust sp k limit -> diagnostic "G07037" Warning sp (adjustReason limit <> "@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")
-      -- G07047: blank lines dropped at the top of a column (docs/adr ADR 0046)
-      DroppedBlank sp -> notice "G07047" sp "段の先頭に来た @blank-line の空きを捨てました"
+unmetWarnings :: Map Int (SrcSpan, Text) -> [PageOut] -> [Diagnostic]
+unmetWarnings names pages =
+  [ d
   | p <- pages,
-    u <- poUnmet p
+    u <- poUnmet p,
+    d <- case u of
+      UnmetNoBreak sp -> [diagnostic "G07037" Warning sp "ここで改ページを止められませんでした"]
+      UnmetNeedLines sp k -> [diagnostic "G07037" Warning sp ("@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (poLines p)) <> " を超えます")]
+      UnmetAdjust sp k limit -> [diagnostic "G07037" Warning sp (adjustReason limit <> "@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")]
+      -- G07047: blank lines dropped at the top of a column (docs/adr ADR 0046)
+      DroppedBlank sp -> [notice "G07047" sp "段の先頭に来た @blank-line の空きを捨てました"]
+      TallHeading i n room ->
+        [ notice "G07100" sp ("見出しが段に入りません（" <> name <> "。見出しは " <> T.pack (show n) <> " 行、段の残りは " <> T.pack (show room) <> " 行）")
+        | Just (sp, name) <- [Map.lookup i names]
+        ]
   ]
 
 {- | G07046 (golem-driver ADR 0027): a ruled paragraph broken between
@@ -1657,6 +1666,15 @@ data Unit = Unit
     -- | the definition that decided the size of 'uLook' (golem-cli ADR 0008)
     uSource :: SizeSource
   }
+
+{- | How the messages of G07024 and G07100 name a heading, or the title of
+the notes (golem-driver ADR 0003, 0026; golem-layout ADR 0020).
+-}
+headingName :: UnitKind -> Maybe Text
+headingName = \case
+  UHeading l short _ -> Just (T.pack (show l) <> " の見出し: " <> short)
+  UNotesTitle title -> Just ("注の一覧の見出し: " <> title)
+  _ -> Nothing
 
 -- | The indent of the lines of a paragraph in sp (docs/adr ADR 0006). inFirst may be negative; inStart + inFirst >= 0.
 data Indent = Indent {inStart :: !Sp, inFirst :: !Sp}
@@ -2333,15 +2351,12 @@ buildFlow inp geom fonts images assumed = do
                     UTerm _ -> [FDefTerm boxes]
                     _ -> [FParagraph boxes]
                   (headAcc', errs') = case uKind u of
-                    UHeading l short _ ->
-                      ( Map.insert nextId hb headAcc,
-                        errs <> [diagnostic "G07024" Error (uSpan u) ("見出しが版面に入りません（" <> T.pack (show l) <> " の見出し: " <> short <> "）") | hbSpan hb > capacity]
-                      )
                     -- the title of the notes is in neither the headings nor the running heads (golem-driver ADR 0026)
-                    UNotesTitle title ->
-                      ( Map.insert nextId hb headAcc,
-                        errs <> [diagnostic "G07024" Error (uSpan u) ("見出しが版面に入りません（注の一覧の見出し: " <> title <> "）") | hbSpan hb > capacity]
-                      )
+                    k
+                      | Just name <- headingName k ->
+                          ( Map.insert nextId hb headAcc,
+                            errs <> [diagnostic "G07024" Error (uSpan u) ("見出しが版面に入りません（" <> name <> "）") | hbSpan hb > capacity]
+                          )
                     _ -> (headAcc, errs)
                in (nextId + length ls, flows <> flowOf, Map.union lineAcc set, figAcc, headAcc', errs')
       -- code blocks, set line by line (golem-driver ADR 0017)
@@ -2388,10 +2403,13 @@ buildFlow inp geom fonts images assumed = do
       -- the rules of each ruled block by its first line, from the unit of its block (golem-driver ADR 0027)
       rulesBySpan = Map.fromList [(uSpan u, ruledInfoOf u) | (_, u) <- units, uRules u /= (Nothing, Nothing)]
       ruledInfos = Map.fromList [(frId f, info) | f@FRuled {} <- flow', Just sp <- [Map.lookup (frId f) lineSpans], Just info <- [Map.lookup sp rulesBySpan]]
+      -- the span and the name of each heading by its first line, for G07100 (golem-layout ADR 0020)
+      namesBySpan = Map.fromList [(uSpan u, (uSpan u, name)) | (_, u) <- units, Just name <- [headingName (uKind u)]]
+      headingNames = Map.mapMaybe (`Map.lookup` namesBySpan) lineSpans
       ruledInfoOf u = case uKind u of
         UHeading l _ _ -> uncurry (RuledInfo "見出しの罫線" ("見出し " <> T.pack (show l)) True (lkSize (uLook u))) (uRules u) (uSpan u)
         _ -> uncurry (RuledInfo "段落の罫線" ("段落スタイル " <> fromMaybe "body" (uParaStyle u)) False (lkSize (uLook u))) (uRules u) (uSpan u)
-  pure (Built flow' lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos)
+  pure (Built flow' lineMap figMap headMap errors tableLines tableWidths headingSpans tocLines lineFiles codeInfos (codeNotices <> figureNotices) lineSpans ruledInfos headingNames)
 
 {- | The links between ruled blocks (golem-driver ADR 0027): a block whose
 rule before follows right after a block with a rule after shares its

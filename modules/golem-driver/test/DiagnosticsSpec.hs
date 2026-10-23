@@ -138,6 +138,7 @@ everyNoticeProjects =
           "a\n\n@page-break\n\n@blank-line\n\nb\n\n", -- G07047
           "@blank-line\n@blank-line\n\nc\n\n", -- G02094
           "@blank-line 5\n\nd\n\n", -- G04011
+          "@page-break\n\n@page-lines -4\n\n# H\n\ne\n\n", -- G07100
           "@page-break\n\n@blank-line\n" -- G04008 and G04009
         ]
 
