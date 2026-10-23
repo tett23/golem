@@ -122,6 +122,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **柱とノンブルのスタイル**：柱とノンブルに、書体、文字の大きさ、色を、段落スタイルか文字スタイルで設定できるようにする。今はマスターページの `running-head` と `folio` で位置と内容を決められるが、書体と大きさと色は決められない。v2 以降に回した「ページ番号と柱の拡張」のうち、柱とノンブルの書体と色はこの項目で v1.0.0 に前倒しする。
 - **diagnostics の判定の近似の監査**：浮動小数点などの近似で diagnostic を決めている箇所が、ほかのモジュールにないかを調べる。同じ入力からはいつも同じ diagnostic を得るという原則（仕様書の「設計原則」）に反する箇所は、仕様書の「既知の不具合」に載せ、個別の ADR で直す（[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)）。
 - **フォントにない字があるときの preflight の完走**：フォントにない字は、prod のビルドで G08100 のエラーになる（[docs/adr/0081](adr/0081-missing-glyphs-warn-in-build.md)）。`golem preflight` は prod のビルドを走らせるので、`glyph-missing` の設定によらず終了コード 1 で終わる。字が欠けていても、preflight をほかの検査まで完走させ、結果をまとめて見られるようにする。
+- **余白などのブロックの命令が重なったときの AST から IR への変換**：`@blank-line`、`@need-lines`、`@page-lines`、`@page-break`、`@column-break`、`@no-page-break` など、余白や改ページを決めるブロックの命令が、ほかのブロックを挟まずに複数並んだときに、AST をどの IR に変換するかを一般の規則として定める。今は `@blank-line` どうしの足し合わせ、`@blank-line` と改ページの組み合わせ（G04010）など、組み合わせごとに個別に決めているだけで（[docs/adr/0046](adr/0046-blank-line-command.md)、[docs/adr/0030](adr/0030-manual-page-break-control.md)）、決めていない組み合わせの変換は定義されていない。
 
 ### LaTeX との差を埋める項目
 
