@@ -60,7 +60,27 @@ uuid0 :: T.Text
 uuid0 = "00000000-0000-4000-8000-000000000000"
 
 golden :: String -> FilePath -> TestTree
-golden name out = goldenVsString name ("test/golden/" <> name) (buildAndRead Dev out)
+golden = goldenIn Dev
+
+-- | The golden of one output file of the fixture built with a profile.
+goldenIn :: Profile -> String -> FilePath -> TestTree
+goldenIn profile name out = goldenVsString name ("test/golden/" <> name) (buildAndRead profile out)
+
+{- | A file prod builds to the same bytes as dev: the golden of dev fixes
+both, and this asserts that it may (docs/adr/0064).
+-}
+sameInProd :: FilePath -> TestTree
+sameInProd out = testCase ("prod builds " <> out <> " as dev does") $ do
+  dev <- buildAndRead Dev out
+  prod <- buildAndRead Prod out
+  prod @?= dev
+
+-- | A file prod builds differently from dev (docs/adr/0064).
+differsInProd :: FilePath -> TestTree
+differsInProd out = testCase ("prod builds " <> out <> " differently from dev") $ do
+  dev <- buildAndRead Dev out
+  prod <- buildAndRead Prod out
+  assertBool "dev and prod differ" (prod /= dev)
 
 -- | Builds a copy of a book fixture (fonts included); no errors allowed.
 buildBook :: FilePath -> IO ([FilePath], BS.ByteString, [(FilePath, T.Text)])
