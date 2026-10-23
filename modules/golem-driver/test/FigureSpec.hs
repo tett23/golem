@@ -564,11 +564,11 @@ fitFigureTests =
                 r <- layoutMini (pageStyle "horizontal" "left" 24 2 1 20 20) ("前の段落。\n\n" <> fig "wide" "" (T.replicate k "あ")) boxes
                 pure (either (map (\d -> (diagCode d, diagMessage d))) (map (\d -> (diagCode d, diagMessage d)) . notices "G07039" . snd) r)
           column 21 >>= (@?= [(DiagnosticCode "G07039", "図版を段に収めるため 18% に縮めました")])
-          column 22 >>= (@?= [(DiagnosticCode "G07038", "図版のキャプションが段の行数を超えます（2 行。段は 2 行）")]),
+          column 22 >>= (@?= [(DiagnosticCode "G07038", "図版のキャプションが段の行数に達します（2 行。段は 2 行）")]),
         testCase "G07038: a caption as deep as the column, at the figure, in dev and prod" $ do
           let source = "前の段落。\n\n" <> fig "wide" "" (T.replicate 70 "あ")
           r <- layoutMini (pageStyle "horizontal" "left" 24 2 1 20 20) source boxes
-          layoutErrors r @?= [("G07038", "図版のキャプションが段の行数を超えます（4 行。段は 2 行）", FileId 1, 17, 262)]
+          layoutErrors r @?= [("G07038", "図版のキャプションが段の行数に達します（4 行。段は 2 行）", FileId 1, 17, 262)]
           forM_ [Dev, Prod] $ \profile -> do
             n <- notifiedWith "" (pageStyle "horizontal" "left" 24 2 1 20 20) source (\o -> o {optTargets = Just [TargetPdf], optProfile = profile})
             [diagCode d | d <- nDiagnostics n, isError d] @?= [DiagnosticCode "G07038"]
@@ -628,7 +628,7 @@ turnedFigureTests =
       map diagMessage (notices "G07039" pl) @?= ["図版をページに収めるため 50% に縮めました"],
     testCase "G07038: a caption as deep as the frame" $ do
       r <- layoutMini (pageStyle "horizontal" "left" 3 20 1 20 20) (fig "wide" " rotate=true" (T.replicate 70 "あ")) boxes
-      layoutErrors r @?= [("G07038", "図版のキャプションがページの行数を超えます（3 行。ページは 2 行）", FileId 1, 0, 257)],
+      layoutErrors r @?= [("G07038", "図版のキャプションがページの行数に達します（3 行。ページは 2 行）", FileId 1, 0, 257)],
     testCase "the image and the caption of a turned figure are inside the type area on the page; the caption is text" $ do
       let style = vertical10 60
           source = fig "wide" " rotate=true" "キャプション。"

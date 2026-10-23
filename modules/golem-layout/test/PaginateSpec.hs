@@ -354,12 +354,12 @@ pageControlTests =
     testCase "page-lines beyond the limit is cut to it and unmet" $ do
       let ps = paginateWithin 11 1 (ColumnSet 1 0 0 0) 10 [FAdjustLines mk 1, FAdjustLines mk 1, FParagraph (lines' 0 12)]
       map poLines ps @?= [11, 10]
-      unmets ps @?= [UnmetAdjust mk 1],
+      unmets ps @?= [UnmetAdjust mk 1 AdjustNoRoom],
     testCase "page-lines below the lines placed is cut to them and unmet" $ do
       let ps = paginate 1 10 [FParagraph (lines' 0 8), FAdjustLines mk (-5), FParagraph (lines' 10 2)]
       lineIds ps @?= [[0 .. 7], [10, 11]]
       map poLines ps @?= [8, 10]
-      unmets ps @?= [UnmetAdjust mk (-2)],
+      unmets ps @?= [UnmetAdjust mk (-2) AdjustLinesPlaced],
     testCase "the footnotes of a column of page-lines +1 use its last line" $ do
       -- nine lines, the separator and a note of one line take eleven lines
       let flow = [FAdjustLines mk 1, FParagraph (LineBox 0 [NoteBody (nid 900) 1] [] [] 0 : lines' 1 8)]
@@ -392,7 +392,7 @@ pageControlTests =
     testCase "page-lines leaves a column at least one line" $ do
       let ps = paginate 1 10 [FAdjustLines mk (-10), FParagraph (lines' 0 3)]
       take 1 (map poLines ps) @?= [1]
-      unmets ps @?= [UnmetAdjust mk (-9)]
+      unmets ps @?= [UnmetAdjust mk (-9) AdjustOneLine]
   ]
 
 -- | On one column of ten grid lines (docs/adr ADR 0046).
