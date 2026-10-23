@@ -205,7 +205,7 @@ tests =
         w <- compile =<< wat "describe-i32.wat"
         loadPlugin w >>= (@?= Left (BadOutput "golem_describe の戻り値の型が不正です")) . void,
       testCase "a sha256 that is not 64 lowercase hexadecimal digits is G06011 (docs/adr ADR 0035)" $
-        forM_ ["../../../../tmp/x", "00", T.toUpper (hashHex "AAA"), hashHex "AAA" <> "0"] $ \h ->
+        forM_ ["../../../../tmp/x", "00", T.toUpper (hashHex "AAA"), hashHex "AAA" <> "0", T.take 63 (hashHex "AAA") <> "g", T.replicate 64 "/"] $ \h ->
           case parseLock (FileId 0) ("[plugins.a]\nurl = \"https://example.com/a.wasm\"\nsha256 = \"" <> h <> "\"\n") of
             Left ds -> do
               map diagCode ds @?= [DiagnosticCode "G06011"]
@@ -290,6 +290,12 @@ lockTests =
             ]
         parseLock (FileId 0) (renderLock lock) @?= Right lock
         listDirectory cache >>= (@?= 2) . length,
+      testCase "a lock reads back what it writes, quotes and backslashes in a URL too" $ do
+        let lock = Map.fromList [("q", LockEntry "https://example.com/a\"b\\c.wasm" (T.replicate 64 "f")), ("p", LockEntry "https://example.com/p.wasm" (T.replicate 64 "0"))]
+        renderLock lock @?= "[plugins.p]\nurl = \"https://example.com/p.wasm\"\nsha256 = \"" <> T.replicate 64 "0" <> "\"\n\n[plugins.q]\nurl = \"https://example.com/a\\\"b\\\\c.wasm\"\nsha256 = \"" <> T.replicate 64 "f" <> "\"\n"
+        parseLock (FileId 0) (renderLock lock) @?= Right lock,
+      testCase "hashHex is the SHA-256 in lowercase hexadecimal" $
+        hashHex "abc" @?= "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
       testCase "an unknown key of plugins.lock is G06011 in Japanese (golem-project ADR 0007)" $
         case parseLock (FileId 0) "[plugins.a]\nurl = \"https://example.com/a.wasm\"\nsha256 = \"00\"\nsha = \"00\"\n" of
           Left ds -> do

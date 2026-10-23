@@ -119,6 +119,16 @@ tests =
         formatted "あ\n@blank-line\nい\n" @?= "あ\n@blank-line\nい\n",
       testCase "BOM, CRLF and tab indentation are fixed" $
         formatted "\xFEFF- a\r\n\t- b\r\n" @?= "- a\n  - b\n",
+      testCase "only the BOM at the start and only the tabs of the indentation are fixed" $ do
+        formatted "a\xFEFF\&b\n" @?= "a\xFEFF\&b\n"
+        formatted "\xFEFF\xFEFF\&a\n" @?= "\xFEFF\&a\n"
+        formatted "a\tb\n" @?= "a\tb\n"
+        formatted "- a\n\t\t- b\tc\n" @?= "- a\n    - b\tc\n",
+      testCase "an empty file stays empty; a file of blank lines becomes empty" $ do
+        formatted "" @?= ""
+        formatted "\n\n\n" @?= "",
+      testCase "the escape of every digit stays" $
+        mapM_ (\d -> formatted ("\\" <> T.singleton d <> "\n") @?= "\\" <> T.singleton d <> "\n") ['0' .. '9'],
       testCase "a file with syntax errors is not formatted" $
         case format "[strong: a\n" of
           Unformattable ds -> assertBool "diagnostics" (not (null ds))

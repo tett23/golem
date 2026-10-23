@@ -8,6 +8,7 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Char (toUpper)
+import Data.List (sort)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
@@ -959,21 +960,45 @@ verifyTests =
     testCase "without an output intent the intent, the XMP and Trapped are missing" $ do
       let ps = verify (documentObjects sample)
       assertBool (show ps) (not (null ps)),
-    one "no output intent" (mapObjs (onDict isCatalog (dropKey "OutputIntents"))),
-    one "no DestOutputProfile" (mapObjs (onDict isCatalog (mapKey "OutputIntents" (\case OArr [ODict kvs] -> OArr [ODict (filter ((/= "DestOutputProfile") . fst) kvs)]; o -> o)))),
-    one "no GTS_PDFXVersion" (mapObjs (onStream isMetadata (cut "   <pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>\n"))),
-    one "no Trapped" (mapObjs (onStream isMetadata (cut "   <pdf:Trapped>False</pdf:Trapped>\n"))),
-    one "no TrimBox" (mapFirst isPage (onDict (const True) (dropKey "TrimBox"))),
-    one "a BleedBox outside the MediaBox" (mapFirst isPage (onDict (const True) (mapKey "BleedBox" (const (OArr (map OInt [-1, 0, 595, 842])))))),
-    one "a font not embedded" (mapObjs (onDict (hasType "FontDescriptor") (dropKey "FontFile2"))),
-    one "RGB without an ICC profile" (mapObjs (onStream isImage (mapStreamKey "ColorSpace" (const (OName "DeviceRGB"))))),
-    one "encryption" (\o -> o {pdfTrailer = case pdfTrailer o of ODict kvs -> ODict (kvs <> [("Encrypt", ORef 1)]); t -> t}),
-    one "JavaScript" (mapObjs (onDict isCatalog (<> [("Names", ODict [("JavaScript", ORef 1)])]))),
-    one "a version after 1.6" (\o -> o {pdfVersion = "1.7"}),
+    one "no output intent" "出力インテント" (mapObjs (onDict isCatalog (dropKey "OutputIntents"))),
+    one "no DestOutputProfile" "DestOutputProfile" (mapObjs (onDict isCatalog (mapKey "OutputIntents" (\case OArr [ODict kvs] -> OArr [ODict (filter ((/= "DestOutputProfile") . fst) kvs)]; o -> o)))),
+    one "no GTS_PDFXVersion" "GTS_PDFXVersion" (mapObjs (onStream isMetadata (cut "   <pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>\n"))),
+    one "no Trapped" "Trapped" (mapObjs (onStream isMetadata (cut "   <pdf:Trapped>False</pdf:Trapped>\n"))),
+    one "no TrimBox" "TrimBox" (mapFirst isPage (onDict (const True) (dropKey "TrimBox"))),
+    one "a BleedBox outside the MediaBox" "ページのボックス" (mapFirst isPage (onDict (const True) (mapKey "BleedBox" (const (OArr (map OInt [-1, 0, 595, 842])))))),
+    one "a font not embedded" "フォントの埋め込み" (mapObjs (onDict (hasType "FontDescriptor") (dropKey "FontFile2"))),
+    one "RGB without an ICC profile" "ICC プロファイルのない RGB" (mapObjs (onStream isImage (mapStreamKey "ColorSpace" (const (OName "DeviceRGB"))))),
+    one "encryption" "暗号化" (\o -> o {pdfTrailer = case pdfTrailer o of ODict kvs -> ODict (kvs <> [("Encrypt", ORef 1)]); t -> t}),
+    one "JavaScript" "JavaScript と外部への参照" (mapObjs (onDict isCatalog (<> [("Names", ODict [("JavaScript", ORef 1)])]))),
+    one "a version after 1.6" "PDF のバージョン" (\o -> o {pdfVersion = "1.7"}),
     testCase "the version problems say バージョン, not 版" $ do
       verify ((documentObjects x4Sample) {pdfVersion = "1.7"}) @?= [X4Problem "PDF のバージョン" "1.7（1.6 以下にします）"]
       map x4Detail (verify (mapObjs (onStream isMetadata (cut "   <pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>\n")) (documentObjects x4Sample)))
         @?= ["XMP に PDF/X-4 のバージョンがありません"],
+    testCase "versions up to 1.6 pass; 1.10, 2.0 and malformed ones do not" $
+      [(v, map x4Requirement (verify ((documentObjects x4Sample) {pdfVersion = v}))) | v <- ["1.4", "1.6", "1.10", "2.0", "1", "1.6.0", "a.b", ""]]
+        @?= [("1.4", []), ("1.6", []), ("1.10", ["PDF のバージョン"]), ("2.0", ["PDF のバージョン"]), ("1", ["PDF のバージョン"]), ("1.6.0", ["PDF のバージョン"]), ("a.b", ["PDF のバージョン"]), ("", ["PDF のバージョン"])],
+    testCase "the details name the pages, the fonts and the names found" $ do
+      let pages = verify (mapObjs (onDict isPage (dropKey "TrimBox")) (documentObjects x4Twopage))
+      map x4Detail pages @?= ["1、2 ページ目に TrimBox がありません"]
+      let names = verify (mapObjs (onDict isCatalog (<> [("Names", ODict [("JavaScript", ORef 1)]), ("AA", ODict [("URI", OName "Launch")])])) (documentObjects x4Sample))
+      -- each name once; the order is not pinned here
+      map (sort . T.splitOn "、" . T.dropEnd (T.length " があります") . x4Detail) names @?= [["JavaScript", "Launch", "URI"]]
+      let unembedded = verify (mapObjs (onDict (hasType "FontDescriptor") (dropKey "FontFile2")) (documentObjects x4Sample))
+      assertBool (show unembedded) (all ((== "フォントの埋め込み") . x4Requirement) unembedded && all ((" を埋め込んでいません" `T.isSuffixOf`) . x4Detail) unembedded),
+    testCase "an empty output profile is no profile" $
+      let objs = documentObjects x4Sample
+          empty = length (pdfObjects objs) + 1
+          toEmpty = mapKey "OutputIntents" (\case OArr [ODict kvs] -> OArr [ODict (mapKey "DestOutputProfile" (const (ORef empty)) kvs)]; o -> o)
+       in map x4Requirement (verify objs {pdfObjects = map (onDict isCatalog toEmpty) (pdfObjects objs) <> [OStream [] ""]})
+            @?= ["DestOutputProfile"],
+    testCase "Trapped may be True in the XMP and in the document information" $ do
+      let trapped = OName "True"
+          toTrue (kvs, b) = let (pre, post) = BS.breakSubstring "<pdf:Trapped>False" b in (kvs, pre <> "<pdf:Trapped>True" <> BS.drop (BS.length "<pdf:Trapped>False") post)
+          infoTrue = map (\case ODict kvs | lookup "Trapped" kvs == Just (OName "False") -> ODict (mapKey "Trapped" (const trapped) kvs); o -> o)
+          objs = mapObjs (onStream isMetadata toTrue) (documentObjects x4Sample)
+      verify objs {pdfObjects = infoTrue (pdfObjects objs)} @?= []
+      map x4Requirement (verify (mapObjs (onStream isMetadata (cut "   <pdf:Trapped>False</pdf:Trapped>\n")) (documentObjects x4Sample))) @?= ["Trapped"],
     testCase "a problem names its requirement" $ do
       let ps = verify (mapFirst isPage (onDict (const True) (dropKey "TrimBox")) (documentObjects x4Sample))
       map x4Requirement ps @?= ["TrimBox"]
@@ -981,9 +1006,10 @@ verifyTests =
   where
     x4px = PdfX "fake-japan-color-profile" "JC200103" [] []
     x4Sample = sample {docPdfX = Just x4px}
-    one name f = testCase name $ do
-      let ps = verify (f (documentObjects x4Sample))
-      assertEqual (show ps) 1 (length ps)
+    x4Twopage = (documentWith [framePage Nothing 0 (100 * 65536, 100 * 65536) [], framePage Nothing 0 (100 * 65536, 100 * 65536) []]) {docPdfX = Just x4px}
+    one name requirement f =
+      testCase name $
+        map x4Requirement (verify (f (documentObjects x4Sample))) @?= [requirement]
     mapObjs f o = o {pdfObjects = map f (pdfObjects o)}
     mapFirst p f o =
       let (before, rest) = break p (pdfObjects o)
@@ -1312,6 +1338,25 @@ tests =
         verify (documentObjects sample {docPdfX = Just px}) @?= []
         checkPdfX [(pageMediaBox p, pageTrimBox p, pageBleedBox p) | p <- docPages sample] @?= []
         checkPdfX [(Rect 0 0 10 10, Rect 0 0 10 10, Rect (-1) 0 10 10)] @?= [1],
+      testCase "checkPdfX: each edge of the TrimBox and the BleedBox, and boxes that meet" $ do
+        let media = Rect 0 0 100 100
+            ok = (media, Rect 10 10 80 80, Rect 5 5 90 90)
+        checkPdfX [ok, (media, media, media)] @?= []
+        -- the TrimBox past each edge of the BleedBox, then the BleedBox past each edge of the MediaBox
+        checkPdfX
+          [ ok,
+            (media, Rect 4 10 80 80, Rect 5 5 90 90),
+            (media, Rect 10 4 80 80, Rect 5 5 90 90),
+            (media, Rect 10 10 86 80, Rect 5 5 90 90),
+            (media, Rect 10 10 80 86, Rect 5 5 90 90),
+            (media, Rect 10 10 80 80, Rect (-1) 5 90 90),
+            (media, Rect 10 10 80 80, Rect 5 (-1) 90 90),
+            (media, Rect 10 10 80 80, Rect 5 5 96 90),
+            (media, Rect 10 10 80 80, Rect 5 5 90 96)
+          ]
+          @?= [2 .. 9],
+      testCase "uuidText writes every byte as two hex digits in the 8-4-4-4-12 form" $
+        uuidText (BS.pack [0 .. 15]) @?= "00010203-0405-0607-0809-0a0b0c0d0e0f",
       testGroup "X4.verify (golem-cli ADR 0006)" verifyTests,
       testGroup "crop marks and bleed (ADR 0004)" marksTests,
       testGroup "Producer (ADR 0005)" producerTests,

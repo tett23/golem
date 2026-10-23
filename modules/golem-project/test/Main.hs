@@ -19,7 +19,7 @@ import Golem.Doc.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Parser.SourceSettings
 import Golem.Project hiding (loadProject)
 import Golem.Project qualified as P
-import Golem.Project.Imports (ImportGraph (..), ImportSite (..), findCycles)
+import Golem.Project.Imports (ImportGraph (..), ImportSite (..), findCycles, topoOrder)
 import Golem.Project.Paths
 import Golem.Project.Style
 import Golem.Syntax
@@ -785,11 +785,24 @@ findCycleTests =
       testCase "a -> b -> c -> a is one path of length 3" $
         paths [(1, [2]), (2, [3]), (3, [1])] @?= [[1, 2, 3]],
       testCase "a graph without cycles has none" $
-        paths [(1, [2, 3]), (2, [3]), (3, [])] @?= []
+        paths [(1, [2, 3]), (2, [3]), (3, [])] @?= [],
+      testCase "the files before a cycle are not in its path" $
+        paths [(1, [2]), (2, [3]), (3, [2])] @?= [[2, 3]],
+      testCase "each import site along a path is the one that leaves its file" $
+        map (map (\(FileId f, s) -> (f, isPath s)) . NE.toList) (findCycles (graph [(1, [2]), (2, [3]), (3, [2])])) @?= [[(2, "3"), (3, "2")]],
+      testCase "two cycles through one file are two paths, in the order of the edges" $
+        paths [(1, [3, 2]), (2, [1]), (3, [1])] @?= [[1, 3], [1, 2]],
+      testCase "topoOrder: a file after the files it imports, ties by file id; a cycle at the end" $ do
+        order [(1, [3]), (2, []), (3, [])] @?= [2, 3, 1]
+        order [(1, []), (2, [1]), (3, [1, 2])] @?= [1, 2, 3]
+        order [(3, []), (2, [3]), (1, [2])] @?= [3, 2, 1]
+        order [(1, [2]), (2, [1]), (3, [])] @?= [3, 1, 2]
     ]
   where
     site t = ImportSite (T.pack (show t)) "x" (mkSpan (FileId 0) 0 0)
     graph es = ImportGraph (Map.fromList [(FileId f, [(FileId t, site t) | t <- ts]) | (f, ts) <- es])
+    order :: [(Int, [Int])] -> [Int]
+    order = map (\(FileId f) -> f) . topoOrder . graph
     paths :: [(Int, [Int])] -> [[Int]]
     paths = map (map (\(FileId f, _) -> f) . NE.toList) . findCycles . graph
 
