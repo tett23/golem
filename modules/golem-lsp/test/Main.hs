@@ -3,6 +3,7 @@
 module Main (main) where
 
 import Control.Concurrent (forkIO)
+import Control.Exception (finally)
 import Control.Monad (void)
 import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
@@ -31,7 +32,7 @@ import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
 import StaleS1Spec (staleS1Tests)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory, makeAbsolute)
-import System.Environment (setEnv)
+import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
 import System.IO.Temp (withSystemTempDirectory)
@@ -46,7 +47,32 @@ root :: FilePath
 root = "test/fixtures/proj"
 
 main :: IO ()
-main = defaultMain tests
+main = do
+  cacheHome <- lookupEnv "XDG_CACHE_HOME"
+  defaultMain (dependentTestGroup "golem-lsp" AllFinish [tests, cacheHomeTests cacheHome])
+
+{- | The tests that set XDG_CACHE_HOME, one at a time after the others, and
+last a check that it is as it was when the suite started (docs/adr ADR
+0072). The environment is one for the process, and tasty runs the other
+tests at once.
+-}
+cacheHomeTests :: Maybe String -> TestTree
+cacheHomeTests start =
+  dependentTestGroup
+    "XDG_CACHE_HOME (docs/adr ADR 0072)"
+    AllFinish
+    [ -- docs/adr ADR 0031
+      testCase "completion: the commands of the plugins after the built-in ones, with a syntax error too" $
+        withIdentityPlugin $ \tmp -> do
+          ws0 <- openWorkspace tmp
+          ws <- updateFile ws0 "b.gm" "本文。\n\n["
+          let names = map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[")))
+          names @?= builtinInlineCommands <> ["broken"]
+          ws' <- updateFile ws0 "b.gm" "本文。\n\n[b"
+          assertBool "broken" ("broken" `elem` map cmpLabel (completions ws' "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[b")))),
+      testCase "XDG_CACHE_HOME is as it was when the suite started" $
+        lookupEnv "XDG_CACHE_HOME" >>= (@?= start)
+    ]
 
 -- | Byte offset of the k-th byte inside the first occurrence of needle.
 offsetIn :: Text -> Text -> Int -> Int
@@ -58,6 +84,16 @@ genText =
     <$> Gen.list
       (Range.linear 0 80)
       (Gen.element ("ab 漢字かな\n😀𠮷x" :: String))
+
+{- | The columns of a line that fall between two characters, from 0 to the
+width of the line, in UTF-8 bytes or UTF-16 code units.
+-}
+characterBoundaries :: Encoding -> Text -> [Int]
+characterBoundaries enc = scanl (+) 0 . map units . T.unpack
+  where
+    units ch = case enc of
+      Utf8 -> BS.length (TE.encodeUtf8 (T.singleton ch))
+      Utf16 -> if fromEnum ch > 0xFFFF then 2 else 1
 
 textOf :: Workspace -> FilePath -> Text
 textOf ws p = maybe "" srcText (sourceOf ws p)
@@ -101,15 +137,6 @@ tests =
         assertBool "commands" ("color" `elem` names (offsetIn src "[co" 3))
         names (offsetIn src "[color " 7) @?= ["accent"]
         assertBool "paths" ("common/values.gm" `elem` names (offsetIn src "@import " 8)),
-      -- docs/adr ADR 0031
-      testCase "completion: the commands of the plugins after the built-in ones, with a syntax error too" $
-        withIdentityPlugin $ \tmp -> do
-          ws0 <- openWorkspace tmp
-          ws <- updateFile ws0 "b.gm" "本文。\n\n["
-          let names = map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[")))
-          names @?= builtinInlineCommands <> ["broken"]
-          ws' <- updateFile ws0 "b.gm" "本文。\n\n[b"
-          assertBool "broken" ("broken" `elem` map cmpLabel (completions ws' "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[b")))),
       testCase "completion: a project without plugins has the built-in names only" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "本文。\n\n["
@@ -346,14 +373,18 @@ tests =
         let emoji = mkLineIndex "😀a"
         fromLineCol Utf16 emoji (LineCol 0 1) @?= Nothing
         fromLineCol Utf16 emoji (LineCol 0 9) @?= Just 5,
-      testProperty "a converted position lies within its line (ADR 0003)" $ property $ do
+      testProperty "a converted position lies within its line; only a position off the lines or inside a character has none (ADR 0003)" $ property $ do
         t <- forAll genText
         enc <- forAll (Gen.element [Utf8, Utf16])
         let li = mkLineIndex t
         l <- forAll (Gen.int (Range.linear (-1) (lineCount li)))
         c <- forAll (Gen.int (Range.linear 0 40))
         case fromLineCol enc li (LineCol l c) of
-          Nothing -> success
+          Nothing -> do
+            -- the columns between characters, counted from the text of the line (docs/adr/0066)
+            let cols = characterBoundaries enc (T.splitOn "\n" t !! l)
+            annotateShow cols
+            H.assert (l < 0 || l >= lineCount li || (c < last cols && c `notElem` cols))
           Just o -> do
             let start = fromLineCol enc li (LineCol l 0)
             H.assert (maybe False (<= o) start)
@@ -565,8 +596,16 @@ withIdentityPlugin k = withSystemTempDirectory "golem-lsp-plugin" $ \tmp -> do
   BS.appendFile (tmp </> "manifest.toml") "\n[plugins.identity]\nurl = \"https://example.com/identity.wasm\"\n"
   src <- TIO.readFile "../golem-plugin/test/plugins/identity.wat"
   wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
-  setEnv "XDG_CACHE_HOME" (tmp </> "cache")
-  cache <- defaultCacheDir
-  r <- lockPlugins (\u -> pure (if u == "https://example.com/identity.wasm" then Right wasm else Left "404")) cache (Map.fromList [("identity", "https://example.com/identity.wasm")])
-  either (assertFailure . show) (TIO.writeFile (tmp </> "plugins.lock") . renderLock) r
-  k tmp
+  withEnv "XDG_CACHE_HOME" (tmp </> "cache") $ do
+    cache <- defaultCacheDir
+    r <- lockPlugins (\u -> pure (if u == "https://example.com/identity.wasm" then Right wasm else Left "404")) cache (Map.fromList [("identity", "https://example.com/identity.wasm")])
+    either (assertFailure . show) (TIO.writeFile (tmp </> "plugins.lock") . renderLock) r
+    k tmp
+
+{- | Runs an action with an environment variable set, and sets it back
+afterwards, or unsets it where it was not set (docs/adr ADR 0072).
+-}
+withEnv :: String -> String -> IO a -> IO a
+withEnv name value act = do
+  old <- lookupEnv name
+  (setEnv name value >> act) `finally` maybe (unsetEnv name) (setEnv name) old

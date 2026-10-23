@@ -1,4 +1,4 @@
-module PluginsSpec (pluginTests) where
+module PluginsSpec (pluginTests, cacheHomeRestored) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
@@ -20,11 +20,20 @@ import Golem.Project.Manifest (parseManifest)
 import Golem.Syntax
 import Support
 import System.Directory (listDirectory)
-import System.Environment (setEnv)
+import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
+
+{- | XDG_CACHE_HOME after the plugin tests is what it was when the suite
+started: the tests that set it set it back (docs/adr ADR 0072). The
+suite is not -threaded, so this runs after the plugin tests.
+-}
+cacheHomeRestored :: Maybe String -> TestTree
+cacheHomeRestored start =
+  testCase "XDG_CACHE_HOME is as it was when the suite started (docs/adr ADR 0072)" $
+    lookupEnv "XDG_CACHE_HOME" >>= (@?= start)
 
 -- | A project with the identity plugin locked and cached.
 withPluginProject :: BS.ByteString -> (FilePath -> IO a) -> IO a
@@ -38,20 +47,21 @@ withPlugins plugins manifestExtra k = withSystemTempDirectory "golem-driver" $ \
   copyTree fixture tmp
   manifest <- BS.readFile (tmp </> "manifest.toml")
   BS.writeFile (tmp </> "manifest.toml") (manifest <> manifestExtra)
-  lockIn plugins tmp
-  k tmp
+  lockIn plugins tmp (k tmp)
 
-{- | The plugins (name, wat file of golem-plugin's tests) locked in
-plugins.lock of a project and cached; each is at
-https://example.com/<name>.wasm.
+{- | Runs an action with the plugins (name, wat file of golem-plugin's
+tests) locked in plugins.lock of a project and cached in the project's
+cache, and XDG_CACHE_HOME set to that cache until the action ends (docs/adr
+ADR 0072); each plugin is at https://example.com/<name>.wasm.
 -}
-lockIn :: [(T.Text, FilePath)] -> FilePath -> IO ()
-lockIn plugins tmp = do
+lockIn :: [(T.Text, FilePath)] -> FilePath -> IO a -> IO a
+lockIn plugins tmp act = do
   served <- mapM serve plugins
-  setEnv "XDG_CACHE_HOME" (tmp </> "cache")
-  cache <- defaultCacheDir
-  r <- lockPlugins (\u -> pure (maybe (Left "404") Right (lookup u served))) cache (Map.fromList [(name, pluginUrl name) | (name, _) <- plugins])
-  either (assertFailure . show) (TIO.writeFile (tmp </> "plugins.lock") . renderLock) r
+  withEnv "XDG_CACHE_HOME" (tmp </> "cache") $ do
+    cache <- defaultCacheDir
+    r <- lockPlugins (\u -> pure (maybe (Left "404") Right (lookup u served))) cache (Map.fromList [(name, pluginUrl name) | (name, _) <- plugins])
+    either (assertFailure . show) (TIO.writeFile (tmp </> "plugins.lock") . renderLock) r
+    act
   where
     pluginUrl name = "https://example.com/" <> name <> ".wasm"
     serve (name, wat) = do
@@ -86,8 +96,7 @@ withChannels style source k = withSystemTempDirectory "golem-channels" $ \tmp ->
   BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n[targets.text]\n" <> pluginDeclOf "chan" "")
   BS.writeFile (tmp </> "style.toml") style
   TIO.writeFile (tmp </> "a.gm") source
-  lockIn [("chan", "channels.wat")] tmp
-  k tmp
+  lockIn [("chan", "channels.wat")] tmp (k tmp)
 
 -- | The text of the lines of each page of the PDF of a project.
 pdfPages :: FilePath -> IO [[T.Text]]
@@ -191,8 +200,7 @@ pluginTests =
              BS.writeFile (tmp </> "plugins.lock") ""
              r <- build (defaultOptions tmp)
              atManifestTop r >>= (@?= [(DiagnosticCode "G06002", "plugins.lock にないプラグインです。golem plugin lock を実行してください: identity")])
-             setEnv "XDG_CACHE_HOME" (tmp </> "empty-cache")
-             r' <- build (defaultOptions tmp) {optCheckOnly = True}
+             r' <- withEnv "XDG_CACHE_HOME" (tmp </> "empty-cache") $ build (defaultOptions tmp) {optCheckOnly = True}
              map diagCode (brDiagnostics r') @?= [DiagnosticCode "G06002"]
              TIO.writeFile (tmp </> "plugins.lock") (T.replace "identity.wasm" "other.wasm" locked)
              r'' <- build (defaultOptions tmp)
@@ -205,8 +213,7 @@ pluginTests =
              map diagCode (brDiagnostics r) @?= [DiagnosticCode "G06002"],
          testCase "G06003: an uncached plugin asks for golem plugin fetch" $
            withPluginProject pluginDecl $ \tmp -> do
-             setEnv "XDG_CACHE_HOME" (tmp </> "empty-cache")
-             r <- build (defaultOptions tmp)
+             r <- withEnv "XDG_CACHE_HOME" (tmp </> "empty-cache") $ build (defaultOptions tmp)
              atManifestTop r >>= (@?= [(DiagnosticCode "G06003", "キャッシュにないプラグインです。golem plugin fetch を実行してください: identity")]),
          testCase "G06004: a cached plugin that does not match its hash" $
            withPluginProject pluginDecl $ \tmp -> do

@@ -148,6 +148,8 @@ CI の hlint は、GHC でビルドせず、hlint のリリースの x86-64 の 
 ## シェルのスクリプトとそのテスト
 
 CI とリリースとマニュアルの仕組みは、[code: scripts/] の下の POSIX の [code: sh] のスクリプトでできている。
+スクリプトは、GNU 版の道具だけでなく、macOS の BSD 版の [code: awk]、[code: sed]、[code: find]、[code: grep] でも動くように書く。
+CI の [code: scripts-macos] ジョブが、そのことを macOS で確かめる（第[ref-number ci-jobs]章）。
 Golem の方針として、小さな道具を組み合わせ、Python のスクリプトはコミットしない。
 スクリプトには、それぞれテストのスクリプトがある。
 

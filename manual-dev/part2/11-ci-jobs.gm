@@ -24,7 +24,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 | [code: manual] | プルリクエストで、仕様書や [code: CONTRIBUTING.md] の変更にマニュアルが追随していること、この本の図が原稿から作られていること |
 | [code: textlint] | 文書とマニュアルの原稿が、表記の規則（一文ごとの改行、ダッシュと中黒、用語）を守っていること |
 
-[code: ci.yml] のジョブは次の六つである。
+[code: ci.yml] のジョブは次の七つである。
 
 | ジョブ | 内容 |
 | --- | --- |
@@ -32,6 +32,7 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 | [code: build] | x86-64 と aarch64 でのビルドとテスト、生成したパーサーの検査、二つのマニュアル |
 | [code: determinism] | 二つのアーキテクチャの出力のハッシュの比較 |
 | [code: release-scripts] | [code: VERSION] と全パッケージのバージョンの一致、リリースのスクリプトのテスト |
+| [code: scripts-macos] | macOS の BSD 版の道具での、スクリプトのテスト |
 | [code: format] | fourmolu と hlint |
 | [code: ci] | ほかのジョブがすべて成功したか、省かれたことの確認 |
 
@@ -84,7 +85,7 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 [code: tools/textlint/] は文書を検査する道具であり、ビルドもテストも読まないので、その変更だけならビルドしない。
 変更のパスが空のときと、パスを取れなかったときも、検査を飛ばさないように [code: true] にする。
 
-[code: changes] が [code: false] を出すと、[code: build]、[code: determinism]、[code: release-scripts]、[code: format] は省かれる。
+[code: changes] が [code: false] を出すと、[code: build]、[code: determinism]、[code: release-scripts]、[code: scripts-macos]、[code: format] は省かれる。
 [code: docs.yml] の [code: adr] と [code: textlint] は、変更のパスにかかわらず常に走る。
 
 ## build
@@ -174,7 +175,7 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 ファイルの一覧は [code: LC_ALL=C] で並べてからハッシュを取るので、一覧の順もファイルシステムに左右されない。
 決定性の詳しい規則は第[ref-number determinism]章で説明する。
 
-## release-scripts と format
+## release-scripts、scripts-macos、format
 
 [code: release-scripts] は、[code: scripts/release/check-version.sh] で [code: VERSION] と全パッケージの cabal ファイルのバージョンの一致を検査し、[code: scripts/release/test.sh] でリリースのスクリプトのテストを実行する。
 テストの前に、リリースの [code: notes] ジョブと同じく mise で [code: mise.toml] に固定した版の Claude Code を入れ、テストに [code: GOLEM_REQUIRE_CLAUDE=1] を付ける。
@@ -184,12 +185,19 @@ API キーは渡さない。
 [code: claude --help] は認証なしで動く。
 バージョンを上げるプルリクエストは、ここで一致を確かめられる（第[ref-number release]章）。
 
+[code: scripts-macos] は、macOS 15 のランナーで [code: scripts/] の下の四本のテスト（[code: scripts/ci/test.sh]、[code: scripts/manual/test.sh]、[code: scripts/env-determinism/test.sh]、[code: scripts/release/test.sh]）を実行する。
+[code: PATH] は [code: /usr/bin:/bin:/usr/sbin:/sbin] だけにし、GNU 版の道具を足さない。
+スクリプトが BSD 版の [code: awk]、[code: sed]、[code: find]、[code: grep] で動かないことを、リリースや手元で初めて知るのではなく、プルリクエストで知るためである（第[ref-number build-test]章）。
+[code: jq] は macOS 15 の [code: /usr/bin] にある。
+[code: timeout] のようにない道具を使う検査は飛ばし、飛ばした数をテストの要約に書く。
+[code: claude --help] の検査は [code: release-scripts] が受け持つので、ここでは飛ばす。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0079-shell-tests-on-macos.md]（docs/adr の ADR 0079「スクリプトのテストを macOS の BSD の道具でも走らせる」）]
+
 [code: format] は、fourmolu 0.21.0.0 で整形済みであることと、hlint 3.10 の指摘がないことを確かめる（第[ref-number build-test]章）。
 hlint は [code: -j] でランナーのすべてのコアを使う。
 
 ## ci
 
-[code: ci] は、[code: changes]、[code: build]、[code: determinism]、[code: release-scripts]、[code: format] のすべての後に、失敗したジョブがあっても必ず走る。
+[code: ci] は、[code: changes]、[code: build]、[code: determinism]、[code: release-scripts]、[code: scripts-macos]、[code: format] のすべての後に、失敗したジョブがあっても必ず走る。
 各ジョブの結果を [code: scripts/ci/gate.sh] に渡し、すべてが成功か省略なら成功、一つでも失敗、取り消し、欠けがあれば失敗とする。
 
 [code: ci.yml] に新しいジョブを足すときは、[code: ci] ジョブの [code: needs] と、[code: gate.sh] の [code: NAMES] の両方に加える。
