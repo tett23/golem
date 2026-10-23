@@ -21,6 +21,8 @@ module Golem.Driver.Pdf
     noFontProvider,
     bodyRole,
     bodyFontDiagnostics,
+    listBullets,
+    textBullets,
     usedRoles,
     bookHasCode,
     codeStyles,
@@ -86,7 +88,7 @@ import Data.Foldable (toList)
 import Data.Function (on)
 import Data.Int (Int64)
 import Data.List (groupBy, intercalate, mapAccumL, nub, nubBy, sortOn, zip3, zip4)
-import Data.List.NonEmpty (nonEmpty)
+import Data.List.NonEmpty (NonEmpty, nonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
@@ -1721,6 +1723,19 @@ bodyLook style = styleLook style Nothing (bodyRole style)
 styleLook :: Style -> Maybe Text -> Text -> Sp -> Look
 styleLook style st role size = withFeatures (paraStyle style st) (plainLook role size)
 
+{- | The bullets of [lists] by depth in PDF, HTML and EPUB: those written,
+or • without bullets (golem-driver ADR 0044).
+-}
+listBullets :: ListStyle -> NonEmpty Text
+listBullets = bulletsOr "•"
+
+-- | The bullets of [lists] by depth in plain text: those written, or ・ without bullets (golem-driver ADR 0044).
+textBullets :: ListStyle -> NonEmpty Text
+textBullets = bulletsOr "・"
+
+bulletsOr :: Text -> ListStyle -> NonEmpty Text
+bulletsOr def = fromMaybe (pure def) . lsBullets
+
 {- | The marker of an item of a list at a depth (golem-driver ADR 0013): the
 bullet of the depth, or the number in the format of the depth. @{n}@ is a
 'Number'; in vertical writing an Arabic number of up to two digits is
@@ -1728,7 +1743,7 @@ tate-chu-yoko and other Latin is rotated as Latin text is.
 -}
 listMarker :: Style -> Bool -> Int -> Maybe Integer -> [Inline]
 listMarker style vertical depth = \case
-  Nothing -> [Text sp0 (atDepth (lsBullets (stLists style)) depth)]
+  Nothing -> [Text sp0 (atDepth (listBullets (stLists style)) depth)]
   Just n ->
     let NumberFormat pre st suf = atDepth (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) depth
         written = fromMaybe (T.pack (show n)) (formatListNumber st n)

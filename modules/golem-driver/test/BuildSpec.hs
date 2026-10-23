@@ -1,4 +1,4 @@
-module BuildSpec (buildTests, allTargetsTests, versionTests, producerTests, publicDomainTests, numberSeparatorTests, styleFileTests) where
+module BuildSpec (buildTests, allTargetsTests, versionTests, producerTests, publicDomainTests, numberSeparatorTests, bulletTests, styleFileTests) where
 
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
@@ -341,6 +341,37 @@ sepNav lang format source = withSystemTempDirectory "golem-sep" $ \tmp -> do
   let md = manifestMetadata (projectManifest (evProject e))
       cfg = EpubConfig (mdId md) (mdTitle md) Nothing (mdLanguage md) (mdDate md) Nothing [] [] False
   pure (navDocument cfg (projectFiles (evProject e)) book)
+
+-- | Builds the one-chapter project of the language with a style.toml to a target; the file it writes.
+bulletOutput :: T.Text -> BS.ByteString -> Target -> FilePath -> IO T.Text
+bulletOutput lang style target file = withSystemTempDirectory "golem-bullet" $ \tmp -> do
+  BS.writeFile (tmp </> "manifest.toml") (langManifest lang <> "\n[targets.html]\n\n[targets.text]\n")
+  BS.writeFile (tmp </> "style.toml") style
+  BS.writeFile (tmp </> "a.gm") "- one\n- two\n"
+  r <- build (defaultOptions tmp) {optTargets = Just [target]}
+  assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
+  TIO.readFile (tmp </> file)
+
+-- | The default bullet by the output (golem-driver ADR 0044).
+bulletTests :: [TestTree]
+bulletTests =
+  [ testCase "plain text: the bullet is ・ without bullets, in a Japanese and an English book" $
+      forM_ ["ja", "en"] $ \lang -> do
+        t <- bulletOutput lang horizontalStyle TargetText "build/text/horizontal/a.txt"
+        assertBool (T.unpack t) ("・one" `T.isPrefixOf` t)
+        t' <- bulletOutput lang (horizontalStyle <> "\n[lists]\nbullets = [\"-\"]\n") TargetText "build/text/horizontal/a.txt"
+        assertBool (T.unpack t') ("- one" `T.isPrefixOf` t'),
+    testCase "HTML: [lists] without bullets writes •, in a Japanese and an English book" $
+      forM_ ["ja", "en"] $ \lang -> do
+        css <- bulletOutput lang (horizontalStyle <> "\n[lists]\nnumbers = [\"{n}.\"]\n") TargetHtml "build/html/style.css"
+        assertBool (T.unpack css) ("@counter-style golem-ul-1 { system: cyclic; symbols: \"•\"; " `T.isInfixOf` css),
+    testCase "HTML: bullets = [\"・\"] alone is written" $ do
+      css <- bulletOutput "ja" (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nbullets = [\"・\"]\n") TargetHtml "build/html/style.css"
+      assertBool (T.unpack css) ("@counter-style golem-ul-1 { system: cyclic; symbols: \"・\"; " `T.isInfixOf` css),
+    testCase "HTML: no [lists], no @counter-style" $ do
+      css <- bulletOutput "en" horizontalStyle TargetHtml "build/html/style.css"
+      assertBool (T.unpack css) (not ("@counter-style" `T.isInfixOf` css))
+  ]
 
 numberSeparatorTests :: [TestTree]
 numberSeparatorTests =

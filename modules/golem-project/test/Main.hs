@@ -969,16 +969,20 @@ listTests =
         case parseStyle (FileId 0) "[lists]\nbullets = [\"・\", \"◦\"]\nnumbers = [\"{n}.\", \"({a})\"]\ngap = \"0.5zw\"\n" of
           Left ds -> assertFailure (show ds)
           Right s -> do
-            lsBullets (stLists s) @?= "・" :| ["◦"]
+            lsBullets (stLists s) @?= Just ("・" :| ["◦"])
             lsNumbers (stLists s) @?= Just (NumberFormat "" NsBook "." :| [NumberFormat "(" NsLowerAlpha ")"])
             lsGap (stLists s) @?= Just (Zw (1 / 2)),
-      testCase "without [lists]: the bullet ・, no numbers and no gap" $
+      testCase "without [lists]: no bullets, no numbers and no gap (golem-driver ADR 0044)" $
         case parseStyle (FileId 0) "" of
           Left ds -> assertFailure (show ds)
           Right s -> do
-            lsBullets (stLists s) @?= "・" :| []
+            lsBullets (stLists s) @?= Nothing
             lsNumbers (stLists s) @?= Nothing
             lsGap (stLists s) @?= Nothing,
+      testCase "[lists] without bullets: no bullets (golem-driver ADR 0044)" $
+        case parseStyle (FileId 0) "[lists]\nnumbers = [\"{n}.\"]\n" of
+          Left ds -> assertFailure (show ds)
+          Right s -> lsBullets (stLists s) @?= Nothing,
       testCase "errors of [lists] are G03022 and name the key" $ do
         let g03022 src key = do
               let ms = either (map (\d -> let DiagnosticCode c = diagCode d in c <> " " <> diagMessage d)) (const []) (parseStyle (FileId 0) src)

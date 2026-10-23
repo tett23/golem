@@ -1247,6 +1247,13 @@ codeTests =
         assertBool "evaluated" (size > 0)
         c <- oneCode "``` highlight=2-3\na\nb\nc\n```\n"
         map clHighlight (codeLines c) @?= [False, True, True],
+      -- docs/adr ADR 0076: the lines highlighted by the range far beyond the code (ADR 0035)
+      testCase "highlight=1-1000000000000 highlights the three lines, and G02069 is for line 4 (docs/adr ADR 0076)" $ do
+        let src = "``` highlight=1-1000000000000\na\nb\nc\n```\n"
+        msgs src @?= [("G02069", "highlight の行 4 はこのコードにありません")]
+        case run ctx src of
+          ([CodeBlock c], _) -> map clHighlight (codeLines c) @?= [True, True, True]
+          other -> assertFailure (show other),
       testCase "diff=true: +, -, space and an empty line" $ do
         c <- oneCode "``` diff=true\n+a\n-b\n c\n\n```\n"
         codeDiff c @?= True
