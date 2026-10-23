@@ -8,7 +8,6 @@ module SecuritySpec (tests) where
 
 import Control.Exception (SomeException, evaluate, try)
 import Data.ByteString (ByteString)
-import Data.List.NonEmpty qualified as NE
 import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
 import Data.Text qualified as T

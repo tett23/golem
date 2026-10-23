@@ -721,10 +721,10 @@ ruledTests =
       map poRules ps @?= [[], []],
     testCase "the rule after before a split paragraph takes its own area (golem-driver ADR 0035)" $ do
       let a = ruled Nothing (Just (spaced 2 3)) (lines' 0 1)
-          b = FRuled 10 (Just (spaced 2 6)) (Just (spaced 2 6)) True ruleGrid 0 (RuledLines (lines' 10 8))
-          rules = concatMap poRules (paginate 1 5 [a, b])
+          b joined = FRuled 10 (Just (spaced 2 6)) (Just (spaced 2 6)) joined ruleGrid 0 (RuledLines (lines' 10 8))
+          rules = concatMap poRules (paginate 1 5 [a, b True])
       [(prId r, prBefore r) | r <- rules] @?= [(0, False)]
-      rules @?= concatMap poRules (paginate 1 5 [a, FSpace 0, b {frJoined = False}]),
+      rules @?= concatMap poRules (paginate 1 5 [a, FSpace 0, b False]),
     testCase "the rule before after a split paragraph is a rule of its own (golem-driver ADR 0035)" $ do
       let b = FRuled 10 (Just (spaced 2 6)) (Just (spaced 2 6)) False ruleGrid 0 (RuledLines (lines' 10 6))
           c joined = FRuled 30 (Just (spaced 2 6)) Nothing joined ruleGrid 0 (RuledLines (lines' 30 1))

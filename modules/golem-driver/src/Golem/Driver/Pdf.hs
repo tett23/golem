@@ -87,7 +87,7 @@ import Data.Either (fromRight, isLeft, lefts)
 import Data.Foldable (toList)
 import Data.Function (on)
 import Data.Int (Int64)
-import Data.List (groupBy, intercalate, mapAccumL, nub, nubBy, sortOn, zip3, zip4)
+import Data.List (groupBy, intercalate, mapAccumL, nub, nubBy, sortOn, zip4)
 import Data.List.NonEmpty (NonEmpty, nonEmpty)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
@@ -1393,10 +1393,10 @@ indexLines vertical pageOf = go Nothing
     txt = Text sp0
     go _ [] = []
     go prevMain (g : gs) = case (igTerms g, igReadings g) of
-      ([t], [r]) -> entry [] t (pagesOf g) : go (Just (t, r)) gs
-      ([t, sub], [r, _]) -> [[txt t] | prevMain /= Just (t, r)] <> [entry [txt "　"] sub (pagesOf g)] <> go (Just (t, r)) gs
+      ([t], [r]) -> entry [] t (pageNumbersOf g) : go (Just (t, r)) gs
+      ([t, sub], [r, _]) -> [[txt t] | prevMain /= Just (t, r)] <> [entry [txt "　"] sub (pageNumbersOf g)] <> go (Just (t, r)) gs
       _ -> go prevMain gs
-    pagesOf g = Set.toAscList (Set.fromList [n | (_, sp) <- igLocations g, Just n <- [pageOf sp]])
+    pageNumbersOf g = Set.toAscList (Set.fromList [n | (_, sp) <- igLocations g, Just n <- [pageOf sp]])
     entry prefix term ps =
       prefix <> [txt term] <> (if null ps then [] else txt "　" : intercalate [txt (if vertical then "、" else ", ")] [[Number sp0 n Nothing] | n <- ps])
 
@@ -1781,7 +1781,6 @@ in document order; the units inside a list know the lists around them
 unitsOf :: Text -> Book -> PageGeometry -> Maybe ColumnSet -> (FileId -> Style) -> (SrcSpan -> Maybe Integer) -> Map Text [EntryPart] -> [Unit]
 unitsOf lang book geom indexSet styleOf pageOf bib = concat (snd (mapAccumL chapter 0 (bookChapters book)))
   where
-    sp0 = mkSpan (FileId 0) 0 0
     fs = pgFontSize geom
     doc n (Document fid bs) = blocks (styleOf fid) [] n bs
     {- the documents of a chapter of the manifest; at the end of the chapter,
@@ -2208,14 +2207,14 @@ buildFlow inp geom fonts images assumed = do
       a border whose next line reaches it with ruby or kenten (golem-driver
       ADR 0033); the code blocks of the flow are those of the units, in order -}
       spaceAfterCode infos = \case
-        f@FCode {} : rest -> case infos of
-          ci : more -> f : [FSpace 1 | painted ci, reaches ci rest] <> spaceAfterCode more rest
-          [] -> f : spaceAfterCode [] rest
-        f : rest -> f : spaceAfterCode infos rest
+        f@FCode {} : remaining -> case infos of
+          ci : more -> f : [FSpace 1 | painted ci, reaches ci remaining] <> spaceAfterCode more remaining
+          [] -> f : spaceAfterCode [] remaining
+        f : remaining -> f : spaceAfterCode infos remaining
         [] -> []
         where
           painted ci = isJust (ciBackground ci) || not (null (ciBands ci)) || isJust (ciBorder ci)
-          reaches ci rest = case rest of
+          reaches ci remaining = case remaining of
             next : _ | Just l <- firstLineOf next -> reachesBackground pitch fs (maybe 0 snd (ciBorder ci)) (lbOverhang l)
             _ -> False
           firstLineOf = \case
@@ -2326,11 +2325,11 @@ buildFlow inp geom fonts images assumed = do
                  in (nextId + length ids, flows <> [FCode (ciGeometry info) (ciCaptionSpan info) (cbFirstRows cb) (isJust (ciContinued info)) boxes], Map.union lineAcc set, figAcc, headAcc, errs)
             UBreak k -> (nextId, flows <> [FBreak k], lineAcc, figAcc, headAcc, errs)
             UPageControl c ->
-              let flow = case c of
+              let control = case c of
                     NoBreak -> FNoBreak (uSpan u)
                     NeedLines k -> FNeedLines (uSpan u) k
                     AdjustLines k -> FAdjustLines (uSpan u) k
-               in (nextId, flows <> [flow], lineAcc, figAcc, headAcc, errs)
+               in (nextId, flows <> [control], lineAcc, figAcc, headAcc, errs)
             UColumns set -> (nextId, flows <> [maybe FRestoreColumns FSwitchColumns set], lineAcc, figAcc, headAcc, errs)
             UBlank k -> (nextId, flows <> [FBlank (uSpan u) (fromIntegral k)], lineAcc, figAcc, headAcc, errs)
             _ ->
@@ -2600,9 +2599,9 @@ codeBlockOf geom fonts measure capacity u lead code caption =
       errs =
         [diagnostic "G07043" Error (uSpan u) "コードブロックの行長が足りません" | avail < 8 * size]
           <> [diagnostic "G07043" Error (uSpan u) "コードブロックの一行が一ページに収まりません" | codeSpan g (if isJust continuedLine then 2 else 1) > capacity]
-      rows = fileRows <> codeRows
+      blockRows = fileRows <> codeRows
    in SetCode
-        { cbRows = rows,
+        { cbRows = blockRows,
           cbSize = size,
           cbIndent = lead + pad,
           cbInfo =
@@ -2611,7 +2610,7 @@ codeBlockOf geom fonts measure capacity u lead code caption =
                 ciStart = lead,
                 ciBackground = background,
                 ciFirst = 0,
-                ciRows = length rows,
+                ciRows = length blockRows,
                 ciCaption = ccLines caption,
                 ciCaptionSize = ccSize caption,
                 ciCaptionPitch = ccPitch caption,
@@ -2856,7 +2855,7 @@ loadIntent inp = case stIntent (piStyle inp) of
 -- ------------------------------------------------------------------ drawing
 
 {- | A glyph drawn: its font reference, glyph and text (for embedding),
-and its face, size, swatch and role (for the view of golem preflight).
+and its face, size and swatch (for the view of golem preflight).
 -}
 data GlyphUse = GlyphUse
   { guRef :: !P.FontRef,
@@ -2865,7 +2864,6 @@ data GlyphUse = GlyphUse
     guFace :: !Int,
     guSize :: !Sp,
     guColor :: !(Maybe Text),
-    guRole :: !Text,
     -- | which glyph of its cluster the glyph is (golem-driver ADR 0030)
     guPart :: !ClusterPart,
     -- | the definition that decided the size, the part and the place in the source (golem-cli ADR 0008)
@@ -2912,7 +2910,6 @@ writeDocumentView inp geom fonts layout intent =
       -- the master page and the running head of each page (golem-driver ADR 0014)
       masters = pageMasters inp geom layout
       heads = runningHeads inp geom layout
-      grid = pgLineGrid geom
       baseSet = pageColumnSet (piStyle inp) geom
       gridAt = gridLine geom
       -- font index × direction: even refs horizontal, odd refs vertical
@@ -3041,7 +3038,7 @@ writeDocumentView inp geom fonts layout intent =
       -- runAt with the face, size, swatch and role of each glyph, for the view (golem-cli ADR 0006)
       -- who: the size source, the part and the span of the glyphs (golem-cli ADR 0008)
       runAtU who look v rotated scale pt txt = usesOf who look (runAt look v rotated scale pt txt)
-      usesOf (src, gp, sp) look (ms, us) = (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) (lkFace look) part src gp sp | (r@(P.FontRef k), g, t, part) <- us])
+      usesOf (src, gp, sp) look (ms, us) = (ms, [GlyphUse r g t (k `div` 2) (lkSize look) (lkColor look) part src gp sp | (r@(P.FontRef k), g, t, part) <- us])
       -- the glyphs of a box, of a part
       whoOf gp c = (fst (bcSource c), gp, snd (bcSource c))
       lineStart ta cross
@@ -3385,19 +3382,19 @@ writeDocumentView inp geom fonts layout intent =
         name <- rsColor rule
         Swatch (c, m, y, k) <- Map.lookup name (stSwatches style)
         pure (P.Swatch c m y k)
-      {- the rule before the footnotes from grid line first (golem-driver ADR
+      {- the rule before the footnotes from grid line firstLine (golem-driver ADR
       0024): without spaces through the middle of the em box of the line
       before; with them space-after above the em box of the first
       footnote line. From the start of the line of the column, its near
       edge and far edge measured from the top (the right in vertical text). -}
-      noteRule ta rule first =
+      noteRule ta rule firstLine =
         let p = pgLinePitch geom
             fs = pgFontSize geom
             w = rsWeight rule
             len = maybe 0 (dimToSp fs) (rsLength rule)
             far = case rsSpaceAfter rule of
-              Nothing -> toInteger (first - 1) * p + fs `div` 2 - w `div` 2
-              Just a -> toInteger first * p - dimToSp fs a - w
+              Nothing -> toInteger (firstLine - 1) * p + fs `div` 2 - w `div` 2
+              Just a -> toInteger firstLine * p - dimToSp fs a - w
          in if vertical
               then (Rect (rectX ta + rectW ta - far - w) (rectY ta + rectH ta - len) w len, w)
               else (Rect (rectX ta) (rectY ta + rectH ta - far - w) len w, w)

@@ -69,12 +69,12 @@ type P a = Input -> Either Text (a, Input)
 -- | The root element of a document.
 parseXml :: ByteString -> Either Text Element
 parseXml bytes = do
-  text <- either (const (Left "UTF-8 として読めません")) Right (TE.decodeUtf8' (if "\xEF\xBB\xBF" `BS.isPrefixOf` bytes then BS.drop 3 bytes else bytes))
-  let lineStarts = Map.fromList (zip (0 : [i + 1 | (i, c) <- zip [0 ..] (T.unpack text), c == '\n']) [1 ..])
+  decoded <- either (const (Left "UTF-8 として読めません")) Right (TE.decodeUtf8' (if "\xEF\xBB\xBF" `BS.isPrefixOf` bytes then BS.drop 3 bytes else bytes))
+  let lineStarts = Map.fromList (zip (0 : [i + 1 | (i, c) <- zip [0 ..] (T.unpack decoded), c == '\n']) [1 ..])
       posAt off = case Map.lookupLE off lineStarts of
         Just (s, l) -> Pos l (off - s + 1)
         Nothing -> Pos 1 (off + 1)
-  (raw, rest) <- prolog (Input 0 text) >>= element posAt Map.empty
+  (raw, rest) <- prolog (Input 0 decoded) >>= element posAt Map.empty
   (_, end) <- misc rest
   case end of
     Input _ t | T.null t -> Right raw
@@ -153,11 +153,11 @@ element posAt scope i0 = do
   (attrs, i2) <- attributes [] Set.empty (advance (T.length qname) i1)
   let scope' = Map.union (Map.fromList [(nsPrefix n, v) | (n, v, _) <- attrs, isNsDecl n]) scope
       resolveEl n = case T.breakOn ":" n of
-        (p, local) | not (T.null local) -> (Map.findWithDefault ("?" <> p) p scope', T.drop 1 local)
+        (p, suffix) | not (T.null suffix) -> (Map.findWithDefault ("?" <> p) p scope', T.drop 1 suffix)
         _ -> (Map.findWithDefault "" "" scope', n)
       resolveAt n = case T.breakOn ":" n of
-        ("xml", local) | not (T.null local) -> (xmlNs, T.drop 1 local)
-        (p, local) | not (T.null local) -> (Map.findWithDefault ("?" <> p) p scope', T.drop 1 local)
+        ("xml", suffix) | not (T.null suffix) -> (xmlNs, T.drop 1 suffix)
+        (p, suffix) | not (T.null suffix) -> (Map.findWithDefault ("?" <> p) p scope', T.drop 1 suffix)
         _ -> ("", n)
       (ns, local) = resolveEl qname
       attrs' = [Attr ans aname v (posAt o) | (n, v, o) <- attrs, not (isNsDecl n), let (ans, aname) = resolveAt n]

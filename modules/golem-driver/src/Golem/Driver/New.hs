@@ -64,7 +64,7 @@ templateFiles lang uuid =
     -- the bleed is the usual one of the printers of the language
     -- (golem-pdf ADR 0010): 3mm in Japan, 0.125in in English
     page :: Text -> Text -> Text -> Text -> Text -> Int -> Int -> Text -> Text -> Text -> [Text]
-    page size binding mode bleed fontSize chars lines pitch top gutter =
+    page size binding mode bleed fontSize chars lineCount pitch top gutter =
       [ "[page]",
         "size = \"" <> size <> "\"",
         "binding = \"" <> binding <> "\"",
@@ -74,7 +74,7 @@ templateFiles lang uuid =
         "[page.grid]",
         "font-size = \"" <> fontSize <> "\"",
         "characters = " <> T.show chars,
-        "lines = " <> T.show lines,
+        "lines = " <> T.show lineCount,
         "line-pitch = \"" <> pitch <> "\"",
         "columns = 1",
         "position = { top = \"" <> top <> "\", gutter = \"" <> gutter <> "\" }",

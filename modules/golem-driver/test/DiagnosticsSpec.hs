@@ -259,9 +259,9 @@ explainTests =
               unused -> assertFailure ("codes in use but not in the sources (make them retired): " <> unwords (map T.unpack unused)),
           testCase "every code in the catalog is G, the two digits of a stage and three digits (docs/adr 0061)" $ do
             let stages = ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
-                bad c = T.length c /= 6 || T.take 2 (T.drop 1 c) `notElem` stages
+                malformed c = T.length c /= 6 || T.take 2 (T.drop 1 c) `notElem` stages
             assertBool "a catalog" (not (Map.null catalog))
-            filter bad (Map.keys catalog) @?= [],
+            filter malformed (Map.keys catalog) @?= [],
           testCase "no code of four digits is in the sources (docs/adr 0061)" $ do
             pkgs <- listDirectory ".."
             dirs <- filterM doesDirectoryExist ([".." </> p </> "src" | p <- pkgs] <> ["../golem-cli/app"])

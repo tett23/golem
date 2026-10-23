@@ -14,7 +14,7 @@ import Golem.Driver
 import Golem.Driver.Fonts (actualTextOf, cffFontProgram, golemFontProvider, toUnicodeOf)
 import Golem.Driver.New (Language (..), createProject, templateFiles)
 import Golem.Driver.Overhang (kentenOverhang, lineOverhang, reachesBackground, rubyOverhang)
-import Golem.Driver.Pdf (ClusterPart (..), CodeInfo (..), FontProvider (..), GlyphFrame (..), LoadedFonts (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
+import Golem.Driver.Pdf (ClusterPart (..), CodeInfo (..), GlyphFrame (..), PdfInput (..), PdfLayout (..), SetLine (..), Shaped (..), Shaping (..), hiddenFolios, layoutPdf, offsetOrigin, shapingOf)
 import Golem.Layout.Japanese (BoxKind (..))
 import Golem.Layout.KnuthPlass (BoxContent (..), Hyphen (..), Item (..), Line (..), placeLine)
 import Golem.Layout.Look (KentenShape (..), Kerning (..), Look (..), noBoxSource, plainLook)
@@ -495,9 +495,9 @@ hiddenFolioTests =
       assertEqual "no errors" [] (map diagCode (bErrors b))
       pdf <- maybe (assertFailure "no PDF") pure (bPdf b)
       content <- BS.concat <$> inflateAll pdf
-      let after = snd (BS.breakSubstring " Do" content)
-      assertBool "a figure" (not (BS.null after))
-      assertBool "the folio after it" ("<0031> Tj" `BS.isInfixOf` after),
+      let afterFigure = snd (BS.breakSubstring " Do" content)
+      assertBool "a figure" (not (BS.null afterFigure))
+      assertBool "the folio after it" ("<0031> Tj" `BS.isInfixOf` afterFigure),
     testCase "golem check reports G07050 only with crop marks" $ do
       let narrow = replaceIn "gutter = \"20mm\"" "gutter = \"1mm\"" horizontalStyle
       b <- buildMarks (\o -> o {optMarks = WesternMarks, optTargets = Nothing, optCheckOnly = True}) (Just narrow)
@@ -1126,7 +1126,9 @@ codeTests =
           assertBool (show w) (abs (w - 100) < 0.001)
         other -> assertFailure (show other),
     testCase "G07043: too little measure in a deep list, at the block" $ do
-      let style = horizontalStyle <> nakaguroBullets <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
+      -- the bullet • and its gap take two characters a level (golem-driver ADR 0044):
+      -- of 14 characters, two levels and the padding leave 8, three leave 6
+      let style = replaceIn "characters = 12" "characters = 14" horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n    - c\n\n      ```\n      x\n      ```\n" []
       [(diagMessage d, spanStart (diagSpan d)) | d <- codeOf r "G07043"] @?= [("コードブロックの行長が足りません", 19)]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    x\n    ```\n" []
@@ -1234,7 +1236,8 @@ codeTests =
       (_, pl) <- layoutOk style "```\na\n```\n\n``` numbers=false\nb\n```\n" []
       codeRows pl @?= [[(pad, "1"), (pad + 15 * pt, "a")], [(pad, "b")]],
     testCase "G07043: line numbers and diff marks leave too little measure in a list" $ do
-      let style = horizontalStyle <> nakaguroBullets <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
+      -- of 14 characters, two levels of the bullet • (golem-driver ADR 0044) and the padding leave 8
+      let style = replaceIn "characters = 12" "characters = 14" horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n\n    ``` numbers=100 diff=true\n    +x\n    ```\n" []
       map diagMessage (codeOf r "G07043") @?= ["コードブロックの行長が足りません"]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    +x\n    ```\n" []
@@ -1285,8 +1288,8 @@ codeTests =
         [] -> assertFailure "no page"
       named <- miniPdf fakeProvider True (horizontalStyle <> "\n[color.swatches]\nhl = { cmyk = [0, 0, 30, 0] }\n\n[code]\nhighlight = \"hl\"\n") "``` highlight=2\na\nb\n```\n" [] >>= pageContents
       assertBool "the swatch" (any ("0 0 0.3 0 k" `BS.isInfixOf`) named)
-      wrapped <- miniPdf fakeProvider True horizontalStyle "``` highlight=2\na\nabcdefghijklmnopqrstuvwxyzabcd\n```\n" [] >>= pageContents
-      case concatMap filledRects wrapped of
+      wrappedCode <- miniPdf fakeProvider True horizontalStyle "``` highlight=2\na\nabcdefghijklmnopqrstuvwxyzabcd\n```\n" [] >>= pageContents
+      case concatMap filledRects wrappedCode of
         [[_, _, _, h]] -> assertBool (show h) (abs (h - 30) < 0.001)
         other -> assertFailure (show other),
     testCase "diff: the marks in their column; bands only with added and removed" $ do
@@ -1476,7 +1479,7 @@ inlineCodeBackgroundTests =
           bgBoxes = [[c | Box _ c <- lineItems (slLine sl), isJust (lkBackground (bcLook c))] | sl <- Map.elems (plLines pl)]
       length runs @?= 2
       length rects @?= 2
-      [round (w * 1000) | [_, _, w, _] <- rects] @?= [round (toPt (e - s) * 1000) | (s, e) <- runs]
+      [round (w * 1000) :: Integer | [_, _, w, _] <- rects] @?= [round (toPt (e - s) * 1000) | (s, e) <- runs]
       case filter (not . null) bgBoxes of
         [l1@(f : _), l2] -> do
           map bcPadEnd l1 @?= map (const 0) l1
@@ -1732,9 +1735,9 @@ ligatureTests =
             ClusterLead : rest -> all (== ClusterRest) rest
             _ -> False
           bad drawn =
-            let occurrences = actualTextOf entries drawn
-                groups = cut (map (length . fst) occurrences) [p | (_, _, p) <- drawn]
-             in concatMap fst occurrences /= [g | (g, _, _) <- drawn]
+            let occurrencesIn = actualTextOf entries drawn
+                groups = cut (map (length . fst) occurrencesIn) [p | (_, _, p) <- drawn]
+             in concatMap fst occurrencesIn /= [g | (g, _, _) <- drawn]
                   || not (all wellFormed groups)
                   -- the rest of a cluster is never cut from the glyph that leads it
                   || or [True | (ClusterLead : _, ClusterRest : _) <- zip groups (drop 1 groups)]

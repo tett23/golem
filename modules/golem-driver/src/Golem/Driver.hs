@@ -1176,8 +1176,8 @@ paragraph, the whole part of indent in a join paragraph (docs/adr ADR
 textIndents :: Style -> Maybe Text -> (Int, Int)
 textIndents style st = case paraStyle style st of
   Just ParaStyleDef {psIndent = Just (Zw a), psFirstLineIndent = Just (Zw b), psLineBreaks = lb} ->
-    let first = max 0 (truncate (a + b))
-     in (first, if lb == Just KeepLines then first else max 0 (truncate a))
+    let firstLine = max 0 (truncate (a + b))
+     in (firstLine, if lb == Just KeepLines then firstLine else max 0 (truncate a))
   _ -> (0, 0)
 
 -- | A ruby alignment of style.toml as a CSS ruby-align value (golem-layout ADR 0009).

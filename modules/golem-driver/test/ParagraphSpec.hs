@@ -296,7 +296,9 @@ listTests =
       (_, ls) <- verseLines (horizontalStyle <> "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") ("- " <> T.replicate 20 "あ" <> "\n")
       map snd ls @?= [0, 20 * pt],
     testCase "PDF: lists nested so deep that less than 8 characters are left are G07027" $ do
-      let style = replaceIn "characters = 12" "characters = 10" horizontalStyle <> nakaguroBullets
+      -- the bullet • and its gap take two characters a level (golem-driver ADR 0044):
+      -- of 12 characters, two levels leave 8, three leave 6
+      let style = horizontalStyle
       (ok, _) <- buildMini fakeProvider False style "- 外\n  - 内の項目。\n" []
       ok @?= []
       r <- layoutMini style "- 一\n  - 二\n    - 三の項目。\n" []

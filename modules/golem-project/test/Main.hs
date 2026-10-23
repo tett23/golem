@@ -19,7 +19,6 @@ import Golem.Doc.ListMarkers (ListNumberStyle (..), NumberFormat (..))
 import Golem.Parser.SourceSettings
 import Golem.Project hiding (loadProject)
 import Golem.Project qualified as P
-import Golem.Project.Imports (ImportGraph (..), ImportSite (..), findCycles, topoOrder)
 import Golem.Project.Paths
 import Golem.Project.Style
 import Golem.Syntax
