@@ -57,7 +57,7 @@ genText =
   T.pack
     <$> Gen.list
       (Range.linear 0 80)
-      (Gen.element ("ab 漢字かな\n😀𠮷x" :: String))
+      (Gen.element ("ab 漢字かな\r\n😀𠮷x" :: String))
 
 textOf :: Workspace -> FilePath -> Text
 textOf ws p = maybe "" srcText (sourceOf ws p)

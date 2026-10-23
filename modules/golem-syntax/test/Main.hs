@@ -28,7 +28,7 @@ genText =
   T.pack
     <$> Gen.list
       (Range.linear 0 80)
-      (Gen.element ("ab 漢字かな\n😀𠮷x" :: String))
+      (Gen.element ("ab 漢字かな\r\n😀𠮷x" :: String))
 
 -- Byte offsets that fall on a code point boundary.
 boundaries :: Text -> [Int]

@@ -259,7 +259,7 @@ data Block = Para !Int | Head !Int
   deriving stock (Show)
 
 genBlocks :: Gen [Block]
-genBlocks = Gen.list (Range.linear 1 30) (Gen.choice [Para <$> Gen.int (Range.linear 1 7), Head <$> Gen.int (Range.linear 1 2)])
+genBlocks = Gen.list (Range.linear 0 30) (Gen.choice [Para <$> Gen.int (Range.linear 1 7), Head <$> Gen.int (Range.linear 1 2)])
 
 -- | The flows of the blocks with their lines numbered in order from 0.
 flowsOf :: [Block] -> [Flow]
@@ -467,7 +467,7 @@ data FigBlock = FPara !Int | FFig !Int | FWrap !Int !Int
 genFigBlocks :: Gen [FigBlock]
 genFigBlocks =
   Gen.list
-    (Range.linear 1 30)
+    (Range.linear 0 30)
     ( Gen.choice
         [ FPara <$> Gen.int (Range.linear 1 7),
           FFig <$> Gen.int (Range.linear 1 6),
@@ -502,28 +502,32 @@ propertyTests :: [TestTree]
 propertyTests =
   [ testProperty "figures and wrapped figures are placed in the order written (golem-layout ADR 0015)" $ property $ do
       blocks <- forAll genFigBlocks
-      capacity <- forAll (Gen.int (Range.linear 2 9))
+      capacity <- forAll (Gen.int (Range.linear 1 9))
       columns <- forAll (Gen.int (Range.linear 1 2))
       placedFigures (paginate columns capacity (figFlowsOf blocks)) === [1000 .. 1000 + figBlockFigures blocks - 1],
     testProperty "every line and every figure is placed exactly once" $ property $ do
       blocks <- forAll genFigBlocks
-      capacity <- forAll (Gen.int (Range.linear 2 9))
+      capacity <- forAll (Gen.int (Range.linear 1 9))
       columns <- forAll (Gen.int (Range.linear 1 2))
       let ps = paginate columns capacity (figFlowsOf blocks)
       placedIds ps === [0 .. figBlockLines blocks - 1]
       length (placedFigures ps) === figBlockFigures blocks,
     testProperty "every line of paragraphs and headings is placed once, in the order written" $ property $ do
       blocks <- forAll genBlocks
-      capacity <- forAll (Gen.int (Range.linear 2 9))
+      capacity <- forAll (Gen.int (Range.linear 1 9))
       placedIds (paginate 1 capacity (flowsOf blocks)) === [0 .. lineCount blocks - 1],
+    testProperty "an empty flow gives one empty page (docs/adr/0067)" $ property $ do
+      capacity <- forAll (Gen.int (Range.linear 1 9))
+      columns <- forAll (Gen.int (Range.linear 1 2))
+      [(poNumber p, poSlots p) | p <- paginate columns capacity []] === [(1, [])],
     testProperty "pages are numbered from 1 without gaps" $ property $ do
       blocks <- forAll genBlocks
-      capacity <- forAll (Gen.int (Range.linear 2 9))
+      capacity <- forAll (Gen.int (Range.linear 1 9))
       let ps = paginate 1 capacity (flowsOf blocks)
       map poNumber ps === [1 .. length ps],
     testProperty "every slot starts on a grid line of the page" $ property $ do
       blocks <- forAll genBlocks
-      capacity <- forAll (Gen.int (Range.linear 2 9))
+      capacity <- forAll (Gen.int (Range.linear 1 9))
       let starts = [k | p <- paginate 1 capacity (flowsOf blocks), (k, _) <- poSlots p]
       filter (\k -> k < 0 || k >= capacity) starts === [],
     -- the bounds of the starts alone pass when a heading of two grid lines
