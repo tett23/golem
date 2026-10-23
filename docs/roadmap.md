@@ -29,6 +29,10 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 2026-10-20 の ADR と仕様の矛盾のレビュー（[記録](audits/2026-10-20-adr-spec-review.md)）と、それに続く検討で採択した ADR を実装する。
 
+### lint
+
+- 行末に空白のある改行でも、欧文の単語のつながり（G05001）を見つける（未実装、[golem-lint ADR 0002](golem-lint/adr/0002-latin-join-after-trailing-spaces.md)）。
+
 ### 既知の不具合の修正
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
