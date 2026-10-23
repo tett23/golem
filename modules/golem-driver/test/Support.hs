@@ -575,3 +575,16 @@ whereIs b d = (fmap siPath (Map.lookup (spanFile (diagSpan d)) (bSources b)), sp
 -- | The errors of one code.
 ofCode :: T.Text -> Built -> [Diagnostic]
 ofCode c b = [d | d <- bErrors b, diagCode d == DiagnosticCode c]
+
+{- | A diagnostic as its code, message, file and span, so that a test
+compares all of them at once.
+-}
+described :: Diagnostic -> (T.Text, T.Text, FileId, Int, Int)
+described d =
+  let DiagnosticCode c = diagCode d
+      sp = diagSpan d
+   in (c, diagMessage d, spanFile sp, spanStart sp, spanEnd sp)
+
+-- | The diagnostics of a layout that failed, described; a layout that succeeded has none.
+layoutErrors :: Either [Diagnostic] a -> [(T.Text, T.Text, FileId, Int, Int)]
+layoutErrors = either (map described) (const [])
