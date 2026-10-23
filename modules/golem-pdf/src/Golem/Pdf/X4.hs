@@ -186,7 +186,8 @@ verify (PdfObjects version objects trailer) =
       OArr xs -> concatMap namesIn xs
       OName n | n `elem` forbiddenNames -> [n]
       _ -> []
-    nubOrd' = foldr (\x acc -> if x `elem` acc then acc else x : acc) [] . reverse
+    -- each name once, in the order first found (golem-pdf ADR 0012)
+    nubOrd' = reverse . foldl' (\acc x -> if x `elem` acc then acc else x : acc) []
 
 -- | Whether a version is at most 1.6, as PDF/X-4 is based on PDF 1.6.
 versionOk :: Text -> Bool
