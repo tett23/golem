@@ -53,17 +53,18 @@ pdfPipelineTests =
           r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf]}
           assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
           let g = g08100 r
-          map (\(sev, _, _, _) -> sev) g @?= replicate 7 Warning
-          sort [cp | (_, cp, _, _) <- g] @?= ["U+2026", "U+4E00", "U+4E09", "U+4E8C", "U+4FA1", "U+9014", "U+91CD"]
-          sum [n | (_, _, n, _) <- g] @?= 103
-          sort [at | (_, _, _, at) <- g] @?= sort (replicate 4 ("front.gm", 5) <> [("chapters/01.gm", 6), ("chapters/01.gm", 10), ("chapters/02.gm", 6)])
+          -- the bullet • of the two items is not in the subset either (golem-driver ADR 0044)
+          map (\(sev, _, _, _) -> sev) g @?= replicate 8 Warning
+          sort [cp | (_, cp, _, _) <- g] @?= ["U+2022", "U+2026", "U+4E00", "U+4E09", "U+4E8C", "U+4FA1", "U+9014", "U+91CD"]
+          sum [n | (_, _, n, _) <- g] @?= 105
+          sort [at | (_, _, _, at) <- g] @?= sort (replicate 4 ("front.gm", 5) <> [("chapters/01.gm", 6), ("chapters/01.gm", 10), ("chapters/01.gm", 15), ("chapters/02.gm", 6)])
           map takeFileName (brWritten r) @?= ["urn-uuid-11111111-2222-4333-8444-555555555555.pdf"],
       testCase "G08100 in prod: errors, no PDF, and HTML is still written (docs/adr 0081)" $
         withMissingGlyphs subsetJa $ \tmp -> do
           -- the PDF of a dev build before does not stay
           _ <- build (defaultOptions tmp) {optTargets = Just [TargetPdf]}
           r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml], optProfile = Prod}
-          map (\(sev, _, _, _) -> sev) (g08100 r) @?= replicate 7 Error
+          map (\(sev, _, _, _) -> sev) (g08100 r) @?= replicate 8 Error
           pdfDir <- doesDirectoryExist (tmp </> "build/pdf")
           assertBool "no build/pdf" (not pdfDir)
           html <- doesFileExist (tmp </> "build/html/index.xhtml")
