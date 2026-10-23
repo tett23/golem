@@ -1,0 +1,18 @@
+# 図版
+
+SVG の図版は、PDF でもベクターのまま描く。
+
+@label fig-diagram
+@figure images/diagram.svg alt="箱から円へ向かう矢印"
+  SVG の図版。
+
+PDF の図版は、そのページをベクターのまま置く。
+
+@label fig-chart
+@figure images/chart.pdf web=images/chart.svg alt="四角と斜めの線"
+  PDF の図版。
+
+JPEG の図版も置ける。
+
+@figure images/photo.jpg alt="小さな写真"
+  JPEG の図版。

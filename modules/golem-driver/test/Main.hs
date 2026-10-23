@@ -9,6 +9,7 @@ import DiagnosticsSpec
 import FigureSpec
 import LocaleSpec
 import MemoSpec
+import OutputGoldenSpec
 import PageElementsSpec
 import ParagraphRuleSpec
 import ParagraphSpec
@@ -49,6 +50,7 @@ tests =
         testGroup "colophon (docs/adr ADR 0033)" colophonTests
       ]
         <> buildTests
+        <> [outputGoldenTests]
         <> [ newProjectTests,
              allTargetsTests,
              pdfPipelineTests,

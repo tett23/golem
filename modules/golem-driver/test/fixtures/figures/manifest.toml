@@ -1,0 +1,10 @@
+chapters = ["figures.gm"]
+
+[metadata]
+id = "urn:uuid:22222222-3333-4444-8555-666666666666"
+title = "図版の本"
+language = "ja"
+date = 2026-10-23
+
+[targets.pdf]
+[targets.epub]

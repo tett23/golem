@@ -1,0 +1,132 @@
+== mimetype (stored, time 315532800, 20 bytes)
+application/epub+zip
+== META-INF/container.xml (deflate, time 315532800, 242 bytes)
+<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+<rootfiles><rootfile full-path="OEBPS/package.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>
+== OEBPS/package.opf (deflate, time 315532800, 1063 bytes)
+<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="ja">
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:identifier id="bookid">urn:uuid:22222222-3333-4444-8555-666666666666</dc:identifier>
+<dc:title id="title">図版の本</dc:title>
+<dc:language>ja</dc:language>
+<meta property="dcterms:modified">2026-10-23T00:00:00Z</meta>
+</metadata>
+<manifest>
+<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+<item id="item1" href="figures.xhtml" media-type="application/xhtml+xml"/>
+<item id="item2" href="style.css" media-type="text/css"/>
+<item id="item3" href="fonts/ja.otf" media-type="font/otf"/>
+<item id="item4" href="fonts/latin.otf" media-type="font/otf"/>
+<item id="item5" href="images/chart.svg" media-type="image/svg+xml"/>
+<item id="item6" href="images/diagram.svg" media-type="image/svg+xml"/>
+<item id="item7" href="images/photo.jpg" media-type="image/jpeg"/>
+</manifest>
+<spine>
+<itemref idref="item1"/>
+</spine>
+</package>
+== OEBPS/nav.xhtml (deflate, time 315532800, 375 bytes)
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
+<head><meta charset="UTF-8"/><title>図版の本</title></head>
+<body>
+<nav epub:type="toc" id="toc">
+<h1>図版の本</h1>
+<ol><li><a href="figures.xhtml#h-1-0">1　図版</a></li></ol>
+</nav>
+</body>
+</html>
+== OEBPS/style.css (deflate, time 315532800, 1878 bytes)
+@font-face { font-family: "golem-body-latin"; src: url("fonts/latin.otf"); }
+@font-face { font-family: "golem-body-ja"; src: url("fonts/ja.otf"); }
+body { font-family: "golem-body-latin", "golem-body-ja", serif; }
+body.vertical { writing-mode: vertical-rl; -epub-writing-mode: vertical-rl; }
+pre, code { font-family: monospace; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; hyphens: none; font-kerning: none; }
+strong { font-weight: bold; }
+.tcy { text-combine-upright: all; -epub-text-combine: horizontal; }
+.kenten { text-emphasis-style: sesame; -epub-text-emphasis-style: sesame; }
+.kenten-open-sesame { text-emphasis-style: open sesame; }
+.kenten-dot { text-emphasis-style: dot; }
+.kenten-open-dot { text-emphasis-style: open dot; }
+.kenten-circle { text-emphasis-style: circle; }
+.kenten-open-circle { text-emphasis-style: open circle; }
+.kenten-sesame { text-emphasis-style: sesame; -epub-text-emphasis-style: sesame; }
+.kenten-double-circle { text-emphasis-style: double-circle; }
+.kenten-open-double-circle { text-emphasis-style: open double-circle; }
+.kenten-triangle { text-emphasis-style: triangle; }
+.kenten-open-triangle { text-emphasis-style: open triangle; }
+.align-left { text-align: left; }
+.align-center { text-align: center; }
+.align-right { text-align: right; }
+.proof { background: #ffeb99; }
+ruby { ruby-align: space-around; }
+rt { ruby-align: space-around; }
+ruby.mono rt { ruby-align: center; }
+.sidenote { font-size: 0.85em; }
+@media (min-width: 60em) { .sidenote { float: right; clear: right; width: 14em; margin-right: -16em; } }
+p.ps-verse { margin-block: 0; }
+p.ps-verse { padding-inline-start: 2em; text-indent: -2em; }
+p.ps-verse + p.ps-verse { margin-block-start: 1em; }
+li p, li p[class] { padding-inline-start: 0; text-indent: 0; }
+.line { display: block; }
+.line + br { display: none; }
+code { padding-inline: 0.25em; }
+== OEBPS/figures.xhtml (deflate, time 315532800, 1045 bytes)
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<title>図版</title>
+<link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+<h1 id="h-1-0"><span class="number">1</span>　図版</h1>
+<p>SVG の図版は、PDF でもベクターのまま描く。</p>
+<figure id="fig-diagram">
+<img src="images/diagram.svg" alt="箱から円へ向かう矢印"/>
+<figcaption><span class="number">図1</span>　SVG の図版。</figcaption>
+</figure>
+<p>PDF の図版は、そのページをベクターのまま置く。</p>
+<figure id="fig-chart">
+<img src="images/chart.svg" alt="四角と斜めの線"/>
+<figcaption><span class="number">図2</span>　PDF の図版。</figcaption>
+</figure>
+<p>JPEG の図版も置ける。</p>
+<figure>
+<img src="images/photo.jpg" alt="小さな写真"/>
+<figcaption><span class="number">図3</span>　JPEG の図版。</figcaption>
+</figure>
+</body>
+</html>
+== OEBPS/fonts/ja.otf (deflate, time 315532800, 6210492 bytes)
+[binary: 6210492 bytes, SHA-256 2c9a12dbd4f2408c4610c7ee84a108b62d7236c3775baed618c64d9cb44b2f04]
+== OEBPS/fonts/latin.otf (deflate, time 315532800, 220852 bytes)
+[binary: 220852 bytes, SHA-256 cd978d919f1c6015f2b61530ece710215762bc39ba54e0b977005582c9b86a1d]
+== OEBPS/images/chart.svg (deflate, time 315532800, 221 bytes)
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">
+  <rect x="10" y="10" width="80" height="80" fill="#cc99ff"/>
+  <path d="M100 90 L190 10" stroke="#ff0000" stroke-width="2"/>
+</svg>
+== OEBPS/images/diagram.svg (deflate, time 315532800, 713 bytes)
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120" viewBox="0 0 240 120">
+  <style>.box { fill: #e0f0ff; stroke: #003366; stroke-width: 2 }</style>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
+      <path d="M0 0 L8 4 L0 8 z" fill="#003366"/>
+    </marker>
+  </defs>
+  <rect class="box" x="10" y="30" width="70" height="60" rx="6"/>
+  <path d="M80 60 L165 60" fill="none" stroke="#003366" stroke-width="2" marker-end="url(#arrow)"/>
+  <circle cx="200" cy="60" r="30" fill="none" stroke="#cc3300" stroke-width="3"/>
+  <g transform="translate(100 100) rotate(-15)">
+    <path d="M0 0 A20 10 0 0 1 40 0" fill="none" stroke="#000000"/>
+  </g>
+</svg>
+== OEBPS/images/photo.jpg (deflate, time 315532800, 776 bytes)
+[binary: 776 bytes, SHA-256 675c0358609d02ae2a40f61036f7cdcf9d9e7a7472b0f0080e3648878e4eac84]

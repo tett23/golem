@@ -1,0 +1,19 @@
+[page]
+size = "A5"
+binding = "left"
+writing-mode = "horizontal"
+
+[page.grid]
+font-size = "10pt"
+characters = 30
+lines = 30
+line-pitch = "15pt"
+columns = 1
+position = { top = "18mm", gutter = "20mm" }
+
+[figures]
+number = "図{n}"
+
+[fonts.body]
+ja = "fonts/ja.otf"
+latin = "fonts/latin.otf"
