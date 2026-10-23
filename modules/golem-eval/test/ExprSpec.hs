@@ -257,7 +257,7 @@ overflowTests =
         bitsOf "0.5 ** -1000" @?= bits (encodeFloat 1 1000),
       testProperty "a power is the exact power rounded once" $ property $ do
         a <- forAll (Gen.filter (/= 0) (Gen.double (Range.exponentialFloat (-1e300) 1e300)))
-        k <- forAll (Gen.filter (/= 0) (Gen.integral (Range.linear (-64) 64)))
+        k <- forAll (Gen.filter (/= 0) (Gen.integral (Range.linear (-64) (64 :: Integer))))
         let exact = fromRational (toRational a ^^ k) :: Double
             -- a float literal: renderDouble writes an integral double without a point
             lit = let r = renderDouble (abs a) in if T.any (== '.') r then r else r <> ".0"

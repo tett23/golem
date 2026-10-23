@@ -570,9 +570,9 @@ itemsFor env prev p next = case p of
             _ -> 0
           Just (PRuby lk' k b ls r@(Just _)) ->
             let ras = readingAdvances env lk' r
-                p = placeRuby style k (baseAdvances env lk' ls b) ras (0, 0)
-                room = case (rpReading p, reverse (zip (rpReading p) ras)) of
-                  (firstPos : _, (lastPos, lastAdv) : _) -> if before then rpWidth p - (lastPos + lastAdv) else firstPos
+                placed = placeRuby style k (baseAdvances env lk' ls b) ras (0, 0)
+                room = case (rpReading placed, reverse (zip (rpReading placed) ras)) of
+                  (firstPos : _, (lastPos, lastAdv) : _) -> if before then rpWidth placed - (lastPos + lastAdv) else firstPos
                   _ -> 0
              in min (rsOverhang style) (max 0 room)
           _ -> 0

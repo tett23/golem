@@ -139,15 +139,15 @@ cbor =
         BS.length (toStrictByteString (encodeTerm (floatTerm 1.0e-7))) @?= 9
         BS.length (toStrictByteString (encodeTerm (floatTerm 100000.5))) @?= 5,
       testCase "ruby inside ruby is rejected by the decoder" $ do
-        let spanT = TList [TInt 0, TInt 0, TInt 1]
-            inner = TList [TInt 4, spanT, TList [TList [TList [], TNull]]]
-            outer = TList [TInt 4, spanT, TList [TList [TList [inner], TString "よみ"]]]
+        let zeroSpan = TList [TInt 0, TInt 0, TInt 1]
+            inner = TList [TInt 4, zeroSpan, TList [TList [TList [], TNull]]]
+            outer = TList [TInt 4, zeroSpan, TList [TList [TList [inner], TString "よみ"]]]
             bytes = toStrictByteString (encodeTerm (TList [outer]))
         decodeInlines bytes @?= Left "ルビの中にルビがあります"
         -- the same ruby at the top level is accepted
         decodeInlines (toStrictByteString (encodeTerm (TList [inner]))) @?= Right [Ruby sp () [RubySegment [] Nothing]]
         -- a ruby whose base has a ruby is rejected however deep the inner one is
-        let deep = TList [TInt 4, spanT, TList [TList [TList [TList [TInt 7, spanT, TString "strong", TList [inner]]], TString "よみ"]]]
+        let deep = TList [TInt 4, zeroSpan, TList [TList [TList [TList [TInt 7, zeroSpan, TString "strong", TList [inner]]], TString "よみ"]]]
         decodeInlines (toStrictByteString (encodeTerm (TList [deep]))) @?= Left "ルビの中にルビがあります",
       testCase "wrong ABI version is rejected" $ do
         let bytes = toStrictByteString (encodeTerm (TList [TInt 99, TInt 0, TList []]))

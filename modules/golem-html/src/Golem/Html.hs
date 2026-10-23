@@ -534,7 +534,7 @@ index c sp =
       [ "<li>"
           <> escapeXml (T.intercalate " / " (igTerms g))
           <> " "
-          <> T.intercalate ", " ["<a href=\"" <> linkTo c fid (spanAnchor sp) <> "\">" <> T.pack (show i) <> "</a>" | (i, (fid, sp)) <- zip [1 :: Int ..] (igLocations g)]
+          <> T.intercalate ", " ["<a href=\"" <> linkTo c fid (spanAnchor loc) <> "\">" <> T.pack (show i) <> "</a>" | (i, (fid, loc)) <- zip [1 :: Int ..] (igLocations g)]
           <> "</li>\n"
       | g <- indexAt (cBook c) sp
       ]
@@ -1132,7 +1132,7 @@ css cfg book =
           paraOf name = if name == "body" then "p:not([class])" else "p.ps-" <> name
           paraSel name = pre <> " " <> paraOf name
           margin ps = if hpsKeepLines ps then "0" else "1em"
-          paraRules =
+          paraStyleRules =
             concat
               [ [ rule
                     (paraSel name)
@@ -1154,4 +1154,4 @@ css cfg book =
               <> [rule (pre <> " .sidenote") (faceDecls f {faSize = Just (fromMaybe "0.85em" (faSize f))}) | Just f <- [hlSidenoteFace l]]
           -- no indent in list items, after the rules of the paragraph styles of the page
           listRule = [pre <> " li p:not([class]), " <> pre <> " li p[class] { padding-inline-start: 0; text-indent: 0; }" | not (Map.null (hlParaStyles l))]
-       in charRules <> paraRules <> faceRules <> listRule
+       in charRules <> paraStyleRules <> faceRules <> listRule

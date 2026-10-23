@@ -149,7 +149,6 @@ provide fid faces body roles =
     advanceOf = memoWith shapingTextKey fromShapingTextKey (\(s, t) -> sum (map shAdvance (shapeText s t)))
     advance s c = advanceOf (s, T.singleton c)
     pairKern = memoWith shapingTextKey fromShapingTextKey (\(s, t) -> sum (map shAdvance (shapeText s t)) - sum [advance s c | c <- T.unpack t])
-    fonts = map fst faces
     faceAt i = faces !! max 0 (min (length faces - 1) i)
     fontAt = fst . faceAt
     roleOf role = case Map.lookup role roles of

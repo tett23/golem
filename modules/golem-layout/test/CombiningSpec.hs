@@ -7,7 +7,6 @@ module CombiningSpec (combiningTests) where
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR qualified as IR
-import Golem.Layout.CharClass (isExtending)
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
@@ -60,7 +59,7 @@ combiningTests =
         take 1 (boxTexts (compose (defaultComposeEnv fs) "\x301\&a")) @?= ["\x301"],
       testCase "re◌́sume◌́s: hyphenated as resumes, no box starts with a combining character" $ do
         let env = (defaultComposeEnv fs) {cePatterns = Just englishUS}
-            breaks items = length [() | Penalty _ _ (PatternHyphen _) <- items]
+            breaks is = length [() | Penalty _ _ (PatternHyphen _) <- is]
             items = compose env "re\x301sume\x301s"
         assertBool (show (boxTexts items)) (not (any (maybe False (isExtending . fst) . T.uncons) (boxTexts items)))
         breaks items @?= breaks (compose env "resumes")

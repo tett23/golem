@@ -162,7 +162,6 @@ tests =
         assertBool "20zw on columns of 20 characters" (not (isLeft (pageGeometry (FileId 0) False (ruled (Zw 20) (small 20 2 (Just (Zw 2))))))),
       testCase "G07001: paragraph and heading rules out of the trim or over half the column gap (golem-driver ADR 0027)" $ do
         let mm x = round (x * 72 / 25.4 * 65536 :: Rational) :: Integer
-            a5W = mm 148
             gridOf size chars cols gap top gutter = Grid (Abs (pt size)) chars 30 (Abs (pt (size + 6))) cols gap (Abs top) (Abs gutter)
             rule = RuleSpec Nothing 19661 Nothing Nothing Nothing RuleSolid (Zw 0) Nothing True
             withRule g size r = (styleWith False False g) {stParaStyles = Map.insert "a" noParaDef {psSize = size, psRuleBefore = Just (Just r)} (stParaStyles defaultStyle)}
@@ -222,9 +221,9 @@ tests =
       testCase "G07001: rule-after takes its space across from the margin after the lines (golem-driver ADR 0027)" $ do
         -- 30 lines of 8pt on 14pt: 414pt from a head margin of 18mm (51.02pt) leave 130.26pt below
         let g = Grid (Abs (pt 8)) 40 30 (Abs (pt 14)) 1 Nothing (Abs mm18) (Abs mm20)
-            after inner = rule0 {rsKeepInColumn = False, rsSpaceBefore = Just (Abs (pt inner))}
-        ruleMessages (withParaRule False (styleWith False False g) (after 100)) @?= []
-        ruleMessages (withParaRule False (styleWith False False g) (after 131)) @?= ["段落スタイル a の罫線が仕上がりの線を超えます"],
+            spacedBelow inner = rule0 {rsKeepInColumn = False, rsSpaceBefore = Just (Abs (pt inner))}
+        ruleMessages (withParaRule False (styleWith False False g) (spacedBelow 100)) @?= []
+        ruleMessages (withParaRule False (styleWith False False g) (spacedBelow 131)) @?= ["段落スタイル a の罫線が仕上がりの線を超えます"],
       testCase "G07001: in vertical text a rule runs from the head margin and reaches right before the lines (golem-driver ADR 0027)" $ do
         -- 40 characters of 9pt from a head margin of 18mm (51.02pt); 20 lines of 9pt on 15pt (294pt) from a gutter of 20mm (56.69pt) on A5
         let g = Grid (Abs (pt 9)) 40 20 (Abs (pt 15)) 1 Nothing (Abs mm18) (Abs mm20)
@@ -244,10 +243,10 @@ tests =
       testCase "G07001: across the lines, keep-in-column = false is checked against the margin, not half the gap (golem-driver ADR 0040)" $ do
         -- two columns of 8pt with a gap of 1zw (half 4pt); 130.26pt below the lines
         let g = Grid (Abs (pt 8)) 20 30 (Abs (pt 14)) 2 (Just (Zw 1)) (Abs mm18) (Abs mm20)
-            after inner = rule0 {rsKeepInColumn = False, rsSpaceBefore = Just (Abs (pt inner))}
-        ruleMessages (withParaRule False (styleWith False False g) (after 10)) @?= []
-        ruleMessages (withParaRule False (styleWith False False g) (after 100)) @?= []
-        ruleMessages (withParaRule False (styleWith False False g) (after 131)) @?= ["段落スタイル a の罫線が仕上がりの線を超えます"],
+            spacedBelow inner = rule0 {rsKeepInColumn = False, rsSpaceBefore = Just (Abs (pt inner))}
+        ruleMessages (withParaRule False (styleWith False False g) (spacedBelow 10)) @?= []
+        ruleMessages (withParaRule False (styleWith False False g) (spacedBelow 100)) @?= []
+        ruleMessages (withParaRule False (styleWith False False g) (spacedBelow 131)) @?= ["段落スタイル a の罫線が仕上がりの線を超えます"],
       testCase "G07050: a hidden folio on the type area, only with crop marks and when enabled (golem-driver ADR 0021)" $ do
         let mm15 = 2786570 -- 15mm
             mm15' = 278657 -- 1.5mm
