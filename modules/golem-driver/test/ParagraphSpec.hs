@@ -287,11 +287,7 @@ listTests =
       (ok, _) <- buildMini fakeProvider False style "- 外\n  - 内の項目。\n" []
       ok @?= []
       r <- layoutMini style "- 一\n  - 二\n    - 三の項目。\n" []
-      case r of
-        Left ds -> do
-          [diagCode d | d <- ds] @?= [DiagnosticCode "G07027"]
-          [diagSpan d | d <- ds] /= [] @? "span"
-        Right _ -> assertFailure "expected G07027",
+      layoutErrors r @?= [("G07027", "リストの入れ子が深く、項目の本文の行長が足りません。行長を本文の文字の大きさの 8 字分以上残してください", FileId 1, 14, 36)],
     testCase "PDF: a note in a list item belongs to the line of its marker" $
       forM_ [8 .. 14] $ \k -> do
         (_, pl) <- layoutOk horizontalStyle ("- " <> T.replicate k "あ" <> "[note: 注。]" <> T.replicate 8 "い" <> "\n") []
@@ -320,12 +316,7 @@ listTests =
       map snd ls @?= [0, 20 * pt],
     testCase "a number its format cannot write is G07029, at the item" $ do
       r <- layoutMini (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" []
-      case r of
-        Left ds -> do
-          [diagCode d | d <- ds] @?= [DiagnosticCode "G07029"]
-          let lineStart = BS.length (TE.encodeUtf8 "+ 一\n@number 51\n")
-          assertBool (show ds) (all (\d -> spanStart (diagSpan d) >= lineStart) ds)
-        Right _ -> assertFailure "expected G07029"
+      layoutErrors r @?= [("G07029", "リストの番号 51 は、書式 {①} で表せません", FileId 1, 17, 23)]
       withVerseProject (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nnumbers = [\"{①}\"]\n") "+ 一\n@number 51\n+ 二\n" $ \tmp -> do
         r' <- build (defaultOptions tmp) {optTargets = Just [TargetHtml, TargetText]}
         [diagCode d | d <- brDiagnostics r', isError d] @?= [DiagnosticCode "G07029"],
@@ -376,11 +367,11 @@ pageControlTests =
       r <- layoutMini style "@page-lines +1\n\n一\n" []
       (_, layout) <- either (assertFailure . show) pure r
       map poLines (plPages layout) @?= [36]
-      map diagCode (plNotices layout) @?= [DiagnosticCode "G07037"],
+      map described (plNotices layout) @?= [("G07037", "段に余りがないため、@page-lines の増減を 0 行に切り詰めました", FileId 1, 0, 15)],
     testCase "PDF: a no-break that cannot be met and need-lines past the column are G07037, and the PDF is written" $ do
       r <- layoutMini fiveLines "@no-page-break\n\n一\n\n@need-lines 9\n\n二\n" []
       (_, layout) <- either (assertFailure . show) pure r
-      map diagCode (plNotices layout) @?= [DiagnosticCode "G07037", DiagnosticCode "G07037"]
+      map described (plNotices layout) @?= [("G07037", "ここで改ページを止められませんでした", FileId 1, 0, 15), ("G07037", "@need-lines 9 は段の行数 5 を超えます", FileId 1, 21, 35)]
       _ <- miniPdf fakeProvider True fiveLines "@no-page-break\n\n一\n" []
       pure (),
     testCase "PDF: the same bytes in parallel and in sequence with the controls" $ do
@@ -562,11 +553,7 @@ columnTests =
       img <- tinyImage
       let source = longPara 2 <> wrapped "start" "4zw" <> longPara 10
       r <- layoutMini (figStyle horizontal2) source img
-      case r of
-        Left [d] -> do
-          diagCode d @?= DiagnosticCode "G07026"
-          [spanStart (diagSpan d)] @?= offsetsIn "@figure" source
-        other -> assertFailure (show (either (map diagCode) (const []) other)),
+      layoutErrors r @?= [("G07026", "段組みの版面では図版を回り込ませられません。wrap を外すか、columns を 1 にしてください", FileId 1, 62, 139)],
     testCase "PDF: the index is set in the measure of a column and goes on in the second column" $ do
       let readings = ["あ", "い", "う", "え", "お", "か", "き", "く", "け", "こ"]
           source = T.concat ["本文[index reading=" <> r <> ": 語" <> r <> "]。" | r <- readings] <> "\n\n@index\n"

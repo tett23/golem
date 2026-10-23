@@ -4,7 +4,6 @@ import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.List (nub)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (isJust)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Golem.Doc.Assemble (Book)
@@ -63,8 +62,7 @@ regexStyleTests =
     testCase "PDF: the match is drawn in synthetic bold, the rest is not" $ do
       content <- miniPdf fakeProvider True (horizontalStyle <> "\n" <> regexStyle) "第12章\n" [] >>= fmap BS.concat . inflateAll
       let runs = strokeRuns content
-      assertBool (show runs) (all isJust (widthsOf '1' runs) && not (null (widthsOf '1' runs)))
-      assertBool (show runs) (all isJust (widthsOf '2' runs))
+      (widthsOf '1' runs, widthsOf '2' runs) @?= ([Just "0.1667"], [Just "0.1667"])
       widthsOf '第' runs @?= [Nothing]
       widthsOf '章' runs @?= [Nothing],
     testCase "HTML: the regex styles of a file hold in that file only" $
@@ -79,12 +77,12 @@ regexStyleTests =
       content <- miniPdf fakeProvider True (pdfStyle <> "\n" <> regexStyle) "[ruby: 東京12|とうきょう]へ\n" [] >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           sizesOf c = nub [dSize d | d <- ds, dGlyph d == fromEnum c]
-      assertBool "the reading" (not (null (sizesOf 'と')))
-      assertBool "the reading is smaller than the base" (sizesOf 'と' /= sizesOf '東')
+      (sizesOf 'と', sizesOf '東', sizesOf '1', sizesOf '2') @?= (["4.6063"], ["9.2126"], ["9.2126"], ["9.2126"])
       -- a ruby whose whole base matches is wrapped as a whole and takes the look
       whole <- miniPdf fakeProvider True (pdfStyle <> "\n" <> regexStyle) "[ruby: 12|じゅうに]へ\n" [] >>= fmap BS.concat . inflateAll
       let runs = strokeRuns whole
-      assertBool (show runs) (not (null (widthsOf (toEnum 0x32) runs)) && all isJust (widthsOf (toEnum 0x32) runs))
+      -- 13Q / 60 for the Latin base, its reading at half the size / 80; へ is not stroked
+      (widthsOf '2' runs, widthsOf 'じ' runs, widthsOf 'へ' runs) @?= ([Just "0.1535"], [Just "0.0576"], [Nothing])
   ]
   where
     regexStyle = "[character-styles.n]\nsynthetic-bold = true\n\n[paragraph-styles.body]\nregex-styles = [{ pattern = '[0-9]+', style = \"n\" }]\n"
@@ -152,8 +150,7 @@ inFileTests =
       content <- miniPdf fakeProvider True (horizontal30 "" <> fakeBody <> "\n[fonts.heading]\nja = \"fonts/h.otf\"\n") "@style-def paragraph letter font=heading\n\n@style letter\n手。\n\n本。\n" fakeFontFiles >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content
           fontsOf c = nub [dFont d | d <- ds, dGlyph d == fromEnum c]
-      assertBool "drawn" (not (null (fontsOf '手')))
-      assertBool "the role of letter" (fontsOf '手' /= fontsOf '本'),
+      (fontsOf '手', fontsOf '本') @?= (["/F1"], ["/F2"]),
     testCase "the styles of a file imported are not the importer's" $
       withChapters "" [("c1.gm", "@import common.gm as c\n\n@style letter\n手紙。\n")] [("common.gm", "@style-def paragraph letter\n\n@set v = 1\n")] $ \tmp -> do
         ev <- evaluateProject Dev tmp

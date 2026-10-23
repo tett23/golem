@@ -128,7 +128,17 @@ terminalTests =
       testCase "the length is counted after the replacement" $ do
         let line = T.replicate 100 "\SOH"
             fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex line))]
-        T.lines (renderHuman fs [diagnostic "G01001" Error (mkSpan (FileId 0) 0 1) "m"]) !! 1 @?= "  | " <> T.replicate 50 "\\x01" <> "\x2026"
+        T.lines (renderHuman fs [diagnostic "G01001" Error (mkSpan (FileId 0) 0 1) "m"]) !! 1 @?= "  | " <> T.replicate 50 "\\x01" <> "\x2026",
+      testCase "near the end of a long line only the start is cut" $ do
+        let line = T.pack (replicate 230 'a' <> replicate 70 'b')
+            fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex line))]
+        T.lines (renderHuman fs [diagnostic "G01001" Error (mkSpan (FileId 0) 290 291) "m"]) !! 1 @?= "  | \x2026" <> T.replicate 70 "b",
+      testCase "the edges of the replaced controls: U+001F and U+009F are, a space and U+00A0 are not" $ do
+        let fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex "\x1f \x9f\xa0\x7e\n"))]
+        renderHuman fs [diagnostic "G01001" Error (mkSpan (FileId 0) 0 1) "m"] @?= "a.gm:1:1: error[G01001]: m\n  | \\x1f \\x9f\xa0~\n",
+      testCase "the CR of a CRLF line is not in the excerpt; a newline of a message is kept" $ do
+        let fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex "ab\r\ncd\r\n"))]
+        renderHuman fs [diagnostic "G01001" Error (mkSpan (FileId 0) 5 6) "m\nn"] @?= "a.gm:2:2: error[G01001]: m\nn\n  | cd\n"
     ]
 
 tests :: TestTree

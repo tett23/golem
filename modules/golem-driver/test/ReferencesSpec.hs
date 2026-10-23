@@ -475,6 +475,7 @@ columnWidthTests =
       let cells = "| " <> T.intercalate " | " (replicate 6 "あい") <> " |\n"
       (errs, _) <- buildMini fakeProvider True horizontalStyle (cells <> "|" <> T.replicate 6 "---|" <> "\n" <> cells) []
       errs @?= [DiagnosticCode "G07041"]
+      layoutMini horizontalStyle (cells <> "|" <> T.replicate 6 "---|" <> "\n" <> cells) [] >>= (@?= [("G07041", "表の列の最小の幅の合計（42.3 mm）が使える幅（24.7 mm）に収まりません", FileId 1, 0, 138)]) . layoutErrors
   ]
 
 tableTests :: [TestTree]
@@ -503,9 +504,11 @@ tableTests =
       let wide = "| " <> T.intercalate " | " (replicate 13 "字") <> " |\n|" <> T.replicate 13 "---|" <> "\n| " <> T.intercalate " | " (replicate 13 "字") <> " |\n"
       (e1, p1) <- buildMini fakeProvider True horizontalStyle wide []
       (e1, p1) @?= ([DiagnosticCode "G07041"], Nothing)
+      layoutMini horizontalStyle wide [] >>= (@?= [("G07041", "表の列の最小の幅の合計（45.9 mm）が使える幅（0.0 mm）に収まりません", FileId 1, 0, 214)]) . layoutErrors
       let tall = "| 項目 | 値 |\n|---|---|\n| " <> T.replicate 60 "あ" <> " | 1 |\n"
       (e2, p2) <- buildMini fakeProvider True fiveLines tall []
-      (e2, p2) @?= ([DiagnosticCode "G07042"], Nothing),
+      (e2, p2) @?= ([DiagnosticCode "G07042"], Nothing)
+      layoutMini fiveLines tall [] >>= (@?= [("G07042", "表の 1 行目が見出しの行とともに一ページに収まりません", FileId 1, 0, 216)]) . layoutErrors,
     testCase "a table from CSV is set the same way" $ do
       content <- miniPdf fakeProvider True horizontalStyle "@table src=data.csv\n" [("data.csv", TE.encodeUtf8 "項目,値\n幅,10\n")] >>= fmap BS.concat . inflateAll
       length (rulesIn content) @?= 3
@@ -662,6 +665,13 @@ indexColumnTests =
       let body = fst . BS.breakSubstring "trailer"
       body a @?= body b
       body a @?= body c,
+    testCase "G07044: index columns of exactly 8 characters are not G07044; a narrower gap that leaves less is" $ do
+      -- 24 characters: two columns of 8 and a gap of 8, or of 7.5 and 9
+      let style gap = withIndexColumns "2" horizontal24 <> "column-gap = \"" <> gap <> "\"\n" <> fakeBody
+      ok <- buildMarksFilesWith indexSource (\o -> o {optCheckOnly = True}) (Just (style "8zw")) fakeFontFiles
+      map diagCode (bErrors ok) @?= []
+      over <- buildMarksFilesWith indexSource (\o -> o {optCheckOnly = True}) (Just (style "9zw")) fakeFontFiles
+      map diagCode (bErrors over) @?= [DiagnosticCode "G07044"],
     testCase "G07044: index columns under 8 characters, at the value of columns, also in golem check" $ do
       let style = withIndexColumns "5" horizontalStyle
           src = BC.unpack style

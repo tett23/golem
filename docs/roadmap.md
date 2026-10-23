@@ -29,9 +29,14 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 2026-10-20 の ADR と仕様の矛盾のレビュー（[記録](audits/2026-10-20-adr-spec-review.md)）と、それに続く検討で採択した ADR を実装する。
 
-### lint
+### 段落スタイル
 
-- 行末に空白のある改行でも、欧文の単語のつながり（G05001）を見つける（未実装、[golem-lint ADR 0002](golem-lint/adr/0002-latin-join-after-trailing-spaces.md)）。
+- キャプションと傍注の段落スタイルは、本文の字下げを引き継がない（未実装、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
+
+### fmt と PDF/X-4 の検査
+
+- `golem fmt` は単独の CR も LF に直す（未実装、[golem-fmt ADR 0003](golem-fmt/adr/0003-lone-cr-to-lf.md)）。
+- PDF/X-4 の検査は、見つけた禁止の名前を見つけた順に並べる（未実装、[golem-pdf ADR 0012](golem-pdf/adr/0012-x4-forbidden-names-in-found-order.md)）。
 
 ### 既知の不具合の修正
 

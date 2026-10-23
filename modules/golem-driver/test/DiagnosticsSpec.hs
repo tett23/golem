@@ -441,6 +441,14 @@ outputDiagnosticTests =
                 else Right ((), pagesWith [["a"]])
       r <- fixpoint (const (mkSpan (FileId 0) 0 0)) (const "") (\a -> failing (a :: Assumed))
       either (map diagCode) (const []) r @?= [DiagnosticCode "G07022"],
+    testCase "G07025: an indent that leaves exactly 8 characters is not G07025; one character more is" $ do
+      -- 12 characters of 10pt
+      let style indent = horizontalStyle <> fakeBody <> "\n[paragraph-styles.body]\nindent = \"" <> indent <> "\"\n"
+      ok <- buildMarksFiles (\o -> o {optCheckOnly = True}) (Just (style "4zw")) fakeFontFiles
+      map diagCode (bErrors ok) @?= []
+      over <- buildMarksFiles (\o -> o {optCheckOnly = True}) (Just (style "5zw")) fakeFontFiles
+      -- caption and sidenote take the indent of body
+      map diagMessage (bErrors over) @?= ["段落スタイルの字下げが大きすぎます。行長を段落の文字の大きさの 8 字分以上残してください: " <> n | n <- ["body", "caption", "sidenote"]],
     testCase "G07025 is about a paragraph style, at the top of style.toml, also in golem check" $ do
       let style = replaceIn "characters = 12" "characters = 10" horizontalStyle <> fakeBody <> "\n[paragraph-styles.body]\nindent = \"3zw\"\n"
       b <- buildMarksFiles id (Just style) fakeFontFiles

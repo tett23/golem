@@ -72,6 +72,14 @@ tests =
       testCase "G05001 does not apply to hard line breaks (docs/adr ADR 0016)" $ do
         newlineCodes "Full fathom\\\nfive\n" @?= []
         newlineCodes "Full fathom\nfive\n" @?= ["G05001"],
+      testCase "G05001 sees through the spaces the language ignores at the end of a line (golem-lint ADR 0002)" $ do
+        newlineSpans defaultSourceSettings "word  \nword\n" @?= [("G05001", 6, 7)]
+        newlineCodes "word\t\nword\n" @?= ["G05001"]
+        newlineCodes "- word  \n   word\n" @?= ["G05001"]
+        newlineCodes "word\x3000\nword\n" @?= []
+        newlineCodes "word\\ \nword\n" @?= []
+        newlineCodes "word  \\\nword\n" @?= []
+        newlineCodes "語  \nword\n" @?= [],
       testCase "G05001 does not apply to the newlines that separate paragraphs (docs/adr ADR 0013)" $ do
         let lineCodes = newlineCodesIn (SourceSettings LineSeparated) (Set.fromList ["verse"])
         lineCodes "Full fathom\nfive\n" @?= []

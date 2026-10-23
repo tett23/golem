@@ -131,6 +131,8 @@ tests han sans serif noto =
             assertBool "differs" (subsetTag [1, 2, 3] /= subsetTag [1, 2, 4])
             T.length (subsetTag [1]) @?= 6
             assertBool "upper case" (T.all (`elem` ['A' .. 'Z']) (subsetTag [1, 2]))
+            -- FNV-1a over the sorted set, six base-26 digits from the low end; the tag is in the bytes of every PDF
+            map subsetTag [[], [0], [1], [1, 2, 3], [65535]] @?= ["BYZWAK", "FHVIXO", "WVLLDI", "PYHSSW", "SSGMLZ"]
         ],
       testGroup
         "CIDSystemInfo (golem-pdf ADR 0006)"

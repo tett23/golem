@@ -133,12 +133,15 @@ latinJoinedByNewline source keep fid = go 0
       ElemNode m
         | nodeKind m `elem` [NInlineCommand, NExpr] -> (s, Token KOperator "") : flat (s + elementWidth e) es
         | otherwise -> flat s (nodeChildren m) <> flat (s + elementWidth e) es
+    -- the spaces and tabs the language ignores at the ends of a line are
+    -- not characters of the line (golem-lint ADR 0002); U+3000 is
     lastChar ts = case [t | t <- reverse ts, tokKind t /= KWhitespace] of
-      (Token KText t : _) | not (T.null t) -> Just (T.last t)
+      (Token KText t : _) -> snd <$> T.unsnoc (T.dropWhileEnd ignoredSpace t)
       _ -> Nothing
     firstChar ts = case [t | t <- ts, tokKind t /= KWhitespace] of
-      (Token KText t : _) | not (T.null t) -> Just (T.head t)
+      (Token KText t : _) -> fst <$> T.uncons (T.dropWhile ignoredSpace t)
       _ -> Nothing
+    ignoredSpace c = c == ' ' || c == '\t'
 
 -- | G05002: a variable used neither in its file nor by any importer.
 unusedVariables :: LintInput -> [Diagnostic]

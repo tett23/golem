@@ -157,6 +157,9 @@ tests =
       commandsTests,
       localeTests,
       rtsTests,
+      testCase "golem lint reports G05001 after the spaces at the end of a line (golem-lint ADR 0002)" $ do
+        (_, err) <- golemIn [(p, if p == "a.gm" then "word  \nword\n" else c) | (p, c) <- projectFiles] ["lint"]
+        assertBool err ("error[G05001]" `isInfixOf` err),
       -- golem-parser ADR 0010
       testCase "a backslash after the last | of a table row is G01024, not G01010" $
         mapM_

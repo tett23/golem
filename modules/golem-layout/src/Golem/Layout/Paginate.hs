@@ -23,6 +23,7 @@ module Golem.Layout.Paginate
     Slotted (..),
     PageOut (..),
     Unmet (..),
+    AdjustLimit (..),
     TableSegment (..),
     RuledBody (..),
     PlacedRule (..),
@@ -239,13 +240,23 @@ data PageOut = PageOut
   }
   deriving stock (Eq, Show)
 
+-- | Why @page-lines was cut short (docs/adr ADR 0030).
+data AdjustLimit
+  = -- | no more lines fit inside the page
+    AdjustNoRoom
+  | -- | the column already holds more lines
+    AdjustLinesPlaced
+  | -- | a column keeps at least one line
+    AdjustOneLine
+  deriving stock (Eq, Show)
+
 -- | A manual control of page breaks that could not be met (docs/adr ADR 0030).
 data Unmet
   = UnmetNoBreak !SrcSpan
   | -- | the lines asked for
     UnmetNeedLines !SrcSpan !Int
-  | -- | the lines the column was changed by
-    UnmetAdjust !SrcSpan !Int
+  | -- | the lines the column was changed by, and why it was cut short
+    UnmetAdjust !SrcSpan !Int !AdjustLimit
   | -- | blank lines dropped at the top of a column (docs/adr ADR 0046)
     DroppedBlank !SrcSpan
   deriving stock (Eq, Show)
@@ -389,9 +400,14 @@ paginateWithin maxLines separatorLines base capacity flows =
     -- at least one line and the lines placed, at most maxLines
     adjustLines st sp k =
       let want = sAdjust st + k
-          got = max (max 1 (sUsed st + sNoteLines st) - capacity) (min (maxLines - capacity) want)
+          placed = sUsed st + sNoteLines st
+          got = max (max 1 placed - capacity) (min (maxLines - capacity) want)
           st1 = st {sAdjust = got}
-       in if got /= want then addUnmet (UnmetAdjust sp got) st1 else st1
+          limit
+            | got < want = AdjustNoRoom
+            | placed >= 1 = AdjustLinesPlaced
+            | otherwise = AdjustOneLine
+       in if got /= want then addUnmet (UnmetAdjust sp got limit) st1 else st1
     -- a paragraph before a no-break keeps its last lines with what follows
     placeFlow st f rest = case (f, keptNeed rest) of
       (FParagraph ls, Just n) -> placeKept st True ls n

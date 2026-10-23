@@ -4422,15 +4422,17 @@ HTML、EPUB、プレーンテキストに残ると、媒体のあいだで結果
 
 - メッセージ: `改行の前後が欧文なので、単語が空白なしにつながります。一行で書いてください`
 - 段階とモジュール: lint（golem-lint の `Golem.Lint`）
-- ADR: [golem-lint ADR 0001](golem-lint/adr/0001-lint-rules.md)（定めた）、[docs/adr/0003](adr/0003-verse-line-breaks.md) と [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（例外を定めた）、[docs/adr/0013](adr/0013-paragraph-separator.md)（改行の様式の扱いを定めた）
+- ADR: [golem-lint ADR 0001](golem-lint/adr/0001-lint-rules.md)（定めた）、[docs/adr/0003](adr/0003-verse-line-breaks.md) と [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（例外を定めた）、[docs/adr/0013](adr/0013-paragraph-separator.md)（改行の様式の扱いを定めた）、[golem-lint ADR 0002](golem-lint/adr/0002-latin-join-after-trailing-spaces.md)（行末の空白の扱いを定めた）
 
 ### 主な原因
 
 - 欧文の文を、段落の中で改行して書いた。段落の中の改行は文字を生まない。
+- 改行の前に半角の空白を置けば単語が分かれると考えて、行末に空白を置いた。言語の仕様は行末の半角の空白とタブを無視するので、単語はやはりつながる（[golem-lint ADR 0002](golem-lint/adr/0002-latin-join-after-trailing-spaces.md)）。
 
 ### 直し方
 
-欧文の文は一行で書くか、改行の前に空白を置く。
+欧文の文は一行で書く。
+行末の半角の空白では単語は分かれない。
 行を保ちたい段落には、`line-breaks = "keep"` の段落スタイル（`verse` など）を付ける。
 
 ## G05002
@@ -5253,7 +5255,7 @@ PDF の改ページで、`@no-page-break`、`@need-lines`、`@page-lines` の指
 - `@need-lines`：求めた行数が、段の行の格子の数を超える。段の格子の数として扱い、今の段が空でなければ次の段から続けた。
 - `@page-lines`：増減の結果の行数が、裁ち落としを除いたページの内側に収まる行数を超えるか、その段にすでに置いた行の数より少ない。収まる数に切り詰めた。
 
-- メッセージ: `ここで改ページを止められませんでした`、`@need-lines <N> は段の行数 <M> を超えます`、`@page-lines の増減を <K> 行に切り詰めました`
+- メッセージ: `ここで改ページを止められませんでした`、`@need-lines <N> は段の行数 <M> を超えます`、`<理由>@page-lines の増減を <K> 行に切り詰めました`。`<理由>` は、切り詰めた理由で、`段に余りがないため、`（ページの内側にそれ以上の行が入らない）、`段にすでに行を置いているため、`（置いた行より少なくできない）、`段には少なくとも 1 行を残すため、` のどれかである
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`、golem-layout の `Golem.Layout.Paginate`）
 - ADR: [docs/adr/0030](adr/0030-manual-page-break-control.md)
 
@@ -5280,7 +5282,7 @@ PDF の改ページで、`@no-page-break`、`@need-lines`、`@page-lines` の指
 位置は `@figure` のブロックである。
 dev と prod の両方でエラーになる。
 
-- メッセージ: `図版のキャプションが段の行数を超えます（<s> 行。段は <L> 行）`、`図版のキャプションがページの行数を超えます（<s> 行。ページは <L> 行）`。`<s>` はキャプションが占める格子の行の数、`<L>` は段か枠の行の数
+- メッセージ: `図版のキャプションが段の行数に達します（<s> 行。段は <L> 行）`、`図版のキャプションがページの行数に達します（<s> 行。ページは <L> 行）`。`<s>` はキャプションが占める格子の行の数、`<L>` は段か枠の行の数
 - 段階とモジュール: レイアウト（golem-driver の `Golem.Driver.Pdf`）
 - ADR: [golem-driver ADR 0034](golem-driver/adr/0034-fit-figures-to-column.md)
 
