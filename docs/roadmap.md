@@ -33,10 +33,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 - キャプションと傍注の段落スタイルは、本文の字下げを引き継がない（未実装、[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
 
-### fmt と PDF/X-4 の検査
-
-- `golem fmt` は単独の CR も LF に直す（未実装、[golem-fmt ADR 0003](golem-fmt/adr/0003-lone-cr-to-lf.md)）。
-
 ### 既知の不具合の修正
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。

@@ -30,13 +30,14 @@ data FormatResult
     Unformattable [Diagnostic]
   deriving stock (Show)
 
-{- | Text-level fixes for what the reader rejects: BOM, CRLF and tab
-indentation (one tab = two spaces).
+{- | Text-level fixes for what the reader rejects: BOM, CRLF, a lone CR
+(golem-fmt ADR 0003) and tab indentation (one tab = two spaces). CRLF is
+made one LF before the lone CRs, or it would become two line breaks.
 -}
 preprocess :: Text -> Text
 preprocess t0 =
   let t1 = fromMaybe t0 (T.stripPrefix "\xFEFF" t0)
-      t2 = T.replace "\r\n" "\n" t1
+      t2 = T.replace "\r" "\n" (T.replace "\r\n" "\n" t1)
    in T.intercalate "\n" (map untab (T.splitOn "\n" t2))
   where
     untab l =

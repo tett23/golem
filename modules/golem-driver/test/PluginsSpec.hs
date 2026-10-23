@@ -269,7 +269,7 @@ pluginTests =
                [(fid, sf)] -> do
                  let codes = map diagCode (erDiagnostics (evReevaluate e fid sf))
                  assertBool (show codes) (DiagnosticCode "G02022" `notElem` codes)
-                 assertBool (show codes) (not (null codes))
+                 codes @?= [DiagnosticCode "G02002", DiagnosticCode "G02002", DiagnosticCode "G06009"]
                other -> assertFailure (show (map fst other))
            withPlugins [("identity", "identity.wat")] (pluginDeclOf "identity" "") $ \tmp -> do
              TIO.appendFile (tmp </> "chapters/02.gm") "\n本文の [b\n"
