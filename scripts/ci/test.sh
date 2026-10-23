@@ -785,6 +785,18 @@ if [ -n "$MISE_AT" ] && [ -n "$TEST_AT" ] && [ "$MISE_AT" -lt "$TEST_AT" ]; then
 if grep -qF 'MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}' "$RS" && grep -qF 'cache: false' "$RS"; then ok; else ng "ci.yml: release-scripts runs mise as the notes job does"; fi
 if grep -qF 'GOLEM_REQUIRE_CLAUDE: "1"' "$RS"; then ok; else ng "ci.yml: release-scripts runs test.sh with GOLEM_REQUIRE_CLAUDE"; fi
 if grep -q 'ANTHROPIC_API_KEY' "$RS"; then ng "ci.yml: release-scripts has no API key"; else ok; fi
+# scripts-macos runs the four tests of the scripts on macOS with the BSD
+# tools of the system only, when the change needs the build; ci needs it
+# (docs/adr/0079)
+SM=$WORK/scripts-macos.yml
+job_lines scripts-macos >"$SM"
+if grep -qx '    runs-on: macos-15' "$SM"; then ok; else ng "ci.yml: scripts-macos runs on macos-15"; fi
+if grep -qx '    needs: changes' "$SM" && grep -qxF "    if: needs.changes.outputs.build == 'true'" "$SM"; then ok; else ng "ci.yml: scripts-macos is skipped as build is"; fi
+if grep -qx '      PATH: /usr/bin:/bin:/usr/sbin:/sbin' "$SM" && ! grep -Eq 'brew|gnubin|coreutils|gawk|gnu-sed|findutils' "$SM"; then ok; else ng "ci.yml: scripts-macos has the tools of the system only on PATH"; fi
+for t in scripts/ci/test.sh scripts/manual/test.sh scripts/env-determinism/test.sh scripts/release/test.sh; do
+  if grep -qx "        run: sh $t" "$SM"; then ok; else ng "ci.yml: scripts-macos runs $t"; fi
+done
+if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?scripts-macos([],].*)?$'; then ok; else ng "ci.yml: ci needs scripts-macos"; fi
 if grep -qF "matrix.tests && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'" "$CI_YML"; then ok; else ng "ci.yml: a pull request saves dist-newstyle when GHC compiled, from the runner of the tests"; fi
 
 # ---------------------------------------------------------------- release.yml and mise.toml
@@ -818,20 +830,20 @@ needs() { # needs NAME=RESULT...: the JSON of the needs context
   done
   printf '}\n'
 }
-needs changes=success build=success determinism=success release-scripts=success format=success >"$WORK/in"
+needs changes=success build=success determinism=success release-scripts=success scripts-macos=success format=success >"$WORK/in"
 run gate
 expect "gate: all succeeded" 0
-needs changes=success build=skipped determinism=skipped release-scripts=skipped format=skipped >"$WORK/in"
+needs changes=success build=skipped determinism=skipped release-scripts=skipped scripts-macos=skipped format=skipped >"$WORK/in"
 run gate
 expect "gate: docs only" 0
-needs changes=success build=failure determinism=skipped release-scripts=success format=success >"$WORK/in"
+needs changes=success build=failure determinism=skipped release-scripts=success scripts-macos=success format=success >"$WORK/in"
 run gate
 expect "gate: a failed build" 1
 if grep -q 'build' "$WORK/err" && grep -q 'failure' "$WORK/err"; then ok; else ng "gate: the failed job is named"; fi
-needs changes=success build=success determinism=cancelled release-scripts=success format=success >"$WORK/in"
+needs changes=success build=success determinism=cancelled release-scripts=success scripts-macos=success format=success >"$WORK/in"
 run gate
 expect "gate: a cancelled job" 1
-needs changes=success build=success determinism=success release-scripts=success >"$WORK/in"
+needs changes=success build=success determinism=success release-scripts=success scripts-macos=success >"$WORK/in"
 run gate
 expect "gate: a missing job" 1
 if grep -q 'format' "$WORK/err"; then ok; else ng "gate: the missing job is named"; fi
