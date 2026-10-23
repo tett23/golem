@@ -142,7 +142,7 @@ $ golem build --target pdf --format json 2> diagnostics.json
 プロファイルが変えるのは、校正用のコメント（[code: \%%= ... \%%]）の扱いと、diagnostic の重大度の二つだけである。
 
 - 校正用のコメントは、[code: dev] では出力に現れ、[code: prod] では出力されず警告（G02005）になる。
-- 参照されていないラベル（G05004）と、HTML と EPUB のフォントの欠け（G03010）は、[code: dev] では警告、[code: prod] ではエラーになる。
+- 参照されていないラベル（G05004）、HTML と EPUB のフォントの欠け（G03010）、PDF のフォントにない字（G08100）は、[code: dev] では警告、[code: prod] ではエラーになる。
 
 重大度の変更は、golem-syntax の [code: adjustForProfile] の一箇所で行う。
 対象のコードは [code: Golem.Syntax.Diagnostic.profileDependentCodes] に並んでいる。

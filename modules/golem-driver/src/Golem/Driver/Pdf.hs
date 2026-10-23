@@ -909,7 +909,8 @@ renderPdf :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [D
 renderPdf provider inp = fmap (\(bytes, notices, _) -> (bytes, notices)) <$> renderPdfView provider inp
 
 {- | 'renderPdf' with the view of the PDF that golem preflight checks
-(golem-cli ADR 0006). The view is lazy: golem build never forces it.
+(golem-cli ADR 0006). The view is lazy: golem build forces only the
+characters of its pages, for G08100 (docs/adr 0081).
 -}
 renderPdfView :: FontProvider -> PdfInput -> IO (Either [Diagnostic] (ByteString, [Diagnostic], V.View))
 renderPdfView provider inp0 = case checkedGeometry inp of
