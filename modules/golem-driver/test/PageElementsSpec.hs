@@ -568,6 +568,31 @@ headingTests =
       errs @?= [DiagnosticCode "G07024"]
       pdf @?= Nothing
       layoutMini (three <> "\n[headings.1]\nlines = 4\n") "# A\n\nx\n" [] >>= (@?= [("G07024", "見出しが版面に入りません（1 の見出し: A）", FileId 1, 0, 4)]) . layoutErrors,
+    -- golem-layout ADR 0020
+    testCase "G07100: a heading taller than a column cut by page-lines is a notice, and the PDF is written" $ do
+      let source = "@page-lines -29\n\n# A\n\nx\n"
+          files extra = [("manifest.toml", miniManifest <> extra), ("style.toml", withBodyFont horizontalStyle), ("a.gm", TE.encodeUtf8 source)] <> fakeFontFiles
+          pdfOf n = [b | (p, b) <- nOutputs n, ".pdf" `isSuffixOf` p]
+      loud <- buildNotified (files "") id
+      [(diagCode d, diagSeverity d) | d <- nDiagnostics loud] @?= [(DiagnosticCode "G07100", Notice)]
+      length (pdfOf loud) @?= 1
+      (_, pl) <- layoutOk horizontalStyle source []
+      map described (plNotices pl) @?= [("G07100", "見出しが段に入りません（1 の見出し: A。見出しは 5 行、段の残りは 1 行）", FileId 1, 17, 21)]
+      -- silenced, the PDF is the same but for its ID, which comes from manifest.toml
+      quiet <- buildNotified (files "\n[diagnostics]\nsilence-notices = [\"G07100\"]\n") id
+      nDiagnostics quiet @?= []
+      quietStreams <- mapM inflateAll (pdfOf quiet)
+      loudStreams <- mapM inflateAll (pdfOf loud)
+      quietStreams @?= loudStreams
+      none <- buildNotified (files "") (\o -> o {optNoNotices = True})
+      nDiagnostics none @?= []
+      nOutputs none @?= nOutputs loud,
+    testCase "no G07100 for a heading of five lines in a column cut to five lines (golem-layout ADR 0020)" $ do
+      (codes, pdf) <- buildMini fakeProvider True horizontalStyle "@page-lines -25\n\n# A\n\nx\n" []
+      codes @?= []
+      assertBool "the PDF" (isJust pdf)
+      (_, pl) <- layoutOk horizontalStyle "@page-lines -25\n\n# A\n\nx\n" []
+      plNotices pl @?= [],
     testCase "default headings: parallel and sequential, and two builds, give the same bytes (golem-driver ADR 0032)" $ do
       let source = "# 一\n\n本文。\n\n## 二\n\n### 三\n\n本文。\n"
       a <- miniPdf fakeProvider True horizontalStyle source []

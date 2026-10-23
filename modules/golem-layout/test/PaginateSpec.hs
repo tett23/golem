@@ -37,6 +37,7 @@ paginateTests =
       testGroup "manual control of page breaks (docs/adr ADR 0030)" pageControlTests,
       testGroup "blank lines (docs/adr ADR 0046)" blankLineTests,
       testGroup "paragraphs and headings with rules (golem-driver ADR 0027)" ruledTests,
+      testGroup "a heading taller than its column (golem-layout ADR 0020)" tallHeadingTests,
       testGroup "invariants" propertyTests
     ]
 
@@ -604,6 +605,48 @@ propertyTests =
     headingSpans _ [] = []
     headingSpans i (Para n : rest) = headingSpans (i + n) rest
     headingSpans i (Head k : rest) = (i, k) : headingSpans (i + 1) rest
+
+-- | A heading placed in an empty column it does not fit is recorded (golem-layout ADR 0020).
+tallHeadingTests :: [TestTree]
+tallHeadingTests =
+  [ testCase "a heading of two grid lines on a page of one line" $ do
+      let ps = paginate 1 1 [FHeading 2 False 2 (lines' 0 1), FParagraph (lines' 10 1)]
+      map poUnmet ps @?= [[TallHeading 0 2 1], []]
+      contents ps @?= [[SHeading 0 1], [SLine 10]],
+    testCase "a heading of five grid lines in a column cut to one line by page-lines" $ do
+      let ps = paginate 1 16 [FAdjustLines mk (-15), FHeading 1 False 5 (lines' 0 1), FParagraph (lines' 10 1)]
+      unmets ps @?= [TallHeading 0 5 1]
+      contents ps @?= [[SHeading 0 1], [SLine 10]]
+      map poLines ps @?= [1, 16],
+    testCase "a heading of five grid lines in a column of five lines is not recorded" $ do
+      let ps = paginate 1 16 [FAdjustLines mk (-11), FHeading 1 False 5 (lines' 0 1), FParagraph (lines' 10 1)]
+      unmets ps @?= []
+      contents ps @?= [[SHeading 0 1], [SLine 10]],
+    testCase "a heading that does not fit a column with lines goes to the next column and is not recorded" $ do
+      let ps = paginate 1 5 [FParagraph (lines' 0 4), FHeading 2 False 2 (lines' 10 1), FParagraph (lines' 20 1)]
+      unmets ps @?= []
+      contents ps @?= [map SLine [0 .. 3], [SHeading 10 1, SLine 20]],
+    testCase "a ruled heading that does not fit a column of one line without its rules is recorded" $ do
+      let h = FRuled 20 (Just (spaced 5 10)) (Just (spaced 5 10)) False ruleGrid 0 (RuledHeading False 2 (lines' 20 1))
+          ps = paginate 1 1 [h, FParagraph (lines' 30 1)]
+      unmets ps @?= [TallHeading 20 2 1]
+      contents ps @?= [[SHeading 20 1], [SLine 30]],
+    testCase "a heading whose grid lines fit and whose note does not is not recorded" $ do
+      let ps = paginate 1 5 [FHeading 2 False 1 [LineBox 20 [NoteBody (nid 900) 6] [] [] 0]]
+      unmets ps @?= [],
+    testProperty "the headings recorded are those that end past the column" $ property $ do
+      blocks <- forAll genBlocks
+      capacity <- forAll (Gen.int (Range.linear 1 9))
+      let ps = paginate 1 capacity (flowsOf blocks)
+          spans = Map.fromList (headingSpansOf 0 blocks)
+          past = [l | p <- ps, (k, SHeading l _) <- poSlots p, k + Map.findWithDefault 1 l spans > capacity]
+      [l | TallHeading l _ _ <- unmets ps] === past
+  ]
+  where
+    headingSpansOf :: Int -> [Block] -> [(Int, Int)]
+    headingSpansOf _ [] = []
+    headingSpansOf i (Para n : rest) = headingSpansOf (i + n) rest
+    headingSpansOf i (Head k : rest) = (i, k) : headingSpansOf (i + 1) rest
 
 -- | Size 10pt, pitch 17pt, in sp.
 ruleGrid :: RuleGrid

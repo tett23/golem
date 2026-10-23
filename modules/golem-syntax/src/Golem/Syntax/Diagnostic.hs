@@ -100,6 +100,7 @@ noticeCodes =
       "G07045", -- kenten with ruby, not drawn in the PDF (golem-driver ADR 0019)
       "G07046", -- a block with rules broken or a heading rule left out (golem-driver ADR 0027)
       "G07047", -- blank lines dropped at the top of a column (docs/adr ADR 0046)
+      "G07100", -- a heading taller than the rest of its column (golem-layout ADR 0020)
       "G08008" -- code in the body role without [fonts.code] (golem-driver ADR 0017)
     ]
 
