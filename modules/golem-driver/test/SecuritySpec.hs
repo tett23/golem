@@ -6,6 +6,7 @@ module SecuritySpec (securityTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
+import Data.List (isPrefixOf)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
@@ -66,6 +67,49 @@ securityTests =
         r <- build (defaultOptions root) {optTargets = Just [TargetHtml]}
         map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08013"]
         doesFileExist (v </> "html" </> "precious.txt") >>= assertBool "kept",
+      -- docs/adr ADR 0076: the folder of every target, not only build and build/html
+      testGroup "the folder of each target written as a symbolic link is G08013 (docs/adr ADR 0076)" $
+        [ testCase dir $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+            v <- victim tmp
+            let root = tmp </> "p"
+            createDirectoryIfMissing True (root </> "build")
+            project root "" (withBodyFont horizontalStyle) "本文。\n" (bodyFontFiles horizontalStyle)
+            createDirectoryLink (v </> dir) (root </> "build" </> dir)
+            r <- build (defaultOptions root) {optTargets = Just [target], optFonts = fakeProvider}
+            map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08013"]
+            brWritten r @?= []
+            doesFileExist (v </> dir </> "precious.txt") >>= assertBool "kept"
+        | (target, dir) <- [(TargetEpub, "epub"), (TargetText, "text"), (TargetPdf, "pdf")]
+        ],
+      testCase "build/html as a file that is not a folder is G08013 (docs/adr ADR 0076)" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        createDirectoryIfMissing True (tmp </> "build")
+        project tmp "" horizontalStyle "本文。\n" []
+        BS.writeFile (tmp </> "build" </> "html") "not a folder"
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08013"]
+        brWritten r @?= []
+        BS.readFile (tmp </> "build" </> "html") >>= (@?= "not a folder"),
+      testCase "build/html as a symbolic link to a folder inside the project is G08013 (docs/adr ADR 0076)" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        createDirectoryIfMissing True (tmp </> "build")
+        project tmp "" horizontalStyle "本文。\n" []
+        createDirectoryIfMissing True (tmp </> "inside")
+        BS.writeFile (tmp </> "inside" </> "precious.txt") "keep me"
+        createDirectoryLink (tmp </> "inside") (tmp </> "build" </> "html")
+        r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
+        map diagCode (filter isError (brDiagnostics r)) @?= [DiagnosticCode "G08013"]
+        brWritten r @?= []
+        doesFileExist (tmp </> "inside" </> "precious.txt") >>= assertBool "kept",
+      testCase "build/pdf as a symbolic link does not stop a build of HTML only (docs/adr ADR 0076)" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
+        v <- victim tmp
+        let root = tmp </> "p"
+        createDirectoryIfMissing True (root </> "build")
+        project root "" horizontalStyle "本文。\n" []
+        createDirectoryLink (v </> "pdf") (root </> "build" </> "pdf")
+        r <- build (defaultOptions root) {optTargets = Just [TargetHtml]}
+        map diagCode (filter isError (brDiagnostics r)) @?= []
+        assertBool (show (brWritten r)) (any ((root </> "build" </> "html") `isPrefixOf`) (brWritten r) && not (null (brWritten r)))
+        doesFileExist (root </> "build" </> "html" </> "a.xhtml") >>= assertBool "written in build/html"
+        doesFileExist (v </> "pdf" </> "precious.txt") >>= assertBool "kept",
       testCase "a figure path with a quote stays inside the src attribute" $ withSystemTempDirectory "golem-sec" $ \tmp -> do
         img <- tinyImage
         let name = "q\" onerror=\"alert(1).jpg"

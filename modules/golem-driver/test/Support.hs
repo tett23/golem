@@ -7,6 +7,7 @@ import Control.Monad (forM, forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
+import Data.Char (isDigit)
 import Data.IORef (IORef, modifyIORef')
 import Data.List (isSuffixOf, nub, sort)
 import Data.Map.Strict qualified as Map
@@ -623,3 +624,107 @@ withEnv :: String -> String -> IO a -> IO a
 withEnv name value act = do
   old <- lookupEnv name
   (setEnv name value >> act) `finally` maybe (unsetEnv name) (setEnv name) old
+
+-- ------------------------------------------------------------------ the objects of a PDF (docs/adr ADR 0076)
+
+-- | A value of a PDF object, as far as the tests read one.
+data PdfValue
+  = PdfDict [(BS.ByteString, PdfValue)]
+  | PdfArray [PdfValue]
+  | PdfRef Int
+  | PdfAtom BS.ByteString
+  deriving stock (Eq, Show)
+
+{- | The values of the objects of a PDF without object streams, by number:
+what follows @N 0 obj@, up to the stream or @endobj@. Golem writes no
+object streams, and @qpdf --qdf --object-streams=disable@ writes none
+either; the stream data is not read.
+-}
+pdfObjects :: BS.ByteString -> Map.Map Int PdfValue
+pdfObjects pdf = Map.fromList (go pdf)
+  where
+    go b = case BS.breakSubstring " 0 obj" b of
+      (before, rest)
+        | BS.null rest -> []
+        | otherwise ->
+            let num = BC.reverse (BC.takeWhile isDigitC (BC.reverse before))
+                -- the header starts a line
+                atLineStart = maybe True ((`elem` ("\r\n" :: String)) . snd) (BC.unsnoc (BS.take (BS.length before - BS.length num) before))
+                body = BS.drop (BS.length " 0 obj") rest
+                next = go body
+             in case (BC.readInt num, pdfValue (pdfTokens (objectText body))) of
+                  (Just (n, _), Just (v, _)) | not (BS.null num), atLineStart -> (n, v) : next
+                  _ -> next
+    isDigitC = isDigit
+    -- the text of the object before its stream data, which is not PDF syntax
+    objectText body = fst (BS.breakSubstring "stream" (fst (BS.breakSubstring "endobj" body)))
+
+-- | The tokens of PDF syntax: delimiters, names, numbers, keywords, strings.
+pdfTokens :: BS.ByteString -> [BS.ByteString]
+pdfTokens b0 = case BC.uncons (BC.dropWhile isWhite b0) of
+  Nothing -> []
+  Just (c, rest)
+    | c == '%' -> pdfTokens (BC.dropWhile (/= '\n') rest)
+    | c == '<', Just ('<', r) <- BC.uncons rest -> "<<" : pdfTokens r
+    | c == '>', Just ('>', r) <- BC.uncons rest -> ">>" : pdfTokens r
+    | c == '<' -> let (h, r) = BC.break (== '>') rest in ("<" <> h <> ">") : pdfTokens (BS.drop 1 r)
+    | c == '[' || c == ']' -> BC.singleton c : pdfTokens rest
+    | c == '(' -> let (s, r) = literal (1 :: Int) rest "" in ("(" <> s) : pdfTokens r
+    | otherwise ->
+        let (t, r) = BC.break (\x -> isWhite x || x `elem` ("/<>[]()%" :: String)) rest
+         in (BC.singleton c <> t) : pdfTokens r
+  where
+    isWhite x = x `elem` (" \t\r\n\f\0" :: String)
+    literal depth b acc = case BC.uncons b of
+      Nothing -> (acc, "")
+      Just ('\\', r) -> literal depth (BS.drop 1 r) (acc <> "\\" <> BS.take 1 r)
+      Just ('(', r) -> literal (depth + 1) r (acc <> "(")
+      Just (')', r)
+        | depth == 1 -> (acc <> ")", r)
+        | otherwise -> literal (depth - 1) r (acc <> ")")
+      Just (x, r) -> literal depth r (BC.snoc acc x)
+
+-- | The first value of the tokens, and the tokens after it.
+pdfValue :: [BS.ByteString] -> Maybe (PdfValue, [BS.ByteString])
+pdfValue = \case
+  "<<" : rest -> dict [] rest
+  "[" : rest -> array [] rest
+  a : b : "R" : rest | Just (n, "") <- BC.readInt a, Just _ <- BC.readInt b -> Just (PdfRef n, rest)
+  t : rest | t `notElem` [">>", "]"] -> Just (PdfAtom t, rest)
+  _ -> Nothing
+  where
+    dict acc = \case
+      ">>" : rest -> Just (PdfDict (reverse acc), rest)
+      k : rest | "/" `BS.isPrefixOf` k -> do
+        (v, rest') <- pdfValue rest
+        dict ((k, v) : acc) rest'
+      _ -> Nothing
+    array acc = \case
+      "]" : rest -> Just (PdfArray (reverse acc), rest)
+      ts -> do
+        (v, rest) <- pdfValue ts
+        array (v : acc) rest
+
+-- | The value of a key of a dictionary, its reference followed.
+pdfLookup :: Map.Map Int PdfValue -> BS.ByteString -> PdfValue -> Maybe PdfValue
+pdfLookup objs key = \case
+  PdfDict kvs -> resolve <$> lookup key kvs
+  _ -> Nothing
+  where
+    resolve = \case
+      PdfRef n -> Map.findWithDefault (PdfAtom "null") n objs
+      v -> v
+
+{- | The PDF as @qpdf --qdf --object-streams=disable@ writes it, where qpdf
+is installed ('optionalTool': a failure with GOLEM_REQUIRE_EXTERNAL_TOOLS=1).
+-}
+qpdfExpanded :: BS.ByteString -> IO (Maybe BS.ByteString)
+qpdfExpanded pdf = do
+  qpdf <- optionalTool "qpdf" (findExecutable "qpdf")
+  case qpdf of
+    Nothing -> pure Nothing
+    Just exe -> withSystemTempDirectory "golem-qdf" $ \dir -> do
+      BS.writeFile (dir </> "in.pdf") pdf
+      (code, out, err) <- readProcessWithExitCode exe ["--qdf", "--object-streams=disable", dir </> "in.pdf", dir </> "out.pdf"] ""
+      assertEqual (out <> err) ExitSuccess code
+      Just <$> BS.readFile (dir </> "out.pdf")

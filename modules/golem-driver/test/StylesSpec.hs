@@ -2,6 +2,7 @@ module StylesSpec (inFileTests, regexStyleTests) where
 
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
+import Data.ByteString.Char8 qualified as BC
 import Data.List (nub)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
@@ -78,6 +79,14 @@ regexStyleTests =
       let ds = drawnGlyphs content
           sizesOf c = nub [dSize d | d <- ds, dGlyph d == fromEnum c]
       (sizesOf 'と', sizesOf '東', sizesOf '1', sizesOf '2') @?= (["4.6063"], ["9.2126"], ["9.2126"], ["9.2126"])
+      -- docs/adr ADR 0076: the reading above its base, which in vertical writing is to the right of the line
+      let at c = [(num (dX d), num (dY d), num (dSize d)) | d <- ds, dGlyph d == fromEnum c]
+          num = read . BC.unpack :: BS.ByteString -> Double
+      case (at 'と', at '東') of
+        ([(rx, ry, rs)], [(bx, by, bs)]) -> do
+          assertBool ("と at x " <> show rx <> " is right of 東 at x " <> show bx) (rx > bx)
+          assertBool ("と at y " <> show (ry - rs, ry) <> " overlaps 東 at y " <> show (by - bs, by)) (ry - rs < by && by - bs < ry)
+        other -> assertFailure (show other)
       -- a ruby whose whole base matches is wrapped as a whole and takes the look
       whole <- miniPdf fakeProvider True (pdfStyle <> "\n" <> regexStyle) "[ruby: 12|じゅうに]へ\n" [] >>= fmap BS.concat . inflateAll
       let runs = strokeRuns whole
