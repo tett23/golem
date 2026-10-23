@@ -83,7 +83,7 @@ genText =
   T.pack
     <$> Gen.list
       (Range.linear 0 80)
-      (Gen.element ("ab 漢字かな\n😀𠮷x" :: String))
+      (Gen.element ("ab 漢字かな\r\n😀𠮷x" :: String))
 
 {- | The columns of a line that fall between two characters, from 0 to the
 width of the line, in UTF-8 bytes or UTF-16 code units.

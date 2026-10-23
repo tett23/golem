@@ -28,6 +28,16 @@ genFitting = do
   ws <- Gen.list (Range.linear 1 25) (Gen.integral (Range.linear 1 target))
   pure (ws, target)
 
+-- | A paragraph with at least one word wider than the measure of 60 to 200 (docs/adr/0067).
+genWithWide :: Gen ([Sp], Sp)
+genWithWide = do
+  target <- Gen.integral (Range.linear 60 200)
+  ws <- Gen.list (Range.linear 0 12) (Gen.integral (Range.linear 1 (2 * target)))
+  wide <- Gen.integral (Range.linear (target + 1) (3 * target))
+  at <- Gen.int (Range.linear 0 (length ws))
+  let (before, after) = splitAt at ws
+  pure (before <> [wide] <> after, target)
+
 lineBreakingTests :: TestTree
 lineBreakingTests =
   testGroup
@@ -42,6 +52,10 @@ lineBreakingTests =
         filter (> target) (map lastBoxEnd (brLines r)) === [],
       testProperty "the lines hold every word once, in order" $ property $ do
         (ws, target) <- forAll genFitting
+        let r = breakParagraph defaultParams (const target) (paragraph ws)
+        [w | l <- brLines r, Box w _ <- lineItems l] === ws,
+      testProperty "with a word wider than the measure, the lines still hold every word once, in order" $ property $ do
+        (ws, target) <- forAll genWithWide
         let r = breakParagraph defaultParams (const target) (paragraph ws)
         [w | l <- brLines r, Box w _ <- lineItems l] === ws
     ]

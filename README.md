@@ -359,6 +359,7 @@ Golem のビルドとテストは Node を使わない。
 
 変更が `docs/` の下のファイル、`tools/textlint/` の下のファイル、リポジトリの根の Markdown のファイルだけの場合、`build`、`determinism`、`format`、`release-scripts`、`scripts-macos` は省かれる（[docs/adr/0009](./docs/adr/0009-ci-speed.md)、[docs/adr/0036](./docs/adr/0036-textlint-for-documents.md)）。
 判定は `scripts/ci/needs-build.sh` が行い、プルリクエストの変更のパスは分岐点からの差分で取る（`scripts/ci/changed-paths.sh`）。
+ファイルの移動は、移動元と移動先の両方を変更のパスとして数える（[docs/adr/0070](./docs/adr/0070-changed-paths-without-rename-detection.md)）。
 ただし、ビルドやテストが読む文書（今は `docs/diagnostics.md`）を変えた場合はビルドする（[docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)）。
 `adr` と `textlint` は、変更のパスにかかわらず常に走る。
 `main` の保護の規則が必須とする検査は、`ci`、`adr`、`manual`、`textlint` の四つである。
