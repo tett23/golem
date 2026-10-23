@@ -197,11 +197,16 @@ newTests =
         files @?= ["notes.txt"]
     ]
 
-{- | The template of golem new, with a font of the tests in place of the
-one it names, builds every target without a diagnostic, notices included:
-the first output that a user sees is not a warning. The smoke check of a
-release checks the same with the fonts that golem new fetches
+{- | The template of golem new, with a font in place of the one it names,
+builds every target without a diagnostic, notices included: the first
+output that a user sees is not a warning. The smoke check of a release
+checks the same with the fonts that golem new fetches
 (docs/adr/0080-release-smoke-checks-diagnostics.md).
+
+The ja template gets the very font that golem new fetches: the Noto Serif
+JP of the kanikosen fixture has the SHA-256 of templateFonts. The Source
+Serif 4 of the en template is not in the repository; the Source Sans Pro of
+the tests has every glyph of its text, which G08100 checks.
 -}
 templateBuildTests :: TestTree
 templateBuildTests =
@@ -209,7 +214,7 @@ templateBuildTests =
     "the template builds without diagnostics (docs/adr/0080)"
     [ testCase tag $ withSystemTempDirectory "golem-new" $ \tmp -> do
         _ <- golemAt tmp (["new", "book", "--no-fonts"] <> language)
-        font <- BL.readFile ("../golem-font/test/fonts/" <> testFont)
+        font <- BL.readFile testFont
         createDirectoryIfMissing True (tmp </> "book/fonts")
         BL.writeFile (tmp </> "book/fonts" </> templateFont) font
         (code, _, err) <- golemAt (tmp </> "book") ["build", "--format", "json"]
@@ -217,8 +222,8 @@ templateBuildTests =
         forM_ ["html", "epub", "text", "pdf"] $ \t ->
           listDirectory (tmp </> "book/build" </> t) >>= assertBool ("no " <> t <> " output") . not . null
     | (tag, language, templateFont, testFont) <-
-        [ ("ja", [], "NotoSerifJP-Regular.otf", "SourceHanSans-Regular_subset.otf"),
-          ("en", ["--language", "en"], "SourceSerif4-Regular.otf", "SourceSansPro-Regular.otf")
+        [ ("ja", [], "NotoSerifJP-Regular.otf", "../golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"),
+          ("en", ["--language", "en"], "SourceSerif4-Regular.otf", "../golem-font/test/fonts/SourceSansPro-Regular.otf")
         ]
     ]
 
