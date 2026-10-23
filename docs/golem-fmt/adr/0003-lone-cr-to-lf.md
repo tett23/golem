@@ -1,6 +1,6 @@
 # ADR 0003: `golem fmt` は単独の CR も LF に直す
 
-ステータス: 採択
+ステータス: 採択、引数なしの `golem fmt` が CR を含む原稿を読む手順は [ADR 0004](0004-fmt-without-arguments-fixes-cr.md)
 
 ## 文脈
 
