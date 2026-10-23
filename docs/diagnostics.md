@@ -4422,15 +4422,17 @@ HTML、EPUB、プレーンテキストに残ると、媒体のあいだで結果
 
 - メッセージ: `改行の前後が欧文なので、単語が空白なしにつながります。一行で書いてください`
 - 段階とモジュール: lint（golem-lint の `Golem.Lint`）
-- ADR: [golem-lint ADR 0001](golem-lint/adr/0001-lint-rules.md)（定めた）、[docs/adr/0003](adr/0003-verse-line-breaks.md) と [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（例外を定めた）、[docs/adr/0013](adr/0013-paragraph-separator.md)（改行の様式の扱いを定めた）
+- ADR: [golem-lint ADR 0001](golem-lint/adr/0001-lint-rules.md)（定めた）、[docs/adr/0003](adr/0003-verse-line-breaks.md) と [docs/adr/0005](adr/0005-character-and-paragraph-styles.md)（例外を定めた）、[docs/adr/0013](adr/0013-paragraph-separator.md)（改行の様式の扱いを定めた）、[golem-lint ADR 0002](golem-lint/adr/0002-latin-join-after-trailing-spaces.md)（行末の空白の扱いを定めた）
 
 ### 主な原因
 
 - 欧文の文を、段落の中で改行して書いた。段落の中の改行は文字を生まない。
+- 改行の前に半角の空白を置けば単語が分かれると考えて、行末に空白を置いた。言語の仕様は行末の半角の空白とタブを無視するので、単語はやはりつながる（[golem-lint ADR 0002](golem-lint/adr/0002-latin-join-after-trailing-spaces.md)）。
 
 ### 直し方
 
-欧文の文は一行で書くか、改行の前に空白を置く。
+欧文の文は一行で書く。
+行末の半角の空白では単語は分かれない。
 行を保ちたい段落には、`line-breaks = "keep"` の段落スタイル（`verse` など）を付ける。
 
 ## G05002
