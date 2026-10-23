@@ -106,6 +106,10 @@ CDDL のスキーマへの適合のテスト（golem-doc）は、外部の検証
 CI では必ず実行する。
 Haskell には成熟した CDDL の検証器がないので、テストにだけ外部の道具を使うと決めている。
 外部の道具を使うテストは、テストスイートだけが使うパッケージ golem-test-support の [code: needsTool] か [code: optionalTool] で書き、道具がなければ [code: SKIP] と表示される。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0028-shared-test-support-package.md]（ADR 0028「テストの補助を共有するパッケージ」）]
+tasty は [code: SKIP] を通ったテストとして数えるので、最後の件数だけを見ると、検査を一度も走らせずにすべて通ったように見える。
+そこで、飛ばした数をテストのスイートの最後に、道具ごとに標準エラー出力へ一行で書く。
+テストを切り替える環境変数（[code: GOLEM_REQUIRE_EXTERNAL_TOOLS] や [code: GOLEM_PD_BOOKS]）は、golem-test-support の [code: envFlag] で読み、値が [code: 1] のときだけ有効にする。
+[code: 0] や [code: yes] は、付けていないのと同じである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0074-test-switches-by-environment-variables.md]（ADR 0074「テストを切り替える環境変数の値の読み方をそろえ、省いたテストを数える」）]
 
 テストのうち、[code: docs/diagnostics.md] の節とソースのコードの一致を確かめるのは golem-driver のテストである（第[ref-number docs]章）。
 

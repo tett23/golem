@@ -7,6 +7,7 @@ import ColophonSpec
 import DiagnosticSitesSpec
 import DiagnosticsSpec
 import FigureSpec
+import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import LocaleSpec
 import MemoSpec
 import OutputGoldenSpec
@@ -24,7 +25,7 @@ import TableFilesSpec
 import Test.Tasty
 
 main :: IO ()
-main = lookupEnv "XDG_CACHE_HOME" >>= defaultMain . tests
+main = lookupEnv "XDG_CACHE_HOME" >>= defaultMainReportingSkips . tests
 
 -- | The tests, with XDG_CACHE_HOME as it was when the suite started (docs/adr ADR 0072).
 tests :: Maybe String -> TestTree

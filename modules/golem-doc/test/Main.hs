@@ -15,6 +15,7 @@ import Golem.Doc.Validate
 import Golem.Parser.AST qualified as AST
 import Golem.Syntax.Span
 import Golem.TestSupport.ExternalTool (needsTool)
+import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import Hedgehog
 import ListMarkersSpec qualified
 import NumberingSpec qualified
@@ -29,7 +30,7 @@ import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
 
 main :: IO ()
-main = defaultMain tests
+main = defaultMainReportingSkips tests
 
 sp :: SrcSpan
 sp = SrcSpan (FileId 0) 0 1

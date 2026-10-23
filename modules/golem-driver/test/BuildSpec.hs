@@ -23,6 +23,8 @@ import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Manifest (Manifest (..), Metadata (..))
 import Golem.Project.Style (HeadForm (..), HeadPick (..), RunningContent (..), RunningPart (..), RunningRef (..))
 import Golem.Syntax
+import Golem.TestSupport.Env (envFlag)
+import Golem.TestSupport.Skipped (countSkipped)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.Environment (lookupEnv)
@@ -187,8 +189,8 @@ pdBooks =
     ("ushiyama-hotel", True)
   ]
 
-{- | A book of test/fixtures/pd is checked without errors. With GOLEM_PD_BOOKS
-set, it is built to every target too, which takes most of a minute for the
+{- | A book of test/fixtures/pd is checked without errors. With GOLEM_PD_BOOKS=1
+(docs/adr ADR 0074: 1 only), it is built to every target too, which takes most of a minute for the
 ten (docs/adr/0026). The books do not commit their fonts; the fonts of
 蟹工船 and The Tempest are copied in, as scripts/fixtures/copy-fonts.sh does.
 -}
@@ -205,7 +207,8 @@ pdBookTest (name, vertical) = testCase name $ withSystemTempDirectory "golem-pd"
           else ("test/fixtures/tempest/fonts", "SourceSerifVariable-Roman.ttf")
   createDirectoryIfMissing True (tmp </> "fonts")
   copyFile (fonts </> font) (tmp </> "fonts" </> font)
-  full <- isJust <$> lookupEnv "GOLEM_PD_BOOKS"
+  full <- envFlag "GOLEM_PD_BOOKS"
+  unless full (countSkipped "books checked only: GOLEM_PD_BOOKS is not 1 (GOLEM_PD_BOOKS=1 builds them to every target)")
   r <- build (defaultOptions tmp) {optCheckOnly = not full}
   assertEqual "no errors" [] [(diagCode d, diagMessage d) | d <- brDiagnostics r, isError d]
   when full $ do

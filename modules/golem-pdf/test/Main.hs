@@ -19,6 +19,7 @@ import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf
 import Golem.Pdf.Writer (Mark (..))
 import Golem.TestSupport.ExternalTool (needsTool)
+import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -37,7 +38,7 @@ import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog (testProperty)
 
 main :: IO ()
-main = defaultMain tests
+main = defaultMainReportingSkips tests
 
 hex :: ByteString -> String
 hex = concatMap (\w -> [digits !! fromIntegral (w `div` 16), digits !! fromIntegral (w `mod` 16)]) . BS.unpack

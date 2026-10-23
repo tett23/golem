@@ -30,6 +30,7 @@ import Golem.Plugin
 import Golem.Plugin.Lock
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (needsTool)
+import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import Network.Connection (TLSSettings (..))
 import Network.HTTP.Client (newManager)
 import Network.HTTP.Client.TLS (mkManagerSettings)
@@ -53,7 +54,7 @@ import Test.Tasty.HUnit
 import Text.Printf (printf)
 
 main :: IO ()
-main = defaultMain (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests])
+main = defaultMainReportingSkips (testGroup "golem-plugin" [tests, lockTests, httpsTests, rootCertTests, responseTests, concurrencyTests])
 
 callSpan :: SrcSpan
 callSpan = mkSpan (FileId 1) 10 20

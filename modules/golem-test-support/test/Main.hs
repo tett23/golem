@@ -7,7 +7,9 @@ module Main (main) where
 
 import Control.Exception (SomeException, try)
 import Data.IORef (modifyIORef, newIORef, readIORef)
+import Golem.TestSupport.Env
 import Golem.TestSupport.ExternalTool
+import Golem.TestSupport.Skipped
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
 import Test.Tasty.Providers (IsTest (..))
@@ -20,7 +22,9 @@ main =
       "golem-test-support"
       [ needsToolTests,
         optionalToolTests,
-        requiredTests
+        requiredTests,
+        envFlagTests,
+        skippedTests
       ]
 
 found, missing :: IO (Maybe FilePath)
@@ -109,4 +113,41 @@ requiredTests =
       testCase "0: not required" $ toolsRequiredBy (Just "0") @?= False,
       testCase "empty: not required" $ toolsRequiredBy (Just "") @?= False,
       testCase "true: not required" $ toolsRequiredBy (Just "true") @?= False
+    ]
+
+envFlagTests :: TestTree
+envFlagTests =
+  testGroup
+    "envFlagBy (docs/adr ADR 0074)"
+    [ testCase "1: on" $ envFlagBy (Just "1") @?= True,
+      testCase "unset: off" $ envFlagBy Nothing @?= False,
+      testCase "empty: off" $ envFlagBy (Just "") @?= False,
+      testCase "0: off" $ envFlagBy (Just "0") @?= False,
+      testCase "yes: off" $ envFlagBy (Just "yes") @?= False
+    ]
+
+skippedTests :: TestTree
+skippedTests =
+  testGroup
+    "the line of the tests skipped (docs/adr ADR 0074)"
+    [ testCase "one line for each reason, the count first" $
+        skippedLines [("tests skipped: qpdf is not installed (GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes them failures)", 3)]
+          @?= ["3 tests skipped: qpdf is not installed (GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes them failures)"],
+      testCase "nothing skipped: no line" $ skippedLines [] @?= [],
+      testCase "the reasons in order" $
+        skippedLines [("b", 1), ("a", 2)] @?= ["2 a", "1 b"],
+      testCase "a missing tool not required is counted by its name" $ do
+        resetSkipped
+        _ <- runOne (needsToolWith (pure False) "tool" missing passing)
+        _ <- runOne (needsToolWith (pure False) "tool" missing passing)
+        _ <- optionalToolWith (pure False) "tool" missing
+        _ <- runOne (needsToolWith (pure True) "tool" missing passing)
+        _ <- runOne (needsToolWith (pure False) "tool" found passing)
+        skippedSoFar
+          >>= ( @?=
+                  [ ("checks skipped: tool is not installed (GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes them failures)", 1),
+                    ("tests skipped: tool is not installed (GOLEM_REQUIRE_EXTERNAL_TOOLS=1 makes them failures)", 2)
+                  ]
+              )
+        resetSkipped
     ]

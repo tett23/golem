@@ -21,7 +21,9 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:
+    Golem.TestSupport.Env
     Golem.TestSupport.ExternalTool
+    Golem.TestSupport.Skipped
   build-depends:
     , base   >=4.20 && <4.21
     , tasty  >=1.4  && <1.6
