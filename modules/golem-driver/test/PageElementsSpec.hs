@@ -772,6 +772,13 @@ wrapTests =
       layoutErrors a @?= [("G07022", "回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: 3em", FileId 1, 0, 75)]
       b <- layoutMini horizontal24 (wrapped "end" "22zw" <> longPara 3) img
       layoutErrors b @?= [("G07022", "回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: 22zw", FileId 1, 0, 76)],
+    testCase "a wrapped figure that leaves exactly 8 characters beside it is not G07022; one character wider is" $ do
+      -- 24 characters: the width, the gap of 1zw and 8 characters
+      img <- tinyImage
+      a <- layoutMini horizontal24 (wrapped "end" "15zw" <> longPara 3) img
+      layoutErrors a @?= []
+      b <- layoutMini horizontal24 (wrapped "end" "16zw" <> longPara 3) img
+      map (\(c, m, _, _, _) -> (c, m)) (layoutErrors b) @?= [("G07022", "回り込む図版の幅が不正です。寸法で書き、行の残りを本文の 8 字分以上にしてください: 16zw")],
     testCase "an exclusion longer than the page is G07023 at the figure" $ do
       img <- tinyImage
       let source = "前の段落。\n\n" <> wrapped "end" "10zw" <> longPara 3

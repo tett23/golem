@@ -1035,6 +1035,13 @@ codeTests =
       let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"3zw\"\n"
       r <- buildAllWith (\o -> o {optCheckOnly = True}) style "```\nx\n```\n" []
       map diagMessage (codeOf r "G07043") @?= ["コードブロックの行長が足りません"],
+    testCase "G07043: padding that leaves exactly 8 characters is not G07043; more padding is" $ do
+      -- 12 characters of 10pt, padding on both sides
+      let style padding = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"" <> padding <> "\"\n"
+      ok <- buildAllWith (\o -> o {optCheckOnly = True}) (style "2zw") "```\nx\n```\n" []
+      [diagCode d | d <- brDiagnostics ok, isError d] @?= []
+      over <- buildAllWith (\o -> o {optCheckOnly = True}) (style "2.5zw") "```\nx\n```\n" []
+      map diagMessage (codeOf over "G07043") @?= ["コードブロックの行長が足りません"],
     testCase "G07043: one row and its padding taller than a page" $ do
       r <- buildAll (replaceIn "lines = 30" "lines = 1" horizontalStyle) "```\nx\n```\n" []
       map diagMessage (codeOf r "G07043") @?= ["コードブロックの一行が一ページに収まりません"],

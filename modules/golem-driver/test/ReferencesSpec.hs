@@ -665,6 +665,13 @@ indexColumnTests =
       let body = fst . BS.breakSubstring "trailer"
       body a @?= body b
       body a @?= body c,
+    testCase "G07044: index columns of exactly 8 characters are not G07044; a narrower gap that leaves less is" $ do
+      -- 24 characters: two columns of 8 and a gap of 8, or of 7.5 and 9
+      let style gap = withIndexColumns "2" horizontal24 <> "column-gap = \"" <> gap <> "\"\n" <> fakeBody
+      ok <- buildMarksFilesWith indexSource (\o -> o {optCheckOnly = True}) (Just (style "8zw")) fakeFontFiles
+      map diagCode (bErrors ok) @?= []
+      over <- buildMarksFilesWith indexSource (\o -> o {optCheckOnly = True}) (Just (style "9zw")) fakeFontFiles
+      map diagCode (bErrors over) @?= [DiagnosticCode "G07044"],
     testCase "G07044: index columns under 8 characters, at the value of columns, also in golem check" $ do
       let style = withIndexColumns "5" horizontalStyle
           src = BC.unpack style
