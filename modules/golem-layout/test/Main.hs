@@ -140,7 +140,9 @@ bruteBest ps lw items =
            in Just (d, map fst (reverse (maximumBy (comparing key) [reverse path | (d', path) <- scored, d' == d])))
 
 {- | Total demerits of a break sequence and the (position, fitness) of
-each break, computed directly from the rules.
+each break, computed directly from the rules: the badness is the
+implementation's, checked against TeX's values on its own; the demerits and
+the fitness are 'texLineDemerits' and 'texFitness' (docs/adr/0065).
 -}
 bruteScore :: Params -> (Int -> Sp) -> [Item] -> [Int] -> Maybe (Integer, [(Int, Fitness)])
 bruteScore ps lw items brks = go 0 2 False (-1) brks 0 []
@@ -167,13 +169,42 @@ bruteScore ps lw items brks = go 0 2 False (-1) brks 0 []
             | short == 0 = (0, False, False)
             | negate short > z = (10000, True, True)
             | otherwise = (badness (negate short) z, True, False)
-          fit = fitnessOf shrinking bad
+          fit = texFitness shrinking bad
           (pen, flag) = case at b of Penalty _ p h -> (p, h /= NoHyphen); _ -> (0, False)
           d =
-            lineDemerits ps bad pen
+            texLineDemerits ps bad pen
               + (if prevFlag && flag then toInteger (pDoubleHyphenDemerits ps) else 0)
               + (if abs (fit - prevFit) > 1 then toInteger (pAdjDemerits ps) else 0)
        in if over || bad > pTolerance ps then Nothing else go (line + 1) fit flag b rest (acc + d) ((b, fit) : path)
+
+{- | The demerits of a line, written from TeX's rules (The TeX Program
+§859; golem-layout ADR 0001 and 0008) and not from the implementation, so
+that the brute-force search is an oracle independent of it (docs/adr/0065):
+the line penalty plus the badness, squared, or 10^8 when its absolute value
+is 10000 or more; plus the square of a positive penalty; minus the square of
+a negative penalty that does not force the break.
+-}
+texLineDemerits :: Params -> Int -> Int -> Integer
+texLineDemerits ps b p
+  | p > 0 = squared + toInteger p ^ (2 :: Int)
+  | p < 0 && p > negate infPenalty = squared - toInteger p ^ (2 :: Int)
+  | otherwise = squared
+  where
+    d = toInteger (pLinePenalty ps) + toInteger b
+    squared = if abs d >= 10000 then 10 ^ (8 :: Int) else d ^ (2 :: Int)
+
+{- | The fitness class of a line, written from TeX's rules (The TeX Program
+§817 and §859; docs/adr/0065): a stretched line of badness above 99 is very
+loose (0), above 12 loose (1); a shrunk line of badness above 12 is tight
+(3); every other line is decent (2).
+-}
+texFitness :: Bool -> Int -> Fitness
+texFitness shrinking b
+  | shrinking && b > 12 = 3
+  | shrinking = 2
+  | b > 99 = 0
+  | b > 12 = 1
+  | otherwise = 2
 
 legal :: [Item] -> [Int]
 legal items =
@@ -382,6 +413,23 @@ tests =
           testCase "a line's demerits are capped as in TeX (ADR 0008)" $ do
             lineDemerits defaultParams 9990 0 @?= 100000000
             lineDemerits defaultParams 9989 0 @?= 99980001,
+          -- the brute-force search scores with texLineDemerits and texFitness;
+          -- every badness and the penalties around the thresholds (docs/adr/0065)
+          testCase "the implementation's demerits and fitness agree with TeX's rules at every badness" $ do
+            let bads = [0 .. 10000]
+                pens = [negate infPenalty, negate infPenalty + 1, -100, -1, 0, 1, 100, infPenalty - 1]
+                params = [defaultParams, defaultParams {pLinePenalty = 0}, defaultParams {pLinePenalty = -20}]
+            [(b, sh) | sh <- [False, True], b <- bads, fitnessOf sh b /= texFitness sh b] @?= []
+            [(pLinePenalty ps, b, p) | ps <- params, b <- bads, p <- pens, lineDemerits ps b p /= texLineDemerits ps b p] @?= [],
+          testCase "a very loose line (badness 100) before a decent one adds adj-demerits, as the search finds" $ do
+            -- 40 + 50 with a stretch of 10 on a measure of 100: badness 100, very loose (0),
+            -- two classes from the decent (2) start before it and the decent last line after it
+            let items = [box 40, Glue 0 10 0, box 50, Glue 0 10 0, box 50] <> finish
+                r = breakParagraph noPretol (const 100) items
+            badness 10 10 @?= 100
+            brPositions r @?= [3, length items - 1]
+            Just (brDemerits r, brPositions r) @?= bruteBest noPretol (const 100) items
+            brDemerits r @?= 110 * 110 + 2 * toInteger (pAdjDemerits noPretol) + 10 * 10,
           testCase "an explicit hyphen breaks in the first pass; a pattern hyphen does not (ADR 0008)" $ do
             let items h = [box 30, Penalty 0 50 h, box 30] <> finish
                 r = breakParagraph defaultParams (const 30) (items ExplicitHyphen)
