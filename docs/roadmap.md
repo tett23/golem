@@ -34,7 +34,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 2026-10-23 のテストの品質の点検と、出力のゴールデンを足すときに見つかった問題から採択した ADR を実装する。
 
 - テストを切り替える環境変数の値の読み方をそろえ、省いたテストを数える（未実装、[ADR 0074](adr/0074-test-switches-by-environment-variables.md)）。
-- ADR のテスト設計より弱いテストを、テスト設計のとおりに強める（未実装、[ADR 0076](adr/0076-tests-weaker-than-adr-test-designs.md)）。
 - リリースの smoke の検査で、ビルドが diagnostics を出さないことも確かめる（未実装、[ADR 0080](adr/0080-release-smoke-checks-diagnostics.md)）。
 
 ## v0.1.0-rc4
