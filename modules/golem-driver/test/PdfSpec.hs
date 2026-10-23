@@ -1037,6 +1037,10 @@ codeTests =
       let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"3zw\"\n"
       r <- buildAllWith (\o -> o {optCheckOnly = True}) style "```\nx\n```\n" []
       map diagMessage (codeOf r "G07043") @?= ["コードブロックの行長が足りません"],
+    testCase "G07043 at the boundary: one row and its padding as tall as a page" $ do
+      rs <- mapM (\n -> (n,) . map diagMessage . (`codeOf` "G07043") <$> buildAll (replaceIn "lines = 30" ("lines = " <> T.pack (show n)) horizontalStyle) "```\nx\n```\n" []) [1 .. 4 :: Int]
+      -- the row and its padding take two lines
+      rs @?= [(1, ["コードブロックの一行が一ページに収まりません"]), (2, []), (3, []), (4, [])],
     testCase "G07043: one row and its padding taller than a page" $ do
       r <- buildAll (replaceIn "lines = 30" "lines = 1" horizontalStyle) "```\nx\n```\n" []
       map diagMessage (codeOf r "G07043") @?= ["コードブロックの一行が一ページに収まりません"],
