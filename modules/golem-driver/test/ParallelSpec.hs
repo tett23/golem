@@ -164,7 +164,7 @@ parallelTests race =
             -- find it and the table errors are not the order of the files
             deep = "- 一\n  - 二\n    - 三\n      - 四\n        - 五の項目。\n"
             chapters = [("z.gm", wide), ("a.gm", "前。\n\n" <> wide), ("m.gm", deep <> "\n" <> wide <> "\n" <> wide)]
-        (ds, pdf) <- buildChapters fakeProvider True horizontalStyle [] chapters
+        (ds, pdf) <- buildChapters fakeProvider True (horizontalStyle <> nakaguroBullets) [] chapters
         -- byte offsets: "前。" is 6 bytes and two newlines; the items of deep are 6, 8, 10
         -- and 12 bytes before "四", 62 bytes in all, then a newline; a table is 214 bytes
         -- (two rows of 80 and a rule of 54), then a newline

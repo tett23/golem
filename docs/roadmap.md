@@ -37,12 +37,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - ADR のテスト設計より弱いテストを、テスト設計のとおりに強める（未実装、[ADR 0076](adr/0076-tests-weaker-than-adr-test-designs.md)）。
 - リリースの smoke の検査で、ビルドが diagnostics を出さないことも確かめる（未実装、[ADR 0080](adr/0080-release-smoke-checks-diagnostics.md)）。
 
-### 既知の不具合の修正
-
-仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
-
-- 箇条書きの既定の印を、PDF と CSS では「•」にする（未実装、[golem-driver ADR 0044](golem-driver/adr/0044-default-bullet-u2022.md)）。
-
 ## v0.1.0-rc4
 
 - **リファクタリング**：v0.1.0-rc4 の作業を始める前に、v0.1.0-rc3 までに入れたコードを整理する。モジュールの境界、重複した処理、大きくなった関数とテストの補助を見直し、rc4 のプラグインの仕上げに備える。出力は変えず、決定性の検査で確かめる。

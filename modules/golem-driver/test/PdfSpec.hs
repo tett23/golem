@@ -53,17 +53,18 @@ pdfPipelineTests =
           r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf]}
           assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
           let g = g08100 r
-          map (\(sev, _, _, _) -> sev) g @?= replicate 7 Warning
-          sort [cp | (_, cp, _, _) <- g] @?= ["U+2026", "U+4E00", "U+4E09", "U+4E8C", "U+4FA1", "U+9014", "U+91CD"]
-          sum [n | (_, _, n, _) <- g] @?= 103
-          sort [at | (_, _, _, at) <- g] @?= sort (replicate 4 ("front.gm", 5) <> [("chapters/01.gm", 6), ("chapters/01.gm", 10), ("chapters/02.gm", 6)])
+          -- the bullet • of the two items is not in the subset either (golem-driver ADR 0044)
+          map (\(sev, _, _, _) -> sev) g @?= replicate 8 Warning
+          sort [cp | (_, cp, _, _) <- g] @?= ["U+2022", "U+2026", "U+4E00", "U+4E09", "U+4E8C", "U+4FA1", "U+9014", "U+91CD"]
+          sum [n | (_, _, n, _) <- g] @?= 105
+          sort [at | (_, _, _, at) <- g] @?= sort (replicate 4 ("front.gm", 5) <> [("chapters/01.gm", 6), ("chapters/01.gm", 10), ("chapters/01.gm", 15), ("chapters/02.gm", 6)])
           map takeFileName (brWritten r) @?= ["urn-uuid-11111111-2222-4333-8444-555555555555.pdf"],
       testCase "G08100 in prod: errors, no PDF, and HTML is still written (docs/adr 0081)" $
         withMissingGlyphs subsetJa $ \tmp -> do
           -- the PDF of a dev build before does not stay
           _ <- build (defaultOptions tmp) {optTargets = Just [TargetPdf]}
           r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml], optProfile = Prod}
-          map (\(sev, _, _, _) -> sev) (g08100 r) @?= replicate 7 Error
+          map (\(sev, _, _, _) -> sev) (g08100 r) @?= replicate 8 Error
           pdfDir <- doesDirectoryExist (tmp </> "build/pdf")
           assertBool "no build/pdf" (not pdfDir)
           html <- doesFileExist (tmp </> "build/html/index.xhtml")
@@ -1116,15 +1117,16 @@ codeTests =
       [(poColumn p, [x | x@(_, SCode {}) <- poSlots p]) | p <- plPages pl] @?= [(0, [(3, SCode 3 1 2)]), (1, [(0, SCode 4 2 3)])],
     testCase "in a list: the background and the text start at the text of the item" $ do
       (geom, pl) <- layoutOk (horizontalStyle <> codeBg) "- 項目\n\n  ```\n  x\n  ```\n" []
-      codeRows pl @?= [[(10 * pt + pad, "x")]]
+      -- the bullet • and its gap take two characters (golem-driver ADR 0044)
+      codeRows pl @?= [[(20 * pt + pad, "x")]]
       contents <- miniPdf fakeProvider True (horizontalStyle <> codeBg) "- 項目\n\n  ```\n  x\n  ```\n" [] >>= pageContents
       case concatMap filledRects contents of
         [[x, _, w, _]] -> do
-          assertBool (show x) (abs (x - toPt (rectX (firstColumn geom) + 10 * pt)) < 0.001)
-          assertBool (show w) (abs (w - 110) < 0.001)
+          assertBool (show x) (abs (x - toPt (rectX (firstColumn geom) + 20 * pt)) < 0.001)
+          assertBool (show w) (abs (w - 100) < 0.001)
         other -> assertFailure (show other),
     testCase "G07043: too little measure in a deep list, at the block" $ do
-      let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
+      let style = horizontalStyle <> nakaguroBullets <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n    - c\n\n      ```\n      x\n      ```\n" []
       [(diagMessage d, spanStart (diagSpan d)) | d <- codeOf r "G07043"] @?= [("コードブロックの行長が足りません", 19)]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    x\n    ```\n" []
@@ -1232,7 +1234,7 @@ codeTests =
       (_, pl) <- layoutOk style "```\na\n```\n\n``` numbers=false\nb\n```\n" []
       codeRows pl @?= [[(pad, "1"), (pad + 15 * pt, "a")], [(pad, "b")]],
     testCase "G07043: line numbers and diff marks leave too little measure in a list" $ do
-      let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
+      let style = horizontalStyle <> nakaguroBullets <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n\n    ``` numbers=100 diff=true\n    +x\n    ```\n" []
       map diagMessage (codeOf r "G07043") @?= ["コードブロックの行長が足りません"]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    +x\n    ```\n" []

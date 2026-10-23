@@ -238,19 +238,32 @@ listTests :: [TestTree]
 listTests =
   [ testCase "PDF: the marker hangs and the lines of an item start at the text" $ do
       (_, ls) <- verseLines horizontalStyle ("- " <> T.replicate 20 "あ" <> "\n")
-      ls @?= [(120 * pt, 0), (110 * pt, 10 * pt)],
+      -- the bullet • is a character and fs / 2 (golem-driver ADR 0044)
+      ls @?= [(120 * pt, 0), (100 * pt, 20 * pt)],
     testCase "PDF: the second paragraph of an item starts at the text" $ do
       (_, ls) <- verseLines horizontalStyle "- 一つ目の段落。\n  二つ目の段落。\n"
-      map snd ls @?= [0, 10 * pt],
+      map snd ls @?= [0, 20 * pt],
     testCase "PDF: a nested list starts at the text of the outer item" $ do
       (_, ls) <- verseLines horizontalStyle ("- 外\n  - " <> T.replicate 20 "あ" <> "\n")
-      map snd ls @?= [0, 10 * pt, 20 * pt],
+      map snd ls @?= [0, 20 * pt, 40 * pt, 40 * pt],
     testCase "PDF: the marker width of a numbered list is its widest number" $ do
       let items = T.concat (replicate 9 ("+ " <> T.replicate 16 "あ" <> "\n"))
       (_, ls) <- verseLines horizontalStyle items
       [ind | (k, (_, ind)) <- zip [0 :: Int ..] ls, odd k] @?= replicate 9 (20 * pt)
       (_, ls') <- verseLines horizontalStyle ("@number 100\n" <> items)
       [ind | (k, (_, ind)) <- zip [0 :: Int ..] ls', odd k] @?= replicate 9 (30 * pt),
+    testCase "PDF: without bullets, the bullet is • in a Japanese and an English book (golem-driver ADR 0044)" $ do
+      let marker lang style = do
+            (_, pl) <- layoutHeads (replaceIn "language = \"ja\"" ("language = \"" <> lang <> "\"") miniManifest) style [("a.gm", "- い\n")]
+            case Map.elems (plLines pl) of
+              first : _ -> pure [bcText c | Box _ c <- takeWhile (\case Box _ c -> bcText c /= "い"; _ -> True) (lineItems (slLine first))]
+              [] -> assertFailure "lines"
+      forM_ ["ja", "en"] $ \lang -> do
+        marker lang horizontalStyle >>= (@?= ["•", ""])
+        marker lang (horizontalStyle <> TE.encodeUtf8 "\n[lists]\nbullets = [\"・\"]\n") >>= (@?= ["・", ""]),
+    testCase "PDF: the marker width of the bullet • is a character and fs / 2, two characters (golem-driver ADR 0044)" $ do
+      (_, ls) <- verseLines horizontalStyle ("- " <> T.replicate 20 "あ" <> "\n")
+      map snd ls @?= [0, 20 * pt],
     testCase "PDF: @number sets the numbers" $ do
       ts <- listPages horizontalStyle "+ 一\n@number 5\n+ 二\n+ 三\n"
       ts @?= ["1.一", "5.二", "6.三"],
@@ -262,7 +275,7 @@ listTests =
         (a : _ : b : _) -> do
           assertBool (show (beforeText a)) (all (\case Box {} -> True; _ -> False) (beforeText a))
           [bcText c | Box _ c <- beforeText a] @?= ["1", ".", ""]
-          [bcText c | Box _ c <- beforeText b] @?= ["・", ""]
+          [bcText c | Box _ c <- beforeText b] @?= ["•", ""]
         _ -> assertFailure "lines",
     testCase "PDF: vertical, the number is a Number and the marker ends with 、" $ do
       let fs = maybe 0 (dimToSp 0) (parseDim "13Q")
@@ -281,9 +294,9 @@ listTests =
       a @?= b,
     testCase "PDF: the paragraph style's indent does not apply to list items" $ do
       (_, ls) <- verseLines (horizontalStyle <> "\n[paragraph-styles.body]\nfirst-line-indent = \"1zw\"\n") ("- " <> T.replicate 20 "あ" <> "\n")
-      map snd ls @?= [0, 10 * pt],
+      map snd ls @?= [0, 20 * pt],
     testCase "PDF: lists nested so deep that less than 8 characters are left are G07027" $ do
-      let style = replaceIn "characters = 12" "characters = 10" horizontalStyle
+      let style = replaceIn "characters = 12" "characters = 10" horizontalStyle <> nakaguroBullets
       (ok, _) <- buildMini fakeProvider False style "- 外\n  - 内の項目。\n" []
       ok @?= []
       r <- layoutMini style "- 一\n  - 二\n    - 三の項目。\n" []

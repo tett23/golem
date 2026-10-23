@@ -162,6 +162,13 @@ pdfStyle =
       TE.encodeUtf8 "[headings.1]\nnumber = \"第{n:kanji}章\"\n\n[masters.body]\nfolio = { position = \"bottom-outside\", format = \"{n}\" }\n"
     ]
 
+{- | [lists] with the bullet ・, a marker of one character with no gap: the
+default before golem-driver ADR 0044, for the tests of the measure left
+in nested lists.
+-}
+nakaguroBullets :: BS.ByteString
+nakaguroBullets = TE.encodeUtf8 "\n[lists]\nbullets = [\"・\"]\n"
+
 -- | A4, horizontal, narrow lines: words must be hyphenated.
 horizontalStyle :: BS.ByteString
 horizontalStyle =

@@ -933,19 +933,20 @@ data MasterDef = MasterDef
   deriving stock (Eq, Show)
 
 {- | [lists] (golem-driver ADR 0013): the bullet and the number format of
-each depth, and the gap between a marker and the text. Without numbers,
-the default of the writing mode is used.
+each depth, and the gap between a marker and the text. Without bullets,
+the default of the output is used (golem-driver ADR 0044); without
+numbers, the default of the writing mode.
 -}
 data ListStyle = ListStyle
-  { lsBullets :: !(NonEmpty Text),
+  { lsBullets :: !(Maybe (NonEmpty Text)),
     lsNumbers :: !(Maybe (NonEmpty NumberFormat)),
     lsGap :: !(Maybe Dim)
   }
   deriving stock (Eq, Show)
 
--- | No [lists]: the bullet ・, the numbers and the gap of the writing mode.
+-- | No [lists]: the bullet of the output, the numbers and the gap of the writing mode.
 defaultListStyle :: ListStyle
-defaultListStyle = ListStyle ("・" :| []) Nothing Nothing
+defaultListStyle = ListStyle Nothing Nothing Nothing
 
 {- | A content value of a running head: @heading.<l>.short@,
 @heading.<l>.numbered@ (either with @.last@), @title@ or @none@
@@ -1814,7 +1815,7 @@ instance FromValue ListsSec where
         Just d
           | negativeDim d -> bad l "gap" ("負の寸法です: " <> t)
           | otherwise -> pure (Just d)
-    pure (ListsSec (ListStyle (fromMaybe (lsBullets defaultListStyle) bs) fmts g))
+    pure (ListsSec (ListStyle bs fmts g))
 
 {- | [index] (docs/adr ADR 0025): every error is at its value, G03025 by
 its path. The position of columns is filled in by 'parseStyle'.
