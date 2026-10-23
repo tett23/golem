@@ -121,6 +121,16 @@ terminalTests =
         let line = T.replicate 100 "a"
             fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex line))]
         T.lines (renderHuman fs [diagnostic "G01001" Error (mkSpan (FileId 0) 50 51) "m"]) !! 1 @?= "  | " <> line,
+      -- ADR 0068: the pair at the limit of 200 characters
+      -- the column at the end, where a cut line would start with an ellipsis
+      testCase "a line of exactly 200 characters is written as it is" $ do
+        let line = T.replicate 200 "a"
+            fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex line))]
+        T.lines (renderHuman fs [diagnostic "G01001" Error (mkSpan (FileId 0) 199 200) "m"]) !! 1 @?= "  | " <> line,
+      testCase "a line of 201 characters is cut to 200 and an ellipsis" $ do
+        let line = T.replicate 201 "a"
+            fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex line))]
+        T.lines (renderHuman fs [diagnostic "G01001" Error (mkSpan (FileId 0) 10 11) "m"]) !! 1 @?= "  | " <> T.replicate 200 "a" <> "\x2026",
       testCase "near the start of a long line only the end is cut" $ do
         let line = T.replicate 300 "a"
             fs = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex line))]
