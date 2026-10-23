@@ -1032,6 +1032,13 @@ gridLine geom k = case (drop k grid, grid) of
   where
     grid = pgLineGrid geom
 
+-- | why @page-lines was cut short, at the head of G07037 (docs/adr ADR 0030)
+adjustReason :: AdjustLimit -> Text
+adjustReason = \case
+  AdjustNoRoom -> "段に余りがないため、"
+  AdjustLinesPlaced -> "段にすでに行を置いているため、"
+  AdjustOneLine -> "段には少なくとも 1 行を残すため、"
+
 {- | G07037: the manual controls of page breaks not met (docs/adr ADR
 0030); G07047: the blank lines dropped (docs/adr ADR 0046).
 -}
@@ -1040,7 +1047,7 @@ unmetWarnings pages =
   [ case u of
       UnmetNoBreak sp -> diagnostic "G07037" Warning sp "ここで改ページを止められませんでした"
       UnmetNeedLines sp k -> diagnostic "G07037" Warning sp ("@need-lines " <> T.pack (show k) <> " は段の行数 " <> T.pack (show (poLines p)) <> " を超えます")
-      UnmetAdjust sp k -> diagnostic "G07037" Warning sp ("@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")
+      UnmetAdjust sp k limit -> diagnostic "G07037" Warning sp (adjustReason limit <> "@page-lines の増減を " <> T.pack (show k) <> " 行に切り詰めました")
       -- G07047: blank lines dropped at the top of a column (docs/adr ADR 0046)
       DroppedBlank sp -> notice "G07047" sp "段の先頭に来た @blank-line の空きを捨てました"
   | p <- pages,
@@ -2056,7 +2063,7 @@ buildFlow inp geom fonts images assumed = do
                 | exLines e > capacity -> [diagnostic "G07023" Error (uSpan u) ("回り込む図版の除外領域が一ページの行数を超えます（" <> T.pack (show (exLines e)) <> " 行）")]
               -- a caption that leaves no line for the image (golem-driver ADR 0034)
               _
-                | tooDeep -> [diagnostic "G07038" Error (uSpan u) ("図版のキャプションが" <> place' <> "の行数を超えます（" <> T.pack (show span') <> " 行。" <> place' <> "は " <> T.pack (show gridLines) <> " 行）")]
+                | tooDeep -> [diagnostic "G07038" Error (uSpan u) ("図版のキャプションが" <> place' <> "の行数に達します（" <> T.pack (show span') <> " 行。" <> place' <> "は " <> T.pack (show gridLines) <> " 行）")]
                 | otherwise -> []
             turn
               | not turned = Nothing

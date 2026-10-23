@@ -367,7 +367,7 @@ pageControlTests =
       r <- layoutMini style "@page-lines +1\n\n一\n" []
       (_, layout) <- either (assertFailure . show) pure r
       map poLines (plPages layout) @?= [36]
-      map described (plNotices layout) @?= [("G07037", "@page-lines の増減を 0 行に切り詰めました", FileId 1, 0, 15)],
+      map described (plNotices layout) @?= [("G07037", "段に余りがないため、@page-lines の増減を 0 行に切り詰めました", FileId 1, 0, 15)],
     testCase "PDF: a no-break that cannot be met and need-lines past the column are G07037, and the PDF is written" $ do
       r <- layoutMini fiveLines "@no-page-break\n\n一\n\n@need-lines 9\n\n二\n" []
       (_, layout) <- either (assertFailure . show) pure r
