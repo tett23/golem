@@ -59,6 +59,16 @@ genText =
       (Range.linear 0 80)
       (Gen.element ("ab 漢字かな\n😀𠮷x" :: String))
 
+{- | The columns of a line that fall between two characters, from 0 to the
+width of the line, in UTF-8 bytes or UTF-16 code units.
+-}
+characterBoundaries :: Encoding -> Text -> [Int]
+characterBoundaries enc = scanl (+) 0 . map units . T.unpack
+  where
+    units ch = case enc of
+      Utf8 -> BS.length (TE.encodeUtf8 (T.singleton ch))
+      Utf16 -> if fromEnum ch > 0xFFFF then 2 else 1
+
 textOf :: Workspace -> FilePath -> Text
 textOf ws p = maybe "" srcText (sourceOf ws p)
 
@@ -338,14 +348,18 @@ tests =
         let emoji = mkLineIndex "😀a"
         fromLineCol Utf16 emoji (LineCol 0 1) @?= Nothing
         fromLineCol Utf16 emoji (LineCol 0 9) @?= Just 5,
-      testProperty "a converted position lies within its line (ADR 0003)" $ property $ do
+      testProperty "a converted position lies within its line; only a position off the lines or inside a character has none (ADR 0003)" $ property $ do
         t <- forAll genText
         enc <- forAll (Gen.element [Utf8, Utf16])
         let li = mkLineIndex t
         l <- forAll (Gen.int (Range.linear (-1) (lineCount li)))
         c <- forAll (Gen.int (Range.linear 0 40))
         case fromLineCol enc li (LineCol l c) of
-          Nothing -> success
+          Nothing -> do
+            -- the columns between characters, counted from the text of the line (docs/adr/0066)
+            let cols = characterBoundaries enc (T.splitOn "\n" t !! l)
+            annotateShow cols
+            H.assert (l < 0 || l >= lineCount li || (c < last cols && c `notElem` cols))
           Just o -> do
             let start = fromLineCol enc li (LineCol l 0)
             H.assert (maybe False (<= o) start)
