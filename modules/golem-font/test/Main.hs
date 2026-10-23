@@ -1,6 +1,6 @@
 module Main (main) where
 
-import ConcurrencySpec (concurrencyTests)
+import ConcurrencySpec (concurrencyTests, raceFactor)
 import Control.Monad (void)
 import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
@@ -21,7 +21,8 @@ main = do
   serif <- BS.readFile "test/fonts/SourceSerifVariable-Roman.ttf"
   -- the subset of Source Han Sans has no palt; Noto Serif JP of golem-driver's 蟹工船 fixture has
   noto <- BS.readFile "../golem-driver/test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf" >>= loadFont >>= either (fail . show) pure
-  defaultMain (tests han sans serif noto)
+  race <- raceFactor
+  defaultMain (tests race han sans serif noto)
 
 load :: FilePath -> IO Font
 load name = do
@@ -45,8 +46,8 @@ render gs = T.unlines [T.pack (show g <> " @" <> show c <> " " <> show p) | (g, 
 goldenShape :: String -> Font -> ShapeRequest -> TestTree
 goldenShape name f req = goldenVsString name ("test/golden/" <> name <> ".txt") (pure (BL.fromStrict (TE.encodeUtf8 (render (shapeUnits f req)))))
 
-tests :: Font -> Font -> ByteString -> Font -> TestTree
-tests han sans serif noto =
+tests :: Int -> Font -> Font -> ByteString -> Font -> TestTree
+tests race han sans serif noto =
   testGroup
     "golem-font (ADR 0001, 0002)"
     [ testGroup
@@ -155,7 +156,7 @@ tests han sans serif noto =
           testCase "a font that is not CID-keyed gives the glyph id as the CID" $
             map (glyphCid sans) [0, 1, 2, fontNumGlyphs sans + 3] @?= [0, 1, 2, fontNumGlyphs sans + 3]
         ],
-      concurrencyTests han noto
+      concurrencyTests race han noto
     ]
   where
     head' (x : _) = x

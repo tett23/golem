@@ -40,6 +40,41 @@ expect() {
   ok
 }
 
+# skip COUNT NAME: COUNT checks did not run; said on stderr and counted in
+# the summary (docs/adr/0077)
+SKIPPED=0
+skip() {
+  SKIPPED=$((SKIPPED + $1))
+  printf 'SKIP %s %s\n' "$1" "$2" >&2
+}
+
+# fixture NAME CMD...: runs a command that builds the input of the tests.
+# A failure stops the tests with its output: a broken fixture would make
+# the later checks pass or fail for another reason (docs/adr/0077)
+fixture() {
+  name=$1
+  shift
+  # not in an if nor before || or &&, which would turn off set -e in CMD
+  "$@" >"$WORK/fixture.log" 2>&1
+  fixture_code=$?
+  if [ "$fixture_code" != 0 ]; then
+    printf 'FIXTURE FAILED: %s\n' "$name"
+    sed 's/^/  /' "$WORK/fixture.log"
+    exit 1
+  fi
+}
+
+# git_repo DIR: a new repository at DIR on the branch main, which commits
+# and tags as ci, without signing whatever the configuration of the user
+git_repo() {
+  mkdir -p "$1" &&
+    git -C "$1" init -q -b main &&
+    git -C "$1" config user.email ci@example.com &&
+    git -C "$1" config user.name ci &&
+    git -C "$1" config commit.gpgsign false &&
+    git -C "$1" config tag.gpgsign false
+}
+
 # ---------------------------------------------------------------- needs-build.sh
 
 needs_build() { sh "$HERE/needs-build.sh"; }
@@ -90,20 +125,38 @@ expect "needs-build: the documents that the build reads (docs/adr/0024)" 0 "docs
 # (docs/adr/0021-docs-workflow-and-ci-gate.md)
 
 changed_paths() { sh "$HERE/changed-paths.sh" "$@"; }
+# git_repo commits and tags even when the configuration of the user signs
+# every commit and tag with a gpg that fails; a plain repository does not
+# (docs/adr/0077)
+printf '[commit]\n\tgpgsign = true\n[tag]\n\tgpgsign = true\n[gpg]\n\tprogram = false\n' >"$WORK/signing.gitconfig"
+# signed_commit DIR INIT...: INIT makes a repository at DIR, then a commit
+# and an annotated tag, with the configuration that signs
+signed_commit() (
+  dir=$1
+  shift
+  GIT_CONFIG_GLOBAL=$WORK/signing.gitconfig
+  export GIT_CONFIG_GLOBAL
+  "$@" "$dir" && echo a >"$dir/a" && git -C "$dir" add a &&
+    git -C "$dir" -c user.email=ci@example.com -c user.name=ci commit -q -m a &&
+    git -C "$dir" -c user.email=ci@example.com -c user.name=ci tag -a -m t v1
+) >/dev/null 2>&1
+plain_repo() { mkdir -p "$1" && git -C "$1" init -q -b main; }
+if signed_commit "$WORK/signing-plain" plain_repo; then ng "git_repo: the configuration that signs breaks a plain repository"; else ok; fi
+if signed_commit "$WORK/signing-fixture" git_repo; then ok; else ng "git_repo: a fixture commits and tags without signing"; fi
+
 G=$WORK/git
-mkdir -p "$G"
-(
-  cd "$G" || exit 1
-  git init -q -b main .
-  git config user.email ci@example.com
-  git config user.name ci
+changed_paths_repo() (
+  set -e
+  git_repo "$G"
+  cd "$G"
   echo a >a.hs && git add a.hs && git commit -q -m a
   git checkout -q -b topic
   mkdir -p docs && echo x >docs/x.md && echo s >"docs/a b.md" && echo j >docs/日本語.md
   git add docs && git commit -q -m x
   git checkout -q main
   echo b >b.hs && git add b.hs && git commit -q -m b
-) >/dev/null 2>&1
+)
+fixture "the repository of changed-paths.sh" changed_paths_repo
 MAIN=$(git -C "$G" rev-parse main)
 MAIN1=$(git -C "$G" rev-parse main~1)
 TOPIC=$(git -C "$G" rev-parse topic)
@@ -129,25 +182,25 @@ if [ "$CODE" != 0 ] && [ "$CODE" != 3 ]; then ok; else ng "changed-paths: a comm
 
 AV=$WORK/abi
 # abi_repo: a repository with the three files at ABI 1, tagged v0.0.1
+# abi_git ARG...: git in $AV, as a fixture
+abi_git() { fixture "abi-version: git $*" git -C "$AV" "$@"; }
 abi_repo() {
   rm -rf "$AV"
+  fixture "abi-version: the repository" git_repo "$AV"
   mkdir -p "$AV/modules/golem-doc/schema" "$AV/modules/golem-doc/src/Golem/Doc"
-  (
-    cd "$AV" || exit 1
-    git init -q -b main .
-    git config user.email ci@example.com
-    git config user.name ci
-    printf '; the IR\ndocument = { version: uint }\n' >modules/golem-doc/schema/golem-doc.cddl
-    printf -- '-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\n' >modules/golem-doc/src/Golem/Doc/Validate.hs
-    printf 'module Golem.Doc.IR where\n\nabiVersion :: Int\nabiVersion = 1\n' >modules/golem-doc/src/Golem/Doc/IR.hs
-    git add . && git commit -q -m release && git tag v0.0.1
-  ) >/dev/null 2>&1
+  printf '; the IR\ndocument = { version: uint }\n' >"$AV/modules/golem-doc/schema/golem-doc.cddl"
+  printf -- '-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\n' >"$AV/modules/golem-doc/src/Golem/Doc/Validate.hs"
+  printf 'module Golem.Doc.IR where\n\nabiVersion :: Int\nabiVersion = 1\n' >"$AV/modules/golem-doc/src/Golem/Doc/IR.hs"
+  abi_git add .
+  abi_git commit -q -m release
+  abi_git tag v0.0.1
 }
 # abi_change NAME CODE [STDERR-WORD...]: commits the changes made in $AV, then runs the script
 abi_change() {
   name=$1 code=$2
   shift 2
-  (cd "$AV" && git add -A && git commit -q --allow-empty -m change) >/dev/null 2>&1
+  abi_git add -A
+  abi_git commit -q --allow-empty -m change
   : >"$WORK/in"
   run env GOLEM_ROOT="$AV" sh "$HERE/abi-version.sh"
   expect "abi-version: $name" "$code"
@@ -185,7 +238,9 @@ abi_validate '-- | The checks, again\nmodule Golem.Doc.Validate where\n\n{- | an
 abi_change "a comment of Validate.hs" 0
 abi_repo
 abi_validate "-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\nq = ('\"', \"a -- b\") -- one\n"
-(cd "$AV" && git add -A && git commit -q -m q && git tag -f v0.0.1) >/dev/null 2>&1
+abi_git add -A
+abi_git commit -q -m q
+abi_git tag -f v0.0.1
 abi_validate "-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\nq = ('\"', \"a -- b\") -- two\n"
 abi_change "a comment after a character and a string with dashes" 0
 abi_validate "-- | The checks\nmodule Golem.Doc.Validate where\n\n{- | a block\ncomment -}\ncheck :: Int -> Bool\ncheck n = n > 0 -- positive\nq = ('\"', \"a -- c\") -- two\n"
@@ -196,11 +251,14 @@ abi_validate '-- | The checks\nmodule Golem.Doc.Validate where\n\ncheck :: Int -
 abi_set 2
 abi_change "the CDDL and Validate.hs and one more version" 0
 abi_repo
-(cd "$AV" && git rm -q modules/golem-doc/src/Golem/Doc/Validate.hs && git commit -q -m gone && git tag -d v0.0.1 && git tag v0.0.1) >/dev/null 2>&1
+abi_git rm -q modules/golem-doc/src/Golem/Doc/Validate.hs
+abi_git commit -q -m gone
+abi_git tag -d v0.0.1
+abi_git tag v0.0.1
 abi_validate '-- | The checks\nmodule Golem.Doc.Validate where\n'
 abi_change "Validate.hs missing from the release" 1 "Validate.hs"
 abi_repo
-(cd "$AV" && git tag -d v0.0.1) >/dev/null 2>&1
+abi_git tag -d v0.0.1
 abi_change "no release tag" 0
 if grep -q 'no release' "$WORK/out" "$WORK/err"; then ok; else ng "abi-version: no release tag: says the check is skipped"; fi
 
@@ -218,6 +276,22 @@ if grep -q 'docs/new.md' "$WORK/err"; then ok; else ng "docs-refs: the document 
 printf -- '-- docs/adr/0001-x.md\nmain = readFile "../../docs/diagnostics.md"\n' >"$R/modules/x/test/Main.hs"
 run docs_refs "$R"
 expect "docs-refs: an ADR and a listed document" 0
+# a path built from "docs" needs the annotation (docs/adr/0069)
+printf 'main = readFile ("../.." </> "docs" </> "new.md")\n' >"$R/modules/x/test/Main.hs"
+run docs_refs "$R"
+expect "docs-refs: a path built from \"docs\" without the annotation" 1
+if grep -qF 'modules/x/test/Main.hs:1' "$WORK/err"; then ok; else ng "docs-refs: the line without the annotation is named"; fi
+printf 'main = readFile ("../.." </> "docs" </> "new.md") -- docs-refs: docs/new.md\n' >"$R/modules/x/test/Main.hs"
+run docs_refs "$R"
+expect "docs-refs: the annotation names a document that is not in the list" 1
+if grep -q 'docs/new.md' "$WORK/err"; then ok; else ng "docs-refs: the annotated document is named"; fi
+printf 'main = readFile ("../.." </> "docs" </> "diagnostics.md") -- docs-refs: docs/diagnostics.md\n' >"$R/modules/x/test/Main.hs"
+run docs_refs "$R"
+expect "docs-refs: the annotation names a listed document" 0
+printf 'd="docs"\n' >"$R/scripts/a.sh"
+run docs_refs "$R"
+expect "docs-refs: \"docs\" in a script without the annotation" 1
+rm "$R/scripts/a.sh"
 
 # ---------------------------------------------------------------- incomplete-patterns.sh
 
@@ -266,6 +340,75 @@ executable b
 run incomplete_patterns "$P"
 expect "incomplete-patterns: a component that does not import the stanza" 1
 if grep -qx 'modules/b/b.cabal: executable b' "$WORK/err" && ! grep -q 'library' "$WORK/err"; then ok; else ng "incomplete-patterns: only the component without the flag is named"; fi
+# the forms that slipped past the check (docs/adr/0069)
+# ip_case NAME CODE TEXT [LINE]: modules/b/b.cabal is TEXT; with LINE,
+# stderr has it
+ip_case() {
+  cabal b "$3"
+  run incomplete_patterns "$P"
+  expect "incomplete-patterns: $1" "$2"
+  if [ $# -ge 4 ]; then
+    if grep -qxF "$4" "$WORK/err"; then ok; else ng "incomplete-patterns: $1: \"$4\" on stderr"; fi
+  fi
+}
+for neg in -Wno-error=incomplete-patterns -Wno-incomplete-patterns -Wwarn=incomplete-patterns; do
+  ip_case "the flag, then $neg" 1 "library
+  ghc-options: -Werror=incomplete-patterns $neg
+" "modules/b/b.cabal: library"
+done
+ip_case "the flag in the common stanza, a negation in the component" 1 'common warnings
+  ghc-options: -Werror=incomplete-patterns
+
+library
+  import: warnings
+  ghc-options: -Wno-error=incomplete-patterns
+' "modules/b/b.cabal: library"
+ip_case "the flag after a negation" 0 'library
+  ghc-options: -Wno-incomplete-patterns -Werror=incomplete-patterns
+'
+ip_case "the flag on the line after ghc-options" 0 'Common warnings
+  GHC-Options:
+    -Wall
+    -Werror=incomplete-patterns
+
+Library
+  Import: warnings
+
+executable b
+  ghc-options:
+    -Werror=incomplete-patterns
+    -threaded
+'
+ip_case "a negation on the line after ghc-options" 1 'library
+  ghc-options: -Werror=incomplete-patterns
+    -Wno-error=incomplete-patterns
+' "modules/b/b.cabal: library"
+ip_case "a section name in capitals" 1 'Executable b
+  ghc-options: -Wall
+' "modules/b/b.cabal: Executable b"
+cabal b "$COMMON_OK"
+mkdir -p "$P/modules/b/src"
+printf '{-# OPTIONS_GHC -Wall -Wno-incomplete-patterns #-}\nmodule B where\n' >"$P/modules/b/src/B.hs"
+run incomplete_patterns "$P"
+expect "incomplete-patterns: OPTIONS_GHC with a negation in a source" 1
+if grep -qxF 'modules/b/src/B.hs:1' "$WORK/err"; then ok; else ng "incomplete-patterns: the source is named by file and line"; fi
+printf 'module B where\n\n{-# options_ghc\n      -Wwarn=incomplete-patterns #-}\n' >"$P/modules/b/src/B.hs"
+run incomplete_patterns "$P"
+expect "incomplete-patterns: a pragma over two lines in lower case" 1
+printf -- '-- {-# OPTIONS_GHC -Wno-incomplete-patterns #-} is not written\n{-# OPTIONS_GHC -Wall #-}\nmodule B where\n' >"$P/modules/b/src/B.hs"
+run incomplete_patterns "$P"
+expect "incomplete-patterns: OPTIONS_GHC without a negation, and one in a comment" 0
+rm -r "$P/modules/b/src"
+printf 'packages: modules/*/*.cabal\n\npackage *\n  ghc-options: -Wno-error=incomplete-patterns\n' >"$P/cabal.project"
+run incomplete_patterns "$P"
+expect "incomplete-patterns: package * of cabal.project takes the flag back" 1
+if grep -qxF 'cabal.project: package *' "$WORK/err"; then ok; else ng "incomplete-patterns: the section of cabal.project is named"; fi
+printf 'packages: modules/*/*.cabal\n\npackage *\n  ghc-options: -Wall\n' >"$P/cabal.project"
+printf 'Package golem-b\n  GHC-Options:\n    -Wno-incomplete-patterns\n' >"$P/cabal.project.local"
+run incomplete_patterns "$P"
+expect "incomplete-patterns: cabal.project.local takes the flag back" 1
+if grep -qxF 'cabal.project.local: Package golem-b' "$WORK/err"; then ok; else ng "incomplete-patterns: the section of cabal.project.local is named"; fi
+rm "$P/cabal.project" "$P/cabal.project.local"
 rm "$P/modules/b/b.cabal"
 run incomplete_patterns "$P"
 expect "incomplete-patterns: a package without a .cabal file" 1
@@ -308,6 +451,45 @@ printf 'modules/x/src/X/A.hs:kept # a reason\nmodules/x/src/X/A.hs:added # anoth
 run unsafe_io "$U"
 expect "unsafe-io: a listed use that is gone" 1
 if grep -q 'modules/x/src/X/A.hs:gone' "$WORK/err"; then ok; else ng "unsafe-io: the gone use is named"; fi
+# unsafe_case NAME USE TEXT: A.hs is the allowed kept, then TEXT; the
+# script fails and names USE (docs/adr/0069)
+unsafe_case() {
+  printf 'modules/x/src/X/A.hs:kept # a reason\n' >"$U/scripts/ci/unsafe-io-allowed.txt"
+  printf 'module X.A (kept) where\n\nkept :: Int -> Int\nkept n = unsafePerformIO (pure n)\n%s\n' "$3" >"$U/modules/x/src/X/A.hs"
+  run unsafe_io "$U"
+  expect "unsafe-io: $1" 1
+  if grep -qxF "unsafe-io: not in scripts/ci/unsafe-io-allowed.txt: modules/x/src/X/A.hs:$2" "$WORK/err"; then ok; else ng "unsafe-io: $1: $2 is named"; fi
+}
+for name in unsafeInterleaveIO unsafeInterleaveST unsafeIOToST inlinePerformIO accursedUnutterablePerformIO; do
+  unsafe_case "$name" other "other :: Int
+other = $name x"
+done
+unsafe_case "a use after dashes in a string" other 'other :: Int
+other = let _ = "--" in unsafePerformIO x'
+unsafe_case "a use after an opening of a block comment in a string" other 'other :: Int
+other = let _ = "{-" in unsafePerformIO x'
+unsafe_case "a use after an escaped quote in a string" other 'other = let _ = "\"--" in unsafePerformIO x'
+unsafe_case "a use after a quote in a character" other "other = let _ = ('\"', '-') in unsafePerformIO x"
+unsafe_case "a quoted name" other "other = \$(varE 'unsafePerformIO)"
+unsafe_case "a use after an operator of dashes" other 'other = a --> unsafePerformIO x'
+unsafe_case "a use in an instance right after the allowed function" "instance Show T" 'instance Show T where show _ = unsafePerformIO x'
+unsafe_case "a use in the body of an instance" "instance Show T" 'instance Show T where
+  show _ = unsafePerformIO x'
+# the cases that are not uses: a string with the name, a character, a
+# primed name, a block comment opened in a string and closed later
+printf 'modules/x/src/X/A.hs:kept # a reason\n' >"$U/scripts/ci/unsafe-io-allowed.txt"
+cat >"$U/modules/x/src/X/A.hs" <<'EOF'
+module X.A (kept) where
+
+kept :: Int -> Int
+kept n = unsafePerformIO (pure n)
+
+other :: String
+other = "unsafePerformIO" ++ ['\'', '"'] ++ "a \"{- b" ++ unsafePerformIO' ++ x'unsafePerformIO -- "
+{- "unsafePerformIO -}
+EOF
+run unsafe_io "$U"
+expect "unsafe-io: the name in a string, characters, primed names" 0
 
 # ---------------------------------------------------------------- rts-capabilities.sh
 
@@ -354,6 +536,66 @@ printf 'main = setNumCapabilities 8\n' >"$Q/modules/a/test/Main.hs"
 run rts_capabilities "$Q"
 expect "rts-capabilities: a call of setNumCapabilities" 1
 if grep -qx 'modules/a/test/Main.hs:1' "$WORK/err"; then ok; else ng "rts-capabilities: the call is named by file and line"; fi
+# the forms that slipped past the check (docs/adr/0069); cabal 3.18.1 reads
+# a field on the lines after its name and the names of sections and fields
+# in any case, and GHC 9.10.3 keeps the last -with-rtsopts only
+printf 'main = pure ()\n' >"$Q/modules/a/test/Main.hs"
+qcabal a 'library
+'
+# rts_case NAME CODE TEXT [COMPONENT]: modules/b/b.cabal is TEXT; with
+# COMPONENT, stderr names it
+rts_case() {
+  qcabal b "$3"
+  run rts_capabilities "$Q"
+  expect "rts-capabilities: $1" "$2"
+  if [ $# -ge 4 ]; then
+    if grep -qxF "modules/b/b.cabal: $4" "$WORK/err"; then ok; else ng "rts-capabilities: $1: $4 is named"; fi
+  fi
+}
+rts_case "-threaded on the line after ghc-options" 1 'executable b
+  ghc-options:
+    -Wall
+    -threaded
+' "executable b"
+rts_case "a section name in capitals" 1 'Executable b
+  ghc-options: -threaded
+' "Executable b"
+rts_case "a field name in capitals" 1 'executable b
+  GHC-Options: -threaded
+' "executable b"
+rts_case "-N in the first -with-rtsopts, not in the last" 1 'executable b
+  ghc-options: -threaded "-with-rtsopts=-N" "-with-rtsopts=-A64m"
+' "executable b"
+rts_case "-N in the first ghc-options, not in the last" 1 'executable b
+  ghc-options: -threaded "-with-rtsopts=-N"
+  ghc-options: "-with-rtsopts=-A64m"
+' "executable b"
+rts_case "-N in the common stanza, replaced by the component" 1 'common rts
+  ghc-options: -threaded "-with-rtsopts=-N"
+
+executable b
+  import: rts
+  ghc-options: "-with-rtsopts=-A64m"
+' "executable b"
+rts_case "-threaded only in a common stanza" 1 'common rts
+  ghc-options: -threaded
+
+test-suite b-test
+  import: rts
+' "test-suite b-test"
+rts_case "-threaded and -N on the lines after ghc-options" 0 'common rts
+  ghc-options:
+    -threaded
+    "-with-rtsopts=-N"
+
+executable b
+  ghc-options:
+    -threaded
+    "-with-rtsopts=-A64m" "-with-rtsopts=-N -A64m"
+
+Test-Suite b-test
+  Import: rts
+'
 
 # ---------------------------------------------------------------- suite-timeout.sh
 
@@ -369,6 +611,8 @@ if command -v timeout >/dev/null 2>&1; then
   run suite_timeout sleep 30
   expect "suite-timeout: a suite that does not finish is stopped" 124
   if grep -qx 'sleep: did not finish in 1 seconds' "$WORK/err"; then ok; else ng "suite-timeout: the suite that did not finish is named"; fi
+else
+  skip 4 "suite-timeout (no timeout command)"
 fi
 
 # ---------------------------------------------------------------- bg.sh
@@ -659,11 +903,23 @@ expect "gate: not JSON" 1
 ci_jobs() { # ci_jobs WORKFLOW: the names of its jobs
   awk '/^jobs:/ { on = 1; next } on && /^[^ #]/ { on = 0 } on && /^  [a-z][a-z0-9-]*:$/ { sub(/^  /, ""); sub(/:$/, ""); print }' "$1"
 }
-: >"$WORK/in"
-run gate --names
-if [ "$CODE" = 0 ] && [ "$(sort "$WORK/out")" = "$(ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx ci | sort)" ]; then ok; else ng "gate: the names are the jobs of ci.yml"; fi
-ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx ci | grep -vx format >"$WORK/fewer"
-if [ "$(sort "$WORK/out")" != "$(sort "$WORK/fewer")" ]; then ok; else ng "gate: a job missing from the names is found"; fi
+# names_match GATE: the names of the gate.sh at GATE are the jobs of ci.yml
+names_match() {
+  : >"$WORK/in"
+  run sh "$1" --names
+  [ "$CODE" = 0 ] && [ "$(sort "$WORK/out")" = "$(ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx ci | sort)" ]
+}
+if names_match "$HERE/gate.sh"; then ok; else ng "gate: the names are the jobs of ci.yml"; fi
+# the same comparison finds a job missing from the names, in a copy of
+# gate.sh without format (docs/adr/0077)
+sed 's/^NAMES="\(.*\) format\(.*\)"$/NAMES="\1\2"/' "$HERE/gate.sh" >"$WORK/gate-fewer.sh"
+if grep -q '^NAMES=.*format' "$WORK/gate-fewer.sh" || cmp -s "$HERE/gate.sh" "$WORK/gate-fewer.sh"; then
+  ng "gate: the copy of gate.sh has no format"
+elif names_match "$WORK/gate-fewer.sh"; then
+  ng "gate: a job missing from the names is found"
+else
+  ok
+fi
 
 # ---------------------------------------------------------------- determinism.sh
 
@@ -792,6 +1048,64 @@ if grep -qx '| `build (ubuntu-24.04)` | `Run haskell-actions/setup@v2` | 143 | 1
 run timings --bogus
 expect "timings: an unknown option" 2
 
+# ---------------------------------------------------------------- race-needed.sh
+# (docs/adr/0075-race-search-repetitions.md)
+
+# The fake gh writes its arguments to $WORK/gh.args and prints
+# $FAKE_HEAD, the head of the last successful run of race.yml.
+RN=$WORK/race-needed
+mkdir -p "$RN"
+cat >"$RN/gh" <<GH
+#!/bin/sh
+printf '%s\n' "\$*" >"$WORK/gh.args"
+[ -z "\${FAKE_GH_FAIL-}" ] || exit 1
+printf '%s\n' "\$FAKE_HEAD"
+GH
+chmod +x "$RN/gh"
+A=0123456789abcdef0123456789abcdef01234567
+B=89abcdef0123456789abcdef0123456789abcdef
+race_needed() { GH=$RN/gh FAKE_HEAD=$1 sh "$HERE/race-needed.sh" "$2"; }
+: >"$WORK/in"
+run race_needed "$A" "$A"
+expect "race-needed: main has not changed" 0 false
+if [ "$(cat "$WORK/gh.args" 2>/dev/null)" = "run list --workflow race.yml --branch main --status success --limit 1 --json headSha --jq .[0].headSha" ]; then ok; else ng "race-needed: the last successful run of race.yml on main"; fi
+run race_needed "$B" "$A"
+expect "race-needed: main has changed" 0 true
+run race_needed "" "$A"
+expect "race-needed: no successful run yet" 0 true
+run race_needed null "$A"
+expect "race-needed: no successful run yet (null)" 0 true
+run race_needed "not a commit" "$A"
+expect "race-needed: gh answers with what is not a commit" 1
+run race_needed "$A" "${A%?}"
+expect "race-needed: a SHA that is not a commit" 2
+FAKE_GH_FAIL=1 run race_needed "$A" "$A"
+expect "race-needed: gh fails" 1
+
+# ---------------------------------------------------------------- race.yml
+# (docs/adr/0075-race-search-repetitions.md)
+
+RACE_YML=$HERE/../../.github/workflows/race.yml
+if [ -f "$RACE_YML" ]; then ok; else ng "race.yml: exists"; fi
+# once a day, and by hand
+if grep -qE '^    - cron: "[0-9]+ [0-9]+ \* \* \*"$' "$RACE_YML" && grep -qx '  workflow_dispatch:' "$RACE_YML"; then ok; else ng "race.yml: a schedule of once a day and workflow_dispatch"; fi
+# it reads the repository and the runs, and writes nothing
+if [ "$(awk '/^permissions:/ { on = 1; next } on && /^[^ ]/ { on = 0 } on && /^  [a-z]/' "$RACE_YML")" = "  contents: read
+  actions: read" ]; then ok; else ng "race.yml: the permissions are contents: read and actions: read"; fi
+if grep -qE ': *write' "$RACE_YML" || grep -q 'actions/cache@' "$RACE_YML"; then ng "race.yml: nothing is written, the caches are only restored"; else ok; fi
+if grep -qF 'GH_TOKEN: ${{ github.token }}' "$RACE_YML" && grep -qF 'sh scripts/ci/race-needed.sh "$GITHUB_SHA"' "$RACE_YML"; then ok; else ng "race.yml: race-needed.sh decides with the token of the run"; fi
+# the tests run with GOLEM_RACE_TESTS, and only the three race tests
+RT=$WORK/race-tests
+awk '/name: The race tests/ { on = 1; next } on && /^      - / { on = 0 } on' "$RACE_YML" >"$RT"
+if grep -qx '          GOLEM_RACE_TESTS: "40"' "$RT"; then ok; else ng "race.yml: the race tests have GOLEM_RACE_TESTS=40"; fi
+if [ "$(grep -c 'cabal test' "$RACE_YML")" = 2 ] &&
+  grep -qx '          cabal test golem-driver-parallel-test golem-font-race-test' "$RT" &&
+  grep -qx "          cabal test golem-font-test --test-option=-p --test-option='/one font from many threads/'" "$RT"; then ok; else
+  ng "race.yml: only golem-driver-parallel-test, golem-font-race-test and the concurrency tests of golem-font-test run"
+fi
+if grep -qF 'one font from many threads' "$HERE/../../modules/golem-font/test/ConcurrencySpec.hs"; then ok; else ng "race.yml: the pattern names the group of ConcurrencySpec"; fi
+if awk -v c="if: steps.needed.outputs.run == 'true'" 'index($0, "name: The race tests") { getline; if (index($0, c)) f = 1 } END { exit !f }' "$RACE_YML"; then ok; else ng "race.yml: the tests run only when race-needed.sh says so"; fi
+
 # ---------------------------------------------------------------- test-only-deps.sh
 
 PLANS=$HERE/testdata/test-only-deps
@@ -841,5 +1155,5 @@ run test_only_deps
 expect "test-only-deps: no argument" 2
 
 # ----------------------------------------------------------------
-printf '%s tests, %s failures\n' "$COUNT" "$FAILURES"
+printf '%s tests, %s failures, %s skipped\n' "$COUNT" "$FAILURES" "$SKIPPED"
 [ "$FAILURES" -eq 0 ]

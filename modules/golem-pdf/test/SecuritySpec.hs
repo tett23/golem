@@ -236,6 +236,24 @@ tests =
           do
             let pdf = contentsOf "4 0 R 5 0 R" [(4, nulStream (128 * mib)), (5, nulStream (128 * mib - 1))]
             imported 1 pdf >>= (@?= Right (256 * mib, 0)),
+      -- Two streams in Contents that decode to 256 MiB together join to
+      -- 256 MiB and one byte, beyond the joined content's own limit (docs/adr
+      -- ADR 0051); the third byte is a form's, so that the joined content is
+      -- 256 MiB and the decoded total exactly 256 MiB (docs/adr ADR 0068).
+      localOption (mkTimeout (seconds 120)) $
+        testCase "a total of exactly 256 MiB decoded is read (docs/adr ADR 0068)" $
+          do
+            let pdf =
+                  classicPdf
+                    ""
+                    [ catalog,
+                      (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+                      (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /XObject << /F 6 0 R >> >> /Contents [4 0 R 5 0 R] >>"),
+                      (4, nulStream (128 * mib)),
+                      (5, nulStream (128 * mib - 1)),
+                      (6, stream "/Type /XObject /Subtype /Form /BBox [0 0 1 1] /Filter /FlateDecode" (zeros 1))
+                    ]
+            imported 1 pdf >>= (@?= Right (256 * mib, 1)),
       localOption (mkTimeout (seconds 10))
         $ testCase "C4: the TIFF predictor with Colors 65536 is refused for the predictor"
         $ imported 1 (pageWith "/Filter /FlateDecode /DecodeParms << /Predictor 2 /Colors 65536 /BitsPerComponent 8 /Columns 65536 >>" (zeros mib)) >>= refusedFor "予測子",

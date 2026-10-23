@@ -33,30 +33,23 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 2026-10-23 のテストの品質の点検と、出力のゴールデンを足すときに見つかった問題から採択した ADR を実装する。
 
-- 実装を写したオラクルと、同じ式を二度評価するだけの断言をなくす（未実装、[ADR 0065](adr/0065-tautological-properties-and-oracles.md)）。
 - 空の結果や Nothing で通ってしまう断言を、中身を確かめる断言にする（未実装、[ADR 0066](adr/0066-assertions-that-pass-vacuously.md)）。
 - プロパティテストの生成器に、境界の入力を出させる（未実装、[ADR 0067](adr/0067-generators-missing-boundary-inputs.md)）。
-- 上限ちょうどの入力が通ることを、拒む側と対にして確かめる（未実装、[ADR 0068](adr/0068-accepting-side-of-limits.md)）。
-- CI の検査のスクリプトを、素朴な書き換えで迂回できないようにする（未実装、[ADR 0069](adr/0069-lint-scripts-bypassed-by-plain-rewrites.md)）。
 - 変更のパスを取るときにリネームの検出を切り、移動元のパスも数える（未実装、[ADR 0070](adr/0070-changed-paths-without-rename-detection.md)）。
 - 環境変数を書き換えるテストは、書き換えを元に戻す（未実装、[ADR 0072](adr/0072-tests-restore-process-environment.md)）。
 - テストの時間の上限を、止まらないことの検出に限り、上限の検査は数で書く（未実装、[ADR 0073](adr/0073-time-bounds-in-tests.md)）。
 - テストを切り替える環境変数の値の読み方をそろえ、省いたテストを数える（未実装、[ADR 0074](adr/0074-test-switches-by-environment-variables.md)）。
-- 並行の競合を探すテストの回数を、CI の夜間の実行で増やす（未実装、[ADR 0075](adr/0075-race-search-repetitions.md)）。
 - ADR のテスト設計より弱いテストを、テスト設計のとおりに強める（未実装、[ADR 0076](adr/0076-tests-weaker-than-adr-test-designs.md)）。
-- スクリプトのテストで、検査の対象が壊れても通る断言を直す（未実装、[ADR 0077](adr/0077-shell-test-assertions-that-pass-vacuously.md)）。
 - リリースのときと手でだけ動くスクリプトにテストを書く（未実装、[ADR 0078](adr/0078-tests-for-release-and-hand-run-scripts.md)）。
 - スクリプトのテストを macOS の BSD の道具でも走らせる（未実装、[ADR 0079](adr/0079-shell-tests-on-macos.md)）。
 - リリースの smoke の検査で、ビルドが diagnostics を出さないことも確かめる（未実装、[ADR 0080](adr/0080-release-smoke-checks-diagnostics.md)）。
 - フォントにない字を、golem build の dev では warning、prod ではエラーにする（未実装、[ADR 0081](adr/0081-missing-glyphs-warn-in-build.md)）。
-- diagnostics をコードの順を先にして並べる（未実装、[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
 
 ### 既知の不具合の修正
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
 
 - 箇条書きの既定の印を、PDF と CSS では「•」にする（未実装、[golem-driver ADR 0044](golem-driver/adr/0044-default-bullet-u2022.md)）。
-- 輪郭の表のないフォントは G08003 とし、G08018 は埋め込みの防御として残す（未実装、[golem-pdf ADR 0013](golem-pdf/adr/0013-renamed-cff-table-is-g08003.md)）。
 
 ## v0.1.0-rc4
 

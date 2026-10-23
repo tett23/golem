@@ -1,7 +1,7 @@
 module Main (main) where
 
-import ParallelSpec (parallelTests)
+import ParallelSpec (parallelTests, raceFactor)
 import Test.Tasty
 
 main :: IO ()
-main = defaultMain parallelTests
+main = raceFactor >>= defaultMain . parallelTests

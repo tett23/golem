@@ -128,10 +128,9 @@ cbor =
       testProperty "CBOR round trip" $ withTests 300 $ property $ do
         d <- forAll genDocument
         decodeDocument (encodeDocument d) === Right d,
-      testProperty "encoding is deterministic and canonical" $ property $ do
+      testProperty "encoding is canonical" $ property $ do
         d <- forAll genDocument
         let bs = encodeDocument d
-        bs === encodeDocument d
         fmap encodeDocument (decodeDocument bs) === Right bs,
       testCase "small integers and floats use their shortest form" $ do
         BS.length (toStrictByteString (encodeTerm (TInteger 1))) @?= 1

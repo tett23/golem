@@ -190,6 +190,8 @@ golem-plugin の [code: loadPlugin] と、テストでだけ使う [code: watToW
 golem-font ADR 0001 は、FFI の呼び出しを純粋な関数として見えるように包むと決めている。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-font/adr/0001-shaping-and-metrics.md]（golem-font ADR 0001「シェイピングとメトリクス」）]
 この四つのほかに [code: unsafePerformIO] とその仲間はない。
 [code: scripts/ci/unsafe-io.sh] が、使っている定義を [code: scripts/ci/unsafe-io-allowed.txt] の一覧と照らし合わせ、増えても減っても CI を失敗させる。
+インスタンスやクラスの中の使用は、[code: instance Show T] のように宣言の頭で一覧に書く。
+文字列と文字の中の名前は使用に数えず、Template Haskell の名前の引用（[code: 'unsafePerformIO]）は使用に数える。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0069-lint-scripts-bypassed-by-plain-rewrites.md]（docs/adr の ADR 0069「CI の検査のスクリプトを、素朴な書き換えで迂回できないようにする」）]
 
 [code: unsafePerformIO] は、型の検査を黙らせるだけで、純粋性を作りはしない。
 包んだ関数を純粋と呼んでよいのは、次の四つが成り立つときに限る。
