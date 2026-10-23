@@ -524,7 +524,23 @@ preflightTests =
       testCase "G09002: 1" $ do
         (code, _, err, _) <- golemPreflight (preflightProject "Body \xE000 text.\n") ["preflight"]
         assertEqual err (ExitFailure 1) code
-        assertBool err ("error[G09002]" `isInfixOf` err),
+        assertBool err ("error[G09002]" `isInfixOf` err)
+        -- the build reports the same character (docs/adr 0081)
+        assertBool err ("error[G08100]" `isInfixOf` err),
+      testCase "golem build: G08100 is a warning in dev and an error without the PDF in prod (docs/adr 0081)" $ do
+        (code, _, err, prodPdf) <- golemPreflight (preflightProject "Body \xE000 text.\n") ["build", "--target", "pdf", "--format", "json"]
+        assertEqual err ExitSuccess code
+        case J.eitherDecode (BL.fromStrict (TE.encodeUtf8 (T.pack err))) :: Either String J.Value of
+          Left e -> assertFailure (e <> "\n" <> err)
+          Right _ -> pure ()
+        assertBool err ("\"code\":\"G08100\",\"severity\":\"warning\"" `isInfixOf` err)
+        assertBool err (all (`isInfixOf` err) ["\"facts\":{", "\"code-point\":\"U+E000\"", "\"font\":", "\"pdf-pages\":[1]", "\"count\":1"])
+        -- golemPreflight builds with --profile prod afterwards: no PDF
+        pdf <- prodPdf ""
+        pdf @?= ""
+        (code', _, err', _) <- golemPreflight (preflightProject "Body \xE000 text.\n") ["build", "--target", "pdf", "--profile", "prod", "--format", "json"]
+        assertEqual err' (ExitFailure 1) code'
+        assertBool err' ("\"code\":\"G08100\",\"severity\":\"error\"" `isInfixOf` err'),
       exitsWith (ExitFailure 2) ["preflight", "--profile", "dev"],
       exitsWith (ExitFailure 2) ["preflight", "--rules"],
       testCase "--format json: valid, no summary, G09006 with ppi" $ do
@@ -538,7 +554,7 @@ preflightTests =
         assertBool err ("\"code\":\"G09006\"" `isInfixOf` err && "\"facts\":{" `isInfixOf` err && "\"ppi\":" `isInfixOf` err),
       testCase "--rules reads a file out of the project, and a missing one is G09001" $ withSystemTempDirectory "golem-rules" $ \other -> do
         writeFile (other </> "printer.toml") "based-on = \"none\"\nname = \"Printer\"\n"
-        (code, _, err, _) <- golemPreflight (preflightProject "Body \xE000 text.\n") ["preflight", "--rules", other </> "printer.toml"]
+        (code, _, err, _) <- golemPreflight (preflightProject "Body text.\n") ["preflight", "--rules", other </> "printer.toml"]
         assertEqual err ExitSuccess code
         assertBool err ("設定: Printer、基にした設定: none" `isInfixOf` err)
         (code', _, err', _) <- golemPreflight (preflightProject "Body text.\n") ["preflight", "--rules", other </> "missing.toml"]

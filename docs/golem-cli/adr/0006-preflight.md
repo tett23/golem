@@ -1,6 +1,6 @@
 # ADR 0006: golem preflight
 
-ステータス: 採択→G09005 の廃止と、図版の検査の PDF の図版への拡張は [golem-pdf ADR 0008](../../golem-pdf/adr/0008-pdf-figures.md)、雛形の `style.toml` の塗り足しは [golem-pdf ADR 0010](../../golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)、（G09004 のまとめの単位と位置）は [ADR 0008](0008-g0904-by-size-source-and-colour.md)
+ステータス: 採択→G09005 の廃止と、図版の検査の PDF の図版への拡張は [golem-pdf ADR 0008](../../golem-pdf/adr/0008-pdf-figures.md)、雛形の `style.toml` の塗り足しは [golem-pdf ADR 0010](../../golem-pdf/adr/0010-golem-check-g0702-and-template-bleed.md)、（G09004 のまとめの単位と位置）は [ADR 0008](0008-g0904-by-size-source-and-colour.md)、ビルドの G08100 は [docs/adr/0081](../../adr/0081-missing-glyphs-warn-in-build.md)
 
 ## 文脈
 

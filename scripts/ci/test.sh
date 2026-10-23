@@ -859,7 +859,7 @@ if [ -n "$MISE_AT" ] && [ -n "$TEST_AT" ] && [ "$MISE_AT" -lt "$TEST_AT" ]; then
 if grep -qF 'MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}' "$RS" && grep -qF 'cache: false' "$RS"; then ok; else ng "ci.yml: release-scripts runs mise as the notes job does"; fi
 if grep -qF 'GOLEM_REQUIRE_CLAUDE: "1"' "$RS"; then ok; else ng "ci.yml: release-scripts runs test.sh with GOLEM_REQUIRE_CLAUDE"; fi
 if grep -q 'ANTHROPIC_API_KEY' "$RS"; then ng "ci.yml: release-scripts has no API key"; else ok; fi
-# scripts-macos runs the four tests of the scripts on macOS with the BSD
+# scripts-macos runs the five tests of the scripts on macOS with the BSD
 # tools of the system only, when the change needs the build; ci needs it
 # (docs/adr/0079)
 SM=$WORK/scripts-macos.yml
@@ -867,7 +867,7 @@ job_lines scripts-macos >"$SM"
 if grep -qx '    runs-on: macos-15' "$SM"; then ok; else ng "ci.yml: scripts-macos runs on macos-15"; fi
 if grep -qx '    needs: changes' "$SM" && grep -qxF "    if: needs.changes.outputs.build == 'true'" "$SM"; then ok; else ng "ci.yml: scripts-macos is skipped as build is"; fi
 if grep -qx '      PATH: /usr/bin:/bin:/usr/sbin:/sbin' "$SM" && ! grep -Eq 'brew|gnubin|coreutils|gawk|gnu-sed|findutils' "$SM"; then ok; else ng "ci.yml: scripts-macos has the tools of the system only on PATH"; fi
-for t in scripts/ci/test.sh scripts/manual/test.sh scripts/env-determinism/test.sh scripts/release/test.sh; do
+for t in scripts/ci/test.sh scripts/manual/test.sh scripts/env-determinism/test.sh scripts/release/test.sh scripts/test.sh; do
   if grep -qx "        run: sh $t" "$SM"; then ok; else ng "ci.yml: scripts-macos runs $t"; fi
 done
 if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?scripts-macos([],].*)?$'; then ok; else ng "ci.yml: ci needs scripts-macos"; fi

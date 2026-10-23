@@ -37,7 +37,7 @@
 
 | テーブル | print の既定 | 検査 |
 |:---|:---|:---|
-| [code: \[glyph-missing\]] | [code: "error"] | フォントにグリフのない文字（G09002） |
+| [code: \[glyph-missing\]] | [code: "error"] | フォントにグリフのない文字（G09002）。同じ文字はビルドの G08100 のエラーでも出て、この設定では消えません |
 | [code: \[image-icc\]] | [code: "warning"] | 出力インテントと違う ICC プロファイルを持つ CMYK の図版（G09009） |
 | [code: \[overfull-lines\]] | [code: "warning"] | 行長からはみ出す行（G09013） |
 | [code: \[pdf-x\]] | [code: "error"] | PDF/X-4 の要件（G09014） |
