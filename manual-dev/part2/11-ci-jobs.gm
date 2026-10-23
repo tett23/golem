@@ -44,11 +44,12 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 
 ## changes
 
-[code: changes] は、最初に次の八つを実行する。
+[code: changes] は、最初に次の九つを実行する。
 
 - [code: scripts/ci/test.sh]：CI のスクリプトのテスト。
 - [code: scripts/manual/test.sh]：マニュアルのスクリプトのテスト。
 - [code: scripts/env-determinism/test.sh]：実行の環境を変える検査（第[ref-number determinism]章）のテスト。偽の [code: golem] で、検査が各変化を実際に当てていることを確かめる。
+- [code: scripts/test.sh]：手でだけ動くスクリプト（[code: scripts/gen-vertical-orientation.sh]、[code: scripts/fixtures/copy-fonts.sh]、[code: scripts/fixtures/fetch-public-domain.sh]）のテスト。各スクリプトは置かれたリポジトリに書き込むので、一時ディレクトリに作った偽の根に写して動かす。[code: curl] などは [code: PATH] の先頭に置いた偽物で差し替え、ネットワークを使わない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0078-tests-for-release-and-hand-run-scripts.md]（docs/adr の ADR 0078「リリースのときと手でだけ動くスクリプトにテストを書く」）]
 - [code: scripts/ci/docs-refs.sh]：コードとスクリプトが名指す [code: docs/] の下の文書が、ビルドの読む文書の一覧にあること（第[ref-number docs]章）。
 - [code: scripts/ci/incomplete-patterns.sh]：[code: modules/] の下のすべてのパッケージのすべてのコンポーネントが、[code: -Werror=incomplete-patterns] でビルドされること。フラグの後の [code: -Wno-error=incomplete-patterns]、[code: -Wno-incomplete-patterns]、[code: -Wwarn=incomplete-patterns] は、.cabal、ソースの [code: OPTIONS_GHC]、[code: cabal.project] と [code: cabal.project.local] のどこに書いても失敗にする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0027-exhaustive-command-dispatch-by-types.md]（docs/adr の ADR 0027「到達しない診断の分岐を型で除く」）]
 - [code: scripts/ci/unsafe-io.sh]：[code: unsafePerformIO] とその仲間を使う定義が、[code: scripts/ci/unsafe-io-allowed.txt] に残す理由とともに書いたものだけであること（第[ref-number purity]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0034-fewer-unsafe-perform-io.md]（docs/adr の ADR 0034「unsafePerformIO を減らし、残すものを検査で固定する」）]
@@ -183,7 +184,7 @@ API キーは渡さない。
 [code: claude --help] は認証なしで動く。
 バージョンを上げるプルリクエストは、ここで一致を確かめられる（第[ref-number release]章）。
 
-[code: scripts-macos] は、macOS 15 のランナーで [code: scripts/] の下の四本のテスト（[code: scripts/ci/test.sh]、[code: scripts/manual/test.sh]、[code: scripts/env-determinism/test.sh]、[code: scripts/release/test.sh]）を実行する。
+[code: scripts-macos] は、macOS 15 のランナーで [code: scripts/] の下の五本のテスト（[code: scripts/ci/test.sh]、[code: scripts/manual/test.sh]、[code: scripts/env-determinism/test.sh]、[code: scripts/release/test.sh]、[code: scripts/test.sh]）を実行する。
 [code: PATH] は [code: /usr/bin:/bin:/usr/sbin:/sbin] だけにし、GNU 版の道具を足さない。
 スクリプトが BSD 版の [code: awk]、[code: sed]、[code: find]、[code: grep] で動かないことを、リリースや手元で初めて知るのではなく、プルリクエストで知るためである（第[ref-number build-test]章）。
 [code: jq] は macOS 15 の [code: /usr/bin] にある。

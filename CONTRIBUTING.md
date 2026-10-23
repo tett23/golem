@@ -112,7 +112,7 @@ Golem は、同じ入力から常に同じバイト列を出力する。
 
 `scripts/` の下のスクリプトは、POSIX の `sh` で書き、macOS の BSD 版の `awk`、`sed`、`find`、`grep` でも動くようにする。
 `sed -i` の引数のように GNU 版と BSD 版で違う書き方は避ける。
-CI の `scripts-macos` ジョブが、`PATH` をシステムの道具だけにして、`scripts/` の下の四本のテストを macOS で走らせる（[docs/adr/0079](./docs/adr/0079-shell-tests-on-macos.md)）。
+CI の `scripts-macos` ジョブが、`PATH` をシステムの道具だけにして、`scripts/` の下の五本のテストを macOS で走らせる（[docs/adr/0079](./docs/adr/0079-shell-tests-on-macos.md)）。
 
 ライセンスに問題がなく、再実装がやさしいものは、依存に加えずに再実装する。
 その場合は、本家のテストを参考にして、テストを十分に厚く書く。
