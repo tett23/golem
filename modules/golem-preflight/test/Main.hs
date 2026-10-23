@@ -161,7 +161,82 @@ rulesTests =
       testCase "an unknown based-on is G09001" $ g09001 "based-on = \"strict\"\n" 0,
       testCase "a negative threshold is G09001" $ g09001 "[ink-coverage]\nmax = -1\n" 1,
       testCase "TOML that does not parse is G09001" $
-        either codesOf (const []) (parseRules (FileId 0) "[[") @?= ["G09001"]
+        either codesOf (const []) (parseRules (FileId 0) "[[") @?= ["G09001"],
+      testCase "every key of every check goes to its own field" $
+        parsed
+          ( T.unlines
+              [ "based-on = \"basic\"",
+                "name = \"all\"",
+                "[glyph-missing]\nseverity = \"warning\"",
+                "[font-formats]\nseverity = \"error\"\nallowed = [\"cff2\"]",
+                "[type-size]\nseverity = \"error\"\nmin-size = \"6pt\"\nmulti-ink-only = false",
+                "[image-resolution]\ncolor = { error-below = 101, warning-below = 201 }\ngray = { error-below = 102, warning-below = 202 }\nbitmap = { error-below = 103, warning-below = 203 }",
+                "[image-resolution-max]\nseverity = \"warning\"\ncolor-max = 901\ngray-max = 902\nbitmap-max = 903",
+                "[image-color-space]\nseverity = \"error\"\nallowed = [\"rgb\"]",
+                "[image-icc]\nseverity = \"error\"",
+                "[bleed-size]\nseverity = \"warning\"\nmin = \"1pt\"",
+                "[bleed-trim-hazard]\nseverity = \"warning\"\ndistance = \"2pt\"",
+                "[live-area]\nseverity = \"error\"\ndistance = \"3pt\"",
+                "[overfull-lines]\nseverity = \"error\"",
+                "[pdf-x]\nseverity = \"warning\"",
+                "[ink-coverage]\nseverity = \"error\"\nmax = 301",
+                "[page-count]\nseverity = \"warning\"\nmultiple-of = 16",
+                "[blank-pages]\nseverity = \"warning\"",
+                "[stroke-weight]\nseverity = \"error\"\nmin = \"4pt\""
+              ]
+          )
+          @?= Rules
+            { ruBasedOn = "basic",
+              ruName = Just "all",
+              ruGlyphMissing = LevelWarning,
+              ruFontFormats = LevelError,
+              ruFontFormatsAllowed = ["cff2"],
+              ruTypeSize = LevelError,
+              ruTypeSizeMin = pt 6,
+              ruTypeSizeMultiInkOnly = False,
+              ruResolutionColor = Tier 101 201,
+              ruResolutionGray = Tier 102 202,
+              ruResolutionBitmap = Tier 103 203,
+              ruImageResolutionMax = LevelWarning,
+              ruColorMax = 901,
+              ruGrayMax = 902,
+              ruBitmapMax = 903,
+              ruImageColorSpace = LevelError,
+              ruColorSpacesAllowed = ["rgb"],
+              ruImageIcc = LevelError,
+              ruBleedSize = LevelWarning,
+              ruBleedMin = pt 1,
+              ruBleedTrimHazard = LevelWarning,
+              ruTrimHazardDistance = pt 2,
+              ruLiveArea = LevelError,
+              ruLiveAreaDistance = pt 3,
+              ruOverfullLines = LevelError,
+              ruPdfX = LevelWarning,
+              ruInkCoverage = LevelError,
+              ruInkMax = 301,
+              ruPageCount = LevelWarning,
+              ruPageMultiple = 16,
+              ruBlankPages = LevelWarning,
+              ruStrokeWeight = LevelError,
+              ruStrokeMin = pt 4
+            },
+      testCase "the edges of the numbers: error-below may equal warning-below, a million is the largest count" $ do
+        ruResolutionColor (parsed "[image-resolution]\ncolor = { error-below = 300, warning-below = 300 }\n") @?= Tier 300 300
+        ruResolutionColor (parsed "[image-resolution]\ncolor = { error-below = 400, warning-below = 0 }\n") @?= Tier 400 0
+        ruInkMax (parsed "[ink-coverage]\nmax = 1000000\n") @?= 1000000
+        ruInkMax (parsed "[ink-coverage]\nmax = 0\n") @?= 0
+        g09001 "[ink-coverage]\nmax = 1000001\n" 1
+        ruPageMultiple (parsed "[page-count]\nmultiple-of = 1\n") @?= 1
+        g09001 "[page-count]\nmultiple-of = 0\n" 1,
+      testCase "the messages of G09001 name the key, the value and what to write" $ do
+        let msgs src = either (map diagMessage) (const []) (parseRules (FileId 0) src)
+        msgs "[image-resolution]\ngray = { error-below = 400, warning-below = 300 }\n"
+          @?= ["gray.error-below の値が正しくありません: 400（warning-below の 300 より大きくできません） (image-resolution.gray)"]
+        msgs "[page-count]\nmultiple-of = 0\n" @?= ["multiple-of の値が正しくありません: 0（1 以上の整数にします） (page-count.multiple-of)"]
+        msgs "[ink-coverage]\nmax = -1\n" @?= ["max の値が正しくありません: -1（負の値は使えません） (ink-coverage.max)"]
+        msgs "[image-color-space]\nallowed = [\"cmyk\", \"lab\"]\n" @?= ["allowed の値が正しくありません: lab（cmyk、gray、rgb のどれかにします） (image-color-space.allowed)"]
+        msgs "[font-formats]\nallowed = [\"opentype\"]\n" @?= ["allowed の値が正しくありません: opentype（cff、cff2、truetype のどれかにします） (font-formats.allowed)"]
+        msgs "[bleed-size]\nmin = \"3\"\n" @?= ["min の値が正しくありません: 3（長さは 3mm や 0.25pt のように書きます） (bleed-size.min)"]
     ]
 
 checkTests :: [TestTree]

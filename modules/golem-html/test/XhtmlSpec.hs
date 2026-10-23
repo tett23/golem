@@ -4,6 +4,7 @@ the index and citations.
 -}
 module XhtmlSpec (xhtmlTests) where
 
+import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
@@ -12,6 +13,7 @@ import Data.Text qualified as T
 import Golem.Doc.Assemble (AssembleConfig (..), Book (..), ChannelDecl (..), ChannelOrder (..), HeadingInfo (..), IndexGroup (..), LabelTarget (..), NoteNumbering (..), TocEntry (..), assemble)
 import Golem.Doc.Bibliography (EntryPart (..))
 import Golem.Doc.IR
+import Golem.Doc.ListMarkers (defaultNumberFormat)
 import Golem.Html
 import Golem.Syntax.Span
 import Hedgehog (forAll, property, (===))
@@ -272,6 +274,7 @@ ruleTests =
 tests :: [TestTree]
 tests =
   [ testGroup "the rules of paragraph styles and headings (golem-driver ADR 0027)" ruleTests,
+    testGroup "blocks" blockTests,
     testGroup
       "colours: R = 255 × (1 − C) × (1 − K), rounded"
       [ testCase "white for no ink" $ cmykToRgb (0, 0, 0, 0) @?= (255, 255, 255),
@@ -457,6 +460,74 @@ tests =
     testProperty "escapeXml leaves no markup characters" $ property $ do
       t <- forAll (Gen.text (Range.linear 0 20) (Gen.element ("a<>&\"漢" :: String)))
       T.filter (`elem` ("<>\"" :: String)) (escapeXml t) === ""
+  ]
+
+-- | Tables, lists, definition lists, the depth of the contents and code lines.
+blockTests :: [TestTree]
+blockTests =
+  [ testCase "a table: th in the head, td in the body, the class of each column's alignment" $
+      bodyA cfg0 (bookOf [Block (at 0) Nothing (Table [AlignRight, AlignCenter, AlignLeft, AlignDefault] [[txt "a"], [txt "b"], [txt "c"], [txt "d"]] [[[txt "1"], [txt "2"], [txt "3"], [txt "4"]]])])
+        @?= T.concat
+          [ "<table>\n<thead>\n",
+            "<tr><th class=\"align-right\">a</th><th class=\"align-center\">b</th><th class=\"align-left\">c</th><th>d</th></tr>\n",
+            "</thead>\n<tbody>\n",
+            "<tr><td class=\"align-right\">1</td><td class=\"align-center\">2</td><td class=\"align-left\">3</td><td>4</td></tr>\n",
+            "</tbody>\n</table>\n"
+          ],
+    testCase "the cells after the last alignment are not dropped" $
+      bodyA cfg0 (bookOf [Block (at 0) (Just "t") (Table [AlignLeft] [[txt "a"], [txt "b"]] [[[txt "1"], [txt "2"]], [[txt "3"], [txt "4"]]])])
+        @?= "<table id=\"t\">\n<thead>\n<tr><th class=\"align-left\">a</th><th>b</th></tr>\n</thead>\n<tbody>\n<tr><td class=\"align-left\">1</td><td>2</td></tr>\n<tr><td class=\"align-left\">3</td><td>4</td></tr>\n</tbody>\n</table>\n",
+    testCase "a numbered list starts at the number of its first item; a later number is the value of its item" $
+      bodyA cfg0 (bookOf [Block (at 0) Nothing (OrderedList [ListItem (Just 3) [para 1 [txt "三"]], ListItem Nothing [para 2 [txt "四"]], ListItem (Just 7) [para 3 [txt "七"]]])])
+        @?= "<ol start=\"3\">\n<li>三</li>\n<li>四</li>\n<li value=\"7\">七</li>\n</ol>\n",
+    testCase "a numbered list without numbers has neither start nor value" $
+      bodyA cfg0 (bookOf [Block (at 0) Nothing (OrderedList [ListItem Nothing [para 1 [txt "一"]], ListItem Nothing [para 2 [txt "二"]]])])
+        @?= "<ol>\n<li>一</li>\n<li>二</li>\n</ol>\n",
+    testCase "an item of more than one block has its blocks inside; lists inside take the class of their depth, up to the last marker" $
+      let lists = Just (HtmlLists ("・" :| ["◦"]) (defaultNumberFormat False :| []) Nothing)
+          ul n bs = Block (at n) Nothing (BulletList [ListItem Nothing bs])
+          book = bookOf [ul 0 [para 1 [txt "a"], ul 2 [para 3 [txt "b"], ul 4 [para 5 [txt "c"]]]]]
+       in bodyA cfg0 {hcLists = lists} book
+            @?= T.concat
+              [ "<ul class=\"list-1\">\n<li>\n<p>a</p>\n",
+                "<ul class=\"list-2\">\n<li>\n<p>b</p>\n",
+                "<ul class=\"list-2\">\n<li>c</li>\n</ul>\n",
+                "</li>\n</ul>\n",
+                "</li>\n</ul>\n"
+              ],
+    testCase "a definition list: every term, then every definition, of each group" $
+      bodyA cfg0 (bookOf [Block (at 0) Nothing (DefList [DefGroup [[txt "HTTP"], [txt "HyperText"]] [[para 1 [txt "共有"]], [para 2 [txt "転送"]]], DefGroup [[txt "決定性"]] [[para 3 [txt "同じ出力"]]]])])
+        @?= "<dl>\n<dt>HTTP</dt>\n<dt>HyperText</dt>\n<dd>\n<p>共有</p>\n</dd>\n<dd>\n<p>転送</p>\n</dd>\n<dt>決定性</dt>\n<dd>\n<p>同じ出力</p>\n</dd>\n</dl>\n",
+    testCase "the table of contents takes the headings up to its depth, the depth itself included" $
+      let entry l a = TocEntry l Nothing [txt a] a fidA (at 9)
+          book = (bookOf [Block (at 0) Nothing (ChannelOutput (TocOutput 2))]) {bookToc = [entry 1 "h1", entry 2 "h2", entry 3 "h3", entry 2 "h2b"]}
+       in bodyA cfg0 book
+            @?= "<nav epub:type=\"toc\" class=\"toc\">\n<ol>\n<li class=\"toc-1\"><a href=\"#h1\">h1</a></li>\n<li class=\"toc-2\"><a href=\"#h2\">h2</a></li>\n<li class=\"toc-2\"><a href=\"#h2b\">h2b</a></li>\n</ol>\n</nav>\n",
+    testCase "code lines: the number, the diff mark, the classes of a highlight and of the diff, and the callouts" $
+      let code =
+            Code
+              { codeLang = Nothing,
+                codeNumbers = Just True,
+                codeFile = Nothing,
+                codeCaption = Nothing,
+                codeDiff = True,
+                codeLines =
+                  [ CodeLine "a" (Just 1) (Just DiffContext) False [],
+                    CodeLine "b" Nothing (Just DiffRemoved) False [],
+                    CodeLine "c<" (Just 2) (Just DiffAdded) True [1, 2]
+                  ]
+              }
+       in bodyA cfg0 (bookOf [Block (at 0) Nothing (CodeBlock code)])
+            @?= T.concat
+              [ "<pre><code>",
+                "<span class=\"line\"><span class=\"ln\" aria-hidden=\"true\">1</span><span class=\"dm\" aria-hidden=\"true\"> </span>a</span>\n",
+                "<span class=\"line del\"><span class=\"ln\" aria-hidden=\"true\"></span><span class=\"dm\" aria-hidden=\"true\">-</span>b</span>\n",
+                "<span class=\"line hl add\"><span class=\"ln\" aria-hidden=\"true\">2</span><span class=\"dm\" aria-hidden=\"true\">+</span>c&lt; <span class=\"callout\">①</span> <span class=\"callout\">②</span></span>",
+                "</code></pre>\n"
+              ],
+    testCase "code without numbers, a diff or marks is its escaped text" $
+      bodyA cfg0 (bookOf [Block (at 0) (Just "c") (CodeBlock (Code Nothing Nothing Nothing Nothing False [CodeLine "a & b" (Just 1) Nothing False [], CodeLine "c" (Just 2) Nothing False []]))])
+        @?= "<pre id=\"c\"><code>a &amp; b\nc</code></pre>\n"
   ]
 
 xhtmlTests :: TestTree

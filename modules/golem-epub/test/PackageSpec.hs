@@ -144,6 +144,15 @@ tests =
                   "<item id=\"item4\" href=\"images/b.JPG\" media-type=\"image/jpeg\"/>",
                   "<item id=\"item5\" href=\"fonts/x.otf\" media-type=\"font/otf\"/>"
                 ],
+        testCase "every extension has its media type; an unknown one is application/octet-stream" $
+          linesWith "<item id=\"item" (packageDocument cfg0 [] ["a.jpeg", "a.ttf", "a.woff2", "a.TTF", "a.webp", "a"])
+            @?= [ "<item id=\"item1\" href=\"a.jpeg\" media-type=\"image/jpeg\"/>",
+                  "<item id=\"item2\" href=\"a.ttf\" media-type=\"font/ttf\"/>",
+                  "<item id=\"item3\" href=\"a.woff2\" media-type=\"font/woff2\"/>",
+                  "<item id=\"item4\" href=\"a.TTF\" media-type=\"font/ttf\"/>",
+                  "<item id=\"item5\" href=\"a.webp\" media-type=\"application/octet-stream\"/>",
+                  "<item id=\"item6\" href=\"a\" media-type=\"application/octet-stream\"/>"
+                ],
         testCase "metadata is escaped for XML" $
           linesWith "<dc:title" (opf cfg0 {epTitle = "A & B <C>"}) @?= ["<dc:title id=\"title\">A &amp; B &lt;C&gt;</dc:title>"],
         testCase "the names and readings of creators and contributors are escaped for XML (docs/adr ADR 0033)" $
