@@ -1181,8 +1181,10 @@ PDF のキャプションと傍注の本文には、ほかに `aki-set`、`kerni
 `caption` と `sidenote` は、`body` の字下げを引き継がない（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
 組み込みの定義が `indent = "0zw"` と `first-line-indent = "0zw"` を持ち、書いた値が引き継いだ値に勝つ `based-on` の規則により、`body` の字下げは及ばない。
 `@style caption` や `@style sidenote` を付けた原稿の段落も、字下げなしで組む。
-`caption` と `sidenote` に `indent` か `first-line-indent` を書くと、値が 0 でも G03006 とする（`style.toml` でも `@style-def` でも）。
-二つに書けないキーは、`indent`、`first-line-indent`、`rule-before`、`rule-after`、`background`、`padding`、`border`、`border-width` である。
+`caption` と `sidenote` に 0 でない `indent` か `first-line-indent` を書くと G03006 とする（`style.toml` でも `@style-def` でも）。
+値が 0（`"0zw"`、`"0mm"` など）なら組版は変わらないので、誤りとせず、効果がないことを notice（G03100）で知らせる。
+G03100 の位置は、`style.toml` では値、`@style-def` ではそのキーの引数である。
+二つに書けないキーは、0 でない `indent` と `first-line-indent`、`rule-before`、`rule-after`、`background`、`padding`、`border`、`border-width` である。
 `based-on`、`font`、`size`、`line-breaks`、`space-between`、`aki-set`、`regex-styles`、`kerning`、`tracking`、`proportional-metrics`、`baseline-shift` は書ける。
 HTML と EPUB でも、`caption` の `font` と `size` を `figcaption` の CSS に、`sidenote` の `font` と `size` を `.sidenote` の CSS に書く。
 `sidenote` の `size` がなければ、HTML の傍注は本文の 0.85 倍の大きさにする。
@@ -1991,7 +1993,7 @@ notice は終了コードに影響せず、プロファイルで重大度が変�
 人が読む形式では重大度を `notice`、JSON の形式では `"severity":"notice"` と書き、LSP では `Information` に写す。
 notice のコードは `Golem.Syntax.Diagnostic.noticeCodes` に一箇所で並べ、docs/diagnostics.md の重大度が「お知らせ」のコードと一致することを golem-driver のテストが確かめる。
 lint の規則（G05xxx）は notice を出さない。
-今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、段の先頭で捨てた行アキ（G07047）、`[fonts.code]` のない本のコード（G08008）である。
+今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption` と `sidenote` の 0 の字下げ（G03100）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、段の先頭で捨てた行アキ（G07047）、`[fonts.code]` のない本のコード（G08008）である。
 
 diagnostics は、エラーと警告を先に、notice を後に並べる。
 エラーと警告のあいだは、ファイルの順、位置の順、コードの順で並べ、notice どうしも同じ規則で並べる。

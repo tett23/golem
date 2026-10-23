@@ -234,7 +234,8 @@ InDesign の段落スタイルと文字スタイルに当たり、ほかのス�
 段落スタイルを付けない段落は [code: body] で組みます。
 
 [code: caption] と [code: sidenote] は、[code: body] の字下げを引き継ぎません。
-図のキャプションと傍注の本文には字下げをしないので、この二つに [code: indent] と [code: first-line-indent] を書くとエラー（G03006）になります。
+図のキャプションと傍注の本文には字下げをしないので、この二つに 0 でない [code: indent] と [code: first-line-indent] を書くとエラー（G03006）になります。
+0 を書いたときは、効果がないことを知らせるお知らせ（G03100）が出ます。
 
 [code: code] だけは、ほかの段落スタイルと扱いが違います。
 [code: body] を引き継がず、書けるキーは [code: font]、[code: size]、[code: background]（背景の色のスウォッチ）、[code: padding]（背景の内側の余白）の四つだけです。

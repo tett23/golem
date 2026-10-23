@@ -518,6 +518,7 @@ main = do
 段落スタイルを付けない段落は `body` で組む。
 `caption` と `sidenote` は、図版のキャプションと傍注の本文の書体と大きさを決める段落スタイルでもある。
 `caption` と `sidenote` は `body` の字下げを引き継がず、`@style caption` や `@style sidenote` を付けた段落も字下げなしで組む（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
+`@style-def paragraph caption` と `@style-def paragraph sidenote` に 0 でない `indent` か `first-line-indent` を書くとエラー（G03006）、0 を書くと効果がないことを知らせる notice（G03100）になる。
 
 スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
 そのファイルでだけ使う段落スタイルは、ファイルの先頭の `@style-def paragraph` でも定義できる（「ファイルの設定」の節を参照）。
