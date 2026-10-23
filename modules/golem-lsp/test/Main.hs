@@ -350,15 +350,21 @@ tests =
             let start = fromLineCol enc li (LineCol l 0)
             H.assert (maybe False (<= o) start)
             H.assert (maybe False (o <=) (lineEndOffset li l)),
-      testProperty "within the line, fromLineCol agrees with the exact conversions (ADR 0003)" $ property $ do
+      -- the oracle is independent of fromLineCol: the line end past the
+      -- width, and within it the column back from the offset (docs/adr/0065)
+      testProperty "past the line, fromLineCol is the line end; within it, the column comes back (ADR 0003)" $ property $ do
         t <- forAll genText
+        enc <- forAll (Gen.element [Utf8, Utf16])
         let li = mkLineIndex t
         l <- forAll (Gen.int (Range.linear 0 (lineCount li - 1)))
         let end = fromMaybe 0 (lineEndOffset li l)
-        c8 <- forAll (Gen.int (Range.linear 0 (lcColumn (toLineCol Utf8 li end))))
-        c16 <- forAll (Gen.int (Range.linear 0 (lcColumn (toLineCol Utf16 li end))))
-        fromLineCol Utf8 li (LineCol l c8) === utf8LineColToOffset li (LineCol l c8)
-        fromLineCol Utf16 li (LineCol l c16) === utf16LineColToOffset li (LineCol l c16),
+            width = lcColumn (toLineCol enc li end)
+        c <- forAll (Gen.int (Range.linear 0 (width + 5)))
+        case fromLineCol enc li (LineCol l c) of
+          Just o
+            | c > width -> o === end
+            | otherwise -> toLineCol enc li o === LineCol l c
+          Nothing -> H.assert (c <= width),
       testCase "the workspace keeps a line index per file and follows edits (ADR 0002)" $ do
         ws0 <- openWorkspace root
         lineCount (lineIndexOf ws0 "a.gm") @?= lineCount (mkLineIndex (textOf ws0 "a.gm"))

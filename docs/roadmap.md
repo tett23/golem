@@ -33,7 +33,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 2026-10-23 のテストの品質の点検と、出力のゴールデンを足すときに見つかった問題から採択した ADR を実装する。
 
-- 実装を写したオラクルと、同じ式を二度評価するだけの断言をなくす（未実装、[ADR 0065](adr/0065-tautological-properties-and-oracles.md)）。
 - 空の結果や Nothing で通ってしまう断言を、中身を確かめる断言にする（未実装、[ADR 0066](adr/0066-assertions-that-pass-vacuously.md)）。
 - プロパティテストの生成器に、境界の入力を出させる（未実装、[ADR 0067](adr/0067-generators-missing-boundary-inputs.md)）。
 - 上限ちょうどの入力が通ることを、拒む側と対にして確かめる（未実装、[ADR 0068](adr/0068-accepting-side-of-limits.md)）。
