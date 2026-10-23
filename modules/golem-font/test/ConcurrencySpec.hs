@@ -7,21 +7,37 @@ capabilities at once. The tests run on every processor (the suite is
 built with -threaded and -N) and compare each concurrent result with the same
 call made alone: the specification (docs/adr/0002 determinism) is that the
 parallel result equals the sequential one.
+
+GOLEM_RACE_TESTS=n multiplies the number of the tests of the property by
+n (1 by default); the nightly race.yml sets 40 (docs/adr/0075).
 -}
-module ConcurrencySpec (concurrencyTests) where
+module ConcurrencySpec (concurrencyTests, raceFactor) where
 
 import Control.Concurrent (forkOn)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, readMVar, takeMVar)
 import Control.Exception (SomeException, evaluate, try)
+import Data.Char (isDigit)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Font
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import System.Environment (lookupEnv)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testPropertyNamed)
+
+{- | GOLEM_RACE_TESTS, the factor of the repetitions of the race tests
+(docs/adr/0075): 1 when it is not set. A value that is not an integer of
+1 or more fails the suite: it is not read as 1.
+-}
+raceFactor :: IO Int
+raceFactor = lookupEnv "GOLEM_RACE_TESTS" >>= maybe (pure 1) parse
+  where
+    parse s
+      | not (null s), all isDigit s, take 1 s /= "0", length s <= 6 = pure (read s)
+      | otherwise = fail ("GOLEM_RACE_TESTS must be an integer of 1 or more, not " <> show s)
 
 {- | Runs the actions at once, the i-th pinned to capability i (mod the
 count), and returns their fully evaluated results in the order given.
@@ -44,14 +60,14 @@ inParallel acts = do
 genText :: Gen Text
 genText = Gen.text (Range.linear 1 40) (Gen.element ("日本語の組版、。「」ー漁夫はofficeAVA Typography1234" :: String))
 
-concurrencyTests :: Font -> Font -> TestTree
-concurrencyTests han noto =
+concurrencyTests :: Int -> Font -> Font -> TestTree
+concurrencyTests race han noto =
   testGroup
     "one font from many threads (Medium)"
     [ testPropertyNamed
         "shaping one font from every capability gives the glyphs shaping alone gives"
         "prop_concurrentShapingMatchesSequential"
-        ( withTests 30 . property $ do
+        ( withTests (fromIntegral (30 * race)) . property $ do
             runs <- forAll (Gen.list (Range.linear 16 64) ((,) <$> genText <*> Gen.element [Horizontal, Vertical]))
             let request (t, d) = (shapeRequest 1000 t) {srDirection = d, srFeatures = ["palt"]}
                 alone = map (Right . shapeUnits noto . request) runs

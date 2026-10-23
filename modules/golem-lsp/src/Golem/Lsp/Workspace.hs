@@ -22,7 +22,6 @@ module Golem.Lsp.Workspace
 where
 
 import Control.Applicative ((<|>))
-import Data.List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe)
@@ -296,4 +295,4 @@ diagnosticsFor ws =
             pathOf fid = lookupPath fid ft <|> (siPath <$> Map.lookup fid (evAssetSources e))
             byFile = Map.fromListWith (flip (<>)) [(fromMaybe "manifest.toml" (pathOf (spanFile (diagSpan d))), [d]) | d <- all']
             empties = Map.fromList ([(sfPath sf, []) | sf <- Map.elems (projectSources p)] <> [(t, []) | t <- Set.toList (evTableFiles e)])
-         in Map.map (sortOn (spanStart . diagSpan)) (Map.union byFile empties)
+         in Map.map sortDiagnostics (Map.union byFile empties)

@@ -3,11 +3,13 @@ module CSTSpec (tests, genNode) where
 import Data.ByteString qualified as BS
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.Parser (parse)
 import Golem.Parser.CST
 import Golem.Syntax.Span
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import ParserSpec (fragment)
 import Test.Tasty
 import Test.Tasty.HUnit hiding (assert)
 import Test.Tasty.Hedgehog
@@ -35,8 +37,12 @@ tests :: TestTree
 tests =
   testGroup
     "CST (ADR 0001)"
-    [ testProperty "width equals the sum of children" $ property $ do
-        n <- forAll genNode
+    [ -- on the trees the parser builds, not on trees built with node, whose
+      -- width is the sum by definition (docs/adr/0065)
+      testProperty "in a parsed tree, width equals the sum of children, and the root spans the source" $ property $ do
+        src <- forAll (T.concat <$> Gen.list (Range.linear 0 30) fragment)
+        let (n, _) = parse (FileId 0) src
+        nodeWidth n === BS.length (TE.encodeUtf8 src)
         assert (all (\m -> nodeWidth m == sum (map elementWidth (nodeChildren m))) (nodesOf n)),
       testProperty "width counts UTF-8 bytes of the rendering" $ property $ do
         n <- forAll genNode

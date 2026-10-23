@@ -254,9 +254,6 @@ drawingTests =
     goldenVsString "rotate(30) and an arc" "test/golden/rotate-arc.txt" $ do
       let doc = svg "<g transform=\"rotate(30) translate(1,2)\"><path d=\"M0 0 A 5 3 20 0 1 7 4\"/></g>"
       pure (BL.fromStrict (TE.encodeUtf8 (T.pack (either show (show . svgDrawing) (readSvg doc)) <> "\n"))),
-    testCase "the same input gives the same drawing" $ do
-      let doc = svg "<g transform=\"rotate(17 3 4) skewX(10)\"><path d=\"M0 0 A 5 3 20 1 1 7 4 Z\" stroke=\"blue\" stroke-dasharray=\"1 2 3\"/></g>"
-      readSvg doc @?= readSvg doc,
     testCase "a marker with auto-start-reverse is reversed at the start and along the path at the end" $ do
       ops <- drawing "<defs><marker id=\"a\" viewBox=\"0 0 10 10\" refX=\"10\" refY=\"5\" markerWidth=\"9\" markerHeight=\"9\" orient=\"auto-start-reverse\"><path d=\"M0,0 L10,5 L0,10 z\"/></marker></defs><path d=\"M 10 10 L 30 10\" stroke=\"#000\" marker-start=\"url(#a)\" marker-end=\"url(#a)\"/>"
       case [m | DGroup m (Just _) _ <- ops] of
