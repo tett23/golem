@@ -84,6 +84,14 @@ formatted t = case format t of
   Formatted r -> r
   Unformattable _ -> t
 
+{- | Whether the formatter formatted the document; the properties pass
+trivially on the others, so they must be few (docs/adr/0066).
+-}
+isFormatted :: FormatResult -> Bool
+isFormatted = \case
+  Formatted _ -> True
+  Unformattable _ -> False
+
 golden :: String -> Text -> TestTree
 golden name src = goldenVsString name ("test/golden/" <> name <> ".gm") (pure (BL.fromStrict (TE.encodeUtf8 (formatted src))))
 
@@ -94,11 +102,13 @@ tests =
     [ -- the escapes the formatter may remove are made text first (golem-parser ADR 0010)
       testProperty "output is unchanged: the AST is preserved" $ property $ do
         src <- forAll document
+        cover 80 "formattable" (isFormatted (format src))
         case format src of
           Formatted r -> astFingerprintWith removableEscape r === astFingerprintWith removableEscape (preprocess src)
           Unformattable _ -> discard,
       testProperty "idempotent" $ property $ do
         src <- forAll document
+        cover 80 "formattable" (isFormatted (format src))
         let once = formatted src
         formatted once === once,
       testGroup
