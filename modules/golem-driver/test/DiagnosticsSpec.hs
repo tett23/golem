@@ -197,7 +197,7 @@ noticeTests =
         n' <- buildNotified (noticeProject "" (noticeSource <> "\n[unknown: x]\n")) id
         take 1 (codesOf (nDiagnostics n')) @?= ["G02022"]
         assertBool "notices after the error" (length (nDiagnostics n') > 1),
-      -- docs/specifications.md: a notice does not change the bytes of the outputs
+      -- the spec: a notice does not change the bytes of the outputs
       testCase "no notice of noticeCodes changes the outputs of the four targets" $ do
         raised <- forM everyNoticeProjects $ \project -> do
           loud <- buildNotified (project "") id
