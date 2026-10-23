@@ -978,7 +978,7 @@ writeTargetsChecked inMemory opts e diagFid book missing targets = do
             hcLists =
               if stLists style == defaultListStyle
                 then Nothing
-                else Just (HtmlLists (lsBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style))),
+                else Just (HtmlLists (listBullets (stLists style)) (fromMaybe (pure (defaultNumberFormat vertical)) (lsNumbers (stLists style))) (GT.tlGap (textLists style))),
             -- the rules of headings (golem-driver ADR 0027)
             hcHeadingRules =
               Map.fromList
@@ -1065,7 +1065,7 @@ textLists style =
       nonZero = \case
         Abs x -> x /= 0
         Zw r -> r /= 0
-   in GT.TextLists (lsBullets l) (lsNumbers l) (nonZero <$> lsGap l)
+   in GT.TextLists (textBullets l) (lsNumbers l) (nonZero <$> lsGap l)
 
 -- | The character styles of a style, resolved for CSS (docs/adr ADR 0005).
 htmlCharStyles :: Style -> Map Text HtmlCharStyle

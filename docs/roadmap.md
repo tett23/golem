@@ -49,7 +49,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
 
-- 箇条書きの既定の印を、PDF と CSS では「•」にする（未実装、[golem-driver ADR 0044](golem-driver/adr/0044-default-bullet-u2022.md)）。
 - 見出しを後の行と離さない規則で、後の行の注の本文を数える（未実装、[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
 
 ## v0.1.0-rc4

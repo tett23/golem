@@ -1050,15 +1050,16 @@ codeTests =
       [(poColumn p, [x | x@(_, SCode {}) <- poSlots p]) | p <- plPages pl] @?= [(0, [(3, SCode 3 1 2)]), (1, [(0, SCode 4 2 3)])],
     testCase "in a list: the background and the text start at the text of the item" $ do
       (geom, pl) <- layoutOk (horizontalStyle <> codeBg) "- 項目\n\n  ```\n  x\n  ```\n" []
-      codeRows pl @?= [[(10 * pt + pad, "x")]]
+      -- the bullet • and its gap take two characters (golem-driver ADR 0044)
+      codeRows pl @?= [[(20 * pt + pad, "x")]]
       contents <- miniPdf fakeProvider True (horizontalStyle <> codeBg) "- 項目\n\n  ```\n  x\n  ```\n" [] >>= pageContents
       case concatMap filledRects contents of
         [[x, _, w, _]] -> do
-          assertBool (show x) (abs (x - toPt (rectX (firstColumn geom) + 10 * pt)) < 0.001)
-          assertBool (show w) (abs (w - 110) < 0.001)
+          assertBool (show x) (abs (x - toPt (rectX (firstColumn geom) + 20 * pt)) < 0.001)
+          assertBool (show w) (abs (w - 100) < 0.001)
         other -> assertFailure (show other),
     testCase "G07043: too little measure in a deep list, at the block" $ do
-      let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
+      let style = horizontalStyle <> nakaguroBullets <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n    - c\n\n      ```\n      x\n      ```\n" []
       [(diagMessage d, spanStart (diagSpan d)) | d <- codeOf r "G07043"] @?= [("コードブロックの行長が足りません", 19)]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    x\n    ```\n" []
@@ -1166,7 +1167,7 @@ codeTests =
       (_, pl) <- layoutOk style "```\na\n```\n\n``` numbers=false\nb\n```\n" []
       codeRows pl @?= [[(pad, "1"), (pad + 15 * pt, "a")], [(pad, "b")]],
     testCase "G07043: line numbers and diff marks leave too little measure in a list" $ do
-      let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
+      let style = horizontalStyle <> nakaguroBullets <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n\n    ``` numbers=100 diff=true\n    +x\n    ```\n" []
       map diagMessage (codeOf r "G07043") @?= ["コードブロックの行長が足りません"]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    +x\n    ```\n" []
