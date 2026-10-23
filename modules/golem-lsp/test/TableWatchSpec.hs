@@ -48,17 +48,6 @@ withProject files act = withSystemTempDirectory "golem-lsp-tables" $ \tmp0 -> do
     \(p, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> p)) >> BS.writeFile (tmp </> p) bytes
   act tmp
 
-{- | Whether a glob pattern has a metacharacter outside a bracket
-expression, so that it could match more files than one.
--}
-hasBareGlob :: String -> Bool
-hasBareGlob = go
-  where
-    go = \case
-      [] -> False
-      '[' : rest -> go (drop 1 (dropWhile (/= ']') rest))
-      c : rest -> c `elem` ("*?{" :: String) || go rest
-
 codesOf :: Workspace -> FilePath -> [Text]
 codesOf ws p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
 
@@ -110,7 +99,8 @@ tableWatchTests =
           regs <- lspSession True dir $ do
             _ <- waitDiagnostics dir "data/x*y?.tsv" (not . null)
             watched
-          assertBool ("watching " <> show regs) (not (any hasBareGlob regs)),
+          -- the pattern itself: a watcher that registers nothing fails too (docs/adr/0066)
+          regs @?= ["data/x[*]y[?].tsv"],
       testCase "a client without dynamic registration is not asked to watch" $ withTableProject $ \dir -> do
         regs <- lspSession False dir $ do
           _ <- waitDiagnostics dir "data/x.tsv" (not . null)
