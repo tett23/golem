@@ -101,7 +101,9 @@ CR を含む原稿の G01003 に付く「golem fmt で LF に直す」がその�
 ## 並び順
 
 diagnostics は、error と warning を先に、notice を後に並べる。[index reading="diagnosticsのならびじゅん": diagnostics の並び順]
-error と warning のあいだは、ファイルの順、位置の順、コードの順で並べ、notice どうしも同じ規則で並べる。
+error と warning のあいだは、コードの順、ファイルの順、開始位置の順、終了位置の順、メッセージの順で並べ、notice どうしも同じ規則で並べる。
+error と warning は区別せず、コードの順で混ぜて並べる。
+行頭のコードで種類を見分けられ、同じコードの diagnostics がまとまるので、同じ原因の誤りを続けて読み、続けて直せる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-syntax/adr/0003-diagnostic-order.md]（golem-syntax ADR 0003「diagnostics をコードの順を先にして並べる」）]
 ファイルの順は、マニフェストの章の順とファイルを初めて読んだ順で決まり、実行ごとに変わらない。
 並び順が入力だけで決まるので、同じ原稿の JSON は毎回同じバイト列になる。
 CI で前回の diagnostics と差分を取っても、順序の揺れによる偽の差分は出ない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-syntax/adr/0002-notice-severity.md]（golem-syntax ADR 0002「重大度のお知らせ（notice）」）]

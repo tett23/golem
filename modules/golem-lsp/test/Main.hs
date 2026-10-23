@@ -262,6 +262,14 @@ tests =
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
         codesIn "style.toml" @?= ["G03006"]
         codesIn "manifest.toml" @?= [],
+      testCase "a project file publishes its diagnostics in the order of the codes (golem-syntax ADR 0003)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
+        BS.writeFile (tmp </> "a.gm") "@label unused\n# A\n\nSee [ref-title nope].\n"
+        BS.writeFile (tmp </> "manifest.toml") manifest
+        ws <- openWorkspace tmp
+        assertBool "evaluated" (isJust (wsEvaluated ws))
+        -- the G05004 of line 1 after the G04003 of line 4, an error of the assembly that keeps the book for lint
+        codesOf ws "a.gm" @?= ["G04003", "G05004"],
       testCase "a notice is published as Information (golem-syntax ADR 0002)" $ do
         lspSeverity Notice @?= L.DiagnosticSeverity_Information
         lspSeverity Warning @?= L.DiagnosticSeverity_Warning
@@ -364,15 +372,21 @@ tests =
             let start = fromLineCol enc li (LineCol l 0)
             H.assert (maybe False (<= o) start)
             H.assert (maybe False (o <=) (lineEndOffset li l)),
-      testProperty "within the line, fromLineCol agrees with the exact conversions (ADR 0003)" $ property $ do
+      -- the oracle is independent of fromLineCol: the line end past the
+      -- width, and within it the column back from the offset (docs/adr/0065)
+      testProperty "past the line, fromLineCol is the line end; within it, the column comes back (ADR 0003)" $ property $ do
         t <- forAll genText
+        enc <- forAll (Gen.element [Utf8, Utf16])
         let li = mkLineIndex t
         l <- forAll (Gen.int (Range.linear 0 (lineCount li - 1)))
         let end = fromMaybe 0 (lineEndOffset li l)
-        c8 <- forAll (Gen.int (Range.linear 0 (lcColumn (toLineCol Utf8 li end))))
-        c16 <- forAll (Gen.int (Range.linear 0 (lcColumn (toLineCol Utf16 li end))))
-        fromLineCol Utf8 li (LineCol l c8) === utf8LineColToOffset li (LineCol l c8)
-        fromLineCol Utf16 li (LineCol l c16) === utf16LineColToOffset li (LineCol l c16),
+            width = lcColumn (toLineCol enc li end)
+        c <- forAll (Gen.int (Range.linear 0 (width + 5)))
+        case fromLineCol enc li (LineCol l c) of
+          Just o
+            | c > width -> o === end
+            | otherwise -> toLineCol enc li o === LineCol l c
+          Nothing -> H.assert (c <= width),
       testCase "the workspace keeps a line index per file and follows edits (ADR 0002)" $ do
         ws0 <- openWorkspace root
         lineCount (lineIndexOf ws0 "a.gm") @?= lineCount (mkLineIndex (textOf ws0 "a.gm"))
