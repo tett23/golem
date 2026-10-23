@@ -145,17 +145,19 @@ adjustForProfile prof d
   | otherwise = d
 
 {- | Deterministic order: errors and warnings first, notices after them
-(golem-syntax ADR 0002); within each, file, position, code, then the rest.
+(golem-syntax ADR 0002); within each, the code, then the file, the start,
+the end, the message and the rest (golem-syntax ADR 0003). Errors and
+warnings are not told apart: they mix in the order of their codes.
 -}
 sortDiagnostics :: [Diagnostic] -> [Diagnostic]
 sortDiagnostics =
   sortOn
     ( \d ->
         ( diagSeverity d == Notice,
+          diagCode d,
           spanFile (diagSpan d),
           spanStart (diagSpan d),
           spanEnd (diagSpan d),
-          diagCode d,
           diagMessage d,
           -- the rest only breaks ties, so the order is total
           show (diagSeverity d, diagRelated d, diagFixes d, diagFacts d)

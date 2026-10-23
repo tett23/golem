@@ -201,6 +201,16 @@ tests =
         loadPlugin w >>= \case
           Left (InstantiateFailed _) -> pure ()
           other -> assertFailure (show (void other)),
+      testCase "a table of exactly the limit on table elements can be instantiated (docs/adr ADR 0068)" $ do
+        w <- fixedFrom "table-1000000.wat" abi (responseWith (TList []))
+        loadPlugin w >>= \case
+          Right _ -> pure ()
+          other -> assertFailure (show (void other)),
+      testCase "a table of one element beyond the limit cannot be instantiated (docs/adr ADR 0068)" $ do
+        w <- fixedFrom "table-1000001.wat" abi (responseWith (TList []))
+        loadPlugin w >>= \case
+          Left (InstantiateFailed _) -> pure ()
+          other -> assertFailure (show (void other)),
       testCase "a result of the wrong type is bad output, every time (docs/adr ADR 0035)" $ do
         w <- compile =<< wat "describe-i32.wat"
         loadPlugin w >>= (@?= Left (BadOutput "golem_describe の戻り値の型が不正です")) . void,

@@ -3,6 +3,7 @@
 module Main (main) where
 
 import Control.Concurrent (forkIO)
+import Control.Exception (finally)
 import Control.Monad (void)
 import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
@@ -31,7 +32,7 @@ import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
 import StaleS1Spec (staleS1Tests)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory, makeAbsolute)
-import System.Environment (setEnv)
+import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
 import System.IO.Temp (withSystemTempDirectory)
@@ -46,7 +47,32 @@ root :: FilePath
 root = "test/fixtures/proj"
 
 main :: IO ()
-main = defaultMain tests
+main = do
+  cacheHome <- lookupEnv "XDG_CACHE_HOME"
+  defaultMain (dependentTestGroup "golem-lsp" AllFinish [tests, cacheHomeTests cacheHome])
+
+{- | The tests that set XDG_CACHE_HOME, one at a time after the others, and
+last a check that it is as it was when the suite started (docs/adr ADR
+0072). The environment is one for the process, and tasty runs the other
+tests at once.
+-}
+cacheHomeTests :: Maybe String -> TestTree
+cacheHomeTests start =
+  dependentTestGroup
+    "XDG_CACHE_HOME (docs/adr ADR 0072)"
+    AllFinish
+    [ -- docs/adr ADR 0031
+      testCase "completion: the commands of the plugins after the built-in ones, with a syntax error too" $
+        withIdentityPlugin $ \tmp -> do
+          ws0 <- openWorkspace tmp
+          ws <- updateFile ws0 "b.gm" "本文。\n\n["
+          let names = map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[")))
+          names @?= builtinInlineCommands <> ["broken"]
+          ws' <- updateFile ws0 "b.gm" "本文。\n\n[b"
+          assertBool "broken" ("broken" `elem` map cmpLabel (completions ws' "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[b")))),
+      testCase "XDG_CACHE_HOME is as it was when the suite started" $
+        lookupEnv "XDG_CACHE_HOME" >>= (@?= start)
+    ]
 
 -- | Byte offset of the k-th byte inside the first occurrence of needle.
 offsetIn :: Text -> Text -> Int -> Int
@@ -58,6 +84,16 @@ genText =
     <$> Gen.list
       (Range.linear 0 80)
       (Gen.element ("ab 漢字かな\n😀𠮷x" :: String))
+
+{- | The columns of a line that fall between two characters, from 0 to the
+width of the line, in UTF-8 bytes or UTF-16 code units.
+-}
+characterBoundaries :: Encoding -> Text -> [Int]
+characterBoundaries enc = scanl (+) 0 . map units . T.unpack
+  where
+    units ch = case enc of
+      Utf8 -> BS.length (TE.encodeUtf8 (T.singleton ch))
+      Utf16 -> if fromEnum ch > 0xFFFF then 2 else 1
 
 textOf :: Workspace -> FilePath -> Text
 textOf ws p = maybe "" srcText (sourceOf ws p)
@@ -101,15 +137,6 @@ tests =
         assertBool "commands" ("color" `elem` names (offsetIn src "[co" 3))
         names (offsetIn src "[color " 7) @?= ["accent"]
         assertBool "paths" ("common/values.gm" `elem` names (offsetIn src "@import " 8)),
-      -- docs/adr ADR 0031
-      testCase "completion: the commands of the plugins after the built-in ones, with a syntax error too" $
-        withIdentityPlugin $ \tmp -> do
-          ws0 <- openWorkspace tmp
-          ws <- updateFile ws0 "b.gm" "本文。\n\n["
-          let names = map cmpLabel (completions ws "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[")))
-          names @?= builtinInlineCommands <> ["broken"]
-          ws' <- updateFile ws0 "b.gm" "本文。\n\n[b"
-          assertBool "broken" ("broken" `elem` map cmpLabel (completions ws' "b.gm" (BS.length (TE.encodeUtf8 "本文。\n\n[b")))),
       testCase "completion: a project without plugins has the built-in names only" $ do
         ws0 <- openWorkspace root
         ws <- updateFile ws0 "b.gm" "本文。\n\n["
@@ -252,6 +279,14 @@ tests =
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
         codesIn "style.toml" @?= ["G03006"]
         codesIn "manifest.toml" @?= [],
+      testCase "a project file publishes its diagnostics in the order of the codes (golem-syntax ADR 0003)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
+        BS.writeFile (tmp </> "a.gm") "@label unused\n# A\n\nSee [ref-title nope].\n"
+        BS.writeFile (tmp </> "manifest.toml") manifest
+        ws <- openWorkspace tmp
+        assertBool "evaluated" (isJust (wsEvaluated ws))
+        -- the G05004 of line 1 after the G04003 of line 4, an error of the assembly that keeps the book for lint
+        codesOf ws "a.gm" @?= ["G04003", "G05004"],
       testCase "a notice is published as Information (golem-syntax ADR 0002)" $ do
         lspSeverity Notice @?= L.DiagnosticSeverity_Information
         lspSeverity Warning @?= L.DiagnosticSeverity_Warning
@@ -338,27 +373,37 @@ tests =
         let emoji = mkLineIndex "😀a"
         fromLineCol Utf16 emoji (LineCol 0 1) @?= Nothing
         fromLineCol Utf16 emoji (LineCol 0 9) @?= Just 5,
-      testProperty "a converted position lies within its line (ADR 0003)" $ property $ do
+      testProperty "a converted position lies within its line; only a position off the lines or inside a character has none (ADR 0003)" $ property $ do
         t <- forAll genText
         enc <- forAll (Gen.element [Utf8, Utf16])
         let li = mkLineIndex t
         l <- forAll (Gen.int (Range.linear (-1) (lineCount li)))
         c <- forAll (Gen.int (Range.linear 0 40))
         case fromLineCol enc li (LineCol l c) of
-          Nothing -> success
+          Nothing -> do
+            -- the columns between characters, counted from the text of the line (docs/adr/0066)
+            let cols = characterBoundaries enc (T.splitOn "\n" t !! l)
+            annotateShow cols
+            H.assert (l < 0 || l >= lineCount li || (c < last cols && c `notElem` cols))
           Just o -> do
             let start = fromLineCol enc li (LineCol l 0)
             H.assert (maybe False (<= o) start)
             H.assert (maybe False (o <=) (lineEndOffset li l)),
-      testProperty "within the line, fromLineCol agrees with the exact conversions (ADR 0003)" $ property $ do
+      -- the oracle is independent of fromLineCol: the line end past the
+      -- width, and within it the column back from the offset (docs/adr/0065)
+      testProperty "past the line, fromLineCol is the line end; within it, the column comes back (ADR 0003)" $ property $ do
         t <- forAll genText
+        enc <- forAll (Gen.element [Utf8, Utf16])
         let li = mkLineIndex t
         l <- forAll (Gen.int (Range.linear 0 (lineCount li - 1)))
         let end = fromMaybe 0 (lineEndOffset li l)
-        c8 <- forAll (Gen.int (Range.linear 0 (lcColumn (toLineCol Utf8 li end))))
-        c16 <- forAll (Gen.int (Range.linear 0 (lcColumn (toLineCol Utf16 li end))))
-        fromLineCol Utf8 li (LineCol l c8) === utf8LineColToOffset li (LineCol l c8)
-        fromLineCol Utf16 li (LineCol l c16) === utf16LineColToOffset li (LineCol l c16),
+            width = lcColumn (toLineCol enc li end)
+        c <- forAll (Gen.int (Range.linear 0 (width + 5)))
+        case fromLineCol enc li (LineCol l c) of
+          Just o
+            | c > width -> o === end
+            | otherwise -> toLineCol enc li o === LineCol l c
+          Nothing -> H.assert (c <= width),
       testCase "the workspace keeps a line index per file and follows edits (ADR 0002)" $ do
         ws0 <- openWorkspace root
         lineCount (lineIndexOf ws0 "a.gm") @?= lineCount (mkLineIndex (textOf ws0 "a.gm"))
@@ -551,8 +596,16 @@ withIdentityPlugin k = withSystemTempDirectory "golem-lsp-plugin" $ \tmp -> do
   BS.appendFile (tmp </> "manifest.toml") "\n[plugins.identity]\nurl = \"https://example.com/identity.wasm\"\n"
   src <- TIO.readFile "../golem-plugin/test/plugins/identity.wat"
   wasm <- watToWasm src >>= either (assertFailure . T.unpack) pure
-  setEnv "XDG_CACHE_HOME" (tmp </> "cache")
-  cache <- defaultCacheDir
-  r <- lockPlugins (\u -> pure (if u == "https://example.com/identity.wasm" then Right wasm else Left "404")) cache (Map.fromList [("identity", "https://example.com/identity.wasm")])
-  either (assertFailure . show) (TIO.writeFile (tmp </> "plugins.lock") . renderLock) r
-  k tmp
+  withEnv "XDG_CACHE_HOME" (tmp </> "cache") $ do
+    cache <- defaultCacheDir
+    r <- lockPlugins (\u -> pure (if u == "https://example.com/identity.wasm" then Right wasm else Left "404")) cache (Map.fromList [("identity", "https://example.com/identity.wasm")])
+    either (assertFailure . show) (TIO.writeFile (tmp </> "plugins.lock") . renderLock) r
+    k tmp
+
+{- | Runs an action with an environment variable set, and sets it back
+afterwards, or unsets it where it was not set (docs/adr ADR 0072).
+-}
+withEnv :: String -> String -> IO a -> IO a
+withEnv name value act = do
+  old <- lookupEnv name
+  (setEnv name value >> act) `finally` maybe (unsetEnv name) (setEnv name) old

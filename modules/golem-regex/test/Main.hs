@@ -240,7 +240,15 @@ errorTests =
                either (T.isInfixOf "\\x{4E00}-\\x{9FFF}" . reMessage) (const False) (compile "\\p{Han}") @? "names the range",
              testCase "the message of ~" $
                either (T.isInfixOf "\\~" . reMessage) (const False) (compile "~m") @? "names \\~",
-             testCase "a variable lookbehind is an error" $ assertBool "Left" (isLeft (compile "(?<=a?)b"))
+             testCase "a variable lookbehind is an error" $ assertBool "Left" (isLeft (compile "(?<=a?)b")),
+             testCase "a repetition count of 65535 compiles" $ assertBool "Right" (isRight (compile "(?:){65535}")),
+             testCase "a repetition count of 65536 is an error at the quantifier" $ errorAt "(?:){65536}" @?= Just 4,
+             testCase "the message of a repetition count over the bound" $
+               either (Just . reMessage) (const Nothing) (compile "(?:){65536}") @?= Just repetitionMessage,
+             testCase "the message of a{70000}" $
+               either (Just . reMessage) (const Nothing) (compile "a{70000}") @?= Just repetitionMessage,
+             testCase "the message names the bound" $
+               either (T.isInfixOf "65535" . reMessage) (const False) (compile "(?:){65536}") @? "names 65535"
            ]
     )
 
@@ -272,3 +280,7 @@ suiteTests =
     [ testGroup "PCRE2 testinput1" [testCase ("testinput1:" <> show pl <> " subject " <> show sl) (m p s @?= e) | (pl, sl, p, s, e) <- pcreCases],
       testGroup "Boost.Regex" [testCase (f <> ":" <> show l) (m p s @?= e) | (f, l, p, s, e) <- boostCases]
     ]
+
+-- | The message of a repetition count over the bound (ADR 0068).
+repetitionMessage :: Text
+repetitionMessage = "繰り返しの回数が上限の 65535 回を超えています"
