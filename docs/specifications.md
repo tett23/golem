@@ -2919,6 +2919,7 @@ SVG の図版は、G09008 では `rgb` とし、G09006、G09007、G09009 では�
 行分割、字形の選択、描画はこれを読まないので、PDF は変わらない。
 G09004 はこの定義、字の種類、色でまとめ、G09002 は行のブロックの位置に出す。
 G09014 の検査は、golem-pdf の `Golem.Pdf.X4.verify` が書く前の PDF のオブジェクトに対して行う、Golem が生成しうる要素に限った自前の検査であり、PDF/X-4 の適合の判定ではない（[golem-pdf ADR 0003](golem-pdf/adr/0003-pdf-x-4-validator.md)）。
+要件「JavaScript と外部への参照」の詳細は、禁止の名前（`JavaScript`、`JS`、`URI`、`Launch`、`GoToR`）を、トレーラー、オブジェクトの順に走査して見つけた順に一度ずつ「、」でつなぎ、`<名前>、<名前> があります` とする（[golem-pdf ADR 0012](golem-pdf/adr/0012-x4-forbidden-names-in-found-order.md)）。
 入稿の前には、商用のプリフライトでも確かめる。
 
 終了コードはほかのコマンドと同じく、エラーの diagnostic がなければ 0、あれば 1、使い方の誤りは 2 である。

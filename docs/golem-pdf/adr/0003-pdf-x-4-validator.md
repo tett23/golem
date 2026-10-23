@@ -1,6 +1,6 @@
 # ADR 0003: PDF/X-4 の検証ツール
 
-ステータス: 採択
+ステータス: 採択、禁止の名前の並びは [ADR 0012](0012-x4-forbidden-names-in-found-order.md)
 
 ## 文脈
 
