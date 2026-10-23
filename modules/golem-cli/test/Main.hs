@@ -148,6 +148,7 @@ tests =
         (code', _, _) <- readCreateProcessWithExitCode (proc "golem" ["fmt", "a.gm"]) {cwd = Just tmp} ""
         code' @?= ExitSuccess
         readFile (tmp </> "a.gm") >>= (@?= "@verse\n  Full fathom five\n"),
+      fmtCrTests,
       missingFontTests,
       marksTests,
       preflightTests,
@@ -169,6 +170,63 @@ tests =
               assertBool err ("error[G01024]" `isInfixOf` err && not ("error[G01010]" `isInfixOf` err))
           )
           ["| a | b |\\\n|---|---|\n| c | d |\n", "| a | b |\n|---|---|\n| c | d |\\\n| e | f |\n"]
+    ]
+
+-- | A manifest whose chapters are the given files.
+crManifest :: [FilePath] -> String
+crManifest chs =
+  "chapters = ["
+    <> T.unpack (T.intercalate ", " [T.pack (show c) | c <- chs])
+    <> "]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
+
+{- | Runs the commands of golem one after another in a directory holding
+the project; the exit code, stdout and stderr of each, and the files
+afterwards.
+-}
+golemSteps :: [(FilePath, String)] -> [[String]] -> IO ([(ExitCode, String, String)], [(FilePath, String)])
+golemSteps files steps = withSystemTempDirectory "golem-cli" $ \tmp -> do
+  mapM_ (\(p, c) -> BL.writeFile (tmp </> p) (BL.fromStrict (TE.encodeUtf8 (T.pack c)))) files
+  rs <- mapM (\args -> readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} "") steps
+  result <- mapM (\(p, _) -> (p,) . T.unpack . TE.decodeUtf8 <$> BS.readFile (tmp </> p)) files
+  pure (rs, result)
+
+-- | golem fmt without arguments and the CR of the sources (golem-fmt ADR 0004).
+fmtCrTests :: TestTree
+fmtCrTests =
+  testGroup
+    "golem fmt without arguments fixes CR (golem-fmt ADR 0004)"
+    [ testCase "a lone CR in a chapter is fixed, and golem check reports no G01003" $ do
+        ([(code, _, err), (_, _, err')], files') <- golemSteps [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "本文。\r次。\n")] [["fmt"], ["check"]]
+        assertEqual err ExitSuccess code
+        lookup "a.gm" files' @?= Just "本文。\n次。\n"
+        assertBool err' (not ("G01003" `isInfixOf` err')),
+      testCase "two chapters with CRLF, neither importing the other, are both fixed" $ do
+        ([(code, _, err)], files') <- golemSteps [("manifest.toml", crManifest ["a.gm", "b.gm"]), ("a.gm", "一。\r\n二。\r\n"), ("b.gm", "三。\r\n")] [["fmt"]]
+        assertEqual err ExitSuccess code
+        lookup "a.gm" files' @?= Just "一。\n二。\n"
+        lookup "b.gm" files' @?= Just "三。\n",
+      testCase "a file read only by @import is fixed too" $ do
+        ([(code, _, err)], files') <- golemSteps [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "@import c.gm as c\n\n本文。\n"), ("c.gm", "一。\r\n")] [["fmt"]]
+        assertEqual err ExitSuccess code
+        lookup "c.gm" files' @?= Just "一。\n"
+        lookup "a.gm" files' @?= Just "@import c.gm as c\n\n本文。\n",
+      testCase "a CR in manifest.toml is G01003, and nothing is rewritten" $ do
+        let files = [("manifest.toml", T.unpack (T.replace "\n" "\r\n" (T.pack (crManifest ["a.gm"])))), ("a.gm", "本文。\r\n")]
+        ([(code, _, err)], files') <- golemSteps files [["fmt"]]
+        assertEqual err (ExitFailure 1) code
+        assertBool err ("error[G01003]" `isInfixOf` err)
+        files' @?= files,
+      testCase "a CR and another syntax error in a chapter: nothing is rewritten" $ do
+        let files = [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "[strong: 閉じない\r\n")]
+        ([(code, _, err)], files') <- golemSteps files [["fmt"]]
+        assertEqual err (ExitFailure 1) code
+        files' @?= files,
+      testCase "golem fmt --check shows a chapter with a CR and rewrites nothing" $ do
+        let files = [("manifest.toml", crManifest ["a.gm"]), ("a.gm", "本文。\r\n")]
+        ([(code, out, err)], files') <- golemSteps files [["fmt", "--check"]]
+        assertEqual err (ExitFailure 1) code
+        lines out @?= ["a.gm"]
+        files' @?= files
     ]
 
 -- | Runs golem in a project whose body font is missing (golem-project ADR 0004).

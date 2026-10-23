@@ -4,6 +4,7 @@ module Main (main) where
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.Char (isDigit)
+import Data.Containers.ListUtils (nubOrd)
 import Data.List (intercalate, isPrefixOf, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
@@ -18,13 +19,13 @@ import Golem.Driver.Lint (lintProject)
 import Golem.Driver.New
 import Golem.Driver.Version (golemVersion)
 import Golem.Eval.File (EvalResult (..))
-import Golem.Fmt (FormatResult (..), format)
+import Golem.Fmt (FormatResult (..), format, preprocess)
 import Golem.Lsp.Server (runGolemLsp)
 import Golem.Parser (parseAst, parseFile)
 import Golem.Parser.CST (pretty)
 import Golem.Parser.Read (readInfo)
 import Golem.Plugin.Lock (defaultCacheDir, fetchPlugins, httpsFetcher, lockPlugins, parseLock, renderLock)
-import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..), loadProject)
+import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..), loadProjectWith)
 import Golem.Project.Manifest (Manifest (..), PluginDecl (..), parseManifest)
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
@@ -387,9 +388,9 @@ formatFiles check files0 = do
   files <-
     if null files0
       then
-        loadProject "." >>= \case
+        projectSourcePaths >>= \case
           Left f -> putHuman (pfSources f) (pfDiagnostics f) >> pure Nothing
-          Right p -> pure (Just (map sfPath (Map.elems (projectSources p))))
+          Right ps -> pure (Just ps)
       else pure (Just files0)
   case files of
     Nothing -> pure (ExitFailure 1)
@@ -413,6 +414,34 @@ formatFiles check files0 = do
           | TE.encodeUtf8 out == bytes -> pure True
           | check -> putStrLn path >> pure False
           | otherwise -> BS.writeFile path (TE.encodeUtf8 out) >> pure True
+
+{- | The sources of the project in the current directory, for golem fmt
+without arguments (golem-fmt ADR 0004). When the load stops only at the CR
+of sources (G01003 in chapters and imported files), those sources go
+preprocessed into the overlay and the project is loaded again. Each retry
+adds a file to the overlay, so the retries end; a file that is G01003 again
+after it was overlaid ends them with the failure.
+-}
+projectSourcePaths :: IO (Either ProjectFailure [FilePath])
+projectSourcePaths = go Map.empty
+  where
+    go overlay =
+      loadProjectWith overlay "." >>= \case
+        Right p -> pure (Right (map sfPath (Map.elems (projectSources p))))
+        Left f -> case crSources f of
+          Just paths
+            | not (any (`Map.member` overlay) paths) -> do
+                fixed <- traverse (\path -> (path,) . preprocess . TE.decodeUtf8Lenient <$> BS.readFile path) paths
+                go (Map.union overlay (Map.fromList fixed))
+          _ -> pure (Left f)
+    -- the sources the errors point at, when every error is G01003 in a
+    -- source; manifest.toml is not formatted
+    crSources f =
+      let errs = filter ((== Error) . diagSeverity) (pfDiagnostics f)
+          pathOf d = siPath <$> Map.lookup (spanFile (diagSpan d)) (pfSources f)
+       in if not (null errs) && all ((== DiagnosticCode "G01003") . diagCode) errs
+            then traverse pathOf errs >>= \ps -> if "manifest.toml" `elem` ps then Nothing else Just (nubOrd ps)
+            else Nothing
 
 -- | golem plugin lock (golem-plugin ADR 0002).
 pluginLock :: IO ExitCode
