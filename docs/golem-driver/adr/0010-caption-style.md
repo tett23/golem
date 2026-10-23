@@ -1,6 +1,6 @@
 # ADR 0010: キャプションを段落スタイル caption の書体と大きさで組む
 
-ステータス: 採択
+ステータス: 採択→キャプションと傍注が引き継ぐキーは [ADR 0043](0043-caption-sidenote-do-not-inherit-indent.md)
 
 ## 文脈
 

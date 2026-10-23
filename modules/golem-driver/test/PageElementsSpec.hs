@@ -923,10 +923,10 @@ captionTests =
       (_, pl) <- layoutOk (horizontal24 <> "\n[paragraph-styles.note]\nsize = \"8pt\"\n\n[paragraph-styles.caption]\nbased-on = \"note\"\n") (figureWith 10) img
       (_, pf, _, _) <- theFigure pl
       pfCaptionSize pf @?= 8 * pt,
-    testCase "the indent of the caption style does not move the caption" $ do
+    testCase "the indents of body do not move the caption (golem-driver ADR 0043)" $ do
       img <- tinyImage
       a <- miniPdf fakeProvider True horizontal24 (figureWith 30) img >>= fmap BS.concat . inflateAll
-      b <- miniPdf fakeProvider True (captionStyle "first-line-indent = \"1zw\"\n") (figureWith 30) img >>= fmap BS.concat . inflateAll
+      b <- miniPdf fakeProvider True (horizontal24 <> "\n[paragraph-styles.body]\nindent = \"2zw\"\nfirst-line-indent = \"1zw\"\n") (figureWith 30) img >>= fmap BS.concat . inflateAll
       [d | d <- drawnGlyphs a, dGlyph d == fromEnum '甲'] @?= [d | d <- drawnGlyphs b, dGlyph d == fromEnum '甲'],
     testCase "small captions: parallel and sequential, and two builds, give the same bytes" $ do
       img <- tinyImage
@@ -1041,6 +1041,13 @@ sidenoteTests =
       let small = [d | d <- drawnGlyphs content, dSize d == "8"]
       length small @?= 2
       assertBool (show (map dX small)) (TE.encodeUtf8 (spToPt (rectX area)) `elem` map dX small),
+    testCase "the indents of body do not move the sidenote (golem-driver ADR 0043)" $ do
+      let source = "本文[sidenote: 傍注の本文が二行にわたる長さです]。\n"
+      a <- miniPdf fakeProvider True sidenoteStyle source [] >>= fmap BS.concat . inflateAll
+      b <- miniPdf fakeProvider True (sidenoteStyle <> "\n[paragraph-styles.body]\nindent = \"2zw\"\nfirst-line-indent = \"1zw\"\n") source [] >>= fmap BS.concat . inflateAll
+      let small c = [d | d <- drawnGlyphs c, dSize d == "8"]
+      assertBool "sidenote glyphs" (length (small a) > 6)
+      small a @?= small b,
     testCase "a page reference in a sidenote converges" $ do
       (_, pl) <- layoutOk sidenoteStyle ("本文[sidenote: [ref-page later]ページを参照。]。\n\n" <> longPara 60 <> "@label later\n後。\n") []
       length (sidenotesOf pl) @?= 1,
@@ -1070,15 +1077,13 @@ sidenoteTests =
       plain <- linesOf (sidenoteStyle <> fakeBody)
       wide <- linesOf (sidenoteStyleWith "font = \"wide\"\n" <> fakeBody <> "\n[fonts.wide]\nlatin = \"fonts/w.otf\"\n")
       assertBool (show (plain, wide)) (wide > plain),
-    testCase "naming the body role, or an indent, changes nothing" $ do
+    testCase "naming the body role changes nothing" $ do
       let source = "本文[sidenote: 傍注の本文はここにある。]。\n"
       a <- miniPdf fakeProvider True (sidenoteStyle <> fakeBody) source fakeFontFiles
       b <- miniPdf fakeProvider True (sidenoteStyleWith "font = \"body\"\n" <> fakeBody) source fakeFontFiles
-      c <- miniPdf fakeProvider True (sidenoteStyleWith "first-line-indent = \"1zw\"\n" <> fakeBody) source fakeFontFiles
       -- style.toml is an input of the instance ID (golem-pdf ADR 0004), so the trailer differs
       let withoutId pdf = fst (BS.breakSubstring "/ID [" pdf)
-      withoutId a @?= withoutId b
-      withoutId a @?= withoutId c,
+      withoutId a @?= withoutId b,
     testCase "a character style inside a sidenote takes its own role" $ do
       content <- miniPdf fakeProvider True (sidenoteStyle <> fakeBody <> "\n[fonts.wide]\nja = \"fonts/w.otf\"\n\n[character-styles.bold]\nfont = \"wide\"\n") "本文[sidenote: 注の[bold: 語]。]。\n" fakeFontFiles >>= fmap BS.concat . inflateAll
       let ds = drawnGlyphs content

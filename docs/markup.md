@@ -517,6 +517,7 @@ main = do
 `code` はコードブロックを組む段落スタイルで、原稿の `@style` には書けない（「コードブロック」の節を参照）。
 段落スタイルを付けない段落は `body` で組む。
 `caption` と `sidenote` は、図版のキャプションと傍注の本文の書体と大きさを決める段落スタイルでもある。
+`caption` と `sidenote` は `body` の字下げを引き継がず、`@style caption` や `@style sidenote` を付けた段落も字下げなしで組む（[golem-driver ADR 0043](golem-driver/adr/0043-caption-sidenote-do-not-inherit-indent.md)）。
 
 スタイルの名前は、英小文字で始まり、英小文字、数字、`-` だけからなる。
 そのファイルでだけ使う段落スタイルは、ファイルの先頭の `@style-def paragraph` でも定義できる（「ファイルの設定」の節を参照）。
