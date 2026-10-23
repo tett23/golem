@@ -32,7 +32,7 @@ G03010 と G05004 は、[code: --profile dev] では警告、[code: --profile pr
   BOM なしの UTF-8 で保存し直すか、[code: golem fmt] を実行してください。
   [code: @table] の表のファイルの先頭の BOM は読み飛ばすので、このエラーになりません。
 = [strong: G01003 [code: 改行に CR が含まれています。改行は LF に限ります]]
-  Windows の形式の改行（CRLF）で保存されています。
+  Windows の形式の改行（CRLF）か、古い Mac の形式の改行（単独の CR）で保存されています。
   [code: golem fmt] を実行すると直ります。
 = [strong: G02089 [code: 出力に書けない文字（U+0001）があります]]
   原稿、表のファイル、[code: @listing] のファイルの文字列に、出力に書けない制御文字があります。

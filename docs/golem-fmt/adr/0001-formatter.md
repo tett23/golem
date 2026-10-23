@@ -1,6 +1,6 @@
 # ADR 0001: 整形
 
-ステータス: 採択→移行の段階は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) で加え、[ADR 0002](0002-remove-verse-migration.md) で外した。エスケープの規則の出力の不変の確かめ方は [golem-parser ADR 0010](../../golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)
+ステータス: 採択→移行の段階は [docs/adr/0005](../../adr/0005-character-and-paragraph-styles.md) で加え、[ADR 0002](0002-remove-verse-migration.md) で外した。エスケープの規則の出力の不変の確かめ方は [golem-parser ADR 0010](../../golem-parser/adr/0010-ruby-slash-escape-and-table-cell-breaks.md)、単独の CR の扱いは [ADR 0003](0003-lone-cr-to-lf.md)
 
 ## 文脈
 

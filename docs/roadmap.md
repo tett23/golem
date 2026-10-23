@@ -35,7 +35,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 ### fmt と PDF/X-4 の検査
 
-- `golem fmt` は単独の CR も LF に直す（未実装、[golem-fmt ADR 0003](golem-fmt/adr/0003-lone-cr-to-lf.md)）。
 - PDF/X-4 の検査は、見つけた禁止の名前を見つけた順に並べる（未実装、[golem-pdf ADR 0012](golem-pdf/adr/0012-x4-forbidden-names-in-found-order.md)）。
 
 ### 既知の不具合の修正
