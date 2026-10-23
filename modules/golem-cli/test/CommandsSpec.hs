@@ -360,6 +360,16 @@ fmtTests =
         _ <- golemAt tmp ["fmt"]
         (code, out, _) <- golemAt tmp ["fmt", "--check"]
         (code, out) @?= (ExitSuccess, ""),
+      testCase "after golem fmt, a chapter with a lone CR passes golem check without G01003 (golem-fmt ADR 0003)" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+        writeFiles tmp (fmtProject <> [("chapters/01.gm", "# はじめに\r\r本文。\r")])
+        (code0, _, err0) <- golemAt tmp ["check"]
+        assertBool err0 (code0 /= ExitSuccess && "G01003" `isInfixOf` err0)
+        -- the file is named: without arguments, loading the project stops at G01003
+        _ <- golemAt tmp ["fmt", "chapters/01.gm"]
+        readUtf8 (tmp </> "chapters/01.gm") >>= (@?= "# はじめに\n\n本文。\n")
+        -- the project has no style.toml, so check still fails, on other codes
+        (_, out, err) <- golemAt tmp ["check"]
+        assertBool (out <> err) (not ("G01003" `isInfixOf` (out <> err))),
       testCase "without a manifest: G03016 and 1" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
         (code, _, err) <- golemAt tmp ["fmt"]
         code @?= ExitFailure 1
