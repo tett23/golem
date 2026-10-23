@@ -498,7 +498,7 @@ isbn = "978-..."
 式の評価、とくに浮動小数点数の計算は、x86-64 と aarch64 の両方の CI でテストし、結果が一致することを確かめる。
 
 diagnostics も決定性の対象である（「設計原則」の「diagnostics の決定性」）。
-同じ入力からは同じ diagnostics を得て、並びの順はファイルの順と位置の順に固定する（[ADR 0002](adr/0002-determinism.md)）。
+同じ入力からは同じ diagnostics を得て、並びの順はコードの順、ファイルの順、位置の順に固定する（[ADR 0002](adr/0002-determinism.md)、[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
 x86-64 と aarch64 の間でも、diagnostics と終了コードが同じであることを CI の `determinism` ジョブが確かめる（[ADR 0071](adr/0071-determinism-check-compares-diagnostics.md)）。
 
 出力は、ファイルの入力、Golem のバージョン、出力を変える CLI のオプション（`--marks` と `--profile`）だけで決まる（[golem-pdf ADR 0004](golem-pdf/adr/0004-crop-marks-and-bleed.md)）。
@@ -1997,7 +1997,8 @@ lint の規則（G05xxx）は notice を出さない。
 今の notice は、ファイルの中のスタイルの上書き（G02062）、数字だけの縦中横（G02063）、`keep` の段落の行頭のエスケープした空白（G02064）、`keep` の段落の行末のエスケープした空白（G02079）、`@listing` の `src=`（G02065、廃止予定）、続けて書いた `@blank-line`（G02094）、`style.toml` のないプロジェクト（G03023）、`caption` と `sidenote` の 0 の字下げ（G03100）、自動の番号と同じ `@number`（G04007）、本の最後の改ページ（G04008）、本の最後の行アキ（G04009）、行数の和がページの行数以上になる行アキ（G04011）、コードブロックの行の折り返し（G07030）、段に収めるために縮めた図版（G07039）、PDF で描かないルビの親文字の圏点（G07045）、分けて組んだ罫線を持つ段落と省いた見出しの罫線（G07046）、段の先頭で捨てた行アキ（G07047）、`[fonts.code]` のない本のコード（G08008）である。
 
 diagnostics は、エラーと警告を先に、notice を後に並べる。
-エラーと警告のあいだは、ファイルの順、位置の順、コードの順で並べ、notice どうしも同じ規則で並べる。
+エラーと警告のあいだは、コードの順、ファイルの順、開始位置の順、終了位置の順、メッセージの順で並べ、notice どうしも同じ規則で並べる（[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
+エラーと警告は区別せず、コードの順で混ぜて並べる。
 notice の多いプロジェクトで、ビルドを止めたエラーが画面の外に流れないようにするためである。
 人が読む形式と JSON の形式は同じ順で出す。
 

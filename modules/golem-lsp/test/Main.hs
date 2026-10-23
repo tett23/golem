@@ -252,6 +252,14 @@ tests =
         let codesIn p = [c | d <- fromMaybe [] (Map.lookup p (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
         codesIn "style.toml" @?= ["G03006"]
         codesIn "manifest.toml" @?= [],
+      testCase "a project file publishes its diagnostics in the order of the codes (golem-syntax ADR 0003)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
+        let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
+        BS.writeFile (tmp </> "a.gm") "@label unused\n# A\n\nSee [ref-title nope].\n"
+        BS.writeFile (tmp </> "manifest.toml") manifest
+        ws <- openWorkspace tmp
+        assertBool "evaluated" (isJust (wsEvaluated ws))
+        -- the G05004 of line 1 after the G04003 of line 4, an error of the assembly that keeps the book for lint
+        codesOf ws "a.gm" @?= ["G04003", "G05004"],
       testCase "a notice is published as Information (golem-syntax ADR 0002)" $ do
         lspSeverity Notice @?= L.DiagnosticSeverity_Information
         lspSeverity Warning @?= L.DiagnosticSeverity_Warning

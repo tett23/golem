@@ -45,7 +45,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - スクリプトのテストを macOS の BSD の道具でも走らせる（未実装、[ADR 0079](adr/0079-shell-tests-on-macos.md)）。
 - リリースの smoke の検査で、ビルドが diagnostics を出さないことも確かめる（未実装、[ADR 0080](adr/0080-release-smoke-checks-diagnostics.md)）。
 - フォントにない字を、golem build の dev では warning、prod ではエラーにする（未実装、[ADR 0081](adr/0081-missing-glyphs-warn-in-build.md)）。
-- diagnostics をコードの順を先にして並べる（未実装、[golem-syntax ADR 0003](golem-syntax/adr/0003-diagnostic-order.md)）。
 
 ### 既知の不具合の修正
 
