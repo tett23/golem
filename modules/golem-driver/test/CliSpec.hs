@@ -1,11 +1,12 @@
 module CliSpec (newProjectTests, newPreflightTests, preflightTests) where
 
+import Control.Exception (try)
 import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
 import Data.List (isSuffixOf, sort)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing)
+import Data.Maybe (isJust, isNothing)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
@@ -25,17 +26,18 @@ import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
 
-templateText :: Language -> FilePath -> T.Text
-templateText lang file = fromMaybe "" (lookup file (templateFiles lang uuid0))
+-- | A file of the template; one that is not in it fails the test (docs/adr/0064).
+templateText :: Language -> FilePath -> IO T.Text
+templateText lang file = maybe (assertFailure ("the template has no " <> file)) pure (lookup file (templateFiles lang uuid0))
 
 -- | The page size, vertical writing and right binding the template's style.toml lays out.
-templatePage :: Language -> Either [Diagnostic] ((Integer, Integer), Bool, Bool)
-templatePage lang =
-  (\g -> (pgPageSize g, pgVertical g, pgBindingRight g))
-    <$> (parseStyle (FileId 0) (templateText lang "style.toml") >>= pageGeometry (FileId 0) False)
+templatePage :: Language -> IO (Either [Diagnostic] ((Integer, Integer), Bool, Bool))
+templatePage lang = do
+  style <- templateText lang "style.toml"
+  pure ((\g -> (pgPageSize g, pgVertical g, pgBindingRight g)) <$> (parseStyle (FileId 0) style >>= pageGeometry (FileId 0) False))
 
 templateFile :: Language -> FilePath -> IO BL.ByteString
-templateFile lang file = pure (BL.fromStrict (TE.encodeUtf8 (templateText lang file)))
+templateFile lang file = BL.fromStrict . TE.encodeUtf8 <$> templateText lang file
 
 fakeFont :: BS.ByteString -> FontSource
 fakeFont bytes = FontSource "fonts/a.otf" "https://example.com/a.otf" (hashHex bytes)
@@ -54,14 +56,14 @@ newProjectTests =
         <> [ -- A6 is 105 x 148 mm, at 72/25.4 pt per mm and 65536 sp per pt (rounded);
              -- mass-market is 4.25 x 6.875 in, 306 x 495 pt
              testCase "the Japanese template lays out a vertical A6 page bound on the right" $
-               templatePage Japanese @?= Right ((19505991, 27494158), True, True),
+               templatePage Japanese >>= (@?= Right ((19505991, 27494158), True, True)),
              testCase "the English template lays out a horizontal mass-market page bound on the left" $
-               templatePage English @?= Right ((20054016, 32440320), False, False),
+               templatePage English >>= (@?= Right ((20054016, 32440320), False, False)),
              -- golem-pdf ADR 0010, golem-project ADR 0010
              testCase "the templates have a bleed: 3mm for Japanese, 0.125in (9pt) for English" $ do
-               let bleedOf lang = fmap pageBleed . stPage <$> parseStyle (FileId 0) (templateText lang "style.toml")
-               bleedOf Japanese @?= Right (Just (round (3 * 72 * 65536 / (25.4 :: Rational))))
-               bleedOf English @?= Right (Just (9 * 65536))
+               let bleedOf lang = fmap (fmap pageBleed . stPage) . parseStyle (FileId 0) <$> templateText lang "style.toml"
+               bleedOf Japanese >>= (@?= Right (Just (round (3 * 72 * 65536 / (25.4 :: Rational)))))
+               bleedOf English >>= (@?= Right (Just (9 * 65536)))
                parseDim "0.125in" @?= parseDim "9pt",
              testCase "fonts come from tagged releases with fixed hashes" $ do
                map fsPath (templateFonts Japanese) @?= ["fonts/NotoSerifJP-Regular.otf", "fonts/LICENSE-NotoSerifJP.txt"]
@@ -80,7 +82,8 @@ newProjectTests =
                r <- createProject dir (templateFiles Japanese uuid0) (Just (fakeFetch (Right "FONT"), [fakeFont "FONT"]))
                r @?= Right ()
                BS.readFile (dir </> "fonts/a.otf") >>= (@?= "FONT")
-               TIO.readFile (dir </> "style.toml") >>= (@?= templateText Japanese "style.toml")
+               expected <- templateText Japanese "style.toml"
+               TIO.readFile (dir </> "style.toml") >>= (@?= expected)
                TIO.readFile (dir </> ".gitignore") >>= (@?= "build/\n"),
              testCase "a hash mismatch writes nothing" $ withSystemTempDirectory "golem-new" $ \tmp -> do
                let dir = tmp </> "book"
@@ -102,7 +105,12 @@ newProjectTests =
                BS.writeFile (tmp </> "keep") "x"
                r <- createProject tmp (templateFiles Japanese uuid0) Nothing
                assertBool "error" (either (const True) (const False) r)
-               listDirectory tmp >>= (@?= ["keep"])
+               listDirectory tmp >>= (@?= ["keep"]),
+             testCase "a file the template does not have fails the test, not an empty golden (docs/adr/0064)" $ do
+               r <- try (templateText Japanese "no-such-file")
+               case r of
+                 Left (HUnitFailure _ _) -> pure ()
+                 Right t -> assertFailure ("returned " <> show t)
            ]
         <> newPreflightTests
     )
@@ -113,17 +121,21 @@ newProjectTests =
 newPreflightTests :: [TestTree]
 newPreflightTests =
   [ testCase "the Japanese and English preflight.toml differ only in comments" $
-      uncommented (templateText Japanese "preflight.toml") @?= uncommented (templateText English "preflight.toml"),
+      do
+        ja <- templateText Japanese "preflight.toml"
+        en <- templateText English "preflight.toml"
+        uncommented ja @?= uncommented en,
     testCase "preflight.toml is written without fonts" $ withSystemTempDirectory "golem-new" $ \tmp -> do
       createProject (tmp </> "book") (templateFiles English uuid0) Nothing >>= (@?= Right ())
-      TIO.readFile (tmp </> "book/preflight.toml") >>= (@?= templateText English "preflight.toml"),
+      expected <- templateText English "preflight.toml"
+      TIO.readFile (tmp </> "book/preflight.toml") >>= (@?= expected),
     testCase "a failed download writes no preflight.toml" $ withSystemTempDirectory "golem-new" $ \tmp -> do
       _ <- createProject (tmp </> "book") (templateFiles Japanese uuid0) (Just (fakeFetch (Left "offline"), [fakeFont "FONT"]))
       doesFileExist (tmp </> "book/preflight.toml") >>= assertBool "no preflight.toml" . not,
     testCase "the template reads as print, and its examples uncommented too" $
       forM_ [Japanese, English] $ \lang -> do
-        let t = templateText lang "preflight.toml"
-            (examples, pageCount) = T.breakOn pageCountMarker t
+        t <- templateText lang "preflight.toml"
+        let (examples, pageCount) = T.breakOn pageCountMarker t
         parseRules (FileId 0) t @?= Right printRules
         parseRules (FileId 0) (uncomment examples <> pageCount) @?= Right printRules
         parseRules (FileId 0) (uncomment t) @?= Right printRules {ruPageCount = LevelError, ruPageMultiple = 16}

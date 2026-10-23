@@ -93,7 +93,9 @@ CI は、変更が [code: docs/] の下のファイルとリポジトリのル�
 一覧にない文書は docs だけの変更として扱われ、変えてもビルドが走らない。
 コードの中では、文書のパスを一つの文字列（[code: "../../docs/diagnostics.md"] の形）で書く。
 CI の [code: changes] ジョブが実行する [code: scripts/ci/docs-refs.sh] は、[code: modules/] の [code: .hs] と [code: .cabal] と [code: scripts/] の [code: .sh] からそうした文字列を拾い、一覧と照らし合わせる。
-パスを文字列の連結で組み立てると、この検査をすり抜ける。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0021-docs-workflow-and-ci-gate.md]（docs/adr の ADR 0021「ドキュメントの検査の分離と CI の判定ジョブ」）]
+パスを組み立てた文字列は、この検査が拾えない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0021-docs-workflow-and-ci-gate.md]（docs/adr の ADR 0021「ドキュメントの検査の分離と CI の判定ジョブ」）]
+そこで、パスを [code: "docs" </> "diagnostics.md"] のように組み立てるときは、その行に [code: -- docs-refs: docs/diagnostics.md] の注釈で読む文書を書く。
+[code: docs-refs.sh] は、[code: "docs"] という文字列を含む行に注釈がなければ失敗し、注釈のパスを一覧と照らし合わせる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0069-lint-scripts-bypassed-by-plain-rewrites.md]（docs/adr の ADR 0069「CI の検査のスクリプトを、素朴な書き換えで迂回できないようにする」）]
 
 ## 記録
 

@@ -20,10 +20,16 @@
 # Two rules:
 #   - no Haskell file under ROOT/modules calls setNumCapabilities;
 #   - every component (executable, test-suite, benchmark) built with
-#     -threaded starts on every processor: its ghc-options (its own or
-#     those of a common stanza it imports) have -with-rtsopts with -N.
+#     -threaded starts on every processor: the last -with-rtsopts of its
+#     ghc-options (those of the common stanzas it imports, then its own)
+#     has -N. GHC keeps the last -with-rtsopts only (9.10.3).
 #     tasty (1.5) calls setNumCapabilities at start when the program has
 #     fewer capabilities than processors; with -N it never does.
+# The .cabal files are read as cabal reads them: the names of sections and
+# fields in any case, and a field on the lines indented under its name
+# (docs/adr/0069-lint-scripts-bypassed-by-plain-rewrites.md).
+# incomplete-patterns.sh reads them the same way, with its own code, so
+# that the two checks stay apart.
 # A call is written to stderr as FILE:LINE, a component as FILE: COMPONENT,
 # and the exit code is 1.
 set -eu
@@ -38,48 +44,72 @@ fi
 for cabal in "$ROOT"/modules/*/*.cabal; do
   [ -f "$cabal" ] || continue
   missing=$(awk '
-    # the RTS options of a ghc-options line have -N as one of their words
-    function has_n(line,   rest, q, quoted, words, k, i) {
-      k = index(line, "-with-rtsopts=")
-      if (k == 0) return 0
-      quoted = (k > 1 && substr(line, k - 1, 1) == "\"")
-      rest = substr(line, k + length("-with-rtsopts="))
-      # "-with-rtsopts=-N -A64m" or -with-rtsopts="-N -A64m": up to the closing quote
-      if (substr(rest, 1, 1) == "\"") { quoted = 1; rest = substr(rest, 2) }
-      if (quoted) { q = index(rest, "\""); if (q > 0) rest = substr(rest, 1, q - 1) }
-      else { sub(/[ \t].*/, "", rest) }
-      k = split(rest, words, " ")
-      for (i = 1; i <= k; i++) if (words[i] == "-N") return 1
-      return 0
+    # "1" if the last -with-rtsopts of the options has -N, "0" if it has
+    # not, "" if there is none
+    function last_rts(line,   k, quoted, rest, q, val, words, n, i, res) {
+      res = ""
+      while ((k = index(line, "-with-rtsopts=")) > 0) {
+        quoted = (k > 1 && substr(line, k - 1, 1) == "\"")
+        rest = substr(line, k + length("-with-rtsopts="))
+        # "-with-rtsopts=-N -A64m" or -with-rtsopts="-N -A64m": up to the closing quote
+        if (substr(rest, 1, 1) == "\"") { quoted = 1; rest = substr(rest, 2) }
+        if (quoted) {
+          q = index(rest, "\"")
+          if (q > 0) { val = substr(rest, 1, q - 1); line = substr(rest, q + 1) }
+          else { val = rest; line = "" }
+        } else {
+          match(rest, /^[^ \t]*/); val = substr(rest, 1, RLENGTH); line = substr(rest, RLENGTH + 1)
+        }
+        n = split(val, words, " "); res = "0"
+        for (i = 1; i <= n; i++) if (words[i] == "-N") res = "1"
+      }
+      return res
     }
-    function close_component() {
-      if (component != "") { thr[component] = own_thr; n_ok[component] = own_n; imports[component] = imported }
+    # the end of a field: its value is all of its lines
+    function close_field(   t, r, line) {
+      if (field == "ghc-options" && scope != "") {
+        t = (value ~ /(^|[ \t:"])-threaded([ \t"]|$)/); r = last_rts(value)
+        if (t) thr[scope] = 1
+        if (r != "") rts[scope] = r
+      } else if (field == "import" && scope != "") {
+        line = value; gsub(/[ \t,]+/, " ", line)
+        imports[scope] = imports[scope] " " line
+      }
+      field = ""; value = ""
     }
-    /^[^ \t-]/ {
-      close_component()
-      component = ""; common = ""; own_thr = 0; own_n = 0; imported = ""
-      if ($1 == "common") { common = $2 }
-      else if ($1 ~ /^(executable|test-suite|benchmark)$/) { component = $0; order[++n] = component }
+    /^[ \t]*--/ || /^[ \t]*$/ { next }
+    /^[^ \t]/ {
+      close_field()
+      scope = ""
+      kind = tolower($1)
+      if (kind == "common") { scope = "common " $2 }
+      else if (kind ~ /^(executable|test-suite|benchmark)$/) {
+        header = $0; sub(/[ \t]+$/, "", header)
+        scope = header; order[++n] = scope
+      }
       next
     }
-    /^[ \t]+ghc-options:/ {
-      t = ($0 ~ /(^|[ \t:"])-threaded([ \t"]|$)/); r = has_n($0)
-      if (common != "") { if (t) common_thr[common] = 1; if (r) common_n[common] = 1 }
-      if (component != "") { if (t) own_thr = 1; if (r) own_n = 1 }
-      next
-    }
-    /^[ \t]+import:/ {
-      line = $0; sub(/^[ \t]+import:[ \t]*/, "", line); gsub(/[ \t,]+/, " ", line)
-      imported = imported " " line
-      next
+    {
+      match($0, /^[ \t]*/); indent = RLENGTH
+      if (field != "" && indent > field_indent) { value = value " " substr($0, indent + 1); next }
+      close_field()
+      if (match($0, /^[ \t]+[A-Za-z][A-Za-z0-9_-]*[ \t]*:/)) {
+        name = substr($0, indent + 1, RLENGTH - indent); sub(/[ \t]*:$/, "", name)
+        field = tolower(name); field_indent = indent
+        value = substr($0, RLENGTH + 1)
+      }
     }
     END {
-      close_component()
+      close_field()
       for (i = 1; i <= n; i++) {
-        c = order[i]; t = thr[c]; r = n_ok[c]
+        c = order[i]; t = thr[c]; r = ""
         m = split(imports[c], names, " ")
-        for (j = 1; j <= m; j++) { if (names[j] in common_thr) t = 1; if (names[j] in common_n) r = 1 }
-        if (t && !r) print c
+        for (j = 1; j <= m; j++) {
+          if (thr["common " names[j]]) t = 1
+          if (rts["common " names[j]] != "") r = rts["common " names[j]]
+        }
+        if (rts[c] != "") r = rts[c]
+        if (t && r != "1") print c
       }
     }
   ' "$cabal")

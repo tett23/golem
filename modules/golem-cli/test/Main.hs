@@ -96,7 +96,6 @@ versionTests =
 messages :: [(String, [String])]
 messages =
   [ ("help", ["--help"]),
-    ("no-arguments", []),
     ("build-help", ["build", "--help"]),
     ("unknown-option", ["build", "--nope"]),
     ("unknown-command", ["nope"]),
@@ -129,9 +128,22 @@ tests =
         ],
       testGroup
         "messages"
-        ( [ goldenVsString name ("test/golden/" <> name <> ".txt") (BL.fromStrict . TE.encodeUtf8 . T.pack . snd <$> golem args)
-          | (name, args) <- messages
+        ( [ goldenVsString (name <> "." <> stream) ("test/golden/" <> name <> "." <> stream <> ".txt") (BL.fromStrict . TE.encodeUtf8 . T.pack . pick <$> golemSplit args)
+          | (name, args) <- messages,
+            (stream, pick) <- [("stdout", \(_, out, _) -> out), ("stderr", \(_, _, err) -> err)]
           ]
+            <> [ testCase "golem --help: 0, the usage on stdout, nothing on stderr (golem-cli ADR 0001)" $ do
+                   (code, out, err) <- golemSplit ["--help"]
+                   code @?= ExitSuccess
+                   assertBool "usage on stdout" ("使い方: golem COMMAND" `isPrefixOf` out)
+                   err @?= "",
+                 testCase "golem with no argument: 2, the usage of --help on stderr, nothing on stdout (golem-cli ADR 0001, 0004)" $ do
+                   (_, help, _) <- golemSplit ["--help"]
+                   (code, out, err) <- golemSplit []
+                   code @?= ExitFailure 2
+                   out @?= ""
+                   err @?= help
+               ]
             <> [ testCase ("no English in " <> name) $ do
                    (_, out) <- golem args
                    case filter (`isInfixOf` out) english of

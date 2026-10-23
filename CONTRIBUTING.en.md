@@ -159,6 +159,8 @@ When the build or the tests start to read a document under `docs/`, add it to th
 A document not in the list counts as documentation only, and changing it does not run the build.
 In the code, write the path of the document as one string (like `"../../docs/diagnostics.md"`).
 The `changes` job of CI picks up such strings and checks them against the list ([docs/adr/0021](./docs/adr/0021-docs-workflow-and-ci-gate.md)).
+When you build the path from parts, like `"docs" </> "diagnostics.md"`, name the document on that line with the comment `-- docs-refs: docs/diagnostics.md`.
+A line with the string `"docs"` and without the comment fails the same job (`scripts/ci/docs-refs.sh`, [docs/adr/0069](./docs/adr/0069-lint-scripts-bypassed-by-plain-rewrites.md)).
 
 Every package turns an incomplete `case` or function definition into an error with `-Werror=incomplete-patterns` ([docs/adr/0027](./docs/adr/0027-exhaustive-command-dispatch-by-types.md)).
 When you add a package under `modules/`, put the flag in the `ghc-options` of the `common warnings` stanza of its cabal file, and write `import: warnings` in each component.

@@ -218,6 +218,22 @@ if grep -q 'docs/new.md' "$WORK/err"; then ok; else ng "docs-refs: the document 
 printf -- '-- docs/adr/0001-x.md\nmain = readFile "../../docs/diagnostics.md"\n' >"$R/modules/x/test/Main.hs"
 run docs_refs "$R"
 expect "docs-refs: an ADR and a listed document" 0
+# a path built from "docs" needs the annotation (docs/adr/0069)
+printf 'main = readFile ("../.." </> "docs" </> "new.md")\n' >"$R/modules/x/test/Main.hs"
+run docs_refs "$R"
+expect "docs-refs: a path built from \"docs\" without the annotation" 1
+if grep -qF 'modules/x/test/Main.hs:1' "$WORK/err"; then ok; else ng "docs-refs: the line without the annotation is named"; fi
+printf 'main = readFile ("../.." </> "docs" </> "new.md") -- docs-refs: docs/new.md\n' >"$R/modules/x/test/Main.hs"
+run docs_refs "$R"
+expect "docs-refs: the annotation names a document that is not in the list" 1
+if grep -q 'docs/new.md' "$WORK/err"; then ok; else ng "docs-refs: the annotated document is named"; fi
+printf 'main = readFile ("../.." </> "docs" </> "diagnostics.md") -- docs-refs: docs/diagnostics.md\n' >"$R/modules/x/test/Main.hs"
+run docs_refs "$R"
+expect "docs-refs: the annotation names a listed document" 0
+printf 'd="docs"\n' >"$R/scripts/a.sh"
+run docs_refs "$R"
+expect "docs-refs: \"docs\" in a script without the annotation" 1
+rm "$R/scripts/a.sh"
 
 # ---------------------------------------------------------------- incomplete-patterns.sh
 
@@ -266,6 +282,75 @@ executable b
 run incomplete_patterns "$P"
 expect "incomplete-patterns: a component that does not import the stanza" 1
 if grep -qx 'modules/b/b.cabal: executable b' "$WORK/err" && ! grep -q 'library' "$WORK/err"; then ok; else ng "incomplete-patterns: only the component without the flag is named"; fi
+# the forms that slipped past the check (docs/adr/0069)
+# ip_case NAME CODE TEXT [LINE]: modules/b/b.cabal is TEXT; with LINE,
+# stderr has it
+ip_case() {
+  cabal b "$3"
+  run incomplete_patterns "$P"
+  expect "incomplete-patterns: $1" "$2"
+  if [ $# -ge 4 ]; then
+    if grep -qxF "$4" "$WORK/err"; then ok; else ng "incomplete-patterns: $1: \"$4\" on stderr"; fi
+  fi
+}
+for neg in -Wno-error=incomplete-patterns -Wno-incomplete-patterns -Wwarn=incomplete-patterns; do
+  ip_case "the flag, then $neg" 1 "library
+  ghc-options: -Werror=incomplete-patterns $neg
+" "modules/b/b.cabal: library"
+done
+ip_case "the flag in the common stanza, a negation in the component" 1 'common warnings
+  ghc-options: -Werror=incomplete-patterns
+
+library
+  import: warnings
+  ghc-options: -Wno-error=incomplete-patterns
+' "modules/b/b.cabal: library"
+ip_case "the flag after a negation" 0 'library
+  ghc-options: -Wno-incomplete-patterns -Werror=incomplete-patterns
+'
+ip_case "the flag on the line after ghc-options" 0 'Common warnings
+  GHC-Options:
+    -Wall
+    -Werror=incomplete-patterns
+
+Library
+  Import: warnings
+
+executable b
+  ghc-options:
+    -Werror=incomplete-patterns
+    -threaded
+'
+ip_case "a negation on the line after ghc-options" 1 'library
+  ghc-options: -Werror=incomplete-patterns
+    -Wno-error=incomplete-patterns
+' "modules/b/b.cabal: library"
+ip_case "a section name in capitals" 1 'Executable b
+  ghc-options: -Wall
+' "modules/b/b.cabal: Executable b"
+cabal b "$COMMON_OK"
+mkdir -p "$P/modules/b/src"
+printf '{-# OPTIONS_GHC -Wall -Wno-incomplete-patterns #-}\nmodule B where\n' >"$P/modules/b/src/B.hs"
+run incomplete_patterns "$P"
+expect "incomplete-patterns: OPTIONS_GHC with a negation in a source" 1
+if grep -qxF 'modules/b/src/B.hs:1' "$WORK/err"; then ok; else ng "incomplete-patterns: the source is named by file and line"; fi
+printf 'module B where\n\n{-# options_ghc\n      -Wwarn=incomplete-patterns #-}\n' >"$P/modules/b/src/B.hs"
+run incomplete_patterns "$P"
+expect "incomplete-patterns: a pragma over two lines in lower case" 1
+printf -- '-- {-# OPTIONS_GHC -Wno-incomplete-patterns #-} is not written\n{-# OPTIONS_GHC -Wall #-}\nmodule B where\n' >"$P/modules/b/src/B.hs"
+run incomplete_patterns "$P"
+expect "incomplete-patterns: OPTIONS_GHC without a negation, and one in a comment" 0
+rm -r "$P/modules/b/src"
+printf 'packages: modules/*/*.cabal\n\npackage *\n  ghc-options: -Wno-error=incomplete-patterns\n' >"$P/cabal.project"
+run incomplete_patterns "$P"
+expect "incomplete-patterns: package * of cabal.project takes the flag back" 1
+if grep -qxF 'cabal.project: package *' "$WORK/err"; then ok; else ng "incomplete-patterns: the section of cabal.project is named"; fi
+printf 'packages: modules/*/*.cabal\n\npackage *\n  ghc-options: -Wall\n' >"$P/cabal.project"
+printf 'Package golem-b\n  GHC-Options:\n    -Wno-incomplete-patterns\n' >"$P/cabal.project.local"
+run incomplete_patterns "$P"
+expect "incomplete-patterns: cabal.project.local takes the flag back" 1
+if grep -qxF 'cabal.project.local: Package golem-b' "$WORK/err"; then ok; else ng "incomplete-patterns: the section of cabal.project.local is named"; fi
+rm "$P/cabal.project" "$P/cabal.project.local"
 rm "$P/modules/b/b.cabal"
 run incomplete_patterns "$P"
 expect "incomplete-patterns: a package without a .cabal file" 1
@@ -308,6 +393,45 @@ printf 'modules/x/src/X/A.hs:kept # a reason\nmodules/x/src/X/A.hs:added # anoth
 run unsafe_io "$U"
 expect "unsafe-io: a listed use that is gone" 1
 if grep -q 'modules/x/src/X/A.hs:gone' "$WORK/err"; then ok; else ng "unsafe-io: the gone use is named"; fi
+# unsafe_case NAME USE TEXT: A.hs is the allowed kept, then TEXT; the
+# script fails and names USE (docs/adr/0069)
+unsafe_case() {
+  printf 'modules/x/src/X/A.hs:kept # a reason\n' >"$U/scripts/ci/unsafe-io-allowed.txt"
+  printf 'module X.A (kept) where\n\nkept :: Int -> Int\nkept n = unsafePerformIO (pure n)\n%s\n' "$3" >"$U/modules/x/src/X/A.hs"
+  run unsafe_io "$U"
+  expect "unsafe-io: $1" 1
+  if grep -qxF "unsafe-io: not in scripts/ci/unsafe-io-allowed.txt: modules/x/src/X/A.hs:$2" "$WORK/err"; then ok; else ng "unsafe-io: $1: $2 is named"; fi
+}
+for name in unsafeInterleaveIO unsafeInterleaveST unsafeIOToST inlinePerformIO accursedUnutterablePerformIO; do
+  unsafe_case "$name" other "other :: Int
+other = $name x"
+done
+unsafe_case "a use after dashes in a string" other 'other :: Int
+other = let _ = "--" in unsafePerformIO x'
+unsafe_case "a use after an opening of a block comment in a string" other 'other :: Int
+other = let _ = "{-" in unsafePerformIO x'
+unsafe_case "a use after an escaped quote in a string" other 'other = let _ = "\"--" in unsafePerformIO x'
+unsafe_case "a use after a quote in a character" other "other = let _ = ('\"', '-') in unsafePerformIO x"
+unsafe_case "a quoted name" other "other = \$(varE 'unsafePerformIO)"
+unsafe_case "a use after an operator of dashes" other 'other = a --> unsafePerformIO x'
+unsafe_case "a use in an instance right after the allowed function" "instance Show T" 'instance Show T where show _ = unsafePerformIO x'
+unsafe_case "a use in the body of an instance" "instance Show T" 'instance Show T where
+  show _ = unsafePerformIO x'
+# the cases that are not uses: a string with the name, a character, a
+# primed name, a block comment opened in a string and closed later
+printf 'modules/x/src/X/A.hs:kept # a reason\n' >"$U/scripts/ci/unsafe-io-allowed.txt"
+cat >"$U/modules/x/src/X/A.hs" <<'EOF'
+module X.A (kept) where
+
+kept :: Int -> Int
+kept n = unsafePerformIO (pure n)
+
+other :: String
+other = "unsafePerformIO" ++ ['\'', '"'] ++ "a \"{- b" ++ unsafePerformIO' ++ x'unsafePerformIO -- "
+{- "unsafePerformIO -}
+EOF
+run unsafe_io "$U"
+expect "unsafe-io: the name in a string, characters, primed names" 0
 
 # ---------------------------------------------------------------- rts-capabilities.sh
 
@@ -354,6 +478,66 @@ printf 'main = setNumCapabilities 8\n' >"$Q/modules/a/test/Main.hs"
 run rts_capabilities "$Q"
 expect "rts-capabilities: a call of setNumCapabilities" 1
 if grep -qx 'modules/a/test/Main.hs:1' "$WORK/err"; then ok; else ng "rts-capabilities: the call is named by file and line"; fi
+# the forms that slipped past the check (docs/adr/0069); cabal 3.18.1 reads
+# a field on the lines after its name and the names of sections and fields
+# in any case, and GHC 9.10.3 keeps the last -with-rtsopts only
+printf 'main = pure ()\n' >"$Q/modules/a/test/Main.hs"
+qcabal a 'library
+'
+# rts_case NAME CODE TEXT [COMPONENT]: modules/b/b.cabal is TEXT; with
+# COMPONENT, stderr names it
+rts_case() {
+  qcabal b "$3"
+  run rts_capabilities "$Q"
+  expect "rts-capabilities: $1" "$2"
+  if [ $# -ge 4 ]; then
+    if grep -qxF "modules/b/b.cabal: $4" "$WORK/err"; then ok; else ng "rts-capabilities: $1: $4 is named"; fi
+  fi
+}
+rts_case "-threaded on the line after ghc-options" 1 'executable b
+  ghc-options:
+    -Wall
+    -threaded
+' "executable b"
+rts_case "a section name in capitals" 1 'Executable b
+  ghc-options: -threaded
+' "Executable b"
+rts_case "a field name in capitals" 1 'executable b
+  GHC-Options: -threaded
+' "executable b"
+rts_case "-N in the first -with-rtsopts, not in the last" 1 'executable b
+  ghc-options: -threaded "-with-rtsopts=-N" "-with-rtsopts=-A64m"
+' "executable b"
+rts_case "-N in the first ghc-options, not in the last" 1 'executable b
+  ghc-options: -threaded "-with-rtsopts=-N"
+  ghc-options: "-with-rtsopts=-A64m"
+' "executable b"
+rts_case "-N in the common stanza, replaced by the component" 1 'common rts
+  ghc-options: -threaded "-with-rtsopts=-N"
+
+executable b
+  import: rts
+  ghc-options: "-with-rtsopts=-A64m"
+' "executable b"
+rts_case "-threaded only in a common stanza" 1 'common rts
+  ghc-options: -threaded
+
+test-suite b-test
+  import: rts
+' "test-suite b-test"
+rts_case "-threaded and -N on the lines after ghc-options" 0 'common rts
+  ghc-options:
+    -threaded
+    "-with-rtsopts=-N"
+
+executable b
+  ghc-options:
+    -threaded
+    "-with-rtsopts=-A64m" "-with-rtsopts=-N -A64m"
+
+Test-Suite b-test
+  Import: rts
+'
 
 # ---------------------------------------------------------------- suite-timeout.sh
 
@@ -664,6 +848,46 @@ run gate --names
 if [ "$CODE" = 0 ] && [ "$(sort "$WORK/out")" = "$(ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx ci | sort)" ]; then ok; else ng "gate: the names are the jobs of ci.yml"; fi
 ci_jobs "$HERE/../../.github/workflows/ci.yml" | grep -vx ci | grep -vx format >"$WORK/fewer"
 if [ "$(sort "$WORK/out")" != "$(sort "$WORK/fewer")" ]; then ok; else ng "gate: a job missing from the names is found"; fi
+
+# ---------------------------------------------------------------- determinism.sh
+
+# docs/adr/0071: the list has the SHA-256 of stdout and of stderr and the
+# exit code of each build, and diagnostics is an input. The fake golem
+# writes build/out; in the folder named diagnostics it writes $FAKE_STDERR
+# to stderr and exits with 1. The manuals are empty projects under
+# GOLEM_MANUAL_ROOT, built without their fonts.
+DET=$WORK/determinism
+mkdir -p "$DET/bin" "$DET/root/manual" "$DET/root/manual-dev"
+: >"$DET/root/manual/manifest.toml"
+: >"$DET/root/manual-dev/manifest.toml"
+cat >"$DET/bin/golem" <<'GOLEM'
+#!/bin/sh
+mkdir -p build
+printf 'out\n' >build/out
+if [ "$(basename "$(pwd)")" = diagnostics ]; then
+  printf '%s\n' "$FAKE_STDERR" >&2
+  exit 1
+fi
+GOLEM
+chmod +x "$DET/bin/golem"
+determinism() {
+  GOLEM=$DET/bin/golem GOLEM_MANUAL_ROOT=$DET/root GOLEM_MANUAL_SKIP_FONTS=1 \
+    GOLEM_MANUAL_COMMIT=0 GOLEM_MANUAL_TAG=v0 FAKE_STDERR=$1 \
+    sh "$HERE/../determinism.sh"
+}
+: >"$WORK/in"
+run determinism '{"diagnostics":[{"code":"G00000"}]}'
+cp "$WORK/out" "$DET/first"
+expect "determinism: a build that exits with 1" 0
+if grep -qx 'exit 1  diagnostics' "$WORK/out"; then ok; else ng "determinism: the exit code of diagnostics"; fi
+if grep -qx 'exit 0  sample' "$WORK/out"; then ok; else ng "determinism: the exit code of sample"; fi
+if grep -qE '^[0-9a-f]{64}  diagnostics/stderr$' "$WORK/out"; then ok; else ng "determinism: the stderr of diagnostics"; fi
+if grep -qx 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  sample/stdout' "$WORK/out"; then ok; else ng "determinism: the empty stdout of sample"; fi
+if grep -qE '^[0-9a-f]{64}  manual/build/out$' "$WORK/out"; then ok; else ng "determinism: the files of a manual"; fi
+run determinism '{"diagnostics":[{"code":"G00001"}]}'
+expect "determinism: another stderr" 0
+if [ "$(grep '  diagnostics/stderr$' "$DET/first")" != "$(grep '  diagnostics/stderr$' "$WORK/out")" ]; then ok; else ng "determinism: a change of one character in stderr changes the list"; fi
+if [ "$(grep -v '  diagnostics/stderr$' "$DET/first")" = "$(grep -v '  diagnostics/stderr$' "$WORK/out")" ]; then ok; else ng "determinism: the rest of the list stays"; fi
 
 # ---------------------------------------------------------------- timings.sh
 
