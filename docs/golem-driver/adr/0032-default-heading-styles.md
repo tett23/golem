@@ -1,6 +1,6 @@
 # ADR 0032: 既定の見出し
 
-ステータス: 採択
+ステータス: 採択→続く見出しと段落の行の注の本文を数えることは [golem-layout ADR 0019](../../golem-layout/adr/0019-keep-with-next-counts-footnotes.md)
 
 ## 文脈
 
