@@ -1499,6 +1499,9 @@ regexStyleTests =
       testCase "the message of G03015 names the style, the place in the array and the offset" $
         messages (parseStyle (FileId 0) "[paragraph-styles.quote]\nregex-styles = [{ pattern = 'a', style = \"bold\" }, { pattern = 'ab\\1', style = \"bold\" }]\n")
           @?= ["G03015 正規表現を解釈できません: 後方参照は使えません（quote の 2 番目の正規表現の 3 字目）"],
+      testCase "the message of G03015 for a repetition count over the bound names the bound" $
+        map (T.isPrefixOf "G03015 正規表現を解釈できません: 繰り返しの回数が上限の 65535 回を超えています") (messages (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = \"a{65536}\", style = \"bold\" }]\n"))
+          @?= [True],
       testCase "the message of G03013 for a regex style" $
         messages (parseStyle (FileId 0) "[paragraph-styles.body]\nregex-styles = [{ pattern = 'a', style = \"nope\" }]\n")
           @?= ["G03013 style.toml のスタイルの参照が不正です: 正規表現スタイルの文字スタイルがありません: nope"],
