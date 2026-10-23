@@ -558,6 +558,13 @@ fitFigureTests =
           loudStreams <- maybe (assertFailure "no PDF") inflateAll (lookup pdfName (nOutputs loud))
           quietStreams @?= loudStreams
           assertBool "a PDF" (isJust (lookup pdfName (nOutputs loud))),
+        testCase "G07038 at the boundary: a caption one line short of the column is fitted; as deep as the column is G07038" $ do
+          -- 24 characters: 21 あ and the number of the figure take one line, 22 take two, the depth of the column
+          let column k = do
+                r <- layoutMini (pageStyle "horizontal" "left" 24 2 1 20 20) ("前の段落。\n\n" <> fig "wide" "" (T.replicate k "あ")) boxes
+                pure (either (map (\d -> (diagCode d, diagMessage d))) (map (\d -> (diagCode d, diagMessage d)) . notices "G07039" . snd) r)
+          column 21 >>= (@?= [(DiagnosticCode "G07039", "図版を段に収めるため 18% に縮めました")])
+          column 22 >>= (@?= [(DiagnosticCode "G07038", "図版のキャプションが段の行数を超えます（2 行。段は 2 行）")]),
         testCase "G07038: a caption as deep as the column, at the figure, in dev and prod" $ do
           let source = "前の段落。\n\n" <> fig "wide" "" (T.replicate 70 "あ")
           r <- layoutMini (pageStyle "horizontal" "left" 24 2 1 20 20) source boxes

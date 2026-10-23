@@ -154,7 +154,13 @@ miniManifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-22
 returns the errors and the PDF, if one was written.
 -}
 buildMini :: FontProvider -> Bool -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Maybe BS.ByteString)
-buildMini fonts parallel style source files = withSystemTempDirectory "golem-mini" $ \tmp -> do
+buildMini fonts parallel style source files = do
+  (errs, pdf) <- buildMiniErrors fonts parallel style source files
+  pure (map diagCode errs, pdf)
+
+-- | 'buildMini' with the errors themselves.
+buildMiniErrors :: FontProvider -> Bool -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([Diagnostic], Maybe BS.ByteString)
+buildMiniErrors fonts parallel style source files = withSystemTempDirectory "golem-mini" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") miniManifest
   BS.writeFile (tmp </> "style.toml") (withBodyFont style)
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
@@ -163,7 +169,7 @@ buildMini fonts parallel style source files = withSystemTempDirectory "golem-min
   pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
     [p] -> Just <$> BS.readFile p
     _ -> pure Nothing
-  pure (map diagCode (filter isError (brDiagnostics r)), pdf)
+  pure (filter isError (brDiagnostics r), pdf)
 
 -- | What a build of the one-chapter project left behind.
 data Built = Built

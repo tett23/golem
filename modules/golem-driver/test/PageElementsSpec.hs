@@ -526,8 +526,8 @@ headingTests =
       qpdfCheck a,
     testCase "different fonts with the same PostScript name are an error" $ do
       (sans, _) <- realLatinFonts
-      (errs, pdf) <- buildMini realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.heading]\nlatin = \"fonts/sans2.otf\"\n\n[headings.1]\nfont = \"heading\"\n") "# Zebra\n\nquick\n" [("fonts/sans.otf", sans), ("fonts/sans2.otf", sans <> BS.replicate 4 0)]
-      errs @?= [DiagnosticCode "G08005"]
+      (errs, pdf) <- buildMiniErrors realProvider True (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n\n[fonts.heading]\nlatin = \"fonts/sans2.otf\"\n\n[headings.1]\nfont = \"heading\"\n") "# Zebra\n\nquick\n" [("fonts/sans.otf", sans), ("fonts/sans2.otf", sans <> BS.replicate 4 0)]
+      [(c, m, st, en) | (c, m, _, st, en) <- map described errs] @?= [("G08005", "PostScript 名が同じ異なるフォントがあります: SourceSansPro-Regular（fonts/sans.otf、fonts/sans2.otf）", 0, 0)]
       pdf @?= Nothing,
     testCase "a heading taller than the page is an error" $ do
       let style = BC.pack (T.unpack (T.replace "lines = 30" "lines = 3" (T.pack (BC.unpack horizontalStyle)))) <> "\n[headings.1]\nsize = \"60pt\"\n"
