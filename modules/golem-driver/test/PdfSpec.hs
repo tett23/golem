@@ -411,7 +411,7 @@ hiddenFolioTests =
     testCase "the folios do not move page breaks" $ do
       (_, a, _) <- layoutHidden Nothing miniManifest (headsStyle <> allPages) [("a.gm", twoChapters)]
       (_, b, hf) <- layoutHidden (Just P.Western) miniManifest (headsStyle <> allPages) [("a.gm", twoChapters)]
-      assertBool "folios" (not (Map.null hf))
+      Map.keys hf @?= [1 .. 6]
       plPages a @?= plPages b,
     testCase "bleed and marks: placed against the trimmed page, moved with it in the content" $ do
       pdf <- marksPdf (\o -> o {optMarks = JapaneseMarks}) (bleedStyle <> allPages)
@@ -419,7 +419,7 @@ hiddenFolioTests =
       let m = TE.encodeUtf8 (spToPt (P.shOrigin (P.sheet (Just P.Japanese) 557314 (w, h))))
       streams <- inflateAll pdf
       let pageStreams = [st | st <- streams, "Tj" `BS.isInfixOf` st]
-      assertBool "a page" (not (null pageStreams))
+      length pageStreams @?= 1
       assertBool "moved" (all (("q 1 0 0 1 " <> m <> " " <> m <> " cm") `BS.isPrefixOf`) pageStreams)
       -- '1' in 6pt, half an em wide in the fake font, centred on the line 1.5mm from the gutter
       [(dX d, dY d) | d <- drawnGlyphs (BS.concat pageStreams), dGlyph d == fromEnum '1', dSize d == "6"]
@@ -656,7 +656,8 @@ rubyTests =
       geom <- either (assertFailure . show) pure (parseStyle (FileId 0) (TE.decodeUtf8 horizontalStyle) >>= pageGeometry (FileId 0) False)
       let left = read (T.unpack (spToPt (rectX (typeAreaFor geom 1)))) :: Double
           xs = glyphXs "5" content
-      assertBool (show (left, xs)) (not (null xs) && all (>= left - 0.001) xs)
+      length xs @?= 3
+      assertBool (show (left, xs)) (all (>= left - 0.001) xs)
       assertBool (show (left, xs)) (any (\x -> abs (x - left) < 0.001) xs),
     testCase "HTML: mono ruby has class mono; the style sheet sets ruby-align" $ do
       (page, css') <- htmlMini horizontalStyle "[ruby: 組/版|くみ/はん]と[ruby: 五月雨|さみだれ]と[ruby: 字|じ]\n"
@@ -1681,7 +1682,7 @@ combiningTests =
       content <- BS.concat <$> inflateAll pdf
       let latin = [name | (name, dict, _) <- resources, "SourceSerif" `BS.isInfixOf` dict]
           fonts = nub [dFont d | d <- drawnGlyphs content]
-      assertBool (show (latin, fonts)) (not (null fonts) && all (`elem` latin) fonts),
+      (latin, fonts) @?= (["/F1"], ["/F1"]),
     testCase "PDF: the word cafe◌́ is as wide as café" $ do
       files <- combiningFiles
       r <- layoutMiniFonts realProvider miniManifest combiningStyle "cafe\x301 x\n\ncafé x\n" files

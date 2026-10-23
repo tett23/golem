@@ -558,6 +558,15 @@ fitFigureTests =
           loudStreams <- maybe (assertFailure "no PDF") inflateAll (lookup pdfName (nOutputs loud))
           quietStreams @?= loudStreams
           assertBool "a PDF" (isJust (lookup pdfName (nOutputs loud))),
+        testCase "no hint to turn when the frame is the column turned: a square type area gives the same size" $ do
+          -- 22 characters of 10pt and 15 lines of 15pt: 220pt each way, the frame as large as the column
+          (_, pl) <- layoutOk (pageStyle "horizontal" "left" 22 15 1 20 20) (fig "tall" "" "") boxes
+          map diagMessage (notices "G07039" pl) @?= ["図版を段に収めるため 31% に縮めました"],
+        testCase "a square figure exactly as deep as the column above its number is set at full size, with no G07039" $ do
+          -- 21 characters (210pt) and 15 lines: the number takes one line, 14 pitches of 15pt are left
+          (_, pl) <- layoutOk (pageStyle "horizontal" "left" 21 15 1 20 20) (fig "square" "" "") boxes
+          [(pfAlong pf, pfAcross pf) | (pf, _, _) <- figuresIn pl] @?= [(210 * pt, 210 * pt)]
+          notices "G07039" pl @?= [],
         testCase "G07038: a caption as deep as the column, at the figure, in dev and prod" $ do
           let source = "前の段落。\n\n" <> fig "wide" "" (T.replicate 70 "あ")
           r <- layoutMini (pageStyle "horizontal" "left" 24 2 1 20 20) source boxes

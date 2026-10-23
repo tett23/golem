@@ -320,7 +320,7 @@ preflightTests =
     testCase "an error of the build stops before the checks" $
       withPreflightProject horizontalStyle "[nope: x]\n" [] $ \tmp -> do
         p <- preflightIn tmp
-        assertBool "errors" (not (null (errorCodes (prDiagnostics p))))
+        errorCodes (prDiagnostics p) @?= [DiagnosticCode "G02022"]
         assertBool "no view" (isNothing (prView p)),
     testCase "rules out of the project are read, a missing file is G09001" $
       withPreflightProject horizontalStyle "本文。\n" [] $ \tmp -> withSystemTempDirectory "golem-rules" $ \other -> do

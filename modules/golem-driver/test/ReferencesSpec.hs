@@ -631,7 +631,7 @@ indexColumnTests =
       let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32)
       (geom, pl) <- layoutOk style indexSource []
       let entries = [sl | p <- plPages pl, sl <- indexLinesOn pl p]
-      assertBool "entries" (not (null entries))
+      length entries @?= 40
       nub [lineTarget (slLine sl) | sl <- entries] @?= [15 * 10 * pt]
       nub [csMeasure (poColumnSet p) | p <- plPages pl, not (null (indexLinesOn pl p))] @?= [15 * 10 * pt]
       content <- miniPdf fakeProvider True style indexSource [] >>= pageContents
@@ -646,7 +646,7 @@ indexColumnTests =
           x1 = TE.encodeUtf8 (spToPt (rectX ta + 17 * 10 * pt))
           grid = [TE.encodeUtf8 (spToPt (rectY ta + rectH ta - g)) | g <- pgLineGrid geom]
           ys = [dY d | c <- content, d <- drawnGlyphs c, dX d == x1]
-      assertBool "lines" (not (null ys))
+      length ys @?= 10
       assertBool (show ys) (all (`elem` grid) ys),
     testCase "PDF: the running head is drawn once on the page of the switch and on the index pages" $ do
       let style = withIndexColumns "2" (replaceIn "lines = 30" "lines = 10" horizontal32) <> "\n[masters.body]\nrunning-head = { position = \"top-outside\", content = \"title\" }\n"
