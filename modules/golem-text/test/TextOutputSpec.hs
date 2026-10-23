@@ -209,7 +209,13 @@ tests =
         @?= "前\n\n後\n",
     testProperty "a paragraph of plain words is the words and one newline" $ property $ do
       ws <- forAll (Gen.list (Range.linear 1 5) (Gen.text (Range.linear 1 6) (Gen.element ("あいう漢字abc" :: String))))
-      only (horizontal (bookOf [para 0 (map txt ws)])) === T.concat ws <> "\n"
+      only (horizontal (bookOf [para 0 (map txt ws)])) === T.concat ws <> "\n",
+    -- docs/adr ADR 0019
+    testCase "an aki in zw is its whole part in ideographic spaces; an absolute aki is nothing" $
+      map
+        (\a -> only (horizontal (bookOf [para 0 [txt "a", Aki (at 1) a, txt "b"]])))
+        [AkiZw 2, AkiZw 1.5, AkiZw 2.99, AkiZw 0.5, AkiZw 0, AkiZw (-1), AkiAbs (10 * 65536)]
+        @?= ["a\x3000\x3000\&b\n", "a\x3000\&b\n", "a\x3000\x3000\&b\n", "ab\n", "ab\n", "ab\n", "ab\n"]
   ]
 
 textOutputTests :: TestTree
