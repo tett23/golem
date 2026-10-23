@@ -11,6 +11,9 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 一方、コードのビルドはドキュメントだけの変更では省きたい。
 ワークフローを分ければ、[code: ci.yml] の古い実行が取り消されても、[code: adr] の結果は残る。
 
+ほかに、夜間に [code: main] で動く [code: .github/workflows/race.yml] がある。
+これはプルリクエストを止めないので、後の「race.yml」の節で別に説明する。
+
 ## ジョブの一覧
 
 [code: docs.yml] のジョブは次の三つである。
@@ -203,6 +206,34 @@ hlint は [code: -j] でランナーのすべてのコアを使う。
 キャッシュが当たれば [code: npm ci] を省く。
 先に、Golem の規則と辞書のテスト（[code: node --test]）を走らせる。
 ベースからヘッドまでに加わった ADR も検査し、コミット済みの ADR は検査しない。
+
+## race.yml
+
+並行の競合は、まれにしか起きない。
+競合を探すテストの回数をプルリクエストの CI で増やすと、CI が延び、まれな失敗がプルリクエストを止める。
+そこで、回数を増やした実行は [code: .github/workflows/race.yml] に分け、夜間に [code: main] で走らせる。[index reading="race.yml": race.yml]
+
+競合を探すテストの回数は、環境変数 [code: GOLEM_RACE_TESTS] の値を掛けた数になる。
+値は 1 以上の整数で、未設定なら 1 である。
+それ以外の値では、テストのスイートが失敗する。
+掛けるのは、[code: golem-driver-parallel-test] の三つのプロパティと、[code: golem-font-test] の並行のプロパティの回数である。
+[code: golem-driver-parallel-test] が見本の本を並列に組む回数は、この値そのものになる。
+
+[code: race.yml] は [code: schedule] で毎日一回起動し、[code: GOLEM_RACE_TESTS=40] で次の三つだけを走らせる。
+
+- [code: golem-driver-parallel-test]
+- [code: golem-font-race-test]
+- [code: golem-font-test] のうち、一つのフォントを多くのスレッドから使うテスト（[code: --test-option=-p] で選ぶ）
+
+ただし、テストを走らせるのは、前回の成功した実行から [code: main] が変わった日だけである。
+判定は [code: scripts/ci/race-needed.sh] が行い、起動した実行のコミットと、[code: gh run list] で得た [code: race.yml] の直近の成功した実行のコミットを比べる。
+時刻の窓ではなくコミットで比べるのは、[code: schedule] の起動が遅れても判定が変わらないようにするためである。
+[code: workflow_dispatch] で手で起動したときは、判定せずに走らせる。
+権限は [code: contents: read] と [code: actions: read] だけで、キャッシュは復元するだけで保存しない。
+
+[code: race.yml] が落ちたら、落ちたテストの名前、ログに出たシードとサイズ、実行の URL、コミットを添えて issue を立てる。
+tasty-hedgehog は、落ちたプロパティを再現する [code: --hedgehog-replay] の引数をログに書く。
+手元では [code: GOLEM_RACE_TESTS=40] を付けて同じスイートを走らせ、その引数で落ちた例を再現する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0075-race-search-repetitions.md]（docs/adr の ADR 0075「並行の競合を探すテストの回数を、CI の夜間の実行で増やす」）]
 
 ## 取り消しと時間
 

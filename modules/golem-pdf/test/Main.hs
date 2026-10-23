@@ -1247,8 +1247,6 @@ tests =
         hex (sha256 "") @?= "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         hex (sha256 "abc") @?= "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         hex (sha256 (BS.replicate 1000 0x61)) @?= "41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3",
-      testCase "the same document is written byte for byte the same" $
-        writePdf sample @?= writePdf sample,
       testCase "structure: header, xref offsets, trailer ID, sorted keys" $ do
         let pdf = writePdf sample
         BS.take 9 pdf @?= "%PDF-1.6\n"
@@ -1327,11 +1325,9 @@ tests =
             assertBool "F2" ("/F2 " `BS.isInfixOf` pdf)
             countOf "/Type /FontDescriptor" pdf @?= 2
         ],
-      testProperty "any page content is written deterministically with consistent xref" $ property $ do
+      testProperty "any page content is written with consistent xref" $ property $ do
         marks <- forAll (Gen.list (Range.linear 0 20) mark)
-        let pdf = writePdf (documentWith [page marks])
-        pdf === writePdf (documentWith [page marks])
-        assert (xrefConsistent pdf),
+        assert (xrefConsistent (writePdf (documentWith [page marks]))),
       testCase "PDF/X-4: output intent, XMP version, Trapped, boxes, embedded fonts, nothing forbidden" $ do
         let px = PdfX "fake-japan-color-profile" "JC200103" ["山田 太郎"] []
             pdf = writePdf sample {docPdfX = Just px}

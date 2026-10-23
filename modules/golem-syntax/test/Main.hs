@@ -193,6 +193,7 @@ tests =
         renderHuman files [diagnostic "G02001" Error (mkSpan (FileId 0) 5 6) "msg"]
           @?= "x.gm:2:2: error[G02001]: msg\n  | def\n",
       noticeTests,
+      orderTests,
       RenderSpec.tests,
       ShowTreeSpec.tests
     ]
@@ -222,11 +223,11 @@ noticeTests =
         let n = notice "G02065" (mkSpan (FileId 0) 0 1) "n"
             e = diagnostic "G02001" Error (mkSpan (FileId 1) 50 51) "e"
         sortDiagnostics [n, e] @?= [e, n],
-      testCase "errors and warnings stay mixed in the order of their positions" $ do
+      testCase "errors and warnings stay mixed in the order of their codes" $ do
         let w = diagnostic "G02005" Warning (mkSpan (FileId 0) 0 1) "w"
             e = diagnostic "G02001" Error (mkSpan (FileId 0) 5 6) "e"
             n = notice "G02062" (mkSpan (FileId 0) 1 2) "n"
-        sortDiagnostics [e, n, w] @?= [w, e, n],
+        sortDiagnostics [e, n, w] @?= [e, w, n],
       testProperty "notices come last, whatever the input order" $ property $ do
         ds <- forAll (Gen.list (Range.linear 0 20) genDiagWithNotices)
         perm <- forAll (Gen.shuffle ds)
@@ -259,6 +260,59 @@ noticeTests =
     ]
   where
     sp0 = mkSpan (FileId 0) 0 1
+
+-- | The order of diagnostics: the code before the file and the position (golem-syntax ADR 0003).
+orderTests :: TestTree
+orderTests =
+  testGroup
+    "diagnostic order (golem-syntax ADR 0003)"
+    [ testCase "the code comes before the position" $ do
+        let a = diagnostic "G01001" Error (mkSpan (FileId 0) 40 41) "a"
+            b = diagnostic "G05004" Warning (mkSpan (FileId 0) 10 11) "b"
+        sortDiagnostics [b, a] @?= [a, b],
+      testCase "the code comes before the file" $ do
+        let a = diagnostic "G01001" Error (mkSpan (FileId 1) 0 1) "a"
+            b = diagnostic "G05004" Warning (mkSpan (FileId 0) 0 1) "b"
+        sortDiagnostics [b, a] @?= [a, b],
+      testCase "an error comes before a notice of a smaller code, file and position" $ do
+        let n = notice "G02062" (mkSpan (FileId 0) 0 1) "n"
+            e = diagnostic "G05004" Error (mkSpan (FileId 1) 50 51) "e"
+        sortDiagnostics [n, e] @?= [e, n],
+      testCase "within a code: the file" $ do
+        let a = diagnostic "G02001" Error (mkSpan (FileId 0) 9 10) "b"
+            b = diagnostic "G02001" Error (mkSpan (FileId 1) 0 1) "a"
+        sortDiagnostics [b, a] @?= [a, b],
+      testCase "within a code and a file: the start" $ do
+        let a = diagnostic "G02001" Error (mkSpan (FileId 0) 3 9) "b"
+            b = diagnostic "G02001" Error (mkSpan (FileId 0) 4 5) "a"
+        sortDiagnostics [b, a] @?= [a, b],
+      testCase "within a code, a file and a start: the end" $ do
+        let a = diagnostic "G02001" Error (mkSpan (FileId 0) 3 4) "b"
+            b = diagnostic "G02001" Error (mkSpan (FileId 0) 3 5) "a"
+        sortDiagnostics [b, a] @?= [a, b],
+      testCase "within a code and a span: the message" $ do
+        let a = diagnostic "G02001" Error (mkSpan (FileId 0) 3 4) "a"
+            b = diagnostic "G02001" Error (mkSpan (FileId 0) 3 4) "b"
+        sortDiagnostics [b, a] @?= [a, b],
+      testProperty "neighbours never go down in (notice, code, file, start, end, message)" $ property $ do
+        ds <- forAll (Gen.list (Range.linear 0 20) genDiagWithNotices)
+        let key d = (diagSeverity d == Notice, diagCode d, spanFile (diagSpan d), spanStart (diagSpan d), spanEnd (diagSpan d), diagMessage d)
+            keys = map key (sortDiagnostics ds)
+        Hedgehog.assert (and (zipWith (<=) keys (drop 1 keys))),
+      testCase "human rendering writes in the order of the codes" $ do
+        let files = Map.fromList [(FileId 0, SourceInfo "x.gm" (mkLineIndex "abc\ndef"))]
+            late = diagnostic "G01001" Error (mkSpan (FileId 0) 5 6) "late"
+            early = diagnostic "G05004" Warning (mkSpan (FileId 0) 0 1) "early"
+        renderHuman files [early, late]
+          @?= "x.gm:2:2: error[G01001]: late\n  | def\nx.gm:1:1: warning[G05004]: early\n  | abc\n",
+      testCase "json rendering writes in the order of the codes" $ do
+        let files = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex "ab\ncd\n"))]
+            late = diagnostic "G01001" Error (mkSpan (FileId 0) 3 4) "late"
+            early = diagnostic "G05004" Warning (mkSpan (FileId 0) 0 1) "early"
+        renderJson files [early, late]
+          @?= "[{\"code\":\"G01001\",\"severity\":\"error\",\"span\":{\"file\":\"a.gm\",\"start\":3,\"end\":4,\"line\":2,\"column\":1},\"message\":\"late\",\"related\":[],\"fixes\":[]},"
+            <> "{\"code\":\"G05004\",\"severity\":\"warning\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"early\",\"related\":[],\"fixes\":[]}]\n"
+    ]
 
 genDiagWithNotices :: Gen Diagnostic
 genDiagWithNotices = do

@@ -1,0 +1,107 @@
+name: Race
+
+# The tests that look for races between threads, with 40 times the
+# repetitions of the pull requests (docs/adr/0075): once a day on main, on
+# the days main has changed since the last successful run of this
+# workflow, and whenever it is started by hand.
+on:
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+
+# It reads the repository, and the runs of this workflow for
+# scripts/ci/race-needed.sh (gh run list); it writes nothing. The caches
+# of ci.yml are restored, never saved.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: race
+  cancel-in-progress: false
+
+env:
+  GHC_VERSION: "9.10.3"
+
+jobs:
+  race:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # a scheduled run compares its commit with the head of the last
+      # successful run; a run started by hand always runs the tests
+      - id: needed
+        name: Whether main has changed since the last successful run (docs/adr/0075)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then RUN=true; else RUN=$(sh scripts/ci/race-needed.sh "$GITHUB_SHA"); fi
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+      - name: Image and GHC directory for the cache keys (docs/adr/0009)
+        if: steps.needed.outputs.run == 'true'
+        run: |
+          test -n "$ImageOS"
+          echo "ImageOS=$ImageOS" >> "$GITHUB_ENV"
+          echo "GHC_DIR=${GHCUP_INSTALL_BASE_PREFIX:-$HOME}/.ghcup/ghc/$GHC_VERSION" >> "$GITHUB_ENV"
+      - name: Restore GHC (docs/adr/0009)
+        if: steps.needed.outputs.run == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.GHC_DIR }}
+          key: ghc-${{ env.GHC_VERSION }}-${{ runner.os }}-${{ runner.arch }}-${{ env.ImageOS }}
+      - id: setup
+        if: steps.needed.outputs.run == 'true'
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ env.GHC_VERSION }}
+          cabal-version: "3.16.1.0"
+          cabal-update: false
+      - name: GHC on the PATH (docs/adr/0009)
+        if: steps.needed.outputs.run == 'true'
+        run: |
+          if [ ! -x "$GHC_DIR/bin/ghc-$GHC_VERSION" ]; then
+            test -x "$GHC_DIR/bin/ghc"
+            ln -s ghc "$GHC_DIR/bin/ghc-$GHC_VERSION"
+          fi
+          echo "$GHC_DIR/bin" >> "$GITHUB_PATH"
+      - id: index
+        name: Restore the Hackage index (docs/adr/0009)
+        if: steps.needed.outputs.run == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cabal/packages/hackage.haskell.org
+          key: hackage-index-${{ hashFiles('cabal.project.freeze') }}
+      - if: steps.needed.outputs.run == 'true' && steps.index.outputs.cache-hit != 'true'
+        run: cabal update
+      - name: Restore the cabal store
+        if: steps.needed.outputs.run == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ steps.setup.outputs.cabal-store }}
+          key: cabal-store-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}
+          restore-keys: cabal-store-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-
+      - name: Restore dist-newstyle (docs/adr/0009)
+        if: steps.needed.outputs.run == 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: dist-newstyle
+          key: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-${{ github.sha }}
+          restore-keys: dist-${{ runner.os }}-${{ runner.arch }}-ghc-${{ env.GHC_VERSION }}-${{ hashFiles('cabal.project', 'cabal.project.freeze') }}-
+      - name: wasmtime C API (golem-plugin ADR 0001)
+        if: steps.needed.outputs.run == 'true'
+        run: scripts/fetch-wasmtime.sh
+      # the three suites that look for races, and nothing else: the
+      # parallel builds of golem-driver, FreeType from many threads, and
+      # the shaping from many threads of golem-font-test (docs/adr/0075)
+      - name: The race tests, 40 times (docs/adr/0075)
+        if: steps.needed.outputs.run == 'true'
+        env:
+          GOLEM_RACE_TESTS: "40"
+        run: |
+          cabal test golem-driver-parallel-test golem-font-race-test
+          cabal test golem-font-test --test-option=-p --test-option='/one font from many threads/'

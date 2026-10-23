@@ -1508,4 +1508,3 @@ powDiagnosticTests =
         alone = cm (diags (e <> "\n"))
     cm (diags ("[= 1 + 1] [= 2.0 ** 3]\n\n" <> e <> "\n")) === alone
     cm (diags (e <> "\n\n" <> e <> "\n")) === alone <> alone
-    diags (e <> "\n\n" <> e <> "\n") === diags (e <> "\n\n" <> e <> "\n")

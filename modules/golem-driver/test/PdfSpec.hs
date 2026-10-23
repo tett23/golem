@@ -105,23 +105,52 @@ pdfPipelineTests =
         assertBool "a bare CFF program" (any (BS.isPrefixOf (BS.pack [1, 0, 4])) streams)
         assertBool "no OpenType font" (not (any (BS.isPrefixOf "OTTO") streams))
         qpdfCheck pdf,
-      testCase "G08018: a CFF font without a CFF table is not embedded as OpenType (golem-pdf ADR 0011)" $ do
+      testCase "G08018: a CFF font program without a CFF table is not embedded as OpenType (golem-pdf ADR 0011)" $ do
         (sans, _) <- realLatinFonts
         let renamed = renameTable "CFF " "CFX " sans
             expected = diagnostic "G08018" Error (mkSpan (FileId 3) 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"
         cffFontProgram (FileId 3) "fonts/sans.otf" renamed @?= Left expected
         case cffFontProgram (FileId 3) "fonts/sans.otf" sans of
           Right (P.CffProgram b) -> BS.take 3 b @?= BS.pack [1, 0, 4]
-          other -> assertFailure (either show (const "another program") other)
-        -- the build stops with G08018 at the top of style.toml and writes no PDF
+          other -> assertFailure (either show (const "another program") other),
+      testCase "an error the embedding returns stops the build at the top of style.toml, and no PDF is written (golem-pdf ADR 0011, 0013)" $ do
+        (sans, _) <- realLatinFonts
+        -- the embedding is replaced by one that always fails: no project font
+        -- is known to reach G08018 through the real provider (golem-pdf ADR 0013)
         let failing =
               FontProvider $ \root fid style locals ->
                 fmap (\lf -> lf {lfEmbed = \_ _ _ -> pure (Left (diagnostic "G08018" Error (mkSpan fid 0 0) "フォントから CFF の表を取り出せません: fonts/sans.otf"))})
                   <$> loadFonts golemFontProvider root fid style locals
-        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = failing}) (Just (horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n")) [("fonts/sans.otf", sans)]
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = failing}) (Just sansStyle) [("fonts/sans.otf", sans)]
         map diagCode (bErrors b) @?= [DiagnosticCode "G08018"]
         map (whereIs b) (bErrors b) @?= [(Just "style.toml", 0)]
         bPdf b @?= Nothing,
+      testCase "a font without outline tables cannot be loaded: G08003, not G08018 (golem-pdf ADR 0013)" $ do
+        (sans, _) <- realLatinFonts
+        -- neither CFF nor glyf: the real provider cannot open the font, and
+        -- the build never reaches the embedding
+        b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", renameTable "CFF " "CFX " sans)]
+        map diagCode (bErrors b) @?= [DiagnosticCode "G08003"]
+        map diagMessage (bErrors b) @?= ["フォントを読み込めません: fonts/sans.otf"]
+        map (whereIs b) (bErrors b) @?= [(Just "style.toml", 0)]
+        bPdf b @?= Nothing,
+      testCase "a broken record of the CFF table and a collection, with the real provider (golem-pdf ADR 0013)" $ do
+        (sans, _) <- realLatinFonts
+        let n = BS.length sans
+            codes f = do
+              b <- buildMarksFilesWith "Text.\n" (\o -> o {optFonts = golemFontProvider}) (Just sansStyle) [("fonts/sans.otf", f)]
+              pure (map diagCode (bErrors b), isJust (bPdf b))
+            unreadable = ([DiagnosticCode "G08003"], False)
+        -- the offset or the length of the record of the CFF table is broken
+        codes (setCffRecord 8 (n + 1000) sans) >>= (@?= unreadable)
+        codes (setCffRecord 8 0 sans) >>= (@?= unreadable)
+        codes (setCffRecord 12 (n * 2) sans) >>= (@?= unreadable)
+        codes (setCffRecord 12 0 sans) >>= (@?= unreadable)
+        -- a length cut short but within the file opens: no error, and the
+        -- truncated table is embedded as it is
+        codes (setCffRecord 12 4 sans) >>= (@?= ([], True))
+        -- a collection (.ttc) holding the CFF font is opened and subset: no error
+        codes (asCollection sans) >>= (@?= ([], True)),
       testCase "ruby readings, emphasis dots and line-end hyphens are drawn" $ do
         pdf <- withSystemTempDirectory "golem-driver" $ \tmp -> do
           copyTree fixture tmp
@@ -161,6 +190,8 @@ pdfPipelineTests =
         a @?= b
         qpdfCheck a
     ]
+  where
+    sansStyle = horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n"
 
 notoFonts :: IO LoadedFonts
 notoFonts = do
@@ -1794,3 +1825,22 @@ renameTable from to font =
    in case [r | k <- [0 .. numTables - 1], let r = 12 + 16 * k, BS.take 4 (BS.drop r font) == from] of
         r : _ -> BS.take r font <> to <> BS.drop (r + 4) font
         [] -> font
+
+-- | A copy of an sfnt font with one 32-bit field (8: offset, 12: length) of the record of the CFF table set.
+setCffRecord :: Int -> Int -> BS.ByteString -> BS.ByteString
+setCffRecord field value font =
+  let numTables = fromIntegral (BS.index font 4) * 256 + fromIntegral (BS.index font 5) :: Int
+   in case [r | k <- [0 .. numTables - 1], let r = 12 + 16 * k, BS.take 4 (BS.drop r font) == "CFF "] of
+        r : _ -> BS.take (r + field) font <> be32 value <> BS.drop (r + field + 4) font
+        [] -> font
+
+-- | A font collection (a version 1.0 TTC header) holding one sfnt font; the table offsets move by the 16 bytes of the header.
+asCollection :: BS.ByteString -> BS.ByteString
+asCollection font =
+  let numTables = fromIntegral (BS.index font 4) * 256 + fromIntegral (BS.index font 5) :: Int
+      u32 o = foldl (\a i -> a * 256 + fromIntegral (BS.index font (o + i))) 0 [0 .. 3] :: Int
+      record k = let r = 12 + 16 * k in BS.take 8 (BS.drop r font) <> be32 (u32 (r + 8) + 16) <> BS.take 4 (BS.drop (r + 12) font)
+   in "ttcf" <> be32 0x00010000 <> be32 1 <> be32 16 <> BS.take 12 font <> BS.concat (map record [0 .. numTables - 1]) <> BS.drop (12 + 16 * numTables) font
+
+be32 :: Int -> BS.ByteString
+be32 v = BS.pack [fromIntegral (v `div` 16777216 `mod` 256), fromIntegral (v `div` 65536 `mod` 256), fromIntegral (v `div` 256 `mod` 256), fromIntegral (v `mod` 256)]
