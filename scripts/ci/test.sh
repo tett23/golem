@@ -976,6 +976,64 @@ if grep -qx '| `build (ubuntu-24.04)` | `Run haskell-actions/setup@v2` | 143 | 1
 run timings --bogus
 expect "timings: an unknown option" 2
 
+# ---------------------------------------------------------------- race-needed.sh
+# (docs/adr/0075-race-search-repetitions.md)
+
+# The fake gh writes its arguments to $WORK/gh.args and prints
+# $FAKE_HEAD, the head of the last successful run of race.yml.
+RN=$WORK/race-needed
+mkdir -p "$RN"
+cat >"$RN/gh" <<GH
+#!/bin/sh
+printf '%s\n' "\$*" >"$WORK/gh.args"
+[ -z "\${FAKE_GH_FAIL-}" ] || exit 1
+printf '%s\n' "\$FAKE_HEAD"
+GH
+chmod +x "$RN/gh"
+A=0123456789abcdef0123456789abcdef01234567
+B=89abcdef0123456789abcdef0123456789abcdef
+race_needed() { GH=$RN/gh FAKE_HEAD=$1 sh "$HERE/race-needed.sh" "$2"; }
+: >"$WORK/in"
+run race_needed "$A" "$A"
+expect "race-needed: main has not changed" 0 false
+if [ "$(cat "$WORK/gh.args" 2>/dev/null)" = "run list --workflow race.yml --branch main --status success --limit 1 --json headSha --jq .[0].headSha" ]; then ok; else ng "race-needed: the last successful run of race.yml on main"; fi
+run race_needed "$B" "$A"
+expect "race-needed: main has changed" 0 true
+run race_needed "" "$A"
+expect "race-needed: no successful run yet" 0 true
+run race_needed null "$A"
+expect "race-needed: no successful run yet (null)" 0 true
+run race_needed "not a commit" "$A"
+expect "race-needed: gh answers with what is not a commit" 1
+run race_needed "$A" "${A%?}"
+expect "race-needed: a SHA that is not a commit" 2
+FAKE_GH_FAIL=1 run race_needed "$A" "$A"
+expect "race-needed: gh fails" 1
+
+# ---------------------------------------------------------------- race.yml
+# (docs/adr/0075-race-search-repetitions.md)
+
+RACE_YML=$HERE/../../.github/workflows/race.yml
+if [ -f "$RACE_YML" ]; then ok; else ng "race.yml: exists"; fi
+# once a day, and by hand
+if grep -qE '^    - cron: "[0-9]+ [0-9]+ \* \* \*"$' "$RACE_YML" && grep -qx '  workflow_dispatch:' "$RACE_YML"; then ok; else ng "race.yml: a schedule of once a day and workflow_dispatch"; fi
+# it reads the repository and the runs, and writes nothing
+if [ "$(awk '/^permissions:/ { on = 1; next } on && /^[^ ]/ { on = 0 } on && /^  [a-z]/' "$RACE_YML")" = "  contents: read
+  actions: read" ]; then ok; else ng "race.yml: the permissions are contents: read and actions: read"; fi
+if grep -qE ': *write' "$RACE_YML" || grep -q 'actions/cache@' "$RACE_YML"; then ng "race.yml: nothing is written, the caches are only restored"; else ok; fi
+if grep -qF 'GH_TOKEN: ${{ github.token }}' "$RACE_YML" && grep -qF 'sh scripts/ci/race-needed.sh "$GITHUB_SHA"' "$RACE_YML"; then ok; else ng "race.yml: race-needed.sh decides with the token of the run"; fi
+# the tests run with GOLEM_RACE_TESTS, and only the three race tests
+RT=$WORK/race-tests
+awk '/name: The race tests/ { on = 1; next } on && /^      - / { on = 0 } on' "$RACE_YML" >"$RT"
+if grep -qx '          GOLEM_RACE_TESTS: "40"' "$RT"; then ok; else ng "race.yml: the race tests have GOLEM_RACE_TESTS=40"; fi
+if [ "$(grep -c 'cabal test' "$RACE_YML")" = 2 ] &&
+  grep -qx '          cabal test golem-driver-parallel-test golem-font-race-test' "$RT" &&
+  grep -qx "          cabal test golem-font-test --test-option=-p --test-option='/one font from many threads/'" "$RT"; then ok; else
+  ng "race.yml: only golem-driver-parallel-test, golem-font-race-test and the concurrency tests of golem-font-test run"
+fi
+if grep -qF 'one font from many threads' "$HERE/../../modules/golem-font/test/ConcurrencySpec.hs"; then ok; else ng "race.yml: the pattern names the group of ConcurrencySpec"; fi
+if awk -v c="if: steps.needed.outputs.run == 'true'" 'index($0, "name: The race tests") { getline; if (index($0, c)) f = 1 } END { exit !f }' "$RACE_YML"; then ok; else ng "race.yml: the tests run only when race-needed.sh says so"; fi
+
 # ---------------------------------------------------------------- test-only-deps.sh
 
 PLANS=$HERE/testdata/test-only-deps

@@ -41,7 +41,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - 環境変数を書き換えるテストは、書き換えを元に戻す（未実装、[ADR 0072](adr/0072-tests-restore-process-environment.md)）。
 - テストの時間の上限を、止まらないことの検出に限り、上限の検査は数で書く（未実装、[ADR 0073](adr/0073-time-bounds-in-tests.md)）。
 - テストを切り替える環境変数の値の読み方をそろえ、省いたテストを数える（未実装、[ADR 0074](adr/0074-test-switches-by-environment-variables.md)）。
-- 並行の競合を探すテストの回数を、CI の夜間の実行で増やす（未実装、[ADR 0075](adr/0075-race-search-repetitions.md)）。
 - ADR のテスト設計より弱いテストを、テスト設計のとおりに強める（未実装、[ADR 0076](adr/0076-tests-weaker-than-adr-test-designs.md)）。
 - スクリプトのテストで、検査の対象が壊れても通る断言を直す（未実装、[ADR 0077](adr/0077-shell-test-assertions-that-pass-vacuously.md)）。
 - リリースのときと手でだけ動くスクリプトにテストを書く（未実装、[ADR 0078](adr/0078-tests-for-release-and-hand-run-scripts.md)）。

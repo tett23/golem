@@ -12,19 +12,20 @@ diagnostics equal those of a sequential run (docs/adr/0002 determinism),
 and the diagnostics are in the order of the files, the positions and the
 codes.
 
-GOLEM_PARALLEL_REPEAT=n repeats the builds of the fixture books n times
-(once by default).
+GOLEM_RACE_TESTS=n multiplies the number of the tests of each property
+by n and builds the fixture books in parallel n times (1 by default); the
+pull requests run with 1, the nightly race.yml with 40 (docs/adr/0075).
 -}
-module ParallelSpec (parallelTests) where
+module ParallelSpec (parallelTests, raceFactor) where
 
 import Control.Concurrent (forkOn)
 import Control.Concurrent.MVar (newEmptyMVar, putMVar, readMVar, takeMVar)
 import Control.Exception (SomeException, evaluate, try)
 import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
+import Data.Char (isDigit)
 import Data.List (isSuffixOf)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -44,7 +45,6 @@ import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testPropertyNamed)
-import Text.Read (readMaybe)
 
 {- | Runs the actions at once, the i-th pinned to capability i (mod the
 count), and returns their fully evaluated results in the order given.
@@ -124,14 +124,26 @@ notoStyle vertical =
 
 -- * the tests
 
-parallelTests :: TestTree
-parallelTests =
+{- | GOLEM_RACE_TESTS, the factor of the repetitions of the race tests
+(docs/adr/0075): 1 when it is not set. A value that is not an integer of
+1 or more fails the suite: it is not read as 1.
+-}
+raceFactor :: IO Int
+raceFactor = lookupEnv "GOLEM_RACE_TESTS" >>= maybe (pure 1) parse
+  where
+    parse s
+      | not (null s), all isDigit s, take 1 s /= "0", length s <= 6 = pure (read s)
+      | otherwise = fail ("GOLEM_RACE_TESTS must be an integer of 1 or more, not " <> show s)
+
+-- | The tests, the repetitions multiplied by the factor of 'raceFactor'.
+parallelTests :: Int -> TestTree
+parallelTests race =
   testGroup
     "parallel composition on every capability (golem-driver ADR 0001, 0002; Medium)"
     [ testPropertyNamed
         "a generated manuscript with the fake fonts gives the bytes and diagnostics of a sequential build"
         "prop_parallelFakeFontsMatchSequential"
-        ( withTests 25 . property $ do
+        ( withTests (fromIntegral (25 * race)) . property $ do
             chapters <- forAll genChapters
             (s, p) <- evalIO (sequentialAndParallel fakeProvider horizontalStyle [] chapters)
             p === s
@@ -139,7 +151,7 @@ parallelTests =
       testPropertyNamed
         "a generated manuscript shaped by HarfBuzz gives the bytes and diagnostics of a sequential build"
         "prop_parallelRealFontsMatchSequential"
-        ( withTests 8 . property $ do
+        ( withTests (fromIntegral (8 * race)) . property $ do
             chapters <- forAll genChapters
             vertical <- forAll Gen.bool
             noto <- evalIO notoBytes
@@ -168,7 +180,7 @@ parallelTests =
       testPropertyNamed
         "advances and pair kerns asked from every capability at once are those asked in sequence"
         "prop_memoConcurrentMatchesSequential"
-        ( withTests 10 . property $ do
+        ( withTests (fromIntegral (10 * race)) . property $ do
             pairs <- forAll (Gen.list (Range.linear 32 128) ((,,) <$> Gen.bool <*> Gen.element ("漢字「」、。ーabAV1" :: String) <*> Gen.element ("漢字「」、。ーabAV1" :: String)))
             -- two loads: the sequential answers must not warm the cache the threads use
             alone <- evalIO notoFonts
@@ -177,7 +189,7 @@ parallelTests =
             together <- evalIO (inParallel [pure (ask shared k) | k <- pairs])
             together === map (Right . ask alone) pairs
         ),
-      testGroup "fixture books" [bookTest "tempest", bookTest "kanikosen"]
+      testGroup "fixture books" [bookTest race "tempest", bookTest race "kanikosen"]
     ]
 
 notoFonts :: IO LoadedFonts
@@ -187,11 +199,10 @@ notoFonts = do
   loadFonts realProvider "test/fixtures/kanikosen" (FileId 0) style [] >>= either (assertFailure . show) pure
 
 {- | A fixture book built in parallel on every capability gives the PDF of
-a sequential build, GOLEM_PARALLEL_REPEAT times.
+a sequential build, n times (the factor of GOLEM_RACE_TESTS).
 -}
-bookTest :: FilePath -> TestTree
-bookTest name = testCase (name <> ": parallel builds on every capability give the bytes of a sequential build") $ do
-  n <- fromMaybe 1 . (>>= readMaybe) <$> lookupEnv "GOLEM_PARALLEL_REPEAT"
+bookTest :: Int -> FilePath -> TestTree
+bookTest n name = testCase (name <> ": parallel builds on every capability give the bytes of a sequential build") $ do
   sequential <- buildBookWith False name
   parallel <- replicateM n (buildBookWith True name)
   map (== sequential) parallel @?= replicate n True
