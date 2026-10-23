@@ -33,14 +33,11 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 2026-10-23 のテストの品質の点検と、出力のゴールデンを足すときに見つかった問題から採択した ADR を実装する。
 
-- 空の結果や Nothing で通ってしまう断言を、中身を確かめる断言にする（未実装、[ADR 0066](adr/0066-assertions-that-pass-vacuously.md)）。
 - 変更のパスを取るときにリネームの検出を切り、移動元のパスも数える（未実装、[ADR 0070](adr/0070-changed-paths-without-rename-detection.md)）。
-- 環境変数を書き換えるテストは、書き換えを元に戻す（未実装、[ADR 0072](adr/0072-tests-restore-process-environment.md)）。
 - テストの時間の上限を、止まらないことの検出に限り、上限の検査は数で書く（未実装、[ADR 0073](adr/0073-time-bounds-in-tests.md)）。
 - テストを切り替える環境変数の値の読み方をそろえ、省いたテストを数える（未実装、[ADR 0074](adr/0074-test-switches-by-environment-variables.md)）。
 - ADR のテスト設計より弱いテストを、テスト設計のとおりに強める（未実装、[ADR 0076](adr/0076-tests-weaker-than-adr-test-designs.md)）。
 - リリースのときと手でだけ動くスクリプトにテストを書く（未実装、[ADR 0078](adr/0078-tests-for-release-and-hand-run-scripts.md)）。
-- スクリプトのテストを macOS の BSD の道具でも走らせる（未実装、[ADR 0079](adr/0079-shell-tests-on-macos.md)）。
 - リリースの smoke の検査で、ビルドが diagnostics を出さないことも確かめる（未実装、[ADR 0080](adr/0080-release-smoke-checks-diagnostics.md)）。
 - フォントにない字を、golem build の dev では warning、prod ではエラーにする（未実装、[ADR 0081](adr/0081-missing-glyphs-warn-in-build.md)）。
 
@@ -49,7 +46,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 仕様書の「[既知の不具合](specifications.md#既知の不具合)」に載せた不具合と、文書のレビューで見つかった不具合を直す。
 
 - 箇条書きの既定の印を、PDF と CSS では「•」にする（未実装、[golem-driver ADR 0044](golem-driver/adr/0044-default-bullet-u2022.md)）。
-- 見出しを後の行と離さない規則で、後の行の注の本文を数える（未実装、[golem-layout ADR 0019](golem-layout/adr/0019-keep-with-next-counts-footnotes.md)）。
 
 ## v0.1.0-rc4
 

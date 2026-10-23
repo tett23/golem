@@ -29,6 +29,7 @@ paginateTests =
     "pagination boundaries (golem-layout ADR 0003)"
     [ testGroup "a heading kept with what follows" keepWithNextTests,
       testGroup "a heading with footnotes (golem-driver ADR 0003)" headingNoteTests,
+      testGroup "keeping with what follows counts its footnotes (golem-layout ADR 0019)" keepNoteTests,
       testGroup "widows, orphans and the page end" widowOrphanTests,
       testGroup "page references that do not settle (S2)" pageRefTests,
       testGroup "figures in the order written (golem-layout ADR 0015)" figureOrderTests,
@@ -138,6 +139,54 @@ headingNoteTests =
     testCase "the label of a heading sent to the next page is on that page" $ do
       let ps = paginate 1 5 [FParagraph (lines' 0 3), FHeading 2 False 1 [LineBox 20 [] ["sec"] [] 0], FParagraph (lines' 30 2)]
       labelPages ps @?= Map.fromList [("sec", 2)]
+  ]
+
+-- | A line whose footnote has k lines.
+noted :: Int -> Int -> LineBox
+noted i k = LineBox i [NoteBody (nid 900) k] [] [] 0
+
+keepNoteTests :: [TestTree]
+keepNoteTests =
+  [ testCase "a heading goes on with a line whose note does not fit after it" $ do
+      -- 4 free: heading 1 + two lines + note 3 + separator > 4
+      let ps = paginate 1 8 [FParagraph (lines' 0 4), heading 20, FParagraph (noted 30 3 : lines' 31 1)]
+      contents ps @?= [map SLine [0 .. 3], [SHeading 20 1, SLine 30, SLine 31]]
+      notesByPage ps @?= [(1, []), (2, [nid 900])],
+    testCase "in two columns, the heading goes to the next column with the line and its note" $ do
+      let ps = paginate 2 8 [FParagraph (lines' 0 4), heading 20, FParagraph (noted 30 3 : lines' 31 1)]
+      [(poNumber p, poColumn p, [i | (i, _, _) <- poFootnotes p]) | p <- ps] @?= [(1, 0, []), (1, 1, [nid 900])]
+      contents ps @?= [map SLine [0 .. 3], [SHeading 20 1, SLine 30, SLine 31]],
+    testCase "the note of a heading after a heading counts" $ do
+      let ps = paginate 1 8 [FParagraph (lines' 0 4), heading 20, FHeading 2 False 1 [LineBox 25 [NoteBody (nid 900) 2] [] [] 0], FParagraph (lines' 30 2)]
+      contents ps @?= [map SLine [0 .. 3], [SHeading 20 1, SHeading 25 1, SLine 30, SLine 31]],
+    testCase "a definition term goes on with a line whose note does not fit after it" $ do
+      let ps = paginate 1 8 [FParagraph (lines' 0 4), FDefTerm (lines' 20 1), FParagraph (noted 30 3 : lines' 31 1)]
+      contents ps @?= [map SLine [0 .. 3], map SLine [20, 30, 31]],
+    testCase "no-break: the paragraph before goes on with a line whose note does not fit after it" $ do
+      let ps = paginate 1 8 [FParagraph (lines' 0 4), FParagraph (lines' 20 2), FNoBreak mk, FParagraph (noted 30 3 : lines' 31 1)]
+      lineIds ps @?= [[0 .. 3], [20, 21, 30, 31]]
+      unmets ps @?= [],
+    testCase "a heading alone in its column takes the next line, its note continues on the next page" $ do
+      -- the note of 10 lines does not fit even an empty page
+      let ps = paginate 1 8 [heading 20, FParagraph (noted 30 10 : lines' 31 1)]
+      contents ps @?= [[SHeading 20 1, SLine 30], [SLine 31]]
+      notesByPage ps @?= [(1, [nid 900]), (2, [nid 900])],
+    testCase "a heading sent to the next page takes the line whose note does not fit any page" $ do
+      let ps = paginate 1 8 [FParagraph (lines' 0 4), heading 20, FParagraph (noted 30 10 : lines' 31 1)]
+      take 2 (contents ps) @?= [map SLine [0 .. 3], [SHeading 20 1, SLine 30]],
+    testCase "the separator is counted once for the notes of a heading and of the line after it" $ do
+      -- separator 1, 6 free: heading 1 + its note 1 + two lines + their note 1 + separator 1 = 6
+      let ps = paginateIn 1 (ColumnSet 1 0 0 0) 10 [FParagraph (lines' 0 4), headingWithNote 20 (nid 800), FParagraph (noted 30 1 : lines' 31 1)]
+      contents ps @?= [map SLine [0 .. 3] <> [SHeading 20 1, SLine 30, SLine 31]],
+    testCase "no separator is counted on a page that has notes" $ do
+      -- separator 1: three lines, the separator and a note take 5 of 9; heading 1 + two lines + note 1 = 4 fit
+      let ps = paginateIn 1 (ColumnSet 1 0 0 0) 9 [FParagraph (LineBox 0 [NoteBody (nid 800) 1] [] [] 0 : lines' 1 2), heading 20, FParagraph (noted 30 1 : lines' 31 1)]
+      contents ps @?= [map SLine [0 .. 2] <> [SHeading 20 1, SLine 30, SLine 31]],
+    testCase "a ruled heading goes on with a line whose note does not fit after it" $ do
+      let h = FRuled 20 (Just (spaced 5 10)) Nothing False ruleGrid 0 (RuledHeading False 1 (lines' 20 1))
+          ps = paginate 1 8 [FParagraph (lines' 0 4), h, FParagraph (noted 30 3 : lines' 31 1)]
+      contents ps @?= [map SLine [0 .. 3], [SHeading 20 1, SLine 30, SLine 31]]
+      notesByPage ps @?= [(1, []), (2, [nid 900])]
   ]
 
 -- | The line ids on each page.
