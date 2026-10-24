@@ -3111,6 +3111,13 @@ Golem には二つのマニュアルがあり、どちらも Golem 自身で組�
 エラー、警告、notice のどれか一つでも出れば失敗とする。
 マニフェストに `silence-notices` があれば、組む前に失敗とする。
 `--no-notices` は付けない。
+プロジェクトに `LICENSE` がなければ、組む前に終了コード 1 で失敗とする。
+組めたら、プロジェクトの `LICENSE` を `build/html/LICENSE` に写し、`build/html/fonts/` があれば、プロジェクトの `fonts/LICENSE-*` をすべて `build/html/fonts/` に写す（[ADR 0082](adr/0082-manuals-under-cc0.md)）。
+HTML の出力はフォントのファイルを `fonts/` にそのまま写すので、その隣に SIL Open Font License 1.1 の全文を置くためである。
+PDF には何も足さない。
+二つのマニュアルの `manual/` と `manual-dev/` の下で Git が管理するファイル（`fonts/` を除く）と、そこから組んだ PDF と HTML は CC0 1.0 で公開し、各プロジェクトの `LICENSE` に条文を置く。
+`LICENSE` は、1 行目に CC0 1.0 の説明のページの URL、2 行目を空行とし、3 行目から Creative Commons の条文の平文を変えずに置く。
+フォントは SIL Open Font License 1.1 のままであり、奥付にそのことを書く。
 書体（Noto Serif JP、Noto Sans JP の Regular と Bold、Source Serif 4、Source Sans 3 の Bold、Source Code Pro。どれも SIL Open Font License 1.1）はリポジトリに入れず、`fetch-fonts.sh` がバージョンを固定した URL から取得し、SHA-256 を検査して各プロジェクトの `fonts/` に置く。
 
 `scripts/manual/check-updated.sh` は、ブランチの分岐点からの変更を次の規則で検査する。
@@ -3131,6 +3138,7 @@ docs/manual-policy.md は Golem の振る舞いを定めないので、ビルド
 `manual/` と `manual-dev/` は `docs/` の外にあるので、その変更はビルドを走らせる。
 
 リリースのワークフローは、そのリリースの x86-64 の Linux の配布物で、`GOLEM_MANUAL_TAG` にタグを渡して二つのマニュアルを組み、`golem-manual-<タグ>.pdf`、`golem-manual-<タグ>-html.tar.gz`、`golem-dev-manual-<タグ>.pdf`、`golem-dev-manual-<タグ>-html.tar.gz` をリリースのアセットと `SHA256SUMS` に加える。
+HTML の tar は `build/html` をそのまま固めたものなので、HTML とフォントのほかに、マニュアルの `LICENSE`（CC0 1.0 の条文）と、`fonts/` のフォントのライセンスの文書（`LICENSE-*`）を含む。
 
 ## 開発順序
 

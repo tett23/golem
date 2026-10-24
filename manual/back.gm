@@ -26,6 +26,15 @@
 本文の書体は Noto Serif JP と Source Serif 4、見出しの書体は Noto Sans JP と Source Sans 3、コードの書体は Source Code Pro と Noto Sans JP です。
 どれも SIL Open Font License 1.1 のフォントです。
 
+この本の原稿と、原稿から組んだ PDF と HTML は、CC0 1.0 で公開しています。
+著作者は、法が許す限り、この本の著作権とそれに関わる権利を放棄しています。
+放棄できない著作者人格権は、行使しません。
+誰でも、断りなく複製し、改変し、配れます。
+条文は、リポジトリの [code: manual/LICENSE] にあります（[code: https://github.com/tett23/golem/blob/main/manual/LICENSE]）。
+
+ただし、PDF に埋め込んだフォントと、HTML と一緒に配るフォントは、SIL Open Font License 1.1 で配布されているもので、CC0 の対象ではありません。
+フォントのライセンスの全文は、HTML の [code: fonts/] に、フォントと並べて置いています。
+
 版の欄は、この本の版です。
 このマニュアルは Golem と一緒に作っているので、組んだときの Golem のバージョンで版を表します。
 リリースのために組んだものはリリースのタグ（[code: v0.1.0] など）を、それ以外はバージョンに「の開発版」を付けたものを示します。

@@ -18,10 +18,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 ## v0.1.0-rc3
 
 
-### 記法と設定
-
-- **マニュアルのライセンス**：二つのマニュアルの原稿（`.gm`）と、組んだ PDF と HTML を CC0 にする。リポジトリのほかの部分は今のとおり MIT とする。PDF に埋め込むフォントは SIL Open Font License 1.1 のままで、CC0 の対象にならないことを、マニュアルの奥付とライセンスの表示に書く。ライセンスの表示の置き場所（`manual/` と `manual-dev/` の LICENSE、奥付、README）を決める（未実装、[ADR 0082](adr/0082-manuals-under-cc0.md)）。
-
 ### PDF
 
 
@@ -99,6 +95,7 @@ v0.1.0-rc4 と v1.0.0 のどちらで扱うかは、まだ決めていない。
 - **テストのスイートの時間の上限**：スイートの全体の所要時間に上限を設ける仕組みを作る（直近の実行の中央値などから決める）。golem-syntax のテストの 2 秒の時間切れは、行の数に比例する探索に戻ったことを見つけるためのもの（[golem-lsp ADR 0002](golem-lsp/adr/0002-utf8-position-encoding.md)）であり、時間切れを 30 秒にそろえる規則（[ADR 0073](adr/0073-time-bounds-in-tests.md)）の例外として残している。この仕組みができたら、2 秒の時間切れも 30 秒にそろえ、性能の後退はこの仕組みで見つける。
 - **取り込む PDF の内容の上限とストリームのつなぎ**：取り込む PDF の `Contents` が複数のストリームのとき、つなぐ改行も内容の大きさの上限（[docs/adr/0051](adr/0051-reuse-repeated-pdf-content-streams.md)）に数える。そのため、ストリームの展開の合計が展開の上限（256 MiB）ちょうどの PDF は、内容の上限で拒まれる（[ADR 0068](adr/0068-accepting-side-of-limits.md) の実装で見つかった）。つなぎの改行を数えるかを決め、二つの上限の関係を仕様書に書く。
 - **PDF を書かないエラーのときの前のビルドの PDF**：prod の G08100 では、前のビルドの `build/pdf` も消す（[ADR 0081](adr/0081-missing-glyphs-warn-in-build.md)）。G08010 など、ほかの PDF を書かないエラーでは前の PDF が残り、入稿のときに古い PDF を使うおそれがある。PDF を書かないすべてのエラーで、前のビルドの PDF を消すようにそろえる。
+- **HTML の出力のフォントのライセンスの文書**：`golem build` の HTML は、`style.toml` のフォントの役割が指すフォントのファイルを `fonts/` に写すが、ライセンスの文書は写さないので、Golem を使うすべての本の HTML が、フォントを SIL Open Font License 1.1 の全文なしで配る。二つのマニュアルの HTML は `scripts/manual/build.sh` が文書を写して直した（[ADR 0082](adr/0082-manuals-under-cc0.md)）。Golem の本体が HTML と EPUB の出力にフォントのライセンスの文書を写すことを、どのファイルがライセンスの文書かを知る手段（`style.toml` に書くか、名前で探すか）と、EPUB の中のフォントを埋め込みとみなすかとともに決める。HTML の出力を XHTML から HTML Living Standard に変えることとあわせて扱う。
 
 ### LaTeX との差を埋める項目
 
