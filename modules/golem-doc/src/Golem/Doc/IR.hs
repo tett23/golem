@@ -37,6 +37,8 @@ module Golem.Doc.IR
     IndexEntry (..),
     DeferredExpr (..),
     noRuby,
+    isLineBreak,
+    splitAtLineBreaks,
   )
 where
 
@@ -317,3 +319,15 @@ noRuby = \case
   LineBreak s -> Just (LineBreak s)
   Aki s a -> Just (Aki s a)
   ChannelItem s c -> Just (ChannelItem s c)
+
+-- | Whether an inline is a line break.
+isLineBreak :: InlineF r -> Bool
+isLineBreak = \case
+  LineBreak _ -> True
+  _ -> False
+
+-- | The inlines of a paragraph split at its line breaks.
+splitAtLineBreaks :: [InlineF r] -> [[InlineF r]]
+splitAtLineBreaks is = case break isLineBreak is of
+  (l, []) -> [l]
+  (l, _ : rest) -> l : splitAtLineBreaks rest

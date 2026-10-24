@@ -395,7 +395,7 @@ block c (Block sp lbl body) = case body of
         -- the lines of a paragraph that keeps them, each a span; br is for readers without CSS (docs/adr ADR 0005).
         -- A hard break elsewhere is a br, so that text-indent stays on the first line (docs/adr ADR 0016)
         content
-          | keepsLines c st = T.intercalate "<br/>\n" ["<span class=\"line\">" <> inlines c l <> "</span>" | l <- splitLines is]
+          | keepsLines c st = T.intercalate "<br/>\n" ["<span class=\"line\">" <> inlines c l <> "</span>" | l <- splitAtLineBreaks is]
           | otherwise = inlines c is
      in "<p" <> idAttr lbl <> cls <> ">" <> content <> "</p>\n" <> sidenotes c is
   Heading l _ is ->
@@ -663,17 +663,6 @@ akiLength = \case
           (i, f) = abs n `quotRem` 10000
           frac = T.dropWhileEnd (== '0') (T.justifyRight 4 '0' (tshow f))
        in (if n < 0 then "-" else "") <> tshow i <> (if T.null frac then "" else "." <> frac)
-
-isLineBreak :: InlineF r -> Bool
-isLineBreak = \case
-  LineBreak _ -> True
-  _ -> False
-
--- | The inlines of a paragraph split at its line breaks.
-splitLines :: [InlineF r] -> [[InlineF r]]
-splitLines is = case break isLineBreak is of
-  (l, []) -> [l]
-  (l, _ : rest) -> l : splitLines rest
 
 sidenotes :: Ctx -> [Inline] -> Text
 sidenotes c is = T.concat ["<aside class=\"sidenote\"><span class=\"number\">" <> tshow n <> "</span>" <> inlines c xs <> "</aside>\n" | Sidenote _ n xs <- is]
