@@ -169,7 +169,10 @@ arcOf r = svg ("<path d=\"M0 0 A " <> r <> " " <> r <> " 0 0 1 10 0\" stroke=\"#
 -- ------------------------------------------------------------------ tests
 
 tests :: TestTree
-tests =
+tests = testGroup "security" [tests2018, auditTests]
+
+tests2018 :: TestTree
+tests2018 =
   testGroup
     "hostile SVG figures end within limits (security audit 2026-10-18)"
     [ testGroup "markers and numbers within limits (docs/adr ADR 0041)" adr0041Tests,
@@ -292,3 +295,36 @@ adr0041Tests =
       names "<defs><marker id=\"m\" refX=\"2e9\"><path d=\"M0 0 L1 1\"/></marker></defs>" @?= ["refX（読めない数）"]
       names "<rect fill=\"rgb(2e9, 0, 0)\" width=\"1\" height=\"1\"/>" @?= ["fill（読めない数）"]
   ]
+
+-- | Candidates of the security audit of 2026-10-24.
+auditTests :: TestTree
+auditTests =
+  testGroup
+    "security audit 2026-10-24"
+    [ localOption (mkTimeout (seconds 30))
+        $ testCase "A-SA: thirty arcs with radii of 1e-9999 (1 KB) are refused or drawn in time"
+        $ total (svg ("<path d=\"M0 0" <> T.replicate 15 " A 1e-9999 1e-9999 0 0 1 10 0 A 1e-9999 1e-9999 0 0 1 0 0" <> "\" stroke=\"#000\" fill=\"none\"/>")) >>= finished,
+      localOption (mkTimeout (seconds 30))
+        $ testCase "A-SB: markers 9 deep with 20 vertices each are refused or bounded"
+        $ total fanMarkers >>= finished
+    ]
+
+-- | Nine markers; each is a path of 20 vertices whose marker-mid is the marker below.
+fanMarkers :: ByteString
+fanMarkers =
+  svg $
+    "<defs>"
+      <> T.concat [marker k | k <- [1 .. 9 :: Int]]
+      <> "</defs><path d=\""
+      <> pathD
+      <> "\" marker-mid=\"url(#m9)\" stroke=\"#000\"/>"
+  where
+    pathD = "M0 0" <> T.concat [" L" <> T.pack (show i) <> " 0" | i <- [1 .. 19 :: Int]]
+    marker k =
+      "<marker id=\"m"
+        <> T.pack (show k)
+        <> "\" markerWidth=\"1\" markerHeight=\"1\"><path d=\""
+        <> pathD
+        <> "\" stroke=\"#000\""
+        <> (if k > 1 then " marker-mid=\"url(#m" <> T.pack (show (k - 1)) <> ")\"" else "")
+        <> "/></marker>"

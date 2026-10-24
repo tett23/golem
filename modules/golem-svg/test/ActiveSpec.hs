@@ -22,7 +22,10 @@ names :: Text -> [Text]
 names body = [n | (n, _, _) <- found body]
 
 tests :: TestTree
-tests =
+tests = testGroup "active" [tests2018, auditTests]
+
+tests2018 :: TestTree
+tests2018 =
   testGroup
     "active content (docs/adr ADR 0039)"
     [ testCase "an empty script element is returned with its name and place" $
@@ -59,4 +62,33 @@ tests =
         assertBool "broken" (isLeft (activeContent "<svg"))
         assertBool "latin-1" (isLeft (activeContent "<svg xmlns=\"http://www.w3.org/2000/svg\">\xE9</svg>"))
         assertBool "subset" (isLeft (activeContent "<!DOCTYPE svg [<!ENTITY a \"b\">]><svg xmlns=\"http://www.w3.org/2000/svg\"/>"))
+    ]
+
+-- | Candidates of the security audit of 2026-10-24: each is something a browser loads.
+auditTests :: TestTree
+auditTests =
+  testGroup
+    "security audit 2026-10-24"
+    [ testCase "A-S2: a url() between two CSS strings that hold /* and */ is found" $
+        names "<style>a{content:\"/*\"} rect{fill:url(https://evil.example/p.svg#g)} b{content:\"*/\"}</style>" @?= ["url()"],
+      testCase "A-S2: the same in a style attribute" $
+        names "<rect style=\"--a:'/*';fill:url(https://evil.example/p.svg#g);--b:'*/'\"/>" @?= ["url()"],
+      testCase "A-S3: url written with a CSS escape is found" $
+        names "<style>rect{fill:\\75 rl(https://evil.example/p.svg#g)}</style>" @?= ["url()"],
+      testCase "A-S3: @import written with a CSS escape is found" $
+        names "<style>@\\69mport \"https://evil.example/x.css\";</style>" @?= ["@import"],
+      testCase "A-S4: image-set with a string is found" $
+        names "<style>rect{background:image-set(\"https://evil.example/x.png\" 1x)}</style>" @?= ["image-set"],
+      testCase "A-S5: a presentation attribute with an external url() is found" $
+        names "<rect fill=\"url(https://evil.example/p.svg#g)\"/>" @?= ["fill"],
+      testCase "A-S6: an xml-stylesheet processing instruction is found" $
+        case activeContent (TE.encodeUtf8 "<?xml-stylesheet type=\"text/css\" href=\"https://evil.example/x.css\"?><svg xmlns=\"http://www.w3.org/2000/svg\"/>") of
+          Right as -> map acName as @?= ["xml-stylesheet"]
+          Left why -> assertFailure (show why),
+      testCase "A-S7: an XHTML img with an external src is found" $
+        names "<h:img xmlns:h=\"http://www.w3.org/1999/xhtml\" src=\"https://evil.example/t.png\"/>" @?= ["src"],
+      testCase "A-S8: set that animates style to an external url() is found" $
+        names "<rect><set attributeName=\"style\" to=\"fill:url(https://evil.example/p.svg#g)\"/></rect>" @?= ["set"],
+      testCase "A-S9: set that animates href through another prefix of the XLink namespace is found" $
+        names "<a xmlns:q=\"http://www.w3.org/1999/xlink\"><set attributeName=\"q:href\" to=\"javascript:alert(1)\"/></a>" @?= ["set"]
     ]

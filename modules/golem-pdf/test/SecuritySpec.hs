@@ -144,7 +144,10 @@ xrefIndexPdf index =
 -- ------------------------------------------------------------------ tests
 
 tests :: TestTree
-tests =
+tests = testGroup "security" [tests2018, auditTests]
+
+tests2018 :: TestTree
+tests2018 =
   testGroup
     "hostile PDF figures end within limits (security audit 2026-10-18, docs/adr ADR 0040)"
     [ localOption (mkTimeout (seconds 30))
@@ -305,4 +308,103 @@ tests =
             (r, bytes) <- allocatedBy (imported 1 pdf)
             either (assertFailure . show) (\(c, _) -> c @?= BS.length body) r
             assertBool ("allocated " <> show bytes) (bytes < 16 * toInteger (BS.length body))
+    ]
+
+-- ------------------------------------------------------------------ security audit 2026-10-24
+
+{- | A PDF whose cross-reference is one stream (@/W [1 4 2]@) over objects 0
+to the largest: the objects in the file at their offsets, and the objects
+in object streams as (number, stream, index).
+-}
+xrefStreamPdf :: [(Int, ByteString)] -> [(Int, Int, Int)] -> ByteString
+xrefStreamPdf inFile inStreams =
+  let (body, offs) = layout "%PDF-1.5\n%\xE2\xE3\xCF\xD3\n" inFile
+      xrefNum = maximum (map fst inFile <> [n | (n, _, _) <- inStreams]) + 1
+      size = xrefNum + 1
+      be k (x :: Int) = BS.pack [fromIntegral (x `shiftR` (8 * i)) | i <- reverse [0 .. k - 1]]
+      row n
+        | Just o <- lookup n offs = BS.singleton 1 <> be 4 o <> be 2 0
+        | (s, i) : _ <- [(s, i) | (m, s, i) <- inStreams, m == n] = BS.singleton 2 <> be 4 s <> be 2 i
+        | n == xrefNum = BS.singleton 1 <> be 4 (BS.length body) <> be 2 0
+        | otherwise = BS.singleton 0 <> be 4 0 <> be 2 0
+      rows = BS.concat (map row [0 .. xrefNum])
+      xref = stream ("/Type /XRef /Size " <> BC.pack (show size) <> " /W [1 4 2] /Root 1 0 R") rows
+   in body <> objBytes (xrefNum, xref) <> "startxref\n" <> BC.pack (show (BS.length body)) <> "\n%%EOF\n"
+
+-- | An object stream of the objects given (number and offset are computed), with the dictionary entries given.
+objStm :: ByteString -> [(Int, ByteString)] -> ByteString
+objStm dict objs =
+  let bodies = map snd objs
+      offsets = scanl (+) 0 (map ((+ 1) . BS.length) bodies)
+      header = BS.concat [BC.pack (show n) <> " " <> BC.pack (show o) <> " " | ((n, _), o) <- zip objs offsets]
+      content = header <> BS.concat [b <> "\n" | b <- bodies]
+   in stream ("/Type /ObjStm /N " <> BC.pack (show (length objs)) <> " /First " <> BC.pack (show (BS.length header)) <> " " <> dict) content
+
+-- | A page tree whose Kids are references to arrays of two direct nodes that name the next array.
+arrayKidsPdf :: Int -> ByteString
+arrayKidsPdf depth =
+  classicPdf "" $
+    [catalog, (2, "<< /Type /Pages /Kids 10 0 R /Count 1 >>")]
+      <> [(10 + k, "[<< /Type /Pages /Kids " <> ref (11 + k) <> " >> << /Type /Pages /Kids " <> ref (11 + k) <> " >>]") | k <- [0 .. depth - 1]]
+      <> [(10 + depth, "[]")]
+  where
+    ref n = BC.pack (show n) <> " 0 R"
+
+{- | One page whose resources name an array of @n@ font dictionaries, each
+with the same descriptor, an object in the file of @pad@ numbers.
+-}
+sharedDescriptorPdf :: Int -> Int -> ByteString
+sharedDescriptorPdf n pad =
+  classicPdf
+    ""
+    [ catalog,
+      (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+      (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Extra 5 0 R >> /Contents 4 0 R >>"),
+      (4, stream "" "0 0 1 1 re f"),
+      (5, "[" <> BS.concat (replicate n "<< /Type /Font /Subtype /Type1 /FontDescriptor 6 0 R >> ") <> "]"),
+      (6, "<< /Type /FontDescriptor /FontFile 7 0 R /Pad [" <> BS.concat (replicate pad "0 ") <> "] >>"),
+      (7, stream "" "font")
+    ]
+
+{- | One page whose catalog and pages are in an object stream with @n@ more
+pairs that all name the offset of one array of @pad@ numbers.
+-}
+sharedOffsetPdf :: Int -> Int -> ByteString
+sharedOffsetPdf n pad =
+  let big = "[" <> BS.concat (replicate pad "0 ") <> "]"
+      objs = [(1, "<< /Type /Catalog /Pages 2 0 R >>"), (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << >> /Contents 4 0 R >>"), (100, big)]
+      bodies = map snd objs
+      offsets = scanl (+) 0 (map ((+ 1) . BS.length) bodies)
+      bigOff = offsets !! 3
+      pairs = [(k, o) | ((k, _), o) <- zip objs offsets] <> [(200 + i, bigOff) | i <- [1 .. n]]
+      header = BS.concat [BC.pack (show k) <> " " <> BC.pack (show o) <> " " | (k, o) <- pairs]
+      content = header <> BS.concat [b <> "\n" | b <- bodies]
+      stm = stream ("/Type /ObjStm /N " <> BC.pack (show (length pairs)) <> " /First " <> BC.pack (show (BS.length header)) <> " /Filter /FlateDecode") (compressed content)
+   in xrefStreamPdf [(4, stream "" "0 0 1 1 re f"), (6, stm)] ([(1, 6, 0), (2, 6, 1), (3, 6, 2), (100, 6, 3)] <> [(200 + i, 6, 3 + i) | i <- [1 .. n]])
+
+auditTests :: TestTree
+auditTests =
+  testGroup
+    "security audit 2026-10-24"
+    [ localOption (mkTimeout (seconds 30)) $
+        testCase "A-P1: an object stream whose Filter is an object in itself ends" $ do
+          let stm = objStm "/Filter 5 0 R" [(1, "<< /Type /Catalog /Pages 2 0 R >>"), (5, "/FlateDecode")]
+              pdf = xrefStreamPdf [(4, stm)] [(1, 4, 0), (5, 4, 1)]
+          r <- imported 1 pdf
+          either (const (pure ())) (const (pure ())) r,
+      localOption (mkTimeout (seconds 30))
+        $ testCase "A-P2: Kids that are references to arrays of direct nodes, 30 deep, end"
+        $ imported 1 (arrayKidsPdf 30) >>= either (const (pure ())) (const (pure ())),
+      localOption (mkTimeout (seconds 60)) $
+        testCase "A-P3: 200 font dictionaries naming one descriptor of 256 Ki numbers allocate a few times the file" $ do
+          let pdf = sharedDescriptorPdf 200 (256 * 1024)
+          (r, bytes) <- allocatedBy (imported 1 pdf)
+          readOk r
+          assertBool ("allocated " <> show bytes <> " for " <> show (BS.length pdf)) (bytes < 40 * toInteger (BS.length pdf)),
+      localOption (mkTimeout (seconds 60)) $
+        testCase "A-P4: 200 pairs of an object stream at the offset of one array of 256 Ki numbers allocate a few times the stream" $ do
+          let pdf = sharedOffsetPdf 200 (256 * 1024)
+          (r, bytes) <- allocatedBy (imported 1 pdf)
+          readOk r
+          assertBool ("allocated " <> show bytes) (bytes < 40 * 2 * 256 * 1024)
     ]
