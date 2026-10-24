@@ -23,6 +23,7 @@ import Data.Text qualified as T
 import Golem.Doc.IR
 import Golem.Doc.Numerals (kanji)
 import Golem.Syntax.Span
+import Golem.Syntax.Text (tshow)
 
 {- | How a number of a list is written: @{n}@ is the book's notation, the
 others are fixed.
@@ -120,7 +121,6 @@ formatListNumber st n = case st of
   NsIroha -> fromList iroha
   NsAiueo -> fromList aiueo
   where
-    tshow = T.pack . show
     -- bijective base 26: z, aa, ab
     alpha base
       | n < 1 = Nothing

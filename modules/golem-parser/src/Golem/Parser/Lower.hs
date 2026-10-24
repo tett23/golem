@@ -15,6 +15,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Parser.AST
 import Golem.Parser.CST
 import Golem.Syntax.Span
+import Golem.Syntax.Text (isSpaceTab)
 
 -- A CST with absolute spans.
 data P
@@ -175,9 +176,6 @@ inlines = mergeText . dropEdgeBreaks . concatMap inline . trimEnds
     dropEdgeBreaks = reverse . dropWhile isBreak . reverse . dropWhile isBreak
     isBreak (Located _ SoftBreak) = True
     isBreak _ = False
-
-isSpaceTab :: Char -> Bool
-isSpaceTab c = c == ' ' || c == '\t'
 
 {- | Whitespace at the end of a line, and at the end of the inlines (a
 block's last line, a table cell, a prose slot) is not text (ADR 0006).

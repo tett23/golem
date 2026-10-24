@@ -55,6 +55,7 @@ import Golem.Pdf.Number (showRationalDigits)
 import Golem.Pdf.Object
 import Golem.Pdf.Sha256 (sha256)
 import Golem.Pdf.Srgb (srgbProfile)
+import Golem.Syntax.Text (tshow)
 import Text.Printf (printf)
 
 -- ------------------------------------------------------------------ the result
@@ -140,9 +141,6 @@ importErrorText = \case
   OptionalContent -> "レイヤー（オプショナルコンテンツ）があります"
   UnsupportedUserUnit -> "UserUnit が 1 でないページは使えません"
   ContentTooLarge _ -> "ページの内容をつなぐと 256 MiB を超えます"
-
-tshow :: (Show a) => a -> Text
-tshow = T.pack . show
 
 -- ------------------------------------------------------------------ limits
 

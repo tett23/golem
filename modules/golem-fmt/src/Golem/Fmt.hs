@@ -23,6 +23,7 @@ import Golem.Parser (parse, parseAst)
 import Golem.Parser.AST (plainEscapesIn)
 import Golem.Parser.CST
 import Golem.Syntax
+import Golem.Syntax.Text (isSpaceTab)
 
 data FormatResult
   = Formatted Text
@@ -130,9 +131,6 @@ blankLines root =
       | nodeKind m == NBlankLines = ElemNode (node NBlankLines [token KNewline "\n"])
       | otherwise = e
     collapse e = e
-
-isSpaceTab :: Char -> Bool
-isSpaceTab c = c == ' ' || c == '\t'
 
 -- | Trailing whitespace of the last text token among elements.
 trimLastText :: [Element] -> [Element]

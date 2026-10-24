@@ -20,6 +20,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf.Object
+import Golem.Syntax.Text (escapeXml)
 import Text.Printf (printf)
 
 data PdfX = PdfX
@@ -37,9 +38,6 @@ uuidText :: ByteString -> Text
 uuidText b =
   let h = T.pack (concatMap (printf "%02x") (BS.unpack b))
    in T.intercalate "-" [T.take 8 h, T.take 4 (T.drop 8 h), T.take 4 (T.drop 12 h), T.take 4 (T.drop 16 h), T.drop 20 h]
-
-escapeXml :: Text -> Text
-escapeXml = T.concatMap (\case '<' -> "&lt;"; '>' -> "&gt;"; '&' -> "&amp;"; '"' -> "&quot;"; c -> T.singleton c)
 
 {- | The XMP packet: title, Producer (ADR 0005), date, document and instance
 IDs. Fixed key order and layout, so it is deterministic.
