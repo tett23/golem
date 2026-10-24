@@ -1019,11 +1019,13 @@ fi
 # exit code of each build, and diagnostics is an input. The fake golem
 # writes build/out; in the folder named diagnostics it writes $FAKE_STDERR
 # to stderr and exits with 1. The manuals are empty projects under
-# GOLEM_MANUAL_ROOT, built without their fonts.
+# GOLEM_MANUAL_ROOT with a LICENSE each, built without their fonts.
 DET=$WORK/determinism
 mkdir -p "$DET/bin" "$DET/root/manual" "$DET/root/manual-dev"
 : >"$DET/root/manual/manifest.toml"
 : >"$DET/root/manual-dev/manifest.toml"
+: >"$DET/root/manual/LICENSE"
+: >"$DET/root/manual-dev/LICENSE"
 cat >"$DET/bin/golem" <<'GOLEM'
 #!/bin/sh
 mkdir -p build
