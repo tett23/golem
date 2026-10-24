@@ -144,7 +144,10 @@ xrefIndexPdf index =
 -- ------------------------------------------------------------------ tests
 
 tests :: TestTree
-tests =
+tests = testGroup "security" [tests2018, auditTests]
+
+tests2018 :: TestTree
+tests2018 =
   testGroup
     "hostile PDF figures end within limits (security audit 2026-10-18, docs/adr ADR 0040)"
     [ localOption (mkTimeout (seconds 30))
@@ -305,4 +308,123 @@ tests =
             (r, bytes) <- allocatedBy (imported 1 pdf)
             either (assertFailure . show) (\(c, _) -> c @?= BS.length body) r
             assertBool ("allocated " <> show bytes) (bytes < 16 * toInteger (BS.length body))
+    ]
+
+-- ------------------------------------------------------------------ security audit 2026-10-24
+
+{- | A PDF whose cross-reference is one stream (@/W [1 4 2]@) over objects 0
+to the largest: the objects in the file at their offsets, and the objects
+in object streams as (number, stream, index).
+-}
+xrefStreamPdf :: [(Int, ByteString)] -> [(Int, Int, Int)] -> ByteString
+xrefStreamPdf inFile inStreams =
+  let (body, offs) = layout "%PDF-1.5\n%\xE2\xE3\xCF\xD3\n" inFile
+      xrefNum = maximum (map fst inFile <> [n | (n, _, _) <- inStreams]) + 1
+      size = xrefNum + 1
+      be k (x :: Int) = BS.pack [fromIntegral (x `shiftR` (8 * i)) | i <- reverse [0 .. k - 1]]
+      row n
+        | Just o <- lookup n offs = BS.singleton 1 <> be 4 o <> be 2 0
+        | (s, i) : _ <- [(s, i) | (m, s, i) <- inStreams, m == n] = BS.singleton 2 <> be 4 s <> be 2 i
+        | n == xrefNum = BS.singleton 1 <> be 4 (BS.length body) <> be 2 0
+        | otherwise = BS.singleton 0 <> be 4 0 <> be 2 0
+      rows = BS.concat (map row [0 .. xrefNum])
+      xref = stream ("/Type /XRef /Size " <> BC.pack (show size) <> " /W [1 4 2] /Root 1 0 R") rows
+   in body <> objBytes (xrefNum, xref) <> "startxref\n" <> BC.pack (show (BS.length body)) <> "\n%%EOF\n"
+
+-- | An object stream of the objects given (number and offset are computed), with the dictionary entries given.
+objStm :: ByteString -> [(Int, ByteString)] -> ByteString
+objStm dict objs =
+  let bodies = map snd objs
+      offsets = scanl (+) 0 (map ((+ 1) . BS.length) bodies)
+      header = BS.concat [BC.pack (show n) <> " " <> BC.pack (show o) <> " " | ((n, _), o) <- zip objs offsets]
+      content = header <> BS.concat [b <> "\n" | b <- bodies]
+   in stream ("/Type /ObjStm /N " <> BC.pack (show (length objs)) <> " /First " <> BC.pack (show (BS.length header)) <> " " <> dict) content
+
+-- | A page tree whose Kids are references to arrays of two direct nodes that name the next array.
+arrayKidsPdf :: Int -> ByteString
+arrayKidsPdf depth =
+  classicPdf "" $
+    [catalog, (2, "<< /Type /Pages /Kids 10 0 R /Count 1 >>")]
+      <> [(10 + k, "[<< /Type /Pages /Kids " <> ref (11 + k) <> " >> << /Type /Pages /Kids " <> ref (11 + k) <> " >>]") | k <- [0 .. depth - 1]]
+      <> [(10 + depth, "[]")]
+  where
+    ref n = BC.pack (show n) <> " 0 R"
+
+{- | One page whose resources name an array of @n@ font dictionaries, each
+with the same descriptor, an object in the file of @pad@ numbers.
+-}
+sharedDescriptorPdf :: Int -> Int -> ByteString
+sharedDescriptorPdf n pad =
+  classicPdf
+    ""
+    [ catalog,
+      (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+      (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Extra 5 0 R >> /Contents 4 0 R >>"),
+      (4, stream "" "0 0 1 1 re f"),
+      (5, "[" <> BS.concat (replicate n "<< /Type /Font /Subtype /Type1 /FontDescriptor 6 0 R >> ") <> "]"),
+      (6, "<< /Type /FontDescriptor /FontFile 7 0 R /Pad [" <> BS.concat (replicate pad "0 ") <> "] >>"),
+      (7, stream "" "font")
+    ]
+
+{- | One page whose catalog and pages are in an object stream with @n@ more
+pairs that all name the offset of one array of @pad@ numbers.
+-}
+sharedOffsetPdf :: Int -> Int -> ByteString
+sharedOffsetPdf n pad =
+  let big = "[" <> BS.concat (replicate pad "0 ") <> "]"
+      objs = [(1, "<< /Type /Catalog /Pages 2 0 R >>"), (2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"), (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << >> /Contents 4 0 R >>"), (100, big)]
+      bodies = map snd objs
+      offsets = scanl (+) 0 (map ((+ 1) . BS.length) bodies)
+      bigOff = offsets !! 3
+      pairs = [(k, o) | ((k, _), o) <- zip objs offsets] <> [(200 + i, bigOff) | i <- [1 .. n]]
+      header = BS.concat [BC.pack (show k) <> " " <> BC.pack (show o) <> " " | (k, o) <- pairs]
+      content = header <> BS.concat [b <> "\n" | b <- bodies]
+      stm = stream ("/Type /ObjStm /N " <> BC.pack (show (length pairs)) <> " /First " <> BC.pack (show (BS.length header)) <> " /Filter /FlateDecode") (compressed content)
+   in xrefStreamPdf [(4, stream "" "0 0 1 1 re f"), (6, stm)] ([(1, 6, 0), (2, 6, 1), (3, 6, 2), (100, 6, 3)] <> [(200 + i, 6, 3 + i) | i <- [1 .. n]])
+
+-- | The allocation of importing the page of a PDF.
+allocationOf :: ByteString -> IO Integer
+allocationOf pdf = do
+  _ <- evaluate (BS.length pdf)
+  (r, bytes) <- allocatedBy (imported 1 pdf)
+  readOk r
+  pure bytes
+
+auditTests :: TestTree
+auditTests =
+  testGroup
+    "hostile PDF figures of the security audit of 2026-10-24"
+    [ localOption (mkTimeout (seconds 30)) $
+        testCase "an object stream whose Filter is an object in itself is refused for the object stream" $ do
+          let stm = objStm "/Filter 5 0 R" [(1, "<< /Type /Catalog /Pages 2 0 R >>"), (5, "/FlateDecode")]
+          imported 1 (xrefStreamPdf [(4, stm)] [(1, 4, 0), (5, 4, 1)]) >>= refusedFor "オブジェクトのストリーム",
+      localOption (mkTimeout (seconds 30)) $
+        testCase "two object streams whose Filters are objects in each other are refused for the object stream" $ do
+          let a = objStm "/Filter 7 0 R" [(1, "<< /Type /Catalog /Pages 2 0 R >>"), (5, "/FlateDecode")]
+              b = objStm "/Filter 5 0 R" [(7, "/FlateDecode")]
+          imported 1 (xrefStreamPdf [(4, a), (6, b)] [(1, 4, 0), (5, 4, 1), (7, 6, 0)]) >>= refusedFor "オブジェクトのストリーム",
+      localOption (mkTimeout (seconds 30))
+        $ testCase "Kids that are references to arrays named twice, 30 deep, are refused for the page tree"
+        $ imported 1 (arrayKidsPdf 30) >>= refusedFor "ページの木",
+      testCase "Kids that are a reference to an array named once are read" $ do
+        let pdf =
+              classicPdf
+                ""
+                [ catalog,
+                  (2, "<< /Type /Pages /Kids 5 0 R /Count 1 >>"),
+                  (5, "[3 0 R]"),
+                  (3, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 10 10] /Resources << >> /Contents 4 0 R >>"),
+                  (4, stream "" "0 0 1 1 re f")
+                ]
+        imported 1 pdf >>= readOk,
+      localOption (mkTimeout (seconds 60)) $
+        testCase "200 font dictionaries naming one descriptor in the file parse it once" $ do
+          one <- allocationOf (sharedDescriptorPdf 1 (256 * 1024))
+          many <- allocationOf (sharedDescriptorPdf 200 (256 * 1024))
+          assertBool ("allocated " <> show many <> " for 200, " <> show one <> " for 1") (many < 2 * one),
+      localOption (mkTimeout (seconds 60)) $
+        testCase "200 pairs of an object stream at one offset parse the object there once" $ do
+          one <- allocationOf (sharedOffsetPdf 1 (256 * 1024))
+          many <- allocationOf (sharedOffsetPdf 200 (256 * 1024))
+          assertBool ("allocated " <> show many <> " for 200, " <> show one <> " for 1") (many < 2 * one)
     ]

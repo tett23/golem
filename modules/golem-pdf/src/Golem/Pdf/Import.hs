@@ -185,7 +185,11 @@ streams read, by object number, so that each is decoded once.
 data St = St
   { stLeft :: !Int,
     stDecoded :: !(Map Int ByteString),
-    stObjStreams :: !(Map Int (Map Int V))
+    stObjStreams :: !(Map Int (Map Int V)),
+    -- | the objects in the file already parsed, by number
+    stObjects :: !(Map Int V),
+    -- | the object streams being read: one named again while it is read is refused
+    stReading :: !(Set Int)
   }
 
 -- | Reading that may fail, with 'St'.
@@ -490,7 +494,13 @@ fetch d = fetchAt d 0
 
 fetchAt :: Doc -> Int -> Int -> M V
 fetchAt d depth n = case asum (map (sectionEntry n) (docXref d)) of
-  Just (InFile off) -> objectAt d depth (Just n) off
+  Just (InFile off) ->
+    getsM (Map.lookup n . stObjects) >>= \case
+      Just v -> pure v
+      Nothing -> do
+        v <- objectAt d depth (Just n) off
+        modifyM (\st -> st {stObjects = Map.insert n v (stObjects st)})
+        pure v
   Just (InStream s) -> Map.findWithDefault VNull n <$> objectStream d depth s
   _ -> pure VNull
 
@@ -546,14 +556,21 @@ streamLength d depth self dict = case lookup "Length" dict of
           _ -> badM "ストリームの長さ"
   _ -> badM "ストリームの長さ"
 
--- | The objects of an object stream, by number, read once (docs/adr ADR 0040).
+{- | The objects of an object stream, by number, read once (docs/adr ADR
+0040). An object stream whose Filter or DecodeParms is in itself, or in
+another object stream that needs it, cannot be decoded and is refused. An
+object at an offset that several pairs name is parsed once.
+-}
 objectStream :: Doc -> Int -> Int -> M (Map Int V)
 objectStream d depth s =
   getsM (Map.lookup s . stObjStreams) >>= \case
     Just objs -> pure objs
     Nothing -> do
+      reading <- getsM (Set.member s . stReading)
+      when reading (badM "オブジェクトのストリーム")
+      modifyM (\st -> st {stReading = Set.insert s (stReading st)})
       objs <- readStream
-      modifyM (\st -> st {stObjStreams = Map.insert s objs (stObjStreams st)})
+      modifyM (\st -> st {stObjStreams = Map.insert s objs (stObjStreams st), stReading = Set.delete s (stReading st)})
       pure objs
   where
     readStream = case asum (map (sectionEntry s) (docXref d)) of
@@ -569,7 +586,8 @@ objectStream d depth s =
               firstOff <- int "First"
               let header = BS.take firstOff decoded
               pairs <- readPairs n header
-              Map.fromList <$> traverse (\(num, o) -> (num,) . fst <$> parseObj 0 (BS.drop (firstOff + o) decoded)) pairs
+              byOffset <- Map.fromList <$> traverse (\o -> (o,) . fst <$> parseObj 0 (BS.drop (firstOff + o) decoded)) (Set.toList (Set.fromList (map snd pairs)))
+              pure (Map.fromList [(num, v) | (num, o) <- pairs, Just v <- [Map.lookup o byOffset]])
           _ -> badM "オブジェクトのストリーム"
       _ -> badM "オブジェクトのストリーム"
     readPairs :: Int -> ByteString -> R [(Int, Int)]
@@ -944,9 +962,15 @@ pageAt d n root = either (Left . snd) Right <$> walk (Set.empty, 0) (0 :: Int) (
             then pure (if count + 1 == n then Right (dict, inh') else Left (seen', count + 1))
             else case lookup "Kids" dict of
               Nothing -> pure (Left (seen', count))
-              Just kv ->
+              -- an array of Kids named by reference is visited once, as a node is
+              Just kv -> do
+                seen'' <- case kv of
+                  VRef k
+                    | Set.member k seen' -> badM "ページの木"
+                    | otherwise -> pure (Set.insert k seen')
+                  _ -> pure seen'
                 resolve d kv >>= \case
-                  VArr xs -> kids (seen', count) xs
+                  VArr xs -> kids (seen'', count) xs
                   _ -> badM "ページの木"
 
 numberOf :: V -> Maybe Rational
@@ -981,7 +1005,7 @@ boxOf d v =
 it (golem-pdf ADR 0008).
 -}
 importPage :: Int -> ByteString -> Either ImportError ImportedPage
-importPage n bytes = fst <$> runM (importM n bytes) (St maxDecodedBytes Map.empty Map.empty)
+importPage n bytes = fst <$> runM (importM n bytes) (St maxDecodedBytes Map.empty Map.empty Map.empty Set.empty)
 
 importM :: Int -> ByteString -> M ImportedPage
 importM n bytes = do
