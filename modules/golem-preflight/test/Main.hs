@@ -103,7 +103,23 @@ tests =
   testGroup
     "golem-preflight (golem-cli ADR 0006)"
     [ rulesTests,
-      testGroup "checks" checkTests
+      testGroup "checks" checkTests,
+      auditTests
+    ]
+
+-- | G08100 of golem build groups the glyphs of a whole book: in time n log n (security audit 2026-10-24).
+auditTests :: TestTree
+auditTests =
+  testGroup
+    "the grouping of glyph 0 for G08100 and G09002 (security audit 2026-10-24)"
+    [ localOption (mkTimeout 30000000) $
+        testCase "300000 glyphs 0 of one character are one group, in time" $ do
+          let v = withPages [(emptyPage 1) {pvGlyphs = replicate 300000 (glyph 0 (T.singleton (toEnum 0xF0000)) 10 Nothing)}]
+          map mgFacts (missingGlyphs v) @?= [[("code-point", FactText "U+F0000"), ("font", FactText "fonts/a.otf"), ("pdf-pages", FactInts [1]), ("count", FactInt 300000)]],
+      localOption (mkTimeout 30000000) $
+        testCase "200000 glyphs 0 of distinct characters are as many groups, in time" $ do
+          let v = withPages [(emptyPage 1) {pvGlyphs = [glyph 0 (T.singleton (toEnum (0x20000 + i))) 10 Nothing | i <- [0 .. 199999]]}]
+          length (missingGlyphs v) @?= 200000
     ]
 
 rulesTests :: TestTree
