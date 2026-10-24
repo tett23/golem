@@ -1,6 +1,6 @@
 # ADR 0044: リリースのワークフローの固め方
 
-ステータス: 採択→「実装しないこと」の、ノートを人間が書く案を退けた根拠の決定は、docs/adr/0021 ではなく [docs/adr/0004](0004-binary-distribution-and-release.md) にある、CI で `claude --help` を確かめることは [ADR 0058](0058-run-skipped-checks-in-ci.md)
+ステータス: 採択→「実装しないこと」の、ノートを人間が書く案を退けた根拠の決定は、docs/adr/0021 ではなく [docs/adr/0004](0004-binary-distribution-and-release.md) にある、CI で `claude --help` を確かめることは [ADR 0058](0058-run-skipped-checks-in-ci.md)、mise の版と SHA-256 の固定は [ADR 0085](0085-pin-mise-version-in-workflows.md)
 
 ## 文脈
 

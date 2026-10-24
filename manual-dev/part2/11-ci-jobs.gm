@@ -180,6 +180,8 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 
 [code: release-scripts] は、[code: scripts/release/check-version.sh] で [code: VERSION] と全パッケージの cabal ファイルのバージョンの一致を検査し、[code: scripts/release/test.sh] でリリースのスクリプトのテストを実行する。
 テストの前に、リリースの [code: notes] ジョブと同じく mise で [code: mise.toml] に固定した版の Claude Code を入れ、テストに [code: GOLEM_REQUIRE_CLAUDE=1] を付ける。
+mise 自身も [code: notes] と同じ版と SHA-256 で入れるので、二つのジョブは同じ mise で同じ Claude Code を入れる。
+値は [code: ci.yml] の最上位の [code: env] の [code: MISE_VERSION] と [code: MISE_SHA256] にあり、[code: scripts/ci/test.sh] が [code: release.yml] の値との一致を確かめる。
 テストは、固定した版の [code: claude --help] にリリースのスクリプトの使うフラグがあることを確かめ、[code: claude] がなければ飛ばさずに失敗する。
 手元では、[code: claude] がなければこの検査を飛ばす。
 API キーは渡さない。
