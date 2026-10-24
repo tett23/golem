@@ -359,13 +359,13 @@ unsupportedAt :: Text -> Pos -> Unsupported
 unsupportedAt n (Pos l c) = Unsupported n l c False
 
 {- | The name of a value outside the subset: with 読めない数 when it has a
-number larger than the limit (docs/adr ADR 0041). The numbers of a colour
+number outside the range (docs/adr ADR 0041, ADR 0083). The numbers of a colour
 are those of @rgb()@, not the digits of a hexadecimal colour.
 -}
 valueName :: Text -> Text -> Text
 valueName k v
   | k `elem` ["fill", "stroke", "color"] && not ("rgb(" `T.isPrefixOf` T.strip v) = k
-  | tooLarge v = k <> "（読めない数）"
+  | outOfRange v = k <> "（読めない数）"
   | otherwise = k
 
 attr :: Text -> Element -> Maybe Text
@@ -548,14 +548,14 @@ elementOps env parent e
               _ -> []
          in Walk (probs <> tProbs <> wProbs shaped <> wProbs children) wrapped (wRefs drawn) (wMarkerProbs shaped <> edgeProbs <> wMarkerProbs children)
   where
-    -- the numbers of a marker that are read with a default: refused only when too large
+    -- the numbers of a marker that are read with a default: refused only when outside the range
     markerAttrProblems =
       [ unsupportedAt (valueName (atName a) (atValue a)) (atPos a)
       | name == "marker",
         a <- elAttrs e,
         atNs a == "",
         atName a `elem` ["markerWidth", "markerHeight", "refX", "refY", "viewBox", "orient"],
-        tooLarge (atValue a)
+        outOfRange (atValue a)
       ]
     name = elName e
     Pos l c = elPos e
@@ -843,10 +843,12 @@ slice, and the problems of its attributes.
 -}
 rootGeometry :: Element -> Either SvgError ((Rational, Rational), Matrix, Maybe ClipRect, [Unsupported])
 rootGeometry root = do
-  -- a size of a number too large is no size (docs/adr ADR 0041)
-  if any (\k -> maybe False tooLarge (attr k root)) ["width", "height", "viewBox"]
-    then Left (SvgMalformed "大きさの数が大きすぎます")
-    else Right ()
+  -- a size of a number outside the range is no size (docs/adr ADR 0041, ADR 0083); too large wins
+  let sizeHas p = any (\k -> maybe False p (attr k root)) ["width", "height", "viewBox"]
+  if
+    | sizeHas tooLarge -> Left (SvgMalformed "大きさの数が大きすぎます")
+    | sizeHas tooSmall -> Left (SvgMalformed "大きさの数が小さすぎます")
+    | otherwise -> Right ()
   let attrPos k = case [atPos a | a <- elAttrs root, atName a == k] of
         q : _ -> q
         [] -> elPos root
