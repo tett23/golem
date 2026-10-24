@@ -39,7 +39,6 @@ rc3 の前の 2026-10-24 のセキュリティ監査（[記録](audits/2026-10-2
 [docs/adr/0035](adr/0035-security-hardening.md) により、監査の修正が main に入るまで rc3 のタグを付けない。
 
 - **SVG の小さな数**：SVG の図版の 0 でない数の絶対値を 10^-9 以上に限り、小さい数を G08011 の読めない数にする。ルートの大きさの数なら G08010 の `大きさの数が小さすぎます` にする。今は `1e-9999` の半径の円弧で、平方根の計算が止まらない（監査の C6、未実装、[ADR 0083](adr/0083-svg-number-lower-limit.md)）。
-- **SVG の `marker` の延べ数**：SVG の図版の `marker` が描くパスの区間の延べ数を 100 万までに限り、超えれば G08101 にする。今は `marker` を各段で多く置くと、9 段の入れ子でも描くものが指数で増える（監査の C7、未実装、[ADR 0084](adr/0084-svg-marker-drawn-segment-limit.md)）。
 - **mise の版の固定**：`release.yml` の `notes` ジョブと `ci.yml` の `release-scripts` ジョブで、`jdx/mise-action` が入れる mise の版と実行ファイルの SHA-256 を固定する。今は `ANTHROPIC_API_KEY` を持つ `notes` ジョブが、最新の mise を入れる（監査の CI2、未実装、[ADR 0085](adr/0085-pin-mise-version-in-workflows.md)）。
 
 

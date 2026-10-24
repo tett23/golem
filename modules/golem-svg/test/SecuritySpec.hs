@@ -158,6 +158,12 @@ markerProblems = \case
   Left (SvgUnsupported ps) -> (map mrId (spMarkerCycles ps), map mrId (spMarkerDepth ps))
   _ -> ([], [])
 
+-- | The segments drawn by markers, when over the limit (G08101, docs/adr ADR 0084).
+markerSegments :: Either SvgError Svg -> Maybe Integer
+markerSegments = \case
+  Left (SvgUnsupported ps) -> spMarkerSegments ps
+  _ -> Nothing
+
 -- | The depth of groups of a drawing.
 groupDepth :: [DrawOp] -> Int
 groupDepth = maximum . (0 :) . map (\case DPath _ _ -> 0; DGroup _ _ ops -> 1 + groupDepth ops)
@@ -169,7 +175,10 @@ arcOf r = svg ("<path d=\"M0 0 A " <> r <> " " <> r <> " 0 0 1 10 0\" stroke=\"#
 -- ------------------------------------------------------------------ tests
 
 tests :: TestTree
-tests =
+tests = testGroup "security" [tests2018, auditTests]
+
+tests2018 :: TestTree
+tests2018 =
   testGroup
     "hostile SVG figures end within limits (security audit 2026-10-18)"
     [ testGroup "markers and numbers within limits (docs/adr ADR 0041)" adr0041Tests,
@@ -291,4 +300,108 @@ adr0041Tests =
       names "<rect width=\"2e9\" height=\"1\"/>" @?= ["width（読めない数）"]
       names "<defs><marker id=\"m\" refX=\"2e9\"><path d=\"M0 0 L1 1\"/></marker></defs>" @?= ["refX（読めない数）"]
       names "<rect fill=\"rgb(2e9, 0, 0)\" width=\"1\" height=\"1\"/>" @?= ["fill（読めない数）"]
+  ]
+
+-- | Candidates of the security audit of 2026-10-24.
+auditTests :: TestTree
+auditTests =
+  testGroup
+    "security audit 2026-10-24"
+    [ testGroup "the segments markers draw are at most 1,000,000 (docs/adr ADR 0084)" adr0084Tests
+    ]
+
+-- | Nine markers; each is a path of 20 vertices whose marker-mid is the marker below.
+fanMarkers :: ByteString
+fanMarkers =
+  svg $
+    "<defs>"
+      <> T.concat [marker k | k <- [1 .. 9 :: Int]]
+      <> "</defs><path d=\""
+      <> pathD
+      <> "\" marker-mid=\"url(#m9)\" stroke=\"#000\"/>"
+  where
+    pathD = "M0 0" <> T.concat [" L" <> T.pack (show i) <> " 0" | i <- [1 .. 19 :: Int]]
+    marker k =
+      "<marker id=\"m"
+        <> T.pack (show k)
+        <> "\" markerWidth=\"1\" markerHeight=\"1\"><path d=\""
+        <> pathD
+        <> "\" stroke=\"#000\""
+        <> (if k > 1 then " marker-mid=\"url(#m" <> T.pack (show (k - 1)) <> ")\"" else "")
+        <> "/></marker>"
+
+-- | The segments of fanMarkers: each marker is 20 segments and 18 of the one below; the drawing places m9 18 times.
+fanSegments :: Integer
+fanSegments = 18 * (iterate (\below -> 20 + 18 * below) 20 !! 8)
+
+-- | The d of a path of n vertices: M and n - 1 L, n segments.
+straight :: Int -> Text
+straight n = "M0 0" <> T.concat [" L" <> T.pack (show i) <> " 0" | i <- [1 .. n - 1]]
+
+-- | A marker whose content is a path of 1,000 segments, placed at every vertex of a path of n vertices.
+thousandAt :: Int -> ByteString
+thousandAt n =
+  svg $
+    "<defs><marker id=\"k\"><path d=\""
+      <> straight 1000
+      <> "\" stroke=\"#000\"/></marker></defs><path d=\""
+      <> straight n
+      <> "\" marker=\"url(#k)\" stroke=\"#000\"/>"
+
+adr0084Tests :: [TestTree]
+adr0084Tests =
+  [ localOption (mkTimeout (seconds 5)) $
+      testCase "A-SB: markers 9 deep with 20 vertices each are over the limit only, in time" $
+        do
+          r <- total fanMarkers
+          markerSegments r @?= Just fanSegments
+          assertBool (show fanSegments) (fanSegments > 1000000)
+          unsupportedNames r @?= []
+          markerProblems r @?= ([], []),
+    localOption (mkTimeout (seconds 30)) $
+      testCase "a marker of 1,000 segments at the 1,000 vertices of a path is 1,000,000 segments, drawn" $
+        do
+          r <- total (thousandAt 1000)
+          either (assertFailure . show) (const (pure ())) r,
+    localOption (mkTimeout (seconds 30)) $
+      testCase "the same marker at the 1,001 vertices of a path is 1,001,000 segments, over" $
+        do
+          r <- total (thousandAt 1001)
+          markerSegments r @?= Just 1001000
+          unsupportedNames r @?= []
+          markerProblems r @?= ([], []),
+    localOption (mkTimeout (seconds 60)) $
+      testCase "a path of 1,000,001 segments drawn by the drawing itself is not counted" $
+        do
+          r <- total (svg ("<path d=\"" <> straight 1000001 <> "\" stroke=\"#000\"/>"))
+          either (assertFailure . show) (const (pure ())) r,
+    localOption (mkTimeout (seconds 30)) $
+      testCase "two markers deep, the outer placing the inner of 1,000 segments 1,001 times, is over by the count, not the depth" $
+        do
+          r <-
+            total . svg $
+              "<defs><marker id=\"in\"><path d=\""
+                <> straight 1000
+                <> "\" stroke=\"#000\"/></marker><marker id=\"out\"><path d=\""
+                <> straight 1001
+                <> "\" marker=\"url(#in)\" stroke=\"#000\"/></marker></defs><path d=\"M0 0 L10 0\" marker-end=\"url(#out)\" stroke=\"#000\"/>"
+          markerSegments r @?= Just (1001 + 1001 * 1000)
+          markerProblems r @?= ([], []),
+    testCase "a cycle of markers is the cycle only, not over the limit (what is not drawn is not counted)" $ do
+      r <- total selfMarker
+      markerProblems r @?= (["m"], [])
+      markerSegments r @?= Nothing,
+    localOption (mkTimeout (seconds 30)) $
+      testCase "markers nested 14 deep, four at each level, are too deep only, not over the limit" $
+        do
+          r <- total (nestedMarkers 14)
+          let (cycles, deep) = markerProblems r
+          assertBool "deep" (not (null deep))
+          cycles @?= []
+          markerSegments r @?= Nothing,
+    localOption (mkTimeout (seconds 30)) $
+      testCase "a chain of 9 markers is drawn" $
+        do
+          r <- total (markerChain 9)
+          either (assertFailure . show) (const (pure ())) r
   ]

@@ -8,6 +8,7 @@ module Golem.Driver.Svg
   ( svgDrawing,
     unsupportedMessage,
     markerMessage,
+    markerSegmentsMessage,
     activeMessage,
   )
 where
@@ -88,6 +89,12 @@ markerMessage lead path (r :| rest) =
   where
     tshow :: Int -> Text
     tshow = T.pack . show
+
+{- | G08101 (docs/adr ADR 0084): the path of the figure and the segments its
+markers draw; no line and column, since the count is of the whole drawing.
+-}
+markerSegmentsMessage :: Text -> Integer -> Text
+markerSegmentsMessage path n = "SVG の図版の marker が描くパスの区間が 1000000 を超えます: " <> path <> "（" <> T.pack (show n) <> "）"
 
 {- | G08014 (docs/adr ADR 0039): the first active thing, with where it is,
 and how many more; or why the SVG cannot be read, in the words of G08010.

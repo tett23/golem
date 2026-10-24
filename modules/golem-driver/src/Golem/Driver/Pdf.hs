@@ -106,7 +106,7 @@ import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals (circled, formatNumber)
 import Golem.Driver.Overhang (kentenAcross, lineOverhang, reachesBackground, rubyAcross)
 import Golem.Driver.RuleShape (ruleMarks, ruleShapes, ruleThinnest)
-import Golem.Driver.Svg (markerMessage, svgDrawing, unsupportedMessage)
+import Golem.Driver.Svg (markerMessage, markerSegmentsMessage, svgDrawing, unsupportedMessage)
 import Golem.Driver.TextLayer (ClusterPart (..), actualTextOf, toUnicodeOf)
 import Golem.Driver.Version (golemVersion)
 import Golem.Html (codeTokens)
@@ -2687,8 +2687,8 @@ keepLastTwo items = case reverse boxes of
       x -> [x]
 
 {- | Why a figure cannot be placed: G08010 with the reason, what an SVG
-figure cannot be drawn for, G08011, G08016 and G08017 (golem-pdf ADR 0008,
-0009, docs/adr ADR 0054), or G08015, the joined content of a PDF page over
+figure cannot be drawn for, G08011, G08016, G08017 and G08101 (golem-pdf ADR
+0008, 0009, docs/adr ADR 0054, 0084), or G08015, the joined content of a PDF page over
 256 MiB (docs/adr ADR 0051).
 -}
 data Unplaced = Unplaced !Text | UnsupportedSvg !S.SvgProblems | ContentTooLarge
@@ -2724,9 +2724,10 @@ figureBlocks book = [(sp, f) | Document _ bs <- bookDocs book, Block sp _ (Figur
 
 {- | G08010: a figure that cannot be placed in the PDF; G08011: an SVG figure
 with things outside the subset, G08016: with markers in a cycle, G08017: with
-markers nested too deep, each that applies in this order; G08015: a PDF
-figure whose page content joined is over 256 MiB; one of each per @figure
-(golem-pdf ADR 0008, 0009, docs/adr ADR 0051, 0054).
+markers nested too deep, G08101: with markers that draw too many segments,
+each that applies in this order; G08015: a PDF figure whose page content
+joined is over 256 MiB; one of each per @figure (golem-pdf ADR 0008, 0009,
+docs/adr ADR 0051, 0054, 0084).
 -}
 figureDiagnostics :: PdfInput -> Map (Text, Int) (Either Unplaced P.FigureContent) -> [Diagnostic]
 figureDiagnostics inp loaded =
@@ -2739,6 +2740,7 @@ figureDiagnostics inp loaded =
         [diagnostic "G08011" Error sp (unsupportedMessage (figSource f) us) | Just us <- [nonEmpty (S.spUnsupported ps)]]
           <> [diagnostic "G08016" Error sp (markerMessage "SVG の図版の marker が循環しています: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerCycles ps)]]
           <> [diagnostic "G08017" Error sp (markerMessage "SVG の図版の marker の入れ子が 9 段を超えます: " (figSource f) rs) | Just rs <- [nonEmpty (S.spMarkerDepth ps)]]
+          <> [diagnostic "G08101" Error sp (markerSegmentsMessage (figSource f) n) | Just n <- [S.spMarkerSegments ps]]
       ContentTooLarge -> [diagnostic "G08015" Error sp ("図版の PDF のページの内容をつなぐと 256 MiB を超えます: " <> figSource f)]
   ]
 
