@@ -5958,6 +5958,8 @@ PDF を書かない。
 PNG と JPEG の図版は画像として読めないとき、PDF の図版は Golem が取り込めないときに出す。
 SVG の図版は、XML として読めないとき、UTF-8 でないとき、内部サブセットを持つ `DOCTYPE` があるとき、大きさ（ルートの `width` と `height` か `viewBox`）がないときに出す（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
 大きさの数の絶対値が 10^9 を超えるときも、大きさがないときと同じく、理由を `大きさの数が大きすぎます` として出す（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。
+大きさの数が 0 でなく、絶対値が 10^-9 より小さいときは、理由を `大きさの数が小さすぎます` として出す（[docs/adr/0083](adr/0083-svg-number-lower-limit.md)）。
+大きすぎる数と小さすぎる数の両方があれば、理由は `大きさの数が大きすぎます` である。
 SVG の範囲の外のものは [G08011](#g08011) である。
 PDF の図版を取り込めないのは、次のどれかの場合である。
 
@@ -5988,12 +5990,12 @@ HTML、EPUB、プレーンテキストでは出さない。
 
 - メッセージ: `図版を PDF に置けません: <パス>（<理由>）`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`、golem-svg の `Golem.Svg`）
-- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[docs/adr/0040](adr/0040-pdf-import-resource-limits.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（SVG の大きさの数）
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[docs/adr/0040](adr/0040-pdf-import-resource-limits.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（SVG の大きさの数）、[docs/adr/0083](adr/0083-svg-number-lower-limit.md)（SVG の大きさの小さすぎる数）
 
 ### 主な原因
 
 - 画像のファイルが壊れている。
-- SVG の図版の大きさに、10^9 を超える数を書いた。
+- SVG の図版の大きさに、10^9 を超える数か、0 でなく絶対値が 10^-9 より小さい数を書いた。
 - インターレースの PNG を使った。
 - 拡張子と中身の形式が食い違っている（中身が PDF の `.png` など）。
 - PDF の図版の書き出しの設定で、フォントを埋め込んでいないか、特色やレイヤーを残している。
@@ -6019,7 +6021,7 @@ SVG の図版に扱えないものがあります
 SVG の図版に、Golem が PDF に描ける範囲の外の要素、属性、プロパティの値がある。
 範囲は [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md) の表のとおりで、パス、基本の図形、変換、塗りと線、マーカーなどである。
 輪郭にしていない文字（`text`、`tspan`、`textPath` の要素と `@font-face`）も範囲の外である。
-絶対値が 10^9 を超える数も範囲の外であり、その属性かプロパティの名前に `（読めない数）` を添える（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。
+絶対値が 10^9 を超える数と、0 でなく絶対値が 10^-9 より小さい数も範囲の外であり、その属性かプロパティの名前に `（読めない数）` を添える（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)、[docs/adr/0083](adr/0083-svg-number-lower-limit.md)）。
 `marker` の循環は [G08016](#g08016)、深すぎる `marker` の入れ子は [G08017](#g08017)、`marker` が描く区間の延べ数の超過は [G08101](#g08101) であり、このコードには入れない。
 範囲の外のものを黙って無視せず、文書の順にすべて集め、最初のものの名前と位置（SVG のファイルの中の行と桁）を書き、残りの件数を添える。
 最初のものが文字なら、輪郭にして書き出すよう案内する。
@@ -6032,7 +6034,7 @@ HTML と EPUB は SVG を PDF の部分集合では検査せず、動的なコ�
 
 - メッセージ: `SVG の図版に扱えないものがあります: <パス>:<行>:<桁>（<名前>）ほか <n> 件`。文字なら `（<名前>: 文字は輪郭にして書き出してください）`。ほかになければ `ほか <n> 件` を書かない。
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf` と `Golem.Driver.Svg`、golem-svg の `Golem.Svg`）
-- ADR: [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（読めない数）、[docs/adr/0054](adr/0054-svg-marker-cycle-and-depth-codes.md)（`marker` の循環と入れ子を G08016 と G08017 に分けた）
+- ADR: [golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（読めない数）、[docs/adr/0054](adr/0054-svg-marker-cycle-and-depth-codes.md)（`marker` の循環と入れ子を G08016 と G08017 に分けた）、[docs/adr/0083](adr/0083-svg-number-lower-limit.md)（小さすぎる読めない数）
 
 ### 主な原因
 
@@ -6040,12 +6042,14 @@ HTML と EPUB は SVG を PDF の部分集合では検査せず、動的なコ�
 - グラデーション、`use`、クリップ、フィルター、1 でない不透明度などを使った。
 - 子孫の結合子などの、扱わない CSS のセレクターを使った。
 - 地図のタイルなどの、大きな座標を使う図を書き出した。
+- 浮動小数点数の誤差（`6.123233995736766e-17` など）を、座標や行列の値として書き出した。
 
 ### 直し方
 
 図の作成ツールで、文字を輪郭（アウトライン）にして書き出す。
 範囲の外の機能は、ツールの側で範囲の中に収めて書き出し直す。
 読めない数は、座標を縮めて書き出し直す。
+小さすぎる読めない数は、座標と行列の値を丸めて書き出し直す。
 SVG で収まらない図は、PDF で書き出して PDF の図版として置く。
 
 ## G08013

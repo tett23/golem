@@ -892,6 +892,72 @@ if job_of "$RELEASE_YML" release | grep -Eiq 'npm|mise|claude'; then ng "release
 if job_of "$RELEASE_YML" release | grep -q '^      - release$\|needs:.*notes'; then ok; else ng "release.yml: the release job needs the notes job"; fi
 if grep -q 'npm install' "$RELEASE_YML"; then ng "release.yml: no npm install"; else ok; fi
 
+# mise itself is pinned to an exact version and the SHA-256 of its linux-x64
+# binary, with the same values in ci.yml and release.yml, and every step of
+# jdx/mise-action passes both (docs/adr/0085)
+top_env() { # top_env WORKFLOW: the lines of the top-level env
+  awk '/^env:$/ { on = 1; next } on && /^[^ #]/ { on = 0 } on' "$1"
+}
+env_value() { # env_value WORKFLOW NAME: the quoted value of NAME in the top-level env
+  top_env "$1" | awk -v name="  $2: " 'index($0, name) == 1 { v = substr($0, length(name) + 1); gsub(/"/, "", v); print v }'
+}
+mise_steps() { # mise_steps WORKFLOW: the number of steps of jdx/mise-action
+  grep -c 'uses: jdx/mise-action@' "$1"
+}
+mise_pinned_steps() { # mise_pinned_steps WORKFLOW: the steps of jdx/mise-action whose with: has the pinned version and SHA-256
+  awk '
+    function indent(s) { match(s, /^ */); return RLENGTH }
+    function close_step() { if (instep && v && h) n++; instep = 0; inwith = 0 }
+    {
+      t = $0
+      sub(/^ +/, "", t)
+      if (instep && t != "" && indent($0) <= dash) close_step()
+      if (instep) {
+        if (inwith && t != "" && indent($0) <= wi) inwith = 0
+        if (t == "with:") { inwith = 1; wi = indent($0) }
+        else if (inwith && t == "version: ${{ env.MISE_VERSION }}") v = 1
+        else if (inwith && t == "sha256: ${{ env.MISE_SHA256 }}") h = 1
+      }
+      if (index($0, "uses: jdx/mise-action@") > 0) {
+        close_step()
+        instep = 1; v = 0; h = 0
+        dash = indent($0)
+        if (substr(t, 1, 2) != "- ") dash -= 2
+      }
+    }
+    END { close_step(); print n + 0 }' "$1"
+}
+# the patterns are in variables: written inside "$(...)", they matched
+# nothing under bash 3.2, the sh of macOS
+MISE_VERSION_RE='^  MISE_VERSION: "[0-9]{4}\.[0-9]{1,2}\.[0-9]+"$'
+MISE_SHA256_RE='^  MISE_SHA256: "[0-9a-f]{64}"$'
+for wf in "$CI_YML" "$RELEASE_YML"; do
+  name=${wf##*/}
+  if [ "$(top_env "$wf" | grep -Ec "$MISE_VERSION_RE")" -eq 1 ] &&
+    [ "$(top_env "$wf" | grep -c 'MISE_VERSION')" -eq 1 ]; then ok; else
+    ng "$name: one MISE_VERSION at an exact version in the top-level env"
+  fi
+  if [ "$(top_env "$wf" | grep -Ec "$MISE_SHA256_RE")" -eq 1 ] &&
+    [ "$(top_env "$wf" | grep -c 'MISE_SHA256')" -eq 1 ]; then ok; else
+    ng "$name: one MISE_SHA256 of 64 lowercase hex digits in the top-level env"
+  fi
+  MS=$(mise_steps "$wf")
+  if [ "$MS" -gt 0 ] && [ "$(mise_pinned_steps "$wf")" -eq "$MS" ]; then ok; else
+    ng "$name: every step of jdx/mise-action passes version and sha256 from the env"
+  fi
+done
+if [ -n "$(env_value "$CI_YML" MISE_VERSION)" ] &&
+  [ "$(env_value "$CI_YML" MISE_VERSION)" = "$(env_value "$RELEASE_YML" MISE_VERSION)" ]; then ok; else
+  ng "ci.yml and release.yml: the same MISE_VERSION"
+fi
+if [ -n "$(env_value "$CI_YML" MISE_SHA256)" ] &&
+  [ "$(env_value "$CI_YML" MISE_SHA256)" = "$(env_value "$RELEASE_YML" MISE_SHA256)" ]; then ok; else
+  ng "ci.yml and release.yml: the same MISE_SHA256"
+fi
+# the SHA-256 is of the linux-x64 binary
+if [ "$(job_of "$RELEASE_YML" notes | grep -cx '    runs-on: ubuntu-24.04')" -eq 1 ]; then ok; else ng "release.yml: the notes job runs on ubuntu-24.04"; fi
+if [ "$(job_of "$CI_YML" release-scripts | grep -cx '    runs-on: ubuntu-24.04')" -eq 1 ]; then ok; else ng "ci.yml: release-scripts runs on ubuntu-24.04"; fi
+
 # ---------------------------------------------------------------- gate.sh
 
 gate() { sh "$HERE/gate.sh" "$@"; }

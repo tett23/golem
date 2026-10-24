@@ -4,15 +4,19 @@ fixed number of terms, so that x86-64 and aarch64 give the same values
 (docs/adr ADR 0002). Values that come out of a series are rounded to
 'precisionBits' bits, which keeps the rationals small.
 
-A number read from the SVG is at most 'numberLimit' (10^9) in absolute
-value (docs/adr ADR 0041); a larger one is not a number that can be read,
-and 'tooLarge' tells such a value apart from a malformed one.
+A number read from the SVG is 0, or between 'numberFloor' (10^-9) and
+'numberLimit' (10^9) in absolute value (docs/adr ADR 0041, ADR 0083); a
+number outside the range is not a number that can be read, and
+'outOfRange' tells such a value apart from a malformed one.
 -}
 module Golem.Svg.Number
   ( parseNumber,
     numberPrefix,
     numberLimit,
+    numberFloor,
+    outOfRange,
     tooLarge,
+    tooSmall,
     roundTo,
     sqrtR,
     cosDeg,
@@ -39,31 +43,53 @@ roundTo x = round (x * 2 ^ precisionBits) % (2 ^ precisionBits)
 numberLimit :: Integer
 numberLimit = 10 ^ (9 :: Int)
 
+-- | The smallest absolute value of a number read that is not 0 (docs/adr ADR 0083).
+numberFloor :: Rational
+numberFloor = 1 % (10 ^ (9 :: Int))
+
 -- | A whole SVG number: sign, digits, a fraction, an exponent.
 parseNumber :: Text -> Maybe Rational
 parseNumber t = case numberPrefix (T.strip t) of
   Just (v, rest) | T.null rest -> Just v
   _ -> Nothing
 
--- | A number at the start of a text and what follows it; none if it is larger than 'numberLimit'.
+-- | A number at the start of a text and what follows it; none if it is outside the range.
 numberPrefix :: Text -> Maybe (Rational, Text)
 numberPrefix t = case lexNumber t of
-  Just (Lexed sign mant e, rest) | not (exceeds mant e) -> Just (fromInteger sign * (mant % 1) * (10 ^^ e), rest)
+  Just (Lexed sign mant e, rest) | not (outside mant e) -> Just (fromInteger sign * (mant % 1) * (10 ^^ e), rest)
   _ -> Nothing
 
 {- | Whether a text has a number of the form of an SVG number whose value
-is larger than 'numberLimit' in absolute value. Hexadecimal colours are
-the caller's to leave out.
+is outside the range: larger than 'numberLimit', or not 0 and smaller
+than 'numberFloor', in absolute value. Hexadecimal colours are the
+caller's to leave out.
 -}
+outOfRange :: Text -> Bool
+outOfRange = anyNumber outside
+
+-- | Whether a text has a number larger than 'numberLimit' in absolute value.
 tooLarge :: Text -> Bool
-tooLarge t = case T.uncons t of
-  Nothing -> False
-  Just (_, rest) -> case lexNumber t of
-    Just (Lexed _ mant e, after) -> exceeds mant e || tooLarge after
-    Nothing -> tooLarge rest
+tooLarge = anyNumber exceeds
+
+-- | Whether a text has a number that is not 0 and smaller than 'numberFloor' in absolute value.
+tooSmall :: Text -> Bool
+tooSmall = anyNumber below
+
+-- | Whether some number of the form of an SVG number in a text is so, by its mantissa and exponent.
+anyNumber :: (Integer -> Integer -> Bool) -> Text -> Bool
+anyNumber p = go
+  where
+    go t = case T.uncons t of
+      Nothing -> False
+      Just (_, rest) -> case lexNumber t of
+        Just (Lexed _ mant e, after) -> p mant e || go after
+        Nothing -> go rest
 
 -- | A number as its sign, its digits as an integer and the power of ten they are scaled by.
 data Lexed = Lexed !Integer !Integer !Integer
+
+outside :: Integer -> Integer -> Bool
+outside mant e = exceeds mant e || below mant e
 
 {- | Whether digits scaled by a power of ten exceed the limit, without
 computing a power larger than the digits allow.
@@ -75,6 +101,17 @@ exceeds mant e
   | e >= 0 = mant * 10 ^ e > numberLimit
   | e < -60 = False
   | otherwise = mant > numberLimit * 10 ^ negate e
+
+{- | Whether digits scaled by a power of ten are not 0 and below the floor,
+without computing a power larger than the digits allow: 60 digits are
+below 10^60, so with an exponent below -69 the value is below 10^-9.
+-}
+below :: Integer -> Integer -> Bool
+below mant e
+  | mant == 0 = False
+  | e >= -9 = False
+  | e < -69 = True
+  | otherwise = mant < 10 ^ negate (e + 9)
 
 -- | The form of an SVG number: at most 60 digits and an exponent of at most 4 digits.
 lexNumber :: Text -> Maybe (Lexed, Text)

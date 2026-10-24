@@ -151,6 +151,11 @@ Windows と x86-64 の macOS は配布の対象にしていない。
 
 Claude Code のバージョンは、リポジトリのルートの [code: mise.toml] で正確に固定してある。[index reading="mise": mise]
 [code: notes] は [code: jdx/mise-action] でこのバージョンを入れ、開発者も同じ [code: mise.toml] で同じものを入れられる。
+Claude Code を入れる mise 自身も、版と、Linux の x86-64 の実行ファイルの SHA-256 で固定してある。
+値は [code: release.yml] と [code: ci.yml] の最上位の [code: env] の [code: MISE_VERSION] と [code: MISE_SHA256] に同じものを書き、[code: jdx/mise-action] の [code: version] と [code: sha256] に渡す。
+action は入れた実行ファイルの SHA-256 が違えば失敗するので、mise の配布物が差し替えられても、API キーを持つ [code: notes] でそれが動くことはない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0085-pin-mise-version-in-workflows.md]（docs/adr の ADR 0085「CI とリリースのワークフローで、mise の版と SHA-256 を固定する」）]
+mise の版を上げるときは、二つのワークフローの値を変えるプルリクエストを出し、SHA-256 を求めた手順を本文に書く。
+SHA-256 は、GitHub の release の [code: mise-v<版>-linux-x64.tar.zst] を署名つきの [code: SHASUMS256.txt] で確かめてから展開した、[code: mise] の実行ファイルの値である。
 mise は npm のパッケージのインストールのスクリプトを既定で動かさないので、[code: allow_builds] で Claude Code のスクリプトだけを許している。
 [code: write-notes.sh] は [code: claude -p] に、道具を一つも許さない [code: --tools ''] と、MCP の設定を読まない [code: --strict-mcp-config] を付ける。
 フラグの名前は固定したバージョンの [code: claude --help] で確かめたものであり、バージョンを上げるときは同じプルリクエストでフラグも確かめる。

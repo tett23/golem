@@ -1,6 +1,6 @@
 # ADR 0041: SVG の図版の `marker` と数の上限
 
-ステータス: 採択→`marker` の循環と入れ子の判定の方法とコード（G08016、G08017）は [ADR 0054](0054-svg-marker-cycle-and-depth-codes.md)、`marker` が描くパスの区間の延べ数の上限（G08101）は [ADR 0084](0084-svg-marker-drawn-segment-limit.md)
+ステータス: 採択→`marker` の循環と入れ子の判定の方法とコード（G08016、G08017）は [ADR 0054](0054-svg-marker-cycle-and-depth-codes.md)、0 でない数の絶対値の下限（10^-9）は [ADR 0083](0083-svg-number-lower-limit.md)、`marker` が描くパスの区間の延べ数の上限（G08101）は [ADR 0084](0084-svg-marker-drawn-segment-limit.md)
 
 ## 文脈
 

@@ -33,14 +33,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 
 2026-10-23 のテストの品質の点検と、出力のゴールデンを足すときに見つかった問題から採択した ADR を実装する。
 
-### セキュリティ監査の修正
-
-rc3 の前の 2026-10-24 のセキュリティ監査（[記録](audits/2026-10-24-security-audit.md)）で、仕様を変えなければ直せない問題のうち、rc3 で直すと決めたものである。
-[docs/adr/0035](adr/0035-security-hardening.md) により、監査の修正が main に入るまで rc3 のタグを付けない。
-
-- **SVG の小さな数**：SVG の図版の 0 でない数の絶対値を 10^-9 以上に限り、小さい数を G08011 の読めない数にする。ルートの大きさの数なら G08010 の `大きさの数が小さすぎます` にする。今は `1e-9999` の半径の円弧で、平方根の計算が止まらない（監査の C6、未実装、[ADR 0083](adr/0083-svg-number-lower-limit.md)）。
-- **mise の版の固定**：`release.yml` の `notes` ジョブと `ci.yml` の `release-scripts` ジョブで、`jdx/mise-action` が入れる mise の版と実行ファイルの SHA-256 を固定する。今は `ANTHROPIC_API_KEY` を持つ `notes` ジョブが、最新の mise を入れる（監査の CI2、未実装、[ADR 0085](adr/0085-pin-mise-version-in-workflows.md)）。
-
 
 ## v0.1.0-rc4
 

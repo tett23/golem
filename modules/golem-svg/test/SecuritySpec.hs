@@ -7,7 +7,9 @@ proportional to the input.
 module SecuritySpec (tests) where
 
 import Control.Exception (SomeException, evaluate, try)
+import Control.Monad (forM_)
 import Data.ByteString (ByteString)
+import Data.Either (isRight)
 import Data.Ratio (denominator, numerator)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -307,8 +309,55 @@ auditTests :: TestTree
 auditTests =
   testGroup
     "security audit 2026-10-24"
-    [ testGroup "the segments markers draw are at most 1,000,000 (docs/adr ADR 0084)" adr0084Tests
+    [ testGroup "a number that is not 0 is at least 10^-9 (docs/adr ADR 0083)" adr0083Tests,
+      testGroup "the segments markers draw are at most 1,000,000 (docs/adr ADR 0084)" adr0084Tests
     ]
+
+adr0083Tests :: [TestTree]
+adr0083Tests =
+  [ localOption (mkTimeout (seconds 5)) $
+      testCase "A-SA: thirty arcs with radii of 1e-9999 (1 KB) are G08011, d（読めない数）, in time" $
+        do
+          r <- total (svg ("<path d=\"M0 0" <> T.replicate 15 " A 1e-9999 1e-9999 0 0 1 10 0 A 1e-9999 1e-9999 0 0 1 0 0" <> "\" stroke=\"#000\" fill=\"none\"/>"))
+          unsupportedNames r @?= ["d（読めない数）"]
+          markerProblems r @?= ([], []),
+    testCase "a radius of 1e-9 is read; one of 9.99999999e-10 is G08011, d（読めない数）" $ do
+      floorArc <- total (arcOf "1e-9")
+      assertBool (show floorArc) (isRight floorArc)
+      below <- total (arcOf "9.99999999e-10")
+      unsupportedNames below @?= ["d（読めない数）"],
+    testCase "a radius of -1e-9999 is G08011, d（読めない数）" $ do
+      r <- total (arcOf "-1e-9999")
+      unsupportedNames r @?= ["d（読めない数）"],
+    testCase "radii of 0 and 0e-9999 are read, as a straight line" $
+      forM_ ["0", "0e-9999"] $ \r0 -> do
+        r <- total (arcOf r0)
+        case r of
+          Right s -> svgDrawing s @?= [DPath (pathOf s) [MoveTo (0, 0), LineTo (10, 0)]]
+          Left e -> assertFailure (show e),
+    testCase "the components of a transform, a stroke width, a dash array, points, rgb() and refX have the same floor" $ do
+      let names b = unsupportedNames (readSvg (svg b))
+      names "<path transform=\"scale(1e-10)\" d=\"M0 0 L1 1\"/>" @?= ["transform（読めない数）"]
+      names "<path stroke=\"#000\" stroke-width=\"1e-10\" d=\"M0 0 L1 1\"/>" @?= ["stroke-width（読めない数）"]
+      names "<path stroke=\"#000\" stroke-dasharray=\"1 1e-10\" d=\"M0 0 L1 1\"/>" @?= ["stroke-dasharray（読めない数）"]
+      names "<polyline points=\"0 0 1e-10 1\"/>" @?= ["points（読めない数）"]
+      names "<rect fill=\"rgb(1e-10, 0, 0)\" width=\"1\" height=\"1\"/>" @?= ["fill（読めない数）"]
+      names "<defs><marker id=\"m\" refX=\"1e-10\"><path d=\"M0 0 L1 1\"/></marker></defs>" @?= ["refX（読めない数）"],
+    testCase "a root of a viewBox or a width of a number too small is G08010, 大きさの数が小さすぎます" $ do
+      readSvg "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1e-10 1\"/>" @?= Left (SvgMalformed "大きさの数が小さすぎます")
+      readSvg "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1e-10\" height=\"1\"/>" @?= Left (SvgMalformed "大きさの数が小さすぎます"),
+    testCase "a root of a number too large and one too small is 大きさの数が大きすぎます" $
+      readSvg "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1e10\" viewBox=\"0 0 1e-10 1\"/>" @?= Left (SvgMalformed "大きさの数が大きすぎます"),
+    localOption (mkTimeout (seconds 5)) $
+      testCase "the heaviest arcs within the range (coordinates of 10^9, radii of 10^-9, thirty) are read in time" $
+        do
+          r <- total (svg ("<path d=\"M0 0" <> T.replicate 15 " A 1e-9 1e-9 0 0 1 1e9 1e9 A 1e-9 1e-9 0 0 1 0 0" <> "\" stroke=\"#000\" fill=\"none\"/>"))
+          either (assertFailure . show) (const (pure ())) r
+  ]
+  where
+    pathOf s = case svgDrawing s of
+      DPath p _ : _ -> p
+      _ -> error "no path"
 
 -- | Nine markers; each is a path of 20 vertices whose marker-mid is the marker below.
 fanMarkers :: ByteString

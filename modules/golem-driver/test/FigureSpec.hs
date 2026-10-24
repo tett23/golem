@@ -322,6 +322,11 @@ svgFigureTests =
       (codes, _, msgs) <- pdfWith Dev "@figure images/g.svg alt=\"t\"\n" [("images/g.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n  <use/></svg>")]
       codes @?= [DiagnosticCode "G08011"]
       msgs @?= ["SVG の図版に扱えないものがあります: images/g.svg:2:3（use）"],
+    testCase "an arc of a radius of 1e-9999 is one G08011, d（読めない数）, and no PDF is written (docs/adr ADR 0083)" $ do
+      let arc = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">\n<path d=\"M0 0 A 1e-9999 1e-9999 0 0 1 10 0\" stroke=\"#000\" fill=\"none\"/></svg>"
+      (codes, pdf, msgs) <- pdfWith Dev "@figure images/a.svg alt=\"t\"\n" [("images/a.svg", arc)]
+      (codes, pdf) @?= ([DiagnosticCode "G08011"], Nothing)
+      msgs @?= ["SVG の図版に扱えないものがあります: images/a.svg:2:7（d（読めない数））"],
     testCase "G08101: markers that draw more than 1,000,000 segments, with the path and the count, and no PDF is written (docs/adr ADR 0084)" $ do
       (codes, pdf, msgs) <- pdfWith Dev "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", fanMarkers "")]
       (codes, pdf) @?= ([DiagnosticCode "G08101"], Nothing)
