@@ -3,7 +3,6 @@ a diagnostic at the position of the offending expression.
 -}
 module Golem.Eval.Expr
   ( Env (..),
-    emptyEnv,
     evalExpr,
     embedValue,
     builtinNames,
@@ -32,9 +31,6 @@ data Env = Env
   { envVars :: !(Map Name Value),
     envNamespaces :: !(Map Name (Map Name Value))
   }
-
-emptyEnv :: Env
-emptyEnv = Env Map.empty Map.empty
 
 type Eval = Either Diagnostic
 

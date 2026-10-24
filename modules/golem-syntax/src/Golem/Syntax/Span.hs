@@ -8,7 +8,6 @@ module Golem.Syntax.Span
     emptyFileTable,
     registerFile,
     lookupPath,
-    lookupFileId,
     fileTableEntries,
   )
 where
@@ -74,9 +73,6 @@ registerFile path ft = case Map.lookup path (ftByPath ft) of
 
 lookupPath :: FileId -> FileTable -> Maybe FilePath
 lookupPath fid = Map.lookup fid . ftById
-
-lookupFileId :: FilePath -> FileTable -> Maybe FileId
-lookupFileId p = Map.lookup p . ftByPath
 
 -- | Entries in id order.
 fileTableEntries :: FileTable -> [(FileId, FilePath)]
