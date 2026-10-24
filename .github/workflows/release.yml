@@ -21,7 +21,7 @@ env:
   # mise, which installs the pinned Claude Code of mise.toml, at an exact
   # version and the SHA-256 of its linux-x64 binary (docs/adr/0085)
   MISE_VERSION: "2026.10.18"
-  MISE_SHA256: "e97c38973336aa2ff350fea50f47b412b266fe263b102b7200ff1e9b118c6942"
+  MISE_SHA256: "f97c38973336aa2ff350fea50f47b412b266fe263b102b7200ff1e9b118c6942"
 
 jobs:
   ci:
