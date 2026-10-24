@@ -10,9 +10,11 @@ module Golem.Pdf.Image
     readImage,
     unfilterPng,
     inflateUpTo,
+    flate,
   )
 where
 
+import Codec.Compression.Zlib qualified as Z
 import Codec.Compression.Zlib.Internal qualified as ZI
 import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
@@ -169,6 +171,12 @@ allowedDepths = \case
   4 -> [8, 16]
   6 -> [8, 16]
   _ -> []
+
+{- | Flate (zlib) at level 9, the highest. The level decides the bytes of
+every compressed stream of the output, so there is one place for it.
+-}
+flate :: ByteString -> ByteString
+flate = BL.toStrict . Z.compressWith Z.defaultCompressParams {Z.compressLevel = Z.compressionLevel 9} . BL.fromStrict
 
 {- | At most @limit@ bytes of a zlib stream, inflating no further; Left when
 the stream is broken before that. A stream that ends early gives what it

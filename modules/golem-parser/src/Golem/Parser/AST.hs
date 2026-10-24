@@ -22,6 +22,7 @@ module Golem.Parser.AST
     plainEscapes,
     plainEscapesIn,
     shorthandsAsText,
+    joinText,
   )
 where
 
@@ -146,7 +147,9 @@ shorthandsAsText = joinText . map (fmap inline)
       CommandArg i -> CommandArg (fmap inline i)
       other -> other
 
--- | Neighbouring 'Text' joined into one, whose span covers both.
+{- | Neighbouring 'Text' joined into one, whose span covers both; 'Escaped' is not
+joined (golem-parser ADR 0010).
+-}
 joinText :: [Located Inline] -> [Located Inline]
 joinText (Located a (Text x) : Located b (Text y) : rest) =
   joinText (Located (mkSpan (spanFile a) (spanStart a) (spanEnd b)) (Text (x <> y)) : rest)
