@@ -62,6 +62,7 @@ import Control.Monad (join, mfilter)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.Char (isSpace)
+import Data.Containers.ListUtils (nubOrdOn)
 import Data.Either (fromRight, isLeft)
 import Data.Foldable (toList)
 import Data.Int (Int64)
@@ -105,7 +106,6 @@ import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Svg qualified as S
 import Golem.Syntax
-import Numeric (showHex)
 import System.FilePath (takeBaseName)
 
 -- | One line of the flow, with what is needed to draw it.
@@ -372,13 +372,11 @@ of @fid@.
 -}
 kentenGlyphDiagnostics :: FileId -> Bool -> LoadedFonts -> PdfLayout -> [Diagnostic]
 kentenGlyphDiagnostics fid vertical fonts layout =
-  [ diagnostic "G08009" Error (mkSpan fid 0 0) ("役割 " <> role <> " の和文の書体に圏点の形 " <> kentenShapeName shape <> " の字（U+" <> codePoint (kentenChar shape) <> "）がありません")
+  [ diagnostic "G08009" Error (mkSpan fid 0 0) ("役割 " <> role <> " の和文の書体に圏点の形 " <> kentenShapeName shape <> " の字（" <> codePointText (kentenChar shape) <> "）がありません")
   | (role, shape) <- Set.toAscList (Set.fromList [(lkFace (bcLook c), shape) | l <- layoutLines layout, Box _ c <- lineItems l, boxKind c == KindKenten, Just shape <- [lkKenten (bcLook c)]]),
     let gs = kentenShaped fonts vertical role shape,
     null gs || any ((== 0) . shGlyph) gs
   ]
-  where
-    codePoint ch = T.justifyRight 4 '0' (T.toUpper (T.pack (showHex (fromEnum ch) "")))
 
 -- | Every line of a layout: of the text, notes, sidenotes, tables, captions and the table of contents.
 layoutLines :: PdfLayout -> [Line]
@@ -995,12 +993,11 @@ fixpoint labelSpan termOf layoutWith = go (1 :: Int) (Assumed Map.empty Map.empt
         moved :: (Ord k) => Assumed -> (Assumed -> Map k Integer) -> [k]
         moved now field = [k | k <- Map.keys (Map.union (field now) (field assumed)), Map.lookup k (field now) /= Map.lookup k (field assumed)]
     notSettled labels marks =
-      let named = [(labelSpan l, l) | l <- labels] <> nubOn snd [(m, termOf m) | m <- marks]
+      let named = [(labelSpan l, l) | l <- labels] <> nubOrdOn snd [(m, termOf m) | m <- marks]
           sites = map fst named
        in (diagnostic "G07021" Error (fromMaybe (mkSpan (FileId 0) 0 0) (listToMaybe sites)) ("ページ番号の参照が収束しません: " <> T.intercalate ", " (map snd named)))
             { diagRelated = [(sp, "ページが定まりません") | sp <- drop 1 sites]
             }
-    nubOn key = reverse . fst . foldl (\(acc, seen) x -> if key x `elem` seen then (acc, seen) else (x : acc, key x : seen)) ([], [])
 
 {- | The composition environment of a unit set in a font role at a size
 (golem-driver ADR 0003).
