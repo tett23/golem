@@ -4,7 +4,6 @@
 module Golem.Eval.Number
   ( Decimal (..),
     finite,
-    shortestDecimal,
     renderDouble,
     roundHalfAway,
     decimalToDouble,

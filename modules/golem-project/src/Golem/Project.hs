@@ -5,7 +5,6 @@ module Golem.Project
   ( Project (..),
     SourceFile (..),
     ProjectFailure (..),
-    readFailure,
     loadProject,
     loadProjectWith,
     module Golem.Project.Manifest,

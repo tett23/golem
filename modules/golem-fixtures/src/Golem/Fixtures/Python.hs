@@ -10,7 +10,6 @@ module Golem.Fixtures.Python
     pyRStrip,
     collapseSpace,
     universalNewlines,
-    specialLineStart,
     escapeLineStart,
     toBlocks,
     indentOf,

@@ -4,8 +4,6 @@ the text of the tree is preserved.
 -}
 module Golem.Parser.Convert
   ( convert,
-    kindForRule,
-    kindForToken,
   )
 where
 

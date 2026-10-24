@@ -6,7 +6,6 @@ module Golem.Layout.Hyphenation
     parsePatterns,
     withExceptions,
     hyphenate,
-    hyphenPoints,
   )
 where
 

@@ -16,7 +16,6 @@ module Golem.Parser.CST
     token,
     elementWidth,
     render,
-    renderElement,
     Positioned (..),
     withPositions,
     tokens,
@@ -145,10 +144,6 @@ token k t = ElemToken (Token k t)
 
 render :: Node -> Text
 render = T.concat . map tokText . tokens
-
-renderElement :: Element -> Text
-renderElement (ElemNode n) = render n
-renderElement (ElemToken t) = tokText t
 
 -- | All tokens in order.
 tokens :: Node -> [Token]
