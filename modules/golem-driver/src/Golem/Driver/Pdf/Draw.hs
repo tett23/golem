@@ -1029,5 +1029,3 @@ groupWhen same = foldr step []
     step x = \case
       (g@(y : _) : gs) | same x y -> (x : g) : gs
       gs -> [x] : gs
-
--- bump 1792877662927855000
