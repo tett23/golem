@@ -92,6 +92,7 @@ import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Svg.Active (activeContent)
 import Golem.Syntax
+import Golem.Syntax.Text (showRationalDigits)
 import Golem.Text qualified as GT
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getFileSize, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
@@ -1209,12 +1210,7 @@ cssFontSize style = \case
 
 -- | At most three decimals, fixed (docs/adr ADR 0003).
 decimal3 :: Rational -> Text
-decimal3 r =
-  let thousandths = round (r * 1000) :: Integer
-      (i, f) = abs thousandths `divMod` 1000
-      sign = if thousandths < 0 then "-" else ""
-      frac = T.dropWhileEnd (== '0') (T.justifyRight 3 '0' (T.pack (show f)))
-   in sign <> T.pack (show i) <> (if T.null frac then "" else "." <> frac)
+decimal3 = showRationalDigits 3
 
 -- | The table of contents page of the HTML target.
 indexPage :: HtmlConfig -> FileTable -> Book -> Text
