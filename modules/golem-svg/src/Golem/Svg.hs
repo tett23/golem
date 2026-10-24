@@ -137,14 +137,16 @@ data SvgProblems = SvgProblems
     -- | references within a cycle of markers (G08016)
     spMarkerCycles :: ![MarkerRef],
     -- | references from a marker 9 deep or deeper (G08017)
-    spMarkerDepth :: ![MarkerRef]
+    spMarkerDepth :: ![MarkerRef],
+    -- | the segments markers draw, when over 'markerSegmentLimit' (G08101, docs/adr ADR 0084)
+    spMarkerSegments :: !(Maybe Integer)
   }
   deriving stock (Eq, Show)
 
 data SvgError
   = -- | the reason of G08010
     SvgMalformed !Text
-  | -- | G08011, G08016 and G08017; at least one of the lists is not empty
+  | -- | G08011, G08016, G08017 and G08101; at least one is not empty
     SvgUnsupported !SvgProblems
   deriving stock (Eq, Show)
 
@@ -186,16 +188,25 @@ readSvg bytes = do
             envMarkers = markerTable env0 root,
             envDefault = defaultStyle,
             envInMarker = Nothing,
-            envMarkerEdge = markerEdges (wRefs top) (Map.map wRefs contents),
+            envMarkerEdge = edge,
             envMarkerOps = LazyMap.map wOps contents
           }
       contents = LazyMap.mapWithKey (\i (m, mst) -> elementChildren env0 {envInMarker = Just i} mst m) (envMarkers env0)
       top = elementChildren env0 (cascade env0 defaultStyle root) root
+      edge = markerEdges (wRefs top) (Map.map wRefs contents)
+      -- the segments each marker draws: its own and those of the markers it places that are drawn (docs/adr ADR 0084)
+      segments = LazyMap.mapWithKey (\i w -> wSegs w + sum [Map.findWithDefault 0 j segments | j <- wPlaced w, isNothing (edge i j)]) contents
+      drawnByMarkers = sum [Map.findWithDefault 0 j segments | j <- wPlaced top]
   (size, rootMatrix, rootClip, rootProbs) <- rootGeometry root
   let ops = wOps top
-      problems = SvgProblems (rootProbs <> wProbs top) [r | (MarkerCycle, r) <- wMarkerProbs top] [r | (MarkerTooDeep, r) <- wMarkerProbs top]
+      problems =
+        SvgProblems
+          (rootProbs <> wProbs top)
+          [r | (MarkerCycle, r) <- wMarkerProbs top]
+          [r | (MarkerTooDeep, r) <- wMarkerProbs top]
+          (if drawnByMarkers > markerSegmentLimit then Just drawnByMarkers else Nothing)
       body = if rootMatrix == identity && isNothing rootClip then ops else [DGroup rootMatrix rootClip ops]
-  if problems == SvgProblems [] [] []
+  if problems == SvgProblems [] [] [] Nothing
     then Right (Svg size body)
     else Left (SvgUnsupported problems)
   where
@@ -285,14 +296,18 @@ data Walk = Walk
   { wProbs :: [Unsupported],
     wOps :: [DrawOp],
     wRefs :: [Text],
-    wMarkerProbs :: [(MarkerProblem, MarkerRef)]
+    wMarkerProbs :: [(MarkerProblem, MarkerRef)],
+    -- | the segments of the paths drawn, without those of the markers placed (docs/adr ADR 0084)
+    wSegs :: !Integer,
+    -- | the marker of each place a marker is placed, once for each place
+    wPlaced :: [Text]
   }
 
 instance Semigroup Walk where
-  Walk a b c d <> Walk a' b' c' d' = Walk (a <> a') (b <> b') (c <> c') (d <> d')
+  Walk a b c d e f <> Walk a' b' c' d' e' f' = Walk (a <> a') (b <> b') (c <> c') (d <> d') (e + e') (f <> f')
 
 instance Monoid Walk where
-  mempty = Walk [] [] [] []
+  mempty = Walk [] [] [] [] 0 []
 
 -- | The specified properties of an element, with where each came from.
 specified :: Env -> Element -> [(Text, Text, Pos)]
@@ -520,10 +535,10 @@ elementChildren env st e = mconcat [elementOps env st c | NElement c <- elChildr
 elementOps :: Env -> Style -> Element -> Walk
 elementOps env parent e
   | name `elem` ["title", "desc", "metadata"] = mempty
-  | name `elem` ["text", "tspan", "textPath"] = Walk [Unsupported name l c True] [] [] []
-  | name == "style" = Walk (attributeProblems ["type"] e <> sheetProblems) [] [] []
+  | name `elem` ["text", "tspan", "textPath"] = Walk [Unsupported name l c True] [] [] [] 0 []
+  | name == "style" = Walk (attributeProblems ["type"] e <> sheetProblems) [] [] [] 0 []
   | otherwise = case elementAttrs name of
-      Nothing -> Walk [unsupportedAt name (elPos e)] [] [] []
+      Nothing -> Walk [unsupportedAt name (elPos e)] [] [] [] 0 []
       Just allowed ->
         let st = cascade env parent e
             probs = attributeProblems allowed e <> propertyProblems env e <> markerAttrProblems
@@ -546,7 +561,7 @@ elementOps env parent e
             edgeProbs = case envInMarker env of
               Just from | name `notElem` ["g", "defs", "marker"] -> [(why, MarkerRef l c to) | to <- wRefs drawn, Just why <- [envMarkerEdge env from to]]
               _ -> []
-         in Walk (probs <> tProbs <> wProbs shaped <> wProbs children) wrapped (wRefs drawn) (wMarkerProbs shaped <> edgeProbs <> wMarkerProbs children)
+         in Walk (probs <> tProbs <> wProbs shaped <> wProbs children) wrapped (wRefs drawn) (wMarkerProbs shaped <> edgeProbs <> wMarkerProbs children) (wSegs drawn) (wPlaced drawn)
   where
     -- the numbers of a marker that are read with a default: refused only when outside the range
     markerAttrProblems =
@@ -610,17 +625,17 @@ shape env st e = case elName e of
   "polyline" -> poly False
   "polygon" -> poly True
   "path" -> case attr "d" e of
-    Just d | Nothing <- parsePath d -> Walk [unsupportedAt (valueName "d" d) (attrPos "d")] [] [] []
+    Just d | Nothing <- parsePath d -> Walk [unsupportedAt (valueName "d" d) (attrPos "d")] [] [] [] 0 []
     d -> drawMarked (fromMaybe [] (parsePath (fromMaybe "" d)))
   _ -> mempty
   where
     p = paintOf st
     visible = Map.findWithDefault "visible" "visibility" st == "visible"
-    draw segs = Walk [] [DPath p segs | visible, not (null segs)] [] []
+    draw segs = if visible && not (null segs) then Walk [] [DPath p segs] [] [] (toInteger (length segs)) [] else mempty
     drawMarked segs
       | visible =
-          let (refs, ops) = markers env st segs
-           in draw segs <> Walk [] ops refs []
+          let (placed, ops) = markers env st segs
+           in draw segs <> Walk [] ops (nubOrd placed) [] 0 placed
       | otherwise = draw segs
     lookupLen k = case Map.lookup k st of
       Just v | v /= "auto" -> lengthPx v
@@ -628,11 +643,11 @@ shape env st e = case elName e of
     attrPos k = case [atPos a | a <- elAttrs e, atName a == k] of
       q : _ -> q
       [] -> elPos e
-    geometry ks w = Walk [unsupportedAt (valueName k v) (attrPos k) | k <- ks, Just v <- [attr k e], isNothing (lengthPx v)] [] [] [] <> w
+    geometry ks w = Walk [unsupportedAt (valueName k v) (attrPos k) | k <- ks, Just v <- [attr k e], isNothing (lengthPx v)] [] [] [] 0 [] <> w
     poly closed = case attr "points" e >>= numberList of
       Just ns | even (length ns), (x0 : y0 : rest) <- ns -> drawMarked (MoveTo (x0, y0) : map LineTo (pairs rest) <> [ClosePath | closed])
       Just [] -> mempty
-      _ -> Walk [unsupportedAt (valueName "points" (fromMaybe "" (attr "points" e))) (attrPos "points")] [] [] []
+      _ -> Walk [unsupportedAt (valueName "points" (fromMaybe "" (attr "points" e))) (attrPos "points")] [] [] [] 0 []
     pairs = \case
       a : b : r -> (a, b) : pairs r
       _ -> []
@@ -924,8 +939,8 @@ vertices = go (0, 0) (0, 0) []
 unit :: Point -> Point
 unit v@(x, y) = let n = norm v in if n == 0 then (0, 0) else (roundTo (x / n), roundTo (y / n))
 
-{- | The markers of a path (SVG 1.1 11.6): start, mid and end; the ids of
-the markers placed, each once, and the drawing.
+{- | The markers of a path (SVG 1.1 11.6): start, mid and end; the id of
+the marker placed at each place, and the drawing.
 -}
 markers :: Env -> Style -> [Segment] -> ([Text], [DrawOp])
 markers env st segs =
@@ -942,7 +957,7 @@ markers env st segs =
           Just ref <- [Map.lookup (which i) st >>= markerRef],
           Just (m, _) <- [Map.lookup ref (envMarkers env)]
         ]
-   in ( nubOrd (map fst placed),
+   in ( map fst placed,
         concat [placeMarker m (Map.findWithDefault [] ref (envMarkerOps env)) strokeWidth i p din dout | (ref, (m, i, p, din, dout)) <- placed]
       )
   where
@@ -974,6 +989,13 @@ markers env st segs =
 -- | The deepest marker drawn: a marker in a marker is the second (docs/adr ADR 0041).
 markerDepthLimit :: Int
 markerDepthLimit = 9
+
+{- | The most segments markers may draw in a drawing, counted once for each
+place a marker is placed, without what the drawing draws itself (docs/adr
+ADR 0084).
+-}
+markerSegmentLimit :: Integer
+markerSegmentLimit = 1000000
 
 {- | The problem of a reference from the content of one marker to another,
 given the markers the drawing places and the markers each marker places:

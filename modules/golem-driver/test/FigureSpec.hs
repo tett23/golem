@@ -232,6 +232,34 @@ pdfWith profile source files = withSystemTempDirectory "golem-svg" $ \tmp -> do
   let errs = filter isError (brDiagnostics r)
   pure (map diagCode errs, pdf, map diagMessage errs)
 
+{- | Nine markers, each a path of 20 vertices whose marker-mid is the marker
+below; what is given goes first (the security audit of 2026-10-24, C7).
+-}
+fanMarkers :: BS.ByteString -> BS.ByteString
+fanMarkers before =
+  "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\">"
+    <> before
+    <> "<defs>"
+    <> BS.concat [marker k | k <- [1 .. 9 :: Int]]
+    <> "</defs><path d=\""
+    <> pathD
+    <> "\" marker-mid=\"url(#m9)\" stroke=\"#000\"/></svg>"
+  where
+    showB = TE.encodeUtf8 . T.pack . show :: Int -> BS.ByteString
+    pathD = "M0 0" <> BS.concat [" L" <> showB i <> " 0" | i <- [1 .. 19]]
+    marker k =
+      "<marker id=\"m"
+        <> showB k
+        <> "\" markerWidth=\"1\" markerHeight=\"1\"><path d=\""
+        <> pathD
+        <> "\" stroke=\"#000\""
+        <> (if k > 1 then " marker-mid=\"url(#m" <> showB (k - 1) <> ")\"" else "")
+        <> "/></marker>"
+
+-- | The segments the markers of 'fanMarkers' draw: 20 of each and 18 of the one below, m9 placed 18 times.
+fanSegments :: Integer
+fanSegments = 18 * (iterate (\below -> 20 + 18 * below) 20 !! 8)
+
 -- | An SVG whose markers a and b place each other, the drawing placing a; what is given goes first.
 markerSvg :: BS.ByteString -> BS.ByteString
 markerSvg before =
@@ -299,6 +327,13 @@ svgFigureTests =
       (codes, pdf, msgs) <- pdfWith Dev "@figure images/a.svg alt=\"t\"\n" [("images/a.svg", arc)]
       (codes, pdf) @?= ([DiagnosticCode "G08011"], Nothing)
       msgs @?= ["SVG の図版に扱えないものがあります: images/a.svg:2:7（d（読めない数））"],
+    testCase "G08101: markers that draw more than 1,000,000 segments, with the path and the count, and no PDF is written (docs/adr ADR 0084)" $ do
+      (codes, pdf, msgs) <- pdfWith Dev "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", fanMarkers "")]
+      (codes, pdf) @?= ([DiagnosticCode "G08101"], Nothing)
+      msgs @?= ["SVG の図版の marker が描くパスの区間が 1000000 を超えます: images/f.svg（" <> T.pack (show fanSegments) <> "）"],
+    testCase "text and markers over the limit are G08011 and G08101, in this order (docs/adr ADR 0084)" $ do
+      (codes, pdf, _) <- pdfWith Dev "@figure images/f.svg alt=\"t\"\n" [("images/f.svg", fanMarkers "<text>a</text>")]
+      (codes, pdf) @?= ([DiagnosticCode "G08011", DiagnosticCode "G08101"], Nothing),
     testCase "HTML and EPUB place an SVG with text as it is, or its web image" $ withSystemTempDirectory "golem-svg" $ \tmp -> do
       BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
       BS.writeFile (tmp </> "style.toml") (figStyle horizontalStyle)

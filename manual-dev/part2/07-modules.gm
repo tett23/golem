@@ -65,6 +65,9 @@ golem-svg は、SVG の図版を XML と CSS から読み、パス、塗りと�
 有理数は桁に上限がないので、読む数を、0 か、絶対値が 10 の -9 乗以上 10 の 9 乗以下に限り、範囲の外の数は丸めずに G08011 にする。
 小さな数で割る計算（円弧の半径の補正や [code: viewBox] の倍率）で、桁が際限なく増えないためである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0083-svg-number-lower-limit.md]（docs/adr ADR 0083「SVG の図版の 0 でない数の絶対値に下限を設ける」）]
 golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画（[code: Golem.Pdf.Drawing]）に直す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0009-svg-figures.md]（golem-pdf ADR 0009「SVG の図版」）]
+[code: marker] の中身の描画は [code: marker] ごとに一度だけ作って置く場所で共有するが、PDF には置く場所ごとに書き出す。
+そのため、[code: marker] が描くパスの区間を置く回数の分だけ数え、延べ数が 100 万を超える図版を G08101 にする。
+数は描画を展開せず、[code: marker] の参照のグラフの上で [code: marker] ごとに一度だけ計算するので、手間は文書の大きさに比例する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0084-svg-marker-drawn-segment-limit.md]（docs/adr ADR 0084「SVG の図版の marker が描くパスの区間の延べ数に上限を設ける」）]
 HTML と EPUB は SVG をそのまま写すが、golem-driver の [code: buildCore] が、写す前に golem-svg の [code: Golem.Svg.Active] で動的なコンテンツを探す。
 同じ XML の読み手で読み、要素と属性を文書の順にたどって、次の表のものを G08014 にする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0039-svg-active-content-in-html-and-epub.md]（docs/adr ADR 0039「HTML と EPUB に写す SVG の図版の、動的なコンテンツを拒む」）]
 G08014 があれば HTML と EPUB を書かず、PDF とプレーンテキストは書く。
