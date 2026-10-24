@@ -62,6 +62,8 @@ golem-pdf は PDF を書くだけでなく、PDF の図版を読む処理（[cod
 図版のページを Form XObject として取り込み、DeviceRGB を sRGB の ICCBased に置き換え、特色、レイヤー、埋め込んでいないフォントを持つ PDF を拒む。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0008-pdf-figures.md]（golem-pdf ADR 0008「PDF の図版と置けない図版の診断」）]
 golem-svg は、SVG の図版を XML と CSS から読み、パス、塗りと線、行列と切り抜きの列に直す。
 数は有理数で計算し、三角関数と平方根も有理数の級数で求めるので、マシンによらず同じ値になる。
+有理数は桁に上限がないので、読む数を、0 か、絶対値が 10 の -9 乗以上 10 の 9 乗以下に限り、範囲の外の数は丸めずに G08011 にする。
+小さな数で割る計算（円弧の半径の補正や [code: viewBox] の倍率）で、桁が際限なく増えないためである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0083-svg-number-lower-limit.md]（docs/adr ADR 0083「SVG の図版の 0 でない数の絶対値に下限を設ける」）]
 golem-pdf は golem-svg に依存せず、golem-driver が golem-svg の描画を golem-pdf の描画（[code: Golem.Pdf.Drawing]）に直す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-pdf/adr/0009-svg-figures.md]（golem-pdf ADR 0009「SVG の図版」）]
 HTML と EPUB は SVG をそのまま写すが、golem-driver の [code: buildCore] が、写す前に golem-svg の [code: Golem.Svg.Active] で動的なコンテンツを探す。
 同じ XML の読み手で読み、要素と属性を文書の順にたどって、次の表のものを G08014 にする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0039-svg-active-content-in-html-and-epub.md]（docs/adr ADR 0039「HTML と EPUB に写す SVG の図版の、動的なコンテンツを拒む」）]

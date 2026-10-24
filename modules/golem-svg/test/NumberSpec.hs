@@ -63,14 +63,30 @@ numberTests =
         map parseNumber ["1000000000", "-1000000000", "1e9", "0.1e10", "1000000000.0", "999999999.999"]
           @?= map Just [10 ^ (9 :: Int), -(10 ^ (9 :: Int)), 10 ^ (9 :: Int), 10 ^ (9 :: Int), 10 ^ (9 :: Int), 999999999999 % 1000]
         map parseNumber ["1000000001", "-1000000001", "1e10", "1.000000001e9", "1000000000.1", "1e9999"] @?= replicate 6 Nothing
-        map parseNumber ["0e9999", "1e-9999", "0.0000000001"] @?= [Just 0, Just (1 % (10 ^ (9999 :: Int))), Just (1 % (10 ^ (10 :: Int)))]
+        parseNumber "0e9999" @?= Just 0
         numberLimit @?= 10 ^ (9 :: Int),
+      testCase "a number that is not 0 is at least 10^-9 in absolute value (docs/adr ADR 0083)" $ do
+        map parseNumber ["1e-9", "-1e-9", "0.000000001", "10e-10", "1" <> T.replicate 59 "0" <> "e-68"]
+          @?= map Just [1 % (10 ^ (9 :: Int)), -(1 % (10 ^ (9 :: Int))), 1 % (10 ^ (9 :: Int)), 1 % (10 ^ (9 :: Int)), 1 % (10 ^ (9 :: Int))]
+        map parseNumber ["1e-10", "-1e-10", "1e-9999", "0.000000000999", "9.99999999e-10", "0.0000000001", T.replicate 60 "9" <> "e-70"] @?= replicate 7 Nothing
+        map parseNumber ["0", "-0", "0e-9999", "0.0", "0e5"] @?= replicate 5 (Just 0)
+        numberFloor @?= 1 % (10 ^ (9 :: Int)),
+      localOption (mkTimeout 100000) $
+        testCase "a number of 60 digits and an exponent of -9999 is judged without the power of ten (docs/adr ADR 0083)" $ do
+          parseNumber "1e-9999" @?= Nothing
+          parseNumber (T.replicate 60 "9" <> "e-9999") @?= Nothing
+          outOfRange (T.replicate 60 "9" <> "e-9999") @?= True,
       testCase "60 digits are read, 61 are not" $ do
         -- the digits before and after the point together
-        parseNumber ("." <> T.replicate 59 "0" <> "1") @?= Just (1 % (10 ^ (60 :: Int)))
-        parseNumber ("0." <> T.replicate 59 "0" <> "1") @?= Nothing
+        parseNumber ("1." <> T.replicate 58 "0" <> "1") @?= Just (1 + 1 % (10 ^ (59 :: Int)))
+        parseNumber ("1." <> T.replicate 59 "0" <> "1") @?= Nothing
         parseNumber (T.replicate 60 "0") @?= Just 0
         parseNumber (T.replicate 61 "0") @?= Nothing,
+      testCase "outOfRange finds a number outside the range anywhere in a text, tooSmall a small one (docs/adr ADR 0083)" $ do
+        map outOfRange ["1e10", "a 1e-10 b", "M0,0 L1,1e-10", "1e-9", "0", "0e-9999", "abc", "rgb(1e-10, 0, 0)"]
+          @?= [True, True, True, False, False, False, False, True]
+        map tooSmall ["1e10", "1e-10", "0 1e-9999", "1e-9", "0"] @?= [False, True, True, False, False]
+        map tooLarge ["1e10", "1e-10"] @?= [True, False],
       testCase "tooLarge finds a number past the limit anywhere in a text" $
         map
           (\t -> (t, tooLarge t))
