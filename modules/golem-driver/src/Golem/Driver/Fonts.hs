@@ -14,7 +14,7 @@ where
 
 import Control.Applicative ((<|>))
 import Data.ByteString qualified as BS
-import Data.Containers.ListUtils (nubOrd)
+import Data.Containers.ListUtils (nubOrd, nubOrdOn)
 import Data.Functor ((<&>))
 import Data.Map.Strict qualified as Map
 import Data.Maybe (catMaybes, fromMaybe, isJust)
@@ -72,7 +72,7 @@ golemFontProvider = FontProvider $ \root fid style locals ->
             [] ->
               let -- faces in order: body Japanese, body Latin, then the other roles by name; the same bytes are one face
                   ordered = concat [catMaybes [ja, la] | (_, _, ja, la) <- files]
-                  faces = nubOn (\(b, _, _) -> b) ordered
+                  faces = nubOrdOn (\(b, _, _) -> b) ordered
                   faceOf (b, _, _) = length (takeWhile (\(b', _, _) -> b' /= b) faces)
                   roleFaces = Map.fromList [(r, (faceOf <$> ja, faceOf <$> la, frFeatures fr)) | (r, fr, ja, la) <- files]
                   clashes =
@@ -87,8 +87,6 @@ golemFontProvider = FontProvider $ \root fid style locals ->
                in case clashes of
                     ((n, p1, p2) : _) -> Left [err "G08005" ("PostScript 名が同じ異なるフォントがあります: " <> n <> "（" <> T.pack p1 <> "、" <> T.pack p2 <> "）")]
                     [] -> Right (provide fid [(f, p) | (_, f, p) <- faces] body roleFaces)
-  where
-    nubOn key = reverse . fst . foldl' (\(acc, seen) x -> if key x `elem` seen then (acc, seen) else (x : acc, key x : seen)) ([], [])
 
 {- | G08019 (golem-font ADR 0003): a font with CFF2 outlines cannot be
 embedded in the PDF. At the top of @fid@, as the other font diagnostics.
