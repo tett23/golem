@@ -23,8 +23,7 @@ names body = [n | (n, _, _) <- found body]
 
 tests :: TestTree
 tests =
-  testGroup
-    "active content (docs/adr ADR 0039)"
+  testGroup "active content (docs/adr ADR 0039)" $
     [ testCase "an empty script element is returned with its name and place" $
         found "  <script/>" @?= [("script", 2, 3)],
       testCase "a script in another namespace is returned too" $
@@ -60,3 +59,28 @@ tests =
         assertBool "latin-1" (isLeft (activeContent "<svg xmlns=\"http://www.w3.org/2000/svg\">\xE9</svg>"))
         assertBool "subset" (isLeft (activeContent "<!DOCTYPE svg [<!ENTITY a \"b\">]><svg xmlns=\"http://www.w3.org/2000/svg\"/>"))
     ]
+      <> cssTokenTests
+
+{- | CSS read as its tokenizer reads it: what a browser loads is found, and
+nothing hides it (security audit 2026-10-24).
+-}
+cssTokenTests :: [TestTree]
+cssTokenTests =
+  [ testCase "a url() between two strings that hold /* and */ is found, at its place" $
+      found "<style>a{content:\"/*\"} rect{fill:url(https://evil.example/p.svg#g)} b{content:\"*/\"}</style>" @?= [("url()", 2, 34)],
+    testCase "the same in a style attribute" $
+      names "<rect style=\"--a:'/*';fill:url(https://evil.example/p.svg#g);--b:'*/'\"/>" @?= ["url()"],
+    testCase "an escaped quote does not end a string" $
+      names "<style>a{content:\"\\\" /*\"} rect{fill:url(x.svg)} b{content:\"*/\"}</style>" @?= ["url()"],
+    testCase "url written with a CSS escape is found, at the backslash" $
+      found "<style>rect{fill:\\75 rl(https://evil.example/p.svg#g)}</style>" @?= [("url()", 2, 18)],
+    testCase "@import written with a CSS escape is found" $
+      names "<style>@\\69mport \"https://evil.example/x.css\";</style>" @?= ["@import"],
+    testCase "an escape of a letter that is not hexadecimal is the letter" $
+      names "<style>rect{fill:\\u\\r\\l(x.svg)}</style>" @?= ["url()"],
+    testCase "url(#g) written with escapes passes" $
+      names "<style>rect{fill:\\75 rl(\\23 g)}</style>" @?= [],
+    testCase "a url() in a comment is not found, with or without strings before it" $ do
+      names "<style>/* url(x.svg) */</style>" @?= []
+      names "<style>a{content:\"x\"} /* url(x.svg) \" */</style>" @?= []
+  ]
