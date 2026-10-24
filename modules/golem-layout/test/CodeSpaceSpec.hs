@@ -4,33 +4,27 @@ advance of a space, with no stretch and no shrink, still a break.
 module CodeSpaceSpec (codeSpaceTests) where
 
 import Data.Text (Text)
+import Fixtures (fs, look0, sp)
 import Golem.Doc.IR qualified as IR
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..))
-import Golem.Syntax (FileId (..), mkSpan)
 import Test.Tasty
 import Test.Tasty.HUnit
-
-fs :: Sp
-fs = 10 * 65536
 
 -- | The advance of a space in 'defaultComposeEnv': a quarter em.
 sw :: Sp
 sw = fs `div` 4
-
-look0 :: Look
-look0 = ceLook (defaultComposeEnv fs)
 
 -- | Text in the look of the environment, and in the character style code.
 env :: ComposeEnv
 env = (defaultComposeEnv fs) {ceRestyle = \lk -> \case IR.CharStyle _ "code" _ -> lk {lkCode = True}; _ -> lk}
 
 txt :: Text -> IR.Inline
-txt = IR.Text (mkSpan (FileId 0) 0 0)
+txt = IR.Text sp
 
 code :: Text -> IR.Inline
-code t = IR.CharStyle (mkSpan (FileId 0) 0 0) "code" [txt t]
+code t = IR.CharStyle sp "code" [txt t]
 
 -- | The glue of the items, without the paragraph end.
 glues :: [Item] -> [(Sp, Sp, Sp)]

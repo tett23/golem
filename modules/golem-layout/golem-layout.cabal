@@ -52,6 +52,7 @@ test-suite golem-layout-test
   main-is:          Main.hs
   other-modules:    CodeSpaceSpec
                     CombiningSpec
+                    Fixtures
                     InseparableSpec
                     KnuthPlassReference
                     LineBreakingSpec

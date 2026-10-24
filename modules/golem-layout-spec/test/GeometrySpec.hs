@@ -9,23 +9,12 @@ import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import Fixtures (geom, grid, mm18, mm20, pt)
 import Golem.LayoutSpec
 import Golem.Project.Style
 import Golem.Syntax
 import Test.Tasty
 import Test.Tasty.HUnit
-
-pt :: Integer -> Sp
-pt = (* 65536)
-
--- 18mm and 20mm, as in the tests of Main
-mm18, mm20 :: Sp
-mm18 = 3343884
-mm20 = 3715427
-
--- | 10pt characters on a 17pt pitch, 18mm from the top, 20mm from the gutter.
-grid :: Int -> Int -> Int -> Maybe Dim -> Grid
-grid chars ls cols gap = Grid (Abs (pt 10)) chars ls (Abs (pt 17)) cols gap (Abs mm18) (Abs mm20)
 
 -- | A5, left binding, horizontal.
 a5 :: Grid -> Style
@@ -34,9 +23,6 @@ a5 g = defaultStyle {stPage = Just (Page (NamedSize "A5") False False (Just g) 0
 -- | A page of the given size in sp, left binding, horizontal.
 sized :: Sp -> Sp -> Grid -> Style
 sized w h g = defaultStyle {stPage = Just (Page (CustomSize w h) False False (Just g) 0)}
-
-geom :: Style -> PageGeometry
-geom s = either (error . show) id (pageGeometry (FileId 0) False s)
 
 -- | The message of the one G07001, or what came instead.
 g07001 :: Style -> Either Text [Sp]

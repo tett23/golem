@@ -7,18 +7,11 @@ module InseparableSpec (inseparableTests) where
 import Control.Monad (forM_)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Doc.IR qualified as IR
+import Fixtures (compose, fs)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
-import Golem.Syntax (FileId (..), mkSpan)
 import Test.Tasty
 import Test.Tasty.HUnit
-
-fs :: Sp
-fs = 10 * 65536
-
-compose :: ComposeEnv -> Text -> [Item]
-compose env t = fst (composeInlines env [IR.Text (mkSpan (FileId 0) 0 0) t])
 
 -- | Every combination of strict kinsoku, vertical writing and hanging punctuation.
 envs :: [(String, ComposeEnv)]
