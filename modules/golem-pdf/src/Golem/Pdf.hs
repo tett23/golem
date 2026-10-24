@@ -13,7 +13,7 @@ module Golem.Pdf
 where
 
 import Golem.Pdf.Drawing
-import Golem.Pdf.Image
+import Golem.Pdf.Image hiding (flate)
 import Golem.Pdf.Import
 import Golem.Pdf.Marks
 import Golem.Pdf.Number

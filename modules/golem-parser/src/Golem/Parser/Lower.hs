@@ -171,7 +171,7 @@ A hard break stays even at the edges; the evaluation reports it there
 (docs/adr ADR 0016).
 -}
 inlines :: [P] -> [Located Inline]
-inlines = mergeText . dropEdgeBreaks . concatMap inline . trimEnds
+inlines = joinText . dropEdgeBreaks . concatMap inline . trimEnds
   where
     dropEdgeBreaks = reverse . dropWhile isBreak . reverse . dropWhile isBreak
     isBreak (Located _ SoftBreak) = True
@@ -245,13 +245,6 @@ proofText :: Text -> Text
 proofText = T.strip . dropEnd . T.drop 3
   where
     dropEnd t = fromMaybe t (T.stripSuffix "%%" t)
-
--- | Neighbouring 'Text' joined; 'Escaped' is not joined (golem-parser ADR 0010).
-mergeText :: [Located Inline] -> [Located Inline]
-mergeText (Located a (Text x) : Located b (Text y) : rest) =
-  mergeText (Located (mkSpan (spanFile a) (spanStart a) (spanEnd b)) (Text (x <> y)) : rest)
-mergeText (x : rest) = x : mergeText rest
-mergeText [] = []
 
 command :: P -> Located Inline
 command (PN _ sp cs) =

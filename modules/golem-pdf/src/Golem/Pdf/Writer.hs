@@ -29,7 +29,6 @@ module Golem.Pdf.Writer
   )
 where
 
-import Codec.Compression.Zlib qualified as Z
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Builder qualified as B
@@ -290,9 +289,6 @@ contentStreamWith fontNames imageNames formNames marks = BL.toStrict (B.toLazyBy
     curve (a, b, c) = point a <> sp <> point b <> sp <> point c <> " c" <> nl
 
 -- ------------------------------------------------------------------ serialization
-
-flate :: ByteString -> ByteString
-flate = BL.toStrict . Z.compressWith Z.defaultCompressParams {Z.compressLevel = Z.compressionLevel 9} . BL.fromStrict
 
 serialize :: Obj -> B.Builder
 serialize = \case

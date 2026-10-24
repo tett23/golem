@@ -25,7 +25,6 @@ module Golem.Pdf.Import
   )
 where
 
-import Codec.Compression.Zlib qualified as Z
 import Control.Applicative ((<|>))
 import Control.Monad (ap, foldM, guard, unless, when)
 import Data.Bifunctor (first)
@@ -50,7 +49,7 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Word (Word8)
 import Golem.Pdf.Drawing (Drawing)
-import Golem.Pdf.Image (ImageData, inflateUpTo, unfilterPng)
+import Golem.Pdf.Image (ImageData, flate, inflateUpTo, unfilterPng)
 import Golem.Pdf.Number (showRationalDigits)
 import Golem.Pdf.Object
 import Golem.Pdf.Sha256 (sha256)
@@ -1371,9 +1370,6 @@ addSrgb deref = \case
           _ -> []
      in ODict (filter ((/= "ColorSpace") . fst) kv <> [("ColorSpace", ODict (filter ((/= "GolemSRGB") . fst) spaces <> [("GolemSRGB", srgbSpace)]))])
   other -> other
-
-flate :: ByteString -> ByteString
-flate = BL.toStrict . Z.compressWith Z.defaultCompressParams {Z.compressLevel = Z.compressionLevel 9} . BL.fromStrict
 
 -- ------------------------------------------------------------------ content streams
 
