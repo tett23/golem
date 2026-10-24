@@ -43,6 +43,7 @@ import Golem.Doc.ListMarkers
 import Golem.Doc.Numbering (numberSeparator)
 import Golem.Doc.Numerals
 import Golem.Syntax.Span
+import Golem.Syntax.Text (escapeXml, showRationalDigits, tshow)
 import Numeric (showHex)
 import Skylighting qualified as S
 import System.FilePath (makeRelative, replaceExtension, splitDirectories, takeDirectory, takeFileName, (</>))
@@ -214,14 +215,6 @@ data XhtmlSite = XhtmlSite
 
 pagePath :: FileTable -> FileId -> FilePath
 pagePath ft fid = replaceExtension (fromMaybe "unknown" (lookupPath fid ft)) "xhtml"
-
-escapeXml :: Text -> Text
-escapeXml = T.concatMap $ \case
-  '&' -> "&amp;"
-  '<' -> "&lt;"
-  '>' -> "&gt;"
-  '"' -> "&quot;"
-  c -> T.singleton c
 
 {- | The inside of a CSS string in double quotes (docs/adr ADR 0035): a
 quote or a backslash after a backslash, a control character as a
@@ -648,9 +641,6 @@ inline c = \case
   -- an empty span with a margin; word joiners keep the line from breaking around it (docs/adr ADR 0019)
   Aki _ a -> "&#x2060;<span class=\"aki\" style=\"margin-inline-start: " <> akiLength a <> "\"></span>&#x2060;"
 
-tshow :: (Show a) => a -> Text
-tshow = T.pack . show
-
 -- | The CSS length of an aki: zw in em, an absolute amount in pt.
 akiLength :: AkiAmount -> Text
 akiLength = \case
@@ -658,11 +648,7 @@ akiLength = \case
   AkiAbs x -> decimal (toRational x / 65536) <> "pt"
   where
     -- at most four decimal places, rounded half to even, without trailing zeros
-    decimal r =
-      let n = round (r * 10000) :: Integer
-          (i, f) = abs n `quotRem` 10000
-          frac = T.dropWhileEnd (== '0') (T.justifyRight 4 '0' (tshow f))
-       in (if n < 0 then "-" else "") <> tshow i <> (if T.null frac then "" else "." <> frac)
+    decimal = showRationalDigits 4
 
 sidenotes :: Ctx -> [Inline] -> Text
 sidenotes c is = T.concat ["<aside class=\"sidenote\"><span class=\"number\">" <> tshow n <> "</span>" <> inlines c xs <> "</aside>\n" | Sidenote _ n xs <- is]

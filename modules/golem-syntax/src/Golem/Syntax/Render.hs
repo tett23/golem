@@ -15,6 +15,7 @@ import Data.Text qualified as T
 import Golem.Syntax.Diagnostic
 import Golem.Syntax.Position
 import Golem.Syntax.Span
+import Golem.Syntax.Text (tshow)
 import Numeric (showHex)
 
 -- | What the renderers need to know about each file.
@@ -162,9 +163,6 @@ jsonSpan files sp =
         <> ",\"column\":"
         <> tshow (c + 1)
         <> "}"
-
-tshow :: Int -> Text
-tshow = T.pack . show
 
 -- | A JSON array with a fixed key order, one diagnostic per element.
 renderJson :: Map FileId SourceInfo -> [Diagnostic] -> Text

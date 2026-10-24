@@ -24,6 +24,7 @@ library
     Golem.Syntax.Render
     Golem.Syntax.Sha256
     Golem.Syntax.ShowTree
+    Golem.Syntax.Text
   build-depends:
     , array         >=0.5  && <0.6
     , base        >=4.20 && <4.21

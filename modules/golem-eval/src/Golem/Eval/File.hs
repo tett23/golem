@@ -65,6 +65,7 @@ import Golem.Project.Imports (ImportSite (..), importSite)
 import Golem.Project.Paths (PathError (..), pathErrorMessage)
 import Golem.Project.Style (Dim (..), LineBreaks (..), LocalStyles (..), Style, kentenShapeNames, noLocalStyles, paraLineBreaks, parseAki, parseDim, withLocalStyles)
 import Golem.Syntax
+import Golem.Syntax.Text (isSpaceTab, tshow)
 
 -- | The call of one plugin command.
 newtype PluginCommand = PluginCommand
@@ -1000,9 +1001,6 @@ blankEnd = \case
   A.Located _ (A.Escaped c) -> isSpaceTab c
   _ -> False
 
-isSpaceTab :: Char -> Bool
-isSpaceTab c = c == ' ' || c == '\t'
-
 -- ------------------------------------------------------------------ figures, tables, listings
 
 figure :: EvalContext -> SrcSpan -> [A.Located A.Argument] -> [A.Located A.Block] -> M [Block]
@@ -1133,7 +1131,6 @@ csvTable ctx sp args = do
       _ -> pure []
   where
     table as cell h body = block sp (Table as (map cell h) (map (map cell) body))
-    tshow = T.pack . show
 
 -- | Why a table file gives no table.
 data TableError
@@ -1181,8 +1178,6 @@ tableDiagnostic sp path = \case
       OverBytes n -> tshow n <> " バイト、上限は " <> tshow tableMaxBytes <> " バイト"
       OverRows r -> tshow r <> " 行目、上限は " <> tshow tableMaxRows <> " 行"
       OverCells r -> tshow r <> " 行目、上限は 1 行に " <> tshow tableMaxCells <> " 個"
-    tshow :: (Show a) => a -> Text
-    tshow = T.pack . show
 
 -- | The format of a table file (golem-eval ADR 0004).
 data TableFormat = TableCsv | TableTsv

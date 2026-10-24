@@ -26,6 +26,7 @@ import Golem.Preflight.Rules
 import Golem.Preflight.View
 import Golem.Project.Style (Sp, sizeSourcePath, sizeSourceText)
 import Golem.Syntax
+import Golem.Syntax.Text (tshow)
 import Numeric (showHex)
 
 check :: Rules -> View -> [Diagnostic]
@@ -85,9 +86,6 @@ pagesPhrase ps =
 
 pagesFact :: [Int] -> (Text, Fact)
 pagesFact ps = ("pdf-pages", FactInts (map toInteger ps))
-
-tshow :: (Show a) => a -> Text
-tshow = T.pack . show
 
 -- | A length in mm to one decimal (golem-cli ADR 0006).
 mmText :: Sp -> Text
