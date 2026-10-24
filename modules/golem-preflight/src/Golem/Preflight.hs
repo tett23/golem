@@ -13,7 +13,7 @@ module Golem.Preflight
 where
 
 import Data.ByteString (ByteString)
-import Data.Char (GeneralCategory (..), generalCategory, isControl, ord)
+import Data.Char (GeneralCategory (..), generalCategory, isControl)
 import Data.List (minimumBy, nub, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Ord (comparing)
@@ -27,7 +27,6 @@ import Golem.Preflight.View
 import Golem.Project.Style (Sp, sizeSourcePath, sizeSourceText)
 import Golem.Syntax
 import Golem.Syntax.Text (tshow)
-import Numeric (showHex)
 
 check :: Rules -> View -> [Diagnostic]
 check r v =
@@ -150,7 +149,7 @@ missingGlyphs v =
   [ MissingGlyph (gvLineSpan g) msg [("code-point", FactText cp), ("font", FactText (gvFont g)), pagesFact ps, ("count", FactInt (toInteger (length gs)))]
   | ((t, font), ps, gs@(g : _)) <- groups [((gvText gl, gvFont gl), pvIndex p, gl) | p <- vwPages v, gl <- pvGlyphs p, gvGlyph gl == 0],
     let c = maybe ' ' fst (T.uncons t)
-        cp = "U+" <> T.justifyRight 4 '0' (T.toUpper (T.pack (showHex (ord c) "")))
+        cp = codePointText c
         shown = if isControl c || isMark c then "" else "「" <> T.singleton c <> "」"
         msg = "フォントにグリフのない文字です: " <> cp <> shown <> "（" <> font <> "、" <> pagesPhrase ps <> "）"
   ]
