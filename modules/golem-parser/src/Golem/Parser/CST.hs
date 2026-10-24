@@ -21,7 +21,6 @@ module Golem.Parser.CST
     withPositions,
     tokens,
     pretty,
-    isTriviaKind,
   )
 where
 
@@ -113,9 +112,6 @@ data SyntaxKind
     NNumberShorthand
   | NErrorNode
   deriving stock (Eq, Ord, Show, Enum, Bounded)
-
-isTriviaKind :: SyntaxKind -> Bool
-isTriviaKind k = k `elem` [KWhitespace, KComment]
 
 data Token = Token
   { tokKind :: !SyntaxKind,
