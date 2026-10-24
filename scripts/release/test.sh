@@ -248,6 +248,30 @@ run check_notes "$GOOD
 - See ftp://example.com/x.
 "
 expect "check-notes: another scheme" 1
+# GitHub renders each of these as a link to another site or repository
+# (the security audit of 2026-10-24)
+run check_notes "$GOOD
+- See [here](
+//evil.example/x).
+"
+expect "check-notes: a link whose target is on the next line" 1
+run check_notes "$GOOD
+- See <a
+href=\"//evil.example/x\">here</a>.
+"
+expect "check-notes: an HTML link whose href is on the next line" 1
+run check_notes "$GOOD
+- See [up](https://github.com/tett23/golem/&#46;&#46;/other/pull/3).
+"
+expect "check-notes: a dot segment written as character references" 1
+run check_notes "$GOOD
+- See [up](https://github.com/tett23/golem/\\.\\./other/pull/3).
+"
+expect "check-notes: a dot segment written with backslash escapes" 1
+run check_notes "$GOOD
+- See [up](https://github.com/tett23/golem/%2E./other/pull/3).
+"
+expect "check-notes: a dot segment written with a capital percent escape" 1
 
 # allowed-links.txt: each line starts with https:// and ends with /
 ALLOWED=$HERE/allowed-links.txt

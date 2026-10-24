@@ -10,7 +10,10 @@
 # starts with a prefix of allowed-links.txt. The links are those of
 # [text](URL), reference links, bare URLs of any scheme, <URL> autolinks,
 # www. autolinks and <a> tags; an http:// link fails even when the list
-# names it. A failure is one line on stderr and the exit code is 1.
+# names it. A target may start on the line after "](" or "<a", and a
+# target with "&" or a backslash fails, since Markdown decodes character
+# references and escapes in it. A failure is one line on stderr and the
+# exit code is 1.
 #
 # Environment: ALLOWED_LINKS (the allow list, allowed-links.txt next to
 # this script by default; for the tests).
@@ -41,19 +44,23 @@ grep -Eq '^##? [A-Z][A-Za-z ]*$' "$NOTES" || fail "no English heading"
 if grep -Eq '^#+ *Unsorted' "$NOTES"; then fail "the Unsorted section is left"; fi
 
 TMP=$(mktemp)
-trap 'rm -f "$TMP"' EXIT
+JOINED=$(mktemp)
+trap 'rm -f "$TMP" "$JOINED"' EXIT
+# the notes on one line: Markdown lets the target of [text]( and the
+# attributes of an HTML tag start on the next line
+tr '\n' ' ' <"$NOTES" >"$JOINED"
 
 # the targets of the links, one per line
 first_word() { sed -E 's/^[[:space:]]*//; s/[[:space:]].*//; s/^<//; s/>$//'; }
 {
-  grep -Eo '\]\([^)]*\)' "$NOTES" | sed -E 's/^\]\(//; s/\)$//' | first_word || true
+  grep -Eo '\]\([^)]*\)' "$JOINED" | sed -E 's/^\]\(//; s/\)$//' | first_word || true
   grep -E '^ {0,3}\[[^]]+\]:' "$NOTES" | sed -E 's/^ *\[[^]]*\]://' | first_word || true
   grep -Eo '<[A-Za-z][A-Za-z0-9+.-]*:[^ <>]*>' "$NOTES" | sed -E 's/^<//; s/>$//' || true
   grep -Eo "[A-Za-z][A-Za-z0-9+.-]*://[^][)( <>\"'\`]*" "$NOTES" || true
 } >"$TMP"
 
 # every <a> tag has an href, and the href is a target
-grep -Eoi '<a([[:space:]][^>]*)?>' "$NOTES" | while IFS= read -r tag; do
+grep -Eoi '<a([[:space:]][^>]*)?>' "$JOINED" | while IFS= read -r tag; do
   href=$(printf '%s\n' "$tag" | sed -En "s/.*[Hh][Rr][Ee][Ff][[:space:]]*=[[:space:]]*[\"']?([^\"' >]*).*/\\1/p")
   [ -n "$href" ] || fail "an HTML link with no href: $tag"
   printf '%s\n' "$href" >>"$TMP"
@@ -67,6 +74,9 @@ while IFS= read -r url; do
   case $url in
     http://* | HTTP://*) fail "an http link: $url" ;;
     *..* | *%2[Ee]*) fail "a link with a dot segment: $url" ;;
+    # Markdown decodes character references and backslash escapes in a
+    # target, so &#46; and \. can write a dot segment
+    *\&* | *\\*) fail "a link with a character reference or a backslash: $url" ;;
   esac
   allowed=false
   while IFS= read -r prefix; do
