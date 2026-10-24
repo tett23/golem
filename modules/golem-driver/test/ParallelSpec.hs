@@ -32,15 +32,13 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.Pdf (Shaping (..))
-import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Support
-import System.Directory (createDirectoryIfMissing)
 import System.Environment (lookupEnv)
-import System.FilePath (takeDirectory, takeFileName, (</>))
+import System.FilePath (takeFileName, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -75,7 +73,7 @@ buildChapters fonts parallel style files chapters = withSystemTempDirectory "gol
   let names = T.intercalate ", " [T.pack (show name) | (name, _) <- chapters]
   TIO.writeFile (tmp </> "manifest.toml") ("chapters = [" <> names <> "]\n" <> T.dropWhile (/= '\n') (TE.decodeUtf8 miniManifest))
   writeStyleWithFont tmp style
-  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp files
   forM_ chapters $ \(name, src) -> TIO.writeFile (tmp </> name) src
   r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fonts, optParallel = parallel}
   pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
@@ -194,12 +192,6 @@ parallelTests race =
         ),
       testGroup "fixture books" [bookTest race "tempest", bookTest race "kanikosen"]
     ]
-
-notoFonts :: IO LoadedFonts
-notoFonts = do
-  src <- TIO.readFile "test/fixtures/kanikosen/style.toml"
-  style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
-  loadFonts realProvider "test/fixtures/kanikosen" (FileId 0) style [] >>= either (assertFailure . show) pure
 
 {- | A fixture book built in parallel on every capability gives the PDF of
 a sequential build, n times (the factor of GOLEM_RACE_TESTS).

@@ -27,7 +27,7 @@ import Golem.Preflight.View (ImageView (..), LineView (..), PageView (..), View 
 import Golem.Syntax
 import Support
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -51,10 +51,7 @@ png interlaced =
 -- | A build of the one-chapter project to the targets, in a profile: the error codes and whether a PDF was written.
 buildIn :: Profile -> [Target] -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Bool)
 buildIn profile targets source files = withSystemTempDirectory "golem-figure" $ \tmp -> do
-  BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
-  BS.writeFile (tmp </> "style.toml") (withBodyFont (figStyle horizontalStyle))
-  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
-  forM_ (bodyFontFiles horizontalStyle <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeProject tmp (miniManifest <> "\n[targets.html]\n") (figStyle horizontalStyle) source files
   r <- build (defaultOptions tmp) {optTargets = Just targets, optFonts = fakeProvider, optProfile = profile}
   pdf <- doesFileExist (tmp </> "build/a.pdf")
   pure (map diagCode (filter isError (brDiagnostics r)), pdf || any (".pdf" `isSuffixOf`) (brWritten r))
@@ -173,10 +170,7 @@ pdfFigureTests =
         codes @?= [DiagnosticCode "G08010", DiagnosticCode "G08010"]
         written @?= False,
     testCase "the message of G08010 has the path and the reason" $ withSystemTempDirectory "golem-figure" $ \tmp -> do
-      BS.writeFile (tmp </> "manifest.toml") miniManifest
-      BS.writeFile (tmp </> "style.toml") (withBodyFont (figStyle horizontalStyle))
-      BS.writeFile (tmp </> "a.gm") "@figure images/b.png alt=\"t\"\n"
-      forM_ (bodyFontFiles horizontalStyle <> [("images/b.png", png True)]) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+      writeProject tmp miniManifest (figStyle horizontalStyle) "@figure images/b.png alt=\"t\"\n" [("images/b.png", png True)]
       r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
       map diagMessage (filter isError (brDiagnostics r)) @?= ["図版を PDF に置けません: images/b.png（インターレースの PNG は使えません）"],
     testCase "an encrypted PDF figure is G08010" $ do
@@ -221,10 +215,7 @@ innerFormNested pdf = do
 -- | The PDF of a one-chapter project with files, or the error codes.
 pdfWith :: Profile -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Maybe BS.ByteString, [T.Text])
 pdfWith profile source files = withSystemTempDirectory "golem-svg" $ \tmp -> do
-  BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
-  BS.writeFile (tmp </> "style.toml") (withBodyFont (figStyle horizontalStyle))
-  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
-  forM_ (bodyFontFiles horizontalStyle <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeProject tmp (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n") (figStyle horizontalStyle) source files
   r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider, optProfile = profile}
   pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
     [p] -> Just <$> BS.readFile p
@@ -352,10 +343,7 @@ svgFigureTests =
 -- | A build of a one-chapter project with files to the targets: the errors (code, message, line of the span) and the files under build.
 activeBuild :: Profile -> [Target] -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([(DiagnosticCode, T.Text)], [Diagnostic], Bool, Bool, Bool)
 activeBuild profile targets source files = withSystemTempDirectory "golem-active" $ \tmp -> do
-  BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n")
-  BS.writeFile (tmp </> "style.toml") (withBodyFont (figStyle horizontalStyle))
-  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
-  forM_ (bodyFontFiles horizontalStyle <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeProject tmp (miniManifest <> "\n[targets.html]\n\n[targets.epub]\n") (figStyle horizontalStyle) source files
   r <- build (defaultOptions tmp) {optTargets = Just targets, optFonts = fakeProvider, optProfile = profile}
   html <- doesDirectoryExist (tmp </> "build/html")
   epub <- doesDirectoryExist (tmp </> "build/epub")
@@ -497,10 +485,7 @@ turnPrefix t r = fst (BS.breakSubstring "\n" (contentStream Map.empty Map.empty 
 -- | The view of golem preflight of a one-chapter project.
 viewOf :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO View
 viewOf style source files = withSystemTempDirectory "golem-fit" $ \tmp -> do
-  BS.writeFile (tmp </> "manifest.toml") miniManifest
-  BS.writeFile (tmp </> "style.toml") (withBodyFont style)
-  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
-  forM_ (bodyFontFiles style <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeProject tmp miniManifest style source files
   p <- preflight (defaultPreflightOptions tmp) {poFonts = fakeProvider}
   maybe (assertFailure (show (prDiagnostics p))) pure (prView p)
 

@@ -14,8 +14,7 @@ import Golem.Eval.File (EvalResult (..))
 import Golem.Project (Project (..), SourceFile (..))
 import Golem.Syntax
 import Support
-import System.Directory (createDirectoryIfMissing)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -29,7 +28,7 @@ withTables :: [(FilePath, BS.ByteString)] -> [(FilePath, BS.ByteString)] -> (Fil
 withTables chapters files act = withSystemTempDirectory "golem-tables" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") (manifestOf (map fst chapters))
   BS.writeFile (tmp </> "style.toml") horizontalStyle
-  forM_ (chapters <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp (chapters <> files)
   act tmp
 
 check :: FilePath -> IO BuildResult

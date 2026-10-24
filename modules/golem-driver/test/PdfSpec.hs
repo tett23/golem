@@ -30,7 +30,7 @@ import Golem.TestSupport.ExternalTool (needsTool)
 import Numeric (readHex)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, findExecutable)
-import System.FilePath (takeDirectory, takeFileName, (</>))
+import System.FilePath (takeFileName, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -193,12 +193,6 @@ pdfPipelineTests =
     ]
   where
     sansStyle = horizontalStyle <> "\n[fonts.body]\nlatin = \"fonts/sans.otf\"\n"
-
-notoFonts :: IO LoadedFonts
-notoFonts = do
-  src <- TIO.readFile "test/fixtures/kanikosen/style.toml"
-  style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
-  loadFonts realProvider "test/fixtures/kanikosen" (FileId 0) style [] >>= either (assertFailure . show) pure
 
 -- | Source Han Sans (subset) and Source Sans Pro of golem-font's tests; the role palt has the feature palt.
 featureFonts :: IO LoadedFonts
@@ -415,7 +409,7 @@ layoutHidden :: Maybe P.MarkStyle -> BS.ByteString -> BS.ByteString -> [(FilePat
 layoutHidden marks manifest style sources = withSystemTempDirectory "golem-hidden" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") manifest
   BS.writeFile (tmp </> "style.toml") style
-  forM_ sources $ \(to, src) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) (TE.encodeUtf8 src)
+  writeTexts tmp sources
   ev <- evaluateProject Dev tmp
   case ev of
     Left f -> assertFailure (show (pfDiagnostics f))
@@ -1022,17 +1016,11 @@ filledRects content = [map (read . BC.unpack) (take 4 ws) | l <- BC.lines conten
 -- | Every diagnostic of a build of the one-chapter project, with the fake fonts.
 buildAllWith :: (BuildOptions -> BuildOptions) -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO BuildResult
 buildAllWith f style source files = withSystemTempDirectory "golem-code" $ \tmp -> do
-  BS.writeFile (tmp </> "manifest.toml") miniManifest
-  BS.writeFile (tmp </> "style.toml") (withBodyFont style)
-  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
-  forM_ (bodyFontFiles style <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeProject tmp miniManifest style source files
   build (f (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider})
 
 buildAll :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO BuildResult
 buildAll = buildAllWith id
-
-codeOf :: BuildResult -> T.Text -> [Diagnostic]
-codeOf r c = [d | d <- brDiagnostics r, diagCode d == DiagnosticCode c]
 
 codeTests :: [TestTree]
 codeTests =
@@ -1068,10 +1056,10 @@ codeTests =
             ],
     testCase "G07030: one notice for a block with wrapped lines, with the number of lines" $ do
       r <- buildAll horizontalStyle "```\nabcdefghijklmnopqrstuvwxyzabcd\nx\nabcdefghijklmnopqrstuvwxyzabcd\n```\n" []
-      [(diagMessage d, diagSeverity d) | d <- codeOf r "G07030"] @?= [("コードの行を折り返しました（2 行）", Notice)]
+      [(diagMessage d, diagSeverity d) | d <- diagnosticsOf "G07030" (brDiagnostics r)] @?= [("コードの行を折り返しました（2 行）", Notice)]
       assertBool "the PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
       r' <- buildAll horizontalStyle "```\nabc\n```\n" []
-      codeOf r' "G07030" @?= [],
+      diagnosticsOf "G07030" (brDiagnostics r') @?= [],
     testCase "the grid: three rows of 11Q code on 13Q and 22H take three lines; the text after is on the grid" $ do
       (_, pl) <- layoutOk (grid13 <> "\n[paragraph-styles.code]\nsize = \"11Q\"\n") "```\na\nb\nc\n```\n\n本文。\n" []
       case plPages pl of
@@ -1130,15 +1118,15 @@ codeTests =
       -- of 14 characters, two levels and the padding leave 8, three leave 6
       let style = replaceIn "characters = 12" "characters = 14" horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n    - c\n\n      ```\n      x\n      ```\n" []
-      [(diagMessage d, spanStart (diagSpan d)) | d <- codeOf r "G07043"] @?= [("コードブロックの行長が足りません", 19)]
+      [(diagMessage d, spanStart (diagSpan d)) | d <- diagnosticsOf "G07043" (brDiagnostics r)] @?= [("コードブロックの行長が足りません", 19)]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    x\n    ```\n" []
-      codeOf ok "G07043" @?= [],
+      diagnosticsOf "G07043" (brDiagnostics ok) @?= [],
     testCase "G07043: too little measure at the top, reported by golem check too" $ do
       let style = horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"3zw\"\n"
       r <- buildAllWith (\o -> o {optCheckOnly = True}) style "```\nx\n```\n" []
-      map diagMessage (codeOf r "G07043") @?= ["コードブロックの行長が足りません"],
+      map diagMessage (diagnosticsOf "G07043" (brDiagnostics r)) @?= ["コードブロックの行長が足りません"],
     testCase "G07043 at the boundary: one row and its padding as tall as a page" $ do
-      rs <- mapM (\n -> (n,) . map diagMessage . (`codeOf` "G07043") <$> buildAll (replaceIn "lines = 30" ("lines = " <> T.pack (show n)) horizontalStyle) "```\nx\n```\n" []) [1 .. 4 :: Int]
+      rs <- mapM (\n -> (n,) . map diagMessage . diagnosticsOf "G07043" . brDiagnostics <$> buildAll (replaceIn "lines = 30" ("lines = " <> T.pack (show n)) horizontalStyle) "```\nx\n```\n" []) [1 .. 4 :: Int]
       -- the row and its padding take two lines
       rs @?= [(1, ["コードブロックの一行が一ページに収まりません"]), (2, []), (3, []), (4, [])],
     testCase "G07043: padding that leaves exactly 8 characters is not G07043; more padding is" $ do
@@ -1147,10 +1135,10 @@ codeTests =
       ok <- buildAllWith (\o -> o {optCheckOnly = True}) (style "2zw") "```\nx\n```\n" []
       [diagCode d | d <- brDiagnostics ok, isError d] @?= []
       over <- buildAllWith (\o -> o {optCheckOnly = True}) (style "2.5zw") "```\nx\n```\n" []
-      map diagMessage (codeOf over "G07043") @?= ["コードブロックの行長が足りません"],
+      map diagMessage (diagnosticsOf "G07043" (brDiagnostics over)) @?= ["コードブロックの行長が足りません"],
     testCase "G07043: one row and its padding taller than a page" $ do
       r <- buildAll (replaceIn "lines = 30" "lines = 1" horizontalStyle) "```\nx\n```\n" []
-      map diagMessage (codeOf r "G07043") @?= ["コードブロックの一行が一ページに収まりません"],
+      map diagMessage (diagnosticsOf "G07043" (brDiagnostics r)) @?= ["コードブロックの一行が一ページに収まりません"],
     testCase "empty lines are rows, at the start, in the middle and at the end" $ do
       (_, pl) <- layoutOk horizontalStyle "```\n\nx\n\ny\n\n```\n" []
       map (map snd) (codeRows pl) @?= [[], ["x"], [], ["y"], []],
@@ -1178,10 +1166,10 @@ codeTests =
       assertBool "not embedded" (not ("SourceSansPro" `BS.isInfixOf` without)),
     testCase "G08008: without [fonts.code], code is set in the body role, with one notice" $ do
       r <- buildAll horizontalStyle "```\nabc\n```\n\n[code: x] and [code: y]\n" []
-      [(diagMessage d, diagSeverity d) | d <- codeOf r "G08008"] @?= [("コードの書体の役割 code がないので、本文の書体で組みます", Notice)]
+      [(diagMessage d, diagSeverity d) | d <- diagnosticsOf "G08008" (brDiagnostics r)] @?= [("コードの書体の役割 code がないので、本文の書体で組みます", Notice)]
       assertBool "the PDF" (any (".pdf" `isSuffixOf`) (brWritten r))
       r' <- buildAll horizontalStyle "本文。\n" []
-      codeOf r' "G08008" @?= [],
+      diagnosticsOf "G08008" (brDiagnostics r') @?= [],
     testCase "[code: manifest.toml] at the line end is not hyphenated: the whole goes to the next line" $ do
       ts <- listPages horizontalStyle "あいうえおかきくけ[code: manifest.toml]です。\n"
       assertBool (show ts) (any ("manifest.toml" `T.isPrefixOf`) ts),
@@ -1239,9 +1227,9 @@ codeTests =
       -- of 14 characters, two levels of the bullet • (golem-driver ADR 0044) and the padding leave 8
       let style = replaceIn "characters = 12" "characters = 14" horizontalStyle <> "\n[paragraph-styles.code]\npadding = \"1zw\"\n"
       r <- buildAll style "- a\n  - b\n\n    ``` numbers=100 diff=true\n    +x\n    ```\n" []
-      map diagMessage (codeOf r "G07043") @?= ["コードブロックの行長が足りません"]
+      map diagMessage (diagnosticsOf "G07043" (brDiagnostics r)) @?= ["コードブロックの行長が足りません"]
       ok <- buildAll style "- a\n  - b\n\n    ```\n    +x\n    ```\n" []
-      codeOf ok "G07043" @?= [],
+      diagnosticsOf "G07043" (brDiagnostics ok) @?= [],
     testCase "file: one more row with the file name first, not repeated after a page break" $ do
       (_, plain) <- layoutOk horizontalStyle "```\na\nb\n```\n" []
       (_, named) <- layoutOk horizontalStyle "``` file=a.hs\na\nb\n```\n" []
@@ -1394,7 +1382,7 @@ codeTests =
     withCode style src k = withSystemTempDirectory "golem-code-html" $ \tmp -> do
       BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
       BS.writeFile (tmp </> "style.toml") (withBodyFont style)
-      forM_ fakeFontFiles $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+      writeFiles tmp fakeFontFiles
       BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 src)
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
       assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
@@ -1809,7 +1797,7 @@ combiningTests =
     testCase "shapeText: cafe◌́ in a role of two faces is all in the Latin face" $
       withSystemTempDirectory "golem-combining" $ \tmp -> do
         files <- combiningFiles
-        forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+        writeFiles tmp files
         style <- either (assertFailure . show) pure (parseStyle (FileId 0) "[fonts.body]\nja = \"fonts/noto.otf\"\nlatin = \"fonts/serif.ttf\"\n")
         fonts <- loadFonts golemFontProvider tmp (FileId 0) style [] >>= either (assertFailure . show) pure
         let faceOf t = nub (map shFace (lfShape fonts (Shaping "body" False []) t))
