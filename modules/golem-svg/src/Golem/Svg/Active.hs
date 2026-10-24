@@ -10,12 +10,13 @@ module Golem.Svg.Active
 where
 
 import Data.ByteString (ByteString)
-import Data.Char (isSpace, toLower)
+import Data.Char (isHexDigit, isSpace, toLower)
+import Data.IntMap.Strict qualified as IntMap
 import Data.List (sortOn)
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Svg.Css (stripComments)
 import Golem.Svg.Xml
+import Numeric (readHex)
 
 -- | One thing that is refused: its name and where it is in the file.
 data Active = Active
@@ -78,22 +79,69 @@ css t (Pos l c) =
   ]
 
 {- | @import and url() whose target does not start with #, with their
-offsets, in order; comments are blanked first, keeping the offsets.
+offsets, in order. The text is read as CSS tokenizes it: comments are
+dropped, but not inside strings, and escapes are decoded, so that
+@\\69mport and \\75 rl( are found too (security audit 2026-10-24).
 Letters are compared without case, as CSS does.
 -}
 cssRefs :: Text -> [(Text, Int)]
 cssRefs t0 =
   sortOn snd $
-    [("@import", o) | (o, _) <- occurrences "@import"]
-      <> [("url()", o) | (o, after) <- occurrences "url(", not ("#" `T.isPrefixOf` T.dropWhile (\ch -> isSpace ch || ch == '"' || ch == '\'') after)]
+    [("@import", origin o) | (o, _) <- occurrences "@import"]
+      <> [("url()", origin o) | (o, after) <- occurrences "url(", not ("#" `T.isPrefixOf` T.dropWhile (\ch -> isSpace ch || ch == '"' || ch == '\'') after)]
   where
-    t = T.map toLower (stripComments t0)
+    decoded = cssChars t0
+    t = T.pack (map (toLower . fst) decoded)
+    offsets = IntMap.fromDistinctAscList (zip [0 ..] (map snd decoded))
+    origin o = IntMap.findWithDefault (T.length t0) o offsets
     -- each occurrence of a text: its offset and what follows it, in time linear in the text
     occurrences p = go 0 (T.splitOn p t)
       where
         go off = \case
           x : rest@(y : _) -> (off + T.length x, y) : go (off + T.length x + T.length p) rest
           _ -> []
+
+{- | The characters of CSS as its tokenizer sees them, each with the offset
+in the text where it starts: comments outside strings dropped, escapes
+decoded (CSS Syntax Level 3, 4.3.7), a backslash and a newline in a
+string dropped.
+-}
+cssChars :: Text -> [(Char, Int)]
+cssChars = go Nothing 0
+  where
+    go quote off t = case T.uncons t of
+      Nothing -> []
+      Just (c, rest)
+        | Nothing <- quote,
+          c == '/',
+          Just ('*', rest') <- T.uncons rest ->
+            let (comment, after) = T.breakOn "*/" rest'
+                used = 2 + T.length comment + min 2 (T.length after)
+             in go quote (off + used) (T.drop (min 2 (T.length after)) after)
+        | c == '\\' -> escape quote off rest
+        | Just q <- quote, c == q -> (c, off) : go Nothing (off + 1) rest
+        | Just _ <- quote, c == '\n' -> (c, off) : go Nothing (off + 1) rest
+        | Nothing <- quote, c == '"' || c == '\'' -> (c, off) : go (Just c) (off + 1) rest
+        | otherwise -> (c, off) : go quote (off + 1) rest
+    escape quote off rest =
+      let hex = T.takeWhile isHexDigit (T.take 6 rest)
+          after = T.drop (T.length hex) rest
+          space = case T.uncons after of
+            Just ('\r', r) | Just ('\n', _) <- T.uncons r -> 2
+            Just (w, _) | w `elem` [' ', '\t', '\n', '\r', '\f'] -> 1
+            _ -> 0
+          value = case readHex (T.unpack hex) of
+            [(v, "")] -> v
+            _ -> 0 :: Int
+          ch
+            | value == 0 || value > 0x10FFFF || (value >= 0xD800 && value <= 0xDFFF) = '\xFFFD'
+            | otherwise = toEnum value
+       in case () of
+            _
+              | not (T.null hex) -> (ch, off) : go quote (off + 1 + T.length hex + space) (T.drop space after)
+              | Just ('\n', r) <- T.uncons rest, Just _ <- quote -> go quote (off + 2) r
+              | Just (e, r) <- T.uncons rest -> (e, off) : go quote (off + 2) r
+              | otherwise -> [('\\', off)]
 
 at :: Text -> Pos -> Active
 at n (Pos l c) = Active n l c
