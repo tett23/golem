@@ -5,20 +5,18 @@ import Control.Exception (evaluate)
 import Control.Monad (unless)
 import Data.ByteString qualified as BS
 import Data.Map.Strict qualified as Map
-import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import GHC.Stats (RTSStats (..), getRTSStats, getRTSStatsEnabled)
 import Golem.Doc.IR
 import Golem.Eval.File
-import Golem.Parser (parseAst)
-import Golem.Parser.SourceSettings
 import Golem.Project.Style (defaultStyle, paraLineBreaks)
 import Golem.Syntax
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Support
 import System.Mem (performGC)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -41,17 +39,8 @@ csv = parsed . parseCsv fid
 
 ctx :: EvalContext
 ctx =
-  EvalContext
-    { ctxFile = FileId 1,
-      ctxPath = "ch/01.gm",
-      ctxProfile = Dev,
-      ctxMeta = Map.empty,
-      ctxImports = Map.empty,
-      ctxSwatches = Set.empty,
-      ctxCharStyles = Set.empty,
-      ctxParaStyles = paraLineBreaks defaultStyle,
-      ctxDefaultKenten = "sesame",
-      ctxCiteKeys = Set.empty,
+  baseCtx
+    { ctxParaStyles = paraLineBreaks defaultStyle,
       ctxAssets =
         Map.fromList
           [ ("x.tsv", AssetText (FileId 5) "a\tb\tc\n1\t2\t3\n"),
@@ -72,19 +61,11 @@ ctx =
             ("max-cells.csv", AssetText (FileId 20) (T.intercalate "," (replicate tableMaxCells "a") <> "\n")),
             ("over-cells.csv", AssetText (FileId 21) (T.intercalate "," (replicate (tableMaxCells + 1) "a") <> "\n")),
             ("too-large.csv", AssetTableTooLarge 16777217 Nothing)
-          ],
-      ctxPlugins = noPlugins,
-      ctxSource = defaultSourceSettings,
-      ctxStyle = defaultStyle
+          ]
     }
 
 run :: Text -> ([BlockBody], [(Text, Text, Int, Int)])
-run src =
-  let (file, _, pds) = parseAst (FileId 1) src
-      r = evalFile ctx file
-   in ( map blockBody (docBlocks (erDocument r)),
-        [(c, diagMessage d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- pds <> erDiagnostics r, let DiagnosticCode c = diagCode d]
-      )
+run src = let (ds, r) = evalSource ctx src in (resultBodies r, map diagSite ds)
 
 -- | The cells of the table of a source, without spans, and its alignments.
 table :: Text -> Maybe ([Alignment], [[Text]], [[[Text]]])
