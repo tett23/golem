@@ -14,9 +14,10 @@ where
 
 import Data.ByteString (ByteString)
 import Data.Char (GeneralCategory (..), generalCategory, isControl, ord)
-import Data.List (minimumBy, nub, sort, sortOn)
+import Data.List (minimumBy, nub, sortOn)
 import Data.Map.Strict qualified as Map
 import Data.Ord (comparing)
+import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.LayoutSpec (Rect (..))
@@ -65,9 +66,13 @@ each group in order.
 -}
 groups :: (Ord k) => [(k, Int, a)] -> [(k, [Int], [a])]
 groups xs =
-  let keys = nub [k | (k, _, _) <- xs]
-      byKey = Map.fromListWith (flip (<>)) [(k, [(p, a)]) | (k, p, a) <- xs]
-   in [(k, nub (sort (map fst pas)), map snd pas) | k <- keys, Just pas <- [Map.lookup k byKey]]
+  [(k, Set.toAscList ps, reverse as) | (k, (_, ps, as)) <- sortOn (\(_, (i, _, _)) -> i) (Map.toList byKey)]
+  where
+    -- the index of the first occurrence, the pages and the values in reverse,
+    -- in time n log n of the input (the security audit of 2026-10-24)
+    byKey = foldl' step Map.empty (zip [0 :: Int ..] xs)
+    step m (i, (k, p, a)) = Map.alter (Just . maybe (i, Set.singleton p, [a]) (add p a)) k m
+    add p a (i, ps, as) = let ps' = Set.insert p ps in ps' `seq` (i, ps', a : as)
 
 {- | @PDF の 1、2 ページ目@: at most ten pages, then @ほか <n> ページ@
 (golem-cli ADR 0006).
