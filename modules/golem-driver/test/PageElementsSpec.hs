@@ -25,7 +25,7 @@ import Golem.Project.Style (Dim (..), HeadForm (..), HeadPick (..), RunningConte
 import Golem.Syntax
 import Support
 import System.Directory (createDirectoryIfMissing)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -116,7 +116,7 @@ footnoteTests =
       withSystemTempDirectory "golem-notes" $ \tmp -> do
         BS.writeFile (tmp </> "manifest.toml") (replaceIn "chapters = [\"a.gm\"]" "chapters = [[\"a.gm\", \"b.gm\"]]" miniManifest <> "\n[targets.html]\n\n[targets.text]\nvariants = [\"horizontal\"]\n")
         BS.writeFile (tmp </> "style.toml") (withBodyFont horizontalStyle)
-        forM_ (bodyFontFiles horizontalStyle) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+        writeFiles tmp (bodyFontFiles horizontalStyle)
         BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "一[note: 甲。]\n")
         BS.writeFile (tmp </> "b.gm") (TE.encodeUtf8 "二[note: 乙。]\n")
         r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf, TargetHtml, TargetText], optFonts = fakeProvider}
@@ -243,7 +243,7 @@ projectPdf :: BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -> IO BS.By
 projectPdf manifest style sources = withSystemTempDirectory "golem-project" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") manifest
   BS.writeFile (tmp </> "style.toml") (withBodyFont style)
-  forM_ (bodyFontFiles style) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp (bodyFontFiles style)
   forM_ sources $ \(to, src) -> BS.writeFile (tmp </> to) (TE.encodeUtf8 src)
   r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
   filter isError (brDiagnostics r) @?= []
@@ -455,8 +455,8 @@ runningHeadTests =
     buildHeads style files targets = withSystemTempDirectory "golem-heads" $ \tmp -> do
       BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
       BS.writeFile (tmp </> "style.toml") (withBodyFont style)
-      forM_ (bodyFontFiles style) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
-      forM_ files $ \(to, src) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) (TE.encodeUtf8 src)
+      writeFiles tmp (bodyFontFiles style)
+      writeTexts tmp files
       r <- build (defaultOptions tmp) {optTargets = Just (fromMaybe [TargetPdf] targets), optFonts = fakeProvider}
       pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
         [p] -> Just <$> BS.readFile p
@@ -676,7 +676,7 @@ emphasisTests =
       BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "[targets.html]\n")
       BS.writeFile (tmp </> "style.toml") "[fonts.body]\nja = \"fonts/b.otf\"\n\n[fonts.gothic]\nja = \"fonts/h.otf\"\n\n[character-styles.bold]\nfont = \"gothic\"\n"
       BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 "[bold: 太い]\n")
-      forM_ fakeFontFiles $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+      writeFiles tmp fakeFontFiles
       r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
       assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
       cssText <- TIO.readFile (tmp </> "build/html/style.css")

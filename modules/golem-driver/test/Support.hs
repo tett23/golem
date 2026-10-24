@@ -24,6 +24,7 @@ import Golem.Layout.Paginate (Flow (..), PageOut (..), Slotted (..))
 import Golem.LayoutSpec (PageGeometry (..), pageGeometry)
 import Golem.Pdf (Font (..), FontProgram (..))
 import Golem.Project (Project (..), ProjectFailure (..))
+import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (optionalTool)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
@@ -180,13 +181,31 @@ buildMini fonts parallel style source files = do
   (errs, pdf) <- buildMiniErrors fonts parallel style source files
   pure (map diagCode errs, pdf)
 
+{- | Writes files into a directory, making the folders on their paths; a
+later file of the same path replaces an earlier one.
+-}
+writeFiles :: FilePath -> [(FilePath, BS.ByteString)] -> IO ()
+writeFiles dir = mapM_ (\(to, bytes) -> createDirectoryIfMissing True (takeDirectory (dir </> to)) >> BS.writeFile (dir </> to) bytes)
+
+-- | 'writeFiles' with texts, written in UTF-8.
+writeTexts :: FilePath -> [(FilePath, T.Text)] -> IO ()
+writeTexts dir = writeFiles dir . map (fmap TE.encodeUtf8)
+
+{- | Writes a one-chapter project into a directory: the manifest,
+style.toml with 'withBodyFont', the chapter a.gm, then the files of the
+body font and the other files.
+-}
+writeProject :: FilePath -> BS.ByteString -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO ()
+writeProject dir manifest style source files = do
+  BS.writeFile (dir </> "manifest.toml") manifest
+  BS.writeFile (dir </> "style.toml") (withBodyFont style)
+  BS.writeFile (dir </> "a.gm") (TE.encodeUtf8 source)
+  writeFiles dir (bodyFontFiles style <> files)
+
 -- | 'buildMini' with the errors themselves.
 buildMiniErrors :: FontProvider -> Bool -> BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([Diagnostic], Maybe BS.ByteString)
 buildMiniErrors fonts parallel style source files = withSystemTempDirectory "golem-mini" $ \tmp -> do
-  BS.writeFile (tmp </> "manifest.toml") miniManifest
-  BS.writeFile (tmp </> "style.toml") (withBodyFont style)
-  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
-  forM_ (bodyFontFiles style <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeProject tmp miniManifest style source files
   r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fonts, optParallel = parallel}
   pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
     [p] -> Just <$> BS.readFile p
@@ -206,7 +225,7 @@ buildMarksFilesWith :: T.Text -> (BuildOptions -> BuildOptions) -> Maybe BS.Byte
 buildMarksFilesWith source f style files = withSystemTempDirectory "golem-marks" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") (miniManifest <> "\n[targets.html]\n")
   forM_ style (BS.writeFile (tmp </> "style.toml"))
-  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp files
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
   r <- build (f (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider})
   pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
@@ -301,7 +320,7 @@ withBodyFont style
 writeStyleWithFont :: FilePath -> BS.ByteString -> IO ()
 writeStyleWithFont tmp style = do
   BS.writeFile (tmp </> "style.toml") (withBodyFont style)
-  forM_ (bodyFontFiles style) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp (bodyFontFiles style)
 
 -- | The files 'withBodyFont' needs.
 bodyFontFiles :: BS.ByteString -> [(FilePath, BS.ByteString)]
@@ -325,7 +344,7 @@ layoutMiniFonts provider manifest style source files = withSystemTempDirectory "
   BS.writeFile (tmp </> "manifest.toml") manifest
   BS.writeFile (tmp </> "style.toml") style
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
-  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp files
   ev <- evaluateProject Dev tmp
   case ev of
     Left f -> pure (Left (pfDiagnostics f))
@@ -351,7 +370,7 @@ layoutHeads :: BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -> IO (Map
 layoutHeads manifest style sources = withSystemTempDirectory "golem-heads" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") manifest
   BS.writeFile (tmp </> "style.toml") style
-  forM_ sources $ \(to, src) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) (TE.encodeUtf8 src)
+  writeTexts tmp sources
   ev <- evaluateProject Dev tmp
   case ev of
     Left f -> assertFailure (show (pfDiagnostics f))
@@ -435,7 +454,7 @@ pagesMini manifestExtra style source files bib = withSystemTempDirectory "golem-
   BS.writeFile (tmp </> "manifest.toml") (TE.encodeUtf8 manifestExtra <> miniManifest)
   BS.writeFile (tmp </> "style.toml") style
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
-  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp files
   ev <- evaluateProject Dev tmp
   case ev of
     Left f -> pure (Left (pfDiagnostics f))
@@ -558,6 +577,13 @@ countingFonts ref = FontProvider (\_ _ _ _ -> modifyIORef' ref (+ 1) >> pure (Ri
 notoBytes :: IO BS.ByteString
 notoBytes = BS.readFile "test/fixtures/kanikosen/fonts/NotoSerifJP-Regular.otf"
 
+-- | The fonts of the kanikosen fixture (Noto Serif JP), loaded by golem-font.
+notoFonts :: IO LoadedFonts
+notoFonts = do
+  src <- TIO.readFile "test/fixtures/kanikosen/style.toml"
+  style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
+  loadFonts realProvider "test/fixtures/kanikosen" (FileId 0) style [] >>= either (assertFailure . show) pure
+
 -- * notices (golem-syntax ADR 0002)
 
 -- | What a build of a project left: the diagnostics and the files written.
@@ -570,7 +596,7 @@ data Notified = Notified
 -- | Builds a project of the given files with the options.
 buildNotified :: [(FilePath, BS.ByteString)] -> (BuildOptions -> BuildOptions) -> IO Notified
 buildNotified files f = withSystemTempDirectory "golem-notice" $ \tmp -> do
-  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp files
   r <- build (f (defaultOptions tmp) {optFonts = fakeProvider})
   outs <- forM (sort (brWritten r)) $ \p -> (drop (length (tmp </> "build/")) p,) <$> BS.readFile p
   pure (Notified (brDiagnostics r) outs)
@@ -600,9 +626,13 @@ buildFiles dir = do
 whereIs :: Built -> Diagnostic -> (Maybe FilePath, Int)
 whereIs b d = (fmap siPath (Map.lookup (spanFile (diagSpan d)) (bSources b)), spanStart (diagSpan d))
 
+-- | The diagnostics of one code.
+diagnosticsOf :: T.Text -> [Diagnostic] -> [Diagnostic]
+diagnosticsOf c ds = [d | d <- ds, diagCode d == DiagnosticCode c]
+
 -- | The errors of one code.
 ofCode :: T.Text -> Built -> [Diagnostic]
-ofCode c b = [d | d <- bErrors b, diagCode d == DiagnosticCode c]
+ofCode c = diagnosticsOf c . bErrors
 
 {- | A diagnostic as its code, message, file and span, so that a test
 compares all of them at once.

@@ -7,8 +7,10 @@ module Main (main) where
 
 import Control.Exception (SomeException, try)
 import Data.IORef (modifyIORef, newIORef, readIORef)
+import Data.List (isPrefixOf)
 import Golem.TestSupport.Env
 import Golem.TestSupport.ExternalTool
+import Golem.TestSupport.Parallel
 import Golem.TestSupport.Skipped
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
@@ -25,6 +27,7 @@ main =
         optionalToolTests,
         requiredTests,
         envFlagTests,
+        parallelTests,
         skippedTests
       ]
 
@@ -129,6 +132,21 @@ envFlagTests =
       testCase "empty: off" $ envFlagBy (Just "") @?= False,
       testCase "0: off" $ envFlagBy (Just "0") @?= False,
       testCase "yes: off" $ envFlagBy (Just "yes") @?= False
+    ]
+
+parallelTests :: TestTree
+parallelTests =
+  testGroup
+    "inParallel"
+    [ testCase "the results come in the order of the actions" $
+        inParallel [pure n | n <- [1 .. 8 :: Int]] >>= (@?= map Right [1 .. 8]),
+      testCase "a failing action gives Left with its exception; the others are not affected" $
+        inParallel [pure ("a" :: String), ioError (userError "boom"), pure "c"] >>= (@?= [Right "a", Left "user error (boom)", Right "c"]),
+      testCase "a result that throws when evaluated gives Left" $ do
+        rs <- inParallel [pure [1, 2 :: Int], pure (error "late")]
+        case rs of
+          [Right [1, 2], Left e] | "late" `isPrefixOf` e -> pure ()
+          _ -> assertFailure (show rs)
     ]
 
 skippedTests :: TestTree

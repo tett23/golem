@@ -28,7 +28,7 @@ import Golem.TestSupport.Skipped (Skips, countSkipped)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.Environment (lookupEnv)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -226,7 +226,7 @@ withStyleProject :: BS.ByteString -> [(FilePath, BS.ByteString)] -> (FilePath ->
 withStyleProject style files act = withSystemTempDirectory "golem-files" $ \tmp -> do
   copyTree fixture tmp
   BS.writeFile (tmp </> "style.toml") style
-  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp files
   act tmp
 
 -- | The fixture whose body font is missing.
@@ -326,7 +326,7 @@ sepHtmlStyle lang style source = withSystemTempDirectory "golem-sep" $ \tmp -> d
   BS.writeFile (tmp </> "manifest.toml") (langManifest lang <> "\n[targets.html]\n")
   BS.writeFile (tmp </> "style.toml") style
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
-  forM_ img $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp img
   r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml]}
   assertEqual "no errors" [] (map diagCode (filter isError (brDiagnostics r)))
   (,) <$> TIO.readFile (tmp </> "build/html/a.xhtml") <*> TIO.readFile (tmp </> "build/html/index.xhtml")

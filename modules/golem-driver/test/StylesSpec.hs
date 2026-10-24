@@ -1,6 +1,5 @@
 module StylesSpec (inFileTests, regexStyleTests) where
 
-import Control.Monad (forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.List (nub)
@@ -18,8 +17,7 @@ import Golem.Project (ProjectFailure (..))
 import Golem.Project.Style (LocalStyles (..), ParaStyleDef (..), noLocalStyles, noParaDef, parseStyle)
 import Golem.Syntax
 import Support
-import System.Directory (createDirectoryIfMissing)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath ((</>))
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -43,7 +41,7 @@ chapterLines style chapters = withChapters style chapters [] $ \tmp -> do
 -- | The PDF layout of the chapters.
 chapterLayout :: BS.ByteString -> [(FilePath, T.Text)] -> [(FilePath, BS.ByteString)] -> IO PdfLayout
 chapterLayout style chapters files = withChapters style chapters [] $ \tmp -> do
-  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp files
   (e, book) <- evaluatedOk tmp
   geom <- either (assertFailure . show) pure (pageGeometry (FileId 0) False (evStyle e))
   r <- layoutPdf (PdfInput tmp (evProject e) (evStyle e) book False [] Map.empty Nothing (localStylesOf e) (chapterMasters (evProject e)) (evStyleFile e) Map.empty) geom fakeFonts

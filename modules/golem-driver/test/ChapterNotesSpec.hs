@@ -6,14 +6,12 @@ import Data.ByteString qualified as BS
 import Data.List (findIndex, isSuffixOf)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import Golem.Driver
 import Golem.Driver.Pdf (PdfInput (..), PdfLayout (..), SetLine (..), layoutPages)
 import Golem.Project (ProjectFailure (..))
 import Golem.Syntax
 import Support
-import System.Directory (createDirectoryIfMissing)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -36,7 +34,7 @@ pagesOf :: BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -> IO [[T.Text
 pagesOf manifest style sources = withSystemTempDirectory "golem-chapter-notes" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") manifest
   BS.writeFile (tmp </> "style.toml") style
-  forM_ sources $ \(to, src) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) (TE.encodeUtf8 src)
+  writeTexts tmp sources
   ev <- evaluateProject Dev tmp
   case ev of
     Left f -> assertFailure (show (pfDiagnostics f))
@@ -51,8 +49,8 @@ buildFor :: [Target] -> BS.ByteString -> BS.ByteString -> [(FilePath, T.Text)] -
 buildFor targets manifest style sources = withSystemTempDirectory "golem-chapter-notes" $ \tmp -> do
   BS.writeFile (tmp </> "manifest.toml") (manifest <> "\n[targets.html]\n\n[targets.epub]\n\n[targets.text]\nvariants = [\"horizontal\"]\n")
   BS.writeFile (tmp </> "style.toml") (withBodyFont style)
-  forM_ (bodyFontFiles style) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
-  forM_ sources $ \(to, src) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) (TE.encodeUtf8 src)
+  writeFiles tmp (bodyFontFiles style)
+  writeTexts tmp sources
   r <- build (defaultOptions tmp) {optTargets = Just targets, optFonts = fakeProvider}
   files <- mapM (\p -> (drop (length tmp + 1) p,) <$> BS.readFile p) (brWritten r)
   pure (brDiagnostics r, files)

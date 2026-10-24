@@ -16,14 +16,10 @@ GOLEM_RACE_TESTS=n multiplies the number of the tests of each property
 by n and builds the fixture books in parallel n times (1 by default); the
 pull requests run with 1, the nightly race.yml with 40 (docs/adr/0075).
 -}
-module ParallelSpec (parallelTests, raceFactor) where
+module ParallelSpec (parallelTests) where
 
-import Control.Concurrent (forkOn)
-import Control.Concurrent.MVar (newEmptyMVar, putMVar, readMVar, takeMVar)
-import Control.Exception (SomeException, evaluate, try)
 import Control.Monad (forM_, replicateM)
 import Data.ByteString qualified as BS
-import Data.Char (isDigit)
 import Data.List (isSuffixOf)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
@@ -32,36 +28,17 @@ import Data.Text.Encoding qualified as TE
 import Data.Text.IO qualified as TIO
 import Golem.Driver
 import Golem.Driver.Pdf (Shaping (..))
-import Golem.Project.Style (parseStyle)
 import Golem.Syntax
+import Golem.TestSupport.Parallel (inParallel)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
 import Support
-import System.Directory (createDirectoryIfMissing)
-import System.Environment (lookupEnv)
-import System.FilePath (takeDirectory, takeFileName, (</>))
+import System.FilePath (takeFileName, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testPropertyNamed)
-
-{- | Runs the actions at once, the i-th pinned to capability i (mod the
-count), and returns their fully evaluated results in the order given.
-The threads wait at a gate until all are started, so that they begin
-together.
--}
-inParallel :: (Show a) => [IO a] -> IO [Either String a]
-inParallel acts = do
-  gate <- newEmptyMVar
-  vars <- traverse (start gate) (zip [0 ..] acts)
-  putMVar gate ()
-  traverse takeMVar vars
-  where
-    start gate (i, act) = do
-      v <- newEmptyMVar
-      _ <- forkOn i (readMVar gate >> try (act >>= \x -> evaluate (length (show x)) >> pure x) >>= putMVar v . either (\e -> Left (show (e :: SomeException))) Right)
-      pure v
 
 -- | What a build left: each diagnostic as (file path, code, start, message), and the PDF.
 type Outcome = ([(FilePath, DiagnosticCode, Int, Text)], Maybe BS.ByteString)
@@ -75,7 +52,7 @@ buildChapters fonts parallel style files chapters = withSystemTempDirectory "gol
   let names = T.intercalate ", " [T.pack (show name) | (name, _) <- chapters]
   TIO.writeFile (tmp </> "manifest.toml") ("chapters = [" <> names <> "]\n" <> T.dropWhile (/= '\n') (TE.decodeUtf8 miniManifest))
   writeStyleWithFont tmp style
-  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp files
   forM_ chapters $ \(name, src) -> TIO.writeFile (tmp </> name) src
   r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fonts, optParallel = parallel}
   pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
@@ -123,17 +100,6 @@ notoStyle vertical =
     <> "\n[fonts.body]\nja = \"fonts/noto.otf\"\n"
 
 -- * the tests
-
-{- | GOLEM_RACE_TESTS, the factor of the repetitions of the race tests
-(docs/adr/0075): 1 when it is not set. A value that is not an integer of
-1 or more fails the suite: it is not read as 1.
--}
-raceFactor :: IO Int
-raceFactor = lookupEnv "GOLEM_RACE_TESTS" >>= maybe (pure 1) parse
-  where
-    parse s
-      | not (null s), all isDigit s, take 1 s /= "0", length s <= 6 = pure (read s)
-      | otherwise = fail ("GOLEM_RACE_TESTS must be an integer of 1 or more, not " <> show s)
 
 -- | The tests, the repetitions multiplied by the factor of 'raceFactor'.
 parallelTests :: Int -> TestTree
@@ -194,12 +160,6 @@ parallelTests race =
         ),
       testGroup "fixture books" [bookTest race "tempest", bookTest race "kanikosen"]
     ]
-
-notoFonts :: IO LoadedFonts
-notoFonts = do
-  src <- TIO.readFile "test/fixtures/kanikosen/style.toml"
-  style <- either (assertFailure . show) pure (parseStyle (FileId 0) src)
-  loadFonts realProvider "test/fixtures/kanikosen" (FileId 0) style [] >>= either (assertFailure . show) pure
 
 {- | A fixture book built in parallel on every capability gives the PDF of
 a sequential build, n times (the factor of GOLEM_RACE_TESTS).
