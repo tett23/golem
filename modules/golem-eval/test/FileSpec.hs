@@ -12,30 +12,26 @@ import Golem.Doc.Validate (validateDocument)
 import Golem.Eval.Builtin (OverridableBuiltin (..), pluginCommandName)
 import Golem.Eval.File
 import Golem.Eval.Value
-import Golem.Parser (parseAst)
 import Golem.Parser.SourceSettings
 import Golem.Project.Paths (PathError (..))
-import Golem.Project.Style (LineBreaks (..), LocalStyles (..), RegexStyleDef (..), Style (..), defaultStyle, dimToSp, paraLineBreaks, parseDim, parseStyle)
+import Golem.Project.Style (LineBreaks (..), LocalStyles (..), RegexStyleDef (..), Style (..), dimToSp, paraLineBreaks, parseDim, parseStyle)
 import Golem.Syntax
 import Hedgehog (forAll, property, (===))
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Support
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog (testProperty)
 
 ctx :: EvalContext
 ctx =
-  EvalContext
-    { ctxFile = FileId 1,
-      ctxPath = "ch/01.gm",
-      ctxProfile = Dev,
-      ctxMeta = Map.fromList [("title", VString "本の題")],
+  baseCtx
+    { ctxMeta = Map.fromList [("title", VString "本の題")],
       ctxImports = Map.fromList [("common/values.gm", Map.fromList [("price", VInt 100)])],
       ctxSwatches = Set.fromList ["accent"],
       ctxCharStyles = Set.fromList ["term", "strong", "bold", "italic"],
       ctxParaStyles = Map.fromList [("body", JoinLines), ("verse", KeepLines), ("caption", JoinLines), ("sidenote", JoinLines), ("quote", JoinLines)],
-      ctxDefaultKenten = "sesame",
       ctxCiteKeys = Set.fromList ["knuth1981"],
       ctxAssets =
         Map.fromList
@@ -59,19 +55,11 @@ ctx =
             ("https://example.com/a.png", AssetInvalid Url),
             ("../outside.txt", AssetInvalid EscapesRoot),
             ("gone.txt", AssetInvalid Missing)
-          ],
-      ctxPlugins = noPlugins,
-      ctxSource = defaultSourceSettings,
-      ctxStyle = defaultStyle
+          ]
     }
 
 run :: EvalContext -> Text -> ([BlockBody], [Text])
-run c src =
-  let (file, _, pds) = parseAst (FileId 1) src
-      r = evalFile c file
-   in (map blockBody (docBlocks (erDocument r)), map code (pds <> erDiagnostics r))
-  where
-    code d = let DiagnosticCode x = diagCode d in x
+run c src = let (ds, r) = evalSource c src in (resultBodies r, map diagCodeText ds)
 
 body :: Text -> [BlockBody]
 body = fst . run ctx
@@ -84,9 +72,7 @@ diags :: Text -> [(Text, Text, Int, Int)]
 diags = diagsWith ctx
 
 diagsWith :: EvalContext -> Text -> [(Text, Text, Int, Int)]
-diagsWith c src =
-  let (file, _, pds) = parseAst (FileId 1) src
-   in [(code, diagMessage d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- pds <> erDiagnostics (evalFile c file), let DiagnosticCode code = diagCode d]
+diagsWith c = map diagSite . fst . evalSource c
 
 -- | The code and message of each diagnostic.
 msgs :: Text -> [(Text, Text)]
@@ -428,9 +414,7 @@ styleTests =
     stripped = \case
       Paragraph st is -> (st, stripSpans is)
       other -> error (show other)
-    blocksOf src =
-      let (file, _, _) = parseAst (FileId 1) src
-       in docBlocks (erDocument (evalFile ctx file))
+    blocksOf = resultBlocks . evalResult ctx
     labels = map blockLabel . blocksOf
 
 -- | The style.toml of the tests of the file settings: a swatch and quote.
@@ -591,13 +575,10 @@ sctx =
     }
 
 runS :: EvalContext -> Text -> ([BlockBody], [Diagnostic], EvalResult)
-runS c src =
-  let (file, _, pds) = parseAst (FileId 1) src
-      r = evalFile c file
-   in (map blockBody (docBlocks (erDocument r)), pds <> erDiagnostics r, r)
+runS c src = let (ds, r) = evalSource c src in (resultBodies r, ds, r)
 
 codesS :: Text -> [Text]
-codesS src = let (_, ds, _) = runS sctx src in [x | d <- ds, let DiagnosticCode x = diagCode d]
+codesS src = let (_, ds, _) = runS sctx src in map diagCodeText ds
 
 -- | The notices of the evaluation (golem-syntax ADR 0002).
 noticeTests :: TestTree
@@ -681,8 +662,7 @@ noticeTests =
         errs "@listing src/Main.hs\n" @?= []
         body "@listing src=src/Main.hs lines=2-3\n" @?= body "@listing src/Main.hs lines=2-3\n",
       testCase "the span of each @number by the span of its block" $ do
-        let (file, _, _) = parseAst (FileId 1) "+ a\n@number 3\n+ b\n\n@number 2\n# h\n"
-            r = evalFile ctx file
+        let r = evalResult ctx "+ a\n@number 3\n+ b\n\n@number 2\n# h\n"
         Map.toList (erNumberSites r) @?= [(mkSpan (FileId 1) 14 18, mkSpan (FileId 1) 4 14), (mkSpan (FileId 1) 29 33, mkSpan (FileId 1) 19 29)]
     ]
 
@@ -827,8 +807,7 @@ settingsTests =
         paras sctx "@manifest paragraph-separator=\"line\"\na\nb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])]
         codesS "@manifest paragraph-separator=\"line\"\na\nb\n" @?= []
         paras sctx "%% 設定 %%\n@manifest paragraph-separator=line\n\na\nb\n" @?= [(Nothing, ["a"]), (Nothing, ["b"])]
-        let (file, _, _) = parseAst (FileId 1) "@manifest paragraph-separator=line\n@label p\na\nb\n"
-        map blockLabel (docBlocks (erDocument (evalFile sctx file))) @?= [Just "p", Nothing]
+        map blockLabel (resultBlocks (evalResult sctx "@manifest paragraph-separator=line\n@label p\na\nb\n")) @?= [Just "p", Nothing]
         paras lineS "@manifest paragraph-separator=blank-line\n\na\nb\n" @?= [(Nothing, ["ab"])],
       testCase "@manifest elsewhere does not apply" $ do
         let (_, ds, r) = runS sctx "a\n\n@manifest paragraph-separator=line\n"
@@ -870,9 +849,13 @@ settingsTests =
 lineCtx :: EvalContext
 lineCtx = ctx {ctxSource = SourceSettings LineSeparated}
 
+-- | The blocks of a source in 'ctx' and the codes of its diagnostics.
+blocksAndCodes :: Text -> ([Block], [Text])
+blocksAndCodes src = let (ds, r) = evalSource ctx src in (resultBlocks r, map diagCodeText ds)
+
 -- | The blocks of a source in a context.
 blocksIn :: EvalContext -> Text -> [Block]
-blocksIn c src = let (file, _, _) = parseAst (FileId 1) src in docBlocks (erDocument (evalFile c file))
+blocksIn c = resultBlocks . evalResult c
 
 -- | Each block as its paragraph style and text, or its constructor.
 shapes :: EvalContext -> Text -> [(Maybe Text, [Text])]
@@ -926,9 +909,8 @@ separatorTests =
           [FigureBlock f] -> map (shapeOf . blockBody) (figCaption f) @?= [(Nothing, ["c1"]), (Nothing, ["c2"])]
           other -> assertFailure (show other),
       testCase "an evaluated file records the paragraph separator of its context" $ do
-        let (file, _, _) = parseAst (FileId 1) "a\n"
-        erSource (evalFile lineCtx file) @?= SourceSettings LineSeparated
-        erSource (evalFile ctx file) @?= defaultSourceSettings
+        erSource (evalResult lineCtx "a\n") @?= SourceSettings LineSeparated
+        erSource (evalResult ctx "a\n") @?= defaultSourceSettings
     ]
 
 -- ------------------------------------------------------------------ hard breaks
@@ -978,8 +960,7 @@ hardBreakTests =
           )
           [ctx, lineCtx],
       testCase "a file with a hard break still records the line-separated paragraphs" $ do
-        let (file, _, _) = parseAst (FileId 1) "a\\\nb\n"
-        erSource (evalFile lineCtx file) @?= SourceSettings LineSeparated
+        erSource (evalResult lineCtx "a\\\nb\n") @?= SourceSettings LineSeparated
     ]
 
 -- | Forced page breaks (docs/adr ADR 0017).
@@ -998,7 +979,7 @@ breakTests =
         map shape bs @?= ["break BreakRecto", "heading"],
       testCase "a label skips the break and goes to the block, wherever the break stands" $ do
         let check src = do
-              let (bs, es) = blocksOf src
+              let (bs, es) = blocksAndCodes src
               es @?= []
               [(blockLabel b, shape (blockBody b)) | b <- bs] @?= [(Nothing, "break BreakPage"), (Just "x", "heading")]
         check "@page-break\n@label x\n# h\n"
@@ -1022,7 +1003,7 @@ breakTests =
       testCase "a break not at the top of the document is G02059 and dropped" $ do
         mapM_
           ( \src -> do
-              let (bs, es) = blocksOf src
+              let (bs, es) = blocksAndCodes src
               assertEqual (T.unpack src) ["G02059"] es
               assertBool (T.unpack src) (not (any hasBreak bs))
           )
@@ -1033,10 +1014,6 @@ breakTests =
         errs "@style quote\n  @page-break\n" @?= ["G02045"]
     ]
   where
-    blocksOf src =
-      let (file, _, pds) = parseAst (FileId 1) src
-          r = evalFile ctx file
-       in (docBlocks (erDocument r), [x | d <- pds <> erDiagnostics r, let DiagnosticCode x = diagCode d])
     shape :: BlockBody -> Text
     shape = \case
       ForcedBreak k -> "break " <> T.pack (show k)
@@ -1062,10 +1039,9 @@ pageControlTests =
         run ctx "@page-lines +1\n" @?= ([PageControl (AdjustLines 1)], [])
         run ctx "@page-lines -2\n" @?= ([PageControl (AdjustLines (-2))], []),
       testCase "a label skips the control and goes to the block" $ do
-        let (file, _, pds) = parseAst (FileId 1) "@need-lines 3\n@label x\n# h\n"
-            r = evalFile ctx file
-        map diagCode (pds <> erDiagnostics r) @?= []
-        [(blockLabel b, isControl (blockBody b)) | b <- docBlocks (erDocument r)] @?= [(Nothing, True), (Just "x", False)],
+        let (ds, r) = evalSource ctx "@need-lines 3\n@label x\n# h\n"
+        map diagCode ds @?= []
+        [(blockLabel b, isControl (blockBody b)) | b <- resultBlocks r] @?= [(Nothing, True), (Just "x", False)],
       testCase "a wrong argument of @need-lines is G02070 (docs/adr ADR 0060)" $
         mapM_
           (\src -> assertEqual (T.unpack src) [("G02070", "@need-lines の引数は 1 以上の整数です")] (msgs src))
@@ -1138,7 +1114,7 @@ blankLineTests =
       testCase "@blank-line not at the top of the document is G02093 and dropped" $ do
         mapM_
           ( \src -> do
-              let (bs, es) = blocksWith src
+              let (bs, es) = blocksAndCodes src
               assertEqual (T.unpack src) ["G02093"] es
               assertBool (T.unpack src) (not (any hasBlank bs))
           )
@@ -1175,14 +1151,7 @@ blankLineTests =
       BlankLines n -> "blank " <> T.pack (show n)
       Heading {} -> "heading"
       other -> T.pack (show other)
-    labelled src =
-      let (file, _, pds) = parseAst (FileId 1) src
-          r = evalFile ctx file
-       in ([(blockLabel b, shape (blockBody b)) | b <- docBlocks (erDocument r)], [x | d <- pds <> erDiagnostics r, let DiagnosticCode x = diagCode d])
-    blocksWith src =
-      let (file, _, pds) = parseAst (FileId 1) src
-          r = evalFile ctx file
-       in (docBlocks (erDocument r), [x | d <- pds <> erDiagnostics r, let DiagnosticCode x = diagCode d])
+    labelled src = let (ds, r) = evalSource ctx src in ([(blockLabel b, shape (blockBody b)) | b <- resultBlocks r], map diagCodeText ds)
     hasBlank (Block _ _ b) = case b of
       BlankLines _ -> True
       BulletList items -> any (any hasBlank . itemBlocks) items
@@ -1402,8 +1371,7 @@ diagnosticTests =
         case body "本文%%= メモ %%\n" of
           [Paragraph Nothing [Text _ "本文", ProofComment _ _]] -> pure ()
           other -> assertFailure (show other)
-        let (file, _, _) = parseAst (FileId 1) "本文%%= メモ %%\n"
-        [(diagCode d, diagSeverity d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- erDiagnostics (evalFile ctx {ctxProfile = Prod} file)]
+        [(diagCode d, diagSeverity d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- erDiagnostics (evalResult ctx {ctxProfile = Prod} "本文%%= メモ %%\n")]
           @?= [(DiagnosticCode "G02005", Warning, 6, 19)],
       testCase "G02009: the position is the name" $
         diags "@nope\n" @?= [("G02009", "未知のブロックコマンドです: @nope", 1, 5)],
