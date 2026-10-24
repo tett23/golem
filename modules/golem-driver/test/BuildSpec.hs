@@ -27,7 +27,6 @@ import Golem.TestSupport.Env (envFlag)
 import Golem.TestSupport.Skipped (Skips, countSkipped)
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory)
-import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
