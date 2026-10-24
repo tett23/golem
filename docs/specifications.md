@@ -227,7 +227,7 @@ flowchart TD
 golem の実行ファイルはこのパッケージに依存せず、このパッケージはリリースの配布物にも入らない（[docs/adr/0023](adr/0023-fixture-converters-without-python.md)）。
 
 `modules/golem-test-support` は、テストスイートだけが使うテストの補助のパッケージなので、図に含めない。
-外部ツールを使うテストの補助 `Golem.TestSupport.ExternalTool` を持ち、`base` と `tasty` だけに依存する。
+外部ツールを使うテストの補助 `Golem.TestSupport.ExternalTool` と、いくつもの capability で動作を同時に走らせる補助 `Golem.TestSupport.Parallel` などを持ち、`base` と `tasty` だけに依存する。
 golem の実行ファイルはこのパッケージに依存せず、このパッケージはリリースの配布物にも入らない。
 リポジトリのライブラリと実行ファイルがこのパッケージに依存しないことは、cabal が解決した計画を読む `scripts/ci/test-only-deps.sh` が CI の `build` ジョブとリリースの `package.sh` で確かめる（[docs/adr/0028](adr/0028-shared-test-support-package.md)）。
 

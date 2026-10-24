@@ -10,9 +10,6 @@ calls can be shared as one thunk.
 -}
 module ConcurrencySpec (concurrencyTests) where
 
-import Control.Concurrent (forkOn)
-import Control.Concurrent.MVar (newEmptyMVar, putMVar, readMVar, takeMVar)
-import Control.Exception (SomeException, evaluate, try)
 import Data.ByteString (ByteString)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -20,25 +17,9 @@ import Data.Text.IO qualified as TIO
 import Golem.Doc.IR
 import Golem.Plugin
 import Golem.Syntax
+import Golem.TestSupport.Parallel (inParallel)
 import Test.Tasty
 import Test.Tasty.HUnit
-
-{- | Runs the actions at once, the i-th pinned to capability i (mod the
-count), and returns their fully evaluated results in the order given.
-The threads wait at a gate until all are started, so that they begin
-together.
--}
-inParallel :: (Show a) => [IO a] -> IO [Either String a]
-inParallel acts = do
-  gate <- newEmptyMVar
-  vars <- traverse (start gate) (zip [0 ..] acts)
-  putMVar gate ()
-  traverse takeMVar vars
-  where
-    start gate (i, act) = do
-      v <- newEmptyMVar
-      _ <- forkOn i (readMVar gate >> try (act >>= \x -> evaluate (length (show x)) >> pure x) >>= putMVar v . either (\e -> Left (show (e :: SomeException))) Right)
-      pure v
 
 loadWat :: FilePath -> IO Plugin
 loadWat name = do
