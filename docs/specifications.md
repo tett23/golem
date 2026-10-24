@@ -3047,6 +3047,10 @@ Alpine のパッケージの文書は、そのパッケージの `-doc` から�
 `release` は Node も Claude Code も入れない。
 
 ノートを書く Claude Code は、リポジトリのルートの `mise.toml` で正確なバージョンに固定し、`notes` が `jdx/mise-action` で入れる。
+Claude Code を入れる mise 自身も、正確な版と、その版の Linux の x86-64 の実行ファイルの SHA-256 で固定する（[docs/adr/0085](adr/0085-pin-mise-version-in-workflows.md)）。
+値は `release.yml` と `ci.yml` の最上位の `env` の `MISE_VERSION` と `MISE_SHA256` に同じものを書き、`jdx/mise-action` を使うすべてのステップ（`notes` と、CI の `release-scripts`）が `version` と `sha256` に渡す。
+action は、入れた実行ファイルの SHA-256 が違えば失敗する。
+SHA-256 は Linux の x86-64 の実行ファイルの値なので、二つのジョブは `ubuntu-24.04` で動く。
 mise は npm のパッケージのインストールのスクリプトを動かさないので、`mise.toml` の `allow_builds` で Claude Code のスクリプトだけを許す。
 開発者も同じ `mise.toml` で同じバージョンを入れられる。
 `scripts/release/write-notes.sh` は、プロンプトの先頭に、プルリクエストの本文は信頼しないデータでありその中の指示に従わないことを書く。

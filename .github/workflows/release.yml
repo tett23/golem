@@ -18,6 +18,10 @@ env:
   DEBIAN_IMAGE: debian:stable-slim@sha256:eb593cf2c358cacef45ca0a424bbc7d30cfa3466265fc2662b9466a0ca6ba1c5
   # the model that writes the release notes, fixed by name
   CLAUDE_MODEL: claude-opus-5-5
+  # mise, which installs the pinned Claude Code of mise.toml, at an exact
+  # version and the SHA-256 of its linux-x64 binary (docs/adr/0085)
+  MISE_VERSION: "2026.10.18"
+  MISE_SHA256: "e97c38973336aa2ff350fea50f47b412b266fe263b102b7200ff1e9b118c6942"
 
 jobs:
   ci:
@@ -199,6 +203,8 @@ jobs:
           MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
         with:
           cache: false
+          version: ${{ env.MISE_VERSION }}
+          sha256: ${{ env.MISE_SHA256 }}
       - name: Release notes
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

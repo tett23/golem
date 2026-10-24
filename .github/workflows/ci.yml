@@ -28,6 +28,10 @@ env:
   # (docs/adr/0062)
   EPUBCHECK_VERSION: "5.4.0"
   EPUBCHECK_SHA256: "33350c61038e71dfb3d45a76aed04bf5481e6d5500cb780f6e98db8bbd15a28c"
+  # mise, which installs the pinned Claude Code of mise.toml, at an exact
+  # version and the SHA-256 of its linux-x64 binary (docs/adr/0085)
+  MISE_VERSION: "2026.10.18"
+  MISE_SHA256: "e97c38973336aa2ff350fea50f47b412b266fe263b102b7200ff1e9b118c6942"
 
 jobs:
   # Whether the change needs the build and the checks: not when it touches
@@ -376,6 +380,8 @@ jobs:
           MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
         with:
           cache: false
+          version: ${{ env.MISE_VERSION }}
+          sha256: ${{ env.MISE_SHA256 }}
       - name: Tests of the release scripts (docs/adr/0004)
         env:
           GOLEM_REQUIRE_CLAUDE: "1"

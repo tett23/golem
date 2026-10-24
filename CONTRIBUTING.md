@@ -128,6 +128,13 @@ wasmtime のバージョンを上げるときは、`scripts/wasmtime-licenses.sh
 `cabal.project.freeze` で固定した依存のバージョンを変えるときも、変更の理由をプルリクエストに書く。
 リリースノートを書く Claude Code のバージョンは、`mise.toml` の `"npm:@anthropic-ai/claude-code"` に正確な値で固定してある（[docs/adr/0044](./docs/adr/0044-release-workflow-hardening.md)）。
 上げるときは `mise.toml` を変えるプルリクエストを出し、新しいバージョンの `claude --help` に `--tools` と `--strict-mcp-config` があることを確かめる（`scripts/release/test.sh` は、そのバージョンの `claude` があれば確かめる。CI の `release-scripts` ジョブは、mise でそのバージョンを入れて必ず確かめる。[docs/adr/0058](./docs/adr/0058-run-skipped-checks-in-ci.md)）。
+Claude Code を入れる mise の版と、その版の Linux の x86-64 の実行ファイルの SHA-256 は、`.github/workflows/ci.yml` と `.github/workflows/release.yml` の `MISE_VERSION` と `MISE_SHA256` に同じ値で固定してある（[docs/adr/0085](./docs/adr/0085-pin-mise-version-in-workflows.md)）。
+上げるときは二つのファイルを変えるプルリクエストを出し、SHA-256 を求めた手順を本文に書く。
+SHA-256 は次の手順で求める。
+jdx/mise の GitHub の release から、`mise-v<版>-linux-x64.tar.zst`、`SHASUMS256.txt`、`SHASUMS256.txt.minisig` を取る。
+`SHASUMS256.txt` の署名を mise の minisign の公開鍵で確かめ、圧縮ファイルをその値で確かめる。
+展開した `mise/bin/mise` の SHA-256 を求め、同じ版の `mise-v<版>-linux-x64` の `SHASUMS256.txt` の値と一致することも確かめる。
+CI の `release-scripts` が通れば、action が新しい SHA-256 で実行ファイルを確かめたことになる。
 リリースノートから兄弟のリポジトリへリンクするときは、`scripts/release/allowed-links.txt` に `https://github.com/tett23/<リポジトリ>/` の 1 行を足すプルリクエストを出す。
 ghcup を上げるときは、`scripts/release/build-linux.sh` の ghcup のバージョン、ブートストラップのスクリプトのコミット、その SHA-256 を一緒に変える。
 

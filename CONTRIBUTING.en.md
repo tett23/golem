@@ -119,6 +119,13 @@ It does not fill in the component column of `c-objects.tsv`; fill it in by hand.
 When changing dependency versions pinned in `cabal.project.freeze`, explain why in the pull request.
 The version of Claude Code, which writes the release notes, is pinned to an exact value at `"npm:@anthropic-ai/claude-code"` in `mise.toml` ([docs/adr/0044](./docs/adr/0044-release-workflow-hardening.md)).
 To raise it, open a pull request that changes `mise.toml`, and check that `claude --help` of the new version still has `--tools` and `--strict-mcp-config` (`scripts/release/test.sh` checks this when that version of `claude` is installed; the `release-scripts` job of CI installs that version with mise and always checks it, [docs/adr/0058](./docs/adr/0058-run-skipped-checks-in-ci.md)).
+The version of mise, which installs Claude Code, and the SHA-256 of its Linux x86-64 binary are pinned to the same values at `MISE_VERSION` and `MISE_SHA256` in `.github/workflows/ci.yml` and `.github/workflows/release.yml` ([docs/adr/0085](./docs/adr/0085-pin-mise-version-in-workflows.md)).
+To raise it, open a pull request that changes both files, and write in it how you computed the SHA-256.
+Compute the SHA-256 as follows.
+From the GitHub release of jdx/mise, fetch `mise-v<version>-linux-x64.tar.zst`, `SHASUMS256.txt` and `SHASUMS256.txt.minisig`.
+Verify the signature of `SHASUMS256.txt` with the minisign public key of mise, and verify the archive against it.
+Compute the SHA-256 of the extracted `mise/bin/mise`, and check that it equals the value of `mise-v<version>-linux-x64` of the same version in `SHASUMS256.txt`.
+When `release-scripts` passes in CI, the action has checked the binary against the new SHA-256.
 To link from the release notes to a sibling repository, open a pull request that adds the line `https://github.com/tett23/<repository>/` to `scripts/release/allowed-links.txt`.
 When raising ghcup, change the ghcup version, the commit of the bootstrap script and its SHA-256 in `scripts/release/build-linux.sh` together.
 
