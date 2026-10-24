@@ -6,22 +6,16 @@ module UrlBreakSpec (urlBreakTests) where
 
 import Data.Text (Text)
 import Data.Text qualified as T
+import Fixtures (fs, look0, sp)
 import Golem.Doc.IR qualified as IR
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Layout.Look (Look (..))
-import Golem.Syntax (FileId (..), mkSpan)
 import Test.Tasty
 import Test.Tasty.HUnit
 
-fs :: Sp
-fs = 10 * 65536
-
-look0 :: Look
-look0 = ceLook (defaultComposeEnv fs)
-
 compose :: Look -> Text -> [Item]
-compose lk t = fst (composeInlines (defaultComposeEnv fs) {ceLook = lk} [IR.Text (mkSpan (FileId 0) 0 0) t])
+compose lk t = fst (composeInlines (defaultComposeEnv fs) {ceLook = lk} [IR.Text sp t])
 
 url, code :: Look
 url = look0 {lkUrl = True}
