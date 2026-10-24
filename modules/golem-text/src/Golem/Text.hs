@@ -5,7 +5,6 @@ module Golem.Text
   ( TextVariant (..),
     TextLists (..),
     renderText,
-    renderNumber,
   )
 where
 

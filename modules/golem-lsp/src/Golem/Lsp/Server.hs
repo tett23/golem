@@ -12,7 +12,6 @@ module Golem.Lsp.Server
   ( runGolemLsp,
     runGolemLspWithHandles,
     rewriteInitializeResponse,
-    findRoot,
     lspSeverity,
   )
 where

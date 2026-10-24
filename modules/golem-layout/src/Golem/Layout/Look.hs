@@ -7,7 +7,6 @@ module Golem.Layout.Look
   ( Look (..),
     Kerning (..),
     Synthetic (..),
-    noSynthetic,
     plainLook,
     KentenShape (..),
     kentenChar,

@@ -5,7 +5,6 @@ figures, whose entries are small (golem-pdf ADR 0008).
 -}
 module Golem.Pdf.Number
   ( spToPt,
-    showDecimal4,
     showRational4,
     showRationalDigits,
   )
@@ -21,7 +20,3 @@ spToPt sp = showRational4 (sp % 65536)
 
 showRational4 :: Rational -> Text
 showRational4 = showRationalDigits 4
-
--- | An integer number of ten-thousandths.
-showDecimal4 :: Integer -> Text
-showDecimal4 q = showRationalDigits 4 (q % 10000)
