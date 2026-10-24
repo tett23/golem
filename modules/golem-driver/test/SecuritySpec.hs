@@ -14,7 +14,7 @@ import Golem.Driver
 import Golem.Syntax
 import Support
 import System.Directory (createDirectoryIfMissing, createDirectoryLink, doesFileExist)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.HUnit
@@ -25,7 +25,7 @@ project tmp manifestHead style source files = do
   BS.writeFile (tmp </> "manifest.toml") (manifestHead <> miniManifest <> "\n[targets.html]\n[targets.text]\n")
   BS.writeFile (tmp </> "style.toml") style
   BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
-  forM_ files $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeFiles tmp files
 
 -- | A directory outside the project with a file in each target directory.
 victim :: FilePath -> IO FilePath

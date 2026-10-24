@@ -7,12 +7,12 @@ module PunctuationSpec (punctuationTests) where
 
 import Data.Text (Text)
 import Data.Text qualified as T
+import Fixtures (fs, sp)
 import Golem.Doc.IR qualified as IR
 import Golem.Layout.Aki (AkiPos (..), akiPositions)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
 import Golem.Project.Style (akiClassNames)
-import Golem.Syntax (FileId (..), mkSpan)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -52,14 +52,11 @@ protrusionTableTests =
       ]
   ]
 
-fs :: Sp
-fs = 10 * 65536
-
 -- | The end protrusion of the box of the character after あ.
 hangOf :: Bool -> Char -> [Sp]
 hangOf hanging c =
   let env = (defaultComposeEnv fs) {ceHanging = hanging}
-      items = fst (composeInlines env [IR.Text (mkSpan (FileId 0) 0 0) (T.pack ['あ', c])])
+      items = fst (composeInlines env [IR.Text sp (T.pack ['あ', c])])
    in [bcProtrudeEnd bc | Box _ bc <- items, bcText bc == T.singleton c]
 
 hangingTests :: [TestTree]

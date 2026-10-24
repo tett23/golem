@@ -6,7 +6,6 @@ The substitution is observed through 'evalFile': the expression of the
 module DeferredSpec (tests) where
 
 import Data.Map.Strict qualified as Map
-import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Golem.Doc.IR
@@ -15,40 +14,24 @@ import Golem.Eval.File
 import Golem.Eval.Value
 import Golem.Parser (parseAst)
 import Golem.Parser.AST qualified as A
-import Golem.Parser.SourceSettings (defaultSourceSettings)
-import Golem.Project.Style (defaultStyle)
 import Golem.Syntax
 import Hedgehog (annotateShow, failure, forAll, property, (===))
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
+import Support
 import Test.Tasty
 import Test.Tasty.HUnit
 import Test.Tasty.Hedgehog
 
 ctx :: EvalContext
 ctx =
-  EvalContext
-    { ctxFile = FileId 1,
-      ctxPath = "ch/01.gm",
-      ctxProfile = Dev,
-      ctxMeta = Map.fromList [("title", VString "本の題")],
-      ctxImports = Map.empty,
-      ctxSwatches = Set.empty,
-      ctxCharStyles = Set.empty,
-      ctxParaStyles = Map.empty,
-      ctxDefaultKenten = "sesame",
-      ctxCiteKeys = Set.empty,
-      ctxAssets = Map.empty,
-      ctxPlugins = noPlugins,
-      ctxSource = defaultSourceSettings,
-      ctxStyle = defaultStyle
+  baseCtx
+    { ctxMeta = Map.fromList [("title", VString "本の題")]
     }
 
 -- | The deferred expressions of a file, in order.
 deferredOf :: Text -> [A.Located A.Expr]
-deferredOf src =
-  let (file, _, _) = parseAst (FileId 1) src
-   in [e | Block _ _ (Paragraph _ is) <- docBlocks (erDocument (evalFile ctx file)), Deferred _ (DeferredExpr e) <- is]
+deferredOf src = [e | Block _ _ (Paragraph _ is) <- resultBlocks (evalResult ctx src), Deferred _ (DeferredExpr e) <- is]
 
 -- | An expression without its positions.
 data E

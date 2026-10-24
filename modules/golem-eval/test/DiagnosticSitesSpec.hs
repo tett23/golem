@@ -5,44 +5,26 @@ for an aki amount in a dimension of @style-def.
 module DiagnosticSitesSpec (tests) where
 
 import Data.Map.Strict qualified as Map
-import Data.Set qualified as Set
 import Data.Text (Text)
 import Golem.Doc.IR
 import Golem.Eval.File
-import Golem.Parser (parseAst)
-import Golem.Parser.SourceSettings
-import Golem.Project.Style (LineBreaks (..), defaultStyle)
-import Golem.Syntax
+import Golem.Project.Style (LineBreaks (..))
+import Support
 import Test.Tasty
 import Test.Tasty.HUnit
 
 ctx :: EvalContext
 ctx =
-  EvalContext
-    { ctxFile = FileId 1,
-      ctxPath = "ch/01.gm",
-      ctxProfile = Dev,
-      ctxMeta = Map.empty,
-      ctxImports = Map.empty,
-      ctxSwatches = Set.empty,
-      ctxCharStyles = Set.empty,
-      ctxParaStyles = Map.fromList [("body", JoinLines), ("verse", KeepLines)],
-      ctxDefaultKenten = "sesame",
-      ctxCiteKeys = Set.empty,
-      ctxAssets = Map.empty,
-      ctxPlugins = noPlugins,
-      ctxSource = defaultSourceSettings,
-      ctxStyle = defaultStyle
+  baseCtx
+    { ctxParaStyles = Map.fromList [("body", JoinLines), ("verse", KeepLines)]
     }
 
 -- | The code, message, start and end of each diagnostic of the parser and the evaluator.
 diags :: Text -> [(Text, Text, Int, Int)]
-diags src =
-  let (file, _, pds) = parseAst (FileId 1) src
-   in [(code, diagMessage d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- pds <> erDiagnostics (evalFile ctx file), let DiagnosticCode code = diagCode d]
+diags = map diagSite . fst . evalSource ctx
 
 blocks :: Text -> [BlockBody]
-blocks src = let (file, _, _) = parseAst (FileId 1) src in map blockBody (docBlocks (erDocument (evalFile ctx file)))
+blocks = resultBodies . evalResult ctx
 
 styleBodyTests :: TestTree
 styleBodyTests =

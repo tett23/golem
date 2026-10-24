@@ -119,7 +119,7 @@ block c ind (Block sp _ body) = case body of
   Paragraph st is ->
     let (first, rest) = if cInList c then (0, 0) else cFirstLine c st
         lead n = indentBy ind <> indentBy n
-     in lead first <> T.intercalate ("\n" <> lead rest) (map (inlines c) (splitLines is)) <> sidenotes is
+     in lead first <> T.intercalate ("\n" <> lead rest) (map (inlines c) (splitAtLineBreaks is)) <> sidenotes is
   Heading _ _ is ->
     let num = Map.lookup sp (bookHeadings (cBook c)) >>= hiNumberText
      in numbered num <> inlines c is
@@ -184,17 +184,6 @@ block c ind (Block sp _ body) = case body of
       _ -> T.intercalate "\n" (map (block inItem i) bs)
     sidenotes is =
       T.concat ["\n※" <> T.pack (show n) <> " " <> inlines c xs | Sidenote _ n xs <- is]
-
-isLineBreak :: InlineF r -> Bool
-isLineBreak = \case
-  LineBreak _ -> True
-  _ -> False
-
--- | The inlines of a paragraph split at its line breaks.
-splitLines :: [InlineF r] -> [[InlineF r]]
-splitLines is = case break isLineBreak is of
-  (l, []) -> [l]
-  (l, _ : rest) -> l : splitLines rest
 
 blockInlines :: Block -> [Inline]
 blockInlines (Block _ _ body) = case body of

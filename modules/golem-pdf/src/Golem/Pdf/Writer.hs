@@ -54,6 +54,7 @@ import Golem.Pdf.Object
 import Golem.Pdf.Sha256 (sha256)
 import Golem.Pdf.Srgb (srgbProfile)
 import Golem.Pdf.X4
+import Golem.Syntax.Text (tshow)
 import Text.Printf (printf)
 
 type Sp = Integer
@@ -450,8 +451,6 @@ documentObjects doc =
       size = length objects + 1
    in PdfObjects "1.6" objects (ODict [("Size", OInt (fromIntegral size)), ("Root", ORef 1), ("Info", ORef infoObj), ("ID", OArr [OHex (docId doc), OHex (docInstanceId doc)])])
   where
-    tshow :: Int -> Text
-    tshow = T.pack . show
     fontsOf = \case
       GlyphRun f _ _ -> [f]
       ScaledGlyphRun f _ _ _ -> [f]

@@ -5,6 +5,7 @@ import Data.Either (isLeft)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
+import Fixtures (geom, grid, mm18, mm20, pt)
 import GeometrySpec (geometryTests)
 import Golem.LayoutSpec
 import Golem.Project.Style
@@ -15,24 +16,13 @@ import Test.Tasty.HUnit
 main :: IO ()
 main = defaultMain tests
 
-pt :: Integer -> Sp
-pt = (* 65536)
-
--- A5 = 148mm × 210mm; 18mm and 20mm, rounded once from exact rationals.
-a5W, a5H, mm18, mm20 :: Sp
+-- A5 = 148mm × 210mm, rounded once from exact rationals.
+a5W, a5H :: Sp
 a5W = 27494158
 a5H = 39011981
-mm18 = 3343884
-mm20 = 3715427
-
-grid :: Int -> Int -> Int -> Maybe Dim -> Grid
-grid chars ls cols gap = Grid (Abs (pt 10)) chars ls (Abs (pt 17)) cols gap (Abs mm18) (Abs mm20)
 
 styleWith :: Bool -> Bool -> Grid -> Style
 styleWith bindingRight vertical g = defaultStyle {stPage = Just (Page (NamedSize "A5") bindingRight vertical (Just g) 0)}
-
-geom :: Style -> PageGeometry
-geom s = either (error . show) id (pageGeometry (FileId 0) False s)
 
 tests :: TestTree
 tests =

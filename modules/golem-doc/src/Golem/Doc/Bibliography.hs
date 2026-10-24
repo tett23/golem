@@ -15,6 +15,7 @@ import Data.Char (isDigit, ord)
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Syntax.Text (tshow)
 
 -- | A name of CSL-JSON: family and given, or one literal string.
 data CslName
@@ -211,9 +212,6 @@ japaneseDate = \case
   DateParts y m d ->
     let (mo, dy) = validParts m d
      in tshow y <> "年" <> maybe "" (\x -> tshow x <> "月") mo <> maybe "" (\x -> tshow x <> "日") dy
-
-tshow :: (Show a) => a -> Text
-tshow = T.pack . show
 
 endsWithAny :: [Char] -> Text -> Bool
 endsWithAny cs t = maybe False ((`elem` cs) . snd) (T.unsnoc t)
