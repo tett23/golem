@@ -46,12 +46,14 @@ $ GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev
 一冊ごとに、次のことを行う。
 
 + マニフェストに [code: silence-notices] があれば、組む前に失敗する。
++ プロジェクトに [code: LICENSE] がなければ、組む前に失敗する。
 + [code: scripts/manual/build-info.sh] で [code: common/build-info.gm] を書く。
 + [code: scripts/manual/fetch-fonts.sh] でフォントを [code: fonts/] に取得する。すでにあれば SHA-256 を検査するだけである。
 + [code: build/] を消し、[code: golem build --target pdf --target html] で組む。
 + [code: golem] が終了コード 0 以外で終わるか、何か一つでも出力すれば失敗する。
++ プロジェクトの [code: LICENSE] を [code: build/html/LICENSE] に写す。[code: build/html/fonts/] があれば、[code: fonts/LICENSE-*] もそこに写す。組んだ HTML はフォントのファイルをそのまま含むので、その隣にフォントのライセンスの全文を置く。
 
-最後の規則は、error と warning だけでなく、notice も失敗にする。
+[code: golem] の出力で失敗にする規則は、error と warning だけでなく、notice も失敗にする。
 マニュアルは見本なので、notice の原因（コードのフォントの役割の欠け、折り返したコードの行、勧めない記法など）も原稿の側で取り除く。
 [code: silence-notices] と [code: --no-notices] で消すことは認めない。
 勧めない書き方を例として見せたいときは、コードブロックの中に書く。
@@ -151,7 +153,7 @@ URL を先に書けば、URL の行はそろわないまま残り、和文の名
 - 前付けは、番号のない「はじめに」（目次に載せる）、目次の順にする。
 - 索引は二段で組む（[code: style.toml] の [code: \[index\]] の [code: columns = 2]）。
 - 脚注の前に区切り線を引く（[code: style.toml] の [code: \[notes.rule\]]）。長さは一行の字数の 4 分の 1 ほどにし、線の前後に 0.5zw の間隔を書く。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-driver/adr/0024-rule-spec-and-footnote-separator.md]（golem-driver ADR 0024「罫線の指定と脚注の区切り線」）]
-- 奥付は版とコミットの二行を載せる。
+- 奥付は版とコミットの二行を載せる。書体の段落の後に、ライセンスの段落を置く。原稿と組んだ PDF と HTML は CC0 1.0 で公開し、フォントは SIL Open Font License 1.1 で CC0 の対象ではないことを書く。条文は各プロジェクトの [code: LICENSE] に置き、[code: scripts/manual/build.sh] が組んだ HTML に、この [code: LICENSE] と、フォントのライセンスの文書 [code: fonts/LICENSE-*] を写す。
 - コードブロックは組み込みの段落スタイル [code: code] で組み、背景のスウォッチ（[code: { cmyk = \[0, 0, 0, 8\] }] を出発点にする）と内側の余白を付ける。墨だけのごく薄い色にするのは、本文の文字の色と重ならず、モノクロで印刷しても沈まないようにするためである。
 - 本文の中のファイル名、コマンド、パス、キーは [code: \[code: ...\]] で書く。[code: \[style code: ...\]] は使わない。
 - フォントの役割 [code: code] には、欧文に Source Code Pro の Regular、和文に Noto Sans JP の Regular を使う。

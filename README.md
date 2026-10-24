@@ -310,6 +310,9 @@ GOLEM="$(cabal list-bin golem)" sh scripts/manual/build.sh manual-dev  # 一冊�
 このスクリプトは、プロジェクトごとに、奥付の版とコミットのハッシュを `common/build-info.gm` に書き（`scripts/manual/build-info.sh`）、マニュアルの書体（Noto Serif JP、Noto Sans JP、Source Serif 4、Source Sans 3、Source Code Pro。どれも SIL Open Font License 1.1）を、バージョンを固定した配布元から取得して SHA-256 を検査し、`fonts/` に置く（`scripts/manual/fetch-fonts.sh`。二回目からは検査だけを行う）。
 そのあと `golem build --target pdf --target html` で組み、出力を `build/` に書く。
 エラー、警告、notice のどれか一つでも出れば失敗し、マニフェストに `silence-notices` があれば組む前に失敗する。
+組めたら、プロジェクトの `LICENSE`（CC0 1.0）を `build/html/LICENSE` に、`fonts/LICENSE-*`（SIL Open Font License 1.1 の全文）を `build/html/fonts/` に写す。
+組んだ HTML はフォントのファイルをそのまま含むので、その隣にライセンスの文書を置くためである（[docs/adr/0082](./docs/adr/0082-manuals-under-cc0.md)）。
+プロジェクトに `LICENSE` がなければ、組む前に失敗する。
 `GOLEM` を省くと、`PATH` にある `golem` を使う。
 
 `build-info.gm` は生成物で、Git では管理しない。
@@ -389,3 +392,6 @@ CI の所要時間の記録は `docs/ci-timings/` に置き、`scripts/ci/timing
 ## License
 
 [MIT](./LICENSE) © tett23
+
+ただし、二つのマニュアルの `manual/` と `manual-dev/`（`fonts/` を除く）と、そこから組んだ PDF と HTML は、[CC0 1.0](./manual/LICENSE) で公開している（[docs/adr/0082](./docs/adr/0082-manuals-under-cc0.md)）。
+マニュアルの PDF に埋め込んだフォントと、HTML と一緒に配るフォントは、SIL Open Font License 1.1 のままである。

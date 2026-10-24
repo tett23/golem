@@ -301,4 +301,5 @@ zip は版と SHA-256 をキーにキャッシュするので、取りに行く�
 
 ## ライセンス
 
-貢献したコードとドキュメントは、[MIT ライセンス](./LICENSE) のもとで配布される。
+二つのマニュアル（`manual/` と `manual-dev/`。`fonts/` を除く）への貢献は、[CC0 1.0](./manual/LICENSE) のもとで配布される（[docs/adr/0082](./docs/adr/0082-manuals-under-cc0.md)）。
+そのほかに貢献したコードとドキュメントは、[MIT ライセンス](./LICENSE) のもとで配布される。

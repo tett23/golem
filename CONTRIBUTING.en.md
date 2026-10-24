@@ -284,4 +284,5 @@ Record the times before and after the optimization in `docs/ci-timings/`.
 
 ## License
 
-Contributed code and documentation are distributed under the [MIT License](./LICENSE).
+Contributions to the two manuals (`manual/` and `manual-dev/`, except `fonts/`) are distributed under [CC0 1.0](./manual/LICENSE) ([docs/adr/0082](./docs/adr/0082-manuals-under-cc0.md)).
+Other contributed code and documentation are distributed under the [MIT License](./LICENSE).

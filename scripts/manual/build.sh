@@ -14,6 +14,12 @@
 # notice fails it. A manifest with silence-notices fails before golem runs:
 # a manual does not hide its notices.
 #
+# After a clean build it copies the LICENSE of the project (CC0 1.0) to
+# build/html/LICENSE and, when the HTML has build/html/fonts/, the license
+# documents fonts/LICENSE-* (SIL OFL 1.1) next to the fonts
+# (docs/adr/0082-manuals-under-cc0.md). A project without LICENSE fails
+# before golem runs.
+#
 # For the tests: GOLEM_MANUAL_ROOT is the folder that holds the projects
 # (the root of the repository by default), and GOLEM_MANUAL_SKIP_FONTS=1
 # does not fetch the fonts.
@@ -38,6 +44,10 @@ for project in "$@"; do
     echo "build: $project/manifest.toml has silence-notices; a manual must build without notices, not hide them (docs/adr/0024)" >&2
     exit 1
   fi
+  if [ ! -f "$DIR/LICENSE" ]; then
+    echo "build: $project/LICENSE is missing; the HTML carries the license of the manual (docs/adr/0082)" >&2
+    exit 1
+  fi
   sh "$HERE/build-info.sh" "$DIR"
   [ "${GOLEM_MANUAL_SKIP_FONTS-}" = 1 ] || sh "$HERE/fetch-fonts.sh" "$DIR/fonts"
   rm -rf "$DIR/build"
@@ -47,5 +57,16 @@ for project in "$@"; do
     cat "$OUT" >&2
     echo "build: golem build of $project/ exited with $CODE and wrote the diagnostics above; a manual must build without any" >&2
     exit 1
+  fi
+  # the HTML hands the fonts over as files, so it carries their licenses
+  # and the license of the manual (docs/adr/0082)
+  if [ -d "$DIR/build/html" ]; then
+    cp "$DIR/LICENSE" "$DIR/build/html/LICENSE"
+    if [ -d "$DIR/build/html/fonts" ]; then
+      for license in "$DIR"/fonts/LICENSE-*; do
+        [ -f "$license" ] || continue
+        cp "$license" "$DIR/build/html/fonts/"
+      done
+    fi
   fi
 done

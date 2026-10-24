@@ -262,17 +262,23 @@ R=$WORK/root
 for p in manual manual-dev; do
   mkdir -p "$R/$p/common"
   printf 'chapters = ["a.gm"]\n\n[metadata]\ntitle = "t"\n' >"$R/$p/manifest.toml"
+  printf 'the license of %s\n' "$p" >"$R/$p/LICENSE"
 done
 echo 0.1.0 >"$R/VERSION"
 FAKE=$WORK/fake-golem
 # the fake golem records its folder, its arguments and whether
-# common/build-info.gm was there, writes $FAKE_STDERR and exits with
-# $FAKE_CODE
+# common/build-info.gm was there, makes build/html/ when $FAKE_HTML is
+# html and build/html/fonts/ too when it is fonts, writes $FAKE_STDERR and
+# exits with $FAKE_CODE
 cat >"$FAKE" <<'EOF'
 #!/bin/sh
 info=no
 [ ! -f common/build-info.gm ] || info=yes
 printf '%s %s info=%s\n' "$(basename "$PWD")" "$*" "$info" >>"$FAKE_LOG"
+case "${FAKE_HTML-}" in
+  html) mkdir -p build/html ;;
+  fonts) mkdir -p build/html/fonts ;;
+esac
 [ -z "${FAKE_STDERR-}" ] || printf '%s\n' "$FAKE_STDERR" >&2
 exit "${FAKE_CODE:-0}"
 EOF
@@ -306,7 +312,44 @@ err_has "build: the notice is shown" "notice[G07030]"
 FAKE_STDERR='warning[G02005]: a.gm:1:1: unused'
 run build manual
 expect "build: a warning fails the build" 1
+
+# the license documents of the HTML (docs/adr/0082-manuals-under-cc0.md)
+FAKE_STDERR='notice[G07030]: a.gm:1:1: the line is folded'
+FAKE_HTML=fonts
+export FAKE_HTML
+run build manual
+expect "build: a notice with build/html/ still fails the build" 1
+check "build: LICENSE is not copied after a notice" test ! -e "$R/manual/build/html/LICENSE"
 unset FAKE_STDERR FAKE_CODE
+
+mkdir -p "$R/manual/fonts"
+printf 'the license of the font A\n' >"$R/manual/fonts/LICENSE-A.txt"
+printf 'the license of the font B\n' >"$R/manual/fonts/LICENSE-B.md"
+printf 'not a license\n' >"$R/manual/fonts/A.otf"
+run build manual
+expect "build: build/html/fonts/ and the license documents" 0
+check "build: build/html/LICENSE is the LICENSE of the project" \
+  cmp -s "$R/manual/LICENSE" "$R/manual/build/html/LICENSE"
+check "build: fonts/LICENSE-A.txt is copied" \
+  cmp -s "$R/manual/fonts/LICENSE-A.txt" "$R/manual/build/html/fonts/LICENSE-A.txt"
+check "build: fonts/LICENSE-B.md is copied" \
+  cmp -s "$R/manual/fonts/LICENSE-B.md" "$R/manual/build/html/fonts/LICENSE-B.md"
+check "build: a font is not copied by build.sh" test ! -e "$R/manual/build/html/fonts/A.otf"
+
+FAKE_HTML=html
+run build manual
+expect "build: build/html/ without fonts/" 0
+check "build: build/html/LICENSE without fonts/" \
+  cmp -s "$R/manual/LICENSE" "$R/manual/build/html/LICENSE"
+check "build: build/html/fonts/ is not made" test ! -e "$R/manual/build/html/fonts"
+unset FAKE_HTML
+
+mv "$R/manual/LICENSE" "$WORK/LICENSE.manual"
+run build manual
+expect "build: a project without LICENSE" 1
+err_has "build: LICENSE is named" "LICENSE"
+mv "$WORK/LICENSE.manual" "$R/manual/LICENSE"
+rm -rf "$R/manual/fonts" "$R/manual/build"
 
 printf '\n[diagnostics]\nsilence-notices = ["G07030"]\n' >>"$R/manual-dev/manifest.toml"
 run build manual-dev
@@ -329,6 +372,29 @@ SECOND=$(chapters | sed -n 2p)
 check "manifest: the first file is はじめに, without a number" \
   sh -c 'grep -qx "# はじめに" "$1" && grep -qx "@nonumber" "$1" && ! grep -q "^@toc" "$1"' sh "$ROOT/manual/$FIRST"
 check "manifest: the second file has the table of contents" grep -q '^@toc' "$ROOT/manual/$SECOND"
+
+# ---------------------------------------------------------------- the licenses of the manuals
+
+# docs/adr/0082-manuals-under-cc0.md: the deed on line 1, a blank line 2 and
+# the legal code of CC0 1.0 unchanged from line 3
+CC0_DEED=https://creativecommons.org/publicdomain/zero/1.0/
+CC0_SHA256=a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499
+# sha256 FILE: the SHA-256 of FILE in hex
+sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d ' ' -f 1
+}
+for p in manual manual-dev; do
+  L=$ROOT/$p/LICENSE
+  if [ -f "$L" ]; then ok; else ng "license: $p/LICENSE exists"; continue; fi
+  check "license: line 1 of $p/LICENSE is the deed" test "$(sed -n 1p "$L")" = "$CC0_DEED"
+  check "license: line 2 of $p/LICENSE is blank" test -z "$(sed -n 2p "$L")"
+  tail -n +3 "$L" >"$WORK/legalcode"
+  check "license: $p/LICENSE has the legal code of CC0 1.0 unchanged" \
+    test "$(sha256 "$WORK/legalcode")" = "$CC0_SHA256"
+  check "license: the colophon of $p names CC0 1.0" grep -qF 'CC0 1.0' "$ROOT/$p/back.gm"
+  check "license: the colophon of $p names the OFL" \
+    grep -qF 'SIL Open Font License 1.1' "$ROOT/$p/back.gm"
+done
 
 # ---------------------------------------------------------------- fetch-fonts.sh
 
