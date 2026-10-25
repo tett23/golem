@@ -1,6 +1,6 @@
 # ADR 0088: 矩形の型 Rect を golem-pdf に移し、golem-pdf を golem-layout-spec から切り離す
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 
