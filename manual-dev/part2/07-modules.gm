@@ -19,7 +19,7 @@ ADR はコミットした後に変えられないので、下の層から順に�
 | golem-parser | PEG のパーサー。CST、AST |
 | golem-project | マニフェスト、[code: style.toml]、import の解決 |
 | golem-eval | 式の評価とプラグインの展開（S0） |
-| golem-doc | 意味論 IR と文書構造（S1）の集約 |
+| golem-doc | 意味論 IR と文書構造（S1）の集約。参考文献の CSL-JSON の読み取りと書式 |
 | golem-plugin | wasm のランタイム、プラグインの取得とロックファイル |
 | golem-lint | lint の規則 |
 | golem-fmt | CST の整形 |
