@@ -18,6 +18,7 @@ import Golem.Driver.Pdf (Assumed (..), fixpoint)
 import Golem.Layout.Paginate (ColumnSet (..), PageOut (..))
 import Golem.Project (ProjectFailure (..))
 import Golem.Syntax
+import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Support
 import System.Directory (createDirectoryIfMissing, createFileLink, doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))
@@ -222,7 +223,7 @@ noticeTests =
         map withoutInstanceId (nOutputs b) @?= map withoutInstanceId (nOutputs a)
         assertBool "no G02065" ("G02065" `notElem` codesOf (nDiagnostics b)),
       testCase "G03023: no style.toml, at the start of manifest.toml" $ do
-        let files = [("manifest.toml", "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n\n[targets.epub]\n\n[targets.text]\n"), ("a.gm", "x\n")]
+        let files = [("manifest.toml", TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["html", "epub", "text"]})), ("a.gm", "x\n")]
         n <- buildNotified files id
         [(diagCode d, diagSeverity d, spanStart (diagSpan d), spanEnd (diagSpan d)) | d <- nDiagnostics n] @?= [(DiagnosticCode "G03023", Notice, 0, 0)]
         q <- buildNotified files (\o -> o {optNoNotices = True})

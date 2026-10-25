@@ -6,7 +6,9 @@ description:
   Helpers that the test suites of the Golem packages share
   (docs/adr/0028). Only test suites depend on it: the golem executable
   does not, and it is not part of the release archives
-  (scripts/ci/test-only-deps.sh checks this).
+  (scripts/ci/test-only-deps.sh checks this). It depends on no package
+  of this repository, neither directly nor through another package
+  (docs/adr/0087; test-only-deps.sh checks this too).
 license:            MIT
 author:             tett23
 maintainer:         tett23@gmail.com
@@ -21,13 +23,19 @@ library
   import:           warnings
   hs-source-dirs:   src
   exposed-modules:
+    Golem.TestSupport.Bytes
     Golem.TestSupport.Env
     Golem.TestSupport.ExternalTool
+    Golem.TestSupport.Gen
+    Golem.TestSupport.Manifest
     Golem.TestSupport.Parallel
     Golem.TestSupport.Skipped
   build-depends:
-    , base   >=4.20 && <4.21
-    , tasty  >=1.4  && <1.6
+    , base        >=4.20 && <4.21
+    , bytestring  >=0.11 && <0.13
+    , hedgehog    >=1.4  && <1.6
+    , tasty       >=1.4  && <1.6
+    , text        >=2.0  && <2.2
   default-language: GHC2021
 
 test-suite golem-test-support-test
@@ -37,7 +45,10 @@ test-suite golem-test-support-test
   main-is:          Main.hs
   build-depends:
     , base
+    , bytestring
     , golem-test-support
+    , hedgehog
     , tasty
     , tasty-hunit         >=0.10 && <0.11
+    , text
   default-language: GHC2021
