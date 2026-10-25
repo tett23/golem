@@ -10,8 +10,6 @@ module Golem.Driver.Explain.Catalog
   ( Status (..),
     Explanation (..),
     parseCatalog,
-    severities,
-    preflightSeverity,
   )
 where
 

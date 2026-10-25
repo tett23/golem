@@ -14,13 +14,9 @@ module Golem.Eval.File
     builtinInlineCommands,
     overridableCommands,
     kentenShapes,
-    joinSoftBreaks,
-    splitLines,
     TableFormat (..),
     CellReading (..),
     AlignError (..),
-    tableFormat,
-    tableAlign,
     parseCsv,
     parseTsv,
     TableError (..),
@@ -29,7 +25,6 @@ module Golem.Eval.File
     tableMaxBytes,
     tableMaxRows,
     tableMaxCells,
-    duplicateKeys,
   )
 where
 

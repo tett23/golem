@@ -17,7 +17,6 @@ module Golem.Regex
     matches,
     matchesCounting,
     programSize,
-    maxProgramSize,
   )
 where
 

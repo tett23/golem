@@ -6,9 +6,9 @@ module Golem.Driver.Pdf.Draw
 where
 
 import Data.ByteString (ByteString)
+import Data.Containers.ListUtils (nubOrdOn)
 import Data.Either (lefts)
-import Data.Function (on)
-import Data.List (groupBy, nub, nubBy)
+import Data.List (groupBy, nub)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Maybe (fromMaybe, isJust, listToMaybe, mapMaybe)
@@ -179,7 +179,7 @@ writeDocumentView inp geom fonts layout intent =
       -- the columns of a page come together from 'paginate' (docs/adr ADR 0018)
       drawn = zipWith (drawPage env) (pagesOf (plPages layout)) masters
       -- one Form XObject per file and page of the PDF figures (golem-pdf ADR 0008)
-      formKeys = nubBy ((==) `on` fst) [((pfSource pf, pfPage pf), fc) | pf <- Map.elems (plFigures layout), Just fc <- [formOf (pfContent pf)]]
+      formKeys = nubOrdOn fst [((pfSource pf, pfPage pf), fc) | pf <- Map.elems (plFigures layout), Just fc <- [formOf (pfContent pf)]]
       formOf = \case
         P.VectorFigure ip -> Just (P.ImportedForm ip)
         P.SvgFigure d -> Just (P.DrawnForm d)
