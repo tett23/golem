@@ -5,7 +5,8 @@ required is passed as an argument instead of through the environment.
 -}
 module Main (main) where
 
-import Control.Exception (SomeException, throwIO, try)
+import Control.Concurrent (threadDelay)
+import Control.Exception (Exception, SomeException, evaluate, throwIO, try)
 import Control.Monad (replicateM)
 import Data.ByteString qualified as BS
 import Data.IORef (modifyIORef, newIORef, readIORef)
@@ -18,7 +19,9 @@ import Golem.TestSupport.Gen
 import Golem.TestSupport.Manifest
 import Golem.TestSupport.Parallel
 import Golem.TestSupport.Skipped
+import Golem.TestSupport.TimeLimit
 import Hedgehog.Gen qualified as Gen
+import System.CPUTime (getCPUTime)
 import System.Environment (lookupEnv, setEnv, unsetEnv)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
@@ -41,7 +44,8 @@ main =
         hexTests,
         genTextTests,
         manifestTests,
-        skippedTests
+        skippedTests,
+        timeLimitTests
       ]
 
 found, missing :: IO (Maybe FilePath)
@@ -279,4 +283,52 @@ skippedTests =
         skips <- newSkips
         _ <- runAll (needsToolWith (pure False) "tool" missing passing)
         skippedSoFar skips >>= (@?= [])
+    ]
+
+-- | The CPU time of the process, in seconds.
+cpuNow :: IO Double
+cpuNow = (/ 1e12) . fromInteger <$> getCPUTime
+
+-- | The exception an action ends with, or the value it returns.
+outcome :: (Exception e) => IO a -> IO (Either e a)
+outcome = try
+
+{- | 'withinTimeLimits' (docs/adr ADR 0091). golem-test-support-test is
+not -threaded, so the CPU time of the process is the test's.
+-}
+timeLimitTests :: TestTree
+timeLimitTests =
+  testGroup
+    "withinTimeLimits (docs/adr ADR 0091)"
+    [ testCase "a computation that does not end fails by the CPU time, in less than 3 seconds of it" $ do
+        t0 <- cpuNow
+        start <- evaluate (0 :: Integer)
+        r <- outcome (withinTimeLimits (TimeLimits 1 60) (evaluate (length [start ..])))
+        t1 <- cpuNow
+        case r of
+          Left (CpuTimeExceeded 1) -> pure ()
+          Left e -> assertFailure ("another limit: " <> show e)
+          Right n -> assertFailure ("ended with " <> show n)
+        assertBool ("used " <> show (t1 - t0) <> " s") (t1 - t0 < 3),
+      testCase "sleeping for 2 seconds does not use the CPU time, and ends" $
+        withinTimeLimits (TimeLimits 1 60) (threadDelay 2000000 >> pure "slept") >>= (@?= ("slept" :: String)),
+      testCase "sleeping for 60 seconds fails by the wall-clock time, with less than 1 second of CPU time" $ do
+        t0 <- cpuNow
+        r <- outcome (withinTimeLimits (TimeLimits 60 1) (threadDelay 60000000))
+        t1 <- cpuNow
+        case r of
+          Left (WallTimeExceeded 1) -> pure ()
+          Left e -> assertFailure ("another limit: " <> show e)
+          Right () -> assertFailure "slept for 60 seconds"
+        assertBool ("used " <> show (t1 - t0) <> " s") (t1 - t0 < 1),
+      testCase "the value of the action is returned" $
+        withinTimeLimits hangLimits (pure (42 :: Int)) >>= (@?= 42),
+      testCase "the exception of the action comes out as it is" $ do
+        r <- try (withinTimeLimits hangLimits (throwIO (userError "boom") :: IO ()))
+        r @?= Left (userError "boom"),
+      testCase "the messages" $ do
+        show (CpuTimeExceeded 60) @?= "used more than 60 seconds of CPU time"
+        show (WallTimeExceeded 300) @?= "took more than 300 seconds of wall-clock time",
+      testCase "hangLimits: 60 seconds of CPU time, 300 of wall-clock time" $
+        (cpuSeconds hangLimits, wallSeconds hangLimits) @?= (60, 300)
     ]

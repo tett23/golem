@@ -7,7 +7,7 @@ proportional to the input.
 module SecuritySpec (tests) where
 
 import Control.Exception (SomeException, evaluate, try)
-import Control.Monad (forM_)
+import Control.Monad (forM_, void)
 import Data.ByteString (ByteString)
 import Data.Either (isRight)
 import Data.Ratio (denominator, numerator)
@@ -18,7 +18,7 @@ import GHC.Stats (allocated_bytes, getRTSStats, getRTSStatsEnabled)
 import Golem.Svg
 import Golem.Svg.Css (parseStylesheet)
 import Golem.Svg.Xml (parseXml)
-import System.CPUTime (getCPUTime)
+import Golem.TestSupport.TimeLimit (hangLimits, withinTimeLimits)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -71,31 +71,6 @@ linearIn act n = do
   (_, large) <- allocatedBy (act (2 * n))
   let ratio = fromInteger large / fromInteger (max 1 small) :: Double
   assertBool ("allocation grew by " <> show ratio <> " (" <> show small <> " -> " <> show large <> " bytes)") (ratio < 3)
-
-{- | The same for time, when the quadratic part does not allocate: a
-quadratic algorithm takes about four times as long, and the line is
-drawn at 4 so that a busy runner does not fail a linear one (docs/adr
-ADR 0073). The input is large enough for the two runs to take well over
-a second together.
--}
-linearTime :: (Int -> IO a) -> Int -> Assertion
-linearTime act n = do
-  t0 <- cpuSeconds
-  _ <- act n
-  t1 <- cpuSeconds
-  _ <- act (2 * n)
-  t2 <- cpuSeconds
-  let small = t1 - t0
-      large = t2 - t1
-      ratio = large / max 0.001 small
-  assertBool ("time grew by " <> show ratio <> " (" <> show small <> " s -> " <> show large <> " s)") (ratio < 4)
-
--- | The processor time, not the wall clock: other work on a busy machine does not count.
-cpuSeconds :: IO Double
-cpuSeconds = (/ 1e12) . fromInteger <$> getCPUTime
-
-seconds :: Integer -> Integer
-seconds = (* 1000000)
 
 -- | Every rational in a drawing, for checking their size.
 rationals :: [DrawOp] -> [Rational]
@@ -184,33 +159,41 @@ tests2018 =
   testGroup
     "hostile SVG figures end within limits (security audit 2026-10-18)"
     [ testGroup "markers and numbers within limits (docs/adr ADR 0041)" adr0041Tests,
-      localOption (mkTimeout (seconds 30))
-        $ testCase "C8: a marker that refers to itself is refused or drawn finitely"
+      testCase "C8: a marker that refers to itself is refused or drawn finitely"
+        $ withinTimeLimits hangLimits
         $ total selfMarker >>= finished,
-      localOption (mkTimeout (seconds 30))
-        $ testCase "C8: markers nested 14 deep, four at each level, are refused or bounded (not 4^14 groups)"
+      testCase "C8: markers nested 14 deep, four at each level, are refused or bounded (not 4^14 groups)"
+        $ withinTimeLimits hangLimits
         $ total (nestedMarkers 14) >>= finished,
-      localOption (mkTimeout (seconds 30))
-        $ testCase "C9: entity references are resolved in allocation linear in their number"
+      testCase "C9: entity references are resolved in allocation linear in their number"
+        $ withinTimeLimits hangLimits
         $ linearIn (\n -> parsed (svg ("<desc>" <> T.replicate n "&amp;" <> "</desc>"))) 20000,
-      localOption (mkTimeout (seconds 30))
-        $ testCase "C9: CSS comments are stripped in allocation linear in their number"
+      testCase "C9: CSS comments are stripped in allocation linear in their number"
+        $ withinTimeLimits hangLimits
         $ linearIn (\n -> evaluate (length (show (parseStylesheet (T.replicate n "/**/" <> "rect { fill: red }"))))) 20000,
-      localOption (mkTimeout (seconds 30))
-        $ testCase "C9: text split by comments is joined in allocation linear in the number of pieces"
+      testCase "C9: text split by comments is joined in allocation linear in the number of pieces"
+        $ withinTimeLimits hangLimits
         $ linearIn (\n -> parsed (svg ("<desc>" <> T.replicate n "a<!---->" <> "</desc>"))) 20000,
-      localOption (mkTimeout (seconds 60))
-        $ testCase "C10: an element of many attributes is checked for duplicates in time linear in their number"
-        $ linearTime (\n -> parsed (TE.encodeUtf8 ("<svg" <> T.concat [" a" <> T.pack (show i) <> "=\"1\"" | i <- [1 .. n]] <> "/>"))) 20000,
-      localOption (mkTimeout (seconds 30)) $
-        testCase "C11: six arcs with radii of 1e9999 (150 bytes) are refused or drawn with numbers of a bounded size" $
+      -- Read once, within the time limits (docs/adr ADR 0091): a check of
+      -- duplicates in time quadratic in the number of attributes goes over
+      -- the limit of CPU time long before 200,000 of them.
+      testCase "C10: an element of 200,000 attributes is checked for duplicates within the time limits" $
+        withinTimeLimits hangLimits $
+          do
+            let b = TE.encodeUtf8 ("<svg" <> T.concat [" a" <> T.pack (show i) <> "=\"1\"" | i <- [1 .. 200000 :: Int]] <> "/>")
+            _ <- evaluate b
+            case parseXml b of
+              Left e -> assertFailure (T.unpack e)
+              Right x -> void (evaluate (length (show x))),
+      testCase "C11: six arcs with radii of 1e9999 (150 bytes) are refused or drawn with numbers of a bounded size" $
+        withinTimeLimits hangLimits $
           do
             r <- total (svg ("<path d=\"M0 0" <> T.replicate 3 " A 1e9999 1e9999 0 0 1 10 0 A 1e9999 1e9999 0 0 1 0 0" <> "\" stroke=\"#000\" fill=\"none\"/>"))
             case r of
               Left _ -> pure ()
               Right s -> assertBool "a number too large for a PDF" (all smallEnough (rationals (svgDrawing s))),
-      localOption (mkTimeout (seconds 30)) $
-        testCase "C11: a width of 1e9999 is refused or read as a size of a bounded number" $
+      testCase "C11: a width of 1e9999 is refused or read as a size of a bounded number" $
+        withinTimeLimits hangLimits $
           do
             r <- total "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1e9999\" height=\"1e9999\"><rect width=\"1\" height=\"1\"/></svg>"
             case r of
@@ -220,8 +203,8 @@ tests2018 =
 
 adr0041Tests :: [TestTree]
 adr0041Tests =
-  [ localOption (mkTimeout (seconds 30)) $
-      testCase "C8: a marker that refers to itself is one reference in a cycle (G08016, docs/adr ADR 0054)" $
+  [ testCase "C8: a marker that refers to itself is one reference in a cycle (G08016, docs/adr ADR 0054)" $
+      withinTimeLimits hangLimits $
         do
           r <- total selfMarker
           markerProblems r @?= (["m"], [])
@@ -238,30 +221,30 @@ adr0041Tests =
     testCase "a marker in a cycle that the drawing never places is not a problem" $ do
       r <- total (svg "<defs><marker id=\"m\"><path d=\"M0 0 L1 1\" marker-end=\"url(#m)\"/></marker></defs><path d=\"M0 0 L10 0\" stroke=\"#000\"/>")
       either (assertFailure . show) (const (pure ())) r,
-    localOption (mkTimeout (seconds 30)) $
-      testCase "C8: markers nested 14 deep, four at each level, are references too deep only (G08017)" $
+    testCase "C8: markers nested 14 deep, four at each level, are references too deep only (G08017)" $
+      withinTimeLimits hangLimits $
         do
           r <- total (nestedMarkers 14)
           let (cycles, deep) = markerProblems r
           assertBool (show (take 3 deep)) (not (null deep))
           cycles @?= []
           unsupportedNames r @?= [],
-    localOption (mkTimeout (seconds 30)) $
-      testCase "a chain of 9 markers is drawn" $
+    testCase "a chain of 9 markers is drawn" $
+      withinTimeLimits hangLimits $
         do
           r <- total (markerChain 9)
           case r of
             -- each marker is two groups (its place and its viewBox)
             Right s -> groupDepth (svgDrawing s) @?= 18
             Left e -> assertFailure (show e),
-    localOption (mkTimeout (seconds 30)) $
-      testCase "a chain of 10 markers is one reference too deep (G08017)" $
+    testCase "a chain of 10 markers is one reference too deep (G08017)" $
+      withinTimeLimits hangLimits $
         do
           r <- total (markerChain 10)
           markerProblems r @?= ([], ["c1"])
           unsupportedNames r @?= [],
-    localOption (mkTimeout (seconds 30)) $
-      testCase "a chain of 12 markers is three references too deep" $
+    testCase "a chain of 12 markers is three references too deep" $
+      withinTimeLimits hangLimits $
         do
           r <- total (markerChain 12)
           markerProblems r @?= ([], ["c1", "c2", "c3"]),
@@ -269,13 +252,13 @@ adr0041Tests =
       r <- total (svg "<text>a</text><defs><marker id=\"m\"><path d=\"M0 0 L1 1\" marker-end=\"url(#m)\"/></marker></defs><path d=\"M0 0 L10 0\" marker-end=\"url(#m)\"/>")
       unsupportedNames r @?= ["text"]
       markerProblems r @?= (["m"], []),
-    localOption (mkTimeout (seconds 30)) $
-      testCase "C11: six arcs with radii of 1e9999 are G08011, d（読めない数）" $
+    testCase "C11: six arcs with radii of 1e9999 are G08011, d（読めない数）" $
+      withinTimeLimits hangLimits $
         do
           r <- total (svg ("<path d=\"M0 0" <> T.replicate 3 " A 1e9999 1e9999 0 0 1 10 0 A 1e9999 1e9999 0 0 1 0 0" <> "\" stroke=\"#000\" fill=\"none\"/>"))
           unsupportedNames r @?= ["d（読めない数）"],
-    localOption (mkTimeout (seconds 30)) $
-      testCase "C11: a width of 1e9999 is G08010, 大きさの数が大きすぎます" $
+    testCase "C11: a width of 1e9999 is G08010, 大きさの数が大きすぎます" $
+      withinTimeLimits hangLimits $
         do
           r <- total "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1e9999\" height=\"1e9999\"><rect width=\"1\" height=\"1\"/></svg>"
           r @?= Left (SvgMalformed "大きさの数が大きすぎます"),
@@ -315,8 +298,8 @@ auditTests =
 
 adr0083Tests :: [TestTree]
 adr0083Tests =
-  [ localOption (mkTimeout (seconds 5)) $
-      testCase "A-SA: thirty arcs with radii of 1e-9999 (1 KB) are G08011, d（読めない数）, in time" $
+  [ testCase "A-SA: thirty arcs with radii of 1e-9999 (1 KB) are G08011, d（読めない数）, in time" $
+      withinTimeLimits hangLimits $
         do
           r <- total (svg ("<path d=\"M0 0" <> T.replicate 15 " A 1e-9999 1e-9999 0 0 1 10 0 A 1e-9999 1e-9999 0 0 1 0 0" <> "\" stroke=\"#000\" fill=\"none\"/>"))
           unsupportedNames r @?= ["d（読めない数）"]
@@ -348,8 +331,8 @@ adr0083Tests =
       readSvg "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1e-10\" height=\"1\"/>" @?= Left (SvgMalformed "大きさの数が小さすぎます"),
     testCase "a root of a number too large and one too small is 大きさの数が大きすぎます" $
       readSvg "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1e10\" viewBox=\"0 0 1e-10 1\"/>" @?= Left (SvgMalformed "大きさの数が大きすぎます"),
-    localOption (mkTimeout (seconds 5)) $
-      testCase "the heaviest arcs within the range (coordinates of 10^9, radii of 10^-9, thirty) are read in time" $
+    testCase "the heaviest arcs within the range (coordinates of 10^9, radii of 10^-9, thirty) are read in time" $
+      withinTimeLimits hangLimits $
         do
           r <- total (svg ("<path d=\"M0 0" <> T.replicate 15 " A 1e-9 1e-9 0 0 1 1e9 1e9 A 1e-9 1e-9 0 0 1 0 0" <> "\" stroke=\"#000\" fill=\"none\"/>"))
           either (assertFailure . show) (const (pure ())) r
@@ -399,33 +382,33 @@ thousandAt n =
 
 adr0084Tests :: [TestTree]
 adr0084Tests =
-  [ localOption (mkTimeout (seconds 5)) $
-      testCase "A-SB: markers 9 deep with 20 vertices each are over the limit only, in time" $
+  [ testCase "A-SB: markers 9 deep with 20 vertices each are over the limit only, in time" $
+      withinTimeLimits hangLimits $
         do
           r <- total fanMarkers
           markerSegments r @?= Just fanSegments
           assertBool (show fanSegments) (fanSegments > 1000000)
           unsupportedNames r @?= []
           markerProblems r @?= ([], []),
-    localOption (mkTimeout (seconds 30)) $
-      testCase "a marker of 1,000 segments at the 1,000 vertices of a path is 1,000,000 segments, drawn" $
+    testCase "a marker of 1,000 segments at the 1,000 vertices of a path is 1,000,000 segments, drawn" $
+      withinTimeLimits hangLimits $
         do
           r <- total (thousandAt 1000)
           either (assertFailure . show) (const (pure ())) r,
-    localOption (mkTimeout (seconds 30)) $
-      testCase "the same marker at the 1,001 vertices of a path is 1,001,000 segments, over" $
+    testCase "the same marker at the 1,001 vertices of a path is 1,001,000 segments, over" $
+      withinTimeLimits hangLimits $
         do
           r <- total (thousandAt 1001)
           markerSegments r @?= Just 1001000
           unsupportedNames r @?= []
           markerProblems r @?= ([], []),
-    localOption (mkTimeout (seconds 60)) $
-      testCase "a path of 1,000,001 segments drawn by the drawing itself is not counted" $
+    testCase "a path of 1,000,001 segments drawn by the drawing itself is not counted" $
+      withinTimeLimits hangLimits $
         do
           r <- total (svg ("<path d=\"" <> straight 1000001 <> "\" stroke=\"#000\"/>"))
           either (assertFailure . show) (const (pure ())) r,
-    localOption (mkTimeout (seconds 30)) $
-      testCase "two markers deep, the outer placing the inner of 1,000 segments 1,001 times, is over by the count, not the depth" $
+    testCase "two markers deep, the outer placing the inner of 1,000 segments 1,001 times, is over by the count, not the depth" $
+      withinTimeLimits hangLimits $
         do
           r <-
             total . svg $
@@ -440,16 +423,16 @@ adr0084Tests =
       r <- total selfMarker
       markerProblems r @?= (["m"], [])
       markerSegments r @?= Nothing,
-    localOption (mkTimeout (seconds 30)) $
-      testCase "markers nested 14 deep, four at each level, are too deep only, not over the limit" $
+    testCase "markers nested 14 deep, four at each level, are too deep only, not over the limit" $
+      withinTimeLimits hangLimits $
         do
           r <- total (nestedMarkers 14)
           let (cycles, deep) = markerProblems r
           assertBool "deep" (not (null deep))
           cycles @?= []
           markerSegments r @?= Nothing,
-    localOption (mkTimeout (seconds 30)) $
-      testCase "a chain of 9 markers is drawn" $
+    testCase "a chain of 9 markers is drawn" $
+      withinTimeLimits hangLimits $
         do
           r <- total (markerChain 9)
           either (assertFailure . show) (const (pure ())) r

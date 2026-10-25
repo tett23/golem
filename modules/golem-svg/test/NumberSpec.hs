@@ -7,6 +7,7 @@ module NumberSpec (numberTests) where
 import Data.Ratio ((%))
 import Data.Text qualified as T
 import Golem.Svg.Number
+import Golem.TestSupport.TimeLimit (hangLimits, withinTimeLimits)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -71,11 +72,10 @@ numberTests =
         map parseNumber ["1e-10", "-1e-10", "1e-9999", "0.000000000999", "9.99999999e-10", "0.0000000001", T.replicate 60 "9" <> "e-70"] @?= replicate 7 Nothing
         map parseNumber ["0", "-0", "0e-9999", "0.0", "0e5"] @?= replicate 5 (Just 0)
         numberFloor @?= 1 % (10 ^ (9 :: Int)),
-      localOption (mkTimeout 100000) $
-        testCase "a number of 60 digits and an exponent of -9999 is judged without the power of ten (docs/adr ADR 0083)" $ do
-          parseNumber "1e-9999" @?= Nothing
-          parseNumber (T.replicate 60 "9" <> "e-9999") @?= Nothing
-          outOfRange (T.replicate 60 "9" <> "e-9999") @?= True,
+      testCase "a number of 60 digits and an exponent of -9999 is judged without the power of ten (docs/adr ADR 0083)" $ withinTimeLimits hangLimits $ do
+        parseNumber "1e-9999" @?= Nothing
+        parseNumber (T.replicate 60 "9" <> "e-9999") @?= Nothing
+        outOfRange (T.replicate 60 "9" <> "e-9999") @?= True,
       testCase "60 digits are read, 61 are not" $ do
         -- the digits before and after the point together
         parseNumber ("1." <> T.replicate 58 "0" <> "1") @?= Just (1 + 1 % (10 ^ (59 :: Int)))

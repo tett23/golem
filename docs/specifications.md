@@ -231,6 +231,7 @@ golem の実行ファイルはこのパッケージに依存せず、このパ�
 
 `modules/golem-test-support` は、テストスイートだけが使うテストの補助のパッケージなので、図に含めない。
 外部ツールを使うテストの補助 `Golem.TestSupport.ExternalTool` や、いくつもの capability で動作を同時に走らせる補助 `Golem.TestSupport.Parallel` など、二つ以上のパッケージのテストが使う補助を持つ。
+golem-pdf と golem-svg のテストの時間の上限を、プロセスの CPU 時間と実時間の二つで測る補助 `Golem.TestSupport.TimeLimit` も持つ（[docs/adr/0091](adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)）。
 このパッケージは、golem のパッケージ（`modules/` の golem-\*）に、直接にもほかのパッケージを通しても依存しない。
 Hackage のパッケージには依存してよいが、`cabal.project.freeze` で版を固定してあり、いずれかのテストスイートがすでに依存しているものに限る（[docs/adr/0087](adr/0087-test-support-dependencies-and-shared-fixtures.md)）。
 golem の実行ファイルはこのパッケージに依存せず、このパッケージはリリースの配布物にも入らない。
