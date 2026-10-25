@@ -13,7 +13,6 @@ module Golem.Html
     Face (..),
     noFace,
     HtmlCode (..),
-    tokenKind,
     codeTokens,
     XhtmlSite (..),
     renderXhtml,

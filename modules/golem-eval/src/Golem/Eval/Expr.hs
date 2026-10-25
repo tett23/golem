@@ -5,11 +5,8 @@ module Golem.Eval.Expr
   ( Env (..),
     evalExpr,
     embedValue,
-    builtinNames,
     freeNames,
     PowResult (..),
-    powRounded,
-    maxExactBits,
   )
 where
 

@@ -19,7 +19,6 @@ compile :: Text -> Either RegexError Regex
 matches :: Regex -> Text -> [(Int, Int)]
 matchesCounting :: Regex -> Text -> ([(Int, Int)], Int)
 programSize :: Regex -> Int
-maxProgramSize :: Int  -- 10000
 ```
 
 - `matches` は、重ならない一致の範囲 `[始まり, 終わり)` を、対象の文字の数で返す。

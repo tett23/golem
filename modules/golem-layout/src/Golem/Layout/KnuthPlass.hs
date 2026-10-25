@@ -8,7 +8,6 @@ module Golem.Layout.KnuthPlass
     Item (..),
     Hyphen (..),
     isPatternHyphen,
-    itemFlagged,
     BoxContent (..),
     Params (..),
     defaultParams,

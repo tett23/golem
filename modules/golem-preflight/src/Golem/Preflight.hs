@@ -8,7 +8,6 @@ module Golem.Preflight
     MissingGlyph (..),
     missingGlyphs,
     pagesPhrase,
-    mmText,
   )
 where
 
