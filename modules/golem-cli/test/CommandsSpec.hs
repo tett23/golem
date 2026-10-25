@@ -20,6 +20,7 @@ import Golem.Eval.File (EvalResult (..))
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
 import Golem.Syntax (Diagnostic (..), FileId (..), Profile (..))
 import Golem.Syntax.ShowTree (showTree)
+import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
@@ -96,13 +97,10 @@ leaves = \case
 
 -- | A project of two chapters, a.gm and b.gm (golem-cli ADR 0007).
 twoChapters :: [(FilePath, String)]
-twoChapters = [("manifest.toml", manifestWith "[\"a.gm\", \"b.gm\"]"), ("style.toml", ""), ("a.gm", "一章。\n"), ("b.gm", "二章。\n")]
+twoChapters = [("manifest.toml", manifestWith ["a.gm", "b.gm"]), ("style.toml", ""), ("a.gm", "一章。\n"), ("b.gm", "二章。\n")]
 
-manifestWith :: String -> String
-manifestWith chapters =
-  "chapters = "
-    <> chapters
-    <> "\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
+manifestWith :: [T.Text] -> String
+manifestWith chapters = T.unpack (manifestToml testManifest {tmChapters = chapters})
 
 -- ------------------------------------------------------------------ golem new (golem-cli ADR 0003, ADR 0006)
 
@@ -359,7 +357,7 @@ inspectTests =
 -- | A project of two chapters; the second has two blank lines too many and trailing spaces.
 fmtProject :: [(FilePath, String)]
 fmtProject =
-  [ ("manifest.toml", manifestWith "[\"chapters/01.gm\", \"chapters/02.gm\"]"),
+  [ ("manifest.toml", manifestWith ["chapters/01.gm", "chapters/02.gm"]),
     ("chapters/01.gm", "# はじめに\n\n本文。\n"),
     ("chapters/02.gm", "# 次に\n\n\n\n本文。  \n")
   ]
@@ -453,12 +451,12 @@ pluginTests =
   testGroup
     "golem plugin lock and fetch (golem-plugin ADR 0002)"
     [ testCase "lock with no plugin declared writes an empty plugins.lock and exits with 0" $
-        inPluginProject [("manifest.toml", manifestWith "[]")] [] ["plugin", "lock"] $ \dir (code, _, err) -> do
+        inPluginProject [("manifest.toml", manifestWith [])] [] ["plugin", "lock"] $ \dir (code, _, err) -> do
           (code, err) @?= (ExitSuccess, "")
           BS.readFile (dir </> "plugins.lock") >>= (@?= ""),
       testCase "lock with an HTTP URL: 1, and plugins.lock is left as it was"
         $ inPluginProject
-          [ ("manifest.toml", manifestWith "[]" <> "\n[plugins.ruby]\nurl = \"http://example.invalid/a.wasm\"\n"),
+          [ ("manifest.toml", manifestWith [] <> "\n[plugins.ruby]\nurl = \"http://example.invalid/a.wasm\"\n"),
             ("plugins.lock", lockOfAAA)
           ]
           []
@@ -467,21 +465,21 @@ pluginTests =
           (code, err) @?= (ExitFailure 1, "ruby: HTTPS の URL だけを使えます: http://example.invalid/a.wasm\n")
           readUtf8 (dir </> "plugins.lock") >>= (@?= lockOfAAA),
       testCase "fetch without plugins.lock has nothing to do and exits with 0" $
-        inPluginProject [("manifest.toml", manifestWith "[]")] [] ["plugin", "fetch"] $ \_ (code, _, err) ->
+        inPluginProject [("manifest.toml", manifestWith [])] [] ["plugin", "fetch"] $ \_ (code, _, err) ->
           (code, err) @?= (ExitSuccess, ""),
       testCase "fetch with a plugins.lock that is not TOML: G06011 at its place in plugins.lock" $
-        inPluginProject [("manifest.toml", manifestWith "[]"), ("plugins.lock", "[plugins.a\n")] [] ["plugin", "fetch"] $ \_ (code, _, err) -> do
+        inPluginProject [("manifest.toml", manifestWith []), ("plugins.lock", "[plugins.a\n")] [] ["plugin", "fetch"] $ \_ (code, _, err) -> do
           code @?= ExitFailure 1
           take 1 (lines err) @?= ["plugins.lock:1:11: error[G06011]: TOML の誤りです: ここに行末は書けません"],
       testCase "fetch of an artifact already in the cache needs no network" $
-        inPluginProject [("manifest.toml", manifestWith "[]"), ("plugins.lock", lockOfAAA)] [(hashOfAAA <> ".wasm", "AAA")] ["plugin", "fetch"] $ \_ (code, _, err) ->
+        inPluginProject [("manifest.toml", manifestWith []), ("plugins.lock", lockOfAAA)] [(hashOfAAA <> ".wasm", "AAA")] ["plugin", "fetch"] $ \_ (code, _, err) ->
           (code, err) @?= (ExitSuccess, ""),
       testCase "fetch of an artifact missing from the cache downloads it, and an HTTP URL is refused" $
-        inPluginProject [("manifest.toml", manifestWith "[]"), ("plugins.lock", "[plugins.a]\nurl = \"http://example.invalid/a.wasm\"\nsha256 = \"" <> hashOfAAA <> "\"\n")] [] ["plugin", "fetch"] $ \_ (code, _, err) ->
+        inPluginProject [("manifest.toml", manifestWith []), ("plugins.lock", "[plugins.a]\nurl = \"http://example.invalid/a.wasm\"\nsha256 = \"" <> hashOfAAA <> "\"\n")] [] ["plugin", "fetch"] $ \_ (code, _, err) ->
           (code, err) @?= (ExitFailure 1, "a: HTTPS の URL だけを使えます: http://example.invalid/a.wasm\n"),
       testCase "fetch does not take a cached artifact whose hash differs from plugins.lock"
         $ inPluginProject
-          [("manifest.toml", manifestWith "[]"), ("plugins.lock", "[plugins.a]\nurl = \"http://example.invalid/a.wasm\"\nsha256 = \"" <> hashOfAAA <> "\"\n")]
+          [("manifest.toml", manifestWith []), ("plugins.lock", "[plugins.a]\nurl = \"http://example.invalid/a.wasm\"\nsha256 = \"" <> hashOfAAA <> "\"\n")]
           [(hashOfAAA <> ".wasm", "BBB")]
           ["plugin", "fetch"]
         $ \_ (code, _, err) ->

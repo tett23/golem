@@ -1239,6 +1239,10 @@ deps "the lib of a per-package element depends" 1 "$PLANS/package-components.jso
 deps "only through exe-depends and setup" 0 "$PLANS/exe-depends.json"
 deps "a package that is not local depends" 0 "$PLANS/not-local.json"
 deps "golem-test-support is not in the plan" 0 "$PLANS/absent.json"
+# golem-test-support depends on no package of this repository (docs/adr/0087)
+deps "golem-test-support depends on a local package" 1 "$PLANS/support-local-direct.json" golem-syntax,
+deps "golem-test-support reaches a local package through Hackage" 1 "$PLANS/support-local-through-hackage.json" golem-syntax,
+deps "golem-test-support depends on Hackage packages only" 0 "$PLANS/support-hackage-only.json"
 deps "no such file" 2 "$WORK/no-such-plan.json"
 printf 'not json\n' >"$WORK/bad.json"
 deps "not JSON" 2 "$WORK/bad.json"

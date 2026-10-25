@@ -13,6 +13,7 @@ import Golem.Driver
 import Golem.Eval.File (EvalResult (..))
 import Golem.Project (Project (..), SourceFile (..))
 import Golem.Syntax
+import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Support
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -20,8 +21,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 manifestOf :: [FilePath] -> BS.ByteString
-manifestOf chapters =
-  "chapters = [" <> BS.intercalate ", " ["\"" <> TE.encodeUtf8 (T.pack c) <> "\"" | c <- chapters] <> "]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
+manifestOf chapters = TE.encodeUtf8 (manifestToml testManifest {tmChapters = map T.pack chapters})
 
 -- | A project of the given files, chapters first, with a style.toml.
 withTables :: [(FilePath, BS.ByteString)] -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
