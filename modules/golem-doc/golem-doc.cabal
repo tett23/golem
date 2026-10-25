@@ -19,6 +19,7 @@ library
   exposed-modules:
     Golem.Doc.Assemble
     Golem.Doc.Bibliography
+    Golem.Doc.Bibliography.Csl
     Golem.Doc.Cbor
     Golem.Doc.Collation
     Golem.Doc.IR
@@ -27,6 +28,7 @@ library
     Golem.Doc.Numerals
     Golem.Doc.Validate
   build-depends:
+    , aeson         >=2.1  && <2.3
     , base          >=4.20 && <4.21
     , bytestring    >=0.11 && <0.13
     , cborg         >=0.2  && <0.3
@@ -34,7 +36,9 @@ library
     , golem-parser
     , golem-syntax
     , mtl           >=2.3  && <2.4
+    , scientific    >=0.3  && <0.4
     , text          >=2.0  && <2.2
+    , vector        >=0.13 && <0.14
   default-language: GHC2021
 
 test-suite golem-doc-test
@@ -42,7 +46,7 @@ test-suite golem-doc-test
   type:             exitcode-stdio-1.0
   hs-source-dirs:   test
   main-is:          Main.hs
-  other-modules:    Gen AssembleSpec BibliographySpec CborExprSpec ListMarkersSpec NumberingSpec
+  other-modules:    Gen AssembleSpec BibliographySpec CborExprSpec CslSpec ListMarkersSpec NumberingSpec
   build-depends:
     , base
     , bytestring
@@ -59,6 +63,7 @@ test-suite golem-doc-test
     , tasty-hedgehog >=1.4 && <1.5
     , tasty-hunit    >=0.10 && <0.11
     , process
+    , scientific
     , temporary
     , text
   default-language: GHC2021
