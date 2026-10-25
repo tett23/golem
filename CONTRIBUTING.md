@@ -110,6 +110,9 @@ golem-test-support に依存してよいのはテストスイートだけであ�
 golem-test-support は golem のパッケージに依存してはいけない。
 依存すると、同じ `scripts/ci/test-only-deps.sh` が失敗する（[docs/adr/0087](./docs/adr/0087-test-support-dependencies-and-shared-fixtures.md)）。
 
+golem のパッケージの、名前が `.Internal` で終わるモジュールは、そのパッケージのテストのためにあり、ほかのパッケージから import しない。
+今あるのは `Golem.TestSupport.ExternalTool.Internal` だけである（[docs/adr/0092](./docs/adr/0092-remove-tools-required-exports.md)）。
+
 ゴールデンのファイルは手で作らず、`--accept` で書き出す（手順は [README.md](./README.md) の Development の節）。
 書き出したファイルの差分を読み、意図した出力であることを確かめてからコミットする。
 CI はテストに `TASTY_NO_CREATE=true` を付けるので、ゴールデンのファイルを消したり名前を変え間違えたりすると失敗する。

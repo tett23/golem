@@ -1,6 +1,6 @@
 # ADR 0028: テストの補助を共有するパッケージ
 
-ステータス: 採択→golem-test-support の依存と、golem の型を使わない補助の共有は [ADR 0087](0087-test-support-dependencies-and-shared-fixtures.md)
+ステータス: 採択→golem-test-support の依存と、golem の型を使わない補助の共有は [ADR 0087](0087-test-support-dependencies-and-shared-fixtures.md)、`Golem.TestSupport.ExternalTool` が公開する関数と、`toolsRequired` の確かめ方は [ADR 0092](0092-remove-tools-required-exports.md)
 
 ## 文脈
 
