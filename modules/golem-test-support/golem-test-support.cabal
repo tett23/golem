@@ -26,6 +26,7 @@ library
     Golem.TestSupport.Bytes
     Golem.TestSupport.Env
     Golem.TestSupport.ExternalTool
+    Golem.TestSupport.ExternalTool.Internal
     Golem.TestSupport.Gen
     Golem.TestSupport.Manifest
     Golem.TestSupport.Parallel

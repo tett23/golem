@@ -1,7 +1,9 @@
 {- | Tests of "Golem.TestSupport.ExternalTool" (docs/adr/0028).
 
 The wrapped tests are run directly with 'run', and whether tools are
-required is passed as an argument instead of through the environment.
+required is passed as an argument instead of through the environment
+("Golem.TestSupport.ExternalTool.Internal"). Only the tests of the
+variable itself set it, with 'withEnv' (docs/adr ADR 0092).
 -}
 module Main (main) where
 
@@ -15,6 +17,7 @@ import Data.Text qualified as T
 import Golem.TestSupport.Bytes
 import Golem.TestSupport.Env
 import Golem.TestSupport.ExternalTool
+import Golem.TestSupport.ExternalTool.Internal
 import Golem.TestSupport.Gen
 import Golem.TestSupport.Manifest
 import Golem.TestSupport.Parallel
@@ -36,7 +39,7 @@ main =
       "golem-test-support"
       [ needsToolTests,
         optionalToolTests,
-        requiredTests,
+        requiredByEnvTests,
         envFlagTests,
         withEnvTests,
         parallelTests,
@@ -129,16 +132,38 @@ optionalToolTests =
           Right v -> assertFailure ("expected an exception, got " <> show v)
     ]
 
-requiredTests :: TestTree
-requiredTests =
+{- | 'needsTool' and 'optionalTool' read @GOLEM_REQUIRE_EXTERNAL_TOOLS@
+(docs/adr ADR 0092). The variable is set with 'withEnv' and set back
+afterwards: CI runs the tests with it set to @1@. golem-test-support-test
+is not -threaded, so nothing else reads it at the same time. The values
+in full are the tests of 'envFlagBy'.
+-}
+requiredByEnvTests :: TestTree
+requiredByEnvTests =
   testGroup
-    "toolsRequiredBy"
-    [ testCase "1: required" $ toolsRequiredBy (Just "1") @?= True,
-      testCase "unset: not required" $ toolsRequiredBy Nothing @?= False,
-      testCase "0: not required" $ toolsRequiredBy (Just "0") @?= False,
-      testCase "empty: not required" $ toolsRequiredBy (Just "") @?= False,
-      testCase "true: not required" $ toolsRequiredBy (Just "true") @?= False
+    "GOLEM_REQUIRE_EXTERNAL_TOOLS (docs/adr ADR 0092)"
+    [ testCase "needsTool, missing, 1: failure" $ do
+        r <- withRequired "1" (runOne (needsTool "tool" missing passing))
+        assertBool "failed" (not (resultSuccessful r))
+        resultDescription r @?= "tool is not installed, and GOLEM_REQUIRE_EXTERNAL_TOOLS=1 requires it",
+      testCase "needsTool, missing, 0: SKIP" $ do
+        r <- withRequired "0" (runOne (needsTool "tool" missing failing))
+        assertBool "successful" (resultSuccessful r)
+        resultShortDescription r @?= "SKIP",
+      testCase "needsTool, missing, true: SKIP" $ do
+        r <- withRequired "true" (runOne (needsTool "tool" missing failing))
+        assertBool "successful" (resultSuccessful r)
+        resultShortDescription r @?= "SKIP",
+      testCase "optionalTool, missing, 1: throws" $ do
+        r <- try (withRequired "1" (optionalTool "tool" missing)) :: IO (Either SomeException (Maybe FilePath))
+        case r of
+          Left _ -> pure ()
+          Right v -> assertFailure ("expected an exception, got " <> show v),
+      testCase "optionalTool, missing, 0: Nothing" $
+        withRequired "0" (optionalTool "tool" missing) >>= (@?= Nothing)
     ]
+  where
+    withRequired = withEnv "GOLEM_REQUIRE_EXTERNAL_TOOLS"
 
 envFlagTests :: TestTree
 envFlagTests =
@@ -148,7 +173,8 @@ envFlagTests =
       testCase "unset: off" $ envFlagBy Nothing @?= False,
       testCase "empty: off" $ envFlagBy (Just "") @?= False,
       testCase "0: off" $ envFlagBy (Just "0") @?= False,
-      testCase "yes: off" $ envFlagBy (Just "yes") @?= False
+      testCase "yes: off" $ envFlagBy (Just "yes") @?= False,
+      testCase "true: off" $ envFlagBy (Just "true") @?= False
     ]
 
 parallelTests :: TestTree

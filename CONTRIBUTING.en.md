@@ -100,6 +100,9 @@ A helper that the tests of two or more packages use goes into golem-test-support
 A helper that only one test suite uses stays in the tests of that package, not in golem-test-support.
 golem-test-support must not depend on a package of Golem; if it does, the same `scripts/ci/test-only-deps.sh` fails ([docs/adr/0087](./docs/adr/0087-test-support-dependencies-and-shared-fixtures.md)).
 
+A module of a Golem package whose name ends in `.Internal` is there for the tests of that package; do not import it from another package.
+The only one now is `Golem.TestSupport.ExternalTool.Internal` ([docs/adr/0092](./docs/adr/0092-remove-tools-required-exports.md)).
+
 Do not write golden files by hand; write them with `--accept` (see the Development section of [README.md](./README.md)).
 Read the diff of the written files and confirm that the output is the intended one before committing.
 CI runs the tests with `TASTY_NO_CREATE=true`, so a deleted or misnamed golden file fails.
