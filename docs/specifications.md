@@ -199,6 +199,7 @@ flowchart TD
     driver --> epub
     driver --> font
     driver --> layout
+    driver --> layoutspec
     driver --> lint
     driver --> pdf
     driver --> plugin
@@ -209,14 +210,15 @@ flowchart TD
     eval --> project
     fmt --> parser
     html --> doc
-    layout --> layoutspec
+    layout --> project
+    layoutspec --> pdf
     layoutspec --> project
     lint --> eval
     lsp --> driver
     lsp --> fmt
-    pdf --> layoutspec
     plugin --> eval
     preflight --> pdf
+    preflight --> project
     project --> doc
     project --> regex
     text --> doc

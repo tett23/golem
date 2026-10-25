@@ -7,8 +7,8 @@ import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Map.Strict qualified as Map
-import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf
+import Golem.Pdf.Rect (Rect (..))
 import Golem.TestSupport.ExternalTool (needsTool)
 import ImportSpec (minimalPdf)
 import System.Directory (findExecutable)
