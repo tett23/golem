@@ -18,7 +18,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 ## v0.1.0-rc4
 
 - **リファクタリング**：v0.1.0-rc4 の作業を始める前に、v0.1.0-rc3 までに入れたコードを整理する。モジュールの境界、重複した処理、大きくなった関数とテストの補助を見直し、rc4 のプラグインの仕上げに備える。出力は変えず、決定性の検査で確かめる。
-  - どのテストスイートも golem-test-support に依存してよいとし、golem-font と golem-lsp のテストの `inParallel`、`raceFactor`、`withEnv` の写しを golem-test-support の一つにする（未実装、[ADR 0086](adr/0086-any-test-suite-may-depend-on-test-support.md)）。
   - golem-test-support が golem のパッケージに依存しないことを CI で確かめ、Hackage の依存を広げて、パッケージをまたぐテストの `hex`、`genText`、manifest のリテラルを共有する（未実装、[ADR 0087](adr/0087-test-support-dependencies-and-shared-fixtures.md)）。
   - 矩形の型 `Rect` を golem-pdf に移し、golem-pdf と golem-preflight を golem-layout-spec から切り離す。golem-layout の使われていない golem-layout-spec への依存も消す（未実装、[ADR 0088](adr/0088-rect-type-in-golem-pdf.md)）。
   - `style.toml` の値を golem-html の設定に直す処理を golem-driver の `Golem.Driver.Html` に分け、目次のページを作る `indexPage` を golem-html に移す（未実装、[ADR 0090](adr/0090-html-settings-conversion-stays-in-driver.md)）。

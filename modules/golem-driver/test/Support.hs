@@ -2,7 +2,7 @@
 module Support where
 
 import Codec.Compression.Zlib qualified as Z
-import Control.Exception (SomeException, evaluate, finally, try)
+import Control.Exception (SomeException, evaluate, try)
 import Control.Monad (forM, forM_)
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as BC
@@ -28,7 +28,6 @@ import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (optionalTool)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
-import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -646,14 +645,6 @@ described d =
 -- | The diagnostics of a layout that failed, described; a layout that succeeded has none.
 layoutErrors :: Either [Diagnostic] a -> [(T.Text, T.Text, FileId, Int, Int)]
 layoutErrors = either (map described) (const [])
-
-{- | Runs an action with an environment variable set, and sets it back
-afterwards, or unsets it where it was not set (docs/adr ADR 0072).
--}
-withEnv :: String -> String -> IO a -> IO a
-withEnv name value act = do
-  old <- lookupEnv name
-  (setEnv name value >> act) `finally` maybe (unsetEnv name) (setEnv name) old
 
 -- ------------------------------------------------------------------ the objects of a PDF (docs/adr ADR 0076)
 

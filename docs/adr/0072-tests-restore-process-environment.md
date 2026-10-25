@@ -1,6 +1,6 @@
 # ADR 0072: 環境変数を書き換えるテストは、書き換えを元に戻す
 
-ステータス: 採択
+ステータス: 採択→golem-lsp のテストが golem-test-support に依存しないことは [ADR 0086](0086-any-test-suite-may-depend-on-test-support.md)
 
 ## 文脈
 

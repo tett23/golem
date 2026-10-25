@@ -5,6 +5,7 @@
 module Golem.TestSupport.Parallel
   ( inParallel,
     raceFactor,
+    raceFactorBy,
   )
 where
 
@@ -36,8 +37,15 @@ inParallel acts = do
 1 or more fails the suite: it is not read as 1.
 -}
 raceFactor :: IO Int
-raceFactor = lookupEnv "GOLEM_RACE_TESTS" >>= maybe (pure 1) parse
+raceFactor = lookupEnv "GOLEM_RACE_TESTS" >>= either fail pure . raceFactorBy
+
+{- | The factor of a value of GOLEM_RACE_TESTS: 1 when it is not set, the
+value when it is an integer of 1 or more (at most six digits), and else
+the message of the failure.
+-}
+raceFactorBy :: Maybe String -> Either String Int
+raceFactorBy = maybe (Right 1) parse
   where
     parse s
-      | not (null s), all isDigit s, take 1 s /= "0", length s <= 6 = pure (read s)
-      | otherwise = fail ("GOLEM_RACE_TESTS must be an integer of 1 or more, not " <> show s)
+      | not (null s), all isDigit s, take 1 s /= "0", length s <= 6 = Right (read s)
+      | otherwise = Left ("GOLEM_RACE_TESTS must be an integer of 1 or more, not " <> show s)
