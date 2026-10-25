@@ -83,6 +83,7 @@ G08014 があれば HTML と EPUB を書かず、PDF とプレーンテキスト
 | CSS の外部の参照 | [code: @import] と、[code: #] で始まらない [code: url()] |
 
 HTML と EPUB は並列ではなく親子であり、golem-epub は golem-html の出力に EPUB 3.3 [cite epub33] のパッケージングを加える薄い層である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/specifications.md#モジュール構成]（仕様書の「モジュール構成」の節）]
+golem-html は golem-project に依存せず、[code: style.toml] の値を golem-html の設定の型に直すのは golem-driver である。
 
 golem-fixtures は、テストのフィクスチャの原文を Golem の原稿に変換する開発用の実行ファイルを持つ。
 golem の実行ファイルはこのパッケージに依存せず、リリースの配布物にも入らない（第[ref-number fixtures]章）。
