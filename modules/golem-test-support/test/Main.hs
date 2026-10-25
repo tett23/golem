@@ -5,13 +5,14 @@ required is passed as an argument instead of through the environment.
 -}
 module Main (main) where
 
-import Control.Exception (SomeException, try)
+import Control.Exception (SomeException, throwIO, try)
 import Data.IORef (modifyIORef, newIORef, readIORef)
 import Data.List (isPrefixOf)
 import Golem.TestSupport.Env
 import Golem.TestSupport.ExternalTool
 import Golem.TestSupport.Parallel
 import Golem.TestSupport.Skipped
+import System.Environment (lookupEnv, setEnv, unsetEnv)
 import Test.Tasty (TestTree, defaultMain, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@?=))
 import Test.Tasty.Options (OptionSet, singleOption)
@@ -27,7 +28,9 @@ main =
         optionalToolTests,
         requiredTests,
         envFlagTests,
+        withEnvTests,
         parallelTests,
+        raceFactorTests,
         skippedTests
       ]
 
@@ -148,6 +151,53 @@ parallelTests =
           [Right [1, 2], Left e] | "late" `isPrefixOf` e -> pure ()
           _ -> assertFailure (show rs)
     ]
+
+{- | The variable only these tests use. golem-test-support-test is not
+-threaded, so nothing else reads it at the same time.
+-}
+withEnvVar :: String
+withEnvVar = "GOLEM_TEST_SUPPORT_WITH_ENV"
+
+withEnvTests :: TestTree
+withEnvTests =
+  testGroup
+    "withEnv (docs/adr ADR 0072, ADR 0086)"
+    [ testCase "the value is set inside, and the old one comes back afterwards" $ do
+        setEnv withEnvVar "old"
+        inside <- withEnv withEnvVar "new" (lookupEnv withEnvVar)
+        inside @?= Just "new"
+        lookupEnv withEnvVar >>= (@?= Just "old")
+        unsetEnv withEnvVar,
+      testCase "a variable that was not set is unset again afterwards" $ do
+        unsetEnv withEnvVar
+        inside <- withEnv withEnvVar "new" (lookupEnv withEnvVar)
+        inside @?= Just "new"
+        lookupEnv withEnvVar >>= (@?= Nothing),
+      testCase "the old value comes back when the action throws" $ do
+        setEnv withEnvVar "old"
+        r <- try (withEnv withEnvVar "new" (throwIO (userError "boom"))) :: IO (Either IOError ())
+        either (const (pure ())) (const (assertFailure "expected an exception")) r
+        lookupEnv withEnvVar >>= (@?= Just "old")
+        unsetEnv withEnvVar,
+      testCase "a variable that was not set is unset again when the action throws" $ do
+        unsetEnv withEnvVar
+        r <- try (withEnv withEnvVar "new" (throwIO (userError "boom"))) :: IO (Either IOError ())
+        either (const (pure ())) (const (assertFailure "expected an exception")) r
+        lookupEnv withEnvVar >>= (@?= Nothing)
+    ]
+
+raceFactorTests :: TestTree
+raceFactorTests =
+  testGroup
+    "raceFactorBy (docs/adr ADR 0075, ADR 0086)"
+    ( [ testCase "unset: 1" $ raceFactorBy Nothing @?= Right 1,
+        testCase "40: 40" $ raceFactorBy (Just "40") @?= Right 40
+      ]
+        <> [ testCase (show v <> ": refused") $
+               raceFactorBy (Just v) @?= Left ("GOLEM_RACE_TESTS must be an integer of 1 or more, not " <> show v)
+           | v <- ["", "0", "07", "x", "1234567"]
+           ]
+    )
 
 skippedTests :: TestTree
 skippedTests =
