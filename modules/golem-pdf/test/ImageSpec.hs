@@ -15,8 +15,8 @@ import Data.ByteString.Lazy qualified as BL
 import Data.Map.Strict qualified as Map
 import Data.Word (Word8)
 import GHC.Stats (allocated_bytes, getRTSStats, getRTSStatsEnabled)
-import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf
+import Golem.Pdf.Rect (Rect (..))
 import Test.Tasty
 import Test.Tasty.HUnit
 
