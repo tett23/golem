@@ -1,7 +1,6 @@
 -- | Lowering the CST to the AST (golem-parser ADR 0005).
 module Golem.Parser.Lower
   ( lower,
-    decimalToDouble,
   )
 where
 

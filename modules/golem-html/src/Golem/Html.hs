@@ -13,7 +13,6 @@ module Golem.Html
     Face (..),
     noFace,
     HtmlCode (..),
-    tokenKind,
     codeTokens,
     XhtmlSite (..),
     renderXhtml,
@@ -22,6 +21,7 @@ module Golem.Html
     pagePath,
     escapeXml,
     cmykToRgb,
+    indexPage,
   )
 where
 
@@ -1130,3 +1130,35 @@ css cfg book =
           -- no indent in list items, after the rules of the paragraph styles of the page
           listRule = [pre <> " li p:not([class]), " <> pre <> " li p[class] { padding-inline-start: 0; text-indent: 0; }" | not (Map.null (hlParaStyles l))]
        in charRules <> paraStyleRules <> faceRules <> listRule
+
+-- | The table of contents page of the HTML target.
+indexPage :: HtmlConfig -> FileTable -> Book -> Text
+indexPage cfg ft book =
+  let items =
+        T.concat
+          [ "<li class=\"toc-"
+              <> T.pack (show (teLevel te))
+              <> "\"><a href=\""
+              <> escapeXml (T.pack (pagePath ft (teFile te)))
+              <> "#"
+              <> escapeXml (teAnchor te)
+              <> "\">"
+              <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage cfg) n)) (teNumber te)
+              <> escapeXml (T.concat (map inlineText (teTitle te)))
+              <> "</a></li>\n"
+          | -- within the depth of @toc (golem-epub ADR 0002)
+            te <- tocWithinDepth book
+          ]
+   in T.concat
+        [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"",
+          escapeXml (hcLanguage cfg),
+          "\" xml:lang=\"",
+          escapeXml (hcLanguage cfg),
+          "\">\n<head>\n<meta charset=\"UTF-8\"/>\n<title>",
+          escapeXml (hcTitle cfg),
+          "</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\"/>\n</head>\n<body>\n<h1>",
+          escapeXml (hcTitle cfg),
+          "</h1>\n<nav class=\"toc\">\n<ol>\n",
+          items,
+          "</ol>\n</nav>\n</body>\n</html>\n"
+        ]

@@ -26,11 +26,9 @@ import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
+import Golem.Pdf.Rect (Rect (..))
 import Golem.Project.Style
 import Golem.Syntax
-
-data Rect = Rect {rectX :: !Sp, rectY :: !Sp, rectW :: !Sp, rectH :: !Sp}
-  deriving stock (Eq, Show)
 
 data Side = SideLeft | SideRight
   deriving stock (Eq, Show)

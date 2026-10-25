@@ -23,7 +23,6 @@ module Golem.Doc.Assemble
     indexGroups,
     bookChapters,
     notesTitle,
-    blockNotes,
     documentNotes,
     headingAnchor,
     inlineText,

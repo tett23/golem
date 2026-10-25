@@ -8,7 +8,6 @@ module Golem.Preflight
     MissingGlyph (..),
     missingGlyphs,
     pagesPhrase,
-    mmText,
   )
 where
 
@@ -20,8 +19,8 @@ import Data.Ord (comparing)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf (ColorSpace (..), ColorUse (..), FigureContent (..), ImageData (..), ImportedPage (..), X4Problem (..))
+import Golem.Pdf.Rect (Rect (..))
 import Golem.Preflight.Rules
 import Golem.Preflight.View
 import Golem.Project.Style (Sp, sizeSourcePath, sizeSourceText)

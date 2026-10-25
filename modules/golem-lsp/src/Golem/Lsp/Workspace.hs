@@ -17,7 +17,6 @@ module Golem.Lsp.Workspace
     lineIndexOf,
     diagnosticsFor,
     Summary,
-    summaryOf,
   )
 where
 

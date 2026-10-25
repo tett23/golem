@@ -1,6 +1,6 @@
 # ADR 0005: 参考文献に誌名、巻と号、ページ、URL、閲覧日を組む
 
-ステータス: 採択→`url` の改行の位置は [golem-layout ADR 0018](../../golem-layout/adr/0018-url-line-breaks.md)
+ステータス: 採択→`url` の改行の位置は [golem-layout ADR 0018](../../golem-layout/adr/0018-url-line-breaks.md)、CSL-JSON の読み方の置き場（golem-driver）は [ADR 0089](../../adr/0089-csl-json-decoding-in-golem-doc.md)
 
 ## 文脈
 

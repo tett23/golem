@@ -23,8 +23,6 @@ module Golem.Driver
     localStylesOf,
     docStyles,
     runningVars,
-    missingStyleFiles,
-    targetFileDiagnostics,
     sourceInfos,
     withEvaluatedSources,
     assetRefs,
@@ -32,7 +30,6 @@ module Golem.Driver
     FontProvider (..),
     LoadedFonts (..),
     noFontProvider,
-    paraLineBreaks,
     keepStyles,
     sourceSettingsOf,
     builtinKeepStyles,
@@ -42,33 +39,28 @@ where
 
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
-import Control.Monad (filterM, forM, forM_, join, mfilter, when)
-import Data.Aeson qualified as J
-import Data.Aeson.Key qualified as JK
-import Data.Aeson.KeyMap qualified as KM
+import Control.Monad (filterM, forM, forM_, mfilter, when)
 import Data.Bifunctor (first)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
-import Data.Char (isDigit)
 import Data.Either (fromRight, lefts, rights)
 import Data.List (nub, sort)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe, mapMaybe)
-import Data.Scientific (Scientific, base10Exponent, coefficient, toBoundedInteger)
+import Data.Maybe (fromMaybe, isJust, isNothing, listToMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Data.Text.Unsafe (lengthWord8)
 import Data.Time.Calendar (showGregorian, toGregorian)
-import Data.Vector qualified as V
 import Golem.Doc.Assemble
-import Golem.Doc.Bibliography (CslDate (..), CslEntry (..), CslName (..), EntryPart, formatEntry)
+import Golem.Doc.Bibliography (CslEntry (..), EntryPart, formatEntry)
+import Golem.Doc.Bibliography.Csl (CslJsonError (..), decodeCslJson)
 import Golem.Doc.IR
 import Golem.Doc.ListMarkers (defaultNumberFormat)
-import Golem.Doc.Numbering (numberSeparator)
 import Golem.Driver.Fonts (cff2FontDiagnostics, golemFontProvider)
+import Golem.Driver.Html
 import Golem.Driver.Pdf
 import Golem.Driver.Plugins (loadPlugins)
 import Golem.Driver.Svg (activeMessage)
@@ -92,7 +84,6 @@ import Golem.Project.Paths (PathError (..), pathErrorMessage, resolveInRoot)
 import Golem.Project.Style
 import Golem.Svg.Active (activeContent)
 import Golem.Syntax
-import Golem.Syntax.Text (showRationalDigits)
 import Golem.Text qualified as GT
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, getFileSize, pathIsSymbolicLink, removeDirectoryRecursive)
 import System.FilePath (takeDirectory, takeFileName, (</>))
@@ -557,102 +548,16 @@ loadBibliography root manifest = do
       Left e -> pure (Left (diagnostic "G03003" Error manifestHead (T.pack (pathErrorMessage e <> ": " <> p))))
       Right rel -> do
         r <- try (BL.readFile (root </> rel)) :: IO (Either SomeException BL.ByteString)
-        pure $ case J.eitherDecode <$> r of
+        pure $ case decodeCslJson <$> r of
           Left _ -> Left (unreadable ("参考文献のファイルがありません: " <> T.pack p))
-          Right (Left err) -> Left (unreadable ("参考文献のファイルを JSON として読めません: " <> T.pack p <> "（" <> T.pack err <> "）"))
-          Right (Right (J.Array xs)) -> Right (mapMaybe cslEntry (V.toList xs))
-          Right (Right _) -> Left (unreadable ("参考文献のファイルは CSL-JSON の配列で書きます: " <> T.pack p))
+          Right (Left (CslNotJson err)) -> Left (unreadable ("参考文献のファイルを JSON として読めません: " <> T.pack p <> "（" <> T.pack err <> "）"))
+          Right (Left CslNotArray) -> Left (unreadable ("参考文献のファイルは CSL-JSON の配列で書きます: " <> T.pack p))
+          Right (Right es) -> Right es
   let m = Map.fromList [(ceId c, formatEntry c) | c <- concat (rights results)]
   pure (lefts results, Map.keysSet m, m)
   where
     manifestHead = mkSpan (FileId 0) 0 0
     unreadable = diagnostic "G03026" Error manifestHead
-
-{- | The fields of a CSL-JSON item that the bibliography shows; Nothing
-without a string id (golem-doc ADR 0004, 0005). An empty string, or one
-of spaces only, is a field that is not there.
--}
-cslEntry :: J.Value -> Maybe CslEntry
-cslEntry = \case
-  J.Object o -> do
-    J.String k <- KM.lookup "id" o
-    pure
-      CslEntry
-        { ceId = k,
-          ceType = str "type" o,
-          ceLanguage = str "language" o,
-          ceAuthors = case KM.lookup "author" o of
-            Just (J.Array as) -> mapMaybe name (V.toList as)
-            _ -> [],
-          ceTitle = str "title" o,
-          ceContainerTitle = str "container-title" o,
-          ceVolume = strOrInt "volume" o,
-          ceIssue = strOrInt "issue" o,
-          cePage = strOrInt "page" o,
-          cePublisher = str "publisher" o,
-          ceIssued = KM.lookup "issued" o >>= date,
-          ceUrl = str "URL" o,
-          ceAccessed = KM.lookup "accessed" o >>= date
-        }
-  _ -> Nothing
-  where
-    present s = if T.null (T.strip s) then Nothing else Just s
-    str k o = case KM.lookup (JK.fromText k) o of
-      Just (J.String s) -> present s
-      _ -> Nothing
-    -- a string, or an integer as its decimal digits; a number that is not an integer is not read
-    strOrInt k o = case KM.lookup (JK.fromText k) o of
-      Just (J.String s) -> present s
-      Just (J.Number n) -> T.pack . show <$> (toBoundedInteger n :: Maybe Int)
-      _ -> Nothing
-    -- literal first; a name with neither family nor given is left out
-    name = \case
-      J.Object a -> case (str "literal" a, str "family" a, str "given" a) of
-        (Just l, _, _) -> Just (LiteralName l)
-        (_, Nothing, Nothing) -> Nothing
-        (_, f, g) -> Just (PersonalName f g)
-      _ -> Nothing
-    -- the year, month and day of the first date-parts, or else the literal
-    date = \case
-      J.Object i -> case KM.lookup "date-parts" i of
-        Just (J.Array ps)
-          | (J.Array y : _) <- V.toList ps,
-            (yv : rest) <- V.toList y,
-            Just yr <- dateYear yv ->
-              let mo = case rest of
-                    (m : _) -> datePart m
-                    [] -> Nothing
-                  dy = case rest of
-                    (_ : d : _) | Just _ <- mo -> datePart d
-                    _ -> Nothing
-               in Just (DateParts yr mo dy)
-        _ -> DateLiteral <$> str "literal" i
-      _ -> Nothing
-    -- a number, or a string of ASCII digits
-    dateYear = \case
-      J.Number n -> cslYear n
-      J.String s | Just t <- digits s, T.length t <= 15 -> Just (read (T.unpack t))
-      _ -> Nothing
-    datePart = \case
-      J.Number n -> toBoundedInteger n
-      J.String s | Just t <- digits s, T.length t <= 9 -> Just (read (T.unpack t))
-      _ -> Nothing
-    digits s = if not (T.null s) && T.all isDigit s then Just s else Nothing
-
-{- | The year of a CSL-JSON number (docs/adr ADR 0035): Nothing from 10^15
-up, 0 below 0.1, and otherwise the number rounded. It is judged from the
-coefficient and the exponent, so that 1e1000000000 does not become an
-integer of a billion digits.
--}
-cslYear :: Scientific -> Maybe Integer
-cslYear n
-  | c == 0 = Just 0
-  | magnitude > 15 = Nothing
-  | magnitude < 0 = Just 0
-  | otherwise = Just (round n)
-  where
-    c = coefficient n
-    magnitude = length (show (abs c)) + base10Exponent n
 
 targetsOf :: Manifest -> [Target]
 targetsOf m =
@@ -1075,98 +980,6 @@ textLists style =
         Zw r -> r /= 0
    in GT.TextLists (textBullets l) (lsNumbers l) (nonZero <$> lsGap l)
 
--- | The character styles of a style, resolved for CSS (docs/adr ADR 0005).
-htmlCharStyles :: Style -> Map Text HtmlCharStyle
-htmlCharStyles style =
-  Map.fromList
-    [ (n, HtmlCharStyle (csFont d) (csSyntheticBold d == Just True) (csSyntheticItalic d == Just True) (csColor d) (htmlFeatures (csKerning d) (csTracking d) (csProportional d) (csBaselineShift d)) code background padding)
-    | n <- Map.keys (stCharStyles style),
-      Just d <- [charStyle style n],
-      let code = isCodeCharStyle style n
-          -- the background and the padding of inline code (golem-driver ADR 0029)
-          background = if code then charStyleBackground style n else Nothing
-          padding = if code then cssLength <$> csPadding d else Nothing
-    ]
-
--- | The paragraph styles of a style, resolved for CSS (docs/adr ADR 0005, 0006).
-htmlParaStyles :: Style -> Map Text HtmlParaStyle
-htmlParaStyles style =
-  Map.fromList
-    [ ( n,
-        HtmlParaStyle
-          (psFont d)
-          (psLineBreaks d == Just KeepLines)
-          (fromMaybe 0 (psSpaceBetween d))
-          (cssLength (fromMaybe (Zw 0) (psIndent d)))
-          (cssLength (fromMaybe (Zw 0) (psFirstLineIndent d)))
-          (htmlFeatures (psKerning d) (psTracking d) (psProportional d) (psBaselineShift d))
-          (htmlRule style <$> join (psRuleBefore d))
-          (htmlRule style <$> join (psRuleAfter d))
-      )
-    | n <- Map.keys (stParaStyles style),
-      Just d <- [paraStyle style (Just n)]
-    ]
-
-{- | A rule of a paragraph style or a heading for CSS (golem-driver ADR
-0027, 0028, 0035): zw of the length and the indents as em, the line style as one of the border styles of CSS
-and the swatch as its RGB; a rule without a colour takes the colour of
-the text. Without a length the block is as wide as the line, or as the
-rest of the line when an indent is written.
--}
-htmlRule :: Style -> RuleSpec -> HtmlRule
-htmlRule style r =
-  let start = case rsStartIndent r of
-        Zw 0 -> Nothing
-        d -> Just (cssLength d)
-      end = cssLength <$> rsEndIndent r
-      width = case rsLength r of
-        Just l -> Just (cssLength l)
-        Nothing -> if isJust start || isJust end then Nothing else Just "100%"
-      border = case rsStyle r of
-        RuleSolid -> "solid"
-        RuleMulti _ -> "double"
-        RuleDashed _ _ -> "dashed"
-        RuleDotted _ -> "dotted"
-        RuleJapaneseDots _ -> "dotted"
-        RuleWavy -> "solid"
-      colour = case rsColor r >>= (`Map.lookup` stSwatches style) of
-        Just (Swatch cmyk) -> let (cr, cg, cb) = cmykToRgb cmyk in " rgb(" <> T.pack (show cr) <> ", " <> T.pack (show cg) <> ", " <> T.pack (show cb) <> ")"
-        Nothing -> ""
-      {- the spaces between the rule and the text (golem-driver ADR 0035): zw
-      is a character of the size of the grid, in pt, or rem without one -}
-      gridSize = case stPage style >>= pageGrid of
-        Just Grid {gridFontSize = Abs fs} | fs > 0 -> Just fs
-        _ -> Nothing
-      space = \case
-        Nothing -> "0"
-        Just (Abs 0) -> "0"
-        Just (Zw 0) -> "0"
-        Just (Abs sp) -> cssLength (Abs sp)
-        Just (Zw z) -> maybe (decimal3 z <> "rem") (\fs -> cssLength (Abs (round (z * toRational fs)))) gridSize
-   in HtmlRule
-        { hrWidth = width,
-          hrStartIndent = start,
-          hrEndIndent = end,
-          hrBorder = cssLength (Abs (rsWeight r)) <> " " <> border <> colour,
-          hrOuter = space (rsSpaceBefore r),
-          hrInner = space (rsSpaceAfter r)
-        }
-
--- | The keys of the spacing of characters for CSS (docs/adr/0020).
-htmlFeatures :: Maybe Kerning -> Maybe Int -> Maybe Bool -> Maybe Dim -> HtmlFeatures
-htmlFeatures k t p b =
-  HtmlFeatures
-    { hfKerning =
-        k >>= \case
-          KernMetrics -> Just "metrics"
-          KernJapaneseEqualWidth -> Just "japanese-equal-width"
-          KernNone -> Just "none"
-          KernOptical -> Nothing,
-      hfTracking = t,
-      hfProportional = p,
-      hfBaselineShift = cssLength <$> b
-    }
-
 {- | The ideographic spaces that start the lines of a paragraph of a style
 in plain text, when indent and first-line-indent are both in zw, none
 otherwise (docs/adr ADR 0006): the whole part of their sum before the
@@ -1180,66 +993,3 @@ textIndents style st = case paraStyle style st of
     let firstLine = max 0 (truncate (a + b))
      in (firstLine, if lb == Just KeepLines then firstLine else max 0 (truncate a))
   _ -> (0, 0)
-
--- | A ruby alignment of style.toml as a CSS ruby-align value (golem-layout ADR 0009).
-rubyAlignCss :: Text -> Text
-rubyAlignCss = \case
-  "1:2:1" -> "space-around"
-  "0:1:0" -> "space-between"
-  "start" -> "start"
-  _ -> "center"
-
-{- | A length of style.toml in CSS: zw as em, other units as pt, with at
-most three decimals (docs/adr ADR 0003).
--}
-cssLength :: Dim -> Text
-cssLength = \case
-  Zw r -> decimal3 r <> "em"
-  Abs sp -> decimal3 (toRational sp / 65536) <> "pt"
-
-{- | A size of style.toml as a CSS font-size (golem-driver ADR 0010): zw as
-em, an absolute size as its ratio to an absolute grid size in em, pt
-without one.
--}
-cssFontSize :: Style -> Dim -> Text
-cssFontSize style = \case
-  Zw r -> decimal3 r <> "em"
-  Abs sp -> case stPage style >>= pageGrid of
-    Just Grid {gridFontSize = Abs fs} | fs > 0 -> decimal3 (toRational sp / toRational fs) <> "em"
-    _ -> cssLength (Abs sp)
-
--- | At most three decimals, fixed (docs/adr ADR 0003).
-decimal3 :: Rational -> Text
-decimal3 = showRationalDigits 3
-
--- | The table of contents page of the HTML target.
-indexPage :: HtmlConfig -> FileTable -> Book -> Text
-indexPage cfg ft book =
-  let items =
-        T.concat
-          [ "<li class=\"toc-"
-              <> T.pack (show (teLevel te))
-              <> "\"><a href=\""
-              <> escapeXml (T.pack (pagePath ft (teFile te)))
-              <> "#"
-              <> escapeXml (teAnchor te)
-              <> "\">"
-              <> maybe "" (\n -> escapeXml (n <> numberSeparator (hcLanguage cfg) n)) (teNumber te)
-              <> escapeXml (T.concat (map inlineText (teTitle te)))
-              <> "</a></li>\n"
-          | -- within the depth of @toc (golem-epub ADR 0002)
-            te <- tocWithinDepth book
-          ]
-   in T.concat
-        [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"",
-          escapeXml (hcLanguage cfg),
-          "\" xml:lang=\"",
-          escapeXml (hcLanguage cfg),
-          "\">\n<head>\n<meta charset=\"UTF-8\"/>\n<title>",
-          escapeXml (hcTitle cfg),
-          "</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\"/>\n</head>\n<body>\n<h1>",
-          escapeXml (hcTitle cfg),
-          "</h1>\n<nav class=\"toc\">\n<ol>\n",
-          items,
-          "</ol>\n</nav>\n</body>\n</html>\n"
-        ]

@@ -10,7 +10,6 @@ module Golem.Layout.Ruby
     RubyKind (..),
     RubyPlacement (..),
     placeRuby,
-    distribute,
   )
 where
 
