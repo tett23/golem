@@ -1,0 +1,7 @@
+{"cabal-version":"3.16.1.0","install-plan":[
+ {"type":"pre-existing","id":"base-4.20.2.0-754f","pkg-name":"base","pkg-version":"4.20.2.0","depends":[]},
+ {"type":"configured","id":"golem-syntax-0.1.0-inplace","pkg-name":"golem-syntax","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-test-support-0.1.0-inplace","pkg-name":"golem-test-support","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-syntax-0.1.0-inplace"],"exe-depends":[],"component-name":"lib"},
+ {"type":"configured","id":"golem-test-support-0.1.0-inplace-golem-test-support-test","pkg-name":"golem-test-support","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-test-support-0.1.0-inplace"],"exe-depends":[],"component-name":"test:golem-test-support-test"},
+ {"type":"configured","id":"golem-cli-0.1.0-inplace-golem","pkg-name":"golem-cli","pkg-version":"0.1.0","style":"local","depends":["base-4.20.2.0-754f","golem-syntax-0.1.0-inplace"],"exe-depends":[],"component-name":"exe:golem"}
+]}
