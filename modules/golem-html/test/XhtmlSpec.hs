@@ -550,5 +550,39 @@ blockTests =
         @?= "<pre id=\"c\"><code>a &amp; b\nc</code></pre>\n"
   ]
 
+-- | The table of contents page of the HTML target, moved from golem-driver (docs/adr ADR 0090).
+indexPageTests :: TestTree
+indexPageTests =
+  testGroup
+    "indexPage (docs/adr ADR 0090)"
+    [ testCase "a book of two files with a numbered heading of level 1 and a heading of level 2" $
+        indexPage cfg0 ft twoHeadings
+          @?= T.concat
+            [ "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE html>\n<html xmlns=\"http://www.w3.org/1999/xhtml\" lang=\"ja\" xml:lang=\"ja\">\n",
+              "<head>\n<meta charset=\"UTF-8\"/>\n<title>本</title>\n<link rel=\"stylesheet\" type=\"text/css\" href=\"style.css\"/>\n</head>\n",
+              "<body>\n<h1>本</h1>\n<nav class=\"toc\">\n<ol>\n",
+              "<li class=\"toc-1\"><a href=\"a.xhtml#intro\">第一章\x3000はじめに</a></li>\n",
+              "<li class=\"toc-2\"><a href=\"b.xhtml#detail\">細部</a></li>\n",
+              "</ol>\n</nav>\n</body>\n</html>\n"
+            ],
+      testCase "the title and the language are escaped in title, h1, lang and xml:lang" $ do
+        let page = indexPage cfg0 {hcTitle = "<A & B>", hcLanguage = "ja&<"} ft twoHeadings
+        assertBool (T.unpack page) ("<title>&lt;A &amp; B&gt;</title>" `T.isInfixOf` page)
+        assertBool (T.unpack page) ("<h1>&lt;A &amp; B&gt;</h1>" `T.isInfixOf` page)
+        assertBool (T.unpack page) ("lang=\"ja&amp;&lt;\" xml:lang=\"ja&amp;&lt;\"" `T.isInfixOf` page),
+      testCase "with @toc of depth 1, the heading of level 2 is not listed (golem-epub ADR 0002)" $ do
+        let page = indexPage cfg0 ft twoHeadings {bookTocDepth = Just 1}
+        assertBool (T.unpack page) ("a.xhtml#intro" `T.isInfixOf` page)
+        assertBool (T.unpack page) (not ("b.xhtml#detail" `T.isInfixOf` page))
+    ]
+  where
+    twoHeadings =
+      (bookOf [])
+        { bookToc =
+            [ TocEntry 1 (Just "第一章") [txt "はじめに"] "intro" fidA (at 0),
+              TocEntry 2 Nothing [txt "細部"] "detail" fidB (mkSpan fidB 0 1)
+            ]
+        }
+
 xhtmlTests :: TestTree
-xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" tests
+xhtmlTests = testGroup "XHTML and CSS (golem-html ADR 0001)" (tests <> [indexPageTests])

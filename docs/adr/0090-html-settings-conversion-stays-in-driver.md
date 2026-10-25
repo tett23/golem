@@ -1,6 +1,6 @@
 # ADR 0090: style.toml の値を golem-html の設定に直す処理を golem-driver に残し、モジュールに分ける
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 

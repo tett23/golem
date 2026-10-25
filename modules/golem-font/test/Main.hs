@@ -1,6 +1,6 @@
 module Main (main) where
 
-import ConcurrencySpec (concurrencyTests, raceFactor)
+import ConcurrencySpec (concurrencyTests)
 import Control.Monad (void)
 import Data.Bits (shiftL, (.|.))
 import Data.ByteString (ByteString)
@@ -10,6 +10,7 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Font
+import Golem.TestSupport.Parallel (raceFactor)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
 import Test.Tasty.HUnit
