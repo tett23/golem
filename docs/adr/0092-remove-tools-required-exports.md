@@ -1,6 +1,6 @@
 # ADR 0092: golem-test-support の ExternalTool の export を needsTool と optionalTool に絞る
 
-ステータス: 採択（未実装）
+ステータス: 採択
 
 ## 文脈
 
