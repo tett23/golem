@@ -3,7 +3,6 @@
 module Main (main) where
 
 import Control.Concurrent (forkIO)
-import Control.Exception (finally)
 import Control.Monad (void)
 import Data.Aeson qualified as J
 import Data.ByteString qualified as BS
@@ -23,6 +22,7 @@ import Golem.Lsp.Workspace
 import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
 import Golem.Syntax
+import Golem.TestSupport.Env (withEnv)
 import Hedgehog hiding (assert)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
@@ -32,7 +32,7 @@ import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
 import StaleS1Spec (staleS1Tests)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, listDirectory, makeAbsolute)
-import System.Environment (lookupEnv, setEnv, unsetEnv)
+import System.Environment (lookupEnv)
 import System.FilePath (takeDirectory, (</>))
 import System.IO (hClose)
 import System.IO.Temp (withSystemTempDirectory)
@@ -601,11 +601,3 @@ withIdentityPlugin k = withSystemTempDirectory "golem-lsp-plugin" $ \tmp -> do
     r <- lockPlugins (\u -> pure (if u == "https://example.com/identity.wasm" then Right wasm else Left "404")) cache (Map.fromList [("identity", "https://example.com/identity.wasm")])
     either (assertFailure . show) (TIO.writeFile (tmp </> "plugins.lock") . renderLock) r
     k tmp
-
-{- | Runs an action with an environment variable set, and sets it back
-afterwards, or unsets it where it was not set (docs/adr ADR 0072).
--}
-withEnv :: String -> String -> IO a -> IO a
-withEnv name value act = do
-  old <- lookupEnv name
-  (setEnv name value >> act) `finally` maybe (unsetEnv name) (setEnv name) old

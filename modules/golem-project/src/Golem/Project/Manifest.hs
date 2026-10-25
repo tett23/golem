@@ -17,7 +17,6 @@ module Golem.Project.Manifest
     parseManifest,
     chapterFiles,
     applyEdits,
-    tomlDiagnostics,
     decodeStrict,
     decodeStrictBy,
   )
@@ -460,11 +459,9 @@ unwritableStrings fid src = map snd . Map.toAscList . Map.fromList . inTable []
       Table' _ t -> inTable path t
       _ -> []
 
--- | Converts toml-parser messages to diagnostics at their line.
-tomlDiagnostics :: Text -> FileId -> Text -> [MatchMessage Position] -> [Diagnostic]
-tomlDiagnostics code = tomlDiagnosticsBy (const code)
-
--- | 'tomlDiagnostics' with the code taken from the path of each message.
+{- | Converts toml-parser messages to diagnostics at their line, with the
+code taken from the path of each message.
+-}
 tomlDiagnosticsBy :: ([Scope] -> Text) -> FileId -> Text -> [MatchMessage Position] -> [Diagnostic]
 tomlDiagnosticsBy codeAt fid src = map one
   where

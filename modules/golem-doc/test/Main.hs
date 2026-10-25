@@ -6,6 +6,7 @@ import CborExprSpec qualified
 import Codec.CBOR.Term (Term (..), encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Control.Exception (ErrorCall, evaluate, try)
+import CslSpec qualified
 import Data.ByteString qualified as BS
 import Gen
 import Golem.Doc.Cbor
@@ -45,7 +46,7 @@ cddlValidator = do
 
 tests :: TestTree
 tests =
-  testGroup "golem-doc" [cbor, AssembleSpec.tests, BibliographySpec.tests, ListMarkersSpec.tests, CborExprSpec.tests, NumberingSpec.tests, verticalNumbers, int64Tests]
+  testGroup "golem-doc" [cbor, AssembleSpec.tests, BibliographySpec.tests, CslSpec.tests, ListMarkersSpec.tests, CborExprSpec.tests, NumberingSpec.tests, verticalNumbers, int64Tests]
 
 -- | The integers of the IR are int64 (golem-doc ADR 0006).
 int64Tests :: TestTree

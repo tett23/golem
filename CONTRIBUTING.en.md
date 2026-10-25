@@ -95,6 +95,9 @@ For changes that cannot be tested automatically, such as configuration values, t
 Write a test that uses an external tool (such as `cddl`, `qpdf` or `openssl`) with `needsTool` or `optionalTool` of `Golem.TestSupport.ExternalTool` in `modules/golem-test-support` ([docs/adr/0028](./docs/adr/0028-shared-test-support-package.md)).
 Where the tool is missing, the test is reported as `SKIP`, and with `GOLEM_REQUIRE_EXTERNAL_TOOLS=1` it fails.
 Only test suites may depend on golem-test-support; if a library or an executable does, `scripts/ci/test-only-deps.sh` in the `build` job of CI fails.
+Any test suite may add golem-test-support to its build-depends without an ADR ([docs/adr/0086](./docs/adr/0086-any-test-suite-may-depend-on-test-support.md)).
+A helper that the tests of two or more packages use goes into golem-test-support instead of being copied.
+A helper that only one test suite uses stays in the tests of that package, not in golem-test-support.
 
 Do not write golden files by hand; write them with `--accept` (see the Development section of [README.md](./README.md)).
 Read the diff of the written files and confirm that the output is the intended one before committing.

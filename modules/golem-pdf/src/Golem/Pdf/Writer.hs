@@ -25,7 +25,6 @@ module Golem.Pdf.Writer
     pdfTextString,
     documentId,
     instanceId,
-    pdfDate,
   )
 where
 
