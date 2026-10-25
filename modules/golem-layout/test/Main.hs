@@ -11,6 +11,7 @@ import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
+import Fixtures (compose, fs, look0, sp, sp0)
 import Golem.Doc.IR
 import Golem.Layout.Aki (AkiSet, akiPositions, builtinAkiSets, defaultAkiSet, withAkiRule)
 import Golem.Layout.Aki qualified as Aki
@@ -46,15 +47,8 @@ import UrlBreakSpec (urlBreakTests)
 main :: IO ()
 main = defaultMain tests
 
-fs :: Sp
-fs = 10 * 65536
-
 box :: Sp -> Item
 box w = Box w (BoxContent "x" False 0 0 0 look0 0 0 [] 0 0 noBoxSource)
-
--- | The original look of 'defaultComposeEnv'.
-look0 :: Look
-look0 = ceLook (defaultComposeEnv fs)
 
 -- | Words of the given widths separated by interword glue.
 paragraph :: [Sp] -> [Item]
@@ -287,12 +281,6 @@ noteMarkTests =
   ]
   where
     note n = Note (mkSpan (FileId 0) 1 2) n [sp0 "注"]
-
-sp0 :: Text -> Inline
-sp0 = Text (mkSpan (FileId 0) 0 0)
-
-compose :: ComposeEnv -> Text -> [Item]
-compose env t = fst (composeInlines env [sp0 t])
 
 -- | Advances that ignore variation selectors, so that boxes with and without them compare equal.
 vsEnv :: ComposeEnv
@@ -630,24 +618,24 @@ tests =
             let items = compose (defaultComposeEnv fs) "日本Golem語"
             [w | Glue w _ _ <- items, w > 0, w < filStretch] @?= [fs `div` 4, fs `div` 4],
           testCase "ruby wider than its base overhangs, then widens the base" $ do
-            let seg base r = RubySegment [Text (mkSpan (FileId 0) 0 0) base] (Just r)
-                rubyW e segs = [w | Box w c <- fst (composeInlines e [sp0 "の", Ruby (mkSpan (FileId 0) 0 0) () segs, sp0 "の"]), boxKind c `elem` [KindRuby, KindGroupRuby]]
+            let seg base r = RubySegment [Text sp base] (Just r)
+                rubyW e segs = [w | Box w c <- fst (composeInlines e [sp0 "の", Ruby sp () segs, sp0 "の"]), boxKind c `elem` [KindRuby, KindGroupRuby]]
                 env = (defaultComposeEnv fs) {ceRuby = (defaultRubyStyle fs) {rsOverhang = fs `div` 2}}
             rubyW env [seg "字" "じ"] @?= [fs] -- fits
             rubyW env [seg "字" "あいう"] @?= [fs] -- 1.5em reading: overhang absorbs it
             rubyW env [seg "字" "あいうえおか"] @?= [fs * 2] -- 3em: half an em overhangs each kana, the base widens
             -- mono ruby may break between bases
-            assertBool "mono" (any (\case Penalty 0 0 _ -> True; _ -> False) (fst (composeInlines env [Ruby (mkSpan (FileId 0) 0 0) () [seg "漢" "かん", seg "字" "じ"]]))),
+            assertBool "mono" (any (\case Penalty 0 0 _ -> True; _ -> False) (fst (composeInlines env [Ruby sp () [seg "漢" "かん", seg "字" "じ"]]))),
           testCase "tate-chu-yoko and tcy numbers are one em boxes; Latin is rotated in vertical text" $ do
             let env = (defaultComposeEnv fs) {ceVertical = True}
                 boxes is = [(w, boxKind c) | Box w c <- fst (composeInlines env is)]
-            boxes [Tcy (mkSpan (FileId 0) 0 0) "12"] @?= [(fs, KindTcy)]
-            boxes [Number (mkSpan (FileId 0) 0 0) 10 (Just StyleTcy)] @?= [(fs, KindTcy)]
+            boxes [Tcy sp "12"] @?= [(fs, KindTcy)]
+            boxes [Number sp 10 (Just StyleTcy)] @?= [(fs, KindTcy)]
             map snd (boxes [sp0 "ab"]) @?= [KindRotated]
-            [bcText c | Box _ c <- fst (composeInlines env [Number (mkSpan (FileId 0) 0 0) 120 Nothing])] @?= ["百", "二", "十"],
+            [bcText c | Box _ c <- fst (composeInlines env [Number sp 120 Nothing])] @?= ["百", "二", "十"],
           -- golem-parser ADR 0011
           testCase "vertical = auto: two digits or fewer in tate-chu-yoko, the others in kanji" $ do
-            let number e n = [(bcText c, boxKind c) | Box _ c <- fst (composeInlines e [Number (mkSpan (FileId 0) 0 0) n Nothing])]
+            let number e n = [(bcText c, boxKind c) | Box _ c <- fst (composeInlines e [Number sp n Nothing])]
                 auto = (defaultComposeEnv fs) {ceVertical = True, ceVerticalNumbers = VerticalAuto StyleKanji}
                 autoDigits = auto {ceVerticalNumbers = VerticalAuto StyleKanjiDigits}
             number auto 9 @?= [("9", KindTcy)]
@@ -1215,7 +1203,6 @@ tests =
         ]
     ]
   where
-    sp = mkSpan (FileId 0) 0 0
     bold = CharStyle sp "bold"
     both = Synthetic True False
     -- Latin characters: one em in the role "wide", half an em otherwise
@@ -1267,7 +1254,7 @@ characterFeatureTests =
       [(bcText c, bcEdgeEnd c) | Box _ c <- compose anyPair "あ、い"] @?= [("あ", 0), ("、", 0), ("い", 0)],
     testCase "a pair of different looks is not kerned" $ do
       let env = kernEnv {ceRestyle = \lk _ -> lk {lkColor = Just "red"}}
-      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [sp0 "あ", Color (mkSpan (FileId 0) 0 0) "red" [sp0 "い"]])] @?= [(fs, 0), (fs, 0)],
+      [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [sp0 "あ", Color sp "red" [sp0 "い"]])] @?= [(fs, 0), (fs, 0)],
     testCase "tracking widens Japanese boxes, Latin words and spaces; every box gives it back at its end" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
           plain = defaultComposeEnv fs
@@ -1278,7 +1265,6 @@ characterFeatureTests =
       gluesOf env @?= [w + tenth | w <- gluesOf plain],
     testCase "ruby, tate-chu-yoko and note marks get no tracking" $ do
       let env = (defaultComposeEnv fs) {ceLook = look0 {lkTracking = 100}}
-          sp = mkSpan (FileId 0) 0 0
       [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Tcy sp "12"])] @?= [(fs, 0)]
       [(w, bcEdgeEnd c) | Box w c <- fst (composeInlines env [Note sp 1 []])] @?= [(fs `div` 2, 0)],
     testCase "with tracking, the last box of every line ends at the measure" $ do
@@ -1346,7 +1332,6 @@ rubyBaseTests =
       [bcBaseLooks c | Box _ c <- items, boxKind c `notElem` [KindRuby, KindGroupRuby]] @?= [[], [], []]
   ]
   where
-    sp = mkSpan (FileId 0) 0 0
     t = Text sp
     env =
       (defaultComposeEnv 1000)
@@ -1381,7 +1366,7 @@ kentenTests =
     testCase "plainLook has no kenten" $
       lkKenten (plainLook "body" 1000) @?= Nothing,
     testCase "punctuation in kenten is punctuation; ideographs and the long vowel mark get the shape" $
-      kentenBoxes [Kenten sp00 (Just "circle") [sp0 "漢、「字」ー"]]
+      kentenBoxes [Kenten sp (Just "circle") [sp0 "漢、「字」ー"]]
         @?= [ ("漢", KindKenten, Just KentenCircle),
               ("、", KindPunctuation, Just KentenCircle),
               ("「", KindPunctuation, Just KentenCircle),
@@ -1390,30 +1375,28 @@ kentenTests =
               ("ー", KindKenten, Just KentenCircle)
             ],
     testCase "a space and an iteration mark in kenten" $
-      [(t, k) | (t, k, _) <- kentenBoxes [Kenten sp00 (Just "dot") [sp0 "々\x3000"]]] @?= [("々", KindKenten), ("\x3000", KindText)],
+      [(t, k) | (t, k, _) <- kentenBoxes [Kenten sp (Just "dot") [sp0 "々\x3000"]]] @?= [("々", KindKenten), ("\x3000", KindText)],
     testCase "the inner kenten wins" $
-      kentenBoxes [Kenten sp00 (Just "dot") [sp0 "あ", Kenten sp00 (Just "circle") [sp0 "い"]]]
+      kentenBoxes [Kenten sp (Just "dot") [sp0 "あ", Kenten sp (Just "circle") [sp0 "い"]]]
         @?= [("あ", KindKenten, Just KentenDot), ("い", KindKenten, Just KentenCircle)],
     testCase "kenten without a shape is sesame" $
-      kentenBoxes [Kenten sp00 Nothing [sp0 "あ"]] @?= [("あ", KindKenten, Just KentenSesame)],
+      kentenBoxes [Kenten sp Nothing [sp0 "あ"]] @?= [("あ", KindKenten, Just KentenSesame)],
     testCase "a Latin word in kenten stays text" $
-      [k | (t, k, _) <- kentenBoxes [Kenten sp00 (Just "circle") [sp0 "Golem"]], t == "Golem"] @?= [KindText],
+      [k | (t, k, _) <- kentenBoxes [Kenten sp (Just "circle") [sp0 "Golem"]], t == "Golem"] @?= [KindText],
     testCase "text outside kenten has no shape" $
       kentenBoxes [sp0 "字"] @?= [("字", KindText, Nothing)],
     testCase "a ruby base has no kenten, inside kenten or with kenten in it (golem-layout ADR 0011)" $ do
       let rubyLooks is = [map lkKenten (bcLook c : bcBaseLooks c) | Box _ c <- fst (composeInlines (defaultComposeEnv 1000) is), boxKind c `elem` [KindRuby, KindGroupRuby]]
-          kentenIn = Kenten sp00 (Just "circle") [Text sp00 "漢"]
-      rubyLooks [Ruby sp00 () [RubySegment [kentenIn] (Just "かん")]] @?= [[Nothing, Nothing]]
-      rubyLooks [Kenten sp00 (Just "circle") [Ruby sp00 () [RubySegment [Text sp00 "漢"] (Just "かん")]]] @?= [[Nothing, Nothing]]
+          kentenIn = Kenten sp (Just "circle") [Text sp "漢"]
+      rubyLooks [Ruby sp () [RubySegment [kentenIn] (Just "かん")]] @?= [[Nothing, Nothing]]
+      rubyLooks [Kenten sp (Just "circle") [Ruby sp () [RubySegment [Text sp "漢"] (Just "かん")]]] @?= [[Nothing, Nothing]]
   ]
-  where
-    sp00 = mkSpan (FileId 0) 0 0
 
 rubyBoxes :: ComposeEnv -> [Inline] -> [(Sp, (Sp, Sp))]
 rubyBoxes env is = [(w, (bcEdgeStart c, bcEdgeEnd c)) | Box w c <- fst (composeInlines env is), boxKind c `elem` [KindRuby, KindGroupRuby]]
 
 rubyOf :: [(Text, Maybe Text)] -> Inline
-rubyOf segs = Ruby (mkSpan (FileId 0) 0 0) () [RubySegment [Text (mkSpan (FileId 0) 0 0) b] r | (b, r) <- segs]
+rubyOf segs = Ruby sp () [RubySegment [Text sp b] r | (b, r) <- segs]
 
 -- | A box with edges (the overhang of a ruby).
 edgeBox :: Sp -> (Sp, Sp) -> Item
@@ -1470,7 +1453,7 @@ rubyTests =
       rubyBoxes (defaultComposeEnv 1000) [sp0 "の", rubyOf [("字", Just "あいう")], sp0 "の"] @?= [(1000, (250, 250))],
     testCase "no overhang onto a kanji, a kenten character or with overhang-onto none" $ do
       rubyBoxes (defaultComposeEnv 1000) [sp0 "漢", rubyOf [("字", Just "あいう")], sp0 "の"] @?= [(1500, (0, 0))]
-      rubyBoxes (defaultComposeEnv 1000) [Kenten (mkSpan (FileId 0) 0 0) Nothing [sp0 "の"], rubyOf [("字", Just "あいう")], sp0 "の"] @?= [(1500, (0, 0))]
+      rubyBoxes (defaultComposeEnv 1000) [Kenten sp Nothing [sp0 "の"], rubyOf [("字", Just "あいう")], sp0 "の"] @?= [(1500, (0, 0))]
       let none = (defaultComposeEnv 1000) {ceRuby = (defaultRubyStyle 1000) {rsOverhangOntoKana = False}}
       map fst (rubyBoxes none [sp0 "の", rubyOf [("字", Just "あいう")], sp0 "の"]) @?= [1500],
     testCase "mono ruby overhangs only the free space of the next reading" $ do
@@ -1699,7 +1682,6 @@ akiTests =
         outcome its w @?= outcome (asGlue its) w
   ]
   where
-    sp = mkSpan (FileId 0) 0 0
     orderedAs xs order = [x | x <- order, x `elem` xs]
     isLineEnd = \case
       Penalty _ p _ -> p >= infPenalty
@@ -1835,7 +1817,6 @@ codeTests =
       assertBool (show (map lastBox ls)) (all (any ("/" `T.isSuffixOf`) . take 1 . lastBox) (init ls))
   ]
   where
-    sp = mkSpan (FileId 0) 0 0
     padEnv =
       (defaultComposeEnv 1000)
         { ceRestyle = \lk -> \case

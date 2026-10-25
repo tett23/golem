@@ -18,7 +18,6 @@ module Golem.TestSupport.Skipped
     countSkipped,
     skippedSoFar,
     skippedLines,
-    reportSkipped,
     SkipCounter (..),
     defaultMainReportingSkips,
   )

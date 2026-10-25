@@ -73,15 +73,6 @@ splitAtLine keep marker ls = case break ((== marker) . pyStrip) ls of
   (before, l : after) -> Right (before, if keep then l : after else after)
   _ -> Left ("no line " <> show (T.unpack marker))
 
--- | Blocks of lines between blank lines, each line without trailing space.
-toBlocks :: [Text] -> [[Text]]
-toBlocks = filter (not . null) . go []
-  where
-    go cur [] = [reverse cur]
-    go cur (l : ls)
-      | T.null (pyStrip l) = reverse cur : go [] ls
-      | otherwise = go (pyRStrip l : cur) ls
-
 -- | A note @[N] text@: its number and its text, rendered for a slot.
 noteOf :: TextOptions -> [Text] -> [(Text, Text)]
 noteOf opts b = case T.stripPrefix "[" (joined b) of
@@ -132,9 +123,6 @@ convertBlocks opts notes = go
 -- | The lines of a block joined by spaces, with @--@ made a dash.
 joined :: [Text] -> Text
 joined = T.replace "--" "—" . collapseSpace . T.unwords . map pyStrip
-
-indentOf :: Text -> Int
-indentOf = T.length . T.takeWhile (== ' ')
 
 minIndent :: [Text] -> Int
 minIndent [] = 0
@@ -281,6 +269,3 @@ renderFrom opts inSlot notes st0 text = (T.concat (map group' (groupRuns styled)
       ']' | slot -> "\\]"
       '|' | slot -> "\\|"
       _ -> T.singleton c
-
-escapeSlot :: Text -> Text
-escapeSlot = T.replace "|" "\\|" . T.replace "]" "\\]" . T.replace "[" "\\[" . T.replace "\\" "\\\\"

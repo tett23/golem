@@ -23,7 +23,6 @@ module Golem.Layout.KnuthPlass
     fitnessOf,
     placeLine,
     glueRatio,
-    expansionStep,
   )
 where
 

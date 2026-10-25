@@ -36,6 +36,9 @@ library
                     Golem.Driver.Svg
                     Golem.Driver.TextLayer
                     Golem.Driver.Version
+  other-modules:    Golem.Driver.Pdf.Draw
+                    Golem.Driver.Pdf.Flow
+                    Golem.Driver.Pdf.Fonts
   build-depends:
     , aeson         >=2.1  && <2.3
     , async         >=2.2  && <2.3

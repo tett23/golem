@@ -1,5 +1,6 @@
 {- | The string functions of Python that the converters were first written
-with, so that the converters give the same bytes (docs/adr/0023).
+with, so that the converters give the same bytes (docs/adr/0023), and the
+functions on lines that more than one converter uses.
 -}
 module Golem.Fixtures.Python
   ( isPySpace,
@@ -9,8 +10,10 @@ module Golem.Fixtures.Python
     pyRStrip,
     collapseSpace,
     universalNewlines,
-    specialLineStart,
     escapeLineStart,
+    toBlocks,
+    indentOf,
+    escapeSlot,
   )
 where
 
@@ -58,3 +61,20 @@ escapeLineStart :: Text -> Text
 escapeLineStart s = case T.uncons s of
   Just (c, _) | c `elem` specialLineStart -> "\\" <> s
   _ -> s
+
+-- | Blocks of lines between blank lines, each line without trailing space.
+toBlocks :: [Text] -> [[Text]]
+toBlocks = filter (not . null) . go []
+  where
+    go cur [] = [reverse cur]
+    go cur (l : ls)
+      | T.null (pyStrip l) = reverse cur : go [] ls
+      | otherwise = go (pyRStrip l : cur) ls
+
+-- | The number of spaces a line starts with.
+indentOf :: Text -> Int
+indentOf = T.length . T.takeWhile (== ' ')
+
+-- | A text escaped for a slot of a command: backslashes, brackets and bars.
+escapeSlot :: Text -> Text
+escapeSlot = T.replace "|" "\\|" . T.replace "]" "\\]" . T.replace "[" "\\[" . T.replace "\\" "\\\\"

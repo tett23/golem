@@ -35,15 +35,6 @@ convertPlay src = do
   let blocks = toBlocks (take (end - start) (drop start lines'))
   pure (T.intercalate "\n\n" (convertBlocks blocks) <> "\n")
 
--- | Blocks of lines between blank lines, each line without trailing space.
-toBlocks :: [Text] -> [[Text]]
-toBlocks = filter (not . null) . go []
-  where
-    go cur [] = [reverse cur]
-    go cur (l : ls)
-      | T.null (pyStrip l) = reverse cur : go [] ls
-      | otherwise = go (pyRStrip l : cur) ls
-
 data St = St {inDramatis :: Bool, inNotes :: Bool}
 
 convertBlocks :: [[Text]] -> [Text]
@@ -166,9 +157,6 @@ stageOnly s = case T.stripPrefix "[_" s of
      in r' == "_" || r' == "_]"
   Nothing -> False
 
-indentOf :: Text -> Int
-indentOf l = T.length (T.takeWhile (== ' ') l)
-
 {- | Whether a line after the first is a line of verse: a half line, a stage
 direction alone, or a capital after a stage direction, quotes and
 apostrophes.
@@ -262,4 +250,3 @@ inlineFrom italic0 inSlot text =
            in lead <> (if T.null core then "" else "[italic: " <> core <> "]") <> trail
       | inSlot = escapeSlot s
       | otherwise = T.replace "[" "\\[" (T.replace "\\" "\\\\" s)
-    escapeSlot = T.replace "|" "\\|" . T.replace "]" "\\]" . T.replace "[" "\\[" . T.replace "\\" "\\\\"

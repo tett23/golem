@@ -5,7 +5,6 @@ module Golem.Parser
   ( parse,
     parseFile,
     parseAst,
-    syntaxErrorDiagnostic,
     labelCode,
   )
 where

@@ -6,22 +6,13 @@ module CombiningSpec (combiningTests) where
 
 import Data.Text (Text)
 import Data.Text qualified as T
+import Fixtures (compose, fs, sp)
 import Golem.Doc.IR qualified as IR
 import Golem.Layout.Hyphenation.EnUs (englishUS)
 import Golem.Layout.Japanese
 import Golem.Layout.KnuthPlass
-import Golem.Syntax (FileId (..), SrcSpan, mkSpan)
 import Test.Tasty
 import Test.Tasty.HUnit
-
-fs :: Sp
-fs = 10 * 65536
-
-sp :: SrcSpan
-sp = mkSpan (FileId 0) 0 0
-
-compose :: ComposeEnv -> Text -> [Item]
-compose env t = fst (composeInlines env [IR.Text sp t])
 
 -- | Advances that ignore combining characters, so that boxes with and without them compare equal.
 markless :: ComposeEnv

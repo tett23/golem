@@ -4,8 +4,7 @@ where the text is read, in manifest.toml (G03028) and in the manuscript
 (G02089), so that no output has to change them.
 -}
 module Golem.Syntax.Chars
-  ( isUnwritable,
-    firstUnwritable,
+  ( firstUnwritable,
     codePointText,
   )
 where

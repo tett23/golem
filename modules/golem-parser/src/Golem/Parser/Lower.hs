@@ -15,6 +15,7 @@ import Data.Text.Encoding qualified as TE
 import Golem.Parser.AST
 import Golem.Parser.CST
 import Golem.Syntax.Span
+import Golem.Syntax.Text (isSpaceTab)
 
 -- A CST with absolute spans.
 data P
@@ -170,14 +171,11 @@ A hard break stays even at the edges; the evaluation reports it there
 (docs/adr ADR 0016).
 -}
 inlines :: [P] -> [Located Inline]
-inlines = mergeText . dropEdgeBreaks . concatMap inline . trimEnds
+inlines = joinText . dropEdgeBreaks . concatMap inline . trimEnds
   where
     dropEdgeBreaks = reverse . dropWhile isBreak . reverse . dropWhile isBreak
     isBreak (Located _ SoftBreak) = True
     isBreak _ = False
-
-isSpaceTab :: Char -> Bool
-isSpaceTab c = c == ' ' || c == '\t'
 
 {- | Whitespace at the end of a line, and at the end of the inlines (a
 block's last line, a table cell, a prose slot) is not text (ADR 0006).
@@ -247,13 +245,6 @@ proofText :: Text -> Text
 proofText = T.strip . dropEnd . T.drop 3
   where
     dropEnd t = fromMaybe t (T.stripSuffix "%%" t)
-
--- | Neighbouring 'Text' joined; 'Escaped' is not joined (golem-parser ADR 0010).
-mergeText :: [Located Inline] -> [Located Inline]
-mergeText (Located a (Text x) : Located b (Text y) : rest) =
-  mergeText (Located (mkSpan (spanFile a) (spanStart a) (spanEnd b)) (Text (x <> y)) : rest)
-mergeText (x : rest) = x : mergeText rest
-mergeText [] = []
 
 command :: P -> Located Inline
 command (PN _ sp cs) =

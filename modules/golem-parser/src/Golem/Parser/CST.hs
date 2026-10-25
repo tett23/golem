@@ -16,12 +16,10 @@ module Golem.Parser.CST
     token,
     elementWidth,
     render,
-    renderElement,
     Positioned (..),
     withPositions,
     tokens,
     pretty,
-    isTriviaKind,
   )
 where
 
@@ -114,9 +112,6 @@ data SyntaxKind
   | NErrorNode
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
-isTriviaKind :: SyntaxKind -> Bool
-isTriviaKind k = k `elem` [KWhitespace, KComment]
-
 data Token = Token
   { tokKind :: !SyntaxKind,
     tokText :: !Text
@@ -149,10 +144,6 @@ token k t = ElemToken (Token k t)
 
 render :: Node -> Text
 render = T.concat . map tokText . tokens
-
-renderElement :: Element -> Text
-renderElement (ElemNode n) = render n
-renderElement (ElemToken t) = tokText t
 
 -- | All tokens in order.
 tokens :: Node -> [Token]

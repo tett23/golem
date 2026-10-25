@@ -20,7 +20,7 @@ import Golem.Project.Style (Page (..), Style (..), parseDim, parseStyle)
 import Golem.Syntax
 import Support
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
-import System.FilePath (takeDirectory, (</>))
+import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
 import Test.Tasty.Golden (goldenVsString)
@@ -154,10 +154,7 @@ newPreflightTests =
 -- | A one-chapter project for golem preflight, with the fake fonts.
 withPreflightProject :: BS.ByteString -> T.Text -> [(FilePath, BS.ByteString)] -> (FilePath -> IO a) -> IO a
 withPreflightProject style source files act = withSystemTempDirectory "golem-preflight" $ \tmp -> do
-  BS.writeFile (tmp </> "manifest.toml") miniManifest
-  BS.writeFile (tmp </> "style.toml") (withBodyFont style)
-  BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 source)
-  forM_ (bodyFontFiles style <> files) $ \(to, bytes) -> createDirectoryIfMissing True (takeDirectory (tmp </> to)) >> BS.writeFile (tmp </> to) bytes
+  writeProject tmp miniManifest style source files
   act tmp
 
 preflightIn :: FilePath -> IO PreflightResult
@@ -374,7 +371,7 @@ preflightTests =
     <> [ testCase ("the template fails print with G09014 only, and passes with intent; it has a bleed (golem-pdf ADR 0010) (" <> tag <> ")") $ withSystemTempDirectory "golem-new" $ \tmp -> do
            let dir = tmp </> "book"
            createProject dir (templateFiles lang uuid0) Nothing >>= (@?= Right ())
-           forM_ (templateFonts lang) $ \f -> createDirectoryIfMissing True (takeDirectory (dir </> fsPath f)) >> BS.writeFile (dir </> fsPath f) "fake"
+           writeFiles dir [(fsPath f, "fake") | f <- templateFonts lang]
            p <- preflightIn dir
            sort (errorCodes (prDiagnostics p)) @?= [DiagnosticCode "G09014"]
            [diagMessage d | d <- prDiagnostics p, diagCode d == DiagnosticCode "G09014"] @?= ["PDF/X-4 の要件を満たしていません: 出力インテントがありません（style.toml の [color] に intent を書きます）"]

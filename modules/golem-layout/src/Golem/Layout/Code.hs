@@ -15,7 +15,6 @@ module Golem.Layout.Code
     codeContinuation,
     CodeGeometry (..),
     codeGeometry,
-    codeExtent,
     codeSpan,
     codeRowsTop,
   )

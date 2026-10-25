@@ -23,6 +23,7 @@ library
   exposed-modules:
     Golem.TestSupport.Env
     Golem.TestSupport.ExternalTool
+    Golem.TestSupport.Parallel
     Golem.TestSupport.Skipped
   build-depends:
     , base   >=4.20 && <4.21

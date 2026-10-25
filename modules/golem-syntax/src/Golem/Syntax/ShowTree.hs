@@ -7,7 +7,6 @@ read is returned as it is.
 -}
 module Golem.Syntax.ShowTree
   ( showTree,
-    treeWidth,
   )
 where
 
