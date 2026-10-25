@@ -26,6 +26,7 @@ library
                     Golem.Driver.Explain
                     Golem.Driver.Explain.Catalog
                     Golem.Driver.Fonts
+                    Golem.Driver.Html
                     Golem.Driver.Lint
                     Golem.Driver.Memo
                     Golem.Driver.New
