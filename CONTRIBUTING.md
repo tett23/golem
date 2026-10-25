@@ -104,6 +104,9 @@ ADR のテスト設計に書いたテストを先に書き、失敗すること�
 飛ばしたテストの数は、テストのスイートの最後に標準エラー出力へ一行で出る（[docs/adr/0074](./docs/adr/0074-test-switches-by-environment-variables.md)）。
 テストを切り替える環境変数を新しく読むときは、golem-test-support の `envFlag` で読み、値が `1` のときだけ有効にする。
 golem-test-support に依存してよいのはテストスイートだけであり、ライブラリと実行ファイルが依存すると CI の `build` ジョブの `scripts/ci/test-only-deps.sh` が失敗する。
+どのテストスイートも、ADR なしで golem-test-support を build-depends に足してよい（[docs/adr/0086](./docs/adr/0086-any-test-suite-may-depend-on-test-support.md)）。
+二つ以上のパッケージのテストが同じ補助を使うなら、写さずに golem-test-support に置く。
+一つのテストスイートしか使わない補助は、golem-test-support に置かず、そのパッケージのテストに置く。
 
 ゴールデンのファイルは手で作らず、`--accept` で書き出す（手順は [README.md](./README.md) の Development の節）。
 書き出したファイルの差分を読み、意図した出力であることを確かめてからコミットする。

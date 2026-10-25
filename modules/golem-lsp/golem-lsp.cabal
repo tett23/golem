@@ -62,6 +62,7 @@ test-suite golem-lsp-test
     , golem-lsp
     , golem-plugin
     , golem-syntax
+    , golem-test-support
     , hedgehog       >=1.4 && <1.6
     , lsp
     , lsp-test       >=0.17 && <0.19
