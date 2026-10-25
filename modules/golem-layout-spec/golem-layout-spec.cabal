@@ -19,6 +19,7 @@ library
   build-depends:
     , base          >=4.20 && <4.21
     , containers    >=0.6  && <0.8
+    , golem-pdf
     , golem-project
     , golem-syntax
     , text          >=2.0  && <2.2

@@ -41,7 +41,6 @@ library
     , base               >=4.20 && <4.21
     , containers         >=0.6  && <0.8
     , golem-doc
-    , golem-layout-spec
     , golem-project
     , golem-syntax
     , template-haskell
