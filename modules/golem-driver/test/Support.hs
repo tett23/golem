@@ -27,6 +27,7 @@ import Golem.Project (Project (..), ProjectFailure (..))
 import Golem.Project.Style (parseStyle)
 import Golem.Syntax
 import Golem.TestSupport.ExternalTool (optionalTool)
+import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import System.Directory (copyFile, createDirectoryIfMissing, doesDirectoryExist, findExecutable, listDirectory)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
@@ -170,7 +171,7 @@ horizontalStyle =
 
 -- | A one-chapter project for PDF tests.
 miniManifest :: BS.ByteString
-miniManifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.pdf]\n"
+miniManifest = TE.encodeUtf8 (manifestToml testManifest {tmTargets = ["pdf"]})
 
 {- | Builds a one-chapter project (style, source, extra files) to PDF and
 returns the errors and the PDF, if one was written.

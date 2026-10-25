@@ -9,6 +9,8 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
 import Golem.Syntax
 import Golem.Syntax.Sha256 (sha256)
+import Golem.TestSupport.Bytes (hex)
+import Golem.TestSupport.Gen (genText)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -20,15 +22,6 @@ import Test.Tasty.Hedgehog
 
 main :: IO ()
 main = defaultMain tests
-
--- ASCII, Japanese, a 4-byte emoji and a newline, so that byte, code point
--- and UTF-16 units all differ.
-genText :: Gen Text
-genText =
-  T.pack
-    <$> Gen.list
-      (Range.linear 0 80)
-      (Gen.element ("ab 漢字かな\r\n😀𠮷x" :: String))
 
 -- Byte offsets that fall on a code point boundary.
 boundaries :: Text -> [Int]
@@ -329,8 +322,3 @@ genDiag = do
   sev <- Gen.element [Error, Warning]
   msg <- Gen.element ["a", "b"]
   pure (diagnostic code sev (mkSpan (FileId f) s (s + l)) msg)
-
-hex :: BS.ByteString -> String
-hex = concatMap (\w -> [digits !! fromIntegral (w `div` 16), digits !! fromIntegral (w `mod` 16)]) . BS.unpack
-  where
-    digits = "0123456789abcdef"

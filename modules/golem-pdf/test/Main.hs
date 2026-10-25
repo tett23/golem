@@ -18,6 +18,7 @@ import DrawingSpec qualified
 import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf
 import Golem.Pdf.Writer (Mark (..))
+import Golem.TestSupport.Bytes (hex)
 import Golem.TestSupport.ExternalTool (needsTool)
 import Golem.TestSupport.Skipped (defaultMainReportingSkips)
 import Hedgehog
@@ -41,11 +42,6 @@ main :: IO ()
 main = do
   tinyJpeg <- BS.readFile "test/fixtures/tiny.jpg"
   defaultMainReportingSkips (const (tests tinyJpeg))
-
-hex :: ByteString -> String
-hex = concatMap (\w -> [digits !! fromIntegral (w `div` 16), digits !! fromIntegral (w `mod` 16)]) . BS.unpack
-  where
-    digits = "0123456789abcdef"
 
 page :: [Mark] -> Page
 page = Page box box box

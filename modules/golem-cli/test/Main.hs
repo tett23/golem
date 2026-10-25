@@ -17,6 +17,7 @@ import Data.Text.IO qualified as TIO
 import Golem.Driver.Explain (catalog)
 import Golem.Driver.Version (golemVersion)
 import Golem.Syntax.Sha256 (sha256)
+import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import LocaleSpec (localeTests)
 import RtsSpec (rtsTests)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist)
@@ -186,10 +187,7 @@ tests =
 
 -- | A manifest whose chapters are the given files.
 crManifest :: [FilePath] -> String
-crManifest chs =
-  "chapters = ["
-    <> T.unpack (T.intercalate ", " [T.pack (show c) | c <- chs])
-    <> "]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
+crManifest chs = T.unpack (manifestToml testManifest {tmChapters = map T.pack chs})
 
 {- | Runs the commands of golem one after another in a directory holding
 the project; the exit code, stdout and stderr of each, and the files
@@ -245,7 +243,7 @@ fmtCrTests =
 inMissingProject :: [String] -> IO (ExitCode, String)
 inMissingProject args = withSystemTempDirectory "golem-cli" $ \tmp -> do
   createDirectoryIfMissing True (tmp </> "chapters")
-  TIO.writeFile (tmp </> "manifest.toml") "chapters = [\"chapters/01.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
+  TIO.writeFile (tmp </> "manifest.toml") (manifestToml testManifest {tmChapters = ["chapters/01.gm"]})
   TIO.writeFile (tmp </> "style.toml") "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 12\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n[fonts.body]\nja = \"fonts/missing.otf\"\n"
   TIO.writeFile (tmp </> "chapters/01.gm") "# はじめに\n\n本文。\n"
   (code, _, err) <- readCreateProcessWithExitCode (proc "golem" args) {cwd = Just tmp} ""
@@ -269,7 +267,7 @@ missingFontTests =
 projectFiles :: [(FilePath, String)]
 projectFiles =
   [ ( "manifest.toml",
-      "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n\n[targets.pdf]\n"
+      T.unpack (manifestToml testManifest {tmTargets = ["html", "pdf"]})
     ),
     ("a.gm", "本文。\n")
   ]
@@ -392,13 +390,13 @@ tomlMessageTests =
         assertBool err ("style.toml:11:8: error[G03011]" `isInfixOf` err)
     ]
   where
-    manifestText = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
+    manifestText = T.unpack (manifestToml testManifest)
 
 -- | A project whose only chapter has an unclosed bracket (G01017).
 syntaxErrorFiles :: [(FilePath, String)]
 syntaxErrorFiles =
   [ ( "manifest.toml",
-      "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
+      T.unpack (manifestToml testManifest)
     ),
     ("a.gm", "[strong: 閉じない\n")
   ]
@@ -409,7 +407,7 @@ not a font: golem check looks for it and does not read it.
 noticeFiles :: [(FilePath, String)]
 noticeFiles =
   [ ( "manifest.toml",
-      "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n\n[targets.text]\n"
+      T.unpack (manifestToml testManifest {tmTargets = ["html", "text"]})
     ),
     ("style.toml", "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 12\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"18mm\", gutter = \"20mm\" }\n\n[fonts.body]\nja = \"a.otf\"\n"),
     ("a.otf", "not a font"),
@@ -477,7 +475,7 @@ noticeTests =
 -- | A Latin book with a real font, 3mm of bleed and an output intent, so that print passes.
 preflightProject :: String -> [(FilePath, String)]
 preflightProject body =
-  [ ("manifest.toml", "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.pdf]\n"),
+  [ ("manifest.toml", T.unpack (manifestToml testManifest {tmLanguage = "en", tmTargets = ["pdf"]})),
     ("style.toml", "[page]\nsize = \"A5\"\nbinding = \"left\"\nwriting-mode = \"horizontal\"\nbleed = \"3mm\"\n\n[page.grid]\nfont-size = \"10pt\"\ncharacters = 30\nlines = 30\nline-pitch = \"15pt\"\ncolumns = 1\nposition = { top = \"25mm\", gutter = \"20mm\" }\n\n[fonts.body]\nlatin = \"fonts/latin.otf\"\n\n[color]\nintent = \"intent.icc\"\n"),
     ("intent.icc", "fake profile"),
     ("a.gm", body)

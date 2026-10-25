@@ -13,9 +13,11 @@ import Data.Maybe (fromMaybe)
 import Data.Set qualified as Set
 import Data.Text (Text)
 import Data.Text qualified as T
+import Data.Text.Encoding qualified as TE
 import Golem.Lsp.Server (runGolemLspWithHandles)
 import Golem.Lsp.Workspace
 import Golem.Syntax
+import Golem.TestSupport.Manifest (manifestToml, testManifest)
 import Language.LSP.Protocol.Message qualified as M
 import Language.LSP.Protocol.Types qualified as L
 import Language.LSP.Test qualified as LT
@@ -28,7 +30,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 manifest :: BS.ByteString
-manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"T\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n"
+manifest = TE.encodeUtf8 (manifestToml testManifest)
 
 -- | A project whose a.gm refers to a ragged TSV and a ragged CSV.
 withTableProject :: (FilePath -> IO a) -> IO a

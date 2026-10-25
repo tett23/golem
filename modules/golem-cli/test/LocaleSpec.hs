@@ -13,6 +13,7 @@ import Data.ByteString.Char8 qualified as BC
 import Data.List (sort)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, listDirectory)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode (..))
@@ -129,7 +130,7 @@ assertJapanese what = \case
     Right t -> assertBool (what <> " holds no Japanese: " <> T.unpack t) (T.any (\c -> c >= '\x3040' && c <= '\x9FFF') t)
 
 manifest :: T.Text
-manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"日本語の本\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[targets.html]\n\n[targets.text]\n"
+manifest = manifestToml testManifest {tmTitle = "日本語の本", tmTargets = ["html", "text"]}
 
 projectFiles :: [(FilePath, T.Text)]
 projectFiles = [("manifest.toml", manifest), ("a.gm", "# はじめに\n\n吾輩は猫である。名前はまだ無い。\n")]

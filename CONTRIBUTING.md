@@ -107,6 +107,8 @@ golem-test-support に依存してよいのはテストスイートだけであ�
 どのテストスイートも、ADR なしで golem-test-support を build-depends に足してよい（[docs/adr/0086](./docs/adr/0086-any-test-suite-may-depend-on-test-support.md)）。
 二つ以上のパッケージのテストが同じ補助を使うなら、写さずに golem-test-support に置く。
 一つのテストスイートしか使わない補助は、golem-test-support に置かず、そのパッケージのテストに置く。
+golem-test-support は golem のパッケージに依存してはいけない。
+依存すると、同じ `scripts/ci/test-only-deps.sh` が失敗する（[docs/adr/0087](./docs/adr/0087-test-support-dependencies-and-shared-fixtures.md)）。
 
 ゴールデンのファイルは手で作らず、`--accept` で書き出す（手順は [README.md](./README.md) の Development の節）。
 書き出したファイルの差分を読み、意図した出力であることを確かめてからコミットする。

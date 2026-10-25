@@ -98,6 +98,7 @@ Only test suites may depend on golem-test-support; if a library or an executable
 Any test suite may add golem-test-support to its build-depends without an ADR ([docs/adr/0086](./docs/adr/0086-any-test-suite-may-depend-on-test-support.md)).
 A helper that the tests of two or more packages use goes into golem-test-support instead of being copied.
 A helper that only one test suite uses stays in the tests of that package, not in golem-test-support.
+golem-test-support must not depend on a package of Golem; if it does, the same `scripts/ci/test-only-deps.sh` fails ([docs/adr/0087](./docs/adr/0087-test-support-dependencies-and-shared-fixtures.md)).
 
 Do not write golden files by hand; write them with `--accept` (see the Development section of [README.md](./README.md)).
 Read the diff of the written files and confirm that the output is the intended one before committing.

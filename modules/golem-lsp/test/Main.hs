@@ -23,6 +23,8 @@ import Golem.Plugin (watToWasm)
 import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
 import Golem.Syntax
 import Golem.TestSupport.Env (withEnv)
+import Golem.TestSupport.Gen (genText)
+import Golem.TestSupport.Manifest (TestManifest (..), manifestToml, testManifest)
 import Hedgehog hiding (assert)
 import Hedgehog qualified as H
 import Hedgehog.Gen qualified as Gen
@@ -77,13 +79,6 @@ cacheHomeTests start =
 -- | Byte offset of the k-th byte inside the first occurrence of needle.
 offsetIn :: Text -> Text -> Int -> Int
 offsetIn src needle k = BS.length (TE.encodeUtf8 (fst (T.breakOn needle src))) + k
-
-genText :: Gen Text
-genText =
-  T.pack
-    <$> Gen.list
-      (Range.linear 0 80)
-      (Gen.element ("ab 漢字かな\r\n😀𠮷x" :: String))
 
 {- | The columns of a line that fall between two characters, from 0 to the
 width of the line, in UTF-8 bytes or UTF-16 code units.
@@ -280,7 +275,7 @@ tests =
         codesIn "style.toml" @?= ["G03006"]
         codesIn "manifest.toml" @?= [],
       testCase "a project file publishes its diagnostics in the order of the codes (golem-syntax ADR 0003)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
-        let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
+        let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en"})
         BS.writeFile (tmp </> "a.gm") "@label unused\n# A\n\nSee [ref-title nope].\n"
         BS.writeFile (tmp </> "manifest.toml") manifest
         ws <- openWorkspace tmp
@@ -292,7 +287,7 @@ tests =
         lspSeverity Warning @?= L.DiagnosticSeverity_Warning
         lspSeverity Error @?= L.DiagnosticSeverity_Error,
       testCase "the notices of silence-notices are not published, the others are (golem-syntax ADR 0002)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
-        let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
+        let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en"})
             codes ws = [(c, diagSeverity d) | d <- concat (Map.elems (diagnosticsFor ws)), let DiagnosticCode c = diagCode d]
         BS.writeFile (tmp </> "a.gm") "[tcy: 10]\n\n@number 1\n# A\n"
         BS.writeFile (tmp </> "manifest.toml") manifest
@@ -302,7 +297,7 @@ tests =
         ws1 <- openWorkspace tmp
         codes ws1 @?= [("G04007", Notice), ("G03023", Notice)],
       testCase "completion: the keys of meta and the roles of the manifest (docs/adr ADR 0033)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
-        let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"ja\"\ndate = 2026-10-11\n\n[[metadata.creators]]\nname = \"A\"\nrole = \"author\"\n\n[[metadata.contributors]]\nname = \"B\"\nrole = \"cover-designer\"\n\n[[metadata.printings]]\nedition = 1\nprinting = 1\ndate = 2026-10-16\n\n[targets.html]\n"
+        let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmExtra = "\n[[metadata.creators]]\nname = \"A\"\nrole = \"author\"\n\n[[metadata.contributors]]\nname = \"B\"\nrole = \"cover-designer\"\n\n[[metadata.printings]]\nedition = 1\nprinting = 1\ndate = 2026-10-16\n"})
             src = "[= meta.]\n\n[= join(meta.roles., \"、\")]\n" :: Text
         BS.writeFile (tmp </> "a.gm") (TE.encodeUtf8 src)
         BS.writeFile (tmp </> "manifest.toml") manifest
@@ -311,7 +306,7 @@ tests =
         names (offsetIn src "[= meta." 8) @?= ["creators", "date", "id", "language", "printing", "printings", "roles", "title"]
         names (offsetIn src "meta.roles." 11) @?= ["author", "cover_designer"],
       testCase "G05001 is not reported for the newlines of the line style (docs/adr ADR 0013)" $ withSystemTempDirectory "golem-lsp" $ \tmp -> do
-        let manifest = "chapters = [\"a.gm\"]\n\n[metadata]\nid = \"urn:uuid:11111111-2222-4333-8444-555555555555\"\ntitle = \"LSP\"\nlanguage = \"en\"\ndate = 2026-10-11\n\n[targets.html]\n"
+        let manifest = TE.encodeUtf8 (manifestToml testManifest {tmTitle = "LSP", tmLanguage = "en"})
             g05001 ws = [c | d <- fromMaybe [] (Map.lookup "a.gm" (diagnosticsFor ws)), let DiagnosticCode c = diagCode d, c == "G05001"]
         BS.writeFile (tmp </> "a.gm") "Full fathom\nfive\n"
         BS.writeFile (tmp </> "manifest.toml") manifest
