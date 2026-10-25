@@ -18,6 +18,7 @@ import Golem.Plugin.Lock (defaultCacheDir, lockPlugins, renderLock)
 import Golem.Project (Project (..), ProjectFailure (..), SourceFile (..))
 import Golem.Project.Manifest (parseManifest)
 import Golem.Syntax
+import Golem.TestSupport.Env (withEnv)
 import Support
 import System.Directory (listDirectory)
 import System.Environment (lookupEnv)

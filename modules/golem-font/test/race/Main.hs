@@ -9,11 +9,10 @@ the race killed the process, and a crash here fails this suite alone.
 -}
 module Main (main) where
 
-import Control.Concurrent (forkOn)
-import Control.Concurrent.MVar (newEmptyMVar, putMVar, readMVar, takeMVar)
-import Control.Exception (SomeException, evaluate, try)
+import Control.Exception (evaluate)
 import Data.ByteString qualified as BS
 import Golem.Font
+import Golem.TestSupport.Parallel (inParallel)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -25,23 +24,6 @@ main = do
 -- | The number of threads.
 threads :: Int
 threads = 8
-
-{- | Runs the actions at once, the i-th pinned to capability i (mod the
-count of capabilities, one per processor: the suite is built with -N),
-and returns their fully evaluated results in the order given. The threads wait at a gate until all are started, so that they begin
-together.
--}
-inParallel :: (Show a) => [IO a] -> IO [Either String a]
-inParallel acts = do
-  gate <- newEmptyMVar
-  vars <- traverse (start gate) (zip [0 ..] acts)
-  putMVar gate ()
-  traverse takeMVar vars
-  where
-    start gate (i, act) = do
-      v <- newEmptyMVar
-      _ <- forkOn i (readMVar gate >> try (act >>= \x -> evaluate (length (show x)) >> pure x) >>= putMVar v . either (\e -> Left (show (e :: SomeException))) Right)
-      pure v
 
 -- | 2000 glyph ids from k: each thread asks for its own range, so that no two threads share a thunk.
 glyphsFrom :: Int -> [Int]

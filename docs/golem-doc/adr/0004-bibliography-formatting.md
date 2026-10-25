@@ -1,6 +1,6 @@
 # ADR 0004: 参考文献の一件の書式を文字の種類に合わせる
 
-ステータス: 採択→一覧に出す欄と日付の型は [ADR 0005](0005-bibliography-fields.md)、G03026 と G02021 の並び順は [golem-syntax ADR 0003](../../golem-syntax/adr/0003-diagnostic-order.md)
+ステータス: 採択→一覧に出す欄と日付の型は [ADR 0005](0005-bibliography-fields.md)、G03026 と G02021 の並び順は [golem-syntax ADR 0003](../../golem-syntax/adr/0003-diagnostic-order.md)、CSL-JSON の読み取りの置き場は [ADR 0089](../../adr/0089-csl-json-decoding-in-golem-doc.md)
 
 ## 文脈
 
