@@ -18,8 +18,8 @@ import Data.Maybe (fromMaybe, isJust)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
-import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf.Object
+import Golem.Pdf.Rect (Rect (..))
 import Golem.Syntax.Text (escapeXml)
 import Text.Printf (printf)
 

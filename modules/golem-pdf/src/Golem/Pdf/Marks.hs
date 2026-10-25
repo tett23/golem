@@ -15,7 +15,7 @@ module Golem.Pdf.Marks
   )
 where
 
-import Golem.LayoutSpec (Rect (..))
+import Golem.Pdf.Rect (Rect (..))
 import Golem.Pdf.Writer (Mark (..), Page (..), Sp, turnRect)
 
 data MarkStyle = Japanese | Western

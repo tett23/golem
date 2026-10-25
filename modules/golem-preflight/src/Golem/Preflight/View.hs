@@ -22,8 +22,8 @@ where
 import Data.ByteString (ByteString)
 import Data.Map.Strict (Map)
 import Data.Text (Text)
-import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf (FigureContent, X4Problem)
+import Golem.Pdf.Rect (Rect (..))
 import Golem.Project.Style (SizeSource (..), Sp)
 import Golem.Syntax (SrcSpan)
 

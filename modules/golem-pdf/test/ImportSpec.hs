@@ -12,8 +12,8 @@ import Data.ByteString.Lazy qualified as BL
 import Data.Either (isRight)
 import Data.Map.Strict qualified as Map
 import Data.Word (Word8)
-import Golem.LayoutSpec (Rect (..))
 import Golem.Pdf
+import Golem.Pdf.Rect (Rect (..))
 import Golem.TestSupport.ExternalTool (needsTool)
 import System.Directory (findExecutable)
 import System.Exit (ExitCode (..))
