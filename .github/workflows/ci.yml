@@ -35,7 +35,9 @@ env:
 
 jobs:
   # Whether the change needs the build and the checks: not when it touches
-  # only docs/ and the Markdown files at the root (docs/adr/0009)
+  # only docs/ and the Markdown files at the root (docs/adr/0009). The tests
+  # of the scripts run beside it, in scripts-linux, so that the build does
+  # not wait for them (docs/adr/0097)
   changes:
     runs-on: ubuntu-24.04
     outputs:
@@ -45,16 +47,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Tests of the CI scripts (docs/adr/0009)
-        run: sh scripts/ci/test.sh
-      - name: Tests of the scripts of the manuals (docs/adr/0022, docs/adr/0024)
-        run: sh scripts/manual/test.sh
-      - name: Tests of the environment check (docs/adr/0029)
-        run: sh scripts/env-determinism/test.sh
-      - name: Tests of the scripts run by hand (docs/adr/0078)
-        run: sh scripts/test.sh
-      - name: Tests of the scripts of the visual regression test (docs/adr/0093)
-        run: sh scripts/visual/test.sh
       - name: The documents that the build reads are listed (docs/adr/0021)
         run: sh scripts/ci/docs-refs.sh
       - name: Every package errors on incomplete patterns (docs/adr/0027)
@@ -91,15 +83,35 @@ jobs:
           echo "build=$BUILD"
           echo "build=$BUILD" >> "$GITHUB_OUTPUT"
 
+  # The tests of the scripts, never skipped: they ran in changes before
+  # (docs/adr/0009, docs/adr/0097)
+  scripts-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Tests of the CI scripts (docs/adr/0009)
+        run: sh scripts/ci/test.sh
+      - name: Tests of the scripts of the manuals (docs/adr/0022, docs/adr/0024)
+        run: sh scripts/manual/test.sh
+      - name: Tests of the environment check (docs/adr/0029)
+        run: sh scripts/env-determinism/test.sh
+      - name: Tests of the scripts run by hand (docs/adr/0078)
+        run: sh scripts/test.sh
+      - name: Tests of the scripts of the visual regression test (docs/adr/0093)
+        run: sh scripts/visual/test.sh
+
   build:
     needs: changes
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 30
-    # On x86-64 two runners build the same commit: one runs the tests,
-    # the other makes the outputs (the determinism check, the two manuals,
-    # epubcheck and the environment check). The work is bound by the four
-    # cores of a runner, and the x86-64 build is the longest job; on
-    # aarch64 one runner does both (docs/adr/0045)
+    # On x86-64 three runners build the same commit: one runs the tests,
+    # one makes the outputs (the determinism check, the two manuals and
+    # epubcheck), one runs the environment check. The work is bound by the
+    # four cores of a runner, and the x86-64 build is the longest job; on
+    # aarch64 one runner does the tests and the outputs (docs/adr/0045,
+    # docs/adr/0097)
     strategy:
       fail-fast: false
       matrix:
@@ -108,14 +120,22 @@ jobs:
             part: tests
             tests: true
             outputs: false
+            env: false
           - runner: ubuntu-24.04
             part: outputs
             tests: false
             outputs: true
+            env: false
+          - runner: ubuntu-24.04
+            part: env
+            tests: false
+            outputs: false
+            env: true
           - runner: ubuntu-24.04-arm
             part: all
             tests: true
             outputs: true
+            env: false
     name: build (${{ matrix.runner }}, ${{ matrix.part }})
     runs-on: ${{ matrix.runner }}
     steps:
@@ -143,7 +163,6 @@ jobs:
       - name: epubcheck in the background (golem-epub ADR 0001, docs/adr/0062)
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
         run: |
-          echo "$RUNNER_TEMP/epubcheck/bin" >> "$GITHUB_PATH"
           sh scripts/ci/bg.sh start epubcheck timeout -k 10 300 sh scripts/ci/epubcheck-install.sh "$EPUBCHECK_VERSION" "$EPUBCHECK_SHA256"
       # Every cabal command below reads the test wrapper from
       # cabal.project.local. Given on the command line of cabal test
@@ -232,10 +251,16 @@ jobs:
         if: matrix.tests
         timeout-minutes: 5
         run: sh scripts/ci/bg.sh wait apt
+      # epubcheck goes on PATH here, after cabal build: cabal keeps PATH in
+      # the configuration of every package, and a directory added before
+      # the build on this runner alone made it configure and build every
+      # package again (docs/adr/0097)
       - name: epubcheck is installed
         if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
         timeout-minutes: 5
-        run: sh scripts/ci/bg.sh wait epubcheck
+        run: |
+          sh scripts/ci/bg.sh wait epubcheck
+          echo "$RUNNER_TEMP/epubcheck/bin" >> "$GITHUB_PATH"
       # qpdf, cddl and openssl are installed above (openssl comes with the
       # runner image): a test that needs one of them fails here instead of
       # being skipped. A suite that does not finish in 10 minutes is
@@ -262,7 +287,7 @@ jobs:
           scripts/gen-parser.sh
           git diff --exit-code modules/golem-parser/src/Golem/Parser/Generated.hs modules/golem-parser/test/StrippedGrammar.hs
       - name: Cache the fonts of the manuals (docs/adr/0022, docs/adr/0024)
-        if: matrix.outputs
+        if: matrix.outputs || matrix.env
         uses: actions/cache@v6
         with:
           path: |
@@ -312,12 +337,22 @@ jobs:
       # the outputs do not change with the time zone, the locale,
       # SOURCE_DATE_EPOCH, HOME, XDG_*, PATH, the umask, the path of the
       # project, the times of its files and files nothing refers to; the
-      # changes take the same paths on both architectures (docs/adr/0029)
+      # changes take the same paths on both architectures (docs/adr/0029).
+      # It runs on an x86-64 runner of its own, beside the outputs
+      # (docs/adr/0097)
       - name: Japanese locales for the environment check
-        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        if: matrix.env
         run: sudo locale-gen ja_JP.UTF-8 ja_JP.EUC-JP
+      # the manuals are inputs of every input (not --quick); the runner of
+      # the outputs fetches their fonts in scripts/manual/build.sh
+      - name: The fonts of the manuals for the environment check
+        if: matrix.env
+        timeout-minutes: 5
+        run: |
+          sh scripts/manual/fetch-fonts.sh manual/fonts
+          sh scripts/manual/fetch-fonts.sh manual-dev/fonts
       - name: The outputs do not change with the environment (docs/adr/0029, docs/adr/0038)
-        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        if: matrix.env
         env:
           # pull requests check the small inputs; pushes to main and the
           # calls from release.yml check every input (docs/adr/0038)
@@ -519,7 +554,7 @@ jobs:
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
   ci:
-    needs: [changes, build, determinism, visual, release-scripts, scripts-macos, format]
+    needs: [changes, scripts-linux, build, determinism, visual, release-scripts, scripts-macos, format]
     if: always()
     runs-on: ubuntu-24.04
     steps:
