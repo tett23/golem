@@ -113,7 +113,7 @@ Keep anything that depends on the environment out of the output: time, random nu
 
 Write the scripts under `scripts/` in POSIX `sh`, and make them run with the BSD `awk`, `sed`, `find` and `grep` of macOS too.
 Avoid forms that GNU and BSD write differently, such as the argument of `sed -i`.
-The `scripts-macos` job of CI runs the five tests under `scripts/` on macOS with only the tools of the system on `PATH` ([docs/adr/0079](./docs/adr/0079-shell-tests-on-macos.md)).
+The `scripts-macos` job of CI runs the six tests under `scripts/` on macOS with only the tools of the system on `PATH` ([docs/adr/0079](./docs/adr/0079-shell-tests-on-macos.md)).
 
 If something has no license problem and is easy to reimplement, reimplement it instead of adding a dependency.
 In that case, write thorough tests, using the original project's tests as a reference.
@@ -123,6 +123,11 @@ Raising the version of any pinned native library listed in [README.md](./README.
 When raising the version of wasmtime, regenerate `licenses/wasmtime-v<version>/` (the license documents of the Rust crates and others in `libwasmtime.a`) with `scripts/wasmtime-licenses.sh` and commit the output ([docs/adr/0007](./docs/adr/0007-third-party-licenses.md)).
 The script connects to the network and needs `cargo` and `rustup`.
 It does not fill in the component column of `c-objects.tsv`; fill it in by hand.
+When raising the version of shem, the rasterizer of the visual regression test, change the version and the SHA-256 of the three archives in `scripts/visual/fetch-shem.sh`.
+Compute each SHA-256 from the downloaded archive yourself, and check that it matches the `SHA256SUMS` of the release of shem before writing it.
+A new minor version may change pixels: regenerate the references of the visual regression test in the same pull request, and quote the "Changed" section of the release notes of shem in its description.
+A new patch version leaves the references as they are ([docs/adr/0093](./docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md)).
+A change that makes the PDF writer of Golem write a new operator or resource goes in only after shem is fixed and released and the pinned version is raised, because shem fails on a PDF it cannot read without writing any image.
 When changing dependency versions pinned in `cabal.project.freeze`, explain why in the pull request.
 The version of Claude Code, which writes the release notes, is pinned to an exact value at `"npm:@anthropic-ai/claude-code"` in `mise.toml` ([docs/adr/0044](./docs/adr/0044-release-workflow-hardening.md)).
 To raise it, open a pull request that changes `mise.toml`, and check that `claude --help` of the new version still has `--tools` and `--strict-mcp-config` (`scripts/release/test.sh` checks this when that version of `claude` is installed; the `release-scripts` job of CI installs that version with mise and always checks it, [docs/adr/0058](./docs/adr/0058-run-skipped-checks-in-ci.md)).
