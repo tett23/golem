@@ -20,6 +20,18 @@ one commit. The goldens are text dumps a reviewer can diff:
 The compressed bytes themselves are not in the goldens: they come from
 the bundled zlib at a fixed version (cabal.project), so the same inflated
 content gives the same file.
+
+Both dumps are written through 'escapeText', so a golden is UTF-8 text
+and a mismatch can be shown as a diff (tasty-golden decodes what it
+prints as UTF-8 and fails with a decoding error otherwise). The PDF needs it:
+the second line of the header is a comment of four bytes above 0x7F. A
+byte is written as @\\xNN@ (two upper-case hex digits) when it is not part
+of a printable UTF-8 character: a byte of an invalid or truncated
+sequence, a control character other than tab and line feed (carriage
+return included), DEL, or a C1 control. A backslash followed by @x@ is
+written as @\\x5C@ and every other backslash as it is, so @\\x@ with two
+hex digits in a golden is always an escaped byte and the escape loses
+nothing: each dump maps back to exactly one sequence of bytes.
 -}
 module OutputGoldenSpec (outputGoldenTests) where
 
@@ -43,18 +55,25 @@ import System.Directory (copyFile, createDirectoryIfMissing)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Tasty
-import Test.Tasty.Golden (goldenVsString)
+import Test.Tasty.Golden (goldenVsStringDiff)
 import Test.Tasty.HUnit
 
 outputGoldenTests :: TestTree
 outputGoldenTests =
   testGroup
     "PDF and EPUB outputs against goldens"
-    [ goldenVsString "pdf-sample.txt" "test/golden/pdf-sample.txt" (pdfDump <$> sampleOutput TargetPdf),
-      goldenVsString "epub-sample.txt" "test/golden/epub-sample.txt" (epubDump <$> sampleOutput TargetEpub),
-      goldenVsString "pdf-figures.txt" "test/golden/pdf-figures.txt" (pdfDump <$> figuresOutput TargetPdf),
-      goldenVsString "epub-figures.txt" "test/golden/epub-figures.txt" (epubDump <$> figuresOutput TargetEpub)
+    [ goldenDiff "pdf-sample.txt" (pdfDump <$> sampleOutput TargetPdf),
+      goldenDiff "epub-sample.txt" (epubDump <$> sampleOutput TargetEpub),
+      goldenDiff "pdf-figures.txt" (pdfDump <$> figuresOutput TargetPdf),
+      goldenDiff "epub-figures.txt" (epubDump <$> figuresOutput TargetEpub)
     ]
+
+{- | One golden of test/golden/. A mismatch prints the unified diff of the
+golden and the new dump (diff -u), not the whole dump: goldenVsString
+would print the new dump only, cut at --size-cutoff, from its start.
+-}
+goldenDiff :: String -> IO BL.ByteString -> TestTree
+goldenDiff name = goldenVsStringDiff name (\ref new -> ["diff", "-u", ref, new]) ("test/golden/" <> name)
 
 {- | The fonts as fonts/ja.otf and fonts/latin.otf: Noto Serif JP of the
 kanikosen fixture, which has every character of both fixtures (the
@@ -132,12 +151,40 @@ pdfDump pdf = B.toLazyByteString (normalise (checked (streams pdf)))
       | "<0000> Tj" `BS.isInfixOf` BL.toStrict (B.toLazyByteString out) = error "a glyph is .notdef"
       | otherwise = out
     normalise =
-      B.byteString
+      escapeText
         . replaceAll (TE.encodeUtf8 ("Golem " <> golemVersion)) "Golem <VERSION>"
         . normaliseId
         . normaliseStartxref
         . BL.toStrict
         . B.toLazyByteString
+
+{- | The dump as UTF-8 text, with the escape of the module header: @\\xNN@
+for a byte that is not part of a printable character, and for a backslash
+followed by @x@.
+-}
+escapeText :: BS.ByteString -> B.Builder
+escapeText b = case BS.span plain b of
+  (run, rest) -> B.byteString run <> special rest
+  where
+    plain w = w >= 0x20 && w < 0x7F && w /= 0x5C || w == 0x09 || w == 0x0A
+    special rest = case BS.uncons rest of
+      Nothing -> mempty
+      Just (0x5C, r) -> (if "x" `BS.isPrefixOf` r then hex 0x5C else "\\") <> escapeText r
+      Just (w, r)
+        | Just n <- utf8Length w,
+          Right t <- TE.decodeUtf8' (BS.take n rest),
+          [c] <- T.unpack t,
+          c > '\x9F' ->
+            B.byteString (BS.take n rest) <> escapeText (BS.drop n rest)
+        | otherwise -> hex w <> escapeText r
+    hex w = "\\x" <> B.char7 (hexDigit (w `div` 16)) <> B.char7 (hexDigit (w `mod` 16))
+    hexDigit d = "0123456789ABCDEF" !! fromIntegral d
+    -- the length of the sequence a lead byte above 0x7F starts
+    utf8Length w
+      | w >= 0xC2 && w <= 0xDF = Just 2
+      | w >= 0xE0 && w <= 0xEF = Just 3
+      | w >= 0xF0 && w <= 0xF4 = Just 4
+      | otherwise = Nothing
 
 -- | The PDF with each stream's data replaced by its inflated content.
 streams :: BS.ByteString -> B.Builder
@@ -213,8 +260,10 @@ normaliseStartxref b = case BS.breakSubstring "\nstartxref\n" b of
 -- | Every entry of the EPUB, in the order of the archive.
 epubDump :: BS.ByteString -> BL.ByteString
 epubDump epub =
-  B.toLazyByteString
-    ( mconcat
+  B.toLazyByteString (escapeText (BL.toStrict (B.toLazyByteString entries)))
+  where
+    entries =
+      mconcat
         [ "== "
             <> B.string8 (eRelativePath e)
             <> " ("
@@ -227,4 +276,3 @@ epubDump epub =
             <> content (BL.toStrict (fromEntry e))
         | e <- zEntries (toArchive (BL.fromStrict epub))
         ]
-    )
