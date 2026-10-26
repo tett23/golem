@@ -16,3 +16,17 @@ JPEG の図版も置ける。
 
 @figure images/photo.jpg alt="小さな写真"
   JPEG の図版。
+
+PNG の図版は、画素を取り出して圧縮しなおす。
+
+@figure images/gray.png alt="四段階の灰色"
+  グレースケールの PNG。
+
+@figure images/rgba.png alt="赤、半透明の緑、青、透明の黄"
+  アルファのある RGB の PNG。
+
+@figure images/palette.png alt="黒、赤、緑、青の帯"
+  パレットの PNG。
+
+@figure images/gray-icc.png alt="四段階の灰色"
+  ICC プロファイルのあるグレースケールの PNG。

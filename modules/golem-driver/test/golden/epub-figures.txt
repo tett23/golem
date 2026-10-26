@@ -5,7 +5,7 @@ application/epub+zip
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
 <rootfiles><rootfile full-path="OEBPS/package.opf" media-type="application/oebps-package+xml"/></rootfiles>
 </container>
-== OEBPS/package.opf (deflate, time 315532800, 1063 bytes)
+== OEBPS/package.opf (deflate, time 315532800, 1332 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="ja">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -22,7 +22,11 @@ application/epub+zip
 <item id="item4" href="fonts/latin.otf" media-type="font/otf"/>
 <item id="item5" href="images/chart.svg" media-type="image/svg+xml"/>
 <item id="item6" href="images/diagram.svg" media-type="image/svg+xml"/>
-<item id="item7" href="images/photo.jpg" media-type="image/jpeg"/>
+<item id="item7" href="images/gray-icc.png" media-type="image/png"/>
+<item id="item8" href="images/gray.png" media-type="image/png"/>
+<item id="item9" href="images/palette.png" media-type="image/png"/>
+<item id="item10" href="images/photo.jpg" media-type="image/jpeg"/>
+<item id="item11" href="images/rgba.png" media-type="image/png"/>
 </manifest>
 <spine>
 <itemref idref="item1"/>
@@ -76,7 +80,7 @@ li p, li p[class] { padding-inline-start: 0; text-indent: 0; }
 .line { display: block; }
 .line + br { display: none; }
 code { padding-inline: 0.25em; }
-== OEBPS/figures.xhtml (deflate, time 315532800, 1045 bytes)
+== OEBPS/figures.xhtml (deflate, time 315532800, 1844 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -101,6 +105,23 @@ code { padding-inline: 0.25em; }
 <figure>
 <img src="images/photo.jpg" alt="小さな写真"/>
 <figcaption><span class="number">図3</span>　JPEG の図版。</figcaption>
+</figure>
+<p>PNG の図版は、画素を取り出して圧縮しなおす。</p>
+<figure>
+<img src="images/gray.png" alt="四段階の灰色"/>
+<figcaption><span class="number">図4</span>　グレースケールの PNG。</figcaption>
+</figure>
+<figure>
+<img src="images/rgba.png" alt="赤、半透明の緑、青、透明の黄"/>
+<figcaption><span class="number">図5</span>　アルファのある RGB の PNG。</figcaption>
+</figure>
+<figure>
+<img src="images/palette.png" alt="黒、赤、緑、青の帯"/>
+<figcaption><span class="number">図6</span>　パレットの PNG。</figcaption>
+</figure>
+<figure>
+<img src="images/gray-icc.png" alt="四段階の灰色"/>
+<figcaption><span class="number">図7</span>　ICC プロファイルのあるグレースケールの PNG。</figcaption>
 </figure>
 </body>
 </html>
@@ -128,5 +149,13 @@ code { padding-inline: 0.25em; }
     <path d="M0 0 A20 10 0 0 1 40 0" fill="none" stroke="#000000"/>
   </g>
 </svg>
+== OEBPS/images/gray-icc.png (deflate, time 315532800, 471 bytes)
+[binary: 471 bytes, SHA-256 21c6b2eba347e820411e864c4584fc24a04db4df686558c7573a604b683bf5d2]
+== OEBPS/images/gray.png (deflate, time 315532800, 78 bytes)
+[binary: 78 bytes, SHA-256 0d31541fd95cad7b9317010e28b482805f54c2683157346a28202b185cf9a2ef]
+== OEBPS/images/palette.png (deflate, time 315532800, 98 bytes)
+[binary: 98 bytes, SHA-256 6476218c1e78b398852061ae74aa0afccc0f81e3835bf8b0f27958fc5ce984bd]
 == OEBPS/images/photo.jpg (deflate, time 315532800, 776 bytes)
 [binary: 776 bytes, SHA-256 675c0358609d02ae2a40f61036f7cdcf9d9e7a7472b0f0080e3648878e4eac84]
+== OEBPS/images/rgba.png (deflate, time 315532800, 86 bytes)
+[binary: 86 bytes, SHA-256 9ef92685c6f26af45ab899942a20697868909c22e0d10201205cc19126d57ded]
