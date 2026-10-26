@@ -188,13 +188,20 @@ expect "fetch-shem: an unknown argument" 2
 # 1, one line on stderr) on a PDF whose first line is FAIL.
 CK=$WORK/check
 mkdir -p "$CK/root/scripts/visual"
-for s in check.sh build.sh fetch-shem.sh; do cp "$HERE/$s" "$CK/root/scripts/visual/$s"; done
+for s in check.sh page-hashes.sh build.sh fetch-shem.sh; do cp "$HERE/$s" "$CK/root/scripts/visual/$s"; done
 fake "$CK/bin" shem 'printf "%s\n" "$*" >>"$SHEM_LOG"
 case "$1" in
   --version) echo "shem $FAKE_SHEM_VERSION"; exit 0 ;;
   render) shift ;;
   *) exit 64 ;;
 esac
+# with CONC_DIR, how many fake shems run at once, after a pause
+if [ -n "${CONC_DIR-}" ]; then
+  mkdir "$CONC_DIR/$$"
+  sleep 0.2
+  ls "$CONC_DIR" | wc -l | tr -d " " >>"$CONC_DIR.log"
+  rmdir "$CONC_DIR/$$"
+fi
 while [ $# -gt 2 ]; do shift; done
 if [ "$(head -n 1 "$1")" = FAIL ]; then
   echo "shem: $1: page 1: offset 120: unsupported operator TJ" >&2
@@ -230,10 +237,42 @@ if [ "$(wc -l <"$REFS/tempest.txt" | tr -d ' ')" = 3 ] && grep -Eqx '[0-9a-f]{64
 run check "$CK/p"
 expect "check: the pages are those of the references" 0
 if [ ! -s "$WORK/out" ]; then ok; else ng "check: nothing on stdout when the pages match"; fi
-if grep -q '^render ' "$CK/shem.log" && ! grep -q -- '--jobs' "$CK/shem.log"; then ok; else ng "check: shem renders without --jobs"; fi
+if grep -q '^render ' "$CK/shem.log" && [ -z "$(grep '^render ' "$CK/shem.log" | grep -v -- ' --jobs 1 ')" ]; then ok; else ng "check: shem renders each PDF with --jobs 1 (docs/adr/0097)"; fi
 if [ "$(grep -c '^render --dpi 72 --format ppm ' "$CK/shem.log")" = 34 ]; then ok; else ng "check: shem renders each PDF once at 72 dpi to PPM, one PDF a call"; fi
-if [ "$(grep '^render ' "$CK/shem.log" | awk '{ print NF }' | sort -u)" = 7 ]; then ok; else ng "check: one PDF to one directory a call"; fi
+if [ "$(grep '^render ' "$CK/shem.log" | awk '{ print NF }' | sort -u)" = 9 ]; then ok; else ng "check: one PDF to one directory a call"; fi
 if grep -q 'check: rendering manual-dev' "$WORK/err"; then ok; else ng "check: the name of each input goes to stderr"; fi
+
+# the inputs are rendered VISUAL_JOBS at once (docs/adr/0097)
+mkdir -p "$CK/conc"
+: >"$CK/conc.log"
+CONC_DIR=$CK/conc VISUAL_JOBS=4 run check "$CK/p"
+expect "check: VISUAL_JOBS=4 passes" 0
+MAX=$(sort -n "$CK/conc.log" | tail -n 1)
+if [ "$(wc -l <"$CK/conc.log" | tr -d ' ')" = 17 ] && [ "$MAX" -ge 2 ] && [ "$MAX" -le 4 ]; then ok; else ng "check: VISUAL_JOBS=4 renders two to four inputs at once (at most $MAX)"; fi
+: >"$CK/conc.log"
+CONC_DIR=$CK/conc VISUAL_JOBS=1 run check "$CK/p"
+expect "check: VISUAL_JOBS=1 passes" 0
+if [ "$(sort -u "$CK/conc.log")" = 1 ]; then ok; else ng "check: VISUAL_JOBS=1 renders one input at a time"; fi
+for j in 0 x 1.5; do
+  VISUAL_JOBS=$j run check "$CK/p"
+  expect "check: VISUAL_JOBS='$j' is refused" 2
+done
+# the same stdout, whatever VISUAL_JOBS: changed pages in several inputs, an
+# unreadable one and a missing one, in the order of the inputs
+printf 'tempest 1\ntempest two\ntempest 3\ntempest 4\n' >"$CK/p/tempest.pdf"
+printf 'sample one\nsample 2\n' >"$CK/p/sample.pdf"
+printf 'FAIL\n' >"$CK/p/pd-snark.pdf"
+rm "$CK/p/figures.pdf"
+VISUAL_JOBS=1 run check "$CK/p"
+expect "check: several differences with VISUAL_JOBS=1" 1
+cp "$WORK/out" "$CK/out-1"
+VISUAL_JOBS=8 run check "$CK/p"
+expect "check: several differences with VISUAL_JOBS=8" 1
+if [ "$(cat "$CK/out-1")" = "$(cat "$WORK/out")" ] &&
+  [ "$(sed -n 1p "$WORK/out")" = "changed sample page-0001" ] &&
+  [ "$(sed -n 3p "$WORK/out")" = "missing figures" ] &&
+  [ "$(wc -l <"$WORK/out" | tr -d ' ')" = 7 ]; then ok; else ng "check: the lines of stdout do not depend on VISUAL_JOBS"; fi
+pdfs "$CK/p"
 
 # one page changed
 printf 'tempest 1\ntempest two\ntempest 3\n' >"$CK/p/tempest.pdf"
@@ -332,7 +371,7 @@ expect "check: no directory of PDFs" 2
 # with the directory artifacts/<run>, and records its arguments.
 RP=$WORK/report
 mkdir -p "$RP/root/scripts/visual"
-for s in check.sh build.sh fetch-shem.sh report.sh; do cp "$HERE/$s" "$RP/root/scripts/visual/$s"; done
+for s in check.sh page-hashes.sh build.sh fetch-shem.sh report.sh; do cp "$HERE/$s" "$RP/root/scripts/visual/$s"; done
 fake "$RP/bin" shem 'printf "%s\n" "$*" >>"$SHEM_LOG"
 case "$1" in
   --version) echo "shem $FAKE_SHEM_VERSION"; exit 0 ;;
@@ -423,7 +462,7 @@ if grep -q -- '--dpi 150 --format png' "$RP/shem.log" && grep -q '^diff --format
 # pages/ is what check.sh --accept writes for the same PDFs
 rm -rf "$RP/accept"
 mkdir -p "$RP/accept/scripts/visual"
-cp "$HERE/check.sh" "$HERE/build.sh" "$HERE/fetch-shem.sh" "$RP/accept/scripts/visual/"
+cp "$HERE/check.sh" "$HERE/page-hashes.sh" "$HERE/build.sh" "$HERE/fetch-shem.sh" "$RP/accept/scripts/visual/"
 env SHEM="$RP/bin/shem" SHEM_LOG="$RP/shem.log" FAKE_SHEM_VERSION="$VERSION" sh "$RP/accept/scripts/visual/check.sh" --accept "$RP/P1" >/dev/null 2>&1
 rm -rf "$RP/lists"
 run rp_check --lists "$RP/lists" "$RP/P1"

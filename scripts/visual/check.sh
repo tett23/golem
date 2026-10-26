@@ -5,10 +5,11 @@
 #   check.sh PDFS            compares; PDFS holds <input>.pdf of build.sh
 #   check.sh --accept PDFS   writes the references from PDFS instead
 #
-# Each input of build.sh --list is rendered, one PDF after another, by
-# `shem render --dpi 72 --format ppm`; shem renders the pages of a PDF in
-# parallel on every core by itself, and its bytes do not depend on that.
-# The SHA-256 of each page's PPM is compared with
+# Each input of build.sh --list is rendered by
+# `shem render --dpi 72 --format ppm --jobs 1` in page-hashes.sh; the
+# inputs are rendered side by side, VISUAL_JOBS at once (default: the
+# number of online processors), each by a shem of its own (docs/adr/0097).
+# The bytes of shem depend on neither. The SHA-256 of each page's PPM is compared with
 # scripts/visual/pages/<input>.txt, whose lines are `<SHA-256>  page-<n>`
 # in the order of the pages (LC_ALL=C). The match must be exact: there is
 # no threshold. Every difference is a line on stdout, and the exit code is
@@ -34,8 +35,9 @@
 #
 # SHEM is the path of shem; without it, third_party/shem/shem of
 # fetch-shem.sh is used. Either must print `shem <the pinned version>` to
-# --version (docs/adr/0093). The name of each input goes to stderr as it is
-# rendered, so that a stopped run shows where it stopped (docs/adr/0095).
+# --version (docs/adr/0093). The name of each input goes to stderr when its
+# rendering starts, so that a stopped run shows where it stopped
+# (docs/adr/0095).
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
@@ -59,39 +61,40 @@ if [ "$GOT" != "shem $VERSION" ]; then
   echo "check: $SHEM --version printed '$GOT', not 'shem $VERSION'; references made with another version of shem may differ in pixels (docs/adr/0093)" >&2
   exit 1
 fi
-if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum -a 256"; fi
+JOBS=${VISUAL_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}
+case "$JOBS" in
+  "" | 0 | *[!0-9]*) echo "check: VISUAL_JOBS must be a positive integer: '$JOBS'" >&2; exit 2 ;;
+esac
 WORK=$(mktemp -d)
 trap 'rm -rf "${WORK:?}"' EXIT
-mkdir -p "$WORK/new"
+mkdir -p "$WORK/new" "$WORK/err" "$WORK/ppm"
 sh "$HERE/build.sh" --list >"$WORK/inputs"
+
+# the pages of every input that is there, JOBS inputs at once, each by a
+# shem of its own with --jobs 1; the largest PDF first, so that a large one
+# does not start last. The order does not change the hashes, and the
+# results are read below in the order of the inputs (docs/adr/0097)
+while IFS= read -r input; do
+  [ ! -f "$PDFS/$input.pdf" ] || printf '%s %s\n' "$(wc -c <"$PDFS/$input.pdf" | tr -d ' ')" "$input"
+done <"$WORK/inputs" | LC_ALL=C sort -k 1,1nr -k 2,2 | cut -d ' ' -f 2 >"$WORK/order"
+if [ -s "$WORK/order" ]; then
+  xargs -n 1 -P "$JOBS" sh "$HERE/page-hashes.sh" "$SHEM" "$PDFS" "$WORK" <"$WORK/order"
+fi
 
 FAILED=false   # a difference, or an input that cannot be accepted
 BLOCKED=false  # an input that --accept refuses
 while IFS= read -r input; do
-  echo "check: rendering $input" >&2
   if [ ! -f "$PDFS/$input.pdf" ]; then
     echo "missing $input"
     FAILED=true BLOCKED=true
     continue
   fi
-  rm -rf "$WORK/ppm"
-  if ! "$SHEM" render --dpi 72 --format ppm "$PDFS/$input.pdf" "$WORK/ppm" >/dev/null 2>"$WORK/err"; then
+  if [ ! -f "$WORK/new/$input.txt" ]; then
     echo "unreadable $input"
-    head -n 1 "$WORK/err"
+    [ ! -f "$WORK/err/$input" ] || head -n 1 "$WORK/err/$input"
     FAILED=true BLOCKED=true
     continue
   fi
-  # the SHA-256 of every page, by the name of the page, in the order of
-  # the pages; the PPMs are removed at once
-  : >"$WORK/new/$input.txt"
-  : >"$WORK/files"
-  [ ! -d "$WORK/ppm" ] || find "$WORK/ppm" -type f -name 'page-*.ppm' >"$WORK/files"
-  if [ -s "$WORK/files" ]; then
-    # mktemp gives a path without spaces, which xargs would split
-    xargs $SHA <"$WORK/files" |
-      sed 's#^\([0-9a-f]*\) [ *]*.*/\(page-[0-9]*\)\.ppm$#\1  \2#' | LC_ALL=C sort -k 2,2 >"$WORK/new/$input.txt"
-  fi
-  rm -rf "$WORK/ppm"
   if [ ! -s "$WORK/new/$input.txt" ]; then
     echo "check: $input has no page" >&2
     BLOCKED=true
