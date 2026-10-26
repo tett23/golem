@@ -872,6 +872,47 @@ for t in scripts/ci/test.sh scripts/manual/test.sh scripts/env-determinism/test.
   if grep -qx "        run: sh $t" "$SM"; then ok; else ng "ci.yml: scripts-macos runs $t"; fi
 done
 if job_lines changes | grep -qx "        run: sh scripts/visual/test.sh"; then ok; else ng "ci.yml: changes runs scripts/visual/test.sh"; fi
+
+# ---------------------------------------------------------------- ci.yml and the visual regression test
+# (docs/adr/0093, docs/adr/0094, docs/adr/0095)
+
+VJ=$WORK/visual.yml
+job_lines visual >"$VJ"
+if [ -s "$VJ" ]; then ok; else ng "ci.yml: there is a visual job"; fi
+if grep -qx '    needs: \[changes, build\]' "$VJ" && grep -qxF "    if: needs.changes.outputs.build == 'true'" "$VJ"; then ok; else ng "ci.yml: visual needs build and is skipped as build is"; fi
+if grep -qx '    runs-on: ubuntu-24.04' "$VJ" && grep -qx '    timeout-minutes: 15' "$VJ"; then ok; else ng "ci.yml: visual runs on ubuntu-24.04 with a timeout of 15 minutes"; fi
+# visual_step NAME: the lines of the step of visual that starts at a line with NAME
+visual_step() { awk -v s="$1" 'index($0, s) { on = 1; print; next } on && /^      - / { on = 0 } on' "$VJ"; }
+if visual_step "name: Cache shem" | grep -qF 'uses: actions/cache@' &&
+  visual_step "name: Cache shem" | grep -qxF '          path: third_party/shem' &&
+  visual_step "name: Cache shem" | grep -qxF "          key: shem-\${{ hashFiles('scripts/visual/fetch-shem.sh') }}"; then ok; else
+  ng "ci.yml: visual caches third_party/shem by the hash of fetch-shem.sh"
+fi
+if grep -qxF '        run: timeout -k 10 300 sh scripts/visual/fetch-shem.sh' "$VJ"; then ok; else ng "ci.yml: visual runs fetch-shem.sh under timeout"; fi
+CACHE_AT=$(grep -n 'name: Cache shem' "$VJ" | head -1 | cut -d: -f1)
+FETCH_AT=$(grep -n 'sh scripts/visual/fetch-shem.sh' "$VJ" | head -1 | cut -d: -f1)
+CHECK_AT=$(grep -n 'sh scripts/visual/check.sh' "$VJ" | head -1 | cut -d: -f1)
+if [ -n "$CACHE_AT" ] && [ -n "$FETCH_AT" ] && [ -n "$CHECK_AT" ] && [ "$CACHE_AT" -lt "$FETCH_AT" ] && [ "$FETCH_AT" -lt "$CHECK_AT" ]; then ok; else ng "ci.yml: visual restores the cache, fetches shem, then checks"; fi
+if visual_step "uses: actions/download-artifact@" | grep -qxF '          name: visual-pdfs'; then ok; else ng "ci.yml: visual downloads visual-pdfs"; fi
+if grep -qF 'run: timeout -k 10 600 sh scripts/visual/check.sh visual-pdfs' "$VJ" &&
+  visual_step "name: The pages match the references" | grep -qxF '        shell: bash'; then ok; else
+  ng "ci.yml: visual runs check.sh under timeout -k 10 600, with pipefail"
+fi
+if grep -q 'SHEM' "$VJ"; then ng "ci.yml: CI does not use SHEM"; else ok; fi
+VISUAL_IF="if: matrix.runner == 'ubuntu-24.04' && matrix.outputs"
+if step_if "name: The PDFs of the visual regression test" "$VISUAL_IF" &&
+  step_has "name: The PDFs of the visual regression test" 'GOLEM="$(cabal list-bin -v0 golem)" sh scripts/visual/build.sh visual-pdfs'; then ok; else
+  ng "ci.yml: the x86-64 runner of the outputs builds the PDFs of the visual regression test"
+fi
+if [ "$(grep -c 'sh scripts/visual/build.sh' "$CI_YML")" = 1 ]; then ok; else ng "ci.yml: only one step builds the PDFs of the visual regression test"; fi
+if step_if "name: Upload the PDFs of the visual regression test" "$VISUAL_IF" &&
+  step_has "name: Upload the PDFs of the visual regression test" 'name: visual-pdfs'; then ok; else
+  ng "ci.yml: the x86-64 runner of the outputs uploads visual-pdfs"
+fi
+DET_AT=$(grep -n 'name: Outputs for the determinism check' "$CI_YML" | cut -d: -f1)
+VB_AT=$(grep -n 'name: The PDFs of the visual regression test' "$CI_YML" | cut -d: -f1)
+if [ -n "$DET_AT" ] && [ -n "$VB_AT" ] && [ "$DET_AT" -lt "$VB_AT" ]; then ok; else ng "ci.yml: the PDFs of the visual regression test are built after determinism.sh"; fi
+if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?visual([],].*)?$'; then ok; else ng "ci.yml: ci needs visual"; fi
 if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?scripts-macos([],].*)?$'; then ok; else ng "ci.yml: ci needs scripts-macos"; fi
 if grep -qF "matrix.tests && steps.build.outcome == 'success' && steps.build.outputs.compiled == 'true' && github.event_name == 'pull_request'" "$CI_YML"; then ok; else ng "ci.yml: a pull request saves dist-newstyle when GHC compiled, from the runner of the tests"; fi
 
@@ -972,23 +1013,27 @@ needs() { # needs NAME=RESULT...: the JSON of the needs context
   done
   printf '}\n'
 }
-needs changes=success build=success determinism=success release-scripts=success scripts-macos=success format=success >"$WORK/in"
+needs changes=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success >"$WORK/in"
 run gate
 expect "gate: all succeeded" 0
-needs changes=success build=skipped determinism=skipped release-scripts=skipped scripts-macos=skipped format=skipped >"$WORK/in"
+needs changes=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped >"$WORK/in"
 run gate
 expect "gate: docs only" 0
-needs changes=success build=failure determinism=skipped release-scripts=success scripts-macos=success format=success >"$WORK/in"
+needs changes=success build=failure determinism=skipped visual=skipped release-scripts=success scripts-macos=success format=success >"$WORK/in"
 run gate
 expect "gate: a failed build" 1
 if grep -q 'build' "$WORK/err" && grep -q 'failure' "$WORK/err"; then ok; else ng "gate: the failed job is named"; fi
-needs changes=success build=success determinism=cancelled release-scripts=success scripts-macos=success format=success >"$WORK/in"
+needs changes=success build=success determinism=cancelled visual=cancelled release-scripts=success scripts-macos=success format=success >"$WORK/in"
 run gate
 expect "gate: a cancelled job" 1
-needs changes=success build=success determinism=success release-scripts=success scripts-macos=success >"$WORK/in"
+needs changes=success build=success determinism=success visual=success release-scripts=success scripts-macos=success >"$WORK/in"
 run gate
 expect "gate: a missing job" 1
 if grep -q 'format' "$WORK/err"; then ok; else ng "gate: the missing job is named"; fi
+needs changes=success build=success determinism=success visual=failure release-scripts=success scripts-macos=success format=success >"$WORK/in"
+run gate
+expect "gate: a failed visual (docs/adr/0095)" 1
+if grep -q 'visual' "$WORK/err"; then ok; else ng "gate: the failed visual is named"; fi
 echo 'not json' >"$WORK/in"
 run gate
 expect "gate: not JSON" 1

@@ -297,6 +297,18 @@ jobs:
         with:
           name: determinism-${{ matrix.runner }}
           path: determinism-${{ matrix.runner }}.txt
+      # the 17 PDFs of the visual regression test, built where golem, the
+      # fonts of the manuals and the other outputs already are; the visual
+      # job renders and compares them (docs/adr/0094, docs/adr/0095)
+      - name: The PDFs of the visual regression test (docs/adr/0095)
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        run: GOLEM="$(cabal list-bin -v0 golem)" sh scripts/visual/build.sh visual-pdfs
+      - name: Upload the PDFs of the visual regression test
+        if: matrix.runner == 'ubuntu-24.04' && matrix.outputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-pdfs
+          path: visual-pdfs
       # the outputs do not change with the time zone, the locale,
       # SOURCE_DATE_EPOCH, HOME, XDG_*, PATH, the umask, the path of the
       # project, the times of its files and files nothing refers to; the
@@ -363,6 +375,45 @@ jobs:
           merge-multiple: true
       - name: Outputs are byte-identical on x86-64 and aarch64
         run: diff determinism-ubuntu-24.04.txt determinism-ubuntu-24.04-arm.txt
+
+  # The visual regression test: the pages of the PDFs that the x86-64 runner
+  # of the outputs built, rendered by shem at 72 dpi, against the references
+  # of scripts/visual/pages (docs/adr/0093, docs/adr/0094, docs/adr/0095).
+  # It compares with the committed references, not between architectures,
+  # so it is a job of its own beside determinism
+  visual:
+    needs: [changes, build]
+    if: needs.changes.outputs.build == 'true'
+    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # the version and the SHA-256 are in fetch-shem.sh, so a new version
+      # is a new key (docs/adr/0093)
+      - name: Cache shem (docs/adr/0093)
+        uses: actions/cache@v6
+        with:
+          path: third_party/shem
+          key: shem-${{ hashFiles('scripts/visual/fetch-shem.sh') }}
+      # nothing is fetched when the cache has the pinned VERSION; a stalled
+      # download fails in 5 minutes (docs/adr/0062)
+      - name: shem (docs/adr/0093)
+        run: timeout -k 10 300 sh scripts/visual/fetch-shem.sh
+      - uses: actions/download-artifact@v8
+        with:
+          name: visual-pdfs
+          path: visual-pdfs
+      # the limit only finds a shem that does not stop; the budget is 2
+      # minutes, and a run over it does not fail (docs/adr/0095)
+      - id: check
+        name: The pages match the references (docs/adr/0094, docs/adr/0095)
+        shell: bash
+        run: timeout -k 10 600 sh scripts/visual/check.sh visual-pdfs | tee "$RUNNER_TEMP/visual.txt"
+      - name: Summary of the visual regression test (docs/adr/0095)
+        if: failure() && steps.check.outcome == 'failure'
+        run: sh scripts/visual/summary.sh "$RUNNER_TEMP/visual.txt" >> "$GITHUB_STEP_SUMMARY"
 
   release-scripts:
     needs: changes
@@ -443,7 +494,7 @@ jobs:
   # The one check of ci.yml that the protection of main requires: every job
   # succeeded, or was skipped for a change of documents only (docs/adr/0021)
   ci:
-    needs: [changes, build, determinism, release-scripts, scripts-macos, format]
+    needs: [changes, build, determinism, visual, release-scripts, scripts-macos, format]
     if: always()
     runs-on: ubuntu-24.04
     steps:
