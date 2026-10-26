@@ -413,6 +413,9 @@ jobs:
         with:
           name: visual-pdfs
           path: visual-pdfs
+      - name: TEMPORARY diagnostics of the speed of shem
+        shell: bash
+        run: bash scripts/visual/diag-tmp.sh
       # the limit only finds a shem that does not stop; the budget is 2
       # minutes, and a run over it does not fail (docs/adr/0095). --lists
       # keeps the references of these PDFs for the report (docs/adr/0096)
