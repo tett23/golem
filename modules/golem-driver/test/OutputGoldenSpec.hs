@@ -81,9 +81,13 @@ sampleOutput target = withSystemTempDirectory "golem-golden" $ \tmp -> do
     BS.writeFile (tmp </> "style.toml") (style <> "\n[fonts.code]\nja = \"fonts/ja.otf\"\nlatin = \"fonts/latin.otf\"\n")
   buildOne tmp target []
 
-{- | The figures fixture (SVG, PDF and JPEG figures) to one target. The
-JPEG, fitted to the line length, is too tall for the column and shrinks
-(the notice G07039).
+{- | The figures fixture (SVG, PDF, JPEG and PNG figures) to one target.
+The JPEG, fitted to the line length, is too tall for the column and
+shrinks (the notice G07039). The PNGs are one of each kind golem-pdf
+writes differently: grey (DeviceGray), RGB with alpha (an SMask), indexed
+with 2 bits (Indexed) and grey with an iCCP profile (ICCBased, N 1). Their
+samples, the SMask and the profile are streams that are not text, so the
+golden holds their SHA-256.
 -}
 figuresOutput :: Target -> IO BS.ByteString
 figuresOutput target = withSystemTempDirectory "golem-golden" $ \tmp -> do
