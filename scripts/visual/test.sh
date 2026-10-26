@@ -286,6 +286,31 @@ if grep -q 'fetch-shem.sh' "$WORK/err"; then ok; else ng "check: without shem, t
 run check "$CK/no-such"
 expect "check: no directory of PDFs" 2
 
+# ---------------------------------------------------------------- summary.sh
+# (docs/adr/0095-visual-job-in-ci.md)
+
+SM=$WORK/summary
+mkdir -p "$SM"
+printf '%s\n' 'changed tempest page-0002' 'unreadable sample' 'shem: /tmp/x/sample.pdf: page 1: offset 120: unsupported operator TJ' \
+  'added tempest page-0004' 'unreadable figures' 'removed manual page-0310' 'unlisted pd-frogs' 'stale gone' 'missing manual-dev' >"$SM/out.txt"
+run sh "$HERE/summary.sh" "$SM/out.txt"
+expect "summary: the output of check.sh" 0
+cp "$WORK/out" "$SM/summary.md"
+# the unreadable inputs come first, in a table of their own
+FIRST_TABLE=$(grep -n '^| ' "$SM/summary.md" | head -1 | cut -d: -f1)
+if [ -n "$FIRST_TABLE" ] && [ "$(sed -n "${FIRST_TABLE}p" "$SM/summary.md")" = "| 入力 | shem のエラー |" ]; then ok; else ng "summary: the table of the unreadable inputs is the first"; fi
+if grep -qxF '| sample | shem: /tmp/x/sample.pdf: page 1: offset 120: unsupported operator TJ |' "$SM/summary.md" &&
+  grep -qxF '| figures |  |' "$SM/summary.md"; then ok; else ng "summary: an unreadable input with the line of shem, and one without"; fi
+if grep -qxF '| tempest | page-0002 | `changed` |' "$SM/summary.md" && grep -qxF '| tempest | page-0004 | `added` |' "$SM/summary.md" &&
+  grep -qxF '| manual | page-0310 | `removed` |' "$SM/summary.md"; then ok; else ng "summary: the pages that differ"; fi
+if grep -qxF '| pd-frogs | `unlisted` |' "$SM/summary.md" && grep -qxF '| gone | `stale` |' "$SM/summary.md" &&
+  grep -qxF '| manual-dev | `missing` |' "$SM/summary.md"; then ok; else ng "summary: the references and PDFs missing or stale"; fi
+printf 'unreadable a\nshem: a|b\n' >"$SM/pipe.txt"
+run sh "$HERE/summary.sh" "$SM/pipe.txt"
+if grep -qxF '| a | shem: a\|b |' "$WORK/out"; then ok; else ng "summary: a | in the line of shem is escaped"; fi
+run sh "$HERE/summary.sh" "$SM/no-such"
+expect "summary: no file" 2
+
 # ---------------------------------------------------------------- build.sh
 # (docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md)
 

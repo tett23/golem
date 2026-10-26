@@ -554,6 +554,8 @@ Golem と shem の出力はどちらも決定的なので、同じ PDF からは
 `--accept` は、PDF がない入力、ページが一つもない入力、`unreadable` の入力があれば、どの参照も書かずに失敗する。
 PDF の Producer とインスタンス ID は画像に現れないので、`VERSION` だけを変えても参照は変わらない。
 画像と図版は shem が中身を読まずに箱で描くので、その中身の変化はこのテストでは見つからない。
+CI では、`build` の x86-64 の `outputs` のランナーが PDF を組んで成果物 `visual-pdfs` として上げ、`visual` ジョブが x86-64 で描いて比べる（[ADR 0095](adr/0095-visual-job-in-ci.md)）。
+比べる手順の実時間の上限は 600 秒で、shem が止まらなくなったことだけを見つけるためのものである。
 
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
 対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。

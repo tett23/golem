@@ -24,13 +24,14 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 | [code: manual] | プルリクエストで、仕様書や [code: CONTRIBUTING.md] の変更にマニュアルが追随していること、この本の図が原稿から作られていること |
 | [code: textlint] | 文書とマニュアルの原稿が、表記の規則（一文ごとの改行、ダッシュと中黒、用語）を守っていること |
 
-[code: ci.yml] のジョブは次の七つである。
+[code: ci.yml] のジョブは次の八つである。
 
 | ジョブ | 内容 |
 | --- | --- |
 | [code: changes] | スクリプトのテスト、ビルドが読む文書の一覧の検査、不完全なパターンをエラーにするフラグの検査、capability の数を実行中に変えないことの検査、プラグインの ABI のバージョンの検査、ビルドの要否の判定 |
-| [code: build] | x86-64 と aarch64 でのビルドとテスト、生成したパーサーの検査、二つのマニュアル |
+| [code: build] | x86-64 と aarch64 でのビルドとテスト、生成したパーサーの検査、二つのマニュアル、見た目の回帰テストの PDF |
 | [code: determinism] | 二つのアーキテクチャの出力のハッシュの比較 |
+| [code: visual] | 見た目の回帰テスト（PDF のページの画像と、コミットした参照の比較） |
 | [code: release-scripts] | [code: VERSION] と全パッケージのバージョンの一致、リリースのスクリプトのテスト |
 | [code: scripts-macos] | macOS の BSD 版の道具での、スクリプトのテスト |
 | [code: format] | fourmolu と hlint |
@@ -87,7 +88,7 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 [code: tools/textlint/] は文書を検査する道具であり、ビルドもテストも読まないので、その変更だけならビルドしない。
 変更のパスが空のときと、パスを取れなかったときも、検査を飛ばさないように [code: true] にする。
 
-[code: changes] が [code: false] を出すと、[code: build]、[code: determinism]、[code: release-scripts]、[code: scripts-macos]、[code: format] は省かれる。
+[code: changes] が [code: false] を出すと、[code: build]、[code: determinism]、[code: visual]、[code: release-scripts]、[code: scripts-macos]、[code: format] は省かれる。
 [code: docs.yml] の [code: adr] と [code: textlint] は、変更のパスにかかわらず常に走る。
 
 ## build
@@ -107,6 +108,7 @@ aarch64 では一つのランナー（[code: all]）がすべてを受け持つ�
 + 出力を受け持つランナーでは、二つのマニュアルのフォントをキャッシュから戻す。
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
 + 出力を受け持つランナーでは、[code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。このスクリプトは [code: scripts/manual/build.sh] で二つのマニュアルも組むので、diagnostic が一つでも出ればここで失敗する。
++ x86-64 の出力を受け持つランナーでは、[code: scripts/visual/build.sh] で見た目の回帰テストの 17 の PDF を組み、成果物 [code: visual-pdfs] として上げる。比べるのは [code: visual] ジョブである。
 + x86-64 では、[code: locale-gen] で日本語のロケール（UTF-8 と EUC-JP）を作り、[code: GOLEM_REQUIRE_LOCALES=1] と [code: GOLEM_REQUIRE_FONTS=1] を付けて [code: scripts/env-determinism/check.sh] を実行する。実行の環境を変えても出力が変わらないことを確かめる（第[ref-number determinism]章）。
 プルリクエストでは [code: --quick] を付けて小さな入力だけを検査し、[code: main] への push とリリースではすべての入力を検査する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0038-env-determinism-quick-on-pull-requests.md]（docs/adr の ADR 0038「プルリクエストでは環境を変える検査を小さな入力に絞る」）]
 + x86-64 では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。
@@ -177,6 +179,39 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 ファイルの一覧は [code: LC_ALL=C] で並べてからハッシュを取るので、一覧の順もファイルシステムに左右されない。
 決定性の詳しい規則は第[ref-number determinism]章で説明する。
 
+## visual
+
+[code: visual] は、見た目の回帰テスト（第[ref-number determinism]章）を動かす。
+x86-64 の [code: outputs] のランナーが、[code: scripts/determinism.sh] の後に [code: scripts/visual/build.sh] で 17 の入力の PDF を組み、成果物 [code: visual-pdfs] として上げる。
+このランナーには、golem と、マニュアルのフォントと、ほかの出力がすでにそろっている。
+[code: visual] は [code: build] の後に [code: ubuntu-24.04] で走り、次の順に進む。
+
++ チェックアウトする。
++ [code: third_party/shem] を、[code: scripts/visual/fetch-shem.sh] のハッシュをキーにしたキャッシュから戻す。版と SHA-256 はこのスクリプトにあるので、版を上げればキーも変わる。
++ [code: timeout -k 10 300 sh scripts/visual/fetch-shem.sh] を実行する。キャッシュに固定した版があれば何も取らず、なければ shem の release から取る。止まった接続で 5 分を使い切れば失敗する。
++ [code: visual-pdfs] を取り寄せる。
++ [code: timeout -k 10 600 sh scripts/visual/check.sh visual-pdfs] で、ページの画像を参照と比べる。
++ 比べる手順が失敗したときだけ、[code: scripts/visual/summary.sh] がジョブの要約を書く。
+
+組むのも描くのも x86-64 で行う。
+参照との一致は一つのアーキテクチャで確かめれば足りる。
+Golem の出力のアーキテクチャによる違いは [code: determinism] が、shem の描画の違いは shem の CI が受け持つ。
+[code: visual] を [code: determinism] に混ぜないのは、比べる相手も、失敗したときの直し方も違うからである。
+[code: determinism] の失敗は決定性の誤りで、[code: visual] の失敗は、参照の受け入れか、組版の誤りか、shem の版の問題である。
+ジョブを分けておけば、[code: ci] の判定の一覧から、どちらが落ちたかがわかる。
+
+比べる手順の上限は、実時間の 600 秒である。
+手元の測定の数十倍で、上限に届くのは shem が止まらなくなったときだけである。
+[code: check.sh] は描き始める入力の名前を標準エラーに書くので、止まったときにどの PDF を描いていたかがわかる。
+ジョブの [code: timeout-minutes] は 15 とする。
+これとは別に、比べる手順の実時間の予算を 2 分としている。
+予算は見直しの目安で、超えてもジョブは失敗させない。
+CI でこれを超えるようになったら、入力の数か解像度を見直す。
+
+要約には、shem が読めなかった PDF（[code: unreadable]）を、参照と違うページとは別の表として先頭に書く。
+[code: unreadable] は、Golem の Writer が shem の読む部分集合の外を書いたことを意味するので、参照を書き直しても通らない。
+shem を直してリリースし、固定した版を上げる（第[ref-number build-test]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0095-visual-job-in-ci.md]（docs/adr の ADR 0095「見た目の回帰テストを、CI の新しいジョブ visual で動かす」）]
+
 ## release-scripts、scripts-macos、format
 
 [code: release-scripts] は、[code: scripts/release/check-version.sh] で [code: VERSION] と全パッケージの cabal ファイルのバージョンの一致を検査し、[code: scripts/release/test.sh] でリリースのスクリプトのテストを実行する。
@@ -201,7 +236,7 @@ hlint は [code: -j] でランナーのすべてのコアを使う。
 
 ## ci
 
-[code: ci] は、[code: changes]、[code: build]、[code: determinism]、[code: release-scripts]、[code: scripts-macos]、[code: format] のすべての後に、失敗したジョブがあっても必ず走る。
+[code: ci] は、[code: changes]、[code: build]、[code: determinism]、[code: visual]、[code: release-scripts]、[code: scripts-macos]、[code: format] のすべての後に、失敗したジョブがあっても必ず走る。
 各ジョブの結果を [code: scripts/ci/gate.sh] に渡し、すべてが成功か省略なら成功、一つでも失敗、取り消し、欠けがあれば失敗とする。
 
 [code: ci.yml] に新しいジョブを足すときは、[code: ci] ジョブの [code: needs] と、[code: gate.sh] の [code: NAMES] の両方に加える。
