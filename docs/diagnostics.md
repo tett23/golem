@@ -5956,6 +5956,16 @@ PDF を書かない。
 
 `@figure` の画像のファイルはあるが、PDF に置ける形で読めない。
 PNG と JPEG の図版は画像として読めないとき、PDF の図版は Golem が取り込めないときに出す。
+PNG の tRNS のチャンクが PNG の仕様に反するときも、画像として読めないものとして出す（[golem-pdf ADR 0014](golem-pdf/adr/0014-png-trns-transparency.md)）。
+理由は次のとおりである。
+
+- tRNS が二つ以上ある：`PNG に tRNS が二つ以上あります`
+- 色の種類 4 か 6（アルファのチャンネルを持つ PNG）に tRNS がある：`アルファのある PNG に tRNS があります`
+- パレットの PNG の tRNS が、パレットの色の数より長い：`PNG の tRNS がパレットより長いです`
+- グレーの PNG の tRNS が 2 バイトでない、RGB の PNG の tRNS が 6 バイトでない：`PNG の tRNS の長さが色の種類に合いません`
+
+tRNS を持つ PNG の画素の数（幅 × 高さ）が 2^29 を超えるときは、理由を `tRNS を持つ PNG の画素が多すぎます` として出す。
+透過を表すアルファの面が画素ごとに 1 バイトを使うためで、フィルタの前の画素のデータの上限（`PNG の画像が大きすぎます`）とは別の上限である。
 SVG の図版は、XML として読めないとき、UTF-8 でないとき、内部サブセットを持つ `DOCTYPE` があるとき、大きさ（ルートの `width` と `height` か `viewBox`）がないときに出す（[golem-pdf ADR 0009](golem-pdf/adr/0009-svg-figures.md)）。
 大きさの数の絶対値が 10^9 を超えるときも、大きさがないときと同じく、理由を `大きさの数が大きすぎます` として出す（[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)）。
 大きさの数が 0 でなく、絶対値が 10^-9 より小さいときは、理由を `大きさの数が小さすぎます` として出す（[docs/adr/0083](adr/0083-svg-number-lower-limit.md)）。
@@ -5990,13 +6000,14 @@ HTML、EPUB、プレーンテキストでは出さない。
 
 - メッセージ: `図版を PDF に置けません: <パス>（<理由>）`
 - 段階とモジュール: 出力（golem-driver の `Golem.Driver.Pdf`、golem-pdf の `Golem.Pdf.Image` と `Golem.Pdf.Import`、golem-svg の `Golem.Svg`）
-- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[docs/adr/0040](adr/0040-pdf-import-resource-limits.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（SVG の大きさの数）、[docs/adr/0083](adr/0083-svg-number-lower-limit.md)（SVG の大きさの小さすぎる数）
+- ADR: [golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)、[docs/adr/0040](adr/0040-pdf-import-resource-limits.md)、[docs/adr/0041](adr/0041-svg-marker-and-number-limits.md)（SVG の大きさの数）、[docs/adr/0083](adr/0083-svg-number-lower-limit.md)（SVG の大きさの小さすぎる数）、[golem-pdf ADR 0014](golem-pdf/adr/0014-png-trns-transparency.md)（PNG の tRNS）
 
 ### 主な原因
 
 - 画像のファイルが壊れている。
 - SVG の図版の大きさに、10^9 を超える数か、0 でなく絶対値が 10^-9 より小さい数を書いた。
 - インターレースの PNG を使った。
+- PNG の tRNS のチャンクが壊れている（二つある、アルファのある PNG に付いている、長さが合わない）か、tRNS を持つ PNG の画素が多すぎる。
 - 拡張子と中身の形式が食い違っている（中身が PDF の `.png` など）。
 - PDF の図版の書き出しの設定で、フォントを埋め込んでいないか、特色やレイヤーを残している。
 - PDF の図版が仕様に反している（ページの木の重なりなど）か、展開すると大きすぎる。
@@ -6006,6 +6017,9 @@ HTML、EPUB、プレーンテキストでは出さない。
 理由に合わせて図版を書き出し直す。
 PDF の図版なら、フォントを埋め込み、特色をプロセスカラーに直し、レイヤーを統合して書き出す。
 PNG はインターレースを外して書き出す。
+tRNS が理由なら、画像を編集するツールで PNG を書き出し直す。
+透過を残すなら、アルファのチャンネルを持つ PNG にしてもよい。
+画素が多すぎるなら、画像を小さくするか、アルファのチャンネルを持つ PNG に書き出す。
 ページの木や相互参照が理由なら、PDF を作り直す道具で書き出し直す。
 展開した大きさが理由なら、図版を必要なページだけの PDF に分けて書き出す。
 

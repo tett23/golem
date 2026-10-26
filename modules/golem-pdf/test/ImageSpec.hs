@@ -149,7 +149,7 @@ pngTests =
         (imgColor img, imgData img, imgIcc img) @?= (CsIndexed (BS.pack [255, 0, 0, 0, 0, 255]), BS.pack [1, 0, 1], Nothing),
       testCase "a grey PNG with alpha splits the alpha into the soft mask" $ do
         img <- readOk (png [ihdr 2 1 8 4 0, idat [0, 10, 255, 20, 128]])
-        (imgColor img, imgData img, imgAlpha img) @?= (CsGray, BS.pack [10, 20], Just (BS.pack [255, 128])),
+        (imgColor img, imgData img, imgAlpha img) @?= (CsGray, BS.pack [10, 20], Just (Alpha 8 (BS.pack [255, 128]))),
       testCase "the iCCP profile is decompressed after its name and compression method" $ do
         let profile = "an ICC profile" :: ByteString
             iccp = chunk "iCCP" ("sRGB\0\0" <> BL.toStrict (Z.compress (BL.fromStrict profile)))
@@ -173,6 +173,81 @@ pngTests =
         let pdf = withImage img
         pdf `contains` "/ColorSpace /DeviceGray"
         assertBool "no ICCBased" (not ("/ICCBased" `BS.isInfixOf` pdf))
+    ]
+
+-- | A tRNS chunk.
+trns :: [Word8] -> ByteString
+trns = chunk "tRNS" . BS.pack
+
+-- | The alpha plane of a PNG, or the reason it was refused.
+alphaOf :: ByteString -> Either String (Maybe Alpha)
+alphaOf = fmap imgAlpha . readImage
+
+trnsTests :: TestTree
+trnsTests =
+  testGroup
+    "tRNS transparency becomes an 8-bit soft mask (golem-pdf ADR 0014)"
+    [ testCase "palette, 8 bits: the alpha of each index, 255 for an index beyond tRNS" $
+        alphaOf (png [ihdr 3 1 8 3 0, chunk "PLTE" (BS.pack [1, 2, 3, 4, 5, 6, 7, 8, 9]), trns [0, 128], idat [0, 0, 1, 2]])
+          @?= Right (Just (Alpha 8 (BS.pack [0, 128, 255]))),
+      testCase "palette, 2 bits: the indices are read from the high bits, and the padding is not read" $
+        -- indices 2 0 1 and two bits of padding (3): 10 00 01 11
+        alphaOf (png [ihdr 3 1 2 3 0, chunk "PLTE" (BS.pack [1 .. 12]), trns [10, 20, 30, 40], idat [0, 0x87]])
+          @?= Right (Just (Alpha 8 (BS.pack [30, 10, 20]))),
+      testCase "palette, 2 bits, two rows: each row starts on its own byte" $
+        -- 3×2: row 0 is 3 2 1 and padding 0, row 1 is 0 1 2 and padding 3
+        alphaOf (png [ihdr 3 2 2 3 0, chunk "PLTE" (BS.pack [1 .. 12]), trns [10, 20, 30, 40], idat [0, 0xE4, 0, 0x1B]])
+          @?= Right (Just (Alpha 8 (BS.pack [40, 30, 20, 10, 20, 30]))),
+      testCase "grey, 8 bits: the sample equal to tRNS is transparent" $
+        alphaOf (png [ihdr 2 1 8 0 0, trns [0x00, 0x80], idat [0, 0x00, 0x80]])
+          @?= Right (Just (Alpha 8 (BS.pack [255, 0]))),
+      testCase "grey, 2 bits: the high bits of tRNS are dropped" $
+        alphaOf (png [ihdr 4 1 2 0 0, trns [0xFF, 0x02], idat [0, 0x1B]])
+          @?= Right (Just (Alpha 8 (BS.pack [255, 255, 0, 255]))),
+      testCase "RGB, 8 bits: the colour equal to tRNS is transparent" $
+        alphaOf (png [ihdr 2 1 8 2 0, trns [0, 0, 0, 255, 0, 0], idat [0, 255, 0, 0, 0, 255, 0]])
+          @?= Right (Just (Alpha 8 (BS.pack [255, 0]))),
+      testCase "RGB, 16 bits: the samples are compared in 16 bits, not narrowed to 8" $
+        alphaOf (png [ihdr 2 1 16 2 0, trns [0, 0, 0, 0xFF, 0, 0], idat [0, 0, 0, 0, 0xFF, 0, 0, 0, 0, 0, 0, 0, 0]])
+          @?= Right (Just (Alpha 8 (BS.pack [0, 255]))),
+      testCase "grey, 16 bits: the samples are compared in 16 bits" $
+        alphaOf (png [ihdr 2 1 16 0 0, trns [0, 1], idat [0, 0, 1, 0, 0]])
+          @?= Right (Just (Alpha 8 (BS.pack [0, 255]))),
+      testCase "a tRNS that matches no pixel still gives a soft mask" $
+        alphaOf (png [ihdr 2 1 8 2 0, trns [0, 1, 0, 2, 0, 3], idat [0, 255, 0, 0, 0, 255, 0]])
+          @?= Right (Just (Alpha 8 (BS.pack [255, 255]))),
+      testCase "colour types 4 and 6 with tRNS are refused" $ do
+        alphaOf (png [ihdr 1 1 8 4 0, trns [0, 0], idat [0, 1, 2]]) @?= Left "アルファのある PNG に tRNS があります"
+        alphaOf (png [ihdr 1 1 8 6 0, trns [0, 0, 0, 0, 0, 0], idat [0, 1, 2, 3, 4]]) @?= Left "アルファのある PNG に tRNS があります",
+      testCase "a palette tRNS longer than PLTE is refused" $
+        alphaOf (png [ihdr 1 1 8 3 0, chunk "PLTE" (BS.pack [1 .. 6]), trns [0, 0, 0], idat [0, 0]]) @?= Left "PNG の tRNS がパレットより長いです",
+      testCase "a tRNS whose length does not fit the colour type is refused" $ do
+        alphaOf (png [ihdr 1 1 8 0 0, trns [0], idat [0, 0]]) @?= Left "PNG の tRNS の長さが色の種類に合いません"
+        alphaOf (png [ihdr 1 1 8 0 0, trns [0, 0, 0], idat [0, 0]]) @?= Left "PNG の tRNS の長さが色の種類に合いません"
+        alphaOf (png [ihdr 1 1 8 2 0, trns [0, 0], idat [0, 1, 2, 3]]) @?= Left "PNG の tRNS の長さが色の種類に合いません",
+      testCase "two tRNS chunks are refused" $
+        alphaOf (png [ihdr 1 1 8 0 0, trns [0, 0], trns [0, 0], idat [0, 0]]) @?= Left "PNG に tRNS が二つ以上あります",
+      -- 65536 × 8193 is 2^29 + 65536 pixels; the filtered samples are 8193 × 8193 bytes, under 512 MiB
+      testCase "a tRNS PNG of more than 2^29 pixels is refused before IDAT is inflated" $ withinTimeLimits hangLimits $ do
+        alphaOf (png [ihdr 65536 8193 1 0 0, trns [0, 0], idat [0, 0]]) @?= Left "tRNS を持つ PNG の画素が多すぎます"
+        alphaOf (png [ihdr 65536 8193 1 0 0, idat [0, 0]]) @?= Left "PNG の画素のデータが足りません",
+      testCase "colour type 6, 16 bits: the alpha plane stays 16 bits" $
+        alphaOf (png [ihdr 1 1 16 6 0, idat [0, 1, 2, 3, 4, 5, 6, 0xAB, 0xCD]])
+          @?= Right (Just (Alpha 16 (BS.pack [0xAB, 0xCD]))),
+      testCase "a PNG without tRNS and without alpha has no soft mask" $
+        alphaOf (png [ihdr 1 1 8 2 0, idat [0, 1, 2, 3]]) @?= Right Nothing,
+      testCase "PDF: a 2-bit palette PNG with tRNS has a soft mask of 8 bits, DeviceGray" $ do
+        img <- readOk (png [ihdr 3 1 2 3 0, chunk "PLTE" (BS.pack [1 .. 12]), trns [10, 20, 30, 40], idat [0, 0x87]])
+        -- objects: catalog, pages, page, content, the image (5), its soft mask (6), the sRGB profile (7)
+        let pdf = withImage img
+            objectAt n = BS.take 300 (snd (BS.breakSubstring (BC.pack ("\n" <> show (n :: Int) <> " 0 obj\n")) pdf))
+        assertBool (show (objectAt 5)) ("/BitsPerComponent 2 " `BS.isInfixOf` objectAt 5)
+        assertBool (show (objectAt 5)) ("/SMask 6 0 R" `BS.isInfixOf` objectAt 5)
+        assertBool (show (objectAt 6)) ("/BitsPerComponent 8 /ColorSpace /DeviceGray " `BS.isInfixOf` objectAt 6)
+        streamOf 6 pdf @?= BS.pack [30, 10, 20],
+      testCase "PDF: an RGB PNG with tRNS has no colour key Mask" $ do
+        img <- readOk (png [ihdr 2 1 8 2 0, trns [0, 0, 0, 255, 0, 0], idat [0, 255, 0, 0, 0, 255, 0]])
+        assertBool "no /Mask" (not ("/Mask " `BS.isInfixOf` withImage img))
     ]
 
 jpegTests :: TestTree
@@ -239,7 +314,7 @@ scaledRunTests =
     ]
 
 tests :: TestTree
-tests = testGroup "images and scaled runs (golem-pdf ADR 0001)" [filterTests, pngTests, jpegTests, rejectionTests, hostileTests, scaledRunTests]
+tests = testGroup "images and scaled runs (golem-pdf ADR 0001)" [filterTests, pngTests, trnsTests, jpegTests, rejectionTests, hostileTests, scaledRunTests]
 
 -- ------------------------------------------------------------------ hostile images
 

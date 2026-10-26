@@ -6,6 +6,7 @@ without end, and nothing is inflated beyond what the image needs.
 -}
 module Golem.Pdf.Image
   ( ImageData (..),
+    Alpha (..),
     ColorSpace (..),
     readImage,
     unfilterPng,
@@ -16,7 +17,7 @@ where
 
 import Codec.Compression.Zlib qualified as Z
 import Codec.Compression.Zlib.Internal qualified as ZI
-import Data.Bits (shiftL, (.|.))
+import Data.Bits (shiftL, shiftR, (.&.), (.|.))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
@@ -31,6 +32,13 @@ data ColorSpace
     CsIndexed !ByteString
   deriving stock (Eq, Show)
 
+-- | A soft mask: DeviceGray samples, one per pixel (golem-pdf ADR 0014).
+data Alpha = Alpha
+  { alphaBits :: !Int,
+    alphaSamples :: !ByteString
+  }
+  deriving stock (Eq, Show)
+
 data ImageData = ImageData
   { imgWidth :: !Int,
     imgHeight :: !Int,
@@ -42,8 +50,8 @@ data ImageData = ImageData
     imgDct :: !Bool,
     -- | Adobe CMYK JPEGs store inverted values
     imgInvertedCmyk :: !Bool,
-    -- | alpha samples of PNG, as a soft mask
-    imgAlpha :: !(Maybe ByteString)
+    -- | the soft mask of PNG: the alpha channel (colour types 4 and 6) or tRNS (golem-pdf ADR 0014)
+    imgAlpha :: !(Maybe Alpha)
   }
   deriving stock (Eq, Show)
 
@@ -139,12 +147,17 @@ readPng b = do
       if depth `notElem` allowedDepths ctype
         then Left "PNG のビット深度が色の種類に合いません"
         else Right ()
+      trns <- pngTrns ctype depth cs [d | (n, d) <- chunks, n == "tRNS"]
       -- the size in Integer, so that it cannot overflow (docs/adr ADR 0035)
       let rowBytesI = (toInteger w * toInteger channels * toInteger depth + 7) `div` 8
           needed = toInteger h * (rowBytesI + 1)
       if needed > maxPngBytes
         then Left "PNG の画像が大きすぎます"
         else Right ()
+      -- the alpha plane of tRNS is a byte a pixel (golem-pdf ADR 0014)
+      case trns of
+        Just _ | toInteger w * toInteger h > maxTrnsPixels -> Left "tRNS を持つ PNG の画素が多すぎます"
+        _ -> Right ()
       let rowBytes = fromInteger rowBytesI
           bpp = max 1 ((channels * depth) `div` 8)
       -- only as many bytes as the rows need are inflated
@@ -158,9 +171,60 @@ readPng b = do
                     colorBytes = (channels - 1) * sampleBytes
                     split i = (BS.take colorBytes (BS.drop i pixels), BS.take sampleBytes (BS.drop (i + colorBytes) pixels))
                     parts = [split i | i <- [0, px .. BS.length pixels - px]]
-                 in (BS.concat (map fst parts), Just (BS.concat (map snd parts)))
-            | otherwise = (pixels, Nothing)
+                 in (BS.concat (map fst parts), Just (Alpha depth (BS.concat (map snd parts))))
+            | otherwise = (pixels, trnsAlpha w h depth channels rowBytes pixels <$> trns)
       Right (ImageData w h depth cs icc color False False alpha)
+
+-- | The most pixels a PNG with tRNS may have: 2^29 (golem-pdf ADR 0014).
+maxTrnsPixels :: Integer
+maxTrnsPixels = 2 ^ (29 :: Int)
+
+-- | What tRNS says: the alpha of each palette index, or the one transparent colour.
+data Trns
+  = TrnsPalette !ByteString
+  | TrnsKey ![Int]
+
+{- | The tRNS chunks of a PNG, checked against the PNG specification
+(11.3.1.1): one at most, none with an alpha channel, no longer than the
+palette, and of the length of one colour. The key keeps only the low bits
+of the bit depth, as the specification tells a decoder to.
+-}
+pngTrns :: Word8 -> Int -> ColorSpace -> [ByteString] -> Either String (Maybe Trns)
+pngTrns ctype depth cs = \case
+  [] -> Right Nothing
+  [t]
+    | ctype == 4 || ctype == 6 -> Left "アルファのある PNG に tRNS があります"
+    | CsIndexed p <- cs -> if BS.length t > BS.length p `div` 3 then Left "PNG の tRNS がパレットより長いです" else Right (Just (TrnsPalette t))
+    | ctype == 0 && BS.length t == 2 -> Right (Just (key t 1))
+    | ctype == 2 && BS.length t == 6 -> Right (Just (key t 3))
+    | otherwise -> Left "PNG の tRNS の長さが色の種類に合いません"
+  _ -> Left "PNG に tRNS が二つ以上あります"
+  where
+    key t n = TrnsKey [be16 t (2 * i) .&. (2 ^ depth - 1) | i <- [0 .. n - 1]]
+
+{- | The alpha plane of tRNS, 8 bits a pixel: the palette alpha of each
+index (255 beyond tRNS), or 0 where every sample equals the key and 255
+elsewhere. Samples are compared at their own depth, 16 bits included;
+the padding bits at the end of a row are never read.
+-}
+trnsAlpha :: Int -> Int -> Int -> Int -> Int -> ByteString -> Trns -> Alpha
+trnsAlpha w h depth channels rowBytes pixels t = Alpha 8 (fst (BS.unfoldrN (w * h) (\i -> Just (alphaAt i, i + 1)) 0))
+  where
+    alphaAt i =
+      let (y, x) = i `divMod` w
+          samples = [sampleAt y (x * channels + c) | c <- [0 .. channels - 1]]
+       in case t of
+            TrnsPalette a -> case samples of
+              [k] | k < BS.length a -> BS.index a k
+              _ -> 255
+            TrnsKey k -> if samples == k then 0 else 255
+    sampleAt y s = case depth of
+      16 -> be16 pixels (y * rowBytes + 2 * s)
+      8 -> fromIntegral (BS.index pixels (y * rowBytes + s))
+      _ ->
+        let bit = s * depth
+            byte = fromIntegral (BS.index pixels (y * rowBytes + bit `div` 8)) :: Int
+         in (byte `shiftR` (8 - depth - bit `mod` 8)) .&. (2 ^ depth - 1)
 
 -- | The bit depths the PNG specification allows for each colour type.
 allowedDepths :: Word8 -> [Int]

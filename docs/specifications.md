@@ -1820,6 +1820,7 @@ HarfBuzz のフォントは開いた後は読むだけで、HarfBuzz が複数�
 - 図番号は章ごとに振り、文書構造（S1）で決める。図番号は「図 3-2」のように章番号と組み合わせて使うので、章を複数のファイルに分けても章の中で番号が続く必要があるためである。
 - ICC プロファイルを持たない RGB の画像は sRGB とみなし、sRGB のプロファイルを付けて埋め込む。
 - PNG は、フィルタの前の画素のデータが 512 MiB 以下、ICC プロファイルが 32 MiB 以下のものに限る。画素のデータは画像に要るバイト数までしか展開しない（[docs/adr/0035](adr/0035-security-hardening.md)）。
+- PNG の透過は、アルファのチャンネル（色の種類 4 と 6）も tRNS のチャンク（パレットのアルファと、グレーと RGB の透明の色）も、SMask として PDF に入れる。tRNS があれば、透明の画素がなくても SMask を書く。色のキーのマスク（`/Mask`）は書かない。PNG の仕様に反する tRNS（色の種類 4 と 6 にある、パレットより長い、長さが色の種類に合わない、二つ以上ある）と、画素が 2^29 を超える tRNS の PNG は、G08010 にする。HTML と EPUB は今と同じく PNG をそのまま写す（[golem-pdf ADR 0014](golem-pdf/adr/0014-png-trns-transparency.md)）。アルファの面の作り方は [golem-pdf の仕様書](golem-pdf/specifications.md) に書く。
 - PDF に置けない図版（読めない画像と、取り込めない PDF）は、PDF を組むとき（`golem build` の PDF と `golem preflight`）に `@figure` ごとに G08010 のエラーとし、PDF を書かない。dev と prod の両方でエラーである。HTML、EPUB、プレーンテキストは G08010 を出さない。HTML と EPUB が読むのは SVG だけで、動的なコンテンツの検査（G08014、[docs/adr/0039](adr/0039-svg-active-content-in-html-and-epub.md)）のためである（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。
 
 PDF の図版は、そのページを Form XObject として PDF に取り込み、ベクターのまま描く（[golem-pdf ADR 0008](golem-pdf/adr/0008-pdf-figures.md)）。

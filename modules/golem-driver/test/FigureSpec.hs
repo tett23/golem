@@ -17,6 +17,7 @@ import Data.Maybe (isJust)
 import Data.Ratio ((%))
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
+import Data.Word (Word8)
 import Golem.Driver
 import Golem.Driver.Pdf (PdfLayout (..), PlacedFigure (..), figureRect, fitFigure)
 import Golem.Layout.KnuthPlass (BoxContent (..), Item (..), Line (..))
@@ -47,6 +48,29 @@ png interlaced =
     be32 :: Int -> BS.ByteString
     be32 n = BS.pack [fromIntegral (n `shiftR` s) | s <- [24, 16, 8, 0 :: Int]]
     chunk name d = be32 (BS.length d) <> name <> d <> be32 0
+
+{- | A 2×1 PNG of the given colour type, 8 bits, with a tRNS chunk; the
+pixels are given as the bytes of the one row (golem-pdf ADR 0014).
+-}
+trnsPng :: Word8 -> [(BS.ByteString, BS.ByteString)] -> [Word8] -> BS.ByteString
+trnsPng ctype extra row =
+  BS.pack [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+    <> chunk "IHDR" (be32 2 <> be32 1 <> BS.pack [8, ctype, 0, 0, 0])
+    <> BS.concat [chunk n d | (n, d) <- extra]
+    <> chunk "IDAT" (BL.toStrict (Z.compress (BL.fromStrict (BS.pack (0 : row)))))
+    <> chunk "IEND" ""
+  where
+    be32 :: Int -> BS.ByteString
+    be32 n = BS.pack [fromIntegral (n `shiftR` s) | s <- [24, 16, 8, 0 :: Int]]
+    chunk name d = be32 (BS.length d) <> name <> d <> be32 0
+
+-- | A palette PNG of red and blue whose red is transparent by tRNS.
+trnsPalettePng :: BS.ByteString
+trnsPalettePng = trnsPng 3 [("PLTE", BS.pack [255, 0, 0, 0, 0, 255]), ("tRNS", BS.pack [0])] [0, 1]
+
+-- | An RGBA PNG with a tRNS chunk, which the PNG specification forbids.
+rgbaTrnsPng :: BS.ByteString
+rgbaTrnsPng = trnsPng 6 [("tRNS", BS.pack [0, 0, 0, 0, 0, 0])] [255, 0, 0, 255, 0, 0, 255, 255]
 
 -- | A build of the one-chapter project to the targets, in a profile: the error codes and whether a PDF was written.
 buildIn :: Profile -> [Target] -> T.Text -> [(FilePath, BS.ByteString)] -> IO ([DiagnosticCode], Bool)
@@ -182,7 +206,24 @@ pdfFigureTests =
       written @?= False,
     testCase "HTML does not read the images: a broken PNG is not G08010" $ do
       (codes, _) <- buildIn Dev [TargetHtml] "@figure images/a.png alt=\"t\"\n" [("images/a.png", BS.take 20 (png False))]
-      codes @?= []
+      codes @?= [],
+    testCase "a palette PNG with tRNS is placed with a soft mask, without diagnostics (golem-pdf ADR 0014)" $ withSystemTempDirectory "golem-figure" $ \tmp -> do
+      writeProject tmp miniManifest (figStyle horizontalStyle) "@figure images/t.png alt=\"t\"\n" [("images/t.png", trnsPalettePng)]
+      r <- build (defaultOptions tmp) {optTargets = Just [TargetPdf], optFonts = fakeProvider}
+      map diagCode (brDiagnostics r) @?= []
+      pdf <- case filter (".pdf" `isSuffixOf`) (brWritten r) of
+        [p] -> BS.readFile p
+        _ -> assertFailure "no PDF"
+      count "/SMask " pdf @?= 1,
+    testCase "an RGBA PNG with tRNS is G08010 at the @figure, and no PDF is written (golem-pdf ADR 0014)" $ do
+      (codes, pdf, messages) <- pdfWith Dev "@figure images/t.png alt=\"t\"\n" [("images/t.png", rgbaTrnsPng)]
+      (codes, pdf, messages) @?= ([DiagnosticCode "G08010"], Nothing, ["図版を PDF に置けません: images/t.png（アルファのある PNG に tRNS があります）"]),
+    testCase "HTML copies an RGBA PNG with tRNS as it is, without G08010 (golem-pdf ADR 0014)" $ withSystemTempDirectory "golem-figure" $ \tmp -> do
+      writeProject tmp (miniManifest <> "\n[targets.html]\n") (figStyle horizontalStyle) "@figure images/t.png alt=\"t\"\n" [("images/t.png", rgbaTrnsPng)]
+      r <- build (defaultOptions tmp) {optTargets = Just [TargetHtml], optFonts = fakeProvider}
+      map diagCode (filter isError (brDiagnostics r)) @?= []
+      copied <- mapM BS.readFile (filter (".png" `isSuffixOf`) (brWritten r))
+      copied @?= [rgbaTrnsPng]
   ]
 
 -- | An SVG of 200 by 100 with a red square (golem-pdf ADR 0009).

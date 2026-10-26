@@ -533,6 +533,8 @@ main = do
 画像の形式は PNG、JPEG、PDF、SVG です。
 形式はファイルの拡張子（[code: .png]、[code: .jpg]、[code: .jpeg]、[code: .pdf]、[code: .svg]）で決まり、ほかの拡張子はエラー（G02074）になります。
 PNG は、展開した画素のデータが 512 MiB まで、埋め込んだ ICC プロファイルが 32 MiB までのものを使えます。
+PNG の透過は PDF でも保たれます。
+アルファのチャンネルで透過させた PNG も、tRNS のチャンクで特定の色やパレットの色を透過させた PNG も、PDF で同じ画素が透けます。
 PDF の画像は HTML と EPUB では表示できないので、[code: web=images/arch.png] のように画面用の画像も指定します。
 画面用の画像は PNG、JPEG、SVG のどれかで、ほかの形式はエラー（G02073）になります。
 

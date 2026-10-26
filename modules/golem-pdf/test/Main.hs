@@ -483,7 +483,7 @@ tests tinyJpeg =
       testCase "PNG filters are reversed and alpha becomes a soft mask" $ do
         img <- either assertFailure pure (readImage png)
         imgData img @?= BS.pack [10, 20, 30, 15, 25, 35, 11, 21, 31, 16, 26, 36]
-        imgAlpha img @?= Just (BS.pack [255, 255, 255, 255]),
+        imgAlpha img @?= Just (Alpha 8 (BS.pack [255, 255, 255, 255])),
       testCase "an RGB image without a profile gets the sRGB profile" $ do
         let p = srgbProfile
             be32 i = foldl (\acc b -> acc * 256 + fromIntegral b) (0 :: Int) (BS.unpack (BS.take 4 (BS.drop i p)))

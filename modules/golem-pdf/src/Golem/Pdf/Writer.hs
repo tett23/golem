@@ -672,16 +672,18 @@ imageObjects srgbRef base img =
           then OStream (("Filter", OName "DCTDecode") : common) (imgData img)
           else OStream (("Filter", OName "FlateDecode") : common) (flate (imgData img))
       smask =
-        OStream
-          [ ("Type", OName "XObject"),
-            ("Subtype", OName "Image"),
-            ("Width", OInt (fromIntegral (imgWidth img))),
-            ("Height", OInt (fromIntegral (imgHeight img))),
-            ("BitsPerComponent", OInt (fromIntegral (imgBits img))),
-            ("ColorSpace", OName "DeviceGray"),
-            ("Filter", OName "FlateDecode")
-          ]
-          . flate
+        ( \a ->
+            OStream
+              [ ("Type", OName "XObject"),
+                ("Subtype", OName "Image"),
+                ("Width", OInt (fromIntegral (imgWidth img))),
+                ("Height", OInt (fromIntegral (imgHeight img))),
+                ("BitsPerComponent", OInt (fromIntegral (alphaBits a))),
+                ("ColorSpace", OName "DeviceGray"),
+                ("Filter", OName "FlateDecode")
+              ]
+              (flate (alphaSamples a))
+        )
           <$> imgAlpha img
    in main' : catMaybes [iccObj, smask]
   where
