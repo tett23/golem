@@ -43,8 +43,8 @@ tableShape (Golem.Parser.AST.Located _ b) = case b of
 -- | The labels the grammar declares with @%recover@.
 grammarLabels :: IO [Text]
 grammarLabels = do
-  g <- TIO.readFile "grammar/Golem.hpeg"
-  pure [l | ("%recover" : l : _) <- map T.words (T.lines g)]
+  grammar <- TIO.readFile "grammar/Golem.hpeg"
+  pure [l | ("%recover" : l : _) <- map T.words (T.lines grammar)]
 
 kinds :: Node -> [SyntaxKind]
 kinds n = nodeKind n : concat [kinds m | ElemNode m <- nodeChildren n]

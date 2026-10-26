@@ -32,8 +32,6 @@ library
     , peg-runtime   >=0.1  && <0.2
     , text          >=2.0  && <2.2
   default-language: GHC2021
-  -- The generated module is not ours to warn about.
-  ghc-options: -Wno-unused-matches -Wno-unused-local-binds -Wno-name-shadowing -Wno-unused-imports
 
 test-suite golem-parser-test
   import:           warnings
@@ -55,7 +53,5 @@ test-suite golem-parser-test
     , peg-runtime
     , text
   default-language: GHC2021
-  -- StrippedGrammar is generated, like Golem.Parser.Generated
-  ghc-options: -Wno-unused-matches -Wno-unused-local-binds -Wno-name-shadowing -Wno-unused-imports
   -- tasty runs the parts of the label safety test in parallel (docs/adr/0009)
   ghc-options: -threaded -rtsopts "-with-rtsopts=-N"
