@@ -97,6 +97,15 @@ $ TASTY_NO_CREATE=true cabal test all
 $ cabal test golem-driver:golem-driver-test --test-options=--accept
 ```
 
+PDF の見た目を意図して変えたときは、見た目の回帰テスト（第[ref-number determinism]章）の参照も書き直す。
+[code: scripts/visual/run.sh --accept] が、入力を組み、shem を取り、描いた結果で [code: scripts/visual/pages/] の参照を書き直す。
+書き直した参照は、同じプルリクエストに入れる。
+参照の差分が、どのページの見た目が変わったかの記録になる。
+
+```sh
+$ GOLEM=$(cabal list-bin -v0 golem) scripts/visual/run.sh --accept
+```
+
 golem-cli のテストは、[code: build-tool-depends] で [code: golem] の実行ファイルをビルドし、それを一時ディレクトリで実行して、終了コードと出力を確かめる。
 このテストができる前は、ADR 0001 が終了コード 2 と決めていた使い方の誤りが、実際には 1 を返していた。
 テスト設計に書いたテストを実際に書かないと、決定と実装のずれに誰も気付かない、という実例である。[note: [style url: https://github.com/tett23/golem/blob/main/docs/golem-cli/adr/0004-usage-error-exit-code.md]（golem-cli ADR 0004「使い方の誤りの終了コードを 2 にし、使い方の文言を日本語にする」）]
@@ -164,7 +173,7 @@ Golem の方針として、小さな道具を組み合わせ、Python のスク�
 | [code: scripts/manual/test.sh] | [code: scripts/manual/] のスクリプト（組み方、奥付の版の情報、更新の検査、フォントの取得） |
 | [code: scripts/release/test.sh] | [code: scripts/release/] のスクリプト（バージョンの検査、リリースノート、ライセンス、アーカイブの作成と検査、GMP の版と取得、macOS のビルドの順序） |
 | [code: scripts/test.sh] | 手でだけ動くスクリプト（[code: scripts/gen-vertical-orientation.sh]、[code: scripts/fixtures/] の二本） |
-| [code: scripts/visual/test.sh] | [code: scripts/visual/] のスクリプト（見た目の回帰テストのラスタライザ shem の取得） |
+| [code: scripts/visual/test.sh] | [code: scripts/visual/] のスクリプト（見た目の回帰テストの、ラスタライザ shem の取得、入力の組み方、参照との比較） |
 
 どれも一時ディレクトリに Git のリポジトリや偽の [code: golem] を作り、スクリプトの終了コードと出力を確かめる。
 [code: curl]、[code: uname]、[code: ghc]、[code: cabal]、[code: strip] などの外部のコマンドは、[code: PATH] の先頭に置いた偽物で差し替え、ネットワークも本物のツールチェーンも使わない。

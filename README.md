@@ -237,6 +237,15 @@ cabal test golem-driver:golem-driver-test --test-options=--accept
 scripts/visual/fetch-shem.sh
 ```
 
+見た目の回帰テストは、17 の入力の PDF を shem で 72 dpi の画像に描き、ページごとの SHA-256 を `scripts/visual/pages/` の参照と比べる（[docs/adr/0094](./docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md)）。
+`scripts/visual/run.sh` が、入力を組み、shem を取り、比べるまでを続けて行う。
+PDF の見た目を意図して変えたときは、ゴールデンと同じく `--accept` を付けて参照を書き直し、どのページが変わったかを参照の差分で確かめてから、同じプルリクエストに入れる。
+
+```bash
+GOLEM="$(cabal list-bin -v0 golem)" scripts/visual/run.sh
+GOLEM="$(cabal list-bin -v0 golem)" scripts/visual/run.sh --accept
+```
+
 依存のバージョンは `cabal.project.freeze` で固定している。
 このファイルを消してビルドすると、依存のバージョンが変わりうる。
 

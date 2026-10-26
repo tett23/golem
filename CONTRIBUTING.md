@@ -119,6 +119,8 @@ golem のパッケージの、名前が `.Internal` で終わるモジュール�
 ゴールデンのファイルは手で作らず、`--accept` で書き出す（手順は [README.md](./README.md) の Development の節）。
 書き出したファイルの差分を読み、意図した出力であることを確かめてからコミットする。
 CI はテストに `TASTY_NO_CREATE=true` を付けるので、ゴールデンのファイルを消したり名前を変え間違えたりすると失敗する。
+PDF の見た目を意図して変えたときは、`scripts/visual/run.sh --accept` で見た目の回帰テストの参照（`scripts/visual/pages/`）を書き直し、同じプルリクエストに入れる（[docs/adr/0094](./docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md)）。
+参照の差分が、どのページの見た目が変わったかの記録になる。
 
 Golem は、同じ入力から常に同じバイト列を出力する。
 出力を変える変更は、x86-64 と aarch64 で同じ結果になることを CI の `determinism` ジョブで確かめる。

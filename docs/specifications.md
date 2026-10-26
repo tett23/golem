@@ -536,6 +536,25 @@ EPUB はパッケージである zip の中に時刻や並び順の揺れを含�
 `combined` は capability を二つにして組む。
 この検査は EPUB も比べるので、v1 の EPUB にも事実上の決定性を求めるが、仕様としての EPUB の決定性の約束は v2 からのままである。
 
+決定性の検査は、同じコミットの出力どうしだけを比べる。
+コミットをまたいで PDF の見た目が変わったことは、見た目の回帰テストが見つける（[ADR 0094](adr/0094-visual-regression-page-hashes-at-72-dpi.md)）。
+このテストは Golem 自身の開発のためのもので、利用者のためのページ画像の差分（「Golem が強いるワークフロー」の節）とは別である。
+入力は 17 の PDF である。
+`sample`（`scripts/determinism.sh` と同じ B6 の縦組み）、`figures`、『蟹工船』、`[page]` に `bleed = "3mm"` を足して `--marks japanese` で組んだ『蟹工船』、『テンペスト』、パブリックドメインの十冊、二つのマニュアルからなる。
+マニュアルは、奥付がコミットごとに変わらないように、`GOLEM_MANUAL_COMMIT` を 0 が 40 個の文字列に、`GOLEM_MANUAL_TAG` を `v0.0.0-visual` にして組む。
+`scripts/visual/build.sh` が、各プロジェクトを一時的なディレクトリに写して組み、リポジトリの `build/` には書かない。
+入力の一覧は `build.sh --list` が出す。
+`scripts/visual/check.sh` が、各 PDF を shem で 72 dpi の PPM に描き、ページごとの SHA-256 を `scripts/visual/pages/<入力>.txt` の参照と比べる。
+参照の一行は `<SHA-256>  page-<番号>` で、行はページの順（`LC_ALL=C`）に並べる。
+比べるのはバイト列の完全な一致で、閾値はない。
+Golem と shem の出力はどちらも決定的なので、同じ PDF からは同じ一覧ができる。
+違いは `changed`、`added`、`removed`（ページ）、`unlisted`、`stale`（参照のファイル）、`unreadable`（shem が読めなかった PDF。shem の標準エラーの一行を続ける）、`missing`（PDF がない）の行で標準出力に書き、終了コード 1 で終わる。
+`unreadable` は、Golem の Writer が shem の読む部分集合の外を書いたことを意味するので、参照を書き直しても通らない。
+意図して見た目を変えたときは、`scripts/visual/run.sh --accept`（`build.sh`、`fetch-shem.sh`、`check.sh --accept` を続けて行う）で参照を書き直し、同じ変更に入れる。
+`--accept` は、PDF がない入力、ページが一つもない入力、`unreadable` の入力があれば、どの参照も書かずに失敗する。
+PDF の Producer とインスタンス ID は画像に現れないので、`VERSION` だけを変えても参照は変わらない。
+画像と図版は shem が中身を読まずに箱で描くので、その中身の変化はこのテストでは見つからない。
+
 ロケールを出力に影響させないため（[ADR 0002](adr/0002-determinism.md)）、Golem が書くテキストは、ロケールの文字コードによらず UTF-8 である。
 対象は、HTML とプレーンテキストの出力、`golem new` のひな形、`plugins.lock`、標準出力と標準エラーに書く diagnostics や説明である。
 
