@@ -1,6 +1,6 @@
 #!/bin/sh
-# Tests of the CI scripts (docs/adr/0009-ci-speed.md). The changes job of
-# .github/workflows/ci.yml runs this before it decides whether to build.
+# Tests of the CI scripts (docs/adr/0009-ci-speed.md). The scripts-linux job of
+# .github/workflows/ci.yml runs this, beside the changes job (docs/adr/0097).
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
@@ -804,17 +804,19 @@ if grep -qF "QUICK: \${{ github.event_name == 'pull_request' && '--quick' || '' 
 # ---------------------------------------------------------------- ci.yml and the parts of build
 # (docs/adr/0045-split-x86-build-and-pull-request-cache.md)
 
-# x86-64 builds twice: one runner for the tests, one for the outputs;
-# aarch64 does both
-matrix_rows() { # the runner, part, tests and outputs of each row of the matrix
+# x86-64 builds three times: one runner for the tests, one for the outputs,
+# one for the environment check; aarch64 does the tests and the outputs
+# (docs/adr/0045, docs/adr/0097)
+matrix_rows() { # the runner, part, tests, outputs and env of each row of the matrix
   awk '/^        include:/ { on = 1; next }
     on && /^    [a-z]/ { on = 0 }
     on && /- runner:/ { r = $3 } on && /part:/ { p = $2 } on && /tests:/ { t = $2 }
-    on && /outputs:/ { print r, p, t, $2 }' "$1"
+    on && /outputs:/ { o = $2 } on && /env:/ { print r, p, t, o, $2 }' "$1"
 }
-if [ "$(matrix_rows "$CI_YML")" = "ubuntu-24.04 tests true false
-ubuntu-24.04 outputs false true
-ubuntu-24.04-arm all true true" ]; then ok; else ng "ci.yml: the matrix of build has the tests and the outputs of x86-64 and all of aarch64"; fi
+if [ "$(matrix_rows "$CI_YML")" = "ubuntu-24.04 tests true false false
+ubuntu-24.04 outputs false true false
+ubuntu-24.04 env false false true
+ubuntu-24.04-arm all true true false" ]; then ok; else ng "ci.yml: the matrix of build has the tests, the outputs and the environment check of x86-64 and all of aarch64"; fi
 # the step after a line that matches $1 has the condition $2
 step_if() { awk -v s="$1" -v c="$2" 'index($0, s) { getline; if (index($0, c)) found = 1 } END { exit !found }' "$CI_YML"; }
 if step_if "- run: cabal test all" "if: matrix.tests"; then ok; else ng "ci.yml: the tests run on the runners of the tests"; fi
@@ -825,6 +827,24 @@ step_has() {
 }
 # the lines of the job $1 of ci.yml
 job_lines() { awk -v j="  $1:" '$0 == j { on = 1; next } on && /^  [a-z]/ { on = 0 } on' "$CI_YML"; }
+# the environment check has an x86-64 runner of its own (docs/adr/0097)
+if step_if "name: Japanese locales for the environment check" "if: matrix.env"; then ok; else ng "ci.yml: the locales are generated on the runner of the environment check"; fi
+if step_if "name: The outputs do not change with the environment" "if: matrix.env"; then ok; else ng "ci.yml: the environment check runs on its own runner"; fi
+if step_if "name: The fonts of the manuals for the environment check" "if: matrix.env" &&
+  step_has "name: The fonts of the manuals for the environment check" "scripts/manual/fetch-fonts.sh manual/fonts" &&
+  step_has "name: The fonts of the manuals for the environment check" "scripts/manual/fetch-fonts.sh manual-dev/fonts"; then ok; else
+  ng "ci.yml: the runner of the environment check fetches the fonts of the manuals"
+fi
+# every runner of build configures the packages alike: a step before cabal
+# build that adds a directory to PATH changes the configuration of every
+# package on that runner alone, and cabal configures and builds them all
+# again, golem-font and its HarfBuzz too (docs/adr/0097). The GHC
+# directory is the same on every runner of an architecture
+build_before_cabal() { awk '$0 == "  build:" { on = 1; next } on && /^  [a-z]/ { on = 0 } on && /- id: build$/ { on = 0 } on' "$CI_YML"; }
+if [ "$(build_before_cabal | grep -c 'GITHUB_PATH')" = 1 ] && build_before_cabal | grep -qF 'echo "$GHC_DIR/bin" >> "$GITHUB_PATH"'; then ok; else
+  ng "ci.yml: no step of build but GHC on the PATH adds to PATH before cabal build"
+fi
+if step_has "name: epubcheck is installed" 'echo "$RUNNER_TEMP/epubcheck/bin" >> "$GITHUB_PATH"'; then ok; else ng "ci.yml: epubcheck is put on PATH after cabal build"; fi
 # the ten public-domain books are typeset to every target in CI (docs/adr/0058)
 if step_has "- run: cabal test all" 'GOLEM_PD_BOOKS: "1"'; then ok; else ng "ci.yml: cabal test all has GOLEM_PD_BOOKS"; fi
 # a missing golden file fails the tests in CI instead of being created
@@ -871,7 +891,16 @@ if grep -qx '      PATH: /usr/bin:/bin:/usr/sbin:/sbin' "$SM" && ! grep -Eq 'bre
 for t in scripts/ci/test.sh scripts/manual/test.sh scripts/env-determinism/test.sh scripts/release/test.sh scripts/test.sh scripts/visual/test.sh; do
   if grep -qx "        run: sh $t" "$SM"; then ok; else ng "ci.yml: scripts-macos runs $t"; fi
 done
-if job_lines changes | grep -qx "        run: sh scripts/visual/test.sh"; then ok; else ng "ci.yml: changes runs scripts/visual/test.sh"; fi
+# the tests of the scripts run in scripts-linux, beside changes, so that the
+# build does not wait for them; it is never skipped (docs/adr/0097)
+SL=$WORK/scripts-linux.yml
+job_lines scripts-linux >"$SL"
+if grep -qx '    runs-on: ubuntu-24.04' "$SL" && ! grep -Eq '^    (needs|if):' "$SL"; then ok; else ng "ci.yml: scripts-linux runs on ubuntu-24.04, with no needs and no condition"; fi
+for t in scripts/ci/test.sh scripts/manual/test.sh scripts/env-determinism/test.sh scripts/test.sh scripts/visual/test.sh; do
+  if grep -qx "        run: sh $t" "$SL"; then ok; else ng "ci.yml: scripts-linux runs $t"; fi
+  if job_lines changes | grep -qx "        run: sh $t"; then ng "ci.yml: changes does not run $t"; else ok; fi
+done
+if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?scripts-linux([],].*)?$'; then ok; else ng "ci.yml: ci needs scripts-linux"; fi
 
 # ---------------------------------------------------------------- ci.yml and the visual regression test
 # (docs/adr/0093, docs/adr/0094, docs/adr/0095)
@@ -1013,24 +1042,24 @@ needs() { # needs NAME=RESULT...: the JSON of the needs context
   done
   printf '}\n'
 }
-needs changes=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success format=success >"$WORK/in"
 run gate
 expect "gate: all succeeded" 0
-needs changes=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped >"$WORK/in"
+needs changes=success scripts-linux=success build=skipped determinism=skipped visual=skipped release-scripts=skipped scripts-macos=skipped format=skipped >"$WORK/in"
 run gate
 expect "gate: docs only" 0
-needs changes=success build=failure determinism=skipped visual=skipped release-scripts=success scripts-macos=success format=success >"$WORK/in"
+needs changes=success scripts-linux=success build=failure determinism=skipped visual=skipped release-scripts=success scripts-macos=success format=success >"$WORK/in"
 run gate
 expect "gate: a failed build" 1
 if grep -q 'build' "$WORK/err" && grep -q 'failure' "$WORK/err"; then ok; else ng "gate: the failed job is named"; fi
-needs changes=success build=success determinism=cancelled visual=cancelled release-scripts=success scripts-macos=success format=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=cancelled visual=cancelled release-scripts=success scripts-macos=success format=success >"$WORK/in"
 run gate
 expect "gate: a cancelled job" 1
-needs changes=success build=success determinism=success visual=success release-scripts=success scripts-macos=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=success visual=success release-scripts=success scripts-macos=success >"$WORK/in"
 run gate
 expect "gate: a missing job" 1
 if grep -q 'format' "$WORK/err"; then ok; else ng "gate: the missing job is named"; fi
-needs changes=success build=success determinism=success visual=failure release-scripts=success scripts-macos=success format=success >"$WORK/in"
+needs changes=success scripts-linux=success build=success determinism=success visual=failure release-scripts=success scripts-macos=success format=success >"$WORK/in"
 run gate
 expect "gate: a failed visual (docs/adr/0095)" 1
 if grep -q 'visual' "$WORK/err"; then ok; else ng "gate: the failed visual is named"; fi

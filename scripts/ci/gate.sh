@@ -11,7 +11,7 @@
 # missing from the JSON is written to stderr, and the exit code is 1. Add a
 # new job of ci.yml both to the needs of the job ci and to NAMES.
 set -eu
-NAMES="changes build determinism visual release-scripts scripts-macos format"
+NAMES="changes scripts-linux build determinism visual release-scripts scripts-macos format"
 if [ "${1-}" = --names ]; then
   printf '%s\n' $NAMES
   exit 0
