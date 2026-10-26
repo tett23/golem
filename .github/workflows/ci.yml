@@ -359,6 +359,8 @@ jobs:
           QUICK: ${{ github.event_name == 'pull_request' && '--quick' || '' }}
         run: |
           # QUICK is empty or one word
+          # measurement only: every input, as on a push to main
+          QUICK=
           # shellcheck disable=SC2086
           GOLEM_REQUIRE_LOCALES=1 GOLEM_REQUIRE_FONTS=1 GOLEM="$(cabal list-bin -v0 golem)" sh scripts/env-determinism/check.sh $QUICK
       # the PDF and the HTML of the manuals; those of aarch64 are the same,
