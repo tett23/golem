@@ -9,7 +9,7 @@ characters = 30
 lines = 33
 line-pitch = "14pt"
 columns = 1
-position = { top = "18mm", gutter = "20mm" }
+position = { top = "18.001mm", gutter = "20mm" }
 
 [masters.body]
 folio = { position = "bottom-outside", format = "{n}" }
