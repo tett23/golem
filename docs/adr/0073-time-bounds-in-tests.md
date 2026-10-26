@@ -1,6 +1,6 @@
 # ADR 0073: テストの時間の上限を、止まらないことの検出に限り、上限の検査は数で書く
 
-ステータス: 採択
+ステータス: 採択→golem-pdf と golem-svg のテストの時間切れと `linearTime` は [ADR 0091](0091-cpu-time-limits-in-pdf-and-svg-tests.md)
 
 ## 文脈
 

@@ -17,6 +17,7 @@ import Data.Word (Word8)
 import GHC.Stats (allocated_bytes, getRTSStats, getRTSStatsEnabled)
 import Golem.Pdf
 import Golem.Pdf.Rect (Rect (..))
+import Golem.TestSupport.TimeLimit (hangLimits, withinTimeLimits)
 import Test.Tasty
 import Test.Tasty.HUnit
 
@@ -274,8 +275,8 @@ hostileTests :: TestTree
 hostileTests =
   testGroup
     "hostile images end, without exceptions and within limits (docs/adr ADR 0035)"
-    [ localOption (mkTimeout 30000000)
-        $ testCase "alpha with a bit depth under 8 is an error, not an endless list"
+    [ testCase "alpha with a bit depth under 8 is an error, not an endless list"
+        $ withinTimeLimits hangLimits
         $ total (png [ihdr 2 1 4 6 0, idat [0, 0, 0, 0, 0]]) >>= (@?= Left "PNG のビット深度が色の種類に合いません"),
       testCase "a bit depth the colour type does not allow is an error" $
         total (png [ihdr 1 1 16 3 0, chunk "PLTE" (BS.pack [1, 2, 3]), idat [0, 0, 0]]) >>= (@?= Left "PNG のビット深度が色の種類に合いません"),
@@ -283,8 +284,8 @@ hostileTests =
         total (png [chunk "IHDR" (be32 1 <> be32 1 <> BS.pack [8]), idat [0, 0]]) >>= (@?= Left "PNG の IHDR が壊れています"),
       testCase "a width or height of 0 is an error" $
         total (png [ihdr 0 1 8 0 0, idat [0]]) >>= (@?= Left "PNG の IHDR が壊れています"),
-      localOption (mkTimeout 30000000)
-        $ testCase "a size that overflows Int is too large, at once"
+      testCase "a size that overflows Int is too large, at once"
+        $ withinTimeLimits hangLimits
         $ total (png [ihdr 0x7FFFFFFF 0x7FFFFFFF 16 6 0, idat [0, 0]]) >>= (@?= Left "PNG の画像が大きすぎます"),
       testCase "more than 512 MiB of samples is too large" $
         total (png [ihdr 30000 30000 16 6 0, idat [0, 0]]) >>= (@?= Left "PNG の画像が大きすぎます"),

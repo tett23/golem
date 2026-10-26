@@ -16,6 +16,7 @@ import Data.ByteString.Char8 qualified as BC
 import Data.ByteString.Lazy qualified as BL
 import Data.Text (Text)
 import Golem.Pdf
+import Golem.TestSupport.TimeLimit (hangLimits, withinTimeLimits)
 import ImageSpec (allocatedBy, zeros)
 import ImportSpec (catalog, classicPdf, layout, objBytes, onePage, stream, xrefTable)
 import Test.Tasty
@@ -55,9 +56,6 @@ refusedFor why r = r @?= Left (Malformed why)
 tooLarge :: Text
 tooLarge = "展開した大きさが上限を超えました"
 
-seconds :: Integer -> Integer
-seconds = (* 1000000)
-
 -- | One page whose content stream has the dictionary entries and the body given.
 pageWith :: ByteString -> ByteString -> ByteString
 pageWith dict body =
@@ -84,6 +82,10 @@ contentsOf refs streams =
 -- | A content stream of @n@ bytes of @0 g@ (a colour set at the top), Flate-compressed.
 grayStream :: Int -> ByteString
 grayStream n = stream "/Filter /FlateDecode" (compressed (BS.concat (replicate (n `div` 4) "0 g\n")))
+
+-- | One page whose Contents names a 'grayStream' of 8 MiB @k@ times.
+grayNamed :: Int -> ByteString
+grayNamed k = contentsOf (BC.unwords (replicate k "4 0 R")) [(4, grayStream (8 * mib))]
 
 -- | The Form XObjects a page's content calls by the names Golem gives (docs/adr ADR 0051).
 innerForms :: ImportedPage -> [ByteString]
@@ -150,8 +152,8 @@ tests2018 :: TestTree
 tests2018 =
   testGroup
     "hostile PDF figures end within limits (security audit 2026-10-18, docs/adr ADR 0040)"
-    [ localOption (mkTimeout (seconds 30))
-        $ testCase "C1: a page tree that is a DAG of depth 24 is refused for the page tree at the node named twice"
+    [ testCase "C1: a page tree that is a DAG of depth 24 is refused for the page tree at the node named twice"
+        $ withinTimeLimits hangLimits
         $ imported 2 (dagPdf 24) >>= refusedFor "ページの木",
       testCase "C1: a page named by two Kids is refused for the page tree" $ do
         let pdf =
@@ -176,8 +178,8 @@ tests2018 =
                 ]
         imported 1 pdf >>= readOk
         imported 2 pdf >>= refusedFor "ページの木",
-      localOption (mkTimeout (seconds 30)) $
-        testCase "C2: a literal string of 50000 short octal escapes is read in time and allocation linear in its length" $
+      testCase "C2: a literal string of 50000 short octal escapes is read in time and allocation linear in its length" $
+        withinTimeLimits hangLimits $
           do
             let body = "BT (" <> BS.concat (replicate 50000 "\\1x") <> ") Tj ET"
                 pdf = pageWith "" body
@@ -186,8 +188,8 @@ tests2018 =
             -- 150 KB of string: linear reading allocates some tens of MB (most of it the SHA-256
             -- of the file, about 150 bytes a byte), quadratic reading a few GB
             assertBool ("allocated " <> show bytes) (bytes < 512 * toInteger (BS.length body)),
-      localOption (mkTimeout (seconds 60)) $
-        testCase "C3: one stream of 8 MiB named 40 times in Contents is inflated once and written once (docs/adr ADR 0051)" $
+      testCase "C3: one stream of 8 MiB named 40 times in Contents is inflated once and written once (docs/adr ADR 0051)" $
+        withinTimeLimits hangLimits $
           do
             let pdf = contentsOf (BC.unwords (replicate 40 "4 0 R")) [(4, nulStream (8 * mib))]
             (r, bytes) <- allocatedBy (imported 1 pdf)
@@ -196,27 +198,30 @@ tests2018 =
             p <- either (assertFailure . show) pure (importPage 1 pdf)
             ipContent p @?= BC.intercalate "\n" (replicate 40 "/GolemC4 Do")
             map (BS.length . inflated) (innerForms p) @?= [8 * mib],
-      localOption (mkTimeout (seconds 60)) $
-        testCase "C3: one stream of 8 MiB named 30 times in Contents counts 8 MiB" $
+      testCase "C3: one stream of 8 MiB named 30 times in Contents counts 8 MiB" $
+        withinTimeLimits hangLimits $
           do
             let pdf = contentsOf (BC.unwords (replicate 30 "4 0 R")) [(4, nulStream (8 * mib))]
             imported 1 pdf >>= (@?= Right (30 * BS.length "/GolemC4 Do" + 29, 1)),
-      localOption (mkTimeout (seconds 120)) $
-        testCase "C3: a stream of 8 MiB that sets the colour at the top, named 40 times, is ContentTooLarge (docs/adr ADR 0051)" $
+      testCase "C3: a stream of 8 MiB that sets the colour at the top, named 40 times, is ContentTooLarge (docs/adr ADR 0051)" $
+        withinTimeLimits hangLimits $
           do
             let pdf = contentsOf (BC.unwords (replicate 40 "4 0 R")) [(4, grayStream (8 * mib))]
             (r, bytes) <- allocatedBy (imported 1 pdf)
             r @?= Left (ContentTooLarge (40 * 8 * mib + 39))
             assertBool ("allocated " <> show bytes) (bytes < toInteger (300 * mib)),
-      localOption (mkTimeout (seconds 300)) $
-        testCase "the joined content of a stream named 32 times is refused, of one named 31 times read (docs/adr ADR 0051)" $
-          do
-            let named k = contentsOf (BC.unwords (replicate k "4 0 R")) [(4, grayStream (8 * mib))]
-            imported 1 (named 32) >>= (@?= Left (ContentTooLarge (32 * 8 * mib + 31)))
-            -- not reused: the content is the streams joined
-            imported 1 (named 31) >>= (@?= Right (31 * 8 * mib + 30, 0)),
-      localOption (mkTimeout (seconds 120)) $
-        testCase "C3: an ICC profile of 130 MiB named by two colour spaces is decoded once" $
+      -- One test was both, and took more than 10 seconds of CPU time
+      -- (docs/adr ADR 0091).
+      testCase "the joined content of a stream named 32 times is refused (docs/adr ADR 0051)"
+        $ withinTimeLimits hangLimits
+        $ imported 1 (grayNamed 32) >>= (@?= Left (ContentTooLarge (32 * 8 * mib + 31))),
+      testCase "the joined content of a stream named 31 times is read (docs/adr ADR 0051)"
+        $ withinTimeLimits hangLimits
+        $
+        -- not reused: the content is the streams joined
+        imported 1 (grayNamed 31) >>= (@?= Right (31 * 8 * mib + 30, 0)),
+      testCase "C3: an ICC profile of 130 MiB named by two colour spaces is decoded once" $
+        withinTimeLimits hangLimits $
           do
             -- decoded twice it would be 260 MiB, more than an import may decode
             let pdf =
@@ -229,13 +234,13 @@ tests2018 =
                       (5, stream "/N 3 /Filter /FlateDecode" (zeros (130 * mib)))
                     ]
             imported 1 pdf >>= readOk,
-      localOption (mkTimeout (seconds 120)) $
-        testCase "the total of two streams in Contents just over 256 MiB is refused" $
+      testCase "the total of two streams in Contents just over 256 MiB is refused" $
+        withinTimeLimits hangLimits $
           do
             let pdf = contentsOf "4 0 R 5 0 R" [(4, nulStream (128 * mib)), (5, nulStream (128 * mib + 1))]
             imported 1 pdf >>= refusedFor tooLarge,
-      localOption (mkTimeout (seconds 120)) $
-        testCase "the total of two streams in Contents just under 256 MiB is read" $
+      testCase "the total of two streams in Contents just under 256 MiB is read" $
+        withinTimeLimits hangLimits $
           do
             let pdf = contentsOf "4 0 R 5 0 R" [(4, nulStream (128 * mib)), (5, nulStream (128 * mib - 1))]
             imported 1 pdf >>= (@?= Right (256 * mib, 0)),
@@ -243,8 +248,8 @@ tests2018 =
       -- 256 MiB and one byte, beyond the joined content's own limit (docs/adr
       -- ADR 0051); the third byte is a form's, so that the joined content is
       -- 256 MiB and the decoded total exactly 256 MiB (docs/adr ADR 0068).
-      localOption (mkTimeout (seconds 120)) $
-        testCase "a total of exactly 256 MiB decoded is read (docs/adr ADR 0068)" $
+      testCase "a total of exactly 256 MiB decoded is read (docs/adr ADR 0068)" $
+        withinTimeLimits hangLimits $
           do
             let pdf =
                   classicPdf
@@ -257,30 +262,30 @@ tests2018 =
                       (6, stream "/Type /XObject /Subtype /Form /BBox [0 0 1 1] /Filter /FlateDecode" (zeros 1))
                     ]
             imported 1 pdf >>= (@?= Right (256 * mib, 1)),
-      localOption (mkTimeout (seconds 30))
-        $ testCase "C4: the TIFF predictor with Colors 65536 is refused for the predictor"
+      testCase "C4: the TIFF predictor with Colors 65536 is refused for the predictor"
+        $ withinTimeLimits hangLimits
         $ imported 1 (pageWith "/Filter /FlateDecode /DecodeParms << /Predictor 2 /Colors 65536 /BitsPerComponent 8 /Columns 65536 >>" (zeros mib)) >>= refusedFor "予測子",
       testCase "C4: Colors 33, BitsPerComponent 3 and Columns 0 are refused for the predictor" $ do
         let parms p = pageWith ("/Filter /FlateDecode /DecodeParms << /Predictor 2 " <> p <> " >>") (zeros 16)
         imported 1 (parms "/Colors 33") >>= refusedFor "予測子"
         imported 1 (parms "/BitsPerComponent 3") >>= refusedFor "予測子"
         imported 1 (parms "/Columns 0") >>= refusedFor "予測子",
-      localOption (mkTimeout (seconds 30))
-        $ testCase "C4: the TIFF predictor with Colors 4 decodes 1 MiB in time linear in its length"
+      testCase "C4: the TIFF predictor with Colors 4 decodes 1 MiB in time linear in its length"
+        $ withinTimeLimits hangLimits
         $ imported 1 (pageWith "/Filter /FlateDecode /DecodeParms << /Predictor 2 /Colors 4 /BitsPerComponent 8 /Columns 65536 >>" (zeros mib)) >>= (@?= Right (mib, 0)),
       testCase "C4: the TIFF predictor adds the byte a pixel before" $ do
         -- 2 colours, 3 pixels a row: "0 " then twice 1 0 gives "0 1 2 "
         let pdf = pageWith "/Filter /FlateDecode /DecodeParms << /Predictor 2 /Colors 2 /Columns 3 >>" (compressed (BS.pack [48, 32, 1, 0, 1, 0]))
         fmap ipContent (importPage 1 pdf) @?= Right "0 1 2 ",
-      localOption (mkTimeout (seconds 60)) $
-        testCase "C5: Flate then ASCII85 of 80 MiB of z is refused before it expands to 320 MiB" $
+      testCase "C5: Flate then ASCII85 of 80 MiB of z is refused before it expands to 320 MiB" $
+        withinTimeLimits hangLimits $
           do
             let pdf = pageWith "/Filter [/FlateDecode /ASCII85Decode]" (compressed (BS.replicate (80 * mib) 122))
             (r, bytes) <- allocatedBy (imported 1 pdf)
             refusedFor tooLarge r
             assertBool ("allocated " <> show bytes) (bytes < toInteger (300 * mib)),
-      localOption (mkTimeout (seconds 30)) $
-        testCase "C6: a cross-reference stream of 4 million rows named by 4 revisions is decoded within bounds" $
+      testCase "C6: a cross-reference stream of 4 million rows named by 4 revisions is decoded within bounds" $
+        withinTimeLimits hangLimits $
           do
             let pdf = xrefStmRevisions 4000000 4
             (r, bytes) <- allocatedBy (imported 1 pdf)
@@ -300,8 +305,8 @@ tests2018 =
         imported 1 (xrefIndexPdf "0 2 2 3") >>= readOk
         imported 1 (xrefIndexPdf "0 3 2 2") >>= refusedFor "相互参照"
         imported 1 (xrefIndexPdf "2 3 0 2") >>= refusedFor "相互参照",
-      localOption (mkTimeout (seconds 60)) $
-        testCase "C7: a content stream of 16 MiB of tiny tokens is rewritten in allocation a few times its size" $
+      testCase "C7: a content stream of 16 MiB of tiny tokens is rewritten in allocation a few times its size" $
+        withinTimeLimits hangLimits $
           do
             let body = BS.concat (replicate (4 * mib) "0 g\n")
                 pdf = pageWith "/Filter /FlateDecode" (compressed body)
@@ -394,17 +399,15 @@ auditTests :: TestTree
 auditTests =
   testGroup
     "hostile PDF figures of the security audit of 2026-10-24"
-    [ localOption (mkTimeout (seconds 30)) $
-        testCase "an object stream whose Filter is an object in itself is refused for the object stream" $ do
-          let stm = objStm "/Filter 5 0 R" [(1, "<< /Type /Catalog /Pages 2 0 R >>"), (5, "/FlateDecode")]
-          imported 1 (xrefStreamPdf [(4, stm)] [(1, 4, 0), (5, 4, 1)]) >>= refusedFor "オブジェクトのストリーム",
-      localOption (mkTimeout (seconds 30)) $
-        testCase "two object streams whose Filters are objects in each other are refused for the object stream" $ do
-          let a = objStm "/Filter 7 0 R" [(1, "<< /Type /Catalog /Pages 2 0 R >>"), (5, "/FlateDecode")]
-              b = objStm "/Filter 5 0 R" [(7, "/FlateDecode")]
-          imported 1 (xrefStreamPdf [(4, a), (6, b)] [(1, 4, 0), (5, 4, 1), (7, 6, 0)]) >>= refusedFor "オブジェクトのストリーム",
-      localOption (mkTimeout (seconds 30))
-        $ testCase "Kids that are references to arrays named twice, 30 deep, are refused for the page tree"
+    [ testCase "an object stream whose Filter is an object in itself is refused for the object stream" $ withinTimeLimits hangLimits $ do
+        let stm = objStm "/Filter 5 0 R" [(1, "<< /Type /Catalog /Pages 2 0 R >>"), (5, "/FlateDecode")]
+        imported 1 (xrefStreamPdf [(4, stm)] [(1, 4, 0), (5, 4, 1)]) >>= refusedFor "オブジェクトのストリーム",
+      testCase "two object streams whose Filters are objects in each other are refused for the object stream" $ withinTimeLimits hangLimits $ do
+        let a = objStm "/Filter 7 0 R" [(1, "<< /Type /Catalog /Pages 2 0 R >>"), (5, "/FlateDecode")]
+            b = objStm "/Filter 5 0 R" [(7, "/FlateDecode")]
+        imported 1 (xrefStreamPdf [(4, a), (6, b)] [(1, 4, 0), (5, 4, 1), (7, 6, 0)]) >>= refusedFor "オブジェクトのストリーム",
+      testCase "Kids that are references to arrays named twice, 30 deep, are refused for the page tree"
+        $ withinTimeLimits hangLimits
         $ imported 1 (arrayKidsPdf 30) >>= refusedFor "ページの木",
       testCase "Kids that are a reference to an array named once are read" $ do
         let pdf =
@@ -417,14 +420,12 @@ auditTests =
                   (4, stream "" "0 0 1 1 re f")
                 ]
         imported 1 pdf >>= readOk,
-      localOption (mkTimeout (seconds 60)) $
-        testCase "200 font dictionaries naming one descriptor in the file parse it once" $ do
-          one <- allocationOf (sharedDescriptorPdf 1 (256 * 1024))
-          many <- allocationOf (sharedDescriptorPdf 200 (256 * 1024))
-          assertBool ("allocated " <> show many <> " for 200, " <> show one <> " for 1") (many < 2 * one),
-      localOption (mkTimeout (seconds 60)) $
-        testCase "200 pairs of an object stream at one offset parse the object there once" $ do
-          one <- allocationOf (sharedOffsetPdf 1 (256 * 1024))
-          many <- allocationOf (sharedOffsetPdf 200 (256 * 1024))
-          assertBool ("allocated " <> show many <> " for 200, " <> show one <> " for 1") (many < 2 * one)
+      testCase "200 font dictionaries naming one descriptor in the file parse it once" $ withinTimeLimits hangLimits $ do
+        one <- allocationOf (sharedDescriptorPdf 1 (256 * 1024))
+        many <- allocationOf (sharedDescriptorPdf 200 (256 * 1024))
+        assertBool ("allocated " <> show many <> " for 200, " <> show one <> " for 1") (many < 2 * one),
+      testCase "200 pairs of an object stream at one offset parse the object there once" $ withinTimeLimits hangLimits $ do
+        one <- allocationOf (sharedOffsetPdf 1 (256 * 1024))
+        many <- allocationOf (sharedOffsetPdf 200 (256 * 1024))
+        assertBool ("allocated " <> show many <> " for 200, " <> show one <> " for 1") (many < 2 * one)
     ]

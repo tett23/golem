@@ -31,7 +31,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **diagnostic の info**：diagnostic の重大度に、notice より下の info を加える。info は `--verbose` を付けたときにだけ出力し、ふだんの出力と `golem check` の結果、終了コードには影響しない。何を info にするか、`--verbose` を持つコマンド、LSP での扱い（Information と Hint のどちらに写すか）、JSON の出力、notice の抑制の設定（[golem-syntax ADR 0002](golem-syntax/adr/0002-notice-severity.md)）との関係は ADR で決める。開発者向けのマニュアルの「Golem に info はない」という説明も、このとき改める。info に移す候補に、段の先頭で捨てた行アキの notice の G07047（[docs/adr 0046](adr/0046-blank-line-command.md)）がある。
 - **注の印の文字スタイル**：注の印に文字スタイル（`[notes]` の `mark-style`）を当てられるようにする。印の大きさと書式は `mark-size` と `mark-format` で指定できる（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
 - **注の印の数字の表記**：注の印の番号を、算用数字のほかに、漢数字や記号の連なり（JLReq の 4.2.2 が挙げる形）で組めるようにする。今の `mark-format` は算用数字の番号だけを置き換える（[golem-driver ADR 0025](golem-driver/adr/0025-note-mark-size-and-format.md)）。
-- **テストの時間切れを CPU 時間で測る**：golem-pdf と golem-svg のテストの時間切れを、プロセスの CPU 時間の 60 秒で測る。混んだマシンでは、正しい実装でも実時間の時間切れで落ちていた。CPU を使わずに待ち続けるテストも止めるため、実時間の 300 秒の上限を歯止めに残す。SVG の `linearTime` の時間の比の断言は、20 万個の属性を CPU 時間の上限のもとで読むテストに置き換える（未実装、[ADR 0091](adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md)）。
 
 ### PDF
 

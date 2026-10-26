@@ -31,6 +31,7 @@ library
     Golem.TestSupport.Manifest
     Golem.TestSupport.Parallel
     Golem.TestSupport.Skipped
+    Golem.TestSupport.TimeLimit
   build-depends:
     , base        >=4.20 && <4.21
     , bytestring  >=0.11 && <0.13

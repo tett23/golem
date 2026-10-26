@@ -29,6 +29,11 @@ ADR（Architecture Decision Record）は、設計の決定を一件ずつ記録�
 混んだランナーでは正しい実装でも時間を超え、速いランナーでは上限を少し間違えた実装でも時間に収まるからである。
 性能の回帰は、テストの時間切れではなく [code: docs/benchmarks/] の計測で扱う。
 
+golem-pdf と golem-svg のテストだけは、時間の上限を [code: withinTimeLimits hangLimits] で付け、プロセスの CPU 時間の 60 秒と実時間の 300 秒の二つで止める。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0091-cpu-time-limits-in-pdf-and-svg-tests.md]（docs/adr の ADR 0091「golem-pdf と golem-svg のテストの時間切れを CPU 時間で測り、実時間の上限を歯止めに残す」）]
+混んだマシンでは、ほかのプロセスに CPU を取られた時間だけ実時間が延び、正しい実装のテストでも 30 秒を超えたからである。
+CPU 時間は待たされても延びないが、CPU を使わずに待ち続けるテストは CPU 時間では止まらないので、実時間の上限を歯止めに残す。
+上限を付けるテストの CPU 時間は、単独で走らせて 10 秒以内に収める。
+
 ## 置き場所と名前
 
 特定のモジュールに属する ADR は [code: docs/<モジュール>/adr/] に、モジュールをまたぐ ADR は [code: docs/adr/] に置く。
