@@ -66,8 +66,8 @@ EPUB の決定性は、まだ保証していない。
 前のコミットの出力と今の出力をページの画像にして比べ、見た目の変わったページだけを示す。
 決定性があるので、原稿を変えていないページの画像は完全に一致し、差分は変更が及んだページにだけ現れる。
 Golem 自身はページの画像を比べる仕組みを持たず、外部の道具で行う（第[ref-number ci]章の「ページ画像の差分を取る」）。
-Golem の開発の CI にも、まだ入っていない。
-入れるときの検討の材料は、第[ref-number determinism]章の「見た目の回帰テスト」の節にまとめた。
+一方、Golem の開発の CI は、Golem 自身の PDF の出力を、別のリポジトリで作るラスタライザ shem でページの画像にし、コミットした参照と比べている。
+比べ方と、そう決めた理由は、第[ref-number determinism]章の「見た目の回帰テスト」の節にまとめた。
 
 人の目で数百ページを見比べる作業は、組版の技能ではない。
 ビルドの再現性が保証されていなかったために、人が払ってきた税である。
@@ -204,7 +204,7 @@ CI で自動の組版を組む人、エディタに LSP をつなぐ人、プラ
 | 処理の流れとモジュール | 第[ref-number modules]章「[ref-title modules]」 |
 | ADR から実装までの流れ | 第[ref-number adr]章「[ref-title adr]」 |
 | 二つのアーキテクチャでの決定性の検査 | 第[ref-number ci-jobs]章「[ref-title ci-jobs]」 |
-| 決定性を壊さない書き方、見た目の回帰テストの検討 | 第[ref-number determinism]章「[ref-title determinism]」 |
+| 決定性を壊さない書き方、見た目の回帰テスト | 第[ref-number determinism]章「[ref-title determinism]」 |
 | 純粋な関数と IO の境界 | 第[ref-number purity]章「[ref-title purity]」 |
 | 組みにくい作品のフィクスチャと、そのライセンス | 第[ref-number fixtures]章「[ref-title fixtures]」 |
 | Golem で組むこの本 | 第[ref-number manuals]章「[ref-title manuals]」 |
@@ -224,7 +224,7 @@ CI で自動の組版を組む人、エディタに LSP をつなぐ人、プラ
 書いてあるのは、採択して実装を終えた仕様だけである。
 [code: docs/roadmap.md] に載っている事項（未決事項を含む）と、提案の段階の ADR は書かない。
 今の Golem で動かないものを、動くかのように読ませないためである。
-例外は、この「はじめに」で述べたプロジェクトの目標と、第二部の「見た目の回帰テスト」の節だけである。
+例外は、この「はじめに」で述べたプロジェクトの目標だけである。
 
 @nonumber
 ## 表記

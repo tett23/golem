@@ -263,6 +263,19 @@ $ GOLEM=$(cabal list-bin -v0 golem) scripts/visual/run.sh
 [code: --accept] は、PDF がない入力、ページが一つもない入力、[code: unreadable] の入力があれば、どの参照も書かずに失敗する。
 空の参照が黙ってできることを避けるためである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md]（docs/adr の ADR 0094「見た目の回帰テストで、PDF のページを 72 dpi の PPM に描き、ページごとの SHA-256 をコミットした一覧と比べる」）]
 
+### 変わったページの見方
+
+参照の一覧は、どのページの画素が変わったかを示すが、どう変わったかは示さない。
+CI の [code: visual] ジョブは、比べる手順が失敗すると、変わったページの前と後の画像と、[code: shem diff] で描いた差分の画像を成果物 [code: visual-diff] に入れ、変わったページの表をジョブの要約に書く（第[ref-number ci-jobs]章）。
+差分の画像は、片方にしかない画素を緑、後のほうが暗い画素を赤、明るい画素を青、明るさが同じで色が違う画素を紫で塗り、同じ画素を薄い灰色にして、違う範囲を橙の枠で囲む。
+
+要約の違う画素の数は、変化が目に見えるかどうかの判断には使えない。
+『テンペスト』の版面を 0.001mm ずらしただけでも、72 dpi で違う画素がページごとに数千になった。
+字の縁のアンチエイリアスの画素がまとめて変わるからである。
+数は、どのページから見るかの手がかりにとどめ、見えるかどうかは、差分の画像の色の付き方と、前と後の画像を並べて見て決める。
+受け入れるなら、手元で [code: scripts/visual/run.sh --accept] を実行するか、成果物の [code: pages/] を [code: scripts/visual/pages/] に写す。
+どちらでも同じ参照になる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0096-before-and-after-images-of-changed-pages.md]（docs/adr の ADR 0096「見た目の回帰テストで変わったページの前後の画像と差分の画像を、CI の成果物と要約にする」）]
+
 ### 費用と注意
 
 完全な一致で比べるので、目で見分けられないずれでもテストは失敗する。
@@ -272,9 +285,9 @@ $ GOLEM=$(cabal list-bin -v0 golem) scripts/visual/run.sh
 マニュアルも入力なので、マニュアルの文章を直すと、直した位置より後ろのページの参照が変わる。
 出力のゴールデンと同じく、別々に参照を書き直した二つのプルリクエストを続けてマージすると、組み合わせた出力がどちらの参照とも違い、[code: main] の CI が落ちうる。
 
-一覧は、どのページが変わったかを示すが、どう変わったかは示さない。
 画像と図版は箱で描くので、その中身の崩れは見つからない。
 [code: figures] の図版の中身は、出力のゴールデンのハッシュが固定している。
 PDF の Producer とインスタンス ID は画像に現れないので、[code: VERSION] だけを変えても参照は変わらない。
 
 手元の Apple silicon の macOS では、17 の入力を組んで描き、比べるまでが約 45 秒だった。
+CI の [code: visual] ジョブでは、描いて比べる手順が約 216 秒かかり、[code: visual] の予算の 2 分を超えている（第[ref-number ci-jobs]章）。

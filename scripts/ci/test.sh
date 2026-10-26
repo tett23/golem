@@ -894,7 +894,7 @@ FETCH_AT=$(grep -n 'sh scripts/visual/fetch-shem.sh' "$VJ" | head -1 | cut -d: -
 CHECK_AT=$(grep -n 'sh scripts/visual/check.sh' "$VJ" | head -1 | cut -d: -f1)
 if [ -n "$CACHE_AT" ] && [ -n "$FETCH_AT" ] && [ -n "$CHECK_AT" ] && [ "$CACHE_AT" -lt "$FETCH_AT" ] && [ "$FETCH_AT" -lt "$CHECK_AT" ]; then ok; else ng "ci.yml: visual restores the cache, fetches shem, then checks"; fi
 if visual_step "uses: actions/download-artifact@" | grep -qxF '          name: visual-pdfs'; then ok; else ng "ci.yml: visual downloads visual-pdfs"; fi
-if grep -qF 'run: timeout -k 10 600 sh scripts/visual/check.sh visual-pdfs' "$VJ" &&
+if grep -qF 'run: timeout -k 10 600 sh scripts/visual/check.sh --lists "$RUNNER_TEMP/visual-diff/pages" visual-pdfs' "$VJ" &&
   visual_step "name: The pages match the references" | grep -qxF '        shell: bash'; then ok; else
   ng "ci.yml: visual runs check.sh under timeout -k 10 600, with pipefail"
 fi
@@ -1059,6 +1059,28 @@ elif names_match "$WORK/gate-fewer.sh"; then
 else
   ok
 fi
+
+# the report of a failure needs actions: read for the artifacts of other
+# runs: visual alone has it, and the workflow keeps contents: read
+# (docs/adr/0096)
+if [ "$(awk '/^permissions:/ { on = 1; next } on && /^[^ ]/ { on = 0 } on && /^  [a-z]/' "$CI_YML")" = "  contents: read" ]; then ok; else ng "ci.yml: the permissions of the workflow are contents: read only"; fi
+if [ "$(perms_of "$CI_YML" visual)" = "contents: read
+actions: read" ]; then ok; else ng "ci.yml: visual has contents: read and actions: read"; fi
+ACTIONS_READ_JOBS=$(ci_jobs "$CI_YML" | while IFS= read -r j; do if perms_of "$CI_YML" "$j" | grep -qx 'actions: read'; then printf '%s\n' "$j"; fi; done)
+if [ "$ACTIONS_READ_JOBS" = visual ]; then ok; else ng "ci.yml: no job but visual has actions: read"; fi
+if grep -qE ': *write' "$CI_YML"; then ng "ci.yml: no write permission"; else ok; fi
+if visual_step "uses: actions/checkout@" | grep -qxF '          fetch-depth: 0'; then ok; else ng "ci.yml: visual checks out the whole history"; fi
+REPORT_IF="if: failure() && steps.check.outcome == 'failure'"
+if visual_step "name: The pages match the references" | grep -qxF '      - id: check' || grep -B1 'name: The pages match the references' "$VJ" | grep -qxF '      - id: check'; then ok; else ng "ci.yml: the step of check.sh has the id check"; fi
+if visual_step "name: Report of the changed pages" | grep -qxF "        $REPORT_IF" &&
+  visual_step "name: Report of the changed pages" | grep -qF 'sh scripts/visual/report.sh "$RUNNER_TEMP/visual.txt" visual-pdfs "$RUNNER_TEMP/visual-diff"' &&
+  visual_step "name: Report of the changed pages" | grep -qF 'GH_TOKEN: ${{ github.token }}'; then ok; else
+  ng "ci.yml: report.sh runs only when the check failed, with the token of the run"
+fi
+if visual_step "name: Report of the changed pages" | grep -qF "github.event.pull_request.base.sha" &&
+  visual_step "name: Report of the changed pages" | grep -qF "github.event.before"; then ok; else ng "ci.yml: the base of the report is the base of the pull request or the commit before the push"; fi
+if visual_step "name: Upload the report of the changed pages" | grep -qxF "        $REPORT_IF" &&
+  visual_step "name: Upload the report of the changed pages" | grep -qxF '          name: visual-diff'; then ok; else ng "ci.yml: visual-diff is uploaded only when the check failed"; fi
 
 # ---------------------------------------------------------------- determinism.sh
 
