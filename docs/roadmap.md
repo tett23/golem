@@ -42,6 +42,7 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **脚注の多い本の組版の時間**：脚注を 14 件持つ Nightmare Abbey の fixture だけ、PDF の組版に 17 秒から 20 秒かかる。ほかの九冊は 1 秒から 6 秒である。
 - **PDF のリンク**：原稿に外部の URL へのリンクを書く記法がなく、PDF にリンクの注釈を書かない。相互参照のリンクとしおりは v2 の「PDF のしおりとリンク」で扱うが、外部の URL の記法はどの一覧にもなかった。
 - **タグ付き PDF と PDF/A**：PDF に構造のタグ（`/StructTreeRoot`）を書かず、PDF/UA と PDF/A に対応しない。
+- **PNG の tRNS**：tRNS のチャンクで透過を表す PNG（パレットのアルファ、グレーと RGB の透明の色）を図版に置くと、PDF では透過が消え、diagnostic も出ない。HTML と EPUB は PNG をそのまま写し、透過の解釈を読む側に任せるので、PDF と見た目が食い違いうる。tRNS を読んで SMask で PDF に入れ、仕様に反する tRNS は G08010 にする（未実装、[golem-pdf ADR 0014](golem-pdf/adr/0014-png-trns-transparency.md)）。
 
 ### 記法と設定
 
