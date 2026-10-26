@@ -104,9 +104,11 @@ sampleOutput target = withSystemTempDirectory "golem-golden" $ \tmp -> do
 The JPEG, fitted to the line length, is too tall for the column and
 shrinks (the notice G07039). The PNGs are one of each kind golem-pdf
 writes differently: grey (DeviceGray), RGB with alpha (an SMask), indexed
-with 2 bits (Indexed) and grey with an iCCP profile (ICCBased, N 1). Their
-samples, the SMask and the profile are streams that are not text, so the
-golden holds their SHA-256.
+with 2 bits (Indexed) and grey with an iCCP profile (ICCBased, N 1). Four
+more carry tRNS (golem-pdf ADR 0014): indexed with 2 bits, grey with 2
+bits, RGB with 8 bits and RGB with 16 bits, each with an 8-bit SMask.
+Their samples, the SMasks and the profile are streams that are not text,
+so the golden holds their SHA-256.
 -}
 figuresOutput :: Target -> IO BS.ByteString
 figuresOutput target = withSystemTempDirectory "golem-golden" $ \tmp -> do

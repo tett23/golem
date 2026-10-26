@@ -5,7 +5,7 @@ application/epub+zip
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
 <rootfiles><rootfile full-path="OEBPS/package.opf" media-type="application/oebps-package+xml"/></rootfiles>
 </container>
-== OEBPS/package.opf (deflate, time 315532800, 1332 bytes)
+== OEBPS/package.opf (deflate, time 315532800, 1619 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="ja">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -27,6 +27,10 @@ application/epub+zip
 <item id="item9" href="images/palette.png" media-type="image/png"/>
 <item id="item10" href="images/photo.jpg" media-type="image/jpeg"/>
 <item id="item11" href="images/rgba.png" media-type="image/png"/>
+<item id="item12" href="images/trns-gray.png" media-type="image/png"/>
+<item id="item13" href="images/trns-palette.png" media-type="image/png"/>
+<item id="item14" href="images/trns-rgb.png" media-type="image/png"/>
+<item id="item15" href="images/trns-rgb16.png" media-type="image/png"/>
 </manifest>
 <spine>
 <itemref idref="item1"/>
@@ -80,7 +84,7 @@ li p, li p[class] { padding-inline-start: 0; text-indent: 0; }
 .line { display: block; }
 .line + br { display: none; }
 code { padding-inline: 0.25em; }
-== OEBPS/figures.xhtml (deflate, time 315532800, 1844 bytes)
+== OEBPS/figures.xhtml (deflate, time 315532800, 2678 bytes)
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ja" xml:lang="ja">
@@ -123,6 +127,23 @@ code { padding-inline: 0.25em; }
 <img src="images/gray-icc.png" alt="四段階の灰色"/>
 <figcaption><span class="number">図7</span>　ICC プロファイルのあるグレースケールの PNG。</figcaption>
 </figure>
+<p>tRNS で透過する PNG も、PDF で透過を保つ。</p>
+<figure>
+<img src="images/trns-palette.png" alt="透明の赤、半透明の緑、青、黄"/>
+<figcaption><span class="number">図8</span>　tRNS のあるパレットの PNG。</figcaption>
+</figure>
+<figure>
+<img src="images/trns-gray.png" alt="黒、暗い灰色、透明、白"/>
+<figcaption><span class="number">図9</span>　tRNS のあるグレースケールの PNG。</figcaption>
+</figure>
+<figure>
+<img src="images/trns-rgb.png" alt="赤、透明の緑、青、黄"/>
+<figcaption><span class="number">図10</span>　tRNS のある RGB の PNG。</figcaption>
+</figure>
+<figure>
+<img src="images/trns-rgb16.png" alt="透明の画素と黒"/>
+<figcaption><span class="number">図11</span>　tRNS のある 16 ビットの RGB の PNG。</figcaption>
+</figure>
 </body>
 </html>
 == OEBPS/fonts/ja.otf (deflate, time 315532800, 6210492 bytes)
@@ -159,3 +180,11 @@ code { padding-inline: 0.25em; }
 [binary: 776 bytes, SHA-256 675c0358609d02ae2a40f61036f7cdcf9d9e7a7472b0f0080e3648878e4eac84]
 == OEBPS/images/rgba.png (deflate, time 315532800, 86 bytes)
 [binary: 86 bytes, SHA-256 9ef92685c6f26af45ab899942a20697868909c22e0d10201205cc19126d57ded]
+== OEBPS/images/trns-gray.png (deflate, time 315532800, 84 bytes)
+[binary: 84 bytes, SHA-256 d46e076ef1e3cb087497ad99bfcfc6593c999adbff01b869e83a01e05d55ef9c]
+== OEBPS/images/trns-palette.png (deflate, time 315532800, 110 bytes)
+[binary: 110 bytes, SHA-256 6f043d492e9e99bddc160ae1a6d83384914b3b471467414f8b3ce82b079b8fb1]
+== OEBPS/images/trns-rgb.png (deflate, time 315532800, 100 bytes)
+[binary: 100 bytes, SHA-256 23b3ded94f53cf230fc35d181e414a9b1ddc93359cccdae93571268b69809e45]
+== OEBPS/images/trns-rgb16.png (deflate, time 315532800, 99 bytes)
+[binary: 99 bytes, SHA-256 73718a544107effec3e77301011fbdd859e9ca380f26ccc04686c55ffc008e42]

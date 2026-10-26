@@ -42,7 +42,6 @@ Golem のどのバージョンで何を扱うかを、この文書にまとめ�
 - **脚注の多い本の組版の時間**：脚注を 14 件持つ Nightmare Abbey の fixture だけ、PDF の組版に 17 秒から 20 秒かかる。ほかの九冊は 1 秒から 6 秒である。
 - **PDF のリンク**：原稿に外部の URL へのリンクを書く記法がなく、PDF にリンクの注釈を書かない。相互参照のリンクとしおりは v2 の「PDF のしおりとリンク」で扱うが、外部の URL の記法はどの一覧にもなかった。
 - **タグ付き PDF と PDF/A**：PDF に構造のタグ（`/StructTreeRoot`）を書かず、PDF/UA と PDF/A に対応しない。
-- **PNG の tRNS**：tRNS のチャンクで透過を表す PNG（パレットのアルファ、グレーと RGB の透明の色）を図版に置くと、PDF では透過が消え、diagnostic も出ない。HTML と EPUB は PNG をそのまま写し、透過の解釈を読む側に任せるので、PDF と見た目が食い違いうる。tRNS を読んで SMask で PDF に入れ、仕様に反する tRNS は G08010 にする（未実装、[golem-pdf ADR 0014](golem-pdf/adr/0014-png-trns-transparency.md)）。
 
 ### 記法と設定
 
@@ -234,6 +233,8 @@ v3 の GUI は、次の原則に従って作る。
   - The Elements of Style の 39 ページ、縦組みの表を足した蟹工船、二冊のマニュアルの表のあるページで、罫が字面に接しないこと、空の見出しの行の罫が二重にならないこと、表の前後に一行の空きがあること（[golem-driver ADR 0031](golem-driver/adr/0031-table-spacing-and-rules.md)）。
   - 節の区切りの罫線と見出しの下の罫線を付けた横組みと縦組みの試料で、罫線が格子の行を崩さずに入り、段の端で版面の外に出ないこと。HTML を Safari と Chrome で開き、罫線が段落の前後に出ること（[golem-driver ADR 0027](golem-driver/adr/0027-paragraph-style-rules.md)）。
   - 12 の線の種類と色を付けた脚注の区切り線を Acrobat の出力プレビューで開き、破線と点線の両端、点の丸さ、波線のつながり、色が DeviceCMYK の版だけに出ることを見ること。同じ太さと長さの線を InDesign で引いて並べ、多重線の比、点の間隔、和文の点線の形を比べること（[golem-driver ADR 0028](golem-driver/adr/0028-rule-colour-and-style.md)）。
+
+- **PNG の tRNS の見た目**：figures の fixture の PDF を CoreGraphics で画像にし、tRNS を持つ 4 枚の PNG の透明の画素で紙面の白が見え、半透明の緑が紙面と混ざることは確かめた。Poppler の `pdftoppm` で画像にすることと、同じ fixture の HTML を Safari と Chrome で開いて PDF と同じ画素が透明になることは、確かめていない（[golem-pdf ADR 0014](golem-pdf/adr/0014-png-trns-transparency.md)）。
 
 - **v0.1.0-rc3 のリリースの前のマニュアルの目視**：rc3 の作業でマニュアルを直した箇所を、組んだ PDF と HTML で目で確かめていない。メンテナーがリリースの前にまとめて確かめる。
   - 開発者のマニュアルの「純粋な関数」の章で、コードの中に `\|` と書いた `|k|` が、`|` として表示されること（[golem-eval ADR 0006](golem-eval/adr/0006-exact-power-limit-before-range.md)）。
