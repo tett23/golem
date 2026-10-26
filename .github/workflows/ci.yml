@@ -417,7 +417,7 @@ jobs:
       # minutes, and a run over it does not fail (docs/adr/0095). --lists
       # keeps the references of these PDFs for the report (docs/adr/0096).
       # check.sh renders the PDFs side by side, one shem with --jobs 1
-      # each, on every core of the runner (docs/adr/0097)
+      # each, on every core of the runner (docs/adr/0098)
       - id: check
         name: The pages match the references (docs/adr/0094, docs/adr/0095)
         shell: bash

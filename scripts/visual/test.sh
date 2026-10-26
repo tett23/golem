@@ -237,12 +237,12 @@ if [ "$(wc -l <"$REFS/tempest.txt" | tr -d ' ')" = 3 ] && grep -Eqx '[0-9a-f]{64
 run check "$CK/p"
 expect "check: the pages are those of the references" 0
 if [ ! -s "$WORK/out" ]; then ok; else ng "check: nothing on stdout when the pages match"; fi
-if grep -q '^render ' "$CK/shem.log" && [ -z "$(grep '^render ' "$CK/shem.log" | grep -v -- ' --jobs 1 ')" ]; then ok; else ng "check: shem renders each PDF with --jobs 1 (docs/adr/0097)"; fi
+if grep -q '^render ' "$CK/shem.log" && [ -z "$(grep '^render ' "$CK/shem.log" | grep -v -- ' --jobs 1 ')" ]; then ok; else ng "check: shem renders each PDF with --jobs 1 (docs/adr/0098)"; fi
 if [ "$(grep -c '^render --dpi 72 --format ppm ' "$CK/shem.log")" = 34 ]; then ok; else ng "check: shem renders each PDF once at 72 dpi to PPM, one PDF a call"; fi
 if [ "$(grep '^render ' "$CK/shem.log" | awk '{ print NF }' | sort -u)" = 9 ]; then ok; else ng "check: one PDF to one directory a call"; fi
 if grep -q 'check: rendering manual-dev' "$WORK/err"; then ok; else ng "check: the name of each input goes to stderr"; fi
 
-# the inputs are rendered VISUAL_JOBS at once (docs/adr/0097)
+# the inputs are rendered VISUAL_JOBS at once (docs/adr/0098)
 mkdir -p "$CK/conc"
 : >"$CK/conc.log"
 CONC_DIR=$CK/conc VISUAL_JOBS=4 run check "$CK/p"

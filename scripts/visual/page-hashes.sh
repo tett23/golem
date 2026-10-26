@@ -1,6 +1,6 @@
 #!/bin/sh
 # The SHA-256 of the pages of one PDF of the visual regression test; check.sh
-# runs one of these for each input, several at once (docs/adr/0097).
+# runs one of these for each input, several at once (docs/adr/0098).
 #
 #   page-hashes.sh SHEM PDFS WORK INPUT
 #
@@ -19,7 +19,7 @@ echo "check: rendering $input" >&2
 PPM=$WORK/ppm/$input
 rm -rf "$PPM"
 # --jobs 1: the PDFs run side by side instead, each in a process of its own
-# (docs/adr/0097)
+# (docs/adr/0098)
 if ! "$SHEM" render --dpi 72 --format ppm --jobs 1 "$PDFS/$input.pdf" "$PPM" >/dev/null 2>"$WORK/err/$input"; then
   rm -rf "$PPM"
   exit 0

@@ -8,7 +8,7 @@
 # Each input of build.sh --list is rendered by
 # `shem render --dpi 72 --format ppm --jobs 1` in page-hashes.sh; the
 # inputs are rendered side by side, VISUAL_JOBS at once (default: the
-# number of online processors), each by a shem of its own (docs/adr/0097).
+# number of online processors), each by a shem of its own (docs/adr/0098).
 # The bytes of shem depend on neither. The SHA-256 of each page's PPM is compared with
 # scripts/visual/pages/<input>.txt, whose lines are `<SHA-256>  page-<n>`
 # in the order of the pages (LC_ALL=C). The match must be exact: there is
@@ -73,7 +73,7 @@ sh "$HERE/build.sh" --list >"$WORK/inputs"
 # the pages of every input that is there, JOBS inputs at once, each by a
 # shem of its own with --jobs 1; the largest PDF first, so that a large one
 # does not start last. The order does not change the hashes, and the
-# results are read below in the order of the inputs (docs/adr/0097)
+# results are read below in the order of the inputs (docs/adr/0098)
 while IFS= read -r input; do
   [ ! -f "$PDFS/$input.pdf" ] || printf '%s %s\n' "$(wc -c <"$PDFS/$input.pdf" | tr -d ' ')" "$input"
 done <"$WORK/inputs" | LC_ALL=C sort -k 1,1nr -k 2,2 | cut -d ' ' -f 2 >"$WORK/order"
