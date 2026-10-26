@@ -126,7 +126,7 @@ Golem は、同じ入力から常に同じバイト列を出力する。
 
 `scripts/` の下のスクリプトは、POSIX の `sh` で書き、macOS の BSD 版の `awk`、`sed`、`find`、`grep` でも動くようにする。
 `sed -i` の引数のように GNU 版と BSD 版で違う書き方は避ける。
-CI の `scripts-macos` ジョブが、`PATH` をシステムの道具だけにして、`scripts/` の下の五本のテストを macOS で走らせる（[docs/adr/0079](./docs/adr/0079-shell-tests-on-macos.md)）。
+CI の `scripts-macos` ジョブが、`PATH` をシステムの道具だけにして、`scripts/` の下の六本のテストを macOS で走らせる（[docs/adr/0079](./docs/adr/0079-shell-tests-on-macos.md)）。
 
 ライセンスに問題がなく、再実装がやさしいものは、依存に加えずに再実装する。
 その場合は、本家のテストを参考にして、テストを十分に厚く書く。
@@ -136,6 +136,12 @@ CI の `scripts-macos` ジョブが、`PATH` をシステムの道具だけに�
 wasmtime のバージョンを上げるときは、`scripts/wasmtime-licenses.sh` で `licenses/wasmtime-v<バージョン>/`（`libwasmtime.a` に入った Rust のクレートなどのライセンスの文書）を作り直し、生成物もコミットする（[docs/adr/0007](./docs/adr/0007-third-party-licenses.md)）。
 このスクリプトはネットワークに接続し、`cargo` と `rustup` を要する。
 `c-objects.tsv` の構成要素の列は、スクリプトが埋めないので手で埋める。
+見た目の回帰テストのラスタライザ shem の版を上げるときは、`scripts/visual/fetch-shem.sh` の版と三つのアーカイブの SHA-256 を変える。
+SHA-256 は取ったアーカイブから自分で計算し、shem の release の `SHA256SUMS` と一致することを確かめてから書く。
+マイナーバージョンを上げるときは画素が変わりうるので、同じプルリクエストで見た目の回帰テストの参照を作り直し、shem のリリースノートの「変更」を説明に引く。
+パッチバージョンを上げるときは参照を変えない（[docs/adr/0093](./docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）。
+Golem の PDF の Writer が新しい演算子や資源を書く変更は、先に shem を直してリリースし、固定した版を上げてから入れる。
+shem は読めない PDF に出会うと、画像を書かずに失敗するからである。
 `cabal.project.freeze` で固定した依存のバージョンを変えるときも、変更の理由をプルリクエストに書く。
 リリースノートを書く Claude Code のバージョンは、`mise.toml` の `"npm:@anthropic-ai/claude-code"` に正確な値で固定してある（[docs/adr/0044](./docs/adr/0044-release-workflow-hardening.md)）。
 上げるときは `mise.toml` を変えるプルリクエストを出し、新しいバージョンの `claude --help` に `--tools` と `--strict-mcp-config` があることを確かめる（`scripts/release/test.sh` は、そのバージョンの `claude` があれば確かめる。CI の `release-scripts` ジョブは、mise でそのバージョンを入れて必ず確かめる。[docs/adr/0058](./docs/adr/0058-run-skipped-checks-in-ci.md)）。

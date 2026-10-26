@@ -164,9 +164,10 @@ Golem の方針として、小さな道具を組み合わせ、Python のスク�
 | [code: scripts/manual/test.sh] | [code: scripts/manual/] のスクリプト（組み方、奥付の版の情報、更新の検査、フォントの取得） |
 | [code: scripts/release/test.sh] | [code: scripts/release/] のスクリプト（バージョンの検査、リリースノート、ライセンス、アーカイブの作成と検査、GMP の版と取得、macOS のビルドの順序） |
 | [code: scripts/test.sh] | 手でだけ動くスクリプト（[code: scripts/gen-vertical-orientation.sh]、[code: scripts/fixtures/] の二本） |
+| [code: scripts/visual/test.sh] | [code: scripts/visual/] のスクリプト（見た目の回帰テストのラスタライザ shem の取得） |
 
 どれも一時ディレクトリに Git のリポジトリや偽の [code: golem] を作り、スクリプトの終了コードと出力を確かめる。
-[code: curl]、[code: ghc]、[code: cabal]、[code: strip] などの外部のコマンドは、[code: PATH] の先頭に置いた偽物で差し替え、ネットワークも本物のツールチェーンも使わない。
+[code: curl]、[code: uname]、[code: ghc]、[code: cabal]、[code: strip] などの外部のコマンドは、[code: PATH] の先頭に置いた偽物で差し替え、ネットワークも本物のツールチェーンも使わない。
 リポジトリに書き込むスクリプトは、一時ディレクトリに作った偽の根に写して動かす。
 Linux のリリースのビルド（[code: scripts/release/build-linux.sh]）は Alpine のコンテナの中で道具を入れるので、引数の検査と、Alpine の外で断ることだけを確かめる。
 [code: scripts/wasmtime-licenses.sh] は、偽物で差し替える道具が多すぎるので、テストを持たない。
@@ -195,3 +196,36 @@ $ GOLEM=$(cabal list-bin -v0 golem) sh scripts/manual/build.sh manual-dev
 ```sh
 $ GOLEM=$(cabal list-bin golem) scripts/fixtures/fetch-public-domain.sh
 ```
+
+## ラスタライザ shem を取得する
+
+見た目の回帰テスト（第[ref-number determinism]章）は、PDF のページを、別のリポジトリで作るラスタライザ shem で画像にする。[index reading=しぇむ: shem]
+shem はテストと CI からコマンドとして呼び、golem の実行ファイルにはリンクしない。
+手元でこのテストを動かすには、[code: scripts/visual/fetch-shem.sh] で shem を取得する。
+
+```sh
+$ scripts/visual/fetch-shem.sh
+```
+
+このスクリプトは、shem の GitHub の release から、固定した版（v0.1.0-rc2）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ [code: third_party/shem] に入れる。[index reading="fetch-shem.sh": fetch-shem.sh]
+入れる前に [code: shem --version] が固定した版を出すことも確かめる。
+[code: third_party/shem/VERSION] にはアーカイブの名前と SHA-256 を書き、どちらもスクリプトのものと一致すれば、ネットワークに接続しない。
+release の [code: SHA256SUMS] は読まない。
+同じ release から取った一覧は、アーカイブが差し替えられたときに何も保証しないからである。
+
+アーカイブがあるのは、macOS の aarch64 と、Linux の x86-64 と aarch64 だけである。
+x86-64 の macOS のようにアーカイブのない環境では、スクリプトは何も取らずに失敗する。
+その場合は、shem の固定した版のタグを [code: cargo build --release] でビルドし、実行ファイルのパスを環境変数 [code: SHEM] に入れる。
+[code: SHEM] の shem も、[code: shem --version] が固定した版でなければ使わない。
+shem は、同じ版ならどの環境でビルドしても同じ画素を出すと約束している。
+CI は [code: SHEM] を使わない。
+
+shem の版を上げるときは、[code: fetch-shem.sh] の版と三つの SHA-256 を変えるプルリクエストを出す。
+SHA-256 は、取ったアーカイブから自分で計算し、release の [code: SHA256SUMS] と一致することを確かめてから書く。
+shem は、同じ入力の画素を変える変更でマイナーバージョンを上げ、画素を変えない変更でパッチバージョンを上げると決めている。
+マイナーバージョンを上げるときは、同じプルリクエストで見た目の回帰テストの参照を作り直し、shem のリリースノートの「変更」を説明に引く。
+パッチバージョンを上げて参照が変わったら、shem が約束に反しているので、参照を受け入れずに shem の側で直す。
+
+shem は、読む PDF の部分集合の外の入力に出会うと、画像を一枚も書かずに失敗する。
+Golem の Writer が新しい演算子や資源を書く変更は、先に shem を直してリリースし、その版に上げてから入れる。
+版を上げる変更は、Writer の変更と同じプルリクエストか、その前のプルリクエストに入れる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md]（docs/adr の ADR 0093「見た目の回帰テストのラスタライザ shem を、版と SHA-256 を固定して配布元の release から取る」）]

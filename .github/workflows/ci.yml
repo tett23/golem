@@ -53,6 +53,8 @@ jobs:
         run: sh scripts/env-determinism/test.sh
       - name: Tests of the scripts run by hand (docs/adr/0078)
         run: sh scripts/test.sh
+      - name: Tests of the scripts of the visual regression test (docs/adr/0093)
+        run: sh scripts/visual/test.sh
       - name: The documents that the build reads are listed (docs/adr/0021)
         run: sh scripts/ci/docs-refs.sh
       - name: Every package errors on incomplete patterns (docs/adr/0027)
@@ -413,6 +415,8 @@ jobs:
         run: sh scripts/release/test.sh
       - name: Tests of the scripts run by hand (docs/adr/0078)
         run: sh scripts/test.sh
+      - name: Tests of the scripts of the visual regression test
+        run: sh scripts/visual/test.sh
 
   format:
     needs: changes
