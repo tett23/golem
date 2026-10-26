@@ -359,6 +359,40 @@ if grep -q 'fetch-shem.sh' "$WORK/err"; then ok; else ng "check: without shem, t
 run check "$CK/no-such"
 expect "check: no directory of PDFs" 2
 
+# ---------------------------------------------------------------- wait-pdfs.sh
+# (docs/adr/0099)
+
+# The fake gh records its arguments. For the artifacts, it prints 1 from
+# the FAKE_ARTIFACT_AT-th call on (0 before; never when it is empty); for
+# the jobs, it prints FAKE_JOB_STATUS.
+WT=$WORK/wait
+fake "$WT/bin" gh 'printf "%s\n" "$*" >>"$GH_LOG"
+case "$*" in
+  *"/artifacts?name=visual-pdfs"*)
+    n=$(grep -c "/artifacts?name=visual-pdfs" "$GH_LOG")
+    if [ -n "$FAKE_ARTIFACT_AT" ] && [ "$n" -ge "$FAKE_ARTIFACT_AT" ]; then echo 1; else echo 0; fi ;;
+  *"/jobs"*) printf "%s\n" "$FAKE_JOB_STATUS" ;;
+  *) exit 64 ;;
+esac'
+wait_pdfs() {
+  : >"$WT/gh.log"
+  env PATH="$WT/bin:$PATH" GH_LOG="$WT/gh.log" WAIT_INTERVAL=0 sh "$HERE/wait-pdfs.sh" "$@"
+}
+FAKE_ARTIFACT_AT=3 FAKE_JOB_STATUS=in_progress run wait_pdfs 123 2 'build (ubuntu-24.04, outputs)'
+expect "wait-pdfs: waits until visual-pdfs is uploaded" 0
+if [ "$(grep -c '^api repos/{owner}/{repo}/actions/runs/123/artifacts?name=visual-pdfs ' "$WT/gh.log")" = 3 ]; then ok; else ng "wait-pdfs: asks for the artifact of the run until it is there"; fi
+if grep -q '^api --paginate repos/{owner}/{repo}/actions/runs/123/attempts/2/jobs ' "$WT/gh.log"; then ok; else ng "wait-pdfs: asks for the jobs of the attempt"; fi
+FAKE_ARTIFACT_AT=1 FAKE_JOB_STATUS=completed run wait_pdfs 123 1 'build (ubuntu-24.04, outputs)'
+expect "wait-pdfs: an uploaded artifact is enough, whatever the job" 0
+FAKE_ARTIFACT_AT='' FAKE_JOB_STATUS=completed run wait_pdfs 123 1 'build (ubuntu-24.04, outputs)'
+expect "wait-pdfs: the job completed without the artifact fails" 1
+if grep -q "completed without uploading visual-pdfs" "$WORK/err"; then ok; else ng "wait-pdfs: says that the job completed without visual-pdfs"; fi
+FAKE_ARTIFACT_AT='' FAKE_JOB_STATUS='' run wait_pdfs 123 1 'build (ubuntu-24.04, outputs)'
+expect "wait-pdfs: no such job fails" 1
+if grep -q "has no job 'build (ubuntu-24.04, outputs)'" "$WORK/err"; then ok; else ng "wait-pdfs: names the missing job"; fi
+run wait_pdfs 123 1
+expect "wait-pdfs: usage" 2
+
 # ---------------------------------------------------------------- report.sh
 # (docs/adr/0096-before-and-after-images-of-changed-pages.md)
 

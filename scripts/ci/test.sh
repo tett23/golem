@@ -908,8 +908,15 @@ if job_lines ci | grep -Eq '^    needs: \[(.*[ ,])?scripts-linux([],].*)?$'; the
 VJ=$WORK/visual.yml
 job_lines visual >"$VJ"
 if [ -s "$VJ" ]; then ok; else ng "ci.yml: there is a visual job"; fi
-if grep -qx '    needs: \[changes, build\]' "$VJ" && grep -qxF "    if: needs.changes.outputs.build == 'true'" "$VJ"; then ok; else ng "ci.yml: visual needs build and is skipped as build is"; fi
-if grep -qx '    runs-on: ubuntu-24.04' "$VJ" && grep -qx '    timeout-minutes: 15' "$VJ"; then ok; else ng "ci.yml: visual runs on ubuntu-24.04 with a timeout of 15 minutes"; fi
+if grep -qx '    needs: \[changes\]' "$VJ" && grep -qxF "    if: needs.changes.outputs.build == 'true'" "$VJ"; then ok; else ng "ci.yml: visual needs only changes and is skipped as build is (docs/adr/0099)"; fi
+if grep -qx '    runs-on: ubuntu-24.04' "$VJ" && grep -qx '    timeout-minutes: 75' "$VJ"; then ok; else ng "ci.yml: visual runs on ubuntu-24.04 with a timeout of 75 minutes"; fi
+# visual waits for visual-pdfs of the outputs runner before it downloads it
+# (docs/adr/0099)
+WAIT_AT=$(grep -n 'sh scripts/visual/wait-pdfs.sh' "$VJ" | head -1 | cut -d: -f1)
+DOWNLOAD_AT=$(grep -n 'uses: actions/download-artifact@' "$VJ" | head -1 | cut -d: -f1)
+if grep -qxF "        run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh \"\$GITHUB_RUN_ID\" \"\$GITHUB_RUN_ATTEMPT\" 'build (ubuntu-24.04, outputs)'" "$VJ" &&
+  [ -n "$WAIT_AT" ] && [ -n "$DOWNLOAD_AT" ] && [ "$WAIT_AT" -lt "$DOWNLOAD_AT" ]; then ok; else ng "ci.yml: visual waits for visual-pdfs of the outputs runner, then downloads it"; fi
+if grep -qF "name: build (\${{ matrix.runner }}, \${{ matrix.part }})" "$CI_YML" && awk '/^          - runner: ubuntu-24.04$/ { r = 1; next } r && /part: outputs$/ { f = 1 } { r = 0 } END { exit !f }' "$CI_YML"; then ok; else ng "ci.yml: the job that wait-pdfs.sh waits for is named build (ubuntu-24.04, outputs)"; fi
 # visual_step NAME: the lines of the step of visual that starts at a line with NAME
 visual_step() { awk -v s="$1" 'index($0, s) { on = 1; print; next } on && /^      - / { on = 0 } on' "$VJ"; }
 if visual_step "name: Cache shem" | grep -qF 'uses: actions/cache@' &&
