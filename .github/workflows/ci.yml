@@ -386,9 +386,17 @@ jobs:
     if: needs.changes.outputs.build == 'true'
     timeout-minutes: 15
     runs-on: ubuntu-24.04
+    # actions: read for the artifact visual-pdfs of an earlier run, in the
+    # report of a failure; this job only (docs/adr/0035, docs/adr/0096)
+    permissions:
+      contents: read
+      actions: read
     steps:
+      # the whole history, for the first-parent ancestors of the base and
+      # its references (docs/adr/0096)
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       # the version and the SHA-256 are in fetch-shem.sh, so a new version
       # is a new key (docs/adr/0093)
@@ -406,14 +414,29 @@ jobs:
           name: visual-pdfs
           path: visual-pdfs
       # the limit only finds a shem that does not stop; the budget is 2
-      # minutes, and a run over it does not fail (docs/adr/0095)
+      # minutes, and a run over it does not fail (docs/adr/0095). --lists
+      # keeps the references of these PDFs for the report (docs/adr/0096)
       - id: check
         name: The pages match the references (docs/adr/0094, docs/adr/0095)
         shell: bash
-        run: timeout -k 10 600 sh scripts/visual/check.sh visual-pdfs | tee "$RUNNER_TEMP/visual.txt"
-      - name: Summary of the visual regression test (docs/adr/0095)
+        run: timeout -k 10 600 sh scripts/visual/check.sh --lists "$RUNNER_TEMP/visual-diff/pages" visual-pdfs | tee "$RUNNER_TEMP/visual.txt"
+      # only when the pages differ: the images before and after of the
+      # changed pages, their differences and the job summary. Before is the
+      # base of the pull request, or the commit before the push to main;
+      # called from release.yml there is none (docs/adr/0096)
+      - name: Report of the changed pages (docs/adr/0096)
         if: failure() && steps.check.outcome == 'failure'
-        run: sh scripts/visual/summary.sh "$RUNNER_TEMP/visual.txt" >> "$GITHUB_STEP_SUMMARY"
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.before || '') }}
+        run: sh scripts/visual/report.sh "$RUNNER_TEMP/visual.txt" visual-pdfs "$RUNNER_TEMP/visual-diff" ${BASE:+"$BASE"} >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the report of the changed pages (docs/adr/0096)
+        if: failure() && steps.check.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-diff
+          path: ${{ runner.temp }}/visual-diff
 
   release-scripts:
     needs: changes

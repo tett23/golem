@@ -44,6 +44,40 @@ fake() {
   chmod +x "$1/$2"
 }
 
+# fixture NAME CMD...: runs a command that builds the input of the tests.
+# A failure stops the tests with its output (docs/adr/0077)
+fixture() {
+  name=$1
+  shift
+  "$@" >"$WORK/fixture.log" 2>&1
+  fixture_code=$?
+  if [ "$fixture_code" != 0 ]; then
+    printf 'FIXTURE FAILED: %s\n' "$name"
+    sed 's/^/  /' "$WORK/fixture.log"
+    exit 1
+  fi
+}
+
+# git_repo DIR: a new repository at DIR on the branch main, which commits as
+# ci, without signing whatever the configuration of the user
+git_repo() {
+  mkdir -p "$1" &&
+    git -C "$1" init -q -b main &&
+    git -C "$1" config user.email ci@example.com &&
+    git -C "$1" config user.name ci &&
+    git -C "$1" config commit.gpgsign false
+}
+
+# git_repo_report: the fake root of report.sh as a repository of three
+# commits, C0, C1 and C2, with the references of the PDFs of $RP/P0
+git_repo_report() {
+  git_repo "$RP/root" &&
+    env SHEM="$RP/bin/shem" SHEM_LOG="$RP/shem.log" FAKE_SHEM_VERSION="$VERSION" sh "$RP/root/scripts/visual/check.sh" --accept "$RP/P0" &&
+    git -C "$RP/root" add -A && git -C "$RP/root" commit -q -m c0 && C0=$(git -C "$RP/root" rev-parse HEAD) &&
+    echo 1 >"$RP/root/f" && git -C "$RP/root" add f && git -C "$RP/root" commit -q -m c1 && C1=$(git -C "$RP/root" rev-parse HEAD) &&
+    echo 2 >"$RP/root/f" && git -C "$RP/root" add f && git -C "$RP/root" commit -q -m c2 && C2=$(git -C "$RP/root" rev-parse HEAD)
+}
+
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
 }
@@ -286,30 +320,197 @@ if grep -q 'fetch-shem.sh' "$WORK/err"; then ok; else ng "check: without shem, t
 run check "$CK/no-such"
 expect "check: no directory of PDFs" 2
 
-# ---------------------------------------------------------------- summary.sh
-# (docs/adr/0095-visual-job-in-ci.md)
+# ---------------------------------------------------------------- report.sh
+# (docs/adr/0096-before-and-after-images-of-changed-pages.md)
 
-SM=$WORK/summary
-mkdir -p "$SM"
-printf '%s\n' 'changed tempest page-0002' 'unreadable sample' 'shem: /tmp/x/sample.pdf: page 1: offset 120: unsupported operator TJ' \
-  'added tempest page-0004' 'unreadable figures' 'removed manual page-0310' 'unlisted pd-frogs' 'stale gone' 'missing manual-dev' >"$SM/out.txt"
-run sh "$HERE/summary.sh" "$SM/out.txt"
-expect "summary: the output of check.sh" 0
-cp "$WORK/out" "$SM/summary.md"
-# the unreadable inputs come first, in a table of their own
-FIRST_TABLE=$(grep -n '^| ' "$SM/summary.md" | head -1 | cut -d: -f1)
-if [ -n "$FIRST_TABLE" ] && [ "$(sed -n "${FIRST_TABLE}p" "$SM/summary.md")" = "| 入力 | shem のエラー |" ]; then ok; else ng "summary: the table of the unreadable inputs is the first"; fi
-if grep -qxF '| sample | shem: /tmp/x/sample.pdf: page 1: offset 120: unsupported operator TJ |' "$SM/summary.md" &&
-  grep -qxF '| figures |  |' "$SM/summary.md"; then ok; else ng "summary: an unreadable input with the line of shem, and one without"; fi
-if grep -qxF '| tempest | page-0002 | `changed` |' "$SM/summary.md" && grep -qxF '| tempest | page-0004 | `added` |' "$SM/summary.md" &&
-  grep -qxF '| manual | page-0310 | `removed` |' "$SM/summary.md"; then ok; else ng "summary: the pages that differ"; fi
-if grep -qxF '| pd-frogs | `unlisted` |' "$SM/summary.md" && grep -qxF '| gone | `stale` |' "$SM/summary.md" &&
-  grep -qxF '| manual-dev | `missing` |' "$SM/summary.md"; then ok; else ng "summary: the references and PDFs missing or stale"; fi
-printf 'unreadable a\nshem: a|b\n' >"$SM/pipe.txt"
-run sh "$HERE/summary.sh" "$SM/pipe.txt"
-if grep -qxF '| a | shem: a\|b |' "$WORK/out"; then ok; else ng "summary: a | in the line of shem is escaped"; fi
-run sh "$HERE/summary.sh" "$SM/no-such"
-expect "summary: no file" 2
+# The fake shem of report.sh: render writes one file per line of the PDF,
+# for the pages of --pages only (comma-separated numbers), with the format
+# in its content; diff writes "differ: <name>: $FAKE_PIXELS pixels in 1 2
+# 3 4" for every file of the second directory that differs from the one of
+# the same name in the first, and exits with FAKE_DIFF_CODE (1 by default).
+# The fake gh answers run list with the file runs/<commit> and run download
+# with the directory artifacts/<run>, and records its arguments.
+RP=$WORK/report
+mkdir -p "$RP/root/scripts/visual"
+for s in check.sh build.sh fetch-shem.sh report.sh; do cp "$HERE/$s" "$RP/root/scripts/visual/$s"; done
+fake "$RP/bin" shem 'printf "%s\n" "$*" >>"$SHEM_LOG"
+case "$1" in
+  --version) echo "shem $FAKE_SHEM_VERSION"; exit 0 ;;
+  render)
+    shift
+    fmt=ppm pages=
+    while [ $# -gt 2 ]; do
+      case "$1" in --format) fmt=$2; shift ;; --pages) pages=$2; shift ;; --dpi) shift ;; esac
+      shift
+    done
+    mkdir -p "$2"
+    n=0
+    while IFS= read -r line; do
+      n=$((n + 1))
+      if [ -n "$pages" ]; then case ",$pages," in *",$n,"*) ;; *) continue ;; esac; fi
+      printf "%s %s\n" "$fmt" "$line" >"$2/$(printf "page-%04d" "$n").$fmt"
+    done <"$1"
+    exit 0 ;;
+  diff)
+    shift
+    while [ $# -gt 3 ]; do shift; done
+    [ "${FAKE_DIFF_CODE:-1}" != 2 ] || { echo "shem: $1: cannot read" >&2; exit 2; }
+    mkdir -p "$3"
+    for f in "$2"/*; do
+      name=${f##*/}
+      [ -f "$1/$name" ] || continue
+      cmp -s "$1/$name" "$f" && continue
+      echo "differ: $name: ${FAKE_PIXELS:-1234} pixels in 1 2 3 4"
+      cp "$f" "$3/$name"
+    done
+    exit "${FAKE_DIFF_CODE:-1}" ;;
+esac
+exit 64'
+fake "$RP/bin" gh 'printf "%s\n" "$*" >>"$GH_LOG"
+case "$1 $2" in
+  "run list")
+    while [ $# -gt 0 ]; do [ "$1" = --commit ] && c=$2; shift; done
+    [ -f "$FAKE_GH/runs/$c" ] && cat "$FAKE_GH/runs/$c"
+    exit 0 ;;
+  "run download")
+    run=$3
+    while [ $# -gt 0 ]; do [ "$1" = -D ] && d=$2; shift; done
+    [ -d "$FAKE_GH/artifacts/$run" ] || { echo "no artifact" >&2; exit 1; }
+    mkdir -p "$d"
+    cp "$FAKE_GH/artifacts/$run"/* "$d/"
+    exit 0 ;;
+esac
+exit 1'
+FAKE_GH=$RP/gh
+# the repository: three commits C0, C1 and C2 with the references of the
+# PDFs P0 (three pages each)
+pdfs "$RP/P0"
+fixture "report: the repository" git_repo_report
+rp_check() { env PATH="$RP/bin:$PATH" SHEM="$RP/bin/shem" SHEM_LOG="$RP/shem.log" FAKE_SHEM_VERSION="$VERSION" sh "$RP/root/scripts/visual/check.sh" "$@"; }
+report() {
+  env PATH="$RP/bin:$PATH" SHEM="$RP/bin/shem" SHEM_LOG="$RP/shem.log" GH_LOG="$RP/gh.log" FAKE_GH="$FAKE_GH" FAKE_SHEM_VERSION="$VERSION" \
+    GITHUB_REPOSITORY=tett23/golem FAKE_DIFF_CODE="${FAKE_DIFF_CODE:-1}" sh "$RP/root/scripts/visual/report.sh" "$@"
+}
+# scenario NAME: the current PDFs P1, P0 with tempest page 2 changed, and
+# the output of check.sh on them in $RP/check.txt; a fresh OUT and logs
+scenario() {
+  rm -rf "$RP/P1" "$RP/out" "$FAKE_GH"
+  cp -R "$RP/P0" "$RP/P1"
+  printf 'tempest 1\ntempest two\ntempest 3\n' >"$RP/P1/tempest.pdf"
+  mkdir -p "$FAKE_GH/runs" "$FAKE_GH/artifacts"
+  : >"$RP/gh.log"
+  rp_check "$RP/P1" >"$RP/check.txt" 2>/dev/null || true
+  : >"$RP/shem.log"
+}
+# artifact COMMIT RUN DIR: the run RUN of COMMIT has the PDFs of DIR
+artifact() {
+  printf '%s\n' "$2" >>"$FAKE_GH/runs/$1"
+  mkdir -p "$FAKE_GH/artifacts/$2"
+  cp "$3"/*.pdf "$FAKE_GH/artifacts/$2/"
+}
+
+# the base has the artifact
+scenario
+if [ "$(cat "$RP/check.txt")" = "changed tempest page-0002" ]; then ok; else ng "report: the output of check.sh for the scenario"; fi
+artifact "$C2" 11 "$RP/P0"
+run report "$RP/check.txt" "$RP/P1" "$RP/out" "$C2"
+expect "report: the base has the artifact" 0
+if grep -q "^run list --repo tett23/golem --workflow ci.yml --commit $C2 --event push" "$RP/gh.log" && grep -q '^run download 11 .*-n visual-pdfs' "$RP/gh.log"; then ok; else ng "report: the artifact of the run of the base is downloaded"; fi
+if [ "$(cat "$RP/out/before/tempest/page-0002.png" 2>/dev/null)" = "png tempest 2" ] && [ "$(cat "$RP/out/after/tempest/page-0002.png" 2>/dev/null)" = "png tempest two" ] &&
+  [ -f "$RP/out/diff/tempest/page-0002.png" ]; then ok; else ng "report: the images before, after and of the difference"; fi
+if grep -qxF '| tempest | page-0002 | `changed` | 1234 | 1 2 3 4 |' "$RP/out/summary.md"; then ok; else ng "report: the count and the box of shem diff are in the summary"; fi
+if grep -q -- '--dpi 150 --format png' "$RP/shem.log" && grep -q '^diff --format ppm ' "$RP/shem.log"; then ok; else ng "report: the counts at 72 dpi in PPM, the images at 150 dpi in PNG"; fi
+# pages/ is what check.sh --accept writes for the same PDFs
+rm -rf "$RP/accept"
+mkdir -p "$RP/accept/scripts/visual"
+cp "$HERE/check.sh" "$HERE/build.sh" "$HERE/fetch-shem.sh" "$RP/accept/scripts/visual/"
+env SHEM="$RP/bin/shem" SHEM_LOG="$RP/shem.log" FAKE_SHEM_VERSION="$VERSION" sh "$RP/accept/scripts/visual/check.sh" --accept "$RP/P1" >/dev/null 2>&1
+rm -rf "$RP/lists"
+run rp_check --lists "$RP/lists" "$RP/P1"
+expect "check: --lists compares as check does" 1
+if [ "$(cat "$WORK/out")" = "changed tempest page-0002" ]; then ok; else ng "check: --lists prints the differences"; fi
+if [ -d "$RP/lists" ] && diff -r "$RP/accept/scripts/visual/pages" "$RP/lists" >/dev/null; then ok; else ng "check: --lists writes what check.sh --accept writes"; fi
+if [ "$(git -C "$RP/root" status --porcelain)" = "" ]; then ok; else ng "check: --lists does not change the references of the repository"; fi
+rm -rf "$RP/lists"
+: >"$RP/P1/sample.pdf"
+run rp_check --lists "$RP/lists" "$RP/P1"
+if [ ! -e "$RP/lists" ]; then ok; else ng "check: --lists writes nothing when --accept would refuse"; fi
+if grep -q 'pages/ はない' "$RP/out/summary.md"; then ok; else ng "report: the summary says that pages/ is missing"; fi
+
+# the base has none; its parent neither; the one before has
+scenario
+artifact "$C0" 12 "$RP/P0"
+run report "$RP/check.txt" "$RP/P1" "$RP/out" "$C2"
+expect "report: an ancestor has the artifact" 0
+if grep -q '^run download 12 ' "$RP/gh.log" && grep -q "^run list .*--commit $C1 " "$RP/gh.log"; then ok; else ng "report: the artifact of the second ancestor is downloaded"; fi
+if grep -qxF '| tempest | page-0002 | `changed` | 1234 | 1 2 3 4 |' "$RP/out/summary.md"; then ok; else ng "report: the page of the ancestor with the pixels of the base is the page before"; fi
+
+# no artifact in the 20 ancestors
+scenario
+run report "$RP/check.txt" "$RP/P1" "$RP/out" "$C2"
+expect "report: no artifact" 0
+if grep -q '前の画像なし' "$RP/out/summary.md" && grep -qxF '| tempest | page-0002 | `changed` | 前の画像なし |  |' "$RP/out/summary.md"; then ok; else ng "report: 前の画像なし without an artifact"; fi
+if [ "$(grep -c '^run list ' "$RP/gh.log")" = 3 ]; then ok; else ng "report: the ancestors are looked at up to the root, at most 20"; fi
+if [ -f "$RP/out/after/tempest/page-0002.png" ] && [ ! -e "$RP/out/before" ]; then ok; else ng "report: the image after without one before"; fi
+
+# the page of the artifact is not the page of the base
+scenario
+cp -R "$RP/P0" "$RP/Pother"
+printf 'tempest 1\ntempest zwei\ntempest 3\n' >"$RP/Pother/tempest.pdf"
+artifact "$C2" 13 "$RP/Pother"
+run report "$RP/check.txt" "$RP/P1" "$RP/out" "$C2"
+expect "report: an artifact whose page is not that of the base" 0
+if ! grep -q '^diff ' "$RP/shem.log" && [ ! -e "$RP/out/before/tempest/page-0002.png" ]; then ok; else ng "report: a page whose SHA-256 is not that of the base is not used"; fi
+if grep -qxF '| tempest | page-0002 | `changed` | 前の画像なし |  |' "$RP/out/summary.md"; then ok; else ng "report: 前の画像なし for a page that is not that of the base"; fi
+rm -rf "$RP/Pother"
+
+# shem diff cannot read the images
+scenario
+artifact "$C2" 11 "$RP/P0"
+FAKE_DIFF_CODE=2 run report "$RP/check.txt" "$RP/P1" "$RP/out" "$C2"
+expect "report: shem diff fails" 0
+if grep -q '^| tempest | page-0002 | `changed` | エラー：shem: .*cannot read |' "$RP/out/summary.md"; then ok; else ng "report: the error of shem diff is in the cell of the page"; fi
+
+# no base (release.yml): gh is not called
+scenario
+run report "$RP/check.txt" "$RP/P1" "$RP/out"
+expect "report: no base" 0
+if [ ! -s "$RP/gh.log" ]; then ok; else ng "report: gh is not called without a base"; fi
+
+# 101 changed pages: 100 images
+scenario
+i=1
+: >"$RP/P1/tempest.pdf"
+while [ $i -le 101 ]; do printf 'tempest new %s\n' "$i" >>"$RP/P1/tempest.pdf"; i=$((i + 1)); done
+rp_check "$RP/P1" >"$RP/check.txt" 2>/dev/null || true
+run report "$RP/check.txt" "$RP/P1" "$RP/out"
+expect "report: 101 changed pages" 0
+if [ "$(find "$RP/out/after" -type f | wc -l | tr -d ' ')" = 100 ]; then ok; else ng "report: the images of the first 100 pages only"; fi
+if grep -q '残りの 1 ページ' "$RP/out/summary.md"; then ok; else ng "report: the number of the pages without images is in the summary"; fi
+if grep -qxF '| tempest | page-0101 | `added` |  |  |' "$RP/out/summary.md"; then ok; else ng "report: every page is in the table up to 500"; fi
+
+# 501 changed pages: one row per input
+scenario
+i=1
+: >"$RP/P1/tempest.pdf"
+while [ $i -le 501 ]; do printf 'tempest new %s\n' "$i" >>"$RP/P1/tempest.pdf"; i=$((i + 1)); done
+rp_check "$RP/P1" >"$RP/check.txt" 2>/dev/null || true
+run report "$RP/check.txt" "$RP/P1" "$RP/out"
+expect "report: 501 changed pages" 0
+if grep -qxF '| 入力 | 変わったページ | 違う画素の数の最大 |' "$RP/out/summary.md" && grep -qxF '| tempest | 501 | 前の画像なし |' "$RP/out/summary.md" &&
+  ! grep -q '^| tempest | page-' "$RP/out/summary.md"; then ok; else ng "report: over 500 pages, one row per input"; fi
+
+# an unreadable input comes first; unlisted and stale have their table
+printf '%s\n' 'unreadable sample' 'shem: x: page 1: unsupported operator TJ' 'changed tempest page-0002' 'unlisted pd-frogs' 'stale gone' >"$RP/check2.txt"
+scenario
+run report "$RP/check2.txt" "$RP/P1" "$RP/out"
+expect "report: unreadable, unlisted and stale" 0
+FIRST_TABLE=$(grep -n '^| ' "$RP/out/summary.md" | head -1 | cut -d: -f1)
+if [ -n "$FIRST_TABLE" ] && [ "$(sed -n "${FIRST_TABLE}p" "$RP/out/summary.md")" = "| 入力 | shem のエラー |" ] &&
+  grep -qxF '| sample | shem: x: page 1: unsupported operator TJ |' "$RP/out/summary.md"; then ok; else ng "report: the unreadable inputs come first"; fi
+if grep -qxF '| pd-frogs | `unlisted` |' "$RP/out/summary.md" && grep -qxF '| gone | `stale` |' "$RP/out/summary.md"; then ok; else ng "report: unlisted and stale"; fi
+run report "$RP/check.txt" "$RP/no-such" "$RP/out"
+expect "report: no directory of PDFs" 2
 
 # ---------------------------------------------------------------- build.sh
 # (docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md)

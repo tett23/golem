@@ -26,6 +26,12 @@
 # nothing and fails when an input is missing, has no page or is unreadable,
 # so that an empty reference is never written.
 #
+#   check.sh --lists DIR PDFS
+#
+# compares as check.sh PDFS does, and also writes to DIR the references
+# that --accept would write, when it would write them; the visual job puts
+# them in its report, without rendering the pages again (docs/adr/0096).
+#
 # SHEM is the path of shem; without it, third_party/shem/shem of
 # fetch-shem.sh is used. Either must print `shem <the pinned version>` to
 # --version (docs/adr/0093). The name of each input goes to stderr as it is
@@ -34,8 +40,12 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 ACCEPT=false
-if [ "${1-}" = --accept ]; then ACCEPT=true; shift; fi
-[ $# -eq 1 ] && [ -d "$1" ] || { echo "usage: check.sh [--accept] PDFS" >&2; exit 2; }
+LISTS=
+case "${1-}" in
+  --accept) ACCEPT=true; shift ;;
+  --lists) [ $# -ge 2 ] || { echo "usage: check.sh [--accept | --lists DIR] PDFS" >&2; exit 2; }; LISTS=$2; shift 2 ;;
+esac
+[ $# -eq 1 ] && [ -d "$1" ] || { echo "usage: check.sh [--accept | --lists DIR] PDFS" >&2; exit 2; }
 PDFS=$(cd "$1" && pwd)
 PAGES=$HERE/pages
 VERSION=$(sed -n 's/^VERSION=//p' "$HERE/fetch-shem.sh")
@@ -133,4 +143,12 @@ while IFS= read -r name; do
   echo "stale $name"
   FAILED=true
 done <"$WORK/stale"
+# --lists: the references that --accept would write, into DIR, when it
+# would write them (docs/adr/0096)
+if [ -n "$LISTS" ] && [ "$BLOCKED" = false ]; then
+  mkdir -p "$LISTS"
+  while IFS= read -r input; do
+    cp "$WORK/new/$input.txt" "$LISTS/$input.txt"
+  done <"$WORK/inputs"
+fi
 [ "$FAILED" = false ]

@@ -190,8 +190,8 @@ x86-64 の [code: outputs] のランナーが、[code: scripts/determinism.sh] �
 + [code: third_party/shem] を、[code: scripts/visual/fetch-shem.sh] のハッシュをキーにしたキャッシュから戻す。版と SHA-256 はこのスクリプトにあるので、版を上げればキーも変わる。
 + [code: timeout -k 10 300 sh scripts/visual/fetch-shem.sh] を実行する。キャッシュに固定した版があれば何も取らず、なければ shem の release から取る。止まった接続で 5 分を使い切れば失敗する。
 + [code: visual-pdfs] を取り寄せる。
-+ [code: timeout -k 10 600 sh scripts/visual/check.sh visual-pdfs] で、ページの画像を参照と比べる。
-+ 比べる手順が失敗したときだけ、[code: scripts/visual/summary.sh] がジョブの要約を書く。
++ [code: timeout -k 10 600 sh scripts/visual/check.sh --lists ...] で、ページの画像を参照と比べる。[code: --lists] は、[code: --accept] が書くはずの参照を、報告のために別のディレクトリに書く。
++ 比べる手順が失敗したときだけ、[code: scripts/visual/report.sh] がジョブの要約と報告を書き、報告を成果物 [code: visual-diff] として上げる。
 
 組むのも描くのも x86-64 で行う。
 参照との一致は一つのアーキテクチャで確かめれば足りる。
@@ -208,9 +208,53 @@ Golem の出力のアーキテクチャによる違いは [code: determinism] �
 予算は見直しの目安で、超えてもジョブは失敗させない。
 CI でこれを超えるようになったら、入力の数か解像度を見直す。
 
-要約には、shem が読めなかった PDF（[code: unreadable]）を、参照と違うページとは別の表として先頭に書く。
 [code: unreadable] は、Golem の Writer が shem の読む部分集合の外を書いたことを意味するので、参照を書き直しても通らない。
 shem を直してリリースし、固定した版を上げる（第[ref-number build-test]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0095-visual-job-in-ci.md]（docs/adr の ADR 0095「見た目の回帰テストを、CI の新しいジョブ visual で動かす」）]
+
+### 失敗したときの報告
+
+比べる手順が失敗すると、[code: scripts/visual/report.sh] がジョブの要約に次の表を書く。
+行は入力の名前とページの順に並べる。
+
++ shem が読めなかった PDF（[code: unreadable]）と、shem のエラーの一行。参照と違うページとは別の表として、先頭に置く。
++ 変わったページ。入力、ページ、種類（[code: changed]、[code: added]、[code: removed]）、違う画素の数、違う画素を囲む矩形を書く。前の画像がないページは、数の欄に「前の画像なし」と書く。
++ 参照のファイルのない入力（[code: unlisted]）、入力のない参照のファイル（[code: stale]）、組んだ PDF のない入力（[code: missing]）。
+
+変わったページが 500 を超えると、変わったページの表は、入力ごとの変わったページの数と、違う画素の数の最大だけにする。
+要約の大きさの上限（一つの手順に 1 MiB）に収めるためである。
+
+報告は成果物 [code: visual-diff] として上げ、次のものを入れる。
+
+| パス | 中身 |
+| --- | --- |
+| [code: after/<入力>/page-<番号>.png] | 後の画像 |
+| [code: before/<入力>/page-<番号>.png] | 前の画像。前の画像のあるページだけ |
+| [code: diff/<入力>/page-<番号>.png] | [code: shem diff] で前と後を比べた差分の画像。違う画素に色を付け、違う範囲を枠で囲む |
+| [code: pages/<入力>.txt] | このコミットの PDF から作った参照。[code: check.sh --accept] が書くものと同じ |
+| [code: summary.md] | 要約と同じ表 |
+
+画像は 150 dpi の PNG で、変わったページのうち、入力の名前とページの順で最初の 100 ページだけを描く。
+72 dpi は比べるための解像度で、和文の本文を目で読むには粗いからである。
+100 を超えた分は、要約に数だけを書く。
+違う画素の数と矩形は、参照と同じ 72 dpi の PPM を [code: shem diff] で比べて得る。
+
+前の画像は、プルリクエストではベースのコミット、[code: main] への push では push の前のコミットの PDF から描く。
+[code: release.yml] から呼ばれたときはベースがないので、前の画像を探さない。
+前の PDF は、ベースのコミットから first-parent の祖先を 20 個までたどり、[code: ci.yml] の push の実行で成果物 [code: visual-pdfs] を持つ最初のコミットのものを、[code: gh run list] と [code: gh run download] で取り寄せる。
+このため、[code: visual] ジョブだけがトークンに [code: actions: read] の権限を持ち、チェックアウトで履歴をすべて取る。
+ワークフローの全体の権限は [code: contents: read] のままである。
+取り寄せた PDF のページは、72 dpi の PPM の SHA-256 がベースのコミットの参照の行と一致したときだけ、前の画像として使う。
+祖先の PDF でも、ベースと同じ画素のページなら前の画像として正しい。
+
+前の画像がないのは、次のときである。
+文書だけを変えたコミットでは [code: build] が省かれ、[code: visual-pdfs] が上がらない。
+成果物は、リポジトリの設定の日数（既定は 90 日）を過ぎると消える。
+ページの SHA-256 がベースの参照と一致しないときも、そのページの前の画像は使わない。
+[code: gh] の失敗、取り寄せの失敗、20 個の祖先に成果物がないことは、報告に書くだけで、ジョブの結果を変えない。
+ジョブは比べる手順の失敗で、すでに失敗している。
+
+[code: pages/] の一覧を [code: scripts/visual/pages/] に写せば、手元で [code: --accept] したのと同じ参照になる。
+ただし、受け入れは、前と後の画像と差分の画像を見てから行う。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0096-before-and-after-images-of-changed-pages.md]（docs/adr の ADR 0096「見た目の回帰テストで変わったページの前後の画像と差分の画像を、CI の成果物と要約にする」）]
 
 ## release-scripts、scripts-macos、format
 
