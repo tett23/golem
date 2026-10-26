@@ -106,6 +106,8 @@ The only one now is `Golem.TestSupport.ExternalTool.Internal` ([docs/adr/0092](.
 Do not write golden files by hand; write them with `--accept` (see the Development section of [README.md](./README.md)).
 Read the diff of the written files and confirm that the output is the intended one before committing.
 CI runs the tests with `TASTY_NO_CREATE=true`, so a deleted or misnamed golden file fails.
+When you change the look of the PDF on purpose, rewrite the references of the visual regression test (`scripts/visual/pages/`) with `scripts/visual/run.sh --accept` and put them in the same pull request ([docs/adr/0094](./docs/adr/0094-visual-regression-page-hashes-at-72-dpi.md)).
+The diff of the references records which pages changed.
 
 Golem always produces the same bytes from the same input.
 Changes that affect output are checked by the `determinism` job in CI, which compares x86-64 and aarch64.
