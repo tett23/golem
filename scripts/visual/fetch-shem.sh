@@ -18,7 +18,9 @@
 #
 # To raise the version, change VERSION and the three SHA-256 below, each
 # computed from the downloaded archive and checked against the SHA256SUMS of
-# the release (docs/adr/0093).
+# the release (docs/adr/0093). A change of the pre-release identifier is
+# handled as in docs/adr/0100: render the PDFs with both versions and list
+# the pages whose SHA-256 differ in the pull request.
 set -eu
 EXPECTED_ONLY=false
 case ${1:-} in
@@ -26,12 +28,12 @@ case ${1:-} in
   "") ;;
   *) echo "usage: fetch-shem.sh [--expected]" >&2; exit 2 ;;
 esac
-VERSION=0.1.0-rc2
+VERSION=0.1.0-rc3
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 case "$(uname -s)-$(uname -m)" in
-  Darwin-arm64) TARGET=aarch64-apple-darwin; SHA=d69c660e59bb75d5778416d62bac7246f57255fa79fb0e54a9d34c095dd4ffdf ;;
-  Linux-x86_64) TARGET=x86_64-unknown-linux-musl; SHA=42f59599abb744056d32e23c80738c4423b3a1ffe6e518e2a63e8dbfc1396c34 ;;
-  Linux-aarch64) TARGET=aarch64-unknown-linux-musl; SHA=65de44c251bf9ec6b6b33243159040483785d9c6d3a0c8e68c943767685eda10 ;;
+  Darwin-arm64) TARGET=aarch64-apple-darwin; SHA=2097571f5a1ea13e5442e1f2a7907bffe94090564499ce23b20abea078ebae6f ;;
+  Linux-x86_64) TARGET=x86_64-unknown-linux-musl; SHA=9a49e705b1ab31cb28f34838561b85627181d743a2f3f68b887374a217b85c1b ;;
+  Linux-aarch64) TARGET=aarch64-unknown-linux-musl; SHA=c49dfe7452d5e8c11100ebdbc7be8a6aecb94dfdcea1122e3266b896b3b1efc1 ;;
   *)
     echo "fetch-shem: shem v$VERSION has no archive for $(uname -s)-$(uname -m); build the tag v$VERSION of https://github.com/tett23/shem with cargo build --release and give the path of the binary in SHEM" >&2
     exit 1
