@@ -24,12 +24,13 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 | [code: manual] | プルリクエストで、仕様書や [code: CONTRIBUTING.md] の変更にマニュアルが追随していること、この本の図が原稿から作られていること |
 | [code: textlint] | 文書とマニュアルの原稿が、表記の規則（一文ごとの改行、ダッシュと中黒、用語）を守っていること |
 
-[code: ci.yml] のジョブは次の八つである。
+[code: ci.yml] のジョブは次の九つである。
 
 | ジョブ | 内容 |
 | --- | --- |
-| [code: changes] | スクリプトのテスト、ビルドが読む文書の一覧の検査、不完全なパターンをエラーにするフラグの検査、capability の数を実行中に変えないことの検査、プラグインの ABI のバージョンの検査、ビルドの要否の判定 |
-| [code: build] | x86-64 と aarch64 でのビルドとテスト、生成したパーサーの検査、二つのマニュアル、見た目の回帰テストの PDF |
+| [code: changes] | ビルドが読む文書の一覧の検査、不完全なパターンをエラーにするフラグの検査、capability の数を実行中に変えないことの検査、プラグインの ABI のバージョンの検査、ビルドの要否の判定 |
+| [code: scripts-linux] | Linux での、スクリプトのテスト |
+| [code: build] | x86-64 と aarch64 でのビルドとテスト、生成したパーサーの検査、二つのマニュアル、見た目の回帰テストの PDF、実行の環境を変える検査 |
 | [code: determinism] | 二つのアーキテクチャの出力のハッシュの比較 |
 | [code: visual] | 見た目の回帰テスト（PDF のページの画像と、コミットした参照の比較） |
 | [code: release-scripts] | [code: VERSION] と全パッケージのバージョンの一致、リリースのスクリプトのテスト |
@@ -45,13 +46,9 @@ ADR の検査は、ドキュメントだけの変更こそが対象なので、�
 
 ## changes
 
-[code: changes] は、最初に次の十を実行する。
+[code: changes] は、最初に次の五つを実行する。
+どれも 1 秒に満たない。
 
-- [code: scripts/ci/test.sh]：CI のスクリプトのテスト。
-- [code: scripts/manual/test.sh]：マニュアルのスクリプトのテスト。
-- [code: scripts/env-determinism/test.sh]：実行の環境を変える検査（第[ref-number determinism]章）のテスト。偽の [code: golem] で、検査が各変化を実際に当てていることを確かめる。
-- [code: scripts/test.sh]：手でだけ動くスクリプト（[code: scripts/gen-vertical-orientation.sh]、[code: scripts/fixtures/copy-fonts.sh]、[code: scripts/fixtures/fetch-public-domain.sh]）のテスト。各スクリプトは置かれたリポジトリに書き込むので、一時ディレクトリに作った偽の根に写して動かす。[code: curl] などは [code: PATH] の先頭に置いた偽物で差し替え、ネットワークを使わない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0078-tests-for-release-and-hand-run-scripts.md]（docs/adr の ADR 0078「リリースのときと手でだけ動くスクリプトにテストを書く」）]
-- [code: scripts/visual/test.sh]：見た目の回帰テストのスクリプトのテスト（第[ref-number determinism]章）。[code: uname] と [code: curl] を偽物で差し替え、ネットワークを使わずに、shem の取得が SHA-256 と版を確かめることを確かめる。偽の [code: golem] と shem で、入力の組み方と、参照との比べ方、[code: --accept] の書き方も確かめる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md]（docs/adr の ADR 0093「見た目の回帰テストのラスタライザ shem を、版と SHA-256 を固定して配布元の release から取る」）]
 - [code: scripts/ci/docs-refs.sh]：コードとスクリプトが名指す [code: docs/] の下の文書が、ビルドの読む文書の一覧にあること（第[ref-number docs]章）。
 - [code: scripts/ci/incomplete-patterns.sh]：[code: modules/] の下のすべてのパッケージのすべてのコンポーネントが、[code: -Werror=incomplete-patterns] でビルドされること。フラグの後の [code: -Wno-error=incomplete-patterns]、[code: -Wno-incomplete-patterns]、[code: -Wwarn=incomplete-patterns] は、.cabal、ソースの [code: OPTIONS_GHC]、[code: cabal.project] と [code: cabal.project.local] のどこに書いても失敗にする。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0027-exhaustive-command-dispatch-by-types.md]（docs/adr の ADR 0027「到達しない診断の分岐を型で除く」）]
 - [code: scripts/ci/unsafe-io.sh]：[code: unsafePerformIO] とその仲間を使う定義が、[code: scripts/ci/unsafe-io-allowed.txt] に残す理由とともに書いたものだけであること（第[ref-number purity]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0034-fewer-unsafe-perform-io.md]（docs/adr の ADR 0034「unsafePerformIO を減らし、残すものを検査で固定する」）]
@@ -89,13 +86,28 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 変更のパスが空のときと、パスを取れなかったときも、検査を飛ばさないように [code: true] にする。
 
 [code: changes] が [code: false] を出すと、[code: build]、[code: determinism]、[code: visual]、[code: release-scripts]、[code: scripts-macos]、[code: format] は省かれる。
-[code: docs.yml] の [code: adr] と [code: textlint] は、変更のパスにかかわらず常に走る。
+[code: scripts-linux] と、[code: docs.yml] の [code: adr] と [code: textlint] は、変更のパスにかかわらず常に走る。
+
+## scripts-linux
+
+[code: scripts-linux] は、[code: ubuntu-24.04] で [code: scripts/] の下の五本のテストを実行する。
+
+- [code: scripts/ci/test.sh]：CI のスクリプトのテスト。
+- [code: scripts/manual/test.sh]：マニュアルのスクリプトのテスト。
+- [code: scripts/env-determinism/test.sh]：実行の環境を変える検査（第[ref-number determinism]章）のテスト。偽の [code: golem] で、検査が各変化を実際に当てていることを確かめる。
+- [code: scripts/test.sh]：手でだけ動くスクリプト（[code: scripts/gen-vertical-orientation.sh]、[code: scripts/fixtures/copy-fonts.sh]、[code: scripts/fixtures/fetch-public-domain.sh]）のテスト。各スクリプトは置かれたリポジトリに書き込むので、一時ディレクトリに作った偽の根に写して動かす。[code: curl] などは [code: PATH] の先頭に置いた偽物で差し替え、ネットワークを使わない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0078-tests-for-release-and-hand-run-scripts.md]（docs/adr の ADR 0078「リリースのときと手でだけ動くスクリプトにテストを書く」）]
+- [code: scripts/visual/test.sh]：見た目の回帰テストのスクリプトのテスト（第[ref-number determinism]章）。[code: uname] と [code: curl] を偽物で差し替え、ネットワークを使わずに、shem の取得が SHA-256 と版を確かめることを確かめる。偽の [code: golem] と shem で、入力の組み方と、参照との比べ方、[code: --accept] の書き方も確かめる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md]（docs/adr の ADR 0093「見た目の回帰テストのラスタライザ shem を、版と SHA-256 を固定して配布元の release から取る」）]
+
+以前は、これらのテストを [code: changes] が実行していた。
+[code: build] と [code: scripts-macos] は [code: changes] の後に始まるので、ビルドの要否の判定に使わないテストの十数秒を、毎回待っていた。
+[code: scripts-linux] は [code: needs] も条件も持たないので、[code: changes] と同時に始まり、文書だけの変更でも走る。
+スクリプトのテストが失敗しても [code: build] は止まらないが、[code: ci] が両方の結果を見るので、必須の検査の結果は変わらない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0097-ci-same-path-before-build-and-env-check-runner.md]（docs/adr の ADR 0097「build のランナーの PATH をそろえ、環境を変える検査とスクリプトのテストを臨界経路から外す」）]
 
 ## build
 
 [code: build] は、[code: ubuntu-24.04]（x86-64）と [code: ubuntu-24.04-arm]（aarch64）のランナーで実行する。
-x86-64 では同じコミットを二つのランナーでビルドし、一方（[code: tests]）がテストを、もう一方（[code: outputs]）が出力を作る手順を受け持つ。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0045-split-x86-build-and-pull-request-cache.md]（docs/adr の ADR 0045「x86-64 の build をテストと出力の二つのランナーに分け、プルリクエストの dist-newstyle を残す」）]
-aarch64 では一つのランナー（[code: all]）がすべてを受け持つ。
+x86-64 では同じコミットを三つのランナーでビルドし、[code: tests] がテストを、[code: outputs] が出力を作る手順を、[code: env] が実行の環境を変える検査を受け持つ。[note: [code: https://github.com/tett23/golem/blob/main/docs/adr/0045-split-x86-build-and-pull-request-cache.md]（docs/adr の ADR 0045「x86-64 の build をテストと出力の二つのランナーに分け、プルリクエストの dist-newstyle を残す」）]
+aarch64 では一つのランナー（[code: all]）が、環境を変える検査のほかのすべてを受け持つ。
 主な手順は次のとおりである。
 
 + テストを受け持つランナーでは qpdf を、x86-64 の [code: outputs] では epubcheck を、裏で入れ始める。入れ終わるのを待つのは、ビルドの直後である。
@@ -105,11 +117,11 @@ aarch64 では一つのランナー（[code: all]）がすべてを受け持つ�
 + テストを受け持つランナーでは、[code: cddl] の CLI を用意する（キャッシュがなければ [code: cargo install]）。
 + [code: cabal build all] を実行し、テストを受け持つランナーでは続けて [code: cabal test all] を実行する。テストのスイートはそれぞれラッパーを通して動かし、10 分で終わらないスイートは止めて失敗にする。手順そのものも 20 分で止める。テストには [code: GOLEM_PD_BOOKS] を付け、フィクスチャの十冊をすべてのターゲットに組む（第[ref-number fixtures]章）。[code: TASTY_NO_CREATE=true] も付け、ゴールデンのファイルが欠けていれば失敗にする（第[ref-number build-test]章）。ビルドとテストのあいだで、[code: scripts/ci/test-only-deps.sh] がビルドの計画（[code: dist-newstyle/cache/plan.json]）を読み、golem-test-support に依存するのがテストのスイートだけであることと、golem-test-support が golem のパッケージに依存しないことを確かめる。
 + テストを受け持つランナーでは、[code: scripts/gen-parser.sh] でパーサーを生成し直し、コミットした生成物と差分がないことを確かめる。
-+ 出力を受け持つランナーでは、二つのマニュアルのフォントをキャッシュから戻す。
++ 出力を受け持つランナーと [code: env] では、二つのマニュアルのフォントをキャッシュから戻す。
 + x86-64 では、テストのサンプルのプロジェクトを EPUB にして epubcheck にかける。
 + 出力を受け持つランナーでは、[code: scripts/determinism.sh] の出力をファイルにし、成果物として上げる。このスクリプトは [code: scripts/manual/build.sh] で二つのマニュアルも組むので、diagnostic が一つでも出ればここで失敗する。
 + x86-64 の出力を受け持つランナーでは、[code: scripts/visual/build.sh] で見た目の回帰テストの 17 の PDF を組み、成果物 [code: visual-pdfs] として上げる。比べるのは [code: visual] ジョブである。
-+ x86-64 では、[code: locale-gen] で日本語のロケール（UTF-8 と EUC-JP）を作り、[code: GOLEM_REQUIRE_LOCALES=1] と [code: GOLEM_REQUIRE_FONTS=1] を付けて [code: scripts/env-determinism/check.sh] を実行する。実行の環境を変えても出力が変わらないことを確かめる（第[ref-number determinism]章）。
++ [code: env] では、[code: locale-gen] で日本語のロケール（UTF-8 と EUC-JP）を作り、[code: scripts/manual/fetch-fonts.sh] で二つのマニュアルのフォントを取る（キャッシュにあれば取らない）。[code: outputs] では [code: scripts/manual/build.sh] がフォントを取るが、[code: env] はマニュアルを組まないからである。続けて[code: GOLEM_REQUIRE_LOCALES=1] と [code: GOLEM_REQUIRE_FONTS=1] を付けて [code: scripts/env-determinism/check.sh] を実行する。実行の環境を変えても出力が変わらないことを確かめる（第[ref-number determinism]章）。
 プルリクエストでは [code: --quick] を付けて小さな入力だけを検査し、[code: main] への push とリリースではすべての入力を検査する。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0038-env-determinism-quick-on-pull-requests.md]（docs/adr の ADR 0038「プルリクエストでは環境を変える検査を小さな入力に絞る」）]
 + x86-64 では、組んだマニュアルの PDF と HTML を、成果物 [code: manual] と [code: manual-dev] として上げる。
 
@@ -129,6 +141,14 @@ x86-64 では、テストを受け持つランナーだけが保存する。
 チェックアウトしたソースは更新時刻が新しいので、golem-font は HarfBuzz と FreeType をすべてコンパイルし直し、それだけで 3 分ほどかかる。
 [code: cabal.project.local] に書けば、CI の中のすべての [code: cabal] のコマンドが同じ設定を読む。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0037-ci-build-job-speedup.md]（docs/adr の ADR 0037「CI の build ジョブの手戻りをなくす」）]
 [code: cabal] のコマンドに設定を変える引数を付けないことは、[code: scripts/ci/test.sh] が [code: ci.yml] を読んで確かめる。
+
+[code: PATH] も同じ理由で、ランナーのあいだでそろえる。
+cabal はプロジェクトの計画を作るときに [code: PATH] を読み、すべてのパッケージが共有する設定に含める。
+キャッシュを作ったランナーと [code: PATH] が一つでも違うと、すべてのパッケージを設定し直す。
+以前は、[code: outputs] だけが [code: cabal build] より前に epubcheck のディレクトリを [code: PATH] に足しており、[code: dist-newstyle] のキャッシュがあっても golem-font の C のソースまですべてをコンパイルし直していた。
+そこで、[code: cabal build] より前に [code: PATH] を変えてよいのは、どのランナーでも同じディレクトリを足す GHC の手順だけとし、epubcheck は [code: cabal build] の後の「epubcheck is installed」の手順で [code: PATH] に足す。
+これも [code: scripts/ci/test.sh] が確かめる。
+ただし、確かめるのは [code: GITHUB_PATH] への書き込みだけで、[code: GITHUB_ENV] やアクションの中で [code: PATH] を変える場合は捕まえない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0097-ci-same-path-before-build-and-env-check-runner.md]（docs/adr の ADR 0097「build のランナーの PATH をそろえ、環境を変える検査とスクリプトのテストを臨界経路から外す」）]
 
 qpdf と epubcheck の導入には 20 秒ほどかかるが、使うのはテストと epubcheck だけである。
 そこで [code: scripts/ci/bg.sh] で裏で走らせ、キャッシュの復元とビルドのあいだに済ませる。
@@ -153,6 +173,12 @@ x86-64 で二つのランナーに分けるのは、テストも出力を作る�
 ランナーを分ければビルドを二度することになるが、二つのランナーは同時に走る。
 x86-64 にかかる時間は、ビルドに、テストと出力の長い方を足したものになる。
 aarch64 は x86-64 より短く終わるので、一つのランナーのままにしている。
+
+環境を変える検査を [code: outputs] から [code: env] に分けたのも、同じ理由である。
+この検査は [code: outputs] のほかの手順の結果を使わず、要るのはビルドした golem、日本語のロケール、マニュアルのフォントだけである。
+[code: main] への push ではすべての入力を検査して 2 分ほどかかり、[code: outputs] の後に始まる [code: visual] をその分だけ遅らせていた。
+ビルドした golem を成果物にして [code: build] の後の別のジョブに渡すと、そのジョブは行列のすべてが終わるまで始まらない。
+行列の一つにすれば、ほかのランナーと同時に始まり、[code: PATH] がそろっていればビルドは十数秒で済む。
 
 aarch64 のランナーで同じことをするのは、時間がかかっても省けない。
 浮動小数点数の計算とネイティブライブラリの結果が二つのアーキテクチャで一致することが、決定性の主張の根拠そのものだからである。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0001-haskell-workspace-and-ci.md]（docs/adr の ADR 0001「Haskell のワークスペースと CI」）]
@@ -280,7 +306,7 @@ hlint は [code: -j] でランナーのすべてのコアを使う。
 
 ## ci
 
-[code: ci] は、[code: changes]、[code: build]、[code: determinism]、[code: visual]、[code: release-scripts]、[code: scripts-macos]、[code: format] のすべての後に、失敗したジョブがあっても必ず走る。
+[code: ci] は、[code: changes]、[code: scripts-linux]、[code: build]、[code: determinism]、[code: visual]、[code: release-scripts]、[code: scripts-macos]、[code: format] のすべての後に、失敗したジョブがあっても必ず走る。
 各ジョブの結果を [code: scripts/ci/gate.sh] に渡し、すべてが成功か省略なら成功、一つでも失敗、取り消し、欠けがあれば失敗とする。
 
 [code: ci.yml] に新しいジョブを足すときは、[code: ci] ジョブの [code: needs] と、[code: gate.sh] の [code: NAMES] の両方に加える。
