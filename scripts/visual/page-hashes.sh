@@ -20,7 +20,9 @@ PPM=$WORK/ppm/$input
 rm -rf "$PPM"
 # --jobs 1: the PDFs run side by side instead, each in a process of its own
 # (docs/adr/0098)
-if ! "$SHEM" render --dpi 72 --format ppm --jobs 1 "$PDFS/$input.pdf" "$PPM" >/dev/null 2>"$WORK/err/$input"; then
+# MEASUREMENT ONLY: VISUAL_SHEM_JOBS (default 1; empty = shem's default)
+SJ=${VISUAL_SHEM_JOBS-1}
+if ! "$SHEM" render --dpi 72 --format ppm ${SJ:+--jobs "$SJ"} "$PDFS/$input.pdf" "$PPM" >/dev/null 2>"$WORK/err/$input"; then
   rm -rf "$PPM"
   exit 0
 fi

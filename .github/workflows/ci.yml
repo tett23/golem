@@ -468,7 +468,20 @@ jobs:
       - id: check
         name: The pages match the references (docs/adr/0094, docs/adr/0095)
         shell: bash
-        run: timeout -k 10 600 sh scripts/visual/check.sh --lists "$RUNNER_TEMP/visual-diff/pages" visual-pdfs | tee "$RUNNER_TEMP/visual.txt"
+        # MEASUREMENT ONLY: the form under test
+        env:
+          VISUAL_JOBS: "4"
+          VISUAL_SHEM_JOBS: "1"
+        run: |
+          t0=$(date +%s%N)
+          timeout -k 10 600 sh scripts/visual/check.sh --lists "$RUNNER_TEMP/visual-diff/pages" visual-pdfs | tee "$RUNNER_TEMP/visual.txt"
+          t1=$(date +%s%N)
+          echo "measure check VISUAL_JOBS=$VISUAL_JOBS shem_jobs=${VISUAL_SHEM_JOBS:-default} ms=$(( (t1 - t0) / 1000000 ))" | tee -a "$GITHUB_STEP_SUMMARY"
+      # MEASUREMENT ONLY: all three forms on this runner, interleaved
+      - name: Bench of the forms (measurement only)
+        run: |
+          nproc
+          sh scripts/visual/bench.sh visual-pdfs 3 | tee -a "$GITHUB_STEP_SUMMARY"
       # only when the pages differ: the images before and after of the
       # changed pages, their differences and the job summary. Before is the
       # base of the pull request, or the commit before the push to main;
