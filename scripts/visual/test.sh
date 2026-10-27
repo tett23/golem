@@ -3,7 +3,7 @@
 # script writes into the repository it is in, so each test runs a copy of
 # it in a fake root in a temporary directory. Nothing here uses the network
 # nor the real golem and shem: fake commands on the front of PATH stand for
-# them. The changes and scripts-macos jobs of .github/workflows/ci.yml run
+# them. The scripts-linux and scripts-macos jobs of .github/workflows/ci.yml run
 # this.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)

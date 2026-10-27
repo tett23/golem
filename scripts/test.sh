@@ -4,7 +4,7 @@
 # gen-vertical-orientation.sh, fixtures/copy-fonts.sh and
 # fixtures/fetch-public-domain.sh. Each script writes into the repository
 # it is in, so each test runs a copy of it in a fake root in a temporary
-# directory; nothing here uses the network. The changes job of
+# directory; nothing here uses the network. The scripts-linux job of
 # .github/workflows/ci.yml runs this.
 #
 # wasmtime-licenses.sh has no test: it runs curl, git, jq, nm, strings, ar,
