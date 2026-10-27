@@ -416,10 +416,15 @@ jobs:
   # of scripts/visual/pages (docs/adr/0093, docs/adr/0094, docs/adr/0095).
   # It compares with the committed references, not between architectures,
   # so it is a job of its own beside determinism
+  #
+  # It needs only changes: it starts with build, and waits for the artifact
+  # visual-pdfs of the outputs runner instead of the whole build matrix
+  # (docs/adr/0099). The waiting has a limit of 60 minutes, for a build
+  # without a cache
   visual:
-    needs: [changes, build]
+    needs: [changes]
     if: needs.changes.outputs.build == 'true'
-    timeout-minutes: 15
+    timeout-minutes: 75
     runs-on: ubuntu-24.04
     # actions: read for the artifact visual-pdfs of an earlier run, in the
     # report of a failure; this job only (docs/adr/0035, docs/adr/0096)
@@ -444,6 +449,13 @@ jobs:
       # download fails in 5 minutes (docs/adr/0062)
       - name: shem (docs/adr/0093)
         run: timeout -k 10 300 sh scripts/visual/fetch-shem.sh
+      # visual-pdfs of this run, once the outputs runner has uploaded it; a
+      # failed outputs runner fails this step (docs/adr/0099)
+      - name: Wait for the PDFs of the visual regression test (docs/adr/0099)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" 'build (ubuntu-24.04, outputs)'
       - uses: actions/download-artifact@v8
         with:
           name: visual-pdfs
