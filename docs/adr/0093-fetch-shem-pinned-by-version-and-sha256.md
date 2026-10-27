@@ -1,6 +1,6 @@
 # ADR 0093: 見た目の回帰テストのラスタライザ shem を、版と SHA-256 を固定して配布元の release から取る
 
-ステータス: 採択
+ステータス: 採択→版を上げるときの pre-release と、Golem の入力が変わるページの扱いは [ADR 0100](0100-raise-shem-to-v0-1-0-rc3-and-pre-release-bumps.md)
 
 ## 文脈
 

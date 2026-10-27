@@ -128,7 +128,12 @@ It does not fill in the component column of `c-objects.tsv`; fill it in by hand.
 When raising the version of shem, the rasterizer of the visual regression test, change the version and the SHA-256 of the three archives in `scripts/visual/fetch-shem.sh`.
 Compute each SHA-256 from the downloaded archive yourself, and check that it matches the `SHA256SUMS` of the release of shem before writing it.
 A new minor version may change pixels: regenerate the references of the visual regression test in the same pull request, and quote the "Changed" section of the release notes of shem in its description.
-A new patch version leaves the references as they are ([docs/adr/0093](./docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md)).
+A new patch version leaves the references that change with the pixels of shem as they are ([docs/adr/0093](./docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md)).
+A change where the old or the new version has a pre-release identifier (such as `-rc3`) is handled as a new minor version, and may regenerate the references ([docs/adr/0100](./docs/adr/0100-raise-shem-to-v0-1-0-rc3-and-pre-release-bumps.md)).
+In exchange, render the PDFs of the pull request with both the old and the new version, and list in its description, per input, the pages whose SHA-256 differ (or write "none").
+Fetch the old shem with the `fetch-shem.sh` of the commit before the change, and give its path in `SHEM`.
+If some pages differ, quote the "Changed" section of the release notes of shem, and accept the references only after looking at the images of those pages before and after (the `visual-diff` artifact).
+The references of pages that change because the change of version changed an input of Golem (such as the text of the developer manual that names the pinned version) may be updated whatever the kind of the change, but only for pages that the old and the new version render to the same SHA-256.
 A change that makes the PDF writer of Golem write a new operator or resource goes in only after shem is fixed and released and the pinned version is raised, because shem fails on a PDF it cannot read without writing any image.
 When changing dependency versions pinned in `cabal.project.freeze`, explain why in the pull request.
 The version of Claude Code, which writes the release notes, is pinned to an exact value at `"npm:@anthropic-ai/claude-code"` in `mise.toml` ([docs/adr/0044](./docs/adr/0044-release-workflow-hardening.md)).
