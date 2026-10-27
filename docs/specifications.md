@@ -503,7 +503,7 @@ isbn = "978-..."
 
 テストにだけ使う道具として、見た目の回帰テストで PDF のページを画像にするラスタライザ shem（[tett23/shem](https://github.com/tett23/shem)）も版を固定する（[ADR 0093](adr/0093-fetch-shem-pinned-by-version-and-sha256.md)）。
 golem の実行ファイルと配布物には含めず、テストと CI からコマンドとして呼ぶ。
-`scripts/visual/fetch-shem.sh` が、shem の GitHub の release から、固定した版（v0.1.0-rc2）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ `third_party/shem/` に入れる。
+`scripts/visual/fetch-shem.sh` が、shem の GitHub の release から、固定した版（v0.1.0-rc3）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ `third_party/shem/` に入れる。
 release の `SHA256SUMS` は読まない。
 アーカイブは、macOS の aarch64 と、Linux の x86-64 と aarch64 の三つである。
 `third_party/shem/VERSION` にはアーカイブの名前と SHA-256 を空白で区切って書き、スクリプトの値と一致すればネットワークに接続しない。

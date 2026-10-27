@@ -216,7 +216,7 @@ shem はテストと CI からコマンドとして呼び、golem の実行フ�
 $ scripts/visual/fetch-shem.sh
 ```
 
-このスクリプトは、shem の GitHub の release から、固定した版（v0.1.0-rc2）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ [code: third_party/shem] に入れる。[index reading="fetch-shem.sh": fetch-shem.sh]
+このスクリプトは、shem の GitHub の release から、固定した版（v0.1.0-rc3）のアーカイブを取り、スクリプトに書いた SHA-256 と一致したときだけ [code: third_party/shem] に入れる。[index reading="fetch-shem.sh": fetch-shem.sh]
 入れる前に [code: shem --version] が固定した版を出すことも確かめる。
 [code: third_party/shem/VERSION] にはアーカイブの名前と SHA-256 を書き、どちらもスクリプトのものと一致すれば、ネットワークに接続しない。
 release の [code: SHA256SUMS] は読まない。
