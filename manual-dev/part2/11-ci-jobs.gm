@@ -96,7 +96,7 @@ tasty 1.5.4 も、capability の数がプロセッサの数より少ないと、
 - [code: scripts/manual/test.sh]：マニュアルのスクリプトのテスト。
 - [code: scripts/env-determinism/test.sh]：実行の環境を変える検査（第[ref-number determinism]章）のテスト。偽の [code: golem] で、検査が各変化を実際に当てていることを確かめる。
 - [code: scripts/test.sh]：手でだけ動くスクリプト（[code: scripts/gen-vertical-orientation.sh]、[code: scripts/fixtures/copy-fonts.sh]、[code: scripts/fixtures/fetch-public-domain.sh]）のテスト。各スクリプトは置かれたリポジトリに書き込むので、一時ディレクトリに作った偽の根に写して動かす。[code: curl] などは [code: PATH] の先頭に置いた偽物で差し替え、ネットワークを使わない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0078-tests-for-release-and-hand-run-scripts.md]（docs/adr の ADR 0078「リリースのときと手でだけ動くスクリプトにテストを書く」）]
-- [code: scripts/visual/test.sh]：見た目の回帰テストのスクリプトのテスト（第[ref-number determinism]章）。[code: uname] と [code: curl] を偽物で差し替え、ネットワークを使わずに、shem の取得が SHA-256 と版を確かめることを確かめる。偽の [code: golem] と shem で、入力の組み方と、参照との比べ方、[code: --accept] の書き方も確かめる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md]（docs/adr の ADR 0093「見た目の回帰テストのラスタライザ shem を、版と SHA-256 を固定して配布元の release から取る」）]
+- [code: scripts/visual/test.sh]：見た目の回帰テストのスクリプトのテスト（第[ref-number determinism]章）。[code: uname] と [code: curl] を偽物で差し替え、ネットワークを使わずに、shem の取得が SHA-256 と版を確かめることを確かめる。偽の [code: golem] と shem で、入力の組み方と、参照との比べ方、[code: --accept] の書き方も確かめる。偽の [code: gh] で、[code: visual-pdfs] の待ち方も確かめる。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0093-fetch-shem-pinned-by-version-and-sha256.md]（docs/adr の ADR 0093「見た目の回帰テストのラスタライザ shem を、版と SHA-256 を固定して配布元の release から取る」）]
 
 以前は、これらのテストを [code: changes] が実行していた。
 [code: build] と [code: scripts-macos] は [code: changes] の後に始まるので、ビルドの要否の判定に使わないテストの十数秒を、毎回待っていた。
@@ -210,11 +210,12 @@ aarch64 のランナーで同じことをするのは、時間がかかっても
 [code: visual] は、見た目の回帰テスト（第[ref-number determinism]章）を動かす。
 x86-64 の [code: outputs] のランナーが、[code: scripts/determinism.sh] の後に [code: scripts/visual/build.sh] で 17 の入力の PDF を組み、成果物 [code: visual-pdfs] として上げる。
 このランナーには、golem と、マニュアルのフォントと、ほかの出力がすでにそろっている。
-[code: visual] は [code: build] の後に [code: ubuntu-24.04] で走り、次の順に進む。
+[code: visual] は [code: changes] だけを待ち、[code: build] と同時に [code: ubuntu-24.04] で走り始め、次の順に進む。
 
 + チェックアウトする。
 + [code: third_party/shem] を、[code: scripts/visual/fetch-shem.sh] のハッシュをキーにしたキャッシュから戻す。版と SHA-256 はこのスクリプトにあるので、版を上げればキーも変わる。
 + [code: timeout -k 10 300 sh scripts/visual/fetch-shem.sh] を実行する。キャッシュに固定した版があれば何も取らず、なければ shem の release から取る。止まった接続で 5 分を使い切れば失敗する。
++ [code: timeout -k 10 3600 sh scripts/visual/wait-pdfs.sh] で、この実行に [code: visual-pdfs] が上がるのを待つ。
 + [code: visual-pdfs] を取り寄せる。
 + [code: timeout -k 10 600 sh scripts/visual/check.sh --lists ...] で、ページの画像を参照と比べる。[code: --lists] は、[code: --accept] が書くはずの参照を、報告のために別のディレクトリに書く。
 + 比べる手順が失敗したときだけ、[code: scripts/visual/report.sh] がジョブの要約と報告を書き、報告を成果物 [code: visual-diff] として上げる。
@@ -229,10 +230,21 @@ Golem の出力のアーキテクチャによる違いは [code: determinism] �
 比べる手順の上限は、実時間の 600 秒である。
 手元の測定の数十倍で、上限に届くのは shem が止まらなくなったときだけである。
 [code: check.sh] は描き始める入力の名前を標準エラーに書くので、止まったときにどの PDF を描いていたかがわかる。
-ジョブの [code: timeout-minutes] は 15 とする。
+ジョブの [code: timeout-minutes] は 75 とする。
+[code: visual-pdfs] を待つ上限の 60 分に、取得と比べる手順の時間を足したものである。
 これとは別に、比べる手順の実時間の予算を 2 分としている。
 予算は見直しの目安で、超えてもジョブは失敗させない。
 CI でこれを超えるようになったら、入力の数か解像度を見直す。
+
+GitHub Actions の [code: needs] は、行列の一つのランナーだけを待てない。
+以前の [code: visual] は [code: needs: build] で、[code: outputs] が [code: visual-pdfs] を上げた後も、行列のほかのランナーが終わるのを待っていた。
+今は、[code: scripts/visual/wait-pdfs.sh] が 10 秒ごとに、この実行の成果物 [code: visual-pdfs] を GitHub の API に問い合わせる。
+成果物があれば終わり、[code: build (ubuntu-24.04, outputs)] のジョブが成果物を上げずに終わったか、そのジョブがなければ失敗する。
+待つのは名前で探したジョブなので、[code: build] の行列の [code: name] か [code: part] を変えると [code: visual] は失敗する。
+[code: scripts/ci/test.sh] が、待つ名前と行列から作られる名前の一致を確かめる。
+待つ上限の 60 分は、キャッシュのない [code: build] でも届く長さである。
+[code: build] が [code: visual-pdfs] を上げずに失敗すると、[code: visual] も失敗する（以前は省かれた）。
+どちらの場合も [code: ci] は失敗するので、必須の検査の結果は変わらない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0099-visual-job-waits-only-for-visual-pdfs.md]（docs/adr の ADR 0099「visual ジョブを build と同時に始め、成果物 visual-pdfs だけを待つ」）]
 
 [code: unreadable] は、Golem の Writer が shem の読む部分集合の外を書いたことを意味するので、参照を書き直しても通らない。
 shem を直してリリースし、固定した版を上げる（第[ref-number build-test]章）。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0095-visual-job-in-ci.md]（docs/adr の ADR 0095「見た目の回帰テストを、CI の新しいジョブ visual で動かす」）]
