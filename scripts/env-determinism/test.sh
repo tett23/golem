@@ -1,7 +1,7 @@
 #!/bin/sh
 # Tests of check.sh (docs/adr/0029): fake golems that write what a change
 # alters must make it fail, naming the change, and one that writes a fixed
-# text must pass. The changes job of .github/workflows/ci.yml runs this.
+# text must pass. The scripts-linux job of .github/workflows/ci.yml runs this.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)

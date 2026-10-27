@@ -73,14 +73,15 @@ fi
 
 # the installed locale among the candidates, compared without case and '-'
 norm() { tr 'A-Z' 'a-z' | tr -d '-'; }
-INSTALLED=$(locale -a 2>/dev/null | norm)
+# one awk for the whole list: macOS has some 500 locales, and a few
+# processes for each of them took about 4 seconds a run there
+INSTALLED=$(locale -a 2>/dev/null)
 find_locale() {
   for c in $1; do
     n=$(printf '%s' "$c" | norm)
-    if printf '%s\n' "$INSTALLED" | grep -Fqx "$n"; then
-      locale -a 2>/dev/null | while read -r l; do
-        [ "$(printf '%s' "$l" | norm)" = "$n" ] && { printf '%s\n' "$l"; break; }
-      done
+    l=$(printf '%s\n' "$INSTALLED" | awk -v n="$n" '{ t = tolower($0); gsub(/-/, "", t) } t == n { print; exit }')
+    if [ -n "$l" ]; then
+      printf '%s\n' "$l"
       return 0
     fi
   done
