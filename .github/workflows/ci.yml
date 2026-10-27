@@ -470,8 +470,8 @@ jobs:
         shell: bash
         # MEASUREMENT ONLY: the form under test
         env:
-          VISUAL_JOBS: "4"
-          VISUAL_SHEM_JOBS: "1"
+          VISUAL_JOBS: "1"
+          VISUAL_SHEM_JOBS: ""
         run: |
           t0=$(date +%s%N)
           timeout -k 10 600 sh scripts/visual/check.sh --lists "$RUNNER_TEMP/visual-diff/pages" visual-pdfs | tee "$RUNNER_TEMP/visual.txt"
