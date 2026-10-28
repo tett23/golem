@@ -179,7 +179,7 @@ integerBuiltins =
           ("floor(\"a\")", Left "G02007"),
           ("abs(nil)", Left "G02007"),
           ("fixed(1.5)", Left "G02007"),
-          ("fixed(1.5, -1)", Left "G02007"),
+          ("fixed(1.5, -1)", Left "G02103"),
           ("div(1)", Left "G02007")
         ],
       table

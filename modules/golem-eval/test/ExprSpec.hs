@@ -153,7 +153,8 @@ diagnosticTests =
         evm "sqrt(1, 2)" @?= Left ("G02007", "sqrt の引数が不正です")
         evm "min()" @?= Left ("G02007", "min の引数が不正です")
         evm "max()" @?= Left ("G02007", "max の引数が不正です")
-        evm "round(1.5, -1)" @?= Left ("G02007", "round の引数が不正です"),
+        -- a negative number of digits is G02103 (docs/adr ADR 0102)
+        evm "round(1.5, -1)" @?= Left ("G02103", "round の桁数には 0 以上の整数を書きます（書かれた値は -1）"),
       localOption (mkTimeout 30000000) $ testCase "G02086: integers below 2^4096 and at most 1000 digits (docs/adr ADR 0035)" $ do
         let big = ("G02086", "数が大きすぎます（整数と、分数の分子と分母の絶対値は 2 の 4096 乗未満に限ります）")
             digits = ("G02086", "小数の桁数が多すぎます（1000 桁までです）")

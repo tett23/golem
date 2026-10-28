@@ -286,7 +286,7 @@ noFix d = d {diagFixes = []}
 -- | A deferred expression; G02008 is at the inline @sp@ (golem-eval ADR 0003).
 evalDeferred :: DocValues -> SrcSpan -> DeferredExpr -> Either Diagnostic Text
 evalDeferred dv sp (DeferredExpr e) =
-  let docNs = Map.fromList [("chapters", VHash (Map.fromList [("count", VInt (dvChapterCount dv))]))]
+  let docNs = Map.fromList [("chapters", VHash (Map.fromList [("count", VNat (fromInteger (dvChapterCount dv)))]))]
       en = Env Map.empty (Map.singleton "doc" docNs)
    in evalExpr en e >>= embedValue sp
 
