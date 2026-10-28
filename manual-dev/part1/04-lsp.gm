@@ -116,6 +116,11 @@ LSP は最後の変更から一定の時間を待ってから、変わったフ�
 LSP の diagnostic の重大度は、error が [code: Error]、warning が [code: Warning]、notice が [code: Information] になる。
 notice を [code: Hint] にしないのは、エディタの多くが [code: Information] を問題の一覧に載せるからである。
 マニフェストの [code: silence-notices] に並べたコードの notice は、公開しない（第[ref-number diagnostics]章）。
+info は [code: Hint] に写す。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0104-info-severity.md]（docs/adr 0104「diagnostic の重大度 info を notice の下に設ける」）]
+LSP には [code: --verbose] に当たる設定がないので、info はつねに公開する。
+[code: Hint] はエディタの多くが目立たない形で表示し、問題の一覧に載せないので、ふだんは出さないという info の性質に合う。
+マニフェストの [code: silence-info] に並べたコードの info は、公開しない。
+今の LSP は組版をしないので、G07047 のようなレイアウトの info は載らない。
 
 プロジェクトの段階の diagnostics のうち、どのファイルも指さないものは [code: manifest.toml] に載せる。
 文書にあるコードの diagnostic には、[code: codeDescription] に [code: docs/diagnostics.md] の節の URL が付く。

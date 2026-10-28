@@ -4,7 +4,8 @@ module Main (main) where
 import Control.Monad (forM_, unless, when)
 import Data.ByteString qualified as BS
 import Data.Char (isDigit)
-import Data.Containers.ListUtils (nubOrd)
+import Data.Containers.ListUtils (nubOrd, nubOrdOn)
+import Data.Either (partitionEithers)
 import Data.List (intercalate, isPrefixOf, stripPrefix)
 import Data.Map.Strict qualified as Map
 import Data.Text qualified as T
@@ -36,7 +37,7 @@ import System.Directory (doesFileExist, getCurrentDirectory)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..), exitWith)
 import System.FilePath (joinPath, makeRelative, splitDirectories, (</>))
-import System.IO (hPutStrLn, hSetEncoding, stderr, stdout, utf8)
+import System.IO (hFlush, hPutStrLn, hSetEncoding, stderr, stdout, utf8)
 import Text.Printf (printf)
 
 data Format = Human | Json
@@ -45,16 +46,16 @@ data InspectAs = AsCst | AsAst | AsIr | AsCbor
 
 data Command
   = New FilePath Language Bool
-  | Build [Target] Profile CropMarks Bool Format
-  | Check Profile CropMarks Bool Format
+  | Build [Target] Profile CropMarks Bool Bool Format
+  | Check Profile CropMarks Bool Bool Format
   | Preflight (Maybe FilePath) CropMarks Format
   | PluginFetch
   | PluginLock
   | Inspect FilePath InspectAs
-  | Lint Profile Bool Format
+  | Lint Profile Bool Bool Format
   | Fmt Bool [FilePath]
   | Lsp
-  | Explain (Maybe T.Text)
+  | Explain [T.Text]
 
 main :: IO ()
 main = do
@@ -113,6 +114,12 @@ formatOpt =
 noNoticesOpt :: Parser Bool
 noNoticesOpt = switch (long "no-notices" <> help "お知らせを表示しない")
 
+{- | --verbose (-v): the infos too (docs/adr 0104). -v is not --version,
+which has no short form.
+-}
+verboseOpt :: Parser Bool
+verboseOpt = switch (long "verbose" <> short 'v' <> help "情報（info）の diagnostic も表示する")
+
 targetOpt :: Parser Target
 targetOpt =
   option
@@ -132,18 +139,19 @@ inspectAsOpt =
     (choice "表示の種類" [("cst", AsCst), ("ast", AsAst), ("ir", AsIr), ("cbor", AsCbor)])
     (long "as" <> value AsCst <> metavar "cst|ast|ir|cbor" <> help "表示するもの（既定は cst）")
 
-{- | A diagnostic code documented in docs/diagnostics.md, in any case
-(golem-cli ADR 0005). Anything else is a usage error, as in ADR 0004.
+{- | A diagnostic code documented in docs/diagnostics.md, in any case, put
+into upper case (golem-cli ADR 0005); anything else is the message of the
+error. golem explain checks every code it is given, after the parsing of the
+arguments, so that it reports every bad one (golem-cli ADR 0009).
 -}
-codeArg :: ReadM T.Text
-codeArg = eitherReader $ \s ->
-  let code = T.toUpper (T.pack s)
-   in if T.length code /= 6 || T.take 1 code /= "G" || not (T.all isDigit (T.drop 1 code))
-        then Left ("診断のコードは G と 5 桁の数字です: " <> s)
-        else
-          if Map.member code catalog
-            then Right code
-            else Left ("未知の診断のコードです: " <> s <> "。プラグインが出す診断は、プラグインの文書を参照してください")
+checkCode :: T.Text -> Either T.Text T.Text
+checkCode s
+  | T.length code /= 6 || T.take 1 code /= "G" || not (T.all isDigit (T.drop 1 code)) =
+      Left ("診断のコードは G と 5 桁の数字です: " <> s)
+  | Map.member code catalog = Right code
+  | otherwise = Left ("未知の診断のコードです: " <> s <> "。プラグインが出す診断は、プラグインの文書を参照してください")
+  where
+    code = T.toUpper s
 
 commands :: Parser Command
 commands =
@@ -151,8 +159,8 @@ commands =
     ( commandGroup "コマンド:"
         <> metavar "COMMAND"
         <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない")) "プロジェクトを作る"
-        <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> marksOpt <*> noNoticesOpt <*> formatOpt) "出力を build/ に書く"
-        <> cmd "check" (Check <$> profileOpt <*> marksOpt <*> noNoticesOpt <*> formatOpt) "出力を書かずに検査する"
+        <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> marksOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "出力を build/ に書く"
+        <> cmd "check" (Check <$> profileOpt <*> marksOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "出力を書かずに検査する"
         <> cmd "preflight" (Preflight <$> optional (strOption (long "rules" <> metavar "FILE" <> help "プリフライトの設定のファイル（既定は preflight.toml）")) <*> marksOpt <*> formatOpt) "入稿の前に PDF を検査する"
         <> cmd
           "plugin"
@@ -164,11 +172,11 @@ commands =
               )
           )
           "プラグインを管理する"
-        <> cmd "lint" (Lint <$> profileOpt <*> noNoticesOpt <*> formatOpt) "lint の規則を適用する"
+        <> cmd "lint" (Lint <$> profileOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "lint の規則を適用する"
         <> cmd "fmt" (Fmt <$> switch (long "check" <> help "整形が必要なファイルを示すだけにする") <*> many (strArgument (metavar "FILE"))) "原稿を整形する"
         <> cmd "lsp" (pure Lsp) "標準入出力で LSP サーバーを動かす"
         <> cmd "inspect" (Inspect <$> strArgument (metavar "FILE") <*> inspectAsOpt) "ファイルの CST、AST、IR を表示する"
-        <> cmd "explain" (Explain <$> optional (argument codeArg (metavar "CODE"))) "診断のコードの説明を表示する"
+        <> cmd "explain" (Explain <$> many (strArgument (metavar "CODE..."))) "診断のコードの説明を表示する"
     )
   where
     cmd name p desc = command name (info (p <**> helpOption) (progDesc desc))
@@ -202,31 +210,37 @@ localize = intercalate "\n" . go . lines
 run :: Command -> IO ExitCode
 run = \case
   New dir lang noFonts -> newProject dir lang noFonts
-  Build tgs profile marks quiet fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet}
-  Check profile marks quiet fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet}
+  Build tgs profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
+  Check profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
   Preflight rules marks fmt -> preflightRun rules marks fmt
   PluginFetch -> pluginFetch
   PluginLock -> pluginLock
   Inspect path mode -> inspect path mode
-  Lint profile quiet fmt -> do
-    (infos, ds) <- lintProject profile quiet "."
+  Lint profile quiet verbose fmt -> do
+    (infos, ds) <- lintProject profile quiet verbose "."
     report fmt (BuildResult ds infos [])
   Fmt check files -> formatFiles check files
   Lsp -> (\c -> if c == 0 then ExitSuccess else ExitFailure c) <$> runGolemLsp
   Explain code -> explain code
 
-{- | golem explain (golem-cli ADR 0005): the section of one code as it is
-written, or every code with its title.
+{- | golem explain (golem-cli ADR 0005, 0009): the sections of the codes in
+the order given, each once, a blank line between them, and then one line on
+stderr for each bad code, which makes the exit code 2; or every code with
+its title.
 -}
-explain :: Maybe T.Text -> IO ExitCode
+explain :: [T.Text] -> IO ExitCode
 explain = \case
-  Just code -> do
-    mapM_ (TIO.putStrLn . exBody) (Map.lookup code catalog)
-    pure ExitSuccess
-  Nothing -> do
+  [] -> do
     forM_ (Map.elems catalog) $ \e ->
       TIO.putStrLn (exCode e <> "  " <> exTitle e <> (if exStatus e == Retired then "（廃止）" else ""))
     pure ExitSuccess
+  args -> do
+    let (bad, good) = partitionEithers (map checkCode (nubOrdOn T.toUpper args))
+        bodies = [exBody e | c <- good, Just e <- [Map.lookup c catalog]]
+    unless (null bodies) (TIO.putStrLn (T.intercalate "\n\n" bodies))
+    hFlush stdout
+    mapM_ (TIO.hPutStrLn stderr) bad
+    pure (if null bad then ExitSuccess else ExitFailure 2)
 
 {- | The diagnostics in the human format, followed by one line on golem
 explain when a code of them is documented (golem-cli ADR 0005).
@@ -338,8 +352,9 @@ inspect path mode =
     showDocument fid doc = case mode of
       AsCbor -> BS.putStr (encodeDocument doc)
       _ -> TIO.putStrLn (showTree fid (show doc))
+    -- golem inspect has no --verbose: it never shows an info (docs/adr 0104)
     finishWith sources ds = do
-      putHuman sources ds
+      putHuman sources (dropInfo ds)
       pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
 
 {- | The bytes of a file named on the command line; Nothing when it is not

@@ -66,7 +66,7 @@ diagnostic のコードを足すときは、同じ変更で [code: docs/diagnost
 
 - 見出しは [code: ##] とコードだけにする。GitHub の見出しの id がコードの小文字（[code: #g07001]）になり、LSP の [code: codeDescription] が節を直接指せる。
 - 見出しの次の段落が、一行の題になる。[code: golem explain] の一覧に使う。
-- 重大度は、「エラー」「警告」「dev では警告、prod ではエラー」「お知らせ」のどれかを書く。[code: golem explain] がこの文書を使い手に表示するので、notice は「お知らせ」と書く。
+- 重大度は、「エラー」「警告」「dev では警告、prod ではエラー」「お知らせ」「情報」「プリフライトの設定による」のどれかを書く。[code: golem explain] がこの文書を使い手に表示するので、notice は「お知らせ」、info は「情報」と書く。
 - 状態は、使用中か廃止を書く。使わなくなったコードは、節を消さずに状態を廃止にし、代わりの書き方を書く。
 - 使用中のコードの節は、「意味」「主な原因」「直し方」の三つの小見出しをこの順に持ち、どれも空にしない。
 - 節はコードの昇順に並べる。
@@ -76,9 +76,10 @@ diagnostic のコードを足すときは、同じ変更で [code: docs/diagnost
 
 - ソースで使うコードが、すべて使用中の節を持つ。
 - 使用中の節のコードが、すべてソースで使われている。
-- 重大度が、[code: profileDependentCodes] と [code: noticeCodes] に合う。
+- 重大度が、[code: profileDependentCodes] と [code: noticeCodes] と [code: infoCodes] と [code: preflightCodes] に合う。
 
 新しい notice を足すときは、[code: Golem.Syntax.Diagnostic.noticeCodes] にもコードを加える。
+新しい info を足すときは、[code: Golem.Syntax.Diagnostic.infoCodes] にコードを加え、[code: infoDiagnostic] で作る。
 
 ## ビルドが読む文書
 
@@ -123,7 +124,7 @@ CI の所要時間の記録は [code: docs/ci-timings/] に置き、[code: scrip
 用語は、マニュアルの方針の文書（[code: docs/manual-policy.md]）の規則に従う。
 開発者のマニュアルのための規則（diagnostic、アセット、マシンと計算機、重大度の notice）は、仕様書と新しい ADR にも当てはめる。
 仕様書と ADR は、使い手のマニュアルが使う「お知らせ」と書かず、notice と書く。
-notice より下の重大度 info を加える予定があるので、二つを「お知らせ」でまとめず、名前で書き分ける。
+notice の下に重大度 info があるので、二つを「お知らせ」でまとめず、名前で書き分ける。
 コミット済みの ADR は変えられないので、古い用語のまま残す。
 
 これらの規則のうち文字と行で判定できるものは、textlint が検査する。[index reading=textlint: textlint][note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0036-textlint-for-documents.md]（docs/adr の ADR 0036「文書の表記を textlint で検査する」）]

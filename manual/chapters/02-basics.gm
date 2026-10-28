@@ -91,7 +91,7 @@ Golem の終了コードは三つです[note: 仕様書の「CLI」の節。[cod
 $ golem check 2> errors.txt
 ```
 
-Golem は、エラー、警告、お知らせを標準エラー出力に書きます。
+Golem は、エラー、警告、お知らせを標準エラー出力に書きます（[code: --verbose] を付けたときは情報も書きます）。
 上のコマンドは、検査の結果を [code: errors.txt] に保存します。
 
 ### 止める、やり直す

@@ -19,16 +19,24 @@ import Golem.Syntax
 
 {- | The diagnostics of golem lint; with @noNotices@ (--no-notices) no
 notice, and otherwise none of the codes of silence-notices (golem-syntax
-ADR 0002).
+ADR 0002); with @verbose@ (--verbose) the infos but those of silence-info,
+and otherwise no info (docs/adr 0104).
 -}
-lintProject :: Profile -> Bool -> FilePath -> IO (Map FileId SourceInfo, [Diagnostic])
-lintProject profile noNotices root = do
+lintProject :: Profile -> Bool -> Bool -> FilePath -> IO (Map FileId SourceInfo, [Diagnostic])
+lintProject profile noNotices verbose root = do
   ev <- evaluateProject profile root
   pure $ case ev of
-    Left f -> (pfSources f, finish Set.empty (pfDiagnostics f))
-    Right e -> (withEvaluatedSources e (sourceInfos (evProject e)), finish (manifestSilencedNotices (projectManifest (evProject e))) (evDiagnostics e <> lintEvaluated e))
+    Left f -> (pfSources f, finish Set.empty Set.empty (pfDiagnostics f))
+    Right e ->
+      let m = projectManifest (evProject e)
+       in (withEvaluatedSources e (sourceInfos (evProject e)), finish (manifestSilencedNotices m) (manifestSilencedInfo m) (evDiagnostics e <> lintEvaluated e))
   where
-    finish silenced = sortDiagnostics . silenceNotices (if noNotices then Nothing else Just silenced) . map (adjustForProfile profile)
+    finish silenced silencedInfo =
+      sortDiagnostics
+        . (if verbose then id else dropInfo)
+        . silenceInfo silencedInfo
+        . silenceNotices (if noNotices then Nothing else Just silenced)
+        . map (adjustForProfile profile)
 
 {- | The rules on an evaluated project. G05001 of a file that defines styles
 uses the paragraph styles that keep their lines in that file (docs/adr

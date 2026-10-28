@@ -175,9 +175,10 @@ tests =
                 && T.take 1 c == "G"
                 && T.all (`elem` ['0' .. '9']) (T.drop 1 c)
                 && stage (DiagnosticCode c) `elem` ["01", "02", "03", "04", "05", "06", "07", "08", "09"]
-        [c | c <- noticeCodes <> profileDependentCodes <> preflightCodes, not (shaped c)] @?= []
+        [c | c <- noticeCodes <> infoCodes <> profileDependentCodes <> preflightCodes, not (shaped c)] @?= []
         -- the stage that gives each of them
-        map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "03", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "07", "08"]
+        map stage noticeCodes @?= ["02", "02", "02", "02", "02", "02", "03", "03", "04", "04", "04", "04", "07", "07", "07", "07", "07", "08"]
+        map stage infoCodes @?= ["07"]
         map stage profileDependentCodes @?= ["05", "03", "08"]
         assertBool "preflight is 09" (all ((== "09") . stage) preflightCodes),
       testCase "human rendering" $ do
@@ -186,6 +187,7 @@ tests =
         renderHuman files [diagnostic "G02001" Error (mkSpan (FileId 0) 5 6) "msg"]
           @?= "x.gm:2:2: error[G02001]: msg\n  | def\n",
       noticeTests,
+      infoTests,
       orderTests,
       RenderSpec.tests,
       ShowTreeSpec.tests
@@ -211,7 +213,7 @@ noticeTests =
       testCase "no code is a notice and profile-dependent" $
         [c | c <- noticeCodes, c `elem` profileDependentCodes] @?= [],
       testCase "the initial notice codes" $
-        noticeCodes @?= map DiagnosticCode ["G02062", "G02063", "G02064", "G02065", "G02079", "G02094", "G03023", "G03100", "G04007", "G04008", "G04009", "G04011", "G07030", "G07039", "G07045", "G07046", "G07047", "G07100", "G08008"],
+        noticeCodes @?= map DiagnosticCode ["G02062", "G02063", "G02064", "G02065", "G02079", "G02094", "G03023", "G03100", "G04007", "G04008", "G04009", "G04011", "G07030", "G07039", "G07045", "G07046", "G07100", "G08008"],
       testCase "a notice early in the file comes after an error late in it" $ do
         let n = notice "G02065" (mkSpan (FileId 0) 0 1) "n"
             e = diagnostic "G02001" Error (mkSpan (FileId 1) 50 51) "e"
@@ -253,6 +255,83 @@ noticeTests =
     ]
   where
     sp0 = mkSpan (FileId 0) 0 1
+
+-- | The info below the notice (docs/adr 0104).
+infoTests :: TestTree
+infoTests =
+  testGroup
+    "info (docs/adr 0104)"
+    [ testCase "Error < Warning < Notice < Info" $ do
+        Error < Warning @?= True
+        Warning < Notice @?= True
+        Notice < Info @?= True,
+      testCase "infos alone are no errors" $
+        hasErrors [infoDiagnostic "G07047" sp0 "a", infoDiagnostic "G07047" sp0 "b"] @?= False,
+      testCase "infoDiagnostic builds a diagnostic of severity Info" $ do
+        let d = infoDiagnostic "G07047" sp0 "m"
+        (diagCode d, diagSeverity d, diagMessage d) @?= (DiagnosticCode "G07047", Info, "m"),
+      testCase "the profile does not change an info" $ do
+        let d = infoDiagnostic "G07047" sp0 "m"
+        diagSeverity (adjustForProfile Prod d) @?= Info
+        diagSeverity (adjustForProfile Dev d) @?= Info,
+      testCase "the initial info codes, apart from the notices and the profile" $ do
+        infoCodes @?= [DiagnosticCode "G07047"]
+        [c | c <- infoCodes, c `elem` noticeCodes] @?= []
+        [c | c <- infoCodes, c `elem` profileDependentCodes] @?= [],
+      testCase "an info early in the code and the file comes after a notice late in them" $ do
+        let i = infoDiagnostic "G02001" (mkSpan (FileId 0) 0 1) "i"
+            n = notice "G08008" (mkSpan (FileId 1) 50 51) "n"
+            e = diagnostic "G09002" Error (mkSpan (FileId 1) 60 61) "e"
+        sortDiagnostics [i, n, e] @?= [e, n, i],
+      testProperty "errors and warnings, notices, infos, whatever the input order" $ property $ do
+        ds <- forAll (Gen.list (Range.linear 0 20) genDiagWithInfos)
+        perm <- forAll (Gen.shuffle ds)
+        let sorted = sortDiagnostics ds
+        sorted === sortDiagnostics perm
+        let tier d = case diagSeverity d of
+              Notice -> 1 :: Int
+              Info -> 2
+              _ -> 0
+            tiers = map tier sorted
+        Hedgehog.assert (and (zipWith (<=) tiers (drop 1 tiers))),
+      testProperty "dropInfo drops every info and keeps the rest" $ property $ do
+        ds <- forAll (Gen.list (Range.linear 0 20) genDiagWithInfos)
+        dropInfo ds === filter ((/= Info) . diagSeverity) ds,
+      testProperty "silenceInfo drops the infos of its codes only" $ property $ do
+        ds <- forAll (Gen.list (Range.linear 0 20) genDiagWithInfos)
+        codes <- forAll (Gen.subsequence (map DiagnosticCode ["G01001", "G02001", "G05004"]))
+        let set = Set.fromList codes
+        silenceInfo set ds === filter (\d -> diagSeverity d /= Info || diagCode d `notElem` codes) ds,
+      testCase "silenceInfo keeps a notice of a silenced code" $ do
+        let i = infoDiagnostic "G07047" sp0 "i"
+            n = notice "G07047" sp0 "n"
+        silenceInfo (Set.singleton (DiagnosticCode "G07047")) [i, n] @?= [n],
+      testCase "silenceNotices Nothing keeps the infos" $ do
+        let i = infoDiagnostic "G07047" sp0 "i"
+            n = notice "G02062" sp0 "n"
+        silenceNotices Nothing [i, n] @?= [i],
+      testCase "human rendering of an info" $ do
+        let src = "@page-break\n@blank-line\n"
+            files = Map.fromList [(FileId 0, SourceInfo "chapters/02.gm" (mkLineIndex src))]
+        renderHuman files [infoDiagnostic "G07047" (mkSpan (FileId 0) 12 23) "段の先頭に来た @blank-line の空きを捨てました"]
+          @?= "chapters/02.gm:2:1: info[G07047]: 段の先頭に来た @blank-line の空きを捨てました\n  | @blank-line\n",
+      testCase "json rendering of an info, after the notices" $ do
+        let src = "ab\ncd\n"
+            files = Map.fromList [(FileId 0, SourceInfo "a.gm" (mkLineIndex src))]
+            i = infoDiagnostic "G02001" (mkSpan (FileId 0) 0 1) "i"
+            n = notice "G02065" (mkSpan (FileId 0) 3 4) "n"
+        renderJson files [i, n]
+          @?= "[{\"code\":\"G02065\",\"severity\":\"notice\",\"span\":{\"file\":\"a.gm\",\"start\":3,\"end\":4,\"line\":2,\"column\":1},\"message\":\"n\",\"related\":[],\"fixes\":[]},"
+            <> "{\"code\":\"G02001\",\"severity\":\"info\",\"span\":{\"file\":\"a.gm\",\"start\":0,\"end\":1,\"line\":1,\"column\":1},\"message\":\"i\",\"related\":[],\"fixes\":[]}]\n"
+    ]
+  where
+    sp0 = mkSpan (FileId 0) 0 1
+
+genDiagWithInfos :: Gen Diagnostic
+genDiagWithInfos = do
+  d <- genDiag
+  sev <- Gen.element [Error, Warning, Notice, Info]
+  pure d {diagSeverity = sev}
 
 -- | The order of diagnostics: the code before the file and the position (golem-syntax ADR 0003).
 orderTests :: TestTree

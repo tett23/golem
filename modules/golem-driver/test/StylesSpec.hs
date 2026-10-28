@@ -190,11 +190,11 @@ inFileTests =
         T.count "<p>" p1 @?= 1,
     testCase "lint: two Latin lines of a file in the line style are not G05001" $
       withChapters "" [("c1.gm", "@manifest paragraph-separator=line\n\nFull fathom five\nOf his bones\n"), ("c2.gm", "Full fathom five\nOf his bones\n")] [] $ \tmp -> do
-        (infos, ds) <- lintProject Dev False tmp
+        (infos, ds) <- lintProject Dev False False tmp
         [p | d <- ds, diagCode d == DiagnosticCode "G05001", Just (SourceInfo p _) <- [Map.lookup (spanFile (diagSpan d)) infos]] @?= ["c2.gm"],
     testCase "lint: a style of the file that keeps its lines is not G05001" $
       withChapters "" [("c1.gm", "@style-def paragraph letter line-breaks=keep\n\n@style letter\n  Full fathom five\n  Of his bones\n"), ("c2.gm", "Full fathom five\nOf his bones\n")] [] $ \tmp -> do
-        (infos, ds) <- lintProject Dev False tmp
+        (infos, ds) <- lintProject Dev False False tmp
         [p | d <- ds, diagCode d == DiagnosticCode "G05001", Just (SourceInfo p _) <- [Map.lookup (spanFile (diagSpan d)) infos]] @?= ["c2.gm"]
   ]
   where

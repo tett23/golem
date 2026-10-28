@@ -9,6 +9,10 @@ module Golem.Syntax.Diagnostic
     notice,
     noticeCodes,
     silenceNotices,
+    infoDiagnostic,
+    infoCodes,
+    dropInfo,
+    silenceInfo,
     isError,
     hasErrors,
     adjustForProfile,
@@ -26,10 +30,12 @@ import Data.Text qualified as T
 import Golem.Syntax.Span
 
 {- | A notice is below a warning (golem-syntax ADR 0002): something the
-author may want to know, which needs no fixing. It does not change the exit
-code, and only notices can be silenced.
+author may want to know, which needs no fixing. An info is below a notice
+(docs/adr 0104): a record of what the processor did by the rules, which the
+author need not know, given with --verbose only. Neither changes the exit
+code, and only notices and infos can be silenced.
 -}
-data Severity = Error | Warning | Notice
+data Severity = Error | Warning | Notice | Info
   deriving stock (Eq, Ord, Show)
 
 {- | @G@ followed by five digits (docs/adr 0061). The upper two digits name
@@ -99,7 +105,6 @@ noticeCodes =
       "G07039", -- a figure fitted to the column (golem-driver ADR 0034)
       "G07045", -- kenten with ruby, not drawn in the PDF (golem-driver ADR 0019)
       "G07046", -- a block with rules broken or a heading rule left out (golem-driver ADR 0027)
-      "G07047", -- blank lines dropped at the top of a column (docs/adr ADR 0046)
       "G07100", -- a heading taller than the rest of its column (golem-layout ADR 0020)
       "G08008" -- code in the body role without [fonts.code] (golem-driver ADR 0017)
     ]
@@ -112,6 +117,29 @@ silenceNotices :: Maybe (Set DiagnosticCode) -> [Diagnostic] -> [Diagnostic]
 silenceNotices codes = filter keep
   where
     keep d = diagSeverity d /= Notice || maybe False (not . Set.member (diagCode d)) codes
+
+-- | A diagnostic of severity 'Info'; its code must be in 'infoCodes'.
+infoDiagnostic :: Text -> SrcSpan -> Text -> Diagnostic
+infoDiagnostic code = diagnostic code Info
+
+{- | The codes of the infos (docs/adr 0104), in one place as 'noticeCodes'.
+silence-info of the manifest accepts these only, and docs/diagnostics.md
+must agree with them (a golem-driver test).
+-}
+infoCodes :: [DiagnosticCode]
+infoCodes =
+  [ DiagnosticCode "G07047" -- blank lines dropped at the top of a column (docs/adr ADR 0046)
+  ]
+
+-- | Drops every info: a run without --verbose (docs/adr 0104).
+dropInfo :: [Diagnostic] -> [Diagnostic]
+dropInfo = filter ((/= Info) . diagSeverity)
+
+{- | Drops the infos whose codes are in the set (silence-info, docs/adr
+0104). Diagnostics of the other severities are always kept.
+-}
+silenceInfo :: Set DiagnosticCode -> [Diagnostic] -> [Diagnostic]
+silenceInfo codes = filter (\d -> diagSeverity d /= Info || not (Set.member (diagCode d) codes))
 
 isError :: Diagnostic -> Bool
 isError = (== Error) . diagSeverity
@@ -147,15 +175,16 @@ adjustForProfile prof d
   | otherwise = d
 
 {- | Deterministic order: errors and warnings first, notices after them
-(golem-syntax ADR 0002); within each, the code, then the file, the start,
-the end, the message and the rest (golem-syntax ADR 0003). Errors and
-warnings are not told apart: they mix in the order of their codes.
+(golem-syntax ADR 0002), infos last (docs/adr 0104); within each, the code,
+then the file, the start, the end, the message and the rest (golem-syntax
+ADR 0003). Errors and warnings are not told apart: they mix in the order of
+their codes.
 -}
 sortDiagnostics :: [Diagnostic] -> [Diagnostic]
 sortDiagnostics =
   sortOn
     ( \d ->
-        ( diagSeverity d == Notice,
+        ( tier (diagSeverity d),
           diagCode d,
           spanFile (diagSpan d),
           spanStart (diagSpan d),
@@ -165,3 +194,9 @@ sortDiagnostics =
           show (diagSeverity d, diagRelated d, diagFixes d, diagFacts d)
         )
     )
+  where
+    tier :: Severity -> Int
+    tier = \case
+      Notice -> 1
+      Info -> 2
+      _ -> 0

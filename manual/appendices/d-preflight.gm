@@ -27,7 +27,7 @@
 
 各検査のテーブルは、[code: severity] と、その検査のしきい値のキーを持ちます。
 [code: severity] は [code: "error"]（エラー）、[code: "warning"]（警告）、[code: "off"]（検査しない）のどれかです。
-お知らせは選べません。
+お知らせと情報は選べません。
 [code: image-resolution] だけは [code: severity] を持たず、しきい値で重さを決めます。
 「print の既定」の欄は、[code: based-on = "print"] のときの値です。
 数のしきい値に負の値は書けません。

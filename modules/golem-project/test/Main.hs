@@ -147,10 +147,68 @@ silenceTests =
       testCase "a string instead of an array is G03001" $
         codes (parse "[diagnostics]\nsilence-notices = \"all\"\n") @?= ["G03001"],
       testCase "an unknown key of [diagnostics] is G03001" $
-        codes (parse "[diagnostics]\nsilence-warnings = [\"G02005\"]\n") @?= ["G03001"]
+        codes (parse "[diagnostics]\nsilence-warnings = [\"G02005\"]\n") @?= ["G03001"],
+      testCase "the code of an info in silence-notices is G03024 naming silence-info (docs/adr 0104)" $
+        case parse "[diagnostics]\nsilence-notices = [\"G07047\"]\n" of
+          Left [d] -> do
+            (diagCode d, spanStart (diagSpan d)) @?= (DiagnosticCode "G03024", elementAt "[diagnostics]\nsilence-notices = [\"G07047\"]\n" "\"G07047\"")
+            assertBool (T.unpack (diagMessage d)) ("抑制できるのはお知らせのコードだけです: G07047（情報のコードは silence-info に書きます）" `T.isInfixOf` diagMessage d)
+          other -> assertFailure (show (codes other))
     ]
   where
     parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] extra)
+    elementAt extra c = len (fst (T.breakOn extra (manifestWith ["\"a.gm\""] extra))) + len (fst (T.breakOn c extra))
+    len = BS.length . TE.encodeUtf8
+
+-- | [diagnostics] silence-info of the manifest (docs/adr 0104).
+silenceInfoTests :: TestTree
+silenceInfoTests =
+  testGroup
+    "[diagnostics] silence-info (docs/adr 0104)"
+    [ testCase "the codes of infos are read" $ do
+        fmap manifestSilencedInfo (parse "[diagnostics]\nsilence-info = [\"G07047\"]\n") @?= Right (Set.fromList [DiagnosticCode "G07047"])
+        fmap manifestSilencedNotices (parse "[diagnostics]\nsilence-info = [\"G07047\"]\n") @?= Right Set.empty,
+      testCase "without silence-info nothing is silenced" $ do
+        fmap manifestSilencedInfo (parse "") @?= Right Set.empty
+        fmap manifestSilencedInfo (parse "[diagnostics]\nsilence-notices = [\"G02062\"]\n") @?= Right Set.empty
+        fmap manifestSilencedInfo (parse "[diagnostics]\nsilence-info = []\n") @?= Right Set.empty,
+      testCase "both keys together" $ do
+        let p = parse "[diagnostics]\nsilence-notices = [\"G02062\"]\nsilence-info = [\"G07047\"]\n"
+        fmap manifestSilencedNotices p @?= Right (Set.fromList [DiagnosticCode "G02062"])
+        fmap manifestSilencedInfo p @?= Right (Set.fromList [DiagnosticCode "G07047"]),
+      testCase "the code of a notice is G03024 naming silence-notices" $
+        case parse "[diagnostics]\nsilence-info = [\"G02062\"]\n" of
+          Left [d] -> do
+            (diagCode d, spanStart (diagSpan d)) @?= (DiagnosticCode "G03024", elementAt "[diagnostics]\nsilence-info = [\"G02062\"]\n" "\"G02062\"")
+            assertBool (T.unpack (diagMessage d)) ("silence-info に書けるのは情報のコードだけです: G02062（お知らせのコードは silence-notices に書きます）" `T.isInfixOf` diagMessage d)
+          other -> assertFailure (show (codes other)),
+      testCase "an error, no code or no string is G03024 at the element" $
+        mapM_
+          ( \(c, lit) -> do
+              let extra = "[diagnostics]\nsilence-info = [\"G07047\", " <> lit <> "]\n"
+              case parse extra of
+                Left [d] -> (diagCode d, spanStart (diagSpan d)) @?= (DiagnosticCode "G03024", elementAt extra lit)
+                other -> assertFailure (T.unpack c <> ": " <> show (codes other))
+          )
+          [("G01001", "\"G01001\""), ("G0747", "\"G0747\""), ("1", "1"), ("G99999", "\"G99999\"")],
+      testCase "an error is not named with the other list" $
+        case parse "[diagnostics]\nsilence-info = [\"G01001\"]\n" of
+          Left [d] -> do
+            assertBool (T.unpack (diagMessage d)) ("silence-info に書けるのは情報のコードだけです: G01001" `T.isInfixOf` diagMessage d)
+            assertBool (T.unpack (diagMessage d)) (not ("silence-notices" `T.isInfixOf` diagMessage d))
+          other -> assertFailure (show (codes other)),
+      testCase "two wrong elements are both reported" $
+        either (map (\d -> (diagCode d, spanStart (diagSpan d)))) (const []) (parse "[diagnostics]\nsilence-info = [\"G01001\", \"G02062\"]\n")
+          @?= [ (DiagnosticCode "G03024", elementAt "[diagnostics]\nsilence-info = [\"G01001\", \"G02062\"]\n" "\"G01001\""),
+                (DiagnosticCode "G03024", elementAt "[diagnostics]\nsilence-info = [\"G01001\", \"G02062\"]\n" "\"G02062\"")
+              ],
+      testCase "a string instead of an array is G03001" $
+        codes (parse "[diagnostics]\nsilence-info = \"G07047\"\n") @?= ["G03001"]
+    ]
+  where
+    parse extra = parseManifest (FileId 0) (manifestWith ["\"a.gm\""] extra)
+    elementAt extra c = len (fst (T.breakOn extra (manifestWith ["\"a.gm\""] extra))) + len (fst (T.breakOn c extra))
+    len = BS.length . TE.encodeUtf8
 
 -- | The running head of a master page (golem-driver ADR 0014).
 runningHeadTests :: TestTree
@@ -764,6 +822,7 @@ tests =
         codes (parseStyle (FileId 0) "[page]\nsize = \"A6\"\nbleed = \"1zw\"\n") @?= ["G03006"],
       testGroup "page size by dimensions (ADR 0005)" pageSizeTests,
       silenceTests,
+      silenceInfoTests,
       indexStyleTests,
       hiddenFolioTests,
       findCycleTests,
