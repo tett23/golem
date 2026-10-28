@@ -217,6 +217,10 @@ tests =
         filter (`notElem` ["G01017", "G01020"]) (codesOf ws "loose.gm") @?= []
         assertBool "hover" (isJust (hover ws "loose.gm" (offsetIn src "1 + 2" 0)))
         assertBool "completion" ("color" `elem` map cmpLabel (completions ws "loose.gm" (offsetIn src "[co" 3))),
+      testCase "the reserved [! is published as the error G01100 (docs/adr ADR 0115)" $ do
+        ws0 <- openWorkspace root
+        ws <- updateFile ws0 "b.gm" "@label second\n# 次の章\n\n本文 [!foo bar] です。\n"
+        [(c, diagSeverity d) | d <- fromMaybe [] (Map.lookup "b.gm" (diagnosticsFor ws)), let { DiagnosticCode c = diagCode d }, c == "G01100"] @?= [("G01100", Error)],
       testCase "a buffer with CR or a BOM is G01003 or G01002, in and outside the project" $ do
         ws0 <- openWorkspace root
         let cases = [("b.gm", "@label second\r\n# 次の章\n", "G01003"), ("b.gm", "\xFEFF@label second\n# 次の章\n", "G01002"), ("loose.gm", "本文\r\n", "G01003"), ("loose.gm", "\xFEFF本文\n", "G01002")]

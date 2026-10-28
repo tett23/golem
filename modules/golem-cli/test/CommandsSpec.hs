@@ -422,7 +422,13 @@ fmtTests =
         createDirectoryIfMissing True (tmp </> "d.gm")
         (code, _, err) <- golemAt tmp ["fmt", "--check", "d.gm"]
         code @?= ExitFailure 1
-        assertBool err ("error[G03002]" `isInfixOf` err)
+        assertBool err ("error[G03002]" `isInfixOf` err),
+      testCase "a file with the reserved [! is left alone with G01100 and 1 (docs/adr ADR 0115)" $ withSystemTempDirectory "golem-fmt" $ \tmp -> do
+        writeFiles tmp [("r.gm", "本文   [!foo]   です。\n")]
+        (code, _, err) <- golemAt tmp ["fmt", "r.gm"]
+        code @?= ExitFailure 1
+        assertBool err ("error[G01100]" `isInfixOf` err)
+        readUtf8 (tmp </> "r.gm") >>= (@?= "本文   [!foo]   です。\n")
     ]
 
 -- ------------------------------------------------------------------ golem plugin lock / fetch (golem-plugin ADR 0002)

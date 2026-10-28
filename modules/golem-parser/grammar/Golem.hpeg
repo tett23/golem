@@ -81,6 +81,8 @@
 %inline TooDeep
 %inline BadBracket
 %inline BadBreak
+%inline ReservedBracket
+%inline ReservedBlock
 %inline HeadInline
 %inline Block
 %inline ItemTail
@@ -100,6 +102,7 @@
 %recover expr SkipExpr
 %recover bracket SkipParagraph
 %recover hard_break SkipLine
+%recover reserved SkipParagraph
 
 # Every label is safe (golem-parser ADR 0007): removing it does not change
 # the language. The check of peg-hs 7114641, with the improvements of peg-hs
@@ -119,6 +122,10 @@
 # The same as bracket (docs/adr ADR 0016): BadBreak has no alternative
 # that can go on at the same place after it fails.
 %safe hard_break
+# The same as bracket (docs/adr ADR 0115): the rule throws its label before
+# the characters it only looks at, and no alternative can go on at the
+# same place.
+%safe reserved
 %safe arg_order
 # The same, and for the close of SplatArgument: after *[ fails, the checker
 # takes (Sp KwArg)* to be able to go on. It uses the known *[ only
@@ -156,6 +163,7 @@ Blocks <- Block(ind) (BlankLines? &(Ind(ind) !BlankLine .) Block(ind))* { () }
 Block(ind :: Int) :: ()
 Block <- ( BadIndent(ind)
          / OrphanDef(ind)
+         / ReservedBlock(ind)
          / BlockGroup(ind)
          / Heading(ind)
          / BulletList(ind)
@@ -176,6 +184,15 @@ BadIndent <- Ind(ind) &[ \t] (&{ False } [ \t])^indent { () }
 
 OrphanDef(ind :: Int) :: ()
 OrphanDef <- Ind(ind) &'=:' (&{ False } '=:')^def_orphan { () }
+
+# The reserved syntax (docs/adr ADR 0115): [! where an inline command may
+# be written, @! where a block command may. Both throw reserved before the
+# characters they only look at, as OrphanDef and BadBracket do.
+ReservedBracket :: ()
+ReservedBracket <- &'[!' (&{ False } '[!')^reserved { () }
+
+ReservedBlock(ind :: Int) :: ()
+ReservedBlock <- Ind(ind) &'@!' (&{ False } '@!')^reserved { () }
 
 # ------------------------------------------------------------ basics
 
@@ -209,6 +226,7 @@ BlockStart <- !NumberOpen '#' { () }
             / '|' { () }
             / '```' { () }
             / '@' [a-z] { () }
+            / '@!' { () }
 
 # ------------------------------------------------------------ headings
 
@@ -223,6 +241,7 @@ HeadInline <- Escape { () }
             / ProofComment { () }
             / Comment { () }
             / ExprCtx { () }
+            / ReservedBracket { () }
             / InlineCommand(ind) { () }
             / BadBracket { () }
             / BadBreak { () }
@@ -246,6 +265,7 @@ Inline <- Escape { () }
         / ProofComment { () }
         / Comment { () }
         / ExprCtx { () }
+        / ReservedBracket { () }
         / InlineCommand(ind) { () }
         / BadBracket { () }
         / BadBreak { () }
@@ -341,6 +361,7 @@ Splat <- '**[' { () } / '*[' { () }
 ArgValue :: ()
 ArgValue <- StringLit { () }
           / ExprCtx { () }
+          / ReservedBracket { () }
           / InlineCommand(0) { () }
           / Word { () }
 
@@ -371,6 +392,7 @@ SlotInline <- Escape { () }
             / ProofComment { () }
             / Comment { () }
             / ExprCtx { () }
+            / ReservedBracket { () }
             / InlineCommand(ind) { () }
             / BadBracket { () }
             / BadBreak { () }
@@ -609,6 +631,7 @@ CellInline :: ()
 CellInline <- Escape { () }
             / Comment { () }
             / ExprCtx { () }
+            / ReservedBracket { () }
             / InlineCommand(0) { () }
             / BadBracket { () }
             / BadBreak { () }
