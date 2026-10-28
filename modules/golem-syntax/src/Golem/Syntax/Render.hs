@@ -28,6 +28,7 @@ severityText :: Severity -> Text
 severityText Error = "error"
 severityText Warning = "warning"
 severityText Notice = "notice"
+severityText Info = "info"
 
 codeText :: DiagnosticCode -> Text
 codeText (DiagnosticCode c) = c

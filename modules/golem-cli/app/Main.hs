@@ -46,13 +46,13 @@ data InspectAs = AsCst | AsAst | AsIr | AsCbor
 
 data Command
   = New FilePath Language Bool
-  | Build [Target] Profile CropMarks Bool Format
-  | Check Profile CropMarks Bool Format
+  | Build [Target] Profile CropMarks Bool Bool Format
+  | Check Profile CropMarks Bool Bool Format
   | Preflight (Maybe FilePath) CropMarks Format
   | PluginFetch
   | PluginLock
   | Inspect FilePath InspectAs
-  | Lint Profile Bool Format
+  | Lint Profile Bool Bool Format
   | Fmt Bool [FilePath]
   | Lsp
   | Explain [T.Text]
@@ -114,6 +114,12 @@ formatOpt =
 noNoticesOpt :: Parser Bool
 noNoticesOpt = switch (long "no-notices" <> help "お知らせを表示しない")
 
+{- | --verbose (-v): the infos too (docs/adr 0104). -v is not --version,
+which has no short form.
+-}
+verboseOpt :: Parser Bool
+verboseOpt = switch (long "verbose" <> short 'v' <> help "情報（info）の diagnostic も表示する")
+
 targetOpt :: Parser Target
 targetOpt =
   option
@@ -153,8 +159,8 @@ commands =
     ( commandGroup "コマンド:"
         <> metavar "COMMAND"
         <> cmd "new" (New <$> strArgument (metavar "DIR") <*> languageOpt <*> switch (long "no-fonts" <> help "フォントを取得しない")) "プロジェクトを作る"
-        <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> marksOpt <*> noNoticesOpt <*> formatOpt) "出力を build/ に書く"
-        <> cmd "check" (Check <$> profileOpt <*> marksOpt <*> noNoticesOpt <*> formatOpt) "出力を書かずに検査する"
+        <> cmd "build" (Build <$> many targetOpt <*> profileOpt <*> marksOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "出力を build/ に書く"
+        <> cmd "check" (Check <$> profileOpt <*> marksOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "出力を書かずに検査する"
         <> cmd "preflight" (Preflight <$> optional (strOption (long "rules" <> metavar "FILE" <> help "プリフライトの設定のファイル（既定は preflight.toml）")) <*> marksOpt <*> formatOpt) "入稿の前に PDF を検査する"
         <> cmd
           "plugin"
@@ -166,7 +172,7 @@ commands =
               )
           )
           "プラグインを管理する"
-        <> cmd "lint" (Lint <$> profileOpt <*> noNoticesOpt <*> formatOpt) "lint の規則を適用する"
+        <> cmd "lint" (Lint <$> profileOpt <*> noNoticesOpt <*> verboseOpt <*> formatOpt) "lint の規則を適用する"
         <> cmd "fmt" (Fmt <$> switch (long "check" <> help "整形が必要なファイルを示すだけにする") <*> many (strArgument (metavar "FILE"))) "原稿を整形する"
         <> cmd "lsp" (pure Lsp) "標準入出力で LSP サーバーを動かす"
         <> cmd "inspect" (Inspect <$> strArgument (metavar "FILE") <*> inspectAsOpt) "ファイルの CST、AST、IR を表示する"
@@ -204,14 +210,14 @@ localize = intercalate "\n" . go . lines
 run :: Command -> IO ExitCode
 run = \case
   New dir lang noFonts -> newProject dir lang noFonts
-  Build tgs profile marks quiet fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet}
-  Check profile marks quiet fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet}
+  Build tgs profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just (if null tgs then allTargets else tgs), optProfile = profile, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
+  Check profile marks quiet verbose fmt -> report fmt =<< build (defaultOptions ".") {optTargets = Just allTargets, optProfile = profile, optCheckOnly = True, optMarks = marks, optNoNotices = quiet, optVerbose = verbose}
   Preflight rules marks fmt -> preflightRun rules marks fmt
   PluginFetch -> pluginFetch
   PluginLock -> pluginLock
   Inspect path mode -> inspect path mode
-  Lint profile quiet fmt -> do
-    (infos, ds) <- lintProject profile quiet "."
+  Lint profile quiet verbose fmt -> do
+    (infos, ds) <- lintProject profile quiet verbose "."
     report fmt (BuildResult ds infos [])
   Fmt check files -> formatFiles check files
   Lsp -> (\c -> if c == 0 then ExitSuccess else ExitFailure c) <$> runGolemLsp
@@ -346,8 +352,9 @@ inspect path mode =
     showDocument fid doc = case mode of
       AsCbor -> BS.putStr (encodeDocument doc)
       _ -> TIO.putStrLn (showTree fid (show doc))
+    -- golem inspect has no --verbose: it never shows an info (docs/adr 0104)
     finishWith sources ds = do
-      putHuman sources ds
+      putHuman sources (dropInfo ds)
       pure (if hasErrors ds then ExitFailure 1 else ExitSuccess)
 
 {- | The bytes of a file named on the command line; Nothing when it is not

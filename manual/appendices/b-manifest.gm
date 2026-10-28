@@ -130,6 +130,7 @@ chapters = [
 | キー | 意味 |
 |:---|:---|
 | [code: silence-notices] | 出さないお知らせのコードです（文字列の配列）。お知らせのコードだけを書けます（第[ref-number check]章の「お知らせ」）。省くと、すべてのお知らせを出します。 |
+| [code: silence-info] | [code: --verbose] を付けても出さない情報のコードです（文字列の配列）。情報のコードだけを書けます（第[ref-number check]章の「情報」）。省くと、[code: --verbose] を付けたときにすべての情報を出します。 |
 
 @nonumber
 ## [code: \[plugins.名前\]]

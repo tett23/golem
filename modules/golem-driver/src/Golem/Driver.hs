@@ -112,11 +112,13 @@ data BuildOptions = BuildOptions
     -- | the crop marks of the PDF (golem-pdf ADR 0004)
     optMarks :: !CropMarks,
     -- | --no-notices: no notice is reported (golem-syntax ADR 0002)
-    optNoNotices :: !Bool
+    optNoNotices :: !Bool,
+    -- | --verbose: the infos are reported too (docs/adr 0104)
+    optVerbose :: !Bool
   }
 
 defaultOptions :: FilePath -> BuildOptions
-defaultOptions root = BuildOptions root Nothing Dev False golemFontProvider True NoMarks False
+defaultOptions root = BuildOptions root Nothing Dev False golemFontProvider True NoMarks False False
 
 data BuildResult = BuildResult
   { brDiagnostics :: ![Diagnostic],
@@ -574,10 +576,10 @@ buildCore :: Bool -> BuildOptions -> IO (BuildResult, Maybe (BS.ByteString, View
 buildCore inMemory opts = do
   ev <- evaluateProject (optProfile opts) (optRoot opts)
   case ev of
-    Left f -> pure (BuildResult (finishWith Set.empty (pfDiagnostics f)) (pfSources f) [], Nothing)
+    Left f -> pure (BuildResult (finishWith Set.empty Set.empty (pfDiagnostics f)) (pfSources f) [], Nothing)
     Right e -> do
       let project = evProject e
-          finish = finishWith (manifestSilencedNotices (projectManifest project))
+          finish = finishWith (manifestSilencedNotices (projectManifest project)) (manifestSilencedInfo (projectManifest project))
           targets = fromMaybe (targetsOf (projectManifest project)) (optTargets opts)
       hasStyle <- doesFileExist (optRoot opts </> "style.toml")
       let styleFid = evStyleFile e
@@ -628,8 +630,14 @@ buildCore inMemory opts = do
               pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags <> activeDiags <> outDiags)) infos written, pdf)
         _ -> pure (BuildResult (finish (evDiags <> fileDiags <> marksDiags)) infos [], Nothing)
   where
-    -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002)
-    finishWith silenced = sortDiagnostics . silenceNotices (if optNoNotices opts then Nothing else Just silenced) . map (adjustForProfile (optProfile opts))
+    -- the profile, then the notices silenced by the manifest or by --no-notices (golem-syntax ADR 0002),
+    -- then the infos of silence-info, and every info without --verbose (docs/adr 0104)
+    finishWith silenced silencedInfo =
+      sortDiagnostics
+        . (if optVerbose opts then id else dropInfo)
+        . silenceInfo silencedInfo
+        . silenceNotices (if optNoNotices opts then Nothing else Just silenced)
+        . map (adjustForProfile (optProfile opts))
 
 {- | G08014 (docs/adr ADR 0039): the SVG files that HTML and EPUB copy (a
 figure or its @web@ image, also inside lists) with active content, or

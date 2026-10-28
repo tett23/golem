@@ -37,7 +37,7 @@ data Explanation = Explanation
 
 -- | The values of @- 重大度: @.
 severities :: [Text]
-severities = ["エラー", "警告", "dev では警告、prod ではエラー", "お知らせ"]
+severities = ["エラー", "警告", "dev では警告、prod ではエラー", "お知らせ", "情報"]
 
 {- | One of 'severities', or a severity the preflight rules decide, with
 the default of print after it (golem-cli ADR 0006).

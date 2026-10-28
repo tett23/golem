@@ -57,7 +57,9 @@ data Manifest = Manifest
     -- | the [source] table (docs/adr ADR 0013)
     manifestSource :: !SourceSettings,
     -- | [diagnostics] silence-notices: codes of notices not shown (golem-syntax ADR 0002)
-    manifestSilencedNotices :: !(Set DiagnosticCode)
+    manifestSilencedNotices :: !(Set DiagnosticCode),
+    -- | [diagnostics] silence-info: codes of infos not shown, even with --verbose (docs/adr 0104)
+    manifestSilencedInfo :: !(Set DiagnosticCode)
   }
   deriving stock (Eq, Show)
 
@@ -214,38 +216,61 @@ instance FromValue Manifest where
           manifestFilters = fromMaybe [] fl,
           manifestBibliography = maybe [] (map T.unpack) bib,
           manifestSource = applyEdits (maybe [] sourceTableEdits src) defaultSourceSettings,
-          manifestSilencedNotices = maybe Set.empty silenced dg
+          manifestSilencedNotices = maybe Set.empty silenced dg,
+          manifestSilencedInfo = maybe Set.empty silencedInfo dg
         }
 
--- | The [diagnostics] table (golem-syntax ADR 0002).
-newtype DiagnosticsTable = DiagnosticsTable {silenced :: Set DiagnosticCode}
+-- | The [diagnostics] table (golem-syntax ADR 0002, docs/adr 0104).
+data DiagnosticsTable = DiagnosticsTable {silenced :: Set DiagnosticCode, silencedInfo :: Set DiagnosticCode}
 
 instance FromValue DiagnosticsTable where
-  fromValue = parseTableFromValue (DiagnosticsTable . fromMaybe Set.empty <$> optKeyOf "silence-notices" silenceList)
+  fromValue = parseTableFromValue (DiagnosticsTable <$> codes "silence-notices" noticeSilence <*> codes "silence-info" infoSilence)
+    where
+      codes key sl = fromMaybe Set.empty <$> optKeyOf key (silenceList sl)
 
-{- | The codes of silence-notices. An element that is not the code of a
-notice is reported at the element; the scope of the element makes it G03024
-('manifestCode'). Every such element is reported, not only the first.
+{- | A list of silenced codes: the codes it accepts, the message of a code
+it does not, and the codes of the other list with the hint that names it
+(docs/adr 0104).
 -}
-silenceList :: Value' l -> Matcher l (Set DiagnosticCode)
-silenceList = \case
+data SilenceList = SilenceList
+  { slAccepts :: [DiagnosticCode],
+    slRefusal :: String,
+    slOther :: [DiagnosticCode],
+    slOtherHint :: String
+  }
+
+noticeSilence :: SilenceList
+noticeSilence = SilenceList noticeCodes "抑制できるのはお知らせのコードだけです: " infoCodes "（情報のコードは silence-info に書きます）"
+
+infoSilence :: SilenceList
+infoSilence = SilenceList infoCodes "silence-info に書けるのは情報のコードだけです: " noticeCodes "（お知らせのコードは silence-notices に書きます）"
+
+{- | The codes of silence-notices or silence-info. An element that is not a
+code the list accepts is reported at the element; the scope of the element
+makes it G03024 ('manifestCode'). Every such element is reported, not only
+the first.
+-}
+silenceList :: SilenceList -> Value' l -> Matcher l (Set DiagnosticCode)
+silenceList sl = \case
   List' _ xs -> Set.fromList . catMaybes <$> traverse (\(i, x) -> inIndex i (element x)) (zip [0 ..] xs)
   v -> typeError "array" v
   where
     element = \case
       Text' l t
         | not (isCodeShape t) -> warnAt l ("診断のコードは G と 5 桁の数字で書きます: " <> T.unpack t) >> pure Nothing
-        | DiagnosticCode t `notElem` noticeCodes -> warnAt l ("抑制できるのはお知らせのコードだけです: " <> T.unpack t) >> pure Nothing
+        | DiagnosticCode t `notElem` slAccepts sl ->
+            warnAt l (slRefusal sl <> T.unpack t <> (if DiagnosticCode t `elem` slOther sl then slOtherHint sl else "")) >> pure Nothing
         | otherwise -> pure (Just (DiagnosticCode t))
       v -> warnAt (Toml.valueAnn v) "診断のコードは文字列で書きます" >> pure Nothing
     isCodeShape t = T.length t == 6 && T.take 1 t == "G" && T.all isDigit (T.drop 1 t)
 
 {- | The code of a schema message of the manifest: G03024 for an element of
-silence-notices, G03001 otherwise.
+silence-notices or silence-info, G03001 otherwise.
 -}
 manifestCode :: [Scope] -> Text
 manifestCode = \case
   [ScopeKey "diagnostics", ScopeKey "silence-notices", ScopeIndex _] -> "G03024"
+  [ScopeKey "diagnostics", ScopeKey "silence-info", ScopeIndex _] -> "G03024"
   _ -> "G03001"
 
 defaultTargets :: Targets

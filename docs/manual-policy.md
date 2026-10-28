@@ -316,7 +316,7 @@ diagnostic の重大度は、`error`、`warning`、`notice` の名前で書く�
 開発者は「お知らせ」から重大度の `notice` を引きにくく、ログの水準の info と取り違えやすいためである。
 docs/diagnostics.md の重大度の欄の値を説明するときに限り、その値として「お知らせ」を引く。
 この規則は、技術者が読む仕様書（`docs/` の仕様書、各モジュールの仕様書、markup.md、roadmap.md、glossary.md）と、新しい ADR にも当てはめる。
-notice より下の重大度 info を加える予定がある（roadmap.md の「diagnostic の info」）。
+notice より下に重大度 info がある（[docs/adr/0104](adr/0104-info-severity.md)）。
 notice と info は別の重大度であり、どちらも「お知らせ」とまとめず、名前で書き分ける。
 
 開発者のマニュアルは、`docs/` の仕様書、各モジュールの仕様書、ADR、CONTRIBUTING.md をまとめ、その文書へリンクする。

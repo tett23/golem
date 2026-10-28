@@ -77,10 +77,10 @@ golem new mybook
 | `golem new DIR [--language ja\|en] [--no-fonts]` | プロジェクトを作る。版面の設定と、配布元から取得したフォントと、プリフライトの設定 `preflight.toml` を含む。`--no-fonts` で作ったプロジェクトも、フォントを置く前から HTML、EPUB、プレーンテキストを作れる（PDF はフォントを置くまで作れない） |
 | `golem plugin lock` | マニフェストのプラグインを取得し、ハッシュを `plugins.lock` に書く |
 | `golem plugin fetch` | `plugins.lock` のとおりにプラグインを取得してキャッシュに置く |
-| `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限り notice を出さない |
-| `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices]` | 出力を書かずに検査する |
+| `golem build [--target html\|epub\|text\|pdf] [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を `build/` に書く。`--target` を省くと四つのターゲットをすべて作る。`--marks` は PDF に付けるトンボ（既定は none）。`--no-notices` はその実行に限り notice を出さない。`--verbose`（`-v`）は info も出す |
+| `golem check [--profile dev\|prod] [--marks japanese\|western\|none] [--no-notices] [-v\|--verbose]` | 出力を書かずに検査する |
 | `golem preflight [--rules FILE] [--marks japanese\|western\|none] [--format human\|json]` | PDF を prod で組み、書かずに入稿の前の検査（プリフライト）を行う。設定は `--rules` のファイル、なければ `preflight.toml`、それもなければ組み込みの `print`。最後に検査した PDF の SHA-256 を出す |
-| `golem lint [--profile dev\|prod] [--no-notices]` | lint の規則を適用する |
+| `golem lint [--profile dev\|prod] [--no-notices] [-v\|--verbose]` | lint の規則を適用する |
 | `golem fmt [--check] [FILE...]` | 原稿を整形する |
 | `golem lsp` | 標準入出力で LSP を話す。位置の単位は、クライアントが対応していれば UTF-8、そうでなければ UTF-16 を使う |
 | `golem inspect FILE --as cst\|ast\|ir\|cbor` | 構文木と IR を表示する |
