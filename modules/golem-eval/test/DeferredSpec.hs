@@ -48,6 +48,7 @@ data E
   | Call Text [E]
   | Neg E
   | Bin A.BinaryOp E E
+  | Range E E
   | Err
   deriving stock (Eq, Show)
 
@@ -65,6 +66,7 @@ shape (A.Located _ e) = case e of
   A.ECall f xs -> Call f (map shape xs)
   A.EUnary A.Negate x -> Neg (shape x)
   A.EBinary o a b -> Bin o (shape a) (shape b)
+  A.ERange a b -> Range (shape a) (shape b)
   A.EError -> Err
 
 deferredShapes :: Text -> [E]

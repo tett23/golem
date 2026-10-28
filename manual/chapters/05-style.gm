@@ -26,7 +26,7 @@ Golem では、それらがすべて [code: style.toml] という一つのテキ
 紙面の大きさと、本文を組む領域（版面）は、[code: \[page\]] と [code: \[page.grid\]] で決めます。
 InDesign の新規ドキュメントの設定と、レイアウトグリッドの設定に当たります。
 
-@listing style.toml lines=3-17 numbers=true
+@listing style.toml lines=3...17 numbers=true
 
 [code: \[page\]] には、紙面そのものを書きます。
 
@@ -80,7 +80,7 @@ HTML と EPUB は、段組みにしません。
 この役割を、フォントの役割と呼びます。
 役割の名前は自由に付けられますが、[code: body] が本文の書体、[code: code] がコードの書体になります。
 
-@listing style.toml lines=19-29
+@listing style.toml lines=19...29
 
 [code: ja] に和文のフォントのファイルを、[code: latin] に欧文のフォントのファイルを書きます。
 和文と欧文で別の書体を組み合わせるのは、日本語の組版の普通のやり方です。
@@ -159,7 +159,7 @@ HTML、EPUB、プレーンテキストには異体字セレクタをそのまま
 
 段落の始まりを一字下げる[index reading=じさげ: 字下げ]には、[code: \[paragraph-styles.body\]] に [code: first-line-indent] を書きます。
 
-@listing style.toml lines=37-38
+@listing style.toml lines=37...38
 
 既定では字下げしません。
 字下げを指定したら、原稿の段落の先頭に全角の空白を書かないでください。
@@ -202,7 +202,7 @@ gap = "0.5zw"
 段落の体裁は段落スタイル[index reading=だんらくすたいる: 段落スタイル]に、文字の体裁は文字スタイル[index reading=もじすたいる: 文字スタイル]にまとめます。
 InDesign の段落スタイルと文字スタイルに当たり、ほかのスタイルを引き継ぐ [code: based-on] は、InDesign の「基準」に当たります。
 
-@listing style.toml lines=31-53 numbers=true
+@listing style.toml lines=31...53 numbers=true
 
 文字スタイル（[code: \[character-styles.<名前>\]]）に書けるキーは次のとおりです。
 
@@ -405,7 +405,7 @@ regex-styles = [
 
 見出しの書体と番号は、階層ごとに [code: \[headings.<階層>\]] で決めます。
 
-@listing style.toml lines=55-68
+@listing style.toml lines=55...68
 
 - [code: font]、[code: size]：フォントの役割と文字の大きさです。
 - [code: number]：番号の書式です。[code: {n}] がその階層の番号、[code: {n:kanji}] が漢数字の番号、[code: {1}] と [code: {2}] が上の階層の番号になります。縦組みの本なら [code: "第{n:kanji}章"] で「第三章」のように組めます。番号と題のあいだには、日本語の本では全角の空白が、英語の本では半角の空白が入ります。書式の末尾に [code: "Chapter {n}: "] のように空白を書けば、区切りは足しません。
@@ -442,7 +442,7 @@ regex-styles = [
 柱[index reading=はしら: 柱]（ページの余白に置く章の題）とノンブル[index reading=のんぶる: ノンブル]（ページ番号）は、マスターページの [code: \[masters.body\]] で置きます。
 マスターページ[index reading=ますたーぺーじ: マスターページ]は、InDesign の親ページ（InDesign 2022 より前のバージョンではマスターページ）に当たります。
 
-@listing style.toml lines=93-98
+@listing style.toml lines=93...98
 
 [code: position] には、[code: "top-outside"]、[code: "top-center"]、[code: "top-inside"]、[code: "bottom-outside"]、[code: "bottom-center"]、[code: "bottom-inside"] のどれかを書きます。
 [code: top] と [code: bottom] は天と地の余白、[code: outside] は小口の側、[code: inside] はノドの側です。
@@ -618,7 +618,7 @@ HTML と EPUB は、索引を段組みにしません。
 色は、名前を付けて [code: \[color.swatches\]] に定義します。
 InDesign のスウォッチ[index reading=すうぉっち: スウォッチ]に当たります。
 
-@listing style.toml lines=88-91
+@listing style.toml lines=88...91
 
 値は、CMYK の各色の網点の割合（0 から 100）です。
 原稿や文字スタイルからは、この名前で色を指します。
@@ -649,7 +649,7 @@ ICC プロファイルと出力インテントについては、「[ref-title pd
 何も書かなければ、W3C の日本語組版処理の要件（JLReq）が一般的な処理として示す組み方になります[note: W3C, Requirements for Japanese Text Layout（JLReq）。[code: https://www.w3.org/TR/jlreq/]]。
 JLReq は、日本語の組版の規格 JIS X 4051 [cite jisx4051] と、組版の現場の慣行をもとにまとめられた文書です[note: JIS X 4051:2004（日本産業標準調査会の JIS の検索）。[code: https://www.jisc.go.jp/app/jis/general/GnrJISSearch.html]]。
 
-@listing style.toml lines=70-71
+@listing style.toml lines=70...71
 
 - [code: kinsoku]：禁則[index reading=きんそく: 禁則]の強さです。[code: "strict"]（既定）は、小書きの仮名（ぁ、っ、ゃ など）と長音記号も行頭に置きません。[code: "loose"] は、それらの行頭を許します。
 - [code: hanging-punctuation]：[code: true] にすると、行末の句読点を版面の外に出すことを許します（ぶら下げ組[index reading=ぶらさげぐみ: ぶら下げ組]）。このマニュアルはぶら下げ組で組んでいます。

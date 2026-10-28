@@ -12,6 +12,8 @@ module Golem.Eval.Expr
     tooBigDiagnostic,
     naturalDiagnostic,
     digitsDiagnostic,
+    rangeEndDiagnostic,
+    valueText,
   )
 where
 
@@ -81,6 +83,7 @@ freeNames (Located _ e) = case e of
   ECall _ xs -> concatMap freeNames xs
   EUnary _ x -> freeNames x
   EBinary _ a b -> freeNames a <> freeNames b
+  ERange a b -> freeNames a <> freeNames b
   _ -> []
 
 evalExpr :: Env -> Located Expr -> Eval Value
@@ -116,7 +119,41 @@ evalExpr env le@(Located _ e) = case e of
     case (args, vs) of
       ([_, d], [_, dv]) | Just diag <- digitsDiagnostic f d dv -> Left diag
       _ -> call le f vs
+  ERange a b -> do
+    x <- evalExpr env a >>= rangeEnd le
+    y <- evalExpr env b >>= rangeEnd le
+    if x > y
+      then err "G02106" le ("範囲の始め " <> T.pack (show x) <> " が終わり " <> T.pack (show y) <> " より大きくなっています")
+      else pure (VRange x y)
   EError -> err "G01020" le "式を解釈できません"
+
+{- | An end of a range (docs/adr ADR 0113): a number of an integral value.
+One that is no number is G02110, one that is not an integer G02104, at
+the range.
+-}
+rangeEnd :: Located Expr -> Value -> Either Diagnostic Integer
+rangeEnd le v = case numberOf v of
+  Nothing -> Left (rangeEndDiagnostic (locSpan le) (valueText v))
+  Just (_, q)
+    | denominator q /= 1 -> err "G02104" le ("範囲の端には整数を書きます（書かれた値 " <> exactText q <> " は整数ではありません）")
+    | otherwise -> pure (numerator q)
+
+-- | G02110 at a span: an end of a range that is missing, no number or cannot be read (docs/adr ADR 0113).
+rangeEndDiagnostic :: SrcSpan -> Text -> Diagnostic
+rangeEndDiagnostic sp t = diagnostic "G02110" Error sp ("範囲の端には数を書きます: " <> t)
+
+{- | A value as the messages write it: a number exactly, a string in
+quotes, true, false and nil, a range as a...b, and the others by the name
+of their type.
+-}
+valueText :: Value -> Text
+valueText v = case (numberOf v, v) of
+  (Just (_, q), _) -> exactText q
+  (_, VString s) -> "\"" <> s <> "\""
+  (_, VBool b) -> if b then "true" else "false"
+  (_, VNil) -> "nil"
+  (_, VRange a b) -> T.pack (show a) <> "..." <> T.pack (show b)
+  _ -> typeName v
 
 lookupMember :: Located Expr -> Value -> [Name] -> Eval Value
 lookupMember _ v [] = pure v

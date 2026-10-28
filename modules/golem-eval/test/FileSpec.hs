@@ -311,8 +311,8 @@ tests =
         case body "@table src=data.csv\n" of
           [Table _ h [r]] -> (map stripSpans h, map stripSpans r) @?= ([["a"], ["b"]], [["1"], ["x,y"]])
           other -> assertFailure (show other)
-        map (fmap codeText . codeOf) (body "@listing src/Main.hs lines=2-3\n") @?= [Just "l2\nl3"]
-        errs "@listing src/Main.hs lines=3-9\n" @?= ["G02037"],
+        map (fmap codeText . codeOf) (body "@listing src/Main.hs lines=2...3\n") @?= [Just "l2\nl3"]
+        errs "@listing src/Main.hs lines=3...9\n" @?= ["G02037"],
       testCase "proofreading comments: kept in dev, warned and dropped in prod" $ do
         errs "本文%%= メモ %%\n" @?= []
         snd (run ctx {ctxProfile = Prod} "本文%%= メモ %%\n") @?= ["G02005"],
@@ -547,6 +547,10 @@ int64Tests =
             c = ctx {ctxPlugins = hook}
         run c "[greet [= 2 ** 63]: x]\n" @?= ([Paragraph Nothing []], ["G02091"])
         run c "[greet [= [1, 2 ** 63]]: x]\n" @?= ([Paragraph Nothing []], ["G02091"])
+        -- the ends of a range (docs/adr ADR 0113)
+        run c "[greet [= 1...2 ** 63]: x]\n" @?= ([Paragraph Nothing []], ["G02091"])
+        run c "[greet [= -(2 ** 63) - 1...0]: x]\n" @?= ([Paragraph Nothing []], ["G02091"])
+        snd (run c "[greet [= 1...2 ** 63 - 1]: x]\n") @?= []
         snd (run c "[greet [= 2 ** 63 - 1]: x]\n") @?= []
     ]
   where
@@ -679,7 +683,7 @@ noticeTests =
         [(c, m, s, e) | (c, m, s, e) <- diags "@listing src=src/Main.hs\n", c == "G02065"]
           @?= [("G02065", "@listing の src= は廃止予定です。パスを最初の引数に書きます", 9, 24)]
         errs "@listing src/Main.hs\n" @?= []
-        body "@listing src=src/Main.hs lines=2-3\n" @?= body "@listing src/Main.hs lines=2-3\n",
+        body "@listing src=src/Main.hs lines=2...3\n" @?= body "@listing src/Main.hs lines=2...3\n",
       testCase "the span of each @number by the span of its block" $ do
         let r = evalResult ctx "+ a\n@number 3\n+ b\n\n@number 2\n# h\n"
         Map.toList (erNumberSites r) @?= [(mkSpan (FileId 1) 14 18, mkSpan (FileId 1) 4 14), (mkSpan (FileId 1) 29 33, mkSpan (FileId 1) 19 29)]
@@ -1215,27 +1219,27 @@ codeTests =
         n <- oneCode "```\na\nb\n```\n"
         codeNumbers n @?= Nothing
         map clNumber (codeLines n) @?= [Just 1, Just 2],
-      testCase "@listing lines=20-22 numbers the lines 20, 21, 22; numbers=5 makes them 5, 6, 7" $ do
-        c <- oneCode "@listing x.hs lines=20-22\n"
+      testCase "@listing lines=20...22 numbers the lines 20, 21, 22; numbers=5 makes them 5, 6, 7" $ do
+        c <- oneCode "@listing x.hs lines=20...22\n"
         linesOf c @?= [("line 20", Just 20, Nothing, False, []), ("line 21", Just 21, Nothing, False, []), ("line 22", Just 22, Nothing, False, [])]
-        d <- oneCode "@listing x.hs lines=20-22 numbers=5\n"
+        d <- oneCode "@listing x.hs lines=20...22 numbers=5\n"
         map clNumber (codeLines d) @?= [Just 5, Just 6, Just 7],
-      testCase "highlight=2,4-5: lines 2, 4 and 5; highlight=9 in three lines is G02069" $ do
-        c <- oneCode "``` highlight=2,4-5\na\nb\nc\nd\ne\n```\n"
+      testCase "highlight=2,4...5: lines 2, 4 and 5; highlight=9 in three lines is G02069" $ do
+        c <- oneCode "``` highlight=2,4...5\na\nb\nc\nd\ne\n```\n"
         map clHighlight (codeLines c) @?= [False, True, False, True, True]
         msgs "``` highlight=9\na\nb\nc\n```\n" @?= [("G02069", "highlight の行 9 はこのコードにありません")]
-        l <- oneCode "@listing x.hs lines=20-22 highlight=21\n"
+        l <- oneCode "@listing x.hs lines=20...22 highlight=21\n"
         map clHighlight (codeLines l) @?= [False, True, False],
       localOption (mkTimeout 30000000) $ testCase "a highlight range far beyond the code ends at once (docs/adr ADR 0035)" $ do
-        msgs "``` highlight=2-1000000000000\na\nb\nc\n```\n" @?= [("G02069", "highlight の行 4 はこのコードにありません")]
+        msgs "``` highlight=2...1000000000000\na\nb\nc\n```\n" @?= [("G02069", "highlight の行 4 はこのコードにありません")]
         -- the blocks too, highlight and all, as the LSP keeps them
-        size <- evaluate (length (show (run ctx "``` highlight=2-1000000000000\na\nb\nc\n```\n")))
+        size <- evaluate (length (show (run ctx "``` highlight=2...1000000000000\na\nb\nc\n```\n")))
         assertBool "evaluated" (size > 0)
-        c <- oneCode "``` highlight=2-3\na\nb\nc\n```\n"
+        c <- oneCode "``` highlight=2...3\na\nb\nc\n```\n"
         map clHighlight (codeLines c) @?= [False, True, True],
       -- docs/adr ADR 0076: the lines highlighted by the range far beyond the code (ADR 0035)
-      testCase "highlight=1-1000000000000 highlights the three lines, and G02069 is for line 4 (docs/adr ADR 0076)" $ do
-        let src = "``` highlight=1-1000000000000\na\nb\nc\n```\n"
+      testCase "highlight=1...1000000000000 highlights the three lines, and G02069 is for line 4 (docs/adr ADR 0076)" $ do
+        let src = "``` highlight=1...1000000000000\na\nb\nc\n```\n"
         msgs src @?= [("G02069", "highlight の行 4 はこのコードにありません")]
         case run ctx src of
           ([CodeBlock c], _) -> map clHighlight (codeLines c) @?= [True, True, True]
@@ -1268,10 +1272,10 @@ codeTests =
         errs "@caption 説明\n段落。\n" @?= ["G02013"]
         msgs "@caption\n```\na\n```\n" @?= [("G02069", "@caption には本文を書きます")],
       testCase "@caption and @label before @listing" $ do
-        case body "@label cfg\n@caption 設定\n@listing x.hs lines=1-2\n" of
+        case body "@label cfg\n@caption 設定\n@listing x.hs lines=1...2\n" of
           [CodeBlock c] -> fmap stripSpans (codeCaption c) @?= Just ["設定"]
           other -> assertFailure (show other)
-        case run ctx "@label cfg\n@caption 設定\n@listing x.hs lines=1-2\n" of
+        case run ctx "@label cfg\n@caption 設定\n@listing x.hs lines=1...2\n" of
           (_, ds) -> ds @?= [],
       testCase "the wrong arguments are G02069" $ do
         msgs "```haskell foo\na\n```\n" @?= [("G02069", "コードブロックの開始の行には、言語の名前とキーワード引数だけを書けます")]
@@ -1282,13 +1286,13 @@ codeTests =
         msgs "``` diff=yes\na\n```\n" @?= [("G02069", "diff の値が正しくありません: yes")]
         msgs "@listing x.hs unknown=1\n" @?= [("G02069", "コードブロックに書けないキーです: unknown。numbers、file、highlight、diff、callouts（@listing では lang も）を書けます")],
       testCase "lang= of @listing is the language; on the fence it is G02069" $ do
-        c <- oneCode "@listing x.hs lines=1-1 lang=haskell\n"
+        c <- oneCode "@listing x.hs lines=1...1 lang=haskell\n"
         codeLang c @?= Just "haskell"
         errs "``` lang=haskell\na\n```\n" @?= ["G02069"],
       testCase "file= is the file name" $ do
         c <- oneCode "```haskell file=\"src/Main.hs\"\na\n```\n"
         codeFile c @?= Just "src/Main.hs"
-        l <- oneCode "@listing x.hs lines=1-1 file=x.hs\n"
+        l <- oneCode "@listing x.hs lines=1...1 file=x.hs\n"
         codeFile l @?= Just "x.hs",
       testCase "a code block without arguments is as before" $ do
         c <- oneCode "```hs\na\n  b\n```\n"

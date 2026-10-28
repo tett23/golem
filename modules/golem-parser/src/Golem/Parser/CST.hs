@@ -106,6 +106,8 @@ data SyntaxKind
   | NHashExpr
   | NHashEntry
   | NParenExpr
+  | -- | the closed range a...b (docs/adr ADR 0113)
+    NRangeExpr
   | NHardBreak
   | -- | ##…## (golem-parser ADR 0011)
     NNumberShorthand

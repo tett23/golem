@@ -199,6 +199,8 @@ Haskell では、インラインの型を [code: InlineF ruby] のように型�
 
 S0 で作る意味論 IR には、まだ決まっていない値が残る。[index reading="DeferredExpr": DeferredExpr]
 章の番号や題への参照（タグ 10）と、[code: doc] の名前空間を使う式（タグ 11 の [code: DeferredExpr]）である。
+式は、リテラル、名前、関数の呼び出し、演算子の式を CDDL の [code: expr] の形で持つ。
+範囲 [code: a...b] は二項演算子とは別の形 [code: \[14, span, expr, expr\]] で持ち、演算子の番号の表に足さない。[note: [style url: https://github.com/tett23/golem/blob/main/docs/adr/0113-closed-range-literal.md]（ADR 0113「閉じた範囲のリテラル 1...10 を設け、.. を予約する」）]
 
 golem-doc の [code: assemble] は、全ファイルの S0 の結果をマニフェストの順に受け取り、S1 の値をすべて解決した文書の全体（[code: Doc.Book]）を作る。
 見出しの番号、ラベルの解決、目次、図番号、索引の並べ替え、参考文献の番号がここで決まる。

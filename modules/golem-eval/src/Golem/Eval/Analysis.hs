@@ -19,7 +19,15 @@ import Golem.Parser.AST
 import Golem.Syntax
 
 -- | The type of an expression.
-data StaticType = SNum NumType | SString | SBool | SNil | SArray | SHash
+data StaticType
+  = SNum NumType
+  | SString
+  | SBool
+  | SNil
+  | SArray
+  | SHash
+  | -- | the closed range a...b (docs/adr ADR 0113)
+    SRange
   deriving stock (Eq, Show)
 
 -- | The types of the names of doc (docs/markup.md "予約された名前空間").
@@ -41,6 +49,7 @@ valueType = \case
   VNil -> SNil
   VArray _ -> SArray
   VHash _ -> SHash
+  VRange _ _ -> SRange
 
 {- | The type of an expression by the rules of docs/adr ADR 0101: the
 literals by their kind, an S0 name by the constructor of its value, a name
@@ -96,8 +105,16 @@ inferExpr env (Located _ e) = case e of
       num (if s == TNat && t == TNat then TNat else TInt)
     ("join", [_, _]) -> Just SString
     _ -> Nothing
+  -- a range whose end is known to be no number has no value (docs/adr ADR 0113)
+  ERange a b
+    | any notNumber [a, b] -> Nothing
+    | otherwise -> Just SRange
   EError -> Nothing
   where
+    notNumber x = case inferExpr env x of
+      Just (SNum _) -> False
+      Just _ -> True
+      Nothing -> False
     num = Just . SNum
     numOf x = case inferExpr env x of
       Just (SNum t) -> Just t
@@ -113,7 +130,7 @@ needs no check; one that refers to doc is checked when it is evaluated
 at S1, with the same code and message.
 -}
 analyse :: Env -> Located Expr -> Maybe Diagnostic
-analyse env (Located _ e) = listToMaybe (mapMaybe (analyse env) (children e) <> here)
+analyse env (Located rsp e) = listToMaybe (mapMaybe (analyse env) (children e) <> here)
   where
     here = case e of
       ECall f [_, d]
@@ -123,7 +140,13 @@ analyse env (Located _ e) = listToMaybe (mapMaybe (analyse env) (children e) <> 
           Right v <- evalExpr env d,
           Just diag <- digitsDiagnostic f d v ->
             [diag]
+      -- an end whose type is known to be no number is G02110 (docs/adr ADR 0113)
+      ERange a b -> take 1 [rangeEndDiagnostic rsp (endText x) | x <- [a, b], Just t <- [inferExpr env x], not (isNum t)]
       _ -> []
+    isNum = \case
+      SNum _ -> True
+      _ -> False
+    endText x = either (const "") valueText (evalExpr env x)
 
 children :: Expr -> [Located Expr]
 children = \case
@@ -132,4 +155,5 @@ children = \case
   ECall _ xs -> xs
   EUnary _ x -> [x]
   EBinary _ a b -> [a, b]
+  ERange a b -> [a, b]
   _ -> []

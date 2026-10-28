@@ -161,6 +161,7 @@ occurrences (File _ bs) = concatMap block bs
       ECall _ es -> concatMap expr es
       EUnary _ a -> expr a
       EBinary _ a b -> expr a <> expr b
+      ERange a b -> expr a <> expr b
       _ -> []
 
 -- | The innermost occurrence at an offset.
@@ -422,6 +423,7 @@ hover ws path off = do
     usesDoc = \case
       EVar ("doc" : _) -> True
       EBinary _ a b -> usesDoc (locValue a) || usesDoc (locValue b)
+      ERange a b -> usesDoc (locValue a) || usesDoc (locValue b)
       EUnary _ a -> usesDoc (locValue a)
       ECall _ es -> any (usesDoc . locValue) es
       _ -> False

@@ -259,7 +259,7 @@ bibliography = ["references.json"]
 CSL-JSON は、文献を一件ずつ JSON のオブジェクト（波括弧で囲んだ、名前と値の組の集まり）にし、それを角括弧で囲んで並べた配列です。
 このマニュアルの参考文献のデータは、次のように始まります。
 
-@listing references.json lines=1-9
+@listing references.json lines=1...9
 
 本文では、[code: id] の値を使って [code: \[cite jlreq\]] のように引用します（「[ref-title toc-index]」、[ref-page toc-index] ページ）。
 Golem が使うキーは、次のとおりです。

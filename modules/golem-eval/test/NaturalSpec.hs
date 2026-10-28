@@ -126,42 +126,43 @@ tests =
         msgs "@need-lines 1e1301\n" @?= [big]
         msgs "@toc depth=1e1301\n" @?= [big]
         msgs "@blank-line 1e1300\n" @?= [big]
-        listingMsgs "@listing src/Main.hs lines=1-1e1301\n" @?= [big]
+        listingMsgs "@listing src/Main.hs lines=1...1e1301\n" @?= [big]
         listingMsgs "``` highlight=1e1301\na\n```\n" @?= [big]
         listingMsgs "``` numbers=1e1301\na\n```\n" @?= [big],
-      -- the audit of 2026-10-28, F-08: the ends of lines= and highlight= take expressions
-      testCase "lines= takes a natural number or a range of two, as a word and as an expression" $ do
+      -- the audit of 2026-10-28, F-08: the ends of lines= and highlight= take
+      -- expressions; a range is a...b (docs/adr ADR 0113)
+      testCase "lines= takes a natural number or a range, as a word and as an expression" $ do
         codeLinesOf "@listing src/Main.hs lines=2\n" @?= [(["l2"], [])]
         codeLinesOf "@listing src/Main.hs lines=[= 2]\n" @?= [(["l2"], [])]
-        codeLinesOf "@listing src/Main.hs lines=[= [1, 2]]\n" @?= [(["l1", "l2"], [])]
-        codeLinesOf "@set n = 3\n\n@listing src/Main.hs lines=[= [n - 1, n]]\n" @?= [(["l2", "l3"], [])]
-        codeLinesOf "@listing src/Main.hs lines=[= [4 / 2, 3]]\n" @?= [(["l2", "l3"], [])]
-        codeLinesOf "@listing src/Main.hs lines=[= \"1-2\"]\n" @?= [(["l1", "l2"], [])]
-        codeLinesOf "@listing src/Main.hs lines=2e0-3\n" @?= [(["l2", "l3"], [])],
+        codeLinesOf "@listing src/Main.hs lines=[= 1...2]\n" @?= [(["l1", "l2"], [])]
+        codeLinesOf "@set n = 3\n\n@listing src/Main.hs lines=[= n - 1...n]\n" @?= [(["l2", "l3"], [])]
+        codeLinesOf "@listing src/Main.hs lines=[= 4 / 2...3]\n" @?= [(["l2", "l3"], [])]
+        codeLinesOf "@listing src/Main.hs lines=[= \"1...2\"]\n" @?= [(["l1", "l2"], [])]
+        codeLinesOf "@listing src/Main.hs lines=2e0...3\n" @?= [(["l2", "l3"], [])],
       testCase "a negative end of lines= is G02103, one not an integer G02104, word and expression alike" $ do
         let neg = [("G02103", "@listing の lines には 0 以上の整数を書きます（書かれた値は -1）")]
         listingMsgs "@listing src/Main.hs lines=-1\n" @?= neg
-        listingMsgs "@listing src/Main.hs lines=3--1\n" @?= neg
-        listingMsgs "@listing src/Main.hs lines=-1-2\n" @?= neg
+        listingMsgs "@listing src/Main.hs lines=3...-1\n" @?= neg
+        listingMsgs "@listing src/Main.hs lines=-1...2\n" @?= neg
         listingMsgs "@listing src/Main.hs lines=[= 0 - 1]\n" @?= neg
-        listingMsgs "@listing src/Main.hs lines=[= [1, 0 - 1]]\n" @?= neg
-        listingMsgs "@listing src/Main.hs lines=1-1.5\n" @?= [("G02104", "@listing の lines には 0 以上の整数を書きます（書かれた値 1.5 は整数ではありません）")]
-        listingMsgs "@listing src/Main.hs lines=[= [1, 3 / 2]]\n" @?= listingMsgs "@listing src/Main.hs lines=1-1.5\n",
-      testCase "lines= out of the file, reversed or not a range stays G02037" $ do
-        map fst (listingMsgs "@listing src/Main.hs lines=2-9\n") @?= ["G02037"]
-        map fst (listingMsgs "@listing src/Main.hs lines=[= [3, 2]]\n") @?= ["G02037"]
-        map fst (listingMsgs "@listing src/Main.hs lines=[= [1, 2, 3]]\n") @?= ["G02037"]
-        map fst (listingMsgs "@listing src/Main.hs lines=1,2\n") @?= ["G02037"]
-        map fst (listingMsgs "@listing src/Main.hs lines=0-1\n") @?= ["G02037"]
-        map fst (listingMsgs "@listing src/Main.hs lines=a-2\n") @?= ["G02037"],
-      testCase "highlight= takes a natural number or a range of two as an expression" $ do
+        listingMsgs "@listing src/Main.hs lines=[= 1...0 - 1]\n" @?= neg
+        listingMsgs "@listing src/Main.hs lines=1...1.5\n" @?= [("G02104", "@listing の lines には 0 以上の整数を書きます（書かれた値 1.5 は整数ではありません）")]
+        listingMsgs "@listing src/Main.hs lines=[= 1...3 / 2]\n" @?= listingMsgs "@listing src/Main.hs lines=1...1.5\n",
+      testCase "lines= out of the file is G02037; reversed, two items and no range have their codes (docs/adr ADR 0113)" $ do
+        map fst (listingMsgs "@listing src/Main.hs lines=2...9\n") @?= ["G02037"]
+        map fst (listingMsgs "@listing src/Main.hs lines=0...1\n") @?= ["G02037"]
+        map fst (listingMsgs "@listing src/Main.hs lines=[= 3...2]\n") @?= ["G02106"]
+        map fst (listingMsgs "@listing src/Main.hs lines=[= [1, 2, 3]]\n") @?= ["G02107"]
+        map fst (listingMsgs "@listing src/Main.hs lines=1,2\n") @?= ["G02107"]
+        map fst (listingMsgs "@listing src/Main.hs lines=a-2\n") @?= ["G02105"],
+      testCase "highlight= takes a natural number, a range or an array of them as an expression" $ do
         codeLinesOf "``` highlight=[= 2]\na\nb\nc\n```\n" @?= [(["a", "b", "c"], ["b"])]
-        codeLinesOf "``` highlight=[= [2, 3]]\na\nb\nc\n```\n" @?= [(["a", "b", "c"], ["b", "c"])]
-        codeLinesOf "@set n = 1\n\n``` highlight=[= [n, n + 1]]\na\nb\nc\n```\n" @?= [(["a", "b", "c"], ["a", "b"])],
+        codeLinesOf "``` highlight=[= 2...3]\na\nb\nc\n```\n" @?= [(["a", "b", "c"], ["b", "c"])]
+        codeLinesOf "@set n = 1\n\n``` highlight=[= n...n + 1]\na\nb\nc\n```\n" @?= [(["a", "b", "c"], ["a", "b"])],
       testCase "a negative end of highlight= or numbers= is G02103, word and expression alike" $ do
         let neg k = [("G02103", "コードブロックの " <> k <> " には 0 以上の整数を書きます（書かれた値は -1）")]
         listingMsgs "``` highlight=-1\na\n```\n" @?= neg "highlight"
-        listingMsgs "``` highlight=1,2--1\na\nb\n```\n" @?= neg "highlight"
+        listingMsgs "``` highlight=1,2...-1\na\nb\n```\n" @?= neg "highlight"
         listingMsgs "``` highlight=[= [1, 0 - 1]]\na\n```\n" @?= neg "highlight"
         listingMsgs "``` numbers=-1\na\n```\n" @?= neg "numbers"
         listingMsgs "``` numbers=[= 0 - 1]\na\n```\n" @?= neg "numbers",

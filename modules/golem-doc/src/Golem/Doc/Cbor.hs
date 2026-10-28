@@ -178,6 +178,8 @@ exprT (AST.Located s e) = case e of
   AST.ECall f xs -> tagged 8 [spanT s, text f, list exprT xs]
   AST.EUnary _ x -> tagged 9 [spanT s, exprT x]
   AST.EBinary op a b -> tagged 10 [spanT s, int (binopIndex op), exprT a, exprT b]
+  -- the closed range a...b, not an operator of 10 (docs/adr ADR 0113)
+  AST.ERange a b -> tagged 14 [spanT s, exprT a, exprT b]
   AST.EError -> tagged 11 [spanT s]
 
 binops :: [AST.BinaryOp]
@@ -488,6 +490,7 @@ termExpr t =
           o <- asIntI op
           if o < 0 || o >= length binops then bad "演算子" else AST.EBinary (binops !! o) <$> termExpr a <*> termExpr b
         (11, []) -> Right AST.EError
+        (14, [a, b]) -> AST.ERange <$> termExpr a <*> termExpr b
         _ -> bad "式"
     _ -> bad "式"
   where

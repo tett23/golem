@@ -54,6 +54,11 @@ tests =
         let t = wireExpr e
         annotateShow t
         assert (isExpr t),
+      -- docs/adr ADR 0113
+      testCase "a range is [14, span, expr, expr], not an operator of 10, and comes back" $ do
+        let e = AST.Located sp (AST.ERange (AST.Located sp (AST.ENat 1)) (AST.Located sp (AST.EInt (-3))))
+        wireExpr e @?= TList [TInt 14, spanTerm, TList [TInt 12, spanTerm, TInt 1], TList [TInt 0, spanTerm, TInt (-3)]]
+        decodeInlines (encodeInlines (deferred e)) @?= Right (deferred e),
       intEncodings,
       numberLiterals,
       pluginFloats,
@@ -122,6 +127,7 @@ isExpr = \case
     (11, []) -> True
     (12, [x]) -> isUint x
     (13, [x]) -> isRational x
+    (14, [a, b]) -> isExpr a && isExpr b
     _ -> False
   _ -> False
   where
@@ -206,7 +212,8 @@ decoderRejects =
         decodeInlines (inlineWith (TList [TInt 6, spanTerm, TList [TList [TString "k"]]])) @?= Left "スキーマに合いません: 連想配列の要素",
       testCase "a float given as an integer" $
         decodeInlines (inlineWith (TList [TInt 1, spanTerm, TInt 1])) @?= Left "スキーマに合いません: 浮動小数点数",
-      testCase "expression tag 14" $
+      testCase "expression tag 15, and the range 14 without its ends (docs/adr ADR 0113)" $ do
+        decodeInlines (inlineWith (TList [TInt 15, spanTerm])) @?= Left "スキーマに合いません: 式"
         decodeInlines (inlineWith (TList [TInt 14, spanTerm])) @?= Left "スキーマに合いません: 式",
       testCase "the well-formed counterpart is accepted" $
         decodeInlines (inlineWith (TList [TInt 10, spanTerm, TInt 11, int1, int1]))

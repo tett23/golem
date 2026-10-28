@@ -221,7 +221,67 @@ tests =
         ],
       codeTests,
       numberShorthandTests,
-      reservedSyntaxTests
+      reservedSyntaxTests,
+      rangeTests
+    ]
+
+-- | The expression of [= src], without its spans.
+rangeAst :: Text -> Golem.Parser.AST.Expr
+rangeAst src = case astOf ("[= " <> src <> "]\n") of
+  [Golem.Parser.AST.Located _ (Golem.Parser.AST.Paragraph [Golem.Parser.AST.Located _ (Golem.Parser.AST.Expr e)])] -> unspanned e
+  other -> error (show other)
+  where
+    unspanned (Golem.Parser.AST.Located _ e) = case e of
+      Golem.Parser.AST.ERange a b -> Golem.Parser.AST.ERange (at0 (unspanned a)) (at0 (unspanned b))
+      Golem.Parser.AST.EBinary o a b -> Golem.Parser.AST.EBinary o (at0 (unspanned a)) (at0 (unspanned b))
+      Golem.Parser.AST.EUnary o a -> Golem.Parser.AST.EUnary o (at0 (unspanned a))
+      Golem.Parser.AST.EArray xs -> Golem.Parser.AST.EArray (map (at0 . unspanned) xs)
+      other -> other
+
+-- | A value at no position.
+at0 :: a -> Golem.Parser.AST.Located a
+at0 = Golem.Parser.AST.Located (mkSpan fid 0 0)
+
+-- | The closed range a...b and the reserved .. (docs/adr ADR 0113).
+rangeTests :: TestTree
+rangeTests =
+  testGroup
+    "the range literal (docs/adr ADR 0113)"
+    [ testCase "ranges parse" $
+        mapM_ parseOk ["[= 1...10]\n", "[= 1.5...2]\n", "[= 1e-3...2]\n", "[= n...n + 4]\n", "[= -1...3]\n", "[= (1...3)]\n", "[= [3, 5...7]]\n", "[= (1...2) == (1...2)]\n", "[= a...b]\n", "[= meta.x...meta.y]\n", "@set r = 1...3\n"],
+      -- The recovery of reserved skips the rest of the paragraph, the ] of
+      -- [= ...] too, which is then G01017 (docs/adr ADR 0115).
+      testCase ".. is G01100 from the .." $ do
+        map (\(c, s, _) -> (c, s)) (parsed "[= 1..3]\n") @?= [(g "G01100", 4), (g "G01017", 8)]
+        map (\(c, s, _) -> (c, s)) (parsed "[= a..b]\n") @?= [(g "G01100", 4), (g "G01017", 8)]
+        map (\(c, s, _) -> (c, s)) (parsed "@set r = 1..3\n") @?= [(g "G01100", 10)]
+        map (\(c, s, _) -> (c, s)) (parsed "[= ..5]\n") @?= [(g "G01100", 3), (g "G01017", 7)]
+        map (\(c, s, _) -> (c, s)) (parsed "[= 5..]\n") @?= [(g "G01100", 4), (g "G01017", 7)],
+      testCase "a range without an end, or with an end that cannot be read, is G02110" $
+        mapM_ (\src -> (src, nub (codes src)) @?= (src, [g "G02110"])) ["[= 1....2]\n", "[= 1...2...3]\n", "[= 1...2..3]\n", "[= 5...]\n", "[= ...5]\n"],
+      testCase "a comparison is no end, nor a range a side of a comparison" $ do
+        codes "[= 1 < 2...3]\n" @?= [g "G01017"]
+        codes "[= 1...2 == 1...2]\n" @?= [g "G01017"],
+      testCase "the AST of a range" $ do
+        let n = at0 . Golem.Parser.AST.ENat
+            v x = at0 (Golem.Parser.AST.EVar x)
+            r = Golem.Parser.AST.ERange
+        rangeAst "1...10" @?= r (n 1) (n 10)
+        rangeAst "1.5...2" @?= r (at0 (Golem.Parser.AST.ERat 1.5)) (n 2)
+        rangeAst "1e-3...2" @?= r (at0 (Golem.Parser.AST.ERat 0.001)) (n 2)
+        rangeAst "n...n + 4" @?= r (v ["n"]) (at0 (Golem.Parser.AST.EBinary Golem.Parser.AST.Add (v ["n"]) (n 4)))
+        rangeAst "-1...3" @?= r (at0 (Golem.Parser.AST.EUnary Golem.Parser.AST.Negate (n 1))) (n 3)
+        rangeAst "(1...3)" @?= r (n 1) (n 3)
+        rangeAst "[3, 5...7]" @?= Golem.Parser.AST.EArray [n 3, at0 (r (n 5) (n 7))]
+        rangeAst "(1...2) == (1...2)" @?= Golem.Parser.AST.EBinary Golem.Parser.AST.OpEq (at0 (r (n 1) (n 2))) (at0 (r (n 1) (n 2)))
+        rangeAst "a...b" @?= r (v ["a"]) (v ["b"])
+        rangeAst "meta.x...meta.y" @?= r (v ["meta", "x"]) (v ["meta", "y"]),
+      testCase "literals and names without a range are as before" $ do
+        rangeAst "1.5" @?= Golem.Parser.AST.ERat 1.5
+        rangeAst "1e-3" @?= Golem.Parser.AST.ERat 0.001
+        rangeAst "meta.title" @?= Golem.Parser.AST.EVar ["meta", "title"],
+      testCase "range_end has its code" $
+        fst (labelCode (Just "range_end")) @?= "G02110"
     ]
 
 -- | The reserved syntax [! and @! (docs/adr ADR 0115).
