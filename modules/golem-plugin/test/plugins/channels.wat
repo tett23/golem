@@ -11,7 +11,7 @@
   (data (i32.const 16) "\83\82\64term\66person\80\82\83\68glossary\01\f4\83\66people\00\f5")
   (data (i32.const 64) "\68glossary")
   (data (i32.const 80) "\66people")
-  (func (export "golem_abi_version") (result i32) (i32.const 7))
+  (func (export "golem_abi_version") (result i32) (i32.const 8))
   (func (export "golem_alloc") (param $n i32) (result i32) (local $p i32)
     (local.set $p (global.get $heap))
     (global.set $heap (i32.add (global.get $heap) (local.get $n)))

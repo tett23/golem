@@ -1,6 +1,6 @@
 # ADR 0007: G02095 のメッセージを、計算の量の上限として書く
 
-ステータス: 採択
+ステータス: 採択→G02095 のメッセージは [docs/adr ADR 0101](../../adr/0101-rational-numbers-in-expressions.md)
 
 ## 文脈
 

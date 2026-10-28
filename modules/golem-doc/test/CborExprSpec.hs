@@ -1,7 +1,8 @@
 {- | The CBOR of deferred expressions (golem-doc ADR 0001): the round trip
 over every kind of expression, the shape of the @expr@ rule of
-schema/golem-doc.cddl checked without the external cddl CLI, and the
-shortest encoding of floats at the edges of half and single precision.
+schema/golem-doc.cddl checked without the external cddl CLI, the number
+literals of the three types, and the floats a plugin may write
+(docs/adr ADR 0101).
 -}
 module CborExprSpec (tests) where
 
@@ -10,10 +11,9 @@ import Codec.CBOR.Term (Term (..), decodeTerm, encodeTerm)
 import Codec.CBOR.Write (toStrictByteString)
 import Data.ByteString qualified as BS
 import Data.ByteString.Lazy qualified as BL
-import Data.Ratio (denominator, numerator)
-import Data.Word (Word8)
-import GHC.Float (double2Float, float2Double)
-import Gen (genExpr, genFloat)
+import Data.Ratio ((%))
+import Data.Text qualified as T
+import Gen (genExpr)
 import Golem.Doc.Cbor
 import Golem.Doc.IR
 import Golem.Parser.AST qualified as AST
@@ -35,10 +35,6 @@ wireExpr e = case deserialiseFromBytes decodeTerm (BL.fromStrict (encodeInlines 
   Right (_, TList [TList [_, _, t]]) -> t
   other -> error (show other)
 
--- | Encoded bytes of a single term.
-bytes :: Term -> [Word8]
-bytes = BS.unpack . toStrictByteString . encodeTerm
-
 -- | The bytes of a deferred inline whose expression is the given term.
 inlineWith :: Term -> BS.ByteString
 inlineWith t = toStrictByteString (encodeTerm (TList [TList [TInt 11, spanTerm, t]]))
@@ -58,13 +54,9 @@ tests =
         let t = wireExpr e
         annotateShow t
         assert (isExpr t),
-      testProperty "a float is in the shortest of half, single and double that keeps it" $ property $ do
-        d <- forAll genFloat
-        let t = floatTerm d
-        annotateShow t
-        floatWidth t === expectedWidth d,
       intEncodings,
-      floatEncodings,
+      numberLiterals,
+      pluginFloats,
       decoderRejects
     ]
 
@@ -92,11 +84,10 @@ termInteger = \case
   TInteger i -> i
   _ -> -1
 
-isFloat :: Term -> Bool
-isFloat = \case
-  THalf _ -> True
-  TFloat _ -> True
-  TDouble _ -> True
+-- rational = #6.30([numerator: int64, denominator: 1..9223372036854775807])
+isRational :: Term -> Bool
+isRational = \case
+  TTagged 30 (TList [n, d]) -> isInt n && isInt d && termInteger d >= 1
   _ -> False
 
 isTstr :: Term -> Bool
@@ -110,15 +101,15 @@ isBool = \case
   TBool _ -> True
   _ -> False
 
-{- | expr = [0, span, int] / [1, span, float] / [2, span, tstr] / [3, span, bool]
+{- | expr = [0, span, int64] / [2, span, tstr] / [3, span, bool]
 / [4, span] / [5, span, [* expr]] / [6, span, [* [tstr, expr]]] / [7, span, [+ tstr]]
 / [8, span, tstr, [* expr]] / [9, span, expr] / [10, span, 0..11, expr, expr] / [11, span]
+/ [12, span, uint64] / [13, span, rational]; the host writes no [1, span, float]
 -}
 isExpr :: Term -> Bool
 isExpr = \case
   TList (tag : s : fields) | isSpan s -> case (termInteger tag, fields) of
     (0, [x]) -> isInt x
-    (1, [x]) -> isFloat x
     (2, [x]) -> isTstr x
     (3, [x]) -> isBool x
     (4, []) -> True
@@ -129,6 +120,8 @@ isExpr = \case
     (9, [x]) -> isExpr x
     (10, [op, a, b]) -> isInt op && termInteger op >= 0 && termInteger op <= 11 && isExpr a && isExpr b
     (11, []) -> True
+    (12, [x]) -> isUint x
+    (13, [x]) -> isRational x
     _ -> False
   _ -> False
   where
@@ -136,53 +129,53 @@ isExpr = \case
       TList [k, v] -> isTstr k && isExpr v
       _ -> False
 
--- ------------------------------------------------------------------ floats
+-- ------------------------------------------------------------------ numbers
 
-data Width = Half | Single | Double
-  deriving stock (Eq, Show)
-
-floatWidth :: Term -> Maybe Width
-floatWidth = \case
-  THalf _ -> Just Half
-  TFloat _ -> Just Single
-  TDouble _ -> Just Double
-  _ -> Nothing
-
-{- | The width an exact value needs, from its rational value: binary16 has
-11 significant bits, exponents down to 2^-24 and a largest value of 65504.
--}
-expectedWidth :: Double -> Maybe Width
-expectedWidth d
-  | halfExact = Just Half
-  | float2Double (double2Float d) == d = Just Single
-  | otherwise = Just Double
-  where
-    r = abs (toRational d)
-    scaled = r * 2 ^ (24 :: Int)
-    halfExact = r <= 65504 && denominator scaled == 1 && oddPart (numerator scaled) < 2 ^ (11 :: Int)
-    oddPart n
-      | n == 0 = 0
-      | even n = oddPart (n `div` 2)
-      | otherwise = n
-
-floatEncodings :: TestTree
-floatEncodings =
+-- | The number literals of the three types (docs/adr ADR 0101).
+numberLiterals :: TestTree
+numberLiterals =
   testGroup
-    "floats at the edges of half and single precision"
-    [ testCase "65504, the largest half, is a half" $ bytes (floatTerm 65504) @?= [0xf9, 0x7b, 0xff],
-      testCase "65520 is past the largest half: a single" $ bytes (floatTerm 65520) @?= [0xfa, 0x47, 0x7f, 0xf0, 0x00],
-      testCase "2^-14, the smallest normal half, is a half" $ bytes (floatTerm 6.103515625e-5) @?= [0xf9, 0x04, 0x00],
-      testCase "2^-24, the smallest subnormal half, is a half" $ bytes (floatTerm 5.960464477539063e-8) @?= [0xf9, 0x00, 0x01],
-      testCase "2^-25 is below the halves: a single" $ bytes (floatTerm 2.9802322387695312e-8) @?= [0xfa, 0x33, 0x00, 0x00, 0x00],
-      testCase "1 + 2^-10 keeps its bits in a half" $ bytes (floatTerm 1.0009765625) @?= [0xf9, 0x3c, 0x01],
-      testCase "1 + 2^-11 needs a single" $ bytes (floatTerm 1.00048828125) @?= [0xfa, 0x3f, 0x80, 0x10, 0x00],
-      testCase "3 * 2^-24, a subnormal half with two bits, is a half" $ bytes (floatTerm 1.7881393432617188e-7) @?= [0xf9, 0x00, 0x03],
-      testCase "a negative half keeps its sign" $ bytes (floatTerm (-2.5)) @?= [0xf9, 0xc1, 0x00],
-      testCase "5e-324, the smallest double, is a double" $ bytes (floatTerm 5.0e-324) @?= [0xfb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01],
-      testCase "the edges read back to the same value" $
-        decodeInlines (encodeInlines (deferred (AST.Located sp (AST.EArray [AST.Located sp (AST.EFloat x) | x <- [65504, 65520, 5.960464477539063e-8, 2.9802322387695312e-8, 5.0e-324]]))))
-          @?= Right (deferred (AST.Located sp (AST.EArray [AST.Located sp (AST.EFloat x) | x <- [65504, 65520, 5.960464477539063e-8, 2.9802322387695312e-8, 5.0e-324]])))
+    "number literals of the three types (docs/adr ADR 0101)"
+    [ testCase "a rational is tag 30 in lowest terms" $
+        wireExpr (AST.Located sp (AST.ERat (1 % 3))) @?= TList [TInt 13, spanTerm, TTagged 30 (TList [TInt 1, TInt 3])],
+      testCase "an integral rational keeps tag 30 with the denominator 1" $
+        wireExpr (AST.Located sp (AST.ERat 5)) @?= TList [TInt 13, spanTerm, TTagged 30 (TList [TInt 5, TInt 1])],
+      testCase "a natural number is expression 12" $
+        wireExpr (AST.Located sp (AST.ENat 5)) @?= TList [TInt 12, spanTerm, TInt 5],
+      testCase "the three read back as they were" $ do
+        let e = AST.Located sp (AST.EArray [AST.Located sp x | x <- [AST.ERat (1 % 3), AST.ERat 5, AST.ERat (negate (7 % 2)), AST.ENat 5, AST.EInt 5, AST.EInt (-5)]])
+        decodeInlines (encodeInlines (deferred e)) @?= Right (deferred e),
+      testCase "a rational not in lowest terms is rejected" $
+        decodeInlines (inlineWith (TList [TInt 13, spanTerm, TTagged 30 (TList [TInt 2, TInt 4])])) @?= Left "スキーマに合いません: 有理数が既約ではありません",
+      testCase "a denominator of 0 is rejected" $
+        decodeInlines (inlineWith (TList [TInt 13, spanTerm, TTagged 30 (TList [TInt 1, TInt 0])])) @?= Left "スキーマに合いません: 有理数",
+      testCase "a negative natural number is rejected" $
+        decodeInlines (inlineWith (TList [TInt 12, spanTerm, TInt (-1)])) @?= Left "スキーマに合いません: 自然数"
     ]
+
+-- | The floats a plugin writes in an expression are their exact rationals (docs/adr ADR 0101).
+pluginFloats :: TestTree
+pluginFloats =
+  testGroup
+    "floats written by a plugin (docs/adr ADR 0101)"
+    [ testCase "a double is its exact rational" $
+        decodeInlines (inlineWith (TList [TInt 1, spanTerm, TDouble 0.1])) @?= Right (deferred (AST.Located sp (AST.ERat (3602879701896397 % 36028797018963968)))),
+      testCase "a half and a single too" $ do
+        decodeInlines (inlineWith (TList [TInt 1, spanTerm, THalf 0.5])) @?= Right (deferred (AST.Located sp (AST.ERat (1 % 2))))
+        decodeInlines (inlineWith (TList [TInt 1, spanTerm, TFloat 0.25])) @?= Right (deferred (AST.Located sp (AST.ERat (1 % 4)))),
+      testCase "a negative zero is 0" $
+        decodeInlines (inlineWith (TList [TInt 1, spanTerm, TDouble (-0.0)])) @?= Right (deferred (AST.Located sp (AST.ERat 0))),
+      testCase "NaN and the infinities have no rational" $ do
+        let nonFinite t = either Just (const Nothing) (termInlinesE =<< firstTerm (inlineWith (TList [TInt 1, spanTerm, t])))
+        nonFinite (TDouble (0 / 0)) @?= Just (FloatNotFinite "NaN")
+        nonFinite (TDouble (1 / 0)) @?= Just (FloatNotFinite "Infinity")
+        nonFinite (TDouble (negate (1 / 0))) @?= Just (FloatNotFinite "-Infinity")
+        nonFinite (THalf (1 / 0)) @?= Just (FloatNotFinite "Infinity")
+    ]
+  where
+    firstTerm b = case deserialiseFromBytes decodeTerm (BL.fromStrict b) of
+      Right (_, t) -> Right t
+      Left e -> Left (SchemaError (T.pack (show e)))
 
 intEncodings :: TestTree
 intEncodings =
@@ -207,14 +200,14 @@ decoderRejects =
         decodeInlines (inlineWith (TList [TInt 10, spanTerm, TInt 12, int1, int1])) @?= Left "スキーマに合いません: 演算子",
       testCase "operator -1" $
         decodeInlines (inlineWith (TList [TInt 10, spanTerm, TInt (-1), int1, int1])) @?= Left "スキーマに合いません: 演算子",
-      testCase "expression tag 12" $
-        decodeInlines (inlineWith (TList [TInt 12, spanTerm])) @?= Left "スキーマに合いません: 式",
       testCase "an error expression with a field" $
         decodeInlines (inlineWith (TList [TInt 11, spanTerm, TInt 0])) @?= Left "スキーマに合いません: 式",
       testCase "a hash entry that is not a pair" $
         decodeInlines (inlineWith (TList [TInt 6, spanTerm, TList [TList [TString "k"]]])) @?= Left "スキーマに合いません: 連想配列の要素",
       testCase "a float given as an integer" $
         decodeInlines (inlineWith (TList [TInt 1, spanTerm, TInt 1])) @?= Left "スキーマに合いません: 浮動小数点数",
+      testCase "expression tag 14" $
+        decodeInlines (inlineWith (TList [TInt 14, spanTerm])) @?= Left "スキーマに合いません: 式",
       testCase "the well-formed counterpart is accepted" $
         decodeInlines (inlineWith (TList [TInt 10, spanTerm, TInt 11, int1, int1]))
           @?= Right (deferred (AST.Located sp (AST.EBinary AST.OpGe (AST.Located sp (AST.EInt 1)) (AST.Located sp (AST.EInt 1)))))

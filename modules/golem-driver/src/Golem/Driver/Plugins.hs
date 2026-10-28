@@ -93,7 +93,7 @@ loadPlugins cacheDir mfid lfid lockText manifest
               <> [err "G06012" ("複数のプラグインが同じチャネルを宣言しています: " <> c <> "（" <> T.intercalate "、" ns <> "）") | (c, ns) <- channelCollisions]
               <> [err "G06012" (n <> ": このチャネルの名前は使えません: " <> c) | (n, c) <- badChannels]
           call pname p name = PluginCommand $ \vals slots sp ->
-            either (\pe -> Left [diagnostic "G06009" Error sp (qualified pname name pe)]) Right (callCommand p name vals slots sp)
+            either (\pe -> Left [diagnostic (pluginErrorCode pe) Error sp (qualified pname name pe)]) Right (callCommand p name vals slots sp)
           -- a filter that fails points at the top of the file (golem-plugin ADR 0003)
           applyFilters path doc0 =
             foldl
@@ -103,7 +103,7 @@ loadPlugins cacheDir mfid lfid lockText manifest
                     | path `elem` fdFiles f,
                       Just (_, _, p) <- lookupPlugin (fdPlugin f) ->
                         case applyFilter p (fdFilter f) doc of
-                          Left pe -> Left [diagnostic "G06009" Error (mkSpan (docFile doc0) 0 0) (qualified (fdPlugin f) (fdFilter f) pe)]
+                          Left pe -> Left [diagnostic (pluginErrorCode pe) Error (mkSpan (docFile doc0) 0 0) (qualified (fdPlugin f) (fdFilter f) pe)]
                           Right (doc', ws') -> Right (doc', ws <> ws')
                     | otherwise -> Right (doc, ws)
               )
@@ -147,6 +147,14 @@ validChannelName c = case T.uncons c of
   where
     reservedChannels = ["toc", "index", "bibliography", "note", "notes", "sidenote", "cite"]
 
--- | @plugin.name: reason@, the message of G06009.
+{- | The code of a call that failed: G06100 for a float without a finite
+value in a deferred expression (docs/adr ADR 0101), G06009 otherwise.
+-}
+pluginErrorCode :: PluginError -> Text
+pluginErrorCode = \case
+  NonFiniteFloat _ -> "G06100"
+  _ -> "G06009"
+
+-- | @plugin.name: reason@, the message of G06009 and G06100.
 qualified :: Text -> Text -> PluginError -> Text
 qualified plugin name pe = plugin <> "." <> name <> ": " <> describePluginError pe

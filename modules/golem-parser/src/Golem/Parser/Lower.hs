@@ -350,18 +350,33 @@ binop = \case
   ">" -> OpGt
   _ -> OpGe
 
-number :: Text -> Expr
-number t = case T.splitOn "." t of
-  [i] -> EInt (read (T.unpack i))
-  [i, f] -> EFloat (decimalToDouble i f)
-  _ -> EError
-
-{- | Correctly rounded conversion of a decimal literal: the exact rational
-value is converted once, with round-to-nearest-even.
+{- | A number literal (docs/adr ADR 0101): digits are a natural number; a
+decimal or an exponent is the exact rational, never rounded. An exponent
+over 1300 in absolute value puts the literal past the limit of the
+evaluator (2^4096) whatever the digits, so the power of 10 is not made:
+the literal is 2^4096 or its reciprocal, which the evaluator reports as
+G02086.
 -}
-decimalToDouble :: Text -> Text -> Double
-decimalToDouble i f =
-  let digits = T.filter isDigit (i <> f)
-      n = read (T.unpack (if T.null digits then "0" else digits)) :: Integer
-      d = 10 ^ T.length f :: Integer
-   in fromRational (n % d)
+number :: Text -> Expr
+number t = case T.splitOn "e" t of
+  [m] -> mantissa m
+  [m, x] -> case (mantissa m, exponentOf x) of
+    (_, Nothing) -> EError
+    (_, Just k)
+      | abs k > 1300 -> ERat (if k > 0 then 2 ^ (4096 :: Int) else 1 % 2 ^ (4096 :: Int))
+    (ENat n, Just k) -> ERat (toRational n * 10 ^^ k)
+    (ERat q, Just k) -> ERat (q * 10 ^^ k)
+    _ -> EError
+  _ -> EError
+  where
+    mantissa m = case T.splitOn "." m of
+      [i] | Just n <- digits i -> ENat (fromInteger n)
+      [i, f] | Just n <- digits (i <> f) -> ERat (n % 10 ^ T.length f)
+      _ -> EError
+    digits d
+      | not (T.null d) && T.all isDigit d = Just (read (T.unpack d) :: Integer)
+      | otherwise = Nothing
+    exponentOf x = case T.uncons x of
+      Just ('+', d) -> digits d
+      Just ('-', d) -> negate <$> digits d
+      _ -> digits x

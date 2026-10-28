@@ -62,16 +62,15 @@ comparisons =
           ("2 < 2", Right (VBool False))
         ],
       table
-        "an integer and a float are compared exactly (golem-eval ADR 0005)"
+        "numbers of different types are compared by their values (docs/adr ADR 0101)"
         [ ("1 < 1.5", Right (VBool True)),
           ("2.5 > 2", Right (VBool True)),
           ("2 <= 2.0", Right (VBool True)),
           ("3 >= 3.5", Right (VBool False)),
-          -- 2^53 + 1 is not 2^53, though 2^53 is the nearest double to it
           ("9007199254740993 == 9007199254740992.0", Right (VBool False))
         ],
       table
-        "two integers are compared exactly, beyond the precision of a double"
+        "two integers are compared exactly"
         [ ("9007199254740993 == 9007199254740992", Right (VBool False)),
           ("9007199254740993 > 9007199254740992", Right (VBool True))
         ],
@@ -114,12 +113,12 @@ integerBuiltins =
   testGroup
     "built-in functions"
     [ table
-        "floor, ceil, round and abs keep an integer an integer"
-        [ ("floor(3)", Right (VInt 3)),
+        "floor, ceil, round and abs of an integer"
+        [ ("floor(3)", Right (VNat 3)),
           ("ceil(-3)", Right (VInt (-3))),
-          ("round(7)", Right (VInt 7)),
-          ("abs(-5)", Right (VInt 5)),
-          ("abs(5)", Right (VInt 5))
+          ("round(7)", Right (VNat 7)),
+          ("abs(-5)", Right (VNat 5)),
+          ("abs(5)", Right (VNat 5))
         ],
       table
         "floor, ceil and round of a float are integers"
@@ -132,16 +131,18 @@ integerBuiltins =
         ],
       table
         "abs of a float is a float"
-        [ ("abs(-2.5)", Right (VFloat 2.5)),
-          ("abs(0.0)", Right (VFloat 0))
+        [ ("abs(-2.5)", Right (VRat 2.5)),
+          ("abs(0.0)", Right (VRat 0))
         ],
       table
         "round with digits is a float rounded half away from zero"
-        [ ("round(1.25, 1)", Right (VFloat 1.3)),
-          ("round(-1.25, 1)", Right (VFloat (-1.3))),
-          ("round(2, 1)", Right (VFloat 2)),
-          ("round(1.5, 0)", Right (VFloat 2)),
-          ("round(0.125, 5)", Right (VFloat 0.125))
+        [ ("round(1.25, 1)", Right (VRat 1.3)),
+          -- a number of digits of an integral value is taken (docs/adr ADR 0101)
+          ("round(1.5, 1.0)", Right (VRat 1.5)),
+          ("round(-1.25, 1)", Right (VRat (-1.3))),
+          ("round(2, 1)", Right (VNat 2)),
+          ("round(1.5, 0)", Right (VRat 2)),
+          ("round(0.125, 5)", Right (VRat 0.125))
         ],
       testGroup
         "fixed pads to the digits"
@@ -152,24 +153,24 @@ integerBuiltins =
         ],
       table
         "len of an array and of a string"
-        [ ("len([1, 2, 3])", Right (VInt 3)),
-          ("len([])", Right (VInt 0)),
-          ("len(\"\")", Right (VInt 0)),
-          ("len(\"😀a\")", Right (VInt 2))
+        [ ("len([1, 2, 3])", Right (VNat 3)),
+          ("len([])", Right (VNat 0)),
+          ("len(\"\")", Right (VNat 0)),
+          ("len(\"😀a\")", Right (VNat 2))
         ],
       table
         "min and max"
-        [ ("min(3, 1, 2)", Right (VInt 1)),
-          ("max(-1, -2.5)", Right (VInt (-1))),
-          ("min(4)", Right (VInt 4)),
+        [ ("min(3, 1, 2)", Right (VNat 1)),
+          ("max(-1, -2.5)", Right (VRat (-1))),
+          ("min(4)", Right (VNat 4)),
           ("min(1, \"a\")", Left "G02001")
         ],
       table
         "div rounds toward negative infinity"
-        [ ("div(7, 2)", Right (VInt 3)),
+        [ ("div(7, 2)", Right (VNat 3)),
           ("div(-7, 2)", Right (VInt (-4))),
           ("div(7, -2)", Right (VInt (-4))),
-          ("-7 % 2", Right (VInt 1)),
+          ("-7 % 2", Right (VNat 1)),
           ("7 % -2", Right (VInt (-1)))
         ],
       table
@@ -179,13 +180,12 @@ integerBuiltins =
           ("abs(nil)", Left "G02007"),
           ("fixed(1.5)", Left "G02007"),
           ("fixed(1.5, -1)", Left "G02007"),
-          ("round(1.5, 1.0)", Left "G02007"),
           ("div(1)", Left "G02007")
         ],
       table
-        "the constants are the nearest doubles"
-        [ ("pi", Right (VFloat 3.141592653589793)),
-          ("e", Right (VFloat 2.718281828459045))
+        "the constants are rounded to 17 significant digits (docs/adr ADR 0101)"
+        [ ("pi", Right (VRat (31415926535897932 / 10 ^ (16 :: Int)))),
+          ("e", Right (VRat (27182818284590452 / 10 ^ (16 :: Int))))
         ]
     ]
 
@@ -193,15 +193,15 @@ powers :: TestTree
 powers =
   table
     "** with an integer exponent"
-    [ ("2 ** 0", Right (VInt 1)),
-      ("0 ** 0", Right (VInt 1)),
+    [ ("2 ** 0", Right (VNat 1)),
+      ("0 ** 0", Right (VNat 1)),
       ("(-2) ** 3", Right (VInt (-8))),
-      ("2 ** 100", Right (VInt 1267650600228229401496703205376)),
-      ("2 ** -2", Right (VFloat 0.25)),
-      ("(-2) ** -1", Right (VFloat (-0.5))),
-      ("2.0 ** -2", Right (VFloat 0.25)),
-      ("1.5 ** 2", Right (VFloat 2.25)),
-      ("2.0 ** 0", Right (VFloat 1)),
+      ("2 ** 100", Right (VNat 1267650600228229401496703205376)),
+      ("2 ** -2", Right (VRat 0.25)),
+      ("(-2) ** -1", Right (VRat (-0.5))),
+      ("2.0 ** -2", Right (VRat 0.25)),
+      ("1.5 ** 2", Right (VRat 2.25)),
+      ("2.0 ** 0", Right (VRat 1)),
       ("\"a\" ** 2", Left "G02001")
     ]
 
@@ -211,26 +211,23 @@ numericBoundaries =
     "numeric boundaries"
     [ table
         "integers have arbitrary precision"
-        [ ("9223372036854775807 + 1", Right (VInt 9223372036854775808)),
+        [ ("9223372036854775807 + 1", Right (VNat 9223372036854775808)),
           ("-9223372036854775808 - 1", Right (VInt (-9223372036854775809))),
-          ("18446744073709551616 * 18446744073709551616", Right (VInt 340282366920938463463374607431768211456))
+          ("18446744073709551616 * 18446744073709551616", Right (VNat 340282366920938463463374607431768211456))
         ],
       table
-        "a float that overflows is G02004"
-        [ ("2.0 ** 1023", Right (VFloat 8.98846567431158e307)),
-          ("2.0 ** 1024", Left "G02004"),
-          -- 10^309 is beyond the largest double when converted
-          ("10 ** 309 + 0.5", Left "G02004"),
-          ("10 ** 309 / 1", Left "G02004")
+        "rationals are exact (docs/adr ADR 0101)"
+        [ ("2.0 ** 1023", Right (VRat (2 ^ (1023 :: Int)))),
+          ("10 ** 309 + 0.5", Right (VRat (10 ^ (309 :: Int) + 0.5))),
+          ("10 ** 309 / 1", Right (VRat (10 ^ (309 :: Int))))
         ],
       testGroup
         "embedding"
         [ testCase "a small float is written positionally" $ shown "0.0000001" @?= Right "0.0000001",
           testCase "a negative float uses the ASCII minus" $ shown "-1.5" @?= Right "-1.5",
-          testCase "a negative zero from multiplication is 0" $ shown "-1.0 * 0" @?= Right "0",
-          testCase "the largest double is written without an exponent" $
-            shown "2.0 ** 1023"
-              @?= Right "89884656743115800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+          testCase "a zero from multiplication is 0" $ shown "-1.0 * 0" @?= Right "0",
+          testCase "a large rational is written with all its digits" $
+            shown "2.0 ** 1023" @?= Right (T.pack (show (2 ^ (1023 :: Int) :: Integer))),
           testCase "an integer is written with all its digits" $ shown "2 ** 70" @?= Right "1180591620717411303424",
           testCase "a string is embedded as it is" $ shown "\"[x]\"" @?= Right "[x]"
         ]
