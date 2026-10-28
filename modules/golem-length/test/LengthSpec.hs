@@ -4,7 +4,8 @@ module LengthSpec (tests) where
 import Data.Ratio ((%))
 import Data.Text (Text)
 import Data.Text qualified as T
-import Golem.Syntax.Length
+import Golem.Length
+import Golem.Length.Decimal (showRationalDigits)
 import Hedgehog
 import Hedgehog.Gen qualified as Gen
 import Hedgehog.Range qualified as Range
@@ -59,7 +60,14 @@ tests =
         "zwToSp"
         [ testCase "a quarter of 10pt" $ zwToSp 655360 (1 % 4) @?= 163840,
           testCase "2.5 rounds to 2" $ zwToSp 10 (1 % 4) @?= 2,
-          testCase "3.5 rounds to 4" $ zwToSp 14 (1 % 4) @?= 4
+          testCase "3.5 rounds to 4" $ zwToSp 14 (1 % 4) @?= 4,
+          testCase "333/1000 of 10.5pt is rounded once (docs/adr ADR 0114)" $ do
+            -- 333 × 688128 / 1000 = 229146.624
+            zwToSp 688128 (333 % 1000) @?= 229147
+            -- rounding each step separately would give a different value
+            unSp (zwToSp 688128 (333 % 1000)) /= round (fromIntegral (round (333 / 1000 * 10.5 * 100 :: Double) :: Integer) / 100 * 65536 :: Double) @?= True,
+          testCase "half of 1sp rounds to the even 0" $ zwToSp 1 (1 % 2) @?= 0,
+          testCase "half of 3sp rounds to the even 2" $ zwToSp 3 (1 % 2) @?= 2
         ],
       testGroup
         "mmText"
@@ -81,5 +89,11 @@ tests =
           testCase "65536sp is 1pt" $ ptText 65536 @?= "1",
           testCase "3mm is 8.5039pt" $ ptText (toSp Mm 3) @?= "8.5039",
           testCase "9pt on 12.6pt is 0.7143em" $ emText (9 / (126 % 10)) @?= "0.7143"
+        ],
+      testGroup
+        "showRationalDigits (docs/adr ADR 0114)"
+        [ testCase "four digits of 0.03125 is 0.0312" $ showRationalDigits 4 (2048 % 65536) @?= "0.0312",
+          testCase "six digits of -1/3 is -0.333333" $ showRationalDigits 6 (-(1 % 3)) @?= "-0.333333",
+          testCase "ten digits of 1/20 is 0.05" $ showRationalDigits 10 (1 % 20) @?= "0.05"
         ]
     ]
