@@ -2,7 +2,7 @@
 ; the Haskell types in Golem.Doc.IR mirror it. Sum types are arrays whose
 ; first element is a fixed tag; tags are never reused.
 
-document = [abi-version: 7, file: uint64, blocks: [* block]]
+document = [abi-version: 8, file: uint64, blocks: [* block]]
 
 span = [file: uint64, start: uint64, end: uint64]
 
